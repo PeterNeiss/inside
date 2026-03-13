@@ -12,10 +12,11 @@ namespace bnd
   <
     rational Lower = {},
     rational Upper = {},
-    rational Step  = {}
+    rational Notch  = {1} 
   >
   class bound
   {
+    static_assert(Notch >= 0);
   };
 } // namespace bnd
 

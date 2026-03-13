@@ -9,6 +9,7 @@
 namespace bnd
 {
   using umax = std::uint64_t;
+  using imax = std::int64_t;
 } // namespace bnd
 
 #endif // BNDcommonHPP
