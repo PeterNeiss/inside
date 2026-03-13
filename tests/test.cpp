@@ -1,8 +1,7 @@
-#include <format>
 #include <iostream>
 
 int main()
 {
-  std::cout << std::format("{} {}\n", "bound", "test");
+  std::cout << "bound test\n";
   return 0;
 }
