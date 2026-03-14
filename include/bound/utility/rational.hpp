@@ -11,6 +11,7 @@
 #include <numeric>
 #include <compare>
 #include <cmath>
+#include <tuple>
 
 namespace bnd
 {
