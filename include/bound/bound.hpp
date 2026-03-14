@@ -18,6 +18,9 @@ namespace bnd
   {
     static_assert(Notch >= 0);
   };
+
+  //TODO wrap_bound, sat_bound
+  //safe_loop, force_add,
 } // namespace bnd
 
 #endif // BNDboundHPP

@@ -5,10 +5,12 @@
 #define BNDrationalHPP
 
 #include "bound/common.hpp"
+#include "bound/utility/math.hpp"
 
 #include <concepts>
 #include <numeric>
 #include <compare>
+#include <cmath>
 
 namespace bnd
 {
@@ -16,6 +18,8 @@ namespace bnd
   // rational 
   //---------------------------------------------------------------------------
   // We need the sign with unsigned types to represent e.g. umax itself
+  // rational is intended for compile time and is not arithmetically safe at
+  // runtime
   //---------------------------------------------------------------------------
   enum class sign {negative, zero, positive, detect};
   struct rational 
@@ -31,15 +35,27 @@ namespace bnd
     template <std::signed_integral T>
     constexpr rational(T num, umax den = 1ull);
 
-    private:
-      constexpr void trim()
-      {
-        auto gcd = std::gcd(Numerator, Denominator);
-        Numerator   /= gcd;
-        Denominator /= gcd;
-      }
-  };
+    template <std::floating_point T>
+    constexpr rational(T);
 
+    constexpr rational operator-() const;
+    constexpr bool operator==(const rational& rhs) const = default;
+
+    private:
+      constexpr void trim();
+  };
+  
+  inline constexpr rational operator+(const rational&, const rational&); 
+
+  //---------------------------------------------------------------------------
+  // rational::trim
+  //---------------------------------------------------------------------------
+  inline constexpr void rational::trim()
+  {
+    auto gcd = std::gcd(Numerator, Denominator);
+    Numerator   /= gcd;
+    Denominator /= gcd;
+  }
   //---------------------------------------------------------------------------
   // rational::rational 
   //---------------------------------------------------------------------------
@@ -67,12 +83,58 @@ namespace bnd
     trim();
   }
 
+  // the difficult thing is to heuristically find an appropriate denominator
+  // because its difficult to pin a floating point at a fixed location
+  template <std::floating_point T>
+  inline constexpr rational::rational(T value)
+  {
+    if (not std::isfinite(value))
+      throw "Keep your cr*ppy double to yourself!";
+
+    if (value == 0.0)
+    {
+      Numerator = 0;
+      Denominator = 1;
+      Sign = sign::zero;
+      return;
+    }
+
+    if (value < 0.0)
+    {
+      value = -value;
+      Sign = sign::negative;
+    }
+    else
+      Sign = sign::positive;
+
+    std::tie(Numerator, Denominator) = abs_fraction(value); 
+    trim();
+  }
+
+  //---------------------------------------------------------------------------
+  // operator- 
+  //---------------------------------------------------------------------------
+  inline constexpr rational rational::operator-() const
+  { 
+    if (Sign == sign::detect)
+      throw "internal logic error";
+
+    if (Sign == sign::zero)
+      return *this;
+
+    return 
+    {
+      Numerator, Denominator, 
+      (Sign == sign::negative) ? sign::positive : sign::negative
+    };
+  }
+
   //---------------------------------------------------------------------------
   // operator<=> 
   //---------------------------------------------------------------------------
   // this is only overlow safe in constexpr context
   //---------------------------------------------------------------------------
-  constexpr auto operator<=>(const rational& lhs, const rational& rhs) 
+  inline constexpr auto operator<=>(const rational& lhs, const rational& rhs) 
   { 
     if (lhs.Sign == sign::detect || rhs.Sign == sign::detect)
       throw "internal logic error";
@@ -90,6 +152,65 @@ namespace bnd
 
     return lhs.Numerator * rhs.Denominator <=> rhs.Numerator * lhs.Denominator; 
   }
+
+  //---------------------------------------------------------------------------
+  // operator/ 
+  //---------------------------------------------------------------------------
+  // this is only overlow safe in constexpr context
+  //---------------------------------------------------------------------------
+  inline constexpr rational operator/(const rational& lhs, const rational& rhs) 
+  { 
+    if (rhs.Sign == sign::zero)
+      throw "division by zero imminent";
+
+    return 
+    {
+      lhs.Numerator * rhs.Denominator,
+      rhs.Numerator * lhs.Denominator, 
+      (lhs.Sign == rhs.Sign) ? sign::positive : sign::negative
+    };
+  }
+
+  //---------------------------------------------------------------------------
+  // operator+ 
+  //---------------------------------------------------------------------------
+  // this is only overlow safe in constexpr context
+  //---------------------------------------------------------------------------
+  inline constexpr rational operator+(const rational& lhs, const rational& rhs) 
+  { 
+    if (lhs == -rhs)
+      return 0;
+
+    if (lhs.Sign == sign::zero)
+      return rhs;
+
+    if (rhs.Sign == sign::zero)
+      return lhs;
+
+    auto A = lhs.Numerator * rhs.Denominator;
+    auto B = rhs.Numerator * lhs.Denominator;
+    auto denominator = lhs.Denominator * rhs.Denominator;
+
+    if (lhs.Sign == rhs.Sign)
+      return {A + B, denominator, lhs.Sign}; 
+
+    // avoid underflow with opposing signs
+    auto numerator = (A > B) ? (A - B) : (B - A);
+
+    if (lhs.Sign == sign::negative)
+      return {numerator, denominator, (A > B) ? sign::negative : sign::positive}; 
+    else
+      return {numerator, denominator, (A > B) ? sign::positive : sign::negative}; 
+  }
+
+  namespace literals
+  {
+    constexpr rational operator ""_r(unsigned long long int numerator)
+    { return rational{numerator}; }
+
+    constexpr rational operator ""_r(long double value)
+    { return rational{static_cast<double>(value)}; }
+  } // namespace literals
 
 } // namespace bnd
 
