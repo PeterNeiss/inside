@@ -18,9 +18,10 @@ void test_comparision()
 
   static_assert
   (
+    rational{3,2} + rational{1,5} == rational{17,10} &&
     rational{3,2} - rational{1,5} == rational{13,10} &&
-    rational{3,2}/rational{1,2} == rational{3} &&
-    rational{3,2}*rational{1,2} == rational{3, 4}
+    rational{3,2} / rational{1,2} == rational{3} &&
+    rational{3,2} * rational{1,2} == rational{3, 4}
   );
 }
 
@@ -33,6 +34,8 @@ using test5_t = bound<1_r>;
 using test6_t = bound<-6_r/(1 << 4)>;
 using test7_t = bound<-6.0/(1 << 4)>;
 using test8_t = bound<-10.0, 10.0, 0.25>;
+using test9_t = bound<3,1>;
+using test10_t = bound<1,100, 2_r/3>;
 
 int main()
 {
@@ -46,6 +49,8 @@ int main()
   //print_types<test6_t>{};
   //print_types<test7_t>{};
   //print_types<test8_t>{};
+  //test9_t{};
+  //test10_t{};
   bound b;
   (void)b;
   std::cout << "bound test\n";

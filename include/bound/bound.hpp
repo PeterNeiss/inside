@@ -11,12 +11,14 @@ namespace bnd
   template
   <
     rational Lower = {},
-    rational Upper = {},
-    rational Notch  = {1} 
+    rational Upper = Lower,
+    rational Notch = {1} 
   >
   class bound
   {
-    static_assert(Notch >= 0);
+    static_assert(Lower <= Upper);
+    static_assert(0 <= Notch);
+    static_assert(divides_evenly((Upper - Lower), Notch));
   };
 
   //TODO wrap_bound, sat_bound

@@ -50,6 +50,8 @@ namespace bnd
   constexpr rational operator*  (const rational&, const rational&); 
   constexpr rational operator/  (const rational&, const rational&); 
 
+  constexpr bool divides_evenly (const rational&, const rational&); 
+
   //---------------------------------------------------------------------------
   // rational::trim
   //---------------------------------------------------------------------------
@@ -229,6 +231,20 @@ namespace bnd
     return operator+(lhs, -rhs);
   }
 
+  //---------------------------------------------------------------------------
+  // divides_evenly 
+  //---------------------------------------------------------------------------
+  inline constexpr bool divides_evenly(const rational& dividend, const rational& divisor)
+  {
+    if (dividend == 0)
+      return true;
+
+    return (dividend / divisor).Denominator == 1;
+  }
+
+  //---------------------------------------------------------------------------
+  // user defined literals for rational 
+  //---------------------------------------------------------------------------
   namespace literals
   {
     constexpr rational operator ""_r(unsigned long long int numerator)
