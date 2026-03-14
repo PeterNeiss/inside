@@ -15,6 +15,13 @@ void test_comparision()
     rational{0}  < rational{1} &&
     rational{-3, 2} < rational{-2, 3} 
   );
+
+  static_assert
+  (
+    rational{3,2} - rational{1,5} == rational{13,10} &&
+    rational{3,2}/rational{1,2} == rational{3} &&
+    rational{3,2}*rational{1,2} == rational{3, 4}
+  );
 }
 
 using test0_t = bound<1,3>;

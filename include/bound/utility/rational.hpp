@@ -32,7 +32,6 @@ namespace bnd
     sign Sign;
 
     constexpr rational():Numerator{0}, Denominator{1}, Sign{sign::zero} { }
-
     constexpr rational(std::unsigned_integral auto, umax = 1ull, sign = sign::detect);
     constexpr rational(std::signed_integral   auto, umax = 1ull);
     constexpr rational(std::floating_point    auto);
@@ -45,7 +44,11 @@ namespace bnd
       constexpr void trim();
   };
   
-  inline constexpr rational operator+(const rational&, const rational&); 
+  constexpr auto     operator<=>(const rational&, const rational&); 
+  constexpr rational operator+  (const rational&, const rational&); 
+  constexpr rational operator-  (const rational&, const rational&); 
+  constexpr rational operator*  (const rational&, const rational&); 
+  constexpr rational operator/  (const rational&, const rational&); 
 
   //---------------------------------------------------------------------------
   // rational::trim
@@ -59,7 +62,7 @@ namespace bnd
   //---------------------------------------------------------------------------
   // rational::rational 
   //---------------------------------------------------------------------------
-  inline constexpr rational::rational(std::unsigned_integral auto num, umax den, sign s)
+  constexpr rational::rational(std::unsigned_integral auto num, umax den, sign s)
    :Numerator{num}, Denominator{den}, 
     Sign{Numerator == 0 ? sign::zero : (s == sign::detect) ? sign::positive: s}
   {
@@ -71,7 +74,7 @@ namespace bnd
     trim();
   }
 
-  inline constexpr rational::rational(std::signed_integral auto num, umax den)
+  constexpr rational::rational(std::signed_integral auto num, umax den)
    :Numerator{static_cast<umax>(num<0 ? -num : num)}, Denominator{den}, 
     Sign{num == 0 ? sign::zero : (num > 0) ? sign::positive: sign::negative}
   {
@@ -81,7 +84,7 @@ namespace bnd
     trim();
   }
 
-  inline constexpr rational::rational(std::floating_point auto value)
+  constexpr rational::rational(std::floating_point auto value)
   {
     if (not std::isfinite(value))
       throw "Keep your cr*ppy double to yourself!";
@@ -103,7 +106,7 @@ namespace bnd
       Sign = sign::positive;
 
     std::tie(Numerator, Denominator) = abs_fraction(value); 
-    trim();
+    // trim not needed, because abs_fractio already trims in its special case
   }
 
   //---------------------------------------------------------------------------
@@ -146,6 +149,24 @@ namespace bnd
     }
 
     return lhs.Numerator * rhs.Denominator <=> rhs.Numerator * lhs.Denominator; 
+  }
+
+  //---------------------------------------------------------------------------
+  // operator* 
+  //---------------------------------------------------------------------------
+  // this is only overlow safe in constexpr context
+  //---------------------------------------------------------------------------
+  inline constexpr rational operator*(const rational& lhs, const rational& rhs) 
+  { 
+    if (lhs.Sign == sign::zero || rhs.Sign == sign::zero)
+      return 0;
+
+    return 
+    {
+      lhs.Numerator * rhs.Numerator,
+      lhs.Denominator * rhs.Denominator, 
+      (lhs.Sign == rhs.Sign) ? sign::positive : sign::negative
+    };
   }
 
   //---------------------------------------------------------------------------
@@ -196,6 +217,16 @@ namespace bnd
       return {numerator, denominator, (A > B) ? sign::negative : sign::positive}; 
     else
       return {numerator, denominator, (A > B) ? sign::positive : sign::negative}; 
+  }
+
+  //---------------------------------------------------------------------------
+  // operator- 
+  //---------------------------------------------------------------------------
+  // this is only overlow safe in constexpr context
+  //---------------------------------------------------------------------------
+  inline constexpr rational operator-(const rational& lhs, const rational& rhs) 
+  { 
+    return operator+(lhs, -rhs);
   }
 
   namespace literals
