@@ -5,6 +5,8 @@
 #define BNDboundHPP
 
 #include "bound/utility/rational.hpp"
+//#include "bound/concepts.hpp"
+// concept always_addable<A,B>, maybe_addable, never_addable
 
 namespace bnd
 {
@@ -16,8 +18,8 @@ namespace bnd
   >
   class bound
   {
-    static_assert(Lower <= Upper);
-    static_assert(0 <= Notch);
+    static_assert(Lower <= Upper); // TODO remove: check in interval
+    static_assert(0 <= Notch); 
     static_assert(divides_evenly((Upper - Lower), Notch));
   };
 

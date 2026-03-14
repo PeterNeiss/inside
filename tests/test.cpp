@@ -3,6 +3,7 @@
 
 #include "bound/bound.hpp"
 #include "bound/detail/debug.hpp"
+#include "bound/utility/interval.hpp"
 
 using namespace bnd;
 using namespace bnd::literals;
@@ -23,6 +24,13 @@ void test_comparision()
     rational{3,2} / rational{1,2} == rational{3} &&
     rational{3,2} * rational{1,2} == rational{3, 4}
   );
+}
+
+void test_interval()
+{
+  constexpr interval point{3_r/4};
+  constexpr interval a{0,1};
+  print_values<point>{};
 }
 
 using test0_t = bound<1,3>;

@@ -37,18 +37,18 @@ namespace bnd
     constexpr rational(std::floating_point    auto);
 
     // operator== be default for structural type
-    constexpr bool operator==(const rational& rhs) const = default;
+    constexpr bool operator==(const rational&) const = default;
     constexpr rational operator-() const;
 
     private:
       constexpr void trim();
   };
   
-  constexpr auto     operator<=>(const rational&, const rational&); 
   constexpr rational operator+  (const rational&, const rational&); 
   constexpr rational operator-  (const rational&, const rational&); 
   constexpr rational operator*  (const rational&, const rational&); 
   constexpr rational operator/  (const rational&, const rational&); 
+  constexpr auto     operator<=>(const rational&, const rational&) -> std::strong_ordering; 
 
   constexpr bool divides_evenly (const rational&, const rational&); 
 
@@ -134,7 +134,7 @@ namespace bnd
   //---------------------------------------------------------------------------
   // this is only overlow safe in constexpr context
   //---------------------------------------------------------------------------
-  inline constexpr auto operator<=>(const rational& lhs, const rational& rhs) 
+  inline constexpr auto operator<=>(const rational& lhs, const rational& rhs) -> std::strong_ordering
   { 
     if (lhs.Sign == sign::detect || rhs.Sign == sign::detect)
       throw "internal logic error";
