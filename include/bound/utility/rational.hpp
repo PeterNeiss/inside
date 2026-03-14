@@ -16,7 +16,9 @@
 namespace bnd
 {
   //---------------------------------------------------------------------------
-  // rational 
+  // rational
+  //---------------------------------------------------------------------------
+  // Must be a structural type for template NTTP (only public members)
   //---------------------------------------------------------------------------
   // We need the sign with unsigned types to represent e.g. umax itself
   // rational is intended for compile time and is not arithmetically safe at
@@ -31,16 +33,13 @@ namespace bnd
 
     constexpr rational():Numerator{0}, Denominator{1}, Sign{sign::zero} { }
 
-    template <std::unsigned_integral T>
-    constexpr rational(T num, umax den = 1ull, sign s = sign::detect);
-    template <std::signed_integral T>
-    constexpr rational(T num, umax den = 1ull);
+    constexpr rational(std::unsigned_integral auto, umax = 1ull, sign = sign::detect);
+    constexpr rational(std::signed_integral   auto, umax = 1ull);
+    constexpr rational(std::floating_point    auto);
 
-    template <std::floating_point T>
-    constexpr rational(T);
-
-    constexpr rational operator-() const;
+    // operator== be default for structural type
     constexpr bool operator==(const rational& rhs) const = default;
+    constexpr rational operator-() const;
 
     private:
       constexpr void trim();
@@ -60,8 +59,7 @@ namespace bnd
   //---------------------------------------------------------------------------
   // rational::rational 
   //---------------------------------------------------------------------------
-  template <std::unsigned_integral T>
-  inline constexpr rational::rational(T num, umax den, sign s)
+  inline constexpr rational::rational(std::unsigned_integral auto num, umax den, sign s)
    :Numerator{num}, Denominator{den}, 
     Sign{Numerator == 0 ? sign::zero : (s == sign::detect) ? sign::positive: s}
   {
@@ -73,8 +71,7 @@ namespace bnd
     trim();
   }
 
-  template <std::signed_integral T>
-  inline constexpr rational::rational(T num, umax den)
+  inline constexpr rational::rational(std::signed_integral auto num, umax den)
    :Numerator{static_cast<umax>(num<0 ? -num : num)}, Denominator{den}, 
     Sign{num == 0 ? sign::zero : (num > 0) ? sign::positive: sign::negative}
   {
@@ -84,10 +81,7 @@ namespace bnd
     trim();
   }
 
-  // the difficult thing is to heuristically find an appropriate denominator
-  // because its difficult to pin a floating point at a fixed location
-  template <std::floating_point T>
-  inline constexpr rational::rational(T value)
+  inline constexpr rational::rational(std::floating_point auto value)
   {
     if (not std::isfinite(value))
       throw "Keep your cr*ppy double to yourself!";
