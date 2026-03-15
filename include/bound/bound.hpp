@@ -5,6 +5,10 @@
 #define BNDboundHPP
 
 #include "bound/common.hpp"
+#include "bound/policy/waiver.hpp"
+#include "bound/policy/mitigation.hpp"
+#include "bound/policy/promotion.hpp"
+#include "bound/policy/detection.hpp"
 
 namespace bnd
 {
@@ -17,13 +21,14 @@ namespace bnd
   struct bound
   {
     static_assert(Lower <= Upper);
-    static_assert(0 <= Notch); 
-    static_assert(divides_evenly((Upper - Lower), Notch));
-
     static constexpr interval Interval{Lower, Upper};
+
+    static_assert(0 <= Notch); 
+    static_assert(Interval.divides_evenly(Notch));
     static constexpr grid Grid{Interval, Notch};
 
     using raw_type = smallest_uint_for<Grid.max_notch()>; 
+    static_assert(std::unsigned_integral<raw_type>);
     raw_type Raw;
   };
 /*
@@ -35,7 +40,6 @@ namespace bnd
     raw_type raw = B::unsafe_remove_zero<raw_type>(static_cast<raw_type>(lhs.raw) + static_cast<raw_type>(rhs.raw)) 
     return {from_raw{}, raw};
   }
-
   template <typename L, typename R, typename Ret = promotion_policy<R,L>::add_return_type>
   auto unsafe_add(L const& lhs, R const& rhs) -> Ret
   {
@@ -46,47 +50,50 @@ namespace bnd
         Steps += detail::ratio_multiply<step_conversion>(other.Steps - epn<OTrait>::zero_steps::num);
     return lhs.raw
   }
-  
+
+*/
+
   template 
   <
-    typename L, typename R, 
-    waiver W = mitigation_policy<L,R>::waiver_addable 
-    typename Ret = promotion_policy<L,R>::add_return_type,
+    boundable L,
+    boundable R, 
+    waiver W = mitigation<L,R>::default_waiver_add,
+    boundable Ret = promotion<L,R>::add_return_type
   >
   auto add(L const& lhs, R const& rhs) -> Ret
   {
-    if constexpr (detection_policy<L,R>::never_addable<Ret>)
+    if constexpr (detection<L,R>::template never_addable<Ret>)
     {
-      return mitigation_policy<L,R>::never_addable<Ret>(lhs, rhs);
+      return mitigation<L,R>::template never_addable<Ret>(lhs, rhs);
     }
-    else if constexpr(detection_policy<L,R>::always_addable<Ret>)
+    else if constexpr(detection<L,R>::template always_addable<Ret>)
     {
       return raw_add<Ret>(lhs, rhs); 
     }
-    else if constexpr(detection_policy<L,R>::maybe_addable)
+    else if constexpr(detection<L,R>::template maybe_addable<Ret>)
     {
-      if constexpr(detection_policy<L,R>::check_runtime_addable<W>)
+      if constexpr(detection<L,R>::template check_runtime_addable<W>)
       {
-        if (detection_policy::runtime_check<Ret>(lhs, rhs))
+        if (detection<L,R>::template runtime_check<Ret>(lhs, rhs))
           return unsafe_add<Ret>(lhs, rhs); 
         else
-          return mitigation_policy<L,R>::runtime_addable_check_failed<Ret, W>(lhs, rhs);
+          return mitigation<L,R>::template runtime_addable_check_failed<Ret, W>(lhs, rhs);
       }
       else
-        return mitigation_policy<L,R>::runtime_unsafe_add<Ret, W>(lhs, rhs);
+        return mitigation<L,R>::template runtime_unsafe_add<Ret, W>(lhs, rhs);
     }
 
-    std::unreachable
+    std::unreachable();
   }
 
   template <typename L, typename R>
-  auto operator+(L const& lhs, R const& rhs) -> promotion_policy<R,L>::add_return_type 
+  auto operator+(L const& lhs, R const& rhs) -> promotion<R,L>::add_return_type 
   {
     return add(lhs, rhs);
   }
-*/
   //TODO wrap_bound, sat_bound
   //safe_loop, force_add,
+  //
 } // namespace bnd
 
 #endif // BNDboundHPP

@@ -12,6 +12,14 @@
 
 namespace bnd
 {
+  template <typename B>
+  concept boundable = requires(B b)
+  {
+    { B::Interval } -> std::same_as<interval>;
+    { B::Grid } -> std::same_as<grid>;
+    typename B::raw_type;
+  };
+
   template
   <
     rational Lower = {},
