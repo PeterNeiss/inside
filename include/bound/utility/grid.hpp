@@ -1,10 +1,11 @@
 //---------------------------------------------------------------------------
 // Copyright (C) 2026 Peter Neiss
 //---------------------------------------------------------------------------
-#ifndef BNDintervalHPP
-#define BNDintervalHPP
+#ifndef BNDgridHPP
+#define BNDgridHPP
 
 #include "bound/utility/rational.hpp"
+#include "bound/utility/interval.hpp"
 
 #include <algorithm>
 #include <initializer_list>
@@ -12,65 +13,37 @@
 namespace bnd
 {
   //---------------------------------------------------------------------------
-  // interval 
+  // grid 
   //---------------------------------------------------------------------------
   // Must be a structural type for template NTTP (only public members)
   //---------------------------------------------------------------------------
-  // The interval has inclusive upper and lower bounds.
-  // At least one rational is in the interval
-  // The rationals are embedded in the interval with rational == Lower == Upper
+  // The grid has an interval space by notches 
+  // The interval must divide evenly by the notches. 
   //---------------------------------------------------------------------------
-  struct interval 
+  struct grid 
   {
-    rational Lower;
-    rational Upper;
+    interval Interval;
+    rational Notch;
 
-    constexpr interval(arithmetic auto lower = 0):Lower{lower}, Upper{lower} { }
-    constexpr interval(arithmetic auto lower, arithmetic auto upper):Lower{lower}, Upper{upper} { }
-    constexpr interval(std::initializer_list<rational> list)
+    constexpr grid(interval val, rational notch = 1):Interval{val}, Notch{notch}
     {
-      if (std::empty(list))
-      {
-        Lower = 0;
-        Upper = 0;
-      }
-      
-      if (list.size() == 1)
-      {
-        Lower = *list.begin();
-        Upper = Lower;
-      }
-
-      if (list.size() == 2)
-      {
-        Lower = *list.begin();
-        Upper = *(std::next(list.begin()));
-      }
+      if (not Interval.divides_evenly(Notch))
+        throw "Notch does not evenly divide the interval";
     }
 
+    constexpr umax max_notch() const { return (Interval/Notch).Numerator; }
+
     // operator== be default for structural type
-    constexpr bool operator==(const interval& rhs) const = default;
-    constexpr interval operator-() const { return {-Upper, -Lower}; } 
-
-    constexpr bool includes(interval const& rhs) const
-    { return Lower <= rhs.Lower && rhs.Upper <= Upper; } 
-
-    // NOT equivalent to !includes()
-    constexpr bool excludes(interval const& rhs) const
-    { return rhs.Upper < Lower || Upper < rhs.Lower; } 
-
-    constexpr bool divides_evenly(const rational& notch) const 
-    { return bnd::divides_evenly(Upper - Lower, notch); }
-
-    constexpr rational operator/(const rational& notch) const 
-    { return (Upper - Lower)/notch; }
+    constexpr bool operator==(const grid& rhs) const = default;
+    constexpr grid operator-() const { return {-Interval, Notch}; } 
   };
-  
+/*  
   constexpr interval operator+  (const interval&, const interval&); 
   constexpr interval operator-  (const interval&, const interval&); 
   constexpr interval operator*  (const interval&, const interval&); 
   constexpr interval operator/  (const interval&, const interval&); 
   constexpr auto     operator<=>(const interval&, const interval&) -> std::partial_ordering; 
+  // TODO includes, excludes
 
   //---------------------------------------------------------------------------
   // operator+ 
@@ -130,24 +103,7 @@ namespace bnd
   
     return {lower, upper};
   }
-
-  //---------------------------------------------------------------------------
-  // operator<=> 
-  //---------------------------------------------------------------------------
-  inline constexpr auto operator<=>(const interval& lhs, const interval& rhs) -> std::partial_ordering 
-  {
-    if (lhs.Upper < rhs.Lower) 
-      return std::partial_ordering::less;
- 
-    if (lhs.Lower > rhs.Upper)
-      return std::partial_ordering::greater;
-
-    if (rhs.Lower == rhs.Lower && lhs.Upper == rhs.Upper) 
-      return std::partial_ordering::equivalent;
-
-    return std::partial_ordering::unordered;
-  }
-
+*/
 } // namespace bnd
 
-#endif // BNDintervalHPP
+#endif // BNDgridHPP

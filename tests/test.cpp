@@ -30,7 +30,17 @@ void test_interval()
 {
   constexpr interval point{3_r/4};
   constexpr interval a{0,1};
-  print_values<point>{};
+  //print_values<point>{};
+}
+
+void test_grid()
+{
+  static_assert
+  (
+    grid{{0,100}}.max_notch() == 100 &&
+    grid{{1,5}, 0.25}.max_notch() == 16 &&
+    grid{{0,UINT64_MAX}}.max_notch() == UINT64_MAX
+  );
 }
 
 using test0_t = bound<1,3>;

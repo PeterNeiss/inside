@@ -4,12 +4,21 @@
 #ifndef BNDcommonHPP
 #define BNDcommonHPP
 
-#include <cstdint>
+#include "bound/policy/waiver.hpp"
+#include "bound/utility/math.hpp"
+#include "bound/utility/rational.hpp"
+#include "bound/utility/interval.hpp"
+#include "bound/utility/grid.hpp"
 
 namespace bnd
 {
-  using umax = std::uint64_t;
-  using imax = std::int64_t;
+  template
+  <
+    rational Lower = {},
+    rational Upper = Lower,
+    rational Notch = {1}
+  >
+  struct bound;
 } // namespace bnd
 
 #endif // BNDcommonHPP

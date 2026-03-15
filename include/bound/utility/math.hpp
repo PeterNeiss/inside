@@ -4,15 +4,38 @@
 #ifndef BNDmathHPP
 #define BNDmathHPP
 
-#include "bound/common.hpp"
-
 #include <cstdint>
-#include <bit>
 #include <cmath>
 #include <utility>
+#include <concepts>
+#include <type_traits>
 
 namespace bnd
 {
+  using umax = std::uint64_t;
+  using imax = std::int64_t;
+
+  
+  template <std::uintmax_t N>
+  using smallest_uint_for = 
+    std::conditional_t<(N <= UINT8_MAX),  std::uint8_t,
+    std::conditional_t<(N <= UINT16_MAX), std::uint16_t,
+    std::conditional_t<(N <= UINT32_MAX), std::uint32_t,
+                                          std::uint64_t>>>;
+
+  template <typename T>
+  static constexpr std::string_view uint_type_name() 
+  {
+    if constexpr (std::is_same_v<T, std::uint8_t>)  return "uint8_t";
+    if constexpr (std::is_same_v<T, std::uint16_t>) return "uint16_t";
+    if constexpr (std::is_same_v<T, std::uint32_t>) return "uint32_t";
+    if constexpr (std::is_same_v<T, std::uint64_t>) return "uint64_t";
+    return "unknown";
+  }
+
+  template<typename T>
+  concept arithmetic = std::integral<T> || std::floating_point<T>;
+
   // I barely understand this, but it seems to work fine
   constexpr auto abs_fraction(double value) 
   {
@@ -35,31 +58,6 @@ namespace bnd
         den >>= 1;
     }
     return std::pair{num, den};
-  }
-
-  // workaround because std::ilogb is not constexpr everywhere yet
-  constexpr int ilogb(double value) 
-  {
-    if (value < 0) value = -value;
-    auto bits = std::bit_cast<uint64_t>(value);
-    int biased = static_cast<int>((bits >> 52) & 0x7FF);
-    uint64_t mantissa = bits & 0x000F'FFFF'FFFF'FFFF;
-
-    if (biased == 0 && mantissa == 0) return 0; 
-    if (biased == 0x7FF && mantissa == 0) 
-      throw "Keep your cr*ppy INF double to yourself!";
-    if (biased == 0x7FF)
-      throw "Keep your cr*ppy NAN double to yourself!";
-    if (biased == 0) {
-        // subnormal: count leading zeros in mantissa
-        int exp = -1023;
-        while ((mantissa & (1ULL << 52)) == 0) {
-            mantissa <<= 1;
-            --exp;
-        }
-        return exp;
-    }
-    return biased - 1023;
   }
 
 } // namespace bnd
