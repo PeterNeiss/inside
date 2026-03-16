@@ -30,6 +30,18 @@ namespace bnd
     using raw_type = smallest_uint_for<Grid.max_notch()>; 
     static_assert(std::unsigned_integral<raw_type>);
     raw_type Raw;
+
+    bound() = default; // trivial constructor
+   ~bound() = default; // trivial destructor
+
+    bound(bound const& other) noexcept :Raw{other.Raw} { }
+
+    template <waiver_flag F = none>
+    bound(arithmetic auto value, waiver_type<F> waiver = {})
+     :Raw{detection<bound>::construct(value, waiver)} { }
+
+    private:
+      static void check_trival() { static_assert(std::is_trivial_v<bound>);}
   };
 /*
   template <boundable B, typename Ret = promotion_policy<B>::add_return_type>
@@ -57,7 +69,7 @@ namespace bnd
   <
     boundable L,
     boundable R, 
-    waiver W = mitigation<L,R>::default_waiver_add,
+    waiver_type W = mitigation<L,R>::default_waiver_add,
     boundable Ret = promotion<L,R>::add_return_type
   >
   auto add(L const& lhs, R const& rhs) -> Ret

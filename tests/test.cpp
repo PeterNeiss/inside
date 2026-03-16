@@ -8,6 +8,18 @@
 using namespace bnd;
 using namespace bnd::literals;
 
+void test_add()
+{
+  using u8 = bound<0,255>;
+  u8 a{6, waiver<casting>};
+  u8 b = 102;
+
+  (void) a;
+  (void) b;
+
+ // auto c = a + b;
+}
+
 void test_comparision()
 {
   static_assert

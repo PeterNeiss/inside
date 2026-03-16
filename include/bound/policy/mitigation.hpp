@@ -11,7 +11,7 @@ namespace bnd
   template <boundable L, boundable R>
   struct mitigation
   {
-    static constexpr waiver default_waiver_add = waive::none;
+    static constexpr auto default_waiver_add = waiver<none>;
   };
 
 } // namespace bnd

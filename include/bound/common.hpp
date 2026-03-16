@@ -15,8 +15,8 @@ namespace bnd
   template <typename B>
   concept boundable = requires(B b)
   {
-    { B::Interval } -> std::same_as<interval>;
-    { B::Grid } -> std::same_as<grid>;
+    { B::Interval } -> std::same_as<interval const&>;
+    { B::Grid } -> std::same_as<grid const&>;
     typename B::raw_type;
   };
 

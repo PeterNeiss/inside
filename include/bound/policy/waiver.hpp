@@ -6,31 +6,27 @@
 
 namespace bnd
 {
-  namespace waive
+  using waiver_flag = unsigned long long;
+
+  inline static constexpr waiver_flag none  {0ull};
+  inline static constexpr waiver_flag casting{1ull};
+
+  template<waiver_flag W = none>
+  struct waiver_type
   {
-    struct type
-    { 
-      unsigned long long Waivers;
+    static constexpr bool test(waiver_flag w) 
+    { return W & w; }
 
-      constexpr bool test(type w) const 
-      { return (Waivers & w.Waivers) == w.Waivers; }
+    constexpr explicit operator bool() const { return W != 0; }
+  };
 
-      constexpr explicit operator bool() const { return Waivers != 0; }
-      constexpr friend bool operator==(type, type) = default;
+  template<waiver_flag W>
+  inline constexpr waiver_type<W> waiver;
 
-      constexpr friend type operator|(type a, type b) 
-      { return {a.Waivers | b.Waivers}; }
 
-      constexpr friend type operator&(type a, type b) 
-      { return {a.Waivers & b.Waivers}; }
-    };
-
-    inline static constexpr type none  {0ull};
-    inline static constexpr type no_runtime_check  {1ull << 0};
-    inline static constexpr type change_return_type {1ull << 1};
-  }; // namespace waive
+  //inline static constexpr type no_runtime_check  {1ull << 0};
+  //inline static constexpr type change_return_type {1ull << 1};
   
-  using waiver = waive::type;
 } // namespace bnd
 
 #endif // BNDwaiverHPP
