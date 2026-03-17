@@ -55,9 +55,18 @@ namespace bnd
     constexpr bool includes(interval const& rhs) const
     { return Lower <= rhs.Lower && rhs.Upper <= Upper; } 
 
+    constexpr bool includes(rational const& r) const
+    { return Lower <= r && r <= Upper; } 
+
+    constexpr bool includes(arithmetic auto a) const
+    { return includes(rational{a}); } 
+
     // NOT equivalent to !includes()
     constexpr bool excludes(interval const& rhs) const
     { return rhs.Upper < Lower || Upper < rhs.Lower; } 
+
+    constexpr bool overlaps(interval const& rhs) const
+    { return rhs.includes(*this) || includes(rhs.Lower) || includes(rhs.Upper); }
 
     constexpr bool divides_evenly(const rational& notch) const 
     { return bnd::divides_evenly(Upper - Lower, notch); }

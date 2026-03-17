@@ -37,11 +37,9 @@ namespace bnd
     constexpr bool operator==(const grid& rhs) const = default;
     constexpr grid operator-() const { return {-Interval, Notch}; } 
  
-    template <std::unsigned_integral Raw, waiver_flag F>
-    constexpr Raw to_raw(std::signed_integral auto value, waiver_type<F> = {}) const
-    {
-      return static_cast<Raw>(value);
-    }
+    template <std::unsigned_integral Raw>
+    constexpr Raw to_raw(std::signed_integral auto value) const
+    { return static_cast<Raw>(value - Interval.Lower); /*TODO check calculation safety*/ }
   };
 /*  
   constexpr interval operator+  (const interval&, const interval&); 

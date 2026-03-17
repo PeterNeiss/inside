@@ -15,7 +15,6 @@ namespace bnd
   using umax = std::uint64_t;
   using imax = std::int64_t;
 
-  
   template <std::uintmax_t N>
   using smallest_uint_for = 
     std::conditional_t<(N <= UINT8_MAX),  std::uint8_t,
@@ -24,7 +23,7 @@ namespace bnd
                                           std::uint64_t>>>;
 
   template <typename T>
-  static constexpr std::string_view uint_type_name() 
+  constexpr std::string_view uint_type_name() 
   {
     if constexpr (std::is_same_v<T, std::uint8_t>)  return "uint8_t";
     if constexpr (std::is_same_v<T, std::uint16_t>) return "uint16_t";
@@ -35,6 +34,10 @@ namespace bnd
 
   template<typename T>
   concept arithmetic = std::integral<T> || std::floating_point<T>;
+
+  template <std::signed_integral V>
+  constexpr umax safe_abs(V value)
+  { return (value >= 0) ? static_cast<umax>(value) : -static_cast<umax>(value); }
 
   // I barely understand this, but it seems to work fine
   constexpr auto abs_fraction(double value) 

@@ -8,13 +8,22 @@
 using namespace bnd;
 using namespace bnd::literals;
 
+void test_rational()
+{
+  constexpr rational a{std::numeric_limits<int>::min()};
+  (void)a; 
+}
+
 void test_add()
 {
   using u8 = bound<0,255>;
-  u8 a{6, waiver<casting>};
+ // u8 a{6, waiver<no_runtime_check>};
+ // constexpr u8 c{-6};
+  //(void)c;
+//  u8 a{-6};
   u8 b = 102;
 
-  (void) a;
+//  (void) a;
   (void) b;
 
  // auto c = a + b;
@@ -72,20 +81,32 @@ static_assert(std::is_same_v<test4_t::raw_type, std::uint64_t>);
 
 int main()
 {
-  test_comparision();
-  
-  // print_values<-(10.0_r)>{};
-  //print_types<bound<>, test0_t, test1_t>{};
-  //print_types<test2_t>{};
-  //print_types<test3_t>{};
-  //print_types<test4_t>{};
-  //print_types<test6_t>{};
-  //print_types<test7_t>{};
-  //print_types<test8_t>{};
-  //test9_t{};
-  //test10_t{};
-  bound b;
-  (void)b;
-  std::cout << "bound test\n";
+  try
+  {
+    test_comparision();
+    test_add();
+    
+    // print_values<-(10.0_r)>{};
+    //print_types<bound<>, test0_t, test1_t>{};
+    //print_types<test2_t>{};
+    //print_types<test3_t>{};
+    //print_types<test4_t>{};
+    //print_types<test6_t>{};
+    //print_types<test7_t>{};
+    //print_types<test8_t>{};
+    //test9_t{};
+    //test10_t{};
+    bound b;
+    (void)b;
+    std::cout << "bound test\n";
+  }
+  catch(std::exception& e)
+  {
+    std::cout << e.what();
+  }
+  catch(char const* str)
+  {
+    std::cout << str << std::endl;
+  }
   return 0;
 }

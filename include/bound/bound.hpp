@@ -31,13 +31,13 @@ namespace bnd
     static_assert(std::unsigned_integral<raw_type>);
     raw_type Raw;
 
-    bound() = default; // trivial constructor
-   ~bound() = default; // trivial destructor
+    constexpr bound() = default; // trivial constructor
+    constexpr ~bound() = default; // trivial destructor
 
-    bound(bound const& other) noexcept :Raw{other.Raw} { }
+    constexpr bound(bound const& other) noexcept :Raw{other.Raw} { }
 
-    template <waiver_flag F = none>
-    bound(arithmetic auto value, waiver_type<F> waiver = {})
+    template <waiver_flag F = detection<bound>::default_construct_flag>
+    constexpr bound(arithmetic auto value, waiver_type<F> waiver = {})
      :Raw{detection<bound>::construct(value, waiver)} { }
 
     private:

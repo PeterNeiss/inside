@@ -40,6 +40,10 @@ namespace bnd
     constexpr bool operator==(const rational&) const = default;
     constexpr rational operator-() const;
 
+    template <std::unsigned_integral T>
+    constexpr operator T () const
+    { return static_cast<T>(Numerator/Denominator); }
+
     private:
       constexpr void trim();
   };
@@ -77,7 +81,7 @@ namespace bnd
   }
 
   constexpr rational::rational(std::signed_integral auto num, umax den)
-   :Numerator{static_cast<umax>(num<0 ? -num : num)}, Denominator{den}, 
+   :Numerator{safe_abs(num)}, Denominator{den}, 
     Sign{num == 0 ? sign::zero : (num > 0) ? sign::positive: sign::negative}
   {
     if (Denominator == 0)
