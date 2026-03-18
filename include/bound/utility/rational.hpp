@@ -44,6 +44,12 @@ namespace bnd
     constexpr operator T () const
     { return static_cast<T>(Numerator/Denominator); }
 
+    explicit constexpr operator double() const
+    { 
+      double abs = static_cast<double>(Numerator)/static_cast<double>(Denominator);
+      return (Sign == sign::negative) ? -abs : abs; 
+    }
+
     private:
       constexpr void trim();
   };

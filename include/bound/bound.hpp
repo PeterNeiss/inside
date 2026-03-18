@@ -40,6 +40,13 @@ namespace bnd
     constexpr bound(arithmetic auto value, waiver_type<F> waiver = {})
      :Raw{detection<bound>::construct(value, waiver)} { }
 
+    template <waiver_flag F = detection<bound>::default_construct_flag>
+    constexpr bound(rational value, waiver_type<F> waiver = {})
+     :Raw{detection<bound>::construct(value, waiver)} { }
+
+    explicit operator double() const
+    { return Grid.raw_to_double(Raw); }
+
     private:
       static void check_trival() { static_assert(std::is_trivial_v<bound>);}
   };

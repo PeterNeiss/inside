@@ -19,7 +19,7 @@ namespace bnd
   //---------------------------------------------------------------------------
   // The grid has an interval space by notches 
   // The interval must divide evenly by the notches. 
-  // If Notch is zero, all rationals in the interval are allowed
+  // If Notch is zero, all rationals in the interval are allowed, raw is not offset
   //---------------------------------------------------------------------------
   struct grid 
   {
@@ -44,6 +44,28 @@ namespace bnd
     template <std::unsigned_integral Raw>
     constexpr Raw to_raw(std::signed_integral auto value) const
     { return static_cast<Raw>(value - Interval.Lower); /*TODO check calculation safety*/ }
+
+    template <std::unsigned_integral Raw>
+    constexpr Raw to_raw(rational value) const
+    { 
+      rational raw = (value - Interval.Lower)/Notch;
+      return raw.Numerator/ raw.Denominator;  
+    }
+
+    template <std::same_as<rational> Raw>
+    constexpr rational to_raw(rational value) const
+    { 
+      return (Notch == 0) ? value : (value - Interval.Lower)/Notch;  
+    }
+
+    constexpr double raw_to_double(std::unsigned_integral auto raw) const
+    { return static_cast<double>((raw + Interval.Lower)*Notch); }
+
+    constexpr double raw_to_double(std::same_as<rational> auto raw) const
+    { 
+      return (Notch == 0) ? static_cast<double>(raw) : 
+        static_cast<double>((raw + Interval.Lower)*Notch);  
+    }
   };
 /*  
   constexpr interval operator+  (const interval&, const interval&); 

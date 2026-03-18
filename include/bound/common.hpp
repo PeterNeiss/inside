@@ -10,9 +10,6 @@
 #include "bound/utility/interval.hpp"
 #include "bound/utility/grid.hpp"
 
-// TODO: For debug, remove later
-#include <iostream>
-
 namespace bnd
 {
   template <typename B>

@@ -4,6 +4,9 @@
 #include "bound/bound.hpp"
 #include "bound/detail/debug.hpp"
 #include "bound/utility/interval.hpp"
+#include "bound/utility/print.hpp"
+
+#include <iostream>
 
 using namespace bnd;
 using namespace bnd::literals;
@@ -66,8 +69,10 @@ void test_grid()
 
 void test_bound()
 {
-  using frac = bound<0, 10, 0>;
+  using frac = bound<-10, 10, 0>;
   static_assert(std::is_same_v<frac::raw_type, rational>);
+  constexpr frac f = 2_r/3;
+  std::cout << "frac f = " << f << std::endl;
 }
 
 using test0_t = bound<1,3>;
@@ -91,6 +96,7 @@ int main()
   {
     test_comparision();
     test_add();
+    test_bound();
     
     // print_values<-(10.0_r)>{};
     //print_types<bound<>, test0_t, test1_t>{};
