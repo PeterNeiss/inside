@@ -73,22 +73,31 @@ void test_bound()
   static_assert(std::is_same_v<frac::raw_type, rational>);
   constexpr frac f = 2_r/3;
   std::cout << "frac f = " << f << std::endl;
+
+  using step = bound<-5, 5, 0.5>;
+  static_assert(not std::is_same_v<step::raw_type, rational>);
+  constexpr step s = 3_r/2;
+  std::cout << "step s = " << s << std::endl;
 }
 
-using test0_t = bound<1,3>;
-using test1_t = bound<0, {1u, 1, sign::negative}, {-1}>;
+using test0_t = bound<1,3,1>;
+using test1_t = bound<0, {1u, 1, sign::negative}, {-1}>; // fails on instantiation
 //using test2_t = bound<{1,1, sign::zero}>;
 //using test3_t = bound<{1,0}>;
-using test4_t = bound<0, std::numeric_limits<umax>::max()>;
+using test4_t = bound<0, std::numeric_limits<umax>::max(), 1>;
 using test5_t = bound<1_r>;
 using test6_t = bound<-6_r/(1 << 4)>;
 using test7_t = bound<-6.0/(1 << 4)>;
 using test8_t = bound<-10.0, 10.0, 0.25>;
-using test9_t = bound<3,1>;
+using test9_t = bound<3,1>;  // fails on instantiation
 using test10_t = bound<1,100, 2_r/3>;
+using test11_t = bound<1,5>;
 
 static_assert(std::is_same_v<test0_t::raw_type, std::uint8_t>);
 static_assert(std::is_same_v<test4_t::raw_type, std::uint64_t>);
+
+static_assert(std::is_same_v<test5_t::raw_type, rational>);
+static_assert(std::is_same_v<test11_t::raw_type, rational>);
 
 int main()
 {

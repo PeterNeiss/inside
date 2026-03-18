@@ -24,7 +24,7 @@ namespace bnd
   <
     rational Lower = {},
     rational Upper = Lower,
-    rational Notch = {1}
+    rational Notch = {0}
   >
   struct bound;
 } // namespace bnd

@@ -48,8 +48,9 @@ namespace bnd
     template <std::unsigned_integral Raw>
     constexpr Raw to_raw(rational value) const
     { 
+      //TODO: check safty of calculation
       rational raw = (value - Interval.Lower)/Notch;
-      return raw.Numerator/ raw.Denominator;  
+      return static_cast<Raw>(raw.Numerator/ raw.Denominator);  
     }
 
     template <std::same_as<rational> Raw>
@@ -59,12 +60,12 @@ namespace bnd
     }
 
     constexpr double raw_to_double(std::unsigned_integral auto raw) const
-    { return static_cast<double>((raw + Interval.Lower)*Notch); }
+    { return static_cast<double>(raw*Notch + Interval.Lower); }
 
     constexpr double raw_to_double(std::same_as<rational> auto raw) const
     { 
       return (Notch == 0) ? static_cast<double>(raw) : 
-        static_cast<double>((raw + Interval.Lower)*Notch);  
+        static_cast<double>(raw*Notch + Interval.Lower);  
     }
   };
 /*  
