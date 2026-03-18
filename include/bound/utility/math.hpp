@@ -15,12 +15,15 @@ namespace bnd
   using umax = std::uint64_t;
   using imax = std::int64_t;
 
+  struct rational;
+
   template <std::uintmax_t N>
   using smallest_uint_for = 
+    std::conditional_t<(N == 0), rational,
     std::conditional_t<(N <= UINT8_MAX),  std::uint8_t,
     std::conditional_t<(N <= UINT16_MAX), std::uint16_t,
     std::conditional_t<(N <= UINT32_MAX), std::uint32_t,
-                                          std::uint64_t>>>;
+                                          std::uint64_t>>>>;
 
   template <typename T>
   constexpr std::string_view uint_type_name() 

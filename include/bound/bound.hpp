@@ -24,11 +24,11 @@ namespace bnd
     static constexpr interval Interval{Lower, Upper};
 
     static_assert(0 <= Notch); 
-    static_assert(Interval.divides_evenly(Notch));
+    static_assert(0 == Notch || Interval.divides_evenly(Notch));
     static constexpr grid Grid{Interval, Notch};
 
     using raw_type = smallest_uint_for<Grid.max_notch()>; 
-    static_assert(std::unsigned_integral<raw_type>);
+    static_assert(std::unsigned_integral<raw_type> || std::is_same_v<raw_type, rational>);
     raw_type Raw;
 
     constexpr bound() = default; // trivial constructor
@@ -43,27 +43,6 @@ namespace bnd
     private:
       static void check_trival() { static_assert(std::is_trivial_v<bound>);}
   };
-/*
-  template <boundable B, typename Ret = promotion_policy<B>::add_return_type>
-  auto unsafe_add(B const& lhs, B const& rhs) -> Ret
-  {
-    using raw_type = bigger<Ret::raw_type, B::raw_type>;
-    // this can overflow on addition and underflow on subtraction, without detection
-    raw_type raw = B::unsafe_remove_zero<raw_type>(static_cast<raw_type>(lhs.raw) + static_cast<raw_type>(rhs.raw)) 
-    return {from_raw{}, raw};
-  }
-  template <typename L, typename R, typename Ret = promotion_policy<R,L>::add_return_type>
-  auto unsafe_add(L const& lhs, R const& rhs) -> Ret
-  {
-        using other_step_ratio = typename epn<OTrait>::step_ratio;
-
-        // We have to convert OStep into our Steps
-        using step_conversion = detail::ratio_div<other_step_ratio, step_ratio>;
-        Steps += detail::ratio_multiply<step_conversion>(other.Steps - epn<OTrait>::zero_steps::num);
-    return lhs.raw
-  }
-
-*/
 
   template 
   <

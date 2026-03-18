@@ -19,6 +19,7 @@ namespace bnd
   //---------------------------------------------------------------------------
   // The grid has an interval space by notches 
   // The interval must divide evenly by the notches. 
+  // If Notch is zero, all rationals in the interval are allowed
   //---------------------------------------------------------------------------
   struct grid 
   {
@@ -31,7 +32,10 @@ namespace bnd
         throw "Notch does not evenly divide the interval";
     }
 
-    constexpr umax max_notch() const { return (Interval/Notch).Numerator; }
+    constexpr umax max_notch() const
+    { 
+      return (Notch == 0) ? 0 : (Interval/Notch).Numerator; 
+    }
 
     // operator== be default for structural type
     constexpr bool operator==(const grid& rhs) const = default;

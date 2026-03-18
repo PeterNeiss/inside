@@ -240,10 +240,7 @@ namespace bnd
   //---------------------------------------------------------------------------
   inline constexpr bool divides_evenly(const rational& dividend, const rational& divisor)
   {
-    if (dividend == 0)
-      return true;
-
-    return (dividend / divisor).Denominator == 1;
+    return (divisor == 0) ? true : (dividend / divisor).Denominator == 1;
   }
 
   //---------------------------------------------------------------------------

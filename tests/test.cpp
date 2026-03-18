@@ -64,6 +64,12 @@ void test_grid()
   );
 }
 
+void test_bound()
+{
+  using frac = bound<0, 10, 0>;
+  static_assert(std::is_same_v<frac::raw_type, rational>);
+}
+
 using test0_t = bound<1,3>;
 using test1_t = bound<0, {1u, 1, sign::negative}, {-1}>;
 //using test2_t = bound<{1,1, sign::zero}>;
