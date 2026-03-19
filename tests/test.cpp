@@ -19,17 +19,20 @@ void test_rational()
 
 void test_add()
 {
-  using u8 = bound<0,255>;
+  using u8 = bound<10,255, 1_r/16>;
  // u8 a{6, waiver<no_runtime_check>};
  // constexpr u8 c{-6};
   //(void)c;
-//  u8 a{-6};
+  u8 a{16};
   u8 b = 102;
 
-//  (void) a;
+  (void) a;
   (void) b;
 
- // auto c = a + b;
+  auto c = a + b;
+  std::cout << a << std::endl;
+  std::cout << b << std::endl;
+  std::cout << c << std::endl;
 }
 
 void test_comparision()

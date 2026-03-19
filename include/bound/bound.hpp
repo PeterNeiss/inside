@@ -12,6 +12,9 @@
 
 namespace bnd
 {
+  //---------------------------------------------------------------------------
+  // bound 
+  //---------------------------------------------------------------------------
   template
   <
     rational Lower,
@@ -44,6 +47,8 @@ namespace bnd
     constexpr bound(rational value, waiver_type<F> waiver = {})
      :Raw{detection<bound>::construct(value, waiver)} { }
 
+    static bound from_raw(raw_type raw) { bound b; b.Raw = raw; return b; } 
+
     explicit operator double() const
     { return Grid.raw_to_double(Raw); }
 
@@ -51,47 +56,33 @@ namespace bnd
       static void check_trival() { static_assert(std::is_trivial_v<bound>);}
   };
 
+  //---------------------------------------------------------------------------
+  // add 
+  //---------------------------------------------------------------------------
   template 
   <
     boundable L,
     boundable R, 
-    waiver_type W = mitigation<L,R>::default_waiver_add,
-    boundable Ret = promotion<L,R>::add_return_type
+    waiver_flag F = detection<L,R>::default_add_flag,
+    boundable Ret = promotion<L,R>::add_return
   >
-  auto add(L const& lhs, R const& rhs) -> Ret
+  auto add(L const& lhs, R const& rhs, waiver_type<F> waiver = {}) -> Ret
   {
-    if constexpr (detection<L,R>::template never_addable<Ret>)
-    {
-      return mitigation<L,R>::template never_addable<Ret>(lhs, rhs);
-    }
-    else if constexpr(detection<L,R>::template always_addable<Ret>)
-    {
-      return raw_add<Ret>(lhs, rhs); 
-    }
-    else if constexpr(detection<L,R>::template maybe_addable<Ret>)
-    {
-      if constexpr(detection<L,R>::template check_runtime_addable<W>)
-      {
-        if (detection<L,R>::template runtime_check<Ret>(lhs, rhs))
-          return unsafe_add<Ret>(lhs, rhs); 
-        else
-          return mitigation<L,R>::template runtime_addable_check_failed<Ret, W>(lhs, rhs);
-      }
-      else
-        return mitigation<L,R>::template runtime_unsafe_add<Ret, W>(lhs, rhs);
-    }
-
-    std::unreachable();
+    return detection<L,R>::template add<Ret>(lhs, rhs, waiver);
   }
 
-  template <typename L, typename R>
-  auto operator+(L const& lhs, R const& rhs) -> promotion<R,L>::add_return_type 
+  //---------------------------------------------------------------------------
+  // operator+ 
+  //---------------------------------------------------------------------------
+  template <boundable L, boundable R>
+  auto operator+(L const& lhs, R const& rhs) 
+    -> promotion<L,R>::add_return 
   {
     return add(lhs, rhs);
   }
+
   //TODO wrap_bound, sat_bound
   //safe_loop, force_add,
-  //
 } // namespace bnd
 
 #endif // BNDboundHPP

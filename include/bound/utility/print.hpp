@@ -12,10 +12,11 @@ namespace bnd
   inline std::ostream& operator<<(std::ostream& stream, boundable auto b)
   {
     //TODO auto [num,den] = b.to_rational();
-    stream << static_cast<double>(b)
+    stream << "Value: "  <<static_cast<double>(b)
            << " Lower: " << static_cast<double>(b.Interval.Lower)
            << " Upper: " << static_cast<double>(b.Interval.Upper)
-           << " Notch: " << static_cast<double>(b.Grid.Notch);
+           << " Notch: " << static_cast<double>(b.Grid.Notch)
+           << " Raw: "   << static_cast<double>(b.Raw);
     return stream;
   }
 } // namespace bnd

@@ -43,7 +43,11 @@ namespace bnd
  
     template <std::unsigned_integral Raw>
     constexpr Raw to_raw(std::signed_integral auto value) const
-    { return static_cast<Raw>(value - Interval.Lower); /*TODO check calculation safety*/ }
+    { 
+      //TODO: check safty of calculation
+      rational raw = (value - Interval.Lower)/Notch;
+      return static_cast<Raw>(raw.Numerator/ raw.Denominator);  
+    }
 
     template <std::unsigned_integral Raw>
     constexpr Raw to_raw(rational value) const
@@ -68,21 +72,23 @@ namespace bnd
         static_cast<double>(raw*Notch + Interval.Lower);  
     }
   };
+
+  constexpr grid operator+(const grid&, const grid&); 
+
+  //---------------------------------------------------------------------------
+  // operator+ 
+  //---------------------------------------------------------------------------
+  inline constexpr grid operator+(const grid& lhs, const grid& rhs) 
+  { 
+    return {lhs.Interval + rhs.Interval, gcd(lhs.Notch, rhs.Notch)}; 
+  }
+
 /*  
-  constexpr interval operator+  (const interval&, const interval&); 
   constexpr interval operator-  (const interval&, const interval&); 
   constexpr interval operator*  (const interval&, const interval&); 
   constexpr interval operator/  (const interval&, const interval&); 
   constexpr auto     operator<=>(const interval&, const interval&) -> std::partial_ordering; 
   // TODO includes, excludes
-
-  //---------------------------------------------------------------------------
-  // operator+ 
-  //---------------------------------------------------------------------------
-  inline constexpr interval operator+(const interval& lhs, const interval& rhs) 
-  { 
-    return {lhs.Lower + rhs.Lower, lhs.Upper + rhs.Upper}; 
-  }
 
   //---------------------------------------------------------------------------
   // operator- 

@@ -60,7 +60,19 @@ namespace bnd
   constexpr rational operator/  (const rational&, const rational&); 
   constexpr auto     operator<=>(const rational&, const rational&) -> std::strong_ordering; 
 
+  constexpr rational gcd(const rational&, const rational&);
+
   constexpr bool divides_evenly (const rational&, const rational&); 
+
+  //---------------------------------------------------------------------------
+  // gcd 
+  //---------------------------------------------------------------------------
+  constexpr rational gcd(const rational& lhs, const rational& rhs)
+  {
+    auto numerator   = std::gcd(lhs.Numerator  , rhs.Numerator);
+    auto denominator = std::lcm(lhs.Denominator, rhs.Denominator);
+    return {numerator, denominator};
+  }
 
   //---------------------------------------------------------------------------
   // rational::trim
