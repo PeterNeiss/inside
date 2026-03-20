@@ -32,6 +32,7 @@ namespace bnd
     if constexpr (std::is_same_v<T, std::uint16_t>) return "uint16_t";
     if constexpr (std::is_same_v<T, std::uint32_t>) return "uint32_t";
     if constexpr (std::is_same_v<T, std::uint64_t>) return "uint64_t";
+    if constexpr (std::is_same_v<T, rational>) return "rational";
     return "unknown";
   }
 

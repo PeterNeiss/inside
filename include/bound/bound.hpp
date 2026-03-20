@@ -5,10 +5,9 @@
 #define BNDboundHPP
 
 #include "bound/common.hpp"
-#include "bound/policy/waiver.hpp"
-#include "bound/policy/mitigation.hpp"
-#include "bound/policy/promotion.hpp"
-#include "bound/policy/detection.hpp"
+#include "bound/waiver.hpp"
+#include "bound/construction.hpp"
+#include "bound/addition.hpp"
 
 namespace bnd
 {
@@ -39,18 +38,18 @@ namespace bnd
 
     constexpr bound(bound const& other) noexcept :Raw{other.Raw} { }
 
-    template <waiver_flag F = detection<bound>::default_construct_flag>
+    template <waiver_flag F = construction<bound>::default_flag>
     constexpr bound(arithmetic auto value, waiver_type<F> waiver = {})
-     :Raw{detection<bound>::construct(value, waiver)} { }
+     :Raw{construction<bound>::from_value(value, waiver)} { }
 
-    template <waiver_flag F = detection<bound>::default_construct_flag>
+    template <waiver_flag F = construction<bound>::default_flag>
     constexpr bound(rational value, waiver_type<F> waiver = {})
-     :Raw{detection<bound>::construct(value, waiver)} { }
+     :Raw{construction<bound>::from_value(value, waiver)} { }
 
-    static bound from_raw(raw_type raw) { bound b; b.Raw = raw; return b; } 
+    constexpr static bound from_raw(raw_type raw) { bound b; b.Raw = raw; return b; } 
 
-    explicit operator double() const
-    { return Grid.raw_to_double(Raw); }
+    constexpr explicit operator double() const { return Grid.raw_to_double(Raw); }
+    constexpr rational to_rational() const { return Raw * Grid.Notch + Interval.Lower; }
 
     private:
       static void check_trival() { static_assert(std::is_trivial_v<bound>);}
@@ -59,27 +58,15 @@ namespace bnd
   //---------------------------------------------------------------------------
   // add 
   //---------------------------------------------------------------------------
-  template 
-  <
-    boundable L,
-    boundable R, 
-    waiver_flag F = detection<L,R>::default_add_flag,
-    boundable Ret = promotion<L,R>::add_return
-  >
-  auto add(L const& lhs, R const& rhs, waiver_type<F> waiver = {}) -> Ret
-  {
-    return detection<L,R>::template add<Ret>(lhs, rhs, waiver);
-  }
+  template <boundable L, boundable R, waiver_flag F = addition<L,R>::default_flag>
+  constexpr auto add(L const& lhs, R const& rhs, waiver_type<F> waiver = {})
+  { return addition<L,R>::add(lhs, rhs, waiver); }
 
   //---------------------------------------------------------------------------
   // operator+ 
   //---------------------------------------------------------------------------
-  template <boundable L, boundable R>
-  auto operator+(L const& lhs, R const& rhs) 
-    -> promotion<L,R>::add_return 
-  {
-    return add(lhs, rhs);
-  }
+  constexpr auto operator+(boundable auto lhs, boundable auto rhs) 
+  { return add(lhs, rhs); }
 
   //TODO wrap_bound, sat_bound
   //safe_loop, force_add,

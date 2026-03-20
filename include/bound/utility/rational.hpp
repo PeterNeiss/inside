@@ -227,11 +227,13 @@ namespace bnd
     if (rhs.Sign == sign::zero)
       return lhs;
 
+    // TODO if consteval {can_multiply
     auto A = lhs.Numerator * rhs.Denominator;
     auto B = rhs.Numerator * lhs.Denominator;
     auto denominator = lhs.Denominator * rhs.Denominator;
 
     if (lhs.Sign == rhs.Sign)
+      // TODO if consteval {can_add
       return {A + B, denominator, lhs.Sign}; 
 
     // avoid underflow with opposing signs

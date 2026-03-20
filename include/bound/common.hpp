@@ -4,7 +4,6 @@
 #ifndef BNDcommonHPP
 #define BNDcommonHPP
 
-#include "bound/policy/waiver.hpp"
 #include "bound/utility/math.hpp"
 #include "bound/utility/rational.hpp"
 #include "bound/utility/interval.hpp"

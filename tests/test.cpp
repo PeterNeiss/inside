@@ -33,6 +33,13 @@ void test_add()
   std::cout << a << std::endl;
   std::cout << b << std::endl;
   std::cout << c << std::endl;
+
+  using u64 = bound<0, std::numeric_limits<std::uint64_t>::max(), 1>;
+  
+  constexpr u64 biggest{std::numeric_limits<std::uint64_t>::max()};
+  std::cout << biggest << std::endl;
+  constexpr auto d = biggest + biggest;
+  std::cout << d << std::endl;
 }
 
 void test_comparision()
