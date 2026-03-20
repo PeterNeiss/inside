@@ -4,6 +4,8 @@
 #ifndef BNDdebugHPP
 #define BNDdebugHPP
 
+#include <stdexcept>
+
 namespace bnd
 {
   template <typename... Ts>
@@ -15,6 +17,8 @@ namespace bnd
   template <auto...N>
   struct print_values;
 
+  constexpr void OVERFLOW_trap(char const* what = "overflow") 
+  { throw std::overflow_error{what}; }
 } // namespace bnd
 
 #endif // BNDdebugHPP

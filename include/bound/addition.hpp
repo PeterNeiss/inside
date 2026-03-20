@@ -20,9 +20,8 @@ namespace bnd
     static constexpr rational add_Upper    = add_Interval.Upper;
 
     using result = bound<add_Lower, add_Upper, add_Notch>;
-    static constexpr waiver_flag default_flag = none;
 
-    template <waiver_flag F = default_flag>
+    template <waiver_flag F = none>
     static constexpr result add(L, R, waiver_type<F> = {});
   };
 
@@ -37,7 +36,8 @@ namespace bnd
     constexpr raw lhs_widen = (result::Grid.Notch / lhs.Grid.Notch).Numerator; 
     constexpr raw rhs_widen = (result::Grid.Notch / rhs.Grid.Notch).Numerator; 
 
-    // Because result type calculation did not overflow at runtime,
+    // TODO Check argument
+    // Because result type calculation did not overflow at compile time,
     // both widen multiplications dont overflow and
     // their sum does not overflow
     return result::from_raw(static_cast<raw>(lhs.Raw * lhs_widen + rhs.Raw * rhs_widen));

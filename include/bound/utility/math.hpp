@@ -67,6 +67,13 @@ namespace bnd
     return std::pair{num, den};
   }
 
+  template <std::unsigned_integral T>
+  constexpr bool add_overflow(T lhs, T rhs)
+  { return (lhs + rhs) < rhs; }
+
+  template <std::unsigned_integral T>
+  constexpr bool mul_overflow(T lhs, T rhs)
+  { return lhs != 0 && rhs != 0 && (rhs > std::numeric_limits<T>::max() / lhs); }
 } // namespace bnd
 
 #endif // BNDcommonHPP

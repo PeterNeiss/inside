@@ -11,6 +11,9 @@ namespace bnd
 {
   inline std::ostream& operator<<(std::ostream& stream, rational r)
   {
+    if (r.Sign == sign::negative)
+      stream << "-";
+
     stream << r.Numerator << "/" << r.Denominator; 
     return stream;
   }
@@ -18,13 +21,13 @@ namespace bnd
   inline std::ostream& operator<<(std::ostream& stream, boundable auto b)
   {
     //TODO auto [num,den] = b.to_rational();
-    stream << "Value: "  << b.to_rational()
-           << " Lower: " << static_cast<double>(b.Interval.Lower)
-           << " Upper: " << static_cast<double>(b.Interval.Upper)
-           << " Notch: " << static_cast<double>(b.Grid.Notch)
-           << " max_notch: " << static_cast<double>(b.Grid.max_notch())
-           << " Type: " << uint_type_name<typename decltype(b)::raw_type>() 
-           << " Raw: "   << b.Raw;
+    stream << b.to_rational()
+           <<" {"   
+           << +b.Raw << "[" << uint_type_name<typename decltype(b)::raw_type>() << "] "
+           << b.Interval.Lower << "[Low] "
+           << b.Interval.Upper << "[Up] "
+           << b.Grid.Notch << "[Notch] "
+           << +b.Grid.max_notch() << "[MaxRaw]}";
     return stream;
   }
 } // namespace bnd

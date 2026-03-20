@@ -50,6 +50,9 @@ namespace bnd
       return (Sign == sign::negative) ? -abs : abs; 
     }
 
+    // allow unary+ for generic programming
+    constexpr rational operator+() const { return *this; }
+
     private:
       constexpr void trim();
   };
@@ -227,16 +230,31 @@ namespace bnd
     if (rhs.Sign == sign::zero)
       return lhs;
 
-    // TODO if consteval {can_multiply
+    if consteval // check mul overflow
+    {
+      if 
+      (
+        mul_overflow(lhs.Denominator, rhs.Denominator) ||
+        mul_overflow(lhs.Numerator  , rhs.Denominator) ||
+        mul_overflow(rhs.Numerator  , lhs.Denominator)
+      )
+        OVERFLOW_trap("multiplicative overflow");
+    }
+
+    auto denominator = lhs.Denominator * rhs.Denominator;
     auto A = lhs.Numerator * rhs.Denominator;
     auto B = rhs.Numerator * lhs.Denominator;
-    auto denominator = lhs.Denominator * rhs.Denominator;
 
     if (lhs.Sign == rhs.Sign)
-      // TODO if consteval {can_add
+    {
+      if consteval 
+      { 
+        if (add_overflow(A, B))
+          OVERFLOW_trap("additive overflow");
+      }
       return {A + B, denominator, lhs.Sign}; 
+    }
 
-    // avoid underflow with opposing signs
     auto numerator = (A > B) ? (A - B) : (B - A);
 
     if (lhs.Sign == sign::negative)

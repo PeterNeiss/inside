@@ -31,6 +31,9 @@ namespace bnd
 
     using raw_type = smallest_uint_for<Grid.max_notch()>; 
     static_assert(std::unsigned_integral<raw_type> || std::is_same_v<raw_type, rational>);
+    // check logically (Notch == 0) equivalent (raw_type == rational)
+    static_assert(0 != Notch || std::is_same_v<raw_type, rational>);
+    static_assert(not std::is_same_v<raw_type, rational> || 0 == Notch);
     raw_type Raw;
 
     constexpr bound() = default; // trivial constructor
@@ -49,7 +52,23 @@ namespace bnd
     constexpr static bound from_raw(raw_type raw) { bound b; b.Raw = raw; return b; } 
 
     constexpr explicit operator double() const { return Grid.raw_to_double(Raw); }
-    constexpr rational to_rational() const { return Raw * Grid.Notch + Interval.Lower; }
+    constexpr rational to_rational() const 
+    {
+      if constexpr (std::is_same_v<raw_type, rational>)
+        return Raw;
+      else
+        return Raw * Grid.Notch + Interval.Lower; 
+    }
+
+    constexpr auto operator-() const
+    {
+      using neg = bound<-Upper, -Lower, Notch>;
+      if constexpr (std::is_same_v<raw_type, rational>)
+        return neg::from_raw(-Raw);
+      else
+        return neg::from_raw
+        (static_cast<neg::raw_type>(Grid.max_notch() - Raw));
+    }
 
     private:
       static void check_trival() { static_assert(std::is_trivial_v<bound>);}
@@ -58,7 +77,7 @@ namespace bnd
   //---------------------------------------------------------------------------
   // add 
   //---------------------------------------------------------------------------
-  template <boundable L, boundable R, waiver_flag F = addition<L,R>::default_flag>
+  template <boundable L, boundable R, waiver_flag F = none>
   constexpr auto add(L const& lhs, R const& rhs, waiver_type<F> waiver = {})
   { return addition<L,R>::add(lhs, rhs, waiver); }
 
@@ -68,8 +87,18 @@ namespace bnd
   constexpr auto operator+(boundable auto lhs, boundable auto rhs) 
   { return add(lhs, rhs); }
 
-  //TODO wrap_bound, sat_bound
-  //safe_loop, force_add,
+  //---------------------------------------------------------------------------
+  // sub 
+  //---------------------------------------------------------------------------
+  template <boundable L, boundable R, waiver_flag F = none>
+  constexpr auto sub(L const& lhs, R const& rhs, waiver_type<F> waiver = {})
+  { return add(lhs, -rhs, waiver); }
+
+  //---------------------------------------------------------------------------
+  // operator-
+  //---------------------------------------------------------------------------
+  constexpr auto operator-(boundable auto lhs, boundable auto rhs) 
+  { return sub(lhs, rhs); }
 } // namespace bnd
 
 #endif // BNDboundHPP

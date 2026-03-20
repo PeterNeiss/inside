@@ -4,6 +4,7 @@
 #ifndef BNDcommonHPP
 #define BNDcommonHPP
 
+#include "bound/detail/debug.hpp"
 #include "bound/utility/math.hpp"
 #include "bound/utility/rational.hpp"
 #include "bound/utility/interval.hpp"
@@ -26,6 +27,7 @@ namespace bnd
     rational Notch = {0}
   >
   struct bound;
+
 } // namespace bnd
 
 #endif // BNDcommonHPP

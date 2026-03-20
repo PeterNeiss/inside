@@ -34,12 +34,14 @@ void test_add()
   std::cout << b << std::endl;
   std::cout << c << std::endl;
 
+  auto d = a - b;
+  std::cout << d << std::endl;
+
   using u64 = bound<0, std::numeric_limits<std::uint64_t>::max(), 1>;
   
   constexpr u64 biggest{std::numeric_limits<std::uint64_t>::max()};
   std::cout << biggest << std::endl;
-  constexpr auto d = biggest + biggest;
-  std::cout << d << std::endl;
+ // auto e = biggest/2 + biggest/2;
 }
 
 void test_comparision()

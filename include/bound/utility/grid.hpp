@@ -74,6 +74,7 @@ namespace bnd
   };
 
   constexpr grid operator+(const grid&, const grid&); 
+  constexpr grid operator-(const grid&, const grid&); 
 
   //---------------------------------------------------------------------------
   // operator+ 
@@ -83,20 +84,19 @@ namespace bnd
     return {lhs.Interval + rhs.Interval, gcd(lhs.Notch, rhs.Notch)}; 
   }
 
+  //---------------------------------------------------------------------------
+  // operator- 
+  //---------------------------------------------------------------------------
+  inline constexpr grid operator-(const grid& lhs, const grid& rhs) 
+  { 
+    return operator+(lhs, -rhs);
+  }
+
 /*  
-  constexpr interval operator-  (const interval&, const interval&); 
   constexpr interval operator*  (const interval&, const interval&); 
   constexpr interval operator/  (const interval&, const interval&); 
   constexpr auto     operator<=>(const interval&, const interval&) -> std::partial_ordering; 
   // TODO includes, excludes
-
-  //---------------------------------------------------------------------------
-  // operator- 
-  //---------------------------------------------------------------------------
-  inline constexpr interval operator-(const interval& lhs, const interval& rhs) 
-  { 
-    return operator+(lhs, -rhs);
-  }
 
   //---------------------------------------------------------------------------
   // operator* 
