@@ -75,6 +75,7 @@ namespace bnd
 
   constexpr grid operator+(const grid&, const grid&); 
   constexpr grid operator-(const grid&, const grid&); 
+  constexpr interval operator*  (const interval&, const interval&); 
 
   //---------------------------------------------------------------------------
   // operator+ 
@@ -92,31 +93,18 @@ namespace bnd
     return operator+(lhs, -rhs);
   }
 
-/*  
-  constexpr interval operator*  (const interval&, const interval&); 
-  constexpr interval operator/  (const interval&, const interval&); 
-  constexpr auto     operator<=>(const interval&, const interval&) -> std::partial_ordering; 
-  // TODO includes, excludes
-
   //---------------------------------------------------------------------------
   // operator* 
   //---------------------------------------------------------------------------
-  // this is only overlow safe in constexpr context
-  //---------------------------------------------------------------------------
-  inline constexpr interval operator*(const interval& lhs, const interval& rhs) 
+  inline constexpr grid operator*(const grid& lhs, const grid& rhs) 
   { 
-    auto [lower, upper] = std::minmax
-    (
-      {
-        lhs.Lower * rhs.Lower,
-        lhs.Lower * rhs.Upper,
-        lhs.Upper * rhs.Lower,
-        lhs.Upper * rhs.Upper 
-      }
-    );
-  
-    return {lower, upper};
+    return {lhs.Interval * rhs.Interval, lhs.Notch * rhs.Notch}; 
   }
+
+/*  
+  constexpr interval operator/  (const interval&, const interval&); 
+  constexpr auto     operator<=>(const interval&, const interval&) -> std::partial_ordering; 
+  // TODO includes, excludes
 
   //---------------------------------------------------------------------------
   // operator/ 

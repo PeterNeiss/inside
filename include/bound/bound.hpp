@@ -36,6 +36,11 @@ namespace bnd
     static_assert(not std::is_same_v<raw_type, rational> || 0 == Notch);
     raw_type Raw;
 
+    // no displacement for zero allowed
+    static constexpr rational raw_zero = (Notch == 0) ? rational{0} : (Lower/Notch); 
+    static_assert(raw_zero.Denominator == 1,
+      "Zero must coincide with (extended) grid. No displacement allowed");
+
     constexpr bound() = default; // trivial constructor
     constexpr ~bound() = default; // trivial destructor
 

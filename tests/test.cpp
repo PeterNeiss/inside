@@ -81,6 +81,7 @@ void test_grid()
 
 void test_bound()
 {
+  //bound<-0.5, 0.5, 1>{}; // zero displaced here
   using frac = bound<-10, 10, 0>;
   static_assert(std::is_same_v<frac::raw_type, rational>);
   constexpr frac f = 2_r/3;

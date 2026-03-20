@@ -52,20 +52,25 @@ namespace bnd
 
     // allow unary+ for generic programming
     constexpr rational operator+() const { return *this; }
-
-    private:
-      constexpr void trim();
   };
   
   constexpr rational operator+  (const rational&, const rational&); 
   constexpr rational operator-  (const rational&, const rational&); 
-  constexpr rational operator*  (const rational&, const rational&); 
+  constexpr rational operator*  (rational, rational); 
   constexpr rational operator/  (const rational&, const rational&); 
-  constexpr auto     operator<=>(const rational&, const rational&) -> std::strong_ordering; 
+  constexpr auto     operator<=>(rational, rational) -> std::strong_ordering; 
 
   constexpr rational gcd(const rational&, const rational&);
+  constexpr void trim(umax&, umax&);
+  constexpr rational abs(rational);
 
   constexpr bool divides_evenly (const rational&, const rational&); 
+
+  //---------------------------------------------------------------------------
+  // abs 
+  //---------------------------------------------------------------------------
+  constexpr rational abs(rational value)
+  { return (value.Sign == sign::negative) ? -value : value; }
 
   //---------------------------------------------------------------------------
   // gcd 
@@ -78,14 +83,18 @@ namespace bnd
   }
 
   //---------------------------------------------------------------------------
-  // rational::trim
+  // trim
   //---------------------------------------------------------------------------
-  inline constexpr void rational::trim()
+  inline constexpr void trim(umax& numerator,umax& denominator)
   {
-    auto gcd = std::gcd(Numerator, Denominator);
-    Numerator   /= gcd;
-    Denominator /= gcd;
+    //TODO divide by zero
+    auto gcd = std::gcd(numerator, denominator);
+    if (gcd == 0)
+      return;
+    numerator   /= gcd;
+    denominator /= gcd;
   }
+
   //---------------------------------------------------------------------------
   // rational::rational 
   //---------------------------------------------------------------------------
@@ -98,7 +107,7 @@ namespace bnd
     if (Numerator != 0 && Sign == sign::zero)
       throw "Numerator is not Zero but sign is";
 
-    trim();
+    trim(Numerator, Denominator);
   }
 
   constexpr rational::rational(std::signed_integral auto num, umax den)
@@ -108,7 +117,7 @@ namespace bnd
     if (Denominator == 0)
       throw "Denominator of Zero is invalid";
 
-    trim();
+    trim(Numerator, Denominator);
   }
 
   constexpr rational::rational(std::floating_point auto value)
@@ -159,14 +168,12 @@ namespace bnd
   //---------------------------------------------------------------------------
   // this is only overlow safe in constexpr context
   //---------------------------------------------------------------------------
-  inline constexpr auto operator<=>(const rational& lhs, const rational& rhs) -> std::strong_ordering
+  inline constexpr auto operator<=>(rational lhs, rational rhs) -> std::strong_ordering
   { 
     if (lhs.Sign == sign::detect || rhs.Sign == sign::detect)
       throw "internal logic error";
 
-    if (lhs.Sign == sign::negative && rhs.Sign == sign::negative) 
-      return rhs.Numerator * lhs.Denominator <=> lhs.Numerator * rhs.Denominator; 
-    else
+    if (lhs.Sign != rhs.Sign)
     {
       if (lhs.Sign == sign::negative)
         return std::strong_ordering::less;
@@ -175,18 +182,50 @@ namespace bnd
         return std::strong_ordering::greater;
     }
 
-    return lhs.Numerator * rhs.Denominator <=> rhs.Numerator * lhs.Denominator; 
+    if consteval // check mul overflow
+    {
+      // cross trim to avoid overflow if possible
+      trim(lhs.Numerator, rhs.Numerator);
+      trim(lhs.Denominator, rhs.Denominator);
+
+      if 
+      (
+        mul_overflow(lhs.Numerator, rhs.Denominator) ||
+        mul_overflow(rhs.Numerator, lhs.Denominator)
+      )
+        OVERFLOW_trap("multiplicative overflow");
+    }
+
+    auto A = lhs.Numerator * rhs.Denominator;
+    auto B = rhs.Numerator * lhs.Denominator;
+
+    if (lhs.Sign == sign::negative && rhs.Sign == sign::negative) 
+      return B <=> A; 
+    else
+      return A <=> B; 
   }
 
   //---------------------------------------------------------------------------
   // operator* 
   //---------------------------------------------------------------------------
-  // this is only overlow safe in constexpr context
-  //---------------------------------------------------------------------------
-  inline constexpr rational operator*(const rational& lhs, const rational& rhs) 
+  inline constexpr rational operator*(rational lhs, rational rhs) 
   { 
     if (lhs.Sign == sign::zero || rhs.Sign == sign::zero)
       return 0;
+
+    if consteval // check mul overflow
+    {
+      // cross trim to avoid overflow if possible
+      trim(lhs.Numerator, rhs.Denominator);
+      trim(rhs.Numerator, lhs.Denominator);
+
+      if 
+      (
+        mul_overflow(lhs.Numerator  , rhs.Numerator)   ||
+        mul_overflow(lhs.Denominator, rhs.Denominator)
+      )
+        OVERFLOW_trap("multiplicative overflow");
+    }
 
     return 
     {
@@ -198,8 +237,6 @@ namespace bnd
 
   //---------------------------------------------------------------------------
   // operator/ 
-  //---------------------------------------------------------------------------
-  // this is only overlow safe in constexpr context
   //---------------------------------------------------------------------------
   inline constexpr rational operator/(const rational& lhs, const rational& rhs) 
   { 
