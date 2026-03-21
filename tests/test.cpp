@@ -17,6 +17,31 @@ void test_rational()
   (void)a; 
 }
 
+void test_mul()
+{
+  using r = bound<10,255>;
+ // u8 a{6, waiver<no_runtime_check>};
+ // constexpr u8 c{-6};
+  //(void)c;
+  r a{16};
+  r b = 102;
+
+  auto c = a * b;
+  std::cout << a << std::endl;
+  std::cout << b << std::endl;
+  std::cout << c << std::endl;
+
+  using u4 = bound<2,10,1_r/4>;
+
+  u4 d{3};
+  u4 e{3.25};
+
+  auto f = d * e;
+  std::cout << d << std::endl;
+  std::cout << e << std::endl;
+  std::cout << f << std::endl;
+}
+
 void test_add()
 {
   using u8 = bound<10,255, 1_r/16>;
@@ -119,6 +144,7 @@ int main()
     test_comparision();
     test_add();
     test_bound();
+    test_mul();
     
     // print_values<-(10.0_r)>{};
     //print_types<bound<>, test0_t, test1_t>{};

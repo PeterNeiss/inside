@@ -33,9 +33,14 @@ namespace bnd
     }
 
     constexpr umax max_notch() const
-    { 
-      return (Notch == 0) ? 0 : (Interval/Notch).Numerator; 
-    }
+    { return (Notch == 0) ? 0 : (Interval/Notch).Numerator; }
+
+    constexpr rational low_per_notch() const
+    { return (Notch == 0) ? rational{0} : Interval.Lower/Notch; }
+
+    constexpr rational up_per_notch() const
+    { return (Notch == 0) ? rational{0} : Interval.Upper/Notch; }
+
 
     // operator== be default for structural type
     constexpr bool operator==(const grid& rhs) const = default;

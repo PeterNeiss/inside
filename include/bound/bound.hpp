@@ -8,6 +8,7 @@
 #include "bound/waiver.hpp"
 #include "bound/construction.hpp"
 #include "bound/addition.hpp"
+#include "bound/multiplication.hpp"
 
 namespace bnd
 {
@@ -27,6 +28,8 @@ namespace bnd
 
     static_assert(0 <= Notch); 
     static_assert(0 == Notch || Interval.divides_evenly(Notch));
+    static_assert(0 == Notch || (Lower/Notch).Denominator == 1,
+      "Zero must coincide with (extended) grid. No displacement allowed");
     static constexpr grid Grid{Interval, Notch};
 
     using raw_type = smallest_uint_for<Grid.max_notch()>; 
@@ -35,11 +38,6 @@ namespace bnd
     static_assert(0 != Notch || std::is_same_v<raw_type, rational>);
     static_assert(not std::is_same_v<raw_type, rational> || 0 == Notch);
     raw_type Raw;
-
-    // no displacement for zero allowed
-    static constexpr rational raw_zero = (Notch == 0) ? rational{0} : (Lower/Notch); 
-    static_assert(raw_zero.Denominator == 1,
-      "Zero must coincide with (extended) grid. No displacement allowed");
 
     constexpr bound() = default; // trivial constructor
     constexpr ~bound() = default; // trivial destructor
@@ -104,6 +102,20 @@ namespace bnd
   //---------------------------------------------------------------------------
   constexpr auto operator-(boundable auto lhs, boundable auto rhs) 
   { return sub(lhs, rhs); }
+
+  //---------------------------------------------------------------------------
+  // mul 
+  //---------------------------------------------------------------------------
+  template <boundable L, boundable R, waiver_flag F = none>
+  constexpr auto mul(L const& lhs, R const& rhs, waiver_type<F> waiver = {})
+  { return multiplication<L,R>::mul(lhs, rhs, waiver); }
+
+  //---------------------------------------------------------------------------
+  // operator*
+  //---------------------------------------------------------------------------
+  constexpr auto operator*(boundable auto lhs, boundable auto rhs) 
+  { return mul(lhs, rhs); }
+
 } // namespace bnd
 
 #endif // BNDboundHPP
