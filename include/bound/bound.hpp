@@ -57,10 +57,13 @@ namespace bnd
     //TODO
     //template <typename T>
     // constexpr T to() const
+    // constexpr raw_type to_raw() const
+    // 
 
     //TODO
     //template <typename T>
-    // static constexpr bound from(T) const
+    // static constexpr bound from(T)
+    // static constexpr bound from_raw(T)
 
     template <waiver_flag F = construction<bound>::default_flag>
     constexpr bound(arithmetic auto value, waiver_type<F> waiver = {})
@@ -131,22 +134,20 @@ namespace bnd
   // operator*
   //---------------------------------------------------------------------------
   constexpr auto operator*(boundable auto lhs, boundable auto rhs) 
-  { return mul(lhs, rhs); }
+  { return bnd::mul(lhs, rhs); }
 
-/*
   //---------------------------------------------------------------------------
   // div 
   //---------------------------------------------------------------------------
   template <boundable L, boundable R, waiver_flag F = none>
-  constexpr auto (L const& lhs, R const& rhs, waiver_type<F> waiver = {})
+  constexpr auto div(L lhs, R rhs, waiver_type<F> waiver = {})
   { return division<L,R>::div(lhs, rhs, waiver); }
 
   //---------------------------------------------------------------------------
   // operator/
   //---------------------------------------------------------------------------
   constexpr auto operator/(boundable auto lhs, boundable auto rhs) 
-  { return div(lhs, rhs); }
-*/
+  { return bnd::div(lhs, rhs); }
 } // namespace bnd
 
 #endif // BNDboundHPP

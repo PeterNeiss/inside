@@ -22,6 +22,12 @@ namespace bnd
     if (what) 
       throw std::overflow_error{what};
   }
+
+  constexpr void DIV_ZERO_trap(const char* what)
+  {
+    if (what) 
+      throw std::domain_error{what};
+  }
 } // namespace bnd
 
 #endif // BNDdebugHPP

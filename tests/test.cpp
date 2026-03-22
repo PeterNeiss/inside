@@ -17,6 +17,18 @@ void test_rational()
   (void)a; 
 }
 
+void test_div()
+{
+  using r = bound<1,255>;
+  r a = 102;
+  r b{16};
+
+  auto c = a / b;
+  std::cout << a << std::endl;
+  std::cout << b << std::endl;
+  std::cout << c << std::endl;
+}
+
 void test_mul()
 {
   using r = bound<10,255>;
@@ -170,6 +182,7 @@ int main()
     test_add();
     test_bound();
     test_mul();
+    test_div();
     
     // print_values<-(10.0_r)>{};
     //print_types<bound<>, test0_t, test1_t>{};

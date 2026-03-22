@@ -125,7 +125,7 @@ namespace bnd
   inline constexpr interval operator/(const interval& lhs, const interval& rhs) 
   { 
     if (rhs.includes(0))
-      throw "division by zero imminent";
+      DIV_ZERO_trap("rhs inteval contains zero");
 
     auto [lower, upper] = std::minmax
     (
