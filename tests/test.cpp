@@ -20,9 +20,6 @@ void test_rational()
 void test_mul()
 {
   using r = bound<10,255>;
- // u8 a{6, waiver<no_runtime_check>};
- // constexpr u8 c{-6};
-  //(void)c;
   r a{16};
   r b = 102;
 
@@ -75,9 +72,7 @@ void test_mul()
 void test_add()
 {
   using u8 = bound<10,255, 1_r/16>;
- // u8 a{6, waiver<no_runtime_check>};
- // constexpr u8 c{-6};
-  //(void)c;
+  //constexpr u8 invalid{-6};
   u8 a{16};
   u8 b = 102;
 
@@ -96,7 +91,7 @@ void test_add()
   
   constexpr u64 biggest{std::numeric_limits<std::uint64_t>::max()};
   std::cout << biggest << std::endl;
- // auto e = biggest/2 + biggest/2;
+  //auto e = biggest + biggest;
 }
 
 void test_comparision()
