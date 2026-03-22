@@ -35,7 +35,7 @@ namespace bnd
   template<std::integral V, waiver_flag F>
   constexpr auto construction<B>::from_value(V value, waiver_type<F> waiver) -> raw_type 
   { 
-    static constexpr interval value_interval = 
+    constexpr interval value_interval = 
       {std::numeric_limits<V>::lowest(), std::numeric_limits<V>::max()};
 
     // can never construct

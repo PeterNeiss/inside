@@ -9,6 +9,7 @@
 #include "bound/construction.hpp"
 #include "bound/addition.hpp"
 #include "bound/multiplication.hpp"
+#include "bound/division.hpp"
 
 namespace bnd
 {
@@ -52,6 +53,14 @@ namespace bnd
     constexpr ~bound() = default; // trivial destructor
 
     constexpr bound(bound const& other) noexcept :Raw{other.Raw} { }
+
+    //TODO
+    //template <typename T>
+    // constexpr T to() const
+
+    //TODO
+    //template <typename T>
+    // static constexpr bound from(T) const
 
     template <waiver_flag F = construction<bound>::default_flag>
     constexpr bound(arithmetic auto value, waiver_type<F> waiver = {})
@@ -124,6 +133,20 @@ namespace bnd
   constexpr auto operator*(boundable auto lhs, boundable auto rhs) 
   { return mul(lhs, rhs); }
 
+/*
+  //---------------------------------------------------------------------------
+  // div 
+  //---------------------------------------------------------------------------
+  template <boundable L, boundable R, waiver_flag F = none>
+  constexpr auto (L const& lhs, R const& rhs, waiver_type<F> waiver = {})
+  { return division<L,R>::div(lhs, rhs, waiver); }
+
+  //---------------------------------------------------------------------------
+  // operator/
+  //---------------------------------------------------------------------------
+  constexpr auto operator/(boundable auto lhs, boundable auto rhs) 
+  { return div(lhs, rhs); }
+*/
 } // namespace bnd
 
 #endif // BNDboundHPP
