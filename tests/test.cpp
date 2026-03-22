@@ -40,6 +40,36 @@ void test_mul()
   std::cout << d << std::endl;
   std::cout << e << std::endl;
   std::cout << f << std::endl;
+
+  using n4 = u4::negative;
+
+  //int runtime_value = 3;
+  //auto g = n4::runtime_valid(runtime_value);
+  auto g = n4::valid(-2);
+  auto h = n4::valid(-2.25);
+
+  std::cout << g << std::endl;
+  std::cout << h << std::endl;
+  auto i = g * h;
+  std::cout << i << std::endl;
+
+  std::cout << d << std::endl;
+  std::cout << g << std::endl;
+  auto j = d * g;
+  std::cout << j << std::endl;
+  auto k = g * d;
+  std::cout << k << std::endl;
+
+  using s = bound<-100, 10, 1_r/16>;
+  using n = s::negative;
+
+  auto l = s::valid(-7.125);
+  auto m = n::valid(1.125);
+
+  std::cout << l << std::endl;
+  std::cout << m << std::endl;
+  std::cout << l*m << std::endl;
+  std::cout << m*l << std::endl;
 }
 
 void test_add()

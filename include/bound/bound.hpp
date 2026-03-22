@@ -23,6 +23,8 @@ namespace bnd
   >
   struct bound
   {
+    using negative = bound<-Upper, -Lower, Notch>;
+
     static_assert(Lower <= Upper);
     static constexpr interval Interval{Lower, Upper};
 
@@ -38,6 +40,13 @@ namespace bnd
     static_assert(0 != Notch || std::is_same_v<raw_type, rational>);
     static_assert(not std::is_same_v<raw_type, rational> || 0 == Notch);
     raw_type Raw;
+
+    // force compile time validation
+    template <typename T>
+    static consteval bound valid(T value) { return bound{value}; }
+
+    template <typename T>
+    static bound runtime_valid(T value) { return bound{value}; /*TODO validate*/ }
 
     constexpr bound() = default; // trivial constructor
     constexpr ~bound() = default; // trivial destructor
@@ -65,12 +74,11 @@ namespace bnd
 
     constexpr auto operator-() const
     {
-      using neg = bound<-Upper, -Lower, Notch>;
       if constexpr (std::is_same_v<raw_type, rational>)
-        return neg::from_raw(-Raw);
+        return negative::from_raw(-Raw);
       else
-        return neg::from_raw
-        (static_cast<neg::raw_type>(Grid.max_notch() - Raw));
+        return negative::from_raw
+        (static_cast<negative::raw_type>(Grid.max_notch() - Raw));
     }
 
     private:
