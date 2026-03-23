@@ -14,12 +14,9 @@ namespace bnd
   struct addition 
   { 
     static constexpr grid     add_Grid     = L::Grid + R::Grid;
-    static constexpr interval add_Interval = add_Grid.Interval;
-    static constexpr rational add_Notch    = add_Grid.Notch;
-    static constexpr rational add_Lower    = add_Interval.Lower;
-    static constexpr rational add_Upper    = add_Interval.Upper;
 
-    using result = bound<add_Lower, add_Upper, add_Notch>;
+    using result = 
+      bound<add_Grid.Interval.Lower, add_Grid.Interval.Upper, add_Grid.Notch>;
 
     template <waiver_flag F = none>
     static constexpr result add(L, R, waiver_type<F> = {});

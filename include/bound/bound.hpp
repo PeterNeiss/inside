@@ -63,7 +63,6 @@ namespace bnd
     //TODO
     //template <typename T>
     // static constexpr bound from(T)
-    // static constexpr bound from_raw(T)
 
     template <waiver_flag F = construction<bound>::default_flag>
     constexpr bound(arithmetic auto value, waiver_type<F> waiver = {})

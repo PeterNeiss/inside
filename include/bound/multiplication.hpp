@@ -61,8 +61,8 @@ namespace bnd
         (
           static_cast<raw_type>
             (
-              // Check math, its correct and necessary to drop sign here
-              (negRaw * R::Grid.low_per_notch().Numerator + rhs.Raw * L::Grid.up_per_notch().Numerator) - (negRaw * rhs.Raw) 
+              (negRaw * R::Grid.low_per_notch().Numerator + rhs.Raw * L::Grid.up_per_notch().Numerator) - 
+              (negRaw * rhs.Raw) 
             )
         );
       }

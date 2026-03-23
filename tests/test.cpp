@@ -11,6 +11,24 @@
 using namespace bnd;
 using namespace bnd::literals;
 
+void test_conversion()
+{
+/*
+  using f30t40 = bound<30, 40, 2>;
+  using f20t50 = bound<20, 50, 1>;
+  f30t40 smaller{34};
+  f20t50 bigger;
+
+  bigger = smaller;
+
+  smaller = bigger; // no compile
+  smaller.store<round, saturate>(bigger); // no compile
+  smaller = bound_cast<f30t40>(bigger); // no compile
+  smaller = saturate_to<f30t40>(round_to<f30t40::Notch>(bigger)); // no compile
+  smaller = wrap_to<f30t40>(bigger); // no compile
+*/
+}
+
 void test_rational()
 {
   constexpr rational a{std::numeric_limits<int>::min()};
@@ -178,6 +196,7 @@ int main()
 {
   try
   {
+    test_conversion();
     test_comparision();
     test_add();
     test_bound();
