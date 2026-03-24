@@ -16,30 +16,27 @@ namespace bnd
   //---------------------------------------------------------------------------
   // bound 
   //---------------------------------------------------------------------------
-  template
-  <
-    rational Lower,
-    rational Upper,
-    rational Notch
-  >
+  template<grid G>
   struct bound
   {
-    using negative = bound<-Upper, -Lower, Notch>;
-
+    using negative = bound<-G>;
+    static constexpr interval Interval{G.Interval};
+    static constexpr rational Lower{Interval.Lower};
+    static constexpr rational Upper{Interval.Upper};
     static_assert(Lower <= Upper);
-    static constexpr interval Interval{Lower, Upper};
 
-    static_assert(0 <= Notch); 
-    static_assert(0 == Notch || Interval.divides_evenly(Notch));
-    static_assert(0 == Notch || (Lower/Notch).Denominator == 1,
+    static constexpr rational Notch{G.Notch};
+    static_assert(0_r <= Notch); 
+    static_assert(0_r == Notch || Interval.divides_evenly(Notch));
+    static_assert(0_r == Notch || (Lower/Notch).Denominator == 1,
       "Zero must coincide with (extended) grid. No displacement allowed");
     static constexpr grid Grid{Interval, Notch};
 
     using raw_type = smallest_uint_for<Grid.max_notch()>; 
     static_assert(std::unsigned_integral<raw_type> || std::is_same_v<raw_type, rational>);
     // check logically (Notch == 0) equivalent (raw_type == rational)
-    static_assert(0 != Notch || std::is_same_v<raw_type, rational>);
-    static_assert(not std::is_same_v<raw_type, rational> || 0 == Notch);
+    static_assert(0_r != Notch || std::is_same_v<raw_type, rational>);
+    static_assert(not std::is_same_v<raw_type, rational> || 0_r == Notch);
     raw_type Raw;
 
     // force compile time validation
@@ -53,16 +50,6 @@ namespace bnd
     constexpr ~bound() = default; // trivial destructor
 
     constexpr bound(bound const& other) noexcept :Raw{other.Raw} { }
-
-    //TODO
-    //template <typename T>
-    // constexpr T to() const
-    // constexpr raw_type to_raw() const
-    // 
-
-    //TODO
-    //template <typename T>
-    // static constexpr bound from(T)
 
     template <waiver_flag F = construction<bound>::default_flag>
     constexpr bound(arithmetic auto value, waiver_type<F> waiver = {})
@@ -82,6 +69,19 @@ namespace bnd
       else
         return Raw * Grid.Notch + Interval.Lower; 
     }
+
+   // constexpr bound& operator=(boundable auto const& other)
+   // { assignment::assign(*this, other; }
+
+    //TODO
+    //template <typename T>
+    // constexpr T to() const
+    // constexpr raw_type to_raw() const
+    // 
+
+    //TODO
+    //template <typename T>
+    // static constexpr bound from(T)
 
     constexpr auto operator-() const
     {

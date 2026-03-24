@@ -13,10 +13,7 @@ namespace bnd
   template <boundable L, boundable R = L>
   struct addition 
   { 
-    static constexpr grid     add_Grid     = L::Grid + R::Grid;
-
-    using result = 
-      bound<add_Grid.Interval.Lower, add_Grid.Interval.Upper, add_Grid.Notch>;
+    using result = bound<L::Grid + R::Grid>;
 
     template <waiver_flag F = none>
     static constexpr result add(L, R, waiver_type<F> = {});

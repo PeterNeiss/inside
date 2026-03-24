@@ -26,20 +26,27 @@ namespace bnd
     interval Interval;
     rational Notch;
 
-    constexpr grid(interval val, rational notch = 1):Interval{val}, Notch{notch}
+    grid() = default; 
+    constexpr grid(arithmetic auto lower, arithmetic auto upper, arithmetic auto notch = 0_r)
+      :grid{interval{lower, upper}, rational{notch}} { }
+    constexpr grid(arithmetic auto lower, arithmetic auto upper)
+      :grid{interval{lower, upper}, 0_r} { }
+    constexpr grid(arithmetic auto lower)
+      :grid{interval{lower, lower}, 0_r} { }
+    constexpr grid(interval val, rational notch):Interval{val}, Notch{notch}
     {
       if (not Interval.divides_evenly(Notch))
         throw "Notch does not evenly divide the interval";
     }
 
     constexpr umax max_notch() const
-    { return (Notch == 0) ? 0 : (Interval/Notch).Numerator; }
+    { return (Notch == 0_r) ? 0 : (Interval/Notch).Numerator; }
 
     constexpr rational low_per_notch() const
-    { return (Notch == 0) ? rational{0} : Interval.Lower/Notch; }
+    { return (Notch == 0_r) ? 0_r : Interval.Lower/Notch; }
 
     constexpr rational up_per_notch() const
-    { return (Notch == 0) ? rational{0} : Interval.Upper/Notch; }
+    { return (Notch == 0_r) ? 0_r : Interval.Upper/Notch; }
 
 
     // operator== be default for structural type
@@ -65,7 +72,7 @@ namespace bnd
     template <std::same_as<rational> Raw>
     constexpr rational to_raw(rational value) const
     { 
-      return (Notch == 0) ? value : (value - Interval.Lower)/Notch;  
+      return (Notch == 0_r) ? value : (value - Interval.Lower)/Notch;  
     }
 
     constexpr double raw_to_double(std::unsigned_integral auto raw) const
@@ -73,7 +80,7 @@ namespace bnd
 
     constexpr double raw_to_double(std::same_as<rational> auto raw) const
     { 
-      return (Notch == 0) ? static_cast<double>(raw) : 
+      return (Notch == 0_r) ? static_cast<double>(raw) : 
         static_cast<double>(raw*Notch + Interval.Lower);  
     }
   };
@@ -118,7 +125,7 @@ namespace bnd
   //---------------------------------------------------------------------------
   inline constexpr interval operator/(const interval& lhs, const interval& rhs) 
   { 
-    if (rhs.includes(0))
+    if (rhs.includes(0_r))
       throw "division by zero imminent";
 
     auto [lower, upper] = std::minmax

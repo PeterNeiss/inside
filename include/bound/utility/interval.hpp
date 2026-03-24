@@ -25,9 +25,13 @@ namespace bnd
     rational Lower;
     rational Upper;
 
-    constexpr interval(arithmetic auto lower = 0):Lower{lower}, Upper{lower} { }
+    interval() = default;
+
+    //constexpr interval(arithmetic auto lower = 0):Lower{lower}, Upper{lower} { }
     constexpr interval(arithmetic auto lower, arithmetic auto upper):Lower{lower}, Upper{upper} { }
-    constexpr interval(std::initializer_list<rational> list)
+    //constexpr interval(rational lower):Lower{lower}, Upper{lower} { }
+    constexpr interval(rational lower, rational upper):Lower{lower}, Upper{upper} { }
+/*    constexpr interval(std::initializer_list<rational> list)
     {
       if (std::empty(list))
       {
@@ -47,10 +51,10 @@ namespace bnd
         Upper = *(std::next(list.begin()));
       }
     }
-
+*/
     // operator== be default for structural type
     constexpr bool operator==(const interval& rhs) const = default;
-    constexpr interval operator-() const { return {-Upper, -Lower}; } 
+    constexpr interval operator-() const { return interval{-Upper, -Lower}; } 
 
     constexpr bool includes(interval const& rhs) const
     { return Lower <= rhs.Lower && rhs.Upper <= Upper; } 
@@ -86,7 +90,7 @@ namespace bnd
   //---------------------------------------------------------------------------
   inline constexpr interval operator+(const interval& lhs, const interval& rhs) 
   { 
-    return {lhs.Lower + rhs.Lower, lhs.Upper + rhs.Upper}; 
+    return interval{lhs.Lower + rhs.Lower, lhs.Upper + rhs.Upper}; 
   }
 
   //---------------------------------------------------------------------------
@@ -114,7 +118,7 @@ namespace bnd
       }
     );
   
-    return {lower, upper};
+    return interval{lower, upper};
   }
 
   //---------------------------------------------------------------------------
@@ -137,7 +141,7 @@ namespace bnd
       }
     );
   
-    return {lower, upper};
+    return interval{lower, upper};
   }
 
   //---------------------------------------------------------------------------

@@ -13,11 +13,7 @@ namespace bnd
   template <boundable L, boundable R = L>
   struct division 
   { 
-    static constexpr interval div_Interval = L::Grid.Interval / R::Grid.Interval;
-    static constexpr rational div_Lower    = div_Interval.Lower;
-    static constexpr rational div_Upper    = div_Interval.Upper;
-
-    using result = bound<div_Lower, div_Upper, 0>;
+    using result = bound<{L::Grid.Interval / R::Grid.Interval, 0}>;
     using raw_type = result::raw_type;
 
     template <waiver_flag F = none>

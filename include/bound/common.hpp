@@ -5,9 +5,6 @@
 #define BNDcommonHPP
 
 #include "bound/detail/debug.hpp"
-#include "bound/utility/math.hpp"
-#include "bound/utility/rational.hpp"
-#include "bound/utility/interval.hpp"
 #include "bound/utility/grid.hpp"
 
 namespace bnd
@@ -20,13 +17,7 @@ namespace bnd
     typename B::raw_type;
   };
 
-  template
-  <
-    rational Lower = {},
-    rational Upper = Lower,
-    rational Notch = {0}
-  >
-  struct bound;
+  template<grid G = {{0_r, 0_r}, 0_r}> struct bound;
 
 } // namespace bnd
 

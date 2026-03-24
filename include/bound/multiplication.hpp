@@ -13,13 +13,7 @@ namespace bnd
   template <boundable L, boundable R = L>
   struct multiplication 
   { 
-    static constexpr grid     mul_Grid     = L::Grid * R::Grid;
-    static constexpr interval mul_Interval = mul_Grid.Interval;
-    static constexpr rational mul_Notch    = mul_Grid.Notch;
-    static constexpr rational mul_Lower    = mul_Interval.Lower;
-    static constexpr rational mul_Upper    = mul_Interval.Upper;
-
-    using result = bound<mul_Lower, mul_Upper, mul_Notch>;
+    using result = bound<L::Grid * R::Grid>;
     using raw_type = result::raw_type;
 
     template <waiver_flag F = none>
@@ -37,7 +31,7 @@ namespace bnd
       return result::from_raw(lhs.to_rational() * rhs.to_rational());
     else
     {
-      if constexpr (mul_Grid.Interval.Lower == L::Grid.Interval.Lower * R::Grid.Interval.Lower)
+      if constexpr (result::Grid.Interval.Lower == L::Grid.Interval.Lower * R::Grid.Interval.Lower)
       {
         // low_per_notch is always positive in this case
         return result::from_raw
@@ -51,10 +45,10 @@ namespace bnd
         );
       }
 
-      if constexpr (mul_Grid.Interval.Lower == L::Grid.Interval.Upper * R::Grid.Interval.Upper)
+      if constexpr (result::Grid.Interval.Lower == L::Grid.Interval.Upper * R::Grid.Interval.Upper)
       { return multiplication<typename L::negative, typename R::negative>::mul(-lhs, -rhs, waiver); }
 
-      if constexpr (mul_Grid.Interval.Lower == L::Grid.Interval.Upper * R::Grid.Interval.Lower)
+      if constexpr (result::Grid.Interval.Lower == L::Grid.Interval.Upper * R::Grid.Interval.Lower)
       { 
         typename L::raw_type negRaw = static_cast<typename L::raw_type>(L::Grid.max_notch()) - lhs.Raw;
         return result::from_raw
@@ -67,7 +61,7 @@ namespace bnd
         );
       }
 
-      if constexpr (mul_Grid.Interval.Lower == L::Grid.Interval.Lower * R::Grid.Interval.Upper)
+      if constexpr (result::Grid.Interval.Lower == L::Grid.Interval.Lower * R::Grid.Interval.Upper)
       { return -multiplication<L, typename R::negative>::mul(lhs, -rhs, waiver); }
 
       throw "multiplication: internal logic error";

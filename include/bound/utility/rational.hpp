@@ -7,7 +7,6 @@
 #include "bound/common.hpp"
 #include "bound/utility/math.hpp"
 
-#include <concepts>
 #include <numeric>
 #include <compare>
 #include <cmath>
@@ -31,7 +30,7 @@ namespace bnd
     umax Denominator;
     sign Sign;
 
-    constexpr rational():Numerator{0}, Denominator{1}, Sign{sign::zero} { }
+    rational() = default;
     constexpr rational(std::unsigned_integral auto, umax = 1ull, sign = sign::detect);
     constexpr rational(std::signed_integral   auto, umax = 1ull);
     constexpr rational(std::floating_point    auto);
@@ -54,6 +53,15 @@ namespace bnd
     constexpr rational operator+() const { return *this; }
   };
   
+  //---------------------------------------------------------------------------
+  // user defined literals for rational 
+  //---------------------------------------------------------------------------
+  constexpr rational operator ""_r(unsigned long long int numerator)
+  { return rational{numerator}; }
+
+  constexpr rational operator ""_r(long double value)
+  { return rational{static_cast<double>(value)}; }
+
   constexpr rational operator+  (const rational&, const rational&); 
   constexpr rational operator-  (const rational&, const rational&); 
   constexpr rational operator*  (rational, rational); 
@@ -79,7 +87,7 @@ namespace bnd
   {
     auto numerator   = std::gcd(lhs.Numerator  , rhs.Numerator);
     auto denominator = std::lcm(lhs.Denominator, rhs.Denominator);
-    return {numerator, denominator};
+    return rational{numerator, denominator};
   }
 
   //---------------------------------------------------------------------------
@@ -156,7 +164,7 @@ namespace bnd
     if (Sign == sign::zero)
       return *this;
 
-    return 
+    return rational
     {
       Numerator, Denominator, 
       (Sign == sign::negative) ? sign::positive : sign::negative
@@ -211,7 +219,7 @@ namespace bnd
   inline constexpr rational operator*(rational lhs, rational rhs) 
   { 
     if (lhs.Sign == sign::zero || rhs.Sign == sign::zero)
-      return 0;
+      return 0_r;
 
     if consteval // check mul overflow
     {
@@ -227,7 +235,7 @@ namespace bnd
         OVERFLOW_trap("multiplicative overflow");
     }
 
-    return 
+    return rational
     {
       lhs.Numerator * rhs.Numerator,
       lhs.Denominator * rhs.Denominator, 
@@ -243,7 +251,7 @@ namespace bnd
     if (rhs.Sign == sign::zero)
       throw "division by zero imminent";
 
-    return 
+    return rational
     {
       lhs.Numerator * rhs.Denominator,
       rhs.Numerator * lhs.Denominator, 
@@ -259,7 +267,7 @@ namespace bnd
   inline constexpr rational operator+(const rational& lhs, const rational& rhs) 
   { 
     if (lhs == -rhs)
-      return 0;
+      return 0_r;
 
     if (lhs.Sign == sign::zero)
       return rhs;
@@ -289,15 +297,15 @@ namespace bnd
         if (add_overflow(A, B))
           OVERFLOW_trap("additive overflow");
       }
-      return {A + B, denominator, lhs.Sign}; 
+      return rational{A + B, denominator, lhs.Sign}; 
     }
 
     auto numerator = (A > B) ? (A - B) : (B - A);
 
     if (lhs.Sign == sign::negative)
-      return {numerator, denominator, (A > B) ? sign::negative : sign::positive}; 
+      return rational{numerator, denominator, (A > B) ? sign::negative : sign::positive}; 
     else
-      return {numerator, denominator, (A > B) ? sign::positive : sign::negative}; 
+      return rational{numerator, denominator, (A > B) ? sign::positive : sign::negative}; 
   }
 
   //---------------------------------------------------------------------------
@@ -315,20 +323,8 @@ namespace bnd
   //---------------------------------------------------------------------------
   inline constexpr bool divides_evenly(const rational& dividend, const rational& divisor)
   {
-    return (divisor == 0) ? true : (dividend / divisor).Denominator == 1;
+    return (divisor == 0_r) ? true : (dividend / divisor).Denominator == 1;
   }
-
-  //---------------------------------------------------------------------------
-  // user defined literals for rational 
-  //---------------------------------------------------------------------------
-  namespace literals
-  {
-    constexpr rational operator ""_r(unsigned long long int numerator)
-    { return rational{numerator}; }
-
-    constexpr rational operator ""_r(long double value)
-    { return rational{static_cast<double>(value)}; }
-  } // namespace literals
 
 } // namespace bnd
 

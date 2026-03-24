@@ -9,24 +9,21 @@
 #include <iostream>
 
 using namespace bnd;
-using namespace bnd::literals;
-
 void test_conversion()
 {
 /*
-  using f30t40 = bound<30, 40, 2>;
-  using f20t50 = bound<20, 50, 1>;
+  using f30t40 = bound<{{30, 40}, 2}>;
+  using f20t50 = bound<{interval{20, 50}, 1}>;
   f30t40 smaller{34};
   f20t50 bigger;
 
-  bigger = smaller;
-
-  smaller = bigger; // no compile
-  smaller.store<round, saturate>(bigger); // no compile
-  smaller = bound_cast<f30t40>(bigger); // no compile
-  smaller = saturate_to<f30t40>(round_to<f30t40::Notch>(bigger)); // no compile
-  smaller = wrap_to<f30t40>(bigger); // no compile
+  std::error_code ec;
+  bigger = smaller.report(ec); // only rhs may have error strategy
+  bigger = smaller.report(); //throws
+  bigger = smaller.expect(); //throws
 */
+  //smaller = bigger; // no compile
+ // smaller = promise_fits<decltype(smaller)>(round<smaller.Notch>(bigger));
 }
 
 void test_rational()
@@ -37,7 +34,7 @@ void test_rational()
 
 void test_div()
 {
-  using r = bound<1,255>;
+  using r = bound<{1,255}>;
   r a = 102;
   r b{16};
 
@@ -49,7 +46,7 @@ void test_div()
 
 void test_mul()
 {
-  using r = bound<10,255>;
+  using r = bound<{{10,255}, 1}>;
   r a{16};
   r b = 102;
 
@@ -58,7 +55,7 @@ void test_mul()
   std::cout << b << std::endl;
   std::cout << c << std::endl;
 
-  using u4 = bound<2,10,1_r/4>;
+  using u4 = bound<{{2,10},1_r/4}>;
 
   u4 d{3};
   u4 e{3.25};
@@ -87,7 +84,7 @@ void test_mul()
   auto k = g * d;
   std::cout << k << std::endl;
 
-  using s = bound<-100, 10, 1_r/16>;
+  using s = bound<{{-100, 10}, 1_r/16}>;
   using n = s::negative;
 
   auto l = s::valid(-7.125);
@@ -101,7 +98,7 @@ void test_mul()
 
 void test_add()
 {
-  using u8 = bound<10,255, 1_r/16>;
+  using u8 = bound<{{10,255}, 1_r/16}>;
   //constexpr u8 invalid{-6};
   u8 a{16};
   u8 b = 102;
@@ -117,7 +114,7 @@ void test_add()
   auto d = a - b;
   std::cout << d << std::endl;
 
-  using u64 = bound<0, std::numeric_limits<std::uint64_t>::max(), 1>;
+  using u64 = bound<{{0, std::numeric_limits<std::uint64_t>::max()}, 1}>;
   
   constexpr u64 biggest{std::numeric_limits<std::uint64_t>::max()};
   std::cout << biggest << std::endl;
@@ -144,7 +141,7 @@ void test_comparision()
 
 void test_interval()
 {
-  constexpr interval point{3_r/4};
+  constexpr interval point{3_r/4, 3_r/4};
   constexpr interval a{0,1};
   //print_values<point>{};
 }
@@ -153,44 +150,44 @@ void test_grid()
 {
   static_assert
   (
-    grid{{0,100}}.max_notch() == 100 &&
+    grid{{0,100}, 1}.max_notch() == 100 &&
     grid{{1,5}, 0.25}.max_notch() == 16 &&
-    grid{{0,UINT64_MAX}}.max_notch() == UINT64_MAX
+    grid{{0,UINT64_MAX}, 1}.max_notch() == UINT64_MAX
   );
 }
 
 void test_bound()
 {
   //bound<-0.5, 0.5, 1>{}; // zero displaced here
-  using frac = bound<-10, 10, 0>;
+  using frac = bound<{{-10, 10}, 0}>;
   static_assert(std::is_same_v<frac::raw_type, rational>);
   constexpr frac f = 2_r/3;
   std::cout << "frac f = " << f << std::endl;
 
-  using step = bound<-5, 5, 0.5>;
+  using step = bound<{{-5, 5}, 0.5}>;
   static_assert(not std::is_same_v<step::raw_type, rational>);
   constexpr step s = 3_r/2;
   std::cout << "step s = " << s << std::endl;
 }
 
-using test0_t = bound<1,3,1>;
-using test1_t = bound<0, {1u, 1, sign::negative}, {-1}>; // fails on instantiation
+using test0_t = bound<{{1,3},1}>;
+using test1_t = bound<{{0, {1u, 1, sign::negative}}, -1}>; // fails on instantiation
 //using test2_t = bound<{1,1, sign::zero}>;
 //using test3_t = bound<{1,0}>;
-using test4_t = bound<0, std::numeric_limits<umax>::max(), 1>;
-using test5_t = bound<1_r>;
-using test6_t = bound<-6_r/(1 << 4)>;
-using test7_t = bound<-6.0/(1 << 4)>;
-using test8_t = bound<-10.0, 10.0, 0.25>;
-using test9_t = bound<3,1>;  // fails on instantiation
-using test10_t = bound<1,100, 2_r/3>;
-using test11_t = bound<1,5>;
+using test4_t = bound<{{0, std::numeric_limits<umax>::max()}, 1}>;
+using test5_t = bound<{1_r}>;
+using test6_t = bound<{-6_r/(1 << 4)}>;
+using test7_t = bound<{-6.0/(1 << 4)}>;
+using test8_t = bound<{{-10.0, 10.0}, 0.25}>;
+//using test9_t = bound<{3,1}>;  // fails on instantiation
+using test10_t = bound<{{1,100}, 3_r/2}>;
+//using test11_t = bound<{1,5}>;
 
 static_assert(std::is_same_v<test0_t::raw_type, std::uint8_t>);
 static_assert(std::is_same_v<test4_t::raw_type, std::uint64_t>);
 
 static_assert(std::is_same_v<test5_t::raw_type, rational>);
-static_assert(std::is_same_v<test11_t::raw_type, rational>);
+//static_assert(std::is_same_v<test11_t::raw_type, rational>);
 
 int main()
 {

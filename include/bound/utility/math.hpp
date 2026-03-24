@@ -37,7 +37,7 @@ namespace bnd
   }
 
   template<typename T>
-  concept arithmetic = std::integral<T> || std::floating_point<T>;
+  concept arithmetic = std::integral<T> || std::floating_point<T> || std::same_as<rational,T>;
 
   template <std::signed_integral V>
   constexpr umax safe_abs(V value)
