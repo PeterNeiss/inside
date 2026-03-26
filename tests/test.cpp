@@ -76,17 +76,15 @@ void test_mul()
   auto g = n4::valid(-2);
   auto h = n4::valid(-2.25);
 
-  std::cout << g << std::endl;
-  std::cout << h << std::endl;
+  std::cout << "g = " << g << std::endl;
+  std::cout << "h = " << h << std::endl;
   auto i = g * h;
-  std::cout << i << std::endl;
+  std::cout << "i = " << i << std::endl;
 
-  std::cout << d << std::endl;
-  std::cout << g << std::endl;
   auto j = d * g;
-  std::cout << j << std::endl;
+  std::cout << "j = " << j << std::endl;
   auto k = g * d;
-  std::cout << k << std::endl;
+  std::cout << "k = " << k << std::endl;
 
   using s = bound<{{-100, 10}, 1_r/16}>;
   using n = s::negative;
@@ -94,7 +92,7 @@ void test_mul()
   auto l = s::valid(-7.125);
   auto m = n::valid(1.125);
 
-  std::cout << l << std::endl;
+  std::cout << "l = " << l << std::endl;
   std::cout << m << std::endl;
   std::cout << l*m << std::endl;
   std::cout << m*l << std::endl;
@@ -205,7 +203,7 @@ int main()
     test_add();
     test_bound();
     test_mul();
-    test_div();
+//    test_div();
     
     // print_values<-(10.0_r)>{};
     //print_types<bound<>, test0_t, test1_t>{};

@@ -13,12 +13,12 @@ namespace bnd
 {
   std::string to_string(rational r)
   {
-    if (r.Denominator == 1)
-      return std::to_string(r.Numerator);
-
     std::string str;
     if (r.Sign == sign::negative)
       str =  "-";
+
+    if (r.Denominator == 1)
+      return str += std::to_string(r.Numerator);
 
     str += std::to_string(r.Numerator);
     str += "/"; 
