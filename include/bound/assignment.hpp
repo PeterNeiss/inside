@@ -5,6 +5,7 @@
 #define BNDassignmentHPP
 
 #include "bound/utility/grid.hpp"
+#include "bound/utility/print.hpp"
 #include "bound/waiver.hpp"
 
 #include <system_error>
@@ -67,7 +68,7 @@ namespace bnd
         throw std::system_error
         (
           EDOM, std::generic_category(), 
-          std::to_string(rhs) + " is not in "// interval
+          std::to_string(rhs) + " is not in " + bnd::to_string(L::Interval)
         );
     }
 

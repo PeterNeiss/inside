@@ -8,9 +8,9 @@
 #include <string_view>
 #include <algorithm>
 #include <type_traits>
-
 namespace bnd
 {
+/*
   //---------------------------------------------------------------------------
   // fixed_string 
   //---------------------------------------------------------------------------
@@ -137,9 +137,9 @@ namespace bnd
     }
   } // namespace detail
 
-  template <auto V>
-      requires std::is_integral_v<decltype(V)>
-  [[nodiscard]] constexpr auto to_fixed_string() {
+  template <std::integral V>
+  [[nodiscard]] constexpr auto to_fixed_string() 
+  {
       constexpr std::size_t N = detail::digit_count<V>();
       fixed_string<N> result;
 
@@ -186,7 +186,7 @@ namespace bnd
   [[nodiscard]] constexpr std::string_view int_to_sv() {
       return int_string_storage<V>::value;
 }
-
+*/
 } // namespace bnd
 
 #endif // BNDfixed_stringHPP
