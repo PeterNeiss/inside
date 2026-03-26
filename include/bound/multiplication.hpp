@@ -6,7 +6,7 @@
 
 #include "bound/common.hpp"
 #include "bound/utility/grid.hpp"
-#include "bound/waiver.hpp"
+#include "bound/policy.hpp"
 
 namespace bnd
 {
@@ -16,16 +16,16 @@ namespace bnd
     using result = bound<L::Grid * R::Grid>;
     using raw_type = result::raw_type;
 
-    template <waiver_flag F = none>
-    static constexpr result mul(L, R, waiver_type<F> = {});
+    template <policy_flag F = none>
+    static constexpr result mul(L, R, policy<F> = {});
   };
 
   //---------------------------------------------------------------------------
   // mul 
   //---------------------------------------------------------------------------
   template<boundable L, boundable R>
-  template<waiver_flag F>
-  constexpr auto multiplication<L,R>::mul(L lhs, R rhs, waiver_type<F> waiver) -> result
+  template<policy_flag F>
+  constexpr auto multiplication<L,R>::mul(L lhs, R rhs, policy<F> waiver) -> result
   { 
     if constexpr (result::Grid.Notch.Sign == sign::zero)
       return result::from_raw(lhs.to_rational() * rhs.to_rational());

@@ -6,7 +6,7 @@
 
 #include "bound/common.hpp"
 #include "bound/utility/grid.hpp"
-#include "bound/waiver.hpp"
+#include "bound/policy.hpp"
 
 namespace bnd
 {
@@ -16,16 +16,16 @@ namespace bnd
     using result = bound<{L::Grid.Interval / R::Grid.Interval, 0}>;
     using raw_type = result::raw_type;
 
-    template <waiver_flag F = none>
-    static constexpr result div(L, R, waiver_type<F> = {});
+    template <policy_flag F = none>
+    static constexpr result div(L, R, policy<F> = {});
   };
 
   //---------------------------------------------------------------------------
   // div 
   //---------------------------------------------------------------------------
   template<boundable L, boundable R>
-  template<waiver_flag F>
-  constexpr auto division<L,R>::div(L lhs, R rhs, waiver_type<F>) -> result
+  template<policy_flag F>
+  constexpr auto division<L,R>::div(L lhs, R rhs, policy<F>) -> result
   { 
     return lhs.to_rational() / rhs.to_rational();
   }

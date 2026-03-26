@@ -5,7 +5,7 @@
 #define BNDconstructionHPP
 
 #include "bound/utility/grid.hpp"
-#include "bound/waiver.hpp"
+#include "bound/policy.hpp"
 
 namespace bnd
 {
@@ -16,24 +16,24 @@ namespace bnd
   struct construction 
   {
     using raw_type = B::raw_type;
-    static constexpr waiver_flag default_flag = none;
+    static constexpr policy_flag default_flag = none;
 
-    template<waiver_flag F = default_flag>
-    static constexpr raw_type from_value(rational value, waiver_type<F> waiver = {});
+    template<policy_flag F = default_flag>
+    static constexpr raw_type from_value(rational value, policy<F> waiver = {});
 
-    template<std::integral V, waiver_flag F = default_flag>
-    static constexpr raw_type from_value(V value, waiver_type<F> waiver = {}); 
+    template<std::integral V, policy_flag F = default_flag>
+    static constexpr raw_type from_value(V value, policy<F> waiver = {}); 
 
-    template<std::floating_point V, waiver_flag F = default_flag>
-    static constexpr raw_type from_value(V value, waiver_type<F> waiver = {}); 
+    template<std::floating_point V, policy_flag F = default_flag>
+    static constexpr raw_type from_value(V value, policy<F> waiver = {}); 
   };
 
   //---------------------------------------------------------------------------
   // from_value(integral)
   //---------------------------------------------------------------------------
   template<boundable B>
-  template<std::integral V, waiver_flag F>
-  constexpr auto construction<B>::from_value(V value, waiver_type<F> waiver) -> raw_type 
+  template<std::integral V, policy_flag F>
+  constexpr auto construction<B>::from_value(V value, policy<F> waiver) -> raw_type 
   { 
     constexpr interval value_interval = 
       {std::numeric_limits<V>::lowest(), std::numeric_limits<V>::max()};
@@ -66,8 +66,8 @@ namespace bnd
   // from_value(floating_point)
   //---------------------------------------------------------------------------
   template<boundable B>
-  template<std::floating_point V, waiver_flag F>
-  constexpr auto construction<B>::from_value(V value, waiver_type<F> waiver) -> raw_type 
+  template<std::floating_point V, policy_flag F>
+  constexpr auto construction<B>::from_value(V value, policy<F> waiver) -> raw_type 
   { 
     // can never construct: false
     // can always construct: false
@@ -91,8 +91,8 @@ namespace bnd
   // from_value(rational)
   //---------------------------------------------------------------------------
   template<boundable B>
-  template<waiver_flag F>
-  constexpr auto construction<B>::from_value(rational value, waiver_type<F> waiver) -> raw_type 
+  template<policy_flag F>
+  constexpr auto construction<B>::from_value(rational value, policy<F> waiver) -> raw_type 
   { 
     // can never construct: false
     // can always construct: false

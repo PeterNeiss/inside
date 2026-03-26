@@ -9,6 +9,16 @@
 #include <iostream>
 
 using namespace bnd;
+
+void test_waiver()
+{
+  policy p;
+  (void) p;
+  
+  std::error_code ec;
+  policy s{ec};
+}
+
 void test_conversion()
 {
 /*
@@ -39,7 +49,11 @@ void test_div()
 {
   using r = bound<{1,255}>;
  // using r = bound<{-255,-1}>;
-  r a = 1020ull;
+  std::error_code ec;
+  policy p{ec};
+  r a{1020ull, p };
+  std::cout << ec.message() << std::endl;
+ // r a{1020ull};
   r b{16};
 
   auto c = a / b;
@@ -203,7 +217,8 @@ int main()
     test_add();
     test_bound();
     test_mul();
-//    test_div();
+    test_div();
+    test_waiver();
     
     // print_values<-(10.0_r)>{};
     //print_types<bound<>, test0_t, test1_t>{};

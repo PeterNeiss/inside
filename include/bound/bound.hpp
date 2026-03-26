@@ -5,7 +5,7 @@
 #define BNDboundHPP
 
 #include "bound/common.hpp"
-#include "bound/waiver.hpp"
+#include "bound/policy.hpp"
 #include "bound/construction.hpp"
 #include "bound/addition.hpp"
 #include "bound/multiplication.hpp"
@@ -54,13 +54,19 @@ namespace bnd
 
     constexpr bound(bound const& other) noexcept :Raw{other.Raw} { }
 
-    template <arithmetic A, waiver_flag F = none>
-    constexpr bound(A value, waiver_type<F> waiver = {})
-    // :Raw{construction<bound>::from_value(value, waiver)} { }
-    { assignment<bound, A>::assign(*this, value, waiver); }
+    template <arithmetic A>
+    constexpr bound(A value)
+    { 
+      policy P;
+      assignment<bound, A>::assign(*this, value, P); 
+    }
 
-    template <waiver_flag F = construction<bound>::default_flag>
-    constexpr bound(rational value, waiver_type<F> waiver = {})
+    template <arithmetic A, typename P>
+    constexpr bound(A value, P& policy)
+    { assignment<bound, A>::assign(*this, value, policy); }
+
+    template <policy_flag F = construction<bound>::default_flag>
+    constexpr bound(rational value, policy<F> waiver = {})
      :Raw{construction<bound>::from_value(value, waiver)} { }
 
     constexpr static bound from_raw(raw_type raw) { bound b; b.Raw = raw; return b; } 
@@ -103,8 +109,8 @@ namespace bnd
   //---------------------------------------------------------------------------
   // add 
   //---------------------------------------------------------------------------
-  template <boundable L, boundable R, waiver_flag F = none>
-  constexpr auto add(L const& lhs, R const& rhs, waiver_type<F> waiver = {})
+  template <boundable L, boundable R, policy_flag F = none>
+  constexpr auto add(L const& lhs, R const& rhs, policy<F> waiver = {})
   { return addition<L,R>::add(lhs, rhs, waiver); }
 
   //---------------------------------------------------------------------------
@@ -116,8 +122,8 @@ namespace bnd
   //---------------------------------------------------------------------------
   // sub 
   //---------------------------------------------------------------------------
-  template <boundable L, boundable R, waiver_flag F = none>
-  constexpr auto sub(L const& lhs, R const& rhs, waiver_type<F> waiver = {})
+  template <boundable L, boundable R, policy_flag F = none>
+  constexpr auto sub(L const& lhs, R const& rhs, policy<F> waiver = {})
   { return add(lhs, -rhs, waiver); }
 
   //---------------------------------------------------------------------------
@@ -129,8 +135,8 @@ namespace bnd
   //---------------------------------------------------------------------------
   // mul 
   //---------------------------------------------------------------------------
-  template <boundable L, boundable R, waiver_flag F = none>
-  constexpr auto mul(L const& lhs, R const& rhs, waiver_type<F> waiver = {})
+  template <boundable L, boundable R, policy_flag F = none>
+  constexpr auto mul(L const& lhs, R const& rhs, policy<F> waiver = {})
   { return multiplication<L,R>::mul(lhs, rhs, waiver); }
 
   //---------------------------------------------------------------------------
@@ -142,8 +148,8 @@ namespace bnd
   //---------------------------------------------------------------------------
   // div 
   //---------------------------------------------------------------------------
-  template <boundable L, boundable R, waiver_flag F = none>
-  constexpr auto div(L lhs, R rhs, waiver_type<F> waiver = {})
+  template <boundable L, boundable R, policy_flag F = none>
+  constexpr auto div(L lhs, R rhs, policy<F> waiver = {})
   { return division<L,R>::div(lhs, rhs, waiver); }
 
   //---------------------------------------------------------------------------

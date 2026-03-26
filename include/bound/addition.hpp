@@ -6,7 +6,7 @@
 
 #include "bound/common.hpp"
 #include "bound/utility/grid.hpp"
-#include "bound/waiver.hpp"
+#include "bound/policy.hpp"
 
 namespace bnd
 {
@@ -15,16 +15,16 @@ namespace bnd
   { 
     using result = bound<L::Grid + R::Grid>;
 
-    template <waiver_flag F = none>
-    static constexpr result add(L, R, waiver_type<F> = {});
+    template <policy_flag F = none>
+    static constexpr result add(L, R, policy<F> = {});
   };
 
   //---------------------------------------------------------------------------
   // add 
   //---------------------------------------------------------------------------
   template<boundable L, boundable R>
-  template<waiver_flag F>
-  constexpr auto addition<L,R>::add(L lhs, R rhs, waiver_type<F>) -> result
+  template<policy_flag F>
+  constexpr auto addition<L,R>::add(L lhs, R rhs, policy<F>) -> result
   { 
     using raw = result::raw_type;
     constexpr raw lhs_widen = (result::Grid.Notch / lhs.Grid.Notch).Numerator; 
