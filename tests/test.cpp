@@ -13,10 +13,13 @@ void test_conversion()
 {
 /*
   using f30t40 = bound<{{30, 40}, 2}>;
+
+  
   using f20t50 = bound<{interval{20, 50}, 1}>;
   f30t40 smaller{34};
   f20t50 bigger;
 
+  bigger = smaller;
   std::error_code ec;
   bigger = smaller.report(ec); // only rhs may have error strategy
   bigger = smaller.report(); //throws
@@ -35,7 +38,7 @@ void test_rational()
 void test_div()
 {
   using r = bound<{1,255}>;
-  r a = 102;
+  r a = 1020;
   r b{16};
 
   auto c = a / b;
@@ -46,7 +49,7 @@ void test_div()
 
 void test_mul()
 {
-  using r = bound<{{10,255}, 1}>;
+  using r = bound<{10,255, 1}>;
   r a{16};
   r b = 102;
 
@@ -161,6 +164,9 @@ void test_bound()
   //bound<-0.5, 0.5, 1>{}; // zero displaced here
   using frac = bound<{{-10, 10}, 0}>;
   static_assert(std::is_same_v<frac::raw_type, rational>);
+
+ // auto test = frac::unchecked{3};
+
   constexpr frac f = 2_r/3;
   std::cout << "frac f = " << f << std::endl;
 
@@ -214,9 +220,15 @@ int main()
     (void)b;
     std::cout << "bound test\n";
   }
+  catch(std::system_error& e)
+  {
+    std::cout << "code:    [" << e.code() << "]\n"
+                 "message: [" << e.code().message() << "]\n"
+                 "what:    [" << e.what() << "]\n";
+  }
   catch(std::exception& e)
   {
-    std::cout << e.what();
+    std::cout << e.what() << std::endl;
   }
   catch(char const* str)
   {

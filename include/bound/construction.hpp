@@ -55,7 +55,7 @@ namespace bnd
     }  
     else 
     {
-      if (not waiver.test(no_runtime_check) && not B::Interval.includes(value))
+      if (not waiver.test(ignore_all) && not B::Interval.includes(value))
         throw "value not in interval(runtime)";
     }
 
@@ -80,7 +80,7 @@ namespace bnd
     }  
     else 
     {
-      if (not waiver.test(no_runtime_check) && not B::Interval.includes(value))
+      if (not waiver.test(ignore_all) && not B::Interval.includes(value))
         throw "value not in interval(runtime)";
     }
 
@@ -105,7 +105,7 @@ namespace bnd
     }  
     else 
     {
-      if (not waiver.test(no_runtime_check) && not B::Interval.includes(value))
+      if (not waiver.test(ignore_all) && not B::Interval.includes(value))
         throw "value not in interval(runtime)";
     }
 

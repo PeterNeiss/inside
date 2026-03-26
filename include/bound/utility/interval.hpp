@@ -27,32 +27,9 @@ namespace bnd
 
     interval() = default;
 
-    //constexpr interval(arithmetic auto lower = 0):Lower{lower}, Upper{lower} { }
     constexpr interval(arithmetic auto lower, arithmetic auto upper):Lower{lower}, Upper{upper} { }
-    //constexpr interval(rational lower):Lower{lower}, Upper{lower} { }
     constexpr interval(rational lower, rational upper):Lower{lower}, Upper{upper} { }
-/*    constexpr interval(std::initializer_list<rational> list)
-    {
-      if (std::empty(list))
-      {
-        Lower = 0;
-        Upper = 0;
-      }
-      
-      if (list.size() == 1)
-      {
-        Lower = *list.begin();
-        Upper = Lower;
-      }
 
-      if (list.size() == 2)
-      {
-        Lower = *list.begin();
-        Upper = *(std::next(list.begin()));
-      }
-    }
-*/
-    // operator== be default for structural type
     constexpr bool operator==(const interval& rhs) const = default;
     constexpr interval operator-() const { return interval{-Upper, -Lower}; } 
 

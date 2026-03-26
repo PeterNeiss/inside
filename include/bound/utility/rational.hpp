@@ -6,6 +6,7 @@
 
 #include "bound/common.hpp"
 #include "bound/utility/math.hpp"
+#include "bound/detail/fixed_string.hpp"
 
 #include <numeric>
 #include <compare>
@@ -51,6 +52,16 @@ namespace bnd
 
     // allow unary+ for generic programming
     constexpr rational operator+() const { return *this; }
+
+    constexpr std::string_view to_string() const
+    {
+      if consteval
+      {
+        return "TODO"; 
+      }
+    
+      return "TODO";
+    }
   };
   
   //---------------------------------------------------------------------------

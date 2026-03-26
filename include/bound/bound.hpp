@@ -10,11 +10,14 @@
 #include "bound/addition.hpp"
 #include "bound/multiplication.hpp"
 #include "bound/division.hpp"
+#include "bound/assignment.hpp"
 
 namespace bnd
 {
   //---------------------------------------------------------------------------
   // bound 
+  //---------------------------------------------------------------------------
+  // error reporting strategy: Constructors throw
   //---------------------------------------------------------------------------
   template<grid G>
   struct bound
@@ -51,9 +54,10 @@ namespace bnd
 
     constexpr bound(bound const& other) noexcept :Raw{other.Raw} { }
 
-    template <waiver_flag F = construction<bound>::default_flag>
-    constexpr bound(arithmetic auto value, waiver_type<F> waiver = {})
-     :Raw{construction<bound>::from_value(value, waiver)} { }
+    template <arithmetic A, waiver_flag F = none>
+    constexpr bound(A value, waiver_type<F> waiver = {})
+    // :Raw{construction<bound>::from_value(value, waiver)} { }
+    { assignment<bound, A>::assign(*this, value, waiver); }
 
     template <waiver_flag F = construction<bound>::default_flag>
     constexpr bound(rational value, waiver_type<F> waiver = {})
@@ -70,8 +74,8 @@ namespace bnd
         return Raw * Grid.Notch + Interval.Lower; 
     }
 
-   // constexpr bound& operator=(boundable auto const& other)
-   // { assignment::assign(*this, other; }
+//    constexpr bound& operator=(boundable auto const& other)
+//    { return assignment::assign(*this, other; }
 
     //TODO
     //template <typename T>
