@@ -57,19 +57,17 @@ namespace bnd
     constexpr interval rhs_interval = 
       {std::numeric_limits<R>::lowest(), std::numeric_limits<R>::max()};
 
-    if constexpr (L::Interval.excludes(rhs_interval))
+    static_assert(not L::Interval.excludes(rhs_interval));
+
+    if constexpr (not L::Interval.includes(rhs_interval) && waiver.domain_check())
     {
-      throw "Can never construct";
-    }
-    else if constexpr (not L::Interval.includes(rhs_interval) && waiver.domain_check())
-    {
+      // TODO saturation and wrap
       // check runtime rhs
       if (not L::Interval.includes(rhs))
-        throw std::system_error
-        (
-          EDOM, std::generic_category(), 
-          std::to_string(rhs) + " is not in " + bnd::to_string(L::Interval)
-        );
+      {
+        waiver.domain_error(std::to_string(rhs) + " is not in " + bnd::to_string(L::Interval));
+        return lhs;
+      }
     }
 
     lhs.Raw = L::Grid.template to_raw<typename L::raw_type>(rhs); 

@@ -38,7 +38,8 @@ void test_rational()
 void test_div()
 {
   using r = bound<{1,255}>;
-  r a = 1020;
+ // using r = bound<{-255,-1}>;
+  r a = 1020ull;
   r b{16};
 
   auto c = a / b;
@@ -58,7 +59,7 @@ void test_mul()
   std::cout << b << std::endl;
   std::cout << c << std::endl;
 
-  using u4 = bound<{{2,10},1_r/4}>;
+  using u4 = bound<{{3_r/4,42_r/4},1_r/4}>;
 
   u4 d{3};
   u4 e{3.25};

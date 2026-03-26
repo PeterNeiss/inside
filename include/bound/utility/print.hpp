@@ -31,18 +31,26 @@ namespace bnd
     std::string str{"["};
 
     str += bnd::to_string(ival.Lower);
-    str += " .. "; 
+    str += ".."; 
     str += bnd::to_string(ival.Upper); 
     str += "]";
     return str;
   }
 
+  std::string to_string(grid g)
+  {
+    std::string str{"{"};
+
+    str += bnd::to_string(g.Interval);
+    str += ", "; 
+    str += bnd::to_string(g.Notch); 
+    str += "}";
+    return str;
+  }
+
   inline std::ostream& operator<<(std::ostream& stream, rational r)
   {
-    if (r.Sign == sign::negative)
-      stream << "-";
-
-    stream << r.Numerator << "/" << r.Denominator; 
+    stream << bnd::to_string(r); 
     return stream;
   }
 
@@ -51,11 +59,10 @@ namespace bnd
     //TODO auto [num,den] = b.to_rational();
     stream << b.to_rational()
            <<" {"   
-           << +b.Raw << "[" << uint_type_name<typename decltype(b)::raw_type>() << "] "
-           << b.Interval.Lower << "[Low] "
-           << b.Interval.Upper << "[Up] "
-           << b.Grid.Notch << "[Notch] "
-           << +b.Grid.max_notch() << "[MaxRaw]}";
+           << +b.Raw << "[" << uint_type_name<typename decltype(b)::raw_type>()
+           << " Max:" << +b.Grid.max_notch() << "] "
+           << bnd::to_string(b.Grid)
+           << "}";
     return stream;
   }
 

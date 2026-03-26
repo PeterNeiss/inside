@@ -31,6 +31,7 @@ namespace bnd
   template<waiver_flag W = none>
   struct waiver_type
   {
+    //TODO conditionally make member: error_code* eptr{nullptr};
     static constexpr bool test(waiver_flag w) 
     { return W & w; }
 
@@ -40,9 +41,14 @@ namespace bnd
       return not test(ignore_domain);
     }
 
+    [[noreturn]] void domain_error(std::string const& what)
+    { throw std::system_error(EDOM, std::generic_category(), what ); }
+
     constexpr explicit operator bool() const { return W != 0; }
 
   };
+
+  //TODO CTAD waiver from error_code object
 
   template<waiver_flag W>
   inline constexpr waiver_type<W> waiver;
