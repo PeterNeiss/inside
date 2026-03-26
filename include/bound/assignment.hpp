@@ -20,7 +20,7 @@ namespace bnd
   struct assignment<L,R>
   {
     template<typename P>
-    static constexpr L& assign(L& lhs, R const& rhs, P&);
+    static constexpr L& assign(L& lhs, R const& rhs, P&&);
   };
 
   template <boundable L, typename R>
@@ -50,18 +50,18 @@ namespace bnd
   //---------------------------------------------------------------------------
   template<boundable L, std::integral R>
   template<typename P>
-  constexpr L& assignment<L,R>::assign(L& lhs, R const& rhs, P& policy)
+  constexpr L& assignment<L,R>::assign(L& lhs, R const& rhs, P&& policy)
   { 
     constexpr interval rhs_interval = 
       {std::numeric_limits<R>::lowest(), std::numeric_limits<R>::max()};
 
     static_assert(not L::Interval.excludes(rhs_interval));
 
-    if constexpr (not L::Interval.includes(rhs_interval) && policy.domain_check())
+    if constexpr (not L::Interval.includes(rhs_interval))
     {
       // TODO saturation and wrap
       // check runtime rhs
-      if (not L::Interval.includes(rhs))
+      if (policy.domain_check() && not L::Interval.includes(rhs))
       {
         policy.domain_error(std::to_string(rhs) + " is not in " + bnd::to_string(L::Interval));
         return lhs;

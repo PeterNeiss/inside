@@ -32,8 +32,6 @@ namespace bnd
 
   struct empty_ref
   { 
-    empty_ref() = default;
-    empty_ref(std::error_code&) {}
   };
   struct error_ref
   {
@@ -65,14 +63,13 @@ namespace bnd
       else
         throw std::system_error(EDOM, std::generic_category(), what); 
     }
-
-    constexpr explicit operator bool() const { return W != 0; }
-
   };
 
-  // CTAD
-  policy() -> policy<none, empty_ref>; 
-  policy(std::error_code&) -> policy<none, error_ref>; 
+  template<policy_flag F = none>
+  policy<F,empty_ref> make_policy() { return {}; }
+
+  template<policy_flag F = none>
+  policy<F, error_ref> make_policy(std::error_code& ec) { return {ec}; }
 
 } // namespace bnd
 

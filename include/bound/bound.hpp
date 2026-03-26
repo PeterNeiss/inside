@@ -56,13 +56,10 @@ namespace bnd
 
     template <arithmetic A>
     constexpr bound(A value)
-    { 
-      policy P;
-      assignment<bound, A>::assign(*this, value, P); 
-    }
+    { assignment<bound, A>::assign(*this, value, policy{}); }
 
     template <arithmetic A, typename P>
-    constexpr bound(A value, P& policy)
+    constexpr bound(A value, P&& policy)
     { assignment<bound, A>::assign(*this, value, policy); }
 
     template <policy_flag F = construction<bound>::default_flag>

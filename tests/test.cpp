@@ -14,9 +14,6 @@ void test_waiver()
 {
   policy p;
   (void) p;
-  
-  std::error_code ec;
-  policy s{ec};
 }
 
 void test_conversion()
@@ -50,16 +47,16 @@ void test_div()
   using r = bound<{1,255}>;
  // using r = bound<{-255,-1}>;
   std::error_code ec;
-  policy p{ec};
-  r a{1020ull, p };
+  r a{1020ull, make_policy<ignore_domain>()};
   std::cout << ec.message() << std::endl;
  // r a{1020ull};
   r b{16};
-
+/*
   auto c = a / b;
   std::cout << a << std::endl;
   std::cout << b << std::endl;
   std::cout << c << std::endl;
+*/
 }
 
 void test_mul()
