@@ -48,6 +48,11 @@ namespace bnd
     return str;
   }
 
+  // delegate to std::to_string
+  template <typename V>
+  auto to_string(V value)
+  { return std::to_string(value); }
+
   inline std::ostream& operator<<(std::ostream& stream, rational r)
   {
     stream << bnd::to_string(r); 

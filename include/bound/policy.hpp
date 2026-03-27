@@ -27,8 +27,8 @@ namespace bnd
   {ignore_zero | ignore_domain | ignore_range | ignore_round};
 
   // unary  
-  inline static constexpr policy_flag saturate{1ull << 32}; // only for assignment, construction 
-  inline static constexpr policy_flag wrap    {1ull << 33}; // only for assignment, construction
+  inline static constexpr policy_flag clamp{1ull << 32}; // only for assignment, construction 
+  inline static constexpr policy_flag wrap {1ull << 33}; // only for assignment, construction
 
   struct empty_ref
   { 

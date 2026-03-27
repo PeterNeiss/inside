@@ -6,7 +6,6 @@
 
 #include "bound/common.hpp"
 #include "bound/policy.hpp"
-#include "bound/construction.hpp"
 #include "bound/addition.hpp"
 #include "bound/multiplication.hpp"
 #include "bound/division.hpp"
@@ -61,10 +60,6 @@ namespace bnd
     template <arithmetic A, typename P>
     constexpr bound(A value, P&& policy)
     { assignment<bound, A>::assign(*this, value, policy); }
-
-    template <policy_flag F = construction<bound>::default_flag>
-    constexpr bound(rational value, policy<F> waiver = {})
-     :Raw{construction<bound>::from_value(value, waiver)} { }
 
     constexpr static bound from_raw(raw_type raw) { bound b; b.Raw = raw; return b; } 
 

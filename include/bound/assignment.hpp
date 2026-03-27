@@ -95,7 +95,7 @@ namespace bnd
         throw std::system_error
         (
           EDOM, std::generic_category(), 
-          std::to_string(rhs) + "is not in interval"
+          bnd::to_string(rhs) + "is not in interval"
         );
     }
 

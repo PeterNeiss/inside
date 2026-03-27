@@ -47,7 +47,7 @@ void test_div()
   using r = bound<{1,255}>;
  // using r = bound<{-255,-1}>;
   std::error_code ec;
-  r a{1020ull, make_policy<ignore_domain>()};
+  r a{1020ull, make_policy(ec)};
   std::cout << ec.message() << std::endl;
  // r a{1020ull};
   r b{16};
