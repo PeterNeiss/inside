@@ -35,7 +35,7 @@ try_compile(
     BOUND_HAS_STACKTRACE
     SOURCE_FROM_CONTENT stacktrace_check.cpp
     "#include <stacktrace>\nint main() { return std::stacktrace::current().size(); }\n"
-    CXX_STANDARD 23
+    CMAKE_FLAGS "-DCMAKE_CXX_STANDARD=23"
     LINK_LIBRARIES stdc++_libbacktrace
 )
 
