@@ -27,8 +27,8 @@ namespace bnd
     requires std::floating_point<R> || std::same_as<rational, R>
   struct assignment<L,R>
   {
-    template<policy_flag F = none>
-    static constexpr L& assign(L& lhs, R const& rhs, policy<F> = {});
+    template<typename P>
+    static constexpr L& assign(L& lhs, R const& rhs, P&&);
   };
 
   template <boundable L, boundable R>
@@ -57,15 +57,27 @@ namespace bnd
 
     static_assert(not L::Interval.excludes(rhs_interval));
 
-    if constexpr (not L::Interval.includes(rhs_interval))
+    if consteval
     {
-      // TODO saturation and wrap
-      // check runtime rhs
-      if (policy.domain_check() && not L::Interval.includes(rhs))
+      // compile_time => always_check value 
+      if (not L::Interval.includes(rhs))
+        throw "value not in interval";
+    }  
+    else 
+    {
+      // run_time => compile_time_check (always_success or may_fail)
+      if constexpr (not L::Interval.includes(rhs_interval))
       {
-        policy.domain_error(std::to_string(rhs) + " is not in " + bnd::to_string(L::Interval));
-        return lhs;
+        // may_fail
+        if (policy.domain_check() && not L::Interval.includes(rhs))
+        {
+          // failed
+          policy.domain_error(bnd::to_string(rhs) + " is not in " + bnd::to_string(L::Interval));
+          return lhs;
+        }
+        // else success
       }
+      // else always_success
     }
 
     lhs.Raw = L::Grid.template to_raw<typename L::raw_type>(rhs); 
@@ -77,29 +89,28 @@ namespace bnd
   //---------------------------------------------------------------------------
   template <boundable L, typename R>
     requires std::floating_point<R> || std::same_as<rational, R>
-  template<policy_flag F>
-  constexpr L& assignment<L,R>::assign(L& lhs, R const& rhs, policy<F> waiver)
+  template<typename P>
+  constexpr L& assignment<L,R>::assign(L& lhs, R const& rhs, P&& policy)
   { 
-    // can never construct: false
-    // can always construct: false
-    // can maybe construct
     if consteval
     {
-      // always check at compile time
+      // compile_time => always_check value 
       if (not L::Interval.includes(rhs))
         throw "value not in interval";
     }  
     else 
     {
-      if (not waiver.test(ignore_domain) && not L::Interval.includes(rhs))
-        throw std::system_error
-        (
-          EDOM, std::generic_category(), 
-          bnd::to_string(rhs) + "is not in interval"
-        );
+      // run_time => may_fail
+      if (policy.domain_check() && not L::Interval.includes(rhs))
+      {
+        // failed
+        policy.domain_error(bnd::to_string(rhs) + " is not in " + bnd::to_string(L::Interval));
+        return lhs;
+      }
+      // else success
     }
 
-    lhs.Raw =  L::Grid.template to_raw<typename L::raw_type>(rhs); 
+    lhs.Raw = L::Grid.template to_raw<typename L::raw_type>(rhs); 
     return lhs;
   }
 

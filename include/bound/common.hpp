@@ -4,7 +4,7 @@
 #ifndef BNDcommonHPP
 #define BNDcommonHPP
 
-#include "bound/detail/debug.hpp"
+#include "bound/debug.hpp"
 #include "bound/utility/grid.hpp"
 
 namespace bnd

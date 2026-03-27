@@ -5,6 +5,27 @@
 #define BNDdebugHPP
 
 #include <stdexcept>
+#include <cstdint>
+
+#ifndef NDEBUG
+    #include <source_location>
+    namespace bnd
+    {
+      using diag_location = std::source_location;
+    }
+#else
+    namespace bnd
+    {
+      struct diag_location 
+      {
+        static constexpr diag_location current() noexcept { return {}; }
+        constexpr const char* file_name() const noexcept { return ""; }
+        constexpr const char* function_name() const noexcept { return ""; }
+        constexpr std::uint_least32_t line() const noexcept { return 0; }
+        constexpr std::uint_least32_t column() const noexcept { return 0; }
+      };
+    }
+#endif
 
 namespace bnd
 {

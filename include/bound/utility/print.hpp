@@ -8,6 +8,7 @@
 
 #include <ostream>
 #include <string>
+#include <source_location>
 
 namespace bnd
 {
@@ -46,6 +47,20 @@ namespace bnd
     str += bnd::to_string(g.Notch); 
     str += "}";
     return str;
+  }
+
+  std::string to_string(diag_location loc) 
+  {
+#ifndef NDEBUG
+    using namespace std::string_literals;
+    return loc.file_name() + ":"s
+         + std::to_string(loc.line()) + ":"s
+         + std::to_string(loc.column()) + " ("s
+         + loc.function_name() + "): "s;
+#else
+    (void) loc;
+    return "";
+#endif
   }
 
   // delegate to std::to_string

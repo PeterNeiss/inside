@@ -1,8 +1,8 @@
 #include <iostream>
 #include <limits>
 
+#include "bound/common.hpp"
 #include "bound/bound.hpp"
-#include "bound/detail/debug.hpp"
 #include "bound/utility/interval.hpp"
 #include "bound/utility/print.hpp"
 
@@ -82,10 +82,8 @@ void test_mul()
 
   using n4 = u4::negative;
 
-  //int runtime_value = 3;
-  //auto g = n4::runtime_valid(runtime_value);
-  auto g = n4::valid(-2);
-  auto h = n4::valid(-2.25);
+  auto g = n4(-2);
+  auto h = n4(-2.25);
 
   std::cout << "g = " << g << std::endl;
   std::cout << "h = " << h << std::endl;
@@ -100,8 +98,8 @@ void test_mul()
   using s = bound<{{-100, 10}, 1_r/16}>;
   using n = s::negative;
 
-  auto l = s::valid(-7.125);
-  auto m = n::valid(1.125);
+  auto l = s(-700.125);
+  auto m = n(1.125);
 
   std::cout << "l = " << l << std::endl;
   std::cout << m << std::endl;

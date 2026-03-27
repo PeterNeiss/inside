@@ -4,6 +4,8 @@
 #ifndef BNDpolicyHPP
 #define BNDpolicyHPP
 
+#include "bound/utility/print.hpp"
+
 #include <system_error>
 
 namespace bnd
@@ -30,20 +32,25 @@ namespace bnd
   inline static constexpr policy_flag clamp{1ull << 32}; // only for assignment, construction 
   inline static constexpr policy_flag wrap {1ull << 33}; // only for assignment, construction
 
+  struct srcloc
+  {
+    inline static thread_local diag_location Location;
+  };
+
   struct empty_ref
   { 
   };
   struct error_ref
   {
-    error_ref(std::error_code& ec):Code{ec} {}
+    constexpr error_ref(std::error_code& ec):Code{ec} {}
     std::error_code& Code;
   };
  
   template<policy_flag W = none, typename E = empty_ref>
-  struct policy: E 
+  struct policy: E, srcloc
   {
-    policy() = default;
-    policy(std::error_code& ec) requires std::same_as<E, error_ref>
+    constexpr policy() = default;
+    constexpr policy(std::error_code& ec) requires std::same_as<E, error_ref>
     :E(ec) { }
 
     //TODO conditionally make member: error_code* eptr{nullptr};
@@ -56,20 +63,30 @@ namespace bnd
       return not test(ignore_domain);
     }
 
-    void domain_error(std::string const& what) const
+    void domain_error(std::string what) const
     { 
       if constexpr (std::is_same_v<E, error_ref>)
       { E::Code = std::error_code{EDOM, std::generic_category()}; }
       else
-        throw std::system_error(EDOM, std::generic_category(), what); 
+      { throw std::system_error(EDOM, std::generic_category(), bnd::to_string(Location) + what); }
     }
   };
 
   template<policy_flag F = none>
-  policy<F,empty_ref> make_policy() { return {}; }
+  constexpr auto make_policy(diag_location loc = diag_location::current()) 
+  {
+    policy<F,empty_ref> p;
+    if not consteval { p.Location = loc; }
+    return p; 
+  }
 
   template<policy_flag F = none>
-  policy<F, error_ref> make_policy(std::error_code& ec) { return {ec}; }
+  constexpr auto make_policy(std::error_code& ec, diag_location loc = diag_location::current()) 
+  {
+    policy<F,error_ref> p{ec};
+    if not consteval { p.Location = loc; }
+    return p; 
+  }
 
 } // namespace bnd
 

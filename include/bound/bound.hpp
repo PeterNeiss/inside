@@ -41,21 +41,14 @@ namespace bnd
     static_assert(not std::is_same_v<raw_type, rational> || 0_r == Notch);
     raw_type Raw;
 
-    // force compile time validation
-    template <typename T>
-    static consteval bound valid(T value) { return bound{value}; }
-
-    template <typename T>
-    static bound runtime_valid(T value) { return bound{value}; /*TODO validate*/ }
-
     constexpr bound() = default; // trivial constructor
     constexpr ~bound() = default; // trivial destructor
 
     constexpr bound(bound const& other) noexcept :Raw{other.Raw} { }
 
     template <arithmetic A>
-    constexpr bound(A value)
-    { assignment<bound, A>::assign(*this, value, policy{}); }
+    constexpr bound(A value, diag_location loc = diag_location::current())
+    { assignment<bound, A>::assign(*this, value, make_policy(loc)); }
 
     template <arithmetic A, typename P>
     constexpr bound(A value, P&& policy)
