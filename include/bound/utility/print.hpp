@@ -8,7 +8,6 @@
 
 #include <ostream>
 #include <string>
-#include <source_location>
 
 namespace bnd
 {

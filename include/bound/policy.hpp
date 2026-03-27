@@ -68,7 +68,12 @@ namespace bnd
       if constexpr (std::is_same_v<E, error_ref>)
       { E::Code = std::error_code{EDOM, std::generic_category()}; }
       else
-      { throw std::system_error(EDOM, std::generic_category(), bnd::to_string(Location) + what); }
+      { 
+        what = bnd::to_string(Location) + what;
+#ifdef BOUND_HAS_STACKTRACE
+        what += ": \n" + std::to_string(std::stacktrace::current()); 
+#endif
+        throw std::system_error(EDOM, std::generic_category(), what); }
     }
   };
 

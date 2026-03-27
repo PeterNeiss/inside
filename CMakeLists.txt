@@ -31,3 +31,20 @@ target_compile_options(bound_bound
 add_executable(test tests/test.cpp)
 target_link_libraries(test PUBLIC bound::bound)
 
+try_compile(
+    BOUND_HAS_STACKTRACE
+    SOURCE_FROM_CONTENT stacktrace_check.cpp
+    "#include <stacktrace>\nint main() { return std::stacktrace::current().size(); }\n"
+    CXX_STANDARD 23
+    LINK_LIBRARIES stdc++_libbacktrace
+)
+
+if(BOUND_HAS_STACKTRACE)
+    target_compile_definitions(bound_bound INTERFACE 
+        $<$<NOT:$<CONFIG:Release>>:BOUND_HAS_STACKTRACE>
+    )
+    target_link_libraries(bound_bound INTERFACE 
+        $<$<NOT:$<CONFIG:Release>>:stdc++_libbacktrace>
+    )
+endif()
+

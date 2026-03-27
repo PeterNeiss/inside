@@ -8,6 +8,10 @@
 #include <cstdint>
 
 #ifndef NDEBUG
+    #ifdef BOUND_HAS_STACKTRACE
+      #include <stacktrace> 
+    #endif
+
     #include <source_location>
     namespace bnd
     {
