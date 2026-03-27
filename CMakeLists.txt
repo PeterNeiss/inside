@@ -48,7 +48,7 @@ if(BOUND_HAS_STACKTRACE)
         $<$<NOT:$<CONFIG:Release>>:BOUND_HAS_STACKTRACE>
     )
     target_link_libraries(bound_bound INTERFACE 
-        $<$<NOT:$<CONFIG:Release>>:stdc++_libbacktrace>
+        $<$<NOT:$<CONFIG:Release>>:stdc++exp>
     )
 endif()
 
