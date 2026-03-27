@@ -31,13 +31,16 @@ target_compile_options(bound_bound
 add_executable(test tests/test.cpp)
 target_link_libraries(test PUBLIC bound::bound)
 
-try_compile(
-    BOUND_HAS_STACKTRACE
-    SOURCE_FROM_CONTENT stacktrace_check.cpp
-    "#include <stacktrace>\nint main() { return std::stacktrace::current().size(); }\n"
-    CMAKE_FLAGS "-DCMAKE_CXX_STANDARD=23"
-    LINK_LIBRARIES stdc++_libbacktrace
-)
+include(CheckCXXSourceCompiles)
+
+set(CMAKE_REQUIRED_FLAGS "-std=c++23")
+set(CMAKE_REQUIRED_LIBRARIES stdc++_libbacktrace)
+check_cxx_source_compiles("
+    #include <stacktrace>
+    int main() { return std::stacktrace::current().size(); }
+" BOUND_HAS_STACKTRACE)
+unset(CMAKE_REQUIRED_FLAGS)
+unset(CMAKE_REQUIRED_LIBRARIES)
 
 if(BOUND_HAS_STACKTRACE)
     target_compile_definitions(bound_bound INTERFACE 
