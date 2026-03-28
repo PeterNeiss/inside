@@ -9,6 +9,7 @@
 #include <utility>
 #include <concepts>
 #include <type_traits>
+#include <bit>
 
 namespace bnd
 {
