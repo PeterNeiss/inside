@@ -55,7 +55,7 @@ namespace bnd
     return loc.file_name() + ":"s
          + std::to_string(loc.line()) + ":"s
          + std::to_string(loc.column()) + " ("s
-         + loc.function_name() + "): "s;
+         + loc.function_name() + ")"s;
 #else
     (void) loc;
     return "";

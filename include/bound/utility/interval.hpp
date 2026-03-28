@@ -27,8 +27,13 @@ namespace bnd
 
     interval() = default;
 
-    constexpr interval(arithmetic auto lower, arithmetic auto upper):Lower{lower}, Upper{upper} { }
-    constexpr interval(rational lower, rational upper):Lower{lower}, Upper{upper} { }
+    constexpr interval(rational lower, rational upper)
+     :Lower{lower}, Upper{upper} { }
+    constexpr interval(arithmetic auto lower, arithmetic auto upper)
+     :Lower{lower}, Upper{upper} { }
+
+    constexpr bool validate() const
+    { return Lower <= Upper; }
 
     constexpr bool operator==(const interval& rhs) const = default;
     constexpr interval operator-() const { return interval{-Upper, -Lower}; } 

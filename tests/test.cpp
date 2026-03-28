@@ -18,19 +18,13 @@ void test_waiver()
 
 void test_conversion()
 {
-/*
+/* 
   using f30t40 = bound<{{30, 40}, 2}>;
-
-  
   using f20t50 = bound<{interval{20, 50}, 1}>;
   f30t40 smaller{34};
   f20t50 bigger;
 
   bigger = smaller;
-  std::error_code ec;
-  bigger = smaller.report(ec); // only rhs may have error strategy
-  bigger = smaller.report(); //throws
-  bigger = smaller.expect(); //throws
 */
   //smaller = bigger; // no compile
  // smaller = promise_fits<decltype(smaller)>(round<smaller.Notch>(bigger));
@@ -47,8 +41,12 @@ void test_div()
   using r = bound<{1,255}>;
  // using r = bound<{-255,-1}>;
   std::error_code ec;
-  r a{1020ull, make_policy(ec)};
-  std::cout << ec.message() << std::endl;
+  //r a{1020ull, make_policy(ec)};
+  r a{102, make_policy(ec)};
+  if (ec)
+    std::cout << ec.message() << std::endl;
+  else
+    std::cout << "no error" << std::endl;
  // r a{1020ull};
   r b{16};
 /*
@@ -98,7 +96,8 @@ void test_mul()
   using s = bound<{{-100, 10}, 1_r/16}>;
   using n = s::negative;
 
-  auto l = s(-700.125);
+  //auto l = s(-700.125);
+  auto l = s(-70.125);
   auto m = n(1.125);
 
   std::cout << "l = " << l << std::endl;
@@ -154,6 +153,9 @@ void test_interval()
 {
   constexpr interval point{3_r/4, 3_r/4};
   constexpr interval a{0,1};
+
+  (void)point;
+  (void)a;
   //print_values<point>{};
 }
 
@@ -171,6 +173,7 @@ void test_bound()
 {
   //bound<-0.5, 0.5, 1>{}; // zero displaced here
   using frac = bound<{{-10, 10}, 0}>;
+  //print_types<frac>{};
   static_assert(std::is_same_v<frac::raw_type, rational>);
 
  // auto test = frac::unchecked{3};

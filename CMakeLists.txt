@@ -34,7 +34,6 @@ target_link_libraries(test PUBLIC bound::bound)
 include(CheckCXXSourceCompiles)
 
 set(CMAKE_REQUIRED_FLAGS "-std=c++23")
-#set(CMAKE_REQUIRED_LIBRARIES stdc++exp)
 set(CMAKE_REQUIRED_LIBRARIES stdc++exp)
 check_cxx_source_compiles("
     #include <stacktrace>

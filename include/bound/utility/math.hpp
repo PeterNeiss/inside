@@ -43,6 +43,89 @@ namespace bnd
   constexpr umax safe_abs(V value)
   { return (value >= 0) ? static_cast<umax>(value) : -static_cast<umax>(value); }
 
+  inline constexpr double frexp(double value, int* exp) noexcept 
+  {
+      if (value == 0.0) {
+          *exp = 0;
+          return value;
+      }
+
+      auto bits = std::bit_cast<std::uint64_t>(value);
+      constexpr std::uint64_t mantissa_mask = 0x000F'FFFF'FFFF'FFFF;
+      constexpr std::uint64_t sign_mask     = 0x8000'0000'0000'0000;
+      auto e = static_cast<int>((bits >> 52) & 0x7FF);
+
+      if (e == 0x7FF) {
+          *exp = 0;
+          return value;
+      }
+
+      if (e == 0) {
+          // subnormal: scale up, recurse
+          double scaled = value * 0x1p53;
+          double result = frexp(scaled, exp);
+          *exp -= 53;
+          return result;
+      }
+
+      *exp = e - 0x3FE;
+      bits = (bits & (sign_mask | mantissa_mask)) | (std::uint64_t{0x3FE} << 52);
+      return std::bit_cast<double>(bits);
+  }
+
+  constexpr double ldexp(double value, int exp) noexcept {
+      if (value == 0.0 || exp == 0)
+          return value;
+
+      auto bits = std::bit_cast<std::uint64_t>(value);
+      constexpr std::uint64_t sign_mask     = 0x8000'0000'0000'0000;
+      constexpr std::uint64_t mantissa_mask = 0x000F'FFFF'FFFF'FFFF;
+      auto e = static_cast<int>((bits >> 52) & 0x7FF);
+
+      if (e == 0x7FF)
+          return value; // inf or NaN
+
+      // Normalize subnormals
+      int extra = 0;
+      if (e == 0) {
+          bits = std::bit_cast<std::uint64_t>(value * 0x1p53);
+          e = static_cast<int>((bits >> 52) & 0x7FF);
+          extra = -53;
+      }
+
+      int new_exp = e + exp + extra;
+
+      if (new_exp >= 0x7FF) {
+          // overflow → ±inf
+          return (bits & sign_mask) ? -std::numeric_limits<double>::infinity()
+                                   : std::numeric_limits<double>::infinity();
+      }
+
+      if (new_exp > 0) {
+          // normal result
+          bits = (bits & (sign_mask | mantissa_mask))
+               | (static_cast<std::uint64_t>(new_exp) << 52);
+          return std::bit_cast<double>(bits);
+      }
+
+      // Subnormal or underflow
+      auto mantissa = (bits & mantissa_mask) | (std::uint64_t{1} << 52);
+      int shift = 1 - new_exp;
+
+      if (shift > 53)
+          return std::bit_cast<double>(bits & sign_mask); // ±0
+
+      // Round-to-nearest-even
+      std::uint64_t dropped = mantissa & ((std::uint64_t{1} << shift) - 1);
+      mantissa >>= shift;
+      std::uint64_t halfway = std::uint64_t{1} << (shift - 1);
+      if (dropped > halfway || (dropped == halfway && (mantissa & 1)))
+          ++mantissa;
+
+      bits = (bits & sign_mask) | mantissa;
+      return std::bit_cast<double>(bits);
+  }
+
   // I barely understand this, but it seems to work fine
   constexpr auto abs_fraction(double value) 
   {
@@ -54,10 +137,10 @@ namespace bnd
     
     int exponent;
     // norm_frac in [0.5, 1.0)
-    double norm_frac = std::frexp(value, &exponent);
+    double norm_frac = bnd::frexp(value, &exponent);
     // double has 53 bits of precision
     constexpr int bits = 53;
-    umax num = static_cast<umax>(std::ldexp(norm_frac, bits));
+    umax num = static_cast<umax>(bnd::ldexp(norm_frac, bits));
     umax den = 1ULL << (bits - exponent);
     // simplify by removing trailing zeros from num
     while (num && (num & 1) == 0 && den != 1) {

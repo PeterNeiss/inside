@@ -21,24 +21,19 @@ namespace bnd
   template<grid G>
   struct bound
   {
+    static_assert(G.validate());
+    static constexpr grid Grid{G};
+
     using negative = bound<-G>;
     static constexpr interval Interval{G.Interval};
-    static constexpr rational Lower{Interval.Lower};
-    static constexpr rational Upper{Interval.Upper};
-    static_assert(Lower <= Upper);
-
-    static constexpr rational Notch{G.Notch};
-    static_assert(0_r <= Notch); 
-    static_assert(0_r == Notch || Interval.divides_evenly(Notch));
-    static_assert(0_r == Notch || (Lower/Notch).Denominator == 1,
-      "Zero must coincide with (extended) grid. No displacement allowed");
-    static constexpr grid Grid{Interval, Notch};
+//    static constexpr rational Lower{Interval.Lower};
+//    static constexpr rational Upper{Interval.Upper};
 
     using raw_type = smallest_uint_for<Grid.max_notch()>; 
     static_assert(std::unsigned_integral<raw_type> || std::is_same_v<raw_type, rational>);
     // check logically (Notch == 0) equivalent (raw_type == rational)
-    static_assert(0_r != Notch || std::is_same_v<raw_type, rational>);
-    static_assert(not std::is_same_v<raw_type, rational> || 0_r == Notch);
+    static_assert(0_r != G.Notch || std::is_same_v<raw_type, rational>);
+    static_assert(not std::is_same_v<raw_type, rational> || 0_r == G.Notch);
     raw_type Raw;
 
     constexpr bound() = default; // trivial constructor
@@ -62,7 +57,7 @@ namespace bnd
       if constexpr (std::is_same_v<raw_type, rational>)
         return Raw;
       else
-        return Raw * Grid.Notch + Interval.Lower; 
+        return Raw * Grid.Notch + Grid.Interval.Lower; 
     }
 
 //    constexpr bound& operator=(boundable auto const& other)

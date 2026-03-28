@@ -24,20 +24,22 @@ namespace bnd
   // rational is intended for compile time and is not arithmetically safe at
   // runtime
   //---------------------------------------------------------------------------
-  enum class sign {negative, zero, positive, detect};
+  enum class sign {negative = -1, zero, positive, detect};
   struct rational 
   {
     umax Numerator;
     umax Denominator;
     sign Sign;
 
-    rational() = default;
+    constexpr rational() = default;
     constexpr rational(std::unsigned_integral auto, umax = 1ull, sign = sign::detect);
     constexpr rational(std::signed_integral   auto, umax = 1ull);
     constexpr rational(std::floating_point    auto);
 
     // operator== be default for structural type
     constexpr bool operator==(const rational&) const = default;
+    constexpr bool operator==(auto value) const { return operator==(rational{value}); } 
+
     constexpr rational operator-() const;
 
     template <std::unsigned_integral T>
@@ -55,15 +57,6 @@ namespace bnd
 
   };
  
-  //---------------------------------------------------------------------------
-  // user defined literals for rational 
-  //---------------------------------------------------------------------------
-  constexpr rational operator ""_r(unsigned long long int numerator)
-  { return rational{numerator}; }
-
-  constexpr rational operator ""_r(long double value)
-  { return rational{static_cast<double>(value)}; }
-
   constexpr rational operator+  (const rational&, const rational&); 
   constexpr rational operator-  (const rational&, const rational&); 
   constexpr rational operator*  (rational, rational); 
@@ -156,6 +149,15 @@ namespace bnd
   }
 
   //---------------------------------------------------------------------------
+  // user defined literals for rational 
+  //---------------------------------------------------------------------------
+  constexpr rational operator ""_r(unsigned long long int numerator)
+  { return rational{numerator}; }
+
+  constexpr rational operator ""_r(long double value)
+  { return rational{static_cast<double>(value)}; }
+
+  //---------------------------------------------------------------------------
   // operator- 
   //---------------------------------------------------------------------------
   inline constexpr rational rational::operator-() const
@@ -215,6 +217,12 @@ namespace bnd
       return A <=> B; 
   }
 
+  inline constexpr auto operator<=>(auto lhs, const rational& rhs) 
+  { return rational{lhs} <=> rhs; }
+
+  inline constexpr auto operator<=>(rational const& lhs, auto rhs) 
+  { return lhs <=> rational{rhs}; }
+
   //---------------------------------------------------------------------------
   // operator* 
   //---------------------------------------------------------------------------
@@ -245,6 +253,12 @@ namespace bnd
     };
   }
 
+  inline constexpr rational operator*(auto lhs, const rational& rhs) 
+  { return rational{lhs} * rhs; }
+
+  inline constexpr rational operator*(rational const& lhs, auto rhs) 
+  { return lhs * rational{rhs}; }
+
   //---------------------------------------------------------------------------
   // operator/ 
   //---------------------------------------------------------------------------
@@ -260,6 +274,12 @@ namespace bnd
       (lhs.Sign == rhs.Sign) ? sign::positive : sign::negative
     };
   }
+
+  inline constexpr rational operator/(auto lhs, const rational& rhs) 
+  { return rational{lhs} / rhs; }
+
+  inline constexpr rational operator/(rational const& lhs, auto rhs) 
+  { return lhs / rational{rhs}; }
 
   //---------------------------------------------------------------------------
   // operator+ 
@@ -310,6 +330,12 @@ namespace bnd
       return rational{numerator, denominator, (A > B) ? sign::positive : sign::negative}; 
   }
 
+  inline constexpr rational operator+(auto lhs, const rational& rhs) 
+  { return rational{lhs} + rhs; }
+
+  inline constexpr rational operator+(rational const& lhs, auto rhs) 
+  { return lhs + rational{rhs}; }
+
   //---------------------------------------------------------------------------
   // operator- 
   //---------------------------------------------------------------------------
@@ -319,6 +345,12 @@ namespace bnd
   { 
     return operator+(lhs, -rhs);
   }
+
+  inline constexpr rational operator-(auto lhs, const rational& rhs) 
+  { return rational{lhs} - rhs; }
+
+  inline constexpr rational operator-(rational const& lhs, auto rhs) 
+  { return lhs - rational{rhs}; }
 
   //---------------------------------------------------------------------------
   // divides_evenly 

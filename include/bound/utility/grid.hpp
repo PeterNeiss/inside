@@ -27,16 +27,26 @@ namespace bnd
     rational Notch;
 
     grid() = default; 
-    constexpr grid(arithmetic auto lower, arithmetic auto upper, arithmetic auto notch = 0_r)
+    constexpr grid(arithmetic auto lower, arithmetic auto upper, arithmetic auto notch)
       :grid{interval{lower, upper}, rational{notch}} { }
     constexpr grid(arithmetic auto lower, arithmetic auto upper)
-      :grid{interval{lower, upper}, 0_r} { }
+      :grid{interval{lower, upper}, 1_r} { }
     constexpr grid(arithmetic auto lower)
       :grid{interval{lower, lower}, 0_r} { }
-    constexpr grid(interval val, rational notch):Interval{val}, Notch{notch}
+    constexpr grid(interval val, rational notch):Interval{val}, Notch{notch} { }
+   
+    constexpr bool validate() const
     {
+      if (not Interval.validate())
+        return false;
+
       if (not Interval.divides_evenly(Notch))
-        throw "Notch does not evenly divide the interval";
+        return false;
+
+      if (Notch == 0)
+        return true;
+      else
+        return (Interval.Lower/Notch).Denominator == 1;  // Grid extension must include 0
     }
 
     constexpr umax max_notch() const
@@ -52,15 +62,21 @@ namespace bnd
     // operator== be default for structural type
     constexpr bool operator==(const grid& rhs) const = default;
     constexpr grid operator-() const { return {-Interval, Notch}; } 
- 
+/* 
     template <std::unsigned_integral Raw>
     constexpr Raw to_raw(std::signed_integral auto value) const
     { 
-      //TODO: check safty of calculation
+      rational raw;
+      raw.Denominator = 1;
+      if (value < 0)
+      {
+        raw.Sign = sign::negative;
+ 
+      }
       rational raw = (value - Interval.Lower)/Notch;
       return static_cast<Raw>(raw.Numerator/ raw.Denominator);  
     }
-
+*/
     template <std::unsigned_integral Raw>
     constexpr Raw to_raw(rational value) const
     { 

@@ -69,7 +69,7 @@ namespace bnd
       { E::Code = std::error_code{EDOM, std::generic_category()}; }
       else
       { 
-        what = bnd::to_string(Location) + what;
+        what = what + ": " + bnd::to_string(Location);
 #ifdef BOUND_HAS_STACKTRACE
         what += ": \n" + std::to_string(std::stacktrace::current()); 
 #endif
