@@ -41,9 +41,11 @@ namespace bnd
     constexpr bound(A value, P&& policy)
     { assignment<bound, A>::assign(*this, value, policy); }
 
+    // TODO remove
     constexpr static bound from_raw(raw_type raw) { bound b; b.Raw = raw; return b; } 
 
     constexpr explicit operator double() const { return Grid.raw_to_double(Raw); }
+    // TODO rename explict operator rational
     constexpr rational to_rational() const 
     {
       if constexpr (std::is_same_v<raw_type, rational>)

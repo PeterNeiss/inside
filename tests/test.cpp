@@ -26,9 +26,8 @@ void test_conversion()
   bigger = smaller;
   std::cout << "bigger = " << bigger << std::endl;
   bigger = 39;
-  //policy_ref<make_policy<ignore_round>(), f30t40> ref;
-  //(void)ref;
-  smaller.policy<ignore_round>() = bigger; // no compile
+
+  smaller.policy<ignore_round>() = bigger; 
   std::cout << "smaller = " << smaller << std::endl;
 
   bigger = 30;

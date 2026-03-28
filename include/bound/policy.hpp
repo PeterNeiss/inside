@@ -137,7 +137,7 @@ namespace bnd
     B& Ref;
     P Policy;
 
-    template <boundable C>
+    template <numeric C>
     constexpr B& operator=(C const& other)
     { return assignment<B, C>::assign(Ref, other, Policy); }
   };

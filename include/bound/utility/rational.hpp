@@ -24,7 +24,7 @@ namespace bnd
   // rational is intended for compile time and is not arithmetically safe at
   // runtime
   //---------------------------------------------------------------------------
-  enum class sign {negative = -1, zero, positive, detect};
+  enum class sign {negative = -1, zero = 0, positive = 1};
   struct rational 
   {
     umax Numerator;
@@ -32,7 +32,9 @@ namespace bnd
     sign Sign;
 
     constexpr rational() = default;
-    constexpr rational(std::unsigned_integral auto, umax = 1ull, sign = sign::detect);
+    constexpr rational(std::unsigned_integral auto, umax, sign);
+    constexpr rational(std::unsigned_integral auto num, umax den = 1ull)
+     :rational{num, den, (num == 0) ? sign::zero : sign::positive} { }
     constexpr rational(std::signed_integral   auto, umax = 1ull);
     constexpr rational(std::floating_point    auto);
 
@@ -43,7 +45,7 @@ namespace bnd
     constexpr rational operator-() const;
 
     template <std::unsigned_integral T>
-    constexpr operator T () const
+    explicit constexpr operator T () const
     { return static_cast<T>(Numerator/Denominator); }
 
     explicit constexpr operator double() const
@@ -102,8 +104,7 @@ namespace bnd
   // rational::rational 
   //---------------------------------------------------------------------------
   constexpr rational::rational(std::unsigned_integral auto num, umax den, sign s)
-   :Numerator{num}, Denominator{den}, 
-    Sign{Numerator == 0 ? sign::zero : (s == sign::detect) ? sign::positive: s}
+   :Numerator{num}, Denominator{den}, Sign{s}
   {
     if (Denominator == 0)
       throw "Denominator of Zero is invalid";
@@ -162,9 +163,6 @@ namespace bnd
   //---------------------------------------------------------------------------
   inline constexpr rational rational::operator-() const
   { 
-    if (Sign == sign::detect)
-      throw "internal logic error";
-
     if (Sign == sign::zero)
       return *this;
 
@@ -182,9 +180,6 @@ namespace bnd
   //---------------------------------------------------------------------------
   inline constexpr auto operator<=>(rational lhs, rational rhs) -> std::strong_ordering
   { 
-    if (lhs.Sign == sign::detect || rhs.Sign == sign::detect)
-      throw "internal logic error";
-
     if (lhs.Sign != rhs.Sign)
     {
       if (lhs.Sign == sign::negative)
