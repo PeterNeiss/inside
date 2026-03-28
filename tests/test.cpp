@@ -18,16 +18,23 @@ void test_waiver()
 
 void test_conversion()
 {
-/* 
   using f30t40 = bound<{{30, 40}, 2}>;
   using f20t50 = bound<{interval{20, 50}, 1}>;
   f30t40 smaller{34};
   f20t50 bigger;
 
   bigger = smaller;
-*/
-  //smaller = bigger; // no compile
- // smaller = promise_fits<decltype(smaller)>(round<smaller.Notch>(bigger));
+  std::cout << "bigger = " << bigger << std::endl;
+  bigger = 39;
+  //policy_ref<make_policy<ignore_round>(), f30t40> ref;
+  //(void)ref;
+  smaller.policy<ignore_round>() = bigger; // no compile
+  std::cout << "smaller = " << smaller << std::endl;
+
+  bigger = 30;
+  std::error_code ec;
+  smaller.policy<ignore_round>(ec) = bigger; // no compile
+  std::cout << "smaller = " << smaller << "  ec: " << ec.message() << std::endl;
 }
 
 void test_rational()

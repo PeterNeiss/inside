@@ -5,11 +5,15 @@
 #define BNDpolicyHPP
 
 #include "bound/utility/print.hpp"
+#include "bound/assignment.hpp"
 
 #include <system_error>
 
 namespace bnd
 {
+  //---------------------------------------------------------------------------
+  // policy_flag 
+  //---------------------------------------------------------------------------
   using policy_flag = unsigned long long;
 
   // Do all compile time only checks always
@@ -32,6 +36,9 @@ namespace bnd
   inline static constexpr policy_flag clamp{1ull << 32}; // only for assignment, construction 
   inline static constexpr policy_flag wrap {1ull << 33}; // only for assignment, construction
 
+  //---------------------------------------------------------------------------
+  // policy 
+  //---------------------------------------------------------------------------
   struct srcloc
   {
     inline static thread_local diag_location Location;
@@ -57,16 +64,28 @@ namespace bnd
     static constexpr bool test(policy_flag w) 
     { return W & w; }
 
+    void set_error(std::error_code ec)
+    {
+      if constexpr (std::is_same_v<E, error_ref>)
+      { E::Code = E::Code ? E::Code : ec; } //only replace success
+    }
+
     static constexpr bool domain_check()
     {
       if consteval { return true; }
       return not test(ignore_domain);
     }
 
-    void domain_error(std::string what) const
+    static constexpr bool round_check()
+    {
+      if consteval { return true; }
+      return not test(ignore_round);
+    }
+
+    void domain_error(std::string what)
     { 
       if constexpr (std::is_same_v<E, error_ref>)
-      { E::Code = std::error_code{EDOM, std::generic_category()}; }
+      { set_error({EDOM, std::generic_category()}); }
       else
       { 
         what = what + ": " + bnd::to_string(Location);
@@ -75,8 +94,24 @@ namespace bnd
 #endif
         throw std::system_error(EDOM, std::generic_category(), what); }
     }
+
+    void round_error(std::string what)
+    { 
+      if constexpr (std::is_same_v<E, error_ref>)
+      { set_error({ENOSPC, std::generic_category()}); }
+      else
+      { 
+        what = what + ": " + bnd::to_string(Location);
+#ifdef BOUND_HAS_STACKTRACE
+        what += ": \n" + std::to_string(std::stacktrace::current()); 
+#endif
+        throw std::system_error(ENOSPC, std::generic_category(), what); }
+    }
   };
 
+  //---------------------------------------------------------------------------
+  // make_policy 
+  //---------------------------------------------------------------------------
   template<policy_flag F = none>
   constexpr auto make_policy(diag_location loc = diag_location::current()) 
   {
@@ -92,6 +127,20 @@ namespace bnd
     if not consteval { p.Location = loc; }
     return p; 
   }
+
+  //---------------------------------------------------------------------------
+  // policy_ref
+  //---------------------------------------------------------------------------
+  template<boundable B, typename P>
+  struct policy_ref
+  {
+    B& Ref;
+    P Policy;
+
+    template <boundable C>
+    constexpr B& operator=(C const& other)
+    { return assignment<B, C>::assign(Ref, other, Policy); }
+  };
 
 } // namespace bnd
 

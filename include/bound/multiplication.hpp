@@ -16,6 +16,9 @@ namespace bnd
     using result = bound<L::Grid * R::Grid>;
     using raw_type = result::raw_type;
 
+    static constexpr result to_result(auto raw) 
+    { result res; res.Raw = static_cast<result::raw_type>(raw); return res; }
+
     template <policy_flag F = none>
     static constexpr result mul(L, R, policy<F> = {});
   };
@@ -28,20 +31,17 @@ namespace bnd
   constexpr auto multiplication<L,R>::mul(L lhs, R rhs, policy<F> waiver) -> result
   { 
     if constexpr (result::Grid.Notch.Sign == sign::zero)
-      return result::from_raw(lhs.to_rational() * rhs.to_rational());
+      return to_result(lhs.to_rational() * rhs.to_rational());
     else
     {
       if constexpr (result::Grid.Interval.Lower == L::Grid.Interval.Lower * R::Grid.Interval.Lower)
       {
         // low_per_notch is always positive in this case
-        return result::from_raw
+        return to_result
         (
-          static_cast<raw_type>
-            (
-              lhs.Raw * rhs.Raw + 
-              lhs.Raw * R::Grid.low_per_notch().Numerator +
-              rhs.Raw * L::Grid.low_per_notch().Numerator 
-            )
+          lhs.Raw * rhs.Raw + 
+          lhs.Raw * R::Grid.low_per_notch().Numerator +
+          rhs.Raw * L::Grid.low_per_notch().Numerator 
         );
       }
 

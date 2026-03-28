@@ -22,24 +22,16 @@ namespace bnd
   struct bound
   {
     static_assert(G.validate());
+
     static constexpr grid Grid{G};
-
     using negative = bound<-G>;
-    static constexpr interval Interval{G.Interval};
-//    static constexpr rational Lower{Interval.Lower};
-//    static constexpr rational Upper{Interval.Upper};
-
-    using raw_type = smallest_uint_for<Grid.max_notch()>; 
-    static_assert(std::unsigned_integral<raw_type> || std::is_same_v<raw_type, rational>);
-    // check logically (Notch == 0) equivalent (raw_type == rational)
-    static_assert(0_r != G.Notch || std::is_same_v<raw_type, rational>);
-    static_assert(not std::is_same_v<raw_type, rational> || 0_r == G.Notch);
+    using raw_type = storage_min<G>; 
     raw_type Raw;
 
     constexpr bound() = default; // trivial constructor
     constexpr ~bound() = default; // trivial destructor
-
-    constexpr bound(bound const& other) noexcept :Raw{other.Raw} { }
+    constexpr bound(bound const& other) = default; 
+    constexpr bound(bound&& other) = default; 
 
     template <arithmetic A>
     constexpr bound(A value, diag_location loc = diag_location::current())
@@ -60,18 +52,12 @@ namespace bnd
         return Raw * Grid.Notch + Grid.Interval.Lower; 
     }
 
-//    constexpr bound& operator=(boundable auto const& other)
-//    { return assignment::assign(*this, other; }
-
-    //TODO
-    //template <typename T>
-    // constexpr T to() const
-    // constexpr raw_type to_raw() const
-    // 
-
-    //TODO
-    //template <typename T>
-    // static constexpr bound from(T)
+    template <numeric B>
+    constexpr bound& operator=(B const& other)
+    {
+      return assignment<bound, B>::assign
+      (*this, other, make_policy(diag_location::current())); 
+    }
 
     constexpr auto operator-() const
     {
@@ -80,6 +66,20 @@ namespace bnd
       else
         return negative::from_raw
         (static_cast<negative::raw_type>(Grid.max_notch() - Raw));
+    }
+
+    template <policy_flag F = none>
+    auto policy() 
+    { 
+       auto policy = make_policy<F>();
+       return policy_ref<bound, decltype(policy)>{*this, policy}; 
+    }
+
+    template <policy_flag F = none>
+    auto policy(std::error_code& ec) 
+    { 
+       auto policy = make_policy<F>(ec);
+       return policy_ref<bound, decltype(policy)>{*this, policy}; 
     }
 
     private:

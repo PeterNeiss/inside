@@ -6,7 +6,6 @@
 
 #include "bound/utility/grid.hpp"
 #include "bound/utility/print.hpp"
-#include "bound/policy.hpp"
 
 namespace bnd
 {
@@ -34,17 +33,20 @@ namespace bnd
   template <boundable L, boundable R>
   struct assignment<L,R>
   {
-    template<policy_flag F = none>
-    static constexpr L& assign(L& lhs, R const& rhs, policy<F> = {});
-  };
+    static constexpr rational Offset = (R::Grid.Interval.Lower - L::Grid.Interval.Lower)/L::Grid.Notch;
+    static constexpr rational Factor = R::Grid.Notch/L::Grid.Notch;
 
+    template<typename P>
+    static constexpr L& assign(L& lhs, R const& rhs, P&&);
+  };
+/*
   template <arithmetic L, boundable R>
   struct assignment<L,R>
   {
     template<policy_flag F = none>
     static constexpr L& assign(L& lhs, R const& rhs, policy<F> = {});
   };
-
+*/
   //---------------------------------------------------------------------------
   // assign(boundable, integral) 
   //---------------------------------------------------------------------------
@@ -55,24 +57,24 @@ namespace bnd
     constexpr interval rhs_interval = 
       {std::numeric_limits<R>::lowest(), std::numeric_limits<R>::max()};
 
-    static_assert(not L::Interval.excludes(rhs_interval));
+    static_assert(not L::Grid.Interval.excludes(rhs_interval));
 
     if consteval
     {
       // compile_time => always_check value 
-      if (not L::Interval.includes(rhs))
+      if (not L::Grid.Interval.includes(rhs))
         throw "value not in interval";
     }  
     else 
     {
       // run_time => compile_time_check (always_success or may_fail)
-      if constexpr (not L::Interval.includes(rhs_interval))
+      if constexpr (not L::Grid.Interval.includes(rhs_interval))
       {
         // may_fail
-        if (policy.domain_check() && not L::Interval.includes(rhs))
+        if (policy.domain_check() && not L::Grid.Interval.includes(rhs))
         {
           // failed
-          policy.domain_error(bnd::to_string(rhs) + " is not in " + bnd::to_string(L::Interval));
+          policy.domain_error(bnd::to_string(rhs) + " is not in " + bnd::to_string(L::Grid.Interval));
           return lhs;
         }
         // else success
@@ -95,16 +97,16 @@ namespace bnd
     if consteval
     {
       // compile_time => always_check value 
-      if (not L::Interval.includes(rhs))
+      if (not L::Grid.Interval.includes(rhs))
         throw "value not in interval";
     }  
     else 
     {
       // run_time => may_fail
-      if (policy.domain_check() && not L::Interval.includes(rhs))
+      if (policy.domain_check() && not L::Grid.Interval.includes(rhs))
       {
         // failed
-        policy.domain_error(bnd::to_string(rhs) + " is not in " + bnd::to_string(L::Interval));
+        policy.domain_error(bnd::to_string(rhs) + " is not in " + bnd::to_string(L::Grid.Interval));
         return lhs;
       }
       // else success
@@ -118,10 +120,42 @@ namespace bnd
   // assign(boundable, boundable) 
   //---------------------------------------------------------------------------
   template<boundable L, boundable R>
-  template<policy_flag F>
-  constexpr L& assignment<L,R>::assign(L& lhs, R const& rhs, policy<F>)
+  template<typename P>
+  constexpr L& assignment<L,R>::assign(L& lhs, R const& rhs, P&& policy)
   { 
-    lhs = rhs; 
+    static_assert(not L::Grid.Interval.excludes(R::Grid.Interval));
+
+    if consteval
+    {
+      // compile_time => always_check value 
+      if (not L::Grid.Interval.includes(R::Grid.Interval))
+        throw "value not in interval";
+    }  
+    else 
+    {
+      // run_time => compile_time_check (always_success or may_fail)
+      if constexpr (not L::Grid.Interval.includes(R::Grid.Interval))
+      {
+        // may_fail
+        if (policy.domain_check() && not L::Grid.Interval.includes(rhs.to_rational()))
+        {
+          // failed
+          policy.domain_error(bnd::to_string(rhs.to_rational()) + " is not in " + bnd::to_string(L::Grid.Interval));
+          return lhs;
+        }
+
+        if (policy.round_check() && Factor.Denominator != 1)
+        {
+          // failed
+          policy.round_error(bnd::to_string(rhs.to_rational()) + " would round");
+          return lhs;
+        }
+        // else success
+      }
+      // else always_success
+    }
+
+    lhs.Raw = static_cast<L::raw_type>(Offset + Factor * rhs.Raw); 
     return lhs;
   }
 } // namespace bnd

@@ -12,12 +12,14 @@ namespace bnd
   template <typename B>
   concept boundable = requires(B b)
   {
-    { B::Interval } -> std::same_as<interval const&>;
     { B::Grid } -> std::same_as<grid const&>;
     typename B::raw_type;
   };
 
-  template<grid G = {{0_r, 0_r}, 0_r}> struct bound;
+  template <typename N>
+  concept numeric = boundable<N> or arithmetic<N>; 
+
+  template<grid G = {{0, 0}, 0}> struct bound;
 
 } // namespace bnd
 

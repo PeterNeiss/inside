@@ -101,6 +101,9 @@ namespace bnd
     }
   };
 
+  template <grid G>
+  using storage_min = smallest_uint_for<G.max_notch()>;
+  
   constexpr grid operator+(const grid&, const grid&); 
   constexpr grid operator-(const grid&, const grid&); 
   constexpr interval operator*  (const interval&, const interval&); 
