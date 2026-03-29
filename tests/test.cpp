@@ -55,12 +55,11 @@ void test_div()
     std::cout << "no error" << std::endl;
  // r a{1020ull};
   r b{16};
-/*
+
   auto c = a / b;
-  std::cout << a << std::endl;
-  std::cout << b << std::endl;
-  std::cout << c << std::endl;
-*/
+  std::cout << "a = " << a << std::endl;
+  std::cout << "b = " << b << std::endl;
+  std::cout << "c = " << c << std::endl;
 }
 
 void test_mul()
@@ -118,10 +117,13 @@ void test_add()
   //constexpr u8 invalid{-6};
   u8 a{16};
   u8 b = 102;
+  //auto b1 = b + 1;
+/*  auto b1{b + 1};
+  b.policy<ignore_domain>() = b1;
 
   (void) a;
   (void) b;
-
+*/
   auto c = a + b;
   std::cout << a << std::endl;
   std::cout << b << std::endl;

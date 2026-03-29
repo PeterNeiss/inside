@@ -27,14 +27,22 @@ namespace bnd
   constexpr auto addition<L,R>::add(L lhs, R rhs, policy<F>) -> result
   { 
     using raw = result::raw_type;
-    constexpr raw lhs_widen = (result::Grid.Notch / lhs.Grid.Notch).Numerator; 
-    constexpr raw rhs_widen = (result::Grid.Notch / rhs.Grid.Notch).Numerator; 
+  
+    if constexpr (std::is_same_v<raw, rational>)
+    {
+      return lhs.to_rational() + rhs.to_rational();
+    }
+    else
+    {
+      static constexpr umax lhs_widen = (L::Grid.Notch == 0) ? 0 : (result::Grid.Notch / L::Grid.Notch).Numerator; 
+      static constexpr umax rhs_widen = (R::Grid.Notch == 0) ? 0 : (result::Grid.Notch / R::Grid.Notch).Numerator; 
 
-    // TODO Check argument
-    // Because result type calculation did not overflow at compile time,
-    // both widen multiplications dont overflow and
-    // their sum does not overflow
-    return result::from_raw(static_cast<raw>(lhs.Raw * lhs_widen + rhs.Raw * rhs_widen));
+      // TODO Check argument
+      // Because result type calculation did not overflow at compile time,
+      // both widen multiplications dont overflow and
+      // their sum does not overflow
+      return result::from_raw(static_cast<raw>(lhs.Raw * lhs_widen + rhs.Raw * rhs_widen));
+    }
   }
 } // namespace bnd
 

@@ -101,6 +101,12 @@ namespace bnd
   constexpr auto operator+(boundable auto lhs, boundable auto rhs) 
   { return add(lhs, rhs); }
 
+  inline constexpr auto operator+(auto lhs, boundable auto rhs) 
+  { return bound{lhs} + rhs; }
+
+  inline constexpr auto operator+(boundable auto lhs, auto rhs) 
+  { return lhs + bound{rhs}; }
+
   //---------------------------------------------------------------------------
   // sub 
   //---------------------------------------------------------------------------
