@@ -28,9 +28,6 @@ target_compile_options(bound_bound
         >
 )
 
-add_executable(test tests/test.cpp)
-target_link_libraries(test PUBLIC bound::bound)
-
 include(CheckCXXSourceCompiles)
 
 set(CMAKE_REQUIRED_FLAGS "-std=c++23")
@@ -50,4 +47,10 @@ if(BOUND_HAS_STACKTRACE)
         $<$<NOT:$<CONFIG:Release>>:stdc++exp>
     )
 endif()
+
+add_executable(test tests/test.cpp)
+target_link_libraries(test PUBLIC bound::bound)
+
+add_executable(algo tests/algo.cpp)
+target_link_libraries(algo PUBLIC bound::bound)
 

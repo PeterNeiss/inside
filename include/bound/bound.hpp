@@ -30,16 +30,24 @@ namespace bnd
 
     constexpr bound() = default; // trivial constructor
     constexpr ~bound() = default; // trivial destructor
-    constexpr bound(bound const& other) = default; 
-    constexpr bound(bound&& other) = default; 
+    constexpr bound(bound const&) = default; 
+    constexpr bound(bound&&) = default; 
+    constexpr bound& operator=(bound const&) = default;
 
-    template <arithmetic A>
+    template <numeric A>
     constexpr bound(A value, diag_location loc = diag_location::current())
     { assignment<bound, A>::assign(*this, value, make_policy(loc)); }
 
-    template <arithmetic A, typename P>
+    template <numeric A, typename P>
     constexpr bound(A value, P&& policy)
     { assignment<bound, A>::assign(*this, value, policy); }
+
+    template <numeric B>
+    constexpr bound& operator=(B const& other)
+    {
+      return assignment<bound, B>::assign
+      (*this, other, make_policy(diag_location::current())); 
+    }
 
     // TODO remove
     constexpr static bound from_raw(raw_type raw) { bound b; b.Raw = raw; return b; } 
@@ -52,13 +60,6 @@ namespace bnd
         return Raw;
       else
         return Raw * Grid.Notch + Grid.Interval.Lower; 
-    }
-
-    template <numeric B>
-    constexpr bound& operator=(B const& other)
-    {
-      return assignment<bound, B>::assign
-      (*this, other, make_policy(diag_location::current())); 
     }
 
     constexpr auto operator-() const
