@@ -56,6 +56,7 @@ void test_div()
  // r a{1020ull};
   r b{16};
 
+  (void) division<r,r>::div(a,b);
   auto c = a / b;
   std::cout << "a = " << a << std::endl;
   std::cout << "b = " << b << std::endl;
@@ -113,21 +114,19 @@ void test_mul()
 
 void test_add()
 {
-  using u8 = bound<{{10,255}, 1_r/16}>;
+  using u8 = bound<{10,255}>;
   //constexpr u8 invalid{-6};
   u8 a{16};
-  u8 b = 102;
+  u8 b = 220;
   //auto b1 = b + 1;
-/*  auto b1{b + 1};
-  b.policy<ignore_domain>() = b1;
+  auto b1{b + just<1>};
+  std::cout << "b1 = " << b1 << std::endl;
+  b = b + just<1>;
+  std::cout << "b = " << b << std::endl;
 
-  (void) a;
-  (void) b;
-*/
-  auto c = a + b;
-  std::cout << a << std::endl;
-  std::cout << b << std::endl;
-  std::cout << c << std::endl;
+  b = a + b;
+  std::cout << "a = " << a << std::endl;
+  std::cout << "b = " << b << std::endl;
 
   auto d = a - b;
   std::cout << d << std::endl;

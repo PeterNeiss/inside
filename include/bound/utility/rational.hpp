@@ -25,6 +25,7 @@ namespace bnd
   // runtime
   //---------------------------------------------------------------------------
   enum class sign {negative = -1, zero = 0, positive = 1};
+  //TODO rename to fr and _fr
   struct rational 
   {
     umax Numerator;

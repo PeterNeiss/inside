@@ -14,7 +14,10 @@ namespace bnd
   struct division 
   { 
     using result = bound<{L::Grid.Interval / R::Grid.Interval, 0}>;
-    using raw_type = result::raw_type;
+    static_assert (std::is_same_v<typename result::raw_type, rational>);
+
+    static constexpr result to_result(auto raw) 
+    { result res; res.Raw = static_cast<result::raw_type>(raw); return res; }
 
     template <policy_flag F = none>
     static constexpr result div(L, R, policy<F> = {});
@@ -27,7 +30,7 @@ namespace bnd
   template<policy_flag F>
   constexpr auto division<L,R>::div(L lhs, R rhs, policy<F>) -> result
   { 
-    return lhs.to_rational() / rhs.to_rational();
+    return to_result(lhs.to_rational() / rhs.to_rational());
   }
 } // namespace bnd
 
