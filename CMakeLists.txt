@@ -21,6 +21,7 @@ target_compile_options(bound_bound
             -Wshadow -Wconversion -Wsign-conversion
             -Wnon-virtual-dtor -Wold-style-cast
             -Woverloaded-virtual -Wnull-dereference
+            -Wno-uninitialized
             -Wformat=2
         >
         $<$<CXX_COMPILER_ID:MSVC>:
