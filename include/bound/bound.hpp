@@ -22,9 +22,11 @@ namespace bnd
   struct bound
   {
     static_assert(G.validate());
-
     static constexpr grid Grid{G};
+
     using negative = bound<-G>;
+//    template <policy_flag H>
+//    using flag = bound<G, F | H>
     using raw_type = storage_min<G>; 
     raw_type Raw;
 

@@ -56,7 +56,6 @@ void test_div()
  // r a{1020ull};
   r b{16};
 
-  (void) division<r,r>::div(a,b);
   auto c = a / b;
   std::cout << "a = " << a << std::endl;
   std::cout << "b = " << b << std::endl;

@@ -16,7 +16,7 @@ int main()
   std::vector<u8> vu8;
   vu8.resize(10);
 
-  rng::iota(vu8, 7);
+  rng::generate(vu8, [counter = 7] mutable { return ++counter; });
 
   vu8.push_back(5);
   vu8.push_back(5);
@@ -25,7 +25,7 @@ int main()
     std::cout << value << std::endl; 
 
  // auto sum = rng::fold_right(vu8, bnd::just<0>, std::plus<u16::flag<ignore_domain>>{});
-  auto sum = rng::fold_right(vu8, bnd::just<0>, std::plus<u16>{});
+  auto sum = std::reduce(vu8.begin(), vu8.end(), u16{0}, std::plus<>{});
   std::cout << sum << std::endl; 
   return 0;
 }

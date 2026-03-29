@@ -33,11 +33,37 @@ namespace bnd
   template <boundable L, boundable R>
   struct assignment<L,R>
   {
-    static constexpr rational Offset = (R::Grid.Interval.Lower - L::Grid.Interval.Lower)/L::Grid.Notch;
-    static constexpr rational Factor = R::Grid.Notch/L::Grid.Notch;
+    private:
+      static constexpr rational calcOffset()
+      {
+        if constexpr (std::is_same_v<L,R>)
+        { return 0; }
+        if constexpr (std::is_same_v<typename L::raw_type, rational>)
+        { return R::Grid.Interval.Lower; }
+        if constexpr (std::is_same_v<typename R::raw_type, rational>)
+        { return - L::Grid.Interval.Lower/L::Grid.Notch; }
 
-    template<typename P>
-    static constexpr L& assign(L& lhs, R const& rhs, P&&);
+        return (R::Grid.Interval.Lower - L::Grid.Interval.Lower)/L::Grid.Notch;
+      }
+
+      static constexpr rational calcFactor()
+      {
+        if constexpr (std::is_same_v<L,R>)
+        { return 0; }
+        if constexpr (std::is_same_v<typename L::raw_type, rational>)
+        { return R::Grid.Notch; }
+        if constexpr (std::is_same_v<typename R::raw_type, rational>)
+        { return 1_r/L::Grid.Notch; }
+
+        return R::Grid.Notch/L::Grid.Notch;
+      }
+
+    public:
+      static constexpr rational Offset = calcOffset();
+      static constexpr rational Factor = calcFactor();
+
+      template<typename P>
+      static constexpr L& assign(L& lhs, R const& rhs, P&&);
   };
 /*
   template <arithmetic L, boundable R>
