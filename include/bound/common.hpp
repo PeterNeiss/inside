@@ -9,7 +9,6 @@
 
 namespace bnd
 {
-
   template <grid G = {{0, 0}, 0}> struct bound;
 
   template <grid G>
@@ -35,14 +34,33 @@ namespace bnd
     b.Raw;
   };
 
+  template <typename N>
+  concept numeric = boundable<N> or arithmetic<N>;
+
   template <boundable B>
   using negative = bound<-get_grid(B{})>;
 
   template <boundable B>
   using raw_t = typename B::raw_type;
 
-  template <typename N>
-  concept numeric = boundable<N> or arithmetic<N>;
+  // ONLY type conversion, NO value representation conversion calculation
+  template <boundable B>
+  raw_t<B> raw_cast(auto value) { return static_cast<raw_t<B>>(value); }
+
+  template <boundable B>
+  inline constexpr raw_t<B> max_notch(B b)
+  {
+    return (get_notch(b) == 0) ?
+    raw_cast<B>(0) : raw_cast<B>((get_interval(b)/get_notch(b)).Numerator);
+  }
+
+  template <boundable B>
+  inline constexpr umax offset_lower(B b)
+  { return (get_notch(b) == 0) ? 0ull : (get_lower(b)/get_notch(b)).Numerator; }
+
+  template <boundable B>
+  inline constexpr umax offset_upper(B b)
+  { return (get_notch(b) == 0) ? 0ull : (get_upper(b)/get_notch(b)).Numerator; }
 } // namespace bnd
 
 #endif // BNDcommonHPP

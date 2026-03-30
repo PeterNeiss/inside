@@ -8,7 +8,6 @@
 #include "bound/utility/interval.hpp"
 
 #include <algorithm>
-#include <initializer_list>
 
 namespace bnd
 {

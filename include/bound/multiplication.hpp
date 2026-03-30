@@ -16,7 +16,7 @@ namespace bnd
     using result = bound<get_grid(L{}) * get_grid(R{})>;
 
     static constexpr result to_result(auto raw)
-    { result res; res.Raw = static_cast<raw_t<result>>(raw); return res; }
+    { result res; res.Raw = raw_cast<result>(raw); return res; }
 
     template <typename P>
     static constexpr result mul(L, R, P&&);
@@ -37,11 +37,7 @@ namespace bnd
       {
         // low_per_notch is always positive in this case
         return to_result
-        (
-          lhs.Raw * rhs.Raw +
-          lhs.Raw * get_grid(R{}).low_per_notch().Numerator +
-          rhs.Raw * get_grid(L{}).low_per_notch().Numerator
-        );
+        (lhs.Raw * rhs.Raw + lhs.Raw * offset_lower(R{}) + rhs.Raw * offset_lower(L{}));
       }
 
       if constexpr (get_lower(result{}) == get_upper(L{}) * get_upper(R{}))
@@ -49,12 +45,9 @@ namespace bnd
 
       if constexpr (get_lower(result{}) == get_upper(L{}) * get_lower(R{}))
       {
-        raw_t<L> negRaw = static_cast<raw_t<L>>(L::Grid.max_notch()) - lhs.Raw;
+        raw_t<L> negRaw = max_notch(L{}) - lhs.Raw;
         return to_result
-        (
-          (negRaw * R::Grid.low_per_notch().Numerator + rhs.Raw * L::Grid.up_per_notch().Numerator) -
-          (negRaw * rhs.Raw)
-        );
+        (negRaw * offset_lower(R{}) + rhs.Raw * offset_upper(L{}) - (negRaw * rhs.Raw));
       }
 
       if constexpr (get_lower(result{}) == get_lower(L{}) * get_upper(R{}))
