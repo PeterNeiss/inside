@@ -46,13 +46,7 @@ namespace bnd
 
     template <numeric B>
     constexpr bound& operator=(B const& other)
-    {
-      return assignment<bound, B>::assign
-      (*this, other, make_policy(diag_location::current()));
-    }
-
-    // TODO remove
-    constexpr static bound from_raw(raw_type raw) { bound b; b.Raw = raw; return b; }
+    { return assignment<bound, B>::assign(*this, other, make_policy(diag_location::current())); }
 
     constexpr explicit operator double() const { return G.raw_to_double(Raw); }
     // TODO rename explict operator rational
@@ -64,13 +58,11 @@ namespace bnd
         return Raw * G.Notch + G.Interval.Lower;
     }
 
-    constexpr auto operator-() const
+    constexpr negative operator-() const
     {
-      if constexpr (std::is_same_v<raw_type, rational>)
-        return negative::from_raw(-Raw);
-      else
-        return negative::from_raw
-        (static_cast<negative::raw_type>(G.max_notch() - Raw));
+      negative neg;
+      neg.Raw = (std::is_same_v<raw_type, rational>) ? -Raw : (max_notch(*this) - Raw);
+      return neg;
     }
 
     template <policy_flag F = none>
