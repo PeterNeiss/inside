@@ -54,14 +54,14 @@ namespace bnd
     // TODO remove
     constexpr static bound from_raw(raw_type raw) { bound b; b.Raw = raw; return b; }
 
-    constexpr explicit operator double() const { return Grid.raw_to_double(Raw); }
+    constexpr explicit operator double() const { return G.raw_to_double(Raw); }
     // TODO rename explict operator rational
     constexpr rational to_rational() const
     {
       if constexpr (std::is_same_v<raw_type, rational>)
         return Raw;
       else
-        return Raw * Grid.Notch + Grid.Interval.Lower;
+        return Raw * G.Notch + G.Interval.Lower;
     }
 
     constexpr auto operator-() const
@@ -70,7 +70,7 @@ namespace bnd
         return negative::from_raw(-Raw);
       else
         return negative::from_raw
-        (static_cast<negative::raw_type>(Grid.max_notch() - Raw));
+        (static_cast<negative::raw_type>(G.max_notch() - Raw));
     }
 
     template <policy_flag F = none>

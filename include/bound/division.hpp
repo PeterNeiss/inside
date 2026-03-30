@@ -11,12 +11,12 @@
 namespace bnd
 {
   template <boundable L, boundable R = L>
-  struct division 
-  { 
-    using result = bound<{L::Grid.Interval / R::Grid.Interval, 0}>;
+  struct division
+  {
+    using result = bound<{get_interval(L{}) / get_interval(R{}), 0}>;
     static_assert (std::is_same_v<typename result::raw_type, rational>);
 
-    static constexpr result to_result(auto raw) 
+    static constexpr result to_result(auto raw)
     { result res; res.Raw = static_cast<result::raw_type>(raw); return res; }
 
     template <policy_flag F = none>
@@ -24,12 +24,12 @@ namespace bnd
   };
 
   //---------------------------------------------------------------------------
-  // div 
+  // div
   //---------------------------------------------------------------------------
   template<boundable L, boundable R>
   template<policy_flag F>
   constexpr auto division<L,R>::div(L lhs, R rhs, policy<F>) -> result
-  { 
+  {
     return to_result(lhs.to_rational() / rhs.to_rational());
   }
 } // namespace bnd

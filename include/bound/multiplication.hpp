@@ -11,58 +11,54 @@
 namespace bnd
 {
   template <boundable L, boundable R = L>
-  struct multiplication 
-  { 
-    using result = bound<L::Grid * R::Grid>;
-    using raw_type = result::raw_type;
+  struct multiplication
+  {
+    using result = bound<get_grid(L{}) * get_grid(R{})>;
 
-    static constexpr result to_result(auto raw) 
-    { result res; res.Raw = static_cast<result::raw_type>(raw); return res; }
+    static constexpr result to_result(auto raw)
+    { result res; res.Raw = static_cast<raw_t<result>>(raw); return res; }
 
-    template <policy_flag F = none>
-    static constexpr result mul(L, R, policy<F> = {});
+    template <typename P>
+    static constexpr result mul(L, R, P&&);
   };
 
   //---------------------------------------------------------------------------
-  // mul 
+  // mul
   //---------------------------------------------------------------------------
-  template<boundable L, boundable R>
-  template<policy_flag F>
-  constexpr auto multiplication<L,R>::mul(L lhs, R rhs, policy<F> waiver) -> result
-  { 
-    if constexpr (result::Grid.Notch.Sign == sign::zero)
+  template <boundable L, boundable R>
+  template <typename P>
+  constexpr auto multiplication<L,R>::mul(L lhs, R rhs, P&& policy) -> result
+  {
+    if constexpr (get_notch(result{}).Sign == sign::zero)
       return to_result(lhs.to_rational() * rhs.to_rational());
     else
     {
-      if constexpr (result::Grid.Interval.Lower == L::Grid.Interval.Lower * R::Grid.Interval.Lower)
+      if constexpr (get_lower(result{}) == get_lower(L{}) * get_lower(R{}))
       {
         // low_per_notch is always positive in this case
         return to_result
         (
-          lhs.Raw * rhs.Raw + 
-          lhs.Raw * R::Grid.low_per_notch().Numerator +
-          rhs.Raw * L::Grid.low_per_notch().Numerator 
+          lhs.Raw * rhs.Raw +
+          lhs.Raw * get_grid(R{}).low_per_notch().Numerator +
+          rhs.Raw * get_grid(L{}).low_per_notch().Numerator
         );
       }
 
-      if constexpr (result::Grid.Interval.Lower == L::Grid.Interval.Upper * R::Grid.Interval.Upper)
-      { return multiplication<typename L::negative, typename R::negative>::mul(-lhs, -rhs, waiver); }
+      if constexpr (get_lower(result{}) == get_upper(L{}) * get_upper(R{}))
+      { return multiplication<negative<L>, negative<R>>::mul(-lhs, -rhs, std::forward<P>(policy)); }
 
-      if constexpr (result::Grid.Interval.Lower == L::Grid.Interval.Upper * R::Grid.Interval.Lower)
-      { 
-        typename L::raw_type negRaw = static_cast<typename L::raw_type>(L::Grid.max_notch()) - lhs.Raw;
-        return result::from_raw
+      if constexpr (get_lower(result{}) == get_upper(L{}) * get_lower(R{}))
+      {
+        raw_t<L> negRaw = static_cast<raw_t<L>>(L::Grid.max_notch()) - lhs.Raw;
+        return to_result
         (
-          static_cast<raw_type>
-            (
-              (negRaw * R::Grid.low_per_notch().Numerator + rhs.Raw * L::Grid.up_per_notch().Numerator) - 
-              (negRaw * rhs.Raw) 
-            )
+          (negRaw * R::Grid.low_per_notch().Numerator + rhs.Raw * L::Grid.up_per_notch().Numerator) -
+          (negRaw * rhs.Raw)
         );
       }
 
-      if constexpr (result::Grid.Interval.Lower == L::Grid.Interval.Lower * R::Grid.Interval.Upper)
-      { return -multiplication<L, typename R::negative>::mul(lhs, -rhs, waiver); }
+      if constexpr (get_lower(result{}) == get_lower(L{}) * get_upper(R{}))
+      { return -multiplication<L, negative<R>>::mul(lhs, -rhs, std::forward<P>(policy)); }
 
       throw "multiplication: internal logic error";
     }
