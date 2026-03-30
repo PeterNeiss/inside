@@ -14,26 +14,26 @@
 namespace bnd
 {
   //---------------------------------------------------------------------------
-  // bound 
+  // bound
   //---------------------------------------------------------------------------
   // error reporting strategy: Constructors throw
   //---------------------------------------------------------------------------
   template<grid G>
   struct bound
   {
-    static_assert(G.validate());
+    static_assert(grid::validate<G>());
     static constexpr grid Grid{G};
 
     using negative = bound<-G>;
 //    template <policy_flag H>
 //    using flag = bound<G, F | H>
-    using raw_type = storage_min<G>; 
+    using raw_type = storage_min<G>;
     raw_type Raw;
 
     constexpr bound() = default; // trivial constructor
     constexpr ~bound() = default; // trivial destructor
-    constexpr bound(bound const&) = default; 
-    constexpr bound(bound&&) = default; 
+    constexpr bound(bound const&) = default;
+    constexpr bound(bound&&) = default;
     constexpr bound& operator=(bound const&) = default;
 
     template <numeric A>
@@ -48,20 +48,20 @@ namespace bnd
     constexpr bound& operator=(B const& other)
     {
       return assignment<bound, B>::assign
-      (*this, other, make_policy(diag_location::current())); 
+      (*this, other, make_policy(diag_location::current()));
     }
 
     // TODO remove
-    constexpr static bound from_raw(raw_type raw) { bound b; b.Raw = raw; return b; } 
+    constexpr static bound from_raw(raw_type raw) { bound b; b.Raw = raw; return b; }
 
     constexpr explicit operator double() const { return Grid.raw_to_double(Raw); }
     // TODO rename explict operator rational
-    constexpr rational to_rational() const 
+    constexpr rational to_rational() const
     {
       if constexpr (std::is_same_v<raw_type, rational>)
         return Raw;
       else
-        return Raw * Grid.Notch + Grid.Interval.Lower; 
+        return Raw * Grid.Notch + Grid.Interval.Lower;
     }
 
     constexpr auto operator-() const
@@ -74,38 +74,42 @@ namespace bnd
     }
 
     template <policy_flag F = none>
-    auto policy() 
-    { 
+    auto policy()
+    {
        auto policy = make_policy<F>();
-       return policy_ref<bound, decltype(policy)>{*this, policy}; 
+       return policy_ref<bound, decltype(policy)>{*this, policy};
     }
 
     template <policy_flag F = none>
-    auto policy(std::error_code& ec) 
-    { 
+    auto policy(std::error_code& ec)
+    {
        auto policy = make_policy<F>(ec);
-       return policy_ref<bound, decltype(policy)>{*this, policy}; 
+       return policy_ref<bound, decltype(policy)>{*this, policy};
     }
+
+    auto with_round() { return this->policy<ignore_round>(); }
+    //auto without_clamp() { return this->policy<no_clamp>(); }
+    //auto without_wrap() { return this->policy<no_wrap>(); }
 
     private:
       static void check_trival() { static_assert(std::is_trivial_v<bound>);}
   };
 
   //---------------------------------------------------------------------------
-  // add 
+  // add
   //---------------------------------------------------------------------------
   template <boundable L, boundable R, policy_flag F = none>
   constexpr auto add(L const& lhs, R const& rhs, policy<F> waiver = {})
   { return addition<L,R>::add(lhs, rhs, waiver); }
 
   //---------------------------------------------------------------------------
-  // operator+ 
+  // operator+
   //---------------------------------------------------------------------------
-  constexpr auto operator+(boundable auto lhs, boundable auto rhs) 
+  constexpr auto operator+(boundable auto lhs, boundable auto rhs)
   { return add(lhs, rhs); }
 
   //---------------------------------------------------------------------------
-  // sub 
+  // sub
   //---------------------------------------------------------------------------
   template <boundable L, boundable R, policy_flag F = none>
   constexpr auto sub(L const& lhs, R const& rhs, policy<F> waiver = {})
@@ -114,11 +118,11 @@ namespace bnd
   //---------------------------------------------------------------------------
   // operator-
   //---------------------------------------------------------------------------
-  constexpr auto operator-(boundable auto lhs, boundable auto rhs) 
+  constexpr auto operator-(boundable auto lhs, boundable auto rhs)
   { return sub(lhs, rhs); }
 
   //---------------------------------------------------------------------------
-  // mul 
+  // mul
   //---------------------------------------------------------------------------
   template <boundable L, boundable R, policy_flag F = none>
   constexpr auto mul(L const& lhs, R const& rhs, policy<F> waiver = {})
@@ -127,11 +131,11 @@ namespace bnd
   //---------------------------------------------------------------------------
   // operator*
   //---------------------------------------------------------------------------
-  constexpr auto operator*(boundable auto lhs, boundable auto rhs) 
+  constexpr auto operator*(boundable auto lhs, boundable auto rhs)
   { return bnd::mul(lhs, rhs); }
 
   //---------------------------------------------------------------------------
-  // div 
+  // div
   //---------------------------------------------------------------------------
   template <boundable L, boundable R, policy_flag F = none>
   constexpr auto div(L lhs, R rhs, policy<F> waiver = {})
@@ -140,14 +144,14 @@ namespace bnd
   //---------------------------------------------------------------------------
   // operator/
   //---------------------------------------------------------------------------
-  constexpr auto operator/(boundable auto lhs, boundable auto rhs) 
+  constexpr auto operator/(boundable auto lhs, boundable auto rhs)
   { return bnd::div(lhs, rhs); }
 
   //---------------------------------------------------------------------------
-  // just 
+  // just
   //---------------------------------------------------------------------------
   template<auto value>
-  inline constexpr auto just = bound<grid{value}>{value}; 
+  inline constexpr auto just = bound<grid{value}>{value};
 
 } // namespace bnd
 

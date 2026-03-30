@@ -27,19 +27,18 @@ void test_conversion()
   std::cout << "bigger = " << bigger << std::endl;
   bigger = 39;
 
-  smaller.policy<ignore_round>() = bigger; 
+  smaller.policy<ignore_round>() = bigger;
   std::cout << "smaller = " << smaller << std::endl;
 
   bigger = 30;
-  std::error_code ec;
-  smaller.policy<ignore_round>(ec) = bigger; // no compile
-  std::cout << "smaller = " << smaller << "  ec: " << ec.message() << std::endl;
+  smaller.with_round() = bigger;
+  std::cout << "smaller = " << smaller << std::endl;
 }
 
 void test_rational()
 {
   constexpr rational a{std::numeric_limits<int>::min()};
-  (void)a; 
+  (void)a;
 }
 
 void test_div()
@@ -131,7 +130,7 @@ void test_add()
   std::cout << d << std::endl;
 
   using u64 = bound<{{0, std::numeric_limits<std::uint64_t>::max()}, 1}>;
-  
+
   constexpr u64 biggest{std::numeric_limits<std::uint64_t>::max()};
   std::cout << biggest << std::endl;
   //auto e = biggest + biggest;
@@ -143,7 +142,7 @@ void test_comparision()
   (
     rational{-1} < rational{0} &&
     rational{0}  < rational{1} &&
-    rational{-3, 2} < rational{-2, 3} 
+    rational{-3, 2} < rational{-2, 3}
   );
 
   static_assert
@@ -223,7 +222,7 @@ int main()
     test_mul();
     test_div();
     test_waiver();
-    
+
     // print_values<-(10.0_r)>{};
     //print_types<bound<>, test0_t, test1_t>{};
     //print_types<test2_t>{};

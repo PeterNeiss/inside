@@ -13,20 +13,20 @@
 namespace bnd
 {
   //---------------------------------------------------------------------------
-  // grid 
+  // grid
   //---------------------------------------------------------------------------
   // Must be a structural type for template NTTP (only public members)
   //---------------------------------------------------------------------------
-  // The grid has an interval space by notches 
-  // The interval must divide evenly by the notches. 
+  // The grid has an interval space by notches
+  // The interval must divide evenly by the notches.
   // If Notch is zero, all rationals in the interval are allowed, raw is not offset
   //---------------------------------------------------------------------------
-  struct grid 
+  struct grid
   {
     interval Interval;
     rational Notch;
 
-    grid() = default; 
+    grid() = default;
     constexpr grid(arithmetic auto lower, arithmetic auto upper, arithmetic auto notch)
       :grid{interval{lower, upper}, rational{notch}} { }
     constexpr grid(arithmetic auto lower, arithmetic auto upper)
@@ -34,19 +34,15 @@ namespace bnd
     constexpr grid(arithmetic auto lower)
       :grid{interval{lower, lower}, 0_r} { }
     constexpr grid(interval val, rational notch):Interval{val}, Notch{notch} { }
-   
-    constexpr bool validate() const
+
+    template <auto G>
+    static constexpr bool validate()
     {
-      if (not Interval.validate())
-        return false;
+      interval::validate<G.Interval>();
+      static_assert(G.Interval.divides_evenly(G.Notch));
+      static_assert(G.Notch == 0 || (G.Interval.Lower/G.Notch).Denominator == 1);
 
-      if (not Interval.divides_evenly(Notch))
-        return false;
-
-      if (Notch == 0)
-        return true;
-      else
-        return (Interval.Lower/Notch).Denominator == 1;  // Grid extension must include 0
+      return true;
     }
 
     constexpr umax max_notch() const
@@ -61,89 +57,89 @@ namespace bnd
 
     // operator== be default for structural type
     constexpr bool operator==(const grid& rhs) const = default;
-    constexpr grid operator-() const { return {-Interval, Notch}; } 
-/* 
+    constexpr grid operator-() const { return {-Interval, Notch}; }
+/*
     template <std::unsigned_integral Raw>
     constexpr Raw to_raw(std::signed_integral auto value) const
-    { 
+    {
       rational raw;
       raw.Denominator = 1;
       if (value < 0)
       {
         raw.Sign = sign::negative;
- 
+
       }
       rational raw = (value - Interval.Lower)/Notch;
-      return static_cast<Raw>(raw.Numerator/ raw.Denominator);  
+      return static_cast<Raw>(raw.Numerator/ raw.Denominator);
     }
 */
     template <std::unsigned_integral Raw>
     constexpr Raw to_raw(rational value) const
-    { 
+    {
       //TODO: check safty of calculation
       rational raw = (value - Interval.Lower)/Notch;
-      return static_cast<Raw>(raw.Numerator/ raw.Denominator);  
+      return static_cast<Raw>(raw.Numerator/ raw.Denominator);
     }
 
     template <std::same_as<rational> Raw>
     constexpr rational to_raw(rational value) const
-    { 
-      return (Notch == 0_r) ? value : (value - Interval.Lower)/Notch;  
+    {
+      return (Notch == 0_r) ? value : (value - Interval.Lower)/Notch;
     }
 
     constexpr double raw_to_double(std::unsigned_integral auto raw) const
     { return static_cast<double>(raw*Notch + Interval.Lower); }
 
     constexpr double raw_to_double(std::same_as<rational> auto raw) const
-    { 
-      return (Notch == 0_r) ? static_cast<double>(raw) : 
-        static_cast<double>(raw*Notch + Interval.Lower);  
+    {
+      return (Notch == 0_r) ? static_cast<double>(raw) :
+        static_cast<double>(raw*Notch + Interval.Lower);
     }
   };
 
   template <grid G>
   using storage_min = smallest_uint_for<G.max_notch()>;
-  
-  constexpr grid operator+(const grid&, const grid&); 
-  constexpr grid operator-(const grid&, const grid&); 
-  constexpr interval operator*  (const interval&, const interval&); 
+
+  constexpr grid operator+(const grid&, const grid&);
+  constexpr grid operator-(const grid&, const grid&);
+  constexpr interval operator*  (const interval&, const interval&);
 
   //---------------------------------------------------------------------------
-  // operator+ 
+  // operator+
   //---------------------------------------------------------------------------
-  inline constexpr grid operator+(const grid& lhs, const grid& rhs) 
-  { 
-    return {lhs.Interval + rhs.Interval, gcd(lhs.Notch, rhs.Notch)}; 
+  inline constexpr grid operator+(const grid& lhs, const grid& rhs)
+  {
+    return {lhs.Interval + rhs.Interval, gcd(lhs.Notch, rhs.Notch)};
   }
 
   //---------------------------------------------------------------------------
-  // operator- 
+  // operator-
   //---------------------------------------------------------------------------
-  inline constexpr grid operator-(const grid& lhs, const grid& rhs) 
-  { 
+  inline constexpr grid operator-(const grid& lhs, const grid& rhs)
+  {
     return operator+(lhs, -rhs);
   }
 
   //---------------------------------------------------------------------------
-  // operator* 
+  // operator*
   //---------------------------------------------------------------------------
-  inline constexpr grid operator*(const grid& lhs, const grid& rhs) 
-  { 
-    return {lhs.Interval * rhs.Interval, lhs.Notch * rhs.Notch}; 
+  inline constexpr grid operator*(const grid& lhs, const grid& rhs)
+  {
+    return {lhs.Interval * rhs.Interval, lhs.Notch * rhs.Notch};
   }
 
-/*  
-  constexpr interval operator/  (const interval&, const interval&); 
-  constexpr auto     operator<=>(const interval&, const interval&) -> std::partial_ordering; 
+/*
+  constexpr interval operator/  (const interval&, const interval&);
+  constexpr auto     operator<=>(const interval&, const interval&) -> std::partial_ordering;
   // TODO includes, excludes
 
   //---------------------------------------------------------------------------
-  // operator/ 
+  // operator/
   //---------------------------------------------------------------------------
   // this is only overlow safe in constexpr context
   //---------------------------------------------------------------------------
-  inline constexpr interval operator/(const interval& lhs, const interval& rhs) 
-  { 
+  inline constexpr interval operator/(const interval& lhs, const interval& rhs)
+  {
     if (rhs.includes(0_r))
       throw "division by zero imminent";
 
@@ -153,10 +149,10 @@ namespace bnd
         lhs.Lower / rhs.Lower,
         lhs.Lower / rhs.Upper,
         lhs.Upper / rhs.Lower,
-        lhs.Upper / rhs.Upper 
+        lhs.Upper / rhs.Upper
       }
     );
-  
+
     return {lower, upper};
   }
 */
