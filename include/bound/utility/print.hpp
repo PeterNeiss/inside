@@ -81,7 +81,7 @@ namespace bnd
            <<" {"
            << +b.Raw << "[" << uint_type_name<typename decltype(b)::raw_type>()
            << " Max:" << +max_notch(b) << "] "
-           << bnd::to_string(get_grid(b))
+           << bnd::to_string(Grid<B>)
            << "}";
     return stream;
   }

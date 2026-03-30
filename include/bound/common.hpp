@@ -12,10 +12,7 @@ namespace bnd
   template <grid G = {{0, 0}, 0}> struct bound;
 
   template <typename B>
-  concept boundable = requires { []<grid G>(bound<G>&){}(std::declval<B&>()); };
-
-  template <boundable B>
-  using negative = bound<-get_grid(B{})>;
+  concept boundable = requires { []<grid G>(bound<G>){}(B{}); };
 
   template <boundable B>
   using raw_t = typename B::raw_type;
@@ -26,8 +23,11 @@ namespace bnd
   template <boundable B>
   inline constexpr bool is_raw_rational = is_rational<raw_t<B>>;
 
-  template <grid G>
-  inline constexpr grid get_grid(bound<G> = {}) { return G; }
+  template <boundable B>
+  inline constexpr grid Grid = []<grid G>(bound<G>){ return G; } (B{});
+
+  template <boundable B>
+  using negative = bound<-Grid<B>>;
 
   template <grid G>
   inline constexpr interval get_interval(bound<G>) { return G.Interval; }

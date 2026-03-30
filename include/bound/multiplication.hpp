@@ -13,7 +13,7 @@ namespace bnd
   template <boundable L, boundable R = L>
   struct multiplication
   {
-    using result = bound<get_grid(L{}) * get_grid(R{})>;
+    using result = bound<Grid<L> * Grid<R>>;
 
     static constexpr result to_result(auto raw)
     { result res; res.Raw = raw_cast<result>(raw); return res; }

@@ -22,7 +22,6 @@ namespace bnd
   struct bound
   {
     static_assert(grid::validate<G>());
-//    static constexpr grid Grid{G};
 
     using negative = bound<-G>;
 //    template <policy_flag H>

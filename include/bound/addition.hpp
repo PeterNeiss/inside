@@ -13,7 +13,7 @@ namespace bnd
   template <boundable L, boundable R = L>
   struct addition
   {
-    using result = bound<get_grid(L{}) + get_grid(R{})>;
+    using result = bound<Grid<L> + Grid<R>>;
 
     template <policy_flag F = none>
     static constexpr result add(L, R, policy<F> = {});
