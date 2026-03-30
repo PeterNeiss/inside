@@ -11,6 +11,9 @@ namespace bnd
 {
   template <grid G = {{0, 0}, 0}> struct bound;
 
+  template <typename B>
+  concept boundable = requires { []<grid G>(bound<G>&){}(std::declval<B&>()); };
+
   template <grid G>
   inline constexpr grid get_grid(bound<G> = {}) { return G; }
 
@@ -26,13 +29,6 @@ namespace bnd
   template <grid G>
   inline constexpr rational get_notch(bound<G>) { return G.Notch; }
 
-  template <typename B>
-  concept boundable = requires(B b)
-  {
-    { get_grid(b) } -> std::same_as<grid>;
-    typename B::raw_type;
-    b.Raw;
-  };
 
   template <typename N>
   concept numeric = boundable<N> or arithmetic<N>;

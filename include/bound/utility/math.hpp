@@ -46,32 +46,33 @@ namespace bnd
 
   inline constexpr double frexp(double value, int* exp) noexcept 
   {
-      if (value == 0.0) {
-          *exp = 0;
-          return value;
-      }
+    if (value == 0.0) 
+    {
+        *exp = 0;
+        return value;
+    }
 
-      auto bits = std::bit_cast<std::uint64_t>(value);
-      constexpr std::uint64_t mantissa_mask = 0x000F'FFFF'FFFF'FFFF;
-      constexpr std::uint64_t sign_mask     = 0x8000'0000'0000'0000;
-      auto e = static_cast<int>((bits >> 52) & 0x7FF);
+    auto bits = std::bit_cast<std::uint64_t>(value);
+    constexpr std::uint64_t mantissa_mask = 0x000F'FFFF'FFFF'FFFF;
+    constexpr std::uint64_t sign_mask     = 0x8000'0000'0000'0000;
+    auto e = static_cast<int>((bits >> 52) & 0x7FF);
 
-      if (e == 0x7FF) {
-          *exp = 0;
-          return value;
-      }
+    if (e == 0x7FF) {
+        *exp = 0;
+        return value;
+    }
 
-      if (e == 0) {
-          // subnormal: scale up, recurse
-          double scaled = value * 0x1p53;
-          double result = frexp(scaled, exp);
-          *exp -= 53;
-          return result;
-      }
+    if (e == 0) {
+        // subnormal: scale up, recurse
+        double scaled = value * 0x1p53;
+        double result = frexp(scaled, exp);
+        *exp -= 53;
+        return result;
+    }
 
-      *exp = e - 0x3FE;
-      bits = (bits & (sign_mask | mantissa_mask)) | (std::uint64_t{0x3FE} << 52);
-      return std::bit_cast<double>(bits);
+    *exp = e - 0x3FE;
+    bits = (bits & (sign_mask | mantissa_mask)) | (std::uint64_t{0x3FE} << 52);
+    return std::bit_cast<double>(bits);
   }
 
   constexpr double ldexp(double value, int exp) noexcept {
