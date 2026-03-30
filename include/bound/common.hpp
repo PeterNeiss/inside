@@ -14,6 +14,18 @@ namespace bnd
   template <typename B>
   concept boundable = requires { []<grid G>(bound<G>&){}(std::declval<B&>()); };
 
+  template <boundable B>
+  using negative = bound<-get_grid(B{})>;
+
+  template <boundable B>
+  using raw_t = typename B::raw_type;
+
+  template <typename R>
+  inline constexpr bool is_rational = std::is_same_v<R, rational>;
+
+  template <boundable B>
+  inline constexpr bool is_raw_rational = is_rational<raw_t<B>>;
+
   template <grid G>
   inline constexpr grid get_grid(bound<G> = {}) { return G; }
 
@@ -29,19 +41,12 @@ namespace bnd
   template <grid G>
   inline constexpr rational get_notch(bound<G>) { return G.Notch; }
 
-
   template <typename N>
   concept numeric = boundable<N> or arithmetic<N>;
 
-  template <boundable B>
-  using negative = bound<-get_grid(B{})>;
-
-  template <boundable B>
-  using raw_t = typename B::raw_type;
-
   // ONLY type conversion, NO value representation conversion calculation
   template <boundable B>
-  raw_t<B> raw_cast(auto value) { return static_cast<raw_t<B>>(value); }
+  constexpr raw_t<B> raw_cast(auto value) { return static_cast<raw_t<B>>(value); }
 
   template <boundable B>
   inline constexpr raw_t<B> max_notch(B b)

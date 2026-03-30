@@ -73,14 +73,15 @@ namespace bnd
     return stream;
   }
 
-  inline std::ostream& operator<<(std::ostream& stream, boundable auto b)
+  template <boundable B>
+  inline std::ostream& operator<<(std::ostream& stream, B b)
   {
     //TODO auto [num,den] = b.to_rational();
     stream << static_cast<rational>(b)
            <<" {"
            << +b.Raw << "[" << uint_type_name<typename decltype(b)::raw_type>()
-           << " Max:" << +b.Grid.max_notch() << "] "
-           << bnd::to_string(b.Grid)
+           << " Max:" << +max_notch(b) << "] "
+           << bnd::to_string(get_grid(b))
            << "}";
     return stream;
   }

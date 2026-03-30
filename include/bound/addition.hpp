@@ -13,7 +13,7 @@ namespace bnd
   template <boundable L, boundable R = L>
   struct addition
   {
-    using result = bound<L::Grid + R::Grid>;
+    using result = bound<get_grid(L{}) + get_grid(R{})>;
 
     template <policy_flag F = none>
     static constexpr result add(L, R, policy<F> = {});
@@ -31,8 +31,8 @@ namespace bnd
       res.Raw = raw_cast<result>(lhs.to_rational() + rhs.to_rational());
     else
     {
-      static constexpr umax lhs_widen = (L::Grid.Notch == 0) ? 0 : (result::Grid.Notch / L::Grid.Notch).Numerator;
-      static constexpr umax rhs_widen = (R::Grid.Notch == 0) ? 0 : (result::Grid.Notch / R::Grid.Notch).Numerator;
+      static constexpr umax lhs_widen = (get_notch(L{}) == 0) ? 0 : (get_notch(result{}) / get_notch(L{})).Numerator;
+      static constexpr umax rhs_widen = (get_notch(R{}) == 0) ? 0 : (get_notch(result{}) / get_notch(R{})).Numerator;
 
       // TODO Check argument
       // Because result type calculation did not overflow at compile time,
