@@ -10,7 +10,7 @@
 namespace bnd
 {
   //---------------------------------------------------------------------------
-  // assignment 
+  // assignment
   //---------------------------------------------------------------------------
   template <typename L, typename R>
   struct assignment;
@@ -74,33 +74,34 @@ namespace bnd
   };
 */
   //---------------------------------------------------------------------------
-  // assign(boundable, integral) 
+  // assign(boundable, integral)
   //---------------------------------------------------------------------------
   template<boundable L, std::integral R>
   template<typename P>
   constexpr L& assignment<L,R>::assign(L& lhs, R const& rhs, P&& policy)
-  { 
-    constexpr interval rhs_interval = 
+  {
+    constexpr interval lhs_interval = get_interval(L{});
+    constexpr interval rhs_interval =
       {std::numeric_limits<R>::lowest(), std::numeric_limits<R>::max()};
 
-    static_assert(not L::Grid.Interval.excludes(rhs_interval));
+    static_assert(not lhs_interval.excludes(rhs_interval));
 
     if consteval
     {
-      // compile_time => always_check value 
-      if (not L::Grid.Interval.includes(rhs))
+      // compile_time => always_check value
+      if (not lhs_interval.includes(rhs))
         throw "value not in interval";
-    }  
-    else 
+    }
+    else
     {
       // run_time => compile_time_check (always_success or may_fail)
-      if constexpr (not L::Grid.Interval.includes(rhs_interval))
+      if constexpr (not lhs_interval.includes(rhs_interval))
       {
         // may_fail
-        if (policy.domain_check() && not L::Grid.Interval.includes(rhs))
+        if (policy.domain_check() && not lhs_interval.includes(rhs))
         {
           // failed
-          policy.domain_error(bnd::to_string(rhs) + " is not in " + bnd::to_string(L::Grid.Interval));
+          policy.domain_error(bnd::to_string(rhs) + " is not in " + bnd::to_string(lhs_interval));
           return lhs;
         }
         // else success
@@ -108,25 +109,26 @@ namespace bnd
       // else always_success
     }
 
-    lhs.Raw = L::Grid.template to_raw<typename L::raw_type>(rhs); 
+    //TODO check for rounding
+    lhs.Raw = L::Grid.template to_raw<typename L::raw_type>(rhs);
     return lhs;
   }
 
   //---------------------------------------------------------------------------
-  // assign(boundable, floating_point | rational) 
+  // assign(boundable, floating_point | rational)
   //---------------------------------------------------------------------------
   template <boundable L, typename R>
     requires std::floating_point<R> || std::same_as<rational, R>
   template<typename P>
   constexpr L& assignment<L,R>::assign(L& lhs, R const& rhs, P&& policy)
-  { 
+  {
     if consteval
     {
-      // compile_time => always_check value 
+      // compile_time => always_check value
       if (not L::Grid.Interval.includes(rhs))
         throw "value not in interval";
-    }  
-    else 
+    }
+    else
     {
       // run_time => may_fail
       if (policy.domain_check() && not L::Grid.Interval.includes(rhs))
@@ -138,42 +140,42 @@ namespace bnd
       // else success
     }
 
-    lhs.Raw = L::Grid.template to_raw<typename L::raw_type>(rhs); 
+    lhs.Raw = L::Grid.template to_raw<typename L::raw_type>(rhs);
     return lhs;
   }
 
   //---------------------------------------------------------------------------
-  // assign(boundable, boundable) 
+  // assign(boundable, boundable)
   //---------------------------------------------------------------------------
   template<boundable L, boundable R>
   template<typename P>
   constexpr L& assignment<L,R>::assign(L& lhs, R const& rhs, P&& policy)
-  { 
+  {
     static_assert(not L::Grid.Interval.excludes(R::Grid.Interval));
 
     if consteval
     {
-      // compile_time => always_check value 
+      // compile_time => always_check value
       if (not L::Grid.Interval.includes(R::Grid.Interval))
         throw "value not in interval";
-    }  
-    else 
+    }
+    else
     {
       // run_time => compile_time_check (always_success or may_fail)
       if constexpr (not L::Grid.Interval.includes(R::Grid.Interval))
       {
         // may_fail
-        if (policy.domain_check() && not L::Grid.Interval.includes(rhs.to_rational()))
+        if (policy.domain_check() && not L::Grid.Interval.includes(static_cast<rational>(rhs)))
         {
           // failed
-          policy.domain_error(bnd::to_string(rhs.to_rational()) + " is not in " + bnd::to_string(L::Grid.Interval));
+          policy.domain_error(bnd::to_string(static_cast<rational>(rhs)) + " is not in " + bnd::to_string(L::Grid.Interval));
           return lhs;
         }
 
         if (policy.round_check() && Factor.Denominator != 1)
         {
           // failed
-          policy.round_error(bnd::to_string(rhs.to_rational()) + " would round");
+          policy.round_error(bnd::to_string(static_cast<rational>(rhs)) + " would round");
           return lhs;
         }
         // else success
@@ -181,7 +183,7 @@ namespace bnd
       // else always_success
     }
 
-    lhs.Raw = static_cast<L::raw_type>(Offset + Factor * rhs.Raw); 
+    lhs.Raw = static_cast<L::raw_type>(Offset + Factor * rhs.Raw);
     return lhs;
   }
 } // namespace bnd

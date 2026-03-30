@@ -21,8 +21,8 @@ namespace bnd
       return str += std::to_string(r.Numerator);
 
     str += std::to_string(r.Numerator);
-    str += "/"; 
-    str += std::to_string(r.Denominator); 
+    str += "/";
+    str += std::to_string(r.Denominator);
     return str;
   }
 
@@ -31,8 +31,8 @@ namespace bnd
     std::string str{"["};
 
     str += bnd::to_string(ival.Lower);
-    str += ".."; 
-    str += bnd::to_string(ival.Upper); 
+    str += "..";
+    str += bnd::to_string(ival.Upper);
     str += "]";
     return str;
   }
@@ -42,13 +42,13 @@ namespace bnd
     std::string str{"{"};
 
     str += bnd::to_string(g.Interval);
-    str += ", "; 
-    str += bnd::to_string(g.Notch); 
+    str += ", ";
+    str += bnd::to_string(g.Notch);
     str += "}";
     return str;
   }
 
-  std::string to_string(diag_location loc) 
+  std::string to_string(diag_location loc)
   {
 #ifndef NDEBUG
     using namespace std::string_literals;
@@ -69,15 +69,15 @@ namespace bnd
 
   inline std::ostream& operator<<(std::ostream& stream, rational r)
   {
-    stream << bnd::to_string(r); 
+    stream << bnd::to_string(r);
     return stream;
   }
 
   inline std::ostream& operator<<(std::ostream& stream, boundable auto b)
   {
     //TODO auto [num,den] = b.to_rational();
-    stream << b.to_rational()
-           <<" {"   
+    stream << static_cast<rational>(b)
+           <<" {"
            << +b.Raw << "[" << uint_type_name<typename decltype(b)::raw_type>()
            << " Max:" << +b.Grid.max_notch() << "] "
            << bnd::to_string(b.Grid)

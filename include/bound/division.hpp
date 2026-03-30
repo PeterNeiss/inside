@@ -30,7 +30,7 @@ namespace bnd
   template<policy_flag F>
   constexpr auto division<L,R>::div(L lhs, R rhs, policy<F>) -> result
   {
-    return to_result(lhs.to_rational() / rhs.to_rational());
+    return to_result(static_cast<rational>(lhs) / static_cast<rational>(rhs));
   }
 } // namespace bnd
 

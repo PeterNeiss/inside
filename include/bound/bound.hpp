@@ -31,10 +31,6 @@ namespace bnd
     raw_type Raw;
 
     constexpr bound() = default; // trivial constructor
-    constexpr ~bound() = default; // trivial destructor
-    constexpr bound(bound const&) = default;
-    constexpr bound(bound&&) = default;
-    constexpr bound& operator=(bound const&) = default;
 
     template <numeric A>
     constexpr bound(A value, diag_location loc = diag_location::current())
@@ -49,14 +45,9 @@ namespace bnd
     { return assignment<bound, B>::assign(*this, other, make_policy(diag_location::current())); }
 
     constexpr explicit operator double() const { return G.raw_to_double(Raw); }
-    // TODO rename explict operator rational
-    constexpr rational to_rational() const
-    {
-      if constexpr (std::is_same_v<raw_type, rational>)
-        return Raw;
-      else
-        return Raw * G.Notch + G.Interval.Lower;
-    }
+
+    constexpr explicit operator rational() const
+    { return (std::is_same_v<raw_type, rational>) ? Raw : (Raw * G.Notch + G.Interval.Lower); }
 
     constexpr negative operator-() const
     {
@@ -79,7 +70,7 @@ namespace bnd
        return policy_ref<bound, decltype(policy)>{*this, policy};
     }
 
-    auto with_round() { return this->policy<ignore_round>(); }
+    auto with_round() { return policy<ignore_round>(); }
     //auto without_clamp() { return this->policy<no_clamp>(); }
     //auto without_wrap() { return this->policy<no_wrap>(); }
 
@@ -90,9 +81,9 @@ namespace bnd
   //---------------------------------------------------------------------------
   // add
   //---------------------------------------------------------------------------
-  template <boundable L, boundable R, policy_flag F = none>
-  constexpr auto add(L const& lhs, R const& rhs, policy<F> waiver = {})
-  { return addition<L,R>::add(lhs, rhs, waiver); }
+  template <boundable L, boundable R, typename P = policy<>>
+  constexpr auto add(L const& lhs, R const& rhs, P&& policy = {})
+  { return addition<L,R>::add(lhs, rhs, std::forward<P>(policy)); }
 
   //---------------------------------------------------------------------------
   // operator+
@@ -103,9 +94,9 @@ namespace bnd
   //---------------------------------------------------------------------------
   // sub
   //---------------------------------------------------------------------------
-  template <boundable L, boundable R, policy_flag F = none>
-  constexpr auto sub(L const& lhs, R const& rhs, policy<F> waiver = {})
-  { return add(lhs, -rhs, waiver); }
+  template <boundable L, boundable R, typename P = policy<>>
+  constexpr auto sub(L const& lhs, R const& rhs, P&& policy = {})
+  { return add(lhs, -rhs, std::forward<P>(policy)); }
 
   //---------------------------------------------------------------------------
   // operator-
@@ -116,9 +107,9 @@ namespace bnd
   //---------------------------------------------------------------------------
   // mul
   //---------------------------------------------------------------------------
-  template <boundable L, boundable R, policy_flag F = none>
-  constexpr auto mul(L const& lhs, R const& rhs, policy<F> waiver = {})
-  { return multiplication<L,R>::mul(lhs, rhs, waiver); }
+  template <boundable L, boundable R, typename P = policy<>>
+  constexpr auto mul(L const& lhs, R const& rhs, P&& policy = {})
+  { return multiplication<L,R>::mul(lhs, rhs, std::forward<P>(policy)); }
 
   //---------------------------------------------------------------------------
   // operator*
@@ -129,9 +120,9 @@ namespace bnd
   //---------------------------------------------------------------------------
   // div
   //---------------------------------------------------------------------------
-  template <boundable L, boundable R, policy_flag F = none>
-  constexpr auto div(L lhs, R rhs, policy<F> waiver = {})
-  { return division<L,R>::div(lhs, rhs, waiver); }
+  template <boundable L, boundable R, typename P = policy<>>
+  constexpr auto div(L lhs, R rhs, P&& policy = {})
+  { return division<L,R>::div(lhs, rhs, std::forward<P>(policy)); }
 
   //---------------------------------------------------------------------------
   // operator/
