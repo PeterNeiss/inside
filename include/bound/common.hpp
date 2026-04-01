@@ -39,8 +39,8 @@ namespace bnd
   inline constexpr interval Interval<I> =
       {std::numeric_limits<I>::lowest(), std::numeric_limits<I>::max()};
 
-  template <grid G>
-  inline constexpr rational get_lower(bound<G>) { return G.Interval.Lower; }
+  template <boundable B>
+  inline constexpr rational Lower = []<grid G>(bound<G>){ return G.Interval.Lower; } (B{});
 
   template <grid G>
   inline constexpr rational get_upper(bound<G>) { return G.Interval.Upper; }
@@ -64,7 +64,7 @@ namespace bnd
 
   template <boundable B>
   inline constexpr umax offset_lower(B b)
-  { return (get_notch(b) == 0) ? 0ull : (get_lower(b)/get_notch(b)).Numerator; }
+  { return (get_notch(b) == 0) ? 0ull : (Lower<B>/get_notch(b)).Numerator; }
 
   template <boundable B>
   inline constexpr umax offset_upper(B b)

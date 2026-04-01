@@ -43,7 +43,7 @@ namespace bnd
         if constexpr (is_raw_rational<R>)
         { return - get_lower(L{})/get_notch(L{}); }
 
-        return (get_lower(R{}) - get_lower(L{}))/get_notch(L{});
+        return (Lower<R> - Lower<L>)/get_notch(L{});
       }
 
       static constexpr rational calcFactor()
