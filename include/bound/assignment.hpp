@@ -80,28 +80,24 @@ namespace bnd
   template<typename P>
   constexpr L& assignment<L,R>::assign(L& lhs, R const& rhs, P&& policy)
   {
-    constexpr interval lhs_interval = get_interval(L{});
-    constexpr interval rhs_interval =
-      {std::numeric_limits<R>::lowest(), std::numeric_limits<R>::max()};
-
-    static_assert(not lhs_interval.excludes(rhs_interval));
+    static_assert(not Interval<L>.excludes(Interval<R>));
 
     if consteval
     {
       // compile_time => always_check value
-      if (not lhs_interval.includes(rhs))
+      if (not Interval<L>.includes(rhs))
         throw "value not in interval";
     }
     else
     {
       // run_time => compile_time_check (always_success or may_fail)
-      if constexpr (not lhs_interval.includes(rhs_interval))
+      if constexpr (not Interval<L>.includes(Interval<R>))
       {
         // may_fail
-        if (policy.domain_check() && not lhs_interval.includes(rhs))
+        if (policy.domain_check() && not Interval<L>.includes(rhs))
         {
           // failed
-          policy.domain_error(bnd::to_string(rhs) + " is not in " + bnd::to_string(lhs_interval));
+          policy.domain_error(bnd::to_string(rhs) + " is not in " + bnd::to_string(Interval<L>));
           return lhs;
         }
         // else success
@@ -113,7 +109,7 @@ namespace bnd
       lhs.Raw = rhs;
     else
     {
-      rational raw = (rhs - lhs_interval.Lower)/get_notch(L{});
+      rational raw = (rhs - Interval<L>.Lower)/get_notch(L{});
       lhs.Raw = raw_cast<L>(raw.Numerator / raw.Denominator);
     }
     return lhs;
@@ -127,21 +123,19 @@ namespace bnd
   template<typename P>
   constexpr L& assignment<L,R>::assign(L& lhs, R const& rhs, P&& policy)
   {
-    constexpr interval lhs_interval = get_interval(L{});
-
     if consteval
     {
       // compile_time => always_check value
-      if (not lhs_interval.includes(rhs))
+      if (not Interval<L>.includes(rhs))
         throw "value not in interval";
     }
     else
     {
       // run_time => may_fail
-      if (policy.domain_check() && not lhs_interval.includes(rhs))
+      if (policy.domain_check() && not Interval<L>.includes(rhs))
       {
         // failed
-        policy.domain_error(bnd::to_string(rhs) + " is not in " + bnd::to_string(lhs_interval));
+        policy.domain_error(bnd::to_string(rhs) + " is not in " + bnd::to_string(Interval<L>));
         return lhs;
       }
       // else success
@@ -151,7 +145,7 @@ namespace bnd
       lhs.Raw = rhs;
     else
     {
-      rational raw = (rhs - lhs_interval.Lower)/get_notch(L{});
+      rational raw = (rhs - Interval<L>.Lower)/get_notch(L{});
       lhs.Raw = raw_cast<L>(raw.Numerator / raw.Denominator);
     }
     return lhs;
@@ -164,26 +158,24 @@ namespace bnd
   template<typename P>
   constexpr L& assignment<L,R>::assign(L& lhs, R const& rhs, P&& policy)
   {
-    constexpr interval lhs_interval = get_interval(L{});
-    constexpr interval rhs_interval = get_interval(R{});
-    static_assert(not lhs_interval.excludes(rhs_interval));
+    static_assert(not Interval<L>.excludes(Interval<R>));
 
     if consteval
     {
       // compile_time => always_check value
-      if (not lhs_interval.includes(rhs_interval))
+      if (not Interval<L>.includes(Interval<R>))
         throw "value not in interval";
     }
     else
     {
       // run_time => compile_time_check (always_success or may_fail)
-      if constexpr (not lhs_interval.includes(rhs_interval))
+      if constexpr (not Interval<L>.includes(Interval<R>))
       {
         // may_fail
-        if (policy.domain_check() && not lhs_interval.includes(static_cast<rational>(rhs)))
+        if (policy.domain_check() && not Interval<L>.includes(static_cast<rational>(rhs)))
         {
           // failed
-          policy.domain_error(bnd::to_string(static_cast<rational>(rhs)) + " is not in " + bnd::to_string(lhs_interval));
+          policy.domain_error(bnd::to_string(static_cast<rational>(rhs)) + " is not in " + bnd::to_string(Interval<L>));
           return lhs;
         }
 

@@ -10,6 +10,7 @@
 #include <concepts>
 #include <type_traits>
 #include <bit>
+#include <limits>
 
 namespace bnd
 {
@@ -19,7 +20,7 @@ namespace bnd
   struct rational;
 
   template <std::uintmax_t N>
-  using smallest_uint_for = 
+  using smallest_uint_for =
     std::conditional_t<(N == 0), rational,
     std::conditional_t<(N <= UINT8_MAX),  std::uint8_t,
     std::conditional_t<(N <= UINT16_MAX), std::uint16_t,
@@ -27,7 +28,7 @@ namespace bnd
                                           std::uint64_t>>>>;
 
   template <typename T>
-  constexpr std::string_view uint_type_name() 
+  constexpr std::string_view uint_type_name()
   {
     if constexpr (std::is_same_v<T, std::uint8_t>)  return "uint8_t";
     if constexpr (std::is_same_v<T, std::uint16_t>) return "uint16_t";
@@ -44,9 +45,9 @@ namespace bnd
   constexpr umax safe_abs(V value)
   { return (value >= 0) ? static_cast<umax>(value) : -static_cast<umax>(value); }
 
-  inline constexpr double frexp(double value, int* exp) noexcept 
+  inline constexpr double frexp(double value, int* exp) noexcept
   {
-    if (value == 0.0) 
+    if (value == 0.0)
     {
         *exp = 0;
         return value;
@@ -129,14 +130,14 @@ namespace bnd
   }
 
   // I barely understand this, but it seems to work fine
-  constexpr auto abs_fraction(double value) 
+  constexpr auto abs_fraction(double value)
   {
     if (not std::isfinite(value))
       throw "Keep your cr*ppy double to yourself!";
 
     // abs
     if (value < 0) value = -value;
-    
+
     int exponent;
     // norm_frac in [0.5, 1.0)
     double norm_frac = bnd::frexp(value, &exponent);

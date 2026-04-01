@@ -29,8 +29,15 @@ namespace bnd
   template <boundable B>
   using negative = bound<-Grid<B>>;
 
-  template <grid G>
-  inline constexpr interval get_interval(bound<G>) { return G.Interval; }
+  template <typename T>
+  inline constexpr interval Interval = {0,0};
+
+  template <boundable B>
+  inline constexpr interval Interval<B> = []<grid G>(bound<G>){ return G.Interval; } (B{});
+
+  template <std::integral I>
+  inline constexpr interval Interval<I> =
+      {std::numeric_limits<I>::lowest(), std::numeric_limits<I>::max()};
 
   template <grid G>
   inline constexpr rational get_lower(bound<G>) { return G.Interval.Lower; }
@@ -52,7 +59,7 @@ namespace bnd
   inline constexpr raw_t<B> max_notch(B b)
   {
     return (get_notch(b) == 0) ?
-    raw_cast<B>(0) : raw_cast<B>((get_interval(b)/get_notch(b)).Numerator);
+    raw_cast<B>(0) : raw_cast<B>((Interval<B>/get_notch(b)).Numerator);
   }
 
   template <boundable B>
