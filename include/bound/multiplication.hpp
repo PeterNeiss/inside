@@ -40,17 +40,17 @@ namespace bnd
         (lhs.Raw * rhs.Raw + lhs.Raw * offset_lower(R{}) + rhs.Raw * offset_lower(L{}));
       }
 
-      if constexpr (Lower<result> == get_upper(L{}) * get_upper(R{}))
+      if constexpr (Lower<result> == Upper<L> * Upper<R>)
       { return multiplication<negative<L>, negative<R>>::mul(-lhs, -rhs, std::forward<P>(policy)); }
 
-      if constexpr (Lower<result> == get_upper(L{}) * Lower<R>)
+      if constexpr (Lower<result> == Upper<L> * Lower<R>)
       {
         raw_t<L> negRaw = max_notch(L{}) - lhs.Raw;
         return to_result
         (negRaw * offset_lower(R{}) + rhs.Raw * offset_upper(L{}) - (negRaw * rhs.Raw));
       }
 
-      if constexpr (Lower<result> == Lower<L> * get_upper(R{}))
+      if constexpr (Lower<result> == Lower<L> * Upper<R>)
       { return -multiplication<L, negative<R>>::mul(lhs, -rhs, std::forward<P>(policy)); }
 
       throw "multiplication: internal logic error";

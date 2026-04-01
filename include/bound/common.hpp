@@ -42,8 +42,8 @@ namespace bnd
   template <boundable B>
   inline constexpr rational Lower = []<grid G>(bound<G>){ return G.Interval.Lower; } (B{});
 
-  template <grid G>
-  inline constexpr rational get_upper(bound<G>) { return G.Interval.Upper; }
+  template <boundable B>
+  inline constexpr rational Upper = []<grid G>(bound<G>){ return G.Interval.Upper; } (B{});
 
   template <grid G>
   inline constexpr rational get_notch(bound<G>) { return G.Notch; }
@@ -68,7 +68,7 @@ namespace bnd
 
   template <boundable B>
   inline constexpr umax offset_upper(B b)
-  { return (get_notch(b) == 0) ? 0ull : (get_upper(b)/get_notch(b)).Numerator; }
+  { return (get_notch(b) == 0) ? 0ull : (Upper<B>/get_notch(b)).Numerator; }
 } // namespace bnd
 
 #endif // BNDcommonHPP
