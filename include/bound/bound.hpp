@@ -51,7 +51,7 @@ namespace bnd
     constexpr negative operator-() const
     {
       negative neg;
-      neg.Raw = (std::is_same_v<raw_type, rational>) ? -Raw : (max_notch(*this) - Raw);
+      neg.Raw = (std::is_same_v<raw_type, rational>) ? -Raw : (MaxNotch<bound> - Raw);
       return neg;
     }
 

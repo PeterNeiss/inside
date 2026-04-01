@@ -56,19 +56,14 @@ namespace bnd
   constexpr raw_t<B> raw_cast(auto value) { return static_cast<raw_t<B>>(value); }
 
   template <boundable B>
-  inline constexpr raw_t<B> max_notch(B)
-  {
-    return (Notch<B> == 0) ?
+  inline constexpr raw_t<B> MaxNotch = (Notch<B> == 0) ?
     raw_cast<B>(0) : raw_cast<B>((Interval<B>/Notch<B>).Numerator);
-  }
 
   template <boundable B>
-  inline constexpr umax offset_lower(B)
-  { return (Notch<B> == 0) ? 0ull : (Lower<B>/Notch<B>).Numerator; }
+  inline constexpr umax OffsetLower = (Notch<B> == 0) ? 0ull : (Lower<B>/Notch<B>).Numerator;
 
   template <boundable B>
-  inline constexpr umax offset_upper(B)
-  { return (Notch<B> == 0) ? 0ull : (Upper<B>/Notch<B>).Numerator; }
+  inline constexpr umax OffsetUpper = (Notch<B> == 0) ? 0ull : (Upper<B>/Notch<B>).Numerator;
 } // namespace bnd
 
 #endif // BNDcommonHPP
