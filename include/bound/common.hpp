@@ -45,8 +45,8 @@ namespace bnd
   template <boundable B>
   inline constexpr rational Upper = []<grid G>(bound<G>){ return G.Interval.Upper; } (B{});
 
-  template <grid G>
-  inline constexpr rational get_notch(bound<G>) { return G.Notch; }
+  template <boundable B>
+  inline constexpr rational Notch = []<grid G>(bound<G>){ return G.Notch; } (B{});
 
   template <typename N>
   concept numeric = boundable<N> or arithmetic<N>;
@@ -56,19 +56,19 @@ namespace bnd
   constexpr raw_t<B> raw_cast(auto value) { return static_cast<raw_t<B>>(value); }
 
   template <boundable B>
-  inline constexpr raw_t<B> max_notch(B b)
+  inline constexpr raw_t<B> max_notch(B)
   {
-    return (get_notch(b) == 0) ?
-    raw_cast<B>(0) : raw_cast<B>((Interval<B>/get_notch(b)).Numerator);
+    return (Notch<B> == 0) ?
+    raw_cast<B>(0) : raw_cast<B>((Interval<B>/Notch<B>).Numerator);
   }
 
   template <boundable B>
-  inline constexpr umax offset_lower(B b)
-  { return (get_notch(b) == 0) ? 0ull : (Lower<B>/get_notch(b)).Numerator; }
+  inline constexpr umax offset_lower(B)
+  { return (Notch<B> == 0) ? 0ull : (Lower<B>/Notch<B>).Numerator; }
 
   template <boundable B>
-  inline constexpr umax offset_upper(B b)
-  { return (get_notch(b) == 0) ? 0ull : (Upper<B>/get_notch(b)).Numerator; }
+  inline constexpr umax offset_upper(B)
+  { return (Notch<B> == 0) ? 0ull : (Upper<B>/Notch<B>).Numerator; }
 } // namespace bnd
 
 #endif // BNDcommonHPP

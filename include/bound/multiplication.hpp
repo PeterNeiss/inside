@@ -29,7 +29,7 @@ namespace bnd
   template <typename P>
   constexpr auto multiplication<L,R>::mul(L lhs, R rhs, P&& policy) -> result
   {
-    if constexpr (get_notch(result{}).Sign == sign::zero)
+    if constexpr (Notch<result>.Sign == sign::zero)
       return to_result(lhs.to_rational() * rhs.to_rational());
     else
     {

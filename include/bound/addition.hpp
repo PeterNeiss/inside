@@ -31,8 +31,8 @@ namespace bnd
       res.Raw = raw_cast<result>(lhs.to_rational() + rhs.to_rational());
     else
     {
-      static constexpr umax lhs_widen = (get_notch(L{}) == 0) ? 0 : (get_notch(result{}) / get_notch(L{})).Numerator;
-      static constexpr umax rhs_widen = (get_notch(R{}) == 0) ? 0 : (get_notch(result{}) / get_notch(R{})).Numerator;
+      static constexpr umax lhs_widen = (Notch<L> == 0) ? 0 : (Notch<result> / Notch<L>).Numerator;
+      static constexpr umax rhs_widen = (Notch<R> == 0) ? 0 : (Notch<result> / Notch<R>).Numerator;
 
       // TODO Check argument
       // Because result type calculation did not overflow at compile time,
