@@ -39,7 +39,7 @@ namespace bnd
     {
       interval::validate<G.Interval>();
       static_assert(G.Interval.divides_evenly(G.Notch));
-      static_assert(G.Notch == 0 || (G.Interval.Lower/G.Notch).Denominator == 1);
+      static_assert(G.Notch == 0 || (G.Interval.Lower/G.Notch).value().Denominator == 1);
 
       return true;
     }
@@ -48,10 +48,10 @@ namespace bnd
     { return (Notch == 0_r) ? 0 : (Interval/Notch).Numerator; }
 
     constexpr rational low_per_notch() const
-    { return (Notch == 0_r) ? 0_r : Interval.Lower/Notch; }
+    { return (Interval.Lower/Notch).value_or(0_r); }
 
     constexpr rational up_per_notch() const
-    { return (Notch == 0_r) ? 0_r : Interval.Upper/Notch; }
+    { return (Interval.Upper/Notch).value_or(0_r); }
 
 
     // operator== be default for structural type
@@ -76,14 +76,14 @@ namespace bnd
     constexpr Raw to_raw(rational value) const
     {
       //TODO: check safty of calculation
-      rational raw = (value - Interval.Lower)/Notch;
+      rational raw = ((value - Interval.Lower)/Notch).value();
       return static_cast<Raw>(raw.Numerator/ raw.Denominator);
     }
 
     template <std::same_as<rational> Raw>
     constexpr rational to_raw(rational value) const
     {
-      return (Notch == 0_r) ? value : (value - Interval.Lower)/Notch;
+      return ((value - Interval.Lower)/Notch).value_or(value);
     }
 
     constexpr double raw_to_double(std::unsigned_integral auto raw) const

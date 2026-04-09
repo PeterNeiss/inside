@@ -13,8 +13,6 @@
 
 namespace bnd
 {
-  using slim::optional;
-
   template <grid G = {{0, 0}, 0}> struct bound;
 
   template <typename B>
@@ -66,10 +64,10 @@ namespace bnd
     raw_cast<B>(0) : raw_cast<B>((Interval<B>/Notch<B>).Numerator);
 
   template <boundable B>
-  inline constexpr umax OffsetLower = (Notch<B> == 0) ? 0ull : (Lower<B>/Notch<B>).Numerator;
+  inline constexpr umax OffsetLower = (Lower<B>/Notch<B>).value_or(0_r).Numerator;
 
   template <boundable B>
-  inline constexpr umax OffsetUpper = (Notch<B> == 0) ? 0ull : (Upper<B>/Notch<B>).Numerator;
+  inline constexpr umax OffsetUpper = (Upper<B>/Notch<B>).value_or(0_r).Numerator;
 } // namespace bnd
 
 #endif // BNDcommonHPP

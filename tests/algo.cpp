@@ -10,7 +10,7 @@ using namespace bnd;
 using u8 = bnd::bound<{0, 100, 0.5}>;
 using u16 = bnd::bound<{0, 1000, 0.5}>;
 
-optional<rational> test_opt()
+slim::optional<rational> test_opt()
 {
   return rational{1}/0;
 }

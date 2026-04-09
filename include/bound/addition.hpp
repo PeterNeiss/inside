@@ -37,6 +37,9 @@ namespace bnd
   {
     using result = bound<Grid<L> + Grid<R>>;
 
+    static constexpr umax lhs_widen = (Notch<result> / Notch<L>)->Numerator;
+    static constexpr umax rhs_widen = (Notch<result> / Notch<R>)->Numerator;
+
     template <policy_flag F = none>
     static constexpr result add(L, R, policy<F> = {});
   };
@@ -53,8 +56,6 @@ namespace bnd
       res.Raw = raw_cast<result>(lhs.to_rational() + rhs.to_rational());
     else
     {
-      static constexpr umax lhs_widen = (Notch<L> == 0) ? 0 : (Notch<result> / Notch<L>).Numerator;
-      static constexpr umax rhs_widen = (Notch<R> == 0) ? 0 : (Notch<result> / Notch<R>).Numerator;
 
       // TODO Check argument
       // Because result type calculation did not overflow at compile time,

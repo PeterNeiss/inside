@@ -86,7 +86,7 @@ void test_mul()
   std::cout << b << std::endl;
   std::cout << c << std::endl;
 
-  using u4 = bound<{{3_r/4,42_r/4},1_r/4}>;
+  using u4 = bound<{{*(3_r/4),*(42_r/4)},*(1_r/4)}>;
 
   u4 d{3};
   u4 e{3.25};
@@ -111,7 +111,7 @@ void test_mul()
   auto k = g * d;
   std::cout << "k = " << k << std::endl;
 
-  using s = bound<{{-100, 10}, 1_r/16}>;
+  using s = bound<{{-100, 10}, *(1_r/16)}>;
   using n = s::negative;
 
   //auto l = s(-700.125);
@@ -170,7 +170,7 @@ void test_comparision()
 
 void test_interval()
 {
-  constexpr interval point{3_r/4, 3_r/4};
+  constexpr interval point{*(3_r/4), *(3_r/4)};
   constexpr interval a{0,1};
 
   (void)point;
@@ -198,12 +198,12 @@ void test_bound()
 
  // auto test = frac::unchecked{3};
 
-  constexpr frac f = 2_r/3;
+  constexpr frac f = *(2_r/3);
   std::cout << "frac f = " << f << std::endl;
 
   using step = bound<{{-5, 5}, 0.5}>;
   static_assert(not std::is_same_v<step::raw_type, rational>);
-  constexpr step s = 3_r/2;
+  constexpr step s = *(3_r/2);
   std::cout << "step s = " << s << std::endl;
 }
 
@@ -213,11 +213,11 @@ using test1_t = bound<{{0, {1u, 1, sign::negative}}, -1}>; // fails on instantia
 //using test3_t = bound<{1,0}>;
 using test4_t = bound<{{0, std::numeric_limits<umax>::max()}, 1}>;
 using test5_t = bound<{1_r}>;
-using test6_t = bound<{-6_r/(1 << 4)}>;
+using test6_t = bound<{*(-6_r/(1 << 4))}>;
 using test7_t = bound<{-6.0/(1 << 4)}>;
 using test8_t = bound<{{-10.0, 10.0}, 0.25}>;
 //using test9_t = bound<{3,1}>;  // fails on instantiation
-using test10_t = bound<{{1,100}, 3_r/2}>;
+using test10_t = bound<{{1,100}, *(3_r/2)}>;
 //using test11_t = bound<{1,5}>;
 
 static_assert(std::is_same_v<test0_t::raw_type, std::uint8_t>);

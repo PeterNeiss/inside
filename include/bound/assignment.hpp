@@ -43,7 +43,7 @@ namespace bnd
         if constexpr (is_raw_rational<R>)
         { return - get_lower(L{})/get_notch(L{}); }
 
-        return (Lower<R> - Lower<L>)/Notch<L>;
+        return ((Lower<R> - Lower<L>)/Notch<L>).value();
       }
 
       static constexpr rational calcFactor()
@@ -55,7 +55,7 @@ namespace bnd
         if constexpr (is_raw_rational<R>)
         { return 1_r/get_notch(L{}); }
 
-        return Notch<R>/Notch<L>;
+        return (Notch<R>/Notch<L>).value();
       }
 
     public:
@@ -109,7 +109,7 @@ namespace bnd
       lhs.Raw = rhs;
     else
     {
-      rational raw = (rhs - Interval<L>.Lower)/Notch<L>;
+      rational raw = ((rhs - Interval<L>.Lower)/Notch<L>).value();
       lhs.Raw = raw_cast<L>(raw.Numerator / raw.Denominator);
     }
     return lhs;
@@ -145,7 +145,7 @@ namespace bnd
       lhs.Raw = rhs;
     else
     {
-      rational raw = (rhs - Lower<L>)/Notch<L>;
+      rational raw = ((rhs - Lower<L>)/Notch<L>).value();
       lhs.Raw = raw_cast<L>(raw.Numerator / raw.Denominator);
     }
     return lhs;

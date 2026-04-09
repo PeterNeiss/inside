@@ -62,7 +62,7 @@ namespace bnd
     { return bnd::divides_evenly(Upper - Lower, notch); }
 
     constexpr rational operator/(const rational& notch) const
-    { return (Upper - Lower)/notch; }
+    { return ((Upper - Lower)/notch).value(); }
   };
 
   constexpr interval operator+  (const interval&, const interval&);
@@ -120,10 +120,10 @@ namespace bnd
     auto [lower, upper] = std::minmax
     (
       {
-        lhs.Lower / rhs.Lower,
-        lhs.Lower / rhs.Upper,
-        lhs.Upper / rhs.Lower,
-        lhs.Upper / rhs.Upper
+        *(lhs.Lower / rhs.Lower),
+        *(lhs.Lower / rhs.Upper),
+        *(lhs.Upper / rhs.Lower),
+        *(lhs.Upper / rhs.Upper)
       }
     );
 

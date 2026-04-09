@@ -19,6 +19,10 @@ namespace bnd
     static constexpr result to_result(auto raw)
     { result res; res.Raw = static_cast<result::raw_type>(raw); return res; }
 
+    template <typename T>
+    static constexpr result to_result(slim::optional<T> raw)
+    { result res; res.Raw = static_cast<result::raw_type>(raw.value()); return res; }
+
     template <policy_flag F = none>
     static constexpr result div(L, R, policy<F> = {});
   };

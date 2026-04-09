@@ -13,6 +13,19 @@
 #include <cmath>
 #include <tuple>
 
+namespace bnd { struct rational; }
+
+namespace slim
+{
+  template<>
+  struct sentinel_traits<bnd::rational>
+  {
+    protected:
+      static constexpr bnd::rational sentinel() noexcept;
+      static constexpr bool is_sentinel(const bnd::rational& v) noexcept;
+  };
+} // namespace slim
+
 namespace bnd
 {
   //---------------------------------------------------------------------------
@@ -63,7 +76,7 @@ namespace bnd
   constexpr rational operator+  (const rational&, const rational&);
   constexpr rational operator-  (const rational&, const rational&);
   constexpr rational operator*  (rational, rational);
-  constexpr rational operator/  (const rational&, const rational&);
+  constexpr slim::optional<rational> operator/  (const rational&, const rational&);
   constexpr auto     operator<=>(rational, rational) -> std::strong_ordering;
 
   constexpr rational gcd(const rational&, const rational&);
@@ -119,9 +132,6 @@ namespace bnd
    :Numerator{safe_abs(num)}, Denominator{den},
     Sign{num == 0 ? sign::zero : (num > 0) ? sign::positive: sign::negative}
   {
-    if (Denominator == 0)
-      throw "Denominator of Zero is invalid";
-
     trim(Numerator, Denominator);
   }
 
@@ -213,6 +223,14 @@ namespace bnd
       return A <=> B;
   }
 
+  template <typename T>
+  inline constexpr auto operator<=>(slim::optional<T> lhs, const rational& rhs)
+  { return rational{lhs.value()} <=> rhs; }
+
+  template <typename T>
+  inline constexpr auto operator<=>(rational const& lhs, slim::optional<T> rhs)
+  { return lhs <=> rational{rhs.value()}; }
+
   inline constexpr auto operator<=>(auto lhs, const rational& rhs)
   { return rational{lhs} <=> rhs; }
 
@@ -258,10 +276,10 @@ namespace bnd
   //---------------------------------------------------------------------------
   // operator/
   //---------------------------------------------------------------------------
-  inline constexpr rational operator/(const rational& lhs, const rational& rhs)
+  inline constexpr slim::optional<rational> operator/(const rational& lhs, const rational& rhs)
   {
     if (rhs.Sign == sign::zero)
-      throw "division by zero imminent";
+      return slim::nullopt;
 
     return rational
     {
@@ -271,10 +289,10 @@ namespace bnd
     };
   }
 
-  inline constexpr rational operator/(auto lhs, const rational& rhs)
+  inline constexpr slim::optional<rational> operator/(auto lhs, const rational& rhs)
   { return rational{lhs} / rhs; }
 
-  inline constexpr rational operator/(rational const& lhs, auto rhs)
+  inline constexpr slim::optional<rational> operator/(rational const& lhs, auto rhs)
   { return lhs / rational{rhs}; }
 
   //---------------------------------------------------------------------------
@@ -353,20 +371,16 @@ namespace bnd
   //---------------------------------------------------------------------------
   inline constexpr bool divides_evenly(const rational& dividend, const rational& divisor)
   {
-    return (divisor == 0_r) ? true : (dividend / divisor).Denominator == 1;
+    return (divisor == 0_r) ? true : (dividend / divisor).value().Denominator == 1;
   }
 
 } // namespace bnd
 
 namespace slim
 {
-  template<>
-  struct sentinel_traits<bnd::rational>
-  {
-    protected:
-      static constexpr bnd::rational sentinel() noexcept { return {1,0}; }
-      static constexpr bool is_sentinel(const bnd::rational& v) noexcept { return v.Denominator == 0ull; }
-  };
+  constexpr bnd::rational sentinel_traits<bnd::rational>::sentinel() noexcept { return {1,0}; }
+  constexpr bool sentinel_traits<bnd::rational>::is_sentinel(const bnd::rational& v) noexcept
+  { return v.Denominator == 0ull; }
 } // namespace slim
 
 #endif // BNDrationalHPP
