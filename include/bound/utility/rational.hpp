@@ -59,14 +59,12 @@ namespace bnd
     constexpr rational operator-() const;
 
     template <std::unsigned_integral T>
+    constexpr slim::optional<T> to()
+    { return (Denominator == 0) ? slim::nullopt : slim::make_optional<T>(static_cast<T>(Numerator/Denominator)); }
+
+    template <std::unsigned_integral T>
     explicit constexpr operator T () const
     { return static_cast<T>(Numerator/Denominator); }
-
-    explicit constexpr operator double() const
-    {
-      double abs = static_cast<double>(Numerator)/static_cast<double>(Denominator);
-      return (Sign == sign::negative) ? -abs : abs;
-    }
 
     // allow unary+ for generic programming
     constexpr rational operator+() const { return *this; }

@@ -86,7 +86,7 @@ void test_mul()
   std::cout << b << std::endl;
   std::cout << c << std::endl;
 
-  using u4 = bound<{{*(3_r/4),*(42_r/4)},*(1_r/4)}>;
+  using u4 = bound<{{0.75, 10.5}, 0.25}>;
 
   u4 d{3};
   u4 e{3.25};
@@ -111,7 +111,7 @@ void test_mul()
   auto k = g * d;
   std::cout << "k = " << k << std::endl;
 
-  using s = bound<{{-100, 10}, *(1_r/16)}>;
+  using s = bound<{{-100, 10}, 1.0/16}>;
   using n = s::negative;
 
   //auto l = s(-700.125);

@@ -60,6 +60,9 @@ namespace bnd
   constexpr raw_t<B> raw_cast(auto value) { return static_cast<raw_t<B>>(value); }
 
   template <boundable B>
+  constexpr raw_t<B> raw_cast(rational value) { return value.to<raw_t<B>>().value_or(0); }
+
+  template <boundable B>
   inline constexpr raw_t<B> MaxNotch = (Notch<B> == 0) ?
     raw_cast<B>(0) : raw_cast<B>((Interval<B>/Notch<B>).Numerator);
 
