@@ -22,6 +22,7 @@ target_compile_options(bound_bound
             -Wnon-virtual-dtor -Wold-style-cast
             -Woverloaded-virtual -Wnull-dereference
             -Wno-uninitialized
+            -Wno-missing-field-initializers
             -Wformat=2
         >
         $<$<CXX_COMPILER_ID:MSVC>:
@@ -41,10 +42,10 @@ unset(CMAKE_REQUIRED_FLAGS)
 unset(CMAKE_REQUIRED_LIBRARIES)
 
 if(BOUND_HAS_STACKTRACE)
-    target_compile_definitions(bound_bound INTERFACE 
+    target_compile_definitions(bound_bound INTERFACE
         $<$<NOT:$<CONFIG:Release>>:BOUND_HAS_STACKTRACE>
     )
-    target_link_libraries(bound_bound INTERFACE 
+    target_link_libraries(bound_bound INTERFACE
         $<$<NOT:$<CONFIG:Release>>:stdc++exp>
     )
 endif()

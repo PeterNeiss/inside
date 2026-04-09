@@ -12,7 +12,7 @@
 namespace bnd
 {
   //---------------------------------------------------------------------------
-  // policy_flag 
+  // policy_flag
   //---------------------------------------------------------------------------
   using policy_flag = unsigned long long;
 
@@ -29,31 +29,50 @@ namespace bnd
   inline static constexpr policy_flag ignore_domain{1ull << 2};
   inline static constexpr policy_flag ignore_range {1ull << 3};
   inline static constexpr policy_flag ignore_round {1ull << 4};
-  inline static constexpr policy_flag ignore_all   
+  inline static constexpr policy_flag ignore_all
   {ignore_zero | ignore_domain | ignore_range | ignore_round};
 
-  // unary  
-  inline static constexpr policy_flag clamp{1ull << 32}; // only for assignment, construction 
+  // unary
+  inline static constexpr policy_flag clamp{1ull << 32}; // only for assignment, construction
   inline static constexpr policy_flag wrap {1ull << 33}; // only for assignment, construction
 
   //---------------------------------------------------------------------------
-  // policy 
+  // policy
   //---------------------------------------------------------------------------
+  struct handler
+  {
+    // domain
+    using domain_error_t = void (*)(const char*);
+    using domain_error_ec_t = void (*)(std::error_code& ec);
+
+    domain_error_t domain_error = +[](const char* what)
+    {
+      std::string str{what};
+#ifdef BOUND_HAS_STACKTRACE
+      str += ": \n" + std::to_string(std::stacktrace::current());
+#endif
+      throw std::system_error(EDOM, std::generic_category(), str);
+    };
+
+    domain_error_ec_t domain_error_ec = +[](std::error_code& ec)
+    { ec = ec ? ec : std::error_code{EDOM, std::generic_category()}; };
+  };
+
   struct srcloc
   {
     inline static thread_local diag_location Location;
   };
 
   struct empty_ref
-  { 
+  {
   };
   struct error_ref
   {
     constexpr error_ref(std::error_code& ec):Code{ec} {}
     std::error_code& Code;
   };
- 
-  template<policy_flag W = none, typename E = empty_ref>
+
+  template<policy_flag W = none, typename E = empty_ref, handler H = handler{}>
   struct policy: E, srcloc
   {
     constexpr policy() = default;
@@ -61,7 +80,7 @@ namespace bnd
     :E(ec) { }
 
     //TODO conditionally make member: error_code* eptr{nullptr};
-    static constexpr bool test(policy_flag w) 
+    static constexpr bool test(policy_flag w)
     { return W & w; }
 
     void set_error(std::error_code ec)
@@ -83,49 +102,44 @@ namespace bnd
     }
 
     void domain_error(std::string what)
-    { 
+    {
       if constexpr (std::is_same_v<E, error_ref>)
-      { set_error({EDOM, std::generic_category()}); }
+       H.domain_error_ec(E::Code);
       else
-      { 
-        what = what + ": " + bnd::to_string(Location);
-#ifdef BOUND_HAS_STACKTRACE
-        what += ": \n" + std::to_string(std::stacktrace::current()); 
-#endif
-        throw std::system_error(EDOM, std::generic_category(), what); }
+       H.domain_error(what.c_str());
     }
 
     void round_error(std::string what)
-    { 
+    {
       if constexpr (std::is_same_v<E, error_ref>)
       { set_error({ENOSPC, std::generic_category()}); }
       else
-      { 
+      {
         what = what + ": " + bnd::to_string(Location);
 #ifdef BOUND_HAS_STACKTRACE
-        what += ": \n" + std::to_string(std::stacktrace::current()); 
+        what += ": \n" + std::to_string(std::stacktrace::current());
 #endif
         throw std::system_error(ENOSPC, std::generic_category(), what); }
     }
   };
 
   //---------------------------------------------------------------------------
-  // make_policy 
+  // make_policy
   //---------------------------------------------------------------------------
   template<policy_flag F = none>
-  constexpr auto make_policy(diag_location loc = diag_location::current()) 
+  constexpr auto make_policy(diag_location loc = diag_location::current())
   {
     policy<F,empty_ref> p;
     if not consteval { p.Location = loc; }
-    return p; 
+    return p;
   }
 
   template<policy_flag F = none>
-  constexpr auto make_policy(std::error_code& ec, diag_location loc = diag_location::current()) 
+  constexpr auto make_policy(std::error_code& ec, diag_location loc = diag_location::current())
   {
     policy<F,error_ref> p{ec};
     if not consteval { p.Location = loc; }
-    return p; 
+    return p;
   }
 
   //---------------------------------------------------------------------------

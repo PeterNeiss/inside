@@ -10,6 +10,28 @@
 
 namespace bnd
 {
+/*  template <typename L, typename R = L>
+  struct lazy_addition
+  {
+    enum result_state { unknown, L_empty, R_empty, result_underflow, result_overflow, result_exists, result_cached};
+    using result = bound<Grid<L::value_type> + Grid<R::value_type>>;
+
+    L Lhs; // no unique address
+    R Rhs; // no unique address
+    result Result; // no unique address
+    result_state State{result_state::unknown};
+
+    constexpr bool has_value() { return true; }
+    sentinel() { return slim::sentinal_trait<result>::sentinel(); }
+    is_sentinel(){ return slim::sentinal_trait<result>::sentinel(); }
+
+    //requires invokable f(lazy_addition)
+    or_else(F){ return F(*this);}
+
+
+    static constexpr slim::optional<result, lazy_addition<L,R>> add(L rhs, R rhs) { return {lhs, rhs}; }
+  };
+*/
   template <boundable L, boundable R = L>
   struct addition
   {

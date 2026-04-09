@@ -10,6 +10,20 @@
 
 using namespace bnd;
 
+constexpr handler handlers =
+{
+  .domain_error = +[](const char* = nullptr) { }
+};
+
+template<handler H>
+class testHandler {};
+
+void test_handler()
+{
+  testHandler<handlers> th;
+  (void)th;
+}
+
 void test_waiver()
 {
   policy p;

@@ -18,6 +18,7 @@ namespace bnd
   //---------------------------------------------------------------------------
   // error reporting strategy: Constructors throw
   //---------------------------------------------------------------------------
+  // TODO rename num<G,typename P = policy<>>
   template<grid G>
   struct bound
   {
@@ -31,6 +32,7 @@ namespace bnd
 
     constexpr bound() = default; // trivial constructor
 
+    //TODO remove diag_location
     template <numeric A>
     constexpr bound(A value, diag_location loc = diag_location::current())
     { assignment<bound, A>::assign(*this, value, make_policy(loc)); }
