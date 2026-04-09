@@ -5,11 +5,16 @@
 #ifndef BNDcommonHPP
 #define BNDcommonHPP
 
+#define SLIM_OPTIONAL_LEAN_AND_MEAN
+#include "slim/optional.hpp"
+
 #include "bound/debug.hpp"
 #include "bound/utility/grid.hpp"
 
 namespace bnd
 {
+  using slim::optional;
+
   template <grid G = {{0, 0}, 0}> struct bound;
 
   template <typename B>
