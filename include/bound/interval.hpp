@@ -76,7 +76,7 @@ namespace bnd
   //---------------------------------------------------------------------------
   inline constexpr interval operator+(const interval& lhs, const interval& rhs)
   {
-    return interval{lhs.Lower + rhs.Lower, lhs.Upper + rhs.Upper};
+    return interval{(lhs.Lower + rhs.Lower).value(), (lhs.Upper + rhs.Upper).value()};
   }
 
   //---------------------------------------------------------------------------

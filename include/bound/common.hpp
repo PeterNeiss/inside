@@ -69,6 +69,15 @@ namespace bnd
   constexpr raw_t<B> raw_cast(rational value) { return value.to<typename raw_t<B>::value_type>().value_or(0); }
 
   template <boundable B>
+  constexpr raw_t<B> raw_cast(slim::optional<rational> value)
+  {
+    if (value.has_value())
+      return static_cast<typename raw_t<B>::value_type>(*value);
+   else
+    return slim::nullopt;
+  }
+
+  template <boundable B>
   inline constexpr raw_t<B> MaxNotch = (Notch<B> == 0) ?
     raw_cast<B>(0) : raw_cast<B>((Interval<B>/Notch<B>).Numerator);
 

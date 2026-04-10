@@ -43,7 +43,7 @@ namespace bnd
     constexpr explicit operator double() const { return G.raw_to_double(Raw); }
 
     constexpr explicit operator rational() const
-    { return (std::is_same_v<raw_type, rational>) ? Raw.value() : (Raw * G.Notch + G.Interval.Lower); }
+    { return is_raw_rational<bound> ? Raw.value() : (Raw * G.Notch + G.Interval.Lower).value(); }
 
     constexpr negative operator-() const
     {

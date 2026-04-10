@@ -69,7 +69,7 @@ namespace bnd
 
   };
 
-  constexpr rational operator+  (const rational&, const rational&);
+  constexpr slim::optional<rational> operator+  (const rational&, const rational&);
   constexpr rational operator-  (const rational&, const rational&);
   constexpr rational operator*  (rational, rational);
   constexpr slim::optional<rational> operator/  (const rational&, const rational&);
@@ -311,7 +311,7 @@ namespace bnd
   //---------------------------------------------------------------------------
   // this is only overlow safe in constexpr context
   //---------------------------------------------------------------------------
-  inline constexpr rational operator+(const rational& lhs, const rational& rhs)
+  inline constexpr slim::optional<rational> operator+(const rational& lhs, const rational& rhs)
   {
     if (lhs == -rhs)
       return 0_r;
@@ -355,10 +355,10 @@ namespace bnd
       return rational{numerator, denominator, (A > B) ? sign::positive : sign::negative};
   }
 
-  inline constexpr rational operator+(auto lhs, const rational& rhs)
+  inline constexpr slim::optional<rational> operator+(auto lhs, const rational& rhs)
   { return rational{lhs} + rhs; }
 
-  inline constexpr rational operator+(rational const& lhs, auto rhs)
+  inline constexpr slim::optional<rational> operator+(rational const& lhs, auto rhs)
   { return lhs + rational{rhs}; }
 
   //---------------------------------------------------------------------------
@@ -368,7 +368,7 @@ namespace bnd
   //---------------------------------------------------------------------------
   inline constexpr rational operator-(const rational& lhs, const rational& rhs)
   {
-    return operator+(lhs, -rhs);
+    return operator+(lhs, -rhs).value();
   }
 
   inline constexpr rational operator-(auto lhs, const rational& rhs)
