@@ -13,6 +13,9 @@
 
 namespace bnd
 {
+  template<typename T>
+  using plain = std::remove_cvref_t<T>;
+
   template <grid G = {{0, 0}, 0}> struct bound;
 
   template <typename B>
