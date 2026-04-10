@@ -9,7 +9,7 @@
 #include "slim/optional.hpp"
 
 #include "bound/debug.hpp"
-#include "bound/utility/grid.hpp"
+#include "bound/grid.hpp"
 
 namespace bnd
 {

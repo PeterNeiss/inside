@@ -5,8 +5,7 @@
 #define BNDrationalHPP
 
 #include "bound/common.hpp"
-#include "bound/utility/math.hpp"
-#include "bound/detail/fixed_string.hpp"
+#include "bound/math.hpp"
 
 #include <numeric>
 #include <compare>

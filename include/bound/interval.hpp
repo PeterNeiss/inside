@@ -4,7 +4,7 @@
 #ifndef BNDintervalHPP
 #define BNDintervalHPP
 
-#include "bound/utility/rational.hpp"
+#include "bound/rational.hpp"
 
 #include <algorithm>
 #include <initializer_list>

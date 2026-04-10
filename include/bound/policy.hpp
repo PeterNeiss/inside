@@ -4,7 +4,7 @@
 #ifndef BNDpolicyHPP
 #define BNDpolicyHPP
 
-#include "bound/utility/print.hpp"
+#include "bound/print.hpp"
 #include "bound/assignment.hpp"
 
 #include <system_error>

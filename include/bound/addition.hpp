@@ -5,7 +5,7 @@
 #define BNDadditionHPP
 
 #include "bound/common.hpp"
-#include "bound/utility/grid.hpp"
+#include "bound/grid.hpp"
 #include "bound/policy.hpp"
 
 namespace bnd

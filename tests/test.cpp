@@ -3,8 +3,8 @@
 
 #include "bound/common.hpp"
 #include "bound/bound.hpp"
-#include "bound/utility/interval.hpp"
-#include "bound/utility/print.hpp"
+#include "bound/interval.hpp"
+#include "bound/print.hpp"
 
 #include <iostream>
 

@@ -4,8 +4,8 @@
 #ifndef BNDassignmentHPP
 #define BNDassignmentHPP
 
-#include "bound/utility/grid.hpp"
-#include "bound/utility/print.hpp"
+#include "bound/grid.hpp"
+#include "bound/print.hpp"
 
 namespace bnd
 {

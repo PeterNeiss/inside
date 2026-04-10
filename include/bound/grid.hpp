@@ -4,8 +4,8 @@
 #ifndef BNDgridHPP
 #define BNDgridHPP
 
-#include "bound/utility/rational.hpp"
-#include "bound/utility/interval.hpp"
+#include "bound/rational.hpp"
+#include "bound/interval.hpp"
 
 #include <algorithm>
 
