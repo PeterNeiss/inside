@@ -49,8 +49,8 @@ namespace bnd
     constexpr rational(std::unsigned_integral auto, umax, sign);
     constexpr rational(std::unsigned_integral auto num, umax den = 1ull)
      :rational{num, den, (num == 0) ? sign::zero : sign::positive} { }
-    constexpr rational(std::signed_integral   auto, umax = 1ull);
-    constexpr rational(std::floating_point    auto);
+    constexpr rational(std::signed_integral auto, umax = 1ull);
+    constexpr rational(std::floating_point  auto);
 
     // operator== be default for structural type
     constexpr bool operator==(const rational&) const = default;
@@ -59,8 +59,7 @@ namespace bnd
     constexpr rational operator-() const;
 
     template <std::unsigned_integral T>
-    constexpr slim::optional<T> to()
-    { return (Denominator == 0) ? slim::nullopt : slim::make_optional<T>(static_cast<T>(Numerator/Denominator)); }
+    constexpr slim::optional<T> to();
 
     template <std::unsigned_integral T>
     explicit constexpr operator T () const
@@ -157,6 +156,13 @@ namespace bnd
     std::tie(Numerator, Denominator) = abs_fraction(value);
     // trim not needed, because abs_fractio already trims in its special case
   }
+
+  //---------------------------------------------------------------------------
+  // to
+  //---------------------------------------------------------------------------
+  template <std::unsigned_integral T>
+  constexpr slim::optional<T> rational::to()
+  { return (Denominator == 0) ? slim::nullopt : slim::make_optional<T>(static_cast<T>(Numerator/Denominator)); }
 
   //---------------------------------------------------------------------------
   // user defined literals for rational
