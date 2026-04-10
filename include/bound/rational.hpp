@@ -6,6 +6,7 @@
 
 #include "bound/common.hpp"
 #include "bound/math.hpp"
+#include "bound/overflow.hpp"
 
 #include <numeric>
 #include <compare>
@@ -37,7 +38,6 @@ namespace bnd
   // runtime
   //---------------------------------------------------------------------------
   enum class sign {negative = -1, zero = 0, positive = 1};
-  //TODO rename to fr and _fr
   struct rational
   {
     umax Numerator;
@@ -45,11 +45,11 @@ namespace bnd
     sign Sign;
 
     constexpr rational() = default;
+    constexpr rational(std::floating_point  auto);
+    constexpr rational(std::signed_integral auto, umax = 1ull);
     constexpr rational(std::unsigned_integral auto, umax, sign);
     constexpr rational(std::unsigned_integral auto num, umax den = 1ull)
      :rational{num, den, (num == 0) ? sign::zero : sign::positive} { }
-    constexpr rational(std::signed_integral auto, umax = 1ull);
-    constexpr rational(std::floating_point  auto);
 
     // operator== be default for structural type
     constexpr bool operator==(const rational&) const = default;
@@ -69,10 +69,11 @@ namespace bnd
 
   };
 
-  constexpr slim::optional<rational> operator+  (const rational&, const rational&);
-  constexpr rational operator-  (const rational&, const rational&);
+  constexpr slim::optional<rational> operator+(const rational&, const rational&);
+  constexpr slim::optional<rational> operator/(const rational&, const rational&);
+  constexpr slim::optional<rational> operator-(const rational&, const rational&);
+
   constexpr rational operator*  (rational, rational);
-  constexpr slim::optional<rational> operator/  (const rational&, const rational&);
   constexpr auto     operator<=>(rational, rational) -> std::strong_ordering;
 
   constexpr rational gcd(const rational&, const rational&);
@@ -303,13 +304,29 @@ namespace bnd
   inline constexpr slim::optional<rational> operator/(auto lhs, const rational& rhs)
   { return rational{lhs} / rhs; }
 
+  template <typename T>
+  inline constexpr slim::optional<rational> operator/(slim::optional<T> lhs, const rational& rhs)
+  {
+    if (lhs.has_value())
+      return rational{*lhs} / rhs;
+    else
+      return slim::nullopt;
+  }
+
   inline constexpr slim::optional<rational> operator/(rational const& lhs, auto rhs)
   { return lhs / rational{rhs}; }
 
+  template <typename T>
+  inline constexpr slim::optional<rational> operator/(rational const& lhs, slim::optional<T> rhs)
+  {
+    if (rhs.has_value())
+      return lhs / rational{*rhs};
+    else
+      return slim::nullopt;
+  }
+
   //---------------------------------------------------------------------------
   // operator+
-  //---------------------------------------------------------------------------
-  // this is only overlow safe in constexpr context
   //---------------------------------------------------------------------------
   inline constexpr slim::optional<rational> operator+(const rational& lhs, const rational& rhs)
   {
@@ -337,17 +354,17 @@ namespace bnd
     auto A = lhs.Numerator * rhs.Denominator;
     auto B = rhs.Numerator * lhs.Denominator;
 
+    umax numerator;
+
     if (lhs.Sign == rhs.Sign)
     {
-      if consteval
-      {
-        if (add_overflow(A, B))
-          OVERFLOW_trap("additive overflow");
-      }
-      return rational{A + B, denominator, lhs.Sign};
+      if (add_overflow(A, B, &numerator))
+        return slim::nullopt;
+      else
+        return rational{numerator, denominator, lhs.Sign};
     }
 
-    auto numerator = (A > B) ? (A - B) : (B - A);
+    numerator = (A > B) ? (A - B) : (B - A);
 
     if (lhs.Sign == sign::negative)
       return rational{numerator, denominator, (A > B) ? sign::negative : sign::positive};
@@ -364,26 +381,32 @@ namespace bnd
   //---------------------------------------------------------------------------
   // operator-
   //---------------------------------------------------------------------------
-  // this is only overlow safe in constexpr context
-  //---------------------------------------------------------------------------
-  inline constexpr rational operator-(const rational& lhs, const rational& rhs)
-  {
-    return operator+(lhs, -rhs).value();
-  }
+  inline constexpr slim::optional<rational> operator-(const rational& lhs, const rational& rhs)
+  { return operator+(lhs, -rhs); }
 
-  inline constexpr rational operator-(auto lhs, const rational& rhs)
+  inline constexpr slim::optional<rational> operator-(auto lhs, const rational& rhs)
   { return rational{lhs} - rhs; }
 
   template <typename T>
-  inline constexpr rational operator-(slim::optional<T> lhs, const rational& rhs)
-  { return rational{lhs.value()} - rhs; }
+  inline constexpr slim::optional<rational> operator-(slim::optional<T> lhs, const rational& rhs)
+  {
+    if (lhs.has_value())
+      return rational{lhs.value()} - rhs;
+    else
+      return slim::nullopt;
+  }
 
-  inline constexpr rational operator-(rational const& lhs, auto rhs)
+  inline constexpr slim::optional<rational> operator-(rational const& lhs, auto rhs)
   { return lhs - rational{rhs}; }
 
   template <typename T>
-  inline constexpr rational operator-(rational const& lhs, slim::optional<T> rhs)
-  { return lhs - rational{rhs.value()}; }
+  inline constexpr slim::optional<rational> operator-(rational const& lhs, slim::optional<T> rhs)
+  {
+    if (rhs.has_value())
+      return lhs - rational{rhs.value()};
+    else
+      return slim::nullopt;
+  }
 
   //---------------------------------------------------------------------------
   // divides_evenly

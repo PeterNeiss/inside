@@ -59,7 +59,7 @@ namespace bnd
     { return rhs.includes(*this) || includes(rhs.Lower) || includes(rhs.Upper); }
 
     constexpr bool divides_evenly(const rational& notch) const
-    { return bnd::divides_evenly(Upper - Lower, notch); }
+    { return bnd::divides_evenly((Upper - Lower).value(), notch); }
 
     constexpr rational operator/(const rational& notch) const
     { return ((Upper - Lower)/notch).value(); }

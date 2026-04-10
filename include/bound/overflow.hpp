@@ -64,7 +64,14 @@ namespace bnd
     return true;
   }
 
+
+  //TODO replace
+  template <std::unsigned_integral T>
+  constexpr bool mul_overflow(T lhs, T rhs)
+  { return lhs != 0 && rhs != 0 && (rhs > std::numeric_limits<T>::max() / lhs); }
+
 #ifdef BOUND_HAVE_BUILDIN
+
   template<std::integral T>
   [[nodiscard]]
   constexpr bool add_overflow(T l, T r, T* result) noexcept
