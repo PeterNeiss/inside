@@ -65,14 +65,7 @@ namespace bnd
       template<typename P>
       static constexpr L& assign(L& lhs, R const& rhs, P&&);
   };
-/*
-  template <arithmetic L, boundable R>
-  struct assignment<L,R>
-  {
-    template<policy_flag F = none>
-    static constexpr L& assign(L& lhs, R const& rhs, policy<F> = {});
-  };
-*/
+
   //---------------------------------------------------------------------------
   // assign(boundable, integral)
   //---------------------------------------------------------------------------
@@ -105,7 +98,9 @@ namespace bnd
       // else always_success
     }
 
-    if constexpr (std::is_same_v<raw_t<L>, rational>)
+    if constexpr (Lower<L> == Upper<L>)
+      lhs.Raw = 0;
+    else if constexpr (is_raw_rational<L>)
       lhs.Raw = rhs;
     else
     {
@@ -141,7 +136,9 @@ namespace bnd
       // else success
     }
 
-    if constexpr (std::is_same_v<raw_t<L>, rational>)
+    if constexpr (Lower<L> == Upper<L>)
+      lhs.Raw = 0;
+    else if constexpr (is_raw_rational<L>)
       lhs.Raw = rhs;
     else
     {

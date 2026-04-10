@@ -16,18 +16,13 @@ namespace bnd
   //---------------------------------------------------------------------------
   // bound
   //---------------------------------------------------------------------------
-  // error reporting strategy: Constructors throw
-  //---------------------------------------------------------------------------
-  // TODO rename num<G,typename P = policy<>>
   template<grid G>
   struct bound
   {
     static_assert(grid::validate<G>());
 
     using negative = bound<-G>;
-//    template <policy_flag H>
-//    using flag = bound<G, F | H>
-    using raw_type = storage_min<G>;
+    using raw_type = slim::optional<storage_min<G>>;
     raw_type Raw;
 
     constexpr bound() = default; // trivial constructor
@@ -48,12 +43,21 @@ namespace bnd
     constexpr explicit operator double() const { return G.raw_to_double(Raw); }
 
     constexpr explicit operator rational() const
-    { return (std::is_same_v<raw_type, rational>) ? Raw : (Raw * G.Notch + G.Interval.Lower); }
+    { return (std::is_same_v<raw_type, rational>) ? Raw.value() : (Raw * G.Notch + G.Interval.Lower); }
 
     constexpr negative operator-() const
     {
       negative neg;
-      neg.Raw = (std::is_same_v<raw_type, rational>) ? -Raw : (MaxNotch<bound> - Raw);
+      if (Raw.has_value())
+      {
+        if constexpr (is_raw_rational<bound>)
+          neg.Raw = -(*Raw);
+        else
+          neg.Raw = raw_cast<negative>(MaxNotch<bound> - *Raw);
+      }
+      else
+        neg.Raw = slim::nullopt;
+
       return neg;
     }
 

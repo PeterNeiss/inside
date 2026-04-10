@@ -37,8 +37,8 @@ namespace bnd
   {
     using result = bound<Grid<L> + Grid<R>>;
 
-    static constexpr umax lhs_widen = (Notch<result> / Notch<L>)->Numerator;
-    static constexpr umax rhs_widen = (Notch<result> / Notch<R>)->Numerator;
+    static constexpr umax lhs_widen = (Notch<result> / Notch<L>).value_or(1_r).Numerator;
+    static constexpr umax rhs_widen = (Notch<result> / Notch<R>).value_or(1_r).Numerator;
 
     template <policy_flag F = none>
     static constexpr result add(L, R, policy<F> = {});
@@ -52,7 +52,7 @@ namespace bnd
   constexpr auto addition<L,R>::add(L lhs, R rhs, policy<F>) -> result
   {
     result res;
-    if constexpr (std::is_same_v<raw_t<result>, rational>)
+    if constexpr (std::is_same_v<typename raw_t<result>::value_type, rational>)
       res.Raw = raw_cast<result>(lhs.to_rational() + rhs.to_rational());
     else
     {

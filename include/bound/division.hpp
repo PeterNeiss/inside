@@ -14,7 +14,7 @@ namespace bnd
   struct division
   {
     using result = bound<{Interval<L> / Interval<R>, 0}>;
-    static_assert (std::is_same_v<typename result::raw_type, rational>);
+    static_assert (std::is_same_v<typename result::raw_type::value_type, rational>);
 
     static constexpr result to_result(auto raw)
     { result res; res.Raw = static_cast<result::raw_type>(raw); return res; }

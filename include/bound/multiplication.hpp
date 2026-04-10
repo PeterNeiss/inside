@@ -37,7 +37,7 @@ namespace bnd
       {
         // low_per_notch is always positive in this case
         return to_result
-        (lhs.Raw * rhs.Raw + lhs.Raw * OffsetLower<R> + rhs.Raw * OffsetLower<L>);
+        (lhs.Raw.value() * rhs.Raw.value() + lhs.Raw.value() * OffsetLower<R> + rhs.Raw.value() * OffsetLower<L>);
       }
 
       if constexpr (Lower<result> == Upper<L> * Upper<R>)
@@ -45,9 +45,9 @@ namespace bnd
 
       if constexpr (Lower<result> == Upper<L> * Lower<R>)
       {
-        raw_t<L> negRaw = MaxNotch<L> - lhs.Raw;
+        raw_t<L> negRaw = raw_cast<L>(MaxNotch<L> - lhs.Raw.value());
         return to_result
-        (negRaw * OffsetLower<R> + rhs.Raw * OffsetUpper<L> - (negRaw * rhs.Raw));
+        (negRaw * OffsetLower<R> + rhs.Raw * OffsetUpper<L> - (negRaw.value() * rhs.Raw.value()));
       }
 
       if constexpr (Lower<result> == Lower<L> * Upper<R>)

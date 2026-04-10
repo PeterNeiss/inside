@@ -28,7 +28,7 @@ namespace bnd
   inline constexpr bool is_rational = std::is_same_v<R, rational>;
 
   template <boundable B>
-  inline constexpr bool is_raw_rational = is_rational<raw_t<B>>;
+  inline constexpr bool is_raw_rational = is_rational<typename raw_t<B>::value_type>;
 
   template <boundable B>
   inline constexpr grid Grid = []<grid G>(bound<G>){ return G; } (B{});
@@ -60,10 +60,13 @@ namespace bnd
 
   // ONLY type conversion, NO value representation conversion calculation
   template <boundable B>
-  constexpr raw_t<B> raw_cast(auto value) { return static_cast<raw_t<B>>(value); }
+  constexpr raw_t<B> raw_cast(auto value)
+  {
+    return static_cast<raw_t<B>::value_type>(value);
+  }
 
   template <boundable B>
-  constexpr raw_t<B> raw_cast(rational value) { return value.to<raw_t<B>>().value_or(0); }
+  constexpr raw_t<B> raw_cast(rational value) { return value.to<typename raw_t<B>::value_type>().value_or(0); }
 
   template <boundable B>
   inline constexpr raw_t<B> MaxNotch = (Notch<B> == 0) ?

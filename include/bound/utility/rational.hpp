@@ -274,8 +274,16 @@ namespace bnd
   inline constexpr rational operator*(auto lhs, const rational& rhs)
   { return rational{lhs} * rhs; }
 
+  template <typename T>
+  inline constexpr rational operator*(slim::optional<T> lhs, const rational& rhs)
+  { return rational{lhs.value()} * rhs; }
+
   inline constexpr rational operator*(rational const& lhs, auto rhs)
   { return lhs * rational{rhs}; }
+
+  template <typename T>
+  inline constexpr rational operator*(rational const& lhs, slim::optional<T> rhs)
+  { return lhs * rational{rhs.value()}; }
 
   //---------------------------------------------------------------------------
   // operator/
@@ -367,8 +375,16 @@ namespace bnd
   inline constexpr rational operator-(auto lhs, const rational& rhs)
   { return rational{lhs} - rhs; }
 
+  template <typename T>
+  inline constexpr rational operator-(slim::optional<T> lhs, const rational& rhs)
+  { return rational{lhs.value()} - rhs; }
+
   inline constexpr rational operator-(rational const& lhs, auto rhs)
   { return lhs - rational{rhs}; }
+
+  template <typename T>
+  inline constexpr rational operator-(rational const& lhs, slim::optional<T> rhs)
+  { return lhs - rational{rhs.value()}; }
 
   //---------------------------------------------------------------------------
   // divides_evenly

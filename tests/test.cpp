@@ -38,15 +38,15 @@ void test_conversion()
   f20t50 bigger;
 
   bigger = smaller;
-  std::cout << "bigger = " << bigger << std::endl;
+  std::cout << "bigger(34) = " << bigger << std::endl;
   bigger = 39;
 
-  smaller.policy<ignore_round>() = bigger;
-  std::cout << "smaller = " << smaller << std::endl;
+  smaller.policy<ignore_round>() = bigger; // does round
+  std::cout << "smaller(38) = " << smaller << std::endl;
 
   bigger = 30;
   smaller.with_round() = bigger;
-  std::cout << "smaller = " << smaller << std::endl;
+  std::cout << "smaller(30) = " << smaller << std::endl;
 }
 
 void test_rational()
@@ -131,21 +131,21 @@ void test_add()
   u8 a{16};
   u8 b = 220;
   //auto b1 = b + 1;
+  std::cout << "b(220) = " << b << std::endl;
+  std::cout << "just<1> = " << just<1> << std::endl;
   auto b1{b + just<1>};
-  std::cout << "b1 = " << b1 << std::endl;
-  b = b + just<1>;
-  std::cout << "b = " << b << std::endl;
+  std::cout << "b1(221) = " << b1 << std::endl;
 
-  b = a + b;
-  std::cout << "a = " << a << std::endl;
-  std::cout << "b = " << b << std::endl;
+  b = a + b1;
+  std::cout << "a(16) = " << a << std::endl;
+  std::cout << "b(237) = " << b << std::endl;
 
   auto d = a - b;
-  std::cout << d << std::endl;
+  std::cout << "d(-221) = " << d << std::endl;
 
-  using u64 = bound<{{0, std::numeric_limits<std::uint64_t>::max()}, 1}>;
+  using u64 = bound<{{0, std::numeric_limits<slim::optional<std::uint64_t>>::max()}, 1}>;
 
-  constexpr u64 biggest{std::numeric_limits<std::uint64_t>::max()};
+  constexpr u64 biggest{std::numeric_limits<slim::optional<std::uint64_t>>::max()};
   std::cout << biggest << std::endl;
   //auto e = biggest + biggest;
 }
@@ -194,7 +194,7 @@ void test_bound()
   using frac = bound<{{-10, 10}, 0}>;
   //print_types<frac>{};
   static_assert(Grid<frac> == grid{-10, 10, 0});
-  static_assert(std::is_same_v<frac::raw_type, rational>);
+  static_assert(std::is_same_v<typename frac::raw_type::value_type, rational>);
 
  // auto test = frac::unchecked{3};
 
@@ -220,10 +220,10 @@ using test8_t = bound<{{-10.0, 10.0}, 0.25}>;
 using test10_t = bound<{{1,100}, *(3_r/2)}>;
 //using test11_t = bound<{1,5}>;
 
-static_assert(std::is_same_v<test0_t::raw_type, std::uint8_t>);
-static_assert(std::is_same_v<test4_t::raw_type, std::uint64_t>);
+static_assert(std::is_same_v<typename test0_t::raw_type::value_type, std::uint8_t>);
+static_assert(std::is_same_v<typename test4_t::raw_type::value_type, std::uint64_t>);
 
-static_assert(std::is_same_v<test5_t::raw_type, rational>);
+static_assert(std::is_same_v<typename test5_t::raw_type::value_type, rational>);
 //static_assert(std::is_same_v<test11_t::raw_type, rational>);
 
 int main()
