@@ -204,22 +204,19 @@ namespace bnd
         return std::strong_ordering::greater;
     }
 
-    if consteval // check mul overflow
-    {
-      // cross trim to avoid overflow if possible
-      trim(lhs.Numerator, rhs.Numerator);
-      trim(lhs.Denominator, rhs.Denominator);
+    // cross trim to avoid overflow if possible
+    trim(lhs.Numerator, rhs.Numerator);
+    trim(lhs.Denominator, rhs.Denominator);
 
-      if
-      (
-        mul_overflow(lhs.Numerator, rhs.Denominator) ||
-        mul_overflow(rhs.Numerator, lhs.Denominator)
-      )
-        OVERFLOW_trap("multiplicative overflow");
-    }
+    umax A;
+    umax B;
 
-    auto A = lhs.Numerator * rhs.Denominator;
-    auto B = rhs.Numerator * lhs.Denominator;
+    if
+    (
+      mul_overflow(lhs.Numerator, rhs.Denominator, &A) ||
+      mul_overflow(rhs.Numerator, lhs.Denominator, &B)
+    )
+      OVERFLOW_trap("multiplicative overflow");
 
     if (lhs.Sign == sign::negative && rhs.Sign == sign::negative)
       return B <=> A;
@@ -249,26 +246,22 @@ namespace bnd
     if (lhs.Sign == sign::zero || rhs.Sign == sign::zero)
       return 0_r;
 
-    if consteval // check mul overflow
-    {
-      // cross trim to avoid overflow if possible
-      trim(lhs.Numerator, rhs.Denominator);
-      trim(rhs.Numerator, lhs.Denominator);
+    umax numerator;
+    umax denominator;
 
-      if
-      (
-        mul_overflow(lhs.Numerator  , rhs.Numerator)   ||
-        mul_overflow(lhs.Denominator, rhs.Denominator)
-      )
-        OVERFLOW_trap("multiplicative overflow");
-    }
+    // cross trim to avoid overflow if possible
+    trim(lhs.Numerator, rhs.Denominator);
+    trim(rhs.Numerator, lhs.Denominator);
+
+    if
+    (
+      mul_overflow(lhs.Numerator  , rhs.Numerator  , &numerator)   ||
+      mul_overflow(lhs.Denominator, rhs.Denominator, &denominator)
+    )
+      OVERFLOW_trap("multiplicative overflow");
 
     return rational
-    {
-      lhs.Numerator * rhs.Numerator,
-      lhs.Denominator * rhs.Denominator,
-      (lhs.Sign == rhs.Sign) ? sign::positive : sign::negative
-    };
+    {numerator, denominator, (lhs.Sign == rhs.Sign) ? sign::positive : sign::negative};
   }
 
   inline constexpr rational operator*(auto lhs, const rational& rhs)
@@ -339,22 +332,18 @@ namespace bnd
     if (rhs.Sign == sign::zero)
       return lhs;
 
-    if consteval // check mul overflow
-    {
-      if
-      (
-        mul_overflow(lhs.Denominator, rhs.Denominator) ||
-        mul_overflow(lhs.Numerator  , rhs.Denominator) ||
-        mul_overflow(rhs.Numerator  , lhs.Denominator)
-      )
-        OVERFLOW_trap("multiplicative overflow");
-    }
-
-    auto denominator = lhs.Denominator * rhs.Denominator;
-    auto A = lhs.Numerator * rhs.Denominator;
-    auto B = rhs.Numerator * lhs.Denominator;
-
     umax numerator;
+    umax denominator;
+    umax A;
+    umax B;
+
+    if
+    (
+      mul_overflow(lhs.Denominator, rhs.Denominator, &denominator) ||
+      mul_overflow(lhs.Numerator  , rhs.Denominator, &A)           ||
+      mul_overflow(rhs.Numerator  , lhs.Denominator, &B)
+    )
+      return slim::nullopt;
 
     if (lhs.Sign == rhs.Sign)
     {
