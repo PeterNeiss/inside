@@ -40,8 +40,28 @@ namespace bnd
   //---------------------------------------------------------------------------
   constexpr umax abs_den(imax d) { return (d >= 0) ? static_cast<umax>(d) : -static_cast<umax>(d); }
 
-  constexpr void trim(umax&, imax&);
-  constexpr void trim(umax&, umax&);
+  //---------------------------------------------------------------------------
+  // trim
+  //---------------------------------------------------------------------------
+  inline constexpr void trim(umax& numerator, imax& denominator)
+  {
+    umax ad = abs_den(denominator);
+    auto g = std::gcd(numerator, ad);
+    if (g == 0)
+      return;
+    numerator /= g;
+    ad /= g;
+    denominator = (denominator < 0) ? -static_cast<imax>(ad) : static_cast<imax>(ad);
+  }
+
+  inline constexpr void trim(umax& a, umax& b)
+  {
+    auto g = std::gcd(a, b);
+    if (g == 0)
+      return;
+    a /= g;
+    b /= g;
+  }
 
   struct rational
   {
@@ -111,29 +131,6 @@ namespace bnd
     auto numerator   = std::gcd(lhs.Numerator, rhs.Numerator);
     auto denominator = std::lcm(abs_den(lhs.Denominator), abs_den(rhs.Denominator));
     return rational{numerator, static_cast<imax>(denominator)};
-  }
-
-  //---------------------------------------------------------------------------
-  // trim
-  //---------------------------------------------------------------------------
-  inline constexpr void trim(umax& numerator, imax& denominator)
-  {
-    umax ad = abs_den(denominator);
-    auto g = std::gcd(numerator, ad);
-    if (g == 0)
-      return;
-    numerator /= g;
-    ad /= g;
-    denominator = (denominator < 0) ? -static_cast<imax>(ad) : static_cast<imax>(ad);
-  }
-
-  inline constexpr void trim(umax& a, umax& b)
-  {
-    auto g = std::gcd(a, b);
-    if (g == 0)
-      return;
-    a /= g;
-    b /= g;
   }
 
   //---------------------------------------------------------------------------
