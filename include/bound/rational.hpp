@@ -62,15 +62,18 @@ namespace bnd
 
     template <std::unsigned_integral T>
     explicit constexpr operator T () const
-    { return static_cast<T>(Numerator/Denominator); }
+    {
+      if (Sign == sign::negative)
+        throw "cannot convert negative rational to unsigned";
+      return static_cast<T>(Numerator/Denominator);
+    }
 
     // allow unary+ for generic programming
     constexpr rational operator+() const { return *this; }
-
   };
 
   constexpr slim::optional<rational> operator+(const rational&, const rational&);
-  constexpr slim::optional<rational> operator/(const rational&, const rational&);
+  constexpr slim::optional<rational> operator/(rational, rational);
   constexpr slim::optional<rational> operator-(const rational&, const rational&);
 
   constexpr rational operator*  (rational, rational);
@@ -80,7 +83,7 @@ namespace bnd
   constexpr void trim(umax&, umax&);
   constexpr rational abs(rational);
 
-  constexpr bool divides_evenly (const rational&, const rational&);
+  constexpr bool divides_evenly(const rational&, const rational&);
 
   //---------------------------------------------------------------------------
   // abs
@@ -281,15 +284,30 @@ namespace bnd
   //---------------------------------------------------------------------------
   // operator/
   //---------------------------------------------------------------------------
-  inline constexpr slim::optional<rational> operator/(const rational& lhs, const rational& rhs)
+  inline constexpr slim::optional<rational> operator/(rational lhs, rational rhs)
   {
     if (rhs.Sign == sign::zero)
       return slim::nullopt;
 
+    if (lhs.Sign == sign::zero)
+      return 0_r;
+
+    trim(lhs.Numerator, rhs.Numerator);
+    trim(lhs.Denominator, rhs.Denominator);
+
+    umax numerator;
+    umax denominator;
+
+    if
+    (
+      mul_overflow(lhs.Numerator, rhs.Denominator, &numerator) ||
+      mul_overflow(rhs.Numerator, lhs.Denominator, &denominator)
+    )
+      return slim::nullopt;
+
     return rational
     {
-      lhs.Numerator * rhs.Denominator,
-      rhs.Numerator * lhs.Denominator,
+      numerator, denominator,
       (lhs.Sign == rhs.Sign) ? sign::positive : sign::negative
     };
   }

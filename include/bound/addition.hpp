@@ -52,11 +52,15 @@ namespace bnd
   constexpr auto addition<L,R>::add(L lhs, R rhs, policy<F>) -> result
   {
     result res;
-    if constexpr (std::is_same_v<typename raw_t<result>::value_type, rational>)
+    res.Raw = slim::nullopt;
+
+    if (!lhs.Raw.has_value() || !rhs.Raw.has_value())
+      return res;
+
+    if constexpr (is_raw_rational<result>)
       res.Raw = raw_cast<result>(lhs.to_rational() + rhs.to_rational());
     else
     {
-
       // TODO Check argument
       // Because result type calculation did not overflow at compile time,
       // both widen multiplications dont overflow and

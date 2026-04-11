@@ -141,7 +141,7 @@ namespace bnd
     if (lhs.Lower > rhs.Upper)
       return std::partial_ordering::greater;
 
-    if (rhs.Lower == rhs.Lower && lhs.Upper == rhs.Upper)
+    if (lhs.Lower == rhs.Lower && lhs.Upper == rhs.Upper)
       return std::partial_ordering::equivalent;
 
     return std::partial_ordering::unordered;

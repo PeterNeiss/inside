@@ -158,4 +158,4 @@ namespace bnd
 
 } // namespace bnd
 
-#endif // BNDwaiverHPP
+#endif // BNDpolicyHPP

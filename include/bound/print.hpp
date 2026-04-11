@@ -11,7 +11,7 @@
 
 namespace bnd
 {
-  std::string to_string(rational r)
+  inline std::string to_string(rational r)
   {
     std::string str;
     if (r.Sign == sign::negative)
@@ -26,7 +26,7 @@ namespace bnd
     return str;
   }
 
-  std::string to_string(interval ival)
+  inline std::string to_string(interval ival)
   {
     std::string str{"["};
 
@@ -37,7 +37,7 @@ namespace bnd
     return str;
   }
 
-  std::string to_string(grid g)
+  inline std::string to_string(grid g)
   {
     std::string str{"{"};
 
@@ -48,7 +48,7 @@ namespace bnd
     return str;
   }
 
-  std::string to_string(diag_location loc)
+  inline std::string to_string(diag_location loc)
   {
 #ifndef NDEBUG
     using namespace std::string_literals;

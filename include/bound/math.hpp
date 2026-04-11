@@ -144,15 +144,24 @@ namespace bnd
     // double has 53 bits of precision
     constexpr int bits = 53;
     umax num = static_cast<umax>(bnd::ldexp(norm_frac, bits));
-    umax den = 1ULL << (bits - exponent);
-    // simplify by removing trailing zeros from num
-    while (num && (num & 1) == 0 && den != 1) {
-        num >>= 1;
-        den >>= 1;
+    umax den;
+    if (exponent >= bits)
+    {
+      num <<= (exponent - bits);
+      den = 1;
+    }
+    else
+    {
+      den = 1ULL << (bits - exponent);
+      // simplify by removing trailing zeros from num
+      while (num && (num & 1) == 0 && den != 1) {
+          num >>= 1;
+          den >>= 1;
+      }
     }
     return std::pair{num, den};
   }
 
 } // namespace bnd
 
-#endif // BNDcommonHPP
+#endif // BNDmathHPP

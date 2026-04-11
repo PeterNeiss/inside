@@ -145,12 +145,12 @@ namespace bnd
   template<std::integral T>
   [[nodiscard]]
   constexpr bool add_overflow(T l, T r, T* result) noexcept
-  { return non_builtin::non_builtin_add_overflow(l,r,result); }
+  { return non_builtin_add_overflow(l,r,result); }
 
   template<std::integral T>
   [[nodiscard]]
   constexpr bool mul_overflow(T l, T r, T* result) noexcept
-  { return non_builtin::non_builtin_mul_overflow(l,r,result); }
+  { return non_builtin_mul_overflow(l,r,result); }
 #endif
 } // namespace bnd
 
