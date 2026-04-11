@@ -39,7 +39,7 @@ namespace bnd
     {
       interval::validate<G.Interval>();
       static_assert(G.Interval.divides_evenly(G.Notch));
-      static_assert(G.Notch == 0 || (G.Interval.Lower/G.Notch).value().Denominator == 1);
+      static_assert(G.Notch == 0 || abs_den((G.Interval.Lower/G.Notch).value().Denominator) == 1);
 
       return true;
     }
@@ -61,15 +61,8 @@ namespace bnd
     template <std::unsigned_integral Raw>
     constexpr Raw to_raw(std::signed_integral auto value) const
     {
-      rational raw;
-      raw.Denominator = 1;
-      if (value < 0)
-      {
-        raw.Sign = sign::negative;
-
-      }
       rational raw = (value - Interval.Lower)/Notch;
-      return static_cast<Raw>(raw.Numerator/ raw.Denominator);
+      return static_cast<Raw>(raw.Numerator / static_cast<umax>(raw.Denominator));
     }
 */
     template <std::unsigned_integral Raw>
@@ -77,7 +70,7 @@ namespace bnd
     {
       //TODO: check safty of calculation
       rational raw = ((value - Interval.Lower)/Notch).value();
-      return static_cast<Raw>(raw.Numerator/ raw.Denominator);
+      return static_cast<Raw>(raw.Numerator / static_cast<umax>(raw.Denominator));
     }
 
     template <std::same_as<rational> Raw>

@@ -14,15 +14,16 @@ namespace bnd
   inline std::string to_string(rational r)
   {
     std::string str;
-    if (r.Sign == sign::negative)
-      str =  "-";
+    if (r.Denominator < 0)
+      str = "-";
 
-    if (r.Denominator == 1)
+    umax ad = abs_den(r.Denominator);
+    if (ad == 1)
       return str += std::to_string(r.Numerator);
 
     str += std::to_string(r.Numerator);
     str += "/";
-    str += std::to_string(r.Denominator);
+    str += std::to_string(ad);
     return str;
   }
 

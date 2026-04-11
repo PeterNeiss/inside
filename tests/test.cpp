@@ -208,8 +208,8 @@ void test_bound()
 }
 
 using test0_t = bound<{{1,3},1}>;
-using test1_t = bound<{{0, {1u, 1, sign::negative}}, -1}>; // fails on instantiation
-//using test2_t = bound<{1,1, sign::zero}>;
+using test1_t = bound<{{0, {1u, -1}}, -1}>; // fails on instantiation
+//using test2_t = bound<{1,1}>; // zero numerator normalization test
 //using test3_t = bound<{1,0}>;
 using test4_t = bound<{{0, std::numeric_limits<umax>::max()}, 1}>;
 using test5_t = bound<{1_r}>;

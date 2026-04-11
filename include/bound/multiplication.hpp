@@ -36,7 +36,7 @@ namespace bnd
       return res;
     }
 
-    if constexpr (Notch<result>.Sign == sign::zero)
+    if constexpr (Notch<result>.Numerator == 0)
       return to_result((lhs.to_rational() * rhs.to_rational()).value());
     else
     {

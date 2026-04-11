@@ -105,7 +105,7 @@ namespace bnd
     else
     {
       rational raw = ((rhs - Interval<L>.Lower)/Notch<L>).value();
-      lhs.Raw = raw_cast<L>(raw.Numerator / raw.Denominator);
+      lhs.Raw = raw_cast<L>(raw.Numerator / static_cast<umax>(raw.Denominator));
     }
     return lhs;
   }
@@ -143,7 +143,7 @@ namespace bnd
     else
     {
       rational raw = ((rhs - Lower<L>)/Notch<L>).value();
-      lhs.Raw = raw_cast<L>(raw.Numerator / raw.Denominator);
+      lhs.Raw = raw_cast<L>(raw.Numerator / static_cast<umax>(raw.Denominator));
     }
     return lhs;
   }
@@ -176,7 +176,7 @@ namespace bnd
           return lhs;
         }
 
-        if (policy.round_check() && Factor.Denominator != 1)
+        if (policy.round_check() && abs_den(Factor.Denominator) != 1)
         {
           // failed
           policy.round_error(bnd::to_string(static_cast<rational>(rhs)) + " would round");

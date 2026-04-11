@@ -33,23 +33,33 @@ namespace bnd
   //---------------------------------------------------------------------------
   // Must be a structural type for template NTTP (only public members)
   //---------------------------------------------------------------------------
-  // We need the sign with unsigned types to represent e.g. umax itself
+  // Sign is encoded in the denominator (negative denominator = negative rational)
+  // Numerator is unsigned to represent e.g. umax itself
   // rational is intended for compile time and is not arithmetically safe at
   // runtime
   //---------------------------------------------------------------------------
-  enum class sign {negative = -1, zero = 0, positive = 1};
+  constexpr umax abs_den(imax d) { return (d >= 0) ? static_cast<umax>(d) : -static_cast<umax>(d); }
+
+  constexpr void trim(umax&, imax&);
+  constexpr void trim(umax&, umax&);
+
   struct rational
   {
     umax Numerator;
-    umax Denominator;
-    sign Sign;
+    imax Denominator;
 
     constexpr rational() = default;
     constexpr rational(std::floating_point  auto);
-    constexpr rational(std::signed_integral auto, umax = 1ull);
-    constexpr rational(std::unsigned_integral auto, umax, sign);
-    constexpr rational(std::unsigned_integral auto num, umax den = 1ull)
-     :rational{num, den, (num == 0) ? sign::zero : sign::positive} { }
+    constexpr rational(std::signed_integral auto, imax = 1);
+    constexpr rational(std::unsigned_integral auto num, imax den = 1)
+     :Numerator{num}, Denominator{den}
+    {
+      if (Denominator == 0)
+        throw "Denominator of Zero is invalid";
+      if (Numerator == 0)
+        Denominator = 1;
+      trim(Numerator, Denominator);
+    }
 
     // operator== be default for structural type
     constexpr bool operator==(const rational&) const = default;
@@ -63,13 +73,16 @@ namespace bnd
     template <std::unsigned_integral T>
     explicit constexpr operator T () const
     {
-      if (Sign == sign::negative)
+      if (Denominator < 0)
         throw "cannot convert negative rational to unsigned";
-      return static_cast<T>(Numerator/Denominator);
+      return static_cast<T>(Numerator/static_cast<umax>(Denominator));
     }
 
     // allow unary+ for generic programming
     constexpr rational operator+() const { return *this; }
+
+    static constexpr rational make_sentinel() noexcept
+    { rational r; r.Numerator = 1; r.Denominator = 0; return r; }
   };
 
   constexpr slim::optional<rational> operator+(const rational&, const rational&);
@@ -80,7 +93,6 @@ namespace bnd
   constexpr auto     operator<=>(rational, rational) -> std::strong_ordering;
 
   constexpr rational gcd(const rational&, const rational&);
-  constexpr void trim(umax&, umax&);
   constexpr rational abs(rational);
 
   constexpr bool divides_evenly(const rational&, const rational&);
@@ -89,49 +101,52 @@ namespace bnd
   // abs
   //---------------------------------------------------------------------------
   constexpr rational abs(rational value)
-  { return (value.Sign == sign::negative) ? -value : value; }
+  { return (value.Denominator < 0) ? -value : value; }
 
   //---------------------------------------------------------------------------
   // gcd
   //---------------------------------------------------------------------------
   constexpr rational gcd(const rational& lhs, const rational& rhs)
   {
-    auto numerator   = std::gcd(lhs.Numerator  , rhs.Numerator);
-    auto denominator = std::lcm(lhs.Denominator, rhs.Denominator);
-    return rational{numerator, denominator};
+    auto numerator   = std::gcd(lhs.Numerator, rhs.Numerator);
+    auto denominator = std::lcm(abs_den(lhs.Denominator), abs_den(rhs.Denominator));
+    return rational{numerator, static_cast<imax>(denominator)};
   }
 
   //---------------------------------------------------------------------------
   // trim
   //---------------------------------------------------------------------------
-  inline constexpr void trim(umax& numerator,umax& denominator)
+  inline constexpr void trim(umax& numerator, imax& denominator)
   {
-    //TODO divide by zero
-    auto gcd = std::gcd(numerator, denominator);
-    if (gcd == 0)
+    umax ad = abs_den(denominator);
+    auto g = std::gcd(numerator, ad);
+    if (g == 0)
       return;
-    numerator   /= gcd;
-    denominator /= gcd;
+    numerator /= g;
+    ad /= g;
+    denominator = (denominator < 0) ? -static_cast<imax>(ad) : static_cast<imax>(ad);
+  }
+
+  inline constexpr void trim(umax& a, umax& b)
+  {
+    auto g = std::gcd(a, b);
+    if (g == 0)
+      return;
+    a /= g;
+    b /= g;
   }
 
   //---------------------------------------------------------------------------
   // rational::rational
   //---------------------------------------------------------------------------
-  constexpr rational::rational(std::unsigned_integral auto num, umax den, sign s)
-   :Numerator{num}, Denominator{den}, Sign{s}
+  constexpr rational::rational(std::signed_integral auto num, imax den)
+   :Numerator{safe_abs(num)},
+    Denominator{ (num < 0) ? -den : den }
   {
-    if (Denominator == 0)
+    if (den == 0)
       throw "Denominator of Zero is invalid";
-    if (Numerator != 0 && Sign == sign::zero)
-      throw "Numerator is not Zero but sign is";
-
-    trim(Numerator, Denominator);
-  }
-
-  constexpr rational::rational(std::signed_integral auto num, umax den)
-   :Numerator{safe_abs(num)}, Denominator{den},
-    Sign{num == 0 ? sign::zero : (num > 0) ? sign::positive: sign::negative}
-  {
+    if (Numerator == 0)
+      Denominator = 1;
     trim(Numerator, Denominator);
   }
 
@@ -144,20 +159,16 @@ namespace bnd
     {
       Numerator = 0;
       Denominator = 1;
-      Sign = sign::zero;
       return;
     }
 
-    if (value < 0.0)
-    {
-      value = -value;
-      Sign = sign::negative;
-    }
-    else
-      Sign = sign::positive;
+    bool neg = (value < 0.0);
+    if (neg) value = -value;
 
-    std::tie(Numerator, Denominator) = abs_fraction(value);
-    // trim not needed, because abs_fractio already trims in its special case
+    auto [num, den] = abs_fraction(value);
+    Numerator = num;
+    Denominator = neg ? -static_cast<imax>(den) : static_cast<imax>(den);
+    // trim not needed, because abs_fraction already trims in its special case
   }
 
   //---------------------------------------------------------------------------
@@ -165,7 +176,7 @@ namespace bnd
   //---------------------------------------------------------------------------
   template <std::unsigned_integral T>
   constexpr slim::optional<T> rational::to()
-  { return (Denominator == 0) ? slim::nullopt : slim::make_optional<T>(static_cast<T>(Numerator/Denominator)); }
+  { return (Denominator <= 0) ? slim::nullopt : slim::make_optional<T>(static_cast<T>(Numerator/static_cast<umax>(Denominator))); }
 
   //---------------------------------------------------------------------------
   // user defined literals for rational
@@ -181,14 +192,10 @@ namespace bnd
   //---------------------------------------------------------------------------
   inline constexpr rational rational::operator-() const
   {
-    if (Sign == sign::zero)
+    if (Numerator == 0)
       return *this;
 
-    return rational
-    {
-      Numerator, Denominator,
-      (Sign == sign::negative) ? sign::positive : sign::negative
-    };
+    return rational{Numerator, -Denominator};
   }
 
   //---------------------------------------------------------------------------
@@ -198,30 +205,35 @@ namespace bnd
   //---------------------------------------------------------------------------
   inline constexpr auto operator<=>(rational lhs, rational rhs) -> std::strong_ordering
   {
-    if (lhs.Sign != rhs.Sign)
-    {
-      if (lhs.Sign == sign::negative)
-        return std::strong_ordering::less;
+    bool lhs_neg = lhs.Denominator < 0;
+    bool rhs_neg = rhs.Denominator < 0;
+    int lhs_sign = (lhs.Numerator == 0) ? 0 : (lhs_neg ? -1 : 1);
+    int rhs_sign = (rhs.Numerator == 0) ? 0 : (rhs_neg ? -1 : 1);
 
-      if (rhs.Sign == sign::negative)
-        return std::strong_ordering::greater;
-    }
+    if (lhs_sign != rhs_sign)
+      return lhs_sign <=> rhs_sign;
+
+    if (lhs_sign == 0)
+      return std::strong_ordering::equal;
+
+    umax lhs_ad = abs_den(lhs.Denominator);
+    umax rhs_ad = abs_den(rhs.Denominator);
 
     // cross trim to avoid overflow if possible
     trim(lhs.Numerator, rhs.Numerator);
-    trim(lhs.Denominator, rhs.Denominator);
+    trim(lhs_ad, rhs_ad);
 
     umax A;
     umax B;
 
     if
     (
-      mul_overflow(lhs.Numerator, rhs.Denominator, &A) ||
-      mul_overflow(rhs.Numerator, lhs.Denominator, &B)
+      mul_overflow(lhs.Numerator, rhs_ad, &A) ||
+      mul_overflow(rhs.Numerator, lhs_ad, &B)
     )
       OVERFLOW_trap("multiplicative overflow");
 
-    if (lhs.Sign == sign::negative && rhs.Sign == sign::negative)
+    if (lhs_neg)
       return B <=> A;
     else
       return A <=> B;
@@ -246,25 +258,30 @@ namespace bnd
   //---------------------------------------------------------------------------
   inline constexpr slim::optional<rational> operator*(rational lhs, rational rhs)
   {
-    if (lhs.Sign == sign::zero || rhs.Sign == sign::zero)
+    if (lhs.Numerator == 0 || rhs.Numerator == 0)
       return 0_r;
+
+    bool result_neg = (lhs.Denominator < 0) != (rhs.Denominator < 0);
+
+    umax lhs_ad = abs_den(lhs.Denominator);
+    umax rhs_ad = abs_den(rhs.Denominator);
+
+    // cross trim to avoid overflow if possible
+    trim(lhs.Numerator, rhs_ad);
+    trim(rhs.Numerator, lhs_ad);
 
     umax numerator;
     umax denominator;
 
-    // cross trim to avoid overflow if possible
-    trim(lhs.Numerator, rhs.Denominator);
-    trim(rhs.Numerator, lhs.Denominator);
-
     if
     (
-      mul_overflow(lhs.Numerator  , rhs.Numerator  , &numerator)   ||
-      mul_overflow(lhs.Denominator, rhs.Denominator, &denominator)
+      mul_overflow(lhs.Numerator, rhs.Numerator, &numerator) ||
+      mul_overflow(lhs_ad, rhs_ad, &denominator)
     )
       return slim::nullopt;
 
-    return rational
-    {numerator, denominator, (lhs.Sign == rhs.Sign) ? sign::positive : sign::negative};
+    imax signed_den = result_neg ? -static_cast<imax>(denominator) : static_cast<imax>(denominator);
+    return rational{numerator, signed_den};
   }
 
   inline constexpr slim::optional<rational> operator*(auto lhs, const rational& rhs)
@@ -296,30 +313,32 @@ namespace bnd
   //---------------------------------------------------------------------------
   inline constexpr slim::optional<rational> operator/(rational lhs, rational rhs)
   {
-    if (rhs.Sign == sign::zero)
+    if (rhs.Numerator == 0)
       return slim::nullopt;
 
-    if (lhs.Sign == sign::zero)
+    if (lhs.Numerator == 0)
       return 0_r;
 
+    bool result_neg = (lhs.Denominator < 0) != (rhs.Denominator < 0);
+
+    umax lhs_ad = abs_den(lhs.Denominator);
+    umax rhs_ad = abs_den(rhs.Denominator);
+
     trim(lhs.Numerator, rhs.Numerator);
-    trim(lhs.Denominator, rhs.Denominator);
+    trim(lhs_ad, rhs_ad);
 
     umax numerator;
     umax denominator;
 
     if
     (
-      mul_overflow(lhs.Numerator, rhs.Denominator, &numerator) ||
-      mul_overflow(rhs.Numerator, lhs.Denominator, &denominator)
+      mul_overflow(lhs.Numerator, rhs_ad, &numerator) ||
+      mul_overflow(rhs.Numerator, lhs_ad, &denominator)
     )
       return slim::nullopt;
 
-    return rational
-    {
-      numerator, denominator,
-      (lhs.Sign == rhs.Sign) ? sign::positive : sign::negative
-    };
+    imax signed_den = result_neg ? -static_cast<imax>(denominator) : static_cast<imax>(denominator);
+    return rational{numerator, signed_den};
   }
 
   inline constexpr slim::optional<rational> operator/(auto lhs, const rational& rhs)
@@ -354,11 +373,17 @@ namespace bnd
     if (lhs == -rhs)
       return 0_r;
 
-    if (lhs.Sign == sign::zero)
+    if (lhs.Numerator == 0)
       return rhs;
 
-    if (rhs.Sign == sign::zero)
+    if (rhs.Numerator == 0)
       return lhs;
+
+    bool lhs_neg = lhs.Denominator < 0;
+    bool rhs_neg = rhs.Denominator < 0;
+
+    umax lhs_ad = abs_den(lhs.Denominator);
+    umax rhs_ad = abs_den(rhs.Denominator);
 
     umax numerator;
     umax denominator;
@@ -367,26 +392,25 @@ namespace bnd
 
     if
     (
-      mul_overflow(lhs.Denominator, rhs.Denominator, &denominator) ||
-      mul_overflow(lhs.Numerator  , rhs.Denominator, &A)           ||
-      mul_overflow(rhs.Numerator  , lhs.Denominator, &B)
+      mul_overflow(lhs_ad, rhs_ad, &denominator) ||
+      mul_overflow(lhs.Numerator, rhs_ad, &A)    ||
+      mul_overflow(rhs.Numerator, lhs_ad, &B)
     )
       return slim::nullopt;
 
-    if (lhs.Sign == rhs.Sign)
+    if (lhs_neg == rhs_neg)
     {
       if (add_overflow(A, B, &numerator))
         return slim::nullopt;
-      else
-        return rational{numerator, denominator, lhs.Sign};
+      imax signed_den = lhs_neg ? -static_cast<imax>(denominator) : static_cast<imax>(denominator);
+      return rational{numerator, signed_den};
     }
 
     numerator = (A > B) ? (A - B) : (B - A);
+    bool result_neg = lhs_neg ? (A > B) : (B > A);
 
-    if (lhs.Sign == sign::negative)
-      return rational{numerator, denominator, (A > B) ? sign::negative : sign::positive};
-    else
-      return rational{numerator, denominator, (A > B) ? sign::positive : sign::negative};
+    imax signed_den = result_neg ? -static_cast<imax>(denominator) : static_cast<imax>(denominator);
+    return rational{numerator, signed_den};
   }
 
   inline constexpr slim::optional<rational> operator+(auto lhs, const rational& rhs)
@@ -430,16 +454,16 @@ namespace bnd
   //---------------------------------------------------------------------------
   inline constexpr bool divides_evenly(const rational& dividend, const rational& divisor)
   {
-    return (divisor == 0_r) ? true : (dividend / divisor).value().Denominator == 1;
+    return (divisor == 0_r) ? true : abs_den((dividend / divisor).value().Denominator) == 1;
   }
 
 } // namespace bnd
 
 namespace slim
 {
-  constexpr bnd::rational sentinel_traits<bnd::rational>::sentinel() noexcept { return {1,0}; }
+  constexpr bnd::rational sentinel_traits<bnd::rational>::sentinel() noexcept { return bnd::rational::make_sentinel(); }
   constexpr bool sentinel_traits<bnd::rational>::is_sentinel(const bnd::rational& v) noexcept
-  { return v.Denominator == 0ull; }
+  { return v.Denominator == 0; }
 } // namespace slim
 
 #endif // BNDrationalHPP
