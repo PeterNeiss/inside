@@ -13,7 +13,7 @@ namespace bnd
   template <boundable L, boundable R = L>
   struct addition
   {
-    using result = bound<Grid<L> + Grid<R>>;
+    using result = bound<(Grid<L> + Grid<R>).value()>;
 
     static constexpr umax lhs_widen = (Notch<result> / Notch<L>).value_or(1_r).Numerator;
     static constexpr umax rhs_widen = (Notch<result> / Notch<R>).value_or(1_r).Numerator;

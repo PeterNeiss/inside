@@ -9,6 +9,19 @@
 
 #include <algorithm>
 
+namespace bnd { struct grid; }
+
+namespace slim
+{
+  template<>
+  struct sentinel_traits<bnd::grid>
+  {
+    protected:
+      static constexpr bnd::grid sentinel() noexcept;
+      static constexpr bool is_sentinel(const bnd::grid& v) noexcept;
+  };
+} // namespace slim
+
 namespace bnd
 {
   //---------------------------------------------------------------------------
@@ -57,14 +70,7 @@ namespace bnd
     // operator== be default for structural type
     constexpr bool operator==(const grid& rhs) const = default;
     constexpr grid operator-() const { return {-Interval, Notch}; }
-/*
-    template <std::unsigned_integral Raw>
-    constexpr Raw to_raw(std::signed_integral auto value) const
-    {
-      rational raw = (value - Interval.Lower)/Notch;
-      return static_cast<Raw>(raw.Numerator / static_cast<umax>(raw.Denominator));
-    }
-*/
+
     template <std::unsigned_integral Raw>
     constexpr Raw to_raw(rational value) const
     {
@@ -87,26 +93,33 @@ namespace bnd
       return (Notch == 0_r) ? static_cast<double>(raw) :
         static_cast<double>((*(raw*Notch) + Interval.Lower).value());
     }
+
+    static constexpr grid make_sentinel() noexcept
+    { return grid{interval{0_r, 0_r}, rational::make_sentinel()}; }
   };
 
   template <grid G>
   using storage_min = smallest_uint_for<G.max_notch()>;
 
-  constexpr grid operator+(const grid&, const grid&);
-  constexpr grid operator-(const grid&, const grid&);
+  constexpr slim::optional<grid> operator+(const grid&, const grid&);
+  constexpr slim::optional<grid> operator-(const grid&, const grid&);
+  constexpr slim::optional<grid> operator*(const grid&, const grid&);
 
   //---------------------------------------------------------------------------
   // operator+
   //---------------------------------------------------------------------------
-  inline constexpr grid operator+(const grid& lhs, const grid& rhs)
+  inline constexpr slim::optional<grid> operator+(const grid& lhs, const grid& rhs)
   {
-    return {(lhs.Interval + rhs.Interval).value(), gcd(lhs.Notch, rhs.Notch)};
+    auto interval = lhs.Interval + rhs.Interval;
+    if (!interval)
+      return slim::nullopt;
+    return grid{*interval, gcd(lhs.Notch, rhs.Notch)};
   }
 
   //---------------------------------------------------------------------------
   // operator-
   //---------------------------------------------------------------------------
-  inline constexpr grid operator-(const grid& lhs, const grid& rhs)
+  inline constexpr slim::optional<grid> operator-(const grid& lhs, const grid& rhs)
   {
     return operator+(lhs, -rhs);
   }
@@ -114,39 +127,23 @@ namespace bnd
   //---------------------------------------------------------------------------
   // operator*
   //---------------------------------------------------------------------------
-  inline constexpr grid operator*(const grid& lhs, const grid& rhs)
+  inline constexpr slim::optional<grid> operator*(const grid& lhs, const grid& rhs)
   {
-    return {(lhs.Interval * rhs.Interval).value(), (lhs.Notch * rhs.Notch).value()};
+    auto interval = lhs.Interval * rhs.Interval;
+    auto notch = lhs.Notch * rhs.Notch;
+    if (!interval || !notch)
+      return slim::nullopt;
+    return grid{*interval, *notch};
   }
-
-/*
-  constexpr interval operator/  (const interval&, const interval&);
-  constexpr auto     operator<=>(const interval&, const interval&) -> std::partial_ordering;
-  // TODO includes, excludes
-
-  //---------------------------------------------------------------------------
-  // operator/
-  //---------------------------------------------------------------------------
-  // this is only overlow safe in constexpr context
-  //---------------------------------------------------------------------------
-  inline constexpr interval operator/(const interval& lhs, const interval& rhs)
-  {
-    if (rhs.includes(0_r))
-      throw "division by zero imminent";
-
-    auto [lower, upper] = std::minmax
-    (
-      {
-        lhs.Lower / rhs.Lower,
-        lhs.Lower / rhs.Upper,
-        lhs.Upper / rhs.Lower,
-        lhs.Upper / rhs.Upper
-      }
-    );
-
-    return {lower, upper};
-  }
-*/
 } // namespace bnd
+
+namespace slim
+{
+  constexpr bnd::grid sentinel_traits<bnd::grid>::sentinel() noexcept
+  { return bnd::grid::make_sentinel(); }
+
+  constexpr bool sentinel_traits<bnd::grid>::is_sentinel(const bnd::grid& v) noexcept
+  { return v.Notch.Denominator == 0; }
+} // namespace slim
 
 #endif // BNDgridHPP
