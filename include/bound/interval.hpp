@@ -9,6 +9,19 @@
 #include <algorithm>
 #include <initializer_list>
 
+namespace bnd { struct interval; }
+
+namespace slim
+{
+  template<>
+  struct sentinel_traits<bnd::interval>
+  {
+    protected:
+      static constexpr bnd::interval sentinel() noexcept;
+      static constexpr bool is_sentinel(const bnd::interval& v) noexcept;
+  };
+} // namespace slim
+
 namespace bnd
 {
   //---------------------------------------------------------------------------
@@ -61,28 +74,32 @@ namespace bnd
     constexpr bool divides_evenly(const rational& notch) const
     { return bnd::divides_evenly((Upper - Lower).value(), notch); }
 
-    constexpr rational operator/(const rational& notch) const
-    { return ((Upper - Lower)/notch).value(); }
+    constexpr slim::optional<rational> operator/(const rational& notch) const
+    { return (Upper - Lower) / notch; }
   };
 
-  constexpr interval operator+  (const interval&, const interval&);
-  constexpr interval operator-  (const interval&, const interval&);
-  constexpr interval operator*  (const interval&, const interval&);
-  constexpr interval operator/  (const interval&, const interval&);
-  constexpr auto     operator<=>(const interval&, const interval&) -> std::partial_ordering;
+  constexpr slim::optional<interval> operator+  (const interval&, const interval&);
+  constexpr slim::optional<interval> operator-  (const interval&, const interval&);
+  constexpr slim::optional<interval> operator*  (const interval&, const interval&);
+  constexpr slim::optional<interval> operator/  (const interval&, const interval&);
+  constexpr auto                     operator<=>(const interval&, const interval&) -> std::partial_ordering;
 
   //---------------------------------------------------------------------------
   // operator+
   //---------------------------------------------------------------------------
-  inline constexpr interval operator+(const interval& lhs, const interval& rhs)
+  inline constexpr slim::optional<interval> operator+(const interval& lhs, const interval& rhs)
   {
-    return interval{(lhs.Lower + rhs.Lower).value(), (lhs.Upper + rhs.Upper).value()};
+    auto lower = lhs.Lower + rhs.Lower;
+    auto upper = lhs.Upper + rhs.Upper;
+    if (!lower || !upper)
+      return slim::nullopt;
+    return interval{*lower, *upper};
   }
 
   //---------------------------------------------------------------------------
   // operator-
   //---------------------------------------------------------------------------
-  inline constexpr interval operator-(const interval& lhs, const interval& rhs)
+  inline constexpr slim::optional<interval> operator-(const interval& lhs, const interval& rhs)
   {
     return operator+(lhs, -rhs);
   }
@@ -90,43 +107,35 @@ namespace bnd
   //---------------------------------------------------------------------------
   // operator*
   //---------------------------------------------------------------------------
-  // this is only overlow safe in constexpr context
-  //---------------------------------------------------------------------------
-  inline constexpr interval operator*(const interval& lhs, const interval& rhs)
+  inline constexpr slim::optional<interval> operator*(const interval& lhs, const interval& rhs)
   {
-    auto [lower, upper] = std::minmax
-    (
-      {
-        (lhs.Lower * rhs.Lower).value(),
-        (lhs.Lower * rhs.Upper).value(),
-        (lhs.Upper * rhs.Lower).value(),
-        (lhs.Upper * rhs.Upper).value()
-      }
-    );
+    auto a = lhs.Lower * rhs.Lower;
+    auto b = lhs.Lower * rhs.Upper;
+    auto c = lhs.Upper * rhs.Lower;
+    auto d = lhs.Upper * rhs.Upper;
+    if (!a || !b || !c || !d)
+      return slim::nullopt;
 
+    auto [lower, upper] = std::minmax({*a, *b, *c, *d});
     return interval{lower, upper};
   }
 
   //---------------------------------------------------------------------------
   // operator/
   //---------------------------------------------------------------------------
-  // this is only overlow safe in constexpr context
-  //---------------------------------------------------------------------------
-  inline constexpr interval operator/(const interval& lhs, const interval& rhs)
+  inline constexpr slim::optional<interval> operator/(const interval& lhs, const interval& rhs)
   {
     if (rhs.includes(0))
-      DIV_ZERO_trap("rhs inteval contains zero");
+      return slim::nullopt;
 
-    auto [lower, upper] = std::minmax
-    (
-      {
-        *(lhs.Lower / rhs.Lower),
-        *(lhs.Lower / rhs.Upper),
-        *(lhs.Upper / rhs.Lower),
-        *(lhs.Upper / rhs.Upper)
-      }
-    );
+    auto a = lhs.Lower / rhs.Lower;
+    auto b = lhs.Lower / rhs.Upper;
+    auto c = lhs.Upper / rhs.Lower;
+    auto d = lhs.Upper / rhs.Upper;
+    if (!a || !b || !c || !d)
+      return slim::nullopt;
 
+    auto [lower, upper] = std::minmax({*a, *b, *c, *d});
     return interval{lower, upper};
   }
 
@@ -148,5 +157,14 @@ namespace bnd
   }
 
 } // namespace bnd
+
+namespace slim
+{
+  constexpr bnd::interval sentinel_traits<bnd::interval>::sentinel() noexcept
+  { return bnd::interval{bnd::rational::make_sentinel(), bnd::rational::make_sentinel()}; }
+
+  constexpr bool sentinel_traits<bnd::interval>::is_sentinel(const bnd::interval& v) noexcept
+  { return v.Lower.Denominator == 0; }
+} // namespace slim
 
 #endif // BNDintervalHPP

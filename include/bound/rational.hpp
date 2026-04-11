@@ -28,16 +28,6 @@ namespace slim
 
 namespace bnd
 {
-  //---------------------------------------------------------------------------
-  // rational
-  //---------------------------------------------------------------------------
-  // Must be a structural type for template NTTP (only public members)
-  //---------------------------------------------------------------------------
-  // Sign is encoded in the denominator (negative denominator = negative rational)
-  // Numerator is unsigned to represent e.g. umax itself
-  // rational is intended for compile time and is not arithmetically safe at
-  // runtime
-  //---------------------------------------------------------------------------
   constexpr umax abs_den(imax d) { return (d >= 0) ? static_cast<umax>(d) : -static_cast<umax>(d); }
 
   //---------------------------------------------------------------------------
@@ -63,6 +53,14 @@ namespace bnd
     b /= g;
   }
 
+  //---------------------------------------------------------------------------
+  // rational
+  //---------------------------------------------------------------------------
+  // Must be a structural type for template NTTP (only public members)
+  //---------------------------------------------------------------------------
+  // Sign is encoded in the denominator (negative denominator = negative rational)
+  // Numerator is unsigned to represent e.g. umax itself
+  //---------------------------------------------------------------------------
   struct rational
   {
     umax Numerator;

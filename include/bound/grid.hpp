@@ -45,7 +45,7 @@ namespace bnd
     }
 
     constexpr umax max_notch() const
-    { return (Notch == 0_r) ? 0 : (Interval/Notch).Numerator; }
+    { return (Notch == 0_r) ? 0 : (Interval/Notch).value().Numerator; }
 
     constexpr rational low_per_notch() const
     { return (Interval.Lower/Notch).value_or(0_r); }
@@ -94,14 +94,13 @@ namespace bnd
 
   constexpr grid operator+(const grid&, const grid&);
   constexpr grid operator-(const grid&, const grid&);
-  constexpr interval operator*  (const interval&, const interval&);
 
   //---------------------------------------------------------------------------
   // operator+
   //---------------------------------------------------------------------------
   inline constexpr grid operator+(const grid& lhs, const grid& rhs)
   {
-    return {lhs.Interval + rhs.Interval, gcd(lhs.Notch, rhs.Notch)};
+    return {(lhs.Interval + rhs.Interval).value(), gcd(lhs.Notch, rhs.Notch)};
   }
 
   //---------------------------------------------------------------------------
@@ -117,7 +116,7 @@ namespace bnd
   //---------------------------------------------------------------------------
   inline constexpr grid operator*(const grid& lhs, const grid& rhs)
   {
-    return {lhs.Interval * rhs.Interval, (lhs.Notch * rhs.Notch).value()};
+    return {(lhs.Interval * rhs.Interval).value(), (lhs.Notch * rhs.Notch).value()};
   }
 
 /*

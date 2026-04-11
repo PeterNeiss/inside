@@ -79,7 +79,7 @@ namespace bnd
 
   template <boundable B>
   inline constexpr raw_t<B> MaxNotch = (Notch<B> == 0) ?
-    raw_cast<B>(0) : raw_cast<B>((Interval<B>/Notch<B>).Numerator);
+    raw_cast<B>(0) : raw_cast<B>((Interval<B>/Notch<B>).value().Numerator);
 
   template <boundable B>
   inline constexpr umax OffsetLower = (Lower<B>/Notch<B>).value_or(0_r).Numerator;

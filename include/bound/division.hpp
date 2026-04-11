@@ -13,7 +13,7 @@ namespace bnd
   template <boundable L, boundable R = L>
   struct division
   {
-    using result = bound<{Interval<L> / Interval<R>, 0}>;
+    using result = bound<{(Interval<L> / Interval<R>).value(), 0}>;
     static_assert (std::is_same_v<typename result::raw_type::value_type, rational>);
 
     static constexpr result to_result(auto raw)
