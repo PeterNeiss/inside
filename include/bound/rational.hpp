@@ -76,7 +76,7 @@ namespace bnd
   constexpr slim::optional<rational> operator/(rational, rational);
   constexpr slim::optional<rational> operator-(const rational&, const rational&);
 
-  constexpr rational operator*  (rational, rational);
+  constexpr slim::optional<rational> operator*(rational, rational);
   constexpr auto     operator<=>(rational, rational) -> std::strong_ordering;
 
   constexpr rational gcd(const rational&, const rational&);
@@ -244,7 +244,7 @@ namespace bnd
   //---------------------------------------------------------------------------
   // operator*
   //---------------------------------------------------------------------------
-  inline constexpr rational operator*(rational lhs, rational rhs)
+  inline constexpr slim::optional<rational> operator*(rational lhs, rational rhs)
   {
     if (lhs.Sign == sign::zero || rhs.Sign == sign::zero)
       return 0_r;
@@ -261,25 +261,35 @@ namespace bnd
       mul_overflow(lhs.Numerator  , rhs.Numerator  , &numerator)   ||
       mul_overflow(lhs.Denominator, rhs.Denominator, &denominator)
     )
-      OVERFLOW_trap("multiplicative overflow");
+      return slim::nullopt;
 
     return rational
     {numerator, denominator, (lhs.Sign == rhs.Sign) ? sign::positive : sign::negative};
   }
 
-  inline constexpr rational operator*(auto lhs, const rational& rhs)
+  inline constexpr slim::optional<rational> operator*(auto lhs, const rational& rhs)
   { return rational{lhs} * rhs; }
 
   template <typename T>
-  inline constexpr rational operator*(slim::optional<T> lhs, const rational& rhs)
-  { return rational{lhs.value()} * rhs; }
+  inline constexpr slim::optional<rational> operator*(slim::optional<T> lhs, const rational& rhs)
+  {
+    if (lhs.has_value())
+      return rational{lhs.value()} * rhs;
+    else
+      return slim::nullopt;
+  }
 
-  inline constexpr rational operator*(rational const& lhs, auto rhs)
+  inline constexpr slim::optional<rational> operator*(rational const& lhs, auto rhs)
   { return lhs * rational{rhs}; }
 
   template <typename T>
-  inline constexpr rational operator*(rational const& lhs, slim::optional<T> rhs)
-  { return lhs * rational{rhs.value()}; }
+  inline constexpr slim::optional<rational> operator*(rational const& lhs, slim::optional<T> rhs)
+  {
+    if (rhs.has_value())
+      return lhs * rational{rhs.value()};
+    else
+      return slim::nullopt;
+  }
 
   //---------------------------------------------------------------------------
   // operator/

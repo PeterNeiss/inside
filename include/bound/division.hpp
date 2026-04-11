@@ -34,6 +34,13 @@ namespace bnd
   template<policy_flag F>
   constexpr auto division<L,R>::div(L lhs, R rhs, policy<F>) -> result
   {
+    if (!lhs.Raw.has_value() || !rhs.Raw.has_value())
+    {
+      result res;
+      res.Raw = slim::nullopt;
+      return res;
+    }
+
     return to_result(static_cast<rational>(lhs) / static_cast<rational>(rhs));
   }
 } // namespace bnd

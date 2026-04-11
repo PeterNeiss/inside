@@ -87,12 +87,12 @@ namespace bnd
     }
 
     constexpr double raw_to_double(std::unsigned_integral auto raw) const
-    { return static_cast<double>(raw*Notch + Interval.Lower); }
+    { return static_cast<double>((*(raw*Notch) + Interval.Lower).value()); }
 
     constexpr double raw_to_double(std::same_as<rational> auto raw) const
     {
       return (Notch == 0_r) ? static_cast<double>(raw) :
-        static_cast<double>(raw*Notch + Interval.Lower);
+        static_cast<double>((*(raw*Notch) + Interval.Lower).value());
     }
   };
 
@@ -124,7 +124,7 @@ namespace bnd
   //---------------------------------------------------------------------------
   inline constexpr grid operator*(const grid& lhs, const grid& rhs)
   {
-    return {lhs.Interval * rhs.Interval, lhs.Notch * rhs.Notch};
+    return {lhs.Interval * rhs.Interval, (lhs.Notch * rhs.Notch).value()};
   }
 
 /*

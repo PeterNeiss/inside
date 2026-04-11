@@ -97,10 +97,10 @@ namespace bnd
     auto [lower, upper] = std::minmax
     (
       {
-        lhs.Lower * rhs.Lower,
-        lhs.Lower * rhs.Upper,
-        lhs.Upper * rhs.Lower,
-        lhs.Upper * rhs.Upper
+        (lhs.Lower * rhs.Lower).value(),
+        (lhs.Lower * rhs.Upper).value(),
+        (lhs.Upper * rhs.Lower).value(),
+        (lhs.Upper * rhs.Upper).value()
       }
     );
 

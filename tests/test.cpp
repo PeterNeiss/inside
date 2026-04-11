@@ -164,7 +164,7 @@ void test_comparision()
     rational{3,2} + rational{1,5} == rational{17,10} &&
     rational{3,2} - rational{1,5} == rational{13,10} &&
     rational{3,2} / rational{1,2} == rational{3} &&
-    rational{3,2} * rational{1,2} == rational{3, 4}
+    *(rational{3,2} * rational{1,2}) == rational{3, 4}
   );
 }
 

@@ -58,14 +58,14 @@ namespace bnd
       return res;
 
     if constexpr (is_raw_rational<result>)
-      res.Raw = raw_cast<result>(lhs.to_rational() + rhs.to_rational());
+      res.Raw = raw_cast<result>(static_cast<rational>(lhs) + static_cast<rational>(rhs));
     else
     {
       // TODO Check argument
       // Because result type calculation did not overflow at compile time,
       // both widen multiplications dont overflow and
       // their sum does not overflow
-      res.Raw = raw_cast<result>(lhs.Raw * lhs_widen + rhs.Raw * rhs_widen);
+      res.Raw = raw_cast<result>(*(lhs.Raw * lhs_widen) + *(rhs.Raw * rhs_widen));
     }
 
     return res;
