@@ -49,20 +49,6 @@ namespace bnd
     return str;
   }
 
-  inline std::string to_string(diag_location loc)
-  {
-#ifndef NDEBUG
-    using namespace std::string_literals;
-    return loc.file_name() + ":"s
-         + std::to_string(loc.line()) + ":"s
-         + std::to_string(loc.column()) + " ("s
-         + loc.function_name() + ")"s;
-#else
-    (void) loc;
-    return "";
-#endif
-  }
-
   // delegate to std::to_string
   template <typename V>
   auto to_string(V value)

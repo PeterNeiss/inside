@@ -58,11 +58,6 @@ namespace bnd
     { ec = ec ? ec : std::error_code{EDOM, std::generic_category()}; };
   };
 
-  struct srcloc
-  {
-    inline static thread_local diag_location Location;
-  };
-
   struct empty_ref
   {
   };
@@ -73,7 +68,7 @@ namespace bnd
   };
 
   template<policy_flag W = none, typename E = empty_ref, handler H = handler{}>
-  struct policy: E, srcloc
+  struct policy: E
   {
     constexpr policy() = default;
     constexpr policy(std::error_code& ec) requires std::same_as<E, error_ref>
@@ -115,7 +110,6 @@ namespace bnd
       { set_error({ENOSPC, std::generic_category()}); }
       else
       {
-        what = what + ": " + bnd::to_string(Location);
 #ifdef BOUND_HAS_STACKTRACE
         what += ": \n" + std::to_string(std::stacktrace::current());
 #endif
@@ -127,19 +121,15 @@ namespace bnd
   // make_policy
   //---------------------------------------------------------------------------
   template<policy_flag F = none>
-  constexpr auto make_policy(diag_location loc = diag_location::current())
+  constexpr auto make_policy()
   {
-    policy<F,empty_ref> p;
-    if not consteval { p.Location = loc; }
-    return p;
+    return policy<F,empty_ref>{};
   }
 
   template<policy_flag F = none>
-  constexpr auto make_policy(std::error_code& ec, diag_location loc = diag_location::current())
+  constexpr auto make_policy(std::error_code& ec)
   {
-    policy<F,error_ref> p{ec};
-    if not consteval { p.Location = loc; }
-    return p;
+    return policy<F,error_ref>{ec};
   }
 
   //---------------------------------------------------------------------------

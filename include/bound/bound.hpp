@@ -27,10 +27,9 @@ namespace bnd
 
     constexpr bound() = default; // trivial constructor
 
-    //TODO remove diag_location
     template <numeric A>
-    constexpr bound(A value, diag_location loc = diag_location::current())
-    { assignment<bound, A>::assign(*this, value, make_policy(loc)); }
+    constexpr bound(A value)
+    { assignment<bound, A>::assign(*this, value, make_policy()); }
 
     template <numeric A, typename P>
     constexpr bound(A value, P&& policy)
@@ -38,7 +37,7 @@ namespace bnd
 
     template <numeric B>
     constexpr bound& operator=(B const& other)
-    { return assignment<bound, B>::assign(*this, other, make_policy(diag_location::current())); }
+    { return assignment<bound, B>::assign(*this, other, make_policy()); }
 
     constexpr explicit operator double() const { return G.raw_to_double(Raw); }
 
