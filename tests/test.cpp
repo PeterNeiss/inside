@@ -72,7 +72,7 @@ void test_div()
   auto c = a / b;
   std::cout << "a = " << a << std::endl;
   std::cout << "b = " << b << std::endl;
-  std::cout << "c = " << c << std::endl;
+  std::cout << "c = " << *c << std::endl;
 }
 
 void test_mul()
@@ -143,9 +143,9 @@ void test_add()
   auto d = a - b;
   std::cout << "d(-221) = " << d << std::endl;
 
-  using u64 = bound<{{0, std::numeric_limits<slim::optional<std::uint64_t>>::max()}, 1}>;
+  using u64 = bound<{{0, std::numeric_limits<std::uint64_t>::max()}, 1}>;
 
-  constexpr u64 biggest{std::numeric_limits<slim::optional<std::uint64_t>>::max()};
+  constexpr u64 biggest{std::numeric_limits<std::uint64_t>::max()};
   std::cout << biggest << std::endl;
   //auto e = biggest + biggest;
 }
@@ -194,7 +194,7 @@ void test_bound()
   using frac = bound<{{-10, 10}, 0}>;
   //print_types<frac>{};
   static_assert(Grid<frac> == grid{-10, 10, 0});
-  static_assert(std::is_same_v<typename frac::raw_type::value_type, rational>);
+  static_assert(std::is_same_v<typename frac::raw_type, rational>);
 
  // auto test = frac::unchecked{3};
 
@@ -220,10 +220,10 @@ using test8_t = bound<{{-10.0, 10.0}, 0.25}>;
 using test10_t = bound<{{1,100}, *(3_r/2)}>;
 //using test11_t = bound<{1,5}>;
 
-static_assert(std::is_same_v<typename test0_t::raw_type::value_type, std::uint8_t>);
-static_assert(std::is_same_v<typename test4_t::raw_type::value_type, std::uint64_t>);
+static_assert(std::is_same_v<typename test0_t::raw_type, std::uint8_t>);
+static_assert(std::is_same_v<typename test4_t::raw_type, std::uint64_t>);
 
-static_assert(std::is_same_v<typename test5_t::raw_type::value_type, rational>);
+static_assert(std::is_same_v<typename test5_t::raw_type, rational>);
 //static_assert(std::is_same_v<test11_t::raw_type, rational>);
 
 int main()

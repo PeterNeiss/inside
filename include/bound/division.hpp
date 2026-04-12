@@ -14,17 +14,10 @@ namespace bnd
   struct division
   {
     using result = bound<{(Interval<L> / Interval<R>).value(), 0}>;
-    static_assert (std::is_same_v<typename result::raw_type::value_type, rational>);
-
-    static constexpr result to_result(auto raw)
-    { result res; res.Raw = static_cast<result::raw_type>(raw); return res; }
-
-    template <typename T>
-    static constexpr result to_result(slim::optional<T> raw)
-    { result res; res.Raw = static_cast<result::raw_type>(raw.value()); return res; }
+    static_assert(std::is_same_v<typename result::raw_type, rational>);
 
     template <policy_flag F = none>
-    static constexpr result div(L, R, policy<F> = {});
+    static constexpr slim::optional<result> div(L, R, policy<F> = {});
   };
 
   //---------------------------------------------------------------------------
@@ -32,16 +25,11 @@ namespace bnd
   //---------------------------------------------------------------------------
   template<boundable L, boundable R>
   template<policy_flag F>
-  constexpr auto division<L,R>::div(L lhs, R rhs, policy<F>) -> result
+  constexpr auto division<L,R>::div(L lhs, R rhs, policy<F>) -> slim::optional<result>
   {
-    if (!lhs.Raw.has_value() || !rhs.Raw.has_value())
-    {
-      result res;
-      res.Raw = slim::nullopt;
-      return res;
-    }
-
-    return to_result(static_cast<rational>(lhs) / static_cast<rational>(rhs));
+    auto q = static_cast<rational>(lhs) / static_cast<rational>(rhs);
+    if (!q) return slim::nullopt;
+    result res; res.Raw = *q; return res;
   }
 } // namespace bnd
 

@@ -15,11 +15,15 @@ namespace bnd
   {
     using result = bound<(Grid<L> + Grid<R>).value()>;
 
+    using return_type = std::conditional_t<is_raw_rational<result>,
+                                           slim::optional<result>,
+                                           result>;
+
     static constexpr umax lhs_widen = (Notch<result> / Notch<L>).value_or(1_r).Numerator;
     static constexpr umax rhs_widen = (Notch<result> / Notch<R>).value_or(1_r).Numerator;
 
     template <policy_flag F = none>
-    static constexpr result add(L, R, policy<F> = {});
+    static constexpr return_type add(L, R, policy<F> = {});
   };
 
   //---------------------------------------------------------------------------
@@ -27,26 +31,27 @@ namespace bnd
   //---------------------------------------------------------------------------
   template<boundable L, boundable R>
   template<policy_flag F>
-  constexpr auto addition<L,R>::add(L lhs, R rhs, policy<F>) -> result
+  constexpr auto addition<L,R>::add(L lhs, R rhs, policy<F>) -> return_type
   {
-    result res;
-    res.Raw = slim::nullopt;
-
-    if (!lhs.Raw.has_value() || !rhs.Raw.has_value())
-      return res;
-
     if constexpr (is_raw_rational<result>)
-      res.Raw = raw_cast<result>(static_cast<rational>(lhs) + static_cast<rational>(rhs));
+    {
+      auto sum = static_cast<rational>(lhs) + static_cast<rational>(rhs);
+      if (!sum) return slim::nullopt;
+      result res; res.Raw = raw_cast<result>(*sum); return res;
+    }
+    else if constexpr (is_raw_rational<L> || is_raw_rational<R>)
+    {
+      auto sum = static_cast<rational>(lhs) + static_cast<rational>(rhs);
+      result res;
+      res.Raw = raw_cast<result>(((*sum - Lower<result>) / Notch<result>).value().Numerator);
+      return res;
+    }
     else
     {
-      // TODO Check argument
-      // Because result type calculation did not overflow at compile time,
-      // both widen multiplications dont overflow and
-      // their sum does not overflow
-      res.Raw = raw_cast<result>(*(lhs.Raw * lhs_widen) + *(rhs.Raw * rhs_widen));
+      result res;
+      res.Raw = raw_cast<result>(lhs.Raw * lhs_widen + rhs.Raw * rhs_widen);
+      return res;
     }
-
-    return res;
   }
 } // namespace bnd
 

@@ -11,6 +11,17 @@
 #include "bound/division.hpp"
 #include "bound/assignment.hpp"
 
+namespace slim
+{
+  template <bnd::grid G>
+  struct sentinel_traits<bnd::bound<G>>
+  {
+    protected:
+      static constexpr bnd::bound<G> sentinel() noexcept;
+      static constexpr bool is_sentinel(const bnd::bound<G>& v) noexcept;
+  };
+} // namespace slim
+
 namespace bnd
 {
   //---------------------------------------------------------------------------
@@ -22,7 +33,7 @@ namespace bnd
     static_assert(grid::validate<G>());
 
     using negative = bound<-G>;
-    using raw_type = slim::optional<storage_min<G>>;
+    using raw_type = storage_min<G>;
     raw_type Raw;
 
     constexpr bound() = default; // trivial constructor
@@ -48,25 +59,19 @@ namespace bnd
         if constexpr (G.Interval.Lower == G.Interval.Upper)
           return G.Interval.Lower;
         else
-          return Raw.value();
+          return Raw;
       }
       else
-        return (*(*Raw * G.Notch) + G.Interval.Lower).value();
+        return (*(Raw * G.Notch) + G.Interval.Lower).value();
     }
 
     constexpr negative operator-() const
     {
       negative neg;
-      if (Raw.has_value())
-      {
-        if constexpr (is_raw_rational<bound>)
-          neg.Raw = -(*Raw);
-        else
-          neg.Raw = raw_cast<negative>(MaxNotch<bound> - *Raw);
-      }
+      if constexpr (is_raw_rational<bound>)
+        neg.Raw = -(Raw);
       else
-        neg.Raw = slim::nullopt;
-
+        neg.Raw = raw_cast<negative>(MaxNotch<bound> - Raw);
       return neg;
     }
 
@@ -88,6 +93,16 @@ namespace bnd
     //auto without_clamp() { return this->policy<no_clamp>(); }
     //auto without_wrap() { return this->policy<no_wrap>(); }
 
+    template <numeric A>
+    static constexpr slim::optional<bound> try_make(A value)
+    {
+      std::error_code ec;
+      bound result;
+      assignment<bound, A>::assign(result, value, make_policy(ec));
+      if (ec) return slim::nullopt;
+      return result;
+    }
+
     private:
       static void check_trival() { static_assert(std::is_trivial_v<bound>);}
   };
@@ -105,6 +120,21 @@ namespace bnd
   constexpr auto operator+(boundable auto lhs, boundable auto rhs)
   { return add(lhs, rhs); }
 
+  template <boundable L, boundable R>
+  constexpr auto operator+(slim::optional<L> lhs, R rhs)
+    -> slim::optional<typename addition<L,R>::result>
+  { if (!lhs) return slim::nullopt; return add(*lhs, rhs); }
+
+  template <boundable L, boundable R>
+  constexpr auto operator+(L lhs, slim::optional<R> rhs)
+    -> slim::optional<typename addition<L,R>::result>
+  { if (!rhs) return slim::nullopt; return add(lhs, *rhs); }
+
+  template <boundable L, boundable R>
+  constexpr auto operator+(slim::optional<L> lhs, slim::optional<R> rhs)
+    -> slim::optional<typename addition<L,R>::result>
+  { if (!lhs || !rhs) return slim::nullopt; return add(*lhs, *rhs); }
+
   //---------------------------------------------------------------------------
   // sub
   //---------------------------------------------------------------------------
@@ -117,6 +147,21 @@ namespace bnd
   //---------------------------------------------------------------------------
   constexpr auto operator-(boundable auto lhs, boundable auto rhs)
   { return sub(lhs, rhs); }
+
+  template <boundable L, boundable R>
+  constexpr auto operator-(slim::optional<L> lhs, R rhs)
+    -> slim::optional<typename addition<L, typename R::negative>::result>
+  { if (!lhs) return slim::nullopt; return sub(*lhs, rhs); }
+
+  template <boundable L, boundable R>
+  constexpr auto operator-(L lhs, slim::optional<R> rhs)
+    -> slim::optional<typename addition<L, typename R::negative>::result>
+  { if (!rhs) return slim::nullopt; return sub(lhs, *rhs); }
+
+  template <boundable L, boundable R>
+  constexpr auto operator-(slim::optional<L> lhs, slim::optional<R> rhs)
+    -> slim::optional<typename addition<L, typename R::negative>::result>
+  { if (!lhs || !rhs) return slim::nullopt; return sub(*lhs, *rhs); }
 
   //---------------------------------------------------------------------------
   // mul
@@ -131,6 +176,21 @@ namespace bnd
   constexpr auto operator*(boundable auto lhs, boundable auto rhs)
   { return bnd::mul(lhs, rhs); }
 
+  template <boundable L, boundable R>
+  constexpr auto operator*(slim::optional<L> lhs, R rhs)
+    -> slim::optional<typename multiplication<L,R>::result>
+  { if (!lhs) return slim::nullopt; return bnd::mul(*lhs, rhs); }
+
+  template <boundable L, boundable R>
+  constexpr auto operator*(L lhs, slim::optional<R> rhs)
+    -> slim::optional<typename multiplication<L,R>::result>
+  { if (!rhs) return slim::nullopt; return bnd::mul(lhs, *rhs); }
+
+  template <boundable L, boundable R>
+  constexpr auto operator*(slim::optional<L> lhs, slim::optional<R> rhs)
+    -> slim::optional<typename multiplication<L,R>::result>
+  { if (!lhs || !rhs) return slim::nullopt; return bnd::mul(*lhs, *rhs); }
+
   //---------------------------------------------------------------------------
   // div
   //---------------------------------------------------------------------------
@@ -144,6 +204,21 @@ namespace bnd
   constexpr auto operator/(boundable auto lhs, boundable auto rhs)
   { return bnd::div(lhs, rhs); }
 
+  template <boundable L, boundable R>
+  constexpr auto operator/(slim::optional<L> lhs, R rhs)
+    -> slim::optional<typename division<L,R>::result>
+  { if (!lhs) return slim::nullopt; return bnd::div(*lhs, rhs); }
+
+  template <boundable L, boundable R>
+  constexpr auto operator/(L lhs, slim::optional<R> rhs)
+    -> slim::optional<typename division<L,R>::result>
+  { if (!rhs) return slim::nullopt; return bnd::div(lhs, *rhs); }
+
+  template <boundable L, boundable R>
+  constexpr auto operator/(slim::optional<L> lhs, slim::optional<R> rhs)
+    -> slim::optional<typename division<L,R>::result>
+  { if (!lhs || !rhs) return slim::nullopt; return bnd::div(*lhs, *rhs); }
+
   //---------------------------------------------------------------------------
   // just
   //---------------------------------------------------------------------------
@@ -151,5 +226,30 @@ namespace bnd
   inline constexpr auto just = bound<grid{value}>{value};
 
 } // namespace bnd
+
+namespace slim
+{
+  template <bnd::grid G>
+  constexpr bnd::bound<G> sentinel_traits<bnd::bound<G>>::sentinel() noexcept
+  {
+    bnd::bound<G> s;
+    using raw = typename bnd::bound<G>::raw_type;
+    if constexpr (std::is_same_v<raw, bnd::rational>)
+      s.Raw = bnd::rational::make_sentinel();
+    else
+      s.Raw = std::numeric_limits<raw>::max();
+    return s;
+  }
+
+  template <bnd::grid G>
+  constexpr bool sentinel_traits<bnd::bound<G>>::is_sentinel(const bnd::bound<G>& v) noexcept
+  {
+    using raw = typename bnd::bound<G>::raw_type;
+    if constexpr (std::is_same_v<raw, bnd::rational>)
+      return v.Raw.Denominator == 0;
+    else
+      return v.Raw == std::numeric_limits<raw>::max();
+  }
+} // namespace slim
 
 #endif // BNDboundHPP

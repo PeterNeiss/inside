@@ -66,8 +66,8 @@ namespace bnd
     //TODO auto [num,den] = b.to_rational();
     stream << static_cast<rational>(b)
            <<" {"
-           << +b.Raw.value() << "[" << uint_type_name<typename raw_t<B>::value_type>()
-           << " Max:" << +MaxNotch<B>.value() << "] "
+           << +b.Raw << "[" << uint_type_name<raw_t<B>>()
+           << " Max:" << +MaxNotch<B> << "] "
            << bnd::to_string(Grid<B>)
            << "}";
     return stream;

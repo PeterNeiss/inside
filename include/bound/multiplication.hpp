@@ -15,11 +15,15 @@ namespace bnd
   {
     using result = bound<(Grid<L> * Grid<R>).value()>;
 
+    using return_type = std::conditional_t<is_raw_rational<result>,
+                                           slim::optional<result>,
+                                           result>;
+
     static constexpr result to_result(auto raw)
     { result res; res.Raw = raw_cast<result>(raw); return res; }
 
     template <typename P>
-    static constexpr result mul(L, R, P&&);
+    static constexpr return_type mul(L, R, P&&);
   };
 
   //---------------------------------------------------------------------------
@@ -27,24 +31,20 @@ namespace bnd
   //---------------------------------------------------------------------------
   template <boundable L, boundable R>
   template <typename P>
-  constexpr auto multiplication<L,R>::mul(L lhs, R rhs, P&& policy) -> result
+  constexpr auto multiplication<L,R>::mul(L lhs, R rhs, P&& policy) -> return_type
   {
-    if (!lhs.Raw.has_value() || !rhs.Raw.has_value())
+    if constexpr (is_raw_rational<result>)
     {
-      result res;
-      res.Raw = slim::nullopt;
-      return res;
+      auto prod = static_cast<rational>(lhs) * static_cast<rational>(rhs);
+      if (!prod) return slim::nullopt;
+      result res; res.Raw = raw_cast<result>(*prod); return res;
     }
-
-    if constexpr (Notch<result>.Numerator == 0)
-      return to_result((lhs.to_rational() * rhs.to_rational()).value());
     else
     {
       if constexpr (Lower<result> == (Lower<L> * Lower<R>).value())
       {
-        // low_per_notch is always positive in this case
         return to_result
-        (lhs.Raw.value() * rhs.Raw.value() + lhs.Raw.value() * OffsetLower<R> + rhs.Raw.value() * OffsetLower<L>);
+        (lhs.Raw * rhs.Raw + lhs.Raw * OffsetLower<R> + rhs.Raw * OffsetLower<L>);
       }
 
       if constexpr (Lower<result> == (Upper<L> * Upper<R>).value())
@@ -52,9 +52,9 @@ namespace bnd
 
       if constexpr (Lower<result> == (Upper<L> * Lower<R>).value())
       {
-        raw_t<L> negRaw = raw_cast<L>(MaxNotch<L> - lhs.Raw.value());
+        raw_t<L> negRaw = raw_cast<L>(MaxNotch<L> - lhs.Raw);
         return to_result
-        (*negRaw * OffsetLower<R> + *rhs.Raw * OffsetUpper<L> - (*negRaw * *rhs.Raw));
+        (negRaw * OffsetLower<R> + rhs.Raw * OffsetUpper<L> - (negRaw * rhs.Raw));
       }
 
       if constexpr (Lower<result> == (Lower<L> * Upper<R>).value())

@@ -187,7 +187,7 @@ namespace bnd
       // else always_success
     }
 
-    lhs.Raw = raw_cast<L>(Offset + *(Factor * rhs.Raw));
+    lhs.Raw = raw_cast<L>(*(Offset + *(Factor * rhs.Raw)));
     return lhs;
   }
 } // namespace bnd
