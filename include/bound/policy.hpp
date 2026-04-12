@@ -45,17 +45,20 @@ namespace bnd
     using domain_error_t = void (*)(const char*);
     using domain_error_ec_t = void (*)(std::error_code& ec);
 
-    domain_error_t domain_error = +[](const char* what)
+    static void default_domain_error(const char* what)
     {
       std::string str{what};
 #ifdef BOUND_HAS_STACKTRACE
       str += ": \n" + std::to_string(std::stacktrace::current());
 #endif
       throw std::system_error(EDOM, std::generic_category(), str);
-    };
+    }
 
-    domain_error_ec_t domain_error_ec = +[](std::error_code& ec)
-    { ec = ec ? ec : std::error_code{EDOM, std::generic_category()}; };
+    static void default_domain_error_ec(std::error_code& ec)
+    { ec = ec ? ec : std::error_code{EDOM, std::generic_category()}; }
+
+    domain_error_t domain_error = default_domain_error;
+    domain_error_ec_t domain_error_ec = default_domain_error_ec;
   };
 
   struct empty_ref

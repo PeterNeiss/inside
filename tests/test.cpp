@@ -67,9 +67,11 @@ void check_no_error(const char* label, std::error_code ec)
 //---------------------------------------------------------------------------
 // compile-time only tests
 //---------------------------------------------------------------------------
+void noop_domain_error(const char*) { }
+
 constexpr handler handlers =
 {
-  .domain_error = +[](const char* = nullptr) { }
+  .domain_error = noop_domain_error
 };
 
 template<handler H>
