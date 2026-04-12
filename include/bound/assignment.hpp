@@ -87,11 +87,29 @@ namespace bnd
       if constexpr (not Interval<L>.includes(Interval<R>))
       {
         // may_fail
-        if (policy.domain_check() && not Interval<L>.includes(rhs))
+        if constexpr (abs_den(Lower<L>.Denominator) == 1 && abs_den(Upper<L>.Denominator) == 1)
         {
-          // failed
-          policy.domain_error(bnd::to_string(rhs) + " is not in " + bnd::to_string(Interval<L>));
-          return lhs;
+          // integer interval: compare without rational construction
+          constexpr imax lower = (Lower<L>.Denominator > 0)
+            ? static_cast<imax>(Lower<L>.Numerator)
+            : -static_cast<imax>(Lower<L>.Numerator);
+          constexpr imax upper = (Upper<L>.Denominator > 0)
+            ? static_cast<imax>(Upper<L>.Numerator)
+            : -static_cast<imax>(Upper<L>.Numerator);
+          if (policy.domain_check()
+            && (static_cast<imax>(rhs) < lower || static_cast<imax>(rhs) > upper))
+          {
+            policy.domain_error(bnd::to_string(rhs) + " is not in " + bnd::to_string(Interval<L>));
+            return lhs;
+          }
+        }
+        else
+        {
+          if (policy.domain_check() && not Interval<L>.includes(rhs))
+          {
+            policy.domain_error(bnd::to_string(rhs) + " is not in " + bnd::to_string(Interval<L>));
+            return lhs;
+          }
         }
         // else success
       }
@@ -102,6 +120,8 @@ namespace bnd
       lhs.Raw = 0;
     else if constexpr (is_raw_rational<L>)
       lhs.Raw = rhs;
+    else if constexpr (Lower<L> == 0_r && Notch<L> == 1_r)
+      lhs.Raw = raw_cast<L>(rhs);
     else
     {
       rational raw = ((rhs - Interval<L>.Lower)/Notch<L>).value();
@@ -168,26 +188,65 @@ namespace bnd
       // run_time => compile_time_check (always_success or may_fail)
       if constexpr (not Interval<L>.includes(Interval<R>))
       {
-        // may_fail
-        if (policy.domain_check() && not Interval<L>.includes(static_cast<rational>(rhs)))
+        if constexpr (not is_raw_rational<L> && not is_raw_rational<R>
+                      && abs_den(Factor.Denominator) == 1 && abs_den(Offset.Denominator) == 1)
         {
-          // failed
-          policy.domain_error(bnd::to_string(static_cast<rational>(rhs)) + " is not in " + bnd::to_string(Interval<L>));
-          return lhs;
-        }
+          // integer domain check in raw space
+          if (policy.domain_check())
+          {
+            umax mapped;
+            if constexpr (Offset == 0_r)
+              mapped = Factor.Numerator * static_cast<umax>(rhs.Raw);
+            else if constexpr (Offset.Denominator > 0)
+              mapped = Offset.Numerator + Factor.Numerator * static_cast<umax>(rhs.Raw);
+            else
+              mapped = Factor.Numerator * static_cast<umax>(rhs.Raw) - Offset.Numerator;
 
-        if (policy.round_check() && abs_den(Factor.Denominator) != 1)
+            if (mapped > static_cast<umax>(MaxNotch<L>))
+            {
+              policy.domain_error(bnd::to_string(static_cast<rational>(rhs)) + " is not in " + bnd::to_string(Interval<L>));
+              return lhs;
+            }
+          }
+          // round check: abs_den(Factor.Denominator) == 1 so no rounding possible
+        }
+        else
         {
-          // failed
-          policy.round_error(bnd::to_string(static_cast<rational>(rhs)) + " would round");
-          return lhs;
+          // may_fail
+          if (policy.domain_check() && not Interval<L>.includes(static_cast<rational>(rhs)))
+          {
+            // failed
+            policy.domain_error(bnd::to_string(static_cast<rational>(rhs)) + " is not in " + bnd::to_string(Interval<L>));
+            return lhs;
+          }
+
+          if (policy.round_check() && abs_den(Factor.Denominator) != 1)
+          {
+            // failed
+            policy.round_error(bnd::to_string(static_cast<rational>(rhs)) + " would round");
+            return lhs;
+          }
         }
         // else success
       }
       // else always_success
     }
 
-    lhs.Raw = raw_cast<L>(*(Offset + *(Factor * rhs.Raw)));
+    if constexpr (not is_raw_rational<L> && not is_raw_rational<R>
+                  && abs_den(Factor.Denominator) == 1 && abs_den(Offset.Denominator) == 1)
+    {
+      if constexpr (Offset == 0_r && Factor == 1_r)
+        lhs.Raw = raw_cast<L>(rhs.Raw);
+      else if constexpr (Offset == 0_r)
+        lhs.Raw = raw_cast<L>(Factor.Numerator * static_cast<umax>(rhs.Raw));
+      else if constexpr (Offset.Denominator > 0)
+        lhs.Raw = raw_cast<L>(Offset.Numerator + Factor.Numerator * static_cast<umax>(rhs.Raw));
+      else
+        lhs.Raw = raw_cast<L>(Factor.Numerator * static_cast<umax>(rhs.Raw) - Offset.Numerator);
+    }
+    else
+      lhs.Raw = raw_cast<L>(*(Offset + *(Factor * rhs.Raw)));
+
     return lhs;
   }
 } // namespace bnd

@@ -36,8 +36,10 @@ namespace bnd
   inline constexpr void trim(umax& numerator, imax& denominator)
   {
     umax ad = abs_den(denominator);
+    if (ad <= 1)
+      return;
     auto g = std::gcd(numerator, ad);
-    if (g == 0)
+    if (g <= 1)
       return;
     numerator /= g;
     ad /= g;
@@ -46,8 +48,10 @@ namespace bnd
 
   inline constexpr void trim(umax& a, umax& b)
   {
+    if (a <= 1 || b <= 1)
+      return;
     auto g = std::gcd(a, b);
-    if (g == 0)
+    if (g <= 1)
       return;
     a /= g;
     b /= g;
@@ -214,6 +218,15 @@ namespace bnd
     umax lhs_ad = abs_den(lhs.Denominator);
     umax rhs_ad = abs_den(rhs.Denominator);
 
+    // integer comparison: skip cross-multiply entirely
+    if (lhs_ad == 1 && rhs_ad == 1)
+    {
+      if (lhs_neg)
+        return rhs.Numerator <=> lhs.Numerator;
+      else
+        return lhs.Numerator <=> rhs.Numerator;
+    }
+
     // cross trim to avoid overflow if possible
     trim(lhs.Numerator, rhs.Numerator);
     trim(lhs_ad, rhs_ad);
@@ -260,6 +273,18 @@ namespace bnd
 
     umax lhs_ad = abs_den(lhs.Denominator);
     umax rhs_ad = abs_den(rhs.Denominator);
+
+    // integer * integer: skip all trimming, denominator stays 1
+    if (lhs_ad == 1 && rhs_ad == 1)
+    {
+      umax numerator;
+      if (mul_overflow(lhs.Numerator, rhs.Numerator, &numerator))
+        return slim::nullopt;
+      rational r;
+      r.Numerator = numerator;
+      r.Denominator = result_neg ? imax{-1} : imax{1};
+      return r;
+    }
 
     // cross trim to avoid overflow if possible
     trim(lhs.Numerator, rhs_ad);
@@ -318,6 +343,16 @@ namespace bnd
 
     umax lhs_ad = abs_den(lhs.Denominator);
     umax rhs_ad = abs_den(rhs.Denominator);
+
+    // integer / integer: result is lhs.Num / rhs.Num, skip overflow muls with 1
+    if (lhs_ad == 1 && rhs_ad == 1)
+    {
+      trim(lhs.Numerator, rhs.Numerator);
+      rational r;
+      r.Numerator = lhs.Numerator;
+      r.Denominator = result_neg ? -static_cast<imax>(rhs.Numerator) : static_cast<imax>(rhs.Numerator);
+      return r;
+    }
 
     trim(lhs.Numerator, rhs.Numerator);
     trim(lhs_ad, rhs_ad);
@@ -379,6 +414,37 @@ namespace bnd
 
     umax lhs_ad = abs_den(lhs.Denominator);
     umax rhs_ad = abs_den(rhs.Denominator);
+
+    // same-denominator fast-path (covers integer + integer when both |den| == 1)
+    if (lhs_ad == rhs_ad)
+    {
+      if (lhs_neg == rhs_neg)
+      {
+        umax numerator;
+        if (add_overflow(lhs.Numerator, rhs.Numerator, &numerator))
+          return slim::nullopt;
+        rational r;
+        r.Numerator = numerator;
+        r.Denominator = lhs.Denominator;
+        trim(r.Numerator, r.Denominator);
+        return r;
+      }
+
+      umax numerator = (lhs.Numerator > rhs.Numerator)
+        ? (lhs.Numerator - rhs.Numerator)
+        : (rhs.Numerator - lhs.Numerator);
+      bool result_neg = lhs_neg ? (lhs.Numerator > rhs.Numerator)
+                                : (rhs.Numerator > lhs.Numerator);
+
+      if (numerator == 0)
+        return 0_r;
+
+      rational r;
+      r.Numerator = numerator;
+      r.Denominator = result_neg ? -static_cast<imax>(lhs_ad) : static_cast<imax>(lhs_ad);
+      trim(r.Numerator, r.Denominator);
+      return r;
+    }
 
     umax numerator;
     umax denominator;

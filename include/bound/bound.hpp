@@ -90,6 +90,28 @@ namespace bnd
     }
 
     auto with_round() { return policy<ignore_round>(); }
+
+    template <boundable R>
+    constexpr bound& operator+=(R const& rhs)
+    {
+      if constexpr (not is_raw_rational<bound> && not is_raw_rational<R>
+                    && Notch<bound> == Notch<R> && Lower<R> == 0_r)
+      {
+        umax new_raw = static_cast<umax>(Raw) + static_cast<umax>(rhs.Raw);
+        if (new_raw > static_cast<umax>(MaxNotch<bound>))
+        {
+          make_policy().domain_error("operator+= result out of range");
+          return *this;
+        }
+        Raw = raw_cast<bound>(new_raw);
+        return *this;
+      }
+      else
+      {
+        *this = *this + rhs;
+        return *this;
+      }
+    }
     //auto without_clamp() { return this->policy<no_clamp>(); }
     //auto without_wrap() { return this->policy<no_wrap>(); }
 

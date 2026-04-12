@@ -245,7 +245,7 @@ row bench_accumulate()
   using u200k = bound<{0, 200'000}>;
   r.bounded = measure(ITERS, [&] {
     u200k sum(0);
-    for (auto v : bv) sum = sum + v;
+    for (auto v : bv) sum += v;
     do_not_optimize(sum.Raw);
   });
 
