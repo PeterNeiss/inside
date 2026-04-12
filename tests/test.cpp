@@ -6,10 +6,67 @@
 #include "bound/interval.hpp"
 #include "bound/print.hpp"
 
-#include <iostream>
-
 using namespace bnd;
 
+//---------------------------------------------------------------------------
+// check helpers
+//---------------------------------------------------------------------------
+int failures = 0;
+
+template <boundable B>
+void check(const char* label, B actual, rational expected)
+{
+  rational got = static_cast<rational>(actual);
+  std::cout << label << actual;
+  if (got == expected)
+    std::cout << "  [PASS]" << std::endl;
+  else
+  {
+    std::cout << "  [FAIL] expected " << expected << std::endl;
+    ++failures;
+  }
+}
+
+template <boundable B>
+void check(const char* label, slim::optional<B> actual, rational expected)
+{
+  if (!actual)
+  {
+    std::cout << label << "(null)  [FAIL] expected " << expected << std::endl;
+    ++failures;
+    return;
+  }
+  check(label, *actual, expected);
+}
+
+template <typename T>
+void check_null(const char* label, T actual)
+{
+  std::cout << label;
+  if (!actual.has_value())
+    std::cout << "(null)  [PASS]" << std::endl;
+  else
+  {
+    std::cout << *actual << "  [FAIL] expected null" << std::endl;
+    ++failures;
+  }
+}
+
+void check_no_error(const char* label, std::error_code ec)
+{
+  std::cout << label;
+  if (!ec)
+    std::cout << "no error  [PASS]" << std::endl;
+  else
+  {
+    std::cout << ec.message() << "  [FAIL] expected no error" << std::endl;
+    ++failures;
+  }
+}
+
+//---------------------------------------------------------------------------
+// compile-time only tests
+//---------------------------------------------------------------------------
 constexpr handler handlers =
 {
   .domain_error = +[](const char* = nullptr) { }
@@ -30,124 +87,10 @@ void test_waiver()
   (void) p;
 }
 
-void test_conversion()
-{
-  using f30t40 = bound<{{30, 40}, 2}>;
-  using f20t50 = bound<{interval{20, 50}, 1}>;
-  f30t40 smaller{34};
-  f20t50 bigger;
-
-  bigger = smaller;
-  std::cout << "bigger(34) = " << bigger << std::endl;
-  bigger = 39;
-
-  smaller.policy<ignore_round>() = bigger; // does round
-  std::cout << "smaller(38) = " << smaller << std::endl;
-
-  bigger = 30;
-  smaller.with_round() = bigger;
-  std::cout << "smaller(30) = " << smaller << std::endl;
-}
-
 void test_rational()
 {
   constexpr rational a{std::numeric_limits<int>::min()};
   (void)a;
-}
-
-void test_div()
-{
-  using r = bound<{1,255}>;
- // using r = bound<{-255,-1}>;
-  std::error_code ec;
-  //r a{1020ull, make_policy(ec)};
-  r a{102, make_policy(ec)};
-  if (ec)
-    std::cout << ec.message() << std::endl;
-  else
-    std::cout << "no error" << std::endl;
- // r a{1020ull};
-  r b{16};
-
-  auto c = a / b;
-  std::cout << "a = " << a << std::endl;
-  std::cout << "b = " << b << std::endl;
-  std::cout << "c = " << *c << std::endl;
-}
-
-void test_mul()
-{
-  using r = bound<{10,255, 1}>;
-  r a{16};
-  r b = 102;
-
-  auto c = a * b;
-  std::cout << a << std::endl;
-  std::cout << b << std::endl;
-  std::cout << c << std::endl;
-
-  using u4 = bound<{{0.75, 10.5}, 0.25}>;
-
-  u4 d{3};
-  u4 e{3.25};
-
-  auto f = d * e;
-  std::cout << d << std::endl;
-  std::cout << e << std::endl;
-  std::cout << f << std::endl;
-
-  using n4 = u4::negative;
-
-  auto g = n4(-2);
-  auto h = n4(-2.25);
-
-  std::cout << "g = " << g << std::endl;
-  std::cout << "h = " << h << std::endl;
-  auto i = g * h;
-  std::cout << "i = " << i << std::endl;
-
-  auto j = d * g;
-  std::cout << "j = " << j << std::endl;
-  auto k = g * d;
-  std::cout << "k = " << k << std::endl;
-
-  using s = bound<{{-100, 10}, 1.0/16}>;
-  using n = s::negative;
-
-  //auto l = s(-700.125);
-  auto l = s(-70.125);
-  auto m = n(1.125);
-
-  std::cout << "l = " << l << std::endl;
-  std::cout << m << std::endl;
-  std::cout << l*m << std::endl;
-  std::cout << m*l << std::endl;
-}
-
-void test_add()
-{
-  using u8 = bound<{10,255}>;
-  //constexpr u8 invalid{-6};
-  u8 a{16};
-  u8 b = 220;
-  //auto b1 = b + 1;
-  std::cout << "b(220) = " << b << std::endl;
-  std::cout << "just<1> = " << just<1> << std::endl;
-  auto b1{b + just<1>};
-  std::cout << "b1(221) = " << b1 << std::endl;
-
-  b = a + b1;
-  std::cout << "a(16) = " << a << std::endl;
-  std::cout << "b(237) = " << b << std::endl;
-
-  auto d = a - b;
-  std::cout << "d(-221) = " << d << std::endl;
-
-  using u64 = bound<{{0, std::numeric_limits<std::uint64_t>::max()}, 1}>;
-
-  constexpr u64 biggest{std::numeric_limits<std::uint64_t>::max()};
-  std::cout << biggest << std::endl;
-  //auto e = biggest + biggest;
 }
 
 void test_comparision()
@@ -175,7 +118,6 @@ void test_interval()
 
   (void)point;
   (void)a;
-  //print_values<point>{};
 }
 
 void test_grid()
@@ -188,25 +130,215 @@ void test_grid()
   );
 }
 
+//---------------------------------------------------------------------------
+// runtime checked tests
+//---------------------------------------------------------------------------
+void test_conversion()
+{
+  using f30t40 = bound<{{30, 40}, 2}>;
+  using f20t50 = bound<{interval{20, 50}, 1}>;
+  f30t40 smaller{34};
+  f20t50 bigger;
+
+  bigger = smaller;
+  check("bigger = ", bigger, 34);
+  bigger = 39;
+
+  smaller.policy<ignore_round>() = bigger; // does round
+  check("smaller(round) = ", smaller, 38);
+
+  bigger = 30;
+  smaller.with_round() = bigger;
+  check("smaller(with_round) = ", smaller, 30);
+}
+
+void test_div()
+{
+  using r = bound<{1,255}>;
+  std::error_code ec;
+  r a{102, make_policy(ec)};
+  check_no_error("construct a: ", ec);
+  r b{16};
+
+  auto c = a / b;
+  check("a = ", a, 102);
+  check("b = ", b, 16);
+  check("a/b = ", c, *(51_r/8));
+}
+
+void test_mul()
+{
+  using r = bound<{10,255, 1}>;
+  r a{16};
+  r b = 102;
+
+  auto c = a * b;
+  check("a = ", a, 16);
+  check("b = ", b, 102);
+  check("a*b = ", c, 1632);
+
+  using u4 = bound<{{0.75, 10.5}, 0.25}>;
+
+  u4 d{3};
+  u4 e{3.25};
+
+  auto f = d * e;
+  check("d = ", d, 3);
+  check("e = ", e, *(13_r/4));
+  check("d*e = ", f, *(39_r/4));
+
+  using n4 = u4::negative;
+
+  auto g = n4(-2);
+  auto h = n4(-2.25);
+
+  check("g = ", g, -2);
+  check("h = ", h, -(*(9_r/4)));
+  auto i = g * h;
+  check("g*h = ", i, *(9_r/2));
+
+  auto j = d * g;
+  check("d*g = ", j, -6);
+  auto k = g * d;
+  check("g*d = ", k, -6);
+
+  using s = bound<{{-100, 10}, 1.0/16}>;
+  using n = s::negative;
+
+  auto l = s(-70.125);
+  auto m = n(1.125);
+
+  check("l = ", l, -(*(561_r/8)));
+  check("m = ", m, *(9_r/8));
+  check("l*m = ", l*m, -(*(5049_r/64)));
+  check("m*l = ", m*l, -(*(5049_r/64)));
+}
+
+void test_add()
+{
+  using u8 = bound<{10,255}>;
+  u8 a{16};
+  u8 b = 220;
+  check("b = ", b, 220);
+  check("just<1> = ", just<1>, 1);
+  auto b1{b + just<1>};
+  check("b+just<1> = ", b1, 221);
+
+  b = a + b1;
+  check("a = ", a, 16);
+  check("a+b1 = ", b, 237);
+
+  auto d = a - b;
+  check("a-b = ", d, -221);
+
+  using u64 = bound<{{0, std::numeric_limits<std::uint64_t>::max()}, 1}>;
+
+  constexpr u64 biggest{std::numeric_limits<std::uint64_t>::max()};
+  check("biggest = ", biggest, rational{std::numeric_limits<std::uint64_t>::max()});
+}
+
 void test_bound()
 {
-  //bound<-0.5, 0.5, 1>{}; // zero displaced here
   using frac = bound<{{-10, 10}, 0}>;
-  //print_types<frac>{};
   static_assert(Grid<frac> == grid{-10, 10, 0});
   static_assert(std::is_same_v<typename frac::raw_type, rational>);
 
- // auto test = frac::unchecked{3};
-
   constexpr frac f = *(2_r/3);
-  std::cout << "frac f = " << f << std::endl;
+  check("frac f = ", f, *(2_r/3));
 
   using step = bound<{{-5, 5}, 0.5}>;
   static_assert(not std::is_same_v<step::raw_type, rational>);
   constexpr step s = *(3_r/2);
-  std::cout << "step s = " << s << std::endl;
+  check("step s = ", s, *(3_r/2));
 }
 
+void test_optional_ops()
+{
+  // Integer storage — add/mul return bare bound, overloads wrap to optional
+  using u8 = bound<{1,255}>;
+  u8 a{100};
+  u8 b{10};
+  slim::optional<u8> opt_a{a};
+  slim::optional<u8> opt_b{b};
+  slim::optional<u8> no_val{slim::nullopt};
+
+  // +
+  check("opt+bare: ", opt_a + b, 110);
+  check("bare+opt: ", a + opt_b, 110);
+  check("opt+opt:  ", opt_a + opt_b, 110);
+  check_null("null+bare: ", no_val + b);
+  check_null("bare+null: ", a + no_val);
+  check_null("opt+null:  ", opt_a + no_val);
+  // -
+  check("opt-bare: ", opt_a - b, 90);
+  check("bare-opt: ", a - opt_b, 90);
+  check("opt-opt:  ", opt_a - opt_b, 90);
+  check_null("null-bare: ", no_val - b);
+  check_null("bare-null: ", a - no_val);
+  check_null("opt-null:  ", opt_a - no_val);
+  // *
+  check("opt*bare: ", opt_a * b, 1000);
+  check("bare*opt: ", a * opt_b, 1000);
+  check("opt*opt:  ", opt_a * opt_b, 1000);
+  check_null("null*bare: ", no_val * b);
+  check_null("bare*null: ", a * no_val);
+  check_null("opt*null:  ", opt_a * no_val);
+  // /
+  check("opt/bare: ", opt_a / b, 10);
+  check("bare/opt: ", a / opt_b, 10);
+  check("opt/opt:  ", opt_a / opt_b, 10);
+  check_null("null/bare: ", no_val / b);
+  check_null("bare/null: ", a / no_val);
+  check_null("opt/null:  ", opt_a / no_val);
+
+  // Raw-rational storage — add/mul return slim::optional<bound>, tests no double-wrap
+  using frac = bound<{{-10, 10}, 0}>;
+  frac f1 = *(2_r/3);
+  frac f2 = *(1_r/3);
+  slim::optional<frac> opt_f1{f1};
+  slim::optional<frac> opt_f2{f2};
+  slim::optional<frac> no_frac{slim::nullopt};
+
+  // +
+  check("frac opt+bare: ", opt_f1 + f2, 1);
+  check("frac bare+opt: ", f1 + opt_f2, 1);
+  check("frac opt+opt:  ", opt_f1 + opt_f2, 1);
+  check_null("frac null+bare: ", no_frac + f2);
+  check_null("frac bare+null: ", f1 + no_frac);
+  check_null("frac opt+null:  ", opt_f1 + no_frac);
+  // -
+  check("frac opt-bare: ", opt_f1 - f2, *(1_r/3));
+  check("frac bare-opt: ", f1 - opt_f2, *(1_r/3));
+  check("frac opt-opt:  ", opt_f1 - opt_f2, *(1_r/3));
+  check_null("frac null-bare: ", no_frac - f2);
+  check_null("frac bare-null: ", f1 - no_frac);
+  check_null("frac opt-null:  ", opt_f1 - no_frac);
+  // *
+  check("frac opt*bare: ", opt_f1 * f2, *(2_r/9));
+  check("frac bare*opt: ", f1 * opt_f2, *(2_r/9));
+  check("frac opt*opt:  ", opt_f1 * opt_f2, *(2_r/9));
+  check_null("frac null*bare: ", no_frac * f2);
+  check_null("frac bare*null: ", f1 * no_frac);
+  check_null("frac opt*null:  ", opt_f1 * no_frac);
+  // / (use non-zero interval for division)
+  using pfrac = bound<{{1, 10}, 0}>;
+  pfrac p1 = 3;
+  pfrac p2 = 2;
+  slim::optional<pfrac> opt_p1{p1};
+  slim::optional<pfrac> opt_p2{p2};
+  slim::optional<pfrac> no_pfrac{slim::nullopt};
+
+  check("frac opt/bare: ", opt_p1 / p2, *(3_r/2));
+  check("frac bare/opt: ", p1 / opt_p2, *(3_r/2));
+  check("frac opt/opt:  ", opt_p1 / opt_p2, *(3_r/2));
+  check_null("frac null/bare: ", no_pfrac / p2);
+  check_null("frac bare/null: ", p1 / no_pfrac);
+  check_null("frac opt/null:  ", opt_p1 / no_pfrac);
+}
+
+//---------------------------------------------------------------------------
+// compile-time type alias tests
+//---------------------------------------------------------------------------
 using test0_t = bound<{{1,3},1}>;
 using test1_t = bound<{{0, {1u, -1}}, -1}>; // fails on instantiation
 //using test2_t = bound<{1,1}>; // zero numerator normalization test
@@ -226,66 +358,6 @@ static_assert(std::is_same_v<typename test4_t::raw_type, std::uint64_t>);
 static_assert(std::is_same_v<typename test5_t::raw_type, rational>);
 //static_assert(std::is_same_v<test11_t::raw_type, rational>);
 
-void test_optional_ops()
-{
-  // Integer storage — add/mul return bare bound, overloads wrap to optional
-  using u8 = bound<{1,255}>;
-  u8 a{100};
-  u8 b{10};
-  slim::optional<u8> opt_a{a};
-  slim::optional<u8> opt_b{b};
-  slim::optional<u8> no_val{slim::nullopt};
-
-  // +
-  std::cout << "opt+bare: " << *(opt_a + b) << " null:" << (no_val + b).has_value() << std::endl;
-  std::cout << "bare+opt: " << *(a + opt_b) << " null:" << (a + no_val).has_value() << std::endl;
-  std::cout << "opt+opt:  " << *(opt_a + opt_b) << " null:" << (opt_a + no_val).has_value() << std::endl;
-  // -
-  std::cout << "opt-bare: " << *(opt_a - b) << " null:" << (no_val - b).has_value() << std::endl;
-  std::cout << "bare-opt: " << *(a - opt_b) << " null:" << (a - no_val).has_value() << std::endl;
-  std::cout << "opt-opt:  " << *(opt_a - opt_b) << " null:" << (opt_a - no_val).has_value() << std::endl;
-  // *
-  std::cout << "opt*bare: " << *(opt_a * b) << " null:" << (no_val * b).has_value() << std::endl;
-  std::cout << "bare*opt: " << *(a * opt_b) << " null:" << (a * no_val).has_value() << std::endl;
-  std::cout << "opt*opt:  " << *(opt_a * opt_b) << " null:" << (opt_a * no_val).has_value() << std::endl;
-  // /
-  std::cout << "opt/bare: " << *(opt_a / b) << " null:" << (no_val / b).has_value() << std::endl;
-  std::cout << "bare/opt: " << *(a / opt_b) << " null:" << (a / no_val).has_value() << std::endl;
-  std::cout << "opt/opt:  " << *(opt_a / opt_b) << " null:" << (opt_a / no_val).has_value() << std::endl;
-
-  // Raw-rational storage — add/mul return slim::optional<bound>, tests no double-wrap
-  using frac = bound<{{-10, 10}, 0}>;
-  frac f1 = *(2_r/3);
-  frac f2 = *(1_r/3);
-  slim::optional<frac> opt_f1{f1};
-  slim::optional<frac> opt_f2{f2};
-  slim::optional<frac> no_frac{slim::nullopt};
-
-  // +
-  std::cout << "frac opt+bare: " << *(opt_f1 + f2) << " null:" << (no_frac + f2).has_value() << std::endl;
-  std::cout << "frac bare+opt: " << *(f1 + opt_f2) << " null:" << (f1 + no_frac).has_value() << std::endl;
-  std::cout << "frac opt+opt:  " << *(opt_f1 + opt_f2) << " null:" << (opt_f1 + no_frac).has_value() << std::endl;
-  // -
-  std::cout << "frac opt-bare: " << *(opt_f1 - f2) << " null:" << (no_frac - f2).has_value() << std::endl;
-  std::cout << "frac bare-opt: " << *(f1 - opt_f2) << " null:" << (f1 - no_frac).has_value() << std::endl;
-  std::cout << "frac opt-opt:  " << *(opt_f1 - opt_f2) << " null:" << (opt_f1 - no_frac).has_value() << std::endl;
-  // *
-  std::cout << "frac opt*bare: " << *(opt_f1 * f2) << " null:" << (no_frac * f2).has_value() << std::endl;
-  std::cout << "frac bare*opt: " << *(f1 * opt_f2) << " null:" << (f1 * no_frac).has_value() << std::endl;
-  std::cout << "frac opt*opt:  " << *(opt_f1 * opt_f2) << " null:" << (opt_f1 * no_frac).has_value() << std::endl;
-  // / (use non-zero interval for division)
-  using pfrac = bound<{{1, 10}, 0}>;
-  pfrac p1 = 3;
-  pfrac p2 = 2;
-  slim::optional<pfrac> opt_p1{p1};
-  slim::optional<pfrac> opt_p2{p2};
-  slim::optional<pfrac> no_pfrac{slim::nullopt};
-
-  std::cout << "frac opt/bare: " << *(opt_p1 / p2) << " null:" << (no_pfrac / p2).has_value() << std::endl;
-  std::cout << "frac bare/opt: " << *(p1 / opt_p2) << " null:" << (p1 / no_pfrac).has_value() << std::endl;
-  std::cout << "frac opt/opt:  " << *(opt_p1 / opt_p2) << " null:" << (opt_p1 / no_pfrac).has_value() << std::endl;
-}
-
 int main()
 {
   try
@@ -299,33 +371,28 @@ int main()
     test_optional_ops();
     test_waiver();
 
-    // print_values<-(10.0_r)>{};
-    //print_types<bound<>, test0_t, test1_t>{};
-    //print_types<test2_t>{};
-    //print_types<test3_t>{};
-    //print_types<test4_t>{};
-    //print_types<test6_t>{};
-    //print_types<test7_t>{};
-    //print_types<test8_t>{};
-    //test9_t{};
-    //test10_t{};
     bound b;
     (void)b;
-    std::cout << "bound test\n";
   }
   catch(std::system_error& e)
   {
-    std::cout << "code:    [" << e.code() << "]\n"
-                 "message: [" << e.code().message() << "]\n"
-                 "what:    [" << e.what() << "]\n";
+    std::cout << "EXCEPTION: code:    [" << e.code() << "]\n"
+                 "           message: [" << e.code().message() << "]\n"
+                 "           what:    [" << e.what() << "]\n";
+    return 1;
   }
   catch(std::exception& e)
   {
-    std::cout << e.what() << std::endl;
+    std::cout << "EXCEPTION: " << e.what() << std::endl;
+    return 1;
   }
   catch(char const* str)
   {
-    std::cout << str << std::endl;
+    std::cout << "EXCEPTION: " << str << std::endl;
+    return 1;
   }
-  return 0;
+
+  std::cout << "\n" << (failures ? "FAILED" : "PASSED")
+            << " (" << failures << " failure" << (failures == 1 ? "" : "s") << ")" << std::endl;
+  return failures;
 }
