@@ -559,6 +559,7 @@ public:
         return has_value();
     }
 
+#if defined(__cpp_explicit_this_parameter) && __cpp_explicit_this_parameter >= 202110L
     // value() / operator* / operator-> use C++23 deducing-this so a single
     // function template covers all four cv/ref qualifications.
     template<class Self>
@@ -586,6 +587,47 @@ public:
             ? static_cast<T>(std::forward<Self>(self).value_)
             : static_cast<T>(std::forward<U>(default_value));
     }
+#else
+    constexpr T& value() & {
+        if (!has_value()) throw bad_optional_access("optional has no value");
+        return value_;
+    }
+    constexpr const T& value() const& {
+        if (!has_value()) throw bad_optional_access("optional has no value");
+        return value_;
+    }
+    constexpr T&& value() && {
+        if (!has_value()) throw bad_optional_access("optional has no value");
+        return std::move(value_);
+    }
+    constexpr const T&& value() const&& {
+        if (!has_value()) throw bad_optional_access("optional has no value");
+        return std::move(value_);
+    }
+
+    constexpr T& operator*() & noexcept { return value_; }
+    constexpr const T& operator*() const& noexcept { return value_; }
+    constexpr T&& operator*() && noexcept { return std::move(value_); }
+    constexpr const T&& operator*() const&& noexcept { return std::move(value_); }
+
+    constexpr T* operator->() noexcept { return std::addressof(value_); }
+    constexpr const T* operator->() const noexcept { return std::addressof(value_); }
+
+    template<class U>
+        requires std::is_convertible_v<U, T>
+    constexpr T value_or(U&& default_value) const& {
+        return has_value()
+            ? static_cast<T>(value_)
+            : static_cast<T>(std::forward<U>(default_value));
+    }
+    template<class U>
+        requires std::is_convertible_v<U, T>
+    constexpr T value_or(U&& default_value) && {
+        return has_value()
+            ? static_cast<T>(std::move(value_))
+            : static_cast<T>(std::forward<U>(default_value));
+    }
+#endif
 
     // Modifiers
     constexpr void reset() noexcept(noexcept(std::declval<T&>() = Traits::sentinel()))
@@ -631,7 +673,8 @@ public:
         swap(value_, other.value_);
     }
 
-    // Monadic operations (C++23) — single deducing-this template per op.
+    // Monadic operations (C++23)
+#if defined(__cpp_explicit_this_parameter) && __cpp_explicit_this_parameter >= 202110L
     template<class Self, class F>
         requires detail::is_optional_v<std::remove_cvref_t<
                      std::invoke_result_t<F, decltype(std::declval<Self>().value_)>>> &&
@@ -690,6 +733,83 @@ public:
             return std::forward<F>(f)(static_cast<const Traits&>(self));
         }
     }
+#else
+    // and_then — const& and && overloads
+    template<class F>
+        requires detail::is_optional_v<std::remove_cvref_t<
+                     std::invoke_result_t<F, const T&>>> &&
+                 (!detail::is_never_empty_optional_v<std::remove_cvref_t<
+                     std::invoke_result_t<F, const T&>>>)
+    constexpr auto and_then(F&& f) const& {
+        using U = std::remove_cvref_t<std::invoke_result_t<F, const T&>>;
+        if (has_value()) return std::forward<F>(f)(value_);
+        return U(std::nullopt);
+    }
+    template<class F>
+        requires detail::is_optional_v<std::remove_cvref_t<
+                     std::invoke_result_t<F, T&&>>> &&
+                 (!detail::is_never_empty_optional_v<std::remove_cvref_t<
+                     std::invoke_result_t<F, T&&>>>)
+    constexpr auto and_then(F&& f) && {
+        using U = std::remove_cvref_t<std::invoke_result_t<F, T&&>>;
+        if (has_value()) return std::forward<F>(f)(std::move(value_));
+        return U(std::nullopt);
+    }
+
+    // transform — const& and && overloads
+    template<class F>
+    constexpr auto transform(F&& f) const& {
+        using U = std::remove_cvref_t<std::invoke_result_t<F, const T&>>;
+        if constexpr (std::same_as<U, T>) {
+            if (has_value())
+                return optional<U, Traits>{std::forward<F>(f)(value_)};
+            if constexpr (std::same_as<Traits, never_empty<T>>)
+                return optional<U, Traits>{std::forward<F>(f)(value_)};
+            else
+                return optional<U, Traits>(nullopt);
+        } else if constexpr (has_sentinel_traits<U>) {
+            if (has_value()) return optional<U>{std::forward<F>(f)(value_)};
+            return optional<U>(nullopt);
+        } else {
+            if (has_value()) return std::optional<U>{std::forward<F>(f)(value_)};
+            return std::optional<U>(std::nullopt);
+        }
+    }
+    template<class F>
+    constexpr auto transform(F&& f) && {
+        using U = std::remove_cvref_t<std::invoke_result_t<F, T&&>>;
+        if constexpr (std::same_as<U, T>) {
+            if (has_value())
+                return optional<U, Traits>{std::forward<F>(f)(std::move(value_))};
+            if constexpr (std::same_as<Traits, never_empty<T>>)
+                return optional<U, Traits>{std::forward<F>(f)(std::move(value_))};
+            else
+                return optional<U, Traits>(nullopt);
+        } else if constexpr (has_sentinel_traits<U>) {
+            if (has_value()) return optional<U>{std::forward<F>(f)(std::move(value_))};
+            return optional<U>(nullopt);
+        } else {
+            if (has_value()) return std::optional<U>{std::forward<F>(f)(std::move(value_))};
+            return std::optional<U>(std::nullopt);
+        }
+    }
+
+    // or_else — const& and && overloads
+    template<class F>
+        requires std::is_invocable_v<F, const Traits&> &&
+                 std::is_convertible_v<std::invoke_result_t<F, const Traits&>, optional>
+    constexpr optional or_else(F&& f) const& {
+        if (has_value()) return *this;
+        return std::forward<F>(f)(static_cast<const Traits&>(*this));
+    }
+    template<class F>
+        requires std::is_invocable_v<F, const Traits&> &&
+                 std::is_convertible_v<std::invoke_result_t<F, const Traits&>, optional>
+    constexpr optional or_else(F&& f) && {
+        if (has_value()) return std::move(*this);
+        return std::forward<F>(f)(static_cast<const Traits&>(*this));
+    }
+#endif
 };
 
 // ============================================================================
