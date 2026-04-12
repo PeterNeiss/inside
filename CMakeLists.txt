@@ -56,3 +56,6 @@ target_link_libraries(test PUBLIC bound::bound)
 add_executable(algo tests/algo.cpp)
 target_link_libraries(algo PUBLIC bound::bound)
 
+add_executable(bench tests/bench.cpp)
+target_link_libraries(bench PUBLIC bound::bound)
+
