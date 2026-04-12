@@ -66,7 +66,13 @@ namespace bnd
   }
 
   template <boundable B>
-  constexpr raw_t<B> raw_cast(rational value) { return value.to<raw_t<B>>().value_or(0); }
+  constexpr raw_t<B> raw_cast(rational value)
+  {
+    if constexpr (is_raw_rational<B>)
+      return value;
+    else
+      return value.to<raw_t<B>>().value_or(0);
+  }
 
   template <boundable B>
   inline constexpr raw_t<B> MaxNotch = (Notch<B> == 0) ?

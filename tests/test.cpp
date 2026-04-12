@@ -226,6 +226,66 @@ static_assert(std::is_same_v<typename test4_t::raw_type, std::uint64_t>);
 static_assert(std::is_same_v<typename test5_t::raw_type, rational>);
 //static_assert(std::is_same_v<test11_t::raw_type, rational>);
 
+void test_optional_ops()
+{
+  // Integer storage — add/mul return bare bound, overloads wrap to optional
+  using u8 = bound<{1,255}>;
+  u8 a{100};
+  u8 b{10};
+  slim::optional<u8> opt_a{a};
+  slim::optional<u8> opt_b{b};
+  slim::optional<u8> no_val{slim::nullopt};
+
+  // +
+  std::cout << "opt+bare: " << *(opt_a + b) << " null:" << (no_val + b).has_value() << std::endl;
+  std::cout << "bare+opt: " << *(a + opt_b) << " null:" << (a + no_val).has_value() << std::endl;
+  std::cout << "opt+opt:  " << *(opt_a + opt_b) << " null:" << (opt_a + no_val).has_value() << std::endl;
+  // -
+  std::cout << "opt-bare: " << *(opt_a - b) << " null:" << (no_val - b).has_value() << std::endl;
+  std::cout << "bare-opt: " << *(a - opt_b) << " null:" << (a - no_val).has_value() << std::endl;
+  std::cout << "opt-opt:  " << *(opt_a - opt_b) << " null:" << (opt_a - no_val).has_value() << std::endl;
+  // *
+  std::cout << "opt*bare: " << *(opt_a * b) << " null:" << (no_val * b).has_value() << std::endl;
+  std::cout << "bare*opt: " << *(a * opt_b) << " null:" << (a * no_val).has_value() << std::endl;
+  std::cout << "opt*opt:  " << *(opt_a * opt_b) << " null:" << (opt_a * no_val).has_value() << std::endl;
+  // /
+  std::cout << "opt/bare: " << *(opt_a / b) << " null:" << (no_val / b).has_value() << std::endl;
+  std::cout << "bare/opt: " << *(a / opt_b) << " null:" << (a / no_val).has_value() << std::endl;
+  std::cout << "opt/opt:  " << *(opt_a / opt_b) << " null:" << (opt_a / no_val).has_value() << std::endl;
+
+  // Raw-rational storage — add/mul return slim::optional<bound>, tests no double-wrap
+  using frac = bound<{{-10, 10}, 0}>;
+  frac f1 = *(2_r/3);
+  frac f2 = *(1_r/3);
+  slim::optional<frac> opt_f1{f1};
+  slim::optional<frac> opt_f2{f2};
+  slim::optional<frac> no_frac{slim::nullopt};
+
+  // +
+  std::cout << "frac opt+bare: " << *(opt_f1 + f2) << " null:" << (no_frac + f2).has_value() << std::endl;
+  std::cout << "frac bare+opt: " << *(f1 + opt_f2) << " null:" << (f1 + no_frac).has_value() << std::endl;
+  std::cout << "frac opt+opt:  " << *(opt_f1 + opt_f2) << " null:" << (opt_f1 + no_frac).has_value() << std::endl;
+  // -
+  std::cout << "frac opt-bare: " << *(opt_f1 - f2) << " null:" << (no_frac - f2).has_value() << std::endl;
+  std::cout << "frac bare-opt: " << *(f1 - opt_f2) << " null:" << (f1 - no_frac).has_value() << std::endl;
+  std::cout << "frac opt-opt:  " << *(opt_f1 - opt_f2) << " null:" << (opt_f1 - no_frac).has_value() << std::endl;
+  // *
+  std::cout << "frac opt*bare: " << *(opt_f1 * f2) << " null:" << (no_frac * f2).has_value() << std::endl;
+  std::cout << "frac bare*opt: " << *(f1 * opt_f2) << " null:" << (f1 * no_frac).has_value() << std::endl;
+  std::cout << "frac opt*opt:  " << *(opt_f1 * opt_f2) << " null:" << (opt_f1 * no_frac).has_value() << std::endl;
+  // / (use non-zero interval for division)
+  using pfrac = bound<{{1, 10}, 0}>;
+  pfrac p1 = 3;
+  pfrac p2 = 2;
+  slim::optional<pfrac> opt_p1{p1};
+  slim::optional<pfrac> opt_p2{p2};
+  slim::optional<pfrac> no_pfrac{slim::nullopt};
+
+  std::cout << "frac opt/bare: " << *(opt_p1 / p2) << " null:" << (no_pfrac / p2).has_value() << std::endl;
+  std::cout << "frac bare/opt: " << *(p1 / opt_p2) << " null:" << (p1 / no_pfrac).has_value() << std::endl;
+  std::cout << "frac opt/opt:  " << *(opt_p1 / opt_p2) << " null:" << (opt_p1 / no_pfrac).has_value() << std::endl;
+}
+
 int main()
 {
   try
@@ -236,6 +296,7 @@ int main()
     test_bound();
     test_mul();
     test_div();
+    test_optional_ops();
     test_waiver();
 
     // print_values<-(10.0_r)>{};
