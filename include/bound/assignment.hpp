@@ -18,16 +18,16 @@ namespace bnd
   template <boundable L, std::integral R>
   struct assignment<L,R>
   {
-    template<typename P>
-    static constexpr L& assign(L& lhs, R const& rhs, P&&);
+    template<typename P, typename A = no_action>
+    static constexpr L& assign(L& lhs, R const& rhs, P&&, A&& action = {});
   };
 
   template <boundable L, typename R>
     requires std::floating_point<R> || std::same_as<rational, R>
   struct assignment<L,R>
   {
-    template<typename P>
-    static constexpr L& assign(L& lhs, R const& rhs, P&&);
+    template<typename P, typename A = no_action>
+    static constexpr L& assign(L& lhs, R const& rhs, P&&, A&& action = {});
   };
 
   template <boundable L, boundable R>
@@ -62,16 +62,16 @@ namespace bnd
       static constexpr rational Offset = calcOffset();
       static constexpr rational Factor = calcFactor();
 
-      template<typename P>
-      static constexpr L& assign(L& lhs, R const& rhs, P&&);
+      template<typename P, typename A = no_action>
+      static constexpr L& assign(L& lhs, R const& rhs, P&&, A&& action = {});
   };
 
   //---------------------------------------------------------------------------
   // assign(boundable, integral)
   //---------------------------------------------------------------------------
   template<boundable L, std::integral R>
-  template<typename P>
-  constexpr L& assignment<L,R>::assign(L& lhs, R const& rhs, P&& policy)
+  template<typename P, typename A>
+  constexpr L& assignment<L,R>::assign(L& lhs, R const& rhs, P&& policy, A&& action)
   {
     static_assert(not Interval<L>.excludes(Interval<R>));
 
@@ -96,19 +96,68 @@ namespace bnd
           constexpr imax upper = (Upper<L>.Denominator > 0)
             ? static_cast<imax>(Upper<L>.Numerator)
             : -static_cast<imax>(Upper<L>.Numerator);
-          if (policy.domain_check()
-            && (static_cast<imax>(rhs) < lower || static_cast<imax>(rhs) > upper))
+          if (static_cast<imax>(rhs) < lower || static_cast<imax>(rhs) > upper)
           {
-            policy.domain_error(bnd::to_string(rhs) + " is not in " + bnd::to_string(Interval<L>));
-            return lhs;
+            if constexpr ((BoundPolicy<L> & clamp) || plain<P>::test(clamp))
+            {
+              imax clamped = static_cast<imax>(rhs) < lower ? lower : upper;
+              if constexpr (!std::is_same_v<plain<A>, no_action>)
+                action(static_cast<imax>(rhs) - clamped);
+
+              if constexpr (Lower<L> == 0_r && Notch<L> == 1_r)
+                lhs.Raw = raw_cast<L>(clamped - lower);
+              else
+              {
+                rational raw = ((clamped - Interval<L>.Lower)/Notch<L>).value();
+                lhs.Raw = raw_cast<L>(raw.Numerator / static_cast<umax>(raw.Denominator));
+              }
+              return lhs;
+            }
+            else if constexpr ((BoundPolicy<L> & wrap) || plain<P>::test(wrap))
+            {
+              constexpr imax range = upper - lower + 1;
+              imax shifted = static_cast<imax>(rhs) - lower;
+              imax wrapped = ((shifted % range) + range) % range;
+              imax excess = (shifted < 0) ? ((shifted - range + 1) / range) : (shifted / range);
+              if constexpr (!std::is_same_v<plain<A>, no_action>)
+                action(excess);
+
+              if constexpr (Lower<L> == 0_r && Notch<L> == 1_r)
+                lhs.Raw = raw_cast<L>(wrapped);
+              else
+              {
+                rational raw = (((wrapped + lower) - Interval<L>.Lower)/Notch<L>).value();
+                lhs.Raw = raw_cast<L>(raw.Numerator / static_cast<umax>(raw.Denominator));
+              }
+              return lhs;
+            }
+            else if (policy.domain_check())
+            {
+              policy.domain_error(bnd::to_string(rhs) + " is not in " + bnd::to_string(Interval<L>));
+              return lhs;
+            }
           }
         }
         else
         {
-          if (policy.domain_check() && not Interval<L>.includes(rhs))
+          if (not Interval<L>.includes(rhs))
           {
-            policy.domain_error(bnd::to_string(rhs) + " is not in " + bnd::to_string(Interval<L>));
-            return lhs;
+            if constexpr ((BoundPolicy<L> & clamp) || plain<P>::test(clamp))
+            {
+              imax clamped = (rhs < Lower<L>) ?
+                static_cast<imax>(Lower<L>.Numerator) : static_cast<imax>(Upper<L>.Numerator);
+              if constexpr (!std::is_same_v<plain<A>, no_action>)
+                action(static_cast<imax>(rhs) - clamped);
+
+              rational raw = ((clamped - Interval<L>.Lower)/Notch<L>).value();
+              lhs.Raw = raw_cast<L>(raw.Numerator / static_cast<umax>(raw.Denominator));
+              return lhs;
+            }
+            else if (policy.domain_check())
+            {
+              policy.domain_error(bnd::to_string(rhs) + " is not in " + bnd::to_string(Interval<L>));
+              return lhs;
+            }
           }
         }
         // else success
@@ -135,8 +184,8 @@ namespace bnd
   //---------------------------------------------------------------------------
   template <boundable L, typename R>
     requires std::floating_point<R> || std::same_as<rational, R>
-  template<typename P>
-  constexpr L& assignment<L,R>::assign(L& lhs, R const& rhs, P&& policy)
+  template<typename P, typename A>
+  constexpr L& assignment<L,R>::assign(L& lhs, R const& rhs, P&& policy, A&& action)
   {
     if consteval
     {
@@ -147,11 +196,30 @@ namespace bnd
     else
     {
       // run_time => may_fail
-      if (policy.domain_check() && not Interval<L>.includes(rhs))
+      if (not Interval<L>.includes(rhs))
       {
-        // failed
-        policy.domain_error(bnd::to_string(rhs) + " is not in " + bnd::to_string(Interval<L>));
-        return lhs;
+        if constexpr ((BoundPolicy<L> & clamp) || plain<P>::test(clamp))
+        {
+          R clamped = (rhs < Lower<L>) ? static_cast<R>(Lower<L>) : static_cast<R>(Upper<L>);
+          if constexpr (!std::is_same_v<plain<A>, no_action>)
+            action(rhs - clamped);
+
+          if constexpr (Lower<L> == Upper<L>)
+            lhs.Raw = 0;
+          else if constexpr (is_raw_rational<L>)
+            lhs.Raw = clamped;
+          else
+          {
+            rational raw = ((clamped - Lower<L>)/Notch<L>).value();
+            lhs.Raw = raw_cast<L>(raw.Numerator / static_cast<umax>(raw.Denominator));
+          }
+          return lhs;
+        }
+        else if (policy.domain_check())
+        {
+          policy.domain_error(bnd::to_string(rhs) + " is not in " + bnd::to_string(Interval<L>));
+          return lhs;
+        }
       }
       // else success
     }
@@ -172,8 +240,8 @@ namespace bnd
   // assign(boundable, boundable)
   //---------------------------------------------------------------------------
   template<boundable L, boundable R>
-  template<typename P>
-  constexpr L& assignment<L,R>::assign(L& lhs, R const& rhs, P&& policy)
+  template<typename P, typename A>
+  constexpr L& assignment<L,R>::assign(L& lhs, R const& rhs, P&& policy, A&& action)
   {
     static_assert(not Interval<L>.excludes(Interval<R>));
 
@@ -192,17 +260,25 @@ namespace bnd
                       && abs_den(Factor.Denominator) == 1 && abs_den(Offset.Denominator) == 1)
         {
           // integer domain check in raw space
-          if (policy.domain_check())
-          {
-            umax mapped;
-            if constexpr (Offset == 0_r)
-              mapped = Factor.Numerator * static_cast<umax>(rhs.Raw);
-            else if constexpr (Offset.Denominator > 0)
-              mapped = Offset.Numerator + Factor.Numerator * static_cast<umax>(rhs.Raw);
-            else
-              mapped = Factor.Numerator * static_cast<umax>(rhs.Raw) - Offset.Numerator;
+          umax mapped;
+          if constexpr (Offset == 0_r)
+            mapped = Factor.Numerator * static_cast<umax>(rhs.Raw);
+          else if constexpr (Offset.Denominator > 0)
+            mapped = Offset.Numerator + Factor.Numerator * static_cast<umax>(rhs.Raw);
+          else
+            mapped = Factor.Numerator * static_cast<umax>(rhs.Raw) - Offset.Numerator;
 
-            if (mapped > static_cast<umax>(MaxNotch<L>))
+          if (mapped > static_cast<umax>(MaxNotch<L>))
+          {
+            if constexpr ((BoundPolicy<L> & clamp) || plain<P>::test(clamp))
+            {
+              lhs.Raw = (static_cast<rational>(rhs) < Lower<L>) ?
+                raw_cast<L>(0) : raw_cast<L>(MaxNotch<L>);
+              if constexpr (!std::is_same_v<plain<A>, no_action>)
+                action(static_cast<rational>(rhs) - static_cast<rational>(lhs));
+              return lhs;
+            }
+            else if (policy.domain_check())
             {
               policy.domain_error(bnd::to_string(static_cast<rational>(rhs)) + " is not in " + bnd::to_string(Interval<L>));
               return lhs;
@@ -213,11 +289,21 @@ namespace bnd
         else
         {
           // may_fail
-          if (policy.domain_check() && not Interval<L>.includes(static_cast<rational>(rhs)))
+          if (not Interval<L>.includes(static_cast<rational>(rhs)))
           {
-            // failed
-            policy.domain_error(bnd::to_string(static_cast<rational>(rhs)) + " is not in " + bnd::to_string(Interval<L>));
-            return lhs;
+            if constexpr ((BoundPolicy<L> & clamp) || plain<P>::test(clamp))
+            {
+              lhs.Raw = (static_cast<rational>(rhs) < Lower<L>) ?
+                raw_cast<L>(0) : raw_cast<L>(MaxNotch<L>);
+              if constexpr (!std::is_same_v<plain<A>, no_action>)
+                action(static_cast<rational>(rhs) - static_cast<rational>(lhs));
+              return lhs;
+            }
+            else if (policy.domain_check())
+            {
+              policy.domain_error(bnd::to_string(static_cast<rational>(rhs)) + " is not in " + bnd::to_string(Interval<L>));
+              return lhs;
+            }
           }
 
           if (policy.round_check() && abs_den(Factor.Denominator) != 1)

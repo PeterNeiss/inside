@@ -6,36 +6,12 @@
 
 #include "bound/print.hpp"
 #include "bound/assignment.hpp"
+#include "bound/policy_flag.hpp"
 
 #include <system_error>
 
 namespace bnd
 {
-  //---------------------------------------------------------------------------
-  // policy_flag
-  //---------------------------------------------------------------------------
-  using policy_flag = unsigned long long;
-
-  // Do all compile time only checks always
-  // if we cannot guarantee success at compile time
-  // insert runtime checks, except we ignore the potential error
-  // if a error is detected at runtime, we throw an exception by default
-  // some function may provide a error_code parameter, which replaces the throw
-  //
-  // binary operations or the flags of both operations
-  inline static constexpr policy_flag none         {0ull};
-  inline static constexpr policy_flag fail_early   {1ull << 0}; // possible fail -> compile time fail
-  inline static constexpr policy_flag ignore_zero  {1ull << 1};
-  inline static constexpr policy_flag ignore_domain{1ull << 2};
-  inline static constexpr policy_flag ignore_range {1ull << 3};
-  inline static constexpr policy_flag ignore_round {1ull << 4};
-  inline static constexpr policy_flag ignore_all
-  {ignore_zero | ignore_domain | ignore_range | ignore_round};
-
-  // unary
-  inline static constexpr policy_flag clamp{1ull << 32}; // only for assignment, construction
-  inline static constexpr policy_flag wrap {1ull << 33}; // only for assignment, construction
-
   //---------------------------------------------------------------------------
   // policy
   //---------------------------------------------------------------------------
@@ -138,15 +114,29 @@ namespace bnd
   //---------------------------------------------------------------------------
   // policy_ref
   //---------------------------------------------------------------------------
-  template<boundable B, typename P>
+  template<boundable B, typename P, typename A = no_action>
   struct policy_ref
   {
     B& Ref;
     P Policy;
+    [[no_unique_address]] A Action;
 
     template <numeric C>
     constexpr B& operator=(C const& other)
-    { return assignment<B, C>::assign(Ref, other, Policy); }
+    { return assignment<B, C>::assign(Ref, other, Policy, Action); }
+
+    template <arithmetic C>
+    constexpr B& operator+=(C rhs)
+    {
+      using G = std::remove_cvref_t<B>;
+      if constexpr (Lower<G> == 0_r && Notch<G> == 1_r)
+        return assignment<B, imax>::assign(Ref,
+          static_cast<imax>(Ref.Raw) + static_cast<imax>(rhs), Policy, Action);
+      else
+        return assignment<B, imax>::assign(Ref,
+          static_cast<imax>(static_cast<rational>(Ref)) + static_cast<imax>(rhs),
+          Policy, Action);
+    }
   };
 
 } // namespace bnd

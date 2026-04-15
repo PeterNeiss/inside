@@ -54,6 +54,24 @@ namespace bnd
   auto to_string(V value)
   { return std::to_string(value); }
 
+  template <boundable B>
+  inline std::string to_string(B b)
+  { return bnd::to_string(static_cast<rational>(b)); }
+
+  template <boundable B>
+  inline std::string to_string_debug(B b)
+  {
+    std::string str;
+    str += bnd::to_string(static_cast<rational>(b));
+    str += " {";
+    str += bnd::to_string(+b.Raw);
+    str += "[" + std::string(uint_type_name<raw_t<B>>());
+    str += " Max:" + bnd::to_string(+MaxNotch<B>) + "] ";
+    str += bnd::to_string(Grid<B>);
+    str += "}";
+    return str;
+  }
+
   inline std::ostream& operator<<(std::ostream& stream, rational r)
   {
     stream << bnd::to_string(r);
@@ -63,13 +81,7 @@ namespace bnd
   template <boundable B>
   inline std::ostream& operator<<(std::ostream& stream, B b)
   {
-    //TODO auto [num,den] = b.to_rational();
-    stream << static_cast<rational>(b)
-           <<" {"
-           << +b.Raw << "[" << uint_type_name<raw_t<B>>()
-           << " Max:" << +MaxNotch<B> << "] "
-           << bnd::to_string(Grid<B>)
-           << "}";
+    stream << bnd::to_string(b);
     return stream;
   }
 

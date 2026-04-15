@@ -13,12 +13,12 @@
 
 namespace slim
 {
-  template <bnd::grid G>
-  struct sentinel_traits<bnd::bound<G>>
+  template <bnd::grid G, bnd::policy_flag P>
+  struct sentinel_traits<bnd::bound<G, P>>
   {
     protected:
-      static constexpr bnd::bound<G> sentinel() noexcept;
-      static constexpr bool is_sentinel(const bnd::bound<G>& v) noexcept;
+      static constexpr bnd::bound<G, P> sentinel() noexcept;
+      static constexpr bool is_sentinel(const bnd::bound<G, P>& v) noexcept;
   };
 } // namespace slim
 
@@ -27,12 +27,13 @@ namespace bnd
   //---------------------------------------------------------------------------
   // bound
   //---------------------------------------------------------------------------
-  template<grid G>
+  template<grid G, policy_flag P>
   struct bound
   {
     static_assert(grid::validate<G>());
+    static_assert(!(P & clamp) || !(P & wrap), "clamp and wrap are mutually exclusive");
 
-    using negative = bound<-G>;
+    using negative = bound<-G, P>;
     using raw_type = storage_min<G>;
     raw_type Raw;
 
@@ -40,15 +41,25 @@ namespace bnd
 
     template <numeric A>
     constexpr bound(A value)
-    { assignment<bound, A>::assign(*this, value, make_policy()); }
+    { assignment<bound, A>::assign(*this, value, make_policy<P>()); }
 
-    template <numeric A, typename P>
-    constexpr bound(A value, P&& policy)
-    { assignment<bound, A>::assign(*this, value, policy); }
+    template <numeric A, typename Pol>
+    constexpr bound(A value, Pol&& pol)
+    { assignment<bound, A>::assign(*this, value, pol); }
 
     template <numeric B>
     constexpr bound& operator=(B const& other)
-    { return assignment<bound, B>::assign(*this, other, make_policy()); }
+    { return assignment<bound, B>::assign(*this, other, make_policy<P>()); }
+
+    constexpr auto value() const
+    {
+      if constexpr (is_raw_rational<bound>)
+        return Raw;
+      else if constexpr (G.Interval.Lower == 0_r && G.Notch == 1_r)
+        return Raw;
+      else
+        return static_cast<rational>(*this);
+    }
 
     constexpr explicit operator double() const { return G.raw_to_double(Raw); }
 
@@ -78,18 +89,28 @@ namespace bnd
     template <policy_flag F = none>
     auto policy()
     {
-       auto policy = make_policy<F>();
-       return policy_ref<bound, decltype(policy)>{*this, policy};
+       auto pol = make_policy<P | F>();
+       return policy_ref<bound, decltype(pol)>{*this, pol};
     }
 
     template <policy_flag F = none>
     auto policy(std::error_code& ec)
     {
-       auto policy = make_policy<F>(ec);
-       return policy_ref<bound, decltype(policy)>{*this, policy};
+       auto pol = make_policy<P | F>(ec);
+       return policy_ref<bound, decltype(pol)>{*this, pol};
+    }
+
+    template <policy_flag F = none, typename A>
+    auto policy(A&& action)
+    {
+       auto pol = make_policy<P | F>();
+       return policy_ref<bound, decltype(pol), std::remove_cvref_t<A>>{
+         *this, pol, std::forward<A>(action)};
     }
 
     auto with_round() { return policy<ignore_round>(); }
+    auto with_clamp() { return policy<clamp>(); }
+    auto with_wrap()  { return policy<wrap>(); }
 
     template <boundable R>
     constexpr bound& operator+=(R const& rhs)
@@ -100,8 +121,22 @@ namespace bnd
         umax new_raw = static_cast<umax>(Raw) + static_cast<umax>(rhs.Raw);
         if (new_raw > static_cast<umax>(MaxNotch<bound>))
         {
-          make_policy().domain_error("operator+= result out of range");
-          return *this;
+          if constexpr (P & clamp)
+          {
+            Raw = raw_cast<bound>(MaxNotch<bound>);
+            return *this;
+          }
+          else if constexpr (P & wrap)
+          {
+            constexpr umax range = static_cast<umax>(MaxNotch<bound>) + 1;
+            Raw = raw_cast<bound>(new_raw % range);
+            return *this;
+          }
+          else
+          {
+            make_policy<P>().domain_error("operator+= result out of range");
+            return *this;
+          }
         }
         Raw = raw_cast<bound>(new_raw);
         return *this;
@@ -112,15 +147,25 @@ namespace bnd
         return *this;
       }
     }
-    //auto without_clamp() { return this->policy<no_clamp>(); }
-    //auto without_wrap() { return this->policy<no_wrap>(); }
+
+    template <arithmetic A>
+    constexpr bound& operator+=(A rhs)
+    {
+      if constexpr (G.Interval.Lower == 0_r && G.Notch == 1_r)
+        return assignment<bound, imax>::assign(*this,
+          static_cast<imax>(Raw) + static_cast<imax>(rhs), make_policy<P>());
+      else
+        return assignment<bound, imax>::assign(*this,
+          static_cast<imax>(static_cast<rational>(*this)) + static_cast<imax>(rhs),
+          make_policy<P>());
+    }
 
     template <numeric A>
     static constexpr slim::optional<bound> try_make(A value)
     {
       std::error_code ec;
       bound result;
-      assignment<bound, A>::assign(result, value, make_policy(ec));
+      assignment<bound, A>::assign(result, value, make_policy<P>(ec));
       if (ec) return slim::nullopt;
       return result;
     }
@@ -251,11 +296,11 @@ namespace bnd
 
 namespace slim
 {
-  template <bnd::grid G>
-  constexpr bnd::bound<G> sentinel_traits<bnd::bound<G>>::sentinel() noexcept
+  template <bnd::grid G, bnd::policy_flag P>
+  constexpr bnd::bound<G, P> sentinel_traits<bnd::bound<G, P>>::sentinel() noexcept
   {
-    bnd::bound<G> s;
-    using raw = typename bnd::bound<G>::raw_type;
+    bnd::bound<G, P> s;
+    using raw = typename bnd::bound<G, P>::raw_type;
     if constexpr (std::is_same_v<raw, bnd::rational>)
       s.Raw = bnd::rational::make_sentinel();
     else
@@ -263,10 +308,10 @@ namespace slim
     return s;
   }
 
-  template <bnd::grid G>
-  constexpr bool sentinel_traits<bnd::bound<G>>::is_sentinel(const bnd::bound<G>& v) noexcept
+  template <bnd::grid G, bnd::policy_flag P>
+  constexpr bool sentinel_traits<bnd::bound<G, P>>::is_sentinel(const bnd::bound<G, P>& v) noexcept
   {
-    using raw = typename bnd::bound<G>::raw_type;
+    using raw = typename bnd::bound<G, P>::raw_type;
     if constexpr (std::is_same_v<raw, bnd::rational>)
       return v.Raw.Denominator == 0;
     else

@@ -100,6 +100,22 @@ namespace bnd
       return static_cast<T>(Numerator/static_cast<umax>(Denominator));
     }
 
+    template <std::signed_integral T>
+    explicit constexpr operator T () const
+    {
+      if (Denominator < 0)
+        return -static_cast<T>(Numerator / static_cast<umax>(-Denominator));
+      return static_cast<T>(Numerator / static_cast<umax>(Denominator));
+    }
+
+    template <std::floating_point T>
+    explicit constexpr operator T () const
+    {
+      if (Denominator < 0)
+        return -static_cast<T>(Numerator) / static_cast<T>(static_cast<umax>(-Denominator));
+      return static_cast<T>(Numerator) / static_cast<T>(static_cast<umax>(Denominator));
+    }
+
     // allow unary+ for generic programming
     constexpr rational operator+() const { return *this; }
 

@@ -17,7 +17,7 @@ template <boundable B>
 void check(const char* label, B actual, rational expected)
 {
   rational got = static_cast<rational>(actual);
-  std::cout << label << actual;
+  std::cout << label << bnd::to_string_debug(actual);
   if (got == expected)
     std::cout << "  [PASS]" << std::endl;
   else
@@ -338,6 +338,86 @@ void test_optional_ops()
   check_null("frac opt/null:  ", opt_p1 / no_pfrac);
 }
 
+void test_clamp()
+{
+  using pct = bound<{0, 100}, clamp>;
+  pct x = 150;
+  check("clamp over: ", x, 100);
+  pct y = -5;
+  check("clamp under: ", y, 0);
+  pct z = 50;
+  check("clamp ok: ", z, 50);
+
+  // clamp on operator+=
+  pct a = 90;
+  a += bound<{0, 100}>(20);
+  check("clamp +=: ", a, 100);
+}
+
+void test_wrap()
+{
+  using angle = bound<{0, 359}, wrap>;
+  angle a = 370;
+  check("wrap over: ", a, 10);
+  angle b = -10;
+  check("wrap under: ", b, 350);
+  angle c = 360;
+  check("wrap 360: ", c, 0);
+  angle d = 180;
+  check("wrap ok: ", d, 180);
+}
+
+void test_action()
+{
+  using sec = bound<{0, 59}, wrap>;
+  using min_t = bound<{0, 59}>;
+  sec seconds(0);
+  min_t minutes(0);
+
+  seconds.policy<wrap>([&](auto carry) {
+    minutes = static_cast<int>(static_cast<rational>(minutes).Numerator) + static_cast<int>(carry);
+  }) = 65;
+  check("action sec: ", seconds, 5);
+  check("action min: ", minutes, 1);
+
+  // action with clamp
+  using pct = bound<{0, 100}, clamp>;
+  pct clamped(0);
+  imax excess = 0;
+  clamped.policy<clamp>([&](auto e) { excess = static_cast<imax>(e); }) = 150;
+  check("action clamp val: ", clamped, 100);
+  std::cout << "action clamp excess: " << excess;
+  if (excess == 50)
+    std::cout << "  [PASS]" << std::endl;
+  else
+  {
+    std::cout << "  [FAIL] expected 50" << std::endl;
+    ++failures;
+  }
+}
+
+void test_clamp_boundable()
+{
+  // clamp when assigning from a wider bound to a narrower clamped bound
+  using wide = bound<{0, 200}>;
+  using narrow = bound<{0, 100}, clamp>;
+  wide w = 150;
+  narrow n(0);
+  n = w;
+  check("clamp b2b: ", n, 100);
+}
+
+void test_with_clamp_wrap()
+{
+  // per-operation clamp/wrap via with_clamp()/with_wrap()
+  using u100 = bound<{0, 100}>;
+  u100 x(50);
+  x.with_clamp() = 150;
+  check("with_clamp: ", x, 100);
+  x.with_wrap() = 103;
+  check("with_wrap: ", x, 2);
+}
+
 //---------------------------------------------------------------------------
 // compile-time type alias tests
 //---------------------------------------------------------------------------
@@ -372,6 +452,11 @@ int main()
     test_div();
     test_optional_ops();
     test_waiver();
+    test_clamp();
+    test_wrap();
+    test_action();
+    test_clamp_boundable();
+    test_with_clamp_wrap();
 
     bound b;
     (void)b;

@@ -10,16 +10,17 @@
 
 #include "bound/debug.hpp"
 #include "bound/grid.hpp"
+#include "bound/policy_flag.hpp"
 
 namespace bnd
 {
   template<typename T>
   using plain = std::remove_cvref_t<T>;
 
-  template <grid G = {{0, 0}, 0}> struct bound;
+  template <grid G = {{0, 0}, 0}, policy_flag P = none> struct bound;
 
   template <typename B>
-  concept boundable = requires { []<grid G>(bound<G>){}(B{}); };
+  concept boundable = !arithmetic<B> && requires { []<grid G, policy_flag P>(bound<G, P>){}(B{}); };
 
   template <boundable B>
   using raw_t = typename B::raw_type;
@@ -31,29 +32,32 @@ namespace bnd
   inline constexpr bool is_raw_rational = is_rational<raw_t<B>>;
 
   template <boundable B>
-  inline constexpr grid Grid = []<grid G>(bound<G>){ return G; } (B{});
+  inline constexpr grid Grid = []<grid G, policy_flag P>(bound<G, P>){ return G; } (B{});
 
   template <boundable B>
-  using negative = bound<-Grid<B>>;
+  inline constexpr policy_flag BoundPolicy = []<grid G, policy_flag P>(bound<G, P>){ return P; } (B{});
+
+  template <boundable B>
+  using negative = bound<-Grid<B>, BoundPolicy<B>>;
 
   template <typename T>
   inline constexpr interval Interval = {0,0};
 
   template <boundable B>
-  inline constexpr interval Interval<B> = []<grid G>(bound<G>){ return G.Interval; } (B{});
+  inline constexpr interval Interval<B> = []<grid G, policy_flag P>(bound<G, P>){ return G.Interval; } (B{});
 
   template <std::integral I>
   inline constexpr interval Interval<I> =
       {std::numeric_limits<I>::lowest(), std::numeric_limits<I>::max()};
 
   template <boundable B>
-  inline constexpr rational Lower = []<grid G>(bound<G>){ return G.Interval.Lower; } (B{});
+  inline constexpr rational Lower = []<grid G, policy_flag P>(bound<G, P>){ return G.Interval.Lower; } (B{});
 
   template <boundable B>
-  inline constexpr rational Upper = []<grid G>(bound<G>){ return G.Interval.Upper; } (B{});
+  inline constexpr rational Upper = []<grid G, policy_flag P>(bound<G, P>){ return G.Interval.Upper; } (B{});
 
   template <boundable B>
-  inline constexpr rational Notch = []<grid G>(bound<G>){ return G.Notch; } (B{});
+  inline constexpr rational Notch = []<grid G, policy_flag P>(bound<G, P>){ return G.Notch; } (B{});
 
   template <typename N>
   concept numeric = boundable<N> or arithmetic<N>;
