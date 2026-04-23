@@ -71,7 +71,6 @@ get_target_property(CTRACK_INCLUDE_DIRS ctrack INTERFACE_INCLUDE_DIRECTORIES)
 target_include_directories(bench SYSTEM PUBLIC ${CTRACK_INCLUDE_DIRS})
 
 file(GLOB EXAMPLE_SOURCES examples/*.cpp)
-list(FILTER EXAMPLE_SOURCES EXCLUDE REGEX "division\\.cpp$")
 foreach(example_src ${EXAMPLE_SOURCES})
   get_filename_component(example_name ${example_src} NAME_WE)
   add_executable(example_${example_name} ${example_src})

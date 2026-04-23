@@ -56,7 +56,7 @@ namespace bnd
       if constexpr (is_raw_rational<bound>)
         return Raw;
       else if constexpr (G.Interval.Lower == 0_r && G.Notch == 1_r)
-        return Raw;
+        return static_cast<std::common_type_t<raw_type, unsigned int>>(Raw);
       else
         return static_cast<rational>(*this);
     }
