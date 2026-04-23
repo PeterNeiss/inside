@@ -27,6 +27,9 @@ namespace bnd
   inline static constexpr policy_flag ignore_all
   {ignore_zero | ignore_domain | ignore_range | ignore_round};
 
+  // runtime checking — opt-in
+  inline static constexpr policy_flag checked{1ull << 34}; // enable runtime domain/overflow checks
+
   // unary — mutually exclusive
   inline static constexpr policy_flag clamp{1ull << 32}; // saturate to boundary
   inline static constexpr policy_flag wrap {1ull << 33}; // modular arithmetic

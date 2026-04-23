@@ -72,6 +72,8 @@ namespace bnd
         else
           return Raw;
       }
+      else if constexpr (G.Interval.Lower == 0_r && G.Notch == 1_r)
+        return rational{Raw};
       else
         return (*(Raw * G.Notch) + G.Interval.Lower).value();
     }
@@ -118,27 +120,34 @@ namespace bnd
       if constexpr (not is_raw_rational<bound> && not is_raw_rational<R>
                     && Notch<bound> == Notch<R> && Lower<R> == 0_r)
       {
-        umax new_raw = static_cast<umax>(Raw) + static_cast<umax>(rhs.Raw);
-        if (new_raw > static_cast<umax>(MaxNotch<bound>))
+        if constexpr (P & (clamp | wrap | checked))
         {
-          if constexpr (P & clamp)
+          umax new_raw = static_cast<umax>(Raw) + static_cast<umax>(rhs.Raw);
+          if (new_raw > static_cast<umax>(MaxNotch<bound>))
           {
-            Raw = raw_cast<bound>(MaxNotch<bound>);
-            return *this;
+            if constexpr (P & clamp)
+            {
+              Raw = raw_cast<bound>(MaxNotch<bound>);
+              return *this;
+            }
+            else if constexpr (P & wrap)
+            {
+              constexpr umax range = static_cast<umax>(MaxNotch<bound>) + 1;
+              Raw = raw_cast<bound>(new_raw % range);
+              return *this;
+            }
+            else
+            {
+              make_policy<P>().domain_error("operator+= result out of range");
+              return *this;
+            }
           }
-          else if constexpr (P & wrap)
-          {
-            constexpr umax range = static_cast<umax>(MaxNotch<bound>) + 1;
-            Raw = raw_cast<bound>(new_raw % range);
-            return *this;
-          }
-          else
-          {
-            make_policy<P>().domain_error("operator+= result out of range");
-            return *this;
-          }
+          Raw = raw_cast<bound>(new_raw);
         }
-        Raw = raw_cast<bound>(new_raw);
+        else
+        {
+          Raw += raw_cast<bound>(rhs.Raw);
+        }
         return *this;
       }
       else

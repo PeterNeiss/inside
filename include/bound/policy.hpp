@@ -65,13 +65,13 @@ namespace bnd
     static constexpr bool domain_check()
     {
       if consteval { return true; }
-      return not test(ignore_domain);
+      return test(checked) && not test(ignore_domain);
     }
 
     static constexpr bool round_check()
     {
       if consteval { return true; }
-      return not test(ignore_round);
+      return test(checked) && not test(ignore_round);
     }
 
     void domain_error(std::string what)

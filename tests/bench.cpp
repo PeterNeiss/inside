@@ -137,42 +137,35 @@ void bench_accumulate()
   constexpr std::size_t SZ = 1000;
   constexpr std::size_t ITERS = N / SZ;
 
-  std::vector<std::uint8_t> nv(SZ);
-  std::vector<checked_u8> cv(SZ);
-  std::vector<u200> bv(SZ);
+  // All use the same element type: uint32_t / bound<{0, 200'000}>
+  using u200k         = bound<{0, 200'000}>;
+  using u200k_checked = bound<{0, 200'000}, checked>;
+
+  std::vector<std::uint32_t> nv(SZ);
+  std::vector<u200k> bv(SZ);
+  std::vector<u200k_checked> bv_checked(SZ);
   for (std::size_t i = 0; i < SZ; ++i)
   {
-    nv[i] = static_cast<std::uint8_t>(i % 5);
-    cv[i] = checked_u8(static_cast<int>(i % 5));
+    nv[i] = static_cast<std::uint32_t>(i % 5);
     bv[i] = static_cast<int>(i % 5);
+    bv_checked[i] = static_cast<int>(i % 5);
   }
-
-  using u200k = bound<{0, 200'000}>;
 
   for (std::size_t i = 0; i < ITERS; ++i)
   {
     { CTRACK_NAME("accum native");
-      std::uint16_t sum = 0;
+      std::uint32_t sum = 0;
       for (auto v : nv) sum += v;
       do_not_optimize(sum); }
-
-    { CTRACK_NAME("accum clamped");
-      int sum = 0;
-      for (auto v : nv) sum = std::clamp(sum + v, 0, 200 * 1000);
-      do_not_optimize(sum); }
-
-    { CTRACK_NAME("accum checked");
-      int acc = 0;
-      for (auto v : cv)
-      {
-        acc += v.value;
-        if (acc < 0 || acc > 200'000) throw std::out_of_range("checked accumulate");
-      }
-      do_not_optimize(acc); }
 
     { CTRACK_NAME("accum bound");
       u200k sum(0);
       for (auto v : bv) sum += v;
+      do_not_optimize(sum.Raw); }
+
+    { CTRACK_NAME("accum bound<checked>");
+      u200k_checked sum(0);
+      for (auto v : bv_checked) sum += v;
       do_not_optimize(sum.Raw); }
   }
 }
