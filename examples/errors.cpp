@@ -41,7 +41,7 @@ int main()
   // 5. Ignore domain: skips the check entirely
   bound<{0, 100}> w(50);
   w.policy<ignore_domain>() = 200;
-  std::cout << "ignored:  raw=" << w.Raw << " (domain check skipped)" << std::endl;
+  std::cout << "ignored:  raw=" << w << " (domain check skipped)" << std::endl;
 
   return 0;
 }

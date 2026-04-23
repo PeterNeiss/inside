@@ -26,7 +26,7 @@ struct rgb
 
   friend std::ostream& operator<<(std::ostream& os, const rgb& c)
   {
-    return os << "rgb(" << c.r              << ", "   << c.g              << ", "   << c.b.value() << ")";
+    return os << "rgb(" << c.r << ", " << c.g << ", " << c.b << ")";
   }
 };
 
