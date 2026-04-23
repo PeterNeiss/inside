@@ -3,6 +3,7 @@
 #include <iostream>
 
 #include "bound/bound.hpp"
+#include "bound/print.hpp"
 
 using namespace bnd;
 
@@ -10,9 +11,9 @@ int main()
 {
   using celsius = bound<{{-40, 60}, 0.5}>;
 
-  celsius room = 21;
+  celsius room = 21.6;
   celsius freezing = 0;
-  celsius body = *(37_r/1);
+  celsius body = 37;
 
   std::cout << "room:     " << room << " C" << std::endl;
   std::cout << "freezing: " << freezing << " C" << std::endl;

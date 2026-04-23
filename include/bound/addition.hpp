@@ -4,7 +4,7 @@
 #ifndef BNDadditionHPP
 #define BNDadditionHPP
 
-#include "bound/common.hpp"
+#include "bound/generic.hpp"
 #include "bound/grid.hpp"
 #include "bound/policy.hpp"
 

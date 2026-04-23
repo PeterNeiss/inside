@@ -5,7 +5,7 @@
 #define BNDassignmentHPP
 
 #include "bound/grid.hpp"
-#include "bound/print.hpp"
+#include "bound/format.hpp"
 
 namespace bnd
 {

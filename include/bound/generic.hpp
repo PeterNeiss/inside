@@ -1,9 +1,8 @@
 //---------------------------------------------------------------------------
 // Copyright (C) 2026 Peter Neiss
 //---------------------------------------------------------------------------
-//TODO rename generic.hpp
-#ifndef BNDcommonHPP
-#define BNDcommonHPP
+#ifndef BNDgenericHPP
+#define BNDgenericHPP
 
 #define SLIM_OPTIONAL_LEAN_AND_MEAN
 #include "slim/optional.hpp"
@@ -89,4 +88,4 @@ namespace bnd
   inline constexpr umax OffsetUpper = (Upper<B>/Notch<B>).value_or(0_r).Numerator;
 } // namespace bnd
 
-#endif // BNDcommonHPP
+#endif // BNDgenericHPP

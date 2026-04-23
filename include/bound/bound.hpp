@@ -4,7 +4,7 @@
 #ifndef BNDboundHPP
 #define BNDboundHPP
 
-#include "bound/common.hpp"
+#include "bound/generic.hpp"
 #include "bound/policy.hpp"
 #include "bound/addition.hpp"
 #include "bound/multiplication.hpp"

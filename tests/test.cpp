@@ -1,7 +1,7 @@
 #include <iostream>
 #include <limits>
 
-#include "bound/common.hpp"
+#include "bound/generic.hpp"
 #include "bound/bound.hpp"
 #include "bound/interval.hpp"
 #include "bound/print.hpp"

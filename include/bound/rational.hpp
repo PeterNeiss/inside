@@ -4,7 +4,7 @@
 #ifndef BNDrationalHPP
 #define BNDrationalHPP
 
-#include "bound/common.hpp"
+#include "bound/generic.hpp"
 #include "bound/math.hpp"
 #include "bound/overflow.hpp"
 

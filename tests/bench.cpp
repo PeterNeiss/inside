@@ -153,7 +153,7 @@ void bench_accumulate()
   {
     { CTRACK_NAME("accum native");
       std::uint16_t sum = 0;
-      for (auto v : nv) sum = static_cast<std::uint16_t>(sum + v);
+      for (auto v : nv) sum += v;
       do_not_optimize(sum); }
 
     { CTRACK_NAME("accum clamped");

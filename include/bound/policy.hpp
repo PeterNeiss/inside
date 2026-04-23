@@ -4,7 +4,6 @@
 #ifndef BNDpolicyHPP
 #define BNDpolicyHPP
 
-#include "bound/print.hpp"
 #include "bound/assignment.hpp"
 #include "bound/policy_flag.hpp"
 
