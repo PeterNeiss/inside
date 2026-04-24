@@ -39,6 +39,20 @@ namespace bnd
       if (!prod) return slim::nullopt;
       result res; res.Raw = raw_cast<result>(*prod); return res;
     }
+    else if constexpr (is_direct_storage<L> || is_direct_storage<R> || is_direct_storage<result>)
+    {
+      // At least one operand or result uses signed direct storage.
+      // Compute through actual values for correctness.
+      imax lhs_val = static_cast<imax>(static_cast<rational>(lhs));
+      imax rhs_val = static_cast<imax>(static_cast<rational>(rhs));
+      imax prod = lhs_val * rhs_val;
+      result res;
+      if constexpr (is_direct_storage<result>)
+        res.Raw = raw_cast<result>(prod);
+      else
+        res.Raw = raw_cast<result>(prod - static_cast<imax>(Lower<result>));
+      return res;
+    }
     else
     {
       if constexpr (Lower<result> == (Lower<L> * Lower<R>).value())

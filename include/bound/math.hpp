@@ -27,13 +27,25 @@ namespace bnd
     std::conditional_t<(N <= UINT32_MAX), std::uint32_t,
                                           std::uint64_t>>>>;
 
+  // +1 on min accounts for sentinel value reserved by slim::optional
+  template <std::intmax_t Low, std::intmax_t High>
+  using smallest_int_for =
+    std::conditional_t<(Low >= INT8_MIN+1 && High <= INT8_MAX),   std::int8_t,
+    std::conditional_t<(Low >= INT16_MIN+1 && High <= INT16_MAX), std::int16_t,
+    std::conditional_t<(Low >= INT32_MIN+1 && High <= INT32_MAX), std::int32_t,
+                                                                   std::int64_t>>>;
+
   template <typename T>
-  constexpr std::string_view uint_type_name()
+  constexpr std::string_view type_name()
   {
     if constexpr (std::is_same_v<T, std::uint8_t>)  return "uint8_t";
     if constexpr (std::is_same_v<T, std::uint16_t>) return "uint16_t";
     if constexpr (std::is_same_v<T, std::uint32_t>) return "uint32_t";
     if constexpr (std::is_same_v<T, std::uint64_t>) return "uint64_t";
+    if constexpr (std::is_same_v<T, std::int8_t>)   return "int8_t";
+    if constexpr (std::is_same_v<T, std::int16_t>)  return "int16_t";
+    if constexpr (std::is_same_v<T, std::int32_t>)  return "int32_t";
+    if constexpr (std::is_same_v<T, std::int64_t>)  return "int64_t";
     if constexpr (std::is_same_v<T, rational>) return "rational";
     return "unknown";
   }

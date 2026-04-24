@@ -104,7 +104,7 @@ namespace bnd
               if constexpr (!std::is_same_v<plain<A>, no_action>)
                 action(static_cast<imax>(rhs) - clamped);
 
-              if constexpr (Lower<L> == 0_r && Notch<L> == 1_r)
+              if constexpr (is_direct_storage<L> || (Lower<L> == 0_r && Notch<L> == 1_r))
                 lhs.Raw = raw_cast<L>(clamped - lower);
               else
               {
@@ -122,8 +122,8 @@ namespace bnd
               if constexpr (!std::is_same_v<plain<A>, no_action>)
                 action(excess);
 
-              if constexpr (Lower<L> == 0_r && Notch<L> == 1_r)
-                lhs.Raw = raw_cast<L>(wrapped);
+              if constexpr (is_direct_storage<L> || (Lower<L> == 0_r && Notch<L> == 1_r))
+                lhs.Raw = raw_cast<L>(wrapped + lower);
               else
               {
                 rational raw = (((wrapped + lower) - Interval<L>.Lower)/Notch<L>).value();
@@ -169,6 +169,8 @@ namespace bnd
       lhs.Raw = 0;
     else if constexpr (is_raw_rational<L>)
       lhs.Raw = rhs;
+    else if constexpr (is_direct_storage<L>)
+      lhs.Raw = raw_cast<L>(rhs);
     else if constexpr (Lower<L> == 0_r && Notch<L> == 1_r)
       lhs.Raw = raw_cast<L>(rhs);
     else
@@ -260,20 +262,22 @@ namespace bnd
                       && abs_den(Factor.Denominator) == 1 && abs_den(Offset.Denominator) == 1)
         {
           // integer domain check in raw space
-          umax mapped;
+          imax mapped;
           if constexpr (Offset == 0_r)
-            mapped = Factor.Numerator * static_cast<umax>(rhs.Raw);
+            mapped = static_cast<imax>(Factor.Numerator) * static_cast<imax>(rhs.Raw);
           else if constexpr (Offset.Denominator > 0)
-            mapped = Offset.Numerator + Factor.Numerator * static_cast<umax>(rhs.Raw);
+            mapped = static_cast<imax>(Offset.Numerator) + static_cast<imax>(Factor.Numerator) * static_cast<imax>(rhs.Raw);
           else
-            mapped = Factor.Numerator * static_cast<umax>(rhs.Raw) - Offset.Numerator;
+            mapped = static_cast<imax>(Factor.Numerator) * static_cast<imax>(rhs.Raw) - static_cast<imax>(Offset.Numerator);
 
-          if (mapped > static_cast<umax>(MaxNotch<L>))
+          constexpr imax raw_lo = is_direct_storage<L> ? static_cast<imax>(Lower<L>) : 0;
+          constexpr imax raw_hi = is_direct_storage<L> ? static_cast<imax>(Upper<L>) : static_cast<imax>(MaxNotch<L>);
+          if (mapped < raw_lo || mapped > raw_hi)
           {
             if constexpr ((BoundPolicy<L> & clamp) || plain<P>::test(clamp))
             {
               lhs.Raw = (static_cast<rational>(rhs) < Lower<L>) ?
-                raw_cast<L>(0) : raw_cast<L>(MaxNotch<L>);
+                raw_cast<L>(raw_lo) : raw_cast<L>(raw_hi);
               if constexpr (!std::is_same_v<plain<A>, no_action>)
                 action(static_cast<rational>(rhs) - static_cast<rational>(lhs));
               return lhs;
@@ -293,8 +297,9 @@ namespace bnd
           {
             if constexpr ((BoundPolicy<L> & clamp) || plain<P>::test(clamp))
             {
-              lhs.Raw = (static_cast<rational>(rhs) < Lower<L>) ?
-                raw_cast<L>(0) : raw_cast<L>(MaxNotch<L>);
+              constexpr auto raw_lo = is_direct_storage<L> ? raw_cast<L>(static_cast<imax>(Lower<L>)) : raw_cast<L>(0);
+              constexpr auto raw_hi = is_direct_storage<L> ? raw_cast<L>(static_cast<imax>(Upper<L>)) : raw_cast<L>(MaxNotch<L>);
+              lhs.Raw = (static_cast<rational>(rhs) < Lower<L>) ? raw_lo : raw_hi;
               if constexpr (!std::is_same_v<plain<A>, no_action>)
                 action(static_cast<rational>(rhs) - static_cast<rational>(lhs));
               return lhs;
@@ -324,11 +329,11 @@ namespace bnd
       if constexpr (Offset == 0_r && Factor == 1_r)
         lhs.Raw = raw_cast<L>(rhs.Raw);
       else if constexpr (Offset == 0_r)
-        lhs.Raw = raw_cast<L>(Factor.Numerator * static_cast<umax>(rhs.Raw));
+        lhs.Raw = raw_cast<L>(static_cast<imax>(Factor.Numerator) * static_cast<imax>(rhs.Raw));
       else if constexpr (Offset.Denominator > 0)
-        lhs.Raw = raw_cast<L>(Offset.Numerator + Factor.Numerator * static_cast<umax>(rhs.Raw));
+        lhs.Raw = raw_cast<L>(static_cast<imax>(Offset.Numerator) + static_cast<imax>(Factor.Numerator) * static_cast<imax>(rhs.Raw));
       else
-        lhs.Raw = raw_cast<L>(Factor.Numerator * static_cast<umax>(rhs.Raw) - Offset.Numerator);
+        lhs.Raw = raw_cast<L>(static_cast<imax>(Factor.Numerator) * static_cast<imax>(rhs.Raw) - static_cast<imax>(Offset.Numerator));
     }
     else
       lhs.Raw = raw_cast<L>(*(Offset + *(Factor * rhs.Raw)));

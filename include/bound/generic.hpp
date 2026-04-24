@@ -78,8 +78,12 @@ namespace bnd
   }
 
   template <boundable B>
-  inline constexpr raw_t<B> MaxNotch = (Notch<B> == 0) ?
-    raw_cast<B>(0) : raw_cast<B>((Interval<B>/Notch<B>).value().Numerator);
+  inline constexpr bool is_direct_storage =
+      std::signed_integral<raw_t<B>> && Notch<B> == 1_r;
+
+  template <boundable B>
+  inline constexpr umax MaxNotch = (Notch<B> == 0) ?
+    0 : (Interval<B>/Notch<B>).value().Numerator;
 
   template <boundable B>
   inline constexpr umax OffsetLower = (Lower<B>/Notch<B>).value_or(0_r).Numerator;

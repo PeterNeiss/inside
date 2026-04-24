@@ -79,6 +79,10 @@ namespace bnd
       return static_cast<Raw>(raw.Numerator / static_cast<umax>(raw.Denominator));
     }
 
+    template <std::signed_integral Raw>
+    constexpr Raw to_raw(rational value) const
+    { return static_cast<Raw>(value); }
+
     template <std::same_as<rational> Raw>
     constexpr rational to_raw(rational value) const
     {
@@ -87,6 +91,9 @@ namespace bnd
 
     constexpr double raw_to_double(std::unsigned_integral auto raw) const
     { return static_cast<double>((*(raw*Notch) + Interval.Lower).value()); }
+
+    constexpr double raw_to_double(std::signed_integral auto raw) const
+    { return static_cast<double>(raw); }
 
     constexpr double raw_to_double(std::same_as<rational> auto raw) const
     {
@@ -99,7 +106,11 @@ namespace bnd
   };
 
   template <grid G>
-  using storage_min = smallest_uint_for<G.max_notch()>;
+  using storage_min =
+    std::conditional_t<(G.Notch == 0_r), rational,
+    std::conditional_t<(G.Interval.Lower < 0_r && G.Notch == 1_r),
+      smallest_int_for<static_cast<imax>(G.Interval.Lower), static_cast<imax>(G.Interval.Upper)>,
+      smallest_uint_for<G.max_notch()>>>;
 
   constexpr slim::optional<grid> operator+(const grid&, const grid&);
   constexpr slim::optional<grid> operator-(const grid&, const grid&);

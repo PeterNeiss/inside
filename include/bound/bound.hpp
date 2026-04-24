@@ -55,6 +55,8 @@ namespace bnd
     {
       if constexpr (is_raw_rational<bound>)
         return Raw;
+      else if constexpr (is_direct_storage<bound>)
+        return static_cast<std::common_type_t<raw_type, int>>(Raw);
       else if constexpr (G.Interval.Lower == 0_r && G.Notch == 1_r)
         return static_cast<std::common_type_t<raw_type, unsigned int>>(Raw);
       else
@@ -72,6 +74,8 @@ namespace bnd
         else
           return Raw;
       }
+      else if constexpr (is_direct_storage<bound>)
+        return rational{Raw};
       else if constexpr (G.Interval.Lower == 0_r && G.Notch == 1_r)
         return rational{Raw};
       else
@@ -83,6 +87,21 @@ namespace bnd
       negative neg;
       if constexpr (is_raw_rational<bound>)
         neg.Raw = -(Raw);
+      else if constexpr (is_direct_storage<bound> && is_direct_storage<negative>)
+        neg.Raw = raw_cast<negative>(-static_cast<imax>(Raw));
+      else if constexpr (is_direct_storage<negative>)
+      {
+        // Source is offset-encoded, result is direct storage
+        imax value = static_cast<imax>(static_cast<rational>(*this));
+        neg.Raw = raw_cast<negative>(-value);
+      }
+      else if constexpr (is_direct_storage<bound>)
+      {
+        // Source is direct storage, result is offset-encoded
+        imax neg_val = -static_cast<imax>(Raw);
+        rational raw = ((neg_val - Grid<negative>.Interval.Lower)/Grid<negative>.Notch).value();
+        neg.Raw = raw_cast<negative>(raw.Numerator / static_cast<umax>(raw.Denominator));
+      }
       else
         neg.Raw = raw_cast<negative>(MaxNotch<bound> - Raw);
       return neg;
@@ -118,22 +137,28 @@ namespace bnd
     constexpr bound& operator+=(R const& rhs)
     {
       if constexpr (not is_raw_rational<bound> && not is_raw_rational<R>
-                    && Notch<bound> == Notch<R> && Lower<R> == 0_r)
+                    && Notch<bound> == Notch<R>
+                    && (Lower<R> == 0_r || is_direct_storage<R>))
       {
         if constexpr (P & (clamp | wrap | checked))
         {
-          umax new_raw = static_cast<umax>(Raw) + static_cast<umax>(rhs.Raw);
-          if (new_raw > static_cast<umax>(MaxNotch<bound>))
+          imax new_raw = static_cast<imax>(Raw) + static_cast<imax>(rhs.Raw);
+          constexpr imax lo = is_direct_storage<bound>
+            ? static_cast<imax>(Lower<bound>) : 0;
+          constexpr imax hi = is_direct_storage<bound>
+            ? static_cast<imax>(Upper<bound>) : static_cast<imax>(MaxNotch<bound>);
+          if (new_raw < lo || new_raw > hi)
           {
             if constexpr (P & clamp)
             {
-              Raw = raw_cast<bound>(MaxNotch<bound>);
+              Raw = raw_cast<bound>(new_raw < lo ? lo : hi);
               return *this;
             }
             else if constexpr (P & wrap)
             {
-              constexpr umax range = static_cast<umax>(MaxNotch<bound>) + 1;
-              Raw = raw_cast<bound>(new_raw % range);
+              constexpr imax range = hi - lo + 1;
+              new_raw = ((new_raw - lo) % range + range) % range + lo;
+              Raw = raw_cast<bound>(new_raw);
               return *this;
             }
             else
@@ -160,7 +185,7 @@ namespace bnd
     template <arithmetic A>
     constexpr bound& operator+=(A rhs)
     {
-      if constexpr (G.Interval.Lower == 0_r && G.Notch == 1_r)
+      if constexpr (is_direct_storage<bound> || (G.Interval.Lower == 0_r && G.Notch == 1_r))
         return assignment<bound, imax>::assign(*this,
           static_cast<imax>(Raw) + static_cast<imax>(rhs), make_policy<P>());
       else
@@ -312,6 +337,8 @@ namespace slim
     using raw = typename bnd::bound<G, P>::raw_type;
     if constexpr (std::is_same_v<raw, bnd::rational>)
       s.Raw = bnd::rational::make_sentinel();
+    else if constexpr (std::signed_integral<raw>)
+      s.Raw = std::numeric_limits<raw>::min();
     else
       s.Raw = std::numeric_limits<raw>::max();
     return s;
@@ -323,6 +350,8 @@ namespace slim
     using raw = typename bnd::bound<G, P>::raw_type;
     if constexpr (std::is_same_v<raw, bnd::rational>)
       return v.Raw.Denominator == 0;
+    else if constexpr (std::signed_integral<raw>)
+      return v.Raw == std::numeric_limits<raw>::min();
     else
       return v.Raw == std::numeric_limits<raw>::max();
   }

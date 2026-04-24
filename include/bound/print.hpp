@@ -22,7 +22,7 @@ namespace bnd
     str += bnd::to_string(static_cast<rational>(b));
     str += " {";
     str += bnd::to_string(+b.Raw);
-    str += "[" + std::string(uint_type_name<raw_t<B>>());
+    str += "[" + std::string(type_name<raw_t<B>>());
     str += " Max:" + bnd::to_string(+MaxNotch<B>) + "] ";
     str += bnd::to_string(Grid<B>);
     str += "}";

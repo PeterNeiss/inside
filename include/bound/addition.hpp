@@ -19,8 +19,8 @@ namespace bnd
                                            slim::optional<result>,
                                            result>;
 
-    static constexpr umax lhs_widen = (Notch<result> / Notch<L>).value_or(1_r).Numerator;
-    static constexpr umax rhs_widen = (Notch<result> / Notch<R>).value_or(1_r).Numerator;
+    static constexpr imax lhs_widen = static_cast<imax>((Notch<result> / Notch<L>).value_or(1_r).Numerator);
+    static constexpr imax rhs_widen = static_cast<imax>((Notch<result> / Notch<R>).value_or(1_r).Numerator);
 
     template <policy_flag F = none>
     static constexpr return_type add(L, R, policy<F> = {});
@@ -46,10 +46,27 @@ namespace bnd
       res.Raw = raw_cast<result>(((*sum - Lower<result>) / Notch<result>).value().Numerator);
       return res;
     }
+    else if constexpr (is_direct_storage<L> || is_direct_storage<R> || is_direct_storage<result>)
+    {
+      // Mixed encoding: convert through values
+      imax lhs_val = is_direct_storage<L>
+        ? static_cast<imax>(lhs.Raw)
+        : static_cast<imax>(lhs.Raw) * lhs_widen + static_cast<imax>(Lower<L>);
+      imax rhs_val = is_direct_storage<R>
+        ? static_cast<imax>(rhs.Raw)
+        : static_cast<imax>(rhs.Raw) * rhs_widen + static_cast<imax>(Lower<R>);
+      imax sum = lhs_val + rhs_val;
+      result res;
+      if constexpr (is_direct_storage<result>)
+        res.Raw = raw_cast<result>(sum);
+      else
+        res.Raw = raw_cast<result>(sum - static_cast<imax>(Lower<result>));
+      return res;
+    }
     else
     {
       result res;
-      res.Raw = raw_cast<result>(lhs.Raw * lhs_widen + rhs.Raw * rhs_widen);
+      res.Raw = raw_cast<result>(static_cast<imax>(lhs.Raw) * lhs_widen + static_cast<imax>(rhs.Raw) * rhs_widen);
       return res;
     }
   }

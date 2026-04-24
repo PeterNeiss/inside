@@ -170,6 +170,66 @@ void bench_accumulate()
   }
 }
 
+void bench_int_vs_bound()
+{
+  constexpr std::size_t SZ = 1000;
+  constexpr std::size_t ITERS = N / SZ;
+
+  // int (signed 32-bit) vs bound<{-100'000, 100'000}> (uint32_t storage)
+  // Uses negative numbers throughout
+  using s100k = bound<{-100'000, 100'000}>;
+
+  std::vector<int> iv(SZ);
+  std::vector<s100k> bv(SZ);
+  for (std::size_t i = 0; i < SZ; ++i)
+  {
+    int val = static_cast<int>(i % 11) - 5; // -5 to +5
+    iv[i] = val;
+    bv[i] = val;
+  }
+
+  for (std::size_t i = 0; i < ITERS; ++i)
+  {
+    { CTRACK_NAME("int construct");
+      int v = static_cast<int>(i % 201) - 100; // -100 to +100
+      do_not_optimize(v); }
+
+    { CTRACK_NAME("bound construct");
+      s100k v(static_cast<int>(i % 201) - 100);
+      do_not_optimize(v.Raw); }
+
+    { CTRACK_NAME("int add");
+      int a = -300, b = 500;
+      int c = a + b;
+      do_not_optimize(c); }
+
+    { CTRACK_NAME("bound add");
+      s100k a(-300), b(500);
+      auto c = a + b;
+      do_not_optimize(c.Raw); }
+
+    { CTRACK_NAME("int mul");
+      int a = -7, b = 14;
+      int c = a * b;
+      do_not_optimize(c); }
+
+    { CTRACK_NAME("bound mul");
+      s100k a(-7), b(14);
+      auto c = a * b;
+      do_not_optimize(c.Raw); }
+
+    { CTRACK_NAME("int accum");
+      int sum = 0;
+      for (auto v : iv) sum += v;
+      do_not_optimize(sum); }
+
+    { CTRACK_NAME("bound accum");
+      s100k sum(0);
+      for (auto v : bv) sum += v;
+      do_not_optimize(sum.Raw); }
+  }
+}
+
 //---------------------------------------------------------------------------
 // main
 //---------------------------------------------------------------------------
@@ -181,6 +241,7 @@ int main()
   bench_add();
   bench_mul();
   bench_accumulate();
+  bench_int_vs_bound();
 
   ctrack::result_print();
   return 0;
