@@ -213,6 +213,38 @@ void test_div()
   auto h = an / bn;
   static_assert(std::is_same_v<typename decltype(h)::value_type::raw_type, rational>);
   check("div exact = ", *h, *(7_r/2));
+
+  // offset-encoded: bound<{5,100}> has Lower=5, not direct storage
+  using off = bound<{5, 100}>;
+  static_assert(!is_direct_storage<off>);
+  off oa{50}, ob{10};
+  auto oc = div(oa, ob, make_policy<ignore_round>());
+  static_assert(!std::is_same_v<typename decltype(oc)::value_type::raw_type, rational>);
+  check("idiv offset = ", *oc, 5);
+
+  // offset-encoded truncation
+  off od{51}, oe{10};
+  auto of_ = div(od, oe, make_policy<ignore_round>());
+  check("idiv offset trunc = ", *of_, 5);
+
+  // non-unit notch: bound<{{0,10},2}> has Notch=2
+  using step2 = bound<{{0, 10}, 2}>;
+  step2 sa2{10}, sb2{4};
+  auto sc2 = div(sa2, sb2, make_policy<ignore_round>());
+  static_assert(!std::is_same_v<typename decltype(sc2)::value_type::raw_type, rational>);
+  check("idiv notch2 = ", *sc2, 2);
+
+  // non-unit notch truncation: 10/6 = 1
+  step2 sd2{10}, se2{6};
+  auto sf2 = div(sd2, se2, make_policy<ignore_round>());
+  check("idiv notch2 trunc = ", *sf2, 1);
+
+  // offset + non-unit notch: bound<{{5,15},5}>
+  using step5 = bound<{{5, 15}, 5}>;
+  step5 s5a{15}, s5b{5};
+  auto s5c = div(s5a, s5b, make_policy<ignore_round>());
+  static_assert(!std::is_same_v<typename decltype(s5c)::value_type::raw_type, rational>);
+  check("idiv notch5 = ", *s5c, 3);
 }
 
 void test_mul()

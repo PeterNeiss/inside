@@ -1,0 +1,50 @@
+// Signed integer bounds: negative ranges with direct storage.
+// When lower < 0 and notch == 1, Raw stores the value directly as a signed
+// integer — no offset arithmetic, matching native int performance.
+
+#include <iostream>
+
+#include "bound/bound.hpp"
+#include "bound/print.hpp"
+
+using namespace bnd;
+
+int main()
+{
+  // Temperature sensor: -40 to +85 degrees, fits in int8_t
+  using temp = bound<{-40, 85}>;
+  static_assert(sizeof(temp) == 1);
+
+  temp room = 22;
+  temp outside = -15;
+  std::cout << "room:    " << room << std::endl;
+  std::cout << "outside: " << outside << std::endl;
+
+  // Arithmetic on signed bounds
+  auto diff = room - outside;
+  std::cout << "diff:    " << diff << std::endl;  // 37
+
+  // Negation
+  auto neg = -room;
+  std::cout << "-room:   " << neg << std::endl;   // -22
+
+  // Altitude: -500 to 9000 meters, fits in int16_t
+  using altitude = bound<{-500, 9000}>;
+  static_assert(sizeof(altitude) == 2);
+
+  altitude mountain  = 4500;
+  altitude cave      = -200;
+
+  auto climb = mountain - cave;
+  std::cout << "climb:   " << climb << std::endl;  // 4700
+
+  // Signed bounds with clamp
+  using voltage = bound<{-12, 12}, clamp>;
+  voltage v = 15;   // clamped to 12
+  std::cout << "15V clamped: " << v << std::endl;
+
+  v = -20;          // clamped to -12
+  std::cout << "-20V clamped: " << v << std::endl;
+
+  return 0;
+}

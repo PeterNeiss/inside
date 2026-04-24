@@ -137,6 +137,52 @@ auto quot = a / b;   // slim::optional<bound<{rational}>>
 
 Division always returns `slim::optional` (division by zero yields `nullopt`).
 
+By default, division produces exact rational results. With the `ignore_round` policy, division uses native integer division (truncation towards zero) for zero overhead:
+
+```cpp
+using val = bound<{0, 100}>;
+val a = 7, b = 3;
+
+// Exact: result is rational (7/3)
+auto exact = a / b;
+
+// Per-call integer division: result is integer (2)
+auto trunc = div(a, b, make_policy<ignore_round>());
+
+// Type-level: operator/ uses native division automatically
+using fast = bound<{0, 100}, ignore_round>;
+auto q = fast(7) / fast(3);  // 2
+```
+
+### Rounding
+
+Assigning between bounds with incompatible notches is a compile-time error:
+
+```cpp
+using coarse = bound<{{0, 10}, 2}>;   // notch 2: values 0, 2, 4, 6, 8, 10
+using fine   = bound<{{0, 10}, 1}>;   // notch 1: values 0, 1, 2, ..., 10
+
+coarse c(0);
+fine f(3);
+c = f;  // ERROR: incompatible notches (3 would round to 2)
+```
+
+Notches are "compatible" when the target notch is an integer multiple of the source notch. For example, notch 2 to notch 1 is always exact (every even number is an integer), but notch 1 to notch 2 may round.
+
+To opt in to rounding:
+
+```cpp
+// Per-operation
+c.with_round() = f;
+
+// Per-call with explicit policy
+c.policy<ignore_round>() = f;
+
+// Type-level: all assignments allow rounding
+using coarse_r = bound<{{0, 10}, 2}, ignore_round>;
+coarse_r cr = f;  // OK, rounds to nearest notch
+```
+
 ### When `slim::optional` is returned
 
 Operations return `slim::optional<bound>` in two cases:
@@ -200,6 +246,31 @@ Rational storage is exact (no floating-point rounding) but larger and slower tha
 ### `slim::optional` sentinel
 
 `slim::optional<bound>` uses a sentinel value instead of a bool flag, so `sizeof(slim::optional<bound>) == sizeof(bound)`. The sentinel is `numeric_limits<raw>::max()` for unsigned types and `numeric_limits<raw>::min()` for signed types. This costs one value from the representable range (e.g., `int8_t` gives 255 usable values: -127..127).
+
+## Examples
+
+The `examples/` directory contains self-contained programs demonstrating key features:
+
+| Example | Feature |
+|---------|---------|
+| `percentage.cpp` | Clamped percentage with `+=` and `with_clamp()` |
+| `color.cpp` | RGB channels with clamp saturation |
+| `angles.cpp` | Wrapping heading arithmetic |
+| `clock.cpp` | Cascading wrap with carry (seconds -> minutes -> hours) |
+| `temperature.cpp` | Fractional notch grid (0.5 degree steps) |
+| `division.cpp` | Exact rational division and integer division |
+| `integer_division.cpp` | `ignore_round` policy for native integer division |
+| `fixed_point.cpp` | Fixed-point arithmetic with fractional notch grids |
+| `signed.cpp` | Signed integer bounds with negative ranges |
+| `errors.cpp` | Error handling: throw, error_code, optional |
+
+Build and run any example:
+
+```bash
+cmake -B build && cmake --build build
+./build/example_clock
+./build/example_signed
+```
 
 ## Build & Test
 

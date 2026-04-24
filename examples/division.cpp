@@ -1,5 +1,6 @@
-// Division produces rational results.
+// Division produces rational results by default.
 // The result is always slim::optional (division by zero yields nullopt).
+// With ignore_round, division uses native integer division instead.
 
 #include <iostream>
 
@@ -10,26 +11,32 @@ using namespace bnd;
 
 int main()
 {
-  using val = bound<{1, 100}>;
+  using val = bound<{0, 100}>;
   val a = 7;
   val b = 3;
 
+  // Exact rational result (default)
   auto result = a / b;
   if (result)
-    std::cout << "7 / 3 = " << *result << std::endl;
+    std::cout << "7 / 3 (exact)    = " << *result << std::endl;  // 7/3
+
+  // Integer division with per-call policy
+  auto truncated = div(a, b, make_policy<ignore_round>());
+  if (truncated)
+    std::cout << "7 / 3 (integer)  = " << *truncated << std::endl;  // 2
 
   // The result type uses rational storage for exact fractions
   val c = 22;
   val d = 7;
   auto pi_ish = c / d;
   if (pi_ish)
-    std::cout << "22 / 7 = " << *pi_ish << std::endl;
+    std::cout << "22 / 7 (exact)   = " << *pi_ish << std::endl;  // 22/7
 
   // Division by zero returns nullopt
-  using maybe_zero = bound<{0, 10}>;
-  maybe_zero zero = 0;
+  val zero = 0;
   auto div_zero = val(10) / zero;
-  std::cout << "10 / 0 = " << (div_zero.has_value() ? "value" : "nullopt") << std::endl;
+  std::cout << "10 / 0           = "
+            << (div_zero.has_value() ? "value" : "nullopt") << std::endl;
 
   return 0;
 }
