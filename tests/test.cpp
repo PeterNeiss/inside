@@ -418,6 +418,112 @@ void test_with_clamp_wrap()
   check("with_wrap: ", x, 2);
 }
 
+void test_signed()
+{
+  // --- type selection ---
+  using s8  = bound<{-127, 127}>;
+  using s16 = bound<{-32000, 32000}>;
+  using s32 = bound<{-100000, 100000}>;
+  static_assert(std::is_same_v<typename s8::raw_type,  std::int8_t>);
+  static_assert(std::is_same_v<typename s16::raw_type, std::int16_t>);
+  static_assert(std::is_same_v<typename s32::raw_type, std::int32_t>);
+
+  // fractional notch with negative lower stays unsigned
+  using frac_neg = bound<{{-10, 10}, 0.25}>;
+  static_assert(std::is_unsigned_v<typename frac_neg::raw_type>);
+
+  // --- construction ---
+  s32 a(42);
+  check("signed 42: ", a, 42);
+  s32 b(-300);
+  check("signed -300: ", b, -300);
+  s8 c(-127); // min usable (-128 is sentinel)
+  check("signed -127: ", c, -127);
+
+  // --- negation ---
+  auto neg_a = -a;
+  check("signed -42: ", neg_a, -42);
+  auto neg_b = -b;
+  check("signed 300: ", neg_b, 300);
+
+  // --- addition ---
+  auto sum = a + b;
+  check("signed 42+(-300): ", sum, -258);
+  auto diff = a - b;
+  check("signed 42-(-300): ", diff, 342);
+
+  // --- multiplication ---
+  s32 x(-7), y(14);
+  auto prod = x * y;
+  check("signed -7*14: ", prod, -98);
+  auto prod2 = y * x;
+  check("signed 14*-7: ", prod2, -98);
+
+  // --- division ---
+  auto quot = x / y;
+  check("signed -7/14: ", *quot, -(*(1_r/2)));
+
+  // --- operator+=(bound) ---
+  s32 acc(100);
+  s32 delta(-30);
+  acc += delta;
+  check("signed +=bound: ", acc, 70);
+
+  // --- operator+=(int) ---
+  s32 acc2(50);
+  acc2 += -75;
+  check("signed +=int: ", acc2, -25);
+
+  // --- mixed: signed + unsigned ---
+  using u100 = bound<{0, 100}>;
+  u100 u(80);
+  s32 s(-500);
+  auto mixed = u + s;
+  check("signed+unsigned: ", mixed, -420);
+
+  // --- mixed: unsigned - unsigned → signed result ---
+  using u8 = bound<{0, 255}>;
+  u8 p(10), q(200);
+  auto d = p - q;
+  check("unsigned sub: ", d, -190);
+
+  // --- clamp ---
+  using sc = bound<{-100, 100}, clamp>;
+  sc clamped_over = 200;
+  check("signed clamp over: ", clamped_over, 100);
+  sc clamped_under = -200;
+  check("signed clamp under: ", clamped_under, -100);
+
+  // --- wrap ---
+  using sw = bound<{-100, 100}, wrap>;
+  sw wrapped = 150;
+  check("signed wrap over: ", wrapped, -51);
+  sw wrapped2 = -150;
+  check("signed wrap under: ", wrapped2, 51);
+
+  // --- optional/sentinel ---
+  slim::optional<s32> opt_a{s32(42)};
+  slim::optional<s32> opt_none{slim::nullopt};
+  check("signed opt has: ", *opt_a, 42);
+  std::cout << "signed opt null: ";
+  if (!opt_none.has_value())
+    std::cout << "(null)  [PASS]" << std::endl;
+  else
+  {
+    std::cout << "[FAIL] expected null" << std::endl;
+    ++failures;
+  }
+
+  // sentinel doesn't collide with valid negative values
+  s8 min_val(-127);
+  slim::optional<s8> opt_min{min_val};
+  check("signed opt min: ", *opt_min, -127);
+
+  // optional arithmetic
+  auto opt_sum = opt_a + s32(-100);
+  check("signed opt add: ", opt_sum, -58);
+}
+
 //---------------------------------------------------------------------------
 // compile-time type alias tests
 //---------------------------------------------------------------------------
@@ -457,6 +563,7 @@ int main()
     test_action();
     test_clamp_boundable();
     test_with_clamp_wrap();
+    test_signed();
 
     bound b;
     (void)b;

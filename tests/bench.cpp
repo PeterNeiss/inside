@@ -230,6 +230,55 @@ void bench_int_vs_bound()
   }
 }
 
+void bench_fixed_point()
+{
+  constexpr std::size_t SZ = 1000;
+  constexpr std::size_t ITERS = N / SZ;
+
+  // Fixed-point 8.8: native int16_t with manual shift vs bound<{{0, 255}, 1.0/256}>
+  using fp = bound<{{0, 255}, 1.0/256}>;
+
+  std::vector<std::int32_t> nv(SZ);
+  std::vector<fp> bv(SZ);
+  for (std::size_t i = 0; i < SZ; ++i)
+  {
+    int val = static_cast<int>(i % 5);
+    nv[i] = val << 8; // fixed-point: value * 256
+    bv[i] = val;
+  }
+
+  for (std::size_t i = 0; i < ITERS; ++i)
+  {
+    { CTRACK_NAME("fixed native construct");
+      std::int32_t v = static_cast<std::int32_t>((i % 201)) << 8;
+      do_not_optimize(v); }
+
+    { CTRACK_NAME("fixed bound construct");
+      fp v(static_cast<int>(i % 201));
+      do_not_optimize(v.Raw); }
+
+    { CTRACK_NAME("fixed native add");
+      std::int32_t a = 30 << 8, b = 50 << 8;
+      std::int32_t c = a + b;
+      do_not_optimize(c); }
+
+    { CTRACK_NAME("fixed bound add");
+      fp a(30), b(50);
+      auto c = a + b;
+      do_not_optimize(c.Raw); }
+
+    { CTRACK_NAME("fixed native accum");
+      std::int32_t sum = 0;
+      for (auto v : nv) sum += v;
+      do_not_optimize(sum); }
+
+    { CTRACK_NAME("fixed bound accum");
+      fp sum(0);
+      for (auto v : bv) sum += v;
+      do_not_optimize(sum.Raw); }
+  }
+}
+
 //---------------------------------------------------------------------------
 // main
 //---------------------------------------------------------------------------
@@ -242,6 +291,7 @@ int main()
   bench_mul();
   bench_accumulate();
   bench_int_vs_bound();
+  bench_fixed_point();
 
   ctrack::result_print();
   return 0;

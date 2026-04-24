@@ -105,7 +105,7 @@ namespace bnd
                 action(static_cast<imax>(rhs) - clamped);
 
               if constexpr (is_direct_storage<L>)
-                lhs.Raw = raw_cast<L>(clamped - lower);
+                lhs.Raw = raw_cast<L>(clamped);
               else
               {
                 rational raw = ((clamped - Interval<L>.Lower)/Notch<L>).value();
