@@ -24,11 +24,8 @@ namespace bnd
   template <boundable B>
   using raw_t = typename B::raw_type;
 
-  template <typename R>
-  inline constexpr bool is_rational = std::is_same_v<R, rational>;
-
   template <boundable B>
-  inline constexpr bool is_raw_rational = is_rational<raw_t<B>>;
+  inline constexpr bool is_raw_rational = std::is_same_v<raw_t<B>, rational>;
 
   template <boundable B>
   inline constexpr grid Grid = []<grid G, policy_flag P>(bound<G, P>){ return G; } (B{});
@@ -82,6 +79,26 @@ namespace bnd
   inline constexpr bool is_direct_storage =
       !is_raw_rational<B> && Notch<B> == 1_r
       && (Lower<B> == 0_r || std::signed_integral<raw_t<B>>);
+
+  template <boundable B>
+  constexpr imax to_value(B b)
+  {
+    if constexpr (is_raw_rational<B>)
+      return static_cast<imax>(b.Raw);
+    else if constexpr (is_direct_storage<B>)
+      return static_cast<imax>(b.Raw);
+    else
+      return static_cast<imax>(b.Raw) * static_cast<imax>(Notch<B>) + static_cast<imax>(Lower<B>);
+  }
+
+  template <boundable B>
+  constexpr void from_value(B& b, imax val)
+  {
+    if constexpr (is_direct_storage<B>)
+      b.Raw = raw_cast<B>(val);
+    else
+      b.Raw = raw_cast<B>(val - static_cast<imax>(Lower<B>));
+  }
 
   template <boundable B>
   inline constexpr umax MaxNotch = (Notch<B> == 0) ?

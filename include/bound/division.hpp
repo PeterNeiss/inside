@@ -41,23 +41,10 @@ namespace bnd
   {
     if constexpr (native_div)
     {
-      imax lhs_val, rhs_val;
-      if constexpr (is_direct_storage<L>)
-        lhs_val = static_cast<imax>(lhs.Raw);
-      else
-        lhs_val = static_cast<imax>(lhs.Raw) * static_cast<imax>(Notch<L>) + static_cast<imax>(Lower<L>);
-
-      if constexpr (is_direct_storage<R>)
-        rhs_val = static_cast<imax>(rhs.Raw);
-      else
-        rhs_val = static_cast<imax>(rhs.Raw) * static_cast<imax>(Notch<R>) + static_cast<imax>(Lower<R>);
-
+      imax rhs_val = to_value(rhs);
       if (rhs_val == 0) return slim::nullopt;
       result res;
-      if constexpr (is_direct_storage<result>)
-        res.Raw = raw_cast<result>(lhs_val / rhs_val);
-      else
-        res.Raw = raw_cast<result>(lhs_val / rhs_val - static_cast<imax>(Lower<result>));
+      from_value(res, to_value(lhs) / rhs_val);
       return res;
     }
     else

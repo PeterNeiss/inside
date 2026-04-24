@@ -39,9 +39,9 @@ namespace bnd
         if constexpr (std::is_same_v<L,R>)
         { return 0; }
         if constexpr (is_raw_rational<L>)
-        { return get_lower(R{}); }
+        { return Lower<R>; }
         if constexpr (is_raw_rational<R>)
-        { return - get_lower(L{})/get_notch(L{}); }
+        { return -(Lower<L>/Notch<L>).value(); }
 
         return ((Lower<R> - Lower<L>)/Notch<L>).value();
       }
@@ -51,9 +51,9 @@ namespace bnd
         if constexpr (std::is_same_v<L,R>)
         { return 0; }
         if constexpr (is_raw_rational<L>)
-        { return get_notch(R{}); }
+        { return Notch<R>; }
         if constexpr (is_raw_rational<R>)
-        { return 1_r/get_notch(L{}); }
+        { return (1_r/Notch<L>).value(); }
 
         return (Notch<R>/Notch<L>).value();
       }

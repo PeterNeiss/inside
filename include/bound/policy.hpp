@@ -68,12 +68,6 @@ namespace bnd
       return test(checked) && not test(ignore_domain);
     }
 
-    static constexpr bool round_check()
-    {
-      if consteval { return true; }
-      return test(checked) && not test(ignore_round);
-    }
-
     void domain_error(std::string what)
     {
       if constexpr (std::is_same_v<E, error_ref>)
@@ -82,17 +76,6 @@ namespace bnd
        H.domain_error(what.c_str());
     }
 
-    void round_error(std::string what)
-    {
-      if constexpr (std::is_same_v<E, error_ref>)
-      { set_error({ENOSPC, std::generic_category()}); }
-      else
-      {
-#ifdef BOUND_HAS_STACKTRACE
-        what += ": \n" + std::to_string(std::stacktrace::current());
-#endif
-        throw std::system_error(ENOSPC, std::generic_category(), what); }
-    }
   };
 
   //---------------------------------------------------------------------------
@@ -127,14 +110,8 @@ namespace bnd
     template <arithmetic C>
     constexpr B& operator+=(C rhs)
     {
-      using G = std::remove_cvref_t<B>;
-      if constexpr (is_direct_storage<G>)
-        return assignment<B, imax>::assign(Ref,
-          static_cast<imax>(Ref.Raw) + static_cast<imax>(rhs), Policy, Action);
-      else
-        return assignment<B, imax>::assign(Ref,
-          static_cast<imax>(static_cast<rational>(Ref)) + static_cast<imax>(rhs),
-          Policy, Action);
+      return assignment<B, imax>::assign(Ref,
+        to_value(Ref) + static_cast<imax>(rhs), Policy, Action);
     }
   };
 

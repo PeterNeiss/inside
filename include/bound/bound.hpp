@@ -83,21 +83,8 @@ namespace bnd
       negative neg;
       if constexpr (is_raw_rational<bound>)
         neg.Raw = -(Raw);
-      else if constexpr (is_direct_storage<bound> && is_direct_storage<negative>)
-        neg.Raw = raw_cast<negative>(-static_cast<imax>(Raw));
-      else if constexpr (is_direct_storage<negative>)
-      {
-        // Source is offset-encoded, result is direct storage
-        imax value = static_cast<imax>(static_cast<rational>(*this));
-        neg.Raw = raw_cast<negative>(-value);
-      }
-      else if constexpr (is_direct_storage<bound>)
-      {
-        // Source is direct storage, result is offset-encoded
-        imax neg_val = -static_cast<imax>(Raw);
-        rational raw = ((neg_val - Grid<negative>.Interval.Lower)/Grid<negative>.Notch).value();
-        neg.Raw = raw_cast<negative>(raw.Numerator / static_cast<umax>(raw.Denominator));
-      }
+      else if constexpr (is_direct_storage<bound> || is_direct_storage<negative>)
+        from_value(neg, -to_value(*this));
       else
         neg.Raw = raw_cast<negative>(MaxNotch<bound> - Raw);
       return neg;
@@ -181,13 +168,8 @@ namespace bnd
     template <arithmetic A>
     constexpr bound& operator+=(A rhs)
     {
-      if constexpr (is_direct_storage<bound>)
-        return assignment<bound, imax>::assign(*this,
-          static_cast<imax>(Raw) + static_cast<imax>(rhs), make_policy<P>());
-      else
-        return assignment<bound, imax>::assign(*this,
-          static_cast<imax>(static_cast<rational>(*this)) + static_cast<imax>(rhs),
-          make_policy<P>());
+      return assignment<bound, imax>::assign(*this,
+        to_value(*this) + static_cast<imax>(rhs), make_policy<P>());
     }
 
     template <numeric A>
