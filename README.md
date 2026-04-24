@@ -44,7 +44,13 @@ angle a = 370;     // a == 10
 angle b = -10;     // b == 350
 ```
 
-`clamp` and `wrap` are mutually exclusive and enforced by `static_assert`.
+```cpp
+// Checked: opt-in runtime domain/overflow checking
+using safe = bound<{0, 100}, checked>;
+safe x = 150;      // throws std::system_error at runtime
+```
+
+By default, `bound` skips runtime domain checks for maximum performance (compile-time checks always apply). The `checked` flag enables runtime validation. `clamp` and `wrap` are mutually exclusive and enforced by `static_assert`.
 
 ### Per-operation override
 
@@ -137,7 +143,7 @@ Operations return `slim::optional<bound>` in two cases:
 
 1. **Division** — the divisor could be zero, so the result is always optional.
 
-2. **Rational raw storage** — when the result grid cannot be represented with an unsigned integer raw type (see below), the result uses `rational` as its raw storage. Addition and multiplication on such types return `slim::optional` because rational arithmetic can overflow (denominator overflow).
+2. **Rational raw storage** — when the result grid cannot be represented with an integer raw type (see Storage below), the result uses `rational` as its raw storage. Addition and multiplication on such types return `slim::optional` because rational arithmetic can overflow (denominator overflow).
 
 All `optional`-returning operators propagate nullopt: if either operand is nullopt, the result is nullopt.
 
@@ -150,23 +156,35 @@ auto r1 = a + u8(10);     // optional<bound<{2, 510}>>, has value 110
 auto r2 = none + u8(10);  // optional<bound<{2, 510}>>, nullopt
 ```
 
-## Storage and Rational Fallback
+## Storage
 
-Each `bound` stores a single `Raw` member. The storage type depends on the grid:
+Each `bound` stores a single `Raw` member. The storage type is selected automatically:
 
-**Unsigned integer storage** (the common case): when the grid has a nonzero notch and the number of notch steps fits in an unsigned integer, `Raw` is the smallest `uint8_t`/`uint16_t`/`uint32_t`/`uint64_t` that can hold `(upper - lower) / notch`. The actual value is recovered as `Raw * notch + lower`. This gives compact, cache-friendly storage and fast integer arithmetic.
+**Unsigned integer storage**: when `lower >= 0` and the notch is nonzero, `Raw` is the smallest `uint8_t`..`uint64_t` that can hold `(upper - lower) / notch`. The value is recovered as `Raw * notch + lower` (offset encoding).
 
 ```cpp
 using pct = bound<{0, 100}>;           // Raw: uint8_t  (101 values)
 using big = bound<{0, 100000}>;        // Raw: uint32_t (100001 values)
-using step = bound<{{-5, 5}, 0.5}>;    // Raw: uint8_t  (20 steps)
+using step = bound<{{0, 5}, 0.5}>;     // Raw: uint8_t  (10 steps)
 ```
 
-**Rational storage** (fallback): when the notch is zero, the grid allows all rationals within the interval. The raw type becomes `rational`, an exact fraction type. This happens for:
+When `lower == 0` and `notch == 1`, `Raw` equals the value directly — no offset arithmetic.
 
-- Grids explicitly declared with notch 0: `bound<{{-10, 10}, 0}>` — any rational in [-10, 10].
-- Division results: `bound<{1,255}> / bound<{1,255}>` produces a grid covering all rationals in the result interval, since the quotient of two integers is generally not on any fixed notch.
-- Single-value grids: `bound<{42}>` — notch is 0, raw is rational (but only one value is valid).
+**Signed integer storage**: when `lower < 0` and `notch == 1`, `Raw` is the smallest `int8_t`..`int64_t` that fits the interval. `Raw` stores the value directly (`Raw == value`) with no offset arithmetic, matching native `int` performance exactly.
+
+```cpp
+using temp = bound<{-40, 85}>;         // Raw: int8_t   (direct storage)
+using pos  = bound<{-100000, 100000}>; // Raw: int32_t  (direct storage)
+using diff = bound<{-255, 255}>;       // Raw: int16_t  (direct storage)
+```
+
+Grids with `lower < 0` and a fractional notch still use unsigned offset encoding:
+
+```cpp
+using fstep = bound<{{-5, 5}, 0.5}>;   // Raw: uint8_t  (20 steps, offset encoding)
+```
+
+**Rational storage**: when the notch is zero, `Raw` becomes `rational`, an exact fraction type. This happens for grids with notch 0, division results, and single-value grids.
 
 ```cpp
 using frac = bound<{{-10, 10}, 0}>;    // Raw: rational
@@ -177,7 +195,11 @@ auto q = u8(7) / u8(3);               // slim::optional<bound<{rational}>>
                                        // value is exactly 7/3
 ```
 
-Rational storage is exact (no floating-point rounding) but larger (`sizeof(rational)` > `sizeof(uint64_t)`) and slower than integer storage. The library automatically selects the most efficient representation for each grid.
+Rational storage is exact (no floating-point rounding) but larger and slower than integer storage. The library automatically selects the most efficient representation for each grid.
+
+### `slim::optional` sentinel
+
+`slim::optional<bound>` uses a sentinel value instead of a bool flag, so `sizeof(slim::optional<bound>) == sizeof(bound)`. The sentinel is `numeric_limits<raw>::max()` for unsigned types and `numeric_limits<raw>::min()` for signed types. This costs one value from the representable range (e.g., `int8_t` gives 255 usable values: -127..127).
 
 ## Build & Test
 

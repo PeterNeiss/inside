@@ -104,7 +104,7 @@ namespace bnd
               if constexpr (!std::is_same_v<plain<A>, no_action>)
                 action(static_cast<imax>(rhs) - clamped);
 
-              if constexpr (is_direct_storage<L> || (Lower<L> == 0_r && Notch<L> == 1_r))
+              if constexpr (is_direct_storage<L>)
                 lhs.Raw = raw_cast<L>(clamped - lower);
               else
               {
@@ -122,7 +122,7 @@ namespace bnd
               if constexpr (!std::is_same_v<plain<A>, no_action>)
                 action(excess);
 
-              if constexpr (is_direct_storage<L> || (Lower<L> == 0_r && Notch<L> == 1_r))
+              if constexpr (is_direct_storage<L>)
                 lhs.Raw = raw_cast<L>(wrapped + lower);
               else
               {
@@ -170,8 +170,6 @@ namespace bnd
     else if constexpr (is_raw_rational<L>)
       lhs.Raw = rhs;
     else if constexpr (is_direct_storage<L>)
-      lhs.Raw = raw_cast<L>(rhs);
-    else if constexpr (Lower<L> == 0_r && Notch<L> == 1_r)
       lhs.Raw = raw_cast<L>(rhs);
     else
     {

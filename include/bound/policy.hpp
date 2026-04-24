@@ -128,7 +128,7 @@ namespace bnd
     constexpr B& operator+=(C rhs)
     {
       using G = std::remove_cvref_t<B>;
-      if constexpr (Lower<G> == 0_r && Notch<G> == 1_r)
+      if constexpr (is_direct_storage<G>)
         return assignment<B, imax>::assign(Ref,
           static_cast<imax>(Ref.Raw) + static_cast<imax>(rhs), Policy, Action);
       else

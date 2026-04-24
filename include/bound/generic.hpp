@@ -77,9 +77,11 @@ namespace bnd
       return value.to<raw_t<B>>().value_or(0);
   }
 
+  // Raw == value: no offset arithmetic needed
   template <boundable B>
   inline constexpr bool is_direct_storage =
-      std::signed_integral<raw_t<B>> && Notch<B> == 1_r;
+      !is_raw_rational<B> && Notch<B> == 1_r
+      && (Lower<B> == 0_r || std::signed_integral<raw_t<B>>);
 
   template <boundable B>
   inline constexpr umax MaxNotch = (Notch<B> == 0) ?

@@ -57,8 +57,6 @@ namespace bnd
         return Raw;
       else if constexpr (is_direct_storage<bound>)
         return static_cast<std::common_type_t<raw_type, int>>(Raw);
-      else if constexpr (G.Interval.Lower == 0_r && G.Notch == 1_r)
-        return static_cast<std::common_type_t<raw_type, unsigned int>>(Raw);
       else
         return static_cast<rational>(*this);
     }
@@ -75,8 +73,6 @@ namespace bnd
           return Raw;
       }
       else if constexpr (is_direct_storage<bound>)
-        return rational{Raw};
-      else if constexpr (G.Interval.Lower == 0_r && G.Notch == 1_r)
         return rational{Raw};
       else
         return (*(Raw * G.Notch) + G.Interval.Lower).value();
@@ -138,7 +134,7 @@ namespace bnd
     {
       if constexpr (not is_raw_rational<bound> && not is_raw_rational<R>
                     && Notch<bound> == Notch<R>
-                    && (Lower<R> == 0_r || is_direct_storage<R>))
+                    && is_direct_storage<R>)
       {
         if constexpr (P & (clamp | wrap | checked))
         {
@@ -185,7 +181,7 @@ namespace bnd
     template <arithmetic A>
     constexpr bound& operator+=(A rhs)
     {
-      if constexpr (is_direct_storage<bound> || (G.Interval.Lower == 0_r && G.Notch == 1_r))
+      if constexpr (is_direct_storage<bound>)
         return assignment<bound, imax>::assign(*this,
           static_cast<imax>(Raw) + static_cast<imax>(rhs), make_policy<P>());
       else
