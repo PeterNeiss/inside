@@ -64,6 +64,18 @@ void check_no_error(const char* label, std::error_code ec)
   }
 }
 
+void check_has_error(const char* label, std::error_code ec)
+{
+  std::cout << label;
+  if (ec)
+    std::cout << ec.message() << "  [PASS]" << std::endl;
+  else
+  {
+    std::cout << "no error  [FAIL] expected error" << std::endl;
+    ++failures;
+  }
+}
+
 //---------------------------------------------------------------------------
 // compile-time only tests
 //---------------------------------------------------------------------------
@@ -524,6 +536,41 @@ void test_signed()
   check("signed opt add: ", opt_sum, -58);
 }
 
+void test_round_check()
+{
+  using n1 = bound<{{0, 10}, 1}>;
+  using n2 = bound<{{0, 10}, 2}>;
+
+  // Compatible notches: notch 2 -> notch 1 (every notch-2 value fits notch-1 grid)
+  n1 a;
+  a = n2(6);
+  check("round compatible: ", a, 6);
+
+  // Incompatible notches: notch 1 -> notch 2 requires with_round()
+  n2 b;
+  b.with_round() = n1(3);
+  check("round with_round: ", b, 2);
+
+  // policy<ignore_round>() also works
+  b.policy<ignore_round>() = n1(5);
+  check("round policy: ", b, 4);
+
+  // Exact value through with_round() preserves it
+  b.with_round() = n1(4);
+  check("round exact: ", b, 4);
+
+  // Type-level ignore_round: no opt-in needed per operation
+  using n2_round = bound<{{0, 10}, 2}, ignore_round>;
+  n2_round c;
+  c = n1(3);
+  check("round type-level: ", c, 2);
+
+  // Different intervals, compatible notches: no opt-in needed
+  using wide = bound<{{0, 20}, 2}>;
+  b = wide(6);
+  check("round wide compatible: ", b, 6);
+}
+
 //---------------------------------------------------------------------------
 // compile-time type alias tests
 //---------------------------------------------------------------------------
@@ -564,6 +611,7 @@ int main()
     test_clamp_boundable();
     test_with_clamp_wrap();
     test_signed();
+    test_round_check();
 
     bound b;
     (void)b;

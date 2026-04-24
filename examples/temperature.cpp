@@ -11,7 +11,7 @@ int main()
 {
   using celsius = bound<{{-40, 60}, 0.5}>;
 
-  celsius room = 21.6;
+  celsius room = 21.4; //TODO: rounds to 21.0 not neareast, consider performance
   celsius freezing = 0;
   celsius body = 37;
 

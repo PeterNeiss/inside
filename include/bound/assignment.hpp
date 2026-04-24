@@ -244,6 +244,9 @@ namespace bnd
   constexpr L& assignment<L,R>::assign(L& lhs, R const& rhs, P&& policy, A&& action)
   {
     static_assert(not Interval<L>.excludes(Interval<R>));
+    static_assert(abs_den(Factor.Denominator) == 1
+      || (BoundPolicy<L> & ignore_round) || plain<P>::test(ignore_round),
+      "incompatible notches: use with_round() or policy<ignore_round>() to allow rounding");
 
     if consteval
     {
@@ -308,17 +311,11 @@ namespace bnd
               return lhs;
             }
           }
-
-          if (policy.round_check() && abs_den(Factor.Denominator) != 1)
-          {
-            // failed
-            policy.round_error(bnd::to_string(static_cast<rational>(rhs)) + " would round");
-            return lhs;
-          }
         }
         // else success
       }
       // else always_success
+
     }
 
     if constexpr (not is_raw_rational<L> && not is_raw_rational<R>
