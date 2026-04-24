@@ -132,6 +132,29 @@ void bench_mul()
   }
 }
 
+void bench_div()
+{
+  constexpr int a_val = 100, b_val = 7;
+
+  for (std::size_t i = 0; i < N; ++i)
+  {
+    { CTRACK_NAME("div native");
+      std::uint8_t a = a_val, b = b_val;
+      auto c = static_cast<std::uint8_t>(a / b);
+      do_not_optimize(c); }
+
+    { CTRACK_NAME("div bound (rational)");
+      u200 a(a_val), b(b_val);
+      auto c = a / b;
+      do_not_optimize(c->Raw); }
+
+    { CTRACK_NAME("div bound (integer)");
+      u200 a(a_val), b(b_val);
+      auto c = div(a, b, make_policy<ignore_round>());
+      do_not_optimize(c->Raw); }
+  }
+}
+
 void bench_accumulate()
 {
   constexpr std::size_t SZ = 1000;
@@ -289,6 +312,7 @@ int main()
   bench_construct();
   bench_add();
   bench_mul();
+  bench_div();
   bench_accumulate();
   bench_int_vs_bound();
   bench_fixed_point();

@@ -115,6 +115,7 @@ namespace bnd
   constexpr slim::optional<grid> operator+(const grid&, const grid&);
   constexpr slim::optional<grid> operator-(const grid&, const grid&);
   constexpr slim::optional<grid> operator*(const grid&, const grid&);
+  constexpr slim::optional<grid> operator/(const grid&, const grid&);
 
   //---------------------------------------------------------------------------
   // operator+
@@ -145,6 +146,47 @@ namespace bnd
     if (!interval || !notch)
       return slim::nullopt;
     return grid{*interval, *notch};
+  }
+
+  //---------------------------------------------------------------------------
+  // operator/
+  //---------------------------------------------------------------------------
+  inline constexpr slim::optional<grid> operator/(const grid& lhs, const grid& rhs)
+  {
+    auto d = lhs.Interval / rhs.Interval;
+    if (d.has_value())
+      return grid{*d, 0_r};
+
+    // Divisor interval includes zero — exclude zero for result interval.
+    if (rhs.Interval.Lower == 0_r && rhs.Interval.Upper == 0_r)
+      return slim::nullopt;
+
+    rational step = (rhs.Notch != 0_r) ? abs(rhs.Notch) : 1_r;
+    bool has_pos = 0_r < rhs.Interval.Upper;
+    bool has_neg = 0_r > rhs.Interval.Lower;
+
+    if (has_pos && has_neg)
+    {
+      auto pos = lhs.Interval / interval{step, rhs.Interval.Upper};
+      auto neg = lhs.Interval / interval{rhs.Interval.Lower, -step};
+      if (!pos || !neg) return slim::nullopt;
+      return grid{interval{
+        std::min(neg->Lower, pos->Lower),
+        std::max(neg->Upper, pos->Upper)
+      }, 0_r};
+    }
+    else if (has_pos)
+    {
+      auto r = lhs.Interval / interval{step, rhs.Interval.Upper};
+      if (!r) return slim::nullopt;
+      return grid{*r, 0_r};
+    }
+    else
+    {
+      auto r = lhs.Interval / interval{rhs.Interval.Lower, -step};
+      if (!r) return slim::nullopt;
+      return grid{*r, 0_r};
+    }
   }
 } // namespace bnd
 

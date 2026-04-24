@@ -291,30 +291,45 @@ namespace bnd
   //---------------------------------------------------------------------------
   // div
   //---------------------------------------------------------------------------
-  template <boundable L, boundable R, typename P = policy<>>
-  constexpr auto div(L lhs, R rhs, P&& policy = {})
-  { return division<L,R>::div(lhs, rhs, std::forward<P>(policy)); }
+  template <boundable L, boundable R, policy_flag F = none>
+  constexpr auto div(L lhs, R rhs, policy<F> pol = {})
+  { return division<L, R, F>::div(lhs, rhs, pol); }
 
   //---------------------------------------------------------------------------
   // operator/
   //---------------------------------------------------------------------------
   constexpr auto operator/(boundable auto lhs, boundable auto rhs)
-  { return bnd::div(lhs, rhs); }
+  {
+    constexpr policy_flag F = BoundPolicy<decltype(lhs)> | BoundPolicy<decltype(rhs)>;
+    return bnd::div(lhs, rhs, make_policy<F>());
+  }
 
   template <boundable L, boundable R>
   constexpr auto operator/(slim::optional<L> lhs, R rhs)
-    -> slim::optional<typename division<L,R>::result>
-  { if (!lhs) return slim::nullopt; return bnd::div(*lhs, rhs); }
+  {
+    constexpr policy_flag F = BoundPolicy<L> | BoundPolicy<R>;
+    using D = division<L, R, F>;
+    if (!lhs) return slim::optional<typename D::result>{slim::nullopt};
+    return slim::optional<typename D::result>{bnd::div(*lhs, rhs, make_policy<F>())};
+  }
 
   template <boundable L, boundable R>
   constexpr auto operator/(L lhs, slim::optional<R> rhs)
-    -> slim::optional<typename division<L,R>::result>
-  { if (!rhs) return slim::nullopt; return bnd::div(lhs, *rhs); }
+  {
+    constexpr policy_flag F = BoundPolicy<L> | BoundPolicy<R>;
+    using D = division<L, R, F>;
+    if (!rhs) return slim::optional<typename D::result>{slim::nullopt};
+    return slim::optional<typename D::result>{bnd::div(lhs, *rhs, make_policy<F>())};
+  }
 
   template <boundable L, boundable R>
   constexpr auto operator/(slim::optional<L> lhs, slim::optional<R> rhs)
-    -> slim::optional<typename division<L,R>::result>
-  { if (!lhs || !rhs) return slim::nullopt; return bnd::div(*lhs, *rhs); }
+  {
+    constexpr policy_flag F = BoundPolicy<L> | BoundPolicy<R>;
+    using D = division<L, R, F>;
+    if (!lhs || !rhs) return slim::optional<typename D::result>{slim::nullopt};
+    return slim::optional<typename D::result>{bnd::div(*lhs, *rhs, make_policy<F>())};
+  }
 
   //---------------------------------------------------------------------------
   // just

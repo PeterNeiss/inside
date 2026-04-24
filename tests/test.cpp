@@ -178,6 +178,41 @@ void test_div()
   check("a = ", a, 102);
   check("b = ", b, 16);
   check("a/b = ", c, *(51_r/8));
+
+  // integer division via per-call policy (direct-storage bounds)
+  using u100 = bound<{0, 100}>;
+  u100 da{51}, db{8};
+  auto d = div(da, db, make_policy<ignore_round>());
+  static_assert(!std::is_same_v<typename decltype(d)::value_type::raw_type, rational>);
+  check("idiv call = ", *d, 6);
+
+  // integer division via type-level ignore_round
+  using ui = bound<{0, 100}, ignore_round>;
+  ui ai{51}, bi{8};
+  auto e = ai / bi;
+  static_assert(!std::is_same_v<typename decltype(e)::value_type::raw_type, rational>);
+  check("idiv type = ", *e, 6);
+
+  // exact integer division
+  ui ai2{100}, bi2{10};
+  check("idiv exact = ", *(ai2 / bi2), 10);
+
+  // division by zero returns nullopt
+  ui zero{0};
+  check_null("idiv zero: ", ai / zero);
+
+  // signed integer division
+  using si = bound<{-100, 100}, ignore_round>;
+  si sa{-7}, sb{2};
+  auto g = sa / sb;
+  static_assert(!std::is_same_v<typename decltype(g)::value_type::raw_type, rational>);
+  check("idiv signed = ", *g, -3);
+
+  // without ignore_round: still exact rational
+  u100 an{7}, bn{2};
+  auto h = an / bn;
+  static_assert(std::is_same_v<typename decltype(h)::value_type::raw_type, rational>);
+  check("div exact = ", *h, *(7_r/2));
 }
 
 void test_mul()
