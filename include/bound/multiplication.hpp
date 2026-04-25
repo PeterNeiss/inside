@@ -36,7 +36,9 @@ namespace bnd
       if (!prod) return slim::nullopt;
       result res; res.Raw = raw_cast<result>(*prod); return res;
     }
-    else if constexpr (is_direct_storage<L> || is_direct_storage<R> || is_direct_storage<result>)
+    else if constexpr (abs_den(Notch<L>.Denominator) == 1 && abs_den(Lower<L>.Denominator) == 1
+                     && abs_den(Notch<R>.Denominator) == 1 && abs_den(Lower<R>.Denominator) == 1
+                     && abs_den(Notch<result>.Denominator) == 1 && abs_den(Lower<result>.Denominator) == 1)
     {
       result res;
       from_value(res, to_value(lhs) * to_value(rhs));

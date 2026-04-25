@@ -638,6 +638,84 @@ void test_round_check()
   check("round wide compatible: ", b, 6);
 }
 
+void test_comparison()
+{
+  using u100 = bound<{0, 100}>;
+  using u50 = bound<{0, 50}>;
+
+  u100 a{30}, b{50};
+  u50  c{30};
+
+  // same-type comparison
+  std::cout << "cmp a<b: ";
+  if (a < b) std::cout << "[PASS]" << std::endl;
+  else { std::cout << "[FAIL]" << std::endl; ++failures; }
+
+  std::cout << "cmp a==c: ";
+  if (a == c) std::cout << "[PASS]" << std::endl;
+  else { std::cout << "[FAIL]" << std::endl; ++failures; }
+
+  // bound vs arithmetic
+  std::cout << "cmp a==30: ";
+  if (a == 30) std::cout << "[PASS]" << std::endl;
+  else { std::cout << "[FAIL]" << std::endl; ++failures; }
+
+  std::cout << "cmp b>25: ";
+  if (b > 25) std::cout << "[PASS]" << std::endl;
+  else { std::cout << "[FAIL]" << std::endl; ++failures; }
+
+  // signed comparison
+  using s100 = bound<{-100, 100}>;
+  s100 neg{-30}, pos{30};
+  std::cout << "cmp neg<pos: ";
+  if (neg < pos) std::cout << "[PASS]" << std::endl;
+  else { std::cout << "[FAIL]" << std::endl; ++failures; }
+}
+
+void test_compound_assign()
+{
+  using u100 = bound<{0, 100}>;
+  u100 a{50};
+  a -= 10;
+  check("a -= 10: ", a, 40);
+
+  a *= 2;
+  check("a *= 2: ", a, 80);
+
+  // -= with bound
+  u100 delta{20};
+  a -= delta;
+  check("a -= bound: ", a, 60);
+}
+
+void test_modulo()
+{
+  using ui = bound<{0, 100}, ignore_round>;
+  ui a{17}, b{5};
+  auto r = a % b;
+  check("17 % 5 = ", *r, 2);
+
+  ui c{100}, d{10};
+  auto r2 = c % d;
+  check("100 % 10 = ", *r2, 0);
+
+  // modulo by zero returns nullopt
+  ui zero{0};
+  check_null("mod zero: ", a % zero);
+
+  // signed modulo
+  using si = bound<{-100, 100}, ignore_round>;
+  si sa{-17}, sb{5};
+  auto r3 = sa % sb;
+  check("-17 % 5 = ", *r3, -2);
+
+  // mod free function
+  using u50 = bound<{0, 50}>;
+  u50 e{23}, f{7};
+  auto r4 = mod(e, f, make_policy<ignore_round>());
+  check("mod(23,7) = ", *r4, 2);
+}
+
 //---------------------------------------------------------------------------
 // compile-time type alias tests
 //---------------------------------------------------------------------------
@@ -660,6 +738,53 @@ static_assert(std::is_same_v<typename test4_t::raw_type, std::uint64_t>);
 static_assert(std::is_same_v<typename test5_t::raw_type, rational>);
 //static_assert(std::is_same_v<test11_t::raw_type, rational>);
 
+//---------------------------------------------------------------------------
+// constexpr arithmetic tests
+//---------------------------------------------------------------------------
+namespace constexpr_tests
+{
+  // addition
+  using u100 = bound<{0, 100}>;
+  constexpr u100 ca{30}, cb{20};
+  static_assert(static_cast<rational>(ca + cb) == 50);
+
+  // subtraction (result is signed)
+  static_assert(static_cast<rational>(ca - cb) == 10);
+  static_assert(static_cast<rational>(cb - ca) == -10);
+
+  // multiplication
+  using u10 = bound<{1, 10}>;
+  constexpr u10 cm{3}, cn{7};
+  static_assert(static_cast<rational>(cm * cn) == 21);
+
+  // negation
+  static_assert(static_cast<rational>(-ca) == -30);
+
+  // signed arithmetic
+  using s50 = bound<{-50, 50}>;
+  constexpr s50 sa{-20}, sb{30};
+  static_assert(static_cast<rational>(sa + sb) == 10);
+  static_assert(static_cast<rational>(sa - sb) == -50);
+  static_assert(static_cast<rational>(sa * sb) == -600);
+
+  // comparison
+  static_assert(ca > cb);
+  static_assert(cb < ca);
+  static_assert(ca == 30);
+  static_assert(cb != 30);
+  static_assert(ca >= 30);
+  static_assert(cb <= 30);
+
+  // cross-grid comparison
+  constexpr u10 small{5};
+  constexpr u100 big{50};
+  static_assert(small < big);
+  static_assert(big > small);
+
+  // just
+  static_assert(static_cast<rational>(just<42>) == 42);
+}
+
 int main()
 {
   try
@@ -679,6 +804,9 @@ int main()
     test_with_clamp_wrap();
     test_signed();
     test_round_check();
+    test_comparison();
+    test_compound_assign();
+    test_modulo();
 
     bound b;
     (void)b;

@@ -172,6 +172,21 @@ namespace bnd
         to_value(*this) + static_cast<imax>(rhs), make_policy<P>());
     }
 
+    template <boundable R>
+    constexpr bound& operator-=(R const& rhs)
+    { return *this += (-rhs); }
+
+    template <arithmetic A>
+    constexpr bound& operator-=(A rhs)
+    { return *this += (-rhs); }
+
+    template <arithmetic A>
+    constexpr bound& operator*=(A rhs)
+    {
+      return assignment<bound, imax>::assign(*this,
+        to_value(*this) * static_cast<imax>(rhs), make_policy<P>());
+    }
+
     template <numeric A>
     static constexpr slim::optional<bound> try_make(A value)
     {
@@ -185,6 +200,25 @@ namespace bnd
     private:
       static void check_trival() { static_assert(std::is_trivial_v<bound>);}
   };
+
+  //---------------------------------------------------------------------------
+  // comparison
+  //---------------------------------------------------------------------------
+  template <boundable L, boundable R>
+  constexpr auto operator<=>(L const& lhs, R const& rhs)
+  { return static_cast<rational>(lhs) <=> static_cast<rational>(rhs); }
+
+  template <boundable L, boundable R>
+  constexpr bool operator==(L const& lhs, R const& rhs)
+  { return static_cast<rational>(lhs) == static_cast<rational>(rhs); }
+
+  template <boundable B, arithmetic A>
+  constexpr auto operator<=>(B const& lhs, A rhs)
+  { return static_cast<rational>(lhs) <=> rational{rhs}; }
+
+  template <boundable B, arithmetic A>
+  constexpr bool operator==(B const& lhs, A rhs)
+  { return static_cast<rational>(lhs) == rational{rhs}; }
 
   //---------------------------------------------------------------------------
   // add
@@ -311,6 +345,22 @@ namespace bnd
     using D = division<L, R, F>;
     if (!lhs || !rhs) return slim::optional<typename D::result>{slim::nullopt};
     return slim::optional<typename D::result>{bnd::div(*lhs, *rhs, make_policy<F>())};
+  }
+
+  //---------------------------------------------------------------------------
+  // mod
+  //---------------------------------------------------------------------------
+  template <boundable L, boundable R, policy_flag F = none>
+  constexpr auto mod(L lhs, R rhs, policy<F> pol = {})
+  { return modulo<L, R, F>::mod(lhs, rhs, pol); }
+
+  //---------------------------------------------------------------------------
+  // operator%
+  //---------------------------------------------------------------------------
+  constexpr auto operator%(boundable auto lhs, boundable auto rhs)
+  {
+    constexpr policy_flag F = BoundPolicy<decltype(lhs)> | BoundPolicy<decltype(rhs)>;
+    return bnd::mod(lhs, rhs, make_policy<F>());
   }
 
   //---------------------------------------------------------------------------
