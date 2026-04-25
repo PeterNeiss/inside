@@ -302,6 +302,27 @@ void bench_fixed_point()
   }
 }
 
+void bench_round_nearest()
+{
+  // Compare truncation (ignore_round) vs round_nearest for float->bound assignment
+  // Celsius: -40 to 60 in 0.5 steps
+  using celsius_trunc = bound<{{-40, 60}, 0.5}, ignore_round>;
+  using celsius_round = bound<{{-40, 60}, 0.5}, round_nearest>;
+
+  for (std::size_t i = 0; i < N; ++i)
+  {
+    double val = -40.0 + static_cast<double>(i % 200) * 0.5 + 0.3;
+
+    { CTRACK_NAME("assign truncate");
+      celsius_trunc c = val;
+      do_not_optimize(c.Raw); }
+
+    { CTRACK_NAME("assign round_nearest");
+      celsius_round c = val;
+      do_not_optimize(c.Raw); }
+  }
+}
+
 //---------------------------------------------------------------------------
 // main
 //---------------------------------------------------------------------------
@@ -316,6 +337,7 @@ int main()
   bench_accumulate();
   bench_int_vs_bound();
   bench_fixed_point();
+  bench_round_nearest();
 
   ctrack::result_print();
   return 0;

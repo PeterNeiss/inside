@@ -23,7 +23,8 @@ namespace bnd
   inline static constexpr policy_flag ignore_zero  {1ull << 1};
   inline static constexpr policy_flag ignore_domain{1ull << 2};
   inline static constexpr policy_flag ignore_range {1ull << 3};
-  inline static constexpr policy_flag ignore_round {1ull << 4};
+  inline static constexpr policy_flag ignore_round  {1ull << 4};
+  inline static constexpr policy_flag round_nearest {(1ull << 5) | ignore_round};
   inline static constexpr policy_flag ignore_all
   {ignore_zero | ignore_domain | ignore_range | ignore_round};
 

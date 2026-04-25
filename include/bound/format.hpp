@@ -20,9 +20,57 @@ namespace bnd
     if (ad == 1)
       return str += std::to_string(r.Numerator);
 
-    str += std::to_string(r.Numerator);
-    str += "/";
-    str += std::to_string(ad);
+    // power-of-2 or power-of-10: decimal output
+    // find smallest 10^k divisible by ad
+    umax pow10 = 1;
+    unsigned digits = 0;
+    bool is_decimal = false;
+    for (unsigned k = 0; k < 20; ++k)
+    {
+      if (pow10 % ad == 0)
+      { is_decimal = true; digits = k; break; }
+      pow10 *= 10;
+    }
+
+    if (is_decimal)
+    {
+      umax scale = pow10 / ad;
+      umax total = r.Numerator * scale;
+      umax int_part = total / pow10;
+      umax frac_part = total % pow10;
+      str += std::to_string(int_part);
+      if (digits > 0)
+      {
+        str += ".";
+        auto frac_str = std::to_string(frac_part);
+        // zero-pad
+        for (unsigned i = 0; i < digits - frac_str.size(); ++i)
+          str += "0";
+        str += frac_str;
+      }
+      return str;
+    }
+
+    // mixed number for improper fractions
+    umax int_part = r.Numerator / ad;
+    umax remainder = r.Numerator % ad;
+    if (int_part > 0)
+    {
+      str += std::to_string(int_part);
+      if (remainder > 0)
+      {
+        str += " ";
+        str += std::to_string(remainder);
+        str += "/";
+        str += std::to_string(ad);
+      }
+    }
+    else
+    {
+      str += std::to_string(r.Numerator);
+      str += "/";
+      str += std::to_string(ad);
+    }
     return str;
   }
 

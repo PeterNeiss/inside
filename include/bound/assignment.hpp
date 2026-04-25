@@ -211,7 +211,11 @@ namespace bnd
           else
           {
             rational raw = ((clamped - Lower<L>)/Notch<L>).value();
-            lhs.Raw = raw_cast<L>(raw.Numerator / static_cast<umax>(raw.Denominator));
+            umax den = static_cast<umax>(raw.Denominator);
+            if constexpr ((BoundPolicy<L> & round_nearest) || plain<P>::test(round_nearest))
+              lhs.Raw = raw_cast<L>((raw.Numerator + den/2) / den);
+            else
+              lhs.Raw = raw_cast<L>(raw.Numerator / den);
           }
           return lhs;
         }
@@ -231,7 +235,11 @@ namespace bnd
     else
     {
       rational raw = ((rhs - Lower<L>)/Notch<L>).value();
-      lhs.Raw = raw_cast<L>(raw.Numerator / static_cast<umax>(raw.Denominator));
+      umax den = static_cast<umax>(raw.Denominator);
+      if constexpr ((BoundPolicy<L> & round_nearest) || plain<P>::test(round_nearest))
+        lhs.Raw = raw_cast<L>((raw.Numerator + den/2) / den);
+      else
+        lhs.Raw = raw_cast<L>(raw.Numerator / den);
     }
     return lhs;
   }

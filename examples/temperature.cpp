@@ -9,9 +9,9 @@ using namespace bnd;
 
 int main()
 {
-  using celsius = bound<{{-40, 60}, 0.5}>;
+  using celsius = bound<{{-40, 60}, 0.5}, round_nearest>;
 
-  celsius room = 21.4; //TODO: rounds to 21.0 not neareast, consider performance
+  celsius room = 21.4;
   celsius freezing = 0;
   celsius body = 37;
 

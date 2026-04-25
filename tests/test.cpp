@@ -686,6 +686,22 @@ void test_compound_assign()
   u100 delta{20};
   a -= delta;
   check("a -= bound: ", a, 60);
+
+  // /=
+  a /= 3;
+  check("a /= 3: ", a, 20);
+
+  a /= 2;
+  check("a /= 2: ", a, 10);
+
+  // %=
+  u100 b{17};
+  b %= 5;
+  check("b %= 5: ", b, 2);
+
+  u100 c{100};
+  c %= 10;
+  check("c %= 10: ", c, 0);
 }
 
 void test_modulo()
@@ -785,6 +801,78 @@ namespace constexpr_tests
   static_assert(static_cast<rational>(just<42>) == 42);
 }
 
+void test_round_nearest()
+{
+  // Type-level round_nearest: 21.4 rounds to 21.5 (nearest 0.5 step)
+  using celsius = bound<{{-40, 60}, 0.5}, round_nearest>;
+  celsius room = 21.4;
+  check("round_nearest 21.4: ", room, rational{43, 2}); // 21.5
+
+  celsius exact = 21.5;
+  check("round_nearest 21.5: ", exact, rational{43, 2}); // exact
+
+  celsius trunc_case = 21.2;
+  check("round_nearest 21.2: ", trunc_case, rational{21}); // 21.0 (nearest)
+
+  // Per-operation round_nearest via with_round_nearest()
+  using half_step = bound<{{0, 10}, 0.5}>;
+  half_step h;
+  h.with_round_nearest() = 3.3;
+  check("with_round_nearest 3.3: ", h, rational{7, 2}); // 3.5
+
+  h.with_round_nearest() = 3.2;
+  check("with_round_nearest 3.2: ", h, rational{3}); // 3.0
+
+  // Without round_nearest: truncation (existing behavior)
+  using half_trunc = bound<{{0, 10}, 0.5}, ignore_round>;
+  half_trunc t = 3.7;
+  check("truncate 3.7: ", t, rational{7, 2}); // 3.5 (truncated from 7.4 -> 7)
+}
+
+void check_str(const char* label, std::string actual, std::string expected)
+{
+  std::cout << label << actual;
+  if (actual == expected)
+    std::cout << "  [PASS]" << std::endl;
+  else
+  {
+    std::cout << "  [FAIL] expected " << expected << std::endl;
+    ++failures;
+  }
+}
+
+void test_to_string_format()
+{
+  // Power-of-2 denominators -> decimal
+  check_str("fmt 1/2: ",   bnd::to_string(rational{1, 2}),  "0.5");
+  check_str("fmt 43/2: ",  bnd::to_string(rational{43, 2}), "21.5");
+  check_str("fmt 1/4: ",   bnd::to_string(rational{1, 4}),  "0.25");
+  check_str("fmt 3/8: ",   bnd::to_string(rational{3, 8}),  "0.375");
+
+  // Power-of-10 denominators -> decimal
+  check_str("fmt 1/10: ",  bnd::to_string(rational{1, 10}), "0.1");
+  check_str("fmt 15/100: ",bnd::to_string(rational{15, 100}), "0.15");
+
+  // Negative decimals
+  check_str("fmt -1/2: ",  bnd::to_string(rational{1, -2}), "-0.5");
+  check_str("fmt -43/2: ", bnd::to_string(rational{43, -2}), "-21.5");
+
+  // Non-decimal fractions -> mixed number
+  check_str("fmt 7/3: ",   bnd::to_string(rational{7, 3}),  "2 1/3");
+  check_str("fmt 22/7: ",  bnd::to_string(rational{22, 7}), "3 1/7");
+
+  // Proper fractions stay as-is
+  check_str("fmt 1/3: ",   bnd::to_string(rational{1, 3}),  "1/3");
+  check_str("fmt 2/7: ",   bnd::to_string(rational{2, 7}),  "2/7");
+
+  // Integer
+  check_str("fmt 5/1: ",   bnd::to_string(rational{5, 1}),  "5");
+
+  // Negative fractions -> mixed number
+  check_str("fmt -7/3: ",  bnd::to_string(rational{7, -3}), "-2 1/3");
+  check_str("fmt -1/3: ",  bnd::to_string(rational{1, -3}), "-1/3");
+}
+
 int main()
 {
   try
@@ -807,6 +895,9 @@ int main()
     test_comparison();
     test_compound_assign();
     test_modulo();
+
+    test_round_nearest();
+    test_to_string_format();
 
     bound b;
     (void)b;
