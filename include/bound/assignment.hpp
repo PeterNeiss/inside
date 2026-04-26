@@ -138,7 +138,7 @@ namespace bnd
             }
             else if (policy.domain_check())
             {
-              policy.domain_error(bnd::to_string(rhs) + " is not in " + bnd::to_string(Interval<L>));
+              policy.report(errc::domain_error, bnd::to_string(rhs) + " is not in " + bnd::to_string(Interval<L>));
               return lhs;
             }
           }
@@ -165,7 +165,7 @@ namespace bnd
             }
             else if (policy.domain_check())
             {
-              policy.domain_error(bnd::to_string(rhs) + " is not in " + bnd::to_string(Interval<L>));
+              policy.report(errc::domain_error, bnd::to_string(rhs) + " is not in " + bnd::to_string(Interval<L>));
               return lhs;
             }
           }
@@ -236,7 +236,7 @@ namespace bnd
         }
         else if (policy.domain_check())
         {
-          policy.domain_error(bnd::to_string(rhs) + " is not in " + bnd::to_string(Interval<L>));
+          policy.report(errc::domain_error,bnd::to_string(rhs) + " is not in " + bnd::to_string(Interval<L>));
           return lhs;
         }
       }
@@ -313,7 +313,7 @@ namespace bnd
             }
             else if (policy.domain_check())
             {
-              policy.domain_error(bnd::to_string(static_cast<rational>(rhs)) + " is not in " + bnd::to_string(Interval<L>));
+              policy.report(errc::domain_error,bnd::to_string(static_cast<rational>(rhs)) + " is not in " + bnd::to_string(Interval<L>));
               return lhs;
             }
           }
@@ -340,7 +340,7 @@ namespace bnd
             }
             else if (policy.domain_check())
             {
-              policy.domain_error(bnd::to_string(static_cast<rational>(rhs)) + " is not in " + bnd::to_string(Interval<L>));
+              policy.report(errc::domain_error,bnd::to_string(static_cast<rational>(rhs)) + " is not in " + bnd::to_string(Interval<L>));
               return lhs;
             }
           }

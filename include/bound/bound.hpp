@@ -158,7 +158,7 @@ namespace bnd
             }
             else
             {
-              make_policy<P>().domain_error("operator+= result out of range");
+              make_policy<P>().report(errc::domain_error, "operator+= result out of range");
               return *this;
             }
           }
@@ -202,7 +202,12 @@ namespace bnd
     template <arithmetic A>
     constexpr bound& operator/=(A rhs)
     {
-      if (rhs == 0) { make_policy<P>().domain_error("operator/= division by zero"); return *this; }
+      if (rhs == 0)
+      {
+        if constexpr (!(P & ignore_zero))
+          make_policy<P>().report(errc::division_by_zero, "operator/= division by zero");
+        return *this;
+      }
       return assignment<bound, imax>::assign(*this,
         to_value(*this) / static_cast<imax>(rhs), make_policy<P>());
     }
@@ -210,7 +215,12 @@ namespace bnd
     template <arithmetic A>
     constexpr bound& operator%=(A rhs)
     {
-      if (rhs == 0) { make_policy<P>().domain_error("operator%= division by zero"); return *this; }
+      if (rhs == 0)
+      {
+        if constexpr (!(P & ignore_zero))
+          make_policy<P>().report(errc::division_by_zero, "operator%= division by zero");
+        return *this;
+      }
       return assignment<bound, imax>::assign(*this,
         to_value(*this) % static_cast<imax>(rhs), make_policy<P>());
     }

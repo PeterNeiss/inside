@@ -14,28 +14,6 @@ namespace bnd
   //---------------------------------------------------------------------------
   // policy
   //---------------------------------------------------------------------------
-  struct handler
-  {
-    // domain
-    using domain_error_t = void (*)(const char*);
-    using domain_error_ec_t = void (*)(std::error_code& ec);
-
-    static void default_domain_error(const char* what)
-    {
-      std::string str{what};
-#ifdef BOUND_HAS_STACKTRACE
-      str += ": \n" + std::to_string(std::stacktrace::current());
-#endif
-      throw std::system_error(EDOM, std::generic_category(), str);
-    }
-
-    static void default_domain_error_ec(std::error_code& ec)
-    { ec = ec ? ec : std::error_code{EDOM, std::generic_category()}; }
-
-    domain_error_t domain_error = default_domain_error;
-    domain_error_ec_t domain_error_ec = default_domain_error_ec;
-  };
-
   struct empty_ref
   {
   };
@@ -45,22 +23,15 @@ namespace bnd
     std::error_code& Code;
   };
 
-  template<policy_flag W = none, typename E = empty_ref, handler H = handler{}>
+  template<policy_flag W = none, typename E = empty_ref>
   struct policy: E
   {
     constexpr policy() = default;
     constexpr policy(std::error_code& ec) requires std::same_as<E, error_ref>
     :E(ec) { }
 
-    //TODO conditionally make member: error_code* eptr{nullptr};
     static constexpr bool test(policy_flag w)
     { return W & w; }
-
-    void set_error(std::error_code ec)
-    {
-      if constexpr (std::is_same_v<E, error_ref>)
-      { E::Code = E::Code ? E::Code : ec; } //only replace success
-    }
 
     static constexpr bool domain_check()
     {
@@ -68,14 +39,20 @@ namespace bnd
       return test(checked) && not test(ignore_domain);
     }
 
-    void domain_error(std::string what)
+    void report(errc code, std::string what)
     {
       if constexpr (std::is_same_v<E, error_ref>)
-       H.domain_error_ec(E::Code);
+      {
+        E::Code = E::Code ? E::Code : make_error_code(code);
+      }
       else
-       H.domain_error(what.c_str());
+      {
+#ifdef BOUND_HAS_STACKTRACE
+        what += ": \n" + std::to_string(std::stacktrace::current());
+#endif
+        throw std::system_error(make_error_code(code), what);
+      }
     }
-
   };
 
   //---------------------------------------------------------------------------

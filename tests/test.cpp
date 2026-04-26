@@ -79,22 +79,6 @@ void check_has_error(const char* label, std::error_code ec)
 //---------------------------------------------------------------------------
 // compile-time only tests
 //---------------------------------------------------------------------------
-void noop_domain_error(const char*) { }
-
-constexpr handler handlers =
-{
-  .domain_error = noop_domain_error
-};
-
-template<handler H>
-class testHandler {};
-
-void test_handler()
-{
-  testHandler<handlers> th;
-  (void)th;
-}
-
 void test_waiver()
 {
   policy p;
