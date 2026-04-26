@@ -191,7 +191,7 @@ int main()
     std::vector<celsius> readings = {-5.0, 0.0, 3.5, 8.0, 6.5};
     std::vector<celsius> deltas(readings.size());
     std::adjacent_difference(readings.begin(), readings.end(), deltas.begin(),
-      [](celsius a, celsius b) { return celsius{static_cast<double>(a) - static_cast<double>(b)}; });
+      [](celsius k, celsius l) { return celsius{static_cast<double>(k) - static_cast<double>(l)}; });
     print("adj_diff", deltas);
 
     // std::for_each with side effect
@@ -212,7 +212,7 @@ int main()
     // std::partition
     std::vector<altitude> mixed = {-100, 500, -30, 2000, 0, -400, 100};
     auto pivot = std::partition(mixed.begin(), mixed.end(),
-                                [](altitude a) { return a >= 0; });
+                                [](altitude x) { return x >= 0; });
     std::cout << "partition (>=0): ";
     for (auto it = mixed.begin(); it != pivot; ++it)
       std::cout << *it << " ";
