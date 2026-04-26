@@ -12,22 +12,22 @@ using channel = bound<{0, 255}, clamp>;
 
 struct rgb
 {
-  channel r, g, b;
+  channel R, G, B;
 
-  rgb(int r, int g, int b) : r(r), g(g), b(b) {}
+  rgb(int r, int g, int b) : R(r), G(g), B(b) {}
 
   void brighten(int amount)
   {
-    r += amount;
-    g += amount;
-    b += amount;
+    R += amount;
+    G += amount;
+    B += amount;
   }
 
   void darken(int amount) { brighten(-amount); }
 
   friend std::ostream& operator<<(std::ostream& os, const rgb& c)
   {
-    return os << "rgb(" << c.r << ", " << c.g << ", " << c.b << ")";
+    return os << "rgb(" << c.R << ", " << c.G << ", " << c.B << ")";
   }
 };
 
