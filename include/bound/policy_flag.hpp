@@ -32,8 +32,9 @@ namespace bnd
   inline static constexpr policy_flag checked{1ull << 34}; // enable runtime domain/overflow checks
 
   // unary — mutually exclusive
-  inline static constexpr policy_flag clamp{1ull << 32}; // saturate to boundary
-  inline static constexpr policy_flag wrap {1ull << 33}; // modular arithmetic
+  inline static constexpr policy_flag clamp   {1ull << 32}; // saturate to boundary
+  inline static constexpr policy_flag wrap    {1ull << 33}; // modular arithmetic
+  inline static constexpr policy_flag sentinel{1ull << 35}; // overflow -> sentinel (nullopt)
 
   //---------------------------------------------------------------------------
   // no_action — zero-overhead default for overflow callbacks

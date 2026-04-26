@@ -30,8 +30,12 @@ frac f = 3.25;
 The second template parameter controls what happens on out-of-range assignment:
 
 ```cpp
-// Default: throws std::system_error on out-of-range
-using strict = bound<{0, 100}>;
+// Default: no runtime checks (compile-time checks always apply)
+using fast = bound<{0, 100}>;
+
+// Checked: opt-in runtime domain validation (throws std::system_error)
+using safe = bound<{0, 100}, checked>;
+safe x = 150;      // throws std::system_error at runtime
 
 // Clamp: saturates to the nearest boundary
 using clamped = bound<{0, 100}, clamp>;
@@ -42,15 +46,13 @@ clamped y = -5;    // y == 0
 using angle = bound<{0, 359}, wrap>;
 angle a = 370;     // a == 10
 angle b = -10;     // b == 350
+
+// Sentinel: out-of-range produces nullopt (via slim::optional)
+using index = bound<{0, 9}, sentinel>;
+slim::optional<index> i = 10;  // i == nullopt
 ```
 
-```cpp
-// Checked: opt-in runtime domain/overflow checking
-using safe = bound<{0, 100}, checked>;
-safe x = 150;      // throws std::system_error at runtime
-```
-
-By default, `bound` skips runtime domain checks for maximum performance (compile-time checks always apply). The `checked` flag enables runtime validation. `clamp` and `wrap` are mutually exclusive and enforced by `static_assert`.
+By default, `bound` skips runtime domain checks for maximum performance (compile-time checks always apply). The `checked` flag enables runtime validation. `clamp`, `wrap`, and `sentinel` are mutually exclusive and enforced by `static_assert`.
 
 ### Per-operation override
 
@@ -172,16 +174,51 @@ Notches are "compatible" when the target notch is an integer multiple of the sou
 To opt in to rounding:
 
 ```cpp
-// Per-operation
+// Per-operation (truncates towards zero)
 c.with_round() = f;
+
+// Round to nearest notch
+c.with_round_nearest() = f;
 
 // Per-call with explicit policy
 c.policy<ignore_round>() = f;
+c.policy<round_nearest>() = f;  // nearest notch
 
 // Type-level: all assignments allow rounding
 using coarse_r = bound<{{0, 10}, 2}, ignore_round>;
-coarse_r cr = f;  // OK, rounds to nearest notch
+coarse_r cr = f;  // OK, truncates to nearest notch
 ```
+
+### Modulo
+
+The `%` operator requires integer-valued grids and the `ignore_round` policy:
+
+```cpp
+using val = bound<{0, 100}, ignore_round>;
+val a = 17, b = 5;
+auto r = a % b;  // slim::optional<bound<{0, 99}>>, value 2
+```
+
+Like division, modulo returns `slim::optional` (division by zero yields `nullopt`).
+
+### Compound Assignment and Increment
+
+Compound assignment operators work with arithmetic scalars:
+
+```cpp
+using pct = bound<{0, 100}, clamp>;
+pct x = 50;
+x += 30;   // x == 80
+x -= 10;   // x == 70
+x *= 2;    // x == 100 (clamped)
+x /= 3;    // x == 33
+x %= 10;   // x == 3
+
+++x;       // x == 4
+x--;       // x == 3
+```
+
+`operator+=` and `-=` also accept other bound types when grids are compatible.
 
 ### When `slim::optional` is returned
 
@@ -247,6 +284,29 @@ Rational storage is exact (no floating-point rounding) but larger and slower tha
 
 `slim::optional<bound>` uses a sentinel value instead of a bool flag, so `sizeof(slim::optional<bound>) == sizeof(bound)`. The sentinel is `numeric_limits<raw>::max()` for unsigned types and `numeric_limits<raw>::min()` for signed types. This costs one value from the representable range (e.g., `int8_t` gives 255 usable values: -127..127).
 
+## Iteration
+
+`bound_range` provides range-based for loop support:
+
+```cpp
+// Iterate over all values in the grid [0, 9]
+for (auto i : bound_range<{0, 9}>{})
+  std::cout << i;  // 0 1 2 3 4 5 6 7 8 9
+
+// Wrapping iteration starting at 5 (visits all values once)
+for (auto i : bound_range<{0, 9}>{5})
+  std::cout << i;  // 5 6 7 8 9 0 1 2 3 4
+```
+
+## Compile-time Constants
+
+`just<value>` creates a single-value bound:
+
+```cpp
+constexpr auto one = just<1>;   // bound<{1, 1}>
+constexpr auto pi  = just<3>;
+```
+
 ## Examples
 
 The `examples/` directory contains self-contained programs demonstrating key features:
@@ -263,6 +323,7 @@ The `examples/` directory contains self-contained programs demonstrating key fea
 | `fixed_point.cpp` | Fixed-point arithmetic with fractional notch grids |
 | `signed.cpp` | Signed integer bounds with negative ranges |
 | `errors.cpp` | Error handling: throw, error_code, optional |
+| `array_index.cpp` | Bounded array indexing with sentinel, range-based for |
 
 Build and run any example:
 

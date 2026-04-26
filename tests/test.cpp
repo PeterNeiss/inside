@@ -873,6 +873,143 @@ void test_to_string_format()
   check_str("fmt -1/3: ",  bnd::to_string(rational{1, -3}), "-1/3");
 }
 
+void test_sentinel()
+{
+  using idx = bound<{0, 9}, sentinel>;
+
+  // Normal construction
+  idx a = 5;
+  check("sentinel normal: ", a, 5);
+
+  // Overflow -> sentinel (nullopt)
+  slim::optional<idx> opt = 9;
+  ++opt;
+  std::cout << "sentinel overflow: " << (opt.has_value() ? "has_value" : "nullopt");
+  if (!opt.has_value())
+    std::cout << "  [PASS]" << std::endl;
+  else
+  { std::cout << "  [FAIL]" << std::endl; ++failures; }
+
+  // Underflow -> sentinel
+  slim::optional<idx> opt2 = 0;
+  --opt2;
+  std::cout << "sentinel underflow: " << (opt2.has_value() ? "has_value" : "nullopt");
+  if (!opt2.has_value())
+    std::cout << "  [PASS]" << std::endl;
+  else
+  { std::cout << "  [FAIL]" << std::endl; ++failures; }
+
+  // In-range increment stays valid
+  slim::optional<idx> opt3 = 5;
+  ++opt3;
+  std::cout << "sentinel in-range: " << (opt3.has_value() ? "has_value" : "nullopt");
+  if (opt3.has_value() && *opt3 == 6)
+    std::cout << "  [PASS]" << std::endl;
+  else
+  { std::cout << "  [FAIL]" << std::endl; ++failures; }
+}
+
+void test_increment_decrement()
+{
+  using u10 = bound<{0, 10}>;
+  u10 a = 5;
+
+  ++a;
+  check("pre++: ", a, 6);
+
+  a++;
+  check("post++: ", a, 7);
+
+  --a;
+  check("pre--: ", a, 6);
+
+  a--;
+  check("post--: ", a, 5);
+}
+
+void test_implicit_cast()
+{
+  // Direct storage: bound<{0,9}> -> imax
+  using idx = bound<{0, 9}>;
+  idx a = 5;
+  imax val = a;
+  std::cout << "implicit cast direct: " << val;
+  if (val == 5)
+    std::cout << "  [PASS]" << std::endl;
+  else
+  { std::cout << "  [FAIL]" << std::endl; ++failures; }
+
+  // Offset storage: bound<{1,10}> -> imax
+  using idx2 = bound<{1, 10}>;
+  idx2 b = 7;
+  imax val2 = b;
+  std::cout << "implicit cast offset: " << val2;
+  if (val2 == 7)
+    std::cout << "  [PASS]" << std::endl;
+  else
+  { std::cout << "  [FAIL]" << std::endl; ++failures; }
+
+  // Array subscript without cast
+  int arr[] = {10, 20, 30, 40, 50};
+  using ai = bound<{0, 4}>;
+  ai c = 3;
+  std::cout << "arr[bound]: " << arr[c];
+  if (arr[c] == 40)
+    std::cout << "  [PASS]" << std::endl;
+  else
+  { std::cout << "  [FAIL]" << std::endl; ++failures; }
+}
+
+void test_bound_range()
+{
+  // Sequential range
+  int count = 0;
+  imax sum = 0;
+  for (auto i : bound_range<{0, 9}>{})
+  {
+    sum += static_cast<imax>(i);
+    ++count;
+  }
+  std::cout << "range seq count: " << count;
+  if (count == 10)
+    std::cout << "  [PASS]" << std::endl;
+  else
+  { std::cout << "  [FAIL] expected 10" << std::endl; ++failures; }
+
+  std::cout << "range seq sum: " << sum;
+  if (sum == 45)
+    std::cout << "  [PASS]" << std::endl;
+  else
+  { std::cout << "  [FAIL] expected 45" << std::endl; ++failures; }
+
+  // Wrapping range from 7
+  count = 0;
+  imax first = -1, last = -1;
+  for (auto i : bound_range<{0, 9}>{7})
+  {
+    if (count == 0) first = static_cast<imax>(i);
+    last = static_cast<imax>(i);
+    ++count;
+  }
+  std::cout << "range wrap count: " << count;
+  if (count == 10)
+    std::cout << "  [PASS]" << std::endl;
+  else
+  { std::cout << "  [FAIL] expected 10" << std::endl; ++failures; }
+
+  std::cout << "range wrap first: " << first;
+  if (first == 7)
+    std::cout << "  [PASS]" << std::endl;
+  else
+  { std::cout << "  [FAIL] expected 7" << std::endl; ++failures; }
+
+  std::cout << "range wrap last: " << last;
+  if (last == 6)
+    std::cout << "  [PASS]" << std::endl;
+  else
+  { std::cout << "  [FAIL] expected 6" << std::endl; ++failures; }
+}
+
 int main()
 {
   try
@@ -898,6 +1035,10 @@ int main()
 
     test_round_nearest();
     test_to_string_format();
+    test_sentinel();
+    test_increment_decrement();
+    test_implicit_cast();
+    test_bound_range();
 
     bound b;
     (void)b;

@@ -109,6 +109,16 @@ namespace bnd
 
   template <boundable B>
   inline constexpr umax OffsetUpper = (Upper<B>/Notch<B>).value_or(0_r).Numerator;
+  template <boundable B>
+  constexpr raw_t<B> sentinel_raw()
+  {
+    if constexpr (std::is_same_v<raw_t<B>, rational>)
+      return rational::make_sentinel();
+    else if constexpr (std::signed_integral<raw_t<B>>)
+      return std::numeric_limits<raw_t<B>>::min();
+    else
+      return std::numeric_limits<raw_t<B>>::max();
+  }
 } // namespace bnd
 
 #endif // BNDgenericHPP

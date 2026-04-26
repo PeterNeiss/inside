@@ -131,6 +131,11 @@ namespace bnd
               }
               return lhs;
             }
+            else if constexpr ((BoundPolicy<L> & sentinel) || plain<P>::test(sentinel))
+            {
+              lhs.Raw = sentinel_raw<L>();
+              return lhs;
+            }
             else if (policy.domain_check())
             {
               policy.domain_error(bnd::to_string(rhs) + " is not in " + bnd::to_string(Interval<L>));
@@ -151,6 +156,11 @@ namespace bnd
 
               rational raw = ((clamped - Interval<L>.Lower)/Notch<L>).value();
               lhs.Raw = raw_cast<L>(raw.Numerator / static_cast<umax>(raw.Denominator));
+              return lhs;
+            }
+            else if constexpr ((BoundPolicy<L> & sentinel) || plain<P>::test(sentinel))
+            {
+              lhs.Raw = sentinel_raw<L>();
               return lhs;
             }
             else if (policy.domain_check())
@@ -217,6 +227,11 @@ namespace bnd
             else
               lhs.Raw = raw_cast<L>(raw.Numerator / den);
           }
+          return lhs;
+        }
+        else if constexpr ((BoundPolicy<L> & sentinel) || plain<P>::test(sentinel))
+        {
+          lhs.Raw = sentinel_raw<L>();
           return lhs;
         }
         else if (policy.domain_check())
@@ -291,6 +306,11 @@ namespace bnd
                 action(static_cast<rational>(rhs) - static_cast<rational>(lhs));
               return lhs;
             }
+            else if constexpr ((BoundPolicy<L> & sentinel) || plain<P>::test(sentinel))
+            {
+              lhs.Raw = sentinel_raw<L>();
+              return lhs;
+            }
             else if (policy.domain_check())
             {
               policy.domain_error(bnd::to_string(static_cast<rational>(rhs)) + " is not in " + bnd::to_string(Interval<L>));
@@ -311,6 +331,11 @@ namespace bnd
               lhs.Raw = (static_cast<rational>(rhs) < Lower<L>) ? raw_lo : raw_hi;
               if constexpr (!std::is_same_v<plain<A>, no_action>)
                 action(static_cast<rational>(rhs) - static_cast<rational>(lhs));
+              return lhs;
+            }
+            else if constexpr ((BoundPolicy<L> & sentinel) || plain<P>::test(sentinel))
+            {
+              lhs.Raw = sentinel_raw<L>();
               return lhs;
             }
             else if (policy.domain_check())

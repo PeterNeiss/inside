@@ -32,6 +32,8 @@ namespace bnd
   {
     static_assert(grid::validate<G>());
     static_assert(!(P & clamp) || !(P & wrap), "clamp and wrap are mutually exclusive");
+    static_assert(!(P & sentinel) || !(P & clamp), "sentinel and clamp are mutually exclusive");
+    static_assert(!(P & sentinel) || !(P & wrap), "sentinel and wrap are mutually exclusive");
 
     using negative = bound<-G, P>;
     using raw_type = storage_min<G>;
@@ -60,6 +62,10 @@ namespace bnd
       else
         return static_cast<rational>(*this);
     }
+
+    constexpr operator imax() const
+      requires (abs_den(G.Notch.Denominator) == 1 && G.Notch.Numerator != 0)
+    { return to_value(*this); }
 
     constexpr explicit operator double() const { return G.raw_to_double(Raw); }
 
@@ -124,7 +130,7 @@ namespace bnd
                     && Notch<bound> == Notch<R>
                     && is_direct_storage<R>)
       {
-        if constexpr (P & (clamp | wrap | checked))
+        if constexpr (P & (clamp | wrap | checked | sentinel))
         {
           imax new_raw = static_cast<imax>(Raw) + static_cast<imax>(rhs.Raw);
           constexpr imax lo = is_direct_storage<bound>
@@ -143,6 +149,11 @@ namespace bnd
               constexpr imax range = hi - lo + 1;
               new_raw = ((new_raw - lo) % range + range) % range + lo;
               Raw = raw_cast<bound>(new_raw);
+              return *this;
+            }
+            else if constexpr (P & sentinel)
+            {
+              Raw = sentinel_raw<bound>();
               return *this;
             }
             else
@@ -203,6 +214,11 @@ namespace bnd
       return assignment<bound, imax>::assign(*this,
         to_value(*this) % static_cast<imax>(rhs), make_policy<P>());
     }
+
+    constexpr bound& operator++()    { return *this += 1; }
+    constexpr bound  operator++(int) { bound t = *this; ++*this; return t; }
+    constexpr bound& operator--()    { return *this -= 1; }
+    constexpr bound  operator--(int) { bound t = *this; --*this; return t; }
 
     template <numeric A>
     static constexpr slim::optional<bound> try_make(A value)
@@ -388,6 +404,69 @@ namespace bnd
   //---------------------------------------------------------------------------
   template<auto value>
   inline constexpr auto just = bound<grid{value}>{value};
+
+  //---------------------------------------------------------------------------
+  // operator++ / operator-- for slim::optional<bound>
+  //---------------------------------------------------------------------------
+  template <boundable B>
+    requires ((BoundPolicy<B> & sentinel) != 0)
+  constexpr slim::optional<B>& operator++(slim::optional<B>& opt)
+  {
+    if (opt) ++(*opt);
+    return opt;
+  }
+
+  template <boundable B>
+    requires ((BoundPolicy<B> & sentinel) != 0)
+  constexpr slim::optional<B> operator++(slim::optional<B>& opt, int)
+  { auto t = opt; ++opt; return t; }
+
+  template <boundable B>
+    requires ((BoundPolicy<B> & sentinel) != 0)
+  constexpr slim::optional<B>& operator--(slim::optional<B>& opt)
+  {
+    if (opt) --(*opt);
+    return opt;
+  }
+
+  template <boundable B>
+    requires ((BoundPolicy<B> & sentinel) != 0)
+  constexpr slim::optional<B> operator--(slim::optional<B>& opt, int)
+  { auto t = opt; --opt; return t; }
+
+  //---------------------------------------------------------------------------
+  // bound_range — range-based for loop support
+  //---------------------------------------------------------------------------
+  template <grid G, policy_flag P = none>
+  struct bound_range
+  {
+    using value_type = bound<G, P>;
+    using wrap_type = bound<G, (P & ~(clamp | sentinel)) | wrap>;
+
+    struct iterator
+    {
+      wrap_type pos;
+      imax remaining;
+
+      constexpr value_type operator*() const { return value_type(static_cast<imax>(pos)); }
+      constexpr iterator& operator++() { --remaining; ++pos; return *this; }
+      constexpr bool operator!=(iterator o) const { return remaining != o.remaining; }
+    };
+
+    wrap_type start_;
+    imax count_;
+
+    constexpr bound_range()
+      : start_(static_cast<imax>(Lower<value_type>))
+      , count_(static_cast<imax>(Upper<value_type>) - static_cast<imax>(Lower<value_type>) + 1) {}
+
+    constexpr bound_range(value_type start)
+      : start_(static_cast<imax>(start))
+      , count_(static_cast<imax>(Upper<value_type>) - static_cast<imax>(Lower<value_type>) + 1) {}
+
+    constexpr iterator begin() const { return {start_, count_}; }
+    constexpr iterator end() const { return {start_, 0}; }
+  };
 
 } // namespace bnd
 
