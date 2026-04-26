@@ -324,6 +324,299 @@ void bench_round_nearest()
 }
 
 //---------------------------------------------------------------------------
+// STL algorithm benchmarks
+//---------------------------------------------------------------------------
+namespace rng = std::ranges;
+
+using u255 = bound<{0, 255}>;
+using s9k  = bound<{-500, 9000}>;
+
+void bench_sort_algo()
+{
+  constexpr std::size_t SZ = 10'000;
+  constexpr std::size_t ITERS = N / SZ;
+
+  // prepare identical data
+  std::vector<std::int16_t> nv(SZ);
+  std::vector<s9k> bv(SZ);
+  for (std::size_t i = 0; i < SZ; ++i)
+  {
+    auto val = static_cast<std::int16_t>((i * 7 + 13) % 9501 - 500);
+    nv[i] = val;
+    bv[i] = static_cast<int>(val);
+  }
+
+  auto nv_copy = nv;
+  auto bv_copy = bv;
+
+  for (std::size_t i = 0; i < ITERS; ++i)
+  {
+    { CTRACK_NAME("sort native");
+      nv = nv_copy;
+      rng::sort(nv);
+      do_not_optimize(nv[0]); }
+
+    { CTRACK_NAME("sort bound");
+      bv = bv_copy;
+      rng::sort(bv);
+      do_not_optimize(bv[0].Raw); }
+  }
+}
+
+void bench_find_algo()
+{
+  constexpr std::size_t SZ = 10'000;
+  constexpr std::size_t ITERS = N / SZ;
+
+  std::vector<std::int16_t> nv(SZ);
+  std::vector<s9k> bv(SZ);
+  for (std::size_t i = 0; i < SZ; ++i)
+  {
+    auto val = static_cast<std::int16_t>(i % 9501 - 500);
+    nv[i] = val;
+    bv[i] = static_cast<int>(val);
+  }
+
+  auto target_n = static_cast<std::int16_t>(7000);
+  s9k target_b(7000);
+
+  for (std::size_t i = 0; i < ITERS; ++i)
+  {
+    { CTRACK_NAME("find native");
+      auto it = rng::find(nv, target_n);
+      do_not_optimize(*it); }
+
+    { CTRACK_NAME("find bound");
+      auto it = rng::find(bv, target_b);
+      do_not_optimize(it->Raw); }
+
+    { CTRACK_NAME("count native");
+      auto c = rng::count(nv, static_cast<std::int16_t>(42));
+      do_not_optimize(c); }
+
+    { CTRACK_NAME("count bound");
+      auto c = rng::count(bv, s9k{42});
+      do_not_optimize(c); }
+  }
+}
+
+void bench_transform_algo()
+{
+  constexpr std::size_t SZ = 10'000;
+  constexpr std::size_t ITERS = N / SZ;
+
+  std::vector<std::uint8_t> nv(SZ);
+  std::vector<u255> bv(SZ);
+  std::vector<std::uint8_t> nout(SZ);
+  std::vector<u255> bout(SZ);
+
+  for (std::size_t i = 0; i < SZ; ++i)
+  {
+    nv[i] = static_cast<std::uint8_t>(i % 250);
+    bv[i] = static_cast<int>(i % 250);
+  }
+
+  for (std::size_t i = 0; i < ITERS; ++i)
+  {
+    { CTRACK_NAME("transform native");
+      std::transform(nv.begin(), nv.end(), nout.begin(),
+        [](std::uint8_t v) -> std::uint8_t { return static_cast<std::uint8_t>(v + 1); });
+      do_not_optimize(nout[0]); }
+
+    { CTRACK_NAME("transform bound");
+      std::transform(bv.begin(), bv.end(), bout.begin(),
+        [](u255 v) { v += 1; return v; });
+      do_not_optimize(bout[0].Raw); }
+  }
+}
+
+void bench_minmax_algo()
+{
+  constexpr std::size_t SZ = 10'000;
+  constexpr std::size_t ITERS = N / SZ;
+
+  std::vector<std::int16_t> nv(SZ);
+  std::vector<s9k> bv(SZ);
+  for (std::size_t i = 0; i < SZ; ++i)
+  {
+    auto val = static_cast<std::int16_t>((i * 7 + 13) % 9501 - 500);
+    nv[i] = val;
+    bv[i] = static_cast<int>(val);
+  }
+
+  for (std::size_t i = 0; i < ITERS; ++i)
+  {
+    { CTRACK_NAME("min_element native");
+      auto it = rng::min_element(nv);
+      do_not_optimize(*it); }
+
+    { CTRACK_NAME("min_element bound");
+      auto it = rng::min_element(bv);
+      do_not_optimize(it->Raw); }
+
+    { CTRACK_NAME("max_element native");
+      auto it = rng::max_element(nv);
+      do_not_optimize(*it); }
+
+    { CTRACK_NAME("max_element bound");
+      auto it = rng::max_element(bv);
+      do_not_optimize(it->Raw); }
+  }
+}
+
+void bench_lower_bound_algo()
+{
+  constexpr std::size_t SZ = 10'000;
+  constexpr std::size_t ITERS = N / SZ;
+
+  std::vector<std::int16_t> nv(SZ);
+  std::vector<s9k> bv(SZ);
+  for (std::size_t i = 0; i < SZ; ++i)
+  {
+    auto val = static_cast<std::int16_t>(static_cast<int>(i) - 500);
+    nv[i] = val;
+    bv[i] = static_cast<int>(val);
+  }
+  // already sorted
+
+  for (std::size_t i = 0; i < ITERS; ++i)
+  {
+    auto target = static_cast<std::int16_t>(static_cast<int>(i % 9501) - 500);
+
+    { CTRACK_NAME("lower_bound native");
+      auto it = rng::lower_bound(nv, target);
+      do_not_optimize(*it); }
+
+    { CTRACK_NAME("lower_bound bound");
+      auto it = rng::lower_bound(bv, s9k{static_cast<int>(target)});
+      do_not_optimize(it->Raw); }
+  }
+}
+
+void bench_std_sort()
+{
+  constexpr std::size_t SZ = 10'000;
+  constexpr std::size_t ITERS = N / SZ;
+
+  std::vector<std::int16_t> nv(SZ);
+  std::vector<s9k> bv(SZ);
+  for (std::size_t i = 0; i < SZ; ++i)
+  {
+    auto val = static_cast<std::int16_t>((i * 7 + 13) % 9501 - 500);
+    nv[i] = val;
+    bv[i] = static_cast<int>(val);
+  }
+
+  auto nv_copy = nv;
+  auto bv_copy = bv;
+
+  for (std::size_t i = 0; i < ITERS; ++i)
+  {
+    { CTRACK_NAME("std::sort native");
+      nv = nv_copy;
+      std::sort(nv.begin(), nv.end());
+      do_not_optimize(nv[0]); }
+
+    { CTRACK_NAME("std::sort bound");
+      bv = bv_copy;
+      std::sort(bv.begin(), bv.end());
+      do_not_optimize(bv[0].Raw); }
+  }
+}
+
+void bench_nth_element()
+{
+  constexpr std::size_t SZ = 10'000;
+  constexpr std::size_t ITERS = N / SZ;
+
+  std::vector<std::int16_t> nv(SZ);
+  std::vector<s9k> bv(SZ);
+  for (std::size_t i = 0; i < SZ; ++i)
+  {
+    auto val = static_cast<std::int16_t>((i * 7 + 13) % 9501 - 500);
+    nv[i] = val;
+    bv[i] = static_cast<int>(val);
+  }
+
+  auto nv_copy = nv;
+  auto bv_copy = bv;
+  auto nth = static_cast<long>(SZ / 2);
+
+  for (std::size_t i = 0; i < ITERS; ++i)
+  {
+    { CTRACK_NAME("nth_element native");
+      nv = nv_copy;
+      std::nth_element(nv.begin(), nv.begin() + nth, nv.end());
+      do_not_optimize(nv[static_cast<std::size_t>(nth)]); }
+
+    { CTRACK_NAME("nth_element bound");
+      bv = bv_copy;
+      std::nth_element(bv.begin(), bv.begin() + nth, bv.end());
+      do_not_optimize(bv[static_cast<std::size_t>(nth)].Raw); }
+  }
+}
+
+void bench_partition()
+{
+  constexpr std::size_t SZ = 10'000;
+  constexpr std::size_t ITERS = N / SZ;
+
+  std::vector<std::int16_t> nv(SZ);
+  std::vector<s9k> bv(SZ);
+  for (std::size_t i = 0; i < SZ; ++i)
+  {
+    auto val = static_cast<std::int16_t>((i * 7 + 13) % 9501 - 500);
+    nv[i] = val;
+    bv[i] = static_cast<int>(val);
+  }
+
+  auto nv_copy = nv;
+  auto bv_copy = bv;
+
+  for (std::size_t i = 0; i < ITERS; ++i)
+  {
+    { CTRACK_NAME("partition native");
+      nv = nv_copy;
+      auto p = std::partition(nv.begin(), nv.end(),
+        [](std::int16_t v) { return v >= 0; });
+      do_not_optimize(*p); }
+
+    { CTRACK_NAME("partition bound");
+      bv = bv_copy;
+      auto p = std::partition(bv.begin(), bv.end(),
+        [](s9k v) { return v >= 0; });
+      do_not_optimize(p->Raw); }
+  }
+}
+
+void bench_std_accumulate()
+{
+  constexpr std::size_t SZ = 1000;
+  constexpr std::size_t ITERS = N / SZ;
+
+  using u200k = bound<{0, 200'000}>;
+
+  std::vector<std::uint32_t> nv(SZ);
+  std::vector<u200k> bv(SZ);
+  for (std::size_t i = 0; i < SZ; ++i)
+  {
+    nv[i] = static_cast<std::uint32_t>(i % 5);
+    bv[i] = static_cast<int>(i % 5);
+  }
+
+  for (std::size_t i = 0; i < ITERS; ++i)
+  {
+    { CTRACK_NAME("std::accumulate native");
+      auto sum = std::accumulate(nv.begin(), nv.end(), std::uint32_t{0});
+      do_not_optimize(sum); }
+
+    { CTRACK_NAME("std::accumulate bound");
+      auto sum = std::accumulate(bv.begin(), bv.end(), u200k{0}, std::plus<>{});
+      do_not_optimize(sum.Raw); }
+  }
+}
+
+//---------------------------------------------------------------------------
 // main
 //---------------------------------------------------------------------------
 int main()
@@ -338,6 +631,15 @@ int main()
   bench_int_vs_bound();
   bench_fixed_point();
   bench_round_nearest();
+  bench_sort_algo();
+  bench_find_algo();
+  bench_transform_algo();
+  bench_minmax_algo();
+  bench_lower_bound_algo();
+  bench_std_sort();
+  bench_nth_element();
+  bench_partition();
+  bench_std_accumulate();
 
   ctrack::result_print();
   return 0;

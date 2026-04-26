@@ -88,7 +88,7 @@ namespace bnd
     else if constexpr (is_direct_storage<B>)
       return static_cast<imax>(b.Raw);
     else
-      return static_cast<imax>(b.Raw) * static_cast<imax>(Notch<B>) + static_cast<imax>(Lower<B>);
+      return static_cast<imax>(static_cast<rational>(b));
   }
 
   template <boundable B>
@@ -97,7 +97,10 @@ namespace bnd
     if constexpr (is_direct_storage<B>)
       b.Raw = raw_cast<B>(val);
     else
-      b.Raw = raw_cast<B>(val - static_cast<imax>(Lower<B>));
+    {
+      auto offset = (rational{val} - Lower<B>) / Notch<B>;
+      b.Raw = raw_cast<B>(offset.value().Numerator);
+    }
   }
 
   template <boundable B>

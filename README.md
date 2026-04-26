@@ -307,6 +307,41 @@ constexpr auto one = just<1>;   // bound<{1, 1}>
 constexpr auto pi  = just<3>;
 ```
 
+## STL Algorithms
+
+`bound` types work with standard algorithms out of the box — both `std::ranges` and classic iterator-based versions:
+
+```cpp
+#include <algorithm>
+#include <numeric>
+#include <vector>
+#include "bound/bound.hpp"
+using namespace bnd;
+
+using celsius = bound<{{-40, 60}, 0.5}, round_nearest>;
+using score  = bound<{0, 1000}>;
+
+std::vector<celsius> temps = {21.5, -5.0, 37.0, 0.0, 15.5};
+
+// Ranges algorithms
+std::ranges::sort(temps);
+auto it = std::ranges::find(temps, celsius{0.0});
+auto hot = std::ranges::count_if(temps, [](celsius c) { return c > 30; });
+auto [lo, hi] = std::ranges::minmax_element(temps);
+
+// Classic STL algorithms
+std::sort(temps.begin(), temps.end(), std::greater<>{});
+std::nth_element(temps.begin(), temps.begin() + 2, temps.end());
+
+// Accumulate into a wider type to avoid overflow
+using wide = bound<{0, 100'000}>;
+std::vector<score> scores = {100, 250, 500};
+auto total = std::reduce(scores.begin(), scores.end(), wide{0}, std::plus<>{});
+auto sum   = std::accumulate(scores.begin(), scores.end(), wide{0}, std::plus<>{});
+```
+
+Comparison-heavy algorithms (sort, find, min/max, lower_bound) use an optimized comparison path that matches native integer performance — no runtime overhead versus raw `int16_t` or `uint8_t`.
+
 ## Examples
 
 The `examples/` directory contains self-contained programs demonstrating key features:
@@ -324,6 +359,7 @@ The `examples/` directory contains self-contained programs demonstrating key fea
 | `signed.cpp` | Signed integer bounds with negative ranges |
 | `errors.cpp` | Error handling: throw, error_code, optional |
 | `array_index.cpp` | Bounded array indexing with sentinel, range-based for |
+| `algorithms.cpp` | STL and ranges algorithms (sort, find, transform, accumulate, ...) |
 
 Build and run any example:
 
@@ -340,5 +376,8 @@ Requires CMake 3.24+ and a C++23 compiler (GCC 12+, Clang 16+, MSVC 19.36+).
 ```bash
 cmake -B build
 cmake --build build
-./build/test
+./build/test                    # unit tests
+./build/algo                    # STL algorithm integration tests
+./build/bench                   # performance benchmarks (native vs bound)
+./build/example_algorithms      # algorithms example
 ```

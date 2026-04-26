@@ -249,19 +249,47 @@ namespace bnd
   //---------------------------------------------------------------------------
   template <boundable L, boundable R>
   constexpr auto operator<=>(L const& lhs, R const& rhs)
-  { return static_cast<rational>(lhs) <=> static_cast<rational>(rhs); }
+  {
+    // same grid: Raw is monotonically ordered regardless of notch
+    if constexpr (!is_raw_rational<L> && !is_raw_rational<R>
+                  && Grid<L> == Grid<R>)
+      return lhs.Raw <=> rhs.Raw;
+    // both direct storage (notch=1, Raw==value): compare values directly
+    else if constexpr (is_direct_storage<L> && is_direct_storage<R>)
+      return static_cast<imax>(lhs.Raw) <=> static_cast<imax>(rhs.Raw);
+    else
+      return static_cast<rational>(lhs) <=> static_cast<rational>(rhs);
+  }
 
   template <boundable L, boundable R>
   constexpr bool operator==(L const& lhs, R const& rhs)
-  { return static_cast<rational>(lhs) == static_cast<rational>(rhs); }
+  {
+    if constexpr (!is_raw_rational<L> && !is_raw_rational<R>
+                  && Grid<L> == Grid<R>)
+      return lhs.Raw == rhs.Raw;
+    else if constexpr (is_direct_storage<L> && is_direct_storage<R>)
+      return static_cast<imax>(lhs.Raw) == static_cast<imax>(rhs.Raw);
+    else
+      return static_cast<rational>(lhs) == static_cast<rational>(rhs);
+  }
 
   template <boundable B, arithmetic A>
   constexpr auto operator<=>(B const& lhs, A rhs)
-  { return static_cast<rational>(lhs) <=> rational{rhs}; }
+  {
+    if constexpr (is_direct_storage<B>)
+      return static_cast<imax>(lhs.Raw) <=> static_cast<imax>(rhs);
+    else
+      return static_cast<rational>(lhs) <=> rational{rhs};
+  }
 
   template <boundable B, arithmetic A>
   constexpr bool operator==(B const& lhs, A rhs)
-  { return static_cast<rational>(lhs) == rational{rhs}; }
+  {
+    if constexpr (is_direct_storage<B>)
+      return static_cast<imax>(lhs.Raw) == static_cast<imax>(rhs);
+    else
+      return static_cast<rational>(lhs) == rational{rhs};
+  }
 
   //---------------------------------------------------------------------------
   // add
