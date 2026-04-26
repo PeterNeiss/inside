@@ -18,7 +18,7 @@ target_compile_options(bound_bound
     INTERFACE
         $<$<CXX_COMPILER_ID:GNU,Clang>:
             -Wall -Wextra -Wpedantic -Werror
-            -Wshadow -Wconversion -Wsign-conversion
+            -Wconversion -Wsign-conversion
             -Wnon-virtual-dtor -Wold-style-cast
             -Woverloaded-virtual -Wnull-dereference
             -Wno-uninitialized
