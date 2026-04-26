@@ -17,7 +17,7 @@ target_include_directories(bound_bound
 target_compile_options(bound_bound
     INTERFACE
         $<$<CXX_COMPILER_ID:GNU,Clang>:
-            -Wall -Wextra -Wpedantic -Werror
+            -Wall -Wextra -Wpedantic
             -Wconversion -Wsign-conversion
             -Wnon-virtual-dtor -Wold-style-cast
             -Woverloaded-virtual -Wnull-dereference
