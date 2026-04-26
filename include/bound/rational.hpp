@@ -77,7 +77,7 @@ namespace bnd
      :Numerator{num}, Denominator{den}
     {
       if (Denominator == 0)
-        throw "Denominator of Zero is invalid";
+        throw std::system_error(make_error_code(errc::domain_error), "Denominator of Zero is invalid");
       if (Numerator == 0)
         Denominator = 1;
       trim(Numerator, Denominator);
@@ -96,7 +96,7 @@ namespace bnd
     explicit constexpr operator T () const
     {
       if (Denominator < 0)
-        throw "cannot convert negative rational to unsigned";
+        throw std::system_error(make_error_code(errc::domain_error), "cannot convert negative rational to unsigned");
       return static_cast<T>(Numerator/static_cast<umax>(Denominator));
     }
 
@@ -159,7 +159,7 @@ namespace bnd
     Denominator{ (num < 0) ? -den : den }
   {
     if (den == 0)
-      throw "Denominator of Zero is invalid";
+      throw std::system_error(make_error_code(errc::domain_error), "Denominator of Zero is invalid");
     if (Numerator == 0)
       Denominator = 1;
     trim(Numerator, Denominator);
@@ -168,7 +168,7 @@ namespace bnd
   constexpr rational::rational(std::floating_point auto value)
   {
     if (not std::isfinite(value))
-      throw "Keep your cr*ppy double to yourself!";
+      throw std::system_error(make_error_code(errc::domain_error), "non-finite double");
 
     if (value == 0.0)
     {

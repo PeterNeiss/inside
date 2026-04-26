@@ -145,7 +145,7 @@ namespace bnd
   constexpr auto abs_fraction(double value)
   {
     if (not std::isfinite(value))
-      throw "Keep your cr*ppy double to yourself!";
+      throw "non-finite double";
 
     // abs
     if (value < 0) value = -value;

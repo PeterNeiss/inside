@@ -39,6 +39,12 @@ namespace bnd
       return test(checked) && not test(ignore_domain);
     }
 
+    static constexpr bool round_check()
+    {
+      if consteval { return true; }
+      return test(checked) && not test(ignore_round);
+    }
+
     void report(errc code, std::string what)
     {
       if constexpr (std::is_same_v<E, error_ref>)

@@ -68,7 +68,11 @@ namespace bnd
       if constexpr (Lower<result> == (Lower<L> * Upper<R>).value())
       { return -multiplication<L, negative<R>>::mul(lhs, -rhs, std::forward<P>(policy)); }
 
-      throw "multiplication: internal logic error";
+      static_assert(Lower<result> == (Lower<L> * Lower<R>).value()
+                 || Lower<result> == (Upper<L> * Upper<R>).value()
+                 || Lower<result> == (Upper<L> * Lower<R>).value()
+                 || Lower<result> == (Lower<L> * Upper<R>).value(),
+                 "multiplication: internal logic error");
     }
   }
 } // namespace bnd

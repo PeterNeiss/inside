@@ -251,10 +251,22 @@ namespace bnd
     {
       rational raw = ((rhs - Lower<L>)/Notch<L>).value();
       umax den = static_cast<umax>(raw.Denominator);
-      if constexpr ((BoundPolicy<L> & round_nearest) || plain<P>::test(round_nearest))
-        lhs.Raw = raw_cast<L>((raw.Numerator + den/2) / den);
+      if (den != 1)
+      {
+        if constexpr ((BoundPolicy<L> & round_nearest) || plain<P>::test(round_nearest))
+          lhs.Raw = raw_cast<L>((raw.Numerator + den/2) / den);
+        else if constexpr ((BoundPolicy<L> & ignore_round) || plain<P>::test(ignore_round))
+          lhs.Raw = raw_cast<L>(raw.Numerator / den);
+        else if (policy.round_check())
+        {
+          policy.report(errc::rounding_error, bnd::to_string(rhs) + " does not land on notch " + bnd::to_string(Notch<L>));
+          return lhs;
+        }
+        else
+          lhs.Raw = raw_cast<L>(raw.Numerator / den);
+      }
       else
-        lhs.Raw = raw_cast<L>(raw.Numerator / den);
+        lhs.Raw = raw_cast<L>(raw.Numerator);
     }
     return lhs;
   }
