@@ -114,6 +114,18 @@ namespace bnd
 
   template <boundable B>
   inline constexpr umax UpperIndex = (Upper<B>/Notch<B>).value_or(0_r).Numerator;
+
+  // Raw-space bounds: maps interval endpoints to raw representation
+  template <boundable B>
+  inline constexpr imax RawLo = is_direct_storage<B> ? static_cast<imax>(Lower<B>) : 0;
+
+  template <boundable B>
+  inline constexpr imax RawHi = is_direct_storage<B> ? static_cast<imax>(Upper<B>) : static_cast<imax>(NotchCount<B>);
+
+  // Policy test: checks both type-level and per-operation policy
+  template <boundable B, typename P, policy_flag F>
+  inline constexpr bool has_policy = (BoundPolicy<B> & F) || plain<P>::test(F);
+
   template <boundable B>
   constexpr raw_t<B> sentinel_raw()
   {

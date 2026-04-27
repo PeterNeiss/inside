@@ -98,22 +98,16 @@ namespace bnd
             : -static_cast<imax>(Upper<L>.Numerator);
           if (static_cast<imax>(rhs) < lower || static_cast<imax>(rhs) > upper)
           {
-            if constexpr ((BoundPolicy<L> & clamp) || plain<P>::test(clamp))
+            if constexpr (has_policy<L, P, clamp>)
             {
               imax clamped = static_cast<imax>(rhs) < lower ? lower : upper;
               if constexpr (!std::is_same_v<plain<A>, no_action>)
                 action(static_cast<imax>(rhs) - clamped);
 
-              if constexpr (is_direct_storage<L>)
-                lhs.Raw = raw_cast<L>(clamped);
-              else
-              {
-                rational raw = ((clamped - Interval<L>.Lower)/Notch<L>).value();
-                lhs.Raw = raw_cast<L>(raw.Numerator / static_cast<umax>(raw.Denominator));
-              }
+              from_value(lhs, clamped);
               return lhs;
             }
-            else if constexpr ((BoundPolicy<L> & wrap) || plain<P>::test(wrap))
+            else if constexpr (has_policy<L, P, wrap>)
             {
               constexpr imax range = upper - lower + 1;
               imax shifted = static_cast<imax>(rhs) - lower;
@@ -122,16 +116,10 @@ namespace bnd
               if constexpr (!std::is_same_v<plain<A>, no_action>)
                 action(excess);
 
-              if constexpr (is_direct_storage<L>)
-                lhs.Raw = raw_cast<L>(wrapped + lower);
-              else
-              {
-                rational raw = (((wrapped + lower) - Interval<L>.Lower)/Notch<L>).value();
-                lhs.Raw = raw_cast<L>(raw.Numerator / static_cast<umax>(raw.Denominator));
-              }
+              from_value(lhs, wrapped + lower);
               return lhs;
             }
-            else if constexpr ((BoundPolicy<L> & sentinel) || plain<P>::test(sentinel))
+            else if constexpr (has_policy<L, P, sentinel>)
             {
               lhs.Raw = sentinel_raw<L>();
               return lhs;
@@ -147,18 +135,17 @@ namespace bnd
         {
           if (not Interval<L>.includes(rhs))
           {
-            if constexpr ((BoundPolicy<L> & clamp) || plain<P>::test(clamp))
+            if constexpr (has_policy<L, P, clamp>)
             {
               imax clamped = (rhs < Lower<L>) ?
                 static_cast<imax>(Lower<L>.Numerator) : static_cast<imax>(Upper<L>.Numerator);
               if constexpr (!std::is_same_v<plain<A>, no_action>)
                 action(static_cast<imax>(rhs) - clamped);
 
-              rational raw = ((clamped - Interval<L>.Lower)/Notch<L>).value();
-              lhs.Raw = raw_cast<L>(raw.Numerator / static_cast<umax>(raw.Denominator));
+              from_value(lhs, clamped);
               return lhs;
             }
-            else if constexpr ((BoundPolicy<L> & sentinel) || plain<P>::test(sentinel))
+            else if constexpr (has_policy<L, P, sentinel>)
             {
               lhs.Raw = sentinel_raw<L>();
               return lhs;
@@ -206,7 +193,7 @@ namespace bnd
       // run_time => may_fail
       if (not Interval<L>.includes(rhs))
       {
-        if constexpr ((BoundPolicy<L> & clamp) || plain<P>::test(clamp))
+        if constexpr (has_policy<L, P, clamp>)
         {
           R clamped = (rhs < Lower<L>) ? static_cast<R>(Lower<L>) : static_cast<R>(Upper<L>);
           if constexpr (!std::is_same_v<plain<A>, no_action>)
@@ -220,14 +207,14 @@ namespace bnd
           {
             rational raw = ((clamped - Lower<L>)/Notch<L>).value();
             umax den = static_cast<umax>(raw.Denominator);
-            if constexpr ((BoundPolicy<L> & round_nearest) || plain<P>::test(round_nearest))
+            if constexpr (has_policy<L, P, round_nearest>)
               lhs.Raw = raw_cast<L>((raw.Numerator + den/2) / den);
             else
               lhs.Raw = raw_cast<L>(raw.Numerator / den);
           }
           return lhs;
         }
-        else if constexpr ((BoundPolicy<L> & sentinel) || plain<P>::test(sentinel))
+        else if constexpr (has_policy<L, P, sentinel>)
         {
           lhs.Raw = sentinel_raw<L>();
           return lhs;
@@ -251,9 +238,9 @@ namespace bnd
       umax den = static_cast<umax>(raw.Denominator);
       if (den != 1)
       {
-        if constexpr ((BoundPolicy<L> & round_nearest) || plain<P>::test(round_nearest))
+        if constexpr (has_policy<L, P, round_nearest>)
           lhs.Raw = raw_cast<L>((raw.Numerator + den/2) / den);
-        else if constexpr ((BoundPolicy<L> & ignore_round) || plain<P>::test(ignore_round))
+        else if constexpr (has_policy<L, P, ignore_round>)
           lhs.Raw = raw_cast<L>(raw.Numerator / den);
         else if (policy.round_check())
         {
@@ -304,19 +291,17 @@ namespace bnd
           else
             mapped = static_cast<imax>(Factor.Numerator) * static_cast<imax>(rhs.Raw) - static_cast<imax>(Offset.Numerator);
 
-          constexpr imax raw_lo = is_direct_storage<L> ? static_cast<imax>(Lower<L>) : 0;
-          constexpr imax raw_hi = is_direct_storage<L> ? static_cast<imax>(Upper<L>) : static_cast<imax>(NotchCount<L>);
-          if (mapped < raw_lo || mapped > raw_hi)
+          if (mapped < RawLo<L> || mapped > RawHi<L>)
           {
-            if constexpr ((BoundPolicy<L> & clamp) || plain<P>::test(clamp))
+            if constexpr (has_policy<L, P, clamp>)
             {
               lhs.Raw = (static_cast<rational>(rhs) < Lower<L>) ?
-                raw_cast<L>(raw_lo) : raw_cast<L>(raw_hi);
+                raw_cast<L>(RawLo<L>) : raw_cast<L>(RawHi<L>);
               if constexpr (!std::is_same_v<plain<A>, no_action>)
                 action(static_cast<rational>(rhs) - static_cast<rational>(lhs));
               return lhs;
             }
-            else if constexpr ((BoundPolicy<L> & sentinel) || plain<P>::test(sentinel))
+            else if constexpr (has_policy<L, P, sentinel>)
             {
               lhs.Raw = sentinel_raw<L>();
               return lhs;
@@ -334,16 +319,15 @@ namespace bnd
           // may_fail
           if (not Interval<L>.includes(static_cast<rational>(rhs)))
           {
-            if constexpr ((BoundPolicy<L> & clamp) || plain<P>::test(clamp))
+            if constexpr (has_policy<L, P, clamp>)
             {
-              constexpr auto raw_lo = is_direct_storage<L> ? raw_cast<L>(static_cast<imax>(Lower<L>)) : raw_cast<L>(0);
-              constexpr auto raw_hi = is_direct_storage<L> ? raw_cast<L>(static_cast<imax>(Upper<L>)) : raw_cast<L>(NotchCount<L>);
-              lhs.Raw = (static_cast<rational>(rhs) < Lower<L>) ? raw_lo : raw_hi;
+              lhs.Raw = (static_cast<rational>(rhs) < Lower<L>) ?
+                raw_cast<L>(RawLo<L>) : raw_cast<L>(RawHi<L>);
               if constexpr (!std::is_same_v<plain<A>, no_action>)
                 action(static_cast<rational>(rhs) - static_cast<rational>(lhs));
               return lhs;
             }
-            else if constexpr ((BoundPolicy<L> & sentinel) || plain<P>::test(sentinel))
+            else if constexpr (has_policy<L, P, sentinel>)
             {
               lhs.Raw = sentinel_raw<L>();
               return lhs;

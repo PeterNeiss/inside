@@ -133,21 +133,17 @@ namespace bnd
         if constexpr (P & (clamp | wrap | checked | sentinel))
         {
           imax new_raw = static_cast<imax>(Raw) + static_cast<imax>(rhs.Raw);
-          constexpr imax lo = is_direct_storage<bound>
-            ? static_cast<imax>(Lower<bound>) : 0;
-          constexpr imax hi = is_direct_storage<bound>
-            ? static_cast<imax>(Upper<bound>) : static_cast<imax>(NotchCount<bound>);
-          if (new_raw < lo || new_raw > hi)
+          if (new_raw < RawLo<bound> || new_raw > RawHi<bound>)
           {
             if constexpr (P & clamp)
             {
-              Raw = raw_cast<bound>(new_raw < lo ? lo : hi);
+              Raw = raw_cast<bound>(new_raw < RawLo<bound> ? RawLo<bound> : RawHi<bound>);
               return *this;
             }
             else if constexpr (P & wrap)
             {
-              constexpr imax range = hi - lo + 1;
-              new_raw = ((new_raw - lo) % range + range) % range + lo;
+              constexpr imax range = RawHi<bound> - RawLo<bound> + 1;
+              new_raw = ((new_raw - RawLo<bound>) % range + range) % range + RawLo<bound>;
               Raw = raw_cast<bound>(new_raw);
               return *this;
             }
