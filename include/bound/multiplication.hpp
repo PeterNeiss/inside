@@ -52,7 +52,7 @@ namespace bnd
       if constexpr (Lower<result> == (Lower<L> * Lower<R>).value())
       {
         return to_result
-        (lhs.Raw * rhs.Raw + lhs.Raw * OffsetLower<R> + rhs.Raw * OffsetLower<L>);
+        (lhs.Raw * rhs.Raw + lhs.Raw * LowerIndex<R> + rhs.Raw * LowerIndex<L>);
       }
 
       if constexpr (Lower<result> == (Upper<L> * Upper<R>).value())
@@ -60,9 +60,9 @@ namespace bnd
 
       if constexpr (Lower<result> == (Upper<L> * Lower<R>).value())
       {
-        raw_t<L> negRaw = raw_cast<L>(MaxNotch<L> - lhs.Raw);
+        raw_t<L> negRaw = raw_cast<L>(NotchCount<L> - lhs.Raw);
         return to_result
-        (negRaw * OffsetLower<R> + rhs.Raw * OffsetUpper<L> - (negRaw * rhs.Raw));
+        (negRaw * LowerIndex<R> + rhs.Raw * UpperIndex<L> - (negRaw * rhs.Raw));
       }
 
       if constexpr (Lower<result> == (Lower<L> * Upper<R>).value())

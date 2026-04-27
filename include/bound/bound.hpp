@@ -92,7 +92,7 @@ namespace bnd
       else if constexpr (is_direct_storage<bound> || is_direct_storage<negative>)
         from_value(neg, -to_value(*this));
       else
-        neg.Raw = raw_cast<negative>(MaxNotch<bound> - Raw);
+        neg.Raw = raw_cast<negative>(NotchCount<bound> - Raw);
       return neg;
     }
 
@@ -136,7 +136,7 @@ namespace bnd
           constexpr imax lo = is_direct_storage<bound>
             ? static_cast<imax>(Lower<bound>) : 0;
           constexpr imax hi = is_direct_storage<bound>
-            ? static_cast<imax>(Upper<bound>) : static_cast<imax>(MaxNotch<bound>);
+            ? static_cast<imax>(Upper<bound>) : static_cast<imax>(NotchCount<bound>);
           if (new_raw < lo || new_raw > hi)
           {
             if constexpr (P & clamp)
@@ -276,7 +276,9 @@ namespace bnd
   template <boundable B, arithmetic A>
   constexpr auto operator<=>(B const& lhs, A rhs)
   {
-    if constexpr (is_direct_storage<B>)
+    if constexpr (is_raw_rational<B>)
+      return static_cast<rational>(lhs) <=> rational{rhs};
+    else if constexpr (is_direct_storage<B>)
       return static_cast<imax>(lhs.Raw) <=> static_cast<imax>(rhs);
     else
       return static_cast<rational>(lhs) <=> rational{rhs};
@@ -285,7 +287,9 @@ namespace bnd
   template <boundable B, arithmetic A>
   constexpr bool operator==(B const& lhs, A rhs)
   {
-    if constexpr (is_direct_storage<B>)
+    if constexpr (is_raw_rational<B>)
+      return static_cast<rational>(lhs) == rational{rhs};
+    else if constexpr (is_direct_storage<B>)
       return static_cast<imax>(lhs.Raw) == static_cast<imax>(rhs);
     else
       return static_cast<rational>(lhs) == rational{rhs};

@@ -23,7 +23,7 @@ namespace bnd
     str += " {";
     str += bnd::to_string(+b.Raw);
     str += "[" + std::string(type_name<raw_t<B>>());
-    str += " Max:" + bnd::to_string(+MaxNotch<B>) + "] ";
+    str += " Max:" + bnd::to_string(+NotchCount<B>) + "] ";
     str += bnd::to_string(Grid<B>);
     str += "}";
     return str;

@@ -201,6 +201,7 @@ void test_div()
   // offset-encoded: bound<{5,100}> has Lower=5, not direct storage
   using off = bound<{5, 100}>;
   static_assert(!is_direct_storage<off>);
+  static_assert(is_notch_storage<off>);
   off oa{50}, ob{10};
   auto oc = div(oa, ob, make_policy<ignore_round>());
   static_assert(!std::is_same_v<typename decltype(oc)::value_type::raw_type, rational>);

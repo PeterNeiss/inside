@@ -77,17 +77,19 @@ namespace bnd
   // Raw == value: no offset arithmetic needed
   template <boundable B>
   inline constexpr bool is_direct_storage =
-      !is_raw_rational<B> && Notch<B> == 1_r
-      && (Lower<B> == 0_r || std::signed_integral<raw_t<B>>);
+      is_raw_rational<B>
+      || (Notch<B> == 1_r && (Lower<B> == 0_r || std::signed_integral<raw_t<B>>));
+
+  // Raw is a notch index from Lower: value = Raw * Notch + Lower
+  template <boundable B>
+  inline constexpr bool is_notch_storage = !is_direct_storage<B>;
 
   template <boundable B>
   constexpr imax to_value(B b)
   {
-    if constexpr (is_raw_rational<B>)
+    if constexpr (is_direct_storage<B>)
       return static_cast<imax>(b.Raw);
-    else if constexpr (is_direct_storage<B>)
-      return static_cast<imax>(b.Raw);
-    else
+    else // is_notch_storage
       return static_cast<imax>(static_cast<rational>(b));
   }
 
@@ -96,7 +98,7 @@ namespace bnd
   {
     if constexpr (is_direct_storage<B>)
       b.Raw = raw_cast<B>(val);
-    else
+    else // is_notch_storage
     {
       auto offset = (rational{val} - Lower<B>) / Notch<B>;
       b.Raw = raw_cast<B>(offset.value().Numerator);
@@ -104,14 +106,14 @@ namespace bnd
   }
 
   template <boundable B>
-  inline constexpr umax MaxNotch = (Notch<B> == 0) ?
+  inline constexpr umax NotchCount = (Notch<B> == 0) ?
     0 : (Interval<B>/Notch<B>).value().Numerator;
 
   template <boundable B>
-  inline constexpr umax OffsetLower = (Lower<B>/Notch<B>).value_or(0_r).Numerator;
+  inline constexpr umax LowerIndex = (Lower<B>/Notch<B>).value_or(0_r).Numerator;
 
   template <boundable B>
-  inline constexpr umax OffsetUpper = (Upper<B>/Notch<B>).value_or(0_r).Numerator;
+  inline constexpr umax UpperIndex = (Upper<B>/Notch<B>).value_or(0_r).Numerator;
   template <boundable B>
   constexpr raw_t<B> sentinel_raw()
   {

@@ -177,11 +177,9 @@ namespace bnd
 
     if constexpr (Lower<L> == Upper<L>)
       lhs.Raw = 0;
-    else if constexpr (is_raw_rational<L>)
-      lhs.Raw = rhs;
     else if constexpr (is_direct_storage<L>)
       lhs.Raw = raw_cast<L>(rhs);
-    else
+    else // is_notch_storage
     {
       rational raw = ((rhs - Interval<L>.Lower)/Notch<L>).value();
       lhs.Raw = raw_cast<L>(raw.Numerator / static_cast<umax>(raw.Denominator));
@@ -307,7 +305,7 @@ namespace bnd
             mapped = static_cast<imax>(Factor.Numerator) * static_cast<imax>(rhs.Raw) - static_cast<imax>(Offset.Numerator);
 
           constexpr imax raw_lo = is_direct_storage<L> ? static_cast<imax>(Lower<L>) : 0;
-          constexpr imax raw_hi = is_direct_storage<L> ? static_cast<imax>(Upper<L>) : static_cast<imax>(MaxNotch<L>);
+          constexpr imax raw_hi = is_direct_storage<L> ? static_cast<imax>(Upper<L>) : static_cast<imax>(NotchCount<L>);
           if (mapped < raw_lo || mapped > raw_hi)
           {
             if constexpr ((BoundPolicy<L> & clamp) || plain<P>::test(clamp))
@@ -339,7 +337,7 @@ namespace bnd
             if constexpr ((BoundPolicy<L> & clamp) || plain<P>::test(clamp))
             {
               constexpr auto raw_lo = is_direct_storage<L> ? raw_cast<L>(static_cast<imax>(Lower<L>)) : raw_cast<L>(0);
-              constexpr auto raw_hi = is_direct_storage<L> ? raw_cast<L>(static_cast<imax>(Upper<L>)) : raw_cast<L>(MaxNotch<L>);
+              constexpr auto raw_hi = is_direct_storage<L> ? raw_cast<L>(static_cast<imax>(Upper<L>)) : raw_cast<L>(NotchCount<L>);
               lhs.Raw = (static_cast<rational>(rhs) < Lower<L>) ? raw_lo : raw_hi;
               if constexpr (!std::is_same_v<plain<A>, no_action>)
                 action(static_cast<rational>(rhs) - static_cast<rational>(lhs));
