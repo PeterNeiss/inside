@@ -39,41 +39,32 @@ namespace bnd
   template<policy_flag F>
   constexpr auto addition<L,R>::add(L lhs, R rhs, policy<F>) -> return_type_for<F>
   {
+    result res;
     if constexpr (is_raw_rational<result>)
     {
       if constexpr (needs_overflow_check<F>)
       {
-        auto sum = static_cast<rational>(lhs) + static_cast<rational>(rhs);
+        auto sum = rational::add(lhs,rhs);
         if (!sum) return slim::nullopt;
-        result res; res.Raw = raw_cast<result>(*sum); return res;
+        res.Raw = *sum;
       }
       else
-      {
-        result res;
-        res.Raw = raw_cast<result>(rational::add_unchecked(
-            static_cast<rational>(lhs), static_cast<rational>(rhs)));
-        return res;
-      }
+        res.Raw = rational::add_unchecked(lhs, rhs);
     }
     else if constexpr (is_raw_rational<L> || is_raw_rational<R>)
     {
-      auto sum = static_cast<rational>(lhs) + static_cast<rational>(rhs);
-      result res;
-      res.Raw = raw_cast<result>(((*sum - Lower<result>) / Notch<result>).value().Numerator);
-      return res;
+      auto sum = rational::add_unchecked(lhs,rhs);
+      res.Raw = raw_cast<result>(((sum - Lower<result>) / Notch<result>).value().Numerator);
     }
     else if constexpr (is_direct_storage<L> || is_direct_storage<R> || is_direct_storage<result>)
     {
-      result res;
       from_value(res, to_value(lhs) + to_value(rhs));
-      return res;
     }
     else
     {
-      result res;
       res.Raw = raw_cast<result>(static_cast<imax>(lhs.Raw) * lhs_widen + static_cast<imax>(rhs.Raw) * rhs_widen);
-      return res;
     }
+    return res;
   }
 } // namespace bnd
 

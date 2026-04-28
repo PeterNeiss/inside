@@ -72,7 +72,7 @@ namespace bnd
 
     constexpr explicit operator double() const { return G.raw_to_double(Raw); }
 
-    constexpr explicit operator rational() const
+    constexpr operator rational() const
     {
       if constexpr (is_raw_rational<bound>)
       {

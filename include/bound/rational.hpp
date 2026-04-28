@@ -57,6 +57,13 @@ namespace bnd
     b /= g;
   }
 
+  constexpr slim::optional<rational> operator+(const rational&, const rational&);
+  constexpr slim::optional<rational> operator/(rational, rational);
+  constexpr slim::optional<rational> operator-(const rational&, const rational&);
+
+  constexpr slim::optional<rational> operator*(rational, rational);
+  constexpr auto     operator<=>(rational, rational) -> std::strong_ordering;
+
   //---------------------------------------------------------------------------
   // rational_overflow — fails constant evaluation with the operator name
   //---------------------------------------------------------------------------
@@ -130,17 +137,14 @@ namespace bnd
 
     // Unchecked arithmetic — caller takes responsibility for non-overflow
     // (and non-zero divisor for div_unchecked). No optional, no failure path.
-    static constexpr rational add_unchecked(rational a, rational b);
-    static constexpr rational mul_unchecked(rational a, rational b);
-    static constexpr rational div_unchecked(rational a, rational b);
+    static constexpr rational add_unchecked(rational, rational);
+    static constexpr rational mul_unchecked(rational, rational);
+    static constexpr rational div_unchecked(rational, rational);
+
+    static constexpr slim::optional<rational> add(rational a, rational b)
+    { return a + b; }
   };
 
-  constexpr slim::optional<rational> operator+(const rational&, const rational&);
-  constexpr slim::optional<rational> operator/(rational, rational);
-  constexpr slim::optional<rational> operator-(const rational&, const rational&);
-
-  constexpr slim::optional<rational> operator*(rational, rational);
-  constexpr auto     operator<=>(rational, rational) -> std::strong_ordering;
 
   constexpr rational gcd(const rational&, const rational&);
   constexpr rational abs(rational);
