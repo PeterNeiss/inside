@@ -58,26 +58,22 @@ namespace bnd
     private:
       static constexpr rational calcOffset()
       {
-        if constexpr (std::is_same_v<L,R>)
-        { return 0; }
         if constexpr (is_raw_rational<L>)
-        { return Lower<R>; }
-        if constexpr (is_raw_rational<R>)
-        { return -(Lower<L>/Notch<L>).value(); }
-
-        return ((Lower<R> - Lower<L>)/Notch<L>).value();
+          return Lower<R>;
+        else if constexpr (is_raw_rational<R>)
+          return -(Lower<L>/Notch<L>).value();
+        else
+          return ((Lower<R> - Lower<L>)/Notch<L>).value();
       }
 
       static constexpr rational calcFactor()
       {
-        if constexpr (std::is_same_v<L,R>)
-        { return 0; }
         if constexpr (is_raw_rational<L>)
-        { return Notch<R>; }
-        if constexpr (is_raw_rational<R>)
-        { return (1_r/Notch<L>).value(); }
-
-        return (Notch<R>/Notch<L>).value();
+          return Notch<R>;
+        else if constexpr (is_raw_rational<R>)
+          return (1_r/Notch<L>).value();
+        else
+          return (Notch<R>/Notch<L>).value();
       }
 
     public:
