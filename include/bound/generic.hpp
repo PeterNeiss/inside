@@ -122,6 +122,11 @@ namespace bnd
   template <boundable B>
   inline constexpr imax RawHi = is_direct_storage<B> ? static_cast<imax>(Upper<B>) : static_cast<imax>(NotchCount<B>);
 
+  // Interval bounds are integers (denominator == ±1)
+  template <boundable B>
+  inline constexpr bool is_integer_interval =
+      abs_den(Lower<B>.Denominator) == 1 && abs_den(Upper<B>.Denominator) == 1;
+
   // Policy test: checks both type-level and per-operation policy
   template <boundable B, typename P, policy_flag F>
   inline constexpr bool has_policy = (BoundPolicy<B> & F) || plain<P>::test(F);
@@ -135,6 +140,24 @@ namespace bnd
       return std::numeric_limits<raw_t<B>>::min();
     else
       return std::numeric_limits<raw_t<B>>::max();
+  }
+
+  // Tail of the policy cascade: sentinel sets sentinel raw, checked reports.
+  // Returns true if a policy handled the failure (caller should return).
+  template <boundable B, typename P>
+  constexpr bool domain_fail(B& b, P&& policy, std::string msg)
+  {
+    if constexpr (has_policy<B, P, sentinel>)
+    {
+      b.Raw = sentinel_raw<B>();
+      return true;
+    }
+    else if (policy.domain_check())
+    {
+      policy.report(errc::domain_error, std::move(msg));
+      return true;
+    }
+    return false;
   }
 } // namespace bnd
 

@@ -14,9 +14,7 @@ namespace bnd
   //---------------------------------------------------------------------------
   // policy
   //---------------------------------------------------------------------------
-  struct empty_ref
-  {
-  };
+  struct empty_ref{ };
   struct error_ref
   {
     constexpr error_ref(std::error_code& ec):Code{ec} {}
@@ -48,9 +46,7 @@ namespace bnd
     void report(errc code, std::string what)
     {
       if constexpr (std::is_same_v<E, error_ref>)
-      {
         E::Code = E::Code ? E::Code : make_error_code(code);
-      }
       else
       {
 #ifdef BOUND_HAS_STACKTRACE
@@ -66,15 +62,11 @@ namespace bnd
   //---------------------------------------------------------------------------
   template<policy_flag F = none>
   constexpr auto make_policy()
-  {
-    return policy<F,empty_ref>{};
-  }
+  { return policy<F,empty_ref>{}; }
 
   template<policy_flag F = none>
   constexpr auto make_policy(std::error_code& ec)
-  {
-    return policy<F,error_ref>{ec};
-  }
+  { return policy<F,error_ref>{ec}; }
 
   //---------------------------------------------------------------------------
   // policy_ref

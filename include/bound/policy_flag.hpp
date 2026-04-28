@@ -12,7 +12,7 @@ namespace bnd
   using policy_flag = unsigned long long;
 
   // Do all compile time only checks always
-  // if we cannot guarantee success at compile time
+  // if we cannot guarantee success at compile time, fail compilation if ignore flag is not set
   // insert runtime checks, except we ignore the potential error
   // if a error is detected at runtime, we throw an exception by default
   // some function may provide a error_code parameter, which replaces the throw
