@@ -42,14 +42,17 @@ namespace bnd
     constexpr bound() = default; // trivial constructor
 
     template <numeric A>
+      requires assignable_from<bound, A, P>
     constexpr bound(A value)
     { assignment<bound, A>::assign(*this, value, make_policy<P>()); }
 
     template <numeric A, typename Pol>
+      requires assignable_from<bound, A, P>
     constexpr bound(A value, Pol&& pol)
     { assignment<bound, A>::assign(*this, value, pol); }
 
     template <numeric B>
+      requires assignable_from<bound, B, P>
     constexpr bound& operator=(B const& other)
     { return assignment<bound, B>::assign(*this, other, make_policy<P>()); }
 
@@ -187,6 +190,30 @@ namespace bnd
     template <arithmetic A>
     constexpr bound& operator-=(A rhs)
     { return *this += (-rhs); }
+
+    template <boundable R>
+    constexpr bound& operator*=(R const& rhs)
+    { return assign_op_result(*this * rhs); }
+
+    template <boundable R>
+    constexpr bound& operator/=(R const& rhs)
+    { return assign_op_result(*this / rhs); }
+
+    template <boundable R>
+    constexpr bound& operator%=(R const& rhs)
+    { return assign_op_result(mod(*this, rhs, make_policy<P>())); }
+
+    private:
+    template <typename Result>
+    constexpr bound& assign_op_result(Result const& r)
+    {
+      if constexpr (requires { typename Result::value_type; })
+        *this = r.value();
+      else
+        *this = r;
+      return *this;
+    }
+    public:
 
     template <arithmetic A>
     constexpr bound& operator*=(A rhs)

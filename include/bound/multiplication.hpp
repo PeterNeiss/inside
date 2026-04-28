@@ -52,9 +52,7 @@ namespace bnd
         return res;
       }
     }
-    else if constexpr (abs_den(Notch<L>.Denominator) == 1 && abs_den(Lower<L>.Denominator) == 1
-                     && abs_den(Notch<R>.Denominator) == 1 && abs_den(Lower<R>.Denominator) == 1
-                     && abs_den(Notch<result>.Denominator) == 1 && abs_den(Lower<result>.Denominator) == 1)
+    else if constexpr (is_integer_aligned<L> && is_integer_aligned<R> && is_integer_aligned<result>)
     {
       result res;
       from_value(res, to_value(lhs) * to_value(rhs));

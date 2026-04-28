@@ -127,9 +127,29 @@ namespace bnd
   inline constexpr bool is_integer_interval =
       abs_den(Lower<B>.Denominator) == 1 && abs_den(Upper<B>.Denominator) == 1;
 
+  // Notch and Lower both have integer denominators — enables native integer arithmetic
+  template <boundable B>
+  inline constexpr bool is_integer_aligned =
+      abs_den(Notch<B>.Denominator) == 1 && abs_den(Lower<B>.Denominator) == 1;
+
   // Policy test: checks both type-level and per-operation policy
   template <boundable B, typename P, policy_flag F>
   inline constexpr bool has_policy = (BoundPolicy<B> & F) || plain<P>::test(F);
+
+  // Forward decl — defined in assignment.hpp
+  template <typename L, typename R> struct assignment;
+
+  // Compile-time prerequisites for L = R: intervals overlap (for typed-interval R),
+  // and (for boundable R) the notch ratio is integral or rounding is accepted.
+  // Skipped for floating_point/rational R since they have no static interval.
+  template <typename L, typename R, policy_flag P = none>
+  concept assignable_from =
+      numeric<R>
+      && (!boundable<R> && !std::integral<R>
+          || not Interval<L>.excludes(Interval<R>))
+      && (!boundable<R>
+          || abs_den(assignment<L, R>::Factor.Denominator) == 1
+          || ((BoundPolicy<L> | P) & ignore_round) != 0);
 
   template <boundable B>
   constexpr raw_t<B> sentinel_raw()

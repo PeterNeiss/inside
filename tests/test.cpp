@@ -5,6 +5,7 @@
 #include "bound/bound.hpp"
 #include "bound/interval.hpp"
 #include "bound/print.hpp"
+#include "bound/formatter.hpp"
 
 using namespace bnd;
 
@@ -687,6 +688,20 @@ void test_compound_assign()
   u100 c{100};
   c %= 10;
   check("c %= 10: ", c, 0);
+
+  // boundable RHS for *=, /=, %=
+  using uir = bound<{0, 100}, ignore_round>;
+  uir d{50}, two{2};
+  d *= two;
+  check("d *= bound{2}: ", d, 100);
+
+  uir e{60}, three{3};
+  e /= three;
+  check("e /= bound{3}: ", e, 20);
+
+  uir f{17}, five{5};
+  f %= five;
+  check("f %= bound{5}: ", f, 2);
 }
 
 void test_modulo()
@@ -858,6 +873,13 @@ void test_to_string_format()
   check_str("fmt -1/3: ",  bnd::to_string(rational{1, -3}), "-1/3");
 }
 
+void test_std_formatter()
+{
+  check_str("std::format bound: ",   std::format("{}", bound<{0,99}>{42}), "42");
+  check_str("std::format pad: ",     std::format("[{:>6}]", bound<{0,99}>{42}), "[    42]");
+  check_str("std::format rational: ",std::format("{}", rational{1, 2}), "0.5");
+}
+
 void test_sentinel()
 {
   using idx = bound<{0, 9}, sentinel>;
@@ -1020,6 +1042,7 @@ int main()
 
     test_round_nearest();
     test_to_string_format();
+    test_std_formatter();
     test_sentinel();
     test_increment_decrement();
     test_implicit_cast();
