@@ -58,6 +58,12 @@ namespace bnd
   }
 
   //---------------------------------------------------------------------------
+  // rational_overflow — fails constant evaluation with the operator name
+  //---------------------------------------------------------------------------
+  [[noreturn]] inline consteval void rational_overflow(char const* op)
+  { throw op; }
+
+  //---------------------------------------------------------------------------
   // rational
   //---------------------------------------------------------------------------
   // Must be a structural type for template NTTP (only public members)
@@ -121,6 +127,12 @@ namespace bnd
 
     static constexpr rational make_sentinel() noexcept
     { rational r; r.Numerator = 1; r.Denominator = 0; return r; }
+
+    // Unchecked arithmetic — caller takes responsibility for non-overflow
+    // (and non-zero divisor for div_unchecked). No optional, no failure path.
+    static constexpr rational add_unchecked(rational a, rational b);
+    static constexpr rational mul_unchecked(rational a, rational b);
+    static constexpr rational div_unchecked(rational a, rational b);
   };
 
   constexpr slim::optional<rational> operator+(const rational&, const rational&);
@@ -203,6 +215,109 @@ namespace bnd
   { return rational{static_cast<double>(value)}; }
 
   //---------------------------------------------------------------------------
+  // unchecked rational arithmetic — caller takes responsibility
+  //---------------------------------------------------------------------------
+  inline constexpr rational rational::add_unchecked(rational a, rational b)
+  {
+    if (a == -b) return 0_r;
+    if (a.Numerator == 0) return b;
+    if (b.Numerator == 0) return a;
+
+    bool a_neg = a.Denominator < 0;
+    bool b_neg = b.Denominator < 0;
+    umax a_ad = abs_den(a.Denominator);
+    umax b_ad = abs_den(b.Denominator);
+
+    if (a_ad == b_ad)
+    {
+      if (a_neg == b_neg)
+      {
+        rational r;
+        r.Numerator = a.Numerator + b.Numerator;
+        r.Denominator = a.Denominator;
+        trim(r.Numerator, r.Denominator);
+        return r;
+      }
+      umax num = (a.Numerator > b.Numerator) ? (a.Numerator - b.Numerator)
+                                              : (b.Numerator - a.Numerator);
+      bool r_neg = a_neg ? (a.Numerator > b.Numerator) : (b.Numerator > a.Numerator);
+      if (num == 0) return 0_r;
+      rational r;
+      r.Numerator = num;
+      r.Denominator = r_neg ? -static_cast<imax>(a_ad) : static_cast<imax>(a_ad);
+      trim(r.Numerator, r.Denominator);
+      return r;
+    }
+
+    umax denominator = a_ad * b_ad;
+    umax A = a.Numerator * b_ad;
+    umax B = b.Numerator * a_ad;
+
+    if (a_neg == b_neg)
+    {
+      umax numerator = A + B;
+      imax signed_den = a_neg ? -static_cast<imax>(denominator) : static_cast<imax>(denominator);
+      return rational{numerator, signed_den};
+    }
+
+    umax numerator = (A > B) ? (A - B) : (B - A);
+    bool r_neg = a_neg ? (A > B) : (B > A);
+    imax signed_den = r_neg ? -static_cast<imax>(denominator) : static_cast<imax>(denominator);
+    return rational{numerator, signed_den};
+  }
+
+  inline constexpr rational rational::mul_unchecked(rational a, rational b)
+  {
+    if (a.Numerator == 0 || b.Numerator == 0) return 0_r;
+
+    bool r_neg = (a.Denominator < 0) != (b.Denominator < 0);
+    umax a_ad = abs_den(a.Denominator);
+    umax b_ad = abs_den(b.Denominator);
+
+    if (a_ad == 1 && b_ad == 1)
+    {
+      rational r;
+      r.Numerator = a.Numerator * b.Numerator;
+      r.Denominator = r_neg ? imax{-1} : imax{1};
+      return r;
+    }
+
+    trim(a.Numerator, b_ad);
+    trim(b.Numerator, a_ad);
+
+    umax numerator = a.Numerator * b.Numerator;
+    umax denominator = a_ad * b_ad;
+    imax signed_den = r_neg ? -static_cast<imax>(denominator) : static_cast<imax>(denominator);
+    return rational{numerator, signed_den};
+  }
+
+  inline constexpr rational rational::div_unchecked(rational a, rational b)
+  {
+    if (a.Numerator == 0) return 0_r;
+
+    bool r_neg = (a.Denominator < 0) != (b.Denominator < 0);
+    umax a_ad = abs_den(a.Denominator);
+    umax b_ad = abs_den(b.Denominator);
+
+    if (a_ad == 1 && b_ad == 1)
+    {
+      trim(a.Numerator, b.Numerator);
+      rational r;
+      r.Numerator = a.Numerator;
+      r.Denominator = r_neg ? -static_cast<imax>(b.Numerator) : static_cast<imax>(b.Numerator);
+      return r;
+    }
+
+    trim(a.Numerator, b.Numerator);
+    trim(a_ad, b_ad);
+
+    umax numerator = a.Numerator * b_ad;
+    umax denominator = b.Numerator * a_ad;
+    imax signed_den = r_neg ? -static_cast<imax>(denominator) : static_cast<imax>(denominator);
+    return rational{numerator, signed_den};
+  }
+
+  //---------------------------------------------------------------------------
   // operator-
   //---------------------------------------------------------------------------
   inline constexpr rational rational::operator-() const
@@ -255,7 +370,10 @@ namespace bnd
       mul_overflow(lhs.Numerator, rhs_ad, &A) ||
       mul_overflow(rhs.Numerator, lhs_ad, &B)
     )
+    {
+      if consteval { rational_overflow("rational <=>: cross-multiplication overflow"); }
       OVERFLOW_trap("multiplicative overflow");
+    }
 
     if (lhs_neg)
       return B <=> A;
@@ -295,7 +413,10 @@ namespace bnd
     {
       umax numerator;
       if (mul_overflow(lhs.Numerator, rhs.Numerator, &numerator))
+      {
+        if consteval { rational_overflow("rational *: numerator overflow"); }
         return slim::nullopt;
+      }
       rational r;
       r.Numerator = numerator;
       r.Denominator = result_neg ? imax{-1} : imax{1};
@@ -314,7 +435,10 @@ namespace bnd
       mul_overflow(lhs.Numerator, rhs.Numerator, &numerator) ||
       mul_overflow(lhs_ad, rhs_ad, &denominator)
     )
+    {
+      if consteval { rational_overflow("rational *: numerator or denominator overflow"); }
       return slim::nullopt;
+    }
 
     imax signed_den = result_neg ? -static_cast<imax>(denominator) : static_cast<imax>(denominator);
     return rational{numerator, signed_den};
@@ -381,7 +505,10 @@ namespace bnd
       mul_overflow(lhs.Numerator, rhs_ad, &numerator) ||
       mul_overflow(rhs.Numerator, lhs_ad, &denominator)
     )
+    {
+      if consteval { rational_overflow("rational /: cross-multiplication overflow"); }
       return slim::nullopt;
+    }
 
     imax signed_den = result_neg ? -static_cast<imax>(denominator) : static_cast<imax>(denominator);
     return rational{numerator, signed_den};
@@ -438,7 +565,10 @@ namespace bnd
       {
         umax numerator;
         if (add_overflow(lhs.Numerator, rhs.Numerator, &numerator))
+        {
+          if consteval { rational_overflow("rational +: numerator overflow (same denominator)"); }
           return slim::nullopt;
+        }
         rational r;
         r.Numerator = numerator;
         r.Denominator = lhs.Denominator;
@@ -473,12 +603,18 @@ namespace bnd
       mul_overflow(lhs.Numerator, rhs_ad, &A)    ||
       mul_overflow(rhs.Numerator, lhs_ad, &B)
     )
+    {
+      if consteval { rational_overflow("rational +: cross-multiplication overflow"); }
       return slim::nullopt;
+    }
 
     if (lhs_neg == rhs_neg)
     {
       if (add_overflow(A, B, &numerator))
+      {
+        if consteval { rational_overflow("rational +: numerator sum overflow"); }
         return slim::nullopt;
+      }
       imax signed_den = lhs_neg ? -static_cast<imax>(denominator) : static_cast<imax>(denominator);
       return rational{numerator, signed_den};
     }

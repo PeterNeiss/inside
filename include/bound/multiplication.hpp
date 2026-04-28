@@ -15,12 +15,18 @@ namespace bnd
   {
     using result = bound<(Grid<L> * Grid<R>).value()>;
 
-    using return_type = std::conditional_t<is_raw_rational<result>,
-                                           slim::optional<result>,
-                                           result>;
+    template <typename P>
+    static constexpr bool needs_overflow_check =
+        is_raw_rational<result>
+        && (((BoundPolicy<L> | BoundPolicy<R>) & checked) || plain<P>::test(checked));
 
     template <typename P>
-    static constexpr return_type mul(L, R, P&&);
+    using return_type_for = std::conditional_t<needs_overflow_check<P>,
+                                               slim::optional<result>,
+                                               result>;
+
+    template <typename P>
+    static constexpr return_type_for<P> mul(L, R, P&&);
   };
 
   //---------------------------------------------------------------------------
@@ -28,13 +34,23 @@ namespace bnd
   //---------------------------------------------------------------------------
   template <boundable L, boundable R>
   template <typename P>
-  constexpr auto multiplication<L,R>::mul(L lhs, R rhs, P&& policy) -> return_type
+  constexpr auto multiplication<L,R>::mul(L lhs, R rhs, P&& policy) -> return_type_for<P>
   {
     if constexpr (is_raw_rational<result>)
     {
-      auto prod = static_cast<rational>(lhs) * static_cast<rational>(rhs);
-      if (!prod) return slim::nullopt;
-      result res; res.Raw = raw_cast<result>(*prod); return res;
+      if constexpr (needs_overflow_check<P>)
+      {
+        auto prod = static_cast<rational>(lhs) * static_cast<rational>(rhs);
+        if (!prod) return slim::nullopt;
+        result res; res.Raw = raw_cast<result>(*prod); return res;
+      }
+      else
+      {
+        result res;
+        res.Raw = raw_cast<result>(rational::mul_unchecked(
+            static_cast<rational>(lhs), static_cast<rational>(rhs)));
+        return res;
+      }
     }
     else if constexpr (abs_den(Notch<L>.Denominator) == 1 && abs_den(Lower<L>.Denominator) == 1
                      && abs_den(Notch<R>.Denominator) == 1 && abs_den(Lower<R>.Denominator) == 1

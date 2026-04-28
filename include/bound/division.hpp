@@ -29,6 +29,10 @@ namespace bnd
     using result = bound<result_grid>;
 
     template <policy_flag G = F>
+    static constexpr bool needs_overflow_check =
+        ((G | F | BoundPolicy<L> | BoundPolicy<R>) & checked);
+
+    template <policy_flag G = F>
     static constexpr slim::optional<result> div(L, R, policy<G> = {});
   };
 
@@ -47,11 +51,19 @@ namespace bnd
       from_value(res, to_value(lhs) / rhs_val);
       return res;
     }
-    else
+    else if constexpr (needs_overflow_check<G>)
     {
       auto q = static_cast<rational>(lhs) / static_cast<rational>(rhs);
       if (!q) return slim::nullopt;
       result res; res.Raw = *q; return res;
+    }
+    else
+    {
+      auto rhs_r = static_cast<rational>(rhs);
+      if (rhs_r.Numerator == 0) return slim::nullopt;
+      result res;
+      res.Raw = rational::div_unchecked(static_cast<rational>(lhs), rhs_r);
+      return res;
     }
   }
   //---------------------------------------------------------------------------
