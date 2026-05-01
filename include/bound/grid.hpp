@@ -72,24 +72,6 @@ namespace bnd
     constexpr bool operator==(const grid& rhs) const = default;
     constexpr grid operator-() const { return {-Interval, Notch}; }
 
-    template <std::unsigned_integral Raw>
-    constexpr Raw to_raw(rational value) const
-    {
-      //TODO: check safty of calculation
-      rational raw = ((value - Interval.Lower)/Notch).value();
-      return static_cast<Raw>(raw.Numerator / static_cast<umax>(raw.Denominator));
-    }
-
-    template <std::signed_integral Raw>
-    constexpr Raw to_raw(rational value) const
-    { return static_cast<Raw>(value); }
-
-    template <std::same_as<rational> Raw>
-    constexpr rational to_raw(rational value) const
-    {
-      return ((value - Interval.Lower)/Notch).value_or(value);
-    }
-
     constexpr double raw_to_double(std::unsigned_integral auto raw) const
     { return static_cast<double>((*(raw*Notch) + Interval.Lower).value()); }
 

@@ -376,8 +376,9 @@ Requires CMake 3.24+ and a C++23 compiler (GCC 12+, Clang 16+, MSVC 19.36+).
 ```bash
 cmake -B build
 cmake --build build
-./build/test                    # unit tests
-./build/algo                    # STL algorithm integration tests
-./build/bench                   # performance benchmarks (native vs bound)
-./build/example_algorithms      # algorithms example
+ctest --test-dir build --output-on-failure   # runs unit + algo suites
+./build/test                                 # unit tests directly
+./build/algo                                 # STL algorithm integration tests
+./build/bench                                # performance benchmarks (native vs bound)
+./build/example_algorithms                   # algorithms example
 ```
