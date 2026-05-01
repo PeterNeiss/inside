@@ -56,7 +56,7 @@ namespace bnd
     constexpr bound& operator=(B const& other)
     { return assignment<bound, B>::assign(*this, other, make_policy<P>()); }
 
-    constexpr auto value() const
+    [[nodiscard]] constexpr auto value() const
     {
       if constexpr (is_raw_rational<bound>)
         return Raw;
@@ -87,7 +87,7 @@ namespace bnd
         return (*(Raw * G.Notch) + G.Interval.Lower).value();
     }
 
-    constexpr negative operator-() const
+    [[nodiscard]] constexpr negative operator-() const
     {
       negative neg;
       if constexpr (is_raw_rational<bound>)
@@ -254,7 +254,7 @@ namespace bnd
     constexpr bound  operator--(int) { bound t = *this; --*this; return t; }
 
     template <numeric A>
-    static constexpr slim::optional<bound> try_make(A value)
+    [[nodiscard]] static constexpr slim::optional<bound> try_make(A value)
     {
       std::error_code ec;
       bound result;
@@ -262,9 +262,6 @@ namespace bnd
       if (ec) return slim::nullopt;
       return result;
     }
-
-    private:
-      static void check_trival() { static_assert(std::is_trivial_v<bound>);}
   };
 
   //---------------------------------------------------------------------------
@@ -318,7 +315,7 @@ namespace bnd
   // add
   //---------------------------------------------------------------------------
   template <boundable L, boundable R, typename P = policy<>>
-  constexpr auto add(L const& lhs, R const& rhs, P&& policy = {})
+  [[nodiscard]] constexpr auto add(L const& lhs, R const& rhs, P&& policy = {})
   { return addition<L,R>::add(lhs, rhs, std::forward<P>(policy)); }
 
   //---------------------------------------------------------------------------
@@ -351,7 +348,7 @@ namespace bnd
   //---------------------------------------------------------------------------
   // operator+
   //---------------------------------------------------------------------------
-  constexpr auto operator+(boundable auto lhs, boundable auto rhs)
+  [[nodiscard]] constexpr auto operator+(boundable auto lhs, boundable auto rhs)
   { return add(lhs, rhs); }
 
   template <boundable L, boundable R>
@@ -370,13 +367,13 @@ namespace bnd
   // sub
   //---------------------------------------------------------------------------
   template <boundable L, boundable R, typename P = policy<>>
-  constexpr auto sub(L const& lhs, R const& rhs, P&& policy = {})
+  [[nodiscard]] constexpr auto sub(L const& lhs, R const& rhs, P&& policy = {})
   { return add(lhs, -rhs, std::forward<P>(policy)); }
 
   //---------------------------------------------------------------------------
   // operator-
   //---------------------------------------------------------------------------
-  constexpr auto operator-(boundable auto lhs, boundable auto rhs)
+  [[nodiscard]] constexpr auto operator-(boundable auto lhs, boundable auto rhs)
   { return sub(lhs, rhs); }
 
   template <boundable L, boundable R>
@@ -395,13 +392,13 @@ namespace bnd
   // mul
   //---------------------------------------------------------------------------
   template <boundable L, boundable R, typename P = policy<>>
-  constexpr auto mul(L const& lhs, R const& rhs, P&& policy = {})
+  [[nodiscard]] constexpr auto mul(L const& lhs, R const& rhs, P&& policy = {})
   { return multiplication<L,R>::mul(lhs, rhs, std::forward<P>(policy)); }
 
   //---------------------------------------------------------------------------
   // operator*
   //---------------------------------------------------------------------------
-  constexpr auto operator*(boundable auto lhs, boundable auto rhs)
+  [[nodiscard]] constexpr auto operator*(boundable auto lhs, boundable auto rhs)
   { return bnd::mul(lhs, rhs); }
 
   template <boundable L, boundable R>
@@ -420,13 +417,13 @@ namespace bnd
   // div
   //---------------------------------------------------------------------------
   template <boundable L, boundable R, policy_flag F = none>
-  constexpr auto div(L lhs, R rhs, policy<F> pol = {})
+  [[nodiscard]] constexpr auto div(L lhs, R rhs, policy<F> pol = {})
   { return division<L, R, F>::div(lhs, rhs, pol); }
 
   //---------------------------------------------------------------------------
   // operator/
   //---------------------------------------------------------------------------
-  constexpr auto operator/(boundable auto lhs, boundable auto rhs)
+  [[nodiscard]] constexpr auto operator/(boundable auto lhs, boundable auto rhs)
   {
     constexpr policy_flag F = BoundPolicy<decltype(lhs)> | BoundPolicy<decltype(rhs)>;
     return bnd::div(lhs, rhs, make_policy<F>());
@@ -448,13 +445,13 @@ namespace bnd
   // mod
   //---------------------------------------------------------------------------
   template <boundable L, boundable R, policy_flag F = none>
-  constexpr auto mod(L lhs, R rhs, policy<F> pol = {})
+  [[nodiscard]] constexpr auto mod(L lhs, R rhs, policy<F> pol = {})
   { return modulo<L, R, F>::mod(lhs, rhs, pol); }
 
   //---------------------------------------------------------------------------
   // operator%
   //---------------------------------------------------------------------------
-  constexpr auto operator%(boundable auto lhs, boundable auto rhs)
+  [[nodiscard]] constexpr auto operator%(boundable auto lhs, boundable auto rhs)
   {
     constexpr policy_flag F = BoundPolicy<decltype(lhs)> | BoundPolicy<decltype(rhs)>;
     return bnd::mod(lhs, rhs, make_policy<F>());
@@ -537,13 +534,7 @@ namespace slim
   constexpr bnd::bound<G, P> sentinel_traits<bnd::bound<G, P>>::sentinel() noexcept
   {
     bnd::bound<G, P> s;
-    using raw = typename bnd::bound<G, P>::raw_type;
-    if constexpr (std::is_same_v<raw, bnd::rational>)
-      s.Raw = bnd::rational::make_sentinel();
-    else if constexpr (std::signed_integral<raw>)
-      s.Raw = std::numeric_limits<raw>::min();
-    else
-      s.Raw = std::numeric_limits<raw>::max();
+    s.Raw = bnd::sentinel_raw<bnd::bound<G, P>>();
     return s;
   }
 
@@ -551,12 +542,12 @@ namespace slim
   constexpr bool sentinel_traits<bnd::bound<G, P>>::is_sentinel(const bnd::bound<G, P>& v) noexcept
   {
     using raw = typename bnd::bound<G, P>::raw_type;
+    // Rational uses a broader check (any zero denominator) than equality
+    // against the canonical {1, 0} sentinel.
     if constexpr (std::is_same_v<raw, bnd::rational>)
       return v.Raw.Denominator == 0;
-    else if constexpr (std::signed_integral<raw>)
-      return v.Raw == std::numeric_limits<raw>::min();
     else
-      return v.Raw == std::numeric_limits<raw>::max();
+      return v.Raw == bnd::sentinel_raw<bnd::bound<G, P>>();
   }
 } // namespace slim
 

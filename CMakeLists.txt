@@ -21,6 +21,8 @@ target_compile_options(bound_bound
             -Wconversion -Wsign-conversion
             -Wnon-virtual-dtor -Wold-style-cast
             -Woverloaded-virtual -Wnull-dereference
+            # bound's default constructor is intentionally trivial (Raw left
+            # uninitialised) so the type stays trivial for NTTP / memcpy use.
             -Wno-uninitialized
             -Wno-missing-field-initializers
             -Wformat=2
@@ -50,18 +52,25 @@ if(BOUND_HAS_STACKTRACE)
     )
 endif()
 
-add_executable(test tests/test.cpp)
-target_link_libraries(test PUBLIC bound::bound)
+enable_testing()
+
+# CMake reserves the target name "test" once enable_testing() is called, so
+# the build target is named bound_test but the produced binary is still ./test.
+add_executable(bound_test tests/test.cpp)
+set_target_properties(bound_test PROPERTIES OUTPUT_NAME test)
+target_link_libraries(bound_test PUBLIC bound::bound)
+add_test(NAME unit COMMAND bound_test)
 
 add_executable(algo tests/algo.cpp)
 target_link_libraries(algo PUBLIC bound::bound)
+add_test(NAME algo COMMAND algo)
 
 include(FetchContent)
 set(DISABLE_EXAMPLES ON CACHE BOOL "" FORCE)
 FetchContent_Declare(
   ctrack
   GIT_REPOSITORY https://github.com/Compaile/ctrack.git
-  GIT_TAG        main
+  GIT_TAG        v1.1.0
 )
 FetchContent_MakeAvailable(ctrack)
 

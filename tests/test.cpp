@@ -129,6 +129,20 @@ void test_grid()
   );
 }
 
+void test_trivial()
+{
+  // bound must remain trivial across the storage / policy matrix so it can
+  // sit in NTTPs, unions, and memcpy buffers.
+  static_assert(std::is_trivial_v<bound<{0, 0}>>);
+  static_assert(std::is_trivial_v<bound<{0, 100}>>);
+  static_assert(std::is_trivial_v<bound<{-100, 100}>>);
+  static_assert(std::is_trivial_v<bound<{{0, 10}, rational{1, 2}}>>);
+  static_assert(std::is_trivial_v<bound<{{-10, 10}, 0}>>);
+  static_assert(std::is_trivial_v<bound<{0, 100}, clamp>>);
+  static_assert(std::is_trivial_v<bound<{0, 100}, wrap>>);
+  static_assert(std::is_trivial_v<bound<{0, 100}, sentinel>>);
+}
+
 //---------------------------------------------------------------------------
 // runtime checked tests
 //---------------------------------------------------------------------------
@@ -1040,6 +1054,7 @@ int main()
     test_compound_assign();
     test_modulo();
 
+    test_trivial();
     test_round_nearest();
     test_to_string_format();
     test_std_formatter();
