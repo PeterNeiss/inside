@@ -35,20 +35,24 @@ namespace bnd
     if (is_decimal)
     {
       umax scale = pow10 / ad;
-      umax total = r.Numerator * scale;
-      umax int_part = total / pow10;
-      umax frac_part = total % pow10;
-      str += std::to_string(int_part);
-      if (digits > 0)
+      umax total;
+      if (!mul_overflow(r.Numerator, scale, &total))
       {
-        str += ".";
-        auto frac_str = std::to_string(frac_part);
-        // zero-pad
-        for (unsigned i = 0; i < digits - frac_str.size(); ++i)
-          str += "0";
-        str += frac_str;
+        umax int_part = total / pow10;
+        umax frac_part = total % pow10;
+        str += std::to_string(int_part);
+        if (digits > 0)
+        {
+          str += ".";
+          auto frac_str = std::to_string(frac_part);
+          // zero-pad
+          for (unsigned i = 0; i < digits - frac_str.size(); ++i)
+            str += "0";
+          str += frac_str;
+        }
+        return str;
       }
-      return str;
+      // overflow: fall through to mixed-number/fraction form below
     }
 
     // mixed number for improper fractions

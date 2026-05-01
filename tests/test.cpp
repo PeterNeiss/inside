@@ -977,6 +977,17 @@ void test_to_string_format()
   // Negative fractions -> mixed number
   check_str("fmt -7/3: ",  bnd::to_string(rational{7, -3}), "-2 1/3");
   check_str("fmt -1/3: ",  bnd::to_string(rational{1, -3}), "-1/3");
+
+  // Overflow boundary: numerator * scale would wrap -> fall back to fraction
+  // form. UINT64_MAX is odd so {M, 2} is irreducible; {M/5, 2} fits exactly
+  // (M/5 * 5 = M, no overflow).
+  constexpr umax M = std::numeric_limits<umax>::max();
+  check_str("fmt M/2: ",     bnd::to_string(rational{M, 2}),
+            "9223372036854775807 1/2");
+  check_str("fmt -M/2: ",    bnd::to_string(rational{M, -2}),
+            "-9223372036854775807 1/2");
+  check_str("fmt (M/5)/2: ", bnd::to_string(rational{M / 5, 2}),
+            "1844674407370955161.5");
 }
 
 void test_std_formatter()
