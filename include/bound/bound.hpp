@@ -5,6 +5,7 @@
 #define BNDboundHPP
 
 #include "bound/generic.hpp"
+#include "bound/lift.hpp"
 #include "bound/policy.hpp"
 #include "bound/addition.hpp"
 #include "bound/multiplication.hpp"
@@ -319,33 +320,6 @@ namespace bnd
   { return addition<L,R>::add(lhs, rhs, std::forward<P>(policy)); }
 
   //---------------------------------------------------------------------------
-  // detail::lift — optional propagation for binary operators
-  //---------------------------------------------------------------------------
-  namespace detail
-  {
-    template <typename T>
-    constexpr auto as_optional(T&& val)
-    {
-      if constexpr (requires { typename std::remove_cvref_t<T>::value_type; })
-        return std::forward<T>(val);
-      else
-        return slim::optional<std::remove_cvref_t<T>>{std::forward<T>(val)};
-    }
-
-    template <boundable L, boundable R, typename Op>
-    constexpr auto lift(slim::optional<L> lhs, R rhs, Op op)
-    { if (!lhs) return decltype(as_optional(op(*lhs, rhs))){slim::nullopt}; return as_optional(op(*lhs, rhs)); }
-
-    template <boundable L, boundable R, typename Op>
-    constexpr auto lift(L lhs, slim::optional<R> rhs, Op op)
-    { if (!rhs) return decltype(as_optional(op(lhs, *rhs))){slim::nullopt}; return as_optional(op(lhs, *rhs)); }
-
-    template <boundable L, boundable R, typename Op>
-    constexpr auto lift(slim::optional<L> lhs, slim::optional<R> rhs, Op op)
-    { if (!lhs || !rhs) return decltype(as_optional(op(*lhs, *rhs))){slim::nullopt}; return as_optional(op(*lhs, *rhs)); }
-  }
-
-  //---------------------------------------------------------------------------
   // operator+
   //---------------------------------------------------------------------------
   [[nodiscard]] constexpr auto operator+(boundable auto lhs, boundable auto rhs)
@@ -353,15 +327,15 @@ namespace bnd
 
   template <boundable L, boundable R>
   constexpr auto operator+(slim::optional<L> lhs, R rhs)
-  { return detail::lift(lhs, rhs, [](auto l, auto r){ return l + r; }); }
+  { return lift([](auto l, auto r){ return l + r; }, lhs, rhs); }
 
   template <boundable L, boundable R>
   constexpr auto operator+(L lhs, slim::optional<R> rhs)
-  { return detail::lift(lhs, rhs, [](auto l, auto r){ return l + r; }); }
+  { return lift([](auto l, auto r){ return l + r; }, lhs, rhs); }
 
   template <boundable L, boundable R>
   constexpr auto operator+(slim::optional<L> lhs, slim::optional<R> rhs)
-  { return detail::lift(lhs, rhs, [](auto l, auto r){ return l + r; }); }
+  { return lift([](auto l, auto r){ return l + r; }, lhs, rhs); }
 
   //---------------------------------------------------------------------------
   // sub
@@ -378,15 +352,15 @@ namespace bnd
 
   template <boundable L, boundable R>
   constexpr auto operator-(slim::optional<L> lhs, R rhs)
-  { return detail::lift(lhs, rhs, [](auto l, auto r){ return l - r; }); }
+  { return lift([](auto l, auto r){ return l - r; }, lhs, rhs); }
 
   template <boundable L, boundable R>
   constexpr auto operator-(L lhs, slim::optional<R> rhs)
-  { return detail::lift(lhs, rhs, [](auto l, auto r){ return l - r; }); }
+  { return lift([](auto l, auto r){ return l - r; }, lhs, rhs); }
 
   template <boundable L, boundable R>
   constexpr auto operator-(slim::optional<L> lhs, slim::optional<R> rhs)
-  { return detail::lift(lhs, rhs, [](auto l, auto r){ return l - r; }); }
+  { return lift([](auto l, auto r){ return l - r; }, lhs, rhs); }
 
   //---------------------------------------------------------------------------
   // mul
@@ -403,15 +377,15 @@ namespace bnd
 
   template <boundable L, boundable R>
   constexpr auto operator*(slim::optional<L> lhs, R rhs)
-  { return detail::lift(lhs, rhs, [](auto l, auto r){ return l * r; }); }
+  { return lift([](auto l, auto r){ return l * r; }, lhs, rhs); }
 
   template <boundable L, boundable R>
   constexpr auto operator*(L lhs, slim::optional<R> rhs)
-  { return detail::lift(lhs, rhs, [](auto l, auto r){ return l * r; }); }
+  { return lift([](auto l, auto r){ return l * r; }, lhs, rhs); }
 
   template <boundable L, boundable R>
   constexpr auto operator*(slim::optional<L> lhs, slim::optional<R> rhs)
-  { return detail::lift(lhs, rhs, [](auto l, auto r){ return l * r; }); }
+  { return lift([](auto l, auto r){ return l * r; }, lhs, rhs); }
 
   //---------------------------------------------------------------------------
   // div
@@ -431,15 +405,15 @@ namespace bnd
 
   template <boundable L, boundable R>
   constexpr auto operator/(slim::optional<L> lhs, R rhs)
-  { return detail::lift(lhs, rhs, [](auto l, auto r){ return l / r; }); }
+  { return lift([](auto l, auto r){ return l / r; }, lhs, rhs); }
 
   template <boundable L, boundable R>
   constexpr auto operator/(L lhs, slim::optional<R> rhs)
-  { return detail::lift(lhs, rhs, [](auto l, auto r){ return l / r; }); }
+  { return lift([](auto l, auto r){ return l / r; }, lhs, rhs); }
 
   template <boundable L, boundable R>
   constexpr auto operator/(slim::optional<L> lhs, slim::optional<R> rhs)
-  { return detail::lift(lhs, rhs, [](auto l, auto r){ return l / r; }); }
+  { return lift([](auto l, auto r){ return l / r; }, lhs, rhs); }
 
   //---------------------------------------------------------------------------
   // mod

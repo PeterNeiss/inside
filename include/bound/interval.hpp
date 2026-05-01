@@ -4,6 +4,7 @@
 #ifndef BNDintervalHPP
 #define BNDintervalHPP
 
+#include "bound/lift.hpp"
 #include "bound/rational.hpp"
 
 #include <algorithm>
@@ -89,11 +90,9 @@ namespace bnd
   //---------------------------------------------------------------------------
   inline constexpr slim::optional<interval> operator+(const interval& lhs, const interval& rhs)
   {
-    auto lower = lhs.Lower + rhs.Lower;
-    auto upper = lhs.Upper + rhs.Upper;
-    if (!lower || !upper)
-      return slim::nullopt;
-    return interval{*lower, *upper};
+    return lift(
+      [](rational l, rational u){ return interval{l, u}; },
+      lhs.Lower + rhs.Lower, lhs.Upper + rhs.Upper);
   }
 
   //---------------------------------------------------------------------------
@@ -109,15 +108,13 @@ namespace bnd
   //---------------------------------------------------------------------------
   inline constexpr slim::optional<interval> operator*(const interval& lhs, const interval& rhs)
   {
-    auto a = lhs.Lower * rhs.Lower;
-    auto b = lhs.Lower * rhs.Upper;
-    auto c = lhs.Upper * rhs.Lower;
-    auto d = lhs.Upper * rhs.Upper;
-    if (!a || !b || !c || !d)
-      return slim::nullopt;
-
-    auto [lower, upper] = std::minmax({*a, *b, *c, *d});
-    return interval{lower, upper};
+    return lift(
+      [](rational a, rational b, rational c, rational d){
+        auto [lo, hi] = std::minmax({a, b, c, d});
+        return interval{lo, hi};
+      },
+      lhs.Lower * rhs.Lower, lhs.Lower * rhs.Upper,
+      lhs.Upper * rhs.Lower, lhs.Upper * rhs.Upper);
   }
 
   //---------------------------------------------------------------------------
@@ -128,15 +125,13 @@ namespace bnd
     if (rhs.includes(0))
       return slim::nullopt;
 
-    auto a = lhs.Lower / rhs.Lower;
-    auto b = lhs.Lower / rhs.Upper;
-    auto c = lhs.Upper / rhs.Lower;
-    auto d = lhs.Upper / rhs.Upper;
-    if (!a || !b || !c || !d)
-      return slim::nullopt;
-
-    auto [lower, upper] = std::minmax({*a, *b, *c, *d});
-    return interval{lower, upper};
+    return lift(
+      [](rational a, rational b, rational c, rational d){
+        auto [lo, hi] = std::minmax({a, b, c, d});
+        return interval{lo, hi};
+      },
+      lhs.Lower / rhs.Lower, lhs.Lower / rhs.Upper,
+      lhs.Upper / rhs.Lower, lhs.Upper / rhs.Upper);
   }
 
   //---------------------------------------------------------------------------

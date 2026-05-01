@@ -4,6 +4,7 @@
 #include "bound/generic.hpp"
 #include "bound/bound.hpp"
 #include "bound/interval.hpp"
+#include "bound/lift.hpp"
 #include "bound/print.hpp"
 #include "bound/formatter.hpp"
 
@@ -127,6 +128,97 @@ void test_grid()
     grid{{1,5}, 0.25}.max_notch() == 16 &&
     grid{{0,UINT64_MAX}, 1}.max_notch() == UINT64_MAX
   );
+}
+
+void test_rational_overflow()
+{
+  constexpr umax M = std::numeric_limits<umax>::max();
+
+  // checked: returns nullopt at runtime when cross-multiplication overflows
+  check_null("M*2:           ", rational{M} * rational{2});
+  check_null("M+1:           ", rational{M} + rational{1});
+
+  // checked /: cross-multiply overflow (lhs.Num * rhs_ad)
+  check_null("M / (1/2):     ", rational{M} / rational{1, 2});
+
+  // unchecked: well-defined when caller's no-overflow precondition holds
+  static_assert(rational::mul_unchecked(rational{2}, rational{3}) == rational{6});
+  static_assert(rational::add_unchecked(rational{2}, rational{3}) == rational{5});
+  static_assert(rational::div_unchecked(rational{6}, rational{3}) == rational{2});
+
+  // shape-coverage for the lift-based mixed-type overloads (no-overflow inputs)
+  {
+    slim::optional<int> a{4};
+    auto r = a * rational{3};
+    if (!r || *r != rational{12}) { std::cout << "rational opt*r [FAIL]\n"; ++failures; }
+    else                          std::cout << "rational opt*r [PASS]\n";
+  }
+  {
+    slim::optional<int> a{slim::nullopt};
+    auto r = a + rational{3};
+    if (r) { std::cout << "rational empty+r [FAIL]\n"; ++failures; }
+    else   std::cout << "rational empty+r [PASS]\n";
+  }
+  {
+    auto r = rational{10} / 4;
+    if (!r || *r != rational{5, 2}) { std::cout << "rational r/int [FAIL]\n"; ++failures; }
+    else                            std::cout << "rational r/int [PASS]\n";
+  }
+}
+
+void test_lift()
+{
+  auto plus = [](int a, int b) { return a + b; };
+  auto opt_div = [](int a, int b) -> slim::optional<int>
+  { return (b == 0) ? slim::optional<int>{slim::nullopt} : slim::optional<int>{a / b}; };
+
+  // (value, value) -> optional<int> wrapping the result
+  static_assert(*lift(plus, 2, 3) == 5);
+
+  // (optional, value) — engaged
+  {
+    slim::optional<int> a{2};
+    auto r = lift(plus, a, 3);
+    if (!r || *r != 5) { std::cout << "test_lift opt+val [FAIL]\n"; ++failures; }
+    else                std::cout << "test_lift opt+val [PASS]\n";
+  }
+
+  // (optional, value) — empty -> nullopt
+  {
+    slim::optional<int> a{slim::nullopt};
+    auto r = lift(plus, a, 3);
+    if (r) { std::cout << "test_lift empty+val [FAIL]\n"; ++failures; }
+    else   std::cout << "test_lift empty+val [PASS]\n";
+  }
+
+  // (value, optional) — empty
+  {
+    slim::optional<int> b{slim::nullopt};
+    auto r = lift(plus, 2, b);
+    if (r) { std::cout << "test_lift val+empty [FAIL]\n"; ++failures; }
+    else   std::cout << "test_lift val+empty [PASS]\n";
+  }
+
+  // (optional, optional) — both engaged
+  {
+    slim::optional<int> a{2}, b{3};
+    auto r = lift(plus, a, b);
+    if (!r || *r != 5) { std::cout << "test_lift opt+opt [FAIL]\n"; ++failures; }
+    else                std::cout << "test_lift opt+opt [PASS]\n";
+  }
+
+  // op already returns optional — auto-flatten, no double wrap
+  {
+    auto r = lift(opt_div, 6, 2);
+    static_assert(std::is_same_v<decltype(r), slim::optional<int>>);
+    if (!r || *r != 3) { std::cout << "test_lift flatten ok [FAIL]\n"; ++failures; }
+    else                std::cout << "test_lift flatten ok [PASS]\n";
+  }
+  {
+    auto r = lift(opt_div, 6, 0);
+    if (r) { std::cout << "test_lift flatten nullopt [FAIL]\n"; ++failures; }
+    else   std::cout << "test_lift flatten nullopt [PASS]\n";
+  }
 }
 
 void test_trivial()
@@ -1054,6 +1146,8 @@ int main()
     test_compound_assign();
     test_modulo();
 
+    test_lift();
+    test_rational_overflow();
     test_trivial();
     test_round_nearest();
     test_to_string_format();

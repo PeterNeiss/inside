@@ -58,10 +58,10 @@ namespace bnd
   }
 
   constexpr slim::optional<rational> operator+(const rational&, const rational&);
-  constexpr slim::optional<rational> operator/(rational, rational);
+  constexpr slim::optional<rational> operator/(const rational&, const rational&);
   constexpr slim::optional<rational> operator-(const rational&, const rational&);
 
-  constexpr slim::optional<rational> operator*(rational, rational);
+  constexpr slim::optional<rational> operator*(const rational&, const rational&);
   constexpr auto     operator<=>(rational, rational) -> std::strong_ordering;
 
   //---------------------------------------------------------------------------
@@ -143,6 +143,14 @@ namespace bnd
 
     static constexpr slim::optional<rational> add(rational a, rational b)
     { return a + b; }
+
+    // Shared algorithm bodies. Checked=true returns slim::optional<rational>
+    // and reports overflow (via consteval rational_overflow at compile-time
+    // or nullopt at runtime). Checked=false silently overflows; the caller
+    // must guarantee its absence.
+    template <bool Checked> static constexpr auto add_impl(rational const&, rational const&);
+    template <bool Checked> static constexpr auto mul_impl(rational const&, rational const&);
+    template <bool Checked> static constexpr auto div_impl(rational const&, rational const&);
   };
 
 
@@ -219,13 +227,16 @@ namespace bnd
   { return rational{static_cast<double>(value)}; }
 
   //---------------------------------------------------------------------------
-  // unchecked rational arithmetic — caller takes responsibility
+  // add_impl / mul_impl / div_impl — shared bodies (Checked toggles overflow)
   //---------------------------------------------------------------------------
-  inline constexpr rational rational::add_unchecked(rational a, rational b)
+  template <bool Checked>
+  inline constexpr auto rational::add_impl(rational const& a, rational const& b)
   {
-    if (a == -b) return 0_r;
-    if (a.Numerator == 0) return b;
-    if (b.Numerator == 0) return a;
+    using ret_t = std::conditional_t<Checked, slim::optional<rational>, rational>;
+
+    if (a == -b) return ret_t{0_r};
+    if (a.Numerator == 0) return ret_t{b};
+    if (b.Numerator == 0) return ret_t{a};
 
     bool a_neg = a.Denominator < 0;
     bool b_neg = b.Denominator < 0;
@@ -236,43 +247,88 @@ namespace bnd
     {
       if (a_neg == b_neg)
       {
+        umax numerator;
+        if constexpr (Checked)
+        {
+          if (add_overflow(a.Numerator, b.Numerator, &numerator))
+          {
+            if consteval { rational_overflow("rational +: numerator overflow (same denominator)"); }
+            return ret_t{slim::nullopt};
+          }
+        }
+        else
+          numerator = a.Numerator + b.Numerator;
+
         rational r;
-        r.Numerator = a.Numerator + b.Numerator;
+        r.Numerator = numerator;
         r.Denominator = a.Denominator;
         trim(r.Numerator, r.Denominator);
-        return r;
+        return ret_t{r};
       }
+
       umax num = (a.Numerator > b.Numerator) ? (a.Numerator - b.Numerator)
                                               : (b.Numerator - a.Numerator);
       bool r_neg = a_neg ? (a.Numerator > b.Numerator) : (b.Numerator > a.Numerator);
-      if (num == 0) return 0_r;
+      if (num == 0) return ret_t{0_r};
       rational r;
       r.Numerator = num;
       r.Denominator = r_neg ? -static_cast<imax>(a_ad) : static_cast<imax>(a_ad);
       trim(r.Numerator, r.Denominator);
-      return r;
+      return ret_t{r};
     }
 
-    umax denominator = a_ad * b_ad;
-    umax A = a.Numerator * b_ad;
-    umax B = b.Numerator * a_ad;
+    umax denominator;
+    umax A;
+    umax B;
+
+    if constexpr (Checked)
+    {
+      if (mul_overflow(a_ad, b_ad, &denominator) ||
+          mul_overflow(a.Numerator, b_ad, &A)    ||
+          mul_overflow(b.Numerator, a_ad, &B))
+      {
+        if consteval { rational_overflow("rational +: cross-multiplication overflow"); }
+        return ret_t{slim::nullopt};
+      }
+    }
+    else
+    {
+      denominator = a_ad * b_ad;
+      A = a.Numerator * b_ad;
+      B = b.Numerator * a_ad;
+    }
 
     if (a_neg == b_neg)
     {
-      umax numerator = A + B;
+      umax numerator;
+      if constexpr (Checked)
+      {
+        if (add_overflow(A, B, &numerator))
+        {
+          if consteval { rational_overflow("rational +: numerator sum overflow"); }
+          return ret_t{slim::nullopt};
+        }
+      }
+      else
+        numerator = A + B;
+
       imax signed_den = a_neg ? -static_cast<imax>(denominator) : static_cast<imax>(denominator);
-      return rational{numerator, signed_den};
+      return ret_t{rational{numerator, signed_den}};
     }
 
     umax numerator = (A > B) ? (A - B) : (B - A);
     bool r_neg = a_neg ? (A > B) : (B > A);
     imax signed_den = r_neg ? -static_cast<imax>(denominator) : static_cast<imax>(denominator);
-    return rational{numerator, signed_den};
+    return ret_t{rational{numerator, signed_den}};
   }
 
-  inline constexpr rational rational::mul_unchecked(rational a, rational b)
+  template <bool Checked>
+  inline constexpr auto rational::mul_impl(rational const& a_in, rational const& b_in)
   {
-    if (a.Numerator == 0 || b.Numerator == 0) return 0_r;
+    using ret_t = std::conditional_t<Checked, slim::optional<rational>, rational>;
+    rational a = a_in, b = b_in;
+
+    if (a.Numerator == 0 || b.Numerator == 0) return ret_t{0_r};
 
     bool r_neg = (a.Denominator < 0) != (b.Denominator < 0);
     umax a_ad = abs_den(a.Denominator);
@@ -280,24 +336,58 @@ namespace bnd
 
     if (a_ad == 1 && b_ad == 1)
     {
+      umax numerator;
+      if constexpr (Checked)
+      {
+        if (mul_overflow(a.Numerator, b.Numerator, &numerator))
+        {
+          if consteval { rational_overflow("rational *: numerator overflow"); }
+          return ret_t{slim::nullopt};
+        }
+      }
+      else
+        numerator = a.Numerator * b.Numerator;
+
       rational r;
-      r.Numerator = a.Numerator * b.Numerator;
+      r.Numerator = numerator;
       r.Denominator = r_neg ? imax{-1} : imax{1};
-      return r;
+      return ret_t{r};
     }
 
     trim(a.Numerator, b_ad);
     trim(b.Numerator, a_ad);
 
-    umax numerator = a.Numerator * b.Numerator;
-    umax denominator = a_ad * b_ad;
+    umax numerator;
+    umax denominator;
+    if constexpr (Checked)
+    {
+      if (mul_overflow(a.Numerator, b.Numerator, &numerator) ||
+          mul_overflow(a_ad, b_ad, &denominator))
+      {
+        if consteval { rational_overflow("rational *: numerator or denominator overflow"); }
+        return ret_t{slim::nullopt};
+      }
+    }
+    else
+    {
+      numerator = a.Numerator * b.Numerator;
+      denominator = a_ad * b_ad;
+    }
+
     imax signed_den = r_neg ? -static_cast<imax>(denominator) : static_cast<imax>(denominator);
-    return rational{numerator, signed_den};
+    return ret_t{rational{numerator, signed_den}};
   }
 
-  inline constexpr rational rational::div_unchecked(rational a, rational b)
+  template <bool Checked>
+  inline constexpr auto rational::div_impl(rational const& a_in, rational const& b_in)
   {
-    if (a.Numerator == 0) return 0_r;
+    using ret_t = std::conditional_t<Checked, slim::optional<rational>, rational>;
+    rational a = a_in, b = b_in;
+
+    if constexpr (Checked)
+      if (b.Numerator == 0) return ret_t{slim::nullopt};
+
+    if (a.Numerator == 0) return ret_t{0_r};
 
     bool r_neg = (a.Denominator < 0) != (b.Denominator < 0);
     umax a_ad = abs_den(a.Denominator);
@@ -309,17 +399,44 @@ namespace bnd
       rational r;
       r.Numerator = a.Numerator;
       r.Denominator = r_neg ? -static_cast<imax>(b.Numerator) : static_cast<imax>(b.Numerator);
-      return r;
+      return ret_t{r};
     }
 
     trim(a.Numerator, b.Numerator);
     trim(a_ad, b_ad);
 
-    umax numerator = a.Numerator * b_ad;
-    umax denominator = b.Numerator * a_ad;
+    umax numerator;
+    umax denominator;
+    if constexpr (Checked)
+    {
+      if (mul_overflow(a.Numerator, b_ad, &numerator) ||
+          mul_overflow(b.Numerator, a_ad, &denominator))
+      {
+        if consteval { rational_overflow("rational /: cross-multiplication overflow"); }
+        return ret_t{slim::nullopt};
+      }
+    }
+    else
+    {
+      numerator = a.Numerator * b_ad;
+      denominator = b.Numerator * a_ad;
+    }
+
     imax signed_den = r_neg ? -static_cast<imax>(denominator) : static_cast<imax>(denominator);
-    return rational{numerator, signed_den};
+    return ret_t{rational{numerator, signed_den}};
   }
+
+  //---------------------------------------------------------------------------
+  // unchecked rational arithmetic — caller takes responsibility
+  //---------------------------------------------------------------------------
+  inline constexpr rational rational::add_unchecked(rational a, rational b)
+  { return add_impl<false>(a, b); }
+
+  inline constexpr rational rational::mul_unchecked(rational a, rational b)
+  { return mul_impl<false>(a, b); }
+
+  inline constexpr rational rational::div_unchecked(rational a, rational b)
+  { return div_impl<false>(a, b); }
 
   //---------------------------------------------------------------------------
   // operator-
@@ -402,239 +519,70 @@ namespace bnd
   //---------------------------------------------------------------------------
   // operator*
   //---------------------------------------------------------------------------
-  inline constexpr slim::optional<rational> operator*(rational lhs, rational rhs)
-  {
-    if (lhs.Numerator == 0 || rhs.Numerator == 0)
-      return 0_r;
+  inline constexpr slim::optional<rational> operator*(rational const& lhs, rational const& rhs)
+  { return rational::mul_impl<true>(lhs, rhs); }
 
-    bool result_neg = (lhs.Denominator < 0) != (rhs.Denominator < 0);
-
-    umax lhs_ad = abs_den(lhs.Denominator);
-    umax rhs_ad = abs_den(rhs.Denominator);
-
-    // integer * integer: skip all trimming, denominator stays 1
-    if (lhs_ad == 1 && rhs_ad == 1)
-    {
-      umax numerator;
-      if (mul_overflow(lhs.Numerator, rhs.Numerator, &numerator))
-      {
-        if consteval { rational_overflow("rational *: numerator overflow"); }
-        return slim::nullopt;
-      }
-      rational r;
-      r.Numerator = numerator;
-      r.Denominator = result_neg ? imax{-1} : imax{1};
-      return r;
-    }
-
-    // cross trim to avoid overflow if possible
-    trim(lhs.Numerator, rhs_ad);
-    trim(rhs.Numerator, lhs_ad);
-
-    umax numerator;
-    umax denominator;
-
-    if
-    (
-      mul_overflow(lhs.Numerator, rhs.Numerator, &numerator) ||
-      mul_overflow(lhs_ad, rhs_ad, &denominator)
-    )
-    {
-      if consteval { rational_overflow("rational *: numerator or denominator overflow"); }
-      return slim::nullopt;
-    }
-
-    imax signed_den = result_neg ? -static_cast<imax>(denominator) : static_cast<imax>(denominator);
-    return rational{numerator, signed_den};
-  }
-
-  inline constexpr slim::optional<rational> operator*(auto lhs, const rational& rhs)
+  // arithmetic operand — direct construction, no lift overhead
+  template <arithmetic T>
+  inline constexpr auto operator*(T lhs, rational const& rhs)
   { return rational{lhs} * rhs; }
 
-  template <typename T>
-  inline constexpr slim::optional<rational> operator*(slim::optional<T> lhs, const rational& rhs)
-  {
-    if (lhs.has_value())
-      return rational{lhs.value()} * rhs;
-    else
-      return slim::nullopt;
-  }
-
-  inline constexpr slim::optional<rational> operator*(rational const& lhs, auto rhs)
+  template <arithmetic T>
+  inline constexpr auto operator*(rational const& lhs, T rhs)
   { return lhs * rational{rhs}; }
 
+  // optional<T> operand — propagate via lift
   template <typename T>
-  inline constexpr slim::optional<rational> operator*(rational const& lhs, slim::optional<T> rhs)
-  {
-    if (rhs.has_value())
-      return lhs * rational{rhs.value()};
-    else
-      return slim::nullopt;
-  }
+  inline constexpr auto operator*(slim::optional<T> const& lhs, rational const& rhs)
+  { return lift([](rational a, rational b){ return a * b; }, lhs, rhs); }
+
+  template <typename T>
+  inline constexpr auto operator*(rational const& lhs, slim::optional<T> const& rhs)
+  { return lift([](rational a, rational b){ return a * b; }, lhs, rhs); }
 
   //---------------------------------------------------------------------------
   // operator/
   //---------------------------------------------------------------------------
-  inline constexpr slim::optional<rational> operator/(rational lhs, rational rhs)
-  {
-    if (rhs.Numerator == 0)
-      return slim::nullopt;
+  inline constexpr slim::optional<rational> operator/(rational const& lhs, rational const& rhs)
+  { return rational::div_impl<true>(lhs, rhs); }
 
-    if (lhs.Numerator == 0)
-      return 0_r;
-
-    bool result_neg = (lhs.Denominator < 0) != (rhs.Denominator < 0);
-
-    umax lhs_ad = abs_den(lhs.Denominator);
-    umax rhs_ad = abs_den(rhs.Denominator);
-
-    // integer / integer: result is lhs.Num / rhs.Num, skip overflow muls with 1
-    if (lhs_ad == 1 && rhs_ad == 1)
-    {
-      trim(lhs.Numerator, rhs.Numerator);
-      rational r;
-      r.Numerator = lhs.Numerator;
-      r.Denominator = result_neg ? -static_cast<imax>(rhs.Numerator) : static_cast<imax>(rhs.Numerator);
-      return r;
-    }
-
-    trim(lhs.Numerator, rhs.Numerator);
-    trim(lhs_ad, rhs_ad);
-
-    umax numerator;
-    umax denominator;
-
-    if
-    (
-      mul_overflow(lhs.Numerator, rhs_ad, &numerator) ||
-      mul_overflow(rhs.Numerator, lhs_ad, &denominator)
-    )
-    {
-      if consteval { rational_overflow("rational /: cross-multiplication overflow"); }
-      return slim::nullopt;
-    }
-
-    imax signed_den = result_neg ? -static_cast<imax>(denominator) : static_cast<imax>(denominator);
-    return rational{numerator, signed_den};
-  }
-
-  inline constexpr slim::optional<rational> operator/(auto lhs, const rational& rhs)
+  template <arithmetic T>
+  inline constexpr auto operator/(T lhs, rational const& rhs)
   { return rational{lhs} / rhs; }
 
-  template <typename T>
-  inline constexpr slim::optional<rational> operator/(slim::optional<T> lhs, const rational& rhs)
-  {
-    if (lhs.has_value())
-      return rational{*lhs} / rhs;
-    else
-      return slim::nullopt;
-  }
-
-  inline constexpr slim::optional<rational> operator/(rational const& lhs, auto rhs)
+  template <arithmetic T>
+  inline constexpr auto operator/(rational const& lhs, T rhs)
   { return lhs / rational{rhs}; }
 
   template <typename T>
-  inline constexpr slim::optional<rational> operator/(rational const& lhs, slim::optional<T> rhs)
-  {
-    if (rhs.has_value())
-      return lhs / rational{*rhs};
-    else
-      return slim::nullopt;
-  }
+  inline constexpr auto operator/(slim::optional<T> const& lhs, rational const& rhs)
+  { return lift([](rational a, rational b){ return a / b; }, lhs, rhs); }
+
+  template <typename T>
+  inline constexpr auto operator/(rational const& lhs, slim::optional<T> const& rhs)
+  { return lift([](rational a, rational b){ return a / b; }, lhs, rhs); }
 
   //---------------------------------------------------------------------------
   // operator+
   //---------------------------------------------------------------------------
   inline constexpr slim::optional<rational> operator+(const rational& lhs, const rational& rhs)
-  {
-    if (lhs == -rhs)
-      return 0_r;
+  { return rational::add_impl<true>(lhs, rhs); }
 
-    if (lhs.Numerator == 0)
-      return rhs;
-
-    if (rhs.Numerator == 0)
-      return lhs;
-
-    bool lhs_neg = lhs.Denominator < 0;
-    bool rhs_neg = rhs.Denominator < 0;
-
-    umax lhs_ad = abs_den(lhs.Denominator);
-    umax rhs_ad = abs_den(rhs.Denominator);
-
-    // same-denominator fast-path (covers integer + integer when both |den| == 1)
-    if (lhs_ad == rhs_ad)
-    {
-      if (lhs_neg == rhs_neg)
-      {
-        umax numerator;
-        if (add_overflow(lhs.Numerator, rhs.Numerator, &numerator))
-        {
-          if consteval { rational_overflow("rational +: numerator overflow (same denominator)"); }
-          return slim::nullopt;
-        }
-        rational r;
-        r.Numerator = numerator;
-        r.Denominator = lhs.Denominator;
-        trim(r.Numerator, r.Denominator);
-        return r;
-      }
-
-      umax numerator = (lhs.Numerator > rhs.Numerator)
-        ? (lhs.Numerator - rhs.Numerator)
-        : (rhs.Numerator - lhs.Numerator);
-      bool result_neg = lhs_neg ? (lhs.Numerator > rhs.Numerator)
-                                : (rhs.Numerator > lhs.Numerator);
-
-      if (numerator == 0)
-        return 0_r;
-
-      rational r;
-      r.Numerator = numerator;
-      r.Denominator = result_neg ? -static_cast<imax>(lhs_ad) : static_cast<imax>(lhs_ad);
-      trim(r.Numerator, r.Denominator);
-      return r;
-    }
-
-    umax numerator;
-    umax denominator;
-    umax A;
-    umax B;
-
-    if
-    (
-      mul_overflow(lhs_ad, rhs_ad, &denominator) ||
-      mul_overflow(lhs.Numerator, rhs_ad, &A)    ||
-      mul_overflow(rhs.Numerator, lhs_ad, &B)
-    )
-    {
-      if consteval { rational_overflow("rational +: cross-multiplication overflow"); }
-      return slim::nullopt;
-    }
-
-    if (lhs_neg == rhs_neg)
-    {
-      if (add_overflow(A, B, &numerator))
-      {
-        if consteval { rational_overflow("rational +: numerator sum overflow"); }
-        return slim::nullopt;
-      }
-      imax signed_den = lhs_neg ? -static_cast<imax>(denominator) : static_cast<imax>(denominator);
-      return rational{numerator, signed_den};
-    }
-
-    numerator = (A > B) ? (A - B) : (B - A);
-    bool result_neg = lhs_neg ? (A > B) : (B > A);
-
-    imax signed_den = result_neg ? -static_cast<imax>(denominator) : static_cast<imax>(denominator);
-    return rational{numerator, signed_den};
-  }
-
-  inline constexpr slim::optional<rational> operator+(auto lhs, const rational& rhs)
+  template <arithmetic T>
+  inline constexpr auto operator+(T lhs, rational const& rhs)
   { return rational{lhs} + rhs; }
 
-  inline constexpr slim::optional<rational> operator+(rational const& lhs, auto rhs)
+  template <arithmetic T>
+  inline constexpr auto operator+(rational const& lhs, T rhs)
   { return lhs + rational{rhs}; }
+
+  template <typename T>
+  inline constexpr auto operator+(slim::optional<T> const& lhs, rational const& rhs)
+  { return lift([](rational a, rational b){ return a + b; }, lhs, rhs); }
+
+  template <typename T>
+  inline constexpr auto operator+(rational const& lhs, slim::optional<T> const& rhs)
+  { return lift([](rational a, rational b){ return a + b; }, lhs, rhs); }
 
   //---------------------------------------------------------------------------
   // operator-
@@ -642,29 +590,21 @@ namespace bnd
   inline constexpr slim::optional<rational> operator-(const rational& lhs, const rational& rhs)
   { return operator+(lhs, -rhs); }
 
-  inline constexpr slim::optional<rational> operator-(auto lhs, const rational& rhs)
+  template <arithmetic T>
+  inline constexpr auto operator-(T lhs, rational const& rhs)
   { return rational{lhs} - rhs; }
 
-  template <typename T>
-  inline constexpr slim::optional<rational> operator-(slim::optional<T> lhs, const rational& rhs)
-  {
-    if (lhs.has_value())
-      return rational{lhs.value()} - rhs;
-    else
-      return slim::nullopt;
-  }
-
-  inline constexpr slim::optional<rational> operator-(rational const& lhs, auto rhs)
+  template <arithmetic T>
+  inline constexpr auto operator-(rational const& lhs, T rhs)
   { return lhs - rational{rhs}; }
 
   template <typename T>
-  inline constexpr slim::optional<rational> operator-(rational const& lhs, slim::optional<T> rhs)
-  {
-    if (rhs.has_value())
-      return lhs - rational{rhs.value()};
-    else
-      return slim::nullopt;
-  }
+  inline constexpr auto operator-(slim::optional<T> const& lhs, rational const& rhs)
+  { return lift([](rational a, rational b){ return a - b; }, lhs, rhs); }
+
+  template <typename T>
+  inline constexpr auto operator-(rational const& lhs, slim::optional<T> const& rhs)
+  { return lift([](rational a, rational b){ return a - b; }, lhs, rhs); }
 
   //---------------------------------------------------------------------------
   // divides_evenly

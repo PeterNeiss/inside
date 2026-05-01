@@ -4,6 +4,7 @@
 #ifndef BNDgridHPP
 #define BNDgridHPP
 
+#include "bound/lift.hpp"
 #include "bound/rational.hpp"
 #include "bound/interval.hpp"
 
@@ -122,10 +123,9 @@ namespace bnd
   //---------------------------------------------------------------------------
   inline constexpr slim::optional<grid> operator+(const grid& lhs, const grid& rhs)
   {
-    auto interval = lhs.Interval + rhs.Interval;
-    if (!interval)
-      return slim::nullopt;
-    return grid{*interval, gcd(lhs.Notch, rhs.Notch)};
+    return lift(
+      [&](interval i){ return grid{i, gcd(lhs.Notch, rhs.Notch)}; },
+      lhs.Interval + rhs.Interval);
   }
 
   //---------------------------------------------------------------------------
@@ -141,11 +141,9 @@ namespace bnd
   //---------------------------------------------------------------------------
   inline constexpr slim::optional<grid> operator*(const grid& lhs, const grid& rhs)
   {
-    auto interval = lhs.Interval * rhs.Interval;
-    auto notch = lhs.Notch * rhs.Notch;
-    if (!interval || !notch)
-      return slim::nullopt;
-    return grid{*interval, *notch};
+    return lift(
+      [](interval i, rational n){ return grid{i, n}; },
+      lhs.Interval * rhs.Interval, lhs.Notch * rhs.Notch);
   }
 
   //---------------------------------------------------------------------------
@@ -167,25 +165,23 @@ namespace bnd
 
     if (has_pos && has_neg)
     {
-      auto pos = lhs.Interval / interval{step, rhs.Interval.Upper};
-      auto neg = lhs.Interval / interval{rhs.Interval.Lower, -step};
-      if (!pos || !neg) return slim::nullopt;
-      return grid{interval{
-        std::min(neg->Lower, pos->Lower),
-        std::max(neg->Upper, pos->Upper)
-      }, 0_r};
+      return lift(
+        [](interval pos, interval neg){
+          return grid{interval{std::min(neg.Lower, pos.Lower),
+                               std::max(neg.Upper, pos.Upper)}, 0_r};
+        },
+        lhs.Interval / interval{step, rhs.Interval.Upper},
+        lhs.Interval / interval{rhs.Interval.Lower, -step});
     }
     else if (has_pos)
     {
-      auto r = lhs.Interval / interval{step, rhs.Interval.Upper};
-      if (!r) return slim::nullopt;
-      return grid{*r, 0_r};
+      return lift([](interval i){ return grid{i, 0_r}; },
+                  lhs.Interval / interval{step, rhs.Interval.Upper});
     }
     else
     {
-      auto r = lhs.Interval / interval{rhs.Interval.Lower, -step};
-      if (!r) return slim::nullopt;
-      return grid{*r, 0_r};
+      return lift([](interval i){ return grid{i, 0_r}; },
+                  lhs.Interval / interval{rhs.Interval.Lower, -step});
     }
   }
 } // namespace bnd
