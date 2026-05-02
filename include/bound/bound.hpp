@@ -127,6 +127,51 @@ namespace bnd
     auto with_clamp()         { return policy<clamp>(); }
     auto with_wrap()          { return policy<wrap>(); }
 
+    template <typename A>
+    auto on_wrap(A&& action)
+    {
+       auto pol = make_policy<P | wrap>();
+       using tag = on_wrap_t<std::remove_cvref_t<A>>;
+       return policy_ref<bound, decltype(pol), tag>{
+         *this, pol, tag{std::forward<A>(action)}};
+    }
+
+    template <typename A>
+    auto on_clamp(A&& action)
+    {
+       auto pol = make_policy<P | clamp>();
+       using tag = on_clamp_t<std::remove_cvref_t<A>>;
+       return policy_ref<bound, decltype(pol), tag>{
+         *this, pol, tag{std::forward<A>(action)}};
+    }
+
+    template <typename A>
+    auto on_error(A&& action)
+    {
+       auto pol = make_policy<P | checked>();
+       using tag = on_error_t<std::remove_cvref_t<A>>;
+       return policy_ref<bound, decltype(pol), tag>{
+         *this, pol, tag{std::forward<A>(action)}};
+    }
+
+    template <typename A>
+    auto on_sentinel(A&& action)
+    {
+       auto pol = make_policy<P | sentinel>();
+       using tag = on_sentinel_t<std::remove_cvref_t<A>>;
+       return policy_ref<bound, decltype(pol), tag>{
+         *this, pol, tag{std::forward<A>(action)}};
+    }
+
+    template <typename A>
+    auto on_overflow(A&& action)
+    {
+       auto pol = make_policy<P | checked>();
+       using tag = on_overflow_t<std::remove_cvref_t<A>>;
+       return policy_ref<bound, decltype(pol), tag>{
+         *this, pol, tag{std::forward<A>(action)}};
+    }
+
     template <boundable R>
     constexpr bound& operator+=(R const& rhs)
     {

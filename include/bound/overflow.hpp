@@ -139,6 +139,11 @@ namespace bnd
 
   template<std::integral T>
   [[nodiscard]]
+  constexpr bool sub_overflow(T l, T r, T* result) noexcept
+  { return __builtin_sub_overflow(l,r,result); }
+
+  template<std::integral T>
+  [[nodiscard]]
   constexpr bool mul_overflow(T l, T r, T* result) noexcept
   { return __builtin_mul_overflow(l,r,result); }
 #else // DIY
@@ -146,6 +151,27 @@ namespace bnd
   [[nodiscard]]
   constexpr bool add_overflow(T l, T r, T* result) noexcept
   { return non_builtin_add_overflow(l,r,result); }
+
+  template<std::integral T>
+  [[nodiscard]]
+  constexpr bool sub_overflow(T l, T r, T* result) noexcept
+  {
+    if constexpr (std::numeric_limits<T>::is_signed)
+    {
+      if (r == std::numeric_limits<T>::min())
+      { // -r would overflow; only safe when l >= 0
+        if (l >= 0) return true;
+        *result = l - r;
+        return false;
+      }
+      return non_builtin_add_overflow(l, static_cast<T>(-r), result);
+    }
+    else
+    {
+      *result = l - r;
+      return r > l;
+    }
+  }
 
   template<std::integral T>
   [[nodiscard]]

@@ -25,15 +25,14 @@ struct clock24
 
   void add_seconds(int n)
   {
-    //TODO: improve api (on_wrap)
-    seconds.policy<wrap>([&](auto carry) {
+    seconds.on_wrap([&](auto& /*self*/, auto carry) {
       add_minutes(static_cast<int>(carry));
     }) += n;
   }
 
   void add_minutes(int n)
   {
-    minutes.policy<wrap>([&](auto carry) {
+    minutes.on_wrap([&](auto& /*self*/, auto carry) {
       add_hours(static_cast<int>(carry));
     }) += n;
   }

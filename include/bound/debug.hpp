@@ -6,6 +6,7 @@
 
 #include <system_error>
 #include <string>
+#include <string_view>
 
 #ifdef BOUND_HAS_STACKTRACE
     #include <stacktrace>

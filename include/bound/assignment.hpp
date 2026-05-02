@@ -120,9 +120,12 @@ namespace bnd
   constexpr void assignment<L,R>::apply_clamp(L& lhs, R rhs, imax lower, imax upper, A&& action)
   {
     imax clamped = static_cast<imax>(rhs) < lower ? lower : upper;
-    if constexpr (!std::is_same_v<plain<A>, no_action>)
-      action(static_cast<imax>(rhs) - clamped);
+    imax overshoot = static_cast<imax>(rhs) - clamped;
     from_value(lhs, clamped);
+    if constexpr (is_clamp_action<plain<A>>)
+      action.fn(lhs, overshoot);
+    else if constexpr (!std::is_same_v<plain<A>, no_action>)
+      action(overshoot);
   }
 
   template<boundable L, std::integral R>
@@ -133,9 +136,11 @@ namespace bnd
     imax shifted = static_cast<imax>(rhs) - lower;
     imax wrapped = ((shifted % range) + range) % range;
     imax excess = (shifted < 0) ? ((shifted - range + 1) / range) : (shifted / range);
-    if constexpr (!std::is_same_v<plain<A>, no_action>)
-      action(excess);
     from_value(lhs, wrapped + lower);
+    if constexpr (is_wrap_action<plain<A>>)
+      action.fn(lhs, excess);
+    else if constexpr (!std::is_same_v<plain<A>, no_action>)
+      action(excess);
   }
 
   template<boundable L, std::integral R>
@@ -143,7 +148,24 @@ namespace bnd
   constexpr bool assignment<L,R>::handle_out_of_range(L& lhs, R rhs, imax lower, imax upper,
                                                      P&& policy, A&& action)
   {
-    if constexpr (has_policy<L, P, clamp>)
+    using PA = plain<A>;
+    if constexpr (is_clamp_action<PA>)
+    { apply_clamp(lhs, rhs, lower, upper, action); return true; }
+    else if constexpr (is_wrap_action<PA>)
+    { apply_wrap(lhs, rhs, lower, upper, action); return true; }
+    else if constexpr (is_sentinel_action<PA>)
+    {
+      lhs.Raw = sentinel_raw<L>();
+      action.fn(lhs, static_cast<imax>(rhs));
+      return true;
+    }
+    else if constexpr (is_error_action<PA>)
+    {
+      auto msg = bnd::to_string(rhs) + " is not in " + bnd::to_string(Interval<L>);
+      action.fn(lhs, errc::domain_error, std::string_view(msg));
+      return true;
+    }
+    else if constexpr (has_policy<L, P, clamp>)
     { apply_clamp(lhs, rhs, lower, upper, action); return true; }
     else if constexpr (has_policy<L, P, wrap>)
     { apply_wrap(lhs, rhs, lower, upper, action); return true; }
@@ -215,8 +237,7 @@ namespace bnd
   constexpr void assignment<L,R>::apply_clamp(L& lhs, R rhs, P&&, A&& action)
   {
     R clamped = (rhs < Lower<L>) ? static_cast<R>(Lower<L>) : static_cast<R>(Upper<L>);
-    if constexpr (!std::is_same_v<plain<A>, no_action>)
-      action(rhs - clamped);
+    R overshoot = rhs - clamped;
 
     if constexpr (Lower<L> == Upper<L>)
       lhs.Raw = 0;
@@ -231,6 +252,11 @@ namespace bnd
       else
         lhs.Raw = raw_cast<L>(raw.Numerator / den);
     }
+
+    if constexpr (is_clamp_action<plain<A>>)
+      action.fn(lhs, overshoot);
+    else if constexpr (!std::is_same_v<plain<A>, no_action>)
+      action(overshoot);
   }
 
   template <boundable L, typename R>
@@ -282,7 +308,22 @@ namespace bnd
     {
       if (not Interval<L>.includes(rhs))
       {
-        if constexpr (has_policy<L, P, clamp>)
+        using PA = plain<A>;
+        if constexpr (is_clamp_action<PA>)
+        { apply_clamp(lhs, rhs, policy, action); return lhs; }
+        else if constexpr (is_sentinel_action<PA>)
+        {
+          lhs.Raw = sentinel_raw<L>();
+          action.fn(lhs, rhs);
+          return lhs;
+        }
+        else if constexpr (is_error_action<PA>)
+        {
+          auto msg = bnd::to_string(rhs) + " is not in " + bnd::to_string(Interval<L>);
+          action.fn(lhs, errc::domain_error, std::string_view(msg));
+          return lhs;
+        }
+        else if constexpr (has_policy<L, P, clamp>)
         { apply_clamp(lhs, rhs, policy, action); return lhs; }
         else if (domain_fail(lhs, policy,
                    bnd::to_string(rhs) + " is not in " + bnd::to_string(Interval<L>)))
@@ -303,15 +344,34 @@ namespace bnd
   {
     lhs.Raw = (static_cast<rational>(rhs) < Lower<L>)
       ? raw_cast<L>(RawLo<L>) : raw_cast<L>(RawHi<L>);
-    if constexpr (!std::is_same_v<plain<A>, no_action>)
-      action(static_cast<rational>(rhs) - static_cast<rational>(lhs));
+    auto overshoot = static_cast<rational>(rhs) - static_cast<rational>(lhs);
+    if constexpr (is_clamp_action<plain<A>>)
+      action.fn(lhs, overshoot);
+    else if constexpr (!std::is_same_v<plain<A>, no_action>)
+      action(overshoot);
   }
 
   template<boundable L, boundable R>
   template<typename P, typename A>
   constexpr bool assignment<L,R>::try_clamp_or_fail(L& lhs, R const& rhs, P&& policy, A&& action)
   {
-    if constexpr (has_policy<L, P, clamp>)
+    using PA = plain<A>;
+    if constexpr (is_clamp_action<PA>)
+    { apply_clamp(lhs, rhs, action); return true; }
+    else if constexpr (is_sentinel_action<PA>)
+    {
+      lhs.Raw = sentinel_raw<L>();
+      action.fn(lhs, static_cast<rational>(rhs));
+      return true;
+    }
+    else if constexpr (is_error_action<PA>)
+    {
+      auto msg = bnd::to_string(static_cast<rational>(rhs))
+               + " is not in " + bnd::to_string(Interval<L>);
+      action.fn(lhs, errc::domain_error, std::string_view(msg));
+      return true;
+    }
+    else if constexpr (has_policy<L, P, clamp>)
     { apply_clamp(lhs, rhs, action); return true; }
     return domain_fail(lhs, policy,
       bnd::to_string(static_cast<rational>(rhs)) + " is not in " + bnd::to_string(Interval<L>));

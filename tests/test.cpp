@@ -589,6 +589,86 @@ void test_with_clamp_wrap()
   check("with_wrap: ", x, 2);
 }
 
+void test_on_actions()
+{
+  using u100 = bound<{0, 100}>;
+  using sec  = bound<{0, 59}, wrap>;
+
+  // on_wrap — handler receives bound& and carry; here it cascades the carry.
+  sec seconds(0);
+  imax carry_seen = 0;
+  seconds.on_wrap([&](auto& self, auto carry) {
+    carry_seen = static_cast<imax>(carry);
+    (void)self;
+  }) = 65;
+  check("on_wrap value: ", seconds, 5);
+  if (carry_seen == 1) std::cout << "on_wrap carry: 1  [PASS]" << std::endl;
+  else { std::cout << "on_wrap carry: " << carry_seen << "  [FAIL] expected 1" << std::endl; ++failures; }
+
+  // on_wrap — handler overrides the wrapped value.
+  sec s2(0);
+  s2.on_wrap([](auto& self, auto carry) {
+    if (carry > 0) self = 0;
+  }) = 65;
+  check("on_wrap override: ", s2, 0);
+
+  // on_clamp — handler receives bound& and overshoot.
+  u100 clamped(0);
+  imax over_seen = 0;
+  clamped.on_clamp([&](auto& self, auto over) {
+    over_seen = static_cast<imax>(over);
+    (void)self;
+  }) = 150;
+  check("on_clamp value: ", clamped, 100);
+  if (over_seen == 50) std::cout << "on_clamp over: 50  [PASS]" << std::endl;
+  else { std::cout << "on_clamp over: " << over_seen << "  [FAIL] expected 50" << std::endl; ++failures; }
+
+  // on_error — fires instead of throw, may overwrite to a recovery value.
+  using c100 = bound<{0, 100}, checked>;
+  c100 e(50);
+  bool err_fired = false;
+  e.on_error([&](auto& self, errc code, std::string_view msg) {
+    err_fired = (code == errc::domain_error) && !msg.empty();
+    self = 0;
+  }) = 200;
+  check("on_error value: ", e, 0);
+  std::cout << "on_error fired: " << (err_fired ? "yes" : "no")
+            << (err_fired ? "  [PASS]" : "  [FAIL]") << std::endl;
+  if (!err_fired) ++failures;
+
+  // on_sentinel — fires after sentinel raw is set; handler may overwrite.
+  using s100 = bound<{0, 100}, sentinel>;
+  s100 sv(50);
+  imax orig_seen = 0;
+  sv.on_sentinel([&](auto& self, auto orig) {
+    orig_seen = static_cast<imax>(orig);
+    self = 50;  // recover to a default
+  }) = 200;
+  check("on_sentinel value: ", sv, 50);
+  if (orig_seen == 200) std::cout << "on_sentinel orig: 200  [PASS]" << std::endl;
+  else { std::cout << "on_sentinel orig: " << orig_seen << "  [FAIL] expected 200" << std::endl; ++failures; }
+
+  // on_overflow — fires when checked compound op overflows imax.
+  c100 acc(50);
+  bool of_fired = false;
+  acc.on_overflow([&](auto& self, errc code) {
+    of_fired = (code == errc::overflow);
+    self = 0;
+  }) += std::numeric_limits<imax>::max();
+  check("on_overflow value: ", acc, 0);
+  std::cout << "on_overflow fired: " << (of_fired ? "yes" : "no")
+            << (of_fired ? "  [PASS]" : "  [FAIL]") << std::endl;
+  if (!of_fired) ++failures;
+
+  // back-compat: existing policy<wrap>(lambda) form still works.
+  sec s3(0);
+  imax legacy_carry = 0;
+  s3.policy<wrap>([&](auto c) { legacy_carry = static_cast<imax>(c); }) = 65;
+  check("legacy wrap value: ", s3, 5);
+  if (legacy_carry == 1) std::cout << "legacy wrap carry: 1  [PASS]" << std::endl;
+  else { std::cout << "legacy wrap carry: " << legacy_carry << "  [FAIL] expected 1" << std::endl; ++failures; }
+}
+
 void test_signed()
 {
   // --- type selection ---
@@ -1151,6 +1231,7 @@ int main()
     test_action();
     test_clamp_boundable();
     test_with_clamp_wrap();
+    test_on_actions();
     test_signed();
     test_round_check();
     test_comparison();

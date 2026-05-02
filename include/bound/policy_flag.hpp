@@ -41,6 +41,28 @@ namespace bnd
   //---------------------------------------------------------------------------
   struct no_action {};
 
+  //---------------------------------------------------------------------------
+  // tagged actions — opt-in callbacks for each failure path.
+  // The lambda receives the bound by mutable reference as its first argument,
+  // so the handler can override the value the policy was about to store.
+  //---------------------------------------------------------------------------
+  template<typename F> struct on_clamp_t    { [[no_unique_address]] F fn; };
+  template<typename F> struct on_wrap_t     { [[no_unique_address]] F fn; };
+  template<typename F> struct on_error_t    { [[no_unique_address]] F fn; };
+  template<typename F> struct on_sentinel_t { [[no_unique_address]] F fn; };
+  template<typename F> struct on_overflow_t { [[no_unique_address]] F fn; };
+
+  template<typename T> inline constexpr bool is_clamp_action    = false;
+  template<typename F> inline constexpr bool is_clamp_action<on_clamp_t<F>> = true;
+  template<typename T> inline constexpr bool is_wrap_action     = false;
+  template<typename F> inline constexpr bool is_wrap_action<on_wrap_t<F>> = true;
+  template<typename T> inline constexpr bool is_error_action    = false;
+  template<typename F> inline constexpr bool is_error_action<on_error_t<F>> = true;
+  template<typename T> inline constexpr bool is_sentinel_action = false;
+  template<typename F> inline constexpr bool is_sentinel_action<on_sentinel_t<F>> = true;
+  template<typename T> inline constexpr bool is_overflow_action = false;
+  template<typename F> inline constexpr bool is_overflow_action<on_overflow_t<F>> = true;
+
 } // namespace bnd
 
 #endif // BNDpolicyflagHPP

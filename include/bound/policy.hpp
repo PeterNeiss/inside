@@ -5,6 +5,7 @@
 #define BNDpolicyHPP
 
 #include "bound/assignment.hpp"
+#include "bound/overflow.hpp"
 #include "bound/policy_flag.hpp"
 
 #include <system_error>
@@ -82,11 +83,98 @@ namespace bnd
     constexpr B& operator=(C const& other)
     { return assignment<B, C>::assign(Ref, other, Policy, Action); }
 
+    private:
+    constexpr void report_zero(errc code, const char* what)
+    {
+      if constexpr (is_error_action<plain<A>>)
+        Action.fn(Ref, code, std::string_view(what));
+      else if constexpr (!has_policy<B, P, ignore_zero>)
+        Policy.report(code, what);
+    }
+
+    public:
     template <arithmetic C>
     constexpr B& operator+=(C rhs)
     {
+      imax l = to_value(Ref), r = static_cast<imax>(rhs), result;
+      if constexpr (is_overflow_action<plain<A>> || is_error_action<plain<A>>)
+      {
+        if (add_overflow(l, r, &result))
+        {
+          if constexpr (is_overflow_action<plain<A>>)
+            Action.fn(Ref, errc::overflow);
+          else
+            Action.fn(Ref, errc::overflow, std::string_view("operator+= overflow"));
+          return Ref;
+        }
+        return assignment<B, imax>::assign(Ref, result, Policy, Action);
+      }
+      else
+        return assignment<B, imax>::assign(Ref, l + r, Policy, Action);
+    }
+
+    template <arithmetic C>
+    constexpr B& operator-=(C rhs)
+    {
+      imax l = to_value(Ref), r = static_cast<imax>(rhs), result;
+      if constexpr (is_overflow_action<plain<A>> || is_error_action<plain<A>>)
+      {
+        if (sub_overflow(l, r, &result))
+        {
+          if constexpr (is_overflow_action<plain<A>>)
+            Action.fn(Ref, errc::overflow);
+          else
+            Action.fn(Ref, errc::overflow, std::string_view("operator-= overflow"));
+          return Ref;
+        }
+        return assignment<B, imax>::assign(Ref, result, Policy, Action);
+      }
+      else
+        return assignment<B, imax>::assign(Ref, l - r, Policy, Action);
+    }
+
+    template <arithmetic C>
+    constexpr B& operator*=(C rhs)
+    {
+      imax l = to_value(Ref), r = static_cast<imax>(rhs), result;
+      if constexpr (is_overflow_action<plain<A>> || is_error_action<plain<A>>)
+      {
+        if (mul_overflow(l, r, &result))
+        {
+          if constexpr (is_overflow_action<plain<A>>)
+            Action.fn(Ref, errc::overflow);
+          else
+            Action.fn(Ref, errc::overflow, std::string_view("operator*= overflow"));
+          return Ref;
+        }
+        return assignment<B, imax>::assign(Ref, result, Policy, Action);
+      }
+      else
+        return assignment<B, imax>::assign(Ref, l * r, Policy, Action);
+    }
+
+    template <arithmetic C>
+    constexpr B& operator/=(C rhs)
+    {
+      if (rhs == 0)
+      {
+        report_zero(errc::division_by_zero, "operator/= division by zero");
+        return Ref;
+      }
       return assignment<B, imax>::assign(Ref,
-        to_value(Ref) + static_cast<imax>(rhs), Policy, Action);
+        to_value(Ref) / static_cast<imax>(rhs), Policy, Action);
+    }
+
+    template <arithmetic C>
+    constexpr B& operator%=(C rhs)
+    {
+      if (rhs == 0)
+      {
+        report_zero(errc::division_by_zero, "operator%= division by zero");
+        return Ref;
+      }
+      return assignment<B, imax>::assign(Ref,
+        to_value(Ref) % static_cast<imax>(rhs), Policy, Action);
     }
   };
 

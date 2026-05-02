@@ -35,7 +35,15 @@ int main()
   std::cout << "policy ec:" << (ec ? ec.message() : "no error")
             << " (z=" << z << ")" << std::endl;
 
-  // 4. Optional: returns nullopt on failure
+  // 4. Per-operation on_error: lambda runs instead of throw / ec, may overwrite
+  checked_100 r(50);
+  r.on_error([](auto& self, errc, std::string_view msg) {
+    std::cout << "on_error: " << msg << " (recover -> 0)" << std::endl;
+    self = 0;
+  }) = 200;
+  std::cout << "         (r=" << r << ")" << std::endl;
+
+  // 5. Optional: returns nullopt on failure
   auto maybe = checked_100::try_make(200);
   std::cout << "optional: " << (maybe.has_value() ? "has value" : "nullopt") << std::endl;
 
