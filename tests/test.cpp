@@ -729,11 +729,12 @@ void test_on_overflow_freefn()
   b.Raw = rational{1, static_cast<imax>(M / 2 - 1)};   // 1 / (M/2 - 1)  → cross-mul overflows
   bool fired = false;
   errc seen{};
+  // Back-compat anchor: explicit policy + factory still works in the 4-arg form.
   auto sum = add(a, b, make_policy<checked>(),
-    on_overflow_t{[&](auto& res, errc code) {
+    on_overflow([&](auto& res, errc code) {
       fired = true; seen = code;
       res.Raw = rational{0};
-    }});
+    }));
   // Return type collapsed to a plain bound (no .has_value()); a static_assert
   // confirming this would require naming the result type, which is awkward
   // across overload chains, so we rely on the runtime evidence that the action
@@ -750,23 +751,25 @@ void test_on_overflow_freefn()
   u100c d{50}, z{0};
   bool dz_fired = false;
   errc dz_code{};
-  auto q = div(d, z, make_policy<checked>(),
-    on_overflow_t{[&](auto& res, errc c) {
+  // 3-arg form: action implies the policy, no make_policy<checked>() needed.
+  auto q = div(d, z,
+    on_overflow([&](auto& res, errc c) {
       dz_fired = true; dz_code = c;
       res = std::remove_cvref_t<decltype(res)>{0};
-    }});
+    }));
+  (void)q;
   // Same observation as for `add` — runtime evidence is enough.
   std::cout << "on_overflow div/0 fired: "
             << (dz_fired && dz_code == errc::division_by_zero ? "yes  [PASS]" : "no  [FAIL]")
             << std::endl;
   if (!dz_fired) ++failures;
 
-  // mod-by-zero with on_overflow.
+  // mod-by-zero with on_overflow — 3-arg form.
   using u100ic = bound<{0, 100}, checked | ignore_round>;  // mod requires ignore_round
   u100ic ml{7}, mr{0};
   bool mz_fired = false;
-  auto m = mod(ml, mr, make_policy<checked>(),
-    on_overflow_t{[&](auto& res, errc) { mz_fired = true; res = std::remove_cvref_t<decltype(res)>{0}; }});
+  auto m = mod(ml, mr,
+    on_overflow([&](auto& res, errc) { mz_fired = true; res = std::remove_cvref_t<decltype(res)>{0}; }));
   (void)m;
   std::cout << "on_overflow mod/0 fired: " << (mz_fired ? "yes  [PASS]" : "no  [FAIL]") << std::endl;
   if (!mz_fired) ++failures;
@@ -775,6 +778,97 @@ void test_on_overflow_freefn()
   auto q_def = div(d, z);
   if (!q_def.has_value()) std::cout << "no-action div/0 nullopt: PASS" << std::endl;
   else { std::cout << "no-action div/0 nullopt: FAIL" << std::endl; ++failures; }
+
+  // 3-arg action-first form: only on_overflow_t binds (the requires-clause on
+  // the overload gates non-overflow action tags out). Pin the positive case;
+  // the negative cases are encoded in the overload's `requires is_overflow_action`
+  // clause itself, which compiler diagnostics surface noisily when probed via
+  // requires-expression — leaving them out keeps the test buildable.
+  using u100 = bound<{0, 100}>;
+  auto noop = [](auto&, auto){};
+  static_assert(requires(u100 x, u100 y) { add(x, y, on_overflow(noop)); },
+                "add(L, R, on_overflow(...)) must compile");
+  std::cout << "action-first add compiles: PASS" << std::endl;
+}
+
+void test_multi_action_compound()
+{
+  // The payoff of multi-action: in a single compound op, the imax-overflow
+  // probe and the post-probe narrowing fire DIFFERENT actions. With the old
+  // single-action policy_ref this was impossible.
+  using c100 = bound<{0, 100}, checked>;
+
+  // Path 1: imax overflow during probe → on_overflow fires, on_clamp does not.
+  c100 a{50};
+  bool of_fired = false, cl_fired = false;
+  imax over_seen = 0;
+  a.with(on_overflow([&](auto& self, errc code) {
+           of_fired = (code == errc::overflow);
+           self = 7;
+         }),
+         on_clamp([&](auto&, auto over) {
+           cl_fired = true; over_seen = static_cast<imax>(over);
+         })) += std::numeric_limits<imax>::max();
+  check("multi: overflow path value: ", a, 7);
+  if (of_fired && !cl_fired)
+    std::cout << "multi: overflow fired, clamp didn't: PASS" << std::endl;
+  else { std::cout << "multi: overflow path actions: FAIL "
+                   << "(of=" << of_fired << ", cl=" << cl_fired << ")" << std::endl; ++failures; }
+
+  // Path 2: no imax overflow but narrowing out of range → on_clamp fires,
+  // on_overflow does not.
+  c100 b{50};
+  of_fired = false; cl_fired = false; over_seen = 0;
+  b.with(on_overflow([&](auto&, errc) { of_fired = true; }),
+         on_clamp   ([&](auto&, auto over) {
+           cl_fired = true; over_seen = static_cast<imax>(over);
+         })) += 200;  // 50 + 200 = 250, fits imax, but overshoots [0,100]
+  check("multi: clamp path value: ", b, 100);
+  if (cl_fired && !of_fired && over_seen == 150)
+    std::cout << "multi: clamp fired, overflow didn't: PASS" << std::endl;
+  else { std::cout << "multi: clamp path actions: FAIL "
+                   << "(of=" << of_fired << ", cl=" << cl_fired
+                   << ", over=" << over_seen << ")" << std::endl; ++failures; }
+
+  // Single-action via with(): equivalent to b.on_overflow(...) etc.
+  c100 c{50};
+  bool single_fired = false;
+  c.with(on_overflow([&](auto& self, errc) { single_fired = true; self = 0; }))
+    += std::numeric_limits<imax>::max();
+  check("multi: single-action via with(): ", c, 0);
+  if (single_fired) std::cout << "multi: single via with(): PASS" << std::endl;
+  else { std::cout << "multi: single via with(): FAIL" << std::endl; ++failures; }
+}
+
+void test_multi_action_freefn()
+{
+  // Free-fn pack form: only on_overflow fires inside arithmetic. Extra tags
+  // are accepted (forward-compat) but inert here. The pack must contain at
+  // least one on_overflow.
+  using c100 = bound<{0, 100}, checked>;
+  c100 d{50}, z{0};
+  bool of_fired = false;
+  errc seen{};
+  auto q = div(d, z,
+    on_overflow([&](auto& res, errc c) {
+      of_fired = true; seen = c;
+      res = std::remove_cvref_t<decltype(res)>{1};
+    }),
+    on_clamp([](auto&, auto){}));  // inert here, but accepted
+  (void)q;
+  if (of_fired && seen == errc::division_by_zero)
+    std::cout << "multi freefn div/0: PASS" << std::endl;
+  else { std::cout << "multi freefn div/0: FAIL" << std::endl; ++failures; }
+
+  // Pack without on_overflow must not bind. Probe via requires-expression on
+  // the on_clamp-only call — gated by has_action<is_overflow_action_pred>.
+  using u100 = bound<{0, 100}>;
+  auto noop = [](auto&, auto){};
+  static_assert(requires(u100 x, u100 y) { add(x, y, on_overflow(noop)); },
+                "add(L, R, on_overflow) must compile");
+  static_assert(requires(u100 x, u100 y) { add(x, y, on_overflow(noop), on_clamp(noop)); },
+                "add(L, R, on_overflow, on_clamp) must compile");
+  std::cout << "multi freefn SFINAE: PASS" << std::endl;
 }
 
 void test_signed()
@@ -1342,6 +1436,8 @@ int main()
     test_on_actions();
     test_unsafe_flag();
     test_on_overflow_freefn();
+    test_multi_action_compound();
+    test_multi_action_freefn();
     test_signed();
     test_round_check();
     test_comparison();

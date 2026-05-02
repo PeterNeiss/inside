@@ -76,17 +76,13 @@ namespace bnd
 
     constexpr operator rational() const
     {
-      if constexpr (is_raw_rational<bound>)
-      {
-        if constexpr (G.Interval.Lower == G.Interval.Upper)
-          return G.Interval.Lower;
-        else
-          return Raw;
-      }
-      else if constexpr (is_direct_storage<bound>)
-        return rational{Raw};
-      else
-        return (*(Raw * G.Notch) + G.Interval.Lower).value();
+      if constexpr (G.Interval.Lower == G.Interval.Upper)
+        return G.Interval.Lower;
+
+      if constexpr (is_direct_storage<bound>)
+        return Raw;
+
+      return (*(Raw * G.Notch) + G.Interval.Lower).value();
     }
 
     [[nodiscard]] constexpr negative operator-() const
@@ -131,8 +127,8 @@ namespace bnd
     template <typename A>
     auto on_wrap(A&& action)
     {
-       auto pol = make_policy<P | wrap>();
        using tag = on_wrap_t<std::remove_cvref_t<A>>;
+       auto pol = make_policy<P | implied_flags<tag>>();
        return policy_ref<bound, decltype(pol), tag>{
          *this, pol, tag{std::forward<A>(action)}};
     }
@@ -140,8 +136,8 @@ namespace bnd
     template <typename A>
     auto on_clamp(A&& action)
     {
-       auto pol = make_policy<P | clamp>();
        using tag = on_clamp_t<std::remove_cvref_t<A>>;
+       auto pol = make_policy<P | implied_flags<tag>>();
        return policy_ref<bound, decltype(pol), tag>{
          *this, pol, tag{std::forward<A>(action)}};
     }
@@ -149,8 +145,8 @@ namespace bnd
     template <typename A>
     auto on_error(A&& action)
     {
-       auto pol = make_policy<P | checked>();
        using tag = on_error_t<std::remove_cvref_t<A>>;
+       auto pol = make_policy<P | implied_flags<tag>>();
        return policy_ref<bound, decltype(pol), tag>{
          *this, pol, tag{std::forward<A>(action)}};
     }
@@ -158,8 +154,8 @@ namespace bnd
     template <typename A>
     auto on_sentinel(A&& action)
     {
-       auto pol = make_policy<P | sentinel>();
        using tag = on_sentinel_t<std::remove_cvref_t<A>>;
+       auto pol = make_policy<P | implied_flags<tag>>();
        return policy_ref<bound, decltype(pol), tag>{
          *this, pol, tag{std::forward<A>(action)}};
     }
@@ -167,10 +163,25 @@ namespace bnd
     template <typename A>
     auto on_overflow(A&& action)
     {
-       auto pol = make_policy<P | checked>();
        using tag = on_overflow_t<std::remove_cvref_t<A>>;
+       auto pol = make_policy<P | implied_flags<tag>>();
        return policy_ref<bound, decltype(pol), tag>{
          *this, pol, tag{std::forward<A>(action)}};
+    }
+
+    // Multi-action entry point: combine N tagged actions into one policy_ref.
+    // The merged implied flags drive the policy; conflict diagnostics in
+    // policy_ref reject mutually exclusive combinations (e.g. on_clamp + on_wrap)
+    // at compile time. Use case: `b.with(on_overflow(λ1), on_clamp(λ2)) += rhs`
+    // — the imax-overflow probe fires λ1, the post-probe narrowing fires λ2.
+    template <typename... Actions>
+    auto with(Actions&&... actions)
+    {
+       constexpr policy_flag merged = merged_implied_flags<Actions...>;
+       auto pol = make_policy<P | merged>();
+       return policy_ref<bound, decltype(pol), std::remove_cvref_t<Actions>...>{
+         *this, pol,
+         std::tuple<std::remove_cvref_t<Actions>...>{std::forward<Actions>(actions)...}};
     }
 
     template <boundable R>
@@ -362,8 +373,19 @@ namespace bnd
   // add
   //---------------------------------------------------------------------------
   template <boundable L, boundable R, typename P = policy<>, typename A = no_action>
+    requires is_policy_v<plain<P>>
   [[nodiscard]] constexpr auto add(L const& lhs, R const& rhs, P&& policy = {}, A&& action = {})
   { return addition<L,R>::add(lhs, rhs, std::forward<P>(policy), std::forward<A>(action)); }
+
+  // Action-first form: 1+ tagged actions, at least one of which is on_overflow
+  // (the only kind arithmetic itself fires; others are kept for forward-compat).
+  template <boundable L, boundable R, typename... Actions>
+    requires (sizeof...(Actions) >= 1)
+          && has_action<is_overflow_action_pred, std::remove_cvref_t<Actions>...>
+  [[nodiscard]] constexpr auto add(L const& lhs, R const& rhs, Actions&&... actions)
+  { return addition<L,R>::add(lhs, rhs,
+      make_policy<merged_implied_flags<Actions...>>(),
+      pick_action<is_overflow_action_pred>(actions...)); }
 
   //---------------------------------------------------------------------------
   // operator+
@@ -387,8 +409,17 @@ namespace bnd
   // sub
   //---------------------------------------------------------------------------
   template <boundable L, boundable R, typename P = policy<>, typename A = no_action>
+    requires is_policy_v<plain<P>>
   [[nodiscard]] constexpr auto sub(L const& lhs, R const& rhs, P&& policy = {}, A&& action = {})
   { return add(lhs, -rhs, std::forward<P>(policy), std::forward<A>(action)); }
+
+  template <boundable L, boundable R, typename... Actions>
+    requires (sizeof...(Actions) >= 1)
+          && has_action<is_overflow_action_pred, std::remove_cvref_t<Actions>...>
+  [[nodiscard]] constexpr auto sub(L const& lhs, R const& rhs, Actions&&... actions)
+  { return add(lhs, -rhs,
+      make_policy<merged_implied_flags<Actions...>>(),
+      pick_action<is_overflow_action_pred>(actions...)); }
 
   //---------------------------------------------------------------------------
   // operator-
@@ -412,8 +443,17 @@ namespace bnd
   // mul
   //---------------------------------------------------------------------------
   template <boundable L, boundable R, typename P = policy<>, typename A = no_action>
+    requires is_policy_v<plain<P>>
   [[nodiscard]] constexpr auto mul(L const& lhs, R const& rhs, P&& policy = {}, A&& action = {})
   { return multiplication<L,R>::mul(lhs, rhs, std::forward<P>(policy), std::forward<A>(action)); }
+
+  template <boundable L, boundable R, typename... Actions>
+    requires (sizeof...(Actions) >= 1)
+          && has_action<is_overflow_action_pred, std::remove_cvref_t<Actions>...>
+  [[nodiscard]] constexpr auto mul(L const& lhs, R const& rhs, Actions&&... actions)
+  { return multiplication<L,R>::mul(lhs, rhs,
+      make_policy<merged_implied_flags<Actions...>>(),
+      pick_action<is_overflow_action_pred>(actions...)); }
 
   //---------------------------------------------------------------------------
   // operator*
@@ -439,6 +479,14 @@ namespace bnd
   template <boundable L, boundable R, policy_flag F = none, typename A = no_action>
   [[nodiscard]] constexpr auto div(L lhs, R rhs, policy<F> pol = {}, A&& action = {})
   { return division<L, R, F>::div(lhs, rhs, pol, std::forward<A>(action)); }
+
+  template <boundable L, boundable R, typename... Actions>
+    requires (sizeof...(Actions) >= 1)
+          && has_action<is_overflow_action_pred, std::remove_cvref_t<Actions>...>
+  [[nodiscard]] constexpr auto div(L lhs, R rhs, Actions&&... actions)
+  { return division<L, R, merged_implied_flags<Actions...>>::div(lhs, rhs,
+      make_policy<merged_implied_flags<Actions...>>(),
+      pick_action<is_overflow_action_pred>(actions...)); }
 
   //---------------------------------------------------------------------------
   // operator/
@@ -467,6 +515,14 @@ namespace bnd
   template <boundable L, boundable R, policy_flag F = none, typename A = no_action>
   [[nodiscard]] constexpr auto mod(L lhs, R rhs, policy<F> pol = {}, A&& action = {})
   { return modulo<L, R, F>::mod(lhs, rhs, pol, std::forward<A>(action)); }
+
+  template <boundable L, boundable R, typename... Actions>
+    requires (sizeof...(Actions) >= 1)
+          && has_action<is_overflow_action_pred, std::remove_cvref_t<Actions>...>
+  [[nodiscard]] constexpr auto mod(L lhs, R rhs, Actions&&... actions)
+  { return modulo<L, R, merged_implied_flags<Actions...>>::mod(lhs, rhs,
+      make_policy<merged_implied_flags<Actions...>>(),
+      pick_action<is_overflow_action_pred>(actions...)); }
 
   //---------------------------------------------------------------------------
   // operator%

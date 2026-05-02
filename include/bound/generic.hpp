@@ -144,12 +144,10 @@ namespace bnd
   // Skipped for floating_point/rational R since they have no static interval.
   template <typename L, typename R, policy_flag P = checked>
   concept assignable_from =
-      numeric<R>
-      && (!boundable<R> && !std::integral<R>
-          || not Interval<L>.excludes(Interval<R>))
-      && (!boundable<R>
-          || abs_den(assignment<L, R>::Factor.Denominator) == 1
-          || ((BoundPolicy<L> | P) & ignore_round) != 0);
+    numeric<R>
+    && (!boundable<R> && !std::integral<R> || not Interval<L>.excludes(Interval<R>))
+    && (!boundable<R> || abs_den(assignment<L, R>::Factor.Denominator) == 1
+        || ((BoundPolicy<L> | P) & ignore_round) != 0);
 
   template <boundable B>
   constexpr raw_t<B> sentinel_raw()
