@@ -25,19 +25,24 @@ namespace bnd
                                                slim::optional<result>,
                                                result>;
 
+    template <policy_flag F, typename A>
+    using add_return_t = std::conditional_t<is_overflow_action<plain<A>>,
+                                            result,
+                                            return_type_for<F>>;
+
     static constexpr imax lhs_widen = static_cast<imax>((Notch<result> / Notch<L>).value_or(1_r).Numerator);
     static constexpr imax rhs_widen = static_cast<imax>((Notch<result> / Notch<R>).value_or(1_r).Numerator);
 
-    template <policy_flag F = none>
-    static constexpr return_type_for<F> add(L, R, policy<F> = {});
+    template <policy_flag F = none, typename A = no_action>
+    static constexpr add_return_t<F, A> add(L, R, policy<F> = {}, A&& = {});
   };
 
   //---------------------------------------------------------------------------
   // add
   //---------------------------------------------------------------------------
   template<boundable L, boundable R>
-  template<policy_flag F>
-  constexpr auto addition<L,R>::add(L lhs, R rhs, policy<F>) -> return_type_for<F>
+  template<policy_flag F, typename A>
+  constexpr auto addition<L,R>::add(L lhs, R rhs, policy<F>, A&& action) -> add_return_t<F, A>
   {
     result res;
     if constexpr (is_raw_rational<result>)
@@ -45,7 +50,13 @@ namespace bnd
       if constexpr (needs_overflow_check<F>)
       {
         auto sum = rational::add(lhs,rhs);
-        if (!sum) return slim::nullopt;
+        if (!sum)
+        {
+          if constexpr (is_overflow_action<plain<A>>)
+          { action.fn(res, errc::overflow); return res; }
+          else
+            return slim::nullopt;
+        }
         res.Raw = *sum;
       }
       else

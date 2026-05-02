@@ -677,6 +677,106 @@ void test_on_actions()
   else { std::cout << "legacy wrap carry: " << legacy_carry << "  [FAIL] expected 1" << std::endl; ++failures; }
 }
 
+void test_unsafe_flag()
+{
+  // unsafe implies ignore_round: notch-incompatible assigns compile.
+  using src    = bound<{{0, 100}, 2}, unsafe>;     // notch=2
+  using dst    = bound<{{0, 100}, 1}, unsafe>;     // notch=1 — incompatible factor
+  src s{50};
+  dst d{0};
+  d = s;  // would fail to compile under plain `none` (factor non-integral, no ignore_round)
+  check("unsafe assign: ", d, 50);
+
+  // unsafe implies ignore_round: native-int div path engages (result is integer-storage).
+  using u100u = bound<{0, 100}, unsafe>;
+  u100u a{51}, b{8};
+  auto q = a / b;
+  static_assert(!std::is_same_v<typename decltype(q)::value_type::raw_type, rational>,
+                "unsafe should take native-int div path");
+  check("unsafe int div: ", *q, 6);
+
+  // unsafe binary div / mod with zero returns nullopt (not crash).
+  u100u zero{0};
+  auto qz = a / zero;
+  if (!qz.has_value()) std::cout << "unsafe a/0 nullopt: PASS" << std::endl;
+  else { std::cout << "unsafe a/0 nullopt: FAIL" << std::endl; ++failures; }
+
+  // unsafe compound /= with zero still reports (ignore_zero NOT set in unsafe).
+  bool threw = false;
+  try { u100u y{50}; y /= 0; (void)y; }
+  catch (std::system_error&) { threw = true; }
+  std::cout << "unsafe /=0 throws: " << (threw ? "yes  [PASS]" : "no  [FAIL]") << std::endl;
+  if (!threw) ++failures;
+
+  // unsafe disables domain check on assignment (silent overwrite).
+  u100u x{50};
+  x = 200;  // out of range, no throw
+  // value is whatever raw_type stores; we just confirm no throw happened
+  std::cout << "unsafe oor silent: PASS" << std::endl;
+  (void)x;
+}
+
+void test_on_overflow_freefn()
+{
+  // add overflow on rational-storage bound: action fires, returns recovery value.
+  // Use disparate large denominators so cross-multiplication overflows even
+  // though numerators / values are small. Result interval [0, 2] fits; the
+  // overflow is internal to rational::add.
+  constexpr umax M = std::numeric_limits<umax>::max();
+  using unit = bound<{{rational{0}, rational{1}}, 0}, checked>;  // raw_rational, [0,1]
+  unit a, b;
+  a.Raw = rational{1, static_cast<imax>(M / 2)};       // 1 / (M/2)
+  b.Raw = rational{1, static_cast<imax>(M / 2 - 1)};   // 1 / (M/2 - 1)  → cross-mul overflows
+  bool fired = false;
+  errc seen{};
+  auto sum = add(a, b, make_policy<checked>(),
+    on_overflow_t{[&](auto& res, errc code) {
+      fired = true; seen = code;
+      res.Raw = rational{0};
+    }});
+  // Return type collapsed to a plain bound (no .has_value()); a static_assert
+  // confirming this would require naming the result type, which is awkward
+  // across overload chains, so we rely on the runtime evidence that the action
+  // fired and produced a recovery value.
+  std::cout << "on_overflow add fired: " << (fired ? "yes" : "no")
+            << (fired ? "  [PASS]" : "  [FAIL]") << std::endl;
+  if (!fired) ++failures;
+  if (seen == errc::overflow) std::cout << "on_overflow add code: PASS" << std::endl;
+  else { std::cout << "on_overflow add code: FAIL" << std::endl; ++failures; }
+  (void)sum;
+
+  // div-by-zero through free div() with on_overflow action.
+  using u100c = bound<{0, 100}, checked>;
+  u100c d{50}, z{0};
+  bool dz_fired = false;
+  errc dz_code{};
+  auto q = div(d, z, make_policy<checked>(),
+    on_overflow_t{[&](auto& res, errc c) {
+      dz_fired = true; dz_code = c;
+      res = std::remove_cvref_t<decltype(res)>{0};
+    }});
+  // Same observation as for `add` — runtime evidence is enough.
+  std::cout << "on_overflow div/0 fired: "
+            << (dz_fired && dz_code == errc::division_by_zero ? "yes  [PASS]" : "no  [FAIL]")
+            << std::endl;
+  if (!dz_fired) ++failures;
+
+  // mod-by-zero with on_overflow.
+  using u100ic = bound<{0, 100}, checked | ignore_round>;  // mod requires ignore_round
+  u100ic ml{7}, mr{0};
+  bool mz_fired = false;
+  auto m = mod(ml, mr, make_policy<checked>(),
+    on_overflow_t{[&](auto& res, errc) { mz_fired = true; res = std::remove_cvref_t<decltype(res)>{0}; }});
+  (void)m;
+  std::cout << "on_overflow mod/0 fired: " << (mz_fired ? "yes  [PASS]" : "no  [FAIL]") << std::endl;
+  if (!mz_fired) ++failures;
+
+  // No-action default still produces optional and returns nullopt on div/0.
+  auto q_def = div(d, z);
+  if (!q_def.has_value()) std::cout << "no-action div/0 nullopt: PASS" << std::endl;
+  else { std::cout << "no-action div/0 nullopt: FAIL" << std::endl; ++failures; }
+}
+
 void test_signed()
 {
   // --- type selection ---
@@ -1240,6 +1340,8 @@ int main()
     test_clamp_boundable();
     test_with_clamp_wrap();
     test_on_actions();
+    test_unsafe_flag();
+    test_on_overflow_freefn();
     test_signed();
     test_round_check();
     test_comparison();

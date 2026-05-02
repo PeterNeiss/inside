@@ -361,9 +361,9 @@ namespace bnd
   //---------------------------------------------------------------------------
   // add
   //---------------------------------------------------------------------------
-  template <boundable L, boundable R, typename P = policy<>>
-  [[nodiscard]] constexpr auto add(L const& lhs, R const& rhs, P&& policy = {})
-  { return addition<L,R>::add(lhs, rhs, std::forward<P>(policy)); }
+  template <boundable L, boundable R, typename P = policy<>, typename A = no_action>
+  [[nodiscard]] constexpr auto add(L const& lhs, R const& rhs, P&& policy = {}, A&& action = {})
+  { return addition<L,R>::add(lhs, rhs, std::forward<P>(policy), std::forward<A>(action)); }
 
   //---------------------------------------------------------------------------
   // operator+
@@ -386,9 +386,9 @@ namespace bnd
   //---------------------------------------------------------------------------
   // sub
   //---------------------------------------------------------------------------
-  template <boundable L, boundable R, typename P = policy<>>
-  [[nodiscard]] constexpr auto sub(L const& lhs, R const& rhs, P&& policy = {})
-  { return add(lhs, -rhs, std::forward<P>(policy)); }
+  template <boundable L, boundable R, typename P = policy<>, typename A = no_action>
+  [[nodiscard]] constexpr auto sub(L const& lhs, R const& rhs, P&& policy = {}, A&& action = {})
+  { return add(lhs, -rhs, std::forward<P>(policy), std::forward<A>(action)); }
 
   //---------------------------------------------------------------------------
   // operator-
@@ -411,9 +411,9 @@ namespace bnd
   //---------------------------------------------------------------------------
   // mul
   //---------------------------------------------------------------------------
-  template <boundable L, boundable R, typename P = policy<>>
-  [[nodiscard]] constexpr auto mul(L const& lhs, R const& rhs, P&& policy = {})
-  { return multiplication<L,R>::mul(lhs, rhs, std::forward<P>(policy)); }
+  template <boundable L, boundable R, typename P = policy<>, typename A = no_action>
+  [[nodiscard]] constexpr auto mul(L const& lhs, R const& rhs, P&& policy = {}, A&& action = {})
+  { return multiplication<L,R>::mul(lhs, rhs, std::forward<P>(policy), std::forward<A>(action)); }
 
   //---------------------------------------------------------------------------
   // operator*
@@ -436,9 +436,9 @@ namespace bnd
   //---------------------------------------------------------------------------
   // div
   //---------------------------------------------------------------------------
-  template <boundable L, boundable R, policy_flag F = none>
-  [[nodiscard]] constexpr auto div(L lhs, R rhs, policy<F> pol = {})
-  { return division<L, R, F>::div(lhs, rhs, pol); }
+  template <boundable L, boundable R, policy_flag F = none, typename A = no_action>
+  [[nodiscard]] constexpr auto div(L lhs, R rhs, policy<F> pol = {}, A&& action = {})
+  { return division<L, R, F>::div(lhs, rhs, pol, std::forward<A>(action)); }
 
   //---------------------------------------------------------------------------
   // operator/
@@ -464,9 +464,9 @@ namespace bnd
   //---------------------------------------------------------------------------
   // mod
   //---------------------------------------------------------------------------
-  template <boundable L, boundable R, policy_flag F = none>
-  [[nodiscard]] constexpr auto mod(L lhs, R rhs, policy<F> pol = {})
-  { return modulo<L, R, F>::mod(lhs, rhs, pol); }
+  template <boundable L, boundable R, policy_flag F = none, typename A = no_action>
+  [[nodiscard]] constexpr auto mod(L lhs, R rhs, policy<F> pol = {}, A&& action = {})
+  { return modulo<L, R, F>::mod(lhs, rhs, pol, std::forward<A>(action)); }
 
   //---------------------------------------------------------------------------
   // operator%

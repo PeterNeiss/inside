@@ -25,23 +25,34 @@ namespace bnd
                                                slim::optional<result>,
                                                result>;
 
-    template <typename P>
-    static constexpr return_type_for<P> mul(L, R, P&&);
+    template <typename P, typename A>
+    using mul_return_t = std::conditional_t<is_overflow_action<plain<A>>,
+                                            result,
+                                            return_type_for<P>>;
+
+    template <typename P, typename A = no_action>
+    static constexpr mul_return_t<P, A> mul(L, R, P&&, A&& = {});
   };
 
   //---------------------------------------------------------------------------
   // mul
   //---------------------------------------------------------------------------
   template <boundable L, boundable R>
-  template <typename P>
-  constexpr auto multiplication<L,R>::mul(L lhs, R rhs, P&& policy) -> return_type_for<P>
+  template <typename P, typename A>
+  constexpr auto multiplication<L,R>::mul(L lhs, R rhs, P&& policy, A&& action) -> mul_return_t<P, A>
   {
     if constexpr (is_raw_rational<result>)
     {
       if constexpr (needs_overflow_check<P>)
       {
         auto prod = static_cast<rational>(lhs) * static_cast<rational>(rhs);
-        if (!prod) return slim::nullopt;
+        if (!prod)
+        {
+          if constexpr (is_overflow_action<plain<A>>)
+          { result res; action.fn(res, errc::overflow); return res; }
+          else
+            return slim::nullopt;
+        }
         result res; res.Raw = raw_cast<result>(*prod); return res;
       }
       else
