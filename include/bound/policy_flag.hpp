@@ -36,6 +36,10 @@ namespace bnd
   inline static constexpr policy_flag wrap    {1ull << 33}; // modular arithmetic
   inline static constexpr policy_flag sentinel{1ull << 35}; // overflow -> sentinel (nullopt)
 
+  // opt-out of the default `checked` policy: no domain / overflow / round checks.
+  // Division-by-zero is still reported (use `ignore_zero` to suppress that too).
+  inline static constexpr policy_flag unsafe  {1ull << 36};
+
   //---------------------------------------------------------------------------
   // no_action — zero-overhead default for overflow callbacks
   //---------------------------------------------------------------------------

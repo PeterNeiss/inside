@@ -52,7 +52,7 @@ struct checked_u8
 //---------------------------------------------------------------------------
 static constexpr std::size_t N = 5'000'000;
 
-using u200 = bound<{0, 200}>;
+using u200 = bound<{0, 200}, unsafe>;
 
 void bench_construct()
 {
@@ -161,7 +161,7 @@ void bench_accumulate()
   constexpr std::size_t ITERS = N / SZ;
 
   // All use the same element type: uint32_t / bound<{0, 200'000}>
-  using u200k         = bound<{0, 200'000}>;
+  using u200k         = bound<{0, 200'000}, unsafe>;
   using u200k_checked = bound<{0, 200'000}, checked>;
 
   std::vector<std::uint32_t> nv(SZ);
@@ -198,9 +198,9 @@ void bench_int_vs_bound()
   constexpr std::size_t SZ = 1000;
   constexpr std::size_t ITERS = N / SZ;
 
-  // int (signed 32-bit) vs bound<{-100'000, 100'000}> (uint32_t storage)
+  // int (signed 32-bit) vs bound<{-100'000, 100'000}, unsafe> (uint32_t storage)
   // Uses negative numbers throughout
-  using s100k = bound<{-100'000, 100'000}>;
+  using s100k = bound<{-100'000, 100'000}, unsafe>;
 
   std::vector<int> iv(SZ);
   std::vector<s100k> bv(SZ);
@@ -259,7 +259,7 @@ void bench_fixed_point()
   constexpr std::size_t ITERS = N / SZ;
 
   // Fixed-point 8.8: native int16_t with manual shift vs bound<{{0, 255}, 1.0/256}>
-  using fp = bound<{{0, 255}, 1.0/256}>;
+  using fp = bound<{{0, 255}, 1.0/256}, unsafe>;
 
   std::vector<std::int32_t> nv(SZ);
   std::vector<fp> bv(SZ);
@@ -328,8 +328,8 @@ void bench_round_nearest()
 //---------------------------------------------------------------------------
 namespace rng = std::ranges;
 
-using u255 = bound<{0, 255}>;
-using s9k  = bound<{-500, 9000}>;
+using u255 = bound<{0, 255}, unsafe>;
+using s9k  = bound<{-500, 9000}, unsafe>;
 
 void bench_sort_algo()
 {
@@ -594,7 +594,7 @@ void bench_std_accumulate()
   constexpr std::size_t SZ = 1000;
   constexpr std::size_t ITERS = N / SZ;
 
-  using u200k = bound<{0, 200'000}>;
+  using u200k = bound<{0, 200'000}, unsafe>;
 
   std::vector<std::uint32_t> nv(SZ);
   std::vector<u200k> bv(SZ);

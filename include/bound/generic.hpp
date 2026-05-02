@@ -16,7 +16,7 @@ namespace bnd
   template<typename T>
   using plain = std::remove_cvref_t<T>;
 
-  template <grid G = {{0, 0}, 0}, policy_flag P = none> struct bound;
+  template <grid G = {{0, 0}, 0}, policy_flag P = checked> struct bound;
 
   template <typename B>
   concept boundable = !arithmetic<B> && requires { []<grid G, policy_flag P>(bound<G, P>){}(B{}); };
@@ -142,7 +142,7 @@ namespace bnd
   // Compile-time prerequisites for L = R: intervals overlap (for typed-interval R),
   // and (for boundable R) the notch ratio is integral or rounding is accepted.
   // Skipped for floating_point/rational R since they have no static interval.
-  template <typename L, typename R, policy_flag P = none>
+  template <typename L, typename R, policy_flag P = checked>
   concept assignable_from =
       numeric<R>
       && (!boundable<R> && !std::integral<R>

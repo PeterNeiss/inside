@@ -40,7 +40,8 @@ namespace bnd
     using raw_type = storage_min<G>;
     raw_type Raw;
 
-    constexpr bound() = default; // trivial constructor
+    constexpr bound() requires ((P & checked) == 0) = default; // trivial when not checked
+    constexpr bound() requires ((P & checked) != 0) : Raw{} {} // zero-init under checked
 
     template <numeric A>
       requires assignable_from<bound, A, P>
@@ -514,7 +515,7 @@ namespace bnd
   //---------------------------------------------------------------------------
   // bound_range — range-based for loop support
   //---------------------------------------------------------------------------
-  template <grid G, policy_flag P = none>
+  template <grid G, policy_flag P = checked>
   struct bound_range
   {
     using value_type = bound<G, P>;

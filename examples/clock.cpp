@@ -23,21 +23,17 @@ struct clock24
   clock24() = default;
   clock24(int h, int m, int s) : hours(h), minutes(m), seconds(s) {}
 
-  void add_seconds(int n)
+  void add_seconds(auto n)
   {
-    seconds.on_wrap([&](auto& /*self*/, auto carry) {
-      add_minutes(static_cast<int>(carry));
-    }) += n;
+    seconds.on_wrap([&](auto, auto carry) { add_minutes(carry); }) += n;
   }
 
-  void add_minutes(int n)
+  void add_minutes(auto n)
   {
-    minutes.on_wrap([&](auto& /*self*/, auto carry) {
-      add_hours(static_cast<int>(carry));
-    }) += n;
+    minutes.on_wrap([&](auto, auto carry) { add_hours(carry); }) += n;
   }
 
-  void add_hours(int n)
+  void add_hours(auto n)
   {
     hours += n;
   }
@@ -69,3 +65,4 @@ int main()
 
   return 0;
 }
+

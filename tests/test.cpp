@@ -223,16 +223,24 @@ void test_lift()
 
 void test_trivial()
 {
-  // bound must remain trivial across the storage / policy matrix so it can
-  // sit in NTTPs, unions, and memcpy buffers.
-  static_assert(std::is_trivial_v<bound<{0, 0}>>);
-  static_assert(std::is_trivial_v<bound<{0, 100}>>);
-  static_assert(std::is_trivial_v<bound<{-100, 100}>>);
-  static_assert(std::is_trivial_v<bound<{{0, 10}, rational{1, 2}}>>);
-  static_assert(std::is_trivial_v<bound<{{-10, 10}, 0}>>);
+  // The non-checked variants stay fully trivial so they can sit in NTTPs,
+  // unions, and memcpy buffers. The default `checked` policy gains a
+  // user-provided default ctor that zero-inits Raw, so it loses trivial
+  // default-construction but remains trivially copyable.
+  static_assert(std::is_trivial_v<bound<{0, 0},        unsafe>>);
+  static_assert(std::is_trivial_v<bound<{0, 100},      unsafe>>);
+  static_assert(std::is_trivial_v<bound<{-100, 100},   unsafe>>);
+  static_assert(std::is_trivial_v<bound<{{0, 10}, rational{1, 2}}, unsafe>>);
+  static_assert(std::is_trivial_v<bound<{{-10, 10}, 0}, unsafe>>);
   static_assert(std::is_trivial_v<bound<{0, 100}, clamp>>);
   static_assert(std::is_trivial_v<bound<{0, 100}, wrap>>);
   static_assert(std::is_trivial_v<bound<{0, 100}, sentinel>>);
+
+  // Default (`checked`) keeps trivial copy / destruction; only default
+  // construction is now user-provided.
+  static_assert(std::is_trivially_copyable_v<bound<{0, 100}>>);
+  static_assert(std::is_trivially_destructible_v<bound<{0, 100}>>);
+  static_assert(!std::is_trivially_default_constructible_v<bound<{0, 100}>>);
 }
 
 //---------------------------------------------------------------------------
