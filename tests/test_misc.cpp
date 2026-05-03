@@ -30,7 +30,7 @@ TEST_CASE("bound_range sequential", "[bound][range]")
   imax sum = 0;
   for (auto i : bound_range<{0, 9}>{})
   {
-    sum += static_cast<imax>(i);
+    sum += i;          // implicit bound -> imax
     ++count;
   }
   REQUIRE(count == 10);
@@ -43,8 +43,8 @@ TEST_CASE("bound_range wrapping start", "[bound][range][wrap]")
   imax first = -1, last = -1;
   for (auto i : bound_range<{0, 9}>{7})
   {
-    if (count == 0) first = static_cast<imax>(i);
-    last = static_cast<imax>(i);
+    if (count == 0) first = i;
+    last = i;
     ++count;
   }
   REQUIRE(count == 10);
@@ -58,8 +58,8 @@ TEST_CASE("bound_range over signed bound", "[bound][range][signed]")
   imax first = 0, last = 0;
   for (auto i : bound_range<{-2, 2}>{})
   {
-    if (count == 0) first = static_cast<imax>(i);
-    last = static_cast<imax>(i);
+    if (count == 0) first = i;
+    last = i;
     ++count;
   }
   REQUIRE(count == 5);
@@ -72,7 +72,7 @@ TEST_CASE("bound_range size 1", "[bound][range][edge]")
   int count = 0;
   for (auto i : bound_range<{5, 5}>{})
   {
-    REQUIRE(static_cast<imax>(i) == 5);
+    REQUIRE(i == 5);
     ++count;
   }
   REQUIRE(count == 1);
@@ -83,7 +83,7 @@ TEST_CASE("bound_range size 1 with negative point", "[bound][range][edge]")
   int count = 0;
   for (auto i : bound_range<{-3, -3}>{})
   {
-    REQUIRE(static_cast<imax>(i) == -3);
+    REQUIRE(i == -3);
     ++count;
   }
   REQUIRE(count == 1);
@@ -94,18 +94,20 @@ TEST_CASE("bound<{x,x}> singleton round-trips its value",
 {
   using point_pos = bound<{5, 5}>;
   point_pos a{5};
-  REQUIRE(static_cast<rational>(a) == 5);
-  REQUIRE(static_cast<imax>(a) == 5);
+  REQUIRE(a == 5);
+  imax av = a;            // implicit
+  REQUIRE(av == 5);
 
   using point_neg = bound<{-3, -3}>;
   point_neg b{-3};
-  REQUIRE(static_cast<rational>(b) == -3);
-  REQUIRE(static_cast<imax>(b) == -3);
+  REQUIRE(b == -3);
+  imax bv = b;
+  REQUIRE(bv == -3);
 
   // Float assignment to single-value rational-storage grid (notch=0)
   using point_fp = bound<{2.5_r}>;
   point_fp c = 2.5;
-  REQUIRE(static_cast<rational>(c) == rational{5u, 2});
+  REQUIRE(c == rational{5u, 2});
 }
 
 TEST_CASE("default-constructed bound is well-formed", "[bound][default]")

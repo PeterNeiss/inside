@@ -183,9 +183,9 @@ TEST_CASE("rational sentinel", "[rational][sentinel]")
   // sentinel_traits must agree
   REQUIRE(slim::optional<rational>{}.has_value() == false);
 
-  // converting to integer of a non-sentinel rational works via floor
-  REQUIRE(static_cast<int>(rational{7u, 2})  == 3);
-  REQUIRE(static_cast<int>(rational{7,  -2}) == -3);
+  // converting to integer of a non-sentinel rational truncates toward zero
+  REQUIRE(rational{7u, 2}.trunc() ==  3);
+  REQUIRE(rational{7,  -2}.trunc() == -3);
 }
 
 TEST_CASE("rational helpers", "[rational][helpers]")
@@ -221,7 +221,7 @@ TEST_CASE("rational conversion to integer/float", "[rational][conversion]")
     REQUIRE_THROWS_AS(static_cast<unsigned>(rational{7, -2}), std::system_error);
   }
 
-  SECTION("to_signed rounds toward zero")
+  SECTION("to_signed rounds toward zero (operator T)")
   {
     REQUIRE(static_cast<int>(rational{7u, 2})  ==  3);
     REQUIRE(static_cast<int>(rational{7,  -2}) == -3);
@@ -240,5 +240,42 @@ TEST_CASE("rational conversion to integer/float", "[rational][conversion]")
     rational neg{5,  -2};
     REQUIRE(pos.to<unsigned>().value() == 2u);
     REQUIRE_FALSE(neg.to<unsigned>().has_value());
+  }
+}
+
+TEST_CASE("rational trunc / floor / round", "[rational][reduce]")
+{
+  SECTION("trunc — toward zero")
+  {
+    REQUIRE(rational{7u, 2}.trunc()  ==  3);   //  3.5 -> 3
+    REQUIRE(rational{7,  -2}.trunc() == -3);   // -3.5 -> -3
+    REQUIRE(rational{1u, 2}.trunc()  ==  0);
+    REQUIRE(rational{1,  -2}.trunc() ==  0);
+    REQUIRE(rational{4u, 1}.trunc()  ==  4);
+    REQUIRE(rational{0u}.trunc()     ==  0);
+  }
+
+  SECTION("floor — toward -inf")
+  {
+    REQUIRE(rational{7u, 2}.floor()  ==  3);   //  3.5 -> 3
+    REQUIRE(rational{7,  -2}.floor() == -4);   // -3.5 -> -4
+    REQUIRE(rational{1u, 2}.floor()  ==  0);
+    REQUIRE(rational{1,  -2}.floor() == -1);   // -0.5 -> -1
+    REQUIRE(rational{4u, 1}.floor()  ==  4);
+    REQUIRE(rational{4,  -1}.floor() == -4);   // exact integer: no step
+    REQUIRE(rational{0u}.floor()     ==  0);
+  }
+
+  SECTION("round — half away from zero")
+  {
+    REQUIRE(rational{1u, 2}.round() ==  1);    //  0.5 ->  1
+    REQUIRE(rational{1,  -2}.round() == -1);   // -0.5 -> -1
+    REQUIRE(rational{3u, 2}.round() ==  2);    //  1.5 ->  2
+    REQUIRE(rational{3,  -2}.round() == -2);   // -1.5 -> -2
+    REQUIRE(rational{1u, 4}.round() ==  0);    //  0.25 -> 0
+    REQUIRE(rational{1u, 3}.round() ==  0);    //  ~0.33 -> 0
+    REQUIRE(rational{2u, 3}.round() ==  1);    //  ~0.67 -> 1
+    REQUIRE(rational{2,  -3}.round() == -1);
+    REQUIRE(rational{0u}.round()    ==  0);
   }
 }

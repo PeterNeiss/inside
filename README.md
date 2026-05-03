@@ -284,6 +284,38 @@ Rational storage is exact (no floating-point rounding) but larger and slower tha
 
 `slim::optional<bound>` uses a sentinel value instead of a bool flag, so `sizeof(slim::optional<bound>) == sizeof(bound)`. The sentinel is `numeric_limits<raw>::max()` for unsigned types and `numeric_limits<raw>::min()` for signed types. This costs one value from the representable range (e.g., `int8_t` gives 255 usable values: -127..127).
 
+## Comparing and Extracting Values
+
+`bound` compares directly with arithmetic types and other bounds — no `static_cast` needed:
+
+```cpp
+bound<{0, 100}> b{42};
+if (b == 42) { ... }      // works
+if (b < 50)  { ... }      // works
+REQUIRE(a + b == 100);    // works in tests too
+```
+
+To extract an integer value, use the implicit conversion (available when the grid is integer-aligned, i.e. notch is `±1`):
+
+```cpp
+imax v = b;               // implicit
+int  arr_index = b;       // for array subscripts
+sum += b;                 // accumulators
+```
+
+Or call `b.value()`, which always works and returns the most natural type for the storage (raw integer for direct storage, `rational` for fractional grids).
+
+For `rational`, prefer the named reductions over `static_cast<int>(r)`:
+
+```cpp
+rational r{7u, 2};        // 3.5
+r.trunc();                //  3   (toward zero)
+r.floor();                //  3   (toward -inf)
+r.round();                //  4   (half away from zero)
+```
+
+`bound`'s conversion to `double` is `explicit`; use `double(b)` for floating-point arithmetic.
+
 ## Iteration
 
 `bound_range` provides range-based for loop support:

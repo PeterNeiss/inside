@@ -191,7 +191,7 @@ int main()
     std::vector<celsius> readings = {-5.0, 0.0, 3.5, 8.0, 6.5};
     std::vector<celsius> deltas(readings.size());
     std::adjacent_difference(readings.begin(), readings.end(), deltas.begin(),
-      [](celsius k, celsius l) { return celsius{static_cast<double>(k) - static_cast<double>(l)}; });
+      [](celsius k, celsius l) { return celsius{double(k) - double(l)}; });
     print("adj_diff", deltas);
 
     // std::for_each with side effect

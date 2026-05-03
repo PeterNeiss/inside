@@ -132,6 +132,36 @@ namespace bnd
     // allow unary+ for generic programming
     constexpr rational operator+() const { return *this; }
 
+    // Named integer reductions — explicit, lossy, intent-clear alternatives
+    // to `static_cast<imax>(r)`. trunc rounds toward zero (matches operator T);
+    // floor rounds toward -inf; round goes half-away-from-zero.
+    [[nodiscard]] constexpr imax trunc() const
+    {
+      umax q = Numerator / static_cast<umax>(abs_den(Denominator));
+      return (Denominator < 0) ? -static_cast<imax>(q) : static_cast<imax>(q);
+    }
+
+    [[nodiscard]] constexpr imax floor() const
+    {
+      umax ad = static_cast<umax>(abs_den(Denominator));
+      umax q = Numerator / ad;
+      umax rem = Numerator % ad;
+      // negative with non-zero remainder: step one further toward -inf
+      if (Denominator < 0 && rem != 0)
+        return -static_cast<imax>(q) - 1;
+      return (Denominator < 0) ? -static_cast<imax>(q) : static_cast<imax>(q);
+    }
+
+    [[nodiscard]] constexpr imax round() const
+    {
+      umax ad = static_cast<umax>(abs_den(Denominator));
+      umax q = Numerator / ad;
+      umax rem = Numerator % ad;
+      // half-away-from-zero: bump magnitude when 2*rem >= ad
+      if (rem * 2 >= ad) ++q;
+      return (Denominator < 0) ? -static_cast<imax>(q) : static_cast<imax>(q);
+    }
+
     static constexpr rational make_sentinel() noexcept
     { rational r; r.Numerator = 1; r.Denominator = 0; return r; }
 

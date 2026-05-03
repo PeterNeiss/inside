@@ -15,7 +15,7 @@ TEST_CASE("conversion between bounds with compatible grids", "[bound][assign]")
   f20t50 bigger;
 
   bigger = smaller;
-  REQUIRE(static_cast<rational>(bigger) == 34);
+  REQUIRE(bigger == 34);
 
   // notch 2 -> notch 1 is always compatible (every step lands on integer)
   bigger = 39;
@@ -31,35 +31,35 @@ TEST_CASE("rounding requires opt-in", "[bound][assign][round]")
   SECTION("policy<ignore_round>() rounds (truncates toward zero on positive)")
   {
     smaller.policy<ignore_round>() = bigger;
-    REQUIRE(static_cast<rational>(smaller) == 38);
+    REQUIRE(smaller == 38);
   }
 
   SECTION("with_round() is the alias")
   {
     bigger = 30;
     smaller.with_round() = bigger;
-    REQUIRE(static_cast<rational>(smaller) == 30);
+    REQUIRE(smaller == 30);
   }
 
   SECTION("with_round_nearest() rounds half up to grid")
   {
     using celsius = bound<{{-40, 60}, 0.5}, round_nearest>;
     celsius room = 21.4;
-    REQUIRE(static_cast<rational>(room) == rational{43u, 2});
+    REQUIRE(room == rational{43u, 2});
 
     celsius exact = 21.5;
-    REQUIRE(static_cast<rational>(exact) == rational{43u, 2});
+    REQUIRE(exact == rational{43u, 2});
 
     celsius truncated = 21.2;
-    REQUIRE(static_cast<rational>(truncated) == 21);
+    REQUIRE(truncated == 21);
 
     using half = bound<{{0, 10}, 0.5}>;
     half h;
     h.with_round_nearest() = 3.3;
-    REQUIRE(static_cast<rational>(h) == rational{7u, 2});
+    REQUIRE(h == rational{7u, 2});
 
     h.with_round_nearest() = 3.2;
-    REQUIRE(static_cast<rational>(h) == 3);
+    REQUIRE(h == 3);
   }
 
   SECTION("type-level ignore_round")
@@ -68,7 +68,7 @@ TEST_CASE("rounding requires opt-in", "[bound][assign][round]")
     using n1       = bound<{{0, 10}, 1}>;
     n2_round c;
     c = n1{3};
-    REQUIRE(static_cast<rational>(c) == 2);
+    REQUIRE(c == 2);
   }
 
   SECTION("compatible notches require no opt-in")
@@ -77,7 +77,7 @@ TEST_CASE("rounding requires opt-in", "[bound][assign][round]")
     using n2 = bound<{{0, 10}, 2}>;
     n1 a;
     a = n2{6};
-    REQUIRE(static_cast<rational>(a) == 6);
+    REQUIRE(a == 6);
   }
 
   SECTION("wide compatible interval needs no opt-in")
@@ -86,7 +86,7 @@ TEST_CASE("rounding requires opt-in", "[bound][assign][round]")
     using wide = bound<{{0, 20}, 2}>;
     n2 b;
     b = wide{6};
-    REQUIRE(static_cast<rational>(b) == 6);
+    REQUIRE(b == 6);
   }
 }
 
@@ -96,10 +96,10 @@ TEST_CASE("with_clamp / with_wrap per-operation", "[bound][assign][policy]")
   u100 x{50};
 
   x.with_clamp() = 150;
-  REQUIRE(static_cast<rational>(x) == 100);
+  REQUIRE(x == 100);
 
   x.with_wrap() = 103;
-  REQUIRE(static_cast<rational>(x) == 2);
+  REQUIRE(x == 2);
 }
 
 TEST_CASE("clamp during boundable assignment", "[bound][assign][clamp]")
@@ -109,7 +109,7 @@ TEST_CASE("clamp during boundable assignment", "[bound][assign][clamp]")
   wide w{150};
   narrow n{0};
   n = w;
-  REQUIRE(static_cast<rational>(n) == 100);
+  REQUIRE(n == 100);
 }
 
 TEST_CASE("unsafe relaxes domain and round checks", "[bound][assign][unsafe]")
@@ -120,7 +120,7 @@ TEST_CASE("unsafe relaxes domain and round checks", "[bound][assign][unsafe]")
   src s{50};
   dst d{0};
   d = s;
-  REQUIRE(static_cast<rational>(d) == 50);
+  REQUIRE(d == 50);
 
   // Native int division path engages
   using u100u = bound<{0, 100}, unsafe>;
@@ -173,13 +173,13 @@ TEST_CASE("integer rhs into non-integer-interval bound", "[bound][assign][edge]"
   using halfgrid = bound<{{rational{1, 2}, rational{11, 2}}, rational{1u, 2}}, clamp>;
 
   halfgrid over{100};                 // out of range, clamps to 5.5
-  REQUIRE(static_cast<rational>(over) == rational{11u, 2});
+  REQUIRE(over == rational{11u, 2});
 
   halfgrid under{-100};               // clamps to 0.5
-  REQUIRE(static_cast<rational>(under) == rational{1u, 2});
+  REQUIRE(under == rational{1u, 2});
 
   halfgrid in{3};                     // 3 lands on a notch (3.0 = 6 notches)
-  REQUIRE(static_cast<rational>(in) == 3);
+  REQUIRE(in == 3);
 }
 
 TEST_CASE("checked policy throws on float out-of-range", "[bound][assign][checked]")
@@ -202,7 +202,7 @@ TEST_CASE("checked policy throws on rounding error", "[bound][assign][checked][r
 
   // value on the notch is fine
   REQUIRE_NOTHROW((c = 4.0));
-  REQUIRE(static_cast<rational>(c) == 4);
+  REQUIRE(c == 4);
 }
 
 TEST_CASE("ignore_round truncates non-notch float at runtime",
@@ -211,10 +211,10 @@ TEST_CASE("ignore_round truncates non-notch float at runtime",
   using coarse = bound<{{0, 10}, 2}, ignore_round>;
   coarse c;
   c = 3.0;
-  REQUIRE(static_cast<rational>(c) == 2);    // truncates toward zero
+  REQUIRE(c == 2);    // truncates toward zero
 
   c = 7.99;
-  REQUIRE(static_cast<rational>(c) == 6);
+  REQUIRE(c == 6);
 }
 
 TEST_CASE("checked bound-to-bound out-of-range throws", "[bound][assign][bound2bound]")
@@ -236,15 +236,11 @@ TEST_CASE("non-integer-mapping bound-to-bound clamp / domain_fail",
 
   src s{4};   // value 4 -> dst aligns
   dst d{s};
-  REQUIRE(static_cast<rational>(d) == 4);
+  REQUIRE(d == 4);
 
-  src too_big;
-  too_big.Raw = static_cast<typename src::raw_type>(11);  // 5.5 — out of dst's [0,5]?
-  // 5.5 > 5, clamp engages
-  // (Note: src can hold 5.5? Lower=0, Upper=5, notch=0.5 -> max raw 10, so 5.5 is invalid.)
-  // Use a within-source-but-out-of-dest boundary: src[0,5] dst[0,4]
+  // src[0,5] dst[0,4] — value 5 in src is out of dst, exercises clamp path
   using dst2 = bound<{{0, 4}, rational{1u, 3}}, ignore_round | clamp>;
   src s2{5};
   dst2 d2{s2};
-  REQUIRE(static_cast<rational>(d2) == 4);
+  REQUIRE(d2 == 4);
 }

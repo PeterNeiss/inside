@@ -27,29 +27,29 @@ TEST_CASE("signed construction and arithmetic", "[bound][signed][arithmetic]")
   using s32 = bound<{-100000, 100000}>;
   s32 a{42};
   s32 b{-300};
-  REQUIRE(static_cast<rational>(a)  == 42);
-  REQUIRE(static_cast<rational>(b)  == -300);
+  REQUIRE(a  == 42);
+  REQUIRE(b  == -300);
 
-  REQUIRE(static_cast<rational>(-a) == -42);
-  REQUIRE(static_cast<rational>(-b) == 300);
+  REQUIRE(-a == -42);
+  REQUIRE(-b == 300);
 
-  REQUIRE(static_cast<rational>(a + b) == -258);
-  REQUIRE(static_cast<rational>(a - b) == 342);
+  REQUIRE(a + b == -258);
+  REQUIRE(a - b == 342);
 
   s32 x{-7}, y{14};
-  REQUIRE(static_cast<rational>(x * y) == -98);
-  REQUIRE(static_cast<rational>(y * x) == -98);
+  REQUIRE(x * y == -98);
+  REQUIRE(y * x == -98);
 
   auto quot = x / y;
   REQUIRE(*quot == -(*(1_r / 2)));
 
   s32 acc{100}, delta{-30};
   acc += delta;
-  REQUIRE(static_cast<rational>(acc) == 70);
+  REQUIRE(acc == 70);
 
   s32 acc2{50};
   acc2 += -75;
-  REQUIRE(static_cast<rational>(acc2) == -25);
+  REQUIRE(acc2 == -25);
 }
 
 TEST_CASE("signed sentinel doesn't collide with valid -127", "[bound][signed][sentinel]")
@@ -68,23 +68,23 @@ TEST_CASE("mixed signed/unsigned arithmetic", "[bound][signed][mixed]")
   u100 u{80};
   s32 s{-500};
   auto mixed = u + s;
-  REQUIRE(static_cast<rational>(mixed) == -420);
+  REQUIRE(mixed == -420);
 
   using u8 = bound<{0, 255}>;
   u8 p{10}, q{200};
   auto d = p - q;
-  REQUIRE(static_cast<rational>(d) == -190);
+  REQUIRE(d == -190);
 }
 
 TEST_CASE("signed clamp / wrap", "[bound][signed][policy]")
 {
   using sc = bound<{-100, 100}, clamp>;
-  REQUIRE(static_cast<rational>(sc{200})  == 100);
-  REQUIRE(static_cast<rational>(sc{-200}) == -100);
+  REQUIRE(sc{200}  == 100);
+  REQUIRE(sc{-200} == -100);
 
   using sw = bound<{-100, 100}, wrap>;
-  REQUIRE(static_cast<rational>(sw{150})  == -51);
-  REQUIRE(static_cast<rational>(sw{-150}) == 51);
+  REQUIRE(sw{150}  == -51);
+  REQUIRE(sw{-150} == 51);
 }
 
 TEST_CASE("signed optional helpers", "[bound][signed][optional]")

@@ -13,27 +13,27 @@ TEST_CASE("clamp policy on assignment", "[bound][policy][clamp]")
 {
   using pct = bound<{0, 100}, clamp>;
   pct over{150};
-  REQUIRE(static_cast<rational>(over) == 100);
+  REQUIRE(over == 100);
 
   pct under{-5};
-  REQUIRE(static_cast<rational>(under) == 0);
+  REQUIRE(under == 0);
 
   pct ok{50};
-  REQUIRE(static_cast<rational>(ok) == 50);
+  REQUIRE(ok == 50);
 
   // compound +
   pct a{90};
   a += bound<{0, 100}>{20};
-  REQUIRE(static_cast<rational>(a) == 100);
+  REQUIRE(a == 100);
 }
 
 TEST_CASE("wrap policy on assignment", "[bound][policy][wrap]")
 {
   using angle = bound<{0, 359}, wrap>;
-  angle a{370};   REQUIRE(static_cast<rational>(a) == 10);
-  angle b{-10};   REQUIRE(static_cast<rational>(b) == 350);
-  angle c{360};   REQUIRE(static_cast<rational>(c) == 0);
-  angle d{180};   REQUIRE(static_cast<rational>(d) == 180);
+  angle a{370};   REQUIRE(a == 10);
+  angle b{-10};   REQUIRE(b == 350);
+  angle c{360};   REQUIRE(c == 0);
+  angle d{180};   REQUIRE(d == 180);
 }
 
 TEST_CASE("sentinel policy hides overflow as nullopt", "[bound][policy][sentinel]")
@@ -41,7 +41,7 @@ TEST_CASE("sentinel policy hides overflow as nullopt", "[bound][policy][sentinel
   using idx = bound<{0, 9}, sentinel>;
 
   idx a{5};
-  REQUIRE(static_cast<rational>(a) == 5);
+  REQUIRE(a == 5);
 
   slim::optional<idx> opt{5};
   ++opt;
@@ -65,18 +65,17 @@ TEST_CASE("legacy policy<wrap>(lambda) callback form", "[bound][policy][callback
   min_t minutes{0};
 
   seconds.policy<wrap>([&](auto carry){
-    minutes = static_cast<int>(static_cast<rational>(minutes).Numerator)
-            + static_cast<int>(carry);
+    minutes += carry;
   }) = 65;
 
-  REQUIRE(static_cast<rational>(seconds) == 5);
-  REQUIRE(static_cast<rational>(minutes) == 1);
+  REQUIRE(seconds == 5);
+  REQUIRE(minutes == 1);
 
   using pct = bound<{0, 100}, clamp>;
   pct p{0};
   imax excess = 0;
-  p.policy<clamp>([&](auto e){ excess = static_cast<imax>(e); }) = 150;
-  REQUIRE(static_cast<rational>(p) == 100);
+  p.policy<clamp>([&](auto e){ excess = e; }) = 150;
+  REQUIRE(p == 100);
   REQUIRE(excess == 50);
 }
 
@@ -85,14 +84,14 @@ TEST_CASE("on_wrap action receives bound& and carry", "[bound][policy][on_wrap]"
   using sec = bound<{0, 59}, wrap>;
   sec s{0};
   imax carry = 0;
-  s.on_wrap([&](auto& self, auto c){ carry = static_cast<imax>(c); (void)self; }) = 65;
-  REQUIRE(static_cast<rational>(s) == 5);
+  s.on_wrap([&](auto& self, auto c){ carry = c; (void)self; }) = 65;
+  REQUIRE(s == 5);
   REQUIRE(carry == 1);
 
   // handler may override the wrapped value
   sec s2{0};
   s2.on_wrap([](auto& self, auto c){ if (c > 0) self = 0; }) = 65;
-  REQUIRE(static_cast<rational>(s2) == 0);
+  REQUIRE(s2 == 0);
 }
 
 TEST_CASE("on_clamp action receives overshoot", "[bound][policy][on_clamp]")
@@ -101,10 +100,10 @@ TEST_CASE("on_clamp action receives overshoot", "[bound][policy][on_clamp]")
   u100 x{0};
   imax overshoot = 0;
   x.on_clamp([&](auto& self, auto over){
-    overshoot = static_cast<imax>(over);
+    overshoot = over;
     (void)self;
   }) = 150;
-  REQUIRE(static_cast<rational>(x) == 100);
+  REQUIRE(x == 100);
   REQUIRE(overshoot == 50);
 }
 
@@ -118,7 +117,7 @@ TEST_CASE("on_error action receives code and message", "[bound][policy][on_error
     self = 0;
   }) = 200;
   REQUIRE(fired);
-  REQUIRE(static_cast<rational>(e) == 0);
+  REQUIRE(e == 0);
 }
 
 TEST_CASE("on_sentinel action receives original value", "[bound][policy][on_sentinel]")
@@ -127,10 +126,10 @@ TEST_CASE("on_sentinel action receives original value", "[bound][policy][on_sent
   s100 sv{50};
   imax orig = 0;
   sv.on_sentinel([&](auto& self, auto orig_in){
-    orig = static_cast<imax>(orig_in);
+    orig = orig_in;
     self = 50;
   }) = 200;
-  REQUIRE(static_cast<rational>(sv) == 50);
+  REQUIRE(sv == 50);
   REQUIRE(orig == 200);
 }
 
@@ -145,7 +144,7 @@ TEST_CASE("on_overflow on compound op", "[bound][policy][on_overflow]")
   }) += std::numeric_limits<imax>::max();
 
   REQUIRE(fired);
-  REQUIRE(static_cast<rational>(acc) == 0);
+  REQUIRE(acc == 0);
 }
 
 TEST_CASE("multi-action with(...) — overflow vs clamp paths fire correctly",
@@ -161,7 +160,7 @@ TEST_CASE("multi-action with(...) — overflow vs clamp paths fire correctly",
            on_clamp([&](auto&, auto){ cl = true; })) += std::numeric_limits<imax>::max();
     REQUIRE(of);
     REQUIRE_FALSE(cl);
-    REQUIRE(static_cast<rational>(a) == 7);
+    REQUIRE(a == 7);
   }
 
   SECTION("post-probe narrowing fires on_clamp only")
@@ -170,12 +169,12 @@ TEST_CASE("multi-action with(...) — overflow vs clamp paths fire correctly",
     bool of = false, cl = false;
     imax over = 0;
     b.with(on_overflow([&](auto&, errc){ of = true; }),
-           on_clamp([&](auto&, auto o){ cl = true; over = static_cast<imax>(o); }))
+           on_clamp([&](auto&, auto o){ cl = true; over = o; }))
       += 200;   // 50+200=250 fits imax, but overshoots [0,100]
     REQUIRE_FALSE(of);
     REQUIRE(cl);
     REQUIRE(over == 150);
-    REQUIRE(static_cast<rational>(b) == 100);
+    REQUIRE(b == 100);
   }
 
   SECTION("single-action via with()")
@@ -185,7 +184,7 @@ TEST_CASE("multi-action with(...) — overflow vs clamp paths fire correctly",
     c.with(on_overflow([&](auto& self, errc){ fired = true; self = 0; }))
       += std::numeric_limits<imax>::max();
     REQUIRE(fired);
-    REQUIRE(static_cast<rational>(c) == 0);
+    REQUIRE(c == 0);
   }
 }
 

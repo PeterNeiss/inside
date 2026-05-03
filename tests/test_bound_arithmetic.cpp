@@ -17,17 +17,16 @@ TEST_CASE("bound add", "[bound][arithmetic][add]")
   REQUIRE(b + just<1> == 221);
 
   auto sum = a + b;
-  REQUIRE(static_cast<rational>(sum) == 236);
+  REQUIRE(sum == 236);
 
   // -ve result widens to signed
   auto diff = a - b;
-  REQUIRE(static_cast<rational>(diff) == -204);
+  REQUIRE(diff == -204);
 
   // works at uint64 max
   using u64 = bound<{{0u, std::numeric_limits<std::uint64_t>::max()}, 1}>;
   constexpr u64 biggest{std::numeric_limits<std::uint64_t>::max()};
-  REQUIRE(static_cast<rational>(biggest)
-          == rational{std::numeric_limits<std::uint64_t>::max()});
+  REQUIRE(biggest == rational{std::numeric_limits<std::uint64_t>::max()});
 }
 
 TEST_CASE("bound mul", "[bound][arithmetic][mul]")
@@ -36,23 +35,23 @@ TEST_CASE("bound mul", "[bound][arithmetic][mul]")
   r a{16};
   r b{102};
   auto c = a * b;
-  REQUIRE(static_cast<rational>(c) == 1632);
+  REQUIRE(c == 1632);
 
   using u4 = bound<{{0.75, 10.5}, 0.25}>;
   u4 d{3};
   u4 e{3.25};
   auto f = d * e;
-  REQUIRE(static_cast<rational>(f) == *(39_r/4));
+  REQUIRE(f == *(39_r/4));
 
   using n4 = u4::negative;
   n4 g{-2};
   n4 h{-2.25};
   auto i = g * h;
-  REQUIRE(static_cast<rational>(i) == *(9_r/2));
+  REQUIRE(i == *(9_r/2));
 
   // Mixed signs
-  REQUIRE(static_cast<rational>(d * g) == -6);
-  REQUIRE(static_cast<rational>(g * d) == -6);
+  REQUIRE(d * g == -6);
+  REQUIRE(g * d == -6);
 }
 
 TEST_CASE("bound div: rational vs integer paths", "[bound][arithmetic][div]")
@@ -249,26 +248,26 @@ TEST_CASE("bound rational-storage on_overflow free fn", "[bound][arithmetic][rat
 
 TEST_CASE("bound just<N>", "[bound][just]")
 {
-  REQUIRE(static_cast<rational>(just<1>)  == 1);
-  REQUIRE(static_cast<rational>(just<42>) == 42);
+  REQUIRE(just<1>  == 1);
+  REQUIRE(just<42> == 42);
 }
 
 TEST_CASE("constexpr arithmetic", "[bound][arithmetic][constexpr]")
 {
   using u100 = bound<{0, 100}>;
   constexpr u100 a{30}, b{20};
-  STATIC_REQUIRE(static_cast<rational>(a + b) == 50);
-  STATIC_REQUIRE(static_cast<rational>(a - b) == 10);
-  STATIC_REQUIRE(static_cast<rational>(b - a) == -10);
+  STATIC_REQUIRE(a + b == 50);
+  STATIC_REQUIRE(a - b == 10);
+  STATIC_REQUIRE(b - a == -10);
 
   using u10 = bound<{1, 10}>;
   constexpr u10 m{3}, n{7};
-  STATIC_REQUIRE(static_cast<rational>(m * n) == 21);
-  STATIC_REQUIRE(static_cast<rational>(-a) == -30);
+  STATIC_REQUIRE(m * n == 21);
+  STATIC_REQUIRE(-a == -30);
 
   using s50 = bound<{-50, 50}>;
   constexpr s50 sa{-20}, sb{30};
-  STATIC_REQUIRE(static_cast<rational>(sa + sb) == 10);
-  STATIC_REQUIRE(static_cast<rational>(sa - sb) == -50);
-  STATIC_REQUIRE(static_cast<rational>(sa * sb) == -600);
+  STATIC_REQUIRE(sa + sb == 10);
+  STATIC_REQUIRE(sa - sb == -50);
+  STATIC_REQUIRE(sa * sb == -600);
 }
