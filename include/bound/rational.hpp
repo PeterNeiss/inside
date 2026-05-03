@@ -452,8 +452,6 @@ namespace bnd
   //---------------------------------------------------------------------------
   // operator<=>
   //---------------------------------------------------------------------------
-  // this is only overlow safe in constexpr context
-  //---------------------------------------------------------------------------
   inline constexpr auto operator<=>(rational lhs, rational rhs) -> std::strong_ordering
   {
     bool lhs_neg = lhs.Denominator < 0;

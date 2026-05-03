@@ -52,20 +52,42 @@ if(BOUND_HAS_STACKTRACE)
     )
 endif()
 
+#---------------------------------------------------------------------------
+# Coverage (opt-in; instruments the bound interface so test TUs are covered)
+#---------------------------------------------------------------------------
+option(BOUND_COVERAGE "Enable gcov instrumentation for tests" OFF)
+if(BOUND_COVERAGE)
+    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        message(FATAL_ERROR "BOUND_COVERAGE requires GCC or Clang")
+    endif()
+    target_compile_options(bound_bound INTERFACE --coverage -O0 -g)
+    target_link_options   (bound_bound INTERFACE --coverage)
+endif()
+
 enable_testing()
 
-# CMake reserves the target name "test" once enable_testing() is called, so
-# the build target is named bound_test but the produced binary is still ./test.
-add_executable(bound_test tests/test.cpp)
-set_target_properties(bound_test PROPERTIES OUTPUT_NAME test)
-target_link_libraries(bound_test PUBLIC bound::bound)
-add_test(NAME unit COMMAND bound_test)
-
-add_executable(algo tests/algo.cpp)
-target_link_libraries(algo PUBLIC bound::bound)
-add_test(NAME algo COMMAND algo)
-
 include(FetchContent)
+
+#---------------------------------------------------------------------------
+# Catch2 (test framework)
+#---------------------------------------------------------------------------
+FetchContent_Declare(
+  Catch2
+  GIT_REPOSITORY https://github.com/catchorg/Catch2.git
+  GIT_TAG        v3.5.4
+)
+FetchContent_MakeAvailable(Catch2)
+list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
+include(Catch)
+
+file(GLOB BOUND_TEST_SOURCES CONFIGURE_DEPENDS tests/test_*.cpp)
+add_executable(bound_tests ${BOUND_TEST_SOURCES})
+target_link_libraries(bound_tests PRIVATE bound::bound Catch2::Catch2WithMain)
+catch_discover_tests(bound_tests)
+
+#---------------------------------------------------------------------------
+# ctrack (benchmarking)
+#---------------------------------------------------------------------------
 set(DISABLE_EXAMPLES ON CACHE BOOL "" FORCE)
 FetchContent_Declare(
   ctrack
@@ -79,10 +101,47 @@ target_link_libraries(bench PUBLIC bound::bound)
 get_target_property(CTRACK_INCLUDE_DIRS ctrack INTERFACE_INCLUDE_DIRECTORIES)
 target_include_directories(bench SYSTEM PUBLIC ${CTRACK_INCLUDE_DIRS})
 
+#---------------------------------------------------------------------------
+# Coverage target — runs ctest under --coverage and produces an HTML report.
+# Only useful when configured with -DBOUND_COVERAGE=ON.
+#---------------------------------------------------------------------------
+if(BOUND_COVERAGE)
+    find_program(LCOV_EXE     lcov    REQUIRED)
+    find_program(GENHTML_EXE  genhtml REQUIRED)
+
+    # Match gcov to the compiler so .gcda format versions agree (system /usr/bin/gcov
+    # may belong to a different GCC than the one selected via CMAKE_CXX_COMPILER).
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        string(REGEX MATCH "^[0-9]+" GCC_MAJOR "${CMAKE_CXX_COMPILER_VERSION}")
+        find_program(GCOV_EXE
+            NAMES gcov-${CMAKE_CXX_COMPILER_VERSION} gcov-${GCC_MAJOR} gcov
+            REQUIRED)
+    else()
+        find_program(GCOV_EXE NAMES llvm-cov gcov REQUIRED)
+    endif()
+
+    add_custom_target(coverage
+        COMMAND ${LCOV_EXE} --gcov-tool ${GCOV_EXE} --directory . --zerocounters
+        COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
+        COMMAND ${LCOV_EXE} --gcov-tool ${GCOV_EXE} --capture --directory .
+                            --base-directory ${CMAKE_SOURCE_DIR}
+                            --no-external
+                            --output-file coverage.info
+        COMMAND ${LCOV_EXE} --remove coverage.info '*/tests/*'
+                            --ignore-errors unused
+                            --output-file coverage.info
+        COMMAND ${GENHTML_EXE} coverage.info --output-directory coverage
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+        COMMENT "Coverage: running ctest, generating HTML at build/coverage/index.html"
+        VERBATIM)
+endif()
+
+#---------------------------------------------------------------------------
+# Examples
+#---------------------------------------------------------------------------
 file(GLOB EXAMPLE_SOURCES examples/*.cpp)
 foreach(example_src ${EXAMPLE_SOURCES})
   get_filename_component(example_name ${example_src} NAME_WE)
   add_executable(example_${example_name} ${example_src})
   target_link_libraries(example_${example_name} PUBLIC bound::bound)
 endforeach()
-
