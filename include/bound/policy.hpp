@@ -30,7 +30,7 @@ namespace bnd
     :E(ec) { }
 
     static constexpr bool test(policy_flag w)
-    { return W & w; }
+    { return (W & w) == w; }
 
     static constexpr bool domain_check()
     {

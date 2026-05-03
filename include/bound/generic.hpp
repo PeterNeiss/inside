@@ -132,9 +132,11 @@ namespace bnd
   inline constexpr bool is_integer_aligned =
       abs_den(Notch<B>.Denominator) == 1 && abs_den(Lower<B>.Denominator) == 1;
 
-  // Policy test: checks both type-level and per-operation policy
+  // Policy test: checks both type-level and per-operation policy.
+  // Composite flags (e.g. round_nearest = bit5 | ignore_round) require all
+  // their bits set — having a subset like just `ignore_round` does NOT match.
   template <boundable B, typename P, policy_flag F>
-  inline constexpr bool has_policy = (BoundPolicy<B> & F) || plain<P>::test(F);
+  inline constexpr bool has_policy = (BoundPolicy<B> & F) == F || plain<P>::test(F);
 
   // Forward decl — defined in assignment.hpp
   template <typename L, typename R> struct assignment;

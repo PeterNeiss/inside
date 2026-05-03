@@ -165,3 +165,86 @@ TEST_CASE("type-alias smoke checks", "[bound][types]")
   STATIC_REQUIRE(std::is_same_v<test4_t::raw_type, std::uint64_t>);
   STATIC_REQUIRE(std::is_same_v<test5_t::raw_type, rational>);
 }
+
+TEST_CASE("integer rhs into non-integer-interval bound", "[bound][assign][edge]")
+{
+  // Lower/Upper are non-integer: integer-interval fast path is skipped,
+  // exercising the rational-aware out-of-range branch in handle_out_of_range.
+  using halfgrid = bound<{{rational{1, 2}, rational{11, 2}}, rational{1u, 2}}, clamp>;
+
+  halfgrid over{100};                 // out of range, clamps to 5.5
+  REQUIRE(static_cast<rational>(over) == rational{11u, 2});
+
+  halfgrid under{-100};               // clamps to 0.5
+  REQUIRE(static_cast<rational>(under) == rational{1u, 2});
+
+  halfgrid in{3};                     // 3 lands on a notch (3.0 = 6 notches)
+  REQUIRE(static_cast<rational>(in) == 3);
+}
+
+TEST_CASE("checked policy throws on float out-of-range", "[bound][assign][checked]")
+{
+  using c10 = bound<{0, 10}, checked>;
+  REQUIRE_THROWS_AS(c10{100.0},  std::system_error);
+  REQUIRE_THROWS_AS(c10{-1.0},   std::system_error);
+
+  // rational rhs takes the same path
+  REQUIRE_THROWS_AS(c10{rational{20u}}, std::system_error);
+}
+
+TEST_CASE("checked policy throws on rounding error", "[bound][assign][checked][round]")
+{
+  using coarse = bound<{{0, 10}, 2}, checked>;
+  coarse c;
+
+  // 3.0 doesn't land on notch 2 — round_check fires
+  REQUIRE_THROWS_AS((c = 3.0), std::system_error);
+
+  // value on the notch is fine
+  REQUIRE_NOTHROW((c = 4.0));
+  REQUIRE(static_cast<rational>(c) == 4);
+}
+
+TEST_CASE("ignore_round truncates non-notch float at runtime",
+          "[bound][assign][ignore_round]")
+{
+  using coarse = bound<{{0, 10}, 2}, ignore_round>;
+  coarse c;
+  c = 3.0;
+  REQUIRE(static_cast<rational>(c) == 2);    // truncates toward zero
+
+  c = 7.99;
+  REQUIRE(static_cast<rational>(c) == 6);
+}
+
+TEST_CASE("checked bound-to-bound out-of-range throws", "[bound][assign][bound2bound]")
+{
+  using src = bound<{0, 100}>;
+  using dst = bound<{0, 50}, checked>;
+  src s{75};
+  REQUIRE_THROWS_AS(dst{s}, std::system_error);
+}
+
+TEST_CASE("non-integer-mapping bound-to-bound clamp / domain_fail",
+          "[bound][assign][bound2bound][edge]")
+{
+  // Source has notch 1 to a destination with notch 1/3 — Factor=3, integer.
+  // To force the non-integer-mapping path we use a fractional-notch source
+  // with a destination that doesn't cleanly align: notch 1/2 -> notch 1/3.
+  using src = bound<{{0, 5}, rational{1u, 2}}, ignore_round>;
+  using dst = bound<{{0, 5}, rational{1u, 3}}, ignore_round | clamp>;
+
+  src s{4};   // value 4 -> dst aligns
+  dst d{s};
+  REQUIRE(static_cast<rational>(d) == 4);
+
+  src too_big;
+  too_big.Raw = static_cast<typename src::raw_type>(11);  // 5.5 — out of dst's [0,5]?
+  // 5.5 > 5, clamp engages
+  // (Note: src can hold 5.5? Lower=0, Upper=5, notch=0.5 -> max raw 10, so 5.5 is invalid.)
+  // Use a within-source-but-out-of-dest boundary: src[0,5] dst[0,4]
+  using dst2 = bound<{{0, 4}, rational{1u, 3}}, ignore_round | clamp>;
+  src s2{5};
+  dst2 d2{s2};
+  REQUIRE(static_cast<rational>(d2) == 4);
+}

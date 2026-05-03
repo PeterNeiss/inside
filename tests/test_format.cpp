@@ -7,6 +7,7 @@
 
 #include <format>
 #include <limits>
+#include <sstream>
 
 using namespace bnd;
 
@@ -65,4 +66,59 @@ TEST_CASE("interval and grid to_string", "[format][interval][grid]")
 {
   REQUIRE(bnd::to_string(interval{0, 10})           == "[0..10]");
   REQUIRE(bnd::to_string(grid{interval{0, 10}, 1_r}) == "{[0..10], 1}");
+}
+
+TEST_CASE("ostream operator<< for rational", "[format][print][ostream]")
+{
+  std::ostringstream os;
+  os << rational{3u, 4};
+  REQUIRE(os.str() == "0.75");
+
+  std::ostringstream os2;
+  os2 << rational{1, -3};
+  REQUIRE(os2.str() == "-1/3");
+}
+
+TEST_CASE("ostream operator<< for bound", "[format][print][ostream]")
+{
+  std::ostringstream os;
+  os << bound<{0, 100}>{42};
+  REQUIRE(os.str() == "42");
+
+  std::ostringstream os2;
+  os2 << bound<{{-5, 5}, 0.5}>{2.5};
+  REQUIRE(os2.str() == "2.5");
+}
+
+TEST_CASE("to_string_debug emits raw, type, and grid", "[format][print][debug]")
+{
+  using pct = bound<{0, 100}>;
+  pct x{42};
+  auto s = to_string_debug(x);
+
+  // sanity: value, raw type, and grid all surface in the debug string
+  REQUIRE(s.find("42") != std::string::npos);
+  REQUIRE(s.find("uint8_t") != std::string::npos);
+  REQUIRE(s.find("[0..100]") != std::string::npos);
+
+  // signed-storage path — raw type should show the chosen signed integer
+  using s8 = bound<{-100, 100}>;
+  s8 y{-7};
+  auto sd = to_string_debug(y);
+  REQUIRE(sd.find("-7") != std::string::npos);
+  REQUIRE(sd.find("int8_t") != std::string::npos);
+}
+
+TEST_CASE("type_name covers all raw types", "[format][type_name]")
+{
+  REQUIRE(type_name<std::uint8_t>()  == "uint8_t");
+  REQUIRE(type_name<std::uint16_t>() == "uint16_t");
+  REQUIRE(type_name<std::uint32_t>() == "uint32_t");
+  REQUIRE(type_name<std::uint64_t>() == "uint64_t");
+  REQUIRE(type_name<std::int8_t>()   == "int8_t");
+  REQUIRE(type_name<std::int16_t>()  == "int16_t");
+  REQUIRE(type_name<std::int32_t>()  == "int32_t");
+  REQUIRE(type_name<std::int64_t>()  == "int64_t");
+  REQUIRE(type_name<rational>()      == "rational");
+  REQUIRE(type_name<float>()         == "unknown");
 }

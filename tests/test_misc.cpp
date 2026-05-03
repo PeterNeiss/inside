@@ -67,12 +67,8 @@ TEST_CASE("bound_range over signed bound", "[bound][range][signed]")
   REQUIRE(last  ==  2);
 }
 
-TEST_CASE("bound_range size 1", "[bound][range][edge][!mayfail]")
+TEST_CASE("bound_range size 1", "[bound][range][edge]")
 {
-  // Edge case: bound<{x, x}> stores Raw=0 (Lower==Upper short-circuit in
-  // assignment::store, assignment.hpp:180), so static_cast<imax>(pos) yields 0
-  // and the iterator's value_type ctor reports "0 is not in [5..5]".
-  // Marked `!mayfail` so the suite stays green while documenting the bug.
   int count = 0;
   for (auto i : bound_range<{5, 5}>{})
   {
@@ -80,6 +76,36 @@ TEST_CASE("bound_range size 1", "[bound][range][edge][!mayfail]")
     ++count;
   }
   REQUIRE(count == 1);
+}
+
+TEST_CASE("bound_range size 1 with negative point", "[bound][range][edge]")
+{
+  int count = 0;
+  for (auto i : bound_range<{-3, -3}>{})
+  {
+    REQUIRE(static_cast<imax>(i) == -3);
+    ++count;
+  }
+  REQUIRE(count == 1);
+}
+
+TEST_CASE("bound<{x,x}> singleton round-trips its value",
+          "[bound][edge][singleton]")
+{
+  using point_pos = bound<{5, 5}>;
+  point_pos a{5};
+  REQUIRE(static_cast<rational>(a) == 5);
+  REQUIRE(static_cast<imax>(a) == 5);
+
+  using point_neg = bound<{-3, -3}>;
+  point_neg b{-3};
+  REQUIRE(static_cast<rational>(b) == -3);
+  REQUIRE(static_cast<imax>(b) == -3);
+
+  // Float assignment to single-value rational-storage grid (notch=0)
+  using point_fp = bound<{2.5_r}>;
+  point_fp c = 2.5;
+  REQUIRE(static_cast<rational>(c) == rational{5u, 2});
 }
 
 TEST_CASE("default-constructed bound is well-formed", "[bound][default]")

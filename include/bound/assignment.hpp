@@ -177,10 +177,10 @@ namespace bnd
   template<boundable L, std::integral R>
   constexpr void assignment<L,R>::store(L& lhs, R rhs)
   {
-    if constexpr (Lower<L> == Upper<L>)
-      lhs.Raw = 0;
-    else if constexpr (is_direct_storage<L>)
+    if constexpr (is_direct_storage<L>)
       lhs.Raw = raw_cast<L>(rhs);
+    else if constexpr (Lower<L> == Upper<L>)
+      lhs.Raw = 0;   // notch_storage point grid: 0 is the only offset
     else // is_notch_storage
     {
       rational raw = ((rhs - Interval<L>.Lower)/Notch<L>).value();
@@ -218,9 +218,11 @@ namespace bnd
             if (handle_out_of_range(lhs, rhs, lower, upper, policy, action)) return lhs;
         }
         else if (not Interval<L>.includes(rhs))
-          if (handle_out_of_range(lhs, rhs,
-                static_cast<imax>(Lower<L>.Numerator),
-                static_cast<imax>(Upper<L>.Numerator), policy, action)) return lhs;
+        {
+          // Non-integer L bounds: route through the rational path so fractional
+          // Lower/Upper drive clamp/sentinel/error correctly.
+          return assignment<L, rational>::assign(lhs, rational{rhs}, policy, action);
+        }
       }
     }
 
@@ -237,12 +239,16 @@ namespace bnd
   constexpr void assignment<L,R>::apply_clamp(L& lhs, R rhs, P&&, A&& action)
   {
     R clamped = (rhs < Lower<L>) ? static_cast<R>(Lower<L>) : static_cast<R>(Upper<L>);
-    R overshoot = rhs - clamped;
+    R overshoot;
+    if constexpr (std::same_as<R, rational>)
+      overshoot = (rhs - clamped).value_or(rational{0u});
+    else
+      overshoot = rhs - clamped;
 
-    if constexpr (Lower<L> == Upper<L>)
-      lhs.Raw = 0;
-    else if constexpr (is_raw_rational<L>)
+    if constexpr (is_raw_rational<L>)
       lhs.Raw = clamped;
+    else if constexpr (Lower<L> == Upper<L>)
+      lhs.Raw = 0;
     else
     {
       rational raw = ((clamped - Lower<L>)/Notch<L>).value();
@@ -264,10 +270,10 @@ namespace bnd
   template<typename P>
   constexpr bool assignment<L,R>::store_checked(L& lhs, R rhs, P&& policy)
   {
-    if constexpr (Lower<L> == Upper<L>)
-    { lhs.Raw = 0; return true; }
-    else if constexpr (is_raw_rational<L>)
+    if constexpr (is_raw_rational<L>)
     { lhs.Raw = rhs; return true; }
+    else if constexpr (Lower<L> == Upper<L>)
+    { lhs.Raw = 0; return true; }
     else
     {
       rational raw = ((rhs - Lower<L>)/Notch<L>).value();

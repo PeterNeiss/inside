@@ -69,6 +69,50 @@ TEST_CASE("grid arithmetic", "[grid]")
     auto r = a / b;
     REQUIRE(r.has_value());
   }
+
+  SECTION("divide by interval [0, U] excludes zero from divisor by stepping in by notch")
+  {
+    grid a{{0, 10}, 1};
+    grid b{{0, 5}, 1};   // includes zero, positive upper
+    auto r = a / b;
+    REQUIRE(r.has_value());
+    REQUIRE(r->Interval.Lower == 0);
+    REQUIRE(r->Interval.Upper == 10);    // 10 / 1 = 10
+    REQUIRE(r->Notch == 0_r);
+  }
+
+  SECTION("divide by interval [L, 0] (negative side only)")
+  {
+    grid a{{0, 10}, 1};
+    grid b{{-5, 0}, 1};   // includes zero, negative lower
+    auto r = a / b;
+    REQUIRE(r.has_value());
+    // dividing positives by negatives gives non-positive result
+    REQUIRE(r->Interval.Upper <= 0);
+    REQUIRE(r->Notch == 0_r);
+  }
+
+  SECTION("divide by interval that straddles zero")
+  {
+    grid a{{1, 10}, 1};
+    grid b{{-5, 5}, 1};   // straddles zero
+    auto r = a / b;
+    REQUIRE(r.has_value());
+    // result must span both signs once we exclude zero
+    REQUIRE(r->Interval.Lower < 0);
+    REQUIRE(r->Interval.Upper > 0);
+    REQUIRE(r->Notch == 0_r);
+  }
+
+  SECTION("divide by zero-notch interval that straddles zero")
+  {
+    grid a{{1, 10}, 1};
+    grid b{{-5, 5}, 0};   // notch=0, so step defaults to 1
+    auto r = a / b;
+    REQUIRE(r.has_value());
+    REQUIRE(r->Interval.Lower < 0);
+    REQUIRE(r->Interval.Upper > 0);
+  }
 }
 
 TEST_CASE("grid validate", "[grid]")

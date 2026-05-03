@@ -80,9 +80,14 @@ FetchContent_MakeAvailable(Catch2)
 list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
 include(Catch)
 
+# Treat Catch2 headers as system headers so its known -Wnon-virtual-dtor /
+# -Weffc++ noise stays out of the bound build log. Same pattern as ctrack.
+get_target_property(CATCH2_INCLUDE_DIRS Catch2 INTERFACE_INCLUDE_DIRECTORIES)
+
 file(GLOB BOUND_TEST_SOURCES CONFIGURE_DEPENDS tests/test_*.cpp)
 add_executable(bound_tests ${BOUND_TEST_SOURCES})
 target_link_libraries(bound_tests PRIVATE bound::bound Catch2::Catch2WithMain)
+target_include_directories(bound_tests SYSTEM PRIVATE ${CATCH2_INCLUDE_DIRS})
 catch_discover_tests(bound_tests)
 
 #---------------------------------------------------------------------------
