@@ -23,14 +23,10 @@ namespace bnd
   //
   // binary operations or the flags of both operations
   inline static constexpr policy_flag none         {0ull};
-  inline static constexpr policy_flag fail_early   {1ull << 0}; // possible fail -> compile time fail
   inline static constexpr policy_flag ignore_zero  {1ull << 1};
   inline static constexpr policy_flag ignore_domain{1ull << 2};
-  inline static constexpr policy_flag ignore_range {1ull << 3};
   inline static constexpr policy_flag ignore_round  {1ull << 4};
   inline static constexpr policy_flag round_nearest {(1ull << 5) | ignore_round};
-  inline static constexpr policy_flag ignore_all
-  {ignore_zero | ignore_domain | ignore_range | ignore_round};
 
   // runtime checking — opt-in
   inline static constexpr policy_flag checked{1ull << 34}; // enable runtime domain/overflow checks
@@ -40,12 +36,12 @@ namespace bnd
   inline static constexpr policy_flag wrap    {1ull << 33}; // modular arithmetic
   inline static constexpr policy_flag sentinel{1ull << 35}; // overflow -> sentinel (nullopt)
 
-  // opt-out of the default `checked` policy: no domain / range / round / overflow
+  // opt-out of the default `checked` policy: no domain / round / overflow
   // checks. Division-by-zero is still reported (use `ignore_zero` to suppress
   // that too). Includes `ignore_round` so notch-incompatible assigns compile and
   // native-integer div/mod paths fire.
   inline static constexpr policy_flag unsafe
-    {(1ull << 36) | ignore_domain | ignore_range | ignore_round};
+    {(1ull << 36) | ignore_domain | ignore_round};
 
   //---------------------------------------------------------------------------
   // no_action — zero-overhead default for overflow callbacks
