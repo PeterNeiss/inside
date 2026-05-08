@@ -19,12 +19,16 @@ namespace bnd
 
   struct rational;
 
+  // Strict `<` reserves the type's max as the sentinel slot used by
+  // slim::optional<bound>. Mirrors smallest_int_for's `+1` margin on the
+  // signed side. A grid whose max_notch lands exactly on a type's max
+  // therefore promotes to the next-wider type.
   template <std::uintmax_t N>
   using smallest_uint_for =
     std::conditional_t<(N == 0), rational,
-    std::conditional_t<(N <= UINT8_MAX),  std::uint8_t,
-    std::conditional_t<(N <= UINT16_MAX), std::uint16_t,
-    std::conditional_t<(N <= UINT32_MAX), std::uint32_t,
+    std::conditional_t<(N < UINT8_MAX),  std::uint8_t,
+    std::conditional_t<(N < UINT16_MAX), std::uint16_t,
+    std::conditional_t<(N < UINT32_MAX), std::uint32_t,
                                           std::uint64_t>>>>;
 
   // +1 on min accounts for sentinel value reserved by slim::optional

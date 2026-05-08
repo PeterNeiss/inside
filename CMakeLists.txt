@@ -110,6 +110,9 @@ target_link_libraries(bench PUBLIC bound::bound)
 get_target_property(CTRACK_INCLUDE_DIRS ctrack INTERFACE_INCLUDE_DIRECTORIES)
 target_include_directories(bench SYSTEM PUBLIC ${CTRACK_INCLUDE_DIRS})
 
+add_executable(bound_fuzz tests/fuzz.cpp)
+target_link_libraries(bound_fuzz PUBLIC bound::bound)
+
 #---------------------------------------------------------------------------
 # Coverage target — runs ctest under --coverage and produces an HTML report.
 # Only useful when configured with -DBOUND_COVERAGE=ON.
