@@ -378,6 +378,11 @@ namespace bnd
       bound result;
       assignment<bound, A>::assign(result, value, make_policy<P>(ec));
       if (ec) return slim::nullopt;
+      // For `sentinel` policy types, an out-of-range write silently sets
+      // result.Raw to the sentinel; converting that bound into the returned
+      // optional would otherwise trip validate_not_sentinel.
+      if constexpr ((P & sentinel) != 0)
+        if (result.Raw == sentinel_raw<bound>()) return slim::nullopt;
       return result;
     }
   };

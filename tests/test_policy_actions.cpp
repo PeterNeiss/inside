@@ -59,28 +59,28 @@ TEST_CASE("sentinel policy hides overflow as nullopt", "[bound][policy][sentinel
 
 TEST_CASE("sentinel policy on fixed-point grids", "[bound][policy][sentinel][fixed]")
 {
-  SECTION("Q8.8 (notch 1/256) — uint16 storage")
+  SECTION("Q8.8 (notch 1/256) — try_make + in-place ++")
   {
     using fp = bound<{{0, 255}, 1.0/256}, sentinel>;
     static_assert(sizeof(fp) == 2);
 
-    fp ok{42.5};
-    REQUIRE(double(ok) == 42.5);
+    // notch-aligned in-range value
+    auto ok = fp::try_make(42.5);
+    REQUIRE(ok.has_value());
+    REQUIRE(double(*ok) == 42.5);
 
-    // out-of-range write produces nullopt via optional
-    slim::optional<fp> high{42.5};
-    high = 300.0;
+    // out-of-range produces nullopt
+    auto high = fp::try_make(300.0);
     REQUIRE_FALSE(high.has_value());
 
-    slim::optional<fp> low{0.0};
-    low = -0.5;
+    auto low = fp::try_make(-0.5);
     REQUIRE_FALSE(low.has_value());
 
-    // notch-aligned in-range value survives
-    slim::optional<fp> mid{100.0};
-    mid = 200.125;
-    REQUIRE(mid.has_value());
-    REQUIRE(double(*mid) == 200.125);
+    // in-place increment past upper bound -> nullopt
+    slim::optional<fp> top = fp::try_make(255.0);
+    REQUIRE(top.has_value());
+    ++top;
+    REQUIRE_FALSE(top.has_value());
   }
 
   SECTION("half-step (notch 0.5) — uint8 storage")
@@ -88,11 +88,12 @@ TEST_CASE("sentinel policy on fixed-point grids", "[bound][policy][sentinel][fix
     using sensor = bound<{{0, 50}, 0.5}, sentinel>;
     static_assert(sizeof(sensor) == 1);
 
-    slim::optional<sensor> s{23.5};
+    auto s = sensor::try_make(23.5);
+    REQUIRE(s.has_value());
     REQUIRE(double(*s) == 23.5);
 
-    s = 50.5;
-    REQUIRE_FALSE(s.has_value());
+    REQUIRE_FALSE(sensor::try_make(50.5).has_value());
+    REQUIRE_FALSE(sensor::try_make(-1.0).has_value());
   }
 
   SECTION("signed Q1.14 (notch 1/16384) — uint16 storage")
@@ -100,15 +101,16 @@ TEST_CASE("sentinel policy on fixed-point grids", "[bound][policy][sentinel][fix
     using sample = bound<{{-1, 1}, *(1_r/16384)}, sentinel | round_nearest>;
     static_assert(sizeof(sample) == 2);
 
-    slim::optional<sample> s{0.5};
+    auto s = sample::try_make(0.5);
+    REQUIRE(s.has_value());
     REQUIRE(double(*s) == 0.5);
 
-    s = 1.5;
-    REQUIRE_FALSE(s.has_value());
+    REQUIRE_FALSE(sample::try_make(1.5).has_value());
+    REQUIRE_FALSE(sample::try_make(-1.25).has_value());
 
-    s = sample{0.0};
-    s = -1.25;
-    REQUIRE_FALSE(s.has_value());
+    // boundaries ±1 are inclusive
+    REQUIRE(sample::try_make(1.0).has_value());
+    REQUIRE(sample::try_make(-1.0).has_value());
   }
 
   SECTION("Q16.16 (notch 1/65536) — uint32 storage")
@@ -116,11 +118,12 @@ TEST_CASE("sentinel policy on fixed-point grids", "[bound][policy][sentinel][fix
     using fp = bound<{{0, 65535}, *(1_r/65536)}, sentinel>;
     static_assert(sizeof(fp) == 4);
 
-    slim::optional<fp> v{1000.125};
+    auto v = fp::try_make(1000.125);
+    REQUIRE(v.has_value());
     REQUIRE(double(*v) == 1000.125);
 
-    v = -0.001;
-    REQUIRE_FALSE(v.has_value());
+    REQUIRE_FALSE(fp::try_make(-0.001).has_value());
+    REQUIRE_FALSE(fp::try_make(70000.0).has_value());
   }
 }
 
