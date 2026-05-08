@@ -13,14 +13,17 @@
 //#include <compare>
 #include <concepts>
 
-#ifdef __has_builtin
-  #if __has_builtin(__builtin_add_overflow)
-    #define BOUND_HAVE_BUILDIN
+#if defined(__has_builtin)
+  #if __has_builtin(__builtin_add_overflow) \
+   && __has_builtin(__builtin_sub_overflow) \
+   && __has_builtin(__builtin_mul_overflow)
+    #define BOUND_HAVE_BUILTIN 1
   #endif
 #endif
 
-#if defined(__clang__)
-  #define BOUND_HAVE_BUILDIN
+// Older GCC predates __has_builtin but ships these from 5.0.
+#if !defined(BOUND_HAVE_BUILTIN) && defined(__GNUC__) && __GNUC__ >= 5
+  #define BOUND_HAVE_BUILTIN 1
 #endif
 
 namespace bnd
@@ -61,7 +64,6 @@ namespace bnd
         return res != *result;
       }
     }
-    return true;
   }
 
   template<std::integral T>
@@ -128,10 +130,9 @@ namespace bnd
         return res != *result;
       }
     }
-    return true;
   }
 
-#ifdef BOUND_HAVE_BUILDIN
+#ifdef BOUND_HAVE_BUILTIN
   template<std::integral T>
   [[nodiscard]]
   constexpr bool add_overflow(T l, T r, T* result) noexcept

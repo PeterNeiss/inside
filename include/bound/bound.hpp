@@ -237,8 +237,24 @@ namespace bnd
     template <arithmetic A>
     constexpr bound& operator+=(A rhs)
     {
-      return assignment<bound, imax>::assign(*this,
-        to_value(*this) + static_cast<imax>(rhs), make_policy<P>());
+      if constexpr (std::integral<A>)
+      {
+        imax l = to_value(*this), r = static_cast<imax>(rhs), result;
+        if constexpr (P & checked)
+        {
+          if (add_overflow(l, r, &result))
+          {
+            make_policy<P>().report(errc::overflow, "operator+= overflow");
+            return *this;
+          }
+        }
+        else
+          result = static_cast<imax>(static_cast<umax>(l) + static_cast<umax>(r));
+        return assignment<bound, imax>::assign(*this, result, make_policy<P>());
+      }
+      else
+        return assignment<bound, imax>::assign(*this,
+          to_value(*this) + static_cast<imax>(rhs), make_policy<P>());
     }
 
     template <boundable R>
@@ -247,7 +263,25 @@ namespace bnd
 
     template <arithmetic A>
     constexpr bound& operator-=(A rhs)
-    { return *this += (-rhs); }
+    {
+      if constexpr (std::integral<A>)
+      {
+        imax l = to_value(*this), r = static_cast<imax>(rhs), result;
+        if constexpr (P & checked)
+        {
+          if (sub_overflow(l, r, &result))
+          {
+            make_policy<P>().report(errc::overflow, "operator-= overflow");
+            return *this;
+          }
+        }
+        else
+          result = static_cast<imax>(static_cast<umax>(l) - static_cast<umax>(r));
+        return assignment<bound, imax>::assign(*this, result, make_policy<P>());
+      }
+      else
+        return *this += (-rhs);
+    }
 
     template <boundable R>
     constexpr bound& operator*=(R const& rhs)
@@ -276,8 +310,24 @@ namespace bnd
     template <arithmetic A>
     constexpr bound& operator*=(A rhs)
     {
-      return assignment<bound, imax>::assign(*this,
-        to_value(*this) * static_cast<imax>(rhs), make_policy<P>());
+      if constexpr (std::integral<A>)
+      {
+        imax l = to_value(*this), r = static_cast<imax>(rhs), result;
+        if constexpr (P & checked)
+        {
+          if (mul_overflow(l, r, &result))
+          {
+            make_policy<P>().report(errc::overflow, "operator*= overflow");
+            return *this;
+          }
+        }
+        else
+          result = static_cast<imax>(static_cast<umax>(l) * static_cast<umax>(r));
+        return assignment<bound, imax>::assign(*this, result, make_policy<P>());
+      }
+      else
+        return assignment<bound, imax>::assign(*this,
+          to_value(*this) * static_cast<imax>(rhs), make_policy<P>());
     }
 
     template <arithmetic A>
@@ -570,8 +620,13 @@ namespace bnd
 
   //---------------------------------------------------------------------------
   // bound_range — range-based for loop support
+  //
+  // Iteration uses bound::operator++ (which adds 1 to the *value*), so the grid
+  // must have notch 1 and integer-valued lower bound. That keeps every step on
+  // the grid and makes `count_ = upper - lower + 1` exact.
   //---------------------------------------------------------------------------
   template <grid G, policy_flag P = checked>
+    requires (G.Notch == 1_r && abs_den(G.Interval.Lower.Denominator) == 1)
   struct bound_range
   {
     using value_type = bound<G, P>;

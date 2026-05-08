@@ -159,7 +159,7 @@ namespace bnd
     }
 
     public:
-    template <arithmetic C>
+    template <std::integral C>
     constexpr B& operator+=(C rhs)
     {
       imax l = to_value(Ref), r = static_cast<imax>(rhs), result;
@@ -181,7 +181,7 @@ namespace bnd
         return assign_with_picked(static_cast<imax>(l + r));
     }
 
-    template <arithmetic C>
+    template <std::integral C>
     constexpr B& operator-=(C rhs)
     {
       imax l = to_value(Ref), r = static_cast<imax>(rhs), result;
@@ -203,7 +203,7 @@ namespace bnd
         return assign_with_picked(static_cast<imax>(l - r));
     }
 
-    template <arithmetic C>
+    template <std::integral C>
     constexpr B& operator*=(C rhs)
     {
       imax l = to_value(Ref), r = static_cast<imax>(rhs), result;
@@ -225,7 +225,7 @@ namespace bnd
         return assign_with_picked(static_cast<imax>(l * r));
     }
 
-    template <arithmetic C>
+    template <std::integral C>
     constexpr B& operator/=(C rhs)
     {
       if (rhs == 0)
@@ -236,7 +236,7 @@ namespace bnd
       return assign_with_picked(static_cast<imax>(to_value(Ref) / static_cast<imax>(rhs)));
     }
 
-    template <arithmetic C>
+    template <std::integral C>
     constexpr B& operator%=(C rhs)
     {
       if (rhs == 0)

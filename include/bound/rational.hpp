@@ -98,12 +98,13 @@ namespace bnd
 
     // operator== be default for structural type
     constexpr bool operator==(const rational&) const = default;
-    constexpr bool operator==(auto value) const { return operator==(rational{value}); }
+    template <arithmetic T>
+    constexpr bool operator==(T value) const { return operator==(rational{value}); }
 
     constexpr rational operator-() const;
 
     template <std::unsigned_integral T>
-    constexpr slim::optional<T> to();
+    constexpr slim::optional<T> to() const;
 
     template <std::unsigned_integral T>
     explicit constexpr operator T () const
@@ -244,7 +245,7 @@ namespace bnd
   // to
   //---------------------------------------------------------------------------
   template <std::unsigned_integral T>
-  constexpr slim::optional<T> rational::to()
+  constexpr slim::optional<T> rational::to() const
   { return (Denominator <= 0) ? slim::nullopt : slim::make_optional<T>(static_cast<T>(Numerator/static_cast<umax>(Denominator))); }
 
   //---------------------------------------------------------------------------
@@ -476,7 +477,11 @@ namespace bnd
     if (Numerator == 0)
       return *this;
 
-    return rational{Numerator, -Denominator};
+    // Already trimmed; flip the sign-encoding directly without re-running trim.
+    rational r;
+    r.Numerator = Numerator;
+    r.Denominator = -Denominator;
+    return r;
   }
 
   //---------------------------------------------------------------------------
@@ -521,7 +526,7 @@ namespace bnd
     )
     {
       if consteval { rational_overflow("rational <=>: cross-multiplication overflow"); }
-      OVERFLOW_trap("multiplicative overflow");
+      overflow_trap("multiplicative overflow");
     }
 
     if (lhs_neg)
@@ -538,10 +543,12 @@ namespace bnd
   inline constexpr auto operator<=>(rational const& lhs, slim::optional<T> rhs)
   { return lhs <=> rational{rhs.value()}; }
 
-  inline constexpr auto operator<=>(auto lhs, const rational& rhs)
+  template <arithmetic T>
+  inline constexpr auto operator<=>(T lhs, const rational& rhs)
   { return rational{lhs} <=> rhs; }
 
-  inline constexpr auto operator<=>(rational const& lhs, auto rhs)
+  template <arithmetic T>
+  inline constexpr auto operator<=>(rational const& lhs, T rhs)
   { return lhs <=> rational{rhs}; }
 
   //---------------------------------------------------------------------------

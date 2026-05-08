@@ -80,8 +80,9 @@ namespace bnd
 
     constexpr double raw_to_double(std::same_as<rational> auto raw) const
     {
-      return (Notch == 0_r) ? static_cast<double>(raw) :
-        static_cast<double>((*(raw*Notch) + Interval.Lower).value());
+      // storage_min only selects rational raw when Notch == 0_r, so raw is
+      // already the value — no offset/scale to apply.
+      return static_cast<double>(raw);
     }
 
     static constexpr grid make_sentinel() noexcept

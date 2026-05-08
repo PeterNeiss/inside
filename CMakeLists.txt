@@ -1,6 +1,6 @@
 cmake_minimum_required (VERSION 3.24)
 
-project(bound LANGUAGES CXX)
+project(bound VERSION 1.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -34,22 +34,26 @@ target_compile_options(bound_bound
 
 include(CheckCXXSourceCompiles)
 
-set(CMAKE_REQUIRED_FLAGS "-std=c++23")
-set(CMAKE_REQUIRED_LIBRARIES stdc++exp)
-check_cxx_source_compiles("
-    #include <stacktrace>
-    int main() { return std::stacktrace::current().size(); }
-" BOUND_HAS_STACKTRACE)
-unset(CMAKE_REQUIRED_FLAGS)
-unset(CMAKE_REQUIRED_LIBRARIES)
+# <stacktrace> with libstdc++ requires linking the experimental library; the
+# probe is GCC-specific. On other toolchains we just skip the feature.
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    set(CMAKE_REQUIRED_FLAGS "-std=c++23")
+    set(CMAKE_REQUIRED_LIBRARIES stdc++exp)
+    check_cxx_source_compiles("
+        #include <stacktrace>
+        int main() { return std::stacktrace::current().size(); }
+    " BOUND_HAS_STACKTRACE)
+    unset(CMAKE_REQUIRED_FLAGS)
+    unset(CMAKE_REQUIRED_LIBRARIES)
 
-if(BOUND_HAS_STACKTRACE)
-    target_compile_definitions(bound_bound INTERFACE
-        $<$<NOT:$<CONFIG:Release>>:BOUND_HAS_STACKTRACE>
-    )
-    target_link_libraries(bound_bound INTERFACE
-        $<$<NOT:$<CONFIG:Release>>:stdc++exp>
-    )
+    if(BOUND_HAS_STACKTRACE)
+        target_compile_definitions(bound_bound INTERFACE
+            $<$<NOT:$<CONFIG:Release>>:BOUND_HAS_STACKTRACE>
+        )
+        target_link_libraries(bound_bound INTERFACE
+            $<$<NOT:$<CONFIG:Release>>:stdc++exp>
+        )
+    endif()
 endif()
 
 #---------------------------------------------------------------------------
@@ -177,7 +181,7 @@ install(EXPORT boundTargets
 
 write_basic_package_version_file(
   "${CMAKE_CURRENT_BINARY_DIR}/boundConfigVersion.cmake"
-  VERSION       1.0.0
+  VERSION       ${PROJECT_VERSION}
   COMPATIBILITY SameMajorVersion
   ARCH_INDEPENDENT)
 

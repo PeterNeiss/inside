@@ -62,7 +62,7 @@ namespace bnd
   template <auto...N>
   struct print_values;
 
-  constexpr void OVERFLOW_trap(const char* what)
+  constexpr void overflow_trap(const char* what)
   {
     if (what)
       throw std::system_error(make_error_code(errc::overflow), what);

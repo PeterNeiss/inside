@@ -147,7 +147,7 @@ namespace bnd
   template <typename L, typename R, policy_flag P = checked>
   concept assignable_from =
     numeric<R>
-    && (!boundable<R> && !std::integral<R> || not Interval<L>.excludes(Interval<R>))
+    && ((!boundable<R> && !std::integral<R>) || not Interval<L>.excludes(Interval<R>))
     && (!boundable<R> || abs_den(assignment<L, R>::Factor.Denominator) == 1
         || ((BoundPolicy<L> | P) & ignore_round) != 0);
 
