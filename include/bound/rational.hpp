@@ -512,6 +512,28 @@ namespace bnd
         return lhs.Numerator <=> rhs.Numerator;
     }
 
+    // One side is an integer: compare via divmod instead of cross-multiply.
+    // Cross-multiplying would otherwise overflow when the non-integer side
+    // has a huge denominator (e.g. doubles like 19.99 stored as N/2^48).
+    if (rhs_ad == 1)
+    {
+      umax q = lhs.Numerator / lhs_ad;
+      umax r = lhs.Numerator % lhs_ad;
+      auto cmp = (q == rhs.Numerator) ? (r == 0 ? std::strong_ordering::equal
+                                                : std::strong_ordering::greater)
+                                      : (q <=> rhs.Numerator);
+      return lhs_neg ? (0 <=> cmp) : cmp;
+    }
+    if (lhs_ad == 1)
+    {
+      umax q = rhs.Numerator / rhs_ad;
+      umax r = rhs.Numerator % rhs_ad;
+      auto cmp = (q == lhs.Numerator) ? (r == 0 ? std::strong_ordering::equal
+                                                : std::strong_ordering::less)
+                                      : (lhs.Numerator <=> q);
+      return lhs_neg ? (0 <=> cmp) : cmp;
+    }
+
     // cross trim to avoid overflow if possible
     trim(lhs.Numerator, rhs.Numerator);
     trim(lhs_ad, rhs_ad);

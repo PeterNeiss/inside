@@ -474,6 +474,9 @@ The `examples/` directory contains self-contained programs demonstrating key fea
 | `division.cpp` | Exact rational division and integer division |
 | `integer_division.cpp` | `ignore_round` policy for native integer division |
 | `fixed_point.cpp` | Fixed-point arithmetic with fractional notch grids |
+| `audio_sample.cpp` | Signed Q1.14 audio samples with mixing and clamp |
+| `money.cpp` | Cents-precision currency arithmetic via fractional notch |
+| `q_formats.cpp` | Q-format storage reference (Q4.4, Q1.7, Q8.8, Q16.16) |
 | `signed.cpp` | Signed integer bounds with negative ranges |
 | `errors.cpp` | Error handling: throw, error_code, optional |
 | `array_index.cpp` | Bounded array indexing with sentinel, range-based for |

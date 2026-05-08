@@ -57,6 +57,88 @@ TEST_CASE("sentinel policy hides overflow as nullopt", "[bound][policy][sentinel
   REQUIRE_FALSE(bot.has_value());
 }
 
+TEST_CASE("sentinel policy on fixed-point grids", "[bound][policy][sentinel][fixed]")
+{
+  SECTION("Q8.8 (notch 1/256) — uint16 storage")
+  {
+    using fp = bound<{{0, 255}, 1.0/256}, sentinel>;
+    static_assert(sizeof(fp) == 2);
+
+    fp ok{42.5};
+    REQUIRE(double(ok) == 42.5);
+
+    // out-of-range write produces nullopt via optional
+    slim::optional<fp> high{42.5};
+    high = 300.0;
+    REQUIRE_FALSE(high.has_value());
+
+    slim::optional<fp> low{0.0};
+    low = -0.5;
+    REQUIRE_FALSE(low.has_value());
+
+    // notch-aligned in-range value survives
+    slim::optional<fp> mid{100.0};
+    mid = 200.125;
+    REQUIRE(mid.has_value());
+    REQUIRE(double(*mid) == 200.125);
+  }
+
+  SECTION("half-step (notch 0.5) — uint8 storage")
+  {
+    using sensor = bound<{{0, 50}, 0.5}, sentinel>;
+    static_assert(sizeof(sensor) == 1);
+
+    slim::optional<sensor> s{23.5};
+    REQUIRE(double(*s) == 23.5);
+
+    s = 50.5;
+    REQUIRE_FALSE(s.has_value());
+  }
+
+  SECTION("signed Q1.14 (notch 1/16384) — uint16 storage")
+  {
+    using sample = bound<{{-1, 1}, *(1_r/16384)}, sentinel | round_nearest>;
+    static_assert(sizeof(sample) == 2);
+
+    slim::optional<sample> s{0.5};
+    REQUIRE(double(*s) == 0.5);
+
+    s = 1.5;
+    REQUIRE_FALSE(s.has_value());
+
+    s = sample{0.0};
+    s = -1.25;
+    REQUIRE_FALSE(s.has_value());
+  }
+
+  SECTION("Q16.16 (notch 1/65536) — uint32 storage")
+  {
+    using fp = bound<{{0, 65535}, *(1_r/65536)}, sentinel>;
+    static_assert(sizeof(fp) == 4);
+
+    slim::optional<fp> v{1000.125};
+    REQUIRE(double(*v) == 1000.125);
+
+    v = -0.001;
+    REQUIRE_FALSE(v.has_value());
+  }
+}
+
+TEST_CASE("on_sentinel action on fixed-point grids", "[bound][policy][on_sentinel][fixed]")
+{
+  using fp = bound<{{0, 50}, 0.5}, sentinel>;
+
+  fp v{10.5};
+  rational orig{0u};
+  v.on_sentinel([&](auto& self, auto orig_in){
+    orig = static_cast<rational>(orig_in);
+    self = 0;
+  }) = 75.5;
+
+  REQUIRE(double(v) == 0);
+  REQUIRE(orig == rational{151, 2});  // 75.5
+}
+
 TEST_CASE("legacy policy<wrap>(lambda) callback form", "[bound][policy][callback]")
 {
   using sec   = bound<{0, 59}, wrap>;

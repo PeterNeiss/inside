@@ -192,9 +192,14 @@ namespace bnd
     template <boundable R>
     constexpr bound& operator+=(R const& rhs)
     {
+      // Fast path: raw-level integer addition. Safe when both sides share an
+      // encoding where raw_a + raw_b is the raw of value_a + value_b — either
+      // direct storage (Raw == value) or offset encoding with Lower==0 on
+      // both (Raw == value/notch, so raws sum to (sum)/notch).
       if constexpr (not IsRawRational<bound> && not IsRawRational<R>
                     && Notch<bound> == Notch<R>
-                    && IsDirectStorage<R>)
+                    && (IsDirectStorage<R>
+                        || (Lower<bound> == 0_r && Lower<R> == 0_r)))
       {
         if constexpr (P & (clamp | wrap | checked | sentinel))
         {

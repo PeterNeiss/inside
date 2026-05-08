@@ -299,6 +299,128 @@ void bench_fixed_point()
       fp sum(0);
       for (auto v : bv) sum += v;
       do_not_optimize(sum.Raw); }
+
+    { CTRACK_NAME("fixed native mul");
+      std::int32_t a = 30 << 8, b = 5 << 8;
+      std::int32_t c = (a * b) >> 8;  // renormalize Q8.8
+      do_not_optimize(c); }
+
+    { CTRACK_NAME("fixed bound mul");
+      fp a(30), b(5);
+      auto c = a * b;
+      do_not_optimize(c.Raw); }
+
+    { CTRACK_NAME("fixed native div");
+      std::int32_t a = 200 << 8, b = 8 << 8;
+      std::int32_t c = (a << 8) / b;  // renormalize Q8.8
+      do_not_optimize(c); }
+
+    { CTRACK_NAME("fixed bound div");
+      fp a(200), b(8);
+      auto c = div(a, b, truncated);
+      do_not_optimize(c->Raw); }
+  }
+}
+
+void bench_fixed_point_signed()
+{
+  // Signed Q1.14-style audio: bound<{{-1, 1}, 1/16384}, unsafe>
+  // vs native int16 with explicit *16384 scaling.
+  using fp = bound<{{-1, 1}, *(1_r/16384)}, unsafe>;
+  static_assert(sizeof(fp) == 2);
+
+  for (std::size_t i = 0; i < N; ++i)
+  {
+    int v = static_cast<int>(i % 201) - 100; // [-100, 100]
+
+    { CTRACK_NAME("signed fixed native construct");
+      std::int32_t s = (v * 16384) / 100;  // scale into Q1.14 range
+      do_not_optimize(s); }
+
+    { CTRACK_NAME("signed fixed bound construct");
+      fp s; s.Raw = static_cast<std::uint16_t>((v + 100) * 163);  // raw-level
+      do_not_optimize(s.Raw); }
+
+    { CTRACK_NAME("signed fixed native add");
+      std::int32_t a = 5000, b = -3000;
+      std::int32_t c = a + b;
+      do_not_optimize(c); }
+
+    { CTRACK_NAME("signed fixed bound add");
+      fp a; a.Raw = 20000;
+      fp b; b.Raw = 10000;
+      auto c = a + b;
+      do_not_optimize(c.Raw); }
+  }
+}
+
+void bench_fixed_point_checked()
+{
+  // Same Q8.8 grid as bench_fixed_point but with `checked` policy — measures
+  // runtime-domain-check overhead vs the unsafe baseline.
+  using fp = bound<{{0, 255}, 1.0/256}, checked>;
+
+  for (std::size_t i = 0; i < N; ++i)
+  {
+    { CTRACK_NAME("checked fixed bound construct");
+      fp v(static_cast<int>(i % 201));
+      do_not_optimize(v.Raw); }
+
+    { CTRACK_NAME("checked fixed bound add");
+      fp a(30), b(50);
+      auto c = a + b;
+      do_not_optimize(c.Raw); }
+  }
+}
+
+void bench_fixed_point_q16()
+{
+  // Q16.16: bound<{{0, 65535}, 1/65536}, unsafe> vs int64 with <<16 scaling.
+  // Skip mul/div: Q16.16*Q16.16 forces a wider result type than uint32.
+  using fp = bound<{{0, 65535}, *(1_r/65536)}, unsafe>;
+  static_assert(sizeof(fp) == 4);
+
+  constexpr std::size_t SZ = 1000;
+  constexpr std::size_t ITERS = N / SZ;
+
+  std::vector<std::int64_t> nv(SZ);
+  std::vector<fp> bv(SZ);
+  for (std::size_t i = 0; i < SZ; ++i)
+  {
+    int v = static_cast<int>(i % 5);
+    nv[i] = static_cast<std::int64_t>(v) << 16;
+    bv[i] = v;
+  }
+
+  for (std::size_t i = 0; i < ITERS; ++i)
+  {
+    { CTRACK_NAME("q16 native construct");
+      std::int64_t v = static_cast<std::int64_t>(i % 1001) << 16;
+      do_not_optimize(v); }
+
+    { CTRACK_NAME("q16 bound construct");
+      fp v(static_cast<int>(i % 1001));
+      do_not_optimize(v.Raw); }
+
+    { CTRACK_NAME("q16 native add");
+      std::int64_t a = 30LL << 16, b = 50LL << 16;
+      std::int64_t c = a + b;
+      do_not_optimize(c); }
+
+    { CTRACK_NAME("q16 bound add");
+      fp a(30), b(50);
+      auto c = a + b;
+      do_not_optimize(c.Raw); }
+
+    { CTRACK_NAME("q16 native accum");
+      std::int64_t sum = 0;
+      for (auto v : nv) sum += v;
+      do_not_optimize(sum); }
+
+    { CTRACK_NAME("q16 bound accum");
+      fp sum(0);
+      for (auto v : bv) sum += v;
+      do_not_optimize(sum.Raw); }
   }
 }
 
@@ -630,6 +752,9 @@ int main()
   bench_accumulate();
   bench_int_vs_bound();
   bench_fixed_point();
+  bench_fixed_point_signed();
+  bench_fixed_point_checked();
+  bench_fixed_point_q16();
   bench_round_nearest();
   bench_sort_algo();
   bench_find_algo();
