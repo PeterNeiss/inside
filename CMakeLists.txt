@@ -150,3 +150,44 @@ foreach(example_src ${EXAMPLE_SOURCES})
   add_executable(example_${example_name} ${example_src})
   target_link_libraries(example_${example_name} PUBLIC bound::bound)
 endforeach()
+
+#---------------------------------------------------------------------------
+# Install / package config
+#
+# Headers go to <prefix>/include/bound/ and <prefix>/include/slim/.
+# The exported target `bound::bound` is reachable via `find_package(bound)`.
+# Layout under <prefix>/lib/cmake/bound/:
+#   boundConfig.cmake          — entry point for find_package
+#   boundConfigVersion.cmake   — version compatibility
+#   boundTargets.cmake         — exported INTERFACE target
+#---------------------------------------------------------------------------
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
+
+install(TARGETS bound_bound
+        EXPORT  boundTargets)
+
+install(DIRECTORY include/bound include/slim
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+        FILES_MATCHING PATTERN "*.hpp")
+
+install(EXPORT boundTargets
+        NAMESPACE   bound::
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/bound)
+
+write_basic_package_version_file(
+  "${CMAKE_CURRENT_BINARY_DIR}/boundConfigVersion.cmake"
+  VERSION       1.0.0
+  COMPATIBILITY SameMajorVersion
+  ARCH_INDEPENDENT)
+
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/boundConfig.cmake"
+"include(\"\${CMAKE_CURRENT_LIST_DIR}/boundTargets.cmake\")\n"
+"if(NOT TARGET bound::bound)\n"
+"  add_library(bound::bound ALIAS bound::bound_bound)\n"
+"endif()\n")
+
+install(FILES
+          "${CMAKE_CURRENT_BINARY_DIR}/boundConfig.cmake"
+          "${CMAKE_CURRENT_BINARY_DIR}/boundConfigVersion.cmake"
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/bound)

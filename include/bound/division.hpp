@@ -15,8 +15,8 @@ namespace bnd
   {
     static constexpr bool native_div =
         ((F | BoundPolicy<L> | BoundPolicy<R>) & ignore_round)
-        && !is_raw_rational<L> && !is_raw_rational<R>
-        && is_integer_aligned<L> && is_integer_aligned<R>;
+        && !IsRawRational<L> && !IsRawRational<R>
+        && IsIntegerAligned<L> && IsIntegerAligned<R>;
 
     static constexpr grid result_grid = native_div
         ? grid{static_cast<imax>((*(Grid<L> / Grid<R>)).Interval.Lower),
@@ -85,8 +85,8 @@ namespace bnd
   {
     static constexpr bool native_mod =
         ((F | BoundPolicy<L> | BoundPolicy<R>) & ignore_round)
-        && !is_raw_rational<L> && !is_raw_rational<R>
-        && is_integer_aligned<L> && is_integer_aligned<R>;
+        && !IsRawRational<L> && !IsRawRational<R>
+        && IsIntegerAligned<L> && IsIntegerAligned<R>;
 
     static_assert(native_mod, "modulo requires integer-valued grids and ignore_round");
 

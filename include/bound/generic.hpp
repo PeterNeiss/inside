@@ -25,7 +25,7 @@ namespace bnd
   using raw_t = typename B::raw_type;
 
   template <boundable B>
-  inline constexpr bool is_raw_rational = std::is_same_v<raw_t<B>, rational>;
+  inline constexpr bool IsRawRational = std::is_same_v<raw_t<B>, rational>;
 
   template <boundable B>
   inline constexpr grid Grid = []<grid G, policy_flag P>(bound<G, P>){ return G; } (B{});
@@ -68,7 +68,7 @@ namespace bnd
   template <boundable B>
   constexpr raw_t<B> raw_cast(rational value)
   {
-    if constexpr (is_raw_rational<B>)
+    if constexpr (IsRawRational<B>)
       return value;
     else
       return value.to<raw_t<B>>().value_or(0);
@@ -76,29 +76,29 @@ namespace bnd
 
   // Raw == value: no offset arithmetic needed
   template <boundable B>
-  inline constexpr bool is_direct_storage =
-      is_raw_rational<B>
+  inline constexpr bool IsDirectStorage =
+      IsRawRational<B>
       || (Notch<B> == 1_r && (Lower<B> == 0_r || std::signed_integral<raw_t<B>>));
 
   // Raw is a notch index from Lower: value = Raw * Notch + Lower
   template <boundable B>
-  inline constexpr bool is_notch_storage = !is_direct_storage<B>;
+  inline constexpr bool IsNotchStorage = !IsDirectStorage<B>;
 
   template <boundable B>
   constexpr imax to_value(B b)
   {
-    if constexpr (is_direct_storage<B>)
+    if constexpr (IsDirectStorage<B>)
       return static_cast<imax>(b.Raw);
-    else // is_notch_storage
+    else // IsNotchStorage
       return static_cast<imax>(static_cast<rational>(b));
   }
 
   template <boundable B>
   constexpr void from_value(B& b, imax val)
   {
-    if constexpr (is_direct_storage<B>)
+    if constexpr (IsDirectStorage<B>)
       b.Raw = raw_cast<B>(val);
-    else // is_notch_storage
+    else // IsNotchStorage
     {
       auto offset = (rational{val} - Lower<B>) / Notch<B>;
       b.Raw = raw_cast<B>(offset.value().Numerator);
@@ -117,26 +117,26 @@ namespace bnd
 
   // Raw-space bounds: maps interval endpoints to raw representation
   template <boundable B>
-  inline constexpr imax RawLo = is_direct_storage<B> ? static_cast<imax>(Lower<B>) : 0;
+  inline constexpr imax RawLo = IsDirectStorage<B> ? static_cast<imax>(Lower<B>) : 0;
 
   template <boundable B>
-  inline constexpr imax RawHi = is_direct_storage<B> ? static_cast<imax>(Upper<B>) : static_cast<imax>(NotchCount<B>);
+  inline constexpr imax RawHi = IsDirectStorage<B> ? static_cast<imax>(Upper<B>) : static_cast<imax>(NotchCount<B>);
 
   // Interval bounds are integers (denominator == ±1)
   template <boundable B>
-  inline constexpr bool is_integer_interval =
+  inline constexpr bool IsIntegerInterval =
       abs_den(Lower<B>.Denominator) == 1 && abs_den(Upper<B>.Denominator) == 1;
 
   // Notch and Lower both have integer denominators — enables native integer arithmetic
   template <boundable B>
-  inline constexpr bool is_integer_aligned =
+  inline constexpr bool IsIntegerAligned =
       abs_den(Notch<B>.Denominator) == 1 && abs_den(Lower<B>.Denominator) == 1;
 
   // Policy test: checks both type-level and per-operation policy.
   // Composite flags (e.g. round_nearest = bit5 | ignore_round) require all
   // their bits set — having a subset like just `ignore_round` does NOT match.
   template <boundable B, typename P, policy_flag F>
-  inline constexpr bool has_policy = (BoundPolicy<B> & F) == F || plain<P>::test(F);
+  inline constexpr bool HasPolicy = (BoundPolicy<B> & F) == F || plain<P>::test(F);
 
   // Forward decl — defined in assignment.hpp
   template <typename L, typename R> struct assignment;
@@ -167,7 +167,7 @@ namespace bnd
   template <boundable B, typename P>
   constexpr bool domain_fail(B& b, P&& policy, std::string msg)
   {
-    if constexpr (has_policy<B, P, sentinel>)
+    if constexpr (HasPolicy<B, P, sentinel>)
     {
       b.Raw = sentinel_raw<B>();
       return true;

@@ -94,8 +94,8 @@ TEST_CASE("bound div: rational vs integer paths", "[bound][arithmetic][div]")
   SECTION("offset-encoded storage takes integer path")
   {
     using off = bound<{5, 100}>;
-    STATIC_REQUIRE_FALSE(is_direct_storage<off>);
-    STATIC_REQUIRE(is_notch_storage<off>);
+    STATIC_REQUIRE_FALSE(IsDirectStorage<off>);
+    STATIC_REQUIRE(IsNotchStorage<off>);
 
     off a{50}, b{10};
     auto q = div(a, b, make_policy<ignore_round>());

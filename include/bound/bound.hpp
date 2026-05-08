@@ -60,9 +60,9 @@ namespace bnd
 
     [[nodiscard]] constexpr auto value() const
     {
-      if constexpr (is_raw_rational<bound>)
+      if constexpr (IsRawRational<bound>)
         return Raw;
-      else if constexpr (is_direct_storage<bound>)
+      else if constexpr (IsDirectStorage<bound>)
         return static_cast<std::common_type_t<raw_type, int>>(Raw);
       else
         return static_cast<rational>(*this);
@@ -79,7 +79,7 @@ namespace bnd
       if constexpr (G.Interval.Lower == G.Interval.Upper)
         return G.Interval.Lower;
 
-      if constexpr (is_direct_storage<bound>)
+      if constexpr (IsDirectStorage<bound>)
         return Raw;
 
       return (*(Raw * G.Notch) + G.Interval.Lower).value();
@@ -88,9 +88,9 @@ namespace bnd
     [[nodiscard]] constexpr negative operator-() const
     {
       negative neg;
-      if constexpr (is_raw_rational<bound>)
+      if constexpr (IsRawRational<bound>)
         neg.Raw = -(Raw);
-      else if constexpr (is_direct_storage<bound> || is_direct_storage<negative>)
+      else if constexpr (IsDirectStorage<bound> || IsDirectStorage<negative>)
         from_value(neg, -to_value(*this));
       else
         neg.Raw = raw_cast<negative>(NotchCount<bound> - Raw);
@@ -187,9 +187,9 @@ namespace bnd
     template <boundable R>
     constexpr bound& operator+=(R const& rhs)
     {
-      if constexpr (not is_raw_rational<bound> && not is_raw_rational<R>
+      if constexpr (not IsRawRational<bound> && not IsRawRational<R>
                     && Notch<bound> == Notch<R>
-                    && is_direct_storage<R>)
+                    && IsDirectStorage<R>)
       {
         if constexpr (P & (clamp | wrap | checked | sentinel))
         {
@@ -332,8 +332,8 @@ namespace bnd
     if constexpr (Grid<L> == Grid<R>)
       return lhs.Raw <=> rhs.Raw;
     // both integer-direct (notch=1, Raw==value): compare as integers
-    else if constexpr (!is_raw_rational<L> && !is_raw_rational<R>
-                       && is_direct_storage<L> && is_direct_storage<R>)
+    else if constexpr (!IsRawRational<L> && !IsRawRational<R>
+                       && IsDirectStorage<L> && IsDirectStorage<R>)
       return static_cast<imax>(lhs.Raw) <=> static_cast<imax>(rhs.Raw);
     else
       return static_cast<rational>(lhs) <=> static_cast<rational>(rhs);
@@ -344,8 +344,8 @@ namespace bnd
   {
     if constexpr (Grid<L> == Grid<R>)
       return lhs.Raw == rhs.Raw;
-    else if constexpr (!is_raw_rational<L> && !is_raw_rational<R>
-                       && is_direct_storage<L> && is_direct_storage<R>)
+    else if constexpr (!IsRawRational<L> && !IsRawRational<R>
+                       && IsDirectStorage<L> && IsDirectStorage<R>)
       return static_cast<imax>(lhs.Raw) == static_cast<imax>(rhs.Raw);
     else
       return static_cast<rational>(lhs) == static_cast<rational>(rhs);
@@ -354,7 +354,7 @@ namespace bnd
   template <boundable B, arithmetic A>
   constexpr auto operator<=>(B const& lhs, A rhs)
   {
-    if constexpr (!is_raw_rational<B> && is_direct_storage<B>)
+    if constexpr (!IsRawRational<B> && IsDirectStorage<B>)
       return static_cast<imax>(lhs.Raw) <=> static_cast<imax>(rhs);
     else
       return static_cast<rational>(lhs) <=> rational{rhs};
@@ -363,7 +363,7 @@ namespace bnd
   template <boundable B, arithmetic A>
   constexpr bool operator==(B const& lhs, A rhs)
   {
-    if constexpr (!is_raw_rational<B> && is_direct_storage<B>)
+    if constexpr (!IsRawRational<B> && IsDirectStorage<B>)
       return static_cast<imax>(lhs.Raw) == static_cast<imax>(rhs);
     else
       return static_cast<rational>(lhs) == rational{rhs};

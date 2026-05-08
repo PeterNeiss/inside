@@ -58,9 +58,9 @@ namespace bnd
     private:
       static constexpr rational calcOffset()
       {
-        if constexpr (is_raw_rational<L>)
+        if constexpr (IsRawRational<L>)
           return Lower<R>;
-        else if constexpr (is_raw_rational<R>)
+        else if constexpr (IsRawRational<R>)
           return -(Lower<L>/Notch<L>).value();
         else
           return ((Lower<R> - Lower<L>)/Notch<L>).value();
@@ -68,9 +68,9 @@ namespace bnd
 
       static constexpr rational calcFactor()
       {
-        if constexpr (is_raw_rational<L>)
+        if constexpr (IsRawRational<L>)
           return Notch<R>;
-        else if constexpr (is_raw_rational<R>)
+        else if constexpr (IsRawRational<R>)
           return (1_r/Notch<L>).value();
         else
           return (Notch<R>/Notch<L>).value();
@@ -82,7 +82,7 @@ namespace bnd
 
       // Raw-space mapping is integer-only (no rational arithmetic needed)
       static constexpr bool is_integer_mapping =
-          not is_raw_rational<L> && not is_raw_rational<R>
+          not IsRawRational<L> && not IsRawRational<R>
           && abs_den(Factor.Denominator) == 1 && abs_den(Offset.Denominator) == 1;
 
       // Map rhs.Raw into L's raw space (requires is_integer_mapping)
@@ -169,9 +169,9 @@ namespace bnd
       action.fn(lhs, errc::domain_error, std::string_view(msg));
       return true;
     }
-    else if constexpr (has_policy<L, P, clamp>)
+    else if constexpr (HasPolicy<L, P, clamp>)
     { apply_clamp(lhs, rhs, lower, upper, action); return true; }
-    else if constexpr (has_policy<L, P, wrap>)
+    else if constexpr (HasPolicy<L, P, wrap>)
     { apply_wrap(lhs, rhs, lower, upper, action); return true; }
     else
       return domain_fail(lhs, policy,
@@ -181,11 +181,11 @@ namespace bnd
   template<boundable L, std::integral R>
   constexpr void assignment<L,R>::store(L& lhs, R rhs)
   {
-    if constexpr (is_direct_storage<L>)
+    if constexpr (IsDirectStorage<L>)
       lhs.Raw = raw_cast<L>(rhs);
     else if constexpr (Lower<L> == Upper<L>)
       lhs.Raw = 0;   // notch_storage point grid: 0 is the only offset
-    else // is_notch_storage
+    else // IsNotchStorage
     {
       rational raw = ((rhs - Interval<L>.Lower)/Notch<L>).value();
       lhs.Raw = raw_cast<L>(raw.Numerator / static_cast<umax>(raw.Denominator));
@@ -210,7 +210,7 @@ namespace bnd
     {
       if constexpr (not Interval<L>.includes(Interval<R>))
       {
-        if constexpr (is_integer_interval<L>)
+        if constexpr (IsIntegerInterval<L>)
         {
           constexpr imax lower = (Lower<L>.Denominator > 0)
             ? static_cast<imax>(Lower<L>.Numerator)
@@ -249,7 +249,7 @@ namespace bnd
     else
       overshoot = rhs - clamped;
 
-    if constexpr (is_raw_rational<L>)
+    if constexpr (IsRawRational<L>)
       lhs.Raw = clamped;
     else if constexpr (Lower<L> == Upper<L>)
       lhs.Raw = 0;
@@ -257,7 +257,7 @@ namespace bnd
     {
       rational raw = ((clamped - Lower<L>)/Notch<L>).value();
       umax den = static_cast<umax>(raw.Denominator);
-      if constexpr (has_policy<L, P, round_nearest>)
+      if constexpr (HasPolicy<L, P, round_nearest>)
         lhs.Raw = raw_cast<L>((raw.Numerator + den/2) / den);
       else
         lhs.Raw = raw_cast<L>(raw.Numerator / den);
@@ -274,7 +274,7 @@ namespace bnd
   template<typename P>
   constexpr bool assignment<L,R>::store_checked(L& lhs, R rhs, P&& policy)
   {
-    if constexpr (is_raw_rational<L>)
+    if constexpr (IsRawRational<L>)
     { lhs.Raw = rhs; return true; }
     else if constexpr (Lower<L> == Upper<L>)
     { lhs.Raw = 0; return true; }
@@ -285,9 +285,9 @@ namespace bnd
       if (den == 1)
       { lhs.Raw = raw_cast<L>(raw.Numerator); return true; }
 
-      if constexpr (has_policy<L, P, round_nearest>)
+      if constexpr (HasPolicy<L, P, round_nearest>)
         lhs.Raw = raw_cast<L>((raw.Numerator + den/2) / den);
-      else if constexpr (has_policy<L, P, ignore_round>)
+      else if constexpr (HasPolicy<L, P, ignore_round>)
         lhs.Raw = raw_cast<L>(raw.Numerator / den);
       else if (policy.round_check())
       {
@@ -333,7 +333,7 @@ namespace bnd
           action.fn(lhs, errc::domain_error, std::string_view(msg));
           return lhs;
         }
-        else if constexpr (has_policy<L, P, clamp>)
+        else if constexpr (HasPolicy<L, P, clamp>)
         { apply_clamp(lhs, rhs, policy, action); return lhs; }
         else if (domain_fail(lhs, policy,
                    bnd::to_string(rhs) + " is not in " + bnd::to_string(Interval<L>)))
@@ -365,7 +365,7 @@ namespace bnd
   template<typename A>
   constexpr void assignment<L,R>::apply_wrap(L& lhs, R const& rhs, A&& action)
   {
-    static_assert(is_integer_interval<L>,
+    static_assert(IsIntegerInterval<L>,
       "wrap with bound rhs requires an integer-aligned destination interval");
     imax rhs_imax = static_cast<imax>(static_cast<rational>(rhs));
     constexpr imax lower = static_cast<imax>(Lower<L>);
@@ -403,9 +403,9 @@ namespace bnd
       action.fn(lhs, errc::domain_error, std::string_view(msg));
       return true;
     }
-    else if constexpr (has_policy<L, P, clamp>)
+    else if constexpr (HasPolicy<L, P, clamp>)
     { apply_clamp(lhs, rhs, action); return true; }
-    else if constexpr (has_policy<L, P, wrap>)
+    else if constexpr (HasPolicy<L, P, wrap>)
     { apply_wrap(lhs, rhs, action); return true; }
     return domain_fail(lhs, policy,
       bnd::to_string(static_cast<rational>(rhs)) + " is not in " + bnd::to_string(Interval<L>));
@@ -426,7 +426,7 @@ namespace bnd
     else
     {
       rational rat = *(Offset + *(Factor * rhs.Raw));
-      if constexpr (has_policy<L, P, round_nearest>)
+      if constexpr (HasPolicy<L, P, round_nearest>)
       {
         // half-away-from-zero: bump magnitude when 2*remainder >= denom
         umax ad = static_cast<umax>(abs_den(rat.Denominator));
@@ -448,7 +448,7 @@ namespace bnd
   constexpr L& assignment<L,R>::assign(L& lhs, R const& rhs, P&& policy, A&& action)
   {
     static_assert(not Interval<L>.excludes(Interval<R>));
-    static_assert(abs_den(Factor.Denominator) == 1 || has_policy<L, P, ignore_round>,
+    static_assert(abs_den(Factor.Denominator) == 1 || HasPolicy<L, P, ignore_round>,
       "incompatible notches: use with_round() or policy<ignore_round>() to allow rounding");
 
     if consteval

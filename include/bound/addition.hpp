@@ -17,7 +17,7 @@ namespace bnd
 
     template <policy_flag F>
     static constexpr bool needs_overflow_check =
-        is_raw_rational<result>
+        IsRawRational<result>
         && ((F | BoundPolicy<L> | BoundPolicy<R>) & checked);
 
     template <policy_flag F = none>
@@ -45,7 +45,7 @@ namespace bnd
   constexpr auto addition<L,R>::add(L lhs, R rhs, policy<F>, A&& action) -> add_return_t<F, A>
   {
     result res;
-    if constexpr (is_raw_rational<result>)
+    if constexpr (IsRawRational<result>)
     {
       if constexpr (needs_overflow_check<F>)
       {
@@ -62,12 +62,12 @@ namespace bnd
       else
         res.Raw = rational::add_unchecked(lhs, rhs);
     }
-    else if constexpr (is_raw_rational<L> || is_raw_rational<R>)
+    else if constexpr (IsRawRational<L> || IsRawRational<R>)
     {
       auto sum = rational::add_unchecked(lhs,rhs);
       res.Raw = raw_cast<result>(((sum - Lower<result>) / Notch<result>).value().Numerator);
     }
-    else if constexpr (is_direct_storage<L> || is_direct_storage<R> || is_direct_storage<result>)
+    else if constexpr (IsDirectStorage<L> || IsDirectStorage<R> || IsDirectStorage<result>)
     {
       from_value(res, to_value(lhs) + to_value(rhs));
     }

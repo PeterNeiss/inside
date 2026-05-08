@@ -154,7 +154,7 @@ namespace bnd
     {
       if constexpr (has_action<is_error_action_pred, As...>)
         pick_action_in<is_error_action_pred>(Actions).fn(Ref, code, std::string_view(what));
-      else if constexpr (!has_policy<B, P, ignore_zero>)
+      else if constexpr (!HasPolicy<B, P, ignore_zero>)
         Policy.report(code, what);
     }
 

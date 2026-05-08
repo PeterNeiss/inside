@@ -17,7 +17,7 @@ namespace bnd
 
     template <typename P>
     static constexpr bool needs_overflow_check =
-        is_raw_rational<result>
+        IsRawRational<result>
         && (((BoundPolicy<L> | BoundPolicy<R>) & checked) || plain<P>::test(checked));
 
     template <typename P>
@@ -41,7 +41,7 @@ namespace bnd
   template <typename P, typename A>
   constexpr auto multiplication<L,R>::mul(L lhs, R rhs, P&& policy, A&& action) -> mul_return_t<P, A>
   {
-    if constexpr (is_raw_rational<result>)
+    if constexpr (IsRawRational<result>)
     {
       if constexpr (needs_overflow_check<P>)
       {
@@ -63,7 +63,7 @@ namespace bnd
         return res;
       }
     }
-    else if constexpr (is_integer_aligned<L> && is_integer_aligned<R> && is_integer_aligned<result>)
+    else if constexpr (IsIntegerAligned<L> && IsIntegerAligned<R> && IsIntegerAligned<result>)
     {
       result res;
       from_value(res, to_value(lhs) * to_value(rhs));
