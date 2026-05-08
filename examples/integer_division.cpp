@@ -22,9 +22,9 @@ int main()
     std::cout << "7 / 3 (rational) = " << *exact << std::endl;  // 7/3
 
   // Per-call integer division: truncates like native C++ division
-  auto truncated = div(a, b, make_policy<ignore_round>());
-  if (truncated)
-    std::cout << "7 / 3 (integer)  = " << *truncated << std::endl;  // 2
+  auto quotient = div(a, b, truncated);
+  if (quotient)
+    std::cout << "7 / 3 (integer)  = " << *quotient << std::endl;  // 2
 
   // Type-level policy: operator/ uses native division automatically
   using fast = bound<{0, 100}, ignore_round>;
@@ -43,7 +43,7 @@ int main()
   // Exact division works as expected
   val ten = 10;
   val two = 2;
-  auto five = div(ten, two, make_policy<ignore_round>());
+  auto five = div(ten, two, truncated);
   if (five)
     std::cout << "10 / 2 (integer) = " << *five << std::endl;  // 5
 

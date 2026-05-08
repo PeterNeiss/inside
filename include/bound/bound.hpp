@@ -53,6 +53,11 @@ namespace bnd
     constexpr bound(A value, Pol&& pol)
     { assignment<bound, A>::assign(*this, value, pol); }
 
+    template <numeric A>
+      requires assignable_from<bound, A, P>
+    constexpr bound(A value, std::error_code& ec)
+    { assignment<bound, A>::assign(*this, value, make_policy<P | checked>(ec)); }
+
     template <numeric B>
       requires assignable_from<bound, B, P>
     constexpr bound& operator=(B const& other)
@@ -437,6 +442,12 @@ namespace bnd
       make_policy<merged_implied_flags<Actions...>>(),
       pick_action<is_overflow_action_pred>(actions...)); }
 
+  template <boundable L, boundable R, typename A = no_action>
+  [[nodiscard]] constexpr auto add(L const& lhs, R const& rhs,
+                                   std::error_code& ec, A&& action = {})
+  { return addition<L,R>::add(lhs, rhs, make_policy<checked>(ec),
+      std::forward<A>(action)); }
+
   //---------------------------------------------------------------------------
   // operator+
   //---------------------------------------------------------------------------
@@ -470,6 +481,11 @@ namespace bnd
   { return add(lhs, -rhs,
       make_policy<merged_implied_flags<Actions...>>(),
       pick_action<is_overflow_action_pred>(actions...)); }
+
+  template <boundable L, boundable R, typename A = no_action>
+  [[nodiscard]] constexpr auto sub(L const& lhs, R const& rhs,
+                                   std::error_code& ec, A&& action = {})
+  { return add(lhs, -rhs, make_policy<checked>(ec), std::forward<A>(action)); }
 
   //---------------------------------------------------------------------------
   // operator-
@@ -505,6 +521,12 @@ namespace bnd
       make_policy<merged_implied_flags<Actions...>>(),
       pick_action<is_overflow_action_pred>(actions...)); }
 
+  template <boundable L, boundable R, typename A = no_action>
+  [[nodiscard]] constexpr auto mul(L const& lhs, R const& rhs,
+                                   std::error_code& ec, A&& action = {})
+  { return multiplication<L,R>::mul(lhs, rhs, make_policy<checked>(ec),
+      std::forward<A>(action)); }
+
   //---------------------------------------------------------------------------
   // operator*
   //---------------------------------------------------------------------------
@@ -537,6 +559,12 @@ namespace bnd
   { return division<L, R, merged_implied_flags<Actions...>>::div(lhs, rhs,
       make_policy<merged_implied_flags<Actions...>>(),
       pick_action<is_overflow_action_pred>(actions...)); }
+
+  template <boundable L, boundable R, typename A = no_action>
+  [[nodiscard]] constexpr auto div(L lhs, R rhs,
+                                   std::error_code& ec, A&& action = {})
+  { return division<L, R, checked>::div(lhs, rhs, make_policy<checked>(ec),
+      std::forward<A>(action)); }
 
   //---------------------------------------------------------------------------
   // operator/
@@ -573,6 +601,12 @@ namespace bnd
   { return modulo<L, R, merged_implied_flags<Actions...>>::mod(lhs, rhs,
       make_policy<merged_implied_flags<Actions...>>(),
       pick_action<is_overflow_action_pred>(actions...)); }
+
+  template <boundable L, boundable R, typename A = no_action>
+  [[nodiscard]] constexpr auto mod(L lhs, R rhs,
+                                   std::error_code& ec, A&& action = {})
+  { return modulo<L, R, checked>::mod(lhs, rhs, make_policy<checked>(ec),
+      std::forward<A>(action)); }
 
   //---------------------------------------------------------------------------
   // operator%

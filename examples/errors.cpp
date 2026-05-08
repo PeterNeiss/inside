@@ -25,7 +25,7 @@ int main()
 
   // 2. Error code: no exception, error reported via ec
   std::error_code ec;
-  checked_100 y(200, make_policy<checked>(ec));
+  checked_100 y(200, ec);
   std::cout << "ec:       " << (ec ? ec.message() : "no error") << std::endl;
 
   // 3. Per-operation error code

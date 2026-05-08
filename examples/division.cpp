@@ -21,9 +21,9 @@ int main()
     std::cout << "7 / 3 (exact)    = " << *result << std::endl;  // 7/3
 
   // Integer division with per-call policy
-  auto truncated = div(a, b, make_policy<ignore_round>());
-  if (truncated)
-    std::cout << "7 / 3 (integer)  = " << *truncated << std::endl;  // 2
+  auto quotient = div(a, b, truncated);
+  if (quotient)
+    std::cout << "7 / 3 (integer)  = " << *quotient << std::endl;  // 2
 
   // The result type uses rational storage for exact fractions
   val c = 22;

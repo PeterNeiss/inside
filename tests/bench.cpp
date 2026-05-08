@@ -150,7 +150,7 @@ void bench_div()
 
     { CTRACK_NAME("div bound (integer)");
       u200 a(a_val), b(b_val);
-      auto c = div(a, b, make_policy<ignore_round>());
+      auto c = div(a, b, truncated);
       do_not_optimize(c->Raw); }
   }
 }

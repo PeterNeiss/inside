@@ -79,7 +79,7 @@ TEST_CASE("bound div: rational vs integer paths", "[bound][arithmetic][div]")
   {
     using u100 = bound<{0, 100}>;
     u100 a{51}, b{8};
-    auto d = div(a, b, make_policy<ignore_round>());
+    auto d = div(a, b, truncated);
     STATIC_REQUIRE_FALSE(std::is_same_v<typename decltype(d)::value_type::raw_type, rational>);
     REQUIRE(*d == 6);
   }
@@ -98,7 +98,7 @@ TEST_CASE("bound div: rational vs integer paths", "[bound][arithmetic][div]")
     STATIC_REQUIRE(IsNotchStorage<off>);
 
     off a{50}, b{10};
-    auto q = div(a, b, make_policy<ignore_round>());
+    auto q = div(a, b, truncated);
     STATIC_REQUIRE_FALSE(std::is_same_v<typename decltype(q)::value_type::raw_type, rational>);
     REQUIRE(*q == 5);
   }
@@ -107,7 +107,7 @@ TEST_CASE("bound div: rational vs integer paths", "[bound][arithmetic][div]")
   {
     using step2 = bound<{{0, 10}, 2}>;
     step2 a{10}, b{6};
-    auto q = div(a, b, make_policy<ignore_round>());
+    auto q = div(a, b, truncated);
     REQUIRE(*q == 1);
   }
 
@@ -115,7 +115,7 @@ TEST_CASE("bound div: rational vs integer paths", "[bound][arithmetic][div]")
   {
     using step5 = bound<{{5, 15}, 5}>;
     step5 a{15}, b{5};
-    auto q = div(a, b, make_policy<ignore_round>());
+    auto q = div(a, b, truncated);
     REQUIRE(*q == 3);
   }
 
@@ -146,7 +146,7 @@ TEST_CASE("bound modulo", "[bound][arithmetic][mod]")
 
   using u50 = bound<{0, 50}>;
   u50 e{23}, f{7};
-  auto r = mod(e, f, make_policy<ignore_round>());
+  auto r = mod(e, f, truncated);
   REQUIRE(*r == 2);
 }
 
@@ -235,7 +235,7 @@ TEST_CASE("bound rational-storage on_overflow free fn", "[bound][arithmetic][rat
 
   bool fired = false;
   errc seen{};
-  auto sum = add(a, b, make_policy<checked>(),
+  auto sum = add(a, b,
     on_overflow([&](auto& res, errc code) {
       fired = true; seen = code;
       res.Raw = rational{0u};

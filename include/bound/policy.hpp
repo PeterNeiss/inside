@@ -58,6 +58,8 @@ namespace bnd
     }
   };
 
+  policy(std::error_code&) -> policy<none, error_ref>;
+
   //---------------------------------------------------------------------------
   // is_policy_v — true for policy<F,E> specializations, false otherwise.
   // Used to gate free-fn overloads so they don't accidentally bind P = action tag.
@@ -75,6 +77,15 @@ namespace bnd
   template<policy_flag F = none>
   constexpr auto make_policy(std::error_code& ec)
   { return policy<F,error_ref>{ec}; }
+
+  //---------------------------------------------------------------------------
+  // Named convenience policies — let user code skip `make_policy<F>()` entirely
+  // for the per-call flag form on free arithmetic functions.
+  //---------------------------------------------------------------------------
+  inline constexpr auto truncated        = make_policy<ignore_round>();
+  inline constexpr auto round_to_nearest = make_policy<round_nearest>();
+  inline constexpr auto clamped          = make_policy<clamp>();
+  inline constexpr auto wrapped          = make_policy<wrap>();
 
   //---------------------------------------------------------------------------
   // policy_ref

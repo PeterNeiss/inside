@@ -160,13 +160,17 @@ Instead of throwing, errors can be reported via `std::error_code`. This works wi
 std::error_code ec;
 
 // Construction with error code
-bound<{0, 100}> x(150, make_policy(ec));
+bound<{0, 100}> x(150, ec);
 // ec is set to EDOM, x is unchanged (default-constructed)
 
 // Per-operation with error code
 bound<{0, 100}> y(50);
 y.policy(ec) = 200;
 // ec is set to EDOM, y remains 50
+
+// Free arithmetic with error code
+auto sum = add(x, y, ec);
+// overflow / range errors captured in ec
 
 // Combining flags with error code
 bound<{{0, 10}, 2}> coarse(0);
@@ -219,16 +223,17 @@ val a = 7, b = 3;
 auto exact = a / b;
 
 // Per-call integer division: result is integer (2)
-auto trunc = div(a, b, make_policy<ignore_round>());
+auto quotient = div(a, b, truncated);
 
 // Type-level: operator/ uses native division automatically
 using fast = bound<{0, 100}, ignore_round>;
 auto q = fast(7) / fast(3);  // 2
 ```
 
-The free functions `add`, `sub`, `mul`, `div`, and `mod` each accept either an
-explicit policy (`make_policy<F>()`) or one or more `on_*` action factories,
-in any order. See the [Callbacks section](#callbacks-on_wrap--on_clamp--on_overflow--on_sentinel--on_error)
+The free functions `add`, `sub`, `mul`, `div`, and `mod` each accept a named
+convenience policy (`bnd::truncated`, `bnd::round_to_nearest`, `bnd::clamped`,
+`bnd::wrapped`), one or more `on_*` action factories, or an `std::error_code&`
+for direct error-code reporting — in any order. See the [Callbacks section](#callbacks-on_wrap--on_clamp--on_overflow--on_sentinel--on_error)
 for the action API; for example, recovering from divide-by-zero:
 
 ```cpp
