@@ -102,10 +102,14 @@ namespace bnd
       template<typename A>
       static constexpr void apply_clamp(L& lhs, R const& rhs, A&& action);
 
+      template<typename A>
+      static constexpr void apply_wrap(L& lhs, R const& rhs, A&& action);
+
       template<typename P, typename A>
       static constexpr bool try_clamp_or_fail(L& lhs, R const& rhs, P&& policy, A&& action);
 
-      static constexpr void store(L& lhs, R const& rhs);
+      template<typename P>
+      static constexpr void store(L& lhs, R const& rhs, P&& policy);
 
     public:
       template<typename P, typename A = no_action>
@@ -358,12 +362,34 @@ namespace bnd
   }
 
   template<boundable L, boundable R>
+  template<typename A>
+  constexpr void assignment<L,R>::apply_wrap(L& lhs, R const& rhs, A&& action)
+  {
+    static_assert(is_integer_interval<L>,
+      "wrap with bound rhs requires an integer-aligned destination interval");
+    imax rhs_imax = static_cast<imax>(static_cast<rational>(rhs));
+    constexpr imax lower = static_cast<imax>(Lower<L>);
+    constexpr imax upper = static_cast<imax>(Upper<L>);
+    imax range = upper - lower + 1;
+    imax shifted = rhs_imax - lower;
+    imax wrapped = ((shifted % range) + range) % range;
+    imax excess  = (shifted < 0) ? ((shifted - range + 1) / range) : (shifted / range);
+    from_value(lhs, wrapped + lower);
+    if constexpr (is_wrap_action<plain<A>>)
+      action.fn(lhs, excess);
+    else if constexpr (!std::is_same_v<plain<A>, no_action>)
+      action(excess);
+  }
+
+  template<boundable L, boundable R>
   template<typename P, typename A>
   constexpr bool assignment<L,R>::try_clamp_or_fail(L& lhs, R const& rhs, P&& policy, A&& action)
   {
     using PA = plain<A>;
     if constexpr (is_clamp_action<PA>)
     { apply_clamp(lhs, rhs, action); return true; }
+    else if constexpr (is_wrap_action<PA>)
+    { apply_wrap(lhs, rhs, action); return true; }
     else if constexpr (is_sentinel_action<PA>)
     {
       lhs.Raw = sentinel_raw<L>();
@@ -379,22 +405,39 @@ namespace bnd
     }
     else if constexpr (has_policy<L, P, clamp>)
     { apply_clamp(lhs, rhs, action); return true; }
+    else if constexpr (has_policy<L, P, wrap>)
+    { apply_wrap(lhs, rhs, action); return true; }
     return domain_fail(lhs, policy,
       bnd::to_string(static_cast<rational>(rhs)) + " is not in " + bnd::to_string(Interval<L>));
   }
 
   template<boundable L, boundable R>
-  constexpr void assignment<L,R>::store(L& lhs, R const& rhs)
+  template<typename P>
+  constexpr void assignment<L,R>::store(L& lhs, R const& rhs, P&&)
   {
     if constexpr (is_integer_mapping)
     {
+      // exact: Factor and Offset have integer denominators, no rounding ambiguity
       if constexpr (Offset == 0_r && Factor == 1_r)
         lhs.Raw = raw_cast<L>(rhs.Raw);
       else
         lhs.Raw = raw_cast<L>(map_raw(rhs.Raw));
     }
     else
-      lhs.Raw = raw_cast<L>(*(Offset + *(Factor * rhs.Raw)));
+    {
+      rational rat = *(Offset + *(Factor * rhs.Raw));
+      if constexpr (has_policy<L, P, round_nearest>)
+      {
+        // half-away-from-zero: bump magnitude when 2*remainder >= denom
+        umax ad = static_cast<umax>(abs_den(rat.Denominator));
+        umax q  = (rat.Numerator + ad / 2) / ad;
+        lhs.Raw = (rat.Denominator < 0)
+          ? raw_cast<L>(-static_cast<imax>(q))
+          : raw_cast<L>(q);
+      }
+      else
+        lhs.Raw = raw_cast<L>(rat);
+    }
   }
 
   //---------------------------------------------------------------------------
@@ -427,7 +470,7 @@ namespace bnd
       }
     }
 
-    store(lhs, rhs);
+    store(lhs, rhs, policy);
     return lhs;
   }
 } // namespace bnd

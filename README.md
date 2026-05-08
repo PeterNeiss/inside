@@ -30,12 +30,13 @@ frac f = 3.25;
 The second template parameter controls what happens on out-of-range assignment:
 
 ```cpp
-// Default: no runtime checks (compile-time checks always apply)
-using fast = bound<{0, 100}>;
-
-// Checked: opt-in runtime domain validation (throws std::system_error)
-using safe = bound<{0, 100}, checked>;
+// Default: checked — runtime domain validation (throws std::system_error)
+using safe = bound<{0, 100}>;
 safe x = 150;      // throws std::system_error at runtime
+
+// Unsafe: opt out of all runtime checks (compile-time checks always apply)
+using fast = bound<{0, 100}, unsafe>;
+fast f = 150;      // silently stores out-of-range value; UB on read
 
 // Clamp: saturates to the nearest boundary
 using clamped = bound<{0, 100}, clamp>;
@@ -52,7 +53,27 @@ using index = bound<{0, 9}, sentinel>;
 slim::optional<index> i = 10;  // i == nullopt
 ```
 
-By default, `bound` skips runtime domain checks for maximum performance (compile-time checks always apply). The `checked` flag enables runtime validation. `clamp`, `wrap`, and `sentinel` are mutually exclusive and enforced by `static_assert`.
+By default, `bound` enables runtime domain checks (`checked`) and throws on
+violations. Use `unsafe` to drop all runtime checks for maximum performance
+when you've proven correctness elsewhere. `clamp`, `wrap`, and `sentinel` are
+mutually exclusive and enforced by `static_assert`. Flags compose with
+bitwise `|` (e.g. `bound<{0, 100}, checked | round_nearest>`).
+
+### Policy flags
+
+| Flag | Effect |
+|---|---|
+| `checked` | runtime domain / round / overflow checks (**default**) |
+| `unsafe` | opt out of all runtime checks |
+| `clamp` | saturate to boundary on out-of-range (mutually exclusive with `wrap`/`sentinel`) |
+| `wrap` | modular arithmetic on out-of-range |
+| `sentinel` | out-of-range yields `nullopt` via `slim::optional` |
+| `ignore_round` | rounding mismatches truncate toward zero (no error) |
+| `round_nearest` | round to nearest notch (implies `ignore_round`) |
+| `ignore_zero` | division by zero is silent |
+| `ignore_domain` | suppress the runtime domain check |
+| `ignore_range` | suppress the runtime range check |
+| `fail_early` | escalate possible-fail conditions to compile-time errors |
 
 ### Per-operation override
 
@@ -64,9 +85,24 @@ x.with_clamp() = 150;  // x == 100
 x.with_wrap()  = 103;  // x == 2
 ```
 
-### Overflow action
+### Callbacks: `on_wrap` / `on_clamp` / `on_overflow` / `on_sentinel` / `on_error`
 
-An optional zero-overhead callback can be provided to react to overflow. When not used, the compiler eliminates it entirely (`if constexpr` + `[[no_unique_address]]`).
+Each policy event can fire a zero-overhead callback. Unused handlers are
+eliminated entirely by the compiler (`if constexpr` + `[[no_unique_address]]`).
+Each handler receives the bound by mutable reference (so it can override the
+stored value) plus an event-specific payload:
+
+| Method | Fires on | Callback signature |
+|---|---|---|
+| `on_clamp(λ)`    | clamp narrowing             | `λ(bound&, overshoot)` |
+| `on_wrap(λ)`     | wrap with carry             | `λ(bound&, carry)` |
+| `on_sentinel(λ)` | sentinel write              | `λ(bound&, original_value)` |
+| `on_error(λ)`    | domain / round error        | `λ(bound&, errc, std::string_view msg)` |
+| `on_overflow(λ)` | rational/imax arithmetic OF | `λ(bound&, errc::overflow)` |
+
+Each `on_*()` returns a temporary handle whose `=`/`+=`/`-=`/etc. apply the
+operation with the callback wired in. Calling `on_*` automatically OR-merges
+the policy bit it implies (e.g. `on_clamp` adds `clamp`).
 
 ```cpp
 using sec = bound<{0, 59}, wrap>;
@@ -76,11 +112,45 @@ sec seconds(0);
 min minutes(0);
 
 // When seconds overflows, carry into minutes
-seconds.policy<wrap>([&](auto carry) {
+seconds.on_wrap([&](auto& self, auto carry) {
+    (void)self;
     minutes += carry;
 }) = 125;
 // seconds == 5, minutes == 2
 ```
+
+The free arithmetic functions accept the same factories — useful for catching
+divide-by-zero or rational overflow without throwing:
+
+```cpp
+auto q = div(d, z, on_overflow([&](auto& res, errc c) {
+    // res is the result type; assign a fallback
+    res = std::remove_cvref_t<decltype(res)>{0};
+    log(c);
+}));
+```
+
+#### Combining actions: `with(...)`
+
+`bound::with(actions...)` packs multiple `on_*` callbacks into a single
+operation. Mutually exclusive combinations (e.g. `on_clamp` + `on_wrap`) are
+rejected at compile time by `static_assert`.
+
+```cpp
+using c100 = bound<{0, 100}>;
+c100 acc{50};
+
+acc.with(
+    on_overflow([&](auto& self, errc) { self = 0; /* imax saturated */ }),
+    on_clamp   ([&](auto&, auto over)  { log_overshoot(over);          })
+) += big_value;
+```
+
+#### Legacy callable form
+
+`b.policy<wrap>(λ)` still accepts a single bare callable receiving just the
+carry/overshoot — kept for backward compatibility. New code should prefer the
+typed `on_*()` variants, which give the handler access to the bound itself.
 
 ### Error code mode
 
@@ -154,6 +224,17 @@ auto trunc = div(a, b, make_policy<ignore_round>());
 // Type-level: operator/ uses native division automatically
 using fast = bound<{0, 100}, ignore_round>;
 auto q = fast(7) / fast(3);  // 2
+```
+
+The free functions `add`, `sub`, `mul`, `div`, and `mod` each accept either an
+explicit policy (`make_policy<F>()`) or one or more `on_*` action factories,
+in any order. See the [Callbacks section](#callbacks-on_wrap--on_clamp--on_overflow--on_sentinel--on_error)
+for the action API; for example, recovering from divide-by-zero:
+
+```cpp
+auto q = div(x, y, on_overflow([&](auto& res, errc) {
+    res = std::remove_cvref_t<decltype(res)>{0};
+}));
 ```
 
 ### Rounding
