@@ -44,8 +44,8 @@ namespace bnd
       template<typename P, typename A>
       static constexpr void apply_clamp(L& lhs, R rhs, P&& policy, A&& action);
 
-      template<typename P>
-      static constexpr bool store_checked(L& lhs, R rhs, P&& policy);
+      template<typename P, typename A = no_action>
+      static constexpr bool store_checked(L& lhs, R rhs, P&& policy, A&& action = {});
 
     public:
       template<typename P, typename A = no_action>
@@ -271,8 +271,8 @@ namespace bnd
 
   template <boundable L, typename R>
     requires std::floating_point<R> || std::same_as<rational, R>
-  template<typename P>
-  constexpr bool assignment<L,R>::store_checked(L& lhs, R rhs, P&& policy)
+  template<typename P, typename A>
+  constexpr bool assignment<L,R>::store_checked(L& lhs, R rhs, P&& policy, A&& action)
   {
     if constexpr (IsRawRational<L>)
     { lhs.Raw = rhs; return true; }
@@ -291,8 +291,10 @@ namespace bnd
         lhs.Raw = raw_cast<L>(raw.Numerator / den);
       else if (policy.round_check())
       {
-        policy.report(errc::rounding_error,
-          bnd::to_string(rhs) + " does not land on notch " + bnd::to_string(Notch<L>));
+        auto msg = bnd::to_string(rhs) + " does not land on notch " + bnd::to_string(Notch<L>);
+        if constexpr (is_error_action<plain<A>>)
+        { action.fn(lhs, errc::rounding_error, std::string_view(msg)); return false; }
+        policy.report(errc::rounding_error, msg);
         return false;
       }
       else
@@ -341,7 +343,7 @@ namespace bnd
       }
     }
 
-    store_checked(lhs, rhs, policy);
+    store_checked(lhs, rhs, policy, action);
     return lhs;
   }
 

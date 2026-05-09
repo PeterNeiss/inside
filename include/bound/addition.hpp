@@ -33,16 +33,16 @@ namespace bnd
     static constexpr imax lhs_widen = static_cast<imax>((Notch<result> / Notch<L>).value_or(1_r).Numerator);
     static constexpr imax rhs_widen = static_cast<imax>((Notch<result> / Notch<R>).value_or(1_r).Numerator);
 
-    template <policy_flag F = none, typename A = no_action>
-    static constexpr add_return_t<F, A> add(L, R, policy<F> = {}, A&& = {});
+    template <policy_flag F = none, typename E = empty_ref, typename A = no_action>
+    static constexpr add_return_t<F, A> add(L, R, policy<F, E> = {}, A&& = {});
   };
 
   //---------------------------------------------------------------------------
   // add
   //---------------------------------------------------------------------------
   template<boundable L, boundable R>
-  template<policy_flag F, typename A>
-  constexpr auto addition<L,R>::add(L lhs, R rhs, policy<F>, A&& action) -> add_return_t<F, A>
+  template<policy_flag F, typename E, typename A>
+  constexpr auto addition<L,R>::add(L lhs, R rhs, policy<F, E> policy, A&& action) -> add_return_t<F, A>
   {
     result res;
     if constexpr (IsRawRational<result>)
@@ -55,7 +55,11 @@ namespace bnd
           if constexpr (is_overflow_action<plain<A>>)
           { action.fn(res, errc::overflow); return res; }
           else
+          {
+            if constexpr (uses_error_ref_v<bnd::policy<F, E>>)
+              policy.report(errc::overflow, "rational overflow in add");
             return slim::nullopt;
+          }
         }
         res.Raw = *sum;
       }

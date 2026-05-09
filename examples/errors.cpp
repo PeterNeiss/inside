@@ -65,16 +65,17 @@ int main()
 
 
   // === Section 3: Every errc value gets a demo ===
-  // domain_error already shown in Sections 1-2. Now: rounding_error,
-  // overflow, division_by_zero. Note: on_error catches domain_error only;
-  // rounding_error reports through ec/throw, overflow & division_by_zero
-  // use the on_overflow callback channel.
+  // domain_error already shown in Sections 1-2. Now: rounding_error (via
+  // on_error), overflow and division_by_zero (via on_overflow — the channel
+  // arithmetic operations use for these two codes).
 
-  ec.clear();
   coarse c(0);
-  c.policy(ec) = 3.0;  // 3 doesn't land on the notch-2 grid
-  std::cout << "rounding: " << (ec ? ec.message() : "no error")
-            << " (c=" << c << ")" << std::endl;
+  c.on_error([](auto& self, errc code, std::string_view msg) {
+    std::cout << "rounding: [" << make_error_code(code).message()
+              << "] " << msg << " -> recover to 4" << std::endl;
+    self = 4;
+  }) = 3.0;   // 3 doesn't land on the notch-2 grid
+  std::cout << "          (c=" << c << ")" << std::endl;
 
   checked_100 acc(50);
   acc.on_overflow([](auto& self, errc code) {
@@ -93,7 +94,18 @@ int main()
   std::cout << "          (q=" << q << ")" << std::endl;
 
 
-  // === Section 4: Policies that avoid errors entirely ===
+  // === Section 4: Free-function error_code overload ===
+  // add / sub / mul / div / mod accept an std::error_code& directly; ec is
+  // set on overflow or division-by-zero, the result is nullopt on failure.
+
+  ec.clear();
+  auto qz = div(checked_100(10), checked_100(0), ec);
+  std::cout << "free-fn:  " << (ec ? ec.message() : "no error")
+            << " (q has_value=" << (qz.has_value() ? "true" : "false")
+            << ")" << std::endl;
+
+
+  // === Section 5: Policies that avoid errors entirely ===
   // clamp saturates, wrap is modular, sentinel yields nullopt.
 
   clamp_100 cl = 150;
@@ -106,7 +118,7 @@ int main()
   std::cout << "sentinel: 10  -> " << (se ? "has value" : "nullopt") << std::endl;
 
 
-  // === Section 5: Inspection callbacks for non-error policies ===
+  // === Section 6: Inspection callbacks for non-error policies ===
 
   // on_clamp / on_wrap auto-merge their implied policy bit, so the base
   // bound need not be a clamp/wrap type.

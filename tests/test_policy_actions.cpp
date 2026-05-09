@@ -311,3 +311,86 @@ TEST_CASE("mod free-fn with on_overflow recovers from div/0", "[bound][policy][m
   (void)m;
   REQUIRE(fired);
 }
+
+TEST_CASE("free-fn div with std::error_code& sets ec on div/0",
+          "[bound][policy][ec][div]")
+{
+  using c100 = bound<{0, 100}, checked>;
+  std::error_code ec;
+  auto q = div(c100{10}, c100{0}, ec);
+  REQUIRE(ec == errc::division_by_zero);
+  REQUIRE_FALSE(q.has_value());
+
+  SECTION("success path leaves ec clear")
+  {
+    std::error_code ec2;
+    auto r = div(c100{10}, c100{2}, ec2);
+    REQUIRE_FALSE(ec2);
+    REQUIRE(r.has_value());
+  }
+}
+
+TEST_CASE("free-fn mod with std::error_code& sets ec on div/0",
+          "[bound][policy][ec][mod]")
+{
+  using u100ic = bound<{0, 100}, checked | ignore_round>;
+  std::error_code ec;
+  auto m = mod(u100ic{7}, u100ic{0}, ec);
+  REQUIRE(ec == errc::division_by_zero);
+  REQUIRE_FALSE(m.has_value());
+}
+
+TEST_CASE("free-fn add with std::error_code& compiles and clears on success",
+          "[bound][policy][ec][add]")
+{
+  using c100 = bound<{0, 100}, checked>;
+  std::error_code ec;
+  auto sum = add(c100{40}, c100{50}, ec);
+  REQUIRE_FALSE(ec);
+  REQUIRE(sum == 90);
+
+  // SFINAE: the ec form must bind for add / sub / mul / div / mod.
+  STATIC_REQUIRE(requires(c100 x, c100 y, std::error_code& e) { add(x, y, e); });
+  STATIC_REQUIRE(requires(c100 x, c100 y, std::error_code& e) { sub(x, y, e); });
+  STATIC_REQUIRE(requires(c100 x, c100 y, std::error_code& e) { mul(x, y, e); });
+  STATIC_REQUIRE(requires(c100 x, c100 y, std::error_code& e) { div(x, y, e); });
+}
+
+TEST_CASE("no-arg div on div/0 still returns nullopt without throwing",
+          "[bound][policy][regression]")
+{
+  // Regression guard for fix 1b's empty_ref/error_ref gate: the no-arg form
+  // must NOT throw on div/0 — it should silently return nullopt.
+  using c100 = bound<{0, 100}, checked>;
+  REQUIRE_NOTHROW([]{
+    auto q = div(c100{10}, c100{0});
+    REQUIRE_FALSE(q.has_value());
+  }());
+}
+
+TEST_CASE("on_error catches rounding_error on float assignment",
+          "[bound][policy][on_error][rounding]")
+{
+  using coarse = bound<{{0, 10}, 2}>;   // notch 2: 3.0 doesn't land
+  coarse c{0};
+  errc seen{};
+  bool fired = false;
+  c.on_error([&](auto& self, errc code, std::string_view) {
+    fired = true;
+    seen = code;
+    self = 4;       // recover to a valid notch value
+  }) = 3.0;
+  REQUIRE(fired);
+  REQUIRE(seen == errc::rounding_error);
+  REQUIRE(c == 4);
+}
+
+TEST_CASE("policy(ec) catches rounding_error on float assignment",
+          "[bound][policy][ec][rounding]")
+{
+  using coarse = bound<{{0, 10}, 2}>;
+  coarse c{0};
+  std::error_code ec;
+  c.policy(ec) = 3.0;
+  REQUIRE(ec == errc::rounding_error);
+}

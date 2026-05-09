@@ -34,28 +34,32 @@ namespace bnd
                                             result,
                                             slim::optional<result>>;
 
-    template <policy_flag G = F, typename A = no_action>
-    static constexpr div_return_t<A> div(L, R, policy<G> = {}, A&& = {});
+    template <policy_flag G = F, typename E = empty_ref, typename A = no_action>
+    static constexpr div_return_t<A> div(L, R, policy<G, E> = {}, A&& = {});
   };
 
   //---------------------------------------------------------------------------
   // div
   //---------------------------------------------------------------------------
   template<boundable L, boundable R, policy_flag F>
-  template<policy_flag G, typename A>
-  constexpr auto division<L,R,F>::div(L lhs, R rhs, policy<G>, A&& action) -> div_return_t<A>
+  template<policy_flag G, typename E, typename A>
+  constexpr auto division<L,R,F>::div(L lhs, R rhs, policy<G, E> policy, A&& action) -> div_return_t<A>
   {
-    auto fail = [&](errc code) -> div_return_t<A> {
+    auto fail = [&](errc code, const char* what) -> div_return_t<A> {
       if constexpr (is_overflow_action<plain<A>>)
       { result res; action.fn(res, code); return res; }
       else
+      {
+        if constexpr (uses_error_ref_v<bnd::policy<G, E>>)
+          policy.report(code, what);
         return slim::nullopt;
+      }
     };
 
     if constexpr (native_div)
     {
       imax rhs_val = to_value(rhs);
-      if (rhs_val == 0) return fail(errc::division_by_zero);
+      if (rhs_val == 0) return fail(errc::division_by_zero, "division by zero in div");
       result res;
       from_value(res, to_value(lhs) / rhs_val);
       return res;
@@ -63,15 +67,15 @@ namespace bnd
     else if constexpr (needs_overflow_check<G>)
     {
       auto rhs_r = static_cast<rational>(rhs);
-      if (rhs_r.Numerator == 0) return fail(errc::division_by_zero);
+      if (rhs_r.Numerator == 0) return fail(errc::division_by_zero, "division by zero in div");
       auto q = static_cast<rational>(lhs) / rhs_r;
-      if (!q) return fail(errc::overflow);
+      if (!q) return fail(errc::overflow, "rational overflow in div");
       result res; res.Raw = *q; return res;
     }
     else
     {
       auto rhs_r = static_cast<rational>(rhs);
-      if (rhs_r.Numerator == 0) return fail(errc::division_by_zero);
+      if (rhs_r.Numerator == 0) return fail(errc::division_by_zero, "division by zero in div");
       result res;
       res.Raw = rational::div_unchecked(static_cast<rational>(lhs), rhs_r);
       return res;
@@ -106,13 +110,13 @@ namespace bnd
                                             result,
                                             slim::optional<result>>;
 
-    template <policy_flag G = F, typename A = no_action>
-    static constexpr mod_return_t<A> mod(L, R, policy<G> = {}, A&& = {});
+    template <policy_flag G = F, typename E = empty_ref, typename A = no_action>
+    static constexpr mod_return_t<A> mod(L, R, policy<G, E> = {}, A&& = {});
   };
 
   template<boundable L, boundable R, policy_flag F>
-  template<policy_flag G, typename A>
-  constexpr auto modulo<L,R,F>::mod(L lhs, R rhs, policy<G>, A&& action) -> mod_return_t<A>
+  template<policy_flag G, typename E, typename A>
+  constexpr auto modulo<L,R,F>::mod(L lhs, R rhs, policy<G, E> policy, A&& action) -> mod_return_t<A>
   {
     imax rhs_val = to_value(rhs);
     if (rhs_val == 0)
@@ -120,7 +124,11 @@ namespace bnd
       if constexpr (is_overflow_action<plain<A>>)
       { result res; action.fn(res, errc::division_by_zero); return res; }
       else
+      {
+        if constexpr (uses_error_ref_v<bnd::policy<G, E>>)
+          policy.report(errc::division_by_zero, "division by zero in mod");
         return slim::nullopt;
+      }
     }
     result res;
     from_value(res, to_value(lhs) % rhs_val);

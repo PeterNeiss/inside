@@ -67,6 +67,12 @@ namespace bnd
   template<typename T>             inline constexpr bool is_policy_v = false;
   template<policy_flag F, typename E> inline constexpr bool is_policy_v<policy<F,E>> = true;
 
+  // True for policy specializations that carry an std::error_code& reference.
+  // Free-fn arithmetic uses this to decide whether to call policy.report on
+  // failure (which sets ec) vs. returning silent nullopt (no-arg form).
+  template<typename T>             inline constexpr bool uses_error_ref_v = false;
+  template<policy_flag F>          inline constexpr bool uses_error_ref_v<policy<F, error_ref>> = true;
+
   //---------------------------------------------------------------------------
   // make_policy
   //---------------------------------------------------------------------------
