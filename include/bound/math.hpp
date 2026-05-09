@@ -171,12 +171,14 @@ namespace bnd
       // den = 2^(bits - exponent); the rational denominator is later stored as
       // a signed imax, so the shift must not exceed 62 (1ULL << 63 sets the
       // sign bit and casting to imax is implementation-defined). For values
-      // too small to represent precisely, scale num down so den fits.
+      // too small to represent precisely, scale num down so den fits. Right-
+      // shifting a umax by >= 64 is UB, so fold that case to a hard zero.
       int shift = bits - exponent;
       constexpr int max_shift = 62;
       if (shift > max_shift)
       {
-        num >>= (shift - max_shift);
+        int rshift = shift - max_shift;
+        num = (rshift >= 64) ? 0 : (num >> rshift);
         shift = max_shift;
       }
       den = 1ULL << shift;
