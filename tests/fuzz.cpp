@@ -278,6 +278,199 @@ void prop_arith_vs_rational(fuzz_state& s, long iters)
 }
 
 template <boundable B>
+void prop_mul_vs_rational(fuzz_state& s, long iters)
+{
+  if constexpr (!IsRawRational<B>)
+  {
+    s.current_prop = "mul_vs_rational";
+    for (long i = 0; i < iters; ++i)
+    {
+      s.iter = i;
+      B a = make_from_raw<B>(random_in_range_raw<B>(s.rng));
+      B b = make_from_raw<B>(random_in_range_raw<B>(s.rng));
+      rational ar = to_rational(a);
+      rational br = to_rational(b);
+      auto mul_actual_b = a * b;
+      rational mul_actual = to_rational(mul_actual_b);
+      auto mul_expect_opt = ar * br;
+      // Skip rare cases where the rational oracle itself overflows; the bound
+      // arithmetic would also be invalid then.
+      if (!mul_expect_opt.has_value()) continue;
+      FUZZ_REQUIRE(s, mul_actual == *mul_expect_opt);
+    }
+  }
+}
+
+template <boundable A, boundable B>
+void prop_cross_add(fuzz_state& s, long iters, const char* pair_name)
+{
+  s.current_prop = "cross_add";
+  s.current_grid = pair_name;
+  for (long i = 0; i < iters; ++i)
+  {
+    s.iter = i;
+    A a = make_from_raw<A>(random_in_range_raw<A>(s.rng));
+    B b = make_from_raw<B>(random_in_range_raw<B>(s.rng));
+    rational ar = to_rational(a);
+    rational br = to_rational(b);
+    auto sum_actual_b = a + b;
+    rational sum_actual = to_rational(sum_actual_b);
+    auto sum_expect = (ar + br).value();
+    FUZZ_REQUIRE(s, sum_actual == sum_expect);
+
+    auto diff_actual_b = a - b;
+    rational diff_actual = to_rational(diff_actual_b);
+    auto diff_expect = (ar - br).value();
+    FUZZ_REQUIRE(s, diff_actual == diff_expect);
+  }
+}
+
+template <boundable B>
+void prop_round_trip_construct(fuzz_state& s, long iters)
+{
+  // Pick an in-range raw, decode via value(), re-construct via B{value}, and
+  // verify the new bound's value matches the original.
+  if constexpr (IsIntegerAligned<B> && !IsRawRational<B>)
+  {
+    s.current_prop = "round_trip_construct";
+    auto lo = static_cast<imax>(Lower<B>);
+    auto hi = static_cast<imax>(Upper<B>);
+    std::uniform_int_distribution<imax> dist(lo, hi);
+    for (long i = 0; i < iters; ++i)
+    {
+      s.iter = i;
+      imax v = dist(s.rng);
+      B b{v};
+      FUZZ_REQUIRE(s, b == v);
+      // Construct another from the same value via try_make:
+      auto opt = B::try_make(v);
+      FUZZ_REQUIRE(s, opt.has_value());
+      FUZZ_REQUIRE(s, *opt == v);
+    }
+  }
+}
+
+template <boundable B>
+void prop_negation(fuzz_state& s, long iters)
+{
+  s.current_prop = "negation";
+  for (long i = 0; i < iters; ++i)
+  {
+    s.iter = i;
+    B a = make_from_raw<B>(random_in_range_raw<B>(s.rng));
+    auto neg = -a;
+    rational ar = to_rational(a);
+    rational nr = to_rational(neg);
+    FUZZ_REQUIRE(s, nr == -ar);
+    // double negation is identity on value
+    auto neg2 = -neg;
+    rational nr2 = to_rational(neg2);
+    FUZZ_REQUIRE(s, nr2 == ar);
+  }
+}
+
+template <boundable B>
+void prop_compound_add_int(fuzz_state& s, long iters)
+{
+  if constexpr (IsIntegerAligned<B> && !IsRawRational<B>)
+  {
+    s.current_prop = "compound_add_int";
+    auto lo = static_cast<imax>(Lower<B>);
+    auto hi = static_cast<imax>(Upper<B>);
+    // Pick integer initial value and delta such that the result stays in range
+    // (the type is `checked` by default; we don't want to throw).
+    std::uniform_int_distribution<imax> dist(lo, hi);
+    for (long i = 0; i < iters; ++i)
+    {
+      s.iter = i;
+      imax start = dist(s.rng);
+      imax slack_lo = start - lo;
+      imax slack_hi = hi - start;
+      // delta in [-slack_lo, +slack_hi]
+      std::uniform_int_distribution<imax> delta_dist(-slack_lo, slack_hi);
+      imax delta = delta_dist(s.rng);
+      B b{start};
+      b += delta;
+      FUZZ_REQUIRE(s, b == start + delta);
+    }
+  }
+}
+
+template <boundable B>
+void prop_modulo(fuzz_state& s, long iters)
+{
+  // Only applies to integer-aligned grids; result is optional<bound>.
+  // mod requires `ignore_round` per the README, so derive a typed alias.
+  if constexpr (IsIntegerAligned<B> && !IsRawRational<B>)
+  {
+    s.current_prop = "modulo";
+    using BI = bound<Grid<B>, ignore_round>;
+    auto lo = static_cast<imax>(Lower<B>);
+    auto hi = static_cast<imax>(Upper<B>);
+    if (lo > 0 || hi <= 0)
+    {
+      // Trivially: no zero-divisor risk if zero isn't representable; just
+      // sample two random values.
+      for (long i = 0; i < iters; ++i)
+      {
+        s.iter = i;
+        BI a = make_from_raw<BI>(random_in_range_raw<BI>(s.rng));
+        BI b = make_from_raw<BI>(random_in_range_raw<BI>(s.rng));
+        if (b == 0) continue;  // possible if hi <= 0 and zero is in range
+        auto r = mod(a, b, truncated);
+        imax expected = static_cast<imax>(a) % static_cast<imax>(b);
+        FUZZ_REQUIRE(s, r.has_value());
+        FUZZ_REQUIRE(s, *r == expected);
+      }
+    }
+    else
+    {
+      // Zero is in range: sample b until non-zero.
+      for (long i = 0; i < iters; ++i)
+      {
+        s.iter = i;
+        BI a = make_from_raw<BI>(random_in_range_raw<BI>(s.rng));
+        BI b{0};
+        do { b = make_from_raw<BI>(random_in_range_raw<BI>(s.rng)); } while (b == 0);
+        auto r = mod(a, b, truncated);
+        imax expected = static_cast<imax>(a) % static_cast<imax>(b);
+        FUZZ_REQUIRE(s, r.has_value());
+        FUZZ_REQUIRE(s, *r == expected);
+      }
+    }
+  }
+}
+
+template <boundable B>
+void prop_increment_wrap(fuzz_state& s, long iters)
+{
+  if constexpr (IsIntegerAligned<B> && !IsRawRational<B>)
+  {
+    s.current_prop = "increment_wrap";
+    using BW = bound<Grid<B>, wrap>;
+    auto lo = static_cast<imax>(Lower<B>);
+    auto hi = static_cast<imax>(Upper<B>);
+    imax range = hi - lo + 1;
+    std::uniform_int_distribution<imax> dist(lo, hi);
+    for (long i = 0; i < iters; ++i)
+    {
+      s.iter = i;
+      imax start = dist(s.rng);
+      BW b{start};
+      ++b;
+      imax expected = (start + 1 - lo) % range + lo;
+      if (expected < lo) expected += range;
+      FUZZ_REQUIRE(s, b == expected);
+
+      BW b2{start};
+      --b2;
+      imax expected2 = ((start - 1 - lo) % range + range) % range + lo;
+      FUZZ_REQUIRE(s, b2 == expected2);
+    }
+  }
+}
+
+template <boundable B>
 void prop_div_by_zero(fuzz_state& s, long iters)
 {
   if constexpr (IsIntegerAligned<B> && !IsRawRational<B>
@@ -327,12 +520,18 @@ void run_props(fuzz_state& s, long iters, const char* name)
   s.current_grid = name;
   guarded(s, [&]{ prop_storage_size<B>(s); });
   guarded(s, [&]{ prop_round_trip<B>(s, iters); });
+  guarded(s, [&]{ prop_round_trip_construct<B>(s, iters); });
   guarded(s, [&]{ prop_native_compare<B>(s, iters); });
   guarded(s, [&]{ prop_clamp<B>(s, iters); });
   guarded(s, [&]{ prop_wrap<B>(s, iters); });
   guarded(s, [&]{ prop_try_make<B>(s, iters); });
   guarded(s, [&]{ prop_on_clamp<B>(s, iters); });
   guarded(s, [&]{ prop_arith_vs_rational<B>(s, iters); });
+  guarded(s, [&]{ prop_mul_vs_rational<B>(s, iters); });
+  guarded(s, [&]{ prop_negation<B>(s, iters); });
+  guarded(s, [&]{ prop_compound_add_int<B>(s, iters); });
+  guarded(s, [&]{ prop_modulo<B>(s, iters); });
+  guarded(s, [&]{ prop_increment_wrap<B>(s, iters); });
   guarded(s, [&]{ prop_div_by_zero<B>(s, iters); });
   guarded(s, [&]{ prop_spaceship_symmetry<B>(s, iters); });
 }
@@ -353,15 +552,25 @@ int main(int argc, char** argv)
 
   run_props<bound<{0, 100}>>                    (s, iters, "u100");
   run_props<bound<{-100, 100}>>                 (s, iters, "s100");
+  run_props<bound<{0, 254}>>                    (s, iters, "u254");
+  run_props<bound<{0, 255}>>                    (s, iters, "u255");
   run_props<bound<{0, 65535}>>                  (s, iters, "u16k");
   run_props<bound<{-32768, 32767}>>             (s, iters, "s16");
   run_props<bound<{0, 1'000'000}>>              (s, iters, "u1M");
+  run_props<bound<{1, 100}>>                    (s, iters, "u100off");
+  run_props<bound<{-3, 7}>>                     (s, iters, "small_signed");
   run_props<bound<{{0, 50}, 0.5}>>              (s, iters, "u50half");
   run_props<bound<{{-50, 50}, 0.5}>>            (s, iters, "s50half");
   run_props<bound<{{0, 255}, 1.0/256}>>         (s, iters, "Q8.8");
   run_props<bound<{{-1, 1}, *(1_r/16384)}>>     (s, iters, "Q1.14");
   run_props<bound<{{0, 65535}, *(1_r/65536)}>>  (s, iters, "Q16.16");
   run_props<bound<{{0, 1'000'000}, *(1_r/100)}>>(s, iters, "money");
+
+  // Cross-grid arithmetic: mix grids of different lower/upper but same notch.
+  guarded(s, [&]{ prop_cross_add<bound<{0, 100}>, bound<{-100, 100}>>(s, iters, "u100+s100"); });
+  guarded(s, [&]{ prop_cross_add<bound<{0, 100}>, bound<{0, 1000}>>(s, iters, "u100+u1k"); });
+  guarded(s, [&]{ prop_cross_add<bound<{-50, 50}>, bound<{0, 100}>>(s, iters, "s50+u100"); });
+  guarded(s, [&]{ prop_cross_add<bound<{{0, 50}, 0.5}>, bound<{{-50, 50}, 0.5}>>(s, iters, "u50half+s50half"); });
 
   std::cout << "passed=" << s.passed << " failed=" << s.failed << "\n";
   return (s.failed > 0) ? 1 : 0;

@@ -74,10 +74,15 @@ namespace bnd
       auto to_result = [](auto raw)
       { result res; res.Raw = raw_cast<result>(raw); return res; };
 
+      // Raws are typically small unsigned ints (uint8/16/32). C++ integral
+      // promotion turns `raw * raw` into `int * int`, so any product above
+      // INT_MAX is signed-overflow UB. Cast both factors to umax to force
+      // the multiplication into 64-bit unsigned space before adding offsets.
       if constexpr (Lower<result> == (Lower<L> * Lower<R>).value())
       {
         return to_result
-        (lhs.Raw * rhs.Raw + lhs.Raw * LowerIndex<R> + rhs.Raw * LowerIndex<L>);
+        (static_cast<umax>(lhs.Raw) * static_cast<umax>(rhs.Raw)
+         + lhs.Raw * LowerIndex<R> + rhs.Raw * LowerIndex<L>);
       }
 
       if constexpr (Lower<result> == (Upper<L> * Upper<R>).value())
@@ -87,7 +92,8 @@ namespace bnd
       {
         raw_t<L> negRaw = raw_cast<L>(NotchCount<L> - lhs.Raw);
         return to_result
-        (negRaw * LowerIndex<R> + rhs.Raw * UpperIndex<L> - (negRaw * rhs.Raw));
+        (negRaw * LowerIndex<R> + rhs.Raw * UpperIndex<L>
+         - static_cast<umax>(negRaw) * static_cast<umax>(rhs.Raw));
       }
 
       if constexpr (Lower<result> == (Lower<L> * Upper<R>).value())
