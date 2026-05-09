@@ -490,6 +490,36 @@ cmake -B build && cmake --build build
 ./build/example_signed
 ```
 
+## Performance
+
+Measured at `-O3 -DNDEBUG` on x86-64 via `tests/bench.cpp` (5M iterations per
+scenario, native baseline paired with each bound case). Lower is better.
+
+| Workload | bound | native | ratio |
+|---|---|---|---|
+| `bound<{0,200}> ±/×/÷` (integer raw, unsafe) | 13 ns | 13 ns | **1.0x** |
+| `bound<{{0,255},1/256}>` construct (Q8.8) | 13 ns | 14 ns | **0.97x** |
+| `bound<{{0,65535},1/65536}>` construct (Q16.16) | 14 ns | 14 ns | **0.97x** |
+| `accumulate(bound, unsafe)` 1000 elts | 64 ns | 64 ns | 1.0x (vectorized) |
+| `accumulate(bound, checked)` 1000 elts | 274 ns | 64 ns | 4.3x (scalar) |
+| `bound<{{-40,60},0.5}> = double` (rational path) | 87-94 ns | n/a | n/a |
+
+Notes:
+
+- Integer-raw bounds (the common case: `bound<{0,N}>`, `bound<{a,b}>` with
+  notch 1) are at native parity for arithmetic and assignment.
+- Fixed-point grids with integer Lower and unit-numerator Notch take an
+  integer fast path in `assignment::store` and `from_value` — no rational
+  construction in the hot loop.
+- `checked` policy on accumulation pays a 4x penalty: the per-element domain
+  check breaks autovectorization. Use the default `unsafe` for tight inner
+  loops where you can prove no overflow upfront, then convert back to a
+  `checked` bound after the loop.
+- Assigning a `double` to a fractional-notch grid (`bound<{{-40,60},0.5}>`) is
+  the slowest path because the value crosses the API boundary into
+  rational arithmetic. By design — the library uses rational + integer math
+  internally to preserve exactness.
+
 ## Build & Test
 
 Requires CMake 3.24+ and a C++23 compiler (GCC 12+, Clang 16+, MSVC 19.36+).

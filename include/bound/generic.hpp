@@ -98,7 +98,19 @@ namespace bnd
   {
     if constexpr (IsDirectStorage<B>)
       b.Raw = raw_cast<B>(val);
-    else // IsNotchStorage
+    // Integer fast path mirroring assignment.hpp:store — for grids with
+    // integer Lower (den == 1) and unit-numerator Notch (e.g. 1/256, 1/16384)
+    // the offset reduces to (val - lower) * notch_denominator.
+    else if constexpr (abs_den(Lower<B>.Denominator) == 1
+                       && Notch<B>.Numerator == 1)
+    {
+      constexpr imax lower_int = (Lower<B>.Denominator < 0)
+        ? -static_cast<imax>(Lower<B>.Numerator)
+        :  static_cast<imax>(Lower<B>.Numerator);
+      constexpr imax nd = abs_den(Notch<B>.Denominator);   // Notch.Numerator == 1
+      b.Raw = raw_cast<B>((val - lower_int) * nd);
+    }
+    else // IsNotchStorage, generic rational path
     {
       auto offset = (rational{val} - Lower<B>) / Notch<B>;
       b.Raw = raw_cast<B>(offset.value().Numerator);

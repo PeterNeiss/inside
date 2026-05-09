@@ -97,7 +97,8 @@ catch_discover_tests(bound_tests)
 #---------------------------------------------------------------------------
 # ctrack (benchmarking)
 #---------------------------------------------------------------------------
-set(DISABLE_EXAMPLES ON CACHE BOOL "" FORCE)
+set(DISABLE_EXAMPLES ON  CACHE BOOL "" FORCE)
+set(BUILD_TESTS      OFF CACHE BOOL "" FORCE)   # ctrack's timing-based tests are flaky
 FetchContent_Declare(
   ctrack
   GIT_REPOSITORY https://github.com/Compaile/ctrack.git

@@ -185,7 +185,20 @@ namespace bnd
       lhs.Raw = raw_cast<L>(rhs);
     else if constexpr (Lower<L> == Upper<L>)
       lhs.Raw = 0;   // notch_storage point grid: 0 is the only offset
-    else // IsNotchStorage
+    // Integer fast path for the common fixed-point shape: Lower has integer
+    // value (den == 1) and Notch has unit numerator (e.g. 1/256, 1/16384).
+    // raw = (rhs - lower_int) * notch_denominator — pure integer math, no
+    // rational construction.
+    else if constexpr (abs_den(Lower<L>.Denominator) == 1
+                       && Notch<L>.Numerator == 1)
+    {
+      constexpr imax lower_int = (Lower<L>.Denominator < 0)
+        ? -static_cast<imax>(Lower<L>.Numerator)
+        :  static_cast<imax>(Lower<L>.Numerator);
+      constexpr imax nd = abs_den(Notch<L>.Denominator);   // Notch.Numerator == 1
+      lhs.Raw = raw_cast<L>((static_cast<imax>(rhs) - lower_int) * nd);
+    }
+    else // IsNotchStorage, generic rational path
     {
       rational raw = ((rhs - Interval<L>.Lower)/Notch<L>).value();
       lhs.Raw = raw_cast<L>(raw.Numerator / static_cast<umax>(raw.Denominator));
