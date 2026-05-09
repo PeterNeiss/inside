@@ -44,22 +44,22 @@ namespace bnd
     constexpr bound() requires ((P & checked) != 0) : Raw{} {} // zero-init under checked
 
     template <numeric A>
-      requires assignable_from<bound, A, P>
+      requires bound_assignable<bound, A, P>
     constexpr bound(A value)
     { assignment<bound, A>::assign(*this, value, make_policy<P>()); }
 
     template <numeric A, typename Pol>
-      requires assignable_from<bound, A, P>
+      requires bound_assignable<bound, A, P>
     constexpr bound(A value, Pol&& pol)
     { assignment<bound, A>::assign(*this, value, pol); }
 
     template <numeric A>
-      requires assignable_from<bound, A, P>
+      requires bound_assignable<bound, A, P>
     constexpr bound(A value, std::error_code& ec)
     { assignment<bound, A>::assign(*this, value, make_policy<P | checked>(ec)); }
 
     template <numeric B>
-      requires assignable_from<bound, B, P>
+      requires bound_assignable<bound, B, P>
     constexpr bound& operator=(B const& other)
     { return assignment<bound, B>::assign(*this, other, make_policy<P>()); }
 
@@ -437,8 +437,7 @@ namespace bnd
   //---------------------------------------------------------------------------
   // add
   //---------------------------------------------------------------------------
-  template <boundable L, boundable R, typename P = policy<>, typename A = no_action>
-    requires is_policy_v<plain<P>>
+  template <boundable L, boundable R, policy_like P = policy<>, typename A = no_action>
   [[nodiscard]] constexpr auto add(L const& lhs, R const& rhs, P&& policy = {}, A&& action = {})
   { return addition<L,R>::add(lhs, rhs, std::forward<P>(policy), std::forward<A>(action)); }
 
@@ -479,8 +478,7 @@ namespace bnd
   //---------------------------------------------------------------------------
   // sub
   //---------------------------------------------------------------------------
-  template <boundable L, boundable R, typename P = policy<>, typename A = no_action>
-    requires is_policy_v<plain<P>>
+  template <boundable L, boundable R, policy_like P = policy<>, typename A = no_action>
   [[nodiscard]] constexpr auto sub(L const& lhs, R const& rhs, P&& policy = {}, A&& action = {})
   { return add(lhs, -rhs, std::forward<P>(policy), std::forward<A>(action)); }
 
@@ -518,8 +516,7 @@ namespace bnd
   //---------------------------------------------------------------------------
   // mul
   //---------------------------------------------------------------------------
-  template <boundable L, boundable R, typename P = policy<>, typename A = no_action>
-    requires is_policy_v<plain<P>>
+  template <boundable L, boundable R, policy_like P = policy<>, typename A = no_action>
   [[nodiscard]] constexpr auto mul(L const& lhs, R const& rhs, P&& policy = {}, A&& action = {})
   { return multiplication<L,R>::mul(lhs, rhs, std::forward<P>(policy), std::forward<A>(action)); }
 

@@ -84,6 +84,16 @@ namespace bnd
   template<typename T> inline constexpr bool is_overflow_action = false;
   template<typename F> inline constexpr bool is_overflow_action<on_overflow_t<F>> = true;
 
+  // Concept forms of the variable-template predicates above. Both shapes
+  // coexist: the constexpr bools serve `if constexpr` and `std::conditional_t`
+  // value contexts; the concepts serve `requires`-clauses and constrained
+  // template parameters where they give cleaner diagnostics.
+  template<typename T> concept clamp_action    = is_clamp_action   <std::remove_cvref_t<T>>;
+  template<typename T> concept wrap_action     = is_wrap_action    <std::remove_cvref_t<T>>;
+  template<typename T> concept error_action    = is_error_action   <std::remove_cvref_t<T>>;
+  template<typename T> concept sentinel_action = is_sentinel_action<std::remove_cvref_t<T>>;
+  template<typename T> concept overflow_action = is_overflow_action<std::remove_cvref_t<T>>;
+
   //---------------------------------------------------------------------------
   // implied_flags<A> — single source of truth for "this action requires these
   // policy bits". Used by bound::on_* and the action-first free-fn overloads.

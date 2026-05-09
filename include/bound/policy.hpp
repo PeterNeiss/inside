@@ -67,6 +67,11 @@ namespace bnd
   template<typename T>             inline constexpr bool is_policy_v = false;
   template<policy_flag F, typename E> inline constexpr bool is_policy_v<policy<F,E>> = true;
 
+  // Concept form of is_policy_v — pulls cvref off so the constraint matches
+  // forwarded `policy<F,E>` references in template parameters.
+  template<typename T>
+  concept policy_like = is_policy_v<std::remove_cvref_t<T>>;
+
   // True for policy specializations that carry an std::error_code& reference.
   // Free-fn arithmetic uses this to decide whether to call policy.report on
   // failure (which sets ec) vs. returning silent nullopt (no-arg form).

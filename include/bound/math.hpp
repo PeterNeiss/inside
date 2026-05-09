@@ -57,6 +57,11 @@ namespace bnd
   template<typename T>
   concept arithmetic = std::integral<T> || std::floating_point<T> || std::same_as<rational,T>;
 
+  // Subset of arithmetic that excludes integrals — the "real-valued" rhs
+  // types that need the rational-arithmetic assignment specialization.
+  template<typename T>
+  concept real = std::floating_point<T> || std::same_as<rational, T>;
+
   template <std::signed_integral V>
   constexpr umax safe_abs(V value)
   { return (value >= 0) ? static_cast<umax>(value) : -static_cast<umax>(value); }

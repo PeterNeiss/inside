@@ -37,7 +37,7 @@ namespace bnd
   };
 
   template <boundable L, typename R>
-    requires std::floating_point<R> || std::same_as<rational, R>
+    requires real<R>
   struct assignment<L,R>
   {
     private:
@@ -251,7 +251,7 @@ namespace bnd
   // assign(boundable, floating_point | rational) — helpers
   //---------------------------------------------------------------------------
   template <boundable L, typename R>
-    requires std::floating_point<R> || std::same_as<rational, R>
+    requires real<R>
   template<typename P, typename A>
   constexpr void assignment<L,R>::apply_clamp(L& lhs, R rhs, P&&, A&& action)
   {
@@ -283,7 +283,7 @@ namespace bnd
   }
 
   template <boundable L, typename R>
-    requires std::floating_point<R> || std::same_as<rational, R>
+    requires real<R>
   template<typename P, typename A>
   constexpr bool assignment<L,R>::store_checked(L& lhs, R rhs, P&& policy, A&& action)
   {
@@ -320,7 +320,7 @@ namespace bnd
   // assign(boundable, floating_point | rational)
   //---------------------------------------------------------------------------
   template <boundable L, typename R>
-    requires std::floating_point<R> || std::same_as<rational, R>
+    requires real<R>
   template<typename P, typename A>
   constexpr L& assignment<L,R>::assign(L& lhs, R const& rhs, P&& policy, A&& action)
   {

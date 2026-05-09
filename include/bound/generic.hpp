@@ -156,8 +156,10 @@ namespace bnd
   // Compile-time prerequisites for L = R: intervals overlap (for typed-interval R),
   // and (for boundable R) the notch ratio is integral or rounding is accepted.
   // Skipped for floating_point/rational R since they have no static interval.
+  // Named `bound_assignable` (not `assignable_from`) to avoid shadowing the
+  // unrelated `std::assignable_from` from <concepts>.
   template <typename L, typename R, policy_flag P = checked>
-  concept assignable_from =
+  concept bound_assignable =
     numeric<R>
     && ((!boundable<R> && !std::integral<R>) || not Interval<L>.excludes(Interval<R>))
     && (!boundable<R> || abs_den(assignment<L, R>::Factor.Denominator) == 1
