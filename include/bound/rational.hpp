@@ -11,6 +11,7 @@
 #include <numeric>
 #include <compare>
 #include <cmath>
+#include <limits>
 #include <tuple>
 
 namespace bnd { struct rational; }
@@ -169,7 +170,7 @@ namespace bnd
       return (Denominator < 0) ? -static_cast<imax>(q) : static_cast<imax>(q);
     }
 
-    static constexpr rational make_sentinel() noexcept
+    [[nodiscard]] static constexpr rational make_sentinel() noexcept
     { rational r; r.Numerator = 1; r.Denominator = 0; return r; }
 
     // Unchecked arithmetic — caller takes responsibility for non-overflow
@@ -196,26 +197,38 @@ namespace bnd
     // Domain check + canonical-zero + gcd reduction; used by the integral ctors.
     // (Private member function; non-static data members above remain public so
     // rational stays a structural type usable as an NTTP.)
+    //
+    // Two domain errors:
+    //  - Denominator == 0           → undefined rational (also reserved as the
+    //                                 sentinel slot, so user values can't land
+    //                                 there)
+    //  - Denominator == imax_min    → cannot be negated without UB; every
+    //                                 sign-flip in the file (`operator-`,
+    //                                 `abs`, the trim sign-write) assumes
+    //                                 `-Denominator` is well-defined
     static constexpr void canonicalize(umax& num, imax& den)
     {
       if (den == 0)
         throw std::system_error(make_error_code(errc::domain_error),
                                 "Denominator of Zero is invalid");
+      if (den == std::numeric_limits<imax>::min())
+        throw std::system_error(make_error_code(errc::domain_error),
+                                "Denominator imax_min is invalid (cannot be negated)");
       if (num == 0) den = 1;
       trim(num, den);
     }
   };
 
 
-  constexpr rational gcd(rational const&, rational const&);
-  constexpr rational abs(rational);
+  [[nodiscard]] constexpr rational gcd(rational const&, rational const&);
+  [[nodiscard]] constexpr rational abs(rational);
 
-  constexpr bool divides_evenly(rational const&, rational const&);
+  [[nodiscard]] constexpr bool divides_evenly(rational const&, rational const&);
 
   //---------------------------------------------------------------------------
   // abs
   //---------------------------------------------------------------------------
-  constexpr rational abs(rational v)
+  [[nodiscard]] constexpr rational abs(rational v)
   { if (v.Denominator < 0) v.Denominator = -v.Denominator; return v; }
 
   //---------------------------------------------------------------------------
@@ -228,7 +241,7 @@ namespace bnd
   // If a real overflow case appears, switch the return type to
   // slim::optional<rational> mechanically.
   //---------------------------------------------------------------------------
-  constexpr rational gcd(rational const& lhs, rational const& rhs)
+  [[nodiscard]] constexpr rational gcd(rational const& lhs, rational const& rhs)
   {
     auto numerator   = std::gcd(lhs.Numerator, rhs.Numerator);
     auto denominator = std::lcm(abs_den(lhs.Denominator), abs_den(rhs.Denominator));
@@ -269,7 +282,10 @@ namespace bnd
   //---------------------------------------------------------------------------
   template <std::unsigned_integral T>
   constexpr slim::optional<T> rational::to() const
-  { return (Denominator <= 0) ? slim::nullopt : slim::make_optional<T>(static_cast<T>(Numerator/static_cast<umax>(Denominator))); }
+  {
+    if (is_sentinel() || Denominator < 0) return slim::nullopt;
+    return slim::make_optional<T>(static_cast<T>(Numerator / static_cast<umax>(Denominator)));
+  }
 
   //---------------------------------------------------------------------------
   // user defined literals for rational
@@ -375,14 +391,28 @@ namespace bnd
       else
         numerator = A + B;
 
-      imax signed_den = a_neg ? -static_cast<imax>(denominator) : static_cast<imax>(denominator);
-      return ret_t{rational{numerator, signed_den}};
+      // numerator and denominator are both > 0 here, so the rational(num, den)
+      // ctor's domain-error / canonical-zero checks are dead branches; assemble
+      // directly and trim, mirroring the equal-denominator path above.
+      rational r;
+      r.Numerator   = numerator;
+      r.Denominator = a_neg ? -static_cast<imax>(denominator)
+                             :  static_cast<imax>(denominator);
+      trim(r.Numerator, r.Denominator);
+      return ret_t{r};
     }
 
+    // numerator == 0 (exact cancellation) is unreachable here: it would
+    // require a == -b, which the `a == -b` early-return at the top of
+    // add_impl already handles for canonical inputs.
     umax numerator = (A > B) ? (A - B) : (B - A);
     bool r_neg = a_neg ? (A > B) : (B > A);
-    imax signed_den = r_neg ? -static_cast<imax>(denominator) : static_cast<imax>(denominator);
-    return ret_t{rational{numerator, signed_den}};
+    rational r;
+    r.Numerator   = numerator;
+    r.Denominator = r_neg ? -static_cast<imax>(denominator)
+                           :  static_cast<imax>(denominator);
+    trim(r.Numerator, r.Denominator);
+    return ret_t{r};
   }
 
   template <bool Checked>
@@ -701,7 +731,7 @@ namespace bnd
   //---------------------------------------------------------------------------
   // divides_evenly
   //---------------------------------------------------------------------------
-  inline constexpr bool divides_evenly(rational const& dividend, rational const& divisor)
+  [[nodiscard]] inline constexpr bool divides_evenly(rational const& dividend, rational const& divisor)
   {
     if (divisor == 0_r) return true;            // convention: everything divides 0 evenly
     auto q = dividend / divisor;

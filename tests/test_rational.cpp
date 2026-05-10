@@ -44,6 +44,13 @@ TEST_CASE("rational construction normalises", "[rational][construction]")
     REQUIRE_THROWS_AS((rational{1,  0}), std::system_error);
   }
 
+  SECTION("denominator imax_min throws (cannot be negated without UB)")
+  {
+    constexpr auto imin = std::numeric_limits<imax>::min();
+    REQUIRE_THROWS_AS((rational{1u, imin}), std::system_error);
+    REQUIRE_THROWS_AS((rational{1,  imin}), std::system_error);
+  }
+
   SECTION("from int min")
   {
     constexpr rational a{std::numeric_limits<int>::min()};
