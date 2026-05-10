@@ -182,6 +182,29 @@ TEST_CASE("rational overflow detection", "[rational][overflow]")
     REQUIRE((small + small).has_value());
   }
 
+  SECTION("add cross-trim on unequal denominators avoids spurious overflow")
+  {
+    // gcd(4, 6) = 2; lcm = 12. With cross-trim a_ad'=2, b_ad'=3, so
+    // (M/5) * b_ad' = (M/5)*3 fits, whereas (M/5)*6 (no cross-trim) would
+    // overflow.
+    auto a = rational{M / 5, 4};
+    auto b = rational{1u, 6};
+    REQUIRE((a + b).has_value());
+  }
+
+  SECTION("add unequal-denominator value correctness")
+  {
+    // Catches regressions in the lcm-based common-denominator computation.
+    // 1/4 + 1/6 = 3/12 + 2/12 = 5/12         (gcd=2, lcm=12)
+    STATIC_REQUIRE(*(rational{1u, 4} + rational{1u, 6}) == rational{5u, 12});
+    // 1/2 + 1/3 = 3/6 + 2/6 = 5/6            (gcd=1, lcm=6)
+    STATIC_REQUIRE(*(rational{1u, 2} + rational{1u, 3}) == rational{5u, 6});
+    // 3/8 + 5/12 = 9/24 + 10/24 = 19/24      (gcd=4, lcm=24)
+    STATIC_REQUIRE(*(rational{3u, 8} + rational{5u, 12}) == rational{19u, 24});
+    // mixed signs: 5/6 - 1/4 = 10/12 - 3/12 = 7/12
+    STATIC_REQUIRE(*(rational{5u, 6} + rational{1, -4}) == rational{7u, 12});
+  }
+
   SECTION("sub overflow returning nullopt")
   {
     // -M - 1 would overflow on the negative side
@@ -230,6 +253,12 @@ TEST_CASE("rational helpers", "[rational][helpers]")
     REQUIRE(divides_evenly(rational{1u, 2}, rational{1u, 4}));
     // by convention divisor==0 returns true
     REQUIRE(divides_evenly(rational{6u, 1}, rational{0u}));
+  }
+
+  SECTION("divides_evenly does not throw on overflow")
+  {
+    // M / (1/2) = M*2 overflows the numerator -> false, not exception.
+    REQUIRE_FALSE(divides_evenly(rational{M}, rational{1, 2}));
   }
 }
 

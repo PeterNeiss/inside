@@ -57,11 +57,11 @@ namespace bnd
     b /= g;
   }
 
-  constexpr slim::optional<rational> operator+(const rational&, const rational&);
-  constexpr slim::optional<rational> operator/(const rational&, const rational&);
-  constexpr slim::optional<rational> operator-(const rational&, const rational&);
+  constexpr slim::optional<rational> operator+(rational const&, rational const&);
+  constexpr slim::optional<rational> operator/(rational const&, rational const&);
+  constexpr slim::optional<rational> operator-(rational const&, rational const&);
 
-  constexpr slim::optional<rational> operator*(const rational&, const rational&);
+  constexpr slim::optional<rational> operator*(rational const&, rational const&);
   constexpr auto     operator<=>(rational, rational) -> std::strong_ordering;
 
   //---------------------------------------------------------------------------
@@ -88,13 +88,7 @@ namespace bnd
     constexpr rational(std::signed_integral auto, imax = 1);
     constexpr rational(std::unsigned_integral auto num, imax den = 1)
      :Numerator{num}, Denominator{den}
-    {
-      if (Denominator == 0)
-        throw std::system_error(make_error_code(errc::domain_error), "Denominator of Zero is invalid");
-      if (Numerator == 0)
-        Denominator = 1;
-      trim(Numerator, Denominator);
-    }
+    { canonicalize(Numerator, Denominator); }
 
     // operator== be default for structural type
     constexpr bool operator==(const rational&) const = default;
@@ -132,6 +126,18 @@ namespace bnd
 
     // allow unary+ for generic programming
     constexpr rational operator+() const { return *this; }
+
+    // -1 / 0 / +1 — single source of truth for the sign convention
+    // (sign lives in Denominator; canonical zero is {0, 1}).
+    [[nodiscard]] constexpr int sign() const noexcept
+    {
+      if (Numerator == 0) return 0;
+      return (Denominator < 0) ? -1 : 1;
+    }
+
+    // The sentinel slot is {N, 0}; only make_sentinel() can produce one.
+    [[nodiscard]] constexpr bool is_sentinel() const noexcept
+    { return Denominator == 0; }
 
     // Named integer reductions — explicit, lossy, intent-clear alternatives
     // to `static_cast<imax>(r)`. trunc rounds toward zero (matches operator T);
@@ -185,24 +191,44 @@ namespace bnd
     template <bool Checked> static constexpr auto mul_impl(rational const&, rational const&);
     template <bool Checked> static constexpr auto div_impl(rational const&, rational const&);
     template <bool Checked> static constexpr auto inv_impl(rational const&);
+
+  private:
+    // Domain check + canonical-zero + gcd reduction; used by the integral ctors.
+    // (Private member function; non-static data members above remain public so
+    // rational stays a structural type usable as an NTTP.)
+    static constexpr void canonicalize(umax& num, imax& den)
+    {
+      if (den == 0)
+        throw std::system_error(make_error_code(errc::domain_error),
+                                "Denominator of Zero is invalid");
+      if (num == 0) den = 1;
+      trim(num, den);
+    }
   };
 
 
-  constexpr rational gcd(const rational&, const rational&);
+  constexpr rational gcd(rational const&, rational const&);
   constexpr rational abs(rational);
 
-  constexpr bool divides_evenly(const rational&, const rational&);
+  constexpr bool divides_evenly(rational const&, rational const&);
 
   //---------------------------------------------------------------------------
   // abs
   //---------------------------------------------------------------------------
-  constexpr rational abs(rational value)
-  { return (value.Denominator < 0) ? -value : value; }
+  constexpr rational abs(rational v)
+  { if (v.Denominator < 0) v.Denominator = -v.Denominator; return v; }
 
   //---------------------------------------------------------------------------
   // gcd
   //---------------------------------------------------------------------------
-  constexpr rational gcd(const rational& lhs, const rational& rhs)
+  // Contract: caller is responsible for ensuring
+  //   lcm(|lhs.Denominator|, |rhs.Denominator|) <= imax_max.
+  // No overflow detection (std::lcm wraps silently). Typical callers
+  // (intervals, grids) operate on small denominators where this holds.
+  // If a real overflow case appears, switch the return type to
+  // slim::optional<rational> mechanically.
+  //---------------------------------------------------------------------------
+  constexpr rational gcd(rational const& lhs, rational const& rhs)
   {
     auto numerator   = std::gcd(lhs.Numerator, rhs.Numerator);
     auto denominator = std::lcm(abs_den(lhs.Denominator), abs_den(rhs.Denominator));
@@ -215,13 +241,7 @@ namespace bnd
   constexpr rational::rational(std::signed_integral auto num, imax den)
    :Numerator{safe_abs(num)},
     Denominator{ (num < 0) ? -den : den }
-  {
-    if (den == 0)
-      throw std::system_error(make_error_code(errc::domain_error), "Denominator of Zero is invalid");
-    if (Numerator == 0)
-      Denominator = 1;
-    trim(Numerator, Denominator);
-  }
+  { canonicalize(Numerator, Denominator); }
 
   constexpr rational::rational(std::floating_point auto value)
   {
@@ -311,15 +331,24 @@ namespace bnd
       return ret_t{r};
     }
 
+    // Use lcm(a_ad, b_ad) as the common denominator instead of a_ad * b_ad.
+    // Let g = gcd(a_ad, b_ad); the cofactors a_ad/g and b_ad/g are coprime,
+    // and lcm = a_ad * (b_ad/g) = (a_ad/g) * b_ad. The cross-multiplications
+    // use the reduced cofactors and so overflow far less often than the
+    // unreduced product.
+    umax g     = std::gcd(a_ad, b_ad);
+    umax a_ad_r = a_ad / g;       // = a_ad / gcd; coprime with b_ad_r
+    umax b_ad_r = b_ad / g;
+
     umax denominator;
     umax A;
     umax B;
 
     if constexpr (Checked)
     {
-      if (mul_overflow(a_ad, b_ad, &denominator) ||
-          mul_overflow(a.Numerator, b_ad, &A)    ||
-          mul_overflow(b.Numerator, a_ad, &B))
+      if (mul_overflow(a_ad, b_ad_r, &denominator)    ||   // = lcm(a_ad, b_ad)
+          mul_overflow(a.Numerator, b_ad_r, &A)       ||
+          mul_overflow(b.Numerator, a_ad_r, &B))
       {
         if consteval { rational_overflow("rational +: cross-multiplication overflow"); }
         return ret_t{slim::nullopt};
@@ -327,9 +356,9 @@ namespace bnd
     }
     else
     {
-      denominator = a_ad * b_ad;
-      A = a.Numerator * b_ad;
-      B = b.Numerator * a_ad;
+      denominator = a_ad * b_ad_r;
+      A = a.Numerator * b_ad_r;
+      B = b.Numerator * a_ad_r;
     }
 
     if (a_neg == b_neg)
@@ -490,16 +519,17 @@ namespace bnd
   //---------------------------------------------------------------------------
   inline constexpr auto operator<=>(rational lhs, rational rhs) -> std::strong_ordering
   {
-    bool lhs_neg = lhs.Denominator < 0;
-    bool rhs_neg = rhs.Denominator < 0;
-    int lhs_sign = (lhs.Numerator == 0) ? 0 : (lhs_neg ? -1 : 1);
-    int rhs_sign = (rhs.Numerator == 0) ? 0 : (rhs_neg ? -1 : 1);
+    int lhs_sign = lhs.sign();
+    int rhs_sign = rhs.sign();
 
     if (lhs_sign != rhs_sign)
       return lhs_sign <=> rhs_sign;
 
     if (lhs_sign == 0)
       return std::strong_ordering::equal;
+
+    // signs are equal here (the `lhs_sign != rhs_sign` branch returned above)
+    bool lhs_neg = lhs_sign < 0;
 
     umax lhs_ad = abs_den(lhs.Denominator);
     umax rhs_ad = abs_den(rhs.Denominator);
@@ -548,6 +578,10 @@ namespace bnd
       mul_overflow(rhs.Numerator, lhs_ad, &B)
     )
     {
+      // operator<=> must return std::strong_ordering — there is no optional
+      // form that preserves spaceship syntax. We trap (throw at runtime, fail
+      // consteval at compile time), symmetric with the checked arithmetic
+      // path's rational_overflow signal.
       if consteval { rational_overflow("rational <=>: cross-multiplication overflow"); }
       overflow_trap("multiplicative overflow");
     }
@@ -667,9 +701,11 @@ namespace bnd
   //---------------------------------------------------------------------------
   // divides_evenly
   //---------------------------------------------------------------------------
-  inline constexpr bool divides_evenly(const rational& dividend, const rational& divisor)
+  inline constexpr bool divides_evenly(rational const& dividend, rational const& divisor)
   {
-    return (divisor == 0_r) ? true : abs_den((dividend / divisor).value().Denominator) == 1;
+    if (divisor == 0_r) return true;            // convention: everything divides 0 evenly
+    auto q = dividend / divisor;
+    return q.has_value() && abs_den(q->Denominator) == 1;
   }
 
 } // namespace bnd
@@ -678,7 +714,7 @@ namespace slim
 {
   constexpr bnd::rational sentinel_traits<bnd::rational>::sentinel() noexcept { return bnd::rational::make_sentinel(); }
   constexpr bool sentinel_traits<bnd::rational>::is_sentinel(const bnd::rational& v) noexcept
-  { return v.Denominator == 0; }
+  { return v.is_sentinel(); }
 } // namespace slim
 
 #endif // BNDrationalHPP
