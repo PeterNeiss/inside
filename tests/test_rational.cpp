@@ -137,6 +137,26 @@ TEST_CASE("rational arithmetic", "[rational][arithmetic]")
     STATIC_REQUIRE(rational::add_unchecked(rational{2u}, rational{3u}) == rational{5u});
     STATIC_REQUIRE(rational::mul_unchecked(rational{2u}, rational{3u}) == rational{6u});
     STATIC_REQUIRE(rational::div_unchecked(rational{6u}, rational{3u}) == rational{2u});
+    STATIC_REQUIRE(rational::inv_unchecked(rational{2u, 3}) == rational{3u, 2});
+  }
+
+  SECTION("inv basic")
+  {
+    STATIC_REQUIRE(*rational::inv(rational{3u, 2}) == rational{2u, 3});
+    STATIC_REQUIRE(*rational::inv(rational{1u, 5}) == rational{5u});
+    STATIC_REQUIRE(*rational::inv(rational{5u})    == rational{1u, 5});
+
+    // Sign preservation (denominator carries the sign)
+    STATIC_REQUIRE(*rational::inv(rational{-3, 2}) == rational{-2, 3});
+    STATIC_REQUIRE(*rational::inv(rational{3, -2}) == rational{-2, 3});
+
+    // Involutive
+    STATIC_REQUIRE(*rational::inv(*rational::inv(rational{7u, 11})) == rational{7u, 11});
+  }
+
+  SECTION("inv of zero -> nullopt")
+  {
+    REQUIRE_FALSE(rational::inv(rational{0u}).has_value());
   }
 }
 

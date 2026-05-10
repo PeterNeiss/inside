@@ -167,13 +167,15 @@ namespace bnd
     { rational r; r.Numerator = 1; r.Denominator = 0; return r; }
 
     // Unchecked arithmetic — caller takes responsibility for non-overflow
-    // (and non-zero divisor for div_unchecked). No optional, no failure path.
+    // (and non-zero operand for div_unchecked / inv_unchecked).
     static constexpr rational add_unchecked(rational, rational);
     static constexpr rational mul_unchecked(rational, rational);
     static constexpr rational div_unchecked(rational, rational);
+    static constexpr rational inv_unchecked(rational);
 
     static constexpr slim::optional<rational> add(rational a, rational b)
     { return a + b; }
+    static constexpr slim::optional<rational> inv(rational);
 
     // Shared algorithm bodies. Checked=true returns slim::optional<rational>
     // and reports overflow (via consteval rational_overflow at compile-time
@@ -182,6 +184,7 @@ namespace bnd
     template <bool Checked> static constexpr auto add_impl(rational const&, rational const&);
     template <bool Checked> static constexpr auto mul_impl(rational const&, rational const&);
     template <bool Checked> static constexpr auto div_impl(rational const&, rational const&);
+    template <bool Checked> static constexpr auto inv_impl(rational const&);
   };
 
 
@@ -405,56 +408,48 @@ namespace bnd
       denominator = a_ad * b_ad;
     }
 
-    imax signed_den = r_neg ? -static_cast<imax>(denominator) : static_cast<imax>(denominator);
-    return ret_t{rational{numerator, signed_den}};
+    // The cross-trims above guarantee gcd(numerator, denominator) == 1, so
+    // bypass rational(num, den) and skip its redundant trim.
+    rational r;
+    r.Numerator   = numerator;
+    r.Denominator = r_neg ? -static_cast<imax>(denominator)
+                           :  static_cast<imax>(denominator);
+    return ret_t{r};
   }
 
+  //---------------------------------------------------------------------------
+  // inv_impl — multiplicative inverse (1 / a)
+  //---------------------------------------------------------------------------
+  // a is already trimmed (Numerator and |Denominator| coprime), so the swapped
+  // pair is also trimmed. Sign lives in the denominator and 1/(-x) has the same
+  // sign as -x, so the sign bit moves with the (now) denominator unchanged.
   template <bool Checked>
-  inline constexpr auto rational::div_impl(rational const& a_in, rational const& b_in)
+  inline constexpr auto rational::inv_impl(rational const& a)
   {
     using ret_t = std::conditional_t<Checked, slim::optional<rational>, rational>;
-    rational a = a_in, b = b_in;
+
+    if constexpr (Checked)
+      if (a.Numerator == 0) return ret_t{slim::nullopt};
+
+    rational r;
+    r.Numerator   = abs_den(a.Denominator);
+    r.Denominator = (a.Denominator < 0) ? -static_cast<imax>(a.Numerator)
+                                         :  static_cast<imax>(a.Numerator);
+    return ret_t{r};
+  }
+
+  // div(a, b) = a * inv(b). After b != 0, inv_unchecked is safe; mul_impl
+  // performs the same cross-trims and final products as the prior hand-rolled
+  // div_impl (the `b.Num`/`b_ad` labels are simply swapped by inv).
+  template <bool Checked>
+  inline constexpr auto rational::div_impl(rational const& a, rational const& b)
+  {
+    using ret_t = std::conditional_t<Checked, slim::optional<rational>, rational>;
 
     if constexpr (Checked)
       if (b.Numerator == 0) return ret_t{slim::nullopt};
 
-    if (a.Numerator == 0) return ret_t{0_r};
-
-    bool r_neg = (a.Denominator < 0) != (b.Denominator < 0);
-    umax a_ad = abs_den(a.Denominator);
-    umax b_ad = abs_den(b.Denominator);
-
-    if (a_ad == 1 && b_ad == 1)
-    {
-      trim(a.Numerator, b.Numerator);
-      rational r;
-      r.Numerator = a.Numerator;
-      r.Denominator = r_neg ? -static_cast<imax>(b.Numerator) : static_cast<imax>(b.Numerator);
-      return ret_t{r};
-    }
-
-    trim(a.Numerator, b.Numerator);
-    trim(a_ad, b_ad);
-
-    umax numerator;
-    umax denominator;
-    if constexpr (Checked)
-    {
-      if (mul_overflow(a.Numerator, b_ad, &numerator) ||
-          mul_overflow(b.Numerator, a_ad, &denominator))
-      {
-        if consteval { rational_overflow("rational /: cross-multiplication overflow"); }
-        return ret_t{slim::nullopt};
-      }
-    }
-    else
-    {
-      numerator = a.Numerator * b_ad;
-      denominator = b.Numerator * a_ad;
-    }
-
-    imax signed_den = r_neg ? -static_cast<imax>(denominator) : static_cast<imax>(denominator);
-    return ret_t{rational{numerator, signed_den}};
+    return mul_impl<Checked>(a, inv_unchecked(b));
   }
 
   //---------------------------------------------------------------------------
@@ -468,6 +463,12 @@ namespace bnd
 
   inline constexpr rational rational::div_unchecked(rational a, rational b)
   { return div_impl<false>(a, b); }
+
+  inline constexpr rational rational::inv_unchecked(rational a)
+  { return inv_impl<false>(a); }
+
+  inline constexpr slim::optional<rational> rational::inv(rational a)
+  { return inv_impl<true>(a); }
 
   //---------------------------------------------------------------------------
   // operator-
