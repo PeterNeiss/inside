@@ -69,18 +69,27 @@ bitwise `|` (e.g. `bound<{0, 100}, checked | round_nearest>`).
 | `wrap` | modular arithmetic on out-of-range |
 | `sentinel` | out-of-range yields `nullopt` via `slim::optional` |
 | `ignore_round` | rounding mismatches truncate toward zero (no error) |
-| `round_nearest` | round to nearest notch (implies `ignore_round`) |
+| `round_nearest` | round to nearest notch, half away from zero (implies `ignore_round`) |
+| `round_floor` | round toward -inf (implies `ignore_round`) |
+| `round_ceil` | round toward +inf (implies `ignore_round`) |
+| `round_half_even` | banker's rounding — half to even (implies `ignore_round`) |
 | `ignore_zero` | division by zero is silent |
 | `ignore_domain` | suppress the runtime domain check |
 
 ### Per-operation override
 
-Even without a type-level policy, you can clamp or wrap on a per-operation basis:
+Even without a type-level policy, you can clamp, wrap, or pick a rounding
+mode on a per-operation basis:
 
 ```cpp
 bound<{0, 100}> x(50);
 x.with_clamp() = 150;  // x == 100
 x.with_wrap()  = 103;  // x == 2
+
+bound<{{0, 10}, 2}> g{0};
+g.with_floor()           = 3.0;  // g == 2
+g.with_ceil()            = 3.0;  // g == 4
+g.with_round_half_even() = 5.0;  // g == 4 (tie → even)
 ```
 
 ### Callbacks: `on_wrap` / `on_clamp` / `on_overflow` / `on_sentinel` / `on_error`
@@ -194,6 +203,44 @@ For types with a `clamp` or `wrap` policy, `try_make` applies the policy before 
 auto clamped = bound<{0, 100}, clamp>::try_make(150);
 // clamped has value 100 — clamp always succeeds
 ```
+
+### Free-function casts
+
+Three named casts complement the constructors when the intent — clamp, throw,
+or trust — should be visible at the call site (e.g. inside `std::transform`
+callbacks):
+
+```cpp
+using pct = bound<{0, 100}>;
+
+saturated_cast<pct>(150);   // clamps to 100 regardless of B's declared policy
+checked_cast<pct>(42);      // throws std::system_error if out of range or off-notch
+unchecked_cast<pct>(42);    // skips runtime checks — caller's contract
+```
+
+For the `double → bounded integer` pipeline (audio/graphics/DSP), three
+helpers compose clamping with a rounding mode:
+
+```cpp
+using coarse = bound<{{0, 10}, 2}>;
+clamp_floor<coarse>(3.0);   // 2  (clamp + floor)
+clamp_ceil <coarse>(3.0);   // 4  (clamp + ceil)
+clamp_round<coarse>(3.0);   // 4  (clamp + round to nearest)
+clamp_floor<coarse>(15.0);  // 10 (out-of-range clamps to upper)
+```
+
+### Conversion predicates
+
+Inspect a value *before* attempting an unsafe construction:
+
+```cpp
+will_conversion_overflow<pct>(150);    // true  — out of [0, 100]
+will_conversion_truncate<pct>(3.5);    // true  — doesn't land on notch 1
+is_conversion_lossy<pct>(150);         // true  — overflow OR truncation
+```
+
+All three are pure inspection — none performs the conversion or has side
+effects.
 
 ## Arithmetic
 
@@ -435,6 +482,41 @@ for (auto i : bound_range<{0, 9}>{5})
 ```cpp
 constexpr auto one = just<1>;   // bound<{1, 1}>
 constexpr auto pi  = just<3>;
+```
+
+The `_b` literal is shorthand for `just<N>`:
+
+```cpp
+auto five = 5_b;                // bound<{5, 5}>
+auto x    = 10_b + my_bound;    // grid widens via just<N> + bound
+```
+
+## Variadic folds
+
+`add_all` and `mul_all` are variadic equivalents of `+` and `*` over bounds:
+
+```cpp
+using v = bound<{0, 100}>;
+v a{10}, b{20}, c{30};
+auto sum  = add_all(a, b, c);   // bound<{0, 300}>, value 60
+auto prod = mul_all(a, b);      // bound<{0, 10000}>, value 200
+```
+
+## `std` integration
+
+`bound` specialises `std::hash` (works in `unordered_set`/`unordered_map`)
+and `std::numeric_limits` (so `numeric_limits<bound<{0,100}>>::max()` returns
+the upper bound, `is_signed`, `is_integer`, `is_bounded` etc. all report
+correctly). Include `bound/numeric_limits.hpp` to pull both in.
+
+```cpp
+#include "bound/numeric_limits.hpp"
+
+std::unordered_set<bound<{0, 9}>> s;
+s.insert(bound<{0, 9}>{3});
+
+static_assert(std::numeric_limits<bound<{-40, 60}>>::is_signed);
+static_assert(std::numeric_limits<bound<{0,  100}>>::max() == 100);
 ```
 
 ## STL Algorithms

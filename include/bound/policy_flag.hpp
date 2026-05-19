@@ -27,6 +27,14 @@ namespace bnd
   inline static constexpr policy_flag ignore_domain{1ull << 2};
   inline static constexpr policy_flag ignore_round  {1ull << 4};
   inline static constexpr policy_flag round_nearest {(1ull << 5) | ignore_round};
+  // Additional rounding modes. Each picks a unique mode bit (6/7/8) and ORs
+  // in `ignore_round` so users don't have to remember the combination. The
+  // four rounding modes are *mutually exclusive in spirit* — combining two
+  // is permitted by the type system but the dispatch order in assignment.hpp
+  // picks the first match (nearest → floor → ceil → half_even → truncate).
+  inline static constexpr policy_flag round_floor     {(1ull << 6) | ignore_round};
+  inline static constexpr policy_flag round_ceil      {(1ull << 7) | ignore_round};
+  inline static constexpr policy_flag round_half_even {(1ull << 8) | ignore_round};
 
   // runtime checking — opt-in
   inline static constexpr policy_flag checked{1ull << 34}; // enable runtime domain/overflow checks

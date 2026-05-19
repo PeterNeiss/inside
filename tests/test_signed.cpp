@@ -61,6 +61,50 @@ TEST_CASE("signed sentinel doesn't collide with valid -127", "[bound][signed][se
   REQUIRE(*opt == -127);
 }
 
+// Regression: signed-direct storage previously recorded the *offset*
+// (rhs - Lower) instead of the value when constructed from real-valued
+// rhs (rational/double) or from another bound via the bound-to-bound
+// store path. Both paths now route through `raw_from_offset<L>`, which
+// adds Lower<L> back for direct-storage targets.
+TEST_CASE("signed-direct ctor from rational/double preserves value", "[bound][signed][regression]")
+{
+  using temp = bound<{-40, 60}>;
+
+  REQUIRE(temp{rational{-40}}            == -40);
+  REQUIRE(temp{rational{ 42}}            ==  42);
+  REQUIRE(temp{rational{  0}}            ==   0);
+  REQUIRE(temp{static_cast<double>(-40)} == -40);
+  REQUIRE(temp{static_cast<double>( 42)} ==  42);
+
+  // Raw must match value for direct storage.
+  REQUIRE(temp{rational{-40}}.Raw == -40);
+  REQUIRE(temp{rational{ 42}}.Raw ==  42);
+}
+
+TEST_CASE("bound-to-bound assignment preserves value across direct storages",
+          "[bound][signed][regression]")
+{
+  // unsigned-direct → signed-direct
+  using upos = bound<{0, 30}>;
+  using s40  = bound<{-40, 50}>;
+  upos u{25};
+  s40  s{u};
+  REQUIRE(s     == 25);
+  REQUIRE(s.Raw == 25);
+
+  // signed-direct → signed-direct (different grids)
+  using s2 = bound<{-20, 30}>;
+  s2  s2v{15};
+  s40 s40v{s2v};
+  REQUIRE(s40v     == 15);
+  REQUIRE(s40v.Raw == 15);
+
+  // same-grid stays a fast copy (Offset == 0, Factor == 1)
+  s40 s40w{s40v};
+  REQUIRE(s40w     == 15);
+  REQUIRE(s40w.Raw == 15);
+}
+
 TEST_CASE("mixed signed/unsigned arithmetic", "[bound][signed][mixed]")
 {
   using u100 = bound<{0, 100}>;

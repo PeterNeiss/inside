@@ -11,6 +11,7 @@
 #include "bound/multiplication.hpp"
 #include "bound/division.hpp"
 #include "bound/assignment.hpp"
+#include "bound/predicates.hpp"
 
 //---------------------------------------------------------------------------
 // bound — public-facing struct that ties everything together.
@@ -144,10 +145,13 @@ namespace bnd
          *this, pol, std::forward<A>(action)};
     }
 
-    auto with_round()         { return policy<ignore_round>(); }
-    auto with_round_nearest() { return policy<round_nearest>(); }
-    auto with_clamp()         { return policy<clamp>(); }
-    auto with_wrap()          { return policy<wrap>(); }
+    auto with_round()           { return policy<ignore_round>(); }
+    auto with_round_nearest()   { return policy<round_nearest>(); }
+    auto with_floor()           { return policy<round_floor>(); }
+    auto with_ceil()            { return policy<round_ceil>(); }
+    auto with_round_half_even() { return policy<round_half_even>(); }
+    auto with_clamp()           { return policy<clamp>(); }
+    auto with_wrap()            { return policy<wrap>(); }
 
     template <typename A>
     auto on_wrap(A&& action)
@@ -408,6 +412,88 @@ namespace bnd
   };
 
   //---------------------------------------------------------------------------
+  // saturated_cast / checked_cast / unchecked_cast
+  //
+  // Free-function casts that complement the constructors. Unlike a direct
+  // `B{value}` call, these read naturally in algorithm callbacks
+  // (`std::transform`, `std::ranges::views::transform`) and make the
+  // intent — clamp vs. throw vs. trust — explicit at the call site.
+  //---------------------------------------------------------------------------
+  template <boundable B, arithmetic A>
+  [[nodiscard]] constexpr B saturated_cast(A value)
+  {
+    B b{};                  // default-init; immediately overwritten below
+    b.with_clamp() = value; // clamp regardless of B's declared policy
+    return b;
+  }
+
+  template <boundable B, boundable A>
+  [[nodiscard]] constexpr B saturated_cast(A value)
+  {
+    B b{};
+    b.with_clamp() = value;
+    return b;
+  }
+
+  //---------------------------------------------------------------------------
+  // clamp_floor / clamp_ceil / clamp_round
+  //
+  // Compose `with_clamp` and one of the rounding modes — the canonical
+  // pipeline for "double in, bounded integer out, never throw" used in
+  // audio, graphics, and DSP code. Without these helpers the caller would
+  // chain `with_clamp().policy<round_floor>()` etc. by hand.
+  //---------------------------------------------------------------------------
+  template <boundable B, arithmetic A>
+  [[nodiscard]] constexpr B clamp_floor(A value)
+  {
+    B b{};
+    b.template policy<clamp | round_floor>() = value;
+    return b;
+  }
+
+  template <boundable B, arithmetic A>
+  [[nodiscard]] constexpr B clamp_ceil(A value)
+  {
+    B b{};
+    b.template policy<clamp | round_ceil>() = value;
+    return b;
+  }
+
+  template <boundable B, arithmetic A>
+  [[nodiscard]] constexpr B clamp_round(A value)
+  {
+    B b{};
+    b.template policy<clamp | round_nearest>() = value;
+    return b;
+  }
+
+  template <boundable B, arithmetic A>
+  [[nodiscard]] constexpr B checked_cast(A value)
+  {
+    if (will_conversion_overflow<B>(value))
+      throw std::system_error(make_error_code(errc::domain_error),
+                              "checked_cast: value out of bound interval");
+    if (will_conversion_truncate<B>(value))
+      throw std::system_error(make_error_code(errc::rounding_error),
+                              "checked_cast: value does not land on notch");
+    return B{value};
+  }
+
+  // `unchecked_cast` is the strong sibling of constructing via the `unsafe`
+  // policy: it routes through `bound<G, unsafe>` so the compiler can elide
+  // every domain/round check. UB if the caller's value is actually out of
+  // range — same contract as bounded::integer's `assume_in_range`.
+  template <boundable B, arithmetic A>
+  [[nodiscard]] constexpr B unchecked_cast(A value)
+  {
+    using twin = bound<Grid<B>, unsafe>;
+    twin t{value};
+    B out;
+    out.Raw = t.Raw;        // same grid → identical raw layout
+    return out;
+  }
+
+  //---------------------------------------------------------------------------
   // comparison
   //---------------------------------------------------------------------------
   template <boundable L, boundable R>
@@ -573,6 +659,22 @@ namespace bnd
   { return lift([](auto l, auto r){ return l * r; }, lhs, rhs); }
 
   //---------------------------------------------------------------------------
+  // add_all / mul_all — variadic folds
+  //
+  // `a + b + c + d` works today via pairwise `add`, threading four grid
+  // widenings. `add_all(a, b, c, d)` is the variadic equivalent — same
+  // pairwise widening, but the fold reads cleaner and matches Chromium's
+  // `CheckAdd(a, b, c)` idiom.
+  //---------------------------------------------------------------------------
+  template <boundable First, boundable... Rest>
+  [[nodiscard]] constexpr auto add_all(First const& first, Rest const&... rest)
+  { return (first + ... + rest); }
+
+  template <boundable First, boundable... Rest>
+  [[nodiscard]] constexpr auto mul_all(First const& first, Rest const&... rest)
+  { return (first * ... * rest); }
+
+  //---------------------------------------------------------------------------
   // div
   //---------------------------------------------------------------------------
   template <boundable L, boundable R, policy_flag F = none, typename A = no_action>
@@ -649,6 +751,31 @@ namespace bnd
   //---------------------------------------------------------------------------
   template<auto value>
   inline constexpr auto just = bound<grid{value}>{value};
+
+  //---------------------------------------------------------------------------
+  // _b literal — compile-time bound<{N, N}> from an integer literal.
+  //   auto five = 5_b;            // bound<{5, 5}>
+  //   auto x    = 10_b + my_bnd;  // grid widening via just<N> + bound
+  //---------------------------------------------------------------------------
+  namespace _detail
+  {
+    template<char... Chars>
+    consteval imax parse_b_literal()
+    {
+      // The literal operator strips any `'` digit-separators, leaves digits
+      // only; sign is unary `-` applied to the result by the parser. We only
+      // accept decimal digits — `0x`/`0b` prefixes would need a different
+      // parser and aren't needed for grid bounds.
+      imax v = 0;
+      ((Chars >= '0' && Chars <= '9'
+          ? (v = v * 10 + (Chars - '0'), 0)
+          : 0), ...);
+      return v;
+    }
+  }
+
+  template<char... Chars>
+  constexpr auto operator""_b() { return just<_detail::parse_b_literal<Chars...>()>; }
 
   //---------------------------------------------------------------------------
   // operator++ / operator-- for slim::optional<bound>

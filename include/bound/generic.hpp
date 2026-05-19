@@ -137,6 +137,44 @@ namespace bnd
   inline constexpr umax NotchCount = (Notch<B> == 0) ?
     0 : (Interval<B>/Notch<B>).value().Numerator;
 
+  //---------------------------------------------------------------------------
+  // direct_lower_imax / raw_from_offset
+  //
+  // Bridge between "L-offset" (the natural product of the offset-encoded
+  // arithmetic in assignment.hpp) and "L.Raw" (what gets stored). For
+  // notch-offset storage they're identical. For direct storage Raw is the
+  // *value*, so Raw = offset + Lower<L> — without this adjustment, a
+  // signed-direct bound silently stores the offset, e.g. `bound<{-40, 60}>`
+  // built from `rational{-40}` would record Raw=0 instead of Raw=-40.
+  //---------------------------------------------------------------------------
+  template <boundable B>
+  inline constexpr imax direct_lower_imax = []{
+    if constexpr (IsDirectStorage<B>)
+      return (Lower<B>.Denominator < 0)
+          ? -static_cast<imax>(Lower<B>.Numerator)
+          :  static_cast<imax>(Lower<B>.Numerator);
+    else
+      return imax{0};
+  }();
+
+  template <boundable L>
+  constexpr raw_t<L> raw_from_offset(umax offset) noexcept
+  {
+    if constexpr (IsDirectStorage<L>)
+      return raw_cast<L>(static_cast<imax>(offset) + direct_lower_imax<L>);
+    else
+      return raw_cast<L>(offset);
+  }
+
+  template <boundable L>
+  constexpr raw_t<L> raw_from_offset(imax offset) noexcept
+  {
+    if constexpr (IsDirectStorage<L>)
+      return raw_cast<L>(offset + direct_lower_imax<L>);
+    else
+      return raw_cast<L>(static_cast<umax>(offset));
+  }
+
   template <boundable B>
   inline constexpr umax LowerIndex = (Lower<B>/Notch<B>).value_or(0_r).Numerator;
 

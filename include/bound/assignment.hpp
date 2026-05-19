@@ -107,17 +107,41 @@ namespace bnd
           not IsRawRational<L> && not IsRawRational<R>
           && abs_den(Factor.Denominator) == 1 && abs_den(Offset.Denominator) == 1;
 
-      // Map rhs.Raw into L's raw space (requires is_integer_mapping)
+      // Map rhs.Raw into L's raw space (requires is_integer_mapping).
+      //
+      // The Offset/Factor formula assumes both sides use offset encoding —
+      // i.e. R.Raw is the R-offset and the result is the L-offset. Two
+      // adjustments make it work for direct-storage operands:
+      //
+      //   1. If R is IsDirectStorage<R>, rhs_raw is already R-value
+      //      (not R-offset). Subtract Lower<R> first so the formula sees
+      //      a true R-offset.
+      //   2. If L is IsDirectStorage<L>, L.Raw must be L-value (not
+      //      L-offset). Add Lower<L> after the formula. (Equivalently:
+      //      raw_from_offset<L>.)
+      //
+      // Both adjustments use only integer arithmetic because is_integer_mapping
+      // already guarantees Notch and Lower have integer denominators.
       static constexpr imax map_raw(auto rhs_raw)
       {
+        imax r_offset = static_cast<imax>(rhs_raw);
+        if constexpr (IsDirectStorage<R>)
+          r_offset -= direct_lower_imax<R>;
+
+        imax l_offset;
         if constexpr (Offset == 0_r)
-          return static_cast<imax>(Factor.Numerator) * static_cast<imax>(rhs_raw);
+          l_offset = static_cast<imax>(Factor.Numerator) * r_offset;
         else if constexpr (Offset.Denominator > 0)
-          return static_cast<imax>(Offset.Numerator)
-               + static_cast<imax>(Factor.Numerator) * static_cast<imax>(rhs_raw);
+          l_offset = static_cast<imax>(Offset.Numerator)
+                   + static_cast<imax>(Factor.Numerator) * r_offset;
         else
-          return static_cast<imax>(Factor.Numerator) * static_cast<imax>(rhs_raw)
-               - static_cast<imax>(Offset.Numerator);
+          l_offset = static_cast<imax>(Factor.Numerator) * r_offset
+                   - static_cast<imax>(Offset.Numerator);
+
+        if constexpr (IsDirectStorage<L>)
+          return l_offset + direct_lower_imax<L>;
+        else
+          return l_offset;
       }
 
     private:
@@ -295,10 +319,24 @@ namespace bnd
       // Clamp happened first (above), then we round the clamped value onto
       // a notch. Order matters: rounding-then-clamping could push a
       // boundary-adjacent midpoint *past* the boundary by one notch.
+      // `raw_from_offset<L>` produces the proper Raw for both offset-encoded
+      // and direct-encoded storage (the latter adds Lower<L> back).
       if constexpr (HasPolicy<L, P, round_nearest>)
-        lhs.Raw = raw_cast<L>((raw.Numerator + den/2) / den);
+        lhs.Raw = raw_from_offset<L>((raw.Numerator + den/2) / den);
+      else if constexpr (HasPolicy<L, P, round_floor>)
+        lhs.Raw = raw_from_offset<L>(raw.Numerator / den);
+      else if constexpr (HasPolicy<L, P, round_ceil>)
+        lhs.Raw = raw_from_offset<L>((raw.Numerator + den - 1) / den);
+      else if constexpr (HasPolicy<L, P, round_half_even>)
+      {
+        umax q = raw.Numerator / den;
+        umax r = raw.Numerator % den;
+        if (r * 2 < den)       lhs.Raw = raw_from_offset<L>(q);
+        else if (r * 2 > den)  lhs.Raw = raw_from_offset<L>(q + 1);
+        else                   lhs.Raw = raw_from_offset<L>((q & 1) ? q + 1 : q);
+      }
       else
-        lhs.Raw = raw_cast<L>(raw.Numerator / den);
+        lhs.Raw = raw_from_offset<L>(raw.Numerator / den);
     }
 
     if constexpr (is_clamp_action<plain<A>>)
@@ -320,13 +358,27 @@ namespace bnd
     {
       rational raw = ((rhs - Lower<L>)/Notch<L>).value();
       umax den = static_cast<umax>(raw.Denominator);
+      // `raw_from_offset<L>` handles both offset-encoded and direct-encoded
+      // storage — for direct, it adds Lower<L> back to produce the value.
       if (den == 1)
-      { lhs.Raw = raw_cast<L>(raw.Numerator); return true; }
+      { lhs.Raw = raw_from_offset<L>(raw.Numerator); return true; }
 
       if constexpr (HasPolicy<L, P, round_nearest>)
-        lhs.Raw = raw_cast<L>((raw.Numerator + den/2) / den);
+        lhs.Raw = raw_from_offset<L>((raw.Numerator + den/2) / den);
+      else if constexpr (HasPolicy<L, P, round_floor>)
+        lhs.Raw = raw_from_offset<L>(raw.Numerator / den);
+      else if constexpr (HasPolicy<L, P, round_ceil>)
+        lhs.Raw = raw_from_offset<L>((raw.Numerator + den - 1) / den);
+      else if constexpr (HasPolicy<L, P, round_half_even>)
+      {
+        umax q = raw.Numerator / den;
+        umax r = raw.Numerator % den;
+        if (r * 2 < den)       lhs.Raw = raw_from_offset<L>(q);
+        else if (r * 2 > den)  lhs.Raw = raw_from_offset<L>(q + 1);
+        else                   lhs.Raw = raw_from_offset<L>((q & 1) ? q + 1 : q);
+      }
       else if constexpr (HasPolicy<L, P, ignore_round>)
-        lhs.Raw = raw_cast<L>(raw.Numerator / den);
+        lhs.Raw = raw_from_offset<L>(raw.Numerator / den);
       else if (policy.round_check())
       {
         auto msg = bnd::to_string(rhs) + " does not land on notch " + bnd::to_string(Notch<L>);
@@ -336,7 +388,7 @@ namespace bnd
         return false;
       }
       else
-        lhs.Raw = raw_cast<L>(raw.Numerator / den);
+        lhs.Raw = raw_from_offset<L>(raw.Numerator / den);
       return true;
     }
   }
@@ -466,17 +518,17 @@ namespace bnd
     else
     {
       rational rat = *(Offset + *(Factor * rhs.Raw));
+      umax ad = static_cast<umax>(abs_den(rat.Denominator));
+      umax q;
       if constexpr (HasPolicy<L, P, round_nearest>)
-      {
-        // half-away-from-zero: bump magnitude when 2*remainder >= denom
-        umax ad = static_cast<umax>(abs_den(rat.Denominator));
-        umax q  = (rat.Numerator + ad / 2) / ad;
-        lhs.Raw = (rat.Denominator < 0)
-          ? raw_cast<L>(-static_cast<imax>(q))
-          : raw_cast<L>(q);
-      }
+        q = (rat.Numerator + ad / 2) / ad;     // half-away-from-zero
       else
-        lhs.Raw = raw_cast<L>(rat);
+        q = rat.Numerator / ad;                // truncation toward zero
+      // `rat` is the L-offset; `raw_from_offset<L>` converts to L.Raw,
+      // adding Lower<L> back for direct-storage targets.
+      lhs.Raw = (rat.Denominator < 0)
+        ? raw_from_offset<L>(-static_cast<imax>(q))
+        : raw_from_offset<L>(q);
     }
   }
 
