@@ -8,11 +8,32 @@
 #include "bound/grid.hpp"
 #include "bound/policy.hpp"
 
+//---------------------------------------------------------------------------
+// division / modulo
+//
+// `division::div` returns `slim::optional<result>` because division by zero
+// is always possible at runtime. Two code paths:
+//   - native_div:   integer-aligned grids + `ignore_round` → use native
+//                   integer division, return type is integer-grid bound.
+//   - rational:     exact rational arithmetic; result grid is a rational
+//                   interval (`bound<{rational}>`), can overflow under
+//                   `checked`.
+//
+// `modulo::mod` is integer-only (the `native_mod` static_assert below
+// hard-rejects rational/non-`ignore_round` grids) — non-integer remainders
+// aren't well-defined on fractional notches.
+//---------------------------------------------------------------------------
 namespace bnd
 {
   template <boundable L, boundable R = L, policy_flag F = none>
   struct division
   {
+    // Native integer division fires only when all three conditions hold:
+    //   1. `ignore_round` is set (caller accepts truncation toward zero),
+    //   2. neither operand uses rational raw storage,
+    //   3. both operands are integer-aligned (notch + lower have integer
+    //      denominators).
+    // Otherwise the rational path runs and returns an exact `bound<rational>`.
     static constexpr bool native_div =
         ((F | BoundPolicy<L> | BoundPolicy<R>) & ignore_round)
         && !IsRawRational<L> && !IsRawRational<R>
@@ -92,6 +113,11 @@ namespace bnd
         && !IsRawRational<L> && !IsRawRational<R>
         && IsIntegerAligned<L> && IsIntegerAligned<R>;
 
+    // Hard requirement, not a fallback: there is no exact-rational modulo —
+    // `a mod b` is only defined when both operands are integers. The grid
+    // must therefore be integer-aligned and `ignore_round` must be set
+    // (modulo on rational grids would have to round-then-mod, which is not
+    // a meaningful operation).
     static_assert(native_mod, "modulo requires integer-valued grids and ignore_round");
 
     static constexpr imax max_rem =

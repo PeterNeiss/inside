@@ -34,6 +34,11 @@ namespace bnd
   // The interval must divide evenly by the notches.
   // If Notch is zero, all rationals in the interval are allowed, raw is not offset
   //---------------------------------------------------------------------------
+  // `grid` is an NTTP type whose operator+/-/*// is the engine of compile-time
+  // result-grid inference for `bound`: every bound arithmetic operator computes
+  // its result grid here, so the result's interval is guaranteed by
+  // construction to contain every reachable value.
+  //---------------------------------------------------------------------------
   struct grid
   {
     interval Interval;
@@ -82,6 +87,10 @@ namespace bnd
     { return grid{interval{0_r, 0_r}, rational::make_sentinel()}; }
   };
 
+  // Pick the smallest raw type that can hold every reachable index in G.
+  // Order matters: notch-zero grids have no integer index space (rational
+  // raw is the only option); signed-direct fits Lower < 0 with notch 1;
+  // unsigned-offset (max_notch slots) is the fallback for everything else.
   template <grid G>
   using storage_min =
     std::conditional_t<(G.Notch == 0_r), rational,
@@ -135,6 +144,10 @@ namespace bnd
     if (rhs.Interval.Lower == 0_r && rhs.Interval.Upper == 0_r)
       return slim::nullopt;
 
+    // `step` is the smallest non-zero magnitude the divisor can take. We use
+    // it to split the divisor's interval into a positive side [step, Upper]
+    // and a negative side [Lower, -step], skipping the zero gap. When both
+    // sides are present the result is the *union* of the two sub-divisions.
     rational step = (rhs.Notch != 0_r) ? abs(rhs.Notch) : 1_r;
     bool has_pos = 0_r < rhs.Interval.Upper;
     bool has_neg = 0_r > rhs.Interval.Lower;

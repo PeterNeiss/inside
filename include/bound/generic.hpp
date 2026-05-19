@@ -11,6 +11,17 @@
 #include "bound/grid.hpp"
 #include "bound/policy_flag.hpp"
 
+//---------------------------------------------------------------------------
+// generic — type-level traits and predicates used everywhere else.
+//
+// Forward-declares `bound<G, P>` and pulls out its template parameters as
+// reusable variable templates: `Grid<B>`, `BoundPolicy<B>`, `Lower<B>`,
+// `Upper<B>`, `Notch<B>`, `Interval<B>`, plus the storage shape (`raw_t<B>`,
+// `IsRawRational`, `IsDirectStorage`, `IsNotchStorage`) and the raw/value
+// converters (`raw_cast`, `to_value`, `from_value`). Also defines the
+// `boundable`, `numeric`, and `bound_assignable` concepts that arithmetic
+// and assignment specialisations use to filter overloads.
+//---------------------------------------------------------------------------
 namespace bnd
 {
   template<typename T>
@@ -74,7 +85,12 @@ namespace bnd
       return value.to<raw_t<B>>().value_or(0);
   }
 
-  // Raw == value: no offset arithmetic needed
+  // Raw == value: no offset arithmetic needed.
+  //   - IsRawRational           — value stored verbatim as rational.
+  //   - Notch == 1 && Lower == 0  — offset is zero, value = Raw.
+  //   - Notch == 1 && signed raw  — signed types hold the value directly
+  //                                 across the whole range (offset would
+  //                                 be redundant; matches native int perf).
   template <boundable B>
   inline constexpr bool IsDirectStorage =
       IsRawRational<B>
@@ -153,9 +169,22 @@ namespace bnd
   // Forward decl — defined in assignment.hpp
   template <typename L, typename R> struct assignment;
 
-  // Compile-time prerequisites for L = R: intervals overlap (for typed-interval R),
-  // and (for boundable R) the notch ratio is integral or rounding is accepted.
-  // Skipped for floating_point/rational R since they have no static interval.
+  // Compile-time prerequisites for L = R. Three clauses gate three failure
+  // modes that should all be caught at the call site (not deep in a template
+  // instantiation):
+  //   1. R is numeric                              — anything else is a hard
+  //                                                  type error.
+  //   2. intervals overlap (typed-interval R only) — if R's full interval
+  //                                                  lies wholly outside L's,
+  //                                                  no assignment can succeed.
+  //                                                  Skipped for floating-point
+  //                                                  and rational R since they
+  //                                                  have no static interval.
+  //   3. integer notch ratio OR ignore_round set   — a non-integer
+  //                                                  Factor.Denominator means
+  //                                                  R's notch doesn't divide
+  //                                                  L's; the user must opt
+  //                                                  into rounding.
   // Named `bound_assignable` (not `assignable_from`) to avoid shadowing the
   // unrelated `std::assignable_from` from <concepts>.
   template <typename L, typename R, policy_flag P = checked>

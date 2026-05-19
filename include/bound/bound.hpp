@@ -12,6 +12,20 @@
 #include "bound/division.hpp"
 #include "bound/assignment.hpp"
 
+//---------------------------------------------------------------------------
+// bound — public-facing struct that ties everything together.
+//
+// This header is the one users include. It defines `bound<G, P>` and its
+// per-instance operators (assignment, negation, `value()`, `policy()`,
+// `with_clamp/wrap/round/...`, increment, compare). The free-function
+// arithmetic (`add`, `sub`, `mul`, `div`, `mod` with policy/action overloads)
+// and the `bound_range` iterator helper also live here.
+//
+// Heavy lifting is delegated: `addition.hpp` / `multiplication.hpp` /
+// `division.hpp` carry the per-operator code; `assignment.hpp` does
+// narrowing/clamp/wrap/sentinel; `generic.hpp` and `policy.hpp` supply the
+// type-level traits and the policy machinery used throughout.
+//---------------------------------------------------------------------------
 namespace slim
 {
   template <bnd::grid G, bnd::policy_flag P>
@@ -77,6 +91,9 @@ namespace bnd
       requires (abs_den(G.Notch.Denominator) == 1 && G.Notch.Numerator != 0)
     { return to_value(*this); }
 
+    // Explicit so `bound + double` doesn't silently demote arithmetic to
+    // floating-point and lose the exact-rational guarantees. Callers must
+    // opt in with `double(b)` when they actually want float output.
     constexpr explicit operator double() const { return G.raw_to_double(Raw); }
 
     constexpr operator rational() const
@@ -98,6 +115,9 @@ namespace bnd
       else if constexpr (IsDirectStorage<bound> || IsDirectStorage<negative>)
         from_value(neg, -to_value(*this));
       else
+        // Unsigned-offset fast path: with offset encoding `value = Raw*Notch + Lower`,
+        // negating the value is equivalent to indexing from the opposite end of the
+        // grid — i.e. `NotchCount - Raw`. No rational arithmetic in the hot path.
         neg.Raw = raw_cast<negative>(NotchCount<bound> - Raw);
       return neg;
     }
@@ -671,6 +691,9 @@ namespace bnd
   struct bound_range
   {
     using value_type = bound<G, P>;
+    // Iteration internally needs wrap semantics regardless of the user's
+    // policy — clamp would stick at the upper boundary forever, and
+    // sentinel would short-circuit the loop after one `++` past the end.
     using wrap_type = bound<G, (P & ~(clamp | sentinel)) | wrap>;
 
     struct iterator

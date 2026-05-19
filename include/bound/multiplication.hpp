@@ -8,6 +8,18 @@
 #include "bound/grid.hpp"
 #include "bound/policy.hpp"
 
+//---------------------------------------------------------------------------
+// multiplication — `mul(L, R, policy, action) -> bound<Grid<L> * Grid<R>>`.
+//
+// The integer hot path branches on which corner of the four-quadrant product
+// {LoL*LoR, LoL*HiR, HiL*LoR, HiL*HiR} hits `Lower<result>`. Each branch is
+// arranged so the runtime arithmetic is `umax * umax` (no signed overflow)
+// followed by integer offset corrections — see the `to_result` lambda and
+// the comments around `static_cast<umax>` for the integer-promotion UB note.
+//
+// Rational-result and direct-storage cases (the "all-integer-aligned" fast
+// path) come first.
+//---------------------------------------------------------------------------
 namespace bnd
 {
   template <boundable L, boundable R = L>
@@ -82,6 +94,14 @@ namespace bnd
       // promotion turns `raw * raw` into `int * int`, so any product above
       // INT_MAX is signed-overflow UB. Cast both factors to umax to force
       // the multiplication into 64-bit unsigned space before adding offsets.
+      //
+      // The four `if constexpr` branches below cover the four sign-quadrant
+      // cases for the result interval. For any product `[loL,hiL]*[loR,hiR]`
+      // the resulting Lower must be one of {loL*loR, loL*hiR, hiL*loR,
+      // hiL*hiR}; we pick the matching branch and use sign-flipped helpers
+      // (negative<L> / negative<R>) to reduce each case to the all-positive
+      // formula. The trailing static_assert exists to catch any future grid
+      // arithmetic change that would invalidate this case analysis.
       if constexpr (Lower<result> == (Lower<L> * Lower<R>).value())
       {
         return to_result

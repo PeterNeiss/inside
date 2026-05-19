@@ -9,6 +9,12 @@
 
 #include <format>
 
+//---------------------------------------------------------------------------
+// formatter — `std::formatter` specializations for `bound<G, P>` and
+// `rational`. Both delegate to `bnd::to_string`, so `std::format("{}", b)`
+// produces the same output as `bnd::to_string(b)`. Kept in its own header
+// so callers who don't want to drag in `<format>` aren't forced to.
+//---------------------------------------------------------------------------
 template <bnd::grid G, bnd::policy_flag P>
 struct std::formatter<bnd::bound<G, P>> : std::formatter<std::string>
 {

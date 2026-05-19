@@ -49,6 +49,9 @@ TEST_CASE("rational construction normalises", "[rational][construction]")
     constexpr auto imin = std::numeric_limits<imax>::min();
     REQUIRE_THROWS_AS((rational{1u, imin}), std::system_error);
     REQUIRE_THROWS_AS((rational{1,  imin}), std::system_error);
+    // Negative-num path: the validation must run BEFORE the mem-init
+    // negation, otherwise -imax_min would be signed overflow (UB).
+    REQUIRE_THROWS_AS((rational{-1, imin}), std::system_error);
   }
 
   SECTION("from int min")
@@ -216,6 +219,25 @@ TEST_CASE("rational overflow detection", "[rational][overflow]")
   {
     // -M - 1 would overflow on the negative side
     REQUIRE_FALSE((rational{M, -1} - rational{1u}).has_value());
+  }
+
+  SECTION("checked arithmetic rejects denominators exceeding imax_max")
+  {
+    // 2^62 * 3 = 1.5 * 2^63 — fits in umax, exceeds imax_max.
+    // (Coprime denominators so the cross-trim cannot reduce the lcm.)
+    imax p62 = imax{1} << 62;
+
+    // mul: a_ad * b_ad after cross-trim still > imax_max.
+    REQUIRE_FALSE((rational{1u, p62} * rational{1u, 3}).has_value());
+
+    // add: lcm > imax_max.
+    REQUIRE_FALSE((rational{1u, p62} + rational{1u, 3}).has_value());
+
+    // inv of M (M > imax_max) would land M in the result's Denominator slot.
+    REQUIRE_FALSE(rational::inv(rational{M, 1}).has_value());
+
+    // div via the checked path inherits the inv range check.
+    REQUIRE_FALSE((rational{1u, 1} / rational{M, 1}).has_value());
   }
 
   SECTION("add to_string sees overflow boundary fall-through")

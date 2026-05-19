@@ -217,6 +217,22 @@ namespace bnd
       if (num == 0) den = 1;
       trim(num, den);
     }
+
+    // Computes the signed-encoded denominator for the signed ctor, validating
+    // BEFORE the negation so that `-den` is never UB. Throws on den == 0 or
+    // den == imax_min — the canonicalize() running in the ctor body would
+    // also catch these, but only after the mem-init has already evaluated
+    // `-den` and stepped on UB.
+    static constexpr imax signed_den_from(std::signed_integral auto num, imax den)
+    {
+      if (den == 0)
+        throw std::system_error(make_error_code(errc::domain_error),
+                                "Denominator of Zero is invalid");
+      if (den == std::numeric_limits<imax>::min())
+        throw std::system_error(make_error_code(errc::domain_error),
+                                "Denominator imax_min is invalid (cannot be negated)");
+      return (num < 0) ? -den : den;
+    }
   };
 
 
@@ -253,7 +269,7 @@ namespace bnd
   //---------------------------------------------------------------------------
   constexpr rational::rational(std::signed_integral auto num, imax den)
    :Numerator{safe_abs(num)},
-    Denominator{ (num < 0) ? -den : den }
+    Denominator{ signed_den_from(num, den) }
   { canonicalize(Numerator, Denominator); }
 
   constexpr rational::rational(std::floating_point auto value)
@@ -364,7 +380,8 @@ namespace bnd
     {
       if (mul_overflow(a_ad, b_ad_r, &denominator)    ||   // = lcm(a_ad, b_ad)
           mul_overflow(a.Numerator, b_ad_r, &A)       ||
-          mul_overflow(b.Numerator, a_ad_r, &B))
+          mul_overflow(b.Numerator, a_ad_r, &B)       ||
+          denominator > static_cast<umax>(std::numeric_limits<imax>::max()))
       {
         if consteval { rational_overflow("rational +: cross-multiplication overflow"); }
         return ret_t{slim::nullopt};
@@ -455,7 +472,8 @@ namespace bnd
     if constexpr (Checked)
     {
       if (mul_overflow(a.Numerator, b.Numerator, &numerator) ||
-          mul_overflow(a_ad, b_ad, &denominator))
+          mul_overflow(a_ad, b_ad, &denominator)             ||
+          denominator > static_cast<umax>(std::numeric_limits<imax>::max()))
       {
         if consteval { rational_overflow("rational *: numerator or denominator overflow"); }
         return ret_t{slim::nullopt};
@@ -488,7 +506,17 @@ namespace bnd
     using ret_t = std::conditional_t<Checked, slim::optional<rational>, rational>;
 
     if constexpr (Checked)
-      if (a.Numerator == 0) return ret_t{slim::nullopt};
+    {
+      // a.Numerator goes into the result's Denominator slot, so it must fit
+      // in imax (otherwise the static_cast wraps and any later -Denominator
+      // is UB).
+      if (a.Numerator == 0 ||
+          a.Numerator > static_cast<umax>(std::numeric_limits<imax>::max()))
+      {
+        if consteval { rational_overflow("rational inv: numerator zero or out of denominator range"); }
+        return ret_t{slim::nullopt};
+      }
+    }
 
     rational r;
     r.Numerator   = abs_den(a.Denominator);
@@ -497,22 +525,31 @@ namespace bnd
     return ret_t{r};
   }
 
-  // div(a, b) = a * inv(b). After b != 0, inv_unchecked is safe; mul_impl
-  // performs the same cross-trims and final products as the prior hand-rolled
-  // div_impl (the `b.Num`/`b_ad` labels are simply swapped by inv).
+  // div(a, b) = a * inv(b). The checked path goes through inv_impl<true> so
+  // the b.Numerator-fits-in-imax check (added there) propagates here too;
+  // the unchecked path skips it (caller's contract).
   template <bool Checked>
   inline constexpr auto rational::div_impl(rational const& a, rational const& b)
   {
     using ret_t = std::conditional_t<Checked, slim::optional<rational>, rational>;
 
     if constexpr (Checked)
-      if (b.Numerator == 0) return ret_t{slim::nullopt};
-
-    return mul_impl<Checked>(a, inv_unchecked(b));
+    {
+      auto inv_b = inv_impl<true>(b);
+      if (!inv_b.has_value()) return ret_t{slim::nullopt};
+      return mul_impl<true>(a, *inv_b);
+    }
+    else
+      return mul_impl<false>(a, inv_impl<false>(b));
   }
 
   //---------------------------------------------------------------------------
-  // unchecked rational arithmetic — caller takes responsibility
+  // unchecked rational arithmetic — caller takes responsibility for:
+  //   - no umax overflow on the numerator/denominator products,
+  //   - no zero divisor (div_unchecked) or zero numerator (inv_unchecked),
+  //   - the resulting Denominator fitting in imax (i.e., the umax-side
+  //     denominator does not exceed imax_max). The checked variants enforce
+  //     all three; unchecked skips them all.
   //---------------------------------------------------------------------------
   inline constexpr rational rational::add_unchecked(rational a, rational b)
   { return add_impl<false>(a, b); }

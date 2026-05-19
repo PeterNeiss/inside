@@ -8,6 +8,20 @@
 #include "bound/grid.hpp"
 #include "bound/policy.hpp"
 
+//---------------------------------------------------------------------------
+// addition — `add(L, R, policy, action) -> bound<G>` where G is the result
+// grid computed by `Grid<L> + Grid<R>` (see grid.hpp). The grid arithmetic
+// is sound by construction: `[loL, hiL] + [loR, hiR]` always contains every
+// runtime sum, so overflow can only happen on rational-raw results.
+//
+// Specialises on the storage shapes of L, R, result:
+//   1. rational result    — call rational::add (checked) or add_unchecked.
+//   2. mixed (one rational, one integer raw) — compute in rational, then
+//                                              re-map back to result's raw.
+//   3. any direct storage — integer-space add via to_value/from_value.
+//   4. both notch-offset  — pure integer math using `lhs_widen` / `rhs_widen`
+//                           to scale each side's raw to result's notch.
+//---------------------------------------------------------------------------
 namespace bnd
 {
   template <boundable L, boundable R = L>
@@ -30,6 +44,10 @@ namespace bnd
                                             result,
                                             return_type_for<F>>;
 
+    // When L and R have different notches, the result grid's notch is
+    // gcd(NL, NR). To add the raws we must first scale each side up to the
+    // result's notch: lhs_widen = NL/Nresult, rhs_widen = NR/Nresult. Both
+    // are guaranteed to be exact integers because Nresult divides NL and NR.
     static constexpr imax lhs_widen = static_cast<imax>((Notch<result> / Notch<L>).value_or(1_r).Numerator);
     static constexpr imax rhs_widen = static_cast<imax>((Notch<result> / Notch<R>).value_or(1_r).Numerator);
 

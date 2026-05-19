@@ -9,6 +9,12 @@
 
 #include <ostream>
 
+//---------------------------------------------------------------------------
+// print — `to_string`, `to_string_debug`, and `operator<<` for boundables
+// and `rational`. The debug form also prints the raw value, raw type, and
+// grid — useful when inspecting failing tests or storage choices. Separate
+// from `format.hpp` so test/benchmark binaries can opt out of `<ostream>`.
+//---------------------------------------------------------------------------
 namespace bnd
 {
   template <boundable B>

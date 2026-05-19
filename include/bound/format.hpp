@@ -8,6 +8,13 @@
 
 #include <string>
 
+//---------------------------------------------------------------------------
+// format — `to_string` overloads for the library's value types.
+//
+// Pretty-prints `rational`, `interval`, `grid`, plus a fallback for plain
+// arithmetic types. Used by error messages, debug output, and the
+// `std::formatter` specializations in `formatter.hpp`.
+//---------------------------------------------------------------------------
 namespace bnd
 {
   inline std::string to_string(rational r)
@@ -52,7 +59,9 @@ namespace bnd
         }
         return str;
       }
-      // overflow: fall through to mixed-number/fraction form below
+      // Decimal expansion would overflow the umax scratch buffer. Fall back
+      // silently to the mixed-number/fraction form — `to_string` must always
+      // produce *some* readable output, never an error.
     }
 
     // mixed number for improper fractions

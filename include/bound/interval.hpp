@@ -34,6 +34,11 @@ namespace bnd
   // At least one rational is in the interval
   // The rationals are embedded in the interval with rational == Lower == Upper
   //---------------------------------------------------------------------------
+  // Like `grid`, an NTTP type; its operator+/-/*// is used by `grid` to
+  // compute result intervals at compile time. Division returns nullopt when
+  // the divisor straddles zero — `grid::operator/` re-runs division on the
+  // two zero-free halves and unions them.
+  //---------------------------------------------------------------------------
   struct interval
   {
     rational Lower;
@@ -65,10 +70,15 @@ namespace bnd
     constexpr bool includes(arithmetic auto a) const
     { return includes(rational{a}); }
 
-    // NOT equivalent to !includes()
+    // `excludes` means *strictly disjoint* — the intervals share no value.
+    // `!includes()` is weaker: it only rules out total containment, so two
+    // overlapping intervals are `!includes` AND `!excludes`.
     constexpr bool excludes(interval const& rhs) const
     { return rhs.Upper < Lower || Upper < rhs.Lower; }
 
+    // The first clause `rhs.includes(*this)` catches the case where rhs
+    // wholly contains us — neither of rhs's endpoints lands in `*this`, so
+    // the includes(Lower)/includes(Upper) checks alone would miss it.
     constexpr bool overlaps(interval const& rhs) const
     { return rhs.includes(*this) || includes(rhs.Lower) || includes(rhs.Upper); }
 

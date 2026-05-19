@@ -10,6 +10,19 @@
 namespace bnd
 {
   //---------------------------------------------------------------------------
+  // assignment — narrowing/coercion between bounded and arithmetic types.
+  //
+  // Three specialisations dispatch on the source type:
+  //   assignment<L, integral R>           — raw integer rhs (fast path)
+  //   assignment<L, real R>               — float, double, rational rhs
+  //   assignment<L, boundable R>          — bound-to-bound, with raw remap
+  //
+  // Each specialisation routes through `store` (the in-range case) and
+  // `handle_out_of_range` / `apply_clamp` / `apply_wrap` (the policy case).
+  // The boundable-to-boundable path also exposes `is_integer_mapping` and
+  // `map_raw`, so when both sides have integer raws the conversion is a
+  // pure-integer formula — no rational arithmetic in the hot path.
+  //---------------------------------------------------------------------------
   // assignment
   //---------------------------------------------------------------------------
   template <typename L, typename R>
@@ -56,6 +69,15 @@ namespace bnd
   struct assignment<L,R>
   {
     private:
+      // Offset/Factor map an rhs.Raw to an lhs.Raw via
+      //   lhs.Raw = Factor * rhs.Raw + Offset.
+      // Three branches cover the three storage shapes:
+      //   1. L stores rational  — pass the rhs value through unchanged.
+      //   2. R stores rational  — pre-divide by Notch<L> so the formula
+      //                           stays in raw space.
+      //   3. both integer       — the integer branch (the hot path); the
+      //                           formula collapses to integer math in
+      //                           `is_integer_mapping` callers below.
       static constexpr rational calcOffset()
       {
         if constexpr (IsRawRational<L>)
@@ -270,6 +292,9 @@ namespace bnd
     {
       rational raw = ((clamped - Lower<L>)/Notch<L>).value();
       umax den = static_cast<umax>(raw.Denominator);
+      // Clamp happened first (above), then we round the clamped value onto
+      // a notch. Order matters: rounding-then-clamping could push a
+      // boundary-adjacent midpoint *past* the boundary by one notch.
       if constexpr (HasPolicy<L, P, round_nearest>)
         lhs.Raw = raw_cast<L>((raw.Numerator + den/2) / den);
       else

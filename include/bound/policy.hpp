@@ -10,11 +10,30 @@
 
 #include <system_error>
 
+//---------------------------------------------------------------------------
+// policy — runtime policy carrier, plus `policy_ref` for per-operation
+// dispatch.
+//
+//   policy<F, E>   — compile-time flags F (see policy_flag.hpp) plus an
+//                    optional `error_ref` E that holds an `std::error_code&`.
+//                    Empty Base Optimization (`empty_ref`) is used so the
+//                    no-error-code form is zero-sized.
+//   policy_ref     — wraps a `bound&` together with a `policy<...>` and a
+//                    tuple of `on_*` actions. Compound `+=`, `-=`, `*=`,
+//                    `/=`, `%=` flow through `policy_ref`, which routes the
+//                    overflow/clamp/wrap/error/sentinel action to the right
+//                    callback at the right point in the pipeline.
+//---------------------------------------------------------------------------
 namespace bnd
 {
   //---------------------------------------------------------------------------
   // policy
   //---------------------------------------------------------------------------
+  // `policy<F, E>` derives from `E` to enable EBO: when the user picks the
+  // throwing-on-error form, `E == empty_ref` is an empty base and `policy`
+  // carries zero bytes per instance. When the user calls `policy(ec)`, `E`
+  // becomes `error_ref` and the same struct carries an `std::error_code&`
+  // — no virtuals, no dispatch tables, choice resolved at compile time.
   struct empty_ref{ };
   struct error_ref
   {
@@ -134,6 +153,10 @@ namespace bnd
     public:
     B& Ref;
     P Policy;
+    // `[[no_unique_address]]` is load-bearing: each captureless action lambda
+    // is an empty type, and without this attribute the tuple would pad each
+    // one out to a byte. With it, `policy_ref<B, P>` carrying no actions has
+    // the same size as `policy_ref<B, P, no_action>`.
     [[no_unique_address]] std::tuple<As...> Actions;
 
     private:

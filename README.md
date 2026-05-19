@@ -72,8 +72,6 @@ bitwise `|` (e.g. `bound<{0, 100}, checked | round_nearest>`).
 | `round_nearest` | round to nearest notch (implies `ignore_round`) |
 | `ignore_zero` | division by zero is silent |
 | `ignore_domain` | suppress the runtime domain check |
-| `ignore_range` | suppress the runtime range check |
-| `fail_early` | escalate possible-fail conditions to compile-time errors |
 
 ### Per-operation override
 
@@ -401,6 +399,20 @@ r.round();                //  4   (half away from zero)
 ```
 
 `bound`'s conversion to `double` is `explicit`; use `double(b)` for floating-point arithmetic.
+
+`rational` also exposes a few standalone helpers:
+
+```cpp
+rational::inv(rational{3u, 4});         // slim::optional<rational> -> 4/3
+rational::inv(rational{0u});            // nullopt (zero numerator)
+
+divides_evenly(rational{6u}, rational{2u});   // true
+divides_evenly(rational{7u}, rational{2u});   // false (7/2 is non-integer)
+```
+
+`inv` returns `nullopt` when the result would put the original numerator into
+the denominator slot but it does not fit in `imax`. `divides_evenly` treats
+division by zero as `true` (convention: everything divides 0 evenly).
 
 ## Iteration
 

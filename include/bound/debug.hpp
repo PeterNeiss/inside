@@ -12,6 +12,16 @@
     #include <stacktrace>
 #endif
 
+//---------------------------------------------------------------------------
+// debug — error codes, `std::error_category`, and a few diagnostic helpers.
+//
+// `errc` enumerates the four failure modes (domain, divzero, overflow,
+// rounding). `bound_category` plus `make_error_code(errc)` plug into
+// `<system_error>` so `bound`'s exceptions and the `error_code&` API both
+// report uniformly. `overflow_trap` is the runtime sibling of the consteval
+// `rational_overflow`. `print_types` / `print_values` are static-assert
+// based debug helpers — handy when chasing template instantiation issues.
+//---------------------------------------------------------------------------
 namespace bnd
 {
   //---------------------------------------------------------------------------

@@ -9,6 +9,15 @@
 #include <type_traits>
 #include <utility>
 
+//---------------------------------------------------------------------------
+// lift — monadic composition for `slim::optional`.
+//
+// `lift(op, args...)` unwraps each `slim::optional` arg, calls `op`, and
+// re-wraps the result. If any arg is `nullopt`, returns `nullopt` without
+// invoking `op`. If `op` already returns `slim::optional<R>`, the result is
+// forwarded as-is (no double-wrap). Used pervasively by interval/grid/bound
+// arithmetic and by the optional-forwarding operators on `rational`.
+//---------------------------------------------------------------------------
 namespace bnd
 {
   //---------------------------------------------------------------------------
