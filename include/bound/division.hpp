@@ -28,21 +28,38 @@ namespace bnd
   template <boundable L, boundable R = L, policy_flag F = none>
   struct division
   {
-    // Native integer division fires only when all three conditions hold:
-    //   1. `ignore_round` is set (caller accepts truncation toward zero),
-    //   2. neither operand uses rational raw storage,
-    //   3. both operands are integer-aligned (notch + lower have integer
-    //      denominators).
-    // Otherwise the rational path runs and returns an exact `bound<rational>`.
-    static constexpr bool native_div =
+    // Native integer division has two flavours, both gated on `ignore_round`
+    // (the caller has accepted integer-truncation semantics):
+    //
+    //   native_div_integer — both operands integer-aligned (Notch.Denominator
+    //                        == 1). Result is an integer-grid bound; the
+    //                        formula is plain `lhs_value / rhs_value`.
+    //   native_div_qformat — both operands share the same Q-format
+    //                        (Notch = 1/N, Lower = 0). The formula
+    //                        `(lhs.Raw * N) / rhs.Raw` reproduces the native
+    //                        `(a << log2(N)) / b` idiom; the result is
+    //                        another Q-format with the same Notch.
+    //
+    // Otherwise the exact-rational path runs and returns `bound<rational>`.
+    static constexpr bool native_div_integer =
         ((F | BoundPolicy<L> | BoundPolicy<R>) & ignore_round)
         && !IsRawRational<L> && !IsRawRational<R>
         && IsIntegerAligned<L> && IsIntegerAligned<R>;
 
-    static constexpr grid result_grid = native_div
-        ? grid{static_cast<imax>((*(Grid<L> / Grid<R>)).Interval.Lower),
-               static_cast<imax>((*(Grid<L> / Grid<R>)).Interval.Upper)}
-        : *(Grid<L> / Grid<R>);
+    static constexpr bool native_div_qformat =
+        ((F | BoundPolicy<L> | BoundPolicy<R>) & ignore_round)
+        && IsQFormat<L> && IsQFormat<R>
+        && Notch<L> == Notch<R>;
+
+    static constexpr bool native_div = native_div_integer || native_div_qformat;
+
+    static constexpr grid result_grid =
+        native_div_integer
+            ? grid{static_cast<imax>((*(Grid<L> / Grid<R>)).Interval.Lower),
+                   static_cast<imax>((*(Grid<L> / Grid<R>)).Interval.Upper)}
+      : native_div_qformat
+            ? grid{interval{0_r, (Upper<L> / Notch<R>).value()}, Notch<L>}
+            : *(Grid<L> / Grid<R>);
 
     using result = bound<result_grid>;
 
@@ -77,7 +94,19 @@ namespace bnd
       }
     };
 
-    if constexpr (native_div)
+    if constexpr (native_div_qformat)
+    {
+      // rhs.Raw == 0 iff rhs.value == 0 (Lower<R> == 0 by IsQFormat).
+      // Formula matches `(a << log2(N)) / b` which the compiler folds when
+      // N is a power of two — i.e. literally the native Q-format idiom.
+      if (rhs.Raw == 0) return fail(errc::division_by_zero, "division by zero in div");
+      constexpr umax N = static_cast<umax>(abs_den(Notch<L>.Denominator));
+      result res;
+      res.Raw = raw_cast<result>(
+          (static_cast<umax>(lhs.Raw) * N) / static_cast<umax>(rhs.Raw));
+      return res;
+    }
+    else if constexpr (native_div_integer)
     {
       imax rhs_val = to_value(rhs);
       if (rhs_val == 0) return fail(errc::division_by_zero, "division by zero in div");

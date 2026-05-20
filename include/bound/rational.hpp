@@ -236,7 +236,7 @@ namespace bnd
   };
 
 
-  [[nodiscard]] constexpr rational gcd(rational const&, rational const&);
+  [[nodiscard]] constexpr slim::optional<rational> gcd(rational const&, rational const&);
   [[nodiscard]] constexpr rational abs(rational);
 
   [[nodiscard]] constexpr bool divides_evenly(rational const&, rational const&);
@@ -250,17 +250,24 @@ namespace bnd
   //---------------------------------------------------------------------------
   // gcd
   //---------------------------------------------------------------------------
-  // Contract: caller is responsible for ensuring
-  //   lcm(|lhs.Denominator|, |rhs.Denominator|) <= imax_max.
-  // No overflow detection (std::lcm wraps silently). Typical callers
-  // (intervals, grids) operate on small denominators where this holds.
-  // If a real overflow case appears, switch the return type to
-  // slim::optional<rational> mechanically.
+  // Returns nullopt if `lcm(|lhs.Denominator|, |rhs.Denominator|)` would
+  // exceed imax_max (the sign bit reservation). Compute lcm as
+  // `(a / gcd(a, b)) * b` and trap the multiplication overflow on the
+  // `mul_overflow` builtin, then a final range check before the cast to imax.
   //---------------------------------------------------------------------------
-  [[nodiscard]] constexpr rational gcd(rational const& lhs, rational const& rhs)
+  [[nodiscard]] constexpr slim::optional<rational> gcd(rational const& lhs, rational const& rhs)
   {
-    auto numerator   = std::gcd(lhs.Numerator, rhs.Numerator);
-    auto denominator = std::lcm(abs_den(lhs.Denominator), abs_den(rhs.Denominator));
+    umax a = abs_den(lhs.Denominator);
+    umax b = abs_den(rhs.Denominator);
+    umax g = std::gcd(a, b);
+
+    umax denominator;
+    if (mul_overflow(a / g, b, &denominator))
+      return slim::nullopt;
+    if (denominator > static_cast<umax>(std::numeric_limits<imax>::max()))
+      return slim::nullopt;
+
+    auto numerator = std::gcd(lhs.Numerator, rhs.Numerator);
     return rational{numerator, static_cast<imax>(denominator)};
   }
 

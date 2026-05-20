@@ -87,8 +87,19 @@ namespace bnd
     }
     else
     {
-      auto to_result = [](auto raw)
-      { result res; res.Raw = raw_cast<result>(raw); return res; };
+      // Result writes go through raw_from_offset so direct-storage results
+      // get Lower<result> added back to recover the value.
+      auto to_result = [](auto raw_offset)
+      { result res; res.Raw = raw_from_offset<result>(static_cast<umax>(raw_offset)); return res; };
+
+      // Normalize lhs.Raw / rhs.Raw to *offsets* regardless of L's / R's
+      // storage shape. The formulas below all assume offset arithmetic.
+      umax lhs_offset = IsDirectStorage<L>
+          ? static_cast<umax>(static_cast<imax>(lhs.Raw) - direct_lower_imax<L>)
+          : static_cast<umax>(lhs.Raw);
+      umax rhs_offset = IsDirectStorage<R>
+          ? static_cast<umax>(static_cast<imax>(rhs.Raw) - direct_lower_imax<R>)
+          : static_cast<umax>(rhs.Raw);
 
       // Raws are typically small unsigned ints (uint8/16/32). C++ integral
       // promotion turns `raw * raw` into `int * int`, so any product above
@@ -104,9 +115,9 @@ namespace bnd
       // arithmetic change that would invalidate this case analysis.
       if constexpr (Lower<result> == (Lower<L> * Lower<R>).value())
       {
-        return to_result
-        (static_cast<umax>(lhs.Raw) * static_cast<umax>(rhs.Raw)
-         + lhs.Raw * LowerIndex<R> + rhs.Raw * LowerIndex<L>);
+        return to_result(lhs_offset * rhs_offset
+                         + lhs_offset * LowerIndex<R>
+                         + rhs_offset * LowerIndex<L>);
       }
 
       if constexpr (Lower<result> == (Upper<L> * Upper<R>).value())
@@ -114,10 +125,10 @@ namespace bnd
 
       if constexpr (Lower<result> == (Upper<L> * Lower<R>).value())
       {
-        raw_t<L> negRaw = raw_cast<L>(NotchCount<L> - lhs.Raw);
-        return to_result
-        (negRaw * LowerIndex<R> + rhs.Raw * UpperIndex<L>
-         - static_cast<umax>(negRaw) * static_cast<umax>(rhs.Raw));
+        umax negLhs = NotchCount<L> - lhs_offset;
+        return to_result(negLhs * LowerIndex<R>
+                         + rhs_offset * UpperIndex<L>
+                         - negLhs * rhs_offset);
       }
 
       if constexpr (Lower<result> == (Lower<L> * Upper<R>).value())

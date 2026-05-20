@@ -108,9 +108,12 @@ namespace bnd
   //---------------------------------------------------------------------------
   inline constexpr slim::optional<grid> operator+(const grid& lhs, const grid& rhs)
   {
+    // `gcd(rational, rational)` now returns optional — pass it through lift
+    // so a notch-denominator overflow produces nullopt rather than a silently
+    // wrapped result grid.
     return lift(
-      [&](interval i){ return grid{i, gcd(lhs.Notch, rhs.Notch)}; },
-      lhs.Interval + rhs.Interval);
+      [](interval i, rational n){ return grid{i, n}; },
+      lhs.Interval + rhs.Interval, gcd(lhs.Notch, rhs.Notch));
   }
 
   //---------------------------------------------------------------------------

@@ -87,7 +87,10 @@ namespace bnd
     else if constexpr (IsRawRational<L> || IsRawRational<R>)
     {
       auto sum = rational::add_unchecked(lhs,rhs);
-      res.Raw = raw_cast<result>(((sum - Lower<result>) / Notch<result>).value().Numerator);
+      // `((sum - Lower) / Notch).Numerator` is the L-offset; for direct
+      // storage the Raw must be the value, so route through raw_from_offset.
+      res.Raw = raw_from_offset<result>(
+          ((sum - Lower<result>) / Notch<result>).value().Numerator);
     }
     else if constexpr (IsDirectStorage<L> || IsDirectStorage<R> || IsDirectStorage<result>)
     {

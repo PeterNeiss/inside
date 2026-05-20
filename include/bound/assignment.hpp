@@ -23,6 +23,27 @@ namespace bnd
   // `map_raw`, so when both sides have integer raws the conversion is a
   // pure-integer formula — no rational arithmetic in the hot path.
   //---------------------------------------------------------------------------
+  // needs_runtime_domain_check<L, P, A>
+  //
+  // True iff any out-of-range handler would fire on an out-of-range value:
+  // an action of any kind, a policy bit that triggers clamp/wrap/sentinel,
+  // or the default-throw path under `checked` (which is itself off when
+  // `ignore_domain` is set). When this is false — typically under `unsafe`
+  // with no action — the runtime range branch in `assign` is dead code and
+  // can be skipped, which lets the auto-vectorizer kick in on hot loops.
+  //---------------------------------------------------------------------------
+  template <boundable L, typename P, typename A>
+  inline constexpr bool needs_runtime_domain_check =
+         is_clamp_action   <plain<A>>
+      || is_wrap_action    <plain<A>>
+      || is_sentinel_action<plain<A>>
+      || is_error_action   <plain<A>>
+      || HasPolicy<L, P, clamp>
+      || HasPolicy<L, P, wrap>
+      || HasPolicy<L, P, sentinel>
+      || (HasPolicy<L, P, checked> && !HasPolicy<L, P, ignore_domain>);
+
+  //---------------------------------------------------------------------------
   // assignment
   //---------------------------------------------------------------------------
   template <typename L, typename R>
@@ -57,10 +78,15 @@ namespace bnd
       template<typename P, typename A>
       static constexpr void apply_clamp(L& lhs, R rhs, P&& policy, A&& action);
 
+      template<typename P, typename A>
+      static constexpr void apply_wrap(L& lhs, R rhs, P&& policy, A&& action);
+
+    public:
+      // Exposed (not private) so the wrap path can reuse the rational
+      // specialization's store_checked after computing the wrapped value.
       template<typename P, typename A = no_action>
       static constexpr bool store_checked(L& lhs, R rhs, P&& policy, A&& action = {});
 
-    public:
       template<typename P, typename A = no_action>
       static constexpr L& assign(L& lhs, R const& rhs, P&&, A&& action = {});
   };
@@ -271,14 +297,19 @@ namespace bnd
       {
         if constexpr (IsIntegerInterval<L>)
         {
-          constexpr imax lower = (Lower<L>.Denominator > 0)
-            ? static_cast<imax>(Lower<L>.Numerator)
-            : -static_cast<imax>(Lower<L>.Numerator);
-          constexpr imax upper = (Upper<L>.Denominator > 0)
-            ? static_cast<imax>(Upper<L>.Numerator)
-            : -static_cast<imax>(Upper<L>.Numerator);
-          if (static_cast<imax>(rhs) < lower || static_cast<imax>(rhs) > upper)
-            if (handle_out_of_range(lhs, rhs, lower, upper, policy, action)) return lhs;
+          // Skip the runtime range branch entirely when every handler would
+          // be dead anyway — the dead branch otherwise inhibits autovec.
+          if constexpr (needs_runtime_domain_check<L, plain<P>, plain<A>>)
+          {
+            constexpr imax lower = (Lower<L>.Denominator > 0)
+              ? static_cast<imax>(Lower<L>.Numerator)
+              : -static_cast<imax>(Lower<L>.Numerator);
+            constexpr imax upper = (Upper<L>.Denominator > 0)
+              ? static_cast<imax>(Upper<L>.Numerator)
+              : -static_cast<imax>(Upper<L>.Numerator);
+            if (static_cast<imax>(rhs) < lower || static_cast<imax>(rhs) > upper)
+              if (handle_out_of_range(lhs, rhs, lower, upper, policy, action)) return lhs;
+          }
         }
         else if (not Interval<L>.includes(rhs))
         {
@@ -343,6 +374,32 @@ namespace bnd
       action.fn(lhs, overshoot);
     else if constexpr (!std::is_same_v<plain<A>, no_action>)
       action(overshoot);
+  }
+
+  // apply_wrap for real R — modular reduction into [Lower, Lower + range)
+  // followed by store_checked so the rounding policy still applies if rhs
+  // doesn't land on a notch after wrapping. range = Upper - Lower + Notch.
+  template <boundable L, typename R>
+    requires real<R>
+  template<typename P, typename A>
+  constexpr void assignment<L,R>::apply_wrap(L& lhs, R rhs, P&& policy, A&& action)
+  {
+    rational rhs_r{rhs};
+    rational lower_r = Lower<L>;
+    rational range   = ((Upper<L> - lower_r).value() + Notch<L>).value();
+    // q = floor((rhs - lower) / range), wrapped = rhs - q * range
+    rational shifted = (rhs_r - lower_r).value();
+    imax q = (shifted / range).value().floor();
+    rational wrapped = (rhs_r - (rational{q} * range).value()).value();
+
+    // Re-enter the rational-rhs specialization for the actual store so the
+    // notch / rounding policy logic is exercised once.
+    assignment<L, rational>::store_checked(lhs, wrapped, policy, action);
+
+    if constexpr (is_wrap_action<plain<A>>)
+      action.fn(lhs, q);
+    else if constexpr (!std::is_same_v<plain<A>, no_action>)
+      action(q);
   }
 
   template <boundable L, typename R>
@@ -427,6 +484,8 @@ namespace bnd
         }
         else if constexpr (HasPolicy<L, P, clamp>)
         { apply_clamp(lhs, rhs, policy, action); return lhs; }
+        else if constexpr (HasPolicy<L, P, wrap>)
+        { apply_wrap(lhs, rhs, policy, action); return lhs; }
         else if (domain_fail(lhs, policy,
                    bnd::to_string(rhs) + " is not in " + bnd::to_string(Interval<L>)))
           return lhs;
@@ -444,6 +503,9 @@ namespace bnd
   template<typename A>
   constexpr void assignment<L,R>::apply_clamp(L& lhs, R const& rhs, A&& action)
   {
+    // `RawLo`/`RawHi` are raw-space constants by construction (Lower/Upper
+    // for direct storage, 0/NotchCount for notch-offset), so they're
+    // already the correct Raw — no `raw_from_offset` adjustment needed.
     lhs.Raw = (static_cast<rational>(rhs) < Lower<L>)
       ? raw_cast<L>(RawLo<L>) : raw_cast<L>(RawHi<L>);
     auto overshoot = static_cast<rational>(rhs) - static_cast<rational>(lhs);
@@ -552,13 +614,16 @@ namespace bnd
     {
       if constexpr (not Interval<L>.includes(Interval<R>))
       {
-        if constexpr (is_integer_mapping)
+        if constexpr (needs_runtime_domain_check<L, plain<P>, plain<A>>)
         {
-          if (imax mapped = map_raw(rhs.Raw); mapped < RawLo<L> || mapped > RawHi<L>)
+          if constexpr (is_integer_mapping)
+          {
+            if (imax mapped = map_raw(rhs.Raw); mapped < RawLo<L> || mapped > RawHi<L>)
+              if (try_clamp_or_fail(lhs, rhs, policy, action)) return lhs;
+          }
+          else if (not Interval<L>.includes(static_cast<rational>(rhs)))
             if (try_clamp_or_fail(lhs, rhs, policy, action)) return lhs;
         }
-        else if (not Interval<L>.includes(static_cast<rational>(rhs)))
-          if (try_clamp_or_fail(lhs, rhs, policy, action)) return lhs;
       }
     }
 

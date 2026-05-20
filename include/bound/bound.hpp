@@ -105,6 +105,22 @@ namespace bnd
       if constexpr (IsDirectStorage<bound>)
         return Raw;
 
+      // Q-format-with-integer-Lower fast path: value = (Raw + Lower*N) / N.
+      // Skips the three rational ops (multiply, add, optional-unwrap) of the
+      // generic path — useful for any fixed-point bound that goes through
+      // the rational route (e.g. exact division when `ignore_round` is off).
+      // The signed-integer rational ctor handles negative results.
+      if constexpr (G.Notch.Numerator == 1
+                 && abs_den(G.Interval.Lower.Denominator) == 1)
+      {
+        constexpr imax N = abs_den(G.Notch.Denominator);
+        constexpr imax lower_imax = (G.Interval.Lower.Denominator < 0)
+            ? -static_cast<imax>(G.Interval.Lower.Numerator)
+            :  static_cast<imax>(G.Interval.Lower.Numerator);
+        imax v = static_cast<imax>(Raw) + lower_imax * N;
+        return rational{v, N};
+      }
+
       return (*(Raw * G.Notch) + G.Interval.Lower).value();
     }
 
@@ -119,6 +135,10 @@ namespace bnd
         // Unsigned-offset fast path: with offset encoding `value = Raw*Notch + Lower`,
         // negating the value is equivalent to indexing from the opposite end of the
         // grid — i.e. `NotchCount - Raw`. No rational arithmetic in the hot path.
+        //
+        // NOTE: not a sibling of the IsDirectStorage encoding bugs — this branch is
+        // unreachable when either operand uses direct storage, so `Raw` here is
+        // guaranteed to be an offset.
         neg.Raw = raw_cast<negative>(NotchCount<bound> - Raw);
       return neg;
     }
@@ -232,6 +252,9 @@ namespace bnd
           {
             if constexpr (P & clamp)
             {
+              // `RawLo`/`RawHi` are raw-space constants by construction
+              // (Lower/Upper for direct, 0/NotchCount for notch-offset), so
+              // they're already the correct Raw — no `raw_from_offset` needed.
               Raw = raw_cast<bound>(new_raw < RawLo<bound> ? RawLo<bound> : RawHi<bound>);
               return *this;
             }

@@ -198,6 +198,19 @@ namespace bnd
   inline constexpr bool IsIntegerAligned =
       abs_den(Notch<B>.Denominator) == 1 && abs_den(Lower<B>.Denominator) == 1;
 
+  // Q-format: the canonical fixed-point shape (Q8.8, Q16.16, ...). Notch has
+  // unit numerator with integer denominator > 1, Lower is an integer at 0.
+  // Value = Raw / Notch.Denominator. Used to gate the integer fast path for
+  // fixed-point division, which would otherwise fall into the slow rational
+  // route because Notch.Denominator > 1 disqualifies IsIntegerAligned.
+  template <boundable B>
+  inline constexpr bool IsQFormat =
+         not IsRawRational<B>
+      && Notch<B>.Numerator == 1
+      && abs_den(Notch<B>.Denominator) > 1
+      && abs_den(Lower<B>.Denominator) == 1
+      && Lower<B> == 0_r;
+
   // Policy test: checks both type-level and per-operation policy.
   // Composite flags (e.g. round_nearest = bit5 | ignore_round) require all
   // their bits set — having a subset like just `ignore_round` does NOT match.

@@ -273,6 +273,9 @@ TEST_CASE("rational helpers", "[rational][helpers]")
   {
     REQUIRE(gcd(rational{6u, 1}, rational{8u, 1}) == rational{2u, 1});
     REQUIRE(gcd(rational{1u, 2}, rational{1u, 3}) == rational{1u, 6});
+
+    // Denominator-lcm overflow: lcm(2^62, 3) = 3 * 2^62 > imax_max.
+    REQUIRE_FALSE(gcd(rational{1u, imax{1} << 62}, rational{1u, 3}).has_value());
   }
 
   SECTION("divides_evenly")

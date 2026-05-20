@@ -32,6 +32,11 @@ namespace bnd
   // slim::optional<bound>. Mirrors smallest_int_for's `+1` margin on the
   // signed side. A grid whose max_notch lands exactly on a type's max
   // therefore promotes to the next-wider type.
+  //
+  // Consequence: a `bound<{0, 255}>` does NOT use uint8_t (255 == UINT8_MAX
+  // is reserved); it promotes to uint16_t. Same for signed: `bound<{-128, 127}>`
+  // gets int16_t because -128 == INT8_MIN is reserved. So a valid grid value
+  // can never collide with the sentinel slot — no need to recheck at runtime.
   template <std::uintmax_t N>
   using smallest_uint_for =
     std::conditional_t<(N == 0), rational,
