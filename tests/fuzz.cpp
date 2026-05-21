@@ -99,7 +99,7 @@ inline imax random_wide_int(std::mt19937_64& rng, imax span)
 }
 
 template <boundable B>
-rational to_rational(B b) { return static_cast<rational>(b); }
+rational to_rational(B b) { return b; }
 
 //---------------------------------------------------------------------------
 // Properties
@@ -696,7 +696,7 @@ void prop_non_notch_assign(fuzz_state& s, long iters)
       // ignore_round: silent floor; result == on_notch.
       FUZZ_REQUIRE(s, !throws_with(errc::rounding_error, [&]{
         BIR b; b = mid;
-        rational got = static_cast<rational>(b);
+        rational got = b;
         FUZZ_REQUIRE(s, got == on_notch);
       }));
 
@@ -708,7 +708,7 @@ void prop_non_notch_assign(fuzz_state& s, long iters)
       {
         FUZZ_REQUIRE(s, !throws_with(errc::rounding_error, [&]{
           BRN b; b = mid;
-          rational got = static_cast<rational>(b);
+          rational got = b;
           FUZZ_REQUIRE(s, got == next_notch);
         }));
       }
@@ -716,7 +716,7 @@ void prop_non_notch_assign(fuzz_state& s, long iters)
       // Truly-unchecked policy (none): silent floor, exercising assignment.hpp:299.
       FUZZ_REQUIRE(s, !throws_with(errc::rounding_error, [&]{
         BNONE b; b = mid;
-        rational got = static_cast<rational>(b);
+        rational got = b;
         FUZZ_REQUIRE(s, got == on_notch);
       }));
     }
@@ -746,7 +746,7 @@ void prop_subnormal_construct(fuzz_state& s, long iters)
       // ignore_round → silent floor; should not throw and should land on 0.
       FUZZ_REQUIRE(s, !throws_with(errc::rounding_error, [&]{
         BIR b; b = v;
-        rational got = static_cast<rational>(b);
+        rational got = b;
         // Floored toward lo, but for tiny v near zero the floor is 0 (or lo).
         FUZZ_REQUIRE(s, got == 0_r || got == lo);
       }));
@@ -878,9 +878,9 @@ void prop_raw_rational_arith(fuzz_state& s, long iters)
         if constexpr (requires { v.has_value(); }) {
           FUZZ_REQUIRE(s, v.has_value());
           if (v.has_value())
-            FUZZ_REQUIRE(s, static_cast<rational>(*v) == expected);
+            FUZZ_REQUIRE(s, as_rational(*v) == expected);
         } else {
-          FUZZ_REQUIRE(s, static_cast<rational>(v) == expected);
+          FUZZ_REQUIRE(s, as_rational(v) == expected);
         }
       };
       check(sum,  expect_sum);

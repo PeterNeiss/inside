@@ -57,7 +57,7 @@ namespace bnd
     {
       if constexpr (needs_overflow_check<P>)
       {
-        auto prod = static_cast<rational>(lhs) * static_cast<rational>(rhs);
+        auto prod = as_rational(lhs) * as_rational(rhs);
         if (!prod)
         {
           if constexpr (is_overflow_action<plain<A>>)
@@ -75,7 +75,7 @@ namespace bnd
       {
         result res;
         res.Raw = raw_cast<result>(rational::mul_unchecked(
-            static_cast<rational>(lhs), static_cast<rational>(rhs)));
+            as_rational(lhs), as_rational(rhs)));
         return res;
       }
     }
@@ -95,10 +95,10 @@ namespace bnd
       // Normalize lhs.Raw / rhs.Raw to *offsets* regardless of L's / R's
       // storage shape. The formulas below all assume offset arithmetic.
       umax lhs_offset = IsDirectStorage<L>
-          ? static_cast<umax>(static_cast<imax>(lhs.Raw) - direct_lower_imax<L>)
+          ? static_cast<umax>(signed_raw(lhs) - direct_lower_imax<L>)
           : static_cast<umax>(lhs.Raw);
       umax rhs_offset = IsDirectStorage<R>
-          ? static_cast<umax>(static_cast<imax>(rhs.Raw) - direct_lower_imax<R>)
+          ? static_cast<umax>(signed_raw(rhs) - direct_lower_imax<R>)
           : static_cast<umax>(rhs.Raw);
 
       // Raws are typically small unsigned ints (uint8/16/32). C++ integral

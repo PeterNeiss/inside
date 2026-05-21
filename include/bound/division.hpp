@@ -55,8 +55,8 @@ namespace bnd
 
     static constexpr grid result_grid =
         native_div_integer
-            ? grid{static_cast<imax>((*(Grid<L> / Grid<R>)).Interval.Lower),
-                   static_cast<imax>((*(Grid<L> / Grid<R>)).Interval.Upper)}
+            ? grid{(*(Grid<L> / Grid<R>)).Interval.Lower.trunc(),
+                   (*(Grid<L> / Grid<R>)).Interval.Upper.trunc()}
       : native_div_qformat
             ? grid{interval{0_r, (Upper<L> / Notch<R>).value()}, Notch<L>}
             : *(Grid<L> / Grid<R>);
@@ -116,18 +116,18 @@ namespace bnd
     }
     else if constexpr (needs_overflow_check<G>)
     {
-      auto rhs_r = static_cast<rational>(rhs);
+      rational rhs_r = rhs;
       if (rhs_r.Numerator == 0) return fail(errc::division_by_zero, "division by zero in div");
-      auto q = static_cast<rational>(lhs) / rhs_r;
+      auto q = as_rational(lhs) / rhs_r;
       if (!q) return fail(errc::overflow, "rational overflow in div");
       result res; res.Raw = *q; return res;
     }
     else
     {
-      auto rhs_r = static_cast<rational>(rhs);
+      rational rhs_r = rhs;
       if (rhs_r.Numerator == 0) return fail(errc::division_by_zero, "division by zero in div");
       result res;
-      res.Raw = rational::div_unchecked(static_cast<rational>(lhs), rhs_r);
+      res.Raw = rational::div_unchecked(as_rational(lhs), rhs_r);
       return res;
     }
   }
@@ -150,13 +150,12 @@ namespace bnd
     static_assert(native_mod, "modulo requires integer-valued grids and ignore_round");
 
     static constexpr imax max_rem =
-        std::max(abs_den(static_cast<imax>(Lower<R>)),
-                 abs_den(static_cast<imax>(Upper<R>))) - 1;
+        std::max(abs_den(LowerImax<R>), abs_den(UpperImax<R>)) - 1;
 
     static constexpr grid result_grid =
-        (static_cast<imax>(Lower<L>) < 0)
+        (LowerImax<L> < 0)
         ? grid{-max_rem, max_rem}
-        : grid{static_cast<imax>(0), max_rem};
+        : grid{imax{0}, max_rem};
 
     using result = bound<result_grid>;
 

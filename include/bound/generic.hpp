@@ -66,6 +66,30 @@ namespace bnd
   template <boundable B>
   inline constexpr rational Notch = []<grid G, policy_flag P>(bound<G, P>){ return G.Notch; } (B{});
 
+  // Storage-agnostic int truncation of interval endpoints. Equivalent to
+  // `static_cast<imax>(Lower<B>)` but expresses intent without a cast and
+  // works for both storage kinds. Used by `from_value`, `direct_lower_imax`,
+  // and integer fast paths.
+  template <boundable B>
+  inline constexpr imax LowerImax = Lower<B>.trunc();
+
+  template <boundable B>
+  inline constexpr imax UpperImax = Upper<B>.trunc();
+
+  template <boundable B>
+  inline constexpr umax NotchCount = (Notch<B> == 0) ?
+    0 : (Interval<B>/Notch<B>).value().Numerator;
+
+  // True when `Raw` (and intermediate offset products) fit in `imax`.
+  // Q-format integer fast paths widen Raw to imax; for unsigned 64-bit raw
+  // (e.g. the result type of Q16.16 × Q16.16) that widening can wrap, so the
+  // fast path must fall back to the rational route when this is false.
+  template <boundable B>
+  inline constexpr bool RawFitsInImax =
+      not IsRawRational<B>
+      && (std::signed_integral<raw_t<B>>
+          || NotchCount<B> <= static_cast<umax>(std::numeric_limits<imax>::max()));
+
   template <typename N>
   concept numeric = boundable<N> or arithmetic<N>;
 
@@ -100,13 +124,19 @@ namespace bnd
   template <boundable B>
   inline constexpr bool IsNotchStorage = !IsDirectStorage<B>;
 
+  // Widen raw storage to imax. Distinct from `to_value(b)` for notch-stored
+  // grids where raw is an index rather than a value — naming separates the
+  // two intents that today both spell `static_cast<imax>`.
+  template <boundable B>
+  constexpr imax signed_raw(B b) noexcept { return static_cast<imax>(b.Raw); }
+
   template <boundable B>
   constexpr imax to_value(B b)
   {
     if constexpr (IsDirectStorage<B>)
-      return static_cast<imax>(b.Raw);
+      return signed_raw(b);
     else // IsNotchStorage
-      return static_cast<imax>(static_cast<rational>(b));
+      return as_rational(b).trunc();
   }
 
   template <boundable B>
@@ -118,13 +148,11 @@ namespace bnd
     // integer Lower (den == 1) and unit-numerator Notch (e.g. 1/256, 1/16384)
     // the offset reduces to (val - lower) * notch_denominator.
     else if constexpr (abs_den(Lower<B>.Denominator) == 1
-                       && Notch<B>.Numerator == 1)
+                       && Notch<B>.Numerator == 1
+                       && RawFitsInImax<B>)
     {
-      constexpr imax lower_int = (Lower<B>.Denominator < 0)
-        ? -static_cast<imax>(Lower<B>.Numerator)
-        :  static_cast<imax>(Lower<B>.Numerator);
       constexpr imax nd = abs_den(Notch<B>.Denominator);   // Notch.Numerator == 1
-      b.Raw = raw_cast<B>((val - lower_int) * nd);
+      b.Raw = raw_cast<B>((val - LowerImax<B>) * nd);
     }
     else // IsNotchStorage, generic rational path
     {
@@ -132,10 +160,6 @@ namespace bnd
       b.Raw = raw_cast<B>(offset.value().Numerator);
     }
   }
-
-  template <boundable B>
-  inline constexpr umax NotchCount = (Notch<B> == 0) ?
-    0 : (Interval<B>/Notch<B>).value().Numerator;
 
   //---------------------------------------------------------------------------
   // direct_lower_imax / raw_from_offset
@@ -148,14 +172,7 @@ namespace bnd
   // built from `rational{-40}` would record Raw=0 instead of Raw=-40.
   //---------------------------------------------------------------------------
   template <boundable B>
-  inline constexpr imax direct_lower_imax = []{
-    if constexpr (IsDirectStorage<B>)
-      return (Lower<B>.Denominator < 0)
-          ? -static_cast<imax>(Lower<B>.Numerator)
-          :  static_cast<imax>(Lower<B>.Numerator);
-    else
-      return imax{0};
-  }();
+  inline constexpr imax direct_lower_imax = IsDirectStorage<B> ? LowerImax<B> : imax{0};
 
   template <boundable L>
   constexpr raw_t<L> raw_from_offset(umax offset) noexcept
@@ -183,10 +200,10 @@ namespace bnd
 
   // Raw-space bounds: maps interval endpoints to raw representation
   template <boundable B>
-  inline constexpr imax RawLo = IsDirectStorage<B> ? static_cast<imax>(Lower<B>) : 0;
+  inline constexpr imax RawLo = IsDirectStorage<B> ? LowerImax<B> : 0;
 
   template <boundable B>
-  inline constexpr imax RawHi = IsDirectStorage<B> ? static_cast<imax>(Upper<B>) : static_cast<imax>(NotchCount<B>);
+  inline constexpr imax RawHi = IsDirectStorage<B> ? UpperImax<B> : static_cast<imax>(NotchCount<B>);
 
   // Interval bounds are integers (denominator == ±1)
   template <boundable B>

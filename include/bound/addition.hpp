@@ -98,7 +98,7 @@ namespace bnd
     }
     else
     {
-      res.Raw = raw_cast<result>(static_cast<imax>(lhs.Raw) * lhs_widen + static_cast<imax>(rhs.Raw) * rhs_widen);
+      res.Raw = raw_cast<result>(signed_raw(lhs) * lhs_widen + signed_raw(rhs) * rhs_widen);
     }
     return res;
   }

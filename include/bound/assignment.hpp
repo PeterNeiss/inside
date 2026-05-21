@@ -262,13 +262,11 @@ namespace bnd
     // raw = (rhs - lower_int) * notch_denominator — pure integer math, no
     // rational construction.
     else if constexpr (abs_den(Lower<L>.Denominator) == 1
-                       && Notch<L>.Numerator == 1)
+                       && Notch<L>.Numerator == 1
+                       && RawFitsInImax<L>)
     {
-      constexpr imax lower_int = (Lower<L>.Denominator < 0)
-        ? -static_cast<imax>(Lower<L>.Numerator)
-        :  static_cast<imax>(Lower<L>.Numerator);
       constexpr imax nd = abs_den(Notch<L>.Denominator);   // Notch.Numerator == 1
-      lhs.Raw = raw_cast<L>((static_cast<imax>(rhs) - lower_int) * nd);
+      lhs.Raw = raw_cast<L>((static_cast<imax>(rhs) - LowerImax<L>) * nd);
     }
     else // IsNotchStorage, generic rational path
     {
@@ -298,12 +296,8 @@ namespace bnd
         // be dead anyway — the dead branch otherwise inhibits autovec.
         if constexpr (needs_runtime_domain_check<L, plain<P>, plain<A>>)
         {
-          constexpr imax lower = (Lower<L>.Denominator > 0)
-            ? static_cast<imax>(Lower<L>.Numerator)
-            : -static_cast<imax>(Lower<L>.Numerator);
-          constexpr imax upper = (Upper<L>.Denominator > 0)
-            ? static_cast<imax>(Upper<L>.Numerator)
-            : -static_cast<imax>(Upper<L>.Numerator);
+          constexpr imax lower = LowerImax<L>;
+          constexpr imax upper = UpperImax<L>;
           if (static_cast<imax>(rhs) < lower || static_cast<imax>(rhs) > upper)
             if (handle_out_of_range(lhs, rhs, lower, upper, policy, action)) return lhs;
         }
@@ -503,9 +497,9 @@ namespace bnd
     // `RawLo`/`RawHi` are raw-space constants by construction (Lower/Upper
     // for direct storage, 0/NotchCount for notch-offset), so they're
     // already the correct Raw — no `raw_from_offset` adjustment needed.
-    lhs.Raw = (static_cast<rational>(rhs) < Lower<L>)
+    lhs.Raw = (as_rational(rhs) < Lower<L>)
       ? raw_cast<L>(RawLo<L>) : raw_cast<L>(RawHi<L>);
-    auto overshoot = static_cast<rational>(rhs) - static_cast<rational>(lhs);
+    auto overshoot = as_rational(rhs) - as_rational(lhs);
     if constexpr (is_clamp_action<plain<A>>)
       action.fn(lhs, overshoot);
     else if constexpr (!std::is_same_v<plain<A>, no_action>)
@@ -518,9 +512,9 @@ namespace bnd
   {
     static_assert(IsIntegerInterval<L>,
       "wrap with bound rhs requires an integer-aligned destination interval");
-    imax rhs_imax = static_cast<imax>(static_cast<rational>(rhs));
-    constexpr imax lower = static_cast<imax>(Lower<L>);
-    constexpr imax upper = static_cast<imax>(Upper<L>);
+    imax rhs_imax = as_rational(rhs).trunc();
+    constexpr imax lower = LowerImax<L>;
+    constexpr imax upper = UpperImax<L>;
     imax range = upper - lower + 1;
     imax shifted = rhs_imax - lower;
     imax wrapped = ((shifted % range) + range) % range;
@@ -544,12 +538,12 @@ namespace bnd
     else if constexpr (is_sentinel_action<PA>)
     {
       lhs.Raw = sentinel_raw<L>();
-      action.fn(lhs, static_cast<rational>(rhs));
+      action.fn(lhs, as_rational(rhs));
       return true;
     }
     else if constexpr (is_error_action<PA>)
     {
-      auto msg = bnd::to_string(static_cast<rational>(rhs))
+      auto msg = bnd::to_string(as_rational(rhs))
                + " is not in " + bnd::to_string(Interval<L>);
       action.fn(lhs, errc::domain_error, std::string_view(msg));
       return true;
@@ -559,7 +553,7 @@ namespace bnd
     else if constexpr (HasPolicy<L, P, wrap>)
     { apply_wrap(lhs, rhs, action); return true; }
     return domain_fail(lhs, policy,
-      bnd::to_string(static_cast<rational>(rhs)) + " is not in " + bnd::to_string(Interval<L>));
+      bnd::to_string(as_rational(rhs)) + " is not in " + bnd::to_string(Interval<L>));
   }
 
   template<boundable L, boundable R>
@@ -611,7 +605,7 @@ namespace bnd
           if (imax mapped = map_raw(rhs.Raw); mapped < RawLo<L> || mapped > RawHi<L>)
             if (try_clamp_or_fail(lhs, rhs, policy, action)) return lhs;
         }
-        else if (not Interval<L>.includes(static_cast<rational>(rhs)))
+        else if (not Interval<L>.includes(as_rational(rhs)))
           if (try_clamp_or_fail(lhs, rhs, policy, action)) return lhs;
       }
     }

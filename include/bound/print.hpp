@@ -19,13 +19,13 @@ namespace bnd
 {
   template <boundable B>
   inline std::string to_string(B b)
-  { return bnd::to_string(static_cast<rational>(b)); }
+  { return bnd::to_string(as_rational(b)); }
 
   template <boundable B>
   inline std::string to_string_debug(B b)
   {
     std::string str;
-    str += bnd::to_string(static_cast<rational>(b));
+    str += bnd::to_string(as_rational(b));
     str += " {";
     str += bnd::to_string(+b.Raw);
     str += "[" + std::string(type_name<raw_t<B>>());

@@ -95,7 +95,7 @@ namespace bnd
   using storage_min =
     std::conditional_t<(G.Notch == 0_r), rational,
     std::conditional_t<(G.Interval.Lower < 0_r && G.Notch == 1_r),
-      smallest_int_for<static_cast<imax>(G.Interval.Lower), static_cast<imax>(G.Interval.Upper)>,
+      smallest_int_for<G.Interval.Lower.trunc(), G.Interval.Upper.trunc()>,
       smallest_uint_for<G.max_notch()>>>;
 
   constexpr slim::optional<grid> operator+(const grid&, const grid&);

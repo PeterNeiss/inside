@@ -85,7 +85,7 @@ namespace bnd
       else if constexpr (IsDirectStorage<bound>)
         return static_cast<std::common_type_t<raw_type, int>>(Raw);
       else
-        return static_cast<rational>(*this);
+        return as_rational(*this);
     }
 
     // Public sentinel probe — the canonical "is this slot empty?" check
@@ -121,14 +121,15 @@ namespace bnd
       // generic path — useful for any fixed-point bound that goes through
       // the rational route (e.g. exact division when `ignore_round` is off).
       // The signed-integer rational ctor handles negative results.
+      // Gated on `RawFitsInImax`: wide unsigned raws (e.g. uint64 from a
+      // Q16.16 × Q16.16 result type) would wrap on the signed_raw widening,
+      // so those fall through to the rational path below.
       if constexpr (G.Notch.Numerator == 1
-                 && abs_den(G.Interval.Lower.Denominator) == 1)
+                 && abs_den(G.Interval.Lower.Denominator) == 1
+                 && RawFitsInImax<bound>)
       {
         constexpr imax N = abs_den(G.Notch.Denominator);
-        constexpr imax lower_imax = (G.Interval.Lower.Denominator < 0)
-            ? -static_cast<imax>(G.Interval.Lower.Numerator)
-            :  static_cast<imax>(G.Interval.Lower.Numerator);
-        imax v = static_cast<imax>(Raw) + lower_imax * N;
+        imax v = signed_raw(*this) + LowerImax<bound> * N;
         return rational{v, N};
       }
 
@@ -258,7 +259,7 @@ namespace bnd
       {
         if constexpr (P & (clamp | wrap | checked | sentinel))
         {
-          imax new_raw = static_cast<imax>(Raw) + static_cast<imax>(rhs.Raw);
+          imax new_raw = signed_raw(*this) + signed_raw(rhs);
           if (new_raw < RawLo<bound> || new_raw > RawHi<bound>)
           {
             if constexpr (P & clamp)
@@ -549,6 +550,16 @@ namespace bnd
     return out;
   }
 
+  // Inline rational view of a value or bound. Use where `auto r = x;` would
+  // copy the bound and `rational{x}` would not compile because `x` is a bound
+  // (the implicit conversion via `operator rational()` does the work). The
+  // arithmetic overload exists so the same name covers both call sites.
+  template <arithmetic A>
+  [[nodiscard]] constexpr rational as_rational(A v) { return rational{v}; }
+
+  template <boundable B>
+  [[nodiscard]] constexpr rational as_rational(B b) { return b; }
+
   //---------------------------------------------------------------------------
   // comparison
   //---------------------------------------------------------------------------
@@ -561,9 +572,9 @@ namespace bnd
     // both integer-direct (notch=1, Raw==value): compare as integers
     else if constexpr (!IsRawRational<L> && !IsRawRational<R>
                        && IsDirectStorage<L> && IsDirectStorage<R>)
-      return static_cast<imax>(lhs.Raw) <=> static_cast<imax>(rhs.Raw);
+      return signed_raw(lhs) <=> signed_raw(rhs);
     else
-      return static_cast<rational>(lhs) <=> static_cast<rational>(rhs);
+      return as_rational(lhs) <=> as_rational(rhs);
   }
 
   template <boundable L, boundable R>
@@ -573,27 +584,27 @@ namespace bnd
       return lhs.Raw == rhs.Raw;
     else if constexpr (!IsRawRational<L> && !IsRawRational<R>
                        && IsDirectStorage<L> && IsDirectStorage<R>)
-      return static_cast<imax>(lhs.Raw) == static_cast<imax>(rhs.Raw);
+      return signed_raw(lhs) == signed_raw(rhs);
     else
-      return static_cast<rational>(lhs) == static_cast<rational>(rhs);
+      return as_rational(lhs) == as_rational(rhs);
   }
 
   template <boundable B, arithmetic A>
   constexpr auto operator<=>(B const& lhs, A rhs)
   {
     if constexpr (!IsRawRational<B> && IsDirectStorage<B>)
-      return static_cast<imax>(lhs.Raw) <=> static_cast<imax>(rhs);
+      return signed_raw(lhs) <=> static_cast<imax>(rhs);
     else
-      return static_cast<rational>(lhs) <=> rational{rhs};
+      return as_rational(lhs) <=> rational{rhs};
   }
 
   template <boundable B, arithmetic A>
   constexpr bool operator==(B const& lhs, A rhs)
   {
     if constexpr (!IsRawRational<B> && IsDirectStorage<B>)
-      return static_cast<imax>(lhs.Raw) == static_cast<imax>(rhs);
+      return signed_raw(lhs) == static_cast<imax>(rhs);
     else
-      return static_cast<rational>(lhs) == rational{rhs};
+      return as_rational(lhs) == rational{rhs};
   }
 
   //---------------------------------------------------------------------------
@@ -932,7 +943,7 @@ namespace bnd
       // Map a grid value back to its notch index: (start - Lower) / Notch.
       // The result has integer denominator (start is on the grid) so the
       // numerator is the index directly.
-      auto offset = ((static_cast<rational>(start) - G.Interval.Lower)
+      auto offset = ((as_rational(start) - G.Interval.Lower)
                      / G.Notch).value();
       start_index_ = offset.Numerator;
     }

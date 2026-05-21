@@ -26,19 +26,19 @@ struct date
 
   void add_days(int n)
   {
-    day.on_wrap([&](auto&, auto carry) { add_months(static_cast<int>(carry)); }) += n;
+    day.on_wrap([&](auto&, auto carry) { add_months(carry); }) += n;
   }
 
-  void add_months(int n)
+  void add_months(arithmetic auto n)
   {
-    month.on_wrap([&](auto&, auto carry) { year += static_cast<int>(carry); }) += n;
+    month.on_wrap([&](auto&, auto carry) { year += carry; }) += n;
   }
 
   friend std::ostream& operator<<(std::ostream& os, const date& d)
   {
     return os << d.year << '-'
-              << (static_cast<int>(d.month) < 10 ? "0" : "") << d.month << '-'
-              << (static_cast<int>(d.day)   < 10 ? "0" : "") << d.day;
+              << (d.month < 10 ? "0" : "") << d.month << '-'
+              << (d.day   < 10 ? "0" : "") << d.day;
   }
 };
 

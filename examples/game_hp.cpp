@@ -46,11 +46,11 @@ int main()
   auto chain = mul_all(crit, vuln, pen);
   // chain has interval [0, 64] notch 1/4096 — convert to a hit damage by
   // scaling base. Round to nearest integer for the actual HP deduction.
-  int dealt = static_cast<int>(double(base) * double(chain) + 0.5);
+  auto dealt = as_rational(base * chain).round();
   std::cout << "damage chain (2.0 * 1.25 * 1.5) on base 10 = " << dealt << "\n";
 
   hp.on_clamp([&](auto& self, auto overshoot) {
-    if (static_cast<int>(self) == 0) {
+    if (self == 0) {
       std::cout << "[downed — overshoot " << overshoot << "]\n";
       downed = true;
     } else {
@@ -61,7 +61,7 @@ int main()
 
   // Pile on more damage to trigger the downed callback.
   hp.on_clamp([&](auto& self, auto overshoot) {
-    if (static_cast<int>(self) == 0) {
+    if (self == 0) {
       std::cout << "[downed — overshoot " << overshoot << "]\n";
       downed = true;
     }
@@ -88,7 +88,7 @@ int main()
     // Remaining rounds in current magazine.
     ammo_t shots{shots_fired % 30};
     auto rem = mag - shots;
-    auto rem_v = static_cast<int>(double(rem) + 0.5);
+    auto rem_v = to_value(rem);
     int reloads = shots_fired / 30;
     std::cout << "  fired " << shots_fired << "  ->  " << rem_v
               << " rounds left, " << reloads << " reloads done\n";

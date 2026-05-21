@@ -134,7 +134,7 @@ TEST_CASE("on_sentinel action on fixed-point grids", "[bound][policy][on_sentine
   fp v{10.5};
   rational orig{0u};
   v.on_sentinel([&](auto& self, auto orig_in){
-    orig = static_cast<rational>(orig_in);
+    orig = orig_in;
     self = 0;
   }) = 75.5;
 

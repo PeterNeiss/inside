@@ -51,14 +51,14 @@ int main()
 
     latency_t lat{s};
     // bin index = (lat * 10) / 100 — done in integer space.
-    std::size_t idx = static_cast<std::size_t>(double(lat) / 10.0);
+    std::size_t idx = static_cast<std::size_t>(to_value(lat) / 10);
     if (idx < 10)
     {
       // bin_id_t is an array-label type; the slot in `bins` is a counter
       // that increments in raw int space because the bin_id_t interval is
       // the label range, not a counter range.
-      auto cur = static_cast<int>(bins[idx]);
-      if (cur < static_cast<int>(std::numeric_limits<bin_id_t>::max()))
+      auto cur = to_value(bins[idx]);
+      if (cur < to_value(std::numeric_limits<bin_id_t>::max()))
         bins[idx] = bin_id_t{cur + 1};
     }
   }
@@ -68,7 +68,7 @@ int main()
   std::cout << "bin    count\n";
   for (auto b : bound_range<{0, 9}>{})
   {
-    std::size_t idx = static_cast<std::size_t>(static_cast<int>(b));
+    std::size_t idx = static_cast<std::size_t>(to_value(b));
     std::cout << " " << idx*10 << "-" << (idx*10+9) << "  "
               << bins[idx] << "\n";
   }
