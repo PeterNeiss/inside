@@ -63,8 +63,18 @@ namespace bnd
       return test(checked) && not test(ignore_round);
     }
 
-    void report(errc code, std::string what)
+    constexpr void report(errc code, std::string what)
     {
+      // Constant-evaluation guard: neither `make_error_code` nor the
+      // `std::system_error` constructor are constexpr, so a `checked`
+      // policy hitting this path at compile time would otherwise produce
+      // an opaque "non-constexpr function called" diagnostic. The string-
+      // literal throw aborts constant evaluation with a clearer pointer.
+      if consteval
+      {
+        throw "bound: value out of range during constant evaluation "
+              "(checked policy hit; choose clamp/wrap/sentinel or widen the interval)";
+      }
       if constexpr (std::is_same_v<E, error_ref>)
         E::Code = E::Code ? E::Code : make_error_code(code);
       else
@@ -291,6 +301,54 @@ namespace bnd
       }
       return assign_with_picked(static_cast<imax>(to_value(Ref) % static_cast<imax>(rhs)));
     }
+
+    //-------------------------------------------------------------------------
+    // boundable RHS overloads — route through the bound's arithmetic and
+    // assign the result via `assign_with_picked` so the user's callbacks fire
+    // on the final narrowing back to B. Handles the case `+`/`*` returns
+    // `slim::optional<bound>` (rational-raw overflow) by surfacing
+    // `errc::overflow` through `on_overflow` if registered, else `report`.
+    //-------------------------------------------------------------------------
+    private:
+    template <typename R>
+    constexpr B& finalise_arith(R&& result, const char* msg)
+    {
+      if constexpr (requires { typename plain<R>::value_type; })
+      {
+        if (!result.has_value())
+        {
+          if constexpr (has_action<is_overflow_action_pred, As...>)
+            pick_action_in<is_overflow_action_pred>(Actions).fn(Ref, errc::overflow);
+          else
+            Policy.report(errc::overflow, msg);
+          return Ref;
+        }
+        return assign_with_picked(result.value());
+      }
+      else
+        return assign_with_picked(std::forward<R>(result));
+    }
+    public:
+
+    template <boundable C>
+    constexpr B& operator+=(C const& rhs)
+    { return finalise_arith(Ref + rhs, "policy_ref::operator+= overflow"); }
+
+    template <boundable C>
+    constexpr B& operator-=(C const& rhs)
+    { return finalise_arith(Ref - rhs, "policy_ref::operator-= overflow"); }
+
+    template <boundable C>
+    constexpr B& operator*=(C const& rhs)
+    { return finalise_arith(Ref * rhs, "policy_ref::operator*= overflow"); }
+
+    template <boundable C>
+    constexpr B& operator/=(C const& rhs)
+    { return finalise_arith(Ref / rhs, "policy_ref::operator/= division/overflow"); }
+
+    template <boundable C>
+    constexpr B& operator%=(C const& rhs)
+    { return finalise_arith(mod(Ref, rhs, Policy), "policy_ref::operator%= division/overflow"); }
   };
 
 } // namespace bnd

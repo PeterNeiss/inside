@@ -88,6 +88,17 @@ namespace bnd
         return static_cast<rational>(*this);
     }
 
+    // Public sentinel probe — the canonical "is this slot empty?" check
+    // under `sentinel` policy, matching the raw layout used by both the
+    // policy machinery and `slim::optional<bound>`.
+    [[nodiscard]] constexpr bool is_sentinel() const noexcept
+    {
+      if constexpr (IsRawRational<bound>)
+        return Raw.Denominator == 0;
+      else
+        return Raw == sentinel_raw<bound>();
+    }
+
     constexpr operator imax() const
       requires (abs_den(G.Notch.Denominator) == 1 && G.Notch.Numerator != 0)
     { return to_value(*this); }
@@ -144,37 +155,37 @@ namespace bnd
     }
 
     template <policy_flag F = none>
-    auto policy()
+    constexpr auto policy()
     {
        auto pol = make_policy<P | F>();
        return policy_ref<bound, decltype(pol)>{*this, pol};
     }
 
     template <policy_flag F = none>
-    auto policy(std::error_code& ec)
+    constexpr auto policy(std::error_code& ec)
     {
        auto pol = make_policy<P | F>(ec);
        return policy_ref<bound, decltype(pol)>{*this, pol};
     }
 
     template <policy_flag F = none, typename A>
-    auto policy(A&& action)
+    constexpr auto policy(A&& action)
     {
        auto pol = make_policy<P | F>();
        return policy_ref<bound, decltype(pol), std::remove_cvref_t<A>>{
          *this, pol, std::forward<A>(action)};
     }
 
-    auto with_round()           { return policy<ignore_round>(); }
-    auto with_round_nearest()   { return policy<round_nearest>(); }
-    auto with_floor()           { return policy<round_floor>(); }
-    auto with_ceil()            { return policy<round_ceil>(); }
-    auto with_round_half_even() { return policy<round_half_even>(); }
-    auto with_clamp()           { return policy<clamp>(); }
-    auto with_wrap()            { return policy<wrap>(); }
+    constexpr auto with_round()           { return policy<ignore_round>(); }
+    constexpr auto with_round_nearest()   { return policy<round_nearest>(); }
+    constexpr auto with_floor()           { return policy<round_floor>(); }
+    constexpr auto with_ceil()            { return policy<round_ceil>(); }
+    constexpr auto with_round_half_even() { return policy<round_half_even>(); }
+    constexpr auto with_clamp()           { return policy<clamp>(); }
+    constexpr auto with_wrap()            { return policy<wrap>(); }
 
     template <typename A>
-    auto on_wrap(A&& action)
+    constexpr auto on_wrap(A&& action)
     {
        using tag = on_wrap_t<std::remove_cvref_t<A>>;
        auto pol = make_policy<P | implied_flags<tag>>();
@@ -183,7 +194,7 @@ namespace bnd
     }
 
     template <typename A>
-    auto on_clamp(A&& action)
+    constexpr auto on_clamp(A&& action)
     {
        using tag = on_clamp_t<std::remove_cvref_t<A>>;
        auto pol = make_policy<P | implied_flags<tag>>();
@@ -192,7 +203,7 @@ namespace bnd
     }
 
     template <typename A>
-    auto on_error(A&& action)
+    constexpr auto on_error(A&& action)
     {
        using tag = on_error_t<std::remove_cvref_t<A>>;
        auto pol = make_policy<P | implied_flags<tag>>();
@@ -201,7 +212,7 @@ namespace bnd
     }
 
     template <typename A>
-    auto on_sentinel(A&& action)
+    constexpr auto on_sentinel(A&& action)
     {
        using tag = on_sentinel_t<std::remove_cvref_t<A>>;
        auto pol = make_policy<P | implied_flags<tag>>();
@@ -210,7 +221,7 @@ namespace bnd
     }
 
     template <typename A>
-    auto on_overflow(A&& action)
+    constexpr auto on_overflow(A&& action)
     {
        using tag = on_overflow_t<std::remove_cvref_t<A>>;
        auto pol = make_policy<P | implied_flags<tag>>();
@@ -224,7 +235,7 @@ namespace bnd
     // at compile time. Use case: `b.with(on_overflow(λ1), on_clamp(λ2)) += rhs`
     // — the imax-overflow probe fires λ1, the post-probe narrowing fires λ2.
     template <typename... Actions>
-    auto with(Actions&&... actions)
+    constexpr auto with(Actions&&... actions)
     {
        constexpr policy_flag merged = merged_implied_flags<Actions...>;
        auto pol = make_policy<P | merged>();
@@ -455,6 +466,28 @@ namespace bnd
   {
     B b{};
     b.with_clamp() = value;
+    return b;
+  }
+
+  // `wrap_cast` rounds out the named-cast trio with modular semantics.
+  // Mirrors `saturated_cast` but uses `with_wrap()` so the input value is
+  // reduced into the target grid's interval rather than clipped at the
+  // boundaries. Useful where the caller wants integer-style wraparound
+  // (sequence numbers, angles, ring-buffer indices) inside an
+  // `std::transform` or other algorithm callback.
+  template <boundable B, arithmetic A>
+  [[nodiscard]] constexpr B wrap_cast(A value)
+  {
+    B b{};
+    b.with_wrap() = value;
+    return b;
+  }
+
+  template <boundable B, boundable A>
+  [[nodiscard]] constexpr B wrap_cast(A value)
+  {
+    B b{};
+    b.with_wrap() = value;
     return b;
   }
 
@@ -697,6 +730,30 @@ namespace bnd
   [[nodiscard]] constexpr auto mul_all(First const& first, Rest const&... rest)
   { return (first * ... * rest); }
 
+  // `add_all_into<Target>` / `mul_all_into<Target>` — variadic fold that
+  // collapses the widening intermediate back into a caller-chosen target
+  // grid via `saturated_cast<Target>`. The standard audio-mix / sensor-sum
+  // idiom: pairwise widen for exactness, then clip to the bus.
+  template <boundable Target, boundable First, boundable... Rest>
+  [[nodiscard]] constexpr Target add_all_into(First const& first, Rest const&... rest)
+  {
+    auto sum = (first + ... + rest);
+    if constexpr (requires { typename decltype(sum)::value_type; })
+      return saturated_cast<Target>(sum.value());
+    else
+      return saturated_cast<Target>(sum);
+  }
+
+  template <boundable Target, boundable First, boundable... Rest>
+  [[nodiscard]] constexpr Target mul_all_into(First const& first, Rest const&... rest)
+  {
+    auto prod = (first * ... * rest);
+    if constexpr (requires { typename decltype(prod)::value_type; })
+      return saturated_cast<Target>(prod.value());
+    else
+      return saturated_cast<Target>(prod);
+  }
+
   //---------------------------------------------------------------------------
   // div
   //---------------------------------------------------------------------------
@@ -832,43 +889,58 @@ namespace bnd
   //---------------------------------------------------------------------------
   // bound_range — range-based for loop support
   //
-  // Iteration uses bound::operator++ (which adds 1 to the *value*), so the grid
-  // must have notch 1 and integer-valued lower bound. That keeps every step on
-  // the grid and makes `count_ = upper - lower + 1` exact.
+  // Iteration walks the grid by notch index, so any grid with a non-zero
+  // notch works (integer or fractional). Each step computes the value
+  // `Lower + index * Notch`, which is exact by construction. The iterator
+  // wraps modulo the slot count so a mid-range start visits every slot
+  // exactly once before terminating.
   //---------------------------------------------------------------------------
   template <grid G, policy_flag P = checked>
-    requires (G.Notch == 1_r && abs_den(G.Interval.Lower.Denominator) == 1)
+    requires (G.Notch != 0_r)
   struct bound_range
   {
     using value_type = bound<G, P>;
-    // Iteration internally needs wrap semantics regardless of the user's
-    // policy — clamp would stick at the upper boundary forever, and
-    // sentinel would short-circuit the loop after one `++` past the end.
-    using wrap_type = bound<G, (P & ~(clamp | sentinel)) | wrap>;
+    static constexpr umax slot_count = NotchCount<value_type> + 1;
 
     struct iterator
     {
-      wrap_type pos;
+      umax index;
       imax remaining;
 
-      constexpr value_type operator*() const { return value_type(static_cast<imax>(pos)); }
-      constexpr iterator& operator++() { --remaining; ++pos; return *this; }
+      constexpr value_type operator*() const
+      {
+        // value = Lower + index * Notch  (always exact: lies on the grid).
+        rational val = (G.Interval.Lower
+                        + (rational{index} * G.Notch).value()).value();
+        return value_type{val};
+      }
+      constexpr iterator& operator++()
+      {
+        --remaining;
+        index = (index + 1) % slot_count;
+        return *this;
+      }
       constexpr bool operator!=(iterator o) const { return remaining != o.remaining; }
     };
 
-    wrap_type start_;
-    imax count_;
+    umax start_index_;
 
-    constexpr bound_range()
-      : start_(static_cast<imax>(Lower<value_type>))
-      , count_(static_cast<imax>(Upper<value_type>) - static_cast<imax>(Lower<value_type>) + 1) {}
+    constexpr bound_range() : start_index_{0} {}
 
     constexpr bound_range(value_type start)
-      : start_(static_cast<imax>(start))
-      , count_(static_cast<imax>(Upper<value_type>) - static_cast<imax>(Lower<value_type>) + 1) {}
+    {
+      // Map a grid value back to its notch index: (start - Lower) / Notch.
+      // The result has integer denominator (start is on the grid) so the
+      // numerator is the index directly.
+      auto offset = ((static_cast<rational>(start) - G.Interval.Lower)
+                     / G.Notch).value();
+      start_index_ = offset.Numerator;
+    }
 
-    constexpr iterator begin() const { return {start_, count_}; }
-    constexpr iterator end() const { return {start_, 0}; }
+    constexpr iterator begin() const
+    { return {start_index_, static_cast<imax>(slot_count)}; }
+    constexpr iterator end() const
+    { return {start_index_, 0}; }
   };
 
 } // namespace bnd

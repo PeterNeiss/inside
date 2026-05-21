@@ -22,28 +22,13 @@ TEST_CASE("compound assignment: int RHS", "[bound][compound]")
 
 TEST_CASE("compound assignment: boundable RHS", "[bound][compound]")
 {
-  // These operate on a widened intermediate (e.g. u100 * u100 has interval
-  // [0, 10000]) so the assignment-back step trips the consteval guard
-  // `not Interval<L>.includes(Interval<R>)` even when the runtime value is
-  // in range. Runtime-only.
   using u100 = bound<{0, 100}>;
-  u100 a{50};
-  u100 delta{20};
-  a -= delta;
-  REQUIRE(a == 30);
+  STATIC_REQUIRE([]{ u100 a{50}, d{20}; a -= d; return a.value(); }() == 30);
 
   using ui = bound<{0, 100}, ignore_round>;
-  ui d{50}, two{2};
-  d *= two;
-  REQUIRE(d == 100);
-
-  ui e{60}, three{3};
-  e /= three;
-  REQUIRE(e == 20);
-
-  ui f{17}, five{5};
-  f %= five;
-  REQUIRE(f == 2);
+  STATIC_REQUIRE([]{ ui d{50}, two{2}; d *= two; return d.value(); }() == 100);
+  STATIC_REQUIRE([]{ ui e{60}, three{3}; e /= three; return e.value(); }() == 20);
+  STATIC_REQUIRE([]{ ui f{17}, five{5}; f %= five; return f.value(); }() == 2);
 }
 
 TEST_CASE("compound /= 0 reports error by default", "[bound][compound]")

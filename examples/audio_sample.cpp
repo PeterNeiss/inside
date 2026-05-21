@@ -17,7 +17,7 @@ using namespace bnd;
 int main()
 {
   // Signed fractional grid: 32769 steps in [-1, 1] -> uint16 storage
-  using sample = bound<{{-1, 1}, *(1_r/16384)}, round_nearest>;
+  using sample = bound<{{-1, 1}, notch<1, 16384>}, round_nearest>;
   static_assert(sizeof(sample) == 2);
 
   // Two sine waves; combined peaks exceed unity to exercise clamping.

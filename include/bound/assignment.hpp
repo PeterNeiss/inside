@@ -286,37 +286,33 @@ namespace bnd
   {
     static_assert(not Interval<L>.excludes(Interval<R>));
 
-    if consteval
+    // The out-of-range check runs unconditionally — clamp/wrap/sentinel
+    // policies handle it via apply_*, which is constexpr-clean. Only the
+    // unhandled-checked path winds up calling `policy.report`, which
+    // contains its own `if consteval` guard.
+    if constexpr (not Interval<L>.includes(Interval<R>))
     {
-      if (not Interval<L>.includes(rhs))
-        throw "value not in interval";
-    }
-    else
-    {
-      if constexpr (not Interval<L>.includes(Interval<R>))
+      if constexpr (IsIntegerInterval<L>)
       {
-        if constexpr (IsIntegerInterval<L>)
+        // Skip the runtime range branch entirely when every handler would
+        // be dead anyway — the dead branch otherwise inhibits autovec.
+        if constexpr (needs_runtime_domain_check<L, plain<P>, plain<A>>)
         {
-          // Skip the runtime range branch entirely when every handler would
-          // be dead anyway — the dead branch otherwise inhibits autovec.
-          if constexpr (needs_runtime_domain_check<L, plain<P>, plain<A>>)
-          {
-            constexpr imax lower = (Lower<L>.Denominator > 0)
-              ? static_cast<imax>(Lower<L>.Numerator)
-              : -static_cast<imax>(Lower<L>.Numerator);
-            constexpr imax upper = (Upper<L>.Denominator > 0)
-              ? static_cast<imax>(Upper<L>.Numerator)
-              : -static_cast<imax>(Upper<L>.Numerator);
-            if (static_cast<imax>(rhs) < lower || static_cast<imax>(rhs) > upper)
-              if (handle_out_of_range(lhs, rhs, lower, upper, policy, action)) return lhs;
-          }
+          constexpr imax lower = (Lower<L>.Denominator > 0)
+            ? static_cast<imax>(Lower<L>.Numerator)
+            : -static_cast<imax>(Lower<L>.Numerator);
+          constexpr imax upper = (Upper<L>.Denominator > 0)
+            ? static_cast<imax>(Upper<L>.Numerator)
+            : -static_cast<imax>(Upper<L>.Numerator);
+          if (static_cast<imax>(rhs) < lower || static_cast<imax>(rhs) > upper)
+            if (handle_out_of_range(lhs, rhs, lower, upper, policy, action)) return lhs;
         }
-        else if (not Interval<L>.includes(rhs))
-        {
-          // Non-integer L bounds: route through the rational path so fractional
-          // Lower/Upper drive clamp/sentinel/error correctly.
-          return assignment<L, rational>::assign(lhs, rational{rhs}, policy, action);
-        }
+      }
+      else if (not Interval<L>.includes(rhs))
+      {
+        // Non-integer L bounds: route through the rational path so fractional
+        // Lower/Upper drive clamp/sentinel/error correctly.
+        return assignment<L, rational>::assign(lhs, rational{rhs}, policy, action);
       }
     }
 
@@ -410,7 +406,16 @@ namespace bnd
     if constexpr (IsRawRational<L>)
     { lhs.Raw = rhs; return true; }
     else if constexpr (Lower<L> == Upper<L>)
-    { lhs.Raw = 0; return true; }
+    {
+      // Singleton grid: Raw layout depends on encoding. For offset
+      // encoding the lone slot is Raw=0; for direct storage Raw is the
+      // value itself (`Lower`).
+      if constexpr (IsDirectStorage<L>)
+        lhs.Raw = raw_cast<L>(direct_lower_imax<L>);
+      else
+        lhs.Raw = 0;
+      return true;
+    }
     else
     {
       rational raw = ((rhs - Lower<L>)/Notch<L>).value();
@@ -458,38 +463,30 @@ namespace bnd
   template<typename P, typename A>
   constexpr L& assignment<L,R>::assign(L& lhs, R const& rhs, P&& policy, A&& action)
   {
-    if consteval
+    if (not Interval<L>.includes(rhs))
     {
-      if (not Interval<L>.includes(rhs))
-        throw "value not in interval";
-    }
-    else
-    {
-      if (not Interval<L>.includes(rhs))
+      using PA = plain<A>;
+      if constexpr (is_clamp_action<PA>)
+      { apply_clamp(lhs, rhs, policy, action); return lhs; }
+      else if constexpr (is_sentinel_action<PA>)
       {
-        using PA = plain<A>;
-        if constexpr (is_clamp_action<PA>)
-        { apply_clamp(lhs, rhs, policy, action); return lhs; }
-        else if constexpr (is_sentinel_action<PA>)
-        {
-          lhs.Raw = sentinel_raw<L>();
-          action.fn(lhs, rhs);
-          return lhs;
-        }
-        else if constexpr (is_error_action<PA>)
-        {
-          auto msg = bnd::to_string(rhs) + " is not in " + bnd::to_string(Interval<L>);
-          action.fn(lhs, errc::domain_error, std::string_view(msg));
-          return lhs;
-        }
-        else if constexpr (HasPolicy<L, P, clamp>)
-        { apply_clamp(lhs, rhs, policy, action); return lhs; }
-        else if constexpr (HasPolicy<L, P, wrap>)
-        { apply_wrap(lhs, rhs, policy, action); return lhs; }
-        else if (domain_fail(lhs, policy,
-                   bnd::to_string(rhs) + " is not in " + bnd::to_string(Interval<L>)))
-          return lhs;
+        lhs.Raw = sentinel_raw<L>();
+        action.fn(lhs, rhs);
+        return lhs;
       }
+      else if constexpr (is_error_action<PA>)
+      {
+        auto msg = bnd::to_string(rhs) + " is not in " + bnd::to_string(Interval<L>);
+        action.fn(lhs, errc::domain_error, std::string_view(msg));
+        return lhs;
+      }
+      else if constexpr (HasPolicy<L, P, clamp>)
+      { apply_clamp(lhs, rhs, policy, action); return lhs; }
+      else if constexpr (HasPolicy<L, P, wrap>)
+      { apply_wrap(lhs, rhs, policy, action); return lhs; }
+      else if (domain_fail(lhs, policy,
+                 bnd::to_string(rhs) + " is not in " + bnd::to_string(Interval<L>)))
+        return lhs;
     }
 
     store_checked(lhs, rhs, policy, action);
@@ -605,25 +602,17 @@ namespace bnd
     static_assert(abs_den(Factor.Denominator) == 1 || HasPolicy<L, P, ignore_round>,
       "incompatible notches: use with_round() or policy<ignore_round>() to allow rounding");
 
-    if consteval
+    if constexpr (not Interval<L>.includes(Interval<R>))
     {
-      if (not Interval<L>.includes(Interval<R>))
-        throw "value not in interval";
-    }
-    else
-    {
-      if constexpr (not Interval<L>.includes(Interval<R>))
+      if constexpr (needs_runtime_domain_check<L, plain<P>, plain<A>>)
       {
-        if constexpr (needs_runtime_domain_check<L, plain<P>, plain<A>>)
+        if constexpr (is_integer_mapping)
         {
-          if constexpr (is_integer_mapping)
-          {
-            if (imax mapped = map_raw(rhs.Raw); mapped < RawLo<L> || mapped > RawHi<L>)
-              if (try_clamp_or_fail(lhs, rhs, policy, action)) return lhs;
-          }
-          else if (not Interval<L>.includes(static_cast<rational>(rhs)))
+          if (imax mapped = map_raw(rhs.Raw); mapped < RawLo<L> || mapped > RawHi<L>)
             if (try_clamp_or_fail(lhs, rhs, policy, action)) return lhs;
         }
+        else if (not Interval<L>.includes(static_cast<rational>(rhs)))
+          if (try_clamp_or_fail(lhs, rhs, policy, action)) return lhs;
       }
     }
 

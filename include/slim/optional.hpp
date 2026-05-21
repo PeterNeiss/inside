@@ -413,6 +413,29 @@ public:
         validate_not_sentinel(value_);
     }
 
+    // Non-throwing factory: collapses a sentinel-valued T to nullopt instead
+    // of throwing. The throwing single-value ctor stays the default ("you
+    // promised this wasn't a sentinel"); this factory is the public escape
+    // hatch for "test if T already encodes empty".
+    template<class U = T>
+        requires (std::is_constructible_v<T, U>)
+    static constexpr optional from_maybe_sentinel(U&& value)
+        noexcept(std::is_nothrow_constructible_v<T, U>)
+    {
+        optional o{nullopt};
+        if constexpr (can_be_empty)
+        {
+            T tmp(std::forward<U>(value));
+            if (!Traits::is_sentinel(tmp))
+                o.value_ = std::move(tmp);
+        }
+        else
+        {
+            o.value_ = T(std::forward<U>(value));
+        }
+        return o;
+    }
+
     // Construct from another optional with different T and/or Traits.
     // The validate_not_sentinel call is retained because *other may be a
     // legitimate value under TrU's traits but happen to coincide with this

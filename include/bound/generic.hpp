@@ -245,6 +245,24 @@ namespace bnd
     && (!boundable<R> || abs_den(assignment<L, R>::Factor.Denominator) == 1
         || ((BoundPolicy<L> | P) & ignore_round) != 0);
 
+  // Diagnostic helper: when `bound_assignable` fails, instantiating
+  // `bound_assignable_why<L, R, P>` produces individually-named static_asserts
+  // for each clause, so the user sees which one tripped. Not used in normal
+  // code paths — meant to be called from `static_assert(bound_assignable_why<L,R,P>::value)`
+  // when a developer wants better diagnostics during local debugging.
+  template <typename L, typename R, policy_flag P = checked>
+  struct bound_assignable_why
+  {
+    static_assert(numeric<R>,
+      "bound_assignable: rhs is not numeric (must be a bound or arithmetic type)");
+    static_assert((!boundable<R> && !std::integral<R>) || not Interval<L>.excludes(Interval<R>),
+      "bound_assignable: rhs interval lies entirely outside lhs interval — assignment can never succeed");
+    static_assert(!boundable<R> || abs_den(assignment<L, R>::Factor.Denominator) == 1
+                  || ((BoundPolicy<L> | P) & ignore_round) != 0,
+      "bound_assignable: incompatible notches — use `with_round()` or `policy<ignore_round>()` to allow rounding");
+    static constexpr bool value = bound_assignable<L, R, P>;
+  };
+
   template <boundable B>
   constexpr raw_t<B> sentinel_raw()
   {

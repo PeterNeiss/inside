@@ -320,6 +320,18 @@ namespace bnd
   { return rational{static_cast<double>(value)}; }
 
   //---------------------------------------------------------------------------
+  // notch<N, D> — `constexpr rational` variable template for use directly in
+  // `bound<{...}>` template parameter lists. Cleans up the `*(1_r/N)` idiom
+  // that appears across the example suite.
+  //
+  //   using sample = bound<{{-1, 1}, notch<1, 16384>}, round_nearest>;
+  //
+  // Defaults to `D = 1` so `notch<10>` gives an integer-rational notch.
+  //---------------------------------------------------------------------------
+  template <umax N, imax D = 1>
+  inline constexpr rational notch = rational{N, D};
+
+  //---------------------------------------------------------------------------
   // add_impl / mul_impl / div_impl — shared bodies (Checked toggles overflow)
   //---------------------------------------------------------------------------
   template <bool Checked>

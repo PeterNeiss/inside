@@ -4,17 +4,13 @@
 // for runtime test execution.
 //
 // Library quirks to respect:
-//   - `assignment::assign` has `if consteval { throw }` for out-of-range
-//     values — at compile time, clamp/wrap/sentinel policies don't kick in.
-//     Stick to in-range values for every constexpr write.
-//   - `bound::policy<F>()` (and therefore `with_clamp`/`with_wrap`/`clamp_*`/
-//     `saturated_cast`) is NOT marked constexpr. Only `unchecked_cast` and
-//     `checked_cast` (the latter for in-range values) are compile-time safe.
-//   - `bound_range` iterates via wrap internally, so its `++` past the upper
-//     bound trips the consteval-throw above. Runtime only.
 //   - `rational::inv(0)` and division-by-zero call `consteval
 //     rational_overflow(...)` and hard-fail the build — they cannot appear
 //     in a constant expression.
+//   - The unhandled-`checked` path (out-of-range value, no clamp/wrap/
+//     sentinel) still aborts constant evaluation via the `if consteval`
+//     guard inside `policy::report` (with a clearer message than the
+//     prior unconditional throw).
 
 #include "bound/bound.hpp"
 #include "bound/numeric_limits.hpp"
@@ -296,10 +292,6 @@ TEST_CASE("constexpr: add_all / mul_all folds", "[constexpr][bound][fold]")
 //---------------------------------------------------------------------------
 // casts
 //---------------------------------------------------------------------------
-// Only `unchecked_cast` and `checked_cast` (in-range) are compile-time safe.
-// `saturated_cast` / `clamp_floor` / `clamp_ceil` / `clamp_round` route through
-// `bound::policy<F>()`, which is not marked constexpr; runtime coverage is in
-// `test_casts.cpp`.
 TEST_CASE("constexpr: unchecked_cast preserves in-range values",
           "[constexpr][bound][cast]")
 {
@@ -316,6 +308,54 @@ TEST_CASE("constexpr: checked_cast with in-range values",
   STATIC_REQUIRE(checked_cast<pct>( 42) ==  42);
   STATIC_REQUIRE(checked_cast<pct>(100) == 100);
   STATIC_REQUIRE(checked_cast<pct>(  0) ==   0);
+}
+
+TEST_CASE("constexpr: saturated_cast clamps out-of-range",
+          "[constexpr][bound][cast]")
+{
+  using pct = bound<{0, 100}>;
+  STATIC_REQUIRE(saturated_cast<pct>(150) == 100);
+  STATIC_REQUIRE(saturated_cast<pct>(-5)  ==   0);
+  STATIC_REQUIRE(saturated_cast<pct>( 42) ==  42);
+}
+
+TEST_CASE("constexpr: wrap_cast wraps modulo the grid",
+          "[constexpr][bound][cast]")
+{
+  using angle = bound<{0, 359}>;
+  STATIC_REQUIRE(wrap_cast<angle>(370) ==  10);
+  STATIC_REQUIRE(wrap_cast<angle>(-10) == 350);
+  STATIC_REQUIRE(wrap_cast<angle>(180) == 180);
+}
+
+TEST_CASE("constexpr: add_all_into / mul_all_into clip to target grid",
+          "[constexpr][bound][fold]")
+{
+  using bus = bound<{-100, 100}, clamp>;
+  using ch  = bound<{-50, 50}>;
+  constexpr ch a{30}, b{40}, c{45};
+
+  // Naive widened sum would be 115; add_all_into clips to bus's interval.
+  STATIC_REQUIRE(add_all_into<bus>(a, b, c) == 100);
+  STATIC_REQUIRE(add_all_into<bus>(ch{10}, ch{-5}, ch{3}) == 8);
+
+  using small = bound<{0, 50}, clamp>;
+  using v = bound<{0, 10}>;
+  STATIC_REQUIRE(mul_all_into<small>(v{4}, v{5}) == 20);
+  STATIC_REQUIRE(mul_all_into<small>(v{6}, v{10}) == 50);  // 60 clamped
+}
+
+TEST_CASE("constexpr: clamp_floor / clamp_ceil / clamp_round",
+          "[constexpr][bound][cast][round]")
+{
+  using coarse = bound<{{0, 10}, 2}>;
+  STATIC_REQUIRE(clamp_floor<coarse>( 3.0) == 2);
+  STATIC_REQUIRE(clamp_ceil <coarse>( 3.0) == 4);
+  STATIC_REQUIRE(clamp_round<coarse>( 3.0) == 4);
+
+  // out of range clamps to boundary
+  STATIC_REQUIRE(clamp_floor<coarse>(15.0) == 10);
+  STATIC_REQUIRE(clamp_floor<coarse>(-3.0) ==  0);
 }
 
 TEST_CASE("constexpr: conversion predicates", "[constexpr][bound][predicates]")
@@ -362,8 +402,50 @@ TEST_CASE("constexpr: numeric_limits<bound>", "[constexpr][numeric_limits]")
   STATIC_REQUIRE(std::numeric_limits<ang>::is_modulo);
 }
 
-// bound_range relies on wrap semantics for its ++ past upper, which trips
-// the `if consteval { throw }` in assignment::assign. Runtime-only.
+//---------------------------------------------------------------------------
+// bound_range
+//---------------------------------------------------------------------------
+TEST_CASE("constexpr: bound_range iterates the full grid", "[constexpr][range]")
+{
+  // 0 + 1 + ... + 9 = 45
+  constexpr imax sum = [] {
+    imax s = 0;
+    for (auto i : bound_range<{0, 9}>{})
+      s += static_cast<imax>(i);
+    return s;
+  }();
+  STATIC_REQUIRE(sum == 45);
+
+  // wrap-start: visits every element exactly once, starting mid-range
+  constexpr imax sum_from_5 = [] {
+    imax s = 0;
+    for (auto i : bound_range<{0, 9}>{bound<{0, 9}>{5}})
+      s += static_cast<imax>(i);
+    return s;
+  }();
+  STATIC_REQUIRE(sum_from_5 == 45);
+}
+
+TEST_CASE("constexpr: bound_range on fractional notch grid", "[constexpr][range]")
+{
+  // {-1, 1} with notch 1/2: visits -1, -0.5, 0, 0.5, 1 (5 slots).
+  // Sum: -1 + -0.5 + 0 + 0.5 + 1 = 0 (so we count instead).
+  constexpr int count = [] {
+    int n = 0;
+    for (auto v : bound_range<{{-1, 1}, notch<1, 2>}>{}) { (void)v; ++n; }
+    return n;
+  }();
+  STATIC_REQUIRE(count == 5);
+
+  // Sum the doubled values (-1 + -0.5 + 0 + 0.5 + 1) * 2 = 0
+  constexpr imax twice_sum = [] {
+    imax s = 0;
+    for (auto v : bound_range<{{-1, 1}, notch<1, 2>}>{})
+      s += static_cast<imax>(2 * double(v));
+    return s;
+  }();
+  STATIC_REQUIRE(twice_sum == 0);
+}
 
 //---------------------------------------------------------------------------
 // policy machinery

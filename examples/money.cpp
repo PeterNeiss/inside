@@ -14,7 +14,7 @@ int main()
 {
   // 0..$1,000,000 in 1¢ steps -> 100M+1 steps fits uint32.
   // 0.01 is not exact in binary, so the notch is given as an exact rational.
-  using money = bound<{{0, 1'000'000}, *(1_r/100)}, round_nearest>;
+  using money = bound<{{0, 1'000'000}, notch<1, 100>}, round_nearest>;
   static_assert(sizeof(money) == 4);
 
   // Running total: line items add exactly, no float drift.

@@ -415,6 +415,15 @@ Rational storage is exact (no floating-point rounding) but larger and slower tha
 
 `slim::optional<bound>` uses a sentinel value instead of a bool flag, so `sizeof(slim::optional<bound>) == sizeof(bound)`. The sentinel is `numeric_limits<raw>::max()` for unsigned types and `numeric_limits<raw>::min()` for signed types. This costs one value from the representable range (e.g., `int8_t` gives 255 usable values: -127..127).
 
+### Raw storage access
+
+`bound::Raw` is a public data member, but most code should not touch it directly. The supported access patterns are:
+
+- **`b.is_sentinel()`** — public probe for "does this bound currently hold the sentinel value?". The canonical answer to "is this slot empty?" under `sentinel` policy. Returns `true` iff `Raw` matches `sentinel_raw<B>()`.
+- **`bnd::sentinel_raw<B>()`** — returns the raw byte pattern reserved for the sentinel. Useful for interop with C APIs or for constructing a `bound` in sentinel state manually (`b.Raw = sentinel_raw<B>()`).
+- **`slim::optional<B>::from_maybe_sentinel(b)`** — non-throwing factory: returns `nullopt` if `b` is the sentinel, otherwise wraps `b`. The plain `slim::optional<B>{b}` ctor still throws on sentinel input — by design, since constructing an "engaged" optional from a sentinel value is usually a bug.
+- **Direct `b.Raw = ...` writes** are only well-defined under `unsafe` policy (which opts out of all runtime checks). Outside `unsafe`, the library assumes `Raw` always encodes either a valid grid value or the sentinel.
+
 ## Comparing and Extracting Values
 
 `bound` compares directly with arithmetic types and other bounds — no `static_cast` needed:
@@ -575,6 +584,16 @@ The `examples/` directory contains self-contained programs demonstrating key fea
 | `errors.cpp` | Error handling: throw, error_code, optional |
 | `array_index.cpp` | Bounded array indexing with sentinel, range-based for |
 | `algorithms.cpp` | STL and ranges algorithms (sort, find, transform, accumulate, ...) |
+| `pid_controller.cpp` | Fixed-point PID loop with `add_all` and `clamp_round` for saturating output |
+| `audio_mixer.cpp` | 4-channel Q1.14 mix with `with(on_clamp, on_overflow)` peak metering and dB gain |
+| `sequence_number.cpp` | TCP-style wrap SEQ with `on_wrap` epoch counter and `%` ring index |
+| `histogram.cpp` | Latency bucketing with `bound_range`, `will_conversion_overflow`, `is_conversion_lossy` |
+| `game_hp.cpp` | HP/ammo with `mul_all` damage chain, `saturated_cast`, modulo for magazine |
+| `calendar.cpp` | Day → month → year cascade via nested `on_wrap` callbacks |
+| `jitter_buffer.cpp` | Reorder buffer with `sentinel` policy + `on_sentinel` drop detection |
+| `id_pool.cpp` | Bounded ID allocator using `std::hash<bound>`, `numeric_limits`, `try_make` |
+| `sensor_fusion.cpp` | Weighted average across sensors with disparate fixed-point ranges |
+| `torus_map.cpp` | 2-D sub-pixel position with `wrap` on both axes and edge-crossing events |
 
 Build and run any example:
 
