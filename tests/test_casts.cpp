@@ -17,26 +17,26 @@ TEST_CASE("numeric_limits reports grid bounds", "[bound][numeric_limits]")
   using pct = bound<{0, 100}>;
   using nl  = std::numeric_limits<pct>;
 
-  REQUIRE(nl::is_specialized);
-  REQUIRE(nl::is_bounded);
-  REQUIRE(nl::is_integer);
-  REQUIRE(nl::is_exact);
-  REQUIRE_FALSE(nl::is_signed);
-  REQUIRE_FALSE(nl::is_modulo);
+  STATIC_REQUIRE(nl::is_specialized);
+  STATIC_REQUIRE(nl::is_bounded);
+  STATIC_REQUIRE(nl::is_integer);
+  STATIC_REQUIRE(nl::is_exact);
+  STATIC_REQUIRE_FALSE(nl::is_signed);
+  STATIC_REQUIRE_FALSE(nl::is_modulo);
 
-  REQUIRE(nl::min()    == pct{0});
-  REQUIRE(nl::max()    == pct{100});
-  REQUIRE(nl::lowest() == pct{0});
+  STATIC_REQUIRE(nl::min()    == pct{0});
+  STATIC_REQUIRE(nl::max()    == pct{100});
+  STATIC_REQUIRE(nl::lowest() == pct{0});
 }
 
 TEST_CASE("numeric_limits handles signed and wrapping bounds", "[bound][numeric_limits]")
 {
   using temp = bound<{-40, 60}>;
-  REQUIRE(std::numeric_limits<temp>::is_signed);
-  REQUIRE(std::numeric_limits<temp>::lowest() == temp{-40});
+  STATIC_REQUIRE(std::numeric_limits<temp>::is_signed);
+  STATIC_REQUIRE(std::numeric_limits<temp>::lowest() == temp{-40});
 
   using ang = bound<{0, 359}, wrap>;
-  REQUIRE(std::numeric_limits<ang>::is_modulo);
+  STATIC_REQUIRE(std::numeric_limits<ang>::is_modulo);
 }
 
 //---------------------------------------------------------------------------
@@ -62,30 +62,30 @@ TEST_CASE("will_conversion_overflow", "[bound][predicates]")
 {
   using pct = bound<{0, 100}>;
 
-  REQUIRE_FALSE(will_conversion_overflow<pct>(50));
-  REQUIRE(will_conversion_overflow<pct>(150));
-  REQUIRE(will_conversion_overflow<pct>(-1));
-  REQUIRE_FALSE(will_conversion_overflow<pct>(0));
-  REQUIRE_FALSE(will_conversion_overflow<pct>(100));
+  STATIC_REQUIRE_FALSE(will_conversion_overflow<pct>(50));
+  STATIC_REQUIRE      (will_conversion_overflow<pct>(150));
+  STATIC_REQUIRE      (will_conversion_overflow<pct>(-1));
+  STATIC_REQUIRE_FALSE(will_conversion_overflow<pct>(0));
+  STATIC_REQUIRE_FALSE(will_conversion_overflow<pct>(100));
 }
 
 TEST_CASE("will_conversion_truncate detects non-notch values", "[bound][predicates]")
 {
   using coarse = bound<{{0, 10}, 2}>;          // notch 2
 
-  REQUIRE_FALSE(will_conversion_truncate<coarse>(0));
-  REQUIRE_FALSE(will_conversion_truncate<coarse>(4));
-  REQUIRE(will_conversion_truncate<coarse>(3));     // doesn't land on 2-notch
-  REQUIRE_FALSE(will_conversion_truncate<coarse>(11)); // out of range, not truncation
+  STATIC_REQUIRE_FALSE(will_conversion_truncate<coarse>(0));
+  STATIC_REQUIRE_FALSE(will_conversion_truncate<coarse>(4));
+  STATIC_REQUIRE      (will_conversion_truncate<coarse>(3));     // doesn't land on 2-notch
+  STATIC_REQUIRE_FALSE(will_conversion_truncate<coarse>(11)); // out of range, not truncation
 }
 
 TEST_CASE("is_conversion_lossy combines both", "[bound][predicates]")
 {
   using coarse = bound<{{0, 10}, 2}>;
 
-  REQUIRE_FALSE(is_conversion_lossy<coarse>(4));
-  REQUIRE(is_conversion_lossy<coarse>(3));   // truncation
-  REQUIRE(is_conversion_lossy<coarse>(20));  // overflow
+  STATIC_REQUIRE_FALSE(is_conversion_lossy<coarse>(4));
+  STATIC_REQUIRE      (is_conversion_lossy<coarse>(3));   // truncation
+  STATIC_REQUIRE      (is_conversion_lossy<coarse>(20));  // overflow
 }
 
 //---------------------------------------------------------------------------
@@ -104,7 +104,7 @@ TEST_CASE("checked_cast throws on out-of-range", "[bound][cast]")
 {
   using pct = bound<{0, 100}>;
 
-  REQUIRE(checked_cast<pct>(42) == pct{42});
+  STATIC_REQUIRE(checked_cast<pct>(42) == pct{42});
   REQUIRE_THROWS_AS(checked_cast<pct>(150), std::system_error);
   REQUIRE_THROWS_AS(checked_cast<pct>(-1),  std::system_error);
 }
@@ -113,7 +113,7 @@ TEST_CASE("checked_cast throws on truncation", "[bound][cast]")
 {
   using coarse = bound<{{0, 10}, 2}>;
 
-  REQUIRE(checked_cast<coarse>(4) == coarse{4});
+  STATIC_REQUIRE(checked_cast<coarse>(4) == coarse{4});
   REQUIRE_THROWS_AS(checked_cast<coarse>(3), std::system_error);
 }
 
@@ -122,8 +122,8 @@ TEST_CASE("unchecked_cast bypasses runtime checks", "[bound][cast]")
   using pct = bound<{0, 100}>;
 
   // In-range value: same result as checked_cast.
-  REQUIRE(unchecked_cast<pct>(42) == pct{42});
-  REQUIRE(unchecked_cast<pct>(0)  == pct{0});
+  STATIC_REQUIRE(unchecked_cast<pct>(42) == pct{42});
+  STATIC_REQUIRE(unchecked_cast<pct>(0)  == pct{0});
 }
 
 //---------------------------------------------------------------------------
@@ -134,13 +134,11 @@ TEST_CASE("_b literal produces just<N>", "[bound][literal]")
   constexpr auto five = 5_b;
   STATIC_REQUIRE(Lower<decltype(five)> == 5_r);
   STATIC_REQUIRE(Upper<decltype(five)> == 5_r);
-  REQUIRE(five == 5);
+  STATIC_REQUIRE(five == 5);
 
   // Composes with bound arithmetic — grid widens through addition.
   using pct = bound<{0, 100}>;
-  pct p{40};
-  auto s = 10_b + p;
-  REQUIRE(s == 50);
+  STATIC_REQUIRE(10_b + pct{40} == 50);
 }
 
 //---------------------------------------------------------------------------
@@ -149,14 +147,11 @@ TEST_CASE("_b literal produces just<N>", "[bound][literal]")
 TEST_CASE("add_all / mul_all fold variadically", "[bound][fold]")
 {
   using v = bound<{0, 100}>;
-  v a{10}, b{20}, c{30}, d{40};
+  constexpr v a{10}, b{20}, c{30}, d{40};
+  STATIC_REQUIRE(add_all(a, b, c, d) == 100);
 
-  auto s = add_all(a, b, c, d);
-  REQUIRE(s == 100);
-
-  v p{2}, q{3}, r{5};
-  auto prod = mul_all(p, q, r);
-  REQUIRE(prod == 30);
+  constexpr v p{2}, q{3}, r{5};
+  STATIC_REQUIRE(mul_all(p, q, r) == 30);
 }
 
 //---------------------------------------------------------------------------

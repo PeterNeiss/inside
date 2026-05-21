@@ -10,13 +10,13 @@ using namespace bnd;
 
 TEST_CASE("safe_abs handles INT_MIN without UB", "[math][safe_abs]")
 {
-  REQUIRE(safe_abs(imax{0}) == 0u);
-  REQUIRE(safe_abs(imax{42}) == 42u);
-  REQUIRE(safe_abs(imax{-42}) == 42u);
+  STATIC_REQUIRE(safe_abs(imax{0}) == 0u);
+  STATIC_REQUIRE(safe_abs(imax{42}) == 42u);
+  STATIC_REQUIRE(safe_abs(imax{-42}) == 42u);
 
   // INT_MIN: -INT_MIN as signed would overflow; safe_abs computes via umax
   constexpr imax min_v = std::numeric_limits<imax>::min();
-  REQUIRE(safe_abs(min_v) == static_cast<umax>(std::numeric_limits<imax>::max()) + 1u);
+  STATIC_REQUIRE(safe_abs(min_v) == static_cast<umax>(std::numeric_limits<imax>::max()) + 1u);
 }
 
 TEST_CASE("frexp handles zero", "[math][frexp]")
@@ -74,8 +74,8 @@ TEST_CASE("frexp on subnormal scales up via recursion", "[math][frexp]")
 
 TEST_CASE("ldexp identity cases", "[math][ldexp]")
 {
-  REQUIRE(bnd::ldexp(0.0, 5) == 0.0);
-  REQUIRE(bnd::ldexp(1.5, 0) == 1.5);
+  STATIC_REQUIRE(bnd::ldexp(0.0, 5) == 0.0);
+  STATIC_REQUIRE(bnd::ldexp(1.5, 0) == 1.5);
 }
 
 TEST_CASE("ldexp inf/NaN passthrough", "[math][ldexp]")

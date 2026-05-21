@@ -11,32 +11,31 @@ using namespace bnd;
 TEST_CASE("bound add", "[bound][arithmetic][add]")
 {
   using u8 = bound<{10, 255}>;
-  u8 a{16};
-  u8 b{220};
-  REQUIRE(a + just<1> == 17);
-  REQUIRE(b + just<1> == 221);
+  constexpr u8 a{16};
+  constexpr u8 b{220};
+  STATIC_REQUIRE(a + just<1> == 17);
+  STATIC_REQUIRE(b + just<1> == 221);
 
-  auto sum = a + b;
-  REQUIRE(sum == 236);
+  STATIC_REQUIRE(a + b == 236);
 
   // -ve result widens to signed
-  auto diff = a - b;
-  REQUIRE(diff == -204);
+  STATIC_REQUIRE(a - b == -204);
 
   // works at uint64 max
   using u64 = bound<{{0u, std::numeric_limits<std::uint64_t>::max()}, 1}>;
   constexpr u64 biggest{std::numeric_limits<std::uint64_t>::max()};
-  REQUIRE(biggest == rational{std::numeric_limits<std::uint64_t>::max()});
+  STATIC_REQUIRE(biggest == rational{std::numeric_limits<std::uint64_t>::max()});
 }
 
 TEST_CASE("bound mul", "[bound][arithmetic][mul]")
 {
   using r = bound<{10, 255, 1}>;
-  r a{16};
-  r b{102};
-  auto c = a * b;
-  REQUIRE(c == 1632);
+  constexpr r a{16};
+  constexpr r b{102};
+  STATIC_REQUIRE(a * b == 1632);
 
+  // Fractional-notch ops require runtime construction from `double` (the
+  // real-valued assignment specialization is not constexpr-evaluable).
   using u4 = bound<{{0.75, 10.5}, 0.25}>;
   u4 d{3};
   u4 e{3.25};
@@ -59,29 +58,29 @@ TEST_CASE("bound div: rational vs integer paths", "[bound][arithmetic][div]")
   SECTION("default returns rational raw")
   {
     using r = bound<{1, 255}>;
-    r a{102};
-    r b{16};
-    auto c = a / b;
-    REQUIRE(c.has_value());
-    REQUIRE(*c == *(51_r/8));
+    constexpr r a{102};
+    constexpr r b{16};
+    constexpr auto c = a / b;
+    STATIC_REQUIRE(c.has_value());
+    STATIC_REQUIRE(*c == *(51_r/8));
   }
 
   SECTION("ignore_round selects integer-storage div path")
   {
     using ui = bound<{0, 100}, ignore_round>;
-    ui a{51}, b{8};
-    auto e = a / b;
+    constexpr ui a{51}, b{8};
+    constexpr auto e = a / b;
     STATIC_REQUIRE_FALSE(std::is_same_v<typename decltype(e)::value_type::raw_type, rational>);
-    REQUIRE(*e == 6);
+    STATIC_REQUIRE(*e == 6);
   }
 
   SECTION("per-call ignore_round")
   {
     using u100 = bound<{0, 100}>;
-    u100 a{51}, b{8};
-    auto d = div(a, b, truncated);
+    constexpr u100 a{51}, b{8};
+    constexpr auto d = div(a, b, truncated);
     STATIC_REQUIRE_FALSE(std::is_same_v<typename decltype(d)::value_type::raw_type, rational>);
-    REQUIRE(*d == 6);
+    STATIC_REQUIRE(*d == 6);
   }
 
   SECTION("division by zero -> nullopt")
@@ -97,85 +96,86 @@ TEST_CASE("bound div: rational vs integer paths", "[bound][arithmetic][div]")
     STATIC_REQUIRE_FALSE(IsDirectStorage<off>);
     STATIC_REQUIRE(IsNotchStorage<off>);
 
-    off a{50}, b{10};
-    auto q = div(a, b, truncated);
+    constexpr off a{50}, b{10};
+    constexpr auto q = div(a, b, truncated);
     STATIC_REQUIRE_FALSE(std::is_same_v<typename decltype(q)::value_type::raw_type, rational>);
-    REQUIRE(*q == 5);
+    STATIC_REQUIRE(*q == 5);
   }
 
   SECTION("non-unit notch trunc")
   {
     using step2 = bound<{{0, 10}, 2}>;
-    step2 a{10}, b{6};
-    auto q = div(a, b, truncated);
-    REQUIRE(*q == 1);
+    constexpr step2 a{10}, b{6};
+    constexpr auto q = div(a, b, truncated);
+    STATIC_REQUIRE(*q == 1);
   }
 
   SECTION("offset + non-unit notch")
   {
     using step5 = bound<{{5, 15}, 5}>;
-    step5 a{15}, b{5};
-    auto q = div(a, b, truncated);
-    REQUIRE(*q == 3);
+    constexpr step5 a{15}, b{5};
+    constexpr auto q = div(a, b, truncated);
+    STATIC_REQUIRE(*q == 3);
   }
 
   SECTION("signed integer division truncates toward zero")
   {
     using si = bound<{-100, 100}, ignore_round>;
-    si a{-7}, b{2};
-    auto q = a / b;
-    REQUIRE(*q == -3);
+    constexpr si a{-7}, b{2};
+    constexpr auto q = a / b;
+    STATIC_REQUIRE(*q == -3);
   }
 }
 
 TEST_CASE("bound modulo", "[bound][arithmetic][mod]")
 {
   using ui = bound<{0, 100}, ignore_round>;
-  ui a{17}, b{5};
-  REQUIRE(*(a % b) == 2);
+  constexpr ui a{17}, b{5};
+  STATIC_REQUIRE(*(a % b) == 2);
 
-  ui c{100}, d{10};
-  REQUIRE(*(c % d) == 0);
+  constexpr ui c{100}, d{10};
+  STATIC_REQUIRE(*(c % d) == 0);
 
-  ui zero{0};
-  REQUIRE_FALSE((a % zero).has_value());
+  // mod-by-zero — runtime only: `if consteval { throw }` short-circuits.
+  ui a_rt{17}, zero{0};
+  REQUIRE_FALSE((a_rt % zero).has_value());
 
   using si = bound<{-100, 100}, ignore_round>;
-  si sa{-17}, sb{5};
-  REQUIRE(*(sa % sb) == -2);
+  constexpr si sa{-17}, sb{5};
+  STATIC_REQUIRE(*(sa % sb) == -2);
 
   using u50 = bound<{0, 50}>;
-  u50 e{23}, f{7};
-  auto r = mod(e, f, truncated);
-  REQUIRE(*r == 2);
+  constexpr u50 e{23}, f{7};
+  constexpr auto r = mod(e, f, truncated);
+  STATIC_REQUIRE(*r == 2);
 }
 
 TEST_CASE("bound optional ops propagate nullopt", "[bound][arithmetic][optional]")
 {
   using u8 = bound<{1, 255}>;
-  u8 a{100}, b{10};
-  slim::optional<u8> opt_a{a}, opt_b{b};
-  slim::optional<u8> none{slim::nullopt};
+  constexpr u8 a{100}, b{10};
+  constexpr slim::optional<u8> opt_a{a}, opt_b{b};
+  constexpr slim::optional<u8> none{slim::nullopt};
 
   // +
-  REQUIRE(*(opt_a + b)     == 110);
-  REQUIRE(*(a + opt_b)     == 110);
-  REQUIRE(*(opt_a + opt_b) == 110);
-  REQUIRE_FALSE((none + b).has_value());
-  REQUIRE_FALSE((a + none).has_value());
+  STATIC_REQUIRE(*(opt_a + b)     == 110);
+  STATIC_REQUIRE(*(a + opt_b)     == 110);
+  STATIC_REQUIRE(*(opt_a + opt_b) == 110);
+  STATIC_REQUIRE_FALSE((none + b).has_value());
+  STATIC_REQUIRE_FALSE((a + none).has_value());
 
   // -
-  REQUIRE(*(opt_a - b) == 90);
-  REQUIRE_FALSE((none - b).has_value());
+  STATIC_REQUIRE(*(opt_a - b) == 90);
+  STATIC_REQUIRE_FALSE((none - b).has_value());
 
   // *
-  REQUIRE(*(opt_a * b) == 1000);
-  REQUIRE_FALSE((a * none).has_value());
+  STATIC_REQUIRE(*(opt_a * b) == 1000);
+  STATIC_REQUIRE_FALSE((a * none).has_value());
 
   // /
-  REQUIRE((opt_a / b).has_value());
-  REQUIRE(*(opt_a / b) == 10);
-  REQUIRE_FALSE((none / b).has_value());
+  STATIC_REQUIRE((opt_a / b).has_value());
+  STATIC_REQUIRE(*(opt_a / b) == 10);
+  STATIC_REQUIRE_FALSE((none / b).has_value());
 }
 
 TEST_CASE("bound rational-storage optional ops do not double-wrap", "[bound][arithmetic][optional]")
@@ -248,8 +248,8 @@ TEST_CASE("bound rational-storage on_overflow free fn", "[bound][arithmetic][rat
 
 TEST_CASE("bound just<N>", "[bound][just]")
 {
-  REQUIRE(just<1>  == 1);
-  REQUIRE(just<42> == 42);
+  STATIC_REQUIRE(just<1>  == 1);
+  STATIC_REQUIRE(just<42> == 42);
 }
 
 TEST_CASE("constexpr arithmetic", "[bound][arithmetic][constexpr]")

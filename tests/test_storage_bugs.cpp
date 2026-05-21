@@ -23,11 +23,10 @@ TEST_CASE("Bug A: rational-mixed add into direct-storage result", "[bound][addit
   using L = bound<{-5, 5}>;                          // signed-direct
   using R = bound<{{-10, 10}, rational{0u}}>;        // rational raw
 
-  L l{2};
-  R r{rational{1u}};
-  auto sum = l + r;
+  constexpr L l{2};
+  constexpr R r{rational{1u}};
   // Result grid: {-15, 15}, notch 1 → signed-direct.
-  REQUIRE(sum == 3);
+  STATIC_REQUIRE(l + r == 3);
 }
 
 //---------------------------------------------------------------------------
@@ -50,9 +49,9 @@ TEST_CASE("Bug B: signed-direct multiplication third quadrant", "[bound][multipl
 
   // Lower<result> = Upper<L> * Lower<R> = 5 * -10 = -50 → third quadrant.
   // Without the fix, L{2} * R{1} produces value -3 instead of 2.
-  REQUIRE(L{ 2} * R{rational{ 1u}} == rational{ 2u});
-  REQUIRE(L{ 3} * R{rational{ 2u}} == rational{ 6u});
-  REQUIRE(L{ 0} * R{rational{ 5u}} == rational{ 0u});
+  STATIC_REQUIRE(L{ 2} * R{rational{ 1u}} == rational{ 2u});
+  STATIC_REQUIRE(L{ 3} * R{rational{ 2u}} == rational{ 6u});
+  STATIC_REQUIRE(L{ 0} * R{rational{ 5u}} == rational{ 0u});
 }
 
 //---------------------------------------------------------------------------
@@ -62,6 +61,10 @@ TEST_CASE("Bug B: signed-direct multiplication third quadrant", "[bound][multipl
 // for `HasPolicy<L, P, wrap>`. A `bound<{...}, wrap>` constructed from a
 // double silently stores the unwrapped value (which may be out of range)
 // because it falls through `domain_fail` without `checked` set.
+//
+// Runtime-only: wrap policy is bypassed in constant evaluation (the
+// `if consteval { throw }` in assignment::assign fires before the policy
+// machinery can react).
 //---------------------------------------------------------------------------
 TEST_CASE("Bug C: wrap policy fires for real rhs", "[bound][wrap][regression]")
 {
@@ -101,6 +104,5 @@ TEST_CASE("Bug D: gcd lcm overflow propagates to grid::operator+", "[bound][grid
   constexpr grid g1{interval{0_r, 1_r}, big};
   constexpr grid g2{interval{0_r, 1_r}, third};
 
-  auto sum = g1 + g2;
-  REQUIRE_FALSE(sum.has_value());
+  STATIC_REQUIRE_FALSE((g1 + g2).has_value());
 }
