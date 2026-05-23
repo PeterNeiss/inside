@@ -77,8 +77,9 @@ TEST_CASE("sentinel policy on fixed-point grids", "[bound][policy][sentinel][fix
     REQUIRE_FALSE(low.has_value());
 
     // in-place increment past upper bound -> nullopt
-    slim::optional<fp> top = fp::try_make(255.0);
-    REQUIRE(top.has_value());
+    auto made = fp::try_make(255.0);
+    REQUIRE(made.has_value());
+    slim::optional<fp> top = *made;
     ++top;
     REQUIRE_FALSE(top.has_value());
   }

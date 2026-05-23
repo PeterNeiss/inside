@@ -11,6 +11,7 @@
 #include <numeric>
 #include <compare>
 #include <cmath>
+#include <expected>
 #include <limits>
 #include <tuple>
 
@@ -99,7 +100,7 @@ namespace bnd
     constexpr rational operator-() const;
 
     template <std::unsigned_integral T>
-    constexpr slim::optional<T> to() const;
+    constexpr std::expected<T, errc> to() const;
 
     template <std::unsigned_integral T>
     explicit constexpr operator T () const
@@ -304,10 +305,11 @@ namespace bnd
   // to
   //---------------------------------------------------------------------------
   template <std::unsigned_integral T>
-  constexpr slim::optional<T> rational::to() const
+  constexpr std::expected<T, errc> rational::to() const
   {
-    if (is_sentinel() || Denominator < 0) return slim::nullopt;
-    return slim::make_optional<T>(static_cast<T>(Numerator / static_cast<umax>(Denominator)));
+    if (is_sentinel())   return std::unexpected{errc::overflow};
+    if (Denominator < 0) return std::unexpected{errc::domain_error};
+    return static_cast<T>(Numerator / static_cast<umax>(Denominator));
   }
 
   //---------------------------------------------------------------------------

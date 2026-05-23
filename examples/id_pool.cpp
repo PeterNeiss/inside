@@ -68,12 +68,15 @@ int main()
   pool.release(42);
   std::cout << "\nafter release(42): " << pool.allocated.size() << " IDs\n";
 
-  // try_make is the optional-returning sibling to try-construct. The
-  // optional collapses to nullopt for out-of-range inputs without throwing.
+  // try_make returns std::expected<bound, errc>: a value on success, the
+  // failure reason on out-of-range / rounding / overflow inputs. Either way
+  // no exception is thrown.
   auto bad  = pool_id::try_make(2000);
   auto good = pool_id::try_make(123);
-  std::cout << "\ntry_make(2000) -> " << (bad  ? "has value" : "nullopt") << "\n";
-  std::cout << "try_make( 123) -> " << (good ? "has value" : "nullopt") << "\n";
+  std::cout << "\ntry_make(2000) -> "
+            << (bad  ? "has value" : make_error_code(bad.error()).message()) << "\n";
+  std::cout << "try_make( 123) -> "
+            << (good ? "has value" : make_error_code(good.error()).message()) << "\n";
 
   return 0;
 }

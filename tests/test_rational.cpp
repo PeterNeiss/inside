@@ -315,12 +315,22 @@ TEST_CASE("rational conversion to integer/float", "[rational][conversion]")
     REQUIRE(static_cast<double>(rational{0u})     == 0.0);
   }
 
-  SECTION("to<T> returns nullopt for negative")
+  SECTION("to<T> reports domain_error for negative rational")
   {
     rational pos{5u, 2};
     rational neg{5,  -2};
     REQUIRE(pos.to<unsigned>().value() == 2u);
-    REQUIRE_FALSE(neg.to<unsigned>().has_value());
+    auto r = neg.to<unsigned>();
+    REQUIRE_FALSE(r.has_value());
+    REQUIRE(r.error() == errc::domain_error);
+  }
+
+  SECTION("to<T> reports overflow for sentinel rational")
+  {
+    rational s = rational::make_sentinel();
+    auto r = s.to<unsigned>();
+    REQUIRE_FALSE(r.has_value());
+    REQUIRE(r.error() == errc::overflow);
   }
 }
 

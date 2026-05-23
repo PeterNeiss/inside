@@ -206,20 +206,31 @@ auto clamped = bound<{0, 100}, clamp>::try_make(150);
 
 ### Free-function casts
 
-Three named casts complement the constructors when the intent — clamp, throw,
-or trust — should be visible at the call site (e.g. inside `std::transform`
-callbacks):
+Seven named casts complement the constructors — the intent (clamp, wrap,
+throw, trust, or compose with a rounding mode) is visible at the call site
+(e.g. inside `std::transform` callbacks).
+
+| Cast | Behaviour |
+|---|---|
+| `saturated_cast<B>(v)`  | clamp to `[Lower, Upper]`, never throw |
+| `wrap_cast<B>(v)`       | modular reduction into the target interval |
+| `checked_cast<B>(v)`    | throw `std::system_error` on overflow or off-notch |
+| `unchecked_cast<B>(v)`  | trust the caller — UB if out of range |
+| `clamp_floor<B>(v)`     | clamp + round toward −∞ |
+| `clamp_ceil<B>(v)`      | clamp + round toward +∞ |
+| `clamp_round<B>(v)`     | clamp + round to nearest |
 
 ```cpp
 using pct = bound<{0, 100}>;
 
-saturated_cast<pct>(150);   // clamps to 100 regardless of B's declared policy
-checked_cast<pct>(42);      // throws std::system_error if out of range or off-notch
-unchecked_cast<pct>(42);    // skips runtime checks — caller's contract
+saturated_cast<pct>(150);   // 100  (clamps regardless of B's declared policy)
+wrap_cast    <pct>(105);    // 4    (modular reduction into [0, 100])
+checked_cast <pct>(42);     // 42   (throws on out-of-range or off-notch)
+unchecked_cast<pct>(42);    // 42   (skips runtime checks — caller's contract)
 ```
 
-For the `double → bounded integer` pipeline (audio/graphics/DSP), three
-helpers compose clamping with a rounding mode:
+For the `double → bounded integer` pipeline (audio/graphics/DSP), the
+`clamp_*` family composes clamping with a rounding mode:
 
 ```cpp
 using coarse = bound<{{0, 10}, 2}>;

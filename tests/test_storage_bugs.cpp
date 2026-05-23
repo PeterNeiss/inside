@@ -15,7 +15,7 @@ using namespace bnd;
 //
 // The rational-mixed `add` branch stores `((sum - Lower<result>) / Notch<result>)`
 // directly into `res.Raw`. That's the L-offset, but when the result type is
-// IsDirectStorage<result> the Raw must hold the *value*. Same encoding-
+// is_direct_storage<result> the Raw must hold the *value*. Same encoding-
 // mismatch class as the previously-fixed assignment paths.
 //---------------------------------------------------------------------------
 TEST_CASE("Bug A: rational-mixed add into direct-storage result", "[bound][addition][regression]")
@@ -37,7 +37,7 @@ TEST_CASE("Bug A: rational-mixed add into direct-storage result", "[bound][addit
 // notch-offset, which is correct for offset-encoded raws but wrong for
 // direct-storage signed raws (where Raw is the value).
 //
-// The IsIntegerAligned fast path (multiplication.hpp:70-87) catches the
+// The is_integer_aligned fast path (multiplication.hpp:70-87) catches the
 // all-integer case, so the bug only surfaces when one operand has a
 // fractional notch (which forces the result to be non-integer-aligned and
 // skips the fast path). L stays direct (Notch_L = 1, signed lower).

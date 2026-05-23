@@ -29,7 +29,7 @@ namespace bnd
 
     template <typename P>
     static constexpr bool needs_overflow_check =
-        IsRawRational<result>
+        is_raw_rational<result>
         && (((BoundPolicy<L> | BoundPolicy<R>) & checked) || plain<P>::test(checked));
 
     template <typename P>
@@ -53,7 +53,7 @@ namespace bnd
   template <typename P, typename A>
   constexpr auto multiplication<L,R>::mul(L lhs, R rhs, P&& policy, A&& action) -> mul_return_t<P, A>
   {
-    if constexpr (IsRawRational<result>)
+    if constexpr (is_raw_rational<result>)
     {
       if constexpr (needs_overflow_check<P>)
       {
@@ -79,7 +79,7 @@ namespace bnd
         return res;
       }
     }
-    else if constexpr (IsIntegerAligned<L> && IsIntegerAligned<R> && IsIntegerAligned<result>)
+    else if constexpr (is_integer_aligned<L> && is_integer_aligned<R> && is_integer_aligned<result>)
     {
       result res;
       from_value(res, to_value(lhs) * to_value(rhs));
@@ -94,11 +94,11 @@ namespace bnd
 
       // Normalize lhs.Raw / rhs.Raw to *offsets* regardless of L's / R's
       // storage shape. The formulas below all assume offset arithmetic.
-      umax lhs_offset = IsDirectStorage<L>
-          ? static_cast<umax>(signed_raw(lhs) - direct_lower_imax<L>)
+      umax lhs_offset = is_direct_storage<L>
+          ? static_cast<umax>(signed_raw(lhs) - RawLo<L>)
           : static_cast<umax>(lhs.Raw);
-      umax rhs_offset = IsDirectStorage<R>
-          ? static_cast<umax>(signed_raw(rhs) - direct_lower_imax<R>)
+      umax rhs_offset = is_direct_storage<R>
+          ? static_cast<umax>(signed_raw(rhs) - RawLo<R>)
           : static_cast<umax>(rhs.Raw);
 
       // Raws are typically small unsigned ints (uint8/16/32). C++ integral

@@ -19,7 +19,8 @@ using coarse      = bound<{{0, 10}, 2}>;   // notch 2: rounding_error demo
 int main()
 {
   // === Section 1: Reporting strategies for an out-of-range value ===
-  // Same logical event (200 outside [0,100]), three different reports.
+  // Same logical event (200 outside [0,100]), two different reports.
+  // The free-function `error_code&` overload is shown in Section 4.
 
   try
   {
@@ -31,13 +32,11 @@ int main()
     std::cout << "throw:    " << e.code().message() << std::endl;
   }
 
-  std::error_code ec;
-  checked_100 y(200, ec);
-  (void)y;
-  std::cout << "ec:       " << (ec ? ec.message() : "no error") << std::endl;
-
   auto maybe = checked_100::try_make(200);
-  std::cout << "optional: " << (maybe ? "has value" : "nullopt") << std::endl;
+  std::cout << "expected: "
+            << (maybe ? "has value"
+                      : make_error_code(maybe.error()).message())
+            << std::endl;
 
   auto ok = checked_100::try_make(50);
   std::cout << "in-range: " << *ok << std::endl;
@@ -45,7 +44,7 @@ int main()
 
   // === Section 2: Per-operation overrides on a default-checked bound ===
 
-  ec.clear();
+  std::error_code ec;
   checked_100 z(50);
   z.policy(ec) = 200;
   std::cout << "policy ec:" << (ec ? ec.message() : "no error")

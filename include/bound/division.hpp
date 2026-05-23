@@ -43,12 +43,12 @@ namespace bnd
     // Otherwise the exact-rational path runs and returns `bound<rational>`.
     static constexpr bool native_div_integer =
         ((F | BoundPolicy<L> | BoundPolicy<R>) & ignore_round)
-        && !IsRawRational<L> && !IsRawRational<R>
-        && IsIntegerAligned<L> && IsIntegerAligned<R>;
+        && !is_raw_rational<L> && !is_raw_rational<R>
+        && is_integer_aligned<L> && is_integer_aligned<R>;
 
     static constexpr bool native_div_qformat =
         ((F | BoundPolicy<L> | BoundPolicy<R>) & ignore_round)
-        && IsQFormat<L> && IsQFormat<R>
+        && is_q_format<L> && is_q_format<R>
         && Notch<L> == Notch<R>;
 
     static constexpr bool native_div = native_div_integer || native_div_qformat;
@@ -96,7 +96,7 @@ namespace bnd
 
     if constexpr (native_div_qformat)
     {
-      // rhs.Raw == 0 iff rhs.value == 0 (Lower<R> == 0 by IsQFormat).
+      // rhs.Raw == 0 iff rhs.value == 0 (Lower<R> == 0 by is_q_format).
       // Formula matches `(a << log2(N)) / b` which the compiler folds when
       // N is a power of two — i.e. literally the native Q-format idiom.
       if (rhs.Raw == 0) return fail(errc::division_by_zero, "division by zero in div");
@@ -139,8 +139,8 @@ namespace bnd
   {
     static constexpr bool native_mod =
         ((F | BoundPolicy<L> | BoundPolicy<R>) & ignore_round)
-        && !IsRawRational<L> && !IsRawRational<R>
-        && IsIntegerAligned<L> && IsIntegerAligned<R>;
+        && !is_raw_rational<L> && !is_raw_rational<R>
+        && is_integer_aligned<L> && is_integer_aligned<R>;
 
     // Hard requirement, not a fallback: there is no exact-rational modulo —
     // `a mod b` is only defined when both operands are integers. The grid

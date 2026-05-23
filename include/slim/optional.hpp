@@ -1,6 +1,13 @@
 // slim::optional — sentinel-based optional for C++23
 // Copyright (c) 2026 Peter Neiss
 // SPDX-License-Identifier: MIT
+//
+// The `slim::` namespace is an independent utility namespace; `slim::optional`
+// is reusable in any C++23 project and has no `bnd::` dependency. The bound
+// library consumes it by specialising `slim::sentinel_traits<bnd::bound<G,P>>`
+// and `slim::sentinel_traits<bnd::rational>`, so `slim::optional<bound<...>>`
+// has the same size as the underlying bound (the sentinel reserves one value
+// from the representable range — see README "slim::optional sentinel").
 
 #pragma once
 

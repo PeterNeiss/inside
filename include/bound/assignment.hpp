@@ -106,9 +106,9 @@ namespace bnd
       //                           `is_integer_mapping` callers below.
       static constexpr rational calcOffset()
       {
-        if constexpr (IsRawRational<L>)
+        if constexpr (is_raw_rational<L>)
           return Lower<R>;
-        else if constexpr (IsRawRational<R>)
+        else if constexpr (is_raw_rational<R>)
           return -(Lower<L>/Notch<L>).value();
         else
           return ((Lower<R> - Lower<L>)/Notch<L>).value();
@@ -116,9 +116,9 @@ namespace bnd
 
       static constexpr rational calcFactor()
       {
-        if constexpr (IsRawRational<L>)
+        if constexpr (is_raw_rational<L>)
           return Notch<R>;
-        else if constexpr (IsRawRational<R>)
+        else if constexpr (is_raw_rational<R>)
           return (1_r/Notch<L>).value();
         else
           return (Notch<R>/Notch<L>).value();
@@ -130,7 +130,7 @@ namespace bnd
 
       // Raw-space mapping is integer-only (no rational arithmetic needed)
       static constexpr bool is_integer_mapping =
-          not IsRawRational<L> && not IsRawRational<R>
+          not is_raw_rational<L> && not is_raw_rational<R>
           && abs_den(Factor.Denominator) == 1 && abs_den(Offset.Denominator) == 1;
 
       // Map rhs.Raw into L's raw space (requires is_integer_mapping).
@@ -139,10 +139,10 @@ namespace bnd
       // i.e. R.Raw is the R-offset and the result is the L-offset. Two
       // adjustments make it work for direct-storage operands:
       //
-      //   1. If R is IsDirectStorage<R>, rhs_raw is already R-value
+      //   1. If R is is_direct_storage<R>, rhs_raw is already R-value
       //      (not R-offset). Subtract Lower<R> first so the formula sees
       //      a true R-offset.
-      //   2. If L is IsDirectStorage<L>, L.Raw must be L-value (not
+      //   2. If L is is_direct_storage<L>, L.Raw must be L-value (not
       //      L-offset). Add Lower<L> after the formula. (Equivalently:
       //      raw_from_offset<L>.)
       //
@@ -151,8 +151,8 @@ namespace bnd
       static constexpr imax map_raw(auto rhs_raw)
       {
         imax r_offset = static_cast<imax>(rhs_raw);
-        if constexpr (IsDirectStorage<R>)
-          r_offset -= direct_lower_imax<R>;
+        if constexpr (is_direct_storage<R>)
+          r_offset -= RawLo<R>;
 
         imax l_offset;
         if constexpr (Offset == 0_r)
@@ -164,8 +164,8 @@ namespace bnd
           l_offset = static_cast<imax>(Factor.Numerator) * r_offset
                    - static_cast<imax>(Offset.Numerator);
 
-        if constexpr (IsDirectStorage<L>)
-          return l_offset + direct_lower_imax<L>;
+        if constexpr (is_direct_storage<L>)
+          return l_offset + RawLo<L>;
         else
           return l_offset;
       }
@@ -253,22 +253,13 @@ namespace bnd
   template<boundable L, std::integral R>
   constexpr void assignment<L,R>::store(L& lhs, R rhs)
   {
-    if constexpr (IsDirectStorage<L>)
+    if constexpr (is_direct_storage<L>)
       lhs.Raw = raw_cast<L>(rhs);
     else if constexpr (Lower<L> == Upper<L>)
       lhs.Raw = 0;   // notch_storage point grid: 0 is the only offset
-    // Integer fast path for the common fixed-point shape: Lower has integer
-    // value (den == 1) and Notch has unit numerator (e.g. 1/256, 1/16384).
-    // raw = (rhs - lower_int) * notch_denominator — pure integer math, no
-    // rational construction.
-    else if constexpr (abs_den(Lower<L>.Denominator) == 1
-                       && Notch<L>.Numerator == 1
-                       && RawFitsInImax<L>)
-    {
-      constexpr imax nd = abs_den(Notch<L>.Denominator);   // Notch.Numerator == 1
-      lhs.Raw = raw_cast<L>((static_cast<imax>(rhs) - LowerImax<L>) * nd);
-    }
-    else // IsNotchStorage, generic rational path
+    else if constexpr (has_q_format_fast_path<L>)
+      lhs.Raw = q_format_encode<L>(static_cast<imax>(rhs));
+    else // is_notch_storage, generic rational path
     {
       rational raw = ((rhs - Interval<L>.Lower)/Notch<L>).value();
       lhs.Raw = raw_cast<L>(raw.Numerator / static_cast<umax>(raw.Denominator));
@@ -290,7 +281,7 @@ namespace bnd
     // contains its own `if consteval` guard.
     if constexpr (not Interval<L>.includes(Interval<R>))
     {
-      if constexpr (IsIntegerInterval<L>)
+      if constexpr (is_integer_interval<L>)
       {
         // Skip the runtime range branch entirely when every handler would
         // be dead anyway — the dead branch otherwise inhibits autovec.
@@ -329,7 +320,7 @@ namespace bnd
     else
       overshoot = rhs - clamped;
 
-    if constexpr (IsRawRational<L>)
+    if constexpr (is_raw_rational<L>)
       lhs.Raw = clamped;
     else if constexpr (Lower<L> == Upper<L>)
       lhs.Raw = 0;
@@ -397,15 +388,15 @@ namespace bnd
   template<typename P, typename A>
   constexpr bool assignment<L,R>::store_checked(L& lhs, R rhs, P&& policy, A&& action)
   {
-    if constexpr (IsRawRational<L>)
+    if constexpr (is_raw_rational<L>)
     { lhs.Raw = rhs; return true; }
     else if constexpr (Lower<L> == Upper<L>)
     {
       // Singleton grid: Raw layout depends on encoding. For offset
       // encoding the lone slot is Raw=0; for direct storage Raw is the
       // value itself (`Lower`).
-      if constexpr (IsDirectStorage<L>)
-        lhs.Raw = raw_cast<L>(direct_lower_imax<L>);
+      if constexpr (is_direct_storage<L>)
+        lhs.Raw = raw_cast<L>(RawLo<L>);
       else
         lhs.Raw = 0;
       return true;
@@ -510,7 +501,7 @@ namespace bnd
   template<typename A>
   constexpr void assignment<L,R>::apply_wrap(L& lhs, R const& rhs, A&& action)
   {
-    static_assert(IsIntegerInterval<L>,
+    static_assert(is_integer_interval<L>,
       "wrap with bound rhs requires an integer-aligned destination interval");
     imax rhs_imax = as_rational(rhs).trunc();
     constexpr imax lower = LowerImax<L>;

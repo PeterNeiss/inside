@@ -9,6 +9,7 @@
 #include "bound/interval.hpp"
 
 #include <algorithm>
+#include <expected>
 
 namespace bnd { struct grid; }
 
@@ -61,6 +62,30 @@ namespace bnd
       static_assert(G.Notch == 0 || abs_den((G.Interval.Lower/G.Notch).value().Denominator) == 1);
 
       return true;
+    }
+
+    // Runtime sibling of `validate<G>()`: mirrors the same invariants but
+    // returns a typed error instead of failing a static_assert. Intended for
+    // grids constructed from runtime config (parsed input, network, GUI).
+    // The result is a value, so it cannot be used as a `bound<G, P>` template
+    // argument — callers that need that path select a pre-declared grid
+    // instantiation by other means.
+    [[nodiscard]] static constexpr std::expected<grid, errc>
+    try_make(interval iv, rational notch)
+    {
+      if (iv.Lower > iv.Upper)
+        return std::unexpected{errc::domain_error};
+      if (!iv.divides_evenly(notch))
+        return std::unexpected{errc::rounding_error};
+      if (notch != 0_r)
+      {
+        auto q = iv.Lower / notch;
+        if (!q.has_value())
+          return std::unexpected{errc::overflow};
+        if (abs_den(q->Denominator) != 1)
+          return std::unexpected{errc::rounding_error};
+      }
+      return grid{iv, notch};
     }
 
     constexpr umax max_notch() const

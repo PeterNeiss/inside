@@ -196,24 +196,24 @@ TEST_CASE("constexpr: storage_min picks the smallest fitting raw",
                                 std::uint8_t>);
 }
 
-TEST_CASE("constexpr: IsDirectStorage / IsRawRational / IsNotchStorage",
+TEST_CASE("constexpr: is_direct_storage / is_raw_rational / is_notch_storage",
           "[constexpr][storage]")
 {
   // Direct storage: Raw == value. Three legal shapes:
   //   - rational raw (notch 0)
   //   - notch 1 + lower 0
   //   - notch 1 + signed raw
-  STATIC_REQUIRE(IsDirectStorage<bound<{0,   100}>>);
-  STATIC_REQUIRE(IsDirectStorage<bound<{-40,  85}>>);
-  STATIC_REQUIRE(IsDirectStorage<bound<{{-10, 10}, 0}>>);
+  STATIC_REQUIRE(is_direct_storage<bound<{0,   100}>>);
+  STATIC_REQUIRE(is_direct_storage<bound<{-40,  85}>>);
+  STATIC_REQUIRE(is_direct_storage<bound<{{-10, 10}, 0}>>);
 
   // Offset encoding: notch 1 with non-zero unsigned lower OR fractional notch
-  STATIC_REQUIRE_FALSE(IsDirectStorage<bound<{5, 100}>>);
-  STATIC_REQUIRE_FALSE(IsDirectStorage<bound<{{0, 5}, rational{1u, 2}}>>);
-  STATIC_REQUIRE(IsNotchStorage<bound<{5, 100}>>);
+  STATIC_REQUIRE_FALSE(is_direct_storage<bound<{5, 100}>>);
+  STATIC_REQUIRE_FALSE(is_direct_storage<bound<{{0, 5}, rational{1u, 2}}>>);
+  STATIC_REQUIRE(is_notch_storage<bound<{5, 100}>>);
 
-  STATIC_REQUIRE(IsRawRational<bound<{{-10, 10}, 0}>>);
-  STATIC_REQUIRE_FALSE(IsRawRational<bound<{0, 100}>>);
+  STATIC_REQUIRE(is_raw_rational<bound<{{-10, 10}, 0}>>);
+  STATIC_REQUIRE_FALSE(is_raw_rational<bound<{0, 100}>>);
 }
 
 //---------------------------------------------------------------------------
@@ -235,7 +235,7 @@ TEST_CASE("constexpr: bound +/-/* on offset-encoded grids",
           "[constexpr][bound][arithmetic]")
 {
   using o = bound<{10, 50}>;                 // offset encoding (uint8 raw)
-  STATIC_REQUIRE_FALSE(IsDirectStorage<o>);
+  STATIC_REQUIRE_FALSE(is_direct_storage<o>);
 
   constexpr o a{15}, b{40};
   STATIC_REQUIRE(a + b == 55);
