@@ -878,9 +878,9 @@ void prop_raw_rational_arith(fuzz_state& s, long iters)
         if constexpr (requires { v.has_value(); }) {
           FUZZ_REQUIRE(s, v.has_value());
           if (v.has_value())
-            FUZZ_REQUIRE(s, as_rational(*v) == expected);
+            FUZZ_REQUIRE(s, v->template to<rational>().value() == expected);
         } else {
-          FUZZ_REQUIRE(s, as_rational(v) == expected);
+          FUZZ_REQUIRE(s, v.template to<rational>().value() == expected);
         }
       };
       check(sum,  expect_sum);

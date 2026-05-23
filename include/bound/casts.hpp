@@ -15,10 +15,10 @@
 //---------------------------------------------------------------------------
 namespace bnd
 {
-  // Inline rational view of a value or bound. Use where `auto r = x;` would
-  // copy the bound and `rational{x}` would not compile because `x` is a bound
-  // (the implicit conversion via `operator rational()` does the work). The
-  // arithmetic overload exists so the same name covers both call sites.
+  // Library-internal inline rational view of a value or bound. Used inside
+  // arithmetic / assignment machinery where the implicit `operator rational()`
+  // would be hidden by overload resolution. User code should prefer
+  // `b.to<rational>()`, which carries a typed sentinel-state error.
   template <arithmetic A>
   [[nodiscard]] constexpr rational as_rational(A v) { return rational{v}; }
 

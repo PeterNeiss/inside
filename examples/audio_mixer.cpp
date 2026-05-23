@@ -2,9 +2,8 @@
 //
 // Demonstrates:
 //   - Signed Q1.14 sample storage (1/16384 notch)
-//   - `add_all` to sum N channels into a master bus
+//   - Q-format gain bound; per-frame mix runs entirely in integer notch math
 //   - `with(on_clamp, on_overflow)` multi-action probe for peak metering
-//   - Rational dB→linear gain stored as `rational` and applied via `*`
 //   - `saturated_cast` to push the mixed value back into the sample grid
 
 #include <cmath>
@@ -23,12 +22,16 @@ static_assert(sizeof(sample_t) == 2);
 // dB gain bounded to [-24, 12] dB with 0.5 dB step — fits in a uint8.
 using db_t = bound<{{-24, 12}, notch<1, 2>}, round_nearest>;
 
-// Decibels → linear amplitude. dB = 20 * log10(amp), so amp = 10^(dB/20).
-// Computed in `double` at the API boundary; the result lives as a rational
-// so subsequent grid arithmetic stays exact.
-static rational db_to_linear(db_t db)
+// Linear gain on a notch grid wide enough to cover 10^(dB/20) for dB∈[-24,12]
+// (i.e. ~[0.063, 3.98]) with 1/65536 resolution — well below per-step audible.
+using gain_t = bound<{{0, 4}, notch<1, 65536>}, round_nearest>;
+
+// Decibels → linear amplitude. dB = 20·log10(amp). The `std::pow` boundary
+// is hit once per channel at materialization; the resulting `gain_t` lives
+// on a notch grid so per-frame mixing is pure integer math.
+static gain_t db_to_linear(db_t db)
 {
-  return rational{std::pow(10.0, double(db) / 20.0)};
+  return gain_t{rational{std::pow(10.0, double(db) / 20.0)}};
 }
 
 int main()
@@ -36,6 +39,11 @@ int main()
   // Four channels — pre-gain levels: vocals hot, drums normal, bass quiet,
   // pad ducked.
   db_t gain[4] = { db_t{2.5}, db_t{0.0}, db_t{-6.0}, db_t{-12.0} };
+
+  // Hoist the std::pow call out of the per-sample loop: linear gain is
+  // constant across the buffer.
+  gain_t lin[4] = { db_to_linear(gain[0]), db_to_linear(gain[1]),
+                    db_to_linear(gain[2]), db_to_linear(gain[3]) };
 
   // 8 sample frames of synthetic audio (sin waves at different phases).
   constexpr std::size_t N = 8;
@@ -55,17 +63,13 @@ int main()
   std::cout << "frame  c0      c1      c2      c3      mix    \n";
   for (std::size_t i = 0; i < N; ++i)
   {
-    // Per-channel post-gain values, expressed in rational space so the
-    // mixed sum stays exact until the final write to sample_t. The
-    // checked `*` returns `slim::optional` because cross-multiplied
-    // denominators (both ~2^53 from double conversion) can overflow imax;
-    // `.value_or(0_r)` collapses that hazard to a silent zero.
-    rational g0 = (db_to_linear(gain[0]) * rational{channels[0][i]}).value_or(0_r);
-    rational g1 = (db_to_linear(gain[1]) * rational{channels[1][i]}).value_or(0_r);
-    rational g2 = (db_to_linear(gain[2]) * rational{channels[2][i]}).value_or(0_r);
-    rational g3 = (db_to_linear(gain[3]) * rational{channels[3][i]}).value_or(0_r);
-
-    double mix = double(g0) + double(g1) + double(g2) + double(g3);
+    // Each (gain × sample) widens to a bound on the product grid; the four-
+    // way `+` chain widens further. Everything stays in int64 notch math —
+    // no rational cross-multiply, no float in the hot loop.
+    auto mix = (lin[0] * channels[0][i])
+             + (lin[1] * channels[1][i])
+             + (lin[2] * channels[2][i])
+             + (lin[3] * channels[3][i]);
 
     // `with(...)` packs two callbacks into a single write. on_overflow
     // fires for an integer-cast overflow on the way through assignment;

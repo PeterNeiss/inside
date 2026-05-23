@@ -58,7 +58,7 @@ struct pid
 
     // Cross the API boundary: convert the rational-friendly raw to a
     // double and saturate-round into the integer actuator grid.
-    return clamp_round<output_t>(double(raw));
+    return clamp_round<output_t>(raw.to<double>().value());
   }
 };
 

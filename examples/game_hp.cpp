@@ -46,7 +46,7 @@ int main()
   auto chain = mul_all(crit, vuln, pen);
   // chain has interval [0, 64] notch 1/4096 — convert to a hit damage by
   // scaling base. Round to nearest integer for the actual HP deduction.
-  auto dealt = as_rational(base * chain).round();
+  auto dealt = (base * chain).to<rational>().value().round();
   std::cout << "damage chain (2.0 * 1.25 * 1.5) on base 10 = " << dealt << "\n";
 
   hp.on_clamp([&](auto& self, auto overshoot) {
@@ -88,7 +88,7 @@ int main()
     // Remaining rounds in current magazine.
     ammo_t shots{shots_fired % 30};
     auto rem = mag - shots;
-    auto rem_v = to_value(rem);
+    auto rem_v = rem.to<imax>().value();
     int reloads = shots_fired / 30;
     std::cout << "  fired " << shots_fired << "  ->  " << rem_v
               << " rounds left, " << reloads << " reloads done\n";

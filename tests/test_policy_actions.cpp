@@ -67,7 +67,7 @@ TEST_CASE("sentinel policy on fixed-point grids", "[bound][policy][sentinel][fix
     // notch-aligned in-range value
     auto ok = fp::try_make(42.5);
     REQUIRE(ok.has_value());
-    REQUIRE(double(*ok) == 42.5);
+    REQUIRE(ok->to<double>().value() == 42.5);
 
     // out-of-range produces nullopt
     auto high = fp::try_make(300.0);
@@ -91,7 +91,7 @@ TEST_CASE("sentinel policy on fixed-point grids", "[bound][policy][sentinel][fix
 
     auto s = sensor::try_make(23.5);
     REQUIRE(s.has_value());
-    REQUIRE(double(*s) == 23.5);
+    REQUIRE(s->to<double>().value() == 23.5);
 
     REQUIRE_FALSE(sensor::try_make(50.5).has_value());
     REQUIRE_FALSE(sensor::try_make(-1.0).has_value());
@@ -121,7 +121,7 @@ TEST_CASE("sentinel policy on fixed-point grids", "[bound][policy][sentinel][fix
 
     auto v = fp::try_make(1000.125);
     REQUIRE(v.has_value());
-    REQUIRE(double(*v) == 1000.125);
+    REQUIRE(v->to<double>().value() == 1000.125);
 
     REQUIRE_FALSE(fp::try_make(-0.001).has_value());
     REQUIRE_FALSE(fp::try_make(70000.0).has_value());
@@ -139,7 +139,7 @@ TEST_CASE("on_sentinel action on fixed-point grids", "[bound][policy][on_sentine
     self = 0;
   }) = 75.5;
 
-  REQUIRE(double(v) == 0);
+  REQUIRE(v.to<double>().value() == 0);
   REQUIRE(orig == rational{151, 2});  // 75.5
 }
 

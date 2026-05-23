@@ -161,6 +161,10 @@ namespace bnd
     return rational{signed_raw(b) + LowerImax<B> * nd, nd};
   }
 
+  // Library-internal extraction helper. Always succeeds (returns `imax`
+  // unconditionally) but does not check the value fits in any narrower
+  // target. User code should prefer `b.to<T>()`, which carries a typed
+  // overflow error.
   template <boundable B>
   constexpr imax to_value(B b)
   {

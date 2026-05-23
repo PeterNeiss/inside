@@ -97,19 +97,34 @@ namespace bnd
     }
 
     // Conversion summary:
-    //   operator imax     — implicit (only when notch is integer-aligned).
-    //                       Matches native-int performance and ergonomics:
-    //                       `int n = bound<{0,100}>{42};` just works.
+    //   operator imax     — implicit. Available only when the grid is
+    //                       notch-aligned AND statically fits in
+    //                       [INT64_MIN, INT64_MAX]. Pathological wide
+    //                       grids must use `b.to<imax>()`.
     //   operator rational — implicit. Lossless and mathematically exact,
     //                       so no risk in letting it happen silently.
-    //   operator double   — *explicit*. Never silently demote arithmetic
-    //                       to floating-point and lose exact-rational
-    //                       guarantees; callers opt in with `double(b)`.
+    //   operator double   — *explicit*, AND gated by policy: only
+    //                       available when P includes a rounding flag
+    //                       (round_floor/ceil/nearest/half_even or
+    //                       ignore_round). Strict-policy bounds must
+    //                       use `b.to<double>().value()` to opt in.
+    //   to<T>()           — typed-error narrowing/widening, returns
+    //                       `std::expected<T, errc>` for any
+    //                       unsigned/signed integral, floating point,
+    //                       or `rational` target. Reports overflow,
+    //                       domain_error (negative into unsigned),
+    //                       and sentinel-state via errc.
     constexpr operator imax() const
-      requires (abs_den(G.Notch.Denominator) == 1 && G.Notch.Numerator != 0)
+      requires (abs_den(G.Notch.Denominator) == 1
+             && G.Notch.Numerator != 0
+             && G.Interval.Lower >= rational{std::numeric_limits<imax>::min()}
+             && G.Interval.Upper <= rational{std::numeric_limits<imax>::max()})
     { return to_value(*this); }
 
-    constexpr explicit operator double() const { return G.raw_to_double(Raw); }
+    constexpr explicit operator double() const
+      requires ((P & (round_floor | round_ceil | round_nearest
+                    | round_half_even | ignore_round)) != 0)
+    { return G.raw_to_double(Raw); }
 
     constexpr operator rational() const
     {
@@ -128,6 +143,82 @@ namespace bnd
         return q_format_decode(*this);
 
       return (*(Raw * G.Notch) + G.Interval.Lower).value();
+    }
+
+    // to<T>() — typed-error scalar extraction. Mirrors rational::to<T>
+    // and extends it to signed integers, floating point, and rational.
+    // Unlike the always-succeed `to_value(b)` / `operator T()` paths,
+    // this returns `errc::overflow` (value out of T's range, or
+    // sentinel-state) and `errc::domain_error` (negative into unsigned T).
+    // Silent fractional truncation matches rational::to<T>.
+    template <std::unsigned_integral T>
+    [[nodiscard]] constexpr std::expected<T, errc> to() const
+    {
+      if constexpr ((P & sentinel) != 0)
+        if (Raw == sentinel_raw<bound>())
+          return std::unexpected{errc::overflow};
+
+      constexpr bool needs_neg_check = (Lower<bound> < 0_r);
+      constexpr bool needs_max_check =
+          (Upper<bound> > rational{std::numeric_limits<T>::max()});
+
+      if constexpr (!needs_neg_check && !needs_max_check)
+        return static_cast<T>(to_value(*this));
+      else
+      {
+        rational r = *this;
+        if constexpr (needs_neg_check)
+          if (r < 0_r) return std::unexpected{errc::domain_error};
+        if constexpr (needs_max_check)
+          if (r > rational{std::numeric_limits<T>::max()})
+            return std::unexpected{errc::overflow};
+        return static_cast<T>(r.trunc());
+      }
+    }
+
+    template <std::signed_integral T>
+    [[nodiscard]] constexpr std::expected<T, errc> to() const
+    {
+      if constexpr ((P & sentinel) != 0)
+        if (Raw == sentinel_raw<bound>())
+          return std::unexpected{errc::overflow};
+
+      constexpr bool needs_min_check =
+          (Lower<bound> < rational{std::numeric_limits<T>::min()});
+      constexpr bool needs_max_check =
+          (Upper<bound> > rational{std::numeric_limits<T>::max()});
+
+      if constexpr (!needs_min_check && !needs_max_check)
+        return static_cast<T>(to_value(*this));
+      else
+      {
+        rational r = *this;
+        if constexpr (needs_min_check)
+          if (r < rational{std::numeric_limits<T>::min()})
+            return std::unexpected{errc::overflow};
+        if constexpr (needs_max_check)
+          if (r > rational{std::numeric_limits<T>::max()})
+            return std::unexpected{errc::overflow};
+        return static_cast<T>(r.trunc());
+      }
+    }
+
+    template <std::floating_point T>
+    [[nodiscard]] constexpr std::expected<T, errc> to() const
+    {
+      if constexpr ((P & sentinel) != 0)
+        if (Raw == sentinel_raw<bound>())
+          return std::unexpected{errc::overflow};
+      return static_cast<T>(G.raw_to_double(Raw));
+    }
+
+    template <std::same_as<rational> T>
+    [[nodiscard]] constexpr std::expected<T, errc> to() const
+    {
+      if constexpr ((P & sentinel) != 0)
+        if (Raw == sentinel_raw<bound>())
+          return std::unexpected{errc::overflow};
+      return rational{*this};
     }
 
     [[nodiscard]] constexpr negative operator-() const

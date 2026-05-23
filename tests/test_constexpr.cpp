@@ -441,7 +441,7 @@ TEST_CASE("constexpr: bound_range on fractional notch grid", "[constexpr][range]
   constexpr imax twice_sum = [] {
     imax s = 0;
     for (auto v : bound_range<{{-1, 1}, notch<1, 2>}>{})
-      s += static_cast<imax>(2 * double(v));
+      s += static_cast<imax>(2 * v.to<double>().value());
     return s;
   }();
   STATIC_REQUIRE(twice_sum == 0);
