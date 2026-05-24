@@ -5,12 +5,15 @@
 //   - Q-format gain bound; per-frame mix runs entirely in integer notch math
 //   - `with(on_clamp, on_overflow)` multi-action probe for peak metering
 //   - `saturated_cast` to push the mixed value back into the sample grid
+//   - `bnd::math::sin` on a radians-valued bound — no `.Raw` bit-twiddling,
+//     no `<cmath>`, and no `rational::*_unchecked` in the example body.
+//     The 2π scaling is a single bound × bound multiply via a
+//     singleton-bound wrap of `math::two_pi`.
 
-#include <cmath>
 #include <iostream>
-#include <numbers>
 
 #include "bound/bound.hpp"
+#include "bound/cmath.hpp"
 #include "bound/print.hpp"
 
 using namespace bnd;
@@ -26,12 +29,17 @@ using db_t = bound<{{-24, 12}, notch<1, 2>}, round_nearest>;
 // (i.e. ~[0.063, 3.98]) with 1/65536 resolution — well below per-step audible.
 using gain_t = bound<{{0, 4}, notch<1, 65536>}, round_nearest>;
 
-// Decibels → linear amplitude. dB = 20·log10(amp). The `std::pow` boundary
-// is hit once per channel at materialization; the resulting `gain_t` lives
-// on a notch grid so per-frame mixing is pure integer math.
+// dB/20 intermediate: dB ∈ [-24, 12] → [-1.2, 0.6] with notch 1/40 (= 1/2 / 20).
+using db_div20_t = bound<{{rational{-12, 10}, rational{6, 10}}, notch<1, 40>},
+                         round_nearest>;
+
+// Decibels → linear amplitude via 10^(dB/20). The library's pow_base<10>
+// derives log2(10) at compile time from its own log2 implementation, so the
+// whole chain is integer/constexpr — no std::pow, no FPU boundary anywhere.
 static gain_t db_to_linear(db_t db)
 {
-  return gain_t{rational{std::pow(10.0, double(db) / 20.0)}};
+  db_div20_t exponent{rational::div_unchecked(rational{db}, rational{20})};
+  return gain_t{math::pow_base<10>(exponent)};
 }
 
 int main()
@@ -45,16 +53,48 @@ int main()
   gain_t lin[4] = { db_to_linear(gain[0]), db_to_linear(gain[1]),
                     db_to_linear(gain[2]), db_to_linear(gain[3]) };
 
-  // 8 sample frames of synthetic audio (sin waves at different phases).
+  // 8 sample frames of synthetic audio (sine waves at different phases).
+  // All synthesis flows through bound arithmetic — bound + bound, bound ×
+  // bound, math::sin(bound) — same idiom as the mix pipeline below. The
+  // only place we reach for `rational` is the singleton-bound wrap of
+  // the irrational `math::two_pi`, which lets `t * two_pi_bnd` resolve
+  // through the existing bound × bound operator.
   constexpr std::size_t N = 8;
+
+  using time_t    = bound<{{0, 1}, notch<1, N>}, round_nearest>;
+  using offset_t  = bound<{{-2, 2}, notch<1, 16384>}, round_nearest>;
+  using angle_t   = bound<{{-4, 10}, notch<1, 16384>}, round_nearest>;
+  using gainfac_t = bound<{{0, 1}, notch<1, 1024>}, round_nearest>;
+  using two_pi_t  = bound<{math::two_pi}>;  // singleton bound (notch = 0)
+
+  constexpr two_pi_t two_pi_bnd{math::two_pi};
+
+  constexpr offset_t offsets[4] = {
+    offset_t{0},
+    offset_t{rational::div_unchecked(math::pi, rational{ 4})},  // +π/4
+    offset_t{rational::div_unchecked(math::pi, rational{-3})},  // -π/3
+    offset_t{rational::div_unchecked(math::pi, rational{ 2})},  // +π/2
+  };
+  constexpr gainfac_t gains[4] = {
+    gainfac_t{rational{9, 10}}, gainfac_t{rational{7, 10}},
+    gainfac_t{rational{6, 10}}, gainfac_t{rational{4, 10}},
+  };
+
   sample_t channels[4][N];
   for (std::size_t i = 0; i < N; ++i)
   {
-    double t = static_cast<double>(i) / N;
-    channels[0][i] = 0.9 * std::sin(2 * std::numbers::pi * t);
-    channels[1][i] = 0.7 * std::sin(2 * std::numbers::pi * t + std::numbers::pi/4);
-    channels[2][i] = 0.6 * std::sin(2 * std::numbers::pi * t - std::numbers::pi/3);
-    channels[3][i] = 0.4 * std::sin(2 * std::numbers::pi * t + std::numbers::pi/2);
+    time_t  t{rational{static_cast<imax>(i), N}};
+    // `t * two_pi_bnd` returns `optional<bound>` (the result's grid is
+    // rational-backed, so multiplication is checked). `.value()` is safe
+    // because t ∈ [0, 1] and two_pi < 7 — the product cannot overflow.
+    // Snap the result into angle_t to land on the 1/16384 grid; the
+    // subsequent bound + bound then stays on a friendly notch.
+    angle_t base{(t * two_pi_bnd).value()};                          // bound × bound, snap
+    for (int ch = 0; ch < 4; ++ch)
+    {
+      angle_t a{base + offsets[ch]};                                 // bound + bound, snap
+      channels[ch][i] = sample_t{gains[ch] * math::sin(a)};          // bound × bound
+    }
   }
 
   int clip_events    = 0;
