@@ -168,3 +168,20 @@ TEST_CASE("operator double is gated on rounding policy", "[bound][to][operator]"
   // The typed-error path is always available.
   REQUIRE(B_strict{0.5}.to<double>().value() == 0.5);
 }
+
+TEST_CASE("as<T>() is a non-expected shortcut for to<T>().value()", "[bound][as]")
+{
+  using narrow = bound<{0, 100}>;
+  using frac   = bound<{{0, 100}, notch<1, 10>}, round_nearest>;
+
+  // Matches the integer-extraction value path.
+  REQUIRE(narrow{42}.as<imax>()        == 42);
+  REQUIRE(narrow{42}.as<std::size_t>() == 42u);
+
+  // Fractional notch: extracting to imax truncates (matches to<imax>()).
+  REQUIRE(frac{7.5}.as<imax>() == 7);
+
+  // Rational and double targets behave the same as `to<T>().value()`.
+  REQUIRE(narrow{42}.as<rational>() == rational{42});
+  REQUIRE(frac{7.5}.as<double>()    == 7.5);
+}

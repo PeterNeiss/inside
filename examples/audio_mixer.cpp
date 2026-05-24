@@ -83,13 +83,13 @@ int main()
   sample_t channels[4][N];
   for (std::size_t i = 0; i < N; ++i)
   {
-    time_t  t{rational{static_cast<imax>(i), N}};
-    // `t * two_pi_bnd` returns `optional<bound>` (the result's grid is
-    // rational-backed, so multiplication is checked). `.value()` is safe
-    // because t ∈ [0, 1] and two_pi < 7 — the product cannot overflow.
+    time_t  t{rational{i, N}};
+    // `t * two_pi_bnd` returns a plain `bound`: the static safety check on
+    // rational multiplication folds out the optional wrapper because the
+    // result grid's numerator/denominator products provably fit in umax.
     // Snap the result into angle_t to land on the 1/16384 grid; the
     // subsequent bound + bound then stays on a friendly notch.
-    angle_t base{(t * two_pi_bnd).value()};                          // bound × bound, snap
+    angle_t base{t * two_pi_bnd};                                    // bound × bound, snap
     for (int ch = 0; ch < 4; ++ch)
     {
       angle_t a{base + offsets[ch]};                                 // bound + bound, snap

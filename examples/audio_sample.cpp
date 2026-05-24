@@ -42,8 +42,8 @@ int main()
   std::vector<sample> wave_a(N), wave_b(N);
   for (std::size_t i = 0; i < N; ++i)
   {
-    time_t  t{rational{static_cast<imax>(i), N}};
-    angle_t base{(t * two_pi_bnd).value()};                          // bound × bound, snap
+    time_t  t{rational{i, N}};
+    angle_t base{t * two_pi_bnd};                                    // bound × bound, snap
     angle_t a_a{base + off_a};                                        // bound + bound
     angle_t a_b{base + off_b};                                        // bound + bound
     wave_a[i] = sample{gain_a * math::sin(a_a)};                     // bound × bound

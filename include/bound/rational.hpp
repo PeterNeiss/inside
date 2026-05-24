@@ -92,6 +92,15 @@ namespace bnd
      :Numerator{num}, Denominator{den}
     { canonicalize(Numerator, Denominator); }
 
+    // Two-unsigned overload: lets `rational{i, N}` accept two `size_t`
+    // operands without forcing the caller to `static_cast<imax>` the
+    // numerator. Numerator is unsigned anyway; the cast on `den` is
+    // safe because the unsigned-integral concept exclude negative inputs.
+    template <std::unsigned_integral N, std::unsigned_integral D>
+    constexpr rational(N num, D den)
+     :Numerator{num}, Denominator{static_cast<imax>(den)}
+    { canonicalize(Numerator, Denominator); }
+
     // operator== be default for structural type
     constexpr bool operator==(const rational&) const = default;
     template <arithmetic T>

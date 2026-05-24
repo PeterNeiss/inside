@@ -21,9 +21,9 @@ using pool_id = bound<{0, 999}>;
 struct id_pool
 {
   std::unordered_set<pool_id> allocated;
-  static constexpr imax capacity = std::numeric_limits<pool_id>::max().to<imax>().value()
-                                  - std::numeric_limits<pool_id>::min().to<imax>().value()
-                                  + 1;
+  static constexpr imax capacity = imax{std::numeric_limits<pool_id>::max()}
+                                 - imax{std::numeric_limits<pool_id>::min()}
+                                 + 1;
 
   bool allocate(int request)
   {

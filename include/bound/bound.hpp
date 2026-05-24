@@ -101,6 +101,10 @@ namespace bnd
     //                       notch-aligned AND statically fits in
     //                       [INT64_MIN, INT64_MAX]. Pathological wide
     //                       grids must use `b.to<imax>()`.
+    //   operator size_t   — implicit. Available when Lower >= 0, the grid
+    //                       is notch-aligned, and Upper <= SIZE_MAX. Lets
+    //                       a bound serve as an array/vector index without
+    //                       the `.to<std::size_t>().value()` ceremony.
     //   operator rational — implicit. Lossless and mathematically exact,
     //                       so no risk in letting it happen silently.
     //   operator double   — *explicit*, AND gated by policy: only
@@ -114,6 +118,9 @@ namespace bnd
     //                       or `rational` target. Reports overflow,
     //                       domain_error (negative into unsigned),
     //                       and sentinel-state via errc.
+    //   as<T>()           — non-expected sibling. Returns T directly; asserts
+    //                       on sentinel state. Use when the value is known
+    //                       in range (the common case at array-index sites).
     constexpr operator imax() const
       requires (abs_den(G.Notch.Denominator) == 1
              && G.Notch.Numerator != 0
@@ -220,6 +227,15 @@ namespace bnd
           return std::unexpected{errc::overflow};
       return rational{*this};
     }
+
+    // as<T>() — non-expected sibling of to<T>(). Returns T directly and lets
+    // any error (sentinel-state, out of T's range, negative-into-unsigned)
+    // surface as bad_expected_access from `to<T>().value()`. The shorthand
+    // is for call sites where the user knows the value is in range — most
+    // notably array indexing, capacity arithmetic, and rational extraction
+    // for `.round()` / `.trunc()`.
+    template <typename T>
+    [[nodiscard]] constexpr T as() const { return to<T>().value(); }
 
     [[nodiscard]] constexpr negative operator-() const
     {

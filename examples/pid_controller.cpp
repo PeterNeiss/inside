@@ -56,9 +56,11 @@ struct pid
     // add_all folds variadically; each pairwise + widens the grid further.
     auto raw = add_all(p_term, i_term, d_term);
 
-    // Cross the API boundary: convert the rational-friendly raw to a
-    // double and saturate-round into the integer actuator grid.
-    return clamp_round<output_t>(raw.to<double>().value());
+    // Cross the API boundary: saturate-round into the integer actuator grid.
+    // `clamp_round` accepts any `arithmetic` (boundable or real) directly, so
+    // the rational-friendly `raw` flows through without a manual `.to<double>`
+    // extraction.
+    return clamp_round<output_t>(raw);
   }
 };
 

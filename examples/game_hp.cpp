@@ -46,7 +46,11 @@ int main()
   auto chain = mul_all(crit, vuln, pen);
   // chain has interval [0, 64] notch 1/4096 — convert to a hit damage by
   // scaling base. Round to nearest integer for the actual HP deduction.
-  auto dealt = (base * chain).to<rational>().value().round();
+  // `base * chain` returns a plain `bound` (the static-overflow check on
+  // multiplication elides the optional wrapper because the result grid's
+  // raw representation provably cannot overflow). Implicit `operator
+  // rational()` lets us reach `.round()` directly.
+  auto dealt = rational{base * chain}.round();
   std::cout << "damage chain (2.0 * 1.25 * 1.5) on base 10 = " << dealt << "\n";
 
   hp.on_clamp([&](auto& self, auto overshoot) {
@@ -73,11 +77,13 @@ int main()
     += 250;
   std::cout << "HP after heal: " << hp << "\n";
 
-  // Level-scaled max-HP buff — could exceed hp_t. saturated_cast collapses
-  // the wider pool back into hp_t, clipping at the boundary.
+  // Level-scaled max-HP buff — could exceed hp_t. Because `hp_t` carries a
+  // `clamp` policy, the implicit bound→bound conversion already clips at the
+  // boundary: no `saturated_cast` needed when the target type already says
+  // what to do with out-of-range values.
   big_pool_t bonus{180};
-  auto capped = saturated_cast<hp_t>(bonus);
-  std::cout << "\nlevel bonus 180 -> hp_t (saturated_cast): " << capped << "\n";
+  hp_t capped = bonus;
+  std::cout << "\nlevel bonus 180 -> hp_t (implicit clamp): " << capped << "\n";
 
   // Ammo and reload via modulo. Magazine wraps at 30.
   std::cout << "\nammo / reload simulation:\n";
@@ -88,7 +94,7 @@ int main()
     // Remaining rounds in current magazine.
     ammo_t shots{shots_fired % 30};
     auto rem = mag - shots;
-    auto rem_v = rem.to<imax>().value();
+    imax rem_v = rem;
     int reloads = shots_fired / 30;
     std::cout << "  fired " << shots_fired << "  ->  " << rem_v
               << " rounds left, " << reloads << " reloads done\n";

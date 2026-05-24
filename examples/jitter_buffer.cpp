@@ -43,7 +43,7 @@ int main()
     // input — useful at the trust boundary (e.g. parsing a packet header).
     auto idx = checked_cast<slot_id_t>(slot);
 
-    slots[idx.to<std::size_t>().value()]
+    slots[idx.as<std::size_t>()]
       .on_sentinel([&](auto&, auto original) {
         std::cout << "[dropped: offset " << original
                   << " too far past base " << base << "]\n";
@@ -60,8 +60,7 @@ int main()
   std::cout << "\nplayback order (sentinel = dropped/empty):\n";
   for (auto slot : bound_range<{0, 15}>{})
   {
-    std::size_t idx = slot.to<std::size_t>().value();
-    auto& s = slots[idx];
+    auto& s = slots[slot.as<std::size_t>()];
     // `is_sentinel()` is the public probe for the slot's empty state under
     // the `sentinel` policy.
     if (s.is_sentinel())

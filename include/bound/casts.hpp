@@ -79,6 +79,14 @@ namespace bnd
     return b;
   }
 
+  template <boundable B, boundable A>
+  [[nodiscard]] constexpr B clamp_floor(A value)
+  {
+    B b{};
+    b.template policy<clamp | round_floor>() = value;
+    return b;
+  }
+
   template <boundable B, arithmetic A>
   [[nodiscard]] constexpr B clamp_ceil(A value)
   {
@@ -87,7 +95,27 @@ namespace bnd
     return b;
   }
 
+  template <boundable B, boundable A>
+  [[nodiscard]] constexpr B clamp_ceil(A value)
+  {
+    B b{};
+    b.template policy<clamp | round_ceil>() = value;
+    return b;
+  }
+
   template <boundable B, arithmetic A>
+  [[nodiscard]] constexpr B clamp_round(A value)
+  {
+    B b{};
+    b.template policy<clamp | round_nearest>() = value;
+    return b;
+  }
+
+  // Boundable-source overload: lets a `bound`-typed intermediate flow
+  // through `clamp_round<Target>(expr)` directly, without the user having
+  // to extract to a `double` or `rational` first. Mirrors the symmetric
+  // overload on `saturated_cast`/`wrap_cast`.
+  template <boundable B, boundable A>
   [[nodiscard]] constexpr B clamp_round(A value)
   {
     B b{};
