@@ -153,12 +153,6 @@ acc.with(
 ) += big_value;
 ```
 
-#### Legacy callable form
-
-`b.policy<wrap>(λ)` still accepts a single bare callable receiving just the
-carry/overshoot — kept for backward compatibility. New code should prefer the
-typed `on_*()` variants, which give the handler access to the bound itself.
-
 ### Error code mode
 
 Instead of throwing, errors can be reported via `std::error_code`. This works with construction, direct assignment, and per-operation policies:
@@ -212,7 +206,7 @@ throw, trust, or compose with a rounding mode) is visible at the call site
 
 | Cast | Behaviour |
 |---|---|
-| `saturated_cast<B>(v)`  | clamp to `[Lower, Upper]`, never throw |
+| `clamp_cast<B>(v)`  | clamp to `[Lower, Upper]`, never throw |
 | `wrap_cast<B>(v)`       | modular reduction into the target interval |
 | `checked_cast<B>(v)`    | throw `std::system_error` on overflow or off-notch |
 | `unchecked_cast<B>(v)`  | trust the caller — UB if out of range |
@@ -223,7 +217,7 @@ throw, trust, or compose with a rounding mode) is visible at the call site
 ```cpp
 using pct = bound<{0, 100}>;
 
-saturated_cast<pct>(150);   // 100  (clamps regardless of B's declared policy)
+clamp_cast<pct>(150);   // 100  (clamps regardless of B's declared policy)
 wrap_cast    <pct>(105);    // 4    (modular reduction into [0, 100])
 checked_cast <pct>(42);     // 42   (throws on out-of-range or off-notch)
 unchecked_cast<pct>(42);    // 42   (skips runtime checks — caller's contract)
@@ -317,7 +311,7 @@ To opt in to rounding:
 
 ```cpp
 // Per-operation (truncates towards zero)
-c.with_round() = f;
+c.with_truncate() = f;
 
 // Round to nearest notch
 c.with_round_nearest() = f;
@@ -599,7 +593,7 @@ The `examples/` directory contains self-contained programs demonstrating key fea
 | `audio_mixer.cpp` | 4-channel Q1.14 mix with `with(on_clamp, on_overflow)` peak metering and dB gain |
 | `sequence_number.cpp` | TCP-style wrap SEQ with `on_wrap` epoch counter and `%` ring index |
 | `histogram.cpp` | Latency bucketing with `bound_range`, `will_conversion_overflow`, `is_conversion_lossy` |
-| `game_hp.cpp` | HP/ammo with `mul_all` damage chain, `saturated_cast`, modulo for magazine |
+| `game_hp.cpp` | HP/ammo with `mul_all` damage chain, `clamp_cast`, modulo for magazine |
 | `calendar.cpp` | Day → month → year cascade via nested `on_wrap` callbacks |
 | `jitter_buffer.cpp` | Reorder buffer with `sentinel` policy + `on_sentinel` drop detection |
 | `id_pool.cpp` | Bounded ID allocator using `std::hash<bound>`, `numeric_limits`, `try_make` |

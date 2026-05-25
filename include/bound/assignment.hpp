@@ -200,8 +200,6 @@ namespace bnd
     from_value(lhs, clamped);
     if constexpr (is_clamp_action<plain<A>>)
       action.fn(lhs, overshoot);
-    else if constexpr (!std::is_same_v<plain<A>, no_action>)
-      action(overshoot);
   }
 
   template<boundable L, std::integral R>
@@ -215,8 +213,6 @@ namespace bnd
     from_value(lhs, wrapped + lower);
     if constexpr (is_wrap_action<plain<A>>)
       action.fn(lhs, excess);
-    else if constexpr (!std::is_same_v<plain<A>, no_action>)
-      action(excess);
   }
 
   template<boundable L, std::integral R>
@@ -353,8 +349,6 @@ namespace bnd
 
     if constexpr (is_clamp_action<plain<A>>)
       action.fn(lhs, overshoot);
-    else if constexpr (!std::is_same_v<plain<A>, no_action>)
-      action(overshoot);
   }
 
   // apply_wrap for real R — modular reduction into [Lower, Lower + range)
@@ -379,8 +373,6 @@ namespace bnd
 
     if constexpr (is_wrap_action<plain<A>>)
       action.fn(lhs, q);
-    else if constexpr (!std::is_same_v<plain<A>, no_action>)
-      action(q);
   }
 
   template <boundable L, typename R>
@@ -493,8 +485,6 @@ namespace bnd
     auto overshoot = as_rational(rhs) - as_rational(lhs);
     if constexpr (is_clamp_action<plain<A>>)
       action.fn(lhs, overshoot);
-    else if constexpr (!std::is_same_v<plain<A>, no_action>)
-      action(overshoot);
   }
 
   template<boundable L, boundable R>
@@ -513,8 +503,6 @@ namespace bnd
     from_value(lhs, wrapped + lower);
     if constexpr (is_wrap_action<plain<A>>)
       action.fn(lhs, excess);
-    else if constexpr (!std::is_same_v<plain<A>, no_action>)
-      action(excess);
   }
 
   template<boundable L, boundable R>
@@ -585,7 +573,7 @@ namespace bnd
   {
     static_assert(not Interval<L>.excludes(Interval<R>));
     static_assert(abs_den(Factor.Denominator) == 1 || HasPolicy<L, P, ignore_round>,
-      "incompatible notches: use with_round() or policy<ignore_round>() to allow rounding");
+      "incompatible notches: use with_truncate() or policy<ignore_round>() to allow rounding");
 
     if constexpr (not Interval<L>.includes(Interval<R>))
     {

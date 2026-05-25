@@ -310,13 +310,13 @@ TEST_CASE("constexpr: checked_cast with in-range values",
   STATIC_REQUIRE(checked_cast<pct>(  0) ==   0);
 }
 
-TEST_CASE("constexpr: saturated_cast clamps out-of-range",
+TEST_CASE("constexpr: clamp_cast clamps out-of-range",
           "[constexpr][bound][cast]")
 {
   using pct = bound<{0, 100}>;
-  STATIC_REQUIRE(saturated_cast<pct>(150) == 100);
-  STATIC_REQUIRE(saturated_cast<pct>(-5)  ==   0);
-  STATIC_REQUIRE(saturated_cast<pct>( 42) ==  42);
+  STATIC_REQUIRE(clamp_cast<pct>(150) == 100);
+  STATIC_REQUIRE(clamp_cast<pct>(-5)  ==   0);
+  STATIC_REQUIRE(clamp_cast<pct>( 42) ==  42);
 }
 
 TEST_CASE("constexpr: wrap_cast wraps modulo the grid",
@@ -469,15 +469,15 @@ TEST_CASE("constexpr: implied_flags / merged_implied_flags",
                  == (clamp | checked));
 }
 
-TEST_CASE("constexpr: is_policy_v / uses_error_ref_v",
+TEST_CASE("constexpr: IsPolicy / UsesErrorRef",
           "[constexpr][policy]")
 {
-  STATIC_REQUIRE(is_policy_v<policy<checked>>);
-  STATIC_REQUIRE(is_policy_v<policy<none, error_ref>>);
-  STATIC_REQUIRE_FALSE(is_policy_v<int>);
+  STATIC_REQUIRE(IsPolicy<policy<checked>>);
+  STATIC_REQUIRE(IsPolicy<policy<none, error_ref>>);
+  STATIC_REQUIRE_FALSE(IsPolicy<int>);
 
-  STATIC_REQUIRE_FALSE(uses_error_ref_v<policy<checked>>);
-  STATIC_REQUIRE(uses_error_ref_v<policy<checked, error_ref>>);
+  STATIC_REQUIRE_FALSE(UsesErrorRef<policy<checked>>);
+  STATIC_REQUIRE(UsesErrorRef<policy<checked, error_ref>>);
 }
 
 //---------------------------------------------------------------------------

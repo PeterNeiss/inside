@@ -34,10 +34,10 @@ TEST_CASE("rounding requires opt-in", "[bound][assign][round]")
     REQUIRE(smaller == 38);
   }
 
-  SECTION("with_round() is the alias")
+  SECTION("with_truncate() is the alias")
   {
     bigger = 30;
-    smaller.with_round() = bigger;
+    smaller.with_truncate() = bigger;
     REQUIRE(smaller == 30);
   }
 
@@ -129,12 +129,14 @@ TEST_CASE("unsafe relaxes domain and round checks", "[bound][assign][unsafe]")
   STATIC_REQUIRE_FALSE(std::is_same_v<typename decltype(q)::value_type::raw_type, rational>);
   REQUIRE(*q == 6);
 
-  // Binary div by zero -> nullopt
+  // Binary div by zero -> nullopt (still safe even under unsafe)
   u100u zero{0};
   REQUIRE_FALSE((a / zero).has_value());
 
-  // Compound /= by 0: ignore_zero is NOT set in unsafe -> still throws
-  REQUIRE_THROWS_AS(([&] { u100u y{50}; y /= 0; (void)y; }()), std::system_error);
+  // Compound /= by 0: unsafe implies ignore_zero -> silent no-op, value unchanged
+  u100u y{50};
+  y /= 0;
+  REQUIRE(y == 50);
 
   // Out-of-range silent overwrite (no domain check)
   REQUIRE_NOTHROW(([&] { u100u x{50}; x = 200; (void)x; }()));

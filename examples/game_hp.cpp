@@ -2,7 +2,7 @@
 //
 // Demonstrates:
 //   - `mul_all` to chain damage multipliers (crit * vulnerable * armor_pen)
-//   - `saturated_cast` for level-scaling that may exceed the HP range
+//   - `clamp_cast` for level-scaling that may exceed the HP range
 //   - Modulo `%` for ammo magazine arithmetic (under `ignore_round`)
 //   - `on_clamp` callback on HP to fire "full health" and "downed" hooks
 //   - Fixed-point multipliers in [0, 4] with 1/16 resolution
@@ -79,7 +79,7 @@ int main()
 
   // Level-scaled max-HP buff — could exceed hp_t. Because `hp_t` carries a
   // `clamp` policy, the implicit bound→bound conversion already clips at the
-  // boundary: no `saturated_cast` needed when the target type already says
+  // boundary: no `clamp_cast` needed when the target type already says
   // what to do with out-of-range values.
   big_pool_t bonus{180};
   hp_t capped = bonus;

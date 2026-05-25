@@ -88,7 +88,7 @@ namespace bnd
       { result res; action.fn(res, code); return res; }
       else
       {
-        if constexpr (uses_error_ref_v<bnd::policy<G, E>>)
+        if constexpr (UsesErrorRef<bnd::policy<G, E>>)
           policy.report(code, what);
         return slim::nullopt;
       }
@@ -179,7 +179,7 @@ namespace bnd
       { result res; action.fn(res, errc::division_by_zero); return res; }
       else
       {
-        if constexpr (uses_error_ref_v<bnd::policy<G, E>>)
+        if constexpr (UsesErrorRef<bnd::policy<G, E>>)
           policy.report(errc::division_by_zero, "division by zero in mod");
         return slim::nullopt;
       }

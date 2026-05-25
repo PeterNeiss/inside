@@ -311,12 +311,12 @@ namespace bnd
       "bound_assignable: rhs interval lies entirely outside lhs interval — assignment can never succeed");
     static_assert(!boundable<R> || abs_den(assignment<L, R>::Factor.Denominator) == 1
                   || ((BoundPolicy<L> | P) & ignore_round) != 0,
-      "bound_assignable: incompatible notches — use `with_round()` or `policy<ignore_round>()` to allow rounding");
+      "bound_assignable: incompatible notches — use `with_truncate()` or `policy<ignore_round>()` to allow rounding");
     static constexpr bool value = bound_assignable<L, R, P>;
   };
 
   template <boundable B>
-  constexpr raw_t<B> sentinel_raw()
+  [[nodiscard]] constexpr raw_t<B> sentinel_raw()
   {
     if constexpr (std::is_same_v<raw_t<B>, rational>)
       return rational::make_sentinel();

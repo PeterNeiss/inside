@@ -90,32 +90,32 @@ namespace bnd
   policy(std::error_code&) -> policy<none, error_ref>;
 
   //---------------------------------------------------------------------------
-  // is_policy_v — true for policy<F,E> specializations, false otherwise.
+  // IsPolicy — true for policy<F,E> specializations, false otherwise.
   // Used to gate free-fn overloads so they don't accidentally bind P = action tag.
   //---------------------------------------------------------------------------
-  template<typename T>             inline constexpr bool is_policy_v = false;
-  template<policy_flag F, typename E> inline constexpr bool is_policy_v<policy<F,E>> = true;
+  template<typename T>             inline constexpr bool IsPolicy = false;
+  template<policy_flag F, typename E> inline constexpr bool IsPolicy<policy<F,E>> = true;
 
-  // Concept form of is_policy_v — pulls cvref off so the constraint matches
+  // Concept form of IsPolicy — pulls cvref off so the constraint matches
   // forwarded `policy<F,E>` references in template parameters.
   template<typename T>
-  concept policy_like = is_policy_v<std::remove_cvref_t<T>>;
+  concept policy_like = IsPolicy<std::remove_cvref_t<T>>;
 
   // True for policy specializations that carry an std::error_code& reference.
   // Free-fn arithmetic uses this to decide whether to call policy.report on
   // failure (which sets ec) vs. returning silent nullopt (no-arg form).
-  template<typename T>             inline constexpr bool uses_error_ref_v = false;
-  template<policy_flag F>          inline constexpr bool uses_error_ref_v<policy<F, error_ref>> = true;
+  template<typename T>             inline constexpr bool UsesErrorRef = false;
+  template<policy_flag F>          inline constexpr bool UsesErrorRef<policy<F, error_ref>> = true;
 
   //---------------------------------------------------------------------------
   // make_policy
   //---------------------------------------------------------------------------
   template<policy_flag F = none>
-  constexpr auto make_policy()
+  [[nodiscard]] constexpr auto make_policy()
   { return policy<F,empty_ref>{}; }
 
   template<policy_flag F = none>
-  constexpr auto make_policy(std::error_code& ec)
+  [[nodiscard]] constexpr auto make_policy(std::error_code& ec)
   { return policy<F,error_ref>{ec}; }
 
   //---------------------------------------------------------------------------
@@ -189,12 +189,6 @@ namespace bnd
       else if constexpr (has_action<is_error_action_pred, As...>)
         return assignment<B, C>::assign(Ref, other, Policy,
           pick_action_in<is_error_action_pred>(Actions));
-      else if constexpr (sizeof...(As) == 1
-                         && !has_action<is_overflow_action_pred, As...>)
-        // Legacy single-callable form (e.g. `s.policy<wrap>([](auto c){...})`)
-        // — the action is a plain callable, not a tagged action; assignment's
-        // apply_clamp / apply_wrap branches invoke it directly.
-        return assignment<B, C>::assign(Ref, other, Policy, std::get<0>(Actions));
       else
         return assignment<B, C>::assign(Ref, other, Policy);
     }

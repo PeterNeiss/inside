@@ -89,15 +89,15 @@ TEST_CASE("is_conversion_lossy combines both", "[bound][predicates]")
 }
 
 //---------------------------------------------------------------------------
-// saturated_cast / checked_cast / unchecked_cast
+// clamp_cast / checked_cast / unchecked_cast
 //---------------------------------------------------------------------------
-TEST_CASE("saturated_cast clamps to boundary", "[bound][cast]")
+TEST_CASE("clamp_cast clamps to boundary", "[bound][cast]")
 {
   using pct = bound<{0, 100}>;
 
-  REQUIRE(saturated_cast<pct>(150) == pct{100});
-  REQUIRE(saturated_cast<pct>(-5)  == pct{0});
-  REQUIRE(saturated_cast<pct>(42)  == pct{42});
+  REQUIRE(clamp_cast<pct>(150) == pct{100});
+  REQUIRE(clamp_cast<pct>(-5)  == pct{0});
+  REQUIRE(clamp_cast<pct>(42)  == pct{42});
 }
 
 TEST_CASE("checked_cast throws on out-of-range", "[bound][cast]")

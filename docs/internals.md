@@ -180,7 +180,7 @@ all transitively included by `bound/bound.hpp`:
 | Header | Contains |
 |---|---|
 | `bound/bound.hpp`       | `bound<G, P>` struct, compound assignments, `<=>`, `==`, `_b` literal, increment/decrement |
-| `bound/casts.hpp`       | `as_rational`, `saturated_cast`, `wrap_cast`, `checked_cast`, `unchecked_cast`, `clamp_floor` / `clamp_ceil` / `clamp_round` |
+| `bound/casts.hpp`       | `as_rational`, `clamp_cast`, `wrap_cast`, `checked_cast`, `unchecked_cast`, `clamp_floor` / `clamp_ceil` / `clamp_round` |
 | `bound/arithmetic.hpp`  | Free `add` / `sub` / `mul` / `div` / `mod`, variadic folds `add_all` / `mul_all`, `operator+` / `-` / `*` / `/` / `%`, optional-lift overloads |
 | `bound/range.hpp`       | `bound_range<G, P>` iterator helper |
 | `bound/generic.hpp`     | Traits (`is_*`), metafunctions (`Lower` / `Upper` / `Notch` / `LowerImax` / `UpperImax` / `RawLo` / `RawHi` / `NotchCount`), `to_value` / `signed_raw`, `q_format_encode/decode`, concepts |

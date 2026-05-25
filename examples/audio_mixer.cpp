@@ -4,7 +4,7 @@
 //   - Signed Q1.14 sample storage (1/16384 notch)
 //   - Q-format gain bound; per-frame mix runs entirely in integer notch math
 //   - `with(on_clamp, on_overflow)` multi-action probe for peak metering
-//   - `saturated_cast` to push the mixed value back into the sample grid
+//   - `clamp_cast` to push the mixed value back into the sample grid
 //   - `bnd::math::sin` on a radians-valued bound — no `.Raw` bit-twiddling,
 //     no `<cmath>`, and no `rational::*_unchecked` in the example body.
 //     The 2π scaling is a single bound × bound multiply via a
@@ -130,13 +130,13 @@ int main()
   std::cout << "\nclip events:     " << clip_events << "\n";
   std::cout << "overflow events: " << overflow_events << "\n";
 
-  // Standalone: saturated_cast pushes a wider-grid bound into sample_t.
+  // Standalone: clamp_cast pushes a wider-grid bound into sample_t.
   // Common idiom inside std::transform over a sum bus.
   using mixbus_t = bound<{{-4, 4}, notch<1, 16384>}, round_nearest>;
   mixbus_t hot;
   hot.with_clamp() = 2.5;
-  std::cout << "\nsaturated_cast<sample_t>(mixbus 2.5) = "
-            << saturated_cast<sample_t>(hot) << "\n";
+  std::cout << "\nclamp_cast<sample_t>(mixbus 2.5) = "
+            << clamp_cast<sample_t>(hot) << "\n";
 
   // `add_all_into<Target>` folds N inputs and clips back into Target —
   // the audio-mix pipeline in one expression.

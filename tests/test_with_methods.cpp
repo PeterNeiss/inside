@@ -89,28 +89,28 @@ TEST_CASE("with_wrap: bound rhs", "[bound][with][wrap][bound2bound]")
 }
 
 //---------------------------------------------------------------------------
-// with_round (truncates toward zero)
+// with_truncate (truncates toward zero)
 //---------------------------------------------------------------------------
-TEST_CASE("with_round: bound rhs with finer notch", "[bound][with][round]")
+TEST_CASE("with_truncate: bound rhs with finer notch", "[bound][with][truncate]")
 {
   using coarse = bound<{{0, 10}, 2}>;
   using fine   = bound<{{0, 10}, 1}>;
 
   coarse c{0};
-  c.with_round() = fine{3};   REQUIRE(c == 2);   // 3 truncates toward zero -> 2
-  c.with_round() = fine{4};   REQUIRE(c == 4);   // exact
-  c.with_round() = fine{5};   REQUIRE(c == 4);   // 5 -> 4
-  c.with_round() = fine{7};   REQUIRE(c == 6);   // 7 -> 6
+  c.with_truncate() = fine{3};   REQUIRE(c == 2);   // 3 truncates toward zero -> 2
+  c.with_truncate() = fine{4};   REQUIRE(c == 4);   // exact
+  c.with_truncate() = fine{5};   REQUIRE(c == 4);   // 5 -> 4
+  c.with_truncate() = fine{7};   REQUIRE(c == 6);   // 7 -> 6
 }
 
-TEST_CASE("with_round: float rhs not on notch", "[bound][with][round]")
+TEST_CASE("with_truncate: float rhs not on notch", "[bound][with][truncate]")
 {
   using coarse = bound<{{0, 10}, 2}>;
   coarse c{0};
 
-  c.with_round() = 3.0;       REQUIRE(c == 2);   // 3 truncates to 2
-  c.with_round() = 3.99;      REQUIRE(c == 2);
-  c.with_round() = 4.0;       REQUIRE(c == 4);   // exact
+  c.with_truncate() = 3.0;       REQUIRE(c == 2);   // 3 truncates to 2
+  c.with_truncate() = 3.99;      REQUIRE(c == 2);
+  c.with_truncate() = 4.0;       REQUIRE(c == 4);   // exact
 }
 
 //---------------------------------------------------------------------------
@@ -145,14 +145,14 @@ TEST_CASE("with_round_nearest: bound rhs incompatible notches",
 }
 
 //---------------------------------------------------------------------------
-// with_round vs with_round_nearest divergence
+// with_truncate vs with_round_nearest divergence
 //---------------------------------------------------------------------------
-TEST_CASE("with_round vs with_round_nearest disagree on halfway",
-          "[bound][with][round]")
+TEST_CASE("with_truncate vs with_round_nearest disagree on halfway",
+          "[bound][with][truncate]")
 {
   using coarse = bound<{{0, 10}, 2}>;
   coarse c{0};
 
-  c.with_round()         = 3.0;   REQUIRE(c == 2);   // toward zero
+  c.with_truncate()         = 3.0;   REQUIRE(c == 2);   // toward zero
   c.with_round_nearest() = 3.0;   REQUIRE(c == 4);   // half away from zero
 }

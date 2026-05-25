@@ -114,7 +114,7 @@ namespace bnd
           { result res; action.fn(res, errc::overflow); return res; }
           else
           {
-            if constexpr (uses_error_ref_v<plain<P>>)
+            if constexpr (UsesErrorRef<plain<P>>)
               policy.report(errc::overflow, "rational overflow in mul");
             return slim::nullopt;
           }

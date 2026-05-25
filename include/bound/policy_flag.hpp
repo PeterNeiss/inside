@@ -44,12 +44,13 @@ namespace bnd
   inline static constexpr policy_flag wrap    {1ull << 33}; // modular arithmetic
   inline static constexpr policy_flag sentinel{1ull << 35}; // overflow -> sentinel (nullopt)
 
-  // opt-out of the default `checked` policy: no domain / round / overflow
-  // checks. Division-by-zero is still reported (use `ignore_zero` to suppress
-  // that too). Includes `ignore_round` so notch-incompatible assigns compile and
-  // native-integer div/mod paths fire.
+  // opt-out of the default `checked` policy: no domain / round / overflow /
+  // div-by-zero checks. Reading an out-of-range value is undefined behavior;
+  // compound `/= 0` and `%= 0` silently no-op (the bound is unchanged), while
+  // binary `a / 0` still returns nullopt. Includes `ignore_round` so
+  // notch-incompatible assigns compile and native-integer div/mod paths fire.
   inline static constexpr policy_flag unsafe
-    {(1ull << 36) | ignore_domain | ignore_round};
+    {(1ull << 36) | ignore_domain | ignore_round | ignore_zero};
 
   //---------------------------------------------------------------------------
   // no_action — zero-overhead default for overflow callbacks
@@ -70,15 +71,15 @@ namespace bnd
   //---------------------------------------------------------------------------
   // CTAD-style factories — drop the on_overflow_t{lambda} brace-init.
   //---------------------------------------------------------------------------
-  template<typename F> constexpr auto on_clamp(F&& fn)
+  template<typename F> [[nodiscard]] constexpr auto on_clamp(F&& fn)
   { return on_clamp_t<std::remove_cvref_t<F>>{std::forward<F>(fn)}; }
-  template<typename F> constexpr auto on_wrap(F&& fn)
+  template<typename F> [[nodiscard]] constexpr auto on_wrap(F&& fn)
   { return on_wrap_t<std::remove_cvref_t<F>>{std::forward<F>(fn)}; }
-  template<typename F> constexpr auto on_error(F&& fn)
+  template<typename F> [[nodiscard]] constexpr auto on_error(F&& fn)
   { return on_error_t<std::remove_cvref_t<F>>{std::forward<F>(fn)}; }
-  template<typename F> constexpr auto on_sentinel(F&& fn)
+  template<typename F> [[nodiscard]] constexpr auto on_sentinel(F&& fn)
   { return on_sentinel_t<std::remove_cvref_t<F>>{std::forward<F>(fn)}; }
-  template<typename F> constexpr auto on_overflow(F&& fn)
+  template<typename F> [[nodiscard]] constexpr auto on_overflow(F&& fn)
   { return on_overflow_t<std::remove_cvref_t<F>>{std::forward<F>(fn)}; }
 
   template<typename T> inline constexpr bool is_clamp_action    = false;

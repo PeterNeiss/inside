@@ -143,28 +143,6 @@ TEST_CASE("on_sentinel action on fixed-point grids", "[bound][policy][on_sentine
   REQUIRE(orig == rational{151, 2});  // 75.5
 }
 
-TEST_CASE("legacy policy<wrap>(lambda) callback form", "[bound][policy][callback]")
-{
-  using sec   = bound<{0, 59}, wrap>;
-  using min_t = bound<{0, 59}>;
-  sec seconds{0};
-  min_t minutes{0};
-
-  seconds.policy<wrap>([&](auto carry){
-    minutes += carry;
-  }) = 65;
-
-  REQUIRE(seconds == 5);
-  REQUIRE(minutes == 1);
-
-  using pct = bound<{0, 100}, clamp>;
-  pct p{0};
-  imax excess = 0;
-  p.policy<clamp>([&](auto e){ excess = e; }) = 150;
-  REQUIRE(p == 100);
-  REQUIRE(excess == 50);
-}
-
 TEST_CASE("on_wrap action receives bound& and carry", "[bound][policy][on_wrap]")
 {
   using sec = bound<{0, 59}, wrap>;

@@ -74,7 +74,7 @@ namespace bnd
           { action.fn(res, errc::overflow); return res; }
           else
           {
-            if constexpr (uses_error_ref_v<bnd::policy<F, E>>)
+            if constexpr (UsesErrorRef<bnd::policy<F, E>>)
               policy.report(errc::overflow, "rational overflow in add");
             return slim::nullopt;
           }

@@ -161,16 +161,16 @@ namespace bnd
 
   // `add_all_into<Target>` / `mul_all_into<Target>` — variadic fold that
   // collapses the widening intermediate back into a caller-chosen target
-  // grid via `saturated_cast<Target>`. The standard audio-mix / sensor-sum
+  // grid via `clamp_cast<Target>`. The standard audio-mix / sensor-sum
   // idiom: pairwise widen for exactness, then clip to the bus.
   template <boundable Target, boundable First, boundable... Rest>
   [[nodiscard]] constexpr Target add_all_into(First const& first, Rest const&... rest)
   {
     auto sum = (first + ... + rest);
     if constexpr (requires { typename decltype(sum)::value_type; })
-      return saturated_cast<Target>(sum.value());
+      return clamp_cast<Target>(sum.value());
     else
-      return saturated_cast<Target>(sum);
+      return clamp_cast<Target>(sum);
   }
 
   template <boundable Target, boundable First, boundable... Rest>
@@ -178,9 +178,9 @@ namespace bnd
   {
     auto prod = (first * ... * rest);
     if constexpr (requires { typename decltype(prod)::value_type; })
-      return saturated_cast<Target>(prod.value());
+      return clamp_cast<Target>(prod.value());
     else
-      return saturated_cast<Target>(prod);
+      return clamp_cast<Target>(prod);
   }
 
   //---------------------------------------------------------------------------

@@ -19,44 +19,29 @@ namespace bnd
   // arithmetic / assignment machinery where the implicit `operator rational()`
   // would be hidden by overload resolution. User code should prefer
   // `b.to<rational>()`, which carries a typed sentinel-state error.
-  template <arithmetic A>
-  [[nodiscard]] constexpr rational as_rational(A v) { return rational{v}; }
+  template <numeric N>
+  [[nodiscard]] constexpr rational as_rational(N v)
+  {
+    if constexpr (arithmetic<N>) return rational{v};
+    else                         return v;
+  }
 
-  template <boundable B>
-  [[nodiscard]] constexpr rational as_rational(B b) { return b; }
-
-  template <boundable B, arithmetic A>
-  [[nodiscard]] constexpr B saturated_cast(A value)
+  template <boundable B, numeric N>
+  [[nodiscard]] constexpr B clamp_cast(N value)
   {
     B b{};                  // default-init; immediately overwritten below
     b.with_clamp() = value; // clamp regardless of B's declared policy
     return b;
   }
 
-  template <boundable B, boundable A>
-  [[nodiscard]] constexpr B saturated_cast(A value)
-  {
-    B b{};
-    b.with_clamp() = value;
-    return b;
-  }
-
   // `wrap_cast` rounds out the named-cast trio with modular semantics.
-  // Mirrors `saturated_cast` but uses `with_wrap()` so the input value is
+  // Mirrors `clamp_cast` but uses `with_wrap()` so the input value is
   // reduced into the target grid's interval rather than clipped at the
   // boundaries. Useful where the caller wants integer-style wraparound
   // (sequence numbers, angles, ring-buffer indices) inside an
   // `std::transform` or other algorithm callback.
-  template <boundable B, arithmetic A>
-  [[nodiscard]] constexpr B wrap_cast(A value)
-  {
-    B b{};
-    b.with_wrap() = value;
-    return b;
-  }
-
-  template <boundable B, boundable A>
-  [[nodiscard]] constexpr B wrap_cast(A value)
+  template <boundable B, numeric N>
+  [[nodiscard]] constexpr B wrap_cast(N value)
   {
     B b{};
     b.with_wrap() = value;
@@ -71,52 +56,24 @@ namespace bnd
   // audio, graphics, and DSP code. Without these helpers the caller would
   // chain `with_clamp().policy<round_floor>()` etc. by hand.
   //---------------------------------------------------------------------------
-  template <boundable B, arithmetic A>
-  [[nodiscard]] constexpr B clamp_floor(A value)
+  template <boundable B, numeric N>
+  [[nodiscard]] constexpr B clamp_floor(N value)
   {
     B b{};
     b.template policy<clamp | round_floor>() = value;
     return b;
   }
 
-  template <boundable B, boundable A>
-  [[nodiscard]] constexpr B clamp_floor(A value)
-  {
-    B b{};
-    b.template policy<clamp | round_floor>() = value;
-    return b;
-  }
-
-  template <boundable B, arithmetic A>
-  [[nodiscard]] constexpr B clamp_ceil(A value)
+  template <boundable B, numeric N>
+  [[nodiscard]] constexpr B clamp_ceil(N value)
   {
     B b{};
     b.template policy<clamp | round_ceil>() = value;
     return b;
   }
 
-  template <boundable B, boundable A>
-  [[nodiscard]] constexpr B clamp_ceil(A value)
-  {
-    B b{};
-    b.template policy<clamp | round_ceil>() = value;
-    return b;
-  }
-
-  template <boundable B, arithmetic A>
-  [[nodiscard]] constexpr B clamp_round(A value)
-  {
-    B b{};
-    b.template policy<clamp | round_nearest>() = value;
-    return b;
-  }
-
-  // Boundable-source overload: lets a `bound`-typed intermediate flow
-  // through `clamp_round<Target>(expr)` directly, without the user having
-  // to extract to a `double` or `rational` first. Mirrors the symmetric
-  // overload on `saturated_cast`/`wrap_cast`.
-  template <boundable B, boundable A>
-  [[nodiscard]] constexpr B clamp_round(A value)
+  template <boundable B, numeric N>
+  [[nodiscard]] constexpr B clamp_round(N value)
   {
     B b{};
     b.template policy<clamp | round_nearest>() = value;

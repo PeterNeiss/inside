@@ -257,37 +257,29 @@ namespace bnd
     }
 
     template <policy_flag F = none>
-    constexpr auto policy()
+    [[nodiscard]] constexpr auto policy()
     {
        auto pol = make_policy<P | F>();
        return policy_ref<bound, decltype(pol)>{*this, pol};
     }
 
     template <policy_flag F = none>
-    constexpr auto policy(std::error_code& ec)
+    [[nodiscard]] constexpr auto policy(std::error_code& ec)
     {
        auto pol = make_policy<P | F>(ec);
        return policy_ref<bound, decltype(pol)>{*this, pol};
     }
 
-    template <policy_flag F = none, typename A>
-    constexpr auto policy(A&& action)
-    {
-       auto pol = make_policy<P | F>();
-       return policy_ref<bound, decltype(pol), std::remove_cvref_t<A>>{
-         *this, pol, std::forward<A>(action)};
-    }
-
-    constexpr auto with_round()           { return policy<ignore_round>(); }
-    constexpr auto with_round_nearest()   { return policy<round_nearest>(); }
-    constexpr auto with_floor()           { return policy<round_floor>(); }
-    constexpr auto with_ceil()            { return policy<round_ceil>(); }
-    constexpr auto with_round_half_even() { return policy<round_half_even>(); }
-    constexpr auto with_clamp()           { return policy<clamp>(); }
-    constexpr auto with_wrap()            { return policy<wrap>(); }
+    [[nodiscard]] constexpr auto with_truncate()        { return policy<ignore_round>(); }
+    [[nodiscard]] constexpr auto with_round_nearest()   { return policy<round_nearest>(); }
+    [[nodiscard]] constexpr auto with_floor()           { return policy<round_floor>(); }
+    [[nodiscard]] constexpr auto with_ceil()            { return policy<round_ceil>(); }
+    [[nodiscard]] constexpr auto with_round_half_even() { return policy<round_half_even>(); }
+    [[nodiscard]] constexpr auto with_clamp()           { return policy<clamp>(); }
+    [[nodiscard]] constexpr auto with_wrap()            { return policy<wrap>(); }
 
     template <typename A>
-    constexpr auto on_wrap(A&& action)
+    [[nodiscard]] constexpr auto on_wrap(A&& action)
     {
        using tag = on_wrap_t<std::remove_cvref_t<A>>;
        auto pol = make_policy<P | implied_flags<tag>>();
@@ -296,7 +288,7 @@ namespace bnd
     }
 
     template <typename A>
-    constexpr auto on_clamp(A&& action)
+    [[nodiscard]] constexpr auto on_clamp(A&& action)
     {
        using tag = on_clamp_t<std::remove_cvref_t<A>>;
        auto pol = make_policy<P | implied_flags<tag>>();
@@ -305,7 +297,7 @@ namespace bnd
     }
 
     template <typename A>
-    constexpr auto on_error(A&& action)
+    [[nodiscard]] constexpr auto on_error(A&& action)
     {
        using tag = on_error_t<std::remove_cvref_t<A>>;
        auto pol = make_policy<P | implied_flags<tag>>();
@@ -314,7 +306,7 @@ namespace bnd
     }
 
     template <typename A>
-    constexpr auto on_sentinel(A&& action)
+    [[nodiscard]] constexpr auto on_sentinel(A&& action)
     {
        using tag = on_sentinel_t<std::remove_cvref_t<A>>;
        auto pol = make_policy<P | implied_flags<tag>>();
@@ -323,7 +315,7 @@ namespace bnd
     }
 
     template <typename A>
-    constexpr auto on_overflow(A&& action)
+    [[nodiscard]] constexpr auto on_overflow(A&& action)
     {
        using tag = on_overflow_t<std::remove_cvref_t<A>>;
        auto pol = make_policy<P | implied_flags<tag>>();
@@ -337,7 +329,7 @@ namespace bnd
     // at compile time. Use case: `b.with(on_overflow(λ1), on_clamp(λ2)) += rhs`
     // — the imax-overflow probe fires λ1, the post-probe narrowing fires λ2.
     template <typename... Actions>
-    constexpr auto with(Actions&&... actions)
+    [[nodiscard]] constexpr auto with(Actions&&... actions)
     {
        constexpr policy_flag merged = merged_implied_flags<Actions...>;
        auto pol = make_policy<P | merged>();
