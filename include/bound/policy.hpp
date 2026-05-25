@@ -119,6 +119,34 @@ namespace bnd
   { return policy<F,error_ref>{ec}; }
 
   //---------------------------------------------------------------------------
+  // report_or_nullopt — uniform "rational arithmetic failed" handler shared by
+  // addition.hpp / multiplication.hpp / division.hpp / modulo. Three behaviors,
+  // selected at compile time by the action / policy types:
+  //   - `overflow_action<A>` present  → default-init a Result, fire the action
+  //                                     on it (may overwrite), return Result.
+  //   - `UsesErrorRef<P>` (error_code mode) → policy.report(...), return nullopt.
+  //   - plain throw-policy            → return nullopt (caller already threw or
+  //                                     the policy is configured to be silent).
+  //---------------------------------------------------------------------------
+  template <boundable Result, typename A, typename P>
+  constexpr auto report_or_nullopt(A&& action, P&& policy, errc code, const char* what)
+    -> std::conditional_t<overflow_action<A>, Result, slim::optional<Result>>
+  {
+    if constexpr (overflow_action<A>)
+    {
+      Result res;
+      action.fn(res, code);
+      return res;
+    }
+    else
+    {
+      if constexpr (UsesErrorRef<std::remove_cvref_t<P>>)
+        policy.report(code, what);
+      return slim::nullopt;
+    }
+  }
+
+  //---------------------------------------------------------------------------
   // Named convenience policies — let user code skip `make_policy<F>()` entirely
   // for the per-call flag form on free arithmetic functions.
   //---------------------------------------------------------------------------
@@ -146,11 +174,11 @@ namespace bnd
     private:
     // Conflict diagnostics: at most one assignment-time tag (clamp / wrap /
     // sentinel / error), at most one of each kind, no clamp+wrap.
-    static constexpr unsigned _clamp_count    = count_action_matches<is_clamp_action_pred,    As...>;
-    static constexpr unsigned _wrap_count     = count_action_matches<is_wrap_action_pred,     As...>;
-    static constexpr unsigned _sentinel_count = count_action_matches<is_sentinel_action_pred, As...>;
-    static constexpr unsigned _error_count    = count_action_matches<is_error_action_pred,    As...>;
-    static constexpr unsigned _overflow_count = count_action_matches<is_overflow_action_pred, As...>;
+    static constexpr unsigned _clamp_count    = count_action_matches<IsClampActionPred,    As...>;
+    static constexpr unsigned _wrap_count     = count_action_matches<IsWrapActionPred,     As...>;
+    static constexpr unsigned _sentinel_count = count_action_matches<IsSentinelActionPred, As...>;
+    static constexpr unsigned _error_count    = count_action_matches<IsErrorActionPred,    As...>;
+    static constexpr unsigned _overflow_count = count_action_matches<IsOverflowActionPred, As...>;
 
     static_assert(_clamp_count + _wrap_count + _sentinel_count + _error_count <= 1,
       "on_clamp / on_wrap / on_sentinel / on_error are mutually exclusive in a single policy_ref");
@@ -177,18 +205,18 @@ namespace bnd
     template <numeric C>
     constexpr B& assign_with_picked(C const& other)
     {
-      if constexpr (has_action<is_clamp_action_pred, As...>)
+      if constexpr (has_action<IsClampActionPred, As...>)
         return assignment<B, C>::assign(Ref, other, Policy,
-          pick_action_in<is_clamp_action_pred>(Actions));
-      else if constexpr (has_action<is_wrap_action_pred, As...>)
+          pick_action_in<IsClampActionPred>(Actions));
+      else if constexpr (has_action<IsWrapActionPred, As...>)
         return assignment<B, C>::assign(Ref, other, Policy,
-          pick_action_in<is_wrap_action_pred>(Actions));
-      else if constexpr (has_action<is_sentinel_action_pred, As...>)
+          pick_action_in<IsWrapActionPred>(Actions));
+      else if constexpr (has_action<IsSentinelActionPred, As...>)
         return assignment<B, C>::assign(Ref, other, Policy,
-          pick_action_in<is_sentinel_action_pred>(Actions));
-      else if constexpr (has_action<is_error_action_pred, As...>)
+          pick_action_in<IsSentinelActionPred>(Actions));
+      else if constexpr (has_action<IsErrorActionPred, As...>)
         return assignment<B, C>::assign(Ref, other, Policy,
-          pick_action_in<is_error_action_pred>(Actions));
+          pick_action_in<IsErrorActionPred>(Actions));
       else
         return assignment<B, C>::assign(Ref, other, Policy);
     }
@@ -201,8 +229,8 @@ namespace bnd
     private:
     constexpr void report_zero(errc code, const char* what)
     {
-      if constexpr (has_action<is_error_action_pred, As...>)
-        pick_action_in<is_error_action_pred>(Actions).fn(Ref, code, std::string_view(what));
+      if constexpr (has_action<IsErrorActionPred, As...>)
+        pick_action_in<IsErrorActionPred>(Actions).fn(Ref, code, std::string_view(what));
       else if constexpr (!HasPolicy<B, P, ignore_zero>)
         Policy.report(code, what);
     }
@@ -212,15 +240,15 @@ namespace bnd
     constexpr B& operator+=(C rhs)
     {
       imax l = to_value(Ref), r = static_cast<imax>(rhs), result;
-      if constexpr (has_action<is_overflow_action_pred, As...>
-                 || has_action<is_error_action_pred,    As...>)
+      if constexpr (has_action<IsOverflowActionPred, As...>
+                 || has_action<IsErrorActionPred,    As...>)
       {
         if (add_overflow(l, r, &result))
         {
-          if constexpr (has_action<is_overflow_action_pred, As...>)
-            pick_action_in<is_overflow_action_pred>(Actions).fn(Ref, errc::overflow);
+          if constexpr (has_action<IsOverflowActionPred, As...>)
+            pick_action_in<IsOverflowActionPred>(Actions).fn(Ref, errc::overflow);
           else
-            pick_action_in<is_error_action_pred>(Actions)
+            pick_action_in<IsErrorActionPred>(Actions)
               .fn(Ref, errc::overflow, std::string_view("operator+= overflow"));
           return Ref;
         }
@@ -234,15 +262,15 @@ namespace bnd
     constexpr B& operator-=(C rhs)
     {
       imax l = to_value(Ref), r = static_cast<imax>(rhs), result;
-      if constexpr (has_action<is_overflow_action_pred, As...>
-                 || has_action<is_error_action_pred,    As...>)
+      if constexpr (has_action<IsOverflowActionPred, As...>
+                 || has_action<IsErrorActionPred,    As...>)
       {
         if (sub_overflow(l, r, &result))
         {
-          if constexpr (has_action<is_overflow_action_pred, As...>)
-            pick_action_in<is_overflow_action_pred>(Actions).fn(Ref, errc::overflow);
+          if constexpr (has_action<IsOverflowActionPred, As...>)
+            pick_action_in<IsOverflowActionPred>(Actions).fn(Ref, errc::overflow);
           else
-            pick_action_in<is_error_action_pred>(Actions)
+            pick_action_in<IsErrorActionPred>(Actions)
               .fn(Ref, errc::overflow, std::string_view("operator-= overflow"));
           return Ref;
         }
@@ -256,15 +284,15 @@ namespace bnd
     constexpr B& operator*=(C rhs)
     {
       imax l = to_value(Ref), r = static_cast<imax>(rhs), result;
-      if constexpr (has_action<is_overflow_action_pred, As...>
-                 || has_action<is_error_action_pred,    As...>)
+      if constexpr (has_action<IsOverflowActionPred, As...>
+                 || has_action<IsErrorActionPred,    As...>)
       {
         if (mul_overflow(l, r, &result))
         {
-          if constexpr (has_action<is_overflow_action_pred, As...>)
-            pick_action_in<is_overflow_action_pred>(Actions).fn(Ref, errc::overflow);
+          if constexpr (has_action<IsOverflowActionPred, As...>)
+            pick_action_in<IsOverflowActionPred>(Actions).fn(Ref, errc::overflow);
           else
-            pick_action_in<is_error_action_pred>(Actions)
+            pick_action_in<IsErrorActionPred>(Actions)
               .fn(Ref, errc::overflow, std::string_view("operator*= overflow"));
           return Ref;
         }
@@ -311,8 +339,8 @@ namespace bnd
       {
         if (!result.has_value())
         {
-          if constexpr (has_action<is_overflow_action_pred, As...>)
-            pick_action_in<is_overflow_action_pred>(Actions).fn(Ref, errc::overflow);
+          if constexpr (has_action<IsOverflowActionPred, As...>)
+            pick_action_in<IsOverflowActionPred>(Actions).fn(Ref, errc::overflow);
           else
             Policy.report(errc::overflow, msg);
           return Ref;

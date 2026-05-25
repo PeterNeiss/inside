@@ -60,7 +60,7 @@ struct std::hash<bnd::bound<G, P>>
 
   constexpr std::size_t operator()(B const& b) const noexcept
   {
-    if constexpr (bnd::is_raw_rational<B>)
+    if constexpr (bnd::IsRawRational<B>)
     {
       // Boost-style hash combine over (Numerator, Denominator).
       auto h1 = std::hash<bnd::umax>{}(b.Raw.Numerator);

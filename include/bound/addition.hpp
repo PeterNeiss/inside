@@ -31,7 +31,7 @@ namespace bnd
 
     template <policy_flag F>
     static constexpr bool needs_overflow_check =
-        is_raw_rational<result>
+        IsRawRational<result>
         && ((F | BoundPolicy<L> | BoundPolicy<R>) & checked);
 
     template <policy_flag F = none>
@@ -40,7 +40,7 @@ namespace bnd
                                                result>;
 
     template <policy_flag F, typename A>
-    using add_return_t = std::conditional_t<is_overflow_action<plain<A>>,
+    using add_return_t = std::conditional_t<overflow_action<plain<A>>,
                                             result,
                                             return_type_for<F>>;
 
@@ -63,28 +63,20 @@ namespace bnd
   constexpr auto addition<L,R>::add(L lhs, R rhs, policy<F, E> policy, A&& action) -> add_return_t<F, A>
   {
     result res;
-    if constexpr (is_raw_rational<result>)
+    if constexpr (IsRawRational<result>)
     {
       if constexpr (needs_overflow_check<F>)
       {
         auto sum = rational::add(lhs,rhs);
         if (!sum)
-        {
-          if constexpr (is_overflow_action<plain<A>>)
-          { action.fn(res, errc::overflow); return res; }
-          else
-          {
-            if constexpr (UsesErrorRef<bnd::policy<F, E>>)
-              policy.report(errc::overflow, "rational overflow in add");
-            return slim::nullopt;
-          }
-        }
+          return report_or_nullopt<result>(action, policy, errc::overflow,
+                                           "rational overflow in add");
         res.Raw = *sum;
       }
       else
         res.Raw = rational::add_unchecked(lhs, rhs);
     }
-    else if constexpr (is_raw_rational<L> || is_raw_rational<R>)
+    else if constexpr (IsRawRational<L> || IsRawRational<R>)
     {
       auto sum = rational::add_unchecked(lhs,rhs);
       // `((sum - Lower) / Notch).Numerator` is the L-offset; for direct
@@ -92,13 +84,13 @@ namespace bnd
       res.Raw = raw_from_offset<result>(
           ((sum - Lower<result>) / Notch<result>).value().Numerator);
     }
-    else if constexpr (is_direct_storage<L> || is_direct_storage<R> || is_direct_storage<result>)
+    else if constexpr (IsDirectStorage<L> || IsDirectStorage<R> || IsDirectStorage<result>)
     {
       from_value(res, to_value(lhs) + to_value(rhs));
     }
     else
     {
-      res.Raw = raw_cast<result>(signed_raw(lhs) * lhs_widen + signed_raw(rhs) * rhs_widen);
+      res.Raw = raw_cast<result>(raw_imax(lhs) * lhs_widen + raw_imax(rhs) * rhs_widen);
     }
     return res;
   }

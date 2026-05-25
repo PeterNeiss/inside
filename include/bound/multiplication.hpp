@@ -78,7 +78,7 @@ namespace bnd
 
     template <typename P>
     static constexpr bool needs_overflow_check =
-        is_raw_rational<result>
+        IsRawRational<result>
         && (((BoundPolicy<L> | BoundPolicy<R>) & checked) || plain<P>::test(checked))
         && !rational_mul_is_safe(Grid<L>, Grid<R>);
 
@@ -88,7 +88,7 @@ namespace bnd
                                                result>;
 
     template <typename P, typename A>
-    using mul_return_t = std::conditional_t<is_overflow_action<plain<A>>,
+    using mul_return_t = std::conditional_t<overflow_action<plain<A>>,
                                             result,
                                             return_type_for<P>>;
 
@@ -103,22 +103,14 @@ namespace bnd
   template <typename P, typename A>
   constexpr auto multiplication<L,R>::mul(L lhs, R rhs, P&& policy, A&& action) -> mul_return_t<P, A>
   {
-    if constexpr (is_raw_rational<result>)
+    if constexpr (IsRawRational<result>)
     {
       if constexpr (needs_overflow_check<P>)
       {
         auto prod = as_rational(lhs) * as_rational(rhs);
         if (!prod)
-        {
-          if constexpr (is_overflow_action<plain<A>>)
-          { result res; action.fn(res, errc::overflow); return res; }
-          else
-          {
-            if constexpr (UsesErrorRef<plain<P>>)
-              policy.report(errc::overflow, "rational overflow in mul");
-            return slim::nullopt;
-          }
-        }
+          return report_or_nullopt<result>(action, policy, errc::overflow,
+                                           "rational overflow in mul");
         result res; res.Raw = raw_cast<result>(*prod); return res;
       }
       else
@@ -129,7 +121,7 @@ namespace bnd
         return res;
       }
     }
-    else if constexpr (is_integer_aligned<L> && is_integer_aligned<R> && is_integer_aligned<result>)
+    else if constexpr (IsIntegerAligned<L> && IsIntegerAligned<R> && IsIntegerAligned<result>)
     {
       result res;
       from_value(res, to_value(lhs) * to_value(rhs));
@@ -144,11 +136,11 @@ namespace bnd
 
       // Normalize lhs.Raw / rhs.Raw to *offsets* regardless of L's / R's
       // storage shape. The formulas below all assume offset arithmetic.
-      umax lhs_offset = is_direct_storage<L>
-          ? static_cast<umax>(signed_raw(lhs) - RawLo<L>)
+      umax lhs_offset = IsDirectStorage<L>
+          ? static_cast<umax>(raw_imax(lhs) - RawLo<L>)
           : static_cast<umax>(lhs.Raw);
-      umax rhs_offset = is_direct_storage<R>
-          ? static_cast<umax>(signed_raw(rhs) - RawLo<R>)
+      umax rhs_offset = IsDirectStorage<R>
+          ? static_cast<umax>(raw_imax(rhs) - RawLo<R>)
           : static_cast<umax>(rhs.Raw);
 
       // Raws are typically small unsigned ints (uint8/16/32). C++ integral

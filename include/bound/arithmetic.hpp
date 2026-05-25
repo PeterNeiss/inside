@@ -36,11 +36,11 @@ namespace bnd
   // (the only kind arithmetic itself fires; others are kept for forward-compat).
   template <boundable L, boundable R, typename... Actions>
     requires (sizeof...(Actions) >= 1)
-          && has_action<is_overflow_action_pred, std::remove_cvref_t<Actions>...>
+          && has_action<IsOverflowActionPred, std::remove_cvref_t<Actions>...>
   [[nodiscard]] constexpr auto add(L const& lhs, R const& rhs, Actions&&... actions)
   { return addition<L,R>::add(lhs, rhs,
       make_policy<merged_implied_flags<Actions...>>(),
-      pick_action<is_overflow_action_pred>(actions...)); }
+      pick_action<IsOverflowActionPred>(actions...)); }
 
   template <boundable L, boundable R, typename A = no_action>
   [[nodiscard]] constexpr auto add(L const& lhs, R const& rhs,
@@ -75,11 +75,11 @@ namespace bnd
 
   template <boundable L, boundable R, typename... Actions>
     requires (sizeof...(Actions) >= 1)
-          && has_action<is_overflow_action_pred, std::remove_cvref_t<Actions>...>
+          && has_action<IsOverflowActionPred, std::remove_cvref_t<Actions>...>
   [[nodiscard]] constexpr auto sub(L const& lhs, R const& rhs, Actions&&... actions)
   { return add(lhs, -rhs,
       make_policy<merged_implied_flags<Actions...>>(),
-      pick_action<is_overflow_action_pred>(actions...)); }
+      pick_action<IsOverflowActionPred>(actions...)); }
 
   template <boundable L, boundable R, typename A = no_action>
   [[nodiscard]] constexpr auto sub(L const& lhs, R const& rhs,
@@ -113,11 +113,11 @@ namespace bnd
 
   template <boundable L, boundable R, typename... Actions>
     requires (sizeof...(Actions) >= 1)
-          && has_action<is_overflow_action_pred, std::remove_cvref_t<Actions>...>
+          && has_action<IsOverflowActionPred, std::remove_cvref_t<Actions>...>
   [[nodiscard]] constexpr auto mul(L const& lhs, R const& rhs, Actions&&... actions)
   { return multiplication<L,R>::mul(lhs, rhs,
       make_policy<merged_implied_flags<Actions...>>(),
-      pick_action<is_overflow_action_pred>(actions...)); }
+      pick_action<IsOverflowActionPred>(actions...)); }
 
   template <boundable L, boundable R, typename A = no_action>
   [[nodiscard]] constexpr auto mul(L const& lhs, R const& rhs,
@@ -192,11 +192,11 @@ namespace bnd
 
   template <boundable L, boundable R, typename... Actions>
     requires (sizeof...(Actions) >= 1)
-          && has_action<is_overflow_action_pred, std::remove_cvref_t<Actions>...>
+          && has_action<IsOverflowActionPred, std::remove_cvref_t<Actions>...>
   [[nodiscard]] constexpr auto div(L lhs, R rhs, Actions&&... actions)
   { return division<L, R, merged_implied_flags<Actions...>>::div(lhs, rhs,
       make_policy<merged_implied_flags<Actions...>>(),
-      pick_action<is_overflow_action_pred>(actions...)); }
+      pick_action<IsOverflowActionPred>(actions...)); }
 
   template <boundable L, boundable R, typename A = no_action>
   [[nodiscard]] constexpr auto div(L lhs, R rhs,
@@ -234,11 +234,11 @@ namespace bnd
 
   template <boundable L, boundable R, typename... Actions>
     requires (sizeof...(Actions) >= 1)
-          && has_action<is_overflow_action_pred, std::remove_cvref_t<Actions>...>
+          && has_action<IsOverflowActionPred, std::remove_cvref_t<Actions>...>
   [[nodiscard]] constexpr auto mod(L lhs, R rhs, Actions&&... actions)
   { return modulo<L, R, merged_implied_flags<Actions...>>::mod(lhs, rhs,
       make_policy<merged_implied_flags<Actions...>>(),
-      pick_action<is_overflow_action_pred>(actions...)); }
+      pick_action<IsOverflowActionPred>(actions...)); }
 
   template <boundable L, boundable R, typename A = no_action>
   [[nodiscard]] constexpr auto mod(L lhs, R rhs,

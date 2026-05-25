@@ -34,10 +34,10 @@ namespace bnd
   //---------------------------------------------------------------------------
   template <boundable L, typename P, typename A>
   inline constexpr bool needs_runtime_domain_check =
-         is_clamp_action   <plain<A>>
-      || is_wrap_action    <plain<A>>
-      || is_sentinel_action<plain<A>>
-      || is_error_action   <plain<A>>
+         clamp_action   <plain<A>>
+      || wrap_action    <plain<A>>
+      || sentinel_action<plain<A>>
+      || error_action   <plain<A>>
       || HasPolicy<L, P, clamp>
       || HasPolicy<L, P, wrap>
       || HasPolicy<L, P, sentinel>
@@ -106,9 +106,9 @@ namespace bnd
       //                           `is_integer_mapping` callers below.
       static constexpr rational calcOffset()
       {
-        if constexpr (is_raw_rational<L>)
+        if constexpr (IsRawRational<L>)
           return Lower<R>;
-        else if constexpr (is_raw_rational<R>)
+        else if constexpr (IsRawRational<R>)
           return -(Lower<L>/Notch<L>).value();
         else
           return ((Lower<R> - Lower<L>)/Notch<L>).value();
@@ -116,9 +116,9 @@ namespace bnd
 
       static constexpr rational calcFactor()
       {
-        if constexpr (is_raw_rational<L>)
+        if constexpr (IsRawRational<L>)
           return Notch<R>;
-        else if constexpr (is_raw_rational<R>)
+        else if constexpr (IsRawRational<R>)
           return (1_r/Notch<L>).value();
         else
           return (Notch<R>/Notch<L>).value();
@@ -130,7 +130,7 @@ namespace bnd
 
       // Raw-space mapping is integer-only (no rational arithmetic needed)
       static constexpr bool is_integer_mapping =
-          not is_raw_rational<L> && not is_raw_rational<R>
+          not IsRawRational<L> && not IsRawRational<R>
           && abs_den(Factor.Denominator) == 1 && abs_den(Offset.Denominator) == 1;
 
       // Map rhs.Raw into L's raw space (requires is_integer_mapping).
@@ -139,10 +139,10 @@ namespace bnd
       // i.e. R.Raw is the R-offset and the result is the L-offset. Two
       // adjustments make it work for direct-storage operands:
       //
-      //   1. If R is is_direct_storage<R>, rhs_raw is already R-value
+      //   1. If R is IsDirectStorage<R>, rhs_raw is already R-value
       //      (not R-offset). Subtract Lower<R> first so the formula sees
       //      a true R-offset.
-      //   2. If L is is_direct_storage<L>, L.Raw must be L-value (not
+      //   2. If L is IsDirectStorage<L>, L.Raw must be L-value (not
       //      L-offset). Add Lower<L> after the formula. (Equivalently:
       //      raw_from_offset<L>.)
       //
@@ -151,7 +151,7 @@ namespace bnd
       static constexpr imax map_raw(auto rhs_raw)
       {
         imax r_offset = static_cast<imax>(rhs_raw);
-        if constexpr (is_direct_storage<R>)
+        if constexpr (IsDirectStorage<R>)
           r_offset -= RawLo<R>;
 
         imax l_offset;
@@ -164,7 +164,7 @@ namespace bnd
           l_offset = static_cast<imax>(Factor.Numerator) * r_offset
                    - static_cast<imax>(Offset.Numerator);
 
-        if constexpr (is_direct_storage<L>)
+        if constexpr (IsDirectStorage<L>)
           return l_offset + RawLo<L>;
         else
           return l_offset;
@@ -198,7 +198,7 @@ namespace bnd
     imax clamped = static_cast<imax>(rhs) < lower ? lower : upper;
     imax overshoot = static_cast<imax>(rhs) - clamped;
     from_value(lhs, clamped);
-    if constexpr (is_clamp_action<plain<A>>)
+    if constexpr (clamp_action<plain<A>>)
       action.fn(lhs, overshoot);
   }
 
@@ -211,7 +211,7 @@ namespace bnd
     imax wrapped = ((shifted % range) + range) % range;
     imax excess = (shifted < 0) ? ((shifted - range + 1) / range) : (shifted / range);
     from_value(lhs, wrapped + lower);
-    if constexpr (is_wrap_action<plain<A>>)
+    if constexpr (wrap_action<plain<A>>)
       action.fn(lhs, excess);
   }
 
@@ -221,17 +221,17 @@ namespace bnd
                                                      P&& policy, A&& action)
   {
     using PA = plain<A>;
-    if constexpr (is_clamp_action<PA>)
+    if constexpr (clamp_action<PA>)
     { apply_clamp(lhs, rhs, lower, upper, action); return true; }
-    else if constexpr (is_wrap_action<PA>)
+    else if constexpr (wrap_action<PA>)
     { apply_wrap(lhs, rhs, lower, upper, action); return true; }
-    else if constexpr (is_sentinel_action<PA>)
+    else if constexpr (sentinel_action<PA>)
     {
       lhs.Raw = sentinel_raw<L>();
       action.fn(lhs, static_cast<imax>(rhs));
       return true;
     }
-    else if constexpr (is_error_action<PA>)
+    else if constexpr (error_action<PA>)
     {
       auto msg = bnd::to_string(rhs) + " is not in " + bnd::to_string(Interval<L>);
       action.fn(lhs, errc::domain_error, std::string_view(msg));
@@ -249,13 +249,13 @@ namespace bnd
   template<boundable L, std::integral R>
   constexpr void assignment<L,R>::store(L& lhs, R rhs)
   {
-    if constexpr (is_direct_storage<L>)
+    if constexpr (IsDirectStorage<L>)
       lhs.Raw = raw_cast<L>(rhs);
     else if constexpr (Lower<L> == Upper<L>)
       lhs.Raw = 0;   // notch_storage point grid: 0 is the only offset
-    else if constexpr (has_q_format_fast_path<L>)
+    else if constexpr (HasQFormatFastPath<L>)
       lhs.Raw = q_format_encode<L>(static_cast<imax>(rhs));
-    else // is_notch_storage, generic rational path
+    else // IsNotchStorage, generic rational path
     {
       rational raw = ((rhs - Interval<L>.Lower)/Notch<L>).value();
       lhs.Raw = raw_cast<L>(raw.Numerator / static_cast<umax>(raw.Denominator));
@@ -277,7 +277,7 @@ namespace bnd
     // contains its own `if consteval` guard.
     if constexpr (not Interval<L>.includes(Interval<R>))
     {
-      if constexpr (is_integer_interval<L>)
+      if constexpr (IsIntegerInterval<L>)
       {
         // Skip the runtime range branch entirely when every handler would
         // be dead anyway — the dead branch otherwise inhibits autovec.
@@ -316,7 +316,7 @@ namespace bnd
     else
       overshoot = rhs - clamped;
 
-    if constexpr (is_raw_rational<L>)
+    if constexpr (IsRawRational<L>)
       lhs.Raw = clamped;
     else if constexpr (Lower<L> == Upper<L>)
       lhs.Raw = 0;
@@ -347,7 +347,7 @@ namespace bnd
         lhs.Raw = raw_from_offset<L>(raw.Numerator / den);
     }
 
-    if constexpr (is_clamp_action<plain<A>>)
+    if constexpr (clamp_action<plain<A>>)
       action.fn(lhs, overshoot);
   }
 
@@ -371,7 +371,7 @@ namespace bnd
     // notch / rounding policy logic is exercised once.
     assignment<L, rational>::store_checked(lhs, wrapped, policy, action);
 
-    if constexpr (is_wrap_action<plain<A>>)
+    if constexpr (wrap_action<plain<A>>)
       action.fn(lhs, q);
   }
 
@@ -380,14 +380,14 @@ namespace bnd
   template<typename P, typename A>
   constexpr bool assignment<L,R>::store_checked(L& lhs, R rhs, P&& policy, A&& action)
   {
-    if constexpr (is_raw_rational<L>)
+    if constexpr (IsRawRational<L>)
     { lhs.Raw = rhs; return true; }
     else if constexpr (Lower<L> == Upper<L>)
     {
       // Singleton grid: Raw layout depends on encoding. For offset
       // encoding the lone slot is Raw=0; for direct storage Raw is the
       // value itself (`Lower`).
-      if constexpr (is_direct_storage<L>)
+      if constexpr (IsDirectStorage<L>)
         lhs.Raw = raw_cast<L>(RawLo<L>);
       else
         lhs.Raw = 0;
@@ -421,7 +421,7 @@ namespace bnd
       else if (policy.round_check())
       {
         auto msg = bnd::to_string(rhs) + " does not land on notch " + bnd::to_string(Notch<L>);
-        if constexpr (is_error_action<plain<A>>)
+        if constexpr (error_action<plain<A>>)
         { action.fn(lhs, errc::rounding_error, std::string_view(msg)); return false; }
         policy.report(errc::rounding_error, msg);
         return false;
@@ -443,15 +443,15 @@ namespace bnd
     if (not Interval<L>.includes(rhs))
     {
       using PA = plain<A>;
-      if constexpr (is_clamp_action<PA>)
+      if constexpr (clamp_action<PA>)
       { apply_clamp(lhs, rhs, policy, action); return lhs; }
-      else if constexpr (is_sentinel_action<PA>)
+      else if constexpr (sentinel_action<PA>)
       {
         lhs.Raw = sentinel_raw<L>();
         action.fn(lhs, rhs);
         return lhs;
       }
-      else if constexpr (is_error_action<PA>)
+      else if constexpr (error_action<PA>)
       {
         auto msg = bnd::to_string(rhs) + " is not in " + bnd::to_string(Interval<L>);
         action.fn(lhs, errc::domain_error, std::string_view(msg));
@@ -483,7 +483,7 @@ namespace bnd
     lhs.Raw = (as_rational(rhs) < Lower<L>)
       ? raw_cast<L>(RawLo<L>) : raw_cast<L>(RawHi<L>);
     auto overshoot = as_rational(rhs) - as_rational(lhs);
-    if constexpr (is_clamp_action<plain<A>>)
+    if constexpr (clamp_action<plain<A>>)
       action.fn(lhs, overshoot);
   }
 
@@ -491,7 +491,7 @@ namespace bnd
   template<typename A>
   constexpr void assignment<L,R>::apply_wrap(L& lhs, R const& rhs, A&& action)
   {
-    static_assert(is_integer_interval<L>,
+    static_assert(IsIntegerInterval<L>,
       "wrap with bound rhs requires an integer-aligned destination interval");
     imax rhs_imax = as_rational(rhs).trunc();
     constexpr imax lower = LowerImax<L>;
@@ -501,7 +501,7 @@ namespace bnd
     imax wrapped = ((shifted % range) + range) % range;
     imax excess  = (shifted < 0) ? ((shifted - range + 1) / range) : (shifted / range);
     from_value(lhs, wrapped + lower);
-    if constexpr (is_wrap_action<plain<A>>)
+    if constexpr (wrap_action<plain<A>>)
       action.fn(lhs, excess);
   }
 
@@ -510,17 +510,17 @@ namespace bnd
   constexpr bool assignment<L,R>::try_clamp_or_fail(L& lhs, R const& rhs, P&& policy, A&& action)
   {
     using PA = plain<A>;
-    if constexpr (is_clamp_action<PA>)
+    if constexpr (clamp_action<PA>)
     { apply_clamp(lhs, rhs, action); return true; }
-    else if constexpr (is_wrap_action<PA>)
+    else if constexpr (wrap_action<PA>)
     { apply_wrap(lhs, rhs, action); return true; }
-    else if constexpr (is_sentinel_action<PA>)
+    else if constexpr (sentinel_action<PA>)
     {
       lhs.Raw = sentinel_raw<L>();
       action.fn(lhs, as_rational(rhs));
       return true;
     }
-    else if constexpr (is_error_action<PA>)
+    else if constexpr (error_action<PA>)
     {
       auto msg = bnd::to_string(as_rational(rhs))
                + " is not in " + bnd::to_string(Interval<L>);

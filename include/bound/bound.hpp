@@ -77,9 +77,9 @@ namespace bnd
 
     [[nodiscard]] constexpr auto value() const
     {
-      if constexpr (is_raw_rational<bound>)
+      if constexpr (IsRawRational<bound>)
         return Raw;
-      else if constexpr (is_direct_storage<bound>)
+      else if constexpr (IsDirectStorage<bound>)
         return static_cast<std::common_type_t<raw_type, int>>(Raw);
       else
         return as_rational(*this);
@@ -90,7 +90,7 @@ namespace bnd
     // policy machinery and `slim::optional<bound>`.
     [[nodiscard]] constexpr bool is_sentinel() const noexcept
     {
-      if constexpr (is_raw_rational<bound>)
+      if constexpr (IsRawRational<bound>)
         return Raw.Denominator == 0;
       else
         return Raw == sentinel_raw<bound>();
@@ -138,7 +138,7 @@ namespace bnd
       if constexpr (G.Interval.Lower == G.Interval.Upper)
         return G.Interval.Lower;
 
-      if constexpr (is_direct_storage<bound>)
+      if constexpr (IsDirectStorage<bound>)
         return Raw;
 
       // Q-format-with-integer-Lower fast path skips the three rational ops
@@ -146,7 +146,7 @@ namespace bnd
       // `from_value` and `assignment::store` via `q_format_decode`. When the
       // raw is too wide to widen safely (e.g. uint64 from a Q16.16 × Q16.16
       // result type), we fall through to the rational path below.
-      if constexpr (has_q_format_fast_path<bound>)
+      if constexpr (HasQFormatFastPath<bound>)
         return q_format_decode(*this);
 
       return (*(Raw * G.Notch) + G.Interval.Lower).value();
@@ -240,16 +240,16 @@ namespace bnd
     [[nodiscard]] constexpr negative operator-() const
     {
       negative neg;
-      if constexpr (is_raw_rational<bound>)
+      if constexpr (IsRawRational<bound>)
         neg.Raw = -(Raw);
-      else if constexpr (is_direct_storage<bound> || is_direct_storage<negative>)
+      else if constexpr (IsDirectStorage<bound> || IsDirectStorage<negative>)
         from_value(neg, -to_value(*this));
       else
         // Unsigned-offset fast path: with offset encoding `value = Raw*Notch + Lower`,
         // negating the value is equivalent to indexing from the opposite end of the
         // grid — i.e. `NotchCount - Raw`. No rational arithmetic in the hot path.
         //
-        // NOTE: not a sibling of the is_direct_storage encoding bugs — this branch is
+        // NOTE: not a sibling of the IsDirectStorage encoding bugs — this branch is
         // unreachable when either operand uses direct storage, so `Raw` here is
         // guaranteed to be an offset.
         neg.Raw = raw_cast<negative>(NotchCount<bound> - Raw);
@@ -345,48 +345,20 @@ namespace bnd
       // encoding where raw_a + raw_b is the raw of value_a + value_b — either
       // direct storage (Raw == value) or offset encoding with Lower==0 on
       // both (Raw == value/notch, so raws sum to (sum)/notch).
-      if constexpr (not is_raw_rational<bound> && not is_raw_rational<R>
+      if constexpr (not IsRawRational<bound> && not IsRawRational<R>
                     && Notch<bound> == Notch<R>
-                    && (is_direct_storage<R>
+                    && (IsDirectStorage<R>
                         || (Lower<bound> == 0_r && Lower<R> == 0_r)))
       {
         if constexpr (P & (clamp | wrap | checked | sentinel))
         {
-          imax new_raw = signed_raw(*this) + signed_raw(rhs);
+          imax new_raw = raw_imax(*this) + raw_imax(rhs);
           if (new_raw < RawLo<bound> || new_raw > RawHi<bound>)
-          {
-            if constexpr (P & clamp)
-            {
-              // `RawLo`/`RawHi` are raw-space constants by construction
-              // (Lower/Upper for direct, 0/NotchCount for notch-offset), so
-              // they're already the correct Raw — no `raw_from_offset` needed.
-              Raw = raw_cast<bound>(new_raw < RawLo<bound> ? RawLo<bound> : RawHi<bound>);
-              return *this;
-            }
-            else if constexpr (P & wrap)
-            {
-              constexpr imax range = RawHi<bound> - RawLo<bound> + 1;
-              new_raw = ((new_raw - RawLo<bound>) % range + range) % range + RawLo<bound>;
-              Raw = raw_cast<bound>(new_raw);
-              return *this;
-            }
-            else if constexpr (P & sentinel)
-            {
-              Raw = sentinel_raw<bound>();
-              return *this;
-            }
-            else
-            {
-              make_policy<P>().report(errc::domain_error, "operator+= result out of range");
-              return *this;
-            }
-          }
+            return apply_raw_overflow(new_raw);
           Raw = raw_cast<bound>(new_raw);
         }
         else
-        {
           Raw += raw_cast<bound>(rhs.Raw);
-        }
         return *this;
       }
       else
@@ -395,6 +367,34 @@ namespace bnd
         return *this;
       }
     }
+
+    private:
+    // Out-of-range tail for raw-space compound arithmetic: dispatch on the
+    // type's policy (clamp/wrap/sentinel/checked). `new_raw` is the unclamped
+    // raw-space result; one of the four branches stores back to `Raw`. Called
+    // from `operator+=(boundable)` only (operator-= delegates through +=, the
+    // arithmetic-RHS path uses `integer_compound_assign`, and *= / /= / %=
+    // route through `assign_op_result`).
+    constexpr bound& apply_raw_overflow(imax new_raw)
+    {
+      if constexpr (P & clamp)
+        // RawLo/RawHi are raw-space constants by construction (Lower/Upper for
+        // direct storage, 0/NotchCount for notch-offset), so they're already
+        // the correct Raw — no raw_from_offset needed.
+        Raw = raw_cast<bound>(new_raw < RawLo<bound> ? RawLo<bound> : RawHi<bound>);
+      else if constexpr (P & wrap)
+      {
+        constexpr imax range = RawHi<bound> - RawLo<bound> + 1;
+        new_raw = ((new_raw - RawLo<bound>) % range + range) % range + RawLo<bound>;
+        Raw = raw_cast<bound>(new_raw);
+      }
+      else if constexpr (P & sentinel)
+        Raw = sentinel_raw<bound>();
+      else
+        make_policy<P>().report(errc::domain_error, "operator+= result out of range");
+      return *this;
+    }
+    public:
 
     //-----------------------------------------------------------------------
     // Compound assignment private helpers — extracted to keep each
@@ -542,9 +542,9 @@ namespace bnd
     if constexpr (Grid<L> == Grid<R>)
       return lhs.Raw <=> rhs.Raw;
     // both integer-direct (notch=1, Raw==value): compare as integers
-    else if constexpr (!is_raw_rational<L> && !is_raw_rational<R>
-                       && is_direct_storage<L> && is_direct_storage<R>)
-      return signed_raw(lhs) <=> signed_raw(rhs);
+    else if constexpr (!IsRawRational<L> && !IsRawRational<R>
+                       && IsDirectStorage<L> && IsDirectStorage<R>)
+      return raw_imax(lhs) <=> raw_imax(rhs);
     else
       return as_rational(lhs) <=> as_rational(rhs);
   }
@@ -554,9 +554,9 @@ namespace bnd
   {
     if constexpr (Grid<L> == Grid<R>)
       return lhs.Raw == rhs.Raw;
-    else if constexpr (!is_raw_rational<L> && !is_raw_rational<R>
-                       && is_direct_storage<L> && is_direct_storage<R>)
-      return signed_raw(lhs) == signed_raw(rhs);
+    else if constexpr (!IsRawRational<L> && !IsRawRational<R>
+                       && IsDirectStorage<L> && IsDirectStorage<R>)
+      return raw_imax(lhs) == raw_imax(rhs);
     else
       return as_rational(lhs) == as_rational(rhs);
   }
@@ -564,8 +564,8 @@ namespace bnd
   template <boundable B, arithmetic A>
   constexpr auto operator<=>(B const& lhs, A rhs)
   {
-    if constexpr (!is_raw_rational<B> && is_direct_storage<B>)
-      return signed_raw(lhs) <=> static_cast<imax>(rhs);
+    if constexpr (!IsRawRational<B> && IsDirectStorage<B>)
+      return raw_imax(lhs) <=> static_cast<imax>(rhs);
     else
       return as_rational(lhs) <=> rational{rhs};
   }
@@ -573,8 +573,8 @@ namespace bnd
   template <boundable B, arithmetic A>
   constexpr bool operator==(B const& lhs, A rhs)
   {
-    if constexpr (!is_raw_rational<B> && is_direct_storage<B>)
-      return signed_raw(lhs) == static_cast<imax>(rhs);
+    if constexpr (!IsRawRational<B> && IsDirectStorage<B>)
+      return raw_imax(lhs) == static_cast<imax>(rhs);
     else
       return as_rational(lhs) == rational{rhs};
   }

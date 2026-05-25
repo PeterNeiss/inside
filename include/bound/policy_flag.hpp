@@ -82,26 +82,25 @@ namespace bnd
   template<typename F> [[nodiscard]] constexpr auto on_overflow(F&& fn)
   { return on_overflow_t<std::remove_cvref_t<F>>{std::forward<F>(fn)}; }
 
-  template<typename T> inline constexpr bool is_clamp_action    = false;
-  template<typename F> inline constexpr bool is_clamp_action<on_clamp_t<F>> = true;
-  template<typename T> inline constexpr bool is_wrap_action     = false;
-  template<typename F> inline constexpr bool is_wrap_action<on_wrap_t<F>> = true;
-  template<typename T> inline constexpr bool is_error_action    = false;
-  template<typename F> inline constexpr bool is_error_action<on_error_t<F>> = true;
-  template<typename T> inline constexpr bool is_sentinel_action = false;
-  template<typename F> inline constexpr bool is_sentinel_action<on_sentinel_t<F>> = true;
-  template<typename T> inline constexpr bool is_overflow_action = false;
-  template<typename F> inline constexpr bool is_overflow_action<on_overflow_t<F>> = true;
+  // Action detection. The `*Pred` struct is the primary detector
+  // (specialized on the tag type); the concept derives from it and strips
+  // cvref so `clamp_action<on_clamp_t<F>&>` matches the same as the value form.
+  template<typename T> struct IsClampActionPred    : std::false_type {};
+  template<typename F> struct IsClampActionPred<on_clamp_t<F>>    : std::true_type {};
+  template<typename T> struct IsWrapActionPred     : std::false_type {};
+  template<typename F> struct IsWrapActionPred<on_wrap_t<F>>     : std::true_type {};
+  template<typename T> struct IsErrorActionPred    : std::false_type {};
+  template<typename F> struct IsErrorActionPred<on_error_t<F>>    : std::true_type {};
+  template<typename T> struct IsSentinelActionPred : std::false_type {};
+  template<typename F> struct IsSentinelActionPred<on_sentinel_t<F>> : std::true_type {};
+  template<typename T> struct IsOverflowActionPred : std::false_type {};
+  template<typename F> struct IsOverflowActionPred<on_overflow_t<F>> : std::true_type {};
 
-  // Concept forms of the variable-template predicates above. Both shapes
-  // coexist: the constexpr bools serve `if constexpr` and `std::conditional_t`
-  // value contexts; the concepts serve `requires`-clauses and constrained
-  // template parameters where they give cleaner diagnostics.
-  template<typename T> concept clamp_action    = is_clamp_action   <std::remove_cvref_t<T>>;
-  template<typename T> concept wrap_action     = is_wrap_action    <std::remove_cvref_t<T>>;
-  template<typename T> concept error_action    = is_error_action   <std::remove_cvref_t<T>>;
-  template<typename T> concept sentinel_action = is_sentinel_action<std::remove_cvref_t<T>>;
-  template<typename T> concept overflow_action = is_overflow_action<std::remove_cvref_t<T>>;
+  template<typename T> concept clamp_action    = IsClampActionPred   <std::remove_cvref_t<T>>::value;
+  template<typename T> concept wrap_action     = IsWrapActionPred    <std::remove_cvref_t<T>>::value;
+  template<typename T> concept error_action    = IsErrorActionPred   <std::remove_cvref_t<T>>::value;
+  template<typename T> concept sentinel_action = IsSentinelActionPred<std::remove_cvref_t<T>>::value;
+  template<typename T> concept overflow_action = IsOverflowActionPred<std::remove_cvref_t<T>>::value;
 
   //---------------------------------------------------------------------------
   // implied_flags<A> — single source of truth for "this action requires these
@@ -116,17 +115,10 @@ namespace bnd
 
   //---------------------------------------------------------------------------
   // Pack helpers — let policy_ref / assignment / arithmetic accept Actions...
-  // packs without rewriting every is_*_action<plain<A>> check.
-  //
-  // Class-template wrappers around the variable-template traits so they can be
-  // passed as template-template parameters. The trait wrappers stay private to
-  // pack helpers; existing variable-template `is_*_action<T>` keep working.
+  // packs. The `*Pred` structs from above are reused here as template-template
+  // parameters to `has_action` / `count_action_matches` / `pick_action`
+  // (concepts can't be passed as template-template parameters in C++23).
   //---------------------------------------------------------------------------
-  template<typename T> struct is_clamp_action_pred    : std::bool_constant<is_clamp_action<T>>    {};
-  template<typename T> struct is_wrap_action_pred     : std::bool_constant<is_wrap_action<T>>     {};
-  template<typename T> struct is_error_action_pred    : std::bool_constant<is_error_action<T>>    {};
-  template<typename T> struct is_sentinel_action_pred : std::bool_constant<is_sentinel_action<T>> {};
-  template<typename T> struct is_overflow_action_pred : std::bool_constant<is_overflow_action<T>> {};
 
   // True if any element of the pack matches the trait.
   template<template<typename> class Trait, typename... As>

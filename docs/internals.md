@@ -35,35 +35,35 @@ that can hold every reachable index in `G`. Three shapes:
 ```text
                        ┌────────────┐
                        │  Notch == 0│──yes──▶  raw = rational
-                       └────────────┘         (is_raw_rational)
+                       └────────────┘         (IsRawRational)
                               │ no
                               ▼
                   ┌──────────────────────┐
                   │ Lower < 0, Notch == 1│──yes──▶  raw = smallest signed int
-                  └──────────────────────┘         (is_direct_storage)
+                  └──────────────────────┘         (IsDirectStorage)
                               │ no
                               ▼
                   ┌──────────────────────┐
                   │  smallest_uint_for   │────────▶  raw = smallest unsigned int
-                  │   (max_notch())      │         (is_notch_storage)
+                  │   (max_notch())      │         (IsNotchStorage)
                   └──────────────────────┘
 ```
 
 Predicates (`include/bound/generic.hpp`):
 
-- `is_raw_rational<B>` (line 39) — the raw type is `rational`. Notch is zero.
-- `is_direct_storage<B>` (line 119) — `Raw == value`. Either signed-integer
+- `IsRawRational<B>` (line 39) — the raw type is `rational`. Notch is zero.
+- `IsDirectStorage<B>` (line 119) — `Raw == value`. Either signed-integer
   raw with `Notch == 1`, or unsigned raw with `Lower == 0_r && Notch == 1`,
   or rational raw.
-- `is_notch_storage<B>` (line 125) — `Raw` is the notch index;
+- `IsNotchStorage<B>` (line 125) — `Raw` is the notch index;
   `value = Raw * Notch + Lower`.
 
 Two more derived predicates classify subsets:
 
-- `is_integer_interval<B>` — `Lower` and `Upper` have integer denominators
+- `IsIntegerInterval<B>` — `Lower` and `Upper` have integer denominators
   (Notch may still be fractional, e.g. `{0, 100}, 1/10`).
-- `is_integer_aligned<B>` — `Notch` and `Lower` have integer denominators.
-  Under the divides-evenly invariant this implies `is_integer_interval`,
+- `IsIntegerAligned<B>` — `Notch` and `Lower` have integer denominators.
+  Under the divides-evenly invariant this implies `IsIntegerInterval`,
   but the converse is not true. Both predicates exist because they gate
   different fast paths.
 
@@ -73,13 +73,13 @@ Two more derived predicates classify subsets:
 
 For grids with **integer Lower, unit-numerator Notch** (e.g. `1/256`,
 `1/65536`), and a raw that fits in `imax`, the rational ↔ value conversion
-collapses to integer arithmetic. The gate is `has_q_format_fast_path<B>`
+collapses to integer arithmetic. The gate is `HasQFormatFastPath<B>`
 (`include/bound/generic.hpp:142`):
 
 ```cpp
 abs_den(Lower<B>.Denominator) == 1
 && Notch<B>.Numerator == 1
-&& raw_fits_in_imax<B>
+&& RawFitsInImax<B>
 ```
 
 Two helpers, used at three call sites:
@@ -89,9 +89,9 @@ Two helpers, used at three call sites:
 | `q_format_encode<B>(imax)` | value → raw | `from_value`, `assignment::store` |
 | `q_format_decode<B>(B)`    | raw → rational | `bound::operator rational()` |
 
-The `raw_fits_in_imax` clause exists because the Q-format result type of a
+The `RawFitsInImax` clause exists because the Q-format result type of a
 multiplication can land on `uint64_t` raw (e.g. `Q16.16 × Q16.16` produces
-`NotchCount ≈ 2^64`); widening that to `imax` via `signed_raw` would wrap.
+`NotchCount ≈ 2^64`); widening that to `imax` via `raw_imax` would wrap.
 When the gate is false, control falls through to the slow but correct
 rational path — `(*(Raw * Notch) + Lower).value()` for decode,
 `((rhs - Lower) / Notch).value().Numerator` for encode.
@@ -154,7 +154,7 @@ matters.
 
 ---
 
-## 6. The `as_rational` / `signed_raw` / `to_value` triad
+## 6. The `as_rational` / `raw_imax` / `to_value` triad
 
 These three helpers in `include/bound/generic.hpp` + `include/bound/casts.hpp`
 exist because three different "extract the value" intents used to spell the
@@ -163,11 +163,11 @@ same `static_cast<imax>(...)`:
 | Helper | Returns | Use when |
 |---|---|---|
 | `as_rational(x)` | `rational` (lossless) | You want exact-rational arithmetic on `x` |
-| `signed_raw(b)`  | `imax` (raw widened) | You want the **raw** as a signed integer (e.g. inside offset arithmetic) |
+| `raw_imax(b)`  | `imax` (raw widened) | You want the **raw** as a signed integer (e.g. inside offset arithmetic) |
 | `to_value(b)`    | `imax` (truncated value) | You want the bound's **value** as an integer |
 
-For `is_direct_storage<B>`, `signed_raw(b) == to_value(b)`. For
-`is_notch_storage<B>`, they differ — `Raw` is an index, `to_value`
+For `IsDirectStorage<B>`, `raw_imax(b) == to_value(b)`. For
+`IsNotchStorage<B>`, they differ — `Raw` is an index, `to_value`
 multiplies by `Notch` and adds `Lower`.
 
 ---
@@ -183,7 +183,7 @@ all transitively included by `bound/bound.hpp`:
 | `bound/casts.hpp`       | `as_rational`, `clamp_cast`, `wrap_cast`, `checked_cast`, `unchecked_cast`, `clamp_floor` / `clamp_ceil` / `clamp_round` |
 | `bound/arithmetic.hpp`  | Free `add` / `sub` / `mul` / `div` / `mod`, variadic folds `add_all` / `mul_all`, `operator+` / `-` / `*` / `/` / `%`, optional-lift overloads |
 | `bound/range.hpp`       | `bound_range<G, P>` iterator helper |
-| `bound/generic.hpp`     | Traits (`is_*`), metafunctions (`Lower` / `Upper` / `Notch` / `LowerImax` / `UpperImax` / `RawLo` / `RawHi` / `NotchCount`), `to_value` / `signed_raw`, `q_format_encode/decode`, concepts |
+| `bound/generic.hpp`     | Traits (`is_*`), metafunctions (`Lower` / `Upper` / `Notch` / `LowerImax` / `UpperImax` / `RawLo` / `RawHi` / `NotchCount`), `to_value` / `raw_imax`, `q_format_encode/decode`, concepts |
 | `bound/assignment.hpp`  | `assignment<L, R>` specialisations for integral / real / boundable rhs |
 | `bound/addition.hpp`, `multiplication.hpp`, `division.hpp` | `addition<L, R>`, `multiplication<L, R>`, `division<L, R, F>`, `modulo<L, R, F>` |
 | `bound/rational.hpp`    | `rational`, its arithmetic, sentinel traits |

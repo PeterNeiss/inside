@@ -38,7 +38,7 @@ namespace bnd
   template <boundable B, arithmetic A>
   [[nodiscard]] constexpr bool will_conversion_truncate(A value) noexcept
   {
-    if constexpr (is_raw_rational<B>)
+    if constexpr (IsRawRational<B>)
       return false;                       // rational raw stores any value exactly
     if (not Interval<B>.includes(rational{value}))
       return false;                       // out-of-range — overflow, not truncation
@@ -50,7 +50,7 @@ namespace bnd
   template <boundable B, boundable A>
   [[nodiscard]] constexpr bool will_conversion_truncate(A value) noexcept
   {
-    if constexpr (is_raw_rational<B>) return false;
+    if constexpr (IsRawRational<B>) return false;
     rational r = value;
     if (not Interval<B>.includes(r)) return false;
     auto offset = (r - Lower<B>) / Notch<B>;

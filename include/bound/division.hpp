@@ -43,12 +43,12 @@ namespace bnd
     // Otherwise the exact-rational path runs and returns `bound<rational>`.
     static constexpr bool native_div_integer =
         ((F | BoundPolicy<L> | BoundPolicy<R>) & ignore_round)
-        && !is_raw_rational<L> && !is_raw_rational<R>
-        && is_integer_aligned<L> && is_integer_aligned<R>;
+        && !IsRawRational<L> && !IsRawRational<R>
+        && IsIntegerAligned<L> && IsIntegerAligned<R>;
 
     static constexpr bool native_div_qformat =
         ((F | BoundPolicy<L> | BoundPolicy<R>) & ignore_round)
-        && is_q_format<L> && is_q_format<R>
+        && IsQFormat<L> && IsQFormat<R>
         && Notch<L> == Notch<R>;
 
     static constexpr bool native_div = native_div_integer || native_div_qformat;
@@ -68,7 +68,7 @@ namespace bnd
         ((G | F | BoundPolicy<L> | BoundPolicy<R>) & checked);
 
     template <typename A>
-    using div_return_t = std::conditional_t<is_overflow_action<plain<A>>,
+    using div_return_t = std::conditional_t<overflow_action<plain<A>>,
                                             result,
                                             slim::optional<result>>;
 
@@ -84,19 +84,12 @@ namespace bnd
   constexpr auto division<L,R,F>::div(L lhs, R rhs, policy<G, E> policy, A&& action) -> div_return_t<A>
   {
     auto fail = [&](errc code, const char* what) -> div_return_t<A> {
-      if constexpr (is_overflow_action<plain<A>>)
-      { result res; action.fn(res, code); return res; }
-      else
-      {
-        if constexpr (UsesErrorRef<bnd::policy<G, E>>)
-          policy.report(code, what);
-        return slim::nullopt;
-      }
+      return report_or_nullopt<result>(action, policy, code, what);
     };
 
     if constexpr (native_div_qformat)
     {
-      // rhs.Raw == 0 iff rhs.value == 0 (Lower<R> == 0 by is_q_format).
+      // rhs.Raw == 0 iff rhs.value == 0 (Lower<R> == 0 by IsQFormat).
       // Formula matches `(a << log2(N)) / b` which the compiler folds when
       // N is a power of two — i.e. literally the native Q-format idiom.
       if (rhs.Raw == 0) return fail(errc::division_by_zero, "division by zero in div");
@@ -139,8 +132,8 @@ namespace bnd
   {
     static constexpr bool native_mod =
         ((F | BoundPolicy<L> | BoundPolicy<R>) & ignore_round)
-        && !is_raw_rational<L> && !is_raw_rational<R>
-        && is_integer_aligned<L> && is_integer_aligned<R>;
+        && !IsRawRational<L> && !IsRawRational<R>
+        && IsIntegerAligned<L> && IsIntegerAligned<R>;
 
     // Hard requirement, not a fallback: there is no exact-rational modulo —
     // `a mod b` is only defined when both operands are integers. The grid
@@ -160,7 +153,7 @@ namespace bnd
     using result = bound<result_grid>;
 
     template <typename A>
-    using mod_return_t = std::conditional_t<is_overflow_action<plain<A>>,
+    using mod_return_t = std::conditional_t<overflow_action<plain<A>>,
                                             result,
                                             slim::optional<result>>;
 
@@ -174,16 +167,8 @@ namespace bnd
   {
     imax rhs_val = to_value(rhs);
     if (rhs_val == 0)
-    {
-      if constexpr (is_overflow_action<plain<A>>)
-      { result res; action.fn(res, errc::division_by_zero); return res; }
-      else
-      {
-        if constexpr (UsesErrorRef<bnd::policy<G, E>>)
-          policy.report(errc::division_by_zero, "division by zero in mod");
-        return slim::nullopt;
-      }
-    }
+      return report_or_nullopt<result>(action, policy, errc::division_by_zero,
+                                       "division by zero in mod");
     result res;
     from_value(res, to_value(lhs) % rhs_val);
     return res;
