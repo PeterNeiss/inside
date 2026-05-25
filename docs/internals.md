@@ -185,7 +185,8 @@ all transitively included by `bound/bound.hpp`:
 | `bound/range.hpp`       | `bound_range<G, P>` iterator helper |
 | `bound/generic.hpp`     | Traits (`is_*`), metafunctions (`Lower` / `Upper` / `Notch` / `LowerImax` / `UpperImax` / `RawLo` / `RawHi` / `NotchCount`), `to_value` / `raw_imax`, `q_format_encode/decode`, concepts |
 | `bound/assignment.hpp`  | `assignment<L, R>` specialisations for integral / real / boundable rhs |
-| `bound/addition.hpp`, `multiplication.hpp`, `division.hpp` | `addition<L, R>`, `multiplication<L, R>`, `division<L, R, F>`, `modulo<L, R, F>` |
+| `bound/detail/addition.hpp`, `multiplication.hpp`, `division.hpp` | `addition<L, R>`, `multiplication<L, R>`, `division<L, R, F>`, `modulo<L, R, F>` — implementation detail, included via `bound.hpp` |
+| `bound/detail/overflow.hpp`, `debug.hpp` | `add_overflow` / `sub_overflow` / `mul_overflow` (builtins + portable fallback), stacktrace plumbing — implementation detail |
 | `bound/rational.hpp`    | `rational`, its arithmetic, sentinel traits |
 | `bound/grid.hpp`        | `grid`, `storage_min`, grid operators |
 | `bound/numeric_limits.hpp` | `std::numeric_limits<bound>` and `std::hash<bound>` specialisations (opt-in) |

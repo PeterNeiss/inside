@@ -5,7 +5,7 @@
 #define BNDpolicyHPP
 
 #include "bound/assignment.hpp"
-#include "bound/overflow.hpp"
+#include "bound/detail/overflow.hpp"
 #include "bound/policy_flag.hpp"
 
 #include <system_error>

@@ -62,6 +62,57 @@ TEST_CASE("std::format integration", "[format][std_format]")
   REQUIRE(std::format("{}",      rational{1u, 2})       == "0.5");
 }
 
+TEST_CASE("std::format numeric specs — integer-aligned bound", "[format][std_format]")
+{
+  // Integer-aligned bounds route through std::formatter<imax>, so every
+  // standard integer spec flows through and matches a direct integer format.
+  using pct = bound<{0, 100}>;
+  pct x{42};
+  imax v = to_value(x);
+
+  REQUIRE(std::format("{:5}",  x) == std::format("{:5}",  v));
+  REQUIRE(std::format("{:+}",  x) == std::format("{:+}",  v));
+  REQUIRE(std::format("{:#x}", x) == std::format("{:#x}", v));
+  REQUIRE(std::format("{:o}",  x) == std::format("{:o}",  v));
+  REQUIRE(std::format("{:b}",  x) == std::format("{:b}",  v));
+  REQUIRE(std::format("{:08}", x) == std::format("{:08}", v));
+
+  // signed bound
+  using s100 = bound<{-100, 100}>;
+  s100 y{-7};
+  REQUIRE(std::format("{:+}", y)  == "-7");
+  REQUIRE(std::format("{:4}", y)  == "  -7");
+}
+
+TEST_CASE("std::format numeric specs — fractional bound goes through double",
+          "[format][std_format]")
+{
+  // Fractional grids fall to std::formatter<double> when a spec is present.
+  using frac = bound<{{0, 2}, rational{1u, 4}}>;  // 0.25 notch
+  frac f{rational{5u, 4}};                          // value = 1.25
+  double d = static_cast<double>(static_cast<rational>(f));
+
+  REQUIRE(std::format("{:.2f}", f) == std::format("{:.2f}", d));
+  REQUIRE(std::format("{:.4f}", f) == std::format("{:.4f}", d));
+  REQUIRE(std::format("{:e}",   f) == std::format("{:e}",   d));
+
+  // empty spec preserves exact-rational form
+  REQUIRE(std::format("{}", f) == "1.25");
+}
+
+TEST_CASE("std::format numeric specs — rational", "[format][std_format][rational]")
+{
+  // Empty spec — exact via to_string.
+  REQUIRE(std::format("{}", rational{1u, 3}) == "1/3");
+  REQUIRE(std::format("{}", rational{7u, 3}) == "2 1/3");
+
+  // Non-empty spec — double formatter.
+  rational r = rational{1u, 3};
+  REQUIRE(std::format("{:.3f}", r) == std::format("{:.3f}", static_cast<double>(r)));
+  REQUIRE(std::format("{:.6f}", r) == std::format("{:.6f}", static_cast<double>(r)));
+  REQUIRE(std::format("{:e}",   r) == std::format("{:e}",   static_cast<double>(r)));
+}
+
 TEST_CASE("interval and grid to_string", "[format][interval][grid]")
 {
   REQUIRE(bnd::to_string(interval{0, 10})           == "[0..10]");

@@ -6,7 +6,7 @@
 
 #include "bound/generic.hpp"
 #include "bound/math.hpp"
-#include "bound/overflow.hpp"
+#include "bound/detail/overflow.hpp"
 
 #include <numeric>
 #include <compare>

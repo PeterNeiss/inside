@@ -7,9 +7,9 @@
 #include "bound/generic.hpp"
 #include "bound/lift.hpp"
 #include "bound/policy.hpp"
-#include "bound/addition.hpp"
-#include "bound/multiplication.hpp"
-#include "bound/division.hpp"
+#include "bound/detail/addition.hpp"
+#include "bound/detail/multiplication.hpp"
+#include "bound/detail/division.hpp"
 #include "bound/assignment.hpp"
 #include "bound/predicates.hpp"
 

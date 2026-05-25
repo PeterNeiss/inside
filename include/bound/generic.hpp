@@ -7,7 +7,7 @@
 #define SLIM_OPTIONAL_LEAN_AND_MEAN
 #include "slim/optional.hpp"
 
-#include "bound/debug.hpp"
+#include "bound/detail/debug.hpp"
 #include "bound/grid.hpp"
 #include "bound/policy_flag.hpp"
 

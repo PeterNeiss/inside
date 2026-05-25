@@ -6,14 +6,26 @@
 
 #include "bound/bound.hpp"
 
+#include <compare>
+#include <cstddef>
+#include <iterator>
+
 //---------------------------------------------------------------------------
-// bound_range — range-based for loop support
+// bound_range — random-access range over a grid.
 //
 // Iteration walks the grid by notch index, so any grid with a non-zero
-// notch works (integer or fractional). Each step computes the value
+// notch works (integer or fractional). Each `*it` computes the value
 // `Lower + index * Notch`, which is exact by construction. The iterator
 // wraps modulo the slot count so a mid-range start visits every slot
 // exactly once before terminating.
+//
+// Models `std::ranges::random_access_range` and `std::ranges::sized_range`
+// so `std::ranges::sort`, `std::views::take`, `std::views::reverse` etc.
+// work without falling back to `common_iterator`.
+//
+// `iterator_category` is `input_iterator_tag` (operator* returns by value,
+// which is fine for random_access — `iterator_concept` carries the real
+// capability per the std::ranges concept hierarchy).
 //---------------------------------------------------------------------------
 namespace bnd
 {
@@ -26,8 +38,16 @@ namespace bnd
 
     struct iterator
     {
-      umax index;
-      imax remaining;
+      using iterator_concept  = std::random_access_iterator_tag;
+      using iterator_category = std::input_iterator_tag;
+      using value_type        = bound<G, P>;
+      using difference_type   = imax;
+
+      umax index     {0};
+      imax remaining {0};
+
+      constexpr iterator() = default;
+      constexpr iterator(umax i, imax r) : index{i}, remaining{r} {}
 
       constexpr value_type operator*() const
       {
@@ -36,13 +56,38 @@ namespace bnd
                         + (rational{index} * G.Notch).value()).value();
         return value_type{val};
       }
-      constexpr iterator& operator++()
+
+      constexpr value_type operator[](difference_type n) const
+      { return *(*this + n); }
+
+      // Advance / retreat: `remaining` is the position counter (advancing
+      // decreases it), so the <=> below flips the comparison.
+      constexpr iterator& operator++() { return *this += 1; }
+      constexpr iterator  operator++(int) { auto t = *this; ++*this; return t; }
+      constexpr iterator& operator--() { return *this -= 1; }
+      constexpr iterator  operator--(int) { auto t = *this; --*this; return t; }
+
+      constexpr iterator& operator+=(difference_type n)
       {
-        --remaining;
-        index = (index + 1) % slot_count;
+        constexpr imax M = static_cast<imax>(slot_count);
+        imax i = static_cast<imax>(index) + n;
+        // euclidean mod so negative n still lands in [0, slot_count)
+        i = ((i % M) + M) % M;
+        index = static_cast<umax>(i);
+        remaining -= n;
         return *this;
       }
-      constexpr bool operator!=(iterator o) const { return remaining != o.remaining; }
+      constexpr iterator& operator-=(difference_type n) { return *this += -n; }
+
+      constexpr iterator operator+(difference_type n) const { auto t = *this; t += n; return t; }
+      constexpr iterator operator-(difference_type n) const { auto t = *this; t -= n; return t; }
+      friend constexpr iterator operator+(difference_type n, iterator it) { return it + n; }
+
+      constexpr difference_type operator-(iterator o) const
+      { return o.remaining - remaining; }
+
+      constexpr bool operator==(iterator o) const { return remaining == o.remaining; }
+      constexpr auto operator<=>(iterator o) const { return o.remaining <=> remaining; }
     };
 
     umax start_index_;
@@ -63,6 +108,8 @@ namespace bnd
     { return {start_index_, static_cast<imax>(slot_count)}; }
     constexpr iterator end() const
     { return {start_index_, 0}; }
+
+    constexpr std::size_t size() const { return static_cast<std::size_t>(slot_count); }
   };
 
 } // namespace bnd
