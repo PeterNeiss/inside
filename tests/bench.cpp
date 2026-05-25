@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <iostream>
 #include <stdexcept>
@@ -6,6 +7,7 @@
 
 #include "ctrack.hpp"
 #include "bound/bound.hpp"
+#include "bound/cmath.hpp"
 
 using namespace bnd;
 
@@ -446,6 +448,176 @@ void bench_round_nearest()
 }
 
 //---------------------------------------------------------------------------
+// cmath benchmarks — integer-only constexpr transcendentals.
+// Inputs match the Q-formats used in tests/test_cmath.cpp.
+//---------------------------------------------------------------------------
+void bench_cmath()
+{
+  using algeb_t = bound<{{-8, 8}, notch<1, 16384>}, round_nearest>;
+  using sqrt_in_t = bound<{{0, 4}, notch<1, 65536>}, round_nearest>;
+  using exp2_in_t = bound<{{-4, 4}, notch<1, 16384>}, round_nearest>;
+  using log2_in_t = bound<{{rational{1, 256}, 256}, notch<1, 16384>}, round_nearest>;
+  using exp_in_t  = bound<{{-10, 10}, notch<1, 16384>}, round_nearest>;
+  using log_in_t  = bound<{{rational{1, 256}, 256}, notch<1, 256>}, round_nearest>;
+  using pow_in_t  = bound<{{-9, 9}, notch<1, 16384>}, round_nearest>;
+  using angle_t   = bound<{{-8, 8}, notch<1, 16384>}, round_nearest>;
+  using tan_in_t  = bound<{{rational{-3, 4}, rational{3, 4}}, notch<1, 16384>}, round_nearest>;
+  using atan2_in_t= bound<{{-1, 1}, notch<1, 16384>}, round_nearest>;
+  using fmod_x_t  = bound<{{-8, 8}, notch<1, 16384>}, round_nearest>;
+  using fmod_y_t  = bound<{{rational{1, 4}, 4}, notch<1, 16384>}, round_nearest>;
+
+  // 28 timed blocks per iter — use a reduced count so ctrack's per-event
+  // storage (~70 B/event, no aggregation) stays in proportion with the
+  // ~4-block benches above. N/16 ≈ 312K → ~8.7M events.
+  constexpr std::size_t N_CMATH = N / 16;
+  for (std::size_t i = 0; i < N_CMATH; ++i)
+  {
+    auto k = static_cast<imax>(i & 0xFFFF);  // small varying integer
+    rational q  = rational{k, 16384};        // [0, ~4) in Q.14
+    rational qs = rational{static_cast<imax>(k) - 32768, 16384}; // signed
+
+    // ---- abs / floor / ceil / round / trunc ----
+    { CTRACK_NAME("math::abs   bound");
+      algeb_t x{qs};
+      auto r = bnd::math::abs(x);
+      do_not_optimize(r.Raw); }
+    { CTRACK_NAME("std::abs    double");
+      double d = static_cast<double>(qs);
+      auto r = std::abs(d);
+      do_not_optimize(r); }
+
+    { CTRACK_NAME("math::floor bound");
+      algeb_t x{qs};
+      auto r = bnd::math::floor(x);
+      do_not_optimize(r.Raw); }
+    { CTRACK_NAME("std::floor  double");
+      double d = static_cast<double>(qs);
+      auto r = std::floor(d);
+      do_not_optimize(r); }
+
+    { CTRACK_NAME("math::round bound");
+      algeb_t x{qs};
+      auto r = bnd::math::round(x);
+      do_not_optimize(r.Raw); }
+    { CTRACK_NAME("std::round  double");
+      double d = static_cast<double>(qs);
+      auto r = std::round(d);
+      do_not_optimize(r); }
+
+    // ---- sqrt ----
+    { CTRACK_NAME("math::sqrt  bound");
+      sqrt_in_t x{q};
+      auto r = bnd::math::sqrt(x);
+      do_not_optimize(r.Raw); }
+    { CTRACK_NAME("std::sqrt   double");
+      double d = static_cast<double>(q);
+      auto r = std::sqrt(d);
+      do_not_optimize(r); }
+
+    // ---- exp2 / log2 ----
+    { CTRACK_NAME("math::exp2  bound");
+      exp2_in_t x{qs};
+      auto r = bnd::math::exp2(x);
+      do_not_optimize(r.Raw); }
+    { CTRACK_NAME("std::exp2   double");
+      double d = static_cast<double>(qs);
+      auto r = std::exp2(d);
+      do_not_optimize(r); }
+
+    { CTRACK_NAME("math::log2  bound");
+      log2_in_t x{rational{(k % 65535) + 1, 16384}};
+      auto r = bnd::math::log2(x);
+      do_not_optimize(r.Raw); }
+    { CTRACK_NAME("std::log2   double");
+      double d = static_cast<double>(rational{(k % 65535) + 1, 16384});
+      auto r = std::log2(d);
+      do_not_optimize(r); }
+
+    // ---- exp / log ----
+    { CTRACK_NAME("math::exp   bound");
+      exp_in_t x{qs};
+      auto r = bnd::math::exp(x);
+      do_not_optimize(r.Raw); }
+    { CTRACK_NAME("std::exp    double");
+      double d = static_cast<double>(qs);
+      auto r = std::exp(d);
+      do_not_optimize(r); }
+
+    { CTRACK_NAME("math::log   bound");
+      log_in_t x{rational{(k % 65535) + 1, 256}};
+      auto r = bnd::math::log(x);
+      do_not_optimize(r.Raw); }
+    { CTRACK_NAME("std::log    double");
+      double d = static_cast<double>(rational{(k % 65535) + 1, 256});
+      auto r = std::log(d);
+      do_not_optimize(r); }
+
+    // ---- pow_base<10> ----
+    { CTRACK_NAME("math::pow10 bound");
+      pow_in_t x{qs};
+      auto r = bnd::math::pow_base<10>(x);
+      do_not_optimize(r.Raw); }
+    { CTRACK_NAME("std::pow10  double");
+      double d = static_cast<double>(qs);
+      auto r = std::pow(10.0, d);
+      do_not_optimize(r); }
+
+    // ---- sin / cos ----
+    { CTRACK_NAME("math::sin   bound");
+      angle_t x{qs};
+      auto r = bnd::math::sin(x);
+      do_not_optimize(r.Raw); }
+    { CTRACK_NAME("std::sin    double");
+      double d = static_cast<double>(qs);
+      auto r = std::sin(d);
+      do_not_optimize(r); }
+
+    { CTRACK_NAME("math::cos   bound");
+      angle_t x{qs};
+      auto r = bnd::math::cos(x);
+      do_not_optimize(r.Raw); }
+    { CTRACK_NAME("std::cos    double");
+      double d = static_cast<double>(qs);
+      auto r = std::cos(d);
+      do_not_optimize(r); }
+
+    // ---- tan (returns expected, unwrap with operator*) ----
+    { CTRACK_NAME("math::tan   bound");
+      tan_in_t x{rational{static_cast<imax>(k % 24576) - 12288, 16384}};
+      auto r = bnd::math::tan(x);
+      do_not_optimize(r); }
+    { CTRACK_NAME("std::tan    double");
+      double d = static_cast<double>(rational{static_cast<imax>(k % 24576) - 12288, 16384});
+      auto r = std::tan(d);
+      do_not_optimize(r); }
+
+    // ---- atan2 ----
+    { CTRACK_NAME("math::atan2 bound");
+      atan2_in_t y{rational{static_cast<imax>(k % 32768) - 16384, 16384}};
+      atan2_in_t x{rational{static_cast<imax>((k + 1) % 32768) - 16384, 16384}};
+      auto r = bnd::math::atan2(y, x);
+      do_not_optimize(r.Raw); }
+    { CTRACK_NAME("std::atan2  double");
+      double y = static_cast<double>(rational{static_cast<imax>(k % 32768) - 16384, 16384});
+      double x = static_cast<double>(rational{static_cast<imax>((k + 1) % 32768) - 16384, 16384});
+      auto r = std::atan2(y, x);
+      do_not_optimize(r); }
+
+    // ---- fmod ----
+    { CTRACK_NAME("math::fmod  bound");
+      fmod_x_t fx{qs};
+      fmod_y_t fy{rational{(k % 60) + 4, 16384}};
+      auto r = bnd::math::fmod(fx, fy);
+      do_not_optimize(r.Raw); }
+    { CTRACK_NAME("std::fmod   double");
+      double fx = static_cast<double>(qs);
+      double fy = static_cast<double>(rational{(k % 60) + 4, 16384});
+      auto r = std::fmod(fx, fy);
+      do_not_optimize(r); }
+  }
+}
+
+//---------------------------------------------------------------------------
 // STL algorithm benchmarks
 //---------------------------------------------------------------------------
 namespace rng = std::ranges;
@@ -745,27 +917,32 @@ int main()
 {
   std::cout << "bound<> benchmark (" << N << " iterations)\n\n";
 
-  bench_construct();
-  bench_add();
-  bench_mul();
-  bench_div();
-  bench_accumulate();
-  bench_int_vs_bound();
-  bench_fixed_point();
-  bench_fixed_point_signed();
-  bench_fixed_point_checked();
-  bench_fixed_point_q16();
-  bench_round_nearest();
-  bench_sort_algo();
-  bench_find_algo();
-  bench_transform_algo();
-  bench_minmax_algo();
-  bench_lower_bound_algo();
-  bench_std_sort();
-  bench_nth_element();
-  bench_partition();
-  bench_std_accumulate();
-
-  ctrack::result_print();
+  // Print + clear after each bench: ctrack stores every Event uncompressed
+  // (~70 B/event), so accumulating all benches before a single print pushed
+  // peak RSS toward 30 GB. Clearing between functions bounds peak memory
+  // to a single bench's event volume.
+  #define RUN(fn) do { std::cout << "\n=== " #fn " ===\n"; fn(); ctrack::result_print(); } while (0)
+  RUN(bench_construct);
+  RUN(bench_add);
+  RUN(bench_mul);
+  RUN(bench_div);
+  RUN(bench_accumulate);
+  RUN(bench_int_vs_bound);
+  RUN(bench_fixed_point);
+  RUN(bench_fixed_point_signed);
+  RUN(bench_fixed_point_checked);
+  RUN(bench_fixed_point_q16);
+  RUN(bench_round_nearest);
+  RUN(bench_cmath);
+  RUN(bench_sort_algo);
+  RUN(bench_find_algo);
+  RUN(bench_transform_algo);
+  RUN(bench_minmax_algo);
+  RUN(bench_lower_bound_algo);
+  RUN(bench_std_sort);
+  RUN(bench_nth_element);
+  RUN(bench_partition);
+  RUN(bench_std_accumulate);
+  #undef RUN
   return 0;
 }
