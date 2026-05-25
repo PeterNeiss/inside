@@ -28,14 +28,17 @@ struct sprite
 
   void step(double dx, double dy)
   {
+    // policy_ref::operator+= now accepts a `real` RHS (rational, float,
+    // double) and routes through the bound's round-nearest assignment —
+    // the on_wrap callback still fires on each edge crossing.
     x.on_wrap([&](auto&, auto carry) {
       (void)carry;
       ++edge_x_crossings;
-    }) = double(x) + dx;
+    }) += dx;
     y.on_wrap([&](auto&, auto carry) {
       (void)carry;
       ++edge_y_crossings;
-    }) = double(y) + dy;
+    }) += dy;
   }
 };
 

@@ -41,7 +41,7 @@ int main()
       std::cout << "  " << i
                 << "   " << math::sin(a)
                 << "   " << math::cos(a) << "\n";
-      phase = static_cast<uint16_t>(phase + increment);      // wraps modulo 2^16
+      phase += increment;                                    // wraps modulo 2^16
     }
   }
 
@@ -56,8 +56,8 @@ int main()
                 << "   " << +inc
                 << "    " << +phase
                 << "    " << math::sin(a) << "\n";
-      phase = static_cast<uint16_t>(phase + inc);            // free modular wrap
-      inc   = static_cast<uint16_t>(inc + (inc / 4));        // ×1.25 each step
+      phase += inc;                                          // free modular wrap
+      inc   += inc / 4;                                      // ×1.25 each step
     }
   }
 

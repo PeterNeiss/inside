@@ -138,6 +138,15 @@ namespace bnd
     // allow unary+ for generic programming
     constexpr rational operator+() const { return *this; }
 
+    // Compound-assign operators. Each forwards to the checked binary op and
+    // unwraps the resulting optional via .value() — overflow surfaces as
+    // slim::bad_optional_access rather than as a return value, matching the
+    // in-place idiom (no error channel available).
+    constexpr rational& operator+=(rational const& rhs);
+    constexpr rational& operator-=(rational const& rhs);
+    constexpr rational& operator*=(rational const& rhs);
+    constexpr rational& operator/=(rational const& rhs);
+
     // -1 / 0 / +1 — single source of truth for the sign convention
     // (sign lives in Denominator; canonical zero is {0, 1}).
     [[nodiscard]] constexpr int sign() const noexcept
@@ -794,6 +803,54 @@ namespace bnd
   template <typename T>
   inline constexpr auto operator-(rational const& lhs, slim::optional<T> const& rhs)
   { return lift([](rational a, rational b){ return a - b; }, lhs, rhs); }
+
+  //---------------------------------------------------------------------------
+  // Compound-assignment definitions — unwrap the checked binary op result.
+  // .value() throws slim::bad_optional_access on overflow; callers that
+  // need a non-throwing path must use the binary operators directly.
+  //---------------------------------------------------------------------------
+  inline constexpr rational& rational::operator+=(rational const& rhs)
+  { *this = (*this + rhs).value(); return *this; }
+
+  inline constexpr rational& rational::operator-=(rational const& rhs)
+  { *this = (*this - rhs).value(); return *this; }
+
+  inline constexpr rational& rational::operator*=(rational const& rhs)
+  { *this = (*this * rhs).value(); return *this; }
+
+  inline constexpr rational& rational::operator/=(rational const& rhs)
+  { *this = (*this / rhs).value(); return *this; }
+
+  // Forwarding overloads — accept arithmetic RHS (lifted via rational{}) and
+  // slim::optional<rational> RHS (unwrapped via .value()) so callers can
+  // chain `r += rational * rational` without a manual unwrap.
+  template <arithmetic T>
+  inline constexpr rational& operator+=(rational& lhs, T rhs)
+  { return lhs += rational{rhs}; }
+
+  template <arithmetic T>
+  inline constexpr rational& operator-=(rational& lhs, T rhs)
+  { return lhs -= rational{rhs}; }
+
+  template <arithmetic T>
+  inline constexpr rational& operator*=(rational& lhs, T rhs)
+  { return lhs *= rational{rhs}; }
+
+  template <arithmetic T>
+  inline constexpr rational& operator/=(rational& lhs, T rhs)
+  { return lhs /= rational{rhs}; }
+
+  inline constexpr rational& operator+=(rational& lhs, slim::optional<rational> const& rhs)
+  { return lhs += rhs.value(); }
+
+  inline constexpr rational& operator-=(rational& lhs, slim::optional<rational> const& rhs)
+  { return lhs -= rhs.value(); }
+
+  inline constexpr rational& operator*=(rational& lhs, slim::optional<rational> const& rhs)
+  { return lhs *= rhs.value(); }
+
+  inline constexpr rational& operator/=(rational& lhs, slim::optional<rational> const& rhs)
+  { return lhs /= rhs.value(); }
 
   //---------------------------------------------------------------------------
   // divides_evenly

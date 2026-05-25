@@ -23,20 +23,20 @@ int main()
   for (auto i : items) subtotal += i;
   std::cout << "subtotal: $" << subtotal << "\n";
 
-  // Apply 8% sales tax. Compute the tax amount in double, then round-assign
-  // back to cents — `round_nearest` snaps to the nearest 1¢ notch.
-  money tax{0};
-  tax = double(subtotal) * 0.08;
+  // Apply 8% sales tax. `bound * rational` returns a rational; `round_nearest`
+  // on `money` snaps the assignment to the nearest 1¢ notch.
+  money tax = subtotal * rational{8, 100};
   std::cout << "tax (8%): $" << tax << "\n";
 
   money total = subtotal + tax;
   std::cout << "total:    $" << total << "\n";
 
   // Issue a refund, capped at the total. `clamped` saturates rather than
-  // throwing if the requested refund exceeds what was paid.
+  // throwing if the requested refund exceeds what was paid. `std::min`
+  // works on two `money` values directly via the bound's spaceship operator.
   money requested_refund{100.00};
   money refund{0};
-  refund.with_clamp() = std::min(double(requested_refund), double(total));
+  refund.with_clamp() = std::min(requested_refund, total);
   std::cout << "refund (req $" << requested_refund
             << ", cap $" << total << "): $" << refund << "\n";
 

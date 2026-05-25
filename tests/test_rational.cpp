@@ -168,6 +168,47 @@ TEST_CASE("rational arithmetic", "[rational][arithmetic]")
   {
     REQUIRE_FALSE(rational::inv(rational{0u}).has_value());
   }
+
+  SECTION("compound-assign: rational RHS")
+  {
+    rational a{3, 2};
+    a += rational{1, 5};
+    REQUIRE(a == rational{17u, 10});
+    a -= rational{1, 5};
+    REQUIRE(a == rational{3u, 2});
+    a *= rational{1, 2};
+    REQUIRE(a == rational{3u, 4});
+    a /= rational{1, 2};
+    REQUIRE(a == rational{3u, 2});
+  }
+
+  SECTION("compound-assign: arithmetic RHS")
+  {
+    rational a{3, 2};
+    a += 1;
+    REQUIRE(a == rational{5u, 2});
+    a *= 2;
+    REQUIRE(a == rational{5u});
+    a /= 5;
+    REQUIRE(a == rational{1u});
+  }
+
+  SECTION("compound-assign: optional<rational> RHS unwraps the checked op")
+  {
+    rational a{1, 2};
+    // rational * rational returns optional<rational>; += on that unwraps.
+    a += rational{1, 3} * rational{6, 1};
+    REQUIRE(a == rational{5u, 2});
+  }
+
+  SECTION("compound-assign throws bad_optional_access on overflow")
+  {
+    constexpr auto M = std::numeric_limits<imax>::max();
+    // 1/M + 1/(M-1) — denominator product M*(M-1) overflows imax.
+    rational a{1u, M};
+    rational b{1u, M - 1};
+    REQUIRE_THROWS_AS(a += b, slim::bad_optional_access);
+  }
 }
 
 TEST_CASE("rational overflow detection", "[rational][overflow]")

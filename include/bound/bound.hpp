@@ -128,6 +128,19 @@ namespace bnd
              && G.Interval.Upper <= rational{std::numeric_limits<imax>::max()})
     { return to_value(*this); }
 
+    // Implicit size_t conversion for index-shaped bounds. Lets
+    // `vec[bound_idx]` compile without `.as<std::size_t>()` and without
+    // tripping `-Wsign-conversion` on the imax → size_t path. Upper is
+    // capped at imax_max (not size_t_max) so wide bounds — those whose
+    // Upper already exceeds imax — don't gain a back-door imax conversion
+    // via size_t → imax integer narrowing.
+    constexpr operator std::size_t() const
+      requires (abs_den(G.Notch.Denominator) == 1
+             && G.Notch.Numerator != 0
+             && G.Interval.Lower >= 0_r
+             && G.Interval.Upper <= rational{std::numeric_limits<imax>::max()})
+    { return static_cast<std::size_t>(to_value(*this)); }
+
     constexpr explicit operator double() const
       requires ((P & (round_floor | round_ceil | round_nearest
                     | round_half_even | ignore_round)) != 0)
@@ -460,7 +473,10 @@ namespace bnd
       if constexpr (std::integral<A>)
         return integer_compound_assign(static_cast<imax>(rhs),
             add_overflow, wrap_add_, "operator+= overflow");
-      return assign_imax(to_value(*this) + static_cast<imax>(rhs));
+      else if constexpr (std::same_as<A, rational>)
+        return assign_op_result(rational{*this} + rhs);
+      else  // floating_point — route through double, snap via policy
+        return *this = static_cast<double>(*this) + static_cast<double>(rhs);
     }
 
     template <boundable R>
@@ -473,7 +489,10 @@ namespace bnd
       if constexpr (std::integral<A>)
         return integer_compound_assign(static_cast<imax>(rhs),
             sub_overflow, wrap_sub_, "operator-= overflow");
-      return *this += (-rhs);
+      else if constexpr (std::same_as<A, rational>)
+        return assign_op_result(rational{*this} - rhs);
+      else  // floating_point
+        return *this = static_cast<double>(*this) - static_cast<double>(rhs);
     }
 
     template <boundable R>
@@ -494,14 +513,29 @@ namespace bnd
       if constexpr (std::integral<A>)
         return integer_compound_assign(static_cast<imax>(rhs),
             mul_overflow, wrap_mul_, "operator*= overflow");
-      return assign_imax(to_value(*this) * static_cast<imax>(rhs));
+      else if constexpr (std::same_as<A, rational>)
+        return assign_op_result(rational{*this} * rhs);
+      else  // floating_point
+        return *this = static_cast<double>(*this) * static_cast<double>(rhs);
     }
 
     template <arithmetic A>
     constexpr bound& operator/=(A rhs)
     {
-      if (rhs == 0) { report_div_by_zero("operator/= division by zero"); return *this; }
-      return assign_imax(to_value(*this) / static_cast<imax>(rhs));
+      // Rational stores zero canonically as {0, 1}; the {0, 0} sentinel
+      // would compare unequal to rational{0}. Check Numerator == 0 to catch
+      // every canonical zero independent of representation.
+      bool is_zero;
+      if constexpr (std::same_as<A, rational>) is_zero = (rhs.Numerator == 0);
+      else                                     is_zero = (rhs == A{0});
+      if (is_zero) { report_div_by_zero("operator/= division by zero"); return *this; }
+
+      if constexpr (std::integral<A>)
+        return assign_imax(to_value(*this) / static_cast<imax>(rhs));
+      else if constexpr (std::same_as<A, rational>)
+        return assign_op_result(rational{*this} / rhs);
+      else  // floating_point
+        return *this = static_cast<double>(*this) / static_cast<double>(rhs);
     }
 
     template <arithmetic A>

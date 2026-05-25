@@ -22,8 +22,10 @@ using integ_t = bound<{{-200, 200}, notch<1, 16>}, round_nearest | clamp>;
 // Gain coefficients: [0, 4] with 1/256 step.
 using gain_t = bound<{{0, 4}, notch<1, 256>}, round_nearest>;
 
-// Actuator command in [-100, 100] integer steps, clamp-saturating.
-using output_t = bound<{-100, 100}, clamp>;
+// Actuator command in [-100, 100] integer steps. `clamp | round_nearest`
+// lets `output_t{raw}` saturate AND round the wider rational/bound input
+// in one step — no explicit `clamp_round<output_t>(...)` cast needed.
+using output_t = bound<{-100, 100}, clamp | round_nearest>;
 
 struct pid
 {
@@ -56,11 +58,9 @@ struct pid
     // add_all folds variadically; each pairwise + widens the grid further.
     auto raw = add_all(p_term, i_term, d_term);
 
-    // Cross the API boundary: saturate-round into the integer actuator grid.
-    // `clamp_round` accepts any `arithmetic` (boundable or real) directly, so
-    // the rational-friendly `raw` flows through without a manual `.to<double>`
-    // extraction.
-    return clamp_round<output_t>(raw);
+    // Cross the API boundary: assignment into `output_t` saturates (clamp)
+    // and snaps to its integer notch (round_nearest) via the type's policy.
+    return output_t{raw};
   }
 };
 
@@ -82,17 +82,6 @@ int main()
               << cmd << "\n";
   }
   std::cout << "\nintegrator saturation events: " << loop.windup_events << "\n";
-
-  // Standalone demo of the clamp+round composite casts. These read more
-  // naturally inside std::transform than `bound<G, clamp>{value}`.
-  std::cout << "\nclamp_round<output_t>( 150.7) = "
-            << clamp_round<output_t>(150.7) << "\n";
-  std::cout << "clamp_round<output_t>(-200.4) = "
-            << clamp_round<output_t>(-200.4) << "\n";
-  std::cout << "clamp_floor<output_t>( -42.6) = "
-            << clamp_floor<output_t>(-42.6) << "\n";
-  std::cout << "clamp_ceil <output_t>( -42.6) = "
-            << clamp_ceil <output_t>(-42.6) << "\n";
 
   return 0;
 }

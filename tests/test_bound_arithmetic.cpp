@@ -271,3 +271,63 @@ TEST_CASE("constexpr arithmetic", "[bound][arithmetic][constexpr]")
   STATIC_REQUIRE(sa - sb == -50);
   STATIC_REQUIRE(sa * sb == -600);
 }
+
+TEST_CASE("mixed-mode bound op rational", "[bound][arithmetic][mixed]")
+{
+  using money = bound<{{0, 1'000'000}, notch<1, 100>}, round_nearest>;
+  money sub{rational{4507, 100}};                   // $45.07
+
+  // bound * rational → rational (panics on overflow via .value())
+  rational tax = sub * rational{8, 100};            // 0.08 × 45.07
+  REQUIRE(tax == rational{360'56u, 10'000u});       // 3.6056
+
+  // Assignment back to a bound snaps to the round_nearest grid.
+  money tax_money = sub * rational{8, 100};
+  REQUIRE(tax_money == money{rational{361, 100}});  // 3.61
+
+  // Symmetric overload.
+  REQUIRE(rational{2, 1} * sub == rational{4507u, 50u});
+
+  // Addition / subtraction / division.
+  REQUIRE(sub + rational{1, 100} == rational{4508u, 100u});
+  REQUIRE(sub - rational{1, 100} == rational{4506u, 100u});
+  REQUIRE(sub / rational{2, 1}   == rational{4507u, 200u});
+}
+
+TEST_CASE("mixed-mode bound op integral", "[bound][arithmetic][mixed]")
+{
+  using bin_t = bound<{0, 9}>;
+  bin_t b{5};
+
+  // Each op resolves unambiguously to the (boundable, integral) overload —
+  // returns rational.
+  REQUIRE(b + 1  == rational{6});
+  REQUIRE(b - 1  == rational{4});
+  REQUIRE(b * 10 == rational{50});
+  REQUIRE(b / 2  == rational{5, 2});
+
+  // Symmetric overloads.
+  REQUIRE( 1 + b == rational{6});
+  REQUIRE(10 - b == rational{5});
+  REQUIRE( 2 * b == rational{10});
+  REQUIRE(10 / b == rational{2});
+}
+
+TEST_CASE("mixed-mode bound op floating_point", "[bound][arithmetic][mixed]")
+{
+  using rn = bound<{{-100, 100}, notch<1, 16>}, round_nearest>;
+  rn a{rational{1, 2}};                              // 0.5
+
+  // bound × double → double
+  double r = a * 2.5;
+  REQUIRE(r == 1.25);
+
+  // Symmetric overload + assignment back to bound.
+  rn out = 2.0 * a;
+  REQUIRE(out == rn{1.0});
+
+  // + / -
+  REQUIRE(a + 1.5 == 2.0);
+  REQUIRE(a - 0.25 == 0.25);
+  REQUIRE(a / 0.5 == 1.0);
+}

@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <limits>
 #include <type_traits>
+#include <vector>
 
 using namespace bnd;
 
@@ -144,12 +145,40 @@ TEST_CASE("operator imax is gated on fit-in-imax", "[bound][to][operator]")
   imax i = narrow{42};
   REQUIRE(i == 42);
 
-  // Wide grids (max > INT64_MAX) lose the implicit imax conversion.
+  // Wide grids (max > INT64_MAX) lose the implicit imax conversion. The
+  // implicit operator size_t() is also gated on Upper <= imax_max, so wide
+  // bounds don't sneak in via size_t -> imax integer conversion.
   STATIC_REQUIRE_FALSE(std::is_convertible_v<wide, imax>);
+  STATIC_REQUIRE_FALSE(std::is_convertible_v<wide, std::size_t>);
 
   // The typed-error path is what wide grids should use instead. (We do not
   // construct a `wide` instance here: assignment-side overflow checks on
   // grids spanning the full uint64 range are out of scope for this test.)
+}
+
+TEST_CASE("operator size_t for index-shaped bounds", "[bound][to][operator][index]")
+{
+  using idx_t  = bound<{0, 9}>;            // notch 1, Lower 0 — index shape
+  using offset = bound<{5, 10}>;            // notch 1, Lower > 0 — also OK
+
+  // Index-shaped bounds convert implicitly to size_t (silences
+  // -Wsign-conversion at the `vec[bound_idx]` call sites in examples).
+  STATIC_REQUIRE(std::is_convertible_v<idx_t,  std::size_t>);
+  STATIC_REQUIRE(std::is_convertible_v<offset, std::size_t>);
+
+  // (Bounds with Lower < 0 don't get the direct size_t conversion, but
+  // they're still convertible via the imax -> size_t standard step; the
+  // bound shape that we *want* to remain non-convertible is the wide one,
+  // verified in the test case above.)
+
+  // Use the conversion to index a vector — no `.as<>()` needed.
+  std::vector<int> v{0, 10, 20, 30, 40, 50, 60, 70, 80, 90};
+  idx_t i{3};
+  REQUIRE(v[i] == 30);
+
+  // Direct-init to size_t picks operator size_t() unambiguously.
+  std::size_t s = i;
+  REQUIRE(s == 3);
 }
 
 TEST_CASE("operator double is gated on rounding policy", "[bound][to][operator]")

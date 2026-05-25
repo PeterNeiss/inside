@@ -255,6 +255,122 @@ namespace bnd
     return bnd::mod(lhs, rhs, make_policy<F>());
   }
 
+  //---------------------------------------------------------------------------
+  // Mixed-mode bound op real
+  //
+  // `boundable op real` (and the symmetric `real op boundable`) lift the
+  // bound into rational (for rational RHS) or double (for floating-point
+  // RHS) and route through the corresponding scalar operator. The result
+  // type is `rational` or `double` — there is no widening-bound result,
+  // because runtime real arithmetic can't reconstruct a bound type.
+  //
+  // The rational path goes through the checked `rational::operator op`,
+  // then unwraps via `.value()` — overflow surfaces as
+  // `slim::bad_optional_access`, matching `rational::mul_unchecked`'s
+  // panic semantics rather than the silent-truncation that
+  // `static_cast<imax>(rational)` would otherwise do.
+  //---------------------------------------------------------------------------
+  template <boundable B>
+  [[nodiscard]] constexpr rational operator+(B const& lhs, rational const& rhs)
+  { return (static_cast<rational>(lhs) + rhs).value(); }
+
+  template <boundable B>
+  [[nodiscard]] constexpr rational operator+(rational const& lhs, B const& rhs)
+  { return (lhs + static_cast<rational>(rhs)).value(); }
+
+  template <boundable B>
+  [[nodiscard]] constexpr rational operator-(B const& lhs, rational const& rhs)
+  { return (static_cast<rational>(lhs) - rhs).value(); }
+
+  template <boundable B>
+  [[nodiscard]] constexpr rational operator-(rational const& lhs, B const& rhs)
+  { return (lhs - static_cast<rational>(rhs)).value(); }
+
+  template <boundable B>
+  [[nodiscard]] constexpr rational operator*(B const& lhs, rational const& rhs)
+  { return (static_cast<rational>(lhs) * rhs).value(); }
+
+  template <boundable B>
+  [[nodiscard]] constexpr rational operator*(rational const& lhs, B const& rhs)
+  { return (lhs * static_cast<rational>(rhs)).value(); }
+
+  template <boundable B>
+  [[nodiscard]] constexpr rational operator/(B const& lhs, rational const& rhs)
+  { return (static_cast<rational>(lhs) / rhs).value(); }
+
+  template <boundable B>
+  [[nodiscard]] constexpr rational operator/(rational const& lhs, B const& rhs)
+  { return (lhs / static_cast<rational>(rhs)).value(); }
+
+  template <boundable B, std::floating_point F>
+  [[nodiscard]] constexpr double operator+(B const& lhs, F rhs)
+  { return static_cast<double>(lhs) + static_cast<double>(rhs); }
+
+  template <boundable B, std::floating_point F>
+  [[nodiscard]] constexpr double operator+(F lhs, B const& rhs)
+  { return static_cast<double>(lhs) + static_cast<double>(rhs); }
+
+  template <boundable B, std::floating_point F>
+  [[nodiscard]] constexpr double operator-(B const& lhs, F rhs)
+  { return static_cast<double>(lhs) - static_cast<double>(rhs); }
+
+  template <boundable B, std::floating_point F>
+  [[nodiscard]] constexpr double operator-(F lhs, B const& rhs)
+  { return static_cast<double>(lhs) - static_cast<double>(rhs); }
+
+  template <boundable B, std::floating_point F>
+  [[nodiscard]] constexpr double operator*(B const& lhs, F rhs)
+  { return static_cast<double>(lhs) * static_cast<double>(rhs); }
+
+  template <boundable B, std::floating_point F>
+  [[nodiscard]] constexpr double operator*(F lhs, B const& rhs)
+  { return static_cast<double>(lhs) * static_cast<double>(rhs); }
+
+  template <boundable B, std::floating_point F>
+  [[nodiscard]] constexpr double operator/(B const& lhs, F rhs)
+  { return static_cast<double>(lhs) / static_cast<double>(rhs); }
+
+  template <boundable B, std::floating_point F>
+  [[nodiscard]] constexpr double operator/(F lhs, B const& rhs)
+  { return static_cast<double>(lhs) / static_cast<double>(rhs); }
+
+  // Integral RHS overloads — without these, `bound + 1` is ambiguous: int
+  // can convert to rational (the mixed-mode op above) and bound can convert
+  // to rational (rational's `arithmetic + rational` lift). Adding an
+  // explicit `(boundable, integral)` form gives a zero-user-conversion
+  // candidate that wins overload resolution. Returns rational.
+  template <boundable B, std::integral I>
+  [[nodiscard]] constexpr rational operator+(B const& lhs, I rhs)
+  { return (static_cast<rational>(lhs) + rational{rhs}).value(); }
+
+  template <std::integral I, boundable B>
+  [[nodiscard]] constexpr rational operator+(I lhs, B const& rhs)
+  { return (rational{lhs} + static_cast<rational>(rhs)).value(); }
+
+  template <boundable B, std::integral I>
+  [[nodiscard]] constexpr rational operator-(B const& lhs, I rhs)
+  { return (static_cast<rational>(lhs) - rational{rhs}).value(); }
+
+  template <std::integral I, boundable B>
+  [[nodiscard]] constexpr rational operator-(I lhs, B const& rhs)
+  { return (rational{lhs} - static_cast<rational>(rhs)).value(); }
+
+  template <boundable B, std::integral I>
+  [[nodiscard]] constexpr rational operator*(B const& lhs, I rhs)
+  { return (static_cast<rational>(lhs) * rational{rhs}).value(); }
+
+  template <std::integral I, boundable B>
+  [[nodiscard]] constexpr rational operator*(I lhs, B const& rhs)
+  { return (rational{lhs} * static_cast<rational>(rhs)).value(); }
+
+  template <boundable B, std::integral I>
+  [[nodiscard]] constexpr rational operator/(B const& lhs, I rhs)
+  { return (static_cast<rational>(lhs) / rational{rhs}).value(); }
+
+  template <std::integral I, boundable B>
+  [[nodiscard]] constexpr rational operator/(I lhs, B const& rhs)
+  { return (rational{lhs} / static_cast<rational>(rhs)).value(); }
+
 } // namespace bnd
 
 #endif // BNDarithmeticHPP

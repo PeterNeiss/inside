@@ -30,7 +30,8 @@ TEST_CASE("bound_range sequential", "[bound][range]")
   imax sum = 0;
   for (auto i : bound_range<{0, 9}>{})
   {
-    sum += i;          // implicit bound -> imax
+    imax v = i;        // implicit bound -> imax (direct-init picks imax over size_t)
+    sum += v;
     ++count;
   }
   REQUIRE(count == 10);

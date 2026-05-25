@@ -21,8 +21,8 @@ using namespace bnd;
 using latency_t = bound<{{0, 100}, notch<1, 10>}, round_nearest>;
 
 // 10 bins: 0-9.9, 10-19.9, ..., 90-100 ms.
-using bin_id_t = bound<{0, 9}>;
-constexpr int bin_width_x10 = 100;   // 10 ms in tenths
+using bin_id_t  = bound<{0, 9}>;                // counter slot per bin
+using bin_idx_t = bound<{0, 9}, round_floor>;   // computed bin index (floor on assignment)
 
 int main()
 {
@@ -50,33 +50,29 @@ int main()
       ++lossy;   // accept but flag
 
     latency_t lat{s};
-    // bin index = (lat * 10) / 100 — done in integer space.
-    std::size_t idx = static_cast<std::size_t>(lat.as<imax>() / 10);
-    if (idx < 10)
-    {
-      // bin_id_t is an array-label type; the slot in `bins` is a counter
-      // that increments in raw int space because the bin_id_t interval is
-      // the label range, not a counter range.
-      auto cur = bins[idx].as<imax>();
-      if (cur < std::numeric_limits<bin_id_t>::max())
-        bins[idx] = bin_id_t{cur + 1};
-    }
+    // bin index = floor(lat / 10 ms). `bin_idx_t` has `round_floor`, so
+    // constructing it from a rational quotient snaps onto the integer grid.
+    bin_idx_t bin{lat / rational{10}};
+    // Saturate the counter at its max instead of overflowing the bin_id_t.
+    if (bins[bin] < bin_id_t{std::numeric_limits<bin_id_t>::max()})
+      ++bins[bin];
   }
 
   // bound_range iterates every bin index — works because the grid has
-  // notch 1 and integer lower bound.
+  // notch 1 and integer lower bound. The implicit `operator size_t()`
+  // lets `bins[b]` index the vector without an explicit `.as<>()`.
+  using bin_label_t = bound<{0, 99}>;
   std::cout << "bin    count\n";
-  for (auto b : bound_range<{0, 9}>{})
+  for (bin_idx_t b : bound_range<{0, 9}>{})
   {
-    std::size_t idx = b.as<std::size_t>();
-    std::cout << " " << idx*10 << "-" << (idx*10+9) << "  "
-              << bins[idx] << "\n";
+    bin_label_t lo{b * 10};
+    bin_label_t hi{lo + 9};       // bound + int → rational → bin_label_t
+    std::cout << " " << lo << "-" << hi << "  " << bins[b] << "\n";
   }
 
   std::cout << "\nrejected outliers: " << rejected << "\n";
   std::cout << "lossy (off-notch): " << lossy << "\n";
   std::cout << "bin capacity (numeric_limits<bin_id_t>::max()): "
             << std::numeric_limits<bin_id_t>::max() << "\n";
-  (void)bin_width_x10;
   return 0;
 }

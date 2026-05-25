@@ -371,6 +371,66 @@ namespace bnd
     template <boundable C>
     constexpr B& operator%=(C const& rhs)
     { return finalise_arith(mod(Ref, rhs, Policy), "policy_ref::operator%= division/overflow"); }
+
+    //-------------------------------------------------------------------------
+    // real RHS overloads — rational, float, double. The `real` concept
+    // excludes both `boundable` and `std::integral`, so these don't overlap
+    // with the existing overloads above. Lets callers write `b += 1.5` or
+    // `b += rational{1, 3}` without lifting the RHS into a bound first.
+    //
+    // rational path: lift Ref to rational, run the checked op, route the
+    // optional<rational> result through `finalise_arith` so any overflow
+    // surfaces through `on_overflow` / Policy.report.
+    //
+    // floating-point path: lift both sides to double and assign — the bound
+    // must carry a round policy (operator double() requires it).
+    //-------------------------------------------------------------------------
+    template <real C>
+    constexpr B& operator+=(C const& rhs)
+    {
+      if constexpr (std::same_as<C, rational>)
+        return finalise_arith(rational{Ref} + rhs, "policy_ref::operator+= overflow");
+      else
+        return assign_with_picked(static_cast<double>(Ref) + static_cast<double>(rhs));
+    }
+
+    template <real C>
+    constexpr B& operator-=(C const& rhs)
+    {
+      if constexpr (std::same_as<C, rational>)
+        return finalise_arith(rational{Ref} - rhs, "policy_ref::operator-= overflow");
+      else
+        return assign_with_picked(static_cast<double>(Ref) - static_cast<double>(rhs));
+    }
+
+    template <real C>
+    constexpr B& operator*=(C const& rhs)
+    {
+      if constexpr (std::same_as<C, rational>)
+        return finalise_arith(rational{Ref} * rhs, "policy_ref::operator*= overflow");
+      else
+        return assign_with_picked(static_cast<double>(Ref) * static_cast<double>(rhs));
+    }
+
+    template <real C>
+    constexpr B& operator/=(C const& rhs)
+    {
+      // Canonical-zero check: rational stores zero as {0, 1}, so Numerator == 0
+      // catches every canonical zero (rational{} is the sentinel, not a zero).
+      bool is_zero;
+      if constexpr (std::same_as<C, rational>) is_zero = (rhs.Numerator == 0);
+      else                                     is_zero = (rhs == C{0});
+      if (is_zero)
+      {
+        report_zero(errc::division_by_zero, "policy_ref::operator/= division by zero");
+        return Ref;
+      }
+
+      if constexpr (std::same_as<C, rational>)
+        return finalise_arith(rational{Ref} / rhs, "policy_ref::operator/= division/overflow");
+      else
+        return assign_with_picked(static_cast<double>(Ref) / static_cast<double>(rhs));
+    }
   };
 
 } // namespace bnd

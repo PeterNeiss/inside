@@ -164,7 +164,7 @@ int main()
 
     // std::nth_element — find median
     std::vector<altitude> alt = {3000, -200, 500, 8000, 100, -50, 1500};
-    auto mid = alt.begin() + static_cast<long>(alt.size()) / 2;
+    auto mid = alt.begin() + std::ssize(alt) / 2;
     std::nth_element(alt.begin(), mid, alt.end());
     std::cout << "median: " << *mid << "\n";
 
@@ -191,7 +191,7 @@ int main()
     std::vector<celsius> readings = {-5.0, 0.0, 3.5, 8.0, 6.5};
     std::vector<celsius> deltas(readings.size());
     std::adjacent_difference(readings.begin(), readings.end(), deltas.begin(),
-      [](celsius k, celsius l) { return celsius{double(k) - double(l)}; });
+      [](celsius k, celsius l) -> celsius { return celsius{k - l}; });
     print("adj_diff", deltas);
 
     // std::for_each with side effect

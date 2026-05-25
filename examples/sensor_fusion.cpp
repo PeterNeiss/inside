@@ -20,8 +20,10 @@ using outdoor_t = bound<{{-40, 60},  notch<1, 2>},   round_nearest>;  // 0.5  °
 using indoor_t  = bound<{{0,   50},  notch<1, 10>},  round_nearest>;  // 0.1  °C
 using ground_t  = bound<{{-10, 30},  notch<1, 4>},   round_nearest>;  // 0.25 °C
 
-// Output: a coarse fused grid, integer °C with clamp.
-using fused_t = bound<{-40, 60}, clamp>;
+// Output: a coarse fused grid, integer °C. `clamp | round_nearest` lets
+// `fused_t{raw_fused}` saturate AND round the rational raw quotient in
+// one step — no explicit `clamp_round<fused_t>(...)` cast needed.
+using fused_t = bound<{-40, 60}, clamp | round_nearest>;
 
 int main()
 {
@@ -37,37 +39,40 @@ int main()
 
   std::cout << "raw   accepted?   notes\n";
 
-  // Accumulate the weighted sum as a plain double (rational sums of three
-  // different fractional grids would force the result type to a rational
-  // raw — fine, but heavier than needed for a 3-sensor average).
-  double weighted_sum = 0;
-  double weight_sum   = 0;
+  // Accumulate the weighted sum exactly in rational. Each accepted sample
+  // is snapped onto its sensor's bound grid (lossless after the predicate),
+  // lifted to rational, multiplied by the rational weight, and summed.
+  rational weighted_sum{0};
+  rational weight_sum{0};
 
-  auto accept = [&](double r, double w, auto tag, auto predicate) {
+  auto accept = [&]<typename B>(double r, weight_t w, auto tag, auto predicate) {
     bool ok = predicate(r);
     std::cout << r << "  " << (ok ? "yes" : "no ") << "  " << tag << "\n";
     if (!ok) return;
-    weighted_sum += r * w;
-    weight_sum   += w;
+    B reading{r};
+    weighted_sum += rational{reading} * rational{w};   // op*= via optional unwrap
+    weight_sum   += rational{w};
   };
 
-  accept(raw[0], double(w_outdoor), "outdoor",
+  accept.template operator()<outdoor_t>(raw[0], w_outdoor, "outdoor",
          [](double v){ return !will_conversion_overflow<outdoor_t>(v); });
-  accept(raw[1], double(w_indoor),  "indoor ",
+  accept.template operator()<indoor_t >(raw[1], w_indoor,  "indoor ",
          [](double v){ return !will_conversion_overflow<indoor_t>(v); });
-  accept(raw[2], double(w_outdoor), "outdoor",
+  accept.template operator()<outdoor_t>(raw[2], w_outdoor, "outdoor",
          [](double v){ return !will_conversion_overflow<outdoor_t>(v); });
-  accept(raw[3], double(w_ground),  "ground ",
+  accept.template operator()<ground_t >(raw[3], w_ground,  "ground ",
          [](double v){ return !will_conversion_overflow<ground_t>(v); });
-  accept(raw[4], double(w_indoor),  "indoor ",
+  accept.template operator()<indoor_t >(raw[4], w_indoor,  "indoor ",
          [](double v){ return !will_conversion_overflow<indoor_t>(v); });
 
-  double fused_raw = (weight_sum > 0) ? (weighted_sum / weight_sum) : 0;
-  auto fused = clamp_round<fused_t>(fused_raw);
+  rational raw_fused = (weight_sum.Numerator > 0)
+                       ? rational::div_unchecked(weighted_sum, weight_sum)
+                       : rational{0};
+  auto fused = fused_t{raw_fused};
 
   std::cout << "\nweighted sum: " << weighted_sum
             << ",  total weight: " << weight_sum
-            << ",  raw fused: " << fused_raw << "\n";
+            << ",  raw fused: " << raw_fused << "\n";
   std::cout << "fused (clamp_round into fused_t): " << fused << "\n";
 
   return 0;

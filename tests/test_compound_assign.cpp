@@ -39,6 +39,52 @@ TEST_CASE("compound /= 0 reports error by default", "[bound][compound]")
   REQUIRE_THROWS_AS(([&]{ a %= 0; }()), std::system_error);
 }
 
+TEST_CASE("compound assignment: rational RHS", "[bound][compound][rational]")
+{
+  // round_nearest required so the bound's rational/float assignment paths
+  // are available.
+  using rn = bound<{{0, 100}, notch<1, 100>}, round_nearest>;
+
+  rn a{rational{1, 2}};
+  a += rational{1, 4};                       // 0.50 + 0.25 = 0.75
+  REQUIRE(a == rn{rational{3, 4}});
+
+  a -= rational{1, 4};                       // 0.75 − 0.25 = 0.50
+  REQUIRE(a == rn{rational{1, 2}});
+
+  a *= rational{4, 1};                       // 0.50 × 4 = 2
+  REQUIRE(a == rn{rational{2}});
+
+  a /= rational{2, 1};                       // 2 / 2 = 1
+  REQUIRE(a == rn{rational{1}});
+}
+
+TEST_CASE("compound assignment: floating-point RHS", "[bound][compound][float]")
+{
+  using rn = bound<{{-100, 100}, notch<1, 16>}, round_nearest>;
+
+  rn a{1.0};
+  a += 2.5;
+  REQUIRE(a == rn{3.5});
+
+  a -= 1.5;
+  REQUIRE(a == rn{2.0});
+
+  a *= 1.5;
+  REQUIRE(a == rn{3.0});
+
+  a /= 2.0;
+  REQUIRE(a == rn{1.5});
+}
+
+TEST_CASE("compound /= 0 with real RHS reports error", "[bound][compound][real]")
+{
+  using rn = bound<{{0, 100}, notch<1, 100>}, round_nearest>;
+  rn a{rational{1, 2}};
+  REQUIRE_THROWS_AS(([&]{ a /= 0.0; }()),          std::system_error);
+  REQUIRE_THROWS_AS(([&]{ a /= rational{0}; }()),  std::system_error);
+}
+
 TEST_CASE("increment / decrement", "[bound][compound][inc]")
 {
   using u10 = bound<{0, 10}>;
