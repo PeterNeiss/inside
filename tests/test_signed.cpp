@@ -70,14 +70,14 @@ TEST_CASE("signed-direct ctor from rational/double preserves value", "[bound][si
 {
   using temp = bound<{-40, 60}>;
 
-  REQUIRE(temp{rational{-40}}            == -40);
+  REQUIRE(temp{-40_r}            == -40);
   REQUIRE(temp{rational{ 42}}            ==  42);
   REQUIRE(temp{rational{  0}}            ==   0);
   REQUIRE(temp{static_cast<double>(-40)} == -40);
   REQUIRE(temp{static_cast<double>( 42)} ==  42);
 
   // Raw must match value for direct storage.
-  REQUIRE(temp{rational{-40}}.Raw == -40);
+  REQUIRE(temp{-40_r}.Raw == -40);
   REQUIRE(temp{rational{ 42}}.Raw ==  42);
 }
 

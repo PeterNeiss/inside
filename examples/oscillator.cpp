@@ -29,7 +29,7 @@ int main()
   // 2π / 65536 — the radians-per-slot for a uint16 phase counter.
   // Precomputed once, applied per sample to convert counter → radians.
   constexpr rational rad_per_slot =
-      rational::div_unchecked(math::two_pi, rational{65536});
+      rational::div_unchecked(math::two_pi, 65536_r);
 
   std::cout << "Fixed-frequency oscillator (1/8 turn per sample, 8 samples = 1 cycle):\n";
   std::cout << "  i   sin              cos\n";

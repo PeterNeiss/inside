@@ -37,7 +37,7 @@ TEST_CASE("constexpr: rational identities", "[constexpr][rational]")
 
   // sign + abs
   STATIC_REQUIRE(rational{1, -2}.sign() == -1);
-  STATIC_REQUIRE(rational{0u}.sign() == 0);
+  STATIC_REQUIRE((0_r).sign() == 0);
   STATIC_REQUIRE(rational{3u, 4}.sign() == 1);
   STATIC_REQUIRE(abs(rational{3, -4}) == rational{3u, 4});
 
@@ -78,11 +78,11 @@ TEST_CASE("constexpr: rational inv and divides_evenly", "[constexpr][rational]")
 {
   STATIC_REQUIRE(*rational::inv(rational{3u, 4}) == rational{4u, 3});
   STATIC_REQUIRE(*rational::inv(rational{2u, 7}) == rational{7u, 2});
-  // `rational::inv(rational{0u})` is runtime-only — see file header.
+  // `rational::inv(0_r)` is runtime-only — see file header.
 
-  STATIC_REQUIRE(divides_evenly(rational{6u}, rational{2u}));
-  STATIC_REQUIRE_FALSE(divides_evenly(rational{7u}, rational{2u}));
-  STATIC_REQUIRE(divides_evenly(rational{0u}, rational{2u}));
+  STATIC_REQUIRE(divides_evenly(6_r, 2_r));
+  STATIC_REQUIRE_FALSE(divides_evenly(7_r, 2_r));
+  STATIC_REQUIRE(divides_evenly(0_r, 2_r));
 }
 
 //---------------------------------------------------------------------------
@@ -129,9 +129,9 @@ TEST_CASE("constexpr: interval arithmetic", "[constexpr][interval]")
 TEST_CASE("constexpr: interval divides_evenly", "[constexpr][interval]")
 {
   constexpr interval grid_iv{0, 10};
-  STATIC_REQUIRE(grid_iv.divides_evenly(rational{2u}));
+  STATIC_REQUIRE(grid_iv.divides_evenly(2_r));
   STATIC_REQUIRE(grid_iv.divides_evenly(rational{1u, 2}));   // 10 / 0.5 = 20
-  STATIC_REQUIRE_FALSE(grid_iv.divides_evenly(rational{3u}));
+  STATIC_REQUIRE_FALSE(grid_iv.divides_evenly(3_r));
 }
 
 //---------------------------------------------------------------------------
@@ -146,7 +146,7 @@ TEST_CASE("constexpr: grid arithmetic produces expected result grids",
   constexpr auto sum  = g_a + g_b;
   STATIC_REQUIRE(sum.has_value());
   STATIC_REQUIRE(sum->Interval == interval{0, 15});
-  STATIC_REQUIRE(sum->Notch == rational{1u});
+  STATIC_REQUIRE(sum->Notch == 1);
 
   constexpr auto prod = g_a * g_b;
   STATIC_REQUIRE(prod.has_value());
@@ -489,8 +489,8 @@ TEST_CASE("constexpr: just<N> and _b literal", "[constexpr][literal]")
   STATIC_REQUIRE(just<42> == 42);
 
   constexpr auto five = 5_b;
-  STATIC_REQUIRE(Lower<decltype(five)> == 5_r);
-  STATIC_REQUIRE(Upper<decltype(five)> == 5_r);
+  STATIC_REQUIRE(Lower<decltype(five)> == 5);
+  STATIC_REQUIRE(Upper<decltype(five)> == 5);
   STATIC_REQUIRE(five == 5);
 
   // Composes with bound — grid widens via add

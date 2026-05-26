@@ -77,7 +77,7 @@ namespace bnd
         return std::unexpected{errc::domain_error};
       if (!iv.divides_evenly(notch))
         return std::unexpected{errc::rounding_error};
-      if (notch != 0_r)
+      if (notch != 0)
       {
         auto q = iv.Lower / notch;
         if (!q.has_value())
@@ -89,7 +89,7 @@ namespace bnd
     }
 
     constexpr umax max_notch() const
-    { return (Notch == 0_r) ? 0 : (Interval/Notch).value().Numerator; }
+    { return (Notch == 0) ? 0 : (Interval/Notch).value().Numerator; }
 
     // operator== be default for structural type
     constexpr bool operator==(const grid& rhs) const = default;
@@ -103,7 +103,7 @@ namespace bnd
 
     constexpr double raw_to_double(std::same_as<rational> auto raw) const
     {
-      // storage_min only selects rational raw when Notch == 0_r, so raw is
+      // storage_min only selects rational raw when Notch == 0, so raw is
       // already the value — no offset/scale to apply.
       return static_cast<double>(raw);
     }
@@ -118,8 +118,8 @@ namespace bnd
   // unsigned-offset (max_notch slots) is the fallback for everything else.
   template <grid G>
   using storage_min =
-    std::conditional_t<(G.Notch == 0_r), rational,
-    std::conditional_t<(G.Interval.Lower < 0_r && G.Notch == 1_r),
+    std::conditional_t<(G.Notch == 0), rational,
+    std::conditional_t<(G.Interval.Lower < 0 && G.Notch == 1),
       smallest_int_for<G.Interval.Lower.trunc(), G.Interval.Upper.trunc()>,
       smallest_uint_for<G.max_notch()>>>;
 
@@ -169,16 +169,16 @@ namespace bnd
       return grid{*d, 0_r};
 
     // Divisor interval includes zero — exclude zero for result interval.
-    if (rhs.Interval.Lower == 0_r && rhs.Interval.Upper == 0_r)
+    if (rhs.Interval.Lower == 0 && rhs.Interval.Upper == 0)
       return slim::nullopt;
 
     // `step` is the smallest non-zero magnitude the divisor can take. We use
     // it to split the divisor's interval into a positive side [step, Upper]
     // and a negative side [Lower, -step], skipping the zero gap. When both
     // sides are present the result is the *union* of the two sub-divisions.
-    rational step = (rhs.Notch != 0_r) ? abs(rhs.Notch) : 1_r;
-    bool has_pos = 0_r < rhs.Interval.Upper;
-    bool has_neg = 0_r > rhs.Interval.Lower;
+    rational step = (rhs.Notch != 0) ? abs(rhs.Notch) : 1_r;
+    bool has_pos = 0 < rhs.Interval.Upper;
+    bool has_neg = 0 > rhs.Interval.Lower;
 
     if (has_pos && has_neg)
     {

@@ -18,7 +18,7 @@ TEST_CASE("rational construction normalises", "[rational][construction]")
   {
     REQUIRE(rational{0u, 7}      == rational{0u, 1});
     REQUIRE(rational{0,  -5}     == rational{0u, 1});
-    REQUIRE(rational{0u}.Denominator == 1);
+    REQUIRE((0_r).Denominator == 1);
   }
 
   SECTION("negative denominator carries sign onto rational")
@@ -81,8 +81,8 @@ TEST_CASE("rational comparison", "[rational][comparison]")
 {
   SECTION("ordering")
   {
-    STATIC_REQUIRE(rational{-1} < rational{0});
-    STATIC_REQUIRE(rational{0}  < rational{1});
+    STATIC_REQUIRE(-1_r < 0_r);
+    STATIC_REQUIRE(0_r  < 1_r);
     STATIC_REQUIRE(rational{-3, 2} < rational{-2, 3});
     STATIC_REQUIRE(rational{1u, 2} < rational{2u, 3});
   }
@@ -116,45 +116,45 @@ TEST_CASE("rational arithmetic", "[rational][arithmetic]")
   {
     STATIC_REQUIRE(rational{3,2} + rational{1,5} == rational{17u,10});
     STATIC_REQUIRE(rational{3,2} - rational{1,5} == rational{13u,10});
-    STATIC_REQUIRE(rational{3,2} / rational{1,2} == rational{3u});
+    STATIC_REQUIRE(rational{3,2} / rational{1,2} == 3_r);
     STATIC_REQUIRE(*(rational{3,2} * rational{1,2}) == rational{3u, 4});
   }
 
   SECTION("zero arms")
   {
-    REQUIRE(*(rational{3u, 2} + rational{0u}) == rational{3u, 2});
-    REQUIRE(*(rational{0u}     + rational{3u, 2}) == rational{3u, 2});
-    REQUIRE(*(rational{3u, 2} * rational{0u}) == rational{0u});
-    REQUIRE(*(rational{0u}     / rational{3u, 2}) == rational{0u});
+    REQUIRE(*(rational{3u, 2} + 0_r) == rational{3u, 2});
+    REQUIRE(*(0_r     + rational{3u, 2}) == rational{3u, 2});
+    REQUIRE(*(rational{3u, 2} * 0_r) == 0_r);
+    REQUIRE(*(0_r     / rational{3u, 2}) == 0_r);
   }
 
   SECTION("negation and unary plus")
   {
     REQUIRE(-rational{3u, 4} == rational{3, -4});
-    REQUIRE(-rational{0u}    == rational{0u});             // -0 == 0
+    REQUIRE(-0_r    == 0_r);             // -0 == 0
     REQUIRE(+rational{3u, 4} == rational{3u, 4});
   }
 
   SECTION("self-cancel returns zero")
   {
     rational a{3u, 7};
-    REQUIRE(*(a + (-a)) == rational{0u});
-    REQUIRE(*(a - a)    == rational{0u});
+    REQUIRE(*(a + (-a)) == 0_r);
+    REQUIRE(*(a - a)    == 0_r);
   }
 
   SECTION("unchecked variants")
   {
-    STATIC_REQUIRE(rational::add_unchecked(rational{2u}, rational{3u}) == rational{5u});
-    STATIC_REQUIRE(rational::mul_unchecked(rational{2u}, rational{3u}) == rational{6u});
-    STATIC_REQUIRE(rational::div_unchecked(rational{6u}, rational{3u}) == rational{2u});
+    STATIC_REQUIRE(rational::add_unchecked(2_r, 3_r) == 5_r);
+    STATIC_REQUIRE(rational::mul_unchecked(2_r, 3_r) == 6_r);
+    STATIC_REQUIRE(rational::div_unchecked(6_r, 3_r) == 2_r);
     STATIC_REQUIRE(rational::inv_unchecked(rational{2u, 3}) == rational{3u, 2});
   }
 
   SECTION("inv basic")
   {
     STATIC_REQUIRE(*rational::inv(rational{3u, 2}) == rational{2u, 3});
-    STATIC_REQUIRE(*rational::inv(rational{1u, 5}) == rational{5u});
-    STATIC_REQUIRE(*rational::inv(rational{5u})    == rational{1u, 5});
+    STATIC_REQUIRE(*rational::inv(rational{1u, 5}) == 5_r);
+    STATIC_REQUIRE(*rational::inv(5_r)    == rational{1u, 5});
 
     // Sign preservation (denominator carries the sign)
     STATIC_REQUIRE(*rational::inv(rational{-3, 2}) == rational{-2, 3});
@@ -166,7 +166,7 @@ TEST_CASE("rational arithmetic", "[rational][arithmetic]")
 
   SECTION("inv of zero -> nullopt")
   {
-    REQUIRE_FALSE(rational::inv(rational{0u}).has_value());
+    REQUIRE_FALSE(rational::inv(0_r).has_value());
   }
 
   SECTION("compound-assign: rational RHS")
@@ -188,9 +188,9 @@ TEST_CASE("rational arithmetic", "[rational][arithmetic]")
     a += 1;
     REQUIRE(a == rational{5u, 2});
     a *= 2;
-    REQUIRE(a == rational{5u});
+    REQUIRE(a == 5_r);
     a /= 5;
-    REQUIRE(a == rational{1u});
+    REQUIRE(a == 1_r);
   }
 
   SECTION("compound-assign: optional<rational> RHS unwraps the checked op")
@@ -215,8 +215,8 @@ TEST_CASE("rational overflow detection", "[rational][overflow]")
 {
   SECTION("checked operators return nullopt at runtime")
   {
-    REQUIRE_FALSE((rational{M} + rational{1u}).has_value());
-    REQUIRE_FALSE((rational{M} * rational{2u}).has_value());
+    REQUIRE_FALSE((rational{M} + 1_r).has_value());
+    REQUIRE_FALSE((rational{M} * 2_r).has_value());
     REQUIRE_FALSE((rational{M} / rational{1u, 2}).has_value());
   }
 
@@ -259,7 +259,7 @@ TEST_CASE("rational overflow detection", "[rational][overflow]")
   SECTION("sub overflow returning nullopt")
   {
     // -M - 1 would overflow on the negative side
-    REQUIRE_FALSE((rational{M, -1} - rational{1u}).has_value());
+    REQUIRE_FALSE((rational{M, -1} - 1_r).has_value());
   }
 
   SECTION("checked arithmetic rejects denominators exceeding imax_max")
@@ -307,7 +307,7 @@ TEST_CASE("rational helpers", "[rational][helpers]")
   {
     REQUIRE(abs(rational{3, -4}) == rational{3u, 4});
     REQUIRE(abs(rational{3u, 4}) == rational{3u, 4});
-    REQUIRE(abs(rational{0u})    == rational{0u});
+    REQUIRE(abs(0_r)    == 0_r);
   }
 
   SECTION("gcd")
@@ -325,7 +325,7 @@ TEST_CASE("rational helpers", "[rational][helpers]")
     REQUIRE_FALSE(divides_evenly(rational{6u, 1}, rational{4u, 1}));
     REQUIRE(divides_evenly(rational{1u, 2}, rational{1u, 4}));
     // by convention divisor==0 returns true
-    REQUIRE(divides_evenly(rational{6u, 1}, rational{0u}));
+    REQUIRE(divides_evenly(rational{6u, 1}, 0_r));
   }
 
   SECTION("divides_evenly does not throw on overflow")
@@ -353,7 +353,7 @@ TEST_CASE("rational conversion to integer/float", "[rational][conversion]")
   {
     REQUIRE(static_cast<double>(rational{1u, 2})  == 0.5);
     REQUIRE(static_cast<double>(rational{1u, -2}) == -0.5);
-    REQUIRE(static_cast<double>(rational{0u})     == 0.0);
+    REQUIRE(static_cast<double>(0_r)     == 0.0);
   }
 
   SECTION("to<T> reports domain_error for negative rational")
@@ -384,7 +384,7 @@ TEST_CASE("rational trunc / floor / round", "[rational][reduce]")
     REQUIRE(rational{1u, 2}.trunc()  ==  0);
     REQUIRE(rational{1,  -2}.trunc() ==  0);
     REQUIRE(rational{4u, 1}.trunc()  ==  4);
-    REQUIRE(rational{0u}.trunc()     ==  0);
+    REQUIRE((0_r).trunc()     ==  0);
   }
 
   SECTION("floor — toward -inf")
@@ -395,7 +395,7 @@ TEST_CASE("rational trunc / floor / round", "[rational][reduce]")
     REQUIRE(rational{1,  -2}.floor() == -1);   // -0.5 -> -1
     REQUIRE(rational{4u, 1}.floor()  ==  4);
     REQUIRE(rational{4,  -1}.floor() == -4);   // exact integer: no step
-    REQUIRE(rational{0u}.floor()     ==  0);
+    REQUIRE((0_r).floor()     ==  0);
   }
 
   SECTION("round — half away from zero")
@@ -408,6 +408,6 @@ TEST_CASE("rational trunc / floor / round", "[rational][reduce]")
     REQUIRE(rational{1u, 3}.round() ==  0);    //  ~0.33 -> 0
     REQUIRE(rational{2u, 3}.round() ==  1);    //  ~0.67 -> 1
     REQUIRE(rational{2,  -3}.round() == -1);
-    REQUIRE(rational{0u}.round()    ==  0);
+    REQUIRE((0_r).round()    ==  0);
   }
 }

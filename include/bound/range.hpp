@@ -30,7 +30,7 @@
 namespace bnd
 {
   template <grid G, policy_flag P = checked>
-    requires (G.Notch != 0_r)
+    requires (G.Notch != 0)
   struct bound_range
   {
     using value_type = bound<G, P>;

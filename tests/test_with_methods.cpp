@@ -25,7 +25,7 @@ TEST_CASE("with_clamp: float rhs", "[bound][with][clamp]")
 
   x.with_clamp() = 100.0;   REQUIRE(x == 10);
   x.with_clamp() = -5.0;    REQUIRE(x == 0);
-  x.with_clamp() = 3.5;     REQUIRE(x == rational{7u, 2});
+  x.with_clamp() = 3.5;     REQUIRE(x == 3.5_r);
 }
 
 TEST_CASE("with_clamp: bound rhs", "[bound][with][clamp][bound2bound]")
@@ -128,7 +128,7 @@ TEST_CASE("with_round_nearest: float rhs", "[bound][with][round_nearest]")
 
   using half = bound<{{0, 10}, 0.5}>;
   half h;
-  h.with_round_nearest() = 3.3;    REQUIRE(h == rational{7u, 2});  // 3.5
+  h.with_round_nearest() = 3.3;    REQUIRE(h == 3.5_r);  // 3.5
   h.with_round_nearest() = 3.2;    REQUIRE(h == 3);                // 3.0
 }
 

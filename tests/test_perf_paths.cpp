@@ -75,11 +75,11 @@ TEST_CASE("Q-format division: native_div_qformat matches rational arithmetic",
   // Spot checks against expected Q-format integer-truncation values.
   auto q1 = div(fp{200}, fp{8}, truncated);
   REQUIRE(q1.has_value());
-  REQUIRE(*q1 == rational{25u});
+  REQUIRE(*q1 == 25);
 
   auto q2 = div(fp{255}, fp{1}, truncated);
   REQUIRE(q2.has_value());
-  REQUIRE(*q2 == rational{255u});
+  REQUIRE(*q2 == 255);
 
   // Non-integer quotient: 200 / 3 ≈ 66.6667. Q-format multiplies before
   // dividing — (51200 * 256) / 768 = 17066 (= floor(66.6667 * 256)) — same
@@ -131,5 +131,5 @@ TEST_CASE("operator rational() handles fractional Q-format value",
   fp b{0};
   b.Raw = 128;
   rational r = static_cast<rational>(b);
-  REQUIRE(r == rational{1u, 2});
+  REQUIRE(r == 0.5_r);
 }

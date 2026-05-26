@@ -45,10 +45,10 @@ TEST_CASE("rounding requires opt-in", "[bound][assign][round]")
   {
     using celsius = bound<{{-40, 60}, 0.5}, round_nearest>;
     celsius room = 21.4;
-    REQUIRE(room == rational{43u, 2});
+    REQUIRE(room == 21.5_r);
 
     celsius exact = 21.5;
-    REQUIRE(exact == rational{43u, 2});
+    REQUIRE(exact == 21.5_r);
 
     celsius truncated = 21.2;
     REQUIRE(truncated == 21);
@@ -56,7 +56,7 @@ TEST_CASE("rounding requires opt-in", "[bound][assign][round]")
     using half = bound<{{0, 10}, 0.5}>;
     half h;
     h.with_round_nearest() = 3.3;
-    REQUIRE(h == rational{7u, 2});
+    REQUIRE(h == 3.5_r);
 
     h.with_round_nearest() = 3.2;
     REQUIRE(h == 3);
@@ -175,10 +175,10 @@ TEST_CASE("integer rhs into non-integer-interval bound", "[bound][assign][edge]"
   using halfgrid = bound<{{rational{1, 2}, rational{11, 2}}, rational{1u, 2}}, clamp>;
 
   halfgrid over{100};                 // out of range, clamps to 5.5
-  REQUIRE(over == rational{11u, 2});
+  REQUIRE(over == 5.5_r);
 
   halfgrid under{-100};               // clamps to 0.5
-  REQUIRE(under == rational{1u, 2});
+  REQUIRE(under == 0.5_r);
 
   halfgrid in{3};                     // 3 lands on a notch (3.0 = 6 notches)
   REQUIRE(in == 3);
@@ -191,7 +191,7 @@ TEST_CASE("checked policy throws on float out-of-range", "[bound][assign][checke
   REQUIRE_THROWS_AS(c10{-1.0},   std::system_error);
 
   // rational rhs takes the same path
-  REQUIRE_THROWS_AS(c10{rational{20u}}, std::system_error);
+  REQUIRE_THROWS_AS(c10{20_r}, std::system_error);
 }
 
 TEST_CASE("checked policy throws on rounding error", "[bound][assign][checked][round]")

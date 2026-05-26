@@ -115,13 +115,13 @@ TEST_CASE("bound::to<rational>", "[bound][to]")
   SECTION("ordinary value")
   {
     using B = bound<{0, 10}>;
-    REQUIRE(B{5}.to<rational>().value() == 5_r);
+    REQUIRE(B{5}.to<rational>().value() == 5);
   }
 
   SECTION("fractional grid is preserved exactly")
   {
     using B = bound<{{0, 1}, notch<1, 2>}>;
-    REQUIRE(B{0.5}.to<rational>().value() == rational{1u, 2});
+    REQUIRE(B{0.5}.to<rational>().value() == 0.5_r);
   }
 
   SECTION("sentinel-state -> overflow")
@@ -211,6 +211,6 @@ TEST_CASE("as<T>() is a non-expected shortcut for to<T>().value()", "[bound][as]
   REQUIRE(frac{7.5}.as<imax>() == 7);
 
   // Rational and double targets behave the same as `to<T>().value()`.
-  REQUIRE(narrow{42}.as<rational>() == rational{42});
+  REQUIRE(narrow{42}.as<rational>() == 42);
   REQUIRE(frac{7.5}.as<double>()    == 7.5);
 }

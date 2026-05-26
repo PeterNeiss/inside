@@ -155,7 +155,7 @@ namespace bnd
           r_offset -= RawLo<R>;
 
         imax l_offset;
-        if constexpr (Offset == 0_r)
+        if constexpr (Offset == 0)
           l_offset = static_cast<imax>(Factor.Numerator) * r_offset;
         else if constexpr (Offset.Denominator > 0)
           l_offset = static_cast<imax>(Offset.Numerator)
@@ -312,7 +312,7 @@ namespace bnd
     R clamped = (rhs < Lower<L>) ? static_cast<R>(Lower<L>) : static_cast<R>(Upper<L>);
     R overshoot;
     if constexpr (std::same_as<R, rational>)
-      overshoot = (rhs - clamped).value_or(rational{0u});
+      overshoot = (rhs - clamped).value_or(0_r);
     else
       overshoot = rhs - clamped;
 
@@ -542,7 +542,7 @@ namespace bnd
     if constexpr (is_integer_mapping)
     {
       // exact: Factor and Offset have integer denominators, no rounding ambiguity
-      if constexpr (Offset == 0_r && Factor == 1_r)
+      if constexpr (Offset == 0 && Factor == 1)
         lhs.Raw = raw_cast<L>(rhs.Raw);
       else
         lhs.Raw = raw_cast<L>(map_raw(rhs.Raw));

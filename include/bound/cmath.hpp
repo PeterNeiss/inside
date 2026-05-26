@@ -50,9 +50,9 @@ namespace bnd::math
   // rational source the internal Q.30 cores use — bit-identical across
   // platforms via constexpr rational arithmetic.
   inline constexpr rational two_pi =
-      rational::mul_unchecked(rational{2}, rational{1068966896, 340262731});
+      rational::mul_unchecked(2_r, rational{1068966896, 340262731});
   inline constexpr rational pi =
-      rational::mul_unchecked(rational{1}, rational{1068966896, 340262731});
+      rational::mul_unchecked(1_r, rational{1068966896, 340262731});
 
   namespace detail
   {
@@ -63,7 +63,7 @@ namespace bnd::math
     // `examples/oscillator.cpp`) use a plain integer counter for the same
     // free-modular-wrap property and convert to radians at the sin call.
     template <int N>
-    using turns_t = bound<{{rational{0},
+    using turns_t = bound<{{0_r,
                             rational{(imax{1} << N) - 1, imax{1} << N}},
                            notch<1, (imax{1} << N)>}>;
 
@@ -114,7 +114,7 @@ namespace bnd::math
     // signature deducible from a single explicit template arg (`Out`).
     template <boundable In>
     inline constexpr int turn_bits = []{
-      static_assert(Lower<In> == rational{0},
+      static_assert(Lower<In> == 0,
                     "bnd::math: turn-phase input must have Lower == 0");
       static_assert(Notch<In>.Numerator == 1,
                     "bnd::math: turn-phase input must have notch 1/2^N");
@@ -181,7 +181,7 @@ namespace bnd::math
       constexpr int N = turn_bits<In>;
       static_assert(N >= 2 && N <= 30,
                     "bnd::math: N must be in [2, 30] for the Q.30 internal tier");
-      static_assert(Lower<Out> <= rational{-1} && Upper<Out> >= rational{1},
+      static_assert(Lower<Out> <= -1 && Upper<Out> >= 1,
                     "bnd::math: Out must cover [-1, 1]");
 
       // Range reduce to first quadrant. Layout of `raw` (N bits):
@@ -280,9 +280,9 @@ namespace bnd::math
   template <boundable Out, boundable In>
   constexpr Out sin_impl(In angle) noexcept
   {
-    static_assert(Lower<In> >= rational{-1024} && Upper<In> <= rational{1024},
+    static_assert(Lower<In> >= -1024 && Upper<In> <= 1024,
                   "bnd::math::sin: input must be in [-1024, 1024] rad");
-    static_assert(Lower<Out> <= rational{-1} && Upper<Out> >= rational{1},
+    static_assert(Lower<Out> <= -1 && Upper<Out> >= 1,
                   "bnd::math::sin: Out must cover [-1, 1]");
 
     rational a     = angle;
@@ -298,9 +298,9 @@ namespace bnd::math
   template <boundable Out, boundable In>
   constexpr Out cos_impl(In angle) noexcept
   {
-    static_assert(Lower<In> >= rational{-1024} && Upper<In> <= rational{1024},
+    static_assert(Lower<In> >= -1024 && Upper<In> <= 1024,
                   "bnd::math::cos: input must be in [-1024, 1024] rad");
-    static_assert(Lower<Out> <= rational{-1} && Upper<Out> >= rational{1},
+    static_assert(Lower<Out> <= -1 && Upper<Out> >= 1,
                   "bnd::math::cos: Out must cover [-1, 1]");
 
     constexpr imax quarter_turn_q30 = imax{1} << 28;
@@ -354,7 +354,7 @@ namespace bnd::math
   template <boundable Out, boundable In>
   constexpr std::expected<Out, errc> tan_impl(In angle) noexcept
   {
-    static_assert(Lower<In> >= rational{-1024} && Upper<In> <= rational{1024},
+    static_assert(Lower<In> >= -1024 && Upper<In> <= 1024,
                   "bnd::math::tan: input must be in [-1024, 1024] rad");
 
     constexpr imax quarter_turn_q30 = imax{1} << 28;
@@ -537,7 +537,7 @@ namespace bnd::math
   template <boundable Out, boundable In>
   constexpr Out log2_impl(In x) noexcept
   {
-    static_assert(Lower<In> > rational{0},
+    static_assert(Lower<In> > 0,
                   "bnd::math::log2: input must be strictly positive");
 
     rational xv    = x;
@@ -556,9 +556,9 @@ namespace bnd::math
   template <boundable Out, boundable In>
   constexpr Out exp2_impl(In x) noexcept
   {
-    static_assert(Lower<In> >= rational{-30} && Upper<In> <= rational{30},
+    static_assert(Lower<In> >= -30 && Upper<In> <= 30,
                   "bnd::math::exp2: input must be in [-30, 30]");
-    static_assert(Lower<Out> >= rational{0},
+    static_assert(Lower<Out> >= 0,
                   "bnd::math::exp2: Out must be non-negative");
 
     rational xv    = x;
@@ -572,9 +572,9 @@ namespace bnd::math
   template <boundable Out, boundable In>
   constexpr Out exp_impl(In x) noexcept
   {
-    static_assert(Lower<In> >= rational{-20} && Upper<In> <= rational{20},
+    static_assert(Lower<In> >= -20 && Upper<In> <= 20,
                   "bnd::math::exp: input must be in [-20, 20]");
-    static_assert(Lower<Out> >= rational{0},
+    static_assert(Lower<Out> >= 0,
                   "bnd::math::exp: Out must be non-negative");
 
     rational xv    = x;
@@ -588,7 +588,7 @@ namespace bnd::math
   template <boundable Out, boundable In>
   constexpr Out log_impl(In x) noexcept
   {
-    static_assert(Lower<In> > rational{0},
+    static_assert(Lower<In> > 0,
                   "bnd::math::log: input must be strictly positive");
 
     rational xv    = x;
@@ -606,7 +606,7 @@ namespace bnd::math
   constexpr Out pow_base_impl(In x) noexcept
   {
     static_assert(Base >= 2, "bnd::math::pow_base: Base must be ≥ 2");
-    static_assert(Lower<Out> >= rational{0},
+    static_assert(Lower<Out> >= 0,
                   "bnd::math::pow_base: Out must be non-negative");
 
     rational xv    = x;
@@ -714,9 +714,9 @@ namespace bnd::math
   template <boundable Out, boundable In>
   constexpr Out atan2_impl(In y, In x) noexcept
   {
-    static_assert(Lower<In> >= rational{-1} && Upper<In> <= rational{1},
+    static_assert(Lower<In> >= -1 && Upper<In> <= 1,
                   "bnd::math::atan2: inputs must be in [-1, 1]; normalize first for wider ranges");
-    static_assert(Lower<Out> <= rational{-1, 2} && Upper<Out> >= rational{1, 2},
+    static_assert(Lower<Out> <= -0.5_r && Upper<Out> >= 0.5_r,
                   "bnd::math::atan2: Out must cover [-1/2, 1/2] turn");
 
     rational yv = y, xv = x;
@@ -762,7 +762,7 @@ namespace bnd::math
   template <boundable Out, boundable In>
   constexpr Out abs_impl(In x) noexcept
   {
-    static_assert(Lower<Out> <= rational{0},
+    static_assert(Lower<Out> <= 0,
                   "bnd::math::abs: Out must include 0");
     return Out{bnd::abs(rational{x})};
   }
@@ -839,7 +839,7 @@ namespace bnd::math
         ? bnd::abs(Lower<In>) : bnd::abs(Upper<In>);
 
     template <boundable In>
-    using abs_auto_t = bound<{{rational{0}, abs_auto_upper<In>},
+    using abs_auto_t = bound<{{0_r, abs_auto_upper<In>},
                               Notch<In>}, BoundPolicy<In>>;
 
     template <boundable In>
@@ -893,16 +893,16 @@ namespace bnd::math
   template <boundable Out, boundable In>
   constexpr Out sqrt_impl(In x) noexcept
   {
-    static_assert(Lower<In> == rational{0},
+    static_assert(Lower<In> == 0,
                   "bnd::math::sqrt: input must start at 0 (mixed-sign overload TODO)");
-    static_assert(Upper<In> <= rational{4},
+    static_assert(Upper<In> <= 4,
                   "bnd::math::sqrt: input must be ≤ 4 for the Q.30 internal tier");
     static_assert(Notch<In>.Numerator == 1,
                   "bnd::math::sqrt: input notch must be 1/2^K");
     constexpr imax notch_den = abs_den(Notch<In>.Denominator);
     static_assert((notch_den & (notch_den - 1)) == 0,
                   "bnd::math::sqrt: input notch denominator must be a power of 2");
-    static_assert(Lower<Out> <= rational{0},
+    static_assert(Lower<Out> <= 0,
                   "bnd::math::sqrt: Out must include 0");
 
     constexpr int K = detail::log2_pow2(notch_den);
@@ -950,7 +950,7 @@ namespace bnd::math
     // rational endpoint and return the result as a rational.
     constexpr rational sqrt_endpoint(rational v) noexcept
     {
-      if (v == rational{0}) return rational{0};
+      if (v == 0) return 0_r;
       imax v_q30 = rational::mul_unchecked(v, rational{imax{1} << 30}).round();
       return rational{sqrt_q30(v_q30), imax{1} << 30};
     }
@@ -995,7 +995,7 @@ namespace bnd::math
     // come out of the Q.30 cores with sub-notch drift, so the assignment
     // into the deduced bound needs a rounding rule to land on the grid.
     template <boundable In>
-    using sqrt_auto_t = bound<{{rational{0},
+    using sqrt_auto_t = bound<{{0_r,
                                 ceil_to_notch(sqrt_endpoint(Upper<In>), Notch<In>)},
                                Notch<In>}, BoundPolicy<In> | round_nearest>;
 
@@ -1056,7 +1056,7 @@ namespace bnd::math
   namespace detail
   {
     template <boundable In>
-    using sin_auto_t = bound<{{rational{-1}, rational{1}},
+    using sin_auto_t = bound<{{-1_r, 1_r},
                                Notch<In>}, BoundPolicy<In> | round_nearest>;
 
     template <boundable In>
@@ -1067,7 +1067,7 @@ namespace bnd::math
                                  Notch<In>}, BoundPolicy<In> | round_nearest>;
 
     template <boundable In>
-    using tan_auto_t = bound<{{rational{-1024}, rational{1024}},
+    using tan_auto_t = bound<{{-1024_r, 1024_r},
                                Notch<In>}, BoundPolicy<In> | round_nearest>;
 
     template <boundable InX, boundable InY>

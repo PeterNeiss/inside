@@ -11,14 +11,14 @@ TEST_CASE("grid::try_make accepts well-formed grids", "[grid][try_make]")
     auto g = grid::try_make(interval{0, 100}, 1_r);
     REQUIRE(g.has_value());
     REQUIRE(g->Interval == interval{0, 100});
-    REQUIRE(g->Notch == 1_r);
+    REQUIRE(g->Notch == 1);
   }
 
   SECTION("degenerate interval, zero notch (rational-raw shape)")
   {
     auto g = grid::try_make(interval{0, 0}, 0_r);
     REQUIRE(g.has_value());
-    REQUIRE(g->Notch == 0_r);
+    REQUIRE(g->Notch == 0);
   }
 
   SECTION("non-degenerate interval, zero notch (rational storage)")

@@ -106,20 +106,20 @@ TEST_CASE("interval / rational notch", "[interval][grid]")
 
   SECTION("divides_evenly")
   {
-    STATIC_REQUIRE(a.divides_evenly(rational{1u}));
-    STATIC_REQUIRE(a.divides_evenly(rational{1u, 2}));
-    STATIC_REQUIRE_FALSE(a.divides_evenly(rational{3u}));
+    STATIC_REQUIRE(a.divides_evenly(1_r));
+    STATIC_REQUIRE(a.divides_evenly(0.5_r));
+    STATIC_REQUIRE_FALSE(a.divides_evenly(3_r));
   }
 
   SECTION("operator/ rational gives notch count")
   {
-    constexpr auto r = a / rational{1u};
+    constexpr auto r = a / 1_r;
     STATIC_REQUIRE(r.has_value());
-    STATIC_REQUIRE(*r == rational{10u});
+    STATIC_REQUIRE(*r == 10);
 
-    constexpr auto r2 = a / rational{1u, 2};
+    constexpr auto r2 = a / 0.5_r;
     STATIC_REQUIRE(r2.has_value());
-    STATIC_REQUIRE(*r2 == rational{20u});
+    STATIC_REQUIRE(*r2 == 20);
   }
 }
 

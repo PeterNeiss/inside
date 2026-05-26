@@ -132,8 +132,8 @@ TEST_CASE("unchecked_cast bypasses runtime checks", "[bound][cast]")
 TEST_CASE("_b literal produces just<N>", "[bound][literal]")
 {
   constexpr auto five = 5_b;
-  STATIC_REQUIRE(Lower<decltype(five)> == 5_r);
-  STATIC_REQUIRE(Upper<decltype(five)> == 5_r);
+  STATIC_REQUIRE(Lower<decltype(five)> == 5);
+  STATIC_REQUIRE(Upper<decltype(five)> == 5);
   STATIC_REQUIRE(five == 5);
 
   // Composes with bound arithmetic — grid widens through addition.

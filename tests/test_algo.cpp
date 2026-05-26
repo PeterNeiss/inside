@@ -17,7 +17,7 @@ namespace
   using u16 = bnd::bound<{0, 1000, 0.5}>;
 
   slim::optional<rational> opt_div_zero()
-  { return rational{1u} / 0; }
+  { return 1_r / 0; }
 }
 
 TEST_CASE("algo: optional rational from div by zero", "[algo][rational]")

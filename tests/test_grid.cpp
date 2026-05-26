@@ -41,7 +41,7 @@ TEST_CASE("grid arithmetic", "[grid]")
     REQUIRE(r.has_value());
     REQUIRE(r->Interval.Lower == 0);
     REQUIRE(r->Interval.Upper == 15);
-    REQUIRE(r->Notch == rational{1u});
+    REQUIRE(r->Notch == 1);
   }
 
   SECTION("multiply takes bounding box and lcm-ish notch")
@@ -78,7 +78,7 @@ TEST_CASE("grid arithmetic", "[grid]")
     REQUIRE(r.has_value());
     REQUIRE(r->Interval.Lower == 0);
     REQUIRE(r->Interval.Upper == 10);    // 10 / 1 = 10
-    REQUIRE(r->Notch == 0_r);
+    REQUIRE(r->Notch == 0);
   }
 
   SECTION("divide by interval [L, 0] (negative side only)")
@@ -89,7 +89,7 @@ TEST_CASE("grid arithmetic", "[grid]")
     REQUIRE(r.has_value());
     // dividing positives by negatives gives non-positive result
     REQUIRE(r->Interval.Upper <= 0);
-    REQUIRE(r->Notch == 0_r);
+    REQUIRE(r->Notch == 0);
   }
 
   SECTION("divide by interval that straddles zero")
@@ -101,7 +101,7 @@ TEST_CASE("grid arithmetic", "[grid]")
     // result must span both signs once we exclude zero
     REQUIRE(r->Interval.Lower < 0);
     REQUIRE(r->Interval.Upper > 0);
-    REQUIRE(r->Notch == 0_r);
+    REQUIRE(r->Notch == 0);
   }
 
   SECTION("divide by zero-notch interval that straddles zero")

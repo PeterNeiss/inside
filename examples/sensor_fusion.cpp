@@ -67,7 +67,7 @@ int main()
 
   rational raw_fused = (weight_sum.Numerator > 0)
                        ? rational::div_unchecked(weighted_sum, weight_sum)
-                       : rational{0};
+                       : 0_r;
   auto fused = fused_t{raw_fused};
 
   std::cout << "\nweighted sum: " << weighted_sum

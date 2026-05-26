@@ -52,7 +52,7 @@ int main()
     latency_t lat{s};
     // bin index = floor(lat / 10 ms). `bin_idx_t` has `round_floor`, so
     // constructing it from a rational quotient snaps onto the integer grid.
-    bin_idx_t bin{lat / rational{10}};
+    bin_idx_t bin{lat / 10_r};
     // Saturate the counter at its max instead of overflowing the bin_id_t.
     if (bins[bin] < bin_id_t{std::numeric_limits<bin_id_t>::max()})
       ++bins[bin];

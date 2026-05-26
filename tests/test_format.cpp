@@ -32,7 +32,7 @@ TEST_CASE("rational to_string: mixed-number forms", "[format][rational]")
   REQUIRE(bnd::to_string(rational{1u, 3})  == "1/3");
   REQUIRE(bnd::to_string(rational{2u, 7})  == "2/7");
   REQUIRE(bnd::to_string(rational{5u, 1})  == "5");
-  REQUIRE(bnd::to_string(rational{0u})     == "0");
+  REQUIRE(bnd::to_string(0_r)     == "0");
 
   REQUIRE(bnd::to_string(rational{7,  -3}) == "-2 1/3");
   REQUIRE(bnd::to_string(rational{1,  -3}) == "-1/3");

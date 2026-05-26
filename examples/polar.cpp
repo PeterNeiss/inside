@@ -28,10 +28,10 @@ int main()
   const point points[] = {
     { rational{ 1},    rational{ 0},    "+x axis      " },
     { rational{ 0},    rational{ 1},    "+y axis      " },
-    { rational{-1},    rational{ 0},    "-x axis      " },
-    { rational{ 0},    rational{-1},    "-y axis      " },
+    { -1_r,    rational{ 0},    "-x axis      " },
+    { rational{ 0},    -1_r,    "-y axis      " },
     { rational{ 1},    rational{ 1},    "+45° (mag √2)" },
-    { rational{-1},    rational{ 1},    "+135°        " },
+    { -1_r,    rational{ 1},    "+135°        " },
     { rational{ 3, 5}, rational{ 4, 5}, "(3/5, 4/5) — 3-4-5 triangle, mag 1" },
     { rational{ 1, 2}, rational{ 1, 2}, "(½, ½)       " },
   };

@@ -227,7 +227,7 @@ TEST_CASE("bound rational-storage on_overflow free fn", "[bound][arithmetic][rat
   // Disparate large denominators force cross-multiplication overflow even
   // though the result interval [0, 2] fits.
   constexpr umax M = std::numeric_limits<umax>::max();
-  using unit = bound<{{rational{0u}, rational{1u}}, 0}, checked>;
+  using unit = bound<{{0_r, 1_r}, 0}, checked>;
 
   unit a, b;
   a.Raw = rational{1u, static_cast<imax>(M / 2)};
@@ -238,7 +238,7 @@ TEST_CASE("bound rational-storage on_overflow free fn", "[bound][arithmetic][rat
   auto sum = add(a, b,
     on_overflow([&](auto& res, errc code) {
       fired = true; seen = code;
-      res.Raw = rational{0u};
+      res.Raw = 0_r;
     }));
   (void)sum;
 
@@ -286,12 +286,12 @@ TEST_CASE("mixed-mode bound op rational", "[bound][arithmetic][mixed]")
   REQUIRE(tax_money == money{rational{361, 100}});  // 3.61
 
   // Symmetric overload.
-  REQUIRE(rational{2, 1} * sub == rational{4507u, 50u});
+  REQUIRE(2_r * sub == rational{4507u, 50u});
 
   // Addition / subtraction / division.
   REQUIRE(sub + rational{1, 100} == rational{4508u, 100u});
   REQUIRE(sub - rational{1, 100} == rational{4506u, 100u});
-  REQUIRE(sub / rational{2, 1}   == rational{4507u, 200u});
+  REQUIRE(sub / 2_r   == rational{4507u, 200u});
 }
 
 TEST_CASE("mixed-mode bound op integral", "[bound][arithmetic][mixed]")
@@ -301,22 +301,22 @@ TEST_CASE("mixed-mode bound op integral", "[bound][arithmetic][mixed]")
 
   // Each op resolves unambiguously to the (boundable, integral) overload —
   // returns rational.
-  REQUIRE(b + 1  == rational{6});
-  REQUIRE(b - 1  == rational{4});
-  REQUIRE(b * 10 == rational{50});
-  REQUIRE(b / 2  == rational{5, 2});
+  REQUIRE(b + 1  == 6);
+  REQUIRE(b - 1  == 4);
+  REQUIRE(b * 10 == 50);
+  REQUIRE(b / 2  == 2.5_r);
 
   // Symmetric overloads.
-  REQUIRE( 1 + b == rational{6});
-  REQUIRE(10 - b == rational{5});
-  REQUIRE( 2 * b == rational{10});
-  REQUIRE(10 / b == rational{2});
+  REQUIRE( 1 + b == 6);
+  REQUIRE(10 - b == 5);
+  REQUIRE( 2 * b == 10);
+  REQUIRE(10 / b == 2);
 }
 
 TEST_CASE("mixed-mode bound op floating_point", "[bound][arithmetic][mixed]")
 {
   using rn = bound<{{-100, 100}, notch<1, 16>}, round_nearest>;
-  rn a{rational{1, 2}};                              // 0.5
+  rn a{0.5_r};                              // 0.5
 
   // bound × double → double
   double r = a * 2.5;

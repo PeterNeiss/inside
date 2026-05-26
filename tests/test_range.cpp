@@ -56,7 +56,7 @@ TEST_CASE("bound_range: fractional notch iterates exact values", "[range]")
   frac_grid r;
   std::vector<rational> seen;
   for (auto b : r) seen.push_back(b);  // bound -> rational is implicit
-  REQUIRE(seen == std::vector<rational>{0_r, rational{1u,2}, 1_r, rational{3u,2}, 2_r});
+  REQUIRE(seen == std::vector<rational>{0_r, 0.5_r, 1_r, 1.5_r, 2_r});
 }
 
 //---------------------------------------------------------------------------

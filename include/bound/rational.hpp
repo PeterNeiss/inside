@@ -857,7 +857,7 @@ namespace bnd
   //---------------------------------------------------------------------------
   [[nodiscard]] inline constexpr bool divides_evenly(rational const& dividend, rational const& divisor)
   {
-    if (divisor == 0_r) return true;            // convention: everything divides 0 evenly
+    if (divisor == 0) return true;            // convention: everything divides 0 evenly
     auto q = dividend / divisor;
     return q.has_value() && abs_den(q->Denominator) == 1;
   }

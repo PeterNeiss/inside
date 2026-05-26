@@ -118,7 +118,7 @@ namespace bnd
   template <boundable B>
   inline constexpr bool IsDirectStorage =
       IsRawRational<B>
-      || (Notch<B> == 1_r && (Lower<B> == 0_r || std::signed_integral<raw_t<B>>));
+      || (Notch<B> == 1 && (Lower<B> == 0 || std::signed_integral<raw_t<B>>));
 
   // Raw is a notch index from Lower: value = Raw * Notch + Lower
   template <boundable B>
@@ -201,7 +201,7 @@ namespace bnd
   // notch-offset storage the raw is a 0-based index, so `RawLo == 0`. For
   // direct storage the raw IS the value, so `RawLo == LowerImax<B>` — and
   // every "value as L-offset" needs `RawLo<L>` added back before storing.
-  // Without this, e.g. `bound<{-40, 60}>{rational{-40}}` would record
+  // Without this, e.g. `bound<{-40, 60}>{-40_r}` would record
   // Raw=0 instead of Raw=-40.
   //---------------------------------------------------------------------------
   template <boundable B>
@@ -261,7 +261,7 @@ namespace bnd
       && Notch<B>.Numerator == 1
       && abs_den(Notch<B>.Denominator) > 1
       && abs_den(Lower<B>.Denominator) == 1
-      && Lower<B> == 0_r;
+      && Lower<B> == 0;
 
   // Policy test: checks both type-level and per-operation policy.
   // Composite flags (e.g. round_nearest = bit5 | ignore_round) require all

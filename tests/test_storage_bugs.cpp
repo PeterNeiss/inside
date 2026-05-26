@@ -21,10 +21,10 @@ using namespace bnd;
 TEST_CASE("Bug A: rational-mixed add into direct-storage result", "[bound][addition][regression]")
 {
   using L = bound<{-5, 5}>;                          // signed-direct
-  using R = bound<{{-10, 10}, rational{0u}}>;        // rational raw
+  using R = bound<{{-10, 10}, 0_r}>;        // rational raw
 
   constexpr L l{2};
-  constexpr R r{rational{1u}};
+  constexpr R r{1_r};
   // Result grid: {-15, 15}, notch 1 → signed-direct.
   STATIC_REQUIRE(l + r == 3);
 }

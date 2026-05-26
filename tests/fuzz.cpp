@@ -486,7 +486,7 @@ template <boundable B>
 void prop_div_by_zero(fuzz_state& s, long iters)
 {
   if constexpr (IsIntegerAligned<B> && !IsRawRational<B>
-                && Lower<B> <= 0_r && Upper<B> >= 0_r)
+                && Lower<B> <= 0 && Upper<B> >= 0)
   {
     s.current_prop = "div_by_zero";
     B zero{0};
@@ -674,7 +674,7 @@ void prop_non_notch_assign(fuzz_state& s, long iters)
     rational notch = Notch<B>;
     rational lo    = Lower<B>;
     rational hi    = Upper<B>;
-    rational half  = (notch / rational{2}).value();
+    rational half  = (notch / 2_r).value();
 
     for (long i = 0; i < iters; ++i)
     {
@@ -735,7 +735,7 @@ void prop_subnormal_construct(fuzz_state& s, long iters)
     using BIR = bound<Grid<B>, ignore_round>;
     rational lo = Lower<B>;
     rational hi = Upper<B>;
-    bool zero_in_range = (lo <= 0_r) && (hi >= 0_r);
+    bool zero_in_range = (lo <= 0) && (hi >= 0);
     if (!zero_in_range) return;
     std::uniform_real_distribution<double> mantissa(1.0, 2.0);
     std::uniform_int_distribution<int>     exp_dist(-300, -70);
@@ -748,7 +748,7 @@ void prop_subnormal_construct(fuzz_state& s, long iters)
         BIR b; b = v;
         rational got = b;
         // Floored toward lo, but for tiny v near zero the floor is 0 (or lo).
-        FUZZ_REQUIRE(s, got == 0_r || got == lo);
+        FUZZ_REQUIRE(s, got == 0 || got == lo);
       }));
     }
   }

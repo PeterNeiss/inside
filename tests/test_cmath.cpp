@@ -274,7 +274,7 @@ TEST_CASE("bnd::math::sqrt: bound-typed equality (decimal display)",
 {
   // Exact-on-the-grid cases.
   REQUIRE(sqrt_out_t{math::sqrt(sqrt_input(0))}      == sqrt_out_t{0});
-  REQUIRE(sqrt_out_t{math::sqrt(sqrt_input(16384))}  == sqrt_out_t{rational{1, 2}});
+  REQUIRE(sqrt_out_t{math::sqrt(sqrt_input(16384))}  == sqrt_out_t{0.5_r});
   REQUIRE(sqrt_out_t{math::sqrt(sqrt_input(65536))}  == sqrt_out_t{1});
   REQUIRE(sqrt_out_t{math::sqrt(sqrt_input(262144))} == sqrt_out_t{2});
 
@@ -321,31 +321,31 @@ TEST_CASE("bnd::math::exp2: integer powers", "[cmath][exp2][constexpr]")
   static_assert(exp2_q14(rational{ 2})              == 65536);  // 2^2  = 4
   static_assert(exp2_q14(rational{ 3})              == 131072); // 2^3  = 8
   static_assert(exp2_q14(rational{ 4})              == 262144); // 2^4  = 16 (boundary)
-  static_assert(exp2_q14(rational{-1})              == 8192);   // 2^-1 = 1/2
-  static_assert(exp2_q14(rational{-2})              == 4096);   // 2^-2 = 1/4
-  static_assert(exp2_q14(rational{-3})              == 2048);   // 2^-3 = 1/8
-  static_assert(exp2_q14(rational{-4})              == 1024);   // 2^-4 = 1/16
+  static_assert(exp2_q14(-1_r)              == 8192);   // 2^-1 = 1/2
+  static_assert(exp2_q14(-2_r)              == 4096);   // 2^-2 = 1/4
+  static_assert(exp2_q14(-3_r)              == 2048);   // 2^-3 = 1/8
+  static_assert(exp2_q14(-4_r)              == 1024);   // 2^-4 = 1/16
 }
 
 TEST_CASE("bnd::math::exp2: half-integer (irrational results)",
           "[cmath][exp2][constexpr]")
 {
   // 2^(1/2) = √2 ≈ 1.41421356 → Q.14 ≈ 23170.
-  static_assert(exp2_q14(rational{1, 2}) == 23170);
+  static_assert(exp2_q14(0.5_r) == 23170);
   // 2^(-1/2) = 1/√2 ≈ 0.70710678 → Q.14 ≈ 11585.
-  static_assert(exp2_q14(rational{-1, 2}) == 11585);
+  static_assert(exp2_q14(-0.5_r) == 11585);
   // 2^(3/2) = 2√2 ≈ 2.82842712 → Q.14 ≈ 46341.
-  static_assert(exp2_q14(rational{3, 2}) == 46341);
+  static_assert(exp2_q14(1.5_r) == 46341);
   // 2^(1/4) ≈ 1.18920711 → Q.14 ≈ 19484.
-  static_assert(exp2_q14(rational{1, 4}) == 19484);
+  static_assert(exp2_q14(0.25_r) == 19484);
 }
 
 TEST_CASE("bnd::math::exp2: decimal display", "[cmath][exp2][decimal]")
 {
   REQUIRE(exp2_out_t{math::exp2(exp2_from(rational{ 0}))} == exp2_out_t{1});
   REQUIRE(exp2_out_t{math::exp2(exp2_from(rational{ 1}))} == exp2_out_t{2});
-  REQUIRE(exp2_out_t{math::exp2(exp2_from(rational{-1}))} == exp2_out_t{rational{1, 2}});
-  REQUIRE(exp2_out_t{math::exp2(exp2_from(rational{-2}))} == exp2_out_t{rational{1, 4}});
+  REQUIRE(exp2_out_t{math::exp2(exp2_from(-1_r))} == exp2_out_t{0.5_r});
+  REQUIRE(exp2_out_t{math::exp2(exp2_from(-2_r))} == exp2_out_t{0.25_r});
 }
 
 TEST_CASE("bnd::math::exp2: probe (informational)", "[cmath][exp2][.probe]")
@@ -377,15 +377,15 @@ namespace
 
 TEST_CASE("bnd::math::log2: integer powers", "[cmath][log2][constexpr]")
 {
-  static_assert(log2_q14(rational{1})       == 0);
-  static_assert(log2_q14(rational{2})       == 16384);    // log2(2) = 1
-  static_assert(log2_q14(rational{4})       == 32768);    // log2(4) = 2
-  static_assert(log2_q14(rational{8})       == 49152);    // log2(8) = 3
-  static_assert(log2_q14(rational{16})      == 65536);    // log2(16) = 4
-  static_assert(log2_q14(rational{1,  2})   == -16384);   // log2(1/2) = -1
-  static_assert(log2_q14(rational{1,  4})   == -32768);
-  static_assert(log2_q14(rational{1,  8})   == -49152);
-  static_assert(log2_q14(rational{1, 16})   == -65536);
+  static_assert(log2_q14(1_r)       == 0);
+  static_assert(log2_q14(2_r)       == 16384);    // log2(2) = 1
+  static_assert(log2_q14(4_r)       == 32768);    // log2(4) = 2
+  static_assert(log2_q14(8_r)       == 49152);    // log2(8) = 3
+  static_assert(log2_q14(16_r)      == 65536);    // log2(16) = 4
+  static_assert(log2_q14(0.5_r)   == -16384);   // log2(1/2) = -1
+  static_assert(log2_q14(0.25_r)   == -32768);
+  static_assert(log2_q14(0.125_r)   == -49152);
+  static_assert(log2_q14(0.0625_r)   == -65536);
 }
 
 TEST_CASE("bnd::math::log2: irrational results", "[cmath][log2][constexpr]")
@@ -394,21 +394,21 @@ TEST_CASE("bnd::math::log2: irrational results", "[cmath][log2][constexpr]")
   static_assert(log2_q14(rational{23170, 16384}) == 8192);
 
   // log2(3) ≈ 1.5849625 → Q.14 ≈ 25968.
-  static_assert(log2_q14(rational{3}) == 25968);
+  static_assert(log2_q14(3_r) == 25968);
 
   // log2(1.5) ≈ 0.5849625 → Q.14 ≈ 9584.
-  static_assert(log2_q14(rational{3, 2}) == 9584);
+  static_assert(log2_q14(1.5_r) == 9584);
 
   // log2(10) ≈ 3.3219281 → Q.14 ≈ 54426.
-  static_assert(log2_q14(rational{10}) == 54426);
+  static_assert(log2_q14(10_r) == 54426);
 }
 
 TEST_CASE("bnd::math::log2: decimal display", "[cmath][log2][decimal]")
 {
-  REQUIRE(log2_out_t{math::log2(log2_from(rational{1}))} == log2_out_t{0});
-  REQUIRE(log2_out_t{math::log2(log2_from(rational{2}))} == log2_out_t{1});
-  REQUIRE(log2_out_t{math::log2(log2_from(rational{4}))} == log2_out_t{2});
-  REQUIRE(log2_out_t{math::log2(log2_from(rational{1, 2}))} == log2_out_t{-1});
+  REQUIRE(log2_out_t{math::log2(log2_from(1_r))} == log2_out_t{0});
+  REQUIRE(log2_out_t{math::log2(log2_from(2_r))} == log2_out_t{1});
+  REQUIRE(log2_out_t{math::log2(log2_from(4_r))} == log2_out_t{2});
+  REQUIRE(log2_out_t{math::log2(log2_from(0.5_r))} == log2_out_t{-1});
 }
 
 TEST_CASE("bnd::math::log2: exp2 round-trip", "[cmath][log2][exp2]")
@@ -504,7 +504,7 @@ TEST_CASE("bnd::math::pow_base<10>: db_to_linear endpoints",
   // 10^(0/20) = 1, 10^(20/20) = 10, 10^(-20/20) = 0.1.
   REQUIRE(pow10_out_t{math::pow_base<10>(pow10_in_t{rational{0, 20}})}
           == pow10_out_t{1});
-  REQUIRE(pow10_out_t{math::pow_base<10>(pow10_in_t{rational{1}})}
+  REQUIRE(pow10_out_t{math::pow_base<10>(pow10_in_t{1_r})}
           == pow10_out_t{10});
   // 10^(6/20) = 10^0.3 ≈ 1.9953 (the "+6 dB doubles" approximation).
   // Algorithm rounds to 511/256 = 1.99609 (~0.04% above ideal).
@@ -554,15 +554,15 @@ namespace
 TEST_CASE("bnd::math::atan2: axis cases", "[cmath][atan2][constexpr]")
 {
   // atan2(0,  1)  =  0     → 0
-  static_assert(atan2_q14_turn(rational{0}, rational{1})  == 0);
+  static_assert(atan2_q14_turn(0_r, 1_r)  == 0);
   // atan2(1,  0)  = +π/2   = +1/4 turn → +4096 Q.14
-  static_assert(atan2_q14_turn(rational{1}, rational{0})  == 4096);
+  static_assert(atan2_q14_turn(1_r, 0_r)  == 4096);
   // atan2(0, -1)  = +π     = +1/2 turn → +8192 Q.14
-  static_assert(atan2_q14_turn(rational{0}, rational{-1}) == 8192);
+  static_assert(atan2_q14_turn(0_r, -1_r) == 8192);
   // atan2(-1, 0)  = -π/2   = -1/4 turn → -4096 Q.14
-  static_assert(atan2_q14_turn(rational{-1}, rational{0}) == -4096);
+  static_assert(atan2_q14_turn(-1_r, 0_r) == -4096);
   // atan2(0,  0)  = 0 by convention
-  static_assert(atan2_q14_turn(rational{0}, rational{0})  == 0);
+  static_assert(atan2_q14_turn(0_r, 0_r)  == 0);
 }
 
 TEST_CASE("bnd::math::atan2: diagonal cases", "[cmath][atan2][constexpr]")
@@ -570,11 +570,11 @@ TEST_CASE("bnd::math::atan2: diagonal cases", "[cmath][atan2][constexpr]")
   // atan2( 1,  1) = +π/4  = +1/8 turn → +2048 Q.14
   static_assert(atan2_q14_turn(rational{ 1}, rational{ 1}) ==  2048);
   // atan2(-1,  1) = -π/4  = -1/8 turn → -2048 Q.14
-  static_assert(atan2_q14_turn(rational{-1}, rational{ 1}) == -2048);
+  static_assert(atan2_q14_turn(-1_r, rational{ 1}) == -2048);
   // atan2( 1, -1) = +3π/4 = +3/8 turn → +6144 Q.14
-  static_assert(atan2_q14_turn(rational{ 1}, rational{-1}) ==  6144);
+  static_assert(atan2_q14_turn(rational{ 1}, -1_r) ==  6144);
   // atan2(-1, -1) = -3π/4 = -3/8 turn → -6144 Q.14
-  static_assert(atan2_q14_turn(rational{-1}, rational{-1}) == -6144);
+  static_assert(atan2_q14_turn(-1_r, -1_r) == -6144);
 }
 
 TEST_CASE("bnd::math::atan2: decimal display", "[cmath][atan2][decimal]")
@@ -582,11 +582,11 @@ TEST_CASE("bnd::math::atan2: decimal display", "[cmath][atan2][decimal]")
   REQUIRE(atan2_out_t{math::atan2(atan2_in_t{0},  atan2_in_t{1})}
           == atan2_out_t{0});
   REQUIRE(atan2_out_t{math::atan2(atan2_in_t{1},  atan2_in_t{0})}
-          == atan2_out_t{rational{1, 4}});
+          == atan2_out_t{0.25_r});
   REQUIRE(atan2_out_t{math::atan2(atan2_in_t{-1}, atan2_in_t{0})}
-          == atan2_out_t{rational{-1, 4}});
+          == atan2_out_t{-0.25_r});
   REQUIRE(atan2_out_t{math::atan2(atan2_in_t{1},  atan2_in_t{1})}
-          == atan2_out_t{rational{1, 8}});
+          == atan2_out_t{0.125_r});
 }
 
 TEST_CASE("bnd::math::atan2: sin/cos round-trip",
@@ -649,11 +649,11 @@ TEST_CASE("bnd::math::atan2: probe (informational)",
       case 0: y = rational{ 0}; x = rational{ 1}; break;  //   0°
       case 1: y = rational{ 1}; x = rational{ 1}; break;  //  45°
       case 2: y = rational{ 1}; x = rational{ 0}; break;  //  90°
-      case 3: y = rational{ 1}; x = rational{-1}; break;  // 135°
-      case 4: y = rational{ 0}; x = rational{-1}; break;  // 180°
-      case 5: y = rational{-1}; x = rational{-1}; break;  // 225°
-      case 6: y = rational{-1}; x = rational{ 0}; break;  // 270°
-      case 7: y = rational{-1}; x = rational{ 1}; break;  // 315°
+      case 3: y = rational{ 1}; x = -1_r; break;  // 135°
+      case 4: y = rational{ 0}; x = -1_r; break;  // 180°
+      case 5: y = -1_r; x = -1_r; break;  // 225°
+      case 6: y = -1_r; x = rational{ 0}; break;  // 270°
+      case 7: y = -1_r; x = rational{ 1}; break;  // 315°
     }
     std::cout << "    atan2(" << y << ", " << x << ") = "
               << math::atan2(atan2_in_t{y}, atan2_in_t{x}) << "\n";
@@ -765,9 +765,9 @@ namespace
 TEST_CASE("bnd::math::abs", "[cmath][algebraic][constexpr]")
 {
   static_assert(algeb_abs_t{math::abs(algeb_in_t{rational{ 5, 2}})}
-                == algeb_abs_t{rational{5, 2}});
-  static_assert(algeb_abs_t{math::abs(algeb_in_t{rational{-5, 2}})}
-                == algeb_abs_t{rational{5, 2}});
+                == algeb_abs_t{2.5_r});
+  static_assert(algeb_abs_t{math::abs(algeb_in_t{-2.5_r})}
+                == algeb_abs_t{2.5_r});
   static_assert(algeb_abs_t{math::abs(algeb_in_t{0})}
                 == algeb_abs_t{0});
 }
@@ -790,7 +790,7 @@ TEST_CASE("bnd::math::floor / ceil / round / trunc",
   // round: half-away-from-zero.
   static_assert(algeb_int_t{math::round(algeb_in_t{rational{ 3, 2}})}
                 == algeb_int_t{ 2});   // round(1.5) = 2
-  static_assert(algeb_int_t{math::round(algeb_in_t{rational{-3, 2}})}
+  static_assert(algeb_int_t{math::round(algeb_in_t{-1.5_r})}
                 == algeb_int_t{-2});   // round(-1.5) = -2
   static_assert(algeb_int_t{math::round(algeb_in_t{rational{ 13, 10}})}
                 == algeb_int_t{ 1});   // round(1.3) = 1
@@ -805,23 +805,23 @@ TEST_CASE("bnd::math::floor / ceil / round / trunc",
 TEST_CASE("bnd::math::fmod", "[cmath][algebraic][constexpr]")
 {
   // Positive dividend, positive divisor.
-  static_assert(algeb_in_t{math::fmod(algeb_in_t{rational{7}},
-                                       algeb_in_t{rational{3}})}
+  static_assert(algeb_in_t{math::fmod(algeb_in_t{7_r},
+                                       algeb_in_t{3_r})}
                 == algeb_in_t{1});
 
   // Negative dividend keeps its sign (trunc-division convention).
-  static_assert(algeb_in_t{math::fmod(algeb_in_t{rational{-7}},
-                                       algeb_in_t{rational{3}})}
+  static_assert(algeb_in_t{math::fmod(algeb_in_t{-7_r},
+                                       algeb_in_t{3_r})}
                 == algeb_in_t{-1});
 
   // Non-integer dividend: fmod(5.5, 2) = 1.5.
-  static_assert(algeb_in_t{math::fmod(algeb_in_t{rational{11, 2}},
-                                       algeb_in_t{rational{2}})}
-                == algeb_in_t{rational{3, 2}});
+  static_assert(algeb_in_t{math::fmod(algeb_in_t{5.5_r},
+                                       algeb_in_t{2_r})}
+                == algeb_in_t{1.5_r});
 
   // Divisor doesn't divide evenly: fmod(7, 2.5) = 2.
-  static_assert(algeb_in_t{math::fmod(algeb_in_t{rational{7}},
-                                       algeb_in_t{rational{5, 2}})}
+  static_assert(algeb_in_t{math::fmod(algeb_in_t{7_r},
+                                       algeb_in_t{2.5_r})}
                 == algeb_in_t{2});
 }
 
@@ -830,21 +830,21 @@ TEST_CASE("bnd::math: algebraic tier decimal probe",
 {
   std::cout << "\n  algebraic tier:\n";
   std::cout << "    abs(-2.5)        = "
-            << algeb_abs_t{math::abs(algeb_in_t{rational{-5, 2}})} << "\n";
+            << algeb_abs_t{math::abs(algeb_in_t{-2.5_r})} << "\n";
   std::cout << "    floor(1.7)       = "
             << algeb_int_t{math::floor(algeb_in_t{rational{17, 10}})} << "\n";
   std::cout << "    ceil(-1.3)       = "
             << algeb_int_t{math::ceil(algeb_in_t{rational{-13, 10}})} << "\n";
   std::cout << "    round(1.5)       = "
-            << algeb_int_t{math::round(algeb_in_t{rational{3, 2}})} << "\n";
+            << algeb_int_t{math::round(algeb_in_t{1.5_r})} << "\n";
   std::cout << "    trunc(-1.7)      = "
             << algeb_int_t{math::trunc(algeb_in_t{rational{-17, 10}})} << "\n";
   std::cout << "    fmod(7, 3)       = "
-            << algeb_in_t{math::fmod(algeb_in_t{rational{7}},
-                                      algeb_in_t{rational{3}})} << "\n";
+            << algeb_in_t{math::fmod(algeb_in_t{7_r},
+                                      algeb_in_t{3_r})} << "\n";
   std::cout << "    fmod(5.5, 2)     = "
-            << algeb_in_t{math::fmod(algeb_in_t{rational{11, 2}},
-                                      algeb_in_t{rational{2}})} << "\n";
+            << algeb_in_t{math::fmod(algeb_in_t{5.5_r},
+                                      algeb_in_t{2_r})} << "\n";
 }
 
 //---------------------------------------------------------------------------
@@ -855,16 +855,16 @@ TEST_CASE("bnd::math: algebraic tier decimal probe",
 TEST_CASE("bnd::math::abs: auto-deduced output", "[cmath][algebraic][auto]")
 {
   // Input is signed [-8, 8]; auto output range is [0, 8] with same notch.
-  constexpr auto y_neg = math::abs(algeb_in_t{rational{-5, 2}});
+  constexpr auto y_neg = math::abs(algeb_in_t{-2.5_r});
   constexpr auto y_pos = math::abs(algeb_in_t{rational{ 5, 2}});
   static_assert(y_neg == y_pos);
   // Result still compares equal to a sample_t-shape rational value.
-  REQUIRE(y_neg == rational{5, 2});
+  REQUIRE(y_neg == 2.5_r);
 
   // Deduced output type covers [0, 8] with notch 1/16384.
   using deduced = decltype(math::abs(algeb_in_t{0}));
-  static_assert(Lower<deduced> == rational{0});
-  static_assert(Upper<deduced> == rational{8});
+  static_assert(Lower<deduced> == 0);
+  static_assert(Upper<deduced> == 8);
   static_assert(Notch<deduced> == bnd::notch<1, 16384>);
 }
 
@@ -882,7 +882,7 @@ TEST_CASE("bnd::math::floor / ceil / round / trunc: auto-deduced output",
   static_assert(c_neg == -1);
 
   // round
-  constexpr auto r_pos = math::round(algeb_in_t{rational{3, 2}});
+  constexpr auto r_pos = math::round(algeb_in_t{1.5_r});
   static_assert(r_pos == 2);
 
   // trunc
@@ -901,10 +901,10 @@ TEST_CASE("bnd::math: explicit and auto forms produce identical values",
   // abs's auto type uses Notch<In> = 1/16384, so 7/3 snaps to nearest grid
   // point: round(7/3 · 16384) = 38229 → 38229/16384.
   REQUIRE(rational{math::abs(x)}   == rational{38229, 16384});
-  REQUIRE(rational{math::floor(x)} == rational{-3});
-  REQUIRE(rational{math::ceil(x)}  == rational{-2});
-  REQUIRE(rational{math::round(x)} == rational{-2});
-  REQUIRE(rational{math::trunc(x)} == rational{-2});
+  REQUIRE(rational{math::floor(x)} == -3);
+  REQUIRE(rational{math::ceil(x)}  == -2);
+  REQUIRE(rational{math::round(x)} == -2);
+  REQUIRE(rational{math::trunc(x)} == -2);
 }
 
 TEST_CASE("bnd::math: auto-form composition", "[cmath][algebraic][auto]")
@@ -925,55 +925,55 @@ TEST_CASE("bnd::math::sqrt: auto-deduced output", "[cmath][sqrt][auto]")
 {
   // Input [0, 4] with notch 1/65536. Auto output range: [0, ceil_notch(2)] = [0, 2].
   using deduced = decltype(math::sqrt(sqrt_in_t{0}));
-  static_assert(Lower<deduced> == rational{0});
-  static_assert(Upper<deduced> == rational{2});
+  static_assert(Lower<deduced> == 0);
+  static_assert(Upper<deduced> == 2);
   static_assert(Notch<deduced> == bnd::notch<1, 65536>);
 
   // Spot checks: integer perfect squares land exactly on the grid.
-  REQUIRE(rational{math::sqrt(sqrt_input(65536))}  == rational{1}); // √1 = 1
-  REQUIRE(rational{math::sqrt(sqrt_input(262144))} == rational{2}); // √4 = 2
+  REQUIRE(rational{math::sqrt(sqrt_input(65536))}  == 1); // √1 = 1
+  REQUIRE(rational{math::sqrt(sqrt_input(262144))} == 2); // √4 = 2
   REQUIRE(rational{math::sqrt(sqrt_input(16384))}
-          == rational{1, 2});                                       // √0.25 = 0.5
+          == 0.5_r);                                       // √0.25 = 0.5
 }
 
 TEST_CASE("bnd::math::exp2: auto-deduced output", "[cmath][exp2][auto]")
 {
   using deduced = decltype(math::exp2(exp2_in_t{0}));
   // True range [1/16, 16]; deduced bound rounds outward to input's notch.
-  static_assert(Lower<deduced> <= rational{1, 16});
-  static_assert(Upper<deduced> >= rational{16});
+  static_assert(Lower<deduced> <= 0.0625_r);
+  static_assert(Upper<deduced> >= 16);
 
-  REQUIRE(rational{math::exp2(exp2_from(rational{ 0}))} == rational{1});
-  REQUIRE(rational{math::exp2(exp2_from(rational{ 1}))} == rational{2});
-  REQUIRE(rational{math::exp2(exp2_from(rational{-1}))} == rational{1, 2});
+  REQUIRE(rational{math::exp2(exp2_from(rational{ 0}))} == 1);
+  REQUIRE(rational{math::exp2(exp2_from(rational{ 1}))} == 2);
+  REQUIRE(rational{math::exp2(exp2_from(-1_r))} == 0.5_r);
 }
 
 TEST_CASE("bnd::math::log2: auto-deduced output", "[cmath][log2][auto]")
 {
   using deduced = decltype(math::log2(log2_in_t{1}));
-  static_assert(Lower<deduced> <= rational{-8});
-  static_assert(Upper<deduced> >= rational{8});
+  static_assert(Lower<deduced> <= -8);
+  static_assert(Upper<deduced> >= 8);
 
-  REQUIRE(rational{math::log2(log2_from(rational{1}))} == rational{0});
-  REQUIRE(rational{math::log2(log2_from(rational{2}))} == rational{1});
-  REQUIRE(rational{math::log2(log2_from(rational{1, 2}))} == rational{-1});
+  REQUIRE(rational{math::log2(log2_from(1_r))} == 0);
+  REQUIRE(rational{math::log2(log2_from(2_r))} == 1);
+  REQUIRE(rational{math::log2(log2_from(0.5_r))} == -1);
 }
 
 TEST_CASE("bnd::math::exp / log: auto-deduced output",
           "[cmath][exp][log][auto]")
 {
   // Identity points are exact on the algorithm's output.
-  REQUIRE(rational{math::exp(exp_in_t{0})} == rational{1});
-  REQUIRE(rational{math::log(log_in_t{1})} == rational{0});
+  REQUIRE(rational{math::exp(exp_in_t{0})} == 1);
+  REQUIRE(rational{math::log(log_in_t{1})} == 0);
 }
 
 TEST_CASE("bnd::math::pow_base<10>: auto-deduced output",
           "[cmath][pow_base][auto]")
 {
   // Integer powers land exactly on the grid.
-  REQUIRE(rational{math::pow_base<10>(pow10_in_t{0})} == rational{1});
-  REQUIRE(rational{math::pow_base<10>(pow10_in_t{1})} == rational{10});
-  REQUIRE(rational{math::pow_base<10>(pow10_in_t{2})} == rational{100});
+  REQUIRE(rational{math::pow_base<10>(pow10_in_t{0})} == 1);
+  REQUIRE(rational{math::pow_base<10>(pow10_in_t{1})} == 10);
+  REQUIRE(rational{math::pow_base<10>(pow10_in_t{2})} == 100);
 }
 
 TEST_CASE("bnd::math: phase-2 composition", "[cmath][auto]")
@@ -982,7 +982,7 @@ TEST_CASE("bnd::math: phase-2 composition", "[cmath][auto]")
   // exp2(2) = 4 → sqrt(4) = 2. Auto type chain works.
   auto e = math::exp2(exp2_in_t{2});
   auto s = math::sqrt(decltype(sqrt_in_t{0}){rational{e}});
-  REQUIRE(rational{s} == rational{2});
+  REQUIRE(rational{s} == 2);
 }
 
 //---------------------------------------------------------------------------
@@ -999,7 +999,7 @@ TEST_CASE("bnd::math::sin / cos: auto-deduced output",
   // integer). ±8 rad comfortably covers ±2π for sweep tests.
   using angle_t = bound<{{-8, 8}, notch<1, 16384>}, round_nearest>;
   using deduced = decltype(math::sin(angle_t{0}));
-  static_assert(Lower<deduced> == rational{-1});
+  static_assert(Lower<deduced> == -1);
   static_assert(Upper<deduced> == rational{ 1});
   static_assert(Notch<deduced> == bnd::notch<1, 16384>);
 
@@ -1007,12 +1007,12 @@ TEST_CASE("bnd::math::sin / cos: auto-deduced output",
   // come from the public constants in `bound/cmath.hpp`. `div_unchecked`
   // is the unchecked rational division — the constants are small, so
   // overflow is impossible at compile time.
-  constexpr rational half_pi = rational::div_unchecked(math::pi, rational{2});
-  REQUIRE(rational{math::sin(angle_t{0})}             == rational{0});
-  REQUIRE(rational{math::sin(angle_t{ half_pi})}      == rational{1});
-  REQUIRE(rational{math::sin(angle_t{-half_pi})}      == rational{-1});
-  REQUIRE(rational{math::cos(angle_t{0})}             == rational{1});
-  REQUIRE(rational{math::cos(angle_t{math::pi})}      == rational{-1});
+  constexpr rational half_pi = rational::div_unchecked(math::pi, 2_r);
+  REQUIRE(rational{math::sin(angle_t{0})}             == 0);
+  REQUIRE(rational{math::sin(angle_t{ half_pi})}      == 1);
+  REQUIRE(rational{math::sin(angle_t{-half_pi})}      == -1);
+  REQUIRE(rational{math::cos(angle_t{0})}             == 1);
+  REQUIRE(rational{math::cos(angle_t{math::pi})}      == -1);
 }
 
 //---------------------------------------------------------------------------
@@ -1029,7 +1029,7 @@ TEST_CASE("bnd::math::sin: radians identity points",
   using angle_t = bound<{{-8, 8}, notch<1, 16384>}, round_nearest>;
   using amp_t   = bound<{{-1, 1}, notch<1, 16384>}, round_nearest>;
 
-  constexpr rational half_pi = rational::div_unchecked(math::pi, rational{2});
+  constexpr rational half_pi = rational::div_unchecked(math::pi, 2_r);
 
   // Exact values on the Q.14 grid (within ±1 ULP of mathematical truth).
   REQUIRE(amp_t{math::sin(angle_t{0})}            == amp_t{0});
@@ -1045,7 +1045,7 @@ TEST_CASE("bnd::math::sin: radians identity points",
   // Off-grid: 1 rad. sin(1) ≈ 0.8414709848. The radians → Q.30 turn →
   // Q.30 sin chain rounds to 13787/16384 (one Q.14 ULP below the
   // mathematical 13788). Pinned to the algorithm's actual output.
-  REQUIRE(amp_t{math::sin(angle_t{rational{1}})}
+  REQUIRE(amp_t{math::sin(angle_t{1_r})}
           == amp_t{rational{13787, 16384}});
 }
 
@@ -1055,7 +1055,7 @@ TEST_CASE("bnd::math::cos: radians identity points",
   using angle_t = bound<{{-8, 8}, notch<1, 16384>}, round_nearest>;
   using amp_t   = bound<{{-1, 1}, notch<1, 16384>}, round_nearest>;
 
-  constexpr rational half_pi = rational::div_unchecked(math::pi, rational{2});
+  constexpr rational half_pi = rational::div_unchecked(math::pi, 2_r);
 
   REQUIRE(amp_t{math::cos(angle_t{0})}            == amp_t{ 1});
   REQUIRE(amp_t{math::cos(angle_t{ half_pi})}     == amp_t{ 0});
@@ -1064,7 +1064,7 @@ TEST_CASE("bnd::math::cos: radians identity points",
   REQUIRE(amp_t{math::cos(angle_t{math::two_pi})} == amp_t{ 1});
 
   // cos(1) ≈ 0.5403023059 → Q.14 = 8852/16384.
-  REQUIRE(amp_t{math::cos(angle_t{rational{1}})}
+  REQUIRE(amp_t{math::cos(angle_t{1_r})}
           == amp_t{rational{8852, 16384}});
 }
 
@@ -1074,7 +1074,7 @@ TEST_CASE("bnd::math::tan: radians identity points",
   using angle_t = bound<{{-8, 8}, notch<1, 16384>}, round_nearest>;
   using out_t   = bound<{{-10, 10}, notch<1, 1024>}, round_nearest>;
 
-  constexpr rational pi_over_4 = rational::div_unchecked(math::pi, rational{4});
+  constexpr rational pi_over_4 = rational::div_unchecked(math::pi, 4_r);
 
   // tan(0) = 0, tan(±π/4) = ±1.
   auto r0 = math::tan(angle_t{0});
@@ -1093,18 +1093,18 @@ TEST_CASE("bnd::math::tan: radians identity points",
 TEST_CASE("bnd::math::atan2: auto-deduced output", "[cmath][atan2][auto]")
 {
   using deduced = decltype(math::atan2(atan2_in_t{0}, atan2_in_t{0}));
-  static_assert(Lower<deduced> == rational{-1, 2});
+  static_assert(Lower<deduced> == -0.5_r);
   static_assert(Upper<deduced> == rational{ 1, 2});
   static_assert(Notch<deduced> == bnd::notch<1, 16384>);
 
   // Axis cases match the explicit form's behavior.
-  REQUIRE(rational{math::atan2(atan2_in_t{0},  atan2_in_t{ 1})} == rational{0});
-  REQUIRE(rational{math::atan2(atan2_in_t{1},  atan2_in_t{ 0})} == rational{1, 4});
-  REQUIRE(rational{math::atan2(atan2_in_t{0},  atan2_in_t{-1})} == rational{1, 2});
-  REQUIRE(rational{math::atan2(atan2_in_t{-1}, atan2_in_t{ 0})} == rational{-1, 4});
+  REQUIRE(rational{math::atan2(atan2_in_t{0},  atan2_in_t{ 1})} == 0);
+  REQUIRE(rational{math::atan2(atan2_in_t{1},  atan2_in_t{ 0})} == 0.25_r);
+  REQUIRE(rational{math::atan2(atan2_in_t{0},  atan2_in_t{-1})} == 0.5_r);
+  REQUIRE(rational{math::atan2(atan2_in_t{-1}, atan2_in_t{ 0})} == -0.25_r);
 
   REQUIRE(rational{math::atan2(atan2_in_t{1}, atan2_in_t{1})}
-          == rational{1, 8});
+          == 0.125_r);
 }
 
 TEST_CASE("bnd::math: full auto-form chain", "[cmath][auto]")
@@ -1117,7 +1117,7 @@ TEST_CASE("bnd::math: full auto-form chain", "[cmath][auto]")
   // notch (the grid validator requires `(Upper - Lower) / Notch` be
   // integer). ±8 rad comfortably covers ±2π for sweep tests.
   using angle_t = bound<{{-8, 8}, notch<1, 16384>}, round_nearest>;
-  constexpr rational pi_over_4 = rational::div_unchecked(math::pi, rational{4});
+  constexpr rational pi_over_4 = rational::div_unchecked(math::pi, 4_r);
   angle_t p{pi_over_4};              // π/4 → expect sin = cos = √2/2
 
   auto s = math::sin(p);             // ≈ √2/2
@@ -1125,7 +1125,7 @@ TEST_CASE("bnd::math: full auto-form chain", "[cmath][auto]")
   auto angle = math::atan2(s, c);    // back to ≈ π/4 = 1/8 turn
 
   // Should round-trip to 1/8 turn within Q.16 grid.
-  REQUIRE(rational{angle} == rational{1, 8});
+  REQUIRE(rational{angle} == 0.125_r);
 }
 
 TEST_CASE("bnd::math: decimal probe at the bound level",

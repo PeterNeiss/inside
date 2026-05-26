@@ -108,7 +108,7 @@ TEST_CASE("bound<{x,x}> singleton round-trips its value",
   // Float assignment to single-value rational-storage grid (notch=0)
   using point_fp = bound<{2.5_r}>;
   point_fp c = 2.5;
-  REQUIRE(c == rational{5u, 2});
+  REQUIRE(c == 2.5_r);
 }
 
 TEST_CASE("default-constructed bound is well-formed", "[bound][default]")

@@ -38,7 +38,7 @@ using db_div20_t = bound<{{rational{-12, 10}, rational{6, 10}}, notch<1, 40>},
 // whole chain is integer/constexpr — no std::pow, no FPU boundary anywhere.
 static gain_t db_to_linear(db_t db)
 {
-  db_div20_t exponent{rational::div_unchecked(rational{db}, rational{20})};
+  db_div20_t exponent{rational::div_unchecked(rational{db}, 20_r)};
   return gain_t{math::pow_base<10>(exponent)};
 }
 
@@ -72,7 +72,7 @@ int main()
   constexpr offset_t offsets[4] = {
     offset_t{0},
     offset_t{rational::div_unchecked(math::pi, rational{ 4})},  // +π/4
-    offset_t{rational::div_unchecked(math::pi, rational{-3})},  // -π/3
+    offset_t{rational::div_unchecked(math::pi, -3_r)},  // -π/3
     offset_t{rational::div_unchecked(math::pi, rational{ 2})},  // +π/2
   };
   constexpr gainfac_t gains[4] = {

@@ -35,7 +35,7 @@ int main()
   constexpr two_pi_t two_pi_bnd{math::two_pi};
 
   constexpr offset_t  off_a{0};
-  constexpr offset_t  off_b{rational::div_unchecked(math::pi, rational{-6})};
+  constexpr offset_t  off_b{rational::div_unchecked(math::pi, -6_r)};
   constexpr gainfac_t gain_a{rational{8, 10}};
   constexpr gainfac_t gain_b{rational{6, 10}};
 

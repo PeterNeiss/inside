@@ -140,7 +140,7 @@ TEST_CASE("on_sentinel action on fixed-point grids", "[bound][policy][on_sentine
   }) = 75.5;
 
   REQUIRE(v.to<double>().value() == 0);
-  REQUIRE(orig == rational{151, 2});  // 75.5
+  REQUIRE(orig == 75.5_r);  // 75.5
 }
 
 TEST_CASE("on_wrap action receives bound& and carry", "[bound][policy][on_wrap]")

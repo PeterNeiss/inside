@@ -25,8 +25,8 @@ struct std::numeric_limits<bnd::bound<G, P>>
   using B = bnd::bound<G, P>;
 
   static constexpr bool is_specialized = true;
-  static constexpr bool is_signed      = (G.Interval.Lower < bnd::rational{0u});
-  static constexpr bool is_integer     = (G.Notch == bnd::rational{1u});
+  static constexpr bool is_signed      = (G.Interval.Lower < bnd::rational{0});
+  static constexpr bool is_integer     = (G.Notch == bnd::rational{1});
   static constexpr bool is_exact       = true;     // rational + integer raw are both exact
   static constexpr bool is_bounded     = true;
   static constexpr bool is_modulo      = (P & bnd::wrap) != 0;

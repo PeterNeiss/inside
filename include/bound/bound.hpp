@@ -137,7 +137,7 @@ namespace bnd
     constexpr operator std::size_t() const
       requires (abs_den(G.Notch.Denominator) == 1
              && G.Notch.Numerator != 0
-             && G.Interval.Lower >= 0_r
+             && G.Interval.Lower >= 0
              && G.Interval.Upper <= rational{std::numeric_limits<imax>::max()})
     { return static_cast<std::size_t>(to_value(*this)); }
 
@@ -178,7 +178,7 @@ namespace bnd
         if (Raw == sentinel_raw<bound>())
           return std::unexpected{errc::overflow};
 
-      constexpr bool needs_neg_check = (Lower<bound> < 0_r);
+      constexpr bool needs_neg_check = (Lower<bound> < 0);
       constexpr bool needs_max_check =
           (Upper<bound> > rational{std::numeric_limits<T>::max()});
 
@@ -188,7 +188,7 @@ namespace bnd
       {
         rational r = *this;
         if constexpr (needs_neg_check)
-          if (r < 0_r) return std::unexpected{errc::domain_error};
+          if (r < 0) return std::unexpected{errc::domain_error};
         if constexpr (needs_max_check)
           if (r > rational{std::numeric_limits<T>::max()})
             return std::unexpected{errc::overflow};
@@ -361,7 +361,7 @@ namespace bnd
       if constexpr (not IsRawRational<bound> && not IsRawRational<R>
                     && Notch<bound> == Notch<R>
                     && (IsDirectStorage<R>
-                        || (Lower<bound> == 0_r && Lower<R> == 0_r)))
+                        || (Lower<bound> == 0 && Lower<R> == 0)))
       {
         if constexpr (P & (clamp | wrap | checked | sentinel))
         {
@@ -523,7 +523,7 @@ namespace bnd
     constexpr bound& operator/=(A rhs)
     {
       // Rational stores zero canonically as {0, 1}; the {0, 0} sentinel
-      // would compare unequal to rational{0}. Check Numerator == 0 to catch
+      // would compare unequal to 0_r. Check Numerator == 0 to catch
       // every canonical zero independent of representation.
       bool is_zero;
       if constexpr (std::same_as<A, rational>) is_zero = (rhs.Numerator == 0);
