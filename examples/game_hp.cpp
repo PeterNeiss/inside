@@ -1,11 +1,14 @@
-// Game character HP / ammo with fixed-point damage multipliers.
+// Game character HP with fixed-point damage multipliers.
 //
 // Demonstrates:
 //   - `mul_all` to chain damage multipliers (crit * vulnerable * armor_pen)
-//   - `clamp_cast` for level-scaling that may exceed the HP range
-//   - Modulo `%` for ammo magazine arithmetic (under `ignore_round`)
+//   - Implicit clamping when assigning a wider bound into a clamp-policy
+//     target (level-scaling that may exceed the HP range)
 //   - `on_clamp` callback on HP to fire "full health" and "downed" hooks
 //   - Fixed-point multipliers in [0, 4] with 1/16 resolution
+//
+// See examples/rifle.cpp for magazine / reload mechanics built on the
+// `wrap` policy.
 
 #include <iostream>
 
@@ -16,9 +19,6 @@ using namespace bnd;
 
 // Health in [0, 100], clamp-saturating.
 using hp_t  = bound<{0, 100}, clamp>;
-
-// Ammo: 30 rounds per magazine, integer.
-using ammo_t = bound<{0, 30}, ignore_round>;
 
 // Damage multipliers in [0, 4] with 1/16 step (Q2.4-ish).
 using mult_t = bound<{{0, 4}, *(1_r/16)}, round_nearest>;
@@ -84,28 +84,6 @@ int main()
   big_pool_t bonus{180};
   hp_t capped = bonus;
   std::cout << "\nlevel bonus 180 -> hp_t (implicit clamp): " << capped << "\n";
-
-  // Ammo and reload via modulo. Magazine wraps at 30.
-  std::cout << "\nammo / reload simulation:\n";
-  ammo_t mag{30};
-  ammo_t mag_size{30};
-  for (int shots_fired = 0; shots_fired < 80; shots_fired += 9)
-  {
-    // Remaining rounds in current magazine.
-    ammo_t shots{shots_fired % 30};
-    auto rem = mag - shots;
-    imax rem_v = rem;
-    int reloads = shots_fired / 30;
-    std::cout << "  fired " << shots_fired << "  ->  " << rem_v
-              << " rounds left, " << reloads << " reloads done\n";
-    (void)mag_size;
-  }
-
-  // Per-call modulo on counters — handy for ring iteration over a bag of N
-  // slots without committing the counter itself to a wrap policy.
-  bound<{0, 100}, ignore_round> total_fired{47};
-  ammo_t inmag = *(total_fired % mag_size);
-  std::cout << "total_fired 47 mod 30 = " << inmag << " in current magazine\n";
 
   return 0;
 }
