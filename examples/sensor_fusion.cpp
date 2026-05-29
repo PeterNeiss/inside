@@ -66,7 +66,7 @@ int main()
          [](double v){ return !will_conversion_overflow<indoor_t>(v); });
 
   rational raw_fused = (weight_sum.Numerator > 0)
-                       ? rational::div_unchecked(weighted_sum, weight_sum)
+                       ? (weighted_sum / weight_sum).value()
                        : 0_r;
   auto fused = fused_t{raw_fused};
 

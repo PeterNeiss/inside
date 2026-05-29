@@ -683,7 +683,7 @@ void prop_non_notch_assign(fuzz_state& s, long iters)
       // strictly between two notches.
       std::uniform_int_distribution<umax> dist(0, NotchCount<B> - 1);
       umax k = dist(s.rng);
-      rational on_notch = (lo + (rational{k} * notch).value()).value();
+      rational on_notch = (lo + rational{k} * notch).value();
       rational mid = (on_notch + half).value();
       // Stay in range:
       if (mid > hi) continue;

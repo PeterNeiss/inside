@@ -226,6 +226,13 @@ namespace bnd
     constexpr B& operator=(C const& other)
     { return assign_with_picked(other); }
 
+    // optional<C> sink — unwrap once at the proxy assignment boundary so
+    // callers can chain checked rational arithmetic into a `.with_clamp() = ...`
+    // assignment without per-step `.value()`. Throws on `nullopt`.
+    template <numeric C>
+    constexpr B& operator=(slim::optional<C> const& other)
+    { return assign_with_picked(other.value()); }
+
     private:
     constexpr void report_zero(errc code, const char* what)
     {

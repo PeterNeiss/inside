@@ -51,8 +51,7 @@ int main()
   for (std::size_t i = 0; i < N; ++i)
   {
     sample mixed{0};
-    mixed.with_clamp() = rational::add_unchecked(rational{wave_a[i]},
-                                                  rational{wave_b[i]});
+    mixed.with_clamp() = rational{wave_a[i]} + rational{wave_b[i]};
     std::cout << i << "  "
               << wave_a[i] << "    "
               << wave_b[i] << "    "

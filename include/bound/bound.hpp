@@ -70,10 +70,24 @@ namespace bnd
     constexpr bound(A value, Pol&& pol)
     { assignment<bound, A>::assign(*this, value, pol); }
 
+    // optional<A> sink — unwrap once at the construction boundary so callers
+    // can chain checked arithmetic without per-step `.value()`. Throws
+    // `slim::bad_optional_access` on `nullopt`; matches the compound-assign
+    // pattern in rational.hpp.
+    template <numeric A>
+      requires bound_assignable<bound, A, P>
+    constexpr bound(slim::optional<A> const& value)
+    { assignment<bound, A>::assign(*this, value.value(), make_policy<P>()); }
+
     template <numeric B>
       requires bound_assignable<bound, B, P>
     constexpr bound& operator=(B const& other)
     { return assignment<bound, B>::assign(*this, other, make_policy<P>()); }
+
+    template <numeric B>
+      requires bound_assignable<bound, B, P>
+    constexpr bound& operator=(slim::optional<B> const& other)
+    { return assignment<bound, B>::assign(*this, other.value(), make_policy<P>()); }
 
     [[nodiscard]] constexpr auto value() const
     {

@@ -26,12 +26,12 @@ int main()
 
   struct point { rational x; rational y; const char* label; };
   const point points[] = {
-    { rational{ 1},    rational{ 0},    "+x axis      " },
-    { rational{ 0},    rational{ 1},    "+y axis      " },
-    { -1_r,    rational{ 0},    "-x axis      " },
-    { rational{ 0},    -1_r,    "-y axis      " },
-    { rational{ 1},    rational{ 1},    "+45° (mag √2)" },
-    { -1_r,    rational{ 1},    "+135°        " },
+    {  1,  0,    "+x axis      " },
+    {  0,  1,    "+y axis      " },
+    { -1,  0,    "-x axis      " },
+    {  0, -1,    "-y axis      " },
+    {  1,  1,    "+45° (mag √2)" },
+    { -1,  1,    "+135°        " },
     { rational{ 3, 5}, rational{ 4, 5}, "(3/5, 4/5) — 3-4-5 triangle, mag 1" },
     { rational{ 1, 2}, rational{ 1, 2}, "(½, ½)       " },
   };
@@ -42,10 +42,12 @@ int main()
     coord_t x{p.x}, y{p.y};
 
     // mag² = x² + y² in rational (no bound math; the cross-multiplies stay
-    // small here, ≤ 2 in magnitude).
-    rational x2 = rational::mul_unchecked(p.x, p.x);
-    rational y2 = rational::mul_unchecked(p.y, p.y);
-    magsq_t  mag_sq{rational::add_unchecked(x2, y2)};
+    // small here, ≤ 2 in magnitude). The checked rational ops return
+    // `slim::optional<rational>`; arithmetic forwards through the optional
+    // and the bound ctor unwraps once at the sink.
+    auto x2 = p.x * p.x;
+    auto y2 = p.y * p.y;
+    magsq_t mag_sq{x2 + y2};
 
     auto magnitude = math::sqrt(mag_sq);
     auto angle     = math::atan2(y, x);
@@ -63,9 +65,9 @@ int main()
   using angle_t = bound<{{-4, 4}, notch<1, 16384>}, round_nearest>;
   for (auto& p : points) {
     coord_t x{p.x}, y{p.y};
-    rational x2 = rational::mul_unchecked(p.x, p.x);
-    rational y2 = rational::mul_unchecked(p.y, p.y);
-    magsq_t  mag_sq{rational::add_unchecked(x2, y2)};
+    auto x2 = p.x * p.x;
+    auto y2 = p.y * p.y;
+    magsq_t  mag_sq{x2 + y2};
     auto magnitude = math::sqrt(mag_sq);
     auto angle     = math::atan2(y, x);
 
@@ -73,8 +75,8 @@ int main()
     angle_t a{rational{angle} * just<math::two_pi>};
 
     rational m_r = rational{magnitude};
-    coord_t rx{rational::mul_unchecked(m_r, rational{math::cos(a)})};
-    coord_t ry{rational::mul_unchecked(m_r, rational{math::sin(a)})};
+    coord_t rx{m_r * rational{math::cos(a)}};
+    coord_t ry{m_r * rational{math::sin(a)}};
 
     std::cout << "  (" << x << ", " << y << ") → (" << rx << ", " << ry << ")\n";
   }

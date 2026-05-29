@@ -302,6 +302,40 @@ namespace bnd
   [[nodiscard]] constexpr rational operator/(rational const& lhs, B const& rhs)
   { return (lhs / static_cast<rational>(rhs)).value(); }
 
+  // optional<bound> × rational — propagate via lift so callers can chain
+  // checked-arithmetic results into a rational expression without unwrapping.
+  template <boundable B>
+  [[nodiscard]] constexpr auto operator+(slim::optional<B> const& lhs, rational const& rhs)
+  { return lift([](B b, rational r){ return static_cast<rational>(b) + r; }, lhs, rhs); }
+
+  template <boundable B>
+  [[nodiscard]] constexpr auto operator+(rational const& lhs, slim::optional<B> const& rhs)
+  { return lift([](rational r, B b){ return r + static_cast<rational>(b); }, lhs, rhs); }
+
+  template <boundable B>
+  [[nodiscard]] constexpr auto operator-(slim::optional<B> const& lhs, rational const& rhs)
+  { return lift([](B b, rational r){ return static_cast<rational>(b) - r; }, lhs, rhs); }
+
+  template <boundable B>
+  [[nodiscard]] constexpr auto operator-(rational const& lhs, slim::optional<B> const& rhs)
+  { return lift([](rational r, B b){ return r - static_cast<rational>(b); }, lhs, rhs); }
+
+  template <boundable B>
+  [[nodiscard]] constexpr auto operator*(slim::optional<B> const& lhs, rational const& rhs)
+  { return lift([](B b, rational r){ return static_cast<rational>(b) * r; }, lhs, rhs); }
+
+  template <boundable B>
+  [[nodiscard]] constexpr auto operator*(rational const& lhs, slim::optional<B> const& rhs)
+  { return lift([](rational r, B b){ return r * static_cast<rational>(b); }, lhs, rhs); }
+
+  template <boundable B>
+  [[nodiscard]] constexpr auto operator/(slim::optional<B> const& lhs, rational const& rhs)
+  { return lift([](B b, rational r){ return static_cast<rational>(b) / r; }, lhs, rhs); }
+
+  template <boundable B>
+  [[nodiscard]] constexpr auto operator/(rational const& lhs, slim::optional<B> const& rhs)
+  { return lift([](rational r, B b){ return r / static_cast<rational>(b); }, lhs, rhs); }
+
   template <boundable B, std::floating_point F>
   [[nodiscard]] constexpr double operator+(B const& lhs, F rhs)
   { return static_cast<double>(lhs) + static_cast<double>(rhs); }

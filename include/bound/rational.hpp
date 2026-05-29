@@ -738,6 +738,21 @@ namespace bnd
   inline constexpr auto operator*(rational const& lhs, slim::optional<T> const& rhs)
   { return lift([](rational a, rational b){ return a * b; }, lhs, rhs); }
 
+  template <typename T, typename U>
+    requires (std::same_as<T, rational> || std::same_as<U, rational>)
+  inline constexpr auto operator*(slim::optional<T> const& lhs, slim::optional<U> const& rhs)
+  { return lift([](rational a, rational b){ return a * b; }, lhs, rhs); }
+
+  template <arithmetic A>
+    requires (!std::same_as<A, rational>)
+  inline constexpr auto operator*(slim::optional<rational> const& lhs, A rhs)
+  { return lift([](rational a, rational b){ return a * b; }, lhs, rational{rhs}); }
+
+  template <arithmetic A>
+    requires (!std::same_as<A, rational>)
+  inline constexpr auto operator*(A lhs, slim::optional<rational> const& rhs)
+  { return lift([](rational a, rational b){ return a * b; }, rational{lhs}, rhs); }
+
   //---------------------------------------------------------------------------
   // operator/
   //---------------------------------------------------------------------------
@@ -759,6 +774,21 @@ namespace bnd
   template <typename T>
   inline constexpr auto operator/(rational const& lhs, slim::optional<T> const& rhs)
   { return lift([](rational a, rational b){ return a / b; }, lhs, rhs); }
+
+  template <typename T, typename U>
+    requires (std::same_as<T, rational> || std::same_as<U, rational>)
+  inline constexpr auto operator/(slim::optional<T> const& lhs, slim::optional<U> const& rhs)
+  { return lift([](rational a, rational b){ return a / b; }, lhs, rhs); }
+
+  template <arithmetic A>
+    requires (!std::same_as<A, rational>)
+  inline constexpr auto operator/(slim::optional<rational> const& lhs, A rhs)
+  { return lift([](rational a, rational b){ return a / b; }, lhs, rational{rhs}); }
+
+  template <arithmetic A>
+    requires (!std::same_as<A, rational>)
+  inline constexpr auto operator/(A lhs, slim::optional<rational> const& rhs)
+  { return lift([](rational a, rational b){ return a / b; }, rational{lhs}, rhs); }
 
   //---------------------------------------------------------------------------
   // operator+
@@ -782,6 +812,21 @@ namespace bnd
   inline constexpr auto operator+(rational const& lhs, slim::optional<T> const& rhs)
   { return lift([](rational a, rational b){ return a + b; }, lhs, rhs); }
 
+  template <typename T, typename U>
+    requires (std::same_as<T, rational> || std::same_as<U, rational>)
+  inline constexpr auto operator+(slim::optional<T> const& lhs, slim::optional<U> const& rhs)
+  { return lift([](rational a, rational b){ return a + b; }, lhs, rhs); }
+
+  template <arithmetic A>
+    requires (!std::same_as<A, rational>)
+  inline constexpr auto operator+(slim::optional<rational> const& lhs, A rhs)
+  { return lift([](rational a, rational b){ return a + b; }, lhs, rational{rhs}); }
+
+  template <arithmetic A>
+    requires (!std::same_as<A, rational>)
+  inline constexpr auto operator+(A lhs, slim::optional<rational> const& rhs)
+  { return lift([](rational a, rational b){ return a + b; }, rational{lhs}, rhs); }
+
   //---------------------------------------------------------------------------
   // operator-
   //---------------------------------------------------------------------------
@@ -803,6 +848,24 @@ namespace bnd
   template <typename T>
   inline constexpr auto operator-(rational const& lhs, slim::optional<T> const& rhs)
   { return lift([](rational a, rational b){ return a - b; }, lhs, rhs); }
+
+  template <typename T, typename U>
+    requires (std::same_as<T, rational> || std::same_as<U, rational>)
+  inline constexpr auto operator-(slim::optional<T> const& lhs, slim::optional<U> const& rhs)
+  { return lift([](rational a, rational b){ return a - b; }, lhs, rhs); }
+
+  template <arithmetic A>
+    requires (!std::same_as<A, rational>)
+  inline constexpr auto operator-(slim::optional<rational> const& lhs, A rhs)
+  { return lift([](rational a, rational b){ return a - b; }, lhs, rational{rhs}); }
+
+  template <arithmetic A>
+    requires (!std::same_as<A, rational>)
+  inline constexpr auto operator-(A lhs, slim::optional<rational> const& rhs)
+  { return lift([](rational a, rational b){ return a - b; }, rational{lhs}, rhs); }
+
+  inline constexpr slim::optional<rational> operator-(slim::optional<rational> const& v)
+  { return lift([](rational r){ return -r; }, v); }
 
   //---------------------------------------------------------------------------
   // Compound-assignment definitions — unwrap the checked binary op result.
