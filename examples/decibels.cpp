@@ -25,7 +25,7 @@ using db_t       = bound<{{-24, 12}, notch<1, 2>}, round_nearest>;
 // snap the linear output to audible 0.025-wide steps.
 using db_div20_t = bound<{{-2, 1}, notch<1, 65536>}, round_nearest>;
 // Linear amplitude. dB ∈ [-24, 12] ⇒ amp ∈ [10^-1.2, 10^0.6] ≈ [0.063, 3.98].
-using gain_t     = bound<{{rational{1, 256}, 4}, notch<1, 65536>}, round_nearest>;
+using gain_t     = bound<{{0x1p-8_r, 4}, notch<1, 65536>}, round_nearest>;
 
 // dB → linear: 10^(dB/20).
 static constexpr gain_t db_to_linear(db_t db)

@@ -25,7 +25,7 @@ int main()
 
   // Apply 8% sales tax. `bound * rational` returns a rational; `round_nearest`
   // on `money` snaps the assignment to the nearest 1¢ notch.
-  money tax = subtotal * rational{8, 100};
+  money tax = subtotal * 0.08_r;
   std::cout << "tax (8%): $" << tax << "\n";
 
   money total = subtotal + tax;

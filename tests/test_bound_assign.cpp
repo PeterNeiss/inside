@@ -172,7 +172,7 @@ TEST_CASE("integer rhs into non-integer-interval bound", "[bound][assign][edge]"
 {
   // Lower/Upper are non-integer: integer-interval fast path is skipped,
   // exercising the rational-aware out-of-range branch in handle_out_of_range.
-  using halfgrid = bound<{{rational{1, 2}, rational{11, 2}}, rational{1u, 2}}, clamp>;
+  using halfgrid = bound<{{0.5_r, 5.5_r}, 0.5_r}, clamp>;
 
   halfgrid over{100};                 // out of range, clamps to 5.5
   REQUIRE(over == 5.5_r);

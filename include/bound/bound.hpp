@@ -634,27 +634,22 @@ namespace bnd
   inline constexpr auto just = bound<grid{value}>{value};
 
   //---------------------------------------------------------------------------
-  // _b literal — compile-time bound<{N, N}> from an integer literal.
-  //   auto five = 5_b;            // bound<{5, 5}>
-  //   auto x    = 10_b + my_bnd;  // grid widening via just<N> + bound
+  // _b literal — compile-time `bound<{V, V}>` from a numeric literal.
+  //   5_b           // bound<{5, 5}>            integer
+  //   1.25_b        // bound<{rational{5,4}}>   decimal
+  //   1.5e2_b       // bound<{150}>             decimal scientific
+  //   0xff_b        // bound<{255}>             hex integer
+  //   0b1010_b      // bound<{10}>              binary integer
+  //   0x1p15_b      // bound<{32768}>           hex with 2^N exponent (Q-format)
+  //   0x1p-15_b     // bound<{rational{1,32768}}>   1/2^15 grid notch
+  //   0x1.8p3_b     // bound<{12}>              hex float
+  //   1'000_b       // bound<{1000}>            digit separator
+  //
+  // Parse is exact (no double round-trip). Same parser backs `_r` in
+  // rational.hpp. Negative literals: `-1.5_b` parses as `-(1.5_b)`, which
+  // requires unary minus on bound (not implemented). Use `0_b - 1.5_b` or
+  // `rational{-3, 2}` in the meantime.
   //---------------------------------------------------------------------------
-  namespace _detail
-  {
-    template<char... Chars>
-    consteval imax parse_b_literal()
-    {
-      // The literal operator strips any `'` digit-separators, leaves digits
-      // only; sign is unary `-` applied to the result by the parser. We only
-      // accept decimal digits — `0x`/`0b` prefixes would need a different
-      // parser and aren't needed for grid bounds.
-      imax v = 0;
-      ((Chars >= '0' && Chars <= '9'
-          ? (v = v * 10 + (Chars - '0'), 0)
-          : 0), ...);
-      return v;
-    }
-  }
-
   template<char... Chars>
   constexpr auto operator""_b() { return just<_detail::parse_b_literal<Chars...>()>; }
 

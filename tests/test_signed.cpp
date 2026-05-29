@@ -41,7 +41,7 @@ TEST_CASE("signed construction and arithmetic", "[bound][signed][arithmetic]")
   REQUIRE(y * x == -98);
 
   auto quot = x / y;
-  REQUIRE(*quot == -(*(1_r / 2)));
+  REQUIRE(*quot == -0.5_r);
 
   s32 acc{100}, delta{-30};
   acc += delta;

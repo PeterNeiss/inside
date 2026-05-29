@@ -45,8 +45,8 @@ struct sprite
 int main()
 {
   sprite s{};
-  s.x = pos_t{60.5};
-  s.y = pos_t{2.0};
+  s.x = 60.5;
+  s.y = 2.0;
 
   // Five movement ticks: enough to wrap once in x, twice in y.
   double moves[][2] = {

@@ -33,7 +33,7 @@ int main()
     {  1,  1,    "+45° (mag √2)" },
     { -1,  1,    "+135°        " },
     { rational{ 3, 5}, rational{ 4, 5}, "(3/5, 4/5) — 3-4-5 triangle, mag 1" },
-    { rational{ 1, 2}, rational{ 1, 2}, "(½, ½)       " },
+    { 0.5_r,           0.5_r,           "(½, ½)       " },
   };
 
   std::cout << "Cartesian → polar:\n";

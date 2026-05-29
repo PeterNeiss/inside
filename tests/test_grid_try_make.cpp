@@ -29,7 +29,7 @@ TEST_CASE("grid::try_make accepts well-formed grids", "[grid][try_make]")
 
   SECTION("fixed-point Q8.8 grid")
   {
-    auto g = grid::try_make(interval{0, 255}, (1_r / 256_r).value());
+    auto g = grid::try_make(interval{0, 255}, 0x1p-8_r);
     REQUIRE(g.has_value());
   }
 }

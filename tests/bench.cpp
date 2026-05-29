@@ -456,15 +456,15 @@ void bench_cmath()
   using algeb_t = bound<{{-8, 8}, notch<1, 16384>}, round_nearest>;
   using sqrt_in_t = bound<{{0, 4}, notch<1, 65536>}, round_nearest>;
   using exp2_in_t = bound<{{-4, 4}, notch<1, 16384>}, round_nearest>;
-  using log2_in_t = bound<{{rational{1, 256}, 256}, notch<1, 16384>}, round_nearest>;
+  using log2_in_t = bound<{{0x1p-8_r, 256}, notch<1, 16384>}, round_nearest>;
   using exp_in_t  = bound<{{-10, 10}, notch<1, 16384>}, round_nearest>;
-  using log_in_t  = bound<{{rational{1, 256}, 256}, notch<1, 256>}, round_nearest>;
+  using log_in_t  = bound<{{0x1p-8_r, 256}, notch<1, 256>}, round_nearest>;
   using pow_in_t  = bound<{{-9, 9}, notch<1, 16384>}, round_nearest>;
   using angle_t   = bound<{{-8, 8}, notch<1, 16384>}, round_nearest>;
-  using tan_in_t  = bound<{{rational{-3, 4}, rational{3, 4}}, notch<1, 16384>}, round_nearest>;
+  using tan_in_t  = bound<{{-0.75_r, 0.75_r}, notch<1, 16384>}, round_nearest>;
   using atan2_in_t= bound<{{-1, 1}, notch<1, 16384>}, round_nearest>;
   using fmod_x_t  = bound<{{-8, 8}, notch<1, 16384>}, round_nearest>;
-  using fmod_y_t  = bound<{{rational{1, 4}, 4}, notch<1, 16384>}, round_nearest>;
+  using fmod_y_t  = bound<{{0.25_r, 4}, notch<1, 16384>}, round_nearest>;
 
   // 28 timed blocks per iter — use a reduced count so ctrack's per-event
   // storage (~70 B/event, no aggregation) stays in proportion with the

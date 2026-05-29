@@ -70,7 +70,7 @@ TEST_CASE("unsafe + on_overflow action: action fires on imax overflow",
 TEST_CASE("Q-format division: native_div_qformat matches rational arithmetic",
           "[bound][qformat][division]")
 {
-  using fp = bound<{{0, 255}, *(1_r / 256)}, unsafe>;       // Q8.8, unsafe → ignore_round
+  using fp = bound<{{0, 255}, 0x1p-8_r}, unsafe>;       // Q8.8, unsafe → ignore_round
 
   // Spot checks against expected Q-format integer-truncation values.
   auto q1 = div(fp{200}, fp{8}, truncated);
@@ -97,7 +97,7 @@ TEST_CASE("Q-format division: native_div_qformat matches rational arithmetic",
 TEST_CASE("Q-format division: result type is Q-format (same notch as L)",
           "[bound][qformat][division]")
 {
-  using fp = bound<{{0, 255}, *(1_r / 256)}, unsafe>;
+  using fp = bound<{{0, 255}, 0x1p-8_r}, unsafe>;
   auto q = div(fp{200}, fp{8}, truncated);
   using R = std::remove_cvref_t<decltype(*q)>;
   STATIC_REQUIRE(Notch<R> == Notch<fp>);   // same Q-format, not rational-raw
@@ -110,7 +110,7 @@ TEST_CASE("Q-format division: result type is Q-format (same notch as L)",
 TEST_CASE("operator rational() round-trips through Q-format fast path",
           "[bound][qformat][rational]")
 {
-  using fp = bound<{{0, 255}, *(1_r / 256)}, unsafe>;
+  using fp = bound<{{0, 255}, 0x1p-8_r}, unsafe>;
 
   // Bit-for-bit exactness over a sampling of values.
   for (int v : {0, 1, 50, 127, 254, 255})
@@ -126,7 +126,7 @@ TEST_CASE("operator rational() round-trips through Q-format fast path",
 TEST_CASE("operator rational() handles fractional Q-format value",
           "[bound][qformat][rational]")
 {
-  using fp = bound<{{0, 255}, *(1_r / 256)}, unsafe>;
+  using fp = bound<{{0, 255}, 0x1p-8_r}, unsafe>;
   // Raw=128 → value 128/256 = 0.5.
   fp b{0};
   b.Raw = 128;

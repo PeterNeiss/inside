@@ -331,13 +331,169 @@ namespace bnd
   }
 
   //---------------------------------------------------------------------------
-  // user defined literals for rational
+  // _b / _r literal parser — shared between bound.hpp's `_b` and `_r` below.
+  // Accepts:
+  //   integer:           5, 1'000
+  //   decimal:           1.25, .5
+  //   decimal scientific 1.5e2, 2.5e-1
+  //   hex integer:       0xff
+  //   binary integer:    0b1010
+  //   hex float (Q-fmt): 0x1p15, 0x1p-15, 0x1.8p3
+  // Exact (no double round-trip). Overflow -> consteval throw.
   //---------------------------------------------------------------------------
-  constexpr rational operator ""_r(unsigned long long int numerator)
-  { return rational{numerator}; }
+  namespace _detail
+  {
+    consteval int parse_digit(char c, int base)
+    {
+      if (c >= '0' && c <= '9')
+      {
+        int d = c - '0';
+        return d < base ? d : -1;
+      }
+      if (base == 16)
+      {
+        if (c >= 'a' && c <= 'f') return 10 + (c - 'a');
+        if (c >= 'A' && c <= 'F') return 10 + (c - 'A');
+      }
+      return -1;
+    }
 
-  constexpr rational operator ""_r(long double value)
-  { return rational{static_cast<double>(value)}; }
+    template<char... Chars>
+    consteval rational parse_b_literal()
+    {
+      constexpr char src[] = { Chars..., '\0' };
+      constexpr std::size_t N = sizeof...(Chars);
+
+      // Detect radix prefix.
+      int base = 10;
+      std::size_t i = 0;
+      if (N >= 2 && src[0] == '0')
+      {
+        if (src[1] == 'x' || src[1] == 'X') { base = 16; i = 2; }
+        else if (src[1] == 'b' || src[1] == 'B') { base = 2; i = 2; }
+      }
+
+      umax num = 0;
+      int frac_len = 0;
+      bool in_frac = false;
+      int exp = 0;
+      bool exp_neg = false;
+      bool has_p_exp = false;  // 2^exp (hex floats)
+      bool has_e_exp = false;  // 10^exp (decimal scientific)
+      bool in_exp = false;
+      bool exp_seen_digit = false;
+
+      for (; i < N; ++i)
+      {
+        char c = src[i];
+        if (c == '\'') continue;
+
+        if (in_exp)
+        {
+          if (!exp_seen_digit && (c == '+' || c == '-'))
+          {
+            exp_neg = (c == '-');
+            continue;
+          }
+          if (c >= '0' && c <= '9')
+          {
+            exp = exp * 10 + (c - '0');
+            exp_seen_digit = true;
+            continue;
+          }
+          rational_overflow("_b/_r literal: invalid char in exponent");
+        }
+
+        if (c == '.')
+        {
+          if (in_frac) rational_overflow("_b/_r literal: multiple '.'");
+          if (base == 2) rational_overflow("_b/_r literal: '.' not allowed in binary");
+          in_frac = true;
+          continue;
+        }
+
+        if ((c == 'p' || c == 'P') && base == 16)
+        {
+          has_p_exp = true;
+          in_exp = true;
+          continue;
+        }
+
+        if ((c == 'e' || c == 'E') && base == 10)
+        {
+          has_e_exp = true;
+          in_exp = true;
+          continue;
+        }
+
+        int d = parse_digit(c, base);
+        if (d < 0) rational_overflow("_b/_r literal: invalid digit for radix");
+
+        umax base_u = static_cast<umax>(base);
+        if (num > (~umax{0} - static_cast<umax>(d)) / base_u)
+          rational_overflow("_b/_r literal: numerator overflow");
+        num = num * base_u + static_cast<umax>(d);
+        if (in_frac) ++frac_len;
+      }
+
+      // Build denominator from fractional part.
+      // For decimal: den = 10^frac_len. For hex: den = 2^(4*frac_len).
+      umax den = 1;
+      if (base == 10)
+      {
+        for (int k = 0; k < frac_len; ++k)
+        {
+          if (den > (~umax{0}) / 10u)
+            rational_overflow("_b/_r literal: denominator overflow");
+          den *= 10u;
+        }
+      }
+      else if (base == 16)
+      {
+        int shift = 4 * frac_len;
+        if (shift >= 64) rational_overflow("_b/_r literal: hex fraction too long");
+        den <<= shift;
+      }
+
+      // Apply binary exponent (hex floats, `p`).
+      if (has_p_exp)
+      {
+        if (exp >= 63) rational_overflow("_b/_r literal: p exponent too large");
+        if (!exp_neg) num <<= exp;
+        else
+        {
+          if (den > (~umax{0}) >> exp)
+            rational_overflow("_b/_r literal: p exponent denominator overflow");
+          den <<= exp;
+        }
+      }
+
+      // Apply decimal exponent (decimal scientific, `e`).
+      if (has_e_exp)
+      {
+        for (int k = 0; k < exp; ++k)
+        {
+          if (!exp_neg)
+          {
+            if (num > (~umax{0}) / 10u)
+              rational_overflow("_b/_r literal: e exponent numerator overflow");
+            num *= 10u;
+          }
+          else
+          {
+            if (den > (~umax{0}) / 10u)
+              rational_overflow("_b/_r literal: e exponent denominator overflow");
+            den *= 10u;
+          }
+        }
+      }
+
+      return rational{num, static_cast<imax>(den)};
+    }
+  }
+
+  template<char... Chars>
+  constexpr rational operator ""_r() { return _detail::parse_b_literal<Chars...>(); }
 
   //---------------------------------------------------------------------------
   // notch<N, D> — `constexpr rational` variable template for use directly in

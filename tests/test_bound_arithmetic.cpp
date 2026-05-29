@@ -275,23 +275,23 @@ TEST_CASE("constexpr arithmetic", "[bound][arithmetic][constexpr]")
 TEST_CASE("mixed-mode bound op rational", "[bound][arithmetic][mixed]")
 {
   using money = bound<{{0, 1'000'000}, notch<1, 100>}, round_nearest>;
-  money sub{rational{4507, 100}};                   // $45.07
+  money sub{45.07_r};                               // $45.07
 
   // bound * rational → rational (panics on overflow via .value())
-  rational tax = sub * rational{8, 100};            // 0.08 × 45.07
-  REQUIRE(tax == rational{360'56u, 10'000u});       // 3.6056
+  rational tax = sub * 0.08_r;                      // 0.08 × 45.07
+  REQUIRE(tax == 3.6056_r);
 
   // Assignment back to a bound snaps to the round_nearest grid.
-  money tax_money = sub * rational{8, 100};
-  REQUIRE(tax_money == money{rational{361, 100}});  // 3.61
+  money tax_money = sub * 0.08_r;
+  REQUIRE(tax_money == money{3.61_r});
 
   // Symmetric overload.
-  REQUIRE(2_r * sub == rational{4507u, 50u});
+  REQUIRE(2_r * sub == 90.14_r);
 
   // Addition / subtraction / division.
-  REQUIRE(sub + rational{1, 100} == rational{4508u, 100u});
-  REQUIRE(sub - rational{1, 100} == rational{4506u, 100u});
-  REQUIRE(sub / 2_r   == rational{4507u, 200u});
+  REQUIRE(sub + 0.01_r == 45.08_r);
+  REQUIRE(sub - 0.01_r == 45.06_r);
+  REQUIRE(sub / 2_r    == 22.535_r);
 }
 
 TEST_CASE("mixed-mode bound op integral", "[bound][arithmetic][mixed]")

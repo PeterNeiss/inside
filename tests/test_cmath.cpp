@@ -362,7 +362,7 @@ TEST_CASE("bnd::math::exp2: probe (informational)", "[cmath][exp2][.probe]")
 //---------------------------------------------------------------------------
 namespace
 {
-  using log2_in_t  = bound<{{rational{1, 256}, 256}, notch<1, 16384>}, round_nearest>;
+  using log2_in_t  = bound<{{0x1p-8_r, 256}, notch<1, 16384>}, round_nearest>;
   using log2_out_t = bound<{{-8, 8}, notch<1, 16384>}, round_nearest>;
 
   constexpr log2_in_t log2_from(rational r) { return log2_in_t{r}; }
@@ -443,7 +443,7 @@ namespace
 {
   using exp_in_t   = bound<{{-10, 10}, notch<1, 16384>}, round_nearest>;
   using exp_out_t  = bound<{{0, 32768}, notch<1, 256>}, round_nearest>;
-  using log_in_t   = bound<{{rational{1, 256}, 256}, notch<1, 256>}, round_nearest>;
+  using log_in_t   = bound<{{0x1p-8_r, 256}, notch<1, 256>}, round_nearest>;
   using log_out_t  = bound<{{-8, 8}, notch<1, 16384>}, round_nearest>;
   using pow10_in_t = bound<{{-9, 9}, notch<1, 16384>}, round_nearest>;
   using pow10_out_t = bound<{{0, 65536}, notch<1, 256>}, round_nearest>;
@@ -459,7 +459,7 @@ TEST_CASE("bnd::math::exp: integer points", "[cmath][exp][constexpr]")
   // exp(-1) = 1/e ≈ 0.36788 → Q.8 = round(0.36788 · 256) = 94.
   REQUIRE(exp_out_t{math::exp(exp_in_t{-1})} == exp_out_t{rational{94, 256}});
   // exp(ln(2)) should be 2 (rounded to grid).
-  REQUIRE(exp_out_t{math::exp(exp_in_t{rational{693, 1000}})} == exp_out_t{2});
+  REQUIRE(exp_out_t{math::exp(exp_in_t{0.693_r})} == exp_out_t{2});
 }
 
 TEST_CASE("bnd::math::log: integer points", "[cmath][log][constexpr]")
@@ -468,7 +468,7 @@ TEST_CASE("bnd::math::log: integer points", "[cmath][log][constexpr]")
   static_assert(log_out_t{math::log(log_in_t{1})} == log_out_t{0});
   // log(e) ≈ 1. log_in_t snaps 2.718 to nearest grid point (696/256 =
   // 2.71875), and log(2.71875) ≈ 1.000183 → Q.14 = 16387.
-  REQUIRE(log_out_t{math::log(log_in_t{rational{2718, 1000}})}
+  REQUIRE(log_out_t{math::log(log_in_t{2.718_r})}
           == log_out_t{rational{16384, 16384}});
   // log(2) ≈ 0.69315 → after double rounding (Q.8 auto → Q.14 log_out_t)
   // it lands on 177/256 = 11328/16384.
@@ -492,9 +492,9 @@ TEST_CASE("bnd::math::pow_base<10>: integer powers",
   REQUIRE(pow10_out_t{math::pow_base<10>(pow10_in_t{4})}
           == pow10_out_t{10000});
   REQUIRE(pow10_out_t{math::pow_base<10>(pow10_in_t{-1})}
-          == pow10_out_t{rational{1, 10}});
+          == pow10_out_t{0.1_r});
   REQUIRE(pow10_out_t{math::pow_base<10>(pow10_in_t{-2})}
-          == pow10_out_t{rational{1, 100}});
+          == pow10_out_t{0.01_r});
 }
 
 TEST_CASE("bnd::math::pow_base<10>: db_to_linear endpoints",
@@ -502,13 +502,13 @@ TEST_CASE("bnd::math::pow_base<10>: db_to_linear endpoints",
 {
   // The audio-mixer dB use case: 10^(dB/20) for dB ∈ [-24, 12].
   // 10^(0/20) = 1, 10^(20/20) = 10, 10^(-20/20) = 0.1.
-  REQUIRE(pow10_out_t{math::pow_base<10>(pow10_in_t{rational{0, 20}})}
+  REQUIRE(pow10_out_t{math::pow_base<10>(pow10_in_t{0_r})}
           == pow10_out_t{1});
   REQUIRE(pow10_out_t{math::pow_base<10>(pow10_in_t{1_r})}
           == pow10_out_t{10});
   // 10^(6/20) = 10^0.3 ≈ 1.9953 (the "+6 dB doubles" approximation).
   // Algorithm rounds to 511/256 = 1.99609 (~0.04% above ideal).
-  REQUIRE(pow10_out_t{math::pow_base<10>(pow10_in_t{rational{3, 10}})}
+  REQUIRE(pow10_out_t{math::pow_base<10>(pow10_in_t{0.3_r})}
           == pow10_out_t{rational{511, 256}});
 }
 
@@ -539,8 +539,7 @@ TEST_CASE("bnd::math: exp/log/pow_base decimal probe",
 namespace
 {
   using atan2_in_t  = bound<{{-1, 1}, notch<1, 16384>}, round_nearest>;
-  using atan2_out_t = bound<{{rational{-1, 2}, rational{1, 2}},
-                             notch<1, 16384>}, round_nearest>;
+  using atan2_out_t = bound<{{-0.5_r, 0.5_r}, notch<1, 16384>}, round_nearest>;
 
   constexpr int atan2_q14_turn(rational y, rational x)
   {
@@ -832,13 +831,13 @@ TEST_CASE("bnd::math: algebraic tier decimal probe",
   std::cout << "    abs(-2.5)        = "
             << algeb_abs_t{math::abs(algeb_in_t{-2.5_r})} << "\n";
   std::cout << "    floor(1.7)       = "
-            << algeb_int_t{math::floor(algeb_in_t{rational{17, 10}})} << "\n";
+            << algeb_int_t{math::floor(algeb_in_t{1.7_r})} << "\n";
   std::cout << "    ceil(-1.3)       = "
-            << algeb_int_t{math::ceil(algeb_in_t{rational{-13, 10}})} << "\n";
+            << algeb_int_t{math::ceil(algeb_in_t{-1.3_r})} << "\n";
   std::cout << "    round(1.5)       = "
             << algeb_int_t{math::round(algeb_in_t{1.5_r})} << "\n";
   std::cout << "    trunc(-1.7)      = "
-            << algeb_int_t{math::trunc(algeb_in_t{rational{-17, 10}})} << "\n";
+            << algeb_int_t{math::trunc(algeb_in_t{-1.7_r})} << "\n";
   std::cout << "    fmod(7, 3)       = "
             << algeb_in_t{math::fmod(algeb_in_t{7_r},
                                       algeb_in_t{3_r})} << "\n";
@@ -872,13 +871,13 @@ TEST_CASE("bnd::math::floor / ceil / round / trunc: auto-deduced output",
           "[cmath][algebraic][auto]")
 {
   // floor: [-8, 8] input → [-8, 8] integer output, notch<1>.
-  constexpr auto f_pos = math::floor(algeb_in_t{rational{17, 10}});
+  constexpr auto f_pos = math::floor(algeb_in_t{1.7_r});
   static_assert(f_pos == 1);
   using floor_deduced = decltype(math::floor(algeb_in_t{0}));
   static_assert(Notch<floor_deduced> == bnd::notch<1>);
 
   // ceil
-  constexpr auto c_neg = math::ceil(algeb_in_t{rational{-13, 10}});
+  constexpr auto c_neg = math::ceil(algeb_in_t{-1.3_r});
   static_assert(c_neg == -1);
 
   // round
@@ -886,7 +885,7 @@ TEST_CASE("bnd::math::floor / ceil / round / trunc: auto-deduced output",
   static_assert(r_pos == 2);
 
   // trunc
-  constexpr auto t_neg = math::trunc(algeb_in_t{rational{-17, 10}});
+  constexpr auto t_neg = math::trunc(algeb_in_t{-1.7_r});
   static_assert(t_neg == -1);
 }
 

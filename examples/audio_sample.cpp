@@ -33,8 +33,8 @@ int main()
 
   constexpr offset_t  off_a{0};
   constexpr offset_t  off_b{-math::pi / just<6>};
-  constexpr gainfac_t gain_a{rational{8, 10}};
-  constexpr gainfac_t gain_b{rational{6, 10}};
+  constexpr gainfac_t gain_a{0.8_r};
+  constexpr gainfac_t gain_b{0.6_r};
 
   std::vector<sample> wave_a(N), wave_b(N);
   for (auto i : bound_range<{0, N-1}>{})
