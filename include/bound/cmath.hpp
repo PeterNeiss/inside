@@ -769,7 +769,7 @@ namespace bnd::math
   template <boundable Out, boundable In>
   constexpr Out floor_impl(In x) noexcept
   {
-    return Out{rational{rational{x}.floor()}};
+    return Out{rational{x}.floor()};
   }
 
   // ⌈x⌉ — smallest integer ≥ x. Implemented as −⌊−x⌋ since `rational` ships
@@ -777,7 +777,7 @@ namespace bnd::math
   template <boundable Out, boundable In>
   constexpr Out ceil_impl(In x) noexcept
   {
-    return Out{rational{-((-rational{x}).floor())}};
+    return Out{-((-rational{x}).floor())};
   }
 
   // x rounded to nearest integer, half-away-from-zero (matches the existing
@@ -785,7 +785,7 @@ namespace bnd::math
   template <boundable Out, boundable In>
   constexpr Out round_impl(In x) noexcept
   {
-    return Out{rational{rational{x}.round()}};
+    return Out{rational{x}.round()};
   }
 
   // x truncated toward zero. Distinct from floor for negative inputs:
@@ -793,7 +793,7 @@ namespace bnd::math
   template <boundable Out, boundable In>
   constexpr Out trunc_impl(In x) noexcept
   {
-    return Out{rational{rational{x}.trunc()}};
+    return Out{rational{x}.trunc()};
   }
 
   // x mod y = x − ⌊x/y⌋·y (truncated-division convention, matching std::fmod).

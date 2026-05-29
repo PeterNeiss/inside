@@ -72,11 +72,11 @@ int main()
     auto angle     = math::atan2(y, x);
 
     // Turn → radians: one rational multiply by 2π, then snap into angle_t.
-    angle_t a{rational{angle} * just<math::two_pi>};
+    angle_t a{angle * just<math::two_pi>};
 
-    rational m_r = rational{magnitude};
-    coord_t rx{m_r * rational{math::cos(a)}};
-    coord_t ry{m_r * rational{math::sin(a)}};
+    rational m_r = magnitude;
+    coord_t rx{m_r * math::cos(a)};
+    coord_t ry{m_r * math::sin(a)};
 
     std::cout << "  (" << x << ", " << y << ") → (" << rx << ", " << ry << ")\n";
   }

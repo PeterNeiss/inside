@@ -116,7 +116,7 @@ TEST_CASE("operator rational() round-trips through Q-format fast path",
   for (int v : {0, 1, 50, 127, 254, 255})
   {
     fp b{v};
-    rational r = static_cast<rational>(b);
+    rational r = b;
     REQUIRE(r == rational{static_cast<unsigned>(v)});
     // round-trip back to fp.value
     REQUIRE(b == v);
@@ -130,6 +130,6 @@ TEST_CASE("operator rational() handles fractional Q-format value",
   // Raw=128 → value 128/256 = 0.5.
   fp b{0};
   b.Raw = 128;
-  rational r = static_cast<rational>(b);
+  rational r = b;
   REQUIRE(r == 0.5_r);
 }

@@ -51,7 +51,7 @@ int main()
   for (std::size_t i = 0; i < N; ++i)
   {
     sample mixed{0};
-    mixed.with_clamp() = rational{wave_a[i]} + rational{wave_b[i]};
+    mixed.with_clamp() = wave_a[i] + wave_b[i];
     std::cout << i << "  "
               << wave_a[i] << "    "
               << wave_b[i] << "    "
@@ -65,7 +65,7 @@ int main()
   for (auto s : wave_a)
   {
     abs_t mag{math::abs(s)};
-    if (rational{mag} > rational{peak}) peak = mag;
+    if (mag > peak) peak = mag;
   }
   std::cout << "\npeak |a| = " << peak << " (expected ~0.8)\n";
 

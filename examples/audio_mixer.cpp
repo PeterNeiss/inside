@@ -38,7 +38,7 @@ using db_div20_t = bound<{{rational{-12, 10}, rational{6, 10}}, notch<1, 40>},
 // whole chain is integer/constexpr — no std::pow, no FPU boundary anywhere.
 static gain_t db_to_linear(db_t db)
 {
-  db_div20_t exponent{rational{db} / just<20>};
+  db_div20_t exponent{db / just<20>};
   return gain_t{math::pow_base<10>(exponent)};
 }
 

@@ -30,7 +30,7 @@ using gain_t     = bound<{{rational{1, 256}, 4}, notch<1, 65536>}, round_nearest
 // dB → linear: 10^(dB/20).
 static constexpr gain_t db_to_linear(db_t db)
 {
-  db_div20_t exponent{rational{db} / just<20>};
+  db_div20_t exponent{db / just<20>};
   return gain_t{math::pow_base<10>(exponent)};
 }
 
@@ -39,7 +39,7 @@ static constexpr gain_t db_to_linear(db_t db)
 static constexpr db_t linear_to_db(gain_t amp)
 {
   constexpr rational k20_over_ln10{86858896, 10000000};
-  rational log_amp = rational{math::log(amp)};
+  rational log_amp = math::log(amp);
   return db_t{just<k20_over_ln10> * log_amp};
 }
 
