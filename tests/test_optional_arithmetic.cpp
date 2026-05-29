@@ -4,6 +4,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <stdexcept>
+#include <string_view>
 
 using namespace bnd;
 
@@ -131,4 +132,28 @@ TEST_CASE("optional<bound> + rational propagates nullopt", "[optional][bound][ra
   REQUIRE_FALSE((empty - 0.25_r).has_value());
   REQUIRE_FALSE((empty * 0.25_r).has_value());
   REQUIRE_FALSE((empty / 0.25_r).has_value());
+}
+
+TEST_CASE("optional<rational> value_or", "[optional][rational][value_or]")
+{
+  REQUIRE(opt_r{slim::nullopt}.value_or(7_r) == 7_r);
+  REQUIRE(opt_r{0.5_r}.value_or(7_r)         == 0.5_r);
+}
+
+TEST_CASE("optional<rational> rejects sentinel construction", "[optional][rational][sentinel]")
+{
+  // The {N, 0} slot is the trait's sentinel; constructing a non-empty optional
+  // from it must throw rather than masquerade as a held value.
+  REQUIRE_THROWS_AS(opt_r{rational::make_sentinel()}, slim::bad_optional_access);
+
+  try
+  {
+    opt_r bad{rational::make_sentinel()};
+    (void)bad;
+    FAIL("expected bad_optional_access");
+  }
+  catch (const slim::bad_optional_access& e)
+  {
+    REQUIRE(std::string_view{e.what()}.size() > 0);
+  }
 }

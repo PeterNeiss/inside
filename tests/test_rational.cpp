@@ -108,6 +108,17 @@ TEST_CASE("rational comparison", "[rational][comparison]")
     rational b{1u};
     REQUIRE(a == b);
   }
+
+  SECTION("cross-multiplication overflow traps at runtime")
+  {
+    // M/2 vs (M-1)/3: numerators are consecutive (coprime) and denominators
+    // {2,3} are coprime, so cross-trim cannot reduce either pair. M*3 then
+    // overflows umax, so the comparison must trap rather than return garbage.
+    rational a{M, 2};
+    rational b{M - 1, 3};
+    REQUIRE_THROWS_AS(a < b, std::system_error);
+    REQUIRE_THROWS_AS(b < a, std::system_error);
+  }
 }
 
 TEST_CASE("rational arithmetic", "[rational][arithmetic]")

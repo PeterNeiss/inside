@@ -144,3 +144,13 @@ TEST_CASE("numeric_limits epsilon / round_error report 0 for exact types",
   STATIC_REQUIRE(std::numeric_limits<above_zero>::epsilon()     == 10);
   STATIC_REQUIRE(std::numeric_limits<above_zero>::round_error() == 10);
 }
+
+TEST_CASE("bound error category stringifies every errc", "[error][category]")
+{
+  REQUIRE(make_error_code(errc::domain_error).message()     == "value outside interval");
+  REQUIRE(make_error_code(errc::division_by_zero).message()  == "division by zero");
+  REQUIRE(make_error_code(errc::overflow).message()          == "rational arithmetic overflow");
+  REQUIRE(make_error_code(errc::rounding_error).message()    == "notch incompatibility");
+  REQUIRE(make_error_code(static_cast<errc>(999)).message()  == "unknown bound error");
+  REQUIRE(std::string{make_error_code(errc::overflow).category().name()} == "bound");
+}

@@ -140,7 +140,13 @@ if(BOUND_COVERAGE)
                             --base-directory ${CMAKE_SOURCE_DIR}
                             --no-external
                             --output-file coverage.info
-        COMMAND ${LCOV_EXE} --remove coverage.info '*/tests/*'
+        # Positive filter: keep only the library headers. NOTE: no shell quotes
+        # around the globs — under VERBATIM, CMake passes arguments to lcov
+        # exactly as written, so quotes would be taken literally and match
+        # nothing (the same trap that made the old --remove '*/tests/*' a no-op,
+        # leaving test + Catch2 code in the headline number).
+        COMMAND ${LCOV_EXE} --extract coverage.info
+                            */include/bound/* */include/slim/*
                             --ignore-errors unused
                             --output-file coverage.info
         COMMAND ${GENHTML_EXE} coverage.info --output-directory coverage

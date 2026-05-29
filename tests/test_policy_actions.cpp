@@ -211,6 +211,21 @@ TEST_CASE("on_overflow on compound op", "[bound][policy][on_overflow]")
   REQUIRE(acc == 0);
 }
 
+TEST_CASE("on_overflow on compound subtraction", "[bound][policy][on_overflow]")
+{
+  using c100 = bound<{0, 100}, checked>;
+  c100 acc{50};
+  bool fired = false;
+  // 50 - INTMAX_MIN overflows imax on the way in, before any clamp probe.
+  acc.on_overflow([&](auto& self, errc code){
+    fired = (code == errc::overflow);
+    self = 0;
+  }) -= std::numeric_limits<imax>::min();
+
+  REQUIRE(fired);
+  REQUIRE(acc == 0);
+}
+
 TEST_CASE("multi-action with(...) — overflow vs clamp paths fire correctly",
           "[bound][policy][multi]")
 {
