@@ -59,37 +59,38 @@ int main()
   // only place we reach for `rational` is the singleton-bound wrap of
   // the irrational `math::two_pi`, which lets `t * two_pi_bnd` resolve
   // through the existing bound × bound operator.
-  constexpr std::size_t N = 8;
+  constexpr std::size_t N = 16;
 
-  using time_t    = bound<{{0, 1}, notch<1, N>}, round_nearest>;
-  using offset_t  = bound<{{-2, 2}, notch<1, 16384>}, round_nearest>;
+  using time_t    = bound<{{ 0,  1}, notch<1,     N>}, round_nearest>;
+  using offset_t  = bound<{{-2,  2}, notch<1, 16384>}, round_nearest>;
   using angle_t   = bound<{{-4, 10}, notch<1, 16384>}, round_nearest>;
-  using gainfac_t = bound<{{0, 1}, notch<1, 1024>}, round_nearest>;
-  using two_pi_t  = bound<{math::two_pi}>;  // singleton bound (notch = 0)
+  using gainfac_t = bound<{{ 0,  1}, notch<1,  1024>}, round_nearest>;
 
-  constexpr two_pi_t two_pi_bnd{math::two_pi};
-
-  constexpr offset_t offsets[4] = {
-    offset_t{0},
-    offset_t{rational::div_unchecked(math::pi, rational{ 4})},  // +π/4
-    offset_t{rational::div_unchecked(math::pi, -3_r)},  // -π/3
-    offset_t{rational::div_unchecked(math::pi, rational{ 2})},  // +π/2
+  constexpr offset_t offsets[4] =
+  {
+      0,
+      math::pi / just<4>,  // +π/4
+    - math::pi / just<3>,  // -π/3
+    - math::pi / just<2>   // +π/2
   };
-  constexpr gainfac_t gains[4] = {
-    gainfac_t{rational{9, 10}}, gainfac_t{rational{7, 10}},
-    gainfac_t{rational{6, 10}}, gainfac_t{rational{4, 10}},
+  constexpr gainfac_t gains[4] =
+  {
+    rational{9, 10},
+    rational{7, 10},
+    rational{6, 10},
+    rational{4, 10}
   };
 
   sample_t channels[4][N];
-  for (std::size_t i = 0; i < N; ++i)
+  for (auto i : bound_range<{0, N-1}>{})
   {
-    time_t  t{rational{i, N}};
+    time_t  t{i / N};
     // `t * two_pi_bnd` returns a plain `bound`: the static safety check on
     // rational multiplication folds out the optional wrapper because the
     // result grid's numerator/denominator products provably fit in umax.
     // Snap the result into angle_t to land on the 1/16384 grid; the
     // subsequent bound + bound then stays on a friendly notch.
-    angle_t base{t * two_pi_bnd};                                    // bound × bound, snap
+    angle_t base{t * just<math::two_pi>};                            // bound × bound, snap
     for (int ch = 0; ch < 4; ++ch)
     {
       angle_t a{base + offsets[ch]};                                 // bound + bound, snap

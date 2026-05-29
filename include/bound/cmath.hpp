@@ -49,10 +49,8 @@ namespace bnd::math
   // Public irrational constants. Derived from the same high-precision
   // rational source the internal Q.30 cores use — bit-identical across
   // platforms via constexpr rational arithmetic.
-  inline constexpr rational two_pi =
-      rational::mul_unchecked(2_r, rational{1068966896, 340262731});
-  inline constexpr rational pi =
-      rational::mul_unchecked(1_r, rational{1068966896, 340262731});
+  inline constexpr rational pi{1068966896, 340262731};
+  inline constexpr rational two_pi = just<2> * pi;
 
   namespace detail
   {

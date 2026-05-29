@@ -70,7 +70,7 @@ int main()
     auto angle     = math::atan2(y, x);
 
     // Turn → radians: one rational multiply by 2π, then snap into angle_t.
-    angle_t a{rational::mul_unchecked(rational{angle}, math::two_pi)};
+    angle_t a{rational{angle} * just<math::two_pi>};
 
     rational m_r = rational{magnitude};
     coord_t rx{rational::mul_unchecked(m_r, rational{math::cos(a)})};

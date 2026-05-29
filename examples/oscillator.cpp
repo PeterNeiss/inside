@@ -28,8 +28,7 @@ int main()
 
   // 2π / 65536 — the radians-per-slot for a uint16 phase counter.
   // Precomputed once, applied per sample to convert counter → radians.
-  constexpr rational rad_per_slot =
-      rational::div_unchecked(math::two_pi, 65536_r);
+  constexpr rational rad_per_slot = math::two_pi / just<65536>;
 
   std::cout << "Fixed-frequency oscillator (1/8 turn per sample, 8 samples = 1 cycle):\n";
   std::cout << "  i   sin              cos\n";
@@ -37,7 +36,7 @@ int main()
     uint16_t phase = 0;
     constexpr uint16_t increment = 65536u / 8;               // 1/8 turn per sample
     for (int i = 0; i < 8; ++i) {
-      angle_t a{rational::mul_unchecked(rational{phase}, rad_per_slot)};
+      angle_t a{rational{phase} * just<rad_per_slot>};
       std::cout << "  " << i
                 << "   " << math::sin(a)
                 << "   " << math::cos(a) << "\n";
@@ -51,7 +50,7 @@ int main()
     uint16_t phase = 0;
     uint16_t inc   = 256;                                    // start at ~1/256 turn
     for (int i = 0; i < 12; ++i) {
-      angle_t a{rational::mul_unchecked(rational{phase}, rad_per_slot)};
+      angle_t a{rational{phase} * just<rad_per_slot>};
       std::cout << "  " << i
                 << "   " << +inc
                 << "    " << +phase

@@ -5,7 +5,7 @@
 //
 // No `<cmath>` in the example body — the sine waveforms come from
 // `bnd::math::sin` on a radians-valued bound. The 2π scaling is one
-// bound × bound multiply via a singleton-bound wrap of `math::two_pi`.
+// bound × bound multiply via inline `just<math::two_pi>`.
 
 #include <iostream>
 #include <vector>
@@ -26,24 +26,21 @@ int main()
   // wave_b is phase-shifted by -π/6 (= 30° behind wave_a).
   constexpr std::size_t N = 8;
 
-  using time_t    = bound<{{0, 1}, notch<1, N>}, round_nearest>;
-  using offset_t  = bound<{{-2, 2}, notch<1, 16384>}, round_nearest>;
+  using time_t    = bound<{{ 0,  1}, notch<1,     N>}, round_nearest>;
+  using offset_t  = bound<{{-2,  2}, notch<1, 16384>}, round_nearest>;
   using angle_t   = bound<{{-4, 10}, notch<1, 16384>}, round_nearest>;
-  using gainfac_t = bound<{{0, 1}, notch<1, 1024>}, round_nearest>;
-  using two_pi_t  = bound<{math::two_pi}>;  // singleton bound (notch = 0)
-
-  constexpr two_pi_t two_pi_bnd{math::two_pi};
+  using gainfac_t = bound<{{ 0,  1}, notch<1,  1024>}, round_nearest>;
 
   constexpr offset_t  off_a{0};
-  constexpr offset_t  off_b{rational::div_unchecked(math::pi, -6_r)};
+  constexpr offset_t  off_b{-math::pi / just<6>};
   constexpr gainfac_t gain_a{rational{8, 10}};
   constexpr gainfac_t gain_b{rational{6, 10}};
 
   std::vector<sample> wave_a(N), wave_b(N);
-  for (std::size_t i = 0; i < N; ++i)
+  for (auto i : bound_range<{0, N-1}>{})
   {
-    time_t  t{rational{i, N}};
-    angle_t base{t * two_pi_bnd};                                    // bound × bound, snap
+    time_t  t{i / N};
+    angle_t base{t * just<math::two_pi>};                            // bound × bound, snap
     angle_t a_a{base + off_a};                                        // bound + bound
     angle_t a_b{base + off_b};                                        // bound + bound
     wave_a[i] = sample{gain_a * math::sin(a_a)};                     // bound × bound

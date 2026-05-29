@@ -48,7 +48,7 @@ int main()
   for (int step = 0; step <= 16; ++step) {
     exponent_t e{rational{step, 4}};
     mult_t     m{math::exp2(e)};
-    rational   freq = rational::mul_unchecked(base_freq, rational{m});
+    rational   freq = just<base_freq> * rational{m};
     std::cout << "    " << step
               << "       " << freq << "\n";
   }
