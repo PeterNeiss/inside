@@ -17,16 +17,16 @@ int main()
   fp8 a = 3.5;
   fp8 b = 7.25;
 
-  std::cout << "a = " << a << std::endl;  // 3.5
-  std::cout << "b = " << b << std::endl;  // 7.25
+  std::cout << "a = " << a << "\n";  // 3.5
+  std::cout << "b = " << b << "\n";  // 7.25
 
   // Addition preserves precision
   auto sum = a + b;
-  std::cout << "a + b = " << sum << std::endl;  // 10.75
+  std::cout << "a + b = " << sum << "\n";  // 10.75
 
   // Multiplication scales correctly
   auto prod = a * b;
-  std::cout << "a * b = " << prod << std::endl;  // 25.375
+  std::cout << "a * b = " << prod << "\n";  // 25.375
 
   // Half-step grid: sensor readings at 0.5 resolution
   using sensor = bound<{{0, 50}, 0.5}>;
@@ -35,17 +35,17 @@ int main()
   sensor offset  = 2.5;
 
   auto adjusted = reading + offset;
-  std::cout << "reading + offset = " << adjusted << std::endl;  // 26
+  std::cout << "reading + offset = " << adjusted << "\n";  // 26
 
   // Quarter-step grid: fine-grained control
   using knob = bound<{{0, 10}, 0.25}>;
 
   knob volume = 7.75;
-  std::cout << "volume = " << volume << std::endl;  // 7.75
+  std::cout << "volume = " << volume << "\n";  // 7.75
 
   // Storage is compact: knob needs only uint8_t for 40 steps
   static_assert(sizeof(knob) == 1);
-  std::cout << "sizeof(knob) = " << sizeof(knob) << std::endl;
+  std::cout << "sizeof(knob) = " << sizeof(knob) << "\n";
 
   return 0;
 }

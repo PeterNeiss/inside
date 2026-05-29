@@ -29,17 +29,17 @@ int main()
   }
   catch (std::system_error& e)
   {
-    std::cout << "throw:    " << e.code().message() << std::endl;
+    std::cout << "throw:    " << e.code().message() << "\n";
   }
 
   auto maybe = checked_100::try_make(200);
   std::cout << "expected: "
             << (maybe ? "has value"
                       : make_error_code(maybe.error()).message())
-            << std::endl;
+            << "\n";
 
   auto ok = checked_100::try_make(50);
-  std::cout << "in-range: " << *ok << std::endl;
+  std::cout << "in-range: " << *ok << "\n";
 
 
   // === Section 2: Per-operation overrides on a default-checked bound ===
@@ -48,19 +48,19 @@ int main()
   checked_100 z(50);
   z.policy(ec) = 200;
   std::cout << "policy ec:" << (ec ? ec.message() : "no error")
-            << " (z=" << z << ")" << std::endl;
+            << " (z=" << z << ")" << "\n";
 
   checked_100 r(50);
   r.on_error([](auto& self, errc code, std::string_view msg) {
     std::cout << "on_error: [" << make_error_code(code).message()
-              << "] " << msg << " -> recover to 0" << std::endl;
+              << "] " << msg << " -> recover to 0" << "\n";
     self = 0;
   }) = 200;
-  std::cout << "          (r=" << r << ")" << std::endl;
+  std::cout << "          (r=" << r << ")" << "\n";
 
   bound<{0, 100}> w(50);
   w.policy<ignore_domain>() = 200;
-  std::cout << "ignored:  raw=" << w << " (domain check skipped)" << std::endl;
+  std::cout << "ignored:  raw=" << w << " (domain check skipped)" << "\n";
 
 
   // === Section 3: Every errc value gets a demo ===
@@ -71,26 +71,26 @@ int main()
   coarse c(0);
   c.on_error([](auto& self, errc code, std::string_view msg) {
     std::cout << "rounding: [" << make_error_code(code).message()
-              << "] " << msg << " -> recover to 4" << std::endl;
+              << "] " << msg << " -> recover to 4" << "\n";
     self = 4;
   }) = 3.0;   // 3 doesn't land on the notch-2 grid
-  std::cout << "          (c=" << c << ")" << std::endl;
+  std::cout << "          (c=" << c << ")" << "\n";
 
   checked_100 acc(50);
   acc.on_overflow([](auto& self, errc code) {
     std::cout << "overflow: [" << make_error_code(code).message()
-              << "] += saturated -> 0" << std::endl;
+              << "] += saturated -> 0" << "\n";
     self = 0;
   }) += std::numeric_limits<imax>::max();
-  std::cout << "          (acc=" << acc << ")" << std::endl;
+  std::cout << "          (acc=" << acc << ")" << "\n";
 
   auto q = div(checked_100(10), checked_100(0),
     on_overflow([](auto& res, errc code) {
       std::cout << "div/0:    [" << make_error_code(code).message()
-                << "] -> recover to 0" << std::endl;
+                << "] -> recover to 0" << "\n";
       res = std::remove_cvref_t<decltype(res)>{0};
     }));
-  std::cout << "          (q=" << q << ")" << std::endl;
+  std::cout << "          (q=" << q << ")" << "\n";
 
 
   // === Section 4: Free-function error_code overload ===
@@ -101,20 +101,20 @@ int main()
   auto qz = div(checked_100(10), checked_100(0), ec);
   std::cout << "free-fn:  " << (ec ? ec.message() : "no error")
             << " (q has_value=" << (qz.has_value() ? "true" : "false")
-            << ")" << std::endl;
+            << ")" << "\n";
 
 
   // === Section 5: Policies that avoid errors entirely ===
   // clamp saturates, wrap is modular, sentinel yields nullopt.
 
   clamp_100 cl = 150;
-  std::cout << "clamp:    150 -> " << cl << std::endl;
+  std::cout << "clamp:    150 -> " << cl << "\n";
 
   wrap_360 wr = 370;
-  std::cout << "wrap:     370 -> " << wr << std::endl;
+  std::cout << "wrap:     370 -> " << wr << "\n";
 
   auto se = sentinel_9::try_make(10);
-  std::cout << "sentinel: 10  -> " << (se ? "has value" : "nullopt") << std::endl;
+  std::cout << "sentinel: 10  -> " << (se ? "has value" : "nullopt") << "\n";
 
 
   // === Section 6: Inspection callbacks for non-error policies ===
@@ -124,13 +124,13 @@ int main()
   bound<{0, 100}> p(80);
   p.on_clamp([](auto& self, auto overshoot) {
     std::cout << "on_clamp: overshoot=" << overshoot
-              << " (saturated to " << self << ")" << std::endl;
+              << " (saturated to " << self << ")" << "\n";
   }) = 150;
 
   bound<{0, 59}> sec(50);
   sec.on_wrap([](auto& self, auto carry) {
     std::cout << "on_wrap:  carry=" << carry
-              << " (wrapped to " << self << ")" << std::endl;
+              << " (wrapped to " << self << ")" << "\n";
   }) = 75;
 
   // .with(...) packs multiple callbacks for one operation: the imax-overflow
@@ -138,13 +138,13 @@ int main()
   clamp_100 combo(50);
   combo.with(
     on_overflow([](auto& self, errc) {
-      std::cout << "combo:    on_overflow fired (self=" << self << ")" << std::endl;
+      std::cout << "combo:    on_overflow fired (self=" << self << ")" << "\n";
     }),
     on_clamp([](auto&, auto over) {
-      std::cout << "combo:    on_clamp overshoot=" << over << std::endl;
+      std::cout << "combo:    on_clamp overshoot=" << over << "\n";
     })
   ) += 200;
-  std::cout << "          (combo=" << combo << ")" << std::endl;
+  std::cout << "          (combo=" << combo << ")" << "\n";
 
   return 0;
 }

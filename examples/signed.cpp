@@ -17,16 +17,16 @@ int main()
 
   temp room = 22;
   temp outside = -15;
-  std::cout << "room:    " << room << std::endl;
-  std::cout << "outside: " << outside << std::endl;
+  std::cout << "room:    " << room << "\n";
+  std::cout << "outside: " << outside << "\n";
 
   // Arithmetic on signed bounds
   auto diff = room - outside;
-  std::cout << "diff:    " << diff << std::endl;  // 37
+  std::cout << "diff:    " << diff << "\n";  // 37
 
   // Negation
   auto neg = -room;
-  std::cout << "-room:   " << neg << std::endl;   // -22
+  std::cout << "-room:   " << neg << "\n";   // -22
 
   // Altitude: -500 to 9000 meters, fits in int16_t
   using altitude = bound<{-500, 9000}>;
@@ -36,15 +36,15 @@ int main()
   altitude cave      = -200;
 
   auto climb = mountain - cave;
-  std::cout << "climb:   " << climb << std::endl;  // 4700
+  std::cout << "climb:   " << climb << "\n";  // 4700
 
   // Signed bounds with clamp
   using voltage = bound<{-12, 12}, clamp>;
   voltage v = 15;   // clamped to 12
-  std::cout << "15V clamped: " << v << std::endl;
+  std::cout << "15V clamped: " << v << "\n";
 
   v = -20;          // clamped to -12
-  std::cout << "-20V clamped: " << v << std::endl;
+  std::cout << "-20V clamped: " << v << "\n";
 
   return 0;
 }

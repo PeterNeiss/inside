@@ -52,16 +52,16 @@ struct clock24
 int main()
 {
   clock24 t(23, 59, 45);
-  std::cout << "start:      " << t << std::endl;
+  std::cout << "start:      " << t << "\n";
 
   t.add_seconds(20);
-  std::cout << "+20 sec:    " << t << std::endl;
+  std::cout << "+20 sec:    " << t << "\n";
 
   t.add_minutes(90);
-  std::cout << "+90 min:    " << t << std::endl;
+  std::cout << "+90 min:    " << t << "\n";
 
   t.add_seconds(3600 + 1800 + 30);
-  std::cout << "+5430 sec:  " << t << std::endl;
+  std::cout << "+5430 sec:  " << t << "\n";
 
   return 0;
 }

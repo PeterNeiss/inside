@@ -126,5 +126,5 @@ TEST_CASE("interval / rational notch", "[interval][grid]")
 TEST_CASE("interval sentinel", "[interval][sentinel]")
 {
   // sentinel_traits<interval> reports sentinel via sentinel_traits<rational>
-  REQUIRE(slim::optional<interval>{}.has_value() == false);
+  REQUIRE_FALSE(slim::optional<interval>{}.has_value());
 }

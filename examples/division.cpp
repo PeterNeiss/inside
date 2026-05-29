@@ -18,25 +18,25 @@ int main()
   // Exact rational result (default)
   auto result = a / b;
   if (result)
-    std::cout << "7 / 3 (exact)    = " << *result << std::endl;  // 7/3
+    std::cout << "7 / 3 (exact)    = " << *result << "\n";  // 7/3
 
   // Integer division with per-call policy
   auto quotient = div(a, b, truncated);
   if (quotient)
-    std::cout << "7 / 3 (integer)  = " << *quotient << std::endl;  // 2
+    std::cout << "7 / 3 (integer)  = " << *quotient << "\n";  // 2
 
   // The result type uses rational storage for exact fractions
   val c = 22;
   val d = 7;
   auto pi_ish = c / d;
   if (pi_ish)
-    std::cout << "22 / 7 (exact)   = " << *pi_ish << std::endl;  // 22/7
+    std::cout << "22 / 7 (exact)   = " << *pi_ish << "\n";  // 22/7
 
   // Division by zero returns nullopt
   val zero = 0;
   auto div_zero = val(10) / zero;
   std::cout << "10 / 0           = "
-            << (div_zero.has_value() ? "value" : "nullopt") << std::endl;
+            << (div_zero.has_value() ? "value" : "nullopt") << "\n";
 
   return 0;
 }

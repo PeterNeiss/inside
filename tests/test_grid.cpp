@@ -124,7 +124,7 @@ TEST_CASE("grid validate", "[grid]")
 
 TEST_CASE("grid sentinel", "[grid][sentinel]")
 {
-  REQUIRE(slim::optional<grid>{}.has_value() == false);
+  REQUIRE_FALSE(slim::optional<grid>{}.has_value());
   auto s = grid::make_sentinel();
   REQUIRE(s.Notch.Denominator == 0);
 }

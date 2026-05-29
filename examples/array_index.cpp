@@ -13,19 +13,19 @@ int main()
 
   // Regular for loop with slim::optional + sentinel policy
   using index = bound<{0, std::extent_v<decltype(arr)> - 1}, sentinel>;
-  std::cout << "regular for loop:" << std::endl;
+  std::cout << "regular for loop:" << "\n";
   for (slim::optional<index> i = 0; i; ++i)
-    std::cout << "  arr[" << *i << "] = " << arr[*i] << std::endl;
+    std::cout << "  arr[" << *i << "] = " << arr[*i] << "\n";
 
   // Range-based for loop
-  std::cout << "range for loop:" << std::endl;
+  std::cout << "range for loop:" << "\n";
   for (auto i : bound_range<{0, 9}>{})
-    std::cout << "  arr[" << i << "] = " << arr[i] << std::endl;
+    std::cout << "  arr[" << i << "] = " << arr[i] << "\n";
 
   // Wrapping range-based for loop starting at index 5
-  std::cout << "wrapping from 5:" << std::endl;
+  std::cout << "wrapping from 5:" << "\n";
   for (auto i : bound_range<{0, 9}>{5})
-    std::cout << "  arr[" << i << "] = " << arr[i] << std::endl;
+    std::cout << "  arr[" << i << "] = " << arr[i] << "\n";
 
   return 0;
 }

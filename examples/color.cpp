@@ -34,13 +34,13 @@ struct rgb
 int main()
 {
   rgb pixel{200, 100, 50};
-  std::cout << "original:  " << pixel << std::endl;
+  std::cout << "original:  " << pixel << "\n";
 
   pixel.brighten(80);
-  std::cout << "brighten:  " << pixel << std::endl;  // rgb(255, 180, 130)
+  std::cout << "brighten:  " << pixel << "\n";  // rgb(255, 180, 130)
 
   pixel.darken(300);
-  std::cout << "darken:    " << pixel << std::endl;  // rgb(0, 0, 0)
+  std::cout << "darken:    " << pixel << "\n";  // rgb(0, 0, 0)
 
   return 0;
 }

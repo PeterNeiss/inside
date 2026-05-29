@@ -43,24 +43,24 @@ int main()
   std::cout << std::left << std::setw(14) << "format"
             << std::setw(10) << "sizeof"
             << std::setw(14) << "sample"
-            << "sample + sample" << std::endl;
-  std::cout << std::string(60, '-') << std::endl;
+            << "sample + sample" << "\n";
+  std::cout << std::string(60, '-') << "\n";
 
   std::cout << std::left << std::setw(14) << "Q4.4"
             << std::setw(10) << sizeof(q4_4)
-            << std::setw(14) << a << sum_a << std::endl;
+            << std::setw(14) << a << sum_a << "\n";
   std::cout << std::left << std::setw(14) << "Q1.7"
             << std::setw(10) << sizeof(q1_7)
-            << std::setw(14) << b << sum_b << std::endl;
+            << std::setw(14) << b << sum_b << "\n";
   std::cout << std::left << std::setw(14) << "Q8.8"
             << std::setw(10) << sizeof(q8_8)
-            << std::setw(14) << c << sum_c << std::endl;
+            << std::setw(14) << c << sum_c << "\n";
   std::cout << std::left << std::setw(14) << "Q16.16"
             << std::setw(10) << sizeof(q16_16)
-            << std::setw(14) << d << sum_d << std::endl;
+            << std::setw(14) << d << sum_d << "\n";
   std::cout << std::left << std::setw(14) << "half_signed"
             << std::setw(10) << sizeof(half_signed)
-            << std::setw(14) << e << sum_e << std::endl;
+            << std::setw(14) << e << sum_e << "\n";
 
   return 0;
 }

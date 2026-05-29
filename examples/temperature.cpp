@@ -15,15 +15,15 @@ int main()
   celsius freezing = 0;
   celsius body = 37;
 
-  std::cout << "room:     " << room << " C" << std::endl;
-  std::cout << "freezing: " << freezing << " C" << std::endl;
-  std::cout << "body:     " << body << " C" << std::endl;
+  std::cout << "room:     " << room << " C" << "\n";
+  std::cout << "freezing: " << freezing << " C" << "\n";
+  std::cout << "body:     " << body << " C" << "\n";
 
   auto diff = room - freezing;
-  std::cout << "diff:     " << diff << " C" << std::endl;
+  std::cout << "diff:     " << diff << " C" << "\n";
 
   auto sum = room + freezing;
-  std::cout << "sum:      " << sum << " C" << std::endl;
+  std::cout << "sum:      " << sum << " C" << "\n";
 
   return 0;
 }

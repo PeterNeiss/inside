@@ -294,7 +294,7 @@ TEST_CASE("rational sentinel", "[rational][sentinel]")
   REQUIRE(s.Denominator == 0);
 
   // sentinel_traits must agree
-  REQUIRE(slim::optional<rational>{}.has_value() == false);
+  REQUIRE_FALSE(slim::optional<rational>{}.has_value());
 
   // converting to integer of a non-sentinel rational truncates toward zero
   REQUIRE(rational{7u, 2}.trunc() ==  3);

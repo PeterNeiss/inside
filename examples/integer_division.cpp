@@ -19,12 +19,12 @@ int main()
   // Default: exact rational result
   auto exact = a / b;
   if (exact)
-    std::cout << "7 / 3 (rational) = " << *exact << std::endl;  // 7/3
+    std::cout << "7 / 3 (rational) = " << *exact << "\n";  // 7/3
 
   // Per-call integer division: truncates like native C++ division
   auto quotient = div(a, b, truncated);
   if (quotient)
-    std::cout << "7 / 3 (integer)  = " << *quotient << std::endl;  // 2
+    std::cout << "7 / 3 (integer)  = " << *quotient << "\n";  // 2
 
   // Type-level policy: operator/ uses native division automatically
   using fast = bound<{0, 100}, ignore_round>;
@@ -32,20 +32,20 @@ int main()
   fast y = 7;
   auto q = x / y;
   if (q)
-    std::cout << "22 / 7 (fast)    = " << *q << std::endl;  // 3
+    std::cout << "22 / 7 (fast)    = " << *q << "\n";  // 3
 
   // Division by zero always returns nullopt
   fast zero = 0;
   auto bad = x / zero;
   std::cout << "22 / 0           = "
-            << (bad.has_value() ? "value" : "nullopt") << std::endl;
+            << (bad.has_value() ? "value" : "nullopt") << "\n";
 
   // Exact division works as expected
   val ten = 10;
   val two = 2;
   auto five = div(ten, two, truncated);
   if (five)
-    std::cout << "10 / 2 (integer) = " << *five << std::endl;  // 5
+    std::cout << "10 / 2 (integer) = " << *five << "\n";  // 5
 
   return 0;
 }
