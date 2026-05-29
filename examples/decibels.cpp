@@ -8,11 +8,11 @@
 //   - A round-trip sweep showing dB → linear → dB recovers the input within
 //     a few Q-format ULPs at every step.
 
-#include <iostream>
+#include <print>
 
 #include "bound/bound.hpp"
 #include "bound/cmath.hpp"
-#include "bound/print.hpp"
+#include "bound/formatter.hpp"
 
 using namespace bnd;
 
@@ -45,25 +45,26 @@ static constexpr db_t linear_to_db(gain_t amp)
 
 int main()
 {
-  std::cout << "dB → linear → dB round-trip:\n";
-  std::cout << "    dB       linear         round-trip dB\n";
+  // `std::println` works on bound / rational because `bound/formatter.hpp`
+  // ships `std::formatter` specializations for both. Empty `{}` keeps the
+  // exact rational rendering — same string `operator<<` would produce.
+  std::println("dB → linear → dB round-trip:");
+  std::println("    dB       linear         round-trip dB");
 
   // Sweep dB at 3 dB steps over the full range.
   for (int d = -24; d <= 12; d += 3) {
     db_t db{d};
     gain_t lin = db_to_linear(db);
     db_t db_recovered = linear_to_db(lin);
-    std::cout << "    " << db
-              << "       " << lin
-              << "         " << db_recovered << "\n";
+    std::println("    {}       {}         {}", db, lin, db_recovered);
   }
 
   // The canonical "6 dB doubles" / "12 dB quadruples" landmarks.
-  std::cout << "\nLandmark conversions (within db_t's [-24, 12] range):\n";
+  std::println("\nLandmark conversions (within db_t's [-24, 12] range):");
   for (int d : {-24, -12, -6, 0, 6, 12}) {
     db_t db{d};
     gain_t lin = db_to_linear(db);
-    std::cout << "    " << db << " dB  =  " << lin << "\n";
+    std::println("    {} dB  =  {}", db, lin);
   }
 
   return 0;

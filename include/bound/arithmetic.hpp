@@ -54,17 +54,17 @@ namespace bnd
   [[nodiscard]] constexpr auto operator+(boundable auto lhs, boundable auto rhs)
   { return add(lhs, rhs); }
 
-  template <boundable L, boundable R>
-  constexpr auto operator+(slim::optional<L> lhs, R rhs)
-  { return lift([](auto l, auto r){ return l + r; }, lhs, rhs); }
-
-  template <boundable L, boundable R>
-  constexpr auto operator+(L lhs, slim::optional<R> rhs)
-  { return lift([](auto l, auto r){ return l + r; }, lhs, rhs); }
-
-  template <boundable L, boundable R>
-  constexpr auto operator+(slim::optional<L> lhs, slim::optional<R> rhs)
-  { return lift([](auto l, auto r){ return l + r; }, lhs, rhs); }
+  // Single overload covers all three optional shapes (optional×T, T×optional,
+  // optional×optional) for any combination of boundable / rational operands.
+  // The lambda's `l + r` re-enters overload resolution on the *unwrapped*
+  // values, so we inherit whichever bare overload (bound×bound, bound×rational,
+  // bound×integral, …) would normally apply.
+  template <class L, class R>
+    requires (is_slim_optional_v<L> || is_slim_optional_v<R>)
+          && (boundable<unwrap_t<L>> || boundable<unwrap_t<R>>)
+          && requires(unwrap_t<L> l, unwrap_t<R> r) { l + r; }
+  constexpr auto operator+(L const& lhs, R const& rhs)
+  { return lift([](auto const& l, auto const& r){ return l + r; }, lhs, rhs); }
 
   //---------------------------------------------------------------------------
   // sub
@@ -92,17 +92,12 @@ namespace bnd
   [[nodiscard]] constexpr auto operator-(boundable auto lhs, boundable auto rhs)
   { return sub(lhs, rhs); }
 
-  template <boundable L, boundable R>
-  constexpr auto operator-(slim::optional<L> lhs, R rhs)
-  { return lift([](auto l, auto r){ return l - r; }, lhs, rhs); }
-
-  template <boundable L, boundable R>
-  constexpr auto operator-(L lhs, slim::optional<R> rhs)
-  { return lift([](auto l, auto r){ return l - r; }, lhs, rhs); }
-
-  template <boundable L, boundable R>
-  constexpr auto operator-(slim::optional<L> lhs, slim::optional<R> rhs)
-  { return lift([](auto l, auto r){ return l - r; }, lhs, rhs); }
+  template <class L, class R>
+    requires (is_slim_optional_v<L> || is_slim_optional_v<R>)
+          && (boundable<unwrap_t<L>> || boundable<unwrap_t<R>>)
+          && requires(unwrap_t<L> l, unwrap_t<R> r) { l - r; }
+  constexpr auto operator-(L const& lhs, R const& rhs)
+  { return lift([](auto const& l, auto const& r){ return l - r; }, lhs, rhs); }
 
   //---------------------------------------------------------------------------
   // mul
@@ -131,17 +126,12 @@ namespace bnd
   [[nodiscard]] constexpr auto operator*(boundable auto lhs, boundable auto rhs)
   { return bnd::mul(lhs, rhs); }
 
-  template <boundable L, boundable R>
-  constexpr auto operator*(slim::optional<L> lhs, R rhs)
-  { return lift([](auto l, auto r){ return l * r; }, lhs, rhs); }
-
-  template <boundable L, boundable R>
-  constexpr auto operator*(L lhs, slim::optional<R> rhs)
-  { return lift([](auto l, auto r){ return l * r; }, lhs, rhs); }
-
-  template <boundable L, boundable R>
-  constexpr auto operator*(slim::optional<L> lhs, slim::optional<R> rhs)
-  { return lift([](auto l, auto r){ return l * r; }, lhs, rhs); }
+  template <class L, class R>
+    requires (is_slim_optional_v<L> || is_slim_optional_v<R>)
+          && (boundable<unwrap_t<L>> || boundable<unwrap_t<R>>)
+          && requires(unwrap_t<L> l, unwrap_t<R> r) { l * r; }
+  constexpr auto operator*(L const& lhs, R const& rhs)
+  { return lift([](auto const& l, auto const& r){ return l * r; }, lhs, rhs); }
 
   //---------------------------------------------------------------------------
   // add_all / mul_all — variadic folds
@@ -213,17 +203,12 @@ namespace bnd
     return bnd::div(lhs, rhs, make_policy<F>());
   }
 
-  template <boundable L, boundable R>
-  constexpr auto operator/(slim::optional<L> lhs, R rhs)
-  { return lift([](auto l, auto r){ return l / r; }, lhs, rhs); }
-
-  template <boundable L, boundable R>
-  constexpr auto operator/(L lhs, slim::optional<R> rhs)
-  { return lift([](auto l, auto r){ return l / r; }, lhs, rhs); }
-
-  template <boundable L, boundable R>
-  constexpr auto operator/(slim::optional<L> lhs, slim::optional<R> rhs)
-  { return lift([](auto l, auto r){ return l / r; }, lhs, rhs); }
+  template <class L, class R>
+    requires (is_slim_optional_v<L> || is_slim_optional_v<R>)
+          && (boundable<unwrap_t<L>> || boundable<unwrap_t<R>>)
+          && requires(unwrap_t<L> l, unwrap_t<R> r) { l / r; }
+  constexpr auto operator/(L const& lhs, R const& rhs)
+  { return lift([](auto const& l, auto const& r){ return l / r; }, lhs, rhs); }
 
   //---------------------------------------------------------------------------
   // mod
@@ -301,40 +286,6 @@ namespace bnd
   template <boundable B>
   [[nodiscard]] constexpr rational operator/(rational const& lhs, B const& rhs)
   { return (lhs / static_cast<rational>(rhs)).value(); }
-
-  // optional<bound> × rational — propagate via lift so callers can chain
-  // checked-arithmetic results into a rational expression without unwrapping.
-  template <boundable B>
-  [[nodiscard]] constexpr auto operator+(slim::optional<B> const& lhs, rational const& rhs)
-  { return lift([](B b, rational r){ return static_cast<rational>(b) + r; }, lhs, rhs); }
-
-  template <boundable B>
-  [[nodiscard]] constexpr auto operator+(rational const& lhs, slim::optional<B> const& rhs)
-  { return lift([](rational r, B b){ return r + static_cast<rational>(b); }, lhs, rhs); }
-
-  template <boundable B>
-  [[nodiscard]] constexpr auto operator-(slim::optional<B> const& lhs, rational const& rhs)
-  { return lift([](B b, rational r){ return static_cast<rational>(b) - r; }, lhs, rhs); }
-
-  template <boundable B>
-  [[nodiscard]] constexpr auto operator-(rational const& lhs, slim::optional<B> const& rhs)
-  { return lift([](rational r, B b){ return r - static_cast<rational>(b); }, lhs, rhs); }
-
-  template <boundable B>
-  [[nodiscard]] constexpr auto operator*(slim::optional<B> const& lhs, rational const& rhs)
-  { return lift([](B b, rational r){ return static_cast<rational>(b) * r; }, lhs, rhs); }
-
-  template <boundable B>
-  [[nodiscard]] constexpr auto operator*(rational const& lhs, slim::optional<B> const& rhs)
-  { return lift([](rational r, B b){ return r * static_cast<rational>(b); }, lhs, rhs); }
-
-  template <boundable B>
-  [[nodiscard]] constexpr auto operator/(slim::optional<B> const& lhs, rational const& rhs)
-  { return lift([](B b, rational r){ return static_cast<rational>(b) / r; }, lhs, rhs); }
-
-  template <boundable B>
-  [[nodiscard]] constexpr auto operator/(rational const& lhs, slim::optional<B> const& rhs)
-  { return lift([](rational r, B b){ return r / static_cast<rational>(b); }, lhs, rhs); }
 
   template <boundable B, std::floating_point F>
   [[nodiscard]] constexpr double operator+(B const& lhs, F rhs)

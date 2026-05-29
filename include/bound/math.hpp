@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <cmath>
+#include <stdexcept>
 #include <utility>
 #include <concepts>
 #include <type_traits>
@@ -168,7 +169,7 @@ namespace bnd
   constexpr auto abs_fraction(double value)
   {
     if (not std::isfinite(value))
-      throw "non-finite double";
+      throw std::domain_error("bnd::abs_fraction: non-finite double");
 
     // abs
     if (value < 0) value = -value;

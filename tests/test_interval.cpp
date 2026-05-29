@@ -4,6 +4,22 @@
 
 using namespace bnd;
 
+TEST_CASE("interval structured binding", "[interval][structured_binding]")
+{
+  STATIC_REQUIRE(std::tuple_size_v<interval> == 2);
+  STATIC_REQUIRE(std::is_same_v<std::tuple_element_t<0, interval>, rational>);
+
+  interval iv{-3, 5};
+  auto [lo, hi] = iv;
+  REQUIRE(lo == -3);
+  REQUIRE(hi ==  5);
+
+  // Mutating through structured binding writes back to source.
+  auto& [mlo, mhi] = iv;
+  mlo = -7;
+  REQUIRE(iv.Lower == -7);
+}
+
 TEST_CASE("interval construction and predicates", "[interval]")
 {
   SECTION("point interval")

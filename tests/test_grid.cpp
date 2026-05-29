@@ -8,6 +8,19 @@
 
 using namespace bnd;
 
+TEST_CASE("grid structured binding", "[grid][structured_binding]")
+{
+  STATIC_REQUIRE(std::tuple_size_v<grid> == 2);
+  STATIC_REQUIRE(std::is_same_v<std::tuple_element_t<0, grid>, interval>);
+  STATIC_REQUIRE(std::is_same_v<std::tuple_element_t<1, grid>, rational>);
+
+  grid g{{0, 100}, 2};
+  auto [iv, notch] = g;
+  REQUIRE(iv.Lower == 0);
+  REQUIRE(iv.Upper == 100);
+  REQUIRE(notch    == 2);
+}
+
 TEST_CASE("grid construction and max_notch", "[grid]")
 {
   STATIC_REQUIRE(grid{{0, 100}, 1}.max_notch() == 100);

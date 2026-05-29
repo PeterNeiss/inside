@@ -9,6 +9,7 @@
 #include <compare>
 #include <cstddef>
 #include <iterator>
+#include <ranges>
 
 //---------------------------------------------------------------------------
 // bound_range — random-access range over a grid.
@@ -110,6 +111,11 @@ namespace bnd
     { return {start_index_, 0}; }
 
     constexpr std::size_t size() const { return static_cast<std::size_t>(slot_count); }
+
+    // `indexed()` pairs each value with its zero-based position, mirroring
+    // the C++23 `std::views::enumerate` adapter. Convenient sugar for the
+    // common "index alongside value" pattern in lookup-table examples.
+    constexpr auto indexed() const { return std::views::enumerate(*this); }
   };
 
 } // namespace bnd

@@ -886,13 +886,14 @@ namespace bnd::math
   // sqrt: non-negative bound → bound. Newton-Raphson on Q.30 integer math,
   // leading-bit initial guess. The input must have Lower == 0, a power-of-2
   // notch denominator (1/2^K with K ≤ 30), and Upper ≤ 4 so the x_q60
-  // intermediate fits in int63. Mixed-sign inputs and wider ranges land in
-  // later revisions (Q.62 internal tier, expected-returning overload).
+  // intermediate fits in int63. The mixed-sign overload below (`signed_impl`)
+  // accepts Lower < 0 and returns `slim::optional` — nullopt when the runtime
+  // value is negative.
   template <boundable Out, boundable In>
   constexpr Out sqrt_impl(In x) noexcept
   {
     static_assert(Lower<In> == 0,
-                  "bnd::math::sqrt: input must start at 0 (mixed-sign overload TODO)");
+                  "bnd::math::sqrt: input must start at 0 (use the mixed-sign overload)");
     static_assert(Upper<In> <= 4,
                   "bnd::math::sqrt: input must be ≤ 4 for the Q.30 internal tier");
     static_assert(Notch<In>.Numerator == 1,
@@ -911,6 +912,38 @@ namespace bnd::math
     imax x_q30   = static_cast<imax>(x.Raw) << (30 - K);
     imax r_q30   = detail::sqrt_q30(x_q30);
 
+    return Out{rational{r_q30, imax{1} << 30}};
+  }
+
+  // Mixed-sign sqrt: accepts inputs whose interval crosses zero. Returns
+  // `slim::optional<Out>{nullopt}` if the runtime value is negative,
+  // otherwise the same Q.30 result as `sqrt_impl`. The notch and
+  // |Upper| / |Lower| constraints mirror the non-negative path.
+  template <boundable Out, boundable In>
+  constexpr slim::optional<Out> sqrt_signed_impl(In x) noexcept
+  {
+    static_assert(Notch<In>.Numerator == 1,
+                  "bnd::math::sqrt: input notch must be 1/2^K");
+    constexpr imax notch_den = abs_den(Notch<In>.Denominator);
+    static_assert((notch_den & (notch_den - 1)) == 0,
+                  "bnd::math::sqrt: input notch denominator must be a power of 2");
+    static_assert(Lower<Out> <= 0,
+                  "bnd::math::sqrt: Out must include 0");
+    constexpr rational max_abs =
+        (bnd::abs(Lower<In>) > bnd::abs(Upper<In>))
+            ? bnd::abs(Lower<In>) : bnd::abs(Upper<In>);
+    static_assert(max_abs <= 4,
+                  "bnd::math::sqrt: max(|Lower|, |Upper|) must be ≤ 4 for the Q.30 internal tier");
+    constexpr int K = detail::log2_pow2(notch_den);
+    static_assert(K <= 30,
+                  "bnd::math::sqrt: input must be Q.30 or coarser (Q.62 tier planned)");
+
+    rational v = as_rational(x);
+    if (v < rational{0})
+      return slim::nullopt;
+
+    imax v_q30 = rational::mul_unchecked(v, rational{imax{1} << 30}).round();
+    imax r_q30 = detail::sqrt_q30(v_q30);
     return Out{rational{r_q30, imax{1} << 30}};
   }
 
@@ -997,6 +1030,19 @@ namespace bnd::math
                                 ceil_to_notch(sqrt_endpoint(Upper<In>), Notch<In>)},
                                Notch<In>}, BoundPolicy<In> | round_nearest>;
 
+    // Mixed-sign sqrt: Upper of the result is sqrt of the larger absolute
+    // endpoint, since the runtime value can be anywhere in [Lower, Upper].
+    template <boundable In>
+    inline constexpr rational sqrt_signed_upper =
+        (bnd::abs(Lower<In>) > bnd::abs(Upper<In>))
+            ? bnd::abs(Lower<In>) : bnd::abs(Upper<In>);
+
+    template <boundable In>
+    using sqrt_signed_auto_t = bound<{{0_r,
+                                       ceil_to_notch(sqrt_endpoint(sqrt_signed_upper<In>),
+                                                     Notch<In>)},
+                                      Notch<In>}, BoundPolicy<In> | round_nearest>;
+
     template <boundable In>
     using exp2_auto_t = bound<{{floor_to_notch(exp2_endpoint(Lower<In>), Notch<In>),
                                 ceil_to_notch (exp2_endpoint(Upper<In>), Notch<In>)},
@@ -1024,7 +1070,16 @@ namespace bnd::math
   } // namespace detail
 
   template <boundable In>
+    requires (Lower<In> == rational{0})
   constexpr auto sqrt(In x) noexcept { return sqrt_impl<detail::sqrt_auto_t<In>>(x); }
+
+  // Mixed-sign overload: dispatches to `sqrt_signed_impl`, returning
+  // `slim::optional<bound>` so a negative runtime value surfaces as nullopt
+  // instead of UB.
+  template <boundable In>
+    requires (Lower<In> < rational{0})
+  constexpr auto sqrt(In x) noexcept
+  { return sqrt_signed_impl<detail::sqrt_signed_auto_t<In>>(x); }
 
   template <boundable In>
   constexpr auto exp2(In x) noexcept { return exp2_impl<detail::exp2_auto_t<In>>(x); }

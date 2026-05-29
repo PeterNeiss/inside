@@ -149,3 +149,14 @@ TEST_CASE("bound_range: postfix ++ / -- behave standard", "[range]")
   REQUIRE(int(to_value(*snap2)) == 1);
   REQUIRE(int(to_value(*it))    == 0);
 }
+
+TEST_CASE("bound_range::indexed pairs each value with its position", "[range][indexed]")
+{
+  small_grid r;
+  std::vector<std::pair<imax, imax>> seen;
+  for (auto [i, v] : r.indexed())
+    seen.emplace_back(i, static_cast<imax>(v));
+  REQUIRE(seen == std::vector<std::pair<imax, imax>>{
+    {0, 0}, {1, 1}, {2, 2}, {3, 3}, {4, 4}
+  });
+}

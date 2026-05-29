@@ -48,9 +48,20 @@ struct std::numeric_limits<bnd::bound<G, P>>
   static constexpr B min()    noexcept { return B{G.Interval.Lower}; }
   static constexpr B max()    noexcept { return B{G.Interval.Upper}; }
   static constexpr B lowest() noexcept { return B{G.Interval.Lower}; }
-  // epsilon / round_error are zero for an exact type — no rounding noise.
-  static constexpr B epsilon()     noexcept { return B{G.Interval.Lower}; }
-  static constexpr B round_error() noexcept { return B{G.Interval.Lower}; }
+  // Exact types have no rounding noise — epsilon and round_error are 0 when
+  // 0 is on the grid (it always is when 0 ∈ interval, since the grid is
+  // validated such that Lower is an integer multiple of Notch). When 0 is
+  // outside the interval, fall back to the grid minimum — the closest
+  // representable stand-in for "no error" the type can express.
+  static constexpr B epsilon() noexcept
+  {
+    if constexpr (G.Interval.Lower <= bnd::rational{0}
+               && bnd::rational{0} <= G.Interval.Upper)
+      return B{bnd::rational{0}};
+    else
+      return B{G.Interval.Lower};
+  }
+  static constexpr B round_error() noexcept { return epsilon(); }
 };
 
 template <bnd::grid G, bnd::policy_flag P>

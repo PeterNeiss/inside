@@ -15,6 +15,25 @@
 
 #include <expected>
 
+// Forward-declare the `bnd::math` entry points the member-syntax aliases on
+// `bound<G,P>` delegate to. The actual definitions live in <bound/cmath.hpp>;
+// users who want `.floor()` / `.ceil()` / `.round()` / `.trunc()` / `.abs()`
+// must include that header. The forward declarations here keep the in-class
+// bodies through `-Wtemplate-body` without pulling cmath.hpp in unconditionally.
+namespace bnd::math
+{
+  template <boundable Out, boundable In> constexpr Out floor_impl(In x) noexcept;
+  template <boundable Out, boundable In> constexpr Out ceil_impl (In x) noexcept;
+  template <boundable Out, boundable In> constexpr Out round_impl(In x) noexcept;
+  template <boundable Out, boundable In> constexpr Out trunc_impl(In x) noexcept;
+  template <boundable Out, boundable In> constexpr Out abs_impl  (In x) noexcept;
+  template <boundable In> constexpr auto floor(In x) noexcept;
+  template <boundable In> constexpr auto ceil (In x) noexcept;
+  template <boundable In> constexpr auto round(In x) noexcept;
+  template <boundable In> constexpr auto trunc(In x) noexcept;
+  template <boundable In> constexpr auto abs  (In x) noexcept;
+}
+
 //---------------------------------------------------------------------------
 // bound — public-facing struct that ties everything together.
 //
@@ -263,6 +282,33 @@ namespace bnd
     // for `.round()` / `.trunc()`.
     template <typename T>
     [[nodiscard]] constexpr T as() const { return to<T>().value(); }
+
+    // Member-syntax aliases for the free functions in `bnd::math` — these
+    // only compile when <bound/cmath.hpp> is also included (the bodies refer
+    // to names declared there). No-arg form picks the auto-deduced output
+    // grid; the templated form accepts an explicit `Out` bound.
+    //
+    //   b.floor()       // bound on ⌊In⌋ interval, notch 1
+    //   b.floor<Out>()  // explicit Out
+    [[nodiscard]] constexpr auto floor() const noexcept { return bnd::math::floor(*this); }
+    template <typename Out>
+    [[nodiscard]] constexpr Out floor() const noexcept { return bnd::math::floor_impl<Out>(*this); }
+
+    [[nodiscard]] constexpr auto ceil() const noexcept { return bnd::math::ceil(*this); }
+    template <typename Out>
+    [[nodiscard]] constexpr Out ceil() const noexcept { return bnd::math::ceil_impl<Out>(*this); }
+
+    [[nodiscard]] constexpr auto round() const noexcept { return bnd::math::round(*this); }
+    template <typename Out>
+    [[nodiscard]] constexpr Out round() const noexcept { return bnd::math::round_impl<Out>(*this); }
+
+    [[nodiscard]] constexpr auto trunc() const noexcept { return bnd::math::trunc(*this); }
+    template <typename Out>
+    [[nodiscard]] constexpr Out trunc() const noexcept { return bnd::math::trunc_impl<Out>(*this); }
+
+    [[nodiscard]] constexpr auto abs() const noexcept { return bnd::math::abs(*this); }
+    template <typename Out>
+    [[nodiscard]] constexpr Out abs() const noexcept { return bnd::math::abs_impl<Out>(*this); }
 
     [[nodiscard]] constexpr negative operator-() const
     {
@@ -646,9 +692,8 @@ namespace bnd
   //   1'000_b       // bound<{1000}>            digit separator
   //
   // Parse is exact (no double round-trip). Same parser backs `_r` in
-  // rational.hpp. Negative literals: `-1.5_b` parses as `-(1.5_b)`, which
-  // requires unary minus on bound (not implemented). Use `0_b - 1.5_b` or
-  // `rational{-3, 2}` in the meantime.
+  // rational.hpp. Negative literals: `-1.5_b` parses as `-(1.5_b)` — fine,
+  // since unary `operator-` on bound returns a point on the negated grid.
   //---------------------------------------------------------------------------
   template<char... Chars>
   constexpr auto operator""_b() { return just<_detail::parse_b_literal<Chars...>()>; }

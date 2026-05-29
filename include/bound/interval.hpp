@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <initializer_list>
+#include <tuple>
 
 namespace bnd { struct interval; }
 
@@ -171,5 +172,22 @@ namespace slim
   constexpr bool sentinel_traits<bnd::interval>::is_sentinel(const bnd::interval& v) noexcept
   { return v.Lower.Denominator == 0; }
 } // namespace slim
+
+//---------------------------------------------------------------------------
+// Structured bindings: `auto [lo, hi] = interval{...};`
+//---------------------------------------------------------------------------
+template <> struct std::tuple_size<bnd::interval> : std::integral_constant<std::size_t, 2> {};
+template <std::size_t I> struct std::tuple_element<I, bnd::interval> { using type = bnd::rational; };
+
+namespace bnd
+{
+  template <std::size_t I, class Iv>
+    requires std::same_as<std::remove_cvref_t<Iv>, bnd::interval>
+  constexpr auto&& get(Iv&& iv) noexcept
+  {
+    if constexpr (I == 0) return std::forward<Iv>(iv).Lower;
+    else                  return std::forward<Iv>(iv).Upper;
+  }
+}
 
 #endif // BNDintervalHPP

@@ -230,6 +230,36 @@ TEST_CASE("bnd::math::sqrt: probe (informational)", "[cmath][sqrt][.probe]")
     std::cout << "sqrt_q14(" << i << ") = " << sqrt_q14(i) << "\n";
 }
 
+TEST_CASE("bnd::math::sqrt: mixed-sign input returns optional", "[cmath][sqrt][mixed_sign]")
+{
+  using signed_in = bound<{{-1, 1}, notch<1, 65536>}, round_nearest>;
+
+  // Non-negative runtime value → engaged optional with the usual Q.30 result.
+  signed_in pos{0.25_r};
+  auto r_pos = math::sqrt(pos);
+  REQUIRE(r_pos.has_value());
+  REQUIRE(*r_pos == 0.5_r);
+
+  // Zero → engaged optional, result is 0.
+  signed_in zero{0};
+  auto r_zero = math::sqrt(zero);
+  REQUIRE(r_zero.has_value());
+  REQUIRE(*r_zero == 0);
+
+  // Negative runtime value → nullopt.
+  signed_in neg{-0.5_r};
+  auto r_neg = math::sqrt(neg);
+  REQUIRE_FALSE(r_neg.has_value());
+
+  // The non-negative overload (Lower == 0) still returns bound, not optional —
+  // the two overloads are disjoint by `requires`.
+  using nonneg_in = bound<{{0, 1}, notch<1, 65536>}, round_nearest>;
+  nonneg_in v{0.25_r};
+  STATIC_REQUIRE_FALSE(is_slim_optional_v<decltype(math::sqrt(v))>);
+  STATIC_REQUIRE(is_slim_optional_v<decltype(math::sqrt(pos))>);
+  REQUIRE(math::sqrt(v) == 0.5_r);
+}
+
 //---------------------------------------------------------------------------
 // Decimal-display tests: bound in, bound out, no raw extraction. The
 // comparisons run at the bound-value level; Catch2 stringifies failures
@@ -1125,6 +1155,31 @@ TEST_CASE("bnd::math: full auto-form chain", "[cmath][auto]")
 
   // Should round-trip to 1/8 turn within Q.16 grid.
   REQUIRE(rational{angle} == 0.125_r);
+}
+
+TEST_CASE("bound member math methods delegate to bnd::math",
+          "[cmath][member]")
+{
+  using fxd = bound<{{-3.5_r, 3.5_r}, notch<1, 4>}>;
+  fxd x{-1.75_r};
+  fxd y{2.25_r};
+
+  // No-arg form picks the auto-deduced output grid (integer-valued, notch 1).
+  REQUIRE(x.floor() == -2);
+  REQUIRE(x.ceil()  == -1);
+  REQUIRE(x.round() == -2);
+  REQUIRE(x.trunc() == -1);
+  REQUIRE(x.abs()   == 1.75_r);
+
+  REQUIRE(y.floor() ==  2);
+  REQUIRE(y.ceil()  ==  3);
+  REQUIRE(y.round() ==  2);
+  REQUIRE(y.trunc() ==  2);
+
+  // Explicit Out form picks a caller-chosen grid.
+  using out = bound<{-5, 5}>;
+  REQUIRE(x.floor<out>() == -2);
+  REQUIRE(y.ceil<out>()  ==  3);
 }
 
 TEST_CASE("bnd::math: decimal probe at the bound level",

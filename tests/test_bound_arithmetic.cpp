@@ -252,6 +252,19 @@ TEST_CASE("bound just<N>", "[bound][just]")
   STATIC_REQUIRE(just<42> == 42);
 }
 
+TEST_CASE("unary -_b composes through the literal parser", "[bound][unary_minus][literal]")
+{
+  // `-1.5_b` parses as `-(1.5_b)`. Verifies that `bound::operator-()` returns
+  // a point on the negated grid for rational-storage point bounds.
+  STATIC_REQUIRE(rational{-1.5_b} == -1.5_r);
+  STATIC_REQUIRE(rational{-5_b}   == rational{-5});
+  STATIC_REQUIRE(rational{-0x1p-8_b} == -0x1p-8_r);
+
+  // Compose: `5_b + (-1.5_b)` — point + point. The result may be wrapped
+  // in optional by the grid arithmetic; either way the value is 3.5.
+  STATIC_REQUIRE((5_b + -1.5_b) == 3.5_r);
+}
+
 TEST_CASE("constexpr arithmetic", "[bound][arithmetic][constexpr]")
 {
   using u100 = bound<{0, 100}>;

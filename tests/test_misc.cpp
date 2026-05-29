@@ -1,4 +1,5 @@
 #include "bound/bound.hpp"
+#include "bound/numeric_limits.hpp"
 #include "bound/print.hpp"
 
 #include <catch2/catch_test_macros.hpp>
@@ -116,4 +117,30 @@ TEST_CASE("default-constructed bound is well-formed", "[bound][default]")
   bound b;
   (void)b;
   SUCCEED("default ctor compiles");
+}
+
+TEST_CASE("numeric_limits epsilon / round_error report 0 for exact types",
+          "[bound][numeric_limits]")
+{
+  // 0 is in the interval and on the grid → epsilon == 0.
+  using u8 = bound<{0, 255}>;
+  STATIC_REQUIRE(std::numeric_limits<u8>::epsilon()     == 0);
+  STATIC_REQUIRE(std::numeric_limits<u8>::round_error() == 0);
+
+  using i8 = bound<{-100, 100}>;
+  STATIC_REQUIRE(std::numeric_limits<i8>::epsilon()     == 0);
+  STATIC_REQUIRE(std::numeric_limits<i8>::round_error() == 0);
+
+  using half = bound<{{-40, 60}, 0.5_r}>;
+  STATIC_REQUIRE(std::numeric_limits<half>::epsilon()     == 0);
+  STATIC_REQUIRE(std::numeric_limits<half>::round_error() == 0);
+
+  // Rational raw (Notch = 0) — still exact, epsilon = 0.
+  using r01 = bound<{{0_r, 1_r}, 0}>;
+  STATIC_REQUIRE(std::numeric_limits<r01>::epsilon() == 0);
+
+  // 0 is *outside* the interval — fall back to Lower (the closest representable).
+  using above_zero = bound<{10, 100}>;
+  STATIC_REQUIRE(std::numeric_limits<above_zero>::epsilon()     == 10);
+  STATIC_REQUIRE(std::numeric_limits<above_zero>::round_error() == 10);
 }

@@ -197,3 +197,28 @@ REQUIRE(a + b == 100);
 
 Mixed-type comparisons (`bound<G1> < bound<G2>`) compute on a common
 representation chosen at compile time — no implicit narrowing.
+
+## `std::print` / `std::format` integration
+
+`bound/formatter.hpp` ships `std::formatter` specializations for both
+`bound<G, P>` and `rational`. Empty `{}` matches `operator<<` (exact rational
+output); non-empty specs route by storage shape — integer grids go through
+`std::formatter<imax>` (`{:>4}`, `{:#x}`, `{:b}`, …), fractional grids
+through `std::formatter<double>` (`{:.2f}`, `{:e}`).
+
+```cpp
+#include "bound/formatter.hpp"
+#include <print>
+
+bound<{0, 100}> hp{42};
+std::println("HP = {}",       hp);       // 42
+std::println("HP = {:>5}",    hp);       //    42
+std::println("HP = {:#04x}",  hp);       // 0x2a
+
+bound<{{0, 1}, notch<1, 16>}, round_nearest> g{0.625_r};
+std::println("gain = {}",    g);          // 5/8
+std::println("gain = {:.3f}", g);          // 0.625
+```
+
+See `examples/decibels.cpp` for the same pattern in a real Q-format
+conversion routine.

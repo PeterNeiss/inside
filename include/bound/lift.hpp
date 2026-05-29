@@ -30,6 +30,13 @@ namespace bnd
   inline constexpr bool is_slim_optional_v =
       is_slim_optional<std::remove_cvref_t<T>>::value;
 
+  //---------------------------------------------------------------------------
+  // unwrap_t — strip slim::optional<X> down to X, leave non-optional unchanged
+  //---------------------------------------------------------------------------
+  template <class T> struct unwrap { using type = T; };
+  template <class T> struct unwrap<slim::optional<T>> { using type = T; };
+  template <class T> using unwrap_t = typename unwrap<std::remove_cvref_t<T>>::type;
+
   namespace detail
   {
     template <class T>

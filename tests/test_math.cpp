@@ -157,9 +157,12 @@ TEST_CASE("abs_fraction handles values >= 2^53", "[math][abs_fraction]")
 
 TEST_CASE("abs_fraction throws on non-finite", "[math][abs_fraction]")
 {
-  REQUIRE_THROWS(abs_fraction(std::numeric_limits<double>::infinity()));
-  REQUIRE_THROWS(abs_fraction(-std::numeric_limits<double>::infinity()));
-  REQUIRE_THROWS(abs_fraction(std::numeric_limits<double>::quiet_NaN()));
+  REQUIRE_THROWS_AS(abs_fraction(std::numeric_limits<double>::infinity()),
+                    std::domain_error);
+  REQUIRE_THROWS_AS(abs_fraction(-std::numeric_limits<double>::infinity()),
+                    std::domain_error);
+  REQUIRE_THROWS_AS(abs_fraction(std::numeric_limits<double>::quiet_NaN()),
+                    std::domain_error);
 }
 
 TEST_CASE("rational from large doubles", "[rational][from_double]")

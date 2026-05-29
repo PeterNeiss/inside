@@ -212,4 +212,22 @@ namespace slim
   { return v.Notch.Denominator == 0; }
 } // namespace slim
 
+//---------------------------------------------------------------------------
+// Structured bindings: `auto [iv, notch] = some_grid;`
+//---------------------------------------------------------------------------
+template <> struct std::tuple_size<bnd::grid> : std::integral_constant<std::size_t, 2> {};
+template <> struct std::tuple_element<0, bnd::grid> { using type = bnd::interval; };
+template <> struct std::tuple_element<1, bnd::grid> { using type = bnd::rational; };
+
+namespace bnd
+{
+  template <std::size_t I, class G>
+    requires std::same_as<std::remove_cvref_t<G>, bnd::grid>
+  constexpr auto&& get(G&& g) noexcept
+  {
+    if constexpr (I == 0) return std::forward<G>(g).Interval;
+    else                  return std::forward<G>(g).Notch;
+  }
+}
+
 #endif // BNDgridHPP
