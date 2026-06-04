@@ -12,6 +12,10 @@
 //---------------------------------------------------------------------------
 
 #include "bound/bound.hpp"
+#include "bound/casts.hpp"
+#include "bound/cmath.hpp"
+#include "bound/predicates.hpp"
+#include "bound/range.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -19,6 +23,7 @@
 #include <cstdint>
 #include <iostream>
 #include <limits>
+#include <numbers>
 #include <random>
 #include <string>
 #include <system_error>
@@ -66,12 +71,6 @@ void guarded(fuzz_state& s, Fn&& fn)
 //---------------------------------------------------------------------------
 // Helpers
 //---------------------------------------------------------------------------
-template <boundable B>
-constexpr B make_from_raw(typename B::raw_type r)
-{
-  B b; b.Raw = r; return b;
-}
-
 // Random in-range raw value. Direct storage uses [Lower, Upper];
 // notch storage uses [0, NotchCount].
 template <boundable B>
@@ -101,6 +100,27 @@ inline imax random_wide_int(std::mt19937_64& rng, imax span)
 template <boundable B>
 rational to_rational(B b) { return b; }
 
+// |a - b| <= tol, computed entirely in rationals (no float equality). The
+// transcendental oracles pass `rational{std::sin(x)}` etc. as `b` — converting
+// the std double result to a rational is exact, and the comparison stays in
+// the library's own arithmetic.
+inline bool approx_le(rational a, rational b, rational tol)
+{
+  auto d = (a >= b) ? (a - b) : (b - a);
+  return d.has_value() && *d <= tol;
+}
+
+// Relative tolerance for wide-range transcendentals (exp, pow): the allowed
+// error grows with the oracle's magnitude. allowed = abstol + rel*|oracle|.
+inline bool approx_rel(rational got, double oracle, double rel, rational abstol)
+{
+  rational orc{oracle};
+  auto d = (got >= orc) ? (got - orc) : (orc - got);
+  if (!d.has_value()) return false;
+  auto allowed = (abstol + rational{std::abs(oracle) * rel});
+  return allowed.has_value() && *d <= *allowed;
+}
+
 //---------------------------------------------------------------------------
 // Properties
 //---------------------------------------------------------------------------
@@ -123,7 +143,7 @@ void prop_round_trip(fuzz_state& s, long iters)
   {
     s.iter = i;
     auto raw = random_in_range_raw<B>(s.rng);
-    B b = make_from_raw<B>(raw);
+    B b = B::from_raw(raw);
     rational v = to_rational(b);
     FUZZ_REQUIRE(s, v >= Lower<B>);
     FUZZ_REQUIRE(s, v <= Upper<B>);
@@ -271,8 +291,8 @@ void prop_arith_vs_rational(fuzz_state& s, long iters)
   for (long i = 0; i < iters; ++i)
   {
     s.iter = i;
-    B a = make_from_raw<B>(random_in_range_raw<B>(s.rng));
-    B b = make_from_raw<B>(random_in_range_raw<B>(s.rng));
+    B a = B::from_raw(random_in_range_raw<B>(s.rng));
+    B b = B::from_raw(random_in_range_raw<B>(s.rng));
     rational ar = to_rational(a);
     rational br = to_rational(b);
 
@@ -295,8 +315,8 @@ void prop_mul_vs_rational(fuzz_state& s, long iters)
     for (long i = 0; i < iters; ++i)
     {
       s.iter = i;
-      B a = make_from_raw<B>(random_in_range_raw<B>(s.rng));
-      B b = make_from_raw<B>(random_in_range_raw<B>(s.rng));
+      B a = B::from_raw(random_in_range_raw<B>(s.rng));
+      B b = B::from_raw(random_in_range_raw<B>(s.rng));
       rational ar = to_rational(a);
       rational br = to_rational(b);
       auto mul_actual_b = a * b;
@@ -318,8 +338,8 @@ void prop_cross_add(fuzz_state& s, long iters, const char* pair_name)
   for (long i = 0; i < iters; ++i)
   {
     s.iter = i;
-    A a = make_from_raw<A>(random_in_range_raw<A>(s.rng));
-    B b = make_from_raw<B>(random_in_range_raw<B>(s.rng));
+    A a = A::from_raw(random_in_range_raw<A>(s.rng));
+    B b = B::from_raw(random_in_range_raw<B>(s.rng));
     rational ar = to_rational(a);
     rational br = to_rational(b);
     auto sum_actual_b = a + b;
@@ -368,7 +388,7 @@ void prop_negation(fuzz_state& s, long iters)
   for (long i = 0; i < iters; ++i)
   {
     s.iter = i;
-    B a = make_from_raw<B>(random_in_range_raw<B>(s.rng));
+    B a = B::from_raw(random_in_range_raw<B>(s.rng));
     auto neg = -a;
     rational ar = to_rational(a);
     rational nr = to_rational(neg);
@@ -426,8 +446,8 @@ void prop_modulo(fuzz_state& s, long iters)
       for (long i = 0; i < iters; ++i)
       {
         s.iter = i;
-        BI a = make_from_raw<BI>(random_in_range_raw<BI>(s.rng));
-        BI b = make_from_raw<BI>(random_in_range_raw<BI>(s.rng));
+        BI a = BI::from_raw(random_in_range_raw<BI>(s.rng));
+        BI b = BI::from_raw(random_in_range_raw<BI>(s.rng));
         if (b == 0) continue;  // possible if hi <= 0 and zero is in range
         auto r = mod(a, b, truncated);
         imax expected = static_cast<imax>(a) % static_cast<imax>(b);
@@ -441,9 +461,9 @@ void prop_modulo(fuzz_state& s, long iters)
       for (long i = 0; i < iters; ++i)
       {
         s.iter = i;
-        BI a = make_from_raw<BI>(random_in_range_raw<BI>(s.rng));
+        BI a = BI::from_raw(random_in_range_raw<BI>(s.rng));
         BI b{0};
-        do { b = make_from_raw<BI>(random_in_range_raw<BI>(s.rng)); } while (b == 0);
+        do { b = BI::from_raw(random_in_range_raw<BI>(s.rng)); } while (b == 0);
         auto r = mod(a, b, truncated);
         imax expected = static_cast<imax>(a) % static_cast<imax>(b);
         FUZZ_REQUIRE(s, r.has_value());
@@ -493,7 +513,7 @@ void prop_div_by_zero(fuzz_state& s, long iters)
     for (long i = 0; i < iters; ++i)
     {
       s.iter = i;
-      auto a = make_from_raw<B>(random_in_range_raw<B>(s.rng));
+      auto a = B::from_raw(random_in_range_raw<B>(s.rng));
       auto q = a / zero;
       FUZZ_REQUIRE(s, !q.has_value());
     }
@@ -509,8 +529,8 @@ void prop_spaceship_symmetry(fuzz_state& s, long iters)
   for (long i = 0; i < iters; ++i)
   {
     s.iter = i;
-    B a = make_from_raw<B>(random_in_range_raw<B>(s.rng));
-    B b = make_from_raw<B>(random_in_range_raw<B>(s.rng));
+    B a = B::from_raw(random_in_range_raw<B>(s.rng));
+    B b = B::from_raw(random_in_range_raw<B>(s.rng));
     auto cmp_ab = (a <=> b);
     auto cmp_ba = (b <=> a);
     if (cmp_ab == std::strong_ordering::equal)
@@ -799,7 +819,7 @@ void prop_optional_throws(fuzz_state& s)
   bool sentinel_throw = false;
   try
   {
-    B sentinel_b; sentinel_b.Raw = sentinel_raw<B>();
+    B sentinel_b = B::make_sentinel();
     slim::optional<B> bad{sentinel_b};
     (void)bad;
   }
@@ -822,8 +842,8 @@ void prop_compound_add_same_bound(fuzz_state& s, long iters)
     for (long i = 0; i < iters; ++i)
     {
       s.iter = i;
-      B a = make_from_raw<B>(random_in_range_raw<B>(s.rng));
-      B delta = make_from_raw<B>(random_in_range_raw<B>(s.rng));
+      B a = B::from_raw(random_in_range_raw<B>(s.rng));
+      B delta = B::from_raw(random_in_range_raw<B>(s.rng));
       rational ar = to_rational(a);
       rational dr = to_rational(delta);
       rational expect = (ar + dr).value();
@@ -863,8 +883,8 @@ void prop_raw_rational_arith(fuzz_state& s, long iters)
       rational br{bv_num, bv_den};
       // Skip if assignment would push outside the grid.
       if (ar < lo || ar > hi || br < lo || br > hi) continue;
-      B a; a.Raw = ar;
-      B b; b.Raw = br;
+      B a = B::from_raw(ar);
+      B b = B::from_raw(br);
       auto sum  = a + b;
       auto prod = a * b;
       auto expect_sum_opt  = ar + br;
@@ -886,6 +906,378 @@ void prop_raw_rational_arith(fuzz_state& s, long iters)
       check(sum,  expect_sum);
       check(prod, expect_prod);
     }
+  }
+}
+
+// True for fixed-point grids whose notch is 1/2^K — the only ones whose grid
+// points (and half-notch midpoints) are exactly representable as doubles, so
+// the arithmetic-only cast/predicate APIs can be driven without rounding the
+// oracle. (money's 1/100 notch is deliberately excluded.)
+template <boundable B>
+inline constexpr bool DyadicNotch = []{
+  if constexpr (IsRawRational<B> || IsIntegerAligned<B>) return false;
+  else {
+    imax d = abs_den(Notch<B>.Denominator);
+    return Notch<B>.Numerator == 1 && (d & (d - 1)) == 0;
+  }
+}();
+
+template <boundable B>
+void prop_casts(fuzz_state& s, long iters)
+{
+  // Free-function cast API on integer grids: exact integer oracles.
+  if constexpr (IsIntegerAligned<B> && !IsRawRational<B>)
+  {
+    s.current_prop = "casts";
+    auto lo = static_cast<imax>(Lower<B>);
+    auto hi = static_cast<imax>(Upper<B>);
+    imax range = hi - lo + 1;
+    imax span = range * 3 + 100;
+    for (long i = 0; i < iters; ++i)
+    {
+      s.iter = i;
+      imax v = lo + random_wide_int(s.rng, span);
+      imax cl = std::clamp<imax>(v, lo, hi);
+      FUZZ_REQUIRE(s, clamp_cast<B>(v) == cl);
+      imax wexpect = ((v - lo) % range + range) % range + lo;
+      FUZZ_REQUIRE(s, wrap_cast<B>(v) == wexpect);
+      // notch == 1, so floor/ceil/round are no-ops after the clamp.
+      FUZZ_REQUIRE(s, clamp_floor<B>(v) == cl);
+      FUZZ_REQUIRE(s, clamp_ceil<B>(v)  == cl);
+      FUZZ_REQUIRE(s, clamp_round<B>(v) == cl);
+      if (v >= lo && v <= hi)
+      {
+        FUZZ_REQUIRE(s, checked_cast<B>(v)   == v);
+        FUZZ_REQUIRE(s, unchecked_cast<B>(v) == v);
+      }
+      else
+        FUZZ_REQUIRE(s, throws_with(errc::domain_error,
+                                    [&]{ (void)checked_cast<B>(v); }));
+    }
+  }
+}
+
+template <boundable B>
+void prop_casts_fixed(fuzz_state& s, long iters)
+{
+  // clamp_floor / clamp_ceil on dyadic fixed-point grids: a half-notch
+  // midpoint floors to the notch below and ceils to the notch above.
+  if constexpr (DyadicNotch<B>)
+  {
+    s.current_prop = "casts_fixed";
+    rational notch = Notch<B>;
+    rational lo    = Lower<B>;
+    rational half  = (notch / 2_r).value();
+    for (long i = 0; i < iters; ++i)
+    {
+      s.iter = i;
+      std::uniform_int_distribution<umax> dist(0, NotchCount<B> - 1);
+      umax k = dist(s.rng);
+      rational on_notch = (lo + (rational{k} * notch).value()).value();
+      rational next     = (on_notch + notch).value();
+      double   mid      = static_cast<double>((on_notch + half).value());
+      FUZZ_REQUIRE(s, to_rational(clamp_floor<B>(mid)) == on_notch);
+      FUZZ_REQUIRE(s, to_rational(clamp_ceil<B>(mid))  == next);
+    }
+  }
+}
+
+template <boundable B>
+void prop_predicates(fuzz_state& s, long iters)
+{
+  // will_conversion_* / is_conversion_lossy must agree with the actual
+  // checked conversion outcome.
+  if constexpr (IsIntegerAligned<B> && !IsRawRational<B>)
+  {
+    s.current_prop = "predicates";
+    auto lo = static_cast<imax>(Lower<B>);
+    auto hi = static_cast<imax>(Upper<B>);
+    imax span = (hi - lo) * 3 + 100;
+    for (long i = 0; i < iters; ++i)
+    {
+      s.iter = i;
+      imax v = lo + random_wide_int(s.rng, span);
+      bool in_range = (v >= lo && v <= hi);
+      FUZZ_REQUIRE(s, will_conversion_overflow<B>(v) == !in_range);
+      FUZZ_REQUIRE(s, !will_conversion_truncate<B>(v));      // integer grid never truncates
+      bool lossy = is_conversion_lossy<B>(v);
+      bool threw = throws_with_any({errc::domain_error, errc::rounding_error},
+                                   [&]{ (void)checked_cast<B>(v); });
+      FUZZ_REQUIRE(s, lossy == threw);
+    }
+  }
+  else if constexpr (DyadicNotch<B>)
+  {
+    s.current_prop = "predicates";
+    rational notch = Notch<B>;
+    rational lo    = Lower<B>;
+    rational hi    = Upper<B>;
+    rational half  = (notch / 2_r).value();
+    for (long i = 0; i < iters; ++i)
+    {
+      s.iter = i;
+      std::uniform_int_distribution<umax> dist(0, NotchCount<B>);
+      umax k = dist(s.rng);
+      double on_notch = static_cast<double>((lo + (rational{k} * notch).value()).value());
+      // On-notch, in range: nothing lost.
+      FUZZ_REQUIRE(s, !will_conversion_overflow<B>(on_notch));
+      FUZZ_REQUIRE(s, !will_conversion_truncate<B>(on_notch));
+      FUZZ_REQUIRE(s, !is_conversion_lossy<B>(on_notch));
+      // Half-notch midpoint, in range: truncates (lossy) but does not overflow.
+      if (k < NotchCount<B>)
+      {
+        double mid = on_notch + static_cast<double>(half);
+        FUZZ_REQUIRE(s, !will_conversion_overflow<B>(mid));
+        FUZZ_REQUIRE(s, will_conversion_truncate<B>(mid));
+        FUZZ_REQUIRE(s, is_conversion_lossy<B>(mid));
+        FUZZ_REQUIRE(s, throws_with(errc::rounding_error,
+                                    [&]{ (void)checked_cast<B>(mid); }));
+      }
+      // Above the top notch: overflow (lossy).
+      double over = static_cast<double>((hi + notch).value());
+      FUZZ_REQUIRE(s, will_conversion_overflow<B>(over));
+      FUZZ_REQUIRE(s, is_conversion_lossy<B>(over));
+    }
+  }
+}
+
+template <boundable B>
+void prop_range(fuzz_state& s, long iters)
+{
+  // bound_range walks every notch slot exactly once; a mid-range start rotates
+  // the sequence. Capped so the billion-wide catalogue grids stay fast.
+  if constexpr (!IsRawRational<B>)
+  {
+    constexpr umax N = NotchCount<B> + 1;
+    if constexpr (N <= 100000)
+    {
+      s.current_prop = "range";
+      using R = bound_range<Grid<B>>;
+      long it = std::min<long>(iters, 200);
+      std::uniform_int_distribution<umax> kdist(0, N - 1);
+      for (long i = 0; i < it; ++i)
+      {
+        s.iter = i;
+        umax k = kdist(s.rng);
+        rational start = (Lower<B> + (rational{k} * Notch<B>).value()).value();
+        R r{typename R::value_type{start}};
+        FUZZ_REQUIRE(s, r.size() == N);
+        umax idx = 0;
+        for (auto b : r)
+        {
+          umax slot = (k + idx) % N;
+          rational expect = (Lower<B> + (rational{slot} * Notch<B>).value()).value();
+          FUZZ_REQUIRE(s, to_rational(b) == expect);
+          // random-access indexing agrees with the sequential walk.
+          FUZZ_REQUIRE(s, to_rational(r.begin()[static_cast<imax>(idx)]) == expect);
+          ++idx;
+        }
+        FUZZ_REQUIRE(s, idx == N);
+        FUZZ_REQUIRE(s, r.begin() + static_cast<imax>(N) == r.end());
+      }
+    }
+  }
+}
+
+//---------------------------------------------------------------------------
+// Standalone cmath properties — dedicated grids satisfying each function's
+// domain/notch static_asserts. Oracles use <cmath> (test-only floating point).
+//---------------------------------------------------------------------------
+void prop_cmath_exact(fuzz_state& s, long iters)
+{
+  // abs/floor/ceil/round/trunc/fmod against exact rational oracles.
+  using M = bound<{{-8, 8}, notch<1, 16384>}, round_nearest>;
+  s.current_grid = "cmath";
+  s.current_prop = "cmath_exact";
+  for (long i = 0; i < iters; ++i)
+  {
+    s.iter = i;
+    M x = M::from_raw(random_in_range_raw<M>(s.rng));
+    M y = M::from_raw(random_in_range_raw<M>(s.rng));
+    rational xr = x, yr = y;
+    FUZZ_REQUIRE(s, rational{math::abs(x)}   == bnd::abs(xr));
+    FUZZ_REQUIRE(s, rational{math::floor(x)} == rational{xr.floor()});
+    FUZZ_REQUIRE(s, rational{math::trunc(x)} == rational{xr.trunc()});
+    FUZZ_REQUIRE(s, rational{math::round(x)} == rational{xr.round()});
+    FUZZ_REQUIRE(s, rational{math::ceil(x)}  == -rational{(-xr).floor()});
+    if (yr != 0)
+    {
+      // Truncated-division remainder: x - trunc(x/y)*y (matches std::fmod).
+      rational q   = (xr / yr).value();
+      rational rem = (xr - (rational{q.trunc()} * yr).value()).value();
+      FUZZ_REQUIRE(s, to_rational(math::fmod(x, y)) == rem);
+    }
+  }
+}
+
+void prop_sqrt(fuzz_state& s, long iters)
+{
+  using In  = bound<{{0, 4}, notch<1, 65536>}, round_nearest>;
+  using Out = bound<{{0, 2}, notch<1, 16384>}, round_nearest>;
+  s.current_grid = "cmath";
+  s.current_prop = "sqrt";
+  const rational tol{4, 16384};            // ~2 output notches (double-rounding)
+  std::uniform_int_distribution<umax> rawdist(0, NotchCount<In>);
+  for (long i = 0; i < iters; ++i)
+  {
+    s.iter = i;
+    In x = In::from_raw(static_cast<typename In::raw_type>(rawdist(s.rng)));
+    rational xr = x;
+    rational rr = Out{math::sqrt(x)};
+    double   oracle = std::sqrt(static_cast<double>(xr));
+    FUZZ_REQUIRE(s, approx_le(rr, rational{oracle}, tol));
+  }
+
+  // Mixed-sign overload returns slim::optional (nullopt for negatives).
+  s.current_prop = "sqrt_signed";
+  using SIn = bound<{{-1, 1}, notch<1, 65536>}, round_nearest>;
+  for (long i = 0; i < iters; ++i)
+  {
+    s.iter = i;
+    SIn x = SIn::from_raw(random_in_range_raw<SIn>(s.rng));
+    rational xr = x;
+    auto opt = math::sqrt(x);
+    FUZZ_REQUIRE(s, opt.has_value() == (xr >= 0));
+    if (opt.has_value())
+      FUZZ_REQUIRE(s, approx_le(rational{*opt},
+                                rational{std::sqrt(static_cast<double>(xr))}, tol));
+  }
+}
+
+void prop_sin_cos(fuzz_state& s, long iters)
+{
+  using A = bound<{{-8, 8}, notch<1, 16384>}, round_nearest>;
+  s.current_grid = "cmath";
+  s.current_prop = "sin_cos";
+  const rational tol{8, 16384};
+  const rational id_tol{64, 16384};
+  for (long i = 0; i < iters; ++i)
+  {
+    s.iter = i;
+    A a = A::from_raw(random_in_range_raw<A>(s.rng));
+    double   ad = static_cast<double>(rational{a});
+    rational sn = math::sin(a);
+    rational cs = math::cos(a);
+    FUZZ_REQUIRE(s, approx_le(sn, rational{std::sin(ad)}, tol));
+    FUZZ_REQUIRE(s, approx_le(cs, rational{std::cos(ad)}, tol));
+    rational sum = ((sn * sn).value() + (cs * cs).value()).value();
+    FUZZ_REQUIRE(s, approx_le(sum, 1_r, id_tol));
+  }
+}
+
+void prop_tan(fuzz_state& s, long iters)
+{
+  using A = bound<{{-8, 8}, notch<1, 16384>}, round_nearest>;
+  s.current_grid = "cmath";
+  s.current_prop = "tan";
+  const rational tol{16, 1024};
+  for (long i = 0; i < iters; ++i)
+  {
+    s.iter = i;
+    A a = A::from_raw(random_in_range_raw<A>(s.rng));
+    double ad = static_cast<double>(rational{a});
+    auto   t  = math::tan(a);
+    if (t.has_value())
+    {
+      double o = std::tan(ad);
+      // Skip the near-pole region where the fixed-point approximation diverges
+      // faster than the tolerance; the in-range result there is still valid.
+      if (std::abs(o) <= 8.0)
+        FUZZ_REQUIRE(s, approx_le(rational{*t}, rational{o}, tol));
+    }
+    else
+      FUZZ_REQUIRE(s, t.error() == errc::division_by_zero
+                   || t.error() == errc::overflow);
+  }
+}
+
+void prop_exp_log(fuzz_state& s, long iters)
+{
+  s.current_grid = "cmath";
+
+  {
+    using In = bound<{{-4, 4}, notch<1, 16384>}, round_nearest>;
+    s.current_prop = "exp2";
+    for (long i = 0; i < iters; ++i)
+    {
+      s.iter = i;
+      In x = In::from_raw(random_in_range_raw<In>(s.rng));
+      double xd = static_cast<double>(rational{x});
+      FUZZ_REQUIRE(s, approx_rel(rational{math::exp2(x)}, std::exp2(xd),
+                                 0.01, rational{8, 16384}));
+    }
+  }
+  {
+    using In = bound<{{0x1p-8_r, 256}, notch<1, 16384>}, round_nearest>;
+    s.current_prop = "log2";
+    for (long i = 0; i < iters; ++i)
+    {
+      s.iter = i;
+      In x = In::from_raw(random_in_range_raw<In>(s.rng));
+      double xd = static_cast<double>(rational{x});
+      FUZZ_REQUIRE(s, approx_le(rational{math::log2(x)},
+                                rational{std::log2(xd)}, rational{16, 16384}));
+    }
+  }
+  {
+    using In = bound<{{-10, 10}, notch<1, 16384>}, round_nearest>;
+    s.current_prop = "exp";
+    for (long i = 0; i < iters; ++i)
+    {
+      s.iter = i;
+      In x = In::from_raw(random_in_range_raw<In>(s.rng));
+      double xd = static_cast<double>(rational{x});
+      FUZZ_REQUIRE(s, approx_rel(rational{math::exp(x)}, std::exp(xd),
+                                 0.01, rational{4, 256}));
+    }
+  }
+  {
+    using In = bound<{{0x1p-8_r, 256}, notch<1, 256>}, round_nearest>;
+    s.current_prop = "log";
+    for (long i = 0; i < iters; ++i)
+    {
+      s.iter = i;
+      In x = In::from_raw(random_in_range_raw<In>(s.rng));
+      double xd = static_cast<double>(rational{x});
+      // log's auto output is Q.8 (notch 1/256), so accuracy is a few Q.8 ULP.
+      FUZZ_REQUIRE(s, approx_le(rational{math::log(x)},
+                                rational{std::log(xd)}, rational{8, 256}));
+    }
+  }
+  {
+    using In = bound<{{-9, 9}, notch<1, 16384>}, round_nearest>;
+    s.current_prop = "pow_base";
+    for (long i = 0; i < iters; ++i)
+    {
+      s.iter = i;
+      In x = In::from_raw(random_in_range_raw<In>(s.rng));
+      double xd = static_cast<double>(rational{x});
+      double o  = std::pow(10.0, xd);
+      if (o > 60000.0) continue;            // stay inside the output grid range
+      FUZZ_REQUIRE(s, approx_rel(rational{math::pow_base<10>(x)}, o,
+                                 0.01, rational{4, 256}));
+    }
+  }
+}
+
+void prop_atan2(fuzz_state& s, long iters)
+{
+  using In = bound<{{-1, 1}, notch<1, 16384>}, round_nearest>;
+  s.current_grid = "cmath";
+  s.current_prop = "atan2";
+  const rational tol{16, 16384};
+  const double   two_pi = 2.0 * std::numbers::pi_v<double>;
+  for (long i = 0; i < iters; ++i)
+  {
+    s.iter = i;
+    In y = In::from_raw(random_in_range_raw<In>(s.rng));
+    In x = In::from_raw(random_in_range_raw<In>(s.rng));
+    rational yr = y, xr = x;
+    if (yr == 0 && xr == 0) continue;       // degenerate
+    double turns = std::atan2(static_cast<double>(yr),
+                              static_cast<double>(xr)) / two_pi;
+    if (std::abs(turns) > 0.49) continue;   // ±0.5-turn wraparound boundary
+    FUZZ_REQUIRE(s, approx_le(rational{math::atan2(y, x)}, rational{turns}, tol));
   }
 }
 
@@ -919,6 +1311,10 @@ void run_props(fuzz_state& s, long iters, const char* name)
   guarded(s, [&]{ prop_non_notch_assign<B>(s, iters); });
   guarded(s, [&]{ prop_subnormal_construct<B>(s, iters); });
   guarded(s, [&]{ prop_raw_rational_arith<B>(s, iters); });
+  guarded(s, [&]{ prop_casts<B>(s, iters); });
+  guarded(s, [&]{ prop_casts_fixed<B>(s, iters); });
+  guarded(s, [&]{ prop_predicates<B>(s, iters); });
+  guarded(s, [&]{ prop_range<B>(s, iters); });
 }
 
 //---------------------------------------------------------------------------
@@ -950,6 +1346,13 @@ int main(int argc, char** argv)
   run_props<bound<{{-1, 1}, *(1_r/16384)}>>     (s, iters, "Q1.14");
   run_props<bound<{{0, 65535}, *(1_r/65536)}>>  (s, iters, "Q16.16");
   run_props<bound<{{0, 1'000'000}, *(1_r/100)}>>(s, iters, "money");
+  // Extended catalogue: extreme/asymmetric/tiny shapes through every property.
+  run_props<bound<{0, 1'000'000'000}>>          (s, iters, "u1G");
+  run_props<bound<{-1'000'000'000, 1'000'000'000}>>(s, iters, "s1G");
+  run_props<bound<{{-7, 11}, 0.25}>>            (s, iters, "asym_q");
+  run_props<bound<{0, 3}>>                      (s, iters, "tiny");
+  run_props<bound<{-1, 1}>>                     (s, iters, "unit_signed");
+  run_props<bound<{{0, 4}, *(1_r/65536)}>>      (s, iters, "Q_sqrt");
   // Raw-rational grid (notch=0): exercises the IsRawRational branches in
   // addition / multiplication / assignment. Default `checked` policy goes
   // through the overflow-checked rational arithmetic; the `none` variant
@@ -960,6 +1363,14 @@ int main(int argc, char** argv)
   // Standalone (non-grid) properties.
   guarded(s, [&]{ prop_interval_eq(s); });
   guarded(s, [&]{ prop_optional_throws(s); });
+
+  // Standalone cmath properties (dedicated domain grids).
+  guarded(s, [&]{ prop_cmath_exact(s, iters); });
+  guarded(s, [&]{ prop_sqrt(s, iters); });
+  guarded(s, [&]{ prop_sin_cos(s, iters); });
+  guarded(s, [&]{ prop_tan(s, iters); });
+  guarded(s, [&]{ prop_exp_log(s, iters); });
+  guarded(s, [&]{ prop_atan2(s, iters); });
 
   // Cross-grid arithmetic: mix grids of different lower/upper but same notch.
   guarded(s, [&]{ prop_cross_add<bound<{0, 100}>, bound<{-100, 100}>>(s, iters, "u100+s100"); });

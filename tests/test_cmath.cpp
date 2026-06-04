@@ -27,9 +27,8 @@ namespace
   // `math::detail::*_turn_impl` directly.
   constexpr math::detail::turns_t<16> phase_from(unsigned raw)
   {
-    math::detail::turns_t<16> p;
-    p.Raw = static_cast<decltype(p.Raw)>(raw);
-    return p;
+    using P = math::detail::turns_t<16>;
+    return P::from_raw(static_cast<typename P::raw_type>(raw));
   }
 
   // Thin auto-form wrappers around the internal turn-input workers,
@@ -703,9 +702,8 @@ namespace
 
   constexpr math::detail::turns_t<16> tan_phase_from(unsigned raw)
   {
-    math::detail::turns_t<16> p;
-    p.Raw = static_cast<decltype(p.Raw)>(raw);
-    return p;
+    using P = math::detail::turns_t<16>;
+    return P::from_raw(static_cast<typename P::raw_type>(raw));
   }
 
   // Helper: extract the Q.10 amplitude from the auto-deduced tan result

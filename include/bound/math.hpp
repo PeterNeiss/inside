@@ -165,50 +165,64 @@ namespace bnd
       return std::bit_cast<double>(bits);
   }
 
-  // I barely understand this, but it seems to work fine
-  constexpr auto abs_fraction(double value)
+  // Exact conversion of a finite double to a fraction num/den (den a power of
+  // two), the engine behind rational(double). A finite double is exactly
+  //
+  //     significand * 2^exp2
+  //
+  // where `significand` is a 53-bit integer — the 52 stored fraction bits plus
+  // the implicit leading 1 for normals. Both fall straight out of the IEEE-754
+  // bit pattern, so there is no <cmath> call and no FPU rounding: the result is
+  // bit-identical across platforms.
+  constexpr std::pair<umax, umax> abs_fraction(double value)
   {
     if (not std::isfinite(value))
       throw std::domain_error("bnd::abs_fraction: non-finite double");
 
-    // abs
-    if (value < 0) value = -value;
+    if (value == 0.0) return {0, 1};
+    if (value < 0)    value = -value;        // |value|; sign is the caller's job
 
-    int exponent;
-    // norm_frac in [0.5, 1.0)
-    double norm_frac = bnd::frexp(value, &exponent);
-    // double has 53 bits of precision
-    constexpr int bits = 53;
-    umax num = static_cast<umax>(bnd::ldexp(norm_frac, bits));
-    umax den;
-    if (exponent >= bits)
+    const auto bits = std::bit_cast<std::uint64_t>(value);
+    const int  e    = static_cast<int>((bits >> 52) & 0x7FF);
+    umax significand = bits & 0x000F'FFFF'FFFF'FFFF;
+    int  exp2;
+    if (e == 0)                              // subnormal: no implicit leading 1
+      exp2 = 1 - 1023 - 52;
+    else                                     // normal: restore the implicit bit
     {
-      num <<= (exponent - bits);
-      den = 1;
+      significand |= (umax{1} << 52);
+      exp2 = e - 1023 - 52;
     }
-    else
+
+    // value == significand * 2^exp2. Re-express as num/den with den = 2^k.
+    if (exp2 >= 0)                           // integer-valued: scale up, den = 1
+      return {significand << exp2, 1};
+
+    // exp2 < 0 → den = 2^(-exp2). The denominator is later stored as a signed
+    // imax, so it must not exceed 2^62 (1 << 63 would set the sign bit). When
+    // -exp2 overshoots that cap the value is too small to keep at this scale:
+    // drop the low bits of the significand, flushing magnitudes below ~2^-62
+    // toward zero. A shift of >= 64 is UB, so fold it to a hard zero. This
+    // branch is genuinely reachable — every subnormal (exp2 == -1074) and any
+    // normal below ~2^-62 lands here, where the significand collapses to 0 and
+    // den is then irrelevant (downstream canonicalisation rewrites 0/d as 0/1).
+    int den_pow = -exp2;
+    constexpr int max_pow = 62;
+    if (den_pow > max_pow)
     {
-      // den = 2^(bits - exponent); the rational denominator is later stored as
-      // a signed imax, so the shift must not exceed 62 (1ULL << 63 sets the
-      // sign bit and casting to imax is implementation-defined). For values
-      // too small to represent precisely, scale num down so den fits. Right-
-      // shifting a umax by >= 64 is UB, so fold that case to a hard zero.
-      int shift = bits - exponent;
-      constexpr int max_shift = 62;
-      if (shift > max_shift)
-      {
-        int rshift = shift - max_shift;
-        num = (rshift >= 64) ? 0 : (num >> rshift);
-        shift = max_shift;
-      }
-      den = 1ULL << shift;
-      // simplify by removing trailing zeros from num
-      while (num && (num & 1) == 0 && den != 1) {
-          num >>= 1;
-          den >>= 1;
-      }
+      const int drop = den_pow - max_pow;
+      significand = (drop >= 64) ? 0 : (significand >> drop);
+      den_pow = max_pow;
     }
-    return std::pair{num, den};
+    umax den = umax{1} << den_pow;
+
+    // den is a power of two, so reduce by cancelling shared factors of two.
+    while (significand && (significand & 1) == 0 && den != 1)
+    {
+      significand >>= 1;
+      den >>= 1;
+    }
+    return {significand, den};
   }
 
 } // namespace bnd

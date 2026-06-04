@@ -23,36 +23,21 @@
 //---------------------------------------------------------------------------
 namespace bnd
 {
-  template <boundable B, arithmetic A>
-  [[nodiscard]] constexpr bool will_conversion_overflow(A value) noexcept
-  {
-    return not Interval<B>.includes(rational{value});
-  }
-
-  template <boundable B, boundable A>
+  template <boundable B, numeric A>
   [[nodiscard]] constexpr bool will_conversion_overflow(A value) noexcept
   {
     return not Interval<B>.includes(as_rational(value));
   }
 
-  template <boundable B, arithmetic A>
+  template <boundable B, numeric A>
   [[nodiscard]] constexpr bool will_conversion_truncate(A value) noexcept
   {
     if constexpr (IsRawRational<B>)
       return false;                       // rational raw stores any value exactly
-    if (not Interval<B>.includes(rational{value}))
+    rational r = as_rational(value);
+    if (not Interval<B>.includes(r))
       return false;                       // out-of-range — overflow, not truncation
     // In-range: truncation occurs iff (value - Lower) / Notch is non-integer.
-    auto offset = (rational{value} - Lower<B>) / Notch<B>;
-    return !offset.has_value() || abs_den(offset->Denominator) != 1;
-  }
-
-  template <boundable B, boundable A>
-  [[nodiscard]] constexpr bool will_conversion_truncate(A value) noexcept
-  {
-    if constexpr (IsRawRational<B>) return false;
-    rational r = value;
-    if (not Interval<B>.includes(r)) return false;
     auto offset = (r - Lower<B>) / Notch<B>;
     return !offset.has_value() || abs_den(offset->Denominator) != 1;
   }

@@ -45,8 +45,7 @@ TEST_CASE("bound::to<unsigned T>", "[bound][to]")
   SECTION("sentinel-state bound -> overflow")
   {
     using B = bound<{0, 100}, sentinel>;
-    B b;
-    b.Raw = sentinel_raw<B>();
+    B b = B::make_sentinel();
     auto r = b.to<std::uint8_t>();
     REQUIRE_FALSE(r.has_value());
     REQUIRE(r.error() == errc::overflow);
@@ -96,8 +95,7 @@ TEST_CASE("bound::to<floating T>", "[bound][to]")
   SECTION("sentinel-state -> overflow")
   {
     using B = bound<{0, 100}, sentinel>;
-    B b;
-    b.Raw = sentinel_raw<B>();
+    B b = B::make_sentinel();
     auto r = b.to<double>();
     REQUIRE_FALSE(r.has_value());
     REQUIRE(r.error() == errc::overflow);
@@ -127,8 +125,7 @@ TEST_CASE("bound::to<rational>", "[bound][to]")
   SECTION("sentinel-state -> overflow")
   {
     using B = bound<{0, 100}, sentinel>;
-    B b;
-    b.Raw = sentinel_raw<B>();
+    B b = B::make_sentinel();
     auto r = b.to<rational>();
     REQUIRE_FALSE(r.has_value());
     REQUIRE(r.error() == errc::overflow);

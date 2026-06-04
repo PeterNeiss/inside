@@ -409,6 +409,17 @@ TEST_CASE("rational trunc / floor / round", "[rational][reduce]")
     REQUIRE((0_r).floor()     ==  0);
   }
 
+  SECTION("ceil — toward +inf")
+  {
+    REQUIRE(rational{7u, 2}.ceil()  ==  4);   //  3.5 ->  4
+    REQUIRE(rational{7,  -2}.ceil() == -3);   // -3.5 -> -3
+    REQUIRE(rational{1u, 2}.ceil()  ==  1);   //  0.5 ->  1
+    REQUIRE(rational{1,  -2}.ceil() ==  0);   // -0.5 ->  0
+    REQUIRE(rational{4u, 1}.ceil()  ==  4);   // exact integer: no step
+    REQUIRE(rational{4,  -1}.ceil() == -4);
+    REQUIRE((0_r).ceil()     ==  0);
+  }
+
   SECTION("round — half away from zero")
   {
     REQUIRE(rational{1u, 2}.round() ==  1);    //  0.5 ->  1

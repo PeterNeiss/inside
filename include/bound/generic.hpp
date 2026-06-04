@@ -93,6 +93,17 @@ namespace bnd
   template <typename N>
   concept numeric = boundable<N> or arithmetic<N>;
 
+  // Uniform rational view of a scalar or bound. For arithmetic N it constructs
+  // rational{v}; for a bound it uses the implicit operator rational(). Defined
+  // here (not in casts.hpp) so the many core-header users — assignment, compare,
+  // division, range, predicates — resolve it by ordinary lookup rather than ADL.
+  template <numeric N>
+  [[nodiscard]] constexpr rational as_rational(N v)
+  {
+    if constexpr (arithmetic<N>) return rational{v};
+    else                         return v;
+  }
+
   // ONLY type conversion, NO value representation conversion calculation
   template <boundable B>
   constexpr raw_t<B> raw_cast(auto value)
@@ -268,6 +279,32 @@ namespace bnd
   // their bits set — having a subset like just `ignore_round` does NOT match.
   template <boundable B, typename P, policy_flag F>
   inline constexpr bool HasPolicy = (BoundPolicy<B> & F) == F || plain<P>::test(F);
+
+  // Round the exact non-negative offset quotient num/den (den >= 1) to an
+  // integer notch index per L's effective rounding policy. round_nearest is
+  // half-away-from-zero; round_half_even breaks ties to even; round_ceil rounds
+  // up; round_floor — and any policy with no rounding flag — truncate (== floor
+  // for a non-negative quotient). Shared by assignment's apply_clamp and
+  // store_checked; arm order matches the original inline dispatch.
+  template <boundable L, typename P>
+  [[nodiscard]] constexpr umax round_quotient(umax num, umax den) noexcept
+  {
+    if constexpr (HasPolicy<L, P, round_nearest>)
+      return (num + den / 2) / den;
+    else if constexpr (HasPolicy<L, P, round_floor>)
+      return num / den;
+    else if constexpr (HasPolicy<L, P, round_ceil>)
+      return (num + den - 1) / den;
+    else if constexpr (HasPolicy<L, P, round_half_even>)
+    {
+      umax q = num / den, r = num % den;
+      if (r * 2 < den) return q;
+      if (r * 2 > den) return q + 1;
+      return (q & 1) ? q + 1 : q;
+    }
+    else
+      return num / den;
+  }
 
   // Forward decl — defined in assignment.hpp
   template <typename L, typename R> struct assignment;

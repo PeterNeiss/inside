@@ -161,7 +161,8 @@ namespace bnd
 
     // Named integer reductions — explicit, lossy, intent-clear alternatives
     // to `static_cast<imax>(r)`. trunc rounds toward zero (matches operator T);
-    // floor rounds toward -inf; round goes half-away-from-zero.
+    // floor rounds toward -inf; ceil rounds toward +inf; round goes
+    // half-away-from-zero.
     [[nodiscard]] constexpr imax trunc() const
     {
       umax q = Numerator / static_cast<umax>(abs_den(Denominator));
@@ -177,6 +178,18 @@ namespace bnd
       if (Denominator < 0 && rem != 0)
         return -static_cast<imax>(q) - 1;
       return (Denominator < 0) ? -static_cast<imax>(q) : static_cast<imax>(q);
+    }
+
+    [[nodiscard]] constexpr imax ceil() const
+    {
+      umax ad  = static_cast<umax>(abs_den(Denominator));
+      umax q   = Numerator / ad;
+      umax rem = Numerator % ad;
+      // negative value: ceiling toward +inf coincides with truncation toward zero
+      if (Denominator < 0)
+        return -static_cast<imax>(q);
+      // positive with non-zero remainder: step one further toward +inf
+      return static_cast<imax>(q) + (rem != 0 ? 1 : 0);
     }
 
     [[nodiscard]] constexpr imax round() const

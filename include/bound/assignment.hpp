@@ -329,22 +329,7 @@ namespace bnd
       // boundary-adjacent midpoint *past* the boundary by one notch.
       // `raw_from_offset<L>` produces the proper Raw for both offset-encoded
       // and direct-encoded storage (the latter adds Lower<L> back).
-      if constexpr (HasPolicy<L, P, round_nearest>)
-        lhs.Raw = raw_from_offset<L>((raw.Numerator + den/2) / den);
-      else if constexpr (HasPolicy<L, P, round_floor>)
-        lhs.Raw = raw_from_offset<L>(raw.Numerator / den);
-      else if constexpr (HasPolicy<L, P, round_ceil>)
-        lhs.Raw = raw_from_offset<L>((raw.Numerator + den - 1) / den);
-      else if constexpr (HasPolicy<L, P, round_half_even>)
-      {
-        umax q = raw.Numerator / den;
-        umax r = raw.Numerator % den;
-        if (r * 2 < den)       lhs.Raw = raw_from_offset<L>(q);
-        else if (r * 2 > den)  lhs.Raw = raw_from_offset<L>(q + 1);
-        else                   lhs.Raw = raw_from_offset<L>((q & 1) ? q + 1 : q);
-      }
-      else
-        lhs.Raw = raw_from_offset<L>(raw.Numerator / den);
+      lhs.Raw = raw_from_offset<L>(round_quotient<L, P>(raw.Numerator, den));
     }
 
     if constexpr (clamp_action<plain<A>>)
@@ -402,22 +387,12 @@ namespace bnd
       if (den == 1)
       { lhs.Raw = raw_from_offset<L>(raw.Numerator); return true; }
 
-      if constexpr (HasPolicy<L, P, round_nearest>)
-        lhs.Raw = raw_from_offset<L>((raw.Numerator + den/2) / den);
-      else if constexpr (HasPolicy<L, P, round_floor>)
-        lhs.Raw = raw_from_offset<L>(raw.Numerator / den);
-      else if constexpr (HasPolicy<L, P, round_ceil>)
-        lhs.Raw = raw_from_offset<L>((raw.Numerator + den - 1) / den);
-      else if constexpr (HasPolicy<L, P, round_half_even>)
-      {
-        umax q = raw.Numerator / den;
-        umax r = raw.Numerator % den;
-        if (r * 2 < den)       lhs.Raw = raw_from_offset<L>(q);
-        else if (r * 2 > den)  lhs.Raw = raw_from_offset<L>(q + 1);
-        else                   lhs.Raw = raw_from_offset<L>((q & 1) ? q + 1 : q);
-      }
-      else if constexpr (HasPolicy<L, P, ignore_round>)
-        lhs.Raw = raw_from_offset<L>(raw.Numerator / den);
+      constexpr bool has_round_flag =
+           HasPolicy<L, P, round_nearest> || HasPolicy<L, P, round_floor>
+        || HasPolicy<L, P, round_ceil>    || HasPolicy<L, P, round_half_even>
+        || HasPolicy<L, P, ignore_round>;
+      if constexpr (has_round_flag)
+        lhs.Raw = raw_from_offset<L>(round_quotient<L, P>(raw.Numerator, den));
       else if (policy.round_check())
       {
         auto msg = bnd::to_string(rhs) + " does not land on notch " + bnd::to_string(Notch<L>);
@@ -427,7 +402,7 @@ namespace bnd
         return false;
       }
       else
-        lhs.Raw = raw_from_offset<L>(raw.Numerator / den);
+        lhs.Raw = raw_from_offset<L>(round_quotient<L, P>(raw.Numerator, den));
       return true;
     }
   }

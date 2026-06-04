@@ -105,6 +105,14 @@ namespace bnd::math
         ? rational::mul_unchecked(kTwoPi, rational{imax{1} << (30 - N)}).round()
         : rational::mul_unchecked(kTwoPi, rational{1, imax{1} << (N - 30)}).round();
 
+    // log2(d) for a power-of-2 imax d. Constexpr loop; cheap at compile time.
+    constexpr int log2_pow2(imax d) noexcept
+    {
+      int n = 0;
+      while (d > 1) { d >>= 1; ++n; }
+      return n;
+    }
+
     // Extract the N from a turns-shaped input bound. Alias templates can't
     // be reverse-deduced, so sin/cos take an arbitrary `boundable In` and
     // derive N from its grid (notch denominator is 2^N). This lets the
@@ -116,11 +124,7 @@ namespace bnd::math
                     "bnd::math: turn-phase input must have Lower == 0");
       static_assert(Notch<In>.Numerator == 1,
                     "bnd::math: turn-phase input must have notch 1/2^N");
-      imax d = abs_den(Notch<In>.Denominator);
-      static_assert(true); // placeholder; the runtime check below is constexpr
-      int n = 0;
-      while (d > 1) { d >>= 1; ++n; }
-      return n;
+      return log2_pow2(abs_den(Notch<In>.Denominator));
     }();
 
     // Evaluate sin(x) for x ∈ [0, π/2], with x in Q.30 radians.
@@ -375,14 +379,6 @@ namespace bnd::math
 
   namespace detail
   {
-    // log2(d) for a power-of-2 imax d. Constexpr loop; cheap at compile time.
-    constexpr int log2_pow2(imax d) noexcept
-    {
-      int n = 0;
-      while (d > 1) { d >>= 1; ++n; }
-      return n;
-    }
-
     // Newton-Raphson square root of a Q.30 value, returning Q.30. Pre: x_q30
     // ≥ 0 and ≤ 2^32 (so x_q60 = x_q30 << 30 fits in int63). The leading-bit
     // initial guess puts r within a factor of 2 of the true sqrt, after
@@ -772,12 +768,11 @@ namespace bnd::math
     return Out{rational{x}.floor()};
   }
 
-  // ⌈x⌉ — smallest integer ≥ x. Implemented as −⌊−x⌋ since `rational` ships
-  // floor but not ceil; the identity costs one negation and is exact.
+  // ⌈x⌉ — smallest integer ≥ x.
   template <boundable Out, boundable In>
   constexpr Out ceil_impl(In x) noexcept
   {
-    return Out{-((-rational{x}).floor())};
+    return Out{rational{x}.ceil()};
   }
 
   // x rounded to nearest integer, half-away-from-zero (matches the existing
@@ -846,8 +841,8 @@ namespace bnd::math
                                  notch<1>}, BoundPolicy<In>>;
 
     template <boundable In>
-    using ceil_auto_t = bound<{{rational{-((-Lower<In>).floor())},
-                                 rational{-((-Upper<In>).floor())}},
+    using ceil_auto_t = bound<{{rational{Lower<In>.ceil()},
+                                 rational{Upper<In>.ceil()}},
                                 notch<1>}, BoundPolicy<In>>;
 
     template <boundable In>
@@ -973,7 +968,7 @@ namespace bnd::math
     constexpr rational ceil_to_notch(rational x, rational notch) noexcept
     {
       auto q = rational::div_unchecked(x, notch);
-      imax n = -((-q).floor());
+      imax n = q.ceil();
       return rational::mul_unchecked(rational{n}, notch);
     }
 

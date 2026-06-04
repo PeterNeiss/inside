@@ -118,6 +118,19 @@ namespace bnd
         return as_rational(*this);
     }
 
+    // Trusted construction from a storage-layout raw value. No validation —
+    // the caller asserts `r` is a valid slot for this grid. Mirrors the public
+    // `Raw` member and `value()`; the supported entry point for tests, fast
+    // paths, and same-grid raw transfer (e.g. `unchecked_cast`).
+    [[nodiscard]] static constexpr bound from_raw(raw_type r) noexcept
+    { bound b; b.Raw = r; return b; }
+
+    // The reserved empty slot used by `slim::optional<bound>` and the sentinel
+    // policy. Wraps the internal `sentinel_raw<bound>()` so callers never have
+    // to poke `Raw` to obtain an empty-state bound.
+    [[nodiscard]] static constexpr bound make_sentinel() noexcept
+    { return from_raw(sentinel_raw<bound>()); }
+
     // Public sentinel probe — the canonical "is this slot empty?" check
     // under `sentinel` policy, matching the raw layout used by both the
     // policy machinery and `slim::optional<bound>`.
@@ -127,6 +140,17 @@ namespace bnd
         return Raw.Denominator == 0;
       else
         return Raw == sentinel_raw<bound>();
+    }
+
+    // to<T>() emptiness predicate: under sentinel policy an empty slot has no
+    // extractable value, so to<T>() reports overflow. Routes through the
+    // canonical is_sentinel(); compiles to a constant `false` under every other
+    // policy, where the reserved slot is unreachable (storage promotion
+    // guarantees no valid value lands on it).
+    [[nodiscard]] constexpr bool is_sentinel_under_policy() const noexcept
+    {
+      if constexpr ((P & sentinel) != 0) return is_sentinel();
+      else                               return false;
     }
 
     // Conversion summary:
@@ -207,9 +231,7 @@ namespace bnd
     template <std::unsigned_integral T>
     [[nodiscard]] constexpr std::expected<T, errc> to() const
     {
-      if constexpr ((P & sentinel) != 0)
-        if (Raw == sentinel_raw<bound>())
-          return std::unexpected{errc::overflow};
+      if (is_sentinel_under_policy()) return std::unexpected{errc::overflow};
 
       constexpr bool needs_neg_check = (Lower<bound> < 0);
       constexpr bool needs_max_check =
@@ -232,9 +254,7 @@ namespace bnd
     template <std::signed_integral T>
     [[nodiscard]] constexpr std::expected<T, errc> to() const
     {
-      if constexpr ((P & sentinel) != 0)
-        if (Raw == sentinel_raw<bound>())
-          return std::unexpected{errc::overflow};
+      if (is_sentinel_under_policy()) return std::unexpected{errc::overflow};
 
       constexpr bool needs_min_check =
           (Lower<bound> < rational{std::numeric_limits<T>::min()});
@@ -259,18 +279,14 @@ namespace bnd
     template <std::floating_point T>
     [[nodiscard]] constexpr std::expected<T, errc> to() const
     {
-      if constexpr ((P & sentinel) != 0)
-        if (Raw == sentinel_raw<bound>())
-          return std::unexpected{errc::overflow};
+      if (is_sentinel_under_policy()) return std::unexpected{errc::overflow};
       return static_cast<T>(G.raw_to_double(Raw));
     }
 
     template <std::same_as<rational> T>
     [[nodiscard]] constexpr std::expected<T, errc> to() const
     {
-      if constexpr ((P & sentinel) != 0)
-        if (Raw == sentinel_raw<bound>())
-          return std::unexpected{errc::overflow};
+      if (is_sentinel_under_policy()) return std::unexpected{errc::overflow};
       return rational{*this};
     }
 
@@ -351,50 +367,28 @@ namespace bnd
     [[nodiscard]] constexpr auto with_clamp()           { return policy<clamp>(); }
     [[nodiscard]] constexpr auto with_wrap()            { return policy<wrap>(); }
 
-    template <typename A>
-    [[nodiscard]] constexpr auto on_wrap(A&& action)
+    // Shared builder for the single-action fluent hooks below. Merges the tag's
+    // implied policy flag, then returns a policy_ref bound to *this carrying the
+    // tagged action. Each on_* hook is a thin wrapper that fixes the tag.
+    template <template <class> class Tag, typename A>
+    [[nodiscard]] constexpr auto make_action_ref(A&& action)
     {
-       using tag = on_wrap_t<std::remove_cvref_t<A>>;
+       using tag = Tag<std::remove_cvref_t<A>>;
        auto pol = make_policy<P | implied_flags<tag>>();
        return policy_ref<bound, decltype(pol), tag>{
          *this, pol, tag{std::forward<A>(action)}};
     }
 
     template <typename A>
-    [[nodiscard]] constexpr auto on_clamp(A&& action)
-    {
-       using tag = on_clamp_t<std::remove_cvref_t<A>>;
-       auto pol = make_policy<P | implied_flags<tag>>();
-       return policy_ref<bound, decltype(pol), tag>{
-         *this, pol, tag{std::forward<A>(action)}};
-    }
-
+    [[nodiscard]] constexpr auto on_wrap(A&& a)     { return make_action_ref<on_wrap_t>(std::forward<A>(a)); }
     template <typename A>
-    [[nodiscard]] constexpr auto on_error(A&& action)
-    {
-       using tag = on_error_t<std::remove_cvref_t<A>>;
-       auto pol = make_policy<P | implied_flags<tag>>();
-       return policy_ref<bound, decltype(pol), tag>{
-         *this, pol, tag{std::forward<A>(action)}};
-    }
-
+    [[nodiscard]] constexpr auto on_clamp(A&& a)    { return make_action_ref<on_clamp_t>(std::forward<A>(a)); }
     template <typename A>
-    [[nodiscard]] constexpr auto on_sentinel(A&& action)
-    {
-       using tag = on_sentinel_t<std::remove_cvref_t<A>>;
-       auto pol = make_policy<P | implied_flags<tag>>();
-       return policy_ref<bound, decltype(pol), tag>{
-         *this, pol, tag{std::forward<A>(action)}};
-    }
-
+    [[nodiscard]] constexpr auto on_error(A&& a)    { return make_action_ref<on_error_t>(std::forward<A>(a)); }
     template <typename A>
-    [[nodiscard]] constexpr auto on_overflow(A&& action)
-    {
-       using tag = on_overflow_t<std::remove_cvref_t<A>>;
-       auto pol = make_policy<P | implied_flags<tag>>();
-       return policy_ref<bound, decltype(pol), tag>{
-         *this, pol, tag{std::forward<A>(action)}};
-    }
+    [[nodiscard]] constexpr auto on_sentinel(A&& a) { return make_action_ref<on_sentinel_t>(std::forward<A>(a)); }
+    template <typename A>
+    [[nodiscard]] constexpr auto on_overflow(A&& a) { return make_action_ref<on_overflow_t>(std::forward<A>(a)); }
 
     // Multi-action entry point: combine N tagged actions into one policy_ref.
     // The merged implied flags drive the policy; conflict diagnostics in
