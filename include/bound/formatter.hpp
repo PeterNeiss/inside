@@ -27,37 +27,48 @@
 //
 // For `rational`: empty spec → `to_string`, non-empty → double formatter.
 //---------------------------------------------------------------------------
+namespace bnd::detail
+{
+  // Shared spec handling for the bound / rational std::formatter
+  // specializations: an empty `{}` spec is left to the derived format() (which
+  // prints the exact to_string form); a non-empty spec is parsed and later
+  // applied by `numeric_` (a std::formatter<imax> or std::formatter<double>).
+  template <class Inner>
+  struct numeric_spec_formatter
+  {
+    Inner numeric_{};
+    bool  has_spec_ = false;
+
+    constexpr auto parse(std::format_parse_context& ctx)
+    {
+      auto it = ctx.begin();
+      if (it != ctx.end() && *it != '}')
+      {
+        has_spec_ = true;
+        return numeric_.parse(ctx);
+      }
+      return it;
+    }
+  };
+}
+
 template <bnd::grid G, bnd::policy_flag P>
 struct std::formatter<bnd::bound<G, P>>
+  : bnd::detail::numeric_spec_formatter<
+      std::conditional_t<bnd::IsIntegerAligned<bnd::bound<G, P>>,
+                         std::formatter<bnd::imax>,
+                         std::formatter<double>>>
 {
-private:
   using B = bnd::bound<G, P>;
   static constexpr bool integer_path = bnd::IsIntegerAligned<B>;
-  using inner = std::conditional_t<integer_path,
-                                   std::formatter<bnd::imax>,
-                                   std::formatter<double>>;
-  inner numeric_{};
-  bool  has_spec_ = false;
-
-public:
-  constexpr auto parse(std::format_parse_context& ctx)
-  {
-    auto it = ctx.begin();
-    if (it != ctx.end() && *it != '}')
-    {
-      has_spec_ = true;
-      return numeric_.parse(ctx);
-    }
-    return it;
-  }
 
   template <typename Ctx>
   auto format(B const& b, Ctx& ctx) const
   {
     if constexpr (integer_path)
-      return numeric_.format(bnd::to_value(b), ctx);
-    else if (has_spec_)
-      return numeric_.format(
+      return this->numeric_.format(bnd::to_value(b), ctx);
+    else if (this->has_spec_)
+      return this->numeric_.format(
           static_cast<double>(static_cast<bnd::rational>(b)), ctx);
     else
       return std::format_to(ctx.out(), "{}", bnd::to_string(b));
@@ -66,23 +77,8 @@ public:
 
 template <>
 struct std::formatter<bnd::rational>
+  : bnd::detail::numeric_spec_formatter<std::formatter<double>>
 {
-private:
-  std::formatter<double> numeric_{};
-  bool                   has_spec_ = false;
-
-public:
-  constexpr auto parse(std::format_parse_context& ctx)
-  {
-    auto it = ctx.begin();
-    if (it != ctx.end() && *it != '}')
-    {
-      has_spec_ = true;
-      return numeric_.parse(ctx);
-    }
-    return it;
-  }
-
   template <typename Ctx>
   auto format(bnd::rational const& r, Ctx& ctx) const
   {

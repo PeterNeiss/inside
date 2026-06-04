@@ -90,6 +90,14 @@ namespace bnd
     { return (Upper - Lower) / notch; }
   };
 
+  // The min/max hull of four endpoint combinations — the result interval of an
+  // interval product or quotient (interval arithmetic's four-corner rule).
+  constexpr interval corner_hull(rational a, rational b, rational c, rational d) noexcept
+  {
+    auto [lo, hi] = std::minmax({a, b, c, d});
+    return interval{lo, hi};
+  }
+
   constexpr slim::optional<interval> operator+  (const interval&, const interval&);
   constexpr slim::optional<interval> operator-  (const interval&, const interval&);
   constexpr slim::optional<interval> operator*  (const interval&, const interval&);
@@ -119,11 +127,7 @@ namespace bnd
   //---------------------------------------------------------------------------
   inline constexpr slim::optional<interval> operator*(const interval& lhs, const interval& rhs)
   {
-    return lift(
-      [](rational a, rational b, rational c, rational d){
-        auto [lo, hi] = std::minmax({a, b, c, d});
-        return interval{lo, hi};
-      },
+    return lift(corner_hull,
       lhs.Lower * rhs.Lower, lhs.Lower * rhs.Upper,
       lhs.Upper * rhs.Lower, lhs.Upper * rhs.Upper);
   }
@@ -136,11 +140,7 @@ namespace bnd
     if (rhs.includes(0))
       return slim::nullopt;
 
-    return lift(
-      [](rational a, rational b, rational c, rational d){
-        auto [lo, hi] = std::minmax({a, b, c, d});
-        return interval{lo, hi};
-      },
+    return lift(corner_hull,
       lhs.Lower / rhs.Lower, lhs.Lower / rhs.Upper,
       lhs.Upper / rhs.Lower, lhs.Upper / rhs.Upper);
   }

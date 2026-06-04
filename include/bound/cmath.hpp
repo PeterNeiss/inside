@@ -54,6 +54,17 @@ namespace bnd::math
 
   namespace detail
   {
+    // Q.30 fixed-point unit (1.0) and the marshalling between the rational API
+    // and the Q.30 integer cores. Centralises the scale so the `<< 30` constant
+    // and the round-trip recipe live in one place.
+    inline constexpr imax kQ30One = imax{1} << 30;
+
+    constexpr imax to_q30(rational v) noexcept
+    { return rational::mul_unchecked(v, rational{kQ30One}).round(); }
+
+    constexpr rational q30_to_rational(imax x_q30) noexcept
+    { return rational{x_q30, kQ30One}; }
+
     // Internal phase shape used by the Q.30 cores: Q.N turns, period
     // implicit in the unsigned raw's modular wrap. The public sin/cos/tan
     // accept radians and route through this shape internally; callers do
@@ -153,7 +164,7 @@ namespace bnd::math
     // 2·1068966896 = 2'137'933'792; numerator · 2^30 ≈ 2.295e18, just
     // inside int63).
     inline constexpr imax kTwoPiQ30 =
-      rational::mul_unchecked(kTwoPi, rational{imax{1} << 30}).round();
+      detail::to_q30(kTwoPi);
 
     // 1/(2π) in Q.30, for converting Q.30 radians to Q.30 turns.
     // round(0.1591549431 · 2^30) = 170891319. (Defined here, ahead of
@@ -204,7 +215,7 @@ namespace bnd::math
       imax sin_q30 = sin_q30_quadrant1(x_q30);
       if (flip_sign) sin_q30 = -sin_q30;
 
-      return Out{rational{sin_q30, imax{1} << 30}};
+      return Out{detail::q30_to_rational(sin_q30)};
     }
 
     // cos (turn-input, internal). cos(x) = sin(x + π/2) — shift the phase
@@ -288,10 +299,10 @@ namespace bnd::math
                   "bnd::math::sin: Out must cover [-1, 1]");
 
     rational a     = angle;
-    imax     a_q30 = rational::mul_unchecked(a, rational{imax{1} << 30}).round();
+    imax     a_q30 = detail::to_q30(a);
     imax     t_q30 = detail::scaled_mul_q30(a_q30, detail::kOneOver2PiQ30);
     imax     sin_q30 = detail::sin_q30_from_turn_q30(t_q30);
-    return Out{rational{sin_q30, imax{1} << 30}};
+    return Out{detail::q30_to_rational(sin_q30)};
   }
 
   // cos: radians-valued bound → amplitude. cos(x) = sin(x + π/2); add a
@@ -308,11 +319,11 @@ namespace bnd::math
     constexpr imax quarter_turn_q30 = imax{1} << 28;
 
     rational a     = angle;
-    imax     a_q30 = rational::mul_unchecked(a, rational{imax{1} << 30}).round();
+    imax     a_q30 = detail::to_q30(a);
     imax     t_q30 = detail::scaled_mul_q30(a_q30, detail::kOneOver2PiQ30)
                    + quarter_turn_q30;
     imax     cos_q30 = detail::sin_q30_from_turn_q30(t_q30);
-    return Out{rational{cos_q30, imax{1} << 30}};
+    return Out{detail::q30_to_rational(cos_q30)};
   }
 
   namespace detail
@@ -339,7 +350,7 @@ namespace bnd::math
       if (cos_q30 == 0) return std::unexpected(errc::division_by_zero);
 
       imax tan_q30 = (sin_q30 << 30) / cos_q30;
-      rational tan_v{tan_q30, imax{1} << 30};
+      rational tan_v = detail::q30_to_rational(tan_q30);
       if (tan_v < Lower<Out> || tan_v > Upper<Out>)
         return std::unexpected(errc::overflow);
 
@@ -362,7 +373,7 @@ namespace bnd::math
     constexpr imax quarter_turn_q30 = imax{1} << 28;
 
     rational a       = angle;
-    imax     a_q30   = rational::mul_unchecked(a, rational{imax{1} << 30}).round();
+    imax     a_q30   = detail::to_q30(a);
     imax     t_q30   = detail::scaled_mul_q30(a_q30, detail::kOneOver2PiQ30);
     imax     sin_q30 = detail::sin_q30_from_turn_q30(t_q30);
     imax     cos_q30 = detail::sin_q30_from_turn_q30(t_q30 + quarter_turn_q30);
@@ -370,7 +381,7 @@ namespace bnd::math
     if (cos_q30 == 0) return std::unexpected(errc::division_by_zero);
 
     imax     tan_q30 = (sin_q30 << 30) / cos_q30;
-    rational tan_v{tan_q30, imax{1} << 30};
+    rational tan_v = detail::q30_to_rational(tan_q30);
     if (tan_v < Lower<Out> || tan_v > Upper<Out>)
       return std::unexpected(errc::overflow);
 
@@ -535,8 +546,8 @@ namespace bnd::math
                   "bnd::math::log2: input must be strictly positive");
 
     rational xv    = x;
-    imax     x_q30 = rational::mul_unchecked(xv, rational{imax{1} << 30}).round();
-    return Out{rational{detail::log2_q30(x_q30), imax{1} << 30}};
+    imax     x_q30 = detail::to_q30(xv);
+    return Out{detail::q30_to_rational(detail::log2_q30(x_q30))};
   }
 
   // exp2: bound → bound, returning 2^x. Calls the shared
@@ -556,7 +567,7 @@ namespace bnd::math
                   "bnd::math::exp2: Out must be non-negative");
 
     rational xv    = x;
-    imax     x_q30 = rational::mul_unchecked(xv, rational{imax{1} << 30}).round();
+    imax     x_q30 = detail::to_q30(xv);
     return Out{detail::exp2_q30_to_rational(x_q30)};
   }
 
@@ -572,7 +583,7 @@ namespace bnd::math
                   "bnd::math::exp: Out must be non-negative");
 
     rational xv    = x;
-    imax     x_q30 = rational::mul_unchecked(xv, rational{imax{1} << 30}).round();
+    imax     x_q30 = detail::to_q30(xv);
     imax     scaled_q30 = detail::scaled_mul_q30(x_q30, detail::kLog2eQ30);
     return Out{detail::exp2_q30_to_rational(scaled_q30)};
   }
@@ -586,10 +597,10 @@ namespace bnd::math
                   "bnd::math::log: input must be strictly positive");
 
     rational xv    = x;
-    imax     x_q30 = rational::mul_unchecked(xv, rational{imax{1} << 30}).round();
+    imax     x_q30 = detail::to_q30(xv);
     imax     log2_x_q30 = detail::log2_q30(x_q30);
     imax     log_x_q30  = (log2_x_q30 * detail::kLn2Q30) >> 30;
-    return Out{rational{log_x_q30, imax{1} << 30}};
+    return Out{detail::q30_to_rational(log_x_q30)};
   }
 
   // pow_base<Base>(x) = Base^x for compile-time-known integer Base ≥ 2.
@@ -604,7 +615,7 @@ namespace bnd::math
                   "bnd::math::pow_base: Out must be non-negative");
 
     rational xv    = x;
-    imax     x_q30 = rational::mul_unchecked(xv, rational{imax{1} << 30}).round();
+    imax     x_q30 = detail::to_q30(xv);
     imax     scaled_q30 = detail::scaled_mul_q30(x_q30,
                                                  detail::kLog2IntBaseQ30<Base>);
     return Out{detail::exp2_q30_to_rational(scaled_q30)};
@@ -714,8 +725,8 @@ namespace bnd::math
                   "bnd::math::atan2: Out must cover [-1/2, 1/2] turn");
 
     rational yv = y, xv = x;
-    imax y_q30 = rational::mul_unchecked(yv, rational{imax{1} << 30}).round();
-    imax x_q30 = rational::mul_unchecked(xv, rational{imax{1} << 30}).round();
+    imax y_q30 = detail::to_q30(yv);
+    imax x_q30 = detail::to_q30(xv);
 
     // atan2(0, 0) is undefined; convention is 0. Without this guard the
     // CORDIC iteration trivially leaves x, y at zero but still accumulates
@@ -744,7 +755,7 @@ namespace bnd::math
     imax atan_q30  = detail::atan2_cordic_q30_turn(y_q30, x_q30);
     imax total_q30 = atan_q30 + pre_rotation;
 
-    return Out{rational{total_q30, imax{1} << 30}};
+    return Out{detail::q30_to_rational(total_q30)};
   }
 
   //---------------------------------------------------------------------------
@@ -907,7 +918,7 @@ namespace bnd::math
     imax x_q30   = static_cast<imax>(x.Raw) << (30 - K);
     imax r_q30   = detail::sqrt_q30(x_q30);
 
-    return Out{rational{r_q30, imax{1} << 30}};
+    return Out{detail::q30_to_rational(r_q30)};
   }
 
   // Mixed-sign sqrt: accepts inputs whose interval crosses zero. Returns
@@ -937,9 +948,9 @@ namespace bnd::math
     if (v < rational{0})
       return slim::nullopt;
 
-    imax v_q30 = rational::mul_unchecked(v, rational{imax{1} << 30}).round();
+    imax v_q30 = detail::to_q30(v);
     imax r_q30 = detail::sqrt_q30(v_q30);
-    return Out{rational{r_q30, imax{1} << 30}};
+    return Out{detail::q30_to_rational(r_q30)};
   }
 
   //---------------------------------------------------------------------------
@@ -977,41 +988,41 @@ namespace bnd::math
     constexpr rational sqrt_endpoint(rational v) noexcept
     {
       if (v == 0) return 0_r;
-      imax v_q30 = rational::mul_unchecked(v, rational{imax{1} << 30}).round();
-      return rational{sqrt_q30(v_q30), imax{1} << 30};
+      imax v_q30 = detail::to_q30(v);
+      return detail::q30_to_rational(sqrt_q30(v_q30));
     }
 
     constexpr rational exp2_endpoint(rational v) noexcept
     {
-      imax v_q30 = rational::mul_unchecked(v, rational{imax{1} << 30}).round();
+      imax v_q30 = detail::to_q30(v);
       return exp2_q30_to_rational(v_q30);
     }
 
     constexpr rational log2_endpoint(rational v) noexcept
     {
-      imax v_q30 = rational::mul_unchecked(v, rational{imax{1} << 30}).round();
-      return rational{log2_q30(v_q30), imax{1} << 30};
+      imax v_q30 = detail::to_q30(v);
+      return detail::q30_to_rational(log2_q30(v_q30));
     }
 
     constexpr rational exp_endpoint(rational v) noexcept
     {
-      imax v_q30  = rational::mul_unchecked(v, rational{imax{1} << 30}).round();
+      imax v_q30  = detail::to_q30(v);
       imax sc_q30 = scaled_mul_q30(v_q30, kLog2eQ30);
       return exp2_q30_to_rational(sc_q30);
     }
 
     constexpr rational log_endpoint(rational v) noexcept
     {
-      imax v_q30 = rational::mul_unchecked(v, rational{imax{1} << 30}).round();
+      imax v_q30 = detail::to_q30(v);
       imax l_q30 = log2_q30(v_q30);
       imax r_q30 = (l_q30 * kLn2Q30) >> 30;
-      return rational{r_q30, imax{1} << 30};
+      return detail::q30_to_rational(r_q30);
     }
 
     template <imax Base>
     constexpr rational pow_base_endpoint(rational v) noexcept
     {
-      imax v_q30  = rational::mul_unchecked(v, rational{imax{1} << 30}).round();
+      imax v_q30  = detail::to_q30(v);
       imax sc_q30 = scaled_mul_q30(v_q30, kLog2IntBaseQ30<Base>);
       return exp2_q30_to_rational(sc_q30);
     }
