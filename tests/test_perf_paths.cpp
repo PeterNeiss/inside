@@ -128,8 +128,7 @@ TEST_CASE("operator rational() handles fractional Q-format value",
 {
   using fp = bound<{{0, 255}, 0x1p-8_r}, unsafe>;
   // Raw=128 → value 128/256 = 0.5.
-  fp b{0};
-  b.Raw = 128;
+  auto b = fp::from_raw(128);
   rational r = b;
   REQUIRE(r == 0.5_r);
 }

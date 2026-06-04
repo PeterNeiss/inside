@@ -4,9 +4,10 @@
 #ifndef BNDrationalHPP
 #define BNDrationalHPP
 
-#include "bound/generic.hpp"
-#include "bound/math.hpp"
-#include "bound/detail/overflow.hpp"
+#include "bound/math.hpp"            // umax/imax, arithmetic, rational fwd
+#include "bound/lift.hpp"            // lift, is_slim_optional_v, unwrap_t, slim::optional
+#include "bound/detail/overflow.hpp" // add/sub/mul_overflow
+#include "bound/detail/debug.hpp"    // errc, make_error_code, <system_error>
 
 #include <numeric>
 #include <compare>

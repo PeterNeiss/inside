@@ -70,19 +70,26 @@ directly. The supported access patterns are:
 
 - **`b.is_sentinel()`** — public probe for "does this bound currently hold
   the sentinel value?". The canonical answer to "is this slot empty?" under
-  `sentinel` policy. Returns `true` iff `Raw` matches `sentinel_raw<B>()`.
-- **`bnd::sentinel_raw<B>()`** — returns the raw byte pattern reserved for
-  the sentinel. Useful for interop with C APIs or for constructing a `bound`
-  in sentinel state manually (`b.Raw = sentinel_raw<B>()`).
+  `sentinel` policy.
+- **`B::make_sentinel()`** — static factory returning a bound in the sentinel
+  (empty) state. The supported way to construct one; wraps the underlying
+  `bnd::sentinel_raw<B>()` raw pattern so callers never touch `Raw`.
+- **`B::from_raw(raw)`** — static factory constructing a bound directly from a
+  storage-layout raw value, with no validation (same trust contract as
+  `unsafe`). The supported entry point for raw-level construction in tests,
+  fast paths, and same-grid raw transfer.
+- **`bnd::sentinel_raw<B>()`** — the raw byte pattern reserved for the sentinel
+  that `make_sentinel()` wraps. Useful for interop with C APIs that need the
+  pattern directly.
 - **`slim::optional<B>::from_maybe_sentinel(b)`** — non-throwing factory:
   returns `nullopt` if `b` is the sentinel, otherwise wraps `b`. The plain
   `slim::optional<B>{b}` constructor still throws on sentinel input — by
   design, since constructing an "engaged" optional from a sentinel value is
   usually a bug.
 - **Direct `b.Raw = ...` writes** are only well-defined under `unsafe`
-  policy (which opts out of all runtime checks). Outside `unsafe`, the
-  library assumes `Raw` always encodes either a valid grid value or the
-  sentinel.
+  policy (which opts out of all runtime checks); prefer `B::from_raw(raw)` for
+  trusted raw construction. Outside `unsafe`, the library assumes `Raw` always
+  encodes either a valid grid value or the sentinel.
 
 ## Iteration: `bound_range`
 

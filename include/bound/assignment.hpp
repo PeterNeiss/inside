@@ -4,6 +4,7 @@
 #ifndef BNDassignmentHPP
 #define BNDassignmentHPP
 
+#include "bound/generic.hpp"
 #include "bound/grid.hpp"
 #include "bound/format.hpp"
 

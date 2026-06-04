@@ -340,7 +340,7 @@ void bench_fixed_point_signed()
       do_not_optimize(s); }
 
     { CTRACK_NAME("signed fixed bound construct");
-      fp s; s.Raw = static_cast<std::uint16_t>((v + 100) * 163);  // raw-level
+      auto s = fp::from_raw(static_cast<std::uint16_t>((v + 100) * 163));  // raw-level
       do_not_optimize(s.Raw); }
 
     { CTRACK_NAME("signed fixed native add");
@@ -349,8 +349,8 @@ void bench_fixed_point_signed()
       do_not_optimize(c); }
 
     { CTRACK_NAME("signed fixed bound add");
-      fp a; a.Raw = 20000;
-      fp b; b.Raw = 10000;
+      auto a = fp::from_raw(20000);
+      auto b = fp::from_raw(10000);
       auto c = a + b;
       do_not_optimize(c.Raw); }
   }

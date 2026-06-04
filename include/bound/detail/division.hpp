@@ -25,6 +25,14 @@
 //---------------------------------------------------------------------------
 namespace bnd
 {
+  // Both operands are plain integer grids and the caller accepted integer
+  // truncation (ignore_round) — the prerequisite for native integer div / mod.
+  template <boundable L, boundable R, policy_flag F>
+  inline constexpr bool integer_native_ops =
+      ((F | BoundPolicy<L> | BoundPolicy<R>) & ignore_round)
+      && !IsRawRational<L> && !IsRawRational<R>
+      && IsIntegerAligned<L> && IsIntegerAligned<R>;
+
   template <boundable L, boundable R = L, policy_flag F = none>
   struct division
   {
@@ -41,10 +49,7 @@ namespace bnd
     //                        another Q-format with the same Notch.
     //
     // Otherwise the exact-rational path runs and returns `bound<rational>`.
-    static constexpr bool native_div_integer =
-        ((F | BoundPolicy<L> | BoundPolicy<R>) & ignore_round)
-        && !IsRawRational<L> && !IsRawRational<R>
-        && IsIntegerAligned<L> && IsIntegerAligned<R>;
+    static constexpr bool native_div_integer = integer_native_ops<L, R, F>;
 
     static constexpr bool native_div_qformat =
         ((F | BoundPolicy<L> | BoundPolicy<R>) & ignore_round)
@@ -130,10 +135,7 @@ namespace bnd
   template <boundable L, boundable R, policy_flag F = none>
   struct modulo
   {
-    static constexpr bool native_mod =
-        ((F | BoundPolicy<L> | BoundPolicy<R>) & ignore_round)
-        && !IsRawRational<L> && !IsRawRational<R>
-        && IsIntegerAligned<L> && IsIntegerAligned<R>;
+    static constexpr bool native_mod = integer_native_ops<L, R, F>;
 
     // Hard requirement, not a fallback: there is no exact-rational modulo —
     // `a mod b` is only defined when both operands are integers. The grid

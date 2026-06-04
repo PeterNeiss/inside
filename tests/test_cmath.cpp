@@ -186,9 +186,7 @@ namespace
 
   constexpr sqrt_in_t sqrt_input(unsigned raw_q16)
   {
-    sqrt_in_t v;
-    v.Raw = static_cast<decltype(v.Raw)>(raw_q16);
-    return v;
+    return sqrt_in_t::from_raw(static_cast<typename sqrt_in_t::raw_type>(raw_q16));
   }
 
   constexpr int sqrt_q14(unsigned input_raw_q16)
@@ -327,9 +325,7 @@ namespace
   constexpr exp2_in_t exp2_input(int raw_offset)
   {
     // exp2_in_t has Lower = -4, notch 1/16384 → Raw = (value + 4) · 16384.
-    exp2_in_t v;
-    v.Raw = static_cast<decltype(v.Raw)>(raw_offset);
-    return v;
+    return exp2_in_t::from_raw(static_cast<typename exp2_in_t::raw_type>(raw_offset));
   }
 
   // Build an exp2 input from a rational value (cleaner than computing the

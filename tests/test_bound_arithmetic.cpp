@@ -229,9 +229,8 @@ TEST_CASE("bound rational-storage on_overflow free fn", "[bound][arithmetic][rat
   constexpr umax M = std::numeric_limits<umax>::max();
   using unit = bound<{{0_r, 1_r}, 0}, checked>;
 
-  unit a, b;
-  a.Raw = rational{1u, static_cast<imax>(M / 2)};
-  b.Raw = rational{1u, static_cast<imax>(M / 2 - 1)};
+  auto a = unit::from_raw(rational{1u, static_cast<imax>(M / 2)});
+  auto b = unit::from_raw(rational{1u, static_cast<imax>(M / 2 - 1)});
 
   bool fired = false;
   errc seen{};

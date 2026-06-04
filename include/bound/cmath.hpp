@@ -153,7 +153,7 @@ namespace bnd::math
       s = kSinCoeffsQ30[2] + ((p * s) >> 30);                 // c2 + p·(…)
       s = kSinCoeffsQ30[1] + ((p * s) >> 30);                 // c1 + p·(…)
       s = kSinCoeffsQ30[0] + ((p * s) >> 30);                 // c0 + p·(…)
-      imax one_plus = (imax{1} << 30) + ((p * s) >> 30);      // 1 + p·bracket
+      imax one_plus = kQ30One + ((p * s) >> 30);              // 1 + p·bracket
       return (x_q30 * one_plus) >> 30;                        // x · (…)
     }
 
@@ -262,7 +262,7 @@ namespace bnd::math
     // 2^61, fits int63. Shift back by 30 keeps the result < 2^31.
     constexpr imax sin_q30_from_turn_q30(imax turn_q30) noexcept
     {
-      constexpr imax one_turn     = imax{1} << 30;
+      constexpr imax one_turn     = kQ30One;
       constexpr imax half_turn    = imax{1} << 29;
       constexpr imax quarter_turn = imax{1} << 28;
       constexpr imax half_mask    = half_turn - 1;
@@ -433,7 +433,7 @@ namespace bnd::math
     template <int N>
     constexpr imax exp2_coeff_q30() noexcept
     {
-      if constexpr (N == 0) return imax{1} << 30;
+      if constexpr (N == 0) return kQ30One;
       else if constexpr (N == 1) return kLn2Q30;
       else
       {
@@ -506,8 +506,8 @@ namespace bnd::math
       int k       = leading - 30;
       imax m_q30  = (leading >= 30) ? (x_q30 >> (leading - 30))
                                      : (x_q30 << (30 - leading));
-      imax m_minus_1 = m_q30 - (imax{1} << 30);
-      imax m_plus_1  = m_q30 + (imax{1} << 30);
+      imax m_minus_1 = m_q30 - kQ30One;
+      imax m_plus_1  = m_q30 + kQ30One;
       imax v_q30     = (m_minus_1 << 30) / m_plus_1;
       imax log2_m_q30 = (kTwoOverLn2Q30 * atanh_q30(v_q30)) >> 30;
       return (imax{k} << 30) + log2_m_q30;

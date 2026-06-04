@@ -149,16 +149,16 @@ opt in with `double(b)`.
 in all cases; rationals truncate toward zero on integer conversion.
 
 The named integer reductions on `rational` — `r.trunc()`, `r.floor()`,
-`r.round()` — replace ad-hoc `static_cast<imax>(r)` calls when intent
-matters.
+`r.ceil()`, `r.round()` — replace ad-hoc `static_cast<imax>(r)` calls when
+intent matters.
 
 ---
 
 ## 6. The `as_rational` / `raw_imax` / `to_value` triad
 
-These three helpers in `include/bound/generic.hpp` + `include/bound/casts.hpp`
-exist because three different "extract the value" intents used to spell the
-same `static_cast<imax>(...)`:
+These three helpers in `include/bound/generic.hpp` exist because three
+different "extract the value" intents used to spell the same
+`static_cast<imax>(...)`:
 
 | Helper | Returns | Use when |
 |---|---|---|
@@ -180,10 +180,10 @@ all transitively included by `bound/bound.hpp`:
 | Header | Contains |
 |---|---|
 | `bound/bound.hpp`       | `bound<G, P>` struct, compound assignments, `<=>`, `==`, `_b` literal, increment/decrement |
-| `bound/casts.hpp`       | `as_rational`, `clamp_cast`, `wrap_cast`, `checked_cast`, `unchecked_cast`, `clamp_floor` / `clamp_ceil` / `clamp_round` |
+| `bound/casts.hpp`       | `clamp_cast`, `wrap_cast`, `checked_cast`, `unchecked_cast`, `clamp_floor` / `clamp_ceil` / `clamp_round` |
 | `bound/arithmetic.hpp`  | Free `add` / `sub` / `mul` / `div` / `mod`, variadic folds `add_all` / `mul_all`, `operator+` / `-` / `*` / `/` / `%`, optional-lift overloads |
 | `bound/range.hpp`       | `bound_range<G, P>` iterator helper |
-| `bound/generic.hpp`     | Traits (`is_*`), metafunctions (`Lower` / `Upper` / `Notch` / `LowerImax` / `UpperImax` / `RawLo` / `RawHi` / `NotchCount`), `to_value` / `raw_imax`, `q_format_encode/decode`, concepts |
+| `bound/generic.hpp`     | Traits (`is_*`), metafunctions (`Lower` / `Upper` / `Notch` / `LowerImax` / `UpperImax` / `RawLo` / `RawHi` / `NotchCount`), `as_rational`, `to_value` / `raw_imax`, `q_format_encode/decode`, concepts |
 | `bound/assignment.hpp`  | `assignment<L, R>` specialisations for integral / real / boundable rhs |
 | `bound/detail/addition.hpp`, `multiplication.hpp`, `division.hpp` | `addition<L, R>`, `multiplication<L, R>`, `division<L, R, F>`, `modulo<L, R, F>` — implementation detail, included via `bound.hpp` |
 | `bound/detail/overflow.hpp`, `debug.hpp` | `add_overflow` / `sub_overflow` / `mul_overflow` (builtins + portable fallback), stacktrace plumbing — implementation detail |

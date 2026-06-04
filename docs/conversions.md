@@ -59,6 +59,7 @@ For `rational`, prefer the named reductions over `static_cast<int>(r)`:
 rational r{7u, 2};      // 3.5
 r.trunc();              //  3   (toward zero)
 r.floor();              //  3   (toward −∞)
+r.ceil();               //  4   (toward +∞)
 r.round();              //  4   (half away from zero)
 ```
 

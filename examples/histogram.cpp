@@ -65,8 +65,8 @@ int main()
   std::cout << "bin    count\n";
   for (bin_idx_t b : bound_range<{0, 9}>{})
   {
-    bin_label_t lo{b * 10};
-    bin_label_t hi{lo + 9};       // bound + int → rational → bin_label_t
+    bin_label_t lo{b * just<10>};  // bound × bound: {0,9}×{10,10} → {0,90}, fits statically
+    bin_label_t hi{lo + just<9>};  // bound + bound, widened then narrowed to bin_label_t
     std::cout << " " << lo << "-" << hi << "  " << bins[b] << "\n";
   }
 
