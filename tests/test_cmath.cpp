@@ -686,7 +686,7 @@ TEST_CASE("bnd::math::atan2: probe (informational)",
 
 //---------------------------------------------------------------------------
 // tan: sin/cos with a pole guard. First function in the library that
-// returns std::expected<Out, errc> — the pattern for any function whose
+// returns slim::expected<Out, errc> — the pattern for any function whose
 // output depends on a runtime domain check.
 //---------------------------------------------------------------------------
 namespace

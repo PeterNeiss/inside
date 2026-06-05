@@ -68,7 +68,7 @@ int main()
   pool.release(42);
   std::cout << "\nafter release(42): " << pool.allocated.size() << " IDs\n";
 
-  // try_make returns std::expected<bound, errc>: a value on success, the
+  // try_make returns slim::expected<bound, errc>: a value on success, the
   // failure reason on out-of-range / rounding / overflow inputs. Either way
   // no exception is thrown.
   auto bad  = pool_id::try_make(2000);

@@ -9,12 +9,14 @@
 #include "bound/detail/overflow.hpp" // add/sub/mul_overflow
 #include "bound/detail/debug.hpp"    // errc, make_error_code, <system_error>
 
+#include "slim/expected.hpp"     // slim::expected, slim::unexpected
+
 #include <numeric>
 #include <compare>
 #include <cmath>
-#include <expected>
 #include <limits>
 #include <tuple>
+#include <type_traits>      // std::is_constant_evaluated
 
 namespace bnd { struct rational; }
 
@@ -70,6 +72,13 @@ namespace bnd
   //---------------------------------------------------------------------------
   // rational_overflow — fails constant evaluation with the operator name
   //---------------------------------------------------------------------------
+  // Used by the `consteval` `_b`/`_r` literal parsers below to reject malformed
+  // or overflowing literals at compile time. Stays `consteval` (its throw can
+  // never be a constant expression, so an unconditional `constexpr` form would
+  // be ill-formed NDR / -Winvalid-constexpr). The runtime-guarded arithmetic
+  // overflow sites cannot call a `consteval` function, so they `throw` the
+  // message inline under `if (std::is_constant_evaluated())` instead — same
+  // effect (abort constant evaluation), mirroring `policy::report`.
   [[noreturn]] inline consteval void rational_overflow(char const* op)
   { throw op; }
 
@@ -110,7 +119,7 @@ namespace bnd
     constexpr rational operator-() const;
 
     template <std::unsigned_integral T>
-    constexpr std::expected<T, errc> to() const;
+    constexpr slim::expected<T, errc> to() const;
 
     template <std::unsigned_integral T>
     explicit constexpr operator T () const
@@ -337,10 +346,10 @@ namespace bnd
   // to
   //---------------------------------------------------------------------------
   template <std::unsigned_integral T>
-  constexpr std::expected<T, errc> rational::to() const
+  constexpr slim::expected<T, errc> rational::to() const
   {
-    if (is_sentinel())   return std::unexpected{errc::overflow};
-    if (Denominator < 0) return std::unexpected{errc::domain_error};
+    if (is_sentinel())   return slim::unexpected{errc::overflow};
+    if (Denominator < 0) return slim::unexpected{errc::domain_error};
     return static_cast<T>(Numerator / static_cast<umax>(Denominator));
   }
 
@@ -547,7 +556,7 @@ namespace bnd
         {
           if (add_overflow(a.Numerator, b.Numerator, &numerator))
           {
-            if consteval { rational_overflow("rational +: numerator overflow (same denominator)"); }
+            if (std::is_constant_evaluated()) { throw ("rational +: numerator overflow (same denominator)"); }
             return ret_t{slim::nullopt};
           }
         }
@@ -592,7 +601,7 @@ namespace bnd
           mul_overflow(b.Numerator, a_ad_r, &B)       ||
           denominator > static_cast<umax>(std::numeric_limits<imax>::max()))
       {
-        if consteval { rational_overflow("rational +: cross-multiplication overflow"); }
+        if (std::is_constant_evaluated()) { throw ("rational +: cross-multiplication overflow"); }
         return ret_t{slim::nullopt};
       }
     }
@@ -610,7 +619,7 @@ namespace bnd
       {
         if (add_overflow(A, B, &numerator))
         {
-          if consteval { rational_overflow("rational +: numerator sum overflow"); }
+          if (std::is_constant_evaluated()) { throw ("rational +: numerator sum overflow"); }
           return ret_t{slim::nullopt};
         }
       }
@@ -660,7 +669,7 @@ namespace bnd
       {
         if (mul_overflow(a.Numerator, b.Numerator, &numerator))
         {
-          if consteval { rational_overflow("rational *: numerator overflow"); }
+          if (std::is_constant_evaluated()) { throw ("rational *: numerator overflow"); }
           return ret_t{slim::nullopt};
         }
       }
@@ -684,7 +693,7 @@ namespace bnd
           mul_overflow(a_ad, b_ad, &denominator)             ||
           denominator > static_cast<umax>(std::numeric_limits<imax>::max()))
       {
-        if consteval { rational_overflow("rational *: numerator or denominator overflow"); }
+        if (std::is_constant_evaluated()) { throw ("rational *: numerator or denominator overflow"); }
         return ret_t{slim::nullopt};
       }
     }
@@ -722,7 +731,7 @@ namespace bnd
       if (a.Numerator == 0 ||
           a.Numerator > static_cast<umax>(std::numeric_limits<imax>::max()))
       {
-        if consteval { rational_overflow("rational inv: numerator zero or out of denominator range"); }
+        if (std::is_constant_evaluated()) { throw ("rational inv: numerator zero or out of denominator range"); }
         return ret_t{slim::nullopt};
       }
     }
@@ -858,7 +867,7 @@ namespace bnd
       // form that preserves spaceship syntax. We trap (throw at runtime, fail
       // consteval at compile time), symmetric with the checked arithmetic
       // path's rational_overflow signal.
-      if consteval { rational_overflow("rational <=>: cross-multiplication overflow"); }
+      if (std::is_constant_evaluated()) { throw ("rational <=>: cross-multiplication overflow"); }
       overflow_trap("multiplicative overflow");
     }
 

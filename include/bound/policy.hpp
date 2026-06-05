@@ -9,6 +9,7 @@
 #include "bound/policy_flag.hpp"
 
 #include <system_error>
+#include <type_traits>     // std::is_constant_evaluated
 
 //---------------------------------------------------------------------------
 // policy — runtime policy carrier, plus `policy_ref` for per-operation
@@ -53,13 +54,13 @@ namespace bnd
 
     static constexpr bool domain_check()
     {
-      if consteval { return true; }
+      if (std::is_constant_evaluated()) return true;
       return test(checked) && not test(ignore_domain);
     }
 
     static constexpr bool round_check()
     {
-      if consteval { return true; }
+      if (std::is_constant_evaluated()) return true;
       return test(checked) && not test(ignore_round);
     }
 
@@ -70,7 +71,7 @@ namespace bnd
       // policy hitting this path at compile time would otherwise produce
       // an opaque "non-constexpr function called" diagnostic. The string-
       // literal throw aborts constant evaluation with a clearer pointer.
-      if consteval
+      if (std::is_constant_evaluated())
       {
         throw "bound: value out of range during constant evaluation "
               "(checked policy hit; choose clamp/wrap/sentinel or widen the interval)";

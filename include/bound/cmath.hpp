@@ -6,8 +6,9 @@
 
 #include "bound/bound.hpp"
 
+#include "slim/expected.hpp"     // slim::expected, slim::unexpected
+
 #include <bit>
-#include <expected>
 
 //---------------------------------------------------------------------------
 // bnd::math — integer-only constexpr transcendentals for `bound`/`rational`.
@@ -333,7 +334,7 @@ namespace bnd::math
     // lands exactly on a pole (raw ±π/2 modulo π) and
     // `unexpected(errc::overflow)` when the result exceeds Out's range.
     template <boundable Out, boundable In>
-    constexpr std::expected<Out, errc> tan_turn_impl(In phase) noexcept
+    constexpr slim::expected<Out, errc> tan_turn_impl(In phase) noexcept
     {
       constexpr int N = turn_bits<In>;
       static_assert(N >= 2 && N <= 30,
@@ -347,12 +348,12 @@ namespace bnd::math
       imax sin_q30 = sin_q30_from_phase<N>(sin_raw);
       imax cos_q30 = sin_q30_from_phase<N>(cos_raw);
 
-      if (cos_q30 == 0) return std::unexpected(errc::division_by_zero);
+      if (cos_q30 == 0) return slim::unexpected(errc::division_by_zero);
 
       imax tan_q30 = (sin_q30 << 30) / cos_q30;
       rational tan_v = detail::q30_to_rational(tan_q30);
       if (tan_v < Lower<Out> || tan_v > Upper<Out>)
-        return std::unexpected(errc::overflow);
+        return slim::unexpected(errc::overflow);
 
       return Out{tan_v};
     }
@@ -365,7 +366,7 @@ namespace bnd::math
   // input landed on a pole modulo Q.30 reduction), and
   // `unexpected(errc::overflow)` when the result exceeds Out's interval.
   template <boundable Out, boundable In>
-  constexpr std::expected<Out, errc> tan_impl(In angle) noexcept
+  constexpr slim::expected<Out, errc> tan_impl(In angle) noexcept
   {
     static_assert(Lower<In> >= -1024 && Upper<In> <= 1024,
                   "bnd::math::tan: input must be in [-1024, 1024] rad");
@@ -378,12 +379,12 @@ namespace bnd::math
     imax     sin_q30 = detail::sin_q30_from_turn_q30(t_q30);
     imax     cos_q30 = detail::sin_q30_from_turn_q30(t_q30 + quarter_turn_q30);
 
-    if (cos_q30 == 0) return std::unexpected(errc::division_by_zero);
+    if (cos_q30 == 0) return slim::unexpected(errc::division_by_zero);
 
     imax     tan_q30 = (sin_q30 << 30) / cos_q30;
     rational tan_v = detail::q30_to_rational(tan_q30);
     if (tan_v < Lower<Out> || tan_v > Upper<Out>)
-      return std::unexpected(errc::overflow);
+      return slim::unexpected(errc::overflow);
 
     return Out{tan_v};
   }

@@ -275,7 +275,7 @@ namespace bnd
     // The out-of-range check runs unconditionally — clamp/wrap/sentinel
     // policies handle it via apply_*, which is constexpr-clean. Only the
     // unhandled-checked path winds up calling `policy.report`, which
-    // contains its own `if consteval` guard.
+    // contains its own `std::is_constant_evaluated()` guard.
     if constexpr (not Interval<L>.includes(Interval<R>))
     {
       if constexpr (IsIntegerInterval<L>)

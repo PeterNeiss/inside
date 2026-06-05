@@ -122,11 +122,22 @@ Notes:
 
 ## Build & Test
 
-Requires CMake 3.24+ and a C++23 compiler (GCC 12+, Clang 16+, MSVC 19.36+).
+Requires CMake 3.24+ and a C++23 compiler (GCC 13+, Clang 16+, MSVC 19.36+) for
+the full feature set.
+
+The library also builds against **C++20 on GCC 12**: configure with
+`-DBOUND_CXX20=ON`. In that mode the error channel uses the bundled
+`slim::expected` backport instead of `<expected>`, and the `std::format`
+integration is feature-gated off (`to_string()` / `operator<<` remain available)
+— everything else is identical.
 
 ```bash
 cmake -B build
 cmake --build build
+
+# C++20 / GCC 12 build:
+cmake -B build20 -DBOUND_CXX20=ON -DCMAKE_CXX_COMPILER=g++-12
+cmake --build build20
 ctest --test-dir build --output-on-failure   # runs unit + algo suites
 ./build/bound_tests                          # unit tests directly
 ./build/bench                                # performance benchmarks (native vs bound)

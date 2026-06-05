@@ -159,7 +159,7 @@ TEST_CASE("bound modulo", "[bound][arithmetic][mod]")
   constexpr ui c{100}, d{10};
   STATIC_REQUIRE(*(c % d) == 0);
 
-  // mod-by-zero — runtime only: `if consteval { throw }` short-circuits.
+  // mod-by-zero — runtime only: the `is_constant_evaluated()` throw short-circuits.
   ui a_rt{17}, zero{0};
   REQUIRE_FALSE((a_rt % zero).has_value());
 

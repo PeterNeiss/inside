@@ -7,6 +7,13 @@
 #include "bound/format.hpp"
 #include "bound/print.hpp"
 
+#include <version>          // __cpp_lib_format feature-test macro
+
+// std::format integration is gated on a working <format> (libstdc++ ships it
+// from GCC 13; GCC 12 / C++20 builds compile this header as a no-op and rely
+// on to_string()/operator<< from format.hpp/print.hpp instead).
+#ifdef __cpp_lib_format
+
 #include <format>
 #include <type_traits>
 
@@ -87,5 +94,7 @@ struct std::formatter<bnd::rational>
     return std::format_to(ctx.out(), "{}", bnd::to_string(r));
   }
 };
+
+#endif // __cpp_lib_format
 
 #endif // BNDformatterHPP

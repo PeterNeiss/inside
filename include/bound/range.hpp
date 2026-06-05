@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <iterator>
 #include <ranges>
+#include <utility>
 
 //---------------------------------------------------------------------------
 // bound_range — random-access range over a grid.
@@ -30,6 +31,37 @@
 //---------------------------------------------------------------------------
 namespace bnd
 {
+  namespace detail
+  {
+    // enumerate_view — uniform C++20 stand-in for `std::views::enumerate`
+    // (C++23). Wraps a range and yields `pair<index, value>` by value, which
+    // is all `indexed()` needs: bound_range's iterator already returns each
+    // value by value, so there is nothing to bind a reference to. One code
+    // path on every compiler (no __cpp_lib_ranges_enumerate branch).
+    template <class R>
+    struct enumerate_view
+    {
+      R base_;
+
+      struct iterator
+      {
+        std::ranges::iterator_t<const R> it{};
+        std::size_t index{0};
+
+        using value_type      = std::pair<std::size_t, std::ranges::range_value_t<R>>;
+        using difference_type  = std::ptrdiff_t;
+
+        constexpr value_type operator*() const { return {index, *it}; }
+        constexpr iterator& operator++() { ++it; ++index; return *this; }
+        constexpr iterator  operator++(int) { auto t = *this; ++*this; return t; }
+        constexpr bool operator==(iterator const& o) const { return it == o.it; }
+      };
+
+      constexpr iterator begin() const { return {std::ranges::begin(base_), 0}; }
+      constexpr iterator end()   const { return {std::ranges::end(base_), 0}; }
+    };
+  } // namespace detail
+
   template <grid G, policy_flag P = checked>
     requires (G.Notch != 0)
   struct bound_range
@@ -115,7 +147,8 @@ namespace bnd
     // `indexed()` pairs each value with its zero-based position, mirroring
     // the C++23 `std::views::enumerate` adapter. Convenient sugar for the
     // common "index alongside value" pattern in lookup-table examples.
-    constexpr auto indexed() const { return std::views::enumerate(*this); }
+    // Uses detail::enumerate_view so C++20 / GCC 12 builds work unchanged.
+    constexpr auto indexed() const { return detail::enumerate_view<bound_range>{*this}; }
   };
 
 } // namespace bnd

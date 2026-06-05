@@ -8,11 +8,40 @@
 //   - A round-trip sweep showing dB → linear → dB recovers the input within
 //     a few Q-format ULPs at every step.
 
-#include <print>
+#include <version>
 
 #include "bound/bound.hpp"
 #include "bound/cmath.hpp"
 #include "bound/formatter.hpp"
+#include "bound/print.hpp"      // operator<< — the fallback println routes here
+
+#if defined(__cpp_lib_print)
+#include <print>
+using std::println;
+#else
+// GCC 12 / C++20 lack <print>. Minimal stand-in covering the `{}` forms this
+// example uses, rendered through the bound/rational operator<< from print.hpp.
+#include <iostream>
+#include <sstream>
+#include <string_view>
+namespace {
+template <class... Ts>
+void println(std::string_view fmt, Ts const&... args)
+{
+  std::ostringstream oss;
+  std::size_t pos = 0;
+  [[maybe_unused]] auto emit = [&](auto const& a) {
+    auto open = fmt.find("{}", pos);
+    if (open == std::string_view::npos) return;
+    oss << fmt.substr(pos, open - pos) << a;
+    pos = open + 2;
+  };
+  (emit(args), ...);
+  oss << fmt.substr(pos) << '\n';
+  std::cout << oss.str();
+}
+} // namespace
+#endif
 
 using namespace bnd;
 
@@ -48,23 +77,23 @@ int main()
   // `std::println` works on bound / rational because `bound/formatter.hpp`
   // ships `std::formatter` specializations for both. Empty `{}` keeps the
   // exact rational rendering — same string `operator<<` would produce.
-  std::println("dB → linear → dB round-trip:");
-  std::println("    dB       linear         round-trip dB");
+  println("dB → linear → dB round-trip:");
+  println("    dB       linear         round-trip dB");
 
   // Sweep dB at 3 dB steps over the full range.
   for (int d = -24; d <= 12; d += 3) {
     db_t db{d};
     gain_t lin = db_to_linear(db);
     db_t db_recovered = linear_to_db(lin);
-    std::println("    {}       {}         {}", db, lin, db_recovered);
+    println("    {}       {}         {}", db, lin, db_recovered);
   }
 
   // The canonical "6 dB doubles" / "12 dB quadruples" landmarks.
-  std::println("\nLandmark conversions (within db_t's [-24, 12] range):");
+  println("\nLandmark conversions (within db_t's [-24, 12] range):");
   for (int d : {-24, -12, -6, 0, 6, 12}) {
     db_t db{d};
     gain_t lin = db_to_linear(db);
-    std::println("    {} dB  =  {}", db, lin);
+    println("    {} dB  =  {}", db, lin);
   }
 
   return 0;

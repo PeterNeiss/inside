@@ -2,7 +2,17 @@ cmake_minimum_required (VERSION 3.24)
 
 project(bound VERSION 1.0.0 LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 23)
+# The library targets C++23 by default but is C++20-clean (GCC 12): under
+# C++20 the std::format integration and the slim::optional move_only_function
+# specialization are feature-gated off, and the error channel uses the
+# slim::expected backport instead of <expected>. Configure with -DBOUND_CXX20=ON
+# (or a GCC 12 toolchain) to build/test that path.
+option(BOUND_CXX20 "Build against C++20 (GCC 12 compatibility) instead of the default C++23" OFF)
+if(BOUND_CXX20)
+    set(CMAKE_CXX_STANDARD 20)
+else()
+    set(CMAKE_CXX_STANDARD 23)
+endif()
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
@@ -35,8 +45,8 @@ target_compile_options(bound_bound
 include(CheckCXXSourceCompiles)
 
 # <stacktrace> with libstdc++ requires linking the experimental library; the
-# probe is GCC-specific. On other toolchains we just skip the feature.
-if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+# probe is GCC-specific and C++23-only, so it is skipped under BOUND_CXX20.
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND NOT BOUND_CXX20)
     set(CMAKE_REQUIRED_FLAGS "-std=c++23")
     set(CMAKE_REQUIRED_LIBRARIES stdc++exp)
     check_cxx_source_compiles("

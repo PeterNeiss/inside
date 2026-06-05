@@ -63,8 +63,8 @@ TEST_CASE("Bug B: signed-direct multiplication third quadrant", "[bound][multipl
 // because it falls through `domain_fail` without `checked` set.
 //
 // Runtime-only: wrap policy is bypassed in constant evaluation (the
-// `if consteval { throw }` in assignment::assign fires before the policy
-// machinery can react).
+// `is_constant_evaluated()` throw in assignment::assign fires before the
+// policy machinery can react).
 //---------------------------------------------------------------------------
 TEST_CASE("Bug C: wrap policy fires for real rhs", "[bound][wrap][regression]")
 {

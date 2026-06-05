@@ -1,0 +1,126 @@
+// slim::expected — minimal C++20 backport of std::expected
+// Copyright (c) 2026 Peter Neiss
+// SPDX-License-Identifier: MIT
+//
+// The `slim::` namespace is an independent utility namespace with no `bnd::`
+// dependency. `slim::expected<T, E>` mirrors the subset of the C++23
+// `std::expected` API the bound library consumes (value / error access, the
+// `unexpected` error tag, deref, and the throwing `value()`), so the library
+// presents one error-channel code path on every compiler — C++20 toolchains
+// (GCC 12) that lack `<expected>` included.
+//
+// Scope is deliberately small: only what the library uses. T and E are
+// trivially-copyable value types here (integrals, rational, bound, grid, an
+// errc enum), so storage is a plain pair of members guarded by a flag rather
+// than a union — simplest fully-constexpr form. No `expected<void, E>`, no
+// monadic operations: add them when a call site needs them.
+
+#pragma once
+
+#include <exception>
+#include <type_traits>
+#include <utility>
+
+namespace slim {
+
+// Thrown by expected::value() when the object holds an error. Mirrors
+// std::bad_expected_access closely enough for the library's needs (the bound
+// code only relies on "value() throws when empty").
+class bad_expected_access : public std::exception {
+    const char* msg_;
+public:
+    explicit bad_expected_access(const char* msg = "bad expected access") noexcept
+        : msg_(msg) {}
+    const char* what() const noexcept override { return msg_; }
+};
+
+// ── unexpected<E>: the error wrapper used to construct the error state ──
+template<class E>
+class unexpected {
+    E error_;
+public:
+    constexpr explicit unexpected(const E& e) : error_(e) {}
+    constexpr explicit unexpected(E&& e) : error_(std::move(e)) {}
+
+    constexpr const E&  error() const&  noexcept { return error_; }
+    constexpr E&        error() &       noexcept { return error_; }
+    constexpr const E&& error() const&& noexcept { return std::move(error_); }
+    constexpr E&&       error() &&      noexcept { return std::move(error_); }
+};
+
+// Deduction guide so `slim::unexpected{errc::overflow}` deduces E.
+template<class E>
+unexpected(E) -> unexpected<E>;
+
+// ── expected<T, E> ──
+template<class T, class E>
+class expected {
+    T value_{};
+    E error_{};
+    bool has_value_{true};
+
+public:
+    using value_type      = T;
+    using error_type      = E;
+    using unexpected_type = unexpected<E>;
+
+    // Value state — implicit so `return some_T;` works at call sites.
+    constexpr expected() = default;
+    constexpr expected(const T& v) : value_(v), has_value_(true) {}
+    constexpr expected(T&& v) : value_(std::move(v)), has_value_(true) {}
+
+    // Value state from a convertible source (e.g. `return static_cast<T>(x);`
+    // already yields T, but integral promotions at call sites benefit).
+    template<class U = T>
+        requires (!std::is_same_v<std::remove_cvref_t<U>, expected> &&
+                  !std::is_same_v<std::remove_cvref_t<U>, unexpected<E>> &&
+                  std::is_constructible_v<T, U> &&
+                  std::is_convertible_v<U, T>)
+    constexpr expected(U&& v) : value_(std::forward<U>(v)), has_value_(true) {}
+
+    // Error state — implicit from slim::unexpected so `return slim::unexpected{e};`
+    // works at call sites.
+    constexpr expected(const unexpected<E>& u) : error_(u.error()), has_value_(false) {}
+    constexpr expected(unexpected<E>&& u) : error_(std::move(u).error()), has_value_(false) {}
+
+    // Observers
+    [[nodiscard]] constexpr bool has_value() const noexcept { return has_value_; }
+    [[nodiscard]] constexpr explicit operator bool() const noexcept { return has_value_; }
+
+    [[nodiscard]] constexpr const T& value() const& {
+        if (!has_value_) throw bad_expected_access("expected has no value");
+        return value_;
+    }
+    [[nodiscard]] constexpr T& value() & {
+        if (!has_value_) throw bad_expected_access("expected has no value");
+        return value_;
+    }
+    [[nodiscard]] constexpr T&& value() && {
+        if (!has_value_) throw bad_expected_access("expected has no value");
+        return std::move(value_);
+    }
+
+    [[nodiscard]] constexpr const E& error() const& noexcept { return error_; }
+    [[nodiscard]] constexpr E&       error() &      noexcept { return error_; }
+    [[nodiscard]] constexpr E&&      error() &&     noexcept { return std::move(error_); }
+
+    [[nodiscard]] constexpr const T& operator*() const& noexcept { return value_; }
+    [[nodiscard]] constexpr T&       operator*() &      noexcept { return value_; }
+    [[nodiscard]] constexpr T&&      operator*() &&     noexcept { return std::move(value_); }
+
+    [[nodiscard]] constexpr const T* operator->() const noexcept { return std::addressof(value_); }
+    [[nodiscard]] constexpr T*       operator->()       noexcept { return std::addressof(value_); }
+
+    template<class U>
+        requires std::is_convertible_v<U, T>
+    [[nodiscard]] constexpr T value_or(U&& default_value) const& {
+        return has_value_ ? value_ : static_cast<T>(std::forward<U>(default_value));
+    }
+    template<class U>
+        requires std::is_convertible_v<U, T>
+    [[nodiscard]] constexpr T value_or(U&& default_value) && {
+        return has_value_ ? std::move(value_) : static_cast<T>(std::forward<U>(default_value));
+    }
+};
+
+} // namespace slim

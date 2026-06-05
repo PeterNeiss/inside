@@ -13,7 +13,7 @@
 #include "bound/assignment.hpp"
 #include "bound/predicates.hpp"
 
-#include <expected>
+#include "slim/expected.hpp"     // slim::expected, slim::unexpected
 
 // Forward-declare the `bnd::math` entry points the member-syntax aliases on
 // `bound<G,P>` delegate to. The actual definitions live in <bound/cmath.hpp>;
@@ -170,7 +170,7 @@ namespace bnd
     //                       ignore_round). Strict-policy bounds must
     //                       use `b.to<double>().value()` to opt in.
     //   to<T>()           — typed-error narrowing/widening, returns
-    //                       `std::expected<T, errc>` for any
+    //                       `slim::expected<T, errc>` for any
     //                       unsigned/signed integral, floating point,
     //                       or `rational` target. Reports overflow,
     //                       domain_error (negative into unsigned),
@@ -229,9 +229,9 @@ namespace bnd
     // sentinel-state) and `errc::domain_error` (negative into unsigned T).
     // Silent fractional truncation matches rational::to<T>.
     template <std::unsigned_integral T>
-    [[nodiscard]] constexpr std::expected<T, errc> to() const
+    [[nodiscard]] constexpr slim::expected<T, errc> to() const
     {
-      if (is_sentinel_under_policy()) return std::unexpected{errc::overflow};
+      if (is_sentinel_under_policy()) return slim::unexpected{errc::overflow};
 
       constexpr bool needs_neg_check = (Lower<bound> < 0);
       constexpr bool needs_max_check =
@@ -243,18 +243,18 @@ namespace bnd
       {
         rational r = *this;
         if constexpr (needs_neg_check)
-          if (r < 0) return std::unexpected{errc::domain_error};
+          if (r < 0) return slim::unexpected{errc::domain_error};
         if constexpr (needs_max_check)
           if (r > rational{std::numeric_limits<T>::max()})
-            return std::unexpected{errc::overflow};
+            return slim::unexpected{errc::overflow};
         return static_cast<T>(r.trunc());
       }
     }
 
     template <std::signed_integral T>
-    [[nodiscard]] constexpr std::expected<T, errc> to() const
+    [[nodiscard]] constexpr slim::expected<T, errc> to() const
     {
-      if (is_sentinel_under_policy()) return std::unexpected{errc::overflow};
+      if (is_sentinel_under_policy()) return slim::unexpected{errc::overflow};
 
       constexpr bool needs_min_check =
           (Lower<bound> < rational{std::numeric_limits<T>::min()});
@@ -268,25 +268,25 @@ namespace bnd
         rational r = *this;
         if constexpr (needs_min_check)
           if (r < rational{std::numeric_limits<T>::min()})
-            return std::unexpected{errc::overflow};
+            return slim::unexpected{errc::overflow};
         if constexpr (needs_max_check)
           if (r > rational{std::numeric_limits<T>::max()})
-            return std::unexpected{errc::overflow};
+            return slim::unexpected{errc::overflow};
         return static_cast<T>(r.trunc());
       }
     }
 
     template <std::floating_point T>
-    [[nodiscard]] constexpr std::expected<T, errc> to() const
+    [[nodiscard]] constexpr slim::expected<T, errc> to() const
     {
-      if (is_sentinel_under_policy()) return std::unexpected{errc::overflow};
+      if (is_sentinel_under_policy()) return slim::unexpected{errc::overflow};
       return static_cast<T>(G.raw_to_double(Raw));
     }
 
     template <std::same_as<rational> T>
-    [[nodiscard]] constexpr std::expected<T, errc> to() const
+    [[nodiscard]] constexpr slim::expected<T, errc> to() const
     {
-      if (is_sentinel_under_policy()) return std::unexpected{errc::overflow};
+      if (is_sentinel_under_policy()) return slim::unexpected{errc::overflow};
       return rational{*this};
     }
 
@@ -605,17 +605,17 @@ namespace bnd
     constexpr bound  operator--(int) { bound t = *this; --*this; return t; }
 
     template <numeric A>
-    [[nodiscard]] static constexpr std::expected<bound, errc> try_make(A value)
+    [[nodiscard]] static constexpr slim::expected<bound, errc> try_make(A value)
     {
       std::error_code ec;
       bound result;
       assignment<bound, A>::assign(result, value, make_policy<P>(ec));
-      if (ec) return std::unexpected{static_cast<errc>(ec.value())};
+      if (ec) return slim::unexpected{static_cast<errc>(ec.value())};
       // For `sentinel` policy types, an out-of-range write silently sets
       // result.Raw to the sentinel; surface that as a domain error.
       if constexpr ((P & sentinel) != 0)
         if (result.Raw == sentinel_raw<bound>())
-          return std::unexpected{errc::domain_error};
+          return slim::unexpected{errc::domain_error};
       return result;
     }
   };

@@ -5,7 +5,10 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <version>          // __cpp_lib_format
+#ifdef __cpp_lib_format
 #include <format>
+#endif
 #include <limits>
 #include <sstream>
 
@@ -53,6 +56,10 @@ TEST_CASE("rational max as integer formats without 1/", "[format][rational]")
   REQUIRE(bnd::to_string(rational{M, 1}) == std::to_string(M));
 }
 
+// std::format integration is only exercised where <format> is available
+// (libstdc++ from GCC 13). GCC 12 / C++20 builds skip these and keep the
+// to_string()/operator<< coverage below.
+#ifdef __cpp_lib_format
 TEST_CASE("std::format integration", "[format][std_format]")
 {
   REQUIRE(std::format("{}",      bound<{0, 99}>{42})    == "42");
@@ -112,6 +119,7 @@ TEST_CASE("std::format numeric specs — rational", "[format][std_format][ration
   REQUIRE(std::format("{:.6f}", r) == std::format("{:.6f}", static_cast<double>(r)));
   REQUIRE(std::format("{:e}",   r) == std::format("{:e}",   static_cast<double>(r)));
 }
+#endif // __cpp_lib_format
 
 TEST_CASE("interval and grid to_string", "[format][interval][grid]")
 {

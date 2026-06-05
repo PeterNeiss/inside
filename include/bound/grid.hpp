@@ -8,8 +8,9 @@
 #include "bound/rational.hpp"
 #include "bound/interval.hpp"
 
+#include "slim/expected.hpp"     // slim::expected, slim::unexpected
+
 #include <algorithm>
-#include <expected>
 
 namespace bnd { struct grid; }
 
@@ -70,20 +71,20 @@ namespace bnd
     // The result is a value, so it cannot be used as a `bound<G, P>` template
     // argument — callers that need that path select a pre-declared grid
     // instantiation by other means.
-    [[nodiscard]] static constexpr std::expected<grid, errc>
+    [[nodiscard]] static constexpr slim::expected<grid, errc>
     try_make(interval iv, rational notch)
     {
       if (iv.Lower > iv.Upper)
-        return std::unexpected{errc::domain_error};
+        return slim::unexpected{errc::domain_error};
       if (!iv.divides_evenly(notch))
-        return std::unexpected{errc::rounding_error};
+        return slim::unexpected{errc::rounding_error};
       if (notch != 0)
       {
         auto q = iv.Lower / notch;
         if (!q.has_value())
-          return std::unexpected{errc::overflow};
+          return slim::unexpected{errc::overflow};
         if (abs_den(q->Denominator) != 1)
-          return std::unexpected{errc::rounding_error};
+          return slim::unexpected{errc::rounding_error};
       }
       return grid{iv, notch};
     }

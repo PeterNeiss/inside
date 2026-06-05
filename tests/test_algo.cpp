@@ -29,7 +29,7 @@ TEST_CASE("algo: ranges algorithms over vector<bound>", "[algo][ranges]")
 {
   std::vector<u8> v;
   v.resize(10);
-  rng::generate(v, [counter = 7] mutable { return ++counter; });
+  rng::generate(v, [counter = 7]() mutable { return ++counter; });
   REQUIRE(v.size() == 10);
 
   // reduce/accumulate

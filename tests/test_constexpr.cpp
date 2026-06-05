@@ -8,9 +8,9 @@
 //     rational_overflow(...)` and hard-fail the build — they cannot appear
 //     in a constant expression.
 //   - The unhandled-`checked` path (out-of-range value, no clamp/wrap/
-//     sentinel) still aborts constant evaluation via the `if consteval`
-//     guard inside `policy::report` (with a clearer message than the
-//     prior unconditional throw).
+//     sentinel) still aborts constant evaluation via the
+//     `is_constant_evaluated()` guard inside `policy::report` (clearer
+//     than the prior unconditional throw).
 
 #include "bound/bound.hpp"
 #include "bound/numeric_limits.hpp"

@@ -222,12 +222,16 @@ protected:
     static bool is_sentinel(const std::function<F>& v) noexcept { return !v; }
 };
 
+// std::move_only_function is C++23 (libstdc++ ships it from GCC 13); gate the
+// specialization so C++20 / GCC 12 builds still compile this header.
+#ifdef __cpp_lib_move_only_function
 template<class F>
 struct sentinel_traits<std::move_only_function<F>> {
 protected:
     static std::move_only_function<F> sentinel() noexcept { return {}; }
     static bool is_sentinel(const std::move_only_function<F>& v) noexcept { return !v; }
 };
+#endif
 
 template<class P>
 struct sentinel_traits<std::coroutine_handle<P>> {
