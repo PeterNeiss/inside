@@ -125,6 +125,20 @@ add_executable(bound_fuzz tests/fuzz.cpp)
 target_link_libraries(bound_fuzz PUBLIC bound::bound)
 
 #---------------------------------------------------------------------------
+# MinGW link workaround
+#---------------------------------------------------------------------------
+# GCC 13.x for x86_64-w64-mingw32 ships a libstdc++.a whose tinfo.o carries an
+# out-of-line `std::type_info::operator==`, while user/Catch2 objects emit the
+# inline form from <typeinfo>. Static-linking them trips a spurious
+# "multiple definition of std::type_info::operator==". Tolerate it on MinGW
+# (the two definitions are identical); harmless elsewhere, so it stays scoped.
+if(WIN32 AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    foreach(tgt bound_tests bench bound_fuzz)
+        target_link_options(${tgt} PRIVATE -Wl,--allow-multiple-definition)
+    endforeach()
+endif()
+
+#---------------------------------------------------------------------------
 # Coverage target — runs ctest under --coverage and produces an HTML report.
 # Only useful when configured with -DBOUND_COVERAGE=ON.
 #---------------------------------------------------------------------------

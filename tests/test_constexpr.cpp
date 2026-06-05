@@ -4,8 +4,8 @@
 // for runtime test execution.
 //
 // Library quirks to respect:
-//   - `rational::inv(0)` and division-by-zero call `consteval
-//     rational_overflow(...)` and hard-fail the build — they cannot appear
+//   - `rational::inv(0)` and division-by-zero `throw` under
+//     `is_constant_evaluated()` and hard-fail the build — they cannot appear
 //     in a constant expression.
 //   - The unhandled-`checked` path (out-of-range value, no clamp/wrap/
 //     sentinel) still aborts constant evaluation via the
@@ -57,8 +57,8 @@ TEST_CASE("constexpr: rational arithmetic", "[constexpr][rational]")
   // gcd is also optional-returning
   STATIC_REQUIRE(*gcd(rational{2u, 3}, rational{1u, 6}) == rational{1u, 6});
 
-  // Div-by-zero is runtime-only — at compile time `rational::inv(0)` calls
-  // `consteval rational_overflow(...)`, which hard-fails the build.
+  // Div-by-zero is runtime-only — at compile time `rational::inv(0)` throws
+  // under `is_constant_evaluated()`, which hard-fails the build.
 }
 
 TEST_CASE("constexpr: rational rounding helpers", "[constexpr][rational]")

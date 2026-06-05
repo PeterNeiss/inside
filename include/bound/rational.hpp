@@ -70,17 +70,17 @@ namespace bnd
   constexpr auto     operator<=>(rational, rational) -> std::strong_ordering;
 
   //---------------------------------------------------------------------------
-  // rational_overflow — fails constant evaluation with the operator name
+  // Overflow / malformed-literal signalling
   //---------------------------------------------------------------------------
-  // Used by the `consteval` `_b`/`_r` literal parsers below to reject malformed
-  // or overflowing literals at compile time. Stays `consteval` (its throw can
-  // never be a constant expression, so an unconditional `constexpr` form would
-  // be ill-formed NDR / -Winvalid-constexpr). The runtime-guarded arithmetic
-  // overflow sites cannot call a `consteval` function, so they `throw` the
-  // message inline under `if (std::is_constant_evaluated())` instead — same
-  // effect (abort constant evaluation), mirroring `policy::report`.
-  [[noreturn]] inline consteval void rational_overflow(char const* op)
-  { throw op; }
+  // Failure aborts constant evaluation directly via `throw`: the `consteval`
+  // `_b`/`_r` literal parsers throw on malformed input, and the checked
+  // arithmetic paths throw under `if (std::is_constant_evaluated())`. A `throw`
+  // reached during constant evaluation hard-fails the build with the message;
+  // at runtime the arithmetic paths never enter that branch and fall through to
+  // `nullopt` instead. There is deliberately no dedicated always-throwing
+  // helper — as a `consteval`/`constexpr` function its body could never be a
+  // constant expression, which is ill-formed NDR and a hard error on some
+  // toolchains (e.g. the Xilinx aarch64 GCC).
 
   //---------------------------------------------------------------------------
   // rational
@@ -227,7 +227,7 @@ namespace bnd
     static constexpr slim::optional<rational> inv(rational);
 
     // Shared algorithm bodies. Checked=true returns slim::optional<rational>
-    // and reports overflow (via consteval rational_overflow at compile-time
+    // and reports overflow (a compile-time `throw` under is_constant_evaluated
     // or nullopt at runtime). Checked=false silently overflows; the caller
     // must guarantee its absence.
     template <bool Checked> static constexpr auto add_impl(rational const&, rational const&);
@@ -424,13 +424,13 @@ namespace bnd
             exp_seen_digit = true;
             continue;
           }
-          rational_overflow("_b/_r literal: invalid char in exponent");
+          throw ("_b/_r literal: invalid char in exponent");
         }
 
         if (c == '.')
         {
-          if (in_frac) rational_overflow("_b/_r literal: multiple '.'");
-          if (base == 2) rational_overflow("_b/_r literal: '.' not allowed in binary");
+          if (in_frac) throw ("_b/_r literal: multiple '.'");
+          if (base == 2) throw ("_b/_r literal: '.' not allowed in binary");
           in_frac = true;
           continue;
         }
@@ -450,11 +450,11 @@ namespace bnd
         }
 
         int d = parse_digit(c, base);
-        if (d < 0) rational_overflow("_b/_r literal: invalid digit for radix");
+        if (d < 0) throw ("_b/_r literal: invalid digit for radix");
 
         umax base_u = static_cast<umax>(base);
         if (num > (~umax{0} - static_cast<umax>(d)) / base_u)
-          rational_overflow("_b/_r literal: numerator overflow");
+          throw ("_b/_r literal: numerator overflow");
         num = num * base_u + static_cast<umax>(d);
         if (in_frac) ++frac_len;
       }
@@ -467,26 +467,26 @@ namespace bnd
         for (int k = 0; k < frac_len; ++k)
         {
           if (den > (~umax{0}) / 10u)
-            rational_overflow("_b/_r literal: denominator overflow");
+            throw ("_b/_r literal: denominator overflow");
           den *= 10u;
         }
       }
       else if (base == 16)
       {
         int shift = 4 * frac_len;
-        if (shift >= 64) rational_overflow("_b/_r literal: hex fraction too long");
+        if (shift >= 64) throw ("_b/_r literal: hex fraction too long");
         den <<= shift;
       }
 
       // Apply binary exponent (hex floats, `p`).
       if (has_p_exp)
       {
-        if (exp >= 63) rational_overflow("_b/_r literal: p exponent too large");
+        if (exp >= 63) throw ("_b/_r literal: p exponent too large");
         if (!exp_neg) num <<= exp;
         else
         {
           if (den > (~umax{0}) >> exp)
-            rational_overflow("_b/_r literal: p exponent denominator overflow");
+            throw ("_b/_r literal: p exponent denominator overflow");
           den <<= exp;
         }
       }
@@ -499,13 +499,13 @@ namespace bnd
           if (!exp_neg)
           {
             if (num > (~umax{0}) / 10u)
-              rational_overflow("_b/_r literal: e exponent numerator overflow");
+              throw ("_b/_r literal: e exponent numerator overflow");
             num *= 10u;
           }
           else
           {
             if (den > (~umax{0}) / 10u)
-              rational_overflow("_b/_r literal: e exponent denominator overflow");
+              throw ("_b/_r literal: e exponent denominator overflow");
             den *= 10u;
           }
         }
@@ -865,8 +865,8 @@ namespace bnd
     {
       // operator<=> must return std::strong_ordering — there is no optional
       // form that preserves spaceship syntax. We trap (throw at runtime, fail
-      // consteval at compile time), symmetric with the checked arithmetic
-      // path's rational_overflow signal.
+      // constant evaluation at compile time), symmetric with the checked
+      // arithmetic path's compile-time overflow throw.
       if (std::is_constant_evaluated()) { throw ("rational <=>: cross-multiplication overflow"); }
       overflow_trap("multiplicative overflow");
     }
