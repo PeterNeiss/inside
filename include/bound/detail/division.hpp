@@ -72,10 +72,19 @@ namespace bnd
     static constexpr bool needs_overflow_check =
         ((G | F | BoundPolicy<L> | BoundPolicy<R>) & checked);
 
+    // For a *nonzero* divisor the op can still fail only on the checked
+    // rational path (overflow). The native paths and the unchecked rational
+    // path cannot fail once zero is ruled out. So when the divisor's grid
+    // excludes zero AND this is false, `div` cannot fail at all and returns a
+    // plain `result` rather than `slim::optional<result>`.
+    static constexpr bool may_overflow_nonzero =
+        !native_div && (needs_overflow_check<F> != 0);
+
     template <typename A>
-    using div_return_t = std::conditional_t<overflow_action<plain<A>>,
-                                            result,
-                                            slim::optional<result>>;
+    using div_return_t = std::conditional_t<
+        overflow_action<plain<A>> || (DivisorExcludesZero<R> && !may_overflow_nonzero),
+        result,
+        slim::optional<result>>;
 
     template <policy_flag G = F, typename E = empty_ref, typename A = no_action>
     static constexpr div_return_t<A> div(L, R, policy<G, E> = {}, A&& = {});
@@ -88,16 +97,35 @@ namespace bnd
   template<policy_flag G, typename E, typename A>
   constexpr auto division<L,R,F>::div(L lhs, R rhs, policy<G, E> policy, A&& action) -> div_return_t<A>
   {
+    // `fail` must stay well-formed for every configuration, including the one
+    // where `div_return_t` has narrowed to plain `result` because the divisor
+    // excludes zero and the op cannot overflow. In that case every call to
+    // `fail` has been removed by the `if constexpr` guards below, so the final
+    // arm is dead — it exists only to satisfy the return type.
     auto fail = [&](errc code, const char* what) -> div_return_t<A> {
-      return report_or_nullopt<result>(action, policy, code, what);
+      if constexpr (overflow_action<plain<A>>)
+        return report_or_nullopt<result>(action, policy, code, what);   // -> result
+      else if constexpr (!DivisorExcludesZero<R> || may_overflow_nonzero)
+        return report_or_nullopt<result>(action, policy, code, what);   // -> optional<result>
+      else
+        return result{};   // unreachable: divisor excludes zero, op cannot fail
     };
+
+    // The div-by-zero check is elided when R's grid statically excludes zero,
+    // OR when `ignore_zero` is set (e.g. `unsafe`): a zero divisor is then
+    // undefined behavior, matching the compound `/= 0` no-op contract. (The
+    // `fail` arms above stay keyed on DivisorExcludesZero, which is what
+    // narrows the *return type* — `ignore_zero` does not change it.)
+    constexpr bool zero_unchecked = DivisorExcludesZero<R>
+        || (((G | F | BoundPolicy<L> | BoundPolicy<R>) & ignore_zero) != 0);
 
     if constexpr (native_div_qformat)
     {
       // rhs.Raw == 0 iff rhs.value == 0 (Lower<R> == 0 by IsQFormat).
       // Formula matches `(a << log2(N)) / b` which the compiler folds when
       // N is a power of two — i.e. literally the native Q-format idiom.
-      if (rhs.Raw == 0) return fail(errc::division_by_zero, "division by zero in div");
+      if constexpr (!zero_unchecked)
+        if (rhs.Raw == 0) return fail(errc::division_by_zero, "division by zero in div");
       constexpr umax N = static_cast<umax>(abs_den(Notch<L>.Denominator));
       result res;
       res.Raw = raw_cast<result>(
@@ -107,7 +135,8 @@ namespace bnd
     else if constexpr (native_div_integer)
     {
       imax rhs_val = to_value(rhs);
-      if (rhs_val == 0) return fail(errc::division_by_zero, "division by zero in div");
+      if constexpr (!zero_unchecked)
+        if (rhs_val == 0) return fail(errc::division_by_zero, "division by zero in div");
       result res;
       from_value(res, to_value(lhs) / rhs_val);
       return res;
@@ -115,7 +144,8 @@ namespace bnd
     else if constexpr (needs_overflow_check<G>)
     {
       rational rhs_r = rhs;
-      if (rhs_r.Numerator == 0) return fail(errc::division_by_zero, "division by zero in div");
+      if constexpr (!zero_unchecked)
+        if (rhs_r.Numerator == 0) return fail(errc::division_by_zero, "division by zero in div");
       auto q = as_rational(lhs) / rhs_r;
       if (!q) return fail(errc::overflow, "rational overflow in div");
       result res; res.Raw = *q; return res;
@@ -123,7 +153,8 @@ namespace bnd
     else
     {
       rational rhs_r = rhs;
-      if (rhs_r.Numerator == 0) return fail(errc::division_by_zero, "division by zero in div");
+      if constexpr (!zero_unchecked)
+        if (rhs_r.Numerator == 0) return fail(errc::division_by_zero, "division by zero in div");
       result res;
       res.Raw = rational::div_unchecked(as_rational(lhs), rhs_r);
       return res;
@@ -154,10 +185,14 @@ namespace bnd
 
     using result = bound<result_grid>;
 
+    // Modulo never overflows (the remainder always fits result_grid), so the
+    // only failure is a zero divisor. When the divisor's grid excludes zero
+    // the op cannot fail and returns a plain `result`.
     template <typename A>
-    using mod_return_t = std::conditional_t<overflow_action<plain<A>>,
-                                            result,
-                                            slim::optional<result>>;
+    using mod_return_t = std::conditional_t<
+        overflow_action<plain<A>> || DivisorExcludesZero<R>,
+        result,
+        slim::optional<result>>;
 
     template <policy_flag G = F, typename E = empty_ref, typename A = no_action>
     static constexpr mod_return_t<A> mod(L, R, policy<G, E> = {}, A&& = {});
@@ -168,9 +203,17 @@ namespace bnd
   constexpr auto modulo<L,R,F>::mod(L lhs, R rhs, policy<G, E> policy, A&& action) -> mod_return_t<A>
   {
     imax rhs_val = to_value(rhs);
-    if (rhs_val == 0)
-      return report_or_nullopt<result>(action, policy, errc::division_by_zero,
-                                       "division by zero in mod");
+    // The zero check is elided when R's grid statically excludes zero (then
+    // `mod_return_t` is a plain `result`) OR when `ignore_zero` is set (e.g.
+    // `unsafe`): a zero divisor is then undefined behavior, matching the
+    // compound `%= 0` no-op contract. When kept, `report_or_nullopt` matches
+    // the optional return type; when elided, the tail returns a plain result.
+    constexpr bool zero_unchecked = DivisorExcludesZero<R>
+        || (((G | F | BoundPolicy<L> | BoundPolicy<R>) & ignore_zero) != 0);
+    if constexpr (!zero_unchecked)
+      if (rhs_val == 0)
+        return report_or_nullopt<result>(action, policy, errc::division_by_zero,
+                                         "division by zero in mod");
     result res;
     from_value(res, to_value(lhs) % rhs_val);
     return res;

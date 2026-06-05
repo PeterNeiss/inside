@@ -57,8 +57,9 @@ int main()
   for (int i = 0; i < 6; ++i)
   {
     s += window;
+    // `slots` has grid {1,256} (excludes zero), so `%` yields a plain bound.
     auto slot = s % slots;
-    std::cout << "  seq=" << s << "  ->  slot " << *slot << "\n";
+    std::cout << "  seq=" << s << "  ->  slot " << slot << "\n";
   }
 
   return 0;

@@ -328,7 +328,7 @@ void bench_fixed_point_signed()
 {
   // Signed Q1.14-style audio: bound<{{-1, 1}, 1/16384}, unsafe>
   // vs native int16 with explicit *16384 scaling.
-  using fp = bound<{{-1, 1}, *(1_r/16384)}, unsafe>;
+  using fp = bound<{{-1, 1}, notch<1, 16384>}, unsafe>;
   static_assert(sizeof(fp) == 2);
 
   for (std::size_t i = 0; i < N; ++i)
@@ -379,7 +379,7 @@ void bench_fixed_point_q16()
 {
   // Q16.16: bound<{{0, 65535}, 1/65536}, unsafe> vs int64 with <<16 scaling.
   // Skip mul/div: Q16.16*Q16.16 forces a wider result type than uint32.
-  using fp = bound<{{0, 65535}, *(1_r/65536)}, unsafe>;
+  using fp = bound<{{0, 65535}, notch<1, 65536>}, unsafe>;
   static_assert(sizeof(fp) == 4);
 
   constexpr std::size_t SZ = 1000;

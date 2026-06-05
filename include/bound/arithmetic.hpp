@@ -287,74 +287,65 @@ namespace bnd
   [[nodiscard]] constexpr rational operator/(rational const& lhs, B const& rhs)
   { return (lhs / static_cast<rational>(rhs)).value(); }
 
-  template <boundable B, std::floating_point F>
-  [[nodiscard]] constexpr double operator+(B const& lhs, F rhs)
-  { return static_cast<double>(lhs) + static_cast<double>(rhs); }
+  //---------------------------------------------------------------------------
+  // Grid-less scalar operands are rejected.
+  //
+  // A raw `int`/`double` carries no grid, so `bound op rawscalar` has no
+  // type-safe result: widening to the scalar's full type range would balloon
+  // the grid, and a runtime value has no compile-time point grid to widen
+  // from. Rather than silently escape into `rational`/`double` (the old
+  // behavior), these guidance overloads make the expression ill-formed with a
+  // message that hands the caller the fix: give the literal a grid (`1_b` /
+  // `just<1>`), or build a bound over the value's known range.
+  //
+  // Only `std::integral`/`std::floating_point` are caught here; `rational` is
+  // also `arithmetic` but keeps its exact, deliberate mixed-mode operators
+  // above. Comparisons (`a == 1`, `a < 5`) and compound assignment (`a += 1`)
+  // with raw scalars are unaffected — they don't manufacture a new value/type
+  // and so never leave the bounded world.
+  //---------------------------------------------------------------------------
+  // Concrete (non-`auto`) return type on purpose: it keeps these overloads
+  // SFINAE-transparent — probing `requires { b + 1; }` stays well-formed and
+  // the `static_assert` fires only on real instantiation (an actual call),
+  // exactly as the old `rational`/`double`-returning mixed-mode operators did.
+  template <typename A> concept raw_scalar = std::integral<A> || std::floating_point<A>;
 
-  template <boundable B, std::floating_point F>
-  [[nodiscard]] constexpr double operator+(F lhs, B const& rhs)
-  { return static_cast<double>(lhs) + static_cast<double>(rhs); }
+  template <boundable B, raw_scalar A> B operator+(B const&, A) {
+    static_assert(dependent_false<B>,
+      "a bound can only be added to another bound: give the scalar a grid — "
+      "write `a + 1_b` (or `a + just<1>`), or `a + bound<{lo,hi}>{n}` for a "
+      "runtime value with a known range"); }
+  template <raw_scalar A, boundable B> B operator+(A, B const&) {
+    static_assert(dependent_false<B>,
+      "a scalar can only be added to a bound that is itself a bound: write "
+      "`1_b + a` / `just<1> + a`, or `bound<{lo,hi}>{n} + a`"); }
 
-  template <boundable B, std::floating_point F>
-  [[nodiscard]] constexpr double operator-(B const& lhs, F rhs)
-  { return static_cast<double>(lhs) - static_cast<double>(rhs); }
+  template <boundable B, raw_scalar A> B operator-(B const&, A) {
+    static_assert(dependent_false<B>,
+      "subtract a bound, not a raw scalar: write `a - 1_b` / `a - just<1>`, "
+      "or `a - bound<{lo,hi}>{n}` for a runtime value with a known range"); }
+  template <raw_scalar A, boundable B> B operator-(A, B const&) {
+    static_assert(dependent_false<B>,
+      "subtract from a bound, not a raw scalar: write `1_b - a` / `just<1> - "
+      "a`, or `bound<{lo,hi}>{n} - a`"); }
 
-  template <boundable B, std::floating_point F>
-  [[nodiscard]] constexpr double operator-(F lhs, B const& rhs)
-  { return static_cast<double>(lhs) - static_cast<double>(rhs); }
+  template <boundable B, raw_scalar A> B operator*(B const&, A) {
+    static_assert(dependent_false<B>,
+      "multiply by a bound, not a raw scalar: write `a * 2_b` / `a * just<2>`, "
+      "or `a * bound<{lo,hi}>{n}` for a runtime value with a known range"); }
+  template <raw_scalar A, boundable B> B operator*(A, B const&) {
+    static_assert(dependent_false<B>,
+      "multiply a bound by a bound, not a raw scalar: write `2_b * a` / "
+      "`just<2> * a`, or `bound<{lo,hi}>{n} * a`"); }
 
-  template <boundable B, std::floating_point F>
-  [[nodiscard]] constexpr double operator*(B const& lhs, F rhs)
-  { return static_cast<double>(lhs) * static_cast<double>(rhs); }
-
-  template <boundable B, std::floating_point F>
-  [[nodiscard]] constexpr double operator*(F lhs, B const& rhs)
-  { return static_cast<double>(lhs) * static_cast<double>(rhs); }
-
-  template <boundable B, std::floating_point F>
-  [[nodiscard]] constexpr double operator/(B const& lhs, F rhs)
-  { return static_cast<double>(lhs) / static_cast<double>(rhs); }
-
-  template <boundable B, std::floating_point F>
-  [[nodiscard]] constexpr double operator/(F lhs, B const& rhs)
-  { return static_cast<double>(lhs) / static_cast<double>(rhs); }
-
-  // Integral RHS overloads — without these, `bound + 1` is ambiguous: int
-  // can convert to rational (the mixed-mode op above) and bound can convert
-  // to rational (rational's `arithmetic + rational` lift). Adding an
-  // explicit `(boundable, integral)` form gives a zero-user-conversion
-  // candidate that wins overload resolution. Returns rational.
-  template <boundable B, std::integral I>
-  [[nodiscard]] constexpr rational operator+(B const& lhs, I rhs)
-  { return (static_cast<rational>(lhs) + rational{rhs}).value(); }
-
-  template <std::integral I, boundable B>
-  [[nodiscard]] constexpr rational operator+(I lhs, B const& rhs)
-  { return (rational{lhs} + static_cast<rational>(rhs)).value(); }
-
-  template <boundable B, std::integral I>
-  [[nodiscard]] constexpr rational operator-(B const& lhs, I rhs)
-  { return (static_cast<rational>(lhs) - rational{rhs}).value(); }
-
-  template <std::integral I, boundable B>
-  [[nodiscard]] constexpr rational operator-(I lhs, B const& rhs)
-  { return (rational{lhs} - static_cast<rational>(rhs)).value(); }
-
-  template <boundable B, std::integral I>
-  [[nodiscard]] constexpr rational operator*(B const& lhs, I rhs)
-  { return (static_cast<rational>(lhs) * rational{rhs}).value(); }
-
-  template <std::integral I, boundable B>
-  [[nodiscard]] constexpr rational operator*(I lhs, B const& rhs)
-  { return (rational{lhs} * static_cast<rational>(rhs)).value(); }
-
-  template <boundable B, std::integral I>
-  [[nodiscard]] constexpr rational operator/(B const& lhs, I rhs)
-  { return (static_cast<rational>(lhs) / rational{rhs}).value(); }
-
-  template <std::integral I, boundable B>
-  [[nodiscard]] constexpr rational operator/(I lhs, B const& rhs)
-  { return (rational{lhs} / static_cast<rational>(rhs)).value(); }
+  template <boundable B, raw_scalar A> B operator/(B const&, A) {
+    static_assert(dependent_false<B>,
+      "divide by a bound, not a raw scalar: write `a / 2_b` / `a / just<2>`, "
+      "or `a / bound<{lo,hi}>{n}` for a runtime value with a known range"); }
+  template <raw_scalar A, boundable B> B operator/(A, B const&) {
+    static_assert(dependent_false<B>,
+      "divide a bound by a bound, not a raw scalar: write `6_b / a` / "
+      "`just<6> / a`, or `bound<{lo,hi}>{n} / a`"); }
 
 } // namespace bnd
 

@@ -83,7 +83,7 @@ int main()
   sample_t channels[4][N];
   for (auto i : bound_range<{0, N-1}>{})
   {
-    time_t  t{i / N};
+    time_t  t{i / just<N>};   // bound / bound — give the divisor N a grid
     // `t * two_pi_bnd` returns a plain `bound`: the static safety check on
     // rational multiplication folds out the optional wrapper because the
     // result grid's numerator/denominator products provably fit in umax.

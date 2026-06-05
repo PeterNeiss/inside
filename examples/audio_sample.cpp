@@ -39,7 +39,7 @@ int main()
   std::vector<sample> wave_a(N), wave_b(N);
   for (auto i : bound_range<{0, N-1}>{})
   {
-    time_t  t{i / N};
+    time_t  t{i / just<N>};   // bound / bound — give the divisor N a grid
     angle_t base{t * just<math::two_pi>};                            // bound × bound, snap
     angle_t a_a{base + off_a};                                        // bound + bound
     angle_t a_b{base + off_b};                                        // bound + bound

@@ -451,8 +451,14 @@ void prop_modulo(fuzz_state& s, long iters)
         if (b == 0) continue;  // possible if hi <= 0 and zero is in range
         auto r = mod(a, b, truncated);
         imax expected = static_cast<imax>(a) % static_cast<imax>(b);
-        FUZZ_REQUIRE(s, r.has_value());
-        FUZZ_REQUIRE(s, *r == expected);
+        // mod returns a plain bound when B's grid excludes zero, else optional.
+        if constexpr (is_slim_optional_v<decltype(r)>)
+        {
+          FUZZ_REQUIRE(s, r.has_value());
+          FUZZ_REQUIRE(s, *r == expected);
+        }
+        else
+          FUZZ_REQUIRE(s, r == expected);
       }
     }
     else
@@ -466,8 +472,14 @@ void prop_modulo(fuzz_state& s, long iters)
         do { b = BI::from_raw(random_in_range_raw<BI>(s.rng)); } while (b == 0);
         auto r = mod(a, b, truncated);
         imax expected = static_cast<imax>(a) % static_cast<imax>(b);
-        FUZZ_REQUIRE(s, r.has_value());
-        FUZZ_REQUIRE(s, *r == expected);
+        // mod returns a plain bound when B's grid excludes zero, else optional.
+        if constexpr (is_slim_optional_v<decltype(r)>)
+        {
+          FUZZ_REQUIRE(s, r.has_value());
+          FUZZ_REQUIRE(s, *r == expected);
+        }
+        else
+          FUZZ_REQUIRE(s, r == expected);
       }
     }
   }
@@ -1343,16 +1355,16 @@ int main(int argc, char** argv)
   run_props<bound<{{0, 50}, 0.5}>>              (s, iters, "u50half");
   run_props<bound<{{-50, 50}, 0.5}>>            (s, iters, "s50half");
   run_props<bound<{{0, 255}, 1.0/256}>>         (s, iters, "Q8.8");
-  run_props<bound<{{-1, 1}, *(1_r/16384)}>>     (s, iters, "Q1.14");
-  run_props<bound<{{0, 65535}, *(1_r/65536)}>>  (s, iters, "Q16.16");
-  run_props<bound<{{0, 1'000'000}, *(1_r/100)}>>(s, iters, "money");
+  run_props<bound<{{-1, 1}, notch<1, 16384>}>>  (s, iters, "Q1.14");
+  run_props<bound<{{0, 65535}, notch<1, 65536>}>>(s, iters, "Q16.16");
+  run_props<bound<{{0, 1'000'000}, notch<1, 100>}>>(s, iters, "money");
   // Extended catalogue: extreme/asymmetric/tiny shapes through every property.
   run_props<bound<{0, 1'000'000'000}>>          (s, iters, "u1G");
   run_props<bound<{-1'000'000'000, 1'000'000'000}>>(s, iters, "s1G");
   run_props<bound<{{-7, 11}, 0.25}>>            (s, iters, "asym_q");
   run_props<bound<{0, 3}>>                      (s, iters, "tiny");
   run_props<bound<{-1, 1}>>                     (s, iters, "unit_signed");
-  run_props<bound<{{0, 4}, *(1_r/65536)}>>      (s, iters, "Q_sqrt");
+  run_props<bound<{{0, 4}, notch<1, 65536>}>>     (s, iters, "Q_sqrt");
   // Raw-rational grid (notch=0): exercises the IsRawRational branches in
   // addition / multiplication / assignment. Default `checked` policy goes
   // through the overflow-checked rational arithmetic; the `none` variant

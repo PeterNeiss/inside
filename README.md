@@ -39,7 +39,8 @@ safe_pct p = 150;                          // p == 100
   [docs/policies.md](docs/policies.md).
 - **Type-safe widening arithmetic** — `+ - * /` widen the result grid at
   compile time; integer fast paths keep the common case at native speed.
-  Mixed-mode `bound op rational/int/double` is also supported. See
+  Scalars need a grid — write `a + 1_b`, not `a + 1` (a raw `int`/`double`
+  has no grid); exact `bound op rational` is also supported. See
   [docs/arithmetic.md](docs/arithmetic.md).
 - **Conversions and casts** — typed-error `to<T>()`, conversion predicates
   (`will_conversion_overflow`, `is_conversion_lossy`), implicit

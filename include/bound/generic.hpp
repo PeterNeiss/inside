@@ -27,6 +27,12 @@ namespace bnd
   template<typename T>
   using plain = std::remove_cvref_t<T>;
 
+  // Always-false but template-dependent: lets a `static_assert` inside a
+  // template body fire only when that template is actually instantiated
+  // (e.g. the guidance overloads that make `bound + 1` ill-formed).
+  template<typename...>
+  inline constexpr bool dependent_false = false;
+
   template <grid G = {{0, 0}, 0}, policy_flag P = checked> struct bound;
 
   template <typename B>
@@ -65,6 +71,14 @@ namespace bnd
 
   template <boundable B>
   inline constexpr rational Notch = []<grid G, policy_flag P>(bound<G, P>){ return G.Notch; } (B{});
+
+  // True when R's interval cannot contain zero — i.e. division by an R can
+  // never be division by zero. Decided purely from the grid, so `a / b` can
+  // return a plain `bound` instead of `slim::optional<bound>` (see
+  // detail/division.hpp). A point grid at 0 (Lower==Upper==0) is *not*
+  // excluded — it straddles (== is) zero.
+  template <boundable R>
+  inline constexpr bool DivisorExcludesZero = (Lower<R> > 0) || (Upper<R> < 0);
 
   // Storage-agnostic int truncation of interval endpoints. Equivalent to
   // `static_cast<imax>(Lower<B>)` but expresses intent without a cast and

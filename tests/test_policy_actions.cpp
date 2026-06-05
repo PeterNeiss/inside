@@ -99,7 +99,7 @@ TEST_CASE("sentinel policy on fixed-point grids", "[bound][policy][sentinel][fix
 
   SECTION("signed Q1.14 (notch 1/16384) — uint16 storage")
   {
-    using sample = bound<{{-1, 1}, *(1_r/16384)}, sentinel | round_nearest>;
+    using sample = bound<{{-1, 1}, notch<1, 16384>}, sentinel | round_nearest>;
     static_assert(sizeof(sample) == 2);
 
     auto s = sample::try_make(0.5);
@@ -116,7 +116,7 @@ TEST_CASE("sentinel policy on fixed-point grids", "[bound][policy][sentinel][fix
 
   SECTION("Q16.16 (notch 1/65536) — uint32 storage")
   {
-    using fp = bound<{{0, 65535}, *(1_r/65536)}, sentinel>;
+    using fp = bound<{{0, 65535}, notch<1, 65536>}, sentinel>;
     static_assert(sizeof(fp) == 4);
 
     auto v = fp::try_make(1000.125);

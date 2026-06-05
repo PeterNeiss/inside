@@ -45,10 +45,12 @@ namespace bnd
   inline static constexpr policy_flag sentinel{1ull << 35}; // overflow -> sentinel (nullopt)
 
   // opt-out of the default `checked` policy: no domain / round / overflow /
-  // div-by-zero checks. Reading an out-of-range value is undefined behavior;
-  // compound `/= 0` and `%= 0` silently no-op (the bound is unchanged), while
-  // binary `a / 0` still returns nullopt. Includes `ignore_round` so
-  // notch-incompatible assigns compile and native-integer div/mod paths fire.
+  // div-by-zero checks. Reading an out-of-range value is undefined behavior.
+  // Division by zero is undefined behavior too — consistently across both
+  // forms: compound `/= 0` / `%= 0` silently no-op (the bound is unchanged),
+  // and binary `a / 0` / `a % 0` skip the zero check (the `ignore_zero` bit).
+  // Includes `ignore_round` so notch-incompatible assigns compile and the
+  // native-integer div/mod paths fire.
   inline static constexpr policy_flag unsafe
     {(1ull << 36) | ignore_domain | ignore_round | ignore_zero};
 

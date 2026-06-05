@@ -70,7 +70,9 @@ TEST_CASE("unsafe + on_overflow action: action fires on imax overflow",
 TEST_CASE("Q-format division: native_div_qformat matches rational arithmetic",
           "[bound][qformat][division]")
 {
-  using fp = bound<{{0, 255}, 0x1p-8_r}, unsafe>;       // Q8.8, unsafe → ignore_round
+  using fp = bound<{{0, 255}, 0x1p-8_r}>;   // Q8.8; the `truncated` call policy
+                                            // supplies ignore_round for the native
+                                            // path, without unsafe's ignore_zero
 
   // Spot checks against expected Q-format integer-truncation values.
   auto q1 = div(fp{200}, fp{8}, truncated);

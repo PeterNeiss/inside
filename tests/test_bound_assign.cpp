@@ -129,9 +129,9 @@ TEST_CASE("unsafe relaxes domain and round checks", "[bound][assign][unsafe]")
   STATIC_REQUIRE_FALSE(std::is_same_v<typename decltype(q)::value_type::raw_type, rational>);
   REQUIRE(*q == 6);
 
-  // Binary div by zero -> nullopt (still safe even under unsafe)
-  u100u zero{0};
-  REQUIRE_FALSE((a / zero).has_value());
+  // Under unsafe (ignore_zero) the div-by-zero check is skipped entirely:
+  // binary `a / 0` is undefined behavior, consistent with the compound `/= 0`
+  // no-op below. UB is not testable at runtime, so there is no assertion here.
 
   // Compound /= by 0: unsafe implies ignore_zero -> silent no-op, value unchanged
   u100u y{50};

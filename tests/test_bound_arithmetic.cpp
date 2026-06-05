@@ -98,8 +98,9 @@ TEST_CASE("bound div: rational vs integer paths", "[bound][arithmetic][div]")
 
     constexpr off a{50}, b{10};
     constexpr auto q = div(a, b, truncated);
-    STATIC_REQUIRE_FALSE(std::is_same_v<typename decltype(q)::value_type::raw_type, rational>);
-    STATIC_REQUIRE(*q == 5);
+    // off's grid {5,100} excludes zero, so div returns a plain bound (no optional).
+    STATIC_REQUIRE_FALSE(std::is_same_v<typename decltype(q)::raw_type, rational>);
+    STATIC_REQUIRE(q == 5);
   }
 
   SECTION("non-unit notch trunc")
@@ -115,7 +116,8 @@ TEST_CASE("bound div: rational vs integer paths", "[bound][arithmetic][div]")
     using step5 = bound<{{5, 15}, 5}>;
     constexpr step5 a{15}, b{5};
     constexpr auto q = div(a, b, truncated);
-    STATIC_REQUIRE(*q == 3);
+    // {5,15} excludes zero → plain bound result.
+    STATIC_REQUIRE(q == 3);
   }
 
   SECTION("signed integer division truncates toward zero")
@@ -124,6 +126,27 @@ TEST_CASE("bound div: rational vs integer paths", "[bound][arithmetic][div]")
     constexpr si a{-7}, b{2};
     constexpr auto q = a / b;
     STATIC_REQUIRE(*q == -3);
+  }
+
+  SECTION("divisor grid excluding zero yields a non-optional result")
+  {
+    using num   = bound<{0, 100}, ignore_round>;
+    using pos   = bound<{1, 10},  ignore_round>;   // grid excludes zero
+    using spanz = bound<{-5, 10}, ignore_round>;   // grid straddles zero
+
+    constexpr num   a{42};
+    constexpr pos   p{3};
+    constexpr spanz s{2};
+
+    // Divisor proven nonzero at compile time → plain bound, no unwrap needed.
+    STATIC_REQUIRE(boundable<decltype(a / p)>);
+    STATIC_REQUIRE_FALSE(is_slim_optional_v<decltype(a / p)>);
+    STATIC_REQUIRE(a / p == 14);
+
+    // Divisor whose grid contains zero → still slim::optional<bound>.
+    STATIC_REQUIRE(is_slim_optional_v<decltype(a / s)>);
+    REQUIRE((a / s).has_value());
+    REQUIRE(*(a / s) == 21);
   }
 }
 
@@ -306,40 +329,41 @@ TEST_CASE("mixed-mode bound op rational", "[bound][arithmetic][mixed]")
   REQUIRE(sub / 2_r    == 22.535_r);
 }
 
-TEST_CASE("mixed-mode bound op integral", "[bound][arithmetic][mixed]")
+TEST_CASE("scalars need a grid to join bound arithmetic", "[bound][arithmetic][mixed]")
 {
   using bin_t = bound<{0, 9}>;
   bin_t b{5};
 
-  // Each op resolves unambiguously to the (boundable, integral) overload —
-  // returns rational.
-  REQUIRE(b + 1  == 6);
-  REQUIRE(b - 1  == 4);
-  REQUIRE(b * 10 == 50);
-  REQUIRE(b / 2  == 2.5_r);
+  // A literal given a grid (`_b` / `just<N>`) widens like any other bound, so
+  // the result stays in the bounded world — no escape to rational/double.
+  STATIC_REQUIRE(boundable<decltype(b + 1_b)>);
+  STATIC_REQUIRE(boundable<decltype(2_b * b)>);
+  REQUIRE(b + 1_b   == 6);
+  REQUIRE(b - 1_b   == 4);
+  REQUIRE(b * 2_b   == 10);
+  REQUIRE(just<1> + b == 6);
+  REQUIRE(2_b * b   == 10);
 
-  // Symmetric overloads.
-  REQUIRE( 1 + b == 6);
-  REQUIRE(10 - b == 5);
-  REQUIRE( 2 * b == 10);
-  REQUIRE(10 / b == 2);
+  // Raw `int` / `double` operands are intentionally ill-formed (see the
+  // static_assert guidance in arithmetic.hpp): expressions like `b + 1`,
+  // `1 + b`, `b * 2.5` do NOT compile — the programmer must give the scalar a
+  // grid. Comparisons (`b == 5`) and compound assignment (`b += 1`) with raw
+  // scalars are unaffected and stay ergonomic.
+  REQUIRE(b == 5);
+  b += 1;
+  REQUIRE(b == 6);
 }
 
-TEST_CASE("mixed-mode bound op floating_point", "[bound][arithmetic][mixed]")
+TEST_CASE("bound op rational stays exact (mixed-mode kept)", "[bound][arithmetic][mixed]")
 {
   using rn = bound<{{-100, 100}, notch<1, 16>}, round_nearest>;
   rn a{0.5_r};                              // 0.5
 
-  // bound × double → double
-  double r = a * 2.5;
-  REQUIRE(r == 1.25);
-
-  // Symmetric overload + assignment back to bound.
-  rn out = 2.0 * a;
-  REQUIRE(out == rn{1.0});
-
-  // + / -
-  REQUIRE(a + 1.5 == 2.0);
-  REQUIRE(a - 0.25 == 0.25);
-  REQUIRE(a / 0.5 == 1.0);
+  // A `rational` is an exact, deliberate scalar: the mixed-mode operators are
+  // kept and return `rational` (staying in the exact domain).
+  STATIC_REQUIRE(std::is_same_v<decltype(a + 0.5_r), rational>);
+  REQUIRE(a + 0.5_r  == 1.0_r);
+  REQUIRE(a - 0.25_r == 0.25_r);
+  REQUIRE(a * 2_r    == 1.0_r);
+  REQUIRE(2_r * a    == 1.0_r);
 }

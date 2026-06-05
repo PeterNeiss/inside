@@ -21,7 +21,7 @@ using namespace bnd;
 using hp_t  = bound<{0, 100}, clamp>;
 
 // Damage multipliers in [0, 4] with 1/16 step (Q2.4-ish).
-using mult_t = bound<{{0, 4}, *(1_r/16)}, round_nearest>;
+using mult_t = bound<{{0, 4}, notch<1, 16>}, round_nearest>;
 
 // Base damage in [0, 50] integer.
 using damage_t = bound<{0, 50}>;

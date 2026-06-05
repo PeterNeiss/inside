@@ -12,6 +12,11 @@ using namespace bnd;
 
 int main()
 {
+  // Notch spelling: a plain decimal (`1.0/16`, `0.5`) reads well for coarse
+  // exact fractions. For fine notches, prefer `notch<N, D>` — an exact
+  // rational — because the equivalent `double` would lose precision (e.g.
+  // `1.0/65536` no longer round-trips exactly).
+
   // Q4.4: 4 integer bits, 4 fraction bits  -> 256 steps in [0, 15+15/16]
   using q4_4 = bound<{{0, 15}, 1.0/16}>;
   static_assert(sizeof(q4_4) == 1);
@@ -25,9 +30,8 @@ int main()
   static_assert(sizeof(q8_8) == 2);
 
   // Q16.16: 16 integer bits, 16 fraction bits -> ~4.29B steps fits uint32
-  // (notch 1/65536 needs an exact rational; the double 1.0/65536 exceeds the
-  //  rational extractor's precision)
-  using q16_16 = bound<{{0, 65535}, *(1_r/65536)}>;
+  // (fine notch: `notch<1, 65536>` keeps it exact; `1.0/65536` would not)
+  using q16_16 = bound<{{0, 65535}, notch<1, 65536>}>;
   static_assert(sizeof(q16_16) == 4);
 
   // Half-step signed: -50 to 50 in 0.5 increments (201 steps, fits uint8)

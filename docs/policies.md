@@ -79,17 +79,28 @@ eliminated entirely by the compiler (`if constexpr` + `[[no_unique_address]]`).
 Each handler receives the bound by mutable reference (so it can override the
 stored value) plus an event-specific payload.
 
-| Method | Fires on | Callback signature |
-|---|---|---|
-| `on_clamp(λ)`    | clamp narrowing             | `λ(bound&, overshoot)` |
-| `on_wrap(λ)`     | wrap with carry             | `λ(bound&, carry)` |
-| `on_sentinel(λ)` | sentinel write              | `λ(bound&, original_value)` |
-| `on_error(λ)`    | domain / round error        | `λ(bound&, errc, std::string_view msg)` |
-| `on_overflow(λ)` | rational/imax arithmetic OF | `λ(bound&, errc::overflow)` |
+| Method | Path | Fires when | Callback signature |
+|---|---|---|---|
+| `on_clamp(λ)`    | assignment | a narrowed value leaves the grid and `clamp` saturates it | `λ(bound&, overshoot)` |
+| `on_wrap(λ)`     | assignment | a narrowed value leaves the grid and `wrap` folds it (carry) | `λ(bound&, carry)` |
+| `on_sentinel(λ)` | assignment | an out-of-range write under `sentinel` stores the empty slot | `λ(bound&, original_value)` |
+| `on_error(λ)`    | assignment | a domain / rounding error under `checked` (replaces the throw) | `λ(bound&, errc, std::string_view msg)` |
+| `on_overflow(λ)` | binary arithmetic | a rational/imax result overflows, or `div`/`mod` divides by zero | `λ(bound&, errc)` |
+
+The first four fire on the **assignment** path — narrowing a value *into* a
+bound: a direct `=`, the `.on_*()= …` / `with(…) = …` proxies, and the
+compound `+= / -= / *= / /=`. `on_overflow` fires on the **binary-arithmetic**
+path — the free `add` / `sub` / `mul` / `div` / `mod` and the `+ - * /`
+operators, whose widened result can overflow (or, for `div`/`mod`, hit a zero
+divisor).
 
 `on_*()` returns a temporary handle whose `=`/`+=`/`-=`/etc. apply the
 operation with the callback wired in. Calling `on_*` automatically OR-merges
-the policy bit it implies (e.g. `on_clamp` adds `clamp`).
+the policy bit it implies (e.g. `on_clamp` adds `clamp`). A pack may carry
+handlers for *both* paths — e.g. `with(on_overflow(…), on_clamp(…))` on a
+compound `+=`, whose imax probe can overflow *and* whose narrowing can clamp —
+and each handler fires only on its own path; handlers that a given operation
+never reaches are accepted but simply not invoked.
 
 ```cpp
 using sec = bound<{0, 59}, wrap>;

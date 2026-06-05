@@ -137,38 +137,50 @@ the results.
   Q-format fast-path correctness test with the bit-exact 200/3 → 17066
   reference.
 
-## Mixed-mode arithmetic: `bound op real/integral`
+## Scalars in bound arithmetic need a grid
 
-Beyond `bound op bound`, the library overloads `+`, `-`, `*`, `/` for one
-`bound` operand and one runtime scalar:
-
-| RHS type | Result type | Notes |
-|---|---|---|
-| `rational` | `rational` | Goes through `rational::operator op`, then unwraps the checked optional via `.value()` (panics on overflow). |
-| `std::integral` | `rational` | Same path as rational, with the int lifted to `rational{N, 1}`. |
-| `std::floating_point` | `double` | LHS bound is cast to `double` via the explicit `operator double()`. |
+A raw `int` or `double` carries no grid, so `bound op rawscalar` has no
+type-safe result and is **ill-formed by design**. Writing `b + 1` or
+`b * 2.5` triggers a `static_assert` that hands you the fix: give the scalar a
+grid.
 
 ```cpp
 using money = bound<{{0, 1'000'000}, notch<1, 100>}, round_nearest>;
 money sub{45.07};
 
-money tax    = sub * rational{8, 100};  // bound × rational → rational → money (round)
-double scale = sub * 0.5;               // bound × double → double
+auto a = sub + 1;        // ❌ ill-formed: a raw int has no grid
+auto b = sub * 2.5;      // ❌ ill-formed: a raw double has no grid
+
+auto c = sub + 1_b;      // ✅ bound + bound → widened bound (stays bounded)
+auto d = sub * just<2>;  // ✅ bound × bound → widened bound
 ```
 
-The symmetric `real op bound` and `int op bound` overloads exist too. There
-is no widening-bound result for this family — runtime real arithmetic can't
-reconstruct a bound type — so the LHS bound's range information is dropped
-at the operator boundary. Assignments back into a `bound` go through the
-type's policy (clamp, round, etc.).
+Use `1_b` / `just<N>` to give a compile-time literal a tight point grid, or
+`bound<{lo,hi}>{n}` to give a runtime value a known range. Comparisons
+(`b == 5`, `b < 10`) and compound assignment (`b += 1`) with raw scalars are
+unaffected — they don't manufacture a new value/type, so they never leave the
+bounded world.
 
-For division specifically, the mixed-mode form **bypasses the `bound / bound`
-machinery** described under [Division](#division) entirely: it doesn't pick
-between the three paths, doesn't return `slim::optional`, and panics on
-rational overflow via `.value()` instead of surfacing it as `nullopt`. Use
-it when you have a *runtime scalar* on the RHS and the value is known to be
-non-zero; use `bound / bound` (with both sides wrapped in their bound type)
-when you want the optional-protected, three-path machinery.
+### Exception: `bound op rational`
+
+A `rational` is an exact, deliberate scalar, so the mixed-mode operators are
+kept for it. `+`, `-`, `*`, `/` with a `rational` operand return `rational`
+(staying in the exact domain), going through `rational::operator op` and
+unwrapping the checked optional via `.value()` (panics on overflow).
+
+```cpp
+money tax = sub * rational{8, 100};   // bound × rational → rational → money (round)
+auto half = sub * 0.5_r;              // bound × rational → rational (exact)
+```
+
+For division specifically, the `bound / rational` form **bypasses the
+`bound / bound` machinery** described under [Division](#division) entirely: it
+doesn't pick between the three paths, doesn't return `slim::optional`, and
+panics on rational overflow via `.value()` instead of surfacing it as
+`nullopt`. Use it when you have a *runtime `rational`* on the RHS known to be
+non-zero; use `bound / bound` when you want the optional-protected, three-path
+machinery (which now also returns a plain bound when the divisor's grid
+excludes zero — see [Division](#division)).
 
 ## Rounding
 
