@@ -5,14 +5,16 @@
 #include <iostream>
 
 #include "bound/bound.hpp"
+#include "bound/formats.hpp"
 #include "bound/print.hpp"
 
 using namespace bnd;
 
 int main()
 {
-  // 8.8 fixed-point: values from 0 to 255 in steps of 1/256
-  using fp8 = bound<{{0, 255}, 1.0/256}>;
+  // 8.8 fixed-point: values from 0 to 255 in steps of 1/256.
+  // This is exactly the predefined `bnd::q8_8` from <bound/formats.hpp>.
+  using fp8 = q8_8;
 
   fp8 a = 3.5;
   fp8 b = 7.25;

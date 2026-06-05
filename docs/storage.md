@@ -63,6 +63,39 @@ flag, so `sizeof(slim::optional<bound>) == sizeof(bound)`. The sentinel is
 for signed types. This costs one value from the representable range (e.g.
 `int8_t` gives 255 usable values: −127..127).
 
+## Predefined hardware formats
+
+`#include "bound/formats.hpp"` for a curated set of `bnd::` aliases that map to
+native byte widths — so you can write `bnd::u8` / `bnd::unorm16` / `bnd::q8_8`
+instead of spelling the grid and policy by hand.
+
+| Type | Range / notch | Storage |
+|---|---|---|
+| `u8` `u16` `u32` | `[0, 254]` … `[0, 2³²−2]` | uint8 / uint16 / uint32 |
+| `i8` `i16` `i32` `i64` | `[−127, 127]` … | int8 / int16 / int32 / int64 |
+| `unorm8` `unorm16` `unorm32` | `[0,1]`, notch 1/254, 1/65534, 1/(2³²−2) | uint8 / uint16 / uint32 |
+| `q4_4` `q8_8` `q16_16` | `[0,15]`/`[0,255]`/`[0,65535]`, notch 1/16, 1/256, 1/65536 | uint8 / uint16 / uint32 |
+
+**The reserved-top tradeoff.** Because the top value of each storage type is
+the reserved sentinel slot (above), a *full*-width range would promote to the
+next-larger type. These aliases instead stop one short of the sentinel — `u8`
+is `[0, 254]`, not `[0, 255]`; `unorm8` uses notch 1/254 (still reaching 1.0
+exactly). The payoff is native byte size **and** a still-zero-overhead
+`slim::optional` (the sentinel slot is retained). Q-formats already have
+headroom, so they keep their full natural range and power-of-two notches.
+
+`u64` is intentionally absent: the library's internal value path is `imax`
+(`int64`), so unsigned values above 2⁶³−1 can't round-trip — use `i64` or a
+hand-rolled grid.
+
+**Performance.** Multiplication is unaffected by the (non-power-of-two) UNORM
+notches — it operates on raw notch indices, with the denominator folded into
+the compile-time result grid. Power-of-two notches give only a negligible
+shift-vs-constant-multiply edge on division/construction. The integer types are
+direct storage (native-speed). Behavior is composable: these default to
+`checked`; for register-style `wrap`/`clamp` declare your own variant, e.g.
+`bound<{0,254}, wrap>`.
+
 ## Raw storage access
 
 `bound::Raw` is a public data member, but most code should not touch it

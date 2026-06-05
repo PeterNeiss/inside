@@ -6,33 +6,25 @@
 #include <iostream>
 
 #include "bound/bound.hpp"
+#include "bound/formats.hpp"
 #include "bound/print.hpp"
 
 using namespace bnd;
 
 int main()
 {
-  // Notch spelling: a plain decimal (`1.0/16`, `0.5`) reads well for coarse
-  // exact fractions. For fine notches, prefer `notch<N, D>` — an exact
-  // rational — because the equivalent `double` would lose precision (e.g.
-  // `1.0/65536` no longer round-trips exactly).
+  // The common Q-formats are predefined in <bound/formats.hpp>:
+  static_assert(sizeof(q4_4)   == 1);   // [0, 15],    notch 1/16    -> uint8
+  static_assert(sizeof(q8_8)   == 2);   // [0, 255],   notch 1/256   -> uint16
+  static_assert(sizeof(q16_16) == 4);   // [0, 65535], notch 1/65536 -> uint32
 
-  // Q4.4: 4 integer bits, 4 fraction bits  -> 256 steps in [0, 15+15/16]
-  using q4_4 = bound<{{0, 15}, 1.0/16}>;
-  static_assert(sizeof(q4_4) == 1);
+  // Custom formats are spelled by hand. A plain decimal (`1.0/128`, `0.5`)
+  // reads well for coarse exact fractions; for fine notches prefer
+  // `notch<N, D>` (exact rational), since the equivalent double loses precision.
 
   // Q1.7: 1 integer bit, 7 fraction bits   -> 128 steps in [0, 1+127/128]
   using q1_7 = bound<{{0, 1}, 1.0/128}>;
   static_assert(sizeof(q1_7) == 1);
-
-  // Q8.8: 8 integer bits, 8 fraction bits  -> 65281 steps fits uint16
-  using q8_8 = bound<{{0, 255}, 1.0/256}>;
-  static_assert(sizeof(q8_8) == 2);
-
-  // Q16.16: 16 integer bits, 16 fraction bits -> ~4.29B steps fits uint32
-  // (fine notch: `notch<1, 65536>` keeps it exact; `1.0/65536` would not)
-  using q16_16 = bound<{{0, 65535}, notch<1, 65536>}>;
-  static_assert(sizeof(q16_16) == 4);
 
   // Half-step signed: -50 to 50 in 0.5 increments (201 steps, fits uint8)
   using half_signed = bound<{{-50, 50}, 0.5}>;

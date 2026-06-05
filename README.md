@@ -50,7 +50,9 @@ safe_pct p = 150;                          // p == 100
 - **Optimal storage & iteration** — automatic raw-type selection (uint/int
   sizes, or `rational` for exact grids), `slim::optional` with a sentinel
   encoding (no size overhead), `bound_range` for compile-time iteration,
-  and STL/ranges integration. See [docs/storage.md](docs/storage.md).
+  and STL/ranges integration. Plus predefined hardware-width aliases
+  (`bnd::u8`, `bnd::unorm16`, `bnd::q8_8`, …) in `bound/formats.hpp`.
+  See [docs/storage.md](docs/storage.md).
 - **Library internals** — grid invariants, storage decision tree, Q-format
   fast path, policy cascade. See [docs/internals.md](docs/internals.md).
 
@@ -78,6 +80,7 @@ selection:
 | [`sensor_fusion.cpp`](examples/sensor_fusion.cpp)   | Weighted average across sensors with disparate fixed-point ranges |
 | [`torus_map.cpp`](examples/torus_map.cpp)           | 2-D sub-pixel position with `wrap` on both axes and edge-crossing events |
 | [`algorithms.cpp`](examples/algorithms.cpp)         | STL and ranges algorithms (sort, find, transform, accumulate, …) |
+| [`formats.cpp`](examples/formats.cpp)               | Predefined hardware-width types (`u8` / `i16` / `unorm16` / `q8_8`) and interop |
 
 Build and run any example:
 

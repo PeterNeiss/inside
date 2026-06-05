@@ -29,10 +29,14 @@ auto q = div(x, y, on_overflow([&](auto& res, errc) {
 
 ## Division
 
-`bound / bound` always returns `slim::optional<result>` because division by
-zero is a runtime possibility. The library picks one of **three code paths**
-at compile time, based on the operand grids and whether `ignore_round` is in
-effect.
+`bound / bound` returns a plain `bound` when the divisor's grid provably
+excludes zero (`Lower > 0 || Upper < 0` — the `DivisorExcludesZero` trait) and
+the operation can't otherwise fault; then there is nothing to unwrap.
+Otherwise it returns `slim::optional<result>`, because division by zero is a
+runtime possibility (and on the exact-rational path under `checked`, so is
+overflow — which keeps the optional even when the divisor is known nonzero).
+The library picks one of **three code paths** at compile time, based on the
+operand grids and whether `ignore_round` is in effect.
 
 ### The three paths
 
@@ -67,9 +71,25 @@ The Q-format spot check matches `tests/test_perf_paths.cpp:70-95` to the bit
 is `(51200 × 256) / 768 = 17066` — i.e. `floor(66.6667 × 256)`, **not**
 `66 × 256 = 16896`, which would lose the fractional precision).
 
-### Why the result is `slim::optional`
+### When the result is `slim::optional` (and when it isn't)
 
-The optional has two ways to be `nullopt`:
+When the divisor's grid provably **excludes zero** (`Lower > 0 || Upper < 0` —
+the `DivisorExcludesZero` trait in `generic.hpp`) *and* the op can't otherwise
+fault, `operator/` returns a **plain `bound`** — no wrapper to unwrap:
+
+```cpp
+using num = bound<{0, 100}, ignore_round>;
+using pos = bound<{1, 10},  ignore_round>;   // grid excludes zero
+auto d = num{42} / pos{3};                   // bound, == 14  (not optional)
+```
+
+The integer / Q-format fast paths (A, B) can only fault on divide-by-zero, so a
+zero-excluding divisor makes them total. The exact-rational path (C) under
+`checked` can also overflow, so it keeps the optional even when the divisor is
+known nonzero.
+
+Otherwise the result is `slim::optional<result>`, which has two ways to be
+`nullopt`:
 
 1. **Divide by zero** — every path runs its own zero check. Path A tests
    `rhs.Raw == 0` (safe because Q-format Lower is 0, so raw-zero means

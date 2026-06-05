@@ -47,7 +47,7 @@ is proven elsewhere. `clamp`, `wrap`, and `sentinel` are mutually exclusive
 | `round_floor` | round toward −∞ (implies `ignore_round`) |
 | `round_ceil` | round toward +∞ (implies `ignore_round`) |
 | `round_half_even` | banker's rounding — half to even (implies `ignore_round`) |
-| `ignore_zero` | division by zero is silent |
+| `ignore_zero` | skip the divide-by-zero check — `a / 0` / `a % 0` is UB (binary `div`/`mod`); compound `/= 0` / `%= 0` no-op |
 | `ignore_domain` | suppress the runtime domain check |
 
 > **API-boundary shorthand:** the modern idiom for "saturate-and-round into
