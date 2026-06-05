@@ -102,7 +102,12 @@ file(GLOB BOUND_TEST_SOURCES CONFIGURE_DEPENDS tests/test_*.cpp)
 add_executable(bound_tests ${BOUND_TEST_SOURCES})
 target_link_libraries(bound_tests PRIVATE bound::bound Catch2::Catch2WithMain)
 target_include_directories(bound_tests SYSTEM PRIVATE ${CATCH2_INCLUDE_DIRS})
-catch_discover_tests(bound_tests)
+# DISCOVERY_MODE PRE_TEST: enumerate tests at `ctest` time, not at build time.
+# The default POST_BUILD mode runs the freshly-built executable on the build
+# host to list tests — impossible for the MinGW/aarch64 cross builds, where the
+# host can't execute the target binary (it gets parsed as a shell script).
+# PRE_TEST defers discovery to test invocation, under the configured emulator.
+catch_discover_tests(bound_tests DISCOVERY_MODE PRE_TEST)
 
 #---------------------------------------------------------------------------
 # ctrack (benchmarking)
@@ -182,11 +187,20 @@ endif()
 #---------------------------------------------------------------------------
 # Examples
 #---------------------------------------------------------------------------
+# Each example is also registered as a ctest test under the "example" label, so
+# `ctest -L example` runs them all (through CMAKE_CROSSCOMPILING_EMULATOR on the
+# cross builds — qemu for aarch64, wine for MinGW). The unit-test runs use
+# `ctest -LE example` to skip them.
 file(GLOB EXAMPLE_SOURCES examples/*.cpp)
 foreach(example_src ${EXAMPLE_SOURCES})
   get_filename_component(example_name ${example_src} NAME_WE)
   add_executable(example_${example_name} ${example_src})
   target_link_libraries(example_${example_name} PUBLIC bound::bound)
+  if(WIN32 AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    target_link_options(example_${example_name} PRIVATE -Wl,--allow-multiple-definition)
+  endif()
+  add_test(NAME example_${example_name} COMMAND example_${example_name})
+  set_tests_properties(example_${example_name} PROPERTIES LABELS "example")
 endforeach()
 
 #---------------------------------------------------------------------------
