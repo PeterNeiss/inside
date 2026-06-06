@@ -74,12 +74,12 @@ struct std::hash<bnd::bound<G, P>>
     if constexpr (bnd::IsRawRational<B>)
     {
       // Boost-style hash combine over (Numerator, Denominator).
-      auto h1 = std::hash<bnd::umax>{}(b.Raw.Numerator);
-      auto h2 = std::hash<bnd::imax>{}(b.Raw.Denominator);
+      auto h1 = std::hash<bnd::umax>{}(b.raw().Numerator);
+      auto h2 = std::hash<bnd::imax>{}(b.raw().Denominator);
       return h1 ^ (h2 + 0x9e3779b97f4a7c15ULL + (h1 << 6) + (h1 >> 2));
     }
     else
-      return std::hash<bnd::raw_t<B>>{}(b.Raw);
+      return std::hash<bnd::raw_t<B>>{}(b.raw());
   }
 };
 

@@ -172,11 +172,13 @@ auto a = sub + 1;        // ❌ ill-formed: a raw int has no grid
 auto b = sub * 2.5;      // ❌ ill-formed: a raw double has no grid
 
 auto c = sub + 1_b;      // ✅ bound + bound → widened bound (stays bounded)
+auto e = sub + one;      // ✅ same thing — `one` is the built-in point-bound 1
 auto d = sub * just<2>;  // ✅ bound × bound → widened bound
 ```
 
 Use `1_b` / `just<N>` to give a compile-time literal a tight point grid, or
-`bound<{lo,hi}>{n}` to give a runtime value a known range. Comparisons
+`bound<{lo,hi}>{n}` to give a runtime value a known range. For the values 0 and
+1, reach for the built-in `zero` / `one` (`sub + one`, `b == zero`). Comparisons
 (`b == 5`, `b < 10`) and compound assignment (`b += 1`) with raw scalars are
 unaffected — they don't manufacture a new value/type, so they never leave the
 bounded world.

@@ -153,7 +153,7 @@ namespace bnd
   // grids where raw is an index rather than a value — naming separates the
   // two intents that today both spell `static_cast<imax>`.
   template <boundable B>
-  constexpr imax raw_imax(B b) noexcept { return static_cast<imax>(b.Raw); }
+  constexpr imax raw_imax(B b) noexcept { return static_cast<imax>(b.raw()); }
 
   //---------------------------------------------------------------------------
   // Q-format integer fast path
@@ -203,13 +203,13 @@ namespace bnd
   constexpr void from_value(B& b, imax val)
   {
     if constexpr (IsDirectStorage<B>)
-      b.Raw = raw_cast<B>(val);
+      b = B::from_raw(raw_cast<B>(val));
     else if constexpr (HasQFormatFastPath<B>)
-      b.Raw = q_format_encode<B>(val);
+      b = B::from_raw(q_format_encode<B>(val));
     else // IsNotchStorage, generic rational path
     {
       auto offset = (bnd::detail::rational{val} - Lower<B>) / Notch<B>;
-      b.Raw = raw_cast<B>(offset.value().Numerator);
+      b = B::from_raw(raw_cast<B>(offset.value().Numerator));
     }
   }
 
@@ -341,12 +341,22 @@ namespace bnd
   //                                                  into rounding.
   // Named `bound_assignable` (not `assignable_from`) to avoid shadowing the
   // unrelated `std::assignable_from` from <concepts>.
+  // A single-point source bound (Lower == Upper) carries exactly one value, so
+  // the whole-range notch-mapping test (`Factor.Denominator == 1`) is the wrong
+  // question — the only thing that matters is whether that one value lands on
+  // L's grid. This admits e.g. `0_b` / `3_b` into a `{{0,9},3}` grid while still
+  // rejecting `1_b` (not on a notch) and out-of-range points.
+  template <typename L, typename R>
+  inline constexpr bool point_exactly_assignable =
+    (Lower<R> == Upper<R>) && Grid<L>.representable(Lower<R>);
+
   template <typename L, typename R, policy_flag P = checked>
   concept bound_assignable =
     numeric<R>
     && ((!boundable<R> && !std::integral<R>) || not Interval<L>.excludes(Interval<R>))
     && (!boundable<R> || abs_den(assignment<L, R>::Factor.Denominator) == 1
-        || ((BoundPolicy<L> | P) & ignore_round) != 0);
+        || ((BoundPolicy<L> | P) & ignore_round) != 0
+        || point_exactly_assignable<L, R>);
 
   // Diagnostic helper: when `bound_assignable` fails, instantiating
   // `bound_assignable_why<L, R, P>` produces individually-named static_asserts
@@ -361,7 +371,8 @@ namespace bnd
     static_assert((!boundable<R> && !std::integral<R>) || not Interval<L>.excludes(Interval<R>),
       "bound_assignable: rhs interval lies entirely outside lhs interval — assignment can never succeed");
     static_assert(!boundable<R> || abs_den(assignment<L, R>::Factor.Denominator) == 1
-                  || ((BoundPolicy<L> | P) & ignore_round) != 0,
+                  || ((BoundPolicy<L> | P) & ignore_round) != 0
+                  || point_exactly_assignable<L, R>,
       "bound_assignable: incompatible notches — use `with_truncate()` or `policy<ignore_round>()` to allow rounding");
     static constexpr bool value = bound_assignable<L, R, P>;
   };
@@ -384,7 +395,7 @@ namespace bnd
   {
     if constexpr (HasPolicy<B, P, sentinel>)
     {
-      b.Raw = sentinel_raw<B>();
+      b = B::from_raw(sentinel_raw<B>());
       return true;
     }
     else if (policy.domain_check())

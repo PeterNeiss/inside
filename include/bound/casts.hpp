@@ -74,7 +74,7 @@ namespace bnd
   [[nodiscard]] constexpr B unchecked_cast(A value)
   {
     using twin = bound<Grid<B>, unsafe>;
-    return B::from_raw(twin{value}.Raw);   // same grid → identical raw layout
+    return B::from_raw(twin{value}.raw());   // same grid → identical raw layout
   }
 
 } // namespace bnd

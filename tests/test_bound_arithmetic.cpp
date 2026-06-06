@@ -14,8 +14,8 @@ TEST_CASE("bound add", "[bound][arithmetic][add]")
   using u8 = bound<{10, 255}>;
   constexpr u8 a{16};
   constexpr u8 b{220};
-  STATIC_REQUIRE(a + just<1> == 17);
-  STATIC_REQUIRE(b + just<1> == 221);
+  STATIC_REQUIRE(a + one == 17);
+  STATIC_REQUIRE(b + one == 221);
 
   STATIC_REQUIRE(a + b == 236);
 
@@ -284,7 +284,7 @@ TEST_CASE("bound rational-storage on_overflow free fn", "[bound][arithmetic][rat
   auto sum = add(a, b,
     on_overflow([&](auto& res, errc code) {
       fired = true; seen = code;
-      res.Raw = 0_r;
+      res = unit::from_raw(0_r);   // unit is rational-storage; reset to value 0
     }));
   (void)sum;
 

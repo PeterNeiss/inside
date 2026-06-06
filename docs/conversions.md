@@ -163,6 +163,7 @@ names the internal representation.
 | Bare literal (`0`, `0.5`, `100`) | Constructing a bound (`pct{42}`, `gain{0.5}`), comparisons (`b == 5`, `b < 50`), or compound assignment (`b += 1`). Dyadic decimals (`0.5`, `0.25`, `0x1p-8`) are binary-exact and fine as grid endpoints. |
 | `_b` literal (`0`, `0.5_b`, `0xff_b`) | A *bound* operand for arithmetic — `a + 1_b`, `a * 2_b`, `b > 0.5_b`. Gives a scalar a grid so it joins bound arithmetic; the result stays a bound. The parse is exact (no double round-trip). |
 | `just<V>` | A compile-time point-bound from any structural NTTP value — `just<2>`, `just<math::pi>`. Same role as `_b` for non-literal constants. |
+| `zero` / `one` | Built-in point-bounds for 0 / 1. Assign into any grid that can exactly represent the value (compile-time checked — out of range or off-notch is an error); also stand in for the value in comparison/arithmetic — `b == zero`, `b + one`. |
 | `notch<N, D>` | The grid **step** in a `bound<{...}>` spec — `notch<1, 16384>`. |
 | `frac<N, D>` | An exact **non-dyadic** grid endpoint that no floating literal can spell — `frac<-6, 5>` for −1.2, `frac<3, 5>` for 0.6. Signed numerator. |
 

@@ -55,13 +55,13 @@ namespace
   // and the natural unit for a [−1, 1] Q.14 grid.
   constexpr int sin_q14(unsigned phase_raw)
   {
-    return static_cast<int>(sample_t{sin_turn(phase_from(phase_raw))}.Raw)
+    return static_cast<int>(sample_t{sin_turn(phase_from(phase_raw))}.raw())
          - 16384;
   }
 
   constexpr int cos_q14(unsigned phase_raw)
   {
-    return static_cast<int>(sample_t{cos_turn(phase_from(phase_raw))}.Raw)
+    return static_cast<int>(sample_t{cos_turn(phase_from(phase_raw))}.raw())
          - 16384;
   }
 }
@@ -192,7 +192,7 @@ namespace
 
   constexpr int sqrt_q14(unsigned input_raw_q16)
   {
-    return static_cast<int>(sqrt_out_t{math::sqrt(sqrt_input(input_raw_q16))}.Raw);
+    return static_cast<int>(sqrt_out_t{math::sqrt(sqrt_input(input_raw_q16))}.raw());
   }
 }
 
@@ -336,7 +336,7 @@ namespace
   constexpr int exp2_q14(rational x)
   {
     // Out has Lower = 0 → Raw == value · 16384, no offset to subtract.
-    return static_cast<int>(exp2_out_t{math::exp2(exp2_from(x))}.Raw);
+    return static_cast<int>(exp2_out_t{math::exp2(exp2_from(x))}.raw());
   }
 }
 
@@ -396,7 +396,7 @@ namespace
   constexpr int log2_q14(rational x)
   {
     // Out has Lower = -8 → Raw = (value + 8) · 16384. Subtract the offset.
-    return static_cast<int>(log2_out_t{math::log2(log2_from(x))}.Raw)
+    return static_cast<int>(log2_out_t{math::log2(log2_from(x))}.raw())
          - 8 * 16384;
   }
 }
@@ -572,7 +572,7 @@ namespace
     // Out has Lower = -1/2, notch 1/16384 → raw = (value + 1/2) · 16384.
     // Subtract the +1/2 turn offset to recover signed Q.14 amplitude.
     auto out = atan2_out_t{math::atan2(atan2_in_t{y}, atan2_in_t{x})};
-    return static_cast<int>(out.Raw) - 8192;
+    return static_cast<int>(out.raw()) - 8192;
   }
 }
 
@@ -634,7 +634,7 @@ TEST_CASE("bnd::math::atan2: sin/cos round-trip",
     auto recovered = atan2_out_t{math::atan2(s, c)};
 
     // Recovered turn ∈ [-1/2, 1/2]; original turn ∈ [0, 1) — adjust to compare.
-    auto recovered_raw = static_cast<int>(recovered.Raw);  // (value + 1/2)·16384
+    auto recovered_raw = static_cast<int>(recovered.raw());  // (value + 1/2)·16384
     int recovered_turn_q14 = recovered_raw - 8192;          // signed Q.14 turn
 
     // Original phase is Q.14 unsigned, in [0, 16384). Convert to signed Q.14
@@ -709,7 +709,7 @@ namespace
   {
     auto r = tan_turn(tan_phase_from(phase_raw));
     if (!r) return -999999;
-    return static_cast<int>(tan_out_t{r.value()}.Raw) - 10 * 1024;
+    return static_cast<int>(tan_out_t{r.value()}.raw()) - 10 * 1024;
   }
 }
 

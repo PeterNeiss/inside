@@ -152,11 +152,25 @@ for (auto i : bound_range<{0, 9}>{})
 
 ## Compile-time constants
 
-`just<value>` creates a single-value bound:
+`bnd::zero` and `bnd::one` are built-in point-bounds for the two values you reach
+for most. They **assign into any grid that can exactly represent the value**
+(verified at compile time — out of range, or off a notch, is a compile error)
+and otherwise stand in for `0` / `1` in comparison and arithmetic:
 
 ```cpp
-constexpr auto one = just<1>;   // bound<{1, 1}>
-constexpr auto pi  = just<3>;
+bound<{0, 200}>          a = zero;     // ok — stored as 0, no runtime check
+bound<{{0, 1}, notch<1, 256>}> q = one; // ok — exact (raw 256)
+bound<{5, 10}>           b = zero;     // ✗ compile error: 0 is not on this grid
+
+if (a == zero) { ... }                 // comparison
+auto c = a + one;                      // arithmetic — stays a bound
+```
+
+For any other constant, `just<value>` creates a single-value bound:
+
+```cpp
+constexpr auto pi   = just<3>;          // bound<{3, 3}>
+constexpr auto step = just<frac<1, 4>>; // exact 1/4 point-bound
 ```
 
 The `_b` literal is shorthand for `just<N>`:

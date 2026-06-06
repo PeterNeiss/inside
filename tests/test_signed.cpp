@@ -78,8 +78,8 @@ TEST_CASE("signed-direct ctor from rational/double preserves value", "[bound][si
   REQUIRE(temp{static_cast<double>( 42)} ==  42);
 
   // Raw must match value for direct storage.
-  REQUIRE(temp{-40_r}.Raw == -40);
-  REQUIRE(temp{rational{ 42}}.Raw ==  42);
+  REQUIRE(temp{-40_r}.raw() == -40);
+  REQUIRE(temp{rational{ 42}}.raw() ==  42);
 }
 
 TEST_CASE("bound-to-bound assignment preserves value across direct storages",
@@ -91,19 +91,19 @@ TEST_CASE("bound-to-bound assignment preserves value across direct storages",
   upos u{25};
   s40  s{u};
   REQUIRE(s     == 25);
-  REQUIRE(s.Raw == 25);
+  REQUIRE(s.raw() == 25);
 
   // signed-direct → signed-direct (different grids)
   using s2 = bound<{-20, 30}>;
   s2  s2v{15};
   s40 s40v{s2v};
   REQUIRE(s40v     == 15);
-  REQUIRE(s40v.Raw == 15);
+  REQUIRE(s40v.raw() == 15);
 
   // same-grid stays a fast copy (Offset == 0, Factor == 1)
   s40 s40w{s40v};
   REQUIRE(s40w     == 15);
-  REQUIRE(s40w.Raw == 15);
+  REQUIRE(s40w.raw() == 15);
 }
 
 TEST_CASE("mixed signed/unsigned arithmetic", "[bound][signed][mixed]")

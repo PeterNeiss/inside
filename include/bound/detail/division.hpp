@@ -125,12 +125,10 @@ namespace bnd
       // Formula matches `(a << log2(N)) / b` which the compiler folds when
       // N is a power of two — i.e. literally the native Q-format idiom.
       if constexpr (!zero_unchecked)
-        if (rhs.Raw == 0) return fail(errc::division_by_zero, "division by zero in div");
+        if (rhs.raw() == 0) return fail(errc::division_by_zero, "division by zero in div");
       constexpr umax N = static_cast<umax>(abs_den(Notch<L>.Denominator));
-      result res;
-      res.Raw = raw_cast<result>(
-          (static_cast<umax>(lhs.Raw) * N) / static_cast<umax>(rhs.Raw));
-      return res;
+      return result::from_raw(raw_cast<result>(
+          (static_cast<umax>(lhs.raw()) * N) / static_cast<umax>(rhs.raw())));
     }
     else if constexpr (native_div_integer)
     {
@@ -148,16 +146,14 @@ namespace bnd
         if (rhs_r.Numerator == 0) return fail(errc::division_by_zero, "division by zero in div");
       auto q = as_rational(lhs) / rhs_r;
       if (!q) return fail(errc::overflow, "rational overflow in div");
-      result res; res.Raw = *q; return res;
+      return result::from_raw(*q);
     }
     else
     {
       bnd::detail::rational rhs_r = rhs;
       if constexpr (!zero_unchecked)
         if (rhs_r.Numerator == 0) return fail(errc::division_by_zero, "division by zero in div");
-      result res;
-      res.Raw = bnd::detail::rational::div_unchecked(as_rational(lhs), rhs_r);
-      return res;
+      return result::from_raw(bnd::detail::rational::div_unchecked(as_rational(lhs), rhs_r));
     }
   }
   //---------------------------------------------------------------------------

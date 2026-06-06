@@ -228,7 +228,7 @@ namespace bnd
     { apply_wrap(lhs, rhs, lower, upper, action); return true; }
     else if constexpr (sentinel_action<PA>)
     {
-      lhs.Raw = sentinel_raw<L>();
+      lhs = L::from_raw(sentinel_raw<L>());
       action.fn(lhs, static_cast<imax>(rhs));
       return true;
     }
@@ -251,15 +251,15 @@ namespace bnd
   constexpr void assignment<L,R>::store(L& lhs, R rhs)
   {
     if constexpr (IsDirectStorage<L>)
-      lhs.Raw = raw_cast<L>(rhs);
+      lhs = L::from_raw(raw_cast<L>(rhs));
     else if constexpr (Lower<L> == Upper<L>)
-      lhs.Raw = 0;   // notch_storage point grid: 0 is the only offset
+      lhs = L::from_raw(0);   // notch_storage point grid: 0 is the only offset
     else if constexpr (HasQFormatFastPath<L>)
-      lhs.Raw = q_format_encode<L>(static_cast<imax>(rhs));
+      lhs = L::from_raw(q_format_encode<L>(static_cast<imax>(rhs)));
     else // IsNotchStorage, generic rational path
     {
       bnd::detail::rational raw = ((rhs - Interval<L>.Lower)/Notch<L>).value();
-      lhs.Raw = raw_cast<L>(raw.Numerator / static_cast<umax>(raw.Denominator));
+      lhs = L::from_raw(raw_cast<L>(raw.Numerator / static_cast<umax>(raw.Denominator)));
     }
   }
 
@@ -318,9 +318,9 @@ namespace bnd
       overshoot = rhs - clamped;
 
     if constexpr (IsRawRational<L>)
-      lhs.Raw = clamped;
+      lhs = L::from_raw(clamped);
     else if constexpr (Lower<L> == Upper<L>)
-      lhs.Raw = 0;
+      lhs = L::from_raw(0);
     else
     {
       bnd::detail::rational raw = ((clamped - Lower<L>)/Notch<L>).value();
@@ -330,7 +330,7 @@ namespace bnd
       // boundary-adjacent midpoint *past* the boundary by one notch.
       // `raw_from_offset<L>` produces the proper Raw for both offset-encoded
       // and direct-encoded storage (the latter adds Lower<L> back).
-      lhs.Raw = raw_from_offset<L>(round_quotient<L, P>(raw.Numerator, den));
+      lhs = L::from_raw(raw_from_offset<L>(round_quotient<L, P>(raw.Numerator, den)));
     }
 
     if constexpr (clamp_action<plain<A>>)
@@ -367,16 +367,16 @@ namespace bnd
   constexpr bool assignment<L,R>::store_checked(L& lhs, R rhs, P&& policy, A&& action)
   {
     if constexpr (IsRawRational<L>)
-    { lhs.Raw = rhs; return true; }
+    { lhs = L::from_raw(rhs); return true; }
     else if constexpr (Lower<L> == Upper<L>)
     {
       // Singleton grid: Raw layout depends on encoding. For offset
       // encoding the lone slot is Raw=0; for direct storage Raw is the
       // value itself (`Lower`).
       if constexpr (IsDirectStorage<L>)
-        lhs.Raw = raw_cast<L>(RawLo<L>);
+        lhs = L::from_raw(raw_cast<L>(RawLo<L>));
       else
-        lhs.Raw = 0;
+        lhs = L::from_raw(0);
       return true;
     }
     else
@@ -386,14 +386,14 @@ namespace bnd
       // `raw_from_offset<L>` handles both offset-encoded and direct-encoded
       // storage — for direct, it adds Lower<L> back to produce the value.
       if (den == 1)
-      { lhs.Raw = raw_from_offset<L>(raw.Numerator); return true; }
+      { lhs = L::from_raw(raw_from_offset<L>(raw.Numerator)); return true; }
 
       constexpr bool has_round_flag =
            HasPolicy<L, P, round_nearest> || HasPolicy<L, P, round_floor>
         || HasPolicy<L, P, round_ceil>    || HasPolicy<L, P, round_half_even>
         || HasPolicy<L, P, ignore_round>;
       if constexpr (has_round_flag)
-        lhs.Raw = raw_from_offset<L>(round_quotient<L, P>(raw.Numerator, den));
+        lhs = L::from_raw(raw_from_offset<L>(round_quotient<L, P>(raw.Numerator, den)));
       else if (policy.round_check())
       {
         auto msg = bnd::to_string(rhs) + " does not land on notch " + bnd::to_string(Notch<L>);
@@ -403,7 +403,7 @@ namespace bnd
         return false;
       }
       else
-        lhs.Raw = raw_from_offset<L>(round_quotient<L, P>(raw.Numerator, den));
+        lhs = L::from_raw(raw_from_offset<L>(round_quotient<L, P>(raw.Numerator, den)));
       return true;
     }
   }
@@ -423,7 +423,7 @@ namespace bnd
       { apply_clamp(lhs, rhs, policy, action); return lhs; }
       else if constexpr (sentinel_action<PA>)
       {
-        lhs.Raw = sentinel_raw<L>();
+        lhs = L::from_raw(sentinel_raw<L>());
         action.fn(lhs, rhs);
         return lhs;
       }
@@ -456,8 +456,8 @@ namespace bnd
     // `RawLo`/`RawHi` are raw-space constants by construction (Lower/Upper
     // for direct storage, 0/NotchCount for notch-offset), so they're
     // already the correct Raw — no `raw_from_offset` adjustment needed.
-    lhs.Raw = (as_rational(rhs) < Lower<L>)
-      ? raw_cast<L>(RawLo<L>) : raw_cast<L>(RawHi<L>);
+    lhs = L::from_raw((as_rational(rhs) < Lower<L>)
+      ? raw_cast<L>(RawLo<L>) : raw_cast<L>(RawHi<L>));
     auto overshoot = as_rational(rhs) - as_rational(lhs);
     if constexpr (clamp_action<plain<A>>)
       action.fn(lhs, overshoot);
@@ -492,7 +492,7 @@ namespace bnd
     { apply_wrap(lhs, rhs, action); return true; }
     else if constexpr (sentinel_action<PA>)
     {
-      lhs.Raw = sentinel_raw<L>();
+      lhs = L::from_raw(sentinel_raw<L>());
       action.fn(lhs, as_rational(rhs));
       return true;
     }
@@ -519,13 +519,13 @@ namespace bnd
     {
       // exact: Factor and Offset have integer denominators, no rounding ambiguity
       if constexpr (Offset == 0 && Factor == 1)
-        lhs.Raw = raw_cast<L>(rhs.Raw);
+        lhs = L::from_raw(raw_cast<L>(rhs.raw()));
       else
-        lhs.Raw = raw_cast<L>(map_raw(rhs.Raw));
+        lhs = L::from_raw(raw_cast<L>(map_raw(rhs.raw())));
     }
     else
     {
-      bnd::detail::rational rat = *(Offset + *(Factor * rhs.Raw));
+      bnd::detail::rational rat = *(Offset + *(Factor * rhs.raw()));
       umax ad = static_cast<umax>(abs_den(rat.Denominator));
       umax q;
       if constexpr (HasPolicy<L, P, round_nearest>)
@@ -534,9 +534,9 @@ namespace bnd
         q = rat.Numerator / ad;                // truncation toward zero
       // `rat` is the L-offset; `raw_from_offset<L>` converts to L.Raw,
       // adding Lower<L> back for direct-storage targets.
-      lhs.Raw = (rat.Denominator < 0)
+      lhs = L::from_raw((rat.Denominator < 0)
         ? raw_from_offset<L>(-static_cast<imax>(q))
-        : raw_from_offset<L>(q);
+        : raw_from_offset<L>(q));
     }
   }
 
@@ -548,7 +548,8 @@ namespace bnd
   constexpr L& assignment<L,R>::assign(L& lhs, R const& rhs, P&& policy, A&& action)
   {
     static_assert(not Interval<L>.excludes(Interval<R>));
-    static_assert(abs_den(Factor.Denominator) == 1 || HasPolicy<L, P, ignore_round>,
+    static_assert(abs_den(Factor.Denominator) == 1 || HasPolicy<L, P, ignore_round>
+                  || point_exactly_assignable<L, R>,
       "incompatible notches: use with_truncate() or policy<ignore_round>() to allow rounding");
 
     if constexpr (not Interval<L>.includes(Interval<R>))
@@ -557,7 +558,7 @@ namespace bnd
       {
         if constexpr (is_integer_mapping)
         {
-          if (imax mapped = map_raw(rhs.Raw); mapped < RawLo<L> || mapped > RawHi<L>)
+          if (imax mapped = map_raw(rhs.raw()); mapped < RawLo<L> || mapped > RawHi<L>)
             if (try_clamp_or_fail(lhs, rhs, policy, action)) return lhs;
         }
         else if (not Interval<L>.includes(as_rational(rhs)))

@@ -92,6 +92,21 @@ namespace bnd
     constexpr umax max_notch() const
     { return (Notch == 0) ? 0 : (Interval/Notch).value().Numerator; }
 
+    // True when `v` is an *exact* slot of this grid: in the interval AND on a
+    // notch. Notch-zero grids store the value verbatim (rational storage), so
+    // any in-range value qualifies. Mirrors the on-notch test in `validate` /
+    // `try_make`; used to admit a single representable value (e.g. `0_b`)
+    // regardless of whether the whole-range notch mapping is exact.
+    constexpr bool representable(bnd::detail::rational v) const
+    {
+      if (!Interval.includes(v)) return false;
+      if (Notch == 0) return true;
+      auto diff = v - Interval.Lower;            // optional<rational>
+      if (!diff) return false;
+      auto off = diff.value() / Notch;           // optional<rational>
+      return off.has_value() && abs_den(off->Denominator) == 1;
+    }
+
     // operator== be default for structural type
     constexpr bool operator==(const grid& rhs) const = default;
     constexpr grid operator-() const { return {-Interval, Notch}; }

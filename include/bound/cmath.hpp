@@ -215,7 +215,7 @@ namespace bnd::math
       constexpr imax quarter_turn = imax{1} << (N - 2);
       constexpr imax half_mask    = half_turn - 1;
 
-      auto raw       = static_cast<imax>(phase.Raw);
+      auto raw       = static_cast<imax>(phase.raw());
       bool flip_sign = (raw & half_turn) != 0;
       raw &= half_mask;
       if (raw > quarter_turn)
@@ -238,9 +238,8 @@ namespace bnd::math
       constexpr imax full_mask    = (imax{1} << N) - 1;
       constexpr imax quarter_turn = imax{1} << (N - 2);
 
-      In shifted;
-      shifted.Raw = static_cast<typename In::raw_type>(
-          (static_cast<imax>(phase.Raw) + quarter_turn) & full_mask);
+      In shifted = In::from_raw(static_cast<typename In::raw_type>(
+          (static_cast<imax>(phase.raw()) + quarter_turn) & full_mask));
       return sin_turn_impl<Out>(shifted);
     }
 
@@ -351,7 +350,7 @@ namespace bnd::math
       constexpr imax full_mask    = (imax{1} << N) - 1;
       constexpr imax quarter_turn = imax{1} << (N - 2);
 
-      imax sin_raw = static_cast<imax>(phase.Raw);
+      imax sin_raw = static_cast<imax>(phase.raw());
       imax cos_raw = (sin_raw + quarter_turn) & full_mask;
 
       imax sin_q30 = sin_q30_from_phase<N>(sin_raw);
@@ -925,7 +924,7 @@ namespace bnd::math
                   "bnd::math::sqrt: input must be Q.30 or coarser (Q.62 tier planned)");
 
     // Convert Q.K input raw to Q.30 by integer left-shift (exact).
-    imax x_q30   = static_cast<imax>(x.Raw) << (30 - K);
+    imax x_q30   = static_cast<imax>(x.raw()) << (30 - K);
     imax r_q30   = detail::sqrt_q30(x_q30);
 
     return Out{detail::q30_to_rational(r_q30)};

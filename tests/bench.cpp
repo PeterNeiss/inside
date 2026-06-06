@@ -75,7 +75,7 @@ void bench_construct()
 
     { CTRACK_NAME("construct bound");
       u200 v(static_cast<int>(i % 201));
-      do_not_optimize(v.Raw); }
+      do_not_optimize(v.raw()); }
   }
 }
 
@@ -103,7 +103,7 @@ void bench_add()
     { CTRACK_NAME("add bound");
       u200 a(a_val), b(b_val);
       auto c = a + b;
-      do_not_optimize(c.Raw); }
+      do_not_optimize(c.raw()); }
   }
 }
 
@@ -131,7 +131,7 @@ void bench_mul()
     { CTRACK_NAME("mul bound");
       u200 a(a_val), b(b_val);
       auto c = a * b;
-      do_not_optimize(c.Raw); }
+      do_not_optimize(c.raw()); }
   }
 }
 
@@ -149,12 +149,12 @@ void bench_div()
     { CTRACK_NAME("div bound (rational)");
       u200 a(a_val), b(b_val);
       auto c = a / b;
-      do_not_optimize(c->Raw); }
+      do_not_optimize(c->raw()); }
 
     { CTRACK_NAME("div bound (integer)");
       u200 a(a_val), b(b_val);
       auto c = div(a, b, truncated);
-      do_not_optimize(c->Raw); }
+      do_not_optimize(c->raw()); }
   }
 }
 
@@ -187,12 +187,12 @@ void bench_accumulate()
     { CTRACK_NAME("accum bound");
       u200k sum(0);
       for (auto v : bv) sum += v;
-      do_not_optimize(sum.Raw); }
+      do_not_optimize(sum.raw()); }
 
     { CTRACK_NAME("accum bound<checked>");
       u200k_checked sum(0);
       for (auto v : bv_checked) sum += v;
-      do_not_optimize(sum.Raw); }
+      do_not_optimize(sum.raw()); }
   }
 }
 
@@ -222,7 +222,7 @@ void bench_int_vs_bound()
 
     { CTRACK_NAME("bound construct");
       s100k v(static_cast<int>(i % 201) - 100);
-      do_not_optimize(v.Raw); }
+      do_not_optimize(v.raw()); }
 
     { CTRACK_NAME("int add");
       int a = -300, b = 500;
@@ -232,7 +232,7 @@ void bench_int_vs_bound()
     { CTRACK_NAME("bound add");
       s100k a(-300), b(500);
       auto c = a + b;
-      do_not_optimize(c.Raw); }
+      do_not_optimize(c.raw()); }
 
     { CTRACK_NAME("int mul");
       int a = -7, b = 14;
@@ -242,7 +242,7 @@ void bench_int_vs_bound()
     { CTRACK_NAME("bound mul");
       s100k a(-7), b(14);
       auto c = a * b;
-      do_not_optimize(c.Raw); }
+      do_not_optimize(c.raw()); }
 
     { CTRACK_NAME("int accum");
       int sum = 0;
@@ -252,7 +252,7 @@ void bench_int_vs_bound()
     { CTRACK_NAME("bound accum");
       s100k sum(0);
       for (auto v : bv) sum += v;
-      do_not_optimize(sum.Raw); }
+      do_not_optimize(sum.raw()); }
   }
 }
 
@@ -281,7 +281,7 @@ void bench_fixed_point()
 
     { CTRACK_NAME("fixed bound construct");
       fp v(static_cast<int>(i % 201));
-      do_not_optimize(v.Raw); }
+      do_not_optimize(v.raw()); }
 
     { CTRACK_NAME("fixed native add");
       std::int32_t a = 30 << 8, b = 50 << 8;
@@ -291,7 +291,7 @@ void bench_fixed_point()
     { CTRACK_NAME("fixed bound add");
       fp a(30), b(50);
       auto c = a + b;
-      do_not_optimize(c.Raw); }
+      do_not_optimize(c.raw()); }
 
     { CTRACK_NAME("fixed native accum");
       std::int32_t sum = 0;
@@ -301,7 +301,7 @@ void bench_fixed_point()
     { CTRACK_NAME("fixed bound accum");
       fp sum(0);
       for (auto v : bv) sum += v;
-      do_not_optimize(sum.Raw); }
+      do_not_optimize(sum.raw()); }
 
     { CTRACK_NAME("fixed native mul");
       std::int32_t a = 30 << 8, b = 5 << 8;
@@ -311,7 +311,7 @@ void bench_fixed_point()
     { CTRACK_NAME("fixed bound mul");
       fp a(30), b(5);
       auto c = a * b;
-      do_not_optimize(c.Raw); }
+      do_not_optimize(c.raw()); }
 
     { CTRACK_NAME("fixed native div");
       std::int32_t a = 200 << 8, b = 8 << 8;
@@ -321,7 +321,7 @@ void bench_fixed_point()
     { CTRACK_NAME("fixed bound div");
       fp a(200), b(8);
       auto c = div(a, b, truncated);
-      do_not_optimize(c->Raw); }
+      do_not_optimize(c->raw()); }
   }
 }
 
@@ -342,7 +342,7 @@ void bench_fixed_point_signed()
 
     { CTRACK_NAME("signed fixed bound construct");
       auto s = fp::from_raw(static_cast<std::uint16_t>((v + 100) * 163));  // raw-level
-      do_not_optimize(s.Raw); }
+      do_not_optimize(s.raw()); }
 
     { CTRACK_NAME("signed fixed native add");
       std::int32_t a = 5000, b = -3000;
@@ -353,7 +353,7 @@ void bench_fixed_point_signed()
       auto a = fp::from_raw(20000);
       auto b = fp::from_raw(10000);
       auto c = a + b;
-      do_not_optimize(c.Raw); }
+      do_not_optimize(c.raw()); }
   }
 }
 
@@ -367,12 +367,12 @@ void bench_fixed_point_checked()
   {
     { CTRACK_NAME("checked fixed bound construct");
       fp v(static_cast<int>(i % 201));
-      do_not_optimize(v.Raw); }
+      do_not_optimize(v.raw()); }
 
     { CTRACK_NAME("checked fixed bound add");
       fp a(30), b(50);
       auto c = a + b;
-      do_not_optimize(c.Raw); }
+      do_not_optimize(c.raw()); }
   }
 }
 
@@ -403,7 +403,7 @@ void bench_fixed_point_q16()
 
     { CTRACK_NAME("q16 bound construct");
       fp v(static_cast<int>(i % 1001));
-      do_not_optimize(v.Raw); }
+      do_not_optimize(v.raw()); }
 
     { CTRACK_NAME("q16 native add");
       std::int64_t a = 30LL << 16, b = 50LL << 16;
@@ -413,7 +413,7 @@ void bench_fixed_point_q16()
     { CTRACK_NAME("q16 bound add");
       fp a(30), b(50);
       auto c = a + b;
-      do_not_optimize(c.Raw); }
+      do_not_optimize(c.raw()); }
 
     { CTRACK_NAME("q16 native accum");
       std::int64_t sum = 0;
@@ -423,7 +423,7 @@ void bench_fixed_point_q16()
     { CTRACK_NAME("q16 bound accum");
       fp sum(0);
       for (auto v : bv) sum += v;
-      do_not_optimize(sum.Raw); }
+      do_not_optimize(sum.raw()); }
   }
 }
 
@@ -440,11 +440,11 @@ void bench_round_nearest()
 
     { CTRACK_NAME("assign truncate");
       celsius_trunc c = val;
-      do_not_optimize(c.Raw); }
+      do_not_optimize(c.raw()); }
 
     { CTRACK_NAME("assign round_nearest");
       celsius_round c = val;
-      do_not_optimize(c.Raw); }
+      do_not_optimize(c.raw()); }
   }
 }
 
@@ -481,7 +481,7 @@ void bench_cmath()
     { CTRACK_NAME("math::abs   bound");
       algeb_t x{qs};
       auto r = bnd::math::abs(x);
-      do_not_optimize(r.Raw); }
+      do_not_optimize(r.raw()); }
     { CTRACK_NAME("std::abs    double");
       double d = static_cast<double>(qs);
       auto r = std::abs(d);
@@ -490,7 +490,7 @@ void bench_cmath()
     { CTRACK_NAME("math::floor bound");
       algeb_t x{qs};
       auto r = bnd::math::floor(x);
-      do_not_optimize(r.Raw); }
+      do_not_optimize(r.raw()); }
     { CTRACK_NAME("std::floor  double");
       double d = static_cast<double>(qs);
       auto r = std::floor(d);
@@ -499,7 +499,7 @@ void bench_cmath()
     { CTRACK_NAME("math::round bound");
       algeb_t x{qs};
       auto r = bnd::math::round(x);
-      do_not_optimize(r.Raw); }
+      do_not_optimize(r.raw()); }
     { CTRACK_NAME("std::round  double");
       double d = static_cast<double>(qs);
       auto r = std::round(d);
@@ -509,7 +509,7 @@ void bench_cmath()
     { CTRACK_NAME("math::sqrt  bound");
       sqrt_in_t x{q};
       auto r = bnd::math::sqrt(x);
-      do_not_optimize(r.Raw); }
+      do_not_optimize(r.raw()); }
     { CTRACK_NAME("std::sqrt   double");
       double d = static_cast<double>(q);
       auto r = std::sqrt(d);
@@ -519,7 +519,7 @@ void bench_cmath()
     { CTRACK_NAME("math::exp2  bound");
       exp2_in_t x{qs};
       auto r = bnd::math::exp2(x);
-      do_not_optimize(r.Raw); }
+      do_not_optimize(r.raw()); }
     { CTRACK_NAME("std::exp2   double");
       double d = static_cast<double>(qs);
       auto r = std::exp2(d);
@@ -528,7 +528,7 @@ void bench_cmath()
     { CTRACK_NAME("math::log2  bound");
       log2_in_t x{rational{(k % 65535) + 1, 16384}};
       auto r = bnd::math::log2(x);
-      do_not_optimize(r.Raw); }
+      do_not_optimize(r.raw()); }
     { CTRACK_NAME("std::log2   double");
       double d = static_cast<double>(rational{(k % 65535) + 1, 16384});
       auto r = std::log2(d);
@@ -538,7 +538,7 @@ void bench_cmath()
     { CTRACK_NAME("math::exp   bound");
       exp_in_t x{qs};
       auto r = bnd::math::exp(x);
-      do_not_optimize(r.Raw); }
+      do_not_optimize(r.raw()); }
     { CTRACK_NAME("std::exp    double");
       double d = static_cast<double>(qs);
       auto r = std::exp(d);
@@ -547,7 +547,7 @@ void bench_cmath()
     { CTRACK_NAME("math::log   bound");
       log_in_t x{rational{(k % 65535) + 1, 256}};
       auto r = bnd::math::log(x);
-      do_not_optimize(r.Raw); }
+      do_not_optimize(r.raw()); }
     { CTRACK_NAME("std::log    double");
       double d = static_cast<double>(rational{(k % 65535) + 1, 256});
       auto r = std::log(d);
@@ -557,7 +557,7 @@ void bench_cmath()
     { CTRACK_NAME("math::pow10 bound");
       pow_in_t x{qs};
       auto r = bnd::math::pow_base<10>(x);
-      do_not_optimize(r.Raw); }
+      do_not_optimize(r.raw()); }
     { CTRACK_NAME("std::pow10  double");
       double d = static_cast<double>(qs);
       auto r = std::pow(10.0, d);
@@ -567,7 +567,7 @@ void bench_cmath()
     { CTRACK_NAME("math::sin   bound");
       angle_t x{qs};
       auto r = bnd::math::sin(x);
-      do_not_optimize(r.Raw); }
+      do_not_optimize(r.raw()); }
     { CTRACK_NAME("std::sin    double");
       double d = static_cast<double>(qs);
       auto r = std::sin(d);
@@ -576,7 +576,7 @@ void bench_cmath()
     { CTRACK_NAME("math::cos   bound");
       angle_t x{qs};
       auto r = bnd::math::cos(x);
-      do_not_optimize(r.Raw); }
+      do_not_optimize(r.raw()); }
     { CTRACK_NAME("std::cos    double");
       double d = static_cast<double>(qs);
       auto r = std::cos(d);
@@ -597,7 +597,7 @@ void bench_cmath()
       atan2_in_t y{rational{static_cast<imax>(k % 32768) - 16384, 16384}};
       atan2_in_t x{rational{static_cast<imax>((k + 1) % 32768) - 16384, 16384}};
       auto r = bnd::math::atan2(y, x);
-      do_not_optimize(r.Raw); }
+      do_not_optimize(r.raw()); }
     { CTRACK_NAME("std::atan2  double");
       double y = static_cast<double>(rational{static_cast<imax>(k % 32768) - 16384, 16384});
       double x = static_cast<double>(rational{static_cast<imax>((k + 1) % 32768) - 16384, 16384});
@@ -609,7 +609,7 @@ void bench_cmath()
       fmod_x_t fx{qs};
       fmod_y_t fy{rational{(k % 60) + 4, 16384}};
       auto r = bnd::math::fmod(fx, fy);
-      do_not_optimize(r.Raw); }
+      do_not_optimize(r.raw()); }
     { CTRACK_NAME("std::fmod   double");
       double fx = static_cast<double>(qs);
       double fy = static_cast<double>(rational{(k % 60) + 4, 16384});
@@ -654,7 +654,7 @@ void bench_sort_algo()
     { CTRACK_NAME("sort bound");
       bv = bv_copy;
       rng::sort(bv);
-      do_not_optimize(bv[0].Raw); }
+      do_not_optimize(bv[0].raw()); }
   }
 }
 
@@ -683,7 +683,7 @@ void bench_find_algo()
 
     { CTRACK_NAME("find bound");
       auto it = rng::find(bv, target_b);
-      do_not_optimize(it->Raw); }
+      do_not_optimize(it->raw()); }
 
     { CTRACK_NAME("count native");
       auto c = rng::count(nv, static_cast<std::int16_t>(42));
@@ -721,7 +721,7 @@ void bench_transform_algo()
     { CTRACK_NAME("transform bound");
       std::transform(bv.begin(), bv.end(), bout.begin(),
         [](u255 v) { v += 1; return v; });
-      do_not_optimize(bout[0].Raw); }
+      do_not_optimize(bout[0].raw()); }
   }
 }
 
@@ -747,7 +747,7 @@ void bench_minmax_algo()
 
     { CTRACK_NAME("min_element bound");
       auto it = rng::min_element(bv);
-      do_not_optimize(it->Raw); }
+      do_not_optimize(it->raw()); }
 
     { CTRACK_NAME("max_element native");
       auto it = rng::max_element(nv);
@@ -755,7 +755,7 @@ void bench_minmax_algo()
 
     { CTRACK_NAME("max_element bound");
       auto it = rng::max_element(bv);
-      do_not_optimize(it->Raw); }
+      do_not_optimize(it->raw()); }
   }
 }
 
@@ -784,7 +784,7 @@ void bench_lower_bound_algo()
 
     { CTRACK_NAME("lower_bound bound");
       auto it = rng::lower_bound(bv, s9k{static_cast<int>(target)});
-      do_not_optimize(it->Raw); }
+      do_not_optimize(it->raw()); }
   }
 }
 
@@ -815,7 +815,7 @@ void bench_std_sort()
     { CTRACK_NAME("std::sort bound");
       bv = bv_copy;
       std::sort(bv.begin(), bv.end());
-      do_not_optimize(bv[0].Raw); }
+      do_not_optimize(bv[0].raw()); }
   }
 }
 
@@ -847,7 +847,7 @@ void bench_nth_element()
     { CTRACK_NAME("nth_element bound");
       bv = bv_copy;
       std::nth_element(bv.begin(), bv.begin() + nth, bv.end());
-      do_not_optimize(bv[static_cast<std::size_t>(nth)].Raw); }
+      do_not_optimize(bv[static_cast<std::size_t>(nth)].raw()); }
   }
 }
 
@@ -880,7 +880,7 @@ void bench_partition()
       bv = bv_copy;
       auto p = std::partition(bv.begin(), bv.end(),
         [](s9k v) { return v >= 0; });
-      do_not_optimize(p->Raw); }
+      do_not_optimize(p->raw()); }
   }
 }
 
@@ -907,7 +907,7 @@ void bench_std_accumulate()
 
     { CTRACK_NAME("std::accumulate bound");
       auto sum = std::accumulate(bv.begin(), bv.end(), u200k{0}, std::plus<>{});
-      do_not_optimize(sum.Raw); }
+      do_not_optimize(sum.raw()); }
   }
 }
 

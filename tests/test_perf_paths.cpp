@@ -90,7 +90,7 @@ TEST_CASE("Q-format division: native_div_qformat matches rational arithmetic",
   // truncate-then-scale, which loses fractional precision).
   auto q3 = div(fp{200}, fp{3}, truncated);
   REQUIRE(q3.has_value());
-  REQUIRE((*q3).Raw == 17066);
+  REQUIRE((*q3).raw() == 17066);
 
   // Divide by zero produces nullopt.
   auto q4 = div(fp{1}, fp{0}, truncated);

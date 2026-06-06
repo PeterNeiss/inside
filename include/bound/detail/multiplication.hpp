@@ -111,15 +111,11 @@ namespace bnd
         if (!prod)
           return report_or_nullopt<result>(action, policy, errc::overflow,
                                            "rational overflow in mul");
-        result res; res.Raw = raw_cast<result>(*prod); return res;
+        return result::from_raw(raw_cast<result>(*prod));
       }
       else
-      {
-        result res;
-        res.Raw = raw_cast<result>(bnd::detail::rational::mul_unchecked(
-            as_rational(lhs), as_rational(rhs)));
-        return res;
-      }
+        return result::from_raw(raw_cast<result>(bnd::detail::rational::mul_unchecked(
+            as_rational(lhs), as_rational(rhs))));
     }
     else if constexpr (IsIntegerAligned<L> && IsIntegerAligned<R> && IsIntegerAligned<result>)
     {
@@ -132,16 +128,16 @@ namespace bnd
       // Result writes go through raw_from_offset so direct-storage results
       // get Lower<result> added back to recover the value.
       auto to_result = [](auto raw_offset)
-      { result res; res.Raw = raw_from_offset<result>(static_cast<umax>(raw_offset)); return res; };
+      { return result::from_raw(raw_from_offset<result>(static_cast<umax>(raw_offset))); };
 
-      // Normalize lhs.Raw / rhs.Raw to *offsets* regardless of L's / R's
+      // Normalize lhs.raw() / rhs.raw() to *offsets* regardless of L's / R's
       // storage shape. The formulas below all assume offset arithmetic.
       umax lhs_offset = IsDirectStorage<L>
           ? static_cast<umax>(raw_imax(lhs) - RawLo<L>)
-          : static_cast<umax>(lhs.Raw);
+          : static_cast<umax>(lhs.raw());
       umax rhs_offset = IsDirectStorage<R>
           ? static_cast<umax>(raw_imax(rhs) - RawLo<R>)
-          : static_cast<umax>(rhs.Raw);
+          : static_cast<umax>(rhs.raw());
 
       // Raws are typically small unsigned ints (uint8/16/32). C++ integral
       // promotion turns `raw * raw` into `int * int`, so any product above

@@ -71,18 +71,18 @@ namespace bnd
         if (!sum)
           return report_or_nullopt<result>(action, policy, errc::overflow,
                                            "rational overflow in add");
-        res.Raw = *sum;
+        res = result::from_raw(*sum);
       }
       else
-        res.Raw = bnd::detail::rational::add_unchecked(lhs, rhs);
+        res = result::from_raw(bnd::detail::rational::add_unchecked(lhs, rhs));
     }
     else if constexpr (IsRawRational<L> || IsRawRational<R>)
     {
       auto sum = bnd::detail::rational::add_unchecked(lhs,rhs);
       // `((sum - Lower) / Notch).Numerator` is the L-offset; for direct
       // storage the Raw must be the value, so route through raw_from_offset.
-      res.Raw = raw_from_offset<result>(
-          ((sum - Lower<result>) / Notch<result>).value().Numerator);
+      res = result::from_raw(raw_from_offset<result>(
+          ((sum - Lower<result>) / Notch<result>).value().Numerator));
     }
     else if constexpr (IsDirectStorage<L> || IsDirectStorage<R> || IsDirectStorage<result>)
     {
@@ -90,7 +90,7 @@ namespace bnd
     }
     else
     {
-      res.Raw = raw_cast<result>(raw_imax(lhs) * lhs_widen + raw_imax(rhs) * rhs_widen);
+      res = result::from_raw(raw_cast<result>(raw_imax(lhs) * lhs_widen + raw_imax(rhs) * rhs_widen));
     }
     return res;
   }

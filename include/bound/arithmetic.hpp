@@ -301,21 +301,21 @@ namespace bnd
   template <boundable B, raw_scalar A> B operator+(B const&, A) {
     static_assert(dependent_false<B>,
       "a bound can only be added to another bound: give the scalar a grid — "
-      "write `a + 1_b` (or `a + just<1>`), or `a + bound<{lo,hi}>{n}` for a "
-      "runtime value with a known range"); }
+      "write `a + 1_b` (or `a + just<1>` / `a + one`), or `a + bound<{lo,hi}>{n}` "
+      "for a runtime value with a known range"); }
   template <raw_scalar A, boundable B> B operator+(A, B const&) {
     static_assert(dependent_false<B>,
       "a scalar can only be added to a bound that is itself a bound: write "
-      "`1_b + a` / `just<1> + a`, or `bound<{lo,hi}>{n} + a`"); }
+      "`1_b + a` / `just<1> + a` / `one + a`, or `bound<{lo,hi}>{n} + a`"); }
 
   template <boundable B, raw_scalar A> B operator-(B const&, A) {
     static_assert(dependent_false<B>,
-      "subtract a bound, not a raw scalar: write `a - 1_b` / `a - just<1>`, "
-      "or `a - bound<{lo,hi}>{n}` for a runtime value with a known range"); }
+      "subtract a bound, not a raw scalar: write `a - 1_b` / `a - just<1>` / "
+      "`a - one`, or `a - bound<{lo,hi}>{n}` for a runtime value with a known range"); }
   template <raw_scalar A, boundable B> B operator-(A, B const&) {
     static_assert(dependent_false<B>,
       "subtract from a bound, not a raw scalar: write `1_b - a` / `just<1> - "
-      "a`, or `bound<{lo,hi}>{n} - a`"); }
+      "a` / `one - a`, or `bound<{lo,hi}>{n} - a`"); }
 
   template <boundable B, raw_scalar A> B operator*(B const&, A) {
     static_assert(dependent_false<B>,

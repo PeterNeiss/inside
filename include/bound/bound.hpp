@@ -74,7 +74,24 @@ namespace bnd
 
     using negative = bound<-G, P>;
     using raw_type = storage_min<G>;
+
+    private:
     raw_type Raw;
+
+    public:
+    // raw() — the access escape hatch, symmetric with `from_raw`. The read
+    // overload is available under every policy; read-only C interop can take
+    // `&std::as_const(b).raw()` (a `const raw_type*`).
+    //
+    // The mutable overload is gated to the `unsafe` policy: a bound that has
+    // already opted out of every range/round/zero check is the only one where
+    // handing out a writable storage handle is honest. `&b.raw()` is then a
+    // `raw_type*` a C routine can fill in place. Writing an out-of-range raw
+    // into a checked/clamp/wrap/sentinel bound — which would make `value()`
+    // and comparisons lie — is therefore a compile error, not a silent break.
+    [[nodiscard]] constexpr raw_type const& raw() const noexcept { return Raw; }
+    [[nodiscard]] constexpr raw_type&       raw()       noexcept
+      requires ((P & unsafe) == unsafe) { return Raw; }
 
     constexpr bound() requires ((P & checked) == 0) = default; // trivial when not checked
     constexpr bound() requires ((P & checked) != 0) : Raw{} {} // zero-init under checked
@@ -349,7 +366,7 @@ namespace bnd
     {
       negative neg;
       if constexpr (IsRawRational<bound>)
-        neg.Raw = -(Raw);
+        neg = negative::from_raw(-(Raw));
       else if constexpr (IsDirectStorage<bound> || IsDirectStorage<negative>)
         from_value(neg, -to_value(*this));
       else
@@ -360,7 +377,7 @@ namespace bnd
         // NOTE: not a sibling of the IsDirectStorage encoding bugs — this branch is
         // unreachable when either operand uses direct storage, so `Raw` here is
         // guaranteed to be an offset.
-        neg.Raw = raw_cast<negative>(NotchCount<bound> - Raw);
+        neg = negative::from_raw(raw_cast<negative>(NotchCount<bound> - Raw));
       return neg;
     }
 
@@ -444,7 +461,7 @@ namespace bnd
           Raw = raw_cast<bound>(new_raw);
         }
         else
-          Raw += raw_cast<bound>(rhs.Raw);
+          Raw += raw_cast<bound>(rhs.raw());
         return *this;
       }
       else
@@ -647,7 +664,7 @@ namespace bnd
   {
     // same grid: Raw is monotonically ordered regardless of storage kind
     if constexpr (Grid<L> == Grid<R>)
-      return lhs.Raw <=> rhs.Raw;
+      return lhs.raw() <=> rhs.raw();
     // both integer-direct (notch=1, Raw==value): compare as integers
     else if constexpr (!IsRawRational<L> && !IsRawRational<R>
                        && IsDirectStorage<L> && IsDirectStorage<R>)
@@ -660,7 +677,7 @@ namespace bnd
   constexpr bool operator==(L const& lhs, R const& rhs)
   {
     if constexpr (Grid<L> == Grid<R>)
-      return lhs.Raw == rhs.Raw;
+      return lhs.raw() == rhs.raw();
     else if constexpr (!IsRawRational<L> && !IsRawRational<R>
                        && IsDirectStorage<L> && IsDirectStorage<R>)
       return raw_imax(lhs) == raw_imax(rhs);
@@ -691,6 +708,16 @@ namespace bnd
   //---------------------------------------------------------------------------
   template<auto value>
   inline constexpr auto just = bound<grid{value}>{value};
+
+  //---------------------------------------------------------------------------
+  // zero / one — universal exact constants. Each is a single-point bound that
+  // assigns into ANY grid able to represent the value (checked at compile time,
+  // no runtime check) and otherwise behaves as the value 0 / 1 in comparison
+  // and arithmetic (they are ordinary `bound`s flowing through the normal
+  // operators). `b = zero;` is a clean compile error when 0 is not on b's grid.
+  //---------------------------------------------------------------------------
+  inline constexpr auto zero = just<0>;
+  inline constexpr auto one  = just<1>;
 
   //---------------------------------------------------------------------------
   // _b literal — compile-time `bound<{V, V}>` from a numeric literal.
@@ -747,9 +774,7 @@ namespace slim
   template <bnd::grid G, bnd::policy_flag P>
   constexpr bnd::bound<G, P> sentinel_traits<bnd::bound<G, P>>::sentinel() noexcept
   {
-    bnd::bound<G, P> s;
-    s.Raw = bnd::sentinel_raw<bnd::bound<G, P>>();
-    return s;
+    return bnd::bound<G, P>::from_raw(bnd::sentinel_raw<bnd::bound<G, P>>());
   }
 
   template <bnd::grid G, bnd::policy_flag P>
@@ -759,9 +784,9 @@ namespace slim
     // Rational uses a broader check (any zero denominator) than equality
     // against the canonical {1, 0} sentinel.
     if constexpr (std::is_same_v<raw, bnd::detail::rational>)
-      return v.Raw.Denominator == 0;
+      return v.raw().Denominator == 0;
     else
-      return v.Raw == bnd::sentinel_raw<bnd::bound<G, P>>();
+      return v.raw() == bnd::sentinel_raw<bnd::bound<G, P>>();
   }
 } // namespace slim
 
