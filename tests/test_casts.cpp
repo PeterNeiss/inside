@@ -8,6 +8,7 @@
 #include <limits>
 
 using namespace bnd;
+using namespace bnd::detail;
 
 //---------------------------------------------------------------------------
 // std::numeric_limits<bound>

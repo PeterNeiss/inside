@@ -33,14 +33,14 @@ int main()
 
   constexpr offset_t  off_a{0};
   constexpr offset_t  off_b{-math::pi / just<6>};
-  constexpr gainfac_t gain_a{0.8_r};
-  constexpr gainfac_t gain_b{0.6_r};
+  constexpr gainfac_t gain_a{0.8_b};
+  constexpr gainfac_t gain_b{0.6_b};
 
   std::vector<sample> wave_a(N), wave_b(N);
   for (auto i : bound_range<{0, N-1}>{})
   {
     time_t  t{i / just<N>};   // bound / bound — give the divisor N a grid
-    angle_t base{t * just<math::two_pi>};                            // bound × bound, snap
+    angle_t base{t * math::two_pi};                            // bound × bound, snap
     angle_t a_a{base + off_a};                                        // bound + bound
     angle_t a_b{base + off_b};                                        // bound + bound
     wave_a[i] = sample{gain_a * math::sin(a_a)};                     // bound × bound

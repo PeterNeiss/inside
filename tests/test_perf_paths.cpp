@@ -12,6 +12,7 @@
 #include <stdexcept>
 
 using namespace bnd;
+using namespace bnd::detail;
 
 //---------------------------------------------------------------------------
 // Case 1 — runtime range branch elision under `unsafe`

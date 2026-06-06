@@ -5,6 +5,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 using namespace bnd;
+using namespace bnd::detail;
 
 TEST_CASE("implicit cast to imax", "[bound][cast]")
 {

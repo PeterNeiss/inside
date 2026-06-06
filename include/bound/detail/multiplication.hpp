@@ -116,7 +116,7 @@ namespace bnd
       else
       {
         result res;
-        res.Raw = raw_cast<result>(rational::mul_unchecked(
+        res.Raw = raw_cast<result>(bnd::detail::rational::mul_unchecked(
             as_rational(lhs), as_rational(rhs)));
         return res;
       }

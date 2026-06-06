@@ -42,12 +42,12 @@ namespace bnd
   //---------------------------------------------------------------------------
   struct interval
   {
-    rational Lower;
-    rational Upper;
+    bnd::detail::rational Lower;
+    bnd::detail::rational Upper;
 
     interval() = default;
 
-    constexpr interval(rational lower, rational upper)
+    constexpr interval(bnd::detail::rational lower, bnd::detail::rational upper)
      :Lower{lower}, Upper{upper} { }
     constexpr interval(arithmetic auto lower, arithmetic auto upper)
      :Lower{lower}, Upper{upper} { }
@@ -65,11 +65,11 @@ namespace bnd
     constexpr bool includes(interval const& rhs) const
     { return Lower <= rhs.Lower && rhs.Upper <= Upper; }
 
-    constexpr bool includes(rational const& r) const
+    constexpr bool includes(bnd::detail::rational const& r) const
     { return Lower <= r && r <= Upper; }
 
     constexpr bool includes(arithmetic auto a) const
-    { return includes(rational{a}); }
+    { return includes(bnd::detail::rational{a}); }
 
     // `excludes` means *strictly disjoint* — the intervals share no value.
     // `!includes()` is weaker: it only rules out total containment, so two
@@ -83,16 +83,16 @@ namespace bnd
     constexpr bool overlaps(interval const& rhs) const
     { return rhs.includes(*this) || includes(rhs.Lower) || includes(rhs.Upper); }
 
-    constexpr bool divides_evenly(const rational& notch) const
+    constexpr bool divides_evenly(const bnd::detail::rational& notch) const
     { return bnd::divides_evenly((Upper - Lower).value(), notch); }
 
-    constexpr slim::optional<rational> operator/(const rational& notch) const
+    constexpr slim::optional<bnd::detail::rational> operator/(const bnd::detail::rational& notch) const
     { return (Upper - Lower) / notch; }
   };
 
   // The min/max hull of four endpoint combinations — the result interval of an
   // interval product or quotient (interval arithmetic's four-corner rule).
-  constexpr interval corner_hull(rational a, rational b, rational c, rational d) noexcept
+  constexpr interval corner_hull(bnd::detail::rational a, bnd::detail::rational b, bnd::detail::rational c, bnd::detail::rational d) noexcept
   {
     auto [lo, hi] = std::minmax({a, b, c, d});
     return interval{lo, hi};
@@ -110,7 +110,7 @@ namespace bnd
   inline constexpr slim::optional<interval> operator+(const interval& lhs, const interval& rhs)
   {
     return lift(
-      [](rational l, rational u){ return interval{l, u}; },
+      [](bnd::detail::rational l, bnd::detail::rational u){ return interval{l, u}; },
       lhs.Lower + rhs.Lower, lhs.Upper + rhs.Upper);
   }
 
@@ -167,7 +167,7 @@ namespace bnd
 namespace slim
 {
   constexpr bnd::interval sentinel_traits<bnd::interval>::sentinel() noexcept
-  { return bnd::interval{bnd::rational::make_sentinel(), bnd::rational::make_sentinel()}; }
+  { return bnd::interval{bnd::detail::rational::make_sentinel(), bnd::detail::rational::make_sentinel()}; }
 
   constexpr bool sentinel_traits<bnd::interval>::is_sentinel(const bnd::interval& v) noexcept
   { return v.Lower.Denominator == 0; }
@@ -177,7 +177,7 @@ namespace slim
 // Structured bindings: `auto [lo, hi] = interval{...};`
 //---------------------------------------------------------------------------
 template <> struct std::tuple_size<bnd::interval> : std::integral_constant<std::size_t, 2> {};
-template <std::size_t I> struct std::tuple_element<I, bnd::interval> { using type = bnd::rational; };
+template <std::size_t I> struct std::tuple_element<I, bnd::interval> { using type = bnd::detail::rational; };
 
 namespace bnd
 {

@@ -1,9 +1,11 @@
 # bound
 
 A header-only C++23 library providing safe arithmetic on bounded rational
-number grids. A grid is defined by a lower and upper (inclusive) rational
-bound, hence the name, and a notch (step size); all three are `rational`,
-and `(Upper − Lower) / Notch` must be an unsigned integer.
+number grids. A grid is defined by a lower and upper (inclusive) bound, hence
+the name, and a notch (step size); all three are exact fractions, and
+`(Upper − Lower) / Notch` must be an unsigned integer. You write those
+fractions with literals, `notch<N, D>`, and `frac<N, D>` — the exact-fraction
+representation itself is an internal detail you never name.
 
 Arithmetic operators (`+`, `-`, `*`, `/`) are type-safe by construction: the
 result type's grid is computed at compile time to contain every possible
@@ -24,7 +26,8 @@ auto sum = x + y;                          // bound<{0, 200}> — no overflow po
 
 // Fractional grid: −1 .. 1 in 1/16 384 steps (Q1.14 audio sample).
 using sample = bound<{{-1, 1}, notch<1, 16384>}, round_nearest>;
-sample s = 0.5_r;                          // _r literal — exact rational
+sample s = 0.5;                            // dyadic literal — exact
+s.numerator();                             // 1   (denominator() == 2): exact read-out
 
 // Clamped percentage: saturates instead of throwing.
 using safe_pct = bound<{0, 100}, clamp>;
@@ -40,15 +43,17 @@ safe_pct p = 150;                          // p == 100
 - **Type-safe widening arithmetic** — `+ - * /` widen the result grid at
   compile time; integer fast paths keep the common case at native speed.
   Scalars need a grid — write `a + 1_b`, not `a + 1` (a raw `int`/`double`
-  has no grid); exact `bound op rational` is also supported. See
-  [docs/arithmetic.md](docs/arithmetic.md).
-- **Conversions and casts** — typed-error `to<T>()`, conversion predicates
+  has no grid). Bound-space `dot` / `cross` / `lerp` keep 2-D geometry inside
+  the bounded world. See [docs/arithmetic.md](docs/arithmetic.md).
+- **Conversions and casts** — typed-error `to<T>()`, exact `numerator()` /
+  `denominator()` read-out, conversion predicates
   (`will_conversion_overflow`, `is_conversion_lossy`), implicit
   `operator std::size_t()` for index-shaped bounds, and the
   `clamp_cast` / `wrap_cast` / `clamp_round` family. See
   [docs/conversions.md](docs/conversions.md).
 - **Optimal storage & iteration** — automatic raw-type selection (uint/int
-  sizes, or `rational` for exact grids), `slim::optional` with a sentinel
+  sizes, or an exact-fraction representation for non-dyadic grids),
+  `slim::optional` with a sentinel
   encoding (no size overhead), `bound_range` for compile-time iteration,
   and STL/ranges integration. Plus predefined hardware-width aliases
   (`bnd::u8`, `bnd::unorm16`, `bnd::q8_8`, …) in `bound/formats.hpp`.
@@ -102,23 +107,23 @@ scenario, native baseline paired with each bound case). Lower is better.
 | `bound<{{0,65535},1/65536}>` construct (Q16.16) | 14 ns | 14 ns | **0.97×** |
 | `accumulate(bound, unsafe)` 1000 elts | 64 ns | 64 ns | 1.0× (vectorized) |
 | `accumulate(bound, checked)` 1000 elts | 274 ns | 64 ns | 4.3× (scalar) |
-| `bound<{{-40,60},0.5}> = double` (rational path) | 87–94 ns | n/a | n/a |
+| `bound<{{-40,60},0.5}> = double` (exact-fraction path) | 87–94 ns | n/a | n/a |
 
 Notes:
 
 - Integer-raw bounds (the common case: `bound<{0,N}>`, `bound<{a,b}>` with
   notch 1) are at native parity for arithmetic and assignment.
 - Fixed-point grids with integer Lower and unit-numerator Notch take an
-  integer fast path in `assignment::store` and `from_value` — no rational
+  integer fast path in `assignment::store` and `from_value` — no exact-fraction
   construction in the hot loop.
 - `checked` policy on accumulation pays a 4× penalty: the per-element domain
   check breaks autovectorisation. Use `unsafe` for tight inner loops where
   no-overflow is proven upfront, then convert back to a `checked` bound
   after the loop.
 - Assigning a `double` to a fractional-notch grid is the slowest path
-  because the value crosses the API boundary into rational arithmetic — by
-  design; the library uses rational + integer math internally to preserve
-  exactness.
+  because the value crosses the API boundary into exact-fraction arithmetic —
+  by design; the library uses exact-fraction + integer math internally to
+  preserve exactness.
 
 ## Build & Test
 

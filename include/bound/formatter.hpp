@@ -76,18 +76,18 @@ struct std::formatter<bnd::bound<G, P>>
       return this->numeric_.format(bnd::to_value(b), ctx);
     else if (this->has_spec_)
       return this->numeric_.format(
-          static_cast<double>(static_cast<bnd::rational>(b)), ctx);
+          static_cast<double>(static_cast<bnd::detail::rational>(b)), ctx);
     else
       return std::format_to(ctx.out(), "{}", bnd::to_string(b));
   }
 };
 
 template <>
-struct std::formatter<bnd::rational>
+struct std::formatter<bnd::detail::rational>
   : bnd::detail::numeric_spec_formatter<std::formatter<double>>
 {
   template <typename Ctx>
-  auto format(bnd::rational const& r, Ctx& ctx) const
+  auto format(bnd::detail::rational const& r, Ctx& ctx) const
   {
     if (has_spec_)
       return numeric_.format(static_cast<double>(r), ctx);

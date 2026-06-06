@@ -29,6 +29,7 @@
 #include <system_error>
 
 using namespace bnd;
+using namespace bnd::detail;
 
 //---------------------------------------------------------------------------
 // State

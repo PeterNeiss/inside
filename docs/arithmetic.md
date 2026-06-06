@@ -44,7 +44,7 @@ operand grids and whether `ignore_round` is in effect.
 |---|---|---|---|---|
 | **Q-format fast** | `ignore_round` is set **and** both operands share the same Q-format grid (notch `1/N` with `N ≥ 2`, `Lower == 0`) | `(lhs.Raw × N) ÷ rhs.Raw` — the textbook fixed-point divide; folds to `(a << log2(N)) / b` for power-of-2 N | Q-format integer raw, **same notch as L** | `[0, Upper<L> / Notch<R>]` — Upper *expands* (see below) |
 | **Integer-aligned fast** | `ignore_round` is set **and** both grids are integer-aligned (notch and Lower both have denominator 1) **and** neither operand uses rational raw storage | `to_value(lhs) / to_value(rhs)` — plain native integer divide; truncates toward zero | Integer raw | `Grid<L> / Grid<R>` with `.trunc()` applied to both endpoints |
-| **Exact rational** *(fall-through)* | everything else | `as_rational(lhs) / rational{rhs}` — exact rational arithmetic. Under `checked` this is the optional-returning `rational::operator/`; under `unsafe` it's the unchecked variant. | `rational` raw — the result type is `bound<{interval, 0_r}>` | `*(Grid<L> / Grid<R>)` — the grid divider widens the interval when the divisor's range straddles zero |
+| **Exact rational** *(fall-through)* | everything else | `as_rational(lhs) / rational{rhs}` — exact rational arithmetic. Under `checked` this is the optional-returning `rational::operator/`; under `unsafe` it's the unchecked variant. | `rational` raw — the result type is `bound<{interval, 0}>` | `*(Grid<L> / Grid<R>)` — the grid divider widens the interval when the divisor's range straddles zero |
 
 ```cpp
 using val = bound<{0, 100}>;
@@ -181,26 +181,38 @@ Use `1_b` / `just<N>` to give a compile-time literal a tight point grid, or
 unaffected — they don't manufacture a new value/type, so they never leave the
 bounded world.
 
-### Exception: `bound op rational`
+### Scaling by an exact fraction
 
-A `rational` is an exact, deliberate scalar, so the mixed-mode operators are
-kept for it. `+`, `-`, `*`, `/` with a `rational` operand return `rational`
-(staying in the exact domain), going through `rational::operator op` and
-unwrapping the checked optional via `.value()` (panics on overflow).
+There is **no** `bound op rational` mixed-mode operator. To scale a bound by an
+exact non-dyadic factor, wrap the factor in a point-bound and multiply
+bound-by-bound; the result stays a bound (which a rounding target snaps):
 
 ```cpp
-money tax = sub * rational{8, 100};   // bound × rational → rational → money (round)
-auto half = sub * 0.5_r;              // bound × rational → rational (exact)
+money tax{ sub * just<frac<8, 100>> };   // bound × point-bound → bound → money
+auto    half = sub * just<frac<1, 2>>;   // exact ×½, stays a bound
 ```
 
-For division specifically, the `bound / rational` form **bypasses the
-`bound / bound` machinery** described under [Division](#division) entirely: it
-doesn't pick between the three paths, doesn't return `slim::optional`, and
-panics on rational overflow via `.value()` instead of surfacing it as
-`nullopt`. Use it when you have a *runtime `rational`* on the RHS known to be
-non-zero; use `bound / bound` when you want the optional-protected, three-path
-machinery (which now also returns a plain bound when the divisor's grid
-excludes zero — see [Division](#division)).
+`just<frac<N, D>>` is the exact-fraction point-bound; `0.5_b` / `2_b` cover
+dyadic factors. Read an exact value back out with `numerator()` /
+`denominator()` (see [Conversions](conversions.md)) — never a `rational`.
+
+## Vector helpers: `dot` / `cross` / `lerp`
+
+For 2-D geometry that would otherwise tempt you out of bound-space, the
+library ships three widening helpers. Each composes `+`/`*` so the result grid
+is computed at compile time and overflow is impossible — no scalar ever
+appears.
+
+```cpp
+auto d = bnd::dot  (ax, ay, bx, by);   // ax*bx + ay*by
+auto z = bnd::cross(ax, ay, bx, by);   // ax*by - ay*bx  (2-D "which side")
+auto p = bnd::lerp (a, b, t);          // a + (b - a) * t   (t a [0,1] bound)
+```
+
+A sqrt-free squared distance is just `dot(dx, dy, dx, dy)`; compare it against
+a squared-radius point-bound to test a hit without leaving the bounded world.
+See [`usebound/spacesim`](../../usebound) for these driving collision and
+autopilot steering entirely in bound-space.
 
 ## Rounding
 
@@ -262,8 +274,8 @@ range is fixed by R's grid and can't exceed it.
 
 ## Compound assignment
 
-Compound assignment works with arithmetic scalars, `rational`, and other
-bounds with compatible grids:
+Compound assignment works with integer / floating-point scalars and with
+other bounds on compatible grids:
 
 ```cpp
 using pct = bound<{0, 100}, clamp>;
@@ -278,11 +290,13 @@ x %= 10;            // x == 3
 x--;                // x == 3
 ```
 
-The `arithmetic` overload now dispatches per RHS kind:
+Unlike binary `bound op scalar` (which is ill-formed — a bare scalar has no
+grid), compound assignment **does** accept a bare scalar: it mutates in place
+rather than manufacturing a new value/type, so it never leaves the bounded
+world. The overload dispatches per RHS kind:
 - **integral** — integer-fast path with overflow detection.
-- **rational** — lift `*this` to rational, run the checked op, snap back via
-  the bound's policy.
-- **floating-point** — route through `double`.
+- **floating-point** — route through `double`, then snap via the bound's policy.
+- **another bound** — widen, then narrow back through the policy.
 
 `x /= 0` triggers the bound's divide-by-zero handling (throws, sets the
 error code, or is silent under `ignore_zero` — see
@@ -293,25 +307,9 @@ zero check used by `bound / bound`; see
 ```cpp
 using rn = bound<{{0, 100}, notch<1, 100>}, round_nearest>;
 rn a{0.5};
-a += rational{1, 4};   // 0.75 — exact rational accumulation, snap to 1/100 grid
-a *= 0.5;              // 0.375 — double path, snap on assign
+a += just<frac<1, 4>>;  // 0.75 — exact bound-space accumulation, snaps to 1/100
+a *= 0.5;               // 0.375 — double path, snap on assign
 ```
-
-### `rational` compound assignment
-
-`rational` itself has `operator+=, -=, *=, /=` taking `rational`,
-`arithmetic`, or `slim::optional<rational>` RHS:
-
-```cpp
-rational sum{0};
-sum += rational{1, 3};                       // chained .value() unwrap
-sum *= 5;                                    // arithmetic RHS
-sum += rational{1, 4} * rational{1, 2};      // optional<rational> RHS auto-unwraps
-```
-
-The compound op unwraps the checked rational op's optional with `.value()` —
-overflow surfaces as `slim::bad_optional_access` rather than silent UB,
-matching the panic semantics of `rational::mul_unchecked`.
 
 ## Variadic folds
 

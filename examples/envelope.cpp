@@ -27,10 +27,12 @@ int main()
   std::cout << "Exponential decay envelope (τ = 1):\n";
   std::cout << "    t       exp(-t)\n";
   for (int n = 0; n <= 8; ++n) {
-    // -t/τ — negative time means decay. We sweep t = 0, 0.25, …, 2.0.
-    time_t neg_t{rational{-n, 4}};
+    // -t/τ — negative time means decay. We sweep t = 0, 0.25, …, 2.0. The
+    // fractional time comes from an integer draw divided by a grid'd 4, all in
+    // bound-space (no rational): n/4 is `-neg_t`.
+    time_t neg_t{bound<{-8, 0}>{-n} / just<4>};
     amp_t  a{math::exp(neg_t)};
-    std::cout << "    " << rational{n, 4} << "    " << a << "\n";
+    std::cout << "    " << -neg_t << "    " << a << "\n";
   }
 
   // Log frequency sweep: starting at 20 Hz, double every "octave" of steps.
@@ -44,11 +46,11 @@ int main()
   // Multiplier 2^(step/4) ∈ [1, 16].
   using mult_t     = bound<{{0, 16}, notch<1, 16384>}, round_nearest>;
 
-  constexpr rational base_freq{20};
+  constexpr auto base_freq = just<20>;
   for (int step = 0; step <= 16; ++step) {
-    exponent_t e{rational{step, 4}};
+    exponent_t e{bound<{0, 16}>{step} / just<4>};
     mult_t     m{math::exp2(e)};
-    rational   freq = just<base_freq> * m;
+    auto       freq = base_freq * m;
     std::cout << "    " << step
               << "       " << freq << "\n";
   }

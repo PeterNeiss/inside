@@ -27,7 +27,7 @@ namespace bnd
   using umax = std::uint64_t;
   using imax = std::int64_t;
 
-  struct rational;
+  namespace detail { struct rational; }
 
   // Strict `<` reserves the type's max as the sentinel slot used by
   // slim::optional<bound>. Mirrors smallest_int_for's `+1` margin on the
@@ -40,7 +40,7 @@ namespace bnd
   // can never collide with the sentinel slot — no need to recheck at runtime.
   template <std::uintmax_t N>
   using smallest_uint_for =
-    std::conditional_t<(N == 0), rational,
+    std::conditional_t<(N == 0), bnd::detail::rational,
     std::conditional_t<(N < UINT8_MAX),  std::uint8_t,
     std::conditional_t<(N < UINT16_MAX), std::uint16_t,
     std::conditional_t<(N < UINT32_MAX), std::uint32_t,
@@ -65,17 +65,17 @@ namespace bnd
     if constexpr (std::is_same_v<T, std::int16_t>)  return "int16_t";
     if constexpr (std::is_same_v<T, std::int32_t>)  return "int32_t";
     if constexpr (std::is_same_v<T, std::int64_t>)  return "int64_t";
-    if constexpr (std::is_same_v<T, rational>) return "rational";
+    if constexpr (std::is_same_v<T, bnd::detail::rational>) return "rational";
     return "unknown";
   }
 
   template<typename T>
-  concept arithmetic = std::integral<T> || std::floating_point<T> || std::same_as<rational,T>;
+  concept arithmetic = std::integral<T> || std::floating_point<T> || std::same_as<bnd::detail::rational,T>;
 
   // Subset of arithmetic that excludes integrals — the "real-valued" rhs
   // types that need the rational-arithmetic assignment specialization.
   template<typename T>
-  concept real = std::floating_point<T> || std::same_as<rational, T>;
+  concept real = std::floating_point<T> || std::same_as<bnd::detail::rational, T>;
 
   template <std::signed_integral V>
   constexpr umax safe_abs(V value)

@@ -6,6 +6,7 @@
 #include <type_traits>
 
 using namespace bnd;
+using namespace bnd::detail;
 
 TEST_CASE("_r literal: integer forms", "[literal][r-literal]")
 {

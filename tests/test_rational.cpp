@@ -6,6 +6,7 @@
 #include <limits>
 
 using namespace bnd;
+using namespace bnd::detail;
 
 namespace
 {

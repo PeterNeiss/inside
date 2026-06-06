@@ -15,6 +15,7 @@
 #include <iostream>
 
 using namespace bnd;
+using namespace bnd::detail;
 
 namespace
 {

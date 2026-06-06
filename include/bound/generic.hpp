@@ -42,7 +42,7 @@ namespace bnd
   using raw_t = typename B::raw_type;
 
   template <boundable B>
-  inline constexpr bool IsRawRational = std::is_same_v<raw_t<B>, rational>;
+  inline constexpr bool IsRawRational = std::is_same_v<raw_t<B>, bnd::detail::rational>;
 
   template <boundable B>
   inline constexpr grid Grid = []<grid G, policy_flag P>(bound<G, P>){ return G; } (B{});
@@ -64,13 +64,13 @@ namespace bnd
       {std::numeric_limits<I>::lowest(), std::numeric_limits<I>::max()};
 
   template <boundable B>
-  inline constexpr rational Lower = []<grid G, policy_flag P>(bound<G, P>){ return G.Interval.Lower; } (B{});
+  inline constexpr bnd::detail::rational Lower = []<grid G, policy_flag P>(bound<G, P>){ return G.Interval.Lower; } (B{});
 
   template <boundable B>
-  inline constexpr rational Upper = []<grid G, policy_flag P>(bound<G, P>){ return G.Interval.Upper; } (B{});
+  inline constexpr bnd::detail::rational Upper = []<grid G, policy_flag P>(bound<G, P>){ return G.Interval.Upper; } (B{});
 
   template <boundable B>
-  inline constexpr rational Notch = []<grid G, policy_flag P>(bound<G, P>){ return G.Notch; } (B{});
+  inline constexpr bnd::detail::rational Notch = []<grid G, policy_flag P>(bound<G, P>){ return G.Notch; } (B{});
 
   // True when R's interval cannot contain zero — i.e. division by an R can
   // never be division by zero. Decided purely from the grid, so `a / b` can
@@ -112,9 +112,9 @@ namespace bnd
   // here (not in casts.hpp) so the many core-header users — assignment, compare,
   // division, range, predicates — resolve it by ordinary lookup rather than ADL.
   template <numeric N>
-  [[nodiscard]] constexpr rational as_rational(N v)
+  [[nodiscard]] constexpr bnd::detail::rational as_rational(N v)
   {
-    if constexpr (arithmetic<N>) return rational{v};
+    if constexpr (arithmetic<N>) return bnd::detail::rational{v};
     else                         return v;
   }
 
@@ -126,7 +126,7 @@ namespace bnd
   }
 
   template <boundable B>
-  constexpr raw_t<B> raw_cast(rational value)
+  constexpr raw_t<B> raw_cast(bnd::detail::rational value)
   {
     if constexpr (IsRawRational<B>)
       return value;
@@ -180,10 +180,10 @@ namespace bnd
 
   // raw → rational, integer math only. Pre: HasQFormatFastPath<B>.
   template <boundable B>
-  constexpr rational q_format_decode(B b) noexcept
+  constexpr bnd::detail::rational q_format_decode(B b) noexcept
   {
     constexpr imax nd = abs_den(Notch<B>.Denominator);
-    return rational{raw_imax(b) + LowerImax<B> * nd, nd};
+    return bnd::detail::rational{raw_imax(b) + LowerImax<B> * nd, nd};
   }
 
   // Library-internal extraction helper. Always succeeds (returns `imax`
@@ -208,16 +208,16 @@ namespace bnd
       b.Raw = q_format_encode<B>(val);
     else // IsNotchStorage, generic rational path
     {
-      auto offset = (rational{val} - Lower<B>) / Notch<B>;
+      auto offset = (bnd::detail::rational{val} - Lower<B>) / Notch<B>;
       b.Raw = raw_cast<B>(offset.value().Numerator);
     }
   }
 
   template <boundable B>
-  inline constexpr umax LowerIndex = (Lower<B>/Notch<B>).value_or(0_r).Numerator;
+  inline constexpr umax LowerIndex = (Lower<B>/Notch<B>).value_or(bnd::detail::rational{0}).Numerator;
 
   template <boundable B>
-  inline constexpr umax UpperIndex = (Upper<B>/Notch<B>).value_or(0_r).Numerator;
+  inline constexpr umax UpperIndex = (Upper<B>/Notch<B>).value_or(bnd::detail::rational{0}).Numerator;
 
   //---------------------------------------------------------------------------
   // RawLo / RawHi / raw_from_offset
@@ -226,7 +226,7 @@ namespace bnd
   // notch-offset storage the raw is a 0-based index, so `RawLo == 0`. For
   // direct storage the raw IS the value, so `RawLo == LowerImax<B>` — and
   // every "value as L-offset" needs `RawLo<L>` added back before storing.
-  // Without this, e.g. `bound<{-40, 60}>{-40_r}` would record
+  // Without this, e.g. `bound<{-40, 60}>{-rational{40}}` would record
   // Raw=0 instead of Raw=-40.
   //---------------------------------------------------------------------------
   template <boundable B>
@@ -369,8 +369,8 @@ namespace bnd
   template <boundable B>
   [[nodiscard]] constexpr raw_t<B> sentinel_raw()
   {
-    if constexpr (std::is_same_v<raw_t<B>, rational>)
-      return rational::make_sentinel();
+    if constexpr (std::is_same_v<raw_t<B>, bnd::detail::rational>)
+      return bnd::detail::rational::make_sentinel();
     else if constexpr (std::signed_integral<raw_t<B>>)
       return std::numeric_limits<raw_t<B>>::min();
     else

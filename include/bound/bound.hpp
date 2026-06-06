@@ -181,8 +181,8 @@ namespace bnd
     constexpr operator imax() const
       requires (abs_den(G.Notch.Denominator) == 1
              && G.Notch.Numerator != 0
-             && G.Interval.Lower >= rational{std::numeric_limits<imax>::min()}
-             && G.Interval.Upper <= rational{std::numeric_limits<imax>::max()})
+             && G.Interval.Lower >= bnd::detail::rational{std::numeric_limits<imax>::min()}
+             && G.Interval.Upper <= bnd::detail::rational{std::numeric_limits<imax>::max()})
     { return to_value(*this); }
 
     // Implicit size_t conversion for index-shaped bounds. Lets
@@ -195,7 +195,7 @@ namespace bnd
       requires (abs_den(G.Notch.Denominator) == 1
              && G.Notch.Numerator != 0
              && G.Interval.Lower >= 0
-             && G.Interval.Upper <= rational{std::numeric_limits<imax>::max()})
+             && G.Interval.Upper <= bnd::detail::rational{std::numeric_limits<imax>::max()})
     { return static_cast<std::size_t>(to_value(*this)); }
 
     constexpr explicit operator double() const
@@ -203,7 +203,7 @@ namespace bnd
                     | round_half_even | ignore_round)) != 0)
     { return G.raw_to_double(Raw); }
 
-    constexpr operator rational() const
+    constexpr operator bnd::detail::rational() const
     {
       if constexpr (G.Interval.Lower == G.Interval.Upper)
         return G.Interval.Lower;
@@ -235,17 +235,17 @@ namespace bnd
 
       constexpr bool needs_neg_check = (Lower<bound> < 0);
       constexpr bool needs_max_check =
-          (Upper<bound> > rational{std::numeric_limits<T>::max()});
+          (Upper<bound> > bnd::detail::rational{std::numeric_limits<T>::max()});
 
       if constexpr (!needs_neg_check && !needs_max_check)
         return static_cast<T>(to_value(*this));
       else
       {
-        rational r = *this;
+        bnd::detail::rational r = *this;
         if constexpr (needs_neg_check)
           if (r < 0) return slim::unexpected{errc::domain_error};
         if constexpr (needs_max_check)
-          if (r > rational{std::numeric_limits<T>::max()})
+          if (r > bnd::detail::rational{std::numeric_limits<T>::max()})
             return slim::unexpected{errc::overflow};
         return static_cast<T>(r.trunc());
       }
@@ -257,20 +257,20 @@ namespace bnd
       if (is_sentinel_under_policy()) return slim::unexpected{errc::overflow};
 
       constexpr bool needs_min_check =
-          (Lower<bound> < rational{std::numeric_limits<T>::min()});
+          (Lower<bound> < bnd::detail::rational{std::numeric_limits<T>::min()});
       constexpr bool needs_max_check =
-          (Upper<bound> > rational{std::numeric_limits<T>::max()});
+          (Upper<bound> > bnd::detail::rational{std::numeric_limits<T>::max()});
 
       if constexpr (!needs_min_check && !needs_max_check)
         return static_cast<T>(to_value(*this));
       else
       {
-        rational r = *this;
+        bnd::detail::rational r = *this;
         if constexpr (needs_min_check)
-          if (r < rational{std::numeric_limits<T>::min()})
+          if (r < bnd::detail::rational{std::numeric_limits<T>::min()})
             return slim::unexpected{errc::overflow};
         if constexpr (needs_max_check)
-          if (r > rational{std::numeric_limits<T>::max()})
+          if (r > bnd::detail::rational{std::numeric_limits<T>::max()})
             return slim::unexpected{errc::overflow};
         return static_cast<T>(r.trunc());
       }
@@ -283,11 +283,11 @@ namespace bnd
       return static_cast<T>(G.raw_to_double(Raw));
     }
 
-    template <std::same_as<rational> T>
+    template <std::same_as<bnd::detail::rational> T>
     [[nodiscard]] constexpr slim::expected<T, errc> to() const
     {
       if (is_sentinel_under_policy()) return slim::unexpected{errc::overflow};
-      return rational{*this};
+      return bnd::detail::rational{*this};
     }
 
     // as<T>() — non-expected sibling of to<T>(). Returns T directly and lets
@@ -307,14 +307,14 @@ namespace bnd
     // fraction object. For an integer-notch bound, denominator() == 1.
     [[nodiscard]] constexpr imax numerator() const
     {
-      rational r = as_rational(*this);
+      bnd::detail::rational r = as_rational(*this);
       return (r.Denominator < 0) ? -static_cast<imax>(r.Numerator)
                                  :  static_cast<imax>(r.Numerator);
     }
 
     [[nodiscard]] constexpr imax denominator() const
     {
-      rational r = as_rational(*this);
+      bnd::detail::rational r = as_rational(*this);
       return static_cast<imax>(abs_den(r.Denominator));
     }
 
@@ -546,8 +546,8 @@ namespace bnd
       if constexpr (std::integral<A>)
         return integer_compound_assign(static_cast<imax>(rhs),
             add_overflow, wrap_add_, "operator+= overflow");
-      else if constexpr (std::same_as<A, rational>)
-        return assign_op_result(rational{*this} + rhs);
+      else if constexpr (std::same_as<A, bnd::detail::rational>)
+        return assign_op_result(bnd::detail::rational{*this} + rhs);
       else  // floating_point — route through double, snap via policy
         return *this = static_cast<double>(*this) + static_cast<double>(rhs);
     }
@@ -562,8 +562,8 @@ namespace bnd
       if constexpr (std::integral<A>)
         return integer_compound_assign(static_cast<imax>(rhs),
             sub_overflow, wrap_sub_, "operator-= overflow");
-      else if constexpr (std::same_as<A, rational>)
-        return assign_op_result(rational{*this} - rhs);
+      else if constexpr (std::same_as<A, bnd::detail::rational>)
+        return assign_op_result(bnd::detail::rational{*this} - rhs);
       else  // floating_point
         return *this = static_cast<double>(*this) - static_cast<double>(rhs);
     }
@@ -586,8 +586,8 @@ namespace bnd
       if constexpr (std::integral<A>)
         return integer_compound_assign(static_cast<imax>(rhs),
             mul_overflow, wrap_mul_, "operator*= overflow");
-      else if constexpr (std::same_as<A, rational>)
-        return assign_op_result(rational{*this} * rhs);
+      else if constexpr (std::same_as<A, bnd::detail::rational>)
+        return assign_op_result(bnd::detail::rational{*this} * rhs);
       else  // floating_point
         return *this = static_cast<double>(*this) * static_cast<double>(rhs);
     }
@@ -596,17 +596,17 @@ namespace bnd
     constexpr bound& operator/=(A rhs)
     {
       // Rational stores zero canonically as {0, 1}; the {0, 0} sentinel
-      // would compare unequal to 0_r. Check Numerator == 0 to catch
+      // would compare unequal to rational{0}. Check Numerator == 0 to catch
       // every canonical zero independent of representation.
       bool is_zero;
-      if constexpr (std::same_as<A, rational>) is_zero = (rhs.Numerator == 0);
+      if constexpr (std::same_as<A, bnd::detail::rational>) is_zero = (rhs.Numerator == 0);
       else                                     is_zero = (rhs == A{0});
       if (is_zero) { report_div_by_zero("operator/= division by zero"); return *this; }
 
       if constexpr (std::integral<A>)
         return assign_imax(to_value(*this) / static_cast<imax>(rhs));
-      else if constexpr (std::same_as<A, rational>)
-        return assign_op_result(rational{*this} / rhs);
+      else if constexpr (std::same_as<A, bnd::detail::rational>)
+        return assign_op_result(bnd::detail::rational{*this} / rhs);
       else  // floating_point
         return *this = static_cast<double>(*this) / static_cast<double>(rhs);
     }
@@ -674,7 +674,7 @@ namespace bnd
     if constexpr (!IsRawRational<B> && IsDirectStorage<B>)
       return raw_imax(lhs) <=> static_cast<imax>(rhs);
     else
-      return as_rational(lhs) <=> rational{rhs};
+      return as_rational(lhs) <=> bnd::detail::rational{rhs};
   }
 
   template <boundable B, arithmetic A>
@@ -683,7 +683,7 @@ namespace bnd
     if constexpr (!IsRawRational<B> && IsDirectStorage<B>)
       return raw_imax(lhs) == static_cast<imax>(rhs);
     else
-      return as_rational(lhs) == rational{rhs};
+      return as_rational(lhs) == bnd::detail::rational{rhs};
   }
 
   //---------------------------------------------------------------------------
@@ -709,7 +709,7 @@ namespace bnd
   // since unary `operator-` on bound returns a point on the negated grid.
   //---------------------------------------------------------------------------
   template<char... Chars>
-  constexpr auto operator""_b() { return just<_detail::parse_b_literal<Chars...>()>; }
+  constexpr auto operator""_b() { return just<detail::_detail::parse_b_literal<Chars...>()>; }
 
   //---------------------------------------------------------------------------
   // operator++ / operator-- for slim::optional<bound>
@@ -758,7 +758,7 @@ namespace slim
     using raw = typename bnd::bound<G, P>::raw_type;
     // Rational uses a broader check (any zero denominator) than equality
     // against the canonical {1, 0} sentinel.
-    if constexpr (std::is_same_v<raw, bnd::rational>)
+    if constexpr (std::is_same_v<raw, bnd::detail::rational>)
       return v.Raw.Denominator == 0;
     else
       return v.Raw == bnd::sentinel_raw<bnd::bound<G, P>>();

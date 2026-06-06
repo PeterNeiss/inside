@@ -85,8 +85,8 @@ namespace bnd
       constexpr value_type operator*() const
       {
         // value = Lower + index * Notch  (always exact: lies on the grid).
-        rational val = (G.Interval.Lower
-                        + (rational{index} * G.Notch).value()).value();
+        bnd::detail::rational val = (G.Interval.Lower
+                        + (bnd::detail::rational{index} * G.Notch).value()).value();
         return value_type{val};
       }
 

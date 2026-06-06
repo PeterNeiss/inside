@@ -6,6 +6,7 @@
 #include "bound/formats.hpp"
 
 using namespace bnd;
+using namespace bnd::detail;
 
 //---------------------------------------------------------------------------
 // The whole point: each predefined type lands on its native byte width.

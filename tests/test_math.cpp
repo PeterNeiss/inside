@@ -7,6 +7,7 @@
 #include <limits>
 
 using namespace bnd;
+using namespace bnd::detail;
 
 TEST_CASE("safe_abs handles INT_MIN without UB", "[math][safe_abs]")
 {

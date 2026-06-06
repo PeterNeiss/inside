@@ -45,12 +45,12 @@ int main()
   // mul_all folds three multipliers into one — grid widens each step.
   auto chain = mul_all(crit, vuln, pen);
   // chain has interval [0, 64] notch 1/4096 — convert to a hit damage by
-  // scaling base. Round to nearest integer for the actual HP deduction.
-  // `base * chain` returns a plain `bound` (the static-overflow check on
-  // multiplication elides the optional wrapper because the result grid's
-  // raw representation provably cannot overflow). Implicit `operator
-  // rational()` lets us reach `.round()` directly.
-  auto dealt = rational{base * chain}.round();
+  // scaling base, then snap to an integer HP deduction. `base * chain` returns
+  // a plain `bound` (the static-overflow check on multiplication elides the
+  // optional wrapper). Assigning it into a `round_nearest` integer grid rounds
+  // it to the nearest whole point of damage — no rational, no cast.
+  using dealt_t = bound<{0, 3200}, round_nearest>;
+  imax dealt = dealt_t{base * chain}.numerator();   // integer damage (denominator 1)
   std::cout << "damage chain (2.0 * 1.25 * 1.5) on base 10 = " << dealt << "\n";
 
   hp.on_clamp([&](auto& self, auto overshoot) {

@@ -34,7 +34,7 @@ namespace bnd
   {
     if constexpr (IsRawRational<B>)
       return false;                       // rational raw stores any value exactly
-    rational r = as_rational(value);
+    bnd::detail::rational r = as_rational(value);
     if (not Interval<B>.includes(r))
       return false;                       // out-of-range — overflow, not truncation
     // In-range: truncation occurs iff (value - Lower) / Notch is non-integer.

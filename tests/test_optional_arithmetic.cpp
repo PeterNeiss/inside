@@ -7,6 +7,7 @@
 #include <string_view>
 
 using namespace bnd;
+using namespace bnd::detail;
 
 namespace
 {

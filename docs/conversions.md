@@ -1,15 +1,21 @@
 # Conversions
 
-This page covers the conversion surface between `bound`, `rational`, and
-scalar arithmetic types — the named casts, the conversion predicates, the
-implicit conversion operators, and the idioms for writing literal values
-into bounds.
+This page covers the conversion surface between `bound` and scalar
+arithmetic types — the exact integer-pair read-out, the named casts, the
+conversion predicates, the implicit conversion operators, and the idioms for
+writing literal values into bounds.
+
+> **Note.** The exact fractional representation type is an internal
+> implementation detail (`bnd::detail::rational`) and is **not** part of the
+> public surface. You never name it, receive it, or operate on it: scalars
+> enter a bound through construction or `_b` / `just<>` / `frac<N,D>`, and
+> exact values come back out through `numerator()` / `denominator()`. Stay in
+> bound-space for arithmetic — that is where the no-overflow guarantee lives.
 
 ## Implicit operator conversions on `bound`
 
 | Conversion | When it applies | Purpose |
 |---|---|---|
-| `operator rational()` (implicit) | always | exact value extraction — preferred at API boundaries that take `arithmetic` |
 | `operator imax()` (implicit) | integer-notch grid (notch denom = 1) with Lower ≥ imax_min and Upper ≤ imax_max | drop-in for `int64_t` contexts (accumulators, indexing into signed-size containers) |
 | `operator std::size_t()` (implicit) | integer-notch grid with Lower ≥ 0 and Upper ≤ imax_max | drop-in for `vec[bound_idx]` without `-Wsign-conversion` noise |
 | `operator double()` (explicit) | grid carries a rounding policy (`round_*` or `ignore_round`) | floating-point arithmetic / printf |
@@ -53,15 +59,26 @@ narrow b{42};
 auto v = b.as<std::int16_t>();   // 42; throws on sentinel-state / out-of-range
 ```
 
-For `rational`, prefer the named reductions over `static_cast<int>(r)`:
+## Exact read-out: `numerator()` / `denominator()`
+
+A fractional (Q-format) bound holds an exact value. To read it back out
+exactly — without naming the internal representation — use the integer-pair
+accessors. The numerator carries the sign; the denominator is positive; an
+integer-notch bound reports a denominator of 1.
 
 ```cpp
-rational r{7u, 2};      // 3.5
-r.trunc();              //  3   (toward zero)
-r.floor();              //  3   (toward −∞)
-r.ceil();               //  4   (toward +∞)
-r.round();              //  4   (half away from zero)
+bound<{{-4, 4}, notch<1, 16>}, round_nearest> g{0.1875};
+g.numerator();     //  3
+g.denominator();   // 16        →  exactly 3/16
+
+bound<{0, 100}> hp{42};
+hp.numerator();    // 42
+hp.denominator();  //  1
 ```
+
+For an *approximate* scalar, `to<double>()` / `as<double>()` (when the grid
+carries a rounding policy) and the rounded `to<intN>()` are the right tools;
+`numerator()`/`denominator()` are the only **exact** read-out.
 
 ## Free-function casts
 
@@ -136,53 +153,38 @@ side effects. See
 [examples/histogram.cpp](../examples/histogram.cpp) for these as outlier
 filters around a sample-collection loop.
 
-## `rational` helpers
+## Idiom: writing literal values into bounds
 
-`rational` exposes a few standalone helpers in addition to the arithmetic
-operators:
-
-```cpp
-rational::inv(rational{3u, 4});         // slim::optional<rational> -> 4/3
-rational::inv(0_r);                     // nullopt (zero numerator)
-
-divides_evenly(rational{6u}, rational{2u});   // true
-divides_evenly(rational{7u}, rational{2u});   // false (7/2 is non-integer)
-```
-
-`inv` returns `nullopt` when the result would put the original numerator
-into the denominator slot but it doesn't fit in `imax`. `divides_evenly`
-treats division by zero as `true` (convention: everything divides 0 evenly).
-
-## Idiom: `_r` literal vs `rational{N}` vs bare literal
-
-Three shapes for writing a literal rational; pick the one that matches the
-context.
+Pick the shape that matches the context. All stay in bound-space — none
+names the internal representation.
 
 | Shape | When to use |
 |---|---|
-| Bare literal (`0`, `0.5`, `100`) | The receiving API accepts `arithmetic` — comparisons against rational, bound construction with a round policy, scalar arguments to `add` / `clamp_round` / etc. The lightest form. |
-| `_r` literal (`0_r`, `0.5_r`, `100_r`) | A `rational` value is *required* — initializing a `rational` variable, NTTPs, the LHS/RHS of `rational::add_unchecked`, etc. Drop-in for `rational{N}` and `rational{0.5}`. |
-| `rational{N, D}` constructor | The fraction isn't a binary-exact dyadic — `rational{8, 100}`, `rational{1, 3}`, `rational{1, 16384}`. There's no single-literal form because `0.08` is not exactly 8/100 in double. |
+| Bare literal (`0`, `0.5`, `100`) | Constructing a bound (`pct{42}`, `gain{0.5}`), comparisons (`b == 5`, `b < 50`), or compound assignment (`b += 1`). Dyadic decimals (`0.5`, `0.25`, `0x1p-8`) are binary-exact and fine as grid endpoints. |
+| `_b` literal (`0`, `0.5_b`, `0xff_b`) | A *bound* operand for arithmetic — `a + 1_b`, `a * 2_b`, `b > 0.5_b`. Gives a scalar a grid so it joins bound arithmetic; the result stays a bound. The parse is exact (no double round-trip). |
+| `just<V>` | A compile-time point-bound from any structural NTTP value — `just<2>`, `just<math::pi>`. Same role as `_b` for non-literal constants. |
+| `notch<N, D>` | The grid **step** in a `bound<{...}>` spec — `notch<1, 16384>`. |
+| `frac<N, D>` | An exact **non-dyadic** grid endpoint that no floating literal can spell — `frac<-6, 5>` for −1.2, `frac<3, 5>` for 0.6. Signed numerator. |
 
 Examples:
 
 ```cpp
-// Comparison against rational — bare literal is enough.
-static_assert(Lower<my_grid> == 0);
-static_assert(Notch<my_grid> == 1);
+// Construct + compare — bare / _b literals.
+using pct = bound<{0, 100}>;
+pct x = 42;
+auto y = x + 1_b;                 // bound + bound, stays bounded
+if (x > 50) { ... }              // bare scalar compare is fine
 
-// Need an actual rational object — use the literal.
-rational two_thirds = 2_r / 3;
-auto half = 0.5_r;
+// Exact non-dyadic grid endpoints — frac<N,D> (1.2 and 0.6 are not dyadic):
+using db_div20 = bound<{{frac<-6, 5>, frac<3, 5>}, notch<1, 40>}, round_nearest>;
 
-// Non-dyadic fraction — two-arg constructor.
-constexpr rational tax_rate{8, 100};   // exact 2/25
-constexpr rational q14{1, 16384};
+// A runtime fraction n/16 without leaving bound-space: divide by a grid'd 16.
+vel_t v{ bound<{-12, 12}>{n} / just<16> };
 ```
 
-`0.5_r` is exactly `rational{1, 2}` because `0.5` is binary-exact. Avoid
-writing `0.08_r` if you mean 8/100 — the `long double` literal `0.08`
-isn't exactly 2/25, so `0.08_r` is a rational with a 50-bit-ish denominator.
+Dyadic decimals are exact as plain literals: `0.5` is exactly 1/2, `0x1p-8`
+is exactly 1/256. Reach for `frac<N, D>` only when the value is *not* a
+binary fraction (e.g. 1/3, 8/100, −6/5).
 
 ## Comparing bounds
 
@@ -201,11 +203,11 @@ representation chosen at compile time — no implicit narrowing.
 
 ## `std::print` / `std::format` integration
 
-`bound/formatter.hpp` ships `std::formatter` specializations for both
-`bound<G, P>` and `rational`. Empty `{}` matches `operator<<` (exact rational
-output); non-empty specs route by storage shape — integer grids go through
-`std::formatter<imax>` (`{:>4}`, `{:#x}`, `{:b}`, …), fractional grids
-through `std::formatter<double>` (`{:.2f}`, `{:e}`).
+`bound/formatter.hpp` ships a `std::formatter` specialization for
+`bound<G, P>`. Empty `{}` matches `operator<<` (exact value — a whole number
+or an `N/D` fraction); non-empty specs route by storage shape — integer grids
+go through `std::formatter<imax>` (`{:>4}`, `{:#x}`, `{:b}`, …), fractional
+grids through `std::formatter<double>` (`{:.2f}`, `{:e}`).
 
 ```cpp
 #include "bound/formatter.hpp"
@@ -216,7 +218,7 @@ std::println("HP = {}",       hp);       // 42
 std::println("HP = {:>5}",    hp);       //    42
 std::println("HP = {:#04x}",  hp);       // 0x2a
 
-bound<{{0, 1}, notch<1, 16>}, round_nearest> g{0.625_r};
+bound<{{0, 1}, notch<1, 16>}, round_nearest> g{0.625};
 std::println("gain = {}",    g);          // 5/8
 std::println("gain = {:.3f}", g);          // 0.625
 ```

@@ -9,6 +9,7 @@
 #include <vector>
 
 using namespace bnd;
+using namespace bnd::detail;
 
 namespace
 {

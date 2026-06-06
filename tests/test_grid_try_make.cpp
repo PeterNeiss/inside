@@ -3,6 +3,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 using namespace bnd;
+using namespace bnd::detail;
 
 TEST_CASE("grid::try_make accepts well-formed grids", "[grid][try_make]")
 {

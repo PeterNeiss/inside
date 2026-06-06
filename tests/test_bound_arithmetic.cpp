@@ -7,6 +7,7 @@
 #include <type_traits>
 
 using namespace bnd;
+using namespace bnd::detail;
 
 TEST_CASE("bound add", "[bound][arithmetic][add]")
 {

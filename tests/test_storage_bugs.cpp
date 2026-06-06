@@ -9,6 +9,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 using namespace bnd;
+using namespace bnd::detail;
 
 //---------------------------------------------------------------------------
 // Bug A — addition.hpp:90

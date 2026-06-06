@@ -10,6 +10,7 @@
 
 namespace rng = std::ranges;
 using namespace bnd;
+using namespace bnd::detail;
 
 namespace
 {

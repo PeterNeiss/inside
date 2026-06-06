@@ -35,7 +35,7 @@ namespace bnd
     return str;
   }
 
-  inline std::ostream& operator<<(std::ostream& stream, rational r)
+  inline std::ostream& operator<<(std::ostream& stream, bnd::detail::rational r)
   {
     stream << bnd::to_string(r);
     return stream;

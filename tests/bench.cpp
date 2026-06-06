@@ -10,6 +10,7 @@
 #include "bound/cmath.hpp"
 
 using namespace bnd;
+using namespace bnd::detail;
 
 //---------------------------------------------------------------------------
 // compiler barrier

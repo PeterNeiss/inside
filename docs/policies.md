@@ -85,7 +85,7 @@ stored value) plus an event-specific payload.
 | `on_wrap(λ)`     | assignment | a narrowed value leaves the grid and `wrap` folds it (carry) | `λ(bound&, carry)` |
 | `on_sentinel(λ)` | assignment | an out-of-range write under `sentinel` stores the empty slot | `λ(bound&, original_value)` |
 | `on_error(λ)`    | assignment | a domain / rounding error under `checked` (replaces the throw) | `λ(bound&, errc, std::string_view msg)` |
-| `on_overflow(λ)` | binary arithmetic | a rational/imax result overflows, or `div`/`mod` divides by zero | `λ(bound&, errc)` |
+| `on_overflow(λ)` | binary arithmetic | a fractional or imax result overflows, or `div`/`mod` divides by zero | `λ(bound&, errc)` |
 
 The first four fire on the **assignment** path — narrowing a value *into* a
 bound: a direct `=`, the `.on_*()= …` / `with(…) = …` proxies, and the
@@ -118,7 +118,7 @@ seconds.on_wrap([&](auto& self, auto carry) {
 ```
 
 The free arithmetic functions accept the same factories — useful for catching
-divide-by-zero or rational overflow without throwing:
+divide-by-zero or arithmetic overflow without throwing:
 
 ```cpp
 auto q = div(d, z, on_overflow([&](auto& res, errc c) {
@@ -127,10 +127,10 @@ auto q = div(d, z, on_overflow([&](auto& res, errc c) {
 }));
 ```
 
-### `policy_ref` compound assignment with `real` RHS
+### `policy_ref` compound assignment with a real or bound RHS
 
-`x.on_wrap(...) += rhs` (and `-=`, `*=`, `/=`) accept `real` RHS — `rational`,
-`float`, `double`. So a runtime `double` delta flows straight through the
+`x.on_wrap(...) += rhs` (and `-=`, `*=`, `/=`) accept a `float` / `double` RHS
+or another bound. So a runtime `double` delta flows straight through the
 wrap callback without an intermediate cast:
 
 ```cpp

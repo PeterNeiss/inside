@@ -23,6 +23,7 @@
 #include <type_traits>
 
 using namespace bnd;
+using namespace bnd::detail;
 
 //---------------------------------------------------------------------------
 // rational

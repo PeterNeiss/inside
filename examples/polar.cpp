@@ -24,7 +24,7 @@ int main()
   // We accept inputs in [-1, 1], so mag_sq ∈ [0, 2], mag ∈ [0, √2].
   using magsq_t = bound<{{0, 2}, notch<1, 16384>}, round_nearest>;
 
-  struct point { rational x; rational y; const char* label; };
+  struct point { coord_t x; coord_t y; const char* label; };
   const point points[] = {
     {  1,  0,    "+x axis      " },
     {  0,  1,    "+y axis      " },
@@ -32,8 +32,8 @@ int main()
     {  0, -1,    "-y axis      " },
     {  1,  1,    "+45° (mag √2)" },
     { -1,  1,    "+135°        " },
-    { rational{ 3, 5}, rational{ 4, 5}, "(3/5, 4/5) — 3-4-5 triangle, mag 1" },
-    { 0.5_r,           0.5_r,           "(½, ½)       " },
+    { frac<3, 5>, frac<4, 5>, "(3/5, 4/5) — 3-4-5 triangle, mag 1" },
+    { 0.5,        0.5,        "(½, ½)       " },
   };
 
   std::cout << "Cartesian → polar:\n";
@@ -72,9 +72,9 @@ int main()
     auto angle     = math::atan2(y, x);
 
     // Turn → radians: one rational multiply by 2π, then snap into angle_t.
-    angle_t a{angle * just<math::two_pi>};
+    angle_t a{angle * math::two_pi};
 
-    rational m_r = magnitude;
+    auto m_r = magnitude;
     coord_t rx{m_r * math::cos(a)};
     coord_t ry{m_r * math::sin(a)};
 

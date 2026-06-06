@@ -18,20 +18,20 @@
 #include <tuple>
 #include <type_traits>      // std::is_constant_evaluated
 
-namespace bnd { struct rational; }
+namespace bnd::detail { struct rational; }
 
 namespace slim
 {
   template<>
-  struct sentinel_traits<bnd::rational>
+  struct sentinel_traits<bnd::detail::rational>
   {
     protected:
-      static constexpr bnd::rational sentinel() noexcept;
-      static constexpr bool is_sentinel(const bnd::rational& v) noexcept;
+      static constexpr bnd::detail::rational sentinel() noexcept;
+      static constexpr bool is_sentinel(const bnd::detail::rational& v) noexcept;
   };
 } // namespace slim
 
-namespace bnd
+namespace bnd::detail
 {
   constexpr umax abs_den(imax d) { return (d >= 0) ? static_cast<umax>(d) : -static_cast<umax>(d); }
 
@@ -518,17 +518,9 @@ namespace bnd
   template<char... Chars>
   constexpr rational operator ""_r() { return _detail::parse_b_literal<Chars...>(); }
 
-  //---------------------------------------------------------------------------
-  // notch<N, D> — `constexpr rational` variable template for use directly in
-  // `bound<{...}>` template parameter lists. Cleans up the `*(1_r/N)` idiom
-  // that appears across the example suite.
-  //
-  //   using sample = bound<{{-1, 1}, notch<1, 16384>}, round_nearest>;
-  //
-  // Defaults to `D = 1` so `notch<10>` gives an integer-rational notch.
-  //---------------------------------------------------------------------------
-  template <umax N, imax D = 1>
-  inline constexpr rational notch = rational{N, D};
+  // notch<N, D> is defined publicly in `namespace bnd` (see the re-export block
+  // at the end of this header) so consumers spell it without naming the
+  // internal representation type.
 
   //---------------------------------------------------------------------------
   // add_impl / mul_impl / div_impl — shared bodies (Checked toggles overflow)
@@ -1048,12 +1040,37 @@ namespace bnd
     return q.has_value() && abs_den(q->Denominator) == 1;
   }
 
+} // namespace bnd::detail
+
+namespace bnd
+{
+  // `rational` itself is an internal representation type (rational)
+  // and is no longer part of the public surface. The integer helpers and the
+  // grid-building `notch<N,D>` literal stay public — they never expose the type.
+  using detail::abs_den;
+  using detail::trim;
+  // Free functions that operate on the (now-internal) representation. They take
+  // a detail::rational, so they expose no nameable rational to consumers, but
+  // the library's own headers call them as `bnd::abs` / `bnd::divides_evenly`.
+  using detail::abs;
+  using detail::gcd;
+  using detail::divides_evenly;
+
+  template <umax N, imax D = 1>
+  inline constexpr detail::rational notch = detail::rational{N, D};
+
+  // frac<N, D> — exact fractional grid value (signed numerator), the companion
+  // to notch<N,D> for interval endpoints that are not dyadic and so cannot be
+  // written exactly as a floating literal (e.g. `frac<-6, 5>` for -1.2). Keeps
+  // exact grids spellable now that the `_r` literal is internal.
+  template <imax N, imax D = 1>
+  inline constexpr detail::rational frac = detail::rational{N, D};
 } // namespace bnd
 
 namespace slim
 {
-  constexpr bnd::rational sentinel_traits<bnd::rational>::sentinel() noexcept { return bnd::rational::make_sentinel(); }
-  constexpr bool sentinel_traits<bnd::rational>::is_sentinel(const bnd::rational& v) noexcept
+  constexpr bnd::detail::rational sentinel_traits<bnd::detail::rational>::sentinel() noexcept { return bnd::detail::rational::make_sentinel(); }
+  constexpr bool sentinel_traits<bnd::detail::rational>::is_sentinel(const bnd::detail::rational& v) noexcept
   { return v.is_sentinel(); }
 } // namespace slim
 

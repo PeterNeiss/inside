@@ -396,8 +396,8 @@ namespace bnd
     template <real C>
     constexpr B& operator+=(C const& rhs)
     {
-      if constexpr (std::same_as<C, rational>)
-        return finalise_arith(rational{Ref} + rhs, "policy_ref::operator+= overflow");
+      if constexpr (std::same_as<C, bnd::detail::rational>)
+        return finalise_arith(bnd::detail::rational{Ref} + rhs, "policy_ref::operator+= overflow");
       else
         return assign_with_picked(static_cast<double>(Ref) + static_cast<double>(rhs));
     }
@@ -405,8 +405,8 @@ namespace bnd
     template <real C>
     constexpr B& operator-=(C const& rhs)
     {
-      if constexpr (std::same_as<C, rational>)
-        return finalise_arith(rational{Ref} - rhs, "policy_ref::operator-= overflow");
+      if constexpr (std::same_as<C, bnd::detail::rational>)
+        return finalise_arith(bnd::detail::rational{Ref} - rhs, "policy_ref::operator-= overflow");
       else
         return assign_with_picked(static_cast<double>(Ref) - static_cast<double>(rhs));
     }
@@ -414,8 +414,8 @@ namespace bnd
     template <real C>
     constexpr B& operator*=(C const& rhs)
     {
-      if constexpr (std::same_as<C, rational>)
-        return finalise_arith(rational{Ref} * rhs, "policy_ref::operator*= overflow");
+      if constexpr (std::same_as<C, bnd::detail::rational>)
+        return finalise_arith(bnd::detail::rational{Ref} * rhs, "policy_ref::operator*= overflow");
       else
         return assign_with_picked(static_cast<double>(Ref) * static_cast<double>(rhs));
     }
@@ -426,7 +426,7 @@ namespace bnd
       // Canonical-zero check: rational stores zero as {0, 1}, so Numerator == 0
       // catches every canonical zero (rational{} is the sentinel, not a zero).
       bool is_zero;
-      if constexpr (std::same_as<C, rational>) is_zero = (rhs.Numerator == 0);
+      if constexpr (std::same_as<C, bnd::detail::rational>) is_zero = (rhs.Numerator == 0);
       else                                     is_zero = (rhs == C{0});
       if (is_zero)
       {
@@ -434,8 +434,8 @@ namespace bnd
         return Ref;
       }
 
-      if constexpr (std::same_as<C, rational>)
-        return finalise_arith(rational{Ref} / rhs, "policy_ref::operator/= division/overflow");
+      if constexpr (std::same_as<C, bnd::detail::rational>)
+        return finalise_arith(bnd::detail::rational{Ref} / rhs, "policy_ref::operator/= division/overflow");
       else
         return assign_with_picked(static_cast<double>(Ref) / static_cast<double>(rhs));
     }

@@ -25,8 +25,8 @@ struct std::numeric_limits<bnd::bound<G, P>>
   using B = bnd::bound<G, P>;
 
   static constexpr bool is_specialized = true;
-  static constexpr bool is_signed      = (G.Interval.Lower < bnd::rational{0});
-  static constexpr bool is_integer     = (G.Notch == bnd::rational{1});
+  static constexpr bool is_signed      = (G.Interval.Lower < bnd::detail::rational{0});
+  static constexpr bool is_integer     = (G.Notch == bnd::detail::rational{1});
   static constexpr bool is_exact       = true;     // rational + integer raw are both exact
   static constexpr bool is_bounded     = true;
   static constexpr bool is_modulo      = (P & bnd::wrap) != 0;
@@ -55,9 +55,9 @@ struct std::numeric_limits<bnd::bound<G, P>>
   // representable stand-in for "no error" the type can express.
   static constexpr B epsilon() noexcept
   {
-    if constexpr (G.Interval.Lower <= bnd::rational{0}
-               && bnd::rational{0} <= G.Interval.Upper)
-      return B{bnd::rational{0}};
+    if constexpr (G.Interval.Lower <= bnd::detail::rational{0}
+               && bnd::detail::rational{0} <= G.Interval.Upper)
+      return B{bnd::detail::rational{0}};
     else
       return B{G.Interval.Lower};
   }

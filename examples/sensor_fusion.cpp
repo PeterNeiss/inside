@@ -39,19 +39,22 @@ int main()
 
   std::cout << "raw   accepted?   notes\n";
 
-  // Accumulate the weighted sum exactly in rational. Each accepted sample
-  // is snapped onto its sensor's bound grid (lossless after the predicate),
-  // lifted to rational, multiplied by the rational weight, and summed.
-  rational weighted_sum{0};
-  rational weight_sum{0};
+  // Accumulate the weighted sum and total weight in fixed-point bounds — no
+  // rational. The 1/160 accumulator notch holds every sensor·weight product
+  // (outdoor 1/16, indoor 1/80, ground 1/32) exactly, so the running sum stays
+  // lossless; the weight accumulator keeps the weights' 1/8 notch.
+  using acc_t  = bound<{{-200, 200}, notch<1, 160>}, round_nearest>;
+  using wsum_t = bound<{{0, 8}, notch<1, 8>}, round_nearest>;
+  acc_t  weighted_sum{0};
+  wsum_t weight_sum{0};
 
   auto accept = [&]<typename B>(double r, weight_t w, auto tag, auto predicate) {
     bool ok = predicate(r);
     std::cout << r << "  " << (ok ? "yes" : "no ") << "  " << tag << "\n";
     if (!ok) return;
     B reading{r};
-    weighted_sum += rational{reading} * rational{w};   // op*= via optional unwrap
-    weight_sum   += rational{w};
+    weighted_sum = acc_t{weighted_sum + reading * w};   // bound-space, exact
+    weight_sum   = wsum_t{weight_sum + w};
   };
 
   accept.template operator()<outdoor_t>(raw[0], w_outdoor, "outdoor",
@@ -65,15 +68,15 @@ int main()
   accept.template operator()<indoor_t >(raw[4], w_indoor,  "indoor ",
          [](double v){ return !will_conversion_overflow<indoor_t>(v); });
 
-  rational raw_fused = (weight_sum.Numerator > 0)
-                       ? (weighted_sum / weight_sum).value()
-                       : 0_r;
-  auto fused = fused_t{raw_fused};
+  // Divide in bound-space: the weight grid includes 0, so `/` yields an
+  // optional<bound>; the fused_t ctor unwraps it and clamp-rounds in one step.
+  fused_t fused{0};
+  if (weight_sum != 0)
+    fused = fused_t{weighted_sum / weight_sum};
 
   std::cout << "\nweighted sum: " << weighted_sum
-            << ",  total weight: " << weight_sum
-            << ",  raw fused: " << raw_fused << "\n";
-  std::cout << "fused (clamp_round into fused_t): " << fused << "\n";
+            << ",  total weight: " << weight_sum << "\n";
+  std::cout << "fused (clamp+round into fused_t): " << fused << "\n";
 
   return 0;
 }

@@ -6,6 +6,7 @@
 #include <type_traits>
 
 using namespace bnd;
+using namespace bnd::detail;
 
 TEST_CASE("conversion between bounds with compatible grids", "[bound][assign]")
 {

@@ -47,11 +47,20 @@
 //---------------------------------------------------------------------------
 namespace bnd::math
 {
-  // Public irrational constants. Derived from the same high-precision
-  // rational source the internal Q.30 cores use — bit-identical across
-  // platforms via constexpr rational arithmetic.
-  inline constexpr rational pi{1068966896, 340262731};
-  inline constexpr rational two_pi = rational::mul_unchecked(pi, 2_r);
+  namespace detail
+  {
+    // High-precision rational source for the irrational constants — internal,
+    // because the Q.30 cores need the exact rational form. Bit-identical across
+    // platforms via constexpr rational arithmetic.
+    inline constexpr bnd::detail::rational pi_r{1068966896, 340262731};
+    inline constexpr bnd::detail::rational two_pi_r =
+        bnd::detail::rational::mul_unchecked(pi_r, bnd::detail::rational{2});
+  }
+
+  // Public irrational constants as POINT-BOUNDS, so they compose directly in
+  // bound-space (`angle * math::pi`) with no rational on the surface.
+  inline constexpr auto pi     = just<detail::pi_r>;
+  inline constexpr auto two_pi = just<detail::two_pi_r>;
 
   namespace detail
   {
@@ -60,11 +69,11 @@ namespace bnd::math
     // and the round-trip recipe live in one place.
     inline constexpr imax kQ30One = imax{1} << 30;
 
-    constexpr imax to_q30(rational v) noexcept
-    { return rational::mul_unchecked(v, rational{kQ30One}).round(); }
+    constexpr imax to_q30(bnd::detail::rational v) noexcept
+    { return bnd::detail::rational::mul_unchecked(v, bnd::detail::rational{kQ30One}).round(); }
 
-    constexpr rational q30_to_rational(imax x_q30) noexcept
-    { return rational{x_q30, kQ30One}; }
+    constexpr bnd::detail::rational q30_to_rational(imax x_q30) noexcept
+    { return bnd::detail::rational{x_q30, kQ30One}; }
 
     // Internal phase shape used by the Q.30 cores: Q.N turns, period
     // implicit in the unsigned raw's modular wrap. The public sin/cos/tan
@@ -73,8 +82,8 @@ namespace bnd::math
     // `examples/oscillator.cpp`) use a plain integer counter for the same
     // free-modular-wrap property and convert to radians at the sin call.
     template <int N>
-    using turns_t = bound<{{0_r,
-                            rational{(imax{1} << N) - 1, imax{1} << N}},
+    using turns_t = bound<{{bnd::detail::rational{0},
+                            bnd::detail::rational{(imax{1} << N) - 1, imax{1} << N}},
                            notch<1, (imax{1} << N)>}>;
 
     // round(r · 2^Bits) — compile-time quantization of a `rational` Taylor
@@ -83,9 +92,9 @@ namespace bnd::math
     // budget. Uses checked rational multiplication and asserts non-overflow
     // by dereferencing the optional — a coefficient that overflows during
     // derivation fails the build, not the run.
-    constexpr imax to_q(rational r, int bits) noexcept
+    constexpr imax to_q(bnd::detail::rational r, int bits) noexcept
     {
-      auto scaled = r * rational{imax{1} << bits};
+      auto scaled = r * bnd::detail::rational{imax{1} << bits};
       return scaled.value().round();
     }
 
@@ -94,17 +103,17 @@ namespace bnd::math
     // The leading `1` is materialized as `1 << 30` at evaluation time so
     // the table holds only the higher-order corrections.
     inline constexpr imax kSinCoeffsQ30[5] = {
-      to_q(rational{-1,         6}, 30),  // -1/6      = -178956971
-      to_q(rational{ 1,       120}, 30),  //  1/120    =    8947849
-      to_q(rational{-1,      5040}, 30),  // -1/5040   =    -213044
-      to_q(rational{ 1,    362880}, 30),  //  1/362880 =       2959
-      to_q(rational{-1, 39916800}, 30),   // -1/...    =        -27
+      to_q(bnd::detail::rational{-1,         6}, 30),  // -1/6      = -178956971
+      to_q(bnd::detail::rational{ 1,       120}, 30),  //  1/120    =    8947849
+      to_q(bnd::detail::rational{-1,      5040}, 30),  // -1/5040   =    -213044
+      to_q(bnd::detail::rational{ 1,    362880}, 30),  //  1/362880 =       2959
+      to_q(bnd::detail::rational{-1, 39916800}, 30),   // -1/...    =        -27
     };
 
     // Internal alias for the public `bnd::math::two_pi`. Keeps the rest
     // of the detail-namespace code (kRadPerSlotQ30, kTwoPiQ30, …) reading
     // unchanged while consolidating the constant's source.
-    inline constexpr rational kTwoPi = bnd::math::two_pi;
+    inline constexpr bnd::detail::rational kTwoPi = two_pi_r;
 
     // Per-slot radians for a turns_t<N>, expressed in Q.30. With N ≤ 30
     // the scale is integer (kTwoPi · 2^(30-N)); for N > 30 it's the
@@ -114,8 +123,8 @@ namespace bnd::math
     template <int N>
     inline constexpr imax kRadPerSlotQ30 =
       (N <= 30)
-        ? rational::mul_unchecked(kTwoPi, rational{imax{1} << (30 - N)}).round()
-        : rational::mul_unchecked(kTwoPi, rational{1, imax{1} << (N - 30)}).round();
+        ? bnd::detail::rational::mul_unchecked(kTwoPi, bnd::detail::rational{imax{1} << (30 - N)}).round()
+        : bnd::detail::rational::mul_unchecked(kTwoPi, bnd::detail::rational{1, imax{1} << (N - 30)}).round();
 
     // log2(d) for a power-of-2 imax d. Constexpr loop; cheap at compile time.
     constexpr int log2_pow2(imax d) noexcept
@@ -171,7 +180,7 @@ namespace bnd::math
     // round(0.1591549431 · 2^30) = 170891319. (Defined here, ahead of
     // sin/cos, because the radians-input workers reference it.)
     inline constexpr imax kOneOver2PiQ30 = 170891319;
-    static_assert(kOneOver2PiQ30 == to_q(rational{1591549431,
+    static_assert(kOneOver2PiQ30 == to_q(bnd::detail::rational{1591549431,
                                                   10000000000}, 30));
 
     // (x · scale) in Q.30, computed as integer_part · scale + (frac_part ·
@@ -299,7 +308,7 @@ namespace bnd::math
     static_assert(Lower<Out> <= -1 && Upper<Out> >= 1,
                   "bnd::math::sin: Out must cover [-1, 1]");
 
-    rational a     = angle;
+    bnd::detail::rational a     = angle;
     imax     a_q30 = detail::to_q30(a);
     imax     t_q30 = detail::scaled_mul_q30(a_q30, detail::kOneOver2PiQ30);
     imax     sin_q30 = detail::sin_q30_from_turn_q30(t_q30);
@@ -319,7 +328,7 @@ namespace bnd::math
 
     constexpr imax quarter_turn_q30 = imax{1} << 28;
 
-    rational a     = angle;
+    bnd::detail::rational a     = angle;
     imax     a_q30 = detail::to_q30(a);
     imax     t_q30 = detail::scaled_mul_q30(a_q30, detail::kOneOver2PiQ30)
                    + quarter_turn_q30;
@@ -351,7 +360,7 @@ namespace bnd::math
       if (cos_q30 == 0) return slim::unexpected(errc::division_by_zero);
 
       imax tan_q30 = (sin_q30 << 30) / cos_q30;
-      rational tan_v = detail::q30_to_rational(tan_q30);
+      bnd::detail::rational tan_v = detail::q30_to_rational(tan_q30);
       if (tan_v < Lower<Out> || tan_v > Upper<Out>)
         return slim::unexpected(errc::overflow);
 
@@ -373,7 +382,7 @@ namespace bnd::math
 
     constexpr imax quarter_turn_q30 = imax{1} << 28;
 
-    rational a       = angle;
+    bnd::detail::rational a       = angle;
     imax     a_q30   = detail::to_q30(a);
     imax     t_q30   = detail::scaled_mul_q30(a_q30, detail::kOneOver2PiQ30);
     imax     sin_q30 = detail::sin_q30_from_turn_q30(t_q30);
@@ -382,7 +391,7 @@ namespace bnd::math
     if (cos_q30 == 0) return slim::unexpected(errc::division_by_zero);
 
     imax     tan_q30 = (sin_q30 << 30) / cos_q30;
-    rational tan_v = detail::q30_to_rational(tan_q30);
+    bnd::detail::rational tan_v = detail::q30_to_rational(tan_q30);
     if (tan_v < Lower<Out> || tan_v > Upper<Out>)
       return slim::unexpected(errc::overflow);
 
@@ -421,7 +430,7 @@ namespace bnd::math
     // Verification rational is 10-digit (not 16) because chained
     // `mul_unchecked` overflows imax with the higher-precision source even
     // after GCD reduction. 10 digits gives 30+ bits — same Q.30 rounded int.
-    static_assert(kLn2Q30 == to_q(rational{6931471806,
+    static_assert(kLn2Q30 == to_q(bnd::detail::rational{6931471806,
                                            10000000000}, 30));
 
     // Taylor coefficients for 2^f over f ∈ [0, 1), Q.30:
@@ -470,7 +479,7 @@ namespace bnd::math
     // Verification uses a low-denominator rational source so the
     // multiplication chain doesn't blow imax.
     inline constexpr imax kTwoOverLn2Q30 = 3098164009;
-    static_assert(kTwoOverLn2Q30 == to_q(rational{2885390081,
+    static_assert(kTwoOverLn2Q30 == to_q(bnd::detail::rational{2885390081,
                                                   1000000000}, 30));
 
     // Atanh Taylor coefficients in Q.30:
@@ -479,11 +488,11 @@ namespace bnd::math
     // Each coefficient is a direct `to_q` quantization (no chained
     // arithmetic, no overflow risk).
     inline constexpr imax kAtanhCoeffsQ30[10] = {
-      to_q(rational{1,  1}, 30), to_q(rational{1,  3}, 30),
-      to_q(rational{1,  5}, 30), to_q(rational{1,  7}, 30),
-      to_q(rational{1,  9}, 30), to_q(rational{1, 11}, 30),
-      to_q(rational{1, 13}, 30), to_q(rational{1, 15}, 30),
-      to_q(rational{1, 17}, 30), to_q(rational{1, 19}, 30),
+      to_q(bnd::detail::rational{1,  1}, 30), to_q(bnd::detail::rational{1,  3}, 30),
+      to_q(bnd::detail::rational{1,  5}, 30), to_q(bnd::detail::rational{1,  7}, 30),
+      to_q(bnd::detail::rational{1,  9}, 30), to_q(bnd::detail::rational{1, 11}, 30),
+      to_q(bnd::detail::rational{1, 13}, 30), to_q(bnd::detail::rational{1, 15}, 30),
+      to_q(bnd::detail::rational{1, 17}, 30), to_q(bnd::detail::rational{1, 19}, 30),
     };
 
     // Evaluate atanh(v) for v in Q.30, intended for v ∈ [0, 1/3]. Result in
@@ -516,19 +525,19 @@ namespace bnd::math
 
     // Q.30 core for exp2: integer/fractional split + 10-term Taylor. Returns
     // the result as a `rational` so the caller picks the bound assignment.
-    constexpr rational exp2_q30_to_rational(imax x_q30) noexcept
+    constexpr bnd::detail::rational exp2_q30_to_rational(imax x_q30) noexcept
     {
       imax k          = x_q30 >> 30;
       imax f_q30      = x_q30 - (k << 30);
       imax pow2_f_q30 = exp2_q30_fractional(f_q30);
-      return rational{pow2_f_q30, imax{1} << (30 - k)};
+      return bnd::detail::rational{pow2_f_q30, imax{1} << (30 - k)};
     }
 
     // log2(e) in Q.30 — derived at compile time from the same log2_q30 core
     // the public log2() uses. The compile-time loop unrolls to a small set of
     // integer ops; the result is a single int64 constant.
     inline constexpr imax kLog2eQ30 =
-      log2_q30(to_q(rational{2718281828, 1000000000}, 30));
+      log2_q30(to_q(bnd::detail::rational{2718281828, 1000000000}, 30));
 
     // log2(Base) in Q.30 for compile-time-known integer Base ≥ 2.
     template <imax Base>
@@ -546,7 +555,7 @@ namespace bnd::math
     static_assert(Lower<In> > 0,
                   "bnd::math::log2: input must be strictly positive");
 
-    rational xv    = x;
+    bnd::detail::rational xv    = x;
     imax     x_q30 = detail::to_q30(xv);
     return Out{detail::q30_to_rational(detail::log2_q30(x_q30))};
   }
@@ -567,7 +576,7 @@ namespace bnd::math
     static_assert(Lower<Out> >= 0,
                   "bnd::math::exp2: Out must be non-negative");
 
-    rational xv    = x;
+    bnd::detail::rational xv    = x;
     imax     x_q30 = detail::to_q30(xv);
     return Out{detail::exp2_q30_to_rational(x_q30)};
   }
@@ -583,7 +592,7 @@ namespace bnd::math
     static_assert(Lower<Out> >= 0,
                   "bnd::math::exp: Out must be non-negative");
 
-    rational xv    = x;
+    bnd::detail::rational xv    = x;
     imax     x_q30 = detail::to_q30(xv);
     imax     scaled_q30 = detail::scaled_mul_q30(x_q30, detail::kLog2eQ30);
     return Out{detail::exp2_q30_to_rational(scaled_q30)};
@@ -597,7 +606,7 @@ namespace bnd::math
     static_assert(Lower<In> > 0,
                   "bnd::math::log: input must be strictly positive");
 
-    rational xv    = x;
+    bnd::detail::rational xv    = x;
     imax     x_q30 = detail::to_q30(xv);
     imax     log2_x_q30 = detail::log2_q30(x_q30);
     imax     log_x_q30  = (log2_x_q30 * detail::kLn2Q30) >> 30;
@@ -615,7 +624,7 @@ namespace bnd::math
     static_assert(Lower<Out> >= 0,
                   "bnd::math::pow_base: Out must be non-negative");
 
-    rational xv    = x;
+    bnd::detail::rational xv    = x;
     imax     x_q30 = detail::to_q30(xv);
     imax     scaled_q30 = detail::scaled_mul_q30(x_q30,
                                                  detail::kLog2IntBaseQ30<Base>);
@@ -722,10 +731,10 @@ namespace bnd::math
   {
     static_assert(Lower<In> >= -1 && Upper<In> <= 1,
                   "bnd::math::atan2: inputs must be in [-1, 1]; normalize first for wider ranges");
-    static_assert(Lower<Out> <= -0.5_r && Upper<Out> >= 0.5_r,
+    static_assert(Lower<Out> <= -bnd::detail::rational{0.5} && Upper<Out> >= bnd::detail::rational{0.5},
                   "bnd::math::atan2: Out must cover [-1/2, 1/2] turn");
 
-    rational yv = y, xv = x;
+    bnd::detail::rational yv = y, xv = x;
     imax y_q30 = detail::to_q30(yv);
     imax x_q30 = detail::to_q30(xv);
 
@@ -770,21 +779,21 @@ namespace bnd::math
   {
     static_assert(Lower<Out> <= 0,
                   "bnd::math::abs: Out must include 0");
-    return Out{bnd::abs(rational{x})};
+    return Out{bnd::abs(bnd::detail::rational{x})};
   }
 
   // ⌊x⌋ — largest integer ≤ x.
   template <boundable Out, boundable In>
   constexpr Out floor_impl(In x) noexcept
   {
-    return Out{rational{x}.floor()};
+    return Out{bnd::detail::rational{x}.floor()};
   }
 
   // ⌈x⌉ — smallest integer ≥ x.
   template <boundable Out, boundable In>
   constexpr Out ceil_impl(In x) noexcept
   {
-    return Out{rational{x}.ceil()};
+    return Out{bnd::detail::rational{x}.ceil()};
   }
 
   // x rounded to nearest integer, half-away-from-zero (matches the existing
@@ -792,7 +801,7 @@ namespace bnd::math
   template <boundable Out, boundable In>
   constexpr Out round_impl(In x) noexcept
   {
-    return Out{rational{x}.round()};
+    return Out{bnd::detail::rational{x}.round()};
   }
 
   // x truncated toward zero. Distinct from floor for negative inputs:
@@ -800,7 +809,7 @@ namespace bnd::math
   template <boundable Out, boundable In>
   constexpr Out trunc_impl(In x) noexcept
   {
-    return Out{rational{x}.trunc()};
+    return Out{bnd::detail::rational{x}.trunc()};
   }
 
   // x mod y = x − ⌊x/y⌋·y (truncated-division convention, matching std::fmod).
@@ -808,12 +817,12 @@ namespace bnd::math
   template <boundable Out, boundable InX, boundable InY>
   constexpr Out fmod_impl(InX x, InY y) noexcept
   {
-    rational xv = x;
-    rational yv = y;
-    rational q  = rational::div_unchecked(xv, yv);
+    bnd::detail::rational xv = x;
+    bnd::detail::rational yv = y;
+    bnd::detail::rational q  = bnd::detail::rational::div_unchecked(xv, yv);
     imax     qt = q.trunc();
-    rational qy = rational::mul_unchecked(rational{qt}, yv);
-    rational r  = rational::add_unchecked(xv, -qy);
+    bnd::detail::rational qy = bnd::detail::rational::mul_unchecked(bnd::detail::rational{qt}, yv);
+    bnd::detail::rational r  = bnd::detail::rational::add_unchecked(xv, -qy);
     return Out{r};
   }
 
@@ -839,32 +848,32 @@ namespace bnd::math
     // max(|Lower<In>|, |Upper<In>|) as a constexpr rational. Used to size
     // the auto-deduced abs output.
     template <boundable In>
-    inline constexpr rational abs_auto_upper =
+    inline constexpr bnd::detail::rational abs_auto_upper =
       (bnd::abs(Lower<In>) > bnd::abs(Upper<In>))
         ? bnd::abs(Lower<In>) : bnd::abs(Upper<In>);
 
     template <boundable In>
-    using abs_auto_t = bound<{{0_r, abs_auto_upper<In>},
+    using abs_auto_t = bound<{{bnd::detail::rational{0}, abs_auto_upper<In>},
                               Notch<In>}, BoundPolicy<In>>;
 
     template <boundable In>
-    using floor_auto_t = bound<{{rational{Lower<In>.floor()},
-                                  rational{Upper<In>.floor()}},
+    using floor_auto_t = bound<{{bnd::detail::rational{Lower<In>.floor()},
+                                  bnd::detail::rational{Upper<In>.floor()}},
                                  notch<1>}, BoundPolicy<In>>;
 
     template <boundable In>
-    using ceil_auto_t = bound<{{rational{Lower<In>.ceil()},
-                                 rational{Upper<In>.ceil()}},
+    using ceil_auto_t = bound<{{bnd::detail::rational{Lower<In>.ceil()},
+                                 bnd::detail::rational{Upper<In>.ceil()}},
                                 notch<1>}, BoundPolicy<In>>;
 
     template <boundable In>
-    using round_auto_t = bound<{{rational{Lower<In>.round()},
-                                  rational{Upper<In>.round()}},
+    using round_auto_t = bound<{{bnd::detail::rational{Lower<In>.round()},
+                                  bnd::detail::rational{Upper<In>.round()}},
                                  notch<1>}, BoundPolicy<In>>;
 
     template <boundable In>
-    using trunc_auto_t = bound<{{rational{Lower<In>.trunc()},
-                                  rational{Upper<In>.trunc()}},
+    using trunc_auto_t = bound<{{bnd::detail::rational{Lower<In>.trunc()},
+                                  bnd::detail::rational{Upper<In>.trunc()}},
                                  notch<1>}, BoundPolicy<In>>;
 
     // (fmod has no auto form: with two boundable inputs, calls of the form
@@ -936,7 +945,7 @@ namespace bnd::math
                   "bnd::math::sqrt: input notch denominator must be a power of 2");
     static_assert(Lower<Out> <= 0,
                   "bnd::math::sqrt: Out must include 0");
-    constexpr rational max_abs =
+    constexpr bnd::detail::rational max_abs =
         (bnd::abs(Lower<In>) > bnd::abs(Upper<In>))
             ? bnd::abs(Lower<In>) : bnd::abs(Upper<In>);
     static_assert(max_abs <= 4,
@@ -945,8 +954,8 @@ namespace bnd::math
     static_assert(K <= 30,
                   "bnd::math::sqrt: input must be Q.30 or coarser (Q.62 tier planned)");
 
-    rational v = as_rational(x);
-    if (v < rational{0})
+    bnd::detail::rational v = as_rational(x);
+    if (v < bnd::detail::rational{0})
       return slim::nullopt;
 
     imax v_q30 = detail::to_q30(v);
@@ -969,50 +978,50 @@ namespace bnd::math
   namespace detail
   {
     // Round a rational down to the nearest multiple of `notch`.
-    constexpr rational floor_to_notch(rational x, rational notch) noexcept
+    constexpr bnd::detail::rational floor_to_notch(bnd::detail::rational x, bnd::detail::rational notch) noexcept
     {
-      auto q  = rational::div_unchecked(x, notch);
+      auto q  = bnd::detail::rational::div_unchecked(x, notch);
       imax n  = q.floor();
-      return rational::mul_unchecked(rational{n}, notch);
+      return bnd::detail::rational::mul_unchecked(bnd::detail::rational{n}, notch);
     }
 
     // Round a rational up to the nearest multiple of `notch`.
-    constexpr rational ceil_to_notch(rational x, rational notch) noexcept
+    constexpr bnd::detail::rational ceil_to_notch(bnd::detail::rational x, bnd::detail::rational notch) noexcept
     {
-      auto q = rational::div_unchecked(x, notch);
+      auto q = bnd::detail::rational::div_unchecked(x, notch);
       imax n = q.ceil();
-      return rational::mul_unchecked(rational{n}, notch);
+      return bnd::detail::rational::mul_unchecked(bnd::detail::rational{n}, notch);
     }
 
     // Helpers: evaluate the existing Q.30 cores on a compile-time-known
     // rational endpoint and return the result as a rational.
-    constexpr rational sqrt_endpoint(rational v) noexcept
+    constexpr bnd::detail::rational sqrt_endpoint(bnd::detail::rational v) noexcept
     {
-      if (v == 0) return 0_r;
+      if (v == 0) return bnd::detail::rational{0};
       imax v_q30 = detail::to_q30(v);
       return detail::q30_to_rational(sqrt_q30(v_q30));
     }
 
-    constexpr rational exp2_endpoint(rational v) noexcept
+    constexpr bnd::detail::rational exp2_endpoint(bnd::detail::rational v) noexcept
     {
       imax v_q30 = detail::to_q30(v);
       return exp2_q30_to_rational(v_q30);
     }
 
-    constexpr rational log2_endpoint(rational v) noexcept
+    constexpr bnd::detail::rational log2_endpoint(bnd::detail::rational v) noexcept
     {
       imax v_q30 = detail::to_q30(v);
       return detail::q30_to_rational(log2_q30(v_q30));
     }
 
-    constexpr rational exp_endpoint(rational v) noexcept
+    constexpr bnd::detail::rational exp_endpoint(bnd::detail::rational v) noexcept
     {
       imax v_q30  = detail::to_q30(v);
       imax sc_q30 = scaled_mul_q30(v_q30, kLog2eQ30);
       return exp2_q30_to_rational(sc_q30);
     }
 
-    constexpr rational log_endpoint(rational v) noexcept
+    constexpr bnd::detail::rational log_endpoint(bnd::detail::rational v) noexcept
     {
       imax v_q30 = detail::to_q30(v);
       imax l_q30 = log2_q30(v_q30);
@@ -1021,7 +1030,7 @@ namespace bnd::math
     }
 
     template <imax Base>
-    constexpr rational pow_base_endpoint(rational v) noexcept
+    constexpr bnd::detail::rational pow_base_endpoint(bnd::detail::rational v) noexcept
     {
       imax v_q30  = detail::to_q30(v);
       imax sc_q30 = scaled_mul_q30(v_q30, kLog2IntBaseQ30<Base>);
@@ -1033,19 +1042,19 @@ namespace bnd::math
     // come out of the Q.30 cores with sub-notch drift, so the assignment
     // into the deduced bound needs a rounding rule to land on the grid.
     template <boundable In>
-    using sqrt_auto_t = bound<{{0_r,
+    using sqrt_auto_t = bound<{{bnd::detail::rational{0},
                                 ceil_to_notch(sqrt_endpoint(Upper<In>), Notch<In>)},
                                Notch<In>}, BoundPolicy<In> | round_nearest>;
 
     // Mixed-sign sqrt: Upper of the result is sqrt of the larger absolute
     // endpoint, since the runtime value can be anywhere in [Lower, Upper].
     template <boundable In>
-    inline constexpr rational sqrt_signed_upper =
+    inline constexpr bnd::detail::rational sqrt_signed_upper =
         (bnd::abs(Lower<In>) > bnd::abs(Upper<In>))
             ? bnd::abs(Lower<In>) : bnd::abs(Upper<In>);
 
     template <boundable In>
-    using sqrt_signed_auto_t = bound<{{0_r,
+    using sqrt_signed_auto_t = bound<{{bnd::detail::rational{0},
                                        ceil_to_notch(sqrt_endpoint(sqrt_signed_upper<In>),
                                                      Notch<In>)},
                                       Notch<In>}, BoundPolicy<In> | round_nearest>;
@@ -1077,14 +1086,14 @@ namespace bnd::math
   } // namespace detail
 
   template <boundable In>
-    requires (Lower<In> == rational{0})
+    requires (Lower<In> == bnd::detail::rational{0})
   constexpr auto sqrt(In x) noexcept { return sqrt_impl<detail::sqrt_auto_t<In>>(x); }
 
   // Mixed-sign overload: dispatches to `sqrt_signed_impl`, returning
   // `slim::optional<bound>` so a negative runtime value surfaces as nullopt
   // instead of UB.
   template <boundable In>
-    requires (Lower<In> < rational{0})
+    requires (Lower<In> < bnd::detail::rational{0})
   constexpr auto sqrt(In x) noexcept
   { return sqrt_signed_impl<detail::sqrt_signed_auto_t<In>>(x); }
 
@@ -1116,18 +1125,18 @@ namespace bnd::math
   namespace detail
   {
     template <boundable In>
-    using sin_auto_t = bound<{{-1_r, 1_r},
+    using sin_auto_t = bound<{{-bnd::detail::rational{1}, bnd::detail::rational{1}},
                                Notch<In>}, BoundPolicy<In> | round_nearest>;
 
     template <boundable In>
     using cos_auto_t = sin_auto_t<In>;
 
     template <boundable In>
-    using atan2_auto_t = bound<{{rational{-1, 2}, rational{1, 2}},
+    using atan2_auto_t = bound<{{bnd::detail::rational{-1, 2}, bnd::detail::rational{1, 2}},
                                  Notch<In>}, BoundPolicy<In> | round_nearest>;
 
     template <boundable In>
-    using tan_auto_t = bound<{{-1024_r, 1024_r},
+    using tan_auto_t = bound<{{-bnd::detail::rational{1024}, bnd::detail::rational{1024}},
                                Notch<In>}, BoundPolicy<In> | round_nearest>;
 
     template <boundable InX, boundable InY>

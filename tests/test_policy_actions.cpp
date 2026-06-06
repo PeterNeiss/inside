@@ -8,6 +8,7 @@
 #include <system_error>
 
 using namespace bnd;
+using namespace bnd::detail;
 
 TEST_CASE("clamp policy on assignment", "[bound][policy][clamp]")
 {

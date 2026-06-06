@@ -8,6 +8,7 @@
 #include <vector>
 
 using namespace bnd;
+using namespace bnd::detail;
 
 TEST_CASE("bound::to<unsigned T>", "[bound][to]")
 {

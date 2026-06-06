@@ -38,21 +38,23 @@ encoding:
 using fstep = bound<{{-5, 5}, 0.5}>;    // Raw: uint8_t (20 steps, offset encoding)
 ```
 
-**Rational storage** — when `Notch == 0`, `Raw` becomes `rational`, an exact
-fraction type. This happens for grids with `Notch == 0`, division results,
-and single-value grids.
+**Exact-fraction storage** — when `Notch == 0`, `Raw` becomes the internal
+exact-fraction representation (`bnd::detail::rational`). This happens for grids
+with `Notch == 0`, division results, and single-value grids. You never name
+that type; you read the value back out with `numerator()` / `denominator()`.
 
 ```cpp
-using frac = bound<{{-10, 10}, 0}>;     // Raw: rational
-frac f = *(2_r / 3);                    // exact 2/3
+using ratio = bound<{{-10, 10}, 0}>;    // Raw: exact-fraction representation
+ratio f = bound<{2, 2}>{2} / just<3>;   // exact 2/3
+f.numerator();                          // 2  (denominator() == 3)
 
 using u8 = bound<{1, 255}>;
-auto q = u8{7} / u8{3};                 // slim::optional<bound<{rational}>>
-                                        // value is exactly 7/3
+auto q = u8{7} / u8{3};                 // slim::optional<bound> (exact-fraction raw)
+                                        // *q is exactly 7/3
 ```
 
-Rational storage is exact (no floating-point rounding) but larger and slower
-than integer storage. The library picks the most efficient representation
+Exact-fraction storage is exact (no floating-point rounding) but larger and
+slower than integer storage. The library picks the most efficient representation
 for each grid.
 
 ## `slim::optional<bound>` sentinel

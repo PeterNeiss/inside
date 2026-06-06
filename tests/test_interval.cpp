@@ -3,6 +3,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 using namespace bnd;
+using namespace bnd::detail;
 
 TEST_CASE("interval structured binding", "[interval][structured_binding]")
 {

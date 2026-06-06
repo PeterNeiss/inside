@@ -5,6 +5,14 @@ tutorial; for that see `README.md`. Use this when you need to add a new
 arithmetic operator, debug a storage-shape edge case, or reason about
 performance.
 
+> The exact-fraction representation type is `bnd::detail::rational` — an
+> **internal** type. It is the grid's NTTP substrate and the raw storage for
+> non-dyadic grids, so it appears throughout these internals, but it is not on
+> the public surface: consumers spell grids with literals / `notch<N,D>` /
+> `frac<N,D>`, read exact values out with `numerator()` / `denominator()`, and
+> never name the type. The bare word "rational" below always means
+> `bnd::detail::rational`.
+
 ---
 
 ## 1. Grid invariants
@@ -53,7 +61,7 @@ Predicates (`include/bound/generic.hpp`):
 
 - `IsRawRational<B>` (line 39) — the raw type is `rational`. Notch is zero.
 - `IsDirectStorage<B>` (line 119) — `Raw == value`. Either signed-integer
-  raw with `Notch == 1`, or unsigned raw with `Lower == 0_r && Notch == 1`,
+  raw with `Notch == 1`, or unsigned raw with `Lower == 0 && Notch == 1`,
   or rational raw.
 - `IsNotchStorage<B>` (line 125) — `Raw` is the notch index;
   `value = Raw * Notch + Lower`.

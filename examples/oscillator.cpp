@@ -29,7 +29,7 @@ int main()
   // 2π / 65536 — the radians-per-slot for a uint16 phase counter, as a
   // compile-time point-bound. Multiplying the phase (lifted into a bound) by
   // it converts counter → radians without leaving bound-space.
-  constexpr auto rad_per_slot = just<(math::two_pi / 65536).value()>;
+  constexpr auto rad_per_slot = math::two_pi / just<65536>;
   using phase_b = bound<{0, 65535}>;
 
   std::cout << "Fixed-frequency oscillator (1/8 turn per sample, 8 samples = 1 cycle):\n";

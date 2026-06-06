@@ -17,7 +17,7 @@
 //---------------------------------------------------------------------------
 namespace bnd
 {
-  inline std::string to_string(rational r)
+  inline std::string to_string(bnd::detail::rational r)
   {
     std::string str;
     if (r.Denominator < 0)

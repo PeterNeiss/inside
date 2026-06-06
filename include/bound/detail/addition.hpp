@@ -48,8 +48,8 @@ namespace bnd
     // gcd(NL, NR). To add the raws we must first scale each side up to the
     // result's notch: lhs_widen = NL/Nresult, rhs_widen = NR/Nresult. Both
     // are guaranteed to be exact integers because Nresult divides NL and NR.
-    static constexpr imax lhs_widen = static_cast<imax>((Notch<L> / Notch<result>).value_or(1_r).Numerator);
-    static constexpr imax rhs_widen = static_cast<imax>((Notch<R> / Notch<result>).value_or(1_r).Numerator);
+    static constexpr imax lhs_widen = static_cast<imax>((Notch<L> / Notch<result>).value_or(bnd::detail::rational{1}).Numerator);
+    static constexpr imax rhs_widen = static_cast<imax>((Notch<R> / Notch<result>).value_or(bnd::detail::rational{1}).Numerator);
 
     template <policy_flag F = none, typename E = empty_ref, typename A = no_action>
     static constexpr add_return_t<F, A> add(L, R, policy<F, E> = {}, A&& = {});
@@ -67,18 +67,18 @@ namespace bnd
     {
       if constexpr (needs_overflow_check<F>)
       {
-        auto sum = rational::add(lhs,rhs);
+        auto sum = bnd::detail::rational::add(lhs,rhs);
         if (!sum)
           return report_or_nullopt<result>(action, policy, errc::overflow,
                                            "rational overflow in add");
         res.Raw = *sum;
       }
       else
-        res.Raw = rational::add_unchecked(lhs, rhs);
+        res.Raw = bnd::detail::rational::add_unchecked(lhs, rhs);
     }
     else if constexpr (IsRawRational<L> || IsRawRational<R>)
     {
-      auto sum = rational::add_unchecked(lhs,rhs);
+      auto sum = bnd::detail::rational::add_unchecked(lhs,rhs);
       // `((sum - Lower) / Notch).Numerator` is the L-offset; for direct
       // storage the Raw must be the value, so route through raw_from_offset.
       res.Raw = raw_from_offset<result>(

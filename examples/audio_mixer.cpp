@@ -30,7 +30,7 @@ using db_t = bound<{{-24, 12}, notch<1, 2>}, round_nearest>;
 using gain_t = bound<{{0, 4}, notch<1, 65536>}, round_nearest>;
 
 // dB/20 intermediate: dB ∈ [-24, 12] → [-1.2, 0.6] with notch 1/40 (= 1/2 / 20).
-using db_div20_t = bound<{{-1.2_r, 0.6_r}, notch<1, 40>}, round_nearest>;
+using db_div20_t = bound<{{frac<-6, 5>, frac<3, 5>}, notch<1, 40>}, round_nearest>;
 
 // Decibels → linear amplitude via 10^(dB/20). The library's pow_base<10>
 // derives log2(10) at compile time from its own log2 implementation, so the
@@ -74,10 +74,10 @@ int main()
   };
   constexpr gainfac_t gains[4] =
   {
-    0.9_r,
-    0.7_r,
-    0.6_r,
-    0.4_r
+    0.9_b,
+    0.7_b,
+    0.6_b,
+    0.4_b
   };
 
   sample_t channels[4][N];
@@ -89,7 +89,7 @@ int main()
     // result grid's numerator/denominator products provably fit in umax.
     // Snap the result into angle_t to land on the 1/16384 grid; the
     // subsequent bound + bound then stays on a friendly notch.
-    angle_t base{t * just<math::two_pi>};                            // bound × bound, snap
+    angle_t base{t * math::two_pi};                            // bound × bound, snap
     for (int ch = 0; ch < 4; ++ch)
     {
       angle_t a{base + offsets[ch]};                                 // bound + bound, snap

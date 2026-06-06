@@ -63,7 +63,7 @@ namespace bnd
             ? grid{(*(Grid<L> / Grid<R>)).Interval.Lower.trunc(),
                    (*(Grid<L> / Grid<R>)).Interval.Upper.trunc()}
       : native_div_qformat
-            ? grid{interval{0_r, (Upper<L> / Notch<R>).value()}, Notch<L>}
+            ? grid{interval{bnd::detail::rational{0}, (Upper<L> / Notch<R>).value()}, Notch<L>}
             : *(Grid<L> / Grid<R>);
 
     using result = bound<result_grid>;
@@ -143,7 +143,7 @@ namespace bnd
     }
     else if constexpr (needs_overflow_check<G>)
     {
-      rational rhs_r = rhs;
+      bnd::detail::rational rhs_r = rhs;
       if constexpr (!zero_unchecked)
         if (rhs_r.Numerator == 0) return fail(errc::division_by_zero, "division by zero in div");
       auto q = as_rational(lhs) / rhs_r;
@@ -152,11 +152,11 @@ namespace bnd
     }
     else
     {
-      rational rhs_r = rhs;
+      bnd::detail::rational rhs_r = rhs;
       if constexpr (!zero_unchecked)
         if (rhs_r.Numerator == 0) return fail(errc::division_by_zero, "division by zero in div");
       result res;
-      res.Raw = rational::div_unchecked(as_rational(lhs), rhs_r);
+      res.Raw = bnd::detail::rational::div_unchecked(as_rational(lhs), rhs_r);
       return res;
     }
   }

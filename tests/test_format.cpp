@@ -13,6 +13,7 @@
 #include <sstream>
 
 using namespace bnd;
+using namespace bnd::detail;
 
 TEST_CASE("rational to_string: decimal forms", "[format][rational]")
 {

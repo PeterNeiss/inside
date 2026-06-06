@@ -44,16 +44,16 @@ namespace bnd
   struct grid
   {
     interval Interval;
-    rational Notch;
+    bnd::detail::rational Notch;
 
     grid() = default;
     constexpr grid(arithmetic auto lower, arithmetic auto upper, arithmetic auto notch)
-      :grid{interval{lower, upper}, rational{notch}} { }
+      :grid{interval{lower, upper}, bnd::detail::rational{notch}} { }
     constexpr grid(arithmetic auto lower, arithmetic auto upper)
-      :grid{interval{lower, upper}, 1_r} { }
+      :grid{interval{lower, upper}, bnd::detail::rational{1}} { }
     constexpr grid(arithmetic auto lower)
-      :grid{interval{lower, lower}, 0_r} { }
-    constexpr grid(interval val, rational notch):Interval{val}, Notch{notch} { }
+      :grid{interval{lower, lower}, bnd::detail::rational{0}} { }
+    constexpr grid(interval val, bnd::detail::rational notch):Interval{val}, Notch{notch} { }
 
     template <auto G>
     static constexpr bool validate()
@@ -72,7 +72,7 @@ namespace bnd
     // argument — callers that need that path select a pre-declared grid
     // instantiation by other means.
     [[nodiscard]] static constexpr slim::expected<grid, errc>
-    try_make(interval iv, rational notch)
+    try_make(interval iv, bnd::detail::rational notch)
     {
       if (iv.Lower > iv.Upper)
         return slim::unexpected{errc::domain_error};
@@ -102,7 +102,7 @@ namespace bnd
     constexpr double raw_to_double(std::signed_integral auto raw) const
     { return static_cast<double>(raw); }
 
-    constexpr double raw_to_double(std::same_as<rational> auto raw) const
+    constexpr double raw_to_double(std::same_as<bnd::detail::rational> auto raw) const
     {
       // storage_min only selects rational raw when Notch == 0, so raw is
       // already the value — no offset/scale to apply.
@@ -110,7 +110,7 @@ namespace bnd
     }
 
     static constexpr grid make_sentinel() noexcept
-    { return grid{interval{0_r, 0_r}, rational::make_sentinel()}; }
+    { return grid{interval{bnd::detail::rational{0}, bnd::detail::rational{0}}, bnd::detail::rational::make_sentinel()}; }
   };
 
   // Pick the smallest raw type that can hold every reachable index in G.
@@ -119,7 +119,7 @@ namespace bnd
   // unsigned-offset (max_notch slots) is the fallback for everything else.
   template <grid G>
   using storage_min =
-    std::conditional_t<(G.Notch == 0), rational,
+    std::conditional_t<(G.Notch == 0), bnd::detail::rational,
     std::conditional_t<(G.Interval.Lower < 0 && G.Notch == 1),
       smallest_int_for<G.Interval.Lower.trunc(), G.Interval.Upper.trunc()>,
       smallest_uint_for<G.max_notch()>>>;
@@ -138,7 +138,7 @@ namespace bnd
     // so a notch-denominator overflow produces nullopt rather than a silently
     // wrapped result grid.
     return lift(
-      [](interval i, rational n){ return grid{i, n}; },
+      [](interval i, bnd::detail::rational n){ return grid{i, n}; },
       lhs.Interval + rhs.Interval, gcd(lhs.Notch, rhs.Notch));
   }
 
@@ -156,7 +156,7 @@ namespace bnd
   inline constexpr slim::optional<grid> operator*(const grid& lhs, const grid& rhs)
   {
     return lift(
-      [](interval i, rational n){ return grid{i, n}; },
+      [](interval i, bnd::detail::rational n){ return grid{i, n}; },
       lhs.Interval * rhs.Interval, lhs.Notch * rhs.Notch);
   }
 
@@ -167,7 +167,7 @@ namespace bnd
   {
     auto d = lhs.Interval / rhs.Interval;
     if (d.has_value())
-      return grid{*d, 0_r};
+      return grid{*d, bnd::detail::rational{0}};
 
     // Divisor interval includes zero — exclude zero for result interval.
     if (rhs.Interval.Lower == 0 && rhs.Interval.Upper == 0)
@@ -177,7 +177,7 @@ namespace bnd
     // it to split the divisor's interval into a positive side [step, Upper]
     // and a negative side [Lower, -step], skipping the zero gap. When both
     // sides are present the result is the *union* of the two sub-divisions.
-    rational step = (rhs.Notch != 0) ? abs(rhs.Notch) : 1_r;
+    bnd::detail::rational step = (rhs.Notch != 0) ? abs(rhs.Notch) : bnd::detail::rational{1};
     bool has_pos = 0 < rhs.Interval.Upper;
     bool has_neg = 0 > rhs.Interval.Lower;
 
@@ -186,19 +186,19 @@ namespace bnd
       return lift(
         [](interval pos, interval neg){
           return grid{interval{std::min(neg.Lower, pos.Lower),
-                               std::max(neg.Upper, pos.Upper)}, 0_r};
+                               std::max(neg.Upper, pos.Upper)}, bnd::detail::rational{0}};
         },
         lhs.Interval / interval{step, rhs.Interval.Upper},
         lhs.Interval / interval{rhs.Interval.Lower, -step});
     }
     else if (has_pos)
     {
-      return lift([](interval i){ return grid{i, 0_r}; },
+      return lift([](interval i){ return grid{i, bnd::detail::rational{0}}; },
                   lhs.Interval / interval{step, rhs.Interval.Upper});
     }
     else
     {
-      return lift([](interval i){ return grid{i, 0_r}; },
+      return lift([](interval i){ return grid{i, bnd::detail::rational{0}}; },
                   lhs.Interval / interval{rhs.Interval.Lower, -step});
     }
   }
@@ -218,7 +218,7 @@ namespace slim
 //---------------------------------------------------------------------------
 template <> struct std::tuple_size<bnd::grid> : std::integral_constant<std::size_t, 2> {};
 template <> struct std::tuple_element<0, bnd::grid> { using type = bnd::interval; };
-template <> struct std::tuple_element<1, bnd::grid> { using type = bnd::rational; };
+template <> struct std::tuple_element<1, bnd::grid> { using type = bnd::detail::rational; };
 
 namespace bnd
 {

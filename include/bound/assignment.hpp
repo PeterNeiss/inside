@@ -105,7 +105,7 @@ namespace bnd
       //   3. both integer       — the integer branch (the hot path); the
       //                           formula collapses to integer math in
       //                           `is_integer_mapping` callers below.
-      static constexpr rational calcOffset()
+      static constexpr bnd::detail::rational calcOffset()
       {
         if constexpr (IsRawRational<L>)
           return Lower<R>;
@@ -115,19 +115,19 @@ namespace bnd
           return ((Lower<R> - Lower<L>)/Notch<L>).value();
       }
 
-      static constexpr rational calcFactor()
+      static constexpr bnd::detail::rational calcFactor()
       {
         if constexpr (IsRawRational<L>)
           return Notch<R>;
         else if constexpr (IsRawRational<R>)
-          return (1_r/Notch<L>).value();
+          return (bnd::detail::rational{1}/Notch<L>).value();
         else
           return (Notch<R>/Notch<L>).value();
       }
 
     public:
-      static constexpr rational Offset = calcOffset();
-      static constexpr rational Factor = calcFactor();
+      static constexpr bnd::detail::rational Offset = calcOffset();
+      static constexpr bnd::detail::rational Factor = calcFactor();
 
       // Raw-space mapping is integer-only (no rational arithmetic needed)
       static constexpr bool is_integer_mapping =
@@ -258,7 +258,7 @@ namespace bnd
       lhs.Raw = q_format_encode<L>(static_cast<imax>(rhs));
     else // IsNotchStorage, generic rational path
     {
-      rational raw = ((rhs - Interval<L>.Lower)/Notch<L>).value();
+      bnd::detail::rational raw = ((rhs - Interval<L>.Lower)/Notch<L>).value();
       lhs.Raw = raw_cast<L>(raw.Numerator / static_cast<umax>(raw.Denominator));
     }
   }
@@ -294,7 +294,7 @@ namespace bnd
       {
         // Non-integer L bounds: route through the rational path so fractional
         // Lower/Upper drive clamp/sentinel/error correctly.
-        return assignment<L, rational>::assign(lhs, rational{rhs}, policy, action);
+        return assignment<L, bnd::detail::rational>::assign(lhs, bnd::detail::rational{rhs}, policy, action);
       }
     }
 
@@ -312,8 +312,8 @@ namespace bnd
   {
     R clamped = (rhs < Lower<L>) ? static_cast<R>(Lower<L>) : static_cast<R>(Upper<L>);
     R overshoot;
-    if constexpr (std::same_as<R, rational>)
-      overshoot = (rhs - clamped).value_or(0_r);
+    if constexpr (std::same_as<R, bnd::detail::rational>)
+      overshoot = (rhs - clamped).value_or(bnd::detail::rational{0});
     else
       overshoot = rhs - clamped;
 
@@ -323,7 +323,7 @@ namespace bnd
       lhs.Raw = 0;
     else
     {
-      rational raw = ((clamped - Lower<L>)/Notch<L>).value();
+      bnd::detail::rational raw = ((clamped - Lower<L>)/Notch<L>).value();
       umax den = static_cast<umax>(raw.Denominator);
       // Clamp happened first (above), then we round the clamped value onto
       // a notch. Order matters: rounding-then-clamping could push a
@@ -345,17 +345,17 @@ namespace bnd
   template<typename P, typename A>
   constexpr void assignment<L,R>::apply_wrap(L& lhs, R rhs, P&& policy, A&& action)
   {
-    rational rhs_r{rhs};
-    rational lower_r = Lower<L>;
-    rational range   = ((Upper<L> - lower_r).value() + Notch<L>).value();
+    bnd::detail::rational rhs_r{rhs};
+    bnd::detail::rational lower_r = Lower<L>;
+    bnd::detail::rational range   = ((Upper<L> - lower_r).value() + Notch<L>).value();
     // q = floor((rhs - lower) / range), wrapped = rhs - q * range
-    rational shifted = (rhs_r - lower_r).value();
+    bnd::detail::rational shifted = (rhs_r - lower_r).value();
     imax q = (shifted / range).value().floor();
-    rational wrapped = (rhs_r - (rational{q} * range).value()).value();
+    bnd::detail::rational wrapped = (rhs_r - (bnd::detail::rational{q} * range).value()).value();
 
     // Re-enter the rational-rhs specialization for the actual store so the
     // notch / rounding policy logic is exercised once.
-    assignment<L, rational>::store_checked(lhs, wrapped, policy, action);
+    assignment<L, bnd::detail::rational>::store_checked(lhs, wrapped, policy, action);
 
     if constexpr (wrap_action<plain<A>>)
       action.fn(lhs, q);
@@ -381,7 +381,7 @@ namespace bnd
     }
     else
     {
-      rational raw = ((rhs - Lower<L>)/Notch<L>).value();
+      bnd::detail::rational raw = ((rhs - Lower<L>)/Notch<L>).value();
       umax den = static_cast<umax>(raw.Denominator);
       // `raw_from_offset<L>` handles both offset-encoded and direct-encoded
       // storage — for direct, it adds Lower<L> back to produce the value.
@@ -525,7 +525,7 @@ namespace bnd
     }
     else
     {
-      rational rat = *(Offset + *(Factor * rhs.Raw));
+      bnd::detail::rational rat = *(Offset + *(Factor * rhs.Raw));
       umax ad = static_cast<umax>(abs_den(rat.Denominator));
       umax q;
       if constexpr (HasPolicy<L, P, round_nearest>)
