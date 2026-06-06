@@ -27,6 +27,29 @@ TEST_CASE("bound add", "[bound][arithmetic][add]")
   STATIC_REQUIRE(biggest == rational{std::numeric_limits<std::uint64_t>::max()});
 }
 
+TEST_CASE("bound add: mixed notch with offset storage", "[bound][arithmetic][add][notch]")
+{
+  // Regression: the notch-offset add path must scale each operand's raw from
+  // its own notch up to the result notch (lhs_widen = Notch<L>/Notch<result>).
+  // A previous inversion left the scale at 1 whenever notches differed, so the
+  // sum was only correct when the lhs offset happened to be 0 or notches were
+  // equal. These exercise different notches AND a non-zero (and negative-Lower)
+  // offset, which is where the bug surfaced.
+  using fine   = bound<{{-4, 4}, notch<1, 16>},  round_nearest>;
+  using coarse = bound<{{-8, 8}, notch<1, 256>}, round_nearest>;
+  using offset = bound<{{0, 4},  notch<1, 16>},  round_nearest>;
+
+  REQUIRE((fine{0}   + coarse{2}) == 2);    // was -1.75
+  REQUIRE((offset{1} + coarse{2}) == 3);    // was 2.0625
+  REQUIRE((fine{3}   + coarse{2}) == 5);
+  REQUIRE((coarse{2} - fine{1})   == 1);    // sub routes through add(-r)
+
+  // exact fractional result via the integer-pair accessors
+  auto frac = fine{rational{1, 2}} + coarse{rational{1, 4}};
+  REQUIRE(frac.numerator()   == 3);         // 3/4
+  REQUIRE(frac.denominator() == 4);
+}
+
 TEST_CASE("bound mul", "[bound][arithmetic][mul]")
 {
   using r = bound<{10, 255, 1}>;
@@ -307,28 +330,6 @@ TEST_CASE("constexpr arithmetic", "[bound][arithmetic][constexpr]")
   STATIC_REQUIRE(sa * sb == -600);
 }
 
-TEST_CASE("mixed-mode bound op rational", "[bound][arithmetic][mixed]")
-{
-  using money = bound<{{0, 1'000'000}, notch<1, 100>}, round_nearest>;
-  money sub{45.07_r};                               // $45.07
-
-  // bound * rational → rational (panics on overflow via .value())
-  rational tax = sub * 0.08_r;                      // 0.08 × 45.07
-  REQUIRE(tax == 3.6056_r);
-
-  // Assignment back to a bound snaps to the round_nearest grid.
-  money tax_money = sub * 0.08_r;
-  REQUIRE(tax_money == money{3.61_r});
-
-  // Symmetric overload.
-  REQUIRE(2_r * sub == 90.14_r);
-
-  // Addition / subtraction / division.
-  REQUIRE(sub + 0.01_r == 45.08_r);
-  REQUIRE(sub - 0.01_r == 45.06_r);
-  REQUIRE(sub / 2_r    == 22.535_r);
-}
-
 TEST_CASE("scalars need a grid to join bound arithmetic", "[bound][arithmetic][mixed]")
 {
   using bin_t = bound<{0, 9}>;
@@ -354,16 +355,27 @@ TEST_CASE("scalars need a grid to join bound arithmetic", "[bound][arithmetic][m
   REQUIRE(b == 6);
 }
 
-TEST_CASE("bound op rational stays exact (mixed-mode kept)", "[bound][arithmetic][mixed]")
+TEST_CASE("exact scalar math stays in bound-space", "[bound][arithmetic][mixed]")
 {
   using rn = bound<{{-100, 100}, notch<1, 16>}, round_nearest>;
   rn a{0.5_r};                              // 0.5
 
-  // A `rational` is an exact, deliberate scalar: the mixed-mode operators are
-  // kept and return `rational` (staying in the exact domain).
-  STATIC_REQUIRE(std::is_same_v<decltype(a + 0.5_r), rational>);
-  REQUIRE(a + 0.5_r  == 1.0_r);
-  REQUIRE(a - 0.25_r == 0.25_r);
-  REQUIRE(a * 2_r    == 1.0_r);
-  REQUIRE(2_r * a    == 1.0_r);
+  // The old mixed-mode `bound op rational` overloads are gone: a scalar joins
+  // bound arithmetic by wearing a grid (`_b` / `just<>`), and the result stays
+  // a bound — no escape into rational.
+  STATIC_REQUIRE(boundable<decltype(a + 0.5_b)>);
+  STATIC_REQUIRE(boundable<decltype(a * 2_b)>);
+
+  // Exact values come back out through the integer-pair accessors, not a
+  // rational: 0.5 + 0.5 == 1, 0.5 - 0.25 == 1/4, 0.5 * 2 == 1.
+  auto sum = a + 0.5_b;
+  REQUIRE(sum.numerator() == 1);
+  REQUIRE(sum.denominator() == 1);
+
+  auto diff = a - 0.25_b;
+  REQUIRE(diff.numerator() == 1);
+  REQUIRE(diff.denominator() == 4);
+
+  REQUIRE((a * 2_b) == 1);
+  REQUIRE((2_b * a) == 1);
 }

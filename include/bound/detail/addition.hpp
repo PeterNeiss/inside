@@ -48,8 +48,8 @@ namespace bnd
     // gcd(NL, NR). To add the raws we must first scale each side up to the
     // result's notch: lhs_widen = NL/Nresult, rhs_widen = NR/Nresult. Both
     // are guaranteed to be exact integers because Nresult divides NL and NR.
-    static constexpr imax lhs_widen = static_cast<imax>((Notch<result> / Notch<L>).value_or(1_r).Numerator);
-    static constexpr imax rhs_widen = static_cast<imax>((Notch<result> / Notch<R>).value_or(1_r).Numerator);
+    static constexpr imax lhs_widen = static_cast<imax>((Notch<L> / Notch<result>).value_or(1_r).Numerator);
+    static constexpr imax rhs_widen = static_cast<imax>((Notch<R> / Notch<result>).value_or(1_r).Numerator);
 
     template <policy_flag F = none, typename E = empty_ref, typename A = no_action>
     static constexpr add_return_t<F, A> add(L, R, policy<F, E> = {}, A&& = {});

@@ -174,6 +174,29 @@ namespace bnd
   }
 
   //---------------------------------------------------------------------------
+  // dot / cross / lerp — small bound-space vector helpers
+  //
+  // These keep 2-D geometry inside the bounded world: a consumer steering or
+  // measuring against a target never has to drop to a raw scalar to form a dot
+  // product, a 2-D cross (the z-component, useful for "which side" tests), or a
+  // linear interpolation. Each widens its result grid like the underlying
+  // `+`/`*`, so no overflow is possible and the result is a plain `bound`.
+  //---------------------------------------------------------------------------
+  [[nodiscard]] constexpr auto dot(boundable auto ax, boundable auto ay,
+                                   boundable auto bx, boundable auto by)
+  { return ax * bx + ay * by; }
+
+  [[nodiscard]] constexpr auto cross(boundable auto ax, boundable auto ay,
+                                     boundable auto bx, boundable auto by)
+  { return ax * by - ay * bx; }
+
+  // lerp(a, b, t) = a + (b - a) * t. `t` is itself a bound (typically a
+  // [0, 1] fixed-point grid), so the interpolation never leaves bound-space.
+  [[nodiscard]] constexpr auto lerp(boundable auto a, boundable auto b,
+                                    boundable auto t)
+  { return a + (b - a) * t; }
+
+  //---------------------------------------------------------------------------
   // div
   //---------------------------------------------------------------------------
   template <boundable L, boundable R, policy_flag F = none, typename A = no_action>
@@ -241,51 +264,16 @@ namespace bnd
   }
 
   //---------------------------------------------------------------------------
-  // Mixed-mode bound op real
+  // (Removed) Mixed-mode `bound op rational`
   //
-  // `boundable op real` (and the symmetric `real op boundable`) lift the
-  // bound into rational (for rational RHS) or double (for floating-point
-  // RHS) and route through the corresponding scalar operator. The result
-  // type is `rational` or `double` — there is no widening-bound result,
-  // because runtime real arithmetic can't reconstruct a bound type.
-  //
-  // The rational path goes through the checked `rational::operator op`,
-  // then unwraps via `.value()` — overflow surfaces as
-  // `slim::bad_optional_access`, matching `rational::mul_unchecked`'s
-  // panic semantics rather than the silent-truncation that
-  // `static_cast<imax>(rational)` would otherwise do.
+  // These eight overloads used to let a bound be added to / multiplied by a
+  // raw `rational`, returning a bare `rational` (unwrapped via `.value()`).
+  // They were the main way a consumer got pulled out of bound-space and into
+  // the optional-tax of rational arithmetic. They are gone: combine bounds
+  // with bounds (wrap a scalar with `just<>` / `_b`), and read an exact value
+  // back out with `numerator()` / `denominator()`. `rational` is now an
+  // internal representation type, not part of the arithmetic surface.
   //---------------------------------------------------------------------------
-  template <boundable B>
-  [[nodiscard]] constexpr rational operator+(B const& lhs, rational const& rhs)
-  { return (static_cast<rational>(lhs) + rhs).value(); }
-
-  template <boundable B>
-  [[nodiscard]] constexpr rational operator+(rational const& lhs, B const& rhs)
-  { return (lhs + static_cast<rational>(rhs)).value(); }
-
-  template <boundable B>
-  [[nodiscard]] constexpr rational operator-(B const& lhs, rational const& rhs)
-  { return (static_cast<rational>(lhs) - rhs).value(); }
-
-  template <boundable B>
-  [[nodiscard]] constexpr rational operator-(rational const& lhs, B const& rhs)
-  { return (lhs - static_cast<rational>(rhs)).value(); }
-
-  template <boundable B>
-  [[nodiscard]] constexpr rational operator*(B const& lhs, rational const& rhs)
-  { return (static_cast<rational>(lhs) * rhs).value(); }
-
-  template <boundable B>
-  [[nodiscard]] constexpr rational operator*(rational const& lhs, B const& rhs)
-  { return (lhs * static_cast<rational>(rhs)).value(); }
-
-  template <boundable B>
-  [[nodiscard]] constexpr rational operator/(B const& lhs, rational const& rhs)
-  { return (static_cast<rational>(lhs) / rhs).value(); }
-
-  template <boundable B>
-  [[nodiscard]] constexpr rational operator/(rational const& lhs, B const& rhs)
-  { return (lhs / static_cast<rational>(rhs)).value(); }
 
   //---------------------------------------------------------------------------
   // Grid-less scalar operands are rejected.

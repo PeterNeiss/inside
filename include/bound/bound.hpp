@@ -299,6 +299,25 @@ namespace bnd
     template <typename T>
     [[nodiscard]] constexpr T as() const { return to<T>().value(); }
 
+    // numerator() / denominator() — the exact value of a fractional (Q-format)
+    // bound as an integer pair, sign carried on the numerator and denominator
+    // kept positive. This is the supported EXACT read-out: it never mentions
+    // the internal representation type, so callers stay in plain integers
+    // (e.g. `b.numerator() * step / b.denominator()`) without an intermediate
+    // fraction object. For an integer-notch bound, denominator() == 1.
+    [[nodiscard]] constexpr imax numerator() const
+    {
+      rational r = as_rational(*this);
+      return (r.Denominator < 0) ? -static_cast<imax>(r.Numerator)
+                                 :  static_cast<imax>(r.Numerator);
+    }
+
+    [[nodiscard]] constexpr imax denominator() const
+    {
+      rational r = as_rational(*this);
+      return static_cast<imax>(abs_den(r.Denominator));
+    }
+
     // Member-syntax aliases for the free functions in `bnd::math` — these
     // only compile when <bound/cmath.hpp> is also included (the bodies refer
     // to names declared there). No-arg form picks the auto-deduced output

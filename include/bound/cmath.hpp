@@ -51,7 +51,7 @@ namespace bnd::math
   // rational source the internal Q.30 cores use — bit-identical across
   // platforms via constexpr rational arithmetic.
   inline constexpr rational pi{1068966896, 340262731};
-  inline constexpr rational two_pi = just<2> * pi;
+  inline constexpr rational two_pi = rational::mul_unchecked(pi, 2_r);
 
   namespace detail
   {
