@@ -32,9 +32,9 @@ namespace bnd
   //---------------------------------------------------------------------------
   // Must be a structural type for template NTTP (only public members)
   //---------------------------------------------------------------------------
-  // The grid has an interval space by notches
-  // The interval must divide evenly by the notches.
-  // If Notch is zero, all rationals in the interval are allowed, raw is not offset
+  // A grid discretizes its interval into notch-sized steps; the interval must
+  // divide evenly by the notch. If Notch is zero, every rational in the
+  // interval is allowed and raw is not offset.
   //---------------------------------------------------------------------------
   // `grid` is an NTTP type whose operator+/-/*// is the engine of compile-time
   // result-grid inference for `bound`: every bound arithmetic operator computes

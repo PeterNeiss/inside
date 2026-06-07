@@ -10,7 +10,6 @@
 #include <type_traits>
 #include <limits>
 #include <climits>
-//#include <compare>
 #include <concepts>
 
 //---------------------------------------------------------------------------
@@ -30,7 +29,7 @@
   #endif
 #endif
 
-// Older GCC predates __has_builtin but ships these from 5.0.
+// GCC 5.0+ ships these builtins even where __has_builtin is unavailable.
 #if !defined(BOUND_HAVE_BUILTIN) && defined(__GNUC__) && __GNUC__ >= 5
   #define BOUND_HAVE_BUILTIN 1
 #endif

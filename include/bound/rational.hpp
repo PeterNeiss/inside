@@ -111,7 +111,7 @@ namespace bnd::detail
      :Numerator{num}, Denominator{static_cast<imax>(den)}
     { canonicalize(Numerator, Denominator); }
 
-    // operator== be default for structural type
+    // operator== by default for structural type
     constexpr bool operator==(const rational&) const = default;
     template <arithmetic T>
     constexpr bool operator==(T value) const { return operator==(rational{value}); }

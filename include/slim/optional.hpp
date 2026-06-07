@@ -732,8 +732,10 @@ public:
             // Propagate Traits when result type matches.
             if (self.has_value())
                 return optional<U, Traits>{std::forward<F>(f)(std::forward<Self>(self).value_)};
+            // never_empty has no nullopt ctor, so its empty branch is
+            // constrained away; this keeps the return well-formed (it never
+            // runs — has_value() is always true above).
             if constexpr (std::same_as<Traits, never_empty<T>>) {
-                // unreachable: a never_empty optional always has a value
                 return optional<U, Traits>{std::forward<F>(f)(std::forward<Self>(self).value_)};
             } else {
                 return optional<U, Traits>(nullopt);
@@ -797,6 +799,8 @@ public:
         if constexpr (std::same_as<U, T>) {
             if (has_value())
                 return optional<U, Traits>{std::forward<F>(f)(value_)};
+            // never_empty's empty branch is constrained away; keep a
+            // well-formed return (unreachable — has_value() is always true).
             if constexpr (std::same_as<Traits, never_empty<T>>)
                 return optional<U, Traits>{std::forward<F>(f)(value_)};
             else
@@ -815,6 +819,8 @@ public:
         if constexpr (std::same_as<U, T>) {
             if (has_value())
                 return optional<U, Traits>{std::forward<F>(f)(std::move(value_))};
+            // never_empty's empty branch is constrained away; keep a
+            // well-formed return (unreachable — has_value() is always true).
             if constexpr (std::same_as<Traits, never_empty<T>>)
                 return optional<U, Traits>{std::forward<F>(f)(std::move(value_))};
             else

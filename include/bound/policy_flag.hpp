@@ -15,13 +15,12 @@ namespace bnd
   //---------------------------------------------------------------------------
   using policy_flag = unsigned long long;
 
-  // Do all compile time only checks always
-  // if we cannot guarantee success at compile time, fail compilation if ignore flag is not set
-  // insert runtime checks, except we ignore the potential error
-  // if a error is detected at runtime, we throw an exception by default
-  // some function may provide a error_code parameter, which replaces the throw
+  // Check model: compile-time checks always run. When success can't be proven
+  // at compile time, compilation fails unless the matching ignore flag is set;
+  // otherwise a runtime check is inserted that throws by default (or reports
+  // via an error_code parameter where a function provides one).
   //
-  // binary operations or the flags of both operations
+  // Binary operations OR the flags of both operands.
   inline static constexpr policy_flag none         {0ull};
   inline static constexpr policy_flag ignore_zero  {1ull << 1};
   inline static constexpr policy_flag ignore_domain{1ull << 2};

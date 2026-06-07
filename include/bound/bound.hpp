@@ -176,7 +176,7 @@ namespace bnd
     //                       [INT64_MIN, INT64_MAX]. Pathological wide
     //                       grids must use `b.to<imax>()`.
     //   operator size_t   — implicit. Available when Lower >= 0, the grid
-    //                       is notch-aligned, and Upper <= SIZE_MAX. Lets
+    //                       is notch-aligned, and Upper <= INT64_MAX. Lets
     //                       a bound serve as an array/vector index without
     //                       the `.to<std::size_t>().value()` ceremony.
     //   operator rational — implicit. Lossless and mathematically exact,
