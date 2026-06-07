@@ -8,7 +8,7 @@
 
 //---------------------------------------------------------------------------
 // Free-function casts — the named casts that complement the constructors.
-// (`as_rational`, the uniform rational view, now lives in `generic.hpp`.)
+// (`bnd::detail::as_rational`, the uniform rational view, lives in `generic.hpp`.)
 // Unlike a direct `B{value}` call, these read
 // naturally in algorithm callbacks (`std::transform`,
 // `std::ranges::views::transform`) and make the intent — clamp vs. wrap

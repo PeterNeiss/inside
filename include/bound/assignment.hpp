@@ -456,9 +456,9 @@ namespace bnd
     // `RawLo`/`RawHi` are raw-space constants by construction (Lower/Upper
     // for direct storage, 0/NotchCount for notch-offset), so they're
     // already the correct Raw — no `raw_from_offset` adjustment needed.
-    lhs = L::from_raw((as_rational(rhs) < Lower<L>)
+    lhs = L::from_raw((detail::as_rational(rhs) < Lower<L>)
       ? raw_cast<L>(RawLo<L>) : raw_cast<L>(RawHi<L>));
-    auto overshoot = as_rational(rhs) - as_rational(lhs);
+    auto overshoot = detail::as_rational(rhs) - detail::as_rational(lhs);
     if constexpr (clamp_action<plain<A>>)
       action.fn(lhs, overshoot);
   }
@@ -469,7 +469,7 @@ namespace bnd
   {
     static_assert(IsIntegerInterval<L>,
       "wrap with bound rhs requires an integer-aligned destination interval");
-    imax rhs_imax = as_rational(rhs).trunc();
+    imax rhs_imax = detail::as_rational(rhs).trunc();
     constexpr imax lower = LowerImax<L>;
     constexpr imax upper = UpperImax<L>;
     imax range = upper - lower + 1;
@@ -493,12 +493,12 @@ namespace bnd
     else if constexpr (sentinel_action<PA>)
     {
       lhs = L::from_raw(sentinel_raw<L>());
-      action.fn(lhs, as_rational(rhs));
+      action.fn(lhs, detail::as_rational(rhs));
       return true;
     }
     else if constexpr (error_action<PA>)
     {
-      auto msg = bnd::to_string(as_rational(rhs))
+      auto msg = bnd::to_string(detail::as_rational(rhs))
                + " is not in " + bnd::to_string(Interval<L>);
       action.fn(lhs, errc::domain_error, std::string_view(msg));
       return true;
@@ -508,7 +508,7 @@ namespace bnd
     else if constexpr (HasPolicy<L, P, wrap>)
     { apply_wrap(lhs, rhs, action); return true; }
     return domain_fail(lhs, policy,
-      bnd::to_string(as_rational(rhs)) + " is not in " + bnd::to_string(Interval<L>));
+      bnd::to_string(detail::as_rational(rhs)) + " is not in " + bnd::to_string(Interval<L>));
   }
 
   template<boundable L, boundable R>
@@ -561,7 +561,7 @@ namespace bnd
           if (imax mapped = map_raw(rhs.raw()); mapped < RawLo<L> || mapped > RawHi<L>)
             if (try_clamp_or_fail(lhs, rhs, policy, action)) return lhs;
         }
-        else if (not Interval<L>.includes(as_rational(rhs)))
+        else if (not Interval<L>.includes(detail::as_rational(rhs)))
           if (try_clamp_or_fail(lhs, rhs, policy, action)) return lhs;
       }
     }

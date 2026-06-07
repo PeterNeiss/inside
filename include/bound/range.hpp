@@ -132,7 +132,7 @@ namespace bnd
       // Map a grid value back to its notch index: (start - Lower) / Notch.
       // The result has integer denominator (start is on the grid) so the
       // numerator is the index directly.
-      auto offset = ((as_rational(start) - G.Interval.Lower)
+      auto offset = ((detail::as_rational(start) - G.Interval.Lower)
                      / G.Notch).value();
       start_index_ = offset.Numerator;
     }

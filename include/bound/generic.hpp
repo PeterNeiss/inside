@@ -108,14 +108,17 @@ namespace bnd
   concept numeric = boundable<N> or arithmetic<N>;
 
   // Uniform rational view of a scalar or bound. For arithmetic N it constructs
-  // rational{v}; for a bound it uses the implicit operator rational(). Defined
-  // here (not in casts.hpp) so the many core-header users — assignment, compare,
-  // division, range, predicates — resolve it by ordinary lookup rather than ADL.
-  template <numeric N>
-  [[nodiscard]] constexpr bnd::detail::rational as_rational(N v)
+  // rational{v}; for a bound it uses the implicit operator rational(). Lives in
+  // bnd::detail (it returns the internal rational); core-header callers spell
+  // it `detail::as_rational`.
+  namespace detail
   {
-    if constexpr (arithmetic<N>) return bnd::detail::rational{v};
-    else                         return v;
+    template <numeric N>
+    [[nodiscard]] constexpr rational as_rational(N v)
+    {
+      if constexpr (arithmetic<N>) return rational{v};
+      else                         return v;
+    }
   }
 
   // ONLY type conversion, NO value representation conversion calculation
@@ -196,7 +199,7 @@ namespace bnd
     if constexpr (IsDirectStorage<B>)
       return raw_imax(b);
     else // IsNotchStorage
-      return as_rational(b).trunc();
+      return detail::as_rational(b).trunc();
   }
 
   template <boundable B>

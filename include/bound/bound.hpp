@@ -132,7 +132,7 @@ namespace bnd
       else if constexpr (IsDirectStorage<bound>)
         return static_cast<std::common_type_t<raw_type, int>>(Raw);
       else
-        return as_rational(*this);
+        return detail::as_rational(*this);
     }
 
     // Trusted construction from a storage-layout raw value. No validation —
@@ -188,8 +188,8 @@ namespace bnd
     //                       use `b.to<double>().value()` to opt in.
     //   to<T>()           — typed-error narrowing/widening, returns
     //                       `slim::expected<T, errc>` for any
-    //                       unsigned/signed integral, floating point,
-    //                       or `rational` target. Reports overflow,
+    //                       unsigned/signed integral or floating point
+    //                       target. Reports overflow,
     //                       domain_error (negative into unsigned),
     //                       and sentinel-state via errc.
     //   as<T>()           — non-expected sibling. Returns T directly; asserts
@@ -240,7 +240,7 @@ namespace bnd
     }
 
     // to<T>() — typed-error scalar extraction. Mirrors rational::to<T>
-    // and extends it to signed integers, floating point, and rational.
+    // and extends it to signed integers and floating point.
     // Unlike the always-succeed `to_value(b)` / `operator T()` paths,
     // this returns `errc::overflow` (value out of T's range, or
     // sentinel-state) and `errc::domain_error` (negative into unsigned T).
@@ -258,7 +258,7 @@ namespace bnd
         return static_cast<T>(to_value(*this));
       else
       {
-        bnd::detail::rational r = *this;
+        auto r = detail::as_rational(*this);
         if constexpr (needs_neg_check)
           if (r < 0) return slim::unexpected{errc::domain_error};
         if constexpr (needs_max_check)
@@ -282,7 +282,7 @@ namespace bnd
         return static_cast<T>(to_value(*this));
       else
       {
-        bnd::detail::rational r = *this;
+        auto r = detail::as_rational(*this);
         if constexpr (needs_min_check)
           if (r < bnd::detail::rational{std::numeric_limits<T>::min()})
             return slim::unexpected{errc::overflow};
@@ -298,13 +298,6 @@ namespace bnd
     {
       if (is_sentinel_under_policy()) return slim::unexpected{errc::overflow};
       return static_cast<T>(G.raw_to_double(Raw));
-    }
-
-    template <std::same_as<bnd::detail::rational> T>
-    [[nodiscard]] constexpr slim::expected<T, errc> to() const
-    {
-      if (is_sentinel_under_policy()) return slim::unexpected{errc::overflow};
-      return bnd::detail::rational{*this};
     }
 
     // as<T>() — non-expected sibling of to<T>(). Returns T directly and lets
@@ -324,14 +317,14 @@ namespace bnd
     // fraction object. For an integer-notch bound, denominator() == 1.
     [[nodiscard]] constexpr imax numerator() const
     {
-      bnd::detail::rational r = as_rational(*this);
+      auto r = detail::as_rational(*this);
       return (r.Denominator < 0) ? -static_cast<imax>(r.Numerator)
                                  :  static_cast<imax>(r.Numerator);
     }
 
     [[nodiscard]] constexpr imax denominator() const
     {
-      bnd::detail::rational r = as_rational(*this);
+      auto r = detail::as_rational(*this);
       return static_cast<imax>(abs_den(r.Denominator));
     }
 
@@ -670,7 +663,7 @@ namespace bnd
                        && IsDirectStorage<L> && IsDirectStorage<R>)
       return raw_imax(lhs) <=> raw_imax(rhs);
     else
-      return as_rational(lhs) <=> as_rational(rhs);
+      return detail::as_rational(lhs) <=> detail::as_rational(rhs);
   }
 
   template <boundable L, boundable R>
@@ -682,7 +675,7 @@ namespace bnd
                        && IsDirectStorage<L> && IsDirectStorage<R>)
       return raw_imax(lhs) == raw_imax(rhs);
     else
-      return as_rational(lhs) == as_rational(rhs);
+      return detail::as_rational(lhs) == detail::as_rational(rhs);
   }
 
   template <boundable B, arithmetic A>
@@ -691,7 +684,7 @@ namespace bnd
     if constexpr (!IsRawRational<B> && IsDirectStorage<B>)
       return raw_imax(lhs) <=> static_cast<imax>(rhs);
     else
-      return as_rational(lhs) <=> bnd::detail::rational{rhs};
+      return detail::as_rational(lhs) <=> bnd::detail::rational{rhs};
   }
 
   template <boundable B, arithmetic A>
@@ -700,7 +693,7 @@ namespace bnd
     if constexpr (!IsRawRational<B> && IsDirectStorage<B>)
       return raw_imax(lhs) == static_cast<imax>(rhs);
     else
-      return as_rational(lhs) == bnd::detail::rational{rhs};
+      return detail::as_rational(lhs) == bnd::detail::rational{rhs};
   }
 
   //---------------------------------------------------------------------------

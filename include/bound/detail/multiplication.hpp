@@ -107,7 +107,7 @@ namespace bnd
     {
       if constexpr (needs_overflow_check<P>)
       {
-        auto prod = as_rational(lhs) * as_rational(rhs);
+        auto prod = detail::as_rational(lhs) * detail::as_rational(rhs);
         if (!prod)
           return report_or_nullopt<result>(action, policy, errc::overflow,
                                            "rational overflow in mul");
@@ -115,7 +115,7 @@ namespace bnd
       }
       else
         return result::from_raw(raw_cast<result>(bnd::detail::rational::mul_unchecked(
-            as_rational(lhs), as_rational(rhs))));
+            detail::as_rational(lhs), detail::as_rational(rhs))));
     }
     else if constexpr (IsIntegerAligned<L> && IsIntegerAligned<R> && IsIntegerAligned<result>)
     {

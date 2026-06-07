@@ -170,7 +170,7 @@ different "extract the value" intents used to spell the same
 
 | Helper | Returns | Use when |
 |---|---|---|
-| `as_rational(x)` | `rational` (lossless) | You want exact-rational arithmetic on `x` |
+| `detail::as_rational(x)` | `rational` (lossless) | You want exact-rational arithmetic on `x` |
 | `raw_imax(b)`  | `imax` (raw widened) | You want the **raw** as a signed integer (e.g. inside offset arithmetic) |
 | `to_value(b)`    | `imax` (truncated value) | You want the bound's **value** as an integer |
 
@@ -191,7 +191,7 @@ all transitively included by `bound/bound.hpp`:
 | `bound/casts.hpp`       | `clamp_cast`, `wrap_cast`, `checked_cast`, `unchecked_cast`, `clamp_floor` / `clamp_ceil` / `clamp_round` |
 | `bound/arithmetic.hpp`  | Free `add` / `sub` / `mul` / `div` / `mod`, variadic folds `add_all` / `mul_all`, `operator+` / `-` / `*` / `/` / `%`, optional-lift overloads |
 | `bound/range.hpp`       | `bound_range<G, P>` iterator helper |
-| `bound/generic.hpp`     | Traits (`is_*`), metafunctions (`Lower` / `Upper` / `Notch` / `LowerImax` / `UpperImax` / `RawLo` / `RawHi` / `NotchCount`), `as_rational`, `to_value` / `raw_imax`, `q_format_encode/decode`, concepts |
+| `bound/generic.hpp`     | Traits (`is_*`), metafunctions (`Lower` / `Upper` / `Notch` / `LowerImax` / `UpperImax` / `RawLo` / `RawHi` / `NotchCount`), `detail::as_rational`, `to_value` / `raw_imax`, `q_format_encode/decode`, concepts |
 | `bound/assignment.hpp`  | `assignment<L, R>` specialisations for integral / real / boundable rhs |
 | `bound/detail/addition.hpp`, `multiplication.hpp`, `division.hpp` | `addition<L, R>`, `multiplication<L, R>`, `division<L, R, F>`, `modulo<L, R, F>` — implementation detail, included via `bound.hpp` |
 | `bound/detail/overflow.hpp`, `debug.hpp` | `add_overflow` / `sub_overflow` / `mul_overflow` (builtins + portable fallback), stacktrace plumbing — implementation detail |

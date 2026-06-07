@@ -953,7 +953,7 @@ namespace bnd::math
     static_assert(K <= 30,
                   "bnd::math::sqrt: input must be Q.30 or coarser (Q.62 tier planned)");
 
-    bnd::detail::rational v = as_rational(x);
+    bnd::detail::rational v = bnd::detail::as_rational(x);
     if (v < bnd::detail::rational{0})
       return slim::nullopt;
 

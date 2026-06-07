@@ -109,27 +109,18 @@ TEST_CASE("bound::to<floating T>", "[bound][to]")
   }
 }
 
-TEST_CASE("bound::to<rational>", "[bound][to]")
+TEST_CASE("bound -> rational conversion", "[bound][to]")
 {
   SECTION("ordinary value")
   {
     using B = bound<{0, 10}>;
-    REQUIRE(B{5}.to<rational>().value() == 5);
+    REQUIRE(static_cast<rational>(B{5}) == 5);
   }
 
   SECTION("fractional grid is preserved exactly")
   {
     using B = bound<{{0, 1}, notch<1, 2>}>;
-    REQUIRE(B{0.5}.to<rational>().value() == 0.5_r);
-  }
-
-  SECTION("sentinel-state -> overflow")
-  {
-    using B = bound<{0, 100}, sentinel>;
-    B b = B::make_sentinel();
-    auto r = b.to<rational>();
-    REQUIRE_FALSE(r.has_value());
-    REQUIRE(r.error() == errc::overflow);
+    REQUIRE(static_cast<rational>(B{0.5}) == 0.5_r);
   }
 }
 
@@ -208,7 +199,8 @@ TEST_CASE("as<T>() is a non-expected shortcut for to<T>().value()", "[bound][as]
   // Fractional notch: extracting to imax truncates (matches to<imax>()).
   REQUIRE(frac{7.5}.as<imax>() == 7);
 
-  // Rational and double targets behave the same as `to<T>().value()`.
-  REQUIRE(narrow{42}.as<rational>() == 42);
-  REQUIRE(frac{7.5}.as<double>()    == 7.5);
+  // Double target behaves the same as `to<T>().value()`; the bound -> rational
+  // conversion is the implicit operator.
+  REQUIRE(static_cast<rational>(narrow{42}) == 42);
+  REQUIRE(frac{7.5}.as<double>()            == 7.5);
 }
