@@ -8,6 +8,7 @@
 
 #include "slim/expected.hpp"     // slim::expected, slim::unexpected
 
+#include <array>
 #include <bit>
 
 //---------------------------------------------------------------------------
@@ -38,8 +39,12 @@
 //      vectors that pin its bit-exact output for a representative sweep.
 //
 // Implementation pattern per function:
+//   - Pick a working scale 2^W from the OUTPUT grid (`detail::working_bits`),
+//     so precision follows the grid rather than a fixed tier.
 //   - Range-reduce the input to a small interval using integer ops.
-//   - Evaluate a small-degree polynomial in fixed-point Q.30 via Horner.
+//   - Evaluate with the shared shift-add CORDIC engine (circular → sin/cos/atan,
+//     hyperbolic → exp/log) or Newton (sqrt/cbrt). The only multiplies are in
+//     the compile-time tables and input scaling, via the portable wide `fmul`.
 //   - Quantize the result to `Out`'s grid through the existing `bound`
 //     assignment policy (round / clamp / etc. — caller's choice).
 //
@@ -50,7 +55,7 @@ namespace bnd::math
   namespace detail
   {
     // High-precision rational source for the irrational constants — internal,
-    // because the Q.30 cores need the exact rational form. Bit-identical across
+    // because the fixed-point cores need the exact rational form. Bit-identical across
     // platforms via constexpr rational arithmetic.
     inline constexpr bnd::detail::rational pi_r{1068966896, 340262731};
     inline constexpr bnd::detail::rational two_pi_r =
@@ -64,18 +69,7 @@ namespace bnd::math
 
   namespace detail
   {
-    // Q.30 fixed-point unit (1.0) and the marshalling between the rational API
-    // and the Q.30 integer cores. Centralises the scale so the `<< 30` constant
-    // and the round-trip recipe live in one place.
-    inline constexpr imax kQ30One = imax{1} << 30;
-
-    constexpr imax to_q30(bnd::detail::rational v) noexcept
-    { return bnd::detail::rational::mul_unchecked(v, bnd::detail::rational{kQ30One}).round(); }
-
-    constexpr bnd::detail::rational q30_to_rational(imax x_q30) noexcept
-    { return bnd::detail::rational{x_q30, kQ30One}; }
-
-    // Internal phase shape used by the Q.30 cores: Q.N turns, period
+    // Internal turn-phase shape: Q.N turns, period
     // implicit in the unsigned raw's modular wrap. The public sin/cos/tan
     // accept radians and route through this shape internally; callers do
     // not construct it directly. Phase-accumulator patterns (e.g.
@@ -86,45 +80,6 @@ namespace bnd::math
                             bnd::detail::rational{(imax{1} << N) - 1, imax{1} << N}},
                            notch<1, (imax{1} << N)>}>;
 
-    // round(r · 2^Bits) — compile-time quantization of a `rational` Taylor
-    // coefficient into a fixed-point integer at the requested precision.
-    // Returns int64; the call site is responsible for asserting the bit
-    // budget. Uses checked rational multiplication and asserts non-overflow
-    // by dereferencing the optional — a coefficient that overflows during
-    // derivation fails the build, not the run.
-    constexpr imax to_q(bnd::detail::rational r, int bits) noexcept
-    {
-      auto scaled = r * bnd::detail::rational{imax{1} << bits};
-      return scaled.value().round();
-    }
-
-    // Q.30 Taylor coefficients for sin(x) on [0, π/2]:
-    //   sin(x) = x·(1 + x²·(c0 + x²·(c1 + x²·(c2 + x²·(c3 + x²·c4)))))
-    // The leading `1` is materialized as `1 << 30` at evaluation time so
-    // the table holds only the higher-order corrections.
-    inline constexpr imax kSinCoeffsQ30[5] = {
-      to_q(bnd::detail::rational{-1,         6}, 30),  // -1/6      = -178956971
-      to_q(bnd::detail::rational{ 1,       120}, 30),  //  1/120    =    8947849
-      to_q(bnd::detail::rational{-1,      5040}, 30),  // -1/5040   =    -213044
-      to_q(bnd::detail::rational{ 1,    362880}, 30),  //  1/362880 =       2959
-      to_q(bnd::detail::rational{-1, 39916800}, 30),   // -1/...    =        -27
-    };
-
-    // Internal alias for the public `bnd::math::two_pi`. Keeps the rest
-    // of the detail-namespace code (kRadPerSlotQ30, kTwoPiQ30, …) reading
-    // unchanged while consolidating the constant's source.
-    inline constexpr bnd::detail::rational kTwoPi = two_pi_r;
-
-    // Per-slot radians for a turns_t<N>, expressed in Q.30. With N ≤ 30
-    // the scale is integer (kTwoPi · 2^(30-N)); for N > 30 it's the
-    // reciprocal form (kTwoPi / 2^(N-30)). Limit N ≤ 30 in this revision —
-    // beyond that the per-slot constant drops below 1 ULP and the
-    // polynomial needs to move to a Q.62 internal tier (planned).
-    template <int N>
-    inline constexpr imax kRadPerSlotQ30 =
-      (N <= 30)
-        ? bnd::detail::rational::mul_unchecked(kTwoPi, bnd::detail::rational{imax{1} << (30 - N)}).round()
-        : bnd::detail::rational::mul_unchecked(kTwoPi, bnd::detail::rational{1, imax{1} << (N - 30)}).round();
 
     // log2(d) for a power-of-2 imax d. Constexpr loop; cheap at compile time.
     constexpr int log2_pow2(imax d) noexcept
@@ -148,84 +103,31 @@ namespace bnd::math
       return log2_pow2(bnd::detail::abs_den(Notch<In>.Denominator));
     }();
 
-    // Evaluate sin(x) for x ∈ [0, π/2], with x in Q.30 radians.
-    // Returns sin(x) in Q.30 ∈ [0, 2^30].
-    //
-    // Overflow audit: x_q30 ≤ ⌈π/2 · 2^30⌉ = 1'686'629'714 < 2^31.
-    //   x²_q30 fits in int63 (squared int31). After `>> 30` it's < 2^32.
-    //   Coefficients fit in int29. Each Horner step: int32 · int32 → int64,
-    //   `>> 30` → int32. Final `x · one_plus`: int31 · int31 → int62. Safe.
-    constexpr imax sin_q30_quadrant1(imax x_q30) noexcept
-    {
-      imax p   = (x_q30 * x_q30) >> 30;                       // x², Q.30
-      imax s   = kSinCoeffsQ30[4];                            // c4
-      s = kSinCoeffsQ30[3] + ((p * s) >> 30);                 // c3 + p·c4
-      s = kSinCoeffsQ30[2] + ((p * s) >> 30);                 // c2 + p·(…)
-      s = kSinCoeffsQ30[1] + ((p * s) >> 30);                 // c1 + p·(…)
-      s = kSinCoeffsQ30[0] + ((p * s) >> 30);                 // c0 + p·(…)
-      imax one_plus = kQ30One + ((p * s) >> 30);              // 1 + p·bracket
-      return (x_q30 * one_plus) >> 30;                        // x · (…)
-    }
+    // Forward declarations of the grid-scaled CORDIC engine pieces the
+    // turn-input workers below rely on (the engine itself is defined further
+    // down, after the radians sin/cos). Templates, so a declaration here is
+    // enough for the instantiation points later in the TU.
+    template <boundable Out> constexpr int working_bits() noexcept;
+    template <int W, int N> constexpr bnd::detail::rational sin_from_turn_fixed(imax turn_w) noexcept;
+    template <int W, int N> constexpr bnd::detail::rational cos_from_turn_fixed(imax turn_w) noexcept;
 
-    // 2π in Q.30 — round(2π · 2^30) ≈ 6'748'060'595. Used by the
-    // radians-input path to convert a quadrant-local Q.30 turn into Q.30
-    // radians via `(local · kTwoPiQ30) >> 30`. Derived at compile time
-    // from `kTwoPi` via `mul_unchecked` (the rational form has numerator
-    // 2·1068966896 = 2'137'933'792; numerator · 2^30 ≈ 2.295e18, just
-    // inside int63).
-    inline constexpr imax kTwoPiQ30 =
-      detail::to_q30(kTwoPi);
-
-    // 1/(2π) in Q.30, for converting Q.30 radians to Q.30 turns.
-    // round(0.1591549431 · 2^30) = 170891319. (Defined here, ahead of
-    // sin/cos, because the radians-input workers reference it.)
-    inline constexpr imax kOneOver2PiQ30 = 170891319;
-    static_assert(kOneOver2PiQ30 == to_q(bnd::detail::rational{1591549431,
-                                                  10000000000}, 30));
-
-    // (x · scale) in Q.30, computed as integer_part · scale + (frac_part ·
-    // scale) >> 30. The split avoids the imax overflow that a naïve
-    // `(x · scale) >> 30` would hit when x has a large integer part.
-    constexpr imax scaled_mul_q30(imax x_q30, imax scale_q30) noexcept
-    {
-      imax k_x     = x_q30 >> 30;
-      imax f_x_q30 = x_q30 - (k_x << 30);
-      return k_x * scale_q30 + ((f_x_q30 * scale_q30) >> 30);
-    }
-
-    // sin (turn-input, internal). Q.N turn-phase → Q.14-rationalized
-    // amplitude on `Out`'s grid. The input is `detail::turns_t<N>`-shaped;
-    // the raw value already plays the role of `phase mod 1` via the
-    // underlying unsigned wrap. Public radians `sin` lowers to this
-    // worker after converting the input from radians to a Q.30 turn.
+    // sin (turn-input, internal). Q.N turn-phase → amplitude on `Out`'s grid,
+    // via the grid-scaled CORDIC engine. The input is `detail::turns_t<N>`-
+    // shaped; the raw value already plays the role of `phase mod 1` via the
+    // underlying unsigned wrap. Rescales the Q.N phase to the engine's working
+    // scale and runs the shared `sin_from_turn_fixed` reducer.
     template <boundable Out, boundable In>
     [[nodiscard]] constexpr Out sin_turn_impl(In phase) noexcept
     {
       constexpr int N = turn_bits<In>;
-      static_assert(N >= 2 && N <= 30,
-                    "bnd::math: N must be in [2, 30] for the Q.30 internal tier");
+      static_assert(N >= 2 && N <= 30, "bnd::math: turn-phase N must be in [2, 30]");
       static_assert(Lower<Out> <= -1 && Upper<Out> >= 1,
                     "bnd::math: Out must cover [-1, 1]");
 
-      // Range reduce to first quadrant. Layout of `raw` (N bits):
-      //   bit N-1 = half-turn flag (sin is odd about π → negate result)
-      //   bit N-2 = quadrant flag  (within half-turn: reflect about π/4 axis)
-      //   bits N-3..0 = quadrant-local phase, 0…2^(N-2) = 0…π/2
-      constexpr imax half_turn    = imax{1} << (N - 1);
-      constexpr imax quarter_turn = imax{1} << (N - 2);
-      constexpr imax half_mask    = half_turn - 1;
-
-      auto raw       = static_cast<imax>(phase.raw());
-      bool flip_sign = (raw & half_turn) != 0;
-      raw &= half_mask;
-      if (raw > quarter_turn)
-        raw = half_turn - raw;          // reflect: sin(π - x) = sin(x)
-
-      imax x_q30   = raw * kRadPerSlotQ30<N>;
-      imax sin_q30 = sin_q30_quadrant1(x_q30);
-      if (flip_sign) sin_q30 = -sin_q30;
-
-      return Out{detail::q30_to_rational(sin_q30)};
+      constexpr int W = working_bits<Out>();
+      imax raw    = static_cast<imax>(phase.raw());                       // Q.N turn
+      imax turn_w = (W >= N) ? (raw << (W - N)) : (raw >> (N - W));       // → Q.W
+      return Out{sin_from_turn_fixed<W, W>(turn_w)};
     }
 
     // cos (turn-input, internal). cos(x) = sin(x + π/2) — shift the phase
@@ -243,60 +145,368 @@ namespace bnd::math
       return sin_turn_impl<Out>(shifted);
     }
 
-    // Compute sin(x) for x a Q.N turn-phase, returning Q.30. Inlined version
-    // of the turn-input sin core for use by tan (which needs both sin and
-    // cos before quantizing to Out).
-    template <int N>
-    constexpr imax sin_q30_from_phase(imax raw) noexcept
-    {
-      constexpr imax half_turn    = imax{1} << (N - 1);
-      constexpr imax quarter_turn = imax{1} << (N - 2);
-      constexpr imax half_mask    = half_turn - 1;
+    //=========================================================================
+    // Grid-scaled CORDIC engine (replacement for the fixed Q.30 cores).
+    //
+    // Values cross the API as `rational`; internally we work in binary
+    // fixed-point at a scale 2^W chosen from the OUTPUT grid (`working_bits`),
+    // so precision follows the grid instead of a hardcoded 30 bits. The CORDIC
+    // iteration is pure shift-add (bounded, overflow-free). The only multiplies
+    // live in the compile-time table/gain derivation and the input scaling, and
+    // use the portable wide multiply `fmul` — no 128-bit type, so the result is
+    // bit-identical on every toolchain (MSVC included).
+    //=========================================================================
 
-      bool flip = (raw & half_turn) != 0;
-      raw &= half_mask;
-      if (raw > quarter_turn) raw = half_turn - raw;
-      imax sin_q30 = sin_q30_quadrant1(raw * kRadPerSlotQ30<N>);
-      return flip ? -sin_q30 : sin_q30;
+    // (a·b) >> W, exact for full 64-bit operands. 32-bit split → 128-bit
+    // unsigned product → shift → reapply sign. Magnitude-truncating (toward 0).
+    constexpr imax fmul(imax a, imax b, int W) noexcept
+    {
+      bool neg = (a < 0) ^ (b < 0);
+      umax ua = (a < 0) ? -static_cast<umax>(a) : static_cast<umax>(a);
+      umax ub = (b < 0) ? -static_cast<umax>(b) : static_cast<umax>(b);
+      umax al = ua & 0xffffffffu, ah = ua >> 32;
+      umax bl = ub & 0xffffffffu, bh = ub >> 32;
+      umax ll = al * bl, lh = al * bh, hl = ah * bl, hh = ah * bh;
+      umax mid = (ll >> 32) + (lh & 0xffffffffu) + (hl & 0xffffffffu);
+      umax lo  = (ll & 0xffffffffu) | (mid << 32);
+      umax hi  = hh + (lh >> 32) + (hl >> 32) + (mid >> 32);
+      umax r   = (W == 0) ? lo
+               : (W < 64) ? ((lo >> W) | (hi << (64 - W)))
+               :            (hi >> (W - 64));
+      return neg ? -static_cast<imax>(r) : static_cast<imax>(r);
     }
 
-    // Compute sin from a signed Q.30 turn. Reduces mod 2^30 (handling
-    // negative inputs), applies the same quadrant reduction as
-    // sin_q30_from_phase<N>, then converts the quadrant-local Q.30 turn
-    // to Q.30 radians via `(local · kTwoPiQ30) >> 30`. This gives full
-    // Q.30 precision regardless of N — sin_q30_from_phase<30> would
-    // silently lose bits because kRadPerSlotQ30<30> rounds 2π to 6.
-    //
-    // Overflow audit: local ≤ 2^28; local · kTwoPiQ30 ≤ 2^28 · 2^33 =
-    // 2^61, fits int63. Shift back by 30 keeps the result < 2^31.
-    constexpr imax sin_q30_from_turn_q30(imax turn_q30) noexcept
+    // round(v · 2^W)  and  x / 2^W — the scale-W marshalling (parametric Q.W).
+    constexpr imax to_fixed(bnd::detail::rational v, int W) noexcept
+    { return bnd::detail::rational::mul_unchecked(v, bnd::detail::rational{imax{1} << W}).round(); }
+    constexpr bnd::detail::rational fixed_to_rational(imax x, int W) noexcept
+    { return bnd::detail::rational{x, imax{1} << W}; }
+
+    // Working scale for an output grid: enough fractional bits to resolve the
+    // notch, PLUS the integer bits of the largest output magnitude (a result of
+    // value V at fixed scale 2^W carries absolute error ~V·2^-W, so large
+    // outputs — e.g. pow's 10^k — need the extra headroom), plus guard bits for
+    // the CORDIC residual (~16 ULP in the prototype). Capped at 31 (int64).
+    template <boundable Out>
+    constexpr int working_bits() noexcept
     {
-      constexpr imax one_turn     = kQ30One;
-      constexpr imax half_turn    = imax{1} << 29;
-      constexpr imax quarter_turn = imax{1} << 28;
-      constexpr imax half_mask    = half_turn - 1;
+      constexpr int GUARD = 6;
+      umax den        = bnd::detail::abs_den(Notch<Out>.Denominator);   // 1/notch
+      int  notch_bits = (den <= 1) ? 0 : std::bit_width(den - 1);
+      imax hi  = bnd::detail::abs(Upper<Out>).ceil();
+      imax lo  = bnd::detail::abs(Lower<Out>).ceil();
+      imax mag = (hi > lo) ? hi : lo;
+      int  int_bits = (mag <= 1) ? 0 : std::bit_width(static_cast<umax>(mag));
+      int  W = notch_bits + int_bits + GUARD;
+      return (W < 12) ? 12 : (W > 31) ? 31 : W;
+    }
 
-      // Reduce to [0, 2^30). The double-mod handles signed input
-      // (negative turn_q30 wraps into the positive period).
-      turn_q30 = ((turn_q30 % one_turn) + one_turn) % one_turn;
+    // atan(2^-i) in RADIANS at scale 2^W. i=0 is π/4 (exact, from pi_r); i≥1
+    // uses the fast-converging series atan(z)=z−z³/3+z⁵/5−… for tiny z=2^-i.
+    constexpr imax atan_pow2_fixed(int i, int W) noexcept
+    {
+      if (i == 0)
+        return to_fixed(bnd::detail::rational::mul_unchecked(
+                          pi_r, bnd::detail::rational{1, 4}), W);
+      if (W - i < 1) return 0;
+      imax z = imax{1} << (W - i);
+      imax z2 = fmul(z, z, W), term = z, acc = 0;
+      for (int k = 0; k < 64; ++k) {
+        imax t = term / (2 * k + 1);
+        acc += (k & 1) ? -t : t;
+        if (z2 == 0) break;
+        term = fmul(term, z2, W);
+        if (term == 0) break;
+      }
+      return acc;
+    }
 
-      bool flip = (turn_q30 & half_turn) != 0;
-      turn_q30 &= half_mask;
-      if (turn_q30 > quarter_turn) turn_q30 = half_turn - turn_q30;
+    // 1/sqrt(a) at scale 2^W for a ∈ [1,2], division-free Newton (y←y(3−ay²)/2).
+    constexpr imax rsqrt_fixed(imax a, int W) noexcept
+    {
+      imax one = imax{1} << W, three = 3 * one, y = one;
+      for (int k = 0; k < 12; ++k) {
+        imax ay2 = fmul(a, fmul(y, y, W), W);
+        y = fmul(y, three - ay2, W) >> 1;
+      }
+      return y;
+    }
 
-      imax x_q30   = (turn_q30 * kTwoPiQ30) >> 30;
-      imax sin_q30 = sin_q30_quadrant1(x_q30);
-      return flip ? -sin_q30 : sin_q30;
+    // √2 as a rational (literal source, like pi_r / ln2_r), for sqrt's odd-
+    // exponent step.
+    inline constexpr bnd::detail::rational sqrt2_r{1414213562, 1000000000};
+
+    // √a at scale 2^W, a_w = a·2^W ≥ 0. Reduce a = m·2^e, m ∈ [1,2);
+    // √a = √m · 2^(e/2), √m = m·(1/√m) via rsqrt; odd e multiplies in √2.
+    constexpr imax sqrt_fixed(imax a_w, int W) noexcept
+    {
+      if (a_w <= 0) return 0;
+      int  lead = 63 - std::countl_zero(static_cast<umax>(a_w));
+      int  e    = lead - W;
+      imax m_w  = (e >= 0) ? (a_w >> e) : (a_w << (-e));    // m·2^W ∈ [2^W, 2^(W+1))
+      imax sm   = fmul(m_w, rsqrt_fixed(m_w, W), W);        // √m · 2^W
+      if (e & 1) sm = fmul(sm, to_fixed(sqrt2_r, W), W);    // odd exponent ⇒ ×√2
+      int h = e >> 1;                                       // floor(e/2)
+      return (h >= 0) ? (sm << h) : (sm >> (-h));
+    }
+
+    // CORDIC circular gain 1/K = ∏ 1/√(1+4^-i) at scale 2^W.
+    constexpr imax cordic_invgain(int W, int N) noexcept
+    {
+      imax one = imax{1} << W, invK = one;
+      for (int i = 0; i < N; ++i) {
+        if (2 * i > W - 1) break;
+        invK = fmul(invK, rsqrt_fixed(one + (one >> (2 * i)), W), W);
+      }
+      return invK;
+    }
+
+    // Per-<W,N> compile-time atan table + prescaled gain (one per instantiation).
+    template <int W, int N>
+    inline constexpr auto cordic_atan_tbl = []{
+      std::array<imax, static_cast<std::size_t>(N)> t{};
+      for (int i = 0; i < N; ++i) t[static_cast<std::size_t>(i)] = atan_pow2_fixed(i, W);
+      return t;
+    }();
+    template <int W, int N>
+    inline constexpr imax cordic_invgain_v = cordic_invgain(W, N);
+
+    // Circular rotation: sin/cos of z (radians at scale 2^W, |z| ≤ ~π/2).
+    template <int W, int N>
+    constexpr void cordic_sincos(imax z, imax& sin_out, imax& cos_out) noexcept
+    {
+      imax x = cordic_invgain_v<W, N>, y = 0;
+      for (int i = 0; i < N; ++i) {
+        imax d  = (z >= 0) ? 1 : -1;
+        imax xn = x - d * (y >> i);
+        imax yn = y + d * (x >> i);
+        z -= d * cordic_atan_tbl<W, N>[static_cast<std::size_t>(i)];
+        x = xn; y = yn;
+      }
+      sin_out = y; cos_out = x;
+    }
+
+    // sin(x) as a rational, x given as a Q.W turn-phase (one turn = 2^W). Reduces
+    // to the first quadrant in turns (exact powers of two), then CORDICs the
+    // residual converted to radians. cos = sin(+¼ turn).
+    template <int W, int N>
+    constexpr bnd::detail::rational sin_from_turn_fixed(imax turn_w) noexcept
+    {
+      imax one_turn = imax{1} << W, half = imax{1} << (W - 1), quarter = imax{1} << (W - 2);
+      turn_w &= (one_turn - 1);                      // wrap into [0,1) turn
+      bool flip = (turn_w & half) != 0;
+      turn_w &= (half - 1);
+      if (turn_w > quarter) turn_w = half - turn_w;  // reflect about π/4
+      // Exact zero at multiples of a half-turn: CORDIC leaves a ~1-ULP residual
+      // at angle 0, but sin(kπ) must be exactly 0 (pole detection in tan relies
+      // on it). Quadrant peaks (turn_w == quarter) round to ±1 on the grid.
+      if (turn_w == 0) return bnd::detail::rational{0};
+      imax rad = fmul(turn_w, to_fixed(two_pi_r, W), W);
+      imax s, c;
+      cordic_sincos<W, N>(rad, s, c);
+      return fixed_to_rational(flip ? -s : s, W);
+    }
+    template <int W, int N>
+    constexpr bnd::detail::rational cos_from_turn_fixed(imax turn_w) noexcept
+    { return sin_from_turn_fixed<W, N>(turn_w + (imax{1} << (W - 2))); }
+
+    // 1/(2π) as a rational, for radians→turn reduction at any scale.
+    inline constexpr bnd::detail::rational inv_two_pi =
+      (bnd::detail::rational{1} / two_pi_r).value();
+
+    // CORDIC circular vectoring: atan2(y, x) in RADIANS at scale 2^W. Pre: x > 0
+    // (caller pre-rotates the other quadrants). Rotates (x, y) toward the +x
+    // axis, accumulating the radians atan table. Generalizes the former Q.30
+    // vectoring; the gain cancels in the y/x ratio so no prescale needed.
+    template <int W, int N>
+    constexpr imax cordic_atan2_rad(imax y, imax x) noexcept
+    {
+      imax z = 0;
+      for (int i = 0; i < N; ++i) {
+        imax dx = y >> i, dy = x >> i;
+        if (y >= 0) { x += dx; y -= dy; z += cordic_atan_tbl<W, N>[static_cast<std::size_t>(i)]; }
+        else        { x -= dx; y += dy; z -= cordic_atan_tbl<W, N>[static_cast<std::size_t>(i)]; }
+      }
+      return z;
+    }
+
+    //----- hyperbolic CORDIC (exp via sinh+cosh, ln via atanh-vectoring) ------
+
+    // Reference precision for compile-time interval derivation and for the
+    // composed endpoints (sinh/cosh/tanh/log10/cbrt/pow). The runtime impls use
+    // working_bits<Out> so the *value* still follows the grid; this only bounds
+    // the derived intervals and the intermediate composition.
+    inline constexpr int kRefBits = 30;
+
+    // ln 2 as a rational (10-digit literal, like pi_r), plus
+    // its reciprocal — for the exp/log range reduction and base changes.
+    inline constexpr bnd::detail::rational ln2_r{6931471806, 10000000000};
+    inline constexpr bnd::detail::rational inv_ln2_r = (bnd::detail::rational{1} / ln2_r).value();
+
+    // atanh(2^-i) at scale 2^W (series; 2^-i ≤ ½ ⇒ converges). i ≥ 1 only.
+    constexpr imax atanh_pow2_fixed(int i, int W) noexcept
+    {
+      if (W - i < 1) return 0;
+      imax z = imax{1} << (W - i);
+      imax z2 = fmul(z, z, W), term = z, acc = 0;
+      for (int k = 0; k < 64; ++k) {
+        acc += term / (2 * k + 1);
+        if (z2 == 0) break;
+        term = fmul(term, z2, W);
+        if (term == 0) break;
+      }
+      return acc;
+    }
+
+    // Hyperbolic CORDIC shift schedule with the convergence repeats at
+    // i = 4, 13, 40, … (each 3·prev+1). Length L covers W + guard distinct bits.
+    template <int L>
+    constexpr std::array<int, static_cast<std::size_t>(L)> hyp_seq() noexcept
+    {
+      std::array<int, static_cast<std::size_t>(L)> s{};
+      int idx = 0, i = 1, rep = 4;
+      while (idx < L) {
+        s[static_cast<std::size_t>(idx++)] = i;
+        if (i == rep && idx < L) { s[static_cast<std::size_t>(idx++)] = i; rep = 3 * rep + 1; }
+        ++i;
+      }
+      return s;
+    }
+
+    constexpr int hyp_len(int W) noexcept { return W + 6; }
+
+    template <int W, int L>
+    inline constexpr auto cordic_atanh_tbl = []{
+      constexpr auto seq = hyp_seq<L>();
+      std::array<imax, static_cast<std::size_t>(L)> t{};
+      for (int j = 0; j < L; ++j)
+        t[static_cast<std::size_t>(j)] = atanh_pow2_fixed(seq[static_cast<std::size_t>(j)], W);
+      return t;
+    }();
+
+    // Hyperbolic gain 1/Kh = ∏ 1/√(1−4^-i) over the schedule, at scale 2^W.
+    template <int W, int L>
+    inline constexpr imax cordic_hyp_invgain_v = []{
+      constexpr auto seq = hyp_seq<L>();
+      imax one = imax{1} << W, invK = one;
+      for (int j = 0; j < L; ++j) {
+        int i = seq[static_cast<std::size_t>(j)];
+        if (2 * i > W - 1) continue;
+        invK = fmul(invK, rsqrt_fixed(one - (one >> (2 * i)), W), W);   // ×1/√(1−4^-i)
+      }
+      return invK;
+    }();
+
+    // Rotation: sinh/cosh of z (scale 2^W, |z| ≤ ~1.11). exp(z) = sinh+cosh.
+    template <int W, int L>
+    constexpr void cordic_sinhcosh(imax z, imax& sh, imax& ch) noexcept
+    {
+      constexpr auto seq = hyp_seq<L>();
+      imax x = cordic_hyp_invgain_v<W, L>, y = 0;
+      for (int j = 0; j < L; ++j) {
+        int i = seq[static_cast<std::size_t>(j)];
+        imax d  = (z >= 0) ? 1 : -1;
+        imax xn = x + d * (y >> i);
+        imax yn = y + d * (x >> i);
+        z -= d * cordic_atanh_tbl<W, L>[static_cast<std::size_t>(j)];
+        x = xn; y = yn;
+      }
+      sh = y; ch = x;
+    }
+
+    // Vectoring: atanh(y/x) at scale 2^W (drives y → 0). ln(m) = 2·atanh((m−1)/(m+1)).
+    template <int W, int L>
+    constexpr imax cordic_atanh_vec(imax x, imax y) noexcept
+    {
+      constexpr auto seq = hyp_seq<L>();
+      imax z = 0;
+      for (int j = 0; j < L; ++j) {
+        int i = seq[static_cast<std::size_t>(j)];
+        imax d  = (y < 0) ? 1 : -1;
+        imax xn = x + d * (y >> i);
+        imax yn = y + d * (x >> i);
+        z -= d * cordic_atanh_tbl<W, L>[static_cast<std::size_t>(j)];
+        x = xn; y = yn;
+      }
+      return z;
+    }
+
+    // 2^(x_w / 2^W) as a rational, x_w a fixed-point exponent at scale 2^W.
+    // Split x = k + f (k integer, f ∈ [−½,½]); 2^x = 2^k · e^(f·ln2). The 2^k
+    // lives in the rational's power-of-two num/den so large |x| never overflows.
+    // Pure fixed-point — composing this from a log result (pow/cbrt) never
+    // stacks rational denominators.
+    template <int W>
+    constexpr bnd::detail::rational exp2_from_fixed(imax x_w) noexcept
+    {
+      imax k   = (x_w + (imax{1} << (W - 1))) >> W;        // round to nearest int
+      imax f_w = x_w - (k << W);                            // ∈ [−2^(W−1), 2^(W−1)]
+      imax fr_w = fmul(f_w, to_fixed(ln2_r, W), W);         // f·ln2 (natural)
+      imax er_w;
+      if (fr_w == 0) er_w = imax{1} << W;                   // 2^k exactly
+      else { imax sh, ch; cordic_sinhcosh<W, hyp_len(W)>(fr_w, sh, ch); er_w = sh + ch; }
+      if (k <= W) return bnd::detail::rational{static_cast<umax>(er_w), imax{1} << (W - k)};
+      return bnd::detail::rational{static_cast<umax>(er_w) << (k - W), 1};
+    }
+
+    // ln(w) at scale 2^W as a fixed-point imax. Leading-bit reduce w = 2^e·m,
+    // m ∈ [1,2); ln(w) = e·ln2 + 2·atanh((m−1)/(m+1)). Pre: w > 0.
+    template <int W>
+    constexpr imax ln_to_fixed(bnd::detail::rational w) noexcept
+    {
+      imax w_w  = to_fixed(w, W);
+      int  lead = 63 - std::countl_zero(static_cast<umax>(w_w));
+      int  e    = lead - W;
+      imax one  = imax{1} << W;
+      imax m_w  = (e >= 0) ? (w_w >> e) : (w_w << (-e));   // m·2^W ∈ [2^W, 2^(W+1))
+      imax z    = cordic_atanh_vec<W, hyp_len(W)>(m_w + one, m_w - one);
+      return static_cast<imax>(e) * to_fixed(ln2_r, W) + 2 * z;
+    }
+
+    // log2(x) at scale 2^W as imax: ln(x)·log2(e).
+    template <int W>
+    constexpr imax log2_to_fixed(bnd::detail::rational x) noexcept
+    { return fmul(ln_to_fixed<W>(x), to_fixed(inv_ln2_r, W), W); }
+
+    // e^(v_w / 2^W) as a rational: 2^(v·log2 e).
+    template <int W>
+    constexpr bnd::detail::rational exp_from_fixed(imax v_w) noexcept
+    { return exp2_from_fixed<W>(fmul(v_w, to_fixed(inv_ln2_r, W), W)); }
+
+    // Rational-input wrappers (inputs are small-denominator values; fine to
+    // marshal through to_fixed). pow/cbrt compose via the *_fixed primitives
+    // above instead, to avoid rational-denominator blow-up.
+    template <int W>
+    constexpr bnd::detail::rational exp_fixed(bnd::detail::rational v) noexcept
+    { return exp_from_fixed<W>(to_fixed(v, W)); }
+    template <int W>
+    constexpr bnd::detail::rational ln_fixed(bnd::detail::rational w) noexcept
+    { return fixed_to_rational(ln_to_fixed<W>(w), W); }
+    template <int W>
+    constexpr bnd::detail::rational exp2_fixed(bnd::detail::rational x) noexcept
+    { return exp2_from_fixed<W>(to_fixed(x, W)); }
+    template <int W>
+    constexpr bnd::detail::rational log2_fixed(bnd::detail::rational x) noexcept
+    { return fixed_to_rational(log2_to_fixed<W>(x), W); }
+
+    // 1/ln10 at scale 2^W — for log10 = ln·(1/ln10), composed in fixed-point.
+    template <int W>
+    constexpr imax inv_ln10_fixed() noexcept
+    {
+      // ln10 at scale 2^W, then reciprocal via division-free… simplest: derive
+      // the rational once and marshal. ln10 ≈ 2.302585; small, no overflow.
+      return to_fixed((bnd::detail::rational{1} /
+                       fixed_to_rational(ln_to_fixed<W>(bnd::detail::rational{10}), W)).value(), W);
     }
   } // namespace detail
 
   // sin: radians-valued bound → amplitude on the auto-deduced output grid
   // (`detail::sin_auto_t<In>` = `bound<{-1, 1}, Notch<In>, … | round_nearest>`).
   // Input is interpreted as radians — the std::sin equivalent. Internally
-  // converts to a Q.30 turn (via `× 1/(2π)`) and runs the same Q.30
-  // polynomial as the turn-input path.
+  // converts to a turn (via `× 1/(2π)`) at the grid-derived working scale and
+  // runs the same circular-CORDIC reducer as the turn-input path.
   //
-  // Restrict |angle| ≤ 1024 rad (~163 cycles) so the Q.30 scaling stays
+  // Restrict |angle| ≤ 1024 rad (~163 cycles) so the fixed-point scaling stays
   // inside int63. Wider angles need a different normalization step
   // (deferred).
   template <boundable Out, boundable In>
@@ -307,15 +517,15 @@ namespace bnd::math
     static_assert(Lower<Out> <= -1 && Upper<Out> >= 1,
                   "bnd::math::sin: Out must cover [-1, 1]");
 
-    bnd::detail::rational a     = angle;
-    imax     a_q30 = detail::to_q30(a);
-    imax     t_q30 = detail::scaled_mul_q30(a_q30, detail::kOneOver2PiQ30);
-    imax     sin_q30 = detail::sin_q30_from_turn_q30(t_q30);
-    return Out{detail::q30_to_rational(sin_q30)};
+    constexpr int W = detail::working_bits<Out>();
+    bnd::detail::rational a = angle;
+    imax a_w    = detail::to_fixed(a, W);                          // radians · 2^W
+    imax turn_w = detail::fmul(a_w, detail::to_fixed(detail::inv_two_pi, W), W);
+    return Out{detail::sin_from_turn_fixed<W, W>(turn_w)};
   }
 
   // cos: radians-valued bound → amplitude. cos(x) = sin(x + π/2); add a
-  // quarter-turn in Q.30 to the converted turn before the quadrant
+  // quarter-turn to the converted turn before the quadrant
   // reducer, same precision as sin.
   template <boundable Out, boundable In>
   [[nodiscard]] constexpr Out cos_impl(In angle) noexcept
@@ -325,41 +535,34 @@ namespace bnd::math
     static_assert(Lower<Out> <= -1 && Upper<Out> >= 1,
                   "bnd::math::cos: Out must cover [-1, 1]");
 
-    constexpr imax quarter_turn_q30 = imax{1} << 28;
-
-    bnd::detail::rational a     = angle;
-    imax     a_q30 = detail::to_q30(a);
-    imax     t_q30 = detail::scaled_mul_q30(a_q30, detail::kOneOver2PiQ30)
-                   + quarter_turn_q30;
-    imax     cos_q30 = detail::sin_q30_from_turn_q30(t_q30);
-    return Out{detail::q30_to_rational(cos_q30)};
+    constexpr int W = detail::working_bits<Out>();
+    bnd::detail::rational a = angle;
+    imax a_w    = detail::to_fixed(a, W);                          // radians · 2^W
+    imax turn_w = detail::fmul(a_w, detail::to_fixed(detail::inv_two_pi, W), W);
+    return Out{detail::cos_from_turn_fixed<W, W>(turn_w)};
   }
 
   namespace detail
   {
-    // tan (turn-input, internal). sin/cos divided in Q.30 with a pole
-    // guard. Returns `unexpected(errc::division_by_zero)` when the phase
-    // lands exactly on a pole (raw ±π/2 modulo π) and
-    // `unexpected(errc::overflow)` when the result exceeds Out's range.
+    // tan (turn-input, internal). sin/cos from the grid-scaled engine, divided
+    // with a pole guard. Returns `unexpected(errc::division_by_zero)` when the
+    // phase lands on a pole (cos == 0) and `unexpected(errc::overflow)` when the
+    // result exceeds Out's range.
     template <boundable Out, boundable In>
     [[nodiscard]] constexpr slim::expected<Out, errc> tan_turn_impl(In phase) noexcept
     {
       constexpr int N = turn_bits<In>;
-      static_assert(N >= 2 && N <= 30,
-                    "bnd::math: N must be in [2, 30] for the Q.30 internal tier");
-      constexpr imax full_mask    = (imax{1} << N) - 1;
-      constexpr imax quarter_turn = imax{1} << (N - 2);
+      static_assert(N >= 2 && N <= 30, "bnd::math: turn-phase N must be in [2, 30]");
 
-      imax sin_raw = static_cast<imax>(phase.raw());
-      imax cos_raw = (sin_raw + quarter_turn) & full_mask;
+      constexpr int W = working_bits<Out>();
+      imax raw    = static_cast<imax>(phase.raw());
+      imax turn_w = (W >= N) ? (raw << (W - N)) : (raw >> (N - W));
 
-      imax sin_q30 = sin_q30_from_phase<N>(sin_raw);
-      imax cos_q30 = sin_q30_from_phase<N>(cos_raw);
+      bnd::detail::rational sin_v = sin_from_turn_fixed<W, W>(turn_w);
+      bnd::detail::rational cos_v = cos_from_turn_fixed<W, W>(turn_w);
+      if (cos_v == 0) return slim::unexpected(errc::division_by_zero);
 
-      if (cos_q30 == 0) return slim::unexpected(errc::division_by_zero);
-
-      imax tan_q30 = (sin_q30 << 30) / cos_q30;
-      bnd::detail::rational tan_v = detail::q30_to_rational(tan_q30);
+      bnd::detail::rational tan_v = (sin_v / cos_v).value();
       if (tan_v < Lower<Out> || tan_v > Upper<Out>)
         return slim::unexpected(errc::overflow);
 
@@ -368,10 +571,10 @@ namespace bnd::math
   } // namespace detail
 
   // tan: radians-valued bound → amplitude, with pole guard. sin and cos
-  // are computed in Q.30 from the radians input (same conversion as
+  // are computed from the radians input (same conversion as
   // public sin/cos) and divided. Returns
   // `unexpected(errc::division_by_zero)` if cos rounds to exactly 0 (the
-  // input landed on a pole modulo Q.30 reduction), and
+  // input landed on a pole modulo the reduction), and
   // `unexpected(errc::overflow)` when the result exceeds Out's interval.
   template <boundable Out, boundable In>
   [[nodiscard]] constexpr slim::expected<Out, errc> tan_impl(In angle) noexcept
@@ -379,189 +582,37 @@ namespace bnd::math
     static_assert(Lower<In> >= -1024 && Upper<In> <= 1024,
                   "bnd::math::tan: input must be in [-1024, 1024] rad");
 
-    constexpr imax quarter_turn_q30 = imax{1} << 28;
+    constexpr int W = detail::working_bits<Out>();
+    bnd::detail::rational a = angle;
+    imax a_w    = detail::to_fixed(a, W);
+    imax turn_w = detail::fmul(a_w, detail::to_fixed(detail::inv_two_pi, W), W);
 
-    bnd::detail::rational a       = angle;
-    imax     a_q30   = detail::to_q30(a);
-    imax     t_q30   = detail::scaled_mul_q30(a_q30, detail::kOneOver2PiQ30);
-    imax     sin_q30 = detail::sin_q30_from_turn_q30(t_q30);
-    imax     cos_q30 = detail::sin_q30_from_turn_q30(t_q30 + quarter_turn_q30);
+    bnd::detail::rational sin_v = detail::sin_from_turn_fixed<W, W>(turn_w);
+    bnd::detail::rational cos_v = detail::cos_from_turn_fixed<W, W>(turn_w);
 
-    if (cos_q30 == 0) return slim::unexpected(errc::division_by_zero);
+    if (cos_v == 0) return slim::unexpected(errc::division_by_zero);
 
-    imax     tan_q30 = (sin_q30 << 30) / cos_q30;
-    bnd::detail::rational tan_v = detail::q30_to_rational(tan_q30);
+    bnd::detail::rational tan_v = (sin_v / cos_v).value();
     if (tan_v < Lower<Out> || tan_v > Upper<Out>)
       return slim::unexpected(errc::overflow);
 
     return Out{tan_v};
   }
 
-  namespace detail
-  {
-    // Newton-Raphson square root of a Q.30 value, returning Q.30. Pre: x_q30
-    // ≥ 0 and ≤ 2^32 (so x_q60 = x_q30 << 30 fits in int63). The leading-bit
-    // initial guess puts r within a factor of 2 of the true sqrt, after
-    // which Newton doubles correct bits per iteration; 5 iterations cover
-    // the full Q.30 precision from any starting point in the allowed range.
-    constexpr imax sqrt_q30(imax x_q30) noexcept
-    {
-      if (x_q30 == 0) return 0;
 
-      // Initial guess: x_q30 ≈ 2^leading, sqrt(x_value) ≈ 2^((leading-30)/2),
-      // so sqrt-in-Q.30 ≈ 2^((leading-30)/2 + 30) = 2^((leading+30)/2).
-      int leading = 63 - std::countl_zero(static_cast<umax>(x_q30));
-      imax r = imax{1} << ((leading + 30) / 2);
-
-      imax x_q60 = x_q30 << 30;
-      for (int i = 0; i < 5; ++i)
-        r = (r + x_q60 / r) >> 1;        // r ← (r + x/r) / 2 in Q.30
-      return r;
-    }
-  } // namespace detail
-
-  namespace detail
-  {
-    // ln(2) in Q.30: round(0.6931471805599453 · 2^30) = 744261117.95… → 744261118.
-    // The literal is verified at compile time against the rational source so any
-    // typo trips the build; downstream uses the integer form directly.
-    inline constexpr imax kLn2Q30 = 744261118;
-    // Verification rational is 10-digit (not 16) because chained
-    // `mul_unchecked` overflows imax with the higher-precision source even
-    // after GCD reduction. 10 digits gives 30+ bits — same Q.30 rounded int.
-    static_assert(kLn2Q30 == to_q(bnd::detail::rational{6931471806,
-                                           10000000000}, 30));
-
-    // Taylor coefficients for 2^f over f ∈ [0, 1), Q.30:
-    //   2^f = Σ c_n · f^n   where c_n = (ln 2)^n / n!.
-    // Chained `rational` derivation overflows imax even with modest ln2
-    // precision (ln2_num^10 has 150 digits), so we derive each c_n by
-    // integer recursion in Q.30 with a Q.62 intermediate per multiply.
-    // Cumulative error after 10 multiplies is bounded by 10 · 2^-30 ≈ 1e-8 —
-    // well below Q.30 ULP at all input magnitudes of interest.
-    template <int N>
-    constexpr imax exp2_coeff_q30() noexcept
-    {
-      if constexpr (N == 0) return kQ30One;
-      else if constexpr (N == 1) return kLn2Q30;
-      else
-      {
-        imax c = exp2_coeff_q30<N - 1>();
-        c = (c * kLn2Q30) >> 30;      // c · ln2,  Q.30
-        c /= N;                        // / n
-        return c;
-      }
-    }
-
-    inline constexpr imax kExp2CoeffsQ30[10] = {
-      exp2_coeff_q30<0>(), exp2_coeff_q30<1>(), exp2_coeff_q30<2>(),
-      exp2_coeff_q30<3>(), exp2_coeff_q30<4>(), exp2_coeff_q30<5>(),
-      exp2_coeff_q30<6>(), exp2_coeff_q30<7>(), exp2_coeff_q30<8>(),
-      exp2_coeff_q30<9>(),
-    };
-
-    // Evaluate 2^f for f in Q.30 ∈ [0, 2^30). Returns 2^f in Q.30 ∈ [2^30, 2^31).
-    // 10-term Horner; the residual after this poly is bounded by the next
-    // unused term (ln2)^10·f^10/10! ≤ 1.86e-7 — fits Q.22 with room to spare.
-    constexpr imax exp2_q30_fractional(imax f_q30) noexcept
-    {
-      imax r = kExp2CoeffsQ30[9];
-      for (int i = 8; i >= 0; --i)
-        r = kExp2CoeffsQ30[i] + ((r * f_q30) >> 30);
-      return r;
-    }
-  } // namespace detail
-
-  namespace detail
-  {
-    // 2/ln(2) in Q.30: 2 / 0.6931471806 ≈ 2.885390081 → 3098164009.
-    // Verification uses a low-denominator rational source so the
-    // multiplication chain doesn't blow imax.
-    inline constexpr imax kTwoOverLn2Q30 = 3098164009;
-    static_assert(kTwoOverLn2Q30 == to_q(bnd::detail::rational{2885390081,
-                                                  1000000000}, 30));
-
-    // Atanh Taylor coefficients in Q.30:
-    //   atanh(v) = v + v³/3 + v⁵/5 + … = v · (c_0 + v²·c_1 + v⁴·c_2 + …)
-    //   c_n = 1 / (2n + 1)
-    // Each coefficient is a direct `to_q` quantization (no chained
-    // arithmetic, no overflow risk).
-    inline constexpr imax kAtanhCoeffsQ30[10] = {
-      to_q(bnd::detail::rational{1,  1}, 30), to_q(bnd::detail::rational{1,  3}, 30),
-      to_q(bnd::detail::rational{1,  5}, 30), to_q(bnd::detail::rational{1,  7}, 30),
-      to_q(bnd::detail::rational{1,  9}, 30), to_q(bnd::detail::rational{1, 11}, 30),
-      to_q(bnd::detail::rational{1, 13}, 30), to_q(bnd::detail::rational{1, 15}, 30),
-      to_q(bnd::detail::rational{1, 17}, 30), to_q(bnd::detail::rational{1, 19}, 30),
-    };
-
-    // Evaluate atanh(v) for v in Q.30, intended for v ∈ [0, 1/3]. Result in
-    // Q.30. 10-term Horner on the even-power series; residual at v=1/3 is
-    // ~(1/3)^21 / 21 ≈ 4e-12 — comfortably below Q.30 ULP.
-    constexpr imax atanh_q30(imax v_q30) noexcept
-    {
-      imax v_sq = (v_q30 * v_q30) >> 30;       // v², Q.30
-      imax r    = kAtanhCoeffsQ30[9];
-      for (int i = 8; i >= 0; --i)
-        r = kAtanhCoeffsQ30[i] + ((v_sq * r) >> 30);
-      return (v_q30 * r) >> 30;
-    }
-
-    // Q.30 core for log2: leading-bit reduction + atanh series. Pre: x_q30 > 0.
-    // Returns log2(x) in Q.30. Shared by public log2() and by compile-time
-    // derivation of log2(Base) constants for pow_base / exp.
-    constexpr imax log2_q30(imax x_q30) noexcept
-    {
-      int leading = 63 - std::countl_zero(static_cast<umax>(x_q30));
-      int k       = leading - 30;
-      imax m_q30  = (leading >= 30) ? (x_q30 >> (leading - 30))
-                                     : (x_q30 << (30 - leading));
-      imax m_minus_1 = m_q30 - kQ30One;
-      imax m_plus_1  = m_q30 + kQ30One;
-      imax v_q30     = (m_minus_1 << 30) / m_plus_1;
-      imax log2_m_q30 = (kTwoOverLn2Q30 * atanh_q30(v_q30)) >> 30;
-      return (imax{k} << 30) + log2_m_q30;
-    }
-
-    // Q.30 core for exp2: integer/fractional split + 10-term Taylor. Returns
-    // the result as a `rational` so the caller picks the bound assignment.
-    constexpr bnd::detail::rational exp2_q30_to_rational(imax x_q30) noexcept
-    {
-      imax k          = x_q30 >> 30;
-      imax f_q30      = x_q30 - (k << 30);
-      imax pow2_f_q30 = exp2_q30_fractional(f_q30);
-      return bnd::detail::rational{pow2_f_q30, imax{1} << (30 - k)};
-    }
-
-    // log2(e) in Q.30 — derived at compile time from the same log2_q30 core
-    // the public log2() uses. The compile-time loop unrolls to a small set of
-    // integer ops; the result is a single int64 constant.
-    inline constexpr imax kLog2eQ30 =
-      log2_q30(to_q(bnd::detail::rational{2718281828, 1000000000}, 30));
-
-    // log2(Base) in Q.30 for compile-time-known integer Base ≥ 2.
-    template <imax Base>
-    inline constexpr imax kLog2IntBaseQ30 = log2_q30(Base << 30);
-
-    // (`scaled_mul_q30` is defined earlier — alongside `kOneOver2PiQ30` /
-    // `kTwoPiQ30` — because the radians-input sin/cos workers consume it.)
-  } // namespace detail
-
-  // log2: positive bound → bound. Calls the shared `detail::log2_q30` core
-  // (leading-bit reduction + atanh series; see core for algorithm details).
+  // log2: positive bound → bound. log2(x) = ln(x)·log2(e) via the grid-scaled
+  // hyperbolic-CORDIC `log2_fixed` core (leading-bit reduction + atanh vectoring).
   template <boundable Out, boundable In>
   [[nodiscard]] constexpr Out log2_impl(In x) noexcept
   {
     static_assert(Lower<In> > 0,
                   "bnd::math::log2: input must be strictly positive");
 
-    bnd::detail::rational xv    = x;
-    imax     x_q30 = detail::to_q30(xv);
-    return Out{detail::q30_to_rational(detail::log2_q30(x_q30))};
+    return Out{detail::log2_fixed<detail::working_bits<Out>()>(bnd::detail::rational{x})};
   }
 
-  // exp2: bound → bound, returning 2^x. Calls the shared
-  // `detail::exp2_q30_to_rational` core (integer/fractional split + 10-term
-  // Taylor; see core for algorithm details).
+  // exp2: bound → bound, returning 2^x. 2^x = e^(x·ln2) via the grid-scaled
+  // hyperbolic-CORDIC `exp2_fixed` core (integer/fractional split + sinh/cosh).
   //
   // Restrict |x| ≤ 30 so the rational denominator 2^(30 - k) fits in int63.
   // The output `Out` must include non-negative values and cover at least
@@ -575,9 +626,7 @@ namespace bnd::math
     static_assert(Lower<Out> >= 0,
                   "bnd::math::exp2: Out must be non-negative");
 
-    bnd::detail::rational xv    = x;
-    imax     x_q30 = detail::to_q30(xv);
-    return Out{detail::exp2_q30_to_rational(x_q30)};
+    return Out{detail::exp2_fixed<detail::working_bits<Out>()>(bnd::detail::rational{x})};
   }
 
   // exp: thin wrapper. exp(x) = exp2(x · log2(e)). The scaling factor
@@ -591,30 +640,23 @@ namespace bnd::math
     static_assert(Lower<Out> >= 0,
                   "bnd::math::exp: Out must be non-negative");
 
-    bnd::detail::rational xv    = x;
-    imax     x_q30 = detail::to_q30(xv);
-    imax     scaled_q30 = detail::scaled_mul_q30(x_q30, detail::kLog2eQ30);
-    return Out{detail::exp2_q30_to_rational(scaled_q30)};
+    return Out{detail::exp_fixed<detail::working_bits<Out>()>(bnd::detail::rational{x})};
   }
 
   // log: thin wrapper. log(x) = log2(x) · ln(2). Result precision matches
-  // log2 minus 1-2 ULP from the final Q.30 scaling.
+  // log2 minus 1-2 ULP from the final fixed-point scaling.
   template <boundable Out, boundable In>
   [[nodiscard]] constexpr Out log_impl(In x) noexcept
   {
     static_assert(Lower<In> > 0,
                   "bnd::math::log: input must be strictly positive");
 
-    bnd::detail::rational xv    = x;
-    imax     x_q30 = detail::to_q30(xv);
-    imax     log2_x_q30 = detail::log2_q30(x_q30);
-    imax     log_x_q30  = (log2_x_q30 * detail::kLn2Q30) >> 30;
-    return Out{detail::q30_to_rational(log_x_q30)};
+    return Out{detail::ln_fixed<detail::working_bits<Out>()>(bnd::detail::rational{x})};
   }
 
   // pow_base<Base>(x) = Base^x for compile-time-known integer Base ≥ 2.
-  // Implemented as exp2(x · log2(Base)) with log2(Base) derived at compile
-  // time via the shared log2_q30 core — no hand-typed magic constants.
+  // Implemented as exp2(x · log2(Base)) with log2(Base) from the grid-scaled
+  // `log2_to_fixed` core — no hand-typed magic constants.
   // For Base = 10, this is the building block for `db_to_linear`.
   template <imax Base, boundable Out, boundable In>
   [[nodiscard]] constexpr Out pow_base_impl(In x) noexcept
@@ -623,100 +665,12 @@ namespace bnd::math
     static_assert(Lower<Out> >= 0,
                   "bnd::math::pow_base: Out must be non-negative");
 
-    bnd::detail::rational xv    = x;
-    imax     x_q30 = detail::to_q30(xv);
-    imax     scaled_q30 = detail::scaled_mul_q30(x_q30,
-                                                 detail::kLog2IntBaseQ30<Base>);
-    return Out{detail::exp2_q30_to_rational(scaled_q30)};
+    constexpr int W = detail::working_bits<Out>();
+    imax lb_w = detail::log2_to_fixed<W>(bnd::detail::rational{Base});   // log2(Base)·2^W
+    imax sc_w = detail::fmul(detail::to_fixed(bnd::detail::rational{x}, W), lb_w, W);
+    return Out{detail::exp2_from_fixed<W>(sc_w)};
   }
 
-  namespace detail
-  {
-    // (`kOneOver2PiQ30` is defined earlier — used by the radians-input
-    // sin/cos workers as well as by the CORDIC-table derivation below.)
-
-    // atan(x) in Q.30 radians, via Taylor: atan(x) = x − x³/3 + x⁵/5 − …
-    // Pre: |x_q30| < 2^30 (i.e. |x| < 1). For x_q30 = 2^30 (x = 1) the
-    // series is the slow Leibniz series; the caller special-cases atan(1).
-    constexpr imax atan_q30_rad(imax x_q30) noexcept
-    {
-      imax x_sq = (x_q30 * x_q30) >> 30;
-      imax term = x_q30;
-      imax sum  = 0;
-      for (int n = 0; n < 40; ++n) {
-        int  denom = 2 * n + 1;
-        imax piece = term / denom;
-        sum += (n % 2 == 0) ? piece : -piece;
-        term = (term * x_sq) >> 30;
-        if (term == 0) break;
-      }
-      return sum;
-    }
-
-    // atan(2^-i) in Q.30 turns. Compile-time derivation:
-    //   i = 0  → atan(1) = π/4 = exactly 1/8 turn, no Taylor needed.
-    //   i ≥ 1  → atan(2^-i) via Taylor in radians, converted to turns.
-    template <int I>
-    constexpr imax compute_atan_pow2_turn_q30() noexcept
-    {
-      if constexpr (I == 0) return imax{1} << 27;   // 1/8 turn
-      else {
-        constexpr imax x_q30   = imax{1} << (30 - I);
-        imax           atan_rad = atan_q30_rad(x_q30);
-        return (atan_rad * kOneOver2PiQ30) >> 30;
-      }
-    }
-
-    // 30-entry CORDIC lookup table: atan(2^-i) for i = 0..29, in Q.30 turns.
-    // Each entry is derived at compile time from the Taylor `atan_q30_rad`
-    // plus rad-to-turn scaling — no hand-typed magic constants.
-    inline constexpr imax kCordicAtanTurnQ30[30] = {
-      compute_atan_pow2_turn_q30< 0>(), compute_atan_pow2_turn_q30< 1>(),
-      compute_atan_pow2_turn_q30< 2>(), compute_atan_pow2_turn_q30< 3>(),
-      compute_atan_pow2_turn_q30< 4>(), compute_atan_pow2_turn_q30< 5>(),
-      compute_atan_pow2_turn_q30< 6>(), compute_atan_pow2_turn_q30< 7>(),
-      compute_atan_pow2_turn_q30< 8>(), compute_atan_pow2_turn_q30< 9>(),
-      compute_atan_pow2_turn_q30<10>(), compute_atan_pow2_turn_q30<11>(),
-      compute_atan_pow2_turn_q30<12>(), compute_atan_pow2_turn_q30<13>(),
-      compute_atan_pow2_turn_q30<14>(), compute_atan_pow2_turn_q30<15>(),
-      compute_atan_pow2_turn_q30<16>(), compute_atan_pow2_turn_q30<17>(),
-      compute_atan_pow2_turn_q30<18>(), compute_atan_pow2_turn_q30<19>(),
-      compute_atan_pow2_turn_q30<20>(), compute_atan_pow2_turn_q30<21>(),
-      compute_atan_pow2_turn_q30<22>(), compute_atan_pow2_turn_q30<23>(),
-      compute_atan_pow2_turn_q30<24>(), compute_atan_pow2_turn_q30<25>(),
-      compute_atan_pow2_turn_q30<26>(), compute_atan_pow2_turn_q30<27>(),
-      compute_atan_pow2_turn_q30<28>(), compute_atan_pow2_turn_q30<29>(),
-    };
-
-    // CORDIC vectoring for atan2. Pre: x_q30 > 0 (right half-plane). The
-    // iteration rotates (x, y) toward the positive x-axis; the accumulated
-    // angle is atan2(y₀, x₀). 30 iterations give ~30 bits of precision.
-    //
-    // Magnitude growth: |x|, |y| scale by K = ∏ √(1 + 4^-i) ≈ 1.6468 over
-    // all iterations. Inputs bounded to Q.30 of |·| ≤ 1 keep intermediates
-    // below 2^31 — comfortably inside int63.
-    constexpr imax atan2_cordic_q30_turn(imax y_q30, imax x_q30) noexcept
-    {
-      imax z = 0;
-      for (int i = 0; i < 30; ++i) {
-        if (y_q30 >= 0) {
-          // Rotate clockwise: x ← x + y/2^i, y ← y − x/2^i, z += atan(2^-i).
-          imax dx = y_q30 >> i;
-          imax dy = x_q30 >> i;
-          x_q30 += dx;
-          y_q30 -= dy;
-          z     += kCordicAtanTurnQ30[i];
-        } else {
-          imax dx = y_q30 >> i;
-          imax dy = x_q30 >> i;
-          x_q30 -= dx;
-          y_q30 += dy;
-          z     -= kCordicAtanTurnQ30[i];
-        }
-      }
-      return z;
-    }
-  } // namespace detail
 
   // atan2: signed bound, signed bound → angle in radians ∈ [-π, π].
   // Implemented as CORDIC vectoring with quadrant pre-rotation. The CORDIC
@@ -734,41 +688,31 @@ namespace bnd::math
     static_assert(Lower<Out> <= -detail::pi_r && Upper<Out> >= detail::pi_r,
                   "bnd::math::atan2: Out must cover [-π, π]");
 
+    constexpr int W = detail::working_bits<Out>();
     bnd::detail::rational yv = y, xv = x;
-    imax y_q30 = detail::to_q30(yv);
-    imax x_q30 = detail::to_q30(xv);
+    imax y_w = detail::to_fixed(yv, W);
+    imax x_w = detail::to_fixed(xv, W);
 
     // atan2(0, 0) is undefined; convention is 0. Without this guard the
     // CORDIC iteration trivially leaves x, y at zero but still accumulates
     // the angle table at each step, producing garbage.
-    if (x_q30 == 0 && y_q30 == 0) return Out{0};
+    if (x_w == 0 && y_w == 0) return Out{0};
 
     // Quadrant pre-rotation: CORDIC requires x > 0. For x < 0, rotate the
-    // vector by ±π/2 to land in the right half-plane and add the rotation
-    // back at the end.
-    //   Q2 (x<0, y≥0): rotate by −π/2  →  (x',y') = (y, −x).  θ = CORDIC + 1/4.
-    //   Q3 (x<0, y<0): rotate by +π/2  →  (x',y') = (−y, x). θ = CORDIC − 1/4.
-    constexpr imax kQuarterTurnQ30 = imax{1} << 28;
+    // vector by ±π/2 (in radians, at scale W) to land in the right half-plane
+    // and add the rotation back at the end.
+    //   Q2 (x<0, y≥0): (x',y') = (y, −x),  θ = CORDIC + π/2.
+    //   Q3 (x<0, y<0): (x',y') = (−y, x),  θ = CORDIC − π/2.
+    imax half_pi_w = detail::to_fixed(
+        bnd::detail::rational::mul_unchecked(detail::pi_r, bnd::detail::rational{1, 2}), W);
     imax pre_rotation = 0;
-    if (x_q30 < 0) {
-      if (y_q30 >= 0) {
-        imax new_x = y_q30;  imax new_y = -x_q30;
-        x_q30 = new_x;       y_q30 = new_y;
-        pre_rotation = kQuarterTurnQ30;
-      } else {
-        imax new_x = -y_q30; imax new_y = x_q30;
-        x_q30 = new_x;       y_q30 = new_y;
-        pre_rotation = -kQuarterTurnQ30;
-      }
+    if (x_w < 0) {
+      if (y_w >= 0) { imax nx = y_w;  imax ny = -x_w; x_w = nx; y_w = ny; pre_rotation =  half_pi_w; }
+      else          { imax nx = -y_w; imax ny =  x_w; x_w = nx; y_w = ny; pre_rotation = -half_pi_w; }
     }
 
-    imax atan_q30  = detail::atan2_cordic_q30_turn(y_q30, x_q30);
-    imax total_q30 = atan_q30 + pre_rotation;          // turn-phase, Q.30
-
-    // Turn → radians: multiply by 2π. total_q30 ∈ [-2^29, 2^29] (±½ turn),
-    // so the scaled_mul split keeps the product inside int63.
-    imax rad_q30 = detail::scaled_mul_q30(total_q30, detail::kTwoPiQ30);
-    return Out{detail::q30_to_rational(rad_q30)};
+    imax rad = detail::cordic_atan2_rad<W, W>(y_w, x_w) + pre_rotation;   // radians, scale W
+    return Out{detail::fixed_to_rational(rad, W)};
   }
 
   //---------------------------------------------------------------------------
@@ -902,7 +846,7 @@ namespace bnd::math
   template <boundable In>
   [[nodiscard]] constexpr auto trunc(In x) noexcept { return trunc_impl<detail::trunc_auto_t<In>>(x); }
 
-  // sqrt: non-negative bound → bound. Newton-Raphson on Q.30 integer math,
+  // sqrt: non-negative bound → bound. Newton-Raphson on grid-scaled integer math,
   // leading-bit initial guess. The input must have Lower == 0, a power-of-2
   // notch denominator (1/2^K with K ≤ 30), and Upper ≤ 4 so the x_q60
   // intermediate fits in int63. The mixed-sign overload below (`signed_impl`)
@@ -913,57 +857,31 @@ namespace bnd::math
   {
     static_assert(Lower<In> == 0,
                   "bnd::math::sqrt: input must start at 0 (use the mixed-sign overload)");
-    static_assert(Upper<In> <= 4,
-                  "bnd::math::sqrt: input must be ≤ 4 for the Q.30 internal tier");
-    static_assert(Notch<In>.Numerator == 1,
-                  "bnd::math::sqrt: input notch must be 1/2^K");
-    constexpr imax notch_den = bnd::detail::abs_den(Notch<In>.Denominator);
-    static_assert((notch_den & (notch_den - 1)) == 0,
-                  "bnd::math::sqrt: input notch denominator must be a power of 2");
     static_assert(Lower<Out> <= 0,
                   "bnd::math::sqrt: Out must include 0");
 
-    constexpr int K = detail::log2_pow2(notch_den);
-    static_assert(K <= 30,
-                  "bnd::math::sqrt: input must be Q.30 or coarser (Q.62 tier planned)");
-
-    // Convert Q.K input raw to Q.30 by integer left-shift (exact).
-    imax x_q30   = static_cast<imax>(x.raw()) << (30 - K);
-    imax r_q30   = detail::sqrt_q30(x_q30);
-
-    return Out{detail::q30_to_rational(r_q30)};
+    constexpr int W = detail::working_bits<Out>();
+    imax a_w = detail::to_fixed(bnd::detail::rational{x}, W);
+    return Out{detail::fixed_to_rational(detail::sqrt_fixed(a_w, W), W)};
   }
 
   // Mixed-sign sqrt: accepts inputs whose interval crosses zero. Returns
   // `unexpected(errc::domain_error)` if the runtime value is negative,
-  // otherwise the same Q.30 result as `sqrt_impl`. The notch and
+  // otherwise the same result as `sqrt_impl`. The notch and
   // |Upper| / |Lower| constraints mirror the non-negative path.
   template <boundable Out, boundable In>
   [[nodiscard]] constexpr slim::expected<Out, errc> sqrt_signed_impl(In x) noexcept
   {
-    static_assert(Notch<In>.Numerator == 1,
-                  "bnd::math::sqrt: input notch must be 1/2^K");
-    constexpr imax notch_den = bnd::detail::abs_den(Notch<In>.Denominator);
-    static_assert((notch_den & (notch_den - 1)) == 0,
-                  "bnd::math::sqrt: input notch denominator must be a power of 2");
     static_assert(Lower<Out> <= 0,
                   "bnd::math::sqrt: Out must include 0");
-    constexpr bnd::detail::rational max_abs =
-        (bnd::detail::abs(Lower<In>) > bnd::detail::abs(Upper<In>))
-            ? bnd::detail::abs(Lower<In>) : bnd::detail::abs(Upper<In>);
-    static_assert(max_abs <= 4,
-                  "bnd::math::sqrt: max(|Lower|, |Upper|) must be ≤ 4 for the Q.30 internal tier");
-    constexpr int K = detail::log2_pow2(notch_den);
-    static_assert(K <= 30,
-                  "bnd::math::sqrt: input must be Q.30 or coarser (Q.62 tier planned)");
 
     bnd::detail::rational v = bnd::detail::as_rational(x);
     if (v < bnd::detail::rational{0})
       return slim::unexpected(errc::domain_error);
 
-    imax v_q30 = detail::to_q30(v);
-    imax r_q30 = detail::sqrt_q30(v_q30);
-    return Out{detail::q30_to_rational(r_q30)};
+    constexpr int W = detail::working_bits<Out>();
+    imax a_w = detail::to_fixed(v, W);
+    return Out{detail::fixed_to_rational(detail::sqrt_fixed(a_w, W), W)};
   }
 
   //---------------------------------------------------------------------------
@@ -972,7 +890,7 @@ namespace bnd::math
   // Each function below takes the same constraints as its explicit-Out
   // counterpart but derives the output bound type from the input's interval
   // and notch:
-  //   - Lower / Upper computed by running the existing Q.30 cores on the
+  //   - Lower / Upper computed by running the engine cores on the
   //     input endpoints at compile time.
   //   - Outward rounding to `Notch<In>` ensures the deduced bound covers
   //     the true mathematical range even when the endpoint is irrational.
@@ -996,53 +914,37 @@ namespace bnd::math
       return bnd::detail::rational::mul_unchecked(bnd::detail::rational{n}, notch);
     }
 
-    // Helpers: evaluate the existing Q.30 cores on a compile-time-known
+    // Helpers: evaluate the engine cores on a compile-time-known
     // rational endpoint and return the result as a rational.
     constexpr bnd::detail::rational sqrt_endpoint(bnd::detail::rational v) noexcept
     {
       if (v == 0) return bnd::detail::rational{0};
-      imax v_q30 = detail::to_q30(v);
-      return detail::q30_to_rational(sqrt_q30(v_q30));
+      return fixed_to_rational(sqrt_fixed(to_fixed(v, kRefBits), kRefBits), kRefBits);
     }
 
     constexpr bnd::detail::rational exp2_endpoint(bnd::detail::rational v) noexcept
-    {
-      imax v_q30 = detail::to_q30(v);
-      return exp2_q30_to_rational(v_q30);
-    }
+    { return exp2_fixed<kRefBits>(v); }
 
     constexpr bnd::detail::rational log2_endpoint(bnd::detail::rational v) noexcept
-    {
-      imax v_q30 = detail::to_q30(v);
-      return detail::q30_to_rational(log2_q30(v_q30));
-    }
+    { return log2_fixed<kRefBits>(v); }
 
     constexpr bnd::detail::rational exp_endpoint(bnd::detail::rational v) noexcept
-    {
-      imax v_q30  = detail::to_q30(v);
-      imax sc_q30 = scaled_mul_q30(v_q30, kLog2eQ30);
-      return exp2_q30_to_rational(sc_q30);
-    }
+    { return exp_fixed<kRefBits>(v); }
 
     constexpr bnd::detail::rational log_endpoint(bnd::detail::rational v) noexcept
-    {
-      imax v_q30 = detail::to_q30(v);
-      imax l_q30 = log2_q30(v_q30);
-      imax r_q30 = (l_q30 * kLn2Q30) >> 30;
-      return detail::q30_to_rational(r_q30);
-    }
+    { return ln_fixed<kRefBits>(v); }
 
     template <imax Base>
     constexpr bnd::detail::rational pow_base_endpoint(bnd::detail::rational v) noexcept
     {
-      imax v_q30  = detail::to_q30(v);
-      imax sc_q30 = scaled_mul_q30(v_q30, kLog2IntBaseQ30<Base>);
-      return exp2_q30_to_rational(sc_q30);
+      imax sc_w = fmul(to_fixed(v, kRefBits),
+                       log2_to_fixed<kRefBits>(bnd::detail::rational{Base}), kRefBits);
+      return exp2_from_fixed<kRefBits>(sc_w);
     }
 
     // Deduction aliases. Each rounds endpoints outward to Notch<In> and
     // adds `round_nearest` to the policy — transcendental output values
-    // come out of the Q.30 cores with sub-notch drift, so the assignment
+    // come out of the engine cores with sub-notch drift, so the assignment
     // into the deduced bound needs a rounding rule to land on the grid.
     template <boundable In>
     using sqrt_auto_t = bound<{{bnd::detail::rational{0},
@@ -1175,37 +1077,161 @@ namespace bnd::math
   { return fmod_impl<detail::fmod_auto_t<InX, InY>>(x, y); }
 
   //===========================================================================
+  // Grid-native periodic trig: circle<M> angle + caller-owned amplitude.
+  //
+  // A `circle<M>` is one full revolution split into M equal slots, valued in
+  // DEGREES. Degrees have an *integer* period (360), so a notch divides the
+  // circle exactly and the `wrap` policy is drift-free — unlike radians, whose
+  // 2π period no rational notch divides. M selects the angular resolution; the
+  // raw storage is simply the slot index 0..M-1.
+  //
+  // `sin`/`cos` write the result into a caller-supplied amplitude bound whose
+  // own grid fixes the output precision — so the work scales with the grids,
+  // never a fixed internal tier. The runtime path is a table lookup: no
+  // ×1/(2π) conversion and no polynomial. A first-quadrant table is built at
+  // compile time (per the reproducibility banner: derived, never runtime-
+  // loaded); the CORDIC core only seeds it at build time and never runs at
+  // runtime. Power-of-two M is the optimal path (slot reflection is a
+  // bitmask); any M divisible by 4 is supported.
+  //===========================================================================
+  template <std::uint64_t M>
+  using circle = bound<{{bnd::detail::rational{0},
+                         bnd::detail::rational{std::uint64_t{360} * (M - 1),
+                                               static_cast<imax>(M)}},
+                        notch<360, static_cast<imax>(M)>}, round_nearest | wrap>;
+
+  // Amplitude output grid: [-1, 1] at 1/K resolution. The natural target for
+  // `sin(circle<M>, amp<K>&)` — angle precision (M) and amplitude precision (K)
+  // are chosen independently.
+  template <std::uint64_t K>
+  using amp = bound<{{bnd::detail::rational{-1}, bnd::detail::rational{1}},
+                     notch<1, static_cast<imax>(K)>}, round_nearest>;
+
+  namespace detail
+  {
+    // First-quadrant sine table for an M-slot circle at working scale 2^W:
+    // entry j = sin(j/M turn) for j ∈ [0, M/4], as a rational. Filled at
+    // compile time by the grid-scaled CORDIC rotation (`sin_from_turn_fixed`),
+    // never evaluated at runtime. Keyed by <M, W> so the entry precision tracks
+    // the amplitude grid that selected W.
+    template <imax M, int W>
+    inline constexpr auto sin_quarter_table = []{
+      std::array<bnd::detail::rational, static_cast<std::size_t>(M / 4) + 1> t{};
+      for (imax j = 0; j <= M / 4; ++j)
+      {
+        imax turn_w = ((j << W) + M / 2) / M;             // round(j/M · 2^W)
+        t[static_cast<std::size_t>(j)] = sin_from_turn_fixed<W, W>(turn_w);
+      }
+      return t;
+    }();
+
+    // sin(i/M turn) as a rational for any integer slot i (wraps mod M), by
+    // quadrant reduction: sign from the half-turn, reflect about M/4. The table
+    // holds first-quadrant magnitudes; this applies the sign. Power-of-two M
+    // makes the half/quarter compares a bitmask.
+    template <imax M, int W>
+    constexpr bnd::detail::rational sin_slot(imax i) noexcept
+    {
+      constexpr imax half = M / 2, quarter = M / 4;
+      i = ((i % M) + M) % M;                  // wrap into [0, M)
+      bool flip = i >= half;
+      if (flip) i -= half;                    // sin(π + x) = -sin(x)
+      if (i > quarter) i = half - i;          // sin(π - x) =  sin(x)
+      bnd::detail::rational mag = sin_quarter_table<M, W>[static_cast<std::size_t>(i)];
+      return flip ? -mag : mag;
+    }
+
+    // Recover the slot count M from a circle-shaped angle: the degree period
+    // 360 divided by the notch. The public entry points validate the shape.
+    template <boundable DEG>
+    inline constexpr imax circle_slots =
+      (bnd::detail::rational{360} / Notch<DEG>).value().round();
+
+    // Shared shape check for the circle-input entry points.
+    template <boundable DEG>
+    constexpr bool valid_circle() noexcept
+    {
+      static_assert(Lower<DEG> == 0,
+                    "bnd::math: circle angle must have Lower 0 (degrees)");
+      static_assert((BoundPolicy<DEG> & wrap) == wrap,
+                    "bnd::math: circle angle must carry the wrap policy");
+      static_assert(circle_slots<DEG> % 4 == 0,
+                    "bnd::math: circle slot count M must be divisible by 4");
+      return true;
+    }
+  } // namespace detail
+
+  // sin(angle) → out, on out's amplitude grid. angle is a circle<M>; out's
+  // grid fixes the result precision. Reference output (not a return value)
+  // lets AMP be deduced from the caller's object and reuses its assignment
+  // policy for the final rounding onto the amplitude grid.
+  template <boundable DEG, boundable AMP>
+  constexpr void sin(DEG angle, AMP& out) noexcept
+  {
+    static_assert(detail::valid_circle<DEG>());
+    constexpr imax M = detail::circle_slots<DEG>;
+    constexpr int  W = detail::working_bits<AMP>();
+    out = detail::sin_slot<M, W>(static_cast<imax>(angle.raw()));
+  }
+
+  // cos(angle) → out. cos(x) = sin(x + ¼ turn): shift the slot by M/4.
+  template <boundable DEG, boundable AMP>
+  constexpr void cos(DEG angle, AMP& out) noexcept
+  {
+    static_assert(detail::valid_circle<DEG>());
+    constexpr imax M = detail::circle_slots<DEG>;
+    constexpr int  W = detail::working_bits<AMP>();
+    out = detail::sin_slot<M, W>(static_cast<imax>(angle.raw()) + M / 4);
+  }
+
+  // tan(angle) → out = sin/cos. Returns false (and leaves out untouched) when
+  // the angle lands exactly on a pole (cos == 0); overflow of the amplitude
+  // grid is handled by out's own policy (e.g. clamp).
+  template <boundable DEG, boundable AMP>
+  [[nodiscard]] constexpr bool tan(DEG angle, AMP& out) noexcept
+  {
+    static_assert(detail::valid_circle<DEG>());
+    constexpr imax M = detail::circle_slots<DEG>;
+    constexpr int  W = detail::working_bits<AMP>();
+    imax i = static_cast<imax>(angle.raw());
+    bnd::detail::rational c = detail::sin_slot<M, W>(i + M / 4);
+    if (c == 0) return false;                                  // pole
+    out = (detail::sin_slot<M, W>(i) / c).value();             // sin / cos
+    return true;
+  }
+
+  //===========================================================================
   // Extended transcendentals — inverse trig, hyperbolic, log10, pow, cbrt,
-  // hypot. Each composes the Q.30 / CORDIC cores defined above; no new
+  // hypot. Each composes the CORDIC / Newton cores defined above; no new
   // polynomial machinery. Outputs follow the bnd::math conventions: angles in
   // radians, runtime-conditional failures via `slim::expected<Out, errc>`,
   // statically-knowable domain limits via `static_assert`.
   //===========================================================================
   namespace detail
   {
-    inline constexpr imax kQuarterTurnQ30 = imax{1} << 28;
-
-    // log10(2) in Q.30, derived from log2(10): log10(2) = 1 / log2(10).
-    // (2^30)·(2^30) / log2(10)_q30 = log10(2)·2^30.
-    inline constexpr imax kLog10_2_Q30 =
-      ((imax{1} << 30) << 30) / kLog2IntBaseQ30<10>;
-
     // --- inverse trig (radians) -------------------------------------------
-    // atan(v) = atan2(v, 1): CORDIC vectoring with x = 1, scaled turn→rad.
-    constexpr bnd::detail::rational atan_endpoint(bnd::detail::rational v) noexcept
+    // atan(v) in radians at scale 2^W: atan2(v, 1) — x = 1 > 0, so the
+    // vectoring CORDIC runs with no pre-rotation. Grid-scaled (no Q.30).
+    template <int W>
+    constexpr bnd::detail::rational atan_fixed(bnd::detail::rational v) noexcept
     {
-      imax turn_q30 = atan2_cordic_q30_turn(to_q30(v), kQ30One);
-      return q30_to_rational(scaled_mul_q30(turn_q30, kTwoPiQ30));
+      imax rad = cordic_atan2_rad<W, W>(to_fixed(v, W), imax{1} << W);
+      return fixed_to_rational(rad, W);
     }
 
     // asin(v) = atan2(v, sqrt(1 − v²)); v ∈ [−1, 1] → result ∈ [−π/2, π/2].
     constexpr bnd::detail::rational asin_endpoint(bnd::detail::rational v) noexcept
     {
-      imax v_q30 = to_q30(v);
-      imax v_sq  = (v_q30 * v_q30) >> 30;
-      imax c_q30 = sqrt_q30(kQ30One - v_sq);
-      imax turn_q30 = atan2_cordic_q30_turn(v_q30, c_q30);
-      return q30_to_rational(scaled_mul_q30(turn_q30, kTwoPiQ30));
+      imax one = imax{1} << kRefBits;
+      imax v_w = to_fixed(v, kRefBits);
+      imax c_w = sqrt_fixed(one - fmul(v_w, v_w, kRefBits), kRefBits);   // √(1−v²) ≥ 0
+      if (c_w == 0) {                                                    // v = ±1 → ±π/2
+        bnd::detail::rational half_pi =
+            bnd::detail::rational::mul_unchecked(pi_r, bnd::detail::rational{1, 2});
+        return (v < bnd::detail::rational{0}) ? -half_pi : half_pi;
+      }
+      imax rad = cordic_atan2_rad<kRefBits, kRefBits>(v_w, c_w);        // x = c_w > 0
+      return fixed_to_rational(rad, kRefBits);
     }
 
     // acos(v) = π/2 − asin(v); v ∈ [−1, 1] → result ∈ [0, π].
@@ -1217,59 +1243,57 @@ namespace bnd::math
     }
 
     // --- hyperbolic (from e^x via the exp core) ---------------------------
-    // Combine e^x and e^-x in Q.30 integer space, not in rational space:
+    // Combine e^x and e^-x in fixed-point integer space, not in rational space:
     // e^x (x≈10) and e^-x have wildly different denominators (2^16 vs 2^53),
     // and the cross-multiply of `e^x ± e^-x` as rationals overflows imax.
-    // In Q.30 each term is a single scaled integer (|v| ≤ 10 ⇒ e^|v| ≤ 22027,
+    // At scale kRefBits each term is a single scaled integer (|v| ≤ 10 ⇒ e^|v| ≤ 22027,
     // so e^|v|·2^30 ≤ 2.4e13, well inside int63).
+    // sinh/cosh = (e^v ∓ e^-v)/2, combined in fixed-point at kRefBits (the
+    // rational form cross-multiplies to ~1e24 and overflows imax).
     constexpr bnd::detail::rational sinh_endpoint(bnd::detail::rational v) noexcept
     {
-      imax ex  = to_q30(exp_endpoint(v));
-      imax enx = to_q30(exp_endpoint(-v));
-      return q30_to_rational((ex - enx) / 2);
+      imax ex  = to_fixed(exp_fixed<kRefBits>(v),  kRefBits);
+      imax enx = to_fixed(exp_fixed<kRefBits>(-v), kRefBits);
+      return fixed_to_rational((ex - enx) / 2, kRefBits);
     }
 
     constexpr bnd::detail::rational cosh_endpoint(bnd::detail::rational v) noexcept
     {
-      imax ex  = to_q30(exp_endpoint(v));
-      imax enx = to_q30(exp_endpoint(-v));
-      return q30_to_rational((ex + enx) / 2);
+      imax ex  = to_fixed(exp_fixed<kRefBits>(v),  kRefBits);
+      imax enx = to_fixed(exp_fixed<kRefBits>(-v), kRefBits);
+      return fixed_to_rational((ex + enx) / 2, kRefBits);
     }
 
     // tanh via the overflow-safe form tanh(x) = (1 − e^-2|x|)/(1 + e^-2|x|),
-    // odd-extended for x < 0. With u = e^-2|x| ∈ (0, 1] in Q.30, the Q.30
-    // quotient `((1−u)·2^30)/(1+u)` keeps the dividend ≤ 2^60 (no overflow).
+    // odd-extended for x < 0. With u = e^-2|x| ∈ (0, 1] at scale kRefBits, the
+    // quotient `((1−u)·2^kRefBits)/(1+u)` keeps the dividend bounded.
     constexpr bnd::detail::rational tanh_endpoint(bnd::detail::rational v) noexcept
     {
+      constexpr imax one = imax{1} << kRefBits;
       bnd::detail::rational av = bnd::detail::abs(v);
-      imax u = to_q30(exp_endpoint(
-          bnd::detail::rational::mul_unchecked(av, bnd::detail::rational{-2})));
-      imax t = ((kQ30One - u) << 30) / (kQ30One + u);
-      return (v < bnd::detail::rational{0}) ? q30_to_rational(-t)
-                                            : q30_to_rational(t);
+      imax u = to_fixed(exp_fixed<kRefBits>(
+          bnd::detail::rational::mul_unchecked(av, bnd::detail::rational{-2})), kRefBits);
+      imax t = ((one - u) << kRefBits) / (one + u);
+      return (v < bnd::detail::rational{0}) ? fixed_to_rational(-t, kRefBits)
+                                            : fixed_to_rational(t, kRefBits);
     }
 
     // --- log10, cbrt ------------------------------------------------------
     constexpr bnd::detail::rational log10_endpoint(bnd::detail::rational v) noexcept
-    {
-      imax l_q30 = log2_q30(to_q30(v));
-      return q30_to_rational((l_q30 * kLog10_2_Q30) >> 30);
-    }
+    { return fixed_to_rational(fmul(ln_to_fixed<kRefBits>(v), inv_ln10_fixed<kRefBits>(), kRefBits), kRefBits); }
 
-    // cbrt(v) = sign(v)·2^(log2(|v|)/3); cbrt(0) = 0. Q.30 integer divide of
-    // the log by 3 keeps the result in Q.30.
+    // cbrt(v) = sign(v)·e^(ln|v|/3); cbrt(0) = 0.
     constexpr bnd::detail::rational cbrt_endpoint(bnd::detail::rational v) noexcept
     {
       if (v == bnd::detail::rational{0}) return bnd::detail::rational{0};
       bnd::detail::rational av = bnd::detail::abs(v);
-      imax l_q30   = log2_q30(to_q30(av));
-      bnd::detail::rational mag = exp2_q30_to_rational(l_q30 / 3);
+      bnd::detail::rational mag = exp_from_fixed<kRefBits>(ln_to_fixed<kRefBits>(av) / 3);
       return (v < bnd::detail::rational{0}) ? -mag : mag;
     }
 
     // hypot(x, y) = sqrt(x²+y²), computed as m·sqrt((x/m)²+(y/m)²) with
-    // m = max(|x|,|y|) so the radicand stays in [1, 2] ≤ 4 (sqrt's Q.30
-    // envelope). Exact rational scaling; reuses sqrt_q30.
+    // m = max(|x|,|y|) so the radicand stays in [1, 2]. Exact rational scaling;
+    // reuses the grid-scaled sqrt_fixed.
     constexpr bnd::detail::rational hypot_endpoint(bnd::detail::rational x,
                                                    bnd::detail::rational y) noexcept
     {
@@ -1277,13 +1301,13 @@ namespace bnd::math
       bnd::detail::rational ay = bnd::detail::abs(y);
       bnd::detail::rational m  = (ax > ay) ? ax : ay;
       if (m == bnd::detail::rational{0}) return bnd::detail::rational{0};
-      // Form the radicand (x/m)²+(y/m)² ∈ [1, 2] in Q.30 — keeping it a
-      // rational overflows imax (the squared numerators cross-multiply to
-      // ~1e24). Each ratio is ≤ 1, so its Q.30 square fits comfortably.
-      imax rx = to_q30(bnd::detail::rational::div_unchecked(x, m));
-      imax ry = to_q30(bnd::detail::rational::div_unchecked(y, m));
-      imax s_q30 = ((rx * rx) >> 30) + ((ry * ry) >> 30);
-      bnd::detail::rational root = q30_to_rational(sqrt_q30(s_q30));
+      // Form the radicand (x/m)²+(y/m)² ∈ [1, 2] at scale kRefBits — keeping it
+      // a rational overflows imax (the squared numerators cross-multiply to
+      // ~1e24). Each ratio is ≤ 1, so its fixed-point square fits comfortably.
+      imax rx = to_fixed(bnd::detail::rational::div_unchecked(x, m), kRefBits);
+      imax ry = to_fixed(bnd::detail::rational::div_unchecked(y, m), kRefBits);
+      imax s_w = fmul(rx, rx, kRefBits) + fmul(ry, ry, kRefBits);
+      bnd::detail::rational root = fixed_to_rational(sqrt_fixed(s_w, kRefBits), kRefBits);
       return bnd::detail::rational::mul_unchecked(m, root);
     }
 
@@ -1293,10 +1317,12 @@ namespace bnd::math
     constexpr bnd::detail::rational pow_endpoint(bnd::detail::rational b,
                                                  bnd::detail::rational e) noexcept
     {
-      imax sc = scaled_mul_q30(to_q30(e), log2_q30(to_q30(b)));
-      constexpr imax lim = imax{30} << 30;
-      sc = (sc > lim) ? lim : (sc < -lim) ? -lim : sc;
-      return exp2_q30_to_rational(sc);
+      // exponent e·log2(b) in fixed-point log2 units, saturated into exp2's
+      // [−30, 30] envelope so the power-of-two denominator never UB-shifts.
+      imax sc_w = fmul(to_fixed(e, kRefBits), log2_to_fixed<kRefBits>(b), kRefBits);
+      constexpr imax lim = imax{30} << kRefBits;
+      sc_w = (sc_w > lim) ? lim : (sc_w < -lim) ? -lim : sc_w;
+      return exp2_from_fixed<kRefBits>(sc_w);
     }
 
     // --- deduction aliases ------------------------------------------------
@@ -1304,8 +1330,8 @@ namespace bnd::math
     // family. acos is decreasing; cosh is even (min at 0 if the interval
     // spans it). round_nearest lands sub-notch drift onto the grid.
     template <boundable In>
-    using atan_auto_t = bound<{{floor_to_notch(atan_endpoint(Lower<In>), Notch<In>),
-                                ceil_to_notch (atan_endpoint(Upper<In>), Notch<In>)},
+    using atan_auto_t = bound<{{floor_to_notch(atan_fixed<working_bits<In>()>(Lower<In>), Notch<In>),
+                                ceil_to_notch (atan_fixed<working_bits<In>()>(Upper<In>), Notch<In>)},
                                Notch<In>}, BoundPolicy<In> | round_nearest>;
 
     template <boundable In>
@@ -1405,7 +1431,7 @@ namespace bnd::math
   {
     static_assert(Lower<In> >= -1 && Upper<In> <= 1,
                   "bnd::math::atan: input must be in [-1, 1]; normalize first for wider ranges");
-    return Out{detail::atan_endpoint(bnd::detail::rational{x})};
+    return Out{detail::atan_fixed<detail::working_bits<Out>()>(bnd::detail::rational{x})};
   }
 
   template <boundable Out, boundable In>
@@ -1462,7 +1488,7 @@ namespace bnd::math
   [[nodiscard]] constexpr Out cbrt_impl(In x) noexcept
   {
     static_assert(Lower<In> >= -(imax{1} << 20) && Upper<In> <= (imax{1} << 20),
-                  "bnd::math::cbrt: input magnitude must be ≤ 2^20 for the Q.30 internal tier");
+                  "bnd::math::cbrt: input magnitude must be ≤ 2^20 for the working-scale envelope");
     return Out{detail::cbrt_endpoint(bnd::detail::rational{x})};
   }
 
@@ -1471,7 +1497,7 @@ namespace bnd::math
   {
     static_assert(Lower<InX> >= -(imax{1} << 20) && Upper<InX> <= (imax{1} << 20)
                && Lower<InY> >= -(imax{1} << 20) && Upper<InY> <= (imax{1} << 20),
-                  "bnd::math::hypot: input magnitudes must be ≤ 2^20 for the Q.30 internal tier");
+                  "bnd::math::hypot: input magnitudes must be ≤ 2^20 for the working-scale envelope");
     static_assert(Lower<Out> <= 0, "bnd::math::hypot: Out must include 0");
     return Out{detail::hypot_endpoint(bnd::detail::rational{x}, bnd::detail::rational{y})};
   }
@@ -1487,13 +1513,14 @@ namespace bnd::math
     if (bv <= bnd::detail::rational{0})
       return slim::unexpected(errc::domain_error);
 
-    imax sc = detail::scaled_mul_q30(detail::to_q30(bnd::detail::rational{exp}),
-                                     detail::log2_q30(detail::to_q30(bv)));
-    constexpr imax lim = imax{30} << 30;
-    if (sc > lim || sc < -lim)
+    constexpr int W = detail::working_bits<Out>();
+    imax sc_w = detail::fmul(detail::to_fixed(bnd::detail::rational{exp}, W),
+                             detail::log2_to_fixed<W>(bv), W);     // e·log2(b), scale 2^W
+    constexpr imax lim = imax{30} << W;
+    if (sc_w > lim || sc_w < -lim)
       return slim::unexpected(errc::overflow);
 
-    bnd::detail::rational r = detail::exp2_q30_to_rational(sc);
+    bnd::detail::rational r = detail::exp2_from_fixed<W>(sc_w);
     if (r < Lower<Out> || r > Upper<Out>)
       return slim::unexpected(errc::overflow);
     return Out{r};

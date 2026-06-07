@@ -64,6 +64,28 @@ namespace
     return static_cast<int>(sample_t{cos_turn(phase_from(phase_raw))}.raw())
          - 16384;
   }
+
+  // --- grid-native circle<M> degree angle + amp<K> amplitude ---------------
+  // The public reference-output path: `math::sin(circle<M>, amp<K>&)`. amp<K>
+  // stores raw = (value + 1)·K, so `raw - K` is the signed amplitude in units
+  // of 1/K (e.g. K = 16384 → Q.14, directly comparable to sin_q14 above).
+  template <std::uint64_t M, std::uint64_t K = 16384>
+  constexpr int circ_sin_qk(int deg)
+  {
+    math::circle<M> a = deg;
+    math::amp<K>    y;
+    math::sin(a, y);
+    return static_cast<int>(y.raw()) - static_cast<int>(K);
+  }
+
+  template <std::uint64_t M, std::uint64_t K = 16384>
+  constexpr int circ_cos_qk(int deg)
+  {
+    math::circle<M> a = deg;
+    math::amp<K>    y;
+    math::cos(a, y);
+    return static_cast<int>(y.raw()) - static_cast<int>(K);
+  }
 }
 
 //---------------------------------------------------------------------------
@@ -116,6 +138,92 @@ TEST_CASE("bnd::math::sin: bit-exact sweep", "[cmath][sin][constexpr]")
   // Mirror across 2π via raw wrap: phase 65535 ≈ 2π - δ → sin ≈ -δ.
   // Tiny negative number that fits a single Q.14 ULP after rounding.
   static_assert(sin_q14(65535) == -1);   // double-rounding shift
+}
+
+//---------------------------------------------------------------------------
+// Grid-native periodic trig: circle<M> degree angle → amp<K> amplitude.
+// Degrees have an integer period (360), so the wrap is exact and the path is
+// a table lookup — no radians conversion. Pins the bit-exact amplitude the
+// table produces; identical on every platform.
+//---------------------------------------------------------------------------
+TEST_CASE("bnd::math::sin(circle): cardinal degrees", "[cmath][sin][circle][constexpr]")
+{
+  static_assert(circ_sin_qk<360>(0)   ==      0);   // sin(0°)   =  0
+  static_assert(circ_sin_qk<360>(90)  ==  16384);   // sin(90°)  =  1
+  static_assert(circ_sin_qk<360>(180) ==      0);   // sin(180°) =  0
+  static_assert(circ_sin_qk<360>(270) == -16384);   // sin(270°) = -1
+  static_assert(circ_sin_qk<360>(30)  ==   8192);   // sin(30°)  =  0.5
+  static_assert(circ_sin_qk<360>(120) ==  14189);   // sin(120°) = sin(60°)
+  static_assert(circ_sin_qk<360>(210) ==  -8192);   // sin(210°) = -0.5 (sign flip)
+  static_assert(circ_sin_qk<360>(45)  ==  11585);   // √2/2; matches the turn path
+
+  // Power-of-two M is the optimal path: 90° == slot 64 of circle<256>,
+  // an exact quarter-turn — reflection is a bitmask, result is exactly 1.
+  static_assert(circ_sin_qk<256>(90)  ==  16384);
+}
+
+TEST_CASE("bnd::math::cos(circle): cardinal degrees", "[cmath][cos][circle][constexpr]")
+{
+  static_assert(circ_cos_qk<360>(0)   ==  16384);   // cos(0°)   =  1
+  static_assert(circ_cos_qk<360>(90)  ==      0);   // cos(90°)  =  0
+  static_assert(circ_cos_qk<360>(120) ==  -8192);   // cos(120°) = -0.5
+  static_assert(circ_cos_qk<360>(180) == -16384);   // cos(180°) = -1
+  static_assert(circ_cos_qk<360>(270) ==      0);   // cos(270°) =  0
+}
+
+//---------------------------------------------------------------------------
+// The property radians cannot provide: wrapping is drift-free. A degree
+// angle advanced past 360° a thousand times lands on the *identical* slot as
+// its in-range equivalent, because one revolution is exactly M notch steps.
+//---------------------------------------------------------------------------
+TEST_CASE("bnd::math::sin(circle): drift-free wrap", "[cmath][sin][circle][constexpr]")
+{
+  static_assert([]{
+    math::circle<360> b = 30;
+    for (int k = 0; k < 1000; ++k) b = b.value() + 360;   // wrap 1000 times
+    return b.raw();
+  }() == math::circle<360>{30}.raw());
+
+  // …and the amplitude after all that wrapping equals sin(30°) bit-for-bit.
+  static_assert([]{
+    math::circle<360> b = 30;
+    for (int k = 0; k < 1000; ++k) b = b.value() + 360;
+    math::amp<16384> y; math::sin(b, y);
+    return static_cast<int>(y.raw()) - 16384;
+  }() == 8192);
+}
+
+TEST_CASE("bnd::math::tan(circle): value and pole", "[cmath][tan][circle][constexpr]")
+{
+  static_assert([]{
+    math::circle<360> a = 45; math::amp<16384> y;
+    bool ok = math::tan(a, y);
+    return ok && (static_cast<int>(y.raw()) - 16384) == 16384;   // tan(45°) = 1
+  }());
+
+  // cos(90°) == 0 → pole reported, out left untouched.
+  static_assert([]{
+    math::circle<360> a = 90; math::amp<16384> y;
+    return math::tan(a, y);
+  }() == false);
+}
+
+//---------------------------------------------------------------------------
+// Precision follows the output grid: the grid-scaled CORDIC engine computes
+// sin to exactly the amplitude grid's resolution (W derived from the notch),
+// not a fixed Q.30 tier. The same angle lands on the nearest representable
+// value of a coarse and a fine grid alike.
+//---------------------------------------------------------------------------
+TEST_CASE("bnd::math::sin(circle): precision follows the grid", "[cmath][sin][circle][constexpr]")
+{
+  // sin(30°) = 0.5 is exactly representable on every amp<K>; the engine hits it
+  // on a tiny grid and a large one.
+  static_assert(circ_sin_qk<360,        64>(30) ==        32);   // 0.5 · 64
+  static_assert(circ_sin_qk<360,      1024>(30) ==       512);
+  static_assert(circ_sin_qk<360,   1048576>(30) ==    524288);   // 0.5 · 2^20
+  static_assert(circ_sin_qk<360,        64>(90) ==        64);   // sin90 = 1
+  // A non-cardinal angle, pinned bit-exact on a fine grid.
+  static_assert(circ_sin_qk<360,     65536>(50) ==     50203);   // sin50 ≈ 0.76604
 }
 
 //---------------------------------------------------------------------------
