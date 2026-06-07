@@ -1141,7 +1141,7 @@ void prop_sqrt(fuzz_state& s, long iters)
     FUZZ_REQUIRE(s, approx_le(rr, rational{oracle}, tol));
   }
 
-  // Mixed-sign overload returns slim::optional (nullopt for negatives).
+  // Mixed-sign overload returns slim::expected (domain_error for negatives).
   s.current_prop = "sqrt_signed";
   using SIn = bound<{{-1, 1}, notch<1, 65536>}, round_nearest>;
   for (long i = 0; i < iters; ++i)
@@ -1149,11 +1149,13 @@ void prop_sqrt(fuzz_state& s, long iters)
     s.iter = i;
     SIn x = SIn::from_raw(random_in_range_raw<SIn>(s.rng));
     rational xr = x;
-    auto opt = math::sqrt(x);
-    FUZZ_REQUIRE(s, opt.has_value() == (xr >= 0));
-    if (opt.has_value())
-      FUZZ_REQUIRE(s, approx_le(rational{*opt},
+    auto exp = math::sqrt(x);
+    FUZZ_REQUIRE(s, exp.has_value() == (xr >= 0));
+    if (exp.has_value())
+      FUZZ_REQUIRE(s, approx_le(rational{*exp},
                                 rational{std::sqrt(static_cast<double>(xr))}, tol));
+    else
+      FUZZ_REQUIRE(s, exp.error() == errc::domain_error);
   }
 }
 
@@ -1278,8 +1280,8 @@ void prop_atan2(fuzz_state& s, long iters)
   using In = bound<{{-1, 1}, notch<1, 16384>}, round_nearest>;
   s.current_grid = "cmath";
   s.current_prop = "atan2";
-  const rational tol{16, 16384};
-  const double   two_pi = 2.0 * std::numbers::pi_v<double>;
+  const rational tol{16, 16384};          // radians: a few output notches
+  const double   pi = std::numbers::pi_v<double>;
   for (long i = 0; i < iters; ++i)
   {
     s.iter = i;
@@ -1287,11 +1289,152 @@ void prop_atan2(fuzz_state& s, long iters)
     In x = In::from_raw(random_in_range_raw<In>(s.rng));
     rational yr = y, xr = x;
     if (yr == 0 && xr == 0) continue;       // degenerate
-    double turns = std::atan2(static_cast<double>(yr),
-                              static_cast<double>(xr)) / two_pi;
-    if (std::abs(turns) > 0.49) continue;   // ±0.5-turn wraparound boundary
-    FUZZ_REQUIRE(s, approx_le(rational{math::atan2(y, x)}, rational{turns}, tol));
+    double rad = std::atan2(static_cast<double>(yr), static_cast<double>(xr));
+    if (std::abs(rad) > 0.98 * pi) continue; // ±π wraparound boundary
+    FUZZ_REQUIRE(s, approx_le(rational{math::atan2(y, x)}, rational{rad}, tol));
   }
+}
+
+// Extended transcendentals (#3): inverse trig (radians), hyperbolic, log10,
+// cbrt, hypot, pow. Each is checked against the std::<cmath> oracle in double.
+void prop_extended_math(fuzz_state& s, long iters)
+{
+  s.current_grid = "cmath";
+  const rational tol{16, 16384};
+
+  // Inverse trig — input [-1, 1], output radians.
+  {
+    using In = bound<{{-1, 1}, notch<1, 65536>}, round_nearest>;
+    for (long i = 0; i < iters; ++i)
+    {
+      s.iter = i;
+      In x = In::from_raw(random_in_range_raw<In>(s.rng));
+      double xd = static_cast<double>(rational{x});
+      s.current_prop = "atan";
+      FUZZ_REQUIRE(s, approx_le(rational{math::atan(x)}, rational{std::atan(xd)}, tol));
+      s.current_prop = "asin";
+      FUZZ_REQUIRE(s, approx_le(rational{math::asin(x)}, rational{std::asin(xd)}, tol));
+      s.current_prop = "acos";
+      FUZZ_REQUIRE(s, approx_le(rational{math::acos(x)}, rational{std::acos(xd)}, tol));
+    }
+  }
+
+  // Hyperbolic — input [-10, 10].
+  {
+    using In = bound<{{-10, 10}, notch<1, 65536>}, round_nearest>;
+    for (long i = 0; i < iters; ++i)
+    {
+      s.iter = i;
+      In x = In::from_raw(random_in_range_raw<In>(s.rng));
+      double xd = static_cast<double>(rational{x});
+      s.current_prop = "sinh";
+      FUZZ_REQUIRE(s, approx_rel(rational{math::sinh(x)}, std::sinh(xd), 0.01, tol));
+      s.current_prop = "cosh";
+      FUZZ_REQUIRE(s, approx_rel(rational{math::cosh(x)}, std::cosh(xd), 0.01, tol));
+      s.current_prop = "tanh";
+      FUZZ_REQUIRE(s, approx_le(rational{math::tanh(x)}, rational{std::tanh(xd)}, tol));
+    }
+  }
+
+  // log10 — input (0, 1024].
+  {
+    using In = bound<{{1, 1024}, notch<1, 65536>}, round_nearest>;
+    s.current_prop = "log10";
+    for (long i = 0; i < iters; ++i)
+    {
+      s.iter = i;
+      In x = In::from_raw(random_in_range_raw<In>(s.rng));
+      double xd = static_cast<double>(rational{x});
+      FUZZ_REQUIRE(s, approx_le(rational{math::log10(x)}, rational{std::log10(xd)}, tol));
+    }
+  }
+
+  // cbrt — signed input.
+  {
+    using In = bound<{{-16, 16}, notch<1, 65536>}, round_nearest>;
+    s.current_prop = "cbrt";
+    for (long i = 0; i < iters; ++i)
+    {
+      s.iter = i;
+      In x = In::from_raw(random_in_range_raw<In>(s.rng));
+      double xd = static_cast<double>(rational{x});
+      FUZZ_REQUIRE(s, approx_rel(rational{math::cbrt(x)}, std::cbrt(xd), 0.01, tol));
+    }
+  }
+
+  // hypot — two signed inputs.
+  {
+    using In = bound<{{-16, 16}, notch<1, 65536>}, round_nearest>;
+    s.current_prop = "hypot";
+    for (long i = 0; i < iters; ++i)
+    {
+      s.iter = i;
+      In x = In::from_raw(random_in_range_raw<In>(s.rng));
+      In y = In::from_raw(random_in_range_raw<In>(s.rng));
+      double xd = static_cast<double>(rational{x});
+      double yd = static_cast<double>(rational{y});
+      FUZZ_REQUIRE(s, approx_rel(rational{math::hypot(x, y)}, std::hypot(xd, yd), 0.01, tol));
+    }
+  }
+
+  // pow — positive base, returns expected.
+  {
+    using B = bound<{{1, 16}, notch<1, 65536>}, round_nearest>;
+    using E = bound<{{-4, 8}, notch<1, 65536>}, round_nearest>;
+    s.current_prop = "pow";
+    for (long i = 0; i < iters; ++i)
+    {
+      s.iter = i;
+      B b = B::from_raw(random_in_range_raw<B>(s.rng));
+      E e = E::from_raw(random_in_range_raw<E>(s.rng));
+      double bd = static_cast<double>(rational{b});
+      double ed = static_cast<double>(rational{e});
+      double o  = std::pow(bd, ed);
+      auto r = math::pow(b, e);
+      if (r.has_value() && o < 1e6)
+        FUZZ_REQUIRE(s, approx_rel(rational{*r}, o, 0.02, rational{8, 256}));
+    }
+  }
+}
+
+// Wrap on fractional / notch grids with a boundable rhs (#6). The integer
+// fast path only fires on unit-integer grids; these destinations route through
+// the rational modular wrap. Oracle: the wrapped value must land in range and
+// within one notch of v reduced modulo the period (Upper - Lower + Notch).
+void prop_wrap_fractional(fuzz_state& s, long iters)
+{
+  s.current_grid = "wrap_frac";
+
+  auto check = [&](auto dst_tag, auto src_tag, const char* name, rational period,
+                   rational lo, rational hi, rational notch)
+  {
+    using Dst = typename decltype(dst_tag)::type;
+    using Src = typename decltype(src_tag)::type;
+    s.current_prop = name;
+    for (long i = 0; i < iters; ++i)
+    {
+      s.iter = i;
+      Src src = Src::from_raw(random_in_range_raw<Src>(s.rng));
+      rational v = src;
+      Dst d{src};
+      rational out = d;
+      // In range.
+      FUZZ_REQUIRE(s, out >= lo && out <= hi);
+      // out ≡ v (mod period): (v - out)/period is (near) an integer.
+      rational shifted = (v - lo).value();
+      imax q = (shifted / period).value().floor();
+      rational reduced = (v - (rational{q} * period).value()).value();
+      FUZZ_REQUIRE(s, bnd::detail::abs((out - reduced).value()) <= notch);
+    }
+  };
+
+  struct A { using type = bound<{{0, 1}, notch<1, 4>}, wrap | round_nearest>; };
+  struct B1{ using type = bound<{{-2, 2}, notch<1, 4>}, round_nearest>; };
+  check(A{}, B1{}, "wf_0_1_q4", rational{5, 4}, rational{0}, rational{1}, rational{1, 4});
+
+  struct C { using type = bound<{{rational{1,2}, rational{5,2}}, notch<1,2>}, wrap | round_nearest>; };
+  struct D { using type = bound<{{-4, 4}, notch<1, 2>}, round_nearest>; };
+  check(C{}, D{}, "wf_half_q2", rational{5, 2}, rational{1, 2}, rational{5, 2}, rational{1, 2});
 }
 
 //---------------------------------------------------------------------------
@@ -1384,6 +1527,8 @@ int main(int argc, char** argv)
   guarded(s, [&]{ prop_tan(s, iters); });
   guarded(s, [&]{ prop_exp_log(s, iters); });
   guarded(s, [&]{ prop_atan2(s, iters); });
+  guarded(s, [&]{ prop_extended_math(s, iters); });
+  guarded(s, [&]{ prop_wrap_fractional(s, iters); });
 
   // Cross-grid arithmetic: mix grids of different lower/upper but same notch.
   guarded(s, [&]{ prop_cross_add<bound<{0, 100}>, bound<{-100, 100}>>(s, iters, "u100+s100"); });

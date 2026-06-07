@@ -60,6 +60,42 @@ namespace bnd
       constexpr iterator begin() const { return {std::ranges::begin(base_), 0}; }
       constexpr iterator end()   const { return {std::ranges::end(base_), 0}; }
     };
+
+    // stride_view — C++20 stand-in for `std::views::stride` (C++23). Visits
+    // every `step`-th element of the wrapped range. Forward-only (enough for
+    // range-for and the std algorithms that take a forward range); the
+    // per-step advance checks `end` so a length that isn't a multiple of the
+    // stride still terminates cleanly.
+    template <class R>
+    struct stride_view
+    {
+      R base_;
+      std::size_t step_{1};
+
+      struct iterator
+      {
+        std::ranges::iterator_t<const R> it{};
+        std::ranges::iterator_t<const R> end{};
+        std::size_t step{1};
+
+        using value_type      = std::ranges::range_value_t<R>;
+        using difference_type = std::ptrdiff_t;
+
+        constexpr value_type operator*() const { return *it; }
+        constexpr iterator& operator++()
+        {
+          for (std::size_t k = 0; k < step && it != end; ++k) ++it;
+          return *this;
+        }
+        constexpr iterator operator++(int) { auto t = *this; ++*this; return t; }
+        constexpr bool operator==(iterator const& o) const { return it == o.it; }
+      };
+
+      constexpr iterator begin() const
+      { return {std::ranges::begin(base_), std::ranges::end(base_), step_}; }
+      constexpr iterator end() const
+      { return {std::ranges::end(base_), std::ranges::end(base_), step_}; }
+    };
   } // namespace detail
 
   template <grid G, policy_flag P = checked>
@@ -149,6 +185,13 @@ namespace bnd
     // common "index alongside value" pattern in lookup-table examples.
     // Uses detail::enumerate_view so C++20 / GCC 12 builds work unchanged.
     constexpr auto indexed() const { return detail::enumerate_view<bound_range>{*this}; }
+
+    // `strided(step)` visits every `step`-th grid value (a coarser sweep over
+    // the same grid). Mirrors C++23 `std::views::stride`; works on C++20 via
+    // detail::stride_view. `std::views::reverse` already works directly on a
+    // bound_range (it is a random-access range), so there is no `reverse()`.
+    constexpr auto strided(std::size_t step) const
+    { return detail::stride_view<bound_range>{*this, step}; }
   };
 
 } // namespace bnd

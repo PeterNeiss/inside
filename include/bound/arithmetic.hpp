@@ -197,6 +197,28 @@ namespace bnd
   { return a + (b - a) * t; }
 
   //---------------------------------------------------------------------------
+  // std-vocabulary helpers — ADL-found `min` / `max` / `midpoint`.
+  //
+  // These let bounds drop into generic code that calls unqualified
+  // `min` / `max` / `midpoint` (resolved by ADL). `min` / `max` mirror the std
+  // signatures and return the same bound type. `midpoint` returns the *exact*
+  // average on a refined grid: the true midpoint of two grid points need not
+  // land on the grid, so — unlike `std::midpoint` on integers — it neither
+  // rounds nor overflows. (`lerp` above is the third std-vocabulary verb.)
+  //
+  // There is no free `bnd::clamp`: the name is the `clamp` *policy flag*. To
+  // clamp a value into a grid use the `clamp` policy or `clamp_cast<Target>`.
+  //---------------------------------------------------------------------------
+  template <boundable T>
+  [[nodiscard]] constexpr T min(T a, T b) { return (b < a) ? b : a; }
+
+  template <boundable T>
+  [[nodiscard]] constexpr T max(T a, T b) { return (a < b) ? b : a; }
+
+  template <boundable T>
+  [[nodiscard]] constexpr auto midpoint(T a, T b) { return (a + b) * just<frac<1, 2>>; }
+
+  //---------------------------------------------------------------------------
   // div
   //---------------------------------------------------------------------------
   template <boundable L, boundable R, policy_flag F = none, typename A = no_action>

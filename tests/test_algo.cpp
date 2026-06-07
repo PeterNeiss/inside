@@ -128,3 +128,26 @@ TEST_CASE("algo: classic STL algorithms", "[algo][stl]")
   REQUIRE(iota_v.front() == 10);
   REQUIRE(iota_v.back()  == 14);
 }
+
+TEST_CASE("bnd::min / max / midpoint over bounds", "[algo][vocab]")
+{
+  using pct = bound<{0, 100}>;
+  pct a{30}, b{70};
+  REQUIRE(bnd::min(a, b) == 30);
+  REQUIRE(bnd::max(a, b) == 70);
+  // midpoint is exact: (30+70)/2 = 50, lands on a refined grid.
+  REQUIRE(rational{bnd::midpoint(a, b)} == 50);
+
+  // Exact midpoint of integer endpoints whose average is fractional.
+  pct c{0}, d{1};
+  REQUIRE(rational{bnd::midpoint(c, d)} == rational{1, 2});  // no rounding, no overflow
+
+  // ADL: unqualified call resolves to bnd::min for bound arguments.
+  REQUIRE(min(a, b) == 30);
+
+  // Fractional grid.
+  using s = bound<{{-1, 1}, notch<1, 16384>}, round_nearest>;
+  s x{rational{1, 4}}, y{rational{3, 4}};
+  REQUIRE(rational{bnd::midpoint(x, y)} == rational{1, 2});
+  REQUIRE(bnd::max(x, y) == rational{3, 4});
+}

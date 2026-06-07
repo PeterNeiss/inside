@@ -150,6 +150,19 @@ for (auto i : bound_range<{0, 9}>{})
   bins[i] = some_value(i);   // no .as<>() needed
 ```
 
+`bound_range` is a random-access, sized range, so the standard view adaptors
+work on it directly. It also offers two conveniences:
+
+```cpp
+bound_range<{0, 9}> r;
+for (auto i : std::views::reverse(r)) { ... }   // 9 8 7 … 0
+for (auto i : r.strided(3))          { ... }    // 0 3 6 9  (every 3rd value)
+for (auto [idx, v] : r.indexed())    { ... }    // (0,0) (1,1) …  position + value
+```
+
+`strided` and `indexed` are portable stand-ins for C++23 `std::views::stride`
+/ `std::views::enumerate`, so they compile unchanged on C++20.
+
 ## Compile-time constants
 
 `bnd::zero` and `bnd::one` are built-in point-bounds for the two values you reach
@@ -179,6 +192,25 @@ The `_b` literal is shorthand for `just<N>`:
 auto five = 5_b;                // bound<{5, 5}>
 auto x    = 10_b + my_bound;    // grid widens via just<N> + bound
 ```
+
+## `std`-vocabulary helpers
+
+`bound/arithmetic.hpp` provides ADL-found `bnd::min`, `bnd::max`, and
+`bnd::midpoint` (alongside `lerp` / `dot` / `cross`) so bounds drop into generic
+code that calls them unqualified. `min` / `max` return the same bound type;
+`midpoint` returns the **exact** average on a refined grid — the true midpoint
+of two grid points need not land on the grid, so unlike `std::midpoint` on
+integers it neither rounds nor overflows.
+
+```cpp
+bound<{0, 100}> a = 30, b = 71;
+auto lo  = bnd::min(a, b);        // 30
+auto mid = bnd::midpoint(a, b);   // exactly 50.5 (refined grid), never 50
+```
+
+There is no `bnd::clamp` free function: the name belongs to the `clamp` policy
+flag. To clamp a value into a grid, use the `clamp` policy or
+`clamp_cast<Target>` (see [conversions.md](conversions.md)).
 
 ## `std` integration
 

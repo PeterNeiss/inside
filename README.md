@@ -58,15 +58,22 @@ safe_pct p = 150;                          // p == 100
   and STL/ranges integration. Plus predefined hardware-width aliases
   (`bnd::u8`, `bnd::unorm16`, `bnd::q8_8`, …) in `bound/formats.hpp`.
   See [docs/storage.md](docs/storage.md).
+- **Bit-exact constexpr math** — a `<cmath>`-shaped function set over bounds
+  (`sin`/`cos`/`tan`, `asin`/`acos`/`atan`/`atan2`, `sinh`/`cosh`/`tanh`,
+  `exp`/`log`/`log2`/`log10`/`pow`, `sqrt`/`cbrt`/`hypot`), integer-only
+  internally and bit-identical across compilers/platforms. Angles are radians;
+  output grids auto-deduce. See [docs/math.md](docs/math.md).
 - **Library internals** — grid invariants, storage decision tree, Q-format
   fast path, policy cascade. See [docs/internals.md](docs/internals.md).
 
 ## Documentation
 
+- [Tutorial — the mental model](docs/tutorial.md)
 - [Policies, callbacks & error handling](docs/policies.md)
 - [Arithmetic, rounding & compound assignment](docs/arithmetic.md)
 - [Conversions, casts & predicates](docs/conversions.md)
 - [Storage, iteration & STL integration](docs/storage.md)
+- [`bnd::math` — constexpr, bit-exact math](docs/math.md)
 - [Internals (architecture / design notes)](docs/internals.md)
 
 ## Examples

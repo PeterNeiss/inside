@@ -161,3 +161,33 @@ TEST_CASE("bound_range::indexed pairs each value with its position", "[range][in
     {0, 0}, {1, 1}, {2, 2}, {3, 3}, {4, 4}
   });
 }
+
+TEST_CASE("bound_range works with std::views::reverse", "[range][reverse]")
+{
+  small_grid r;   // 0,1,2,3,4
+  std::vector<imax> seen;
+  for (auto v : std::views::reverse(r))
+    seen.push_back(static_cast<imax>(v));
+  REQUIRE(seen == std::vector<imax>{4, 3, 2, 1, 0});
+}
+
+TEST_CASE("bound_range::strided visits every step-th value", "[range][strided]")
+{
+  small_grid r;   // 0,1,2,3,4
+  auto collect = [&](std::size_t step) {
+    std::vector<imax> seen;
+    for (auto v : r.strided(step)) seen.push_back(static_cast<imax>(v));
+    return seen;
+  };
+  REQUIRE(collect(1) == std::vector<imax>{0, 1, 2, 3, 4});
+  REQUIRE(collect(2) == std::vector<imax>{0, 2, 4});
+  REQUIRE(collect(3) == std::vector<imax>{0, 3});
+  REQUIRE(collect(5) == std::vector<imax>{0});
+
+  // Fractional grid strides over notch values too.
+  using frac_grid = bound_range<{{0, 1}, notch<1, 4>}>;  // 0,.25,.5,.75,1
+  frac_grid f;
+  std::vector<rational> fseen;
+  for (auto v : f.strided(2)) fseen.push_back(rational{v});
+  REQUIRE(fseen == std::vector<rational>{rational{0}, rational{1, 2}, rational{1}});
+}

@@ -194,6 +194,7 @@ all transitively included by `bound/bound.hpp`:
 | `bound/range.hpp`       | `bound_range<G, P>` iterator helper |
 | `bound/generic.hpp`     | Public grid/policy introspection (`Grid` / `BoundPolicy` / `Interval` / `Lower` / `Upper` / `Notch`) and the `boundable` / `numeric` / `bound_assignable` concepts. Storage/raw/dispatch plumbing (`raw_t`, `storage`/`storage_of`, `to_value` / `from_value`, `raw_cast` / `raw_imax`, `q_format_encode/decode`, `NotchCount`, `RawLo/Hi`, `sentinel_raw`, `detail::as_rational`, …) lives in `bnd::detail` |
 | `bound/assignment.hpp`  | `bnd::detail::assignment<L, R>` specialisations for integral / real / boundable rhs |
+| `bound/cmath.hpp`       | `bnd::math` — constexpr, bit-exact `<cmath>`-shaped functions (trig, inverse trig, hyperbolic, exp/log/pow, sqrt/cbrt/hypot) over bounds. Q.30 / CORDIC cores live in `bnd::math::detail`. See [math.md](math.md) |
 | `bound/detail/addition.hpp`, `multiplication.hpp`, `division.hpp` | `bnd::detail::addition<L, R>`, `multiplication<L, R>`, `division<L, R, F>`, `modulo<L, R, F>` — implementation detail, included via `bound.hpp` |
 | `bound/detail/overflow.hpp`, `debug.hpp` | `add_overflow` / `sub_overflow` / `mul_overflow` (builtins + portable fallback), stacktrace plumbing — implementation detail |
 | `bound/rational.hpp`    | `rational`, its arithmetic, sentinel traits |

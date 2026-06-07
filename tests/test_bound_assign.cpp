@@ -247,3 +247,29 @@ TEST_CASE("non-integer-mapping bound-to-bound clamp / domain_fail",
   dst2 d2{s2};
   REQUIRE(d2 == 4);
 }
+
+TEST_CASE("wrap on fractional / notch grids (boundable rhs)", "[bound][assign][wrap]")
+{
+  using namespace bnd;
+  // {0,1} notch 1/4 — integer interval but fractional notch. Wrap period is
+  // (Upper - Lower) + Notch = 1.25; slots {0, .25, .5, .75, 1.0}.
+  using dst = bound<{{0, 1}, notch<1, 4>}, wrap | round_nearest>;
+  using src = bound<{{-2, 2}, notch<1, 4>}, round_nearest>;
+
+  REQUIRE(rational{dst{src{rational{5, 4}}}}  == rational{0});       // 1.25 -> 0
+  REQUIRE(rational{dst{src{rational{6, 4}}}}  == rational{1, 4});    // 1.50 -> 0.25
+  REQUIRE(rational{dst{src{rational{7, 4}}}}  == rational{1, 2});    // 1.75 -> 0.50
+  REQUIRE(rational{dst{src{rational{-1, 4}}}} == rational{1});       // -0.25 -> 1.0
+  REQUIRE(rational{dst{src{rational{-2, 4}}}} == rational{3, 4});    // -0.50 -> 0.75
+
+  // Non-integer interval, notch 1/2: {1/2, 5/2} period = 2 + 1/2 = 2.5.
+  using dst2 = bound<{{rational{1, 2}, rational{5, 2}}, notch<1, 2>}, wrap | round_nearest>;
+  using src2 = bound<{{-4, 4}, notch<1, 2>}, round_nearest>;
+  REQUIRE(rational{dst2{src2{rational{3}}}} == rational{1, 2});      // 3.0 -> 0.5
+
+  // Unit-integer grid still uses the fast path and wraps as before.
+  using deg = bound<{0, 359}, wrap>;
+  using wide = bound<{-720, 720}>;
+  REQUIRE(deg{wide{370}} == 10);
+  REQUIRE(deg{wide{-10}} == 350);
+}

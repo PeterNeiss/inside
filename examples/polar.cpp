@@ -1,8 +1,8 @@
-// Cartesian-to-polar conversion: (x, y) → (magnitude, angle in turns).
+// Cartesian-to-polar conversion: (x, y) → (magnitude, angle in radians).
 //
 // Demonstrates:
-//   - `bnd::math::atan2` for the angle. Output is a signed turn-phase in
-//     [-1/2, 1/2], not radians — multiply by 2π at the boundary if needed.
+//   - `bnd::math::atan2` for the angle. Output is in radians ∈ [-π, π],
+//     consistent with sin/cos/tan — feed it straight back into sin/cos.
 //   - `bnd::math::sqrt` for the magnitude, fed `x² + y²` computed in rational.
 //   - Round-trip back via `sin`/`cos`: starting from (x, y), recovering
 //     (mag·cos(θ), mag·sin(θ)) should land within a few Q-format ULPs of the
@@ -37,7 +37,7 @@ int main()
   };
 
   std::cout << "Cartesian → polar:\n";
-  std::cout << "  (x, y)                              magnitude        angle (turns)\n";
+  std::cout << "  (x, y)                              magnitude        angle (rad)\n";
   for (auto& p : points) {
     coord_t x{p.x}, y{p.y};
 
@@ -59,9 +59,8 @@ int main()
 
   std::cout << "\nRound-trip (polar → cartesian via sin/cos):\n";
   std::cout << "  original           recovered (mag·cos θ, mag·sin θ)\n";
-  // atan2 returns turns ∈ [-1/2, 1/2]; sin/cos take radians. Scale the
-  // turn output by 2π to land in a radians-valued angle bound, then
-  // drive the public sin/cos. ±4 rad comfortably brackets ±π.
+  // atan2 already returns radians ∈ [-π, π]; feed it straight into sin/cos.
+  // ±4 rad comfortably brackets ±π.
   using angle_t = bound<{{-4, 4}, notch<1, 16384>}, round_nearest>;
   for (auto& p : points) {
     coord_t x{p.x}, y{p.y};
@@ -71,8 +70,7 @@ int main()
     auto magnitude = math::sqrt(mag_sq);
     auto angle     = math::atan2(y, x);
 
-    // Turn → radians: one rational multiply by 2π, then snap into angle_t.
-    angle_t a{angle * math::two_pi};
+    angle_t a{angle};
 
     auto m_r = magnitude;
     coord_t rx{m_r * math::cos(a)};

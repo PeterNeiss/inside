@@ -199,7 +199,7 @@ namespace bnd::math
     // underlying unsigned wrap. Public radians `sin` lowers to this
     // worker after converting the input from radians to a Q.30 turn.
     template <boundable Out, boundable In>
-    constexpr Out sin_turn_impl(In phase) noexcept
+    [[nodiscard]] constexpr Out sin_turn_impl(In phase) noexcept
     {
       constexpr int N = turn_bits<In>;
       static_assert(N >= 2 && N <= 30,
@@ -232,7 +232,7 @@ namespace bnd::math
     // by one quarter-turn (modular wrap on the raw) and reuse sin. The
     // shift is integer-exact, no precision cost at this tier.
     template <boundable Out, boundable In>
-    constexpr Out cos_turn_impl(In phase) noexcept
+    [[nodiscard]] constexpr Out cos_turn_impl(In phase) noexcept
     {
       constexpr int  N            = turn_bits<In>;
       constexpr imax full_mask    = (imax{1} << N) - 1;
@@ -300,7 +300,7 @@ namespace bnd::math
   // inside int63. Wider angles need a different normalization step
   // (deferred).
   template <boundable Out, boundable In>
-  constexpr Out sin_impl(In angle) noexcept
+  [[nodiscard]] constexpr Out sin_impl(In angle) noexcept
   {
     static_assert(Lower<In> >= -1024 && Upper<In> <= 1024,
                   "bnd::math::sin: input must be in [-1024, 1024] rad");
@@ -318,7 +318,7 @@ namespace bnd::math
   // quarter-turn in Q.30 to the converted turn before the quadrant
   // reducer, same precision as sin.
   template <boundable Out, boundable In>
-  constexpr Out cos_impl(In angle) noexcept
+  [[nodiscard]] constexpr Out cos_impl(In angle) noexcept
   {
     static_assert(Lower<In> >= -1024 && Upper<In> <= 1024,
                   "bnd::math::cos: input must be in [-1024, 1024] rad");
@@ -342,7 +342,7 @@ namespace bnd::math
     // lands exactly on a pole (raw ±π/2 modulo π) and
     // `unexpected(errc::overflow)` when the result exceeds Out's range.
     template <boundable Out, boundable In>
-    constexpr slim::expected<Out, errc> tan_turn_impl(In phase) noexcept
+    [[nodiscard]] constexpr slim::expected<Out, errc> tan_turn_impl(In phase) noexcept
     {
       constexpr int N = turn_bits<In>;
       static_assert(N >= 2 && N <= 30,
@@ -374,7 +374,7 @@ namespace bnd::math
   // input landed on a pole modulo Q.30 reduction), and
   // `unexpected(errc::overflow)` when the result exceeds Out's interval.
   template <boundable Out, boundable In>
-  constexpr slim::expected<Out, errc> tan_impl(In angle) noexcept
+  [[nodiscard]] constexpr slim::expected<Out, errc> tan_impl(In angle) noexcept
   {
     static_assert(Lower<In> >= -1024 && Upper<In> <= 1024,
                   "bnd::math::tan: input must be in [-1024, 1024] rad");
@@ -549,7 +549,7 @@ namespace bnd::math
   // log2: positive bound → bound. Calls the shared `detail::log2_q30` core
   // (leading-bit reduction + atanh series; see core for algorithm details).
   template <boundable Out, boundable In>
-  constexpr Out log2_impl(In x) noexcept
+  [[nodiscard]] constexpr Out log2_impl(In x) noexcept
   {
     static_assert(Lower<In> > 0,
                   "bnd::math::log2: input must be strictly positive");
@@ -568,7 +568,7 @@ namespace bnd::math
   // [2^Lower<In>, 2^Upper<In>] — anything narrower needs `clamp` to absorb
   // overflow at the assignment.
   template <boundable Out, boundable In>
-  constexpr Out exp2_impl(In x) noexcept
+  [[nodiscard]] constexpr Out exp2_impl(In x) noexcept
   {
     static_assert(Lower<In> >= -30 && Upper<In> <= 30,
                   "bnd::math::exp2: input must be in [-30, 30]");
@@ -584,7 +584,7 @@ namespace bnd::math
   // log2(e) ≈ 1.4427, so x must stay inside [-30/log2(e), 30/log2(e)] ≈
   // [-20.79, 20.79] for exp2's denominator-shift envelope. We use [-20, 20].
   template <boundable Out, boundable In>
-  constexpr Out exp_impl(In x) noexcept
+  [[nodiscard]] constexpr Out exp_impl(In x) noexcept
   {
     static_assert(Lower<In> >= -20 && Upper<In> <= 20,
                   "bnd::math::exp: input must be in [-20, 20]");
@@ -600,7 +600,7 @@ namespace bnd::math
   // log: thin wrapper. log(x) = log2(x) · ln(2). Result precision matches
   // log2 minus 1-2 ULP from the final Q.30 scaling.
   template <boundable Out, boundable In>
-  constexpr Out log_impl(In x) noexcept
+  [[nodiscard]] constexpr Out log_impl(In x) noexcept
   {
     static_assert(Lower<In> > 0,
                   "bnd::math::log: input must be strictly positive");
@@ -617,7 +617,7 @@ namespace bnd::math
   // time via the shared log2_q30 core — no hand-typed magic constants.
   // For Base = 10, this is the building block for `db_to_linear`.
   template <imax Base, boundable Out, boundable In>
-  constexpr Out pow_base_impl(In x) noexcept
+  [[nodiscard]] constexpr Out pow_base_impl(In x) noexcept
   {
     static_assert(Base >= 2, "bnd::math::pow_base: Base must be ≥ 2");
     static_assert(Lower<Out> >= 0,
@@ -718,20 +718,21 @@ namespace bnd::math
     }
   } // namespace detail
 
-  // atan2: signed bound, signed bound → turn-phase in [-1/2, 1/2].
-  // Implemented as CORDIC vectoring with quadrant pre-rotation. Output is
-  // in turns (1/2 = π, 1/4 = π/2, 1/8 = π/4, etc.); use 2π scaling at the
-  // boundary if the caller wants radians.
+  // atan2: signed bound, signed bound → angle in radians ∈ [-π, π].
+  // Implemented as CORDIC vectoring with quadrant pre-rotation. The CORDIC
+  // core accumulates a turn-phase internally; the public boundary scales by
+  // 2π so the output is radians, consistent with sin/cos/tan and the rest
+  // of bnd::math.
   //
   // Restrict inputs to [-1, 1] for this revision — CORDIC only depends on
   // the y/x ratio, so callers with wider magnitudes should normalize first.
   template <boundable Out, boundable In>
-  constexpr Out atan2_impl(In y, In x) noexcept
+  [[nodiscard]] constexpr Out atan2_impl(In y, In x) noexcept
   {
     static_assert(Lower<In> >= -1 && Upper<In> <= 1,
                   "bnd::math::atan2: inputs must be in [-1, 1]; normalize first for wider ranges");
-    static_assert(Lower<Out> <= -bnd::detail::rational{0.5} && Upper<Out> >= bnd::detail::rational{0.5},
-                  "bnd::math::atan2: Out must cover [-1/2, 1/2] turn");
+    static_assert(Lower<Out> <= -detail::pi_r && Upper<Out> >= detail::pi_r,
+                  "bnd::math::atan2: Out must cover [-π, π]");
 
     bnd::detail::rational yv = y, xv = x;
     imax y_q30 = detail::to_q30(yv);
@@ -762,9 +763,12 @@ namespace bnd::math
     }
 
     imax atan_q30  = detail::atan2_cordic_q30_turn(y_q30, x_q30);
-    imax total_q30 = atan_q30 + pre_rotation;
+    imax total_q30 = atan_q30 + pre_rotation;          // turn-phase, Q.30
 
-    return Out{detail::q30_to_rational(total_q30)};
+    // Turn → radians: multiply by 2π. total_q30 ∈ [-2^29, 2^29] (±½ turn),
+    // so the scaled_mul split keeps the product inside int63.
+    imax rad_q30 = detail::scaled_mul_q30(total_q30, detail::kTwoPiQ30);
+    return Out{detail::q30_to_rational(rad_q30)};
   }
 
   //---------------------------------------------------------------------------
@@ -774,7 +778,7 @@ namespace bnd::math
 
   // |x|. Output Lower must be ≥ 0 (the result is always non-negative).
   template <boundable Out, boundable In>
-  constexpr Out abs_impl(In x) noexcept
+  [[nodiscard]] constexpr Out abs_impl(In x) noexcept
   {
     static_assert(Lower<Out> <= 0,
                   "bnd::math::abs: Out must include 0");
@@ -783,14 +787,14 @@ namespace bnd::math
 
   // ⌊x⌋ — largest integer ≤ x.
   template <boundable Out, boundable In>
-  constexpr Out floor_impl(In x) noexcept
+  [[nodiscard]] constexpr Out floor_impl(In x) noexcept
   {
     return Out{bnd::detail::rational{x}.floor()};
   }
 
   // ⌈x⌉ — smallest integer ≥ x.
   template <boundable Out, boundable In>
-  constexpr Out ceil_impl(In x) noexcept
+  [[nodiscard]] constexpr Out ceil_impl(In x) noexcept
   {
     return Out{bnd::detail::rational{x}.ceil()};
   }
@@ -798,7 +802,7 @@ namespace bnd::math
   // x rounded to nearest integer, half-away-from-zero (matches the existing
   // `rational::round()` convention used throughout the library).
   template <boundable Out, boundable In>
-  constexpr Out round_impl(In x) noexcept
+  [[nodiscard]] constexpr Out round_impl(In x) noexcept
   {
     return Out{bnd::detail::rational{x}.round()};
   }
@@ -806,7 +810,7 @@ namespace bnd::math
   // x truncated toward zero. Distinct from floor for negative inputs:
   // trunc(-1.7) = -1 vs floor(-1.7) = -2.
   template <boundable Out, boundable In>
-  constexpr Out trunc_impl(In x) noexcept
+  [[nodiscard]] constexpr Out trunc_impl(In x) noexcept
   {
     return Out{bnd::detail::rational{x}.trunc()};
   }
@@ -814,7 +818,7 @@ namespace bnd::math
   // x mod y = x − ⌊x/y⌋·y (truncated-division convention, matching std::fmod).
   // Result has the sign of x. Pre: y must not span zero (caller-enforced).
   template <boundable Out, boundable InX, boundable InY>
-  constexpr Out fmod_impl(InX x, InY y) noexcept
+  [[nodiscard]] constexpr Out fmod_impl(InX x, InY y) noexcept
   {
     bnd::detail::rational xv = x;
     bnd::detail::rational yv = y;
@@ -884,19 +888,19 @@ namespace bnd::math
   } // namespace detail
 
   template <boundable In>
-  constexpr auto abs(In x) noexcept { return abs_impl<detail::abs_auto_t<In>>(x); }
+  [[nodiscard]] constexpr auto abs(In x) noexcept { return abs_impl<detail::abs_auto_t<In>>(x); }
 
   template <boundable In>
-  constexpr auto floor(In x) noexcept { return floor_impl<detail::floor_auto_t<In>>(x); }
+  [[nodiscard]] constexpr auto floor(In x) noexcept { return floor_impl<detail::floor_auto_t<In>>(x); }
 
   template <boundable In>
-  constexpr auto ceil(In x) noexcept { return ceil_impl<detail::ceil_auto_t<In>>(x); }
+  [[nodiscard]] constexpr auto ceil(In x) noexcept { return ceil_impl<detail::ceil_auto_t<In>>(x); }
 
   template <boundable In>
-  constexpr auto round(In x) noexcept { return round_impl<detail::round_auto_t<In>>(x); }
+  [[nodiscard]] constexpr auto round(In x) noexcept { return round_impl<detail::round_auto_t<In>>(x); }
 
   template <boundable In>
-  constexpr auto trunc(In x) noexcept { return trunc_impl<detail::trunc_auto_t<In>>(x); }
+  [[nodiscard]] constexpr auto trunc(In x) noexcept { return trunc_impl<detail::trunc_auto_t<In>>(x); }
 
   // sqrt: non-negative bound → bound. Newton-Raphson on Q.30 integer math,
   // leading-bit initial guess. The input must have Lower == 0, a power-of-2
@@ -905,7 +909,7 @@ namespace bnd::math
   // accepts Lower < 0 and returns `slim::optional` — nullopt when the runtime
   // value is negative.
   template <boundable Out, boundable In>
-  constexpr Out sqrt_impl(In x) noexcept
+  [[nodiscard]] constexpr Out sqrt_impl(In x) noexcept
   {
     static_assert(Lower<In> == 0,
                   "bnd::math::sqrt: input must start at 0 (use the mixed-sign overload)");
@@ -931,11 +935,11 @@ namespace bnd::math
   }
 
   // Mixed-sign sqrt: accepts inputs whose interval crosses zero. Returns
-  // `slim::optional<Out>{nullopt}` if the runtime value is negative,
+  // `unexpected(errc::domain_error)` if the runtime value is negative,
   // otherwise the same Q.30 result as `sqrt_impl`. The notch and
   // |Upper| / |Lower| constraints mirror the non-negative path.
   template <boundable Out, boundable In>
-  constexpr slim::optional<Out> sqrt_signed_impl(In x) noexcept
+  [[nodiscard]] constexpr slim::expected<Out, errc> sqrt_signed_impl(In x) noexcept
   {
     static_assert(Notch<In>.Numerator == 1,
                   "bnd::math::sqrt: input notch must be 1/2^K");
@@ -955,7 +959,7 @@ namespace bnd::math
 
     bnd::detail::rational v = bnd::detail::as_rational(x);
     if (v < bnd::detail::rational{0})
-      return slim::nullopt;
+      return slim::unexpected(errc::domain_error);
 
     imax v_q30 = detail::to_q30(v);
     imax r_q30 = detail::sqrt_q30(v_q30);
@@ -1086,37 +1090,37 @@ namespace bnd::math
 
   template <boundable In>
     requires (Lower<In> == bnd::detail::rational{0})
-  constexpr auto sqrt(In x) noexcept { return sqrt_impl<detail::sqrt_auto_t<In>>(x); }
+  [[nodiscard]] constexpr auto sqrt(In x) noexcept { return sqrt_impl<detail::sqrt_auto_t<In>>(x); }
 
   // Mixed-sign overload: dispatches to `sqrt_signed_impl`, returning
-  // `slim::optional<bound>` so a negative runtime value surfaces as nullopt
-  // instead of UB.
+  // `slim::expected<bound, errc>` so a negative runtime value surfaces as
+  // `unexpected(errc::domain_error)` instead of UB.
   template <boundable In>
     requires (Lower<In> < bnd::detail::rational{0})
-  constexpr auto sqrt(In x) noexcept
+  [[nodiscard]] constexpr auto sqrt(In x) noexcept
   { return sqrt_signed_impl<detail::sqrt_signed_auto_t<In>>(x); }
 
   template <boundable In>
-  constexpr auto exp2(In x) noexcept { return exp2_impl<detail::exp2_auto_t<In>>(x); }
+  [[nodiscard]] constexpr auto exp2(In x) noexcept { return exp2_impl<detail::exp2_auto_t<In>>(x); }
 
   template <boundable In>
-  constexpr auto log2(In x) noexcept { return log2_impl<detail::log2_auto_t<In>>(x); }
+  [[nodiscard]] constexpr auto log2(In x) noexcept { return log2_impl<detail::log2_auto_t<In>>(x); }
 
   template <boundable In>
-  constexpr auto exp(In x) noexcept { return exp_impl<detail::exp_auto_t<In>>(x); }
+  [[nodiscard]] constexpr auto exp(In x) noexcept { return exp_impl<detail::exp_auto_t<In>>(x); }
 
   template <boundable In>
-  constexpr auto log(In x) noexcept { return log_impl<detail::log_auto_t<In>>(x); }
+  [[nodiscard]] constexpr auto log(In x) noexcept { return log_impl<detail::log_auto_t<In>>(x); }
 
   template <imax Base, boundable In>
-  constexpr auto pow_base(In x) noexcept
+  [[nodiscard]] constexpr auto pow_base(In x) noexcept
   { return pow_base_impl<Base, detail::pow_base_auto_t<Base, In>>(x); }
 
   //---------------------------------------------------------------------------
   // Auto-deducing forms — trig + atan2 + tan + fmod.
   //
   // sin / cos default to the full amplitude range [-1, 1]; atan2 defaults to
-  // the full turn-phase range [-1/2, 1/2]. tan defaults to [-1024, 1024]
+  // the full angle range [-π, π] radians. tan defaults to [-1024, 1024]
   // (covers all phases >1 slot from a pole; closer-to-pole phases trip the
   // overflow branch of the returned `expected`). fmod inherits sign from x.
   // Notch is inherited from input throughout.
@@ -1130,9 +1134,13 @@ namespace bnd::math
     template <boundable In>
     using cos_auto_t = sin_auto_t<In>;
 
+    // Output covers [-π, π] rounded outward to notch multiples — the exact
+    // ±π endpoints are irrational and would violate the grid's divides-evenly
+    // invariant against a rational notch.
     template <boundable In>
-    using atan2_auto_t = bound<{{bnd::detail::rational{-1, 2}, bnd::detail::rational{1, 2}},
-                                 Notch<In>}, BoundPolicy<In> | round_nearest>;
+    using atan2_auto_t = bound<{{floor_to_notch(-pi_r, Notch<In>),
+                                 ceil_to_notch (pi_r, Notch<In>)},
+                                Notch<In>}, BoundPolicy<In> | round_nearest>;
 
     template <boundable In>
     using tan_auto_t = bound<{{-bnd::detail::rational{1024}, bnd::detail::rational{1024}},
@@ -1147,24 +1155,391 @@ namespace bnd::math
   // public trig entry points; the turn-input workers live in `detail::`
   // (`sin_turn_impl`, `cos_turn_impl`, `tan_turn_impl`) for internal use.
   template <boundable In>
-  constexpr auto sin(In angle) noexcept
+  [[nodiscard]] constexpr auto sin(In angle) noexcept
   { return sin_impl<detail::sin_auto_t<In>>(angle); }
 
   template <boundable In>
-  constexpr auto cos(In angle) noexcept
+  [[nodiscard]] constexpr auto cos(In angle) noexcept
   { return cos_impl<detail::cos_auto_t<In>>(angle); }
 
   template <boundable In>
-  constexpr auto atan2(In y, In x) noexcept
+  [[nodiscard]] constexpr auto atan2(In y, In x) noexcept
   { return atan2_impl<detail::atan2_auto_t<In>>(y, x); }
 
   template <boundable In>
-  constexpr auto tan(In angle) noexcept
+  [[nodiscard]] constexpr auto tan(In angle) noexcept
   { return tan_impl<detail::tan_auto_t<In>>(angle); }
 
   template <boundable InX, boundable InY>
-  constexpr auto fmod(InX x, InY y) noexcept
+  [[nodiscard]] constexpr auto fmod(InX x, InY y) noexcept
   { return fmod_impl<detail::fmod_auto_t<InX, InY>>(x, y); }
+
+  //===========================================================================
+  // Extended transcendentals — inverse trig, hyperbolic, log10, pow, cbrt,
+  // hypot. Each composes the Q.30 / CORDIC cores defined above; no new
+  // polynomial machinery. Outputs follow the bnd::math conventions: angles in
+  // radians, runtime-conditional failures via `slim::expected<Out, errc>`,
+  // statically-knowable domain limits via `static_assert`.
+  //===========================================================================
+  namespace detail
+  {
+    inline constexpr imax kQuarterTurnQ30 = imax{1} << 28;
+
+    // log10(2) in Q.30, derived from log2(10): log10(2) = 1 / log2(10).
+    // (2^30)·(2^30) / log2(10)_q30 = log10(2)·2^30.
+    inline constexpr imax kLog10_2_Q30 =
+      ((imax{1} << 30) << 30) / kLog2IntBaseQ30<10>;
+
+    // --- inverse trig (radians) -------------------------------------------
+    // atan(v) = atan2(v, 1): CORDIC vectoring with x = 1, scaled turn→rad.
+    constexpr bnd::detail::rational atan_endpoint(bnd::detail::rational v) noexcept
+    {
+      imax turn_q30 = atan2_cordic_q30_turn(to_q30(v), kQ30One);
+      return q30_to_rational(scaled_mul_q30(turn_q30, kTwoPiQ30));
+    }
+
+    // asin(v) = atan2(v, sqrt(1 − v²)); v ∈ [−1, 1] → result ∈ [−π/2, π/2].
+    constexpr bnd::detail::rational asin_endpoint(bnd::detail::rational v) noexcept
+    {
+      imax v_q30 = to_q30(v);
+      imax v_sq  = (v_q30 * v_q30) >> 30;
+      imax c_q30 = sqrt_q30(kQ30One - v_sq);
+      imax turn_q30 = atan2_cordic_q30_turn(v_q30, c_q30);
+      return q30_to_rational(scaled_mul_q30(turn_q30, kTwoPiQ30));
+    }
+
+    // acos(v) = π/2 − asin(v); v ∈ [−1, 1] → result ∈ [0, π].
+    constexpr bnd::detail::rational acos_endpoint(bnd::detail::rational v) noexcept
+    {
+      bnd::detail::rational half_pi =
+        bnd::detail::rational::mul_unchecked(pi_r, bnd::detail::rational{1, 2});
+      return bnd::detail::rational::add_unchecked(half_pi, -asin_endpoint(v));
+    }
+
+    // --- hyperbolic (from e^x via the exp core) ---------------------------
+    // Combine e^x and e^-x in Q.30 integer space, not in rational space:
+    // e^x (x≈10) and e^-x have wildly different denominators (2^16 vs 2^53),
+    // and the cross-multiply of `e^x ± e^-x` as rationals overflows imax.
+    // In Q.30 each term is a single scaled integer (|v| ≤ 10 ⇒ e^|v| ≤ 22027,
+    // so e^|v|·2^30 ≤ 2.4e13, well inside int63).
+    constexpr bnd::detail::rational sinh_endpoint(bnd::detail::rational v) noexcept
+    {
+      imax ex  = to_q30(exp_endpoint(v));
+      imax enx = to_q30(exp_endpoint(-v));
+      return q30_to_rational((ex - enx) / 2);
+    }
+
+    constexpr bnd::detail::rational cosh_endpoint(bnd::detail::rational v) noexcept
+    {
+      imax ex  = to_q30(exp_endpoint(v));
+      imax enx = to_q30(exp_endpoint(-v));
+      return q30_to_rational((ex + enx) / 2);
+    }
+
+    // tanh via the overflow-safe form tanh(x) = (1 − e^-2|x|)/(1 + e^-2|x|),
+    // odd-extended for x < 0. With u = e^-2|x| ∈ (0, 1] in Q.30, the Q.30
+    // quotient `((1−u)·2^30)/(1+u)` keeps the dividend ≤ 2^60 (no overflow).
+    constexpr bnd::detail::rational tanh_endpoint(bnd::detail::rational v) noexcept
+    {
+      bnd::detail::rational av = bnd::detail::abs(v);
+      imax u = to_q30(exp_endpoint(
+          bnd::detail::rational::mul_unchecked(av, bnd::detail::rational{-2})));
+      imax t = ((kQ30One - u) << 30) / (kQ30One + u);
+      return (v < bnd::detail::rational{0}) ? q30_to_rational(-t)
+                                            : q30_to_rational(t);
+    }
+
+    // --- log10, cbrt ------------------------------------------------------
+    constexpr bnd::detail::rational log10_endpoint(bnd::detail::rational v) noexcept
+    {
+      imax l_q30 = log2_q30(to_q30(v));
+      return q30_to_rational((l_q30 * kLog10_2_Q30) >> 30);
+    }
+
+    // cbrt(v) = sign(v)·2^(log2(|v|)/3); cbrt(0) = 0. Q.30 integer divide of
+    // the log by 3 keeps the result in Q.30.
+    constexpr bnd::detail::rational cbrt_endpoint(bnd::detail::rational v) noexcept
+    {
+      if (v == bnd::detail::rational{0}) return bnd::detail::rational{0};
+      bnd::detail::rational av = bnd::detail::abs(v);
+      imax l_q30   = log2_q30(to_q30(av));
+      bnd::detail::rational mag = exp2_q30_to_rational(l_q30 / 3);
+      return (v < bnd::detail::rational{0}) ? -mag : mag;
+    }
+
+    // hypot(x, y) = sqrt(x²+y²), computed as m·sqrt((x/m)²+(y/m)²) with
+    // m = max(|x|,|y|) so the radicand stays in [1, 2] ≤ 4 (sqrt's Q.30
+    // envelope). Exact rational scaling; reuses sqrt_q30.
+    constexpr bnd::detail::rational hypot_endpoint(bnd::detail::rational x,
+                                                   bnd::detail::rational y) noexcept
+    {
+      bnd::detail::rational ax = bnd::detail::abs(x);
+      bnd::detail::rational ay = bnd::detail::abs(y);
+      bnd::detail::rational m  = (ax > ay) ? ax : ay;
+      if (m == bnd::detail::rational{0}) return bnd::detail::rational{0};
+      // Form the radicand (x/m)²+(y/m)² ∈ [1, 2] in Q.30 — keeping it a
+      // rational overflows imax (the squared numerators cross-multiply to
+      // ~1e24). Each ratio is ≤ 1, so its Q.30 square fits comfortably.
+      imax rx = to_q30(bnd::detail::rational::div_unchecked(x, m));
+      imax ry = to_q30(bnd::detail::rational::div_unchecked(y, m));
+      imax s_q30 = ((rx * rx) >> 30) + ((ry * ry) >> 30);
+      bnd::detail::rational root = q30_to_rational(sqrt_q30(s_q30));
+      return bnd::detail::rational::mul_unchecked(m, root);
+    }
+
+    // pow(b, e) = 2^(e·log2(b)), b > 0. The exponent is saturated into
+    // exp2's [−30, 30] envelope here so compile-time output deduction never
+    // UB-shifts; the runtime impl reports envelope overflow via `expected`.
+    constexpr bnd::detail::rational pow_endpoint(bnd::detail::rational b,
+                                                 bnd::detail::rational e) noexcept
+    {
+      imax sc = scaled_mul_q30(to_q30(e), log2_q30(to_q30(b)));
+      constexpr imax lim = imax{30} << 30;
+      sc = (sc > lim) ? lim : (sc < -lim) ? -lim : sc;
+      return exp2_q30_to_rational(sc);
+    }
+
+    // --- deduction aliases ------------------------------------------------
+    // Monotonic-increasing functions round endpoints outward like the exp/log
+    // family. acos is decreasing; cosh is even (min at 0 if the interval
+    // spans it). round_nearest lands sub-notch drift onto the grid.
+    template <boundable In>
+    using atan_auto_t = bound<{{floor_to_notch(atan_endpoint(Lower<In>), Notch<In>),
+                                ceil_to_notch (atan_endpoint(Upper<In>), Notch<In>)},
+                               Notch<In>}, BoundPolicy<In> | round_nearest>;
+
+    template <boundable In>
+    using asin_auto_t = bound<{{floor_to_notch(asin_endpoint(Lower<In>), Notch<In>),
+                                ceil_to_notch (asin_endpoint(Upper<In>), Notch<In>)},
+                               Notch<In>}, BoundPolicy<In> | round_nearest>;
+
+    template <boundable In>
+    using acos_auto_t = bound<{{floor_to_notch(acos_endpoint(Upper<In>), Notch<In>),
+                                ceil_to_notch (acos_endpoint(Lower<In>), Notch<In>)},
+                               Notch<In>}, BoundPolicy<In> | round_nearest>;
+
+    template <boundable In>
+    using sinh_auto_t = bound<{{floor_to_notch(sinh_endpoint(Lower<In>), Notch<In>),
+                                ceil_to_notch (sinh_endpoint(Upper<In>), Notch<In>)},
+                               Notch<In>}, BoundPolicy<In> | round_nearest>;
+
+    template <boundable In>
+    inline constexpr bnd::detail::rational cosh_auto_lo =
+      (Lower<In> <= bnd::detail::rational{0} && Upper<In> >= bnd::detail::rational{0})
+        ? bnd::detail::rational{1}
+        : (cosh_endpoint(Lower<In>) < cosh_endpoint(Upper<In>)
+             ? cosh_endpoint(Lower<In>) : cosh_endpoint(Upper<In>));
+
+    template <boundable In>
+    inline constexpr bnd::detail::rational cosh_auto_hi =
+      (cosh_endpoint(Lower<In>) > cosh_endpoint(Upper<In>))
+        ? cosh_endpoint(Lower<In>) : cosh_endpoint(Upper<In>);
+
+    template <boundable In>
+    using cosh_auto_t = bound<{{floor_to_notch(cosh_auto_lo<In>, Notch<In>),
+                                ceil_to_notch (cosh_auto_hi<In>, Notch<In>)},
+                               Notch<In>}, BoundPolicy<In> | round_nearest>;
+
+    template <boundable In>
+    using tanh_auto_t = bound<{{floor_to_notch(tanh_endpoint(Lower<In>), Notch<In>),
+                                ceil_to_notch (tanh_endpoint(Upper<In>), Notch<In>)},
+                               Notch<In>}, BoundPolicy<In> | round_nearest>;
+
+    template <boundable In>
+    using log10_auto_t = bound<{{floor_to_notch(log10_endpoint(Lower<In>), Notch<In>),
+                                 ceil_to_notch (log10_endpoint(Upper<In>), Notch<In>)},
+                                Notch<In>}, BoundPolicy<In> | round_nearest>;
+
+    template <boundable In>
+    using cbrt_auto_t = bound<{{floor_to_notch(cbrt_endpoint(Lower<In>), Notch<In>),
+                                ceil_to_notch (cbrt_endpoint(Upper<In>), Notch<In>)},
+                               Notch<In>}, BoundPolicy<In> | round_nearest>;
+
+    // hypot output: non-negative, Upper at the largest-magnitude corner.
+    template <boundable InX, boundable InY>
+    inline constexpr bnd::detail::rational hypot_auto_hi =
+      hypot_endpoint(
+        (bnd::detail::abs(Lower<InX>) > bnd::detail::abs(Upper<InX>)
+           ? bnd::detail::abs(Lower<InX>) : bnd::detail::abs(Upper<InX>)),
+        (bnd::detail::abs(Lower<InY>) > bnd::detail::abs(Upper<InY>)
+           ? bnd::detail::abs(Lower<InY>) : bnd::detail::abs(Upper<InY>)));
+
+    template <boundable InX, boundable InY>
+    using hypot_auto_t = bound<{{bnd::detail::rational{0},
+                                 ceil_to_notch(hypot_auto_hi<InX, InY>, Notch<InX>)},
+                                Notch<InX>}, BoundPolicy<InX> | round_nearest>;
+
+    // pow output: extrema of b^e over the input rectangle occur at corners
+    // (monotone in each argument for b > 0). Min and max of the 4 corners.
+    template <boundable InB, boundable InE>
+    inline constexpr bnd::detail::rational pow_corner[4] = {
+      pow_endpoint(Lower<InB>, Lower<InE>), pow_endpoint(Lower<InB>, Upper<InE>),
+      pow_endpoint(Upper<InB>, Lower<InE>), pow_endpoint(Upper<InB>, Upper<InE>),
+    };
+
+    template <boundable InB, boundable InE>
+    inline constexpr bnd::detail::rational pow_auto_lo = []{
+      bnd::detail::rational m = pow_corner<InB, InE>[0];
+      for (int i = 1; i < 4; ++i)
+        if (pow_corner<InB, InE>[i] < m) m = pow_corner<InB, InE>[i];
+      return m;
+    }();
+
+    template <boundable InB, boundable InE>
+    inline constexpr bnd::detail::rational pow_auto_hi = []{
+      bnd::detail::rational m = pow_corner<InB, InE>[0];
+      for (int i = 1; i < 4; ++i)
+        if (pow_corner<InB, InE>[i] > m) m = pow_corner<InB, InE>[i];
+      return m;
+    }();
+
+    template <boundable InB, boundable InE>
+    using pow_auto_t = bound<{{floor_to_notch(pow_auto_lo<InB, InE>, Notch<InB>),
+                               ceil_to_notch (pow_auto_hi<InB, InE>, Notch<InB>)},
+                              Notch<InB>}, BoundPolicy<InB> | round_nearest>;
+  } // namespace detail
+
+  // --- explicit-Out impls -------------------------------------------------
+  template <boundable Out, boundable In>
+  [[nodiscard]] constexpr Out atan_impl(In x) noexcept
+  {
+    static_assert(Lower<In> >= -1 && Upper<In> <= 1,
+                  "bnd::math::atan: input must be in [-1, 1]; normalize first for wider ranges");
+    return Out{detail::atan_endpoint(bnd::detail::rational{x})};
+  }
+
+  template <boundable Out, boundable In>
+  [[nodiscard]] constexpr Out asin_impl(In x) noexcept
+  {
+    static_assert(Lower<In> >= -1 && Upper<In> <= 1,
+                  "bnd::math::asin: input must be in [-1, 1]");
+    return Out{detail::asin_endpoint(bnd::detail::rational{x})};
+  }
+
+  template <boundable Out, boundable In>
+  [[nodiscard]] constexpr Out acos_impl(In x) noexcept
+  {
+    static_assert(Lower<In> >= -1 && Upper<In> <= 1,
+                  "bnd::math::acos: input must be in [-1, 1]");
+    return Out{detail::acos_endpoint(bnd::detail::rational{x})};
+  }
+
+  template <boundable Out, boundable In>
+  [[nodiscard]] constexpr Out sinh_impl(In x) noexcept
+  {
+    static_assert(Lower<In> >= -10 && Upper<In> <= 10,
+                  "bnd::math::sinh: input must be in [-10, 10]");
+    return Out{detail::sinh_endpoint(bnd::detail::rational{x})};
+  }
+
+  template <boundable Out, boundable In>
+  [[nodiscard]] constexpr Out cosh_impl(In x) noexcept
+  {
+    static_assert(Lower<In> >= -10 && Upper<In> <= 10,
+                  "bnd::math::cosh: input must be in [-10, 10]");
+    static_assert(Lower<Out> <= bnd::detail::rational{1},
+                  "bnd::math::cosh: Out must include 1 (cosh ≥ 1)");
+    return Out{detail::cosh_endpoint(bnd::detail::rational{x})};
+  }
+
+  template <boundable Out, boundable In>
+  [[nodiscard]] constexpr Out tanh_impl(In x) noexcept
+  {
+    static_assert(Lower<In> >= -10 && Upper<In> <= 10,
+                  "bnd::math::tanh: input must be in [-10, 10]");
+    return Out{detail::tanh_endpoint(bnd::detail::rational{x})};
+  }
+
+  template <boundable Out, boundable In>
+  [[nodiscard]] constexpr Out log10_impl(In x) noexcept
+  {
+    static_assert(Lower<In> > 0,
+                  "bnd::math::log10: input must be strictly positive");
+    return Out{detail::log10_endpoint(bnd::detail::rational{x})};
+  }
+
+  template <boundable Out, boundable In>
+  [[nodiscard]] constexpr Out cbrt_impl(In x) noexcept
+  {
+    static_assert(Lower<In> >= -(imax{1} << 20) && Upper<In> <= (imax{1} << 20),
+                  "bnd::math::cbrt: input magnitude must be ≤ 2^20 for the Q.30 internal tier");
+    return Out{detail::cbrt_endpoint(bnd::detail::rational{x})};
+  }
+
+  template <boundable Out, boundable InX, boundable InY>
+  [[nodiscard]] constexpr Out hypot_impl(InX x, InY y) noexcept
+  {
+    static_assert(Lower<InX> >= -(imax{1} << 20) && Upper<InX> <= (imax{1} << 20)
+               && Lower<InY> >= -(imax{1} << 20) && Upper<InY> <= (imax{1} << 20),
+                  "bnd::math::hypot: input magnitudes must be ≤ 2^20 for the Q.30 internal tier");
+    static_assert(Lower<Out> <= 0, "bnd::math::hypot: Out must include 0");
+    return Out{detail::hypot_endpoint(bnd::detail::rational{x}, bnd::detail::rational{y})};
+  }
+
+  // pow: b^e for runtime base b > 0. Returns `expected` — `overflow` when
+  // e·log2(b) leaves exp2's [-30, 30] envelope or the result leaves Out's
+  // interval. The auto form requires Lower<InB> > 0 (so b > 0 is guaranteed
+  // and the output range is bounded for deduction).
+  template <boundable Out, boundable InB, boundable InE>
+  [[nodiscard]] constexpr slim::expected<Out, errc> pow_impl(InB base, InE exp) noexcept
+  {
+    bnd::detail::rational bv = base;
+    if (bv <= bnd::detail::rational{0})
+      return slim::unexpected(errc::domain_error);
+
+    imax sc = detail::scaled_mul_q30(detail::to_q30(bnd::detail::rational{exp}),
+                                     detail::log2_q30(detail::to_q30(bv)));
+    constexpr imax lim = imax{30} << 30;
+    if (sc > lim || sc < -lim)
+      return slim::unexpected(errc::overflow);
+
+    bnd::detail::rational r = detail::exp2_q30_to_rational(sc);
+    if (r < Lower<Out> || r > Upper<Out>)
+      return slim::unexpected(errc::overflow);
+    return Out{r};
+  }
+
+  // --- public auto-deducing forms ----------------------------------------
+  template <boundable In>
+  [[nodiscard]] constexpr auto atan(In x) noexcept
+  { return atan_impl<detail::atan_auto_t<In>>(x); }
+
+  template <boundable In>
+  [[nodiscard]] constexpr auto asin(In x) noexcept
+  { return asin_impl<detail::asin_auto_t<In>>(x); }
+
+  template <boundable In>
+  [[nodiscard]] constexpr auto acos(In x) noexcept
+  { return acos_impl<detail::acos_auto_t<In>>(x); }
+
+  template <boundable In>
+  [[nodiscard]] constexpr auto sinh(In x) noexcept
+  { return sinh_impl<detail::sinh_auto_t<In>>(x); }
+
+  template <boundable In>
+  [[nodiscard]] constexpr auto cosh(In x) noexcept
+  { return cosh_impl<detail::cosh_auto_t<In>>(x); }
+
+  template <boundable In>
+  [[nodiscard]] constexpr auto tanh(In x) noexcept
+  { return tanh_impl<detail::tanh_auto_t<In>>(x); }
+
+  template <boundable In>
+  [[nodiscard]] constexpr auto log10(In x) noexcept
+  { return log10_impl<detail::log10_auto_t<In>>(x); }
+
+  template <boundable In>
+  [[nodiscard]] constexpr auto cbrt(In x) noexcept
+  { return cbrt_impl<detail::cbrt_auto_t<In>>(x); }
+
+  template <boundable InX, boundable InY>
+  [[nodiscard]] constexpr auto hypot(InX x, InY y) noexcept
+  { return hypot_impl<detail::hypot_auto_t<InX, InY>>(x, y); }
+
+  template <boundable InB, boundable InE>
+    requires (Lower<InB> > bnd::detail::rational{0})
+  [[nodiscard]] constexpr auto pow(InB base, InE exp) noexcept
+  { return pow_impl<detail::pow_auto_t<InB, InE>>(base, exp); }
 }
 
 #endif

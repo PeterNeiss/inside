@@ -228,33 +228,34 @@ TEST_CASE("bnd::math::sqrt: probe (informational)", "[cmath][sqrt][.probe]")
     std::cout << "sqrt_q14(" << i << ") = " << sqrt_q14(i) << "\n";
 }
 
-TEST_CASE("bnd::math::sqrt: mixed-sign input returns optional", "[cmath][sqrt][mixed_sign]")
+TEST_CASE("bnd::math::sqrt: mixed-sign input returns expected", "[cmath][sqrt][mixed_sign]")
 {
   using signed_in = bound<{{-1, 1}, notch<1, 65536>}, round_nearest>;
 
-  // Non-negative runtime value → engaged optional with the usual Q.30 result.
+  // Non-negative runtime value → value with the usual Q.30 result.
   signed_in pos{0.25_r};
   auto r_pos = math::sqrt(pos);
   REQUIRE(r_pos.has_value());
   REQUIRE(*r_pos == 0.5_r);
 
-  // Zero → engaged optional, result is 0.
+  // Zero → value, result is 0.
   signed_in zero{0};
   auto r_zero = math::sqrt(zero);
   REQUIRE(r_zero.has_value());
   REQUIRE(*r_zero == 0);
 
-  // Negative runtime value → nullopt.
+  // Negative runtime value → unexpected(domain_error).
   signed_in neg{-0.5_r};
   auto r_neg = math::sqrt(neg);
   REQUIRE_FALSE(r_neg.has_value());
+  REQUIRE(r_neg.error() == errc::domain_error);
 
-  // The non-negative overload (Lower == 0) still returns bound, not optional —
-  // the two overloads are disjoint by `requires`.
+  // The non-negative overload (Lower == 0) returns bound directly; the
+  // mixed-sign overload returns expected (not optional). Disjoint by `requires`.
   using nonneg_in = bound<{{0, 1}, notch<1, 65536>}, round_nearest>;
   nonneg_in v{0.25_r};
   STATIC_REQUIRE_FALSE(is_slim_optional_v<decltype(math::sqrt(v))>);
-  STATIC_REQUIRE(is_slim_optional_v<decltype(math::sqrt(pos))>);
+  STATIC_REQUIRE_FALSE(is_slim_optional_v<decltype(math::sqrt(pos))>);
   REQUIRE(math::sqrt(v) == 0.5_r);
 }
 
@@ -559,59 +560,54 @@ TEST_CASE("bnd::math: exp/log/pow_base decimal probe",
 }
 
 //---------------------------------------------------------------------------
-// atan2: CORDIC family. Inputs are signed bounds in [-1, 1]; output is a
-// signed turn-phase covering [-1/2, 1/2].
+// atan2: CORDIC family. Inputs are signed bounds in [-1, 1]; output is an
+// angle in radians covering [-π, π].
 //---------------------------------------------------------------------------
 namespace
 {
   using atan2_in_t  = bound<{{-1, 1}, notch<1, 16384>}, round_nearest>;
-  using atan2_out_t = bound<{{-0.5_r, 0.5_r}, notch<1, 16384>}, round_nearest>;
+  // [-4, 4] is the smallest integer interval containing [-π, π] that divides
+  // evenly by the notch (π is irrational, so the exact endpoints can't be a
+  // grid bound against a rational notch).
+  using atan2_out_t = bound<{{-4, 4}, notch<1, 16384>}, round_nearest>;
 
-  constexpr int atan2_q14_turn(rational y, rational x)
-  {
-    // Out has Lower = -1/2, notch 1/16384 → raw = (value + 1/2) · 16384.
-    // Subtract the +1/2 turn offset to recover signed Q.14 amplitude.
-    auto out = atan2_out_t{math::atan2(atan2_in_t{y}, atan2_in_t{x})};
-    return static_cast<int>(out.raw()) - 8192;
-  }
+  constexpr rational atan2_rad(rational y, rational x)
+  { return rational{atan2_out_t{math::atan2(atan2_in_t{y}, atan2_in_t{x})}}; }
+
+  // Radian references derived from the library's own π.
+  constexpr rational kPi      = math::detail::pi_r;
+  constexpr rational kHalfPi  = rational::mul_unchecked(kPi, rational{1, 2});
+  constexpr rational kQrtPi   = rational::mul_unchecked(kPi, rational{1, 4});
+  constexpr rational k3QrtPi  = rational::mul_unchecked(kPi, rational{3, 4});
+  // A handful of Q.14 notches absorbs CORDIC + quantization drift.
+  constexpr rational kTol{8, 16384};
+  constexpr bool near_rad(rational got, rational want)
+  { return bnd::detail::abs((got - want).value()) <= kTol; }
 }
 
 TEST_CASE("bnd::math::atan2: axis cases", "[cmath][atan2][constexpr]")
 {
-  // atan2(0,  1)  =  0     → 0
-  static_assert(atan2_q14_turn(0_r, 1_r)  == 0);
-  // atan2(1,  0)  = +π/2   = +1/4 turn → +4096 Q.14
-  static_assert(atan2_q14_turn(1_r, 0_r)  == 4096);
-  // atan2(0, -1)  = +π     = +1/2 turn → +8192 Q.14
-  static_assert(atan2_q14_turn(0_r, -1_r) == 8192);
-  // atan2(-1, 0)  = -π/2   = -1/4 turn → -4096 Q.14
-  static_assert(atan2_q14_turn(-1_r, 0_r) == -4096);
-  // atan2(0,  0)  = 0 by convention
-  static_assert(atan2_q14_turn(0_r, 0_r)  == 0);
+  static_assert(near_rad(atan2_rad(0_r,  1_r),  rational{0}));   // atan2(0, 1) = 0
+  static_assert(near_rad(atan2_rad(1_r,  0_r),  kHalfPi));       // atan2(1, 0) = +π/2
+  static_assert(near_rad(atan2_rad(0_r, -1_r),  kPi));           // atan2(0,-1) = +π
+  static_assert(near_rad(atan2_rad(-1_r, 0_r), -kHalfPi));       // atan2(-1,0) = -π/2
+  static_assert(near_rad(atan2_rad(0_r,  0_r),  rational{0}));   // convention
 }
 
 TEST_CASE("bnd::math::atan2: diagonal cases", "[cmath][atan2][constexpr]")
 {
-  // atan2( 1,  1) = +π/4  = +1/8 turn → +2048 Q.14
-  static_assert(atan2_q14_turn(rational{ 1}, rational{ 1}) ==  2048);
-  // atan2(-1,  1) = -π/4  = -1/8 turn → -2048 Q.14
-  static_assert(atan2_q14_turn(-1_r, rational{ 1}) == -2048);
-  // atan2( 1, -1) = +3π/4 = +3/8 turn → +6144 Q.14
-  static_assert(atan2_q14_turn(rational{ 1}, -1_r) ==  6144);
-  // atan2(-1, -1) = -3π/4 = -3/8 turn → -6144 Q.14
-  static_assert(atan2_q14_turn(-1_r, -1_r) == -6144);
+  static_assert(near_rad(atan2_rad(rational{1}, rational{1}),  kQrtPi));   // +π/4
+  static_assert(near_rad(atan2_rad(-1_r, rational{1}),        -kQrtPi));   // -π/4
+  static_assert(near_rad(atan2_rad(rational{1}, -1_r),         k3QrtPi));  // +3π/4
+  static_assert(near_rad(atan2_rad(-1_r, -1_r),              -k3QrtPi));   // -3π/4
 }
 
 TEST_CASE("bnd::math::atan2: decimal display", "[cmath][atan2][decimal]")
 {
-  REQUIRE(atan2_out_t{math::atan2(atan2_in_t{0},  atan2_in_t{1})}
-          == atan2_out_t{0});
-  REQUIRE(atan2_out_t{math::atan2(atan2_in_t{1},  atan2_in_t{0})}
-          == atan2_out_t{0.25_r});
-  REQUIRE(atan2_out_t{math::atan2(atan2_in_t{-1}, atan2_in_t{0})}
-          == atan2_out_t{-0.25_r});
-  REQUIRE(atan2_out_t{math::atan2(atan2_in_t{1},  atan2_in_t{1})}
-          == atan2_out_t{0.125_r});
+  REQUIRE(near_rad(atan2_rad(0_r,  1_r), rational{0}));
+  REQUIRE(near_rad(atan2_rad(1_r,  0_r), kHalfPi));
+  REQUIRE(near_rad(atan2_rad(-1_r, 0_r), -kHalfPi));
+  REQUIRE(near_rad(atan2_rad(1_r,  1_r), kQrtPi));
 }
 
 TEST_CASE("bnd::math::atan2: sin/cos round-trip",
@@ -625,31 +621,26 @@ TEST_CASE("bnd::math::atan2: sin/cos round-trip",
   // notch (the grid validator requires `(Upper - Lower) / Notch` be
   // integer). ±8 rad comfortably covers ±2π for sweep tests.
   using angle_t = bound<{{-8, 8}, notch<1, 16384>}, round_nearest>;
+  const rational two_pi_r = math::detail::two_pi_r;
   for (unsigned i = 0; i < 16; ++i) {
     unsigned phase_raw = i * 1024;  // 0..15/16 turn in Q.14 raw
     rational turn_r{static_cast<imax>(phase_raw), 16384};
-    angle_t  phase{rational::mul_unchecked(turn_r, math::two_pi)};
+    rational ang_r{rational::mul_unchecked(turn_r, two_pi_r)};  // 0..2π
+    angle_t  phase{ang_r};
     auto s = atan2_in_t{math::sin(phase)};
     auto c = atan2_in_t{math::cos(phase)};
-    auto recovered = atan2_out_t{math::atan2(s, c)};
+    rational recovered = rational{atan2_out_t{math::atan2(s, c)}};  // (-π, π] rad
 
-    // Recovered turn ∈ [-1/2, 1/2]; original turn ∈ [0, 1) — adjust to compare.
-    auto recovered_raw = static_cast<int>(recovered.raw());  // (value + 1/2)·16384
-    int recovered_turn_q14 = recovered_raw - 8192;          // signed Q.14 turn
+    // Expected angle wrapped into (-π, π] to match atan2's range.
+    rational want = (ang_r > kPi) ? (ang_r - two_pi_r).value() : ang_r;
 
-    // Original phase is Q.14 unsigned, in [0, 16384). Convert to signed Q.14
-    // turn by wrapping >= 8192 to negative.
-    int original_q14 = static_cast<int>(phase_raw);
-    if (original_q14 >= 8192) original_q14 -= 16384;
+    // Diff, wrapped across the ±π seam (φ = ±π may land on either side).
+    rational diff = (recovered - want).value();
+    if (diff >  kPi) diff = (diff - two_pi_r).value();
+    if (diff < -kPi) diff = (diff + two_pi_r).value();
 
-    // Allow 1 ULP slack: the Q.14 sample → atan2 trip can lose a bit.
-    // Wrap the diff to (-8192, 8192] so a phase of exactly ½ turn (which
-    // atan2 returns as +½ but the original might be encoded as -½) doesn't
-    // false-positive as a 16384-ULP gap.
-    int diff = recovered_turn_q14 - original_q14;
-    if (diff >  8192) diff -= 16384;
-    if (diff < -8192) diff += 16384;
-    REQUIRE(std::abs(diff) <= 1);
+    // sin/cos quantize to 1/16384 before atan2 sees them; allow a few notches.
+    REQUIRE(bnd::detail::abs(diff) <= rational{16, 16384});
   }
 }
 
@@ -1117,18 +1108,17 @@ TEST_CASE("bnd::math::tan: radians identity points",
 TEST_CASE("bnd::math::atan2: auto-deduced output", "[cmath][atan2][auto]")
 {
   using deduced = decltype(math::atan2(atan2_in_t{0}, atan2_in_t{0}));
-  static_assert(Lower<deduced> == -0.5_r);
-  static_assert(Upper<deduced> == rational{ 1, 2});
+  // Output covers [-π, π] in radians, rounded outward to the inherited notch.
+  static_assert(Lower<deduced> <= -kPi);
+  static_assert(Upper<deduced> >=  kPi);
   static_assert(Notch<deduced> == bnd::notch<1, 16384>);
 
-  // Axis cases match the explicit form's behavior.
-  REQUIRE(rational{math::atan2(atan2_in_t{0},  atan2_in_t{ 1})} == 0);
-  REQUIRE(rational{math::atan2(atan2_in_t{1},  atan2_in_t{ 0})} == 0.25_r);
-  REQUIRE(rational{math::atan2(atan2_in_t{0},  atan2_in_t{-1})} == 0.5_r);
-  REQUIRE(rational{math::atan2(atan2_in_t{-1}, atan2_in_t{ 0})} == -0.25_r);
-
-  REQUIRE(rational{math::atan2(atan2_in_t{1}, atan2_in_t{1})}
-          == 0.125_r);
+  // Axis cases match the explicit form's behavior (radians).
+  REQUIRE(near_rad(rational{math::atan2(atan2_in_t{0},  atan2_in_t{ 1})}, rational{0}));
+  REQUIRE(near_rad(rational{math::atan2(atan2_in_t{1},  atan2_in_t{ 0})}, kHalfPi));
+  REQUIRE(near_rad(rational{math::atan2(atan2_in_t{0},  atan2_in_t{-1})}, kPi));
+  REQUIRE(near_rad(rational{math::atan2(atan2_in_t{-1}, atan2_in_t{ 0})}, -kHalfPi));
+  REQUIRE(near_rad(rational{math::atan2(atan2_in_t{1},  atan2_in_t{ 1})}, kQrtPi));
 }
 
 TEST_CASE("bnd::math: full auto-form chain", "[cmath][auto]")
@@ -1146,10 +1136,10 @@ TEST_CASE("bnd::math: full auto-form chain", "[cmath][auto]")
 
   auto s = math::sin(p);             // ≈ √2/2
   auto c = math::cos(p);             // ≈ √2/2
-  auto angle = math::atan2(s, c);    // back to ≈ π/4 = 1/8 turn
+  auto angle = math::atan2(s, c);    // back to ≈ π/4 radians
 
-  // Should round-trip to 1/8 turn within Q.16 grid.
-  REQUIRE(rational{angle} == 0.125_r);
+  // Should round-trip to π/4 within the grid + CORDIC tolerance.
+  REQUIRE(near_rad(rational{angle}, kQrtPi));
 }
 
 TEST_CASE("bound member math methods delegate to bnd::math",
@@ -1194,4 +1184,102 @@ TEST_CASE("bnd::math: decimal probe at the bound level",
   for (unsigned i = 0; i <= 262144u; i += 32768)
     std::cout << "    sqrt(" << sqrt_input(i) << ") = "
               << sqrt_out_t{math::sqrt(sqrt_input(i))} << "\n";
+}
+
+//---------------------------------------------------------------------------
+// Extended transcendentals (#3): inverse trig (radians), hyperbolic, log10,
+// pow, cbrt, hypot. Transcendental outputs are irrational, so most checks use
+// a small rational tolerance; algebraically-exact cases are pinned by
+// `static_assert` to hold the bit-exact contract.
+//---------------------------------------------------------------------------
+namespace
+{
+  using inv_in2_t = bound<{{-1, 1}, notch<1, 1048576>}, round_nearest>;
+  using hyp_in_t  = bound<{{-10, 10}, notch<1, 65536>}, round_nearest>;  // sinh/cosh/tanh envelope
+  using cbrt_in_t = bound<{{-16, 16}, notch<1, 65536>}, round_nearest>;  // cbrt (wider envelope)
+  using pos_in2_t = bound<{{1, 1024}, notch<1, 65536>}, round_nearest>;
+
+  // True references from the library's own π.
+  constexpr rational kPi_x     = math::detail::pi_r;
+  constexpr rational kHalfPi_x = rational::mul_unchecked(kPi_x, rational{1, 2});
+
+  constexpr rational approx_tol{1, 4096};   // ~2.4e-4, covers every grid here
+  bool approx(rational got, rational want)
+  { return bnd::detail::abs((got - want).value()) <= approx_tol; }
+}
+
+TEST_CASE("bnd::math::atan: known values (radians)", "[cmath][atan]")
+{
+  REQUIRE(approx(rational{math::atan(inv_in2_t{rational{1, 2}})}, rational{4636476, 10000000}));
+  REQUIRE(approx(rational{math::atan(inv_in2_t{1})},  rational::mul_unchecked(kPi_x, rational{1, 4})));
+  REQUIRE(approx(rational{math::atan(inv_in2_t{0})},  rational{0}));
+  REQUIRE(approx(rational{math::atan(inv_in2_t{-1})}, rational::mul_unchecked(kPi_x, rational{-1, 4})));
+}
+
+TEST_CASE("bnd::math::asin / acos: known values (radians)", "[cmath][asin][acos]")
+{
+  REQUIRE(approx(rational{math::asin(inv_in2_t{0})},  rational{0}));
+  REQUIRE(approx(rational{math::asin(inv_in2_t{1})},  kHalfPi_x));
+  REQUIRE(approx(rational{math::asin(inv_in2_t{-1})}, -kHalfPi_x));
+  REQUIRE(approx(rational{math::asin(inv_in2_t{rational{1, 2}})}, rational::mul_unchecked(kPi_x, rational{1, 6})));
+
+  REQUIRE(approx(rational{math::acos(inv_in2_t{1})},  rational{0}));
+  REQUIRE(approx(rational{math::acos(inv_in2_t{-1})}, kPi_x));
+  REQUIRE(approx(rational{math::acos(inv_in2_t{0})},  kHalfPi_x));
+}
+
+TEST_CASE("bnd::math::sinh / cosh / tanh: known values", "[cmath][sinh][cosh][tanh]")
+{
+  // sinh(0)=0, cosh(0)=1, tanh(0)=0 — exact.
+  REQUIRE(rational{math::sinh(hyp_in_t{0})} == 0);
+  REQUIRE(rational{math::cosh(hyp_in_t{0})} == 1);
+  REQUIRE(rational{math::tanh(hyp_in_t{0})} == 0);
+  // sinh(1) ≈ 1.175201, cosh(1) ≈ 1.543081, tanh(1) ≈ 0.761594
+  REQUIRE(approx(rational{math::sinh(hyp_in_t{1})}, rational{11752012, 10000000}));
+  REQUIRE(approx(rational{math::cosh(hyp_in_t{1})}, rational{15430806, 10000000}));
+  REQUIRE(approx(rational{math::tanh(hyp_in_t{1})}, rational{7615942, 10000000}));
+  // cosh is even.
+  REQUIRE(approx(rational{math::cosh(hyp_in_t{-2})}, rational{math::cosh(hyp_in_t{2})}));
+}
+
+TEST_CASE("bnd::math::log10: known values", "[cmath][log10]")
+{
+  REQUIRE(approx(rational{math::log10(pos_in2_t{1})},   rational{0}));
+  REQUIRE(approx(rational{math::log10(pos_in2_t{10})},  rational{1}));
+  REQUIRE(approx(rational{math::log10(pos_in2_t{100})}, rational{2}));
+  REQUIRE(approx(rational{math::log10(pos_in2_t{2})},   rational{30103, 100000}));
+}
+
+TEST_CASE("bnd::math::cbrt: exact and signed", "[cmath][cbrt][constexpr]")
+{
+  // Perfect cubes of powers of two are exact through the Q.30 log/exp cores.
+  static_assert(rational{math::cbrt(cbrt_in_t{8})}  == 2);
+  static_assert(rational{math::cbrt(cbrt_in_t{-8})} == -2);
+  static_assert(rational{math::cbrt(cbrt_in_t{0})}  == 0);
+  static_assert(rational{math::cbrt(cbrt_in_t{1})}  == 1);
+  REQUIRE(approx(rational{math::cbrt(cbrt_in_t{2})}, rational{12599210, 10000000}));
+}
+
+TEST_CASE("bnd::math::hypot: Pythagorean", "[cmath][hypot]")
+{
+  using h_t = bound<{{-16, 16}, notch<1, 65536>}, round_nearest>;
+  REQUIRE(approx(rational{math::hypot(h_t{3}, h_t{4})},  rational{5}));
+  REQUIRE(approx(rational{math::hypot(h_t{5}, h_t{12})}, rational{13}));
+  REQUIRE(approx(rational{math::hypot(h_t{0}, h_t{0})},  rational{0}));
+  REQUIRE(approx(rational{math::hypot(h_t{-3}, h_t{4})}, rational{5}));
+}
+
+TEST_CASE("bnd::math::pow: base^exp with expected", "[cmath][pow]")
+{
+  using b_t = bound<{{1, 16}, notch<1, 65536>}, round_nearest>;
+  using e_t = bound<{{-8, 16}, notch<1, 65536>}, round_nearest>;
+  auto p1 = math::pow(b_t{2}, e_t{10});      // 1024
+  REQUIRE(p1.has_value());
+  REQUIRE(approx(rational{*p1}, rational{1024}));
+  auto p2 = math::pow(b_t{2}, e_t{0});       // 1
+  REQUIRE(p2.has_value());
+  REQUIRE(approx(rational{*p2}, rational{1}));
+  auto p3 = math::pow(b_t{9}, e_t{rational{1, 2}});  // 3
+  REQUIRE(p3.has_value());
+  REQUIRE(approx(rational{*p3}, rational{3}));
 }

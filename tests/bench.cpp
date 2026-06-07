@@ -615,6 +615,43 @@ void bench_cmath()
       double fy = static_cast<double>(rational{(k % 60) + 4, 16384});
       auto r = std::fmod(fx, fy);
       do_not_optimize(r); }
+
+    // ---- extended transcendentals (#3) ----
+    { CTRACK_NAME("math::asin  bound");
+      atan2_in_t x{rational{static_cast<imax>(k % 32768) - 16384, 16384}};
+      auto r = bnd::math::asin(x);
+      do_not_optimize(r.raw()); }
+    { CTRACK_NAME("std::asin   double");
+      double d = static_cast<double>(rational{static_cast<imax>(k % 32768) - 16384, 16384});
+      auto r = std::asin(d);
+      do_not_optimize(r); }
+
+    { CTRACK_NAME("math::tanh  bound");
+      exp_in_t x{qs};
+      auto r = bnd::math::tanh(x);
+      do_not_optimize(r.raw()); }
+    { CTRACK_NAME("std::tanh   double");
+      double d = static_cast<double>(qs);
+      auto r = std::tanh(d);
+      do_not_optimize(r); }
+
+    { CTRACK_NAME("math::cbrt  bound");
+      algeb_t x{qs};
+      auto r = bnd::math::cbrt(x);
+      do_not_optimize(r.raw()); }
+    { CTRACK_NAME("std::cbrt   double");
+      double d = static_cast<double>(qs);
+      auto r = std::cbrt(d);
+      do_not_optimize(r); }
+
+    { CTRACK_NAME("math::hypot bound");
+      algeb_t a{qs}; algeb_t b{q};
+      auto r = bnd::math::hypot(a, b);
+      do_not_optimize(r.raw()); }
+    { CTRACK_NAME("std::hypot  double");
+      double a = static_cast<double>(qs); double b = static_cast<double>(q);
+      auto r = std::hypot(a, b);
+      do_not_optimize(r); }
   }
 }
 

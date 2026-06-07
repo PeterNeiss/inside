@@ -79,12 +79,14 @@ namespace bnd::detail
       template<typename P, typename A>
       static constexpr void apply_clamp(L& lhs, R rhs, P&& policy, A&& action);
 
+    public:
+      // Exposed (not private) so the boundable-rhs wrap path can reuse the
+      // rational specialization's modular wrap on fractional/notch grids, and
+      // so the wrap path can reuse store_checked after computing the wrapped
+      // value.
       template<typename P, typename A>
       static constexpr void apply_wrap(L& lhs, R rhs, P&& policy, A&& action);
 
-    public:
-      // Exposed (not private) so the wrap path can reuse the rational
-      // specialization's store_checked after computing the wrapped value.
       template<typename P, typename A = no_action>
       static constexpr bool store_checked(L& lhs, R rhs, P&& policy, A&& action = {});
 
@@ -169,8 +171,8 @@ namespace bnd::detail
       template<typename A>
       static constexpr void apply_clamp(L& lhs, R const& rhs, A&& action);
 
-      template<typename A>
-      static constexpr void apply_wrap(L& lhs, R const& rhs, A&& action);
+      template<typename P, typename A>
+      static constexpr void apply_wrap(L& lhs, R const& rhs, P&& policy, A&& action);
 
       template<typename P, typename A>
       static constexpr bool try_clamp_or_fail(L& lhs, R const& rhs, P&& policy, A&& action);
@@ -458,21 +460,36 @@ namespace bnd::detail
   }
 
   template<boundable L, boundable R>
-  template<typename A>
-  constexpr void assignment<L,R>::apply_wrap(L& lhs, R const& rhs, A&& action)
+  template<typename P, typename A>
+  constexpr void assignment<L,R>::apply_wrap(L& lhs, R const& rhs, P&& policy, A&& action)
   {
-    static_assert(IsIntegerInterval<L>,
-      "wrap with bound rhs requires an integer-aligned destination interval");
-    imax rhs_imax = as_rational(rhs).trunc();
-    constexpr imax lower = LowerImax<L>;
-    constexpr imax upper = UpperImax<L>;
-    imax range = upper - lower + 1;
-    imax shifted = rhs_imax - lower;
-    imax wrapped = ((shifted % range) + range) % range;
-    imax excess  = (shifted < 0) ? ((shifted - range + 1) / range) : (shifted / range);
-    from_value(lhs, wrapped + lower);
-    if constexpr (wrap_action<plain<A>>)
-      action.fn(lhs, excess);
+    // The integer modular wrap (range = Upper - Lower + 1, integer values) is
+    // only correct on a unit-integer grid — notch 1 with integer bounds, so
+    // consecutive integers are adjacent grid points. Any other grid (fractional
+    // notch, non-integer bounds) routes through the rational modular wrap.
+    if constexpr (IsIntegerInterval<L> && abs_den(Notch<L>.Denominator) == 1
+                  && Notch<L>.Numerator == 1)
+    {
+      // Unit-integer fast path: modular wrap on the integer value.
+      imax rhs_imax = as_rational(rhs).trunc();
+      constexpr imax lower = LowerImax<L>;
+      constexpr imax upper = UpperImax<L>;
+      imax range = upper - lower + 1;
+      imax shifted = rhs_imax - lower;
+      imax wrapped = ((shifted % range) + range) % range;
+      imax excess  = (shifted < 0) ? ((shifted - range + 1) / range) : (shifted / range);
+      from_value(lhs, wrapped + lower);
+      if constexpr (wrap_action<plain<A>>)
+        action.fn(lhs, excess);
+    }
+    else
+    {
+      // Fractional / notch-aligned destination: reuse the rational
+      // modular-wrap path (range = Upper - Lower + Notch; store_checked
+      // applies the rounding policy). Mirrors how the integral-rhs assign
+      // routes non-integer L through assignment<L, rational>.
+      assignment<L, rational>::apply_wrap(lhs, as_rational(rhs), policy, action);
+    }
   }
 
   template<boundable L, boundable R>
@@ -483,7 +500,7 @@ namespace bnd::detail
     if constexpr (clamp_action<PA>)
     { apply_clamp(lhs, rhs, action); return true; }
     else if constexpr (wrap_action<PA>)
-    { apply_wrap(lhs, rhs, action); return true; }
+    { apply_wrap(lhs, rhs, policy, action); return true; }
     else if constexpr (sentinel_action<PA>)
     {
       lhs = L::from_raw(sentinel_raw<L>());
@@ -500,7 +517,7 @@ namespace bnd::detail
     else if constexpr (HasPolicy<L, P, clamp>)
     { apply_clamp(lhs, rhs, action); return true; }
     else if constexpr (HasPolicy<L, P, wrap>)
-    { apply_wrap(lhs, rhs, action); return true; }
+    { apply_wrap(lhs, rhs, policy, action); return true; }
     return domain_fail(lhs, policy,
       bnd::to_string(as_rational(rhs)) + " is not in " + bnd::to_string(Interval<L>));
   }
