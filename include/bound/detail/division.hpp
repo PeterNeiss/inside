@@ -30,7 +30,7 @@ namespace bnd::detail
   template <boundable L, boundable R, policy_flag F>
   inline constexpr bool integer_native_ops =
       ((F | BoundPolicy<L> | BoundPolicy<R>) & ignore_round)
-      && !IsRawRational<L> && !IsRawRational<R>
+      && storage_of<L> != storage::rational && storage_of<R> != storage::rational
       && IsIntegerAligned<L> && IsIntegerAligned<R>;
 
   template <boundable L, boundable R = L, policy_flag F = none>
@@ -63,7 +63,7 @@ namespace bnd::detail
             ? grid{(*(Grid<L> / Grid<R>)).Interval.Lower.trunc(),
                    (*(Grid<L> / Grid<R>)).Interval.Upper.trunc()}
       : native_div_qformat
-            ? grid{interval{bnd::detail::rational{0}, (Upper<L> / Notch<R>).value()}, Notch<L>}
+            ? grid{interval{rational{0}, (Upper<L> / Notch<R>).value()}, Notch<L>}
             : *(Grid<L> / Grid<R>);
 
     using result = bound<result_grid>;
@@ -141,19 +141,19 @@ namespace bnd::detail
     }
     else if constexpr (needs_overflow_check<G>)
     {
-      bnd::detail::rational rhs_r = rhs;
+      rational rhs_r = rhs;
       if constexpr (!zero_unchecked)
         if (rhs_r.Numerator == 0) return fail(errc::division_by_zero, "division by zero in div");
-      auto q = detail::as_rational(lhs) / rhs_r;
+      auto q = as_rational(lhs) / rhs_r;
       if (!q) return fail(errc::overflow, "rational overflow in div");
       return result::from_raw(*q);
     }
     else
     {
-      bnd::detail::rational rhs_r = rhs;
+      rational rhs_r = rhs;
       if constexpr (!zero_unchecked)
         if (rhs_r.Numerator == 0) return fail(errc::division_by_zero, "division by zero in div");
-      return result::from_raw(bnd::detail::rational::div_unchecked(detail::as_rational(lhs), rhs_r));
+      return result::from_raw(rational::div_unchecked(as_rational(lhs), rhs_r));
     }
   }
   //---------------------------------------------------------------------------

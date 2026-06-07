@@ -78,7 +78,7 @@ namespace bnd::detail
 
     template <typename P>
     static constexpr bool needs_overflow_check =
-        IsRawRational<result>
+        storage_of<result> == storage::rational
         && (((BoundPolicy<L> | BoundPolicy<R>) & checked) || plain<P>::test(checked))
         && !rational_mul_is_safe(Grid<L>, Grid<R>);
 
@@ -103,19 +103,19 @@ namespace bnd::detail
   template <typename P, typename A>
   constexpr auto multiplication<L,R>::mul(L lhs, R rhs, P&& policy, A&& action) -> mul_return_t<P, A>
   {
-    if constexpr (IsRawRational<result>)
+    if constexpr (storage_of<result> == storage::rational)
     {
       if constexpr (needs_overflow_check<P>)
       {
-        auto prod = detail::as_rational(lhs) * detail::as_rational(rhs);
+        auto prod = as_rational(lhs) * as_rational(rhs);
         if (!prod)
           return report_or_nullopt<result>(action, policy, errc::overflow,
                                            "rational overflow in mul");
         return result::from_raw(raw_cast<result>(*prod));
       }
       else
-        return result::from_raw(raw_cast<result>(bnd::detail::rational::mul_unchecked(
-            detail::as_rational(lhs), detail::as_rational(rhs))));
+        return result::from_raw(raw_cast<result>(rational::mul_unchecked(
+            as_rational(lhs), as_rational(rhs))));
     }
     else if constexpr (IsIntegerAligned<L> && IsIntegerAligned<R> && IsIntegerAligned<result>)
     {
@@ -132,12 +132,17 @@ namespace bnd::detail
 
       // Normalize lhs.raw() / rhs.raw() to *offsets* regardless of L's / R's
       // storage shape. The formulas below all assume offset arithmetic.
-      umax lhs_offset = IsDirectStorage<L>
+      umax lhs_offset = storage_of<L> != storage::offset
           ? static_cast<umax>(raw_imax(lhs) - RawLo<L>)
           : static_cast<umax>(lhs.raw());
-      umax rhs_offset = IsDirectStorage<R>
+      umax rhs_offset = storage_of<R> != storage::offset
           ? static_cast<umax>(raw_imax(rhs) - RawLo<R>)
           : static_cast<umax>(rhs.raw());
+
+      // Absolute notch index of each operand endpoint (Lower/Notch, Upper/Notch).
+      constexpr umax idxLoL = (Lower<L>/Notch<L>).value_or(rational{0}).Numerator;
+      constexpr umax idxLoR = (Lower<R>/Notch<R>).value_or(rational{0}).Numerator;
+      constexpr umax idxHiL = (Upper<L>/Notch<L>).value_or(rational{0}).Numerator;
 
       // Raws are typically small unsigned ints (uint8/16/32). C++ integral
       // promotion turns `raw * raw` into `int * int`, so any product above
@@ -154,8 +159,8 @@ namespace bnd::detail
       if constexpr (Lower<result> == (Lower<L> * Lower<R>).value())
       {
         return to_result(lhs_offset * rhs_offset
-                         + lhs_offset * LowerIndex<R>
-                         + rhs_offset * LowerIndex<L>);
+                         + lhs_offset * idxLoR
+                         + rhs_offset * idxLoL);
       }
 
       if constexpr (Lower<result> == (Upper<L> * Upper<R>).value())
@@ -164,8 +169,8 @@ namespace bnd::detail
       if constexpr (Lower<result> == (Upper<L> * Lower<R>).value())
       {
         umax negLhs = NotchCount<L> - lhs_offset;
-        return to_result(negLhs * LowerIndex<R>
-                         + rhs_offset * UpperIndex<L>
+        return to_result(negLhs * idxLoR
+                         + rhs_offset * idxHiL
                          - negLhs * rhs_offset);
       }
 

@@ -127,9 +127,9 @@ namespace bnd
 
     [[nodiscard]] constexpr auto value() const
     {
-      if constexpr (detail::IsRawRational<bound>)
+      if constexpr (detail::storage_of<bound> == detail::storage::rational)
         return Raw;
-      else if constexpr (detail::IsDirectStorage<bound>)
+      else if constexpr (detail::storage_of<bound> != detail::storage::offset)
         return static_cast<std::common_type_t<raw_type, int>>(Raw);
       else
         return detail::as_rational(*this);
@@ -153,7 +153,7 @@ namespace bnd
     // policy machinery and `slim::optional<bound>`.
     [[nodiscard]] constexpr bool is_sentinel() const noexcept
     {
-      if constexpr (detail::IsRawRational<bound>)
+      if constexpr (detail::storage_of<bound> == detail::storage::rational)
         return Raw.Denominator == 0;
       else
         return Raw == detail::sentinel_raw<bound>();
@@ -196,8 +196,7 @@ namespace bnd
     //                       on sentinel state. Use when the value is known
     //                       in range (the common case at array-index sites).
     constexpr operator imax() const
-      requires (detail::abs_den(G.Notch.Denominator) == 1
-             && G.Notch.Numerator != 0
+      requires (detail::notch_is_unit_integer<G>
              && G.Interval.Lower >= bnd::detail::rational{std::numeric_limits<imax>::min()}
              && G.Interval.Upper <= bnd::detail::rational{std::numeric_limits<imax>::max()})
     { return detail::to_value(*this); }
@@ -209,8 +208,7 @@ namespace bnd
     // Upper already exceeds imax — don't gain a back-door imax conversion
     // via size_t → imax integer narrowing.
     constexpr operator std::size_t() const
-      requires (detail::abs_den(G.Notch.Denominator) == 1
-             && G.Notch.Numerator != 0
+      requires (detail::notch_is_unit_integer<G>
              && G.Interval.Lower >= 0
              && G.Interval.Upper <= bnd::detail::rational{std::numeric_limits<imax>::max()})
     { return static_cast<std::size_t>(detail::to_value(*this)); }
@@ -225,7 +223,7 @@ namespace bnd
       if constexpr (G.Interval.Lower == G.Interval.Upper)
         return G.Interval.Lower;
 
-      if constexpr (detail::IsDirectStorage<bound>)
+      if constexpr (detail::storage_of<bound> != detail::storage::offset)
         return Raw;
 
       // Q-format-with-integer-Lower fast path skips the three rational ops
@@ -358,16 +356,16 @@ namespace bnd
     [[nodiscard]] constexpr negative operator-() const
     {
       negative neg;
-      if constexpr (detail::IsRawRational<bound>)
+      if constexpr (detail::storage_of<bound> == detail::storage::rational)
         neg = negative::from_raw(-(Raw));
-      else if constexpr (detail::IsDirectStorage<bound> || detail::IsDirectStorage<negative>)
+      else if constexpr (detail::storage_of<bound> != detail::storage::offset || detail::storage_of<negative> != detail::storage::offset)
         detail::from_value(neg, -detail::to_value(*this));
       else
         // Unsigned-offset fast path: with offset encoding `value = Raw*Notch + Lower`,
         // negating the value is equivalent to indexing from the opposite end of the
         // grid — i.e. `NotchCount - Raw`. No rational arithmetic in the hot path.
         //
-        // NOTE: not a sibling of the IsDirectStorage encoding bugs — this branch is
+        // NOTE: not a sibling of the direct-storage encoding bugs — this branch is
         // unreachable when either operand uses direct storage, so `Raw` here is
         // guaranteed to be an offset.
         neg = negative::from_raw(detail::raw_cast<negative>(detail::NotchCount<bound> - Raw));
@@ -441,9 +439,9 @@ namespace bnd
       // encoding where raw_a + raw_b is the raw of value_a + value_b — either
       // direct storage (Raw == value) or offset encoding with Lower==0 on
       // both (Raw == value/notch, so raws sum to (sum)/notch).
-      if constexpr (not detail::IsRawRational<bound> && not detail::IsRawRational<R>
+      if constexpr (detail::storage_of<bound> != detail::storage::rational && detail::storage_of<R> != detail::storage::rational
                     && Notch<bound> == Notch<R>
-                    && (detail::IsDirectStorage<R>
+                    && (detail::storage_of<R> != detail::storage::offset
                         || (Lower<bound> == 0 && Lower<R> == 0)))
       {
         if constexpr (P & (clamp | wrap | checked | sentinel))
@@ -659,8 +657,8 @@ namespace bnd
     if constexpr (Grid<L> == Grid<R>)
       return lhs.raw() <=> rhs.raw();
     // both integer-direct (notch=1, Raw==value): compare as integers
-    else if constexpr (!detail::IsRawRational<L> && !detail::IsRawRational<R>
-                       && detail::IsDirectStorage<L> && detail::IsDirectStorage<R>)
+    else if constexpr (detail::storage_of<L> != detail::storage::rational && detail::storage_of<R> != detail::storage::rational
+                       && detail::storage_of<L> != detail::storage::offset && detail::storage_of<R> != detail::storage::offset)
       return detail::raw_imax(lhs) <=> detail::raw_imax(rhs);
     else
       return detail::as_rational(lhs) <=> detail::as_rational(rhs);
@@ -671,8 +669,8 @@ namespace bnd
   {
     if constexpr (Grid<L> == Grid<R>)
       return lhs.raw() == rhs.raw();
-    else if constexpr (!detail::IsRawRational<L> && !detail::IsRawRational<R>
-                       && detail::IsDirectStorage<L> && detail::IsDirectStorage<R>)
+    else if constexpr (detail::storage_of<L> != detail::storage::rational && detail::storage_of<R> != detail::storage::rational
+                       && detail::storage_of<L> != detail::storage::offset && detail::storage_of<R> != detail::storage::offset)
       return detail::raw_imax(lhs) == detail::raw_imax(rhs);
     else
       return detail::as_rational(lhs) == detail::as_rational(rhs);
@@ -681,7 +679,7 @@ namespace bnd
   template <boundable B, arithmetic A>
   constexpr auto operator<=>(B const& lhs, A rhs)
   {
-    if constexpr (!detail::IsRawRational<B> && detail::IsDirectStorage<B>)
+    if constexpr (detail::storage_of<B> == detail::storage::integer)
       return detail::raw_imax(lhs) <=> static_cast<imax>(rhs);
     else
       return detail::as_rational(lhs) <=> bnd::detail::rational{rhs};
@@ -690,7 +688,7 @@ namespace bnd
   template <boundable B, arithmetic A>
   constexpr bool operator==(B const& lhs, A rhs)
   {
-    if constexpr (!detail::IsRawRational<B> && detail::IsDirectStorage<B>)
+    if constexpr (detail::storage_of<B> == detail::storage::integer)
       return detail::raw_imax(lhs) == static_cast<imax>(rhs);
     else
       return detail::as_rational(lhs) == bnd::detail::rational{rhs};

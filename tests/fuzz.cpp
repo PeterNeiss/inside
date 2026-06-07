@@ -78,7 +78,7 @@ template <boundable B>
 typename B::raw_type random_in_range_raw(std::mt19937_64& rng)
 {
   using raw = typename B::raw_type;
-  if constexpr (IsDirectStorage<B>)
+  if constexpr (storage_of<B> != storage::offset)
   {
     auto lo = static_cast<imax>(Lower<B>);
     auto hi = static_cast<imax>(Upper<B>);
@@ -137,7 +137,7 @@ void prop_storage_size(fuzz_state& s)
 template <boundable B>
 void prop_round_trip(fuzz_state& s, long iters)
 {
-  if constexpr (IsRawRational<B>) return;
+  if constexpr (storage_of<B> == storage::rational) return;
   else {
   s.current_prop = "round_trip";
   for (long i = 0; i < iters; ++i)
@@ -155,7 +155,7 @@ void prop_round_trip(fuzz_state& s, long iters)
 template <boundable B>
 void prop_native_compare(fuzz_state& s, long iters)
 {
-  if constexpr (IsIntegerAligned<B> && !IsRawRational<B>)
+  if constexpr (IsIntegerAligned<B> && storage_of<B> != storage::rational)
   {
     s.current_prop = "native_compare";
     auto lo = static_cast<imax>(Lower<B>);
@@ -177,7 +177,7 @@ void prop_native_compare(fuzz_state& s, long iters)
 template <boundable B>
 void prop_clamp(fuzz_state& s, long iters)
 {
-  if constexpr (IsIntegerAligned<B> && !IsRawRational<B>)
+  if constexpr (IsIntegerAligned<B> && storage_of<B> != storage::rational)
   {
     s.current_prop = "clamp";
     using BC = bound<Grid<B>, clamp>;
@@ -198,7 +198,7 @@ void prop_clamp(fuzz_state& s, long iters)
 template <boundable B>
 void prop_wrap(fuzz_state& s, long iters)
 {
-  if constexpr (IsIntegerAligned<B> && !IsRawRational<B>)
+  if constexpr (IsIntegerAligned<B> && storage_of<B> != storage::rational)
   {
     s.current_prop = "wrap";
     using BW = bound<Grid<B>, wrap>;
@@ -220,7 +220,7 @@ void prop_wrap(fuzz_state& s, long iters)
 template <boundable B>
 void prop_try_make(fuzz_state& s, long iters)
 {
-  if constexpr (IsIntegerAligned<B> && !IsRawRational<B>)
+  if constexpr (IsIntegerAligned<B> && storage_of<B> != storage::rational)
   {
     s.current_prop = "try_make";
     auto lo = static_cast<imax>(Lower<B>);
@@ -241,7 +241,7 @@ void prop_try_make(fuzz_state& s, long iters)
 template <boundable B>
 void prop_on_clamp(fuzz_state& s, long iters)
 {
-  if constexpr (IsIntegerAligned<B> && !IsRawRational<B>)
+  if constexpr (IsIntegerAligned<B> && storage_of<B> != storage::rational)
   {
     s.current_prop = "on_clamp";
     using BC = bound<Grid<B>, clamp>;
@@ -286,7 +286,7 @@ void prop_on_clamp(fuzz_state& s, long iters)
 template <boundable B>
 void prop_arith_vs_rational(fuzz_state& s, long iters)
 {
-  if constexpr (IsRawRational<B>) return;
+  if constexpr (storage_of<B> == storage::rational) return;
   else {
   s.current_prop = "arith_vs_rational";
   for (long i = 0; i < iters; ++i)
@@ -310,7 +310,7 @@ void prop_arith_vs_rational(fuzz_state& s, long iters)
 template <boundable B>
 void prop_mul_vs_rational(fuzz_state& s, long iters)
 {
-  if constexpr (!IsRawRational<B>)
+  if constexpr (storage_of<B> != storage::rational)
   {
     s.current_prop = "mul_vs_rational";
     for (long i = 0; i < iters; ++i)
@@ -360,7 +360,7 @@ void prop_round_trip_construct(fuzz_state& s, long iters)
 {
   // Pick an in-range raw, decode via value(), re-construct via B{value}, and
   // verify the new bound's value matches the original.
-  if constexpr (IsIntegerAligned<B> && !IsRawRational<B>)
+  if constexpr (IsIntegerAligned<B> && storage_of<B> != storage::rational)
   {
     s.current_prop = "round_trip_construct";
     auto lo = static_cast<imax>(Lower<B>);
@@ -383,7 +383,7 @@ void prop_round_trip_construct(fuzz_state& s, long iters)
 template <boundable B>
 void prop_negation(fuzz_state& s, long iters)
 {
-  if constexpr (IsRawRational<B>) return;
+  if constexpr (storage_of<B> == storage::rational) return;
   else {
   s.current_prop = "negation";
   for (long i = 0; i < iters; ++i)
@@ -405,7 +405,7 @@ void prop_negation(fuzz_state& s, long iters)
 template <boundable B>
 void prop_compound_add_int(fuzz_state& s, long iters)
 {
-  if constexpr (IsIntegerAligned<B> && !IsRawRational<B>)
+  if constexpr (IsIntegerAligned<B> && storage_of<B> != storage::rational)
   {
     s.current_prop = "compound_add_int";
     auto lo = static_cast<imax>(Lower<B>);
@@ -434,7 +434,7 @@ void prop_modulo(fuzz_state& s, long iters)
 {
   // Only applies to integer-aligned grids; result is optional<bound>.
   // mod requires `ignore_round` per the README, so derive a typed alias.
-  if constexpr (IsIntegerAligned<B> && !IsRawRational<B>)
+  if constexpr (IsIntegerAligned<B> && storage_of<B> != storage::rational)
   {
     s.current_prop = "modulo";
     using BI = bound<Grid<B>, ignore_round>;
@@ -489,7 +489,7 @@ void prop_modulo(fuzz_state& s, long iters)
 template <boundable B>
 void prop_increment_wrap(fuzz_state& s, long iters)
 {
-  if constexpr (IsIntegerAligned<B> && !IsRawRational<B>)
+  if constexpr (IsIntegerAligned<B> && storage_of<B> != storage::rational)
   {
     s.current_prop = "increment_wrap";
     using BW = bound<Grid<B>, wrap>;
@@ -518,7 +518,7 @@ void prop_increment_wrap(fuzz_state& s, long iters)
 template <boundable B>
 void prop_div_by_zero(fuzz_state& s, long iters)
 {
-  if constexpr (IsIntegerAligned<B> && !IsRawRational<B>
+  if constexpr (IsIntegerAligned<B> && storage_of<B> != storage::rational
                 && Lower<B> <= 0 && Upper<B> >= 0)
   {
     s.current_prop = "div_by_zero";
@@ -536,7 +536,7 @@ void prop_div_by_zero(fuzz_state& s, long iters)
 template <boundable B>
 void prop_spaceship_symmetry(fuzz_state& s, long iters)
 {
-  if constexpr (IsRawRational<B>) return;
+  if constexpr (storage_of<B> == storage::rational) return;
   else {
   s.current_prop = "spaceship_symmetry";
   for (long i = 0; i < iters; ++i)
@@ -590,7 +590,7 @@ void prop_compound_imax_overflow(fuzz_state& s, long iters)
   // imax overflow probes. Builds a checked alias of B, picks an in-range start,
   // hits it with imax sentinel values that force add/sub/mul_overflow, and
   // verifies the report path throws errc::overflow.
-  if constexpr (IsIntegerAligned<B> && !IsRawRational<B>)
+  if constexpr (IsIntegerAligned<B> && storage_of<B> != storage::rational)
   {
     s.current_prop = "compound_imax_overflow";
     using BC = bound<Grid<B>, checked>;
@@ -636,7 +636,7 @@ void prop_compound_div_mod_zero(fuzz_state& s, long iters)
   // Default-policy `/= 0` and `%= 0` go through report → throws division_by_zero
   // (empty_ref backend). Verified across both the default `none` policy and an
   // explicit `checked` alias for breadth.
-  if constexpr (IsIntegerAligned<B> && !IsRawRational<B>)
+  if constexpr (IsIntegerAligned<B> && storage_of<B> != storage::rational)
   {
     s.current_prop = "compound_div_mod_zero";
     auto lo = static_cast<imax>(Lower<B>);
@@ -665,7 +665,7 @@ void prop_compound_bound_overshoot(fuzz_state& s, long iters)
   // grids already use the default `checked` policy, so the report path throws
   // domain_error. Pick start values where adding `delta` lands outside the
   // grid; skip those that would still fit.
-  if constexpr (IsIntegerAligned<B> && !IsRawRational<B>)
+  if constexpr (IsIntegerAligned<B> && storage_of<B> != storage::rational)
   {
     s.current_prop = "compound_bound_overshoot";
     auto lo = static_cast<imax>(Lower<B>);
@@ -696,7 +696,7 @@ void prop_non_notch_assign(fuzz_state& s, long iters)
   // Targets assignment.hpp:289 (round_nearest), 291 (ignore_round silent floor),
   // 296 (checked rounding_error report → throws), and 299 (silent floor for
   // unchecked policy). Only meaningful for fixed-point grids (notch != 1).
-  if constexpr (!IsIntegerAligned<B> && !IsRawRational<B>)
+  if constexpr (!IsIntegerAligned<B> && storage_of<B> != storage::rational)
   {
     s.current_prop = "non_notch_assign";
     // The catalogue's B already uses the default `checked` policy, so a non-
@@ -762,7 +762,7 @@ void prop_subnormal_construct(fuzz_state& s, long iters)
   // Targets math.hpp:179-180 — abs_fraction shift cap for very small doubles.
   // The path is taken when the input double has a negative exponent so large
   // that bits-exponent > 62. Any double in (0, 2^-62) qualifies.
-  if constexpr (!IsIntegerAligned<B> && !IsRawRational<B>)
+  if constexpr (!IsIntegerAligned<B> && storage_of<B> != storage::rational)
   {
     s.current_prop = "subnormal_construct";
     using BIR = bound<Grid<B>, ignore_round>;
@@ -849,7 +849,7 @@ void prop_compound_add_same_bound(fuzz_state& s, long iters)
   // grids whose Lower != 0 on at least one side, or notches that mismatch).
   // For grids whose value ranges allow it, b += b should still produce 2*b
   // (or saturate/throw on overshoot). We restrict to picks that stay in range.
-  if constexpr (!IsRawRational<B>)
+  if constexpr (storage_of<B> != storage::rational)
   {
     s.current_prop = "compound_add_same_bound";
     for (long i = 0; i < iters; ++i)
@@ -871,13 +871,13 @@ void prop_compound_add_same_bound(fuzz_state& s, long iters)
 template <boundable B>
 void prop_raw_rational_arith(fuzz_state& s, long iters)
 {
-  // Targets addition.hpp:48-63 (the IsRawRational<result> branches) and
+  // Targets addition.hpp:48-63 (the storage_of<result> == storage::rational branches) and
   // multiplication.hpp:44-63 (same for mul). For raw-rational grids (notch=0)
   // arithmetic goes through the rational-add/mul paths directly. Most random
   // small-integer values won't overflow the rational machinery, so we mostly
   // exercise the success branches; occasional out-of-range results land in
   // the nullopt path.
-  if constexpr (IsRawRational<B>)
+  if constexpr (storage_of<B> == storage::rational)
   {
     s.current_prop = "raw_rational_arith";
     rational lo = Lower<B>;
@@ -928,7 +928,7 @@ void prop_raw_rational_arith(fuzz_state& s, long iters)
 // oracle. (money's 1/100 notch is deliberately excluded.)
 template <boundable B>
 inline constexpr bool DyadicNotch = []{
-  if constexpr (IsRawRational<B> || IsIntegerAligned<B>) return false;
+  if constexpr (storage_of<B> == storage::rational || IsIntegerAligned<B>) return false;
   else {
     imax d = abs_den(Notch<B>.Denominator);
     return Notch<B>.Numerator == 1 && (d & (d - 1)) == 0;
@@ -939,7 +939,7 @@ template <boundable B>
 void prop_casts(fuzz_state& s, long iters)
 {
   // Free-function cast API on integer grids: exact integer oracles.
-  if constexpr (IsIntegerAligned<B> && !IsRawRational<B>)
+  if constexpr (IsIntegerAligned<B> && storage_of<B> != storage::rational)
   {
     s.current_prop = "casts";
     auto lo = static_cast<imax>(Lower<B>);
@@ -1000,7 +1000,7 @@ void prop_predicates(fuzz_state& s, long iters)
 {
   // will_conversion_* / is_conversion_lossy must agree with the actual
   // checked conversion outcome.
-  if constexpr (IsIntegerAligned<B> && !IsRawRational<B>)
+  if constexpr (IsIntegerAligned<B> && storage_of<B> != storage::rational)
   {
     s.current_prop = "predicates";
     auto lo = static_cast<imax>(Lower<B>);
@@ -1059,7 +1059,7 @@ void prop_range(fuzz_state& s, long iters)
 {
   // bound_range walks every notch slot exactly once; a mid-range start rotates
   // the sequence. Capped so the billion-wide catalogue grids stay fast.
-  if constexpr (!IsRawRational<B>)
+  if constexpr (storage_of<B> != storage::rational)
   {
     constexpr umax N = NotchCount<B> + 1;
     if constexpr (N <= 100000)
@@ -1366,7 +1366,7 @@ int main(int argc, char** argv)
   run_props<bound<{0, 3}>>                      (s, iters, "tiny");
   run_props<bound<{-1, 1}>>                     (s, iters, "unit_signed");
   run_props<bound<{{0, 4}, notch<1, 65536>}>>     (s, iters, "Q_sqrt");
-  // Raw-rational grid (notch=0): exercises the IsRawRational branches in
+  // Raw-rational grid (notch=0): exercises the rational-storage branches in
   // addition / multiplication / assignment. Default `checked` policy goes
   // through the overflow-checked rational arithmetic; the `none` variant
   // exercises rational::add_unchecked / mul_unchecked.

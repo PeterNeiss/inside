@@ -104,7 +104,7 @@ TEST_CASE("Q-format division: result type is Q-format (same notch as L)",
   auto q = div(fp{200}, fp{8}, truncated);
   using R = std::remove_cvref_t<decltype(*q)>;
   STATIC_REQUIRE(Notch<R> == Notch<fp>);   // same Q-format, not rational-raw
-  STATIC_REQUIRE_FALSE(IsRawRational<R>);
+  STATIC_REQUIRE_FALSE(storage_of<R> == storage::rational);
 }
 
 //---------------------------------------------------------------------------

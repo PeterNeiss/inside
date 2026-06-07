@@ -197,24 +197,19 @@ TEST_CASE("constexpr: storage_min picks the smallest fitting raw",
                                 std::uint8_t>);
 }
 
-TEST_CASE("constexpr: IsDirectStorage / IsRawRational / IsNotchStorage",
+TEST_CASE("constexpr: storage_of classification",
           "[constexpr][storage]")
 {
-  // Direct storage: Raw == value. Three legal shapes:
-  //   - rational raw (notch 0)
-  //   - notch 1 + lower 0
-  //   - notch 1 + signed raw
-  STATIC_REQUIRE(IsDirectStorage<bound<{0,   100}>>);
-  STATIC_REQUIRE(IsDirectStorage<bound<{-40,  85}>>);
-  STATIC_REQUIRE(IsDirectStorage<bound<{{-10, 10}, 0}>>);
-
-  // Offset encoding: notch 1 with non-zero unsigned lower OR fractional notch
-  STATIC_REQUIRE_FALSE(IsDirectStorage<bound<{5, 100}>>);
-  STATIC_REQUIRE_FALSE(IsDirectStorage<bound<{{0, 5}, rational{1u, 2}}>>);
-  STATIC_REQUIRE(IsNotchStorage<bound<{5, 100}>>);
-
-  STATIC_REQUIRE(IsRawRational<bound<{{-10, 10}, 0}>>);
-  STATIC_REQUIRE_FALSE(IsRawRational<bound<{0, 100}>>);
+  // The three disjoint storage encodings.
+  // integer: Raw == value as a plain int (notch 1 + lower 0, or signed raw).
+  STATIC_REQUIRE(storage_of<bound<{0,   100}>> == storage::integer);
+  STATIC_REQUIRE(storage_of<bound<{-40,  85}>> == storage::integer);
+  // rational: notch 0 — Raw is the value as a rational.
+  STATIC_REQUIRE(storage_of<bound<{{-10, 10}, 0}>> == storage::rational);
+  // offset: notch 1 with non-zero unsigned lower, OR fractional notch — Raw is
+  // a 0-based notch index.
+  STATIC_REQUIRE(storage_of<bound<{5, 100}>> == storage::offset);
+  STATIC_REQUIRE(storage_of<bound<{{0, 5}, rational{1u, 2}}>> == storage::offset);
 }
 
 //---------------------------------------------------------------------------
@@ -236,7 +231,7 @@ TEST_CASE("constexpr: bound +/-/* on offset-encoded grids",
           "[constexpr][bound][arithmetic]")
 {
   using o = bound<{10, 50}>;                 // offset encoding (uint8 raw)
-  STATIC_REQUIRE_FALSE(IsDirectStorage<o>);
+  STATIC_REQUIRE(storage_of<o> == storage::offset);
 
   constexpr o a{15}, b{40};
   STATIC_REQUIRE(a + b == 55);

@@ -35,38 +35,37 @@ reachable value of `a + b` for `a : A, b : B` is by construction inside
 
 ---
 
-## 2. Storage decision tree
+## 2. Storage encoding
 
-`storage_min<G>` (`include/bound/grid.hpp:94`) picks the smallest raw type
-that can hold every reachable index in `G`. Three shapes:
+`storage_min<G>` (`include/bound/grid.hpp`) picks the smallest raw type that
+can hold every reachable index in `G`. `storage_of<B>`
+(`include/bound/generic.hpp`) classifies the result as one of three **disjoint**
+encodings (`enum class storage { rational, integer, offset }`):
 
 ```text
                        ┌────────────┐
-                       │  Notch == 0│──yes──▶  raw = rational
-                       └────────────┘         (IsRawRational)
+                       │  Notch == 0│──yes──▶  storage::rational
+                       └────────────┘         (raw = rational; raw IS the value)
                               │ no
                               ▼
-                  ┌──────────────────────┐
-                  │ Lower < 0, Notch == 1│──yes──▶  raw = smallest signed int
-                  └──────────────────────┘         (IsDirectStorage)
+              ┌──────────────────────────────┐
+              │ Notch == 1 AND (Lower == 0    │──yes──▶  storage::integer
+              │   or signed raw)              │         (raw = int; raw IS the value)
+              └──────────────────────────────┘
                               │ no
                               ▼
-                  ┌──────────────────────┐
-                  │  smallest_uint_for   │────────▶  raw = smallest unsigned int
-                  │   (max_notch())      │         (IsNotchStorage)
-                  └──────────────────────┘
+                         (otherwise)   ───────▶  storage::offset
+                                                 (raw = 0-based notch index;
+                                                  value = Lower + raw*Notch)
 ```
 
-Predicates (`include/bound/generic.hpp`):
+The two common queries: `storage_of<B> != storage::offset` means "raw is the
+value" (rational or integer — the old `IsDirectStorage`); `storage_of<B> ==
+storage::offset` means "raw is an index". `storage::integer` specifically is
+"raw is the value as a plain int" (the old `!IsRawRational && IsDirectStorage`).
 
-- `IsRawRational<B>` (line 39) — the raw type is `rational`. Notch is zero.
-- `IsDirectStorage<B>` (line 119) — `Raw == value`. Either signed-integer
-  raw with `Notch == 1`, or unsigned raw with `Lower == 0 && Notch == 1`,
-  or rational raw.
-- `IsNotchStorage<B>` (line 125) — `Raw` is the notch index;
-  `value = Raw * Notch + Lower`.
-
-Two more derived predicates classify subsets:
+Two more predicates classify the grid's integer-ness (independent of the
+storage encoding), gating arithmetic fast paths:
 
 - `IsIntegerInterval<B>` — `Lower` and `Upper` have integer denominators
   (Notch may still be fractional, e.g. `{0, 100}, 1/10`).
@@ -87,7 +86,9 @@ collapses to integer arithmetic. The gate is `HasQFormatFastPath<B>`
 ```cpp
 abs_den(Lower<B>.Denominator) == 1
 && Notch<B>.Numerator == 1
-&& RawFitsInImax<B>
+&& storage_of<B> != storage::rational
+&& (std::signed_integral<raw_t<B>>          // raw fits imax
+    || NotchCount<B> <= imax_max)
 ```
 
 Two helpers, used at three call sites:
@@ -97,7 +98,7 @@ Two helpers, used at three call sites:
 | `q_format_encode<B>(imax)` | value → raw | `from_value`, `assignment::store` |
 | `q_format_decode<B>(B)`    | raw → rational | `bound::operator rational()` |
 
-The `RawFitsInImax` clause exists because the Q-format result type of a
+The raw-fits-in-`imax` clause exists because the Q-format result type of a
 multiplication can land on `uint64_t` raw (e.g. `Q16.16 × Q16.16` produces
 `NotchCount ≈ 2^64`); widening that to `imax` via `raw_imax` would wrap.
 When the gate is false, control falls through to the slow but correct
@@ -174,8 +175,8 @@ different "extract the value" intents used to spell the same
 | `raw_imax(b)`  | `imax` (raw widened) | You want the **raw** as a signed integer (e.g. inside offset arithmetic) |
 | `to_value(b)`    | `imax` (truncated value) | You want the bound's **value** as an integer |
 
-For `IsDirectStorage<B>`, `raw_imax(b) == to_value(b)`. For
-`IsNotchStorage<B>`, they differ — `Raw` is an index, `to_value`
+When `storage_of<B> != storage::offset`, `raw_imax(b) == to_value(b)`. For
+`storage::offset`, they differ — `Raw` is an index, `to_value`
 multiplies by `Notch` and adds `Lower`.
 
 ---
@@ -191,7 +192,7 @@ all transitively included by `bound/bound.hpp`:
 | `bound/casts.hpp`       | `clamp_cast`, `wrap_cast`, `checked_cast`, `unchecked_cast`, `clamp_floor` / `clamp_ceil` / `clamp_round` |
 | `bound/arithmetic.hpp`  | Free `add` / `sub` / `mul` / `div` / `mod`, variadic folds `add_all` / `mul_all`, `operator+` / `-` / `*` / `/` / `%`, optional-lift overloads |
 | `bound/range.hpp`       | `bound_range<G, P>` iterator helper |
-| `bound/generic.hpp`     | Public grid/policy introspection (`Grid` / `BoundPolicy` / `Interval` / `Lower` / `Upper` / `Notch`) and the `boundable` / `numeric` / `bound_assignable` concepts. Storage/raw/dispatch plumbing (`raw_t`, `IsDirectStorage`, `to_value` / `from_value`, `raw_cast` / `raw_imax`, `q_format_encode/decode`, `NotchCount`, `RawLo/Hi`, `sentinel_raw`, `detail::as_rational`, …) lives in `bnd::detail` |
+| `bound/generic.hpp`     | Public grid/policy introspection (`Grid` / `BoundPolicy` / `Interval` / `Lower` / `Upper` / `Notch`) and the `boundable` / `numeric` / `bound_assignable` concepts. Storage/raw/dispatch plumbing (`raw_t`, `storage`/`storage_of`, `to_value` / `from_value`, `raw_cast` / `raw_imax`, `q_format_encode/decode`, `NotchCount`, `RawLo/Hi`, `sentinel_raw`, `detail::as_rational`, …) lives in `bnd::detail` |
 | `bound/assignment.hpp`  | `bnd::detail::assignment<L, R>` specialisations for integral / real / boundable rhs |
 | `bound/detail/addition.hpp`, `multiplication.hpp`, `division.hpp` | `bnd::detail::addition<L, R>`, `multiplication<L, R>`, `division<L, R, F>`, `modulo<L, R, F>` — implementation detail, included via `bound.hpp` |
 | `bound/detail/overflow.hpp`, `debug.hpp` | `add_overflow` / `sub_overflow` / `mul_overflow` (builtins + portable fallback), stacktrace plumbing — implementation detail |

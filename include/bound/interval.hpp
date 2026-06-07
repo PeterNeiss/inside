@@ -94,7 +94,7 @@ namespace bnd
   // interval product or quotient (interval arithmetic's four-corner rule).
   namespace detail
   {
-    constexpr interval corner_hull(bnd::detail::rational a, bnd::detail::rational b, bnd::detail::rational c, bnd::detail::rational d) noexcept
+    constexpr interval corner_hull(rational a, rational b, rational c, rational d) noexcept
     {
       auto [lo, hi] = std::minmax({a, b, c, d});
       return interval{lo, hi};
