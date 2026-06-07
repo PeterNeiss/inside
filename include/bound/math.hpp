@@ -29,6 +29,12 @@ namespace bnd
 
   namespace detail { struct rational; }
 
+  template<typename T>
+  concept arithmetic = std::integral<T> || std::floating_point<T> || std::same_as<bnd::detail::rational,T>;
+
+  namespace detail
+  {
+
   // Strict `<` reserves the type's max as the sentinel slot used by
   // slim::optional<bound>. Mirrors smallest_int_for's `+1` margin on the
   // signed side. A grid whose max_notch lands exactly on a type's max
@@ -68,9 +74,6 @@ namespace bnd
     if constexpr (std::is_same_v<T, bnd::detail::rational>) return "rational";
     return "unknown";
   }
-
-  template<typename T>
-  concept arithmetic = std::integral<T> || std::floating_point<T> || std::same_as<bnd::detail::rational,T>;
 
   // Subset of arithmetic that excludes integrals — the "real-valued" rhs
   // types that need the rational-arithmetic assignment specialization.
@@ -177,7 +180,7 @@ namespace bnd
   constexpr std::pair<umax, umax> abs_fraction(double value)
   {
     if (not std::isfinite(value))
-      throw std::domain_error("bnd::abs_fraction: non-finite double");
+      throw std::domain_error("bnd::detail::abs_fraction: non-finite double");
 
     if (value == 0.0) return {0, 1};
     if (value < 0)    value = -value;        // |value|; sign is the caller's job
@@ -225,6 +228,7 @@ namespace bnd
     return {significand, den};
   }
 
+  } // namespace detail
 } // namespace bnd
 
 #endif // BNDmathHPP

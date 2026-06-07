@@ -73,7 +73,7 @@ namespace bnd
     static_assert(!(P & sentinel) || !(P & wrap), "sentinel and wrap are mutually exclusive");
 
     using negative = bound<-G, P>;
-    using raw_type = storage_min<G>;
+    using raw_type = detail::storage_min<G>;
 
     private:
     raw_type Raw;
@@ -99,12 +99,12 @@ namespace bnd
     template <numeric A>
       requires bound_assignable<bound, A, P>
     constexpr bound(A value)
-    { assignment<bound, A>::assign(*this, value, make_policy<P>()); }
+    { detail::assignment<bound, A>::assign(*this, value, make_policy<P>()); }
 
     template <numeric A, typename Pol>
       requires bound_assignable<bound, A, P>
     constexpr bound(A value, Pol&& pol)
-    { assignment<bound, A>::assign(*this, value, pol); }
+    { detail::assignment<bound, A>::assign(*this, value, pol); }
 
     // optional<A> sink — unwrap once at the construction boundary so callers
     // can chain checked arithmetic without per-step `.value()`. Throws
@@ -113,23 +113,23 @@ namespace bnd
     template <numeric A>
       requires bound_assignable<bound, A, P>
     constexpr bound(slim::optional<A> const& value)
-    { assignment<bound, A>::assign(*this, value.value(), make_policy<P>()); }
+    { detail::assignment<bound, A>::assign(*this, value.value(), make_policy<P>()); }
 
     template <numeric B>
       requires bound_assignable<bound, B, P>
     constexpr bound& operator=(B const& other)
-    { return assignment<bound, B>::assign(*this, other, make_policy<P>()); }
+    { return detail::assignment<bound, B>::assign(*this, other, make_policy<P>()); }
 
     template <numeric B>
       requires bound_assignable<bound, B, P>
     constexpr bound& operator=(slim::optional<B> const& other)
-    { return assignment<bound, B>::assign(*this, other.value(), make_policy<P>()); }
+    { return detail::assignment<bound, B>::assign(*this, other.value(), make_policy<P>()); }
 
     [[nodiscard]] constexpr auto value() const
     {
-      if constexpr (IsRawRational<bound>)
+      if constexpr (detail::IsRawRational<bound>)
         return Raw;
-      else if constexpr (IsDirectStorage<bound>)
+      else if constexpr (detail::IsDirectStorage<bound>)
         return static_cast<std::common_type_t<raw_type, int>>(Raw);
       else
         return detail::as_rational(*this);
@@ -143,20 +143,20 @@ namespace bnd
     { bound b; b.Raw = r; return b; }
 
     // The reserved empty slot used by `slim::optional<bound>` and the sentinel
-    // policy. Wraps the internal `sentinel_raw<bound>()` so callers never have
+    // policy. Wraps the internal `detail::sentinel_raw<bound>()` so callers never have
     // to poke `Raw` to obtain an empty-state bound.
     [[nodiscard]] static constexpr bound make_sentinel() noexcept
-    { return from_raw(sentinel_raw<bound>()); }
+    { return from_raw(detail::sentinel_raw<bound>()); }
 
     // Public sentinel probe — the canonical "is this slot empty?" check
     // under `sentinel` policy, matching the raw layout used by both the
     // policy machinery and `slim::optional<bound>`.
     [[nodiscard]] constexpr bool is_sentinel() const noexcept
     {
-      if constexpr (IsRawRational<bound>)
+      if constexpr (detail::IsRawRational<bound>)
         return Raw.Denominator == 0;
       else
-        return Raw == sentinel_raw<bound>();
+        return Raw == detail::sentinel_raw<bound>();
     }
 
     // to<T>() emptiness predicate: under sentinel policy an empty slot has no
@@ -196,11 +196,11 @@ namespace bnd
     //                       on sentinel state. Use when the value is known
     //                       in range (the common case at array-index sites).
     constexpr operator imax() const
-      requires (abs_den(G.Notch.Denominator) == 1
+      requires (detail::abs_den(G.Notch.Denominator) == 1
              && G.Notch.Numerator != 0
              && G.Interval.Lower >= bnd::detail::rational{std::numeric_limits<imax>::min()}
              && G.Interval.Upper <= bnd::detail::rational{std::numeric_limits<imax>::max()})
-    { return to_value(*this); }
+    { return detail::to_value(*this); }
 
     // Implicit size_t conversion for index-shaped bounds. Lets
     // `vec[bound_idx]` compile without `.as<std::size_t>()` and without
@@ -209,11 +209,11 @@ namespace bnd
     // Upper already exceeds imax — don't gain a back-door imax conversion
     // via size_t → imax integer narrowing.
     constexpr operator std::size_t() const
-      requires (abs_den(G.Notch.Denominator) == 1
+      requires (detail::abs_den(G.Notch.Denominator) == 1
              && G.Notch.Numerator != 0
              && G.Interval.Lower >= 0
              && G.Interval.Upper <= bnd::detail::rational{std::numeric_limits<imax>::max()})
-    { return static_cast<std::size_t>(to_value(*this)); }
+    { return static_cast<std::size_t>(detail::to_value(*this)); }
 
     constexpr explicit operator double() const
       requires ((P & (round_floor | round_ceil | round_nearest
@@ -225,7 +225,7 @@ namespace bnd
       if constexpr (G.Interval.Lower == G.Interval.Upper)
         return G.Interval.Lower;
 
-      if constexpr (IsDirectStorage<bound>)
+      if constexpr (detail::IsDirectStorage<bound>)
         return Raw;
 
       // Q-format-with-integer-Lower fast path skips the three rational ops
@@ -233,15 +233,15 @@ namespace bnd
       // `from_value` and `assignment::store` via `q_format_decode`. When the
       // raw is too wide to widen safely (e.g. uint64 from a Q16.16 × Q16.16
       // result type), we fall through to the rational path below.
-      if constexpr (HasQFormatFastPath<bound>)
-        return q_format_decode(*this);
+      if constexpr (detail::HasQFormatFastPath<bound>)
+        return detail::q_format_decode(*this);
 
       return (*(Raw * G.Notch) + G.Interval.Lower).value();
     }
 
     // to<T>() — typed-error scalar extraction. Mirrors rational::to<T>
     // and extends it to signed integers and floating point.
-    // Unlike the always-succeed `to_value(b)` / `operator T()` paths,
+    // Unlike the always-succeed `detail::to_value(b)` / `operator T()` paths,
     // this returns `errc::overflow` (value out of T's range, or
     // sentinel-state) and `errc::domain_error` (negative into unsigned T).
     // Silent fractional truncation matches rational::to<T>.
@@ -255,7 +255,7 @@ namespace bnd
           (Upper<bound> > bnd::detail::rational{std::numeric_limits<T>::max()});
 
       if constexpr (!needs_neg_check && !needs_max_check)
-        return static_cast<T>(to_value(*this));
+        return static_cast<T>(detail::to_value(*this));
       else
       {
         auto r = detail::as_rational(*this);
@@ -279,7 +279,7 @@ namespace bnd
           (Upper<bound> > bnd::detail::rational{std::numeric_limits<T>::max()});
 
       if constexpr (!needs_min_check && !needs_max_check)
-        return static_cast<T>(to_value(*this));
+        return static_cast<T>(detail::to_value(*this));
       else
       {
         auto r = detail::as_rational(*this);
@@ -325,7 +325,7 @@ namespace bnd
     [[nodiscard]] constexpr imax denominator() const
     {
       auto r = detail::as_rational(*this);
-      return static_cast<imax>(abs_den(r.Denominator));
+      return static_cast<imax>(detail::abs_den(r.Denominator));
     }
 
     // Member-syntax aliases for the free functions in `bnd::math` — these
@@ -358,10 +358,10 @@ namespace bnd
     [[nodiscard]] constexpr negative operator-() const
     {
       negative neg;
-      if constexpr (IsRawRational<bound>)
+      if constexpr (detail::IsRawRational<bound>)
         neg = negative::from_raw(-(Raw));
-      else if constexpr (IsDirectStorage<bound> || IsDirectStorage<negative>)
-        from_value(neg, -to_value(*this));
+      else if constexpr (detail::IsDirectStorage<bound> || detail::IsDirectStorage<negative>)
+        detail::from_value(neg, -detail::to_value(*this));
       else
         // Unsigned-offset fast path: with offset encoding `value = Raw*Notch + Lower`,
         // negating the value is equivalent to indexing from the opposite end of the
@@ -370,7 +370,7 @@ namespace bnd
         // NOTE: not a sibling of the IsDirectStorage encoding bugs — this branch is
         // unreachable when either operand uses direct storage, so `Raw` here is
         // guaranteed to be an offset.
-        neg = negative::from_raw(raw_cast<negative>(NotchCount<bound> - Raw));
+        neg = negative::from_raw(detail::raw_cast<negative>(detail::NotchCount<bound> - Raw));
       return neg;
     }
 
@@ -378,14 +378,14 @@ namespace bnd
     [[nodiscard]] constexpr auto policy()
     {
        auto pol = make_policy<P | F>();
-       return policy_ref<bound, decltype(pol)>{*this, pol};
+       return detail::policy_ref<bound, decltype(pol)>{*this, pol};
     }
 
     template <policy_flag F = none>
     [[nodiscard]] constexpr auto policy(std::error_code& ec)
     {
        auto pol = make_policy<P | F>(ec);
-       return policy_ref<bound, decltype(pol)>{*this, pol};
+       return detail::policy_ref<bound, decltype(pol)>{*this, pol};
     }
 
     [[nodiscard]] constexpr auto with_truncate()        { return policy<ignore_round>(); }
@@ -403,8 +403,8 @@ namespace bnd
     [[nodiscard]] constexpr auto make_action_ref(A&& action)
     {
        using tag = Tag<std::remove_cvref_t<A>>;
-       auto pol = make_policy<P | implied_flags<tag>>();
-       return policy_ref<bound, decltype(pol), tag>{
+       auto pol = make_policy<P | detail::implied_flags<tag>>();
+       return detail::policy_ref<bound, decltype(pol), tag>{
          *this, pol, tag{std::forward<A>(action)}};
     }
 
@@ -427,9 +427,9 @@ namespace bnd
     template <typename... Actions>
     [[nodiscard]] constexpr auto with(Actions&&... actions)
     {
-       constexpr policy_flag merged = merged_implied_flags<Actions...>;
+       constexpr policy_flag merged = detail::merged_implied_flags<Actions...>;
        auto pol = make_policy<P | merged>();
-       return policy_ref<bound, decltype(pol), std::remove_cvref_t<Actions>...>{
+       return detail::policy_ref<bound, decltype(pol), std::remove_cvref_t<Actions>...>{
          *this, pol,
          std::tuple<std::remove_cvref_t<Actions>...>{std::forward<Actions>(actions)...}};
     }
@@ -441,20 +441,20 @@ namespace bnd
       // encoding where raw_a + raw_b is the raw of value_a + value_b — either
       // direct storage (Raw == value) or offset encoding with Lower==0 on
       // both (Raw == value/notch, so raws sum to (sum)/notch).
-      if constexpr (not IsRawRational<bound> && not IsRawRational<R>
+      if constexpr (not detail::IsRawRational<bound> && not detail::IsRawRational<R>
                     && Notch<bound> == Notch<R>
-                    && (IsDirectStorage<R>
+                    && (detail::IsDirectStorage<R>
                         || (Lower<bound> == 0 && Lower<R> == 0)))
       {
         if constexpr (P & (clamp | wrap | checked | sentinel))
         {
-          imax new_raw = raw_imax(*this) + raw_imax(rhs);
-          if (new_raw < RawLo<bound> || new_raw > RawHi<bound>)
+          imax new_raw = detail::raw_imax(*this) + detail::raw_imax(rhs);
+          if (new_raw < detail::RawLo<bound> || new_raw > detail::RawHi<bound>)
             return apply_raw_overflow(new_raw);
-          Raw = raw_cast<bound>(new_raw);
+          Raw = detail::raw_cast<bound>(new_raw);
         }
         else
-          Raw += raw_cast<bound>(rhs.raw());
+          Raw += detail::raw_cast<bound>(rhs.raw());
         return *this;
       }
       else
@@ -477,15 +477,15 @@ namespace bnd
         // RawLo/RawHi are raw-space constants by construction (Lower/Upper for
         // direct storage, 0/NotchCount for notch-offset), so they're already
         // the correct Raw — no raw_from_offset needed.
-        Raw = raw_cast<bound>(new_raw < RawLo<bound> ? RawLo<bound> : RawHi<bound>);
+        Raw = detail::raw_cast<bound>(new_raw < detail::RawLo<bound> ? detail::RawLo<bound> : detail::RawHi<bound>);
       else if constexpr (P & wrap)
       {
-        constexpr imax range = RawHi<bound> - RawLo<bound> + 1;
-        new_raw = ((new_raw - RawLo<bound>) % range + range) % range + RawLo<bound>;
-        Raw = raw_cast<bound>(new_raw);
+        constexpr imax range = detail::RawHi<bound> - detail::RawLo<bound> + 1;
+        new_raw = ((new_raw - detail::RawLo<bound>) % range + range) % range + detail::RawLo<bound>;
+        Raw = detail::raw_cast<bound>(new_raw);
       }
       else if constexpr (P & sentinel)
-        Raw = sentinel_raw<bound>();
+        Raw = detail::sentinel_raw<bound>();
       else
         make_policy<P>().report(errc::domain_error, "operator+= result out of range");
       return *this;
@@ -498,7 +498,7 @@ namespace bnd
     //-----------------------------------------------------------------------
     private:
     constexpr bound& assign_imax(imax v)
-    { return assignment<bound, imax>::assign(*this, v, make_policy<P>()); }
+    { return detail::assignment<bound, imax>::assign(*this, v, make_policy<P>()); }
 
     template <typename Result>
     constexpr bound& assign_op_result(Result const& r)
@@ -520,7 +520,7 @@ namespace bnd
         imax (*WrapOp)(imax, imax),
         const char* err_msg)
     {
-      imax l = to_value(*this);
+      imax l = detail::to_value(*this);
       imax result;
       if constexpr (P & checked)
       {
@@ -614,7 +614,7 @@ namespace bnd
       if (is_zero) { report_div_by_zero("operator/= division by zero"); return *this; }
 
       if constexpr (std::integral<A>)
-        return assign_imax(to_value(*this) / static_cast<imax>(rhs));
+        return assign_imax(detail::to_value(*this) / static_cast<imax>(rhs));
       else if constexpr (std::same_as<A, bnd::detail::rational>)
         return assign_op_result(bnd::detail::rational{*this} / rhs);
       else  // floating_point
@@ -625,7 +625,7 @@ namespace bnd
     constexpr bound& operator%=(A rhs)
     {
       if (rhs == 0) { report_div_by_zero("operator%= division by zero"); return *this; }
-      return assign_imax(to_value(*this) % static_cast<imax>(rhs));
+      return assign_imax(detail::to_value(*this) % static_cast<imax>(rhs));
     }
 
     constexpr bound& operator++()    { return *this += 1; }
@@ -638,12 +638,12 @@ namespace bnd
     {
       std::error_code ec;
       bound result;
-      assignment<bound, A>::assign(result, value, make_policy<P>(ec));
+      detail::assignment<bound, A>::assign(result, value, make_policy<P>(ec));
       if (ec) return slim::unexpected{static_cast<errc>(ec.value())};
       // For `sentinel` policy types, an out-of-range write silently sets
       // result.Raw to the sentinel; surface that as a domain error.
       if constexpr ((P & sentinel) != 0)
-        if (result.Raw == sentinel_raw<bound>())
+        if (result.Raw == detail::sentinel_raw<bound>())
           return slim::unexpected{errc::domain_error};
       return result;
     }
@@ -659,9 +659,9 @@ namespace bnd
     if constexpr (Grid<L> == Grid<R>)
       return lhs.raw() <=> rhs.raw();
     // both integer-direct (notch=1, Raw==value): compare as integers
-    else if constexpr (!IsRawRational<L> && !IsRawRational<R>
-                       && IsDirectStorage<L> && IsDirectStorage<R>)
-      return raw_imax(lhs) <=> raw_imax(rhs);
+    else if constexpr (!detail::IsRawRational<L> && !detail::IsRawRational<R>
+                       && detail::IsDirectStorage<L> && detail::IsDirectStorage<R>)
+      return detail::raw_imax(lhs) <=> detail::raw_imax(rhs);
     else
       return detail::as_rational(lhs) <=> detail::as_rational(rhs);
   }
@@ -671,9 +671,9 @@ namespace bnd
   {
     if constexpr (Grid<L> == Grid<R>)
       return lhs.raw() == rhs.raw();
-    else if constexpr (!IsRawRational<L> && !IsRawRational<R>
-                       && IsDirectStorage<L> && IsDirectStorage<R>)
-      return raw_imax(lhs) == raw_imax(rhs);
+    else if constexpr (!detail::IsRawRational<L> && !detail::IsRawRational<R>
+                       && detail::IsDirectStorage<L> && detail::IsDirectStorage<R>)
+      return detail::raw_imax(lhs) == detail::raw_imax(rhs);
     else
       return detail::as_rational(lhs) == detail::as_rational(rhs);
   }
@@ -681,8 +681,8 @@ namespace bnd
   template <boundable B, arithmetic A>
   constexpr auto operator<=>(B const& lhs, A rhs)
   {
-    if constexpr (!IsRawRational<B> && IsDirectStorage<B>)
-      return raw_imax(lhs) <=> static_cast<imax>(rhs);
+    if constexpr (!detail::IsRawRational<B> && detail::IsDirectStorage<B>)
+      return detail::raw_imax(lhs) <=> static_cast<imax>(rhs);
     else
       return detail::as_rational(lhs) <=> bnd::detail::rational{rhs};
   }
@@ -690,8 +690,8 @@ namespace bnd
   template <boundable B, arithmetic A>
   constexpr bool operator==(B const& lhs, A rhs)
   {
-    if constexpr (!IsRawRational<B> && IsDirectStorage<B>)
-      return raw_imax(lhs) == static_cast<imax>(rhs);
+    if constexpr (!detail::IsRawRational<B> && detail::IsDirectStorage<B>)
+      return detail::raw_imax(lhs) == static_cast<imax>(rhs);
     else
       return detail::as_rational(lhs) == bnd::detail::rational{rhs};
   }
@@ -767,7 +767,7 @@ namespace slim
   template <bnd::grid G, bnd::policy_flag P>
   constexpr bnd::bound<G, P> sentinel_traits<bnd::bound<G, P>>::sentinel() noexcept
   {
-    return bnd::bound<G, P>::from_raw(bnd::sentinel_raw<bnd::bound<G, P>>());
+    return bnd::bound<G, P>::from_raw(bnd::detail::sentinel_raw<bnd::bound<G, P>>());
   }
 
   template <bnd::grid G, bnd::policy_flag P>
@@ -779,7 +779,7 @@ namespace slim
     if constexpr (std::is_same_v<raw, bnd::detail::rational>)
       return v.raw().Denominator == 0;
     else
-      return v.raw() == bnd::sentinel_raw<bnd::bound<G, P>>();
+      return v.raw() == bnd::detail::sentinel_raw<bnd::bound<G, P>>();
   }
 } // namespace slim
 

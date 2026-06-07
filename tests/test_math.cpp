@@ -23,13 +23,13 @@ TEST_CASE("safe_abs handles INT_MIN without UB", "[math][safe_abs]")
 TEST_CASE("frexp handles zero", "[math][frexp]")
 {
   int e = 99;
-  double r = bnd::frexp(0.0, &e);
+  double r = bnd::detail::frexp(0.0, &e);
   REQUIRE(r == 0.0);
   REQUIRE(e == 0);
 
   // negative zero
   e = 99;
-  double rn = bnd::frexp(-0.0, &e);
+  double rn = bnd::detail::frexp(-0.0, &e);
   REQUIRE(rn == 0.0);
   REQUIRE(e == 0);
 }
@@ -38,13 +38,13 @@ TEST_CASE("frexp handles infinity and NaN", "[math][frexp]")
 {
   int e = 99;
   double inf = std::numeric_limits<double>::infinity();
-  double r = bnd::frexp(inf, &e);
+  double r = bnd::detail::frexp(inf, &e);
   REQUIRE(std::isinf(r));
   REQUIRE(e == 0);
 
   e = 99;
   double nan = std::numeric_limits<double>::quiet_NaN();
-  double rn = bnd::frexp(nan, &e);
+  double rn = bnd::detail::frexp(nan, &e);
   REQUIRE(std::isnan(rn));
   REQUIRE(e == 0);
 }
@@ -54,7 +54,7 @@ TEST_CASE("frexp matches std::frexp on normals", "[math][frexp]")
   for (double v : { 1.0, 0.5, 0.25, 1.5, 1024.0, 0.001, -7.25 })
   {
     int be = 0, se = 0;
-    double br = bnd::frexp(v, &be);
+    double br = bnd::detail::frexp(v, &be);
     double sr = std::frexp(v, &se);
     REQUIRE(br == sr);
     REQUIRE(be == se);
@@ -67,7 +67,7 @@ TEST_CASE("frexp on subnormal scales up via recursion", "[math][frexp]")
   double sub = std::numeric_limits<double>::denorm_min();
   REQUIRE(sub > 0.0);
   int be = 0, se = 0;
-  double br = bnd::frexp(sub, &be);
+  double br = bnd::detail::frexp(sub, &be);
   double sr = std::frexp(sub, &se);
   REQUIRE(br == sr);
   REQUIRE(be == se);
@@ -75,17 +75,17 @@ TEST_CASE("frexp on subnormal scales up via recursion", "[math][frexp]")
 
 TEST_CASE("ldexp identity cases", "[math][ldexp]")
 {
-  STATIC_REQUIRE(bnd::ldexp(0.0, 5) == 0.0);
-  STATIC_REQUIRE(bnd::ldexp(1.5, 0) == 1.5);
+  STATIC_REQUIRE(bnd::detail::ldexp(0.0, 5) == 0.0);
+  STATIC_REQUIRE(bnd::detail::ldexp(1.5, 0) == 1.5);
 }
 
 TEST_CASE("ldexp inf/NaN passthrough", "[math][ldexp]")
 {
   double inf = std::numeric_limits<double>::infinity();
-  REQUIRE(std::isinf(bnd::ldexp(inf, 3)));
+  REQUIRE(std::isinf(bnd::detail::ldexp(inf, 3)));
 
   double nan = std::numeric_limits<double>::quiet_NaN();
-  REQUIRE(std::isnan(bnd::ldexp(nan, 3)));
+  REQUIRE(std::isnan(bnd::detail::ldexp(nan, 3)));
 }
 
 TEST_CASE("ldexp overflow goes to infinity", "[math][ldexp]")
@@ -95,11 +95,11 @@ TEST_CASE("ldexp overflow goes to infinity", "[math][ldexp]")
   volatile double v_neg = -1.0;
   volatile int    e     = 2048;
 
-  double r = bnd::ldexp(v_pos, e);
+  double r = bnd::detail::ldexp(v_pos, e);
   REQUIRE(std::isinf(r));
   REQUIRE(r > 0.0);
 
-  double rn = bnd::ldexp(v_neg, e);
+  double rn = bnd::detail::ldexp(v_neg, e);
   REQUIRE(std::isinf(rn));
   REQUIRE(rn < 0.0);
 }
@@ -110,10 +110,10 @@ TEST_CASE("ldexp underflow produces subnormal or zero", "[math][ldexp]")
   volatile int    big = -1100;
   volatile int    mid = -1050;
 
-  double zero = bnd::ldexp(v, big);
+  double zero = bnd::detail::ldexp(v, big);
   REQUIRE(zero == 0.0);
 
-  double sub = bnd::ldexp(v, mid);
+  double sub = bnd::detail::ldexp(v, mid);
   REQUIRE(sub > 0.0);
   REQUIRE(sub < std::numeric_limits<double>::min());
 }
@@ -124,7 +124,7 @@ TEST_CASE("ldexp matches std::ldexp on normal exponents", "[math][ldexp]")
   {
     for (int e : { 0, 1, -1, 10, -10, 50, -50 })
     {
-      double a = bnd::ldexp(v, e);
+      double a = bnd::detail::ldexp(v, e);
       double b = std::ldexp(v, e);
       REQUIRE(a == b);
     }
@@ -135,7 +135,7 @@ TEST_CASE("ldexp subnormal input is normalised first", "[math][ldexp]")
 {
   // Scaling a subnormal up should match std::ldexp
   double sub = std::numeric_limits<double>::denorm_min();
-  double a = bnd::ldexp(sub, 100);
+  double a = bnd::detail::ldexp(sub, 100);
   double b = std::ldexp(sub, 100);
   REQUIRE(a == b);
 }

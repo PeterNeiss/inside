@@ -23,7 +23,7 @@
 // hard-rejects rational/non-`ignore_round` grids) — non-integer remainders
 // aren't well-defined on fractional notches.
 //---------------------------------------------------------------------------
-namespace bnd
+namespace bnd::detail
 {
   // Both operands are plain integer grids and the caller accepted integer
   // truncation (ignore_round) — the prerequisite for native integer div / mod.
@@ -214,6 +214,6 @@ namespace bnd
     from_value(res, to_value(lhs) % rhs_val);
     return res;
   }
-} // namespace bnd
+} // namespace bnd::detail
 
 #endif // BNDdivisionHPP

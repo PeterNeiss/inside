@@ -35,18 +35,21 @@ namespace bnd
   // carries zero bytes per instance. When the user calls `policy(ec)`, `E`
   // becomes `error_ref` and the same struct carries an `std::error_code&`
   // — no virtuals, no dispatch tables, choice resolved at compile time.
-  struct empty_ref{ };
-  struct error_ref
+  namespace detail
   {
-    constexpr error_ref(std::error_code& ec):Code{ec} {}
-    std::error_code& Code;
-  };
+    struct empty_ref{ };
+    struct error_ref
+    {
+      constexpr error_ref(std::error_code& ec):Code{ec} {}
+      std::error_code& Code;
+    };
+  }
 
-  template<policy_flag W = none, typename E = empty_ref>
+  template<policy_flag W = none, typename E = detail::empty_ref>
   struct policy: E
   {
     constexpr policy() = default;
-    constexpr policy(std::error_code& ec) requires std::same_as<E, error_ref>
+    constexpr policy(std::error_code& ec) requires std::same_as<E, detail::error_ref>
     :E(ec) { }
 
     static constexpr bool test(policy_flag w)
@@ -76,7 +79,7 @@ namespace bnd
         throw "bound: value out of range during constant evaluation "
               "(checked policy hit; choose clamp/wrap/sentinel or widen the interval)";
       }
-      if constexpr (std::is_same_v<E, error_ref>)
+      if constexpr (std::is_same_v<E, detail::error_ref>)
         E::Code = E::Code ? E::Code : make_error_code(code);
       else
       {
@@ -88,36 +91,39 @@ namespace bnd
     }
   };
 
-  policy(std::error_code&) -> policy<none, error_ref>;
+  policy(std::error_code&) -> policy<none, detail::error_ref>;
 
   //---------------------------------------------------------------------------
   // IsPolicy — true for policy<F,E> specializations, false otherwise.
   // Used to gate free-fn overloads so they don't accidentally bind P = action tag.
   //---------------------------------------------------------------------------
-  template<typename T>             inline constexpr bool IsPolicy = false;
-  template<policy_flag F, typename E> inline constexpr bool IsPolicy<policy<F,E>> = true;
+  namespace detail
+  {
+    template<typename T>             inline constexpr bool IsPolicy = false;
+    template<policy_flag F, typename E> inline constexpr bool IsPolicy<policy<F,E>> = true;
 
-  // Concept form of IsPolicy — pulls cvref off so the constraint matches
-  // forwarded `policy<F,E>` references in template parameters.
-  template<typename T>
-  concept policy_like = IsPolicy<std::remove_cvref_t<T>>;
+    // Concept form of IsPolicy — pulls cvref off so the constraint matches
+    // forwarded `policy<F,E>` references in template parameters.
+    template<typename T>
+    concept policy_like = IsPolicy<std::remove_cvref_t<T>>;
 
-  // True for policy specializations that carry an std::error_code& reference.
-  // Free-fn arithmetic uses this to decide whether to call policy.report on
-  // failure (which sets ec) vs. returning silent nullopt (no-arg form).
-  template<typename T>             inline constexpr bool UsesErrorRef = false;
-  template<policy_flag F>          inline constexpr bool UsesErrorRef<policy<F, error_ref>> = true;
+    // True for policy specializations that carry an std::error_code& reference.
+    // Free-fn arithmetic uses this to decide whether to call policy.report on
+    // failure (which sets ec) vs. returning silent nullopt (no-arg form).
+    template<typename T>             inline constexpr bool UsesErrorRef = false;
+    template<policy_flag F>          inline constexpr bool UsesErrorRef<policy<F, error_ref>> = true;
+  }
 
   //---------------------------------------------------------------------------
   // make_policy
   //---------------------------------------------------------------------------
   template<policy_flag F = none>
   [[nodiscard]] constexpr auto make_policy()
-  { return policy<F,empty_ref>{}; }
+  { return policy<F,detail::empty_ref>{}; }
 
   template<policy_flag F = none>
   [[nodiscard]] constexpr auto make_policy(std::error_code& ec)
-  { return policy<F,error_ref>{ec}; }
+  { return policy<F,detail::error_ref>{ec}; }
 
   //---------------------------------------------------------------------------
   // report_or_nullopt — uniform "rational arithmetic failed" handler shared by
@@ -129,6 +135,8 @@ namespace bnd
   //   - plain throw-policy            → return nullopt (caller already threw or
   //                                     the policy is configured to be silent).
   //---------------------------------------------------------------------------
+  namespace detail
+  {
   template <boundable Result, typename A, typename P>
   constexpr auto report_or_nullopt(A&& action, P&& policy, errc code, const char* what)
     -> std::conditional_t<overflow_action<A>, Result, slim::optional<Result>>
@@ -146,6 +154,7 @@ namespace bnd
       return slim::nullopt;
     }
   }
+  } // namespace detail
 
   //---------------------------------------------------------------------------
   // Named convenience policies — let user code skip `make_policy<F>()` entirely
@@ -169,6 +178,8 @@ namespace bnd
   // call path. The compound-op payoff: the imax-probe stage and the narrowing
   // stage can each fire a different action (e.g. on_overflow + on_clamp).
   //---------------------------------------------------------------------------
+  namespace detail
+  {
   template<boundable B, typename P, typename... As>
   struct policy_ref
   {
@@ -440,6 +451,7 @@ namespace bnd
         return assign_with_picked(static_cast<double>(Ref) / static_cast<double>(rhs));
     }
   };
+  } // namespace detail
 
 } // namespace bnd
 

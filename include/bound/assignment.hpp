@@ -8,7 +8,7 @@
 #include "bound/grid.hpp"
 #include "bound/format.hpp"
 
-namespace bnd
+namespace bnd::detail
 {
   //---------------------------------------------------------------------------
   // assignment — narrowing/coercion between bounded and arithmetic types.
@@ -569,6 +569,6 @@ namespace bnd
     store(lhs, rhs, policy);
     return lhs;
   }
-} // namespace bnd
+} // namespace bnd::detail
 
 #endif // BNDassignmentHPP

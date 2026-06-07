@@ -20,25 +20,20 @@
 //---------------------------------------------------------------------------
 namespace bnd
 {
-  //---------------------------------------------------------------------------
-  // is_slim_optional
-  //---------------------------------------------------------------------------
-  template <class T> struct is_slim_optional : std::false_type {};
-  template <class T> struct is_slim_optional<slim::optional<T>> : std::true_type {};
-
-  template <class T>
-  inline constexpr bool is_slim_optional_v =
-      is_slim_optional<std::remove_cvref_t<T>>::value;
-
-  //---------------------------------------------------------------------------
-  // unwrap_t — strip slim::optional<X> down to X, leave non-optional unchanged
-  //---------------------------------------------------------------------------
-  template <class T> struct unwrap { using type = T; };
-  template <class T> struct unwrap<slim::optional<T>> { using type = T; };
-  template <class T> using unwrap_t = typename unwrap<std::remove_cvref_t<T>>::type;
-
   namespace detail
   {
+    template <class T> struct is_slim_optional : std::false_type {};
+    template <class T> struct is_slim_optional<slim::optional<T>> : std::true_type {};
+
+    template <class T>
+    inline constexpr bool is_slim_optional_v =
+        is_slim_optional<std::remove_cvref_t<T>>::value;
+
+    // strip slim::optional<X> down to X, leave non-optional unchanged
+    template <class T> struct unwrap { using type = T; };
+    template <class T> struct unwrap<slim::optional<T>> { using type = T; };
+    template <class T> using unwrap_t = typename unwrap<std::remove_cvref_t<T>>::type;
+
     template <class T>
     constexpr decltype(auto) lift_unwrap(T&& v)
     {
@@ -70,12 +65,12 @@ namespace bnd
   {
     using R = std::remove_cvref_t<
         decltype(op(detail::lift_unwrap(std::forward<Args>(args))...))>;
-    using Ret = std::conditional_t<is_slim_optional_v<R>, R, slim::optional<R>>;
+    using Ret = std::conditional_t<detail::is_slim_optional_v<R>, R, slim::optional<R>>;
 
     if (!(detail::lift_engaged(args) && ...))
       return Ret{slim::nullopt};
 
-    if constexpr (is_slim_optional_v<R>)
+    if constexpr (detail::is_slim_optional_v<R>)
       return op(detail::lift_unwrap(std::forward<Args>(args))...);
     else
       return Ret{op(detail::lift_unwrap(std::forward<Args>(args))...)};

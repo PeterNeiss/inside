@@ -1108,7 +1108,7 @@ void prop_cmath_exact(fuzz_state& s, long iters)
     M x = M::from_raw(random_in_range_raw<M>(s.rng));
     M y = M::from_raw(random_in_range_raw<M>(s.rng));
     rational xr = x, yr = y;
-    FUZZ_REQUIRE(s, rational{math::abs(x)}   == bnd::abs(xr));
+    FUZZ_REQUIRE(s, rational{math::abs(x)}   == bnd::detail::abs(xr));
     FUZZ_REQUIRE(s, rational{math::floor(x)} == rational{xr.floor()});
     FUZZ_REQUIRE(s, rational{math::trunc(x)} == rational{xr.trunc()});
     FUZZ_REQUIRE(s, rational{math::round(x)} == rational{xr.round()});

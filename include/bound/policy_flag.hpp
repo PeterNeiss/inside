@@ -83,6 +83,8 @@ namespace bnd
   template<typename F> [[nodiscard]] constexpr auto on_overflow(F&& fn)
   { return on_overflow_t<std::remove_cvref_t<F>>{std::forward<F>(fn)}; }
 
+  namespace detail
+  {
   // Action detection. The `*Pred` struct is the primary detector
   // (specialized on the tag type); the concept derives from it and strips
   // cvref so `clamp_action<on_clamp_t<F>&>` matches the same as the value form.
@@ -169,6 +171,7 @@ namespace bnd
       t);
   }
 
+  } // namespace detail
 } // namespace bnd
 
 #endif // BNDpolicyflagHPP

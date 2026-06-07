@@ -62,18 +62,18 @@ namespace bnd::detail
 template <bnd::grid G, bnd::policy_flag P>
 struct std::formatter<bnd::bound<G, P>>
   : bnd::detail::numeric_spec_formatter<
-      std::conditional_t<bnd::IsIntegerAligned<bnd::bound<G, P>>,
+      std::conditional_t<bnd::detail::IsIntegerAligned<bnd::bound<G, P>>,
                          std::formatter<bnd::imax>,
                          std::formatter<double>>>
 {
   using B = bnd::bound<G, P>;
-  static constexpr bool integer_path = bnd::IsIntegerAligned<B>;
+  static constexpr bool integer_path = bnd::detail::IsIntegerAligned<B>;
 
   template <typename Ctx>
   auto format(B const& b, Ctx& ctx) const
   {
     if constexpr (integer_path)
-      return this->numeric_.format(bnd::to_value(b), ctx);
+      return this->numeric_.format(bnd::detail::to_value(b), ctx);
     else if (this->has_spec_)
       return this->numeric_.format(
           static_cast<double>(static_cast<bnd::detail::rational>(b)), ctx);

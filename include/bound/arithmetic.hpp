@@ -8,8 +8,8 @@
 #include "bound/casts.hpp"
 
 //---------------------------------------------------------------------------
-// Free-function arithmetic — wraps `addition<L,R>::add`,
-// `multiplication<L,R>::mul`, `division<L,R,F>::div`, `modulo<L,R,F>::mod`
+// Free-function arithmetic — wraps `detail::addition<L,R>::add`,
+// `detail::multiplication<L,R>::mul`, `detail::division<L,R,F>::div`, `detail::modulo<L,R,F>::mod`
 // with caller-friendly overloads:
 //   add(l, r)                      // default policy
 //   add(l, r, policy<F>{})         // explicit policy
@@ -28,24 +28,24 @@ namespace bnd
   //---------------------------------------------------------------------------
   // add
   //---------------------------------------------------------------------------
-  template <boundable L, boundable R, policy_like P = policy<>, typename A = no_action>
+  template <boundable L, boundable R, detail::policy_like P = policy<>, typename A = no_action>
   [[nodiscard]] constexpr auto add(L const& lhs, R const& rhs, P&& policy = {}, A&& action = {})
-  { return addition<L,R>::add(lhs, rhs, std::forward<P>(policy), std::forward<A>(action)); }
+  { return detail::addition<L,R>::add(lhs, rhs, std::forward<P>(policy), std::forward<A>(action)); }
 
   // Action-first form: 1+ tagged actions, at least one of which is on_overflow
   // (the only kind arithmetic itself fires; others are kept for forward-compat).
   template <boundable L, boundable R, typename... Actions>
     requires (sizeof...(Actions) >= 1)
-          && has_action<IsOverflowActionPred, std::remove_cvref_t<Actions>...>
+          && detail::has_action<detail::IsOverflowActionPred, std::remove_cvref_t<Actions>...>
   [[nodiscard]] constexpr auto add(L const& lhs, R const& rhs, Actions&&... actions)
-  { return addition<L,R>::add(lhs, rhs,
-      make_policy<merged_implied_flags<Actions...>>(),
-      pick_action<IsOverflowActionPred>(actions...)); }
+  { return detail::addition<L,R>::add(lhs, rhs,
+      make_policy<detail::merged_implied_flags<Actions...>>(),
+      detail::pick_action<detail::IsOverflowActionPred>(actions...)); }
 
   template <boundable L, boundable R, typename A = no_action>
   [[nodiscard]] constexpr auto add(L const& lhs, R const& rhs,
                                    std::error_code& ec, A&& action = {})
-  { return addition<L,R>::add(lhs, rhs, make_policy<checked>(ec),
+  { return detail::addition<L,R>::add(lhs, rhs, make_policy<checked>(ec),
       std::forward<A>(action)); }
 
   //---------------------------------------------------------------------------
@@ -60,26 +60,26 @@ namespace bnd
   // values, so we inherit whichever bare overload (bound×bound, bound×rational,
   // bound×integral, …) would normally apply.
   template <class L, class R>
-    requires (is_slim_optional_v<L> || is_slim_optional_v<R>)
-          && (boundable<unwrap_t<L>> || boundable<unwrap_t<R>>)
-          && requires(unwrap_t<L> l, unwrap_t<R> r) { l + r; }
+    requires (detail::is_slim_optional_v<L> || detail::is_slim_optional_v<R>)
+          && (boundable<detail::unwrap_t<L>> || boundable<detail::unwrap_t<R>>)
+          && requires(detail::unwrap_t<L> l, detail::unwrap_t<R> r) { l + r; }
   constexpr auto operator+(L const& lhs, R const& rhs)
   { return lift([](auto const& l, auto const& r){ return l + r; }, lhs, rhs); }
 
   //---------------------------------------------------------------------------
   // sub
   //---------------------------------------------------------------------------
-  template <boundable L, boundable R, policy_like P = policy<>, typename A = no_action>
+  template <boundable L, boundable R, detail::policy_like P = policy<>, typename A = no_action>
   [[nodiscard]] constexpr auto sub(L const& lhs, R const& rhs, P&& policy = {}, A&& action = {})
   { return add(lhs, -rhs, std::forward<P>(policy), std::forward<A>(action)); }
 
   template <boundable L, boundable R, typename... Actions>
     requires (sizeof...(Actions) >= 1)
-          && has_action<IsOverflowActionPred, std::remove_cvref_t<Actions>...>
+          && detail::has_action<detail::IsOverflowActionPred, std::remove_cvref_t<Actions>...>
   [[nodiscard]] constexpr auto sub(L const& lhs, R const& rhs, Actions&&... actions)
   { return add(lhs, -rhs,
-      make_policy<merged_implied_flags<Actions...>>(),
-      pick_action<IsOverflowActionPred>(actions...)); }
+      make_policy<detail::merged_implied_flags<Actions...>>(),
+      detail::pick_action<detail::IsOverflowActionPred>(actions...)); }
 
   template <boundable L, boundable R, typename A = no_action>
   [[nodiscard]] constexpr auto sub(L const& lhs, R const& rhs,
@@ -93,31 +93,31 @@ namespace bnd
   { return sub(lhs, rhs); }
 
   template <class L, class R>
-    requires (is_slim_optional_v<L> || is_slim_optional_v<R>)
-          && (boundable<unwrap_t<L>> || boundable<unwrap_t<R>>)
-          && requires(unwrap_t<L> l, unwrap_t<R> r) { l - r; }
+    requires (detail::is_slim_optional_v<L> || detail::is_slim_optional_v<R>)
+          && (boundable<detail::unwrap_t<L>> || boundable<detail::unwrap_t<R>>)
+          && requires(detail::unwrap_t<L> l, detail::unwrap_t<R> r) { l - r; }
   constexpr auto operator-(L const& lhs, R const& rhs)
   { return lift([](auto const& l, auto const& r){ return l - r; }, lhs, rhs); }
 
   //---------------------------------------------------------------------------
   // mul
   //---------------------------------------------------------------------------
-  template <boundable L, boundable R, policy_like P = policy<>, typename A = no_action>
+  template <boundable L, boundable R, detail::policy_like P = policy<>, typename A = no_action>
   [[nodiscard]] constexpr auto mul(L const& lhs, R const& rhs, P&& policy = {}, A&& action = {})
-  { return multiplication<L,R>::mul(lhs, rhs, std::forward<P>(policy), std::forward<A>(action)); }
+  { return detail::multiplication<L,R>::mul(lhs, rhs, std::forward<P>(policy), std::forward<A>(action)); }
 
   template <boundable L, boundable R, typename... Actions>
     requires (sizeof...(Actions) >= 1)
-          && has_action<IsOverflowActionPred, std::remove_cvref_t<Actions>...>
+          && detail::has_action<detail::IsOverflowActionPred, std::remove_cvref_t<Actions>...>
   [[nodiscard]] constexpr auto mul(L const& lhs, R const& rhs, Actions&&... actions)
-  { return multiplication<L,R>::mul(lhs, rhs,
-      make_policy<merged_implied_flags<Actions...>>(),
-      pick_action<IsOverflowActionPred>(actions...)); }
+  { return detail::multiplication<L,R>::mul(lhs, rhs,
+      make_policy<detail::merged_implied_flags<Actions...>>(),
+      detail::pick_action<detail::IsOverflowActionPred>(actions...)); }
 
   template <boundable L, boundable R, typename A = no_action>
   [[nodiscard]] constexpr auto mul(L const& lhs, R const& rhs,
                                    std::error_code& ec, A&& action = {})
-  { return multiplication<L,R>::mul(lhs, rhs, make_policy<checked>(ec),
+  { return detail::multiplication<L,R>::mul(lhs, rhs, make_policy<checked>(ec),
       std::forward<A>(action)); }
 
   //---------------------------------------------------------------------------
@@ -127,9 +127,9 @@ namespace bnd
   { return bnd::mul(lhs, rhs); }
 
   template <class L, class R>
-    requires (is_slim_optional_v<L> || is_slim_optional_v<R>)
-          && (boundable<unwrap_t<L>> || boundable<unwrap_t<R>>)
-          && requires(unwrap_t<L> l, unwrap_t<R> r) { l * r; }
+    requires (detail::is_slim_optional_v<L> || detail::is_slim_optional_v<R>)
+          && (boundable<detail::unwrap_t<L>> || boundable<detail::unwrap_t<R>>)
+          && requires(detail::unwrap_t<L> l, detail::unwrap_t<R> r) { l * r; }
   constexpr auto operator*(L const& lhs, R const& rhs)
   { return lift([](auto const& l, auto const& r){ return l * r; }, lhs, rhs); }
 
@@ -201,20 +201,20 @@ namespace bnd
   //---------------------------------------------------------------------------
   template <boundable L, boundable R, policy_flag F = none, typename A = no_action>
   [[nodiscard]] constexpr auto div(L lhs, R rhs, policy<F> pol = {}, A&& action = {})
-  { return division<L, R, F>::div(lhs, rhs, pol, std::forward<A>(action)); }
+  { return detail::division<L, R, F>::div(lhs, rhs, pol, std::forward<A>(action)); }
 
   template <boundable L, boundable R, typename... Actions>
     requires (sizeof...(Actions) >= 1)
-          && has_action<IsOverflowActionPred, std::remove_cvref_t<Actions>...>
+          && detail::has_action<detail::IsOverflowActionPred, std::remove_cvref_t<Actions>...>
   [[nodiscard]] constexpr auto div(L lhs, R rhs, Actions&&... actions)
-  { return division<L, R, merged_implied_flags<Actions...>>::div(lhs, rhs,
-      make_policy<merged_implied_flags<Actions...>>(),
-      pick_action<IsOverflowActionPred>(actions...)); }
+  { return detail::division<L, R, detail::merged_implied_flags<Actions...>>::div(lhs, rhs,
+      make_policy<detail::merged_implied_flags<Actions...>>(),
+      detail::pick_action<detail::IsOverflowActionPred>(actions...)); }
 
   template <boundable L, boundable R, typename A = no_action>
   [[nodiscard]] constexpr auto div(L lhs, R rhs,
                                    std::error_code& ec, A&& action = {})
-  { return division<L, R, checked>::div(lhs, rhs, make_policy<checked>(ec),
+  { return detail::division<L, R, checked>::div(lhs, rhs, make_policy<checked>(ec),
       std::forward<A>(action)); }
 
   //---------------------------------------------------------------------------
@@ -227,9 +227,9 @@ namespace bnd
   }
 
   template <class L, class R>
-    requires (is_slim_optional_v<L> || is_slim_optional_v<R>)
-          && (boundable<unwrap_t<L>> || boundable<unwrap_t<R>>)
-          && requires(unwrap_t<L> l, unwrap_t<R> r) { l / r; }
+    requires (detail::is_slim_optional_v<L> || detail::is_slim_optional_v<R>)
+          && (boundable<detail::unwrap_t<L>> || boundable<detail::unwrap_t<R>>)
+          && requires(detail::unwrap_t<L> l, detail::unwrap_t<R> r) { l / r; }
   constexpr auto operator/(L const& lhs, R const& rhs)
   { return lift([](auto const& l, auto const& r){ return l / r; }, lhs, rhs); }
 
@@ -238,20 +238,20 @@ namespace bnd
   //---------------------------------------------------------------------------
   template <boundable L, boundable R, policy_flag F = none, typename A = no_action>
   [[nodiscard]] constexpr auto mod(L lhs, R rhs, policy<F> pol = {}, A&& action = {})
-  { return modulo<L, R, F>::mod(lhs, rhs, pol, std::forward<A>(action)); }
+  { return detail::modulo<L, R, F>::mod(lhs, rhs, pol, std::forward<A>(action)); }
 
   template <boundable L, boundable R, typename... Actions>
     requires (sizeof...(Actions) >= 1)
-          && has_action<IsOverflowActionPred, std::remove_cvref_t<Actions>...>
+          && detail::has_action<detail::IsOverflowActionPred, std::remove_cvref_t<Actions>...>
   [[nodiscard]] constexpr auto mod(L lhs, R rhs, Actions&&... actions)
-  { return modulo<L, R, merged_implied_flags<Actions...>>::mod(lhs, rhs,
-      make_policy<merged_implied_flags<Actions...>>(),
-      pick_action<IsOverflowActionPred>(actions...)); }
+  { return detail::modulo<L, R, detail::merged_implied_flags<Actions...>>::mod(lhs, rhs,
+      make_policy<detail::merged_implied_flags<Actions...>>(),
+      detail::pick_action<detail::IsOverflowActionPred>(actions...)); }
 
   template <boundable L, boundable R, typename A = no_action>
   [[nodiscard]] constexpr auto mod(L lhs, R rhs,
                                    std::error_code& ec, A&& action = {})
-  { return modulo<L, R, checked>::mod(lhs, rhs, make_policy<checked>(ec),
+  { return detail::modulo<L, R, checked>::mod(lhs, rhs, make_policy<checked>(ec),
       std::forward<A>(action)); }
 
   //---------------------------------------------------------------------------
@@ -299,39 +299,39 @@ namespace bnd
   template <typename A> concept raw_scalar = std::integral<A> || std::floating_point<A>;
 
   template <boundable B, raw_scalar A> B operator+(B const&, A) {
-    static_assert(dependent_false<B>,
+    static_assert(detail::dependent_false<B>,
       "a bound can only be added to another bound: give the scalar a grid — "
       "write `a + 1_b` (or `a + just<1>` / `a + one`), or `a + bound<{lo,hi}>{n}` "
       "for a runtime value with a known range"); }
   template <raw_scalar A, boundable B> B operator+(A, B const&) {
-    static_assert(dependent_false<B>,
+    static_assert(detail::dependent_false<B>,
       "a scalar can only be added to a bound that is itself a bound: write "
       "`1_b + a` / `just<1> + a` / `one + a`, or `bound<{lo,hi}>{n} + a`"); }
 
   template <boundable B, raw_scalar A> B operator-(B const&, A) {
-    static_assert(dependent_false<B>,
+    static_assert(detail::dependent_false<B>,
       "subtract a bound, not a raw scalar: write `a - 1_b` / `a - just<1>` / "
       "`a - one`, or `a - bound<{lo,hi}>{n}` for a runtime value with a known range"); }
   template <raw_scalar A, boundable B> B operator-(A, B const&) {
-    static_assert(dependent_false<B>,
+    static_assert(detail::dependent_false<B>,
       "subtract from a bound, not a raw scalar: write `1_b - a` / `just<1> - "
       "a` / `one - a`, or `bound<{lo,hi}>{n} - a`"); }
 
   template <boundable B, raw_scalar A> B operator*(B const&, A) {
-    static_assert(dependent_false<B>,
+    static_assert(detail::dependent_false<B>,
       "multiply by a bound, not a raw scalar: write `a * 2_b` / `a * just<2>`, "
       "or `a * bound<{lo,hi}>{n}` for a runtime value with a known range"); }
   template <raw_scalar A, boundable B> B operator*(A, B const&) {
-    static_assert(dependent_false<B>,
+    static_assert(detail::dependent_false<B>,
       "multiply a bound by a bound, not a raw scalar: write `2_b * a` / "
       "`just<2> * a`, or `bound<{lo,hi}>{n} * a`"); }
 
   template <boundable B, raw_scalar A> B operator/(B const&, A) {
-    static_assert(dependent_false<B>,
+    static_assert(detail::dependent_false<B>,
       "divide by a bound, not a raw scalar: write `a / 2_b` / `a / just<2>`, "
       "or `a / bound<{lo,hi}>{n}` for a runtime value with a known range"); }
   template <raw_scalar A, boundable B> B operator/(A, B const&) {
-    static_assert(dependent_false<B>,
+    static_assert(detail::dependent_false<B>,
       "divide a bound by a bound, not a raw scalar: write `6_b / a` / "
       "`just<6> / a`, or `bound<{lo,hi}>{n} / a`"); }
 

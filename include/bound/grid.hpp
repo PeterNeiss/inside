@@ -60,7 +60,7 @@ namespace bnd
     {
       interval::validate<G.Interval>();
       static_assert(G.Interval.divides_evenly(G.Notch));
-      static_assert(G.Notch == 0 || abs_den((G.Interval.Lower/G.Notch).value().Denominator) == 1);
+      static_assert(G.Notch == 0 || detail::abs_den((G.Interval.Lower/G.Notch).value().Denominator) == 1);
 
       return true;
     }
@@ -83,7 +83,7 @@ namespace bnd
         auto q = iv.Lower / notch;
         if (!q.has_value())
           return slim::unexpected{errc::overflow};
-        if (abs_den(q->Denominator) != 1)
+        if (detail::abs_den(q->Denominator) != 1)
           return slim::unexpected{errc::rounding_error};
       }
       return grid{iv, notch};
@@ -104,7 +104,7 @@ namespace bnd
       auto diff = v - Interval.Lower;            // optional<rational>
       if (!diff) return false;
       auto off = diff.value() / Notch;           // optional<rational>
-      return off.has_value() && abs_den(off->Denominator) == 1;
+      return off.has_value() && detail::abs_den(off->Denominator) == 1;
     }
 
     // operator== be default for structural type
@@ -132,12 +132,15 @@ namespace bnd
   // Order matters: notch-zero grids have no integer index space (rational
   // raw is the only option); signed-direct fits Lower < 0 with notch 1;
   // unsigned-offset (max_notch slots) is the fallback for everything else.
+  namespace detail
+  {
   template <grid G>
   using storage_min =
     std::conditional_t<(G.Notch == 0), bnd::detail::rational,
     std::conditional_t<(G.Interval.Lower < 0 && G.Notch == 1),
       smallest_int_for<G.Interval.Lower.trunc(), G.Interval.Upper.trunc()>,
       smallest_uint_for<G.max_notch()>>>;
+  }
 
   constexpr slim::optional<grid> operator+(const grid&, const grid&);
   constexpr slim::optional<grid> operator-(const grid&, const grid&);
@@ -154,7 +157,7 @@ namespace bnd
     // wrapped result grid.
     return lift(
       [](interval i, bnd::detail::rational n){ return grid{i, n}; },
-      lhs.Interval + rhs.Interval, gcd(lhs.Notch, rhs.Notch));
+      lhs.Interval + rhs.Interval, detail::gcd(lhs.Notch, rhs.Notch));
   }
 
   //---------------------------------------------------------------------------
@@ -192,7 +195,7 @@ namespace bnd
     // it to split the divisor's interval into a positive side [step, Upper]
     // and a negative side [Lower, -step], skipping the zero gap. When both
     // sides are present the result is the *union* of the two sub-divisions.
-    bnd::detail::rational step = (rhs.Notch != 0) ? abs(rhs.Notch) : bnd::detail::rational{1};
+    bnd::detail::rational step = (rhs.Notch != 0) ? detail::abs(rhs.Notch) : bnd::detail::rational{1};
     bool has_pos = 0 < rhs.Interval.Upper;
     bool has_neg = 0 > rhs.Interval.Lower;
 

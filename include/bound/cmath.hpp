@@ -145,7 +145,7 @@ namespace bnd::math
                     "bnd::math: turn-phase input must have Lower == 0");
       static_assert(Notch<In>.Numerator == 1,
                     "bnd::math: turn-phase input must have notch 1/2^N");
-      return log2_pow2(abs_den(Notch<In>.Denominator));
+      return log2_pow2(bnd::detail::abs_den(Notch<In>.Denominator));
     }();
 
     // Evaluate sin(x) for x ∈ [0, π/2], with x in Q.30 radians.
@@ -778,7 +778,7 @@ namespace bnd::math
   {
     static_assert(Lower<Out> <= 0,
                   "bnd::math::abs: Out must include 0");
-    return Out{bnd::abs(bnd::detail::rational{x})};
+    return Out{bnd::detail::abs(bnd::detail::rational{x})};
   }
 
   // ⌊x⌋ — largest integer ≤ x.
@@ -848,8 +848,8 @@ namespace bnd::math
     // the auto-deduced abs output.
     template <boundable In>
     inline constexpr bnd::detail::rational abs_auto_upper =
-      (bnd::abs(Lower<In>) > bnd::abs(Upper<In>))
-        ? bnd::abs(Lower<In>) : bnd::abs(Upper<In>);
+      (bnd::detail::abs(Lower<In>) > bnd::detail::abs(Upper<In>))
+        ? bnd::detail::abs(Lower<In>) : bnd::detail::abs(Upper<In>);
 
     template <boundable In>
     using abs_auto_t = bound<{{bnd::detail::rational{0}, abs_auto_upper<In>},
@@ -913,7 +913,7 @@ namespace bnd::math
                   "bnd::math::sqrt: input must be ≤ 4 for the Q.30 internal tier");
     static_assert(Notch<In>.Numerator == 1,
                   "bnd::math::sqrt: input notch must be 1/2^K");
-    constexpr imax notch_den = abs_den(Notch<In>.Denominator);
+    constexpr imax notch_den = bnd::detail::abs_den(Notch<In>.Denominator);
     static_assert((notch_den & (notch_den - 1)) == 0,
                   "bnd::math::sqrt: input notch denominator must be a power of 2");
     static_assert(Lower<Out> <= 0,
@@ -939,14 +939,14 @@ namespace bnd::math
   {
     static_assert(Notch<In>.Numerator == 1,
                   "bnd::math::sqrt: input notch must be 1/2^K");
-    constexpr imax notch_den = abs_den(Notch<In>.Denominator);
+    constexpr imax notch_den = bnd::detail::abs_den(Notch<In>.Denominator);
     static_assert((notch_den & (notch_den - 1)) == 0,
                   "bnd::math::sqrt: input notch denominator must be a power of 2");
     static_assert(Lower<Out> <= 0,
                   "bnd::math::sqrt: Out must include 0");
     constexpr bnd::detail::rational max_abs =
-        (bnd::abs(Lower<In>) > bnd::abs(Upper<In>))
-            ? bnd::abs(Lower<In>) : bnd::abs(Upper<In>);
+        (bnd::detail::abs(Lower<In>) > bnd::detail::abs(Upper<In>))
+            ? bnd::detail::abs(Lower<In>) : bnd::detail::abs(Upper<In>);
     static_assert(max_abs <= 4,
                   "bnd::math::sqrt: max(|Lower|, |Upper|) must be ≤ 4 for the Q.30 internal tier");
     constexpr int K = detail::log2_pow2(notch_den);
@@ -1049,8 +1049,8 @@ namespace bnd::math
     // endpoint, since the runtime value can be anywhere in [Lower, Upper].
     template <boundable In>
     inline constexpr bnd::detail::rational sqrt_signed_upper =
-        (bnd::abs(Lower<In>) > bnd::abs(Upper<In>))
-            ? bnd::abs(Lower<In>) : bnd::abs(Upper<In>);
+        (bnd::detail::abs(Lower<In>) > bnd::detail::abs(Upper<In>))
+            ? bnd::detail::abs(Lower<In>) : bnd::detail::abs(Upper<In>);
 
     template <boundable In>
     using sqrt_signed_auto_t = bound<{{bnd::detail::rational{0},
@@ -1139,7 +1139,7 @@ namespace bnd::math
                                Notch<In>}, BoundPolicy<In> | round_nearest>;
 
     template <boundable InX, boundable InY>
-    using fmod_auto_t = bound<{{-bnd::abs(Upper<InY>), bnd::abs(Upper<InY>)},
+    using fmod_auto_t = bound<{{-bnd::detail::abs(Upper<InY>), bnd::detail::abs(Upper<InY>)},
                                 Notch<InX>}, BoundPolicy<InX> | round_nearest>;
   } // namespace detail
 

@@ -42,8 +42,8 @@ struct std::numeric_limits<bnd::bound<G, P>>
 
   // digits / digits10 forward to the raw type so generic algorithms see the
   // storage size, not the rational interval count.
-  static constexpr int digits   = std::numeric_limits<bnd::raw_t<B>>::digits;
-  static constexpr int digits10 = std::numeric_limits<bnd::raw_t<B>>::digits10;
+  static constexpr int digits   = std::numeric_limits<bnd::detail::raw_t<B>>::digits;
+  static constexpr int digits10 = std::numeric_limits<bnd::detail::raw_t<B>>::digits10;
 
   static constexpr B min()    noexcept { return B{G.Interval.Lower}; }
   static constexpr B max()    noexcept { return B{G.Interval.Upper}; }
@@ -71,7 +71,7 @@ struct std::hash<bnd::bound<G, P>>
 
   constexpr std::size_t operator()(B const& b) const noexcept
   {
-    if constexpr (bnd::IsRawRational<B>)
+    if constexpr (bnd::detail::IsRawRational<B>)
     {
       // Boost-style hash combine over (Numerator, Denominator).
       auto h1 = std::hash<bnd::umax>{}(b.raw().Numerator);
@@ -79,7 +79,7 @@ struct std::hash<bnd::bound<G, P>>
       return h1 ^ (h2 + 0x9e3779b97f4a7c15ULL + (h1 << 6) + (h1 >> 2));
     }
     else
-      return std::hash<bnd::raw_t<B>>{}(b.raw());
+      return std::hash<bnd::detail::raw_t<B>>{}(b.raw());
   }
 };
 

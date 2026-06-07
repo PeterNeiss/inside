@@ -67,7 +67,7 @@ namespace bnd
   struct bound_range
   {
     using value_type = bound<G, P>;
-    static constexpr umax slot_count = NotchCount<value_type> + 1;
+    static constexpr umax slot_count = detail::NotchCount<value_type> + 1;
 
     struct iterator
     {

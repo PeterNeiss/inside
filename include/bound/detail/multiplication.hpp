@@ -20,7 +20,7 @@
 // Rational-result and direct-storage cases (the "all-integer-aligned" fast
 // path) come first.
 //---------------------------------------------------------------------------
-namespace bnd
+namespace bnd::detail
 {
   //---------------------------------------------------------------------------
   // grid_value_bounds / rational_mul_is_safe
@@ -179,6 +179,6 @@ namespace bnd
                  "multiplication: internal logic error");
     }
   }
-} // namespace bnd
+} // namespace bnd::detail
 
 #endif // BNDmultiplicationHPP

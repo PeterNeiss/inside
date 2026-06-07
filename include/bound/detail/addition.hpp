@@ -22,7 +22,7 @@
 //   4. both notch-offset  — pure integer math using `lhs_widen` / `rhs_widen`
 //                           to scale each side's raw to result's notch.
 //---------------------------------------------------------------------------
-namespace bnd
+namespace bnd::detail
 {
   template <boundable L, boundable R = L>
   struct addition
@@ -94,6 +94,6 @@ namespace bnd
     }
     return res;
   }
-} // namespace bnd
+} // namespace bnd::detail
 
 #endif // BNDadditionHPP

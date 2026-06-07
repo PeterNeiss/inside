@@ -14,44 +14,30 @@
 //---------------------------------------------------------------------------
 // generic — type-level traits and predicates used everywhere else.
 //
-// Forward-declares `bound<G, P>` and pulls out its template parameters as
-// reusable variable templates: `Grid<B>`, `BoundPolicy<B>`, `Lower<B>`,
-// `Upper<B>`, `Notch<B>`, `Interval<B>`, plus the storage shape (`raw_t<B>`,
-// `IsRawRational`, `IsDirectStorage`, `IsNotchStorage`) and the raw/value
-// converters (`raw_cast`, `to_value`, `from_value`). Also defines the
-// `boundable`, `numeric`, and `bound_assignable` concepts that arithmetic
-// and assignment specialisations use to filter overloads.
+// Public grid/policy introspection (`Grid<B>`, `BoundPolicy<B>`, `Lower<B>`,
+// `Upper<B>`, `Notch<B>`, `Interval<B>`) plus the `boundable`, `numeric`, and
+// `bound_assignable` concepts. The storage-shape predicates and raw/value
+// converters that expose how values are stored (`raw_t`, `IsDirectStorage`,
+// `to_value`, `from_value`, the Q-format engine, …) are internal and live in
+// `bnd::detail`.
 //---------------------------------------------------------------------------
 namespace bnd
 {
-  template<typename T>
-  using plain = std::remove_cvref_t<T>;
-
-  // Always-false but template-dependent: lets a `static_assert` inside a
-  // template body fire only when that template is actually instantiated
-  // (e.g. the guidance overloads that make `bound + 1` ill-formed).
-  template<typename...>
-  inline constexpr bool dependent_false = false;
-
   template <grid G = {{0, 0}, 0}, policy_flag P = checked> struct bound;
 
   template <typename B>
   concept boundable = !arithmetic<B> && requires { []<grid G, policy_flag P>(bound<G, P>){}(B{}); };
 
-  template <boundable B>
-  using raw_t = typename B::raw_type;
-
-  template <boundable B>
-  inline constexpr bool IsRawRational = std::is_same_v<raw_t<B>, bnd::detail::rational>;
-
+  //---------------------------------------------------------------------------
+  // Public grid/policy introspection — extract a bound's template parameters.
+  // These mirror std::numeric_limits: they report what the grid is, used
+  // opaquely (the rational return type is never named by callers).
+  //---------------------------------------------------------------------------
   template <boundable B>
   inline constexpr grid Grid = []<grid G, policy_flag P>(bound<G, P>){ return G; } (B{});
 
   template <boundable B>
   inline constexpr policy_flag BoundPolicy = []<grid G, policy_flag P>(bound<G, P>){ return P; } (B{});
-
-  template <boundable B>
-  using negative = bound<-Grid<B>, BoundPolicy<B>>;
 
   template <typename T>
   inline constexpr interval Interval = {0,0};
@@ -72,259 +58,318 @@ namespace bnd
   template <boundable B>
   inline constexpr bnd::detail::rational Notch = []<grid G, policy_flag P>(bound<G, P>){ return G.Notch; } (B{});
 
-  // True when R's interval cannot contain zero — i.e. division by an R can
-  // never be division by zero. Decided purely from the grid, so `a / b` can
-  // return a plain `bound` instead of `slim::optional<bound>` (see
-  // detail/division.hpp). A point grid at 0 (Lower==Upper==0) is *not*
-  // excluded — it straddles (== is) zero.
-  template <boundable R>
-  inline constexpr bool DivisorExcludesZero = (Lower<R> > 0) || (Upper<R> < 0);
-
-  // Storage-agnostic int truncation of interval endpoints. Equivalent to
-  // `static_cast<imax>(Lower<B>)` but expresses intent without a cast and
-  // works for both storage kinds. Used by `from_value`, `RawLo`, and the
-  // integer fast paths.
-  template <boundable B>
-  inline constexpr imax LowerImax = Lower<B>.trunc();
-
-  template <boundable B>
-  inline constexpr imax UpperImax = Upper<B>.trunc();
-
-  template <boundable B>
-  inline constexpr umax NotchCount = (Notch<B> == 0) ?
-    0 : (Interval<B>/Notch<B>).value().Numerator;
-
-  // True when `Raw` (and intermediate offset products) fit in `imax`.
-  // Q-format integer fast paths widen Raw to imax; for unsigned 64-bit raw
-  // (e.g. the result type of Q16.16 × Q16.16) that widening can wrap, so the
-  // fast path must fall back to the rational route when this is false.
-  template <boundable B>
-  inline constexpr bool RawFitsInImax =
-      not IsRawRational<B>
-      && (std::signed_integral<raw_t<B>>
-          || NotchCount<B> <= static_cast<umax>(std::numeric_limits<imax>::max()));
-
   template <typename N>
   concept numeric = boundable<N> or arithmetic<N>;
 
-  // Uniform rational view of a scalar or bound. For arithmetic N it constructs
-  // rational{v}; for a bound it uses the implicit operator rational(). Lives in
-  // bnd::detail (it returns the internal rational); core-header callers spell
-  // it `detail::as_rational`.
+  //---------------------------------------------------------------------------
+  // Internal plumbing — storage shape, raw/value conversion, dispatch.
+  //---------------------------------------------------------------------------
   namespace detail
   {
+    template<typename T>
+    using plain = std::remove_cvref_t<T>;
+
+    // Always-false but template-dependent: lets a `static_assert` inside a
+    // template body fire only when that template is actually instantiated
+    // (e.g. the guidance overloads that make `bound + 1` ill-formed).
+    template<typename...>
+    inline constexpr bool dependent_false = false;
+
+    // Uniform rational view of a scalar or bound. For arithmetic N it
+    // constructs rational{v}; for a bound it uses the implicit
+    // operator rational(). Returns the internal rational, so it lives here;
+    // core-header callers spell it `detail::as_rational`.
     template <numeric N>
     [[nodiscard]] constexpr rational as_rational(N v)
     {
       if constexpr (arithmetic<N>) return rational{v};
       else                         return v;
     }
-  }
 
-  // ONLY type conversion, NO value representation conversion calculation
-  template <boundable B>
-  constexpr raw_t<B> raw_cast(auto value)
-  {
-    return static_cast<raw_t<B>>(value);
-  }
+    template <boundable B>
+    using raw_t = typename B::raw_type;
 
-  template <boundable B>
-  constexpr raw_t<B> raw_cast(bnd::detail::rational value)
-  {
-    if constexpr (IsRawRational<B>)
-      return value;
-    else
-      return value.to<raw_t<B>>().value_or(0);
-  }
+    template <boundable B>
+    inline constexpr bool IsRawRational = std::is_same_v<raw_t<B>, rational>;
 
-  // Raw == value: no offset arithmetic needed.
-  //   - IsRawRational           — value stored verbatim as rational.
-  //   - Notch == 1 && Lower == 0  — offset is zero, value = Raw.
-  //   - Notch == 1 && signed raw  — signed types hold the value directly
-  //                                 across the whole range (offset would
-  //                                 be redundant; matches native int perf).
-  template <boundable B>
-  inline constexpr bool IsDirectStorage =
-      IsRawRational<B>
-      || (Notch<B> == 1 && (Lower<B> == 0 || std::signed_integral<raw_t<B>>));
+    template <boundable B>
+    using negative = bound<-Grid<B>, BoundPolicy<B>>;
 
-  // Raw is a notch index from Lower: value = Raw * Notch + Lower
-  template <boundable B>
-  inline constexpr bool IsNotchStorage = !IsDirectStorage<B>;
+    // True when R's interval cannot contain zero — i.e. division by an R can
+    // never be division by zero. Decided purely from the grid, so `a / b` can
+    // return a plain `bound` instead of `slim::optional<bound>` (see
+    // detail/division.hpp). A point grid at 0 (Lower==Upper==0) is *not*
+    // excluded — it straddles (== is) zero.
+    template <boundable R>
+    inline constexpr bool DivisorExcludesZero = (Lower<R> > 0) || (Upper<R> < 0);
 
-  // Widen raw storage to imax. Distinct from `to_value(b)` for notch-stored
-  // grids where raw is an index rather than a value — naming separates the
-  // two intents that today both spell `static_cast<imax>`.
-  template <boundable B>
-  constexpr imax raw_imax(B b) noexcept { return static_cast<imax>(b.raw()); }
+    // Storage-agnostic int truncation of interval endpoints. Equivalent to
+    // `static_cast<imax>(Lower<B>)` but expresses intent without a cast and
+    // works for both storage kinds. Used by `from_value`, `RawLo`, and the
+    // integer fast paths.
+    template <boundable B>
+    inline constexpr imax LowerImax = Lower<B>.trunc();
 
-  //---------------------------------------------------------------------------
-  // Q-format integer fast path
-  //
-  // For grids with integer Lower, unit-numerator Notch (e.g. 1/256, 1/65536),
-  // and raw fitting in `imax`, conversion between value and raw reduces to
-  // pure integer arithmetic — no rational construction. Three call sites
-  // (bound::operator rational(), from_value, assignment::store) share this
-  // shape; centralised here as `q_format_encode` / `q_format_decode`.
-  //---------------------------------------------------------------------------
-  template <boundable B>
-  inline constexpr bool HasQFormatFastPath =
-      abs_den(Lower<B>.Denominator) == 1
-      && Notch<B>.Numerator == 1
-      && RawFitsInImax<B>;
+    template <boundable B>
+    inline constexpr imax UpperImax = Upper<B>.trunc();
 
-  // value → raw, integer math only. Pre: HasQFormatFastPath<B>.
-  template <boundable B>
-  constexpr raw_t<B> q_format_encode(imax value) noexcept
-  {
-    constexpr imax nd = abs_den(Notch<B>.Denominator);
-    return raw_cast<B>((value - LowerImax<B>) * nd);
-  }
+    template <boundable B>
+    inline constexpr umax NotchCount = (Notch<B> == 0) ?
+      0 : (Interval<B>/Notch<B>).value().Numerator;
 
-  // raw → rational, integer math only. Pre: HasQFormatFastPath<B>.
-  template <boundable B>
-  constexpr bnd::detail::rational q_format_decode(B b) noexcept
-  {
-    constexpr imax nd = abs_den(Notch<B>.Denominator);
-    return bnd::detail::rational{raw_imax(b) + LowerImax<B> * nd, nd};
-  }
+    // True when `Raw` (and intermediate offset products) fit in `imax`.
+    // Q-format integer fast paths widen Raw to imax; for unsigned 64-bit raw
+    // (e.g. the result type of Q16.16 × Q16.16) that widening can wrap, so the
+    // fast path must fall back to the rational route when this is false.
+    template <boundable B>
+    inline constexpr bool RawFitsInImax =
+        not IsRawRational<B>
+        && (std::signed_integral<raw_t<B>>
+            || NotchCount<B> <= static_cast<umax>(std::numeric_limits<imax>::max()));
 
-  // Library-internal extraction helper. Always succeeds (returns `imax`
-  // unconditionally) but does not check the value fits in any narrower
-  // target. User code should prefer `b.to<T>()`, which carries a typed
-  // overflow error.
-  template <boundable B>
-  constexpr imax to_value(B b)
-  {
-    if constexpr (IsDirectStorage<B>)
-      return raw_imax(b);
-    else // IsNotchStorage
-      return detail::as_rational(b).trunc();
-  }
-
-  template <boundable B>
-  constexpr void from_value(B& b, imax val)
-  {
-    if constexpr (IsDirectStorage<B>)
-      b = B::from_raw(raw_cast<B>(val));
-    else if constexpr (HasQFormatFastPath<B>)
-      b = B::from_raw(q_format_encode<B>(val));
-    else // IsNotchStorage, generic rational path
+    // ONLY type conversion, NO value representation conversion calculation
+    template <boundable B>
+    constexpr raw_t<B> raw_cast(auto value)
     {
-      auto offset = (bnd::detail::rational{val} - Lower<B>) / Notch<B>;
-      b = B::from_raw(raw_cast<B>(offset.value().Numerator));
+      return static_cast<raw_t<B>>(value);
     }
-  }
 
-  template <boundable B>
-  inline constexpr umax LowerIndex = (Lower<B>/Notch<B>).value_or(bnd::detail::rational{0}).Numerator;
-
-  template <boundable B>
-  inline constexpr umax UpperIndex = (Upper<B>/Notch<B>).value_or(bnd::detail::rational{0}).Numerator;
-
-  //---------------------------------------------------------------------------
-  // RawLo / RawHi / raw_from_offset
-  //
-  // Raw-space bounds map interval endpoints to the raw representation. For
-  // notch-offset storage the raw is a 0-based index, so `RawLo == 0`. For
-  // direct storage the raw IS the value, so `RawLo == LowerImax<B>` — and
-  // every "value as L-offset" needs `RawLo<L>` added back before storing.
-  // Without this, e.g. `bound<{-40, 60}>{-rational{40}}` would record
-  // Raw=0 instead of Raw=-40.
-  //---------------------------------------------------------------------------
-  template <boundable B>
-  inline constexpr imax RawLo = IsDirectStorage<B> ? LowerImax<B> : 0;
-
-  template <boundable B>
-  inline constexpr imax RawHi = IsDirectStorage<B> ? UpperImax<B> : static_cast<imax>(NotchCount<B>);
-
-  template <boundable L>
-  constexpr raw_t<L> raw_from_offset(umax offset) noexcept
-  {
-    if constexpr (IsDirectStorage<L>)
-      return raw_cast<L>(static_cast<imax>(offset) + RawLo<L>);
-    else
-      return raw_cast<L>(offset);
-  }
-
-  template <boundable L>
-  constexpr raw_t<L> raw_from_offset(imax offset) noexcept
-  {
-    if constexpr (IsDirectStorage<L>)
-      return raw_cast<L>(offset + RawLo<L>);
-    else
-      return raw_cast<L>(static_cast<umax>(offset));
-  }
-
-  //---------------------------------------------------------------------------
-  // IsIntegerInterval vs IsIntegerAligned — easy to confuse, both needed.
-  //
-  // IsIntegerInterval<B>: Lower and Upper are integers (denominator == ±1).
-  //   Notch may still be fractional — e.g. bound<{0,100}, 1/10> qualifies.
-  //   Used as a precondition for treating Lower/Upper as `imax` constants
-  //   (e.g. integer range checks, modular wrap arithmetic over [Lo, Hi]).
-  //
-  // IsIntegerAligned<B>: Notch and Lower are integers. Under the grid's
-  //   `Interval.divides_evenly(Notch)` invariant this implies Upper integer,
-  //   so IsIntegerAligned ⇒ IsIntegerInterval. The converse does NOT hold.
-  //   Used as a precondition for native integer arithmetic on raws (every
-  //   notch step is exactly 1, so Raw == value).
-  //---------------------------------------------------------------------------
-  template <boundable B>
-  inline constexpr bool IsIntegerInterval =
-      abs_den(Lower<B>.Denominator) == 1 && abs_den(Upper<B>.Denominator) == 1;
-
-  template <boundable B>
-  inline constexpr bool IsIntegerAligned =
-      abs_den(Notch<B>.Denominator) == 1 && abs_den(Lower<B>.Denominator) == 1;
-
-  // Q-format: the canonical fixed-point shape (Q8.8, Q16.16, ...). Notch has
-  // unit numerator with integer denominator > 1, Lower is an integer at 0.
-  // Value = Raw / Notch.Denominator. Used to gate the integer fast path for
-  // fixed-point division, which would otherwise fall into the slow rational
-  // route because Notch.Denominator > 1 disqualifies IsIntegerAligned.
-  template <boundable B>
-  inline constexpr bool IsQFormat =
-         not IsRawRational<B>
-      && Notch<B>.Numerator == 1
-      && abs_den(Notch<B>.Denominator) > 1
-      && abs_den(Lower<B>.Denominator) == 1
-      && Lower<B> == 0;
-
-  // Policy test: checks both type-level and per-operation policy.
-  // Composite flags (e.g. round_nearest = bit5 | ignore_round) require all
-  // their bits set — having a subset like just `ignore_round` does NOT match.
-  template <boundable B, typename P, policy_flag F>
-  inline constexpr bool HasPolicy = (BoundPolicy<B> & F) == F || plain<P>::test(F);
-
-  // Round the exact non-negative offset quotient num/den (den >= 1) to an
-  // integer notch index per L's effective rounding policy. round_nearest is
-  // half-away-from-zero; round_half_even breaks ties to even; round_ceil rounds
-  // up; round_floor — and any policy with no rounding flag — truncate (== floor
-  // for a non-negative quotient). Shared by assignment's apply_clamp and
-  // store_checked; arm order matches the original inline dispatch.
-  template <boundable L, typename P>
-  [[nodiscard]] constexpr umax round_quotient(umax num, umax den) noexcept
-  {
-    if constexpr (HasPolicy<L, P, round_nearest>)
-      return (num + den / 2) / den;
-    else if constexpr (HasPolicy<L, P, round_floor>)
-      return num / den;
-    else if constexpr (HasPolicy<L, P, round_ceil>)
-      return (num + den - 1) / den;
-    else if constexpr (HasPolicy<L, P, round_half_even>)
+    template <boundable B>
+    constexpr raw_t<B> raw_cast(rational value)
     {
-      umax q = num / den, r = num % den;
-      if (r * 2 < den) return q;
-      if (r * 2 > den) return q + 1;
-      return (q & 1) ? q + 1 : q;
+      if constexpr (IsRawRational<B>)
+        return value;
+      else
+        return value.to<raw_t<B>>().value_or(0);
     }
-    else
-      return num / den;
-  }
 
-  // Forward decl — defined in assignment.hpp
-  template <typename L, typename R> struct assignment;
+    // Raw == value: no offset arithmetic needed.
+    //   - IsRawRational           — value stored verbatim as rational.
+    //   - Notch == 1 && Lower == 0  — offset is zero, value = Raw.
+    //   - Notch == 1 && signed raw  — signed types hold the value directly
+    //                                 across the whole range (offset would
+    //                                 be redundant; matches native int perf).
+    template <boundable B>
+    inline constexpr bool IsDirectStorage =
+        IsRawRational<B>
+        || (Notch<B> == 1 && (Lower<B> == 0 || std::signed_integral<raw_t<B>>));
+
+    // Raw is a notch index from Lower: value = Raw * Notch + Lower
+    template <boundable B>
+    inline constexpr bool IsNotchStorage = !IsDirectStorage<B>;
+
+    // Widen raw storage to imax. Distinct from `to_value(b)` for notch-stored
+    // grids where raw is an index rather than a value — naming separates the
+    // two intents that today both spell `static_cast<imax>`.
+    template <boundable B>
+    constexpr imax raw_imax(B b) noexcept { return static_cast<imax>(b.raw()); }
+
+    //-------------------------------------------------------------------------
+    // Q-format integer fast path
+    //
+    // For grids with integer Lower, unit-numerator Notch (e.g. 1/256, 1/65536),
+    // and raw fitting in `imax`, conversion between value and raw reduces to
+    // pure integer arithmetic — no rational construction. Three call sites
+    // (bound::operator rational(), from_value, assignment::store) share this
+    // shape; centralised here as `q_format_encode` / `q_format_decode`.
+    //-------------------------------------------------------------------------
+    template <boundable B>
+    inline constexpr bool HasQFormatFastPath =
+        abs_den(Lower<B>.Denominator) == 1
+        && Notch<B>.Numerator == 1
+        && RawFitsInImax<B>;
+
+    // value → raw, integer math only. Pre: HasQFormatFastPath<B>.
+    template <boundable B>
+    constexpr raw_t<B> q_format_encode(imax value) noexcept
+    {
+      constexpr imax nd = abs_den(Notch<B>.Denominator);
+      return raw_cast<B>((value - LowerImax<B>) * nd);
+    }
+
+    // raw → rational, integer math only. Pre: HasQFormatFastPath<B>.
+    template <boundable B>
+    constexpr rational q_format_decode(B b) noexcept
+    {
+      constexpr imax nd = abs_den(Notch<B>.Denominator);
+      return rational{raw_imax(b) + LowerImax<B> * nd, nd};
+    }
+
+    // Library-internal extraction helper. Always succeeds (returns `imax`
+    // unconditionally) but does not check the value fits in any narrower
+    // target. User code should prefer `b.to<T>()`, which carries a typed
+    // overflow error.
+    template <boundable B>
+    constexpr imax to_value(B b)
+    {
+      if constexpr (IsDirectStorage<B>)
+        return raw_imax(b);
+      else // IsNotchStorage
+        return as_rational(b).trunc();
+    }
+
+    template <boundable B>
+    constexpr void from_value(B& b, imax val)
+    {
+      if constexpr (IsDirectStorage<B>)
+        b = B::from_raw(raw_cast<B>(val));
+      else if constexpr (HasQFormatFastPath<B>)
+        b = B::from_raw(q_format_encode<B>(val));
+      else // IsNotchStorage, generic rational path
+      {
+        auto offset = (rational{val} - Lower<B>) / Notch<B>;
+        b = B::from_raw(raw_cast<B>(offset.value().Numerator));
+      }
+    }
+
+    template <boundable B>
+    inline constexpr umax LowerIndex = (Lower<B>/Notch<B>).value_or(rational{0}).Numerator;
+
+    template <boundable B>
+    inline constexpr umax UpperIndex = (Upper<B>/Notch<B>).value_or(rational{0}).Numerator;
+
+    //-------------------------------------------------------------------------
+    // RawLo / RawHi / raw_from_offset
+    //
+    // Raw-space bounds map interval endpoints to the raw representation. For
+    // notch-offset storage the raw is a 0-based index, so `RawLo == 0`. For
+    // direct storage the raw IS the value, so `RawLo == LowerImax<B>` — and
+    // every "value as L-offset" needs `RawLo<L>` added back before storing.
+    // Without this, e.g. `bound<{-40, 60}>{-rational{40}}` would record
+    // Raw=0 instead of Raw=-40.
+    //-------------------------------------------------------------------------
+    template <boundable B>
+    inline constexpr imax RawLo = IsDirectStorage<B> ? LowerImax<B> : 0;
+
+    template <boundable B>
+    inline constexpr imax RawHi = IsDirectStorage<B> ? UpperImax<B> : static_cast<imax>(NotchCount<B>);
+
+    template <boundable L>
+    constexpr raw_t<L> raw_from_offset(umax offset) noexcept
+    {
+      if constexpr (IsDirectStorage<L>)
+        return raw_cast<L>(static_cast<imax>(offset) + RawLo<L>);
+      else
+        return raw_cast<L>(offset);
+    }
+
+    template <boundable L>
+    constexpr raw_t<L> raw_from_offset(imax offset) noexcept
+    {
+      if constexpr (IsDirectStorage<L>)
+        return raw_cast<L>(offset + RawLo<L>);
+      else
+        return raw_cast<L>(static_cast<umax>(offset));
+    }
+
+    //-------------------------------------------------------------------------
+    // IsIntegerInterval vs IsIntegerAligned — easy to confuse, both needed.
+    //
+    // IsIntegerInterval<B>: Lower and Upper are integers (denominator == ±1).
+    //   Notch may still be fractional — e.g. bound<{0,100}, 1/10> qualifies.
+    //   Used as a precondition for treating Lower/Upper as `imax` constants
+    //   (e.g. integer range checks, modular wrap arithmetic over [Lo, Hi]).
+    //
+    // IsIntegerAligned<B>: Notch and Lower are integers. Under the grid's
+    //   `Interval.divides_evenly(Notch)` invariant this implies Upper integer,
+    //   so IsIntegerAligned ⇒ IsIntegerInterval. The converse does NOT hold.
+    //   Used as a precondition for native integer arithmetic on raws (every
+    //   notch step is exactly 1, so Raw == value).
+    //-------------------------------------------------------------------------
+    template <boundable B>
+    inline constexpr bool IsIntegerInterval =
+        abs_den(Lower<B>.Denominator) == 1 && abs_den(Upper<B>.Denominator) == 1;
+
+    template <boundable B>
+    inline constexpr bool IsIntegerAligned =
+        abs_den(Notch<B>.Denominator) == 1 && abs_den(Lower<B>.Denominator) == 1;
+
+    // Q-format: the canonical fixed-point shape (Q8.8, Q16.16, ...). Notch has
+    // unit numerator with integer denominator > 1, Lower is an integer at 0.
+    // Value = Raw / Notch.Denominator. Used to gate the integer fast path for
+    // fixed-point division, which would otherwise fall into the slow rational
+    // route because Notch.Denominator > 1 disqualifies IsIntegerAligned.
+    template <boundable B>
+    inline constexpr bool IsQFormat =
+           not IsRawRational<B>
+        && Notch<B>.Numerator == 1
+        && abs_den(Notch<B>.Denominator) > 1
+        && abs_den(Lower<B>.Denominator) == 1
+        && Lower<B> == 0;
+
+    // Policy test: checks both type-level and per-operation policy.
+    // Composite flags (e.g. round_nearest = bit5 | ignore_round) require all
+    // their bits set — having a subset like just `ignore_round` does NOT match.
+    template <boundable B, typename P, policy_flag F>
+    inline constexpr bool HasPolicy = (BoundPolicy<B> & F) == F || plain<P>::test(F);
+
+    // Round the exact non-negative offset quotient num/den (den >= 1) to an
+    // integer notch index per L's effective rounding policy. round_nearest is
+    // half-away-from-zero; round_half_even breaks ties to even; round_ceil rounds
+    // up; round_floor — and any policy with no rounding flag — truncate (== floor
+    // for a non-negative quotient). Shared by assignment's apply_clamp and
+    // store_checked; arm order matches the original inline dispatch.
+    template <boundable L, typename P>
+    [[nodiscard]] constexpr umax round_quotient(umax num, umax den) noexcept
+    {
+      if constexpr (HasPolicy<L, P, round_nearest>)
+        return (num + den / 2) / den;
+      else if constexpr (HasPolicy<L, P, round_floor>)
+        return num / den;
+      else if constexpr (HasPolicy<L, P, round_ceil>)
+        return (num + den - 1) / den;
+      else if constexpr (HasPolicy<L, P, round_half_even>)
+      {
+        umax q = num / den, r = num % den;
+        if (r * 2 < den) return q;
+        if (r * 2 > den) return q + 1;
+        return (q & 1) ? q + 1 : q;
+      }
+      else
+        return num / den;
+    }
+
+    // Forward decl — defined in assignment.hpp
+    template <typename L, typename R> struct assignment;
+
+    // A single-point source bound (Lower == Upper) carries exactly one value,
+    // so the whole-range notch-mapping test (`Factor.Denominator == 1`) is the
+    // wrong question — the only thing that matters is whether that one value
+    // lands on L's grid. This admits e.g. `0_b` / `3_b` into a `{{0,9},3}` grid
+    // while still rejecting `1_b` (not on a notch) and out-of-range points.
+    template <typename L, typename R>
+    inline constexpr bool point_exactly_assignable =
+      (Lower<R> == Upper<R>) && Grid<L>.representable(Lower<R>);
+
+    template <boundable B>
+    [[nodiscard]] constexpr raw_t<B> sentinel_raw()
+    {
+      if constexpr (std::is_same_v<raw_t<B>, rational>)
+        return rational::make_sentinel();
+      else if constexpr (std::signed_integral<raw_t<B>>)
+        return std::numeric_limits<raw_t<B>>::min();
+      else
+        return std::numeric_limits<raw_t<B>>::max();
+    }
+
+    // Tail of the policy cascade: sentinel sets sentinel raw, checked reports.
+    // Returns true if a policy handled the failure (caller should return).
+    template <boundable B, typename P>
+    constexpr bool domain_fail(B& b, P&& policy, std::string msg)
+    {
+      if constexpr (HasPolicy<B, P, sentinel>)
+      {
+        b = B::from_raw(sentinel_raw<B>());
+        return true;
+      }
+      else if (policy.domain_check())
+      {
+        policy.report(errc::domain_error, std::move(msg));
+        return true;
+      }
+      return false;
+    }
+  } // namespace detail
 
   // Compile-time prerequisites for L = R. Three clauses gate three failure
   // modes that should all be caught at the call site (not deep in a template
@@ -344,22 +389,13 @@ namespace bnd
   //                                                  into rounding.
   // Named `bound_assignable` (not `assignable_from`) to avoid shadowing the
   // unrelated `std::assignable_from` from <concepts>.
-  // A single-point source bound (Lower == Upper) carries exactly one value, so
-  // the whole-range notch-mapping test (`Factor.Denominator == 1`) is the wrong
-  // question — the only thing that matters is whether that one value lands on
-  // L's grid. This admits e.g. `0_b` / `3_b` into a `{{0,9},3}` grid while still
-  // rejecting `1_b` (not on a notch) and out-of-range points.
-  template <typename L, typename R>
-  inline constexpr bool point_exactly_assignable =
-    (Lower<R> == Upper<R>) && Grid<L>.representable(Lower<R>);
-
   template <typename L, typename R, policy_flag P = checked>
   concept bound_assignable =
     numeric<R>
     && ((!boundable<R> && !std::integral<R>) || not Interval<L>.excludes(Interval<R>))
-    && (!boundable<R> || abs_den(assignment<L, R>::Factor.Denominator) == 1
+    && (!boundable<R> || detail::abs_den(detail::assignment<L, R>::Factor.Denominator) == 1
         || ((BoundPolicy<L> | P) & ignore_round) != 0
-        || point_exactly_assignable<L, R>);
+        || detail::point_exactly_assignable<L, R>);
 
   // Diagnostic helper: when `bound_assignable` fails, instantiating
   // `bound_assignable_why<L, R, P>` produces individually-named static_asserts
@@ -373,41 +409,12 @@ namespace bnd
       "bound_assignable: rhs is not numeric (must be a bound or arithmetic type)");
     static_assert((!boundable<R> && !std::integral<R>) || not Interval<L>.excludes(Interval<R>),
       "bound_assignable: rhs interval lies entirely outside lhs interval — assignment can never succeed");
-    static_assert(!boundable<R> || abs_den(assignment<L, R>::Factor.Denominator) == 1
+    static_assert(!boundable<R> || detail::abs_den(detail::assignment<L, R>::Factor.Denominator) == 1
                   || ((BoundPolicy<L> | P) & ignore_round) != 0
-                  || point_exactly_assignable<L, R>,
+                  || detail::point_exactly_assignable<L, R>,
       "bound_assignable: incompatible notches — use `with_truncate()` or `policy<ignore_round>()` to allow rounding");
     static constexpr bool value = bound_assignable<L, R, P>;
   };
-
-  template <boundable B>
-  [[nodiscard]] constexpr raw_t<B> sentinel_raw()
-  {
-    if constexpr (std::is_same_v<raw_t<B>, bnd::detail::rational>)
-      return bnd::detail::rational::make_sentinel();
-    else if constexpr (std::signed_integral<raw_t<B>>)
-      return std::numeric_limits<raw_t<B>>::min();
-    else
-      return std::numeric_limits<raw_t<B>>::max();
-  }
-
-  // Tail of the policy cascade: sentinel sets sentinel raw, checked reports.
-  // Returns true if a policy handled the failure (caller should return).
-  template <boundable B, typename P>
-  constexpr bool domain_fail(B& b, P&& policy, std::string msg)
-  {
-    if constexpr (HasPolicy<B, P, sentinel>)
-    {
-      b = B::from_raw(sentinel_raw<B>());
-      return true;
-    }
-    else if (policy.domain_check())
-    {
-      policy.report(errc::domain_error, std::move(msg));
-      return true;
-    }
-    return false;
-  }
 } // namespace bnd
 
 #endif // BNDgenericHPP

@@ -1044,18 +1044,11 @@ namespace bnd::detail
 
 namespace bnd
 {
-  // `rational` itself is an internal representation type (rational)
-  // and is no longer part of the public surface. The integer helpers and the
-  // grid-building `notch<N,D>` literal stay public — they never expose the type.
-  using detail::abs_den;
-  using detail::trim;
-  // Free functions that operate on the (now-internal) representation. They take
-  // a detail::rational, so they expose no nameable rational to consumers, but
-  // the library's own headers call them as `bnd::abs` / `bnd::divides_evenly`.
-  using detail::abs;
-  using detail::gcd;
-  using detail::divides_evenly;
-
+  // `rational` itself is an internal representation type and is not part of the
+  // public surface. The grid-building `notch<N,D>` / `frac<N,D>` literals stay
+  // public — they never expose the type. The integer/rational helpers
+  // (`abs_den`, `trim`, `abs`, `gcd`, `divides_evenly`) stay in `bnd::detail`;
+  // the library's own headers spell them `detail::…`.
   template <umax N, imax D = 1>
   inline constexpr detail::rational notch = detail::rational{N, D};
 

@@ -32,14 +32,14 @@ namespace bnd
   template <boundable B, numeric A>
   [[nodiscard]] constexpr bool will_conversion_truncate(A value) noexcept
   {
-    if constexpr (IsRawRational<B>)
+    if constexpr (detail::IsRawRational<B>)
       return false;                       // rational raw stores any value exactly
     bnd::detail::rational r = detail::as_rational(value);
     if (not Interval<B>.includes(r))
       return false;                       // out-of-range — overflow, not truncation
     // In-range: truncation occurs iff (value - Lower) / Notch is non-integer.
     auto offset = (r - Lower<B>) / Notch<B>;
-    return !offset.has_value() || abs_den(offset->Denominator) != 1;
+    return !offset.has_value() || detail::abs_den(offset->Denominator) != 1;
   }
 
   template <boundable B, typename A>

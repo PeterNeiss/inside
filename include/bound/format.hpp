@@ -23,7 +23,7 @@ namespace bnd
     if (r.Denominator < 0)
       str = "-";
 
-    umax ad = abs_den(r.Denominator);
+    umax ad = detail::abs_den(r.Denominator);
     if (ad == 1)
       return str += std::to_string(r.Numerator);
 
