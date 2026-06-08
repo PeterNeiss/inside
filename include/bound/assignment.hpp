@@ -72,7 +72,7 @@ namespace bnd::detail
   };
 
   template <boundable L, typename R>
-    requires real<R>
+    requires fractional<R>
   struct assignment<L,R>
   {
     private:
@@ -302,7 +302,7 @@ namespace bnd::detail
   // assign(boundable, floating_point | rational) — helpers
   //---------------------------------------------------------------------------
   template <boundable L, typename R>
-    requires real<R>
+    requires fractional<R>
   template<typename P, typename A>
   constexpr void assignment<L,R>::apply_clamp(L& lhs, R rhs, P&&, A&& action)
   {
@@ -337,7 +337,7 @@ namespace bnd::detail
   // followed by store_checked so the rounding policy still applies if rhs
   // doesn't land on a notch after wrapping. range = Upper - Lower + Notch.
   template <boundable L, typename R>
-    requires real<R>
+    requires fractional<R>
   template<typename P, typename A>
   constexpr void assignment<L,R>::apply_wrap(L& lhs, R rhs, P&& policy, A&& action)
   {
@@ -358,7 +358,7 @@ namespace bnd::detail
   }
 
   template <boundable L, typename R>
-    requires real<R>
+    requires fractional<R>
   template<typename P, typename A>
   constexpr bool assignment<L,R>::store_checked(L& lhs, R rhs, P&& policy, A&& action)
   {
@@ -408,7 +408,7 @@ namespace bnd::detail
   // assign(boundable, floating_point | rational)
   //---------------------------------------------------------------------------
   template <boundable L, typename R>
-    requires real<R>
+    requires fractional<R>
   template<typename P, typename A>
   constexpr L& assignment<L,R>::assign(L& lhs, R const& rhs, P&& policy, A&& action)
   {

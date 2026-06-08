@@ -7,6 +7,7 @@
 #include "bound/lift.hpp"
 #include "bound/rational.hpp"
 #include "bound/interval.hpp"
+#include "bound/policy_flag.hpp"
 
 #include "slim/expected.hpp"     // slim::expected, slim::unexpected
 
@@ -124,6 +125,10 @@ namespace bnd
       return static_cast<double>(raw);
     }
 
+    // Double-backed (`real`) storage: the raw IS the value.
+    constexpr double raw_to_double(std::same_as<double> auto raw) const
+    { return raw; }
+
     static constexpr grid make_sentinel() noexcept
     { return grid{interval{bnd::detail::rational{0}, bnd::detail::rational{0}}, bnd::detail::rational::make_sentinel()}; }
   };
@@ -140,6 +145,28 @@ namespace bnd
     std::conditional_t<(G.Interval.Lower < 0 && G.Notch == 1),
       smallest_int_for<G.Interval.Lower.trunc(), G.Interval.Upper.trunc()>,
       smallest_uint_for<G.max_notch()>>>;
+
+  // Dyadic grid: power-of-2 notch denominator and Lower denominator, so every
+  // on-grid value is exactly representable in IEEE-754 `double`. Precondition
+  // for double-backed (`real`) storage.
+  constexpr bool is_pow2(umax n) { return n != 0 && (n & (n - 1)) == 0; }
+
+  template <grid G>
+  inline constexpr bool dyadic_grid =
+       G.Notch.Numerator != 0
+    && is_pow2(bnd::detail::abs_den(G.Notch.Denominator))
+    && is_pow2(bnd::detail::abs_den(G.Interval.Lower.Denominator));
+
+  // Storage for a bound<G, P>: math operands (`real` policy) are double-backed
+  // under the default (double) engine on a dyadic grid; otherwise (and always
+  // under BND_MATH_FIXED) the integer selection above.
+  template <grid G, policy_flag P>
+  using storage_for =
+#ifdef BND_MATH_FIXED
+    storage_min<G>;
+#else
+    std::conditional_t<((P & bnd::real) == bnd::real) && dyadic_grid<G>, double, storage_min<G>>;
+#endif
   }
 
   constexpr slim::optional<grid> operator+(const grid&, const grid&);

@@ -75,10 +75,11 @@ namespace bnd
     return "unknown";
   }
 
-  // Subset of arithmetic that excludes integrals — the "real-valued" rhs
-  // types that need the rational-arithmetic assignment specialization.
+  // Subset of arithmetic that excludes integrals — the fractional ("real-valued")
+  // rhs types that need the rational-arithmetic assignment specialization.
+  // (Named `fractional` to avoid clashing with the `real` storage policy flag.)
   template<typename T>
-  concept real = std::floating_point<T> || std::same_as<rational, T>;
+  concept fractional = std::floating_point<T> || std::same_as<rational, T>;
 
   template <std::signed_integral V>
   constexpr umax safe_abs(V value)

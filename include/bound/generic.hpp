@@ -92,16 +92,19 @@ namespace bnd
     template <boundable B>
     using raw_t = typename B::raw_type;
 
-    // How a bound's value lives in its raw storage — three disjoint encodings:
+    // How a bound's value lives in its raw storage — four disjoint encodings:
     //   rational — raw IS the value, as a rational (notch-zero grids).
     //   integer  — raw IS the value, as a plain integer (signed, or unsigned
     //              with Lower 0; notch 1 either way).
     //   offset   — raw is a 0-based notch index; value = Lower + raw*Notch.
-    enum class storage { rational, integer, offset };
+    //   real     — raw IS the value, as an IEEE-754 `double` (the `real` policy
+    //              under the default math engine; power-of-2 dyadic grids only).
+    enum class storage { rational, integer, offset, real };
 
     template <boundable B>
     inline constexpr storage storage_of = []{
-      if constexpr (std::is_same_v<raw_t<B>, rational>)           return storage::rational;
+      if constexpr (std::is_same_v<raw_t<B>, double>)             return storage::real;
+      else if constexpr (std::is_same_v<raw_t<B>, rational>)      return storage::rational;
       else if constexpr (Notch<B> == 1 && (Lower<B> == 0 || std::signed_integral<raw_t<B>>))
                                                                   return storage::integer;
       else                                                        return storage::offset;

@@ -110,6 +110,7 @@ namespace bnd::math
     template <boundable Out> constexpr int working_bits() noexcept;
     template <int W, int N> constexpr bnd::detail::rational sin_from_turn_fixed(imax turn_w) noexcept;
     template <int W, int N> constexpr bnd::detail::rational cos_from_turn_fixed(imax turn_w) noexcept;
+    template <boundable Out> constexpr Out store_grid(bnd::detail::rational r) noexcept;
 
     // sin (turn-input, internal). Q.N turn-phase → amplitude on `Out`'s grid,
     // via the grid-scaled CORDIC engine. The input is `detail::turns_t<N>`-
@@ -127,7 +128,7 @@ namespace bnd::math
       constexpr int W = working_bits<Out>();
       imax raw    = static_cast<imax>(phase.raw());                       // Q.N turn
       imax turn_w = (W >= N) ? (raw << (W - N)) : (raw >> (N - W));       // → Q.W
-      return Out{sin_from_turn_fixed<W, W>(turn_w)};
+      return store_grid<Out>(sin_from_turn_fixed<W, W>(turn_w));
     }
 
     // cos (turn-input, internal). cos(x) = sin(x + π/2) — shift the phase
@@ -153,17 +154,25 @@ namespace bnd::math
     // so precision follows the grid instead of a hardcoded 30 bits. The CORDIC
     // iteration is pure shift-add (bounded, overflow-free). The only multiplies
     // live in the compile-time table/gain derivation and the input scaling, and
-    // use the portable wide multiply `fmul` — no 128-bit type, so the result is
-    // bit-identical on every toolchain (MSVC included).
+    // use the wide multiply `fmul`. Where a 128-bit integer type is available
+    // it is used directly; the portable 32-bit-split fallback computes the
+    // identical 128-bit product, so the result is bit-identical on every
+    // toolchain (MSVC included).
     //=========================================================================
 
-    // (a·b) >> W, exact for full 64-bit operands. 32-bit split → 128-bit
-    // unsigned product → shift → reapply sign. Magnitude-truncating (toward 0).
+    // (a·b) >> W, exact for full 64-bit operands (the full 128-bit unsigned
+    // product is formed, shifted, then re-signed). Magnitude-truncating (toward
+    // zero). The two paths below are bit-for-bit equal by construction.
     constexpr imax fmul(imax a, imax b, int W) noexcept
     {
       bool neg = (a < 0) ^ (b < 0);
       umax ua = (a < 0) ? -static_cast<umax>(a) : static_cast<umax>(a);
       umax ub = (b < 0) ? -static_cast<umax>(b) : static_cast<umax>(b);
+#if defined(__SIZEOF_INT128__)
+      // gcc/clang: native 128-bit, constexpr-friendly.
+      umax r = static_cast<umax>((static_cast<unsigned __int128>(ua) * ub) >> W);
+#else
+      // portable: 32-bit split → 128-bit (hi:lo) → shift. Also the MSVC path.
       umax al = ua & 0xffffffffu, ah = ua >> 32;
       umax bl = ub & 0xffffffffu, bh = ub >> 32;
       umax ll = al * bl, lh = al * bh, hl = ah * bl, hh = ah * bh;
@@ -173,6 +182,7 @@ namespace bnd::math
       umax r   = (W == 0) ? lo
                : (W < 64) ? ((lo >> W) | (hi << (64 - W)))
                :            (hi >> (W - 64));
+#endif
       return neg ? -static_cast<imax>(r) : static_cast<imax>(r);
     }
 
@@ -181,6 +191,48 @@ namespace bnd::math
     { return bnd::detail::rational::mul_unchecked(v, bnd::detail::rational{imax{1} << W}).round(); }
     constexpr bnd::detail::rational fixed_to_rational(imax x, int W) noexcept
     { return bnd::detail::rational{x, imax{1} << W}; }
+
+    // Grids eligible for the GCD-free store: unit-numerator notch, non-rational
+    // storage, raw fits imax, assigned with round_nearest. (Unlike the Q-format
+    // fast path this does NOT require integer Lower — Lower·K is an exact
+    // integer by the grid invariant regardless.) The math results all carry a
+    // power-of-two denominator, so the offset index is formed with integer
+    // shifts + round-half-up — identical to the rational assignment path
+    // (round_quotient round_nearest is `(num+den/2)/den`, invariant under
+    // fraction reduction), but skipping `(value−Lower)/Notch`'s GCD reductions.
+    template <boundable Out>
+    inline constexpr bool grid_fast_store =
+        Notch<Out>.Numerator == 1
+        && bnd::detail::storage_of<Out> != bnd::detail::storage::rational
+        && (BoundPolicy<Out> & round_nearest) == round_nearest
+        && (std::signed_integral<bnd::detail::raw_t<Out>>
+            || bnd::detail::NotchCount<Out>
+                 <= static_cast<umax>(std::numeric_limits<imax>::max()));
+
+    // Store a power-of-two-denominator result (the shape every core returns)
+    // onto Out's grid. Fast path: pure integer. Fallback: the general rational
+    // assignment (handles non-fast grids, clamp/wrap on out-of-range, etc).
+    template <boundable Out>
+    constexpr Out store_grid(bnd::detail::rational r) noexcept
+    {
+      if constexpr (grid_fast_store<Out>)
+      {
+        umax den = bnd::detail::abs_den(r.Denominator);
+        if ((den & (den - 1)) == 0)                       // power-of-two denom
+        {
+          int  D   = std::countr_zero(den);
+          imax num = (r.Denominator < 0) ? -static_cast<imax>(r.Numerator)
+                                         :  static_cast<imax>(r.Numerator);
+          constexpr imax K = bnd::detail::abs_den(Notch<Out>.Denominator);  // 1/notch
+          constexpr imax m = (Lower<Out> * bnd::detail::rational{K}).value().trunc(); // Lower·K (exact int)
+          imax half = (D > 0) ? (imax{1} << (D - 1)) : 0;
+          imax off  = ((K * num + half) >> D) - m;        // round-half-up((value−Lower)·K)
+          if (off >= 0 && static_cast<umax>(off) <= bnd::detail::NotchCount<Out>)
+            return Out::from_raw(bnd::detail::raw_from_offset<Out>(static_cast<umax>(off)));
+        }
+      }
+      return Out{r};
+    }
 
     // Working scale for an output grid: enough fractional bits to resolve the
     // notch, PLUS the integer bits of the largest output magnitude (a result of
@@ -221,11 +273,18 @@ namespace bnd::math
       return acc;
     }
 
+    // Newton iterations to converge rsqrt to W bits from the y=1 seed (a∈[1,2],
+    // ~2-bit start, quadratic): ≈ ceil(log2 W) + 1.
+    constexpr int rsqrt_iters(int W) noexcept
+    { int n = 3; while ((1 << n) < W) ++n; return n + 1; }
+
     // 1/sqrt(a) at scale 2^W for a ∈ [1,2], division-free Newton (y←y(3−ay²)/2).
-    constexpr imax rsqrt_fixed(imax a, int W) noexcept
+    // `iters` lets the runtime sqrt path scale work with W while the
+    // compile-time CORDIC gains stay at a fixed high count.
+    constexpr imax rsqrt_fixed(imax a, int W, int iters) noexcept
     {
       imax one = imax{1} << W, three = 3 * one, y = one;
-      for (int k = 0; k < 12; ++k) {
+      for (int k = 0; k < iters; ++k) {
         imax ay2 = fmul(a, fmul(y, y, W), W);
         y = fmul(y, three - ay2, W) >> 1;
       }
@@ -238,14 +297,16 @@ namespace bnd::math
 
     // √a at scale 2^W, a_w = a·2^W ≥ 0. Reduce a = m·2^e, m ∈ [1,2);
     // √a = √m · 2^(e/2), √m = m·(1/√m) via rsqrt; odd e multiplies in √2.
-    constexpr imax sqrt_fixed(imax a_w, int W) noexcept
+    // Templated on W so the √2 constant and iteration count fold at compile time.
+    template <int W>
+    constexpr imax sqrt_fixed(imax a_w) noexcept
     {
       if (a_w <= 0) return 0;
       int  lead = 63 - std::countl_zero(static_cast<umax>(a_w));
       int  e    = lead - W;
       imax m_w  = (e >= 0) ? (a_w >> e) : (a_w << (-e));    // m·2^W ∈ [2^W, 2^(W+1))
-      imax sm   = fmul(m_w, rsqrt_fixed(m_w, W), W);        // √m · 2^W
-      if (e & 1) sm = fmul(sm, to_fixed(sqrt2_r, W), W);    // odd exponent ⇒ ×√2
+      imax sm   = fmul(m_w, rsqrt_fixed(m_w, W, rsqrt_iters(W)), W);        // √m · 2^W
+      if (e & 1) { constexpr imax sqrt2_w = to_fixed(sqrt2_r, W); sm = fmul(sm, sqrt2_w, W); }
       int h = e >> 1;                                       // floor(e/2)
       return (h >= 0) ? (sm << h) : (sm >> (-h));
     }
@@ -256,7 +317,7 @@ namespace bnd::math
       imax one = imax{1} << W, invK = one;
       for (int i = 0; i < N; ++i) {
         if (2 * i > W - 1) break;
-        invK = fmul(invK, rsqrt_fixed(one + (one >> (2 * i)), W), W);
+        invK = fmul(invK, rsqrt_fixed(one + (one >> (2 * i)), W, 12), W);
       }
       return invK;
     }
@@ -392,7 +453,7 @@ namespace bnd::math
       for (int j = 0; j < L; ++j) {
         int i = seq[static_cast<std::size_t>(j)];
         if (2 * i > W - 1) continue;
-        invK = fmul(invK, rsqrt_fixed(one - (one >> (2 * i)), W), W);   // ×1/√(1−4^-i)
+        invK = fmul(invK, rsqrt_fixed(one - (one >> (2 * i)), W, 12), W);   // ×1/√(1−4^-i)
       }
       return invK;
     }();
@@ -521,7 +582,7 @@ namespace bnd::math
     bnd::detail::rational a = angle;
     imax a_w    = detail::to_fixed(a, W);                          // radians · 2^W
     imax turn_w = detail::fmul(a_w, detail::to_fixed(detail::inv_two_pi, W), W);
-    return Out{detail::sin_from_turn_fixed<W, W>(turn_w)};
+    return detail::store_grid<Out>(detail::sin_from_turn_fixed<W, W>(turn_w));
   }
 
   // cos: radians-valued bound → amplitude. cos(x) = sin(x + π/2); add a
@@ -539,7 +600,7 @@ namespace bnd::math
     bnd::detail::rational a = angle;
     imax a_w    = detail::to_fixed(a, W);                          // radians · 2^W
     imax turn_w = detail::fmul(a_w, detail::to_fixed(detail::inv_two_pi, W), W);
-    return Out{detail::cos_from_turn_fixed<W, W>(turn_w)};
+    return detail::store_grid<Out>(detail::cos_from_turn_fixed<W, W>(turn_w));
   }
 
   namespace detail
@@ -566,7 +627,7 @@ namespace bnd::math
       if (tan_v < Lower<Out> || tan_v > Upper<Out>)
         return slim::unexpected(errc::overflow);
 
-      return Out{tan_v};
+      return detail::store_grid<Out>(tan_v);
     }
   } // namespace detail
 
@@ -596,7 +657,7 @@ namespace bnd::math
     if (tan_v < Lower<Out> || tan_v > Upper<Out>)
       return slim::unexpected(errc::overflow);
 
-    return Out{tan_v};
+    return detail::store_grid<Out>(tan_v);
   }
 
 
@@ -608,7 +669,7 @@ namespace bnd::math
     static_assert(Lower<In> > 0,
                   "bnd::math::log2: input must be strictly positive");
 
-    return Out{detail::log2_fixed<detail::working_bits<Out>()>(bnd::detail::rational{x})};
+    return detail::store_grid<Out>(detail::log2_fixed<detail::working_bits<Out>()>(bnd::detail::rational{x}));
   }
 
   // exp2: bound → bound, returning 2^x. 2^x = e^(x·ln2) via the grid-scaled
@@ -626,7 +687,7 @@ namespace bnd::math
     static_assert(Lower<Out> >= 0,
                   "bnd::math::exp2: Out must be non-negative");
 
-    return Out{detail::exp2_fixed<detail::working_bits<Out>()>(bnd::detail::rational{x})};
+    return detail::store_grid<Out>(detail::exp2_fixed<detail::working_bits<Out>()>(bnd::detail::rational{x}));
   }
 
   // exp: thin wrapper. exp(x) = exp2(x · log2(e)). The scaling factor
@@ -640,7 +701,7 @@ namespace bnd::math
     static_assert(Lower<Out> >= 0,
                   "bnd::math::exp: Out must be non-negative");
 
-    return Out{detail::exp_fixed<detail::working_bits<Out>()>(bnd::detail::rational{x})};
+    return detail::store_grid<Out>(detail::exp_fixed<detail::working_bits<Out>()>(bnd::detail::rational{x}));
   }
 
   // log: thin wrapper. log(x) = log2(x) · ln(2). Result precision matches
@@ -651,7 +712,7 @@ namespace bnd::math
     static_assert(Lower<In> > 0,
                   "bnd::math::log: input must be strictly positive");
 
-    return Out{detail::ln_fixed<detail::working_bits<Out>()>(bnd::detail::rational{x})};
+    return detail::store_grid<Out>(detail::ln_fixed<detail::working_bits<Out>()>(bnd::detail::rational{x}));
   }
 
   // pow_base<Base>(x) = Base^x for compile-time-known integer Base ≥ 2.
@@ -668,7 +729,7 @@ namespace bnd::math
     constexpr int W = detail::working_bits<Out>();
     imax lb_w = detail::log2_to_fixed<W>(bnd::detail::rational{Base});   // log2(Base)·2^W
     imax sc_w = detail::fmul(detail::to_fixed(bnd::detail::rational{x}, W), lb_w, W);
-    return Out{detail::exp2_from_fixed<W>(sc_w)};
+    return detail::store_grid<Out>(detail::exp2_from_fixed<W>(sc_w));
   }
 
 
@@ -712,7 +773,7 @@ namespace bnd::math
     }
 
     imax rad = detail::cordic_atan2_rad<W, W>(y_w, x_w) + pre_rotation;   // radians, scale W
-    return Out{detail::fixed_to_rational(rad, W)};
+    return detail::store_grid<Out>(detail::fixed_to_rational(rad, W));
   }
 
   //---------------------------------------------------------------------------
@@ -726,21 +787,21 @@ namespace bnd::math
   {
     static_assert(Lower<Out> <= 0,
                   "bnd::math::abs: Out must include 0");
-    return Out{bnd::detail::abs(bnd::detail::rational{x})};
+    return detail::store_grid<Out>(bnd::detail::abs(bnd::detail::rational{x}));
   }
 
   // ⌊x⌋ — largest integer ≤ x.
   template <boundable Out, boundable In>
   [[nodiscard]] constexpr Out floor_impl(In x) noexcept
   {
-    return Out{bnd::detail::rational{x}.floor()};
+    return detail::store_grid<Out>(bnd::detail::rational{x}.floor());
   }
 
   // ⌈x⌉ — smallest integer ≥ x.
   template <boundable Out, boundable In>
   [[nodiscard]] constexpr Out ceil_impl(In x) noexcept
   {
-    return Out{bnd::detail::rational{x}.ceil()};
+    return detail::store_grid<Out>(bnd::detail::rational{x}.ceil());
   }
 
   // x rounded to nearest integer, half-away-from-zero (matches the existing
@@ -748,7 +809,7 @@ namespace bnd::math
   template <boundable Out, boundable In>
   [[nodiscard]] constexpr Out round_impl(In x) noexcept
   {
-    return Out{bnd::detail::rational{x}.round()};
+    return detail::store_grid<Out>(bnd::detail::rational{x}.round());
   }
 
   // x truncated toward zero. Distinct from floor for negative inputs:
@@ -756,7 +817,7 @@ namespace bnd::math
   template <boundable Out, boundable In>
   [[nodiscard]] constexpr Out trunc_impl(In x) noexcept
   {
-    return Out{bnd::detail::rational{x}.trunc()};
+    return detail::store_grid<Out>(bnd::detail::rational{x}.trunc());
   }
 
   // x mod y = x − ⌊x/y⌋·y (truncated-division convention, matching std::fmod).
@@ -770,7 +831,7 @@ namespace bnd::math
     imax     qt = q.trunc();
     bnd::detail::rational qy = bnd::detail::rational::mul_unchecked(bnd::detail::rational{qt}, yv);
     bnd::detail::rational r  = bnd::detail::rational::add_unchecked(xv, -qy);
-    return Out{r};
+    return detail::store_grid<Out>(r);
   }
 
   //---------------------------------------------------------------------------
@@ -862,7 +923,7 @@ namespace bnd::math
 
     constexpr int W = detail::working_bits<Out>();
     imax a_w = detail::to_fixed(bnd::detail::rational{x}, W);
-    return Out{detail::fixed_to_rational(detail::sqrt_fixed(a_w, W), W)};
+    return detail::store_grid<Out>(detail::fixed_to_rational(detail::sqrt_fixed<W>(a_w), W));
   }
 
   // Mixed-sign sqrt: accepts inputs whose interval crosses zero. Returns
@@ -881,7 +942,7 @@ namespace bnd::math
 
     constexpr int W = detail::working_bits<Out>();
     imax a_w = detail::to_fixed(v, W);
-    return Out{detail::fixed_to_rational(detail::sqrt_fixed(a_w, W), W)};
+    return detail::store_grid<Out>(detail::fixed_to_rational(detail::sqrt_fixed<W>(a_w), W));
   }
 
   //---------------------------------------------------------------------------
@@ -919,7 +980,7 @@ namespace bnd::math
     constexpr bnd::detail::rational sqrt_endpoint(bnd::detail::rational v) noexcept
     {
       if (v == 0) return bnd::detail::rational{0};
-      return fixed_to_rational(sqrt_fixed(to_fixed(v, kRefBits), kRefBits), kRefBits);
+      return fixed_to_rational(sqrt_fixed<kRefBits>(to_fixed(v, kRefBits)), kRefBits);
     }
 
     constexpr bnd::detail::rational exp2_endpoint(bnd::detail::rational v) noexcept
@@ -1224,7 +1285,7 @@ namespace bnd::math
     {
       imax one = imax{1} << kRefBits;
       imax v_w = to_fixed(v, kRefBits);
-      imax c_w = sqrt_fixed(one - fmul(v_w, v_w, kRefBits), kRefBits);   // √(1−v²) ≥ 0
+      imax c_w = sqrt_fixed<kRefBits>(one - fmul(v_w, v_w, kRefBits));   // √(1−v²) ≥ 0
       if (c_w == 0) {                                                    // v = ±1 → ±π/2
         bnd::detail::rational half_pi =
             bnd::detail::rational::mul_unchecked(pi_r, bnd::detail::rational{1, 2});
@@ -1307,7 +1368,7 @@ namespace bnd::math
       imax rx = to_fixed(bnd::detail::rational::div_unchecked(x, m), kRefBits);
       imax ry = to_fixed(bnd::detail::rational::div_unchecked(y, m), kRefBits);
       imax s_w = fmul(rx, rx, kRefBits) + fmul(ry, ry, kRefBits);
-      bnd::detail::rational root = fixed_to_rational(sqrt_fixed(s_w, kRefBits), kRefBits);
+      bnd::detail::rational root = fixed_to_rational(sqrt_fixed<kRefBits>(s_w), kRefBits);
       return bnd::detail::rational::mul_unchecked(m, root);
     }
 
@@ -1431,7 +1492,7 @@ namespace bnd::math
   {
     static_assert(Lower<In> >= -1 && Upper<In> <= 1,
                   "bnd::math::atan: input must be in [-1, 1]; normalize first for wider ranges");
-    return Out{detail::atan_fixed<detail::working_bits<Out>()>(bnd::detail::rational{x})};
+    return detail::store_grid<Out>(detail::atan_fixed<detail::working_bits<Out>()>(bnd::detail::rational{x}));
   }
 
   template <boundable Out, boundable In>
@@ -1439,7 +1500,7 @@ namespace bnd::math
   {
     static_assert(Lower<In> >= -1 && Upper<In> <= 1,
                   "bnd::math::asin: input must be in [-1, 1]");
-    return Out{detail::asin_endpoint(bnd::detail::rational{x})};
+    return detail::store_grid<Out>(detail::asin_endpoint(bnd::detail::rational{x}));
   }
 
   template <boundable Out, boundable In>
@@ -1447,7 +1508,7 @@ namespace bnd::math
   {
     static_assert(Lower<In> >= -1 && Upper<In> <= 1,
                   "bnd::math::acos: input must be in [-1, 1]");
-    return Out{detail::acos_endpoint(bnd::detail::rational{x})};
+    return detail::store_grid<Out>(detail::acos_endpoint(bnd::detail::rational{x}));
   }
 
   template <boundable Out, boundable In>
@@ -1455,7 +1516,7 @@ namespace bnd::math
   {
     static_assert(Lower<In> >= -10 && Upper<In> <= 10,
                   "bnd::math::sinh: input must be in [-10, 10]");
-    return Out{detail::sinh_endpoint(bnd::detail::rational{x})};
+    return detail::store_grid<Out>(detail::sinh_endpoint(bnd::detail::rational{x}));
   }
 
   template <boundable Out, boundable In>
@@ -1465,7 +1526,7 @@ namespace bnd::math
                   "bnd::math::cosh: input must be in [-10, 10]");
     static_assert(Lower<Out> <= bnd::detail::rational{1},
                   "bnd::math::cosh: Out must include 1 (cosh ≥ 1)");
-    return Out{detail::cosh_endpoint(bnd::detail::rational{x})};
+    return detail::store_grid<Out>(detail::cosh_endpoint(bnd::detail::rational{x}));
   }
 
   template <boundable Out, boundable In>
@@ -1473,7 +1534,7 @@ namespace bnd::math
   {
     static_assert(Lower<In> >= -10 && Upper<In> <= 10,
                   "bnd::math::tanh: input must be in [-10, 10]");
-    return Out{detail::tanh_endpoint(bnd::detail::rational{x})};
+    return detail::store_grid<Out>(detail::tanh_endpoint(bnd::detail::rational{x}));
   }
 
   template <boundable Out, boundable In>
@@ -1481,7 +1542,7 @@ namespace bnd::math
   {
     static_assert(Lower<In> > 0,
                   "bnd::math::log10: input must be strictly positive");
-    return Out{detail::log10_endpoint(bnd::detail::rational{x})};
+    return detail::store_grid<Out>(detail::log10_endpoint(bnd::detail::rational{x}));
   }
 
   template <boundable Out, boundable In>
@@ -1489,7 +1550,7 @@ namespace bnd::math
   {
     static_assert(Lower<In> >= -(imax{1} << 20) && Upper<In> <= (imax{1} << 20),
                   "bnd::math::cbrt: input magnitude must be ≤ 2^20 for the working-scale envelope");
-    return Out{detail::cbrt_endpoint(bnd::detail::rational{x})};
+    return detail::store_grid<Out>(detail::cbrt_endpoint(bnd::detail::rational{x}));
   }
 
   template <boundable Out, boundable InX, boundable InY>
@@ -1499,7 +1560,7 @@ namespace bnd::math
                && Lower<InY> >= -(imax{1} << 20) && Upper<InY> <= (imax{1} << 20),
                   "bnd::math::hypot: input magnitudes must be ≤ 2^20 for the working-scale envelope");
     static_assert(Lower<Out> <= 0, "bnd::math::hypot: Out must include 0");
-    return Out{detail::hypot_endpoint(bnd::detail::rational{x}, bnd::detail::rational{y})};
+    return detail::store_grid<Out>(detail::hypot_endpoint(bnd::detail::rational{x}, bnd::detail::rational{y}));
   }
 
   // pow: b^e for runtime base b > 0. Returns `expected` — `overflow` when
@@ -1523,7 +1584,7 @@ namespace bnd::math
     bnd::detail::rational r = detail::exp2_from_fixed<W>(sc_w);
     if (r < Lower<Out> || r > Upper<Out>)
       return slim::unexpected(errc::overflow);
-    return Out{r};
+    return detail::store_grid<Out>(r);
   }
 
   // --- public auto-deducing forms ----------------------------------------

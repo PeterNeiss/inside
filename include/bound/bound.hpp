@@ -73,7 +73,7 @@ namespace bnd
     static_assert(!(P & sentinel) || !(P & wrap), "sentinel and wrap are mutually exclusive");
 
     using negative = bound<-G, P>;
-    using raw_type = detail::storage_min<G>;
+    using raw_type = detail::storage_for<G, P>;
 
     private:
     raw_type Raw;
@@ -96,15 +96,32 @@ namespace bnd
     constexpr bound() requires ((P & checked) == 0) = default; // trivial when not checked
     constexpr bound() requires ((P & checked) != 0) : Raw{} {} // zero-init under checked
 
+    // Double-backed (`real`) storage stores the value as an IEEE-754 double
+    // directly — the notch is nominal (no snap). Other storage routes through
+    // the policy-checked `assignment` engine.
+    template <numeric A>
+    constexpr void store_value(A const& value)
+    {
+      if constexpr (detail::storage_of<bound> == detail::storage::real)
+        Raw = static_cast<double>(detail::as_rational(value));
+      else
+        detail::assignment<bound, A>::assign(*this, value, make_policy<P>());
+    }
+
     template <numeric A>
       requires bound_assignable<bound, A, P>
     constexpr bound(A value)
-    { detail::assignment<bound, A>::assign(*this, value, make_policy<P>()); }
+    { store_value(value); }
 
     template <numeric A, typename Pol>
       requires bound_assignable<bound, A, P>
     constexpr bound(A value, Pol&& pol)
-    { detail::assignment<bound, A>::assign(*this, value, pol); }
+    {
+      if constexpr (detail::storage_of<bound> == detail::storage::real)
+        Raw = static_cast<double>(detail::as_rational(value));
+      else
+        detail::assignment<bound, A>::assign(*this, value, pol);
+    }
 
     // optional<A> sink — unwrap once at the construction boundary so callers
     // can chain checked arithmetic without per-step `.value()`. Throws
@@ -113,17 +130,17 @@ namespace bnd
     template <numeric A>
       requires bound_assignable<bound, A, P>
     constexpr bound(slim::optional<A> const& value)
-    { detail::assignment<bound, A>::assign(*this, value.value(), make_policy<P>()); }
+    { store_value(value.value()); }
 
     template <numeric B>
       requires bound_assignable<bound, B, P>
     constexpr bound& operator=(B const& other)
-    { return detail::assignment<bound, B>::assign(*this, other, make_policy<P>()); }
+    { store_value(other); return *this; }
 
     template <numeric B>
       requires bound_assignable<bound, B, P>
     constexpr bound& operator=(slim::optional<B> const& other)
-    { return detail::assignment<bound, B>::assign(*this, other.value(), make_policy<P>()); }
+    { store_value(other.value()); return *this; }
 
     [[nodiscard]] constexpr auto value() const
     {

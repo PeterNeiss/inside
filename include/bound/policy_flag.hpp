@@ -43,6 +43,14 @@ namespace bnd
   inline static constexpr policy_flag wrap    {1ull << 33}; // modular arithmetic
   inline static constexpr policy_flag sentinel{1ull << 35}; // overflow -> sentinel (nullopt)
 
+  // `real` — marks a math operand. Selects double-backed storage under the
+  // default (double) math engine, where the value is held as an IEEE-754
+  // `double` and stored as-is (the `ignore_round` in `round_nearest` makes the
+  // notch nominal). Under `BND_MATH_FIXED` the same flag is an ordinary
+  // round_nearest integer-backed bound. Power-of-2 notch + dyadic Lower required
+  // (asserted at storage selection) so on-grid values are exact in `double`.
+  inline static constexpr policy_flag real{(1ull << 37) | round_nearest};
+
   // opt-out of the default `checked` policy: no domain / round / overflow /
   // div-by-zero checks. Reading an out-of-range value is undefined behavior.
   // Division by zero is undefined behavior too — consistently across both

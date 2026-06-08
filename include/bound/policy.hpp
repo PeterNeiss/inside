@@ -404,7 +404,7 @@ namespace bnd
     // floating-point path: lift both sides to double and assign — the bound
     // must carry a round policy (operator double() requires it).
     //-------------------------------------------------------------------------
-    template <real C>
+    template <fractional C>
     constexpr B& operator+=(C const& rhs)
     {
       if constexpr (std::same_as<C, rational>)
@@ -413,7 +413,7 @@ namespace bnd
         return assign_with_picked(static_cast<double>(Ref) + static_cast<double>(rhs));
     }
 
-    template <real C>
+    template <fractional C>
     constexpr B& operator-=(C const& rhs)
     {
       if constexpr (std::same_as<C, rational>)
@@ -422,7 +422,7 @@ namespace bnd
         return assign_with_picked(static_cast<double>(Ref) - static_cast<double>(rhs));
     }
 
-    template <real C>
+    template <fractional C>
     constexpr B& operator*=(C const& rhs)
     {
       if constexpr (std::same_as<C, rational>)
@@ -431,7 +431,7 @@ namespace bnd
         return assign_with_picked(static_cast<double>(Ref) * static_cast<double>(rhs));
     }
 
-    template <real C>
+    template <fractional C>
     constexpr B& operator/=(C const& rhs)
     {
       // Canonical-zero check: rational stores zero as {0, 1}, so Numerator == 0
