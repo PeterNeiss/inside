@@ -70,7 +70,7 @@ namespace bnd::detail
     result res;
     if constexpr (storage_of<result> == storage::real)
     {
-      res = result::from_raw(as_double(lhs) + as_double(rhs));
+      res = result::from_raw(Grid<result>.snap_double(as_double(lhs) + as_double(rhs)));
     }
     else if constexpr (storage_of<result> == storage::rational)
     {

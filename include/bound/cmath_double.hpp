@@ -161,6 +161,9 @@ namespace bnd::math::dbl::detail
     double e = d_exp(x + x);            // e^{2x}
     return (e - 1.0) / (e + 1.0);
   }
+  // √(x²+y²). The public domain caps |x|,|y| ≤ 2^20, so x²+y² ≤ 2^41 — no
+  // overflow, no scaling needed; the correctly-rounded √ keeps it accurate.
+  inline double d_hypot(double x, double y) { return d_sqrt(x * x + y * y); }
 
   inline constexpr double kPi      = 0x1.921fb54442d18p+1;   // π
   inline constexpr double kPiHalf  = 0x1.921fb54442d18p+0;   // π/2
@@ -244,6 +247,9 @@ namespace bnd::math::dbl
   template <typename Out, typename In>
   [[nodiscard]] Out atan2_core(In y, In x)
   { return Out{detail::d_atan2(static_cast<double>(y), static_cast<double>(x))}; }
+  template <typename Out, typename InX, typename InY>
+  [[nodiscard]] Out hypot_core(InX x, InY y)
+  { return Out{detail::d_hypot(static_cast<double>(x), static_cast<double>(y))}; }
 } // namespace bnd::math::dbl
 
 #endif // BNDcmathdoubleHPP

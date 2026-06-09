@@ -1841,10 +1841,14 @@ namespace bnd::math
   }
 
   template <boundable InX, boundable InY>
-  [[nodiscard]] constexpr auto hypot(InX x, InY y) noexcept
+  [[nodiscard]] BND_MATH_FN auto hypot(InX x, InY y) noexcept
   {
     static_assert(detail::require_real<InX>() && detail::require_real<InY>());
+#ifdef BND_MATH_FIXED
     return hypot_impl<detail::hypot_auto_t<InX, InY>>(x, y);
+#else
+    return dbl::hypot_core<detail::hypot_auto_t<InX, InY>>(x, y);
+#endif
   }
 
   template <boundable InB, boundable InE>

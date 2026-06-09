@@ -71,6 +71,17 @@ namespace bnd
     static_assert(!(P & clamp) || !(P & wrap), "clamp and wrap are mutually exclusive");
     static_assert(!(P & sentinel) || !(P & clamp), "sentinel and clamp are mutually exclusive");
     static_assert(!(P & sentinel) || !(P & wrap), "sentinel and wrap are mutually exclusive");
+#ifndef BND_MATH_FIXED
+    // Under the default (double) engine the `real` policy is double-backed, and
+    // its value snaps to the grid (Lower + k·Notch). That snap is only exact
+    // when the grid is dyadic — power-of-two notch and Lower — so grid points
+    // are representable in IEEE-754 double. A continuous grid (Notch == 0) has
+    // no grid to snap to. Anything else is rejected here rather than silently
+    // demoted to integer storage.
+    static_assert((P & real) != real || detail::dyadic_grid<G> || G.Notch == 0,
+                  "bnd: the `real` policy requires a dyadic grid (power-of-two "
+                  "notch and Lower, so values are exactly representable in double)");
+#endif
 
     using negative = bound<-G, P>;
     using raw_type = detail::storage_for<G, P>;
@@ -107,18 +118,34 @@ namespace bnd
       if constexpr (std::is_arithmetic_v<A>) return static_cast<double>(value);
       else                                   return static_cast<double>(detail::as_rational(value));
     }
+    // Snap a value onto `real` (double-backed) storage: it lands on the grid
+    // exactly like any other bound (the grid is dyadic, so the snap is lossless)
+    // — `real` changes the representation/speed, not the obey-the-grid contract.
+    // Honors `clamp` to keep an out-of-range value on the grid's endpoints.
+    constexpr void store_real(double v)
+    {
+      v = G.snap_double(v);
+      if constexpr ((P & clamp) == clamp)
+      {
+        const double lo = static_cast<double>(G.Interval.Lower);
+        const double hi = static_cast<double>(G.Interval.Upper);
+        v = v < lo ? lo : (v > hi ? hi : v);
+      }
+      Raw = v;
+    }
+
     template <numeric A>
     constexpr void store_value(A const& value)
     {
       if constexpr (detail::storage_of<bound> == detail::storage::real)
-        Raw = to_double(value);
+        store_real(to_double(value));
       else if constexpr (is_bound_v<A>)
       {
-        // A `real` (double-backed) source holds a full-precision double whose
-        // exact rational has a ~2^52 denominator — snapping that through the
-        // rational engine into a fine target grid overflows imax. Route it
-        // through double (nearbyint snap) instead; that is the value the real
-        // engine produced and the natural way to land it on the target grid.
+        // A `real` (double-backed) SOURCE holds its value directly as a `double`
+        // raw. The assignment engine reads a boundable source through the
+        // integer index/offset formula (Lower + raw·Notch), which misreads that
+        // double raw. Extract the true value as a double and route through the
+        // arithmetic-source path instead.
         if constexpr (detail::storage_of<A> == detail::storage::real)
           detail::assignment<bound, double>::assign(*this, detail::as_double(value), make_policy<P>());
         else
@@ -138,7 +165,7 @@ namespace bnd
     constexpr bound(A value, Pol&& pol)
     {
       if constexpr (detail::storage_of<bound> == detail::storage::real)
-        Raw = to_double(value);
+        store_real(to_double(value));
       else
         detail::assignment<bound, A>::assign(*this, value, pol);
     }

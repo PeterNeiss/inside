@@ -129,6 +129,23 @@ namespace bnd
     constexpr double raw_to_double(std::same_as<double> auto raw) const
     { return raw; }
 
+    // Snap a double to the nearest grid point `Lower + k·Notch`. `real`
+    // (double-backed) storage is only selected for dyadic grids (power-of-two
+    // notch and Lower), so every grid point is exactly representable in double
+    // and this snap is lossless — a `real` bound therefore obeys its grid just
+    // like an integer-backed one, it is merely stored/computed in `double`.
+    // A continuous grid (Notch == 0) has no grid to snap to, so `v` passes
+    // through. The integer-cast round stays `constexpr` and `<cmath>`-free.
+    constexpr double snap_double(double v) const
+    {
+      if (Notch == bnd::detail::rational{0}) return v;
+      const double lo = static_cast<double>(Interval.Lower);
+      const double nd = static_cast<double>(Notch);
+      const double q  = (v - lo) / nd;
+      const imax   k  = static_cast<imax>(q >= 0 ? q + 0.5 : q - 0.5);
+      return lo + static_cast<double>(k) * nd;
+    }
+
     static constexpr grid make_sentinel() noexcept
     { return grid{interval{bnd::detail::rational{0}, bnd::detail::rational{0}}, bnd::detail::rational::make_sentinel()}; }
   };

@@ -29,8 +29,10 @@ using db_t = bound<{{-24, 12}, notch<1, 2>}, round_nearest>;
 // (i.e. ~[0.063, 3.98]) with 1/65536 resolution — well below per-step audible.
 using gain_t = bound<{{0, 4}, notch<1, 65536>}, round_nearest>;
 
-// dB/20 intermediate: dB ∈ [-24, 12] → [-1.2, 0.6] with notch 1/40 (= 1/2 / 20).
-using db_div20_t = bound<{{frac<-6, 5>, frac<3, 5>}, notch<1, 40>}, round_nearest | real>;
+// dB/20 intermediate: dB ∈ [-24, 12] → [-1.2, 0.6]. `real` (the math operand
+// feeding pow_base<10>) requires a dyadic grid, so use a power-of-two notch and
+// integer endpoints (the 1/40 step is snapped onto 1/65536, far below audible).
+using db_div20_t = bound<{{-2, 1}, notch<1, 65536>}, round_nearest | real>;
 
 // Decibels → linear amplitude via 10^(dB/20). The library's pow_base<10>
 // derives log2(10) at compile time from its own log2 implementation, so the

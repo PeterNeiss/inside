@@ -74,14 +74,23 @@ TEST_CASE("dbl: end-to-end on real (double-backed) bounds", "[dbl][real]")
   using amp = bound<{{-1, 1}, notch<1, 65536>}, real>;
   static_assert(std::is_same_v<ang::raw_type, double>, "real bound must be double-backed in the default build");
 
-  // The value flows through at full double precision — no notch snap.
+  // A `real` bound obeys its grid: the value is stored in double but snapped to
+  // the notch (1/65536), so it matches std:: only to ~one notch — and it lands
+  // EXACTLY on a grid point (double engine = speed at grid precision, not an
+  // escape from the grid).
   ang x = 0.6;
   amp y = math::dbl::sin_core<amp>(x);
-  REQUIRE(std::fabs(double(y) - std::sin(0.6)) < 1e-15);
+  REQUIRE(std::fabs(double(y) - std::sin(0.6)) < 2.0 / 65536);   // ~one notch
+  const double scaled = double(y) * 65536.0;
+  REQUIRE(scaled == std::trunc(scaled));                         // exact grid point
 
   // sin(0) round-trips to exactly 0.
   ang z = 0.0;
   REQUIRE(double(math::dbl::sin_core<amp>(z)) == 0.0);
+
+  // the input snaps on the way in, too: 0.6 → nearest 1/65536.
+  const double xs = double(x) * 65536.0;
+  REQUIRE(xs == std::trunc(xs));
 }
 
 TEST_CASE("dbl: real-storage arithmetic composes (double, grid-typed)", "[dbl][real]")
@@ -102,10 +111,12 @@ TEST_CASE("dbl: real-storage arithmetic composes (double, grid-typed)", "[dbl][r
   static_assert(std::is_same_v<decltype(w)::raw_type, double>);
   static_assert(std::is_same_v<decltype(d)::raw_type, double>);
 
+  // Each operand and result snaps to its grid, so the composed value tracks the
+  // ideal to ~a notch (not full double precision — that's the grid's job).
   double sv = std::sin(0.6);
-  REQUIRE(std::fabs(double(y) - 2.5 * sv)       < 1e-15);
-  REQUIRE(std::fabs(double(w) - 3.5 * sv)       < 1e-15);
-  REQUIRE(std::fabs(double(d) - (sv - 0.1))     < 1e-15);
+  REQUIRE(std::fabs(double(y) - 2.5 * sv)       < 1e-4);
+  REQUIRE(std::fabs(double(w) - 3.5 * sv)       < 1e-4);
+  REQUIRE(std::fabs(double(d) - (sv - 0.1))     < 1e-4);
 
   REQUIRE((s > amp{0.5}));     // compares in double, no truncation
   REQUIRE((s == s));
@@ -150,8 +161,8 @@ TEST_CASE("dbl: circle<M> degree angle uses the double engine", "[dbl][real][cir
   math::amp<65536> y, c;
   math::sin(deg, y);
   math::cos(deg, c);
-  REQUIRE(std::fabs(double(y) - std::sin(47.0 * M_PI / 180.0)) < 1e-15);
-  REQUIRE(std::fabs(double(c) - std::cos(47.0 * M_PI / 180.0)) < 1e-15);
+  REQUIRE(std::fabs(double(y) - std::sin(47.0 * M_PI / 180.0)) < 2.0 / 65536);
+  REQUIRE(std::fabs(double(c) - std::cos(47.0 * M_PI / 180.0)) < 2.0 / 65536);
 
   // exact at cardinal degrees
   math::circle<360> d0 = 0.0, d180 = 180.0;

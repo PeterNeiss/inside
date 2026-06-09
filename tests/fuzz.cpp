@@ -78,7 +78,25 @@ template <boundable B>
 typename B::raw_type random_in_range_raw(std::mt19937_64& rng)
 {
   using raw = typename B::raw_type;
-  if constexpr (storage_of<B> != storage::offset)
+  if constexpr (storage_of<B> == storage::real)
+  {
+    // `real` (double-backed) bounds hold a grid point as a double — generate a
+    // random in-range grid point Lower + k·Notch (the integer-cast branch below
+    // would truncate a fractional Lower and land below range, e.g. log2 of ~0).
+    if constexpr (Notch<B> == rational{0})
+    {
+      std::uniform_real_distribution<double> dist(static_cast<double>(Lower<B>),
+                                                  static_cast<double>(Upper<B>));
+      return dist(rng);
+    }
+    else
+    {
+      std::uniform_int_distribution<umax> dist(0, NotchCount<B>);
+      return static_cast<double>(Lower<B>)
+           + static_cast<double>(dist(rng)) * static_cast<double>(Notch<B>);
+    }
+  }
+  else if constexpr (storage_of<B> != storage::offset)
   {
     auto lo = static_cast<imax>(Lower<B>);
     auto hi = static_cast<imax>(Upper<B>);
@@ -101,25 +119,23 @@ inline imax random_wide_int(std::mt19937_64& rng, imax span)
 template <boundable B>
 rational to_rational(B b) { return b; }
 
-// |a - b| <= tol, computed entirely in rationals (no float equality). The
-// transcendental oracles pass `rational{std::sin(x)}` etc. as `b` — converting
-// the std double result to a rational is exact, and the comparison stays in
-// the library's own arithmetic.
+// |a - b| <= tol. The math operand under the default engine is a `real` bound:
+// its value is a grid point (snapped, low-denominator) and converts to an exact
+// double, while the std:: oracle is a full-precision double. We compare in
+// double — subtracting two rationals whose denominators are 1/notch and ~2^52
+// would overflow imax. The args stay `rational` so every call site is unchanged.
 inline bool approx_le(rational a, rational b, rational tol)
 {
-  auto d = (a >= b) ? (a - b) : (b - a);
-  return d.has_value() && *d <= tol;
+  return std::fabs(static_cast<double>(a) - static_cast<double>(b))
+         <= static_cast<double>(tol);
 }
 
 // Relative tolerance for wide-range transcendentals (exp, pow): the allowed
 // error grows with the oracle's magnitude. allowed = abstol + rel*|oracle|.
 inline bool approx_rel(rational got, double oracle, double rel, rational abstol)
 {
-  rational orc{oracle};
-  auto d = (got >= orc) ? (got - orc) : (orc - got);
-  if (!d.has_value()) return false;
-  auto allowed = (abstol + rational{std::abs(oracle) * rel});
-  return allowed.has_value() && *d <= *allowed;
+  return std::fabs(static_cast<double>(got) - oracle)
+         <= static_cast<double>(abstol) + std::fabs(oracle) * rel;
 }
 
 //---------------------------------------------------------------------------
@@ -1130,11 +1146,10 @@ void prop_sqrt(fuzz_state& s, long iters)
   s.current_grid = "cmath";
   s.current_prop = "sqrt";
   const rational tol{4, 16384};            // ~2 output notches (double-rounding)
-  std::uniform_int_distribution<umax> rawdist(0, NotchCount<In>);
   for (long i = 0; i < iters; ++i)
   {
     s.iter = i;
-    In x = In::from_raw(static_cast<typename In::raw_type>(rawdist(s.rng)));
+    In x = In::from_raw(random_in_range_raw<In>(s.rng));
     rational xr = x;
     rational rr = Out{math::sqrt(x)};
     double   oracle = std::sqrt(static_cast<double>(xr));
