@@ -11,6 +11,7 @@
 // std:: is used only as the *reference* here (tests), never in the library.
 
 #include "bound/cmath_double.hpp"
+#include "bound/cmath.hpp"
 #include "bound/bound.hpp"
 
 #include <catch2/catch_test_macros.hpp>
@@ -115,6 +116,49 @@ TEST_CASE("dbl: real-storage arithmetic composes (double, grid-typed)", "[dbl][r
   auto q = a3 / b2;
   static_assert(std::is_same_v<decltype(q)::raw_type, double>);
   REQUIRE(double(q) == 1.5);
+}
+
+TEST_CASE("dbl: mixed-sign sqrt returns expected on the double engine", "[dbl][real]")
+{
+  // Interval crosses zero → the expected-returning overload. A non-negative
+  // runtime value yields the root; a negative value surfaces domain_error
+  // instead of UB.
+  using in  = bound<{{-4, 9}, notch<1, 65536>}, real>;
+
+  in nine = 9.0;
+  auto r = math::sqrt(nine);
+  REQUIRE(r.has_value());
+  REQUIRE(std::fabs(double(*r) - 3.0) < 1e-15);
+
+  in zero = 0.0;
+  auto r0 = math::sqrt(zero);
+  REQUIRE(r0.has_value());
+  REQUIRE(double(*r0) == 0.0);
+
+  in neg = -1.0;
+  auto rn = math::sqrt(neg);
+  REQUIRE_FALSE(rn.has_value());
+  REQUIRE(rn.error() == errc::domain_error);
+}
+
+TEST_CASE("dbl: circle<M> degree angle uses the double engine", "[dbl][real][circle]")
+{
+  static_assert(std::is_same_v<math::circle<360>::raw_type, double>, "circle must be double-backed in the default build");
+  static_assert(std::is_same_v<math::amp<65536>::raw_type, double>, "amp must be double-backed in the default build");
+
+  math::circle<360> deg = 47.0;
+  math::amp<65536> y, c;
+  math::sin(deg, y);
+  math::cos(deg, c);
+  REQUIRE(std::fabs(double(y) - std::sin(47.0 * M_PI / 180.0)) < 1e-15);
+  REQUIRE(std::fabs(double(c) - std::cos(47.0 * M_PI / 180.0)) < 1e-15);
+
+  // exact at cardinal degrees
+  math::circle<360> d0 = 0.0, d180 = 180.0;
+  math::amp<65536> s0, s180;
+  math::sin(d0, s0);  math::sin(d180, s180);
+  REQUIRE(double(s0) == 0.0);
+  REQUIRE(std::fabs(double(s180)) < 1e-15);
 }
 
 #endif // !BND_MATH_FIXED

@@ -21,7 +21,7 @@ using namespace bnd::detail;
 namespace
 {
   // Q.14 signed amplitude in [-1, 1]; same shape as audio_mixer's sample_t.
-  using sample_t = bound<{{-1, 1}, notch<1, 16384>}, round_nearest | clamp>;
+  using sample_t = bound<{{-1, 1}, notch<1, 16384>}, round_nearest | clamp | real>;
 
   // Helper: build a Q.16 turn-phase from a raw uint16 slot index.
   // `turns_t<N>` lives in `math::detail::` — the public sin/cos accept
@@ -291,8 +291,8 @@ TEST_CASE("bnd::math::cos: probe (informational)", "[cmath][cos][.probe]")
 //---------------------------------------------------------------------------
 namespace
 {
-  using sqrt_in_t  = bound<{{0, 4}, notch<1, 65536>}, round_nearest>;
-  using sqrt_out_t = bound<{{0, 2}, notch<1, 16384>}, round_nearest>;
+  using sqrt_in_t  = bound<{{0, 4}, notch<1, 65536>}, round_nearest | real>;
+  using sqrt_out_t = bound<{{0, 2}, notch<1, 16384>}, round_nearest | real>;
 
   constexpr sqrt_in_t sqrt_input(unsigned raw_q16)
   {
@@ -339,7 +339,7 @@ TEST_CASE("bnd::math::sqrt: probe (informational)", "[cmath][sqrt][.probe]")
 
 TEST_CASE("bnd::math::sqrt: mixed-sign input returns expected", "[cmath][sqrt][mixed_sign]")
 {
-  using signed_in = bound<{{-1, 1}, notch<1, 65536>}, round_nearest>;
+  using signed_in = bound<{{-1, 1}, notch<1, 65536>}, round_nearest | real>;
 
   // Non-negative runtime value → value with the usual Q.30 result.
   signed_in pos{0.25_r};
@@ -361,7 +361,7 @@ TEST_CASE("bnd::math::sqrt: mixed-sign input returns expected", "[cmath][sqrt][m
 
   // The non-negative overload (Lower == 0) returns bound directly; the
   // mixed-sign overload returns expected (not optional). Disjoint by `requires`.
-  using nonneg_in = bound<{{0, 1}, notch<1, 65536>}, round_nearest>;
+  using nonneg_in = bound<{{0, 1}, notch<1, 65536>}, round_nearest | real>;
   nonneg_in v{0.25_r};
   STATIC_REQUIRE_FALSE(is_slim_optional_v<decltype(math::sqrt(v))>);
   STATIC_REQUIRE_FALSE(is_slim_optional_v<decltype(math::sqrt(pos))>);
@@ -430,8 +430,8 @@ TEST_CASE("bnd::math::sqrt: bound-typed equality (decimal display)",
 //---------------------------------------------------------------------------
 namespace
 {
-  using exp2_in_t  = bound<{{-4, 4}, notch<1, 16384>}, round_nearest>;
-  using exp2_out_t = bound<{{0, 16}, notch<1, 16384>}, round_nearest>;
+  using exp2_in_t  = bound<{{-4, 4}, notch<1, 16384>}, round_nearest | real>;
+  using exp2_out_t = bound<{{0, 16}, notch<1, 16384>}, round_nearest | real>;
 
   constexpr exp2_in_t exp2_input(int raw_offset)
   {
@@ -498,8 +498,8 @@ TEST_CASE("bnd::math::exp2: probe (informational)", "[cmath][exp2][.probe]")
 //---------------------------------------------------------------------------
 namespace
 {
-  using log2_in_t  = bound<{{0x1p-8_r, 256}, notch<1, 16384>}, round_nearest>;
-  using log2_out_t = bound<{{-8, 8}, notch<1, 16384>}, round_nearest>;
+  using log2_in_t  = bound<{{0x1p-8_r, 256}, notch<1, 16384>}, round_nearest | real>;
+  using log2_out_t = bound<{{-8, 8}, notch<1, 16384>}, round_nearest | real>;
 
   constexpr log2_in_t log2_from(rational r) { return log2_in_t{r}; }
 
@@ -577,12 +577,12 @@ TEST_CASE("bnd::math::log2: probe (informational)", "[cmath][log2][.probe]")
 //---------------------------------------------------------------------------
 namespace
 {
-  using exp_in_t   = bound<{{-10, 10}, notch<1, 16384>}, round_nearest>;
-  using exp_out_t  = bound<{{0, 32768}, notch<1, 256>}, round_nearest>;
-  using log_in_t   = bound<{{0x1p-8_r, 256}, notch<1, 256>}, round_nearest>;
-  using log_out_t  = bound<{{-8, 8}, notch<1, 16384>}, round_nearest>;
-  using pow10_in_t = bound<{{-9, 9}, notch<1, 16384>}, round_nearest>;
-  using pow10_out_t = bound<{{0, 65536}, notch<1, 256>}, round_nearest>;
+  using exp_in_t   = bound<{{-10, 10}, notch<1, 16384>}, round_nearest | real>;
+  using exp_out_t  = bound<{{0, 32768}, notch<1, 256>}, round_nearest | real>;
+  using log_in_t   = bound<{{0x1p-8_r, 256}, notch<1, 256>}, round_nearest | real>;
+  using log_out_t  = bound<{{-8, 8}, notch<1, 16384>}, round_nearest | real>;
+  using pow10_in_t = bound<{{-9, 9}, notch<1, 16384>}, round_nearest | real>;
+  using pow10_out_t = bound<{{0, 65536}, notch<1, 256>}, round_nearest | real>;
 }
 
 TEST_CASE("bnd::math::exp: integer points", "[cmath][exp][constexpr]")
@@ -674,11 +674,11 @@ TEST_CASE("bnd::math: exp/log/pow_base decimal probe",
 //---------------------------------------------------------------------------
 namespace
 {
-  using atan2_in_t  = bound<{{-1, 1}, notch<1, 16384>}, round_nearest>;
+  using atan2_in_t  = bound<{{-1, 1}, notch<1, 16384>}, round_nearest | real>;
   // [-4, 4] is the smallest integer interval containing [-π, π] that divides
   // evenly by the notch (π is irrational, so the exact endpoints can't be a
   // grid bound against a rational notch).
-  using atan2_out_t = bound<{{-4, 4}, notch<1, 16384>}, round_nearest>;
+  using atan2_out_t = bound<{{-4, 4}, notch<1, 16384>}, round_nearest | real>;
 
   constexpr rational atan2_rad(rational y, rational x)
   { return rational{atan2_out_t{math::atan2(atan2_in_t{y}, atan2_in_t{x})}}; }
@@ -729,7 +729,7 @@ TEST_CASE("bnd::math::atan2: sin/cos round-trip",
   // Angle bound uses round integer endpoints that divide evenly by the
   // notch (the grid validator requires `(Upper - Lower) / Notch` be
   // integer). ±8 rad comfortably covers ±2π for sweep tests.
-  using angle_t = bound<{{-8, 8}, notch<1, 16384>}, round_nearest>;
+  using angle_t = bound<{{-8, 8}, notch<1, 16384>}, round_nearest | real>;
   const rational two_pi_r = math::detail::two_pi_r;
   for (unsigned i = 0; i < 16; ++i) {
     unsigned phase_raw = i * 1024;  // 0..15/16 turn in Q.14 raw
@@ -795,7 +795,7 @@ namespace
   // Output covers [-10, 10]: tan in this range corresponds to phases within
   // ~5.7° of the equator (well inside any quadrant). Narrower outputs would
   // trip the overflow branch at fewer "near-pole" inputs.
-  using tan_out_t = bound<{{-10, 10}, notch<1, 1024>}, round_nearest>;
+  using tan_out_t = bound<{{-10, 10}, notch<1, 1024>}, round_nearest | real>;
 
   constexpr math::detail::turns_t<16> tan_phase_from(unsigned raw)
   {
@@ -881,9 +881,9 @@ TEST_CASE("bnd::math::tan: probe (informational)", "[cmath][tan][.probe]")
 //---------------------------------------------------------------------------
 namespace
 {
-  using algeb_in_t  = bound<{{-8, 8}, notch<1, 16384>}, round_nearest>;
-  using algeb_abs_t = bound<{{0, 8}, notch<1, 16384>}, round_nearest>;
-  using algeb_int_t = bound<{{-8, 8}, notch<1>}, round_nearest>;
+  using algeb_in_t  = bound<{{-8, 8}, notch<1, 16384>}, round_nearest | real>;
+  using algeb_abs_t = bound<{{0, 8}, notch<1, 16384>}, round_nearest | real>;
+  using algeb_int_t = bound<{{-8, 8}, notch<1>}, round_nearest | real>;
 }
 
 TEST_CASE("bnd::math::abs", "[cmath][algebraic][constexpr]")
@@ -1121,7 +1121,7 @@ TEST_CASE("bnd::math::sin / cos: auto-deduced output",
   // Angle bound uses round integer endpoints that divide evenly by the
   // notch (the grid validator requires `(Upper - Lower) / Notch` be
   // integer). ±8 rad comfortably covers ±2π for sweep tests.
-  using angle_t = bound<{{-8, 8}, notch<1, 16384>}, round_nearest>;
+  using angle_t = bound<{{-8, 8}, notch<1, 16384>}, round_nearest | real>;
   using deduced = decltype(math::sin(angle_t{0}));
   static_assert(Lower<deduced> == -1);
   static_assert(Upper<deduced> == rational{ 1});
@@ -1150,8 +1150,8 @@ TEST_CASE("bnd::math::sin / cos: auto-deduced output",
 TEST_CASE("bnd::math::sin: radians identity points",
           "[cmath][sin][radians]")
 {
-  using angle_t = bound<{{-8, 8}, notch<1, 16384>}, round_nearest>;
-  using amp_t   = bound<{{-1, 1}, notch<1, 16384>}, round_nearest>;
+  using angle_t = bound<{{-8, 8}, notch<1, 16384>}, round_nearest | real>;
+  using amp_t   = bound<{{-1, 1}, notch<1, 16384>}, round_nearest | real>;
 
   constexpr rational half_pi = rational::div_unchecked(math::pi, 2_r);
 
@@ -1176,8 +1176,8 @@ TEST_CASE("bnd::math::sin: radians identity points",
 TEST_CASE("bnd::math::cos: radians identity points",
           "[cmath][cos][radians]")
 {
-  using angle_t = bound<{{-8, 8}, notch<1, 16384>}, round_nearest>;
-  using amp_t   = bound<{{-1, 1}, notch<1, 16384>}, round_nearest>;
+  using angle_t = bound<{{-8, 8}, notch<1, 16384>}, round_nearest | real>;
+  using amp_t   = bound<{{-1, 1}, notch<1, 16384>}, round_nearest | real>;
 
   constexpr rational half_pi = rational::div_unchecked(math::pi, 2_r);
 
@@ -1195,8 +1195,8 @@ TEST_CASE("bnd::math::cos: radians identity points",
 TEST_CASE("bnd::math::tan: radians identity points",
           "[cmath][tan][radians]")
 {
-  using angle_t = bound<{{-8, 8}, notch<1, 16384>}, round_nearest>;
-  using out_t   = bound<{{-10, 10}, notch<1, 1024>}, round_nearest>;
+  using angle_t = bound<{{-8, 8}, notch<1, 16384>}, round_nearest | real>;
+  using out_t   = bound<{{-10, 10}, notch<1, 1024>}, round_nearest | real>;
 
   constexpr rational pi_over_4 = rational::div_unchecked(math::pi, 4_r);
 
@@ -1239,7 +1239,7 @@ TEST_CASE("bnd::math: full auto-form chain", "[cmath][auto]")
   // Angle bound uses round integer endpoints that divide evenly by the
   // notch (the grid validator requires `(Upper - Lower) / Notch` be
   // integer). ±8 rad comfortably covers ±2π for sweep tests.
-  using angle_t = bound<{{-8, 8}, notch<1, 16384>}, round_nearest>;
+  using angle_t = bound<{{-8, 8}, notch<1, 16384>}, round_nearest | real>;
   constexpr rational pi_over_4 = rational::div_unchecked(math::pi, 4_r);
   angle_t p{pi_over_4};              // π/4 → expect sin = cos = √2/2
 
@@ -1303,10 +1303,10 @@ TEST_CASE("bnd::math: decimal probe at the bound level",
 //---------------------------------------------------------------------------
 namespace
 {
-  using inv_in2_t = bound<{{-1, 1}, notch<1, 1048576>}, round_nearest>;
-  using hyp_in_t  = bound<{{-10, 10}, notch<1, 65536>}, round_nearest>;  // sinh/cosh/tanh envelope
-  using cbrt_in_t = bound<{{-16, 16}, notch<1, 65536>}, round_nearest>;  // cbrt (wider envelope)
-  using pos_in2_t = bound<{{1, 1024}, notch<1, 65536>}, round_nearest>;
+  using inv_in2_t = bound<{{-1, 1}, notch<1, 1048576>}, round_nearest | real>;
+  using hyp_in_t  = bound<{{-10, 10}, notch<1, 65536>}, round_nearest | real>;  // sinh/cosh/tanh envelope
+  using cbrt_in_t = bound<{{-16, 16}, notch<1, 65536>}, round_nearest | real>;  // cbrt (wider envelope)
+  using pos_in2_t = bound<{{1, 1024}, notch<1, 65536>}, round_nearest | real>;
 
   // True references from the library's own π.
   constexpr rational kPi_x     = math::detail::pi_r;
@@ -1371,7 +1371,7 @@ TEST_CASE("bnd::math::cbrt: exact and signed", "[cmath][cbrt][constexpr]")
 
 TEST_CASE("bnd::math::hypot: Pythagorean", "[cmath][hypot]")
 {
-  using h_t = bound<{{-16, 16}, notch<1, 65536>}, round_nearest>;
+  using h_t = bound<{{-16, 16}, notch<1, 65536>}, round_nearest | real>;
   REQUIRE(approx(rational{math::hypot(h_t{3}, h_t{4})},  rational{5}));
   REQUIRE(approx(rational{math::hypot(h_t{5}, h_t{12})}, rational{13}));
   REQUIRE(approx(rational{math::hypot(h_t{0}, h_t{0})},  rational{0}));
@@ -1380,8 +1380,8 @@ TEST_CASE("bnd::math::hypot: Pythagorean", "[cmath][hypot]")
 
 TEST_CASE("bnd::math::pow: base^exp with expected", "[cmath][pow]")
 {
-  using b_t = bound<{{1, 16}, notch<1, 65536>}, round_nearest>;
-  using e_t = bound<{{-8, 16}, notch<1, 65536>}, round_nearest>;
+  using b_t = bound<{{1, 16}, notch<1, 65536>}, round_nearest | real>;
+  using e_t = bound<{{-8, 16}, notch<1, 65536>}, round_nearest | real>;
   auto p1 = math::pow(b_t{2}, e_t{10});      // 1024
   REQUIRE(p1.has_value());
   REQUIRE(approx(rational{*p1}, rational{1024}));

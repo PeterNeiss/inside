@@ -110,6 +110,16 @@ namespace bnd
       else                                                        return storage::offset;
     }();
 
+    // Ungated double view of any bound, for the `real` arithmetic arms. Unlike
+    // the public `operator double()` (gated on a rounding policy flag), this is
+    // always available — a `real` result may take operands of any policy,
+    // including strict `just<>` constants. It is the same conversion the public
+    // operator performs (`grid::raw_to_double`), minus the policy gate; for
+    // real-storage operands it returns the stored `double` directly.
+    template <boundable B>
+    [[nodiscard]] constexpr double as_double(B const& b) noexcept
+    { return Grid<B>.raw_to_double(b.raw()); }
+
     template <boundable B>
     using negative = bound<-Grid<B>, BoundPolicy<B>>;
 

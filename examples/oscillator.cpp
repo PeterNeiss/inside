@@ -24,7 +24,7 @@ int main()
 {
   // Radians-valued angle bound covering one full cycle. ±8 rad is wider
   // than 2π so the conversion result always fits without saturation.
-  using angle_t = bound<{{-8, 8}, notch<1, 16384>}, round_nearest>;
+  using angle_t = bound<{{-8, 8}, notch<1, 16384>}, round_nearest | real>;
 
   // 2π / 65536 — the radians-per-slot for a uint16 phase counter, as a
   // compile-time point-bound. Multiplying the phase (lifted into a bound) by

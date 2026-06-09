@@ -1125,7 +1125,7 @@ void prop_cmath_exact(fuzz_state& s, long iters)
 
 void prop_sqrt(fuzz_state& s, long iters)
 {
-  using In  = bound<{{0, 4}, notch<1, 65536>}, round_nearest>;
+  using In  = bound<{{0, 4}, notch<1, 65536>}, round_nearest | real>;
   using Out = bound<{{0, 2}, notch<1, 16384>}, round_nearest>;
   s.current_grid = "cmath";
   s.current_prop = "sqrt";
@@ -1143,7 +1143,7 @@ void prop_sqrt(fuzz_state& s, long iters)
 
   // Mixed-sign overload returns slim::expected (domain_error for negatives).
   s.current_prop = "sqrt_signed";
-  using SIn = bound<{{-1, 1}, notch<1, 65536>}, round_nearest>;
+  using SIn = bound<{{-1, 1}, notch<1, 65536>}, round_nearest | real>;
   for (long i = 0; i < iters; ++i)
   {
     s.iter = i;
@@ -1161,7 +1161,7 @@ void prop_sqrt(fuzz_state& s, long iters)
 
 void prop_sin_cos(fuzz_state& s, long iters)
 {
-  using A = bound<{{-8, 8}, notch<1, 16384>}, round_nearest>;
+  using A = bound<{{-8, 8}, notch<1, 16384>}, round_nearest | real>;
   s.current_grid = "cmath";
   s.current_prop = "sin_cos";
   const rational tol{8, 16384};
@@ -1182,7 +1182,7 @@ void prop_sin_cos(fuzz_state& s, long iters)
 
 void prop_tan(fuzz_state& s, long iters)
 {
-  using A = bound<{{-8, 8}, notch<1, 16384>}, round_nearest>;
+  using A = bound<{{-8, 8}, notch<1, 16384>}, round_nearest | real>;
   s.current_grid = "cmath";
   s.current_prop = "tan";
   const rational tol{16, 1024};
@@ -1211,7 +1211,7 @@ void prop_exp_log(fuzz_state& s, long iters)
   s.current_grid = "cmath";
 
   {
-    using In = bound<{{-4, 4}, notch<1, 16384>}, round_nearest>;
+    using In = bound<{{-4, 4}, notch<1, 16384>}, round_nearest | real>;
     s.current_prop = "exp2";
     for (long i = 0; i < iters; ++i)
     {
@@ -1223,7 +1223,7 @@ void prop_exp_log(fuzz_state& s, long iters)
     }
   }
   {
-    using In = bound<{{0x1p-8_r, 256}, notch<1, 16384>}, round_nearest>;
+    using In = bound<{{0x1p-8_r, 256}, notch<1, 16384>}, round_nearest | real>;
     s.current_prop = "log2";
     for (long i = 0; i < iters; ++i)
     {
@@ -1235,7 +1235,7 @@ void prop_exp_log(fuzz_state& s, long iters)
     }
   }
   {
-    using In = bound<{{-10, 10}, notch<1, 16384>}, round_nearest>;
+    using In = bound<{{-10, 10}, notch<1, 16384>}, round_nearest | real>;
     s.current_prop = "exp";
     for (long i = 0; i < iters; ++i)
     {
@@ -1247,7 +1247,7 @@ void prop_exp_log(fuzz_state& s, long iters)
     }
   }
   {
-    using In = bound<{{0x1p-8_r, 256}, notch<1, 256>}, round_nearest>;
+    using In = bound<{{0x1p-8_r, 256}, notch<1, 256>}, round_nearest | real>;
     s.current_prop = "log";
     for (long i = 0; i < iters; ++i)
     {
@@ -1260,7 +1260,7 @@ void prop_exp_log(fuzz_state& s, long iters)
     }
   }
   {
-    using In = bound<{{-9, 9}, notch<1, 16384>}, round_nearest>;
+    using In = bound<{{-9, 9}, notch<1, 16384>}, round_nearest | real>;
     s.current_prop = "pow_base";
     for (long i = 0; i < iters; ++i)
     {
@@ -1277,7 +1277,7 @@ void prop_exp_log(fuzz_state& s, long iters)
 
 void prop_atan2(fuzz_state& s, long iters)
 {
-  using In = bound<{{-1, 1}, notch<1, 16384>}, round_nearest>;
+  using In = bound<{{-1, 1}, notch<1, 16384>}, round_nearest | real>;
   s.current_grid = "cmath";
   s.current_prop = "atan2";
   const rational tol{16, 16384};          // radians: a few output notches
@@ -1304,7 +1304,7 @@ void prop_extended_math(fuzz_state& s, long iters)
 
   // Inverse trig — input [-1, 1], output radians.
   {
-    using In = bound<{{-1, 1}, notch<1, 65536>}, round_nearest>;
+    using In = bound<{{-1, 1}, notch<1, 65536>}, round_nearest | real>;
     for (long i = 0; i < iters; ++i)
     {
       s.iter = i;
@@ -1321,7 +1321,7 @@ void prop_extended_math(fuzz_state& s, long iters)
 
   // Hyperbolic — input [-10, 10].
   {
-    using In = bound<{{-10, 10}, notch<1, 65536>}, round_nearest>;
+    using In = bound<{{-10, 10}, notch<1, 65536>}, round_nearest | real>;
     for (long i = 0; i < iters; ++i)
     {
       s.iter = i;
@@ -1338,7 +1338,7 @@ void prop_extended_math(fuzz_state& s, long iters)
 
   // log10 — input (0, 1024].
   {
-    using In = bound<{{1, 1024}, notch<1, 65536>}, round_nearest>;
+    using In = bound<{{1, 1024}, notch<1, 65536>}, round_nearest | real>;
     s.current_prop = "log10";
     for (long i = 0; i < iters; ++i)
     {
@@ -1351,7 +1351,7 @@ void prop_extended_math(fuzz_state& s, long iters)
 
   // cbrt — signed input.
   {
-    using In = bound<{{-16, 16}, notch<1, 65536>}, round_nearest>;
+    using In = bound<{{-16, 16}, notch<1, 65536>}, round_nearest | real>;
     s.current_prop = "cbrt";
     for (long i = 0; i < iters; ++i)
     {
@@ -1364,7 +1364,7 @@ void prop_extended_math(fuzz_state& s, long iters)
 
   // hypot — two signed inputs.
   {
-    using In = bound<{{-16, 16}, notch<1, 65536>}, round_nearest>;
+    using In = bound<{{-16, 16}, notch<1, 65536>}, round_nearest | real>;
     s.current_prop = "hypot";
     for (long i = 0; i < iters; ++i)
     {
@@ -1379,8 +1379,8 @@ void prop_extended_math(fuzz_state& s, long iters)
 
   // pow — positive base, returns expected.
   {
-    using B = bound<{{1, 16}, notch<1, 65536>}, round_nearest>;
-    using E = bound<{{-4, 8}, notch<1, 65536>}, round_nearest>;
+    using B = bound<{{1, 16}, notch<1, 65536>}, round_nearest | real>;
+    using E = bound<{{-4, 8}, notch<1, 65536>}, round_nearest | real>;
     s.current_prop = "pow";
     for (long i = 0; i < iters; ++i)
     {

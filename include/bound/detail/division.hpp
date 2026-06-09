@@ -105,7 +105,7 @@ namespace bnd::detail
     if constexpr (storage_of<result> == storage::real)
     {
       (void)policy; (void)action;
-      return result::from_raw(static_cast<double>(lhs) / static_cast<double>(rhs));
+      return result::from_raw(as_double(lhs) / as_double(rhs));
     }
     else
     {

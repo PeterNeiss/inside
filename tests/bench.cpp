@@ -454,16 +454,16 @@ void bench_round_nearest()
 //---------------------------------------------------------------------------
 void bench_cmath()
 {
-  using algeb_t = bound<{{-8, 8}, notch<1, 16384>}, round_nearest>;
-  using sqrt_in_t = bound<{{0, 4}, notch<1, 65536>}, round_nearest>;
-  using exp2_in_t = bound<{{-4, 4}, notch<1, 16384>}, round_nearest>;
-  using log2_in_t = bound<{{0x1p-8_r, 256}, notch<1, 16384>}, round_nearest>;
-  using exp_in_t  = bound<{{-10, 10}, notch<1, 16384>}, round_nearest>;
-  using log_in_t  = bound<{{0x1p-8_r, 256}, notch<1, 256>}, round_nearest>;
-  using pow_in_t  = bound<{{-9, 9}, notch<1, 16384>}, round_nearest>;
-  using angle_t   = bound<{{-8, 8}, notch<1, 16384>}, round_nearest>;
-  using tan_in_t  = bound<{{-0.75_r, 0.75_r}, notch<1, 16384>}, round_nearest>;
-  using atan2_in_t= bound<{{-1, 1}, notch<1, 16384>}, round_nearest>;
+  using algeb_t = bound<{{-8, 8}, notch<1, 16384>}, round_nearest | real>;
+  using sqrt_in_t = bound<{{0, 4}, notch<1, 65536>}, round_nearest | real>;
+  using exp2_in_t = bound<{{-4, 4}, notch<1, 16384>}, round_nearest | real>;
+  using log2_in_t = bound<{{0x1p-8_r, 256}, notch<1, 16384>}, round_nearest | real>;
+  using exp_in_t  = bound<{{-10, 10}, notch<1, 16384>}, round_nearest | real>;
+  using log_in_t  = bound<{{0x1p-8_r, 256}, notch<1, 256>}, round_nearest | real>;
+  using pow_in_t  = bound<{{-9, 9}, notch<1, 16384>}, round_nearest | real>;
+  using angle_t   = bound<{{-8, 8}, notch<1, 16384>}, round_nearest | real>;
+  using tan_in_t  = bound<{{-0.75_r, 0.75_r}, notch<1, 16384>}, round_nearest | real>;
+  using atan2_in_t= bound<{{-1, 1}, notch<1, 16384>}, round_nearest | real>;
   using fmod_x_t  = bound<{{-8, 8}, notch<1, 16384>}, round_nearest>;
   using fmod_y_t  = bound<{{0.25_r, 4}, notch<1, 16384>}, round_nearest>;
 

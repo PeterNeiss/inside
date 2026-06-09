@@ -30,7 +30,7 @@ using db_t = bound<{{-24, 12}, notch<1, 2>}, round_nearest>;
 using gain_t = bound<{{0, 4}, notch<1, 65536>}, round_nearest>;
 
 // dB/20 intermediate: dB ∈ [-24, 12] → [-1.2, 0.6] with notch 1/40 (= 1/2 / 20).
-using db_div20_t = bound<{{frac<-6, 5>, frac<3, 5>}, notch<1, 40>}, round_nearest>;
+using db_div20_t = bound<{{frac<-6, 5>, frac<3, 5>}, notch<1, 40>}, round_nearest | real>;
 
 // Decibels → linear amplitude via 10^(dB/20). The library's pow_base<10>
 // derives log2(10) at compile time from its own log2 implementation, so the
@@ -62,7 +62,7 @@ int main()
 
   using time_t    = bound<{{ 0,  1}, notch<1,     N>}, round_nearest>;
   using offset_t  = bound<{{-2,  2}, notch<1, 16384>}, round_nearest>;
-  using angle_t   = bound<{{-4, 10}, notch<1, 16384>}, round_nearest>;
+  using angle_t   = bound<{{-4, 10}, notch<1, 16384>}, round_nearest | real>;
   using gainfac_t = bound<{{ 0,  1}, notch<1,  1024>}, round_nearest>;
 
   constexpr offset_t offsets[4] =

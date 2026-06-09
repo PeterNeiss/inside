@@ -23,17 +23,39 @@
 #endif
 
 //---------------------------------------------------------------------------
-// bnd::math — integer-only constexpr transcendentals for `bound`/`rational`.
+// bnd::math — one transcendental API, two interchangeable engines.
 //
 // =====================================================================
-//   BIT-EXACT REPRODUCIBILITY CONTRACT
+//   TWO ENGINES, SELECTED AT BUILD TIME
 // =====================================================================
-// Every function in this header must produce bit-identical output for the
-// same input across compiler (gcc/clang/msvc), platform (x86/ARM/RISC-V/
-// WASM), optimisation level, and build flags (`-ffast-math`, FMA on/off,
-// strict vs. fast FP, etc.). Downstream code relies on this for fuzzing
-// corpora, record-and-replay debugging, networked deterministic simulation,
-// and cross-platform regression testing.
+// `bnd::math::sin/cos/exp/...` present a single API; the engine is chosen by
+// the `BND_MATH_FIXED` macro (CMake `-DBOUND_MATH_FIXED=ON`):
+//
+//   * DEFAULT — the double engine (`cmath_double.hpp`). Hardware `double`
+//     polynomials (`std::fma`, hex-float coeffs, Cody-Waite reduction) on
+//     double-backed (`real`) bounds. Reproducible *under the IEEE-754 contract*:
+//     bit-identical on any IEEE-754 binary64 platform built WITHOUT
+//     `-ffast-math`. Fast (~ns); requires an FPU. The math functions are
+//     runtime here (std::fma isn't constexpr before C++23).
+//
+//   * `BND_MATH_FIXED` — the integer/CORDIC engine (this file's cores). The
+//     contract below: UNCONDITIONALLY bit-identical (any platform/flags, no
+//     FPU). FPU-free and `constexpr`. For embedded / maximum portability.
+//
+// The two are feature-equivalent: same function set, signatures, and domains.
+// The integer-engine bit-exact contract that follows applies to the
+// `BND_MATH_FIXED` build (tested by test_cmath.cpp); the double engine's
+// contract lives at the top of cmath_double.hpp (tested by test_cmath_double).
+//
+// =====================================================================
+//   INTEGER (CORDIC) ENGINE — BIT-EXACT REPRODUCIBILITY CONTRACT
+// =====================================================================
+// Every function below must produce bit-identical output for the same input
+// across compiler (gcc/clang/msvc), platform (x86/ARM/RISC-V/WASM),
+// optimisation level, and build flags (`-ffast-math`, FMA on/off, strict vs.
+// fast FP, etc.). Downstream code relies on this for fuzzing corpora,
+// record-and-replay debugging, networked deterministic simulation, and
+// cross-platform regression testing.
 //
 // Requirements that uphold the contract:
 //   1. NO `<cmath>`, NO FPU dependency, NO platform intrinsics. Hot paths
@@ -71,6 +93,23 @@ namespace bnd::math
     inline constexpr bnd::detail::rational pi_r{1068966896, 340262731};
     inline constexpr bnd::detail::rational two_pi_r =
         bnd::detail::rational::mul_unchecked(pi_r, bnd::detail::rational{2});
+
+    // Every transcendental operand must carry the `real` policy flag. `real`
+    // marks a bound as a math operand: under the default engine it selects
+    // double-backed storage (fast, no integer-index I/O) on a dyadic grid;
+    // under BND_MATH_FIXED it is integer round_nearest. Requiring it on the
+    // public surface keeps the two engines' call sites identical and prevents
+    // silently routing math through the slow integer-I/O path. Pure grid ops
+    // (abs/floor/ceil/round/trunc/fmod) do NOT require it — they have no
+    // engine and act on any bound.
+    template <boundable In>
+    consteval bool require_real() noexcept
+    {
+      static_assert((BoundPolicy<In> & real) == real,
+          "bnd::math: transcendental operand must carry the `real` policy — "
+          "declare it as bound<G, real> (or add `| real` to its policy).");
+      return true;
+    }
   }
 
   // Public irrational constants as POINT-BOUNDS, so they compose directly in
@@ -1066,6 +1105,7 @@ namespace bnd::math
     requires (Lower<In> == bnd::detail::rational{0})
   [[nodiscard]] BND_MATH_FN auto sqrt(In x) noexcept
   {
+    static_assert(detail::require_real<In>());
 #ifdef BND_MATH_FIXED
     return sqrt_impl<detail::sqrt_auto_t<In>>(x);
 #else
@@ -1078,12 +1118,24 @@ namespace bnd::math
   // `unexpected(errc::domain_error)` instead of UB.
   template <boundable In>
     requires (Lower<In> < bnd::detail::rational{0})
-  [[nodiscard]] constexpr auto sqrt(In x) noexcept
-  { return sqrt_signed_impl<detail::sqrt_signed_auto_t<In>>(x); }
+  [[nodiscard]] BND_MATH_FN auto sqrt(In x) noexcept
+  {
+    static_assert(detail::require_real<In>());
+    using Out = detail::sqrt_signed_auto_t<In>;
+#ifdef BND_MATH_FIXED
+    return sqrt_signed_impl<Out>(x);
+#else
+    double v = static_cast<double>(x);
+    if (v < 0.0)
+      return slim::expected<Out, errc>{slim::unexpected(errc::domain_error)};
+    return slim::expected<Out, errc>{Out{dbl::detail::d_sqrt(v)}};
+#endif
+  }
 
   template <boundable In>
   [[nodiscard]] BND_MATH_FN auto exp2(In x) noexcept
   {
+    static_assert(detail::require_real<In>());
 #ifdef BND_MATH_FIXED
     return exp2_impl<detail::exp2_auto_t<In>>(x);
 #else
@@ -1094,6 +1146,7 @@ namespace bnd::math
   template <boundable In>
   [[nodiscard]] BND_MATH_FN auto log2(In x) noexcept
   {
+    static_assert(detail::require_real<In>());
 #ifdef BND_MATH_FIXED
     return log2_impl<detail::log2_auto_t<In>>(x);
 #else
@@ -1104,6 +1157,7 @@ namespace bnd::math
   template <boundable In>
   [[nodiscard]] BND_MATH_FN auto exp(In x) noexcept
   {
+    static_assert(detail::require_real<In>());
 #ifdef BND_MATH_FIXED
     return exp_impl<detail::exp_auto_t<In>>(x);
 #else
@@ -1114,6 +1168,7 @@ namespace bnd::math
   template <boundable In>
   [[nodiscard]] BND_MATH_FN auto log(In x) noexcept
   {
+    static_assert(detail::require_real<In>());
 #ifdef BND_MATH_FIXED
     return log_impl<detail::log_auto_t<In>>(x);
 #else
@@ -1122,8 +1177,16 @@ namespace bnd::math
   }
 
   template <imax Base, boundable In>
-  [[nodiscard]] constexpr auto pow_base(In x) noexcept
-  { return pow_base_impl<Base, detail::pow_base_auto_t<Base, In>>(x); }
+  [[nodiscard]] BND_MATH_FN auto pow_base(In x) noexcept
+  {
+    static_assert(detail::require_real<In>());
+    using Out = detail::pow_base_auto_t<Base, In>;
+#ifdef BND_MATH_FIXED
+    return pow_base_impl<Base, Out>(x);
+#else
+    return Out{dbl::detail::d_pow(static_cast<double>(Base), static_cast<double>(x))};
+#endif
+  }
 
   //---------------------------------------------------------------------------
   // Auto-deducing forms — trig + atan2 + tan + fmod.
@@ -1166,6 +1229,7 @@ namespace bnd::math
   template <boundable In>
   [[nodiscard]] BND_MATH_FN auto sin(In angle) noexcept
   {
+    static_assert(detail::require_real<In>());
 #ifdef BND_MATH_FIXED
     return sin_impl<detail::sin_auto_t<In>>(angle);
 #else
@@ -1176,6 +1240,7 @@ namespace bnd::math
   template <boundable In>
   [[nodiscard]] BND_MATH_FN auto cos(In angle) noexcept
   {
+    static_assert(detail::require_real<In>());
 #ifdef BND_MATH_FIXED
     return cos_impl<detail::cos_auto_t<In>>(angle);
 #else
@@ -1186,6 +1251,7 @@ namespace bnd::math
   template <boundable In>
   [[nodiscard]] BND_MATH_FN auto atan2(In y, In x) noexcept
   {
+    static_assert(detail::require_real<In>());
 #ifdef BND_MATH_FIXED
     return atan2_impl<detail::atan2_auto_t<In>>(y, x);
 #else
@@ -1194,8 +1260,23 @@ namespace bnd::math
   }
 
   template <boundable In>
-  [[nodiscard]] constexpr auto tan(In angle) noexcept
-  { return tan_impl<detail::tan_auto_t<In>>(angle); }
+  [[nodiscard]] BND_MATH_FN auto tan(In angle) noexcept
+  {
+    static_assert(detail::require_real<In>());
+    using Out = detail::tan_auto_t<In>;
+#ifdef BND_MATH_FIXED
+    return tan_impl<Out>(angle);
+#else
+    double x = static_cast<double>(angle);
+    double c = dbl::detail::d_cos(x);
+    if (c == 0.0)
+      return slim::expected<Out, errc>{slim::unexpected(errc::division_by_zero)};
+    double t = dbl::detail::d_sin(x) / c;
+    if (t < static_cast<double>(Lower<Out>) || t > static_cast<double>(Upper<Out>))
+      return slim::expected<Out, errc>{slim::unexpected(errc::overflow)};
+    return slim::expected<Out, errc>{Out{t}};
+#endif
+  }
 
   template <boundable InX, boundable InY>
   [[nodiscard]] constexpr auto fmod(InX x, InY y) noexcept
@@ -1223,14 +1304,14 @@ namespace bnd::math
   using circle = bound<{{bnd::detail::rational{0},
                          bnd::detail::rational{std::uint64_t{360} * (M - 1),
                                                static_cast<imax>(M)}},
-                        notch<360, static_cast<imax>(M)>}, round_nearest | wrap>;
+                        notch<360, static_cast<imax>(M)>}, real | wrap>;
 
   // Amplitude output grid: [-1, 1] at 1/K resolution. The natural target for
   // `sin(circle<M>, amp<K>&)` — angle precision (M) and amplitude precision (K)
   // are chosen independently.
   template <std::uint64_t K>
   using amp = bound<{{bnd::detail::rational{-1}, bnd::detail::rational{1}},
-                     notch<1, static_cast<imax>(K)>}, round_nearest>;
+                     notch<1, static_cast<imax>(K)>}, real>;
 
   namespace detail
   {
@@ -1280,6 +1361,9 @@ namespace bnd::math
                     "bnd::math: circle angle must have Lower 0 (degrees)");
       static_assert((BoundPolicy<DEG> & wrap) == wrap,
                     "bnd::math: circle angle must carry the wrap policy");
+      static_assert((BoundPolicy<DEG> & real) == real,
+                    "bnd::math: circle angle must carry the `real` policy "
+                    "(circle<M> already does; custom angle bounds must add `| real`)");
       static_assert(circle_slots<DEG> % 4 == 0,
                     "bnd::math: circle slot count M must be divisible by 4");
       return true;
@@ -1291,31 +1375,40 @@ namespace bnd::math
   // lets AMP be deduced from the caller's object and reuses its assignment
   // policy for the final rounding onto the amplitude grid.
   template <boundable DEG, boundable AMP>
-  constexpr void sin(DEG angle, AMP& out) noexcept
+  BND_MATH_FN void sin(DEG angle, AMP& out) noexcept
   {
     static_assert(detail::valid_circle<DEG>());
+#ifdef BND_MATH_FIXED
     constexpr imax M = detail::circle_slots<DEG>;
     constexpr int  W = detail::working_bits<AMP>();
     out = detail::sin_slot<M, W>(static_cast<imax>(angle.raw()));
+#else
+    out = dbl::detail::d_sin(static_cast<double>(angle) * (dbl::detail::kPi / 180.0));
+#endif
   }
 
   // cos(angle) → out. cos(x) = sin(x + ¼ turn): shift the slot by M/4.
   template <boundable DEG, boundable AMP>
-  constexpr void cos(DEG angle, AMP& out) noexcept
+  BND_MATH_FN void cos(DEG angle, AMP& out) noexcept
   {
     static_assert(detail::valid_circle<DEG>());
+#ifdef BND_MATH_FIXED
     constexpr imax M = detail::circle_slots<DEG>;
     constexpr int  W = detail::working_bits<AMP>();
     out = detail::sin_slot<M, W>(static_cast<imax>(angle.raw()) + M / 4);
+#else
+    out = dbl::detail::d_cos(static_cast<double>(angle) * (dbl::detail::kPi / 180.0));
+#endif
   }
 
   // tan(angle) → out = sin/cos. Returns false (and leaves out untouched) when
   // the angle lands exactly on a pole (cos == 0); overflow of the amplitude
   // grid is handled by out's own policy (e.g. clamp).
   template <boundable DEG, boundable AMP>
-  [[nodiscard]] constexpr bool tan(DEG angle, AMP& out) noexcept
+  [[nodiscard]] BND_MATH_FN bool tan(DEG angle, AMP& out) noexcept
   {
     static_assert(detail::valid_circle<DEG>());
+#ifdef BND_MATH_FIXED
     constexpr imax M = detail::circle_slots<DEG>;
     constexpr int  W = detail::working_bits<AMP>();
     imax i = static_cast<imax>(angle.raw());
@@ -1323,6 +1416,13 @@ namespace bnd::math
     if (c == 0) return false;                                  // pole
     out = (detail::sin_slot<M, W>(i) / c).value();             // sin / cos
     return true;
+#else
+    double rad = static_cast<double>(angle) * (dbl::detail::kPi / 180.0);
+    double c = dbl::detail::d_cos(rad);
+    if (c == 0.0) return false;                                // pole
+    out = dbl::detail::d_sin(rad) / c;
+    return true;
+#endif
   }
 
   //===========================================================================
@@ -1655,6 +1755,7 @@ namespace bnd::math
   template <boundable In>
   [[nodiscard]] BND_MATH_FN auto atan(In x) noexcept
   {
+    static_assert(detail::require_real<In>());
 #ifdef BND_MATH_FIXED
     return atan_impl<detail::atan_auto_t<In>>(x);
 #else
@@ -1665,6 +1766,7 @@ namespace bnd::math
   template <boundable In>
   [[nodiscard]] BND_MATH_FN auto asin(In x) noexcept
   {
+    static_assert(detail::require_real<In>());
 #ifdef BND_MATH_FIXED
     return asin_impl<detail::asin_auto_t<In>>(x);
 #else
@@ -1675,6 +1777,7 @@ namespace bnd::math
   template <boundable In>
   [[nodiscard]] BND_MATH_FN auto acos(In x) noexcept
   {
+    static_assert(detail::require_real<In>());
 #ifdef BND_MATH_FIXED
     return acos_impl<detail::acos_auto_t<In>>(x);
 #else
@@ -1685,6 +1788,7 @@ namespace bnd::math
   template <boundable In>
   [[nodiscard]] BND_MATH_FN auto sinh(In x) noexcept
   {
+    static_assert(detail::require_real<In>());
 #ifdef BND_MATH_FIXED
     return sinh_impl<detail::sinh_auto_t<In>>(x);
 #else
@@ -1695,6 +1799,7 @@ namespace bnd::math
   template <boundable In>
   [[nodiscard]] BND_MATH_FN auto cosh(In x) noexcept
   {
+    static_assert(detail::require_real<In>());
 #ifdef BND_MATH_FIXED
     return cosh_impl<detail::cosh_auto_t<In>>(x);
 #else
@@ -1705,6 +1810,7 @@ namespace bnd::math
   template <boundable In>
   [[nodiscard]] BND_MATH_FN auto tanh(In x) noexcept
   {
+    static_assert(detail::require_real<In>());
 #ifdef BND_MATH_FIXED
     return tanh_impl<detail::tanh_auto_t<In>>(x);
 #else
@@ -1715,6 +1821,7 @@ namespace bnd::math
   template <boundable In>
   [[nodiscard]] BND_MATH_FN auto log10(In x) noexcept
   {
+    static_assert(detail::require_real<In>());
 #ifdef BND_MATH_FIXED
     return log10_impl<detail::log10_auto_t<In>>(x);
 #else
@@ -1725,6 +1832,7 @@ namespace bnd::math
   template <boundable In>
   [[nodiscard]] BND_MATH_FN auto cbrt(In x) noexcept
   {
+    static_assert(detail::require_real<In>());
 #ifdef BND_MATH_FIXED
     return cbrt_impl<detail::cbrt_auto_t<In>>(x);
 #else
@@ -1734,12 +1842,29 @@ namespace bnd::math
 
   template <boundable InX, boundable InY>
   [[nodiscard]] constexpr auto hypot(InX x, InY y) noexcept
-  { return hypot_impl<detail::hypot_auto_t<InX, InY>>(x, y); }
+  {
+    static_assert(detail::require_real<InX>() && detail::require_real<InY>());
+    return hypot_impl<detail::hypot_auto_t<InX, InY>>(x, y);
+  }
 
   template <boundable InB, boundable InE>
     requires (Lower<InB> > bnd::detail::rational{0})
-  [[nodiscard]] constexpr auto pow(InB base, InE exp) noexcept
-  { return pow_impl<detail::pow_auto_t<InB, InE>>(base, exp); }
+  [[nodiscard]] BND_MATH_FN auto pow(InB base, InE exp) noexcept
+  {
+    static_assert(detail::require_real<InB>() && detail::require_real<InE>());
+    using Out = detail::pow_auto_t<InB, InE>;
+#ifdef BND_MATH_FIXED
+    return pow_impl<Out>(base, exp);
+#else
+    double b = static_cast<double>(base);
+    if (b <= 0.0)
+      return slim::expected<Out, errc>{slim::unexpected(errc::domain_error)};
+    double r = dbl::detail::d_pow(b, static_cast<double>(exp));
+    if (r < static_cast<double>(Lower<Out>) || r > static_cast<double>(Upper<Out>))
+      return slim::expected<Out, errc>{slim::unexpected(errc::overflow)};
+    return slim::expected<Out, errc>{Out{r}};
+#endif
+  }
 }
 
 #endif

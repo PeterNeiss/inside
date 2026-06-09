@@ -52,9 +52,9 @@ using db_t       = bound<{{-24, 12}, notch<1, 2>}, round_nearest>;
 // against the 1/65536 notch. The fine notch is deliberate — auto-deduced
 // pow_base<10> output inherits Notch<In>, and a coarser exponent grid would
 // snap the linear output to audible 0.025-wide steps.
-using db_div20_t = bound<{{-2, 1}, notch<1, 65536>}, round_nearest>;
+using db_div20_t = bound<{{-2, 1}, notch<1, 65536>}, round_nearest | real>;
 // Linear amplitude. dB ∈ [-24, 12] ⇒ amp ∈ [10^-1.2, 10^0.6] ≈ [0.063, 3.98].
-using gain_t     = bound<{{0x1p-8, 4}, notch<1, 65536>}, round_nearest>;
+using gain_t     = bound<{{0x1p-8, 4}, notch<1, 65536>}, round_nearest | real>;
 
 // dB → linear: 10^(dB/20).
 static constexpr gain_t db_to_linear(db_t db)

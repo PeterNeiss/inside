@@ -5,6 +5,7 @@
 #define BNDformatHPP
 
 #include "bound/grid.hpp"
+#include "bound/generic.hpp"
 
 #include <string>
 
@@ -113,6 +114,25 @@ namespace bnd
   template <typename V>
   auto to_string(V value)
   { return std::to_string(value); }
+
+  // `real` (double-backed) bounds: the raw is a full-precision double whose
+  // exact value is M·2^-52 — rendering its raw rational gives an unreadable
+  // 16-digit fraction. Snap to the bound's nominal notch and print that clean
+  // rational instead (the grid the caller declared is what they mean); a
+  // notch-0 (continuous/point) real bound has no grid, so print the double.
+  template <boundable B>
+    requires (detail::storage_of<B> == detail::storage::real)
+  inline std::string to_string(B b)
+  {
+    const double v = detail::as_double(b);
+    constexpr bnd::detail::rational notch = Notch<B>;
+    if constexpr (notch == bnd::detail::rational{0})
+      return std::to_string(v);
+    const double nd = static_cast<double>(notch);
+    const double q  = v / nd;
+    const imax   k  = static_cast<imax>(q >= 0 ? q + 0.5 : q - 0.5);
+    return to_string(bnd::detail::rational::mul_unchecked(bnd::detail::rational{k}, notch));
+  }
 
 } // namespace bnd
 

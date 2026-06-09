@@ -19,10 +19,10 @@ using namespace bnd;
 int main()
 {
   // Cartesian coordinate bound: [-1, 1] with Q.14 resolution.
-  using coord_t = bound<{{-1, 1}, notch<1, 16384>}, round_nearest>;
+  using coord_t = bound<{{-1, 1}, notch<1, 16384>}, round_nearest | real>;
   // Magnitude is non-negative; max possible |v| from (±1, ±1) is √2 ≈ 1.4142.
   // We accept inputs in [-1, 1], so mag_sq ∈ [0, 2], mag ∈ [0, √2].
-  using magsq_t = bound<{{0, 2}, notch<1, 16384>}, round_nearest>;
+  using magsq_t = bound<{{0, 2}, notch<1, 16384>}, round_nearest | real>;
 
   struct point { coord_t x; coord_t y; const char* label; };
   const point points[] = {
@@ -61,7 +61,7 @@ int main()
   std::cout << "  original           recovered (mag·cos θ, mag·sin θ)\n";
   // atan2 already returns radians ∈ [-π, π]; feed it straight into sin/cos.
   // ±4 rad comfortably brackets ±π.
-  using angle_t = bound<{{-4, 4}, notch<1, 16384>}, round_nearest>;
+  using angle_t = bound<{{-4, 4}, notch<1, 16384>}, round_nearest | real>;
   for (auto& p : points) {
     coord_t x{p.x}, y{p.y};
     auto x2 = p.x * p.x;

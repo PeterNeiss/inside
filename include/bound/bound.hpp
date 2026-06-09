@@ -112,6 +112,18 @@ namespace bnd
     {
       if constexpr (detail::storage_of<bound> == detail::storage::real)
         Raw = to_double(value);
+      else if constexpr (is_bound_v<A>)
+      {
+        // A `real` (double-backed) source holds a full-precision double whose
+        // exact rational has a ~2^52 denominator — snapping that through the
+        // rational engine into a fine target grid overflows imax. Route it
+        // through double (nearbyint snap) instead; that is the value the real
+        // engine produced and the natural way to land it on the target grid.
+        if constexpr (detail::storage_of<A> == detail::storage::real)
+          detail::assignment<bound, double>::assign(*this, detail::as_double(value), make_policy<P>());
+        else
+          detail::assignment<bound, A>::assign(*this, value, make_policy<P>());
+      }
       else
         detail::assignment<bound, A>::assign(*this, value, make_policy<P>());
     }
@@ -685,7 +697,7 @@ namespace bnd
       return lhs.raw() <=> rhs.raw();
     // double-backed (`real`) operand: compare in double (raw_imax would truncate)
     else if constexpr (detail::storage_of<L> == detail::storage::real || detail::storage_of<R> == detail::storage::real)
-      return static_cast<double>(lhs) <=> static_cast<double>(rhs);
+      return detail::as_double(lhs) <=> detail::as_double(rhs);
     // both integer-direct (notch=1, Raw==value): compare as integers
     else if constexpr (detail::storage_of<L> != detail::storage::rational && detail::storage_of<R> != detail::storage::rational
                        && detail::storage_of<L> != detail::storage::offset && detail::storage_of<R> != detail::storage::offset)
@@ -700,7 +712,7 @@ namespace bnd
     if constexpr (Grid<L> == Grid<R>)
       return lhs.raw() == rhs.raw();
     else if constexpr (detail::storage_of<L> == detail::storage::real || detail::storage_of<R> == detail::storage::real)
-      return static_cast<double>(lhs) == static_cast<double>(rhs);
+      return detail::as_double(lhs) == detail::as_double(rhs);
     else if constexpr (detail::storage_of<L> != detail::storage::rational && detail::storage_of<R> != detail::storage::rational
                        && detail::storage_of<L> != detail::storage::offset && detail::storage_of<R> != detail::storage::offset)
       return detail::raw_imax(lhs) == detail::raw_imax(rhs);
