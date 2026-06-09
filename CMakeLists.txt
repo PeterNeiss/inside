@@ -19,6 +19,15 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 add_library(bound_bound INTERFACE)
 add_library(bound::bound ALIAS bound_bound)
 
+# bnd::math engine select. Default: the reproducible double engine (own
+# polynomials + std::fma + std::sqrt; requires an IEEE-754 FPU, no -ffast-math).
+# -DBOUND_MATH_FIXED=ON selects the integer/CORDIC engine — FPU-free and
+# unconditionally reproducible, for embedded / maximum-portability targets.
+option(BOUND_MATH_FIXED "Use the integer/CORDIC math engine instead of the double engine" OFF)
+if(BOUND_MATH_FIXED)
+    target_compile_definitions(bound_bound INTERFACE BND_MATH_FIXED)
+endif()
+
 target_include_directories(bound_bound
     INTERFACE
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>

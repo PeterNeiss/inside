@@ -66,7 +66,9 @@ namespace bnd::detail
             ? grid{interval{rational{0}, (Upper<L> / Notch<R>).value()}, Notch<L>}
             : *(Grid<L> / Grid<R>);
 
-    using result = bound<result_grid>;
+    static constexpr bool any_real =
+        (BoundPolicy<L> & bnd::real) == bnd::real || (BoundPolicy<R> & bnd::real) == bnd::real;
+    using result = bound<result_grid, any_real ? bnd::real : checked>;
 
     template <policy_flag G = F>
     static constexpr bool needs_overflow_check =
@@ -82,9 +84,12 @@ namespace bnd::detail
 
     template <typename A>
     using div_return_t = std::conditional_t<
-        overflow_action<plain<A>> || (DivisorExcludesZero<R> && !may_overflow_nonzero),
-        result,
-        slim::optional<result>>;
+        any_real,
+        result,                                       // double division: never fails (IEEE)
+        std::conditional_t<
+            overflow_action<plain<A>> || (DivisorExcludesZero<R> && !may_overflow_nonzero),
+            result,
+            slim::optional<result>>>;
 
     template <policy_flag G = F, typename E = empty_ref, typename A = no_action>
     static constexpr div_return_t<A> div(L, R, policy<G, E> = {}, A&& = {});
@@ -97,6 +102,13 @@ namespace bnd::detail
   template<policy_flag G, typename E, typename A>
   constexpr auto division<L,R,F>::div(L lhs, R rhs, policy<G, E> policy, A&& action) -> div_return_t<A>
   {
+    if constexpr (storage_of<result> == storage::real)
+    {
+      (void)policy; (void)action;
+      return result::from_raw(static_cast<double>(lhs) / static_cast<double>(rhs));
+    }
+    else
+    {
     // `fail` must stay well-formed for every configuration, including the one
     // where `div_return_t` has narrowed to plain `result` because the divisor
     // excludes zero and the op cannot overflow. In that case every call to
@@ -155,6 +167,7 @@ namespace bnd::detail
         if (rhs_r.Numerator == 0) return fail(errc::division_by_zero, "division by zero in div");
       return result::from_raw(rational::div_unchecked(as_rational(lhs), rhs_r));
     }
+    }  // end else (non-real)
   }
   //---------------------------------------------------------------------------
   // modulo (requires integer-valued grids + ignore_round)

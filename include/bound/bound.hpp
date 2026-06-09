@@ -97,13 +97,21 @@ namespace bnd
     constexpr bound() requires ((P & checked) != 0) : Raw{} {} // zero-init under checked
 
     // Double-backed (`real`) storage stores the value as an IEEE-754 double
-    // directly — the notch is nominal (no snap). Other storage routes through
-    // the policy-checked `assignment` engine.
+    // directly — the notch is nominal (no snap). An arithmetic rhs (the common
+    // case: a math result) is cast straight to double; a bound rhs goes through
+    // its exact rational view. Other storage routes through the policy-checked
+    // `assignment` engine.
+    template <numeric A>
+    constexpr double to_double(A const& value)
+    {
+      if constexpr (std::is_arithmetic_v<A>) return static_cast<double>(value);
+      else                                   return static_cast<double>(detail::as_rational(value));
+    }
     template <numeric A>
     constexpr void store_value(A const& value)
     {
       if constexpr (detail::storage_of<bound> == detail::storage::real)
-        Raw = static_cast<double>(detail::as_rational(value));
+        Raw = to_double(value);
       else
         detail::assignment<bound, A>::assign(*this, value, make_policy<P>());
     }
@@ -118,7 +126,7 @@ namespace bnd
     constexpr bound(A value, Pol&& pol)
     {
       if constexpr (detail::storage_of<bound> == detail::storage::real)
-        Raw = static_cast<double>(detail::as_rational(value));
+        Raw = to_double(value);
       else
         detail::assignment<bound, A>::assign(*this, value, pol);
     }
@@ -373,7 +381,9 @@ namespace bnd
     [[nodiscard]] constexpr negative operator-() const
     {
       negative neg;
-      if constexpr (detail::storage_of<bound> == detail::storage::rational)
+      if constexpr (detail::storage_of<bound> == detail::storage::real)
+        neg = negative::from_raw(-Raw);
+      else if constexpr (detail::storage_of<bound> == detail::storage::rational)
         neg = negative::from_raw(-(Raw));
       else if constexpr (detail::storage_of<bound> != detail::storage::offset || detail::storage_of<negative> != detail::storage::offset)
         detail::from_value(neg, -detail::to_value(*this));
@@ -673,6 +683,9 @@ namespace bnd
     // same grid: Raw is monotonically ordered regardless of storage kind
     if constexpr (Grid<L> == Grid<R>)
       return lhs.raw() <=> rhs.raw();
+    // double-backed (`real`) operand: compare in double (raw_imax would truncate)
+    else if constexpr (detail::storage_of<L> == detail::storage::real || detail::storage_of<R> == detail::storage::real)
+      return static_cast<double>(lhs) <=> static_cast<double>(rhs);
     // both integer-direct (notch=1, Raw==value): compare as integers
     else if constexpr (detail::storage_of<L> != detail::storage::rational && detail::storage_of<R> != detail::storage::rational
                        && detail::storage_of<L> != detail::storage::offset && detail::storage_of<R> != detail::storage::offset)
@@ -686,6 +699,8 @@ namespace bnd
   {
     if constexpr (Grid<L> == Grid<R>)
       return lhs.raw() == rhs.raw();
+    else if constexpr (detail::storage_of<L> == detail::storage::real || detail::storage_of<R> == detail::storage::real)
+      return static_cast<double>(lhs) == static_cast<double>(rhs);
     else if constexpr (detail::storage_of<L> != detail::storage::rational && detail::storage_of<R> != detail::storage::rational
                        && detail::storage_of<L> != detail::storage::offset && detail::storage_of<R> != detail::storage::offset)
       return detail::raw_imax(lhs) == detail::raw_imax(rhs);

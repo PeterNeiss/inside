@@ -74,7 +74,9 @@ namespace bnd::detail
   template <boundable L, boundable R = L>
   struct multiplication
   {
-    using result = bound<(Grid<L> * Grid<R>).value()>;
+    static constexpr bool any_real =
+        (BoundPolicy<L> & bnd::real) == bnd::real || (BoundPolicy<R> & bnd::real) == bnd::real;
+    using result = bound<(Grid<L> * Grid<R>).value(), any_real ? bnd::real : checked>;
 
     template <typename P>
     static constexpr bool needs_overflow_check =
@@ -103,7 +105,11 @@ namespace bnd::detail
   template <typename P, typename A>
   constexpr auto multiplication<L,R>::mul(L lhs, R rhs, P&& policy, A&& action) -> mul_return_t<P, A>
   {
-    if constexpr (storage_of<result> == storage::rational)
+    if constexpr (storage_of<result> == storage::real)
+    {
+      return result::from_raw(static_cast<double>(lhs) * static_cast<double>(rhs));
+    }
+    else if constexpr (storage_of<result> == storage::rational)
     {
       if constexpr (needs_overflow_check<P>)
       {

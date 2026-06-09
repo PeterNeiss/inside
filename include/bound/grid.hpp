@@ -158,14 +158,16 @@ namespace bnd
     && is_pow2(bnd::detail::abs_den(G.Interval.Lower.Denominator));
 
   // Storage for a bound<G, P>: math operands (`real` policy) are double-backed
-  // under the default (double) engine on a dyadic grid; otherwise (and always
-  // under BND_MATH_FIXED) the integer selection above.
+  // under the default (double) engine — on a dyadic grid (on-grid values exact
+  // in double) OR a notch-0 continuous grid (e.g. a division result). Otherwise
+  // (and always under BND_MATH_FIXED) the integer selection above.
   template <grid G, policy_flag P>
   using storage_for =
 #ifdef BND_MATH_FIXED
     storage_min<G>;
 #else
-    std::conditional_t<((P & bnd::real) == bnd::real) && dyadic_grid<G>, double, storage_min<G>>;
+    std::conditional_t<((P & bnd::real) == bnd::real) && (dyadic_grid<G> || G.Notch == 0),
+                       double, storage_min<G>>;
 #endif
   }
 

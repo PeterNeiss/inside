@@ -27,7 +27,12 @@ namespace bnd::detail
   template <boundable L, boundable R = L>
   struct addition
   {
-    using result = bound<(Grid<L> + Grid<R>).value()>;
+    // Propagate the `real` (double-backed) policy: an operation on math operands
+    // yields a math operand. Sum of dyadic grids is dyadic, so the result stays
+    // double-backed. Non-real operands keep the default policy unchanged.
+    static constexpr bool any_real =
+        (BoundPolicy<L> & bnd::real) == bnd::real || (BoundPolicy<R> & bnd::real) == bnd::real;
+    using result = bound<(Grid<L> + Grid<R>).value(), any_real ? bnd::real : checked>;
 
     template <policy_flag F>
     static constexpr bool needs_overflow_check =
@@ -63,7 +68,11 @@ namespace bnd::detail
   constexpr auto addition<L,R>::add(L lhs, R rhs, policy<F, E> policy, A&& action) -> add_return_t<F, A>
   {
     result res;
-    if constexpr (storage_of<result> == storage::rational)
+    if constexpr (storage_of<result> == storage::real)
+    {
+      res = result::from_raw(static_cast<double>(lhs) + static_cast<double>(rhs));
+    }
+    else if constexpr (storage_of<result> == storage::rational)
     {
       if constexpr (needs_overflow_check<F>)
       {
