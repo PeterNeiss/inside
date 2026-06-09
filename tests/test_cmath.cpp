@@ -1,10 +1,9 @@
-// Bit-exact contract tests for bnd::math.
+// Bit-exact contract tests for the bnd::math INTEGER (CORDIC) engine.
 //
-// Every assertion here pins a specific integer output for a specific
-// integer input. The whole point of the cmath.hpp reproducibility banner
-// is that these `static_assert` lines hold byte-for-byte on every
-// supported toolchain; if any of them fails after a refactor, the
-// implementation has drifted from the published bit contract.
+// Every assertion here pins a specific integer output for a specific integer
+// input — the unconditional bit-exact contract of the fixed engine. These run
+// under `-DBOUND_MATH_FIXED=ON` (the integer engine); the default build uses the
+// double engine, covered by test_cmath_double.cpp.
 
 #include "bound/cmath.hpp"
 #include "bound/bound.hpp"
@@ -13,6 +12,8 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <iostream>
+
+#ifdef BND_MATH_FIXED
 
 using namespace bnd;
 using namespace bnd::detail;
@@ -1391,3 +1392,5 @@ TEST_CASE("bnd::math::pow: base^exp with expected", "[cmath][pow]")
   REQUIRE(p3.has_value());
   REQUIRE(approx(rational{*p3}, rational{3}));
 }
+
+#endif // BND_MATH_FIXED

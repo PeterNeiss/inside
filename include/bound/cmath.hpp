@@ -5,11 +5,22 @@
 #define BNDcmathHPP
 
 #include "bound/bound.hpp"
+#include "bound/cmath_double.hpp"   // the default (double) math engine
 
 #include "slim/expected.hpp"     // slim::expected, slim::unexpected
 
 #include <array>
 #include <bit>
+
+// The public bnd::math::* functions dispatch to the double engine (default) or
+// the integer/CORDIC engine (`-DBOUND_MATH_FIXED`). Only the integer engine is
+// `constexpr` (the double engine uses std::fma, not constexpr before C++23), so
+// the public functions are `constexpr` only in the integer build.
+#ifdef BND_MATH_FIXED
+#  define BND_MATH_FN constexpr
+#else
+#  define BND_MATH_FN
+#endif
 
 //---------------------------------------------------------------------------
 // bnd::math — integer-only constexpr transcendentals for `bound`/`rational`.
@@ -1053,7 +1064,14 @@ namespace bnd::math
 
   template <boundable In>
     requires (Lower<In> == bnd::detail::rational{0})
-  [[nodiscard]] constexpr auto sqrt(In x) noexcept { return sqrt_impl<detail::sqrt_auto_t<In>>(x); }
+  [[nodiscard]] BND_MATH_FN auto sqrt(In x) noexcept
+  {
+#ifdef BND_MATH_FIXED
+    return sqrt_impl<detail::sqrt_auto_t<In>>(x);
+#else
+    return dbl::sqrt_core<detail::sqrt_auto_t<In>>(x);
+#endif
+  }
 
   // Mixed-sign overload: dispatches to `sqrt_signed_impl`, returning
   // `slim::expected<bound, errc>` so a negative runtime value surfaces as
@@ -1064,16 +1082,44 @@ namespace bnd::math
   { return sqrt_signed_impl<detail::sqrt_signed_auto_t<In>>(x); }
 
   template <boundable In>
-  [[nodiscard]] constexpr auto exp2(In x) noexcept { return exp2_impl<detail::exp2_auto_t<In>>(x); }
+  [[nodiscard]] BND_MATH_FN auto exp2(In x) noexcept
+  {
+#ifdef BND_MATH_FIXED
+    return exp2_impl<detail::exp2_auto_t<In>>(x);
+#else
+    return dbl::exp2_core<detail::exp2_auto_t<In>>(x);
+#endif
+  }
 
   template <boundable In>
-  [[nodiscard]] constexpr auto log2(In x) noexcept { return log2_impl<detail::log2_auto_t<In>>(x); }
+  [[nodiscard]] BND_MATH_FN auto log2(In x) noexcept
+  {
+#ifdef BND_MATH_FIXED
+    return log2_impl<detail::log2_auto_t<In>>(x);
+#else
+    return dbl::log2_core<detail::log2_auto_t<In>>(x);
+#endif
+  }
 
   template <boundable In>
-  [[nodiscard]] constexpr auto exp(In x) noexcept { return exp_impl<detail::exp_auto_t<In>>(x); }
+  [[nodiscard]] BND_MATH_FN auto exp(In x) noexcept
+  {
+#ifdef BND_MATH_FIXED
+    return exp_impl<detail::exp_auto_t<In>>(x);
+#else
+    return dbl::exp_core<detail::exp_auto_t<In>>(x);
+#endif
+  }
 
   template <boundable In>
-  [[nodiscard]] constexpr auto log(In x) noexcept { return log_impl<detail::log_auto_t<In>>(x); }
+  [[nodiscard]] BND_MATH_FN auto log(In x) noexcept
+  {
+#ifdef BND_MATH_FIXED
+    return log_impl<detail::log_auto_t<In>>(x);
+#else
+    return dbl::log_core<detail::log_auto_t<In>>(x);
+#endif
+  }
 
   template <imax Base, boundable In>
   [[nodiscard]] constexpr auto pow_base(In x) noexcept
@@ -1118,16 +1164,34 @@ namespace bnd::math
   // public trig entry points; the turn-input workers live in `detail::`
   // (`sin_turn_impl`, `cos_turn_impl`, `tan_turn_impl`) for internal use.
   template <boundable In>
-  [[nodiscard]] constexpr auto sin(In angle) noexcept
-  { return sin_impl<detail::sin_auto_t<In>>(angle); }
+  [[nodiscard]] BND_MATH_FN auto sin(In angle) noexcept
+  {
+#ifdef BND_MATH_FIXED
+    return sin_impl<detail::sin_auto_t<In>>(angle);
+#else
+    return dbl::sin_core<detail::sin_auto_t<In>>(angle);
+#endif
+  }
 
   template <boundable In>
-  [[nodiscard]] constexpr auto cos(In angle) noexcept
-  { return cos_impl<detail::cos_auto_t<In>>(angle); }
+  [[nodiscard]] BND_MATH_FN auto cos(In angle) noexcept
+  {
+#ifdef BND_MATH_FIXED
+    return cos_impl<detail::cos_auto_t<In>>(angle);
+#else
+    return dbl::cos_core<detail::cos_auto_t<In>>(angle);
+#endif
+  }
 
   template <boundable In>
-  [[nodiscard]] constexpr auto atan2(In y, In x) noexcept
-  { return atan2_impl<detail::atan2_auto_t<In>>(y, x); }
+  [[nodiscard]] BND_MATH_FN auto atan2(In y, In x) noexcept
+  {
+#ifdef BND_MATH_FIXED
+    return atan2_impl<detail::atan2_auto_t<In>>(y, x);
+#else
+    return dbl::atan2_core<detail::atan2_auto_t<In>>(y, x);
+#endif
+  }
 
   template <boundable In>
   [[nodiscard]] constexpr auto tan(In angle) noexcept
@@ -1589,36 +1653,84 @@ namespace bnd::math
 
   // --- public auto-deducing forms ----------------------------------------
   template <boundable In>
-  [[nodiscard]] constexpr auto atan(In x) noexcept
-  { return atan_impl<detail::atan_auto_t<In>>(x); }
+  [[nodiscard]] BND_MATH_FN auto atan(In x) noexcept
+  {
+#ifdef BND_MATH_FIXED
+    return atan_impl<detail::atan_auto_t<In>>(x);
+#else
+    return dbl::atan_core<detail::atan_auto_t<In>>(x);
+#endif
+  }
 
   template <boundable In>
-  [[nodiscard]] constexpr auto asin(In x) noexcept
-  { return asin_impl<detail::asin_auto_t<In>>(x); }
+  [[nodiscard]] BND_MATH_FN auto asin(In x) noexcept
+  {
+#ifdef BND_MATH_FIXED
+    return asin_impl<detail::asin_auto_t<In>>(x);
+#else
+    return dbl::asin_core<detail::asin_auto_t<In>>(x);
+#endif
+  }
 
   template <boundable In>
-  [[nodiscard]] constexpr auto acos(In x) noexcept
-  { return acos_impl<detail::acos_auto_t<In>>(x); }
+  [[nodiscard]] BND_MATH_FN auto acos(In x) noexcept
+  {
+#ifdef BND_MATH_FIXED
+    return acos_impl<detail::acos_auto_t<In>>(x);
+#else
+    return dbl::acos_core<detail::acos_auto_t<In>>(x);
+#endif
+  }
 
   template <boundable In>
-  [[nodiscard]] constexpr auto sinh(In x) noexcept
-  { return sinh_impl<detail::sinh_auto_t<In>>(x); }
+  [[nodiscard]] BND_MATH_FN auto sinh(In x) noexcept
+  {
+#ifdef BND_MATH_FIXED
+    return sinh_impl<detail::sinh_auto_t<In>>(x);
+#else
+    return dbl::sinh_core<detail::sinh_auto_t<In>>(x);
+#endif
+  }
 
   template <boundable In>
-  [[nodiscard]] constexpr auto cosh(In x) noexcept
-  { return cosh_impl<detail::cosh_auto_t<In>>(x); }
+  [[nodiscard]] BND_MATH_FN auto cosh(In x) noexcept
+  {
+#ifdef BND_MATH_FIXED
+    return cosh_impl<detail::cosh_auto_t<In>>(x);
+#else
+    return dbl::cosh_core<detail::cosh_auto_t<In>>(x);
+#endif
+  }
 
   template <boundable In>
-  [[nodiscard]] constexpr auto tanh(In x) noexcept
-  { return tanh_impl<detail::tanh_auto_t<In>>(x); }
+  [[nodiscard]] BND_MATH_FN auto tanh(In x) noexcept
+  {
+#ifdef BND_MATH_FIXED
+    return tanh_impl<detail::tanh_auto_t<In>>(x);
+#else
+    return dbl::tanh_core<detail::tanh_auto_t<In>>(x);
+#endif
+  }
 
   template <boundable In>
-  [[nodiscard]] constexpr auto log10(In x) noexcept
-  { return log10_impl<detail::log10_auto_t<In>>(x); }
+  [[nodiscard]] BND_MATH_FN auto log10(In x) noexcept
+  {
+#ifdef BND_MATH_FIXED
+    return log10_impl<detail::log10_auto_t<In>>(x);
+#else
+    return dbl::log10_core<detail::log10_auto_t<In>>(x);
+#endif
+  }
 
   template <boundable In>
-  [[nodiscard]] constexpr auto cbrt(In x) noexcept
-  { return cbrt_impl<detail::cbrt_auto_t<In>>(x); }
+  [[nodiscard]] BND_MATH_FN auto cbrt(In x) noexcept
+  {
+#ifdef BND_MATH_FIXED
+    return cbrt_impl<detail::cbrt_auto_t<In>>(x);
+#else
+    return dbl::cbrt_core<detail::cbrt_auto_t<In>>(x);
+#endif
+  }
 
   template <boundable InX, boundable InY>
   [[nodiscard]] constexpr auto hypot(InX x, InY y) noexcept

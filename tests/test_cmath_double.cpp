@@ -17,6 +17,10 @@
 
 #include <cmath>
 
+// The double engine is the default; under -DBOUND_MATH_FIXED the `real` bounds
+// are integer-backed and these double-storage assertions don't apply.
+#ifndef BND_MATH_FIXED
+
 using namespace bnd;
 namespace d = bnd::math::dbl::detail;
 
@@ -112,3 +116,5 @@ TEST_CASE("dbl: real-storage arithmetic composes (double, grid-typed)", "[dbl][r
   static_assert(std::is_same_v<decltype(q)::raw_type, double>);
   REQUIRE(double(q) == 1.5);
 }
+
+#endif // !BND_MATH_FIXED
