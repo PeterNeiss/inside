@@ -238,11 +238,11 @@ namespace bnd
     //   operator imax     — implicit. Available only when the grid is
     //                       notch-aligned AND statically fits in
     //                       [INT64_MIN, INT64_MAX]. Pathological wide
-    //                       grids must use `b.to<imax>()`.
-    //   operator size_t   — implicit. Available when Lower >= 0, the grid
-    //                       is notch-aligned, and Upper <= INT64_MAX. Lets
-    //                       a bound serve as an array/vector index without
-    //                       the `.to<std::size_t>().value()` ceremony.
+    //                       grids must use `b.to<imax>()`. Also the index
+    //                       path: `vec[b]` converts imax → size_t. (There is
+    //                       deliberately NO second implicit integer operator:
+    //                       two would make built-in mixed arithmetic like
+    //                       `imax_var += b` ambiguous.)
     //   operator rational — implicit. Lossless and mathematically exact,
     //                       so no risk in letting it happen silently.
     //   operator double   — implicit for `real`-policy bounds: their dyadic
@@ -263,21 +263,13 @@ namespace bnd
     //   as<T>()           — non-expected sibling. Returns T directly; asserts
     //                       on sentinel state. Use when the value is known
     //                       in range (the common case at array-index sites).
+    //                       Floating-point targets share operator double's
+    //                       policy gate; strict bounds use to<double>().
+    //   to<T>(b) / as<T>(b) — free-function forms of the members, for generic
+    //                       code (`as<imax>(b)` needs no `.template`).
     constexpr operator imax() const
       requires (detail::notch_is_unit_integer<G>
              && G.Interval.Lower >= bnd::detail::rational{std::numeric_limits<imax>::min()}
-             && G.Interval.Upper <= bnd::detail::rational{std::numeric_limits<imax>::max()})
-    { return detail::to_value(*this); }
-
-    // Implicit size_t conversion for index-shaped bounds. Lets
-    // `vec[bound_idx]` compile without `.as<std::size_t>()` and without
-    // tripping `-Wsign-conversion` on the imax → size_t path. Upper is
-    // capped at imax_max (not size_t_max) so wide bounds — those whose
-    // Upper already exceeds imax — don't gain a back-door imax conversion
-    // via size_t → imax integer narrowing.
-    constexpr operator std::size_t() const
-      requires (detail::notch_is_unit_integer<G>
-             && G.Interval.Lower >= 0
              && G.Interval.Upper <= bnd::detail::rational{std::numeric_limits<imax>::max()})
     { return detail::to_value(*this); }
 
@@ -372,8 +364,15 @@ namespace bnd
     // is for call sites where the user knows the value is in range — most
     // notably array indexing, capacity arithmetic, and rational extraction
     // for `.round()` / `.trunc()`.
+    // Floating-point targets share operator double's policy gate so the two
+    // spellings agree: a strict bound rejects both `double(b)` and
+    // `b.as<double>()`, and `to<double>()` stays the explicit opt-in.
     template <typename T>
-    [[nodiscard]] constexpr T as() const { return to<T>().value(); }
+    [[nodiscard]] constexpr T as() const
+      requires (!std::floating_point<T>
+             || (P & (round_floor | round_ceil | round_nearest
+                    | round_half_even | ignore_round)) != 0)
+    { return to<T>().value(); }
 
     // numerator() / denominator() — the exact value of a fractional (Q-format)
     // bound as an integer pair, sign carried on the numerator and denominator
@@ -715,6 +714,23 @@ namespace bnd
       return result;
     }
   };
+
+  //---------------------------------------------------------------------------
+  // to<T>(b) / as<T>(b) — free-function forms of the members
+  //---------------------------------------------------------------------------
+  // In dependent contexts a member template call needs the `template`
+  // disambiguator (`b.template as<imax>()`); the free form `as<imax>(b)` reads
+  // naturally in generic code and is found by ADL. Same semantics and
+  // constraints as the members (the requires-clause makes them SFINAE-clean).
+  template <typename T, boundable B>
+  [[nodiscard]] constexpr auto to(B const& b)
+    requires requires { b.template to<T>(); }
+  { return b.template to<T>(); }
+
+  template <typename T, boundable B>
+  [[nodiscard]] constexpr T as(B const& b)
+    requires requires { b.template as<T>(); }
+  { return b.template as<T>(); }
 
   //---------------------------------------------------------------------------
   // comparison

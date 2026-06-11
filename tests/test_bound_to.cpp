@@ -203,4 +203,39 @@ TEST_CASE("as<T>() is a non-expected shortcut for to<T>().value()", "[bound][as]
   // conversion is the implicit operator.
   REQUIRE(static_cast<rational>(narrow{42}) == 42);
   REQUIRE(frac{7.5}.as<double>()            == 7.5);
+
+  // Free-function forms — template-friendly (no `.template` disambiguator),
+  // found by ADL, same semantics as the members.
+  REQUIRE(as<imax>(narrow{42})          == 42);
+  REQUIRE(as<double>(frac{7.5})         == 7.5);
+  REQUIRE(to<imax>(frac{7.5}).value()   == 7);
+  REQUIRE(to<double>(narrow{3}).value() == 3.0);
+}
+
+// Probes must stay dependent so a gated call yields `false` instead of a
+// hard error (requires-expressions only SFINAE during substitution).
+template <typename B, typename T>
+concept has_member_as = requires(B b) { b.template as<T>(); };
+template <typename B, typename T>
+concept has_free_as   = requires(B b) { as<T>(b); };
+template <typename B, typename T>
+concept has_member_to = requires(B b) { b.template to<T>(); };
+
+TEST_CASE("as<floating> shares operator double's policy gate", "[bound][as][policy]")
+{
+  using strict_b  = bound<{0, 100}>;                 // no rounding flag
+  using rounded_b = bound<{0, 100}, round_nearest>;
+
+  // Strict: both spellings of the direct double read are rejected;
+  // to<double>() stays the explicit opt-in.
+  STATIC_REQUIRE(!has_member_as<strict_b, double>);
+  STATIC_REQUIRE(!has_free_as<strict_b, double>);
+  STATIC_REQUIRE( has_member_to<strict_b, double>);
+
+  // Integral as<> is not policy-gated.
+  STATIC_REQUIRE( has_member_as<strict_b, imax>);
+
+  // A rounding flag opens the gate.
+  STATIC_REQUIRE( has_member_as<rounded_b, double>);
+  REQUIRE(rounded_b{42}.as<double>() == 42.0);
 }

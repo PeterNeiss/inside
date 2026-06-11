@@ -467,8 +467,7 @@ void prop_modulo(fuzz_state& s, long iters)
         BI b = BI::from_raw(random_in_range_raw<BI>(s.rng));
         if (b == 0) continue;  // possible if hi <= 0 and zero is in range
         auto r = mod(a, b, truncated);
-        imax av = a, bv = b;
-        imax expected = av % bv;
+        imax expected = as<imax>(a) % as<imax>(b);
         // mod returns a plain bound when B's grid excludes zero, else optional.
         if constexpr (is_slim_optional_v<decltype(r)>)
         {
@@ -489,8 +488,7 @@ void prop_modulo(fuzz_state& s, long iters)
         BI b{0};
         do { b = BI::from_raw(random_in_range_raw<BI>(s.rng)); } while (b == 0);
         auto r = mod(a, b, truncated);
-        imax av = a, bv = b;
-        imax expected = av % bv;
+        imax expected = as<imax>(a) % as<imax>(b);
         // mod returns a plain bound when B's grid excludes zero, else optional.
         if constexpr (is_slim_optional_v<decltype(r)>)
         {
