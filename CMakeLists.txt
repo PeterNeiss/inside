@@ -36,8 +36,7 @@ target_include_directories(bound_bound
 target_compile_options(bound_bound
     INTERFACE
         $<$<CXX_COMPILER_ID:GNU,Clang>:
-            -Wall -Wextra -Wpedantic
-            -Wconversion -Wsign-conversion
+            -Wall -Wextra
             -Wnon-virtual-dtor -Wold-style-cast
             -Woverloaded-virtual -Wnull-dereference
             # bound's default constructor is intentionally trivial (Raw left

@@ -48,7 +48,7 @@ namespace bnd::detail
       return;
     numerator /= g;
     ad /= g;
-    denominator = (denominator < 0) ? -static_cast<imax>(ad) : static_cast<imax>(ad);
+    denominator = (denominator < 0) ? -ad : ad;
   }
 
   inline constexpr void trim(umax& a, umax& b)
@@ -126,23 +126,21 @@ namespace bnd::detail
     {
       if (Denominator < 0)
         throw std::system_error(make_error_code(errc::domain_error), "cannot convert negative rational to unsigned");
-      return static_cast<T>(Numerator/static_cast<umax>(Denominator));
+      return Numerator / abs_den(Denominator);
     }
 
     template <std::signed_integral T>
     explicit constexpr operator T () const
     {
-      if (Denominator < 0)
-        return -static_cast<T>(Numerator / static_cast<umax>(-Denominator));
-      return static_cast<T>(Numerator / static_cast<umax>(Denominator));
+      umax q = Numerator / abs_den(Denominator);
+      return (Denominator < 0) ? -q : q;
     }
 
     template <std::floating_point T>
     explicit constexpr operator T () const
     {
-      if (Denominator < 0)
-        return -static_cast<T>(Numerator) / static_cast<T>(static_cast<umax>(-Denominator));
-      return static_cast<T>(Numerator) / static_cast<T>(static_cast<umax>(Denominator));
+      T q = static_cast<T>(Numerator) / static_cast<T>(abs_den(Denominator));
+      return (Denominator < 0) ? -q : q;
     }
 
     // allow unary+ for generic programming
@@ -175,41 +173,41 @@ namespace bnd::detail
     // half-away-from-zero.
     [[nodiscard]] constexpr imax trunc() const
     {
-      umax q = Numerator / static_cast<umax>(abs_den(Denominator));
-      return (Denominator < 0) ? -static_cast<imax>(q) : static_cast<imax>(q);
+      umax q = Numerator / abs_den(Denominator);
+      return (Denominator < 0) ? -q : q;
     }
 
     [[nodiscard]] constexpr imax floor() const
     {
-      umax ad = static_cast<umax>(abs_den(Denominator));
+      umax ad = abs_den(Denominator);
       umax q = Numerator / ad;
       umax rem = Numerator % ad;
       // negative with non-zero remainder: step one further toward -inf
       if (Denominator < 0 && rem != 0)
-        return -static_cast<imax>(q) - 1;
-      return (Denominator < 0) ? -static_cast<imax>(q) : static_cast<imax>(q);
+        return -q - 1;
+      return (Denominator < 0) ? -q : q;
     }
 
     [[nodiscard]] constexpr imax ceil() const
     {
-      umax ad  = static_cast<umax>(abs_den(Denominator));
+      umax ad  = abs_den(Denominator);
       umax q   = Numerator / ad;
       umax rem = Numerator % ad;
       // negative value: ceiling toward +inf coincides with truncation toward zero
       if (Denominator < 0)
-        return -static_cast<imax>(q);
+        return -q;
       // positive with non-zero remainder: step one further toward +inf
-      return static_cast<imax>(q) + (rem != 0 ? 1 : 0);
+      return q + (rem != 0 ? 1 : 0);
     }
 
     [[nodiscard]] constexpr imax round() const
     {
-      umax ad = static_cast<umax>(abs_den(Denominator));
+      umax ad = abs_den(Denominator);
       umax q = Numerator / ad;
       umax rem = Numerator % ad;
       // half-away-from-zero: bump magnitude when 2*rem >= ad
       if (rem * 2 >= ad) ++q;
-      return (Denominator < 0) ? -static_cast<imax>(q) : static_cast<imax>(q);
+      return (Denominator < 0) ? -q : q;
     }
 
     [[nodiscard]] static constexpr rational make_sentinel() noexcept
@@ -310,7 +308,7 @@ namespace bnd::detail
       return slim::nullopt;
 
     auto numerator = std::gcd(lhs.Numerator, rhs.Numerator);
-    return rational{numerator, static_cast<imax>(denominator)};
+    return rational{numerator, denominator};
   }
 
   //---------------------------------------------------------------------------
@@ -338,7 +336,7 @@ namespace bnd::detail
 
     auto [num, den] = abs_fraction(value);
     Numerator = num;
-    Denominator = neg ? -static_cast<imax>(den) : static_cast<imax>(den);
+    Denominator = neg ? -den : den;
     // trim not needed, because abs_fraction already trims in its special case
   }
 
@@ -350,7 +348,7 @@ namespace bnd::detail
   {
     if (is_sentinel())   return slim::unexpected{errc::overflow};
     if (Denominator < 0) return slim::unexpected{errc::domain_error};
-    return static_cast<T>(Numerator / static_cast<umax>(Denominator));
+    return static_cast<T>(Numerator / abs_den(Denominator));
   }
 
   //---------------------------------------------------------------------------
@@ -452,10 +450,10 @@ namespace bnd::detail
         int d = parse_digit(c, base);
         if (d < 0) throw ("_b/_r literal: invalid digit for radix");
 
-        umax base_u = static_cast<umax>(base);
-        if (num > (~umax{0} - static_cast<umax>(d)) / base_u)
+        umax base_u = base;
+        if (num > (~umax{0} - d) / base_u)
           throw ("_b/_r literal: numerator overflow");
-        num = num * base_u + static_cast<umax>(d);
+        num = num * base_u + d;
         if (in_frac) ++frac_len;
       }
 
@@ -511,7 +509,7 @@ namespace bnd::detail
         }
       }
 
-      return rational{num, static_cast<imax>(den)};
+      return rational{num, den};
     }
   }
 
@@ -568,7 +566,7 @@ namespace bnd::detail
       if (num == 0) return ret_t{0_r};
       rational r;
       r.Numerator = num;
-      r.Denominator = r_neg ? -static_cast<imax>(a_ad) : static_cast<imax>(a_ad);
+      r.Denominator = r_neg ? -a_ad : a_ad;
       trim(r.Numerator, r.Denominator);
       return ret_t{r};
     }
@@ -623,8 +621,8 @@ namespace bnd::detail
       // directly and trim, mirroring the equal-denominator path above.
       rational r;
       r.Numerator   = numerator;
-      r.Denominator = a_neg ? -static_cast<imax>(denominator)
-                             :  static_cast<imax>(denominator);
+      r.Denominator = a_neg ? -denominator
+                             :  denominator;
       trim(r.Numerator, r.Denominator);
       return ret_t{r};
     }
@@ -636,8 +634,8 @@ namespace bnd::detail
     bool r_neg = a_neg ? (A > B) : (B > A);
     rational r;
     r.Numerator   = numerator;
-    r.Denominator = r_neg ? -static_cast<imax>(denominator)
-                           :  static_cast<imax>(denominator);
+    r.Denominator = r_neg ? -denominator
+                           :  denominator;
     trim(r.Numerator, r.Denominator);
     return ret_t{r};
   }
@@ -699,8 +697,8 @@ namespace bnd::detail
     // bypass rational(num, den) and skip its redundant trim.
     rational r;
     r.Numerator   = numerator;
-    r.Denominator = r_neg ? -static_cast<imax>(denominator)
-                           :  static_cast<imax>(denominator);
+    r.Denominator = r_neg ? -denominator
+                           :  denominator;
     return ret_t{r};
   }
 
@@ -718,7 +716,7 @@ namespace bnd::detail
     if constexpr (Checked)
     {
       // a.Numerator goes into the result's Denominator slot, so it must fit
-      // in imax (otherwise the static_cast wraps and any later -Denominator
+      // in imax (otherwise the umax→imax conversion wraps and any later -Denominator
       // is UB).
       if (a.Numerator == 0 ||
           a.Numerator > static_cast<umax>(std::numeric_limits<imax>::max()))
@@ -730,8 +728,7 @@ namespace bnd::detail
 
     rational r;
     r.Numerator   = abs_den(a.Denominator);
-    r.Denominator = (a.Denominator < 0) ? -static_cast<imax>(a.Numerator)
-                                         :  static_cast<imax>(a.Numerator);
+    r.Denominator = (a.Denominator < 0) ? -a.Numerator : a.Numerator;
     return ret_t{r};
   }
 

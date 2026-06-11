@@ -475,7 +475,7 @@ void bench_cmath()
   {
     auto k = static_cast<imax>(i & 0xFFFF);  // small varying integer
     rational q  = rational{k, 16384};        // [0, ~4) in Q.14
-    rational qs = rational{static_cast<imax>(k) - 32768, 16384}; // signed
+    rational qs = rational{k - 32768, 16384}; // signed
 
     // ---- abs / floor / ceil / round / trunc ----
     { CTRACK_NAME("math::abs   bound");
@@ -584,23 +584,23 @@ void bench_cmath()
 
     // ---- tan (returns expected, unwrap with operator*) ----
     { CTRACK_NAME("math::tan   bound");
-      tan_in_t x{rational{static_cast<imax>(k % 24576) - 12288, 16384}};
+      tan_in_t x{rational{(k % 24576) - 12288, 16384}};
       auto r = bnd::math::tan(x);
       do_not_optimize(r); }
     { CTRACK_NAME("std::tan    double");
-      double d = static_cast<double>(rational{static_cast<imax>(k % 24576) - 12288, 16384});
+      double d = static_cast<double>(rational{(k % 24576) - 12288, 16384});
       auto r = std::tan(d);
       do_not_optimize(r); }
 
     // ---- atan2 ----
     { CTRACK_NAME("math::atan2 bound");
-      atan2_in_t y{rational{static_cast<imax>(k % 32768) - 16384, 16384}};
-      atan2_in_t x{rational{static_cast<imax>((k + 1) % 32768) - 16384, 16384}};
+      atan2_in_t y{rational{(k % 32768) - 16384, 16384}};
+      atan2_in_t x{rational{((k + 1) % 32768) - 16384, 16384}};
       auto r = bnd::math::atan2(y, x);
       do_not_optimize(r.raw()); }
     { CTRACK_NAME("std::atan2  double");
-      double y = static_cast<double>(rational{static_cast<imax>(k % 32768) - 16384, 16384});
-      double x = static_cast<double>(rational{static_cast<imax>((k + 1) % 32768) - 16384, 16384});
+      double y = static_cast<double>(rational{(k % 32768) - 16384, 16384});
+      double x = static_cast<double>(rational{((k + 1) % 32768) - 16384, 16384});
       auto r = std::atan2(y, x);
       do_not_optimize(r); }
 
@@ -618,11 +618,11 @@ void bench_cmath()
 
     // ---- extended transcendentals (#3) ----
     { CTRACK_NAME("math::asin  bound");
-      atan2_in_t x{rational{static_cast<imax>(k % 32768) - 16384, 16384}};
+      atan2_in_t x{rational{(k % 32768) - 16384, 16384}};
       auto r = bnd::math::asin(x);
       do_not_optimize(r.raw()); }
     { CTRACK_NAME("std::asin   double");
-      double d = static_cast<double>(rational{static_cast<imax>(k % 32768) - 16384, 16384});
+      double d = static_cast<double>(rational{(k % 32768) - 16384, 16384});
       auto r = std::asin(d);
       do_not_optimize(r); }
 

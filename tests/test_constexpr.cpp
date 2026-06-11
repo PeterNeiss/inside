@@ -407,7 +407,7 @@ TEST_CASE("constexpr: bound_range iterates the full grid", "[constexpr][range]")
   constexpr imax sum = [] {
     imax s = 0;
     for (auto i : bound_range<{0, 9}>{})
-      s += static_cast<imax>(i);
+      s += imax{i};
     return s;
   }();
   STATIC_REQUIRE(sum == 45);
@@ -416,7 +416,7 @@ TEST_CASE("constexpr: bound_range iterates the full grid", "[constexpr][range]")
   constexpr imax sum_from_5 = [] {
     imax s = 0;
     for (auto i : bound_range<{0, 9}>{bound<{0, 9}>{5}})
-      s += static_cast<imax>(i);
+      s += imax{i};
     return s;
   }();
   STATIC_REQUIRE(sum_from_5 == 45);

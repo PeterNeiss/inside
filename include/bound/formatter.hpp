@@ -76,7 +76,7 @@ struct std::formatter<bnd::bound<G, P>>
       return this->numeric_.format(bnd::detail::to_value(b), ctx);
     else if (this->has_spec_)
       return this->numeric_.format(
-          static_cast<double>(static_cast<bnd::detail::rational>(b)), ctx);
+          static_cast<double>(bnd::detail::rational{b}), ctx);
     else
       return std::format_to(ctx.out(), "{}", bnd::to_string(b));
   }

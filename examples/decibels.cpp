@@ -57,7 +57,7 @@ using db_div20_t = bound<{{-2, 1}, notch<1, 65536>}, round_nearest | real>;
 using gain_t     = bound<{{0x1p-8, 4}, notch<1, 65536>}, round_nearest | real>;
 
 // dB → linear: 10^(dB/20).
-static constexpr gain_t db_to_linear(db_t db)
+static BND_MATH_FN gain_t db_to_linear(db_t db)
 {
   db_div20_t exponent{db / just<20>};
   return gain_t{math::pow_base<10>(exponent)};
@@ -65,7 +65,7 @@ static constexpr gain_t db_to_linear(db_t db)
 
 // linear → dB: 20·log10(amp) = (20/ln(10)) · ln(amp).
 // 20/ln(10) ≈ 8.685889638. As an 8-digit rational source: 86858896/10^7.
-static constexpr db_t linear_to_db(gain_t amp)
+static BND_MATH_FN db_t linear_to_db(gain_t amp)
 {
   // 20/ln(10) as an exact point-bound (no rational on the surface).
   constexpr auto k20_over_ln10 = just<frac<86858896, 10000000>>;

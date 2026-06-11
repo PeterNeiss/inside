@@ -138,11 +138,11 @@ namespace bnd
 
       constexpr iterator& operator+=(difference_type n)
       {
-        constexpr imax M = static_cast<imax>(slot_count);
+        constexpr imax M = slot_count;
         imax i = static_cast<imax>(index) + n;
         // euclidean mod so negative n still lands in [0, slot_count)
         i = ((i % M) + M) % M;
-        index = static_cast<umax>(i);
+        index = i;
         remaining -= n;
         return *this;
       }
@@ -178,7 +178,7 @@ namespace bnd
     constexpr iterator end() const
     { return {start_index_, 0}; }
 
-    constexpr std::size_t size() const { return static_cast<std::size_t>(slot_count); }
+    constexpr std::size_t size() const { return slot_count; }
 
     // `indexed()` pairs each value with its zero-based position, mirroring
     // the C++23 `std::views::enumerate` adapter. Convenient sugar for the

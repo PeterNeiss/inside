@@ -138,7 +138,7 @@ namespace bnd::detail
       // N is a power of two — i.e. literally the native Q-format idiom.
       if constexpr (!zero_unchecked)
         if (rhs.raw() == 0) return fail(errc::division_by_zero, "division by zero in div");
-      constexpr umax N = static_cast<umax>(abs_den(Notch<L>.Denominator));
+      constexpr umax N = abs_den(Notch<L>.Denominator);
       return result::from_raw(raw_cast<result>(
           (static_cast<umax>(lhs.raw()) * N) / static_cast<umax>(rhs.raw())));
     }

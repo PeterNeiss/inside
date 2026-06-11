@@ -115,7 +115,7 @@ namespace bnd
     template <numeric A>
     constexpr double to_double(A const& value)
     {
-      if constexpr (std::is_arithmetic_v<A>) return static_cast<double>(value);
+      if constexpr (std::is_arithmetic_v<A>) return value;
       else                                   return static_cast<double>(detail::as_rational(value));
     }
     // Snap a value onto `real` (double-backed) storage: it lands on the grid
@@ -245,7 +245,11 @@ namespace bnd
     //                       the `.to<std::size_t>().value()` ceremony.
     //   operator rational — implicit. Lossless and mathematically exact,
     //                       so no risk in letting it happen silently.
-    //   operator double   — *explicit*, AND gated by policy: only
+    //   operator double   — implicit for `real`-policy bounds: their dyadic
+    //                       grid makes every value exactly representable in
+    //                       double (both engines), so the conversion is
+    //                       lossless — same rule as operator rational.
+    //                       *Explicit* otherwise, AND gated by policy: only
     //                       available when P includes a rounding flag
     //                       (round_floor/ceil/nearest/half_even or
     //                       ignore_round). Strict-policy bounds must
@@ -275,9 +279,9 @@ namespace bnd
       requires (detail::notch_is_unit_integer<G>
              && G.Interval.Lower >= 0
              && G.Interval.Upper <= bnd::detail::rational{std::numeric_limits<imax>::max()})
-    { return static_cast<std::size_t>(detail::to_value(*this)); }
+    { return detail::to_value(*this); }
 
-    constexpr explicit operator double() const
+    constexpr explicit((P & real) != real) operator double() const
       requires ((P & (round_floor | round_ceil | round_nearest
                     | round_half_even | ignore_round)) != 0)
     { return G.raw_to_double(Raw); }
@@ -380,14 +384,13 @@ namespace bnd
     [[nodiscard]] constexpr imax numerator() const
     {
       auto r = detail::as_rational(*this);
-      return (r.Denominator < 0) ? -static_cast<imax>(r.Numerator)
-                                 :  static_cast<imax>(r.Numerator);
+      return (r.Denominator < 0) ? -r.Numerator : r.Numerator;
     }
 
     [[nodiscard]] constexpr imax denominator() const
     {
       auto r = detail::as_rational(*this);
-      return static_cast<imax>(detail::abs_den(r.Denominator));
+      return detail::abs_den(r.Denominator);
     }
 
     // Member-syntax aliases for the free functions in `bnd::math` — these
@@ -618,7 +621,7 @@ namespace bnd
     constexpr bound& operator+=(A rhs)
     {
       if constexpr (std::integral<A>)
-        return integer_compound_assign(static_cast<imax>(rhs),
+        return integer_compound_assign(rhs,
             add_overflow, wrap_add_, "operator+= overflow");
       else if constexpr (std::same_as<A, bnd::detail::rational>)
         return assign_op_result(bnd::detail::rational{*this} + rhs);
@@ -634,7 +637,7 @@ namespace bnd
     constexpr bound& operator-=(A rhs)
     {
       if constexpr (std::integral<A>)
-        return integer_compound_assign(static_cast<imax>(rhs),
+        return integer_compound_assign(rhs,
             sub_overflow, wrap_sub_, "operator-= overflow");
       else if constexpr (std::same_as<A, bnd::detail::rational>)
         return assign_op_result(bnd::detail::rational{*this} - rhs);
@@ -658,7 +661,7 @@ namespace bnd
     constexpr bound& operator*=(A rhs)
     {
       if constexpr (std::integral<A>)
-        return integer_compound_assign(static_cast<imax>(rhs),
+        return integer_compound_assign(rhs,
             mul_overflow, wrap_mul_, "operator*= overflow");
       else if constexpr (std::same_as<A, bnd::detail::rational>)
         return assign_op_result(bnd::detail::rational{*this} * rhs);

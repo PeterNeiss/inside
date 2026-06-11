@@ -98,8 +98,8 @@ typename B::raw_type random_in_range_raw(std::mt19937_64& rng)
   }
   else if constexpr (storage_of<B> != storage::offset)
   {
-    auto lo = static_cast<imax>(Lower<B>);
-    auto hi = static_cast<imax>(Upper<B>);
+    auto lo = Lower<B>.trunc();
+    auto hi = Upper<B>.trunc();
     std::uniform_int_distribution<imax> dist(lo, hi);
     return static_cast<raw>(dist(rng));
   }
@@ -174,8 +174,8 @@ void prop_native_compare(fuzz_state& s, long iters)
   if constexpr (IsIntegerAligned<B> && storage_of<B> != storage::rational)
   {
     s.current_prop = "native_compare";
-    auto lo = static_cast<imax>(Lower<B>);
-    auto hi = static_cast<imax>(Upper<B>);
+    auto lo = Lower<B>.trunc();
+    auto hi = Upper<B>.trunc();
     std::uniform_int_distribution<imax> dist(lo, hi);
     for (long i = 0; i < iters; ++i)
     {
@@ -197,8 +197,8 @@ void prop_clamp(fuzz_state& s, long iters)
   {
     s.current_prop = "clamp";
     using BC = bound<Grid<B>, clamp>;
-    auto lo = static_cast<imax>(Lower<B>);
-    auto hi = static_cast<imax>(Upper<B>);
+    auto lo = Lower<B>.trunc();
+    auto hi = Upper<B>.trunc();
     imax span = (hi - lo) * 3 + 100;
     for (long i = 0; i < iters; ++i)
     {
@@ -218,8 +218,8 @@ void prop_wrap(fuzz_state& s, long iters)
   {
     s.current_prop = "wrap";
     using BW = bound<Grid<B>, wrap>;
-    auto lo = static_cast<imax>(Lower<B>);
-    auto hi = static_cast<imax>(Upper<B>);
+    auto lo = Lower<B>.trunc();
+    auto hi = Upper<B>.trunc();
     imax range = hi - lo + 1;
     imax span = range * 3 + 100;
     for (long i = 0; i < iters; ++i)
@@ -239,8 +239,8 @@ void prop_try_make(fuzz_state& s, long iters)
   if constexpr (IsIntegerAligned<B> && storage_of<B> != storage::rational)
   {
     s.current_prop = "try_make";
-    auto lo = static_cast<imax>(Lower<B>);
-    auto hi = static_cast<imax>(Upper<B>);
+    auto lo = Lower<B>.trunc();
+    auto hi = Upper<B>.trunc();
     imax span = (hi - lo) * 3 + 100;
     for (long i = 0; i < iters; ++i)
     {
@@ -261,8 +261,8 @@ void prop_on_clamp(fuzz_state& s, long iters)
   {
     s.current_prop = "on_clamp";
     using BC = bound<Grid<B>, clamp>;
-    auto lo = static_cast<imax>(Lower<B>);
-    auto hi = static_cast<imax>(Upper<B>);
+    auto lo = Lower<B>.trunc();
+    auto hi = Upper<B>.trunc();
     imax span = (hi - lo) * 2 + 50;
     for (long i = 0; i < iters; ++i)
     {
@@ -379,8 +379,8 @@ void prop_round_trip_construct(fuzz_state& s, long iters)
   if constexpr (IsIntegerAligned<B> && storage_of<B> != storage::rational)
   {
     s.current_prop = "round_trip_construct";
-    auto lo = static_cast<imax>(Lower<B>);
-    auto hi = static_cast<imax>(Upper<B>);
+    auto lo = Lower<B>.trunc();
+    auto hi = Upper<B>.trunc();
     std::uniform_int_distribution<imax> dist(lo, hi);
     for (long i = 0; i < iters; ++i)
     {
@@ -424,8 +424,8 @@ void prop_compound_add_int(fuzz_state& s, long iters)
   if constexpr (IsIntegerAligned<B> && storage_of<B> != storage::rational)
   {
     s.current_prop = "compound_add_int";
-    auto lo = static_cast<imax>(Lower<B>);
-    auto hi = static_cast<imax>(Upper<B>);
+    auto lo = Lower<B>.trunc();
+    auto hi = Upper<B>.trunc();
     // Pick integer initial value and delta such that the result stays in range
     // (the type is `checked` by default; we don't want to throw).
     std::uniform_int_distribution<imax> dist(lo, hi);
@@ -454,8 +454,8 @@ void prop_modulo(fuzz_state& s, long iters)
   {
     s.current_prop = "modulo";
     using BI = bound<Grid<B>, ignore_round>;
-    auto lo = static_cast<imax>(Lower<B>);
-    auto hi = static_cast<imax>(Upper<B>);
+    auto lo = Lower<B>.trunc();
+    auto hi = Upper<B>.trunc();
     if (lo > 0 || hi <= 0)
     {
       // Trivially: no zero-divisor risk if zero isn't representable; just
@@ -467,7 +467,8 @@ void prop_modulo(fuzz_state& s, long iters)
         BI b = BI::from_raw(random_in_range_raw<BI>(s.rng));
         if (b == 0) continue;  // possible if hi <= 0 and zero is in range
         auto r = mod(a, b, truncated);
-        imax expected = static_cast<imax>(a) % static_cast<imax>(b);
+        imax av = a, bv = b;
+        imax expected = av % bv;
         // mod returns a plain bound when B's grid excludes zero, else optional.
         if constexpr (is_slim_optional_v<decltype(r)>)
         {
@@ -488,7 +489,8 @@ void prop_modulo(fuzz_state& s, long iters)
         BI b{0};
         do { b = BI::from_raw(random_in_range_raw<BI>(s.rng)); } while (b == 0);
         auto r = mod(a, b, truncated);
-        imax expected = static_cast<imax>(a) % static_cast<imax>(b);
+        imax av = a, bv = b;
+        imax expected = av % bv;
         // mod returns a plain bound when B's grid excludes zero, else optional.
         if constexpr (is_slim_optional_v<decltype(r)>)
         {
@@ -509,8 +511,8 @@ void prop_increment_wrap(fuzz_state& s, long iters)
   {
     s.current_prop = "increment_wrap";
     using BW = bound<Grid<B>, wrap>;
-    auto lo = static_cast<imax>(Lower<B>);
-    auto hi = static_cast<imax>(Upper<B>);
+    auto lo = Lower<B>.trunc();
+    auto hi = Upper<B>.trunc();
     imax range = hi - lo + 1;
     std::uniform_int_distribution<imax> dist(lo, hi);
     for (long i = 0; i < iters; ++i)
@@ -610,8 +612,8 @@ void prop_compound_imax_overflow(fuzz_state& s, long iters)
   {
     s.current_prop = "compound_imax_overflow";
     using BC = bound<Grid<B>, checked>;
-    auto lo = static_cast<imax>(Lower<B>);
-    auto hi = static_cast<imax>(Upper<B>);
+    auto lo = Lower<B>.trunc();
+    auto hi = Upper<B>.trunc();
     std::uniform_int_distribution<imax> dist(lo, hi);
     for (long i = 0; i < iters; ++i)
     {
@@ -655,8 +657,8 @@ void prop_compound_div_mod_zero(fuzz_state& s, long iters)
   if constexpr (IsIntegerAligned<B> && storage_of<B> != storage::rational)
   {
     s.current_prop = "compound_div_mod_zero";
-    auto lo = static_cast<imax>(Lower<B>);
-    auto hi = static_cast<imax>(Upper<B>);
+    auto lo = Lower<B>.trunc();
+    auto hi = Upper<B>.trunc();
     if (lo > 0) lo = 1;  // avoid 0/0
     std::uniform_int_distribution<imax> dist(std::max<imax>(1, lo), hi);
     for (long i = 0; i < iters; ++i)
@@ -684,8 +686,8 @@ void prop_compound_bound_overshoot(fuzz_state& s, long iters)
   if constexpr (IsIntegerAligned<B> && storage_of<B> != storage::rational)
   {
     s.current_prop = "compound_bound_overshoot";
-    auto lo = static_cast<imax>(Lower<B>);
-    auto hi = static_cast<imax>(Upper<B>);
+    auto lo = Lower<B>.trunc();
+    auto hi = Upper<B>.trunc();
     auto range = hi - lo;
     if (range < 2) return;
     std::uniform_int_distribution<imax> dist(lo, hi);
@@ -899,7 +901,7 @@ void prop_raw_rational_arith(fuzz_state& s, long iters)
     rational lo = Lower<B>;
     rational hi = Upper<B>;
     std::uniform_int_distribution<imax> num_dist(
-        static_cast<imax>(lo) + 1, static_cast<imax>(hi) - 1);
+        lo.trunc() + 1, hi.trunc() - 1);
     std::uniform_int_distribution<imax> den_dist(1, 7);
     for (long i = 0; i < iters; ++i)
     {
@@ -927,9 +929,9 @@ void prop_raw_rational_arith(fuzz_state& s, long iters)
         if constexpr (requires { v.has_value(); }) {
           FUZZ_REQUIRE(s, v.has_value());
           if (v.has_value())
-            FUZZ_REQUIRE(s, static_cast<rational>(*v) == expected);
+            FUZZ_REQUIRE(s, rational{*v} == expected);
         } else {
-          FUZZ_REQUIRE(s, static_cast<rational>(v) == expected);
+          FUZZ_REQUIRE(s, rational{v} == expected);
         }
       };
       check(sum,  expect_sum);
@@ -958,8 +960,8 @@ void prop_casts(fuzz_state& s, long iters)
   if constexpr (IsIntegerAligned<B> && storage_of<B> != storage::rational)
   {
     s.current_prop = "casts";
-    auto lo = static_cast<imax>(Lower<B>);
-    auto hi = static_cast<imax>(Upper<B>);
+    auto lo = Lower<B>.trunc();
+    auto hi = Upper<B>.trunc();
     imax range = hi - lo + 1;
     imax span = range * 3 + 100;
     for (long i = 0; i < iters; ++i)
@@ -1019,8 +1021,8 @@ void prop_predicates(fuzz_state& s, long iters)
   if constexpr (IsIntegerAligned<B> && storage_of<B> != storage::rational)
   {
     s.current_prop = "predicates";
-    auto lo = static_cast<imax>(Lower<B>);
-    auto hi = static_cast<imax>(Upper<B>);
+    auto lo = Lower<B>.trunc();
+    auto hi = Upper<B>.trunc();
     imax span = (hi - lo) * 3 + 100;
     for (long i = 0; i < iters; ++i)
     {
@@ -1185,7 +1187,7 @@ void prop_sin_cos(fuzz_state& s, long iters)
   {
     s.iter = i;
     A a = A::from_raw(random_in_range_raw<A>(s.rng));
-    double   ad = static_cast<double>(rational{a});
+    double   ad = a;
     rational sn = math::sin(a);
     rational cs = math::cos(a);
     FUZZ_REQUIRE(s, approx_le(sn, rational{std::sin(ad)}, tol));
@@ -1205,7 +1207,7 @@ void prop_tan(fuzz_state& s, long iters)
   {
     s.iter = i;
     A a = A::from_raw(random_in_range_raw<A>(s.rng));
-    double ad = static_cast<double>(rational{a});
+    double ad = a;
     auto   t  = math::tan(a);
     if (t.has_value())
     {
@@ -1232,7 +1234,7 @@ void prop_exp_log(fuzz_state& s, long iters)
     {
       s.iter = i;
       In x = In::from_raw(random_in_range_raw<In>(s.rng));
-      double xd = static_cast<double>(rational{x});
+      double xd = x;
       FUZZ_REQUIRE(s, approx_rel(rational{math::exp2(x)}, std::exp2(xd),
                                  0.01, rational{8, 16384}));
     }
@@ -1244,7 +1246,7 @@ void prop_exp_log(fuzz_state& s, long iters)
     {
       s.iter = i;
       In x = In::from_raw(random_in_range_raw<In>(s.rng));
-      double xd = static_cast<double>(rational{x});
+      double xd = x;
       FUZZ_REQUIRE(s, approx_le(rational{math::log2(x)},
                                 rational{std::log2(xd)}, rational{16, 16384}));
     }
@@ -1256,7 +1258,7 @@ void prop_exp_log(fuzz_state& s, long iters)
     {
       s.iter = i;
       In x = In::from_raw(random_in_range_raw<In>(s.rng));
-      double xd = static_cast<double>(rational{x});
+      double xd = x;
       FUZZ_REQUIRE(s, approx_rel(rational{math::exp(x)}, std::exp(xd),
                                  0.01, rational{4, 256}));
     }
@@ -1268,7 +1270,7 @@ void prop_exp_log(fuzz_state& s, long iters)
     {
       s.iter = i;
       In x = In::from_raw(random_in_range_raw<In>(s.rng));
-      double xd = static_cast<double>(rational{x});
+      double xd = x;
       // log's auto output is Q.8 (notch 1/256), so accuracy is a few Q.8 ULP.
       FUZZ_REQUIRE(s, approx_le(rational{math::log(x)},
                                 rational{std::log(xd)}, rational{8, 256}));
@@ -1281,7 +1283,7 @@ void prop_exp_log(fuzz_state& s, long iters)
     {
       s.iter = i;
       In x = In::from_raw(random_in_range_raw<In>(s.rng));
-      double xd = static_cast<double>(rational{x});
+      double xd = x;
       double o  = std::pow(10.0, xd);
       if (o > 60000.0) continue;            // stay inside the output grid range
       FUZZ_REQUIRE(s, approx_rel(rational{math::pow_base<10>(x)}, o,
@@ -1324,7 +1326,7 @@ void prop_extended_math(fuzz_state& s, long iters)
     {
       s.iter = i;
       In x = In::from_raw(random_in_range_raw<In>(s.rng));
-      double xd = static_cast<double>(rational{x});
+      double xd = x;
       s.current_prop = "atan";
       FUZZ_REQUIRE(s, approx_le(rational{math::atan(x)}, rational{std::atan(xd)}, tol));
       s.current_prop = "asin";
@@ -1341,7 +1343,7 @@ void prop_extended_math(fuzz_state& s, long iters)
     {
       s.iter = i;
       In x = In::from_raw(random_in_range_raw<In>(s.rng));
-      double xd = static_cast<double>(rational{x});
+      double xd = x;
       s.current_prop = "sinh";
       FUZZ_REQUIRE(s, approx_rel(rational{math::sinh(x)}, std::sinh(xd), 0.01, tol));
       s.current_prop = "cosh";
@@ -1359,7 +1361,7 @@ void prop_extended_math(fuzz_state& s, long iters)
     {
       s.iter = i;
       In x = In::from_raw(random_in_range_raw<In>(s.rng));
-      double xd = static_cast<double>(rational{x});
+      double xd = x;
       FUZZ_REQUIRE(s, approx_le(rational{math::log10(x)}, rational{std::log10(xd)}, tol));
     }
   }
@@ -1372,7 +1374,7 @@ void prop_extended_math(fuzz_state& s, long iters)
     {
       s.iter = i;
       In x = In::from_raw(random_in_range_raw<In>(s.rng));
-      double xd = static_cast<double>(rational{x});
+      double xd = x;
       FUZZ_REQUIRE(s, approx_rel(rational{math::cbrt(x)}, std::cbrt(xd), 0.01, tol));
     }
   }
@@ -1386,8 +1388,8 @@ void prop_extended_math(fuzz_state& s, long iters)
       s.iter = i;
       In x = In::from_raw(random_in_range_raw<In>(s.rng));
       In y = In::from_raw(random_in_range_raw<In>(s.rng));
-      double xd = static_cast<double>(rational{x});
-      double yd = static_cast<double>(rational{y});
+      double xd = x;
+      double yd = y;
       FUZZ_REQUIRE(s, approx_rel(rational{math::hypot(x, y)}, std::hypot(xd, yd), 0.01, tol));
     }
   }
@@ -1402,8 +1404,8 @@ void prop_extended_math(fuzz_state& s, long iters)
       s.iter = i;
       B b = B::from_raw(random_in_range_raw<B>(s.rng));
       E e = E::from_raw(random_in_range_raw<E>(s.rng));
-      double bd = static_cast<double>(rational{b});
-      double ed = static_cast<double>(rational{e});
+      double bd = b;
+      double ed = e;
       double o  = std::pow(bd, ed);
       auto r = math::pow(b, e);
       if (r.has_value() && o < 1e6)

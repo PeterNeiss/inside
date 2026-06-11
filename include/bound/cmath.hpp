@@ -176,7 +176,7 @@ namespace bnd::math
                     "bnd::math: Out must cover [-1, 1]");
 
       constexpr int W = working_bits<Out>();
-      imax raw    = static_cast<imax>(phase.raw());                       // Q.N turn
+      imax raw    = bnd::detail::raw_imax(phase);                       // Q.N turn
       imax turn_w = (W >= N) ? (raw << (W - N)) : (raw >> (N - W));       // → Q.W
       return store_grid<Out>(sin_from_turn_fixed<W, W>(turn_w));
     }
@@ -191,8 +191,8 @@ namespace bnd::math
       constexpr imax full_mask    = (imax{1} << N) - 1;
       constexpr imax quarter_turn = imax{1} << (N - 2);
 
-      In shifted = In::from_raw(static_cast<typename In::raw_type>(
-          (static_cast<imax>(phase.raw()) + quarter_turn) & full_mask));
+      In shifted = In::from_raw(bnd::detail::raw_cast<In>(
+          (bnd::detail::raw_imax(phase) + quarter_turn) & full_mask));
       return sin_turn_impl<Out>(shifted);
     }
 
@@ -271,8 +271,8 @@ namespace bnd::math
         if ((den & (den - 1)) == 0)                       // power-of-two denom
         {
           int  D   = std::countr_zero(den);
-          imax num = (r.Denominator < 0) ? -static_cast<imax>(r.Numerator)
-                                         :  static_cast<imax>(r.Numerator);
+          imax num = (r.Denominator < 0) ? -r.Numerator
+                                         :  r.Numerator;
           constexpr imax K = bnd::detail::abs_den(Notch<Out>.Denominator);  // 1/notch
           constexpr imax m = (Lower<Out> * bnd::detail::rational{K}).value().trunc(); // Lower·K (exact int)
           // K·num + half must fit imax (a wide-denominator r, e.g. hypot's
@@ -382,7 +382,7 @@ namespace bnd::math
     template <int W, int N>
     inline constexpr auto cordic_atan_tbl = []{
       std::array<imax, static_cast<std::size_t>(N)> t{};
-      for (int i = 0; i < N; ++i) t[static_cast<std::size_t>(i)] = atan_pow2_fixed(i, W);
+      for (int i = 0; i < N; ++i) t[i] = atan_pow2_fixed(i, W);
       return t;
     }();
     template <int W, int N>
@@ -397,7 +397,7 @@ namespace bnd::math
         imax d  = (z >= 0) ? 1 : -1;
         imax xn = x - d * (y >> i);
         imax yn = y + d * (x >> i);
-        z -= d * cordic_atan_tbl<W, N>[static_cast<std::size_t>(i)];
+        z -= d * cordic_atan_tbl<W, N>[i];
         x = xn; y = yn;
       }
       sin_out = y; cos_out = x;
@@ -441,8 +441,8 @@ namespace bnd::math
       imax z = 0;
       for (int i = 0; i < N; ++i) {
         imax dx = y >> i, dy = x >> i;
-        if (y >= 0) { x += dx; y -= dy; z += cordic_atan_tbl<W, N>[static_cast<std::size_t>(i)]; }
-        else        { x -= dx; y += dy; z -= cordic_atan_tbl<W, N>[static_cast<std::size_t>(i)]; }
+        if (y >= 0) { x += dx; y -= dy; z += cordic_atan_tbl<W, N>[i]; }
+        else        { x -= dx; y += dy; z -= cordic_atan_tbl<W, N>[i]; }
       }
       return z;
     }
@@ -483,8 +483,8 @@ namespace bnd::math
       std::array<int, static_cast<std::size_t>(L)> s{};
       int idx = 0, i = 1, rep = 4;
       while (idx < L) {
-        s[static_cast<std::size_t>(idx++)] = i;
-        if (i == rep && idx < L) { s[static_cast<std::size_t>(idx++)] = i; rep = 3 * rep + 1; }
+        s[idx++] = i;
+        if (i == rep && idx < L) { s[idx++] = i; rep = 3 * rep + 1; }
         ++i;
       }
       return s;
@@ -497,7 +497,7 @@ namespace bnd::math
       constexpr auto seq = hyp_seq<L>();
       std::array<imax, static_cast<std::size_t>(L)> t{};
       for (int j = 0; j < L; ++j)
-        t[static_cast<std::size_t>(j)] = atanh_pow2_fixed(seq[static_cast<std::size_t>(j)], W);
+        t[j] = atanh_pow2_fixed(seq[j], W);
       return t;
     }();
 
@@ -507,7 +507,7 @@ namespace bnd::math
       constexpr auto seq = hyp_seq<L>();
       imax one = imax{1} << W, invK = one;
       for (int j = 0; j < L; ++j) {
-        int i = seq[static_cast<std::size_t>(j)];
+        int i = seq[j];
         if (2 * i > W - 1) continue;
         invK = fmul(invK, rsqrt_fixed(one - (one >> (2 * i)), W, 12), W);   // ×1/√(1−4^-i)
       }
@@ -521,11 +521,11 @@ namespace bnd::math
       constexpr auto seq = hyp_seq<L>();
       imax x = cordic_hyp_invgain_v<W, L>, y = 0;
       for (int j = 0; j < L; ++j) {
-        int i = seq[static_cast<std::size_t>(j)];
+        int i = seq[j];
         imax d  = (z >= 0) ? 1 : -1;
         imax xn = x + d * (y >> i);
         imax yn = y + d * (x >> i);
-        z -= d * cordic_atanh_tbl<W, L>[static_cast<std::size_t>(j)];
+        z -= d * cordic_atanh_tbl<W, L>[j];
         x = xn; y = yn;
       }
       sh = y; ch = x;
@@ -538,11 +538,11 @@ namespace bnd::math
       constexpr auto seq = hyp_seq<L>();
       imax z = 0;
       for (int j = 0; j < L; ++j) {
-        int i = seq[static_cast<std::size_t>(j)];
+        int i = seq[j];
         imax d  = (y < 0) ? 1 : -1;
         imax xn = x + d * (y >> i);
         imax yn = y + d * (x >> i);
-        z -= d * cordic_atanh_tbl<W, L>[static_cast<std::size_t>(j)];
+        z -= d * cordic_atanh_tbl<W, L>[j];
         x = xn; y = yn;
       }
       return z;
@@ -577,7 +577,7 @@ namespace bnd::math
       imax one  = imax{1} << W;
       imax m_w  = (e >= 0) ? (w_w >> e) : (w_w << (-e));   // m·2^W ∈ [2^W, 2^(W+1))
       imax z    = cordic_atanh_vec<W, hyp_len(W)>(m_w + one, m_w - one);
-      return static_cast<imax>(e) * to_fixed(ln2_r, W) + 2 * z;
+      return e * to_fixed(ln2_r, W) + 2 * z;
     }
 
     // log2(x) at scale 2^W as imax: ln(x)·log2(e).
@@ -672,7 +672,7 @@ namespace bnd::math
       static_assert(N >= 2 && N <= 30, "bnd::math: turn-phase N must be in [2, 30]");
 
       constexpr int W = working_bits<Out>();
-      imax raw    = static_cast<imax>(phase.raw());
+      imax raw    = bnd::detail::raw_imax(phase);
       imax turn_w = (W >= N) ? (raw << (W - N)) : (raw >> (N - W));
 
       bnd::detail::rational sin_v = sin_from_turn_fixed<W, W>(turn_w);
@@ -1131,7 +1131,7 @@ namespace bnd::math
 #ifdef BND_MATH_FIXED
     return sqrt_signed_impl<Out>(x);
 #else
-    double v = static_cast<double>(x);
+    double v = x;
     if (v < 0.0)
       return slim::expected<Out, errc>{slim::unexpected(errc::domain_error)};
     return slim::expected<Out, errc>{Out{dbl::detail::d_sqrt(v)}};
@@ -1190,7 +1190,7 @@ namespace bnd::math
 #ifdef BND_MATH_FIXED
     return pow_base_impl<Base, Out>(x);
 #else
-    return Out{dbl::detail::d_pow(static_cast<double>(Base), static_cast<double>(x))};
+    return Out{dbl::detail::d_pow(static_cast<double>(Base), x)};
 #endif
   }
 
@@ -1273,7 +1273,7 @@ namespace bnd::math
 #ifdef BND_MATH_FIXED
     return tan_impl<Out>(angle);
 #else
-    double x = static_cast<double>(angle);
+    double x = angle;
     double c = dbl::detail::d_cos(x);
     if (c == 0.0)
       return slim::expected<Out, errc>{slim::unexpected(errc::division_by_zero)};
@@ -1332,7 +1332,7 @@ namespace bnd::math
       for (imax j = 0; j <= M / 4; ++j)
       {
         imax turn_w = ((j << W) + M / 2) / M;             // round(j/M · 2^W)
-        t[static_cast<std::size_t>(j)] = sin_from_turn_fixed<W, W>(turn_w);
+        t[j] = sin_from_turn_fixed<W, W>(turn_w);
       }
       return t;
     }();
@@ -1349,7 +1349,7 @@ namespace bnd::math
       bool flip = i >= half;
       if (flip) i -= half;                    // sin(π + x) = -sin(x)
       if (i > quarter) i = half - i;          // sin(π - x) =  sin(x)
-      bnd::detail::rational mag = sin_quarter_table<M, W>[static_cast<std::size_t>(i)];
+      bnd::detail::rational mag = sin_quarter_table<M, W>[i];
       return flip ? -mag : mag;
     }
 
@@ -1387,7 +1387,7 @@ namespace bnd::math
 #ifdef BND_MATH_FIXED
     constexpr imax M = detail::circle_slots<DEG>;
     constexpr int  W = detail::working_bits<AMP>();
-    out = detail::sin_slot<M, W>(static_cast<imax>(angle.raw()));
+    out = detail::sin_slot<M, W>(bnd::detail::raw_imax(angle));
 #else
     out = dbl::detail::d_sin(static_cast<double>(angle) * (dbl::detail::kPi / 180.0));
 #endif
@@ -1401,7 +1401,7 @@ namespace bnd::math
 #ifdef BND_MATH_FIXED
     constexpr imax M = detail::circle_slots<DEG>;
     constexpr int  W = detail::working_bits<AMP>();
-    out = detail::sin_slot<M, W>(static_cast<imax>(angle.raw()) + M / 4);
+    out = detail::sin_slot<M, W>(bnd::detail::raw_imax(angle) + M / 4);
 #else
     out = dbl::detail::d_cos(static_cast<double>(angle) * (dbl::detail::kPi / 180.0));
 #endif
@@ -1417,7 +1417,7 @@ namespace bnd::math
 #ifdef BND_MATH_FIXED
     constexpr imax M = detail::circle_slots<DEG>;
     constexpr int  W = detail::working_bits<AMP>();
-    imax i = static_cast<imax>(angle.raw());
+    imax i = bnd::detail::raw_imax(angle);
     bnd::detail::rational c = detail::sin_slot<M, W>(i + M / 4);
     if (c == 0) return false;                                  // pole
     out = (detail::sin_slot<M, W>(i) / c).value();             // sin / cos
@@ -1866,10 +1866,10 @@ namespace bnd::math
 #ifdef BND_MATH_FIXED
     return pow_impl<Out>(base, exp);
 #else
-    double b = static_cast<double>(base);
+    double b = base;
     if (b <= 0.0)
       return slim::expected<Out, errc>{slim::unexpected(errc::domain_error)};
-    double r = dbl::detail::d_pow(b, static_cast<double>(exp));
+    double r = dbl::detail::d_pow(b, exp);
     if (r < static_cast<double>(Lower<Out>) || r > static_cast<double>(Upper<Out>))
       return slim::expected<Out, errc>{slim::unexpected(errc::overflow)};
     return slim::expected<Out, errc>{Out{r}};

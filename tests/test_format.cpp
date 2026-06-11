@@ -98,7 +98,7 @@ TEST_CASE("std::format numeric specs — fractional bound goes through double",
   // Fractional grids fall to std::formatter<double> when a spec is present.
   using frac = bound<{{0, 2}, rational{1u, 4}}>;  // 0.25 notch
   frac f{rational{5u, 4}};                          // value = 1.25
-  double d = static_cast<double>(static_cast<rational>(f));
+  double d = static_cast<double>(rational{f});
 
   REQUIRE(std::format("{:.2f}", f) == std::format("{:.2f}", d));
   REQUIRE(std::format("{:.4f}", f) == std::format("{:.4f}", d));

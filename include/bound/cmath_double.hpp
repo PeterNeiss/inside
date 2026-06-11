@@ -210,46 +210,46 @@ namespace bnd::math::dbl
   // so the cost is the polynomial itself. These plug into the shared public
   // surface as `fn_core` under the default build.
   template <typename Out, typename In>
-  [[nodiscard]] Out sin_core(In x)  { return Out{detail::d_sin (static_cast<double>(x))}; }
+  [[nodiscard]] Out sin_core(In x)  { return Out{detail::d_sin (x)}; }
   template <typename Out, typename In>
-  [[nodiscard]] Out cos_core(In x)  { return Out{detail::d_cos (static_cast<double>(x))}; }
+  [[nodiscard]] Out cos_core(In x)  { return Out{detail::d_cos (x)}; }
   template <typename Out, typename In>
-  [[nodiscard]] Out exp_core(In x)  { return Out{detail::d_exp (static_cast<double>(x))}; }
+  [[nodiscard]] Out exp_core(In x)  { return Out{detail::d_exp (x)}; }
   template <typename Out, typename In>
-  [[nodiscard]] Out sqrt_core(In x) { return Out{detail::d_sqrt(static_cast<double>(x))}; }
+  [[nodiscard]] Out sqrt_core(In x) { return Out{detail::d_sqrt(x)}; }
   template <typename Out, typename In>
-  [[nodiscard]] Out log_core(In x)  { return Out{detail::d_log (static_cast<double>(x))}; }
+  [[nodiscard]] Out log_core(In x)  { return Out{detail::d_log (x)}; }
   template <typename Out, typename In>
-  [[nodiscard]] Out tan_core(In x)  { return Out{detail::d_tan (static_cast<double>(x))}; }
+  [[nodiscard]] Out tan_core(In x)  { return Out{detail::d_tan (x)}; }
   template <typename Out, typename In>
-  [[nodiscard]] Out exp2_core(In x) { return Out{detail::d_exp2(static_cast<double>(x))}; }
+  [[nodiscard]] Out exp2_core(In x) { return Out{detail::d_exp2(x)}; }
   template <typename Out, typename In>
-  [[nodiscard]] Out log2_core(In x) { return Out{detail::d_log2(static_cast<double>(x))}; }
+  [[nodiscard]] Out log2_core(In x) { return Out{detail::d_log2(x)}; }
   template <typename Out, typename In>
-  [[nodiscard]] Out log10_core(In x){ return Out{detail::d_log10(static_cast<double>(x))}; }
+  [[nodiscard]] Out log10_core(In x){ return Out{detail::d_log10(x)}; }
   template <typename Out, typename In>
-  [[nodiscard]] Out cbrt_core(In x) { return Out{detail::d_cbrt(static_cast<double>(x))}; }
+  [[nodiscard]] Out cbrt_core(In x) { return Out{detail::d_cbrt(x)}; }
   template <typename Out, typename In>
-  [[nodiscard]] Out sinh_core(In x) { return Out{detail::d_sinh(static_cast<double>(x))}; }
+  [[nodiscard]] Out sinh_core(In x) { return Out{detail::d_sinh(x)}; }
   template <typename Out, typename In>
-  [[nodiscard]] Out cosh_core(In x) { return Out{detail::d_cosh(static_cast<double>(x))}; }
+  [[nodiscard]] Out cosh_core(In x) { return Out{detail::d_cosh(x)}; }
   template <typename Out, typename In>
-  [[nodiscard]] Out tanh_core(In x) { return Out{detail::d_tanh(static_cast<double>(x))}; }
+  [[nodiscard]] Out tanh_core(In x) { return Out{detail::d_tanh(x)}; }
   template <typename Out, typename In>
-  [[nodiscard]] Out atan_core(In x) { return Out{detail::d_atan(static_cast<double>(x))}; }
+  [[nodiscard]] Out atan_core(In x) { return Out{detail::d_atan(x)}; }
   template <typename Out, typename In>
-  [[nodiscard]] Out asin_core(In x) { return Out{detail::d_asin(static_cast<double>(x))}; }
+  [[nodiscard]] Out asin_core(In x) { return Out{detail::d_asin(x)}; }
   template <typename Out, typename In>
-  [[nodiscard]] Out acos_core(In x) { return Out{detail::d_acos(static_cast<double>(x))}; }
+  [[nodiscard]] Out acos_core(In x) { return Out{detail::d_acos(x)}; }
   template <typename Out, typename In>
   [[nodiscard]] Out pow_core(In b, In e)
-  { return Out{detail::d_pow(static_cast<double>(b), static_cast<double>(e))}; }
+  { return Out{detail::d_pow(b, e)}; }
   template <typename Out, typename In>
   [[nodiscard]] Out atan2_core(In y, In x)
-  { return Out{detail::d_atan2(static_cast<double>(y), static_cast<double>(x))}; }
+  { return Out{detail::d_atan2(y, x)}; }
   template <typename Out, typename InX, typename InY>
   [[nodiscard]] Out hypot_core(InX x, InY y)
-  { return Out{detail::d_hypot(static_cast<double>(x), static_cast<double>(y))}; }
+  { return Out{detail::d_hypot(x, y)}; }
 } // namespace bnd::math::dbl
 
 #endif // BNDcmathdoubleHPP

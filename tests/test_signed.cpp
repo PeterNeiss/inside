@@ -74,8 +74,8 @@ TEST_CASE("signed-direct ctor from rational/double preserves value", "[bound][si
   REQUIRE(temp{-40_r}            == -40);
   REQUIRE(temp{rational{ 42}}            ==  42);
   REQUIRE(temp{rational{  0}}            ==   0);
-  REQUIRE(temp{static_cast<double>(-40)} == -40);
-  REQUIRE(temp{static_cast<double>( 42)} ==  42);
+  REQUIRE(temp{-40.0} == -40);
+  REQUIRE(temp{42.0} ==  42);
 
   // Raw must match value for direct storage.
   REQUIRE(temp{-40_r}.raw() == -40);

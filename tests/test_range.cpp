@@ -156,7 +156,7 @@ TEST_CASE("bound_range::indexed pairs each value with its position", "[range][in
   small_grid r;
   std::vector<std::pair<imax, imax>> seen;
   for (auto [i, v] : r.indexed())
-    seen.emplace_back(i, static_cast<imax>(v));
+    seen.emplace_back(i, v);
   REQUIRE(seen == std::vector<std::pair<imax, imax>>{
     {0, 0}, {1, 1}, {2, 2}, {3, 3}, {4, 4}
   });
@@ -167,7 +167,7 @@ TEST_CASE("bound_range works with std::views::reverse", "[range][reverse]")
   small_grid r;   // 0,1,2,3,4
   std::vector<imax> seen;
   for (auto v : std::views::reverse(r))
-    seen.push_back(static_cast<imax>(v));
+    seen.push_back(v);
   REQUIRE(seen == std::vector<imax>{4, 3, 2, 1, 0});
 }
 
@@ -176,7 +176,7 @@ TEST_CASE("bound_range::strided visits every step-th value", "[range][strided]")
   small_grid r;   // 0,1,2,3,4
   auto collect = [&](std::size_t step) {
     std::vector<imax> seen;
-    for (auto v : r.strided(step)) seen.push_back(static_cast<imax>(v));
+    for (auto v : r.strided(step)) seen.push_back(v);
     return seen;
   };
   REQUIRE(collect(1) == std::vector<imax>{0, 1, 2, 3, 4});

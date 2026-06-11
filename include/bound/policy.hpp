@@ -258,7 +258,7 @@ namespace bnd
     template <std::integral C>
     constexpr B& operator+=(C rhs)
     {
-      imax l = to_value(Ref), r = static_cast<imax>(rhs), result;
+      imax l = to_value(Ref), r = rhs, result;
       if constexpr (has_action<IsOverflowActionPred, As...>
                  || has_action<IsErrorActionPred,    As...>)
       {
@@ -274,13 +274,13 @@ namespace bnd
         return assign_with_picked(result);
       }
       else
-        return assign_with_picked(static_cast<imax>(l + r));
+        return assign_with_picked(l + r);
     }
 
     template <std::integral C>
     constexpr B& operator-=(C rhs)
     {
-      imax l = to_value(Ref), r = static_cast<imax>(rhs), result;
+      imax l = to_value(Ref), r = rhs, result;
       if constexpr (has_action<IsOverflowActionPred, As...>
                  || has_action<IsErrorActionPred,    As...>)
       {
@@ -296,13 +296,13 @@ namespace bnd
         return assign_with_picked(result);
       }
       else
-        return assign_with_picked(static_cast<imax>(l - r));
+        return assign_with_picked(l - r);
     }
 
     template <std::integral C>
     constexpr B& operator*=(C rhs)
     {
-      imax l = to_value(Ref), r = static_cast<imax>(rhs), result;
+      imax l = to_value(Ref), r = rhs, result;
       if constexpr (has_action<IsOverflowActionPred, As...>
                  || has_action<IsErrorActionPred,    As...>)
       {
@@ -318,7 +318,7 @@ namespace bnd
         return assign_with_picked(result);
       }
       else
-        return assign_with_picked(static_cast<imax>(l * r));
+        return assign_with_picked(l * r);
     }
 
     template <std::integral C>
@@ -329,7 +329,7 @@ namespace bnd
         report_zero(errc::division_by_zero, "operator/= division by zero");
         return Ref;
       }
-      return assign_with_picked(static_cast<imax>(to_value(Ref) / static_cast<imax>(rhs)));
+      return assign_with_picked(to_value(Ref) / static_cast<imax>(rhs));
     }
 
     template <std::integral C>
@@ -340,7 +340,7 @@ namespace bnd
         report_zero(errc::division_by_zero, "operator%= division by zero");
         return Ref;
       }
-      return assign_with_picked(static_cast<imax>(to_value(Ref) % static_cast<imax>(rhs)));
+      return assign_with_picked(to_value(Ref) % static_cast<imax>(rhs));
     }
 
     //-------------------------------------------------------------------------

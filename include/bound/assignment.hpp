@@ -153,7 +153,7 @@ namespace bnd::detail
       // already guarantees Notch and Lower have integer denominators.
       static constexpr imax map_raw(auto rhs_raw)
       {
-        imax r_offset = static_cast<imax>(rhs_raw);
+        imax r_offset = rhs_raw;
         if constexpr (storage_of<R> != storage::offset)
           r_offset -= RawLo<R>;
 
