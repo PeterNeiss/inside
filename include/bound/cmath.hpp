@@ -275,10 +275,16 @@ namespace bnd::math
                                          :  static_cast<imax>(r.Numerator);
           constexpr imax K = bnd::detail::abs_den(Notch<Out>.Denominator);  // 1/notch
           constexpr imax m = (Lower<Out> * bnd::detail::rational{K}).value().trunc(); // Lower·K (exact int)
-          imax half = (D > 0) ? (imax{1} << (D - 1)) : 0;
-          imax off  = ((K * num + half) >> D) - m;        // round-half-up((value−Lower)·K)
-          if (off >= 0 && static_cast<umax>(off) <= bnd::detail::NotchCount<Out>)
-            return Out::from_raw(bnd::detail::raw_from_offset<Out>(static_cast<umax>(off)));
+          // K·num + half must fit imax (a wide-denominator r, e.g. hypot's
+          // 2^46, would wrap K·num and silently store `value mod 2^k`).
+          constexpr imax lim = std::numeric_limits<imax>::max() / 2 / K;
+          if (-lim <= num && num <= lim)
+          {
+            imax half = (D > 0) ? (imax{1} << (D - 1)) : 0;
+            imax off  = ((K * num + half) >> D) - m;      // round-half-up((value−Lower)·K)
+            if (off >= 0 && static_cast<umax>(off) <= bnd::detail::NotchCount<Out>)
+              return Out::from_raw(bnd::detail::raw_from_offset<Out>(static_cast<umax>(off)));
+          }
         }
       }
       return Out{r};
