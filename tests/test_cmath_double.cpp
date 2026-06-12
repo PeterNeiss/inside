@@ -17,6 +17,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <cmath>
+#include <numbers>
 
 // The double engine is the default; under -DBOUND_MATH_FIXED the `real` bounds
 // are integer-backed and these double-storage assertions don't apply.
@@ -161,8 +162,8 @@ TEST_CASE("dbl: circle<M> degree angle uses the double engine", "[dbl][real][cir
   math::amp<65536> y, c;
   math::sin(deg, y);
   math::cos(deg, c);
-  REQUIRE(std::fabs(double(y) - std::sin(47.0 * M_PI / 180.0)) < 2.0 / 65536);
-  REQUIRE(std::fabs(double(c) - std::cos(47.0 * M_PI / 180.0)) < 2.0 / 65536);
+  REQUIRE(std::fabs(double(y) - std::sin(47.0 * std::numbers::pi / 180.0)) < 2.0 / 65536);
+  REQUIRE(std::fabs(double(c) - std::cos(47.0 * std::numbers::pi / 180.0)) < 2.0 / 65536);
 
   // exact at cardinal degrees
   math::circle<360> d0 = 0.0, d180 = 180.0;
