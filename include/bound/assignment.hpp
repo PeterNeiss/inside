@@ -192,6 +192,8 @@ namespace bnd::detail
   template<typename A>
   constexpr void assignment<L,R>::apply_clamp(L& lhs, R rhs, imax lower, imax upper, A&& action)
   {
+    // Pre: rhs is out of [lower, upper] (only called from handle_out_of_range),
+    // so the two-way pick is the full clamp.
     imax clamped = static_cast<imax>(rhs) < lower ? lower : upper;
     imax overshoot = static_cast<imax>(rhs) - clamped;
     from_value(lhs, clamped);
@@ -313,21 +315,17 @@ namespace bnd::detail
     else
       overshoot = rhs - clamped;
 
+    // The clamp target is an interval endpoint — always a grid point — so no
+    // notch arithmetic or rounding is needed: the slot is 0 or NotchCount.
+    // Rational storage takes the exact endpoint constant directly (a `double`
+    // round-trip would lose non-dyadic endpoints under `exact`);
+    // `raw_from_offset<L>` adds Lower back for direct-encoded storage, which
+    // also covers singleton grids.
     if constexpr (rational_raw<L>)
-      lhs = L::from_raw(clamped);
-    else if constexpr (Lower<L> == Upper<L>)
-      lhs = L::from_raw(0);
+      lhs = L::from_raw((rhs < Lower<L>) ? Lower<L> : Upper<L>);
     else
-    {
-      rational raw = ((clamped - Lower<L>)/Notch<L>).value();
-      umax den = static_cast<umax>(raw.Denominator);
-      // Clamp happened first (above), then we round the clamped value onto
-      // a notch. Order matters: rounding-then-clamping could push a
-      // boundary-adjacent midpoint *past* the boundary by one notch.
-      // `raw_from_offset<L>` produces the proper Raw for both offset-encoded
-      // and direct-encoded storage (the latter adds Lower<L> back).
-      lhs = L::from_raw(raw_from_offset<L>(round_quotient<L, P>(raw.Numerator, den)));
-    }
+      lhs = L::from_raw(raw_from_offset<L>(
+          (rhs < Lower<L>) ? umax{0} : NotchCount<L>));
 
     if constexpr (clamp_action<plain<A>>)
       action.fn(lhs, overshoot);

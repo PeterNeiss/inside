@@ -133,6 +133,12 @@ namespace bnd
     // Honors `clamp` to keep an out-of-range value on the grid's endpoints.
     constexpr void store_real(double v)
     {
+      // NaN/±inf would reach snap_double's integer cast (UB). Reject like the
+      // non-real path does via rational(double) — same error, both engines
+      // agree. `v - v` is exactly 0 for every finite v, NaN otherwise.
+      if (!(v - v == 0))
+        throw std::system_error(make_error_code(errc::domain_error),
+                                "non-finite double");
       v = G.snap_double(v);
       if constexpr ((P & clamp) == clamp)
       {

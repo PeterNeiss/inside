@@ -17,7 +17,7 @@
 // math — primitive numeric utilities the rest of the library leans on.
 //
 // Provides: `umax`/`imax` aliases, `smallest_uint_for` / `smallest_int_for`
-// (storage-type selection for grids), the `arithmetic` and `real` concepts,
+// (storage-type selection for grids), the `arithmetic` and `fractional` concepts,
 // `safe_abs` (UB-free absolute value), `frexp` / `ldexp` (constexpr
 // replacements for `<cmath>` versions), and `abs_fraction` (the
 // double → rational conversion engine used by `rational(double)`).

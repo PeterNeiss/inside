@@ -237,8 +237,37 @@ namespace bnd::math
     }
 
     // round(v · 2^W)  and  x / 2^W — the scale-W marshalling (parametric Q.W).
+    // The product num·2^W is formed at 128 bits (native or shift-subtract
+    // portable, bit-for-bit equal), so a reduced numerator near 2^63 cannot
+    // wrap — the previous rational multiply silently overflowed for
+    // numerators ≥ 2^(63−W) (e.g. hypot_endpoint fed full-precision-double
+    // ratios). Rounding is half-away-from-zero, matching rational::round().
     constexpr imax to_fixed(bnd::detail::rational v, int W) noexcept
-    { return bnd::detail::rational::mul_unchecked(v, bnd::detail::rational{imax{1} << W}).round(); }
+    {
+      const umax n = v.Numerator;
+      const umax d = bnd::detail::abs_den(v.Denominator);
+#if defined(__SIZEOF_INT128__)
+      using u128 = unsigned __int128;
+      const u128 t = (u128{n} << W) + d / 2;
+      const umax q = static_cast<umax>(t / d);
+#else
+      // portable: 128-bit (hi:lo) dividend, restoring shift-subtract divide.
+      // d < 2^63 (imax denominator), so the partial remainder fits umax.
+      umax hi = (W == 0) ? 0 : (n >> (64 - W));
+      umax lo = n << W;
+      const umax half = d / 2;
+      lo += half;
+      hi += (lo < half);
+      umax q = 0, r = 0;
+      for (int i = 127; i >= 0; --i)
+      {
+        r = (r << 1) | ((i >= 64 ? (hi >> (i - 64)) : (lo >> i)) & 1u);
+        q <<= 1;
+        if (r >= d) { r -= d; q |= 1; }
+      }
+#endif
+      return (v.Denominator < 0) ? -static_cast<imax>(q) : static_cast<imax>(q);
+    }
     constexpr bnd::detail::rational fixed_to_rational(imax x, int W) noexcept
     { return bnd::detail::rational{x, imax{1} << W}; }
 
@@ -1601,8 +1630,17 @@ namespace bnd::math
       imax rx = to_fixed(bnd::detail::rational::div_unchecked(x, m), kRefBits);
       imax ry = to_fixed(bnd::detail::rational::div_unchecked(y, m), kRefBits);
       imax s_w = fmul(rx, rx, kRefBits) + fmul(ry, ry, kRefBits);
-      bnd::detail::rational root = fixed_to_rational(sqrt_fixed<kRefBits>(s_w), kRefBits);
-      return bnd::detail::rational::mul_unchecked(m, root);
+      const imax root_w = sqrt_fixed<kRefBits>(s_w);
+      // Exact product when it fits (checked multiply — identical to the old
+      // unchecked result whenever that didn't overflow). A wide-denominator m
+      // (e.g. a full-precision double) can push m·root past imax; that case
+      // previously wrapped silently, so the fixed-point fallback only ever
+      // replaces a wrong answer. |m| ≤ 2^20 (domain envelope) keeps
+      // m·2^kRefBits comfortably in range.
+      if (auto exact = m * fixed_to_rational(root_w, kRefBits))
+        return *exact;
+      return fixed_to_rational(fmul(to_fixed(m, kRefBits), root_w, kRefBits),
+                               kRefBits);
     }
 
     // pow(b, e) = 2^(e·log2(b)), b > 0. The exponent is saturated into

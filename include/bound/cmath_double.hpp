@@ -17,7 +17,7 @@
 //     * Cody-Waite range reduction (split constants) for full-precision args.
 //
 //   This is the default math engine; `BND_MATH_FIXED` selects the integer
-//   CORDIC engine (`cmath_fixed.hpp`) instead.
+//   CORDIC engine (the cores in `cmath.hpp`) instead.
 //---------------------------------------------------------------------------
 #ifndef BNDcmathdoubleHPP
 #define BNDcmathdoubleHPP

@@ -12,6 +12,8 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <limits>
+
 using namespace bnd;
 using bnd::detail::rational;
 
@@ -118,4 +120,49 @@ TEST_CASE("representation flags resolve widest-wins", "[storage][policy]")
   using DI = bound<{5, 100}, direct | indexed>;
   STATIC_REQUIRE(detail::value_raw<DI>);
   REQUIRE(DI{42}.raw() == 42);
+}
+
+TEST_CASE("representation flags compose with behavior policies",
+          "[storage][policy]")
+{
+  // exact + clamp: out-of-range snaps to the endpoint, stored exactly.
+  using EC = bound<{{0, 10}, notch<1, 4>}, exact | clamp | round_nearest>;
+  REQUIRE(rational{EC{rational{15}}} == 10);
+  REQUIRE(rational{EC{rational{-3}}} == 0);
+
+  // exact + wrap: modular reduction onto the exact grid
+  // (range = Upper − Lower + Notch = 10.25, so 11.25 wraps to 1).
+  using EW = bound<{{0, 10}, notch<1, 4>}, exact | wrap | round_nearest>;
+  REQUIRE(rational{EW{rational{45, 4}}} == 1);
+
+  // direct + sentinel: out-of-range yields the empty slot.
+  using DS = bound<{5, 100}, direct | sentinel>;
+  auto ok   = DS::try_make(42);
+  auto fail = DS::try_make(200);
+  REQUIRE(ok.has_value());
+  REQUIRE(*ok == 42);
+  REQUIRE(!fail.has_value());
+}
+
+TEST_CASE("representation flags print the value, not the raw",
+          "[storage][format]")
+{
+  using E = bound<{{0, 1}, notch<1, 3>}, exact>;
+  REQUIRE(bnd::to_string(E{rational{2, 3}}) == "2/3");
+
+  using I = bound<{-5, 5}, indexed>;
+  REQUIRE(bnd::to_string(I{-3}) == "-3");      // value, not index 2
+}
+
+TEST_CASE("non-finite doubles are rejected, both engines",
+          "[storage][real][domain]")
+{
+  // Default engine: store_real guards before the grid snap; fixed engine:
+  // the integer-backed path throws in rational(double). Same observable.
+  using R = bound<{{0, 4}, notch<1, 256>}, round_nearest | real>;
+  const double nan = std::numeric_limits<double>::quiet_NaN();
+  const double inf = std::numeric_limits<double>::infinity();
+  REQUIRE_THROWS_AS(R{nan}, std::system_error);
+  REQUIRE_THROWS_AS(R{inf}, std::system_error);
+  REQUIRE_THROWS_AS(R{-inf}, std::system_error);
 }

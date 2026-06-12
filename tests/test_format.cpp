@@ -108,6 +108,27 @@ TEST_CASE("std::format numeric specs — fractional bound goes through double",
   REQUIRE(std::format("{}", f) == "1.25");
 }
 
+TEST_CASE("std::format numeric specs — representation flags",
+          "[format][std_format][storage]")
+{
+  // `exact` on a notched grid: empty spec keeps the exact fraction; a
+  // numeric spec routes through std::formatter<double> like any fractional
+  // grid.
+  using ex = bound<{{0, 1}, notch<1, 3>}, exact>;
+  ex e{rational{2u, 3}};
+  REQUIRE(std::format("{}", e) == "2/3");
+  REQUIRE(std::format("{:.3f}", e)
+          == std::format("{:.3f}", static_cast<double>(rational{e})));
+
+  // `indexed` keeps the integer-grid routing: specs format the VALUE (via
+  // std::formatter<imax>), never the raw index.
+  using ix = bound<{-5, 5}, indexed>;
+  ix i{-3};
+  REQUIRE(std::format("{}",    i) == "-3");
+  REQUIRE(std::format("{:>4}", i) == "  -3");
+  REQUIRE(std::format("{:+}",  i) == "-3");
+}
+
 TEST_CASE("std::format numeric specs — rational", "[format][std_format][rational]")
 {
   // Empty spec — exact via to_string.

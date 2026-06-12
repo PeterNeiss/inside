@@ -59,8 +59,9 @@ int main()
   }
 
   // bound_range iterates every bin index — works because the grid has
-  // notch 1 and integer lower bound. The implicit `operator size_t()`
-  // lets `bins[b]` index the vector without an explicit `.as<>()`.
+  // notch 1 and integer lower bound. The implicit `operator imax()` (plus
+  // the standard imax → size_t conversion) lets `bins[b]` index the vector
+  // without an explicit `.as<>()`.
   using bin_label_t = bound<{0, 99}>;
   std::cout << "bin    count\n";
   for (bin_idx_t b : bound_range<{0, 9}>{})
