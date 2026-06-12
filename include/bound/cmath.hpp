@@ -13,10 +13,14 @@
 #include <bit>
 
 // The public bnd::math::* functions dispatch to the double engine (default) or
-// the integer/CORDIC engine (`-DBOUND_MATH_FIXED`). Only the integer engine is
-// `constexpr` (the double engine uses std::fma, not constexpr before C++23), so
-// the public functions are `constexpr` only in the integer build.
-#ifdef BND_MATH_FIXED
+// the integer/CORDIC engine (`-DBOUND_MATH_FIXED`). The integer engine is
+// always `constexpr`; the double engine becomes `constexpr` automatically on
+// C++26 toolchains where <cmath> is constexpr (P1383 — std::fma / std::sqrt /
+// std::nearbyint; feature macro __cpp_lib_constexpr_cmath). That branch is
+// inert (and untested) until such a toolchain exists. Decision 2026-06-12:
+// no compile-time softfloat emulation — wait for the standard.
+#if defined(BND_MATH_FIXED) \
+    || (defined(__cpp_lib_constexpr_cmath) && __cpp_lib_constexpr_cmath >= 202202L)
 #  define BND_MATH_FN constexpr
 #else
 #  define BND_MATH_FN

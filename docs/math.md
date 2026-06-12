@@ -9,6 +9,10 @@
 | **double** (default) | — | bit-identical on every IEEE-754 binary64 platform compiled without `-ffast-math` (round-to-nearest) | no | ~2× faster |
 | **integer / CORDIC** | CMake `-DBOUND_MATH_FIXED=ON` (macro `BND_MATH_FIXED`) | bit-identical **unconditionally** — any platform, any flags, no FPU required | yes | embedded-friendly |
 
+> The double engine's "constexpr: no" lifts automatically on C++26 toolchains
+> with constexpr `<cmath>` (P1383, `__cpp_lib_constexpr_cmath`) — the gate is
+> already in place.
+
 The double engine evaluates its own fixed polynomials (`std::fma` Horner,
 hex-float coefficients, Cody-Waite range reduction) plus the correctly-rounded
 `std::sqrt` — no `<cmath>` transcendentals anywhere. The integer engine runs

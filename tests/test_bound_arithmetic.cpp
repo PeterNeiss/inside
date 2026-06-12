@@ -407,3 +407,39 @@ TEST_CASE("bnd::sum — bulk reduction with one deferred check",
   std::vector<r> rs(3, r{rational{1, 256}});
   REQUIRE(rational{bnd::sum<qsum>(rs)} == rational{3, 256});
 }
+
+// Issue #7 closure (user decision 2026-06-12): `bound op raw-scalar` is the
+// DESIGNED ban — `1_b` / `just<V>` / `bound<{lo,hi}>{n}` are the API. These
+// pins guard the mechanism: the guidance overloads stay SFINAE-transparent
+// (probing compiles; the assert fires only on real instantiation), and they
+// stay the ONLY match — their `B` return type distinguishes them from any
+// accidentally-introduced real widening overload, whose result grid would be
+// a different type.
+TEST_CASE("scalar-operand ban: guidance overloads pinned",
+          "[bound][arithmetic][scalars]")
+{
+  using pct = bound<{0, 100}>;
+
+  // SFINAE-transparent: the probes are well-formed...
+  STATIC_REQUIRE(requires(pct b) { b + 1; });
+  STATIC_REQUIRE(requires(pct b) { b - 1; });
+  STATIC_REQUIRE(requires(pct b) { b * 2; });
+  STATIC_REQUIRE(requires(pct b) { b / 2; });
+  STATIC_REQUIRE(requires(pct b) { 1 + b; });
+
+  // ...and resolve to the guidance overloads (return type B), not to a real
+  // widening operator (whose result grid would be a different bound type).
+  STATIC_REQUIRE(std::same_as<decltype(std::declval<pct>() + 1), pct>);
+  STATIC_REQUIRE(std::same_as<decltype(std::declval<pct>() * 2), pct>);
+  STATIC_REQUIRE(std::same_as<decltype(2.5 * std::declval<pct>()), pct>);
+
+  // The sanctioned spellings stay open: literals widen, compound narrows,
+  // comparisons are free.
+  pct b{5};
+  auto w = b + 1_b;
+  STATIC_REQUIRE(!std::same_as<decltype(w), pct>);   // widened grid
+  REQUIRE(w == 6);
+  b += 1;
+  REQUIRE(b == 6);
+  REQUIRE(b < 10);
+}
