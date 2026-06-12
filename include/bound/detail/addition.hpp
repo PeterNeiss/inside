@@ -42,7 +42,8 @@ namespace bnd::detail
     template <policy_flag F>
     static constexpr bool needs_overflow_check =
         rational_raw<result>
-        && ((F | BoundPolicy<L> | BoundPolicy<R>) & checked);
+        && ((F | BoundPolicy<L> | BoundPolicy<R>) & checked)
+        && !rational_add_is_safe(Grid<L>, Grid<R>);
 
     template <policy_flag F = none>
     using return_type_for = std::conditional_t<needs_overflow_check<F>,

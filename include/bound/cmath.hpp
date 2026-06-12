@@ -460,6 +460,31 @@ namespace bnd::math
     inline constexpr bnd::detail::rational inv_two_pi =
       (bnd::detail::rational{1} / two_pi_r).value();
 
+    // radians → turn at scale 2^W. The single-term product's constant error
+    // (2^-(W+1)) scales with |a|, which is what capped the public trig
+    // envelope at ±1024 rad. Grids inside that envelope keep the original
+    // single-term expression VERBATIM (bit-identical results); wider grids
+    // (now allowed up to ±2^20 rad) take a two-term hi+lo split of 1/2π,
+    // recovering ~2^-W turn accuracy: lo = inv_two_pi − hi/2^W carried at
+    // scale 2^(W+24) — sized so the remaining constant error times the 2^20
+    // envelope stays ≤ 2^-(W+5) turns — combined through the 128-bit fmul.
+    template <int W, boundable In>
+    constexpr imax rad_to_turn_w(bnd::detail::rational a) noexcept
+    {
+      const imax a_w = to_fixed(a, W);
+      if constexpr (Lower<In> >= -1024 && Upper<In> <= 1024)
+        return fmul(a_w, to_fixed(inv_two_pi, W), W);
+      else
+      {
+        constexpr int  S    = W + 24;                 // ≤ 55 for W ≤ 31
+        constexpr imax hi_w = to_fixed(inv_two_pi, W);
+        constexpr bnd::detail::rational lo = bnd::detail::rational::add_unchecked(
+            inv_two_pi, -fixed_to_rational(hi_w, W));
+        constexpr imax lo_s = to_fixed(lo, S);
+        return fmul(a_w, hi_w, W) + fmul(a_w, lo_s, S);
+      }
+    }
+
     // CORDIC circular vectoring: atan2(y, x) in RADIANS at scale 2^W. Pre: x > 0
     // (caller pre-rotates the other quadrants). Rotates (x, y) toward the +x
     // axis, accumulating the radians atan table. Generalizes the former Q.30
@@ -652,21 +677,19 @@ namespace bnd::math
   // converts to a turn (via `× 1/(2π)`) at the grid-derived working scale and
   // runs the same circular-CORDIC reducer as the turn-input path.
   //
-  // Restrict |angle| ≤ 1024 rad (~163 cycles) so the fixed-point scaling stays
-  // inside int63. Wider angles need a different normalization step
-  // (deferred).
+  // Inputs up to |angle| ≤ 2^20 rad: grids inside ±1024 use the original
+  // single-term 1/2π scaling; wider grids take the two-term reduction in
+  // `rad_to_turn_w` (see there).
   template <boundable Out, boundable In>
   [[nodiscard]] constexpr Out sin_impl(In angle) noexcept
   {
-    static_assert(Lower<In> >= -1024 && Upper<In> <= 1024,
-                  "bnd::math::sin: input must be in [-1024, 1024] rad");
+    static_assert(Lower<In> >= -(imax{1} << 20) && Upper<In> <= (imax{1} << 20),
+                  "bnd::math::sin: input magnitudes must be \u2264 2^20 rad");
     static_assert(Lower<Out> <= -1 && Upper<Out> >= 1,
                   "bnd::math::sin: Out must cover [-1, 1]");
 
     constexpr int W = detail::working_bits<Out>();
-    bnd::detail::rational a = angle;
-    imax a_w    = detail::to_fixed(a, W);                          // radians · 2^W
-    imax turn_w = detail::fmul(a_w, detail::to_fixed(detail::inv_two_pi, W), W);
+    imax turn_w = detail::rad_to_turn_w<W, In>(angle);
     return detail::store_grid<Out>(detail::sin_from_turn_fixed<W, W>(turn_w));
   }
 
@@ -676,15 +699,13 @@ namespace bnd::math
   template <boundable Out, boundable In>
   [[nodiscard]] constexpr Out cos_impl(In angle) noexcept
   {
-    static_assert(Lower<In> >= -1024 && Upper<In> <= 1024,
-                  "bnd::math::cos: input must be in [-1024, 1024] rad");
+    static_assert(Lower<In> >= -(imax{1} << 20) && Upper<In> <= (imax{1} << 20),
+                  "bnd::math::cos: input magnitudes must be \u2264 2^20 rad");
     static_assert(Lower<Out> <= -1 && Upper<Out> >= 1,
                   "bnd::math::cos: Out must cover [-1, 1]");
 
     constexpr int W = detail::working_bits<Out>();
-    bnd::detail::rational a = angle;
-    imax a_w    = detail::to_fixed(a, W);                          // radians · 2^W
-    imax turn_w = detail::fmul(a_w, detail::to_fixed(detail::inv_two_pi, W), W);
+    imax turn_w = detail::rad_to_turn_w<W, In>(angle);
     return detail::store_grid<Out>(detail::cos_from_turn_fixed<W, W>(turn_w));
   }
 
@@ -709,8 +730,11 @@ namespace bnd::math
       if (cos_v == 0) return slim::unexpected(errc::division_by_zero);
 
       bnd::detail::rational tan_v = (sin_v / cos_v).value();
-      if (tan_v < Lower<Out> || tan_v > Upper<Out>)
-        return slim::unexpected(errc::overflow);
+      // Under a clamp policy the out-of-range result saturates via the
+      // store below instead of erroring; the pole stays an error.
+      if constexpr ((BoundPolicy<Out> & clamp) != clamp)
+        if (tan_v < Lower<Out> || tan_v > Upper<Out>)
+          return slim::unexpected(errc::overflow);
 
       return detail::store_grid<Out>(tan_v);
     }
@@ -725,13 +749,11 @@ namespace bnd::math
   template <boundable Out, boundable In>
   [[nodiscard]] constexpr slim::expected<Out, errc> tan_impl(In angle) noexcept
   {
-    static_assert(Lower<In> >= -1024 && Upper<In> <= 1024,
-                  "bnd::math::tan: input must be in [-1024, 1024] rad");
+    static_assert(Lower<In> >= -(imax{1} << 20) && Upper<In> <= (imax{1} << 20),
+                  "bnd::math::tan: input magnitudes must be \u2264 2^20 rad");
 
     constexpr int W = detail::working_bits<Out>();
-    bnd::detail::rational a = angle;
-    imax a_w    = detail::to_fixed(a, W);
-    imax turn_w = detail::fmul(a_w, detail::to_fixed(detail::inv_two_pi, W), W);
+    imax turn_w = detail::rad_to_turn_w<W, In>(angle);
 
     bnd::detail::rational sin_v = detail::sin_from_turn_fixed<W, W>(turn_w);
     bnd::detail::rational cos_v = detail::cos_from_turn_fixed<W, W>(turn_w);
@@ -739,8 +761,11 @@ namespace bnd::math
     if (cos_v == 0) return slim::unexpected(errc::division_by_zero);
 
     bnd::detail::rational tan_v = (sin_v / cos_v).value();
-    if (tan_v < Lower<Out> || tan_v > Upper<Out>)
-      return slim::unexpected(errc::overflow);
+    // Under a clamp policy the out-of-range result saturates via the store
+    // below instead of erroring; the pole stays an error.
+    if constexpr ((BoundPolicy<Out> & clamp) != clamp)
+      if (tan_v < Lower<Out> || tan_v > Upper<Out>)
+        return slim::unexpected(errc::overflow);
 
     return detail::store_grid<Out>(tan_v);
   }
@@ -1011,6 +1036,25 @@ namespace bnd::math
   // outputs are integer-valued by definition — integer-storage is the
   // smallest and most honest representation.
   //---------------------------------------------------------------------------
+  //---------------------------------------------------------------------------
+  // pown<E> — compile-time integer powers, pure grid arithmetic
+  //---------------------------------------------------------------------------
+  // Repeated squaring in bound-space: every multiply widens the result grid
+  // corner-correctly, so the result is exact for exact inputs and negative
+  // bases are fine. No engine, no `real` requirement — works on any bound
+  // (like abs/floor/fmod). Checked rational raws may return slim::optional
+  // per the usual arithmetic vocabulary. Negative exponents are deferred
+  // (they need the division optional story).
+  template <imax E, boundable In>
+    requires (E >= 0)
+  [[nodiscard]] constexpr auto pown(In x) noexcept
+  {
+    if constexpr (E == 0)      { (void)x; return just<1>; }
+    else if constexpr (E == 1) return x;
+    else if constexpr (E % 2)  return x * pown<E - 1>(x);
+    else                       { auto h = pown<E / 2>(x); return h * h; }
+  }
+
   namespace detail
   {
     // max(|Lower<In>|, |Upper<In>|) as a constexpr rational. Used to size
@@ -1382,8 +1426,9 @@ namespace bnd::math
     if (c == 0.0)
       return slim::expected<Out, errc>{slim::unexpected(errc::division_by_zero)};
     double t = dbl::detail::d_sin(x) / c;
-    if (t < static_cast<double>(Lower<Out>) || t > static_cast<double>(Upper<Out>))
-      return slim::expected<Out, errc>{slim::unexpected(errc::overflow)};
+    if constexpr ((BoundPolicy<Out> & clamp) != clamp)   // clamp Out: saturate below
+      if (t < static_cast<double>(Lower<Out>) || t > static_cast<double>(Upper<Out>))
+        return slim::expected<Out, errc>{slim::unexpected(errc::overflow)};
     return slim::expected<Out, errc>{Out{t}};
 #endif
   }
@@ -1879,8 +1924,9 @@ namespace bnd::math
       return slim::unexpected(errc::overflow);
 
     bnd::detail::rational r = detail::exp2_from_fixed<W>(sc_w);
-    if (r < Lower<Out> || r > Upper<Out>)
-      return slim::unexpected(errc::overflow);
+    if constexpr ((BoundPolicy<Out> & clamp) != clamp)   // clamp Out: saturate below
+      if (r < Lower<Out> || r > Upper<Out>)
+        return slim::unexpected(errc::overflow);
     return detail::store_grid<Out>(r);
   }
 
@@ -1997,8 +2043,9 @@ namespace bnd::math
     if (b <= 0.0)
       return slim::expected<Out, errc>{slim::unexpected(errc::domain_error)};
     double r = dbl::detail::d_pow(b, exp);
-    if (r < static_cast<double>(Lower<Out>) || r > static_cast<double>(Upper<Out>))
-      return slim::expected<Out, errc>{slim::unexpected(errc::overflow)};
+    if constexpr ((BoundPolicy<Out> & clamp) != clamp)   // clamp Out: saturate below
+      if (r < static_cast<double>(Lower<Out>) || r > static_cast<double>(Upper<Out>))
+        return slim::expected<Out, errc>{slim::unexpected(errc::overflow)};
     return slim::expected<Out, errc>{Out{r}};
 #endif
   }

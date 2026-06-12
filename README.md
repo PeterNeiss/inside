@@ -118,6 +118,7 @@ scenario, native baseline paired with each bound case). Lower is better.
 | `bound<{{0,65535},1/65536}>` construct (Q16.16) | 14 ns | 14 ns | **0.97×** |
 | `accumulate(bound, unsafe)` 1000 elts | 64 ns | 64 ns | 1.0× (vectorized) |
 | `accumulate(bound, checked)` 1000 elts | 274 ns | 64 ns | 4.3× (scalar) |
+| `bnd::sum<checked>` 1000 elts (one deferred check) | 105 ns | 64 ns | **1.6×** (vectorized) |
 | `transform(b += 1)` 10k uint8-width elts (unsafe) | 1.02 µs | 1.02 µs | **1.0×** (SIMD) |
 | Q-format store from exact fraction | ~6 ns | n/a | n/a |
 | Q-format store from `double` | ~46 ns | n/a | n/a |

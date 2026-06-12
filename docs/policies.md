@@ -60,7 +60,7 @@ Besides the *behavior* flags above, four flags select the **representation**
 | Flag | Forces | Grid requirement | Notes |
 |---|---|---|---|
 | `real` | IEEE-754 `double` raw (the value itself, snapped to the grid) | dyadic — power-of-two notch and Lower | bundles `round_nearest`; the math-operand flag — see [math.md](math.md#the-real-policy-requirement). Under `BND_MATH_FIXED` it falls back to integer storage. |
-| `exact` | exact-fraction raw on **any** grid | none | no notch-count limit, no `double` anywhere; arithmetic is overflow-checked exact math (the slowest representation) |
+| `exact` | exact-fraction raw on **any** grid | none | no notch-count limit, no `double` anywhere; arithmetic is exact — on notched grids overflow is usually provably impossible and `+ − ×` return plain bounds (no `optional`) |
 | `direct` | raw == value as a plain integer | `Notch == 1` | e.g. `bound<{5, 100}, direct>` stores 5..100, not index 0..95 — the raw equals the wire/debugger value |
 | `indexed` | raw == 0-based notch index | `Notch != 0` | e.g. `bound<{-5, 5}, indexed>` stores 0..10 unsigned — dense layout for serialization |
 

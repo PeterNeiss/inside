@@ -69,7 +69,9 @@ other representation flags.
 - **Error model.** A domain limit that is knowable from the *type* is a
   `static_assert` (compile error). A failure that depends on the *runtime
   value* is reported through `slim::expected<Out, errc>`. Total functions
-  return the bound directly.
+  return the bound directly. When an explicit `Out` carries `clamp`, a
+  result that merely leaves `Out`'s interval **saturates** instead of
+  erroring (poles and domain errors still error).
 - **Precision.**
   - *Double engine:* the cores are accurate to ~1 ULP of `double`, then the
     result is quantized onto the output grid — so the stored value is within
@@ -79,9 +81,12 @@ other representation flags.
     output grid.
   - Algebraically-exact results (e.g. `cbrt(8)`, `hypot(3,4)`, `pow(2,10)`)
     land exactly under both engines.
-- **Input-range limits** below are engine-shared `static_assert` envelopes
-  (sized for the integer engine's Q.30 working scale, and kept identical for
-  the double engine so the two builds accept the same programs).
+- **Input-range limits** below are engine-shared `static_assert` envelopes,
+  kept identical for both engines so the same programs compile everywhere.
+  The trig/root/atan limits (±2^20) come from the integer engine's working
+  scale; the `exp`/`exp2`/`pow` limits are **output representability** —
+  e.g. e^44's exact numerator exceeds any grid's integer range — and cannot
+  widen without coupling them to the output grid.
 - **constexpr.** The math functions are `constexpr` only under
   `BND_MATH_FIXED` (the double engine's `std::fma`/`std::sqrt` are runtime).
   The compile-time output-grid deduction uses the integer cores in **both**
@@ -94,6 +99,7 @@ other representation flags.
 | `abs(x)` | all | `[0, max\|·\|]` | — | exact |
 | `floor(x)` / `ceil(x)` / `round(x)` / `trunc(x)` | all | integer notch | — | exact; `round` is half-away-from-zero |
 | `fmod(x, y)` | `y` must not span 0 | sign of `x` | — | truncated-division convention, exact. Integer-backed operands on commensurable notches take a single-integer-remainder fast path (faster than `std::fmod`). |
+| `pown<E>(x)` | all, `E ≥ 0` compile-time | corner-widened per multiply | optional per the checked-exact rules | repeated squaring in bound-space — exact, negative bases fine, no `real` needed |
 
 ## Roots
 
@@ -108,8 +114,8 @@ other representation flags.
 
 | Function | Domain | Output | Errors | Notes |
 |---|---|---|---|---|
-| `sin(x)` / `cos(x)` | `[-1024, 1024]` rad | `[-1, 1]` | — | |
-| `tan(x)` | `[-1024, 1024]` rad | `[-1024, 1024]` | `expected`; `division_by_zero` at a pole, `overflow` past `Out` | sin/cos ratio |
+| `sin(x)` / `cos(x)` | `\|x\| ≤ 2^20` rad | `[-1, 1]` | — | grids beyond ±1024 rad use a two-term 1/2π reduction (fixed engine) |
+| `tan(x)` | `\|x\| ≤ 2^20` rad | `[-1024, 1024]` | `expected`; `division_by_zero` at a pole, `overflow` past `Out` (saturates instead when `Out` carries `clamp`) | sin/cos ratio |
 | `atan(x)` | `\|x\| ≤ 2^20` | `(-π/2, π/2)` | — | reciprocal reduction for \|x\| > 1 |
 | `asin(x)` | `[-1, 1]` | `[-π/2, π/2]` | — | `atan2(x, √(1-x²))` |
 | `acos(x)` | `[-1, 1]` | `[0, π]` | — | `π/2 - asin(x)` |

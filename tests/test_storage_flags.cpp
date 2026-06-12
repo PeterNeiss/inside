@@ -217,3 +217,140 @@ TEST_CASE("atan / atan2 accept magnitudes beyond 1", "[cmath][atan][domain]")
   REQUIRE(std::fabs(val(math::atan2(wide_t{1},  wide_t{-5})) - 2.9441970937) < tol);
   REQUIRE(std::fabs(val(math::atan2(wide_t{-7}, wide_t{2}))  + 1.2924966677) < tol);
 }
+
+// Regression: per-operation policy overrides (`with_*`, `on_*`, `policy(ec)`)
+// route through the assignment engine, which previously had no real_raw arm
+// and wrote integer offsets into the double raw (e.g. with_clamp stored the
+// notch COUNT instead of the endpoint).
+TEST_CASE("per-operation policies work on real-backed bounds",
+          "[storage][real][policy_ref]")
+{
+  using R = bound<{{1, 4}, notch<1, 256>}, round_nearest | real>;  // Lower != 0
+
+  R a{2.0};
+  a.with_clamp() = 9.5;
+  REQUIRE(static_cast<double>(rational{a}) == 4.0);
+  a.with_clamp() = 0.25;
+  REQUIRE(static_cast<double>(rational{a}) == 1.0);
+
+  R b{2.0};
+  int fired = 0;
+  b.on_clamp([&](auto&, auto){ ++fired; }) = 0.0;
+  REQUIRE(static_cast<double>(rational{b}) == 1.0);
+  REQUIRE(fired == 1);
+
+  // In-range per-operation store snaps onto the grid.
+  R c{1.0};
+  c.policy<ignore_round>() = 2.5;
+  REQUIRE(static_cast<double>(rational{c}) == 2.5);
+
+  // error_code mode: out-of-range reports, value unchanged.
+  std::error_code ec;
+  R d{2.0};
+  d.policy<checked>(ec) = 9.5;
+  REQUIRE(ec);
+  REQUIRE(static_cast<double>(rational{d}) == 2.0);
+
+  // bound rhs through the per-operation clamp.
+  using S = bound<{0, 100}>;
+  R e{2.0};
+  e.with_clamp() = S{50};
+  REQUIRE(static_cast<double>(rational{e}) == 4.0);
+
+  // wrap override on a real-backed grid.
+  using W = bound<{{0, 359}, notch<1>}, round_nearest | real>;
+  W w{0.0};
+  w.with_wrap() = 370.0;
+  REQUIRE(static_cast<double>(rational{w}) == 10.0);
+}
+
+// Issue #4: checked exact arithmetic drops the slim::optional wrapper when
+// the grids PROVE no rational overflow is reachable (notched grids bound the
+// denominators). Continuous (Notch == 0) grids store arbitrary rationals —
+// nothing is provable, so they keep the wrapper (this also fixes a soundness
+// hole: the old mul gate claimed safety for continuous grids).
+TEST_CASE("provably-safe exact arithmetic returns a plain bound",
+          "[storage][exact][overflow]")
+{
+  using E = bound<{{0, 10}, notch<1, 4>}, exact | checked | round_nearest>;
+  E a{rational{3, 4}}, b{rational{5, 4}};
+
+  auto s = a + b;
+  STATIC_REQUIRE(!detail::is_slim_optional_v<decltype(s)>);
+  REQUIRE(rational{s} == 2);
+
+  auto d = a - b;
+  STATIC_REQUIRE(!detail::is_slim_optional_v<decltype(d)>);
+  REQUIRE(rational{d} == rational{-1, 2});
+
+  auto p = a * b;
+  STATIC_REQUIRE(!detail::is_slim_optional_v<decltype(p)>);
+  REQUIRE(rational{p} == rational{15, 16});
+
+  // Continuous grids: denominators unbounded → wrapper stays (add AND mul).
+  using C = bound<{{0, 10}, 0}, checked>;
+  STATIC_REQUIRE(detail::is_slim_optional_v<decltype(C{} + C{})>);
+  STATIC_REQUIRE(detail::is_slim_optional_v<decltype(C{} * C{})>);
+
+  // ...and the check is real: huge-denominator values overflow into nullopt
+  // instead of silently wrapping (the pre-fix mul gate claimed these safe).
+  C x = C::from_raw(rational{1, imax{1} << 40});
+  auto wide = x * x;                      // den 2^80 > imax
+  REQUIRE(!wide.has_value());
+}
+
+// Smaller-threads batch: wide trig envelope, pown, clamp saturation.
+TEST_CASE("sin/cos/tan accept radians up to 2^20", "[cmath][trig][domain]")
+{
+  using wide_t = bound<{{-(imax{1} << 20), imax{1} << 20}, notch<1, 1024>},
+                       round_nearest | real>;
+  auto val = [](auto b) { return static_cast<double>(rational{b}); };
+  const double tol = 2.0 / 1024;          // grid tolerance (notch ≈ 9.8e-4)
+
+  const double xs[] = {100000.0, -551496.5, 1048576.0, -1048576.0, 3.0};
+  for (double x : xs)
+  {
+    REQUIRE(std::fabs(val(math::sin(wide_t{x})) - std::sin(x)) < tol);
+    REQUIRE(std::fabs(val(math::cos(wide_t{x})) - std::cos(x)) < tol);
+  }
+}
+
+TEST_CASE("pown<E> — exact compile-time integer powers on any bound",
+          "[cmath][pown]")
+{
+  using s8 = bound<{-10, 10}>;
+  REQUIRE(math::pown<3>(s8{-2}) == -8);
+  REQUIRE(math::pown<0>(s8{7})  == 1);
+  REQUIRE(math::pown<1>(s8{5})  == 5);
+  REQUIRE(math::pown<5>(s8{3})  == 243);
+
+  // Result grid widens corner-correctly: (-10..10)^3 covers ±1000.
+  using cube_t = decltype(math::pown<3>(s8{}));
+  STATIC_REQUIRE(Lower<cube_t> <= -1000);
+  STATIC_REQUIRE(Upper<cube_t> >= 1000);
+
+  // Exact on fractional grids.
+  using q = bound<{{0, 2}, notch<1, 4>}, round_nearest>;
+  REQUIRE(rational{math::pown<2>(q{rational{3, 4}})} == rational{9, 16});
+}
+
+TEST_CASE("tan saturates instead of erroring when Out carries clamp",
+          "[cmath][tan][clamp]")
+{
+  // Explicit-Out spelling is the impl form (`tan<T>(x)` would bind T as the
+  // INPUT of the auto form). tan_impl's CORDIC core is compiled in both
+  // engine builds (it is the compile-time grid oracle), so one path tests
+  // both configs.
+  using in_t  = bound<{{-2, 2}, notch<1, 16384>}, round_nearest | real>;
+  using sat_t = bound<{{-1, 1}, notch<1, 16384>}, round_nearest | real | clamp>;
+  using err_t = bound<{{-1, 1}, notch<1, 16384>}, round_nearest | real>;
+
+  // tan(1.2) ≈ 2.57 — beyond [-1, 1].
+  auto sat = math::tan_impl<sat_t>(in_t{1.2});
+  REQUIRE(sat.has_value());
+  REQUIRE(static_cast<double>(rational{*sat}) == 1.0);   // clamped to Upper
+
+  auto err = math::tan_impl<err_t>(in_t{1.2});
+  REQUIRE(!err.has_value());
+  REQUIRE(err.error() == errc::overflow);
+}

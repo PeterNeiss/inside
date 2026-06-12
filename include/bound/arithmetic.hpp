@@ -364,6 +364,14 @@ namespace bnd
     return bnd::mod(lhs, rhs, make_policy<F>());
   }
 
+  template <class L, class R>
+    requires (detail::is_slim_optional_v<L> || detail::is_slim_optional_v<R>)
+          && (!detail::expected_like<L> && !detail::expected_like<R>)
+          && (boundable<detail::unwrap_t<L>> || boundable<detail::unwrap_t<R>>)
+          && requires(detail::unwrap_t<L> l, detail::unwrap_t<R> r) { l % r; }
+  constexpr auto operator%(L const& lhs, R const& rhs)
+  { return lift([](auto const& l, auto const& r){ return l % r; }, lhs, rhs); }
+
   //---------------------------------------------------------------------------
   // expected-lift operators — bridge bnd::math's expected results into chains
   //---------------------------------------------------------------------------
@@ -423,6 +431,13 @@ namespace bnd
                          errc::division_by_zero, lhs, rhs); }
 
   template <class L, class R>
+    requires detail::expected_operands<L, R>
+          && requires(detail::expected_value_t<L> l, detail::expected_value_t<R> r) { l % r; }
+  constexpr auto operator%(L const& lhs, R const& rhs)
+  { return lift_expected([](auto const& l, auto const& r){ return l % r; },
+                         errc::division_by_zero, lhs, rhs); }
+
+  template <class L, class R>
     requires detail::mixed_error_operands<L, R>
   constexpr auto operator+(L const&, R const&)
   { static_assert(detail::dependent_false<L, R>,
@@ -449,6 +464,14 @@ namespace bnd
   template <class L, class R>
     requires detail::mixed_error_operands<L, R>
   constexpr auto operator/(L const&, R const&)
+  { static_assert(detail::dependent_false<L, R>,
+      "bnd: don't mix expected and optional operands in one expression — "
+      "convert the expected side with bnd::ok(e) (drops the error cause) "
+      "or unwrap explicitly"); }
+
+  template <class L, class R>
+    requires detail::mixed_error_operands<L, R>
+  constexpr auto operator%(L const&, R const&)
   { static_assert(detail::dependent_false<L, R>,
       "bnd: don't mix expected and optional operands in one expression — "
       "convert the expected side with bnd::ok(e) (drops the error cause) "

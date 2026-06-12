@@ -22,55 +22,6 @@
 //---------------------------------------------------------------------------
 namespace bnd::detail
 {
-  //---------------------------------------------------------------------------
-  // grid_value_bounds / rational_mul_is_safe
-  //
-  // Conservative compile-time bound on the (numerator, denominator) any
-  // canonical-form value on a grid can have, and a derived "can the rational
-  // product of two grid values overflow" predicate.
-  //
-  // For a grid `{[lo, hi], notch}`, every value v = lo + k*notch (k integer)
-  // expressed over the common denominator dC = |lo.den| * |hi.den| * |notch.den|
-  // is linear in k, so the maximum scaled numerator is at one of the endpoints
-  // — max(lo_scaled, hi_scaled). dC is a conservative bound on the canonical
-  // denominator (lcm divides this product).
-  //
-  // The two helpers return `false` whenever the bound itself can't be computed
-  // without overflow — i.e. the safe fallback is "assume the optional wrapper
-  // is needed".
-  //---------------------------------------------------------------------------
-  constexpr bool grid_value_bounds(grid g, umax& max_num, umax& max_den) noexcept
-  {
-    umax d_lo = abs_den(g.Interval.Lower.Denominator);
-    umax d_hi = abs_den(g.Interval.Upper.Denominator);
-    umax d_no = (g.Notch.Numerator == 0) ? umax{1} : abs_den(g.Notch.Denominator);
-
-    umax d_common;
-    if (mul_overflow(d_lo, d_hi, &d_common)) return false;
-    if (mul_overflow(d_common, d_no, &d_common)) return false;
-
-    umax lo_scaled, hi_scaled;
-    if (mul_overflow(g.Interval.Lower.Numerator, d_common / d_lo, &lo_scaled)) return false;
-    if (mul_overflow(g.Interval.Upper.Numerator, d_common / d_hi, &hi_scaled)) return false;
-
-    max_num = lo_scaled > hi_scaled ? lo_scaled : hi_scaled;
-    max_den = d_common;
-    return true;
-  }
-
-  constexpr bool rational_mul_is_safe(grid g_l, grid g_r) noexcept
-  {
-    umax n_l, d_l, n_r, d_r;
-    if (!grid_value_bounds(g_l, n_l, d_l)) return false;
-    if (!grid_value_bounds(g_r, n_r, d_r)) return false;
-
-    umax num_prod, den_prod;
-    if (mul_overflow(n_l, n_r, &num_prod)) return false;
-    if (mul_overflow(d_l, d_r, &den_prod)) return false;
-    if (den_prod > static_cast<umax>(std::numeric_limits<imax>::max())) return false;
-    return true;
-  }
-
   template <boundable L, boundable R = L>
   struct multiplication
   {

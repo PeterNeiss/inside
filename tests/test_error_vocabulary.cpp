@@ -77,3 +77,26 @@ TEST_CASE("division inside an expected chain maps nullopt to its cause",
   REQUIRE(!z.has_value());
   REQUIRE(z.error() == errc::division_by_zero);
 }
+
+TEST_CASE("operator% participates in both lift families", "[errors][mod]")
+{
+  // mod requires ignore_round in the merged policy (integer-valued grids).
+  using mnum = bound<{0, 100}, ignore_round>;
+  using nz   = bound<{1, 5},  ignore_round>;   // divisor grid excludes zero
+  using span = bound<{-5, 5}, ignore_round>;   // divisor grid spans zero
+
+  // optional chain.
+  slim::optional<mnum> on{mnum{17}};
+  auto m = on % nz{5};
+  REQUIRE(m.has_value());
+  REQUIRE(*m == 2);
+
+  // expected chain: value path and zero-divisor mapping.
+  slim::expected<mnum, errc> en{mnum{17}};
+  auto q = en % span{5};
+  REQUIRE(q.has_value());
+  REQUIRE(rational{*q} == 2);
+  auto z = en % span{0};
+  REQUIRE(!z.has_value());
+  REQUIRE(z.error() == errc::division_by_zero);
+}

@@ -164,6 +164,81 @@ namespace bnd
     inline constexpr umax NotchCount = (Notch<B> == 0) ?
       0 : (Interval<B>/Notch<B>).value().Numerator;
 
+    //-------------------------------------------------------------------------
+    // grid_value_bounds / rational_mul_is_safe / rational_add_is_safe
+    //
+    // Conservative compile-time bound on the (numerator, denominator) any
+    // canonical-form value on a grid can have, and derived "can the rational
+    // op of two grid values overflow imax" predicates. They let checked
+    // exact arithmetic drop the slim::optional wrapper when the grids PROVE
+    // no overflow is reachable.
+    //
+    // For a NOTCHED grid `{[lo, hi], notch}`, every value v = lo + k*notch
+    // (k integer) expressed over the common denominator
+    // dC = |lo.den| * |hi.den| * |notch.den| is linear in k, so the maximum
+    // scaled numerator is at an endpoint. dC conservatively bounds the
+    // canonical denominator (the lcm divides it).
+    //
+    // A CONTINUOUS grid (Notch == 0) stores arbitrary in-range rationals —
+    // denominators are unbounded, so nothing is provable (the lone exception:
+    // a point grid holds exactly Lower). The helpers return `false` whenever
+    // a bound can't be established, falling back to "the optional wrapper is
+    // needed".
+    //-------------------------------------------------------------------------
+    constexpr bool grid_value_bounds(grid g, umax& max_num, umax& max_den) noexcept
+    {
+      if (g.Notch.Numerator == 0 && !(g.Interval.Lower == g.Interval.Upper))
+        return false;                          // continuous: dens unbounded
+
+      umax d_lo = abs_den(g.Interval.Lower.Denominator);
+      umax d_hi = abs_den(g.Interval.Upper.Denominator);
+      umax d_no = (g.Notch.Numerator == 0) ? umax{1} : abs_den(g.Notch.Denominator);
+
+      umax d_common;
+      if (mul_overflow(d_lo, d_hi, &d_common)) return false;
+      if (mul_overflow(d_common, d_no, &d_common)) return false;
+
+      umax lo_scaled, hi_scaled;
+      if (mul_overflow(g.Interval.Lower.Numerator, d_common / d_lo, &lo_scaled)) return false;
+      if (mul_overflow(g.Interval.Upper.Numerator, d_common / d_hi, &hi_scaled)) return false;
+
+      max_num = lo_scaled > hi_scaled ? lo_scaled : hi_scaled;
+      max_den = d_common;
+      return true;
+    }
+
+    constexpr bool rational_mul_is_safe(grid g_l, grid g_r) noexcept
+    {
+      umax n_l, d_l, n_r, d_r;
+      if (!grid_value_bounds(g_l, n_l, d_l)) return false;
+      if (!grid_value_bounds(g_r, n_r, d_r)) return false;
+
+      umax num_prod, den_prod;
+      if (mul_overflow(n_l, n_r, &num_prod)) return false;
+      if (mul_overflow(d_l, d_r, &den_prod)) return false;
+      if (den_prod > static_cast<umax>(std::numeric_limits<imax>::max())) return false;
+      return true;
+    }
+
+    // add_impl's worst case over the conservative common denominator
+    // D = d_l*d_r: scaled numerators A <= n_l*d_r and B <= n_r*d_l, sum
+    // A + B. (The same-denominator and lcm-reduced paths only shrink these;
+    // mixed signs subtract magnitudes.)
+    constexpr bool rational_add_is_safe(grid g_l, grid g_r) noexcept
+    {
+      umax n_l, d_l, n_r, d_r;
+      if (!grid_value_bounds(g_l, n_l, d_l)) return false;
+      if (!grid_value_bounds(g_r, n_r, d_r)) return false;
+
+      umax den, a, b, sum;
+      if (mul_overflow(d_l, d_r, &den)) return false;
+      if (den > static_cast<umax>(std::numeric_limits<imax>::max())) return false;
+      if (mul_overflow(n_l, d_r, &a)) return false;
+      if (mul_overflow(n_r, d_l, &b)) return false;
+      if (add_overflow(a, b, &sum)) return false;
+      return true;
+    }
+
     // Notch is a non-zero integer (denominator 1) — the grid is notch-aligned,
     // so values map 1:1 to integers. Gates the implicit imax/size_t conversions.
     template <grid G>

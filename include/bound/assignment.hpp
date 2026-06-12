@@ -317,11 +317,15 @@ namespace bnd::detail
 
     // The clamp target is an interval endpoint — always a grid point — so no
     // notch arithmetic or rounding is needed: the slot is 0 or NotchCount.
-    // Rational storage takes the exact endpoint constant directly (a `double`
+    // Real storage takes the endpoint as a double (exact: dyadic grid);
+    // rational storage takes the exact endpoint constant directly (a `double`
     // round-trip would lose non-dyadic endpoints under `exact`);
     // `raw_from_offset<L>` adds Lower back for direct-encoded storage, which
     // also covers singleton grids.
-    if constexpr (rational_raw<L>)
+    if constexpr (real_raw<L>)
+      lhs = L::from_raw((rhs < Lower<L>) ? static_cast<double>(Lower<L>)
+                                         : static_cast<double>(Upper<L>));
+    else if constexpr (rational_raw<L>)
       lhs = L::from_raw((rhs < Lower<L>) ? Lower<L> : Upper<L>);
     else
       lhs = L::from_raw(raw_from_offset<L>(
@@ -362,6 +366,18 @@ namespace bnd::detail
   {
     if constexpr (rational_raw<L> && Notch<L> == 0)
     { lhs = L::from_raw(rhs); return true; }   // continuous: store verbatim
+    else if constexpr (real_raw<L>)
+    {
+      // real (double-backed) target: raw IS the value — snap to the dyadic
+      // grid. Range handling (clamp/wrap/report) already ran in the assign
+      // cascade; the finite guard mirrors bound::store_real's.
+      const double v = static_cast<double>(rhs);
+      if (!(v - v == 0))
+        throw std::system_error(make_error_code(errc::domain_error),
+                                "non-finite double");
+      lhs = L::from_raw(Grid<L>.snap_double(v));
+      return true;
+    }
     else if constexpr (Lower<L> == Upper<L>)
     {
       // Singleton grid: Raw layout depends on encoding. For offset
@@ -510,8 +526,14 @@ namespace bnd::detail
     // `RawLo`/`RawHi` are raw-space constants by construction (Lower/Upper
     // for direct storage, 0/NotchCount for notch-offset), so they're
     // already the correct Raw — no `raw_from_offset` adjustment needed.
-    lhs = L::from_raw((as_rational(rhs) < Lower<L>)
-      ? raw_cast<L>(RawLo<L>) : raw_cast<L>(RawHi<L>));
+    // Real storage takes the endpoint value as a double instead (RawLo/Hi
+    // are integer truncations, wrong for fractional dyadic endpoints).
+    if constexpr (real_raw<L>)
+      lhs = L::from_raw((as_rational(rhs) < Lower<L>)
+        ? static_cast<double>(Lower<L>) : static_cast<double>(Upper<L>));
+    else
+      lhs = L::from_raw((as_rational(rhs) < Lower<L>)
+        ? raw_cast<L>(RawLo<L>) : raw_cast<L>(RawHi<L>));
     auto overshoot = as_rational(rhs) - as_rational(lhs);
     if constexpr (clamp_action<plain<A>>)
       action.fn(lhs, overshoot);
@@ -584,7 +606,12 @@ namespace bnd::detail
   template<typename P>
   constexpr void assignment<L,R>::store(L& lhs, R const& rhs, P&&)
   {
-    if constexpr (is_integer_mapping)
+    if constexpr (real_raw<L>)
+      // real (double-backed) target: raw IS the value — decode the source
+      // (kind-aware) and snap to the dyadic grid. The offset/raw_from_offset
+      // machinery below mis-encodes a double raw.
+      lhs = L::from_raw(Grid<L>.snap_double(as_double(rhs)));
+    else if constexpr (is_integer_mapping)
     {
       // exact: Factor and Offset have integer denominators, no rounding ambiguity
       if constexpr (Offset == 0 && Factor == 1)

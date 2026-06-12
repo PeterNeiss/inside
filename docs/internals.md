@@ -233,7 +233,7 @@ Per-operation audit:
 | Operation | Shape | Causes |
 |---|---|---|
 | `a + b`, `a − b`, `a × b` (integer/real raws) | `bound` | total — result grid contains every value by construction |
-| same, rational raw + `checked` | `optional` | exact-arithmetic overflow |
+| same, rational raw + `checked`, overflow not provably excluded | `optional` | exact-arithmetic overflow. Notched grids bound the denominators, so most `exact` arithmetic PROVES safety at compile time and returns a plain `bound`; continuous (Notch 0) grids hold arbitrary rationals and keep the wrapper |
 | `a / b`, `mod` (divisor grid excludes 0) | `bound` | total |
 | `a / b`, `mod` (divisor may be 0) | `optional` | division by zero (rational overflow folds in) |
 | `math::sin/cos/exp/log/…` | `bound` | total over the asserted domain |
