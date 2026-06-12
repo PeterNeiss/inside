@@ -274,6 +274,24 @@ Like division, modulo returns `slim::optional` (division by zero yields
 `nullopt`). Unlike division, modulo has no overflow case — the result's
 range is fixed by R's grid and can't exceed it.
 
+## Bulk reduction: `bnd::sum<Target>(range)`
+
+A per-element `target += b` loop re-validates the running total on every
+step, which keeps `checked` accumulation scalar (≈4× slower than `unsafe`).
+`bnd::sum<Target>(range)` accumulates exactly with **one** deferred check:
+the *total* is validated/clamped against `Target`'s policy, not every running
+prefix — and the loop vectorizes (≈2.5× measured on checked 1000-element
+sums).
+
+```cpp
+using elem = bound<{0, 200'000}, checked>;
+std::vector<elem> v = ...;
+auto total = bnd::sum<elem>(v);            // one range check, vectorized
+
+using bus = bound<{0, 100}, clamp>;
+auto clipped = bnd::sum<bus>(v);           // clamps the TOTAL once
+```
+
 ## Compound assignment
 
 Compound assignment works with integer / floating-point scalars and with
@@ -353,3 +371,28 @@ slim::optional<u8> none{slim::nullopt};
 auto r1 = a + u8{10};     // optional<bound<{2, 510}>>, has value 110
 auto r2 = none + u8{10};  // optional<bound<{2, 510}>>, nullopt
 ```
+
+
+### Bridging `expected` results into chains
+
+`bnd::math`'s fallible functions return `slim::expected<bound, errc>`. Two
+bridges connect that world to arithmetic chains:
+
+```cpp
+// Keep the cause: expected-lift operators — first (left) error wins.
+auto r = math::sqrt(signed_in{v}) * gain + offset;   // expected<bound, errc>
+if (!r) log(r.error());                              // domain_error from sqrt
+
+// Drop the cause deliberately: ok() enters the zero-cost optional world.
+auto o = ok(math::sqrt(signed_in{v})) * gain + offset;   // optional<bound>
+```
+
+Inside an expected chain a division whose divisor grid spans zero maps its
+nullopt to `errc::division_by_zero` (the optional vocabulary's single
+dominant cause; a rational-arithmetic overflow inside such a division
+reports the same code). Mixing `expected` and `optional` operands in one
+expression is a **compile error** with guidance — convert with `ok()` or
+unwrap explicitly.
+
+See [internals.md](internals.md#7-error-vocabulary) for the full
+three-shape rule and the per-operation audit.

@@ -218,7 +218,43 @@ index storage they differ — `Raw` is an index, `to_value` multiplies by
 
 ---
 
-## 7. Header layout
+## 7. Error vocabulary
+
+Three shapes, each by role — nothing is flattened; each earns its place:
+
+| Shape | Role | Why this shape |
+|---|---|---|
+| policy cascade (throw / `error_code` / sentinel / clamp / wrap / `on_*`) | NARROWING a value *into* a bound (construction, assignment, compound ops) | the caller chose the failure semantics on the type or operation |
+| `slim::optional<bound>` | fallible bound-valued ARITHMETIC (`/`, `%`, checked exact `+`/`×`) | single dominant cause per op; **zero size overhead** (sentinel encoding); auto-chains through the lift operators |
+| `slim::expected<T, errc>` | fallible QUERIES and MATH (`to<T>()`, `tan`, `pow`, mixed-sign `sqrt`) | multiple causes the caller dispatches on; uniform across `bnd::math` |
+
+Per-operation audit:
+
+| Operation | Shape | Causes |
+|---|---|---|
+| `a + b`, `a − b`, `a × b` (integer/real raws) | `bound` | total — result grid contains every value by construction |
+| same, rational raw + `checked` | `optional` | exact-arithmetic overflow |
+| `a / b`, `mod` (divisor grid excludes 0) | `bound` | total |
+| `a / b`, `mod` (divisor may be 0) | `optional` | division by zero (rational overflow folds in) |
+| `math::sin/cos/exp/log/…` | `bound` | total over the asserted domain |
+| `math::tan` | `expected` | `division_by_zero` (pole), `overflow` (past Out) |
+| `math::pow` | `expected` | `division_by_zero`, `overflow` (envelope) |
+| `math::sqrt` (mixed-sign) | `expected` | `domain_error` (negative value) |
+| `to<T>()` | `expected` | `overflow`, `domain_error` |
+| `as<T>()` | `T` | asserts (caller vouches for the range) |
+| `try_make` | `optional` | out of range |
+| construction / assignment | policy cascade | per the bound's policy |
+| `bnd::sum<Target>` | `Target` | Target's policy, applied once to the total |
+
+Bridging the families (`lift.hpp` / `arithmetic.hpp`): `bnd::ok(e)` converts
+an expected into the optional world (deliberately dropping the cause);
+the expected-lift operators keep `expected` chains intact (first/left error
+wins; a division's nullopt maps to `division_by_zero`). Mixing an `expected`
+and an `optional` operand in one expression is a compile error with guidance
+— the optional's original cause is unknowable, so the library won't invent
+one.
+
+## 8. Header layout
 
 After the 2026 cleanup the public API is split across multiple headers,
 all transitively included by `bound/bound.hpp`:

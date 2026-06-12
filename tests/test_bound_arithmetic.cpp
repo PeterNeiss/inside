@@ -5,6 +5,7 @@
 
 #include <limits>
 #include <type_traits>
+#include <vector>
 
 using namespace bnd;
 using namespace bnd::detail;
@@ -379,4 +380,30 @@ TEST_CASE("exact scalar math stays in bound-space", "[bound][arithmetic][mixed]"
 
   REQUIRE((a * 2_b) == 1);
   REQUIRE((2_b * a) == 1);
+}
+
+TEST_CASE("bnd::sum — bulk reduction with one deferred check",
+          "[bound][arithmetic][sum]")
+{
+  // Integer raws (fast path): matches the naive += total.
+  using elem   = bound<{0, 200'000}, checked>;
+  std::vector<elem> v(1000);
+  for (std::size_t i = 0; i < v.size(); ++i) v[i] = static_cast<int>(i % 5);
+  REQUIRE(bnd::sum<elem>(v) == 2000);          // 200·(0+1+2+3+4)
+
+  // The TOTAL is validated, not the running prefix: a clamp target clips
+  // once at the end.
+  using clamped = bound<{0, 100}, clamp>;
+  REQUIRE(bnd::sum<clamped>(v) == 100);
+
+  // Q-format elements (index raw): exact fractional accumulation.
+  using q = bound<{{0, 4}, notch<1, 256>}, round_nearest>;
+  std::vector<q> qs(3, q{rational{1, 256}});
+  using qsum = bound<{{0, 16}, notch<1, 256>}, round_nearest>;
+  REQUIRE(rational{bnd::sum<qsum>(qs)} == rational{3, 256});
+
+  // real storage falls to the exact rational fold — same result.
+  using r = bound<{{0, 4}, notch<1, 256>}, round_nearest | real>;
+  std::vector<r> rs(3, r{rational{1, 256}});
+  REQUIRE(rational{bnd::sum<qsum>(rs)} == rational{3, 256});
 }

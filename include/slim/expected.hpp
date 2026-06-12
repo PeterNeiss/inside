@@ -17,6 +17,24 @@
 
 #pragma once
 
+#include <version>
+
+#if defined(__cpp_lib_expected)
+// C++23 toolchains: slim::expected IS std::expected — user code composes
+// with the standard vocabulary (monadic ops included); the backport below
+// serves only toolchains without <expected> (GCC 12 / BOUND_CXX20).
+#include <expected>
+
+namespace slim {
+template<class T, class E> using expected   = std::expected<T, E>;
+template<class E>          using unexpected = std::unexpected<E>;
+// std::bad_expected_access<E> derives from the <void> base, so catching this
+// alias catches every instantiation — same role as the backport's type.
+using bad_expected_access = std::bad_expected_access<void>;
+} // namespace slim
+
+#else // ── C++20 backport ─────────────────────────────────────────────────
+
 #include <exception>
 #include <type_traits>
 #include <utility>
@@ -124,3 +142,5 @@ public:
 };
 
 } // namespace slim
+
+#endif // __cpp_lib_expected

@@ -130,7 +130,10 @@ namespace bnd
     // Snap a value onto `real` (double-backed) storage: it lands on the grid
     // exactly like any other bound (the grid is dyadic, so the snap is lossless)
     // — `real` changes the representation/speed, not the obey-the-grid contract.
-    // Honors `clamp` to keep an out-of-range value on the grid's endpoints.
+    // Out-of-range values run the same policy cascade as the fractional
+    // assignment path: clamp → wrap → sentinel/checked-report → (unchecked)
+    // store as-is. All arithmetic stays in double; the dyadic grid keeps the
+    // endpoint/range constants exact.
     constexpr void store_real(double v)
     {
       // NaN/±inf would reach snap_double's integer cast (UB). Reject like the
@@ -139,14 +142,28 @@ namespace bnd
       if (!(v - v == 0))
         throw std::system_error(make_error_code(errc::domain_error),
                                 "non-finite double");
-      v = G.snap_double(v);
-      if constexpr ((P & clamp) == clamp)
+      const double lo = static_cast<double>(G.Interval.Lower);
+      const double hi = static_cast<double>(G.Interval.Upper);
+      if (v < lo || v > hi)
       {
-        const double lo = static_cast<double>(G.Interval.Lower);
-        const double hi = static_cast<double>(G.Interval.Upper);
-        v = v < lo ? lo : (v > hi ? hi : v);
+        if constexpr ((P & clamp) == clamp)
+          v = v < lo ? lo : hi;
+        else if constexpr ((P & wrap) == wrap)
+        {
+          // Fold into [Lower, Lower + range), range = span + notch — the same
+          // convention as the fractional apply_wrap.
+          const double range = hi - lo + static_cast<double>(G.Notch);
+          const double q = (v - lo) / range;
+          imax k = static_cast<imax>(q);
+          if (q < 0 && static_cast<double>(k) != q) --k;   // floor
+          v -= static_cast<double>(k) * range;
+        }
+        else if (detail::domain_fail(*this, make_policy<P>(),
+                   std::to_string(v) + " is not in " + bnd::to_string(G.Interval)))
+          return;            // sentinel stored / reported (error_code mode)
+        // no handler (unchecked policy): fall through and store snapped as-is
       }
-      Raw = v;
+      Raw = G.snap_double(v);
     }
 
     template <numeric A>

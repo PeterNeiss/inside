@@ -824,18 +824,30 @@ namespace bnd::math
   // 2π so the output is radians, consistent with sin/cos/tan and the rest
   // of bnd::math.
   //
-  // Restrict inputs to [-1, 1] for this revision — CORDIC only depends on
-  // the y/x ratio, so callers with wider magnitudes should normalize first.
+  // CORDIC only depends on the y/x ratio: inputs with magnitudes beyond 1
+  // are normalized by the larger magnitude (exact rational division) before
+  // entering the fixed-point window, so the full plane is accepted. Inputs
+  // already inside [-1, 1] skip the division (bit-identical to before).
   template <boundable Out, boundable In>
   [[nodiscard]] constexpr Out atan2_impl(In y, In x) noexcept
   {
-    static_assert(Lower<In> >= -1 && Upper<In> <= 1,
-                  "bnd::math::atan2: inputs must be in [-1, 1]; normalize first for wider ranges");
+    static_assert(Lower<In> >= -(imax{1} << 20) && Upper<In> <= (imax{1} << 20),
+                  "bnd::math::atan2: input magnitudes must be \u2264 2^20 for the working-scale envelope");
     static_assert(Lower<Out> <= -detail::pi_r && Upper<Out> >= detail::pi_r,
                   "bnd::math::atan2: Out must cover [-π, π]");
 
     constexpr int W = detail::working_bits<Out>();
     bnd::detail::rational yv = y, xv = x;
+    {
+      bnd::detail::rational ay = bnd::detail::abs(yv);
+      bnd::detail::rational ax = bnd::detail::abs(xv);
+      bnd::detail::rational m  = (ax > ay) ? ax : ay;
+      if (m > bnd::detail::rational{1})
+      {
+        yv = bnd::detail::rational::div_unchecked(yv, m);
+        xv = bnd::detail::rational::div_unchecked(xv, m);
+      }
+    }
     imax y_w = detail::to_fixed(yv, W);
     imax x_w = detail::to_fixed(xv, W);
 
@@ -1535,11 +1547,25 @@ namespace bnd::math
     // --- inverse trig (radians) -------------------------------------------
     // atan(v) in radians at scale 2^W: atan2(v, 1) — x = 1 > 0, so the
     // vectoring CORDIC runs with no pre-rotation. Grid-scaled (no Q.30).
+    // Full domain: |v| > 1 reduces via atan(v) = sign(v)·(π/2 − atan(1/|v|)),
+    // keeping the CORDIC argument inside its [-1, 1] window. Inputs with
+    // |v| ≤ 1 take the original branch unchanged (bit-identical results).
     template <int W>
     constexpr bnd::detail::rational atan_fixed(bnd::detail::rational v) noexcept
     {
-      imax rad = cordic_atan2_rad<W, W>(to_fixed(v, W), imax{1} << W);
-      return fixed_to_rational(rad, W);
+      bnd::detail::rational av = bnd::detail::abs(v);
+      if (av <= bnd::detail::rational{1})
+      {
+        imax rad = cordic_atan2_rad<W, W>(to_fixed(v, W), imax{1} << W);
+        return fixed_to_rational(rad, W);
+      }
+      bnd::detail::rational inv =
+          bnd::detail::rational::div_unchecked(bnd::detail::rational{1}, av);
+      imax rad = cordic_atan2_rad<W, W>(to_fixed(inv, W), imax{1} << W);
+      bnd::detail::rational mag = bnd::detail::rational::add_unchecked(
+          bnd::detail::rational::mul_unchecked(pi_r, bnd::detail::rational{1, 2}),
+          -fixed_to_rational(rad, W));
+      return (v < bnd::detail::rational{0}) ? -mag : mag;
     }
 
     // asin(v) = atan2(v, sqrt(1 − v²)); v ∈ [−1, 1] → result ∈ [−π/2, π/2].
@@ -1761,8 +1787,8 @@ namespace bnd::math
   template <boundable Out, boundable In>
   [[nodiscard]] constexpr Out atan_impl(In x) noexcept
   {
-    static_assert(Lower<In> >= -1 && Upper<In> <= 1,
-                  "bnd::math::atan: input must be in [-1, 1]; normalize first for wider ranges");
+    static_assert(Lower<In> >= -(imax{1} << 20) && Upper<In> <= (imax{1} << 20),
+                  "bnd::math::atan: input magnitudes must be \u2264 2^20 for the working-scale envelope");
     return detail::store_grid<Out>(detail::atan_fixed<detail::working_bits<Out>()>(bnd::detail::rational{x}));
   }
 

@@ -193,6 +193,12 @@ void bench_accumulate()
       u200k_checked sum(0);
       for (auto v : bv_checked) sum += v;
       do_not_optimize(sum.raw()); }
+
+    // Bulk form: one deferred range check instead of one per element —
+    // validates the TOTAL, vectorizes like the unsafe loop.
+    { CTRACK_NAME("bnd::sum<checked>");
+      auto sum = bnd::sum<u200k_checked>(bv_checked);
+      do_not_optimize(sum.raw()); }
   }
 }
 

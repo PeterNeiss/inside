@@ -8,10 +8,12 @@
 // not probe-able via concepts.)
 
 #include "bound/bound.hpp"
+#include "bound/cmath.hpp"
 #include "bound/format.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <cmath>
 #include <limits>
 
 using namespace bnd;
@@ -154,6 +156,35 @@ TEST_CASE("representation flags print the value, not the raw",
   REQUIRE(bnd::to_string(I{-3}) == "-3");      // value, not index 2
 }
 
+TEST_CASE("real storage runs the full out-of-range policy cascade",
+          "[storage][real][policy]")
+{
+  // clamp: saturate to the (grid-point) endpoint.
+  using RC = bound<{{0, 4}, notch<1, 256>}, real | clamp>;
+  REQUIRE(static_cast<double>(rational{RC{9.5}})  == 4.0);
+  REQUIRE(static_cast<double>(rational{RC{-1.5}}) == 0.0);
+
+  // wrap: fold into [Lower, Lower + span + notch) — same convention as the
+  // fractional path. Span 0..359 with notch 1 wraps 370 → 10, -10 → 350.
+  using RW = bound<{{0, 359}, notch<1>}, real | wrap>;
+  REQUIRE(static_cast<double>(rational{RW{370.0}}) == 10.0);
+  REQUIRE(static_cast<double>(rational{RW{-10.0}}) == 350.0);
+
+  // checked: out-of-range reports (throws) instead of silently storing.
+  using RK = bound<{{0, 4}, notch<1, 256>}, real | checked>;
+  REQUIRE_THROWS_AS(RK{9.5}, std::system_error);
+  REQUIRE(static_cast<double>(rational{RK{2.5}}) == 2.5);
+
+  // sentinel: out-of-range yields the empty slot.
+  using RS = bound<{{0, 4}, notch<1, 256>}, real | sentinel>;
+  REQUIRE(RS::try_make(2.0).has_value());
+  REQUIRE(!RS::try_make(9.5).has_value());
+
+  // unchecked (bare real): stores as-is — unchanged legacy behavior.
+  using RU = bound<{{0, 4}, notch<1, 256>}, real>;
+  REQUIRE(static_cast<double>(rational{RU{2.5}}) == 2.5);
+}
+
 TEST_CASE("non-finite doubles are rejected, both engines",
           "[storage][real][domain]")
 {
@@ -165,4 +196,24 @@ TEST_CASE("non-finite doubles are rejected, both engines",
   REQUIRE_THROWS_AS(R{nan}, std::system_error);
   REQUIRE_THROWS_AS(R{inf}, std::system_error);
   REQUIRE_THROWS_AS(R{-inf}, std::system_error);
+}
+
+// Full-domain inverse trig (improvement #2): atan beyond |x| ≤ 1 via
+// reciprocal reduction; atan2 beyond the unit square via max-magnitude
+// normalization. Engine-neutral (both engines accept the same programs).
+TEST_CASE("atan / atan2 accept magnitudes beyond 1", "[cmath][atan][domain]")
+{
+  using wide_t = bound<{{-16, 16}, notch<1, 16384>}, round_nearest | real>;
+  const double tol = 2.0 / 16384;
+
+  auto val = [](auto b) { return static_cast<double>(rational{b}); };
+
+  REQUIRE(std::fabs(val(math::atan(wide_t{2}))   - 1.1071487177) < tol);
+  REQUIRE(std::fabs(val(math::atan(wide_t{-3}))  + 1.2490457724) < tol);
+  REQUIRE(std::fabs(val(math::atan(wide_t{16}))  - 1.5083775168) < tol);
+  REQUIRE(std::fabs(val(math::atan(wide_t{rational{1, 2}})) - 0.4636476090) < tol);
+
+  REQUIRE(std::fabs(val(math::atan2(wide_t{3},  wide_t{1}))  - 1.2490457724) < tol);
+  REQUIRE(std::fabs(val(math::atan2(wide_t{1},  wide_t{-5})) - 2.9441970937) < tol);
+  REQUIRE(std::fabs(val(math::atan2(wide_t{-7}, wide_t{2}))  + 1.2924966677) < tol);
 }

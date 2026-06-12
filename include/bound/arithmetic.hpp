@@ -7,6 +7,9 @@
 #include "bound/bound.hpp"
 #include "bound/casts.hpp"
 
+#include <algorithm>
+#include <ranges>
+
 //---------------------------------------------------------------------------
 // Free-function arithmetic — wraps `detail::addition<L,R>::add`,
 // `detail::multiplication<L,R>::mul`, `detail::division<L,R,F>::div`, `detail::modulo<L,R,F>::mod`
@@ -61,6 +64,7 @@ namespace bnd
   // bound×integral, …) would normally apply.
   template <class L, class R>
     requires (detail::is_slim_optional_v<L> || detail::is_slim_optional_v<R>)
+          && (!detail::expected_like<L> && !detail::expected_like<R>)
           && (boundable<detail::unwrap_t<L>> || boundable<detail::unwrap_t<R>>)
           && requires(detail::unwrap_t<L> l, detail::unwrap_t<R> r) { l + r; }
   constexpr auto operator+(L const& lhs, R const& rhs)
@@ -94,6 +98,7 @@ namespace bnd
 
   template <class L, class R>
     requires (detail::is_slim_optional_v<L> || detail::is_slim_optional_v<R>)
+          && (!detail::expected_like<L> && !detail::expected_like<R>)
           && (boundable<detail::unwrap_t<L>> || boundable<detail::unwrap_t<R>>)
           && requires(detail::unwrap_t<L> l, detail::unwrap_t<R> r) { l - r; }
   constexpr auto operator-(L const& lhs, R const& rhs)
@@ -128,6 +133,7 @@ namespace bnd
 
   template <class L, class R>
     requires (detail::is_slim_optional_v<L> || detail::is_slim_optional_v<R>)
+          && (!detail::expected_like<L> && !detail::expected_like<R>)
           && (boundable<detail::unwrap_t<L>> || boundable<detail::unwrap_t<R>>)
           && requires(detail::unwrap_t<L> l, detail::unwrap_t<R> r) { l * r; }
   constexpr auto operator*(L const& lhs, R const& rhs)
@@ -171,6 +177,78 @@ namespace bnd
       return clamp_cast<Target>(prod.value());
     else
       return clamp_cast<Target>(prod);
+  }
+
+  //---------------------------------------------------------------------------
+  // sum<Target> — bulk reduction with ONE deferred range check
+  //
+  // Per-element `target += b` re-validates the running total on every step,
+  // which blocks vectorization (the 4× gap on checked accumulation in
+  // bench.cpp). `sum<Target>(range)` accumulates raws in imax — exact, no
+  // per-element branch, auto-vectorizable — and applies Target's policy ONCE
+  // to the final total. Deliberate semantic difference from the += loop: the
+  // *total* is validated/clamped, not every running prefix.
+  //
+  // Fast path: integer raws up to 32 bits, flushed into an exact rational
+  // every 2^30 elements so the imax accumulator cannot overflow. Wider raws
+  // and rational/real storage take the exact per-element rational fold (same
+  // single final check).
+  //---------------------------------------------------------------------------
+  template <boundable Target, std::ranges::input_range Rng>
+    requires boundable<std::remove_cvref_t<std::ranges::range_reference_t<Rng>>>
+  [[nodiscard]] constexpr Target sum(Rng&& r)
+  {
+    using B = std::remove_cvref_t<std::ranges::range_reference_t<Rng>>;
+    using bnd::detail::rational;
+    rational total{0};
+
+    if constexpr ((detail::value_raw<B> || detail::index_raw<B>)
+                  && sizeof(detail::raw_t<B>) <= 4)
+    {
+      auto flush = [&](imax acc, imax cnt)
+      {
+        // value storage: raw IS the value. index storage:
+        // Σvalue = cnt·Lower + Σraw·Notch.
+        rational part = [&]
+        {
+          if constexpr (detail::index_raw<B>)
+            return ((rational{acc} * Notch<B>).value()
+                    + (rational{cnt} * Lower<B>).value()).value();
+          else
+            return rational{acc};
+        }();
+        total = (total + part).value();
+      };
+      auto it  = std::ranges::begin(r);
+      auto end = std::ranges::end(r);
+      while (it != end)
+      {
+        // Branch-free inner block (≤ 2^30 elements: |raw| < 2^32 keeps the
+        // imax accumulator overflow-free) — this is the loop that vectorizes.
+        imax acc = 0, cnt = 0;
+        if constexpr (std::ranges::random_access_range<Rng>)
+        {
+          const imax block =
+              std::min<imax>(end - it, imax{1} << 30);
+          for (imax j = 0; j < block; ++j)
+            acc += detail::raw_imax(it[j]);
+          it += block;
+          cnt = block;
+        }
+        else
+        {
+          for (; it != end && cnt < (imax{1} << 30); ++it, ++cnt)
+            acc += detail::raw_imax(*it);
+        }
+        flush(acc, cnt);
+      }
+    }
+    else
+    {
+      for (auto const& b : r)
+        total = (total + detail::as_rational(b)).value();
+    }
+    return Target{total};
   }
 
   //---------------------------------------------------------------------------
@@ -250,6 +328,7 @@ namespace bnd
 
   template <class L, class R>
     requires (detail::is_slim_optional_v<L> || detail::is_slim_optional_v<R>)
+          && (!detail::expected_like<L> && !detail::expected_like<R>)
           && (boundable<detail::unwrap_t<L>> || boundable<detail::unwrap_t<R>>)
           && requires(detail::unwrap_t<L> l, detail::unwrap_t<R> r) { l / r; }
   constexpr auto operator/(L const& lhs, R const& rhs)
@@ -284,6 +363,96 @@ namespace bnd
     constexpr policy_flag F = BoundPolicy<decltype(lhs)> | BoundPolicy<decltype(rhs)>;
     return bnd::mod(lhs, rhs, make_policy<F>());
   }
+
+  //---------------------------------------------------------------------------
+  // expected-lift operators — bridge bnd::math's expected results into chains
+  //---------------------------------------------------------------------------
+  // `math::tan(x) * gain + offset` stays an `expected<bound, errc>` end to
+  // end: the first (left) error short-circuits the chain. When the underlying
+  // operator itself returns an optional (a division whose divisor grid spans
+  // zero), its nullopt maps to the operator's single documented cause —
+  // overflow for + − ×, division_by_zero for / (a rational-arithmetic
+  // overflow inside a division chain also reports division_by_zero; the
+  // optional vocabulary doesn't carry the distinction).
+  //
+  // To drop the cause and enter the zero-cost optional world instead, convert
+  // with `bnd::ok(e)` — see lift.hpp.
+  //---------------------------------------------------------------------------
+  namespace detail
+  {
+    template <class L, class R>
+    concept expected_operands =
+        (expected_like<L> || expected_like<R>)
+        && !is_slim_optional_v<L> && !is_slim_optional_v<R>
+        && (boundable<expected_value_t<L>> || boundable<expected_value_t<R>>);
+
+    // Mixing the two vocabularies in one expression is refused: the optional
+    // operand's original cause is unknowable, so we won't invent one.
+    template <class L, class R>
+    concept mixed_error_operands =
+        (expected_like<L> && is_slim_optional_v<R>)
+        || (is_slim_optional_v<L> && expected_like<R>);
+  }
+
+  template <class L, class R>
+    requires detail::expected_operands<L, R>
+          && requires(detail::expected_value_t<L> l, detail::expected_value_t<R> r) { l + r; }
+  constexpr auto operator+(L const& lhs, R const& rhs)
+  { return lift_expected([](auto const& l, auto const& r){ return l + r; },
+                         errc::overflow, lhs, rhs); }
+
+  template <class L, class R>
+    requires detail::expected_operands<L, R>
+          && requires(detail::expected_value_t<L> l, detail::expected_value_t<R> r) { l - r; }
+  constexpr auto operator-(L const& lhs, R const& rhs)
+  { return lift_expected([](auto const& l, auto const& r){ return l - r; },
+                         errc::overflow, lhs, rhs); }
+
+  template <class L, class R>
+    requires detail::expected_operands<L, R>
+          && requires(detail::expected_value_t<L> l, detail::expected_value_t<R> r) { l * r; }
+  constexpr auto operator*(L const& lhs, R const& rhs)
+  { return lift_expected([](auto const& l, auto const& r){ return l * r; },
+                         errc::overflow, lhs, rhs); }
+
+  template <class L, class R>
+    requires detail::expected_operands<L, R>
+          && requires(detail::expected_value_t<L> l, detail::expected_value_t<R> r) { l / r; }
+  constexpr auto operator/(L const& lhs, R const& rhs)
+  { return lift_expected([](auto const& l, auto const& r){ return l / r; },
+                         errc::division_by_zero, lhs, rhs); }
+
+  template <class L, class R>
+    requires detail::mixed_error_operands<L, R>
+  constexpr auto operator+(L const&, R const&)
+  { static_assert(detail::dependent_false<L, R>,
+      "bnd: don't mix expected and optional operands in one expression — "
+      "convert the expected side with bnd::ok(e) (drops the error cause) "
+      "or unwrap explicitly"); }
+
+  template <class L, class R>
+    requires detail::mixed_error_operands<L, R>
+  constexpr auto operator-(L const&, R const&)
+  { static_assert(detail::dependent_false<L, R>,
+      "bnd: don't mix expected and optional operands in one expression — "
+      "convert the expected side with bnd::ok(e) (drops the error cause) "
+      "or unwrap explicitly"); }
+
+  template <class L, class R>
+    requires detail::mixed_error_operands<L, R>
+  constexpr auto operator*(L const&, R const&)
+  { static_assert(detail::dependent_false<L, R>,
+      "bnd: don't mix expected and optional operands in one expression — "
+      "convert the expected side with bnd::ok(e) (drops the error cause) "
+      "or unwrap explicitly"); }
+
+  template <class L, class R>
+    requires detail::mixed_error_operands<L, R>
+  constexpr auto operator/(L const&, R const&)
+  { static_assert(detail::dependent_false<L, R>,
+      "bnd: don't mix expected and optional operands in one expression — "
+      "convert the expected side with bnd::ok(e) (drops the error cause) "
+      "or unwrap explicitly"); }
 
   //---------------------------------------------------------------------------
   // (Removed) Mixed-mode `bound op rational`

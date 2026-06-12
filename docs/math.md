@@ -41,6 +41,8 @@ marks a bound as a math operand:
   bound's grid — the raw *is* the value, so input marshalling into the
   engine is free (this is where the large speedup over integer-index I/O
   comes from). Values still obey the grid: they snap to the notch on store.
+  Out-of-range stores run the same policy cascade as every other bound
+  (clamp / wrap / sentinel / checked report).
 - Under `BND_MATH_FIXED` the same flag is an ordinary `round_nearest`
   integer-backed bound — the source compiles unchanged.
 - `real` requires a **dyadic grid** (power-of-two notch and Lower) so every
@@ -108,10 +110,10 @@ other representation flags.
 |---|---|---|---|---|
 | `sin(x)` / `cos(x)` | `[-1024, 1024]` rad | `[-1, 1]` | — | |
 | `tan(x)` | `[-1024, 1024]` rad | `[-1024, 1024]` | `expected`; `division_by_zero` at a pole, `overflow` past `Out` | sin/cos ratio |
-| `atan(x)` | `[-1, 1]` | `[-π/4, π/4]` | — | normalize wider inputs first |
+| `atan(x)` | `\|x\| ≤ 2^20` | `(-π/2, π/2)` | — | reciprocal reduction for \|x\| > 1 |
 | `asin(x)` | `[-1, 1]` | `[-π/2, π/2]` | — | `atan2(x, √(1-x²))` |
 | `acos(x)` | `[-1, 1]` | `[0, π]` | — | `π/2 - asin(x)` |
-| `atan2(y, x)` | `[-1, 1]` each | `[-π, π]` | — | quadrant-correct |
+| `atan2(y, x)` | `\|y\|,\|x\| ≤ 2^20` | `[-π, π]` | — | quadrant-correct; normalized by max magnitude internally |
 
 ## Hyperbolic
 
@@ -143,6 +145,25 @@ else if (t.error() == errc::division_by_zero) /* at a pole */;
 auto r = math::sqrt(signed_in{v});     // mixed-sign → expected
 auto p = math::pow(base, exponent);    // expected
 ```
+
+Expected results compose with arithmetic directly — the chain stays an
+`expected` and the first error wins:
+
+```cpp
+auto r = math::sqrt(signed_in{v}) * gain + offset;   // expected<bound, errc>
+```
+
+To drop the cause and enter the zero-cost `optional` chaining world instead,
+convert with `bnd::ok(...)`:
+
+```cpp
+auto o = ok(math::tan(angle{x})) * gain;             // optional<bound>
+```
+
+See [arithmetic.md](arithmetic.md) for the bridge rules (error precedence,
+the no-mixing compile error) and
+[internals.md](internals.md#7-error-vocabulary) for the full error
+vocabulary.
 
 ## Selecting the integer engine
 
