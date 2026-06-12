@@ -38,17 +38,18 @@ safe_pct p = 150;                          // p == 100
 
 - **Policy-driven assignment** — `clamp`, `wrap`, `sentinel`, `round_nearest`,
   `ignore_round`, plus `on_clamp` / `on_wrap` / `on_overflow` callbacks and
-  an `std::error_code` mode for throw-free error reporting. See
-  [docs/policies.md](docs/policies.md).
+  an `std::error_code` mode for throw-free error reporting. Representation
+  flags (`real`, `exact`, `direct`, `indexed`) select how the raw value is
+  stored. See [docs/policies.md](docs/policies.md).
 - **Type-safe widening arithmetic** — `+ - * /` widen the result grid at
   compile time; integer fast paths keep the common case at native speed.
   Scalars need a grid — write `a + 1_b`, not `a + 1` (a raw `int`/`double`
   has no grid). Bound-space `dot` / `cross` / `lerp` keep 2-D geometry inside
   the bounded world. See [docs/arithmetic.md](docs/arithmetic.md).
-- **Conversions and casts** — typed-error `to<T>()`, exact `numerator()` /
-  `denominator()` read-out, conversion predicates
-  (`will_conversion_overflow`, `is_conversion_lossy`), implicit
-  `operator std::size_t()` for index-shaped bounds, and the
+- **Conversions and casts** — typed-error `to<T>()` / direct `as<T>()`
+  (member and free forms), exact `numerator()` / `denominator()` read-out,
+  conversion predicates (`will_conversion_overflow`, `is_conversion_lossy`),
+  implicit `operator imax()` so a bound indexes arrays directly, and the
   `clamp_cast` / `wrap_cast` / `clamp_round` family. See
   [docs/conversions.md](docs/conversions.md).
 - **Optimal storage & iteration** — automatic raw-type selection (uint/int
@@ -58,11 +59,14 @@ safe_pct p = 150;                          // p == 100
   and STL/ranges integration. Plus predefined hardware-width aliases
   (`bnd::u8`, `bnd::unorm16`, `bnd::q8_8`, …) in `bound/formats.hpp`.
   See [docs/storage.md](docs/storage.md).
-- **Bit-exact constexpr math** — a `<cmath>`-shaped function set over bounds
-  (`sin`/`cos`/`tan`, `asin`/`acos`/`atan`/`atan2`, `sinh`/`cosh`/`tanh`,
-  `exp`/`log`/`log2`/`log10`/`pow`, `sqrt`/`cbrt`/`hypot`), integer-only
-  internally and bit-identical across compilers/platforms. Angles are radians;
-  output grids auto-deduce. See [docs/math.md](docs/math.md).
+- **Reproducible math, two engines** — a `<cmath>`-shaped function set over
+  bounds (`sin`/`cos`/`tan`, `asin`/`acos`/`atan`/`atan2`, `sinh`/`cosh`/`tanh`,
+  `exp`/`log`/`log2`/`log10`/`pow`, `sqrt`/`cbrt`/`hypot`). One API, two
+  build-time engines: a fast `double` engine (default, bit-identical across
+  IEEE-754 platforms) and an integer/CORDIC engine
+  (`-DBOUND_MATH_FIXED=ON` — `constexpr`, FPU-free, bit-identical
+  unconditionally). Math operands carry the `real` policy; angles are
+  radians; output grids auto-deduce. See [docs/math.md](docs/math.md).
 - **Library internals** — grid invariants, storage decision tree, Q-format
   fast path, policy cascade. See [docs/internals.md](docs/internals.md).
 
@@ -114,23 +118,32 @@ scenario, native baseline paired with each bound case). Lower is better.
 | `bound<{{0,65535},1/65536}>` construct (Q16.16) | 14 ns | 14 ns | **0.97×** |
 | `accumulate(bound, unsafe)` 1000 elts | 64 ns | 64 ns | 1.0× (vectorized) |
 | `accumulate(bound, checked)` 1000 elts | 274 ns | 64 ns | 4.3× (scalar) |
-| `bound<{{-40,60},0.5}> = double` (exact-fraction path) | 87–94 ns | n/a | n/a |
+| `transform(b += 1)` 10k uint8-width elts (unsafe) | 1.02 µs | 1.02 µs | **1.0×** (SIMD) |
+| Q-format store from exact fraction | ~6 ns | n/a | n/a |
+| Q-format store from `double` | ~46 ns | n/a | n/a |
+| `math::sin` (`real` operand, double engine) | 35 ns | 23 ns (`std::sin`) | 1.5× |
+| `math::fmod` (integer grids) | 19 ns | 25 ns (`std::fmod`) | **0.76×** |
 
 Notes:
 
 - Integer-raw bounds (the common case: `bound<{0,N}>`, `bound<{a,b}>` with
-  notch 1) are at native parity for arithmetic and assignment.
-- Fixed-point grids with integer Lower and unit-numerator Notch take an
-  integer fast path in `assignment::store` and `from_value` — no exact-fraction
-  construction in the hot loop.
+  notch 1) are at native parity for arithmetic and assignment. Unchecked
+  compound ops run at the raw type's width, so byte-wide loops vectorize at
+  native lane count. (Mind the sentinel slot: `bound<{0,255}>` stores in
+  uint16 — see [docs/storage.md](docs/storage.md#choosing-the-representation).)
+- Q-format grids (integer Lower, unit-numerator Notch) take integer fast
+  paths in `assignment::store` and `from_value` — storing an exact fraction
+  is one `gcd` plus three integer multiplies; storing a `double` adds only
+  its exact decomposition.
 - `checked` policy on accumulation pays a 4× penalty: the per-element domain
   check breaks autovectorisation. Use `unsafe` for tight inner loops where
   no-overflow is proven upfront, then convert back to a `checked` bound
   after the loop.
-- Assigning a `double` to a fractional-notch grid is the slowest path
-  because the value crosses the API boundary into exact-fraction arithmetic —
-  by design; the library uses exact-fraction + integer math internally to
-  preserve exactness.
+- The `math::*` rows measure the call alone (the bench constructs inputs
+  outside the timed blocks); `real`-policy operands are double-backed, so
+  input marshalling is free and the gap to `std::` is the output grid-snap.
+  `math::fmod` on commensurable integer grids beats `std::fmod` — it is a
+  single integer remainder.
 
 ## Build & Test
 
@@ -150,6 +163,12 @@ cmake --build build
 # C++20 / GCC 12 build:
 cmake -B build20 -DBOUND_CXX20=ON -DCMAKE_CXX_COMPILER=g++-12
 cmake --build build20
+
+# Integer/CORDIC math engine (constexpr, FPU-free, unconditionally
+# bit-identical — see docs/math.md):
+cmake -B build-fixed -DBOUND_CXX20=ON -DBOUND_MATH_FIXED=ON
+cmake --build build-fixed
+
 ctest --test-dir build --output-on-failure   # runs unit + algo suites
 ./build/bound_tests                          # unit tests directly
 ./build/bench                                # performance benchmarks (native vs bound)

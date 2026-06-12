@@ -172,14 +172,24 @@ gets priority for a given callback set.
 
 `bound::operator imax()` — **implicit**, only when notch is
 integer-aligned. Matches native-int performance and ergonomics:
-`int n = bound<{0,100}>{42};` just works.
+`int n = bound<{0,100}>{42};` just works. It is deliberately the **only**
+implicit integer conversion — a second one (a removed `operator size_t`
+once existed) makes built-in mixed arithmetic like `imax_var += b`
+ambiguous. Indexing reaches `size_t` through imax's standard conversion.
 
 `bound::operator rational()` — **implicit**. Lossless and mathematically
 exact, so no risk in letting it happen silently.
 
-`bound::operator double()` — **explicit**. Never silently demote
-arithmetic to floating-point and lose exact-rational guarantees; callers
-opt in with `double(b)`.
+`bound::operator double()` — `explicit((P & real) != real)`. A
+`real`-policy bound lives on a dyadic grid, so every value is exactly
+representable in `double` and the conversion is lossless — implicit, by the
+same rule as `operator rational`. For everything else the conversion can
+round, so it is **explicit** AND gated on a rounding policy flag; strict
+bounds opt in through `to<double>()`. `as<floating>()` shares the gate so
+the two spellings agree.
+
+`to<T>(b)` / `as<T>(b)` — free-function forms of the members, for generic
+code (no `.template` disambiguator); ADL-found, same constraints.
 
 `rational::operator T()` (for unsigned, signed, floating) — **explicit**
 in all cases; rationals truncate toward zero on integer conversion.
@@ -202,9 +212,9 @@ different "extract the value" intents used to spell the same
 | `raw_imax(b)`  | `imax` (raw widened) | You want the **raw** as a signed integer (e.g. inside offset arithmetic) |
 | `to_value(b)`    | `imax` (truncated value) | You want the bound's **value** as an integer |
 
-When `storage_of<B> != storage::offset`, `raw_imax(b) == to_value(b)`. For
-`storage::offset`, they differ — `Raw` is an index, `to_value`
-multiplies by `Notch` and adds `Lower`.
+When `!index_raw<B>` (raw is the value), `raw_imax(b) == to_value(b)`. For
+index storage they differ — `Raw` is an index, `to_value` multiplies by
+`Notch` and adds `Lower`.
 
 ---
 
@@ -219,9 +229,10 @@ all transitively included by `bound/bound.hpp`:
 | `bound/casts.hpp`       | `clamp_cast`, `wrap_cast`, `checked_cast`, `unchecked_cast`, `clamp_floor` / `clamp_ceil` / `clamp_round` |
 | `bound/arithmetic.hpp`  | Free `add` / `sub` / `mul` / `div` / `mod`, variadic folds `add_all` / `mul_all`, `operator+` / `-` / `*` / `/` / `%`, optional-lift overloads |
 | `bound/range.hpp`       | `bound_range<G, P>` iterator helper |
-| `bound/generic.hpp`     | Public grid/policy introspection (`Grid` / `BoundPolicy` / `Interval` / `Lower` / `Upper` / `Notch`) and the `boundable` / `numeric` / `bound_assignable` concepts. Storage/raw/dispatch plumbing (`raw_t`, `storage`/`storage_of`, `to_value` / `from_value`, `raw_cast` / `raw_imax`, `q_format_encode/decode`, `NotchCount`, `RawLo/Hi`, `sentinel_raw`, `detail::as_rational`, …) lives in `bnd::detail` |
-| `bound/assignment.hpp`  | `bnd::detail::assignment<L, R>` specialisations for integral / real / boundable rhs |
-| `bound/cmath.hpp`       | `bnd::math` — constexpr, bit-exact `<cmath>`-shaped functions (trig, inverse trig, hyperbolic, exp/log/pow, sqrt/cbrt/hypot) over bounds. Q.30 / CORDIC cores live in `bnd::math::detail`. See [math.md](math.md) |
+| `bound/generic.hpp`     | Public grid/policy introspection (`Grid` / `BoundPolicy` / `Interval` / `Lower` / `Upper` / `Notch`) and the `boundable` / `numeric` / `bound_assignable` concepts. Storage/raw/dispatch plumbing (`raw_t`, the `rational_raw` / `real_raw` / `value_raw` / `index_raw` predicates, `as_double`, `to_value` / `from_value`, `raw_cast` / `raw_imax`, `q_format_encode/decode`, `NotchCount`, `RawLo/Hi`, `sentinel_raw`, `detail::as_rational`, …) lives in `bnd::detail` |
+| `bound/assignment.hpp`  | `bnd::detail::assignment<L, R>` specialisations for integral / fractional / boundable rhs (incl. the Q-format integer shortcut for fractional rhs) |
+| `bound/cmath.hpp`       | `bnd::math` — the `<cmath>`-shaped public API (trig, inverse trig, hyperbolic, exp/log/pow, sqrt/cbrt/hypot) over bounds, dispatching to one of two engines. The integer/CORDIC cores live in `bnd::math::detail` here — they also serve as the compile-time output-grid oracle for **both** engines. See [math.md](math.md) |
+| `bound/cmath_double.hpp` | The default **double engine** cores (`d_sin`, `d_exp`, … — own `std::fma`-Horner polynomials, Cody-Waite reduction, correctly-rounded `std::sqrt`); selected unless `BND_MATH_FIXED` is defined |
 | `bound/detail/addition.hpp`, `multiplication.hpp`, `division.hpp` | `bnd::detail::addition<L, R>`, `multiplication<L, R>`, `division<L, R, F>`, `modulo<L, R, F>` — implementation detail, included via `bound.hpp` |
 | `bound/detail/overflow.hpp`, `debug.hpp` | `add_overflow` / `sub_overflow` / `mul_overflow` (builtins + portable fallback), stacktrace plumbing — implementation detail |
 | `bound/rational.hpp`    | `rational`, its arithmetic, sentinel traits |

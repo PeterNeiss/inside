@@ -277,7 +277,10 @@ range is fixed by R's grid and can't exceed it.
 ## Compound assignment
 
 Compound assignment works with integer / floating-point scalars and with
-other bounds on compatible grids:
+other bounds on compatible grids. Under an unchecked policy (no
+`checked`/`clamp`/`wrap`/`sentinel`) with value storage, `+=`/`-=`/`*=`
+operate directly at the raw type's width — a loop of byte-wide `b += 1`
+vectorizes at the same lane count as native `uint8_t`:
 
 ```cpp
 using pct = bound<{0, 100}, clamp>;

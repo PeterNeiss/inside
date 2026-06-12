@@ -57,6 +57,32 @@ Exact-fraction storage is exact (no floating-point rounding) but larger and
 slower than integer storage. The library picks the most efficient representation
 for each grid.
 
+## Choosing the representation
+
+The rules above are the **default deduction**. Four policy flags override it
+(see [policies.md](policies.md#representation-flags) for the full table):
+
+```cpp
+using gain   = bound<{{0, 4}, notch<1, 65536>}, round_nearest | real>;
+                                       // Raw: double (math operand, dyadic grid)
+using ratio  = bound<{{0, 1}, notch<1, 3>}, exact>;
+                                       // Raw: exact fraction on a NOTCHED grid
+using regval = bound<{5, 100}, direct>; // Raw: uint8_t, raw() == value (5..100)
+using slot   = bound<{-5, 5}, indexed>; // Raw: uint8_t, raw() == index (0..10)
+```
+
+`real` is the math-operand flag ([math.md](math.md)); `exact` lifts the
+notch-count limit and removes `double` entirely; `direct` makes the raw equal
+the wire/debugger value for interop; `indexed` gives signed grids a dense
+unsigned layout for serialization. Mixed-flag results from arithmetic resolve
+widest-wins: `exact > real > direct > indexed > deduced`.
+
+> **Sentinel slot and SIMD width.** The smallest-type selection reserves one
+> raw slot for the `slim::optional` sentinel (next section). That makes
+> `bound<{0, 255}>` a **uint16**, not uint8 — raw 255 is the sentinel. In
+> SIMD-width-sensitive loops this halves the lanes versus native `uint8_t`;
+> a `bound<{0, 254}>` fits uint8 and runs at exactly native speed.
+
 ## `slim::optional<bound>` sentinel
 
 `slim::optional<bound>` uses a sentinel value instead of a separate bool
@@ -141,8 +167,9 @@ for (auto i : bound_range<{0, 9}>{5})
 ```
 
 The yielded values are bounds, not raw integers, so they slot directly into
-`vec[i]` via the implicit `operator std::size_t()` (when the grid is
-index-shaped — see [conversions.md](conversions.md#implicit-operator-conversions-on-bound)):
+`vec[i]` via the implicit `operator imax()` (the standard imax → size_t
+conversion does the rest — see
+[conversions.md](conversions.md#implicit-operator-conversions-on-bound)):
 
 ```cpp
 std::vector<int> bins(10);

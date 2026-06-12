@@ -77,18 +77,23 @@ explicit precisely because it drops the guarantee.
 
 - `to<T>()` — typed, fallible conversion to a native integer.
 - `numerator()` / `denominator()` — exact read-out, no rounding.
-- implicit `operator imax()` / `operator std::size_t()` for integer-aligned
-  grids (so a bound indexes an array directly).
-- explicit `double(b)` — opt in to floating point.
+- implicit `operator imax()` for integer-aligned grids (so a bound indexes
+  an array directly).
+- explicit `double(b)` — opt in to floating point. (`real`-policy math
+  operands convert implicitly — their value is exact in `double`.)
 
 See [conversions.md](conversions.md).
 
 ## Math on bounds
 
-`bnd::math` is a `<cmath>`-shaped, `constexpr`, bit-exact function set over
-bounds — `sin`/`cos`/`sqrt`/`exp`/`log`/`atan2`/… Angles are radians; output
-grids auto-deduce from the input; runtime-conditional failures (a `tan` pole, a
-negative `sqrt`) surface as `slim::expected`. See [math.md](math.md).
+`bnd::math` is a `<cmath>`-shaped, reproducible function set over bounds —
+`sin`/`cos`/`sqrt`/`exp`/`log`/`atan2`/… Math operands carry the `real`
+policy flag (`bound<G, round_nearest | real>`); one API runs on either of
+two engines — a fast IEEE-754 `double` engine (default) or a bit-exact,
+`constexpr` integer engine (`-DBOUND_MATH_FIXED=ON`). Angles are radians;
+output grids auto-deduce from the input; runtime-conditional failures (a
+`tan` pole, a negative `sqrt`) surface as `slim::expected`.
+See [math.md](math.md).
 
 ## Where to go next
 
