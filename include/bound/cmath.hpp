@@ -876,18 +876,81 @@ namespace bnd::math
     return detail::store_grid<Out>(bnd::detail::rational{x}.trunc());
   }
 
+  namespace detail
+  {
+    // Gate for fmod's integer fast path. When both operands and Out are
+    // integer-backed on commensurable notches, fmod collapses to ONE integer
+    // remainder in units of g = gcd(Notch<InX>, Notch<InY>): with x = a·g and
+    // y = b·g, x − trunc(x/y)·y = (a − (a/b)·b)·g = (a % b)·g exactly (C++ %
+    // is truncated division, the same convention). Conditions:
+    //   * integer raws only (rational/double raws keep the rational path),
+    //   * non-zero notches, g on Out's grid (g / Notch<Out> integer),
+    //   * divisor grid excludes zero (no runtime zero check needed),
+    //   * Out's interval covers ±max|y| (result magnitude is < |y|),
+    //   * all unit counts fit comfortably in imax (headroom 4).
+    template <boundable Out, boundable InX, boundable InY>
+    inline constexpr bool fmod_int_fast = []{
+      if (bnd::detail::rational_raw<InX> || bnd::detail::real_raw<InX>
+       || bnd::detail::rational_raw<InY> || bnd::detail::real_raw<InY>
+       || bnd::detail::rational_raw<Out> || bnd::detail::real_raw<Out>)
+        return false;
+      if (Notch<InX> == 0 || Notch<InY> == 0 || Notch<Out> == 0)
+        return false;
+      if (!bnd::detail::DivisorExcludesZero<InY>)
+        return false;
+      auto go = bnd::detail::gcd(Notch<InX>, Notch<InY>);
+      if (!go.has_value()) return false;
+      bnd::detail::rational g = *go;
+      auto qo = g / Notch<Out>;
+      if (!qo.has_value() || bnd::detail::abs_den(qo->Denominator) != 1)
+        return false;
+      bnd::detail::rational maxx =
+          bnd::detail::abs(Lower<InX>) > bnd::detail::abs(Upper<InX>)
+            ? bnd::detail::abs(Lower<InX>) : bnd::detail::abs(Upper<InX>);
+      bnd::detail::rational maxy =
+          bnd::detail::abs(Lower<InY>) > bnd::detail::abs(Upper<InY>)
+            ? bnd::detail::abs(Lower<InY>) : bnd::detail::abs(Upper<InY>);
+      if (Lower<Out> > -maxy || Upper<Out> < maxy)
+        return false;
+      constexpr umax lim = static_cast<umax>(std::numeric_limits<imax>::max() / 4);
+      auto ux = maxx / g;  auto uy = maxy / g;  auto uo = maxy / Notch<Out>;
+      return ux.has_value() && uy.has_value() && uo.has_value()
+          && ux->Numerator <= lim && uy->Numerator <= lim && uo->Numerator <= lim;
+    }();
+  }
+
   // x mod y = x − ⌊x/y⌋·y (truncated-division convention, matching std::fmod).
   // Result has the sign of x. Pre: y must not span zero (caller-enforced).
   template <boundable Out, boundable InX, boundable InY>
   [[nodiscard]] constexpr Out fmod_impl(InX x, InY y) noexcept
   {
-    bnd::detail::rational xv = x;
-    bnd::detail::rational yv = y;
-    bnd::detail::rational q  = bnd::detail::rational::div_unchecked(xv, yv);
-    imax     qt = q.trunc();
-    bnd::detail::rational qy = bnd::detail::rational::mul_unchecked(bnd::detail::rational{qt}, yv);
-    bnd::detail::rational r  = bnd::detail::rational::add_unchecked(xv, -qy);
-    return detail::store_grid<Out>(r);
+    if constexpr (detail::fmod_int_fast<Out, InX, InY>)
+    {
+      // One integer remainder in g-units; bit-identical to the rational path.
+      constexpr bnd::detail::rational g = *bnd::detail::gcd(Notch<InX>, Notch<InY>);
+      constexpr imax wx  = (Notch<InX> / g).value().trunc();
+      constexpr imax wy  = (Notch<InY> / g).value().trunc();
+      constexpr imax wo  = (g / Notch<Out>).value().trunc();
+      constexpr imax lox = (Lower<InX> / g).value().trunc();   // exact: grid invariant
+      constexpr imax loy = (Lower<InY> / g).value().trunc();
+      constexpr imax loo = (Lower<Out> / Notch<Out>).value().trunc();
+      const imax a = bnd::detail::raw_imax(x) * wx
+                   + (bnd::detail::index_raw<InX> ? lox : 0);
+      const imax b = bnd::detail::raw_imax(y) * wy
+                   + (bnd::detail::index_raw<InY> ? loy : 0);
+      const imax r = a % b;                                    // |r| < |b|, in Out's range
+      return Out::from_raw(bnd::detail::raw_from_offset<Out>(r * wo - loo));
+    }
+    else
+    {
+      bnd::detail::rational xv = x;
+      bnd::detail::rational yv = y;
+      bnd::detail::rational q  = bnd::detail::rational::div_unchecked(xv, yv);
+      imax     qt = q.trunc();
+      bnd::detail::rational qy = bnd::detail::rational::mul_unchecked(bnd::detail::rational{qt}, yv);
+      bnd::detail::rational r  = bnd::detail::rational::add_unchecked(xv, -qy);
+      return detail::store_grid<Out>(r);
+    }
   }
 
   //---------------------------------------------------------------------------

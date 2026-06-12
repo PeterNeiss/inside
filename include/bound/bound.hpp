@@ -585,37 +585,56 @@ namespace bnd
       return *this;
     }
 
+    // Type-generic wrapping +/−/× in T's unsigned domain. At imax width these
+    // are the overflow-free fallback of `integer_compound_assign`; at raw
+    // width they are its vectorizable unchecked arm (same low bits either
+    // way — two's complement).
+    struct wrap_add_t { template <typename T> constexpr T operator()(T a, T b) const noexcept
+      { using U = std::make_unsigned_t<T>; return static_cast<T>(static_cast<U>(a) + static_cast<U>(b)); } };
+    struct wrap_sub_t { template <typename T> constexpr T operator()(T a, T b) const noexcept
+      { using U = std::make_unsigned_t<T>; return static_cast<T>(static_cast<U>(a) - static_cast<U>(b)); } };
+    struct wrap_mul_t { template <typename T> constexpr T operator()(T a, T b) const noexcept
+      { using U = std::make_unsigned_t<T>; return static_cast<T>(static_cast<U>(a) * static_cast<U>(b)); } };
+
     // Integer fast path for +=, -=, *= with arithmetic rhs.
-    // `WrapOp` is the umax-safe fallback (no overflow check); `CheckedOp` is
-    // one of `add_overflow`/`sub_overflow`/`mul_overflow`. Function-pointer
-    // params are inlined under -O1+.
+    // `WrapOp` is the wrapping fallback (no overflow check); `CheckedOp` is
+    // one of `add_overflow`/`sub_overflow`/`mul_overflow`.
+    template <typename WrapOp>
     constexpr bound& integer_compound_assign(
         imax rhs,
         bool (*CheckedOp)(imax, imax, imax*),
-        imax (*WrapOp)(imax, imax),
+        WrapOp wrap_op,
         const char* err_msg)
     {
-      imax l = detail::to_value(*this);
-      imax result;
-      if constexpr (P & checked)
+      // Unchecked policy + value storage: operate directly in raw width.
+      // Bit-identical to the imax round-trip below (truncating a 64-bit
+      // two's-complement result to N bits equals the N-bit result), but a
+      // loop of `b += k` vectorizes at the raw type's lane width instead of
+      // 64-bit lanes (e.g. 4× the lanes for a uint8 raw).
+      if constexpr ((P & (checked | clamp | wrap | sentinel)) == 0
+                    && detail::value_raw<bound>
+                    && std::integral<raw_type>)
       {
-        if (CheckedOp(l, rhs, &result))
-        {
-          make_policy<P>().report(errc::overflow, err_msg);
-          return *this;
-        }
+        Raw = wrap_op(Raw, static_cast<raw_type>(rhs));
+        return *this;
       }
       else
-        result = WrapOp(l, rhs);
-      return assign_imax(result);
+      {
+        imax l = detail::to_value(*this);
+        imax result;
+        if constexpr (P & checked)
+        {
+          if (CheckedOp(l, rhs, &result))
+          {
+            make_policy<P>().report(errc::overflow, err_msg);
+            return *this;
+          }
+        }
+        else
+          result = wrap_op(l, rhs);
+        return assign_imax(result);
+      }
     }
-
-    static constexpr imax wrap_add_(imax a, imax b) noexcept
-    { return static_cast<imax>(static_cast<umax>(a) + static_cast<umax>(b)); }
-    static constexpr imax wrap_sub_(imax a, imax b) noexcept
-    { return static_cast<imax>(static_cast<umax>(a) - static_cast<umax>(b)); }
-    static constexpr imax wrap_mul_(imax a, imax b) noexcept
-    { return static_cast<imax>(static_cast<umax>(a) * static_cast<umax>(b)); }
 
     constexpr bool report_div_by_zero(const char* msg)
     {
@@ -630,7 +649,7 @@ namespace bnd
     {
       if constexpr (std::integral<A>)
         return integer_compound_assign(rhs,
-            add_overflow, wrap_add_, "operator+= overflow");
+            add_overflow, wrap_add_t{}, "operator+= overflow");
       else if constexpr (std::same_as<A, bnd::detail::rational>)
         return assign_op_result(bnd::detail::rational{*this} + rhs);
       else  // floating_point — route through double, snap via policy
@@ -646,7 +665,7 @@ namespace bnd
     {
       if constexpr (std::integral<A>)
         return integer_compound_assign(rhs,
-            sub_overflow, wrap_sub_, "operator-= overflow");
+            sub_overflow, wrap_sub_t{}, "operator-= overflow");
       else if constexpr (std::same_as<A, bnd::detail::rational>)
         return assign_op_result(bnd::detail::rational{*this} - rhs);
       else  // floating_point
@@ -670,7 +689,7 @@ namespace bnd
     {
       if constexpr (std::integral<A>)
         return integer_compound_assign(rhs,
-            mul_overflow, wrap_mul_, "operator*= overflow");
+            mul_overflow, wrap_mul_t{}, "operator*= overflow");
       else if constexpr (std::same_as<A, bnd::detail::rational>)
         return assign_op_result(bnd::detail::rational{*this} * rhs);
       else  // floating_point

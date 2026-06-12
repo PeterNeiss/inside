@@ -391,15 +391,63 @@ namespace bnd::detail
           lhs = L::from_raw(raw_from_offset<L>(k));
       };
 
+      constexpr bool has_round_flag =
+           HasPolicy<L, P, round_nearest> || HasPolicy<L, P, round_floor>
+        || HasPolicy<L, P, round_ceil>    || HasPolicy<L, P, round_half_even>
+        || HasPolicy<L, P, ignore_round>;
+
+      // Q-format integer shortcut: with integer Lower and notch 1/K the
+      // offset is ((num/aden) − Lo)·K = (num − Lo·aden)·(K/g) / (aden/g),
+      // g = gcd(aden, K) — one gcd and three integer ops instead of two
+      // gcd-reducing rational operations. `round_quotient` is invariant
+      // under fraction reduction (same equivalence `grid_fast_store` in
+      // cmath.hpp relies on), so the slot is bit-identical to the rational
+      // path below. Oversized denominators fall through (kMaxDen guard
+      // keeps every intermediate product inside imax).
+      if constexpr (HasQFormatFastPath<L> && !real_raw<L> && Notch<L> != 0)
+      {
+        constexpr imax K  = abs_den(Notch<L>.Denominator);
+        constexpr imax Lo = LowerImax<L>;
+        constexpr umax kKM = []{
+          // 2 · K · M with saturation (M bounds |value| and the offset span)
+          umax k = static_cast<umax>(K);
+          umax m = static_cast<umax>(
+              ((bnd::detail::abs(Lower<L>) > bnd::detail::abs(Upper<L>)
+                  ? bnd::detail::abs(Lower<L>) : bnd::detail::abs(Upper<L>))
+               ).ceil()) * 2 + 2;
+          if (k > std::numeric_limits<umax>::max() / m)
+            return std::numeric_limits<umax>::max();
+          umax km = k * m;
+          return (km > std::numeric_limits<umax>::max() / 2)
+                   ? std::numeric_limits<umax>::max() : km * 2;
+        }();
+        constexpr umax kMaxDen =
+            static_cast<umax>(std::numeric_limits<imax>::max()) / kKM;
+
+        const rational rv{rhs};                       // exact (copy for rational R)
+        const umax aden = abs_den(rv.Denominator);
+        if (kMaxDen != 0 && aden <= kMaxDen)
+        {
+          const umax g    = std::gcd(aden, static_cast<umax>(K));
+          const umax den2 = aden / g;
+          const imax k2   = K / static_cast<imax>(g);
+          const imax num  = (rv.Denominator < 0) ? -rv.Numerator : rv.Numerator;
+          const umax onum =                          // ≥ 0: rhs ≥ Lower (in range)
+              static_cast<umax>((num - Lo * static_cast<imax>(aden)) * k2);
+          if (den2 == 1)
+          { store_slot(onum); return true; }
+          if constexpr (has_round_flag)
+          { store_slot(round_quotient<L, P>(onum, den2)); return true; }
+          // strict policy, off-notch: fall through to the rational path for
+          // the error message / action plumbing (cold).
+        }
+      }
+
       rational raw = ((rhs - Lower<L>)/Notch<L>).value();
       umax den = static_cast<umax>(raw.Denominator);
       if (den == 1)
       { store_slot(raw.Numerator); return true; }
 
-      constexpr bool has_round_flag =
-           HasPolicy<L, P, round_nearest> || HasPolicy<L, P, round_floor>
-        || HasPolicy<L, P, round_ceil>    || HasPolicy<L, P, round_half_even>
-        || HasPolicy<L, P, ignore_round>;
       if constexpr (has_round_flag)
         store_slot(round_quotient<L, P>(raw.Numerator, den));
       else if (policy.round_check())

@@ -467,190 +467,195 @@ void bench_cmath()
   using fmod_x_t  = bound<{{-8, 8}, notch<1, 16384>}, round_nearest>;
   using fmod_y_t  = bound<{{0.25_r, 4}, notch<1, 16384>}, round_nearest>;
 
-  // 28 timed blocks per iter — use a reduced count so ctrack's per-event
+  // Inputs are PRE-BUILT so each timed block measures the math call alone,
+  // not bound/double construction from a rational (that cost is measured
+  // separately by the two "constr ..." blocks below). 4096 entries stride
+  // the original k = i & 0xFFFF recurrence across its full range.
+  constexpr std::size_t M = 4096;
+  std::vector<algeb_t>    v_alg, v_alg2; std::vector<sqrt_in_t> v_sqrt;
+  std::vector<exp2_in_t>  v_exp2;  std::vector<log2_in_t>  v_log2;
+  std::vector<exp_in_t>   v_exp;   std::vector<log_in_t>   v_log;
+  std::vector<pow_in_t>   v_pow;   std::vector<angle_t>    v_ang;
+  std::vector<tan_in_t>   v_tan;   std::vector<atan2_in_t> v_aty, v_atx;
+  std::vector<fmod_x_t>   v_fmx;   std::vector<fmod_y_t>   v_fmy;
+  std::vector<double> d_qs, d_q, d_log2, d_log, d_tan, d_aty, d_atx, d_fmy;
+  for (std::size_t j = 0; j < M; ++j)
+  {
+    imax k = static_cast<imax>((j * 16) & 0xFFFF);
+    rational q  = rational{k, 16384};
+    rational qs = rational{k - 32768, 16384};
+    rational rl2{(k % 65535) + 1, 16384};
+    rational rl {(k % 65535) + 1, 256};
+    rational rt {(k % 24576) - 12288, 16384};
+    rational ry {(k % 32768) - 16384, 16384};
+    rational rx {((k + 1) % 32768) - 16384, 16384};
+    rational rfy{(k % 60) + 4, 16384};
+    v_alg.push_back(algeb_t{qs});    v_alg2.push_back(algeb_t{q});
+    v_sqrt.push_back(sqrt_in_t{q});
+    v_exp2.push_back(exp2_in_t{qs}); v_log2.push_back(log2_in_t{rl2});
+    v_exp.push_back(exp_in_t{qs});   v_log.push_back(log_in_t{rl});
+    v_pow.push_back(pow_in_t{qs});   v_ang.push_back(angle_t{qs});
+    v_tan.push_back(tan_in_t{rt});   v_aty.push_back(atan2_in_t{ry});
+    v_atx.push_back(atan2_in_t{rx}); v_fmx.push_back(fmod_x_t{qs});
+    v_fmy.push_back(fmod_y_t{rfy});
+    d_qs.push_back(static_cast<double>(qs));   d_q.push_back(static_cast<double>(q));
+    d_log2.push_back(static_cast<double>(rl2)); d_log.push_back(static_cast<double>(rl));
+    d_tan.push_back(static_cast<double>(rt));   d_aty.push_back(static_cast<double>(ry));
+    d_atx.push_back(static_cast<double>(rx));   d_fmy.push_back(static_cast<double>(rfy));
+  }
+
+  // 30 timed blocks per iter — use a reduced count so ctrack's per-event
   // storage (~70 B/event, no aggregation) stays in proportion with the
-  // ~4-block benches above. N/16 ≈ 312K → ~8.7M events.
+  // ~4-block benches above. N/16 ≈ 312K → ~9.4M events.
   constexpr std::size_t N_CMATH = N / 16;
   for (std::size_t i = 0; i < N_CMATH; ++i)
   {
-    auto k = static_cast<imax>(i & 0xFFFF);  // small varying integer
-    rational q  = rational{k, 16384};        // [0, ~4) in Q.14
-    rational qs = rational{k - 32768, 16384}; // signed
+    const std::size_t j = i & (M - 1);
+    auto k = static_cast<imax>(i & 0xFFFF);
+    rational qs = rational{k - 32768, 16384};
 
-    // ---- abs / floor / ceil / round / trunc ----
-    { CTRACK_NAME("math::abs   bound");
+    // ---- input construction (the cost the call blocks no longer carry) ----
+    { CTRACK_NAME("constr bound  rational");
       algeb_t x{qs};
-      auto r = bnd::math::abs(x);
+      do_not_optimize(x.raw()); }
+    { CTRACK_NAME("constr double rational");
+      double d = static_cast<double>(qs);
+      do_not_optimize(d); }
+
+    // ---- abs / floor / round ----
+    { CTRACK_NAME("math::abs   bound");
+      auto r = bnd::math::abs(v_alg[j]);
       do_not_optimize(r.raw()); }
     { CTRACK_NAME("std::abs    double");
-      double d = static_cast<double>(qs);
-      auto r = std::abs(d);
+      auto r = std::abs(d_qs[j]);
       do_not_optimize(r); }
 
     { CTRACK_NAME("math::floor bound");
-      algeb_t x{qs};
-      auto r = bnd::math::floor(x);
+      auto r = bnd::math::floor(v_alg[j]);
       do_not_optimize(r.raw()); }
     { CTRACK_NAME("std::floor  double");
-      double d = static_cast<double>(qs);
-      auto r = std::floor(d);
+      auto r = std::floor(d_qs[j]);
       do_not_optimize(r); }
 
     { CTRACK_NAME("math::round bound");
-      algeb_t x{qs};
-      auto r = bnd::math::round(x);
+      auto r = bnd::math::round(v_alg[j]);
       do_not_optimize(r.raw()); }
     { CTRACK_NAME("std::round  double");
-      double d = static_cast<double>(qs);
-      auto r = std::round(d);
+      auto r = std::round(d_qs[j]);
       do_not_optimize(r); }
 
     // ---- sqrt ----
     { CTRACK_NAME("math::sqrt  bound");
-      sqrt_in_t x{q};
-      auto r = bnd::math::sqrt(x);
+      auto r = bnd::math::sqrt(v_sqrt[j]);
       do_not_optimize(r.raw()); }
     { CTRACK_NAME("std::sqrt   double");
-      double d = static_cast<double>(q);
-      auto r = std::sqrt(d);
+      auto r = std::sqrt(d_q[j]);
       do_not_optimize(r); }
 
     // ---- exp2 / log2 ----
     { CTRACK_NAME("math::exp2  bound");
-      exp2_in_t x{qs};
-      auto r = bnd::math::exp2(x);
+      auto r = bnd::math::exp2(v_exp2[j]);
       do_not_optimize(r.raw()); }
     { CTRACK_NAME("std::exp2   double");
-      double d = static_cast<double>(qs);
-      auto r = std::exp2(d);
+      auto r = std::exp2(d_qs[j]);
       do_not_optimize(r); }
 
     { CTRACK_NAME("math::log2  bound");
-      log2_in_t x{rational{(k % 65535) + 1, 16384}};
-      auto r = bnd::math::log2(x);
+      auto r = bnd::math::log2(v_log2[j]);
       do_not_optimize(r.raw()); }
     { CTRACK_NAME("std::log2   double");
-      double d = static_cast<double>(rational{(k % 65535) + 1, 16384});
-      auto r = std::log2(d);
+      auto r = std::log2(d_log2[j]);
       do_not_optimize(r); }
 
     // ---- exp / log ----
     { CTRACK_NAME("math::exp   bound");
-      exp_in_t x{qs};
-      auto r = bnd::math::exp(x);
+      auto r = bnd::math::exp(v_exp[j]);
       do_not_optimize(r.raw()); }
     { CTRACK_NAME("std::exp    double");
-      double d = static_cast<double>(qs);
-      auto r = std::exp(d);
+      auto r = std::exp(d_qs[j]);
       do_not_optimize(r); }
 
     { CTRACK_NAME("math::log   bound");
-      log_in_t x{rational{(k % 65535) + 1, 256}};
-      auto r = bnd::math::log(x);
+      auto r = bnd::math::log(v_log[j]);
       do_not_optimize(r.raw()); }
     { CTRACK_NAME("std::log    double");
-      double d = static_cast<double>(rational{(k % 65535) + 1, 256});
-      auto r = std::log(d);
+      auto r = std::log(d_log[j]);
       do_not_optimize(r); }
 
     // ---- pow_base<10> ----
     { CTRACK_NAME("math::pow10 bound");
-      pow_in_t x{qs};
-      auto r = bnd::math::pow_base<10>(x);
+      auto r = bnd::math::pow_base<10>(v_pow[j]);
       do_not_optimize(r.raw()); }
     { CTRACK_NAME("std::pow10  double");
-      double d = static_cast<double>(qs);
-      auto r = std::pow(10.0, d);
+      auto r = std::pow(10.0, d_qs[j]);
       do_not_optimize(r); }
 
     // ---- sin / cos ----
     { CTRACK_NAME("math::sin   bound");
-      angle_t x{qs};
-      auto r = bnd::math::sin(x);
+      auto r = bnd::math::sin(v_ang[j]);
       do_not_optimize(r.raw()); }
     { CTRACK_NAME("std::sin    double");
-      double d = static_cast<double>(qs);
-      auto r = std::sin(d);
+      auto r = std::sin(d_qs[j]);
       do_not_optimize(r); }
 
     { CTRACK_NAME("math::cos   bound");
-      angle_t x{qs};
-      auto r = bnd::math::cos(x);
+      auto r = bnd::math::cos(v_ang[j]);
       do_not_optimize(r.raw()); }
     { CTRACK_NAME("std::cos    double");
-      double d = static_cast<double>(qs);
-      auto r = std::cos(d);
+      auto r = std::cos(d_qs[j]);
       do_not_optimize(r); }
 
     // ---- tan (returns expected, unwrap with operator*) ----
     { CTRACK_NAME("math::tan   bound");
-      tan_in_t x{rational{(k % 24576) - 12288, 16384}};
-      auto r = bnd::math::tan(x);
+      auto r = bnd::math::tan(v_tan[j]);
       do_not_optimize(r); }
     { CTRACK_NAME("std::tan    double");
-      double d = static_cast<double>(rational{(k % 24576) - 12288, 16384});
-      auto r = std::tan(d);
+      auto r = std::tan(d_tan[j]);
       do_not_optimize(r); }
 
     // ---- atan2 ----
     { CTRACK_NAME("math::atan2 bound");
-      atan2_in_t y{rational{(k % 32768) - 16384, 16384}};
-      atan2_in_t x{rational{((k + 1) % 32768) - 16384, 16384}};
-      auto r = bnd::math::atan2(y, x);
+      auto r = bnd::math::atan2(v_aty[j], v_atx[j]);
       do_not_optimize(r.raw()); }
     { CTRACK_NAME("std::atan2  double");
-      double y = static_cast<double>(rational{(k % 32768) - 16384, 16384});
-      double x = static_cast<double>(rational{((k + 1) % 32768) - 16384, 16384});
-      auto r = std::atan2(y, x);
+      auto r = std::atan2(d_aty[j], d_atx[j]);
       do_not_optimize(r); }
 
     // ---- fmod ----
     { CTRACK_NAME("math::fmod  bound");
-      fmod_x_t fx{qs};
-      fmod_y_t fy{rational{(k % 60) + 4, 16384}};
-      auto r = bnd::math::fmod(fx, fy);
+      auto r = bnd::math::fmod(v_fmx[j], v_fmy[j]);
       do_not_optimize(r.raw()); }
     { CTRACK_NAME("std::fmod   double");
-      double fx = static_cast<double>(qs);
-      double fy = static_cast<double>(rational{(k % 60) + 4, 16384});
-      auto r = std::fmod(fx, fy);
+      auto r = std::fmod(d_qs[j], d_fmy[j]);
       do_not_optimize(r); }
 
     // ---- extended transcendentals (#3) ----
     { CTRACK_NAME("math::asin  bound");
-      atan2_in_t x{rational{(k % 32768) - 16384, 16384}};
-      auto r = bnd::math::asin(x);
+      auto r = bnd::math::asin(v_aty[j]);
       do_not_optimize(r.raw()); }
     { CTRACK_NAME("std::asin   double");
-      double d = static_cast<double>(rational{(k % 32768) - 16384, 16384});
-      auto r = std::asin(d);
+      auto r = std::asin(d_aty[j]);
       do_not_optimize(r); }
 
     { CTRACK_NAME("math::tanh  bound");
-      exp_in_t x{qs};
-      auto r = bnd::math::tanh(x);
+      auto r = bnd::math::tanh(v_exp[j]);
       do_not_optimize(r.raw()); }
     { CTRACK_NAME("std::tanh   double");
-      double d = static_cast<double>(qs);
-      auto r = std::tanh(d);
+      auto r = std::tanh(d_qs[j]);
       do_not_optimize(r); }
 
     { CTRACK_NAME("math::cbrt  bound");
-      algeb_t x{qs};
-      auto r = bnd::math::cbrt(x);
+      auto r = bnd::math::cbrt(v_alg[j]);
       do_not_optimize(r.raw()); }
     { CTRACK_NAME("std::cbrt   double");
-      double d = static_cast<double>(qs);
-      auto r = std::cbrt(d);
+      auto r = std::cbrt(d_qs[j]);
       do_not_optimize(r); }
 
     { CTRACK_NAME("math::hypot bound");
-      algeb_t a{qs}; algeb_t b{q};
-      auto r = bnd::math::hypot(a, b);
+      auto r = bnd::math::hypot(v_alg[j], v_alg2[j]);
       do_not_optimize(r.raw()); }
     { CTRACK_NAME("std::hypot  double");
-      double a = static_cast<double>(qs); double b = static_cast<double>(q);
-      auto r = std::hypot(a, b);
+      auto r = std::hypot(d_qs[j], d_q[j]);
       do_not_optimize(r); }
   }
 }
@@ -737,15 +742,21 @@ void bench_transform_algo()
   constexpr std::size_t SZ = 10'000;
   constexpr std::size_t ITERS = N / SZ;
 
+  using u254 = bound<{0, 254}, unsafe>;   // fits uint8 (255 = sentinel slot)
+  static_assert(sizeof(u254) == 1);
+
   std::vector<std::uint8_t> nv(SZ);
   std::vector<u255> bv(SZ);
+  std::vector<u254> b8v(SZ);
   std::vector<std::uint8_t> nout(SZ);
   std::vector<u255> bout(SZ);
+  std::vector<u254> b8out(SZ);
 
   for (std::size_t i = 0; i < SZ; ++i)
   {
     nv[i] = static_cast<std::uint8_t>(i % 250);
     bv[i] = static_cast<int>(i % 250);
+    b8v[i] = static_cast<int>(i % 250);
   }
 
   for (std::size_t i = 0; i < ITERS; ++i)
@@ -759,6 +770,15 @@ void bench_transform_algo()
       std::transform(bv.begin(), bv.end(), bout.begin(),
         [](u255 v) { v += 1; return v; });
       do_not_optimize(bout[0].raw()); }
+
+    // Same-width comparison: u255's raw is uint16 (raw 255 is the reserved
+    // slim::optional sentinel slot), so the block above compares 16-bit
+    // lanes against the native 8-bit lanes — a storage-width gap, not
+    // abstraction cost. {0, 254} fits uint8 and should match native.
+    { CTRACK_NAME("transform bound u8");
+      std::transform(b8v.begin(), b8v.end(), b8out.begin(),
+        [](u254 v) { v += 1; return v; });
+      do_not_optimize(b8out[0].raw()); }
   }
 }
 
