@@ -76,11 +76,16 @@ namespace bnd::detail
   {
     static constexpr bool any_real =
         (BoundPolicy<L> & bnd::real) == bnd::real || (BoundPolicy<R> & bnd::real) == bnd::real;
-    using result = bound<(Grid<L> * Grid<R>).value(), any_real ? bnd::real : checked>;
+    // Carry every representation flag of both operands (a mixed pair resolves
+    // widest-wins at storage selection: exact > real > direct > indexed).
+    static constexpr policy_flag rep =
+        ((BoundPolicy<L> | BoundPolicy<R>) & (bnd::exact | bnd::direct | bnd::indexed))
+        | (any_real ? bnd::real : none);
+    using result = bound<(Grid<L> * Grid<R>).value(), rep != none ? rep : checked>;
 
     template <typename P>
     static constexpr bool needs_overflow_check =
-        storage_of<result> == storage::rational
+        rational_raw<result>
         && (((BoundPolicy<L> | BoundPolicy<R>) & checked) || plain<P>::test(checked))
         && !rational_mul_is_safe(Grid<L>, Grid<R>);
 
@@ -105,11 +110,11 @@ namespace bnd::detail
   template <typename P, typename A>
   constexpr auto multiplication<L,R>::mul(L lhs, R rhs, P&& policy, A&& action) -> mul_return_t<P, A>
   {
-    if constexpr (storage_of<result> == storage::real)
+    if constexpr (real_raw<result>)
     {
       return result::from_raw(Grid<result>.snap_double(as_double(lhs) * as_double(rhs)));
     }
-    else if constexpr (storage_of<result> == storage::rational)
+    else if constexpr (rational_raw<result>)
     {
       if constexpr (needs_overflow_check<P>)
       {
@@ -138,10 +143,10 @@ namespace bnd::detail
 
       // Normalize lhs.raw() / rhs.raw() to *offsets* regardless of L's / R's
       // storage shape. The formulas below all assume offset arithmetic.
-      umax lhs_offset = storage_of<L> != storage::offset
+      umax lhs_offset = !index_raw<L>
           ? static_cast<umax>(raw_imax(lhs) - RawLo<L>)
           : static_cast<umax>(lhs.raw());
-      umax rhs_offset = storage_of<R> != storage::offset
+      umax rhs_offset = !index_raw<R>
           ? static_cast<umax>(raw_imax(rhs) - RawLo<R>)
           : static_cast<umax>(rhs.raw());
 

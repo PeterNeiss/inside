@@ -32,7 +32,7 @@ namespace bnd
   template <boundable B, numeric A>
   [[nodiscard]] constexpr bool will_conversion_truncate(A value) noexcept
   {
-    if constexpr (detail::storage_of<B> == detail::storage::rational)
+    if constexpr (detail::rational_raw<B>)
       return false;                       // rational raw stores any value exactly
     bnd::detail::rational r = detail::as_rational(value);
     if (not Interval<B>.includes(r))

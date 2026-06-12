@@ -16,7 +16,7 @@ using namespace bnd::detail;
 //
 // The rational-mixed `add` branch stores `((sum - Lower<result>) / Notch<result>)`
 // directly into `res.Raw`. That's the L-offset, but when the result type is
-// storage_of<result> != storage::offset the Raw must hold the *value*. Same encoding-
+// !index_raw<result> the Raw must hold the *value*. Same encoding-
 // mismatch class as the previously-fixed assignment paths.
 //---------------------------------------------------------------------------
 TEST_CASE("Bug A: rational-mixed add into direct-storage result", "[bound][addition][regression]")

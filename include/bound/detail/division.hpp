@@ -30,7 +30,7 @@ namespace bnd::detail
   template <boundable L, boundable R, policy_flag F>
   inline constexpr bool integer_native_ops =
       ((F | BoundPolicy<L> | BoundPolicy<R>) & ignore_round)
-      && storage_of<L> != storage::rational && storage_of<R> != storage::rational
+      && !rational_raw<L> && !rational_raw<R>
       && IsIntegerAligned<L> && IsIntegerAligned<R>;
 
   template <boundable L, boundable R = L, policy_flag F = none>
@@ -68,7 +68,12 @@ namespace bnd::detail
 
     static constexpr bool any_real =
         (BoundPolicy<L> & bnd::real) == bnd::real || (BoundPolicy<R> & bnd::real) == bnd::real;
-    using result = bound<result_grid, any_real ? bnd::real : checked>;
+    // Carry every representation flag of both operands (a mixed pair resolves
+    // widest-wins at storage selection: exact > real > direct > indexed).
+    static constexpr policy_flag rep =
+        ((BoundPolicy<L> | BoundPolicy<R>) & (bnd::exact | bnd::direct | bnd::indexed))
+        | (any_real ? bnd::real : none);
+    using result = bound<result_grid, rep != none ? rep : checked>;
 
     template <policy_flag G = F>
     static constexpr bool needs_overflow_check =
@@ -102,7 +107,7 @@ namespace bnd::detail
   template<policy_flag G, typename E, typename A>
   constexpr auto division<L,R,F>::div(L lhs, R rhs, policy<G, E> policy, A&& action) -> div_return_t<A>
   {
-    if constexpr (storage_of<result> == storage::real)
+    if constexpr (real_raw<result>)
     {
       (void)policy; (void)action;
       return result::from_raw(Grid<result>.snap_double(as_double(lhs) / as_double(rhs)));

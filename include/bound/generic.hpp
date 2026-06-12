@@ -17,7 +17,7 @@
 // Public grid/policy introspection (`Grid<B>`, `BoundPolicy<B>`, `Lower<B>`,
 // `Upper<B>`, `Notch<B>`, `Interval<B>`) plus the `boundable`, `numeric`, and
 // `bound_assignable` concepts. The storage-shape predicates and raw/value
-// converters that expose how values are stored (`raw_t`, `storage_of`,
+// converters that expose how values are stored (`raw_t`, the `*_raw` predicates,
 // `to_value`, `from_value`, the Q-format engine, …) are internal and live in
 // `bnd::detail`.
 //---------------------------------------------------------------------------
@@ -92,33 +92,52 @@ namespace bnd
     template <boundable B>
     using raw_t = typename B::raw_type;
 
-    // How a bound's value lives in its raw storage — four disjoint encodings:
-    //   rational — raw IS the value, as a rational (notch-zero grids).
-    //   integer  — raw IS the value, as a plain integer (signed, or unsigned
-    //              with Lower 0; notch 1 either way).
-    //   offset   — raw is a 0-based notch index; value = Lower + raw*Notch.
-    //   real     — raw IS the value, as an IEEE-754 `double` (the `real` policy
-    //              under the default math engine; power-of-2 dyadic grids only).
-    enum class storage { rational, integer, offset, real };
+    // How a bound's value lives in its raw storage — four disjoint encodings,
+    // selected by the policy's representation flags (exact/real/direct/indexed,
+    // widest-wins) or deduced from the grid when none is set (see
+    // grid.hpp storage_pick). Read back here as predicates:
+    //   rational_raw — raw IS the value, as a rational (`exact` policy, or
+    //                  deduced for notch-zero grids).
+    //   real_raw     — raw IS the value, as an IEEE-754 `double` (the `real`
+    //                  policy under the default math engine; dyadic grids only).
+    //   value_raw    — raw IS the value, as a plain integer (`direct` policy,
+    //                  or deduced: notch 1 and signed, or unsigned with Lower 0).
+    //   index_raw    — raw is a 0-based notch index; value = Lower + raw*Notch.
+    // The first two read off the raw type alone; the integer pair additionally
+    // consults the policy, mirroring storage_pick's choice exactly.
+    template <boundable B>
+    inline constexpr bool real_raw = std::is_same_v<raw_t<B>, double>;
 
     template <boundable B>
-    inline constexpr storage storage_of = []{
-      if constexpr (std::is_same_v<raw_t<B>, double>)             return storage::real;
-      else if constexpr (std::is_same_v<raw_t<B>, rational>)      return storage::rational;
-      else if constexpr (Notch<B> == 1 && (Lower<B> == 0 || std::signed_integral<raw_t<B>>))
-                                                                  return storage::integer;
-      else                                                        return storage::offset;
-    }();
+    inline constexpr bool rational_raw = std::is_same_v<raw_t<B>, rational>;
+
+    template <boundable B>
+    inline constexpr bool value_raw =
+         !real_raw<B> && !rational_raw<B>
+      && ((BoundPolicy<B> & bnd::direct) == bnd::direct
+          || ((BoundPolicy<B> & bnd::indexed) != bnd::indexed
+              && Notch<B> == 1
+              && (Lower<B> == 0 || std::signed_integral<raw_t<B>>)));
+
+    template <boundable B>
+    inline constexpr bool index_raw =
+         !real_raw<B> && !rational_raw<B> && !value_raw<B>;
 
     // Ungated double view of any bound, for the `real` arithmetic arms. Unlike
     // the public `operator double()` (gated on a rounding policy flag), this is
     // always available — a `real` result may take operands of any policy,
-    // including strict `just<>` constants. It is the same conversion the public
-    // operator performs (`grid::raw_to_double`), minus the policy gate; for
-    // real-storage operands it returns the stored `double` directly.
+    // including strict `just<>` constants. Kind-aware (NOT raw-signedness-based:
+    // a `direct` bound with Lower >= 0 has an unsigned VALUE raw): everything
+    // but index storage holds the value verbatim; an index decodes through the
+    // grid.
     template <boundable B>
     [[nodiscard]] constexpr double as_double(B const& b) noexcept
-    { return Grid<B>.raw_to_double(b.raw()); }
+    {
+      if constexpr (!index_raw<B>)
+        return static_cast<double>(b.raw());
+      else
+        return static_cast<double>((*(b.raw() * Notch<B>) + Lower<B>).value());
+    }
 
     template <boundable B>
     using negative = bound<-Grid<B>, BoundPolicy<B>>;
@@ -161,7 +180,7 @@ namespace bnd
     template <boundable B>
     constexpr raw_t<B> raw_cast(rational value)
     {
-      if constexpr (storage_of<B> == storage::rational)
+      if constexpr (rational_raw<B>)
         return value;
       else
         return value.to<raw_t<B>>().value_or(0);
@@ -186,7 +205,7 @@ namespace bnd
     inline constexpr bool HasQFormatFastPath =
         abs_den(Lower<B>.Denominator) == 1
         && Notch<B>.Numerator == 1
-        && storage_of<B> != storage::rational
+        && !rational_raw<B>
         && (std::signed_integral<raw_t<B>>
             || NotchCount<B> <= static_cast<umax>(std::numeric_limits<imax>::max()));
 
@@ -213,20 +232,20 @@ namespace bnd
     template <boundable B>
     constexpr imax to_value(B b)
     {
-      if constexpr (storage_of<B> != storage::offset)
+      if constexpr (!index_raw<B>)
         return raw_imax(b);
-      else // storage::offset
+      else // index storage
         return as_rational(b).trunc();
     }
 
     template <boundable B>
     constexpr void from_value(B& b, imax val)
     {
-      if constexpr (storage_of<B> != storage::offset)
+      if constexpr (!index_raw<B>)
         b = B::from_raw(raw_cast<B>(val));
       else if constexpr (HasQFormatFastPath<B>)
         b = B::from_raw(q_format_encode<B>(val));
-      else // storage::offset, generic rational path
+      else // index storage, generic rational path
       {
         auto offset = (rational{val} - Lower<B>) / Notch<B>;
         b = B::from_raw(raw_cast<B>(offset.value().Numerator));
@@ -244,15 +263,15 @@ namespace bnd
     // Raw=0 instead of Raw=-40.
     //-------------------------------------------------------------------------
     template <boundable B>
-    inline constexpr imax RawLo = storage_of<B> != storage::offset ? LowerImax<B> : 0;
+    inline constexpr imax RawLo = !index_raw<B> ? LowerImax<B> : 0;
 
     template <boundable B>
-    inline constexpr imax RawHi = storage_of<B> != storage::offset ? UpperImax<B> : static_cast<imax>(NotchCount<B>);
+    inline constexpr imax RawHi = !index_raw<B> ? UpperImax<B> : static_cast<imax>(NotchCount<B>);
 
     template <boundable L>
     constexpr raw_t<L> raw_from_offset(umax offset) noexcept
     {
-      if constexpr (storage_of<L> != storage::offset)
+      if constexpr (!index_raw<L>)
         return raw_cast<L>(static_cast<imax>(offset) + RawLo<L>);
       else
         return raw_cast<L>(offset);
@@ -261,7 +280,7 @@ namespace bnd
     template <boundable L>
     constexpr raw_t<L> raw_from_offset(imax offset) noexcept
     {
-      if constexpr (storage_of<L> != storage::offset)
+      if constexpr (!index_raw<L>)
         return raw_cast<L>(offset + RawLo<L>);
       else
         return raw_cast<L>(static_cast<umax>(offset));
@@ -296,7 +315,7 @@ namespace bnd
     // route because Notch.Denominator > 1 disqualifies IsIntegerAligned.
     template <boundable B>
     inline constexpr bool IsQFormat =
-           storage_of<B> != storage::rational
+           !rational_raw<B>
         && Notch<B>.Numerator == 1
         && abs_den(Notch<B>.Denominator) > 1
         && abs_den(Lower<B>.Denominator) == 1

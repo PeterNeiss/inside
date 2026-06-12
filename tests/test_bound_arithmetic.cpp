@@ -117,8 +117,8 @@ TEST_CASE("bound div: rational vs integer paths", "[bound][arithmetic][div]")
   SECTION("offset-encoded storage takes integer path")
   {
     using off = bound<{5, 100}>;
-    STATIC_REQUIRE_FALSE(storage_of<off> != storage::offset);
-    STATIC_REQUIRE(storage_of<off> == storage::offset);
+    STATIC_REQUIRE_FALSE(!index_raw<off>);
+    STATIC_REQUIRE(index_raw<off>);
 
     constexpr off a{50}, b{10};
     constexpr auto q = div(a, b, truncated);

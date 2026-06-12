@@ -253,7 +253,7 @@ namespace bnd::math
     template <boundable Out>
     inline constexpr bool grid_fast_store =
         Notch<Out>.Numerator == 1
-        && bnd::detail::storage_of<Out> != bnd::detail::storage::rational
+        && !bnd::detail::rational_raw<Out>
         && (BoundPolicy<Out> & round_nearest) == round_nearest
         && (std::signed_integral<bnd::detail::raw_t<Out>>
             || bnd::detail::NotchCount<Out>

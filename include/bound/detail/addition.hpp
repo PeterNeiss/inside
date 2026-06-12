@@ -32,11 +32,16 @@ namespace bnd::detail
     // double-backed. Non-real operands keep the default policy unchanged.
     static constexpr bool any_real =
         (BoundPolicy<L> & bnd::real) == bnd::real || (BoundPolicy<R> & bnd::real) == bnd::real;
-    using result = bound<(Grid<L> + Grid<R>).value(), any_real ? bnd::real : checked>;
+    // Carry every representation flag of both operands (a mixed pair resolves
+    // widest-wins at storage selection: exact > real > direct > indexed).
+    static constexpr policy_flag rep =
+        ((BoundPolicy<L> | BoundPolicy<R>) & (bnd::exact | bnd::direct | bnd::indexed))
+        | (any_real ? bnd::real : none);
+    using result = bound<(Grid<L> + Grid<R>).value(), rep != none ? rep : checked>;
 
     template <policy_flag F>
     static constexpr bool needs_overflow_check =
-        storage_of<result> == storage::rational
+        rational_raw<result>
         && ((F | BoundPolicy<L> | BoundPolicy<R>) & checked);
 
     template <policy_flag F = none>
@@ -68,11 +73,11 @@ namespace bnd::detail
   constexpr auto addition<L,R>::add(L lhs, R rhs, policy<F, E> policy, A&& action) -> add_return_t<F, A>
   {
     result res;
-    if constexpr (storage_of<result> == storage::real)
+    if constexpr (real_raw<result>)
     {
       res = result::from_raw(Grid<result>.snap_double(as_double(lhs) + as_double(rhs)));
     }
-    else if constexpr (storage_of<result> == storage::rational)
+    else if constexpr (rational_raw<result>)
     {
       if constexpr (needs_overflow_check<F>)
       {
@@ -85,7 +90,7 @@ namespace bnd::detail
       else
         res = result::from_raw(rational::add_unchecked(lhs, rhs));
     }
-    else if constexpr (storage_of<L> == storage::rational || storage_of<R> == storage::rational)
+    else if constexpr (rational_raw<L> || rational_raw<R>)
     {
       auto sum = rational::add_unchecked(lhs,rhs);
       // `((sum - Lower) / Notch).Numerator` is the L-offset; for direct
@@ -93,7 +98,7 @@ namespace bnd::detail
       res = result::from_raw(raw_from_offset<result>(
           ((sum - Lower<result>) / Notch<result>).value().Numerator));
     }
-    else if constexpr (storage_of<L> != storage::offset || storage_of<R> != storage::offset || storage_of<result> != storage::offset)
+    else if constexpr (!index_raw<L> || !index_raw<R> || !index_raw<result>)
     {
       from_value(res, to_value(lhs) + to_value(rhs));
     }

@@ -112,22 +112,9 @@ namespace bnd
     constexpr bool operator==(const grid& rhs) const = default;
     constexpr grid operator-() const { return {-Interval, Notch}; }
 
-    constexpr double raw_to_double(std::unsigned_integral auto raw) const
-    { return static_cast<double>((*(raw*Notch) + Interval.Lower).value()); }
-
-    constexpr double raw_to_double(std::signed_integral auto raw) const
-    { return static_cast<double>(raw); }
-
-    constexpr double raw_to_double(std::same_as<bnd::detail::rational> auto raw) const
-    {
-      // storage_min only selects rational raw when Notch == 0, so raw is
-      // already the value — no offset/scale to apply.
-      return static_cast<double>(raw);
-    }
-
-    // Double-backed (`real`) storage: the raw IS the value.
-    constexpr double raw_to_double(std::same_as<double> auto raw) const
-    { return raw; }
+    // (Raw → double decoding lives in `detail::as_double` (generic.hpp): the
+    // decode depends on the storage KIND, not the raw type's signedness — a
+    // `direct`-policy bound has an unsigned raw that IS the value.)
 
     // Snap a double to the nearest grid point `Lower + k·Notch`. `real`
     // (double-backed) storage is only selected for dyadic grids (power-of-two
@@ -174,18 +161,39 @@ namespace bnd
     && is_pow2(bnd::detail::abs_den(G.Notch.Denominator))
     && is_pow2(bnd::detail::abs_den(G.Interval.Lower.Denominator));
 
-  // Storage for a bound<G, P>: math operands (`real` policy) are double-backed
-  // under the default (double) engine — on a dyadic grid (on-grid values exact
-  // in double) OR a notch-0 continuous grid (e.g. a division result). Otherwise
-  // (and always under BND_MATH_FIXED) the integer selection above.
+  // Storage for a bound<G, P>. The policy's representation flags pick the raw
+  // type, resolved widest-wins (a result of mixed-representation arithmetic
+  // ORs both policies): exact > real > direct > indexed > deduced.
+  //   exact   → rational raw on any grid (engine-independent).
+  //   real    → double-backed under the default (double) engine — on a dyadic
+  //             grid (on-grid values exact in double) OR a notch-0 continuous
+  //             grid (e.g. a division result). Under BND_MATH_FIXED this arm
+  //             is elided and `real` falls through to the deduced selection.
+  //   direct  → raw == value as a plain integer (Notch == 1).
+  //   indexed → raw == 0-based notch index (Notch != 0).
+  //   none    → storage_min deduction above.
   template <grid G, policy_flag P>
-  using storage_for =
-#ifdef BND_MATH_FIXED
-    storage_min<G>;
-#else
-    std::conditional_t<((P & bnd::real) == bnd::real) && (dyadic_grid<G> || G.Notch == 0),
-                       double, storage_min<G>>;
+  constexpr auto storage_pick()
+  {
+    if constexpr ((P & bnd::exact) == bnd::exact)
+      return bnd::detail::rational{};
+#ifndef BND_MATH_FIXED
+    else if constexpr (((P & bnd::real) == bnd::real)
+                    && (dyadic_grid<G> || G.Notch == 0))
+      return double{};
 #endif
+    else if constexpr ((P & bnd::direct) == bnd::direct && G.Notch == 1)
+      return std::conditional_t<(G.Interval.Lower < 0),
+          smallest_int_for<G.Interval.Lower.trunc(), G.Interval.Upper.trunc()>,
+          smallest_uint_for<static_cast<umax>(G.Interval.Upper.trunc())>>{};
+    else if constexpr ((P & bnd::indexed) == bnd::indexed && G.Notch != 0)
+      return smallest_uint_for<G.max_notch()>{};
+    else
+      return storage_min<G>{};
+  }
+
+  template <grid G, policy_flag P>
+  using storage_for = decltype(storage_pick<G, P>());
   }
 
   constexpr slim::optional<grid> operator+(const grid&, const grid&);

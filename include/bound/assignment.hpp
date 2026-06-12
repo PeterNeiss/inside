@@ -109,9 +109,9 @@ namespace bnd::detail
       //                           `is_integer_mapping` callers below.
       static constexpr rational calcOffset()
       {
-        if constexpr (storage_of<L> == storage::rational)
+        if constexpr (rational_raw<L>)
           return Lower<R>;
-        else if constexpr (storage_of<R> == storage::rational)
+        else if constexpr (rational_raw<R>)
           return -(Lower<L>/Notch<L>).value();
         else
           return ((Lower<R> - Lower<L>)/Notch<L>).value();
@@ -119,9 +119,9 @@ namespace bnd::detail
 
       static constexpr rational calcFactor()
       {
-        if constexpr (storage_of<L> == storage::rational)
+        if constexpr (rational_raw<L>)
           return Notch<R>;
-        else if constexpr (storage_of<R> == storage::rational)
+        else if constexpr (rational_raw<R>)
           return (rational{1}/Notch<L>).value();
         else
           return (Notch<R>/Notch<L>).value();
@@ -133,7 +133,7 @@ namespace bnd::detail
 
       // Raw-space mapping is integer-only (no rational arithmetic needed)
       static constexpr bool is_integer_mapping =
-          storage_of<L> != storage::rational && storage_of<R> != storage::rational
+          !rational_raw<L> && !rational_raw<R>
           && abs_den(Factor.Denominator) == 1 && abs_den(Offset.Denominator) == 1;
 
       // Map rhs.Raw into L's raw space (requires is_integer_mapping).
@@ -142,10 +142,10 @@ namespace bnd::detail
       // i.e. R.Raw is the R-offset and the result is the L-offset. Two
       // adjustments make it work for direct-storage operands:
       //
-      //   1. If R is storage_of<R> != storage::offset, rhs_raw is already R-value
+      //   1. If R is !index_raw<R>, rhs_raw is already R-value
       //      (not R-offset). Subtract Lower<R> first so the formula sees
       //      a true R-offset.
-      //   2. If L is storage_of<L> != storage::offset, L.Raw must be L-value (not
+      //   2. If L is !index_raw<L>, L.Raw must be L-value (not
       //      L-offset). Add Lower<L> after the formula. (Equivalently:
       //      raw_from_offset<L>.)
       //
@@ -154,14 +154,14 @@ namespace bnd::detail
       static constexpr imax map_raw(auto rhs_raw)
       {
         imax r_offset = rhs_raw;
-        if constexpr (storage_of<R> != storage::offset)
+        if constexpr (!index_raw<R>)
           r_offset -= RawLo<R>;
 
         // Offset is an exact integer here (is_integer_mapping), so Offset.trunc()
         // is a constexpr constant (0 / +N / -N) — folds to the same add.
         imax l_offset = static_cast<imax>(Factor.Numerator) * r_offset + Offset.trunc();
 
-        if constexpr (storage_of<L> != storage::offset)
+        if constexpr (!index_raw<L>)
           return l_offset + RawLo<L>;
         else
           return l_offset;
@@ -246,13 +246,13 @@ namespace bnd::detail
   template<boundable L, std::integral R>
   constexpr void assignment<L,R>::store(L& lhs, R rhs)
   {
-    if constexpr (storage_of<L> != storage::offset)
+    if constexpr (!index_raw<L>)
       lhs = L::from_raw(raw_cast<L>(rhs));
     else if constexpr (Lower<L> == Upper<L>)
       lhs = L::from_raw(0);   // notch_storage point grid: 0 is the only offset
     else if constexpr (HasQFormatFastPath<L>)
       lhs = L::from_raw(q_format_encode<L>(static_cast<imax>(rhs)));
-    else // storage::offset, generic rational path
+    else // index storage, generic rational path
     {
       rational raw = ((rhs - Interval<L>.Lower)/Notch<L>).value();
       lhs = L::from_raw(raw_cast<L>(raw.Numerator / static_cast<umax>(raw.Denominator)));
@@ -313,7 +313,7 @@ namespace bnd::detail
     else
       overshoot = rhs - clamped;
 
-    if constexpr (storage_of<L> == storage::rational)
+    if constexpr (rational_raw<L>)
       lhs = L::from_raw(clamped);
     else if constexpr (Lower<L> == Upper<L>)
       lhs = L::from_raw(0);
@@ -362,14 +362,16 @@ namespace bnd::detail
   template<typename P, typename A>
   constexpr bool assignment<L,R>::store_checked(L& lhs, R rhs, P&& policy, A&& action)
   {
-    if constexpr (storage_of<L> == storage::rational)
-    { lhs = L::from_raw(rhs); return true; }
+    if constexpr (rational_raw<L> && Notch<L> == 0)
+    { lhs = L::from_raw(rhs); return true; }   // continuous: store verbatim
     else if constexpr (Lower<L> == Upper<L>)
     {
       // Singleton grid: Raw layout depends on encoding. For offset
-      // encoding the lone slot is Raw=0; for direct storage Raw is the
-      // value itself (`Lower`).
-      if constexpr (storage_of<L> != storage::offset)
+      // encoding the lone slot is Raw=0; for rational/direct storage Raw is
+      // the value itself (`Lower`).
+      if constexpr (rational_raw<L>)
+        lhs = L::from_raw(Lower<L>);
+      else if constexpr (!index_raw<L>)
         lhs = L::from_raw(raw_cast<L>(RawLo<L>));
       else
         lhs = L::from_raw(0);
@@ -377,19 +379,29 @@ namespace bnd::detail
     }
     else
     {
+      // Store the k-th notch slot in L's encoding: rational (`exact`) storage
+      // holds the snapped VALUE itself; `raw_from_offset<L>` handles both
+      // offset-encoded and direct-encoded integers (for direct, it adds
+      // Lower<L> back to produce the value).
+      auto store_slot = [&](auto k)
+      {
+        if constexpr (rational_raw<L>)
+          lhs = L::from_raw((Lower<L> + (rational{k} * Notch<L>).value()).value());
+        else
+          lhs = L::from_raw(raw_from_offset<L>(k));
+      };
+
       rational raw = ((rhs - Lower<L>)/Notch<L>).value();
       umax den = static_cast<umax>(raw.Denominator);
-      // `raw_from_offset<L>` handles both offset-encoded and direct-encoded
-      // storage — for direct, it adds Lower<L> back to produce the value.
       if (den == 1)
-      { lhs = L::from_raw(raw_from_offset<L>(raw.Numerator)); return true; }
+      { store_slot(raw.Numerator); return true; }
 
       constexpr bool has_round_flag =
            HasPolicy<L, P, round_nearest> || HasPolicy<L, P, round_floor>
         || HasPolicy<L, P, round_ceil>    || HasPolicy<L, P, round_half_even>
         || HasPolicy<L, P, ignore_round>;
       if constexpr (has_round_flag)
-        lhs = L::from_raw(raw_from_offset<L>(round_quotient<L, P>(raw.Numerator, den)));
+        store_slot(round_quotient<L, P>(raw.Numerator, den));
       else if (policy.round_check())
       {
         auto msg = bnd::to_string(rhs) + " does not land on notch " + bnd::to_string(Notch<L>);
@@ -399,7 +411,7 @@ namespace bnd::detail
         return false;
       }
       else
-        lhs = L::from_raw(raw_from_offset<L>(round_quotient<L, P>(raw.Numerator, den)));
+        store_slot(round_quotient<L, P>(raw.Numerator, den));
       return true;
     }
   }

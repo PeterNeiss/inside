@@ -43,6 +43,13 @@ namespace bnd
   inline static constexpr policy_flag wrap    {1ull << 33}; // modular arithmetic
   inline static constexpr policy_flag sentinel{1ull << 35}; // overflow -> sentinel (nullopt)
 
+  // Representation flags — select how the raw value is stored. Without one,
+  // storage is deduced from the grid (notch-0 → rational; unit notch starting
+  // at 0 or negative → plain integer value; everything else → 0-based notch
+  // index). Binary operations OR operand policies, so a result may carry
+  // several representation flags; storage selection resolves them
+  // widest-wins: exact > real > direct > indexed > deduced.
+  //
   // `real` — marks a math operand. Selects double-backed storage under the
   // default (double) math engine, where the value is held as an IEEE-754
   // `double` and stored as-is (the `ignore_round` in `round_nearest` makes the
@@ -50,6 +57,25 @@ namespace bnd
   // round_nearest integer-backed bound. Power-of-2 notch + dyadic Lower required
   // (asserted at storage selection) so on-grid values are exact in `double`.
   inline static constexpr policy_flag real{(1ull << 37) | round_nearest};
+
+  // `exact` — force rational raw storage on any grid. Values still obey the
+  // grid (snap per policy); the representation is an exact fraction, so there
+  // is no notch-count limit and no double anywhere. The slowest
+  // representation; arithmetic is overflow-checked rational math. Identical
+  // under both math engines.
+  inline static constexpr policy_flag exact{1ull << 38};
+
+  // `direct` — force raw == value as a plain integer where deduction would
+  // pick a 0-based index (e.g. bound<{5, 100}> stores 5..100, not 0..95).
+  // The raw equals the wire/debugger value — useful for interop and
+  // serialization. Requires Notch == 1. Identical under both math engines.
+  inline static constexpr policy_flag direct{1ull << 39};
+
+  // `indexed` — force raw == 0-based notch index where deduction would pick
+  // direct integer storage (e.g. bound<{-5, 5}> stores 0..10). Dense unsigned
+  // layout for serialization. Requires a notch (Notch != 0). Identical under
+  // both math engines.
+  inline static constexpr policy_flag indexed{1ull << 40};
 
   // opt-out of the default `checked` policy: no domain / round / overflow /
   // div-by-zero checks. Reading an out-of-range value is undefined behavior.

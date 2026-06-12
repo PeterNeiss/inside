@@ -115,18 +115,19 @@ namespace bnd
   auto to_string(V value)
   { return std::to_string(value); }
 
-  // `real` (double-backed) bounds: the stored double is a grid point (values
-  // snap to the notch on store), so its exact rational is low-denominator and
-  // renders cleanly — delegate to the rational form. (Without this overload a
-  // real bound would fall to the generic `std::to_string(double)` and print a
-  // lossy 6-digit form.) A continuous (Notch == 0) real bound prints the double.
+  // `real` (double-backed) and `exact` (rational-backed) bounds: render the
+  // exact rational form. (Without this overload a real bound would fall to the
+  // generic `std::to_string(double)` and print a lossy 6-digit form, and a
+  // rational-raw bound has no std::to_string at all.) A continuous (Notch == 0)
+  // real bound prints the double.
   template <boundable B>
-    requires (detail::storage_of<B> == detail::storage::real)
+    requires (detail::real_raw<B> || detail::rational_raw<B>)
   inline std::string to_string(B b)
   {
-    if constexpr (Notch<B> == bnd::detail::rational{0})
+    if constexpr (detail::real_raw<B> && Notch<B> == bnd::detail::rational{0})
       return std::to_string(detail::as_double(b));
-    return to_string(bnd::detail::as_rational(b));
+    else
+      return to_string(bnd::detail::as_rational(b));
   }
 
 } // namespace bnd

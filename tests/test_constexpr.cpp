@@ -197,19 +197,19 @@ TEST_CASE("constexpr: storage_min picks the smallest fitting raw",
                                 std::uint8_t>);
 }
 
-TEST_CASE("constexpr: storage_of classification",
+TEST_CASE("constexpr: storage-kind classification",
           "[constexpr][storage]")
 {
-  // The three disjoint storage encodings.
-  // integer: Raw == value as a plain int (notch 1 + lower 0, or signed raw).
-  STATIC_REQUIRE(storage_of<bound<{0,   100}>> == storage::integer);
-  STATIC_REQUIRE(storage_of<bound<{-40,  85}>> == storage::integer);
-  // rational: notch 0 — Raw is the value as a rational.
-  STATIC_REQUIRE(storage_of<bound<{{-10, 10}, 0}>> == storage::rational);
-  // offset: notch 1 with non-zero unsigned lower, OR fractional notch — Raw is
-  // a 0-based notch index.
-  STATIC_REQUIRE(storage_of<bound<{5, 100}>> == storage::offset);
-  STATIC_REQUIRE(storage_of<bound<{{0, 5}, rational{1u, 2}}>> == storage::offset);
+  // The disjoint storage encodings, deduced from the grid.
+  // value_raw: Raw == value as a plain int (notch 1 + lower 0, or signed raw).
+  STATIC_REQUIRE(value_raw<bound<{0,   100}>>);
+  STATIC_REQUIRE(value_raw<bound<{-40,  85}>>);
+  // rational_raw: notch 0 — Raw is the value as a rational.
+  STATIC_REQUIRE(rational_raw<bound<{{-10, 10}, 0}>>);
+  // index_raw: notch 1 with non-zero unsigned lower, OR fractional notch — Raw
+  // is a 0-based notch index.
+  STATIC_REQUIRE(index_raw<bound<{5, 100}>>);
+  STATIC_REQUIRE(index_raw<bound<{{0, 5}, rational{1u, 2}}>>);
 }
 
 //---------------------------------------------------------------------------
@@ -231,7 +231,7 @@ TEST_CASE("constexpr: bound +/-/* on offset-encoded grids",
           "[constexpr][bound][arithmetic]")
 {
   using o = bound<{10, 50}>;                 // offset encoding (uint8 raw)
-  STATIC_REQUIRE(storage_of<o> == storage::offset);
+  STATIC_REQUIRE(index_raw<o>);
 
   constexpr o a{15}, b{40};
   STATIC_REQUIRE(a + b == 55);
