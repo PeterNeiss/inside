@@ -16,21 +16,28 @@ writing literal values into bounds.
 
 | Conversion | When it applies | Purpose |
 |---|---|---|
-| `operator imax()` (implicit) | integer-notch grid (notch denom = 1) with Lower ≥ imax_min and Upper ≤ imax_max | drop-in for `int64_t` contexts (accumulators, indexing into signed-size containers) |
-| `operator std::size_t()` (implicit) | integer-notch grid with Lower ≥ 0 and Upper ≤ imax_max | drop-in for `vec[bound_idx]` without `-Wsign-conversion` noise |
-| `operator double()` (explicit) | grid carries a rounding policy (`round_*` or `ignore_round`) | floating-point arithmetic / printf |
+| `operator imax()` (implicit) | integer-notch grid (notch denom = 1) with Lower ≥ imax_min and Upper ≤ imax_max | drop-in for integer contexts: accumulators, comparisons, and indexing (`vec[b]` converts imax → size_t) |
+| `operator double()` (**implicit** for `real`-policy bounds, explicit otherwise) | `real`: always (the dyadic grid makes every value exact in `double`). Others: grid carries a rounding policy (`round_*` or `ignore_round`) | floating-point arithmetic / printf |
+
+`operator imax()` is deliberately the **only** implicit integer conversion —
+a second one (e.g. `size_t`) would make built-in mixed arithmetic like
+`imax_var += b` ambiguous. Indexing goes through imax and the standard
+imax → size_t conversion; if your build enables `-Wsign-conversion`, index
+sites will surface that conversion as a warning.
 
 ```cpp
 bound<{0, 100}> b{42};
 if (b == 42) { ... }      // arithmetic compare, no conversion needed
 if (b < 50)  { ... }      // works on bounds and scalars
 
-imax v       = b;          // implicit (integer-shape grid)
-std::size_t i = b;          // implicit (index-shape grid)
-std::vector<int> v(101);
-v[b] = 0;                  // no .as<>() — implicit size_t
+imax v = b;                // implicit (integer-shape grid)
+std::vector<int> vec(101);
+vec[b] = 0;                // no .as<>() — imax, then imax → size_t
 
-double d     = double(b);  // explicit (operator double() is explicit)
+double e = double(b);      // explicit (rounding-gated operator double())
+
+using gain = bound<{{0, 4}, notch<1, 65536>}, round_nearest | real>;
+double d = gain{0.5};      // implicit — a real bound's value is exact in double
 ```
 
 For wide grids (Upper > imax_max) the implicit operators are SFINAE-disabled
@@ -38,12 +45,12 @@ For wide grids (Upper > imax_max) the implicit operators are SFINAE-disabled
 
 ```cpp
 using wide = bound<{0, std::numeric_limits<std::uint64_t>::max()}>;
-auto r = wide{huge}.to<std::uint64_t>();   // std::expected<uint64_t, errc>
+auto r = wide{huge}.to<std::uint64_t>();   // slim::expected<uint64_t, errc>
 ```
 
 ## Named extraction: `to<T>()` and `as<T>()`
 
-`bound::to<T>()` returns `std::expected<T, errc>` — sentinel-state, out of
+`bound::to<T>()` returns `slim::expected<T, errc>` — sentinel-state, out of
 T's range, and negative-into-unsigned each surface as a typed error:
 
 ```cpp
@@ -58,6 +65,20 @@ the value is known in-range and you want to fail loud on a logic bug:
 narrow b{42};
 auto v = b.as<std::int16_t>();   // 42; throws on sentinel-state / out-of-range
 ```
+
+Both also exist as **free functions** — `to<T>(b)` / `as<T>(b)` (found by
+ADL). In generic code the free form avoids the `template` disambiguator a
+dependent member call would need (`b.template as<imax>()`):
+
+```cpp
+template <boundable B>
+imax oracle(B a, B b) { return as<imax>(a) % as<imax>(b); }
+```
+
+> **Floating-point gate.** `as<double>()` (member and free) shares
+> `operator double()`'s policy gate: a strict bound — one without a rounding
+> flag — rejects both at compile time. `to<double>()` stays ungated; it is
+> the explicit opt-in for strict bounds.
 
 ## Exact read-out: `numerator()` / `denominator()`
 

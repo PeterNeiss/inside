@@ -37,32 +37,48 @@ reachable value of `a + b` for `a : A, b : B` is by construction inside
 
 ## 2. Storage encoding
 
-`storage_min<G>` (`include/bound/grid.hpp`) picks the smallest raw type that
-can hold every reachable index in `G`. `storage_of<B>`
-(`include/bound/generic.hpp`) classifies the result as one of three **disjoint**
-encodings (`enum class storage { rational, integer, offset }`):
+Representation is selected by the policy's **representation flags**
+(`exact` / `real` / `direct` / `indexed`, see
+[policies.md](policies.md#representation-flags)), with grid deduction as the
+default. `storage_pick<G, P>` (`include/bound/grid.hpp`) resolves the flags
+**widest-wins** — a result of mixed-representation arithmetic ORs both
+operand policies, and the widest representation present wins:
 
 ```text
-                       ┌────────────┐
-                       │  Notch == 0│──yes──▶  storage::rational
-                       └────────────┘         (raw = rational; raw IS the value)
-                              │ no
-                              ▼
-              ┌──────────────────────────────┐
-              │ Notch == 1 AND (Lower == 0    │──yes──▶  storage::integer
-              │   or signed raw)              │         (raw = int; raw IS the value)
-              └──────────────────────────────┘
-                              │ no
-                              ▼
-                         (otherwise)   ───────▶  storage::offset
-                                                 (raw = 0-based notch index;
-                                                  value = Lower + raw*Notch)
+  exact in P ──────────────────────────▶  rational raw   (raw IS the value, exact fraction)
+       │ no
+  real in P AND dyadic grid ───────────▶  double raw     (raw IS the value; default engine
+       │ no   (elided under BND_MATH_FIXED)               only — fixed engine falls through)
+  direct in P AND Notch == 1 ──────────▶  integer raw    (raw IS the value)
+       │ no
+  indexed in P AND Notch != 0 ─────────▶  unsigned raw   (raw = 0-based notch index)
+       │ no
+  deduced (storage_min<G>):
+        Notch == 0                  ───▶  rational raw   (continuous grid)
+        Notch == 1 AND (Lower == 0
+          or signed raw)            ───▶  integer raw    (raw IS the value)
+        otherwise                   ───▶  unsigned raw   (raw = 0-based notch index)
 ```
 
-The two common queries: `storage_of<B> != storage::offset` means "raw is the
-value" (rational or integer — the old `IsDirectStorage`); `storage_of<B> ==
-storage::offset` means "raw is an index". `storage::integer` specifically is
-"raw is the value as a plain int" (the old `!IsRawRational && IsDirectStorage`).
+`storage_min<G>` picks the smallest integer type that can hold every
+reachable index (with the sentinel-slot margin, see
+[storage.md](storage.md)).
+
+Four **disjoint predicates** in `include/bound/generic.hpp` classify a
+bound's encoding (the first two read the raw type alone; the integer pair
+also consults the policy, mirroring `storage_pick` exactly):
+
+| Predicate | Meaning |
+|---|---|
+| `rational_raw<B>` | raw IS the value, as an exact fraction |
+| `real_raw<B>`     | raw IS the value, as an IEEE-754 `double` |
+| `value_raw<B>`    | raw IS the value, as a plain integer |
+| `index_raw<B>`    | raw is a 0-based notch index; value = Lower + raw·Notch |
+
+The common query `!index_raw<B>` means "raw is the value" (any of the first
+three). Note the decode direction must dispatch on the **encoding, not the
+raw type's signedness** — a `direct` bound with Lower ≥ 0 has an *unsigned*
+value raw; `detail::as_double` is the kind-aware raw → double decoder.
 
 Two more predicates classify the grid's integer-ness (independent of the
 storage encoding), gating arithmetic fast paths:
@@ -86,7 +102,7 @@ collapses to integer arithmetic. The gate is `HasQFormatFastPath<B>`
 ```cpp
 abs_den(Lower<B>.Denominator) == 1
 && Notch<B>.Numerator == 1
-&& storage_of<B> != storage::rational
+&& !rational_raw<B>
 && (std::signed_integral<raw_t<B>>          // raw fits imax
     || NotchCount<B> <= imax_max)
 ```
@@ -104,6 +120,17 @@ multiplication can land on `uint64_t` raw (e.g. `Q16.16 × Q16.16` produces
 When the gate is false, control falls through to the slow but correct
 rational path — `(*(Raw * Notch) + Lower).value()` for decode,
 `((rhs - Lower) / Notch).value().Numerator` for encode.
+
+**Fractional rhs takes the same shortcut.** `store_checked`
+(`assignment.hpp`) stores a rational/double rhs on a Q-format grid without
+the two gcd-reducing rational operations: with notch `1/K`, the offset
+`((num/aden) − Lo)·K` reduces to `(num − Lo·aden)·(K/g) / (aden/g)`,
+`g = gcd(aden, K)` — one `std::gcd` and three integer multiplies, then
+`round_quotient` on the remaining fraction. `round_quotient` is invariant
+under fraction reduction (the same equivalence the `grid_fast_store` path in
+`cmath.hpp` relies on), so the chosen slot is bit-identical to the rational
+path. A saturating compile-time fit bound keeps every intermediate inside
+`imax`; oversized denominators fall through to the rational path.
 
 ---
 

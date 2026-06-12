@@ -49,6 +49,33 @@ is proven elsewhere. `clamp`, `wrap`, and `sentinel` are mutually exclusive
 | `round_half_even` | banker's rounding — half to even (implies `ignore_round`) |
 | `ignore_zero` | skip the divide-by-zero check — `a / 0` / `a % 0` is UB (binary `div`/`mod`); compound `/= 0` / `%= 0` no-op |
 | `ignore_domain` | suppress the runtime domain check |
+| `real` / `exact` / `direct` / `indexed` | **representation flags** — select how the raw value is stored; see the next section |
+
+## Representation flags
+
+Besides the *behavior* flags above, four flags select the **representation**
+— what the raw storage holds. Without one, storage is deduced from the grid
+(see [storage.md](storage.md#choosing-the-representation)).
+
+| Flag | Forces | Grid requirement | Notes |
+|---|---|---|---|
+| `real` | IEEE-754 `double` raw (the value itself, snapped to the grid) | dyadic — power-of-two notch and Lower | bundles `round_nearest`; the math-operand flag — see [math.md](math.md#the-real-policy-requirement). Under `BND_MATH_FIXED` it falls back to integer storage. |
+| `exact` | exact-fraction raw on **any** grid | none | no notch-count limit, no `double` anywhere; arithmetic is overflow-checked exact math (the slowest representation) |
+| `direct` | raw == value as a plain integer | `Notch == 1` | e.g. `bound<{5, 100}, direct>` stores 5..100, not index 0..95 — the raw equals the wire/debugger value |
+| `indexed` | raw == 0-based notch index | `Notch != 0` | e.g. `bound<{-5, 5}, indexed>` stores 0..10 unsigned — dense layout for serialization |
+
+```cpp
+using gain   = bound<{{0, 4}, notch<1, 65536>}, round_nearest | real>;  // math operand
+using ratio  = bound<{{0, 1}, notch<1, 3>},     exact>;                 // thirds, exactly
+using regval = bound<{5, 100}, direct>;       // raw() == value, interop-friendly
+using slot   = bound<{-5, 5},  indexed>;      // raw() == 0..10, dense unsigned
+```
+
+Binary arithmetic ORs the policies of both operands, so a result can carry
+several representation flags; storage selection resolves them
+**widest-wins**: `exact > real > direct > indexed > deduced`. An
+`exact + real` sum is therefore exact, and a `real` math chain stays
+double-backed end to end — no errors at mixed call sites.
 
 > **API-boundary shorthand:** the modern idiom for "saturate-and-round into
 > this type" is to put `clamp | round_nearest` on the target bound's policy

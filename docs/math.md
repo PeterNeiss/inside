@@ -1,18 +1,57 @@
-# `bnd::math` — constexpr, bit-exact math
+# `bnd::math` — reproducible math, one API, two engines
 
 `bound/cmath.hpp` provides a `<cmath>`-shaped function set that operates on
-`bound` values instead of `float`/`double`. Every function is `constexpr`,
-integer-only internally, and **bit-exact across compilers and platforms** —
-see the reproducibility contract at the top of `cmath.hpp`.
+`bound` values instead of `float`/`double`. There is **one public API** and
+**two interchangeable engines**, selected at build time:
+
+| Engine | Selected by | Reproducibility | constexpr | Speed |
+|---|---|---|---|---|
+| **double** (default) | — | bit-identical on every IEEE-754 binary64 platform compiled without `-ffast-math` (round-to-nearest) | no | ~2× faster |
+| **integer / CORDIC** | CMake `-DBOUND_MATH_FIXED=ON` (macro `BND_MATH_FIXED`) | bit-identical **unconditionally** — any platform, any flags, no FPU required | yes | embedded-friendly |
+
+The double engine evaluates its own fixed polynomials (`std::fma` Horner,
+hex-float coefficients, Cody-Waite range reduction) plus the correctly-rounded
+`std::sqrt` — no `<cmath>` transcendentals anywhere. The integer engine runs
+Q.30 fixed-point CORDIC/Newton cores. Both snap results onto the same
+auto-deduced output grid, so the two engines are **feature- and
+signature-identical**: the same source compiles against either.
+
+> Engine = speed/representation; grid = precision. The result type and its
+> grid-snapped value do not depend on the engine — only the internal
+> arithmetic (and therefore the reproducibility contract and constexpr-ness)
+> does.
 
 ```cpp
 #include "bound/cmath.hpp"
 using namespace bnd;
 
-using angle = bound<{{-8, 8}, notch<1, 16384>}, round_nearest>;  // radians
+// Math operands carry the `real` policy (see below).
+using angle = bound<{{-8, 8}, notch<1, 16384>}, round_nearest | real>;
 auto s = math::sin(angle{1});       // amplitude bound in [-1, 1]
 auto h = math::hypot(s, s);         // √(s²+s²), output grid auto-deduced
 ```
+
+## The `real` policy requirement
+
+Every transcendental operand must carry the **`real` representation flag**
+(`bound<G, round_nearest | real>`); omitting it is a compile error. `real`
+marks a bound as a math operand:
+
+- Under the default engine it selects **double-backed storage** on the
+  bound's grid — the raw *is* the value, so input marshalling into the
+  engine is free (this is where the large speedup over integer-index I/O
+  comes from). Values still obey the grid: they snap to the notch on store.
+- Under `BND_MATH_FIXED` the same flag is an ordinary `round_nearest`
+  integer-backed bound — the source compiles unchanged.
+- `real` requires a **dyadic grid** (power-of-two notch and Lower) so every
+  grid point is exactly representable in `double` and the snap is lossless.
+  A non-dyadic grid with `real` is a compile error.
+
+Pure grid operations — `abs` / `floor` / `ceil` / `round` / `trunc` /
+`fmod` — do **not** require `real`: they have no engine and act on any bound.
+
+See [policies.md](policies.md#representation-flags) for `real` among the
+other representation flags.
 
 ## Conventions
 
@@ -29,40 +68,50 @@ auto h = math::hypot(s, s);         // √(s²+s²), output grid auto-deduced
   `static_assert` (compile error). A failure that depends on the *runtime
   value* is reported through `slim::expected<Out, errc>`. Total functions
   return the bound directly.
-- **Precision.** The transcendental core runs in Q.30 fixed point, so results
-  are accurate to roughly 1e-6–1e-9 depending on the composition depth, then
-  quantized onto the output grid. Algebraically-exact results (e.g.
-  `cbrt(8)`, `hypot(3,4)`, `pow(2,10)`) land exactly.
-- **Input-range limits** below exist because the current revision uses a
-  single Q.30 internal tier; a wider Q.62 tier is planned.
+- **Precision.**
+  - *Double engine:* the cores are accurate to ~1 ULP of `double`, then the
+    result is quantized onto the output grid — so the stored value is within
+    one notch of the true value.
+  - *Integer engine:* the transcendental cores run in Q.30 fixed point
+    (~1e-6–1e-9 depending on composition depth), then quantize onto the
+    output grid.
+  - Algebraically-exact results (e.g. `cbrt(8)`, `hypot(3,4)`, `pow(2,10)`)
+    land exactly under both engines.
+- **Input-range limits** below are engine-shared `static_assert` envelopes
+  (sized for the integer engine's Q.30 working scale, and kept identical for
+  the double engine so the two builds accept the same programs).
+- **constexpr.** The math functions are `constexpr` only under
+  `BND_MATH_FIXED` (the double engine's `std::fma`/`std::sqrt` are runtime).
+  The compile-time output-grid deduction uses the integer cores in **both**
+  builds, so grids and types never depend on the engine.
 
-## Algebraic tier (exact, no polynomials)
+## Algebraic tier (exact, no polynomials, no `real` needed)
 
 | Function | Domain | Output | Errors | Notes |
 |---|---|---|---|---|
 | `abs(x)` | all | `[0, max\|·\|]` | — | exact |
 | `floor(x)` / `ceil(x)` / `round(x)` / `trunc(x)` | all | integer notch | — | exact; `round` is half-away-from-zero |
-| `fmod(x, y)` | `y` must not span 0 | sign of `x` | — | truncated-division convention, exact |
+| `fmod(x, y)` | `y` must not span 0 | sign of `x` | — | truncated-division convention, exact. Integer-backed operands on commensurable notches take a single-integer-remainder fast path (faster than `std::fmod`). |
 
 ## Roots
 
 | Function | Domain | Output | Errors | Notes |
 |---|---|---|---|---|
-| `sqrt(x)` (`Lower == 0`) | `[0, 4]`, notch `1/2^K`, `K ≤ 30` | `[0, ≈√Upper]` | — | Newton/Q.30 |
+| `sqrt(x)` (`Lower == 0`) | `[0, 4]`, notch `1/2^K`, `K ≤ 30` | `[0, ≈√Upper]` | — | correctly-rounded core, grid-snapped |
 | `sqrt(x)` (`Lower < 0`) | `max\|·\| ≤ 4`, notch `1/2^K` | — | `expected`; `domain_error` if value < 0 | mixed-sign overload |
 | `cbrt(x)` | `\|x\| ≤ 2^20` | monotone range | — | `sign(x)·2^(log2\|x\|/3)` |
-| `hypot(x, y)` | `\|x\|,\|y\| ≤ 2^20` | `[0, √(maxX²+maxY²)]` | — | scaled so radicand ∈ [1,2] |
+| `hypot(x, y)` | `\|x\|,\|y\| ≤ 2^20` | `[0, √(maxX²+maxY²)]` | — | no internal overflow inside the domain |
 
 ## Trigonometric (radians)
 
 | Function | Domain | Output | Errors | Notes |
 |---|---|---|---|---|
-| `sin(x)` / `cos(x)` | `[-1024, 1024]` rad | `[-1, 1]` | — | Q.30 turn + Taylor |
+| `sin(x)` / `cos(x)` | `[-1024, 1024]` rad | `[-1, 1]` | — | |
 | `tan(x)` | `[-1024, 1024]` rad | `[-1024, 1024]` | `expected`; `division_by_zero` at a pole, `overflow` past `Out` | sin/cos ratio |
-| `atan(x)` | `[-1, 1]` | `[-π/4, π/4]` | — | CORDIC, normalize wider inputs first |
+| `atan(x)` | `[-1, 1]` | `[-π/4, π/4]` | — | normalize wider inputs first |
 | `asin(x)` | `[-1, 1]` | `[-π/2, π/2]` | — | `atan2(x, √(1-x²))` |
 | `acos(x)` | `[-1, 1]` | `[0, π]` | — | `π/2 - asin(x)` |
-| `atan2(y, x)` | `[-1, 1]` each | `[-π, π]` | — | CORDIC vectoring + quadrant pre-rotation |
+| `atan2(y, x)` | `[-1, 1]` each | `[-π, π]` | — | quadrant-correct |
 
 ## Hyperbolic
 
@@ -75,7 +124,7 @@ auto h = math::hypot(s, s);         // √(s²+s²), output grid auto-deduced
 | Function | Domain | Output | Errors | Notes |
 |---|---|---|---|---|
 | `exp(x)` / `exp2(x)` | `exp`: `[-20, 20]`, `exp2`: `[-30, 30]` | `≥ 0` | — | `exp = exp2(x·log2 e)` |
-| `log(x)` / `log2(x)` / `log10(x)` | `x > 0` | monotone | — | leading-bit reduction + atanh series |
+| `log(x)` / `log2(x)` / `log10(x)` | `x > 0` | monotone | — | |
 | `pow_base<B>(x)` | integer `B ≥ 2` | `≥ 0` | — | `exp2(x·log2 B)`, `B` compile-time |
 | `pow(base, exp)` | `Lower<base> > 0` | corner-deduced | `expected`; `overflow` if `exp·log2 base` leaves `[-30,30]` or result leaves `Out` | runtime base |
 
@@ -87,10 +136,23 @@ directly in bound-space: `angle * math::two_pi`.
 ## Using `expected` results
 
 ```cpp
-auto t = math::tan(angle{x});          // expected<bound, errc>
+auto t = math::tan(angle{1});          // expected<bound, errc>
 if (t) use(*t);
 else if (t.error() == errc::division_by_zero) /* at a pole */;
 
 auto r = math::sqrt(signed_in{v});     // mixed-sign → expected
 auto p = math::pow(base, exponent);    // expected
 ```
+
+## Selecting the integer engine
+
+```bash
+cmake -B build-fixed -DBOUND_CXX20=ON -DBOUND_MATH_FIXED=ON
+cmake --build build-fixed
+```
+
+Use it when you need bit-identical results across heterogeneous targets
+(e.g. an x86 host and a soft-float embedded core), `constexpr` math, or an
+FPU-free build. The default double engine is the right choice everywhere
+else: it carries the same grid guarantees and is reproducible across IEEE-754
+platforms compiled without `-ffast-math`.
