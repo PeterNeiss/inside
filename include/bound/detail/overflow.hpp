@@ -140,6 +140,31 @@ namespace bnd
     }
   }
 
+  template<std::integral T>
+  [[nodiscard]] constexpr bool non_builtin_sub_overflow(T l, T r, T* result) noexcept
+  {
+    if constexpr (std::numeric_limits<T>::is_signed)
+    {
+      // Same UB-trap pattern as `rational::canonicalize` for `imax_min`:
+      // negating `T::min()` is signed overflow (UB), so we detect it before
+      // performing the negation. When `r == T::min()`, `l - r` mathematically
+      // exceeds `T::max()` unless `l < 0`, where it just fits — that's the
+      // only safe-and-storable case.
+      if (r == std::numeric_limits<T>::min())
+      {
+        if (l >= 0) return true;
+        *result = static_cast<T>(l - r);
+        return false;
+      }
+      return non_builtin_add_overflow(l, static_cast<T>(-r), result);
+    }
+    else
+    {
+      *result = static_cast<T>(l - r);
+      return r > l;
+    }
+  }
+
 #ifdef BOUND_HAVE_BUILTIN
   template<std::integral T>
   [[nodiscard]]
@@ -164,28 +189,7 @@ namespace bnd
   template<std::integral T>
   [[nodiscard]]
   constexpr bool sub_overflow(T l, T r, T* result) noexcept
-  {
-    if constexpr (std::numeric_limits<T>::is_signed)
-    {
-      // Same UB-trap pattern as `rational::canonicalize` for `imax_min`:
-      // negating `T::min()` is signed overflow (UB), so we detect it before
-      // performing the negation. When `r == T::min()`, `l - r` mathematically
-      // exceeds `T::max()` unless `l < 0`, where it just fits — that's the
-      // only safe-and-storable case.
-      if (r == std::numeric_limits<T>::min())
-      {
-        if (l >= 0) return true;
-        *result = l - r;
-        return false;
-      }
-      return non_builtin_add_overflow(l, static_cast<T>(-r), result);
-    }
-    else
-    {
-      *result = l - r;
-      return r > l;
-    }
-  }
+  { return non_builtin_sub_overflow(l,r,result); }
 
   template<std::integral T>
   [[nodiscard]]

@@ -91,20 +91,33 @@ namespace bnd::detail
       else
         res = result::from_raw(rational::add_unchecked(lhs, rhs));
     }
-    else if constexpr (rational_raw<L> || rational_raw<R>)
+    else if constexpr (rational_raw<L> || rational_raw<R>
+                       || !((IsIntegerAligned<L> && IsIntegerAligned<R>)
+                            || (index_raw<L> && index_raw<R>)))
     {
-      auto sum = rational::add_unchecked(lhs,rhs);
-      // `((sum - Lower) / Notch).Numerator` is the L-offset; for direct
+      // Rational store: either operand is rational-raw, OR the operands mix a
+      // direct (integer-valued) bound with a fractional notch-offset one — a
+      // pairing where neither the integer `to_value` path nor the offset-widen
+      // path is exact. `to_value` would truncate the fractional operand (a
+      // genuine bug: e.g. -7.75 + (-3) silently became -10). Compute the exact
+      // rational sum and convert to the result's raw via raw_from_offset.
+      // `((sum - Lower) / Notch).Numerator` is the result offset; for direct
       // storage the Raw must be the value, so route through raw_from_offset.
+      auto sum = rational::add_unchecked(lhs,rhs);
       res = result::from_raw(raw_from_offset<result>(
           ((sum - Lower<result>) / Notch<result>).value().Numerator));
     }
-    else if constexpr (!index_raw<L> || !index_raw<R> || !index_raw<result>)
+    else if constexpr (IsIntegerAligned<L> && IsIntegerAligned<R>)
     {
+      // Both operands are integer-valued (Notch and Lower integers), so the
+      // value-space add is exact.
       from_value(res, to_value(lhs) + to_value(rhs));
     }
     else
     {
+      // Both notch-offset (index_raw): scale each raw up to the result notch
+      // and add in offset space — the offsets compose because the result Lower
+      // is Lower<L> + Lower<R>.
       res = result::from_raw(raw_cast<result>(raw_imax(lhs) * lhs_widen + raw_imax(rhs) * rhs_widen));
     }
     return res;
