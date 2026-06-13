@@ -115,7 +115,7 @@ TEST_CASE("bound<{x,x}> singleton round-trips its value",
 
 TEST_CASE("default-constructed bound is well-formed", "[bound][default]")
 {
-  bound b;
+  bound<> b;
   (void)b;
   SUCCEED("default ctor compiles");
 }

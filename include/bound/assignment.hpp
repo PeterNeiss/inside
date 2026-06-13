@@ -111,6 +111,12 @@ namespace bnd::detail
       {
         if constexpr (rational_raw<L>)
           return Lower<R>;
+        else if constexpr (Notch<L> == 0)
+          // Continuous real_raw L (double-backed, no notch): there is no grid
+          // to land on, so the mapping is unused (store() routes through
+          // snap_double). Return 0 — well-formed, and avoids the /Notch<L>
+          // division below that would be a divide-by-zero.
+          return rational{0};
         else if constexpr (rational_raw<R>)
           return -(Lower<L>/Notch<L>).value();
         else
@@ -121,6 +127,11 @@ namespace bnd::detail
       {
         if constexpr (rational_raw<L>)
           return Notch<R>;
+        else if constexpr (Notch<L> == 0)
+          // Continuous real_raw L: see calcOffset. A denominator-1 Factor also
+          // makes the notch-divides check (assign_notch_ok) vacuously true —
+          // any source value is exactly representable by a continuous target.
+          return rational{0};
         else if constexpr (rational_raw<R>)
           return (rational{1}/Notch<L>).value();
         else
@@ -131,9 +142,12 @@ namespace bnd::detail
       static constexpr rational Offset = calcOffset();
       static constexpr rational Factor = calcFactor();
 
-      // Raw-space mapping is integer-only (no rational arithmetic needed)
+      // Raw-space mapping is integer-only (no rational arithmetic needed) — so
+      // it requires integer raw storage on both sides: not rational (raw is a
+      // rational) and not real (raw is a double; map_raw would narrow it).
       static constexpr bool is_integer_mapping =
           !rational_raw<L> && !rational_raw<R>
+          && !real_raw<L> && !real_raw<R>
           && abs_den(Factor.Denominator) == 1 && abs_den(Offset.Denominator) == 1;
 
       // Map rhs.Raw into L's raw space (requires is_integer_mapping).

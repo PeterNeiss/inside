@@ -23,11 +23,6 @@
 using namespace bnd;
 using namespace bnd::detail;
 
-namespace
-{
-  constexpr umax M = std::numeric_limits<umax>::max();
-}
-
 //---------------------------------------------------------------------------
 // casts.hpp:66 — checked_cast success return (was STATIC_REQUIRE only)
 //---------------------------------------------------------------------------
