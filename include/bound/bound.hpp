@@ -736,13 +736,8 @@ namespace bnd
     template <arithmetic A>
     constexpr bound& operator/=(A rhs)
     {
-      // Rational stores zero canonically as {0, 1}; the {0, 0} sentinel
-      // would compare unequal to rational{0}. Check Numerator == 0 to catch
-      // every canonical zero independent of representation.
-      bool is_zero;
-      if constexpr (std::same_as<A, bnd::detail::rational>) is_zero = (rhs.Numerator == 0);
-      else                                     is_zero = (rhs == A{0});
-      if (is_zero) { report_div_by_zero("operator/= division by zero"); return *this; }
+      if (detail::is_canonical_zero(rhs))
+      { report_div_by_zero("operator/= division by zero"); return *this; }
 
       if constexpr (std::integral<A>)
         return assign_imax(detail::to_value(*this) / static_cast<imax>(rhs));

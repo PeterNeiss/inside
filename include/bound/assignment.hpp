@@ -44,6 +44,54 @@ namespace bnd::detail
       || HasPolicy<L, P, sentinel>
       || (HasPolicy<L, P, checked> && !HasPolicy<L, P, ignore_domain>);
 
+  // Shared "<value> is not in <interval>" message for the domain-error and
+  // error-action paths. The caller passes the already-resolved view of the rhs
+  // (the integer/real value, or `as_rational(rhs)` for a boundable source).
+  template <boundable L, typename V>
+  inline std::string out_of_range_msg(V const& rhs_view)
+  { return bnd::to_string(rhs_view) + " is not in " + bnd::to_string(Interval<L>); }
+
+  // Shared out-of-range policy cascade for the three assignment specialisations.
+  // Order: clamp/wrap/sentinel/error *actions*, then the clamp/wrap *policy*
+  // bits, then `domain_fail`. The callers differ only in how clamp/wrap store
+  // the result, the value handed to a sentinel action, and the rhs view used in
+  // the error message — so those four arrive as callables.
+  //
+  // `Wrappable` is false on the fractional path, which has no wrap *action*
+  // branch (a registered wrap action falls through to `domain_fail` there, as
+  // it always has); the wrap *policy* branch still routes through `do_wrap`.
+  // Returns true when a handler resolved the write (caller should stop).
+  template <bool Wrappable, boundable L, typename P, typename A,
+            typename DoClamp, typename DoWrap, typename SentinelVal, typename MsgView>
+  constexpr bool dispatch_out_of_range(L& lhs, P&& policy, A&& action,
+                                       DoClamp do_clamp, DoWrap do_wrap,
+                                       SentinelVal sentinel_val, MsgView msg_view)
+  {
+    using PA = plain<A>;
+    if constexpr (clamp_action<PA>)
+    { do_clamp(); return true; }
+    else if constexpr (Wrappable && wrap_action<PA>)
+    { do_wrap(); return true; }
+    else if constexpr (sentinel_action<PA>)
+    {
+      lhs = L::from_raw(sentinel_raw<L>());
+      action.fn(lhs, sentinel_val());
+      return true;
+    }
+    else if constexpr (error_action<PA>)
+    {
+      auto msg = out_of_range_msg<L>(msg_view());
+      action.fn(lhs, errc::domain_error, std::string_view(msg));
+      return true;
+    }
+    else if constexpr (HasPolicy<L, P, clamp>)
+    { do_clamp(); return true; }
+    else if constexpr (HasPolicy<L, P, wrap>)
+    { do_wrap(); return true; }
+    else
+      return domain_fail(lhs, policy, out_of_range_msg<L>(msg_view()));
+  }
+
   //---------------------------------------------------------------------------
   // assignment
   //---------------------------------------------------------------------------
@@ -257,30 +305,11 @@ namespace bnd::detail
   constexpr bool assignment<L,R>::handle_out_of_range(L& lhs, R rhs, imax lower, imax upper,
                                                      P&& policy, A&& action)
   {
-    using PA = plain<A>;
-    if constexpr (clamp_action<PA>)
-    { apply_clamp(lhs, rhs, lower, upper, action); return true; }
-    else if constexpr (wrap_action<PA>)
-    { apply_wrap(lhs, rhs, lower, upper, action); return true; }
-    else if constexpr (sentinel_action<PA>)
-    {
-      lhs = L::from_raw(sentinel_raw<L>());
-      action.fn(lhs, static_cast<imax>(rhs));
-      return true;
-    }
-    else if constexpr (error_action<PA>)
-    {
-      auto msg = bnd::to_string(rhs) + " is not in " + bnd::to_string(Interval<L>);
-      action.fn(lhs, errc::domain_error, std::string_view(msg));
-      return true;
-    }
-    else if constexpr (HasPolicy<L, P, clamp>)
-    { apply_clamp(lhs, rhs, lower, upper, action); return true; }
-    else if constexpr (HasPolicy<L, P, wrap>)
-    { apply_wrap(lhs, rhs, lower, upper, action); return true; }
-    else
-      return domain_fail(lhs, policy,
-        bnd::to_string(rhs) + " is not in " + bnd::to_string(Interval<L>));
+    return dispatch_out_of_range<true>(lhs, policy, action,
+      [&]{ apply_clamp(lhs, rhs, lower, upper, action); },
+      [&]{ apply_wrap (lhs, rhs, lower, upper, action); },
+      [&]{ return static_cast<imax>(rhs); },
+      [&]{ return rhs; });
   }
 
   template<boundable L, std::integral R>
@@ -526,27 +555,12 @@ namespace bnd::detail
   {
     if (not Interval<L>.includes(rhs))
     {
-      using PA = plain<A>;
-      if constexpr (clamp_action<PA>)
-      { apply_clamp(lhs, rhs, policy, action); return lhs; }
-      else if constexpr (sentinel_action<PA>)
-      {
-        lhs = L::from_raw(sentinel_raw<L>());
-        action.fn(lhs, rhs);
-        return lhs;
-      }
-      else if constexpr (error_action<PA>)
-      {
-        auto msg = bnd::to_string(rhs) + " is not in " + bnd::to_string(Interval<L>);
-        action.fn(lhs, errc::domain_error, std::string_view(msg));
-        return lhs;
-      }
-      else if constexpr (HasPolicy<L, P, clamp>)
-      { apply_clamp(lhs, rhs, policy, action); return lhs; }
-      else if constexpr (HasPolicy<L, P, wrap>)
-      { apply_wrap(lhs, rhs, policy, action); return lhs; }
-      else if (domain_fail(lhs, policy,
-                 bnd::to_string(rhs) + " is not in " + bnd::to_string(Interval<L>)))
+      // Fractional path has no wrap *action* branch (Wrappable = false).
+      if (dispatch_out_of_range<false>(lhs, policy, action,
+            [&]{ apply_clamp(lhs, rhs, policy, action); },
+            [&]{ apply_wrap (lhs, rhs, policy, action); },
+            [&]{ return rhs; },
+            [&]{ return rhs; }))
         return lhs;
     }
 
@@ -614,30 +628,11 @@ namespace bnd::detail
   template<typename P, typename A>
   constexpr bool assignment<L,R>::try_clamp_or_fail(L& lhs, R const& rhs, P&& policy, A&& action)
   {
-    using PA = plain<A>;
-    if constexpr (clamp_action<PA>)
-    { apply_clamp(lhs, rhs, action); return true; }
-    else if constexpr (wrap_action<PA>)
-    { apply_wrap(lhs, rhs, policy, action); return true; }
-    else if constexpr (sentinel_action<PA>)
-    {
-      lhs = L::from_raw(sentinel_raw<L>());
-      action.fn(lhs, as_rational(rhs));
-      return true;
-    }
-    else if constexpr (error_action<PA>)
-    {
-      auto msg = bnd::to_string(as_rational(rhs))
-               + " is not in " + bnd::to_string(Interval<L>);
-      action.fn(lhs, errc::domain_error, std::string_view(msg));
-      return true;
-    }
-    else if constexpr (HasPolicy<L, P, clamp>)
-    { apply_clamp(lhs, rhs, action); return true; }
-    else if constexpr (HasPolicy<L, P, wrap>)
-    { apply_wrap(lhs, rhs, policy, action); return true; }
-    return domain_fail(lhs, policy,
-      bnd::to_string(as_rational(rhs)) + " is not in " + bnd::to_string(Interval<L>));
+    return dispatch_out_of_range<true>(lhs, policy, action,
+      [&]{ apply_clamp(lhs, rhs, action); },
+      [&]{ apply_wrap (lhs, rhs, policy, action); },
+      [&]{ return as_rational(rhs); },
+      [&]{ return as_rational(rhs); });
   }
 
   template<boundable L, boundable R>

@@ -42,17 +42,21 @@ namespace bnd
   // graphics, and DSP code. Without these helpers the caller would chain
   // `with_clamp().policy<round_floor>()` etc. by hand.
   //---------------------------------------------------------------------------
+  template <policy_flag RoundMode, boundable B, numeric N>
+  [[nodiscard]] constexpr B clamp_with_rounding(N value)
+  { return B{value, make_policy<clamp | RoundMode>()}; }
+
   template <boundable B, numeric N>
   [[nodiscard]] constexpr B clamp_floor(N value)
-  { return B{value, make_policy<clamp | round_floor>()}; }
+  { return clamp_with_rounding<round_floor, B>(value); }
 
   template <boundable B, numeric N>
   [[nodiscard]] constexpr B clamp_ceil(N value)
-  { return B{value, make_policy<clamp | round_ceil>()}; }
+  { return clamp_with_rounding<round_ceil, B>(value); }
 
   template <boundable B, numeric N>
   [[nodiscard]] constexpr B clamp_round(N value)
-  { return B{value, make_policy<clamp | round_nearest>()}; }
+  { return clamp_with_rounding<round_nearest, B>(value); }
 
   template <boundable B, arithmetic A>
   [[nodiscard]] constexpr B checked_cast(A value)

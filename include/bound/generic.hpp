@@ -89,6 +89,17 @@ namespace bnd
       else                         return v;
     }
 
+    // Canonical-zero test for a divisor. rational stores zero as {0, 1}, so
+    // Numerator == 0 catches every canonical zero independent of representation
+    // (rational{} is the {0, 0} sentinel, which compares unequal to rational{0});
+    // other arithmetic divisors compare against the zero of their own type.
+    template <typename T>
+    [[nodiscard]] constexpr bool is_canonical_zero(T const& v)
+    {
+      if constexpr (std::same_as<T, rational>) return v.Numerator == 0;
+      else                                      return v == T{0};
+    }
+
     template <boundable B>
     using raw_t = typename B::raw_type;
 
