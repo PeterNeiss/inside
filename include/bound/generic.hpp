@@ -397,8 +397,8 @@ namespace bnd
         && Lower<B> == 0;
 
     // Policy test: checks both type-level and per-operation policy.
-    // Composite flags (e.g. round_nearest = bit5 | ignore_round) require all
-    // their bits set — having a subset like just `ignore_round` does NOT match.
+    // Composite flags (e.g. round_nearest = bit5 | snapping) require all
+    // their bits set — having a subset like just `snapping` does NOT match.
     template <boundable B, typename P, policy_flag F>
     inline constexpr bool HasPolicy = (BoundPolicy<B> & F) == F || plain<P>::test(F);
 
@@ -481,7 +481,7 @@ namespace bnd
     template <typename L, typename R, policy_flag P>
     concept assign_notch_ok =
       !boundable<R> || abs_den(assignment<L, R>::Factor.Denominator) == 1
-      || ((BoundPolicy<L> | P) & ignore_round) != 0
+      || ((BoundPolicy<L> | P) & snapping) != 0
       || point_exactly_assignable<L, R>;
   } // namespace detail
 
@@ -496,7 +496,7 @@ namespace bnd
   //                                                  Skipped for floating-point
   //                                                  and rational R since they
   //                                                  have no static interval.
-  //   3. integer notch ratio OR ignore_round set   — a non-integer
+  //   3. integer notch ratio OR snapping set   — a non-integer
   //                                                  Factor.Denominator means
   //                                                  R's notch doesn't divide
   //                                                  L's; the user must opt
@@ -522,7 +522,7 @@ namespace bnd
     static_assert(detail::assign_intervals_ok<L, R>,
       "bound_assignable: rhs interval lies entirely outside lhs interval — assignment can never succeed");
     static_assert(detail::assign_notch_ok<L, R, P>,
-      "bound_assignable: incompatible notches — use `with_truncate()` or `policy<ignore_round>()` to allow rounding");
+      "bound_assignable: incompatible notches — use `with_truncate()` or `policy<snapping>()` to allow rounding");
     static constexpr bool value = bound_assignable<L, R, P>;
   };
 } // namespace bnd

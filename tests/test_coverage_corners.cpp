@@ -315,9 +315,9 @@ TEST_CASE("bound -> real conversion snaps onto the double grid",
 
 //---------------------------------------------------------------------------
 // assignment.hpp:475-476 — off-notch fractional store on a policy with no
-// rounding-mode flag and round_check()==false. `ignore_round` would route
+// rounding-mode flag and round_check()==false. `snapping` would route
 // through the has_round_flag arm (it is counted as a round flag); a plain
-// `clamp` policy (not checked, not ignore_round) takes the :476 else-branch
+// `clamp` policy (not checked, not snapping) takes the :476 else-branch
 // and truncates an in-range off-notch value silently.
 //---------------------------------------------------------------------------
 TEST_CASE("clamp policy truncates an in-range off-notch fractional assignment",
@@ -376,7 +376,7 @@ TEST_CASE("cross-grid conversion of a negative off-notch value",
   // so the rational store path runs; the negative value drives the
   // negative-denominator branch.
   using src_t = bound<{{-4, 4}, notch<1, 2>}>;
-  using dst_t = bound<{{-4, 4}, notch<1, 3>}, ignore_round>;
+  using dst_t = bound<{{-4, 4}, notch<1, 3>}, snapping>;
 
   src_t s{-1.5};
   dst_t d = s;

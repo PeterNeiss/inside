@@ -295,7 +295,7 @@ TEST_CASE("free-fn pack form", "[bound][policy][pack]")
 
 TEST_CASE("mod free-fn with on_overflow recovers from div/0", "[bound][policy][mod]")
 {
-  using u100ic = bound<{0, 100}, checked | ignore_round>;
+  using u100ic = bound<{0, 100}, checked | snapping>;
   u100ic l{7}, r{0};
   bool fired = false;
   auto m = mod(l, r,
@@ -328,7 +328,7 @@ TEST_CASE("free-fn div with std::error_code& sets ec on div/0",
 TEST_CASE("free-fn mod with std::error_code& sets ec on div/0",
           "[bound][policy][ec][mod]")
 {
-  using u100ic = bound<{0, 100}, checked | ignore_round>;
+  using u100ic = bound<{0, 100}, checked | snapping>;
   std::error_code ec;
   auto m = mod(u100ic{7}, u100ic{0}, ec);
   REQUIRE(ec == errc::division_by_zero);

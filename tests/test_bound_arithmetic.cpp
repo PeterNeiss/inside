@@ -90,16 +90,16 @@ TEST_CASE("bound div: rational vs integer paths", "[bound][arithmetic][div]")
     STATIC_REQUIRE(*c == *(51_r/8));
   }
 
-  SECTION("ignore_round selects integer-storage div path")
+  SECTION("snapping selects integer-storage div path")
   {
-    using ui = bound<{0, 100}, ignore_round>;
+    using ui = bound<{0, 100}, snapping>;
     constexpr ui a{51}, b{8};
     constexpr auto e = a / b;
     STATIC_REQUIRE_FALSE(std::is_same_v<typename decltype(e)::value_type::raw_type, rational>);
     STATIC_REQUIRE(*e == 6);
   }
 
-  SECTION("per-call ignore_round")
+  SECTION("per-call snapping")
   {
     using u100 = bound<{0, 100}>;
     constexpr u100 a{51}, b{8};
@@ -110,7 +110,7 @@ TEST_CASE("bound div: rational vs integer paths", "[bound][arithmetic][div]")
 
   SECTION("division by zero -> nullopt")
   {
-    using ui = bound<{0, 100}, ignore_round>;
+    using ui = bound<{0, 100}, snapping>;
     ui a{51}, zero{0};
     REQUIRE_FALSE((a / zero).has_value());
   }
@@ -147,7 +147,7 @@ TEST_CASE("bound div: rational vs integer paths", "[bound][arithmetic][div]")
 
   SECTION("signed integer division truncates toward zero")
   {
-    using si = bound<{-100, 100}, ignore_round>;
+    using si = bound<{-100, 100}, snapping>;
     constexpr si a{-7}, b{2};
     constexpr auto q = a / b;
     STATIC_REQUIRE(*q == -3);
@@ -155,9 +155,9 @@ TEST_CASE("bound div: rational vs integer paths", "[bound][arithmetic][div]")
 
   SECTION("divisor grid excluding zero yields a non-optional result")
   {
-    using num   = bound<{0, 100}, ignore_round>;
-    using pos   = bound<{1, 10},  ignore_round>;   // grid excludes zero
-    using spanz = bound<{-5, 10}, ignore_round>;   // grid straddles zero
+    using num   = bound<{0, 100}, snapping>;
+    using pos   = bound<{1, 10},  snapping>;   // grid excludes zero
+    using spanz = bound<{-5, 10}, snapping>;   // grid straddles zero
 
     constexpr num   a{42};
     constexpr pos   p{3};
@@ -177,7 +177,7 @@ TEST_CASE("bound div: rational vs integer paths", "[bound][arithmetic][div]")
 
 TEST_CASE("bound modulo", "[bound][arithmetic][mod]")
 {
-  using ui = bound<{0, 100}, ignore_round>;
+  using ui = bound<{0, 100}, snapping>;
   constexpr ui a{17}, b{5};
   STATIC_REQUIRE(*(a % b) == 2);
 
@@ -188,7 +188,7 @@ TEST_CASE("bound modulo", "[bound][arithmetic][mod]")
   ui a_rt{17}, zero{0};
   REQUIRE_FALSE((a_rt % zero).has_value());
 
-  using si = bound<{-100, 100}, ignore_round>;
+  using si = bound<{-100, 100}, snapping>;
   constexpr si sa{-17}, sb{5};
   STATIC_REQUIRE(*(sa % sb) == -2);
 

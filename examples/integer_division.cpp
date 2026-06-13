@@ -1,6 +1,6 @@
-// Integer division with ignore_round policy.
+// Integer division with snapping policy.
 // By default, division produces exact rational results.
-// With ignore_round, division uses native integer division for zero overhead.
+// With snapping, division uses native integer division for zero overhead.
 
 #include <iostream>
 
@@ -27,7 +27,7 @@ int main()
     std::cout << "7 / 3 (integer)  = " << *quotient << "\n";  // 2
 
   // Type-level policy: operator/ uses native division automatically
-  using fast = bound<{0, 100}, ignore_round>;
+  using fast = bound<{0, 100}, snapping>;
   fast x = 22;
   fast y = 7;
   auto q = x / y;

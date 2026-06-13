@@ -408,7 +408,7 @@ namespace bnd::detail
       constexpr bool has_round_flag =
            HasPolicy<L, P, round_nearest> || HasPolicy<L, P, round_floor>
         || HasPolicy<L, P, round_ceil>    || HasPolicy<L, P, round_half_even>
-        || HasPolicy<L, P, ignore_round>;
+        || HasPolicy<L, P, snapping>;
 
       // Q-format integer shortcut: with integer Lower and notch 1/K the
       // offset is ((num/aden) − Lo)·K = (num − Lo·aden)·(K/g) / (aden/g),
@@ -644,9 +644,9 @@ namespace bnd::detail
   constexpr L& assignment<L,R>::assign(L& lhs, R const& rhs, P&& policy, A&& action)
   {
     static_assert(not Interval<L>.excludes(Interval<R>));
-    static_assert(abs_den(Factor.Denominator) == 1 || HasPolicy<L, P, ignore_round>
+    static_assert(abs_den(Factor.Denominator) == 1 || HasPolicy<L, P, snapping>
                   || point_exactly_assignable<L, R>,
-      "incompatible notches: use with_truncate() or policy<ignore_round>() to allow rounding");
+      "incompatible notches: use with_truncate() or policy<snapping>() to allow rounding");
 
     if constexpr (not Interval<L>.includes(Interval<R>))
     {

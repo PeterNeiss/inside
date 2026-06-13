@@ -257,8 +257,8 @@ TEST_CASE("constexpr: division returns slim::optional", "[constexpr][bound][div]
   STATIC_REQUIRE(q.has_value());
   STATIC_REQUIRE(*q == *(51_r / 8));
 
-  // ignore_round selects native integer division — result has integer raw
-  using vi = bound<{0, 100}, ignore_round>;
+  // snapping selects native integer division — result has integer raw
+  using vi = bound<{0, 100}, snapping>;
   constexpr vi p{51}, r{8};
   constexpr auto qi = p / r;
   STATIC_REQUIRE_FALSE(std::is_same_v<typename decltype(qi)::value_type::raw_type,
@@ -266,9 +266,9 @@ TEST_CASE("constexpr: division returns slim::optional", "[constexpr][bound][div]
   STATIC_REQUIRE(*qi == 6);
 }
 
-TEST_CASE("constexpr: modulo under ignore_round", "[constexpr][bound][mod]")
+TEST_CASE("constexpr: modulo under snapping", "[constexpr][bound][mod]")
 {
-  using v = bound<{0, 100}, ignore_round>;
+  using v = bound<{0, 100}, snapping>;
   constexpr v a{17}, b{5};
   constexpr auto m = a % b;
   STATIC_REQUIRE(m.has_value());

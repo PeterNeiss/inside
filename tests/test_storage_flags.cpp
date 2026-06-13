@@ -241,7 +241,7 @@ TEST_CASE("per-operation policies work on real-backed bounds",
 
   // In-range per-operation store snaps onto the grid.
   R c{1.0};
-  c.policy<ignore_round>() = 2.5;
+  c.policy<snapping>() = 2.5;
   REQUIRE(static_cast<double>(rational{c}) == 2.5);
 
   // error_code mode: out-of-range reports, value unchanged.

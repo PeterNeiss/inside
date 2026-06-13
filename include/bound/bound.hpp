@@ -284,7 +284,7 @@ namespace bnd
     //                       *Explicit* otherwise, AND gated by policy: only
     //                       available when P includes a rounding flag
     //                       (round_floor/ceil/nearest/half_even or
-    //                       ignore_round). Strict-policy bounds must
+    //                       snapping). Strict-policy bounds must
     //                       use `b.to<double>().value()` to opt in.
     //   to<T>()           — typed-error narrowing/widening, returns
     //                       `slim::expected<T, errc>` for any
@@ -307,7 +307,7 @@ namespace bnd
 
     constexpr explicit((P & real) != real) operator double() const
       requires ((P & (round_floor | round_ceil | round_nearest
-                    | round_half_even | ignore_round)) != 0)
+                    | round_half_even | snapping)) != 0)
     { return detail::as_double(*this); }
 
     constexpr operator bnd::detail::rational() const
@@ -403,7 +403,7 @@ namespace bnd
     [[nodiscard]] constexpr T as() const
       requires (!std::floating_point<T>
              || (P & (round_floor | round_ceil | round_nearest
-                    | round_half_even | ignore_round)) != 0)
+                    | round_half_even | snapping)) != 0)
     { return to<T>().value(); }
 
     // numerator() / denominator() — the exact value of a fractional (Q-format)
@@ -486,7 +486,7 @@ namespace bnd
        return detail::policy_ref<bound, decltype(pol)>{*this, pol};
     }
 
-    [[nodiscard]] constexpr auto with_truncate()        { return policy<ignore_round>(); }
+    [[nodiscard]] constexpr auto with_truncate()        { return policy<snapping>(); }
     [[nodiscard]] constexpr auto with_round_nearest()   { return policy<round_nearest>(); }
     [[nodiscard]] constexpr auto with_floor()           { return policy<round_floor>(); }
     [[nodiscard]] constexpr auto with_ceil()            { return policy<round_ceil>(); }

@@ -156,7 +156,7 @@ out-of-range is determined by a four-level cascade:
 ```
 
 The flag bits live in `policy_flag` (`include/bound/policy_flag.hpp`):
-`clamp`, `wrap`, `sentinel`, `checked`, `unsafe`, `ignore_round`,
+`clamp`, `wrap`, `sentinel`, `checked`, `unsafe`, `snapping`,
 `ignore_domain`, `ignore_zero`, `round_floor`, `round_ceil`,
 `round_nearest`, `round_half_even`.
 

@@ -4,7 +4,7 @@
 // Demonstrates:
 //   - Three-level on_wrap cascade (similar to clock.cpp but with year axis)
 //   - `_b` literal for compile-time constants (DAYS_PER_MONTH)
-//   - Modulo `%` for day-of-week (under `ignore_round`)
+//   - Modulo `%` for day-of-week (under `snapping`)
 
 #include <iostream>
 
@@ -16,7 +16,7 @@ using namespace bnd;
 using day_t   = bound<{1, 30}, wrap>;       // 1-30, wraps to 1 after 30
 using month_t = bound<{1, 12}, wrap>;       // 1-12, wraps to 1 after 12
 using year_t  = bound<{1900, 2200}>;
-using dow_t   = bound<{0, 6}, ignore_round>; // 0=Sun..6=Sat (currently unused)
+using dow_t   = bound<{0, 6}, snapping>; // 0=Sun..6=Sat (currently unused)
 
 struct date
 {
@@ -69,8 +69,8 @@ int main()
 
   // Day-of-week via modulo. Each calendar day maps to a weekday in [0, 6].
   // Sample the next 10 days from a known Sunday reference.
-  using big_day_t = bound<{0, 1000000}, ignore_round>;
-  using week_size = bound<{1, 7},       ignore_round>;
+  using big_day_t = bound<{0, 1000000}, snapping>;
+  using week_size = bound<{1, 7},       snapping>;
   constexpr week_size seven{7};
 
   std::cout << "\nday-of-week sequence (0=Sun..6=Sat):\n";

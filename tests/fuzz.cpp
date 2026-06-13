@@ -449,11 +449,11 @@ template <boundable B>
 void prop_modulo(fuzz_state& s, long iters)
 {
   // Only applies to integer-aligned grids; result is optional<bound>.
-  // mod requires `ignore_round` per the README, so derive a typed alias.
+  // mod requires `snapping` per the README, so derive a typed alias.
   if constexpr (IsIntegerAligned<B> && !rational_raw<B>)
   {
     s.current_prop = "modulo";
-    using BI = bound<Grid<B>, ignore_round>;
+    using BI = bound<Grid<B>, snapping>;
     auto lo = Lower<B>.trunc();
     auto hi = Upper<B>.trunc();
     if (lo > 0 || hi <= 0)
@@ -709,7 +709,7 @@ void prop_compound_bound_overshoot(fuzz_state& s, long iters)
 template <boundable B>
 void prop_non_notch_assign(fuzz_state& s, long iters)
 {
-  // Targets assignment.hpp:289 (round_nearest), 291 (ignore_round silent floor),
+  // Targets assignment.hpp:289 (round_nearest), 291 (snapping silent floor),
   // 296 (checked rounding_error report → throws), and 299 (silent floor for
   // unchecked policy). Only meaningful for fixed-point grids (notch != 1).
   if constexpr (!IsIntegerAligned<B> && !rational_raw<B>)
@@ -717,7 +717,7 @@ void prop_non_notch_assign(fuzz_state& s, long iters)
     s.current_prop = "non_notch_assign";
     // The catalogue's B already uses the default `checked` policy, so a non-
     // notch-aligned assignment to B must throw rounding_error.
-    using BIR = bound<Grid<B>, ignore_round>;       // silent floor
+    using BIR = bound<Grid<B>, snapping>;       // silent floor
     using BRN = bound<Grid<B>, round_nearest>;      // nearest
     using BNONE = bound<Grid<B>, none>;             // truly-unchecked → line 299
     rational notch = Notch<B>;
@@ -742,7 +742,7 @@ void prop_non_notch_assign(fuzz_state& s, long iters)
         B b; b = mid;
       }));
 
-      // ignore_round: silent floor; result == on_notch.
+      // snapping: silent floor; result == on_notch.
       FUZZ_REQUIRE(s, !throws_with(errc::rounding_error, [&]{
         BIR b; b = mid;
         rational got = b;
@@ -781,7 +781,7 @@ void prop_subnormal_construct(fuzz_state& s, long iters)
   if constexpr (!IsIntegerAligned<B> && !rational_raw<B>)
   {
     s.current_prop = "subnormal_construct";
-    using BIR = bound<Grid<B>, ignore_round>;
+    using BIR = bound<Grid<B>, snapping>;
     rational lo = Lower<B>;
     rational hi = Upper<B>;
     bool zero_in_range = (lo <= 0) && (hi >= 0);
@@ -792,7 +792,7 @@ void prop_subnormal_construct(fuzz_state& s, long iters)
     {
       s.iter = i;
       double v = mantissa(s.rng) * std::pow(2.0, exp_dist(s.rng));
-      // ignore_round → silent floor; should not throw and should land on 0.
+      // snapping → silent floor; should not throw and should land on 0.
       FUZZ_REQUIRE(s, !throws_with(errc::rounding_error, [&]{
         BIR b; b = v;
         rational got = b;

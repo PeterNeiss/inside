@@ -42,11 +42,11 @@ is proven elsewhere. `clamp`, `wrap`, and `sentinel` are mutually exclusive
 | `clamp` | saturate to boundary on out-of-range (mutually exclusive with `wrap`/`sentinel`) |
 | `wrap` | modular arithmetic on out-of-range |
 | `sentinel` | out-of-range yields `nullopt` via `slim::optional` |
-| `ignore_round` | rounding mismatches truncate toward zero (no error) |
-| `round_nearest` | round to nearest notch, half away from zero (implies `ignore_round`) |
-| `round_floor` | round toward −∞ (implies `ignore_round`) |
-| `round_ceil` | round toward +∞ (implies `ignore_round`) |
-| `round_half_even` | banker's rounding — half to even (implies `ignore_round`) |
+| `snapping` | rounding mismatches truncate toward zero (no error) |
+| `round_nearest` | round to nearest notch, half away from zero (implies `snapping`) |
+| `round_floor` | round toward −∞ (implies `snapping`) |
+| `round_ceil` | round toward +∞ (implies `snapping`) |
+| `round_half_even` | banker's rounding — half to even (implies `snapping`) |
 | `ignore_zero` | skip the divide-by-zero check — `a / 0` / `a % 0` is UB (binary `div`/`mod`); compound `/= 0` / `%= 0` no-op |
 | `ignore_domain` | suppress the runtime domain check |
 | `real` / `exact` / `direct` / `indexed` | **representation flags** — select how the raw value is stored; see the next section |
@@ -212,8 +212,8 @@ auto sum = add(x, y, ec);
 // Combining flags with error code
 bound<{{0, 10}, 2}> coarse{0};
 bound<{{0, 10}, 1}> fine{3};
-coarse.policy<ignore_round>(ec) = fine;
-// ignore_round suppresses the rounding error, ec captures domain errors only
+coarse.policy<snapping>(ec) = fine;
+// snapping suppresses the rounding error, ec captures domain errors only
 ```
 
 The error code is only set on the first error (subsequent errors don't

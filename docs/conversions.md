@@ -17,7 +17,7 @@ writing literal values into bounds.
 | Conversion | When it applies | Purpose |
 |---|---|---|
 | `operator imax()` (implicit) | integer-notch grid (notch denom = 1) with Lower ≥ imax_min and Upper ≤ imax_max | drop-in for integer contexts: accumulators, comparisons, and indexing (`vec[b]` converts imax → size_t) |
-| `operator double()` (**implicit** for `real`-policy bounds, explicit otherwise) | `real`: always (the dyadic grid makes every value exact in `double`). Others: grid carries a rounding policy (`round_*` or `ignore_round`) | floating-point arithmetic / printf |
+| `operator double()` (**implicit** for `real`-policy bounds, explicit otherwise) | `real`: always (the dyadic grid makes every value exact in `double`). Others: grid carries a rounding policy (`round_*` or `snapping`) | floating-point arithmetic / printf |
 
 `operator imax()` is deliberately the **only** implicit integer conversion —
 a second one (e.g. `size_t`) would make built-in mixed arithmetic like

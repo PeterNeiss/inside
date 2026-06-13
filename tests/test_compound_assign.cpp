@@ -26,7 +26,7 @@ TEST_CASE("compound assignment: boundable RHS", "[bound][compound]")
   using u100 = bound<{0, 100}>;
   STATIC_REQUIRE([]{ u100 a{50}, d{20}; a -= d; return a.value(); }() == 30);
 
-  using ui = bound<{0, 100}, ignore_round>;
+  using ui = bound<{0, 100}, snapping>;
   STATIC_REQUIRE([]{ ui d{50}, two{2}; d *= two; return d.value(); }() == 100);
   STATIC_REQUIRE([]{ ui e{60}, three{3}; e /= three; return e.value(); }() == 20);
   STATIC_REQUIRE([]{ ui f{17}, five{5}; f %= five; return f.value(); }() == 2);

@@ -29,9 +29,9 @@ TEST_CASE("rounding requires opt-in", "[bound][assign][round]")
   f20t50 bigger{39};
   f30t40 smaller;
 
-  SECTION("policy<ignore_round>() rounds (truncates toward zero on positive)")
+  SECTION("policy<snapping>() rounds (truncates toward zero on positive)")
   {
-    smaller.policy<ignore_round>() = bigger;
+    smaller.policy<snapping>() = bigger;
     REQUIRE(smaller == 38);
   }
 
@@ -63,9 +63,9 @@ TEST_CASE("rounding requires opt-in", "[bound][assign][round]")
     REQUIRE(h == 3);
   }
 
-  SECTION("type-level ignore_round")
+  SECTION("type-level snapping")
   {
-    using n2_round = bound<{{0, 10}, 2}, ignore_round>;
+    using n2_round = bound<{{0, 10}, 2}, snapping>;
     using n1       = bound<{{0, 10}, 1}>;
     n2_round c;
     c = n1{3};
@@ -208,10 +208,10 @@ TEST_CASE("checked policy throws on rounding error", "[bound][assign][checked][r
   REQUIRE(c == 4);
 }
 
-TEST_CASE("ignore_round truncates non-notch float at runtime",
-          "[bound][assign][ignore_round]")
+TEST_CASE("snapping truncates non-notch float at runtime",
+          "[bound][assign][snapping]")
 {
-  using coarse = bound<{{0, 10}, 2}, ignore_round>;
+  using coarse = bound<{{0, 10}, 2}, snapping>;
   coarse c;
   c = 3.0;
   REQUIRE(c == 2);    // truncates toward zero
@@ -234,15 +234,15 @@ TEST_CASE("non-integer-mapping bound-to-bound clamp / domain_fail",
   // Source has notch 1 to a destination with notch 1/3 — Factor=3, integer.
   // To force the non-integer-mapping path we use a fractional-notch source
   // with a destination that doesn't cleanly align: notch 1/2 -> notch 1/3.
-  using src = bound<{{0, 5}, rational{1u, 2}}, ignore_round>;
-  using dst = bound<{{0, 5}, rational{1u, 3}}, ignore_round | clamp>;
+  using src = bound<{{0, 5}, rational{1u, 2}}, snapping>;
+  using dst = bound<{{0, 5}, rational{1u, 3}}, snapping | clamp>;
 
   src s{4};   // value 4 -> dst aligns
   dst d{s};
   REQUIRE(d == 4);
 
   // src[0,5] dst[0,4] — value 5 in src is out of dst, exercises clamp path
-  using dst2 = bound<{{0, 4}, rational{1u, 3}}, ignore_round | clamp>;
+  using dst2 = bound<{{0, 4}, rational{1u, 3}}, snapping | clamp>;
   src s2{5};
   dst2 d2{s2};
   REQUIRE(d2 == 4);

@@ -1,6 +1,6 @@
 // Division produces rational results by default.
 // The result is always slim::optional (division by zero yields nullopt).
-// With ignore_round, division uses native integer division instead.
+// With snapping, division uses native integer division instead.
 
 #include <iostream>
 

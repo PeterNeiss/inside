@@ -36,15 +36,22 @@ Otherwise it returns `slim::optional<result>`, because division by zero is a
 runtime possibility (and on the exact-rational path under `checked`, so is
 overflow — which keeps the optional even when the divisor is known nonzero).
 The library picks one of **three code paths** at compile time, based on the
-operand grids and whether `ignore_round` is in effect.
+operand grids and whether `snapping` is in effect.
 
 ### The three paths
 
 | Path | Triggered when… | Algorithm | Result storage | Result interval |
 |---|---|---|---|---|
-| **Q-format fast** | `ignore_round` is set **and** both operands share the same Q-format grid (notch `1/N` with `N ≥ 2`, `Lower == 0`) | `(lhs.Raw × N) ÷ rhs.Raw` — the textbook fixed-point divide; folds to `(a << log2(N)) / b` for power-of-2 N | Q-format integer raw, **same notch as L** | `[0, Upper<L> / Notch<R>]` — Upper *expands* (see below) |
-| **Integer-aligned fast** | `ignore_round` is set **and** both grids are integer-aligned (notch and Lower both have denominator 1) **and** neither operand uses rational raw storage | `to_value(lhs) / to_value(rhs)` — plain native integer divide; truncates toward zero | Integer raw | `Grid<L> / Grid<R>` with `.trunc()` applied to both endpoints |
+| **Q-format fast** | `snapping` is set **and** both operands share the same Q-format grid (notch `1/N` with `N ≥ 2`, `Lower == 0`) | `(lhs.Raw × N) ÷ rhs.Raw` — the textbook fixed-point divide, **rounded per the policy's mode** (folds to `(a << log2(N)) / b` for power-of-2 N under plain `snapping`) | Q-format integer raw, **same notch as L** | `[0, Upper<L> / Notch<R>]` — Upper *expands* (see below) |
+| **Integer-aligned fast** | `snapping` is set **and** both grids are integer-aligned (notch and Lower both have denominator 1) **and** neither operand uses rational raw storage | `to_value(lhs) / to_value(rhs)`, **rounded per the policy's mode** — see below | Integer raw | `Grid<L> / Grid<R>` with each endpoint rounded by the same mode |
 | **Exact rational** *(fall-through)* | everything else | `as_rational(lhs) / rational{rhs}` — exact rational arithmetic. Under `checked` this is the optional-returning `rational::operator/`; under `unsafe` it's the unchecked variant. | `rational` raw — the result type is `bound<{interval, 0}>` | `*(Grid<L> / Grid<R>)` — the grid divider widens the interval when the divisor's range straddles zero |
+
+**Rounding mode (native paths).** Plain `snapping` (== `truncated`) truncates toward
+zero — the historical, C++-`/` behaviour. Any rounding-mode flag rounds the quotient
+instead: `round_nearest` (half away from zero), `round_floor` (toward −∞),
+`round_ceil` (toward +∞), `round_half_even` (banker's). The remainder from `%` stays
+consistent with the rounded quotient, so `(a / b) * b + a % b == a` for every mode
+(e.g. under `round_floor`, `(-8) % 3 == 1`; under `truncated`, `(-8) % 3 == -2`).
 
 ```cpp
 using val = bound<{0, 100}>;
@@ -58,11 +65,11 @@ auto quot  = div(a, b, truncated);             // bound<{0, 33}> integer raw, va
 
 // Type-level integer truncation (path B again — gating is on policy,
 // not on the operator's call site).
-using fast = bound<{0, 100}, ignore_round>;
+using fast = bound<{0, 100}, snapping>;
 auto q     = fast{7} / fast{3};                // bound<{0, 33}> integer raw, value 2
 
 // Q-format same-notch (path A).
-using fp = bound<{{0, 255}, notch<1, 256>}, unsafe>;   // Q8.8; unsafe implies ignore_round
+using fp = bound<{{0, 255}, notch<1, 256>}, unsafe>;   // Q8.8; unsafe implies snapping
 auto qfp = div(fp{200}, fp{3}, truncated);     // Q8.8 raw 17066 ≈ 66.6641
 ```
 
@@ -78,8 +85,8 @@ the `DivisorExcludesZero` trait in `generic.hpp`) *and* the op can't otherwise
 fault, `operator/` returns a **plain `bound`** — no wrapper to unwrap:
 
 ```cpp
-using num = bound<{0, 100}, ignore_round>;
-using pos = bound<{1, 10},  ignore_round>;   // grid excludes zero
+using num = bound<{0, 100}, snapping>;
+using pos = bound<{1, 10},  snapping>;   // grid excludes zero
 auto d = num{42} / pos{3};                   // bound, == 14  (not optional)
 ```
 
@@ -110,14 +117,14 @@ Three ways to reach paths A and B:
 using val = bound<{0, 100}>;
 
 // 1. Type-level: every operator/ on this type takes the integer path.
-using fast = bound<{0, 100}, ignore_round>;
+using fast = bound<{0, 100}, snapping>;
 auto q1 = fast{7} / fast{3};               // -> 2
 
-// 2. Per-call: OR `ignore_round` into the operation's flags.
+// 2. Per-call: OR `snapping` into the operation's flags.
 auto q2 = div(val{7}, val{3}, truncated);  // -> 2
 
 // 3. Same as (2) using the operation's named policy alias.
-//    `truncated = make_policy<ignore_round>()`; siblings include
+//    `truncated = make_policy<snapping>()`; siblings include
 //    `round_to_nearest`, `clamped`, `wrapped` — see `bound/policy.hpp`.
 ```
 
@@ -243,24 +250,24 @@ c.with_truncate() = f;
 c.with_round_nearest() = f;
 
 // Per-call with explicit policy.
-c.policy<ignore_round>() = f;
+c.policy<snapping>() = f;
 c.policy<round_nearest>() = f;
 
 // Type-level: all assignments allow rounding.
-using coarse_r = bound<{{0, 10}, 2}, ignore_round>;
+using coarse_r = bound<{{0, 10}, 2}, snapping>;
 coarse_r cr = f;  // OK, truncates to nearest notch
 ```
 
 ## Modulo
 
-`bound % bound` requires integer-aligned grids **and** `ignore_round`. Both
+`bound % bound` requires integer-aligned grids **and** `snapping`. Both
 are **hard requirements** enforced by `static_assert` in
 [`include/bound/detail/division.hpp`](../include/bound/detail/division.hpp) —
 there is no rational fallback, because `a mod b` is only meaningfully
 defined when both operands are integers.
 
 ```cpp
-using val = bound<{0, 100}, ignore_round>;
+using val = bound<{0, 100}, snapping>;
 val a{17}, b{5};
 auto r = a % b;  // slim::optional<bound<{0, 99}>>, value 2
 ```

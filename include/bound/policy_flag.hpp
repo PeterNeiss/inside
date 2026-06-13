@@ -24,16 +24,22 @@ namespace bnd
   inline static constexpr policy_flag none         {0ull};
   inline static constexpr policy_flag ignore_zero  {1ull << 1};
   inline static constexpr policy_flag ignore_domain{1ull << 2};
-  inline static constexpr policy_flag ignore_round  {1ull << 4};
-  inline static constexpr policy_flag round_nearest {(1ull << 5) | ignore_round};
+  // `snapping` — a value that does not land exactly on a notch is rounded to
+  // fit the grid instead of being rejected. On its own the direction is
+  // truncate-toward-zero (== the `truncated` convenience policy); the round-
+  // mode flags below OR in `snapping` and pick a direction. Without it, an
+  // off-notch value is a compile-time error (statically off-notch) or a
+  // runtime round-error, and div/mod fall through to exact-rational results.
+  inline static constexpr policy_flag snapping     {1ull << 4};
+  inline static constexpr policy_flag round_nearest {(1ull << 5) | snapping};
   // Additional rounding modes. Each picks a unique mode bit (6/7/8) and ORs
-  // in `ignore_round` so users don't have to remember the combination. The
+  // in `snapping` so users don't have to remember the combination. The
   // four rounding modes are *mutually exclusive in spirit* — combining two
   // is permitted by the type system but the dispatch order in assignment.hpp
   // picks the first match (nearest → floor → ceil → half_even → truncate).
-  inline static constexpr policy_flag round_floor     {(1ull << 6) | ignore_round};
-  inline static constexpr policy_flag round_ceil      {(1ull << 7) | ignore_round};
-  inline static constexpr policy_flag round_half_even {(1ull << 8) | ignore_round};
+  inline static constexpr policy_flag round_floor     {(1ull << 6) | snapping};
+  inline static constexpr policy_flag round_ceil      {(1ull << 7) | snapping};
+  inline static constexpr policy_flag round_half_even {(1ull << 8) | snapping};
 
   // runtime checking — opt-in
   inline static constexpr policy_flag checked{1ull << 34}; // enable runtime domain/overflow checks
@@ -52,7 +58,7 @@ namespace bnd
   //
   // `real` — marks a math operand. Selects double-backed storage under the
   // default (double) math engine, where the value is held as an IEEE-754
-  // `double` and stored as-is (the `ignore_round` in `round_nearest` makes the
+  // `double` and stored as-is (the `snapping` in `round_nearest` makes the
   // notch nominal). Under `BND_MATH_FIXED` the same flag is an ordinary
   // round_nearest integer-backed bound. Power-of-2 notch + dyadic Lower required
   // (asserted at storage selection) so on-grid values are exact in `double`.
@@ -82,10 +88,10 @@ namespace bnd
   // Division by zero is undefined behavior too — consistently across both
   // forms: compound `/= 0` / `%= 0` silently no-op (the bound is unchanged),
   // and binary `a / 0` / `a % 0` skip the zero check (the `ignore_zero` bit).
-  // Includes `ignore_round` so notch-incompatible assigns compile and the
+  // Includes `snapping` so notch-incompatible assigns compile and the
   // native-integer div/mod paths fire.
   inline static constexpr policy_flag unsafe
-    {(1ull << 36) | ignore_domain | ignore_round | ignore_zero};
+    {(1ull << 36) | ignore_domain | snapping | ignore_zero};
 
   //---------------------------------------------------------------------------
   // no_action — zero-overhead default for overflow callbacks

@@ -173,7 +173,7 @@ TEST_CASE("operator size_t for index-shaped bounds", "[bound][to][operator][inde
 TEST_CASE("operator double is gated on rounding policy", "[bound][to][operator]")
 {
   using B_round   = bound<{{0, 1}, notch<1, 2>}, round_nearest>;
-  using B_ignore  = bound<{{0, 1}, notch<1, 2>}, ignore_round>;
+  using B_ignore  = bound<{{0, 1}, notch<1, 2>}, snapping>;
   using B_strict  = bound<{{0, 1}, notch<1, 2>}, checked>;
   using B_floor   = bound<{{0, 1}, notch<1, 2>}, round_floor>;
 

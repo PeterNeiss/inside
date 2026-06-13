@@ -72,7 +72,7 @@ TEST_CASE("Q-format division: native_div_qformat matches rational arithmetic",
           "[bound][qformat][division]")
 {
   using fp = bound<{{0, 255}, 0x1p-8_r}>;   // Q8.8; the `truncated` call policy
-                                            // supplies ignore_round for the native
+                                            // supplies snapping for the native
                                             // path, without unsafe's ignore_zero
 
   // Spot checks against expected Q-format integer-truncation values.
