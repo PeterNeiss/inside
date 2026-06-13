@@ -212,4 +212,67 @@ TEST_CASE("dbl: algebraic tier on real bounds matches std::", "[dbl][real][algeb
   }
 }
 
+// The transcendental tier (log/exp/asin/.../cbrt) had NO runtime coverage on the
+// double engine — its only tests are the `#ifdef BND_MATH_FIXED` static_asserts
+// in test_cmath.cpp. These cross-check the double engine against std:: to ~a
+// notch, the same oracle a cross-engine diff would use.
+TEST_CASE("dbl: transcendental tier on real bounds matches std::", "[dbl][real][transcendental]")
+{
+  constexpr double tol = 4.0 / 16384;   // a few notches
+
+  SECTION("log / log2 / log10 — strictly positive domain")
+  {
+    using p = bound<{{1, 16}, notch<1, 16384>}, round_nearest | real>;
+    using o = bound<{{-4, 4}, notch<1, 16384>}, round_nearest | real>;
+    for (double x : {1.0, 1.5, 2.0, std::numbers::e, 8.0, 10.0, 16.0})
+    {
+      REQUIRE(std::fabs(double(o{math::log(p{x})})   - std::log(x))   < tol);
+      REQUIRE(std::fabs(double(o{math::log2(p{x})})  - std::log2(x))  < tol);
+      REQUIRE(std::fabs(double(o{math::log10(p{x})}) - std::log10(x)) < tol);
+    }
+    // Anchors that must be exact-ish on the grid.
+    REQUIRE(std::fabs(double(o{math::log(p{1.0})}))   < tol);   // log 1 = 0
+    REQUIRE(std::fabs(double(o{math::log2(p{8.0})})  - 3.0) < tol);
+    REQUIRE(std::fabs(double(o{math::log10(p{10.0})}) - 1.0) < tol);
+  }
+
+  SECTION("exp / exp2")
+  {
+    using e_in  = bound<{{-2, 2}, notch<1, 16384>}, round_nearest | real>;
+    using e_out = bound<{{0, 8},  notch<1, 16384>}, round_nearest | real>;
+    for (double x : {-2.0, -1.0, -0.5, 0.0, 0.5, 1.0, 2.0})
+    {
+      REQUIRE(std::fabs(double(e_out{math::exp(e_in{x})})  - std::exp(x))  < tol);
+      REQUIRE(std::fabs(double(e_out{math::exp2(e_in{x})}) - std::exp2(x)) < tol);
+    }
+  }
+
+  SECTION("asin / acos / atan on their domains")
+  {
+    using u = bound<{{-1, 1}, notch<1, 16384>}, round_nearest | real>;
+    using o = bound<{{-2, 2}, notch<1, 16384>}, round_nearest | real>;
+    for (double x : {-0.9, -0.5, 0.0, 0.25, 0.5, 0.9})
+    {
+      REQUIRE(std::fabs(double(o{math::asin(u{x})}) - std::asin(x)) < tol);
+      REQUIRE(std::fabs(double(o{math::acos(u{x})}) - std::acos(x)) < tol);
+      REQUIRE(std::fabs(double(o{math::atan(o{x})}) - std::atan(x)) < tol);
+    }
+  }
+
+  SECTION("sinh / cosh / tanh / cbrt")
+  {
+    using s_in  = bound<{{-2, 2}, notch<1, 16384>}, round_nearest | real>;
+    using s_out = bound<{{-4, 4}, notch<1, 16384>}, round_nearest | real>;
+    using c_in  = bound<{{1, 8},  notch<1, 16384>}, round_nearest | real>;
+    for (double x : {-2.0, -1.0, 0.0, 1.0, 2.0})
+    {
+      REQUIRE(std::fabs(double(s_out{math::sinh(s_in{x})}) - std::sinh(x)) < tol);
+      REQUIRE(std::fabs(double(s_out{math::cosh(s_in{x})}) - std::cosh(x)) < tol);
+      REQUIRE(std::fabs(double(s_out{math::tanh(s_in{x})}) - std::tanh(x)) < tol);
+    }
+    for (double x : {1.0, 2.0, 3.375, 8.0})
+      REQUIRE(std::fabs(double(s_out{math::cbrt(c_in{x})}) - std::cbrt(x)) < tol);
+  }
+}
+
 #endif // !BND_MATH_FIXED

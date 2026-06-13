@@ -1311,6 +1311,10 @@ namespace bnd::math
   [[nodiscard]] BND_MATH_FN auto log2(In x) noexcept
   {
     static_assert(detail::require_real<In>());
+    // Domain guard belongs on the shared entry point, not just the fixed
+    // engine's *_impl: the double engine's log_core has no singularity check,
+    // so log2(x<=0) would silently store finite garbage (e.g. log2(0) ≈ -7).
+    static_assert(Lower<In> > 0, "bnd::math::log2: input must be strictly positive");
 #ifdef BND_MATH_FIXED
     return log2_impl<detail::log2_auto_t<In>>(x);
 #else
@@ -1333,6 +1337,7 @@ namespace bnd::math
   [[nodiscard]] BND_MATH_FN auto log(In x) noexcept
   {
     static_assert(detail::require_real<In>());
+    static_assert(Lower<In> > 0, "bnd::math::log: input must be strictly positive");
 #ifdef BND_MATH_FIXED
     return log_impl<detail::log_auto_t<In>>(x);
 #else
@@ -2011,6 +2016,7 @@ namespace bnd::math
   [[nodiscard]] BND_MATH_FN auto log10(In x) noexcept
   {
     static_assert(detail::require_real<In>());
+    static_assert(Lower<In> > 0, "bnd::math::log10: input must be strictly positive");
 #ifdef BND_MATH_FIXED
     return log10_impl<detail::log10_auto_t<In>>(x);
 #else
