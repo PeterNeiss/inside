@@ -219,11 +219,35 @@ namespace bnd::detail
   template<typename A>
   constexpr void assignment<L,R>::apply_wrap(L& lhs, R rhs, imax lower, imax upper, A&& action)
   {
-    imax range = upper - lower + 1;
-    imax shifted = static_cast<imax>(rhs) - lower;
-    imax wrapped = ((shifted % range) + range) % range;
-    imax excess = (shifted < 0) ? ((shifted - range + 1) / range) : (shifted / range);
-    from_value(lhs, wrapped + lower);
+    // Overflow-safe modular wrap. Both `upper - lower + 1` and `rhs - lower` can
+    // exceed imax — `rhs` is an arbitrary integral, and a grid may legitimately
+    // span more than imax under unsigned storage — so the reduction runs in umax:
+    // the span+1 and the unsigned distance from `lower` both fit umax for any
+    // valid grid, and the wrapped result lands back inside [lower, upper] ⊂ imax.
+    const umax urange = static_cast<umax>(upper) - static_cast<umax>(lower) + 1u;
+    const imax ri = static_cast<imax>(rhs);
+    if (urange == 0)                              // span == 2^64−1: wrap is identity
+    {
+      from_value(lhs, ri);
+      if constexpr (wrap_action<plain<A>>) action.fn(lhs, imax{0});
+      return;
+    }
+    umax w;
+    imax excess;
+    if (ri >= lower)
+    {
+      const umax dist = static_cast<umax>(ri) - static_cast<umax>(lower);  // true, ≥ 0
+      w = dist % urange;
+      excess = static_cast<imax>(dist / urange);
+    }
+    else
+    {
+      const umax dist = static_cast<umax>(lower) - static_cast<umax>(ri);  // true, > 0
+      const umax m = dist % urange;
+      w = (m == 0) ? 0u : (urange - m);
+      excess = -static_cast<imax>((dist + urange - 1u) / urange);          // −ceil(dist/range)
+    }
+    from_value(lhs, static_cast<imax>(static_cast<umax>(lower) + w));
     if constexpr (wrap_action<plain<A>>)
       action.fn(lhs, excess);
   }

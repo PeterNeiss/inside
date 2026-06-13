@@ -194,12 +194,26 @@ namespace bnd
 
     template <numeric A, typename Pol>
       requires bound_assignable<bound, A, P>
-    constexpr bound(A value, Pol&& pol)
-    {
+    constexpr bound(A value, Pol&& pol) : Raw{}   // defined value if assign reports
+    {                                             // an error (ec mode) instead of writing
       if constexpr (detail::real_raw<bound>)
         store_real(to_double(value));
       else
         detail::assignment<bound, A>::assign(*this, value, pol);
+    }
+
+    // Error-code construction: `bound x(value, ec)`. A raw std::error_code binds
+    // the Pol&& template above as a (non-policy) type, so it needs its own
+    // overload that wraps ec in the type's own policy. On an out-of-range value
+    // ec is set and the bound keeps its default value (Raw{} above).
+    template <numeric A>
+      requires bound_assignable<bound, A, P>
+    constexpr bound(A value, std::error_code& ec) : Raw{}
+    {
+      if constexpr (detail::real_raw<bound>)
+        store_real(to_double(value));
+      else
+        detail::assignment<bound, A>::assign(*this, value, make_policy<P>(ec));
     }
 
     // optional<A> sink — unwrap once at the construction boundary so callers
