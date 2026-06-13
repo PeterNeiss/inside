@@ -661,11 +661,13 @@ namespace bnd::detail
     {
       rational rat = *(Offset + *(Factor * rhs.raw()));
       umax ad = static_cast<umax>(abs_den(rat.Denominator));
-      umax q;
-      if constexpr (HasPolicy<L, P, round_nearest>)
-        q = (rat.Numerator + ad / 2) / ad;     // half-away-from-zero
-      else
-        q = rat.Numerator / ad;                // truncation toward zero
+      // Round the L-offset to a notch index in VALUE space via the shared
+      // round_quotient helper — same as the scalar store path. This honours
+      // every rounding mode (the old inline form special-cased only
+      // round_nearest, so round_ceil / round_half_even silently truncated, and
+      // round_nearest rounded the offset half-up rather than the value
+      // half-away-from-zero on negative grids).
+      umax q = round_quotient<L, P>(rat.Numerator, ad);
       // `rat` is the L-offset; `raw_from_offset<L>` converts to L.Raw,
       // adding Lower<L> back for direct-storage targets.
       lhs = L::from_raw((rat.Denominator < 0)

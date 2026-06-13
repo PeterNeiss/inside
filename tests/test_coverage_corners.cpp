@@ -375,11 +375,12 @@ TEST_CASE("cross-grid conversion of a negative off-notch value",
 
   src_t s{-1.5};
   dst_t d = s;
-  // The store truncates the (non-negative) target offset toward zero, which is
-  // toward -inf in value space: offset (−1.5−Lower)/notch = 7.5 → 7 → −5/3.
-  REQUIRE(static_cast<rational>(d) == rational{5, -3});
+  // snapping truncates toward ZERO in value space (matching the scalar store
+  // path and div_rounded): -1.5 on the 1/3 grid → -4/3. (Was -5/3 when the old
+  // path truncated the non-negative offset — i.e. toward -inf in value space.)
+  REQUIRE(static_cast<rational>(d) == rational{4, -3});
 
   src_t s2{1.5};
-  dst_t d2 = s2;                    // offset 16.5 → 16 → 4/3
+  dst_t d2 = s2;                    // +1.5 toward zero → 4/3 (unchanged)
   REQUIRE(static_cast<rational>(d2) == rational{4u, 3});
 }

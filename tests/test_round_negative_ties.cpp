@@ -71,3 +71,30 @@ TEST_CASE("round_floor / round_ceil assignment stay direction-correct", "[round]
   REQUIRE(static_cast<rational>(C(rational{-3, 2})) == -1);   // ceil(-1.5)
   REQUIRE(static_cast<rational>(C(rational{ 3, 2})) ==  2);   // ceil( 1.5)
 }
+
+// Cross-grid bound->bound conversion has its own rounding path (assignment.hpp
+// store()). It used to special-case only round_nearest (offset half-up) and let
+// round_ceil / round_half_even fall through to truncation; it now routes through
+// the shared round_quotient so every mode rounds in value space.
+TEST_CASE("cross-grid conversion rounds every mode in value space", "[round][convert]")
+{
+  using Src = bound<{{-10, 10}, notch<1, 2>}>;        // half-steps, spans negatives
+  using Dn  = bound<{-10, 10}, round_nearest>;
+  using Df  = bound<{-10, 10}, round_floor>;
+  using Dc  = bound<{-10, 10}, round_ceil>;
+  using De  = bound<{-10, 10}, round_half_even>;
+
+  Src s{rational{-5, 2}};                              // -2.5, on the source grid
+  REQUIRE(static_cast<rational>(Dn{s}) == -3);         // half away (was -2)
+  REQUIRE(static_cast<rational>(Df{s}) == -3);         // floor
+  REQUIRE(static_cast<rational>(Dc{s}) == -2);         // ceil  (was -3: truncated)
+  REQUIRE(static_cast<rational>(De{s}) == -2);         // tie -> even (was -3)
+
+  Src s2{rational{-7, 2}};                             // -3.5
+  REQUIRE(static_cast<rational>(De{s2}) == -4);        // tie -> even
+  REQUIRE(static_cast<rational>(Dc{s2}) == -3);        // ceil
+
+  Src p{rational{5, 2}};                               // +2.5 (positives unaffected)
+  REQUIRE(static_cast<rational>(Dn{p}) ==  3);
+  REQUIRE(static_cast<rational>(De{p}) ==  2);
+}

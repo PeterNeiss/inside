@@ -94,6 +94,18 @@ TEST_CASE("Q-format division honours the rounding mode", "[div][round][qformat]"
   // 200/3 = 66.6667 → on the 1/256 grid: nearest = 17067/256, truncate = 17066/256.
   REQUIRE(static_cast<rational>(*(Qn{200.0} / Qn{3.0})) == rational{17067u, 256});
   REQUIRE(static_cast<rational>(*(Qt{200.0} / Qt{3.0})) == rational{17066u, 256});
+
+  // floor / ceil / half_even also honoured (round_uquotient — Lower == 0, so the
+  // quotient is non-negative; these arms were previously untested).
+  using Qf = bound<{{0, 255}, notch<1, 256>}, round_floor>;
+  using Qc = bound<{{0, 255}, notch<1, 256>}, round_ceil>;
+  using Qe = bound<{{0, 255}, notch<1, 256>}, round_half_even>;
+  REQUIRE(static_cast<rational>(*(Qf{200.0} / Qf{3.0})) == rational{17066u, 256});  // floor
+  REQUIRE(static_cast<rational>(*(Qc{200.0} / Qc{3.0})) == rational{17067u, 256});  // ceil
+  // exact ties on the 1/256 grid: 1.5/256 → 2 (even), 2.5/256 → 2 (even).
+  REQUIRE(static_cast<rational>(*(Qe{rational{3, 256}} / Qe{2.0})) == rational{2u, 256});
+  REQUIRE(static_cast<rational>(*(Qe{rational{5, 256}} / Qe{2.0})) == rational{2u, 256});
+  REQUIRE(static_cast<rational>(*(Qn{rational{5, 256}} / Qn{2.0})) == rational{3u, 256});  // nearest tie
 }
 
 namespace

@@ -134,11 +134,14 @@ TEST_CASE("bnd::math::sin: bit-exact sweep", "[cmath][sin][constexpr]")
 
   // Mirror across π: sin(π + θ) = -sin(θ). Pin the sign-flip path.
   static_assert(sin_q14(32768 + 65536/8) == -11585);
-  static_assert(sin_q14(32768 + 65536/6) == -14188);
+  // sin(π+π/3) = -0.86603 → Q.14 -14188.96 → round-half-away-from-zero = -14189
+  // (the cross-grid store into the Q.14 grid now rounds the value, not the
+  // non-negative offset, so negatives round away from zero like division).
+  static_assert(sin_q14(32768 + 65536/6) == -14189);
 
   // Mirror across 2π via raw wrap: phase 65535 ≈ 2π - δ → sin ≈ -δ.
-  // Tiny negative number that fits a single Q.14 ULP after rounding.
-  static_assert(sin_q14(65535) == -1);   // double-rounding shift
+  // -δ ≈ -9.59e-5 → Q.14 -1.571 → round-half-away-from-zero = -2.
+  static_assert(sin_q14(65535) == -2);
 }
 
 //---------------------------------------------------------------------------
