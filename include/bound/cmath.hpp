@@ -287,6 +287,12 @@ namespace bnd::math
     inline constexpr bool grid_fast_store =
         Notch<Out>.Numerator == 1
         && !bnd::detail::rational_raw<Out>
+        // `real` (double-backed) storage holds the VALUE in its raw, not an
+        // offset index — `raw_from_offset` below would store the index as the
+        // double. Route those through the rational fallback `Out{r}` instead
+        // (which snaps the value via store_real). Mirrors the same guard in
+        // `fmod_int_fast`.
+        && !bnd::detail::real_raw<Out>
         && (BoundPolicy<Out> & round_nearest) == round_nearest
         && (std::signed_integral<bnd::detail::raw_t<Out>>
             || bnd::detail::NotchCount<Out>

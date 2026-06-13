@@ -173,4 +173,43 @@ TEST_CASE("dbl: circle<M> degree angle uses the double engine", "[dbl][real][cir
   REQUIRE(std::fabs(double(s180)) < 1e-15);
 }
 
+// The algebraic tier (abs/floor/ceil/round/trunc/fmod) is exercised at compile
+// time in test_cmath.cpp — but that whole file is `#ifdef BND_MATH_FIXED`, so on
+// the default double engine these functions had NO runtime coverage at all. They
+// route a power-of-two-denominator result through `store_grid`, whose integer
+// fast path used to mis-store a `real` (double-backed) result as its grid INDEX
+// (e.g. fmod(7,3) came out 147448 instead of 1). This pins the double-engine
+// algebraic tier on `real` bounds against std::.
+TEST_CASE("dbl: algebraic tier on real bounds matches std::", "[dbl][real][algebraic]")
+{
+  using in_t  = bound<{{-8, 8}, notch<1, 16384>}, round_nearest | real>;
+  using int_t = bound<{{-8, 8}, notch<1>},        round_nearest | real>;
+  using abs_t = bound<{{0, 8},  notch<1, 16384>}, round_nearest | real>;
+
+  SECTION("fmod keeps the dividend's sign (truncated division)")
+  {
+    REQUIRE(double(in_t{math::fmod(in_t{7.0},  in_t{3.0})}) ==  std::fmod(7.0, 3.0));   // 1
+    REQUIRE(double(in_t{math::fmod(in_t{-7.0}, in_t{3.0})}) ==  std::fmod(-7.0, 3.0));  // -1
+    REQUIRE(double(in_t{math::fmod(in_t{5.5},  in_t{2.0})}) ==  std::fmod(5.5, 2.0));   // 1.5
+    REQUIRE(double(in_t{math::fmod(in_t{7.0},  in_t{2.5})}) ==  std::fmod(7.0, 2.5));   // 2
+  }
+
+  SECTION("floor / ceil / round / trunc")
+  {
+    REQUIRE(double(int_t{math::floor(in_t{1.7})})  == std::floor(1.7));   //  1
+    REQUIRE(double(int_t{math::floor(in_t{-1.3})}) == std::floor(-1.3));  // -2
+    REQUIRE(double(int_t{math::ceil(in_t{-1.3})})  == std::ceil(-1.3));   // -1
+    REQUIRE(double(int_t{math::ceil(in_t{1.2})})   == std::ceil(1.2));    //  2
+    REQUIRE(double(int_t{math::round(in_t{1.5})})  == 2.0);               // half away from 0
+    REQUIRE(double(int_t{math::trunc(in_t{-1.7})}) == std::trunc(-1.7));  // -1
+  }
+
+  SECTION("abs")
+  {
+    REQUIRE(double(abs_t{math::abs(in_t{-2.5})}) == 2.5);
+    REQUIRE(double(abs_t{math::abs(in_t{ 2.5})}) == 2.5);
+    REQUIRE(double(abs_t{math::abs(in_t{ 0.0})}) == 0.0);
+  }
+}
+
 #endif // !BND_MATH_FIXED

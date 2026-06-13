@@ -216,6 +216,11 @@ namespace bnd
     {
       const int drop = den_pow - max_pow;
       significand = (drop >= 64) ? 0 : (significand >> drop);
+      // Flushed below the representable scale: return the canonical zero {0,1}.
+      // Callers (notably the rational(double) ctor) take this result verbatim
+      // without re-trimming, so leaking a non-canonical {0, 2^62} would break
+      // the defaulted, structural rational::operator==.
+      if (significand == 0) return {0, 1};
       den_pow = max_pow;
     }
     umax den = umax{1} << den_pow;
