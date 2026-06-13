@@ -37,7 +37,7 @@ safe_pct p = 150;                          // p == 100
 ## Feature highlights
 
 - **Policy-driven assignment** — `clamp`, `wrap`, `sentinel`, `round_nearest`,
-  `ignore_round`, plus `on_clamp` / `on_wrap` / `on_overflow` callbacks and
+  `snapping`, plus `on_clamp` / `on_wrap` / `on_overflow` callbacks and
   an `std::error_code` mode for throw-free error reporting. Representation
   flags (`real`, `exact`, `direct`, `indexed`) select how the raw value is
   stored. See [docs/policies.md](docs/policies.md).

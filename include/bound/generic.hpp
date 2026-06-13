@@ -403,29 +403,83 @@ namespace bnd
     inline constexpr bool HasPolicy = (BoundPolicy<B> & F) == F || plain<P>::test(F);
 
     // Round the exact non-negative offset quotient num/den (den >= 1) to an
-    // integer notch index per L's effective rounding policy. round_nearest is
-    // half-away-from-zero; round_half_even breaks ties to even; round_ceil rounds
-    // up; round_floor — and any policy with no rounding flag — truncate (== floor
-    // for a non-negative quotient). Shared by assignment's apply_clamp and
-    // store_checked; arm order matches the original inline dispatch.
+    // integer notch index per L's effective rounding policy.
+    //
+    // The tie/sign rules are specified in VALUE space, not offset space, so that
+    // assigning a value rounds it the same way dividing down to that value does
+    // (detail::div_rounded is the reference): round_nearest is half-AWAY-FROM-
+    // ZERO of the value, round_half_even breaks ties to an even value, bare
+    // snapping truncates TOWARD ZERO. The offset num/den is always >= 0 (the
+    // value's sign was lost by subtracting Lower), so we rebuild the signed
+    // value-index numerator  NUM = m*den + num,  where m = Lower/Notch is the
+    // grid's value index at its lower bound, round NUM/den exactly as
+    // div_rounded rounds a signed quotient, and return the offset index J - m.
+    //
+    // m is integral for every dyadic / integer-aligned / Q-format grid (Lower a
+    // multiple of Notch). For the rare grid where it is not, "even value" is
+    // undefined and the value's sign cannot shift a tie meaningfully the same
+    // way, so we fall back to the historical offset-based rounding.
     template <boundable L, typename P>
     [[nodiscard]] constexpr umax round_quotient(umax num, umax den) noexcept
     {
-      if constexpr (HasPolicy<L, P, round_nearest>)
-        return (num + den / 2) / den;
-      else if constexpr (HasPolicy<L, P, round_floor>)
-        return num / den;
-      else if constexpr (HasPolicy<L, P, round_ceil>)
-        return (num + den - 1) / den;
-      else if constexpr (HasPolicy<L, P, round_half_even>)
+      constexpr rational zl =
+          (Notch<L> == rational{0})
+            ? rational{0}
+            : (Lower<L> / Notch<L>).value_or(rational{0});
+      constexpr bool vidx = (zl.Denominator == 1 || zl.Denominator == -1);
+      constexpr imax m = vidx
+          ? (zl.Denominator < 0 ? -static_cast<imax>(zl.Numerator)
+                                :  static_cast<imax>(zl.Numerator))
+          : imax{0};
+
+      if constexpr (!vidx)
       {
-        umax q = num / den, r = num % den;
-        if (r * 2 < den) return q;
-        if (r * 2 > den) return q + 1;
-        return (q & 1) ? q + 1 : q;
+        // Exotic Lower/Notch (no integral value index) — historical offset rule.
+        if constexpr (HasPolicy<L, P, round_nearest>)        return (num + den / 2) / den;
+        else if constexpr (HasPolicy<L, P, round_floor>)     return num / den;
+        else if constexpr (HasPolicy<L, P, round_ceil>)      return (num + den - 1) / den;
+        else if constexpr (HasPolicy<L, P, round_half_even>)
+        {
+          umax q = num / den, r = num % den;
+          if (r * 2 < den) return q;
+          if (r * 2 > den) return q + 1;
+          return (q & 1) ? q + 1 : q;
+        }
+        else                                                 return num / den;
       }
       else
-        return num / den;
+      {
+        // Round the signed value-index NUM/di exactly like detail::div_rounded.
+        const imax di  = static_cast<imax>(den);
+        const imax NUM = m * di + static_cast<imax>(num);
+        const imax t   = NUM / di;                 // C++ truncation toward zero
+        const imax rr  = NUM % di;                 // sign of NUM, |rr| < di
+        imax J;
+        if (rr == 0)
+          J = t;
+        else
+        {
+          const bool neg = NUM < 0;
+          const umax ar  = (rr < 0) ? ~static_cast<umax>(rr) + 1u
+                                    :  static_cast<umax>(rr);
+          const umax ab  = static_cast<umax>(di);  // ab - ar safe: 0 < ar < ab
+          if constexpr (HasPolicy<L, P, round_nearest>)        // half away from zero
+            J = (ar >= ab - ar) ? (neg ? t - 1 : t + 1) : t;
+          else if constexpr (HasPolicy<L, P, round_floor>)     // toward -inf
+            J = neg ? t - 1 : t;
+          else if constexpr (HasPolicy<L, P, round_ceil>)      // toward +inf
+            J = neg ? t : t + 1;
+          else if constexpr (HasPolicy<L, P, round_half_even>) // tie -> even value
+          {
+            if      (ar < ab - ar) J = t;
+            else if (ar > ab - ar) J = neg ? t - 1 : t + 1;
+            else                   J = (t & 1) == 0 ? t : (neg ? t - 1 : t + 1);
+          }
+          else                                                 // snapping: toward zero
+            J = t;
+        }
+        return static_cast<umax>(J - m);           // offset index k = J - m (>= 0)
+      }
     }
 
     // Forward decl — defined in assignment.hpp
