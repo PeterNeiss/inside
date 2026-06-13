@@ -49,8 +49,8 @@ int main()
   // pad ducked.
   db_t gain[4] = { db_t{2.5}, db_t{0.0}, db_t{-6.0}, db_t{-12.0} };
 
-  // Hoist the std::pow call out of the per-sample loop: linear gain is
-  // constant across the buffer.
+  // Hoist the per-channel gain computation out of the per-sample loop: the
+  // linear gain (pow_base<10>) is constant across the buffer.
   gain_t lin[4] = { db_to_linear(gain[0]), db_to_linear(gain[1]),
                     db_to_linear(gain[2]), db_to_linear(gain[3]) };
 

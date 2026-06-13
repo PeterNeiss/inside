@@ -443,3 +443,26 @@ TEST_CASE("scalar-operand ban: guidance overloads pinned",
   REQUIRE(b == 6);
   REQUIRE(b < 10);
 }
+
+TEST_CASE("bound-space geometry helpers: dot / cross / lerp", "[bound][arithmetic][geometry]")
+{
+  using coord = bound<{-10, 10}>;
+
+  // dot(a, b) = ax*bx + ay*by ; cross(a, b) = ax*by - ay*bx (z-component).
+  STATIC_REQUIRE(dot  (coord{3}, coord{4}, coord{1}, coord{2}) == 11);
+  STATIC_REQUIRE(cross(coord{3}, coord{4}, coord{1}, coord{2}) ==  2);
+
+  // Perpendicular vectors: dot is zero, cross is the signed area.
+  STATIC_REQUIRE(dot  (coord{1}, coord{0}, coord{0}, coord{1}) ==  0);
+  STATIC_REQUIRE(cross(coord{1}, coord{0}, coord{0}, coord{1}) ==  1);
+
+  // Each result widens past either input grid — no overflow possible.
+  STATIC_REQUIRE(!std::same_as<decltype(dot(coord{1}, coord{0}, coord{0}, coord{1})), coord>);
+
+  // lerp(a, b, t) = a + (b - a) * t, with t a [0, 1] fixed-point bound.
+  using val = bound<{0, 10}>;
+  using t_t = bound<{{0, 1}, notch<1, 4>}, round_nearest>;
+  STATIC_REQUIRE(lerp(val{2}, val{8}, t_t{0})   == 2);   // t = 0 -> a
+  STATIC_REQUIRE(lerp(val{2}, val{8}, t_t{1})   == 8);   // t = 1 -> b
+  STATIC_REQUIRE(lerp(val{2}, val{8}, t_t{0.5}) == 5);   // midpoint (exact)
+}

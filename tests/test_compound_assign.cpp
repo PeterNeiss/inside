@@ -12,24 +12,24 @@ TEST_CASE("compound assignment: int RHS", "[bound][compound]")
 
   // Promote each chain to a constexpr lambda — every step is in range, so
   // the consteval throw branch in assignment::assign is dead code.
-  STATIC_REQUIRE([]{ u100 a{50}; a -= 10; return a.value(); }() == 40);
-  STATIC_REQUIRE([]{ u100 a{40}; a *=  2; return a.value(); }() == 80);
-  STATIC_REQUIRE([]{ u100 a{80}; a /=  3; return a.value(); }() == 26);  // trunc toward zero
-  STATIC_REQUIRE([]{ u100 a{26}; a /=  2; return a.value(); }() == 13);
+  STATIC_REQUIRE([]{ u100 a{50}; a -= 10; return a.as<imax>(); }() == 40);
+  STATIC_REQUIRE([]{ u100 a{40}; a *=  2; return a.as<imax>(); }() == 80);
+  STATIC_REQUIRE([]{ u100 a{80}; a /=  3; return a.as<imax>(); }() == 26);  // trunc toward zero
+  STATIC_REQUIRE([]{ u100 a{26}; a /=  2; return a.as<imax>(); }() == 13);
 
-  STATIC_REQUIRE([]{ u100 b{17};  b %=  5; return b.value(); }() ==  2);
-  STATIC_REQUIRE([]{ u100 c{100}; c %= 10; return c.value(); }() ==  0);
+  STATIC_REQUIRE([]{ u100 b{17};  b %=  5; return b.as<imax>(); }() ==  2);
+  STATIC_REQUIRE([]{ u100 c{100}; c %= 10; return c.as<imax>(); }() ==  0);
 }
 
 TEST_CASE("compound assignment: boundable RHS", "[bound][compound]")
 {
   using u100 = bound<{0, 100}>;
-  STATIC_REQUIRE([]{ u100 a{50}, d{20}; a -= d; return a.value(); }() == 30);
+  STATIC_REQUIRE([]{ u100 a{50}, d{20}; a -= d; return a.as<imax>(); }() == 30);
 
   using ui = bound<{0, 100}, snapping>;
-  STATIC_REQUIRE([]{ ui d{50}, two{2}; d *= two; return d.value(); }() == 100);
-  STATIC_REQUIRE([]{ ui e{60}, three{3}; e /= three; return e.value(); }() == 20);
-  STATIC_REQUIRE([]{ ui f{17}, five{5}; f %= five; return f.value(); }() == 2);
+  STATIC_REQUIRE([]{ ui d{50}, two{2}; d *= two; return d.as<imax>(); }() == 100);
+  STATIC_REQUIRE([]{ ui e{60}, three{3}; e /= three; return e.as<imax>(); }() == 20);
+  STATIC_REQUIRE([]{ ui f{17}, five{5}; f %= five; return f.as<imax>(); }() == 2);
 }
 
 TEST_CASE("compound /= 0 reports error by default", "[bound][compound]")
@@ -89,12 +89,12 @@ TEST_CASE("compound /= 0 with real RHS reports error", "[bound][compound][real]"
 TEST_CASE("increment / decrement", "[bound][compound][inc]")
 {
   using u10 = bound<{0, 10}>;
-  STATIC_REQUIRE([]{ u10 a{5}; ++a; return a.value(); }() == 6);
-  STATIC_REQUIRE([]{ u10 a{5}; a++; return a.value(); }() == 6);
-  STATIC_REQUIRE([]{ u10 a{5}; --a; return a.value(); }() == 4);
-  STATIC_REQUIRE([]{ u10 a{5}; a--; return a.value(); }() == 4);
+  STATIC_REQUIRE([]{ u10 a{5}; ++a; return a.as<imax>(); }() == 6);
+  STATIC_REQUIRE([]{ u10 a{5}; a++; return a.as<imax>(); }() == 6);
+  STATIC_REQUIRE([]{ u10 a{5}; --a; return a.as<imax>(); }() == 4);
+  STATIC_REQUIRE([]{ u10 a{5}; a--; return a.as<imax>(); }() == 4);
 
   // post-inc/dec returns the old value
-  STATIC_REQUIRE([]{ u10 a{5}; auto r = a++; return r.value(); }() == 5);
-  STATIC_REQUIRE([]{ u10 a{5}; auto r = a--; return r.value(); }() == 5);
+  STATIC_REQUIRE([]{ u10 a{5}; auto r = a++; return r.as<imax>(); }() == 5);
+  STATIC_REQUIRE([]{ u10 a{5}; auto r = a--; return r.as<imax>(); }() == 5);
 }

@@ -4,7 +4,8 @@
 //   - Per-sensor fixed-point grids (different lower/upper/notch each)
 //   - `will_conversion_overflow` predicate as a soft outlier filter
 //   - Rational-weighted average to keep the fused value exact
-//   - `clamp_round` to snap the fused value onto the output grid
+//   - `clamp | round_nearest` on the output type to snap the fused value onto
+//     the output grid (no explicit `clamp_round` cast)
 
 #include <iostream>
 

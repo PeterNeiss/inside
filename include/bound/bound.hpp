@@ -38,7 +38,7 @@ namespace bnd::math
 // bound — public-facing struct that ties everything together.
 //
 // This header is the one users include. It defines `bound<G, P>` and its
-// per-instance operators (assignment, negation, `value()`, `policy()`,
+// per-instance operators (assignment, negation, `policy()`,
 // `with_clamp/wrap/round/...`, increment, compare). The free-function
 // arithmetic (`add`, `sub`, `mul`, `div`, `mod` with policy/action overloads)
 // and the `bound_range` iterator helper also live here.
@@ -107,7 +107,7 @@ namespace bnd
     // already opted out of every range/round/zero check is the only one where
     // handing out a writable storage handle is honest. `&b.raw()` is then a
     // `raw_type*` a C routine can fill in place. Writing an out-of-range raw
-    // into a checked/clamp/wrap/sentinel bound — which would make `value()`
+    // into a checked/clamp/wrap/sentinel bound — which would make conversions
     // and comparisons lie — is therefore a compile error, not a silent break.
     [[nodiscard]] constexpr raw_type const& raw() const noexcept { return Raw; }
     [[nodiscard]] constexpr raw_type&       raw()       noexcept
@@ -121,12 +121,14 @@ namespace bnd
     // case: a math result) is cast straight to double; a bound rhs goes through
     // its exact rational view. Other storage routes through the policy-checked
     // `assignment` engine.
+    private:
     template <numeric A>
     constexpr double to_double(A const& value)
     {
       if constexpr (std::is_arithmetic_v<A>) return value;
       else                                   return static_cast<double>(detail::as_rational(value));
     }
+    public:
     // Snap a value onto `real` (double-backed) storage: it lands on the grid
     // exactly like any other bound (the grid is dyadic, so the snap is lossless)
     // — `real` changes the representation/speed, not the obey-the-grid contract.
@@ -235,19 +237,9 @@ namespace bnd
     constexpr bound& operator=(slim::optional<B> const& other)
     { store_value(other.value()); return *this; }
 
-    [[nodiscard]] constexpr auto value() const
-    {
-      if constexpr (detail::rational_raw<bound>)
-        return Raw;
-      else if constexpr (!detail::index_raw<bound>)
-        return static_cast<std::common_type_t<raw_type, int>>(Raw);
-      else
-        return detail::as_rational(*this);
-    }
-
     // Trusted construction from a storage-layout raw value. No validation —
     // the caller asserts `r` is a valid slot for this grid. Mirrors the public
-    // `Raw` member and `value()`; the supported entry point for tests, fast
+    // `Raw` member; the supported entry point for tests, fast
     // paths, and same-grid raw transfer (e.g. `unchecked_cast`).
     [[nodiscard]] static constexpr bound from_raw(raw_type r) noexcept
     { bound b; b.Raw = r; return b; }
@@ -273,12 +265,15 @@ namespace bnd
     // extractable value, so to<T>() reports overflow. Routes through the
     // canonical is_sentinel(); compiles to a constant `false` under every other
     // policy, where the reserved slot is unreachable (storage promotion
-    // guarantees no valid value lands on it).
+    // guarantees no valid value lands on it). Internal: consumed only by the
+    // `to<T>()` overloads below.
+    private:
     [[nodiscard]] constexpr bool is_sentinel_under_policy() const noexcept
     {
       if constexpr ((P & sentinel) != 0) return is_sentinel();
       else                               return false;
     }
+    public:
 
     // Conversion summary:
     //   operator imax     — implicit. Available only when the grid is
@@ -438,32 +433,10 @@ namespace bnd
       return detail::abs_den(r.Denominator);
     }
 
-    // Member-syntax aliases for the free functions in `bnd::math` — these
-    // only compile when <bound/cmath.hpp> is also included (the bodies refer
-    // to names declared there). No-arg form picks the auto-deduced output
-    // grid; the templated form accepts an explicit `Out` bound.
-    //
-    //   b.floor()       // bound on ⌊In⌋ interval, notch 1
-    //   b.floor<Out>()  // explicit Out
-    [[nodiscard]] constexpr auto floor() const noexcept { return bnd::math::floor(*this); }
-    template <typename Out>
-    [[nodiscard]] constexpr Out floor() const noexcept { return bnd::math::floor_impl<Out>(*this); }
-
-    [[nodiscard]] constexpr auto ceil() const noexcept { return bnd::math::ceil(*this); }
-    template <typename Out>
-    [[nodiscard]] constexpr Out ceil() const noexcept { return bnd::math::ceil_impl<Out>(*this); }
-
-    [[nodiscard]] constexpr auto round() const noexcept { return bnd::math::round(*this); }
-    template <typename Out>
-    [[nodiscard]] constexpr Out round() const noexcept { return bnd::math::round_impl<Out>(*this); }
-
-    [[nodiscard]] constexpr auto trunc() const noexcept { return bnd::math::trunc(*this); }
-    template <typename Out>
-    [[nodiscard]] constexpr Out trunc() const noexcept { return bnd::math::trunc_impl<Out>(*this); }
-
-    [[nodiscard]] constexpr auto abs() const noexcept { return bnd::math::abs(*this); }
-    template <typename Out>
-    [[nodiscard]] constexpr Out abs() const noexcept { return bnd::math::abs_impl<Out>(*this); }
+    // Integer reductions (floor/ceil/round/trunc) and abs live as free
+    // functions in `bnd::math` — `bnd::math::floor(b)` etc. (auto-deduced Out)
+    // or `bnd::math::floor_impl<Out>(b)` for an explicit output grid. There is
+    // deliberately no member-syntax alias: one spelling, in `<bound/cmath.hpp>`.
 
     [[nodiscard]] constexpr negative operator-() const
     {
@@ -511,6 +484,8 @@ namespace bnd
     // Shared builder for the single-action fluent hooks below. Merges the tag's
     // implied policy flag, then returns a policy_ref bound to *this carrying the
     // tagged action. Each on_* hook is a thin wrapper that fixes the tag.
+    // Internal: consumed only by the on_* hooks below.
+    private:
     template <template <class> class Tag, typename A>
     [[nodiscard]] constexpr auto make_action_ref(A&& action)
     {
@@ -519,6 +494,7 @@ namespace bnd
        return detail::policy_ref<bound, decltype(pol), tag>{
          *this, pol, tag{std::forward<A>(action)}};
     }
+    public:
 
     template <typename A>
     [[nodiscard]] constexpr auto on_wrap(A&& a)     { return make_action_ref<on_wrap_t>(std::forward<A>(a)); }

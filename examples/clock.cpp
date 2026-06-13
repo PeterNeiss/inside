@@ -41,7 +41,7 @@ struct clock24
   friend std::ostream& operator<<(std::ostream& os, const clock24& c)
   {
     auto pad = [&](auto b) {
-      if (b.value() < 10) os << '0';
+      if (b < 10) os << '0';
       os << b;
     };
     pad(c.hours); os << ':'; pad(c.minutes); os << ':'; pad(c.seconds);

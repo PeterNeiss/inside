@@ -27,5 +27,16 @@ int main()
   for (auto i : bound_range<{0, 9}>{5})
     std::cout << "  arr[" << i << "] = " << arr[i] << "\n";
 
+  // `.indexed()` pairs each bound with its 0-based position (the bound-range
+  // stand-in for std::views::enumerate, working on C++20 too).
+  std::cout << "indexed():" << "\n";
+  for (auto [pos, i] : bound_range<{0, 9}>{}.indexed())
+    std::cout << "  #" << pos << " -> arr[" << i << "] = " << arr[i] << "\n";
+
+  // `.strided(n)` visits every n-th slot — here every other index.
+  std::cout << "strided(2):" << "\n";
+  for (auto i : bound_range<{0, 9}>{}.strided(2))
+    std::cout << "  arr[" << i << "] = " << arr[i] << "\n";
+
   return 0;
 }

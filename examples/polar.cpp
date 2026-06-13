@@ -72,9 +72,8 @@ int main()
 
     angle_t a{angle};
 
-    auto m_r = magnitude;
-    coord_t rx{m_r * math::cos(a)};
-    coord_t ry{m_r * math::sin(a)};
+    coord_t rx{magnitude * math::cos(a)};
+    coord_t ry{magnitude * math::sin(a)};
 
     std::cout << "  (" << x << ", " << y << ") → (" << rx << ", " << ry << ")\n";
   }

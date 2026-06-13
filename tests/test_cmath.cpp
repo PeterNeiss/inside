@@ -184,14 +184,14 @@ TEST_CASE("bnd::math::sin(circle): drift-free wrap", "[cmath][sin][circle][const
 {
   static_assert([]{
     math::circle<360> b = 30;
-    for (int k = 0; k < 1000; ++k) b = b.value() + 360;   // wrap 1000 times
+    for (int k = 0; k < 1000; ++k) b = b.as<imax>() + 360;   // wrap 1000 times
     return b.raw();
   }() == math::circle<360>{30}.raw());
 
   // …and the amplitude after all that wrapping equals sin(30°) bit-for-bit.
   static_assert([]{
     math::circle<360> b = 30;
-    for (int k = 0; k < 1000; ++k) b = b.value() + 360;
+    for (int k = 0; k < 1000; ++k) b = b.as<imax>() + 360;
     math::amp<16384> y; math::sin(b, y);
     return static_cast<int>(y.raw()) - 16384;
   }() == 8192);
@@ -1254,29 +1254,29 @@ TEST_CASE("bnd::math: full auto-form chain", "[cmath][auto]")
   REQUIRE(near_rad(rational{angle}, kQrtPi));
 }
 
-TEST_CASE("bound member math methods delegate to bnd::math",
-          "[cmath][member]")
+TEST_CASE("bnd::math reductions on a bound",
+          "[cmath][reduce]")
 {
   using fxd = bound<{{-3.5_r, 3.5_r}, notch<1, 4>}>;
   fxd x{-1.75_r};
   fxd y{2.25_r};
 
-  // No-arg form picks the auto-deduced output grid (integer-valued, notch 1).
-  REQUIRE(x.floor() == -2);
-  REQUIRE(x.ceil()  == -1);
-  REQUIRE(x.round() == -2);
-  REQUIRE(x.trunc() == -1);
-  REQUIRE(x.abs()   == 1.75_r);
+  // Auto-deduced output grid (integer-valued, notch 1).
+  REQUIRE(math::floor(x) == -2);
+  REQUIRE(math::ceil (x) == -1);
+  REQUIRE(math::round(x) == -2);
+  REQUIRE(math::trunc(x) == -1);
+  REQUIRE(math::abs  (x) == 1.75_r);
 
-  REQUIRE(y.floor() ==  2);
-  REQUIRE(y.ceil()  ==  3);
-  REQUIRE(y.round() ==  2);
-  REQUIRE(y.trunc() ==  2);
+  REQUIRE(math::floor(y) ==  2);
+  REQUIRE(math::ceil (y) ==  3);
+  REQUIRE(math::round(y) ==  2);
+  REQUIRE(math::trunc(y) ==  2);
 
   // Explicit Out form picks a caller-chosen grid.
   using out = bound<{-5, 5}>;
-  REQUIRE(x.floor<out>() == -2);
-  REQUIRE(y.ceil<out>()  ==  3);
+  REQUIRE(math::floor_impl<out>(x) == -2);
+  REQUIRE(math::ceil_impl <out>(y) ==  3);
 }
 
 TEST_CASE("bnd::math: decimal probe at the bound level",

@@ -3,7 +3,8 @@
 // Demonstrates:
 //   - Fixed-point grids for error / integral / derivative / gain
 //   - `add_all` to fold the three weighted terms into a single sum
-//   - `clamp_round` to saturate the actuator command to its physical range
+//   - `clamp | round_nearest` on the output type to saturate AND snap the
+//     actuator command to its physical range in one `output_t{raw}` write
 //   - `on_clamp` on the integrator to detect anti-wind-up saturation
 
 #include <iostream>

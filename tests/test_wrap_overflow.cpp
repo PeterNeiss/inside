@@ -23,9 +23,9 @@ namespace
   // Reference: reduce v into [lo, hi] by wrapping (range = hi - lo + 1).
   long long wrap_ref(long long v, long long lo, long long hi)
   {
-    __int128 range = (__int128)hi - (__int128)lo + 1;
-    __int128 r = ((( (__int128)v - (__int128)lo) % range) + range) % range;
-    return (long long)(r + lo);
+    __int128 range = static_cast<__int128>(hi) - static_cast<__int128>(lo) + 1;
+    __int128 r = (((static_cast<__int128>(v) - static_cast<__int128>(lo)) % range) + range) % range;
+    return static_cast<long long>(r + lo);
   }
 }
 
