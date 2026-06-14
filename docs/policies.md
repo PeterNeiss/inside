@@ -198,15 +198,15 @@ std::error_code ec;
 
 // Construction with error code
 bound<{0, 100}> x(150, ec);
-// ec is set to EDOM, x is unchanged (default-constructed)
+// ec is set to EDOM; on error x's value is ill-defined — check ec before reading x
 
 // Per-operation with error code
 bound<{0, 100}> y{50};
 y.policy(ec) = 200;
-// ec is set to EDOM, y remains 50
+// ec is set to EDOM, y remains 50 (a failed assignment leaves the prior value intact)
 
 // Free arithmetic with error code
-auto sum = add(x, y, ec);
+auto sum = add(y, y, ec);
 // overflow / range errors captured in ec
 
 // Combining flags with error code

@@ -99,8 +99,12 @@ namespace bnd
     [[nodiscard]] constexpr raw_type&       raw()       noexcept
       requires ((P & unsafe) == unsafe) { return Raw; }
 
-    constexpr bound() requires ((P & checked) == 0) = default; // trivial when not checked
-    constexpr bound() requires ((P & checked) != 0) : Raw{} {} // zero-init under checked
+    // Trivial default ctor — Raw is left uninitialized, like a built-in scalar: a
+    // default-constructed bound has no value until assigned. (A previous checked
+    // overload zero-filled Raw, which decoded to an out-of-range value or the {0,0}
+    // rational sentinel for grids not containing 0 — a defined-but-invalid footgun.
+    // Value-init `bound{}` still zero-fills where a zero raw is genuinely wanted.)
+    constexpr bound() = default;
 
     // `real` storage holds the value as a double directly. An arithmetic rhs
     // casts straight to double; a bound rhs goes through its exact rational view.
@@ -172,20 +176,21 @@ namespace bnd
 
     template <numeric A, typename Pol>
       requires bound_assignable<bound, A, P>
-    constexpr bound(A value, Pol&& pol) : Raw{}   // defined value if assign reports
-    {                                             // an error (ec mode) instead of writing
+    constexpr bound(A value, Pol&& pol)   // if assign reports an error (ec mode), Raw is
+    {                                     // left ill-defined — check the error before reading
       if constexpr (detail::real_raw<bound>)
         store_real(to_double(value));
       else
         detail::assignment<bound, A>::assign(*this, value, pol);
     }
 
-    // Error-code construction: `bound x(value, ec)`. Needs its own overload (a
-    // raw error_code would bind the Pol&& template above). On out-of-range, ec is
-    // set and the bound keeps its default value.
+    // Error-code construction: `bound x(value, ec)`. Needs its own overload (a raw
+    // error_code would bind the Pol&& template above). On a reported (out-of-range)
+    // error, ec is set and the bound's value is ill-defined — do not read it without
+    // checking ec first.
     template <numeric A>
       requires bound_assignable<bound, A, P>
-    constexpr bound(A value, std::error_code& ec) : Raw{}
+    constexpr bound(A value, std::error_code& ec)
     {
       if constexpr (detail::real_raw<bound>)
         store_real(to_double(value));

@@ -156,7 +156,10 @@ TEST_CASE("trivial-type guarantees", "[bound][trivial]")
 
   STATIC_REQUIRE(std::is_trivially_copyable_v<bound<{0, 100}>>);
   STATIC_REQUIRE(std::is_trivially_destructible_v<bound<{0, 100}>>);
-  STATIC_REQUIRE_FALSE(std::is_trivially_default_constructible_v<bound<{0, 100}>>);
+  // The default ctor is `= default` for every policy (no zero-fill), so even a
+  // `checked` bound is trivially default-constructible — and fully trivial.
+  STATIC_REQUIRE(std::is_trivially_default_constructible_v<bound<{0, 100}>>);
+  STATIC_REQUIRE(std::is_trivial_v<bound<{0, 100}>>);
 }
 
 TEST_CASE("type-alias smoke checks", "[bound][types]")

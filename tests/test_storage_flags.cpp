@@ -19,6 +19,17 @@
 using namespace bnd;
 using bnd::detail::rational;
 
+TEST_CASE("default ctor is trivial (no zero-fill footgun)", "[storage][default]")
+{
+  // The default ctor is `= default` for every policy — Raw is uninitialized,
+  // like a built-in scalar, rather than zero-filled to a possibly-invalid slot.
+  // checked is the default policy; rational/value/real storage all stay trivial.
+  STATIC_REQUIRE(std::is_trivially_default_constructible_v<bound<{0, 10}>>);          // index
+  STATIC_REQUIRE(std::is_trivially_default_constructible_v<bound<{-100, -5}>>);       // signed value
+  STATIC_REQUIRE(std::is_trivially_default_constructible_v<bound<grid{5}>>);          // rational (point grid)
+  STATIC_REQUIRE(std::is_trivially_default_constructible_v<bound<{{0, 10}, notch<1, 4>}, exact | round_nearest>>);
+}
+
 TEST_CASE("exact forces rational raw on any grid", "[storage][exact]")
 {
   // A notched grid that deduction would store as an integer index.
