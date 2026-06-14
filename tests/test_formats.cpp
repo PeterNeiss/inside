@@ -11,6 +11,22 @@ using namespace bnd::detail;
 //---------------------------------------------------------------------------
 // The whole point: each predefined type lands on its native byte width.
 //---------------------------------------------------------------------------
+TEST_CASE("counter saturates; ring_counter wraps", "[formats][counter]")
+{
+  STATIC_REQUIRE(std::is_same_v<counter<5>,      bound<{0, 5}, clamp>>);
+  STATIC_REQUIRE(std::is_same_v<ring_counter<5>, bound<{0, 5}, wrap>>);
+
+  counter<5> c{4};
+  ++c; ++c; ++c;                 // 4 -> 5 (saturates, never throws)
+  REQUIRE(c == 5);
+  --c; --c; --c; --c; --c; --c;  // floors at 0
+  REQUIRE(c == 0);
+
+  ring_counter<5> r{5};
+  ++r;                           // 5 -> 0 (wraps)
+  REQUIRE(r == 0);
+}
+
 TEST_CASE("formats map to native byte widths", "[formats][storage]")
 {
   // Native integers

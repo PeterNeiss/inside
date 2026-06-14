@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "bound/bound.hpp"
+#include "bound/formats.hpp"
 #include "bound/numeric_limits.hpp"
 #include "bound/predicates.hpp"
 #include "bound/print.hpp"
@@ -21,7 +22,7 @@ using namespace bnd;
 using latency_t = bound<{{0, 100}, notch<1, 10>}, round_nearest>;
 
 // 10 bins: 0-9.9, 10-19.9, ..., 90-100 ms.
-using bin_id_t  = bound<{0, 9}>;                // counter slot per bin
+using bin_id_t  = counter<9>;                   // saturating per-bin count (caps at bar height 9)
 using bin_idx_t = bound<{0, 9}, round_floor>;   // computed bin index (floor on assignment)
 
 int main()
@@ -36,8 +37,8 @@ int main()
      3.05,              // sub-notch (1/10 grid doesn't include 3.05) → counts as lossy
   };
 
-  int rejected = 0;
-  int lossy    = 0;
+  counter<1'000'000> rejected{0};
+  counter<1'000'000> lossy{0};
 
   for (double s : samples)
   {
@@ -53,9 +54,8 @@ int main()
     // bin index = floor(lat / 10 ms). `bin_idx_t` has `round_floor`, so
     // constructing it from a rational quotient snaps onto the integer grid.
     bin_idx_t bin{lat / just<10>};
-    // Saturate the counter at its max instead of overflowing the bin_id_t.
-    if (bins[bin] < bin_id_t{std::numeric_limits<bin_id_t>::max()})
-      ++bins[bin];
+    // `counter` saturates on `++`, so the bar caps at 9 — no manual guard.
+    ++bins[bin];
   }
 
   // bound_range iterates every bin index — works because the grid has

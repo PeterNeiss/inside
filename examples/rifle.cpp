@@ -26,6 +26,7 @@
 #include <string_view>
 
 #include "bound/bound.hpp"
+#include "bound/formats.hpp"
 #include "bound/print.hpp"
 
 using namespace bnd;
@@ -45,10 +46,10 @@ class rifle
 {
 public:
   magazine mag;
-  int  pulled_trigger = 0;
-  int  missed_shots   = 0;
-  int  reloads        = 0;
-  imax rounds_dropped = 0;                          // accumulates count_t values
+  counter<1'000'000> pulled_trigger{0};             // saturating event tallies
+  counter<1'000'000> missed_shots{0};
+  counter<1'000'000> reloads{0};
+  counter<1'000'000> rounds_dropped{0};             // accumulates count_t values
 };
 
 class player
@@ -57,7 +58,7 @@ public:
   using reserve_t = bound<{0, 200}, clamp>;
   reserve_t reserve{60};                            // two spare mags' worth
   rifle weapon;
-  int dry_clicks = 0;                               // mag empty AND reserve empty
+  counter<1'000'000> dry_clicks{0};                 // mag empty AND reserve empty
 
   // Pull the trigger once. Four outcomes:
   //   (a) mag empty AND reserve empty  -> dry click, no decrement.
@@ -94,12 +95,9 @@ void player::pull_trigger()
 
 void player::combat_reload()
 {
-  // Direct-init `imax dropped = bound` picks the bound's implicit
-  // `operator imax()` cleanly; the subsequent `imax += imax` would be
-  // ambiguous if we tried `imax += bound` directly (the bound has
-  // implicit conversions to both `imax` and `size_t`).
-  imax dropped = weapon.mag.rounds;
-  weapon.rounds_dropped += dropped;
+  // The partial mag is dropped; accumulate its round count. `rounds_dropped` is a
+  // saturating `counter`, so this stays bound += bound (the count_t magazine value).
+  weapon.rounds_dropped += weapon.mag.rounds;
 
   magazine::count_t shortfall = 0;
   reserve.on_clamp([&](auto&, auto over) { shortfall = -over; })

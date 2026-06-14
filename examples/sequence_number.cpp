@@ -9,6 +9,7 @@
 #include <iostream>
 
 #include "bound/bound.hpp"
+#include "bound/formats.hpp"
 #include "bound/print.hpp"
 
 using namespace bnd;
@@ -17,8 +18,8 @@ using namespace bnd;
 // sentinel slot, so use {0, 65534} — still wraps cleanly under `wrap`.
 using seq_t  = bound<{0, 65534}, wrap | snapping>;
 
-// Epoch counter — how many times the SEQ space has wrapped.
-using epoch_t = bound<{0, 1000}>;
+// Epoch counter — how many times the SEQ space has wrapped (saturating tally).
+using epoch_t = counter<1000>;
 
 int main()
 {

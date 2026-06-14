@@ -10,6 +10,7 @@
 #include <iostream>
 
 #include "bound/bound.hpp"
+#include "bound/formats.hpp"
 #include "bound/print.hpp"
 
 using namespace bnd;
@@ -36,7 +37,7 @@ struct pid
 
   integ_t integral{0};
   err_t   previous{0};
-  int     windup_events = 0;
+  counter<1'000'000> windup_events{0};
 
   output_t step(err_t err)
   {

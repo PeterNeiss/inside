@@ -9,6 +9,7 @@
 #include <iostream>
 
 #include "bound/bound.hpp"
+#include "bound/formats.hpp"
 #include "bound/print.hpp"
 
 using namespace bnd;
@@ -23,8 +24,8 @@ using cell_t = bound<{0, 63}>;
 struct sprite
 {
   pos_t x{0}, y{0};
-  int edge_x_crossings = 0;
-  int edge_y_crossings = 0;
+  counter<1'000'000> edge_x_crossings{0};
+  counter<1'000'000> edge_y_crossings{0};
 
   void step(double dx, double dy)
   {

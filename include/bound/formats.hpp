@@ -55,6 +55,16 @@ namespace bnd
   using q8_8   = bound<{{0, 255},   notch<1, 256>},   round_nearest>; // uint16
   using q16_16 = bound<{{0, 65535}, notch<1, 65536>}, round_nearest>; // uint32
 
+  //-------------------------------------------------------------------------
+  // Counters — a counter is a bound over [0, Max] whose overflow policy says
+  // what `++` does at the ceiling (the boundary behavior is in the type).
+  //-------------------------------------------------------------------------
+  // Saturating counter: `++` caps at Max (never throws or wraps) — the honest
+  // "count up to a ceiling / ≥Max" tally. `--` saturates at 0.
+  template <umax Max> using counter      = bound<{0, Max}, clamp>;
+  // Modular / ring counter: `++` wraps Max → 0 (sequence numbers, epochs).
+  template <umax Max> using ring_counter = bound<{0, Max}, wrap>;
+
 } // namespace bnd
 
 #endif // BNDformatsHPP

@@ -14,6 +14,7 @@
 
 #include "bound/bound.hpp"
 #include "bound/cmath.hpp"
+#include "bound/formats.hpp"
 #include "bound/print.hpp"
 
 using namespace bnd;
@@ -99,8 +100,8 @@ int main()
     }
   }
 
-  int clip_events    = 0;
-  int overflow_events = 0;
+  counter<1'000'000> clip_events{0};
+  counter<1'000'000> overflow_events{0};
 
   std::cout << "frame  c0      c1      c2      c3      mix    \n";
   for (std::size_t i = 0; i < N; ++i)
