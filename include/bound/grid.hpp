@@ -29,18 +29,11 @@ namespace slim
 namespace bnd
 {
   //---------------------------------------------------------------------------
-  // grid
-  //---------------------------------------------------------------------------
-  // Must be a structural type for template NTTP (only public members)
-  //---------------------------------------------------------------------------
-  // A grid discretizes its interval into notch-sized steps; the interval must
-  // divide evenly by the notch. If Notch is zero, every rational in the
-  // interval is allowed and raw is not offset.
-  //---------------------------------------------------------------------------
-  // `grid` is an NTTP type whose operator+/-/*// is the engine of compile-time
-  // result-grid inference for `bound`: every bound arithmetic operator computes
-  // its result grid here, so the result's interval is guaranteed by
-  // construction to contain every reachable value.
+  // grid — structural NTTP type (public members only). Discretizes its interval
+  // into notch-sized steps (interval must divide evenly by notch; Notch == 0
+  // allows every rational, raw not offset). Its operator+/-/*// is the engine of
+  // compile-time result-grid inference: every bound arithmetic operator computes
+  // its result grid here, so the result interval contains every reachable value.
   //---------------------------------------------------------------------------
   struct grid
   {
@@ -66,12 +59,9 @@ namespace bnd
       return true;
     }
 
-    // Runtime sibling of `validate<G>()`: mirrors the same invariants but
-    // returns a typed error instead of failing a static_assert. Intended for
-    // grids constructed from runtime config (parsed input, network, GUI).
-    // The result is a value, so it cannot be used as a `bound<G, P>` template
-    // argument — callers that need that path select a pre-declared grid
-    // instantiation by other means.
+    // Runtime sibling of validate<G>(): same invariants, but returns a typed
+    // error instead of failing a static_assert — for grids built from runtime
+    // config. A value, so it can't be a bound<G,P> template argument.
     [[nodiscard]] static constexpr slim::expected<grid, errc>
     try_make(interval iv, bnd::detail::rational notch)
     {
@@ -93,11 +83,9 @@ namespace bnd
     constexpr umax max_notch() const
     { return (Notch == 0) ? 0 : (Interval/Notch).value().Numerator; }
 
-    // True when `v` is an *exact* slot of this grid: in the interval AND on a
-    // notch. Notch-zero grids store the value verbatim (rational storage), so
-    // any in-range value qualifies. Mirrors the on-notch test in `validate` /
-    // `try_make`; used to admit a single representable value (e.g. `0_b`)
-    // regardless of whether the whole-range notch mapping is exact.
+    // True when `v` is an *exact* slot: in the interval AND on a notch (notch-0
+    // grids store verbatim, so any in-range value qualifies). Used to admit a
+    // single representable value (e.g. `0_b`) regardless of whole-range mapping.
     constexpr bool representable(bnd::detail::rational v) const
     {
       if (!Interval.includes(v)) return false;
@@ -116,13 +104,9 @@ namespace bnd
     // decode depends on the storage KIND, not the raw type's signedness — a
     // `direct`-policy bound has an unsigned raw that IS the value.)
 
-    // Snap a double to the nearest grid point `Lower + k·Notch`. `real`
-    // (double-backed) storage is only selected for dyadic grids (power-of-two
-    // notch and Lower), so every grid point is exactly representable in double
-    // and this snap is lossless — a `real` bound therefore obeys its grid just
-    // like an integer-backed one, it is merely stored/computed in `double`.
-    // A continuous grid (Notch == 0) has no grid to snap to, so `v` passes
-    // through. The integer-cast round stays `constexpr` and `<cmath>`-free.
+    // Snap a double to the nearest grid point `Lower + k·Notch`. `real` storage
+    // is only selected for dyadic grids, so the snap is lossless. A continuous
+    // grid (Notch == 0) passes `v` through. The round stays constexpr/<cmath>-free.
     constexpr double snap_double(double v) const
     {
       if (Notch == bnd::detail::rational{0}) return v;
@@ -137,10 +121,9 @@ namespace bnd
     { return grid{interval{bnd::detail::rational{0}, bnd::detail::rational{0}}, bnd::detail::rational::make_sentinel()}; }
   };
 
-  // Pick the smallest raw type that can hold every reachable index in G.
-  // Order matters: notch-zero grids have no integer index space (rational
-  // raw is the only option); signed-direct fits Lower < 0 with notch 1;
-  // unsigned-offset (max_notch slots) is the fallback for everything else.
+  // Smallest raw type holding every reachable index in G. Order: notch-zero →
+  // rational (no integer index space); signed-direct fits Lower < 0 with notch 1;
+  // unsigned-offset (max_notch slots) otherwise.
   namespace detail
   {
   template <grid G>
@@ -161,17 +144,14 @@ namespace bnd
     && is_pow2(bnd::detail::abs_den(G.Notch.Denominator))
     && is_pow2(bnd::detail::abs_den(G.Interval.Lower.Denominator));
 
-  // Storage for a bound<G, P>. The policy's representation flags pick the raw
-  // type, resolved widest-wins (a result of mixed-representation arithmetic
-  // ORs both policies): exact > real > direct > indexed > deduced.
-  //   exact   → rational raw on any grid (engine-independent).
-  //   real    → double-backed under the default (double) engine — on a dyadic
-  //             grid (on-grid values exact in double) OR a notch-0 continuous
-  //             grid (e.g. a division result). Under BND_MATH_FIXED this arm
-  //             is elided and `real` falls through to the deduced selection.
-  //   direct  → raw == value as a plain integer (Notch == 1).
+  // Storage for a bound<G, P>: representation flags pick the raw type, widest-wins
+  // (exact > real > direct > indexed > deduced).
+  //   exact   → rational raw on any grid.
+  //   real    → double-backed under the default engine, on a dyadic or notch-0
+  //             grid; elided under BND_MATH_FIXED (falls through to deduced).
+  //   direct  → raw == value, plain integer (Notch == 1).
   //   indexed → raw == 0-based notch index (Notch != 0).
-  //   none    → storage_min deduction above.
+  //   none    → storage_min deduction.
   template <grid G, policy_flag P>
   constexpr auto storage_pick()
   {
@@ -206,9 +186,8 @@ namespace bnd
   //---------------------------------------------------------------------------
   inline constexpr slim::optional<grid> operator+(const grid& lhs, const grid& rhs)
   {
-    // `gcd(rational, rational)` now returns optional — pass it through lift
-    // so a notch-denominator overflow produces nullopt rather than a silently
-    // wrapped result grid.
+    // gcd returns optional — lift it so a notch-denominator overflow produces
+    // nullopt rather than a silently wrapped result grid.
     return lift(
       [](interval i, bnd::detail::rational n){ return grid{i, n}; },
       lhs.Interval + rhs.Interval, detail::gcd(lhs.Notch, rhs.Notch));
@@ -245,10 +224,9 @@ namespace bnd
     if (rhs.Interval.Lower == 0 && rhs.Interval.Upper == 0)
       return slim::nullopt;
 
-    // `step` is the smallest non-zero magnitude the divisor can take. We use
-    // it to split the divisor's interval into a positive side [step, Upper]
-    // and a negative side [Lower, -step], skipping the zero gap. When both
-    // sides are present the result is the *union* of the two sub-divisions.
+    // `step` = smallest non-zero divisor magnitude; splits the divisor interval
+    // into positive [step, Upper] and negative [Lower, -step] (skipping zero).
+    // Both sides present → the result is their union.
     bnd::detail::rational step = (rhs.Notch != 0) ? detail::abs(rhs.Notch) : bnd::detail::rational{1};
     bool has_pos = 0 < rhs.Interval.Upper;
     bool has_neg = 0 > rhs.Interval.Lower;

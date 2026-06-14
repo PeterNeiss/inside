@@ -10,13 +10,9 @@
 #include <functional>
 
 //---------------------------------------------------------------------------
-// numeric_limits / hash — `std::` specialisations for `bound<G, P>`.
-//
-// `std::numeric_limits<bound<G, P>>` reports the *grid* bounds (Lower / Upper)
-// rather than the raw type's limits — what generic code asking "what's the
-// largest value this type can hold?" actually wants. `std::hash` hashes the
-// single `Raw` member; for rational raw, Numerator and Denominator are mixed
-// with a boost-style hash combine.
+// numeric_limits / hash — std:: specialisations for bound<G, P>. numeric_limits
+// reports the *grid* bounds (Lower/Upper), not the raw type's limits. std::hash
+// hashes the Raw member (rational raw: Numerator+Denominator, boost-style combine).
 //---------------------------------------------------------------------------
 
 template <bnd::grid G, bnd::policy_flag P>

@@ -27,18 +27,10 @@ namespace slim
 namespace bnd
 {
   //---------------------------------------------------------------------------
-  // interval
-  //---------------------------------------------------------------------------
-  // Must be a structural type for template NTTP (only public members)
-  //---------------------------------------------------------------------------
-  // The interval has inclusive upper and lower bounds.
-  // At least one rational is in the interval
-  // The rationals are embedded in the interval with rational == Lower == Upper
-  //---------------------------------------------------------------------------
-  // Like `grid`, an NTTP type; its operator+/-/*// is used by `grid` to
-  // compute result intervals at compile time. Division returns nullopt when
-  // the divisor straddles zero — `grid::operator/` re-runs division on the
-  // two zero-free halves and unions them.
+  // interval — structural NTTP type (public members only) with inclusive Lower
+  // and Upper bounds. Like `grid`, its operator+/-/*// computes result intervals
+  // at compile time; division returns nullopt when the divisor straddles zero
+  // (grid::operator/ re-runs on the two zero-free halves and unions them).
   //---------------------------------------------------------------------------
   struct interval
   {
@@ -77,9 +69,8 @@ namespace bnd
     constexpr bool excludes(interval const& rhs) const
     { return rhs.Upper < Lower || Upper < rhs.Lower; }
 
-    // The first clause `rhs.includes(*this)` catches the case where rhs
-    // wholly contains us — neither of rhs's endpoints lands in `*this`, so
-    // the includes(Lower)/includes(Upper) checks alone would miss it.
+    // The `rhs.includes(*this)` clause catches rhs wholly containing us (where
+    // neither rhs endpoint lands in *this, so the other checks would miss it).
     constexpr bool overlaps(interval const& rhs) const
     { return rhs.includes(*this) || includes(rhs.Lower) || includes(rhs.Upper); }
 

@@ -12,14 +12,10 @@
 #include "bound/policy_flag.hpp"
 
 //---------------------------------------------------------------------------
-// generic — type-level traits and predicates used everywhere else.
-//
-// Public grid/policy introspection (`Grid<B>`, `BoundPolicy<B>`, `Lower<B>`,
-// `Upper<B>`, `Notch<B>`, `Interval<B>`) plus the `boundable`, `numeric`, and
-// `bound_assignable` concepts. The storage-shape predicates and raw/value
-// converters that expose how values are stored (`raw_t`, the `*_raw` predicates,
-// `to_value`, `from_value`, the Q-format engine, …) are internal and live in
-// `bnd::detail`.
+// generic — type-level traits and predicates used everywhere else. Public
+// grid/policy introspection (`Grid<B>`, `BoundPolicy<B>`, `Lower/Upper/Notch<B>`,
+// `Interval<B>`) plus the `boundable`/`numeric`/`bound_assignable` concepts; the
+// storage-shape predicates and raw/value converters are internal (`bnd::detail`).
 //---------------------------------------------------------------------------
 namespace bnd
 {
@@ -78,10 +74,7 @@ namespace bnd
     template<typename...>
     inline constexpr bool dependent_false = false;
 
-    // Uniform rational view of a scalar or bound. For arithmetic N it
-    // constructs rational{v}; for a bound it uses the implicit
-    // operator rational(). Returns the internal rational, so it lives here;
-    // core-header callers spell it `detail::as_rational`.
+    // Uniform rational view of a scalar or bound (rational{v} / operator rational()).
     template <numeric N>
     [[nodiscard]] constexpr rational as_rational(N v)
     {
@@ -90,9 +83,8 @@ namespace bnd
     }
 
     // Canonical-zero test for a divisor. rational stores zero as {0, 1}, so
-    // Numerator == 0 catches every canonical zero independent of representation
-    // (rational{} is the {0, 0} sentinel, which compares unequal to rational{0});
-    // other arithmetic divisors compare against the zero of their own type.
+    // Numerator == 0 catches it regardless of representation; other types compare
+    // against their own zero.
     template <typename T>
     [[nodiscard]] constexpr bool is_canonical_zero(T const& v)
     {
@@ -103,19 +95,12 @@ namespace bnd
     template <boundable B>
     using raw_t = typename B::raw_type;
 
-    // How a bound's value lives in its raw storage — four disjoint encodings,
-    // selected by the policy's representation flags (exact/real/direct/indexed,
-    // widest-wins) or deduced from the grid when none is set (see
-    // grid.hpp storage_pick). Read back here as predicates:
-    //   rational_raw — raw IS the value, as a rational (`exact` policy, or
-    //                  deduced for notch-zero grids).
-    //   real_raw     — raw IS the value, as an IEEE-754 `double` (the `real`
-    //                  policy under the default math engine; dyadic grids only).
-    //   value_raw    — raw IS the value, as a plain integer (`direct` policy,
-    //                  or deduced: notch 1 and signed, or unsigned with Lower 0).
+    // How a bound's value lives in its raw storage — four disjoint encodings
+    // (selected by policy flags or deduced; see grid.hpp storage_pick):
+    //   rational_raw — raw IS the value, as a rational.
+    //   real_raw     — raw IS the value, as an IEEE-754 double (dyadic grids only).
+    //   value_raw    — raw IS the value, as a plain integer.
     //   index_raw    — raw is a 0-based notch index; value = Lower + raw*Notch.
-    // The first two read off the raw type alone; the integer pair additionally
-    // consults the policy, mirroring storage_pick's choice exactly.
     template <boundable B>
     inline constexpr bool real_raw = std::is_same_v<raw_t<B>, double>;
 
@@ -134,13 +119,10 @@ namespace bnd
     inline constexpr bool index_raw =
          !real_raw<B> && !rational_raw<B> && !value_raw<B>;
 
-    // Ungated double view of any bound, for the `real` arithmetic arms. Unlike
-    // the public `operator double()` (gated on a rounding policy flag), this is
-    // always available — a `real` result may take operands of any policy,
-    // including strict `just<>` constants. Kind-aware (NOT raw-signedness-based:
-    // a `direct` bound with Lower >= 0 has an unsigned VALUE raw): everything
-    // but index storage holds the value verbatim; an index decodes through the
-    // grid.
+    // Ungated double view of any bound, for the `real` arithmetic arms (the
+    // public operator double() is gated on a rounding flag; this is always
+    // available). Everything but index storage holds the value verbatim; an
+    // index decodes through the grid.
     template <boundable B>
     [[nodiscard]] constexpr double as_double(B const& b) noexcept
     {
@@ -153,18 +135,14 @@ namespace bnd
     template <boundable B>
     using negative = bound<-Grid<B>, BoundPolicy<B>>;
 
-    // True when R's interval cannot contain zero — i.e. division by an R can
-    // never be division by zero. Decided purely from the grid, so `a / b` can
-    // return a plain `bound` instead of `slim::optional<bound>` (see
-    // detail/division.hpp). A point grid at 0 (Lower==Upper==0) is *not*
-    // excluded — it straddles (== is) zero.
+    // True when R's interval cannot contain zero — so `a / b` can return a plain
+    // `bound` instead of `optional<bound>` (see detail/division.hpp). A point
+    // grid at 0 is *not* excluded.
     template <boundable R>
     inline constexpr bool DivisorExcludesZero = (Lower<R> > 0) || (Upper<R> < 0);
 
-    // Storage-agnostic int truncation of interval endpoints. Equivalent to
-    // `static_cast<imax>(Lower<B>)` but expresses intent without a cast and
-    // works for both storage kinds. Used by `from_value`, `RawLo`, and the
-    // integer fast paths.
+    // Storage-agnostic int truncation of interval endpoints — intent-revealing
+    // `static_cast<imax>(Lower<B>)`. Used by from_value, RawLo, the fast paths.
     template <boundable B>
     inline constexpr imax LowerImax = Lower<B>.trunc();
 
@@ -178,23 +156,15 @@ namespace bnd
     //-------------------------------------------------------------------------
     // grid_value_bounds / rational_mul_is_safe / rational_add_is_safe
     //
-    // Conservative compile-time bound on the (numerator, denominator) any
-    // canonical-form value on a grid can have, and derived "can the rational
-    // op of two grid values overflow imax" predicates. They let checked
-    // exact arithmetic drop the slim::optional wrapper when the grids PROVE
-    // no overflow is reachable.
+    // Conservative compile-time bound on the (numerator, denominator) of any
+    // canonical value on a grid, and derived "can the rational op of two grid
+    // values overflow imax" predicates — letting checked exact arithmetic drop
+    // the optional wrapper when the grids prove no overflow is reachable.
     //
-    // For a NOTCHED grid `{[lo, hi], notch}`, every value v = lo + k*notch
-    // (k integer) expressed over the common denominator
-    // dC = |lo.den| * |hi.den| * |notch.den| is linear in k, so the maximum
-    // scaled numerator is at an endpoint. dC conservatively bounds the
-    // canonical denominator (the lcm divides it).
-    //
-    // A CONTINUOUS grid (Notch == 0) stores arbitrary in-range rationals —
-    // denominators are unbounded, so nothing is provable (the lone exception:
-    // a point grid holds exactly Lower). The helpers return `false` whenever
-    // a bound can't be established, falling back to "the optional wrapper is
-    // needed".
+    // For a notched grid every value v = lo + k·notch over the common denominator
+    // dC = |lo.den|·|hi.den|·|notch.den| is linear in k, so the max scaled
+    // numerator is at an endpoint. A continuous grid (Notch == 0, non-point) has
+    // unbounded denominators — nothing provable, so the helpers return false.
     //-------------------------------------------------------------------------
     constexpr bool grid_value_bounds(grid g, umax& max_num, umax& max_den) noexcept
     {
@@ -279,13 +249,9 @@ namespace bnd
     constexpr imax raw_imax(B b) noexcept { return static_cast<imax>(b.raw()); }
 
     //-------------------------------------------------------------------------
-    // Q-format integer fast path
-    //
-    // For grids with integer Lower, unit-numerator Notch (e.g. 1/256, 1/65536),
-    // and raw fitting in `imax`, conversion between value and raw reduces to
-    // pure integer arithmetic — no rational construction. Three call sites
-    // (bound::operator rational(), from_value, assignment::store) share this
-    // shape; centralised here as `q_format_encode` / `q_format_decode`.
+    // Q-format integer fast path: for grids with integer Lower, unit-numerator
+    // Notch, and raw fitting imax, value↔raw is pure integer arithmetic. Shared
+    // by operator rational(), from_value, and assignment::store.
     //-------------------------------------------------------------------------
     template <boundable B>
     inline constexpr bool HasQFormatFastPath =
@@ -339,14 +305,10 @@ namespace bnd
     }
 
     //-------------------------------------------------------------------------
-    // RawLo / RawHi / raw_from_offset
-    //
-    // Raw-space bounds map interval endpoints to the raw representation. For
-    // notch-offset storage the raw is a 0-based index, so `RawLo == 0`. For
-    // direct storage the raw IS the value, so `RawLo == LowerImax<B>` — and
-    // every "value as L-offset" needs `RawLo<L>` added back before storing.
-    // Without this, e.g. `bound<{-40, 60}>{-rational{40}}` would record
-    // Raw=0 instead of Raw=-40.
+    // RawLo / RawHi / raw_from_offset — map interval endpoints to raw space. For
+    // notch-offset storage the raw is a 0-based index (RawLo == 0); for direct
+    // storage the raw IS the value (RawLo == LowerImax<B>), so an offset needs
+    // RawLo<L> added back before storing.
     //-------------------------------------------------------------------------
     template <boundable B>
     inline constexpr imax RawLo = !index_raw<B> ? LowerImax<B> : 0;
@@ -374,17 +336,10 @@ namespace bnd
 
     //-------------------------------------------------------------------------
     // IsIntegerInterval vs IsIntegerAligned — easy to confuse, both needed.
-    //
-    // IsIntegerInterval<B>: Lower and Upper are integers (denominator == ±1).
-    //   Notch may still be fractional — e.g. bound<{0,100}, 1/10> qualifies.
-    //   Used as a precondition for treating Lower/Upper as `imax` constants
-    //   (e.g. integer range checks, modular wrap arithmetic over [Lo, Hi]).
-    //
-    // IsIntegerAligned<B>: Notch and Lower are integers. Under the grid's
-    //   `Interval.divides_evenly(Notch)` invariant this implies Upper integer,
-    //   so IsIntegerAligned ⇒ IsIntegerInterval. The converse does NOT hold.
-    //   Used as a precondition for native integer arithmetic on raws (every
-    //   notch step is exactly 1, so Raw == value).
+    //   IsIntegerInterval<B>: Lower and Upper integer (Notch may be fractional,
+    //     e.g. bound<{0,100}, 1/10>). Lets Lower/Upper be used as imax constants.
+    //   IsIntegerAligned<B>: Notch and Lower integer ⇒ IsIntegerInterval (not the
+    //     converse). Precondition for native integer raw arithmetic (Raw == value).
     //-------------------------------------------------------------------------
     template <boundable B>
     inline constexpr bool IsIntegerInterval =
@@ -413,23 +368,15 @@ namespace bnd
     template <boundable B, typename P, policy_flag F>
     inline constexpr bool HasPolicy = (BoundPolicy<B> & F) == F || plain<P>::test(F);
 
-    // Round the exact non-negative offset quotient num/den (den >= 1) to an
-    // integer notch index per L's effective rounding policy.
+    // Round the non-negative offset quotient num/den (den >= 1) to an integer
+    // notch index per L's rounding policy.
     //
-    // The tie/sign rules are specified in VALUE space, not offset space, so that
-    // assigning a value rounds it the same way dividing down to that value does
-    // (detail::div_rounded is the reference): round_nearest is half-AWAY-FROM-
-    // ZERO of the value, round_half_even breaks ties to an even value, bare
-    // snapping truncates TOWARD ZERO. The offset num/den is always >= 0 (the
-    // value's sign was lost by subtracting Lower), so we rebuild the signed
-    // value-index numerator  NUM = m*den + num,  where m = Lower/Notch is the
-    // grid's value index at its lower bound, round NUM/den exactly as
-    // div_rounded rounds a signed quotient, and return the offset index J - m.
-    //
-    // m is integral for every dyadic / integer-aligned / Q-format grid (Lower a
-    // multiple of Notch). For the rare grid where it is not, "even value" is
-    // undefined and the value's sign cannot shift a tie meaningfully the same
-    // way, so we fall back to the historical offset-based rounding.
+    // Tie/sign rules are in VALUE space, not offset space, so assigning a value
+    // rounds it the same way dividing down to it does (detail::div_rounded is the
+    // reference). The offset num/den is >= 0 (sign lost by subtracting Lower), so
+    // we rebuild the signed value-index NUM = m·den + num (m = Lower/Notch), round
+    // it like div_rounded, and return the offset J - m. m is integral on every
+    // dyadic/integer-aligned/Q-format grid; otherwise fall back to offset rounding.
     template <boundable L, typename P>
     [[nodiscard]] constexpr umax round_quotient(umax num, umax den) noexcept
     {
@@ -496,11 +443,9 @@ namespace bnd
     // Forward decl — defined in assignment.hpp
     template <typename L, typename R> struct assignment;
 
-    // A single-point source bound (Lower == Upper) carries exactly one value,
-    // so the whole-range notch-mapping test (`Factor.Denominator == 1`) is the
-    // wrong question — the only thing that matters is whether that one value
-    // lands on L's grid. This admits e.g. `0_b` / `3_b` into a `{{0,9},3}` grid
-    // while still rejecting `1_b` (not on a notch) and out-of-range points.
+    // A single-point source (Lower == Upper) carries one value, so the only
+    // question is whether it lands on L's grid — admitting e.g. `3_b` into
+    // `{{0,9},3}` while rejecting `1_b` and out-of-range points.
     template <typename L, typename R>
     inline constexpr bool point_exactly_assignable =
       (Lower<R> == Upper<R>) && Grid<L>.representable(Lower<R>);
@@ -534,11 +479,10 @@ namespace bnd
       return false;
     }
 
-    // The two non-trivial clauses of `bound_assignable`, named so the concept
-    // and its `bound_assignable_why` diagnostic share one definition. These are
-    // concepts (not constexpr bools) so the `||` short-circuits *instantiation*
-    // — e.g. `assignment<L,R>::Factor` / `Lower<R>` are never formed when R is
-    // not boundable.
+    // The two non-trivial clauses of `bound_assignable`, named so the concept and
+    // its `bound_assignable_why` diagnostic share one definition. Concepts (not
+    // bools) so `||` short-circuits *instantiation* (e.g. assignment<L,R>::Factor
+    // is never formed when R isn't boundable).
     template <typename L, typename R>
     concept assign_intervals_ok =
       (!boundable<R> && !std::integral<R>) || not Interval<L>.excludes(Interval<R>);
@@ -550,35 +494,20 @@ namespace bnd
       || point_exactly_assignable<L, R>;
   } // namespace detail
 
-  // Compile-time prerequisites for L = R. Three clauses gate three failure
-  // modes that should all be caught at the call site (not deep in a template
-  // instantiation):
-  //   1. R is numeric                              — anything else is a hard
-  //                                                  type error.
-  //   2. intervals overlap (typed-interval R only) — if R's full interval
-  //                                                  lies wholly outside L's,
-  //                                                  no assignment can succeed.
-  //                                                  Skipped for floating-point
-  //                                                  and rational R since they
-  //                                                  have no static interval.
-  //   3. integer notch ratio OR snapping set   — a non-integer
-  //                                                  Factor.Denominator means
-  //                                                  R's notch doesn't divide
-  //                                                  L's; the user must opt
-  //                                                  into rounding.
-  // Named `bound_assignable` (not `assignable_from`) to avoid shadowing the
-  // unrelated `std::assignable_from` from <concepts>.
+  // Compile-time prerequisites for L = R, gating three failure modes at the call
+  // site: (1) R is numeric; (2) intervals overlap (typed-interval R only —
+  // skipped for float/rational, which have no static interval); (3) integer
+  // notch ratio or snapping set (else R's notch doesn't divide L's; opt into
+  // rounding). Named `bound_assignable` to avoid shadowing std::assignable_from.
   template <typename L, typename R, policy_flag P = checked>
   concept bound_assignable =
     numeric<R>
     && detail::assign_intervals_ok<L, R>
     && detail::assign_notch_ok<L, R, P>;
 
-  // Diagnostic helper: when `bound_assignable` fails, instantiating
-  // `bound_assignable_why<L, R, P>` produces individually-named static_asserts
-  // for each clause, so the user sees which one tripped. Not used in normal
-  // code paths — meant to be called from `static_assert(bound_assignable_why<L,R,P>::value)`
-  // when a developer wants better diagnostics during local debugging.
+  // Diagnostic helper: instantiating `bound_assignable_why<L,R,P>` fires a named
+  // static_assert per failed clause, so a developer can see which tripped. Not
+  // used in normal code paths.
   template <typename L, typename R, policy_flag P = checked>
   struct bound_assignable_why
   {

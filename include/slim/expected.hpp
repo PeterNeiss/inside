@@ -2,18 +2,12 @@
 // Copyright (c) 2026 Peter Neiss
 // SPDX-License-Identifier: MIT
 //
-// The `slim::` namespace is an independent utility namespace with no `bnd::`
-// dependency. `slim::expected<T, E>` mirrors the subset of the C++23
-// `std::expected` API the bound library consumes (value / error access, the
-// `unexpected` error tag, deref, and the throwing `value()`), so the library
-// presents one error-channel code path on every compiler — C++20 toolchains
-// (GCC 12) that lack `<expected>` included.
-//
-// Scope is deliberately small: only what the library uses. T and E are
-// trivially-copyable value types here (integrals, rational, bound, grid, an
-// errc enum), so storage is a plain pair of members guarded by a flag rather
-// than a union — simplest fully-constexpr form. No `expected<void, E>`, no
-// monadic operations: add them when a call site needs them.
+// An independent utility namespace, no `bnd::` dependency. Mirrors the subset of
+// C++23 std::expected the library consumes (value/error access, `unexpected`,
+// deref, throwing value()), giving one error-channel code path even on C++20
+// toolchains lacking <expected>. Scope is deliberately small: T and E are
+// trivially-copyable here, so storage is a flag-guarded pair, not a union. No
+// expected<void, E>, no monadic ops.
 
 #pragma once
 

@@ -162,6 +162,28 @@ TEST_CASE("rational arithmetic", "[rational][arithmetic]")
     STATIC_REQUIRE(rational::inv_unchecked(rational{2u, 3}) == rational{3u, 2});
   }
 
+  // The checked operators return slim::optional<rational>; an implicit
+  // converting constructor unwraps that into a plain rational so coefficient
+  // expressions read as ordinary arithmetic (no .value()). Overflow on an empty
+  // optional is a compile error in constant evaluation.
+  SECTION("optional<rational> unwraps implicitly into rational")
+  {
+    constexpr rational two_x   = 2 * rational{3};       // int ⊗ rational
+    constexpr rational half    = rational{3} / 2;       // rational ⊗ int
+    constexpr rational chained = rational{3,2} - rational{1,5};
+    STATIC_REQUIRE(two_x   == 6_r);
+    STATIC_REQUIRE(half    == rational{3u, 2});
+    STATIC_REQUIRE(chained == rational{13u, 10});
+
+    // Bit-identical to the prior mul_unchecked form it replaces.
+    STATIC_REQUIRE(half == rational::mul_unchecked(rational{3}, rational{1, 2}));
+
+    // Assignment (not just copy-init) also unwraps.
+    rational acc{0u, 1};
+    acc = 2 * rational{3};
+    REQUIRE(acc == 6_r);
+  }
+
   SECTION("inv basic")
   {
     STATIC_REQUIRE(*rational::inv(rational{3u, 2}) == rational{2u, 3});

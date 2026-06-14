@@ -16,27 +16,20 @@ namespace bnd
   using policy_flag = unsigned long long;
 
   // Check model: compile-time checks always run. When success can't be proven
-  // at compile time, compilation fails unless the matching ignore flag is set;
-  // otherwise a runtime check is inserted that throws by default (or reports
-  // via an error_code parameter where a function provides one).
-  //
+  // statically, compilation fails unless the matching ignore flag is set; else a
+  // runtime check is inserted that throws (or reports via an error_code param).
   // Binary operations OR the flags of both operands.
   inline static constexpr policy_flag none         {0ull};
   inline static constexpr policy_flag ignore_zero  {1ull << 1};
   inline static constexpr policy_flag ignore_domain{1ull << 2};
-  // `snapping` — a value that does not land exactly on a notch is rounded to
-  // fit the grid instead of being rejected. On its own the direction is
-  // truncate-toward-zero (== the `truncated` convenience policy); the round-
-  // mode flags below OR in `snapping` and pick a direction. Without it, an
-  // off-notch value is a compile-time error (statically off-notch) or a
-  // runtime round-error, and div/mod fall through to exact-rational results.
+  // `snapping` — an off-notch value is rounded to fit the grid instead of
+  // rejected; on its own truncate-toward-zero. Without it, an off-notch value is
+  // a compile/runtime error and div/mod fall through to exact-rational results.
   inline static constexpr policy_flag snapping     {1ull << 4};
   inline static constexpr policy_flag round_nearest {(1ull << 5) | snapping};
-  // Additional rounding modes. Each picks a unique mode bit (6/7/8) and ORs
-  // in `snapping` so users don't have to remember the combination. The
-  // four rounding modes are *mutually exclusive in spirit* — combining two
-  // is permitted by the type system but the dispatch order in assignment.hpp
-  // picks the first match (nearest → floor → ceil → half_even → truncate).
+  // Rounding modes each pick a unique bit and OR in `snapping`. Conceptually
+  // exclusive; combining two is allowed but dispatch (assignment.hpp) picks the
+  // first match: nearest → floor → ceil → half_even → truncate.
   inline static constexpr policy_flag round_floor     {(1ull << 6) | snapping};
   inline static constexpr policy_flag round_ceil      {(1ull << 7) | snapping};
   inline static constexpr policy_flag round_half_even {(1ull << 8) | snapping};
@@ -49,47 +42,35 @@ namespace bnd
   inline static constexpr policy_flag wrap    {1ull << 33}; // modular arithmetic
   inline static constexpr policy_flag sentinel{1ull << 35}; // overflow -> sentinel (nullopt)
 
-  // Representation flags — select how the raw value is stored. Without one,
-  // storage is deduced from the grid (notch-0 → rational; unit notch starting
-  // at 0 or negative → plain integer value; everything else → 0-based notch
-  // index). Binary operations OR operand policies, so a result may carry
-  // several representation flags; storage selection resolves them
+  // Representation flags — select raw storage. Without one, storage is deduced
+  // from the grid (notch-0 → rational; unit notch at/below 0 → integer value;
+  // else 0-based index). Binary ops OR operand policies; storage resolves
   // widest-wins: exact > real > direct > indexed > deduced.
   //
-  // `real` — marks a math operand. Selects double-backed storage under the
-  // default (double) math engine, where the value is held as an IEEE-754
-  // `double` and stored as-is (the `snapping` in `round_nearest` makes the
-  // notch nominal). Under `BND_MATH_FIXED` the same flag is an ordinary
-  // round_nearest integer-backed bound. Power-of-2 notch + dyadic Lower required
-  // (asserted at storage selection) so on-grid values are exact in `double`.
+  // `real` — math operand. Double-backed storage under the default engine (value
+  // held as IEEE-754 double, notch nominal); an ordinary round_nearest integer
+  // bound under BND_MATH_FIXED. Power-of-2 notch + dyadic Lower required so
+  // on-grid values are exact in double.
   inline static constexpr policy_flag real{(1ull << 37) | round_nearest};
 
-  // `exact` — force rational raw storage on any grid. Values still obey the
-  // grid (snap per policy); the representation is an exact fraction, so there
-  // is no notch-count limit and no double anywhere. The slowest
-  // representation; arithmetic is overflow-checked rational math. Identical
-  // under both math engines.
+  // `exact` — force rational raw storage on any grid. Values still obey the grid;
+  // exact fractions, no notch-count limit, no double. Slowest; overflow-checked
+  // rational math. Identical under both engines.
   inline static constexpr policy_flag exact{1ull << 38};
 
-  // `direct` — force raw == value as a plain integer where deduction would
-  // pick a 0-based index (e.g. bound<{5, 100}> stores 5..100, not 0..95).
-  // The raw equals the wire/debugger value — useful for interop and
-  // serialization. Requires Notch == 1. Identical under both math engines.
+  // `direct` — force raw == value (plain integer) where deduction would pick a
+  // 0-based index (bound<{5,100}> stores 5..100). Wire/debugger value for interop.
+  // Requires Notch == 1.
   inline static constexpr policy_flag direct{1ull << 39};
 
   // `indexed` — force raw == 0-based notch index where deduction would pick
-  // direct integer storage (e.g. bound<{-5, 5}> stores 0..10). Dense unsigned
-  // layout for serialization. Requires a notch (Notch != 0). Identical under
-  // both math engines.
+  // direct storage (bound<{-5,5}> stores 0..10). Dense unsigned layout. Requires
+  // Notch != 0.
   inline static constexpr policy_flag indexed{1ull << 40};
 
-  // opt-out of the default `checked` policy: no domain / round / overflow /
-  // div-by-zero checks. Reading an out-of-range value is undefined behavior.
-  // Division by zero is undefined behavior too — consistently across both
-  // forms: compound `/= 0` / `%= 0` silently no-op (the bound is unchanged),
-  // and binary `a / 0` / `a % 0` skip the zero check (the `ignore_zero` bit).
-  // Includes `snapping` so notch-incompatible assigns compile and the
-  // native-integer div/mod paths fire.
+  // opt-out of `checked`: no domain/round/overflow/div-by-zero checks (reading
+  // out-of-range or dividing by zero is UB; `/= 0` no-ops, `a / 0` skips the
+  // check). Includes `snapping` so notch-incompatible assigns compile.
   inline static constexpr policy_flag unsafe
     {(1ull << 36) | ignore_domain | snapping | ignore_zero};
 
@@ -125,9 +106,8 @@ namespace bnd
 
   namespace detail
   {
-  // Action detection. The `*Pred` struct is the primary detector
-  // (specialized on the tag type); the concept derives from it and strips
-  // cvref so `clamp_action<on_clamp_t<F>&>` matches the same as the value form.
+  // Action detection: the `*Pred` struct is the primary detector; the concept
+  // derives from it and strips cvref so the ref form matches the value form.
   template<typename T> struct IsClampActionPred    : std::false_type {};
   template<typename F> struct IsClampActionPred<on_clamp_t<F>>    : std::true_type {};
   template<typename T> struct IsWrapActionPred     : std::false_type {};
@@ -157,10 +137,9 @@ namespace bnd
   template<typename F> inline constexpr policy_flag implied_flags<on_overflow_t<F>> = checked;
 
   //---------------------------------------------------------------------------
-  // Pack helpers — let policy_ref / assignment / arithmetic accept Actions...
-  // packs. The `*Pred` structs from above are reused here as template-template
-  // parameters to `has_action` / `count_action_matches` / `pick_action`
-  // (concepts can't be passed as template-template parameters in C++23).
+  // Pack helpers — let policy_ref/assignment/arithmetic accept Actions... packs.
+  // The `*Pred` structs are reused as template-template parameters (concepts
+  // can't be passed as such in C++23).
   //---------------------------------------------------------------------------
 
   // True if any element of the pack matches the trait.

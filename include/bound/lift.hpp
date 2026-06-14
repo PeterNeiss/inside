@@ -12,13 +12,10 @@
 #include <utility>
 
 //---------------------------------------------------------------------------
-// lift — monadic composition for `slim::optional`.
-//
-// `lift(op, args...)` unwraps each `slim::optional` arg, calls `op`, and
-// re-wraps the result. If any arg is `nullopt`, returns `nullopt` without
-// invoking `op`. If `op` already returns `slim::optional<R>`, the result is
-// forwarded as-is (no double-wrap). Used pervasively by interval/grid/bound
-// arithmetic and by the optional-forwarding operators on `rational`.
+// lift — monadic composition for `slim::optional`. `lift(op, args...)` unwraps
+// each optional arg, calls `op`, and re-wraps; a nullopt arg short-circuits to
+// nullopt. An `op` already returning optional<R> is forwarded as-is. Used
+// pervasively by interval/grid/bound arithmetic and rational's operators.
 //---------------------------------------------------------------------------
 namespace bnd
 {
@@ -54,10 +51,8 @@ namespace bnd
         return true;
     }
 
-    // expected-like: anything with the std::expected access surface — covers
-    // both the slim backport and std::expected (which slim::expected aliases
-    // on C++23). The error_type requirement keeps bound (has value()) and
-    // optional (has has_value()) out.
+    // expected-like: the std::expected access surface (slim backport or std).
+    // The error_type requirement keeps bound and optional out.
     template <typename T>
     concept expected_like = requires(std::remove_cvref_t<T> const& e) {
       typename std::remove_cvref_t<T>::value_type;
@@ -95,12 +90,9 @@ namespace bnd
   { return e.has_value() ? slim::optional<T>{*e} : slim::optional<T>{slim::nullopt}; }
 
   //---------------------------------------------------------------------------
-  // lift_expected(op, map_nullopt, lhs, rhs)
-  //---------------------------------------------------------------------------
-  // Binary lift over expected operands: the first (left) error short-circuits;
-  // otherwise `op` runs on the unwrapped values. If `op` itself returns an
-  // optional (a division chain), its nullopt is mapped to `map_nullopt` —
-  // the operator's single documented cause.
+  // lift_expected(op, map_nullopt, lhs, rhs) — binary lift over expected
+  // operands: the left error short-circuits; an `op` that returns optional (a
+  // division chain) maps its nullopt to `map_nullopt`.
   //---------------------------------------------------------------------------
   template <class Op, class E, class L, class R>
   constexpr auto lift_expected(Op op, E map_nullopt, L const& lhs, R const& rhs)
@@ -123,11 +115,8 @@ namespace bnd
   }
 
   //---------------------------------------------------------------------------
-  // lift(op, args...)
-  //---------------------------------------------------------------------------
-  // Calls op on the unwrapped args and returns slim::optional<result>.
-  // Returns nullopt if any optional arg is empty. If op already returns a
-  // slim::optional<R>, it is forwarded as-is (no double-wrap).
+  // lift(op, args...) — call op on the unwrapped args → optional<result>; nullopt
+  // if any optional arg is empty. An op already returning optional<R> passes through.
   //---------------------------------------------------------------------------
   template <class Op, class... Args>
   constexpr auto lift(Op op, Args&&... args)

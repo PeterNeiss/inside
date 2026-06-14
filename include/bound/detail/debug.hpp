@@ -13,14 +13,11 @@
 #endif
 
 //---------------------------------------------------------------------------
-// debug — error codes, `std::error_category`, and a few diagnostic helpers.
-//
-// `errc` enumerates the four failure modes (domain, divzero, overflow,
-// rounding). `bound_category` plus `make_error_code(errc)` plug into
-// `<system_error>` so `bound`'s exceptions and the `error_code&` API both
-// report uniformly. `overflow_trap` is the runtime sibling of the compile-time
-// overflow `throw` in rational.hpp. `print_types` / `print_values` are static-assert
-// based debug helpers — handy when chasing template instantiation issues.
+// debug — error codes, std::error_category, and diagnostic helpers. `errc`
+// enumerates the four failure modes; bound_category + make_error_code plug into
+// <system_error>. `overflow_trap` is the runtime sibling of rational.hpp's
+// compile-time overflow throw. `print_types`/`print_values` are static_assert
+// debug helpers for template instantiation issues.
 //---------------------------------------------------------------------------
 namespace bnd
 {

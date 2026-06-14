@@ -8,18 +8,11 @@
 #include "bound/grid.hpp"
 
 //---------------------------------------------------------------------------
-// predicates — `will_conversion_*` / `is_conversion_lossy` for `bound<B>`.
-//
-// Pure inspection — none of these perform the conversion or modify state.
-// Use them to branch *before* attempting a construction that might throw or
-// land on the sentinel.
-//
-//   will_conversion_overflow<B>(v) — true if v falls outside B's interval.
-//   will_conversion_truncate<B>(v) — true if v is in-range but doesn't land
-//                                    on a notch of B (would round/truncate).
-//   is_conversion_lossy<B>(v)      — OR of the two above; convenient single
-//                                    test for "would this conversion lose
-//                                    information?".
+// predicates — pure inspection (no conversion, no state change) to branch
+// before a construction that might throw or land on the sentinel:
+//   will_conversion_overflow<B>(v) — v falls outside B's interval.
+//   will_conversion_truncate<B>(v) — v is in-range but off-notch (would round).
+//   is_conversion_lossy<B>(v)      — OR of the two.
 //---------------------------------------------------------------------------
 namespace bnd
 {

@@ -11,27 +11,16 @@
 namespace bnd::detail
 {
   //---------------------------------------------------------------------------
-  // assignment — narrowing/coercion between bounded and arithmetic types.
-  //
-  // Three specialisations dispatch on the source type:
-  //   assignment<L, integral R>           — raw integer rhs (fast path)
-  //   assignment<L, real R>               — float, double, rational rhs
-  //   assignment<L, boundable R>          — bound-to-bound, with raw remap
-  //
-  // Each specialisation routes through `store` (the in-range case) and
-  // `handle_out_of_range` / `apply_clamp` / `apply_wrap` (the policy case).
-  // The boundable-to-boundable path also exposes `is_integer_mapping` and
-  // `map_raw`, so when both sides have integer raws the conversion is a
-  // pure-integer formula — no rational arithmetic in the hot path.
+  // assignment — narrowing/coercion between bounded and arithmetic types. Three
+  // specialisations dispatch on the source (integral / fractional / boundable),
+  // each routing through `store` (in-range) and `handle_out_of_range` /
+  // `apply_clamp` / `apply_wrap` (policy). The boundable path also exposes
+  // `is_integer_mapping` / `map_raw` — a pure-integer formula in the hot path.
   //---------------------------------------------------------------------------
-  // needs_runtime_domain_check<L, P, A>
-  //
-  // True iff any out-of-range handler would fire on an out-of-range value:
-  // an action of any kind, a policy bit that triggers clamp/wrap/sentinel,
-  // or the default-throw path under `checked` (which is itself off when
-  // `ignore_domain` is set). When this is false — typically under `unsafe`
-  // with no action — the runtime range branch in `assign` is dead code and
-  // can be skipped, which lets the auto-vectorizer kick in on hot loops.
+  // needs_runtime_domain_check<L, P, A>: true iff any out-of-range handler would
+  // fire (an action, a clamp/wrap/sentinel bit, or default-throw under checked).
+  // When false (typically `unsafe`, no action) the runtime range branch in
+  // `assign` is dead code and skipped, letting the autovectorizer kick in.
   //---------------------------------------------------------------------------
   template <boundable L, typename P, typename A>
   inline constexpr bool needs_runtime_domain_check =
@@ -51,16 +40,11 @@ namespace bnd::detail
   inline std::string out_of_range_msg(V const& rhs_view)
   { return bnd::to_string(rhs_view) + " is not in " + bnd::to_string(Interval<L>); }
 
-  // Shared out-of-range policy cascade for the three assignment specialisations.
-  // Order: clamp/wrap/sentinel/error *actions*, then the clamp/wrap *policy*
-  // bits, then `domain_fail`. The callers differ only in how clamp/wrap store
-  // the result, the value handed to a sentinel action, and the rhs view used in
-  // the error message — so those four arrive as callables.
-  //
-  // `Wrappable` is false on the fractional path, which has no wrap *action*
-  // branch (a registered wrap action falls through to `domain_fail` there, as
-  // it always has); the wrap *policy* branch still routes through `do_wrap`.
-  // Returns true when a handler resolved the write (caller should stop).
+  // Shared out-of-range policy cascade. Order: clamp/wrap/sentinel/error
+  // *actions*, then clamp/wrap *policy* bits, then `domain_fail`. The four
+  // callers-supplied callables cover how clamp/wrap store, the sentinel-action
+  // value, and the error-message rhs view. `Wrappable` is false on the fractional
+  // path (no wrap *action* branch). Returns true when a handler resolved the write.
   template <bool Wrappable, boundable L, typename P, typename A,
             typename DoClamp, typename DoWrap, typename SentinelVal, typename MsgView>
   constexpr bool dispatch_out_of_range(L& lhs, P&& policy, A&& action,
@@ -146,24 +130,16 @@ namespace bnd::detail
   struct assignment<L,R>
   {
     private:
-      // Offset/Factor map an rhs.Raw to an lhs.Raw via
-      //   lhs.Raw = Factor * rhs.Raw + Offset.
-      // Three branches cover the three storage shapes:
-      //   1. L stores rational  — pass the rhs value through unchanged.
-      //   2. R stores rational  — pre-divide by Notch<L> so the formula
-      //                           stays in raw space.
-      //   3. both integer       — the integer branch (the hot path); the
-      //                           formula collapses to integer math in
-      //                           `is_integer_mapping` callers below.
+      // Offset/Factor map rhs.Raw → lhs.Raw via `lhs.Raw = Factor·rhs.Raw + Offset`.
+      // Branches: L rational (pass value through), R rational (pre-divide by
+      // Notch<L>), both integer (the hot path, collapses to integer math).
       static constexpr rational calcOffset()
       {
         if constexpr (rational_raw<L>)
           return Lower<R>;
         else if constexpr (Notch<L> == 0)
-          // Continuous real_raw L (double-backed, no notch): there is no grid
-          // to land on, so the mapping is unused (store() routes through
-          // snap_double). Return 0 — well-formed, and avoids the /Notch<L>
-          // division below that would be a divide-by-zero.
+          // Continuous real_raw L: no grid to land on, mapping unused (store
+          // routes through snap_double). 0 avoids the /Notch<L> divide-by-zero.
           return rational{0};
         else if constexpr (rational_raw<R>)
           return -(Lower<L>/Notch<L>).value();
@@ -176,9 +152,8 @@ namespace bnd::detail
         if constexpr (rational_raw<L>)
           return Notch<R>;
         else if constexpr (Notch<L> == 0)
-          // Continuous real_raw L: see calcOffset. A denominator-1 Factor also
-          // makes the notch-divides check (assign_notch_ok) vacuously true —
-          // any source value is exactly representable by a continuous target.
+          // Continuous real_raw L (see calcOffset). A denominator-1 Factor also
+          // makes assign_notch_ok vacuously true (any value representable).
           return rational{0};
         else if constexpr (rational_raw<R>)
           return (rational{1}/Notch<L>).value();
@@ -190,37 +165,24 @@ namespace bnd::detail
       static constexpr rational Offset = calcOffset();
       static constexpr rational Factor = calcFactor();
 
-      // Raw-space mapping is integer-only (no rational arithmetic needed) — so
-      // it requires integer raw storage on both sides: not rational (raw is a
-      // rational) and not real (raw is a double; map_raw would narrow it).
+      // Raw-space integer-only mapping — requires integer raw storage on both
+      // sides (not rational, not real).
       static constexpr bool is_integer_mapping =
           !rational_raw<L> && !rational_raw<R>
           && !real_raw<L> && !real_raw<R>
           && abs_den(Factor.Denominator) == 1 && abs_den(Offset.Denominator) == 1;
 
-      // Map rhs.Raw into L's raw space (requires is_integer_mapping).
-      //
-      // The Offset/Factor formula assumes both sides use offset encoding —
-      // i.e. R.Raw is the R-offset and the result is the L-offset. Two
-      // adjustments make it work for direct-storage operands:
-      //
-      //   1. If R is !index_raw<R>, rhs_raw is already R-value
-      //      (not R-offset). Subtract Lower<R> first so the formula sees
-      //      a true R-offset.
-      //   2. If L is !index_raw<L>, L.Raw must be L-value (not
-      //      L-offset). Add Lower<L> after the formula. (Equivalently:
-      //      raw_from_offset<L>.)
-      //
-      // Both adjustments use only integer arithmetic because is_integer_mapping
-      // already guarantees Notch and Lower have integer denominators.
+      // Map rhs.Raw into L's raw space (requires is_integer_mapping). The
+      // Offset/Factor formula assumes offset encoding both sides; for direct
+      // storage, subtract Lower<R> first (R-value → R-offset) and add Lower<L>
+      // after (raw_from_offset<L>). All integer (is_integer_mapping guarantees it).
       static constexpr imax map_raw(auto rhs_raw)
       {
         imax r_offset = rhs_raw;
         if constexpr (!index_raw<R>)
           r_offset -= RawLo<R>;
 
-        // Offset is an exact integer here (is_integer_mapping), so Offset.trunc()
-        // is a constexpr constant (0 / +N / -N) — folds to the same add.
+        // Offset is an exact integer here, so Offset.trunc() is a constexpr constant.
         imax l_offset = static_cast<imax>(Factor.Numerator) * r_offset + Offset.trunc();
 
         if constexpr (!index_raw<L>)
@@ -267,11 +229,9 @@ namespace bnd::detail
   template<typename A>
   constexpr void assignment<L,R>::apply_wrap(L& lhs, R rhs, imax lower, imax upper, A&& action)
   {
-    // Overflow-safe modular wrap. Both `upper - lower + 1` and `rhs - lower` can
-    // exceed imax — `rhs` is an arbitrary integral, and a grid may legitimately
-    // span more than imax under unsigned storage — so the reduction runs in umax:
-    // the span+1 and the unsigned distance from `lower` both fit umax for any
-    // valid grid, and the wrapped result lands back inside [lower, upper] ⊂ imax.
+    // Overflow-safe modular wrap: `upper-lower+1` and `rhs-lower` can exceed imax,
+    // so the reduction runs in umax (both fit umax for any valid grid; the result
+    // lands back in [lower, upper] ⊂ imax).
     const umax urange = static_cast<umax>(upper) - static_cast<umax>(lower) + 1u;
     const imax ri = static_cast<imax>(rhs);
     if (urange == 0)                              // span == 2^64−1: wrap is identity
@@ -382,13 +342,10 @@ namespace bnd::detail
     else
       overshoot = rhs - clamped;
 
-    // The clamp target is an interval endpoint — always a grid point — so no
-    // notch arithmetic or rounding is needed: the slot is 0 or NotchCount.
-    // Real storage takes the endpoint as a double (exact: dyadic grid);
-    // rational storage takes the exact endpoint constant directly (a `double`
-    // round-trip would lose non-dyadic endpoints under `exact`);
-    // `raw_from_offset<L>` adds Lower back for direct-encoded storage, which
-    // also covers singleton grids.
+    // The clamp target is an interval endpoint — a grid point — so the slot is 0
+    // or NotchCount, no rounding. real takes the endpoint as a double, rational
+    // the exact constant (a double round-trip would lose non-dyadic endpoints);
+    // raw_from_offset<L> adds Lower back for direct-encoded storage.
     if constexpr (real_raw<L>)
       lhs = L::from_raw((rhs < Lower<L>) ? static_cast<double>(Lower<L>)
                                          : static_cast<double>(Upper<L>));
@@ -435,9 +392,8 @@ namespace bnd::detail
     { lhs = L::from_raw(rhs); return true; }   // continuous: store verbatim
     else if constexpr (real_raw<L>)
     {
-      // real (double-backed) target: raw IS the value — snap to the dyadic
-      // grid. Range handling (clamp/wrap/report) already ran in the assign
-      // cascade; the finite guard mirrors bound::store_real's.
+      // real target: raw IS the value — snap to the dyadic grid (range handling
+      // already ran in the assign cascade; finite guard mirrors store_real's).
       const double v = static_cast<double>(rhs);
       if (!(v - v == 0))
         throw std::system_error(make_error_code(errc::domain_error),
@@ -447,9 +403,7 @@ namespace bnd::detail
     }
     else if constexpr (Lower<L> == Upper<L>)
     {
-      // Singleton grid: Raw layout depends on encoding. For offset
-      // encoding the lone slot is Raw=0; for rational/direct storage Raw is
-      // the value itself (`Lower`).
+      // Singleton grid: offset encoding → Raw=0; rational/direct → Raw = Lower.
       if constexpr (rational_raw<L>)
         lhs = L::from_raw(Lower<L>);
       else if constexpr (!index_raw<L>)
@@ -460,10 +414,8 @@ namespace bnd::detail
     }
     else
     {
-      // Store the k-th notch slot in L's encoding: rational (`exact`) storage
-      // holds the snapped VALUE itself; `raw_from_offset<L>` handles both
-      // offset-encoded and direct-encoded integers (for direct, it adds
-      // Lower<L> back to produce the value).
+      // Store the k-th notch slot: rational storage holds the snapped value;
+      // raw_from_offset<L> covers offset- and direct-encoded integers.
       auto store_slot = [&](auto k)
       {
         if constexpr (rational_raw<L>)
@@ -477,14 +429,11 @@ namespace bnd::detail
         || HasPolicy<L, P, round_ceil>    || HasPolicy<L, P, round_half_even>
         || HasPolicy<L, P, snapping>;
 
-      // Q-format integer shortcut: with integer Lower and notch 1/K the
-      // offset is ((num/aden) − Lo)·K = (num − Lo·aden)·(K/g) / (aden/g),
-      // g = gcd(aden, K) — one gcd and three integer ops instead of two
-      // gcd-reducing rational operations. `round_quotient` is invariant
-      // under fraction reduction (same equivalence `grid_fast_store` in
-      // cmath.hpp relies on), so the slot is bit-identical to the rational
-      // path below. Oversized denominators fall through (kMaxDen guard
-      // keeps every intermediate product inside imax).
+      // Q-format integer shortcut: with integer Lower and notch 1/K the offset is
+      // (num − Lo·aden)·(K/g) / (aden/g), g = gcd(aden, K) — one gcd + integer ops
+      // instead of two rational ops. round_quotient is invariant under reduction,
+      // so the slot is bit-identical to the rational path. Oversized denominators
+      // fall through (the kMaxDen guard keeps every product inside imax).
       if constexpr (HasQFormatFastPath<L> && !real_raw<L> && Notch<L> != 0)
       {
         constexpr imax K  = abs_den(Notch<L>.Denominator);
@@ -575,11 +524,8 @@ namespace bnd::detail
   template<typename A>
   constexpr void assignment<L,R>::apply_clamp(L& lhs, R const& rhs, A&& action)
   {
-    // `RawLo`/`RawHi` are raw-space constants by construction (Lower/Upper
-    // for direct storage, 0/NotchCount for notch-offset), so they're
-    // already the correct Raw — no `raw_from_offset` adjustment needed.
-    // Real storage takes the endpoint value as a double instead (RawLo/Hi
-    // are integer truncations, wrong for fractional dyadic endpoints).
+    // RawLo/RawHi are already the correct Raw (no raw_from_offset). Real storage
+    // takes the endpoint as a double (RawLo/Hi truncate fractional dyadic endpoints).
     if constexpr (real_raw<L>)
       lhs = L::from_raw((as_rational(rhs) < Lower<L>)
         ? static_cast<double>(Lower<L>) : static_cast<double>(Upper<L>));
@@ -640,9 +586,8 @@ namespace bnd::detail
   constexpr void assignment<L,R>::store(L& lhs, R const& rhs, P&&)
   {
     if constexpr (real_raw<L>)
-      // real (double-backed) target: raw IS the value — decode the source
-      // (kind-aware) and snap to the dyadic grid. The offset/raw_from_offset
-      // machinery below mis-encodes a double raw.
+      // real target: raw IS the value — decode the source and snap to the dyadic
+      // grid (the offset machinery below mis-encodes a double raw).
       lhs = L::from_raw(Grid<L>.snap_double(as_double(rhs)));
     else if constexpr (is_integer_mapping)
     {
@@ -656,15 +601,10 @@ namespace bnd::detail
     {
       rational rat = *(Offset + *(Factor * rhs.raw()));
       umax ad = static_cast<umax>(abs_den(rat.Denominator));
-      // Round the L-offset to a notch index in VALUE space via the shared
-      // round_quotient helper — same as the scalar store path. This honours
-      // every rounding mode (the old inline form special-cased only
-      // round_nearest, so round_ceil / round_half_even silently truncated, and
-      // round_nearest rounded the offset half-up rather than the value
-      // half-away-from-zero on negative grids).
+      // Round the L-offset to a notch index in VALUE space via round_quotient
+      // (same as the scalar path), honouring every rounding mode.
       umax q = round_quotient<L, P>(rat.Numerator, ad);
-      // `rat` is the L-offset; `raw_from_offset<L>` converts to L.Raw,
-      // adding Lower<L> back for direct-storage targets.
+      // rat is the L-offset; raw_from_offset<L> adds Lower<L> back for direct storage.
       lhs = L::from_raw((rat.Denominator < 0)
         ? raw_from_offset<L>(-static_cast<imax>(q))
         : raw_from_offset<L>(q));

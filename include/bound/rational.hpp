@@ -72,23 +72,16 @@ namespace bnd::detail
   //---------------------------------------------------------------------------
   // Overflow / malformed-literal signalling
   //---------------------------------------------------------------------------
-  // Failure aborts constant evaluation directly via `throw`: the `consteval`
-  // `_b`/`_r` literal parsers throw on malformed input, and the checked
-  // arithmetic paths throw under `if (std::is_constant_evaluated())`. A `throw`
-  // reached during constant evaluation hard-fails the build with the message;
-  // at runtime the arithmetic paths never enter that branch and fall through to
-  // `nullopt` instead. There is deliberately no dedicated always-throwing
-  // helper — as a `consteval`/`constexpr` function its body could never be a
-  // constant expression, which is ill-formed NDR and a hard error on some
-  // toolchains (e.g. the Xilinx aarch64 GCC).
+  // Failure aborts constant evaluation via `throw` (literal parsers and the
+  // checked paths under `if (std::is_constant_evaluated())`), hard-failing the
+  // build; at runtime those paths fall through to `nullopt`. No dedicated
+  // always-throwing helper — as constexpr its body could never be a constant
+  // expression (ill-formed NDR, a hard error on some toolchains).
 
   //---------------------------------------------------------------------------
-  // rational
-  //---------------------------------------------------------------------------
-  // Must be a structural type for template NTTP (only public members)
-  //---------------------------------------------------------------------------
-  // Sign is encoded in the denominator (negative denominator = negative rational)
-  // Numerator is unsigned to represent e.g. umax itself
+  // rational — structural type for NTTP (public members only). Sign is encoded
+  // in the denominator (negative = negative rational); numerator is unsigned to
+  // represent e.g. umax itself.
   //---------------------------------------------------------------------------
   struct rational
   {
@@ -110,6 +103,16 @@ namespace bnd::detail
     constexpr rational(N num, D den)
      :Numerator{num}, Denominator{static_cast<imax>(den)}
     { canonicalize(Numerator, Denominator); }
+
+    // Implicit unwrap of a checked result, so coefficient expressions read as
+    // plain arithmetic (`rational two_pi = 2 * pi;`); empty optional (overflow) is
+    // a compile error in constant evaluation, a throw at runtime. same_as-constrained
+    // (not a plain `rational(optional<rational>)`) because optional's own converting
+    // ctor is gated on `is_constructible_v<rational, U>` — a non-template overload
+    // would make that trait depend on itself.
+    template <class O>
+      requires std::same_as<std::remove_cvref_t<O>, slim::optional<rational>>
+    constexpr rational(O&& o) : rational(o.value()) {}
 
     // operator== by default for structural type
     constexpr bool operator==(const rational&) const = default;
@@ -146,10 +149,8 @@ namespace bnd::detail
     // allow unary+ for generic programming
     constexpr rational operator+() const { return *this; }
 
-    // Compound-assign operators. Each forwards to the checked binary op and
-    // unwraps the resulting optional via .value() — overflow surfaces as
-    // slim::bad_optional_access rather than as a return value, matching the
-    // in-place idiom (no error channel available).
+    // Compound-assign: forward to the checked binary op and unwrap via .value()
+    // — overflow surfaces as slim::bad_optional_access (no error channel here).
     constexpr rational& operator+=(rational const& rhs);
     constexpr rational& operator-=(rational const& rhs);
     constexpr rational& operator*=(rational const& rhs);
@@ -167,10 +168,8 @@ namespace bnd::detail
     [[nodiscard]] constexpr bool is_sentinel() const noexcept
     { return Denominator == 0; }
 
-    // Named integer reductions — explicit, lossy, intent-clear alternatives
-    // to `static_cast<imax>(r)`. trunc rounds toward zero (matches operator T);
-    // floor rounds toward -inf; ceil rounds toward +inf; round goes
-    // half-away-from-zero.
+    // Named integer reductions — explicit, lossy alternatives to `static_cast`.
+    // trunc → 0; floor → -inf; ceil → +inf; round → half-away-from-zero.
     [[nodiscard]] constexpr imax trunc() const
     {
       umax q = Numerator / abs_den(Denominator);
@@ -224,10 +223,9 @@ namespace bnd::detail
     { return a + b; }
     static constexpr slim::optional<rational> inv(rational);
 
-    // Shared algorithm bodies. Checked=true returns slim::optional<rational>
-    // and reports overflow (a compile-time `throw` under is_constant_evaluated
-    // or nullopt at runtime). Checked=false silently overflows; the caller
-    // must guarantee its absence.
+    // Shared algorithm bodies. Checked=true returns optional<rational>, reporting
+    // overflow (throw at compile time / nullopt at runtime); Checked=false
+    // silently overflows — the caller must guarantee its absence.
     template <bool Checked> static constexpr auto add_impl(rational const&, rational const&);
     template <bool Checked> static constexpr auto mul_impl(rational const&, rational const&);
     template <bool Checked> static constexpr auto div_impl(rational const&, rational const&);
@@ -235,17 +233,9 @@ namespace bnd::detail
 
   private:
     // Domain check + canonical-zero + gcd reduction; used by the integral ctors.
-    // (Private member function; non-static data members above remain public so
-    // rational stays a structural type usable as an NTTP.)
-    //
-    // Two domain errors:
-    //  - Denominator == 0           → undefined rational (also reserved as the
-    //                                 sentinel slot, so user values can't land
-    //                                 there)
-    //  - Denominator == imax_min    → cannot be negated without UB; every
-    //                                 sign-flip in the file (`operator-`,
-    //                                 `abs`, the trim sign-write) assumes
-    //                                 `-Denominator` is well-defined
+    // Two domain errors: Denominator == 0 (undefined; also the reserved sentinel)
+    // and Denominator == imax_min (cannot be negated without UB, which every
+    // sign-flip in the file assumes is well-defined).
     static constexpr void canonicalize(umax& num, imax& den)
     {
       if (den == 0)
@@ -258,11 +248,9 @@ namespace bnd::detail
       trim(num, den);
     }
 
-    // Computes the signed-encoded denominator for the signed ctor, validating
-    // BEFORE the negation so that `-den` is never UB. Throws on den == 0 or
-    // den == imax_min — the canonicalize() running in the ctor body would
-    // also catch these, but only after the mem-init has already evaluated
-    // `-den` and stepped on UB.
+    // Signed-encoded denominator for the signed ctor, validated BEFORE the
+    // negation so `-den` is never UB (the ctor-body canonicalize() would catch
+    // these too, but only after the mem-init already evaluated `-den`).
     static constexpr imax signed_den_from(std::signed_integral auto num, imax den)
     {
       if (den == 0)
@@ -290,10 +278,8 @@ namespace bnd::detail
   //---------------------------------------------------------------------------
   // gcd
   //---------------------------------------------------------------------------
-  // Returns nullopt if `lcm(|lhs.Denominator|, |rhs.Denominator|)` would
-  // exceed imax_max (the sign bit reservation). Compute lcm as
-  // `(a / gcd(a, b)) * b` and trap the multiplication overflow on the
-  // `mul_overflow` builtin, then a final range check before the cast to imax.
+  // Returns nullopt if the combined denominator lcm = (a/gcd)·b would exceed
+  // imax_max (sign-bit reservation) — traps the mul_overflow then range-checks.
   //---------------------------------------------------------------------------
   [[nodiscard]] constexpr slim::optional<rational> gcd(rational const& lhs, rational const& rhs)
   {
@@ -571,11 +557,8 @@ namespace bnd::detail
       return ret_t{r};
     }
 
-    // Use lcm(a_ad, b_ad) as the common denominator instead of a_ad * b_ad.
-    // Let g = gcd(a_ad, b_ad); the cofactors a_ad/g and b_ad/g are coprime,
-    // and lcm = a_ad * (b_ad/g) = (a_ad/g) * b_ad. The cross-multiplications
-    // use the reduced cofactors and so overflow far less often than the
-    // unreduced product.
+    // Common denominator = lcm(a_ad, b_ad) = a_ad·(b_ad/g), not a_ad·b_ad: the
+    // reduced cofactors (g = gcd) overflow far less often than the raw product.
     umax g     = std::gcd(a_ad, b_ad);
     umax a_ad_r = a_ad / g;       // = a_ad / gcd; coprime with b_ad_r
     umax b_ad_r = b_ad / g;
@@ -616,9 +599,8 @@ namespace bnd::detail
       else
         numerator = A + B;
 
-      // numerator and denominator are both > 0 here, so the rational(num, den)
-      // ctor's domain-error / canonical-zero checks are dead branches; assemble
-      // directly and trim, mirroring the equal-denominator path above.
+      // num, den both > 0 here, so the ctor's domain/zero checks are dead;
+      // assemble directly and trim.
       rational r;
       r.Numerator   = numerator;
       r.Denominator = a_neg ? -denominator
@@ -715,9 +697,8 @@ namespace bnd::detail
 
     if constexpr (Checked)
     {
-      // a.Numerator goes into the result's Denominator slot, so it must fit
-      // in imax (otherwise the umax→imax conversion wraps and any later -Denominator
-      // is UB).
+      // a.Numerator goes into the result's Denominator slot, so it must fit in
+      // imax (else the umax→imax conversion wraps and a later -Denominator is UB).
       if (a.Numerator == 0 ||
           a.Numerator > static_cast<umax>(std::numeric_limits<imax>::max()))
       {
@@ -751,12 +732,9 @@ namespace bnd::detail
   }
 
   //---------------------------------------------------------------------------
-  // unchecked rational arithmetic — caller takes responsibility for:
-  //   - no umax overflow on the numerator/denominator products,
-  //   - no zero divisor (div_unchecked) or zero numerator (inv_unchecked),
-  //   - the resulting Denominator fitting in imax (i.e., the umax-side
-  //     denominator does not exceed imax_max). The checked variants enforce
-  //     all three; unchecked skips them all.
+  // unchecked rational arithmetic — caller guarantees: no umax overflow on the
+  // products, no zero divisor/numerator, and the result Denominator fits in imax.
+  // The checked variants enforce all three; unchecked skips them.
   //---------------------------------------------------------------------------
   inline constexpr rational rational::add_unchecked(rational a, rational b)
   { return add_impl<false>(a, b); }
@@ -852,10 +830,8 @@ namespace bnd::detail
       mul_overflow(rhs.Numerator, lhs_ad, &B)
     )
     {
-      // operator<=> must return std::strong_ordering — there is no optional
-      // form that preserves spaceship syntax. We trap (throw at runtime, fail
-      // constant evaluation at compile time), symmetric with the checked
-      // arithmetic path's compile-time overflow throw.
+      // operator<=> must return strong_ordering (no optional form), so trap:
+      // throw at compile time, overflow_trap at runtime.
       if (std::is_constant_evaluated()) { throw ("rational <=>: cross-multiplication overflow"); }
       overflow_trap("multiplicative overflow");
     }
@@ -883,18 +859,11 @@ namespace bnd::detail
   { return lhs <=> rational{rhs}; }
 
   //---------------------------------------------------------------------------
-  // Optional-lifting operators
-  //
-  // One generic overload per arithmetic operator replaces what used to be five
-  // per-shape overloads each. It engages when at least one operand is a
-  // slim::optional, both operands unwrap to an arithmetic type, and at least
-  // one unwraps to rational. Gating on `arithmetic` (rather than naming
-  // `boundable`, which isn't visible this low in the include graph) excludes
-  // bound operands — `boundable` is defined as `!arithmetic` — so bound-involving
-  // optional expressions fall to the generic operator in arithmetic.hpp instead,
-  // and the two generics partition the space with no ambiguity. The lambda
-  // re-enters operator resolution on the unwrapped operands, inheriting the
-  // scalar/core overloads below.
+  // Optional-lifting operators — one generic overload per arithmetic operator
+  // that engages when an operand is a slim::optional, both unwrap to arithmetic,
+  // and at least one to rational. Gating on `arithmetic` (not `boundable`, which
+  // isn't visible this low) excludes bound operands, so bound-involving optional
+  // expressions partition cleanly to arithmetic.hpp's generic instead.
   //---------------------------------------------------------------------------
   template <class L, class R>
   concept rational_lift_operands =
@@ -1041,18 +1010,14 @@ namespace bnd::detail
 
 namespace bnd
 {
-  // `rational` itself is an internal representation type and is not part of the
-  // public surface. The grid-building `notch<N,D>` / `frac<N,D>` literals stay
-  // public — they never expose the type. The integer/rational helpers
-  // (`abs_den`, `trim`, `abs`, `gcd`, `divides_evenly`) stay in `bnd::detail`;
-  // the library's own headers spell them `detail::…`.
+  // `rational` is internal, but the grid-building `notch<N,D>` / `frac<N,D>`
+  // literals are public — they never expose the type.
   template <umax N, imax D = 1>
   inline constexpr detail::rational notch = detail::rational{N, D};
 
-  // frac<N, D> — exact fractional grid value (signed numerator), the companion
-  // to notch<N,D> for interval endpoints that are not dyadic and so cannot be
-  // written exactly as a floating literal (e.g. `frac<-6, 5>` for -1.2). Keeps
-  // exact grids spellable now that the `_r` literal is internal.
+  // frac<N, D> — exact fractional grid value (signed numerator), companion to
+  // notch<N,D> for non-dyadic endpoints not writable as a float literal
+  // (e.g. `frac<-6, 5>` for -1.2).
   template <imax N, imax D = 1>
   inline constexpr detail::rational frac = detail::rational{N, D};
 } // namespace bnd

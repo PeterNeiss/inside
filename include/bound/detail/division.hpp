@@ -9,19 +9,11 @@
 #include "bound/policy.hpp"
 
 //---------------------------------------------------------------------------
-// division / modulo
-//
-// `division::div` returns `slim::optional<result>` because division by zero
-// is always possible at runtime. Two code paths:
-//   - native_div:   integer-aligned grids + `snapping` → use native
-//                   integer division, return type is integer-grid bound.
-//   - rational:     exact rational arithmetic; result grid is a rational
-//                   interval (`bound<{rational}>`), can overflow under
-//                   `checked`.
-//
-// `modulo::mod` is integer-only (the `native_mod` static_assert below
-// hard-rejects rational/non-`snapping` grids) — non-integer remainders
-// aren't well-defined on fractional notches.
+// division / modulo. `division::div` returns optional<result> (division by zero
+// is always runtime-possible). Two paths: native (integer-aligned grids +
+// snapping → native integer division) and rational (exact, can overflow under
+// checked). `modulo::mod` is integer-only — non-integer remainders aren't
+// well-defined on fractional notches.
 //---------------------------------------------------------------------------
 namespace bnd::detail
 {
@@ -34,18 +26,11 @@ namespace bnd::detail
       && IsIntegerAligned<L> && IsIntegerAligned<R>;
 
   //---------------------------------------------------------------------------
-  // Rounding mode for the native (integer / Q-format) div & mod paths.
-  //
-  // The native paths fire when `snapping` is set; *which* rounding mode applies
-  // is decided here from the combined policy flags, with the same precedence as
-  // assignment.hpp (nearest → floor → ceil → half_even → truncate). Without a
-  // mode bit, `snapping` alone means truncate-toward-zero (== the `truncated`
-  // convenience policy), preserving the historical native-division semantics.
-  //
-  // The runtime quotient (`div_rounded` / `round_uquotient`) and the compile-
-  // time result-grid endpoints (`round_rat_lo` / `round_rat_hi`) MUST agree on
-  // the mode, or a rounded result could land outside its own grid. Both read
-  // the same `div_round_mode(F | BoundPolicy<L> | BoundPolicy<R>)`.
+  // Rounding mode for the native div & mod paths (fire when `snapping` is set).
+  // Decided from the combined flags with assignment.hpp's precedence (nearest →
+  // floor → ceil → half_even → truncate); `snapping` alone is truncate-toward-zero.
+  // The runtime quotient and the compile-time grid endpoints MUST agree on the
+  // mode (both read div_round_mode), or a result could escape its own grid.
   //---------------------------------------------------------------------------
   enum class round_mode { truncate, nearest, floor, ceil, half_even };
 
@@ -104,9 +89,8 @@ namespace bnd::detail
   }
 
   // Compile-time rounding of a quotient-interval endpoint to an integer index.
-  // `lo`/`hi` differ only for half_even, where the exact tie-rounded endpoint
-  // is bracketed by [floor, ceil] (a safe, ≤1-wide superset) rather than
-  // reproducing the parity rule at compile time.
+  // lo/hi differ only for half_even, where the endpoint is bracketed by
+  // [floor, ceil] rather than reproducing the parity rule at compile time.
   constexpr imax round_rat_lo(rational q, round_mode m) noexcept
   {
     switch (m)
@@ -133,19 +117,11 @@ namespace bnd::detail
   template <boundable L, boundable R = L, policy_flag F = none>
   struct division
   {
-    // Native integer division has two flavours, both gated on `snapping`
-    // (the caller has accepted integer-truncation semantics):
-    //
-    //   native_div_integer — both operands integer-aligned (Notch.Denominator
-    //                        == 1). Result is an integer-grid bound; the
-    //                        formula is plain `lhs_value / rhs_value`.
-    //   native_div_qformat — both operands share the same Q-format
-    //                        (Notch = 1/N, Lower = 0). The formula
-    //                        `(lhs.Raw * N) / rhs.Raw` reproduces the native
-    //                        `(a << log2(N)) / b` idiom; the result is
-    //                        another Q-format with the same Notch.
-    //
-    // Otherwise the exact-rational path runs and returns `bound<rational>`.
+    // Native integer division, two flavours gated on `snapping`:
+    //   native_div_integer — both operands integer-aligned; formula `a / b`.
+    //   native_div_qformat — both same Q-format (Notch = 1/N, Lower = 0); formula
+    //                        `(a·N)/b` (the native `(a << log2 N)/b` idiom).
+    // Otherwise the exact-rational path returns bound<rational>.
     static constexpr bool native_div_integer = integer_native_ops<L, R, F>;
 
     static constexpr bool native_div_qformat =
@@ -159,10 +135,9 @@ namespace bnd::detail
     static constexpr round_mode rmode =
         div_round_mode(F | BoundPolicy<L> | BoundPolicy<R>);
 
-    // Native-integer endpoints are rounded with the *same* mode as the runtime
-    // quotient, so e.g. round_ceil can land a result one above the truncated
-    // bound without escaping its grid. (The Q-format extreme is always exact —
-    // max value / smallest divisor divides evenly — so its grid is unchanged.)
+    // Native-integer endpoints rounded with the same mode as the runtime
+    // quotient, so e.g. round_ceil can't escape the grid. (The Q-format extreme
+    // is always exact, so its grid is unchanged.)
     static constexpr grid result_grid =
         native_div_integer
             ? grid{round_rat_lo((*(Grid<L> / Grid<R>)).Interval.Lower, rmode),
@@ -173,8 +148,7 @@ namespace bnd::detail
 
     static constexpr bool any_real =
         (BoundPolicy<L> & bnd::real) == bnd::real || (BoundPolicy<R> & bnd::real) == bnd::real;
-    // Carry every representation flag of both operands (a mixed pair resolves
-    // widest-wins at storage selection: exact > real > direct > indexed).
+    // Carry both operands' representation flags (widest-wins at storage selection).
     static constexpr policy_flag rep =
         ((BoundPolicy<L> | BoundPolicy<R>) & (bnd::exact | bnd::direct | bnd::indexed))
         | (any_real ? bnd::real : none);
@@ -184,11 +158,9 @@ namespace bnd::detail
     static constexpr bool needs_overflow_check =
         ((G | F | BoundPolicy<L> | BoundPolicy<R>) & checked);
 
-    // For a *nonzero* divisor the op can still fail only on the checked
-    // rational path (overflow). The native paths and the unchecked rational
-    // path cannot fail once zero is ruled out. So when the divisor's grid
-    // excludes zero AND this is false, `div` cannot fail at all and returns a
-    // plain `result` rather than `slim::optional<result>`.
+    // For a nonzero divisor the op fails only on the checked rational path
+    // (overflow). So when the divisor excludes zero AND this is false, `div`
+    // returns a plain `result` rather than optional<result>.
     static constexpr bool may_overflow_nonzero =
         !native_div && (needs_overflow_check<F> != 0);
 
@@ -219,11 +191,9 @@ namespace bnd::detail
     }
     else
     {
-    // `fail` must stay well-formed for every configuration, including the one
-    // where `div_return_t` has narrowed to plain `result` because the divisor
-    // excludes zero and the op cannot overflow. In that case every call to
-    // `fail` has been removed by the `if constexpr` guards below, so the final
-    // arm is dead — it exists only to satisfy the return type.
+    // `fail` must stay well-formed even when div_return_t narrowed to plain
+    // `result` (divisor excludes zero, no overflow); there every call to it is
+    // removed by the guards below, so the final arm is dead (return-type only).
     auto fail = [&](errc code, const char* what) -> div_return_t<A> {
       if constexpr (overflow_action<plain<A>>)
         return report_or_nullopt<result>(action, policy, code, what);   // -> result
@@ -233,19 +203,16 @@ namespace bnd::detail
         return result{};   // unreachable: divisor excludes zero, op cannot fail
     };
 
-    // The div-by-zero check is elided when R's grid statically excludes zero,
-    // OR when `ignore_zero` is set (e.g. `unsafe`): a zero divisor is then
-    // undefined behavior, matching the compound `/= 0` no-op contract. (The
-    // `fail` arms above stay keyed on DivisorExcludesZero, which is what
-    // narrows the *return type* — `ignore_zero` does not change it.)
+    // Div-by-zero check elided when R's grid excludes zero, or `ignore_zero` is
+    // set (zero divisor is then UB, matching the `/= 0` no-op). The fail arms stay
+    // keyed on DivisorExcludesZero (which narrows the return type; ignore_zero doesn't).
     constexpr bool zero_unchecked = DivisorExcludesZero<R>
         || (((G | F | BoundPolicy<L> | BoundPolicy<R>) & ignore_zero) != 0);
 
     if constexpr (native_div_qformat)
     {
-      // rhs.Raw == 0 iff rhs.value == 0 (Lower<R> == 0 by IsQFormat).
-      // Formula matches `(a << log2(N)) / b` which the compiler folds when
-      // N is a power of two — i.e. literally the native Q-format idiom.
+      // rhs.Raw == 0 iff rhs.value == 0 (Lower<R> == 0). Formula folds to
+      // `(a << log2 N)/b` for power-of-two N — the native Q-format idiom.
       if constexpr (!zero_unchecked)
         if (rhs.raw() == 0) return fail(errc::division_by_zero, "division by zero in div");
       constexpr umax N = abs_den(Notch<L>.Denominator);
@@ -287,22 +254,17 @@ namespace bnd::detail
   {
     static constexpr bool native_mod = integer_native_ops<L, R, F>;
 
-    // Hard requirement, not a fallback: there is no exact-rational modulo —
-    // `a mod b` is only defined when both operands are integers. The grid
-    // must therefore be integer-aligned and `snapping` must be set
-    // (modulo on rational grids would have to round-then-mod, which is not
-    // a meaningful operation).
+    // Hard requirement, not a fallback: `a mod b` is only defined for integer
+    // operands, so the grid must be integer-aligned with `snapping` set.
     static_assert(native_mod, "modulo requires integer-valued grids and snapping");
 
     static constexpr imax max_rem =
         std::max(abs_den(LowerImax<R>), abs_den(UpperImax<R>)) - 1;
 
-    // The remainder is consistent with the rounded quotient: r = a − round(a/b)·b
-    // (so `(a/b)·b + a%b == a` holds for every mode). Under plain truncation the
-    // remainder takes the dividend's sign — non-negative when the dividend grid
-    // is non-negative. Any directional mode (floor/ceil/nearest/half_even) can
-    // flip the remainder's sign regardless of the dividend, so the grid widens
-    // to the symmetric ±max_rem. |r| ≤ max_rem holds for every mode.
+    // Remainder consistent with the rounded quotient: r = a − round(a/b)·b. Under
+    // truncation it takes the dividend's sign (non-negative for a non-negative
+    // dividend grid); any directional mode can flip the sign, so the grid widens
+    // to the symmetric ±max_rem (|r| ≤ max_rem for every mode).
     static constexpr round_mode rmode =
         div_round_mode(F | BoundPolicy<L> | BoundPolicy<R>);
 
@@ -313,9 +275,8 @@ namespace bnd::detail
 
     using result = bound<result_grid>;
 
-    // Modulo never overflows (the remainder always fits result_grid), so the
-    // only failure is a zero divisor. When the divisor's grid excludes zero
-    // the op cannot fail and returns a plain `result`.
+    // Modulo never overflows (the remainder fits result_grid), so the only
+    // failure is a zero divisor — excluded by the grid → plain `result`.
     template <typename A>
     using mod_return_t = std::conditional_t<
         overflow_action<plain<A>> || DivisorExcludesZero<R>,
@@ -331,11 +292,8 @@ namespace bnd::detail
   constexpr auto modulo<L,R,F>::mod(L lhs, R rhs, policy<G, E> policy, A&& action) -> mod_return_t<A>
   {
     imax rhs_val = to_value(rhs);
-    // The zero check is elided when R's grid statically excludes zero (then
-    // `mod_return_t` is a plain `result`) OR when `ignore_zero` is set (e.g.
-    // `unsafe`): a zero divisor is then undefined behavior, matching the
-    // compound `%= 0` no-op contract. When kept, `report_or_nullopt` matches
-    // the optional return type; when elided, the tail returns a plain result.
+    // Zero check elided when R's grid excludes zero (mod_return_t is plain
+    // `result`) or `ignore_zero` is set (zero divisor is then UB, matching `%= 0`).
     constexpr bool zero_unchecked = DivisorExcludesZero<R>
         || (((G | F | BoundPolicy<L> | BoundPolicy<R>) & ignore_zero) != 0);
     if constexpr (!zero_unchecked)

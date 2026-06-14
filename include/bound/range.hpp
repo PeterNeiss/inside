@@ -13,31 +13,19 @@
 #include <utility>
 
 //---------------------------------------------------------------------------
-// bound_range — random-access range over a grid.
-//
-// Iteration walks the grid by notch index, so any grid with a non-zero
-// notch works (integer or fractional). Each `*it` computes the value
-// `Lower + index * Notch`, which is exact by construction. The iterator
-// wraps modulo the slot count so a mid-range start visits every slot
-// exactly once before terminating.
-//
-// Models `std::ranges::random_access_range` and `std::ranges::sized_range`
-// so `std::ranges::sort`, `std::views::take`, `std::views::reverse` etc.
-// work without falling back to `common_iterator`.
-//
-// `iterator_category` is `input_iterator_tag` (operator* returns by value,
-// which is fine for random_access — `iterator_concept` carries the real
-// capability per the std::ranges concept hierarchy).
+// bound_range — random-access range over a grid. Walks by notch index (any
+// non-zero notch), each `*it` computing the exact `Lower + index·Notch`; the
+// iterator wraps modulo the slot count so a mid-range start visits every slot
+// once. Models random_access_range + sized_range (so std::ranges algorithms
+// work directly). iterator_category is input_iterator_tag because operator*
+// returns by value; iterator_concept carries the real random-access capability.
 //---------------------------------------------------------------------------
 namespace bnd
 {
   namespace detail
   {
-    // enumerate_view — uniform C++20 stand-in for `std::views::enumerate`
-    // (C++23). Wraps a range and yields `pair<index, value>` by value, which
-    // is all `indexed()` needs: bound_range's iterator already returns each
-    // value by value, so there is nothing to bind a reference to. One code
-    // path on every compiler (no __cpp_lib_ranges_enumerate branch).
+    // enumerate_view — C++20 stand-in for std::views::enumerate (C++23), yielding
+    // pair<index, value> by value (all indexed() needs).
     template <class R>
     struct enumerate_view
     {
@@ -61,11 +49,9 @@ namespace bnd
       constexpr iterator end()   const { return {std::ranges::end(base_), 0}; }
     };
 
-    // stride_view — C++20 stand-in for `std::views::stride` (C++23). Visits
-    // every `step`-th element of the wrapped range. Forward-only (enough for
-    // range-for and the std algorithms that take a forward range); the
-    // per-step advance checks `end` so a length that isn't a multiple of the
-    // stride still terminates cleanly.
+    // stride_view — C++20 stand-in for std::views::stride (C++23). Visits every
+    // `step`-th element; forward-only, and the advance checks `end` so a length
+    // that isn't a multiple of the stride still terminates.
     template <class R>
     struct stride_view
     {
@@ -180,16 +166,12 @@ namespace bnd
 
     constexpr std::size_t size() const { return slot_count; }
 
-    // `indexed()` pairs each value with its zero-based position, mirroring
-    // the C++23 `std::views::enumerate` adapter. Convenient sugar for the
-    // common "index alongside value" pattern in lookup-table examples.
-    // Uses detail::enumerate_view so C++20 / GCC 12 builds work unchanged.
+    // `indexed()` pairs each value with its zero-based position (≈ C++23
+    // std::views::enumerate), via detail::enumerate_view for C++20.
     constexpr auto indexed() const { return detail::enumerate_view<bound_range>{*this}; }
 
-    // `strided(step)` visits every `step`-th grid value (a coarser sweep over
-    // the same grid). Mirrors C++23 `std::views::stride`; works on C++20 via
-    // detail::stride_view. `std::views::reverse` already works directly on a
-    // bound_range (it is a random-access range), so there is no `reverse()`.
+    // `strided(step)` visits every `step`-th grid value (≈ C++23 std::views::
+    // stride). `std::views::reverse` already works directly, so there's no reverse().
     constexpr auto strided(std::size_t step) const
     { return detail::stride_view<bound_range>{*this, step}; }
   };

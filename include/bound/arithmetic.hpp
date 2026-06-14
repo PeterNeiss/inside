@@ -11,20 +11,12 @@
 #include <ranges>
 
 //---------------------------------------------------------------------------
-// Free-function arithmetic — wraps `detail::addition<L,R>::add`,
-// `detail::multiplication<L,R>::mul`, `detail::division<L,R,F>::div`, `detail::modulo<L,R,F>::mod`
-// with caller-friendly overloads:
-//   add(l, r)                      // default policy
-//   add(l, r, policy<F>{})         // explicit policy
-//   add(l, r, on_overflow(λ))      // single action
-//   add(l, r, ec)                  // std::error_code mode
-//   l + r                          // operator sugar
-//
-// Includes the variadic folds `add_all` / `mul_all` and their `*_into<Target>`
-// saturating variants used in audio-mix / sensor-sum pipelines.
-//
-// The slim::optional overloads of operator+/-/*// are here too so a single
-// nullopt in any operand propagates through the whole expression.
+// Free-function arithmetic — wraps detail::addition/multiplication/division/
+// modulo with caller-friendly overloads:
+//   add(l, r) / add(l, r, policy<F>{}) / add(l, r, on_overflow(λ)) /
+//   add(l, r, ec) / l + r
+// Plus the variadic folds add_all/mul_all and *_into<Target>, and the
+// slim::optional operator overloads (a nullopt operand propagates through).
 //---------------------------------------------------------------------------
 namespace bnd
 {
@@ -57,11 +49,8 @@ namespace bnd
   [[nodiscard]] constexpr auto operator+(boundable auto lhs, boundable auto rhs)
   { return add(lhs, rhs); }
 
-  // Single overload covers all three optional shapes (optional×T, T×optional,
-  // optional×optional) for any combination of boundable / rational operands.
-  // The lambda's `l + r` re-enters overload resolution on the *unwrapped*
-  // values, so we inherit whichever bare overload (bound×bound, bound×rational,
-  // bound×integral, …) would normally apply.
+  // One overload covers all three optional shapes; the lambda's `l + r` re-enters
+  // resolution on the unwrapped values, inheriting whichever bare overload applies.
   template <class L, class R>
     requires (detail::is_slim_optional_v<L> || detail::is_slim_optional_v<R>)
           && (!detail::expected_like<L> && !detail::expected_like<R>)
@@ -140,12 +129,8 @@ namespace bnd
   { return lift([](auto const& l, auto const& r){ return l * r; }, lhs, rhs); }
 
   //---------------------------------------------------------------------------
-  // add_all / mul_all — variadic folds
-  //
-  // `a + b + c + d` works today via pairwise `add`, threading four grid
-  // widenings. `add_all(a, b, c, d)` is the variadic equivalent — same
-  // pairwise widening, but the fold reads cleaner and matches Chromium's
-  // `CheckAdd(a, b, c)` idiom.
+  // add_all / mul_all — variadic folds (pairwise widening, same as `a + b + c`
+  // but reads cleaner; matches Chromium's `CheckAdd(a, b, c)`).
   //---------------------------------------------------------------------------
   template <boundable First, boundable... Rest>
   [[nodiscard]] constexpr auto add_all(First const& first, Rest const&... rest)
@@ -155,10 +140,8 @@ namespace bnd
   [[nodiscard]] constexpr auto mul_all(First const& first, Rest const&... rest)
   { return (first * ... * rest); }
 
-  // `add_all_into<Target>` / `mul_all_into<Target>` — variadic fold that
-  // collapses the widening intermediate back into a caller-chosen target
-  // grid via `clamp_cast<Target>`. The standard audio-mix / sensor-sum
-  // idiom: pairwise widen for exactness, then clip to the bus.
+  // add_all_into<Target> / mul_all_into<Target> — fold, then collapse the widened
+  // intermediate into Target via clamp_cast (widen for exactness, then clip).
   template <boundable Target, boundable First, boundable... Rest>
   [[nodiscard]] constexpr Target add_all_into(First const& first, Rest const&... rest)
   {
@@ -180,19 +163,12 @@ namespace bnd
   }
 
   //---------------------------------------------------------------------------
-  // sum<Target> — bulk reduction with ONE deferred range check
-  //
-  // Per-element `target += b` re-validates the running total on every step,
-  // which blocks vectorization (the 4× gap on checked accumulation in
-  // bench.cpp). `sum<Target>(range)` accumulates raws in imax — exact, no
-  // per-element branch, auto-vectorizable — and applies Target's policy ONCE
-  // to the final total. Deliberate semantic difference from the += loop: the
-  // *total* is validated/clamped, not every running prefix.
-  //
-  // Fast path: integer raws up to 32 bits, flushed into an exact rational
-  // every 2^30 elements so the imax accumulator cannot overflow. Wider raws
-  // and rational/real storage take the exact per-element rational fold (same
-  // single final check).
+  // sum<Target> — bulk reduction with ONE deferred range check. Per-element
+  // `target += b` re-validates every step (blocks vectorization); this
+  // accumulates raws in imax and applies Target's policy once to the total
+  // (semantic difference: the *total* is validated, not every prefix). Fast
+  // path: ≤32-bit integer raws, flushed to a rational every 2^30 elements so the
+  // accumulator can't overflow; wider/rational/real take the per-element fold.
   //---------------------------------------------------------------------------
   template <boundable Target, std::ranges::input_range Rng>
     requires boundable<std::remove_cvref_t<std::ranges::range_reference_t<Rng>>>
@@ -207,8 +183,7 @@ namespace bnd
     {
       auto flush = [&](imax acc, imax cnt)
       {
-        // value storage: raw IS the value. index storage:
-        // Σvalue = cnt·Lower + Σraw·Notch.
+        // value storage: raw IS the value. index: Σvalue = cnt·Lower + Σraw·Notch.
         rational part = [&]
         {
           if constexpr (detail::index_raw<B>)
@@ -223,8 +198,8 @@ namespace bnd
       auto end = std::ranges::end(r);
       while (it != end)
       {
-        // Branch-free inner block (≤ 2^30 elements: |raw| < 2^32 keeps the
-        // imax accumulator overflow-free) — this is the loop that vectorizes.
+        // Branch-free inner block (≤ 2^30 elements keeps the imax accumulator
+        // overflow-free) — the loop that vectorizes.
         imax acc = 0, cnt = 0;
         if constexpr (std::ranges::random_access_range<Rng>)
         {
@@ -252,13 +227,9 @@ namespace bnd
   }
 
   //---------------------------------------------------------------------------
-  // dot / cross / lerp — small bound-space vector helpers
-  //
-  // These keep 2-D geometry inside the bounded world: a consumer steering or
-  // measuring against a target never has to drop to a raw scalar to form a dot
-  // product, a 2-D cross (the z-component, useful for "which side" tests), or a
-  // linear interpolation. Each widens its result grid like the underlying
-  // `+`/`*`, so no overflow is possible and the result is a plain `bound`.
+  // dot / cross / lerp — 2-D bound-space vector helpers. Each widens its result
+  // grid like the underlying `+`/`*`, so no overflow and the result is a plain
+  // `bound`. (cross is the z-component, useful for "which side" tests.)
   //---------------------------------------------------------------------------
   [[nodiscard]] constexpr auto dot(boundable auto ax, boundable auto ay,
                                    boundable auto bx, boundable auto by)
@@ -275,17 +246,10 @@ namespace bnd
   { return a + (b - a) * t; }
 
   //---------------------------------------------------------------------------
-  // std-vocabulary helpers — ADL-found `min` / `max` / `midpoint`.
-  //
-  // These let bounds drop into generic code that calls unqualified
-  // `min` / `max` / `midpoint` (resolved by ADL). `min` / `max` mirror the std
-  // signatures and return the same bound type. `midpoint` returns the *exact*
-  // average on a refined grid: the true midpoint of two grid points need not
-  // land on the grid, so — unlike `std::midpoint` on integers — it neither
-  // rounds nor overflows. (`lerp` above is the third std-vocabulary verb.)
-  //
-  // There is no free `bnd::clamp`: the name is the `clamp` *policy flag*. To
-  // clamp a value into a grid use the `clamp` policy or `clamp_cast<Target>`.
+  // std-vocabulary helpers — ADL-found `min` / `max` / `midpoint` for generic
+  // code. min/max mirror std; midpoint returns the *exact* average on a refined
+  // grid (so, unlike std::midpoint, it neither rounds nor overflows). There is
+  // no free `bnd::clamp` (the name is the policy flag — use clamp_cast<Target>).
   //---------------------------------------------------------------------------
   template <boundable T>
   [[nodiscard]] constexpr T min(T a, T b) { return (b < a) ? b : a; }
@@ -373,18 +337,11 @@ namespace bnd
   { return lift([](auto const& l, auto const& r){ return l % r; }, lhs, rhs); }
 
   //---------------------------------------------------------------------------
-  // expected-lift operators — bridge bnd::math's expected results into chains
-  //---------------------------------------------------------------------------
-  // `math::tan(x) * gain + offset` stays an `expected<bound, errc>` end to
-  // end: the first (left) error short-circuits the chain. When the underlying
-  // operator itself returns an optional (a division whose divisor grid spans
-  // zero), its nullopt maps to the operator's single documented cause —
-  // overflow for + − ×, division_by_zero for / (a rational-arithmetic
-  // overflow inside a division chain also reports division_by_zero; the
-  // optional vocabulary doesn't carry the distinction).
-  //
-  // To drop the cause and enter the zero-cost optional world instead, convert
-  // with `bnd::ok(e)` — see lift.hpp.
+  // expected-lift operators — bridge bnd::math's expected results into chains, so
+  // `math::tan(x) * gain + offset` stays an expected end to end (first error
+  // short-circuits). An underlying nullopt maps to the operator's documented
+  // cause: overflow for + − ×, division_by_zero for /. To drop the cause and
+  // enter the optional world instead, convert with `bnd::ok(e)` (see lift.hpp).
   //---------------------------------------------------------------------------
   namespace detail
   {
@@ -478,38 +435,16 @@ namespace bnd
       "or unwrap explicitly"); }
 
   //---------------------------------------------------------------------------
-  // (Removed) Mixed-mode `bound op rational`
+  // Grid-less scalar operands are rejected. A raw int/double carries no grid, so
+  // `bound op rawscalar` has no type-safe result; rather than silently escape
+  // into rational/double, these guidance overloads make it ill-formed with a fix
+  // (give the literal a grid: `1_b` / `just<1>`, or a bound over its range).
+  // Comparisons and compound assignment with raw scalars are unaffected.
   //
-  // These eight overloads used to let a bound be added to / multiplied by a
-  // raw `rational`, returning a bare `rational` (unwrapped via `.value()`).
-  // They were the main way a consumer got pulled out of bound-space and into
-  // the optional-tax of rational arithmetic. They are gone: combine bounds
-  // with bounds (wrap a scalar with `just<>` / `_b`), and read an exact value
-  // back out with `numerator()` / `denominator()`. `rational` is now an
-  // internal representation type, not part of the arithmetic surface.
+  // Concrete (non-auto) return type on purpose: keeps these SFINAE-transparent,
+  // so `requires { b + 1; }` stays well-formed and the static_assert fires only
+  // on a real call.
   //---------------------------------------------------------------------------
-
-  //---------------------------------------------------------------------------
-  // Grid-less scalar operands are rejected.
-  //
-  // A raw `int`/`double` carries no grid, so `bound op rawscalar` has no
-  // type-safe result: widening to the scalar's full type range would balloon
-  // the grid, and a runtime value has no compile-time point grid to widen
-  // from. Rather than silently escape into `rational`/`double` (the old
-  // behavior), these guidance overloads make the expression ill-formed with a
-  // message that hands the caller the fix: give the literal a grid (`1_b` /
-  // `just<1>`), or build a bound over the value's known range.
-  //
-  // Only `std::integral`/`std::floating_point` are caught here; `rational` is
-  // also `arithmetic` but keeps its exact, deliberate mixed-mode operators
-  // above. Comparisons (`a == 1`, `a < 5`) and compound assignment (`a += 1`)
-  // with raw scalars are unaffected — they don't manufacture a new value/type
-  // and so never leave the bounded world.
-  //---------------------------------------------------------------------------
-  // Concrete (non-`auto`) return type on purpose: it keeps these overloads
-  // SFINAE-transparent — probing `requires { b + 1; }` stays well-formed and
-  // the `static_assert` fires only on real instantiation (an actual call),
-  // exactly as the old `rational`/`double`-returning mixed-mode operators did.
   template <typename A> concept raw_scalar = std::integral<A> || std::floating_point<A>;
 
   template <boundable B, raw_scalar A> B operator+(B const&, A) {

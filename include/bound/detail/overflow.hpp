@@ -13,12 +13,9 @@
 #include <concepts>
 
 //---------------------------------------------------------------------------
-// overflow — overflow-detecting `add`/`sub`/`mul` for integers.
-//
-// Two implementations: a thin wrapper around `__builtin_*_overflow` when the
-// compiler provides them, and portable fallbacks (`non_builtin_*_overflow`)
-// for the rare host without builtins. Used by `rational::*_impl` and by
-// every checked arithmetic path in the library.
+// overflow — overflow-detecting add/sub/mul for integers. Wraps
+// __builtin_*_overflow when available, with portable non_builtin_* fallbacks.
+// Used by rational::*_impl and every checked arithmetic path.
 //---------------------------------------------------------------------------
 
 #if defined(__has_builtin)
@@ -145,11 +142,8 @@ namespace bnd
   {
     if constexpr (std::numeric_limits<T>::is_signed)
     {
-      // Same UB-trap pattern as `rational::canonicalize` for `imax_min`:
-      // negating `T::min()` is signed overflow (UB), so we detect it before
-      // performing the negation. When `r == T::min()`, `l - r` mathematically
-      // exceeds `T::max()` unless `l < 0`, where it just fits — that's the
-      // only safe-and-storable case.
+      // Negating T::min() is signed-overflow UB, so detect it before negating:
+      // when r == T::min(), `l - r` fits only if l < 0.
       if (r == std::numeric_limits<T>::min())
       {
         if (l >= 0) return true;

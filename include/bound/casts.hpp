@@ -7,40 +7,27 @@
 #include "bound/bound.hpp"
 
 //---------------------------------------------------------------------------
-// Free-function casts — the named casts that complement the constructors.
-// (`bnd::detail::as_rational`, the uniform rational view, lives in `generic.hpp`.)
-// Unlike a direct `B{value}` call, these read
-// naturally in algorithm callbacks (`std::transform`,
-// `std::ranges::views::transform`) and make the intent — clamp vs. wrap
-// vs. throw vs. trust — explicit at the call site.
+// Free-function casts complementing the constructors. Unlike a direct B{value}
+// call, these read naturally in algorithm callbacks and make the intent (clamp
+// vs. wrap vs. throw vs. trust) explicit at the call site.
 //---------------------------------------------------------------------------
 namespace bnd
 {
-  // Each named cast constructs the result directly through the value+policy
-  // constructor, passing a one-shot policy that overrides B's declared policy
-  // for this conversion only — clamp regardless of how B was declared. For
-  // scalar inputs `bound_assignable` reduces to `numeric`, so out-of-range
-  // and fractional values are accepted and handled at runtime by the policy.
+  // Each cast constructs via the value+policy constructor, passing a one-shot
+  // policy that overrides B's declared one for this conversion only.
   template <boundable B, numeric N>
   [[nodiscard]] constexpr B clamp_cast(N value)
   { return B{value, make_policy<clamp>()}; }
 
-  // `wrap_cast` rounds out the named-cast trio with modular semantics:
-  // the input value is reduced into the target grid's interval rather than
-  // clipped at the boundaries. Useful where the caller wants integer-style
-  // wraparound (sequence numbers, angles, ring-buffer indices) inside an
-  // `std::transform` or other algorithm callback.
+  // `wrap_cast` — modular semantics: the input is reduced into the target grid's
+  // interval rather than clipped. For integer-style wraparound (angles, indices).
   template <boundable B, numeric N>
   [[nodiscard]] constexpr B wrap_cast(N value)
   { return B{value, make_policy<wrap>()}; }
 
   //---------------------------------------------------------------------------
-  // clamp_floor / clamp_ceil / clamp_round
-  //
-  // Compose `clamp` and one of the rounding modes — the canonical pipeline
-  // for "double in, bounded integer out, never throw" used in audio,
-  // graphics, and DSP code. Without these helpers the caller would chain
-  // `with_clamp().policy<round_floor>()` etc. by hand.
+  // clamp_floor / clamp_ceil / clamp_round — compose `clamp` with a rounding
+  // mode: the canonical "double in, bounded integer out, never throw" pipeline.
   //---------------------------------------------------------------------------
   template <policy_flag RoundMode, boundable B, numeric N>
   [[nodiscard]] constexpr B clamp_with_rounding(N value)
@@ -70,10 +57,8 @@ namespace bnd
     return B{value};
   }
 
-  // `unchecked_cast` is the strong sibling of constructing via the `unsafe`
-  // policy: it routes through `bound<G, unsafe>` so the compiler can elide
-  // every domain/round check. UB if the caller's value is actually out of
-  // range — same contract as bounded::integer's `assume_in_range`.
+  // `unchecked_cast` routes through `bound<G, unsafe>` so the compiler elides
+  // every domain/round check. UB if the value is actually out of range.
   template <boundable B, arithmetic A>
   [[nodiscard]] constexpr B unchecked_cast(A value)
   {

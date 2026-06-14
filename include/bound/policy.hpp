@@ -12,29 +12,20 @@
 #include <type_traits>     // std::is_constant_evaluated
 
 //---------------------------------------------------------------------------
-// policy — runtime policy carrier, plus `policy_ref` for per-operation
-// dispatch.
-//
-//   policy<F, E>   — compile-time flags F (see policy_flag.hpp) plus an
-//                    optional `error_ref` E that holds an `std::error_code&`.
-//                    Empty Base Optimization (`empty_ref`) is used so the
-//                    no-error-code form is zero-sized.
-//   policy_ref     — wraps a `bound&` together with a `policy<...>` and a
-//                    tuple of `on_*` actions. Compound `+=`, `-=`, `*=`,
-//                    `/=`, `%=` flow through `policy_ref`, which routes the
-//                    overflow/clamp/wrap/error/sentinel action to the right
-//                    callback at the right point in the pipeline.
+// policy — runtime policy carrier, plus `policy_ref` for per-operation dispatch.
+//   policy<F, E>  — compile-time flags F plus an optional error_ref E holding a
+//                   std::error_code& (EBO so the no-error-code form is zero-sized).
+//   policy_ref    — wraps a bound& with a policy<...> and a tuple of on_* actions;
+//                   compound ops flow through it, routing each action to the right
+//                   callback at the right pipeline stage.
 //---------------------------------------------------------------------------
 namespace bnd
 {
   //---------------------------------------------------------------------------
-  // policy
+  // policy — derives from E for EBO: throwing form (E == empty_ref) is zero-sized;
+  // `policy(ec)` makes E == error_ref carrying a std::error_code&. No virtuals,
+  // resolved at compile time.
   //---------------------------------------------------------------------------
-  // `policy<F, E>` derives from `E` to enable EBO: when the user picks the
-  // throwing-on-error form, `E == empty_ref` is an empty base and `policy`
-  // carries zero bytes per instance. When the user calls `policy(ec)`, `E`
-  // becomes `error_ref` and the same struct carries an `std::error_code&`
-  // — no virtuals, no dispatch tables, choice resolved at compile time.
   namespace detail
   {
     struct empty_ref{ };
@@ -69,11 +60,9 @@ namespace bnd
 
     constexpr void report(errc code, std::string what)
     {
-      // Constant-evaluation guard: neither `make_error_code` nor the
-      // `std::system_error` constructor are constexpr, so a `checked`
-      // policy hitting this path at compile time would otherwise produce
-      // an opaque "non-constexpr function called" diagnostic. The string-
-      // literal throw aborts constant evaluation with a clearer pointer.
+      // Constant-evaluation guard: system_error isn't constexpr, so throw a
+      // string literal for a clearer compile-time diagnostic than "non-constexpr
+      // function called".
       if (std::is_constant_evaluated())
       {
         throw "bound: value out of range during constant evaluation "
@@ -127,13 +116,9 @@ namespace bnd
 
   //---------------------------------------------------------------------------
   // report_or_nullopt — uniform "rational arithmetic failed" handler shared by
-  // addition.hpp / multiplication.hpp / division.hpp / modulo. Three behaviors,
-  // selected at compile time by the action / policy types:
-  //   - `overflow_action<A>` present  → default-init a Result, fire the action
-  //                                     on it (may overwrite), return Result.
-  //   - `UsesErrorRef<P>` (error_code mode) → policy.report(...), return nullopt.
-  //   - plain throw-policy            → return nullopt (caller already threw or
-  //                                     the policy is configured to be silent).
+  // addition/multiplication/division/modulo. Three compile-time behaviors:
+  // overflow_action<A> → fire it on a default Result; UsesErrorRef<P> →
+  // policy.report then nullopt; plain throw-policy → nullopt.
   //---------------------------------------------------------------------------
   namespace detail
   {
@@ -166,17 +151,10 @@ namespace bnd
   inline constexpr auto wrapped          = make_policy<wrap>();
 
   //---------------------------------------------------------------------------
-  // policy_ref
-  //
-  // Variadic in actions: stores a `std::tuple<As...>`. Single-action callers
-  // (the bound::on_* methods) instantiate with a 1-element pack and aggregate-
-  // init the tuple from the tag. The bound::with(...) entry point and the
-  // free-fn pack overloads instantiate with N-element packs.
-  //
-  // assignment::assign and addition/multiplication/etc. keep their single-A
-  // signatures unchanged; policy_ref pre-picks the appropriate action for each
-  // call path. The compound-op payoff: the imax-probe stage and the narrowing
-  // stage can each fire a different action (e.g. on_overflow + on_clamp).
+  // policy_ref — variadic in actions (stores std::tuple<As...>). policy_ref
+  // pre-picks the matching action per call path, so assignment/arithmetic keep
+  // their single-A signatures. Payoff: the imax-probe and narrowing stages of a
+  // compound op can each fire a different action (e.g. on_overflow + on_clamp).
   //---------------------------------------------------------------------------
   namespace detail
   {
@@ -238,9 +216,8 @@ namespace bnd
     constexpr B& operator=(C const& other)
     { return assign_with_picked(other); }
 
-    // optional<C> sink — unwrap once at the proxy assignment boundary so
-    // callers can chain checked rational arithmetic into a `.with_clamp() = ...`
-    // assignment without per-step `.value()`. Throws on `nullopt`.
+    // optional<C> sink — unwrap once at the proxy boundary so callers can chain
+    // checked arithmetic into `.with_clamp() = ...` without per-step `.value()`.
     template <numeric C>
     constexpr B& operator=(slim::optional<C> const& other)
     { return assign_with_picked(other.value()); }
@@ -255,10 +232,8 @@ namespace bnd
     }
 
     private:
-    // Shared body for the integral `+=`/`-=`/`*=` operators: when an overflow
-    // or error action is registered, run the checked op and fire the action on
-    // overflow; otherwise fall back to the plain (wrapping) imax op. Only the
-    // checked op, the fallback op, and the message differ between operators.
+    // Shared body for integral +=/-=/*=: with an overflow/error action, run the
+    // checked op and fire on overflow; else the plain wrapping imax op.
     template <typename Checked, typename Fallback>
     constexpr B& checked_integral_assign(imax l, imax r, Checked checked,
                                          Fallback fallback, const char* msg)
@@ -330,11 +305,10 @@ namespace bnd
     }
 
     //-------------------------------------------------------------------------
-    // boundable RHS overloads — route through the bound's arithmetic and
-    // assign the result via `assign_with_picked` so the user's callbacks fire
-    // on the final narrowing back to B. Handles the case `+`/`*` returns
-    // `slim::optional<bound>` (rational-raw overflow) by surfacing
-    // `errc::overflow` through `on_overflow` if registered, else `report`.
+    // boundable RHS overloads — route through the bound's arithmetic, then
+    // assign via assign_with_picked so callbacks fire on the narrowing back to B.
+    // An optional<bound> result (rational-raw overflow) surfaces errc::overflow
+    // through on_overflow if registered, else report.
     //-------------------------------------------------------------------------
     private:
     template <typename R>
@@ -392,17 +366,10 @@ namespace bnd
     { return finalise_arith(mod(Ref, rhs, Policy), "policy_ref::operator%= division/overflow"); }
 
     //-------------------------------------------------------------------------
-    // real RHS overloads — rational, float, double. The `real` concept
-    // excludes both `boundable` and `std::integral`, so these don't overlap
-    // with the existing overloads above. Lets callers write `b += 1.5` or
-    // `b += rational{1, 3}` without lifting the RHS into a bound first.
-    //
-    // rational path: lift Ref to rational, run the checked op, route the
-    // optional<rational> result through `finalise_arith` so any overflow
-    // surfaces through `on_overflow` / Policy.report.
-    //
-    // floating-point path: lift both sides to double and assign — the bound
-    // must carry a round policy (operator double() requires it).
+    // fractional RHS overloads — rational/float/double (fractional excludes
+    // boundable and integral, so no overlap above). Lets callers write `b += 1.5`
+    // or `b += rational{1,3}`. rational: lift Ref to rational, checked op,
+    // finalise_arith. float: lift both to double (bound needs a round policy).
     //-------------------------------------------------------------------------
     template <fractional C>
     constexpr B& operator+=(C const& rhs)

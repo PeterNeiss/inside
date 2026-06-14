@@ -9,16 +9,11 @@
 #include "bound/policy.hpp"
 
 //---------------------------------------------------------------------------
-// multiplication — `mul(L, R, policy, action) -> bound<Grid<L> * Grid<R>>`.
-//
-// The integer hot path branches on which corner of the four-quadrant product
-// {LoL*LoR, LoL*HiR, HiL*LoR, HiL*HiR} hits `Lower<result>`. Each branch is
-// arranged so the runtime arithmetic is `umax * umax` (no signed overflow)
-// followed by integer offset corrections — see the `to_result` lambda and
-// the comments around `static_cast<umax>` for the integer-promotion UB note.
-//
-// Rational-result and direct-storage cases (the "all-integer-aligned" fast
-// path) come first.
+// multiplication — `mul(L, R, policy, action) -> bound<Grid<L> * Grid<R>>`. The
+// integer hot path branches on which corner of the four-quadrant product hits
+// `Lower<result>`, doing the arithmetic as `umax * umax` (no signed overflow)
+// plus integer offset corrections. Rational-result and all-integer-aligned
+// cases come first.
 //---------------------------------------------------------------------------
 namespace bnd::detail
 {
@@ -27,8 +22,7 @@ namespace bnd::detail
   {
     static constexpr bool any_real =
         (BoundPolicy<L> & bnd::real) == bnd::real || (BoundPolicy<R> & bnd::real) == bnd::real;
-    // Carry every representation flag of both operands (a mixed pair resolves
-    // widest-wins at storage selection: exact > real > direct > indexed).
+    // Carry both operands' representation flags (widest-wins at storage selection).
     static constexpr policy_flag rep =
         ((BoundPolicy<L> | BoundPolicy<R>) & (bnd::exact | bnd::direct | bnd::indexed))
         | (any_real ? bnd::real : none);
@@ -106,18 +100,11 @@ namespace bnd::detail
       constexpr umax idxLoR = (Lower<R>/Notch<R>).value_or(rational{0}).Numerator;
       constexpr umax idxHiL = (Upper<L>/Notch<L>).value_or(rational{0}).Numerator;
 
-      // Raws are typically small unsigned ints (uint8/16/32). C++ integral
-      // promotion turns `raw * raw` into `int * int`, so any product above
-      // INT_MAX is signed-overflow UB. Cast both factors to umax to force
-      // the multiplication into 64-bit unsigned space before adding offsets.
-      //
-      // The four `if constexpr` branches below cover the four sign-quadrant
-      // cases for the result interval. For any product `[loL,hiL]*[loR,hiR]`
-      // the resulting Lower must be one of {loL*loR, loL*hiR, hiL*loR,
-      // hiL*hiR}; we pick the matching branch and use sign-flipped helpers
-      // (negative<L> / negative<R>) to reduce each case to the all-positive
-      // formula. The trailing static_assert exists to catch any future grid
-      // arithmetic change that would invalidate this case analysis.
+      // Integral promotion would make `raw * raw` an `int * int` (UB above
+      // INT_MAX), so cast to umax to multiply in 64-bit unsigned space. The four
+      // branches cover the sign quadrants: Lower<result> is one of the four
+      // corner products; sign-flipped helpers (negative<L>/<R>) reduce each to
+      // the all-positive formula. The static_assert guards the case analysis.
       if constexpr (Lower<result> == (Lower<L> * Lower<R>).value())
       {
         return to_result(lhs_offset * rhs_offset

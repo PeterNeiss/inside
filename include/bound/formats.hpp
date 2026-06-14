@@ -7,26 +7,17 @@
 #include "bound/bound.hpp"
 
 //---------------------------------------------------------------------------
-// formats — predefined `bound` types that map to hardware byte widths.
+// formats — predefined `bound` aliases mapping to hardware byte widths, so you
+// can write `bnd::u8` / `bnd::unorm16` / `bnd::q8_8` directly.
 //
-// Opt-in convenience aliases so you can write `bnd::u8` / `bnd::unorm16` /
-// `bnd::q8_8` instead of spelling the grid and policy by hand.
+// Reserved-top tradeoff: each storage type's extreme value is a sentinel slot
+// (zero-overhead slim::optional<bound>), chosen with a strict `<` margin — so a
+// full-width range like {0,255} would promote to uint16. To stay at native
+// width these aliases stop one short: `u8` is [0, 254]. Q-format types already
+// have headroom, so they keep full range with power-of-two notches.
 //
-// THE RESERVED-TOP TRADEOFF
-// The library reserves each storage type's extreme value as a sentinel slot
-// (so `slim::optional<bound>` is zero-overhead — no separate bool). Storage is
-// therefore chosen with a strict `<` margin, and a *full*-width range like
-// `{0, 255}` would promote to the next-larger type (uint16). To keep these
-// aliases at their native byte width, each range/resolution stops one short of
-// the sentinel: `u8` is `[0, 254]`, not `[0, 255]`. The payoff is native
-// storage size AND a still-working zero-overhead `slim::optional<u8>`.
-//
-// Q-format types already have headroom below the type max, so they keep their
-// full natural range and use power-of-two notches (maximally fast).
-//
-// Behavior is composable: these default to the library's `checked` policy
-// (out-of-range throws / reports). For register-style wraparound or saturation,
-// declare your own variant, e.g. `bound<{0,254}, wrap>`.
+// These default to `checked`; for wraparound/saturation declare your own (e.g.
+// `bound<{0,254}, wrap>`).
 //---------------------------------------------------------------------------
 namespace bnd
 {

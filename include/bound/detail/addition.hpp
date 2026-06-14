@@ -9,31 +9,22 @@
 #include "bound/policy.hpp"
 
 //---------------------------------------------------------------------------
-// addition — `add(L, R, policy, action) -> bound<G>` where G is the result
-// grid computed by `Grid<L> + Grid<R>` (see grid.hpp). The grid arithmetic
-// is sound by construction: `[loL, hiL] + [loR, hiR]` always contains every
-// runtime sum, so overflow can only happen on rational-raw results.
-//
-// Specialises on the storage shapes of L, R, result:
-//   1. rational result    — call rational::add (checked) or add_unchecked.
-//   2. mixed (one rational, one integer raw) — compute in rational, then
-//                                              re-map back to result's raw.
-//   3. any direct storage — integer-space add via to_value/from_value.
-//   4. both notch-offset  — pure integer math using `lhs_widen` / `rhs_widen`
-//                           to scale each side's raw to result's notch.
+// addition — `add(L, R, policy, action) -> bound<G>`, G = Grid<L> + Grid<R>.
+// The grid arithmetic is sound by construction (the result interval contains
+// every runtime sum), so overflow can only happen on rational-raw results.
+// Specialises on the storage shapes: rational result, mixed rational/integer,
+// direct integer-space add, or both notch-offset (scale via lhs/rhs_widen).
 //---------------------------------------------------------------------------
 namespace bnd::detail
 {
   template <boundable L, boundable R = L>
   struct addition
   {
-    // Propagate the `real` (double-backed) policy: an operation on math operands
-    // yields a math operand. Sum of dyadic grids is dyadic, so the result stays
-    // double-backed. Non-real operands keep the default policy unchanged.
+    // Propagate `real`: an op on math operands yields a math operand (sum of
+    // dyadic grids is dyadic, so the result stays double-backed).
     static constexpr bool any_real =
         (BoundPolicy<L> & bnd::real) == bnd::real || (BoundPolicy<R> & bnd::real) == bnd::real;
-    // Carry every representation flag of both operands (a mixed pair resolves
-    // widest-wins at storage selection: exact > real > direct > indexed).
+    // Carry both operands' representation flags (widest-wins at storage selection).
     static constexpr policy_flag rep =
         ((BoundPolicy<L> | BoundPolicy<R>) & (bnd::exact | bnd::direct | bnd::indexed))
         | (any_real ? bnd::real : none);
@@ -55,10 +46,8 @@ namespace bnd::detail
                                             result,
                                             return_type_for<F>>;
 
-    // When L and R have different notches, the result grid's notch is
-    // gcd(NL, NR). To add the raws we must first scale each side up to the
-    // result's notch: lhs_widen = NL/Nresult, rhs_widen = NR/Nresult. Both
-    // are guaranteed to be exact integers because Nresult divides NL and NR.
+    // Result notch is gcd(NL, NR); scale each raw up to it before adding —
+    // lhs_widen = NL/Nresult, rhs_widen = NR/Nresult (exact, Nresult divides both).
     static constexpr imax lhs_widen = (Notch<L> / Notch<result>).value_or(rational{1}).Numerator;
     static constexpr imax rhs_widen = (Notch<R> / Notch<result>).value_or(rational{1}).Numerator;
 
@@ -95,14 +84,10 @@ namespace bnd::detail
                        || !((IsIntegerAligned<L> && IsIntegerAligned<R>)
                             || (index_raw<L> && index_raw<R>)))
     {
-      // Rational store: either operand is rational-raw, OR the operands mix a
-      // direct (integer-valued) bound with a fractional notch-offset one — a
-      // pairing where neither the integer `to_value` path nor the offset-widen
-      // path is exact. `to_value` would truncate the fractional operand (a
-      // genuine bug: e.g. -7.75 + (-3) silently became -10). Compute the exact
-      // rational sum and convert to the result's raw via raw_from_offset.
-      // `((sum - Lower) / Notch).Numerator` is the result offset; for direct
-      // storage the Raw must be the value, so route through raw_from_offset.
+      // Rational store: a rational-raw operand, or a direct integer bound mixed
+      // with a fractional notch-offset one (where neither to_value nor offset-widen
+      // is exact — to_value would truncate the fractional operand). Compute the
+      // exact rational sum and convert to result's raw via raw_from_offset.
       auto sum = rational::add_unchecked(lhs,rhs);
       res = result::from_raw(raw_from_offset<result>(
           ((sum - Lower<result>) / Notch<result>).value().Numerator));
@@ -115,9 +100,8 @@ namespace bnd::detail
     }
     else
     {
-      // Both notch-offset (index_raw): scale each raw up to the result notch
-      // and add in offset space — the offsets compose because the result Lower
-      // is Lower<L> + Lower<R>.
+      // Both notch-offset: scale each raw to the result notch and add in offset
+      // space (offsets compose because result Lower = Lower<L> + Lower<R>).
       res = result::from_raw(raw_cast<result>(raw_imax(lhs) * lhs_widen + raw_imax(rhs) * rhs_widen));
     }
     return res;

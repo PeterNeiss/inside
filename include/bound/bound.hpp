@@ -15,11 +15,9 @@
 
 #include "slim/expected.hpp"     // slim::expected, slim::unexpected
 
-// Forward-declare the `bnd::math` entry points the member-syntax aliases on
-// `bound<G,P>` delegate to. The actual definitions live in <bound/cmath.hpp>;
-// users who want `.floor()` / `.ceil()` / `.round()` / `.trunc()` / `.abs()`
-// must include that header. The forward declarations here keep the in-class
-// bodies through `-Wtemplate-body` without pulling cmath.hpp in unconditionally.
+// Forward-declare the `bnd::math` entry points used in-class, so the bodies
+// pass `-Wtemplate-body` without pulling cmath.hpp in unconditionally (its
+// definitions live there).
 namespace bnd::math
 {
   template <boundable Out, boundable In> constexpr Out floor_impl(In x) noexcept;
@@ -35,18 +33,11 @@ namespace bnd::math
 }
 
 //---------------------------------------------------------------------------
-// bound — public-facing struct that ties everything together.
-//
-// This header is the one users include. It defines `bound<G, P>` and its
-// per-instance operators (assignment, negation, `policy()`,
-// `with_clamp/wrap/round/...`, increment, compare). The free-function
-// arithmetic (`add`, `sub`, `mul`, `div`, `mod` with policy/action overloads)
-// and the `bound_range` iterator helper also live here.
-//
-// Heavy lifting is delegated: `addition.hpp` / `multiplication.hpp` /
-// `division.hpp` carry the per-operator code; `assignment.hpp` does
-// narrowing/clamp/wrap/sentinel; `generic.hpp` and `policy.hpp` supply the
-// type-level traits and the policy machinery used throughout.
+// bound — the public struct users include. Defines `bound<G, P>` and its
+// per-instance operators; free-function arithmetic and `bound_range` also live
+// here. Heavy lifting is delegated to addition/multiplication/division.hpp
+// (per-operator code), assignment.hpp (narrowing/clamp/wrap/sentinel), and
+// generic.hpp/policy.hpp (traits + policy machinery).
 //---------------------------------------------------------------------------
 namespace slim
 {
@@ -99,16 +90,11 @@ namespace bnd
     raw_type Raw;
 
     public:
-    // raw() — the access escape hatch, symmetric with `from_raw`. The read
-    // overload is available under every policy; read-only C interop can take
-    // `&std::as_const(b).raw()` (a `const raw_type*`).
-    //
-    // The mutable overload is gated to the `unsafe` policy: a bound that has
-    // already opted out of every range/round/zero check is the only one where
-    // handing out a writable storage handle is honest. `&b.raw()` is then a
-    // `raw_type*` a C routine can fill in place. Writing an out-of-range raw
-    // into a checked/clamp/wrap/sentinel bound — which would make conversions
-    // and comparisons lie — is therefore a compile error, not a silent break.
+    // raw() — access escape hatch, symmetric with `from_raw`. Read overload
+    // under every policy (read-only C interop: `&std::as_const(b).raw()`). The
+    // mutable overload is gated to `unsafe` — only a bound that has opted out of
+    // every check can honestly hand out a writable storage handle; writing an
+    // out-of-range raw elsewhere would make conversions lie, so it's a compile error.
     [[nodiscard]] constexpr raw_type const& raw() const noexcept { return Raw; }
     [[nodiscard]] constexpr raw_type&       raw()       noexcept
       requires ((P & unsafe) == unsafe) { return Raw; }
@@ -116,11 +102,8 @@ namespace bnd
     constexpr bound() requires ((P & checked) == 0) = default; // trivial when not checked
     constexpr bound() requires ((P & checked) != 0) : Raw{} {} // zero-init under checked
 
-    // Double-backed (`real`) storage stores the value as an IEEE-754 double
-    // directly — the notch is nominal (no snap). An arithmetic rhs (the common
-    // case: a math result) is cast straight to double; a bound rhs goes through
-    // its exact rational view. Other storage routes through the policy-checked
-    // `assignment` engine.
+    // `real` storage holds the value as a double directly. An arithmetic rhs
+    // casts straight to double; a bound rhs goes through its exact rational view.
     private:
     template <numeric A>
     constexpr double to_double(A const& value)
@@ -129,18 +112,13 @@ namespace bnd
       else                                   return static_cast<double>(detail::as_rational(value));
     }
     public:
-    // Snap a value onto `real` (double-backed) storage: it lands on the grid
-    // exactly like any other bound (the grid is dyadic, so the snap is lossless)
-    // — `real` changes the representation/speed, not the obey-the-grid contract.
-    // Out-of-range values run the same policy cascade as the fractional
-    // assignment path: clamp → wrap → sentinel/checked-report → (unchecked)
-    // store as-is. All arithmetic stays in double; the dyadic grid keeps the
-    // endpoint/range constants exact.
+    // Snap a value onto `real` storage: lossless on the dyadic grid. Out-of-range
+    // values run the same policy cascade as the fractional path (clamp → wrap →
+    // sentinel/checked-report → store as-is); all arithmetic stays in double.
     constexpr void store_real(double v)
     {
-      // NaN/±inf would reach snap_double's integer cast (UB). Reject like the
-      // non-real path does via rational(double) — same error, both engines
-      // agree. `v - v` is exactly 0 for every finite v, NaN otherwise.
+      // NaN/±inf would reach snap_double's integer cast (UB); reject like the
+      // non-real path. `v - v` is 0 for every finite v, NaN otherwise.
       if (!(v - v == 0))
         throw std::system_error(make_error_code(errc::domain_error),
                                 "non-finite double");
@@ -175,11 +153,9 @@ namespace bnd
         store_real(to_double(value));
       else if constexpr (is_bound_v<A>)
       {
-        // A `real` (double-backed) SOURCE holds its value directly as a `double`
-        // raw. The assignment engine reads a boundable source through the
-        // integer index/offset formula (Lower + raw·Notch), which misreads that
-        // double raw. Extract the true value as a double and route through the
-        // arithmetic-source path instead.
+        // A `real` SOURCE holds its value as a double raw; the assignment engine's
+        // integer offset formula (Lower + raw·Notch) would misread it. Extract as
+        // a double and route through the arithmetic-source path.
         if constexpr (detail::real_raw<A>)
           detail::assignment<bound, double>::assign(*this, detail::as_double(value), make_policy<P>());
         else
@@ -204,10 +180,9 @@ namespace bnd
         detail::assignment<bound, A>::assign(*this, value, pol);
     }
 
-    // Error-code construction: `bound x(value, ec)`. A raw std::error_code binds
-    // the Pol&& template above as a (non-policy) type, so it needs its own
-    // overload that wraps ec in the type's own policy. On an out-of-range value
-    // ec is set and the bound keeps its default value (Raw{} above).
+    // Error-code construction: `bound x(value, ec)`. Needs its own overload (a
+    // raw error_code would bind the Pol&& template above). On out-of-range, ec is
+    // set and the bound keeps its default value.
     template <numeric A>
       requires bound_assignable<bound, A, P>
     constexpr bound(A value, std::error_code& ec) : Raw{}
@@ -218,10 +193,8 @@ namespace bnd
         detail::assignment<bound, A>::assign(*this, value, make_policy<P>(ec));
     }
 
-    // optional<A> sink — unwrap once at the construction boundary so callers
-    // can chain checked arithmetic without per-step `.value()`. Throws
-    // `slim::bad_optional_access` on `nullopt`; matches the compound-assign
-    // pattern in rational.hpp.
+    // optional<A> sink — unwrap once at the construction boundary so callers can
+    // chain checked arithmetic without per-step `.value()`. Throws on `nullopt`.
     template <numeric A>
       requires bound_assignable<bound, A, P>
     constexpr bound(slim::optional<A> const& value)
@@ -237,22 +210,18 @@ namespace bnd
     constexpr bound& operator=(slim::optional<B> const& other)
     { store_value(other.value()); return *this; }
 
-    // Trusted construction from a storage-layout raw value. No validation —
-    // the caller asserts `r` is a valid slot for this grid. Mirrors the public
-    // `Raw` member; the supported entry point for tests, fast
-    // paths, and same-grid raw transfer (e.g. `unchecked_cast`).
+    // Trusted construction from a storage-layout raw — no validation; the caller
+    // asserts `r` is a valid slot. Entry point for tests, fast paths, and same-grid
+    // raw transfer (e.g. `unchecked_cast`).
     [[nodiscard]] static constexpr bound from_raw(raw_type r) noexcept
     { bound b; b.Raw = r; return b; }
 
-    // The reserved empty slot used by `slim::optional<bound>` and the sentinel
-    // policy. Wraps the internal `detail::sentinel_raw<bound>()` so callers never have
-    // to poke `Raw` to obtain an empty-state bound.
+    // The reserved empty slot used by `slim::optional<bound>` and `sentinel`
+    // policy, without poking `Raw`.
     [[nodiscard]] static constexpr bound make_sentinel() noexcept
     { return from_raw(detail::sentinel_raw<bound>()); }
 
-    // Public sentinel probe — the canonical "is this slot empty?" check
-    // under `sentinel` policy, matching the raw layout used by both the
-    // policy machinery and `slim::optional<bound>`.
+    // Canonical "is this slot empty?" check under `sentinel` policy.
     [[nodiscard]] constexpr bool is_sentinel() const noexcept
     {
       if constexpr (detail::rational_raw<bound>)
@@ -261,12 +230,9 @@ namespace bnd
         return Raw == detail::sentinel_raw<bound>();
     }
 
-    // to<T>() emptiness predicate: under sentinel policy an empty slot has no
-    // extractable value, so to<T>() reports overflow. Routes through the
-    // canonical is_sentinel(); compiles to a constant `false` under every other
-    // policy, where the reserved slot is unreachable (storage promotion
-    // guarantees no valid value lands on it). Internal: consumed only by the
-    // `to<T>()` overloads below.
+    // to<T>() emptiness predicate: under sentinel policy an empty slot reports
+    // overflow; compiles to constant `false` under every other policy (the
+    // reserved slot is unreachable). Internal: used only by the to<T>() overloads.
     private:
     [[nodiscard]] constexpr bool is_sentinel_under_policy() const noexcept
     {
@@ -276,38 +242,19 @@ namespace bnd
     public:
 
     // Conversion summary:
-    //   operator imax     — implicit. Available only when the grid is
-    //                       notch-aligned AND statically fits in
-    //                       [INT64_MIN, INT64_MAX]. Pathological wide
-    //                       grids must use `b.to<imax>()`. Also the index
-    //                       path: `vec[b]` converts imax → size_t. (There is
-    //                       deliberately NO second implicit integer operator:
-    //                       two would make built-in mixed arithmetic like
-    //                       `imax_var += b` ambiguous.)
-    //   operator rational — implicit. Lossless and mathematically exact,
-    //                       so no risk in letting it happen silently.
-    //   operator double   — implicit for `real`-policy bounds: their dyadic
-    //                       grid makes every value exactly representable in
-    //                       double (both engines), so the conversion is
-    //                       lossless — same rule as operator rational.
-    //                       *Explicit* otherwise, AND gated by policy: only
-    //                       available when P includes a rounding flag
-    //                       (round_floor/ceil/nearest/half_even or
-    //                       snapping). Strict-policy bounds must
-    //                       use `b.to<double>().value()` to opt in.
-    //   to<T>()           — typed-error narrowing/widening, returns
-    //                       `slim::expected<T, errc>` for any
-    //                       unsigned/signed integral or floating point
-    //                       target. Reports overflow,
-    //                       domain_error (negative into unsigned),
-    //                       and sentinel-state via errc.
-    //   as<T>()           — non-expected sibling. Returns T directly; asserts
-    //                       on sentinel state. Use when the value is known
-    //                       in range (the common case at array-index sites).
-    //                       Floating-point targets share operator double's
-    //                       policy gate; strict bounds use to<double>().
-    //   to<T>(b) / as<T>(b) — free-function forms of the members, for generic
-    //                       code (`as<imax>(b)` needs no `.template`).
+    //   operator imax     — implicit, when the grid is notch-aligned and fits in
+    //                       int64 (else use `to<imax>()`). Also the `vec[b]` index
+    //                       path. No second implicit integer operator (would make
+    //                       `imax_var += b` ambiguous).
+    //   operator rational — implicit; lossless and exact.
+    //   operator double   — implicit for `real` bounds (dyadic grid → lossless);
+    //                       explicit otherwise and gated on a rounding flag.
+    //                       Strict bounds opt in via `to<double>().value()`.
+    //   to<T>()           — typed-error narrowing/widening → `expected<T, errc>`
+    //                       (overflow / domain_error / sentinel-state).
+    //   as<T>()           — non-expected sibling; asserts on sentinel. For known-
+    //                       in-range sites (array indexing). FP shares the gate.
+    //   to<T>(b)/as<T>(b) — free-function forms, for generic code.
     constexpr operator imax() const
       requires (detail::notch_is_unit_integer<G>
              && G.Interval.Lower >= bnd::detail::rational{std::numeric_limits<imax>::min()}
@@ -327,23 +274,19 @@ namespace bnd
       if constexpr (!detail::index_raw<bound>)
         return Raw;
 
-      // Q-format-with-integer-Lower fast path skips the three rational ops
-      // (multiply, add, optional-unwrap) of the generic path. Shared with
-      // `from_value` and `assignment::store` via `q_format_decode`. When the
-      // raw is too wide to widen safely (e.g. uint64 from a Q16.16 × Q16.16
-      // result type), we fall through to the rational path below.
+      // Q-format-with-integer-Lower fast path skips the generic path's three
+      // rational ops. Falls through to the rational path when the raw is too wide
+      // to widen safely (e.g. uint64 from a Q16.16 × Q16.16 result type).
       if constexpr (detail::HasQFormatFastPath<bound>)
         return detail::q_format_decode(*this);
 
       return (*(Raw * G.Notch) + G.Interval.Lower).value();
     }
 
-    // to<T>() — typed-error scalar extraction. Mirrors rational::to<T>
-    // and extends it to signed integers and floating point.
-    // Unlike the always-succeed `detail::to_value(b)` / `operator T()` paths,
-    // this returns `errc::overflow` (value out of T's range, or
-    // sentinel-state) and `errc::domain_error` (negative into unsigned T).
-    // Silent fractional truncation matches rational::to<T>.
+    // to<T>() — typed-error scalar extraction (mirrors rational::to<T>, extended
+    // to signed and floating point). Returns `errc::overflow` (out of T's range
+    // or sentinel-state) and `errc::domain_error` (negative into unsigned T);
+    // fractional truncation is silent.
     template <std::unsigned_integral T>
     [[nodiscard]] constexpr slim::expected<T, errc> to() const
     {
@@ -399,15 +342,10 @@ namespace bnd
       return static_cast<T>(detail::as_double(*this));
     }
 
-    // as<T>() — non-expected sibling of to<T>(). Returns T directly and lets
-    // any error (sentinel-state, out of T's range, negative-into-unsigned)
-    // surface as bad_expected_access from `to<T>().value()`. The shorthand
-    // is for call sites where the user knows the value is in range — most
-    // notably array indexing, capacity arithmetic, and rational extraction
-    // for `.round()` / `.trunc()`.
-    // Floating-point targets share operator double's policy gate so the two
-    // spellings agree: a strict bound rejects both `double(b)` and
-    // `b.as<double>()`, and `to<double>()` stays the explicit opt-in.
+    // as<T>() — non-expected sibling of to<T>(): returns T directly, letting any
+    // error surface as bad_expected_access from `to<T>().value()`. For known-in-
+    // range sites (array indexing, capacity arithmetic). FP targets share operator
+    // double's policy gate, so a strict bound rejects `b.as<double>()` too.
     template <typename T>
     [[nodiscard]] constexpr T as() const
       requires (!std::floating_point<T>
@@ -415,12 +353,9 @@ namespace bnd
                     | round_half_even | snapping)) != 0)
     { return to<T>().value(); }
 
-    // numerator() / denominator() — the exact value of a fractional (Q-format)
-    // bound as an integer pair, sign carried on the numerator and denominator
-    // kept positive. This is the supported EXACT read-out: it never mentions
-    // the internal representation type, so callers stay in plain integers
-    // (e.g. `b.numerator() * step / b.denominator()`) without an intermediate
-    // fraction object. For an integer-notch bound, denominator() == 1.
+    // numerator() / denominator() — the exact value of a fractional bound as an
+    // integer pair (sign on the numerator, denominator positive). The supported
+    // exact read-out that keeps callers in plain integers. Integer-notch ⇒ den == 1.
     [[nodiscard]] constexpr imax numerator() const
     {
       auto r = detail::as_rational(*this);
@@ -448,13 +383,9 @@ namespace bnd
       else if constexpr (!detail::index_raw<bound> || !detail::index_raw<negative>)
         detail::from_value(neg, -detail::to_value(*this));
       else
-        // Unsigned-offset fast path: with offset encoding `value = Raw*Notch + Lower`,
-        // negating the value is equivalent to indexing from the opposite end of the
-        // grid — i.e. `NotchCount - Raw`. No rational arithmetic in the hot path.
-        //
-        // NOTE: not a sibling of the direct-storage encoding bugs — this branch is
-        // unreachable when either operand uses direct storage, so `Raw` here is
-        // guaranteed to be an offset.
+        // Unsigned-offset fast path: with `value = Raw*Notch + Lower`, negating
+        // is `NotchCount - Raw` (index from the opposite end) — no rational ops.
+        // Unreachable for direct storage, so `Raw` here is guaranteed an offset.
         neg = negative::from_raw(detail::raw_cast<negative>(detail::NotchCount<bound> - Raw));
       return neg;
     }
@@ -508,10 +439,9 @@ namespace bnd
     [[nodiscard]] constexpr auto on_overflow(A&& a) { return make_action_ref<on_overflow_t>(std::forward<A>(a)); }
 
     // Multi-action entry point: combine N tagged actions into one policy_ref.
-    // The merged implied flags drive the policy; conflict diagnostics in
-    // policy_ref reject mutually exclusive combinations (e.g. on_clamp + on_wrap)
-    // at compile time. Use case: `b.with(on_overflow(λ1), on_clamp(λ2)) += rhs`
-    // — the imax-overflow probe fires λ1, the post-probe narrowing fires λ2.
+    // policy_ref rejects mutually exclusive combinations at compile time. E.g.
+    // `b.with(on_overflow(λ1), on_clamp(λ2)) += rhs` — overflow probe fires λ1,
+    // post-probe narrowing fires λ2.
     template <typename... Actions>
     [[nodiscard]] constexpr auto with(Actions&&... actions)
     {
@@ -525,10 +455,8 @@ namespace bnd
     template <boundable R>
     constexpr bound& operator+=(R const& rhs)
     {
-      // Fast path: raw-level integer addition. Safe when both sides share an
-      // encoding where raw_a + raw_b is the raw of value_a + value_b — either
-      // direct storage (Raw == value) or offset encoding with Lower==0 on
-      // both (Raw == value/notch, so raws sum to (sum)/notch).
+      // Fast path: raw-level integer addition, safe when raw_a + raw_b is the raw
+      // of value_a + value_b — direct storage, or offset encoding with Lower==0 both.
       if constexpr (!detail::rational_raw<bound> && !detail::rational_raw<R>
                     && Notch<bound> == Notch<R>
                     && (!detail::index_raw<R>
@@ -553,18 +481,13 @@ namespace bnd
     }
 
     private:
-    // Out-of-range tail for raw-space compound arithmetic: dispatch on the
-    // type's policy (clamp/wrap/sentinel/checked). `new_raw` is the unclamped
-    // raw-space result; one of the four branches stores back to `Raw`. Called
-    // from `operator+=(boundable)` only (operator-= delegates through +=, the
-    // arithmetic-RHS path uses `integer_compound_assign`, and *= / /= / %=
-    // route through `assign_op_result`).
+    // Out-of-range tail for raw-space compound arithmetic: dispatch on policy
+    // (clamp/wrap/sentinel/checked) and store back to `Raw`. Called from
+    // `operator+=(boundable)` only.
     constexpr bound& apply_raw_overflow(imax new_raw)
     {
       if constexpr (P & clamp)
-        // RawLo/RawHi are raw-space constants by construction (Lower/Upper for
-        // direct storage, 0/NotchCount for notch-offset), so they're already
-        // the correct Raw — no raw_from_offset needed.
+        // RawLo/RawHi are already raw-space constants, so no raw_from_offset.
         Raw = detail::raw_cast<bound>(new_raw < detail::RawLo<bound> ? detail::RawLo<bound> : detail::RawHi<bound>);
       else if constexpr (P & wrap)
       {
@@ -598,10 +521,9 @@ namespace bnd
       return *this;
     }
 
-    // Type-generic wrapping +/−/× in T's unsigned domain. At imax width these
-    // are the overflow-free fallback of `integer_compound_assign`; at raw
-    // width they are its vectorizable unchecked arm (same low bits either
-    // way — two's complement).
+    // Type-generic wrapping +/−/× in T's unsigned domain — the overflow-free
+    // fallback (imax width) and vectorizable unchecked arm (raw width) of
+    // `integer_compound_assign`; same low bits either way (two's complement).
     struct wrap_add_t { template <typename T> constexpr T operator()(T a, T b) const noexcept
       { using U = std::make_unsigned_t<T>; return static_cast<T>(static_cast<U>(a) + static_cast<U>(b)); } };
     struct wrap_sub_t { template <typename T> constexpr T operator()(T a, T b) const noexcept
@@ -619,11 +541,9 @@ namespace bnd
         WrapOp wrap_op,
         const char* err_msg)
     {
-      // Unchecked policy + value storage: operate directly in raw width.
-      // Bit-identical to the imax round-trip below (truncating a 64-bit
-      // two's-complement result to N bits equals the N-bit result), but a
-      // loop of `b += k` vectorizes at the raw type's lane width instead of
-      // 64-bit lanes (e.g. 4× the lanes for a uint8 raw).
+      // Unchecked + value storage: operate directly in raw width. Bit-identical
+      // to the imax round-trip below, but `b += k` vectorizes at the raw type's
+      // lane width (e.g. 4× the lanes for a uint8 raw).
       if constexpr ((P & (checked | clamp | wrap | sentinel)) == 0
                     && detail::value_raw<bound>
                     && std::integral<raw_type>)
@@ -752,12 +672,9 @@ namespace bnd
   };
 
   //---------------------------------------------------------------------------
-  // to<T>(b) / as<T>(b) — free-function forms of the members
+  // to<T>(b) / as<T>(b) — free-function forms, for generic code that would
+  // otherwise need the `.template` disambiguator. Same semantics as the members.
   //---------------------------------------------------------------------------
-  // In dependent contexts a member template call needs the `template`
-  // disambiguator (`b.template as<imax>()`); the free form `as<imax>(b)` reads
-  // naturally in generic code and is found by ADL. Same semantics and
-  // constraints as the members (the requires-clause makes them SFINAE-clean).
   template <typename T, boundable B>
   [[nodiscard]] constexpr auto to(B const& b)
     requires requires { b.template to<T>(); }
@@ -827,11 +744,9 @@ namespace bnd
   inline constexpr auto just = bound<grid{value}>{value};
 
   //---------------------------------------------------------------------------
-  // zero / one — universal exact constants. Each is a single-point bound that
-  // assigns into ANY grid able to represent the value (checked at compile time,
-  // no runtime check) and otherwise behaves as the value 0 / 1 in comparison
-  // and arithmetic (they are ordinary `bound`s flowing through the normal
-  // operators). `b = zero;` is a clean compile error when 0 is not on b's grid.
+  // zero / one — universal exact constants. Single-point bounds that assign into
+  // any grid able to represent the value (compile-time checked) and otherwise
+  // behave as 0 / 1. `b = zero;` is a compile error when 0 is not on b's grid.
   //---------------------------------------------------------------------------
   inline constexpr auto zero = just<0>;
   inline constexpr auto one  = just<1>;
@@ -848,9 +763,8 @@ namespace bnd
   //   0x1.8p3_b     // bound<{12}>              hex float
   //   1'000_b       // bound<{1000}>            digit separator
   //
-  // Parse is exact (no double round-trip). Same parser backs `_r` in
-  // rational.hpp. Negative literals: `-1.5_b` parses as `-(1.5_b)` — fine,
-  // since unary `operator-` on bound returns a point on the negated grid.
+  // Parse is exact (no double round-trip); same parser backs `_r` in
+  // rational.hpp. `-1.5_b` parses as `-(1.5_b)`.
   //---------------------------------------------------------------------------
   template<char... Chars>
   constexpr auto operator""_b() { return just<detail::_detail::parse_b_literal<Chars...>()>; }

@@ -18,28 +18,15 @@
 #include <type_traits>
 
 //---------------------------------------------------------------------------
-// formatter — `std::formatter` specializations for `bound<G, P>` and
-// `rational`.
-//
-// Default spec (`{}`) preserves exact-rational output via `bnd::to_string`
-// — `"21.5"`, `"2 1/3"`, etc.
-//
-// Non-empty specs route by storage shape:
-//   - IsIntegerAligned<bound> → std::formatter<imax> over `to_value(b)`.
-//     User gets `{:5}`, `{:+}`, `{:#x}`, `{:o}`, `{:b}`, `{:c}` etc.
-//   - otherwise              → std::formatter<double> over `double(b)`
-//     (via implicit rational then explicit cast). User gets `{:.2f}`,
-//     `{:e}`, `{:g}`. This is a lossy display path — user opts in by
-//     writing a numeric spec.
-//
-// For `rational`: empty spec → `to_string`, non-empty → double formatter.
+// formatter — std::formatter for bound<G, P> and rational. Empty spec `{}` keeps
+// exact-rational output via bnd::to_string. A non-empty spec routes by storage:
+// IsIntegerAligned → std::formatter<imax> over to_value(b) (`{:5}`, `{:#x}`, …);
+// otherwise → std::formatter<double> over double(b) (lossy, `{:.2f}` etc.).
 //---------------------------------------------------------------------------
 namespace bnd::detail
 {
-  // Shared spec handling for the bound / rational std::formatter
-  // specializations: an empty `{}` spec is left to the derived format() (which
-  // prints the exact to_string form); a non-empty spec is parsed and later
-  // applied by `numeric_` (a std::formatter<imax> or std::formatter<double>).
+  // Shared spec handling: an empty `{}` is left to the derived format() (exact
+  // to_string); a non-empty spec is parsed and applied by `numeric_`.
   template <class Inner>
   struct numeric_spec_formatter
   {

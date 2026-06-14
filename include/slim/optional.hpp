@@ -67,11 +67,8 @@ inline constexpr std::in_place_t in_place{};
 template<class T>
 struct sentinel_traits;
 
-// Concept: is sentinel_traits<T> defined (i.e. a complete type)?
-// The primary template is declared but never defined, so completeness
-// tracks opt-in specializations without needing access to their (now
-// protected) members. Declared below after all specializations so that
-// users can add their own specializations and then refer to this concept.
+// Concept: is sentinel_traits<T> a complete type? The primary template is never
+// defined, so completeness tracks opt-in specializations.
 template<class T>
 concept has_sentinel_traits = requires { sizeof(sentinel_traits<T>); };
 
@@ -85,16 +82,12 @@ protected:
     static constexpr bool is_sentinel(const T&) noexcept { return false; }
 };
 
-// Dual escape-hatch: a "always-empty" traits. When used as the Traits
-// parameter of slim::optional, the optional has no T storage at all
-// (sizeof == 1) and reports has_value()==false unconditionally. Useful for
-// conditional return types in templates that, on one branch, structurally
-// never produce a value:
+// Dual escape-hatch: "always-empty" traits — the optional has no T storage
+// (sizeof == 1) and reports has_value()==false. For conditional return types
+// whose no-value branch structurally never produces a value:
 //
 //     if constexpr (cacheable) return slim::optional<T>{...};
 //     else                     return slim::optional<T, slim::always_empty<T>>{};
-//
-// Callers can branch on the type and the no-value branch costs zero bytes.
 template<typename T>
 struct always_empty {
 protected:
@@ -103,11 +96,9 @@ protected:
 };
 
 // ── Scalar specializations ──
-//
-// Every built-in specialization makes sentinel()/is_sentinel() protected.
-// They are accessed only by slim::optional<T, Traits>, which inherits
-// publicly from Traits. Users adding their own sentinel_traits<T>
-// specialization should do the same — nothing else is required.
+// Built-in specializations make sentinel()/is_sentinel() protected, accessed
+// only by slim::optional<T, Traits> (which inherits publicly from Traits). User
+// specializations should do the same.
 
 // Signed integers (excluding bool)
 template<class T>
@@ -856,15 +847,10 @@ public:
 // optional<T, always_empty<T>> — partial specialization with no T storage
 // ============================================================================
 //
-// This specialization carries no value_ member. sizeof is 1 (the empty-class
-// minimum); under [[no_unique_address]] it disappears entirely. has_value()
-// is unconditionally false. Member functions that would require a stored T
-// (operator*, operator->, in-place / value-taking constructors, emplace,
-// operator=(T), swap of values) are deliberately *not provided* — calling
-// any of them is a compile error, which is exactly the diagnostic you want
-// when the if-constexpr branch you're in shouldn't have produced a value.
-//
-// Use with `if constexpr` to pick this branch in templated return types:
+// Carries no value_ member (sizeof 1, gone under [[no_unique_address]]);
+// has_value() is always false. Members needing a stored T (operator*/->, value
+// constructors, emplace, …) are deliberately not provided, so using them is a
+// compile error. Pick via `if constexpr` in templated return types:
 //   if constexpr (cond) return slim::optional<T>{...};
 //   else                return slim::optional<T, slim::always_empty<T>>{};
 template<class T>

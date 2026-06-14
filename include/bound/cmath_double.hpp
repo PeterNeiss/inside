@@ -1,23 +1,13 @@
 //---------------------------------------------------------------------------
 // Copyright (C) 2026 Peter Neiss
 //---------------------------------------------------------------------------
-// bnd::math double engine — a small, reproducible libm in `double`.
-//
-//   REPRODUCIBILITY CONTRACT
-//   ------------------------
-//   Bit-identical on every IEEE-754 binary64 platform compiled WITHOUT
-//   `-ffast-math` (round-to-nearest-even). Reproducibility is achieved by:
-//     * NO `<cmath>` transcendentals — sin/cos/exp/log are implemented here as
-//       fixed polynomials; only `std::fma`, `std::sqrt`, `std::nearbyint` are
-//       used (IEEE-754 correctly-rounded / well-defined). The `2^k` scaling
-//       uses the library's own constexpr `bnd::detail::ldexp` (bit assembly,
-//       no libm call).
-//     * Polynomials evaluated Horner with explicit `std::fma` — immune to
-//       compiler FMA-contraction differences.
-//     * Cody-Waite range reduction (split constants) for full-precision args.
-//
-//   This is the default math engine; `BND_MATH_FIXED` selects the integer
-//   CORDIC engine (the cores in `cmath.hpp`) instead.
+// bnd::math double engine — a small, reproducible libm in `double`. Bit-identical
+// on every IEEE-754 binary64 platform compiled without `-ffast-math`, via:
+//   * NO <cmath> transcendentals — sin/cos/exp/log are fixed polynomials here;
+//     only std::fma/sqrt/nearbyint (well-defined) and the constexpr ldexp.
+//   * Horner evaluation with explicit std::fma (immune to FMA-contraction).
+//   * Cody-Waite range reduction for full-precision args.
+// The default engine; `BND_MATH_FIXED` selects the integer CORDIC engine instead.
 //---------------------------------------------------------------------------
 #ifndef BNDcmathdoubleHPP
 #define BNDcmathdoubleHPP

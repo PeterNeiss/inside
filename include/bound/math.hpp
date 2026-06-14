@@ -14,13 +14,10 @@
 #include <limits>
 
 //---------------------------------------------------------------------------
-// math — primitive numeric utilities the rest of the library leans on.
-//
-// Provides: `umax`/`imax` aliases, `smallest_uint_for` / `smallest_int_for`
-// (storage-type selection for grids), the `arithmetic` and `fractional` concepts,
-// `safe_abs` (UB-free absolute value), `frexp` / `ldexp` (constexpr
-// replacements for `<cmath>` versions), and `abs_fraction` (the
-// double → rational conversion engine used by `rational(double)`).
+// math — primitive numeric utilities: umax/imax, smallest_uint_for /
+// smallest_int_for (grid storage selection), the arithmetic/fractional concepts,
+// safe_abs, constexpr frexp/ldexp, and abs_fraction (the double → rational
+// engine behind rational(double)).
 //---------------------------------------------------------------------------
 namespace bnd
 {
@@ -35,15 +32,10 @@ namespace bnd
   namespace detail
   {
 
-  // Strict `<` reserves the type's max as the sentinel slot used by
-  // slim::optional<bound>. Mirrors smallest_int_for's `+1` margin on the
-  // signed side. A grid whose max_notch lands exactly on a type's max
-  // therefore promotes to the next-wider type.
-  //
-  // Consequence: a `bound<{0, 255}>` does NOT use uint8_t (255 == UINT8_MAX
-  // is reserved); it promotes to uint16_t. Same for signed: `bound<{-128, 127}>`
-  // gets int16_t because -128 == INT8_MIN is reserved. So a valid grid value
-  // can never collide with the sentinel slot — no need to recheck at runtime.
+  // Strict `<` reserves the type's max as the sentinel slot for
+  // slim::optional<bound>, so a grid whose max_notch lands on a type's max
+  // promotes to the next-wider type (e.g. bound<{0,255}> uses uint16_t, not
+  // uint8_t). A valid grid value can thus never collide with the sentinel.
   template <std::uintmax_t N>
   using smallest_uint_for =
     std::conditional_t<(N == 0), rational,
@@ -75,9 +67,8 @@ namespace bnd
     return "unknown";
   }
 
-  // Subset of arithmetic that excludes integrals — the fractional ("real-valued")
-  // rhs types that need the rational-arithmetic assignment specialization.
-  // (Named `fractional` to avoid clashing with the `real` storage policy flag.)
+  // Subset of arithmetic excluding integrals — the rhs types that need the
+  // rational-arithmetic assignment path. (Named to avoid clashing with `real`.)
   template<typename T>
   concept fractional = std::floating_point<T> || std::same_as<rational, T>;
 
@@ -169,15 +160,10 @@ namespace bnd
       return std::bit_cast<double>(bits);
   }
 
-  // Exact conversion of a finite double to a fraction num/den (den a power of
-  // two), the engine behind rational(double). A finite double is exactly
-  //
-  //     significand * 2^exp2
-  //
-  // where `significand` is a 53-bit integer — the 52 stored fraction bits plus
-  // the implicit leading 1 for normals. Both fall straight out of the IEEE-754
-  // bit pattern, so there is no <cmath> call and no FPU rounding: the result is
-  // bit-identical across platforms.
+  // Exact conversion of a finite double to num/den (den a power of two), the
+  // engine behind rational(double). A finite double is exactly
+  // `significand · 2^exp2` (a 53-bit significand), both read straight from the
+  // IEEE-754 bits — no <cmath>, no FPU rounding, bit-identical across platforms.
   constexpr std::pair<umax, umax> abs_fraction(double value)
   {
     if (not std::isfinite(value))
@@ -202,24 +188,18 @@ namespace bnd
     if (exp2 >= 0)                           // integer-valued: scale up, den = 1
       return {significand << exp2, 1};
 
-    // exp2 < 0 → den = 2^(-exp2). The denominator is later stored as a signed
-    // imax, so it must not exceed 2^62 (1 << 63 would set the sign bit). When
-    // -exp2 overshoots that cap the value is too small to keep at this scale:
-    // drop the low bits of the significand, flushing magnitudes below ~2^-62
-    // toward zero. A shift of >= 64 is UB, so fold it to a hard zero. This
-    // branch is genuinely reachable — every subnormal (exp2 == -1074) and any
-    // normal below ~2^-62 lands here, where the significand collapses to 0 and
-    // den is then irrelevant (downstream canonicalisation rewrites 0/d as 0/1).
+    // exp2 < 0 → den = 2^(-exp2), capped at 2^62 (den is stored signed). Beyond
+    // the cap the value is too small to keep: drop the significand's low bits
+    // (shift ≥ 64 folds to zero). Reachable for every subnormal and normals
+    // below ~2^-62, where the significand collapses to 0 (0/d canonicalises to 0/1).
     int den_pow = -exp2;
     constexpr int max_pow = 62;
     if (den_pow > max_pow)
     {
       const int drop = den_pow - max_pow;
       significand = (drop >= 64) ? 0 : (significand >> drop);
-      // Flushed below the representable scale: return the canonical zero {0,1}.
-      // Callers (notably the rational(double) ctor) take this result verbatim
-      // without re-trimming, so leaking a non-canonical {0, 2^62} would break
-      // the defaulted, structural rational::operator==.
+      // Return canonical {0,1}: callers take this verbatim, so a non-canonical
+      // {0, 2^62} would break the structural rational::operator==.
       if (significand == 0) return {0, 1};
       den_pow = max_pow;
     }
