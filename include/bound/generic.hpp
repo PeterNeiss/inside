@@ -483,9 +483,13 @@ namespace bnd
     // its `bound_assignable_why` diagnostic share one definition. Concepts (not
     // bools) so `||` short-circuits *instantiation* (e.g. assignment<L,R>::Factor
     // is never formed when R isn't boundable).
-    template <typename L, typename R>
+    template <typename L, typename R, policy_flag P = checked>
     concept assign_intervals_ok =
-      (!boundable<R> && !std::integral<R>) || not Interval<L>.excludes(Interval<R>);
+      (!boundable<R> && !std::integral<R>)
+      // wrap/clamp bring any value into range, so a disjoint rhs interval is fine
+      // for them (the integral-rhs path already allows it — int's interval is unbounded).
+      || ((BoundPolicy<L> | P) & (wrap | clamp)) != 0
+      || not Interval<L>.excludes(Interval<R>);
 
     template <typename L, typename R, policy_flag P>
     concept assign_notch_ok =
@@ -502,7 +506,7 @@ namespace bnd
   template <typename L, typename R, policy_flag P = checked>
   concept bound_assignable =
     numeric<R>
-    && detail::assign_intervals_ok<L, R>
+    && detail::assign_intervals_ok<L, R, P>
     && detail::assign_notch_ok<L, R, P>;
 
   // Diagnostic helper: instantiating `bound_assignable_why<L,R,P>` fires a named
@@ -513,8 +517,9 @@ namespace bnd
   {
     static_assert(numeric<R>,
       "bound_assignable: rhs is not numeric (must be a bound or arithmetic type)");
-    static_assert(detail::assign_intervals_ok<L, R>,
-      "bound_assignable: rhs interval lies entirely outside lhs interval — assignment can never succeed");
+    static_assert(detail::assign_intervals_ok<L, R, P>,
+      "bound_assignable: rhs interval lies entirely outside lhs interval and the policy "
+      "(not wrap/clamp) cannot bring it into range — assignment can never succeed");
     static_assert(detail::assign_notch_ok<L, R, P>,
       "bound_assignable: incompatible notches — use `with_truncate()` or `policy<snapping>()` to allow rounding");
     static constexpr bool value = bound_assignable<L, R, P>;

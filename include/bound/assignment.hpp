@@ -642,7 +642,11 @@ namespace bnd::detail
   template<typename P, typename A>
   constexpr L& assignment<L,R>::assign(L& lhs, R const& rhs, P&& policy, A&& action)
   {
-    static_assert(not Interval<L>.excludes(Interval<R>));
+    // wrap/clamp bring any value into range, so a disjoint rhs interval is fine
+    // for them (matches the integral-rhs path); only strict policies reject it.
+    static_assert(HasPolicy<L, P, wrap> || HasPolicy<L, P, clamp>
+                  || not Interval<L>.excludes(Interval<R>),
+      "rhs interval lies entirely outside lhs interval and the policy cannot bring it into range");
     static_assert(abs_den(Factor.Denominator) == 1 || HasPolicy<L, P, snapping>
                   || point_exactly_assignable<L, R>,
       "incompatible notches: use with_truncate() or policy<snapping>() to allow rounding");

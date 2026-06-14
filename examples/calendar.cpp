@@ -24,12 +24,15 @@ struct date
   month_t month{1};
   year_t  year{2000};
 
-  void add_days(int n)
+  // `n` is `numeric` (a bound delta or the bound carry), not `int`/`arithmetic`:
+  // the bound-RHS `+=` makes the wrap carry a bound, so the day→month→year cascade
+  // threads bounds, not raw integers.
+  void add_days(numeric auto n)
   {
     day.on_wrap([&](auto&, auto carry) { add_months(carry); }) += n;
   }
 
-  void add_months(arithmetic auto n)
+  void add_months(numeric auto n)
   {
     month.on_wrap([&](auto&, auto carry) { year += carry; }) += n;
   }
@@ -54,17 +57,17 @@ int main()
   constexpr auto days_per_month = 30_b;
   std::cout << "(days per month constant: " << days_per_month << ")\n";
 
-  d.add_days(20);
+  d.add_days(20_b);
   std::cout << "+20 days:    " << d << "\n";
 
-  d.add_days(45);
+  d.add_days(45_b);
   std::cout << "+45 days:    " << d << "\n";
 
-  d.add_months(11);
+  d.add_months(11_b);
   std::cout << "+11 months:  " << d << "\n";
 
   // Big jump that cascades all three axes.
-  d.add_days(400);
+  d.add_days(400_b);
   std::cout << "+400 days:   " << d << "\n";
 
   // Day-of-week via modulo. Each calendar day maps to a weekday in [0, 6].

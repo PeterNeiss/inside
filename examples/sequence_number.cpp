@@ -25,7 +25,9 @@ int main()
   seq_t   seq{65500};
   epoch_t epoch{0};
 
-  constexpr int window = 100;
+  // A bound delta (`_b`): `seq += window` is a bound-RHS wrap, so the on_wrap
+  // carry is itself a bound (here ignored — we only bump the epoch counter).
+  constexpr auto window = 100_b;
 
   // `_b` literal builds a single-value `bound<{N, N}>`. Composing it with
   // another bound widens the grid via the addition machinery — handy for

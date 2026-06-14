@@ -54,13 +54,17 @@ int main()
   clock24 t(23, 59, 45);
   std::cout << "start:      " << t << "\n";
 
-  t.add_seconds(20);
+  // Pass the delta as a bound (`_b` literal): the `+=` is bound-RHS, so the wrap
+  // carry threaded through the sec→min→hour cascade is itself a bound, not a raw
+  // integer — the whole cascade stays in bound-space. (Large deltas land on a
+  // disjoint sub-grid, which wrap accepts.)
+  t.add_seconds(20_b);
   std::cout << "+20 sec:    " << t << "\n";
 
-  t.add_minutes(90);
+  t.add_minutes(90_b);
   std::cout << "+90 min:    " << t << "\n";
 
-  t.add_seconds(3600 + 1800 + 30);
+  t.add_seconds(just<3600 + 1800 + 30>);
   std::cout << "+5430 sec:  " << t << "\n";
 
   return 0;

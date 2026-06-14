@@ -143,6 +143,24 @@ TEST_CASE("unsafe relaxes domain and round checks", "[bound][assign][unsafe]")
   REQUIRE_NOTHROW(([&] { u100u x{50}; x = 200; (void)x; }()));
 }
 
+TEST_CASE("disjoint-interval assignment is allowed under wrap/clamp", "[bound][assign][wrap][clamp]")
+{
+  // A bound whose interval is wholly outside the target is rejected for strict
+  // policies but allowed under wrap/clamp (they bring any value into range —
+  // matching the integral-RHS path, whose unbounded interval always overlaps).
+  using src = bound<{25, 34}>;
+  STATIC_REQUIRE      (bound_assignable<bound<{0, 9}, wrap>,  src>);
+  STATIC_REQUIRE      (bound_assignable<bound<{0, 9}, clamp>, src>);
+  STATIC_REQUIRE_FALSE(bound_assignable<bound<{0, 9}>,        src>);   // checked: rejected
+
+  bound<{0, 9}, wrap> w{0};
+  w = src{27};
+  REQUIRE(w == 7);                    // 27 mod 10
+  bound<{0, 9}, clamp> c{0};
+  c = src{27};
+  REQUIRE(c == 9);                    // clamped to upper
+}
+
 TEST_CASE("trivial-type guarantees", "[bound][trivial]")
 {
   STATIC_REQUIRE(std::is_trivial_v<bound<{0, 0},      unsafe>>);
