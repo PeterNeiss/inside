@@ -159,17 +159,55 @@ TEST_CASE("on_wrap action receives bound& and carry", "[bound][policy][on_wrap]"
   REQUIRE(s2 == 0);
 }
 
+TEST_CASE("on_wrap carry is a bound for a bound RHS", "[bound][policy][on_wrap]")
+{
+  // A boundable RHS routes the wrap through bound arithmetic, so the carry is a
+  // bound<excess-grid>. `carry + just<0>` is bound+bound (compiles only for a bound;
+  // an imax carry would hit the grid-less-scalar guidance overload).
+  using w10 = bound<{0, 9}, wrap>;        // wraps at 10
+  w10 x{8};
+  bound<{0, 5}> add{4};                    // bound RHS
+  imax carry_val = -99;
+  x.on_wrap([&](auto&, auto carry){ carry_val = carry + just<0>; }) += add;
+  REQUIRE(x == 2);                         // 8 + 4 = 12 -> 12 mod 10
+  REQUIRE(carry_val == 1);                 // floor(12 / 10)
+
+  // Fractional grid (notch 1/2) exercises the rational wrap path; the carry is
+  // still a bound (range = 3 + 0.5 = 3.5).
+  using pos = bound<{{0, 3}, notch<1, 2>}, wrap>;
+  pos p{2.5};
+  bound<{{0, 2}, notch<1, 2>}> fadd{1.5};
+  imax fcarry = -99;
+  p.on_wrap([&](auto&, auto carry){ fcarry = carry + just<0>; }) += fadd;
+  REQUIRE(p == frac<1, 2>);                // 2.5 + 1.5 = 4.0 -> 4.0 - 3.5 = 0.5
+  REQUIRE(fcarry == 1);                    // floor(4.0 / 3.5)
+}
+
 TEST_CASE("on_clamp action receives overshoot", "[bound][policy][on_clamp]")
 {
   using u100 = bound<{0, 100}>;
   u100 x{0};
   imax overshoot = 0;
   x.on_clamp([&](auto& self, auto over){
-    overshoot = over;
+    overshoot = over;                            // integer RHS: over is imax
     (void)self;
   }) = 150;
   REQUIRE(x == 100);
   REQUIRE(overshoot == 50);
+}
+
+TEST_CASE("on_clamp overshoot is a bound for a bound RHS", "[bound][policy][on_clamp]")
+{
+  // A boundable RHS routes clamp through bound arithmetic, so the overshoot is a
+  // bound<Grid<R> - Grid<L>> — `over` converts to imax implicitly (it would not
+  // compile against the old raw optional<rational>).
+  using c100 = bound<{0, 100}, clamp>;
+  c100 x{0};
+  bound<{0, 200}> v{150};                        // overlaps [0,100], runtime out of range
+  imax ov = 0;
+  x.on_clamp([&](auto&, auto over){ ov = over; }) = v;
+  REQUIRE(x == 100);
+  REQUIRE(ov == 50);                             // overshoot 150 - 100
 }
 
 TEST_CASE("on_error action receives code and message", "[bound][policy][on_error]")

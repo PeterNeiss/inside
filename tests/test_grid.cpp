@@ -30,6 +30,17 @@ TEST_CASE("grid construction and max_notch", "[grid]")
                  == std::numeric_limits<umax>::max());
 }
 
+TEST_CASE("just<>/bound values work as grid corners", "[grid][corner]")
+{
+  // Corners are `rational`, so a bound converts via its implicit operator rational().
+  STATIC_REQUIRE(grid{0, just<30>}            == grid{0, 30});
+  STATIC_REQUIRE(grid{just<5>, just<10>}      == grid{5, 10});
+  STATIC_REQUIRE(grid{just<2>}                == grid{2});       // 1-arg point grid
+  STATIC_REQUIRE(grid{just<0>, just<8>, just<2>} == grid{0, 8, 2});
+  // ...and as bound<> grid-spec corners (the rifle.cpp use case).
+  STATIC_REQUIRE(Grid<bound<{0, just<30>}, wrap>> == Grid<bound<{0, 30}, wrap>>);
+}
+
 TEST_CASE("grid storage_min selection", "[grid][storage]")
 {
   // Notch 0 -> rational

@@ -33,7 +33,7 @@ using namespace bnd;
 class magazine
 {
 public:
-  static constexpr int capacity = 30;
+  static constexpr auto capacity = just<30>;
   using count_t = bound<{0, capacity}, wrap>;     // 31 states; wraps at empty
 
   count_t rounds{capacity};                        // start full
@@ -88,7 +88,7 @@ void player::pull_trigger()
            -= magazine::capacity;
     ++weapon.reloads;
     if (shortfall > 0)
-      m = magazine::count_t{magazine::capacity - shortfall};
+      m = magazine::capacity - magazine::count_t{shortfall};
   }) -= 1;
 }
 
@@ -101,11 +101,11 @@ void player::combat_reload()
   imax dropped = weapon.mag.rounds;
   weapon.rounds_dropped += dropped;
 
-  imax shortfall = 0;
+  magazine::count_t shortfall = 0;
   reserve.on_clamp([&](auto&, auto over) { shortfall = -over; })
          -= magazine::capacity;
   ++weapon.reloads;
-  weapon.mag.rounds = magazine::count_t{magazine::capacity - shortfall};
+  weapon.mag.rounds = magazine::capacity - shortfall;
 }
 
 int main()
@@ -120,8 +120,7 @@ int main()
               << "  missed=" << p.weapon.missed_shots
               << "  dropped=" << p.weapon.rounds_dropped
               << "  reloads=" << p.weapon.reloads
-              << "  dry=" << p.dry_clicks
-              << "\n";
+              << "  dry=" << p.dry_clicks << "\n";
   };
 
   status("start:                              ");

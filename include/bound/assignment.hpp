@@ -192,6 +192,17 @@ namespace bnd::detail
       }
 
     private:
+      // Grid of the wrap "excess"/carry handed to an on_wrap action:
+      // floor((value − Lower) / range) for value ∈ R's interval (range = span + notch).
+      // Both operands are bounds, so — like the clamp overshoot — the carry has a
+      // known range and is delivered as a bound, not a raw imax.
+      static constexpr grid wrap_excess_grid()
+      {
+        constexpr rational range = ((Upper<L> - Lower<L>).value() + Notch<L>).value();
+        return grid{ ((Lower<R> - Lower<L>).value() / range).value().floor(),
+                     ((Upper<R> - Lower<L>).value() / range).value().floor() };
+      }
+
       template<typename A>
       static constexpr void apply_clamp(L& lhs, R const& rhs, A&& action);
 
@@ -532,9 +543,15 @@ namespace bnd::detail
     else
       lhs = L::from_raw((as_rational(rhs) < Lower<L>)
         ? raw_cast<L>(RawLo<L>) : raw_cast<L>(RawHi<L>));
-    auto overshoot = as_rational(rhs) - as_rational(lhs);
+    // Overshoot (rhs − clamped) as a bound, via the result-grid inference of normal
+    // bound arithmetic: both operands are bounds, so the overshoot is too. It is always
+    // in-grid and on-notch for Grid<R> − Grid<L>, so the construction is exact.
     if constexpr (clamp_action<plain<A>>)
+    {
+      constexpr grid OG = (Grid<R> - Grid<L>).value();
+      bnd::bound<OG> overshoot{ (as_rational(rhs) - as_rational(lhs)).value() };
       action.fn(lhs, overshoot);
+    }
   }
 
   template<boundable L, boundable R>
@@ -558,14 +575,21 @@ namespace bnd::detail
       imax excess  = (shifted < 0) ? ((shifted - range + 1) / range) : (shifted / range);
       from_value(lhs, wrapped + lower);
       if constexpr (wrap_action<plain<A>>)
-        action.fn(lhs, excess);
+        action.fn(lhs, bnd::bound<wrap_excess_grid()>{excess});   // carry as a bound
+    }
+    else if constexpr (wrap_action<plain<A>>)
+    {
+      // Fractional destination with a wrap action: reuse the rational modular-wrap
+      // path for the store/rounding, but wrap its imax carry `q` into a bound before
+      // handing it to the user action.
+      assignment<L, rational>::apply_wrap(lhs, as_rational(rhs), policy,
+        bnd::on_wrap([&](auto& self, imax q){
+          action.fn(self, bnd::bound<wrap_excess_grid()>{q});
+        }));
     }
     else
     {
-      // Fractional / notch-aligned destination: reuse the rational
-      // modular-wrap path (range = Upper - Lower + Notch; store_checked
-      // applies the rounding policy). Mirrors how the integral-rhs assign
-      // routes non-integer L through assignment<L, rational>.
+      // Fractional destination, no wrap action: delegate unchanged.
       assignment<L, rational>::apply_wrap(lhs, as_rational(rhs), policy, action);
     }
   }

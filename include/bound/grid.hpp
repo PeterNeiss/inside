@@ -12,6 +12,7 @@
 #include "slim/expected.hpp"     // slim::expected, slim::unexpected
 
 #include <algorithm>
+#include <concepts>              // std::convertible_to (grid corner ctors)
 
 namespace bnd { struct grid; }
 
@@ -41,11 +42,20 @@ namespace bnd
     bnd::detail::rational Notch;
 
     grid() = default;
-    constexpr grid(arithmetic auto lower, arithmetic auto upper, arithmetic auto notch)
-      :grid{interval{lower, upper}, bnd::detail::rational{notch}} { }
-    constexpr grid(arithmetic auto lower, arithmetic auto upper)
+    // Corner ctors accept any type convertible to `rational` — int/float/rational and
+    // any `bound` / `just<>` (via its implicit `operator rational()`), so a bound can be
+    // a grid corner. They stay *templates* (deducing the corner type) on purpose: a
+    // braced `{lo, hi}` can't deduce to a template parameter, so the `grid{{lo,hi}, notch}`
+    // spelling unambiguously picks `grid(interval, rational)` below. The conversion is
+    // resolved at the call site, so grid.hpp needs no dependency on `bound`.
+    constexpr grid(std::convertible_to<bnd::detail::rational> auto lower,
+                   std::convertible_to<bnd::detail::rational> auto upper,
+                   std::convertible_to<bnd::detail::rational> auto notch)
+      :grid{interval{lower, upper}, notch} { }
+    constexpr grid(std::convertible_to<bnd::detail::rational> auto lower,
+                   std::convertible_to<bnd::detail::rational> auto upper)
       :grid{interval{lower, upper}, bnd::detail::rational{1}} { }
-    constexpr grid(arithmetic auto lower)
+    constexpr grid(std::convertible_to<bnd::detail::rational> auto lower)
       :grid{interval{lower, lower}, bnd::detail::rational{0}} { }
     constexpr grid(interval val, bnd::detail::rational notch):Interval{val}, Notch{notch} { }
 
