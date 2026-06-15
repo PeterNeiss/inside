@@ -14,10 +14,9 @@
 
 //---------------------------------------------------------------------------
 // debug — error codes, std::error_category, and diagnostic helpers. `errc`
-// enumerates the four failure modes; bound_category + make_error_code plug into
-// <system_error>. `overflow_trap` is the runtime sibling of rational.hpp's
-// compile-time overflow throw. `print_types`/`print_values` are static_assert
-// debug helpers for template instantiation issues.
+// enumerates the failure modes; bound_category + make_error_code plug into
+// <system_error>. `print_types` is a static_assert debug helper for template
+// instantiation issues.
 //---------------------------------------------------------------------------
 namespace bnd
 {
@@ -69,15 +68,6 @@ namespace bnd
   {
       static_assert(!sizeof...(Ts), "=== PRINT_TYPES ===");
   };
-
-  template <auto...N>
-  struct print_values;
-
-  constexpr void overflow_trap(const char* what)
-  {
-    if (what)
-      throw std::system_error(make_error_code(errc::overflow), what);
-  }
 } // namespace bnd
 
 namespace std

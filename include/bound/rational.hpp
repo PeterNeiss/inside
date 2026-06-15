@@ -817,29 +817,14 @@ namespace bnd::detail
       return lhs_neg ? (0 <=> cmp) : cmp;
     }
 
-    // cross trim to avoid overflow if possible
-    trim(lhs.Numerator, rhs.Numerator);
-    trim(lhs_ad, rhs_ad);
+    // Cross-multiply in 128-bit: |numerator| and |denominator| are each ≤ 2^64−1,
+    // so the products fit exactly in unsigned __int128 — the comparison can never
+    // overflow, so no trap is needed.
+    using u128 = unsigned __int128;
+    u128 A = static_cast<u128>(lhs.Numerator) * rhs_ad;
+    u128 B = static_cast<u128>(rhs.Numerator) * lhs_ad;
 
-    umax A;
-    umax B;
-
-    if
-    (
-      mul_overflow(lhs.Numerator, rhs_ad, &A) ||
-      mul_overflow(rhs.Numerator, lhs_ad, &B)
-    )
-    {
-      // operator<=> must return strong_ordering (no optional form), so trap:
-      // throw at compile time, overflow_trap at runtime.
-      if (std::is_constant_evaluated()) { throw ("rational <=>: cross-multiplication overflow"); }
-      overflow_trap("multiplicative overflow");
-    }
-
-    if (lhs_neg)
-      return B <=> A;
-    else
-      return A <=> B;
+    return lhs_neg ? (B <=> A) : (A <=> B);
   }
 
   template <typename T>

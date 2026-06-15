@@ -141,7 +141,6 @@ namespace bnd::math::dbl::detail
   inline constexpr double kLog10e   = 0x1.bcb7b1526e50ep-2;  // 1/ln10
 
   // Compositions on the validated primitives.
-  inline BND_DBL_FN double d_tan(double x)   { return d_sin(x) / d_cos(x); }
   inline BND_DBL_FN double d_exp2(double x)  { return d_exp(x * kLn2Full); }
   inline BND_DBL_FN double d_log2(double x)  { return d_log(x) * kLog2e; }
   inline BND_DBL_FN double d_log10(double x) { return d_log(x) * kLog10e; }
@@ -218,8 +217,6 @@ namespace bnd::math::dbl
   template <typename Out, typename In>
   [[nodiscard]] BND_DBL_FN Out log_core(In x)  { return Out{detail::d_log (x)}; }
   template <typename Out, typename In>
-  [[nodiscard]] BND_DBL_FN Out tan_core(In x)  { return Out{detail::d_tan (x)}; }
-  template <typename Out, typename In>
   [[nodiscard]] BND_DBL_FN Out exp2_core(In x) { return Out{detail::d_exp2(x)}; }
   template <typename Out, typename In>
   [[nodiscard]] BND_DBL_FN Out log2_core(In x) { return Out{detail::d_log2(x)}; }
@@ -239,9 +236,6 @@ namespace bnd::math::dbl
   [[nodiscard]] BND_DBL_FN Out asin_core(In x) { return Out{detail::d_asin(x)}; }
   template <typename Out, typename In>
   [[nodiscard]] BND_DBL_FN Out acos_core(In x) { return Out{detail::d_acos(x)}; }
-  template <typename Out, typename In>
-  [[nodiscard]] BND_DBL_FN Out pow_core(In b, In e)
-  { return Out{detail::d_pow(b, e)}; }
   template <typename Out, typename In>
   [[nodiscard]] BND_DBL_FN Out atan2_core(In y, In x)
   { return Out{detail::d_atan2(y, x)}; }

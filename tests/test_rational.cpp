@@ -110,15 +110,17 @@ TEST_CASE("rational comparison", "[rational][comparison]")
     REQUIRE(a == b);
   }
 
-  SECTION("cross-multiplication overflow traps at runtime")
+  SECTION("cross-multiplication uses 128-bit, never overflows")
   {
     // M/2 vs (M-1)/3: numerators are consecutive (coprime) and denominators
-    // {2,3} are coprime, so cross-trim cannot reduce either pair. M*3 then
-    // overflows umax, so the comparison must trap rather than return garbage.
+    // {2,3} are coprime, so cross-trim cannot reduce either pair and the 64-bit
+    // products overflow umax — but the 128-bit cross-multiply compares them
+    // exactly. a - b = (M+2)/6 > 0, so a > b.
     rational a{M, 2};
     rational b{M - 1, 3};
-    REQUIRE_THROWS_AS(a < b, std::system_error);
-    REQUIRE_THROWS_AS(b < a, std::system_error);
+    REQUIRE(a > b);
+    REQUIRE(b < a);
+    REQUIRE_FALSE(a < b);
   }
 }
 
