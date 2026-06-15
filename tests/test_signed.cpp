@@ -49,7 +49,7 @@ TEST_CASE("signed construction and arithmetic", "[bound][signed][arithmetic]")
   REQUIRE(acc == 70);
 
   s32 acc2{50};
-  acc2 += -75;
+  acc2 += -75_b;
   REQUIRE(acc2 == -25);
 }
 

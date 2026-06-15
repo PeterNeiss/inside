@@ -484,6 +484,34 @@ namespace bnd
       "divide a bound by a bound, not a raw scalar: write `6_b / a` / "
       "`just<6> / a`, or `bound<{lo,hi}>{n} / a`"); }
 
+  //---------------------------------------------------------------------------
+  // Compound assignment with a raw scalar is ill-formed for the same reason —
+  // a bound is mutated by another bound (or a rational), never a bare number.
+  // These guidance overloads turn `b += 1` into a readable diagnostic instead
+  // of a generic "no viable operator+=". Same SFINAE-transparent shape as the
+  // binary operators above.
+  //---------------------------------------------------------------------------
+  template <boundable B, raw_scalar A> B& operator+=(B&, A) {
+    static_assert(detail::dependent_false<B>,
+      "add a bound, not a raw scalar: write `b += 1_b` / `b += just<1>`, or "
+      "`b += bound<{lo,hi}>{n}` for a runtime value with a known range"); }
+  template <boundable B, raw_scalar A> B& operator-=(B&, A) {
+    static_assert(detail::dependent_false<B>,
+      "subtract a bound, not a raw scalar: write `b -= 1_b` / `b -= just<1>`, "
+      "or `b -= bound<{lo,hi}>{n}` for a runtime value with a known range"); }
+  template <boundable B, raw_scalar A> B& operator*=(B&, A) {
+    static_assert(detail::dependent_false<B>,
+      "multiply by a bound, not a raw scalar: write `b *= 2_b` / `b *= just<2>`, "
+      "or `b *= bound<{lo,hi}>{n}` for a runtime value with a known range"); }
+  template <boundable B, raw_scalar A> B& operator/=(B&, A) {
+    static_assert(detail::dependent_false<B>,
+      "divide by a bound, not a raw scalar: write `b /= 2_b` / `b /= just<2>`, "
+      "or `b /= bound<{lo,hi}>{n}` for a runtime value with a known range"); }
+  template <boundable B, raw_scalar A> B& operator%=(B&, A) {
+    static_assert(detail::dependent_false<B>,
+      "take the modulus by a bound, not a raw scalar: write `b %= 2_b` / "
+      "`b %= just<2>`, or `b %= bound<{lo,hi}>{n}` for a runtime value"); }
+
 } // namespace bnd
 
 #endif // BNDarithmeticHPP

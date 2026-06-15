@@ -76,14 +76,6 @@ int main()
   }) = 3.0;   // 3 doesn't land on the notch-2 grid
   std::cout << "          (c=" << c << ")" << "\n";
 
-  checked_100 acc(50);
-  acc.on_overflow([](auto& self, errc code) {
-    std::cout << "overflow: [" << make_error_code(code).message()
-              << "] += saturated -> 0" << "\n";
-    self = 0;
-  }) += std::numeric_limits<imax>::max();
-  std::cout << "          (acc=" << acc << ")" << "\n";
-
   auto q = div(checked_100(10), checked_100(0),
     on_overflow([](auto& res, errc code) {
       std::cout << "div/0:    [" << make_error_code(code).message()
@@ -133,8 +125,9 @@ int main()
               << " (wrapped to " << self << ")" << "\n";
   }) = 75;
 
-  // .with(...) packs multiple callbacks for one operation: the imax-overflow
-  // probe fires on_overflow, the post-probe narrowing fires on_clamp.
+  // .with(...) packs multiple callbacks for one operation. The bound add
+  // overshoots [0,100], so the narrowing fires on_clamp; on_overflow is packed
+  // too but stays silent (a range-bounded operand can't overflow imax).
   clamp_100 combo(50);
   combo.with(
     on_overflow([](auto& self, errc) {
@@ -143,7 +136,7 @@ int main()
     on_clamp([](auto&, auto over) {
       std::cout << "combo:    on_clamp overshoot=" << over << "\n";
     })
-  ) += 200;
+  ) += 200_b;
   std::cout << "          (combo=" << combo << ")" << "\n";
 
   return 0;

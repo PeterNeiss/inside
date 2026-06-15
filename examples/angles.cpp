@@ -15,15 +15,15 @@ int main()
   std::cout << "heading:  " << heading << "\n";
 
   // Turn right 30 degrees (wraps past 360)
-  heading += 30;
+  heading += 30_b;
   std::cout << "+30:      " << heading << "\n";  // 20
 
   // Turn left 90 degrees
-  heading += -90;
+  heading += -90_b;
   std::cout << "-90:      " << heading << "\n";  // 290
 
   // Full rotation
-  heading += 360;
+  heading += 360_b;
   std::cout << "+360:     " << heading << "\n";  // 290 (unchanged)
 
   return 0;

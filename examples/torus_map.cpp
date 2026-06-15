@@ -17,6 +17,10 @@ using namespace bnd;
 // Position grid: 0..63 inclusive in 1/16-pixel steps. wrap-on-edge.
 using pos_t = bound<{{0, 64}, notch<1, 16>}, wrap | round_nearest>;
 
+// A signed per-tick movement delta, same 1/16 notch family as pos_t. A runtime
+// step has a range — name it — so `x += d` stays bound += bound.
+using pos_delta_t = bound<{{-64, 64}, notch<1, 16>}, round_nearest>;
+
 // Integer cell coords for the viewport iterator (a separate grid because
 // bound_range needs notch 1 with integer Lower).
 using cell_t = bound<{0, 63}>;
@@ -27,11 +31,11 @@ struct sprite
   counter<1'000'000> edge_x_crossings{0};
   counter<1'000'000> edge_y_crossings{0};
 
-  void step(double dx, double dy)
+  void step(pos_delta_t dx, pos_delta_t dy)
   {
-    // policy_ref::operator+= now accepts a `real` RHS (rational, float,
-    // double) and routes through the bound's round-nearest assignment —
-    // the on_wrap callback still fires on each edge crossing.
+    // The move delta is a bound (same notch family as the position), so the
+    // update stays bound += bound and routes through the round-nearest
+    // assignment — the on_wrap callback still fires on each edge crossing.
     x.on_wrap([&](auto&, auto carry) {
       (void)carry;
       ++edge_x_crossings;

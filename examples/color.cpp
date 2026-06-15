@@ -10,20 +10,24 @@ using namespace bnd;
 
 using channel = bound<{0, 255}, clamp>;
 
+// A signed per-channel adjustment. A runtime delta has a range — name it — so
+// `R += amount` stays bound += bound (a raw int is no longer an arithmetic RHS).
+using channel_delta = bound<{-512, 512}>;
+
 struct rgb
 {
   channel R, G, B;
 
   rgb(int r, int g, int b) : R(r), G(g), B(b) {}
 
-  void brighten(int amount)
+  void brighten(channel_delta amount)
   {
     R += amount;
     G += amount;
     B += amount;
   }
 
-  void darken(int amount) { brighten(-amount); }
+  void darken(channel_delta amount) { brighten(-amount); }
 
   friend std::ostream& operator<<(std::ostream& os, const rgb& c)
   {

@@ -24,7 +24,9 @@ TEST_CASE("unsafe + no action: out-of-range int rhs stores without throwing",
   // The += must not throw, even with an out-of-range value. Storage holds
   // the raw value as-is (UB on read, but that's the `unsafe` contract).
   L b{50};
-  REQUIRE_NOTHROW((b += 200));
+  // A delta bound with Lower==0 keeps the raw-add fast path (a singleton `200_b`
+  // would widen to a disjoint grid that only clamp/wrap can absorb).
+  REQUIRE_NOTHROW((b += bound<{0, 200}>{200}));
   // No assertion on the value — `unsafe` doesn't promise meaningful behaviour
   // for out-of-range writes, only that they don't throw.
 }
@@ -33,14 +35,14 @@ TEST_CASE("checked + no action: range check still fires", "[bound][checked][perf
 {
   using L = bound<{0, 100}, checked>;
   L b{50};
-  REQUIRE_THROWS_AS((b += 200), std::system_error);
+  REQUIRE_THROWS_AS((b += bound<{0, 200}>{200}), std::system_error);
 }
 
 TEST_CASE("clamp policy: range check still fires", "[bound][clamp][perf]")
 {
   using L = bound<{0, 100}, clamp>;
   L b{50};
-  b += 200;
+  b += bound<{0, 200}>{200};
   REQUIRE(b == 100);
 }
 
@@ -48,21 +50,8 @@ TEST_CASE("wrap policy: range check still fires", "[bound][wrap][perf]")
 {
   using L = bound<{0, 100}, wrap>;
   L b{50};
-  b += 200;
+  b += bound<{0, 200}>{200};
   REQUIRE(b == 48);   // (50 + 200 - 0) mod 101 + 0 = 250 mod 101 = 48
-}
-
-TEST_CASE("unsafe + on_overflow action: action fires on imax overflow",
-          "[bound][action][perf]")
-{
-  using L = bound<{0, 100}, unsafe>;
-  L b{50};
-  bool fired = false;
-  // The += through policy_ref with on_overflow probes add_overflow (imax).
-  // imax_max + 1 overflows imax; the action fires. (Bound-range overflow
-  // is unrelated — that's handled by clamp/wrap/sentinel.)
-  b.on_overflow([&](auto&, auto){ fired = true; }) += std::numeric_limits<imax>::max();
-  REQUIRE(fired);
 }
 
 //---------------------------------------------------------------------------

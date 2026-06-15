@@ -22,10 +22,10 @@ int main()
 
   // adjust with +=, clamping is automatic
   brightness = 80;
-  brightness += 50;  // clamped to 100
+  brightness += 50_b;  // clamped to 100
   std::cout << "+= 50:     " << brightness << "\n";
 
-  brightness += -200;  // clamped to 0
+  brightness += -200_b;  // clamped to 0
   std::cout << "+= -200:   " << brightness << "\n";
 
   // per-operation clamp on a strict (throwing) type

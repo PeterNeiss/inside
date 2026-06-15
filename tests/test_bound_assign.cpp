@@ -131,12 +131,12 @@ TEST_CASE("unsafe relaxes domain and round checks", "[bound][assign][unsafe]")
   REQUIRE(*q == 6);
 
   // Under unsafe (ignore_zero) the div-by-zero check is skipped entirely:
-  // binary `a / 0` is undefined behavior, consistent with the compound `/= 0`
-  // no-op below. UB is not testable at runtime, so there is no assertion here.
+  // binary `a / 0` is undefined behavior, consistent with the compound
+  // `/= zero-bound` no-op below. UB is not testable at runtime, so no assertion.
 
-  // Compound /= by 0: unsafe implies ignore_zero -> silent no-op, value unchanged
+  // Compound /= by a zero bound: unsafe implies ignore_zero -> silent no-op.
   u100u y{50};
-  y /= 0;
+  y /= u100u{0};
   REQUIRE(y == 50);
 
   // Out-of-range silent overwrite (no domain check)

@@ -50,7 +50,7 @@ int main()
   // optional wrapper). Assigning it into a `round_nearest` integer grid rounds
   // it to the nearest whole point of damage — no rational, no cast.
   using dealt_t = bound<{0, 3200}, round_nearest>;
-  imax dealt = dealt_t{base * chain}.numerator();   // integer damage (denominator 1)
+  dealt_t dealt{base * chain};   // integer damage, snapped to the round_nearest grid
   std::cout << "damage chain (2.0 * 1.25 * 1.5) on base 10 = " << dealt << "\n";
 
   hp.on_clamp([&](auto& self, auto overshoot) {
@@ -69,12 +69,12 @@ int main()
       std::cout << "[downed — overshoot " << overshoot << "]\n";
       downed = true;
     }
-  }) -= 200;
+  }) -= 200_b;
   std::cout << "HP after big hit: " << hp << "  (downed=" << std::boolalpha << downed << ")\n";
 
   // Heal via clamp-saturation back to full.
   hp.on_clamp([&](auto&, auto) { std::cout << "[heal saturated to max HP]\n"; })
-    += 250;
+    += 250_b;
   std::cout << "HP after heal: " << hp << "\n";
 
   // Level-scaled max-HP buff — could exceed hp_t. Because `hp_t` carries a

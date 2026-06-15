@@ -349,11 +349,11 @@ TEST_CASE("scalars need a grid to join bound arithmetic", "[bound][arithmetic][m
 
   // Raw `int` / `double` operands are intentionally ill-formed (see the
   // static_assert guidance in arithmetic.hpp): expressions like `b + 1`,
-  // `1 + b`, `b * 2.5` do NOT compile — the programmer must give the scalar a
-  // grid. Comparisons (`b == 5`) and compound assignment (`b += 1`) with raw
-  // scalars are unaffected and stay ergonomic.
+  // `1 + b`, `b * 2.5` AND compound forms like `b += 1` do NOT compile — the
+  // programmer must give the scalar a grid (`1_b` / `just<1>`). Only comparisons
+  // (`b == 5`) against a raw scalar stay ergonomic.
   REQUIRE(b == 5);
-  b += 1;
+  b += 1_b;
   REQUIRE(b == 6);
 }
 
@@ -439,7 +439,7 @@ TEST_CASE("scalar-operand ban: guidance overloads pinned",
   auto w = b + 1_b;
   STATIC_REQUIRE(!std::same_as<decltype(w), pct>);   // widened grid
   REQUIRE(w == 6);
-  b += 1;
+  b += 1_b;
   REQUIRE(b == 6);
   REQUIRE(b < 10);
 }

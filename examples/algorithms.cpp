@@ -98,7 +98,7 @@ int main()
     // darken: subtract 50 from each channel (clamp prevents underflow)
     rng::transform(src, dst.begin(), [](channel c) {
       auto d = c;
-      d -= 50;
+      d -= 50_b;
       return d;
     });
     print("original", src);

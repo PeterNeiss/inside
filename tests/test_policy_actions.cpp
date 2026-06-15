@@ -236,50 +236,14 @@ TEST_CASE("on_sentinel action receives original value", "[bound][policy][on_sent
   REQUIRE(orig == 200);
 }
 
-TEST_CASE("on_overflow on compound op", "[bound][policy][on_overflow]")
-{
-  using c100 = bound<{0, 100}, checked>;
-  c100 acc{50};
-  bool fired = false;
-  acc.on_overflow([&](auto& self, errc code){
-    fired = (code == errc::overflow);
-    self = 0;
-  }) += std::numeric_limits<imax>::max();
-
-  REQUIRE(fired);
-  REQUIRE(acc == 0);
-}
-
-TEST_CASE("on_overflow on compound subtraction", "[bound][policy][on_overflow]")
-{
-  using c100 = bound<{0, 100}, checked>;
-  c100 acc{50};
-  bool fired = false;
-  // 50 - INTMAX_MIN overflows imax on the way in, before any clamp probe.
-  acc.on_overflow([&](auto& self, errc code){
-    fired = (code == errc::overflow);
-    self = 0;
-  }) -= std::numeric_limits<imax>::min();
-
-  REQUIRE(fired);
-  REQUIRE(acc == 0);
-}
+// (Removed: "on_overflow on compound op" / "...subtraction" — they fired the
+// action on imax-level overflow from a raw scalar RHS. Raw compound assigns are
+// gone, and a range-bounded operand can't overflow imax, so the path is moot.)
 
 TEST_CASE("multi-action with(...) — overflow vs clamp paths fire correctly",
           "[bound][policy][multi]")
 {
   using c100 = bound<{0, 100}, checked>;
-
-  SECTION("imax-overflow path fires on_overflow only")
-  {
-    c100 a{50};
-    bool of = false, cl = false;
-    a.with(on_overflow([&](auto& self, errc){ of = true; self = 7; }),
-           on_clamp([&](auto&, auto){ cl = true; })) += std::numeric_limits<imax>::max();
-    REQUIRE(of);
-    REQUIRE_FALSE(cl);
-    REQUIRE(a == 7);
-  }
 
   SECTION("post-probe narrowing fires on_clamp only")
   {
@@ -288,21 +252,11 @@ TEST_CASE("multi-action with(...) — overflow vs clamp paths fire correctly",
     imax over = 0;
     b.with(on_overflow([&](auto&, errc){ of = true; }),
            on_clamp([&](auto&, auto o){ cl = true; over = o; }))
-      += 200;   // 50+200=250 fits imax, but overshoots [0,100]
+      += 200_b;   // 50+200=250 overshoots [0,100]; on_clamp fires, not on_overflow
     REQUIRE_FALSE(of);
     REQUIRE(cl);
     REQUIRE(over == 150);
     REQUIRE(b == 100);
-  }
-
-  SECTION("single-action via with()")
-  {
-    c100 c{50};
-    bool fired = false;
-    c.with(on_overflow([&](auto& self, errc){ fired = true; self = 0; }))
-      += std::numeric_limits<imax>::max();
-    REQUIRE(fired);
-    REQUIRE(c == 0);
   }
 }
 

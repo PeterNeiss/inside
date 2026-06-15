@@ -774,7 +774,7 @@ void bench_transform_algo()
 
     { CTRACK_NAME("transform bound");
       std::transform(bv.begin(), bv.end(), bout.begin(),
-        [](u255 v) { v += 1; return v; });
+        [](u255 v) { v += 1_b; return v; });
       do_not_optimize(bout[0].raw()); }
 
     // Same-width comparison: u255's raw is uint16 (raw 255 is the reserved
@@ -783,7 +783,7 @@ void bench_transform_algo()
     // abstraction cost. {0, 254} fits uint8 and should match native.
     { CTRACK_NAME("transform bound u8");
       std::transform(b8v.begin(), b8v.end(), b8out.begin(),
-        [](u254 v) { v += 1; return v; });
+        [](u254 v) { v += 1_b; return v; });
       do_not_optimize(b8out[0].raw()); }
   }
 }

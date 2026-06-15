@@ -513,9 +513,6 @@ namespace bnd
     // `operator*=` body focused on its own arithmetic shape.
     //-----------------------------------------------------------------------
     private:
-    constexpr bound& assign_imax(imax v)
-    { return detail::assignment<bound, imax>::assign(*this, v, make_policy<P>()); }
-
     template <typename Result>
     constexpr bound& assign_op_result(Result const& r)
     {
@@ -526,54 +523,6 @@ namespace bnd
       return *this;
     }
 
-    // Type-generic wrapping +/−/× in T's unsigned domain — the overflow-free
-    // fallback (imax width) and vectorizable unchecked arm (raw width) of
-    // `integer_compound_assign`; same low bits either way (two's complement).
-    struct wrap_add_t { template <typename T> constexpr T operator()(T a, T b) const noexcept
-      { using U = std::make_unsigned_t<T>; return static_cast<T>(static_cast<U>(a) + static_cast<U>(b)); } };
-    struct wrap_sub_t { template <typename T> constexpr T operator()(T a, T b) const noexcept
-      { using U = std::make_unsigned_t<T>; return static_cast<T>(static_cast<U>(a) - static_cast<U>(b)); } };
-    struct wrap_mul_t { template <typename T> constexpr T operator()(T a, T b) const noexcept
-      { using U = std::make_unsigned_t<T>; return static_cast<T>(static_cast<U>(a) * static_cast<U>(b)); } };
-
-    // Integer fast path for +=, -=, *= with arithmetic rhs.
-    // `WrapOp` is the wrapping fallback (no overflow check); `CheckedOp` is
-    // one of `add_overflow`/`sub_overflow`/`mul_overflow`.
-    template <typename WrapOp>
-    constexpr bound& integer_compound_assign(
-        imax rhs,
-        bool (*CheckedOp)(imax, imax, imax*),
-        WrapOp wrap_op,
-        const char* err_msg)
-    {
-      // Unchecked + value storage: operate directly in raw width. Bit-identical
-      // to the imax round-trip below, but `b += k` vectorizes at the raw type's
-      // lane width (e.g. 4× the lanes for a uint8 raw).
-      if constexpr ((P & (checked | clamp | wrap | sentinel)) == 0
-                    && detail::value_raw<bound>
-                    && std::integral<raw_type>)
-      {
-        Raw = wrap_op(Raw, static_cast<raw_type>(rhs));
-        return *this;
-      }
-      else
-      {
-        imax l = detail::to_value(*this);
-        imax result;
-        if constexpr (P & checked)
-        {
-          if (CheckedOp(l, rhs, &result))
-          {
-            make_policy<P>().report(errc::overflow, err_msg);
-            return *this;
-          }
-        }
-        else
-          result = wrap_op(l, rhs);
-        return assign_imax(result);
-      }
-    }
-
     constexpr bool report_div_by_zero(const char* msg)
     {
       if constexpr (!(P & ignore_zero))
@@ -582,33 +531,20 @@ namespace bnd
     }
     public:
 
-    template <arithmetic A>
-    constexpr bound& operator+=(A rhs)
-    {
-      if constexpr (std::integral<A>)
-        return integer_compound_assign(rhs,
-            add_overflow, wrap_add_t{}, "operator+= overflow");
-      else if constexpr (std::same_as<A, bnd::detail::rational>)
-        return assign_op_result(bnd::detail::rational{*this} + rhs);
-      else  // floating_point — route through double, snap via policy
-        return *this = static_cast<double>(*this) + static_cast<double>(rhs);
-    }
+    // Only a `rational` (a library type) may join a bound in a compound assign;
+    // raw int/float/double are ill-formed — give the scalar a grid (`1_b` /
+    // `just<1>` / `bound<{lo,hi}>{n}`), mirroring the binary operators.
+    template <std::same_as<bnd::detail::rational> A>
+    constexpr bound& operator+=(A const& rhs)
+    { return assign_op_result(bnd::detail::rational{*this} + rhs); }
 
     template <boundable R>
     constexpr bound& operator-=(R const& rhs)
     { return *this += (-rhs); }
 
-    template <arithmetic A>
-    constexpr bound& operator-=(A rhs)
-    {
-      if constexpr (std::integral<A>)
-        return integer_compound_assign(rhs,
-            sub_overflow, wrap_sub_t{}, "operator-= overflow");
-      else if constexpr (std::same_as<A, bnd::detail::rational>)
-        return assign_op_result(bnd::detail::rational{*this} - rhs);
-      else  // floating_point
-        return *this = static_cast<double>(*this) - static_cast<double>(rhs);
-    }
+    template <std::same_as<bnd::detail::rational> A>
+    constexpr bound& operator-=(A const& rhs)
+    { return assign_op_result(bnd::detail::rational{*this} - rhs); }
 
     template <boundable R>
     constexpr bound& operator*=(R const& rhs)
@@ -616,48 +552,35 @@ namespace bnd
 
     template <boundable R>
     constexpr bound& operator/=(R const& rhs)
-    { return assign_op_result(*this / rhs); }
+    {
+      if (rhs == 0)
+      { report_div_by_zero("operator/= division by zero"); return *this; }
+      return assign_op_result(*this / rhs);
+    }
 
     template <boundable R>
     constexpr bound& operator%=(R const& rhs)
-    { return assign_op_result(mod(*this, rhs, make_policy<P>())); }
-
-    template <arithmetic A>
-    constexpr bound& operator*=(A rhs)
     {
-      if constexpr (std::integral<A>)
-        return integer_compound_assign(rhs,
-            mul_overflow, wrap_mul_t{}, "operator*= overflow");
-      else if constexpr (std::same_as<A, bnd::detail::rational>)
-        return assign_op_result(bnd::detail::rational{*this} * rhs);
-      else  // floating_point
-        return *this = static_cast<double>(*this) * static_cast<double>(rhs);
+      if (rhs == 0)
+      { report_div_by_zero("operator%= division by zero"); return *this; }
+      return assign_op_result(mod(*this, rhs, make_policy<P>()));
     }
 
-    template <arithmetic A>
-    constexpr bound& operator/=(A rhs)
+    template <std::same_as<bnd::detail::rational> A>
+    constexpr bound& operator*=(A const& rhs)
+    { return assign_op_result(bnd::detail::rational{*this} * rhs); }
+
+    template <std::same_as<bnd::detail::rational> A>
+    constexpr bound& operator/=(A const& rhs)
     {
       if (detail::is_canonical_zero(rhs))
       { report_div_by_zero("operator/= division by zero"); return *this; }
-
-      if constexpr (std::integral<A>)
-        return assign_imax(detail::to_value(*this) / static_cast<imax>(rhs));
-      else if constexpr (std::same_as<A, bnd::detail::rational>)
-        return assign_op_result(bnd::detail::rational{*this} / rhs);
-      else  // floating_point
-        return *this = static_cast<double>(*this) / static_cast<double>(rhs);
+      return assign_op_result(bnd::detail::rational{*this} / rhs);
     }
 
-    template <arithmetic A>
-    constexpr bound& operator%=(A rhs)
-    {
-      if (rhs == 0) { report_div_by_zero("operator%= division by zero"); return *this; }
-      return assign_imax(detail::to_value(*this) % static_cast<imax>(rhs));
-    }
-
-    constexpr bound& operator++()    { return *this += 1; }
+    constexpr bound& operator++()    { return *this += bnd::detail::rational{1}; }
     constexpr bound  operator++(int) { bound t = *this; ++*this; return t; }
-    constexpr bound& operator--()    { return *this -= 1; }
+    constexpr bound& operator--()    { return *this -= bnd::detail::rational{1}; }
     constexpr bound  operator--(int) { bound t = *this; --*this; return t; }
 
     template <numeric A>

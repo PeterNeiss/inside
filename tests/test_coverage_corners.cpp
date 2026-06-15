@@ -188,30 +188,33 @@ TEST_CASE("rational from subnormal and very small doubles", "[math][rational][co
 //---------------------------------------------------------------------------
 // bound.hpp:733-734 — operator/=(integral)   bound.hpp:744-745 — operator%=
 //---------------------------------------------------------------------------
-TEST_CASE("compound /= and %= with integral rhs (runtime)", "[bound][compound][cover]")
+TEST_CASE("compound /= and %= with a snapping bound rhs (runtime)", "[bound][compound][cover]")
 {
-  using sb = bound<{-100, 100}>;
+  // Integer division/modulo now flow through the boundable path; `snapping`
+  // gives the same C++ trunc-toward-zero / dividend-signed-remainder semantics
+  // the old raw-int compound assigns had.
+  using sb = bound<{-100, 100}, snapping>;
 
   sb a{20};
-  a /= 3;                          // integer division, truncates toward zero
+  a /= sb{3};                      // integer division, truncates toward zero
   REQUIRE(a == 6);
 
   sb n{-20};
-  n /= 3;
+  n /= sb{3};
   REQUIRE(n == -6);
 
   sb b{20};
-  b %= 7;
+  b %= sb{7};
   REQUIRE(b == 6);
 
   sb m{-20};
-  m %= 7;
+  m %= sb{7};
   REQUIRE(m == -6);                // C++ remainder keeps the dividend's sign
 }
 
 //---------------------------------------------------------------------------
-// bound.hpp:587-588 — operator+=(boundable) result out of range, checked
-// policy with no clamp/wrap/sentinel handler -> report (throws).
+// bound.hpp — operator+=(boundable) result out of range, checked policy with
+// no clamp/wrap/sentinel handler -> report (throws).
 //---------------------------------------------------------------------------
 TEST_CASE("checked += boundable overflow reports (throws)", "[bound][compound][cover]")
 {
@@ -219,21 +222,6 @@ TEST_CASE("checked += boundable overflow reports (throws)", "[bound][compound][c
   c100 a{80};
   c100 b{50};
   REQUIRE_THROWS_AS(a += b, std::system_error);   // 130 not in [0,100]
-}
-
-//---------------------------------------------------------------------------
-// bound.hpp:650-653 — integer_compound_assign, checked policy, imax-level
-// overflow -> report (throws). Distinct from the on_overflow-action variant,
-// which routes to the action instead of reporting.
-//---------------------------------------------------------------------------
-TEST_CASE("checked += with imax-overflowing rhs reports (throws)",
-          "[bound][compound][cover]")
-{
-  using c100 = bound<{0, 100}, checked>;
-  c100 a{50};
-  REQUIRE_THROWS_AS(a += std::numeric_limits<imax>::max(), std::system_error);
-  c100 s{50};
-  REQUIRE_THROWS_AS(s -= std::numeric_limits<imax>::min(), std::system_error);
 }
 
 //---------------------------------------------------------------------------
@@ -256,8 +244,8 @@ TEST_CASE("on_error fires for an out-of-range double assignment",
 }
 
 //---------------------------------------------------------------------------
-// policy.hpp:296 — action-decorated operator-=(integral) on the NON-overflow
-// path (existing tests only exercise the overflowing arm).
+// policy.hpp — action-decorated operator-=(boundable) on the NON-overflow path
+// (existing tests only exercise the overflowing arm).
 //---------------------------------------------------------------------------
 TEST_CASE("on_overflow compound subtract that does not overflow",
           "[bound][policy][compound][cover]")
@@ -265,7 +253,7 @@ TEST_CASE("on_overflow compound subtract that does not overflow",
   using c100 = bound<{0, 100}, checked>;
   c100 acc{50};
   bool fired = false;
-  acc.on_overflow([&](auto&, errc) { fired = true; }) -= 10;   // 40, no overflow
+  acc.on_overflow([&](auto&, errc) { fired = true; }) -= 10_b;   // 40, no overflow
   REQUIRE_FALSE(fired);
   REQUIRE(acc == 40);
 }

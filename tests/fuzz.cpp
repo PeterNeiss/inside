@@ -419,11 +419,14 @@ void prop_negation(fuzz_state& s, long iters)
 }
 
 template <boundable B>
-void prop_compound_add_int(fuzz_state& s, long iters)
+void prop_compound_add_bound(fuzz_state& s, long iters)
 {
   if constexpr (IsIntegerAligned<B> && !rational_raw<B>)
   {
-    s.current_prop = "compound_add_int";
+    s.current_prop = "compound_add_bound";
+    // The delta is itself a bound (raw int RHS is now ill-formed). A signed grid
+    // spanning ±(Upper−Lower) covers every in-range delta.
+    using Delta = bound<{Lower<B> - Upper<B>, Upper<B> - Lower<B>}>;
     auto lo = Lower<B>.trunc();
     auto hi = Upper<B>.trunc();
     // Pick integer initial value and delta such that the result stays in range
@@ -439,7 +442,7 @@ void prop_compound_add_int(fuzz_state& s, long iters)
       std::uniform_int_distribution<imax> delta_dist(-slack_lo, slack_hi);
       imax delta = delta_dist(s.rng);
       B b{start};
-      b += delta;
+      b += Delta{delta};
       FUZZ_REQUIRE(s, b == start + delta);
     }
   }
@@ -599,75 +602,32 @@ bool throws_with_any(std::initializer_list<errc> codes, Fn&& fn)
   return false;
 }
 
+// (Removed: prop_compound_imax_overflow — it forced add/sub/mul_overflow by
+// hitting a checked bound with raw imax sentinel RHS. Raw compound assigns are
+// gone, and a range-bounded operand can't overflow imax, so the path is moot.)
+
 template <boundable B>
-void prop_compound_imax_overflow(fuzz_state& s, long iters)
+void prop_compound_div_mod_zero(fuzz_state& s, long iters)
 {
-  // Targets bound.hpp:257-8, 284-5, 330-1 — the checked-policy compound-op
-  // imax overflow probes. Builds a checked alias of B, picks an in-range start,
-  // hits it with imax sentinel values that force add/sub/mul_overflow, and
-  // verifies the report path throws errc::overflow.
+  // `b /= 0_r` (rational zero) routes through the rational compound-assign's
+  // zero guard → report → throws division_by_zero. (Raw `b /= 0` is now ill-
+  // formed; the boundable `%= zero-bound` path needs a snapping integer divisor
+  // and is covered for snapping bounds in test_compound_assign.)
   if constexpr (IsIntegerAligned<B> && !rational_raw<B>)
   {
-    s.current_prop = "compound_imax_overflow";
-    using BC = bound<Grid<B>, checked>;
-    auto lo = Lower<B>.trunc();
-    auto hi = Upper<B>.trunc();
+    s.current_prop = "compound_div_zero";
+    // The divisor is the constant 0_r, so any in-range dividend throws; pick
+    // `start` from the grid's actual [lo, hi] (a fully-negative grid has hi < 1,
+    // so the old std::max(1, lo) built an inverted, UB distribution range).
+    const imax lo = Lower<B>.trunc();
+    const imax hi = Upper<B>.trunc();
     std::uniform_int_distribution<imax> dist(lo, hi);
     for (long i = 0; i < iters; ++i)
     {
       s.iter = i;
       imax start = dist(s.rng);
-
-      // operator+= imax_max — overflows imax for start > 0; otherwise the imax
-      // sum is huge and trips the post-probe narrowing → domain_error.
-      FUZZ_REQUIRE(s, throws_with_any({errc::overflow, errc::domain_error}, [&]{
-        BC b{start};
-        b += std::numeric_limits<imax>::max();
-      }));
-
-      // operator-= imax_min — same dichotomy: imax overflow vs narrowing.
-      FUZZ_REQUIRE(s, throws_with_any({errc::overflow, errc::domain_error}, [&]{
-        BC b{start};
-        b -= std::numeric_limits<imax>::min();
-      }));
-
-      // operator*= imax_max — for |start| > 1, start * imax_max overflows imax;
-      // for start == ±1 it equals ±imax_max (out of grid range → narrowing).
-      // start == 0 makes *= a no-op, so skip.
-      if (start != 0)
-      {
-        FUZZ_REQUIRE(s, throws_with_any({errc::overflow, errc::domain_error}, [&]{
-          BC b{start};
-          b *= std::numeric_limits<imax>::max();
-        }));
-      }
-    }
-  }
-}
-
-template <boundable B>
-void prop_compound_div_mod_zero(fuzz_state& s, long iters)
-{
-  // Targets bound.hpp:350 (operator/= 0) and bound.hpp:363 (operator%= 0).
-  // Default-policy `/= 0` and `%= 0` go through report → throws division_by_zero
-  // (empty_ref backend). Verified across both the default `none` policy and an
-  // explicit `checked` alias for breadth.
-  if constexpr (IsIntegerAligned<B> && !rational_raw<B>)
-  {
-    s.current_prop = "compound_div_mod_zero";
-    auto lo = Lower<B>.trunc();
-    auto hi = Upper<B>.trunc();
-    if (lo > 0) lo = 1;  // avoid 0/0
-    std::uniform_int_distribution<imax> dist(std::max<imax>(1, lo), hi);
-    for (long i = 0; i < iters; ++i)
-    {
-      s.iter = i;
-      imax start = dist(s.rng);
       FUZZ_REQUIRE(s, throws_with(errc::division_by_zero, [&]{
-        B b{start}; b /= 0;
-      }));
-      FUZZ_REQUIRE(s, throws_with(errc::division_by_zero, [&]{
-        B b{start}; b %= 0;
+        B b{start}; b /= 0_r;
       }));
     }
   }
@@ -732,42 +692,53 @@ void prop_non_notch_assign(fuzz_state& s, long iters)
       // strictly between two notches.
       std::uniform_int_distribution<umax> dist(0, NotchCount<B> - 1);
       umax k = dist(s.rng);
-      rational on_notch = (lo + rational{k} * notch).value();
-      rational mid = (on_notch + half).value();
+      rational on_notch   = (lo + rational{k} * notch).value();
+      rational mid        = (on_notch + half).value();
+      rational next_notch = (on_notch + notch).value();
       // Stay in range:
       if (mid > hi) continue;
 
-      // Default-policy (checked) B: must throw rounding_error.
+      // `mid` is an exact half between on_notch (lower) and next_notch (higher).
+      // The library rounds in VALUE space (generic.hpp round_quotient): snapping
+      // and `none` truncate TOWARD ZERO (not floor — that's round_floor), and
+      // round_nearest rounds HALF AWAY FROM ZERO. So the expected notch is the
+      // smaller-|·| candidate for snapping/none and the larger-|·| candidate for
+      // round_nearest. For mid >= 0 these are on_notch / next_notch; for mid < 0
+      // they swap — which is what the negative-Lower grids exercise.
+      const bool on_smaller = bnd::detail::abs(on_notch) <= bnd::detail::abs(next_notch);
+      rational toward_zero = on_smaller ? on_notch : next_notch;   // snapping / none
+      rational away_zero   = on_smaller ? next_notch : on_notch;   // round_nearest
+      const bool tz_in = toward_zero >= lo && toward_zero <= hi;
+      const bool az_in = away_zero   >= lo && away_zero   <= hi;
+
+      // Default-policy (checked) B: must throw rounding_error (sign-independent).
       FUZZ_REQUIRE(s, throws_with(errc::rounding_error, [&]{
         B b; b = mid;
       }));
 
-      // snapping: silent floor; result == on_notch.
-      FUZZ_REQUIRE(s, !throws_with(errc::rounding_error, [&]{
-        BIR b; b = mid;
-        rational got = b;
-        FUZZ_REQUIRE(s, got == on_notch);
-      }));
+      // snapping: silent truncate toward zero.
+      if (tz_in)
+        FUZZ_REQUIRE(s, !throws_with(errc::rounding_error, [&]{
+          BIR b; b = mid;
+          rational got = b;
+          FUZZ_REQUIRE(s, got == toward_zero);
+        }));
 
-      // round_nearest: silent rounding to the nearer notch. With mid =
-      // on_notch + notch/2 (exact half), round-half-up takes us to the next
-      // notch (on_notch + notch), provided that's still in range.
-      rational next_notch = (on_notch + notch).value();
-      if (next_notch <= hi)
-      {
+      // round_nearest: silent round half away from zero.
+      if (az_in)
         FUZZ_REQUIRE(s, !throws_with(errc::rounding_error, [&]{
           BRN b; b = mid;
           rational got = b;
-          FUZZ_REQUIRE(s, got == next_notch);
+          FUZZ_REQUIRE(s, got == away_zero);
         }));
-      }
 
-      // Truly-unchecked policy (none): silent floor, exercising assignment.hpp:299.
-      FUZZ_REQUIRE(s, !throws_with(errc::rounding_error, [&]{
-        BNONE b; b = mid;
-        rational got = b;
-        FUZZ_REQUIRE(s, got == on_notch);
-      }));
+      // Truly-unchecked policy (none): silent truncate toward zero (assignment.hpp).
+      if (tz_in)
+        FUZZ_REQUIRE(s, !throws_with(errc::rounding_error, [&]{
+          BNONE b; b = mid;
+          rational got = b;
+          FUZZ_REQUIRE(s, got == toward_zero);
+        }));
     }
   }
 }
@@ -1470,12 +1441,11 @@ void run_props(fuzz_state& s, long iters, const char* name)
   guarded(s, [&]{ prop_arith_vs_rational<B>(s, iters); });
   guarded(s, [&]{ prop_mul_vs_rational<B>(s, iters); });
   guarded(s, [&]{ prop_negation<B>(s, iters); });
-  guarded(s, [&]{ prop_compound_add_int<B>(s, iters); });
+  guarded(s, [&]{ prop_compound_add_bound<B>(s, iters); });
   guarded(s, [&]{ prop_modulo<B>(s, iters); });
   guarded(s, [&]{ prop_increment_wrap<B>(s, iters); });
   guarded(s, [&]{ prop_div_by_zero<B>(s, iters); });
   guarded(s, [&]{ prop_spaceship_symmetry<B>(s, iters); });
-  guarded(s, [&]{ prop_compound_imax_overflow<B>(s, iters); });
   guarded(s, [&]{ prop_compound_div_mod_zero<B>(s, iters); });
   guarded(s, [&]{ prop_compound_bound_overshoot<B>(s, iters); });
   guarded(s, [&]{ prop_compound_add_same_bound<B>(s, iters); });
@@ -1521,6 +1491,12 @@ int main(int argc, char** argv)
   run_props<bound<{0, 1'000'000'000}>>          (s, iters, "u1G");
   run_props<bound<{-1'000'000'000, 1'000'000'000}>>(s, iters, "s1G");
   run_props<bound<{{-7, 11}, 0.25}>>            (s, iters, "asym_q");
+  // Fully-negative ranges: every notch is exercised with both round candidates
+  // < 0, the strongest test of toward-zero / half-away-from-zero rounding.
+  run_props<bound<{-100, -10}>>                 (s, iters, "neg_int");
+  run_props<bound<{{-20, -5}, 0.25}>>           (s, iters, "neg_q");
+  run_props<bound<{{-13, 5}, notch<1, 8>}>>     (s, iters, "asym_q8");
+  run_props<bound<{{-50, -10}, 0.5}>>           (s, iters, "neg_half");
   run_props<bound<{0, 3}>>                      (s, iters, "tiny");
   run_props<bound<{-1, 1}>>                     (s, iters, "unit_signed");
   run_props<bound<{{0, 4}, notch<1, 65536>}>>     (s, iters, "Q_sqrt");

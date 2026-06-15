@@ -231,79 +231,7 @@ namespace bnd
         Policy.report(code, what);
     }
 
-    private:
-    // Shared body for integral +=/-=/*=: with an overflow/error action, run the
-    // checked op and fire on overflow; else the plain wrapping imax op.
-    template <typename Checked, typename Fallback>
-    constexpr B& checked_integral_assign(imax l, imax r, Checked checked,
-                                         Fallback fallback, const char* msg)
-    {
-      if constexpr (has_action<IsOverflowActionPred, As...>
-                 || has_action<IsErrorActionPred,    As...>)
-      {
-        imax result;
-        if (checked(l, r, &result))
-        {
-          if constexpr (has_action<IsOverflowActionPred, As...>)
-            pick_action_in<IsOverflowActionPred>(Actions).fn(Ref, errc::overflow);
-          else
-            pick_action_in<IsErrorActionPred>(Actions)
-              .fn(Ref, errc::overflow, std::string_view(msg));
-          return Ref;
-        }
-        return assign_with_picked(result);
-      }
-      else
-        return assign_with_picked(fallback(l, r));
-    }
-
     public:
-    template <std::integral C>
-    constexpr B& operator+=(C rhs)
-    {
-      return checked_integral_assign(to_value(Ref), rhs,
-        [](imax a, imax b, imax* o){ return add_overflow(a, b, o); },
-        [](imax a, imax b){ return a + b; }, "operator+= overflow");
-    }
-
-    template <std::integral C>
-    constexpr B& operator-=(C rhs)
-    {
-      return checked_integral_assign(to_value(Ref), rhs,
-        [](imax a, imax b, imax* o){ return sub_overflow(a, b, o); },
-        [](imax a, imax b){ return a - b; }, "operator-= overflow");
-    }
-
-    template <std::integral C>
-    constexpr B& operator*=(C rhs)
-    {
-      return checked_integral_assign(to_value(Ref), rhs,
-        [](imax a, imax b, imax* o){ return mul_overflow(a, b, o); },
-        [](imax a, imax b){ return a * b; }, "operator*= overflow");
-    }
-
-    template <std::integral C>
-    constexpr B& operator/=(C rhs)
-    {
-      if (rhs == 0)
-      {
-        report_zero(errc::division_by_zero, "operator/= division by zero");
-        return Ref;
-      }
-      return assign_with_picked(to_value(Ref) / static_cast<imax>(rhs));
-    }
-
-    template <std::integral C>
-    constexpr B& operator%=(C rhs)
-    {
-      if (rhs == 0)
-      {
-        report_zero(errc::division_by_zero, "operator%= division by zero");
-        return Ref;
-      }
-      return assign_with_picked(to_value(Ref) % static_cast<imax>(rhs));
-    }
-
     //-------------------------------------------------------------------------
     // boundable RHS overloads — route through the bound's arithmetic, then
     // assign via assign_with_picked so callbacks fire on the narrowing back to B.
@@ -366,33 +294,33 @@ namespace bnd
     { return finalise_arith(mod(Ref, rhs, Policy), "policy_ref::operator%= division/overflow"); }
 
     //-------------------------------------------------------------------------
-    // fractional RHS overloads — rational/float/double (fractional excludes
-    // boundable and integral, so no overlap above). Lets callers write `b += 1.5`
-    // or `b += rational{1,3}`. rational: lift Ref to rational, checked op,
-    // finalise_arith. float: lift both to double (bound needs a round policy).
+    // rational RHS overloads — the only non-bound operand a compound assign
+    // accepts. Lets callers write `b += rational{1,3}`. Raw int/float/double are
+    // ill-formed: give the scalar a grid (`1_b` / `just<1>` / `bound<{lo,hi}>{n}`).
+    // Lift Ref to rational, checked op, finalise_arith.
     //-------------------------------------------------------------------------
-    template <fractional C>
+    template <std::same_as<rational> C>
     constexpr B& operator+=(C const& rhs)
     {
       return fractional_assign(rhs, [](rational a, rational b){ return a + b; },
         [](double a, double b){ return a + b; }, "policy_ref::operator+= overflow");
     }
 
-    template <fractional C>
+    template <std::same_as<rational> C>
     constexpr B& operator-=(C const& rhs)
     {
       return fractional_assign(rhs, [](rational a, rational b){ return a - b; },
         [](double a, double b){ return a - b; }, "policy_ref::operator-= overflow");
     }
 
-    template <fractional C>
+    template <std::same_as<rational> C>
     constexpr B& operator*=(C const& rhs)
     {
       return fractional_assign(rhs, [](rational a, rational b){ return a * b; },
         [](double a, double b){ return a * b; }, "policy_ref::operator*= overflow");
     }
 
-    template <fractional C>
+    template <std::same_as<rational> C>
     constexpr B& operator/=(C const& rhs)
     {
       if (is_canonical_zero(rhs))

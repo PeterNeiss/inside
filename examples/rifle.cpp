@@ -90,7 +90,7 @@ void player::pull_trigger()
     ++weapon.reloads;
     if (shortfall > 0)
       m = magazine::capacity - magazine::count_t{shortfall};
-  }) -= 1;
+  }) -= 1_b;
 }
 
 void player::combat_reload()
