@@ -37,9 +37,9 @@ TEST_CASE("constexpr: rational identities", "[constexpr][rational]")
   STATIC_REQUIRE(rational{-1, -2} == rational{1, 2});
 
   // sign + abs
-  STATIC_REQUIRE(rational{1, -2}.sign() == -1);
-  STATIC_REQUIRE((0_r).sign() == 0);
-  STATIC_REQUIRE(rational{3u, 4}.sign() == 1);
+  STATIC_REQUIRE(sign(rational{1, -2}) == -1);
+  STATIC_REQUIRE(sign((0_r)) == 0);
+  STATIC_REQUIRE(sign(rational{3u, 4}) == 1);
   STATIC_REQUIRE(abs(rational{3, -4}) == rational{3u, 4});
 
   // unary minus
@@ -65,14 +65,14 @@ TEST_CASE("constexpr: rational arithmetic", "[constexpr][rational]")
 TEST_CASE("constexpr: rational rounding helpers", "[constexpr][rational]")
 {
   // 7/2 = 3.5
-  STATIC_REQUIRE(rational{7u, 2}.trunc() == 3);
-  STATIC_REQUIRE(rational{7u, 2}.floor() == 3);
-  STATIC_REQUIRE(rational{7u, 2}.round() == 4);
+  STATIC_REQUIRE(trunc(rational{7u, 2}) == 3);
+  STATIC_REQUIRE(floor(rational{7u, 2}) == 3);
+  STATIC_REQUIRE(round(rational{7u, 2}) == 4);
 
   // -7/2 = -3.5 — floor steps further toward -inf, round goes half-away-from-zero
-  STATIC_REQUIRE(rational{7, -2}.trunc() == -3);
-  STATIC_REQUIRE(rational{7, -2}.floor() == -4);
-  STATIC_REQUIRE(rational{7, -2}.round() == -4);
+  STATIC_REQUIRE(trunc(rational{7, -2}) == -3);
+  STATIC_REQUIRE(floor(rational{7, -2}) == -4);
+  STATIC_REQUIRE(round(rational{7, -2}) == -4);
 }
 
 TEST_CASE("constexpr: rational inv and divides_evenly", "[constexpr][rational]")
@@ -96,18 +96,18 @@ TEST_CASE("constexpr: interval predicates", "[constexpr][interval]")
   constexpr interval c{20, 30};
   constexpr interval inner{2, 8};
 
-  STATIC_REQUIRE(a.includes(5));
-  STATIC_REQUIRE(a.includes(0));
-  STATIC_REQUIRE(a.includes(10));
-  STATIC_REQUIRE_FALSE(a.includes(11));
+  STATIC_REQUIRE(includes(a, 5));
+  STATIC_REQUIRE(includes(a, 0));
+  STATIC_REQUIRE(includes(a, 10));
+  STATIC_REQUIRE_FALSE(includes(a, 11));
 
-  STATIC_REQUIRE(a.includes(inner));
-  STATIC_REQUIRE_FALSE(inner.includes(a));
+  STATIC_REQUIRE(includes(a, inner));
+  STATIC_REQUIRE_FALSE(includes(inner, a));
 
-  STATIC_REQUIRE(a.overlaps(b));
-  STATIC_REQUIRE_FALSE(a.excludes(b));
-  STATIC_REQUIRE(a.excludes(c));
-  STATIC_REQUIRE_FALSE(a.overlaps(c));
+  STATIC_REQUIRE(overlaps(a, b));
+  STATIC_REQUIRE_FALSE(excludes(a, b));
+  STATIC_REQUIRE(excludes(a, c));
+  STATIC_REQUIRE_FALSE(overlaps(a, c));
 }
 
 TEST_CASE("constexpr: interval arithmetic", "[constexpr][interval]")

@@ -5,7 +5,7 @@
 #define BNDintervalHPP
 
 #include "bound/lift.hpp"
-#include "bound/rational.hpp"
+#include "bound/detail/rational.hpp"
 
 #include <algorithm>
 #include <initializer_list>
@@ -34,12 +34,12 @@ namespace bnd
   //---------------------------------------------------------------------------
   struct interval
   {
-    bnd::detail::rational Lower;
-    bnd::detail::rational Upper;
+    detail::rational Lower;
+    detail::rational Upper;
 
     interval() = default;
 
-    constexpr interval(bnd::detail::rational lower, bnd::detail::rational upper)
+    constexpr interval(detail::rational lower, detail::rational upper)
      :Lower{lower}, Upper{upper} { }
     constexpr interval(arithmetic auto lower, arithmetic auto upper)
      :Lower{lower}, Upper{upper} { }
@@ -54,32 +54,34 @@ namespace bnd
     constexpr bool operator==(const interval& rhs) const = default;
     constexpr interval operator-() const { return interval{-Upper, -Lower}; }
 
-    constexpr bool includes(interval const& rhs) const
-    { return Lower <= rhs.Lower && rhs.Upper <= Upper; }
-
-    constexpr bool includes(bnd::detail::rational const& r) const
-    { return Lower <= r && r <= Upper; }
-
-    constexpr bool includes(arithmetic auto a) const
-    { return includes(bnd::detail::rational{a}); }
-
-    // `excludes` means *strictly disjoint* — the intervals share no value.
-    // `!includes()` is weaker: it only rules out total containment, so two
-    // overlapping intervals are `!includes` AND `!excludes`.
-    constexpr bool excludes(interval const& rhs) const
-    { return rhs.Upper < Lower || Upper < rhs.Lower; }
-
-    // The `rhs.includes(*this)` clause catches rhs wholly containing us (where
-    // neither rhs endpoint lands in *this, so the other checks would miss it).
-    constexpr bool overlaps(interval const& rhs) const
-    { return rhs.includes(*this) || includes(rhs.Lower) || includes(rhs.Upper); }
-
-    constexpr bool divides_evenly(const bnd::detail::rational& notch) const
+    constexpr bool divides_evenly(const detail::rational& notch) const
     { return bnd::detail::divides_evenly((Upper - Lower).value(), notch); }
 
-    constexpr slim::optional<bnd::detail::rational> operator/(const bnd::detail::rational& notch) const
+    constexpr slim::optional<detail::rational> operator/(const detail::rational& notch) const
     { return (Upper - Lower) / notch; }
   };
+
+  // Containment / disjointness — free functions over the public endpoints
+  // (siblings of the binary interval operators below).
+  [[nodiscard]] constexpr bool includes(interval const& iv, interval const& rhs)
+  { return iv.Lower <= rhs.Lower && rhs.Upper <= iv.Upper; }
+
+  [[nodiscard]] constexpr bool includes(interval const& iv, detail::rational const& r)
+  { return iv.Lower <= r && r <= iv.Upper; }
+
+  [[nodiscard]] constexpr bool includes(interval const& iv, arithmetic auto a)
+  { return includes(iv, detail::rational{a}); }
+
+  // `excludes` means *strictly disjoint* — the intervals share no value.
+  // `!includes()` is weaker: it only rules out total containment, so two
+  // overlapping intervals are `!includes` AND `!excludes`.
+  [[nodiscard]] constexpr bool excludes(interval const& iv, interval const& rhs)
+  { return rhs.Upper < iv.Lower || iv.Upper < rhs.Lower; }
+
+  // The `includes(rhs, iv)` clause catches rhs wholly containing iv (where
+  // neither rhs endpoint lands in iv, so the other checks would miss it).
+  [[nodiscard]] constexpr bool overlaps(interval const& iv, interval const& rhs)
+  { return includes(rhs, iv) || includes(iv, rhs.Lower) || includes(iv, rhs.Upper); }
 
   // The min/max hull of four endpoint combinations — the result interval of an
   // interval product or quotient (interval arithmetic's four-corner rule).
@@ -104,7 +106,7 @@ namespace bnd
   inline constexpr slim::optional<interval> operator+(const interval& lhs, const interval& rhs)
   {
     return lift(
-      [](bnd::detail::rational l, bnd::detail::rational u){ return interval{l, u}; },
+      [](detail::rational l, detail::rational u){ return interval{l, u}; },
       lhs.Lower + rhs.Lower, lhs.Upper + rhs.Upper);
   }
 
@@ -131,7 +133,7 @@ namespace bnd
   //---------------------------------------------------------------------------
   inline constexpr slim::optional<interval> operator/(const interval& lhs, const interval& rhs)
   {
-    if (rhs.includes(0))
+    if (includes(rhs, 0))
       return slim::nullopt;
 
     return lift(detail::corner_hull,

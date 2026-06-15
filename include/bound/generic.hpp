@@ -74,6 +74,21 @@ namespace bnd
     template<typename...>
     inline constexpr bool dependent_false = false;
 
+    //-------------------------------------------------------------------------
+    // Conversion-helper legend — the value/raw plumbing reused across the
+    // engine. "value space" = the number a bound denotes; "raw space" = how it
+    // is stored (see §2 "Storage encoding" in docs/internals.md). Use this to
+    // tell the similarly-named helpers apart:
+    //
+    //   as_rational(x)         value → rational    exact view of a scalar or bound
+    //   as_double(b)           raw   → double       kind-aware decode; lossy off dyadic grids
+    //   to_value(b)            raw   → imax         the bound's integer value (decodes an index)
+    //   from_value(b, v)       imax  → raw          store integer value v into b (inverse of to_value)
+    //   raw_cast<B>(x)         x     → raw_t<B>     TYPE cast only — no value arithmetic
+    //   raw_imax(b)            raw   → imax         widen the raw bits (NOT the value for index storage)
+    //   raw_from_offset<B>(o)  index → raw_t<B>     adds RawLo for direct storage; identity for index
+    //-------------------------------------------------------------------------
+
     // Uniform rational view of a scalar or bound (rational{v} / operator rational()).
     template <numeric N>
     [[nodiscard]] constexpr rational as_rational(N v)
@@ -144,10 +159,10 @@ namespace bnd
     // Storage-agnostic int truncation of interval endpoints — intent-revealing
     // `static_cast<imax>(Lower<B>)`. Used by from_value, RawLo, the fast paths.
     template <boundable B>
-    inline constexpr imax LowerImax = Lower<B>.trunc();
+    inline constexpr imax LowerImax = trunc(Lower<B>);
 
     template <boundable B>
-    inline constexpr imax UpperImax = Upper<B>.trunc();
+    inline constexpr imax UpperImax = trunc(Upper<B>);
 
     template <boundable B>
     inline constexpr umax NotchCount = (Notch<B> == 0) ?
@@ -287,7 +302,7 @@ namespace bnd
       if constexpr (!index_raw<B>)
         return raw_imax(b);
       else // index storage
-        return as_rational(b).trunc();
+        return trunc(as_rational(b));
     }
 
     template <boundable B>
@@ -366,7 +381,7 @@ namespace bnd
     // Composite flags (e.g. round_nearest = bit5 | snapping) require all
     // their bits set — having a subset like just `snapping` does NOT match.
     template <boundable B, typename P, policy_flag F>
-    inline constexpr bool HasPolicy = (BoundPolicy<B> & F) == F || plain<P>::test(F);
+    inline constexpr bool HasPolicy = has_flag(BoundPolicy<B>, F) || plain<P>::test(F);
 
     // Round the non-negative offset quotient num/den (den >= 1) to an integer
     // notch index per L's rounding policy.
@@ -489,7 +504,7 @@ namespace bnd
       // wrap/clamp bring any value into range, so a disjoint rhs interval is fine
       // for them (the integral-rhs path already allows it — int's interval is unbounded).
       || ((BoundPolicy<L> | P) & (wrap | clamp)) != 0
-      || not Interval<L>.excludes(Interval<R>);
+      || not excludes(Interval<L>, Interval<R>);
 
     template <typename L, typename R, policy_flag P>
     concept assign_notch_ok =

@@ -13,7 +13,7 @@
 #include "bound/predicates.hpp"
 #include "bound/format.hpp"
 #include "bound/math.hpp"
-#include "bound/rational.hpp"
+#include "bound/detail/rational.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 

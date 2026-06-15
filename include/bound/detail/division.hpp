@@ -39,7 +39,7 @@ namespace bnd::detail
     if ((eff & round_nearest)   == round_nearest)   return round_mode::nearest;
     if ((eff & round_floor)     == round_floor)     return round_mode::floor;
     if ((eff & round_ceil)      == round_ceil)      return round_mode::ceil;
-    if ((eff & round_half_even) == round_half_even) return round_mode::half_even;
+    if (has_flag(eff, round_half_even)) return round_mode::half_even;
     return round_mode::truncate;
   }
 
@@ -95,22 +95,22 @@ namespace bnd::detail
   {
     switch (m)
     {
-      case round_mode::nearest:   return q.round();
-      case round_mode::floor:     return q.floor();
-      case round_mode::ceil:      return q.ceil();
-      case round_mode::half_even: return q.floor();
-      default:                    return q.trunc();
+      case round_mode::nearest:   return round(q);
+      case round_mode::floor:     return floor(q);
+      case round_mode::ceil:      return ceil(q);
+      case round_mode::half_even: return floor(q);
+      default:                    return trunc(q);
     }
   }
   constexpr imax round_rat_hi(rational q, round_mode m) noexcept
   {
     switch (m)
     {
-      case round_mode::nearest:   return q.round();
-      case round_mode::floor:     return q.floor();
-      case round_mode::ceil:      return q.ceil();
-      case round_mode::half_even: return q.ceil();
-      default:                    return q.trunc();
+      case round_mode::nearest:   return round(q);
+      case round_mode::floor:     return floor(q);
+      case round_mode::ceil:      return ceil(q);
+      case round_mode::half_even: return ceil(q);
+      default:                    return trunc(q);
     }
   }
 

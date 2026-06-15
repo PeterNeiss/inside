@@ -2,7 +2,7 @@
 // fail on the unfixed build and pass after the corresponding fix lands.
 
 #include "bound/bound.hpp"
-#include "bound/rational.hpp"
+#include "bound/detail/rational.hpp"
 #include "bound/grid.hpp"
 #include "bound/print.hpp"
 

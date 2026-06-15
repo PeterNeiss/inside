@@ -6,7 +6,7 @@
 //             fast path. Verify numerical exactness vs the rational route.
 
 #include "bound/bound.hpp"
-#include "bound/rational.hpp"
+#include "bound/detail/rational.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 #include <stdexcept>

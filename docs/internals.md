@@ -122,7 +122,7 @@ rational path — `(*(Raw * Notch) + Lower).value()` for decode,
 `((rhs - Lower) / Notch).value().Numerator` for encode.
 
 **Fractional rhs takes the same shortcut.** `store_checked`
-(`assignment.hpp`) stores a rational/double rhs on a Q-format grid without
+(`detail/assignment.hpp`) stores a rational/double rhs on a Q-format grid without
 the two gcd-reducing rational operations: with notch `1/K`, the offset
 `((num/aden) − Lo)·K` reduces to `(num − Lo·aden)·(K/g) / (aden/g)`,
 `g = gcd(aden, K)` — one `std::gcd` and three integer multiplies, then
@@ -160,7 +160,7 @@ The flag bits live in `policy_flag` (`include/bound/policy_flag.hpp`):
 `ignore_domain`, `ignore_zero`, `round_floor`, `round_ceil`,
 `round_nearest`, `round_half_even`.
 
-The cascade is implemented in `assignment.hpp` — see
+The cascade is implemented in `detail/assignment.hpp` — see
 `try_clamp_or_fail` (boundable RHS, ~line 535), `handle_out_of_range`
 (integral RHS, ~line 224), and the `apply_clamp` / `apply_wrap` siblings.
 The `is_*_action<A>` traits (defined in `policy.hpp`) decide which step
@@ -266,12 +266,12 @@ all transitively included by `bound/bound.hpp`:
 | `bound/arithmetic.hpp`  | Free `add` / `sub` / `mul` / `div` / `mod`, variadic folds `add_all` / `mul_all`, `operator+` / `-` / `*` / `/` / `%`, optional-lift overloads |
 | `bound/range.hpp`       | `bound_range<G, P>` iterator helper |
 | `bound/generic.hpp`     | Public grid/policy introspection (`Grid` / `BoundPolicy` / `Interval` / `Lower` / `Upper` / `Notch`) and the `boundable` / `numeric` / `bound_assignable` concepts. Storage/raw/dispatch plumbing (`raw_t`, the `rational_raw` / `real_raw` / `value_raw` / `index_raw` predicates, `as_double`, `to_value` / `from_value`, `raw_cast` / `raw_imax`, `q_format_encode/decode`, `NotchCount`, `RawLo/Hi`, `sentinel_raw`, `detail::as_rational`, …) lives in `bnd::detail` |
-| `bound/assignment.hpp`  | `bnd::detail::assignment<L, R>` specialisations for integral / fractional / boundable rhs (incl. the Q-format integer shortcut for fractional rhs) |
+| `bound/detail/assignment.hpp`  | `bnd::detail::assignment<L, R>` specialisations for integral / fractional / boundable rhs (incl. the Q-format integer shortcut for fractional rhs) |
 | `bound/cmath.hpp`       | `bnd::math` — the `<cmath>`-shaped public API (trig, inverse trig, hyperbolic, exp/log/pow, sqrt/cbrt/hypot) over bounds, dispatching to one of two engines. The integer/CORDIC cores live in `bnd::math::detail` here — they also serve as the compile-time output-grid oracle for **both** engines. See [math.md](math.md) |
 | `bound/cmath_double.hpp` | The default **double engine** cores (`d_sin`, `d_exp`, … — own `std::fma`-Horner polynomials, Cody-Waite reduction, correctly-rounded `std::sqrt`); selected unless `BND_MATH_FIXED` is defined |
 | `bound/detail/addition.hpp`, `multiplication.hpp`, `division.hpp` | `bnd::detail::addition<L, R>`, `multiplication<L, R>`, `division<L, R, F>`, `modulo<L, R, F>` — implementation detail, included via `bound.hpp` |
 | `bound/detail/overflow.hpp`, `debug.hpp` | `add_overflow` / `sub_overflow` / `mul_overflow` (builtins + portable fallback), stacktrace plumbing — implementation detail |
-| `bound/rational.hpp`    | `rational`, its arithmetic, sentinel traits |
+| `bound/detail/rational.hpp`    | `rational`, its arithmetic, sentinel traits |
 | `bound/grid.hpp`        | `grid`, `storage_min`, grid operators |
 | `bound/numeric_limits.hpp` | `std::numeric_limits<bound>` and `std::hash<bound>` specialisations (opt-in) |
 | `slim/optional.hpp`     | Reusable sentinel-based optional; `bnd::` consumes it via `sentinel_traits` |

@@ -5,7 +5,7 @@
 #define BNDgridHPP
 
 #include "bound/lift.hpp"
-#include "bound/rational.hpp"
+#include "bound/detail/rational.hpp"
 #include "bound/interval.hpp"
 #include "bound/policy_flag.hpp"
 
@@ -39,7 +39,7 @@ namespace bnd
   struct grid
   {
     interval Interval;
-    bnd::detail::rational Notch;
+    detail::rational Notch;
 
     grid() = default;
     // Corner ctors accept any type convertible to `rational` — int/float/rational and
@@ -48,16 +48,16 @@ namespace bnd
     // braced `{lo, hi}` can't deduce to a template parameter, so the `grid{{lo,hi}, notch}`
     // spelling unambiguously picks `grid(interval, rational)` below. The conversion is
     // resolved at the call site, so grid.hpp needs no dependency on `bound`.
-    constexpr grid(std::convertible_to<bnd::detail::rational> auto lower,
-                   std::convertible_to<bnd::detail::rational> auto upper,
-                   std::convertible_to<bnd::detail::rational> auto notch)
+    constexpr grid(std::convertible_to<detail::rational> auto lower,
+                   std::convertible_to<detail::rational> auto upper,
+                   std::convertible_to<detail::rational> auto notch)
       :grid{interval{lower, upper}, notch} { }
-    constexpr grid(std::convertible_to<bnd::detail::rational> auto lower,
-                   std::convertible_to<bnd::detail::rational> auto upper)
-      :grid{interval{lower, upper}, bnd::detail::rational{1}} { }
-    constexpr grid(std::convertible_to<bnd::detail::rational> auto lower)
-      :grid{interval{lower, lower}, bnd::detail::rational{0}} { }
-    constexpr grid(interval val, bnd::detail::rational notch):Interval{val}, Notch{notch} { }
+    constexpr grid(std::convertible_to<detail::rational> auto lower,
+                   std::convertible_to<detail::rational> auto upper)
+      :grid{interval{lower, upper}, detail::rational{1}} { }
+    constexpr grid(std::convertible_to<detail::rational> auto lower)
+      :grid{interval{lower, lower}, detail::rational{0}} { }
+    constexpr grid(interval val, detail::rational notch):Interval{val}, Notch{notch} { }
 
     template <auto G>
     static constexpr bool validate()
@@ -73,7 +73,7 @@ namespace bnd
     // error instead of failing a static_assert — for grids built from runtime
     // config. A value, so it can't be a bound<G,P> template argument.
     [[nodiscard]] static constexpr slim::expected<grid, errc>
-    try_make(interval iv, bnd::detail::rational notch)
+    try_make(interval iv, detail::rational notch)
     {
       if (iv.Lower > iv.Upper)
         return slim::unexpected{errc::domain_error};
@@ -96,9 +96,9 @@ namespace bnd
     // True when `v` is an *exact* slot: in the interval AND on a notch (notch-0
     // grids store verbatim, so any in-range value qualifies). Used to admit a
     // single representable value (e.g. `0_b`) regardless of whole-range mapping.
-    constexpr bool representable(bnd::detail::rational v) const
+    constexpr bool representable(detail::rational v) const
     {
-      if (!Interval.includes(v)) return false;
+      if (!includes(Interval, v)) return false;
       if (Notch == 0) return true;
       auto diff = v - Interval.Lower;            // optional<rational>
       if (!diff) return false;
@@ -119,7 +119,7 @@ namespace bnd
     // grid (Notch == 0) passes `v` through. The round stays constexpr/<cmath>-free.
     constexpr double snap_double(double v) const
     {
-      if (Notch == bnd::detail::rational{0}) return v;
+      if (Notch == detail::rational{0}) return v;
       const double lo = static_cast<double>(Interval.Lower);
       const double nd = static_cast<double>(Notch);
       const double q  = (v - lo) / nd;
@@ -128,7 +128,7 @@ namespace bnd
     }
 
     static constexpr grid make_sentinel() noexcept
-    { return grid{interval{bnd::detail::rational{0}, bnd::detail::rational{0}}, bnd::detail::rational::make_sentinel()}; }
+    { return grid{interval{detail::rational{0}, detail::rational{0}}, detail::rational::make_sentinel()}; }
   };
 
   // Smallest raw type holding every reachable index in G. Order: notch-zero →
@@ -138,9 +138,9 @@ namespace bnd
   {
   template <grid G>
   using storage_min =
-    std::conditional_t<(G.Notch == 0), bnd::detail::rational,
+    std::conditional_t<(G.Notch == 0), detail::rational,
     std::conditional_t<(G.Interval.Lower < 0 && G.Notch == 1),
-      smallest_int_for<G.Interval.Lower.trunc(), G.Interval.Upper.trunc()>,
+      smallest_int_for<trunc(G.Interval.Lower), trunc(G.Interval.Upper)>,
       smallest_uint_for<G.max_notch()>>>;
 
   // Dyadic grid: power-of-2 notch denominator and Lower denominator, so every
@@ -166,7 +166,7 @@ namespace bnd
   constexpr auto storage_pick()
   {
     if constexpr ((P & bnd::exact) == bnd::exact)
-      return bnd::detail::rational{};
+      return detail::rational{};
 #ifndef BND_MATH_FIXED
     else if constexpr (((P & bnd::real) == bnd::real)
                     && (dyadic_grid<G> || G.Notch == 0))
@@ -174,8 +174,8 @@ namespace bnd
 #endif
     else if constexpr ((P & bnd::direct) == bnd::direct && G.Notch == 1)
       return std::conditional_t<(G.Interval.Lower < 0),
-          smallest_int_for<G.Interval.Lower.trunc(), G.Interval.Upper.trunc()>,
-          smallest_uint_for<static_cast<umax>(G.Interval.Upper.trunc())>>{};
+          smallest_int_for<trunc(G.Interval.Lower), trunc(G.Interval.Upper)>,
+          smallest_uint_for<static_cast<umax>(trunc(G.Interval.Upper))>>{};
     else if constexpr ((P & bnd::indexed) == bnd::indexed && G.Notch != 0)
       return smallest_uint_for<G.max_notch()>{};
     else
@@ -199,7 +199,7 @@ namespace bnd
     // gcd returns optional — lift it so a notch-denominator overflow produces
     // nullopt rather than a silently wrapped result grid.
     return lift(
-      [](interval i, bnd::detail::rational n){ return grid{i, n}; },
+      [](interval i, detail::rational n){ return grid{i, n}; },
       lhs.Interval + rhs.Interval, detail::gcd(lhs.Notch, rhs.Notch));
   }
 
@@ -217,7 +217,7 @@ namespace bnd
   inline constexpr slim::optional<grid> operator*(const grid& lhs, const grid& rhs)
   {
     return lift(
-      [](interval i, bnd::detail::rational n){ return grid{i, n}; },
+      [](interval i, detail::rational n){ return grid{i, n}; },
       lhs.Interval * rhs.Interval, lhs.Notch * rhs.Notch);
   }
 
@@ -228,7 +228,7 @@ namespace bnd
   {
     auto d = lhs.Interval / rhs.Interval;
     if (d.has_value())
-      return grid{*d, bnd::detail::rational{0}};
+      return grid{*d, detail::rational{0}};
 
     // Divisor interval includes zero — exclude zero for result interval.
     if (rhs.Interval.Lower == 0 && rhs.Interval.Upper == 0)
@@ -237,7 +237,7 @@ namespace bnd
     // `step` = smallest non-zero divisor magnitude; splits the divisor interval
     // into positive [step, Upper] and negative [Lower, -step] (skipping zero).
     // Both sides present → the result is their union.
-    bnd::detail::rational step = (rhs.Notch != 0) ? detail::abs(rhs.Notch) : bnd::detail::rational{1};
+    detail::rational step = (rhs.Notch != 0) ? detail::abs(rhs.Notch) : detail::rational{1};
     bool has_pos = 0 < rhs.Interval.Upper;
     bool has_neg = 0 > rhs.Interval.Lower;
 
@@ -246,19 +246,19 @@ namespace bnd
       return lift(
         [](interval pos, interval neg){
           return grid{interval{std::min(neg.Lower, pos.Lower),
-                               std::max(neg.Upper, pos.Upper)}, bnd::detail::rational{0}};
+                               std::max(neg.Upper, pos.Upper)}, detail::rational{0}};
         },
         lhs.Interval / interval{step, rhs.Interval.Upper},
         lhs.Interval / interval{rhs.Interval.Lower, -step});
     }
     else if (has_pos)
     {
-      return lift([](interval i){ return grid{i, bnd::detail::rational{0}}; },
+      return lift([](interval i){ return grid{i, detail::rational{0}}; },
                   lhs.Interval / interval{step, rhs.Interval.Upper});
     }
     else
     {
-      return lift([](interval i){ return grid{i, bnd::detail::rational{0}}; },
+      return lift([](interval i){ return grid{i, detail::rational{0}}; },
                   lhs.Interval / interval{rhs.Interval.Lower, -step});
     }
   }

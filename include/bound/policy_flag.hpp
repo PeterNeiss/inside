@@ -75,6 +75,19 @@ namespace bnd
     {(1ull << 36) | ignore_domain | snapping | ignore_zero};
 
   //---------------------------------------------------------------------------
+  // Flag-set membership predicates. `has_flag(set, flag)` is true iff EVERY bit
+  // of `flag` is present in `set` — reads better than the raw `(set & flag) ==
+  // flag` and is correct for composite flags (e.g. `round_nearest` carries
+  // `snapping`, `real` carries `round_nearest`), where a bare `set & flag`
+  // truthy test would misfire. `has_any_flag` tests for any overlap.
+  //---------------------------------------------------------------------------
+  [[nodiscard]] constexpr bool has_flag(policy_flag set, policy_flag flag) noexcept
+  { return (set & flag) == flag; }
+
+  [[nodiscard]] constexpr bool has_any_flag(policy_flag set, policy_flag flags) noexcept
+  { return (set & flags) != none; }
+
+  //---------------------------------------------------------------------------
   // no_action — zero-overhead default for overflow callbacks
   //---------------------------------------------------------------------------
   struct no_action {};

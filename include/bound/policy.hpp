@@ -4,7 +4,7 @@
 #ifndef BNDpolicyHPP
 #define BNDpolicyHPP
 
-#include "bound/assignment.hpp"
+#include "bound/detail/assignment.hpp"
 #include "bound/detail/overflow.hpp"
 #include "bound/policy_flag.hpp"
 
@@ -44,7 +44,7 @@ namespace bnd
     :E(ec) { }
 
     static constexpr bool test(policy_flag w)
-    { return (W & w) == w; }
+    { return has_flag(W, w); }
 
     static constexpr bool domain_check()
     {

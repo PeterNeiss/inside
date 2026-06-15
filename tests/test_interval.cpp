@@ -27,8 +27,8 @@ TEST_CASE("interval construction and predicates", "[interval]")
   {
     constexpr interval p{*(3_r/4), *(3_r/4)};
     STATIC_REQUIRE(p.Lower == p.Upper);
-    STATIC_REQUIRE(p.includes(*(3_r/4)));
-    STATIC_REQUIRE_FALSE(p.includes(0));
+    STATIC_REQUIRE(includes(p, *(3_r/4)));
+    STATIC_REQUIRE_FALSE(includes(p, 0));
   }
 
   SECTION("includes / excludes / overlaps")
@@ -37,23 +37,23 @@ TEST_CASE("interval construction and predicates", "[interval]")
     constexpr interval b{5, 15};
     constexpr interval c{20, 30};
 
-    STATIC_REQUIRE(a.includes(5));
-    STATIC_REQUIRE(a.includes(0));
-    STATIC_REQUIRE(a.includes(10));
-    STATIC_REQUIRE_FALSE(a.includes(11));
+    STATIC_REQUIRE(includes(a, 5));
+    STATIC_REQUIRE(includes(a, 0));
+    STATIC_REQUIRE(includes(a, 10));
+    STATIC_REQUIRE_FALSE(includes(a, 11));
 
-    STATIC_REQUIRE(a.overlaps(b));
-    STATIC_REQUIRE_FALSE(a.excludes(b));
-    STATIC_REQUIRE(a.excludes(c));
-    STATIC_REQUIRE_FALSE(a.overlaps(c));
+    STATIC_REQUIRE(overlaps(a, b));
+    STATIC_REQUIRE_FALSE(excludes(a, b));
+    STATIC_REQUIRE(excludes(a, c));
+    STATIC_REQUIRE_FALSE(overlaps(a, c));
   }
 
   SECTION("includes whole sub-interval")
   {
     constexpr interval outer{0, 100};
     constexpr interval inner{10, 90};
-    STATIC_REQUIRE(outer.includes(inner));
-    STATIC_REQUIRE_FALSE(inner.includes(outer));
+    STATIC_REQUIRE(includes(outer, inner));
+    STATIC_REQUIRE_FALSE(includes(inner, outer));
   }
 }
 

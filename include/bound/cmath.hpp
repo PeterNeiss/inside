@@ -76,7 +76,7 @@ namespace bnd::math
     template <boundable In>
     consteval bool require_real() noexcept
     {
-      static_assert((BoundPolicy<In> & real) == real,
+      static_assert(has_flag(BoundPolicy<In>, real),
           "bnd::math: transcendental operand must carry the `real` policy — "
           "declare it as bound<G, real> (or add `| real` to its policy).");
       return true;
@@ -239,7 +239,7 @@ namespace bnd::math
         // `real` storage holds the VALUE, not an offset index, so route it
         // through the rational fallback `Out{r}` (same guard as fmod_int_fast).
         && !real_raw<Out>
-        && (BoundPolicy<Out> & round_nearest) == round_nearest
+        && has_flag(BoundPolicy<Out>, round_nearest)
         && (std::signed_integral<raw_t<Out>>
             || NotchCount<Out>
                  <= static_cast<umax>(std::numeric_limits<imax>::max()));
@@ -259,7 +259,7 @@ namespace bnd::math
           imax num = (r.Denominator < 0) ? -r.Numerator
                                          :  r.Numerator;
           constexpr imax K = abs_den(Notch<Out>.Denominator);  // 1/notch
-          constexpr imax m = (Lower<Out> * rational{K}).value().trunc(); // Lower·K (exact int)
+          constexpr imax m = trunc((Lower<Out> * rational{K}).value()); // Lower·K (exact int)
           // K·num + half must fit imax (a wide-denominator r, e.g. hypot's
           // 2^46, would wrap K·num and silently store `value mod 2^k`).
           constexpr imax lim = std::numeric_limits<imax>::max() / 2 / K;
@@ -284,8 +284,8 @@ namespace bnd::math
       constexpr int GUARD = 6;
       umax den        = abs_den(Notch<Out>.Denominator);   // 1/notch
       int  notch_bits = (den <= 1) ? 0 : std::bit_width(den - 1);
-      imax hi  = abs(Upper<Out>).ceil();
-      imax lo  = abs(Lower<Out>).ceil();
+      imax hi  = ceil(abs(Upper<Out>));
+      imax lo  = ceil(abs(Lower<Out>));
       imax mag = (hi > lo) ? hi : lo;
       int  int_bits = (mag <= 1) ? 0 : std::bit_width(static_cast<umax>(mag));
       int  W = notch_bits + int_bits + GUARD;
@@ -674,7 +674,7 @@ namespace bnd::math
       rational tan_v = (sin_v / cos_v).value();
       // Under a clamp policy the out-of-range result saturates via the
       // store below instead of erroring; the pole stays an error.
-      if constexpr ((BoundPolicy<Out> & clamp) != clamp)
+      if constexpr (!has_flag(BoundPolicy<Out>, clamp))
         if (tan_v < Lower<Out> || tan_v > Upper<Out>)
           return slim::unexpected(errc::overflow);
 
@@ -702,7 +702,7 @@ namespace bnd::math
     bnd::detail::rational tan_v = (sin_v / cos_v).value();
     // Under a clamp policy the out-of-range result saturates via the store
     // below instead of erroring; the pole stays an error.
-    if constexpr ((BoundPolicy<Out> & clamp) != clamp)
+    if constexpr (!has_flag(BoundPolicy<Out>, clamp))
       if (tan_v < Lower<Out> || tan_v > Upper<Out>)
         return slim::unexpected(errc::overflow);
 
@@ -847,14 +847,14 @@ namespace bnd::math
   template <boundable Out, boundable In>
   [[nodiscard]] constexpr Out floor_impl(In x) noexcept
   {
-    return detail::store_grid<Out>(bnd::detail::rational{x}.floor());
+    return detail::store_grid<Out>(floor(bnd::detail::rational{x}));
   }
 
   // ⌈x⌉ — smallest integer ≥ x.
   template <boundable Out, boundable In>
   [[nodiscard]] constexpr Out ceil_impl(In x) noexcept
   {
-    return detail::store_grid<Out>(bnd::detail::rational{x}.ceil());
+    return detail::store_grid<Out>(ceil(bnd::detail::rational{x}));
   }
 
   // x rounded to nearest integer, half-away-from-zero (matches the existing
@@ -862,7 +862,7 @@ namespace bnd::math
   template <boundable Out, boundable In>
   [[nodiscard]] constexpr Out round_impl(In x) noexcept
   {
-    return detail::store_grid<Out>(bnd::detail::rational{x}.round());
+    return detail::store_grid<Out>(round(bnd::detail::rational{x}));
   }
 
   // x truncated toward zero. Distinct from floor for negative inputs:
@@ -870,7 +870,7 @@ namespace bnd::math
   template <boundable Out, boundable In>
   [[nodiscard]] constexpr Out trunc_impl(In x) noexcept
   {
-    return detail::store_grid<Out>(bnd::detail::rational{x}.trunc());
+    return detail::store_grid<Out>(trunc(bnd::detail::rational{x}));
   }
 
   namespace detail
@@ -927,12 +927,12 @@ namespace bnd::math
     {
       // One integer remainder in g-units; bit-identical to the rational path.
       constexpr bnd::detail::rational g = *bnd::detail::gcd(Notch<InX>, Notch<InY>);
-      constexpr imax wx  = (Notch<InX> / g).value().trunc();
-      constexpr imax wy  = (Notch<InY> / g).value().trunc();
-      constexpr imax wo  = (g / Notch<Out>).value().trunc();
-      constexpr imax lox = (Lower<InX> / g).value().trunc();   // exact: grid invariant
-      constexpr imax loy = (Lower<InY> / g).value().trunc();
-      constexpr imax loo = (Lower<Out> / Notch<Out>).value().trunc();
+      constexpr imax wx  = trunc((Notch<InX> / g).value());
+      constexpr imax wy  = trunc((Notch<InY> / g).value());
+      constexpr imax wo  = trunc((g / Notch<Out>).value());
+      constexpr imax lox = trunc((Lower<InX> / g).value());   // exact: grid invariant
+      constexpr imax loy = trunc((Lower<InY> / g).value());
+      constexpr imax loo = trunc((Lower<Out> / Notch<Out>).value());
       const imax a = bnd::detail::raw_imax(x) * wx
                    + (bnd::detail::index_raw<InX> ? lox : 0);
       const imax b = bnd::detail::raw_imax(y) * wy
@@ -945,7 +945,7 @@ namespace bnd::math
       bnd::detail::rational xv = x;
       bnd::detail::rational yv = y;
       bnd::detail::rational q  = xv / yv;
-      imax     qt = q.trunc();
+      imax     qt = trunc(q);
       bnd::detail::rational qy = qt * yv;
       bnd::detail::rational r  = xv - qy;
       return detail::store_grid<Out>(r);
@@ -997,23 +997,23 @@ namespace bnd::math
                               Notch<In>}, BoundPolicy<In>>;
 
     template <boundable In>
-    using floor_auto_t = bound<{{rational{Lower<In>.floor()},
-                                  rational{Upper<In>.floor()}},
+    using floor_auto_t = bound<{{rational{floor(Lower<In>)},
+                                  rational{floor(Upper<In>)}},
                                  notch<1>}, BoundPolicy<In>>;
 
     template <boundable In>
-    using ceil_auto_t = bound<{{rational{Lower<In>.ceil()},
-                                 rational{Upper<In>.ceil()}},
+    using ceil_auto_t = bound<{{rational{ceil(Lower<In>)},
+                                 rational{ceil(Upper<In>)}},
                                 notch<1>}, BoundPolicy<In>>;
 
     template <boundable In>
-    using round_auto_t = bound<{{rational{Lower<In>.round()},
-                                  rational{Upper<In>.round()}},
+    using round_auto_t = bound<{{rational{round(Lower<In>)},
+                                  rational{round(Upper<In>)}},
                                  notch<1>}, BoundPolicy<In>>;
 
     template <boundable In>
-    using trunc_auto_t = bound<{{rational{Lower<In>.trunc()},
-                                  rational{Upper<In>.trunc()}},
+    using trunc_auto_t = bound<{{rational{trunc(Lower<In>)},
+                                  rational{trunc(Upper<In>)}},
                                  notch<1>}, BoundPolicy<In>>;
 
     // (fmod has no auto form: with two boundable inputs, `fmod<X>(x, y)` is
@@ -1084,7 +1084,7 @@ namespace bnd::math
     constexpr rational floor_to_notch(rational x, rational notch) noexcept
     {
       rational q = x / notch;
-      imax n  = q.floor();
+      imax n  = floor(q);
       return n * notch;
     }
 
@@ -1092,7 +1092,7 @@ namespace bnd::math
     constexpr rational ceil_to_notch(rational x, rational notch) noexcept
     {
       rational q = x / notch;
-      imax n = q.ceil();
+      imax n = ceil(q);
       return n * notch;
     }
 
@@ -1349,7 +1349,7 @@ namespace bnd::math
     if (c == 0.0)
       return slim::expected<Out, errc>{slim::unexpected(errc::division_by_zero)};
     double t = dbl::detail::d_sin(x) / c;
-    if constexpr ((BoundPolicy<Out> & clamp) != clamp)   // clamp Out: saturate below
+    if constexpr (!has_flag(BoundPolicy<Out>, clamp))   // clamp Out: saturate below
       if (t < static_cast<double>(Lower<Out>) || t > static_cast<double>(Upper<Out>))
         return slim::expected<Out, errc>{slim::unexpected(errc::overflow)};
     return slim::expected<Out, errc>{Out{t}};
@@ -1426,7 +1426,7 @@ namespace bnd::math
     // 360 divided by the notch. The public entry points validate the shape.
     template <boundable DEG>
     inline constexpr imax circle_slots =
-      (rational{360} / Notch<DEG>).value().round();
+      round((rational{360} / Notch<DEG>).value());
 
     // Shared shape check for the circle-input entry points.
     template <boundable DEG>
@@ -1434,9 +1434,9 @@ namespace bnd::math
     {
       static_assert(Lower<DEG> == 0,
                     "bnd::math: circle angle must have Lower 0 (degrees)");
-      static_assert((BoundPolicy<DEG> & wrap) == wrap,
+      static_assert(has_flag(BoundPolicy<DEG>, wrap),
                     "bnd::math: circle angle must carry the wrap policy");
-      static_assert((BoundPolicy<DEG> & real) == real,
+      static_assert(has_flag(BoundPolicy<DEG>, real),
                     "bnd::math: circle angle must carry the `real` policy "
                     "(circle<M> already does; custom angle bounds must add `| real`)");
       static_assert(circle_slots<DEG> % 4 == 0,
@@ -1830,7 +1830,7 @@ namespace bnd::math
       return slim::unexpected(errc::overflow);
 
     bnd::detail::rational r = detail::exp2_from_fixed<W>(sc_w);
-    if constexpr ((BoundPolicy<Out> & clamp) != clamp)   // clamp Out: saturate below
+    if constexpr (!has_flag(BoundPolicy<Out>, clamp))   // clamp Out: saturate below
       if (r < Lower<Out> || r > Upper<Out>)
         return slim::unexpected(errc::overflow);
     return detail::store_grid<Out>(r);
@@ -1950,7 +1950,7 @@ namespace bnd::math
     if (b <= 0.0)
       return slim::expected<Out, errc>{slim::unexpected(errc::domain_error)};
     double r = dbl::detail::d_pow(b, exp);
-    if constexpr ((BoundPolicy<Out> & clamp) != clamp)   // clamp Out: saturate below
+    if constexpr (!has_flag(BoundPolicy<Out>, clamp))   // clamp Out: saturate below
       if (r < static_cast<double>(Lower<Out>) || r > static_cast<double>(Upper<Out>))
         return slim::expected<Out, errc>{slim::unexpected(errc::overflow)};
     return slim::expected<Out, errc>{Out{r}};

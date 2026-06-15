@@ -182,8 +182,8 @@ namespace bnd::detail
         if constexpr (!index_raw<R>)
           r_offset -= RawLo<R>;
 
-        // Offset is an exact integer here, so Offset.trunc() is a constexpr constant.
-        imax l_offset = static_cast<imax>(Factor.Numerator) * r_offset + Offset.trunc();
+        // Offset is an exact integer here, so trunc(Offset) is a constexpr constant.
+        imax l_offset = static_cast<imax>(Factor.Numerator) * r_offset + trunc(Offset);
 
         if constexpr (!index_raw<L>)
           return l_offset + RawLo<L>;
@@ -199,8 +199,8 @@ namespace bnd::detail
       static constexpr grid wrap_excess_grid()
       {
         constexpr rational range = ((Upper<L> - Lower<L>).value() + Notch<L>).value();
-        return grid{ ((Lower<R> - Lower<L>).value() / range).value().floor(),
-                     ((Upper<R> - Lower<L>).value() / range).value().floor() };
+        return grid{ floor(((Lower<R> - Lower<L>).value() / range).value()),
+                     floor(((Upper<R> - Lower<L>).value() / range).value()) };
       }
 
       template<typename A>
@@ -306,13 +306,13 @@ namespace bnd::detail
   template<typename P, typename A>
   constexpr L& assignment<L,R>::assign(L& lhs, R const& rhs, P&& policy, A&& action)
   {
-    static_assert(not Interval<L>.excludes(Interval<R>));
+    static_assert(not excludes(Interval<L>, Interval<R>));
 
     // The out-of-range check runs unconditionally — clamp/wrap/sentinel
     // policies handle it via apply_*, which is constexpr-clean. Only the
     // unhandled-checked path winds up calling `policy.report`, which
     // contains its own `std::is_constant_evaluated()` guard.
-    if constexpr (not Interval<L>.includes(Interval<R>))
+    if constexpr (not includes(Interval<L>, Interval<R>))
     {
       if constexpr (IsIntegerInterval<L>)
       {
@@ -326,7 +326,7 @@ namespace bnd::detail
             if (handle_out_of_range(lhs, rhs, lower, upper, policy, action)) return lhs;
         }
       }
-      else if (not Interval<L>.includes(rhs))
+      else if (not includes(Interval<L>, rhs))
       {
         // Non-integer L bounds: route through the rational path so fractional
         // Lower/Upper drive clamp/sentinel/error correctly.
@@ -383,7 +383,7 @@ namespace bnd::detail
     rational range   = ((Upper<L> - lower_r).value() + Notch<L>).value();
     // q = floor((rhs - lower) / range), wrapped = rhs - q * range
     rational shifted = (rhs_r - lower_r).value();
-    imax q = (shifted / range).value().floor();
+    imax q = floor((shifted / range).value());
     rational wrapped = (rhs_r - (rational{q} * range).value()).value();
 
     // Re-enter the rational-rhs specialization for the actual store so the
@@ -453,9 +453,9 @@ namespace bnd::detail
           // 2 · K · M with saturation (M bounds |value| and the offset span)
           umax k = static_cast<umax>(K);
           umax m = static_cast<umax>(
-              ((bnd::detail::abs(Lower<L>) > bnd::detail::abs(Upper<L>)
+              ceil(((bnd::detail::abs(Lower<L>) > bnd::detail::abs(Upper<L>)
                   ? bnd::detail::abs(Lower<L>) : bnd::detail::abs(Upper<L>))
-               ).ceil()) * 2 + 2;
+               ))) * 2 + 2;
           if (k > std::numeric_limits<umax>::max() / m)
             return std::numeric_limits<umax>::max();
           umax km = k * m;
@@ -513,7 +513,7 @@ namespace bnd::detail
   template<typename P, typename A>
   constexpr L& assignment<L,R>::assign(L& lhs, R const& rhs, P&& policy, A&& action)
   {
-    if (not Interval<L>.includes(rhs))
+    if (not includes(Interval<L>, rhs))
     {
       // Fractional path has no wrap *action* branch (Wrappable = false).
       if (dispatch_out_of_range<false>(lhs, policy, action,
@@ -566,7 +566,7 @@ namespace bnd::detail
                   && Notch<L>.Numerator == 1)
     {
       // Unit-integer fast path: modular wrap on the integer value.
-      imax rhs_imax = as_rational(rhs).trunc();
+      imax rhs_imax = trunc(as_rational(rhs));
       constexpr imax lower = LowerImax<L>;
       constexpr imax upper = UpperImax<L>;
       imax range = upper - lower + 1;
@@ -645,13 +645,13 @@ namespace bnd::detail
     // wrap/clamp bring any value into range, so a disjoint rhs interval is fine
     // for them (matches the integral-rhs path); only strict policies reject it.
     static_assert(HasPolicy<L, P, wrap> || HasPolicy<L, P, clamp>
-                  || not Interval<L>.excludes(Interval<R>),
+                  || not excludes(Interval<L>, Interval<R>),
       "rhs interval lies entirely outside lhs interval and the policy cannot bring it into range");
     static_assert(abs_den(Factor.Denominator) == 1 || HasPolicy<L, P, snapping>
                   || point_exactly_assignable<L, R>,
       "incompatible notches: use with_truncate() or policy<snapping>() to allow rounding");
 
-    if constexpr (not Interval<L>.includes(Interval<R>))
+    if constexpr (not includes(Interval<L>, Interval<R>))
     {
       if constexpr (needs_runtime_domain_check<L, plain<P>, plain<A>>)
       {
@@ -660,7 +660,7 @@ namespace bnd::detail
           if (imax mapped = map_raw(rhs.raw()); mapped < RawLo<L> || mapped > RawHi<L>)
             if (try_clamp_or_fail(lhs, rhs, policy, action)) return lhs;
         }
-        else if (not Interval<L>.includes(as_rational(rhs)))
+        else if (not includes(Interval<L>, as_rational(rhs)))
           if (try_clamp_or_fail(lhs, rhs, policy, action)) return lhs;
       }
     }

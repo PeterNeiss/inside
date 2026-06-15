@@ -156,58 +156,9 @@ namespace bnd::detail
     constexpr rational& operator*=(rational const& rhs);
     constexpr rational& operator/=(rational const& rhs);
 
-    // -1 / 0 / +1 — single source of truth for the sign convention
-    // (sign lives in Denominator; canonical zero is {0, 1}).
-    [[nodiscard]] constexpr int sign() const noexcept
-    {
-      if (Numerator == 0) return 0;
-      return (Denominator < 0) ? -1 : 1;
-    }
-
     // The sentinel slot is {N, 0}; only make_sentinel() can produce one.
     [[nodiscard]] constexpr bool is_sentinel() const noexcept
     { return Denominator == 0; }
-
-    // Named integer reductions — explicit, lossy alternatives to `static_cast`.
-    // trunc → 0; floor → -inf; ceil → +inf; round → half-away-from-zero.
-    [[nodiscard]] constexpr imax trunc() const
-    {
-      umax q = Numerator / abs_den(Denominator);
-      return (Denominator < 0) ? -q : q;
-    }
-
-    [[nodiscard]] constexpr imax floor() const
-    {
-      umax ad = abs_den(Denominator);
-      umax q = Numerator / ad;
-      umax rem = Numerator % ad;
-      // negative with non-zero remainder: step one further toward -inf
-      if (Denominator < 0 && rem != 0)
-        return -q - 1;
-      return (Denominator < 0) ? -q : q;
-    }
-
-    [[nodiscard]] constexpr imax ceil() const
-    {
-      umax ad  = abs_den(Denominator);
-      umax q   = Numerator / ad;
-      umax rem = Numerator % ad;
-      // negative value: ceiling toward +inf coincides with truncation toward zero
-      if (Denominator < 0)
-        return -q;
-      // positive with non-zero remainder: step one further toward +inf
-      return q + (rem != 0 ? 1 : 0);
-    }
-
-    [[nodiscard]] constexpr imax round() const
-    {
-      umax ad = abs_den(Denominator);
-      umax q = Numerator / ad;
-      umax rem = Numerator % ad;
-      // half-away-from-zero: bump magnitude when 2*rem >= ad
-      if (rem * 2 >= ad) ++q;
-      return (Denominator < 0) ? -q : q;
-    }
 
     [[nodiscard]] static constexpr rational make_sentinel() noexcept
     { rational r; r.Numerator = 1; r.Denominator = 0; return r; }
@@ -268,6 +219,59 @@ namespace bnd::detail
   [[nodiscard]] constexpr rational abs(rational);
 
   [[nodiscard]] constexpr bool divides_evenly(rational const&, rational const&);
+
+  //---------------------------------------------------------------------------
+  // sign / named integer reductions — free functions over the public
+  // numerator/denominator (structural type), siblings of abs/gcd. Reductions
+  // are explicit, lossy alternatives to `static_cast`:
+  // trunc → 0; floor → -inf; ceil → +inf; round → half-away-from-zero.
+  //---------------------------------------------------------------------------
+  // -1 / 0 / +1 — single source of truth for the sign convention (sign lives in
+  // Denominator; canonical zero is {0, 1}).
+  [[nodiscard]] constexpr int sign(rational v) noexcept
+  {
+    if (v.Numerator == 0) return 0;
+    return (v.Denominator < 0) ? -1 : 1;
+  }
+
+  [[nodiscard]] constexpr imax trunc(rational v)
+  {
+    umax q = v.Numerator / abs_den(v.Denominator);
+    return (v.Denominator < 0) ? -q : q;
+  }
+
+  [[nodiscard]] constexpr imax floor(rational v)
+  {
+    umax ad = abs_den(v.Denominator);
+    umax q = v.Numerator / ad;
+    umax rem = v.Numerator % ad;
+    // negative with non-zero remainder: step one further toward -inf
+    if (v.Denominator < 0 && rem != 0)
+      return -q - 1;
+    return (v.Denominator < 0) ? -q : q;
+  }
+
+  [[nodiscard]] constexpr imax ceil(rational v)
+  {
+    umax ad  = abs_den(v.Denominator);
+    umax q   = v.Numerator / ad;
+    umax rem = v.Numerator % ad;
+    // negative value: ceiling toward +inf coincides with truncation toward zero
+    if (v.Denominator < 0)
+      return -q;
+    // positive with non-zero remainder: step one further toward +inf
+    return q + (rem != 0 ? 1 : 0);
+  }
+
+  [[nodiscard]] constexpr imax round(rational v)
+  {
+    umax ad = abs_den(v.Denominator);
+    umax q = v.Numerator / ad;
+    umax rem = v.Numerator % ad;
+    // half-away-from-zero: bump magnitude when 2*rem >= ad
+    if (rem * 2 >= ad) ++q;
+    return (v.Denominator < 0) ? -q : q;
+  }
 
   //---------------------------------------------------------------------------
   // abs
@@ -771,8 +775,8 @@ namespace bnd::detail
   //---------------------------------------------------------------------------
   inline constexpr auto operator<=>(rational lhs, rational rhs) -> std::strong_ordering
   {
-    int lhs_sign = lhs.sign();
-    int rhs_sign = rhs.sign();
+    int lhs_sign = sign(lhs);
+    int rhs_sign = sign(rhs);
 
     if (lhs_sign != rhs_sign)
       return lhs_sign <=> rhs_sign;

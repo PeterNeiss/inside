@@ -333,8 +333,8 @@ TEST_CASE("rational sentinel", "[rational][sentinel]")
   REQUIRE_FALSE(slim::optional<rational>{}.has_value());
 
   // converting to integer of a non-sentinel rational truncates toward zero
-  REQUIRE(rational{7u, 2}.trunc() ==  3);
-  REQUIRE(rational{7,  -2}.trunc() == -3);
+  REQUIRE(trunc(rational{7u, 2}) ==  3);
+  REQUIRE(trunc(rational{7,  -2}) == -3);
 }
 
 TEST_CASE("rational helpers", "[rational][helpers]")
@@ -415,46 +415,46 @@ TEST_CASE("rational trunc / floor / round", "[rational][reduce]")
 {
   SECTION("trunc — toward zero")
   {
-    REQUIRE(rational{7u, 2}.trunc()  ==  3);   //  3.5 -> 3
-    REQUIRE(rational{7,  -2}.trunc() == -3);   // -3.5 -> -3
-    REQUIRE(rational{1u, 2}.trunc()  ==  0);
-    REQUIRE(rational{1,  -2}.trunc() ==  0);
-    REQUIRE(rational{4u, 1}.trunc()  ==  4);
-    REQUIRE((0_r).trunc()     ==  0);
+    REQUIRE(trunc(rational{7u, 2})  ==  3);   //  3.5 -> 3
+    REQUIRE(trunc(rational{7,  -2}) == -3);   // -3.5 -> -3
+    REQUIRE(trunc(rational{1u, 2})  ==  0);
+    REQUIRE(trunc(rational{1,  -2}) ==  0);
+    REQUIRE(trunc(rational{4u, 1})  ==  4);
+    REQUIRE(trunc((0_r))     ==  0);
   }
 
   SECTION("floor — toward -inf")
   {
-    REQUIRE(rational{7u, 2}.floor()  ==  3);   //  3.5 -> 3
-    REQUIRE(rational{7,  -2}.floor() == -4);   // -3.5 -> -4
-    REQUIRE(rational{1u, 2}.floor()  ==  0);
-    REQUIRE(rational{1,  -2}.floor() == -1);   // -0.5 -> -1
-    REQUIRE(rational{4u, 1}.floor()  ==  4);
-    REQUIRE(rational{4,  -1}.floor() == -4);   // exact integer: no step
-    REQUIRE((0_r).floor()     ==  0);
+    REQUIRE(floor(rational{7u, 2})  ==  3);   //  3.5 -> 3
+    REQUIRE(floor(rational{7,  -2}) == -4);   // -3.5 -> -4
+    REQUIRE(floor(rational{1u, 2})  ==  0);
+    REQUIRE(floor(rational{1,  -2}) == -1);   // -0.5 -> -1
+    REQUIRE(floor(rational{4u, 1})  ==  4);
+    REQUIRE(floor(rational{4,  -1}) == -4);   // exact integer: no step
+    REQUIRE(floor((0_r))     ==  0);
   }
 
   SECTION("ceil — toward +inf")
   {
-    REQUIRE(rational{7u, 2}.ceil()  ==  4);   //  3.5 ->  4
-    REQUIRE(rational{7,  -2}.ceil() == -3);   // -3.5 -> -3
-    REQUIRE(rational{1u, 2}.ceil()  ==  1);   //  0.5 ->  1
-    REQUIRE(rational{1,  -2}.ceil() ==  0);   // -0.5 ->  0
-    REQUIRE(rational{4u, 1}.ceil()  ==  4);   // exact integer: no step
-    REQUIRE(rational{4,  -1}.ceil() == -4);
-    REQUIRE((0_r).ceil()     ==  0);
+    REQUIRE(ceil(rational{7u, 2})  ==  4);   //  3.5 ->  4
+    REQUIRE(ceil(rational{7,  -2}) == -3);   // -3.5 -> -3
+    REQUIRE(ceil(rational{1u, 2})  ==  1);   //  0.5 ->  1
+    REQUIRE(ceil(rational{1,  -2}) ==  0);   // -0.5 ->  0
+    REQUIRE(ceil(rational{4u, 1})  ==  4);   // exact integer: no step
+    REQUIRE(ceil(rational{4,  -1}) == -4);
+    REQUIRE(ceil((0_r))     ==  0);
   }
 
   SECTION("round — half away from zero")
   {
-    REQUIRE(rational{1u, 2}.round() ==  1);    //  0.5 ->  1
-    REQUIRE(rational{1,  -2}.round() == -1);   // -0.5 -> -1
-    REQUIRE(rational{3u, 2}.round() ==  2);    //  1.5 ->  2
-    REQUIRE(rational{3,  -2}.round() == -2);   // -1.5 -> -2
-    REQUIRE(rational{1u, 4}.round() ==  0);    //  0.25 -> 0
-    REQUIRE(rational{1u, 3}.round() ==  0);    //  ~0.33 -> 0
-    REQUIRE(rational{2u, 3}.round() ==  1);    //  ~0.67 -> 1
-    REQUIRE(rational{2,  -3}.round() == -1);
-    REQUIRE((0_r).round()    ==  0);
+    REQUIRE(round(rational{1u, 2}) ==  1);    //  0.5 ->  1
+    REQUIRE(round(rational{1,  -2}) == -1);   // -0.5 -> -1
+    REQUIRE(round(rational{3u, 2}) ==  2);    //  1.5 ->  2
+    REQUIRE(round(rational{3,  -2}) == -2);   // -1.5 -> -2
+    REQUIRE(round(rational{1u, 4}) ==  0);    //  0.25 -> 0
+    REQUIRE(round(rational{1u, 3}) ==  0);    //  ~0.33 -> 0
+    REQUIRE(round(rational{2u, 3}) ==  1);    //  ~0.67 -> 1
+    REQUIRE(round(rational{2,  -3}) == -1);
+    REQUIRE(round((0_r))    ==  0);
   }
 }

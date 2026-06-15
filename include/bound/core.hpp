@@ -14,7 +14,7 @@
 #include "bound/detail/addition.hpp"
 #include "bound/detail/multiplication.hpp"
 #include "bound/detail/division.hpp"
-#include "bound/assignment.hpp"
+#include "bound/detail/assignment.hpp"
 #include "bound/predicates.hpp"
 
 #include "slim/expected.hpp"     // slim::expected, slim::unexpected
@@ -73,17 +73,17 @@ namespace bnd
     // are representable in IEEE-754 double. A continuous grid (Notch == 0) has
     // no grid to snap to. Anything else is rejected here rather than silently
     // demoted to integer storage.
-    static_assert((P & real) != real || detail::dyadic_grid<G> || G.Notch == 0,
+    static_assert(!has_flag(P, real) || detail::dyadic_grid<G> || G.Notch == 0,
                   "bnd: the `real` policy requires a dyadic grid (power-of-two "
                   "notch and Lower, so values are exactly representable in double)");
 #endif
     // Representation flags vs grid shape (exact has no requirement; a result
     // policy may carry several flags — storage selection resolves widest-wins,
     // so no mutual-exclusion asserts here).
-    static_assert((P & direct) != direct || G.Notch == 1,
+    static_assert(!has_flag(P, direct) || G.Notch == 1,
                   "bnd: the `direct` policy (raw == value as a plain integer) "
                   "requires Notch == 1");
-    static_assert((P & indexed) != indexed || G.Notch != 0,
+    static_assert(!has_flag(P, indexed) || G.Notch != 0,
                   "bnd: the `indexed` policy (raw == 0-based notch index) "
                   "requires a notch (Notch != 0)");
 
@@ -101,7 +101,7 @@ namespace bnd
     // out-of-range raw elsewhere would make conversions lie, so it's a compile error.
     [[nodiscard]] constexpr raw_type const& raw() const noexcept { return Raw; }
     [[nodiscard]] constexpr raw_type&       raw()       noexcept
-      requires ((P & unsafe) == unsafe) { return Raw; }
+      requires (has_flag(P, unsafe)) { return Raw; }
 
     // Trivial default ctor — Raw is left uninitialized, like a built-in scalar: a
     // default-constructed bound has no value until assigned. (A previous checked
@@ -134,9 +134,9 @@ namespace bnd
       const double hi = static_cast<double>(G.Interval.Upper);
       if (v < lo || v > hi)
       {
-        if constexpr ((P & clamp) == clamp)
+        if constexpr (has_flag(P, clamp))
           v = v < lo ? lo : hi;
-        else if constexpr ((P & wrap) == wrap)
+        else if constexpr (has_flag(P, wrap))
         {
           // Fold into [Lower, Lower + range), range = span + notch — the same
           // convention as the fractional apply_wrap.
@@ -245,7 +245,7 @@ namespace bnd
     private:
     [[nodiscard]] constexpr bool is_sentinel_under_policy() const noexcept
     {
-      if constexpr ((P & sentinel) != 0) return is_sentinel();
+      if constexpr (has_flag(P, sentinel)) return is_sentinel();
       else                               return false;
     }
     public:
@@ -270,7 +270,7 @@ namespace bnd
              && G.Interval.Upper <= bnd::detail::rational{std::numeric_limits<imax>::max()})
     { return detail::to_value(*this); }
 
-    constexpr explicit((P & real) != real) operator double() const
+    constexpr explicit(!has_flag(P, real)) operator double() const
       requires ((P & (round_floor | round_ceil | round_nearest
                     | round_half_even | snapping)) != 0)
     { return detail::as_double(*this); }
@@ -315,7 +315,7 @@ namespace bnd
         if constexpr (needs_max_check)
           if (r > bnd::detail::rational{std::numeric_limits<T>::max()})
             return slim::unexpected{errc::overflow};
-        return static_cast<T>(r.trunc());
+        return static_cast<T>(trunc(r));
       }
     }
 
@@ -340,7 +340,7 @@ namespace bnd
         if constexpr (needs_max_check)
           if (r > bnd::detail::rational{std::numeric_limits<T>::max()})
             return slim::unexpected{errc::overflow};
-        return static_cast<T>(r.trunc());
+        return static_cast<T>(trunc(r));
       }
     }
 
@@ -596,7 +596,7 @@ namespace bnd
       if (ec) return slim::unexpected{static_cast<errc>(ec.value())};
       // For `sentinel` policy types, an out-of-range write silently sets
       // result.Raw to the sentinel; surface that as a domain error.
-      if constexpr ((P & sentinel) != 0)
+      if constexpr (has_flag(P, sentinel))
         if (result.Raw == detail::sentinel_raw<bound>())
           return slim::unexpected{errc::domain_error};
       return result;
@@ -705,7 +705,7 @@ namespace bnd
   // operator++ / operator-- for slim::optional<bound>
   //---------------------------------------------------------------------------
   template <boundable B>
-    requires ((BoundPolicy<B> & sentinel) != 0)
+    requires (has_flag(BoundPolicy<B>, sentinel))
   constexpr slim::optional<B>& operator++(slim::optional<B>& opt)
   {
     if (opt) ++(*opt);
@@ -713,12 +713,12 @@ namespace bnd
   }
 
   template <boundable B>
-    requires ((BoundPolicy<B> & sentinel) != 0)
+    requires (has_flag(BoundPolicy<B>, sentinel))
   constexpr slim::optional<B> operator++(slim::optional<B>& opt, int)
   { auto t = opt; ++opt; return t; }
 
   template <boundable B>
-    requires ((BoundPolicy<B> & sentinel) != 0)
+    requires (has_flag(BoundPolicy<B>, sentinel))
   constexpr slim::optional<B>& operator--(slim::optional<B>& opt)
   {
     if (opt) --(*opt);
@@ -726,7 +726,7 @@ namespace bnd
   }
 
   template <boundable B>
-    requires ((BoundPolicy<B> & sentinel) != 0)
+    requires (has_flag(BoundPolicy<B>, sentinel))
   constexpr slim::optional<B> operator--(slim::optional<B>& opt, int)
   { auto t = opt; --opt; return t; }
 

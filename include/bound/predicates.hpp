@@ -19,7 +19,7 @@ namespace bnd
   template <boundable B, numeric A>
   [[nodiscard]] constexpr bool will_conversion_overflow(A value) noexcept
   {
-    return not Interval<B>.includes(detail::as_rational(value));
+    return not includes(Interval<B>, detail::as_rational(value));
   }
 
   template <boundable B, numeric A>
@@ -28,7 +28,7 @@ namespace bnd
     if constexpr (detail::rational_raw<B>)
       return false;                       // rational raw stores any value exactly
     bnd::detail::rational r = detail::as_rational(value);
-    if (not Interval<B>.includes(r))
+    if (not includes(Interval<B>, r))
       return false;                       // out-of-range — overflow, not truncation
     // In-range: truncation occurs iff (value - Lower) / Notch is non-integer.
     auto offset = (r - Lower<B>) / Notch<B>;

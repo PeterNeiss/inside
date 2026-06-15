@@ -98,8 +98,8 @@ typename B::raw_type random_in_range_raw(std::mt19937_64& rng)
   }
   else if constexpr (!index_raw<B>)
   {
-    auto lo = Lower<B>.trunc();
-    auto hi = Upper<B>.trunc();
+    auto lo = trunc(Lower<B>);
+    auto hi = trunc(Upper<B>);
     std::uniform_int_distribution<imax> dist(lo, hi);
     return static_cast<raw>(dist(rng));
   }
@@ -174,8 +174,8 @@ void prop_native_compare(fuzz_state& s, long iters)
   if constexpr (IsIntegerAligned<B> && !rational_raw<B>)
   {
     s.current_prop = "native_compare";
-    auto lo = Lower<B>.trunc();
-    auto hi = Upper<B>.trunc();
+    auto lo = trunc(Lower<B>);
+    auto hi = trunc(Upper<B>);
     std::uniform_int_distribution<imax> dist(lo, hi);
     for (long i = 0; i < iters; ++i)
     {
@@ -197,8 +197,8 @@ void prop_clamp(fuzz_state& s, long iters)
   {
     s.current_prop = "clamp";
     using BC = bound<Grid<B>, clamp>;
-    auto lo = Lower<B>.trunc();
-    auto hi = Upper<B>.trunc();
+    auto lo = trunc(Lower<B>);
+    auto hi = trunc(Upper<B>);
     imax span = (hi - lo) * 3 + 100;
     for (long i = 0; i < iters; ++i)
     {
@@ -218,8 +218,8 @@ void prop_wrap(fuzz_state& s, long iters)
   {
     s.current_prop = "wrap";
     using BW = bound<Grid<B>, wrap>;
-    auto lo = Lower<B>.trunc();
-    auto hi = Upper<B>.trunc();
+    auto lo = trunc(Lower<B>);
+    auto hi = trunc(Upper<B>);
     imax range = hi - lo + 1;
     imax span = range * 3 + 100;
     for (long i = 0; i < iters; ++i)
@@ -239,8 +239,8 @@ void prop_try_make(fuzz_state& s, long iters)
   if constexpr (IsIntegerAligned<B> && !rational_raw<B>)
   {
     s.current_prop = "try_make";
-    auto lo = Lower<B>.trunc();
-    auto hi = Upper<B>.trunc();
+    auto lo = trunc(Lower<B>);
+    auto hi = trunc(Upper<B>);
     imax span = (hi - lo) * 3 + 100;
     for (long i = 0; i < iters; ++i)
     {
@@ -261,8 +261,8 @@ void prop_on_clamp(fuzz_state& s, long iters)
   {
     s.current_prop = "on_clamp";
     using BC = bound<Grid<B>, clamp>;
-    auto lo = Lower<B>.trunc();
-    auto hi = Upper<B>.trunc();
+    auto lo = trunc(Lower<B>);
+    auto hi = trunc(Upper<B>);
     imax span = (hi - lo) * 2 + 50;
     for (long i = 0; i < iters; ++i)
     {
@@ -379,8 +379,8 @@ void prop_round_trip_construct(fuzz_state& s, long iters)
   if constexpr (IsIntegerAligned<B> && !rational_raw<B>)
   {
     s.current_prop = "round_trip_construct";
-    auto lo = Lower<B>.trunc();
-    auto hi = Upper<B>.trunc();
+    auto lo = trunc(Lower<B>);
+    auto hi = trunc(Upper<B>);
     std::uniform_int_distribution<imax> dist(lo, hi);
     for (long i = 0; i < iters; ++i)
     {
@@ -427,8 +427,8 @@ void prop_compound_add_bound(fuzz_state& s, long iters)
     // The delta is itself a bound (raw int RHS is now ill-formed). A signed grid
     // spanning ±(Upper−Lower) covers every in-range delta.
     using Delta = bound<{Lower<B> - Upper<B>, Upper<B> - Lower<B>}>;
-    auto lo = Lower<B>.trunc();
-    auto hi = Upper<B>.trunc();
+    auto lo = trunc(Lower<B>);
+    auto hi = trunc(Upper<B>);
     // Pick integer initial value and delta such that the result stays in range
     // (the type is `checked` by default; we don't want to throw).
     std::uniform_int_distribution<imax> dist(lo, hi);
@@ -457,8 +457,8 @@ void prop_modulo(fuzz_state& s, long iters)
   {
     s.current_prop = "modulo";
     using BI = bound<Grid<B>, snapping>;
-    auto lo = Lower<B>.trunc();
-    auto hi = Upper<B>.trunc();
+    auto lo = trunc(Lower<B>);
+    auto hi = trunc(Upper<B>);
     if (lo > 0 || hi <= 0)
     {
       // Trivially: no zero-divisor risk if zero isn't representable; just
@@ -512,8 +512,8 @@ void prop_increment_wrap(fuzz_state& s, long iters)
   {
     s.current_prop = "increment_wrap";
     using BW = bound<Grid<B>, wrap>;
-    auto lo = Lower<B>.trunc();
-    auto hi = Upper<B>.trunc();
+    auto lo = trunc(Lower<B>);
+    auto hi = trunc(Upper<B>);
     imax range = hi - lo + 1;
     std::uniform_int_distribution<imax> dist(lo, hi);
     for (long i = 0; i < iters; ++i)
@@ -619,8 +619,8 @@ void prop_compound_div_mod_zero(fuzz_state& s, long iters)
     // The divisor is the constant 0_r, so any in-range dividend throws; pick
     // `start` from the grid's actual [lo, hi] (a fully-negative grid has hi < 1,
     // so the old std::max(1, lo) built an inverted, UB distribution range).
-    const imax lo = Lower<B>.trunc();
-    const imax hi = Upper<B>.trunc();
+    const imax lo = trunc(Lower<B>);
+    const imax hi = trunc(Upper<B>);
     std::uniform_int_distribution<imax> dist(lo, hi);
     for (long i = 0; i < iters; ++i)
     {
@@ -644,8 +644,8 @@ void prop_compound_bound_overshoot(fuzz_state& s, long iters)
   if constexpr (IsIntegerAligned<B> && !rational_raw<B>)
   {
     s.current_prop = "compound_bound_overshoot";
-    auto lo = Lower<B>.trunc();
-    auto hi = Upper<B>.trunc();
+    auto lo = trunc(Lower<B>);
+    auto hi = trunc(Upper<B>);
     auto range = hi - lo;
     if (range < 2) return;
     std::uniform_int_distribution<imax> dist(lo, hi);
@@ -870,7 +870,7 @@ void prop_raw_rational_arith(fuzz_state& s, long iters)
     rational lo = Lower<B>;
     rational hi = Upper<B>;
     std::uniform_int_distribution<imax> num_dist(
-        lo.trunc() + 1, hi.trunc() - 1);
+        trunc(lo) + 1, trunc(hi) - 1);
     std::uniform_int_distribution<imax> den_dist(1, 7);
     for (long i = 0; i < iters; ++i)
     {
@@ -929,8 +929,8 @@ void prop_casts(fuzz_state& s, long iters)
   if constexpr (IsIntegerAligned<B> && !rational_raw<B>)
   {
     s.current_prop = "casts";
-    auto lo = Lower<B>.trunc();
-    auto hi = Upper<B>.trunc();
+    auto lo = trunc(Lower<B>);
+    auto hi = trunc(Upper<B>);
     imax range = hi - lo + 1;
     imax span = range * 3 + 100;
     for (long i = 0; i < iters; ++i)
@@ -990,8 +990,8 @@ void prop_predicates(fuzz_state& s, long iters)
   if constexpr (IsIntegerAligned<B> && !rational_raw<B>)
   {
     s.current_prop = "predicates";
-    auto lo = Lower<B>.trunc();
-    auto hi = Upper<B>.trunc();
+    auto lo = trunc(Lower<B>);
+    auto hi = trunc(Upper<B>);
     imax span = (hi - lo) * 3 + 100;
     for (long i = 0; i < iters; ++i)
     {
@@ -1096,15 +1096,15 @@ void prop_cmath_exact(fuzz_state& s, long iters)
     M y = M::from_raw(random_in_range_raw<M>(s.rng));
     rational xr = x, yr = y;
     FUZZ_REQUIRE(s, rational{math::abs(x)}   == bnd::detail::abs(xr));
-    FUZZ_REQUIRE(s, rational{math::floor(x)} == rational{xr.floor()});
-    FUZZ_REQUIRE(s, rational{math::trunc(x)} == rational{xr.trunc()});
-    FUZZ_REQUIRE(s, rational{math::round(x)} == rational{xr.round()});
-    FUZZ_REQUIRE(s, rational{math::ceil(x)}  == -rational{(-xr).floor()});
+    FUZZ_REQUIRE(s, rational{math::floor(x)} == rational{floor(xr)});
+    FUZZ_REQUIRE(s, rational{math::trunc(x)} == rational{trunc(xr)});
+    FUZZ_REQUIRE(s, rational{math::round(x)} == rational{round(xr)});
+    FUZZ_REQUIRE(s, rational{math::ceil(x)}  == -rational{floor((-xr))});
     if (yr != 0)
     {
       // Truncated-division remainder: x - trunc(x/y)*y (matches std::fmod).
       rational q   = (xr / yr).value();
-      rational rem = (xr - (rational{q.trunc()} * yr).value()).value();
+      rational rem = (xr - (rational{trunc(q)} * yr).value()).value();
       FUZZ_REQUIRE(s, to_rational(math::fmod(x, y)) == rem);
     }
   }
@@ -1408,7 +1408,7 @@ void prop_wrap_fractional(fuzz_state& s, long iters)
       FUZZ_REQUIRE(s, out >= lo && out <= hi);
       // out ≡ v (mod period): (v - out)/period is (near) an integer.
       rational shifted = (v - lo).value();
-      imax q = (shifted / period).value().floor();
+      imax q = floor((shifted / period).value());
       rational reduced = (v - (rational{q} * period).value()).value();
       FUZZ_REQUIRE(s, bnd::detail::abs((out - reduced).value()) <= notch);
     }
