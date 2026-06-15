@@ -43,13 +43,13 @@ TEST_CASE("bound::to<unsigned T>", "[bound][to]")
     REQUIRE(B{1}.to<std::uint8_t>().value() == 1);
   }
 
-  SECTION("sentinel-state bound -> overflow")
+  SECTION("sentinel-state bound -> not_a_value")
   {
     using B = bound<{0, 100}, sentinel>;
     B b = B::make_sentinel();
     auto r = b.to<std::uint8_t>();
     REQUIRE_FALSE(r.has_value());
-    REQUIRE(r.error() == errc::overflow);
+    REQUIRE(r.error() == errc::not_a_value);
   }
 
   SECTION("Q-format fast path")
@@ -93,13 +93,13 @@ TEST_CASE("bound::to<floating T>", "[bound][to]")
     REQUIRE(B{0.5}.to<double>().value() == 0.5);
   }
 
-  SECTION("sentinel-state -> overflow")
+  SECTION("sentinel-state -> not_a_value")
   {
     using B = bound<{0, 100}, sentinel>;
     B b = B::make_sentinel();
     auto r = b.to<double>();
     REQUIRE_FALSE(r.has_value());
-    REQUIRE(r.error() == errc::overflow);
+    REQUIRE(r.error() == errc::not_a_value);
   }
 
   SECTION("to<double> works even on a strict-policy bound (no policy gate)")

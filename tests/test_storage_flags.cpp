@@ -207,6 +207,12 @@ TEST_CASE("non-finite doubles are rejected, both engines",
   REQUIRE_THROWS_AS(R{nan}, std::system_error);
   REQUIRE_THROWS_AS(R{inf}, std::system_error);
   REQUIRE_THROWS_AS(R{-inf}, std::system_error);
+
+  // Non-finite input is reported as errc::not_finite (distinct from the
+  // domain_error used for finite-but-out-of-interval values), both engines.
+  try { R{nan}; FAIL("expected throw"); }
+  catch (const std::system_error& e)
+  { REQUIRE(e.code() == make_error_code(errc::not_finite)); }
 }
 
 // Full-domain inverse trig (improvement #2): atan beyond |x| ≤ 1 via

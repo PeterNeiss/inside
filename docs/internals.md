@@ -240,7 +240,7 @@ Per-operation audit:
 | `math::tan` | `expected` | `division_by_zero` (pole), `overflow` (past Out) |
 | `math::pow` | `expected` | `division_by_zero`, `overflow` (envelope) |
 | `math::sqrt` (mixed-sign) | `expected` | `domain_error` (negative value) |
-| `to<T>()` | `expected` | `overflow`, `domain_error` |
+| `to<T>()` | `expected` | `not_a_value` (sentinel), `overflow` (out of range), `domain_error` (negative→unsigned) |
 | `as<T>()` | `T` | asserts (caller vouches for the range) |
 | `try_make` | `optional` | out of range |
 | construction / assignment | policy cascade | per the bound's policy |

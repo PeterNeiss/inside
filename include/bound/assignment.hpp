@@ -407,7 +407,7 @@ namespace bnd::detail
       // already ran in the assign cascade; finite guard mirrors store_real's).
       const double v = static_cast<double>(rhs);
       if (!(v - v == 0))
-        throw std::system_error(make_error_code(errc::domain_error),
+        throw std::system_error(make_error_code(errc::not_finite),
                                 "non-finite double");
       lhs = L::from_raw(Grid<L>.snap_double(v));
       return true;

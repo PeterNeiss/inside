@@ -4,7 +4,7 @@
 #ifndef BNDarithmeticHPP
 #define BNDarithmeticHPP
 
-#include "bound/bound.hpp"
+#include "bound/core.hpp"
 #include "bound/casts.hpp"
 
 #include <algorithm>

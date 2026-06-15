@@ -4,7 +4,7 @@
 #ifndef BNDcastsHPP
 #define BNDcastsHPP
 
-#include "bound/bound.hpp"
+#include "bound/core.hpp"
 
 //---------------------------------------------------------------------------
 // Free-function casts complementing the constructors. Unlike a direct B{value}

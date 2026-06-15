@@ -30,6 +30,8 @@ namespace bnd
     division_by_zero,   // divisor is zero
     overflow,           // rational arithmetic overflow
     rounding_error,     // notch incompatibility
+    not_a_value,        // operand is in its sentinel (NaN-like) state
+    not_finite,         // non-finite double input (NaN/Inf)
   };
 
   struct bound_category : std::error_category
@@ -43,6 +45,8 @@ namespace bnd
         case errc::division_by_zero: return "division by zero";
         case errc::overflow:         return "rational arithmetic overflow";
         case errc::rounding_error:   return "notch incompatibility";
+        case errc::not_a_value:      return "not a value (sentinel state)";
+        case errc::not_finite:       return "non-finite floating-point value";
         default:                     return "unknown bound error";
       }
     }

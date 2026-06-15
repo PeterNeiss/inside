@@ -308,7 +308,7 @@ namespace bnd::detail
   constexpr rational::rational(std::floating_point auto value)
   {
     if (not std::isfinite(value))
-      throw std::system_error(make_error_code(errc::domain_error), "non-finite double");
+      throw std::system_error(make_error_code(errc::not_finite), "non-finite double");
 
     if (value == 0.0)
     {
@@ -332,7 +332,7 @@ namespace bnd::detail
   template <std::unsigned_integral T>
   constexpr slim::expected<T, errc> rational::to() const
   {
-    if (is_sentinel())   return slim::unexpected{errc::overflow};
+    if (is_sentinel())   return slim::unexpected{errc::not_a_value};
     if (Denominator < 0) return slim::unexpected{errc::domain_error};
     return static_cast<T>(Numerator / abs_den(Denominator));
   }

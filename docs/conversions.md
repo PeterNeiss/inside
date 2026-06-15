@@ -50,12 +50,13 @@ auto r = wide{huge}.to<std::uint64_t>();   // slim::expected<uint64_t, errc>
 
 ## Named extraction: `to<T>()` and `as<T>()`
 
-`bound::to<T>()` returns `slim::expected<T, errc>` — sentinel-state, out of
-T's range, and negative-into-unsigned each surface as a typed error:
+`bound::to<T>()` returns `slim::expected<T, errc>` — each failure surfaces as a
+distinct typed error: sentinel-state → `errc::not_a_value`, out of T's range →
+`errc::overflow`, negative-into-unsigned → `errc::domain_error`:
 
 ```cpp
 auto r = b.to<std::uint16_t>();
-if (!r) { /* r.error() is errc::overflow or errc::domain_error */ }
+if (!r) { /* r.error() is errc::not_a_value, errc::overflow, or errc::domain_error */ }
 ```
 
 `as<T>()` is the non-expected sibling — calls `to<T>().value()`. Use it when

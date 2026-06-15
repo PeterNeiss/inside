@@ -4,7 +4,7 @@
 #ifndef BNDrangeHPP
 #define BNDrangeHPP
 
-#include "bound/bound.hpp"
+#include "bound/core.hpp"
 
 #include <compare>
 #include <cstddef>

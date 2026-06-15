@@ -400,12 +400,12 @@ TEST_CASE("rational conversion to integer/float", "[rational][conversion]")
     REQUIRE(r.error() == errc::domain_error);
   }
 
-  SECTION("to<T> reports overflow for sentinel rational")
+  SECTION("to<T> reports not_a_value for sentinel rational")
   {
     rational s = rational::make_sentinel();
     auto r = s.to<unsigned>();
     REQUIRE_FALSE(r.has_value());
-    REQUIRE(r.error() == errc::overflow);
+    REQUIRE(r.error() == errc::not_a_value);
   }
 }
 
