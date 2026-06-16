@@ -64,7 +64,10 @@ namespace bnd
     {
       interval::validate<G.Interval>();
       static_assert(G.Interval.divides_evenly(G.Notch));
-      static_assert(G.Notch == 0 || detail::abs_den((G.Interval.Lower/G.Notch).value().Denominator) == 1);
+      // Lower must sit on the notch lattice. divides_evenly avoids forming the
+      // (possibly umax-overflowing) Lower/Notch quotient, so a grid finer than
+      // uint64 index space is still valid (it stores as rational).
+      static_assert(G.Notch == 0 || detail::divides_evenly(G.Interval.Lower, G.Notch));
 
       return true;
     }
@@ -79,19 +82,34 @@ namespace bnd
         return slim::unexpected{errc::domain_error};
       if (!iv.divides_evenly(notch))
         return slim::unexpected{errc::rounding_error};
-      if (notch != 0)
-      {
-        auto q = iv.Lower / notch;
-        if (!q.has_value())
-          return slim::unexpected{errc::overflow};
-        if (detail::abs_den(q->Denominator) != 1)
-          return slim::unexpected{errc::rounding_error};
-      }
+      if (notch != 0 && !detail::divides_evenly(iv.Lower, notch))
+        return slim::unexpected{errc::rounding_error};
       return grid{iv, notch};
     }
 
-    constexpr umax max_notch() const
-    { return (Notch == 0) ? 0 : (Interval/Notch).value().Numerator; }
+    // Notch-slot count = (Upper-Lower)/Notch, computed WITHOUT the rational
+    // division (which throws at constant-eval on overflow). A valid grid is
+    // notch-aligned, so with span = p/q and Notch = r/s the count is exactly
+    // (p/r)·(s/q); mul_overflow flags when it exceeds umax. Returns false (and
+    // count is meaningless) on overflow — such a grid stores as rational, never
+    // an index, so the count is never used.
+    constexpr bool notch_count(umax& out) const
+    {
+      if (Notch == 0) { out = 0; return true; }
+      const detail::rational span = (Interval.Upper - Interval.Lower).value();
+      const umax p = span.Numerator,  q = detail::abs_den(span.Denominator);
+      const umax r = Notch.Numerator, s = detail::abs_den(Notch.Denominator);
+      if (r == 0 || p % r != 0 || s % q != 0) { out = 0; return false; }
+      return !mul_overflow(p / r, s / q, &out);
+    }
+
+    // Index-storage slot count (0 on overflow; the over-flow branch of storage_min
+    // is discarded for such grids, which pick rational storage instead).
+    constexpr umax max_notch() const { umax c = 0; (void)notch_count(c); return c; }
+
+    // True when the slot count fits umax (index storage is possible). False ⇒ the
+    // grid is still valid but stores its value as a rational, never an index.
+    constexpr bool notch_count_representable() const { umax c = 0; return notch_count(c); }
 
     // True when `v` is an *exact* slot: in the interval AND on a notch (notch-0
     // grids store verbatim, so any in-range value qualifies). Used to admit a
@@ -123,8 +141,24 @@ namespace bnd
       const double lo = static_cast<double>(Interval.Lower);
       const double nd = static_cast<double>(Notch);
       const double q  = (v - lo) / nd;
-      const imax   k  = static_cast<imax>(q >= 0 ? q + 0.5 : q - 0.5);
-      return lo + static_cast<double>(k) * nd;
+      // Round q to the nearest integer, half away from zero (matching the
+      // integer engine's round_nearest). Narrow to imax only when provably safe;
+      // for |q| >= 2^52 the double is already integral, so snapping is a no-op.
+      // This avoids the `floor(q+0.5)` double-rounding flaw and the unguarded
+      // double->imax cast (UB for huge q).
+      double r;
+      const double aq = q < 0 ? -q : q;
+      if (aq >= 4503599627370496.0)            // 2^52
+        r = q;
+      else
+      {
+        const imax   t    = static_cast<imax>(q);   // trunc toward zero; |q| < 2^52 < imax
+        const double frac = q - static_cast<double>(t);
+        if      (frac >=  0.5) r = static_cast<double>(t + 1);
+        else if (frac <= -0.5) r = static_cast<double>(t - 1);
+        else                   r = static_cast<double>(t);
+      }
+      return lo + r * nd;
     }
 
     static constexpr grid make_sentinel() noexcept
@@ -132,16 +166,18 @@ namespace bnd
   };
 
   // Smallest raw type holding every reachable index in G. Order: notch-zero →
-  // rational (no integer index space); signed-direct fits Lower < 0 with notch 1;
-  // unsigned-offset (max_notch slots) otherwise.
+  // rational (no integer index space); index count too large for any integer →
+  // rational (store the value's fraction directly, no index); signed-direct fits
+  // Lower < 0 with notch 1; unsigned-offset (max_notch slots) otherwise.
   namespace detail
   {
   template <grid G>
   using storage_min =
     std::conditional_t<(G.Notch == 0), detail::rational,
+    std::conditional_t<(!G.notch_count_representable()), detail::rational,
     std::conditional_t<(G.Interval.Lower < 0 && G.Notch == 1),
       smallest_int_for<trunc(G.Interval.Lower), trunc(G.Interval.Upper)>,
-      smallest_uint_for<G.max_notch()>>>;
+      smallest_uint_for<G.max_notch()>>>>;
 
   // Dyadic grid: power-of-2 notch denominator and Lower denominator, so every
   // on-grid value is exactly representable in IEEE-754 `double`. Precondition
@@ -153,6 +189,48 @@ namespace bnd
        G.Notch.Numerator != 0
     && is_pow2(bnd::detail::abs_den(G.Notch.Denominator))
     && is_pow2(bnd::detail::abs_den(G.Interval.Lower.Denominator));
+
+  // log2 of a power-of-two magnitude (>= 1); 0 for 1. (grid.hpp can't include
+  // cmath.hpp — that depends on us — so this mirrors detail::log2_pow2.)
+  constexpr int log2_pow2_mag(umax d) noexcept { int n = 0; while (d > 1) { d >>= 1; ++n; } return n; }
+
+  // |r · 2^f| as an integer. On a dyadic grid every endpoint's denominator is a
+  // power of two dividing 2^f, so r·2^f is integral. Writes |N| and returns true
+  // when it fits in umax; returns false on overflow (which already means ≥ 2^53).
+  constexpr bool scaled_numerator(const rational& r, int f, umax& out) noexcept
+  {
+    if (r.Numerator == 0) { out = 0; return true; }
+    const int sh = f - log2_pow2_mag(abs_den(r.Denominator));   // 0 <= sh <= f
+    if (sh >= 64) return false;
+    if (r.Numerator > (~umax{0} >> sh)) return false;           // Numerator << sh overflows
+    out = r.Numerator << sh;
+    return true;
+  }
+
+  // `double`-exactness of a dyadic grid: the IEEE-754 double path equals the
+  // exact grid arithmetic iff, at the coarsest-magnitude end, the value's ULP is
+  // no coarser than the notch. Writing v = N·2^(−f) with f = log2(den(Notch)),
+  // that is |N| < 2^53 (53-bit significand) AND f ≤ 1022 (notch ≥ smallest
+  // normal, so no on-grid value is subnormal). The 2^1024 overflow ceiling is
+  // unreachable once |N| < 2^53. Necessary precondition for `real` storage.
+  template <grid G>
+  constexpr bool compute_double_exact() noexcept
+  {
+    if constexpr (!dyadic_grid<G>) return false;
+    else
+    {
+      constexpr int f = log2_pow2_mag(abs_den(G.Notch.Denominator));
+      if (f > 1022) return false;
+      umax nlo = 0, nhi = 0;
+      if (!scaled_numerator(G.Interval.Lower, f, nlo)) return false;
+      if (!scaled_numerator(G.Interval.Upper, f, nhi)) return false;
+      constexpr umax lim = umax{1} << 53;
+      return nlo < lim && nhi < lim;
+    }
+  }
+
+  template <grid G>
+  inline constexpr bool double_exact = compute_double_exact<G>();
 
   // Storage for a bound<G, P>: representation flags pick the raw type, widest-wins
   // (exact > real > direct > indexed > deduced).
@@ -169,8 +247,18 @@ namespace bnd
       return detail::rational{};
 #ifndef BND_MATH_FIXED
     else if constexpr (((P & bnd::real) == bnd::real)
-                    && (dyadic_grid<G> || G.Notch == 0))
+                    && (double_exact<G> || G.Notch == 0))
       return double{};
+    else if constexpr (((P & bnd::real) == bnd::real) && dyadic_grid<G>)
+    {
+      // `real` explicitly requested on a dyadic grid double can't represent
+      // exactly (max |value·2^f| ≥ 2^53, or notch below the smallest normal).
+      // Arithmetic drops `real` before reaching here, so this is direct misuse.
+      static_assert(double_exact<G>,
+        "real storage: grid exceeds double's 53-bit significand — coarsen the "
+        "notch/range or use `exact`");
+      return double{};   // unreachable; fixes the deduced return type
+    }
 #endif
     else if constexpr ((P & bnd::direct) == bnd::direct && G.Notch == 1)
       return std::conditional_t<(G.Interval.Lower < 0),

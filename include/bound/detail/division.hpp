@@ -148,10 +148,15 @@ namespace bnd::detail
 
     static constexpr bool any_real =
         (BoundPolicy<L> & bnd::real) == bnd::real || (BoundPolicy<R> & bnd::real) == bnd::real;
+    // Keep `real` for a continuous result (Notch 0: double stores the quotient
+    // verbatim) or a double-exact dyadic result; otherwise drop it (the double
+    // quotient would not land on the result grid). See grid::double_exact.
+    static constexpr bool keep_real =
+        any_real && (result_grid.Notch == 0 || double_exact<result_grid>);
     // Carry both operands' representation flags (widest-wins at storage selection).
     static constexpr policy_flag rep =
         ((BoundPolicy<L> | BoundPolicy<R>) & (bnd::exact | bnd::direct | bnd::indexed))
-        | (any_real ? bnd::real : none);
+        | (keep_real ? bnd::real : none);
     using result = bound<result_grid, rep != none ? rep : checked>;
 
     template <policy_flag G = F>
@@ -162,16 +167,18 @@ namespace bnd::detail
     // (overflow). So when the divisor excludes zero AND this is false, `div`
     // returns a plain `result` rather than optional<result>.
     static constexpr bool may_overflow_nonzero =
-        !native_div && (needs_overflow_check<F> != 0);
+        !native_div && !real_raw<result> && (needs_overflow_check<F> != 0);
 
+    // Real division can still fail on a zero divisor, so it uses the same
+    // return-type rule as the rest: plain `result` when the op cannot fail
+    // (overflow-action, or the divisor grid excludes zero with no rational
+    // overflow), else optional<result>. Real has no rational overflow, so
+    // may_overflow_nonzero is false for it (above).
     template <typename A>
     using div_return_t = std::conditional_t<
-        any_real,
-        result,                                       // double division: never fails (IEEE)
-        std::conditional_t<
-            overflow_action<plain<A>> || (DivisorExcludesZero<R> && !may_overflow_nonzero),
-            result,
-            slim::optional<result>>>;
+        overflow_action<plain<A>> || (DivisorExcludesZero<R> && !may_overflow_nonzero),
+        result,
+        slim::optional<result>>;
 
     template <policy_flag G = F, typename E = empty_ref, typename A = no_action>
     static constexpr div_return_t<A> div(L, R, policy<G, E> = {}, A&& = {});
@@ -184,17 +191,11 @@ namespace bnd::detail
   template<policy_flag G, typename E, typename A>
   constexpr auto division<L,R,F>::div(L lhs, R rhs, policy<G, E> policy, A&& action) -> div_return_t<A>
   {
-    if constexpr (real_raw<result>)
-    {
-      (void)policy; (void)action;
-      return result::from_raw(Grid<result>.snap_double(as_double(lhs) / as_double(rhs)));
-    }
-    else
-    {
     // `fail` must stay well-formed even when div_return_t narrowed to plain
     // `result` (divisor excludes zero, no overflow); there every call to it is
     // removed by the guards below, so the final arm is dead (return-type only).
-    auto fail = [&](errc code, const char* what) -> div_return_t<A> {
+    // Shared by the real and non-real paths (real fails only on a zero divisor).
+    [[maybe_unused]] auto fail = [&](errc code, const char* what) -> div_return_t<A> {
       if constexpr (overflow_action<plain<A>>)
         return report_or_nullopt<result>(action, policy, code, what);   // -> result
       else if constexpr (!DivisorExcludesZero<R> || may_overflow_nonzero)
@@ -206,10 +207,19 @@ namespace bnd::detail
     // Div-by-zero check elided when R's grid excludes zero, or `ignore_zero` is
     // set (zero divisor is then UB, matching the `/= 0` no-op). The fail arms stay
     // keyed on DivisorExcludesZero (which narrows the return type; ignore_zero doesn't).
-    constexpr bool zero_unchecked = DivisorExcludesZero<R>
+    [[maybe_unused]] constexpr bool zero_unchecked = DivisorExcludesZero<R>
         || (((G | F | BoundPolicy<L> | BoundPolicy<R>) & ignore_zero) != 0);
 
-    if constexpr (native_div_qformat)
+    if constexpr (real_raw<result>)
+    {
+      // Real division reports zero like every other path (throw / report /
+      // action / nullopt). Finite operands keep the quotient finite, so no
+      // non-finite ever reaches storage.
+      if constexpr (!zero_unchecked)
+        if (as_double(rhs) == 0.0) return fail(errc::division_by_zero, "division by zero in div");
+      return result::from_raw(Grid<result>.snap_double(as_double(lhs) / as_double(rhs)));
+    }
+    else if constexpr (native_div_qformat)
     {
       // rhs.Raw == 0 iff rhs.value == 0 (Lower<R> == 0). Formula folds to
       // `(a << log2 N)/b` for power-of-two N — the native Q-format idiom.
@@ -244,7 +254,6 @@ namespace bnd::detail
         if (rhs_r.Numerator == 0) return fail(errc::division_by_zero, "division by zero in div");
       return result::from_raw(rational::div_unchecked(as_rational(lhs), rhs_r));
     }
-    }  // end else (non-real)
   }
   //---------------------------------------------------------------------------
   // modulo (requires integer-valued grids + snapping)

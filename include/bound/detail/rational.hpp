@@ -991,8 +991,15 @@ namespace bnd::detail
   [[nodiscard]] inline constexpr bool divides_evenly(rational const& dividend, rational const& divisor)
   {
     if (divisor == 0) return true;            // convention: everything divides 0 evenly
-    auto q = dividend / divisor;
-    return q.has_value() && abs_den(q->Denominator) == 1;
+    if (dividend.Numerator == 0) return true; // 0 / anything is the integer 0
+
+    // dividend/divisor ∈ ℤ without forming the (possibly umax-overflowing)
+    // quotient numerator. In lowest terms dividend = p/q, divisor = r/s; the
+    // quotient p·s/(q·r) is integral iff q | s and r | p (rationals are
+    // canonicalized, so gcd(p,q)=gcd(r,s)=1). All checks are on single fields.
+    const umax p = dividend.Numerator, q = abs_den(dividend.Denominator);
+    const umax r = divisor.Numerator,  s = abs_den(divisor.Denominator);
+    return (s % q == 0) && (p % r == 0);
   }
 
 } // namespace bnd::detail

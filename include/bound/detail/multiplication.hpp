@@ -20,18 +20,29 @@ namespace bnd::detail
   template <boundable L, boundable R = L>
   struct multiplication
   {
+    static_assert((Grid<L> * Grid<R>).has_value(),
+      "multiplication: result grid's notch/interval exceeds the representable "
+      "rational range — coarsen the operand grids");
+    static constexpr grid result_grid = (Grid<L> * Grid<R>).value();
     static constexpr bool any_real =
         (BoundPolicy<L> & bnd::real) == bnd::real || (BoundPolicy<R> & bnd::real) == bnd::real;
+    // Drop `real` when the product grid (notch = N_L·N_R) outgrows double's
+    // 53-bit significand — the double product would round below the result notch.
+    static constexpr bool keep_real = any_real && double_exact<result_grid>;
     // Carry both operands' representation flags (widest-wins at storage selection).
     static constexpr policy_flag rep =
         ((BoundPolicy<L> | BoundPolicy<R>) & (bnd::exact | bnd::direct | bnd::indexed))
-        | (any_real ? bnd::real : none);
-    using result = bound<(Grid<L> * Grid<R>).value(), rep != none ? rep : checked>;
+        | (keep_real ? bnd::real : none);
+    using result = bound<result_grid, rep != none ? rep : checked>;
 
+    // The dropped-`real` case (any_real && !keep_real) lands on a rational result
+    // when the product grid outgrows uint index space; its product numerator can
+    // exceed `umax`, so check it (the result carries `checked`) rather than wrap.
     template <typename P>
     static constexpr bool needs_overflow_check =
         rational_raw<result>
-        && (((BoundPolicy<L> | BoundPolicy<R>) & checked) || plain<P>::test(checked))
+        && (((BoundPolicy<L> | BoundPolicy<R>) & checked) || plain<P>::test(checked)
+            || (any_real && !keep_real))
         && !rational_mul_is_safe(Grid<L>, Grid<R>);
 
     template <typename P>
@@ -78,6 +89,17 @@ namespace bnd::detail
       result res;
       from_value(res, to_value(lhs) * to_value(rhs));
       return res;
+    }
+    else if constexpr (real_raw<L> || real_raw<R> || rational_raw<L> || rational_raw<R>)
+    {
+      // An operand whose raw is a double/rational can't feed the integer
+      // four-quadrant formula below (it reads the raw as an integer offset).
+      // Combine exactly as rationals and convert to the result's storage —
+      // mirrors addition's rational-mixed branch. Reached when `real` was
+      // dropped from the result (grid not double-exact) but operands stay real.
+      auto prod = rational::mul_unchecked(as_rational(lhs), as_rational(rhs));
+      return result::from_raw(raw_from_offset<result>(
+          ((prod - Lower<result>) / Notch<result>).value().Numerator));
     }
     else
     {

@@ -20,15 +20,21 @@ namespace bnd::detail
   template <boundable L, boundable R = L>
   struct addition
   {
-    // Propagate `real`: an op on math operands yields a math operand (sum of
-    // dyadic grids is dyadic, so the result stays double-backed).
+    static_assert((Grid<L> + Grid<R>).has_value(),
+      "addition: result grid's notch/interval exceeds the representable rational "
+      "range — coarsen the operand grids");
+    static constexpr grid result_grid = (Grid<L> + Grid<R>).value();
+    // Propagate `real` only when the result grid stays exactly representable in
+    // double; otherwise drop it so storage_pick deduces an exact representation
+    // (the double sum would diverge from the exact sum — see grid::double_exact).
     static constexpr bool any_real =
         (BoundPolicy<L> & bnd::real) == bnd::real || (BoundPolicy<R> & bnd::real) == bnd::real;
+    static constexpr bool keep_real = any_real && double_exact<result_grid>;
     // Carry both operands' representation flags (widest-wins at storage selection).
     static constexpr policy_flag rep =
         ((BoundPolicy<L> | BoundPolicy<R>) & (bnd::exact | bnd::direct | bnd::indexed))
-        | (any_real ? bnd::real : none);
-    using result = bound<(Grid<L> + Grid<R>).value(), rep != none ? rep : checked>;
+        | (keep_real ? bnd::real : none);
+    using result = bound<result_grid, rep != none ? rep : checked>;
 
     template <policy_flag F>
     static constexpr bool needs_overflow_check =

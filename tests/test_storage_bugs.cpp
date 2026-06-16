@@ -8,6 +8,8 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <cmath>
+
 using namespace bnd;
 using namespace bnd::detail;
 
@@ -107,3 +109,56 @@ TEST_CASE("Bug D: gcd lcm overflow propagates to grid::operator+", "[bound][grid
 
   STATIC_REQUIRE_FALSE((g1 + g2).has_value());
 }
+
+#ifndef BND_MATH_FIXED
+//---------------------------------------------------------------------------
+// Bug E — grid.hpp double_exact / arithmetic.
+//
+// `real` (double-backed) arithmetic silently diverged from the exact grid
+// arithmetic whenever a result needed more than double's 53-bit significand.
+// `dyadic_grid<G>` (the old storage guard) checks only power-of-two
+// denominators; it ignores the significand. A real `×` whose product grid
+// outgrows 2^53 (notch = N_L·N_R) dropped the low bits.
+//
+// Fix: `real` is selected only on `double_exact` grids; an op whose result
+// grid isn't double-exact drops `real` and falls back to exact storage, so the
+// result equals the exact rational product.
+//---------------------------------------------------------------------------
+TEST_CASE("Bug E: real * stays exact (drops real when product exceeds 2^53)",
+          "[bound][real][regression]")
+{
+  using U = bound<{{0, 4}, notch<1, (1u << 26)>}, real>;   // exact operand (f=26)
+  static_assert(std::is_same_v<U::raw_type, double>);
+
+  const U a = 4.0 - std::ldexp(1.0, -26);                  // index 2^28-1, exact
+  auto p = a * a;                                          // product grid f=52 > 53 bits
+  static_assert(!std::is_same_v<decltype(p)::raw_type, double>);   // real dropped
+  const rational ar = static_cast<rational>(a);
+  REQUIRE(static_cast<rational>(p) == *(ar * ar));
+}
+
+//---------------------------------------------------------------------------
+// Bug F — division.hpp real path.
+//
+// Real `÷0` stored a bare `inf` (snap_double then did static_cast<imax>(inf),
+// UB), bypassing the error vocabulary. Fix: real division reports zero like
+// every other path — the return widens to optional<result> when the divisor
+// grid can be zero (nullopt on a zero divisor), and the expected-lift surfaces
+// errc::division_by_zero. The real sentinel stays a finite, comparable value
+// (DBL_MAX), used only for out-of-range stores.
+//---------------------------------------------------------------------------
+TEST_CASE("Bug F: real div-by-zero is reported, not a silent inf",
+          "[bound][real][regression]")
+{
+  using N  = bound<{{1, 4}, notch<1, 1024>}, real>;
+  using Dz = bound<{{0, 4}, notch<1, 1024>}, real>;   // divisor grid spans zero
+
+  auto q = N{3.0} / Dz{0.0};
+  REQUIRE_FALSE(q.has_value());                       // optional, nullopt — not inf
+
+  slim::expected<N, errc> en{N{3.0}};
+  auto z = en / Dz{0.0};
+  REQUIRE_FALSE(z.has_value());
+  REQUIRE(z.error() == errc::division_by_zero);
+}
+#endif // !BND_MATH_FIXED

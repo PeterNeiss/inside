@@ -364,10 +364,15 @@ TEST_CASE("rational helpers", "[rational][helpers]")
     REQUIRE(divides_evenly(rational{6u, 1}, 0_r));
   }
 
-  SECTION("divides_evenly does not throw on overflow")
+  SECTION("divides_evenly is alignment-only, independent of representability")
   {
-    // M / (1/2) = M*2 overflows the numerator -> false, not exception.
-    REQUIRE_FALSE(divides_evenly(rational{M}, rational{1, 2}));
+    // M / (1/2) = M*2 is mathematically an integer (M sits on the 1/2 lattice),
+    // so divides_evenly is true even though the quotient numerator overflows
+    // umax. Representability of the index count is a separate concern
+    // (grid::notch_count), not part of the lattice-alignment predicate.
+    REQUIRE(divides_evenly(rational{M}, rational{1, 2}));
+    // genuinely unaligned stays false (no overflow involved)
+    REQUIRE_FALSE(divides_evenly(rational{1u, 2}, rational{1u, 3}));
   }
 }
 

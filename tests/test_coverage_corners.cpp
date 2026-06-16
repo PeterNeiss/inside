@@ -268,7 +268,7 @@ TEST_CASE("real store out of range: sentinel and checked policies",
 {
   using rbs = bound<{{-1, 1}, notch<1, 1024>}, real | sentinel>;
   rbs s = 5.0;                                   // out of range -> sentinel (domain_fail)
-  REQUIRE(s == rbs::make_sentinel());
+  REQUIRE(s == rbs::make_sentinel());            // real sentinel is a finite, comparable value
 
   using rbc = bound<{{-1, 1}, notch<1, 1024>}, real | checked>;
   REQUIRE_THROWS_AS((rbc{5.0}), std::system_error);   // out of range -> report (throws)

@@ -164,9 +164,10 @@ namespace bnd
     template <boundable B>
     inline constexpr imax UpperImax = trunc(Upper<B>);
 
+    // Slot count via grid::max_notch (overflow-safe: 0 when it doesn't fit umax,
+    // for grids that store as rational and never use the index).
     template <boundable B>
-    inline constexpr umax NotchCount = (Notch<B> == 0) ?
-      0 : (Interval<B>/Notch<B>).value().Numerator;
+    inline constexpr umax NotchCount = Grid<B>.max_notch();
 
     //-------------------------------------------------------------------------
     // grid_value_bounds / rational_mul_is_safe / rational_add_is_safe
@@ -473,7 +474,21 @@ namespace bnd
       else if constexpr (std::signed_integral<raw_t<B>>)
         return std::numeric_limits<raw_t<B>>::min();
       else
+        // Unsigned: max(). Real (double): DBL_MAX — a finite, normal, comparable
+        // slot, unreachable as an on-grid value (grids stay < 2^53), so the real
+        // raw never holds NaN/inf/subnormal, only this sentinel, ±0, or a normal.
         return std::numeric_limits<raw_t<B>>::max();
+    }
+
+    // "Is this raw the reserved sentinel slot?" — rational counts any zero
+    // denominator; everything else (incl. real's finite DBL_MAX) is `==`.
+    template <boundable B>
+    [[nodiscard]] constexpr bool raw_is_sentinel(raw_t<B> const& r)
+    {
+      if constexpr (std::is_same_v<raw_t<B>, rational>)
+        return r.Denominator == 0;
+      else
+        return r == sentinel_raw<B>();
     }
 
     // Tail of the policy cascade: sentinel sets sentinel raw, checked reports.

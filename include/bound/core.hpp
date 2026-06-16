@@ -233,10 +233,7 @@ namespace bnd
     // Canonical "is this slot empty?" check under `sentinel` policy.
     [[nodiscard]] constexpr bool is_sentinel() const noexcept
     {
-      if constexpr (detail::rational_raw<bound>)
-        return Raw.Denominator == 0;
-      else
-        return Raw == detail::sentinel_raw<bound>();
+      return detail::raw_is_sentinel<bound>(Raw);
     }
 
     // to<T>() emptiness predicate: under sentinel policy an empty slot reports
@@ -597,7 +594,7 @@ namespace bnd
       // For `sentinel` policy types, an out-of-range write silently sets
       // result.Raw to the sentinel; surface that as a domain error.
       if constexpr (has_flag(P, sentinel))
-        if (result.Raw == detail::sentinel_raw<bound>())
+        if (detail::raw_is_sentinel<bound>(result.Raw))
           return slim::unexpected{errc::domain_error};
       return result;
     }
@@ -743,13 +740,9 @@ namespace slim
   template <bnd::grid G, bnd::policy_flag P>
   constexpr bool sentinel_traits<bnd::bound<G, P>>::is_sentinel(const bnd::bound<G, P>& v) noexcept
   {
-    using raw = typename bnd::bound<G, P>::raw_type;
-    // Rational uses a broader check (any zero denominator) than equality
-    // against the canonical {1, 0} sentinel.
-    if constexpr (std::is_same_v<raw, bnd::detail::rational>)
-      return v.raw().Denominator == 0;
-    else
-      return v.raw() == bnd::detail::sentinel_raw<bnd::bound<G, P>>();
+    // Rational uses a broader check (any zero denominator); real compares the
+    // reserved NaN bit pattern (NaN != NaN); everything else is plain equality.
+    return bnd::detail::raw_is_sentinel<bnd::bound<G, P>>(v.raw());
   }
 } // namespace slim
 
