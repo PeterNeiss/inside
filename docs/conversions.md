@@ -17,7 +17,7 @@ writing literal values into bounds.
 | Conversion | When it applies | Purpose |
 |---|---|---|
 | `operator imax()` (implicit) | integer-notch grid (notch denom = 1) with Lower ≥ imax_min and Upper ≤ imax_max | drop-in for integer contexts: accumulators, comparisons, and indexing (`vec[b]` converts imax → size_t) |
-| `operator double()` (**implicit** for `real`-policy bounds, explicit otherwise) | `real`: always (the dyadic grid makes every value exact in `double`). Others: grid carries a rounding policy (`round_*` or `snapping`) | floating-point arithmetic / printf |
+| `operator double()` (**implicit** for `real`-policy bounds, explicit otherwise) | `real`: always (the double-exact grid makes every value exact in `double`). Others: grid carries a rounding policy (`round_*` or `snapping`) | floating-point arithmetic / printf |
 
 `operator imax()` is deliberately the **only** implicit integer conversion —
 a second one (e.g. `size_t`) would make built-in mixed arithmetic like
@@ -37,7 +37,7 @@ vec[b] = 0;                // no .as<>() — imax, then imax → size_t
 double e = double(b);      // explicit (rounding-gated operator double())
 
 using gain = bound<{{0, 4}, notch<1, 65536>}, round_nearest | real>;
-double d = gain{0.5};      // implicit — a real bound's value is exact in double
+double d = gain{0.5};      // implicit — a real bound's value is exact in double (double-exact grid)
 ```
 
 For wide grids (Upper > imax_max) the implicit operators are SFINAE-disabled

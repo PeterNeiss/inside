@@ -25,6 +25,9 @@ signature-identical**: the same source compiles against either.
 > arithmetic (and therefore the reproducibility contract and constexpr-ness)
 > does.
 
+For the full reproducibility story across the whole library (not just
+`bnd::math`), see [determinism.md](determinism.md).
+
 ```cpp
 #include "bound/cmath.hpp"
 using namespace bnd;
@@ -49,9 +52,18 @@ marks a bound as a math operand:
   (clamp / wrap / sentinel / checked report).
 - Under `BND_MATH_FIXED` the same flag is an ordinary `round_nearest`
   integer-backed bound — the source compiles unchanged.
-- `real` requires a **dyadic grid** (power-of-two notch and Lower) so every
-  grid point is exactly representable in `double` and the snap is lossless.
-  A non-dyadic grid with `real` is a compile error.
+- `real` requires a grid that is **exactly representable in `double`**: dyadic
+  (power-of-two notch and Lower) **and** within the 53-bit significand — writing
+  a value as `N·2^(−f)` with `f = log2(notch denominator)`, every on-grid value
+  must satisfy `|N| < 2^53` (and `f ≤ 1022`, so no value is subnormal). That is
+  exactly "the ULP at the largest value ≤ the notch", so the snap is lossless. A
+  grid that is non-dyadic **or** too fine for `double` is a compile error
+  (*"grid exceeds double's 53-bit significand — coarsen the notch/range or use
+  `exact`"*).
+- An operation whose **result** grid would exceed that bound automatically drops
+  `real` and stores the result exactly (rational/integer), so `real` math never
+  silently diverges from the exact grid arithmetic — it trades the double fast
+  path for exactness only where `double` cannot represent the result.
 
 Pure grid operations — `abs` / `floor` / `ceil` / `round` / `trunc` /
 `fmod` — do **not** require `real`: they have no engine and act on any bound.

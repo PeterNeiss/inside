@@ -360,12 +360,18 @@ Operations return `slim::optional<bound>` in two cases:
    [Division § Why the result is `slim::optional`](#why-the-result-is-slimoptional)
    for the two distinct failure modes division has (divide-by-zero on every
    path, plus denominator overflow on the rational path under `checked`).
+   `real` (double-backed) division participates identically: a real `÷` whose
+   divisor grid can be zero returns `slim::optional` and reports
+   `errc::division_by_zero` on a zero divisor — it is not a silent path.
 
 2. **Rational raw storage** — when the result grid can't be represented with
    an integer raw type (see [storage.md](storage.md)), the result uses
    `rational` as its raw storage. Addition and multiplication on such types
    return `slim::optional` because rational arithmetic can overflow
-   (`lcm(b, d)` of the denominators may exceed `imax`).
+   (`lcm(b, d)` of the denominators may exceed `imax`). This also covers a `real`
+   result grid too fine for `double`: `real` is dropped and the exact result is
+   stored as `rational`, so an unrepresentable `real ×` returns `slim::optional`
+   (overflow-checked) rather than silently losing precision.
 
 All `optional`-returning operators propagate `nullopt`: if either operand is
 `nullopt`, the result is `nullopt`.

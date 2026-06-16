@@ -78,6 +78,8 @@ safe_pct p = 150;                          // p == 100
 - [Conversions, casts & predicates](docs/conversions.md)
 - [Storage, iteration & STL integration](docs/storage.md)
 - [`bnd::math` — constexpr, bit-exact math](docs/math.md)
+- [Determinism & reproducibility](docs/determinism.md)
+- [Bound for fixed-point users](docs/fixed-point.md)
 - [Internals (architecture / design notes)](docs/internals.md)
 
 ## Examples

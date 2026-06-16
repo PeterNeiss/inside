@@ -3,7 +3,8 @@
 Each `bound` stores a single `Raw` member. The storage type is selected
 automatically per grid; this page summarises the user-visible rules and
 shows how `bound` integrates with the standard containers and algorithms.
-For the full decision tree see [internals.md](internals.md).
+For the full decision tree see [internals.md](internals.md); for which grids are
+fastest (from a fixed-point perspective) see [fixed-point.md](fixed-point.md).
 
 ## Storage selection
 
@@ -64,7 +65,7 @@ The rules above are the **default deduction**. Four policy flags override it
 
 ```cpp
 using gain   = bound<{{0, 4}, notch<1, 65536>}, round_nearest | real>;
-                                       // Raw: double (math operand, dyadic grid)
+                                       // Raw: double (math operand, double-exact grid)
 using ratio  = bound<{{0, 1}, notch<1, 3>}, exact>;
                                        // Raw: exact fraction on a NOTCHED grid
 using regval = bound<{5, 100}, direct>; // Raw: uint8_t, raw() == value (5..100)
@@ -75,7 +76,10 @@ using slot   = bound<{-5, 5}, indexed>; // Raw: uint8_t, raw() == index (0..10)
 notch-count limit and removes `double` entirely; `direct` makes the raw equal
 the wire/debugger value for interop; `indexed` gives signed grids a dense
 unsigned layout for serialization. Mixed-flag results from arithmetic resolve
-widest-wins: `exact > real > direct > indexed > deduced`.
+widest-wins: `exact > real > direct > indexed > deduced`. `real` is selected only
+when the grid is **double-exact** (every value fits `double`'s 53-bit significand);
+otherwise it is dropped and deduction proceeds — and a result grid finer than the
+`uint64` index space deduces `rational`, keeping the result exact.
 
 > **Sentinel slot and SIMD width.** The smallest-type selection reserves one
 > raw slot for the `slim::optional` sentinel (next section). That makes
@@ -89,7 +93,10 @@ widest-wins: `exact > real > direct > indexed > deduced`.
 flag, so `sizeof(slim::optional<bound>) == sizeof(bound)`. The sentinel is
 `numeric_limits<raw>::max()` for unsigned types and `numeric_limits<raw>::min()`
 for signed types. This costs one value from the representable range (e.g.
-`int8_t` gives 255 usable values: −127..127).
+`int8_t` gives 255 usable values: −127..127). For `real` (double) raw the
+sentinel is that same `numeric_limits<raw>::max()` rule applied to `double`,
+i.e. the finite, comparable `DBL_MAX` — unreachable as an on-grid value, never a
+NaN/Inf.
 
 ## Predefined hardware formats
 

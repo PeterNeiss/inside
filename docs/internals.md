@@ -47,14 +47,18 @@ operand policies, and the widest representation present wins:
 ```text
   exact in P ──────────────────────────▶  rational raw   (raw IS the value, exact fraction)
        │ no
-  real in P AND dyadic grid ───────────▶  double raw     (raw IS the value; default engine
-       │ no   (elided under BND_MATH_FIXED)               only — fixed engine falls through)
+  real in P AND double_exact grid ─────▶  double raw     (raw IS the value; default engine
+       │ no   (elided under BND_MATH_FIXED)               only — fixed engine falls through.
+       │                                                  Direct misuse on a too-fine grid is a
+       │                                                  static_assert; arithmetic instead DROPS
+       │                                                  `real` when the result isn't double_exact)
   direct in P AND Notch == 1 ──────────▶  integer raw    (raw IS the value)
        │ no
   indexed in P AND Notch != 0 ─────────▶  unsigned raw   (raw = 0-based notch index)
        │ no
   deduced (storage_min<G>):
         Notch == 0                  ───▶  rational raw   (continuous grid)
+        index count > umax          ───▶  rational raw   (too fine for any integer index)
         Notch == 1 AND (Lower == 0
           or signed raw)            ───▶  integer raw    (raw IS the value)
         otherwise                   ───▶  unsigned raw   (raw = 0-based notch index)
@@ -181,7 +185,7 @@ ambiguous. Indexing reaches `size_t` through imax's standard conversion.
 exact, so no risk in letting it happen silently.
 
 `bound::operator double()` — `explicit((P & real) != real)`. A
-`real`-policy bound lives on a dyadic grid, so every value is exactly
+`real`-policy bound lives on a double-exact grid, so every value is exactly
 representable in `double` and the conversion is lossless — implicit, by the
 same rule as `operator rational`. For everything else the conversion can
 round, so it is **explicit** AND gated on a rounding policy flag; strict
