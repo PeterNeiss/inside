@@ -139,12 +139,22 @@ namespace bnd
         else if constexpr (has_flag(P, wrap))
         {
           // Fold into [Lower, Lower + range), range = span + notch — the same
-          // convention as the fractional apply_wrap.
+          // convention as the fractional apply_wrap. floor(q) without an
+          // unguarded imax cast: for |q| >= 2^52 the double is already integral
+          // (floor(q) == q), else narrow to imax (safe) and adjust toward -inf.
           const double range = hi - lo + static_cast<double>(G.Notch);
           const double q = (v - lo) / range;
-          imax k = static_cast<imax>(q);
-          if (q < 0 && static_cast<double>(k) != q) --k;   // floor
-          v -= static_cast<double>(k) * range;
+          const double aq = q < 0 ? -q : q;
+          double kd;
+          if (aq >= 4503599627370496.0)            // 2^52
+            kd = q;
+          else
+          {
+            const imax k = static_cast<imax>(q);   // |q| < 2^52 < imax
+            kd = static_cast<double>(k);
+            if (q < 0 && kd != q) kd -= 1.0;        // floor toward -inf
+          }
+          v -= kd * range;
         }
         else if (detail::domain_fail(*this, make_policy<P>(),
                    std::to_string(v) + " is not in " + bnd::to_string(G.Interval)))

@@ -135,6 +135,14 @@ namespace bnd::detail
     static constexpr round_mode rmode =
         div_round_mode(F | BoundPolicy<L> | BoundPolicy<R>);
 
+    // A clear diagnostic when the result grid is unrepresentable, instead of the
+    // raw optional-deref / .value() below failing cryptically (mirrors add/mul).
+    static_assert(native_div_qformat || (Grid<L> / Grid<R>).has_value(),
+      "division: result grid not representable (notch/interval exceeds the "
+      "representable rational range) — coarsen the operand grids");
+    static_assert(!native_div_qformat || (Upper<L> / Notch<R>).has_value(),
+      "division: Q-format result grid not representable — coarsen the operand grids");
+
     // Native-integer endpoints rounded with the same mode as the runtime
     // quotient, so e.g. round_ceil can't escape the grid. (The Q-format extreme
     // is always exact, so its grid is unchanged.)
