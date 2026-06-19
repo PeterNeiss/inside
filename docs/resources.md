@@ -8,6 +8,60 @@ shaped `bound`'s thinking, plus talks worth watching if these ideas are new to
 you. And yes — we're aware that adding one more safe-numerics library to the
 pile is its own kind of joke ([xkcd #927, "Standards"](https://xkcd.com/927/)).
 
+## Feature matrix
+
+How `bound` compares to the projects below. This is meant to be *fair*, not
+flattering — see the caveat after the tables. Legend: **●** full · **◐**
+partial / related · **○** no · **—** not applicable.
+
+**Numeric model & capabilities**
+
+| Library | Domain | Range in type `[lo,hi]` | Auto-widening result | Out-of-range handling | Fixed-point | Rational / exact | Transcendental math | Determinism / FPU-free |
+|---|---|---|---|---|---|---|---|---|
+| **bound** | bounded rational grids | ● | ● | clamp / wrap / sentinel / round / snap / throw / `error_code` | ● | ● | ● (two engines) | ● |
+| **bounded::integer** | integers | ● | ● | policy on narrowing (clamp / modulo / throw / assume) | ○ | ○ | ○ | — |
+| **Boost.SafeNumerics** | integers | ◐ ¹ | ◐ ² | detect → exception (custom exception / trap policy) | ○ | ○ | ○ | — |
+| **CNL** | fixed-point + elastic ints | ◐ ³ | ● | composable: native / saturated / throwing / undefined | ● | ◐ ⁴ | ○ | ● |
+| **fpm** | fixed-point | ○ | ○ | ○ (wraps, no checks) | ● | ○ | ● (full `<cmath>`) | ● |
+| **type_safe** | strong typedefs / vocab types | ◐ ⁵ | ○ | ◐ (arith. policy `ub`/`checked`; clamped/constrained) | ○ | ○ | ○ | — |
+| **SafeInt** | integers | ○ | ○ | detect → throw / custom handler | ○ | ○ | ○ | — |
+| **google/integers** | integers | ◐ ⁶ | ○ | trapping / wrapping / clamping ⁶ | ○ | ○ | ○ | — |
+| **PSsst** | strong-typedef framework | ○ | ○ | ○ | ○ | ○ | ◐ ⁷ | — |
+
+**Practical**
+
+| Library | Header-only | Min C++ | License | Maturity / status |
+|---|---|---|---|---|
+| **bound** | ● | C++23 (C++20 backport) | **none yet (TBD)** | **alpha · single-author · not yet battle-tested** |
+| **bounded::integer** | ○ (C++ modules) ⁸ | C++20+ (clang 22+) | BSL-1.0 | mature · active |
+| **Boost.SafeNumerics** | ● | C++14 | BSL-1.0 | mature (Boost) |
+| **CNL** | ● | C++20 (v1.x: C++11) | BSL-1.0 | mature · standards-track (P0828) |
+| **fpm** | ● | C++11 | MIT | mature · stable |
+| **type_safe** | ● | C++11 | MIT | mature · maintenance mode |
+| **SafeInt** | ● | C++11 | MIT | mature · battle-tested (since 2003) |
+| **google/integers** | ● | C++17 | Apache-2.0 | **archived (Apr 2026) · partial** ⁶ |
+| **PSsst** | ● | C++17 | BSL-1.0 | active |
+
+<sub>¹ via `safe_signed_range<MIN,MAX>` / `safe_unsigned_range`. ² through the
+promotion policy. ³ `elastic_integer` tracks digit/bit-width, not arbitrary
+`[lo,hi]`. ⁴ dyadic scaling, not arbitrary rationals. ⁵ `bounded_type` /
+`constrained_type` / `clamped_type` enforce intervals but don't propagate ranges
+through arithmetic. ⁶ `ranged<T>` constrains a range; repo archived April 2026
+with only `trapping<T>` fully implemented. ⁷ `Trigonometric` / `ExpLog` / `Root`
+mix-ins delegate to `<cmath>` on the wrapped type. ⁸ implemented as C++20
+modules, so not header-only in the classic sense. Compiled from each project's
+README/docs as of June 2026 — corrections welcome.</sub>
+
+A filled-in cell is **not** a verdict. The mature, widely deployed options here
+(Boost.SafeNumerics, SafeInt, CNL, fpm) have years of production hardening, broad
+compiler support, and real licenses; `bound` is alpha, currently unlicensed,
+single-author, and not yet battle-tested. What `bound` brings that the others
+don't combine is *rational* grids with arbitrary `[lower, upper]` bounds **and**
+reproducible transcendental math over those grids — not dominance of every
+column. Pick the tool that fits: if you need overflow-safe plain integers,
+`bounded::integer` or Boost.SafeNumerics are proven; for pure fixed-point DSP,
+`fpm` or CNL; `bound` is for when the *domain* of a value is part of its type.
+
 ## Related libraries
 
 - **[bounded::integer](https://github.com/davidstone/bounded-integer)** (David
@@ -37,6 +91,10 @@ pile is its own kind of joke ([xkcd #927, "Standards"](https://xkcd.com/927/)).
 - **[SafeInt](https://github.com/dcleblanc/SafeInt)** (David LeBlanc /
   Microsoft) — a long-lived, battle-tested integer wrapper that checks every
   cast and arithmetic operation for overflow.
+- **[google/integers](https://github.com/google/integers)** (Fuchsia Security
+  Team — *not* an official Google product) — safer integer types for C++,
+  including a `ranged<T>` that constrains an integer to a value range. A close
+  cousin of `bound`'s range-in-the-type model, focused on integers.
 - **[PSsst — Peter Sommerlad's Simple Strong Typing](https://github.com/PeterSommerlad/PSsst)**
   (Peter Sommerlad) — a tiny `strong<T, Tag>` base for building safe numeric
   wrappers with only the operators you opt into. Kindred to `bound`'s view that
@@ -65,3 +123,21 @@ pile is its own kind of joke ([xkcd #927, "Standards"](https://xkcd.com/927/)).
 - **["int != safe && int != ℤ"](https://www.youtube.com/watch?v=YyNE6Y2mv1o)**
   — Peter Sommerlad, Meeting C++ 2025. Why the built-in `int` is neither safe
   nor a mathematical integer — the exact gap `bound` sets out to close.
+
+## Blog posts & articles
+
+Longer-form writeups on the libraries above and the ideas behind them.
+
+- **type_safe** — Jonathan Müller's announcement,
+  ["Type safe — Zero overhead utilities for more type safety"](https://www.foonathan.net/2016/10/type-safe/),
+  and the companion tutorial
+  ["Emulating strong/opaque typedefs in C++"](https://www.foonathan.net/2016/10/strong-typedefs/);
+  plus Embedded Artistry's hands-on walkthrough,
+  ["Improve Type Safety in Your C++ Program With the type_safe Library"](https://embeddedartistry.com/blog/2018/05/24/improve-type-safety-in-your-c-program-with-the-type_safe-library/).
+- **Boost.SafeNumerics** — Embedded Artistry,
+  ["Enforce Correct Integer Arithmetic using the C++ Safe Numerics Library"](https://embeddedartistry.com/blog/2019/06/28/enforce-correct-integer-arithmetic-using-the-c-safe-numerics-library/).
+- **CNL / fixed-point** — Embedded Artistry,
+  ["C++11 Fixed Point Arithmetic Library"](https://embeddedartistry.com/blog/2017/08/25/c11-fixed-point-arithmetic-library/),
+  covering John McFarlane's `fixed_point` (the precursor to CNL).
+- **SafeInt** — Giovanni Dicanio,
+  ["Protecting Your C++ Code Against Integer Overflow Made Easy by SafeInt"](https://giodicanio.com/2023/11/13/protecting-your-c-plus-plus-code-against-integer-overflow-made-easy-by-safeint/).
