@@ -38,6 +38,38 @@ using safe_pct = bound<{0, 100}, clamp>;
 safe_pct p = 150;                          // p == 100
 ```
 
+## Single header
+
+The whole library is also available as one self-contained header at
+[`single_include/bound/bound.hpp`](single_include/bound/bound.hpp). It inlines the
+entire `bound/` + `slim/` tree, so it needs only the C++ standard library — there
+are no `bound/...` or `slim/...` sub-includes left to resolve. Drop the one file
+into a project, put `single_include/` on the include path, and use it exactly as
+the full tree:
+
+```cpp
+#include "bound/bound.hpp"   // single_include/ on the include path — nothing else needed
+```
+
+It is behaviourally identical to the multi-header form; the `-DBOUND_MATH_FIXED`
+engine switch and the C++20 mode apply the same way, as ordinary compiler flags.
+
+**On Compiler Explorer**, where there is no include tree to set up, the single
+header is the easy way in:
+
+- paste it into a second source pane named `bound/bound.hpp` and `#include` it; or
+- once the repo is on GitHub, pull it in with a single raw-URL include (Compiler
+  Explorer resolves URL includes only for single-header libraries — which is
+  exactly what this is):
+
+  ```cpp
+  #include <https://raw.githubusercontent.com/<user>/bound/<branch>/single_include/bound/bound.hpp>
+  ```
+
+The header is generated, not hand-edited — regenerate it after changing anything
+under `include/` with `cmake --build build --target amalgamate` (see
+[Build & Test](#build--test)).
+
 ## Feature highlights
 
 - **Policy-driven assignment** — `clamp`, `wrap`, `sentinel`, `round_nearest`,
@@ -182,3 +214,18 @@ ctest --test-dir build --output-on-failure   # runs unit + algo suites
 ./build/bench                                # performance benchmarks (native vs bound)
 ./build/example_algorithms                   # one of the example binaries
 ```
+
+### Regenerating the single header
+
+The committed [single header](#single-header) is generated from `include/` by a
+pure-CMake amalgamator (`cmake/amalgamate.cmake` — no Python or other tooling).
+After editing any header under `include/`, regenerate and commit it:
+
+```bash
+cmake --build build --target amalgamate            # rewrites single_include/bound/bound.hpp
+ctest --test-dir build -L tooling                  # amalgamate_up_to_date: fails if it drifted
+cmake --build build --target single_header_smoke   # compiles a TU seeing ONLY single_include/
+```
+
+`ctest` runs `amalgamate_up_to_date` as part of the normal suite, so a stale
+single header fails the build until it is regenerated.

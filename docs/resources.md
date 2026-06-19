@@ -30,17 +30,17 @@ partial / related · **○** no · **—** not applicable.
 
 **Practical**
 
-| Library | Header-only | Min C++ | License | Maturity / status |
-|---|---|---|---|---|
-| **bound** | ● | C++23 (C++20 backport) | **none yet (TBD)** | **alpha · single-author · not yet battle-tested** |
-| **bounded::integer** | ○ (C++ modules) ⁸ | C++20+ (clang 22+) | BSL-1.0 | mature · active |
-| **Boost.SafeNumerics** | ● | C++14 | BSL-1.0 | mature (Boost) |
-| **CNL** | ● | C++20 (v1.x: C++11) | BSL-1.0 | mature · standards-track (P0828) |
-| **fpm** | ● | C++11 | MIT | mature · stable |
-| **type_safe** | ● | C++11 | MIT | mature · maintenance mode |
-| **SafeInt** | ● | C++11 | MIT | mature · battle-tested (since 2003) |
-| **google/integers** | ● | C++17 | Apache-2.0 | **archived (Apr 2026) · partial** ⁶ |
-| **PSsst** | ● | C++17 | BSL-1.0 | active |
+| Library | Header-only | Single header | Min C++ | License | Maturity / status |
+|---|---|---|---|---|---|
+| **bound** | ● | ● ⁹ | C++23 (C++20 backport) | **none yet (TBD)** | **alpha · single-author · not yet battle-tested** |
+| **bounded::integer** | ○ (C++ modules) ⁸ | ○ | C++20+ (clang 22+) | BSL-1.0 | mature · active |
+| **Boost.SafeNumerics** | ● | ○ | C++14 | BSL-1.0 | mature (Boost) |
+| **CNL** | ● | ○ | C++20 (v1.x: C++11) | BSL-1.0 | mature · standards-track (P0828) |
+| **fpm** | ● | ○ | C++11 | MIT | mature · stable |
+| **type_safe** | ● | ○ | C++11 | MIT | mature · maintenance mode |
+| **SafeInt** | ● | ● | C++11 | MIT | mature · battle-tested (since 2003) |
+| **google/integers** | ● | ○ | C++17 | Apache-2.0 | **archived (Apr 2026) · partial** ⁶ |
+| **PSsst** | ● | ● | C++17 | BSL-1.0 | active |
 
 <sub>¹ via `safe_signed_range<MIN,MAX>` / `safe_unsigned_range`. ² through the
 promotion policy. ³ `elastic_integer` tracks digit/bit-width, not arbitrary
@@ -49,7 +49,11 @@ promotion policy. ³ `elastic_integer` tracks digit/bit-width, not arbitrary
 through arithmetic. ⁶ `ranged<T>` constrains a range; repo archived April 2026
 with only `trapping<T>` fully implemented. ⁷ `Trigonometric` / `ExpLog` / `Root`
 mix-ins delegate to `<cmath>` on the wrapped type. ⁸ implemented as C++20
-modules, so not header-only in the classic sense. Compiled from each project's
+modules, so not header-only in the classic sense. ⁹ a *generated* amalgamation of
+the multi-file source (`single_include/bound/bound.hpp`, standard-library-only),
+rebuilt by a CMake target — SafeInt (`SafeInt.hpp`) and PSsst (`pssst.h`) are
+instead authored as a single file; the rest ship a multi-header tree (fpm, e.g.,
+splits `fixed.hpp` / `math.hpp` / `ios.hpp`). Compiled from each project's
 README/docs as of June 2026 — corrections welcome.</sub>
 
 A filled-in cell is **not** a verdict. The mature, widely deployed options here
