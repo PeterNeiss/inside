@@ -252,7 +252,7 @@ namespace bnd::detail
       if constexpr (!zero_unchecked)
         if (rhs_r.Numerator == 0) return fail(errc::division_by_zero, "division by zero in div");
       auto q = as_rational(lhs) / rhs_r;
-      if (!q) return fail(errc::overflow, "rational overflow in div");
+      if (!q) [[unlikely]] return fail(errc::overflow, "rational overflow in div");
       return result::from_raw(*q);
     }
     else

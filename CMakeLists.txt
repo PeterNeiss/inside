@@ -28,6 +28,17 @@ if(BOUND_MATH_FIXED)
     target_compile_definitions(bound_bound INTERFACE BND_MATH_FIXED)
 endif()
 
+# Error-message detail. Default OFF = cheap: a checked violation throws
+# std::system_error carrying the static category message ("value outside
+# interval", …), so the common assignment/arithmetic path stays small and never
+# drags <string> / bnd::to_string into a translation unit. ON = rich: messages
+# include the offending value and the interval/notch (pulls in the formatting
+# machinery). Define the BND_RICH_MESSAGES macro directly for non-CMake builds.
+option(BOUND_RICH_MESSAGES "Build detailed value/interval error messages (off = cheap static category messages)" OFF)
+if(BOUND_RICH_MESSAGES)
+    target_compile_definitions(bound_bound INTERFACE BND_RICH_MESSAGES)
+endif()
+
 target_include_directories(bound_bound
     INTERFACE
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>

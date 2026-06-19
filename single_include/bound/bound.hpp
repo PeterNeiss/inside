@@ -1256,9 +1256,35 @@ public:
 //---------------------------------------------------------------------------
 //---------------------------------------------------------------------------
 
+// <string> is pulled in only when rich (value/interval) error messages are
+// enabled (-DBND_RICH_MESSAGES). The cheap default reports through a static
+// category message and never builds an std::string of its own. (std::string
+// itself remains reachable via <system_error>, which needs it for
+// std::error_category::message — gating the explicit include just keeps it off
+// the cheap default's *intentional* surface.)
+#ifdef BND_RICH_MESSAGES
+    #include <string>
+#endif
 
 #ifdef BOUND_HAS_STACKTRACE
     #include <stacktrace>
+#endif
+
+//---------------------------------------------------------------------------
+// Attribute shims. Error/throw paths are marked cold + non-inline so the
+// optimiser keeps them out of the hot path (and out of the inlined body of
+// otherwise-trivial assignment/arithmetic). Standard [[noreturn]] / [[unlikely]]
+// are used directly at the throw sites and branches.
+//---------------------------------------------------------------------------
+#if defined(__GNUC__) || defined(__clang__)
+#  define BND_COLD     [[gnu::cold]]
+#  define BND_NOINLINE [[gnu::noinline]]
+#elif defined(_MSC_VER)
+#  define BND_COLD
+#  define BND_NOINLINE __declspec(noinline)
+#else
+#  define BND_COLD
+#  define BND_NOINLINE
 #endif
 
 //---------------------------------------------------------------------------
@@ -1282,22 +1308,28 @@ namespace bnd
     not_finite,         // non-finite double input (NaN/Inf)
   };
 
+  // Static, allocation-free message per code. The single source of truth for
+  // both bound_category::message and the cheap error path; returns a view onto a
+  // string literal, so it needs only <string_view>.
+  constexpr std::string_view errc_message(errc e) noexcept
+  {
+    switch (e)
+    {
+      case errc::domain_error:     return "value outside interval";
+      case errc::division_by_zero: return "division by zero";
+      case errc::overflow:         return "rational arithmetic overflow";
+      case errc::rounding_error:   return "notch incompatibility";
+      case errc::not_a_value:      return "not a value (sentinel state)";
+      case errc::not_finite:       return "non-finite floating-point value";
+    }
+    return "unknown bound error";
+  }
+
   struct bound_category : std::error_category
   {
     const char* name() const noexcept override { return "bound"; }
     std::string message(int ev) const noexcept override
-    {
-      switch (static_cast<errc>(ev))
-      {
-        case errc::domain_error:     return "value outside interval";
-        case errc::division_by_zero: return "division by zero";
-        case errc::overflow:         return "rational arithmetic overflow";
-        case errc::rounding_error:   return "notch incompatibility";
-        case errc::not_a_value:      return "not a value (sentinel state)";
-        case errc::not_finite:       return "non-finite floating-point value";
-        default:                     return "unknown bound error";
-      }
-    }
+    { return std::string(errc_message(static_cast<errc>(ev))); }
   };
 
   inline const bound_category& bound_error_category()
@@ -1308,6 +1340,28 @@ namespace bnd
 
   inline std::error_code make_error_code(errc e)
   { return {static_cast<int>(e), bound_error_category()}; }
+
+  //---------------------------------------------------------------------------
+  // Outlined throw helpers. Cold + non-inline so the (rare) throw machinery is
+  // emitted once, off the hot path, rather than inlined into every assignment.
+  //---------------------------------------------------------------------------
+  namespace detail
+  {
+    [[noreturn]] BND_COLD BND_NOINLINE
+    inline void throw_bound_error(errc code)
+    { throw std::system_error(make_error_code(code)); }   // static category message
+
+#ifdef BND_RICH_MESSAGES
+    [[noreturn]] BND_COLD BND_NOINLINE
+    inline void throw_bound_error(errc code, std::string what)
+    {
+#  ifdef BOUND_HAS_STACKTRACE
+      what += ": \n" + std::to_string(std::stacktrace::current());
+#  endif
+      throw std::system_error(make_error_code(code), std::move(what));
+    }
+#endif
+  } // namespace detail
 
   //---------------------------------------------------------------------------
   // diagnostics
@@ -4266,6 +4320,25 @@ namespace bnd
 
     // Tail of the policy cascade: sentinel sets sentinel raw, checked reports.
     // Returns true if a policy handled the failure (caller should return).
+    // Cheap default — reports through the static category message (no string).
+    template <boundable B, typename P>
+    constexpr bool domain_fail(B& b, P&& policy)
+    {
+      if constexpr (HasPolicy<B, P, sentinel>)
+      {
+        b = B::from_raw(sentinel_raw<B>());
+        return true;
+      }
+      else if (policy.domain_check())
+      {
+        policy.report(errc::domain_error);
+        return true;
+      }
+      return false;
+    }
+
+#ifdef BND_RICH_MESSAGES
+    // Rich overload — carries the detailed "<value> is not in <interval>" text.
     template <boundable B, typename P>
     constexpr bool domain_fail(B& b, P&& policy, std::string msg)
     {
@@ -4281,6 +4354,7 @@ namespace bnd
       }
       return false;
     }
+#endif
 
     // The two non-trivial clauses of `bound_assignable`, named so the concept and
     // its `bound_assignable_why` diagnostic share one definition. Concepts (not
@@ -4343,6 +4417,12 @@ namespace bnd
 //---------------------------------------------------------------------------
 //---------------------------------------------------------------------------
 
+// format.hpp supplies bnd::to_string for the rich (-DBND_RICH_MESSAGES) error
+// messages. It is included unconditionally: the cheap default never *instantiates*
+// to_string (the message helpers below are gated out), so no formatting code is
+// emitted — but the header must stay visible because print.hpp / formatter.hpp
+// need to_string regardless, and a conditional include cannot survive the
+// single-header amalgamation.
 
 // ======================================================================
 //  bound/format.hpp
@@ -4501,12 +4581,15 @@ namespace bnd::detail
       || HasPolicy<L, P, sentinel>
       || (HasPolicy<L, P, checked> && !HasPolicy<L, P, ignore_domain>);
 
+#ifdef BND_RICH_MESSAGES
   // Shared "<value> is not in <interval>" message for the domain-error and
   // error-action paths. The caller passes the already-resolved view of the rhs
   // (the integer/real value, or `as_rational(rhs)` for a boundable source).
+  // Rich-only: the cheap default never builds this (no <string>/to_string).
   template <boundable L, typename V>
   inline std::string out_of_range_msg(V const& rhs_view)
   { return bnd::to_string(rhs_view) + " is not in " + bnd::to_string(Interval<L>); }
+#endif
 
   // Shared out-of-range policy cascade. Order: clamp/wrap/sentinel/error
   // *actions*, then clamp/wrap *policy* bits, then `domain_fail`. The four
@@ -4517,7 +4600,8 @@ namespace bnd::detail
             typename DoClamp, typename DoWrap, typename SentinelVal, typename MsgView>
   constexpr bool dispatch_out_of_range(L& lhs, P&& policy, A&& action,
                                        DoClamp do_clamp, DoWrap do_wrap,
-                                       SentinelVal sentinel_val, MsgView msg_view)
+                                       SentinelVal sentinel_val,
+                                       [[maybe_unused]] MsgView msg_view)
   {
     using PA = plain<A>;
     if constexpr (clamp_action<PA>)
@@ -4532,8 +4616,12 @@ namespace bnd::detail
     }
     else if constexpr (error_action<PA>)
     {
+#ifdef BND_RICH_MESSAGES
       auto msg = out_of_range_msg<L>(msg_view());
       action.fn(lhs, errc::domain_error, std::string_view(msg));
+#else
+      action.fn(lhs, errc::domain_error, errc_message(errc::domain_error));
+#endif
       return true;
     }
     else if constexpr (HasPolicy<L, P, clamp>)
@@ -4541,7 +4629,11 @@ namespace bnd::detail
     else if constexpr (HasPolicy<L, P, wrap>)
     { do_wrap(); return true; }
     else
+#ifdef BND_RICH_MESSAGES
       return domain_fail(lhs, policy, out_of_range_msg<L>(msg_view()));
+#else
+      return domain_fail(lhs, policy);
+#endif
   }
 
   //---------------------------------------------------------------------------
@@ -4790,7 +4882,7 @@ namespace bnd::detail
         {
           constexpr imax lower = LowerImax<L>;
           constexpr imax upper = UpperImax<L>;
-          if (static_cast<imax>(rhs) < lower || static_cast<imax>(rhs) > upper)
+          if (static_cast<imax>(rhs) < lower || static_cast<imax>(rhs) > upper) [[unlikely]]
             if (handle_out_of_range(lhs, rhs, lower, upper, policy, action)) return lhs;
         }
       }
@@ -4959,12 +5051,18 @@ namespace bnd::detail
 
       if constexpr (has_round_flag)
         store_slot(round_quotient<L, P>(raw.Numerator, den));
-      else if (policy.round_check())
+      else if (policy.round_check()) [[unlikely]]
       {
+#ifdef BND_RICH_MESSAGES
         auto msg = bnd::to_string(rhs) + " does not land on notch " + bnd::to_string(Notch<L>);
         if constexpr (error_action<plain<A>>)
         { action.fn(lhs, errc::rounding_error, std::string_view(msg)); return false; }
         policy.report(errc::rounding_error, msg);
+#else
+        if constexpr (error_action<plain<A>>)
+        { action.fn(lhs, errc::rounding_error, errc_message(errc::rounding_error)); return false; }
+        policy.report(errc::rounding_error);
+#endif
         return false;
       }
       else
@@ -4981,7 +5079,7 @@ namespace bnd::detail
   template<typename P, typename A>
   constexpr L& assignment<L,R>::assign(L& lhs, R const& rhs, P&& policy, A&& action)
   {
-    if (not includes(Interval<L>, rhs))
+    if (not includes(Interval<L>, rhs)) [[unlikely]]
     {
       // Fractional path has no wrap *action* branch (Wrappable = false).
       if (dispatch_out_of_range<false>(lhs, policy, action,
@@ -5187,11 +5285,13 @@ namespace bnd
       return test(checked) && not test(snapping);
     }
 
-    constexpr void report(errc code, std::string what)
+    // Cheap default report: no message construction. error_ref mode records the
+    // code; throw mode raises system_error with the static category message via
+    // an outlined cold helper. The constant-evaluation guard throws a string
+    // literal for a clearer compile-time diagnostic than "non-constexpr function
+    // called".
+    constexpr void report(errc code)
     {
-      // Constant-evaluation guard: system_error isn't constexpr, so throw a
-      // string literal for a clearer compile-time diagnostic than "non-constexpr
-      // function called".
       if (std::is_constant_evaluated())
       {
         throw "bound: value out of range during constant evaluation "
@@ -5200,13 +5300,25 @@ namespace bnd
       if constexpr (std::is_same_v<E, detail::error_ref>)
         E::Code = E::Code ? E::Code : make_error_code(code);
       else
-      {
-#ifdef BOUND_HAS_STACKTRACE
-        what += ": \n" + std::to_string(std::stacktrace::current());
-#endif
-        throw std::system_error(make_error_code(code), what);
-      }
+        detail::throw_bound_error(code);
     }
+
+#ifdef BND_RICH_MESSAGES
+    // Rich report: carries a detailed "<value> is not in <interval>" message.
+    // Compiled only under -DBND_RICH_MESSAGES (pulls in <string> / to_string).
+    constexpr void report(errc code, std::string what)
+    {
+      if (std::is_constant_evaluated())
+      {
+        throw "bound: value out of range during constant evaluation "
+              "(checked policy hit; choose clamp/wrap/sentinel or widen the interval)";
+      }
+      if constexpr (std::is_same_v<E, detail::error_ref>)
+        E::Code = E::Code ? E::Code : make_error_code(code);
+      else
+        detail::throw_bound_error(code, std::move(what));
+    }
+#endif
   };
 
   policy(std::error_code&) -> policy<none, detail::error_ref>;
@@ -5252,7 +5364,8 @@ namespace bnd
   namespace detail
   {
   template <boundable Result, typename A, typename P>
-  constexpr auto report_or_nullopt(A&& action, P&& policy, errc code, const char* what)
+  constexpr auto report_or_nullopt(A&& action, P&& policy, errc code,
+                                   [[maybe_unused]] const char* what)
     -> std::conditional_t<overflow_action<A>, Result, slim::optional<Result>>
   {
     if constexpr (overflow_action<A>)
@@ -5264,7 +5377,11 @@ namespace bnd
     else
     {
       if constexpr (UsesErrorRef<std::remove_cvref_t<P>>)
+#ifdef BND_RICH_MESSAGES
         policy.report(code, what);
+#else
+        policy.report(code);
+#endif
       return slim::nullopt;
     }
   }
@@ -5357,7 +5474,11 @@ namespace bnd
       if constexpr (has_action<IsErrorActionPred, As...>)
         pick_action_in<IsErrorActionPred>(Actions).fn(Ref, code, std::string_view(what));
       else if constexpr (!HasPolicy<B, P, ignore_zero>)
+#ifdef BND_RICH_MESSAGES
         Policy.report(code, what);
+#else
+        Policy.report(code);
+#endif
     }
 
     public:
@@ -5369,16 +5490,20 @@ namespace bnd
     //-------------------------------------------------------------------------
     private:
     template <typename R>
-    constexpr B& finalise_arith(R&& result, const char* msg)
+    constexpr B& finalise_arith(R&& result, [[maybe_unused]] const char* msg)
     {
       if constexpr (requires { typename plain<R>::value_type; })
       {
-        if (!result.has_value())
+        if (!result.has_value()) [[unlikely]]
         {
           if constexpr (has_action<IsOverflowActionPred, As...>)
             pick_action_in<IsOverflowActionPred>(Actions).fn(Ref, errc::overflow);
           else
+#ifdef BND_RICH_MESSAGES
             Policy.report(errc::overflow, msg);
+#else
+            Policy.report(errc::overflow);
+#endif
           return Ref;
         }
         return assign_with_picked(result.value());
@@ -5543,7 +5668,7 @@ namespace bnd::detail
       if constexpr (needs_overflow_check<F>)
       {
         auto sum = rational::add(lhs,rhs);
-        if (!sum)
+        if (!sum) [[unlikely]]
           return report_or_nullopt<result>(action, policy, errc::overflow,
                                            "rational overflow in add");
         res = result::from_raw(*sum);
@@ -5654,7 +5779,7 @@ namespace bnd::detail
       if constexpr (needs_overflow_check<P>)
       {
         auto prod = as_rational(lhs) * as_rational(rhs);
-        if (!prod)
+        if (!prod) [[unlikely]]
           return report_or_nullopt<result>(action, policy, errc::overflow,
                                            "rational overflow in mul");
         return result::from_raw(raw_cast<result>(*prod));
@@ -5988,7 +6113,7 @@ namespace bnd::detail
       if constexpr (!zero_unchecked)
         if (rhs_r.Numerator == 0) return fail(errc::division_by_zero, "division by zero in div");
       auto q = as_rational(lhs) / rhs_r;
-      if (!q) return fail(errc::overflow, "rational overflow in div");
+      if (!q) [[unlikely]] return fail(errc::overflow, "rational overflow in div");
       return result::from_raw(*q);
     }
     else
@@ -6244,9 +6369,14 @@ namespace bnd
           }
           v -= kd * range;
         }
+#ifdef BND_RICH_MESSAGES
         else if (detail::domain_fail(*this, make_policy<P>(),
                    std::to_string(v) + " is not in " + bnd::to_string(G.Interval)))
           return;            // sentinel stored / reported (error_code mode)
+#else
+        else if (detail::domain_fail(*this, make_policy<P>()))
+          return;            // sentinel stored / reported (error_code mode)
+#endif
         // no handler (unchecked policy): fall through and store snapped as-is
       }
       Raw = G.snap_double(v);
@@ -6602,7 +6732,11 @@ namespace bnd
       else if constexpr (P & sentinel)
         Raw = detail::sentinel_raw<bound>();
       else
+#ifdef BND_RICH_MESSAGES
         make_policy<P>().report(errc::domain_error, "operator+= result out of range");
+#else
+        make_policy<P>().report(errc::domain_error);
+#endif
       return *this;
     }
     public:
@@ -6622,10 +6756,14 @@ namespace bnd
       return *this;
     }
 
-    constexpr bool report_div_by_zero(const char* msg)
+    constexpr bool report_div_by_zero([[maybe_unused]] const char* msg)
     {
       if constexpr (!(P & ignore_zero))
+#ifdef BND_RICH_MESSAGES
         make_policy<P>().report(errc::division_by_zero, msg);
+#else
+        make_policy<P>().report(errc::division_by_zero);
+#endif
       return false;   // caller returns *this directly
     }
     public:

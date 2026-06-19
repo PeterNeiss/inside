@@ -156,9 +156,14 @@ namespace bnd
           }
           v -= kd * range;
         }
+#ifdef BND_RICH_MESSAGES
         else if (detail::domain_fail(*this, make_policy<P>(),
                    std::to_string(v) + " is not in " + bnd::to_string(G.Interval)))
           return;            // sentinel stored / reported (error_code mode)
+#else
+        else if (detail::domain_fail(*this, make_policy<P>()))
+          return;            // sentinel stored / reported (error_code mode)
+#endif
         // no handler (unchecked policy): fall through and store snapped as-is
       }
       Raw = G.snap_double(v);
@@ -514,7 +519,11 @@ namespace bnd
       else if constexpr (P & sentinel)
         Raw = detail::sentinel_raw<bound>();
       else
+#ifdef BND_RICH_MESSAGES
         make_policy<P>().report(errc::domain_error, "operator+= result out of range");
+#else
+        make_policy<P>().report(errc::domain_error);
+#endif
       return *this;
     }
     public:
@@ -534,10 +543,14 @@ namespace bnd
       return *this;
     }
 
-    constexpr bool report_div_by_zero(const char* msg)
+    constexpr bool report_div_by_zero([[maybe_unused]] const char* msg)
     {
       if constexpr (!(P & ignore_zero))
+#ifdef BND_RICH_MESSAGES
         make_policy<P>().report(errc::division_by_zero, msg);
+#else
+        make_policy<P>().report(errc::division_by_zero);
+#endif
       return false;   // caller returns *this directly
     }
     public:

@@ -75,7 +75,7 @@ namespace bnd::detail
       if constexpr (needs_overflow_check<P>)
       {
         auto prod = as_rational(lhs) * as_rational(rhs);
-        if (!prod)
+        if (!prod) [[unlikely]]
           return report_or_nullopt<result>(action, policy, errc::overflow,
                                            "rational overflow in mul");
         return result::from_raw(raw_cast<result>(*prod));

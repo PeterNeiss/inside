@@ -493,6 +493,25 @@ namespace bnd
 
     // Tail of the policy cascade: sentinel sets sentinel raw, checked reports.
     // Returns true if a policy handled the failure (caller should return).
+    // Cheap default — reports through the static category message (no string).
+    template <boundable B, typename P>
+    constexpr bool domain_fail(B& b, P&& policy)
+    {
+      if constexpr (HasPolicy<B, P, sentinel>)
+      {
+        b = B::from_raw(sentinel_raw<B>());
+        return true;
+      }
+      else if (policy.domain_check())
+      {
+        policy.report(errc::domain_error);
+        return true;
+      }
+      return false;
+    }
+
+#ifdef BND_RICH_MESSAGES
+    // Rich overload — carries the detailed "<value> is not in <interval>" text.
     template <boundable B, typename P>
     constexpr bool domain_fail(B& b, P&& policy, std::string msg)
     {
@@ -508,6 +527,7 @@ namespace bnd
       }
       return false;
     }
+#endif
 
     // The two non-trivial clauses of `bound_assignable`, named so the concept and
     // its `bound_assignable_why` diagnostic share one definition. Concepts (not

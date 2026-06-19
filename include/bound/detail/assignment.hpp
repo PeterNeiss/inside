@@ -6,6 +6,12 @@
 
 #include "bound/generic.hpp"
 #include "bound/grid.hpp"
+// format.hpp supplies bnd::to_string for the rich (-DBND_RICH_MESSAGES) error
+// messages. It is included unconditionally: the cheap default never *instantiates*
+// to_string (the message helpers below are gated out), so no formatting code is
+// emitted — but the header must stay visible because print.hpp / formatter.hpp
+// need to_string regardless, and a conditional include cannot survive the
+// single-header amalgamation.
 #include "bound/format.hpp"
 
 namespace bnd::detail
@@ -33,12 +39,15 @@ namespace bnd::detail
       || HasPolicy<L, P, sentinel>
       || (HasPolicy<L, P, checked> && !HasPolicy<L, P, ignore_domain>);
 
+#ifdef BND_RICH_MESSAGES
   // Shared "<value> is not in <interval>" message for the domain-error and
   // error-action paths. The caller passes the already-resolved view of the rhs
   // (the integer/real value, or `as_rational(rhs)` for a boundable source).
+  // Rich-only: the cheap default never builds this (no <string>/to_string).
   template <boundable L, typename V>
   inline std::string out_of_range_msg(V const& rhs_view)
   { return bnd::to_string(rhs_view) + " is not in " + bnd::to_string(Interval<L>); }
+#endif
 
   // Shared out-of-range policy cascade. Order: clamp/wrap/sentinel/error
   // *actions*, then clamp/wrap *policy* bits, then `domain_fail`. The four
@@ -49,7 +58,8 @@ namespace bnd::detail
             typename DoClamp, typename DoWrap, typename SentinelVal, typename MsgView>
   constexpr bool dispatch_out_of_range(L& lhs, P&& policy, A&& action,
                                        DoClamp do_clamp, DoWrap do_wrap,
-                                       SentinelVal sentinel_val, MsgView msg_view)
+                                       SentinelVal sentinel_val,
+                                       [[maybe_unused]] MsgView msg_view)
   {
     using PA = plain<A>;
     if constexpr (clamp_action<PA>)
@@ -64,8 +74,12 @@ namespace bnd::detail
     }
     else if constexpr (error_action<PA>)
     {
+#ifdef BND_RICH_MESSAGES
       auto msg = out_of_range_msg<L>(msg_view());
       action.fn(lhs, errc::domain_error, std::string_view(msg));
+#else
+      action.fn(lhs, errc::domain_error, errc_message(errc::domain_error));
+#endif
       return true;
     }
     else if constexpr (HasPolicy<L, P, clamp>)
@@ -73,7 +87,11 @@ namespace bnd::detail
     else if constexpr (HasPolicy<L, P, wrap>)
     { do_wrap(); return true; }
     else
+#ifdef BND_RICH_MESSAGES
       return domain_fail(lhs, policy, out_of_range_msg<L>(msg_view()));
+#else
+      return domain_fail(lhs, policy);
+#endif
   }
 
   //---------------------------------------------------------------------------
@@ -322,7 +340,7 @@ namespace bnd::detail
         {
           constexpr imax lower = LowerImax<L>;
           constexpr imax upper = UpperImax<L>;
-          if (static_cast<imax>(rhs) < lower || static_cast<imax>(rhs) > upper)
+          if (static_cast<imax>(rhs) < lower || static_cast<imax>(rhs) > upper) [[unlikely]]
             if (handle_out_of_range(lhs, rhs, lower, upper, policy, action)) return lhs;
         }
       }
@@ -491,12 +509,18 @@ namespace bnd::detail
 
       if constexpr (has_round_flag)
         store_slot(round_quotient<L, P>(raw.Numerator, den));
-      else if (policy.round_check())
+      else if (policy.round_check()) [[unlikely]]
       {
+#ifdef BND_RICH_MESSAGES
         auto msg = bnd::to_string(rhs) + " does not land on notch " + bnd::to_string(Notch<L>);
         if constexpr (error_action<plain<A>>)
         { action.fn(lhs, errc::rounding_error, std::string_view(msg)); return false; }
         policy.report(errc::rounding_error, msg);
+#else
+        if constexpr (error_action<plain<A>>)
+        { action.fn(lhs, errc::rounding_error, errc_message(errc::rounding_error)); return false; }
+        policy.report(errc::rounding_error);
+#endif
         return false;
       }
       else
@@ -513,7 +537,7 @@ namespace bnd::detail
   template<typename P, typename A>
   constexpr L& assignment<L,R>::assign(L& lhs, R const& rhs, P&& policy, A&& action)
   {
-    if (not includes(Interval<L>, rhs))
+    if (not includes(Interval<L>, rhs)) [[unlikely]]
     {
       // Fractional path has no wrap *action* branch (Wrappable = false).
       if (dispatch_out_of_range<false>(lhs, policy, action,

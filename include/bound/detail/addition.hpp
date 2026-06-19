@@ -78,7 +78,7 @@ namespace bnd::detail
       if constexpr (needs_overflow_check<F>)
       {
         auto sum = rational::add(lhs,rhs);
-        if (!sum)
+        if (!sum) [[unlikely]]
           return report_or_nullopt<result>(action, policy, errc::overflow,
                                            "rational overflow in add");
         res = result::from_raw(*sum);

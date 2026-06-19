@@ -58,11 +58,13 @@ namespace bnd
       return test(checked) && not test(snapping);
     }
 
-    constexpr void report(errc code, std::string what)
+    // Cheap default report: no message construction. error_ref mode records the
+    // code; throw mode raises system_error with the static category message via
+    // an outlined cold helper. The constant-evaluation guard throws a string
+    // literal for a clearer compile-time diagnostic than "non-constexpr function
+    // called".
+    constexpr void report(errc code)
     {
-      // Constant-evaluation guard: system_error isn't constexpr, so throw a
-      // string literal for a clearer compile-time diagnostic than "non-constexpr
-      // function called".
       if (std::is_constant_evaluated())
       {
         throw "bound: value out of range during constant evaluation "
@@ -71,13 +73,25 @@ namespace bnd
       if constexpr (std::is_same_v<E, detail::error_ref>)
         E::Code = E::Code ? E::Code : make_error_code(code);
       else
-      {
-#ifdef BOUND_HAS_STACKTRACE
-        what += ": \n" + std::to_string(std::stacktrace::current());
-#endif
-        throw std::system_error(make_error_code(code), what);
-      }
+        detail::throw_bound_error(code);
     }
+
+#ifdef BND_RICH_MESSAGES
+    // Rich report: carries a detailed "<value> is not in <interval>" message.
+    // Compiled only under -DBND_RICH_MESSAGES (pulls in <string> / to_string).
+    constexpr void report(errc code, std::string what)
+    {
+      if (std::is_constant_evaluated())
+      {
+        throw "bound: value out of range during constant evaluation "
+              "(checked policy hit; choose clamp/wrap/sentinel or widen the interval)";
+      }
+      if constexpr (std::is_same_v<E, detail::error_ref>)
+        E::Code = E::Code ? E::Code : make_error_code(code);
+      else
+        detail::throw_bound_error(code, std::move(what));
+    }
+#endif
   };
 
   policy(std::error_code&) -> policy<none, detail::error_ref>;
@@ -123,7 +137,8 @@ namespace bnd
   namespace detail
   {
   template <boundable Result, typename A, typename P>
-  constexpr auto report_or_nullopt(A&& action, P&& policy, errc code, const char* what)
+  constexpr auto report_or_nullopt(A&& action, P&& policy, errc code,
+                                   [[maybe_unused]] const char* what)
     -> std::conditional_t<overflow_action<A>, Result, slim::optional<Result>>
   {
     if constexpr (overflow_action<A>)
@@ -135,7 +150,11 @@ namespace bnd
     else
     {
       if constexpr (UsesErrorRef<std::remove_cvref_t<P>>)
+#ifdef BND_RICH_MESSAGES
         policy.report(code, what);
+#else
+        policy.report(code);
+#endif
       return slim::nullopt;
     }
   }
@@ -228,7 +247,11 @@ namespace bnd
       if constexpr (has_action<IsErrorActionPred, As...>)
         pick_action_in<IsErrorActionPred>(Actions).fn(Ref, code, std::string_view(what));
       else if constexpr (!HasPolicy<B, P, ignore_zero>)
+#ifdef BND_RICH_MESSAGES
         Policy.report(code, what);
+#else
+        Policy.report(code);
+#endif
     }
 
     public:
@@ -240,16 +263,20 @@ namespace bnd
     //-------------------------------------------------------------------------
     private:
     template <typename R>
-    constexpr B& finalise_arith(R&& result, const char* msg)
+    constexpr B& finalise_arith(R&& result, [[maybe_unused]] const char* msg)
     {
       if constexpr (requires { typename plain<R>::value_type; })
       {
-        if (!result.has_value())
+        if (!result.has_value()) [[unlikely]]
         {
           if constexpr (has_action<IsOverflowActionPred, As...>)
             pick_action_in<IsOverflowActionPred>(Actions).fn(Ref, errc::overflow);
           else
+#ifdef BND_RICH_MESSAGES
             Policy.report(errc::overflow, msg);
+#else
+            Policy.report(errc::overflow);
+#endif
           return Ref;
         }
         return assign_with_picked(result.value());
