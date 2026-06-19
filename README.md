@@ -1,5 +1,9 @@
 # bound
 
+> **Status: alpha.** The library is under active development and the public API
+> may change between versions. `bound` was developed with
+> [Claude Code](https://claude.com/claude-code), Anthropic's agentic coding tool.
+
 A header-only C++23 library providing safe arithmetic on bounded rational
 number grids. A grid is defined by a lower and upper (inclusive) bound, hence
 the name, and a notch (step size); all three are exact fractions, and
@@ -81,6 +85,7 @@ safe_pct p = 150;                          // p == 100
 - [Determinism & reproducibility](docs/determinism.md)
 - [Bound for fixed-point users](docs/fixed-point.md)
 - [Internals (architecture / design notes)](docs/internals.md)
+- [Resources — prior art & talks](docs/resources.md)
 
 ## Examples
 
