@@ -5,7 +5,8 @@
 fixed-point and overflow safety deserve first-class library support has been
 explored by several excellent projects. This page collects the prior art that
 shaped `bound`'s thinking, plus talks worth watching if these ideas are new to
-you.
+you. And yes — we're aware that adding one more safe-numerics library to the
+pile is its own kind of joke ([xkcd #927, "Standards"](https://xkcd.com/927/)).
 
 ## Related libraries
 

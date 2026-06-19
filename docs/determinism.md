@@ -6,6 +6,11 @@ record-and-replay, deterministic simulation, lockstep networking, and regression
 baselines. This page states exactly what is guaranteed and under which
 conditions.
 
+(The alternative — trusting that arithmetic just works and that everyone gets
+the same answer — is how you end up at [xkcd #2030, "Voting Software"](https://xkcd.com/2030/):
+"our entire field is bad at what we do, and if you rely on us, everyone will
+die." Reproducibility is the antidote.)
+
 ## TL;DR
 
 | Layer | Reproducible? | Condition |
