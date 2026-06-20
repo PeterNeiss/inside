@@ -90,70 +90,70 @@ TEST_CASE("with_wrap: bound rhs", "[bound][with][wrap][bound2bound]")
 }
 
 //---------------------------------------------------------------------------
-// with_truncate (truncates toward zero)
+// with_snap (truncates toward zero)
 //---------------------------------------------------------------------------
-TEST_CASE("with_truncate: bound rhs with finer notch", "[bound][with][truncate]")
+TEST_CASE("with_snap: bound rhs with finer notch", "[bound][with][snap]")
 {
   using coarse = bound<{{0, 10}, 2}>;
   using fine   = bound<{{0, 10}, 1}>;
 
   coarse c{0};
-  c.with_truncate() = fine{3};   REQUIRE(c == 2);   // 3 truncates toward zero -> 2
-  c.with_truncate() = fine{4};   REQUIRE(c == 4);   // exact
-  c.with_truncate() = fine{5};   REQUIRE(c == 4);   // 5 -> 4
-  c.with_truncate() = fine{7};   REQUIRE(c == 6);   // 7 -> 6
+  c.with_snap() = fine{3};   REQUIRE(c == 2);   // 3 truncates toward zero -> 2
+  c.with_snap() = fine{4};   REQUIRE(c == 4);   // exact
+  c.with_snap() = fine{5};   REQUIRE(c == 4);   // 5 -> 4
+  c.with_snap() = fine{7};   REQUIRE(c == 6);   // 7 -> 6
 }
 
-TEST_CASE("with_truncate: float rhs not on notch", "[bound][with][truncate]")
+TEST_CASE("with_snap: float rhs not on notch", "[bound][with][snap]")
 {
   using coarse = bound<{{0, 10}, 2}>;
   coarse c{0};
 
-  c.with_truncate() = 3.0;       REQUIRE(c == 2);   // 3 truncates to 2
-  c.with_truncate() = 3.99;      REQUIRE(c == 2);
-  c.with_truncate() = 4.0;       REQUIRE(c == 4);   // exact
+  c.with_snap() = 3.0;       REQUIRE(c == 2);   // 3 truncates to 2
+  c.with_snap() = 3.99;      REQUIRE(c == 2);
+  c.with_snap() = 4.0;       REQUIRE(c == 4);   // exact
 }
 
 //---------------------------------------------------------------------------
-// with_round_nearest (round half away)
+// with_snap<round_nearest> (round half away)
 //---------------------------------------------------------------------------
-TEST_CASE("with_round_nearest: float rhs", "[bound][with][round_nearest]")
+TEST_CASE("with_snap<round_nearest>: float rhs", "[bound][with][round_nearest]")
 {
   using coarse = bound<{{0, 10}, 2}>;
   coarse c{0};
 
-  c.with_round_nearest() = 3.0;    REQUIRE(c == 4);   // halfway-up: 3 -> 4
-  c.with_round_nearest() = 2.99;   REQUIRE(c == 2);
-  c.with_round_nearest() = 3.01;   REQUIRE(c == 4);
-  c.with_round_nearest() = 4.0;    REQUIRE(c == 4);   // exact
+  c.with_snap<round_nearest>() = 3.0;    REQUIRE(c == 4);   // halfway-up: 3 -> 4
+  c.with_snap<round_nearest>() = 2.99;   REQUIRE(c == 2);
+  c.with_snap<round_nearest>() = 3.01;   REQUIRE(c == 4);
+  c.with_snap<round_nearest>() = 4.0;    REQUIRE(c == 4);   // exact
 
   using half = bound<{{0, 10}, 0.5}>;
   half h;
-  h.with_round_nearest() = 3.3;    REQUIRE(h == 3.5_r);  // 3.5
-  h.with_round_nearest() = 3.2;    REQUIRE(h == 3);                // 3.0
+  h.with_snap<round_nearest>() = 3.3;    REQUIRE(h == 3.5_r);  // 3.5
+  h.with_snap<round_nearest>() = 3.2;    REQUIRE(h == 3);                // 3.0
 }
 
-TEST_CASE("with_round_nearest: bound rhs incompatible notches",
+TEST_CASE("with_snap<round_nearest>: bound rhs incompatible notches",
           "[bound][with][round_nearest][bound2bound]")
 {
   using coarse = bound<{{0, 10}, 2}>;
   using fine   = bound<{{0, 10}, 1}>;
 
   coarse c{0};
-  c.with_round_nearest() = fine{3};   REQUIRE(c == 4);   // 3 -> 4 (round half up)
-  c.with_round_nearest() = fine{5};   REQUIRE(c == 6);   // 5 -> 6
-  c.with_round_nearest() = fine{4};   REQUIRE(c == 4);   // exact
+  c.with_snap<round_nearest>() = fine{3};   REQUIRE(c == 4);   // 3 -> 4 (round half up)
+  c.with_snap<round_nearest>() = fine{5};   REQUIRE(c == 6);   // 5 -> 6
+  c.with_snap<round_nearest>() = fine{4};   REQUIRE(c == 4);   // exact
 }
 
 //---------------------------------------------------------------------------
-// with_truncate vs with_round_nearest divergence
+// with_snap vs with_snap<round_nearest> divergence
 //---------------------------------------------------------------------------
-TEST_CASE("with_truncate vs with_round_nearest disagree on halfway",
-          "[bound][with][truncate]")
+TEST_CASE("with_snap vs with_snap<round_nearest> disagree on halfway",
+          "[bound][with][snap]")
 {
   using coarse = bound<{{0, 10}, 2}>;
   coarse c{0};
 
-  c.with_truncate()         = 3.0;   REQUIRE(c == 2);   // toward zero
-  c.with_round_nearest() = 3.0;   REQUIRE(c == 4);   // half away from zero
+  c.with_snap()         = 3.0;   REQUIRE(c == 2);   // toward zero
+  c.with_snap<round_nearest>() = 3.0;   REQUIRE(c == 4);   // half away from zero
 }

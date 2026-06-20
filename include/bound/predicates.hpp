@@ -11,7 +11,7 @@
 // predicates — pure inspection (no conversion, no state change) to branch
 // before a construction that might throw or land on the sentinel:
 //   will_conversion_overflow<B>(v) — v falls outside B's interval.
-//   will_conversion_truncate<B>(v) — v is in-range but off-notch (would round).
+//   will_conversion_trunc<B>(v) — v is in-range but off-notch (would round).
 //   is_conversion_lossy<B>(v)      — OR of the two.
 //---------------------------------------------------------------------------
 namespace bnd
@@ -23,7 +23,7 @@ namespace bnd
   }
 
   template <boundable B, numeric A>
-  [[nodiscard]] constexpr bool will_conversion_truncate(A value) noexcept
+  [[nodiscard]] constexpr bool will_conversion_trunc(A value) noexcept
   {
     if constexpr (detail::rational_raw<B>)
       return false;                       // rational raw stores any value exactly
@@ -39,7 +39,7 @@ namespace bnd
   [[nodiscard]] constexpr bool is_conversion_lossy(A value) noexcept
   {
     return will_conversion_overflow<B>(value)
-        || will_conversion_truncate<B>(value);
+        || will_conversion_trunc<B>(value);
   }
 } // namespace bnd
 

@@ -50,7 +50,7 @@ namespace bnd
   {
     if (will_conversion_overflow<B>(value))
       detail::raise(errc::domain_error, "checked_cast: value out of bound interval");
-    if (will_conversion_truncate<B>(value))
+    if (will_conversion_trunc<B>(value))
       detail::raise(errc::rounding_error, "checked_cast: value does not land on notch");
     return B{value};
   }

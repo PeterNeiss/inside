@@ -143,7 +143,7 @@ namespace bnd
       const double q  = (v - lo) / nd;
       // Round q to the nearest integer, half away from zero (matching the
       // integer engine's round_nearest). Narrow to imax only when provably safe;
-      // for |q| >= 2^52 the double is already integral, so snapping is a no-op.
+      // for |q| >= 2^52 the double is already integral, so snap is a no-op.
       // This avoids the `floor(q+0.5)` double-rounding flaw and the unguarded
       // double->imax cast (UB for huge q).
       double r;

@@ -451,11 +451,11 @@ template <boundable B>
 void prop_modulo(fuzz_state& s, long iters)
 {
   // Only applies to integer-aligned grids; result is optional<bound>.
-  // mod requires `snapping` per the README, so derive a typed alias.
+  // mod requires `snap` per the README, so derive a typed alias.
   if constexpr (IsIntegerAligned<B> && !rational_raw<B>)
   {
     s.current_prop = "modulo";
-    using BI = bound<Grid<B>, snapping>;
+    using BI = bound<Grid<B>, snap>;
     auto lo = trunc(Lower<B>);
     auto hi = trunc(Upper<B>);
     if (lo > 0 || hi <= 0)
@@ -610,8 +610,8 @@ void prop_compound_div_mod_zero(fuzz_state& s, long iters)
 {
   // `b /= 0_r` (rational zero) routes through the rational compound-assign's
   // zero guard → report → throws division_by_zero. (Raw `b /= 0` is now ill-
-  // formed; the boundable `%= zero-bound` path needs a snapping integer divisor
-  // and is covered for snapping bounds in test_compound_assign.)
+  // formed; the boundable `%= zero-bound` path needs a snap integer divisor
+  // and is covered for snap bounds in test_compound_assign.)
   if constexpr (IsIntegerAligned<B> && !rational_raw<B>)
   {
     s.current_prop = "compound_div_zero";
@@ -668,7 +668,7 @@ void prop_compound_bound_overshoot(fuzz_state& s, long iters)
 template <boundable B>
 void prop_non_notch_assign(fuzz_state& s, long iters)
 {
-  // Targets assignment.hpp:289 (round_nearest), 291 (snapping silent floor),
+  // Targets assignment.hpp:289 (round_nearest), 291 (snap silent floor),
   // 296 (checked rounding_error report → throws), and 299 (silent floor for
   // unchecked policy). Only meaningful for fixed-point grids (notch != 1).
   if constexpr (!IsIntegerAligned<B> && !rational_raw<B>)
@@ -676,7 +676,7 @@ void prop_non_notch_assign(fuzz_state& s, long iters)
     s.current_prop = "non_notch_assign";
     // The catalogue's B already uses the default `checked` policy, so a non-
     // notch-aligned assignment to B must throw rounding_error.
-    using BIR = bound<Grid<B>, snapping>;       // silent floor
+    using BIR = bound<Grid<B>, snap>;       // silent floor
     using BRN = bound<Grid<B>, round_nearest>;      // nearest
     using BNONE = bound<Grid<B>, none>;             // truly-unchecked → line 299
     rational notch = Notch<B>;
@@ -698,14 +698,14 @@ void prop_non_notch_assign(fuzz_state& s, long iters)
       if (mid > hi) continue;
 
       // `mid` is an exact half between on_notch (lower) and next_notch (higher).
-      // The library rounds in VALUE space (generic.hpp round_quotient): snapping
+      // The library rounds in VALUE space (generic.hpp round_quotient): snap
       // and `none` truncate TOWARD ZERO (not floor — that's round_floor), and
       // round_nearest rounds HALF AWAY FROM ZERO. So the expected notch is the
-      // smaller-|·| candidate for snapping/none and the larger-|·| candidate for
+      // smaller-|·| candidate for snap/none and the larger-|·| candidate for
       // round_nearest. For mid >= 0 these are on_notch / next_notch; for mid < 0
       // they swap — which is what the negative-Lower grids exercise.
       const bool on_smaller = bnd::detail::abs(on_notch) <= bnd::detail::abs(next_notch);
-      rational toward_zero = on_smaller ? on_notch : next_notch;   // snapping / none
+      rational toward_zero = on_smaller ? on_notch : next_notch;   // snap / none
       rational away_zero   = on_smaller ? next_notch : on_notch;   // round_nearest
       const bool tz_in = toward_zero >= lo && toward_zero <= hi;
       const bool az_in = away_zero   >= lo && away_zero   <= hi;
@@ -715,7 +715,7 @@ void prop_non_notch_assign(fuzz_state& s, long iters)
         B b; b = mid;
       }));
 
-      // snapping: silent truncate toward zero.
+      // snap: silent truncate toward zero.
       if (tz_in)
         FUZZ_REQUIRE(s, !throws_with(errc::rounding_error, [&]{
           BIR b; b = mid;
@@ -751,7 +751,7 @@ void prop_subnormal_construct(fuzz_state& s, long iters)
   if constexpr (!IsIntegerAligned<B> && !rational_raw<B>)
   {
     s.current_prop = "subnormal_construct";
-    using BIR = bound<Grid<B>, snapping>;
+    using BIR = bound<Grid<B>, snap>;
     rational lo = Lower<B>;
     rational hi = Upper<B>;
     bool zero_in_range = (lo <= 0) && (hi >= 0);
@@ -762,7 +762,7 @@ void prop_subnormal_construct(fuzz_state& s, long iters)
     {
       s.iter = i;
       double v = mantissa(s.rng) * std::pow(2.0, exp_dist(s.rng));
-      // snapping → silent floor; should not throw and should land on 0.
+      // snap → silent floor; should not throw and should land on 0.
       FUZZ_REQUIRE(s, !throws_with(errc::rounding_error, [&]{
         BIR b; b = v;
         rational got = b;
@@ -998,7 +998,7 @@ void prop_predicates(fuzz_state& s, long iters)
       imax v = lo + random_wide_int(s.rng, span);
       bool in_range = (v >= lo && v <= hi);
       FUZZ_REQUIRE(s, will_conversion_overflow<B>(v) == !in_range);
-      FUZZ_REQUIRE(s, !will_conversion_truncate<B>(v));      // integer grid never truncates
+      FUZZ_REQUIRE(s, !will_conversion_trunc<B>(v));      // integer grid never truncates
       bool lossy = is_conversion_lossy<B>(v);
       bool threw = throws_with_any({errc::domain_error, errc::rounding_error},
                                    [&]{ (void)checked_cast<B>(v); });
@@ -1020,14 +1020,14 @@ void prop_predicates(fuzz_state& s, long iters)
       double on_notch = static_cast<double>((lo + (rational{k} * notch).value()).value());
       // On-notch, in range: nothing lost.
       FUZZ_REQUIRE(s, !will_conversion_overflow<B>(on_notch));
-      FUZZ_REQUIRE(s, !will_conversion_truncate<B>(on_notch));
+      FUZZ_REQUIRE(s, !will_conversion_trunc<B>(on_notch));
       FUZZ_REQUIRE(s, !is_conversion_lossy<B>(on_notch));
       // Half-notch midpoint, in range: truncates (lossy) but does not overflow.
       if (k < NotchCount<B>)
       {
         double mid = on_notch + static_cast<double>(half);
         FUZZ_REQUIRE(s, !will_conversion_overflow<B>(mid));
-        FUZZ_REQUIRE(s, will_conversion_truncate<B>(mid));
+        FUZZ_REQUIRE(s, will_conversion_trunc<B>(mid));
         FUZZ_REQUIRE(s, is_conversion_lossy<B>(mid));
         FUZZ_REQUIRE(s, throws_with(errc::rounding_error,
                                     [&]{ (void)checked_cast<B>(mid); }));

@@ -286,7 +286,7 @@ TEST_CASE("free-fn pack form", "[bound][policy][pack]")
 
 TEST_CASE("mod free-fn with on_overflow recovers from div/0", "[bound][policy][mod]")
 {
-  using u100ic = bound<{0, 100}, checked | snapping>;
+  using u100ic = bound<{0, 100}, checked | snap>;
   u100ic l{7}, r{0};
   bool fired = false;
   auto m = mod(l, r,
@@ -319,7 +319,7 @@ TEST_CASE("free-fn div with bnd::errc& sets ec on div/0",
 TEST_CASE("free-fn mod with bnd::errc& sets ec on div/0",
           "[bound][policy][ec][mod]")
 {
-  using u100ic = bound<{0, 100}, checked | snapping>;
+  using u100ic = bound<{0, 100}, checked | snap>;
   bnd::errc ec{};
   auto m = mod(u100ic{7}, u100ic{0}, ec);
   REQUIRE(ec == errc::division_by_zero);

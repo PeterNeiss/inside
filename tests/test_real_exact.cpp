@@ -49,7 +49,7 @@ namespace
   }
 
   // Compare real-bound +,-,* against the exact rational oracle on the *stored*
-  // operand values (so this isolates arithmetic divergence from input snapping).
+  // operand values (so this isolates arithmetic divergence from input snap).
   template <class A, class B>
   void oracle_check(A a, B b)
   {

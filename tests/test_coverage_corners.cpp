@@ -38,17 +38,17 @@ TEST_CASE("checked_cast returns the value on the in-range happy path (runtime)",
 }
 
 //---------------------------------------------------------------------------
-// predicates.hpp:39 — will_conversion_truncate returns false out of range
+// predicates.hpp:39 — will_conversion_trunc returns false out of range
 //---------------------------------------------------------------------------
-TEST_CASE("will_conversion_truncate is false for out-of-range values (runtime)",
+TEST_CASE("will_conversion_trunc is false for out-of-range values (runtime)",
           "[predicates][cover]")
 {
   using coarse = bound<{{0, 10}, 2}>;
   // Out of range is overflow, not truncation: the predicate is false.
-  REQUIRE_FALSE(will_conversion_truncate<coarse>(11));
-  REQUIRE_FALSE(will_conversion_truncate<coarse>(-1));
+  REQUIRE_FALSE(will_conversion_trunc<coarse>(11));
+  REQUIRE_FALSE(will_conversion_trunc<coarse>(-1));
   // Contrast: off-notch but in range is truncation.
-  REQUIRE(will_conversion_truncate<coarse>(3));
+  REQUIRE(will_conversion_trunc<coarse>(3));
 }
 
 #ifndef BND_MATH_FIXED
@@ -188,12 +188,12 @@ TEST_CASE("rational from subnormal and very small doubles", "[math][rational][co
 //---------------------------------------------------------------------------
 // bound.hpp:733-734 — operator/=(integral)   bound.hpp:744-745 — operator%=
 //---------------------------------------------------------------------------
-TEST_CASE("compound /= and %= with a snapping bound rhs (runtime)", "[bound][compound][cover]")
+TEST_CASE("compound /= and %= with a snap bound rhs (runtime)", "[bound][compound][cover]")
 {
-  // Integer division/modulo now flow through the boundable path; `snapping`
+  // Integer division/modulo now flow through the boundable path; `snap`
   // gives the same C++ trunc-toward-zero / dividend-signed-remainder semantics
   // the old raw-int compound assigns had.
-  using sb = bound<{-100, 100}, snapping>;
+  using sb = bound<{-100, 100}, snap>;
 
   sb a{20};
   a /= sb{3};                      // integer division, truncates toward zero
@@ -298,9 +298,9 @@ TEST_CASE("bound -> real conversion snaps onto the double grid",
 
 //---------------------------------------------------------------------------
 // assignment.hpp:475-476 — off-notch fractional store on a policy with no
-// rounding-mode flag and round_check()==false. `snapping` would route
+// rounding-mode flag and round_check()==false. `snap` would route
 // through the has_round_flag arm (it is counted as a round flag); a plain
-// `clamp` policy (not checked, not snapping) takes the :476 else-branch
+// `clamp` policy (not checked, not snap) takes the :476 else-branch
 // and truncates an in-range off-notch value silently.
 //---------------------------------------------------------------------------
 TEST_CASE("clamp policy truncates an in-range off-notch fractional assignment",
@@ -359,11 +359,11 @@ TEST_CASE("cross-grid conversion of a negative off-notch value",
   // so the rational store path runs; the negative value drives the
   // negative-denominator branch.
   using src_t = bound<{{-4, 4}, notch<1, 2>}>;
-  using dst_t = bound<{{-4, 4}, notch<1, 3>}, snapping>;
+  using dst_t = bound<{{-4, 4}, notch<1, 3>}, snap>;
 
   src_t s{-1.5};
   dst_t d = s;
-  // snapping truncates toward ZERO in value space (matching the scalar store
+  // snap truncates toward ZERO in value space (matching the scalar store
   // path and div_rounded): -1.5 on the 1/3 grid → -4/3. (Was -5/3 when the old
   // path truncated the non-negative offset — i.e. toward -inf in value space.)
   REQUIRE(static_cast<rational>(d) == rational{4, -3});

@@ -31,7 +31,7 @@ int main()
   unorm16 gain{0.5_b};                 // unorm reaches exactly 0 and 1
   i16 sample{10000};
   i16 out{0};
-  out.with_round_nearest() = gain * sample;
+  out.with_snap<round_nearest>() = gain * sample;
   std::cout << "gain " << gain << " * " << sample << " -> " << out << "\n";
 
   // 4. Fixed-point Q-formats.

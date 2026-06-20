@@ -4,7 +4,7 @@
 //   - `wrap` policy for modular-2^N arithmetic
 //   - `on_wrap` callback feeding a wrap-epoch counter (cascade pattern)
 //   - `_b` integer literal in arithmetic expressions
-//   - Modulo `%` for ring-buffer slot index (under `snapping`)
+//   - Modulo `%` for ring-buffer slot index (under `snap`)
 
 #include <iostream>
 
@@ -16,7 +16,7 @@ using namespace bnd;
 
 // 16-bit modular sequence space. UINT16_MAX is reserved as the optional
 // sentinel slot, so use {0, 65534} — still wraps cleanly under `wrap`.
-using seq_t  = bound<{0, 65534}, wrap | snapping>;
+using seq_t  = bound<{0, 65534}, wrap | snap>;
 
 // Epoch counter — how many times the SEQ space has wrapped (saturating tally).
 using epoch_t = counter<1000>;
@@ -52,9 +52,9 @@ int main()
   std::cout << "\nepoch count after burst: " << epoch << "\n";
 
   // Ring-buffer indexing — modulo % collapses any SEQ value into a slot.
-  // Both operands need `snapping` so the integer-division path fires.
+  // Both operands need `snap` so the integer-division path fires.
   std::cout << "\nslot assignment (seq % 256):\n";
-  using divisor_t = bound<{1, 256}, snapping>;
+  using divisor_t = bound<{1, 256}, snap>;
   constexpr divisor_t slots{256};
   seq_t s{65500};
   for (int i = 0; i < 6; ++i)

@@ -21,8 +21,8 @@ bound<grid{interval{rational{3,1}, rational{3,1}}, rational{0,1}}, 17179869184>
 |---|---|---|
 | `1<<1` | 2 | `ignore_zero` |
 | `1<<2` | 4 | `ignore_domain` |
-| `1<<4` | 16 | `snapping` |
-| `1<<5` | 32 | `round_nearest` (+ snapping) |
+| `1<<4` | 16 | `snap` |
+| `1<<5` | 32 | `round_nearest` (+ snap) |
 | `1<<32` | 4294967296 | `clamp` |
 | `1<<33` | 8589934592 | `wrap` |
 | `1<<34` | 17179869184 | `checked` (the default `P`) |
@@ -61,7 +61,7 @@ error: static assertion failed: bound_assignable: rhs interval lies entirely out
 
 Two clauses you'll see: *interval lies entirely outside* (value can't fit the range) and
 *incompatible notches* (value is off the grid step — opt into rounding with
-`policy<snapping>()` / `with_truncate()`).
+`policy<snap>()` / `with_snap()`).
 
 You can also ask explicitly, anywhere:
 

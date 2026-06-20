@@ -435,9 +435,9 @@ void bench_fixed_point_q16()
 
 void bench_round_nearest()
 {
-  // Compare truncation (snapping) vs round_nearest for float->bound assignment
+  // Compare truncation (snap) vs round_nearest for float->bound assignment
   // Celsius: -40 to 60 in 0.5 steps
-  using celsius_trunc = bound<{{-40, 60}, 0.5}, snapping>;
+  using celsius_trunc = bound<{{-40, 60}, 0.5}, snap>;
   using celsius_round = bound<{{-40, 60}, 0.5}, round_nearest>;
 
   for (std::size_t i = 0; i < N; ++i)

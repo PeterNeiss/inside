@@ -165,7 +165,7 @@ installed handler throws `bnd::bound_error` (carrying the `errc`) by default, or
 under `-fno-exceptions`. There is no `<system_error>` dependency.
 
 The flag bits live in `policy_flag` (`include/bound/policy_flag.hpp`):
-`clamp`, `wrap`, `sentinel`, `checked`, `unsafe`, `snapping`,
+`clamp`, `wrap`, `sentinel`, `checked`, `unsafe`, `snap`,
 `ignore_domain`, `ignore_zero`, `round_floor`, `round_ceil`,
 `round_nearest`, `round_half_even`.
 

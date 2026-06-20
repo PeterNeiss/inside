@@ -8,7 +8,7 @@
 //     disagreed with division (assigning -2.5 gave -2 while x/y == -2.5 gave -3);
 //   * round_half_even broke ties to an even OFFSET INDEX, giving an odd VALUE
 //     whenever Lower was odd (Lower=-9: -2.5 -> -3 instead of -2);
-//   * bare snapping truncated toward -inf instead of toward zero.
+//   * bare snap truncated toward -inf instead of toward zero.
 // The fix rounds in value space, so assignment and division now agree.
 
 #include "bound/bound.hpp"
@@ -53,9 +53,9 @@ TEST_CASE("round_half_even assignment ties to even VALUE regardless of Lower par
   REQUIRE(static_cast<rational>(Ho(rational{-7, 2})) == -4);   // -3.5 -> -4
 }
 
-TEST_CASE("bare snapping assignment truncates toward zero on negatives", "[round][assign]")
+TEST_CASE("bare snap assignment truncates toward zero on negatives", "[round][assign]")
 {
-  using S = bound<{{-100, 100}, notch<1, 4>}, snapping>;
+  using S = bound<{{-100, 100}, notch<1, 4>}, snap>;
   // 1/8-off values truncate toward zero (not toward -inf).
   REQUIRE(static_cast<rational>(S(rational{ 7, 8})) == rational{ 3, 4});  //  0.875 ->  0.75
   REQUIRE(static_cast<rational>(S(rational{-7, 8})) == rational{-3, 4});  // -0.875 -> -0.75 (was -1)

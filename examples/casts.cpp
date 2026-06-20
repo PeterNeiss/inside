@@ -9,7 +9,8 @@
 //   - `wrap_cast`   — modular reduction into the target interval
 //   - `clamp_cast`  — saturate to [Lower, Upper]
 //   - `unchecked_cast` — trust the caller (UB if out of range)
-//   - the per-operation `with_floor/ceil/truncate/round_half_even/wrap`
+//   - the per-operation `with_snap<Mode>()` (Mode = snap / round_nearest /
+//     round_floor / round_ceil / round_half_even), `with_clamp()`, `with_wrap()`
 //     overrides on a strict (throwing) bound — the same intents, fluent form
 
 #include <algorithm>
@@ -62,10 +63,10 @@ int main()
   // one operation.
   std::cout << "\nper-operation overrides on a strict bound<{0,100}>:\n";
   bound<{0, 100}> q{0};
-  q.with_floor()           = 3.7;  std::cout << "  with_floor()           = 3.7  -> " << q << "\n";
-  q.with_ceil()            = 3.2;  std::cout << "  with_ceil()            = 3.2  -> " << q << "\n";
-  q.with_truncate()        = 9.9;  std::cout << "  with_truncate()        = 9.9  -> " << q << "\n";
-  q.with_round_half_even() = 2.5;  std::cout << "  with_round_half_even() = 2.5  -> " << q << "\n";
+  q.with_snap<round_floor>()           = 3.7;  std::cout << "  with_snap<round_floor>()           = 3.7  -> " << q << "\n";
+  q.with_snap<round_ceil>()            = 3.2;  std::cout << "  with_snap<round_ceil>()            = 3.2  -> " << q << "\n";
+  q.with_snap()        = 9.9;  std::cout << "  with_snap()        = 9.9  -> " << q << "\n";
+  q.with_snap<round_half_even>() = 2.5;  std::cout << "  with_snap<round_half_even>() = 2.5  -> " << q << "\n";
 
   bound<{0, 359}> angle{0};
   angle.with_wrap() = 400;          std::cout << "  with_wrap()            = 400  -> " << angle << "\n";

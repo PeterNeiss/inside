@@ -314,7 +314,7 @@ namespace bnd
 
     constexpr explicit(!has_flag(P, real)) operator double() const
       requires ((P & (round_floor | round_ceil | round_nearest
-                    | round_half_even | snapping)) != 0)
+                    | round_half_even | snap)) != 0)
     { return detail::as_double(*this); }
 
     constexpr operator bnd::detail::rational() const
@@ -401,7 +401,7 @@ namespace bnd
     [[nodiscard]] constexpr T as() const
       requires (!std::floating_point<T>
              || (P & (round_floor | round_ceil | round_nearest
-                    | round_half_even | snapping)) != 0)
+                    | round_half_even | snap)) != 0)
     { return to<T>().value(); }
 
     // numerator() / denominator() — the exact value of a fractional bound as an
@@ -455,11 +455,18 @@ namespace bnd
        return detail::policy_ref<bound, decltype(pol)>{*this, pol};
     }
 
-    [[nodiscard]] constexpr auto with_truncate()        { return policy<snapping>(); }
-    [[nodiscard]] constexpr auto with_round_nearest()   { return policy<round_nearest>(); }
-    [[nodiscard]] constexpr auto with_floor()           { return policy<round_floor>(); }
-    [[nodiscard]] constexpr auto with_ceil()            { return policy<round_ceil>(); }
-    [[nodiscard]] constexpr auto with_round_half_even() { return policy<round_half_even>(); }
+    // with_snap<Mode>() — opt this assignment into snapping with the given rounding
+    // mode. Bare `with_snap()` is truncate-toward-zero (Mode == snap); pass an
+    // explicit mode for the others: with_snap<round_nearest>(), <round_floor>,
+    // <round_ceil>, <round_half_even>.
+    template <policy_flag Mode = snap>
+    [[nodiscard]] constexpr auto with_snap()
+    {
+      static_assert(has_flag(Mode, snap),
+        "with_snap<Mode>: Mode must be a snapping mode — snap (truncate), round_nearest, "
+        "round_floor, round_ceil, or round_half_even");
+      return policy<Mode>();
+    }
     [[nodiscard]] constexpr auto with_clamp()           { return policy<clamp>(); }
     [[nodiscard]] constexpr auto with_wrap()            { return policy<wrap>(); }
 

@@ -257,8 +257,8 @@ TEST_CASE("constexpr: division returns slim::optional", "[constexpr][bound][div]
   STATIC_REQUIRE(q.has_value());
   STATIC_REQUIRE(*q == *(51_r / 8));
 
-  // snapping selects native integer division — result has integer raw
-  using vi = bound<{0, 100}, snapping>;
+  // snap selects native integer division — result has integer raw
+  using vi = bound<{0, 100}, snap>;
   constexpr vi p{51}, r{8};
   constexpr auto qi = p / r;
   STATIC_REQUIRE_FALSE(std::is_same_v<typename decltype(qi)::value_type::raw_type,
@@ -266,9 +266,9 @@ TEST_CASE("constexpr: division returns slim::optional", "[constexpr][bound][div]
   STATIC_REQUIRE(*qi == 6);
 }
 
-TEST_CASE("constexpr: modulo under snapping", "[constexpr][bound][mod]")
+TEST_CASE("constexpr: modulo under snap", "[constexpr][bound][mod]")
 {
-  using v = bound<{0, 100}, snapping>;
+  using v = bound<{0, 100}, snap>;
   constexpr v a{17}, b{5};
   constexpr auto m = a % b;
   STATIC_REQUIRE(m.has_value());
@@ -363,9 +363,9 @@ TEST_CASE("constexpr: conversion predicates", "[constexpr][bound][predicates]")
   STATIC_REQUIRE_FALSE(will_conversion_overflow<pct>(   0));
 
   using coarse = bound<{{0, 10}, 2}>;
-  STATIC_REQUIRE_FALSE(will_conversion_truncate<coarse>(4));
-  STATIC_REQUIRE      (will_conversion_truncate<coarse>(3));
-  STATIC_REQUIRE_FALSE(will_conversion_truncate<coarse>(11));
+  STATIC_REQUIRE_FALSE(will_conversion_trunc<coarse>(4));
+  STATIC_REQUIRE      (will_conversion_trunc<coarse>(3));
+  STATIC_REQUIRE_FALSE(will_conversion_trunc<coarse>(11));
 
   STATIC_REQUIRE_FALSE(is_conversion_lossy<coarse>(4));
   STATIC_REQUIRE      (is_conversion_lossy<coarse>(3));

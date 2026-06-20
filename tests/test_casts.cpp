@@ -70,14 +70,14 @@ TEST_CASE("will_conversion_overflow", "[bound][predicates]")
   STATIC_REQUIRE_FALSE(will_conversion_overflow<pct>(100));
 }
 
-TEST_CASE("will_conversion_truncate detects non-notch values", "[bound][predicates]")
+TEST_CASE("will_conversion_trunc detects non-notch values", "[bound][predicates]")
 {
   using coarse = bound<{{0, 10}, 2}>;          // notch 2
 
-  STATIC_REQUIRE_FALSE(will_conversion_truncate<coarse>(0));
-  STATIC_REQUIRE_FALSE(will_conversion_truncate<coarse>(4));
-  STATIC_REQUIRE      (will_conversion_truncate<coarse>(3));     // doesn't land on 2-notch
-  STATIC_REQUIRE_FALSE(will_conversion_truncate<coarse>(11)); // out of range, not truncation
+  STATIC_REQUIRE_FALSE(will_conversion_trunc<coarse>(0));
+  STATIC_REQUIRE_FALSE(will_conversion_trunc<coarse>(4));
+  STATIC_REQUIRE      (will_conversion_trunc<coarse>(3));     // doesn't land on 2-notch
+  STATIC_REQUIRE_FALSE(will_conversion_trunc<coarse>(11)); // out of range, not truncation
 }
 
 TEST_CASE("is_conversion_lossy combines both", "[bound][predicates]")
@@ -156,60 +156,60 @@ TEST_CASE("add_all / mul_all fold variadically", "[bound][fold]")
 }
 
 //---------------------------------------------------------------------------
-// rounding modes (with_floor / with_ceil / with_round_half_even)
+// rounding modes (with_snap<round_floor> / with_snap<round_ceil> / with_snap<round_half_even>)
 //---------------------------------------------------------------------------
 // Rounding modes apply when rhs is real-valued (float, double, rational).
 // Integer rhs takes the truncation fast path which is *intentionally*
 // rounding-policy-agnostic — see assignment.hpp:store(integral).
-TEST_CASE("with_floor rounds toward -inf for double rhs", "[bound][round]")
+TEST_CASE("with_snap<round_floor> rounds toward -inf for double rhs", "[bound][round]")
 {
   using coarse = bound<{{0, 10}, 2}>;
   coarse c{0};
 
-  c.with_floor() = 3.0;
+  c.with_snap<round_floor>() = 3.0;
   REQUIRE(c == 2);
 
-  c.with_floor() = 4.0;
+  c.with_snap<round_floor>() = 4.0;
   REQUIRE(c == 4);
 
-  c.with_floor() = 5.0;
+  c.with_snap<round_floor>() = 5.0;
   REQUIRE(c == 4);
 }
 
-TEST_CASE("with_ceil rounds toward +inf for double rhs", "[bound][round]")
+TEST_CASE("with_snap<round_ceil> rounds toward +inf for double rhs", "[bound][round]")
 {
   using coarse = bound<{{0, 10}, 2}>;
   coarse c{0};
 
-  c.with_ceil() = 3.0;
+  c.with_snap<round_ceil>() = 3.0;
   REQUIRE(c == 4);
 
-  c.with_ceil() = 4.0;
+  c.with_snap<round_ceil>() = 4.0;
   REQUIRE(c == 4);
 
-  c.with_ceil() = 5.0;
+  c.with_snap<round_ceil>() = 5.0;
   REQUIRE(c == 6);
 }
 
-TEST_CASE("with_round_half_even applies banker's rounding", "[bound][round]")
+TEST_CASE("with_snap<round_half_even> applies banker's rounding", "[bound][round]")
 {
   using coarse = bound<{{0, 10}, 2}>;
   coarse c{0};
 
   // 1.0 is the half-way point between notch 0 and notch 2 → even wins (0).
-  c.with_round_half_even() = 1.0;
+  c.with_snap<round_half_even>() = 1.0;
   REQUIRE(c == 0);
 
   // 3.0 is half-way between 2 and 4 → even wins (4).
-  c.with_round_half_even() = 3.0;
+  c.with_snap<round_half_even>() = 3.0;
   REQUIRE(c == 4);
 
   // 5.0 is halfway between 4 and 6 → even wins (4).
-  c.with_round_half_even() = 5.0;
+  c.with_snap<round_half_even>() = 5.0;
   REQUIRE(c == 4);
 
   // 7.0 is halfway between 6 and 8 → even wins (8).
-  c.with_round_half_even() = 7.0;
+  c.with_snap<round_half_even>() = 7.0;
   REQUIRE(c == 8);
 }
 

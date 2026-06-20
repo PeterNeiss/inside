@@ -80,10 +80,10 @@ TEST_CASE("division inside an expected chain maps nullopt to its cause",
 
 TEST_CASE("operator% participates in both lift families", "[errors][mod]")
 {
-  // mod requires snapping in the merged policy (integer-valued grids).
-  using mnum = bound<{0, 100}, snapping>;
-  using nz   = bound<{1, 5},  snapping>;   // divisor grid excludes zero
-  using span = bound<{-5, 5}, snapping>;   // divisor grid spans zero
+  // mod requires snap in the merged policy (integer-valued grids).
+  using mnum = bound<{0, 100}, snap>;
+  using nz   = bound<{1, 5},  snap>;   // divisor grid excludes zero
+  using span = bound<{-5, 5}, snap>;   // divisor grid spans zero
 
   // optional chain.
   slim::optional<mnum> on{mnum{17}};

@@ -73,7 +73,7 @@ under `include/` with `cmake --build build --target amalgamate` (see
 ## Feature highlights
 
 - **Policy-driven assignment** — `clamp`, `wrap`, `sentinel`, `round_nearest`,
-  `snapping`, plus `on_clamp` / `on_wrap` / `on_overflow` callbacks and
+  `snap`, plus `on_clamp` / `on_wrap` / `on_overflow` callbacks and
   a `bnd::errc` mode for throw-free error reporting. Representation
   flags (`real`, `exact`, `direct`, `indexed`) select how the raw value is
   stored. See [docs/policies.md](docs/policies.md).

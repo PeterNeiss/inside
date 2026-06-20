@@ -3358,17 +3358,17 @@ namespace bnd
   inline static constexpr policy_flag none         {0ull};
   inline static constexpr policy_flag ignore_zero  {1ull << 1};
   inline static constexpr policy_flag ignore_domain{1ull << 2};
-  // `snapping` — an off-notch value is rounded to fit the grid instead of
+  // `snap` — an off-notch value is rounded to fit the grid instead of
   // rejected; on its own truncate-toward-zero. Without it, an off-notch value is
   // a compile/runtime error and div/mod fall through to exact-rational results.
-  inline static constexpr policy_flag snapping     {1ull << 4};
-  inline static constexpr policy_flag round_nearest {(1ull << 5) | snapping};
-  // Rounding modes each pick a unique bit and OR in `snapping`. Conceptually
+  inline static constexpr policy_flag snap     {1ull << 4};
+  inline static constexpr policy_flag round_nearest {(1ull << 5) | snap};
+  // Rounding modes each pick a unique bit and OR in `snap`. Conceptually
   // exclusive; combining two is allowed but dispatch (assignment.hpp) picks the
-  // first match: nearest → floor → ceil → half_even → truncate.
-  inline static constexpr policy_flag round_floor     {(1ull << 6) | snapping};
-  inline static constexpr policy_flag round_ceil      {(1ull << 7) | snapping};
-  inline static constexpr policy_flag round_half_even {(1ull << 8) | snapping};
+  // first match: nearest → floor → ceil → half_even → trunc.
+  inline static constexpr policy_flag round_floor     {(1ull << 6) | snap};
+  inline static constexpr policy_flag round_ceil      {(1ull << 7) | snap};
+  inline static constexpr policy_flag round_half_even {(1ull << 8) | snap};
 
   // runtime checking — opt-in
   inline static constexpr policy_flag checked{1ull << 34}; // enable runtime domain/overflow checks
@@ -3406,15 +3406,15 @@ namespace bnd
 
   // opt-out of `checked`: no domain/round/overflow/div-by-zero checks (reading
   // out-of-range or dividing by zero is UB; `/= 0` no-ops, `a / 0` skips the
-  // check). Includes `snapping` so notch-incompatible assigns compile.
+  // check). Includes `snap` so notch-incompatible assigns compile.
   inline static constexpr policy_flag unsafe
-    {(1ull << 36) | ignore_domain | snapping | ignore_zero};
+    {(1ull << 36) | ignore_domain | snap | ignore_zero};
 
   //---------------------------------------------------------------------------
   // Flag-set membership predicates. `has_flag(set, flag)` is true iff EVERY bit
   // of `flag` is present in `set` — reads better than the raw `(set & flag) ==
   // flag` and is correct for composite flags (e.g. `round_nearest` carries
-  // `snapping`, `real` carries `round_nearest`), where a bare `set & flag`
+  // `snap`, `real` carries `round_nearest`), where a bare `set & flag`
   // truthy test would misfire. `has_any_flag` tests for any overlap.
   //---------------------------------------------------------------------------
   [[nodiscard]] constexpr bool has_flag(policy_flag set, policy_flag flag) noexcept
@@ -3674,7 +3674,7 @@ namespace bnd
       const double q  = (v - lo) / nd;
       // Round q to the nearest integer, half away from zero (matching the
       // integer engine's round_nearest). Narrow to imax only when provably safe;
-      // for |q| >= 2^52 the double is already integral, so snapping is a no-op.
+      // for |q| >= 2^52 the double is already integral, so snap is a no-op.
       // This avoids the `floor(q+0.5)` double-rounding flaw and the unguarded
       // double->imax cast (UB for huge q).
       double r;
@@ -4279,8 +4279,8 @@ namespace bnd
         && Lower<B> == 0;
 
     // Policy test: checks both type-level and per-operation policy.
-    // Composite flags (e.g. round_nearest = bit5 | snapping) require all
-    // their bits set — having a subset like just `snapping` does NOT match.
+    // Composite flags (e.g. round_nearest = bit5 | snap) require all
+    // their bits set — having a subset like just `snap` does NOT match.
     template <boundable B, typename P, policy_flag F>
     inline constexpr bool HasPolicy = has_flag(BoundPolicy<B>, F) || plain<P>::test(F);
 
@@ -4349,7 +4349,7 @@ namespace bnd
             else if (ar > ab - ar) J = neg ? t - 1 : t + 1;
             else                   J = (t & 1) == 0 ? t : (neg ? t - 1 : t + 1);
           }
-          else                                                 // snapping: toward zero
+          else                                                 // snap: toward zero
             J = t;
         }
         return static_cast<umax>(J - m);           // offset index k = J - m (>= 0)
@@ -4425,14 +4425,14 @@ namespace bnd
     template <typename L, typename R, policy_flag P>
     concept assign_notch_ok =
       !boundable<R> || abs_den(assignment<L, R>::Factor.Denominator) == 1
-      || ((BoundPolicy<L> | P) & snapping) != 0
+      || ((BoundPolicy<L> | P) & snap) != 0
       || point_exactly_assignable<L, R>;
   } // namespace detail
 
   // Compile-time prerequisites for L = R, gating three failure modes at the call
   // site: (1) R is numeric; (2) intervals overlap (typed-interval R only —
   // skipped for float/rational, which have no static interval); (3) integer
-  // notch ratio or snapping set (else R's notch doesn't divide L's; opt into
+  // notch ratio or snap set (else R's notch doesn't divide L's; opt into
   // rounding). Named `bound_assignable` to avoid shadowing std::assignable_from.
   template <typename L, typename R, policy_flag P = checked>
   concept bound_assignable =
@@ -4462,7 +4462,7 @@ namespace bnd
       "bound_assignable: rhs interval lies entirely outside lhs interval and the policy "
       "(not wrap/clamp) cannot bring it into range — assignment can never succeed");
     static_assert(notch_ok,
-      "bound_assignable: incompatible notches — use `with_truncate()` or `policy<snapping>()` to allow rounding");
+      "bound_assignable: incompatible notches — use `with_snap()` or `policy<snap>()` to allow rounding");
     static constexpr bool value = bound_assignable<L, R, P>;
   };
 
@@ -4911,7 +4911,7 @@ namespace bnd::detail
       constexpr bool has_round_flag =
            HasPolicy<L, P, round_nearest> || HasPolicy<L, P, round_floor>
         || HasPolicy<L, P, round_ceil>    || HasPolicy<L, P, round_half_even>
-        || HasPolicy<L, P, snapping>;
+        || HasPolicy<L, P, snap>;
 
       // Q-format integer shortcut: with integer Lower and notch 1/K the offset is
       // (num − Lo·aden)·(K/g) / (aden/g), g = gcd(aden, K) — one gcd + integer ops
@@ -5119,9 +5119,9 @@ namespace bnd::detail
     static_assert(HasPolicy<L, P, wrap> || HasPolicy<L, P, clamp>
                   || not excludes(Interval<L>, Interval<R>),
       "rhs interval lies entirely outside lhs interval and the policy cannot bring it into range");
-    static_assert(abs_den(Factor.Denominator) == 1 || HasPolicy<L, P, snapping>
+    static_assert(abs_den(Factor.Denominator) == 1 || HasPolicy<L, P, snap>
                   || point_exactly_assignable<L, R>,
-      "incompatible notches: use with_truncate() or policy<snapping>() to allow rounding");
+      "incompatible notches: use with_snap() or policy<snap>() to allow rounding");
 
     if constexpr (not includes(Interval<L>, Interval<R>))
     {
@@ -5189,7 +5189,7 @@ namespace bnd
     static constexpr bool round_check()
     {
       if (std::is_constant_evaluated()) return true;
-      return test(checked) && not test(snapping);
+      return test(checked) && not test(snap);
     }
 
     // Cheap default report: no message construction. error_ref mode records the
@@ -5276,7 +5276,7 @@ namespace bnd
   // Named convenience policies — let user code skip `make_policy<F>()` entirely
   // for the per-call flag form on free arithmetic functions.
   //---------------------------------------------------------------------------
-  inline constexpr auto truncated        = make_policy<snapping>();
+  inline constexpr auto truncated        = make_policy<snap>();
   inline constexpr auto round_to_nearest = make_policy<round_nearest>();
   inline constexpr auto clamped          = make_policy<clamp>();
   inline constexpr auto wrapped          = make_policy<wrap>();
@@ -5749,28 +5749,28 @@ namespace bnd::detail
 //---------------------------------------------------------------------------
 // division / modulo. `division::div` returns optional<result> (division by zero
 // is always runtime-possible). Two paths: native (integer-aligned grids +
-// snapping → native integer division) and rational (exact, can overflow under
+// snap → native integer division) and rational (exact, can overflow under
 // checked). `modulo::mod` is integer-only — non-integer remainders aren't
 // well-defined on fractional notches.
 //---------------------------------------------------------------------------
 namespace bnd::detail
 {
   // Both operands are plain integer grids and the caller accepted integer
-  // truncation (snapping) — the prerequisite for native integer div / mod.
+  // truncation (snap) — the prerequisite for native integer div / mod.
   template <boundable L, boundable R, policy_flag F>
   inline constexpr bool integer_native_ops =
-      ((F | BoundPolicy<L> | BoundPolicy<R>) & snapping)
+      ((F | BoundPolicy<L> | BoundPolicy<R>) & snap)
       && !rational_raw<L> && !rational_raw<R>
       && IsIntegerAligned<L> && IsIntegerAligned<R>;
 
   //---------------------------------------------------------------------------
-  // Rounding mode for the native div & mod paths (fire when `snapping` is set).
+  // Rounding mode for the native div & mod paths (fire when `snap` is set).
   // Decided from the combined flags with assignment.hpp's precedence (nearest →
-  // floor → ceil → half_even → truncate); `snapping` alone is truncate-toward-zero.
+  // floor → ceil → half_even → trunc); `snap` alone is truncate-toward-zero.
   // The runtime quotient and the compile-time grid endpoints MUST agree on the
   // mode (both read div_round_mode), or a result could escape its own grid.
   //---------------------------------------------------------------------------
-  enum class round_mode { truncate, nearest, floor, ceil, half_even };
+  enum class round_mode { trunc, nearest, floor, ceil, half_even };
 
   constexpr round_mode div_round_mode(policy_flag eff) noexcept
   {
@@ -5778,7 +5778,7 @@ namespace bnd::detail
     if ((eff & round_floor)     == round_floor)     return round_mode::floor;
     if ((eff & round_ceil)      == round_ceil)      return round_mode::ceil;
     if (has_flag(eff, round_half_even)) return round_mode::half_even;
-    return round_mode::truncate;
+    return round_mode::trunc;
   }
 
   // |v| as umax, safe for imax_min (negating it would be UB).
@@ -5790,7 +5790,7 @@ namespace bnd::detail
   {
     const imax t = a / b;                     // C++ truncation toward zero
     const imax r = a % b;                     // sign of a, |r| < |b|
-    if (r == 0 || m == round_mode::truncate) return t;
+    if (r == 0 || m == round_mode::trunc) return t;
     const bool neg = (a < 0) != (b < 0);      // exact quotient is negative
     const umax ar = uabs(r), ab = uabs(b);    // ab - ar is safe: 0 < ar < ab
     switch (m)
@@ -5812,7 +5812,7 @@ namespace bnd::detail
   constexpr umax round_uquotient(umax num, umax den, round_mode m) noexcept
   {
     const umax t = num / den, r = num % den;
-    if (r == 0 || m == round_mode::truncate) return t;
+    if (r == 0 || m == round_mode::trunc) return t;
     switch (m)
     {
       case round_mode::floor:   return t;             // non-negative: floor == trunc
@@ -5855,7 +5855,7 @@ namespace bnd::detail
   template <boundable L, boundable R = L, policy_flag F = none>
   struct division
   {
-    // Native integer division, two flavours gated on `snapping`:
+    // Native integer division, two flavours gated on `snap`:
     //   native_div_integer — both operands integer-aligned; formula `a / b`.
     //   native_div_qformat — both same Q-format (Notch = 1/N, Lower = 0); formula
     //                        `(a·N)/b` (the native `(a << log2 N)/b` idiom).
@@ -5863,7 +5863,7 @@ namespace bnd::detail
     static constexpr bool native_div_integer = integer_native_ops<L, R, F>;
 
     static constexpr bool native_div_qformat =
-        ((F | BoundPolicy<L> | BoundPolicy<R>) & snapping)
+        ((F | BoundPolicy<L> | BoundPolicy<R>) & snap)
         && IsQFormat<L> && IsQFormat<R>
         && Notch<L> == Notch<R>;
 
@@ -6002,7 +6002,7 @@ namespace bnd::detail
     }
   }
   //---------------------------------------------------------------------------
-  // modulo (requires integer-valued grids + snapping)
+  // modulo (requires integer-valued grids + snap)
   //---------------------------------------------------------------------------
   template <boundable L, boundable R, policy_flag F = none>
   struct modulo
@@ -6010,8 +6010,8 @@ namespace bnd::detail
     static constexpr bool native_mod = integer_native_ops<L, R, F>;
 
     // Hard requirement, not a fallback: `a mod b` is only defined for integer
-    // operands, so the grid must be integer-aligned with `snapping` set.
-    static_assert(native_mod, "modulo requires integer-valued grids and snapping");
+    // operands, so the grid must be integer-aligned with `snap` set.
+    static_assert(native_mod, "modulo requires integer-valued grids and snap");
 
     static constexpr imax max_rem =
         std::max(abs_den(LowerImax<R>), abs_den(UpperImax<R>)) - 1;
@@ -6024,7 +6024,7 @@ namespace bnd::detail
         div_round_mode(F | BoundPolicy<L> | BoundPolicy<R>);
 
     static constexpr grid result_grid =
-        (rmode == round_mode::truncate && LowerImax<L> >= 0)
+        (rmode == round_mode::trunc && LowerImax<L> >= 0)
         ? grid{imax{0}, max_rem}
         : grid{-max_rem, max_rem};
 
@@ -6056,7 +6056,7 @@ namespace bnd::detail
         return report_or_nullopt<result>(action, policy, errc::division_by_zero,
                                          "division by zero in mod");
     result res;
-    // Remainder consistent with the rounded quotient (truncate → C++ `%`).
+    // Remainder consistent with the rounded quotient (trunc → C++ `%`).
     const imax lhs_val = to_value(lhs);
     from_value(res, lhs_val - div_rounded(lhs_val, rhs_val, rmode) * rhs_val);
     return res;
@@ -6075,7 +6075,7 @@ namespace bnd::detail
 // predicates — pure inspection (no conversion, no state change) to branch
 // before a construction that might throw or land on the sentinel:
 //   will_conversion_overflow<B>(v) — v falls outside B's interval.
-//   will_conversion_truncate<B>(v) — v is in-range but off-notch (would round).
+//   will_conversion_trunc<B>(v) — v is in-range but off-notch (would round).
 //   is_conversion_lossy<B>(v)      — OR of the two.
 //---------------------------------------------------------------------------
 namespace bnd
@@ -6087,7 +6087,7 @@ namespace bnd
   }
 
   template <boundable B, numeric A>
-  [[nodiscard]] constexpr bool will_conversion_truncate(A value) noexcept
+  [[nodiscard]] constexpr bool will_conversion_trunc(A value) noexcept
   {
     if constexpr (detail::rational_raw<B>)
       return false;                       // rational raw stores any value exactly
@@ -6103,7 +6103,7 @@ namespace bnd
   [[nodiscard]] constexpr bool is_conversion_lossy(A value) noexcept
   {
     return will_conversion_overflow<B>(value)
-        || will_conversion_truncate<B>(value);
+        || will_conversion_trunc<B>(value);
   }
 } // namespace bnd
 
@@ -6404,7 +6404,7 @@ namespace bnd
 
     constexpr explicit(!has_flag(P, real)) operator double() const
       requires ((P & (round_floor | round_ceil | round_nearest
-                    | round_half_even | snapping)) != 0)
+                    | round_half_even | snap)) != 0)
     { return detail::as_double(*this); }
 
     constexpr operator bnd::detail::rational() const
@@ -6491,7 +6491,7 @@ namespace bnd
     [[nodiscard]] constexpr T as() const
       requires (!std::floating_point<T>
              || (P & (round_floor | round_ceil | round_nearest
-                    | round_half_even | snapping)) != 0)
+                    | round_half_even | snap)) != 0)
     { return to<T>().value(); }
 
     // numerator() / denominator() — the exact value of a fractional bound as an
@@ -6545,11 +6545,18 @@ namespace bnd
        return detail::policy_ref<bound, decltype(pol)>{*this, pol};
     }
 
-    [[nodiscard]] constexpr auto with_truncate()        { return policy<snapping>(); }
-    [[nodiscard]] constexpr auto with_round_nearest()   { return policy<round_nearest>(); }
-    [[nodiscard]] constexpr auto with_floor()           { return policy<round_floor>(); }
-    [[nodiscard]] constexpr auto with_ceil()            { return policy<round_ceil>(); }
-    [[nodiscard]] constexpr auto with_round_half_even() { return policy<round_half_even>(); }
+    // with_snap<Mode>() — opt this assignment into snapping with the given rounding
+    // mode. Bare `with_snap()` is truncate-toward-zero (Mode == snap); pass an
+    // explicit mode for the others: with_snap<round_nearest>(), <round_floor>,
+    // <round_ceil>, <round_half_even>.
+    template <policy_flag Mode = snap>
+    [[nodiscard]] constexpr auto with_snap()
+    {
+      static_assert(has_flag(Mode, snap),
+        "with_snap<Mode>: Mode must be a snapping mode — snap (truncate), round_nearest, "
+        "round_floor, round_ceil, or round_half_even");
+      return policy<Mode>();
+    }
     [[nodiscard]] constexpr auto with_clamp()           { return policy<clamp>(); }
     [[nodiscard]] constexpr auto with_wrap()            { return policy<wrap>(); }
 
@@ -6933,7 +6940,7 @@ namespace bnd
   {
     if (will_conversion_overflow<B>(value))
       detail::raise(errc::domain_error, "checked_cast: value out of bound interval");
-    if (will_conversion_truncate<B>(value))
+    if (will_conversion_trunc<B>(value))
       detail::raise(errc::rounding_error, "checked_cast: value does not land on notch");
     return B{value};
   }

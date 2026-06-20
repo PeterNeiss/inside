@@ -379,8 +379,8 @@ namespace bnd
         && Lower<B> == 0;
 
     // Policy test: checks both type-level and per-operation policy.
-    // Composite flags (e.g. round_nearest = bit5 | snapping) require all
-    // their bits set — having a subset like just `snapping` does NOT match.
+    // Composite flags (e.g. round_nearest = bit5 | snap) require all
+    // their bits set — having a subset like just `snap` does NOT match.
     template <boundable B, typename P, policy_flag F>
     inline constexpr bool HasPolicy = has_flag(BoundPolicy<B>, F) || plain<P>::test(F);
 
@@ -449,7 +449,7 @@ namespace bnd
             else if (ar > ab - ar) J = neg ? t - 1 : t + 1;
             else                   J = (t & 1) == 0 ? t : (neg ? t - 1 : t + 1);
           }
-          else                                                 // snapping: toward zero
+          else                                                 // snap: toward zero
             J = t;
         }
         return static_cast<umax>(J - m);           // offset index k = J - m (>= 0)
@@ -525,14 +525,14 @@ namespace bnd
     template <typename L, typename R, policy_flag P>
     concept assign_notch_ok =
       !boundable<R> || abs_den(assignment<L, R>::Factor.Denominator) == 1
-      || ((BoundPolicy<L> | P) & snapping) != 0
+      || ((BoundPolicy<L> | P) & snap) != 0
       || point_exactly_assignable<L, R>;
   } // namespace detail
 
   // Compile-time prerequisites for L = R, gating three failure modes at the call
   // site: (1) R is numeric; (2) intervals overlap (typed-interval R only —
   // skipped for float/rational, which have no static interval); (3) integer
-  // notch ratio or snapping set (else R's notch doesn't divide L's; opt into
+  // notch ratio or snap set (else R's notch doesn't divide L's; opt into
   // rounding). Named `bound_assignable` to avoid shadowing std::assignable_from.
   template <typename L, typename R, policy_flag P = checked>
   concept bound_assignable =
@@ -562,7 +562,7 @@ namespace bnd
       "bound_assignable: rhs interval lies entirely outside lhs interval and the policy "
       "(not wrap/clamp) cannot bring it into range — assignment can never succeed");
     static_assert(notch_ok,
-      "bound_assignable: incompatible notches — use `with_truncate()` or `policy<snapping>()` to allow rounding");
+      "bound_assignable: incompatible notches — use `with_snap()` or `policy<snap>()` to allow rounding");
     static constexpr bool value = bound_assignable<L, R, P>;
   };
 

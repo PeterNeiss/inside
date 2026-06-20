@@ -24,7 +24,7 @@ TEST_CASE("compound assignment: boundable RHS", "[bound][compound]")
   using u100 = bound<{0, 100}>;
   STATIC_REQUIRE([]{ u100 a{50}, d{20}; a -= d; return a.as<imax>(); }() == 30);
 
-  using ui = bound<{0, 100}, snapping>;
+  using ui = bound<{0, 100}, snap>;
   STATIC_REQUIRE([]{ ui d{50}, two{2}; d *= two; return d.as<imax>(); }() == 100);
   STATIC_REQUIRE([]{ ui e{60}, three{3}; e /= three; return e.as<imax>(); }() == 20);
   STATIC_REQUIRE([]{ ui f{17}, five{5}; f %= five; return f.as<imax>(); }() == 2);
@@ -36,7 +36,7 @@ TEST_CASE("compound /= and %= by a zero bound report by default", "[bound][compo
   u100 a{50};
   REQUIRE_THROWS_AS(([&]{ a /= u100{0}; }()), bnd::bound_error);
 
-  using ui = bound<{0, 100}, snapping>;
+  using ui = bound<{0, 100}, snap>;
   ui s{50};
   REQUIRE_THROWS_AS(([&]{ s %= ui{0}; }()), bnd::bound_error);
 }

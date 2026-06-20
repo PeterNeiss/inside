@@ -11,28 +11,28 @@
 //---------------------------------------------------------------------------
 // division / modulo. `division::div` returns optional<result> (division by zero
 // is always runtime-possible). Two paths: native (integer-aligned grids +
-// snapping → native integer division) and rational (exact, can overflow under
+// snap → native integer division) and rational (exact, can overflow under
 // checked). `modulo::mod` is integer-only — non-integer remainders aren't
 // well-defined on fractional notches.
 //---------------------------------------------------------------------------
 namespace bnd::detail
 {
   // Both operands are plain integer grids and the caller accepted integer
-  // truncation (snapping) — the prerequisite for native integer div / mod.
+  // truncation (snap) — the prerequisite for native integer div / mod.
   template <boundable L, boundable R, policy_flag F>
   inline constexpr bool integer_native_ops =
-      ((F | BoundPolicy<L> | BoundPolicy<R>) & snapping)
+      ((F | BoundPolicy<L> | BoundPolicy<R>) & snap)
       && !rational_raw<L> && !rational_raw<R>
       && IsIntegerAligned<L> && IsIntegerAligned<R>;
 
   //---------------------------------------------------------------------------
-  // Rounding mode for the native div & mod paths (fire when `snapping` is set).
+  // Rounding mode for the native div & mod paths (fire when `snap` is set).
   // Decided from the combined flags with assignment.hpp's precedence (nearest →
-  // floor → ceil → half_even → truncate); `snapping` alone is truncate-toward-zero.
+  // floor → ceil → half_even → trunc); `snap` alone is truncate-toward-zero.
   // The runtime quotient and the compile-time grid endpoints MUST agree on the
   // mode (both read div_round_mode), or a result could escape its own grid.
   //---------------------------------------------------------------------------
-  enum class round_mode { truncate, nearest, floor, ceil, half_even };
+  enum class round_mode { trunc, nearest, floor, ceil, half_even };
 
   constexpr round_mode div_round_mode(policy_flag eff) noexcept
   {
@@ -40,7 +40,7 @@ namespace bnd::detail
     if ((eff & round_floor)     == round_floor)     return round_mode::floor;
     if ((eff & round_ceil)      == round_ceil)      return round_mode::ceil;
     if (has_flag(eff, round_half_even)) return round_mode::half_even;
-    return round_mode::truncate;
+    return round_mode::trunc;
   }
 
   // |v| as umax, safe for imax_min (negating it would be UB).
@@ -52,7 +52,7 @@ namespace bnd::detail
   {
     const imax t = a / b;                     // C++ truncation toward zero
     const imax r = a % b;                     // sign of a, |r| < |b|
-    if (r == 0 || m == round_mode::truncate) return t;
+    if (r == 0 || m == round_mode::trunc) return t;
     const bool neg = (a < 0) != (b < 0);      // exact quotient is negative
     const umax ar = uabs(r), ab = uabs(b);    // ab - ar is safe: 0 < ar < ab
     switch (m)
@@ -74,7 +74,7 @@ namespace bnd::detail
   constexpr umax round_uquotient(umax num, umax den, round_mode m) noexcept
   {
     const umax t = num / den, r = num % den;
-    if (r == 0 || m == round_mode::truncate) return t;
+    if (r == 0 || m == round_mode::trunc) return t;
     switch (m)
     {
       case round_mode::floor:   return t;             // non-negative: floor == trunc
@@ -117,7 +117,7 @@ namespace bnd::detail
   template <boundable L, boundable R = L, policy_flag F = none>
   struct division
   {
-    // Native integer division, two flavours gated on `snapping`:
+    // Native integer division, two flavours gated on `snap`:
     //   native_div_integer — both operands integer-aligned; formula `a / b`.
     //   native_div_qformat — both same Q-format (Notch = 1/N, Lower = 0); formula
     //                        `(a·N)/b` (the native `(a << log2 N)/b` idiom).
@@ -125,7 +125,7 @@ namespace bnd::detail
     static constexpr bool native_div_integer = integer_native_ops<L, R, F>;
 
     static constexpr bool native_div_qformat =
-        ((F | BoundPolicy<L> | BoundPolicy<R>) & snapping)
+        ((F | BoundPolicy<L> | BoundPolicy<R>) & snap)
         && IsQFormat<L> && IsQFormat<R>
         && Notch<L> == Notch<R>;
 
@@ -264,7 +264,7 @@ namespace bnd::detail
     }
   }
   //---------------------------------------------------------------------------
-  // modulo (requires integer-valued grids + snapping)
+  // modulo (requires integer-valued grids + snap)
   //---------------------------------------------------------------------------
   template <boundable L, boundable R, policy_flag F = none>
   struct modulo
@@ -272,8 +272,8 @@ namespace bnd::detail
     static constexpr bool native_mod = integer_native_ops<L, R, F>;
 
     // Hard requirement, not a fallback: `a mod b` is only defined for integer
-    // operands, so the grid must be integer-aligned with `snapping` set.
-    static_assert(native_mod, "modulo requires integer-valued grids and snapping");
+    // operands, so the grid must be integer-aligned with `snap` set.
+    static_assert(native_mod, "modulo requires integer-valued grids and snap");
 
     static constexpr imax max_rem =
         std::max(abs_den(LowerImax<R>), abs_den(UpperImax<R>)) - 1;
@@ -286,7 +286,7 @@ namespace bnd::detail
         div_round_mode(F | BoundPolicy<L> | BoundPolicy<R>);
 
     static constexpr grid result_grid =
-        (rmode == round_mode::truncate && LowerImax<L> >= 0)
+        (rmode == round_mode::trunc && LowerImax<L> >= 0)
         ? grid{imax{0}, max_rem}
         : grid{-max_rem, max_rem};
 
@@ -318,7 +318,7 @@ namespace bnd::detail
         return report_or_nullopt<result>(action, policy, errc::division_by_zero,
                                          "division by zero in mod");
     result res;
-    // Remainder consistent with the rounded quotient (truncate → C++ `%`).
+    // Remainder consistent with the rounded quotient (trunc → C++ `%`).
     const imax lhs_val = to_value(lhs);
     from_value(res, lhs_val - div_rounded(lhs_val, rhs_val, rmode) * rhs_val);
     return res;

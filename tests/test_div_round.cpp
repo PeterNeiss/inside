@@ -1,6 +1,6 @@
 // Integer / Q-format division and modulo honour the rounding-mode policy.
 //
-// Historically the native div/mod paths gated only on the `snapping` bit and
+// Historically the native div/mod paths gated only on the `snap` bit and
 // always truncated toward zero, silently discarding the round mode (a
 // `round_nearest` grid divided like C++ `/`). These pin the corrected
 // behaviour: each mode rounds the quotient accordingly, the remainder stays
@@ -57,8 +57,8 @@ TEST_CASE("integer division honours each rounding mode", "[div][round]")
   REQUIRE(static_cast<rational>(Cc{ 8} / Ccd{3}) ==  3);   // ceil(2.667)
   REQUIRE(static_cast<rational>(Cc{-8} / Ccd{3}) == -2);   // ceil(-2.667)
 
-  using Tt = bound<{-100, 100}, snapping>;        using Ttd = bound<{1, 10}, snapping>;
-  REQUIRE(static_cast<rational>(Tt{-8} / Ttd{3}) == -2);   // bare snapping = truncate
+  using Tt = bound<{-100, 100}, snap>;        using Ttd = bound<{1, 10}, snap>;
+  REQUIRE(static_cast<rational>(Tt{-8} / Ttd{3}) == -2);   // bare snap = truncate
   REQUIRE(static_cast<rational>(Tt{ 8} / Ttd{3}) ==  2);
 }
 
@@ -83,14 +83,14 @@ TEST_CASE("modulo remainder stays consistent with the rounded quotient", "[mod][
   REQUIRE(static_cast<rational>(F{-8} % Fd{3}) == 1);    // floored remainder ≥ 0 for b>0
   REQUIRE(static_cast<rational>(F{ 8} % Fd{3}) == 2);
 
-  using T = bound<{-100, 100}, snapping>;       using Td = bound<{1, 10}, snapping>;
+  using T = bound<{-100, 100}, snap>;       using Td = bound<{1, 10}, snap>;
   REQUIRE(static_cast<rational>(T{-8} % Td{3}) == -2);   // truncated remainder (sign of dividend)
 }
 
 TEST_CASE("Q-format division honours the rounding mode", "[div][round][qformat]")
 {
   using Qn = bound<{{0, 255}, notch<1, 256>}, round_nearest>;
-  using Qt = bound<{{0, 255}, notch<1, 256>}, snapping>;
+  using Qt = bound<{{0, 255}, notch<1, 256>}, snap>;
   // 200/3 = 66.6667 → on the 1/256 grid: nearest = 17067/256, truncate = 17066/256.
   REQUIRE(static_cast<rational>(*(Qn{200.0} / Qn{3.0})) == rational{17067u, 256});
   REQUIRE(static_cast<rational>(*(Qt{200.0} / Qt{3.0})) == rational{17066u, 256});
@@ -145,8 +145,8 @@ TEST_CASE("div/mod property sweep vs reference, every mode", "[div][mod][round][
   using HA = bound<{-40, 40}, round_half_even>;    using HD = bound<{1, 7}, round_half_even>;
   sweep_div_mod<HA, HD, ref_heven>();
 
-  using TA = bound<{-40, 40}, snapping>;           using TD = bound<{1, 7}, snapping>;
-  using TDn = bound<{-7, -1}, snapping>;
+  using TA = bound<{-40, 40}, snap>;           using TD = bound<{1, 7}, snap>;
+  using TDn = bound<{-7, -1}, snap>;
   sweep_div_mod<TA, TD,  ref_trunc>();
   sweep_div_mod<TA, TDn, ref_trunc>();
 }

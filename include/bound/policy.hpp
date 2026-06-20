@@ -55,7 +55,7 @@ namespace bnd
     static constexpr bool round_check()
     {
       if (std::is_constant_evaluated()) return true;
-      return test(checked) && not test(snapping);
+      return test(checked) && not test(snap);
     }
 
     // Cheap default report: no message construction. error_ref mode records the
@@ -142,7 +142,7 @@ namespace bnd
   // Named convenience policies — let user code skip `make_policy<F>()` entirely
   // for the per-call flag form on free arithmetic functions.
   //---------------------------------------------------------------------------
-  inline constexpr auto truncated        = make_policy<snapping>();
+  inline constexpr auto truncated        = make_policy<snap>();
   inline constexpr auto round_to_nearest = make_policy<round_nearest>();
   inline constexpr auto clamped          = make_policy<clamp>();
   inline constexpr auto wrapped          = make_policy<wrap>();

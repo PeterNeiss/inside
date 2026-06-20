@@ -22,17 +22,17 @@ namespace bnd
   inline static constexpr policy_flag none         {0ull};
   inline static constexpr policy_flag ignore_zero  {1ull << 1};
   inline static constexpr policy_flag ignore_domain{1ull << 2};
-  // `snapping` — an off-notch value is rounded to fit the grid instead of
+  // `snap` — an off-notch value is rounded to fit the grid instead of
   // rejected; on its own truncate-toward-zero. Without it, an off-notch value is
   // a compile/runtime error and div/mod fall through to exact-rational results.
-  inline static constexpr policy_flag snapping     {1ull << 4};
-  inline static constexpr policy_flag round_nearest {(1ull << 5) | snapping};
-  // Rounding modes each pick a unique bit and OR in `snapping`. Conceptually
+  inline static constexpr policy_flag snap     {1ull << 4};
+  inline static constexpr policy_flag round_nearest {(1ull << 5) | snap};
+  // Rounding modes each pick a unique bit and OR in `snap`. Conceptually
   // exclusive; combining two is allowed but dispatch (assignment.hpp) picks the
-  // first match: nearest → floor → ceil → half_even → truncate.
-  inline static constexpr policy_flag round_floor     {(1ull << 6) | snapping};
-  inline static constexpr policy_flag round_ceil      {(1ull << 7) | snapping};
-  inline static constexpr policy_flag round_half_even {(1ull << 8) | snapping};
+  // first match: nearest → floor → ceil → half_even → trunc.
+  inline static constexpr policy_flag round_floor     {(1ull << 6) | snap};
+  inline static constexpr policy_flag round_ceil      {(1ull << 7) | snap};
+  inline static constexpr policy_flag round_half_even {(1ull << 8) | snap};
 
   // runtime checking — opt-in
   inline static constexpr policy_flag checked{1ull << 34}; // enable runtime domain/overflow checks
@@ -70,15 +70,15 @@ namespace bnd
 
   // opt-out of `checked`: no domain/round/overflow/div-by-zero checks (reading
   // out-of-range or dividing by zero is UB; `/= 0` no-ops, `a / 0` skips the
-  // check). Includes `snapping` so notch-incompatible assigns compile.
+  // check). Includes `snap` so notch-incompatible assigns compile.
   inline static constexpr policy_flag unsafe
-    {(1ull << 36) | ignore_domain | snapping | ignore_zero};
+    {(1ull << 36) | ignore_domain | snap | ignore_zero};
 
   //---------------------------------------------------------------------------
   // Flag-set membership predicates. `has_flag(set, flag)` is true iff EVERY bit
   // of `flag` is present in `set` — reads better than the raw `(set & flag) ==
   // flag` and is correct for composite flags (e.g. `round_nearest` carries
-  // `snapping`, `real` carries `round_nearest`), where a bare `set & flag`
+  // `snap`, `real` carries `round_nearest`), where a bare `set & flag`
   // truthy test would misfire. `has_any_flag` tests for any overlap.
   //---------------------------------------------------------------------------
   [[nodiscard]] constexpr bool has_flag(policy_flag set, policy_flag flag) noexcept

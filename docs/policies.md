@@ -42,11 +42,11 @@ is proven elsewhere. `clamp`, `wrap`, and `sentinel` are mutually exclusive
 | `clamp` | saturate to boundary on out-of-range (mutually exclusive with `wrap`/`sentinel`) |
 | `wrap` | modular arithmetic on out-of-range |
 | `sentinel` | out-of-range yields `nullopt` via `slim::optional` |
-| `snapping` | rounding mismatches truncate toward zero (no error) |
-| `round_nearest` | round to nearest notch, half away from zero (implies `snapping`) |
-| `round_floor` | round toward −∞ (implies `snapping`) |
-| `round_ceil` | round toward +∞ (implies `snapping`) |
-| `round_half_even` | banker's rounding — half to even (implies `snapping`) |
+| `snap` | rounding mismatches truncate toward zero (no error) |
+| `round_nearest` | round to nearest notch, half away from zero (implies `snap`) |
+| `round_floor` | round toward −∞ (implies `snap`) |
+| `round_ceil` | round toward +∞ (implies `snap`) |
+| `round_half_even` | banker's rounding — half to even (implies `snap`) |
 | `ignore_zero` | skip the divide-by-zero check — `a / 0` / `a % 0` is UB (binary `div`/`mod`); compound `/= 0` / `%= 0` no-op |
 | `ignore_domain` | suppress the runtime domain check |
 | `real` / `exact` / `direct` / `indexed` | **representation flags** — select how the raw value is stored; see the next section |
@@ -94,9 +94,9 @@ x.with_clamp() = 150;  // x == 100
 x.with_wrap()  = 103;  // x == 2
 
 bound<{{0, 10}, 2}> g{0};
-g.with_floor()           = 3.0;  // g == 2
-g.with_ceil()            = 3.0;  // g == 4
-g.with_round_half_even() = 5.0;  // g == 4 (tie → even)
+g.with_snap<round_floor>()           = 3.0;  // g == 2
+g.with_snap<round_ceil>()            = 3.0;  // g == 4
+g.with_snap<round_half_even>() = 5.0;  // g == 4 (tie → even)
 ```
 
 ## Callbacks: `on_wrap` / `on_clamp` / `on_overflow` / `on_sentinel` / `on_error`
@@ -213,8 +213,8 @@ auto sum = add(y, y, ec);
 // Combining flags with error code
 bound<{{0, 10}, 2}> coarse{0};
 bound<{{0, 10}, 1}> fine{3};
-coarse.policy<snapping>(ec) = fine;
-// snapping suppresses the rounding error, ec captures domain errors only
+coarse.policy<snap>(ec) = fine;
+// snap suppresses the rounding error, ec captures domain errors only
 ```
 
 The error code is only set on the first error (subsequent errors don't

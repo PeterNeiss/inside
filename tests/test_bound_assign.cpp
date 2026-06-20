@@ -29,20 +29,20 @@ TEST_CASE("rounding requires opt-in", "[bound][assign][round]")
   f20t50 bigger{39};
   f30t40 smaller;
 
-  SECTION("policy<snapping>() rounds (truncates toward zero on positive)")
+  SECTION("policy<snap>() rounds (truncates toward zero on positive)")
   {
-    smaller.policy<snapping>() = bigger;
+    smaller.policy<snap>() = bigger;
     REQUIRE(smaller == 38);
   }
 
-  SECTION("with_truncate() is the alias")
+  SECTION("with_snap() is the alias")
   {
     bigger = 30;
-    smaller.with_truncate() = bigger;
+    smaller.with_snap() = bigger;
     REQUIRE(smaller == 30);
   }
 
-  SECTION("with_round_nearest() rounds half up to grid")
+  SECTION("with_snap<round_nearest>() rounds half up to grid")
   {
     using celsius = bound<{{-40, 60}, 0.5}, round_nearest>;
     celsius room = 21.4;
@@ -56,16 +56,16 @@ TEST_CASE("rounding requires opt-in", "[bound][assign][round]")
 
     using half = bound<{{0, 10}, 0.5}>;
     half h;
-    h.with_round_nearest() = 3.3;
+    h.with_snap<round_nearest>() = 3.3;
     REQUIRE(h == 3.5_r);
 
-    h.with_round_nearest() = 3.2;
+    h.with_snap<round_nearest>() = 3.2;
     REQUIRE(h == 3);
   }
 
-  SECTION("type-level snapping")
+  SECTION("type-level snap")
   {
-    using n2_round = bound<{{0, 10}, 2}, snapping>;
+    using n2_round = bound<{{0, 10}, 2}, snap>;
     using n1       = bound<{{0, 10}, 1}>;
     n2_round c;
     c = n1{3};
@@ -74,14 +74,14 @@ TEST_CASE("rounding requires opt-in", "[bound][assign][round]")
 
   SECTION("type-level round_nearest")
   {
-    // Same cross-grid, off-notch assignment as `type-level snapping`, but the
+    // Same cross-grid, off-notch assignment as `type-level snap`, but the
     // coarse grid rounds to the nearest slot instead of truncating toward zero
     // (the `num * num` finer→coarser case). Grid points are 0,4,8,12,16,20.
     using n4_round = bound<{{0, 20}, 4}, round_nearest>;
     using n1       = bound<{{0, 20}, 1}>;
     n4_round c;
 
-    c = n1{3};  REQUIRE(c == 4);   // nearer 4 than 0 (snapping would give 0)
+    c = n1{3};  REQUIRE(c == 4);   // nearer 4 than 0 (snap would give 0)
     c = n1{5};  REQUIRE(c == 4);   // nearer 4 than 8
     c = n1{1};  REQUIRE(c == 0);   // nearer 0 than 4
 
@@ -249,10 +249,10 @@ TEST_CASE("checked policy throws on rounding error", "[bound][assign][checked][r
   REQUIRE(c == 4);
 }
 
-TEST_CASE("snapping truncates non-notch float at runtime",
-          "[bound][assign][snapping]")
+TEST_CASE("snap truncates non-notch float at runtime",
+          "[bound][assign][snap]")
 {
-  using coarse = bound<{{0, 10}, 2}, snapping>;
+  using coarse = bound<{{0, 10}, 2}, snap>;
   coarse c;
   c = 3.0;
   REQUIRE(c == 2);    // truncates toward zero
@@ -275,15 +275,15 @@ TEST_CASE("non-integer-mapping bound-to-bound clamp / domain_fail",
   // Source has notch 1 to a destination with notch 1/3 — Factor=3, integer.
   // To force the non-integer-mapping path we use a fractional-notch source
   // with a destination that doesn't cleanly align: notch 1/2 -> notch 1/3.
-  using src = bound<{{0, 5}, rational{1u, 2}}, snapping>;
-  using dst = bound<{{0, 5}, rational{1u, 3}}, snapping | clamp>;
+  using src = bound<{{0, 5}, rational{1u, 2}}, snap>;
+  using dst = bound<{{0, 5}, rational{1u, 3}}, snap | clamp>;
 
   src s{4};   // value 4 -> dst aligns
   dst d{s};
   REQUIRE(d == 4);
 
   // src[0,5] dst[0,4] — value 5 in src is out of dst, exercises clamp path
-  using dst2 = bound<{{0, 4}, rational{1u, 3}}, snapping | clamp>;
+  using dst2 = bound<{{0, 4}, rational{1u, 3}}, snap | clamp>;
   src s2{5};
   dst2 d2{s2};
   REQUIRE(d2 == 4);

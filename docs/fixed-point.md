@@ -47,7 +47,7 @@ template <boundable B> inline constexpr bool IsQFormat =
   interval and notch are computed at compile time — no manual headroom analysis
   to avoid overflow. `Q8.8 × Q8.8 → Q16.16`-shaped, exactly.
 - **Narrowing is a policy, not a hope.** Storing back onto a coarser grid runs
-  `snapping` (truncate), `round_nearest`, `clamp`, `wrap`, or `checked` — you
+  `snap` (truncate), `round_nearest`, `clamp`, `wrap`, or `checked` — you
   choose per type or per operation.
 - **Out-of-range is explicit.** `clamp`/`wrap` saturate/fold; `checked`/`sentinel`
   report (`slim::optional` / `slim::expected` / `bnd::errc`) instead of
@@ -73,7 +73,7 @@ hot loops.
 
 1. **Integer-aligned grids (notch 1)** — `bound<{0,N}>`, `bound<{a,b}>`. `+ − × ÷`
    run on the raw integer at native parity (multiplication takes a four-quadrant
-   `umax·umax` integer path; division with `snapping` is a native `a/b`). Byte-
+   `umax·umax` integer path; division with `snap` is a native `a/b`). Byte-
    wide unchecked loops vectorize at native lane count.
 2. **Q-format grids (notch `1/2^N`, Lower 0)** — power-of-two notch means scaling
    is a shift. Division of two same-notch Q-format operands takes the fast path
@@ -115,7 +115,7 @@ for a single deferred check. See the full table and notes in the
 ## Choosing your grid
 
 - **Hot integer/fixed-point math:** integer-aligned or Q-format grids; `unsafe`
-  or `snapping` in the inner loop, convert back to `checked` after.
+  or `snap` in the inner loop, convert back to `checked` after.
 - **Transcendentals:** `real` on a dyadic `double_exact` grid (see
   [math.md](math.md)).
 - **No rounding allowed:** `exact` — accept the rational cost.
