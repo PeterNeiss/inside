@@ -547,12 +547,21 @@ namespace bnd
   template <typename L, typename R, policy_flag P = checked>
   struct bound_assignable_why
   {
-    static_assert(numeric<R>,
+    // Collapse each clause to a plain bool *before* the static_assert. Asserting on
+    // a concept-id makes GCC dump the whole satisfaction tree ("constraints not
+    // satisfied / no operand of the disjunction…") on top of the message; a bool
+    // condition prints just the message. Each clause is self-guarding (the inner
+    // disjunctions gate `assignment<L,R>::Factor` on `boundable<R>`), so evaluating
+    // all three unconditionally is safe even when R is not numeric.
+    static constexpr bool is_numeric   = numeric<R>;
+    static constexpr bool intervals_ok = detail::assign_intervals_ok<L, R, P>;
+    static constexpr bool notch_ok     = detail::assign_notch_ok<L, R, P>;
+    static_assert(is_numeric,
       "bound_assignable: rhs is not numeric (must be a bound or arithmetic type)");
-    static_assert(detail::assign_intervals_ok<L, R, P>,
+    static_assert(intervals_ok,
       "bound_assignable: rhs interval lies entirely outside lhs interval and the policy "
       "(not wrap/clamp) cannot bring it into range — assignment can never succeed");
-    static_assert(detail::assign_notch_ok<L, R, P>,
+    static_assert(notch_ok,
       "bound_assignable: incompatible notches — use `with_truncate()` or `policy<snapping>()` to allow rounding");
     static constexpr bool value = bound_assignable<L, R, P>;
   };
