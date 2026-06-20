@@ -157,3 +157,29 @@ TEST_CASE("with_snap vs with_snap<round_nearest> disagree on halfway",
   c.with_snap()         = 3.0;   REQUIRE(c == 2);   // toward zero
   c.with_snap<round_nearest>() = 3.0;   REQUIRE(c == 4);   // half away from zero
 }
+
+//---------------------------------------------------------------------------
+// with_snap<Mode> — the Mode template parameter selects the rounding mode.
+// One value driven through every mode; +3 / -3 sit halfway between notches so
+// floor / ceil / truncate diverge by sign.
+//---------------------------------------------------------------------------
+TEST_CASE("with_snap<Mode> selects the rounding mode", "[bound][with][snap][mode]")
+{
+  using coarse = bound<{{-10, 10}, 2}>;   // grid: … -4 -2 0 2 4 …
+  coarse c{0};
+
+  // +3 is halfway between 2 and 4.
+  c.with_snap()                  = 3.0;  REQUIRE(c == 2);  // default == truncate toward zero
+  c.with_snap<snap>()            = 3.0;  REQUIRE(c == 2);  // explicit snap == the default
+  c.with_snap<round_floor>()     = 3.0;  REQUIRE(c == 2);  // toward −∞
+  c.with_snap<round_ceil>()      = 3.0;  REQUIRE(c == 4);  // toward +∞
+  c.with_snap<round_nearest>()   = 3.0;  REQUIRE(c == 4);  // half away from zero
+  c.with_snap<round_half_even>() = 3.0;  REQUIRE(c == 4);  // tie → even quotient
+
+  // −3 is halfway between −4 and −2: floor / ceil / truncate now disagree.
+  c.with_snap()                  = -3.0; REQUIRE(c == -2); // truncate toward zero
+  c.with_snap<round_floor>()     = -3.0; REQUIRE(c == -4); // toward −∞
+  c.with_snap<round_ceil>()      = -3.0; REQUIRE(c == -2); // toward +∞
+  c.with_snap<round_nearest>()   = -3.0; REQUIRE(c == -4); // half away from zero
+  c.with_snap<round_half_even>() = -3.0; REQUIRE(c == -4); // tie → even quotient
+}
