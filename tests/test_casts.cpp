@@ -232,3 +232,25 @@ TEST_CASE("clamp_floor / clamp_ceil / clamp_round compose clamp + round", "[boun
 
   REQUIRE(clamp_floor<coarse>(-3.0) == coarse{0});
 }
+
+//---------------------------------------------------------------------------
+// clamp_* accept a notch-incompatible *bound* source. The one-shot rounding
+// policy widens the value+policy constructor's assignable check, so a finer
+// grid rounds onto the target (not just arithmetic sources).
+//---------------------------------------------------------------------------
+TEST_CASE("clamp_floor / clamp_ceil / clamp_round accept a bound source",
+          "[bound][cast][round][bound2bound]")
+{
+  using small = bound<{{0, 10}, notch<1, 10>}, clamp>;   // 1/10 grid
+  small a  = 2.5;                                          // exact on the 1/10 grid
+  auto  sq = a * a;                                        // exact 6.25 on the 1/100 grid
+
+  REQUIRE(clamp_floor<small>(sq) == 6.2_r);   // toward −∞
+  REQUIRE(clamp_ceil <small>(sq) == 6.3_r);   // toward +∞
+  REQUIRE(clamp_round<small>(sq) == 6.3_r);   // 6.25 tie → half away → 6.3
+
+  small four = 4;                                          // 16 is out of range
+  REQUIRE(clamp_round<small>(four * four) == 10);          // clamp to boundary
+
+  REQUIRE(clamp_round<small>(150.0) == 10);                // arithmetic source: no regression
+}

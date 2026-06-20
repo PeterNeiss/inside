@@ -92,6 +92,13 @@ namespace bnd
     template<typename T>
     concept policy_like = IsPolicy<std::remove_cvref_t<T>>;
 
+    // policy_flags_of<T> — the flag-set a one-shot `policy<F,E>` carries (else
+    // `none`). Lets the value+policy constructor and policy_ref's conversion fold
+    // the per-call flags into their `bound_assignable` check, so a one-shot
+    // clamp/round actually relaxes the constraint it enables.
+    template<typename T>                inline constexpr policy_flag policy_flags_of = none;
+    template<policy_flag F, typename E> inline constexpr policy_flag policy_flags_of<policy<F,E>> = F;
+
     // True for policy specializations that carry a bnd::errc& reference.
     // Free-fn arithmetic uses this to decide whether to call policy.report on
     // failure (which sets ec) vs. returning silent nullopt (no-arg form).
@@ -189,29 +196,51 @@ namespace bnd
     // and forward to the single-action assignment::assign. At most one of the
     // four assignment-time tags is in the pack (enforced by static_assert), so
     // exactly one branch fires; the rest fall through to no-action.
-    template <numeric C>
-    constexpr B& assign_with_picked(C const& other)
+    // Generic assignment: store `src` into `dst` under this ref's Policy + picked
+    // action. `operator=` uses it with dst = Ref (the bound this ref wraps); the
+    // conversion operator below uses it with a fresh target, so a one-shot snap can
+    // be read out as a value (`(a * b).with_snap()`), not only assigned.
+    template <boundable Dst, numeric C>
+    constexpr Dst& assign_into(Dst& dst, C const& src)
     {
       if constexpr (has_action<IsClampActionPred, As...>)
-        return assignment<B, C>::assign(Ref, other, Policy,
+        return assignment<Dst, C>::assign(dst, src, Policy,
           pick_action_in<IsClampActionPred>(Actions));
       else if constexpr (has_action<IsWrapActionPred, As...>)
-        return assignment<B, C>::assign(Ref, other, Policy,
+        return assignment<Dst, C>::assign(dst, src, Policy,
           pick_action_in<IsWrapActionPred>(Actions));
       else if constexpr (has_action<IsSentinelActionPred, As...>)
-        return assignment<B, C>::assign(Ref, other, Policy,
+        return assignment<Dst, C>::assign(dst, src, Policy,
           pick_action_in<IsSentinelActionPred>(Actions));
       else if constexpr (has_action<IsErrorActionPred, As...>)
-        return assignment<B, C>::assign(Ref, other, Policy,
+        return assignment<Dst, C>::assign(dst, src, Policy,
           pick_action_in<IsErrorActionPred>(Actions));
       else
-        return assignment<B, C>::assign(Ref, other, Policy);
+        return assignment<Dst, C>::assign(dst, src, Policy);
     }
+
+    template <numeric C>
+    constexpr B& assign_with_picked(C const& other)
+    { return assign_into(Ref, other); }
 
     public:
     template <numeric C>
     constexpr B& operator=(C const& other)
     { return assign_with_picked(other); }
+
+    // Value read-out: a one-shot policy ref converts to any bound the assignment
+    // could satisfy, applying the target's own policy (range) plus this ref's
+    // carried flags (notch/rounding) via HasPolicy's merge. Makes
+    // `Target t = (a * b).with_snap();` / `return (a * b).with_snap();` compile.
+    // Constrained so the proxy stays SFINAE-friendly (no over-broad convertibility).
+    template <boundable Target>
+      requires bound_assignable<Target, B, BoundPolicy<Target> | policy_flags_of<P>>
+    constexpr operator Target()
+    {
+      Target r;
+      assign_into(r, Ref);
+      return r;
+    }
 
     // optional<C> sink — unwrap once at the proxy boundary so callers can chain
     // checked arithmetic into `.with_clamp() = ...` without per-step `.value()`.

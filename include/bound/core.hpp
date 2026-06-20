@@ -187,9 +187,12 @@ namespace bnd
     { store_value(value); }
 
     template <numeric A, typename Pol>
-      requires bound_assignable<bound, A, P>
+      requires bound_assignable<bound, A, P | detail::policy_flags_of<std::remove_cvref_t<Pol>>>
     constexpr bound(A value, Pol&& pol)   // if assign reports an error (ec mode), Raw is
     {                                     // left ill-defined — check the error before reading
+      // The one-shot `pol` widens the assignable check (a clamp/round passed here
+      // relaxes the notch/interval clause), so a notch-incompatible boundable source
+      // is accepted — e.g. clamp_round<B>(some_bound). Body honours `pol` as before.
       if constexpr (detail::real_raw<bound>)
         store_real(to_double(value));
       else
