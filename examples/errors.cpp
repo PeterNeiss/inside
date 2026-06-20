@@ -6,7 +6,7 @@
 #include <limits>
 
 #include "bound/bound.hpp"
-#include "bound/print.hpp"
+#include "bound/io.hpp"
 
 using namespace bnd;
 
@@ -27,15 +27,15 @@ int main()
     checked_100 x = 200;
     (void)x;
   }
-  catch (std::system_error& e)
+  catch (bnd::bound_error& e)
   {
-    std::cout << "throw:    " << e.code().message() << "\n";
+    std::cout << "throw:    " << errc_message(e.code) << "\n";
   }
 
   auto maybe = checked_100::try_make(200);
   std::cout << "expected: "
             << (maybe ? "has value"
-                      : make_error_code(maybe.error()).message())
+                      : errc_message(maybe.error()))
             << "\n";
 
   auto ok = checked_100::try_make(50);
@@ -44,15 +44,15 @@ int main()
 
   // === Section 2: Per-operation overrides on a default-checked bound ===
 
-  std::error_code ec;
+  bnd::errc ec{};
   checked_100 z(50);
   z.policy(ec) = 200;
-  std::cout << "policy ec:" << (ec ? ec.message() : "no error")
+  std::cout << "policy ec:" << (ec != errc{} ? errc_message(ec) : "no error")
             << " (z=" << z << ")" << "\n";
 
   checked_100 r(50);
   r.on_error([](auto& self, errc code, std::string_view msg) {
-    std::cout << "on_error: [" << make_error_code(code).message()
+    std::cout << "on_error: [" << errc_message(code)
               << "] " << msg << " -> recover to 0" << "\n";
     self = 0;
   }) = 200;
@@ -70,7 +70,7 @@ int main()
 
   coarse c(0);
   c.on_error([](auto& self, errc code, std::string_view msg) {
-    std::cout << "rounding: [" << make_error_code(code).message()
+    std::cout << "rounding: [" << errc_message(code)
               << "] " << msg << " -> recover to 4" << "\n";
     self = 4;
   }) = 3.0;   // 3 doesn't land on the notch-2 grid
@@ -78,7 +78,7 @@ int main()
 
   auto q = div(checked_100(10), checked_100(0),
     on_overflow([](auto& res, errc code) {
-      std::cout << "div/0:    [" << make_error_code(code).message()
+      std::cout << "div/0:    [" << errc_message(code)
                 << "] -> recover to 0" << "\n";
       res = std::remove_cvref_t<decltype(res)>{0};
     }));
@@ -86,12 +86,12 @@ int main()
 
 
   // === Section 4: Free-function error_code overload ===
-  // add / sub / mul / div / mod accept an std::error_code& directly; ec is
+  // add / sub / mul / div / mod accept an bnd::errc& directly; ec is
   // set on overflow or division-by-zero, the result is nullopt on failure.
 
-  ec.clear();
+  ec = errc{};
   auto qz = div(checked_100(10), checked_100(0), ec);
-  std::cout << "free-fn:  " << (ec ? ec.message() : "no error")
+  std::cout << "free-fn:  " << (ec != errc{} ? errc_message(ec) : "no error")
             << " (q has_value=" << (qz.has_value() ? "true" : "false")
             << ")" << "\n";
 

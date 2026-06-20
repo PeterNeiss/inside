@@ -12,7 +12,7 @@
 // The fix rounds in value space, so assignment and division now agree.
 
 #include "bound/bound.hpp"
-#include "bound/format.hpp"
+#include "bound/io.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 

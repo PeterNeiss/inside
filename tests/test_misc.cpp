@@ -1,6 +1,6 @@
 #include "bound/bound.hpp"
+#include "bound/io.hpp"
 #include "bound/numeric_limits.hpp"
-#include "bound/print.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -146,12 +146,11 @@ TEST_CASE("numeric_limits epsilon / round_error report 0 for exact types",
   STATIC_REQUIRE(std::numeric_limits<above_zero>::round_error() == 10);
 }
 
-TEST_CASE("bound error category stringifies every errc", "[error][category]")
+TEST_CASE("errc_message stringifies every errc", "[error][category]")
 {
-  REQUIRE(make_error_code(errc::domain_error).message()     == "value outside interval");
-  REQUIRE(make_error_code(errc::division_by_zero).message()  == "division by zero");
-  REQUIRE(make_error_code(errc::overflow).message()          == "rational arithmetic overflow");
-  REQUIRE(make_error_code(errc::rounding_error).message()    == "notch incompatibility");
-  REQUIRE(make_error_code(static_cast<errc>(999)).message()  == "unknown bound error");
-  REQUIRE(std::string{make_error_code(errc::overflow).category().name()} == "bound");
+  REQUIRE(std::string_view{errc_message(errc::domain_error)}     == "value outside interval");
+  REQUIRE(std::string_view{errc_message(errc::division_by_zero)}  == "division by zero");
+  REQUIRE(std::string_view{errc_message(errc::overflow)}          == "rational arithmetic overflow");
+  REQUIRE(std::string_view{errc_message(errc::rounding_error)}    == "notch incompatibility");
+  REQUIRE(std::string_view{errc_message(static_cast<errc>(999))}  == "unknown bound error");
 }

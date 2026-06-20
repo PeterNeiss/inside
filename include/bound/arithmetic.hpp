@@ -39,7 +39,7 @@ namespace bnd
 
   template <boundable L, boundable R, typename A = no_action>
   [[nodiscard]] constexpr auto add(L const& lhs, R const& rhs,
-                                   std::error_code& ec, A&& action = {})
+                                   errc& ec, A&& action = {})
   { return detail::addition<L,R>::add(lhs, rhs, make_policy<checked>(ec),
       std::forward<A>(action)); }
 
@@ -76,7 +76,7 @@ namespace bnd
 
   template <boundable L, boundable R, typename A = no_action>
   [[nodiscard]] constexpr auto sub(L const& lhs, R const& rhs,
-                                   std::error_code& ec, A&& action = {})
+                                   errc& ec, A&& action = {})
   { return add(lhs, -rhs, make_policy<checked>(ec), std::forward<A>(action)); }
 
   //---------------------------------------------------------------------------
@@ -110,7 +110,7 @@ namespace bnd
 
   template <boundable L, boundable R, typename A = no_action>
   [[nodiscard]] constexpr auto mul(L const& lhs, R const& rhs,
-                                   std::error_code& ec, A&& action = {})
+                                   errc& ec, A&& action = {})
   { return detail::multiplication<L,R>::mul(lhs, rhs, make_policy<checked>(ec),
       std::forward<A>(action)); }
 
@@ -277,7 +277,7 @@ namespace bnd
 
   template <boundable L, boundable R, typename A = no_action>
   [[nodiscard]] constexpr auto div(L lhs, R rhs,
-                                   std::error_code& ec, A&& action = {})
+                                   errc& ec, A&& action = {})
   { return detail::division<L, R, checked>::div(lhs, rhs, make_policy<checked>(ec),
       std::forward<A>(action)); }
 
@@ -315,7 +315,7 @@ namespace bnd
 
   template <boundable L, boundable R, typename A = no_action>
   [[nodiscard]] constexpr auto mod(L lhs, R rhs,
-                                   std::error_code& ec, A&& action = {})
+                                   errc& ec, A&& action = {})
   { return detail::modulo<L, R, checked>::mod(lhs, rhs, make_policy<checked>(ec),
       std::forward<A>(action)); }
 

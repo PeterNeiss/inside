@@ -56,7 +56,7 @@ bound<{0, 100}>        q = 150;     // throws (default: checked)
 ```
 
 Policies: `clamp`, `wrap`, `sentinel`, the `round_*` family, plus per-operation
-callbacks (`on_clamp`, `on_wrap`, …) and a throw-free `std::error_code` mode.
+callbacks (`on_clamp`, `on_wrap`, …) and a throw-free `bnd::errc` mode.
 See [policies.md](policies.md).
 
 ## How a value flows

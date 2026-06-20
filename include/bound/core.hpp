@@ -128,8 +128,7 @@ namespace bnd
       // NaN/±inf would reach snap_double's integer cast (UB); reject like the
       // non-real path. `v - v` is 0 for every finite v, NaN otherwise.
       if (!(v - v == 0))
-        throw std::system_error(make_error_code(errc::not_finite),
-                                "non-finite double");
+        detail::raise(errc::not_finite, "non-finite double");
       const double lo = static_cast<double>(G.Interval.Lower);
       const double hi = static_cast<double>(G.Interval.Upper);
       if (v < lo || v > hi)
@@ -156,14 +155,8 @@ namespace bnd
           }
           v -= kd * range;
         }
-#ifdef BND_RICH_MESSAGES
-        else if (detail::domain_fail(*this, make_policy<P>(),
-                   std::to_string(v) + " is not in " + bnd::to_string(G.Interval)))
-          return;            // sentinel stored / reported (error_code mode)
-#else
         else if (detail::domain_fail(*this, make_policy<P>()))
           return;            // sentinel stored / reported (error_code mode)
-#endif
         // no handler (unchecked policy): fall through and store snapped as-is
       }
       Raw = G.snap_double(v);
@@ -209,7 +202,7 @@ namespace bnd
     // checking ec first.
     template <numeric A>
       requires bound_assignable<bound, A, P>
-    constexpr bound(A value, std::error_code& ec)
+    constexpr bound(A value, errc& ec)
     {
       if constexpr (detail::real_raw<bound>)
         store_real(to_double(value));
@@ -419,7 +412,7 @@ namespace bnd
     }
 
     template <policy_flag F = none>
-    [[nodiscard]] constexpr auto policy(std::error_code& ec)
+    [[nodiscard]] constexpr auto policy(errc& ec)
     {
        auto pol = make_policy<P | F>(ec);
        return detail::policy_ref<bound, decltype(pol)>{*this, pol};
@@ -519,11 +512,7 @@ namespace bnd
       else if constexpr (P & sentinel)
         Raw = detail::sentinel_raw<bound>();
       else
-#ifdef BND_RICH_MESSAGES
-        make_policy<P>().report(errc::domain_error, "operator+= result out of range");
-#else
         make_policy<P>().report(errc::domain_error);
-#endif
       return *this;
     }
     public:
@@ -546,11 +535,7 @@ namespace bnd
     constexpr bool report_div_by_zero([[maybe_unused]] const char* msg)
     {
       if constexpr (!(P & ignore_zero))
-#ifdef BND_RICH_MESSAGES
-        make_policy<P>().report(errc::division_by_zero, msg);
-#else
         make_policy<P>().report(errc::division_by_zero);
-#endif
       return false;   // caller returns *this directly
     }
     public:
@@ -610,10 +595,10 @@ namespace bnd
     template <numeric A>
     [[nodiscard]] static constexpr slim::expected<bound, errc> try_make(A value)
     {
-      std::error_code ec;
+      errc ec{};
       bound result;
       detail::assignment<bound, A>::assign(result, value, make_policy<P>(ec));
-      if (ec) return slim::unexpected{static_cast<errc>(ec.value())};
+      if (ec != errc{}) return slim::unexpected{ec};
       // For `sentinel` policy types, an out-of-range write silently sets
       // result.Raw to the sentinel; surface that as a domain error.
       if constexpr (has_flag(P, sentinel))

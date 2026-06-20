@@ -11,9 +11,8 @@
 #include <version>
 
 #include "bound/bound.hpp"
+#include "bound/io.hpp"
 #include "bound/cmath.hpp"
-#include "bound/formatter.hpp"
-#include "bound/print.hpp"      // operator<< — the fallback println routes here
 
 #if defined(__cpp_lib_print)
 #include <print>

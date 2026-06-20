@@ -11,7 +11,7 @@
 #include "bound/cmath_double.hpp"
 #include "bound/casts.hpp"
 #include "bound/predicates.hpp"
-#include "bound/format.hpp"
+#include "bound/io.hpp"
 #include "bound/math.hpp"
 #include "bound/detail/rational.hpp"
 
@@ -221,7 +221,7 @@ TEST_CASE("checked += boundable overflow reports (throws)", "[bound][compound][c
   using c100 = bound<{0, 100}, checked>;
   c100 a{80};
   c100 b{50};
-  REQUIRE_THROWS_AS(a += b, std::system_error);   // 130 not in [0,100]
+  REQUIRE_THROWS_AS(a += b, bnd::bound_error);   // 130 not in [0,100]
 }
 
 //---------------------------------------------------------------------------
@@ -271,7 +271,7 @@ TEST_CASE("real store out of range: sentinel and checked policies",
   REQUIRE(s == rbs::make_sentinel());            // real sentinel is a finite, comparable value
 
   using rbc = bound<{{-1, 1}, notch<1, 1024>}, real | checked>;
-  REQUIRE_THROWS_AS((rbc{5.0}), std::system_error);   // out of range -> report (throws)
+  REQUIRE_THROWS_AS((rbc{5.0}), bnd::bound_error);   // out of range -> report (throws)
 }
 #endif // !BND_MATH_FIXED
 

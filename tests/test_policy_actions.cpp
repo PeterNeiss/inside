@@ -1,11 +1,10 @@
 #include "bound/bound.hpp"
-#include "bound/print.hpp"
+#include "bound/io.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 
 #include <limits>
 #include <string_view>
-#include <system_error>
 
 using namespace bnd;
 using namespace bnd::detail;
@@ -299,48 +298,48 @@ TEST_CASE("mod free-fn with on_overflow recovers from div/0", "[bound][policy][m
   REQUIRE(fired);
 }
 
-TEST_CASE("free-fn div with std::error_code& sets ec on div/0",
+TEST_CASE("free-fn div with bnd::errc& sets ec on div/0",
           "[bound][policy][ec][div]")
 {
   using c100 = bound<{0, 100}, checked>;
-  std::error_code ec;
+  bnd::errc ec{};
   auto q = div(c100{10}, c100{0}, ec);
   REQUIRE(ec == errc::division_by_zero);
   REQUIRE_FALSE(q.has_value());
 
   SECTION("success path leaves ec clear")
   {
-    std::error_code ec2;
+    bnd::errc ec2{};
     auto r = div(c100{10}, c100{2}, ec2);
-    REQUIRE_FALSE(ec2);
+    REQUIRE(ec2 == errc{});
     REQUIRE(r.has_value());
   }
 }
 
-TEST_CASE("free-fn mod with std::error_code& sets ec on div/0",
+TEST_CASE("free-fn mod with bnd::errc& sets ec on div/0",
           "[bound][policy][ec][mod]")
 {
   using u100ic = bound<{0, 100}, checked | snapping>;
-  std::error_code ec;
+  bnd::errc ec{};
   auto m = mod(u100ic{7}, u100ic{0}, ec);
   REQUIRE(ec == errc::division_by_zero);
   REQUIRE_FALSE(m.has_value());
 }
 
-TEST_CASE("free-fn add with std::error_code& compiles and clears on success",
+TEST_CASE("free-fn add with bnd::errc& compiles and clears on success",
           "[bound][policy][ec][add]")
 {
   using c100 = bound<{0, 100}, checked>;
-  std::error_code ec;
+  bnd::errc ec{};
   auto sum = add(c100{40}, c100{50}, ec);
-  REQUIRE_FALSE(ec);
+  REQUIRE(ec == errc{});
   REQUIRE(sum == 90);
 
   // SFINAE: the ec form must bind for add / sub / mul / div / mod.
-  STATIC_REQUIRE(requires(c100 x, c100 y, std::error_code& e) { add(x, y, e); });
-  STATIC_REQUIRE(requires(c100 x, c100 y, std::error_code& e) { sub(x, y, e); });
-  STATIC_REQUIRE(requires(c100 x, c100 y, std::error_code& e) { mul(x, y, e); });
-  STATIC_REQUIRE(requires(c100 x, c100 y, std::error_code& e) { div(x, y, e); });
+  STATIC_REQUIRE(requires(c100 x, c100 y, bnd::errc& e) { add(x, y, e); });
+  STATIC_REQUIRE(requires(c100 x, c100 y, bnd::errc& e) { sub(x, y, e); });
+  STATIC_REQUIRE(requires(c100 x, c100 y, bnd::errc& e) { mul(x, y, e); });
+  STATIC_REQUIRE(requires(c100 x, c100 y, bnd::errc& e) { div(x, y, e); });
 }
 
 TEST_CASE("no-arg div on div/0 still returns nullopt without throwing",
@@ -377,7 +376,7 @@ TEST_CASE("policy(ec) catches rounding_error on float assignment",
 {
   using coarse = bound<{{0, 10}, 2}>;
   coarse c{0};
-  std::error_code ec;
+  bnd::errc ec{};
   c.policy(ec) = 3.0;
   REQUIRE(ec == errc::rounding_error);
 }

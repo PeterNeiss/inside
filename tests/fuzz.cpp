@@ -26,7 +26,6 @@
 #include <numbers>
 #include <random>
 #include <string>
-#include <system_error>
 
 using namespace bnd;
 using namespace bnd::detail;
@@ -578,12 +577,12 @@ void prop_spaceship_symmetry(fuzz_state& s, long iters)
   }
 }
 
-// Helper: run `fn` and verify it threw std::system_error with the expected errc.
+// Helper: run `fn` and verify it threw bnd::bound_error with the expected errc.
 template <typename Fn>
 bool throws_with(errc expected, Fn&& fn)
 {
   try { fn(); }
-  catch (std::system_error const& e) { return e.code() == make_error_code(expected); }
+  catch (bnd::bound_error const& e) { return e.code == expected; }
   catch (...) { return false; }
   return false;
 }
@@ -594,8 +593,8 @@ template <typename Fn>
 bool throws_with_any(std::initializer_list<errc> codes, Fn&& fn)
 {
   try { fn(); }
-  catch (std::system_error const& e) {
-    for (auto c : codes) if (e.code() == make_error_code(c)) return true;
+  catch (bnd::bound_error const& e) {
+    for (auto c : codes) if (e.code == c) return true;
     return false;
   }
   catch (...) { return false; }

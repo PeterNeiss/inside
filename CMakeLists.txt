@@ -28,16 +28,13 @@ if(BOUND_MATH_FIXED)
     target_compile_definitions(bound_bound INTERFACE BND_MATH_FIXED)
 endif()
 
-# Error-message detail. Default OFF = cheap: a checked violation throws
-# std::system_error carrying the static category message ("value outside
-# interval", …), so the common assignment/arithmetic path stays small and never
-# drags <string> / bnd::to_string into a translation unit. ON = rich: messages
-# include the offending value and the interval/notch (pulls in the formatting
-# machinery). Define the BND_RICH_MESSAGES macro directly for non-CMake builds.
-option(BOUND_RICH_MESSAGES "Build detailed value/interval error messages (off = cheap static category messages)" OFF)
-if(BOUND_RICH_MESSAGES)
-    target_compile_definitions(bound_bound INTERFACE BND_RICH_MESSAGES)
-endif()
+# Error reporting carries no strings: a checked violation funnels through the
+# installed bnd::error_handler (default throws bnd::bound_error / traps under
+# -fno-exceptions) with a static const-char* message — the core never drags
+# <string>/<system_error> into a translation unit. General-purpose
+# stringification (to_string / operator<< / std::formatter) lives in the opt-in
+# "bound/io.hpp"; in the single header that block is wrapped in BND_NO_STRING so
+# a freestanding consumer can drop it (and its heavy includes) wholesale.
 
 target_include_directories(bound_bound
     INTERFACE
@@ -61,29 +58,6 @@ target_compile_options(bound_bound
         >
 )
 
-include(CheckCXXSourceCompiles)
-
-# <stacktrace> with libstdc++ requires linking the experimental library; the
-# probe is GCC-specific and C++23-only, so it is skipped under BOUND_CXX20.
-if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND NOT BOUND_CXX20)
-    set(CMAKE_REQUIRED_FLAGS "-std=c++23")
-    set(CMAKE_REQUIRED_LIBRARIES stdc++exp)
-    check_cxx_source_compiles("
-        #include <stacktrace>
-        int main() { return std::stacktrace::current().size(); }
-    " BOUND_HAS_STACKTRACE)
-    unset(CMAKE_REQUIRED_FLAGS)
-    unset(CMAKE_REQUIRED_LIBRARIES)
-
-    if(BOUND_HAS_STACKTRACE)
-        target_compile_definitions(bound_bound INTERFACE
-            $<$<NOT:$<CONFIG:Release>>:BOUND_HAS_STACKTRACE>
-        )
-        target_link_libraries(bound_bound INTERFACE
-            $<$<NOT:$<CONFIG:Release>>:stdc++exp>
-        )
-    endif()
-endif()
 
 #---------------------------------------------------------------------------
 # Coverage (opt-in; instruments the bound interface so test TUs are covered)
@@ -270,6 +244,25 @@ if(BOUND_MATH_FIXED)
 endif()
 if(WIN32 AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     target_link_options(single_header_smoke PRIVATE -Wl,--allow-multiple-definition)
+endif()
+
+# Freestanding-leaning smoke: the single header with the io/string block dropped
+# (BND_NO_STRING) and exceptions off, installing a custom bnd::error_handler in
+# place of the default throw. Proves the core compiles with neither <string> nor
+# the C++ exception ABI on its own surface. EXCLUDE_FROM_ALL — build with
+# `--target single_header_freestanding_smoke`.
+add_executable(single_header_freestanding_smoke EXCLUDE_FROM_ALL
+    tests/single_header_freestanding_smoke.cpp)
+target_include_directories(single_header_freestanding_smoke PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/single_include")
+target_compile_definitions(single_header_freestanding_smoke PRIVATE BND_NO_STRING)
+target_compile_options(single_header_freestanding_smoke PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-fno-exceptions>)
+if(BOUND_MATH_FIXED)
+    target_compile_definitions(single_header_freestanding_smoke PRIVATE BND_MATH_FIXED)
+endif()
+if(WIN32 AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    target_link_options(single_header_freestanding_smoke PRIVATE -Wl,--allow-multiple-definition)
 endif()
 
 #---------------------------------------------------------------------------

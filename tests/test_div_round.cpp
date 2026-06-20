@@ -7,7 +7,7 @@
 // consistent (`(a/b)*b + a%b == a`), and the result lands inside its grid.
 
 #include "bound/bound.hpp"
-#include "bound/format.hpp"
+#include "bound/io.hpp"
 
 #include <cstdlib>
 

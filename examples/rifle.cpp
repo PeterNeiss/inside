@@ -26,8 +26,8 @@
 #include <string_view>
 
 #include "bound/bound.hpp"
+#include "bound/io.hpp"
 #include "bound/formats.hpp"
-#include "bound/print.hpp"
 
 using namespace bnd;
 

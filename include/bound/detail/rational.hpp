@@ -7,13 +7,12 @@
 #include "bound/math.hpp"            // umax/imax, arithmetic, rational fwd
 #include "bound/lift.hpp"            // lift, is_slim_optional_v, unwrap_t, slim::optional
 #include "bound/detail/overflow.hpp" // add/sub/mul_overflow
-#include "bound/detail/debug.hpp"    // errc, make_error_code, <system_error>
+#include "bound/detail/debug.hpp"    // errc, detail::raise, detail::constexpr_error
 
 #include "slim/expected.hpp"     // slim::expected, slim::unexpected
 
 #include <numeric>
 #include <compare>
-#include <cmath>
 #include <limits>
 #include <tuple>
 #include <type_traits>      // std::is_constant_evaluated
@@ -72,11 +71,11 @@ namespace bnd::detail
   //---------------------------------------------------------------------------
   // Overflow / malformed-literal signalling
   //---------------------------------------------------------------------------
-  // Failure aborts constant evaluation via `throw` (literal parsers and the
-  // checked paths under `if (std::is_constant_evaluated())`), hard-failing the
-  // build; at runtime those paths fall through to `nullopt`. No dedicated
-  // always-throwing helper — as constexpr its body could never be a constant
-  // expression (ill-formed NDR, a hard error on some toolchains).
+  // Failure aborts constant evaluation via `detail::constexpr_error<Msg>()` — a
+  // non-constexpr [[noreturn]] helper carrying the message in an NTTP (literal
+  // parsers and the checked paths under `if (std::is_constant_evaluated())`),
+  // hard-failing the build with the text in the diagnostic; at runtime those
+  // paths fall through to `nullopt`. No `throw`, so it is -fno-exceptions clean.
 
   //---------------------------------------------------------------------------
   // rational — structural type for NTTP (public members only). Sign is encoded
@@ -128,7 +127,7 @@ namespace bnd::detail
     explicit constexpr operator T () const
     {
       if (Denominator < 0)
-        throw std::system_error(make_error_code(errc::domain_error), "cannot convert negative rational to unsigned");
+        raise(errc::domain_error, "cannot convert negative rational to unsigned");
       return Numerator / abs_den(Denominator);
     }
 
@@ -190,11 +189,9 @@ namespace bnd::detail
     static constexpr void canonicalize(umax& num, imax& den)
     {
       if (den == 0)
-        throw std::system_error(make_error_code(errc::domain_error),
-                                "Denominator of Zero is invalid");
+        raise(errc::domain_error, "Denominator of Zero is invalid");
       if (den == std::numeric_limits<imax>::min())
-        throw std::system_error(make_error_code(errc::domain_error),
-                                "Denominator imax_min is invalid (cannot be negated)");
+        raise(errc::domain_error, "Denominator imax_min is invalid (cannot be negated)");
       if (num == 0) den = 1;
       trim(num, den);
     }
@@ -205,11 +202,9 @@ namespace bnd::detail
     static constexpr imax signed_den_from(std::signed_integral auto num, imax den)
     {
       if (den == 0)
-        throw std::system_error(make_error_code(errc::domain_error),
-                                "Denominator of Zero is invalid");
+        raise(errc::domain_error, "Denominator of Zero is invalid");
       if (den == std::numeric_limits<imax>::min())
-        throw std::system_error(make_error_code(errc::domain_error),
-                                "Denominator imax_min is invalid (cannot be negated)");
+        raise(errc::domain_error, "Denominator imax_min is invalid (cannot be negated)");
       return (num < 0) ? -den : den;
     }
   };
@@ -311,8 +306,8 @@ namespace bnd::detail
 
   constexpr rational::rational(std::floating_point auto value)
   {
-    if (not std::isfinite(value))
-      throw std::system_error(make_error_code(errc::not_finite), "non-finite double");
+    if (not is_finite(value))
+      raise(errc::not_finite, "non-finite double");
 
     if (value == 0.0)
     {
@@ -412,13 +407,13 @@ namespace bnd::detail
             exp_seen_digit = true;
             continue;
           }
-          throw ("_b/_r literal: invalid char in exponent");
+          constexpr_error<"_b/_r literal: invalid char in exponent">();
         }
 
         if (c == '.')
         {
-          if (in_frac) throw ("_b/_r literal: multiple '.'");
-          if (base == 2) throw ("_b/_r literal: '.' not allowed in binary");
+          if (in_frac) constexpr_error<"_b/_r literal: multiple '.'">();
+          if (base == 2) constexpr_error<"_b/_r literal: '.' not allowed in binary">();
           in_frac = true;
           continue;
         }
@@ -438,11 +433,11 @@ namespace bnd::detail
         }
 
         int d = parse_digit(c, base);
-        if (d < 0) throw ("_b/_r literal: invalid digit for radix");
+        if (d < 0) constexpr_error<"_b/_r literal: invalid digit for radix">();
 
         umax base_u = base;
         if (num > (~umax{0} - d) / base_u)
-          throw ("_b/_r literal: numerator overflow");
+          constexpr_error<"_b/_r literal: numerator overflow">();
         num = num * base_u + d;
         if (in_frac) ++frac_len;
       }
@@ -455,26 +450,26 @@ namespace bnd::detail
         for (int k = 0; k < frac_len; ++k)
         {
           if (den > (~umax{0}) / 10u)
-            throw ("_b/_r literal: denominator overflow");
+            constexpr_error<"_b/_r literal: denominator overflow">();
           den *= 10u;
         }
       }
       else if (base == 16)
       {
         int shift = 4 * frac_len;
-        if (shift >= 64) throw ("_b/_r literal: hex fraction too long");
+        if (shift >= 64) constexpr_error<"_b/_r literal: hex fraction too long">();
         den <<= shift;
       }
 
       // Apply binary exponent (hex floats, `p`).
       if (has_p_exp)
       {
-        if (exp >= 63) throw ("_b/_r literal: p exponent too large");
+        if (exp >= 63) constexpr_error<"_b/_r literal: p exponent too large">();
         if (!exp_neg) num <<= exp;
         else
         {
           if (den > (~umax{0}) >> exp)
-            throw ("_b/_r literal: p exponent denominator overflow");
+            constexpr_error<"_b/_r literal: p exponent denominator overflow">();
           den <<= exp;
         }
       }
@@ -487,13 +482,13 @@ namespace bnd::detail
           if (!exp_neg)
           {
             if (num > (~umax{0}) / 10u)
-              throw ("_b/_r literal: e exponent numerator overflow");
+              constexpr_error<"_b/_r literal: e exponent numerator overflow">();
             num *= 10u;
           }
           else
           {
             if (den > (~umax{0}) / 10u)
-              throw ("_b/_r literal: e exponent denominator overflow");
+              constexpr_error<"_b/_r literal: e exponent denominator overflow">();
             den *= 10u;
           }
         }
@@ -536,7 +531,7 @@ namespace bnd::detail
         {
           if (add_overflow(a.Numerator, b.Numerator, &numerator))
           {
-            if (std::is_constant_evaluated()) { throw ("rational +: numerator overflow (same denominator)"); }
+            if (std::is_constant_evaluated()) { constexpr_error<"rational +: numerator overflow (same denominator)">(); }
             return ret_t{slim::nullopt};
           }
         }
@@ -578,7 +573,7 @@ namespace bnd::detail
           mul_overflow(b.Numerator, a_ad_r, &B)       ||
           denominator > static_cast<umax>(std::numeric_limits<imax>::max()))
       {
-        if (std::is_constant_evaluated()) { throw ("rational +: cross-multiplication overflow"); }
+        if (std::is_constant_evaluated()) { constexpr_error<"rational +: cross-multiplication overflow">(); }
         return ret_t{slim::nullopt};
       }
     }
@@ -596,7 +591,7 @@ namespace bnd::detail
       {
         if (add_overflow(A, B, &numerator))
         {
-          if (std::is_constant_evaluated()) { throw ("rational +: numerator sum overflow"); }
+          if (std::is_constant_evaluated()) { constexpr_error<"rational +: numerator sum overflow">(); }
           return ret_t{slim::nullopt};
         }
       }
@@ -645,7 +640,7 @@ namespace bnd::detail
       {
         if (mul_overflow(a.Numerator, b.Numerator, &numerator))
         {
-          if (std::is_constant_evaluated()) { throw ("rational *: numerator overflow"); }
+          if (std::is_constant_evaluated()) { constexpr_error<"rational *: numerator overflow">(); }
           return ret_t{slim::nullopt};
         }
       }
@@ -669,7 +664,7 @@ namespace bnd::detail
           mul_overflow(a_ad, b_ad, &denominator)             ||
           denominator > static_cast<umax>(std::numeric_limits<imax>::max()))
       {
-        if (std::is_constant_evaluated()) { throw ("rational *: numerator or denominator overflow"); }
+        if (std::is_constant_evaluated()) { constexpr_error<"rational *: numerator or denominator overflow">(); }
         return ret_t{slim::nullopt};
       }
     }
@@ -706,7 +701,7 @@ namespace bnd::detail
       if (a.Numerator == 0 ||
           a.Numerator > static_cast<umax>(std::numeric_limits<imax>::max()))
       {
-        if (std::is_constant_evaluated()) { throw ("rational inv: numerator zero or out of denominator range"); }
+        if (std::is_constant_evaluated()) { constexpr_error<"rational inv: numerator zero or out of denominator range">(); }
         return ret_t{slim::nullopt};
       }
     }

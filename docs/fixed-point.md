@@ -50,7 +50,7 @@ template <boundable B> inline constexpr bool IsQFormat =
   `snapping` (truncate), `round_nearest`, `clamp`, `wrap`, or `checked` — you
   choose per type or per operation.
 - **Out-of-range is explicit.** `clamp`/`wrap` saturate/fold; `checked`/`sentinel`
-  report (`slim::optional` / `slim::expected` / `std::error_code`) instead of
+  report (`slim::optional` / `slim::expected` / `bnd::errc`) instead of
   silently wrapping.
 - **Exactness on tap.** Need no rounding at all? The `exact` policy stores a
   rational and never loses a bit (slower — see below).

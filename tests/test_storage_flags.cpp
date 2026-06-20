@@ -9,7 +9,7 @@
 
 #include "bound/bound.hpp"
 #include "bound/cmath.hpp"
-#include "bound/format.hpp"
+#include "bound/io.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -183,7 +183,7 @@ TEST_CASE("real storage runs the full out-of-range policy cascade",
 
   // checked: out-of-range reports (throws) instead of silently storing.
   using RK = bound<{{0, 4}, notch<1, 256>}, real | checked>;
-  REQUIRE_THROWS_AS(RK{9.5}, std::system_error);
+  REQUIRE_THROWS_AS(RK{9.5}, bnd::bound_error);
   REQUIRE(static_cast<double>(rational{RK{2.5}}) == 2.5);
 
   // sentinel: out-of-range yields the empty slot.
@@ -204,15 +204,15 @@ TEST_CASE("non-finite doubles are rejected, both engines",
   using R = bound<{{0, 4}, notch<1, 256>}, round_nearest | real>;
   const double nan = std::numeric_limits<double>::quiet_NaN();
   const double inf = std::numeric_limits<double>::infinity();
-  REQUIRE_THROWS_AS(R{nan}, std::system_error);
-  REQUIRE_THROWS_AS(R{inf}, std::system_error);
-  REQUIRE_THROWS_AS(R{-inf}, std::system_error);
+  REQUIRE_THROWS_AS(R{nan}, bnd::bound_error);
+  REQUIRE_THROWS_AS(R{inf}, bnd::bound_error);
+  REQUIRE_THROWS_AS(R{-inf}, bnd::bound_error);
 
   // Non-finite input is reported as errc::not_finite (distinct from the
   // domain_error used for finite-but-out-of-interval values), both engines.
   try { R{nan}; FAIL("expected throw"); }
-  catch (const std::system_error& e)
-  { REQUIRE(e.code() == make_error_code(errc::not_finite)); }
+  catch (const bnd::bound_error& e)
+  { REQUIRE(e.code == errc::not_finite); }
 }
 
 // Full-domain inverse trig (improvement #2): atan beyond |x| ≤ 1 via
@@ -262,10 +262,10 @@ TEST_CASE("per-operation policies work on real-backed bounds",
   REQUIRE(static_cast<double>(rational{c}) == 2.5);
 
   // error_code mode: out-of-range reports, value unchanged.
-  std::error_code ec;
+  bnd::errc ec{};
   R d{2.0};
   d.policy<checked>(ec) = 9.5;
-  REQUIRE(ec);
+  REQUIRE(ec != errc{});
   REQUIRE(static_cast<double>(rational{d}) == 2.0);
 
   // bound rhs through the per-operation clamp.

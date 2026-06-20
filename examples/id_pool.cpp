@@ -10,9 +10,9 @@
 #include <unordered_set>
 
 #include "bound/bound.hpp"
+#include "bound/io.hpp"
 #include "bound/numeric_limits.hpp"
 #include "bound/predicates.hpp"
-#include "bound/print.hpp"
 
 using namespace bnd;
 
@@ -74,9 +74,9 @@ int main()
   auto bad  = pool_id::try_make(2000);
   auto good = pool_id::try_make(123);
   std::cout << "\ntry_make(2000) -> "
-            << (bad  ? "has value" : make_error_code(bad.error()).message()) << "\n";
+            << (bad  ? "has value" : errc_message(bad.error())) << "\n";
   std::cout << "try_make( 123) -> "
-            << (good ? "has value" : make_error_code(good.error()).message()) << "\n";
+            << (good ? "has value" : errc_message(good.error())) << "\n";
 
   return 0;
 }

@@ -155,7 +155,7 @@ out-of-range is determined by a four-level cascade:
 │ 3. default policy from type        bound<G, clamp>, bound<G, P>  │
 │                                       │                          │
 │                                       ▼ if P does not handle it  │
-│ 4. hard default                    throw std::system_error       │
+│ 4. hard default                    throw bnd::bound_error       │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -274,7 +274,7 @@ all transitively included by `bound/bound.hpp`:
 | `bound/cmath.hpp`       | `bnd::math` — the `<cmath>`-shaped public API (trig, inverse trig, hyperbolic, exp/log/pow, sqrt/cbrt/hypot) over bounds, dispatching to one of two engines. The integer/CORDIC cores live in `bnd::math::detail` here — they also serve as the compile-time output-grid oracle for **both** engines. See [math.md](math.md) |
 | `bound/cmath_double.hpp` | The default **double engine** cores (`d_sin`, `d_exp`, … — own `std::fma`-Horner polynomials, Cody-Waite reduction, correctly-rounded `std::sqrt`); selected unless `BND_MATH_FIXED` is defined |
 | `bound/detail/addition.hpp`, `multiplication.hpp`, `division.hpp` | `bnd::detail::addition<L, R>`, `multiplication<L, R>`, `division<L, R, F>`, `modulo<L, R, F>` — implementation detail, included via `bound.hpp` |
-| `bound/detail/overflow.hpp`, `debug.hpp` | `add_overflow` / `sub_overflow` / `mul_overflow` (builtins + portable fallback), stacktrace plumbing — implementation detail |
+| `bound/detail/overflow.hpp`, `debug.hpp` | `add_overflow` / `sub_overflow` / `mul_overflow` (builtins + portable fallback); `errc`, the replaceable `error_handler` + `detail::raise` funnel — implementation detail |
 | `bound/detail/rational.hpp`    | `rational`, its arithmetic, sentinel traits |
 | `bound/grid.hpp`        | `grid`, `storage_min`, grid operators |
 | `bound/numeric_limits.hpp` | `std::numeric_limits<bound>` and `std::hash<bound>` specialisations (opt-in) |

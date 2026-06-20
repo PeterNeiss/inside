@@ -35,7 +35,7 @@ TEST_CASE("checked + no action: range check still fires", "[bound][checked][perf
 {
   using L = bound<{0, 100}, checked>;
   L b{50};
-  REQUIRE_THROWS_AS((b += bound<{0, 200}>{200}), std::system_error);
+  REQUIRE_THROWS_AS((b += bound<{0, 200}>{200}), bnd::bound_error);
 }
 
 TEST_CASE("clamp policy: range check still fires", "[bound][clamp][perf]")

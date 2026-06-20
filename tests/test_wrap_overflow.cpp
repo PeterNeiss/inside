@@ -10,7 +10,7 @@
 // pinned to magic constants.
 
 #include "bound/bound.hpp"
-#include "bound/format.hpp"
+#include "bound/io.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 #include <cstdint>

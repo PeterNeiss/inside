@@ -4,9 +4,9 @@
 #ifndef BNDmathHPP
 #define BNDmathHPP
 
+#include "bound/detail/debug.hpp"   // errc, detail::raise (replaces <stdexcept> throw)
+
 #include <cstdint>
-#include <cmath>
-#include <stdexcept>
 #include <utility>
 #include <concepts>
 #include <type_traits>
@@ -52,20 +52,8 @@ namespace bnd
     std::conditional_t<(Low >= INT32_MIN+1 && High <= INT32_MAX), std::int32_t,
                                                                    std::int64_t>>>;
 
-  template <typename T>
-  constexpr std::string_view type_name()
-  {
-    if constexpr (std::is_same_v<T, std::uint8_t>)  return "uint8_t";
-    if constexpr (std::is_same_v<T, std::uint16_t>) return "uint16_t";
-    if constexpr (std::is_same_v<T, std::uint32_t>) return "uint32_t";
-    if constexpr (std::is_same_v<T, std::uint64_t>) return "uint64_t";
-    if constexpr (std::is_same_v<T, std::int8_t>)   return "int8_t";
-    if constexpr (std::is_same_v<T, std::int16_t>)  return "int16_t";
-    if constexpr (std::is_same_v<T, std::int32_t>)  return "int32_t";
-    if constexpr (std::is_same_v<T, std::int64_t>)  return "int64_t";
-    if constexpr (std::is_same_v<T, rational>) return "rational";
-    return "unknown";
-  }
+  // (type_name<T>() — used only by the debug stringifier — lives in
+  // "bound/io.hpp" so the core stays free of <string_view>.)
 
   // Subset of arithmetic excluding integrals — the rhs types that need the
   // rational-arithmetic assignment path. (Named to avoid clashing with `real`.)
@@ -160,14 +148,19 @@ namespace bnd
       return std::bit_cast<double>(bits);
   }
 
+  // Freestanding finite check: `v - v` is 0 for every finite v, NaN otherwise
+  // (and inf - inf is NaN). Avoids <cmath>/std::isfinite so the core stays
+  // bare-metal clean; the same idiom is used in the store paths.
+  constexpr bool is_finite(double v) noexcept { return v - v == 0; }
+
   // Exact conversion of a finite double to num/den (den a power of two), the
   // engine behind rational(double). A finite double is exactly
   // `significand · 2^exp2` (a 53-bit significand), both read straight from the
   // IEEE-754 bits — no <cmath>, no FPU rounding, bit-identical across platforms.
   constexpr std::pair<umax, umax> abs_fraction(double value)
   {
-    if (not std::isfinite(value))
-      throw std::domain_error("bnd::detail::abs_fraction: non-finite double");
+    if (not is_finite(value))
+      raise(errc::not_finite, "bnd::detail::abs_fraction: non-finite double");
 
     if (value == 0.0) return {0, 1};
     if (value < 0)    value = -value;        // |value|; sign is the caller's job

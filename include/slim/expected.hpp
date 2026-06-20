@@ -46,6 +46,23 @@ public:
     const char* what() const noexcept override { return msg_; }
 };
 
+// Throws when exceptions are enabled; otherwise traps — keeps value() usable
+// under -fno-exceptions / freestanding.
+namespace detail {
+[[noreturn]] inline void throw_bad_expected_access(const char* msg) {
+#if defined(__cpp_exceptions) || defined(__EXCEPTIONS)
+    throw bad_expected_access(msg);
+#else
+    (void)msg;
+#  if defined(__GNUC__) || defined(__clang__)
+    __builtin_trap();
+#  else
+    std::abort();
+#  endif
+#endif
+}
+} // namespace detail
+
 // ── unexpected<E>: the error wrapper used to construct the error state ──
 template<class E>
 class unexpected {
@@ -100,15 +117,15 @@ public:
     [[nodiscard]] constexpr explicit operator bool() const noexcept { return has_value_; }
 
     [[nodiscard]] constexpr const T& value() const& {
-        if (!has_value_) throw bad_expected_access("expected has no value");
+        if (!has_value_) detail::throw_bad_expected_access("expected has no value");
         return value_;
     }
     [[nodiscard]] constexpr T& value() & {
-        if (!has_value_) throw bad_expected_access("expected has no value");
+        if (!has_value_) detail::throw_bad_expected_access("expected has no value");
         return value_;
     }
     [[nodiscard]] constexpr T&& value() && {
-        if (!has_value_) throw bad_expected_access("expected has no value");
+        if (!has_value_) detail::throw_bad_expected_access("expected has no value");
         return std::move(value_);
     }
 

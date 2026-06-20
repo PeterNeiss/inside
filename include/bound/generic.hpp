@@ -510,25 +510,6 @@ namespace bnd
       return false;
     }
 
-#ifdef BND_RICH_MESSAGES
-    // Rich overload — carries the detailed "<value> is not in <interval>" text.
-    template <boundable B, typename P>
-    constexpr bool domain_fail(B& b, P&& policy, std::string msg)
-    {
-      if constexpr (HasPolicy<B, P, sentinel>)
-      {
-        b = B::from_raw(sentinel_raw<B>());
-        return true;
-      }
-      else if (policy.domain_check())
-      {
-        policy.report(errc::domain_error, std::move(msg));
-        return true;
-      }
-      return false;
-    }
-#endif
-
     // The two non-trivial clauses of `bound_assignable`, named so the concept and
     // its `bound_assignable_why` diagnostic share one definition. Concepts (not
     // bools) so `||` short-circuits *instantiation* (e.g. assignment<L,R>::Factor

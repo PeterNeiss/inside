@@ -47,6 +47,24 @@ public:
     }
 };
 
+// Failure funnel for the empty-access paths. Throws bad_optional_access when
+// exceptions are enabled; otherwise traps — so slim::optional is usable under
+// -fno-exceptions / freestanding without depending on the exception ABI.
+namespace detail {
+[[noreturn]] inline void throw_bad_optional_access(const char* msg) {
+#if defined(__cpp_exceptions) || defined(__EXCEPTIONS)
+    throw bad_optional_access(msg);
+#else
+    (void)msg;
+#  if defined(__GNUC__) || defined(__clang__)
+    __builtin_trap();
+#  else
+    std::abort();
+#  endif
+#endif
+}
+} // namespace detail
+
 // Tag types — aliased to the std equivalents so a single set of constructor
 // overloads handles both `slim::nullopt` and `std::nullopt`.
 using nullopt_t = std::nullopt_t;
@@ -78,7 +96,7 @@ concept has_sentinel_traits = requires { sizeof(sentinel_traits<T>); };
 template<typename T>
 struct never_empty {
 protected:
-    static constexpr T sentinel() { throw "never_empty"; }
+    static constexpr T sentinel() { detail::throw_bad_optional_access("never_empty"); }
     static constexpr bool is_sentinel(const T&) noexcept { return false; }
 };
 
@@ -349,7 +367,7 @@ class optional : public Traits {
     static constexpr void validate_not_sentinel(const T& v) {
         if constexpr (can_be_empty) {
             if (Traits::is_sentinel(v)) {
-                throw bad_optional_access("Cannot construct optional with sentinel value");
+                detail::throw_bad_optional_access("Cannot construct optional with sentinel value");
             }
         }
     }
@@ -590,7 +608,7 @@ public:
     template<class Self>
     constexpr auto&& value(this Self&& self) {
         if (!self.has_value()) {
-            throw bad_optional_access("optional has no value");
+            detail::throw_bad_optional_access("optional has no value");
         }
         return std::forward<Self>(self).value_;
     }
@@ -614,19 +632,19 @@ public:
     }
 #else
     constexpr T& value() & {
-        if (!has_value()) throw bad_optional_access("optional has no value");
+        if (!has_value()) detail::throw_bad_optional_access("optional has no value");
         return value_;
     }
     constexpr const T& value() const& {
-        if (!has_value()) throw bad_optional_access("optional has no value");
+        if (!has_value()) detail::throw_bad_optional_access("optional has no value");
         return value_;
     }
     constexpr T&& value() && {
-        if (!has_value()) throw bad_optional_access("optional has no value");
+        if (!has_value()) detail::throw_bad_optional_access("optional has no value");
         return std::move(value_);
     }
     constexpr const T&& value() const&& {
-        if (!has_value()) throw bad_optional_access("optional has no value");
+        if (!has_value()) detail::throw_bad_optional_access("optional has no value");
         return std::move(value_);
     }
 
@@ -682,7 +700,7 @@ public:
         requires (can_be_empty && std::is_move_constructible_v<T>)
     {
         if (!has_value()) {
-            throw bad_optional_access("optional has no value");
+            detail::throw_bad_optional_access("optional has no value");
         }
         T out = std::move(value_);
         value_ = Traits::sentinel();
@@ -893,7 +911,7 @@ public:
     constexpr explicit operator bool() const noexcept { return false; }
 
     [[noreturn]] constexpr T value() const {
-        throw bad_optional_access("always_empty optional has no value");
+        detail::throw_bad_optional_access("always_empty optional has no value");
     }
 
     template<class U>

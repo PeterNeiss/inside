@@ -1,61 +1,60 @@
 // Error-code construction `bound x(value, ec)` must compile and behave as
 // documented (docs/policies.md "Error code mode").
 //
-// Regression: a raw std::error_code bound the generic `bound(A, Pol&&)` ctor
-// template as a policy type, so `HasPolicy<L, std::error_code, ...>` was
+// Regression: a raw bnd::errc bound the generic `bound(A, Pol&&)` ctor
+// template as a policy type, so `HasPolicy<L, bnd::errc, ...>` was
 // ill-formed and the documented form did not compile. A dedicated
-// `bound(A, std::error_code&)` overload now wraps ec in the type's own policy.
+// `bound(A, bnd::errc&)` overload now wraps ec in the type's own policy.
 // On a reported (out-of-range) error the bound's value is ill-defined — the
 // caller must check ec before reading it.
 
 #include "bound/bound.hpp"
-#include "bound/format.hpp"
+#include "bound/io.hpp"
 
 #include <catch2/catch_test_macros.hpp>
-#include <system_error>
 
 using namespace bnd;
 using namespace bnd::detail;
 
 TEST_CASE("error_code construction: out-of-range sets ec (value then ill-defined)", "[ec][ctor]")
 {
-  std::error_code ec;
+  bnd::errc ec{};
   bound<{0, 100}> x(150, ec);
-  REQUIRE(ec);                                  // EDOM reported, not thrown
+  REQUIRE(ec != errc{});                                  // EDOM reported, not thrown
   // On error x's value is ill-defined — deliberately NOT read here.
 }
 
 TEST_CASE("error_code construction: in-range leaves ec clear", "[ec][ctor]")
 {
-  std::error_code ec;
+  bnd::errc ec{};
   bound<{0, 100}> x(42, ec);
-  REQUIRE_FALSE(ec);
+  REQUIRE(ec == errc{});
   REQUIRE(static_cast<rational>(x) == 42);
 }
 
 TEST_CASE("error_code construction respects clamp / wrap (no error)", "[ec][ctor]")
 {
   {
-    std::error_code ec;
+    bnd::errc ec{};
     bound<{0, 100}, clamp> c(150, ec);
-    REQUIRE_FALSE(ec);                          // clamp is not an error
+    REQUIRE(ec == errc{});                          // clamp is not an error
     REQUIRE(static_cast<rational>(c) == 100);
   }
   {
-    std::error_code ec;
+    bnd::errc ec{};
     bound<{0, 9}, wrap> w(13, ec);
-    REQUIRE_FALSE(ec);                          // wrap is not an error
+    REQUIRE(ec == errc{});                          // wrap is not an error
     REQUIRE(static_cast<rational>(w) == 3);     // 13 mod 10
   }
 }
 
 TEST_CASE("error_code construction matches per-op policy(ec) on the same input", "[ec][ctor]")
 {
-  std::error_code ec_ctor, ec_op;
+  bnd::errc ec_ctor{}, ec_op{};
   bound<{0, 100}> via_ctor(200, ec_ctor);
 
   bound<{0, 100}> via_op{0};
   via_op.policy(ec_op) = 200;
 
-  REQUIRE(static_cast<bool>(ec_ctor) == static_cast<bool>(ec_op));
+  REQUIRE((ec_ctor != errc{}) == (ec_op != errc{}));
 }

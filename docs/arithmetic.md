@@ -17,7 +17,7 @@ Division is rich enough to warrant its [own section](#division) below — `bound
 The free functions `add`, `sub`, `mul`, `div`, and `mod` each accept a named
 convenience policy (`bnd::truncated`, `bnd::round_to_nearest`, `bnd::clamped`,
 `bnd::wrapped`), one or more `on_*` action factories, or an
-`std::error_code&`, in any order. See
+`bnd::errc&`, in any order. See
 [policies.md § Callbacks](policies.md#callbacks-on_wrap--on_clamp--on_overflow--on_sentinel--on_error)
 for the action API. Example — recovering from divide-by-zero:
 

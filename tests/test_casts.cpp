@@ -106,8 +106,8 @@ TEST_CASE("checked_cast throws on out-of-range", "[bound][cast]")
   using pct = bound<{0, 100}>;
 
   STATIC_REQUIRE(checked_cast<pct>(42) == pct{42});
-  REQUIRE_THROWS_AS(checked_cast<pct>(150), std::system_error);
-  REQUIRE_THROWS_AS(checked_cast<pct>(-1),  std::system_error);
+  REQUIRE_THROWS_AS(checked_cast<pct>(150), bnd::bound_error);
+  REQUIRE_THROWS_AS(checked_cast<pct>(-1),  bnd::bound_error);
 }
 
 TEST_CASE("checked_cast throws on truncation", "[bound][cast]")
@@ -115,7 +115,7 @@ TEST_CASE("checked_cast throws on truncation", "[bound][cast]")
   using coarse = bound<{{0, 10}, 2}>;
 
   STATIC_REQUIRE(checked_cast<coarse>(4) == coarse{4});
-  REQUIRE_THROWS_AS(checked_cast<coarse>(3), std::system_error);
+  REQUIRE_THROWS_AS(checked_cast<coarse>(3), bnd::bound_error);
 }
 
 TEST_CASE("unchecked_cast bypasses runtime checks", "[bound][cast]")

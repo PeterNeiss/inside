@@ -8,13 +8,12 @@
 #include "bound/detail/overflow.hpp"
 #include "bound/policy_flag.hpp"
 
-#include <system_error>
 #include <type_traits>     // std::is_constant_evaluated
 
 //---------------------------------------------------------------------------
 // policy — runtime policy carrier, plus `policy_ref` for per-operation dispatch.
 //   policy<F, E>  — compile-time flags F plus an optional error_ref E holding a
-//                   std::error_code& (EBO so the no-error-code form is zero-sized).
+//                   bnd::errc& (EBO so the no-error-code form is zero-sized).
 //   policy_ref    — wraps a bound& with a policy<...> and a tuple of on_* actions;
 //                   compound ops flow through it, routing each action to the right
 //                   callback at the right pipeline stage.
@@ -23,16 +22,17 @@ namespace bnd
 {
   //---------------------------------------------------------------------------
   // policy — derives from E for EBO: throwing form (E == empty_ref) is zero-sized;
-  // `policy(ec)` makes E == error_ref carrying a std::error_code&. No virtuals,
-  // resolved at compile time.
+  // `policy(ec)` makes E == error_ref carrying a `bnd::errc&`. No virtuals,
+  // resolved at compile time. (The error-code channel reports `errc` directly —
+  // there is no <system_error> dependency.)
   //---------------------------------------------------------------------------
   namespace detail
   {
     struct empty_ref{ };
     struct error_ref
     {
-      constexpr error_ref(std::error_code& ec):Code{ec} {}
-      std::error_code& Code;
+      constexpr error_ref(errc& ec):Code{ec} {}
+      errc& Code;
     };
   }
 
@@ -40,7 +40,7 @@ namespace bnd
   struct policy: E
   {
     constexpr policy() = default;
-    constexpr policy(std::error_code& ec) requires std::same_as<E, detail::error_ref>
+    constexpr policy(errc& ec) requires std::same_as<E, detail::error_ref>
     :E(ec) { }
 
     static constexpr bool test(policy_flag w)
@@ -59,42 +59,24 @@ namespace bnd
     }
 
     // Cheap default report: no message construction. error_ref mode records the
-    // code; throw mode raises system_error with the static category message via
-    // an outlined cold helper. The constant-evaluation guard throws a string
-    // literal for a clearer compile-time diagnostic than "non-constexpr function
-    // called".
+    // code (sticky: keeps the first error); throw mode funnels through the
+    // installed handler via an outlined cold helper. The constant-evaluation
+    // guard names a fixed-string diagnostic for a clearer compile-time message
+    // than "non-constexpr function called".
     constexpr void report(errc code)
     {
       if (std::is_constant_evaluated())
-      {
-        throw "bound: value out of range during constant evaluation "
-              "(checked policy hit; choose clamp/wrap/sentinel or widen the interval)";
-      }
+        detail::constexpr_error<
+          "bound: value out of range during constant evaluation "
+          "(checked policy hit; choose clamp/wrap/sentinel or widen the interval)">();
       if constexpr (std::is_same_v<E, detail::error_ref>)
-        E::Code = E::Code ? E::Code : make_error_code(code);
+        E::Code = E::Code != errc{} ? E::Code : code;
       else
-        detail::throw_bound_error(code);
+        detail::raise(code);
     }
-
-#ifdef BND_RICH_MESSAGES
-    // Rich report: carries a detailed "<value> is not in <interval>" message.
-    // Compiled only under -DBND_RICH_MESSAGES (pulls in <string> / to_string).
-    constexpr void report(errc code, std::string what)
-    {
-      if (std::is_constant_evaluated())
-      {
-        throw "bound: value out of range during constant evaluation "
-              "(checked policy hit; choose clamp/wrap/sentinel or widen the interval)";
-      }
-      if constexpr (std::is_same_v<E, detail::error_ref>)
-        E::Code = E::Code ? E::Code : make_error_code(code);
-      else
-        detail::throw_bound_error(code, std::move(what));
-    }
-#endif
   };
 
-  policy(std::error_code&) -> policy<none, detail::error_ref>;
+  policy(errc&) -> policy<none, detail::error_ref>;
 
   //---------------------------------------------------------------------------
   // IsPolicy — true for policy<F,E> specializations, false otherwise.
@@ -110,7 +92,7 @@ namespace bnd
     template<typename T>
     concept policy_like = IsPolicy<std::remove_cvref_t<T>>;
 
-    // True for policy specializations that carry an std::error_code& reference.
+    // True for policy specializations that carry a bnd::errc& reference.
     // Free-fn arithmetic uses this to decide whether to call policy.report on
     // failure (which sets ec) vs. returning silent nullopt (no-arg form).
     template<typename T>             inline constexpr bool UsesErrorRef = false;
@@ -125,7 +107,7 @@ namespace bnd
   { return policy<F,detail::empty_ref>{}; }
 
   template<policy_flag F = none>
-  [[nodiscard]] constexpr auto make_policy(std::error_code& ec)
+  [[nodiscard]] constexpr auto make_policy(errc& ec)
   { return policy<F,detail::error_ref>{ec}; }
 
   //---------------------------------------------------------------------------
@@ -150,11 +132,7 @@ namespace bnd
     else
     {
       if constexpr (UsesErrorRef<std::remove_cvref_t<P>>)
-#ifdef BND_RICH_MESSAGES
-        policy.report(code, what);
-#else
         policy.report(code);
-#endif
       return slim::nullopt;
     }
   }
@@ -245,13 +223,9 @@ namespace bnd
     constexpr void report_zero(errc code, const char* what)
     {
       if constexpr (has_action<IsErrorActionPred, As...>)
-        pick_action_in<IsErrorActionPred>(Actions).fn(Ref, code, std::string_view(what));
+        pick_action_in<IsErrorActionPred>(Actions).fn(Ref, code, what);
       else if constexpr (!HasPolicy<B, P, ignore_zero>)
-#ifdef BND_RICH_MESSAGES
-        Policy.report(code, what);
-#else
         Policy.report(code);
-#endif
     }
 
     public:
@@ -272,11 +246,7 @@ namespace bnd
           if constexpr (has_action<IsOverflowActionPred, As...>)
             pick_action_in<IsOverflowActionPred>(Actions).fn(Ref, errc::overflow);
           else
-#ifdef BND_RICH_MESSAGES
-            Policy.report(errc::overflow, msg);
-#else
             Policy.report(errc::overflow);
-#endif
           return Ref;
         }
         return assign_with_picked(result.value());

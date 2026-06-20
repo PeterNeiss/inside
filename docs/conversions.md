@@ -112,7 +112,7 @@ call site — particularly useful inside `std::transform` lambdas.
 |---|---|
 | `clamp_cast<B>(v)`     | clamp to `[Lower, Upper]`, never throw |
 | `wrap_cast<B>(v)`      | modular reduction into the target interval |
-| `checked_cast<B>(v)`   | throw `std::system_error` on overflow or off-notch |
+| `checked_cast<B>(v)`   | throw `bnd::bound_error` on overflow or off-notch |
 | `unchecked_cast<B>(v)` | trust the caller — UB if out of range |
 | `clamp_floor<B>(v)`    | clamp + round toward −∞ |
 | `clamp_ceil<B>(v)`     | clamp + round toward +∞ |
@@ -226,14 +226,14 @@ representation chosen at compile time — no implicit narrowing.
 
 ## `std::print` / `std::format` integration
 
-`bound/formatter.hpp` ships a `std::formatter` specialization for
+`bound/io.hpp` ships a `std::formatter` specialization for
 `bound<G, P>`. Empty `{}` matches `operator<<` (exact value — a whole number
 or an `N/D` fraction); non-empty specs route by storage shape — integer grids
 go through `std::formatter<imax>` (`{:>4}`, `{:#x}`, `{:b}`, …), fractional
 grids through `std::formatter<double>` (`{:.2f}`, `{:e}`).
 
 ```cpp
-#include "bound/formatter.hpp"
+#include "bound/io.hpp"
 #include <print>
 
 bound<{0, 100}> hp{42};

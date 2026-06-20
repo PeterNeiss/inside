@@ -52,6 +52,10 @@ file(MAKE_DIRECTORY "${_out_dir}")
 file(WRITE "${BODY_FILE}" "")
 set_property(GLOBAL PROPERTY AMALG_EMITTED "")
 set_property(GLOBAL PROPERTY AMALG_SYS "")
+# When TRUE, a header's depth-0 system includes are kept inline rather than
+# hoisted to the top — used for bound/io.hpp so its <string>/<ostream>/<format>
+# stay inside the BND_NO_STRING guard and vanish when the block is dropped.
+set_property(GLOBAL PROPERTY AMALG_INLINE_SYS FALSE)
 
 #---------------------------------------------------------------------------
 # amalg_process(<rel>) — inline the header at <INC>/<rel> (e.g. "bound/core.hpp")
@@ -143,12 +147,17 @@ function(amalg_process rel)
       math(EXPR depth "${depth}-1")
     endif()
 
-    # --- system include: hoist when unconditional ----------------------------
+    # --- system include: hoist when unconditional (unless inline-sys) ---------
     if(line MATCHES "^[ \t]*#[ \t]*include[ \t]*<([^>]+)>")
       if(depth EQUAL 0)
-        get_property(sys GLOBAL PROPERTY AMALG_SYS)
-        list(APPEND sys "#include <${CMAKE_MATCH_1}>")
-        set_property(GLOBAL PROPERTY AMALG_SYS "${sys}")
+        get_property(inline_sys GLOBAL PROPERTY AMALG_INLINE_SYS)
+        if(inline_sys)
+          string(APPEND buf "#include <${CMAKE_MATCH_1}>${NL}")
+        else()
+          get_property(sys GLOBAL PROPERTY AMALG_SYS)
+          list(APPEND sys "#include <${CMAKE_MATCH_1}>")
+          set_property(GLOBAL PROPERTY AMALG_SYS "${sys}")
+        endif()
         continue()
       endif()
     endif()
@@ -172,8 +181,21 @@ endforeach()
 list(REMOVE_ITEM roots "bound/bound.hpp")
 list(INSERT roots 0 "bound/bound.hpp")
 
+# bound/io.hpp gathers all <string>/<ostream>/<format> support; wrap its inlined
+# body in BND_NO_STRING so a freestanding single-header user can drop it (and its
+# heavy system includes) by defining the macro. Processed like any root, but its
+# depth-0 system includes are kept inline (see AMALG_INLINE_SYS) so they sit
+# inside the guard.
 foreach(r IN LISTS roots)
-  amalg_process("${r}")
+  if(r STREQUAL "bound/io.hpp")
+    file(APPEND "${BODY_FILE}" "${NL}#ifndef BND_NO_STRING${NL}")
+    set_property(GLOBAL PROPERTY AMALG_INLINE_SYS TRUE)
+    amalg_process("${r}")
+    set_property(GLOBAL PROPERTY AMALG_INLINE_SYS FALSE)
+    file(APPEND "${BODY_FILE}" "${NL}#endif // BND_NO_STRING${NL}")
+  else()
+    amalg_process("${r}")
+  endif()
 endforeach()
 
 #---------------------------------------------------------------------------

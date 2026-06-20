@@ -13,7 +13,7 @@
 // result silently dropping `real` and falling back to exact storage).
 
 #include "bound/bound.hpp"
-#include "bound/format.hpp"
+#include "bound/io.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_get_random_seed.hpp>

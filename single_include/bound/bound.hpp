@@ -29,12 +29,7 @@
 #include <memory>
 #include <numeric>
 #include <optional>
-#include <ostream>
 #include <ranges>
-#include <stdexcept>
-#include <string>
-#include <string_view>
-#include <system_error>
 #include <tuple>
 #include <type_traits>
 #include <utility>
@@ -112,6 +107,24 @@ public:
     }
 };
 
+// Failure funnel for the empty-access paths. Throws bad_optional_access when
+// exceptions are enabled; otherwise traps — so slim::optional is usable under
+// -fno-exceptions / freestanding without depending on the exception ABI.
+namespace detail {
+[[noreturn]] inline void throw_bad_optional_access(const char* msg) {
+#if defined(__cpp_exceptions) || defined(__EXCEPTIONS)
+    throw bad_optional_access(msg);
+#else
+    (void)msg;
+#  if defined(__GNUC__) || defined(__clang__)
+    __builtin_trap();
+#  else
+    std::abort();
+#  endif
+#endif
+}
+} // namespace detail
+
 // Tag types — aliased to the std equivalents so a single set of constructor
 // overloads handles both `slim::nullopt` and `std::nullopt`.
 using nullopt_t = std::nullopt_t;
@@ -143,7 +156,7 @@ concept has_sentinel_traits = requires { sizeof(sentinel_traits<T>); };
 template<typename T>
 struct never_empty {
 protected:
-    static constexpr T sentinel() { throw "never_empty"; }
+    static constexpr T sentinel() { detail::throw_bad_optional_access("never_empty"); }
     static constexpr bool is_sentinel(const T&) noexcept { return false; }
 };
 
@@ -414,7 +427,7 @@ class optional : public Traits {
     static constexpr void validate_not_sentinel(const T& v) {
         if constexpr (can_be_empty) {
             if (Traits::is_sentinel(v)) {
-                throw bad_optional_access("Cannot construct optional with sentinel value");
+                detail::throw_bad_optional_access("Cannot construct optional with sentinel value");
             }
         }
     }
@@ -655,7 +668,7 @@ public:
     template<class Self>
     constexpr auto&& value(this Self&& self) {
         if (!self.has_value()) {
-            throw bad_optional_access("optional has no value");
+            detail::throw_bad_optional_access("optional has no value");
         }
         return std::forward<Self>(self).value_;
     }
@@ -679,19 +692,19 @@ public:
     }
 #else
     constexpr T& value() & {
-        if (!has_value()) throw bad_optional_access("optional has no value");
+        if (!has_value()) detail::throw_bad_optional_access("optional has no value");
         return value_;
     }
     constexpr const T& value() const& {
-        if (!has_value()) throw bad_optional_access("optional has no value");
+        if (!has_value()) detail::throw_bad_optional_access("optional has no value");
         return value_;
     }
     constexpr T&& value() && {
-        if (!has_value()) throw bad_optional_access("optional has no value");
+        if (!has_value()) detail::throw_bad_optional_access("optional has no value");
         return std::move(value_);
     }
     constexpr const T&& value() const&& {
-        if (!has_value()) throw bad_optional_access("optional has no value");
+        if (!has_value()) detail::throw_bad_optional_access("optional has no value");
         return std::move(value_);
     }
 
@@ -747,7 +760,7 @@ public:
         requires (can_be_empty && std::is_move_constructible_v<T>)
     {
         if (!has_value()) {
-            throw bad_optional_access("optional has no value");
+            detail::throw_bad_optional_access("optional has no value");
         }
         T out = std::move(value_);
         value_ = Traits::sentinel();
@@ -958,7 +971,7 @@ public:
     constexpr explicit operator bool() const noexcept { return false; }
 
     [[noreturn]] constexpr T value() const {
-        throw bad_optional_access("always_empty optional has no value");
+        detail::throw_bad_optional_access("always_empty optional has no value");
     }
 
     template<class U>
@@ -1256,18 +1269,17 @@ public:
 //---------------------------------------------------------------------------
 //---------------------------------------------------------------------------
 
-// <string> is pulled in only when rich (value/interval) error messages are
-// enabled (-DBND_RICH_MESSAGES). The cheap default reports through a static
-// category message and never builds an std::string of its own. (std::string
-// itself remains reachable via <system_error>, which needs it for
-// std::error_category::message — gating the explicit include just keeps it off
-// the cheap default's *intentional* surface.)
-#ifdef BND_RICH_MESSAGES
-    #include <string>
-#endif
-
-#ifdef BOUND_HAS_STACKTRACE
-    #include <stacktrace>
+// <stdexcept> backs the *default* throwing handler only; it is the single heavy
+// error include and is pulled in solely when exceptions are available. A
+// freestanding / -fno-exceptions build never sees it and traps instead. Error
+// reporting otherwise stays on static const-char* messages — no <string>, no
+// <string_view>, no <system_error>. (General-purpose stringification lives in
+// the opt-in "bound/io.hpp".)
+#if defined(__cpp_exceptions) || defined(__EXCEPTIONS)
+    #define BND_HAS_EXCEPTIONS 1
+    #include <stdexcept>
+#else
+    #define BND_HAS_EXCEPTIONS 0
 #endif
 
 //---------------------------------------------------------------------------
@@ -1279,19 +1291,26 @@ public:
 #if defined(__GNUC__) || defined(__clang__)
 #  define BND_COLD     [[gnu::cold]]
 #  define BND_NOINLINE [[gnu::noinline]]
+#  define BND_TRAP()   __builtin_trap()
 #elif defined(_MSC_VER)
 #  define BND_COLD
 #  define BND_NOINLINE __declspec(noinline)
+#  define BND_TRAP()   __debugbreak()
 #else
 #  define BND_COLD
 #  define BND_NOINLINE
+#  include <cstdlib>
+#  define BND_TRAP()   ::abort()
 #endif
 
 //---------------------------------------------------------------------------
-// debug — error codes, std::error_category, and diagnostic helpers. `errc`
-// enumerates the failure modes; bound_category + make_error_code plug into
-// <system_error>. `print_types` is a static_assert debug helper for template
-// instantiation issues.
+// debug — error codes, the replaceable failure handler, and diagnostic helpers.
+// `errc` enumerates the failure modes. Every runtime failure funnels through
+// `detail::raise`, which calls the installed `error_handler` — by default one
+// that throws `bnd::bound_error` (hosted) or traps (freestanding / no
+// exceptions). `set_error_handler` lets a bare-metal target redirect failures
+// to a reset/log without depending on <system_error> or the C++ exception ABI.
+// `print_types` is a static_assert debug helper for template instantiation.
 //---------------------------------------------------------------------------
 namespace bnd
 {
@@ -1309,9 +1328,9 @@ namespace bnd
   };
 
   // Static, allocation-free message per code. The single source of truth for
-  // both bound_category::message and the cheap error path; returns a view onto a
-  // string literal, so it needs only <string_view>.
-  constexpr std::string_view errc_message(errc e) noexcept
+  // every error path; returns a null-terminated string literal so it doubles as
+  // the default exception's what() and as an on_error message.
+  constexpr const char* errc_message(errc e) noexcept
   {
     switch (e)
     {
@@ -1325,42 +1344,94 @@ namespace bnd
     return "unknown bound error";
   }
 
-  struct bound_category : std::error_category
+#if BND_HAS_EXCEPTIONS
+  //---------------------------------------------------------------------------
+  // bound_error — the exception thrown by the default handler. Derives from
+  // std::runtime_error (the library's only <stdexcept> use) and carries the
+  // originating `errc` so `catch (bound_error& e) { e.code; }` replaces the old
+  // `e.code() == make_error_code(...)` idiom.
+  //---------------------------------------------------------------------------
+  struct bound_error : std::runtime_error
   {
-    const char* name() const noexcept override { return "bound"; }
-    std::string message(int ev) const noexcept override
-    { return std::string(errc_message(static_cast<errc>(ev))); }
+    errc code;
+    explicit bound_error(errc c)
+      : std::runtime_error(errc_message(c)), code(c) {}
+    bound_error(errc c, const char* what)
+      : std::runtime_error(what ? what : errc_message(c)), code(c) {}
   };
-
-  inline const bound_category& bound_error_category()
-  {
-    static const bound_category cat;
-    return cat;
-  }
-
-  inline std::error_code make_error_code(errc e)
-  { return {static_cast<int>(e), bound_error_category()}; }
+#endif
 
   //---------------------------------------------------------------------------
-  // Outlined throw helpers. Cold + non-inline so the (rare) throw machinery is
-  // emitted once, off the hot path, rather than inlined into every assignment.
+  // Replaceable failure handler. Contract: it must NOT return (throw / longjmp /
+  // abort / reset). If it does return, `raise` traps to honour [[noreturn]].
   //---------------------------------------------------------------------------
+  using error_handler_t = void (*)(errc code, const char* what);
+
   namespace detail
   {
     [[noreturn]] BND_COLD BND_NOINLINE
-    inline void throw_bound_error(errc code)
-    { throw std::system_error(make_error_code(code)); }   // static category message
-
-#ifdef BND_RICH_MESSAGES
-    [[noreturn]] BND_COLD BND_NOINLINE
-    inline void throw_bound_error(errc code, std::string what)
+    inline void default_error_handler(errc code, const char* what)
     {
-#  ifdef BOUND_HAS_STACKTRACE
-      what += ": \n" + std::to_string(std::stacktrace::current());
-#  endif
-      throw std::system_error(make_error_code(code), std::move(what));
-    }
+#if BND_HAS_EXCEPTIONS
+      throw bound_error(code, what);
+#else
+      (void)code; (void)what;
+      BND_TRAP();
 #endif
+    }
+
+    // Header-only global: an inline variable, one per program. Mutating it is a
+    // runtime-only act (constant evaluation never reads it), so constexpr paths
+    // are unaffected.
+    inline error_handler_t g_error_handler = &default_error_handler;
+  } // namespace detail
+
+  // Install a handler; returns the previous one. A null argument restores the
+  // default. Never throws.
+  inline error_handler_t set_error_handler(error_handler_t h) noexcept
+  {
+    error_handler_t prev = detail::g_error_handler;
+    detail::g_error_handler = h ? h : &detail::default_error_handler;
+    return prev;
+  }
+
+  inline error_handler_t get_error_handler() noexcept
+  { return detail::g_error_handler; }
+
+  namespace detail
+  {
+    //-----------------------------------------------------------------------
+    // Outlined failure funnel. Cold + non-inline so the (rare) machinery is
+    // emitted once, off the hot path. Not constexpr: calling it during constant
+    // evaluation is ill-formed, which is exactly how the checked compile-time
+    // paths hard-fail the build (the old `throw` did the same).
+    //-----------------------------------------------------------------------
+    [[noreturn]] BND_COLD BND_NOINLINE
+    inline void raise(errc code, const char* what = nullptr)
+    {
+      g_error_handler(code, what ? what : errc_message(code));
+      BND_TRAP();   // handler must not return; trap if it did
+    }
+
+    //-----------------------------------------------------------------------
+    // Compile-time-only diagnostic. A fixed_string NTTP carries the message
+    // into the type, so a malformed literal / overflow aborts constant
+    // evaluation with the text in the instantiation — no `throw` token, so it
+    // also compiles under -fno-exceptions. Never reached at runtime (all call
+    // sites are guarded by std::is_constant_evaluated / are consteval).
+    //-----------------------------------------------------------------------
+    template <unsigned N>
+    struct fixed_string
+    {
+      char data[N]{};
+      constexpr fixed_string(const char (&s)[N])
+      { for (unsigned i = 0; i < N; ++i) data[i] = s[i]; }
+    };
+
+    template <fixed_string Msg>
+    [[noreturn]] BND_COLD BND_NOINLINE
+    inline void constexpr_error()
+    { raise(errc::overflow, Msg.data); }
   } // namespace detail
 
   //---------------------------------------------------------------------------
@@ -1372,11 +1443,6 @@ namespace bnd
       static_assert(!sizeof...(Ts), "=== PRINT_TYPES ===");
   };
 } // namespace bnd
-
-namespace std
-{
-  template<> struct is_error_code_enum<bnd::errc> : true_type {};
-}
 
 
 // ======================================================================
@@ -1440,6 +1506,23 @@ public:
     const char* what() const noexcept override { return msg_; }
 };
 
+// Throws when exceptions are enabled; otherwise traps — keeps value() usable
+// under -fno-exceptions / freestanding.
+namespace detail {
+[[noreturn]] inline void throw_bad_expected_access(const char* msg) {
+#if defined(__cpp_exceptions) || defined(__EXCEPTIONS)
+    throw bad_expected_access(msg);
+#else
+    (void)msg;
+#  if defined(__GNUC__) || defined(__clang__)
+    __builtin_trap();
+#  else
+    std::abort();
+#  endif
+#endif
+}
+} // namespace detail
+
 // ── unexpected<E>: the error wrapper used to construct the error state ──
 template<class E>
 class unexpected {
@@ -1494,15 +1577,15 @@ public:
     [[nodiscard]] constexpr explicit operator bool() const noexcept { return has_value_; }
 
     [[nodiscard]] constexpr const T& value() const& {
-        if (!has_value_) throw bad_expected_access("expected has no value");
+        if (!has_value_) detail::throw_bad_expected_access("expected has no value");
         return value_;
     }
     [[nodiscard]] constexpr T& value() & {
-        if (!has_value_) throw bad_expected_access("expected has no value");
+        if (!has_value_) detail::throw_bad_expected_access("expected has no value");
         return value_;
     }
     [[nodiscard]] constexpr T&& value() && {
-        if (!has_value_) throw bad_expected_access("expected has no value");
+        if (!has_value_) detail::throw_bad_expected_access("expected has no value");
         return std::move(value_);
     }
 
@@ -1674,6 +1757,7 @@ namespace bnd
 //---------------------------------------------------------------------------
 
 
+
 //---------------------------------------------------------------------------
 // math — primitive numeric utilities: umax/imax, smallest_uint_for /
 // smallest_int_for (grid storage selection), the arithmetic/fractional concepts,
@@ -1713,20 +1797,8 @@ namespace bnd
     std::conditional_t<(Low >= INT32_MIN+1 && High <= INT32_MAX), std::int32_t,
                                                                    std::int64_t>>>;
 
-  template <typename T>
-  constexpr std::string_view type_name()
-  {
-    if constexpr (std::is_same_v<T, std::uint8_t>)  return "uint8_t";
-    if constexpr (std::is_same_v<T, std::uint16_t>) return "uint16_t";
-    if constexpr (std::is_same_v<T, std::uint32_t>) return "uint32_t";
-    if constexpr (std::is_same_v<T, std::uint64_t>) return "uint64_t";
-    if constexpr (std::is_same_v<T, std::int8_t>)   return "int8_t";
-    if constexpr (std::is_same_v<T, std::int16_t>)  return "int16_t";
-    if constexpr (std::is_same_v<T, std::int32_t>)  return "int32_t";
-    if constexpr (std::is_same_v<T, std::int64_t>)  return "int64_t";
-    if constexpr (std::is_same_v<T, rational>) return "rational";
-    return "unknown";
-  }
+  // (type_name<T>() — used only by the debug stringifier — lives in
+  // "bound/io.hpp" so the core stays free of <string_view>.)
 
   // Subset of arithmetic excluding integrals — the rhs types that need the
   // rational-arithmetic assignment path. (Named to avoid clashing with `real`.)
@@ -1821,14 +1893,19 @@ namespace bnd
       return std::bit_cast<double>(bits);
   }
 
+  // Freestanding finite check: `v - v` is 0 for every finite v, NaN otherwise
+  // (and inf - inf is NaN). Avoids <cmath>/std::isfinite so the core stays
+  // bare-metal clean; the same idiom is used in the store paths.
+  constexpr bool is_finite(double v) noexcept { return v - v == 0; }
+
   // Exact conversion of a finite double to num/den (den a power of two), the
   // engine behind rational(double). A finite double is exactly
   // `significand · 2^exp2` (a 53-bit significand), both read straight from the
   // IEEE-754 bits — no <cmath>, no FPU rounding, bit-identical across platforms.
   constexpr std::pair<umax, umax> abs_fraction(double value)
   {
-    if (not std::isfinite(value))
-      throw std::domain_error("bnd::detail::abs_fraction: non-finite double");
+    if (not is_finite(value))
+      raise(errc::not_finite, "bnd::detail::abs_fraction: non-finite double");
 
     if (value == 0.0) return {0, 1};
     if (value < 0)    value = -value;        // |value|; sign is the caller's job
@@ -2125,11 +2202,11 @@ namespace bnd::detail
   //---------------------------------------------------------------------------
   // Overflow / malformed-literal signalling
   //---------------------------------------------------------------------------
-  // Failure aborts constant evaluation via `throw` (literal parsers and the
-  // checked paths under `if (std::is_constant_evaluated())`), hard-failing the
-  // build; at runtime those paths fall through to `nullopt`. No dedicated
-  // always-throwing helper — as constexpr its body could never be a constant
-  // expression (ill-formed NDR, a hard error on some toolchains).
+  // Failure aborts constant evaluation via `detail::constexpr_error<Msg>()` — a
+  // non-constexpr [[noreturn]] helper carrying the message in an NTTP (literal
+  // parsers and the checked paths under `if (std::is_constant_evaluated())`),
+  // hard-failing the build with the text in the diagnostic; at runtime those
+  // paths fall through to `nullopt`. No `throw`, so it is -fno-exceptions clean.
 
   //---------------------------------------------------------------------------
   // rational — structural type for NTTP (public members only). Sign is encoded
@@ -2181,7 +2258,7 @@ namespace bnd::detail
     explicit constexpr operator T () const
     {
       if (Denominator < 0)
-        throw std::system_error(make_error_code(errc::domain_error), "cannot convert negative rational to unsigned");
+        raise(errc::domain_error, "cannot convert negative rational to unsigned");
       return Numerator / abs_den(Denominator);
     }
 
@@ -2243,11 +2320,9 @@ namespace bnd::detail
     static constexpr void canonicalize(umax& num, imax& den)
     {
       if (den == 0)
-        throw std::system_error(make_error_code(errc::domain_error),
-                                "Denominator of Zero is invalid");
+        raise(errc::domain_error, "Denominator of Zero is invalid");
       if (den == std::numeric_limits<imax>::min())
-        throw std::system_error(make_error_code(errc::domain_error),
-                                "Denominator imax_min is invalid (cannot be negated)");
+        raise(errc::domain_error, "Denominator imax_min is invalid (cannot be negated)");
       if (num == 0) den = 1;
       trim(num, den);
     }
@@ -2258,11 +2333,9 @@ namespace bnd::detail
     static constexpr imax signed_den_from(std::signed_integral auto num, imax den)
     {
       if (den == 0)
-        throw std::system_error(make_error_code(errc::domain_error),
-                                "Denominator of Zero is invalid");
+        raise(errc::domain_error, "Denominator of Zero is invalid");
       if (den == std::numeric_limits<imax>::min())
-        throw std::system_error(make_error_code(errc::domain_error),
-                                "Denominator imax_min is invalid (cannot be negated)");
+        raise(errc::domain_error, "Denominator imax_min is invalid (cannot be negated)");
       return (num < 0) ? -den : den;
     }
   };
@@ -2364,8 +2437,8 @@ namespace bnd::detail
 
   constexpr rational::rational(std::floating_point auto value)
   {
-    if (not std::isfinite(value))
-      throw std::system_error(make_error_code(errc::not_finite), "non-finite double");
+    if (not is_finite(value))
+      raise(errc::not_finite, "non-finite double");
 
     if (value == 0.0)
     {
@@ -2465,13 +2538,13 @@ namespace bnd::detail
             exp_seen_digit = true;
             continue;
           }
-          throw ("_b/_r literal: invalid char in exponent");
+          constexpr_error<"_b/_r literal: invalid char in exponent">();
         }
 
         if (c == '.')
         {
-          if (in_frac) throw ("_b/_r literal: multiple '.'");
-          if (base == 2) throw ("_b/_r literal: '.' not allowed in binary");
+          if (in_frac) constexpr_error<"_b/_r literal: multiple '.'">();
+          if (base == 2) constexpr_error<"_b/_r literal: '.' not allowed in binary">();
           in_frac = true;
           continue;
         }
@@ -2491,11 +2564,11 @@ namespace bnd::detail
         }
 
         int d = parse_digit(c, base);
-        if (d < 0) throw ("_b/_r literal: invalid digit for radix");
+        if (d < 0) constexpr_error<"_b/_r literal: invalid digit for radix">();
 
         umax base_u = base;
         if (num > (~umax{0} - d) / base_u)
-          throw ("_b/_r literal: numerator overflow");
+          constexpr_error<"_b/_r literal: numerator overflow">();
         num = num * base_u + d;
         if (in_frac) ++frac_len;
       }
@@ -2508,26 +2581,26 @@ namespace bnd::detail
         for (int k = 0; k < frac_len; ++k)
         {
           if (den > (~umax{0}) / 10u)
-            throw ("_b/_r literal: denominator overflow");
+            constexpr_error<"_b/_r literal: denominator overflow">();
           den *= 10u;
         }
       }
       else if (base == 16)
       {
         int shift = 4 * frac_len;
-        if (shift >= 64) throw ("_b/_r literal: hex fraction too long");
+        if (shift >= 64) constexpr_error<"_b/_r literal: hex fraction too long">();
         den <<= shift;
       }
 
       // Apply binary exponent (hex floats, `p`).
       if (has_p_exp)
       {
-        if (exp >= 63) throw ("_b/_r literal: p exponent too large");
+        if (exp >= 63) constexpr_error<"_b/_r literal: p exponent too large">();
         if (!exp_neg) num <<= exp;
         else
         {
           if (den > (~umax{0}) >> exp)
-            throw ("_b/_r literal: p exponent denominator overflow");
+            constexpr_error<"_b/_r literal: p exponent denominator overflow">();
           den <<= exp;
         }
       }
@@ -2540,13 +2613,13 @@ namespace bnd::detail
           if (!exp_neg)
           {
             if (num > (~umax{0}) / 10u)
-              throw ("_b/_r literal: e exponent numerator overflow");
+              constexpr_error<"_b/_r literal: e exponent numerator overflow">();
             num *= 10u;
           }
           else
           {
             if (den > (~umax{0}) / 10u)
-              throw ("_b/_r literal: e exponent denominator overflow");
+              constexpr_error<"_b/_r literal: e exponent denominator overflow">();
             den *= 10u;
           }
         }
@@ -2589,7 +2662,7 @@ namespace bnd::detail
         {
           if (add_overflow(a.Numerator, b.Numerator, &numerator))
           {
-            if (std::is_constant_evaluated()) { throw ("rational +: numerator overflow (same denominator)"); }
+            if (std::is_constant_evaluated()) { constexpr_error<"rational +: numerator overflow (same denominator)">(); }
             return ret_t{slim::nullopt};
           }
         }
@@ -2631,7 +2704,7 @@ namespace bnd::detail
           mul_overflow(b.Numerator, a_ad_r, &B)       ||
           denominator > static_cast<umax>(std::numeric_limits<imax>::max()))
       {
-        if (std::is_constant_evaluated()) { throw ("rational +: cross-multiplication overflow"); }
+        if (std::is_constant_evaluated()) { constexpr_error<"rational +: cross-multiplication overflow">(); }
         return ret_t{slim::nullopt};
       }
     }
@@ -2649,7 +2722,7 @@ namespace bnd::detail
       {
         if (add_overflow(A, B, &numerator))
         {
-          if (std::is_constant_evaluated()) { throw ("rational +: numerator sum overflow"); }
+          if (std::is_constant_evaluated()) { constexpr_error<"rational +: numerator sum overflow">(); }
           return ret_t{slim::nullopt};
         }
       }
@@ -2698,7 +2771,7 @@ namespace bnd::detail
       {
         if (mul_overflow(a.Numerator, b.Numerator, &numerator))
         {
-          if (std::is_constant_evaluated()) { throw ("rational *: numerator overflow"); }
+          if (std::is_constant_evaluated()) { constexpr_error<"rational *: numerator overflow">(); }
           return ret_t{slim::nullopt};
         }
       }
@@ -2722,7 +2795,7 @@ namespace bnd::detail
           mul_overflow(a_ad, b_ad, &denominator)             ||
           denominator > static_cast<umax>(std::numeric_limits<imax>::max()))
       {
-        if (std::is_constant_evaluated()) { throw ("rational *: numerator or denominator overflow"); }
+        if (std::is_constant_evaluated()) { constexpr_error<"rational *: numerator or denominator overflow">(); }
         return ret_t{slim::nullopt};
       }
     }
@@ -2759,7 +2832,7 @@ namespace bnd::detail
       if (a.Numerator == 0 ||
           a.Numerator > static_cast<umax>(std::numeric_limits<imax>::max()))
       {
-        if (std::is_constant_evaluated()) { throw ("rational inv: numerator zero or out of denominator range"); }
+        if (std::is_constant_evaluated()) { constexpr_error<"rational inv: numerator zero or out of denominator range">(); }
         return ret_t{slim::nullopt};
       }
     }
@@ -4337,25 +4410,6 @@ namespace bnd
       return false;
     }
 
-#ifdef BND_RICH_MESSAGES
-    // Rich overload — carries the detailed "<value> is not in <interval>" text.
-    template <boundable B, typename P>
-    constexpr bool domain_fail(B& b, P&& policy, std::string msg)
-    {
-      if constexpr (HasPolicy<B, P, sentinel>)
-      {
-        b = B::from_raw(sentinel_raw<B>());
-        return true;
-      }
-      else if (policy.domain_check())
-      {
-        policy.report(errc::domain_error, std::move(msg));
-        return true;
-      }
-      return false;
-    }
-#endif
-
     // The two non-trivial clauses of `bound_assignable`, named so the concept and
     // its `bound_assignable_why` diagnostic share one definition. Concepts (not
     // bools) so `||` short-circuits *instantiation* (e.g. assignment<L,R>::Factor
@@ -4417,144 +4471,6 @@ namespace bnd
 //---------------------------------------------------------------------------
 //---------------------------------------------------------------------------
 
-// format.hpp supplies bnd::to_string for the rich (-DBND_RICH_MESSAGES) error
-// messages. It is included unconditionally: the cheap default never *instantiates*
-// to_string (the message helpers below are gated out), so no formatting code is
-// emitted — but the header must stay visible because print.hpp / formatter.hpp
-// need to_string regardless, and a conditional include cannot survive the
-// single-header amalgamation.
-
-// ======================================================================
-//  bound/format.hpp
-// ======================================================================
-//---------------------------------------------------------------------------
-//---------------------------------------------------------------------------
-
-
-
-//---------------------------------------------------------------------------
-// format — `to_string` overloads for the library's value types.
-//
-// Pretty-prints `rational`, `interval`, `grid`, plus a fallback for plain
-// arithmetic types. Used by error messages, debug output, and the
-// `std::formatter` specializations in `formatter.hpp`.
-//---------------------------------------------------------------------------
-namespace bnd
-{
-  inline std::string to_string(bnd::detail::rational r)
-  {
-    std::string str;
-    if (r.Denominator < 0)
-      str = "-";
-
-    umax ad = detail::abs_den(r.Denominator);
-    if (ad == 1)
-      return str += std::to_string(r.Numerator);
-
-    // power-of-2 or power-of-10: decimal output
-    // find smallest 10^k divisible by ad
-    umax pow10 = 1;
-    unsigned digits = 0;
-    bool is_decimal = false;
-    for (unsigned k = 0; k < 20; ++k)
-    {
-      if (pow10 % ad == 0)
-      { is_decimal = true; digits = k; break; }
-      pow10 *= 10;
-    }
-
-    if (is_decimal)
-    {
-      umax scale = pow10 / ad;
-      umax total;
-      if (!mul_overflow(r.Numerator, scale, &total))
-      {
-        umax int_part = total / pow10;
-        umax frac_part = total % pow10;
-        str += std::to_string(int_part);
-        if (digits > 0)
-        {
-          str += ".";
-          auto frac_str = std::to_string(frac_part);
-          // zero-pad
-          for (unsigned i = 0; i < digits - frac_str.size(); ++i)
-            str += "0";
-          str += frac_str;
-        }
-        return str;
-      }
-      // Decimal expansion would overflow the umax scratch buffer. Fall back
-      // silently to the mixed-number/fraction form — `to_string` must always
-      // produce *some* readable output, never an error.
-    }
-
-    // mixed number for improper fractions
-    umax int_part = r.Numerator / ad;
-    umax remainder = r.Numerator % ad;
-    if (int_part > 0)
-    {
-      str += std::to_string(int_part);
-      if (remainder > 0)
-      {
-        str += " ";
-        str += std::to_string(remainder);
-        str += "/";
-        str += std::to_string(ad);
-      }
-    }
-    else
-    {
-      str += std::to_string(r.Numerator);
-      str += "/";
-      str += std::to_string(ad);
-    }
-    return str;
-  }
-
-  inline std::string to_string(interval ival)
-  {
-    std::string str{"["};
-
-    str += bnd::to_string(ival.Lower);
-    str += "..";
-    str += bnd::to_string(ival.Upper);
-    str += "]";
-    return str;
-  }
-
-  inline std::string to_string(grid g)
-  {
-    std::string str{"{"};
-
-    str += bnd::to_string(g.Interval);
-    str += ", ";
-    str += bnd::to_string(g.Notch);
-    str += "}";
-    return str;
-  }
-
-  // delegate to std::to_string
-  template <typename V>
-  auto to_string(V value)
-  { return std::to_string(value); }
-
-  // `real` (double-backed) and `exact` (rational-backed) bounds: render the
-  // exact rational form. (Without this overload a real bound would fall to the
-  // generic `std::to_string(double)` and print a lossy 6-digit form, and a
-  // rational-raw bound has no std::to_string at all.) A continuous (Notch == 0)
-  // real bound prints the double.
-  template <boundable B>
-    requires (detail::real_raw<B> || detail::rational_raw<B>)
-  inline std::string to_string(B b)
-  {
-    if constexpr (detail::real_raw<B> && Notch<B> == bnd::detail::rational{0})
-      return std::to_string(detail::as_double(b));
-    else
-      return to_string(bnd::detail::as_rational(b));
-  }
-
-} // namespace bnd
-
 
 namespace bnd::detail
 {
@@ -4581,16 +4497,6 @@ namespace bnd::detail
       || HasPolicy<L, P, sentinel>
       || (HasPolicy<L, P, checked> && !HasPolicy<L, P, ignore_domain>);
 
-#ifdef BND_RICH_MESSAGES
-  // Shared "<value> is not in <interval>" message for the domain-error and
-  // error-action paths. The caller passes the already-resolved view of the rhs
-  // (the integer/real value, or `as_rational(rhs)` for a boundable source).
-  // Rich-only: the cheap default never builds this (no <string>/to_string).
-  template <boundable L, typename V>
-  inline std::string out_of_range_msg(V const& rhs_view)
-  { return bnd::to_string(rhs_view) + " is not in " + bnd::to_string(Interval<L>); }
-#endif
-
   // Shared out-of-range policy cascade. Order: clamp/wrap/sentinel/error
   // *actions*, then clamp/wrap *policy* bits, then `domain_fail`. The four
   // callers-supplied callables cover how clamp/wrap store, the sentinel-action
@@ -4616,12 +4522,7 @@ namespace bnd::detail
     }
     else if constexpr (error_action<PA>)
     {
-#ifdef BND_RICH_MESSAGES
-      auto msg = out_of_range_msg<L>(msg_view());
-      action.fn(lhs, errc::domain_error, std::string_view(msg));
-#else
       action.fn(lhs, errc::domain_error, errc_message(errc::domain_error));
-#endif
       return true;
     }
     else if constexpr (HasPolicy<L, P, clamp>)
@@ -4629,11 +4530,7 @@ namespace bnd::detail
     else if constexpr (HasPolicy<L, P, wrap>)
     { do_wrap(); return true; }
     else
-#ifdef BND_RICH_MESSAGES
-      return domain_fail(lhs, policy, out_of_range_msg<L>(msg_view()));
-#else
       return domain_fail(lhs, policy);
-#endif
   }
 
   //---------------------------------------------------------------------------
@@ -4967,8 +4864,7 @@ namespace bnd::detail
       // already ran in the assign cascade; finite guard mirrors store_real's).
       const double v = static_cast<double>(rhs);
       if (!(v - v == 0))
-        throw std::system_error(make_error_code(errc::not_finite),
-                                "non-finite double");
+        detail::raise(errc::not_finite, "non-finite double");
       lhs = L::from_raw(Grid<L>.snap_double(v));
       return true;
     }
@@ -5053,16 +4949,9 @@ namespace bnd::detail
         store_slot(round_quotient<L, P>(raw.Numerator, den));
       else if (policy.round_check()) [[unlikely]]
       {
-#ifdef BND_RICH_MESSAGES
-        auto msg = bnd::to_string(rhs) + " does not land on notch " + bnd::to_string(Notch<L>);
-        if constexpr (error_action<plain<A>>)
-        { action.fn(lhs, errc::rounding_error, std::string_view(msg)); return false; }
-        policy.report(errc::rounding_error, msg);
-#else
         if constexpr (error_action<plain<A>>)
         { action.fn(lhs, errc::rounding_error, errc_message(errc::rounding_error)); return false; }
         policy.report(errc::rounding_error);
-#endif
         return false;
       }
       else
@@ -5241,7 +5130,7 @@ namespace bnd::detail
 //---------------------------------------------------------------------------
 // policy — runtime policy carrier, plus `policy_ref` for per-operation dispatch.
 //   policy<F, E>  — compile-time flags F plus an optional error_ref E holding a
-//                   std::error_code& (EBO so the no-error-code form is zero-sized).
+//                   bnd::errc& (EBO so the no-error-code form is zero-sized).
 //   policy_ref    — wraps a bound& with a policy<...> and a tuple of on_* actions;
 //                   compound ops flow through it, routing each action to the right
 //                   callback at the right pipeline stage.
@@ -5250,16 +5139,17 @@ namespace bnd
 {
   //---------------------------------------------------------------------------
   // policy — derives from E for EBO: throwing form (E == empty_ref) is zero-sized;
-  // `policy(ec)` makes E == error_ref carrying a std::error_code&. No virtuals,
-  // resolved at compile time.
+  // `policy(ec)` makes E == error_ref carrying a `bnd::errc&`. No virtuals,
+  // resolved at compile time. (The error-code channel reports `errc` directly —
+  // there is no <system_error> dependency.)
   //---------------------------------------------------------------------------
   namespace detail
   {
     struct empty_ref{ };
     struct error_ref
     {
-      constexpr error_ref(std::error_code& ec):Code{ec} {}
-      std::error_code& Code;
+      constexpr error_ref(errc& ec):Code{ec} {}
+      errc& Code;
     };
   }
 
@@ -5267,7 +5157,7 @@ namespace bnd
   struct policy: E
   {
     constexpr policy() = default;
-    constexpr policy(std::error_code& ec) requires std::same_as<E, detail::error_ref>
+    constexpr policy(errc& ec) requires std::same_as<E, detail::error_ref>
     :E(ec) { }
 
     static constexpr bool test(policy_flag w)
@@ -5286,42 +5176,24 @@ namespace bnd
     }
 
     // Cheap default report: no message construction. error_ref mode records the
-    // code; throw mode raises system_error with the static category message via
-    // an outlined cold helper. The constant-evaluation guard throws a string
-    // literal for a clearer compile-time diagnostic than "non-constexpr function
-    // called".
+    // code (sticky: keeps the first error); throw mode funnels through the
+    // installed handler via an outlined cold helper. The constant-evaluation
+    // guard names a fixed-string diagnostic for a clearer compile-time message
+    // than "non-constexpr function called".
     constexpr void report(errc code)
     {
       if (std::is_constant_evaluated())
-      {
-        throw "bound: value out of range during constant evaluation "
-              "(checked policy hit; choose clamp/wrap/sentinel or widen the interval)";
-      }
+        detail::constexpr_error<
+          "bound: value out of range during constant evaluation "
+          "(checked policy hit; choose clamp/wrap/sentinel or widen the interval)">();
       if constexpr (std::is_same_v<E, detail::error_ref>)
-        E::Code = E::Code ? E::Code : make_error_code(code);
+        E::Code = E::Code != errc{} ? E::Code : code;
       else
-        detail::throw_bound_error(code);
+        detail::raise(code);
     }
-
-#ifdef BND_RICH_MESSAGES
-    // Rich report: carries a detailed "<value> is not in <interval>" message.
-    // Compiled only under -DBND_RICH_MESSAGES (pulls in <string> / to_string).
-    constexpr void report(errc code, std::string what)
-    {
-      if (std::is_constant_evaluated())
-      {
-        throw "bound: value out of range during constant evaluation "
-              "(checked policy hit; choose clamp/wrap/sentinel or widen the interval)";
-      }
-      if constexpr (std::is_same_v<E, detail::error_ref>)
-        E::Code = E::Code ? E::Code : make_error_code(code);
-      else
-        detail::throw_bound_error(code, std::move(what));
-    }
-#endif
   };
 
-  policy(std::error_code&) -> policy<none, detail::error_ref>;
+  policy(errc&) -> policy<none, detail::error_ref>;
 
   //---------------------------------------------------------------------------
   // IsPolicy — true for policy<F,E> specializations, false otherwise.
@@ -5337,7 +5209,7 @@ namespace bnd
     template<typename T>
     concept policy_like = IsPolicy<std::remove_cvref_t<T>>;
 
-    // True for policy specializations that carry an std::error_code& reference.
+    // True for policy specializations that carry a bnd::errc& reference.
     // Free-fn arithmetic uses this to decide whether to call policy.report on
     // failure (which sets ec) vs. returning silent nullopt (no-arg form).
     template<typename T>             inline constexpr bool UsesErrorRef = false;
@@ -5352,7 +5224,7 @@ namespace bnd
   { return policy<F,detail::empty_ref>{}; }
 
   template<policy_flag F = none>
-  [[nodiscard]] constexpr auto make_policy(std::error_code& ec)
+  [[nodiscard]] constexpr auto make_policy(errc& ec)
   { return policy<F,detail::error_ref>{ec}; }
 
   //---------------------------------------------------------------------------
@@ -5377,11 +5249,7 @@ namespace bnd
     else
     {
       if constexpr (UsesErrorRef<std::remove_cvref_t<P>>)
-#ifdef BND_RICH_MESSAGES
-        policy.report(code, what);
-#else
         policy.report(code);
-#endif
       return slim::nullopt;
     }
   }
@@ -5472,13 +5340,9 @@ namespace bnd
     constexpr void report_zero(errc code, const char* what)
     {
       if constexpr (has_action<IsErrorActionPred, As...>)
-        pick_action_in<IsErrorActionPred>(Actions).fn(Ref, code, std::string_view(what));
+        pick_action_in<IsErrorActionPred>(Actions).fn(Ref, code, what);
       else if constexpr (!HasPolicy<B, P, ignore_zero>)
-#ifdef BND_RICH_MESSAGES
-        Policy.report(code, what);
-#else
         Policy.report(code);
-#endif
     }
 
     public:
@@ -5499,11 +5363,7 @@ namespace bnd
           if constexpr (has_action<IsOverflowActionPred, As...>)
             pick_action_in<IsOverflowActionPred>(Actions).fn(Ref, errc::overflow);
           else
-#ifdef BND_RICH_MESSAGES
-            Policy.report(errc::overflow, msg);
-#else
             Policy.report(errc::overflow);
-#endif
           return Ref;
         }
         return assign_with_picked(result.value());
@@ -6341,8 +6201,7 @@ namespace bnd
       // NaN/±inf would reach snap_double's integer cast (UB); reject like the
       // non-real path. `v - v` is 0 for every finite v, NaN otherwise.
       if (!(v - v == 0))
-        throw std::system_error(make_error_code(errc::not_finite),
-                                "non-finite double");
+        detail::raise(errc::not_finite, "non-finite double");
       const double lo = static_cast<double>(G.Interval.Lower);
       const double hi = static_cast<double>(G.Interval.Upper);
       if (v < lo || v > hi)
@@ -6369,14 +6228,8 @@ namespace bnd
           }
           v -= kd * range;
         }
-#ifdef BND_RICH_MESSAGES
-        else if (detail::domain_fail(*this, make_policy<P>(),
-                   std::to_string(v) + " is not in " + bnd::to_string(G.Interval)))
-          return;            // sentinel stored / reported (error_code mode)
-#else
         else if (detail::domain_fail(*this, make_policy<P>()))
           return;            // sentinel stored / reported (error_code mode)
-#endif
         // no handler (unchecked policy): fall through and store snapped as-is
       }
       Raw = G.snap_double(v);
@@ -6422,7 +6275,7 @@ namespace bnd
     // checking ec first.
     template <numeric A>
       requires bound_assignable<bound, A, P>
-    constexpr bound(A value, std::error_code& ec)
+    constexpr bound(A value, errc& ec)
     {
       if constexpr (detail::real_raw<bound>)
         store_real(to_double(value));
@@ -6632,7 +6485,7 @@ namespace bnd
     }
 
     template <policy_flag F = none>
-    [[nodiscard]] constexpr auto policy(std::error_code& ec)
+    [[nodiscard]] constexpr auto policy(errc& ec)
     {
        auto pol = make_policy<P | F>(ec);
        return detail::policy_ref<bound, decltype(pol)>{*this, pol};
@@ -6732,11 +6585,7 @@ namespace bnd
       else if constexpr (P & sentinel)
         Raw = detail::sentinel_raw<bound>();
       else
-#ifdef BND_RICH_MESSAGES
-        make_policy<P>().report(errc::domain_error, "operator+= result out of range");
-#else
         make_policy<P>().report(errc::domain_error);
-#endif
       return *this;
     }
     public:
@@ -6759,11 +6608,7 @@ namespace bnd
     constexpr bool report_div_by_zero([[maybe_unused]] const char* msg)
     {
       if constexpr (!(P & ignore_zero))
-#ifdef BND_RICH_MESSAGES
-        make_policy<P>().report(errc::division_by_zero, msg);
-#else
         make_policy<P>().report(errc::division_by_zero);
-#endif
       return false;   // caller returns *this directly
     }
     public:
@@ -6823,10 +6668,10 @@ namespace bnd
     template <numeric A>
     [[nodiscard]] static constexpr slim::expected<bound, errc> try_make(A value)
     {
-      std::error_code ec;
+      errc ec{};
       bound result;
       detail::assignment<bound, A>::assign(result, value, make_policy<P>(ec));
-      if (ec) return slim::unexpected{static_cast<errc>(ec.value())};
+      if (ec != errc{}) return slim::unexpected{ec};
       // For `sentinel` policy types, an out-of-range write silently sets
       // result.Raw to the sentinel; surface that as a domain error.
       if constexpr (has_flag(P, sentinel))
@@ -7033,11 +6878,9 @@ namespace bnd
   [[nodiscard]] constexpr B checked_cast(A value)
   {
     if (will_conversion_overflow<B>(value))
-      throw std::system_error(make_error_code(errc::domain_error),
-                              "checked_cast: value out of bound interval");
+      detail::raise(errc::domain_error, "checked_cast: value out of bound interval");
     if (will_conversion_truncate<B>(value))
-      throw std::system_error(make_error_code(errc::rounding_error),
-                              "checked_cast: value does not land on notch");
+      detail::raise(errc::rounding_error, "checked_cast: value does not land on notch");
     return B{value};
   }
 
@@ -7090,7 +6933,7 @@ namespace bnd
 
   template <boundable L, boundable R, typename A = no_action>
   [[nodiscard]] constexpr auto add(L const& lhs, R const& rhs,
-                                   std::error_code& ec, A&& action = {})
+                                   errc& ec, A&& action = {})
   { return detail::addition<L,R>::add(lhs, rhs, make_policy<checked>(ec),
       std::forward<A>(action)); }
 
@@ -7127,7 +6970,7 @@ namespace bnd
 
   template <boundable L, boundable R, typename A = no_action>
   [[nodiscard]] constexpr auto sub(L const& lhs, R const& rhs,
-                                   std::error_code& ec, A&& action = {})
+                                   errc& ec, A&& action = {})
   { return add(lhs, -rhs, make_policy<checked>(ec), std::forward<A>(action)); }
 
   //---------------------------------------------------------------------------
@@ -7161,7 +7004,7 @@ namespace bnd
 
   template <boundable L, boundable R, typename A = no_action>
   [[nodiscard]] constexpr auto mul(L const& lhs, R const& rhs,
-                                   std::error_code& ec, A&& action = {})
+                                   errc& ec, A&& action = {})
   { return detail::multiplication<L,R>::mul(lhs, rhs, make_policy<checked>(ec),
       std::forward<A>(action)); }
 
@@ -7328,7 +7171,7 @@ namespace bnd
 
   template <boundable L, boundable R, typename A = no_action>
   [[nodiscard]] constexpr auto div(L lhs, R rhs,
-                                   std::error_code& ec, A&& action = {})
+                                   errc& ec, A&& action = {})
   { return detail::division<L, R, checked>::div(lhs, rhs, make_policy<checked>(ec),
       std::forward<A>(action)); }
 
@@ -7366,7 +7209,7 @@ namespace bnd
 
   template <boundable L, boundable R, typename A = no_action>
   [[nodiscard]] constexpr auto mod(L lhs, R rhs,
-                                   std::error_code& ec, A&& action = {})
+                                   errc& ec, A&& action = {})
   { return detail::modulo<L, R, checked>::mod(lhs, rhs, make_policy<checked>(ec),
       std::forward<A>(action)); }
 
@@ -10012,29 +9855,178 @@ namespace bnd
 } // namespace bnd
 
 
-// ======================================================================
-//  bound/formatter.hpp
-// ======================================================================
-//---------------------------------------------------------------------------
-//---------------------------------------------------------------------------
-
+#ifndef BND_NO_STRING
 
 // ======================================================================
-//  bound/print.hpp
+//  bound/io.hpp
 // ======================================================================
 //---------------------------------------------------------------------------
 //---------------------------------------------------------------------------
-
-
-
+// io — ALL of the library's string / stream / std::format support, gathered
+// into one opt-in header. The core (bound.hpp and everything it pulls) never
+// includes this, so a freestanding / bare-metal build that never includes
+// "bound/io.hpp" pays zero <string>/<ostream>/<format> cost. In the single-
+// header amalgamation this whole region is wrapped in `#ifndef BND_NO_STRING`,
+// so defining BND_NO_STRING drops it (and its heavy includes) wholesale.
+//
+// Provides:
+//   * to_string(rational | interval | grid | boundable | arithmetic)
+//   * to_string_debug(boundable)        — value + raw + raw-type + grid
+//   * operator<<(std::ostream&, ...)
+//   * std::formatter<bound<G,P>> / std::formatter<rational>   (when <format>)
 //---------------------------------------------------------------------------
-// print — `to_string`, `to_string_debug`, and `operator<<` for boundables
-// and `rational`. The debug form also prints the raw value, raw type, and
-// grid — useful when inspecting failing tests or storage choices. Separate
-// from `format.hpp` so test/benchmark binaries can opt out of `<ostream>`.
-//---------------------------------------------------------------------------
+
+
+#include <string>
+#include <string_view>
+#include <ostream>
+#include <version>
+
 namespace bnd
 {
+  //-------------------------------------------------------------------------
+  // to_string — pretty-prints `rational`, `interval`, `grid`, plus a fallback
+  // for plain arithmetic types and the exact-rational form for boundables.
+  //-------------------------------------------------------------------------
+  inline std::string to_string(bnd::detail::rational r)
+  {
+    std::string str;
+    if (r.Denominator < 0)
+      str = "-";
+
+    umax ad = detail::abs_den(r.Denominator);
+    if (ad == 1)
+      return str += std::to_string(r.Numerator);
+
+    // power-of-2 or power-of-10: decimal output
+    // find smallest 10^k divisible by ad
+    umax pow10 = 1;
+    unsigned digits = 0;
+    bool is_decimal = false;
+    for (unsigned k = 0; k < 20; ++k)
+    {
+      if (pow10 % ad == 0)
+      { is_decimal = true; digits = k; break; }
+      pow10 *= 10;
+    }
+
+    if (is_decimal)
+    {
+      umax scale = pow10 / ad;
+      umax total;
+      if (!mul_overflow(r.Numerator, scale, &total))
+      {
+        umax int_part = total / pow10;
+        umax frac_part = total % pow10;
+        str += std::to_string(int_part);
+        if (digits > 0)
+        {
+          str += ".";
+          auto frac_str = std::to_string(frac_part);
+          // zero-pad
+          for (unsigned i = 0; i < digits - frac_str.size(); ++i)
+            str += "0";
+          str += frac_str;
+        }
+        return str;
+      }
+      // Decimal expansion would overflow the umax scratch buffer. Fall back
+      // silently to the mixed-number/fraction form — `to_string` must always
+      // produce *some* readable output, never an error.
+    }
+
+    // mixed number for improper fractions
+    umax int_part = r.Numerator / ad;
+    umax remainder = r.Numerator % ad;
+    if (int_part > 0)
+    {
+      str += std::to_string(int_part);
+      if (remainder > 0)
+      {
+        str += " ";
+        str += std::to_string(remainder);
+        str += "/";
+        str += std::to_string(ad);
+      }
+    }
+    else
+    {
+      str += std::to_string(r.Numerator);
+      str += "/";
+      str += std::to_string(ad);
+    }
+    return str;
+  }
+
+  inline std::string to_string(interval ival)
+  {
+    std::string str{"["};
+
+    str += bnd::to_string(ival.Lower);
+    str += "..";
+    str += bnd::to_string(ival.Upper);
+    str += "]";
+    return str;
+  }
+
+  inline std::string to_string(grid g)
+  {
+    std::string str{"{"};
+
+    str += bnd::to_string(g.Interval);
+    str += ", ";
+    str += bnd::to_string(g.Notch);
+    str += "}";
+    return str;
+  }
+
+  // delegate to std::to_string
+  template <typename V>
+  auto to_string(V value)
+  { return std::to_string(value); }
+
+  // `real` (double-backed) and `exact` (rational-backed) bounds: render the
+  // exact rational form. (Without this overload a real bound would fall to the
+  // generic `std::to_string(double)` and print a lossy 6-digit form, and a
+  // rational-raw bound has no std::to_string at all.) A continuous (Notch == 0)
+  // real bound prints the double.
+  template <boundable B>
+    requires (detail::real_raw<B> || detail::rational_raw<B>)
+  inline std::string to_string(B b)
+  {
+    if constexpr (detail::real_raw<B> && Notch<B> == bnd::detail::rational{0})
+      return std::to_string(detail::as_double(b));
+    else
+      return to_string(bnd::detail::as_rational(b));
+  }
+
+  //-------------------------------------------------------------------------
+  // type_name<T>() — short raw-type label for to_string_debug. Lives here (not
+  // in the core math header) so the core never pulls <string_view>.
+  //-------------------------------------------------------------------------
+  namespace detail
+  {
+    template <typename T>
+    constexpr std::string_view type_name()
+    {
+      if constexpr (std::is_same_v<T, std::uint8_t>)  return "uint8_t";
+      if constexpr (std::is_same_v<T, std::uint16_t>) return "uint16_t";
+      if constexpr (std::is_same_v<T, std::uint32_t>) return "uint32_t";
+      if constexpr (std::is_same_v<T, std::uint64_t>) return "uint64_t";
+      if constexpr (std::is_same_v<T, std::int8_t>)   return "int8_t";
+      if constexpr (std::is_same_v<T, std::int16_t>)  return "int16_t";
+      if constexpr (std::is_same_v<T, std::int32_t>)  return "int32_t";
+      if constexpr (std::is_same_v<T, std::int64_t>)  return "int64_t";
+      if constexpr (std::is_same_v<T, rational>) return "rational";
+      return "unknown";
+    }
+  } // namespace detail
+
+  //-------------------------------------------------------------------------
+  // to_string / to_string_debug / operator<< for boundables and rational.
+  // The debug form also prints the raw value, raw type, and grid — useful when
+  // inspecting failing tests or storage choices.
+  //-------------------------------------------------------------------------
   template <boundable B>
   inline std::string to_string(B b)
   { return bnd::to_string(detail::as_rational(b)); }
@@ -10068,22 +10060,16 @@ namespace bnd
 
 } // namespace bnd
 
-
-
+//---------------------------------------------------------------------------
 // std::format integration is gated on a working <format> (libstdc++ ships it
-// from GCC 13; GCC 12 / C++20 builds compile this header as a no-op and rely
-// on to_string()/operator<< from format.hpp/print.hpp instead).
+// from GCC 13; GCC 12 / C++20 builds compile this as a no-op and rely on
+// to_string()/operator<< instead).
+//---------------------------------------------------------------------------
 #ifdef __cpp_lib_format
 
 #include <format>
 #include <type_traits>
 
-//---------------------------------------------------------------------------
-// formatter — std::formatter for bound<G, P> and rational. Empty spec `{}` keeps
-// exact-rational output via bnd::to_string. A non-empty spec routes by storage:
-// IsIntegerAligned → std::formatter<imax> over to_value(b) (`{:5}`, `{:#x}`, …);
-// otherwise → std::formatter<double> over double(b) (lossy, `{:.2f}` etc.).
-//---------------------------------------------------------------------------
 namespace bnd::detail
 {
   // Shared spec handling: an empty `{}` is left to the derived format() (exact
@@ -10145,6 +10131,8 @@ struct std::formatter<bnd::detail::rational>
 
 #endif // __cpp_lib_format
 
+
+#endif // BND_NO_STRING
 
 // ======================================================================
 //  bound/numeric_limits.hpp

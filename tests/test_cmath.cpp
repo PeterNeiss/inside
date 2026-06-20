@@ -6,8 +6,8 @@
 // double engine, covered by test_cmath_double.cpp.
 
 #include "bound/cmath.hpp"
+#include "bound/io.hpp"
 #include "bound/bound.hpp"
-#include "bound/print.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 

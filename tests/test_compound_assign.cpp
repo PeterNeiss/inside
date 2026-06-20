@@ -1,5 +1,5 @@
 #include "bound/bound.hpp"
-#include "bound/print.hpp"
+#include "bound/io.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -34,11 +34,11 @@ TEST_CASE("compound /= and %= by a zero bound report by default", "[bound][compo
 {
   using u100 = bound<{0, 100}>;
   u100 a{50};
-  REQUIRE_THROWS_AS(([&]{ a /= u100{0}; }()), std::system_error);
+  REQUIRE_THROWS_AS(([&]{ a /= u100{0}; }()), bnd::bound_error);
 
   using ui = bound<{0, 100}, snapping>;
   ui s{50};
-  REQUIRE_THROWS_AS(([&]{ s %= ui{0}; }()), std::system_error);
+  REQUIRE_THROWS_AS(([&]{ s %= ui{0}; }()), bnd::bound_error);
 }
 
 TEST_CASE("compound assignment: rational RHS", "[bound][compound][rational]")
@@ -82,7 +82,7 @@ TEST_CASE("compound /= 0_r (rational zero) reports error", "[bound][compound][ra
 {
   using rn = bound<{{0, 100}, notch<1, 100>}, round_nearest>;
   rn a{0.5_r};
-  REQUIRE_THROWS_AS(([&]{ a /= 0_r; }()), std::system_error);
+  REQUIRE_THROWS_AS(([&]{ a /= 0_r; }()), bnd::bound_error);
 }
 
 TEST_CASE("increment / decrement", "[bound][compound][inc]")

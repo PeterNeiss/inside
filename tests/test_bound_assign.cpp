@@ -1,5 +1,5 @@
 #include "bound/bound.hpp"
-#include "bound/print.hpp"
+#include "bound/io.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -209,11 +209,11 @@ TEST_CASE("integer rhs into non-integer-interval bound", "[bound][assign][edge]"
 TEST_CASE("checked policy throws on float out-of-range", "[bound][assign][checked]")
 {
   using c10 = bound<{0, 10}, checked>;
-  REQUIRE_THROWS_AS(c10{100.0},  std::system_error);
-  REQUIRE_THROWS_AS(c10{-1.0},   std::system_error);
+  REQUIRE_THROWS_AS(c10{100.0},  bnd::bound_error);
+  REQUIRE_THROWS_AS(c10{-1.0},   bnd::bound_error);
 
   // rational rhs takes the same path
-  REQUIRE_THROWS_AS(c10{20_r}, std::system_error);
+  REQUIRE_THROWS_AS(c10{20_r}, bnd::bound_error);
 }
 
 TEST_CASE("checked policy throws on rounding error", "[bound][assign][checked][round]")
@@ -222,7 +222,7 @@ TEST_CASE("checked policy throws on rounding error", "[bound][assign][checked][r
   coarse c;
 
   // 3.0 doesn't land on notch 2 — round_check fires
-  REQUIRE_THROWS_AS((c = 3.0), std::system_error);
+  REQUIRE_THROWS_AS((c = 3.0), bnd::bound_error);
 
   // value on the notch is fine
   REQUIRE_NOTHROW((c = 4.0));
@@ -246,7 +246,7 @@ TEST_CASE("checked bound-to-bound out-of-range throws", "[bound][assign][bound2b
   using src = bound<{0, 100}>;
   using dst = bound<{0, 50}, checked>;
   src s{75};
-  REQUIRE_THROWS_AS(dst{s}, std::system_error);
+  REQUIRE_THROWS_AS(dst{s}, bnd::bound_error);
 }
 
 TEST_CASE("non-integer-mapping bound-to-bound clamp / domain_fail",

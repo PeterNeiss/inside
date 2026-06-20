@@ -5,9 +5,9 @@ out-of-range assignment, on rounding mismatch, and on the various optional
 runtime checks. Policies are **flag bits**; combine them with bitwise `|`.
 
 ```cpp
-// Default: checked — runtime domain validation (throws std::system_error)
+// Default: checked — runtime domain validation (throws bnd::bound_error)
 using safe = bound<{0, 100}>;
-safe x = 150;      // throws std::system_error at runtime
+safe x = 150;      // throws bnd::bound_error at runtime
 
 // Unsafe: opt out of all runtime checks (compile-time checks always apply)
 using fast = bound<{0, 100}, unsafe>;
@@ -190,20 +190,21 @@ acc.with(
 
 ## Error code mode
 
-Instead of throwing, errors can be reported via `std::error_code`. This works
-with construction, direct assignment, and per-operation policies:
+Instead of throwing, errors can be reported via `bnd::errc` (the library has no
+`std::error_code` / `<system_error>` dependency). This works with construction,
+direct assignment, and per-operation policies:
 
 ```cpp
-std::error_code ec;
+bnd::errc ec{};   // value-initialised: errc{} == 0 means "no error"
 
 // Construction with error code
 bound<{0, 100}> x(150, ec);
-// ec is set to EDOM; on error x's value is ill-defined — check ec before reading x
+// ec is set to errc::domain_error; on error x's value is ill-defined — check ec before reading x
 
 // Per-operation with error code
 bound<{0, 100}> y{50};
 y.policy(ec) = 200;
-// ec is set to EDOM, y remains 50 (a failed assignment leaves the prior value intact)
+// ec is set to errc::domain_error, y remains 50 (a failed assignment leaves the prior value intact)
 
 // Free arithmetic with error code
 auto sum = add(y, y, ec);
@@ -217,8 +218,33 @@ coarse.policy<snapping>(ec) = fine;
 ```
 
 The error code is only set on the first error (subsequent errors don't
-overwrite it). Domain violations produce `EDOM`, rounding violations produce
-`ENOSPC`.
+overwrite it). Domain violations produce `errc::domain_error`, rounding
+violations produce `errc::rounding_error`.
+
+## Replacing the throw handler (freestanding / bare-metal)
+
+The throwing default is a single replaceable hook. Every checked failure funnels
+through `bnd::detail::raise`, which calls the installed handler:
+
+```cpp
+using bnd::errc;
+using bnd::error_handler_t;
+
+// Default handler throws bnd::bound_error (which carries `errc code`). When the
+// program is compiled with exceptions disabled the default instead traps.
+// Install your own to redirect failures (log, reset, longjmp, …):
+error_handler_t prev = bnd::set_error_handler(
+    [](errc code, const char* what) noexcept -> void {
+        my_log(code, what);
+        my_reset();            // a handler MUST NOT return; raise() traps if it does
+        for (;;) {}
+    });
+// ... bnd::set_error_handler(prev);  // restore; nullptr also restores the default
+```
+
+This — together with not including `bound/io.hpp` (or defining `BND_NO_STRING`
+in the single-header build) — lets the core run with no `<string>`,
+`<system_error>`, or C++ exception-ABI dependency.
 
 ## Optional construction
 

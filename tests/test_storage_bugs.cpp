@@ -2,9 +2,9 @@
 // fail on the unfixed build and pass after the corresponding fix lands.
 
 #include "bound/bound.hpp"
+#include "bound/io.hpp"
 #include "bound/detail/rational.hpp"
 #include "bound/grid.hpp"
-#include "bound/print.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 

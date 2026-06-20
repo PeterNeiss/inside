@@ -6,7 +6,7 @@
 #include <vector>
 
 #include "bound/bound.hpp"
-#include "bound/print.hpp"
+#include "bound/io.hpp"
 
 namespace rng = std::ranges;
 using namespace bnd;

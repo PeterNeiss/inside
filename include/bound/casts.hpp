@@ -49,11 +49,9 @@ namespace bnd
   [[nodiscard]] constexpr B checked_cast(A value)
   {
     if (will_conversion_overflow<B>(value))
-      throw std::system_error(make_error_code(errc::domain_error),
-                              "checked_cast: value out of bound interval");
+      detail::raise(errc::domain_error, "checked_cast: value out of bound interval");
     if (will_conversion_truncate<B>(value))
-      throw std::system_error(make_error_code(errc::rounding_error),
-                              "checked_cast: value does not land on notch");
+      detail::raise(errc::rounding_error, "checked_cast: value does not land on notch");
     return B{value};
   }
 

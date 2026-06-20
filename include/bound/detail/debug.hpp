@@ -4,20 +4,17 @@
 #ifndef BNDdebugHPP
 #define BNDdebugHPP
 
-#include <system_error>
-#include <string_view>
-// <string> is pulled in only when rich (value/interval) error messages are
-// enabled (-DBND_RICH_MESSAGES). The cheap default reports through a static
-// category message and never builds an std::string of its own. (std::string
-// itself remains reachable via <system_error>, which needs it for
-// std::error_category::message — gating the explicit include just keeps it off
-// the cheap default's *intentional* surface.)
-#ifdef BND_RICH_MESSAGES
-    #include <string>
-#endif
-
-#ifdef BOUND_HAS_STACKTRACE
-    #include <stacktrace>
+// <stdexcept> backs the *default* throwing handler only; it is the single heavy
+// error include and is pulled in solely when exceptions are available. A
+// freestanding / -fno-exceptions build never sees it and traps instead. Error
+// reporting otherwise stays on static const-char* messages — no <string>, no
+// <string_view>, no <system_error>. (General-purpose stringification lives in
+// the opt-in "bound/io.hpp".)
+#if defined(__cpp_exceptions) || defined(__EXCEPTIONS)
+    #define BND_HAS_EXCEPTIONS 1
+    #include <stdexcept>
+#else
+    #define BND_HAS_EXCEPTIONS 0
 #endif
 
 //---------------------------------------------------------------------------
@@ -29,19 +26,26 @@
 #if defined(__GNUC__) || defined(__clang__)
 #  define BND_COLD     [[gnu::cold]]
 #  define BND_NOINLINE [[gnu::noinline]]
+#  define BND_TRAP()   __builtin_trap()
 #elif defined(_MSC_VER)
 #  define BND_COLD
 #  define BND_NOINLINE __declspec(noinline)
+#  define BND_TRAP()   __debugbreak()
 #else
 #  define BND_COLD
 #  define BND_NOINLINE
+#  include <cstdlib>
+#  define BND_TRAP()   ::abort()
 #endif
 
 //---------------------------------------------------------------------------
-// debug — error codes, std::error_category, and diagnostic helpers. `errc`
-// enumerates the failure modes; bound_category + make_error_code plug into
-// <system_error>. `print_types` is a static_assert debug helper for template
-// instantiation issues.
+// debug — error codes, the replaceable failure handler, and diagnostic helpers.
+// `errc` enumerates the failure modes. Every runtime failure funnels through
+// `detail::raise`, which calls the installed `error_handler` — by default one
+// that throws `bnd::bound_error` (hosted) or traps (freestanding / no
+// exceptions). `set_error_handler` lets a bare-metal target redirect failures
+// to a reset/log without depending on <system_error> or the C++ exception ABI.
+// `print_types` is a static_assert debug helper for template instantiation.
 //---------------------------------------------------------------------------
 namespace bnd
 {
@@ -59,9 +63,9 @@ namespace bnd
   };
 
   // Static, allocation-free message per code. The single source of truth for
-  // both bound_category::message and the cheap error path; returns a view onto a
-  // string literal, so it needs only <string_view>.
-  constexpr std::string_view errc_message(errc e) noexcept
+  // every error path; returns a null-terminated string literal so it doubles as
+  // the default exception's what() and as an on_error message.
+  constexpr const char* errc_message(errc e) noexcept
   {
     switch (e)
     {
@@ -75,42 +79,94 @@ namespace bnd
     return "unknown bound error";
   }
 
-  struct bound_category : std::error_category
+#if BND_HAS_EXCEPTIONS
+  //---------------------------------------------------------------------------
+  // bound_error — the exception thrown by the default handler. Derives from
+  // std::runtime_error (the library's only <stdexcept> use) and carries the
+  // originating `errc` so `catch (bound_error& e) { e.code; }` replaces the old
+  // `e.code() == make_error_code(...)` idiom.
+  //---------------------------------------------------------------------------
+  struct bound_error : std::runtime_error
   {
-    const char* name() const noexcept override { return "bound"; }
-    std::string message(int ev) const noexcept override
-    { return std::string(errc_message(static_cast<errc>(ev))); }
+    errc code;
+    explicit bound_error(errc c)
+      : std::runtime_error(errc_message(c)), code(c) {}
+    bound_error(errc c, const char* what)
+      : std::runtime_error(what ? what : errc_message(c)), code(c) {}
   };
-
-  inline const bound_category& bound_error_category()
-  {
-    static const bound_category cat;
-    return cat;
-  }
-
-  inline std::error_code make_error_code(errc e)
-  { return {static_cast<int>(e), bound_error_category()}; }
+#endif
 
   //---------------------------------------------------------------------------
-  // Outlined throw helpers. Cold + non-inline so the (rare) throw machinery is
-  // emitted once, off the hot path, rather than inlined into every assignment.
+  // Replaceable failure handler. Contract: it must NOT return (throw / longjmp /
+  // abort / reset). If it does return, `raise` traps to honour [[noreturn]].
   //---------------------------------------------------------------------------
+  using error_handler_t = void (*)(errc code, const char* what);
+
   namespace detail
   {
     [[noreturn]] BND_COLD BND_NOINLINE
-    inline void throw_bound_error(errc code)
-    { throw std::system_error(make_error_code(code)); }   // static category message
-
-#ifdef BND_RICH_MESSAGES
-    [[noreturn]] BND_COLD BND_NOINLINE
-    inline void throw_bound_error(errc code, std::string what)
+    inline void default_error_handler(errc code, const char* what)
     {
-#  ifdef BOUND_HAS_STACKTRACE
-      what += ": \n" + std::to_string(std::stacktrace::current());
-#  endif
-      throw std::system_error(make_error_code(code), std::move(what));
-    }
+#if BND_HAS_EXCEPTIONS
+      throw bound_error(code, what);
+#else
+      (void)code; (void)what;
+      BND_TRAP();
 #endif
+    }
+
+    // Header-only global: an inline variable, one per program. Mutating it is a
+    // runtime-only act (constant evaluation never reads it), so constexpr paths
+    // are unaffected.
+    inline error_handler_t g_error_handler = &default_error_handler;
+  } // namespace detail
+
+  // Install a handler; returns the previous one. A null argument restores the
+  // default. Never throws.
+  inline error_handler_t set_error_handler(error_handler_t h) noexcept
+  {
+    error_handler_t prev = detail::g_error_handler;
+    detail::g_error_handler = h ? h : &detail::default_error_handler;
+    return prev;
+  }
+
+  inline error_handler_t get_error_handler() noexcept
+  { return detail::g_error_handler; }
+
+  namespace detail
+  {
+    //-----------------------------------------------------------------------
+    // Outlined failure funnel. Cold + non-inline so the (rare) machinery is
+    // emitted once, off the hot path. Not constexpr: calling it during constant
+    // evaluation is ill-formed, which is exactly how the checked compile-time
+    // paths hard-fail the build (the old `throw` did the same).
+    //-----------------------------------------------------------------------
+    [[noreturn]] BND_COLD BND_NOINLINE
+    inline void raise(errc code, const char* what = nullptr)
+    {
+      g_error_handler(code, what ? what : errc_message(code));
+      BND_TRAP();   // handler must not return; trap if it did
+    }
+
+    //-----------------------------------------------------------------------
+    // Compile-time-only diagnostic. A fixed_string NTTP carries the message
+    // into the type, so a malformed literal / overflow aborts constant
+    // evaluation with the text in the instantiation — no `throw` token, so it
+    // also compiles under -fno-exceptions. Never reached at runtime (all call
+    // sites are guarded by std::is_constant_evaluated / are consteval).
+    //-----------------------------------------------------------------------
+    template <unsigned N>
+    struct fixed_string
+    {
+      char data[N]{};
+      constexpr fixed_string(const char (&s)[N])
+      { for (unsigned i = 0; i < N; ++i) data[i] = s[i]; }
+    };
+
+    template <fixed_string Msg>
+    [[noreturn]] BND_COLD BND_NOINLINE
+    inline void constexpr_error()
+    { raise(errc::overflow, Msg.data); }
   } // namespace detail
 
   //---------------------------------------------------------------------------
@@ -122,10 +178,5 @@ namespace bnd
       static_assert(!sizeof...(Ts), "=== PRINT_TYPES ===");
   };
 } // namespace bnd
-
-namespace std
-{
-  template<> struct is_error_code_enum<bnd::errc> : true_type {};
-}
 
 #endif // BNDdebugHPP

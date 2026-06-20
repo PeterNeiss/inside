@@ -11,10 +11,10 @@
 #include <vector>
 
 #include "bound/bound.hpp"
+#include "bound/io.hpp"
 #include "bound/formats.hpp"
 #include "bound/numeric_limits.hpp"
 #include "bound/predicates.hpp"
-#include "bound/print.hpp"
 
 using namespace bnd;
 

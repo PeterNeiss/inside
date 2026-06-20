@@ -1,5 +1,5 @@
 #include "bound/bound.hpp"
-#include "bound/format.hpp"
+#include "bound/io.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -41,18 +41,18 @@ TEST_CASE("rational construction normalises", "[rational][construction]")
 
   SECTION("denominator zero throws")
   {
-    REQUIRE_THROWS_AS((rational{1u, 0}), std::system_error);
-    REQUIRE_THROWS_AS((rational{1,  0}), std::system_error);
+    REQUIRE_THROWS_AS((rational{1u, 0}), bnd::bound_error);
+    REQUIRE_THROWS_AS((rational{1,  0}), bnd::bound_error);
   }
 
   SECTION("denominator imax_min throws (cannot be negated without UB)")
   {
     constexpr auto imin = std::numeric_limits<imax>::min();
-    REQUIRE_THROWS_AS((rational{1u, imin}), std::system_error);
-    REQUIRE_THROWS_AS((rational{1,  imin}), std::system_error);
+    REQUIRE_THROWS_AS((rational{1u, imin}), bnd::bound_error);
+    REQUIRE_THROWS_AS((rational{1,  imin}), bnd::bound_error);
     // Negative-num path: the validation must run BEFORE the mem-init
     // negation, otherwise -imax_min would be signed overflow (UB).
-    REQUIRE_THROWS_AS((rational{-1, imin}), std::system_error);
+    REQUIRE_THROWS_AS((rational{-1, imin}), bnd::bound_error);
   }
 
   SECTION("from int min")
@@ -381,7 +381,7 @@ TEST_CASE("rational conversion to integer/float", "[rational][conversion]")
   SECTION("to_unsigned floors, rejects negatives")
   {
     REQUIRE(static_cast<unsigned>(rational{7u, 2}) == 3u);
-    REQUIRE_THROWS_AS(static_cast<unsigned>(rational{7, -2}), std::system_error);
+    REQUIRE_THROWS_AS(static_cast<unsigned>(rational{7, -2}), bnd::bound_error);
   }
 
   SECTION("to_signed rounds toward zero (operator T)")

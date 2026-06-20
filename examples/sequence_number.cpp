@@ -9,8 +9,8 @@
 #include <iostream>
 
 #include "bound/bound.hpp"
+#include "bound/io.hpp"
 #include "bound/formats.hpp"
-#include "bound/print.hpp"
 
 using namespace bnd;
 
