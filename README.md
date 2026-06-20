@@ -74,7 +74,7 @@ under `include/` with `cmake --build build --target amalgamate` (see
 
 - **Policy-driven assignment** — `clamp`, `wrap`, `sentinel`, `round_nearest`,
   `snapping`, plus `on_clamp` / `on_wrap` / `on_overflow` callbacks and
-  an `bnd::errc` mode for throw-free error reporting. Representation
+  a `bnd::errc` mode for throw-free error reporting. Representation
   flags (`real`, `exact`, `direct`, `indexed`) select how the raw value is
   stored. See [docs/policies.md](docs/policies.md).
 - **Type-safe widening arithmetic** — `+ - * /` widen the result grid at
@@ -116,6 +116,7 @@ under `include/` with `cmake --build build --target amalgamate` (see
 - [`bnd::math` — constexpr, bit-exact math](docs/math.md)
 - [Determinism & reproducibility](docs/determinism.md)
 - [Bound for fixed-point users](docs/fixed-point.md)
+- [Freestanding & bare-metal](docs/freestanding.md)
 - [Internals (architecture / design notes)](docs/internals.md)
 - [Resources — prior art & talks](docs/resources.md)
 

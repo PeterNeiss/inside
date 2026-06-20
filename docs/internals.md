@@ -155,9 +155,14 @@ out-of-range is determined by a four-level cascade:
 │ 3. default policy from type        bound<G, clamp>, bound<G, P>  │
 │                                       │                          │
 │                                       ▼ if P does not handle it  │
-│ 4. hard default                    throw bnd::bound_error       │
+│ 4. hard default                    error_handler → bound_error  │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
+The hard default funnels through the replaceable `bnd::error_handler` (see
+[policies.md](policies.md#replacing-the-throw-handler-freestanding--bare-metal)): the
+installed handler throws `bnd::bound_error` (carrying the `errc`) by default, or traps
+under `-fno-exceptions`. There is no `<system_error>` dependency.
 
 The flag bits live in `policy_flag` (`include/bound/policy_flag.hpp`):
 `clamp`, `wrap`, `sentinel`, `checked`, `unsafe`, `snapping`,
@@ -228,7 +233,7 @@ Three shapes, each by role — nothing is flattened; each earns its place:
 
 | Shape | Role | Why this shape |
 |---|---|---|
-| policy cascade (throw / `error_code` / sentinel / clamp / wrap / `on_*`) | NARROWING a value *into* a bound (construction, assignment, compound ops) | the caller chose the failure semantics on the type or operation |
+| policy cascade (`error_handler`/throw / `errc` / sentinel / clamp / wrap / `on_*`) | NARROWING a value *into* a bound (construction, assignment, compound ops) | the caller chose the failure semantics on the type or operation |
 | `slim::optional<bound>` | fallible bound-valued ARITHMETIC (`/`, `%`, checked exact `+`/`×`) | single dominant cause per op; **zero size overhead** (sentinel encoding); auto-chains through the lift operators |
 | `slim::expected<T, errc>` | fallible QUERIES and MATH (`to<T>()`, `tan`, `pow`, mixed-sign `sqrt`) | multiple causes the caller dispatches on; uniform across `bnd::math` |
 
@@ -246,7 +251,7 @@ Per-operation audit:
 | `math::sqrt` (mixed-sign) | `expected` | `domain_error` (negative value) |
 | `to<T>()` | `expected` | `not_a_value` (sentinel), `overflow` (out of range), `domain_error` (negative→unsigned) |
 | `as<T>()` | `T` | asserts (caller vouches for the range) |
-| `try_make` | `optional` | out of range |
+| `try_make` | `expected` | `errc`: out of range / off-notch / sentinel |
 | construction / assignment | policy cascade | per the bound's policy |
 | `bnd::sum<Target>` | `Target` | Target's policy, applied once to the total |
 
@@ -260,8 +265,11 @@ one.
 
 ## 8. Header layout
 
-After the 2026 cleanup the public API is split across multiple headers,
-all transitively included by `bound/bound.hpp`:
+After the 2026 cleanup the public API is split across multiple headers. The
+umbrella `bound/bound.hpp` transitively pulls the core (arithmetic, casts, range,
+storage, error funnel); the **opt-in** layers — `bound/io.hpp`, `bound/cmath.hpp`,
+`bound/numeric_limits.hpp`, `bound/formats.hpp` — are included only on demand, which
+is what keeps the core free of `<string>`/`<ostream>`/`<format>`/`<cmath>`:
 
 | Header | Contains |
 |---|---|
@@ -278,4 +286,6 @@ all transitively included by `bound/bound.hpp`:
 | `bound/detail/rational.hpp`    | `rational`, its arithmetic, sentinel traits |
 | `bound/grid.hpp`        | `grid`, `storage_min`, grid operators |
 | `bound/numeric_limits.hpp` | `std::numeric_limits<bound>` and `std::hash<bound>` specialisations (opt-in) |
+| `bound/io.hpp`          | **All** string/stream/`std::format` support — `to_string`, `to_string_debug`, `operator<<`, `std::formatter`, `type_name`. Opt-in and the *only* place `<string>`/`<ostream>`/`<format>` enter; gated by `BND_NO_STRING` in the single header (see [freestanding.md](freestanding.md)) |
+| `bound/formats.hpp`     | Curated Q-format aliases (`q4_4`, `q8_8`, `q16_16`, …); opt-in |
 | `slim/optional.hpp`     | Reusable sentinel-based optional; `bnd::` consumes it via `sentinel_traits` |

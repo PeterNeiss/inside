@@ -16,17 +16,17 @@ partial / related · **○** no · **—** not applicable.
 
 **Numeric model & capabilities**
 
-| Library | Domain | Range in type `[lo,hi]` | Auto-widening result | Out-of-range handling | Fixed-point | Rational / exact | Transcendental math | Determinism / FPU-free |
-|---|---|---|---|---|---|---|---|---|
-| **bound** | bounded rational grids | ● | ● | clamp / wrap / sentinel / round / snap / throw / `error_code` | ● | ● | ● (two engines) | ● |
-| **bounded::integer** | integers | ● | ● | policy on narrowing (clamp / modulo / throw / assume) | ○ | ○ | ○ | — |
-| **Boost.SafeNumerics** | integers | ◐ ¹ | ◐ ² | detect → exception (custom exception / trap policy) | ○ | ○ | ○ | — |
-| **CNL** | fixed-point + elastic ints | ◐ ³ | ● | composable: native / saturated / throwing / undefined | ● | ◐ ⁴ | ○ | ● |
-| **fpm** | fixed-point | ○ | ○ | ○ (wraps, no checks) | ● | ○ | ● (full `<cmath>`) | ● |
-| **type_safe** | strong typedefs / vocab types | ◐ ⁵ | ○ | ◐ (arith. policy `ub`/`checked`; clamped/constrained) | ○ | ○ | ○ | — |
-| **SafeInt** | integers | ○ | ○ | detect → throw / custom handler | ○ | ○ | ○ | — |
-| **google/integers** | integers | ◐ ⁶ | ○ | trapping / wrapping / clamping ⁶ | ○ | ○ | ○ | — |
-| **PSsst** | strong-typedef framework | ○ | ○ | ○ | ○ | ○ | ◐ ⁷ | — |
+| Library | Domain | Range in type `[lo,hi]` | Auto-widening result | Out-of-range handling | Fixed-point | Rational / exact | Transcendental math | Determinism / FPU-free | Freestanding / `-fno-exceptions` |
+|---|---|---|---|---|---|---|---|---|---|
+| **bound** | bounded rational grids | ● | ● | clamp / wrap / sentinel / round / snap / throw / `errc` | ● | ● | ● (two engines) | ● | ◐ ¹⁰ |
+| **bounded::integer** | integers | ● | ● | policy on narrowing (clamp / modulo / throw / assume) | ○ | ○ | ○ | — | ○ ¹¹ |
+| **Boost.SafeNumerics** | integers | ◐ ¹ | ◐ ² | detect → exception (custom exception / trap policy) | ○ | ○ | ○ | — | ◐ ¹² |
+| **CNL** | fixed-point + elastic ints | ◐ ³ | ● | composable: native / saturated / throwing / undefined | ● | ◐ ⁴ | ○ | ● | ◐ ¹³ |
+| **fpm** | fixed-point | ○ | ○ | ○ (wraps, no checks) | ● | ○ | ● (full `<cmath>`) | ● | ◐ ¹⁴ |
+| **type_safe** | strong typedefs / vocab types | ◐ ⁵ | ○ | ◐ (arith. policy `ub`/`checked`; clamped/constrained) | ○ | ○ | ○ | — | ◐ ¹⁵ |
+| **SafeInt** | integers | ○ | ○ | detect → throw / custom handler | ○ | ○ | ○ | — | ◐ ¹⁶ |
+| **google/integers** | integers | ◐ ⁶ | ○ | trapping / wrapping / clamping ⁶ | ○ | ○ | ○ | — | ◐ ¹⁷ |
+| **PSsst** | strong-typedef framework | ○ | ○ | ○ | ○ | ○ | ◐ ⁷ | — | ○ ¹⁸ |
 
 **Practical**
 
@@ -53,8 +53,23 @@ modules, so not header-only in the classic sense. ⁹ a *generated* amalgamation
 the multi-file source (`single_include/bound/bound.hpp`, standard-library-only),
 rebuilt by a CMake target — SafeInt (`SafeInt.hpp`) and PSsst (`pssst.h`) are
 instead authored as a single file; the rest ship a multi-header tree (fpm, e.g.,
-splits `fixed.hpp` / `math.hpp` / `ios.hpp`). Compiled from each project's
-README/docs as of June 2026 — corrections welcome.</sub>
+splits `fixed.hpp` / `math.hpp` / `ios.hpp`).
+¹⁰ core compiles `-ffreestanding -fno-exceptions` (no `<system_error>`; a
+replaceable `error_handler`; strings/printing in the opt-in `bound/io.hpp`, droppable
+via `BND_NO_STRING`). The `bnd::math` API still pulls `<cmath>`, and full
+`-ffreestanding` depends on the stdlib's freestanding maturity — see
+[freestanding.md](freestanding.md). ¹¹ C++20 modules (clang-only) with throwing
+policies; no documented freestanding / no-exceptions path. ¹² `-fno-exceptions` via the
+compile-time `trap` exception policy; the default policy throws. ¹³ non-throwing
+overflow tags (`native` / `saturated` / `undefined`) and no `<cmath>`, but no explicit
+`-ffreestanding` guarantee. ¹⁴ no overflow checks → no exception path, but the math
+header pulls full `<cmath>` (not FPU-free). ¹⁵ the `DEBUG_ASSERT` handler is
+user-overridable (no exceptions); no documented `-ffreestanding`. ¹⁶ a custom
+`SafeIntException` / overflow handler avoids exceptions; integer-only (no `<cmath>`).
+¹⁷ `trapping<T>` traps without exceptions, but the repo is archived / partial.
+¹⁸ strong-typedef only — no overflow checks, so nothing to throw, but no
+numeric-safety story either. Freestanding marks are best-effort from each project's
+docs as of June 2026 — corrections welcome.</sub>
 
 A filled-in cell is **not** a verdict. The mature, widely deployed options here
 (Boost.SafeNumerics, SafeInt, CNL, fpm) have years of production hardening, broad
