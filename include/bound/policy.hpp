@@ -162,6 +162,48 @@ namespace bnd
   //---------------------------------------------------------------------------
   namespace detail
   {
+  // Shared assignment dispatch: store `src` into `dst` under `policy` + the single
+  // matching action from `actions` (at most one assignment-time tag is present).
+  // Backs both policy_ref (dst = the wrapped bound) and policy_buffer (dst = a fresh
+  // target), so the conversion/assignment logic lives in exactly one place.
+  template <boundable Dst, numeric C, typename P, typename... As>
+  constexpr Dst& dispatch_assign(Dst& dst, C const& src, P& policy, std::tuple<As...>& actions)
+  {
+    if constexpr (has_action<IsClampActionPred, As...>)
+      return assignment<Dst, C>::assign(dst, src, policy, pick_action_in<IsClampActionPred>(actions));
+    else if constexpr (has_action<IsWrapActionPred, As...>)
+      return assignment<Dst, C>::assign(dst, src, policy, pick_action_in<IsWrapActionPred>(actions));
+    else if constexpr (has_action<IsSentinelActionPred, As...>)
+      return assignment<Dst, C>::assign(dst, src, policy, pick_action_in<IsSentinelActionPred>(actions));
+    else if constexpr (has_action<IsErrorActionPred, As...>)
+      return assignment<Dst, C>::assign(dst, src, policy, pick_action_in<IsErrorActionPred>(actions));
+    else
+      return assignment<Dst, C>::assign(dst, src, policy);
+  }
+
+  // policy_buffer — the rvalue-receiver sibling of policy_ref. `with_snap()` etc.
+  // on a *temporary* return this instead: it OWNS the bound by value (the temporary
+  // is moved in), so the snapped value can be returned/stored without dangling —
+  // `auto square(small n){ return (n*n).with_snap(); }` is safe. Value read-out only
+  // (no operator=: assigning into a throwaway is meaningless). Same constrained
+  // conversion as policy_ref, so it stays SFINAE-friendly.
+  template<boundable B, typename P, typename... As>
+  struct policy_buffer
+  {
+    B Owned;
+    P Policy;
+    [[no_unique_address]] std::tuple<As...> Actions;
+
+    template <boundable Target>
+      requires bound_assignable<Target, B, BoundPolicy<Target> | policy_flags_of<P>>
+    constexpr operator Target()
+    {
+      Target r;
+      dispatch_assign(r, Owned, Policy, Actions);
+      return r;
+    }
+  };
+
   template<boundable B, typename P, typename... As>
   struct policy_ref
   {
@@ -202,22 +244,7 @@ namespace bnd
     // be read out as a value (`(a * b).with_snap()`), not only assigned.
     template <boundable Dst, numeric C>
     constexpr Dst& assign_into(Dst& dst, C const& src)
-    {
-      if constexpr (has_action<IsClampActionPred, As...>)
-        return assignment<Dst, C>::assign(dst, src, Policy,
-          pick_action_in<IsClampActionPred>(Actions));
-      else if constexpr (has_action<IsWrapActionPred, As...>)
-        return assignment<Dst, C>::assign(dst, src, Policy,
-          pick_action_in<IsWrapActionPred>(Actions));
-      else if constexpr (has_action<IsSentinelActionPred, As...>)
-        return assignment<Dst, C>::assign(dst, src, Policy,
-          pick_action_in<IsSentinelActionPred>(Actions));
-      else if constexpr (has_action<IsErrorActionPred, As...>)
-        return assignment<Dst, C>::assign(dst, src, Policy,
-          pick_action_in<IsErrorActionPred>(Actions));
-      else
-        return assignment<Dst, C>::assign(dst, src, Policy);
-    }
+    { return dispatch_assign(dst, src, Policy, Actions); }
 
     template <numeric C>
     constexpr B& assign_with_picked(C const& other)

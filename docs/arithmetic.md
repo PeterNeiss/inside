@@ -258,6 +258,26 @@ using coarse_r = bound<{{0, 10}, 2}, snap>;
 coarse_r cr = f;  // OK, truncates to nearest notch
 ```
 
+The same `.with_snap()` also reads out as a **value**, not only as an
+assignment target — so you can round inside an expression or a `return`:
+
+```cpp
+coarse result  = f.with_snap();                  // 2  — value form, truncates
+coarse nearest = f.with_snap<round_nearest>();   // 4
+
+coarse half(fine x) { return x.with_snap(); }    // round at the return boundary
+```
+
+The target's own policy still applies through the conversion: returning into a
+`bound<…, clamp>` clamps the range while `with_snap` handles the notch. For the
+same fine→coarse conversion as a free function (including a bound source), use
+`clamp_round<B>(v)` — see [conversions](conversions.md).
+
+`.with_snap()` adapts to its receiver: on a named bound it yields a lightweight
+reference proxy, but on a **temporary** — `(a * a).with_snap()` — it returns a
+value-owning buffer that moves the result in, so it is safe to return or store
+even with an `auto` return type (no dangling reference to the expired temporary).
+
 ## Modulo
 
 `bound % bound` requires integer-aligned grids **and** `snap`. Both

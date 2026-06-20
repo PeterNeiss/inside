@@ -185,19 +185,27 @@ TEST_CASE("with_snap<Mode> selects the rounding mode", "[bound][with][snap][mode
   c.with_snap<round_half_even>() = -3.0; REQUIRE(c == -4); // tie → even quotient
 }
 
+// A snapped temporary returned by value: with_snap() on an rvalue yields a
+// value-owning policy_buffer (moves the product in), so this is safe — the buffer
+// outlives the `num*num` temporary. Defined at namespace scope so the temporary is
+// truly gone by the time the caller reads the result.
+namespace { using small_t = bnd::bound<{{0, 10}, notch<1, 10>}, clamp>;
+            auto square(small_t n) { return (n * n).with_snap(); } }
+
 //---------------------------------------------------------------------------
-// with_snap() as a value: the policy_ref proxy converts to a bound, so a
-// snapped result can be read out / returned, not only assigned. The target's
-// own policy (clamp) and the proxy's snap merge via HasPolicy.
+// with_snap() as a value. On an lvalue it converts through a (reference) policy_ref;
+// on a *temporary* it returns a value-owning policy_buffer, so the snapped result can
+// be returned/stored without dangling. Either way the target's own policy (clamp) and
+// the proxy's snap merge via HasPolicy.
 //---------------------------------------------------------------------------
 TEST_CASE("with_snap() proxy converts to a value (RHS / return position)",
           "[bound][with][snap][convert]")
 {
-  using small = bound<{{0, 10}, notch<1, 10>}, clamp>;
+  using small = small_t;
   small a = 2.5;                                  // exact (dyadic) on the 1/10 grid
 
-  // a*a is 6.25 on the finer 1/100 grid — off small's notch. These compile only
-  // because the proxy converts to `small`, applying clamp (range) + snap (notch).
+  // a*a is 6.25 on the finer 1/100 grid — off small's notch. These compile because
+  // the proxy converts to `small`, applying clamp (range) + snap (notch).
   small trunc   = (a * a).with_snap();                // 6.25 → 6.2 (truncate)
   small nearest = (a * a).with_snap<round_nearest>(); // 6.25 → 6.3 (nearest)
   REQUIRE(trunc   == 6.2_r);
@@ -207,10 +215,23 @@ TEST_CASE("with_snap() proxy converts to a value (RHS / return position)",
   small four = 4;
   REQUIRE(small((four * four).with_snap()) == 10);    // 16 → clamp → 10
 
-  // The conversion stays SFINAE-constrained: convertible to a reachable target,
-  // not to one whose interval the value can never enter (no clamp/wrap).
-  using big   = decltype(small{} * small{});
-  using proxy = decltype(std::declval<big&>().with_snap());
-  STATIC_REQUIRE(std::is_convertible_v<proxy, small>);
-  STATIC_REQUIRE(!std::is_convertible_v<proxy, bound<{{1000, 2000}, 1}>>);
+  // Safety: `auto square(){ return (n*n).with_snap(); }` returns the value-owning
+  // buffer; converting it to `small` after the temporary is gone is well-defined.
+  small from_temp = square(small{2.5});
+  small clamped   = square(small{4});
+  REQUIRE(from_temp == 6.2_r);
+  REQUIRE(clamped   == 10);
+
+  // Receiver category picks the proxy kind: lvalue → policy_ref (reference),
+  // rvalue → policy_buffer (owns the value). Both convert to small; neither to a
+  // target whose interval the value can never enter (conversion stays constrained).
+  using big = decltype(small{} * small{});
+  STATIC_REQUIRE(std::is_same_v<decltype(std::declval<big&>().with_snap()),
+                                policy_ref<big, policy<BoundPolicy<big> | snap>>>);
+  STATIC_REQUIRE(std::is_same_v<decltype(std::declval<big>().with_snap()),
+                                policy_buffer<big, policy<BoundPolicy<big> | snap>>>);
+  STATIC_REQUIRE(std::is_convertible_v<decltype(std::declval<big&>().with_snap()), small>);
+  STATIC_REQUIRE(std::is_convertible_v<decltype(std::declval<big >().with_snap()), small>);
+  STATIC_REQUIRE(!std::is_convertible_v<decltype(std::declval<big&>().with_snap()),
+                                        bound<{{1000, 2000}, 1}>>);
 }

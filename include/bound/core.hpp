@@ -444,11 +444,23 @@ namespace bnd
       return neg;
     }
 
+    // policy<F>() — per-operation policy override. On an lvalue it returns a
+    // policy_ref holding `*this` by reference (needed so `b.policy<…>() = x` writes
+    // back into b, and cheap for the common immediate use). On an *rvalue* receiver
+    // it returns a policy_buffer that OWNS the moved-in value, so a snapped temporary
+    // survives being returned/stored (`return (a*b).with_snap();`) — no dangling.
     template <policy_flag F = none>
-    [[nodiscard]] constexpr auto policy()
+    [[nodiscard]] constexpr auto policy() &
     {
        auto pol = make_policy<P | F>();
        return detail::policy_ref<bound, decltype(pol)>{*this, pol};
+    }
+
+    template <policy_flag F = none>
+    [[nodiscard]] constexpr auto policy() &&
+    {
+       auto pol = make_policy<P | F>();
+       return detail::policy_buffer<bound, decltype(pol)>{std::move(*this), pol};
     }
 
     template <policy_flag F = none>
@@ -461,17 +473,29 @@ namespace bnd
     // with_snap<Mode>() — opt this assignment into snapping with the given rounding
     // mode. Bare `with_snap()` is truncate-toward-zero (Mode == snap); pass an
     // explicit mode for the others: with_snap<round_nearest>(), <round_floor>,
-    // <round_ceil>, <round_half_even>.
+    // <round_ceil>, <round_half_even>. The `&&` overloads forward the rvalue receiver
+    // so a temporary yields a value-owning policy_buffer (see policy<F>() above) —
+    // `*this` is an lvalue inside the body, hence the explicit std::move.
     template <policy_flag Mode = snap>
-    [[nodiscard]] constexpr auto with_snap()
+    [[nodiscard]] constexpr auto with_snap() &
     {
       static_assert(has_flag(Mode, snap),
         "with_snap<Mode>: Mode must be a snapping mode — snap (truncate), round_nearest, "
         "round_floor, round_ceil, or round_half_even");
       return policy<Mode>();
     }
-    [[nodiscard]] constexpr auto with_clamp()           { return policy<clamp>(); }
-    [[nodiscard]] constexpr auto with_wrap()            { return policy<wrap>(); }
+    template <policy_flag Mode = snap>
+    [[nodiscard]] constexpr auto with_snap() &&
+    {
+      static_assert(has_flag(Mode, snap),
+        "with_snap<Mode>: Mode must be a snapping mode — snap (truncate), round_nearest, "
+        "round_floor, round_ceil, or round_half_even");
+      return std::move(*this).template policy<Mode>();
+    }
+    [[nodiscard]] constexpr auto with_clamp() &         { return policy<clamp>(); }
+    [[nodiscard]] constexpr auto with_clamp() &&        { return std::move(*this).template policy<clamp>(); }
+    [[nodiscard]] constexpr auto with_wrap()  &         { return policy<wrap>(); }
+    [[nodiscard]] constexpr auto with_wrap()  &&        { return std::move(*this).template policy<wrap>(); }
 
     // Shared builder for the single-action fluent hooks below. Merges the tag's
     // implied policy flag, then returns a policy_ref bound to *this carrying the

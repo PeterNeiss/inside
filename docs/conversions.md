@@ -138,6 +138,19 @@ clamp_round<coarse>(3.0);   // 4   (clamp + round to nearest)
 clamp_floor<coarse>(15.0);  // 10  (out-of-range clamps to upper)
 ```
 
+The source may also be a **bound** on a finer or incompatible grid — the one-shot
+rounding relaxes the notch check, so a fine value rounds onto the target:
+
+```cpp
+using small = bound<{{0, 10}, notch<1, 10>}, clamp>;
+small a = 2.5;
+clamp_round<small>(a * a);  // 6.3  (6.25 rounded onto the 1/10 grid, then clamped)
+```
+
+The fluent equivalent is the value form of `with_snap()` —
+`(a * a).with_snap<round_nearest>()` — see
+[arithmetic](arithmetic.md#rounding).
+
 ### API boundary: `clamp | round_nearest`
 
 For typed API boundaries — actuator commands, fused sensor outputs, anything
