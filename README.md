@@ -118,6 +118,7 @@ under `include/` with `cmake --build build --target amalgamate` (see
 - [Bound for fixed-point users](docs/fixed-point.md)
 - [Freestanding & bare-metal](docs/freestanding.md)
 - [Internals (architecture / design notes)](docs/internals.md)
+- [Roadmap — features gated on future C++ standards](docs/roadmap.md)
 - [Resources — prior art & talks](docs/resources.md)
 
 ## Examples
