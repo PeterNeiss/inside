@@ -541,8 +541,9 @@ namespace bnd
     && detail::assign_notch_ok<L, R, P>;
 
   // Diagnostic helper: instantiating `bound_assignable_why<L,R,P>` fires a named
-  // static_assert per failed clause, so a developer can see which tripped. Not
-  // used in normal code paths.
+  // static_assert per failed clause, so a developer can see which tripped. Backs
+  // both the default-build diagnostic fallbacks in `bound` (core.hpp, gated by
+  // `BND_STRICT_SFINAE`) and the public `why_assignable` probe below.
   template <typename L, typename R, policy_flag P = checked>
   struct bound_assignable_why
   {
@@ -555,6 +556,13 @@ namespace bnd
       "bound_assignable: incompatible notches — use `with_truncate()` or `policy<snapping>()` to allow rounding");
     static constexpr bool value = bound_assignable<L, R, P>;
   };
+
+  // Public manual probe: `static_assert(bnd::why_assignable<DstBound, decltype(src)>);`
+  // emits the named per-clause reasons in any build — including a strict
+  // (`BND_STRICT_SFINAE`) build where the automatic in-`bound` fallbacks are absent.
+  template <typename Dst, typename Src, policy_flag P = BoundPolicy<Dst>>
+  inline constexpr bool why_assignable =
+    bound_assignable_why<Dst, std::remove_cvref_t<Src>, P>::value;
 } // namespace bnd
 
 #endif // BNDgenericHPP

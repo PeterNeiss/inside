@@ -28,6 +28,18 @@ if(BOUND_MATH_FIXED)
     target_compile_definitions(bound_bound INTERFACE BND_MATH_FIXED)
 endif()
 
+# By default an incompatible assignment/conversion (`b = x;`, `bound{x}`, a by-value
+# bound argument) reports the *reason* at compile time via named static_asserts. That
+# makes `bound` advertise itself is_constructible/convertible from incompatible types
+# (the error surfaces on use, not on the trait). -DBOUND_STRICT_SFINAE=ON drops the
+# diagnostic overloads so those traits stay honest — for code that embeds `bound` in
+# variant/optional or otherwise probes convertibility. The free `bnd::why_assignable`
+# probe still works in strict builds.
+option(BOUND_STRICT_SFINAE "Drop assignment/conversion diagnostic hints to keep bound SFINAE-pure (honest is_constructible)" OFF)
+if(BOUND_STRICT_SFINAE)
+    target_compile_definitions(bound_bound INTERFACE BND_STRICT_SFINAE)
+endif()
+
 # Error reporting carries no strings: a checked violation funnels through the
 # installed bnd::error_handler (default throws bnd::bound_error / traps under
 # -fno-exceptions) with a static const-char* message — the core never drags

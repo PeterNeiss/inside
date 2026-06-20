@@ -63,7 +63,7 @@ header is the easy way in:
   exactly what this is):
 
   ```cpp
-  #include <https://raw.githubusercontent.com/<user>/bound/<branch>/single_include/bound/bound.hpp>
+  #include <https://raw.githubusercontent.com/NiceAndPeter/bound/main/single_include/bound/bound.hpp>
   ```
 
 The header is generated, not hand-edited — regenerate it after changing anything
@@ -117,6 +117,7 @@ under `include/` with `cmake --build build --target amalgamate` (see
 - [Determinism & reproducibility](docs/determinism.md)
 - [Bound for fixed-point users](docs/fixed-point.md)
 - [Freestanding & bare-metal](docs/freestanding.md)
+- [Reading a `bound<>` in a compiler error](docs/diagnostics.md)
 - [Internals (architecture / design notes)](docs/internals.md)
 - [Roadmap — features gated on future C++ standards](docs/roadmap.md)
 - [Resources — prior art & talks](docs/resources.md)

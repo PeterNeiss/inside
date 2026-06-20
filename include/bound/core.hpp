@@ -227,6 +227,43 @@ namespace bnd
     constexpr bound& operator=(slim::optional<B> const& other)
     { store_value(other.value()); return *this; }
 
+    // ---- Diagnostic fallbacks (default on; -DBND_STRICT_SFINAE removes them) ----
+    // When a source is numeric but NOT assignable to this bound, every constrained
+    // sink above drops out of overload resolution and the compiler emits a bare
+    // "could not convert" — losing the reason. These complementary overloads (enabled
+    // exactly when `bound_assignable` is false) catch that case and turn it into the
+    // named per-clause notes from `bound_assignable_why` (interval-excludes /
+    // incompatible-notch). The trade: they make `bound` *appear* is_constructible /
+    // assignable from incompatible types (the static_assert is in the body, not the
+    // immediate context, so trait probes return true then hard-error only on real
+    // use). Define BND_STRICT_SFINAE to drop them and restore SFINAE-pure traits for
+    // metaprogramming that probes convertibility (variant/optional/`if constexpr`).
+#ifndef BND_STRICT_SFINAE
+    template <numeric A>
+      requires (!bound_assignable<bound, A, P>)
+    constexpr bound(A)
+    { static_assert(bound_assignable_why<bound, A, P>::value,
+        "bnd: cannot construct this bound from the value — see the per-clause notes above"); }
+
+    template <numeric A>
+      requires (!bound_assignable<bound, A, P>)
+    constexpr bound(slim::optional<A> const&)
+    { static_assert(bound_assignable_why<bound, A, P>::value,
+        "bnd: cannot construct this bound from the optional's value — see the per-clause notes above"); }
+
+    template <numeric B>
+      requires (!bound_assignable<bound, B, P>)
+    constexpr bound& operator=(B const&)
+    { static_assert(bound_assignable_why<bound, B, P>::value,
+        "bnd: cannot assign this value to this bound — see the per-clause notes above"); return *this; }
+
+    template <numeric B>
+      requires (!bound_assignable<bound, B, P>)
+    constexpr bound& operator=(slim::optional<B> const&)
+    { static_assert(bound_assignable_why<bound, B, P>::value,
+        "bnd: cannot assign this optional's value to this bound — see the per-clause notes above"); return *this; }
+#endif
+
     // Trusted construction from a storage-layout raw — no validation; the caller
     // asserts `r` is a valid slot. Entry point for tests, fast paths, and same-grid
     // raw transfer (e.g. `unchecked_cast`).
