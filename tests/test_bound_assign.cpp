@@ -72,6 +72,26 @@ TEST_CASE("rounding requires opt-in", "[bound][assign][round]")
     REQUIRE(c == 2);
   }
 
+  SECTION("type-level round_nearest")
+  {
+    // Same cross-grid, off-notch assignment as `type-level snapping`, but the
+    // coarse grid rounds to the nearest slot instead of truncating toward zero
+    // (the `num * num` finer→coarser case). Grid points are 0,4,8,12,16,20.
+    using n4_round = bound<{{0, 20}, 4}, round_nearest>;
+    using n1       = bound<{{0, 20}, 1}>;
+    n4_round c;
+
+    c = n1{3};  REQUIRE(c == 4);   // nearer 4 than 0 (snapping would give 0)
+    c = n1{5};  REQUIRE(c == 4);   // nearer 4 than 8
+    c = n1{1};  REQUIRE(c == 0);   // nearer 0 than 4
+
+    // Exact ties round up (half away from zero), per `round_nearest`.
+    c = n1{2};  REQUIRE(c == 4);   // 0|4 tie → 4
+    c = n1{6};  REQUIRE(c == 8);   // 4|8 tie → 8
+
+    c = n1{8};  REQUIRE(c == 8);   // already on a notch
+  }
+
   SECTION("compatible notches require no opt-in")
   {
     using n1 = bound<{{0, 10}, 1}>;
