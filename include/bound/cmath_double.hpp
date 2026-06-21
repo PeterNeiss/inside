@@ -13,6 +13,7 @@
 #define BNDcmathdoubleHPP
 
 #include "bound/math.hpp"   // bnd::detail::ldexp (constexpr, reproducible)
+#include "bound/bound.hpp"  // complete bound/rational + has_flag/BoundPolicy/real (store<>)
 
 #include <cmath>            // std::fma, std::sqrt, std::nearbyint ONLY
 
@@ -206,42 +207,51 @@ namespace bnd::math::dbl
   // The bound I/O is a plain double read/store (operator double / Out{double}),
   // so the cost is the polynomial itself. These plug into the shared public
   // surface as `fn_core` under the default build.
+  template <typename Out>
+  [[nodiscard]] BND_DBL_FN Out store(double d)
+  {
+    // `real` (double-backed) Out stores the double directly; a non-`real` snap grid
+    // assigns through the rational path, snapping via Out's round policy.
+    if constexpr (has_flag(BoundPolicy<Out>, real)) return Out{d};
+    else { Out o{}; o = bnd::detail::rational{d}; return o; }
+  }
+
   template <typename Out, typename In>
-  [[nodiscard]] BND_DBL_FN Out sin_core(In x)  { return Out{detail::d_sin (x)}; }
+  [[nodiscard]] BND_DBL_FN Out sin_core(In x)  { return store<Out>(detail::d_sin(static_cast<double>(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BND_DBL_FN Out cos_core(In x)  { return Out{detail::d_cos (x)}; }
+  [[nodiscard]] BND_DBL_FN Out cos_core(In x)  { return store<Out>(detail::d_cos(static_cast<double>(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BND_DBL_FN Out exp_core(In x)  { return Out{detail::d_exp (x)}; }
+  [[nodiscard]] BND_DBL_FN Out exp_core(In x)  { return store<Out>(detail::d_exp(static_cast<double>(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BND_DBL_FN Out sqrt_core(In x) { return Out{detail::d_sqrt(x)}; }
+  [[nodiscard]] BND_DBL_FN Out sqrt_core(In x) { return store<Out>(detail::d_sqrt(static_cast<double>(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BND_DBL_FN Out log_core(In x)  { return Out{detail::d_log (x)}; }
+  [[nodiscard]] BND_DBL_FN Out log_core(In x)  { return store<Out>(detail::d_log(static_cast<double>(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BND_DBL_FN Out exp2_core(In x) { return Out{detail::d_exp2(x)}; }
+  [[nodiscard]] BND_DBL_FN Out exp2_core(In x) { return store<Out>(detail::d_exp2(static_cast<double>(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BND_DBL_FN Out log2_core(In x) { return Out{detail::d_log2(x)}; }
+  [[nodiscard]] BND_DBL_FN Out log2_core(In x) { return store<Out>(detail::d_log2(static_cast<double>(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BND_DBL_FN Out log10_core(In x){ return Out{detail::d_log10(x)}; }
+  [[nodiscard]] BND_DBL_FN Out log10_core(In x){ return store<Out>(detail::d_log10(static_cast<double>(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BND_DBL_FN Out cbrt_core(In x) { return Out{detail::d_cbrt(x)}; }
+  [[nodiscard]] BND_DBL_FN Out cbrt_core(In x) { return store<Out>(detail::d_cbrt(static_cast<double>(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BND_DBL_FN Out sinh_core(In x) { return Out{detail::d_sinh(x)}; }
+  [[nodiscard]] BND_DBL_FN Out sinh_core(In x) { return store<Out>(detail::d_sinh(static_cast<double>(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BND_DBL_FN Out cosh_core(In x) { return Out{detail::d_cosh(x)}; }
+  [[nodiscard]] BND_DBL_FN Out cosh_core(In x) { return store<Out>(detail::d_cosh(static_cast<double>(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BND_DBL_FN Out tanh_core(In x) { return Out{detail::d_tanh(x)}; }
+  [[nodiscard]] BND_DBL_FN Out tanh_core(In x) { return store<Out>(detail::d_tanh(static_cast<double>(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BND_DBL_FN Out atan_core(In x) { return Out{detail::d_atan(x)}; }
+  [[nodiscard]] BND_DBL_FN Out atan_core(In x) { return store<Out>(detail::d_atan(static_cast<double>(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BND_DBL_FN Out asin_core(In x) { return Out{detail::d_asin(x)}; }
+  [[nodiscard]] BND_DBL_FN Out asin_core(In x) { return store<Out>(detail::d_asin(static_cast<double>(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BND_DBL_FN Out acos_core(In x) { return Out{detail::d_acos(x)}; }
+  [[nodiscard]] BND_DBL_FN Out acos_core(In x) { return store<Out>(detail::d_acos(static_cast<double>(x))); }
   template <typename Out, typename In>
   [[nodiscard]] BND_DBL_FN Out atan2_core(In y, In x)
-  { return Out{detail::d_atan2(y, x)}; }
+  { return store<Out>(detail::d_atan2(static_cast<double>(y), static_cast<double>(x))); }
   template <typename Out, typename InX, typename InY>
   [[nodiscard]] BND_DBL_FN Out hypot_core(InX x, InY y)
-  { return Out{detail::d_hypot(x, y)}; }
+  { return store<Out>(detail::d_hypot(static_cast<double>(x), static_cast<double>(y))); }
 } // namespace bnd::math::dbl
 
 #endif // BNDcmathdoubleHPP

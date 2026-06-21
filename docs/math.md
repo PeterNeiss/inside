@@ -44,20 +44,29 @@ auto s = math::sin(angle{1});       // amplitude bound in [-1, 1]
 auto h = math::hypot(s, s);         // √(s²+s²), output grid auto-deduced
 ```
 
-## The `real` policy requirement
+## The `snap` requirement (and `real` as a fast storage option)
 
-Every transcendental operand must carry the **`real` representation flag**
-(`bound<G, round_nearest | real>`); omitting it is a compile error. `real`
-marks a bound as a math operand:
+A transcendental result is irrational and must be **rounded onto the operand's
+grid**, so every transcendental operand must carry a policy that **permits
+rounding** — i.e. the **`snap`** bit (`snap`, any `round_*` mode, or `real`,
+which implies `round_nearest`). Omitting it is a compile error. This is the only
+hard requirement: `math::sin` etc. work on **any snap-capable grid**, including
+plain integer grids and non-dyadic ones (e.g. a `notch<1,100>` money grid) —
+the value is computed by the engine and snapped to the grid via exact rational
+rounding.
 
-- Under the default engine it selects **double-backed storage** on the
-  bound's grid — the raw *is* the value, so input marshalling into the
-  engine is free (this is where the large speedup over integer-index I/O
-  comes from). Values still obey the grid: they snap to the notch on store.
-  Out-of-range stores run the same policy cascade as every other bound
-  (clamp / wrap / sentinel / checked report).
-- Under `BND_MATH_FIXED` the same flag is an ordinary `round_nearest`
-  integer-backed bound — the source compiles unchanged.
+`real` is **not** required — it is an optional **storage** flag that buys speed:
+
+- Under the default engine `real` selects **double-backed storage** on the
+  bound's grid — the raw *is* the value, so input marshalling into the engine is
+  free (the large speedup over integer-index I/O). Values still obey the grid:
+  they snap to the notch on store. Out-of-range stores run the usual policy
+  cascade (clamp / wrap / sentinel / checked report).
+- Without `real`, a snap-capable grid still works — the engine's `double`/integer
+  result is snapped to the grid through the assignment path (a touch slower; no
+  double fast path). Use `real` when the grid is dyadic and you want the speed.
+- Under `BND_MATH_FIXED` `real` is an ordinary `round_nearest` integer-backed
+  bound — the source compiles unchanged.
 - `real` requires a grid that is **exactly representable in `double`**: dyadic
   (power-of-two notch and Lower) **and** within the 53-bit significand — writing
   a value as `N·2^(−f)` with `f = log2(notch denominator)`, every on-grid value
