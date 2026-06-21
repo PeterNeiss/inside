@@ -15,6 +15,22 @@
 #include "bound/math.hpp"   // bnd::detail::ldexp (constexpr, reproducible)
 #include "bound/bound.hpp"  // complete bound/rational + has_flag/BoundPolicy/real (store<>)
 
+// BND_MATH_NO_FP — resolved here (the lowest math header) so both this file and
+// cmath.hpp see it. When defined, the library uses NO hardware floating point and
+// NO <cmath>: the double (FP) engine below compiles out and the always-present
+// integer/CORDIC engine carries every transcendental. Define it (any value) to
+// force the FP-free path; it is auto-enabled on freestanding targets
+// (__STDC_HOSTED__ == 0) and whenever the integer engine is selected as the
+// default (BND_MATH_FIXED). The integer engine is constexpr and bit-exact, so the
+// public API and grid deduction are unchanged — only the compute backend differs.
+#if !defined(BND_MATH_NO_FP)
+#  if defined(BND_MATH_FIXED) || (defined(__STDC_HOSTED__) && __STDC_HOSTED__ == 0)
+#    define BND_MATH_NO_FP
+#  endif
+#endif
+
+#ifndef BND_MATH_NO_FP   // ===== FP engine present (needs <cmath> + an FPU) =====
+
 #include <cmath>            // std::fma, std::sqrt, std::nearbyint ONLY
 
 // `BND_DBL_FN`: the engine cores become `constexpr` on C++26 toolchains with
@@ -253,5 +269,7 @@ namespace bnd::math::dbl
   [[nodiscard]] BND_DBL_FN Out hypot_core(InX x, InY y)
   { return store<Out>(detail::d_hypot(static_cast<double>(x), static_cast<double>(y))); }
 } // namespace bnd::math::dbl
+
+#endif // !BND_MATH_NO_FP
 
 #endif // BNDcmathdoubleHPP

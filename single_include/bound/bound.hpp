@@ -16,7 +16,6 @@
 #include <array>
 #include <bit>
 #include <climits>
-#include <cmath>
 #include <compare>
 #include <concepts>
 #include <cstddef>
@@ -7708,6 +7707,23 @@ namespace bnd
 //---------------------------------------------------------------------------
 
 
+// BND_MATH_NO_FP — resolved here (the lowest math header) so both this file and
+// cmath.hpp see it. When defined, the library uses NO hardware floating point and
+// NO <cmath>: the double (FP) engine below compiles out and the always-present
+// integer/CORDIC engine carries every transcendental. Define it (any value) to
+// force the FP-free path; it is auto-enabled on freestanding targets
+// (__STDC_HOSTED__ == 0) and whenever the integer engine is selected as the
+// default (BND_MATH_FIXED). The integer engine is constexpr and bit-exact, so the
+// public API and grid deduction are unchanged — only the compute backend differs.
+#if !defined(BND_MATH_NO_FP)
+#  if defined(BND_MATH_FIXED) || (defined(__STDC_HOSTED__) && __STDC_HOSTED__ == 0)
+#    define BND_MATH_NO_FP
+#  endif
+#endif
+
+#ifndef BND_MATH_NO_FP   // ===== FP engine present (needs <cmath> + an FPU) =====
+
+#include <cmath>            // std::fma, std::sqrt, std::nearbyint ONLY
 
 // `BND_DBL_FN`: the engine cores become `constexpr` on C++26 toolchains with
 // constexpr <cmath> (P1383). Inert otherwise — see BND_MATH_FN in cmath.hpp.
@@ -7946,6 +7962,8 @@ namespace bnd::math::dbl
   { return store<Out>(detail::d_hypot(static_cast<double>(x), static_cast<double>(y))); }
 } // namespace bnd::math::dbl
 
+#endif // !BND_MATH_NO_FP
+
 
 
 
@@ -7956,7 +7974,11 @@ namespace bnd::math::dbl
 // std::nearbyint; feature macro __cpp_lib_constexpr_cmath). That branch is
 // inert (and untested) until such a toolchain exists. Decision 2026-06-12:
 // no compile-time softfloat emulation — wait for the standard.
-#if defined(BND_MATH_FIXED) \
+// BND_MATH_NO_FP (resolved in cmath_double.hpp, included above) selects the
+// integer/CORDIC engine and is implied by BND_MATH_FIXED — so the integer engine
+// is constexpr here. The double engine becomes constexpr only on a C++26 toolchain
+// with constexpr <cmath> (P1383); that branch is inert until such a toolchain.
+#if defined(BND_MATH_NO_FP) \
     || (defined(__cpp_lib_constexpr_cmath) && __cpp_lib_constexpr_cmath >= 202202L)
 #  define BND_MATH_FN constexpr
 #else
@@ -7973,6 +7995,11 @@ namespace bnd::math::dbl
 //     platform built without `-ffast-math`. Fast (~ns); needs an FPU; runtime.
 //   * `BND_MATH_FIXED` — integer/CORDIC engine (this file): FPU-free, constexpr,
 //     UNCONDITIONALLY bit-identical (any platform/flags). For embedded/portability.
+//
+// `BND_MATH_NO_FP` (implied by `BND_MATH_FIXED`, auto-enabled when
+// `__STDC_HOSTED__ == 0`) compiles the double engine and its `<cmath>` out
+// entirely, leaving the integer engine — so the library, including the single
+// header, builds with no hardware floating point. The dispatch below keys on it.
 //
 // =====================================================================
 //   INTEGER (CORDIC) ENGINE — BIT-EXACT REPRODUCIBILITY CONTRACT
@@ -9114,7 +9141,7 @@ namespace bnd::math
   [[nodiscard]] BND_MATH_FN auto sqrt(In x) noexcept
   {
     static_assert(detail::require_snap<In>());
-#ifdef BND_MATH_FIXED
+#ifdef BND_MATH_NO_FP
     return sqrt_impl<detail::sqrt_auto_t<In>>(x);
 #else
     return dbl::sqrt_core<detail::sqrt_auto_t<In>>(x);
@@ -9130,7 +9157,7 @@ namespace bnd::math
   {
     static_assert(detail::require_snap<In>());
     using Out = detail::sqrt_signed_auto_t<In>;
-#ifdef BND_MATH_FIXED
+#ifdef BND_MATH_NO_FP
     return sqrt_signed_impl<Out>(x);
 #else
     double v = static_cast<double>(x);
@@ -9144,7 +9171,7 @@ namespace bnd::math
   [[nodiscard]] BND_MATH_FN auto exp2(In x) noexcept
   {
     static_assert(detail::require_snap<In>());
-#ifdef BND_MATH_FIXED
+#ifdef BND_MATH_NO_FP
     return exp2_impl<detail::exp2_auto_t<In>>(x);
 #else
     return dbl::exp2_core<detail::exp2_auto_t<In>>(x);
@@ -9159,7 +9186,7 @@ namespace bnd::math
     // engine's *_impl: the double engine's log_core has no singularity check,
     // so log2(x<=0) would silently store finite garbage (e.g. log2(0) ≈ -7).
     static_assert(Lower<In> > 0, "bnd::math::log2: input must be strictly positive");
-#ifdef BND_MATH_FIXED
+#ifdef BND_MATH_NO_FP
     return log2_impl<detail::log2_auto_t<In>>(x);
 #else
     return dbl::log2_core<detail::log2_auto_t<In>>(x);
@@ -9170,7 +9197,7 @@ namespace bnd::math
   [[nodiscard]] BND_MATH_FN auto exp(In x) noexcept
   {
     static_assert(detail::require_snap<In>());
-#ifdef BND_MATH_FIXED
+#ifdef BND_MATH_NO_FP
     return exp_impl<detail::exp_auto_t<In>>(x);
 #else
     return dbl::exp_core<detail::exp_auto_t<In>>(x);
@@ -9182,7 +9209,7 @@ namespace bnd::math
   {
     static_assert(detail::require_snap<In>());
     static_assert(Lower<In> > 0, "bnd::math::log: input must be strictly positive");
-#ifdef BND_MATH_FIXED
+#ifdef BND_MATH_NO_FP
     return log_impl<detail::log_auto_t<In>>(x);
 #else
     return dbl::log_core<detail::log_auto_t<In>>(x);
@@ -9194,7 +9221,7 @@ namespace bnd::math
   {
     static_assert(detail::require_snap<In>());
     using Out = detail::pow_base_auto_t<Base, In>;
-#ifdef BND_MATH_FIXED
+#ifdef BND_MATH_NO_FP
     return pow_base_impl<Base, Out>(x);
 #else
     return dbl::store<Out>(dbl::detail::d_pow(static_cast<double>(Base), static_cast<double>(x)));
@@ -9245,7 +9272,7 @@ namespace bnd::math
   [[nodiscard]] BND_MATH_FN auto sin(In angle) noexcept
   {
     static_assert(detail::require_snap<In>());
-#ifdef BND_MATH_FIXED
+#ifdef BND_MATH_NO_FP
     return sin_impl<detail::sin_auto_t<In>>(angle);
 #else
     return dbl::sin_core<detail::sin_auto_t<In>>(angle);
@@ -9256,7 +9283,7 @@ namespace bnd::math
   [[nodiscard]] BND_MATH_FN auto cos(In angle) noexcept
   {
     static_assert(detail::require_snap<In>());
-#ifdef BND_MATH_FIXED
+#ifdef BND_MATH_NO_FP
     return cos_impl<detail::cos_auto_t<In>>(angle);
 #else
     return dbl::cos_core<detail::cos_auto_t<In>>(angle);
@@ -9267,7 +9294,7 @@ namespace bnd::math
   [[nodiscard]] BND_MATH_FN auto atan2(In y, In x) noexcept
   {
     static_assert(detail::require_snap<In>());
-#ifdef BND_MATH_FIXED
+#ifdef BND_MATH_NO_FP
     return atan2_impl<detail::atan2_auto_t<In>>(y, x);
 #else
     return dbl::atan2_core<detail::atan2_auto_t<In>>(y, x);
@@ -9279,7 +9306,7 @@ namespace bnd::math
   {
     static_assert(detail::require_snap<In>());
     using Out = detail::tan_auto_t<In>;
-#ifdef BND_MATH_FIXED
+#ifdef BND_MATH_NO_FP
     return tan_impl<Out>(angle);
 #else
     double x = static_cast<double>(angle);
@@ -9390,7 +9417,7 @@ namespace bnd::math
   BND_MATH_FN void sin(DEG angle, AMP& out) noexcept
   {
     static_assert(detail::valid_circle<DEG>());
-#ifdef BND_MATH_FIXED
+#ifdef BND_MATH_NO_FP
     constexpr imax M = detail::circle_slots<DEG>;
     constexpr int  W = detail::working_bits<AMP>();
     out = detail::sin_slot<M, W>(bnd::detail::raw_imax(angle));
@@ -9404,7 +9431,7 @@ namespace bnd::math
   BND_MATH_FN void cos(DEG angle, AMP& out) noexcept
   {
     static_assert(detail::valid_circle<DEG>());
-#ifdef BND_MATH_FIXED
+#ifdef BND_MATH_NO_FP
     constexpr imax M = detail::circle_slots<DEG>;
     constexpr int  W = detail::working_bits<AMP>();
     out = detail::sin_slot<M, W>(bnd::detail::raw_imax(angle) + M / 4);
@@ -9420,7 +9447,7 @@ namespace bnd::math
   [[nodiscard]] BND_MATH_FN bool tan(DEG angle, AMP& out) noexcept
   {
     static_assert(detail::valid_circle<DEG>());
-#ifdef BND_MATH_FIXED
+#ifdef BND_MATH_NO_FP
     constexpr imax M = detail::circle_slots<DEG>;
     constexpr int  W = detail::working_bits<AMP>();
     imax i = bnd::detail::raw_imax(angle);
@@ -9779,7 +9806,7 @@ namespace bnd::math
   [[nodiscard]] BND_MATH_FN auto atan(In x) noexcept
   {
     static_assert(detail::require_snap<In>());
-#ifdef BND_MATH_FIXED
+#ifdef BND_MATH_NO_FP
     return atan_impl<detail::atan_auto_t<In>>(x);
 #else
     return dbl::atan_core<detail::atan_auto_t<In>>(x);
@@ -9790,7 +9817,7 @@ namespace bnd::math
   [[nodiscard]] BND_MATH_FN auto asin(In x) noexcept
   {
     static_assert(detail::require_snap<In>());
-#ifdef BND_MATH_FIXED
+#ifdef BND_MATH_NO_FP
     return asin_impl<detail::asin_auto_t<In>>(x);
 #else
     return dbl::asin_core<detail::asin_auto_t<In>>(x);
@@ -9801,7 +9828,7 @@ namespace bnd::math
   [[nodiscard]] BND_MATH_FN auto acos(In x) noexcept
   {
     static_assert(detail::require_snap<In>());
-#ifdef BND_MATH_FIXED
+#ifdef BND_MATH_NO_FP
     return acos_impl<detail::acos_auto_t<In>>(x);
 #else
     return dbl::acos_core<detail::acos_auto_t<In>>(x);
@@ -9812,7 +9839,7 @@ namespace bnd::math
   [[nodiscard]] BND_MATH_FN auto sinh(In x) noexcept
   {
     static_assert(detail::require_snap<In>());
-#ifdef BND_MATH_FIXED
+#ifdef BND_MATH_NO_FP
     return sinh_impl<detail::sinh_auto_t<In>>(x);
 #else
     return dbl::sinh_core<detail::sinh_auto_t<In>>(x);
@@ -9823,7 +9850,7 @@ namespace bnd::math
   [[nodiscard]] BND_MATH_FN auto cosh(In x) noexcept
   {
     static_assert(detail::require_snap<In>());
-#ifdef BND_MATH_FIXED
+#ifdef BND_MATH_NO_FP
     return cosh_impl<detail::cosh_auto_t<In>>(x);
 #else
     return dbl::cosh_core<detail::cosh_auto_t<In>>(x);
@@ -9834,7 +9861,7 @@ namespace bnd::math
   [[nodiscard]] BND_MATH_FN auto tanh(In x) noexcept
   {
     static_assert(detail::require_snap<In>());
-#ifdef BND_MATH_FIXED
+#ifdef BND_MATH_NO_FP
     return tanh_impl<detail::tanh_auto_t<In>>(x);
 #else
     return dbl::tanh_core<detail::tanh_auto_t<In>>(x);
@@ -9846,7 +9873,7 @@ namespace bnd::math
   {
     static_assert(detail::require_snap<In>());
     static_assert(Lower<In> > 0, "bnd::math::log10: input must be strictly positive");
-#ifdef BND_MATH_FIXED
+#ifdef BND_MATH_NO_FP
     return log10_impl<detail::log10_auto_t<In>>(x);
 #else
     return dbl::log10_core<detail::log10_auto_t<In>>(x);
@@ -9857,7 +9884,7 @@ namespace bnd::math
   [[nodiscard]] BND_MATH_FN auto cbrt(In x) noexcept
   {
     static_assert(detail::require_snap<In>());
-#ifdef BND_MATH_FIXED
+#ifdef BND_MATH_NO_FP
     return cbrt_impl<detail::cbrt_auto_t<In>>(x);
 #else
     return dbl::cbrt_core<detail::cbrt_auto_t<In>>(x);
@@ -9868,7 +9895,7 @@ namespace bnd::math
   [[nodiscard]] BND_MATH_FN auto hypot(InX x, InY y) noexcept
   {
     static_assert(detail::require_snap<InX>() && detail::require_snap<InY>());
-#ifdef BND_MATH_FIXED
+#ifdef BND_MATH_NO_FP
     return hypot_impl<detail::hypot_auto_t<InX, InY>>(x, y);
 #else
     return dbl::hypot_core<detail::hypot_auto_t<InX, InY>>(x, y);
@@ -9881,7 +9908,7 @@ namespace bnd::math
   {
     static_assert(detail::require_snap<InB>() && detail::require_snap<InE>());
     using Out = detail::pow_auto_t<InB, InE>;
-#ifdef BND_MATH_FIXED
+#ifdef BND_MATH_NO_FP
     return pow_impl<Out>(base, exp);
 #else
     double b = static_cast<double>(base);

@@ -60,7 +60,7 @@ jobs:
         run: ctest --test-dir build --output-on-failure -L example
 
       - name: Single-header smokes
-        run: cmake --build build --target single_header_smoke single_header_freestanding_smoke
+        run: cmake --build build --target single_header_smoke single_header_freestanding_smoke single_header_nofp_smoke
 
       # bound_fuzz and bench are large, slow-to-compile EXCLUDE_FROM_ALL targets,
       # so they are exercised only in Release on representative cells (one per

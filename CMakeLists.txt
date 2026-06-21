@@ -295,6 +295,24 @@ if(WIN32 AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     target_link_options(single_header_freestanding_smoke PRIVATE -Wl,--allow-multiple-definition)
 endif()
 
+# FP-free smoke: compiles the single header with BND_MATH_NO_FP and a poison
+# <cmath> shim placed FIRST on the include path, so the build hard-errors if any
+# <cmath> is pulled in. Proves the single header honors the FP-free guard (only
+# the integer/CORDIC engine remains). GNU/Clang only — the proof relies on -I
+# ordering for angle-bracket includes; bare-metal toolchains are GCC/Clang.
+# EXCLUDE_FROM_ALL — build with `--target single_header_nofp_smoke`.
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    add_executable(single_header_nofp_smoke EXCLUDE_FROM_ALL
+        tests/single_header_nofp_smoke.cpp)
+    # The poison dir must precede single_include AND the system dirs. BEFORE keeps
+    # it ahead of single_include; angle-bracket search already places -I dirs ahead
+    # of the system headers, so <cmath> resolves to the poison shim.
+    target_include_directories(single_header_nofp_smoke BEFORE PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/nofp_poison"
+        "${CMAKE_CURRENT_SOURCE_DIR}/single_include")
+    target_compile_definitions(single_header_nofp_smoke PRIVATE BND_MATH_NO_FP)
+endif()
+
 #---------------------------------------------------------------------------
 # Install / package config
 #

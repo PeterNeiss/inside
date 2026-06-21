@@ -1,0 +1,5 @@
+// Poison shim for the single_header_nofp_smoke target. This directory is placed
+// FIRST on the include path, so `#include <cmath>` resolves here. Under
+// BND_MATH_NO_FP the library must pull NO <cmath> — if it (or a minimal TU) does,
+// this hard-errors and the FP-free guarantee is proven broken at compile time.
+#error "<cmath> was included under BND_MATH_NO_FP — the FP-free guard is broken"

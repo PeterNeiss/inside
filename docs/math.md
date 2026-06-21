@@ -214,3 +214,29 @@ Use it when you need bit-identical results across heterogeneous targets
 FPU-free build. The default double engine is the right choice everywhere
 else: it carries the same grid guarantees and is reproducible across IEEE-754
 platforms compiled without `-ffast-math`.
+
+## Compiling without floating point (`BND_MATH_NO_FP`)
+
+On a target with no hardware FPU and no `<cmath>`, define **`BND_MATH_NO_FP`**
+(any value). It compiles the double engine — and its `#include <cmath>` — out
+**entirely**, leaving the always-present integer/CORDIC engine to serve the full
+`bnd::math` API. The public surface, output grids, and types are unchanged: only
+the compute backend differs.
+
+- **No `<cmath>`, no `std::fma`/`std::sqrt`** are referenced anywhere in the
+  library when the macro is set — this holds for the modular headers **and** the
+  amalgamated single header (the `<cmath>` include is emitted under the same
+  guard). A CI smoke (`single_header_nofp_smoke`) compiles the single header with
+  a *poison* `<cmath>` shim first on the include path, so the build fails if any
+  `<cmath>` is pulled in.
+- **Auto-enabled** when `__STDC_HOSTED__ == 0` (i.e. `-ffreestanding`) and
+  **implied by `BND_MATH_FIXED`** — selecting the integer engine is itself an
+  FP-free build.
+- All transcendentals are `constexpr` under `BND_MATH_NO_FP` (the integer engine),
+  so they evaluate at compile time as well as runtime.
+
+```bash
+# bare-metal: integer engine, no <cmath>, single header
+g++ -std=c++23 -ffreestanding -I single_include my_app.cpp     # NO_FP auto-on
+g++ -std=c++23 -DBND_MATH_NO_FP -I single_include my_app.cpp   # or force it
+```
