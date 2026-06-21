@@ -23,9 +23,26 @@ namespace
   // Reference: reduce v into [lo, hi] by wrapping (range = hi - lo + 1).
   long long wrap_ref(long long v, long long lo, long long hi)
   {
+#if defined(__SIZEOF_INT128__)
     __int128 range = static_cast<__int128>(hi) - static_cast<__int128>(lo) + 1;
     __int128 r = (((static_cast<__int128>(v) - static_cast<__int128>(lo)) % range) + range) % range;
     return static_cast<long long>(r + lo);
+#else
+    // MSVC has no __int128: u64 modular reduction. `v - lo` can exceed 64 signed bits
+    // at the extremes, so reduce in unsigned (two's-complement) space.
+    unsigned long long urange = static_cast<unsigned long long>(hi)
+                              - static_cast<unsigned long long>(lo) + 1ull;
+    unsigned long long off;
+    if (v >= lo)
+      off = (static_cast<unsigned long long>(v) - static_cast<unsigned long long>(lo)) % urange;
+    else
+    {
+      unsigned long long d = static_cast<unsigned long long>(lo) - static_cast<unsigned long long>(v);
+      unsigned long long m = d % urange;
+      off = m ? urange - m : 0ull;
+    }
+    return static_cast<long long>(static_cast<unsigned long long>(lo) + off);
+#endif
   }
 }
 

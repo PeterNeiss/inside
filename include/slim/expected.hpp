@@ -21,7 +21,10 @@
 
 namespace slim {
 template<class T, class E> using expected   = std::expected<T, E>;
-template<class E>          using unexpected = std::unexpected<E>;
+// Import the class template by name (not an alias template): call sites use CTAD
+// — `unexpected(errc::…)` — and CTAD through an alias template (P1814) is not
+// implemented by every C++23 toolchain (e.g. AppleClang 15).
+using std::unexpected;
 // std::bad_expected_access<E> derives from the <void> base, so catching this
 // alias catches every instantiation — same role as the backport's type.
 using bad_expected_access = std::bad_expected_access<void>;

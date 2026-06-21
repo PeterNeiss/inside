@@ -332,7 +332,7 @@ TEST_CASE("sin/cos/tan accept radians up to 2^20", "[cmath][trig][domain]")
   }
 }
 
-TEST_CASE("pown<E> — exact compile-time integer powers on any bound",
+TEST_CASE("pown<E> - exact compile-time integer powers on any bound",
           "[cmath][pown]")
 {
   using s8 = bound<{-10, 10}>;

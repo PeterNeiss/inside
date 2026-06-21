@@ -19,7 +19,7 @@
 //---------------------------------------------------------------------------
 namespace bnd
 {
-  template <grid G = {{0, 0}, 0}, policy_flag P = checked> struct bound;
+  template <grid G = grid{{0, 0}, 0}, policy_flag P = checked> struct bound;
 
   template <class>                 inline constexpr bool is_bound_v = false;
   template <grid G, policy_flag P> inline constexpr bool is_bound_v<bound<G, P>> = true;

@@ -59,7 +59,7 @@ TEST_CASE("_b literal: produces point bound (just<value>)", "[literal][b-literal
   STATIC_REQUIRE(Lower<decltype(q14_notch)> == rational{1, 16384});
 }
 
-TEST_CASE("a_b / b_b ≈ rational{a,b} — value-equivalent (optional-wrapped)", "[literal][b-literal][replacement]")
+TEST_CASE("a_b / b_b ~= rational{a,b} - value-equivalent (optional-wrapped)", "[literal][b-literal][replacement]")
 {
   // Verification §6 from the plan: `bound / bound` is the *checked* division,
   // so the result is `slim::optional<bound>` even when both operands are

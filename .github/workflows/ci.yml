@@ -95,7 +95,9 @@ jobs:
 
   macos:
     name: macos appleclang ${{ matrix.build }}
-    runs-on: macos-14
+    # macos-15 ships Xcode 16 / AppleClang 16 (≈ upstream Clang 17). AppleClang 15
+    # (macos-14) can't parse the braced-init NTTP form `bound<{...}>`; Clang 16+ can.
+    runs-on: macos-15
     strategy:
       fail-fast: false
       matrix:

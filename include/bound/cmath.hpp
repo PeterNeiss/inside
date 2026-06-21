@@ -172,8 +172,8 @@ namespace bnd::math
     constexpr imax fmul(imax a, imax b, int W) noexcept
     {
       bool neg = (a < 0) ^ (b < 0);
-      umax ua = (a < 0) ? -static_cast<umax>(a) : static_cast<umax>(a);
-      umax ub = (b < 0) ? -static_cast<umax>(b) : static_cast<umax>(b);
+      umax ua = (a < 0) ? umax{0} - static_cast<umax>(a) : static_cast<umax>(a);
+      umax ub = (b < 0) ? umax{0} - static_cast<umax>(b) : static_cast<umax>(b);
 #if defined(__SIZEOF_INT128__)
       // gcc/clang: native 128-bit, constexpr-friendly.
       umax r = static_cast<umax>((static_cast<unsigned __int128>(ua) * ub) >> W);

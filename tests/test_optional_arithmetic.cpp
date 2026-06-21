@@ -93,7 +93,7 @@ TEST_CASE("unary -optional<rational>", "[optional][rational][arith]")
   REQUIRE_FALSE((-empty).has_value());
 }
 
-TEST_CASE("bound construction from optional<rational> — sink unwrap", "[optional][bound][ctor]")
+TEST_CASE("bound construction from optional<rational> - sink unwrap", "[optional][bound][ctor]")
 {
   using b_t = bound<{{0, 1}, notch<1, 16>}, round_nearest>;
 

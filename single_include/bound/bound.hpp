@@ -1481,7 +1481,10 @@ namespace bnd
 
 namespace slim {
 template<class T, class E> using expected   = std::expected<T, E>;
-template<class E>          using unexpected = std::unexpected<E>;
+// Import the class template by name (not an alias template): call sites use CTAD
+// — `unexpected(errc::…)` — and CTAD through an alias template (P1814) is not
+// implemented by every C++23 toolchain (e.g. AppleClang 15).
+using std::unexpected;
 // std::bad_expected_access<E> derives from the <void> base, so catching this
 // alias catches every instantiation — same role as the backport's type.
 using bad_expected_access = std::bad_expected_access<void>;
@@ -1807,7 +1810,7 @@ namespace bnd
 
   template <std::signed_integral V>
   constexpr umax safe_abs(V value)
-  { return (value >= 0) ? static_cast<umax>(value) : -static_cast<umax>(value); }
+  { return (value >= 0) ? static_cast<umax>(value) : umax{0} - static_cast<umax>(value); }
 
   inline constexpr double frexp(double value, int* exp) noexcept
   {
@@ -2163,7 +2166,23 @@ namespace slim
 
 namespace bnd::detail
 {
-  constexpr umax abs_den(imax d) { return (d >= 0) ? static_cast<umax>(d) : -static_cast<umax>(d); }
+  constexpr umax abs_den(imax d) { return (d >= 0) ? static_cast<umax>(d) : umax{0} - static_cast<umax>(d); }
+
+  // Portable 64×64 → 128-bit unsigned product, as {hi, lo}. Used where a native
+  // unsigned __int128 is unavailable (MSVC). Schoolbook 32-bit split — the same
+  // construction trusted in cmath.hpp's fmul, so it stays bit-exact.
+  struct u128 { umax hi; umax lo; };
+  constexpr u128 umul(umax a, umax b)
+  {
+    umax al = a & 0xffffffffu, ah = a >> 32;
+    umax bl = b & 0xffffffffu, bh = b >> 32;
+    umax ll = al * bl, lh = al * bh, hl = ah * bl, hh = ah * bh;
+    umax mid = (ll >> 32) + (lh & 0xffffffffu) + (hl & 0xffffffffu);
+    return { hh + (lh >> 32) + (hl >> 32) + (mid >> 32),
+             (ll & 0xffffffffu) | (mid << 32) };
+  }
+  constexpr std::strong_ordering cmp128(u128 a, u128 b)
+  { return (a.hi != b.hi) ? (a.hi <=> b.hi) : (a.lo <=> b.lo); }
 
   //---------------------------------------------------------------------------
   // trim
@@ -2948,13 +2967,19 @@ namespace bnd::detail
     }
 
     // Cross-multiply in 128-bit: |numerator| and |denominator| are each ≤ 2^64−1,
-    // so the products fit exactly in unsigned __int128 — the comparison can never
-    // overflow, so no trap is needed.
-    using u128 = unsigned __int128;
-    u128 A = static_cast<u128>(lhs.Numerator) * rhs_ad;
-    u128 B = static_cast<u128>(rhs.Numerator) * lhs_ad;
-
+    // so the products fit exactly in 128 bits — the comparison can never overflow,
+    // so no trap is needed.
+#if defined(__SIZEOF_INT128__)
+    using u128n = unsigned __int128;
+    u128n A = static_cast<u128n>(lhs.Numerator) * rhs_ad;
+    u128n B = static_cast<u128n>(rhs.Numerator) * lhs_ad;
     return lhs_neg ? (B <=> A) : (A <=> B);
+#else
+    // Portable path (MSVC): form each product as {hi, lo} and compare lexically.
+    const u128 A = umul(lhs.Numerator, rhs_ad);
+    const u128 B = umul(rhs.Numerator, lhs_ad);
+    return lhs_neg ? cmp128(B, A) : cmp128(A, B);
+#endif
   }
 
   template <typename T>
@@ -3919,7 +3944,7 @@ namespace bnd
 //---------------------------------------------------------------------------
 namespace bnd
 {
-  template <grid G = {{0, 0}, 0}, policy_flag P = checked> struct bound;
+  template <grid G = grid{{0, 0}, 0}, policy_flag P = checked> struct bound;
 
   template <class>                 inline constexpr bool is_bound_v = false;
   template <grid G, policy_flag P> inline constexpr bool is_bound_v<bound<G, P>> = true;
@@ -4497,6 +4522,11 @@ namespace bnd::detail
   // each routing through `store` (in-range) and `handle_out_of_range` /
   // `apply_clamp` / `apply_wrap` (policy). The boundable path also exposes
   // `is_integer_mapping` / `map_raw` — a pure-integer formula in the hot path.
+  //
+  // NOTE: every member is defined *inline* in its specialization body (rather
+  // than out-of-line). MSVC cannot reliably match out-of-line definitions of
+  // member function templates to constrained partial specializations
+  // (C2244/C2995/C3855); inlining sidesteps that and keeps the code portable.
   //---------------------------------------------------------------------------
   // needs_runtime_domain_check<L, P, A>: true iff any out-of-range handler would
   // fire (an action, a clamp/wrap/sentinel bit, or default-throw under checked).
@@ -4556,50 +4586,314 @@ namespace bnd::detail
   template <typename L, typename R>
   struct assignment;
 
+  //---------------------------------------------------------------------------
+  // assign(boundable, integral)
+  //---------------------------------------------------------------------------
   template <boundable L, std::integral R>
   struct assignment<L,R>
   {
     private:
       template<typename A>
-      static constexpr void apply_clamp(L& lhs, R rhs, imax lower, imax upper, A&& action);
+      static constexpr void apply_clamp(L& lhs, R rhs, imax lower, imax upper, A&& action)
+      {
+        // Pre: rhs is out of [lower, upper] (only called from handle_out_of_range),
+        // so the two-way pick is the full clamp.
+        imax clamped = static_cast<imax>(rhs) < lower ? lower : upper;
+        imax overshoot = static_cast<imax>(rhs) - clamped;
+        from_value(lhs, clamped);
+        if constexpr (clamp_action<plain<A>>)
+          action.fn(lhs, overshoot);
+      }
 
       template<typename A>
-      static constexpr void apply_wrap(L& lhs, R rhs, imax lower, imax upper, A&& action);
+      static constexpr void apply_wrap(L& lhs, R rhs, imax lower, imax upper, A&& action)
+      {
+        // Overflow-safe modular wrap: `upper-lower+1` and `rhs-lower` can exceed imax,
+        // so the reduction runs in umax (both fit umax for any valid grid; the result
+        // lands back in [lower, upper] ⊂ imax).
+        const umax urange = static_cast<umax>(upper) - static_cast<umax>(lower) + 1u;
+        const imax ri = static_cast<imax>(rhs);
+        if (urange == 0)                              // span == 2^64−1: wrap is identity
+        {
+          from_value(lhs, ri);
+          if constexpr (wrap_action<plain<A>>) action.fn(lhs, imax{0});
+          return;
+        }
+        umax w;
+        imax excess;
+        if (ri >= lower)
+        {
+          const umax dist = static_cast<umax>(ri) - static_cast<umax>(lower);  // true, ≥ 0
+          w = dist % urange;
+          excess = static_cast<imax>(dist / urange);
+        }
+        else
+        {
+          const umax dist = static_cast<umax>(lower) - static_cast<umax>(ri);  // true, > 0
+          const umax m = dist % urange;
+          w = (m == 0) ? 0u : (urange - m);
+          excess = -static_cast<imax>((dist + urange - 1u) / urange);          // −ceil(dist/range)
+        }
+        from_value(lhs, static_cast<imax>(static_cast<umax>(lower) + w));
+        if constexpr (wrap_action<plain<A>>)
+          action.fn(lhs, excess);
+      }
 
       template<typename P, typename A>
       static constexpr bool handle_out_of_range(L& lhs, R rhs, imax lower, imax upper,
-                                                P&& policy, A&& action);
+                                                P&& policy, A&& action)
+      {
+        return dispatch_out_of_range<true>(lhs, policy, action,
+          [&]{ apply_clamp(lhs, rhs, lower, upper, action); },
+          [&]{ apply_wrap (lhs, rhs, lower, upper, action); },
+          [&]{ return static_cast<imax>(rhs); },
+          [&]{ return rhs; });
+      }
 
-      static constexpr void store(L& lhs, R rhs);
+      static constexpr void store(L& lhs, R rhs)
+      {
+        if constexpr (!index_raw<L>)
+          lhs = L::from_raw(raw_cast<L>(rhs));
+        else if constexpr (Lower<L> == Upper<L>)
+          lhs = L::from_raw(0);   // notch_storage point grid: 0 is the only offset
+        else if constexpr (HasQFormatFastPath<L>)
+          lhs = L::from_raw(q_format_encode<L>(static_cast<imax>(rhs)));
+        else // index storage, generic rational path
+        {
+          rational raw = ((rhs - Interval<L>.Lower)/Notch<L>).value();
+          lhs = L::from_raw(raw_cast<L>(raw.Numerator / static_cast<umax>(raw.Denominator)));
+        }
+      }
 
     public:
       template<typename P, typename A = no_action>
-      static constexpr L& assign(L& lhs, R const& rhs, P&&, A&& action = {});
+      static constexpr L& assign(L& lhs, R const& rhs, P&& policy, A&& action = {})
+      {
+        static_assert(not excludes(Interval<L>, Interval<R>));
+
+        // The out-of-range check runs unconditionally — clamp/wrap/sentinel
+        // policies handle it via apply_*, which is constexpr-clean. Only the
+        // unhandled-checked path winds up calling `policy.report`, which
+        // contains its own `std::is_constant_evaluated()` guard.
+        if constexpr (not includes(Interval<L>, Interval<R>))
+        {
+          if constexpr (IsIntegerInterval<L>)
+          {
+            // Skip the runtime range branch entirely when every handler would
+            // be dead anyway — the dead branch otherwise inhibits autovec.
+            if constexpr (needs_runtime_domain_check<L, plain<P>, plain<A>>)
+            {
+              constexpr imax lower = LowerImax<L>;
+              constexpr imax upper = UpperImax<L>;
+              if (static_cast<imax>(rhs) < lower || static_cast<imax>(rhs) > upper) [[unlikely]]
+                if (handle_out_of_range(lhs, rhs, lower, upper, policy, action)) return lhs;
+            }
+          }
+          else if (not includes(Interval<L>, rhs))
+          {
+            // Non-integer L bounds: route through the rational path so fractional
+            // Lower/Upper drive clamp/sentinel/error correctly.
+            return assignment<L, rational>::assign(lhs, rational{rhs}, policy, action);
+          }
+        }
+
+        store(lhs, rhs);
+        return lhs;
+      }
   };
 
+  //---------------------------------------------------------------------------
+  // assign(boundable, floating_point | rational)
+  //---------------------------------------------------------------------------
   template <boundable L, typename R>
     requires fractional<R>
   struct assignment<L,R>
   {
     private:
       template<typename P, typename A>
-      static constexpr void apply_clamp(L& lhs, R rhs, P&& policy, A&& action);
+      static constexpr void apply_clamp(L& lhs, R rhs, P&&, A&& action)
+      {
+        R clamped = (rhs < Lower<L>) ? static_cast<R>(Lower<L>) : static_cast<R>(Upper<L>);
+        R overshoot;
+        if constexpr (std::same_as<R, rational>)
+          overshoot = (rhs - clamped).value_or(rational{0});
+        else
+          overshoot = rhs - clamped;
+
+        // The clamp target is an interval endpoint — a grid point — so the slot is 0
+        // or NotchCount, no rounding. real takes the endpoint as a double, rational
+        // the exact constant (a double round-trip would lose non-dyadic endpoints);
+        // raw_from_offset<L> adds Lower back for direct-encoded storage.
+        if constexpr (real_raw<L>)
+          lhs = L::from_raw((rhs < Lower<L>) ? static_cast<double>(Lower<L>)
+                                             : static_cast<double>(Upper<L>));
+        else if constexpr (rational_raw<L>)
+          lhs = L::from_raw((rhs < Lower<L>) ? Lower<L> : Upper<L>);
+        else
+          lhs = L::from_raw(raw_from_offset<L>(
+              (rhs < Lower<L>) ? umax{0} : NotchCount<L>));
+
+        if constexpr (clamp_action<plain<A>>)
+          action.fn(lhs, overshoot);
+      }
 
     public:
       // Exposed (not private) so the boundable-rhs wrap path can reuse the
       // rational specialization's modular wrap on fractional/notch grids, and
       // so the wrap path can reuse store_checked after computing the wrapped
       // value.
+      //
+      // apply_wrap for real R — modular reduction into [Lower, Lower + range)
+      // followed by store_checked so the rounding policy still applies if rhs
+      // doesn't land on a notch after wrapping. range = Upper - Lower + Notch.
       template<typename P, typename A>
-      static constexpr void apply_wrap(L& lhs, R rhs, P&& policy, A&& action);
+      static constexpr void apply_wrap(L& lhs, R rhs, P&& policy, A&& action)
+      {
+        rational rhs_r{rhs};
+        rational lower_r = Lower<L>;
+        rational range   = ((Upper<L> - lower_r).value() + Notch<L>).value();
+        // q = floor((rhs - lower) / range), wrapped = rhs - q * range
+        rational shifted = (rhs_r - lower_r).value();
+        imax q = floor((shifted / range).value());
+        rational wrapped = (rhs_r - (rational{q} * range).value()).value();
+
+        // Re-enter the rational-rhs specialization for the actual store so the
+        // notch / rounding policy logic is exercised once.
+        assignment<L, rational>::store_checked(lhs, wrapped, policy, action);
+
+        if constexpr (wrap_action<plain<A>>)
+          action.fn(lhs, q);
+      }
 
       template<typename P, typename A = no_action>
-      static constexpr bool store_checked(L& lhs, R rhs, P&& policy, A&& action = {});
+      static constexpr bool store_checked(L& lhs, R rhs, P&& policy, A&& action = {})
+      {
+        if constexpr (rational_raw<L> && Notch<L> == 0)
+        { lhs = L::from_raw(rhs); return true; }   // continuous: store verbatim
+        else if constexpr (real_raw<L>)
+        {
+          // real target: raw IS the value — snap to the dyadic grid (range handling
+          // already ran in the assign cascade; finite guard mirrors store_real's).
+          const double v = static_cast<double>(rhs);
+          if (!(v - v == 0))
+            detail::raise(errc::not_finite, "non-finite double");
+          lhs = L::from_raw(Grid<L>.snap_double(v));
+          return true;
+        }
+        else if constexpr (Lower<L> == Upper<L>)
+        {
+          // Singleton grid: offset encoding → Raw=0; rational/direct → Raw = Lower.
+          if constexpr (rational_raw<L>)
+            lhs = L::from_raw(Lower<L>);
+          else if constexpr (!index_raw<L>)
+            lhs = L::from_raw(raw_cast<L>(RawLo<L>));
+          else
+            lhs = L::from_raw(0);
+          return true;
+        }
+        else
+        {
+          // Store the k-th notch slot: rational storage holds the snapped value;
+          // raw_from_offset<L> covers offset- and direct-encoded integers.
+          auto store_slot = [&](auto k)
+          {
+            if constexpr (rational_raw<L>)
+              lhs = L::from_raw((Lower<L> + (rational{k} * Notch<L>).value()).value());
+            else
+              lhs = L::from_raw(raw_from_offset<L>(k));
+          };
+
+          constexpr bool has_round_flag =
+               HasPolicy<L, P, round_nearest> || HasPolicy<L, P, round_floor>
+            || HasPolicy<L, P, round_ceil>    || HasPolicy<L, P, round_half_even>
+            || HasPolicy<L, P, snap>;
+
+          // Q-format integer shortcut: with integer Lower and notch 1/K the offset is
+          // (num − Lo·aden)·(K/g) / (aden/g), g = gcd(aden, K) — one gcd + integer ops
+          // instead of two rational ops. round_quotient is invariant under reduction,
+          // so the slot is bit-identical to the rational path. Oversized denominators
+          // fall through (the kMaxDen guard keeps every product inside imax).
+          if constexpr (HasQFormatFastPath<L> && !real_raw<L> && Notch<L> != 0)
+          {
+            constexpr imax K  = abs_den(Notch<L>.Denominator);
+            constexpr imax Lo = LowerImax<L>;
+            constexpr umax kKM = []{
+              // 2 · K · M with saturation (M bounds |value| and the offset span)
+              umax k = static_cast<umax>(K);
+              umax m = static_cast<umax>(
+                  ceil(((bnd::detail::abs(Lower<L>) > bnd::detail::abs(Upper<L>)
+                      ? bnd::detail::abs(Lower<L>) : bnd::detail::abs(Upper<L>))
+                   ))) * 2 + 2;
+              if (k > std::numeric_limits<umax>::max() / m)
+                return std::numeric_limits<umax>::max();
+              umax km = k * m;
+              return (km > std::numeric_limits<umax>::max() / 2)
+                       ? std::numeric_limits<umax>::max() : km * 2;
+            }();
+            constexpr umax kMaxDen =
+                static_cast<umax>(std::numeric_limits<imax>::max()) / kKM;
+
+            const rational rv{rhs};                       // exact (copy for rational R)
+            const umax aden = abs_den(rv.Denominator);
+            if (kMaxDen != 0 && aden <= kMaxDen)
+            {
+              const umax g    = std::gcd(aden, static_cast<umax>(K));
+              const umax den2 = aden / g;
+              const imax k2   = K / static_cast<imax>(g);
+              const imax num  = (rv.Denominator < 0) ? -rv.Numerator : rv.Numerator;
+              const umax onum =                          // ≥ 0: rhs ≥ Lower (in range)
+                  static_cast<umax>((num - Lo * static_cast<imax>(aden)) * k2);
+              if (den2 == 1)
+              { store_slot(onum); return true; }
+              if constexpr (has_round_flag)
+              { store_slot(round_quotient<L, P>(onum, den2)); return true; }
+              // strict policy, off-notch: fall through to the rational path for
+              // the error message / action plumbing (cold).
+            }
+          }
+
+          rational raw = ((rhs - Lower<L>)/Notch<L>).value();
+          umax den = static_cast<umax>(raw.Denominator);
+          if (den == 1)
+          { store_slot(raw.Numerator); return true; }
+
+          if constexpr (has_round_flag)
+            store_slot(round_quotient<L, P>(raw.Numerator, den));
+          else if (policy.round_check()) [[unlikely]]
+          {
+            if constexpr (error_action<plain<A>>)
+            { action.fn(lhs, errc::rounding_error, errc_message(errc::rounding_error)); return false; }
+            policy.report(errc::rounding_error);
+            return false;
+          }
+          else
+            store_slot(round_quotient<L, P>(raw.Numerator, den));
+          return true;
+        }
+      }
 
       template<typename P, typename A = no_action>
-      static constexpr L& assign(L& lhs, R const& rhs, P&&, A&& action = {});
+      static constexpr L& assign(L& lhs, R const& rhs, P&& policy, A&& action = {})
+      {
+        if (not includes(Interval<L>, rhs)) [[unlikely]]
+        {
+          // Fractional path has no wrap *action* branch (Wrappable = false).
+          if (dispatch_out_of_range<false>(lhs, policy, action,
+                [&]{ apply_clamp(lhs, rhs, policy, action); },
+                [&]{ apply_wrap (lhs, rhs, policy, action); },
+                [&]{ return rhs; },
+                [&]{ return rhs; }))
+            return lhs;
+        }
+
+        store_checked(lhs, rhs, policy, action);
+        return lhs;
+      }
   };
 
+  //---------------------------------------------------------------------------
+  // assign(boundable, boundable)
+  //---------------------------------------------------------------------------
   template <boundable L, boundable R>
   struct assignment<L,R>
   {
@@ -4678,468 +4972,136 @@ namespace bnd::detail
       }
 
       template<typename A>
-      static constexpr void apply_clamp(L& lhs, R const& rhs, A&& action);
+      static constexpr void apply_clamp(L& lhs, R const& rhs, A&& action)
+      {
+        // RawLo/RawHi are already the correct Raw (no raw_from_offset). Real storage
+        // takes the endpoint as a double (RawLo/Hi truncate fractional dyadic endpoints).
+        if constexpr (real_raw<L>)
+          lhs = L::from_raw((as_rational(rhs) < Lower<L>)
+            ? static_cast<double>(Lower<L>) : static_cast<double>(Upper<L>));
+        else
+          lhs = L::from_raw((as_rational(rhs) < Lower<L>)
+            ? raw_cast<L>(RawLo<L>) : raw_cast<L>(RawHi<L>));
+        // Overshoot (rhs − clamped) as a bound, via the result-grid inference of normal
+        // bound arithmetic: both operands are bounds, so the overshoot is too. It is always
+        // in-grid and on-notch for Grid<R> − Grid<L>, so the construction is exact.
+        if constexpr (clamp_action<plain<A>>)
+        {
+          constexpr grid OG = (Grid<R> - Grid<L>).value();
+          bnd::bound<OG> overshoot{ (as_rational(rhs) - as_rational(lhs)).value() };
+          action.fn(lhs, overshoot);
+        }
+      }
 
       template<typename P, typename A>
-      static constexpr void apply_wrap(L& lhs, R const& rhs, P&& policy, A&& action);
+      static constexpr void apply_wrap(L& lhs, R const& rhs, P&& policy, A&& action)
+      {
+        // The integer modular wrap (range = Upper - Lower + 1, integer values) is
+        // only correct on a unit-integer grid — notch 1 with integer bounds, so
+        // consecutive integers are adjacent grid points. Any other grid (fractional
+        // notch, non-integer bounds) routes through the rational modular wrap.
+        if constexpr (IsIntegerInterval<L> && abs_den(Notch<L>.Denominator) == 1
+                      && Notch<L>.Numerator == 1)
+        {
+          // Unit-integer fast path: modular wrap on the integer value.
+          imax rhs_imax = trunc(as_rational(rhs));
+          constexpr imax lower = LowerImax<L>;
+          constexpr imax upper = UpperImax<L>;
+          imax range = upper - lower + 1;
+          imax shifted = rhs_imax - lower;
+          imax wrapped = ((shifted % range) + range) % range;
+          imax excess  = (shifted < 0) ? ((shifted - range + 1) / range) : (shifted / range);
+          from_value(lhs, wrapped + lower);
+          if constexpr (wrap_action<plain<A>>)
+            action.fn(lhs, bnd::bound<wrap_excess_grid()>{excess});   // carry as a bound
+        }
+        else if constexpr (wrap_action<plain<A>>)
+        {
+          // Fractional destination with a wrap action: reuse the rational modular-wrap
+          // path for the store/rounding, but wrap its imax carry `q` into a bound before
+          // handing it to the user action.
+          assignment<L, rational>::apply_wrap(lhs, as_rational(rhs), policy,
+            bnd::on_wrap([&](auto& self, imax q){
+              action.fn(self, bnd::bound<wrap_excess_grid()>{q});
+            }));
+        }
+        else
+        {
+          // Fractional destination, no wrap action: delegate unchanged.
+          assignment<L, rational>::apply_wrap(lhs, as_rational(rhs), policy, action);
+        }
+      }
 
       template<typename P, typename A>
-      static constexpr bool try_clamp_or_fail(L& lhs, R const& rhs, P&& policy, A&& action);
+      static constexpr bool try_clamp_or_fail(L& lhs, R const& rhs, P&& policy, A&& action)
+      {
+        return dispatch_out_of_range<true>(lhs, policy, action,
+          [&]{ apply_clamp(lhs, rhs, action); },
+          [&]{ apply_wrap (lhs, rhs, policy, action); },
+          [&]{ return as_rational(rhs); },
+          [&]{ return as_rational(rhs); });
+      }
 
       template<typename P>
-      static constexpr void store(L& lhs, R const& rhs, P&& policy);
+      static constexpr void store(L& lhs, R const& rhs, P&&)
+      {
+        if constexpr (real_raw<L>)
+          // real target: raw IS the value — decode the source and snap to the dyadic
+          // grid (the offset machinery below mis-encodes a double raw).
+          lhs = L::from_raw(Grid<L>.snap_double(as_double(rhs)));
+        else if constexpr (is_integer_mapping)
+        {
+          // exact: Factor and Offset have integer denominators, no rounding ambiguity
+          if constexpr (Offset == 0 && Factor == 1)
+            lhs = L::from_raw(raw_cast<L>(rhs.raw()));
+          else
+            lhs = L::from_raw(raw_cast<L>(map_raw(rhs.raw())));
+        }
+        else
+        {
+          rational rat = *(Offset + *(Factor * rhs.raw()));
+          umax ad = static_cast<umax>(abs_den(rat.Denominator));
+          // Round the L-offset to a notch index in VALUE space via round_quotient
+          // (same as the scalar path), honouring every rounding mode.
+          umax q = round_quotient<L, P>(rat.Numerator, ad);
+          // rat is the L-offset; raw_from_offset<L> adds Lower<L> back for direct storage.
+          lhs = L::from_raw((rat.Denominator < 0)
+            ? raw_from_offset<L>(-static_cast<imax>(q))
+            : raw_from_offset<L>(q));
+        }
+      }
 
     public:
       template<typename P, typename A = no_action>
-      static constexpr L& assign(L& lhs, R const& rhs, P&&, A&& action = {});
-  };
-
-  //---------------------------------------------------------------------------
-  // assign(boundable, integral) — helpers
-  //---------------------------------------------------------------------------
-  template<boundable L, std::integral R>
-  template<typename A>
-  constexpr void assignment<L,R>::apply_clamp(L& lhs, R rhs, imax lower, imax upper, A&& action)
-  {
-    // Pre: rhs is out of [lower, upper] (only called from handle_out_of_range),
-    // so the two-way pick is the full clamp.
-    imax clamped = static_cast<imax>(rhs) < lower ? lower : upper;
-    imax overshoot = static_cast<imax>(rhs) - clamped;
-    from_value(lhs, clamped);
-    if constexpr (clamp_action<plain<A>>)
-      action.fn(lhs, overshoot);
-  }
-
-  template<boundable L, std::integral R>
-  template<typename A>
-  constexpr void assignment<L,R>::apply_wrap(L& lhs, R rhs, imax lower, imax upper, A&& action)
-  {
-    // Overflow-safe modular wrap: `upper-lower+1` and `rhs-lower` can exceed imax,
-    // so the reduction runs in umax (both fit umax for any valid grid; the result
-    // lands back in [lower, upper] ⊂ imax).
-    const umax urange = static_cast<umax>(upper) - static_cast<umax>(lower) + 1u;
-    const imax ri = static_cast<imax>(rhs);
-    if (urange == 0)                              // span == 2^64−1: wrap is identity
-    {
-      from_value(lhs, ri);
-      if constexpr (wrap_action<plain<A>>) action.fn(lhs, imax{0});
-      return;
-    }
-    umax w;
-    imax excess;
-    if (ri >= lower)
-    {
-      const umax dist = static_cast<umax>(ri) - static_cast<umax>(lower);  // true, ≥ 0
-      w = dist % urange;
-      excess = static_cast<imax>(dist / urange);
-    }
-    else
-    {
-      const umax dist = static_cast<umax>(lower) - static_cast<umax>(ri);  // true, > 0
-      const umax m = dist % urange;
-      w = (m == 0) ? 0u : (urange - m);
-      excess = -static_cast<imax>((dist + urange - 1u) / urange);          // −ceil(dist/range)
-    }
-    from_value(lhs, static_cast<imax>(static_cast<umax>(lower) + w));
-    if constexpr (wrap_action<plain<A>>)
-      action.fn(lhs, excess);
-  }
-
-  template<boundable L, std::integral R>
-  template<typename P, typename A>
-  constexpr bool assignment<L,R>::handle_out_of_range(L& lhs, R rhs, imax lower, imax upper,
-                                                     P&& policy, A&& action)
-  {
-    return dispatch_out_of_range<true>(lhs, policy, action,
-      [&]{ apply_clamp(lhs, rhs, lower, upper, action); },
-      [&]{ apply_wrap (lhs, rhs, lower, upper, action); },
-      [&]{ return static_cast<imax>(rhs); },
-      [&]{ return rhs; });
-  }
-
-  template<boundable L, std::integral R>
-  constexpr void assignment<L,R>::store(L& lhs, R rhs)
-  {
-    if constexpr (!index_raw<L>)
-      lhs = L::from_raw(raw_cast<L>(rhs));
-    else if constexpr (Lower<L> == Upper<L>)
-      lhs = L::from_raw(0);   // notch_storage point grid: 0 is the only offset
-    else if constexpr (HasQFormatFastPath<L>)
-      lhs = L::from_raw(q_format_encode<L>(static_cast<imax>(rhs)));
-    else // index storage, generic rational path
-    {
-      rational raw = ((rhs - Interval<L>.Lower)/Notch<L>).value();
-      lhs = L::from_raw(raw_cast<L>(raw.Numerator / static_cast<umax>(raw.Denominator)));
-    }
-  }
-
-  //---------------------------------------------------------------------------
-  // assign(boundable, integral)
-  //---------------------------------------------------------------------------
-  template<boundable L, std::integral R>
-  template<typename P, typename A>
-  constexpr L& assignment<L,R>::assign(L& lhs, R const& rhs, P&& policy, A&& action)
-  {
-    static_assert(not excludes(Interval<L>, Interval<R>));
-
-    // The out-of-range check runs unconditionally — clamp/wrap/sentinel
-    // policies handle it via apply_*, which is constexpr-clean. Only the
-    // unhandled-checked path winds up calling `policy.report`, which
-    // contains its own `std::is_constant_evaluated()` guard.
-    if constexpr (not includes(Interval<L>, Interval<R>))
-    {
-      if constexpr (IsIntegerInterval<L>)
+      static constexpr L& assign(L& lhs, R const& rhs, P&& policy, A&& action = {})
       {
-        // Skip the runtime range branch entirely when every handler would
-        // be dead anyway — the dead branch otherwise inhibits autovec.
-        if constexpr (needs_runtime_domain_check<L, plain<P>, plain<A>>)
+        // wrap/clamp bring any value into range, so a disjoint rhs interval is fine
+        // for them (matches the integral-rhs path); only strict policies reject it.
+        static_assert(HasPolicy<L, P, wrap> || HasPolicy<L, P, clamp>
+                      || not excludes(Interval<L>, Interval<R>),
+          "rhs interval lies entirely outside lhs interval and the policy cannot bring it into range");
+        static_assert(abs_den(Factor.Denominator) == 1 || HasPolicy<L, P, snap>
+                      || point_exactly_assignable<L, R>,
+          "incompatible notches: use with_snap() or policy<snap>() to allow rounding");
+
+        if constexpr (not includes(Interval<L>, Interval<R>))
         {
-          constexpr imax lower = LowerImax<L>;
-          constexpr imax upper = UpperImax<L>;
-          if (static_cast<imax>(rhs) < lower || static_cast<imax>(rhs) > upper) [[unlikely]]
-            if (handle_out_of_range(lhs, rhs, lower, upper, policy, action)) return lhs;
+          if constexpr (needs_runtime_domain_check<L, plain<P>, plain<A>>)
+          {
+            if constexpr (is_integer_mapping)
+            {
+              if (imax mapped = map_raw(rhs.raw()); mapped < RawLo<L> || mapped > RawHi<L>)
+                if (try_clamp_or_fail(lhs, rhs, policy, action)) return lhs;
+            }
+            else if (not includes(Interval<L>, as_rational(rhs)))
+              if (try_clamp_or_fail(lhs, rhs, policy, action)) return lhs;
+          }
         }
-      }
-      else if (not includes(Interval<L>, rhs))
-      {
-        // Non-integer L bounds: route through the rational path so fractional
-        // Lower/Upper drive clamp/sentinel/error correctly.
-        return assignment<L, rational>::assign(lhs, rational{rhs}, policy, action);
-      }
-    }
 
-    store(lhs, rhs);
-    return lhs;
-  }
-
-  //---------------------------------------------------------------------------
-  // assign(boundable, floating_point | rational) — helpers
-  //---------------------------------------------------------------------------
-  template <boundable L, typename R>
-    requires fractional<R>
-  template<typename P, typename A>
-  constexpr void assignment<L,R>::apply_clamp(L& lhs, R rhs, P&&, A&& action)
-  {
-    R clamped = (rhs < Lower<L>) ? static_cast<R>(Lower<L>) : static_cast<R>(Upper<L>);
-    R overshoot;
-    if constexpr (std::same_as<R, rational>)
-      overshoot = (rhs - clamped).value_or(rational{0});
-    else
-      overshoot = rhs - clamped;
-
-    // The clamp target is an interval endpoint — a grid point — so the slot is 0
-    // or NotchCount, no rounding. real takes the endpoint as a double, rational
-    // the exact constant (a double round-trip would lose non-dyadic endpoints);
-    // raw_from_offset<L> adds Lower back for direct-encoded storage.
-    if constexpr (real_raw<L>)
-      lhs = L::from_raw((rhs < Lower<L>) ? static_cast<double>(Lower<L>)
-                                         : static_cast<double>(Upper<L>));
-    else if constexpr (rational_raw<L>)
-      lhs = L::from_raw((rhs < Lower<L>) ? Lower<L> : Upper<L>);
-    else
-      lhs = L::from_raw(raw_from_offset<L>(
-          (rhs < Lower<L>) ? umax{0} : NotchCount<L>));
-
-    if constexpr (clamp_action<plain<A>>)
-      action.fn(lhs, overshoot);
-  }
-
-  // apply_wrap for real R — modular reduction into [Lower, Lower + range)
-  // followed by store_checked so the rounding policy still applies if rhs
-  // doesn't land on a notch after wrapping. range = Upper - Lower + Notch.
-  template <boundable L, typename R>
-    requires fractional<R>
-  template<typename P, typename A>
-  constexpr void assignment<L,R>::apply_wrap(L& lhs, R rhs, P&& policy, A&& action)
-  {
-    rational rhs_r{rhs};
-    rational lower_r = Lower<L>;
-    rational range   = ((Upper<L> - lower_r).value() + Notch<L>).value();
-    // q = floor((rhs - lower) / range), wrapped = rhs - q * range
-    rational shifted = (rhs_r - lower_r).value();
-    imax q = floor((shifted / range).value());
-    rational wrapped = (rhs_r - (rational{q} * range).value()).value();
-
-    // Re-enter the rational-rhs specialization for the actual store so the
-    // notch / rounding policy logic is exercised once.
-    assignment<L, rational>::store_checked(lhs, wrapped, policy, action);
-
-    if constexpr (wrap_action<plain<A>>)
-      action.fn(lhs, q);
-  }
-
-  template <boundable L, typename R>
-    requires fractional<R>
-  template<typename P, typename A>
-  constexpr bool assignment<L,R>::store_checked(L& lhs, R rhs, P&& policy, A&& action)
-  {
-    if constexpr (rational_raw<L> && Notch<L> == 0)
-    { lhs = L::from_raw(rhs); return true; }   // continuous: store verbatim
-    else if constexpr (real_raw<L>)
-    {
-      // real target: raw IS the value — snap to the dyadic grid (range handling
-      // already ran in the assign cascade; finite guard mirrors store_real's).
-      const double v = static_cast<double>(rhs);
-      if (!(v - v == 0))
-        detail::raise(errc::not_finite, "non-finite double");
-      lhs = L::from_raw(Grid<L>.snap_double(v));
-      return true;
-    }
-    else if constexpr (Lower<L> == Upper<L>)
-    {
-      // Singleton grid: offset encoding → Raw=0; rational/direct → Raw = Lower.
-      if constexpr (rational_raw<L>)
-        lhs = L::from_raw(Lower<L>);
-      else if constexpr (!index_raw<L>)
-        lhs = L::from_raw(raw_cast<L>(RawLo<L>));
-      else
-        lhs = L::from_raw(0);
-      return true;
-    }
-    else
-    {
-      // Store the k-th notch slot: rational storage holds the snapped value;
-      // raw_from_offset<L> covers offset- and direct-encoded integers.
-      auto store_slot = [&](auto k)
-      {
-        if constexpr (rational_raw<L>)
-          lhs = L::from_raw((Lower<L> + (rational{k} * Notch<L>).value()).value());
-        else
-          lhs = L::from_raw(raw_from_offset<L>(k));
-      };
-
-      constexpr bool has_round_flag =
-           HasPolicy<L, P, round_nearest> || HasPolicy<L, P, round_floor>
-        || HasPolicy<L, P, round_ceil>    || HasPolicy<L, P, round_half_even>
-        || HasPolicy<L, P, snap>;
-
-      // Q-format integer shortcut: with integer Lower and notch 1/K the offset is
-      // (num − Lo·aden)·(K/g) / (aden/g), g = gcd(aden, K) — one gcd + integer ops
-      // instead of two rational ops. round_quotient is invariant under reduction,
-      // so the slot is bit-identical to the rational path. Oversized denominators
-      // fall through (the kMaxDen guard keeps every product inside imax).
-      if constexpr (HasQFormatFastPath<L> && !real_raw<L> && Notch<L> != 0)
-      {
-        constexpr imax K  = abs_den(Notch<L>.Denominator);
-        constexpr imax Lo = LowerImax<L>;
-        constexpr umax kKM = []{
-          // 2 · K · M with saturation (M bounds |value| and the offset span)
-          umax k = static_cast<umax>(K);
-          umax m = static_cast<umax>(
-              ceil(((bnd::detail::abs(Lower<L>) > bnd::detail::abs(Upper<L>)
-                  ? bnd::detail::abs(Lower<L>) : bnd::detail::abs(Upper<L>))
-               ))) * 2 + 2;
-          if (k > std::numeric_limits<umax>::max() / m)
-            return std::numeric_limits<umax>::max();
-          umax km = k * m;
-          return (km > std::numeric_limits<umax>::max() / 2)
-                   ? std::numeric_limits<umax>::max() : km * 2;
-        }();
-        constexpr umax kMaxDen =
-            static_cast<umax>(std::numeric_limits<imax>::max()) / kKM;
-
-        const rational rv{rhs};                       // exact (copy for rational R)
-        const umax aden = abs_den(rv.Denominator);
-        if (kMaxDen != 0 && aden <= kMaxDen)
-        {
-          const umax g    = std::gcd(aden, static_cast<umax>(K));
-          const umax den2 = aden / g;
-          const imax k2   = K / static_cast<imax>(g);
-          const imax num  = (rv.Denominator < 0) ? -rv.Numerator : rv.Numerator;
-          const umax onum =                          // ≥ 0: rhs ≥ Lower (in range)
-              static_cast<umax>((num - Lo * static_cast<imax>(aden)) * k2);
-          if (den2 == 1)
-          { store_slot(onum); return true; }
-          if constexpr (has_round_flag)
-          { store_slot(round_quotient<L, P>(onum, den2)); return true; }
-          // strict policy, off-notch: fall through to the rational path for
-          // the error message / action plumbing (cold).
-        }
-      }
-
-      rational raw = ((rhs - Lower<L>)/Notch<L>).value();
-      umax den = static_cast<umax>(raw.Denominator);
-      if (den == 1)
-      { store_slot(raw.Numerator); return true; }
-
-      if constexpr (has_round_flag)
-        store_slot(round_quotient<L, P>(raw.Numerator, den));
-      else if (policy.round_check()) [[unlikely]]
-      {
-        if constexpr (error_action<plain<A>>)
-        { action.fn(lhs, errc::rounding_error, errc_message(errc::rounding_error)); return false; }
-        policy.report(errc::rounding_error);
-        return false;
-      }
-      else
-        store_slot(round_quotient<L, P>(raw.Numerator, den));
-      return true;
-    }
-  }
-
-  //---------------------------------------------------------------------------
-  // assign(boundable, floating_point | rational)
-  //---------------------------------------------------------------------------
-  template <boundable L, typename R>
-    requires fractional<R>
-  template<typename P, typename A>
-  constexpr L& assignment<L,R>::assign(L& lhs, R const& rhs, P&& policy, A&& action)
-  {
-    if (not includes(Interval<L>, rhs)) [[unlikely]]
-    {
-      // Fractional path has no wrap *action* branch (Wrappable = false).
-      if (dispatch_out_of_range<false>(lhs, policy, action,
-            [&]{ apply_clamp(lhs, rhs, policy, action); },
-            [&]{ apply_wrap (lhs, rhs, policy, action); },
-            [&]{ return rhs; },
-            [&]{ return rhs; }))
+        store(lhs, rhs, policy);
         return lhs;
-    }
-
-    store_checked(lhs, rhs, policy, action);
-    return lhs;
-  }
-
-  //---------------------------------------------------------------------------
-  // assign(boundable, boundable) — helpers
-  //---------------------------------------------------------------------------
-  template<boundable L, boundable R>
-  template<typename A>
-  constexpr void assignment<L,R>::apply_clamp(L& lhs, R const& rhs, A&& action)
-  {
-    // RawLo/RawHi are already the correct Raw (no raw_from_offset). Real storage
-    // takes the endpoint as a double (RawLo/Hi truncate fractional dyadic endpoints).
-    if constexpr (real_raw<L>)
-      lhs = L::from_raw((as_rational(rhs) < Lower<L>)
-        ? static_cast<double>(Lower<L>) : static_cast<double>(Upper<L>));
-    else
-      lhs = L::from_raw((as_rational(rhs) < Lower<L>)
-        ? raw_cast<L>(RawLo<L>) : raw_cast<L>(RawHi<L>));
-    // Overshoot (rhs − clamped) as a bound, via the result-grid inference of normal
-    // bound arithmetic: both operands are bounds, so the overshoot is too. It is always
-    // in-grid and on-notch for Grid<R> − Grid<L>, so the construction is exact.
-    if constexpr (clamp_action<plain<A>>)
-    {
-      constexpr grid OG = (Grid<R> - Grid<L>).value();
-      bnd::bound<OG> overshoot{ (as_rational(rhs) - as_rational(lhs)).value() };
-      action.fn(lhs, overshoot);
-    }
-  }
-
-  template<boundable L, boundable R>
-  template<typename P, typename A>
-  constexpr void assignment<L,R>::apply_wrap(L& lhs, R const& rhs, P&& policy, A&& action)
-  {
-    // The integer modular wrap (range = Upper - Lower + 1, integer values) is
-    // only correct on a unit-integer grid — notch 1 with integer bounds, so
-    // consecutive integers are adjacent grid points. Any other grid (fractional
-    // notch, non-integer bounds) routes through the rational modular wrap.
-    if constexpr (IsIntegerInterval<L> && abs_den(Notch<L>.Denominator) == 1
-                  && Notch<L>.Numerator == 1)
-    {
-      // Unit-integer fast path: modular wrap on the integer value.
-      imax rhs_imax = trunc(as_rational(rhs));
-      constexpr imax lower = LowerImax<L>;
-      constexpr imax upper = UpperImax<L>;
-      imax range = upper - lower + 1;
-      imax shifted = rhs_imax - lower;
-      imax wrapped = ((shifted % range) + range) % range;
-      imax excess  = (shifted < 0) ? ((shifted - range + 1) / range) : (shifted / range);
-      from_value(lhs, wrapped + lower);
-      if constexpr (wrap_action<plain<A>>)
-        action.fn(lhs, bnd::bound<wrap_excess_grid()>{excess});   // carry as a bound
-    }
-    else if constexpr (wrap_action<plain<A>>)
-    {
-      // Fractional destination with a wrap action: reuse the rational modular-wrap
-      // path for the store/rounding, but wrap its imax carry `q` into a bound before
-      // handing it to the user action.
-      assignment<L, rational>::apply_wrap(lhs, as_rational(rhs), policy,
-        bnd::on_wrap([&](auto& self, imax q){
-          action.fn(self, bnd::bound<wrap_excess_grid()>{q});
-        }));
-    }
-    else
-    {
-      // Fractional destination, no wrap action: delegate unchanged.
-      assignment<L, rational>::apply_wrap(lhs, as_rational(rhs), policy, action);
-    }
-  }
-
-  template<boundable L, boundable R>
-  template<typename P, typename A>
-  constexpr bool assignment<L,R>::try_clamp_or_fail(L& lhs, R const& rhs, P&& policy, A&& action)
-  {
-    return dispatch_out_of_range<true>(lhs, policy, action,
-      [&]{ apply_clamp(lhs, rhs, action); },
-      [&]{ apply_wrap (lhs, rhs, policy, action); },
-      [&]{ return as_rational(rhs); },
-      [&]{ return as_rational(rhs); });
-  }
-
-  template<boundable L, boundable R>
-  template<typename P>
-  constexpr void assignment<L,R>::store(L& lhs, R const& rhs, P&&)
-  {
-    if constexpr (real_raw<L>)
-      // real target: raw IS the value — decode the source and snap to the dyadic
-      // grid (the offset machinery below mis-encodes a double raw).
-      lhs = L::from_raw(Grid<L>.snap_double(as_double(rhs)));
-    else if constexpr (is_integer_mapping)
-    {
-      // exact: Factor and Offset have integer denominators, no rounding ambiguity
-      if constexpr (Offset == 0 && Factor == 1)
-        lhs = L::from_raw(raw_cast<L>(rhs.raw()));
-      else
-        lhs = L::from_raw(raw_cast<L>(map_raw(rhs.raw())));
-    }
-    else
-    {
-      rational rat = *(Offset + *(Factor * rhs.raw()));
-      umax ad = static_cast<umax>(abs_den(rat.Denominator));
-      // Round the L-offset to a notch index in VALUE space via round_quotient
-      // (same as the scalar path), honouring every rounding mode.
-      umax q = round_quotient<L, P>(rat.Numerator, ad);
-      // rat is the L-offset; raw_from_offset<L> adds Lower<L> back for direct storage.
-      lhs = L::from_raw((rat.Denominator < 0)
-        ? raw_from_offset<L>(-static_cast<imax>(q))
-        : raw_from_offset<L>(q));
-    }
-  }
-
-  //---------------------------------------------------------------------------
-  // assign(boundable, boundable)
-  //---------------------------------------------------------------------------
-  template<boundable L, boundable R>
-  template<typename P, typename A>
-  constexpr L& assignment<L,R>::assign(L& lhs, R const& rhs, P&& policy, A&& action)
-  {
-    // wrap/clamp bring any value into range, so a disjoint rhs interval is fine
-    // for them (matches the integral-rhs path); only strict policies reject it.
-    static_assert(HasPolicy<L, P, wrap> || HasPolicy<L, P, clamp>
-                  || not excludes(Interval<L>, Interval<R>),
-      "rhs interval lies entirely outside lhs interval and the policy cannot bring it into range");
-    static_assert(abs_den(Factor.Denominator) == 1 || HasPolicy<L, P, snap>
-                  || point_exactly_assignable<L, R>,
-      "incompatible notches: use with_snap() or policy<snap>() to allow rounding");
-
-    if constexpr (not includes(Interval<L>, Interval<R>))
-    {
-      if constexpr (needs_runtime_domain_check<L, plain<P>, plain<A>>)
-      {
-        if constexpr (is_integer_mapping)
-        {
-          if (imax mapped = map_raw(rhs.raw()); mapped < RawLo<L> || mapped > RawHi<L>)
-            if (try_clamp_or_fail(lhs, rhs, policy, action)) return lhs;
-        }
-        else if (not includes(Interval<L>, as_rational(rhs)))
-          if (try_clamp_or_fail(lhs, rhs, policy, action)) return lhs;
       }
-    }
-
-    store(lhs, rhs, policy);
-    return lhs;
-  }
+  };
 } // namespace bnd::detail
 
 
@@ -5577,19 +5539,18 @@ namespace bnd::detail
 
     // Result notch is gcd(NL, NR); scale each raw up to it before adding —
     // lhs_widen = NL/Nresult, rhs_widen = NR/Nresult (exact, Nresult divides both).
-    static constexpr imax lhs_widen = (Notch<L> / Notch<result>).value_or(rational{1}).Numerator;
-    static constexpr imax rhs_widen = (Notch<R> / Notch<result>).value_or(rational{1}).Numerator;
+    // Guard the continuous-grid case (Notch<result> == 0): the rational divide-by-zero
+    // path returns nullopt on GCC/Clang but MSVC's constexpr evaluator rejects it
+    // (C2131). widen is unused on the continuous/rational result path, so 1 is fine.
+    static constexpr imax lhs_widen = (Notch<result> == 0) ? imax{1}
+        : (Notch<L> / Notch<result>).value_or(rational{1}).Numerator;
+    static constexpr imax rhs_widen = (Notch<result> == 0) ? imax{1}
+        : (Notch<R> / Notch<result>).value_or(rational{1}).Numerator;
 
+    // Defined inline (not out-of-line): MSVC mishandles out-of-line member
+    // templates of constrained partial specializations.
     template <policy_flag F = none, typename E = empty_ref, typename A = no_action>
-    static constexpr add_return_t<F, A> add(L, R, policy<F, E> = {}, A&& = {});
-  };
-
-  //---------------------------------------------------------------------------
-  // add
-  //---------------------------------------------------------------------------
-  template<boundable L, boundable R>
-  template<policy_flag F, typename E, typename A>
-  constexpr auto addition<L,R>::add(L lhs, R rhs, policy<F, E> policy, A&& action) -> add_return_t<F, A>
+    static constexpr auto add(L lhs, R rhs, policy<F, E> policy = {}, A&& action = {}) -> add_return_t<F, A>
   {
     result res;
     if constexpr (real_raw<result>)
@@ -5635,6 +5596,7 @@ namespace bnd::detail
     }
     return res;
   }
+  };
 } // namespace bnd::detail
 
 
@@ -5692,16 +5654,10 @@ namespace bnd::detail
                                             result,
                                             return_type_for<P>>;
 
+    // Defined inline (not out-of-line): MSVC mishandles out-of-line member
+    // templates of constrained partial specializations.
     template <typename P, typename A = no_action>
-    static constexpr mul_return_t<P, A> mul(L, R, P&&, A&& = {});
-  };
-
-  //---------------------------------------------------------------------------
-  // mul
-  //---------------------------------------------------------------------------
-  template <boundable L, boundable R>
-  template <typename P, typename A>
-  constexpr auto multiplication<L,R>::mul(L lhs, R rhs, P&& policy, A&& action) -> mul_return_t<P, A>
+    static constexpr auto mul(L lhs, R rhs, P&& policy, A&& action = {}) -> mul_return_t<P, A>
   {
     if constexpr (real_raw<result>)
     {
@@ -5792,6 +5748,7 @@ namespace bnd::detail
                  "multiplication: internal logic error");
     }
   }
+  };
 } // namespace bnd::detail
 
 
@@ -8143,8 +8100,8 @@ namespace bnd::math
     constexpr imax fmul(imax a, imax b, int W) noexcept
     {
       bool neg = (a < 0) ^ (b < 0);
-      umax ua = (a < 0) ? -static_cast<umax>(a) : static_cast<umax>(a);
-      umax ub = (b < 0) ? -static_cast<umax>(b) : static_cast<umax>(b);
+      umax ua = (a < 0) ? umax{0} - static_cast<umax>(a) : static_cast<umax>(a);
+      umax ub = (b < 0) ? umax{0} - static_cast<umax>(b) : static_cast<umax>(b);
 #if defined(__SIZEOF_INT128__)
       // gcc/clang: native 128-bit, constexpr-friendly.
       umax r = static_cast<umax>((static_cast<unsigned __int128>(ua) * ub) >> W);

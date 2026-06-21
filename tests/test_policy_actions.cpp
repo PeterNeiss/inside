@@ -239,7 +239,7 @@ TEST_CASE("on_sentinel action receives original value", "[bound][policy][on_sent
 // action on imax-level overflow from a raw scalar RHS. Raw compound assigns are
 // gone, and a range-bounded operand can't overflow imax, so the path is moot.)
 
-TEST_CASE("multi-action with(...) — overflow vs clamp paths fire correctly",
+TEST_CASE("multi-action with(...) - overflow vs clamp paths fire correctly",
           "[bound][policy][multi]")
 {
   using c100 = bound<{0, 100}, checked>;

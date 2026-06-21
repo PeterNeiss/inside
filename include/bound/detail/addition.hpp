@@ -54,19 +54,18 @@ namespace bnd::detail
 
     // Result notch is gcd(NL, NR); scale each raw up to it before adding —
     // lhs_widen = NL/Nresult, rhs_widen = NR/Nresult (exact, Nresult divides both).
-    static constexpr imax lhs_widen = (Notch<L> / Notch<result>).value_or(rational{1}).Numerator;
-    static constexpr imax rhs_widen = (Notch<R> / Notch<result>).value_or(rational{1}).Numerator;
+    // Guard the continuous-grid case (Notch<result> == 0): the rational divide-by-zero
+    // path returns nullopt on GCC/Clang but MSVC's constexpr evaluator rejects it
+    // (C2131). widen is unused on the continuous/rational result path, so 1 is fine.
+    static constexpr imax lhs_widen = (Notch<result> == 0) ? imax{1}
+        : (Notch<L> / Notch<result>).value_or(rational{1}).Numerator;
+    static constexpr imax rhs_widen = (Notch<result> == 0) ? imax{1}
+        : (Notch<R> / Notch<result>).value_or(rational{1}).Numerator;
 
+    // Defined inline (not out-of-line): MSVC mishandles out-of-line member
+    // templates of constrained partial specializations.
     template <policy_flag F = none, typename E = empty_ref, typename A = no_action>
-    static constexpr add_return_t<F, A> add(L, R, policy<F, E> = {}, A&& = {});
-  };
-
-  //---------------------------------------------------------------------------
-  // add
-  //---------------------------------------------------------------------------
-  template<boundable L, boundable R>
-  template<policy_flag F, typename E, typename A>
-  constexpr auto addition<L,R>::add(L lhs, R rhs, policy<F, E> policy, A&& action) -> add_return_t<F, A>
+    static constexpr auto add(L lhs, R rhs, policy<F, E> policy = {}, A&& action = {}) -> add_return_t<F, A>
   {
     result res;
     if constexpr (real_raw<result>)
@@ -112,6 +111,7 @@ namespace bnd::detail
     }
     return res;
   }
+  };
 } // namespace bnd::detail
 
 #endif // BNDadditionHPP

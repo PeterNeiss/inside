@@ -55,16 +55,10 @@ namespace bnd::detail
                                             result,
                                             return_type_for<P>>;
 
+    // Defined inline (not out-of-line): MSVC mishandles out-of-line member
+    // templates of constrained partial specializations.
     template <typename P, typename A = no_action>
-    static constexpr mul_return_t<P, A> mul(L, R, P&&, A&& = {});
-  };
-
-  //---------------------------------------------------------------------------
-  // mul
-  //---------------------------------------------------------------------------
-  template <boundable L, boundable R>
-  template <typename P, typename A>
-  constexpr auto multiplication<L,R>::mul(L lhs, R rhs, P&& policy, A&& action) -> mul_return_t<P, A>
+    static constexpr auto mul(L lhs, R rhs, P&& policy, A&& action = {}) -> mul_return_t<P, A>
   {
     if constexpr (real_raw<result>)
     {
@@ -155,6 +149,7 @@ namespace bnd::detail
                  "multiplication: internal logic error");
     }
   }
+  };
 } // namespace bnd::detail
 
 #endif // BNDmultiplicationHPP

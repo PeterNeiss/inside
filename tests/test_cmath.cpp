@@ -93,7 +93,7 @@ namespace
 // Exact-by-symmetry: range reduction sends these phases to x_q30 = 0,
 // so the polynomial evaluator returns exactly 0 with no rounding error.
 //---------------------------------------------------------------------------
-TEST_CASE("bnd::math::sin: exact at multiples of π", "[cmath][sin][constexpr]")
+TEST_CASE("bnd::math::sin: exact at multiples of pi", "[cmath][sin][constexpr]")
 {
   static_assert(sin_q14(0)     == 0);   // sin(0)     = 0
   static_assert(sin_q14(32768) == 0);   // sin(π)     = 0
@@ -822,7 +822,7 @@ TEST_CASE("bnd::math::tan: exact-zero phases", "[cmath][tan][constexpr]")
   static_assert(tan_q10(32768) == 0);          // tan(π)  = 0
 }
 
-TEST_CASE("bnd::math::tan: ±π/4 = ±1", "[cmath][tan][constexpr]")
+TEST_CASE("bnd::math::tan: +/-pi/4 = +/-1", "[cmath][tan][constexpr]")
 {
   // tan(π/4) = 1 → Q.10 = 1024.
   static_assert(tan_q10(8192)  ==  1024);

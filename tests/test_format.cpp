@@ -68,7 +68,7 @@ TEST_CASE("std::format integration", "[format][std_format]")
   REQUIRE(std::format("{}",      rational{1u, 2})       == "0.5");
 }
 
-TEST_CASE("std::format numeric specs — integer-aligned bound", "[format][std_format]")
+TEST_CASE("std::format numeric specs - integer-aligned bound", "[format][std_format]")
 {
   // Integer-aligned bounds route through std::formatter<imax>, so every
   // standard integer spec flows through and matches a direct integer format.
@@ -90,7 +90,7 @@ TEST_CASE("std::format numeric specs — integer-aligned bound", "[format][std_f
   REQUIRE(std::format("{:4}", y)  == "  -7");
 }
 
-TEST_CASE("std::format numeric specs — fractional bound goes through double",
+TEST_CASE("std::format numeric specs - fractional bound goes through double",
           "[format][std_format]")
 {
   // Fractional grids fall to std::formatter<double> when a spec is present.
@@ -106,7 +106,7 @@ TEST_CASE("std::format numeric specs — fractional bound goes through double",
   REQUIRE(std::format("{}", f) == "1.25");
 }
 
-TEST_CASE("std::format numeric specs — representation flags",
+TEST_CASE("std::format numeric specs - representation flags",
           "[format][std_format][storage]")
 {
   // `exact` on a notched grid: empty spec keeps the exact fraction; a
@@ -127,7 +127,7 @@ TEST_CASE("std::format numeric specs — representation flags",
   REQUIRE(std::format("{:+}",  i) == "-3");
 }
 
-TEST_CASE("std::format numeric specs — rational", "[format][std_format][rational]")
+TEST_CASE("std::format numeric specs - rational", "[format][std_format][rational]")
 {
   // Empty spec — exact via to_string.
   REQUIRE(std::format("{}", rational{1u, 3}) == "1/3");

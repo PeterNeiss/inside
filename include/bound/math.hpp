@@ -62,7 +62,7 @@ namespace bnd
 
   template <std::signed_integral V>
   constexpr umax safe_abs(V value)
-  { return (value >= 0) ? static_cast<umax>(value) : -static_cast<umax>(value); }
+  { return (value >= 0) ? static_cast<umax>(value) : umax{0} - static_cast<umax>(value); }
 
   inline constexpr double frexp(double value, int* exp) noexcept
   {

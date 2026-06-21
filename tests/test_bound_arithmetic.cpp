@@ -382,7 +382,7 @@ TEST_CASE("exact scalar math stays in bound-space", "[bound][arithmetic][mixed]"
   REQUIRE((2_b * a) == 1);
 }
 
-TEST_CASE("bnd::sum — bulk reduction with one deferred check",
+TEST_CASE("bnd::sum - bulk reduction with one deferred check",
           "[bound][arithmetic][sum]")
 {
   // Integer raws (fast path): matches the naive += total.

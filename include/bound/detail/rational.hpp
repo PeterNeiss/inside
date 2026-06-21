@@ -32,7 +32,23 @@ namespace slim
 
 namespace bnd::detail
 {
-  constexpr umax abs_den(imax d) { return (d >= 0) ? static_cast<umax>(d) : -static_cast<umax>(d); }
+  constexpr umax abs_den(imax d) { return (d >= 0) ? static_cast<umax>(d) : umax{0} - static_cast<umax>(d); }
+
+  // Portable 64×64 → 128-bit unsigned product, as {hi, lo}. Used where a native
+  // unsigned __int128 is unavailable (MSVC). Schoolbook 32-bit split — the same
+  // construction trusted in cmath.hpp's fmul, so it stays bit-exact.
+  struct u128 { umax hi; umax lo; };
+  constexpr u128 umul(umax a, umax b)
+  {
+    umax al = a & 0xffffffffu, ah = a >> 32;
+    umax bl = b & 0xffffffffu, bh = b >> 32;
+    umax ll = al * bl, lh = al * bh, hl = ah * bl, hh = ah * bh;
+    umax mid = (ll >> 32) + (lh & 0xffffffffu) + (hl & 0xffffffffu);
+    return { hh + (lh >> 32) + (hl >> 32) + (mid >> 32),
+             (ll & 0xffffffffu) | (mid << 32) };
+  }
+  constexpr std::strong_ordering cmp128(u128 a, u128 b)
+  { return (a.hi != b.hi) ? (a.hi <=> b.hi) : (a.lo <=> b.lo); }
 
   //---------------------------------------------------------------------------
   // trim
@@ -817,13 +833,19 @@ namespace bnd::detail
     }
 
     // Cross-multiply in 128-bit: |numerator| and |denominator| are each ≤ 2^64−1,
-    // so the products fit exactly in unsigned __int128 — the comparison can never
-    // overflow, so no trap is needed.
-    using u128 = unsigned __int128;
-    u128 A = static_cast<u128>(lhs.Numerator) * rhs_ad;
-    u128 B = static_cast<u128>(rhs.Numerator) * lhs_ad;
-
+    // so the products fit exactly in 128 bits — the comparison can never overflow,
+    // so no trap is needed.
+#if defined(__SIZEOF_INT128__)
+    using u128n = unsigned __int128;
+    u128n A = static_cast<u128n>(lhs.Numerator) * rhs_ad;
+    u128n B = static_cast<u128n>(rhs.Numerator) * lhs_ad;
     return lhs_neg ? (B <=> A) : (A <=> B);
+#else
+    // Portable path (MSVC): form each product as {hi, lo} and compare lexically.
+    const u128 A = umul(lhs.Numerator, rhs_ad);
+    const u128 B = umul(rhs.Numerator, lhs_ad);
+    return lhs_neg ? cmp128(B, A) : cmp128(A, B);
+#endif
   }
 
   template <typename T>

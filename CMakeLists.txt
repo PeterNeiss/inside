@@ -67,6 +67,17 @@ target_compile_options(bound_bound
         >
         $<$<CXX_COMPILER_ID:MSVC>:
             /W4 /WX /permissive-
+            /utf-8   # source is UTF-8 (e.g. ≤ in literals) — avoid C4566
+            # Suppressed warnings are intentional patterns in this numeric template
+            # code (GCC/Clang at -Wall -Wextra do not flag these):
+            #   C4146 — unary minus on unsigned (deliberate modular negation on umax)
+            #   C4127 — conditional expression is constant (runtime `if` on constexpr)
+            #   C4459 — local declaration hides a global (benign local naming)
+            #   C4702 — unreachable code (per-instantiation dead branches of if constexpr)
+            #   C4100 — unreferenced formal parameter (unused policy/action args)
+            #   C4244 — conversion, possible data loss (intentional numeric narrowing)
+            #   C4305 — truncation in initialization (intentional numeric narrowing)
+            /wd4146 /wd4127 /wd4459 /wd4702 /wd4100 /wd4244 /wd4305
         >
 )
 
