@@ -221,18 +221,20 @@ TEST_CASE("non-finite doubles are rejected, both engines",
 TEST_CASE("atan / atan2 accept magnitudes beyond 1", "[cmath][atan][domain]")
 {
   using wide_t = bound<{{-16, 16}, notch<1, 16384>}, round_nearest | real>;
-  const double tol = 2.0 / 16384;
 
   auto val = [](auto b) { return static_cast<double>(rational{b}); };
 
-  REQUIRE(std::fabs(val(math::atan(wide_t{2}))   - 1.1071487177) < tol);
-  REQUIRE(std::fabs(val(math::atan(wide_t{-3}))  + 1.2490457724) < tol);
-  REQUIRE(std::fabs(val(math::atan(wide_t{16}))  - 1.5083775168) < tol);
-  REQUIRE(std::fabs(val(math::atan(wide_t{rational{1, 2}})) - 0.4636476090) < tol);
+  // Determinism: pin the exact grid output (a multiple of 1/16384, exactly
+  // representable in double). These values are bit-identical on both math engines
+  // and every platform; the comments give the true atan they snap to.
+  REQUIRE(val(math::atan(wide_t{2}))   ==  0x1.1b7p+0);    // ~1.1071488
+  REQUIRE(val(math::atan(wide_t{-3}))  == -0x1.3fcp+0);    // ~-1.2490234
+  REQUIRE(val(math::atan(wide_t{16}))  ==  0x1.8224p+0);   // ~1.5083618
+  REQUIRE(val(math::atan(wide_t{rational{1, 2}})) == 0x1.dacp-2);  // ~0.4636230
 
-  REQUIRE(std::fabs(val(math::atan2(wide_t{3},  wide_t{1}))  - 1.2490457724) < tol);
-  REQUIRE(std::fabs(val(math::atan2(wide_t{1},  wide_t{-5})) - 2.9441970937) < tol);
-  REQUIRE(std::fabs(val(math::atan2(wide_t{-7}, wide_t{2}))  + 1.2924966677) < tol);
+  REQUIRE(val(math::atan2(wide_t{3},  wide_t{1}))  ==  0x1.3fcp+0);    // ~1.2490234
+  REQUIRE(val(math::atan2(wide_t{1},  wide_t{-5})) ==  0x1.78dcp+1);   // ~2.9442139
+  REQUIRE(val(math::atan2(wide_t{-7}, wide_t{2}))  == -0x1.4aep+0);    // ~-1.2924805
 }
 
 // Regression: per-operation policy overrides (`with_*`, `on_*`, `policy(ec)`)

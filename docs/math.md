@@ -2,7 +2,8 @@
 
 `bound/cmath.hpp` provides a `<cmath>`-shaped function set that operates on
 `bound` values instead of `float`/`double`. There is **one public API** and
-**two interchangeable engines**, selected at build time:
+**two engines**, selected at build time — interchangeable at the source/API level,
+but **not** value-for-value (see the engine caveat below):
 
 | Engine | Selected by | Reproducibility | constexpr | Speed |
 |---|---|---|---|---|
@@ -20,10 +21,15 @@ Q.30 fixed-point CORDIC/Newton cores. Both snap results onto the same
 auto-deduced output grid, so the two engines are **feature- and
 signature-identical**: the same source compiles against either.
 
-> Engine = speed/representation; grid = precision. The result type and its
-> grid-snapped value do not depend on the engine — only the internal
-> arithmetic (and therefore the reproducibility contract and constexpr-ness)
-> does.
+> Engine = speed/representation; grid = precision. The result **type** does not
+> depend on the engine, and each engine is bit-reproducible across platforms.
+> The grid-snapped **value**, however, can differ between the two engines by up to
+> one notch on rare rounding ties (the table-maker's dilemma): the engines are
+> independent approximations, so **switching engines is not value-preserving**.
+> Don't mix or compare outputs from different engines — see
+> [determinism.md](determinism.md) ("The two engines are not value-identical").
+> (Algebraic ops — `+ − × ÷`, conversions, rounding — *are* identical across
+> engines; only the transcendentals can differ.)
 
 For the full reproducibility story across the whole library (not just
 `bnd::math`), see [determinism.md](determinism.md).

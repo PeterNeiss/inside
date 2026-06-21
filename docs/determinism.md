@@ -26,6 +26,12 @@ assumptions (e.g. an x86 host replaying a soft-float embedded core), build with
 `-DBOUND_MATH_FIXED=ON`. Otherwise the default engine is reproducible on every
 conforming IEEE-754 platform built without `-ffast-math`.
 
+> **"Reproducible" means per engine.** Each `bnd::math` engine is bit-identical for
+> a given engine, but the `double` and integer/CORDIC engines are **not**
+> value-identical to *each other* — their transcendentals can differ by up to one
+> output notch, so switching engines is not value-preserving. See
+> [The two engines are not value-identical](#the-two-engines-are-not-value-identical-switching-engines-changes-results).
+
 ## The integer & rational core is deterministic by construction
 
 Every non-`real` bound stores its value as a fixed-width integer index/value, and
@@ -110,9 +116,38 @@ This engine is **unconditionally** bit-identical — any platform, any flags, no
 FPU required — at the cost of speed. Use it for embedded / soft-float targets or
 when you must match results across a heterogeneous fleet.
 
-Both engines write to the same auto-deduced output grids, so reproducibility is
-orthogonal to the representation — the grid fixes correctness regardless of which
-engine produced the value.
+Both engines write to the same auto-deduced output grids, so each is reproducible
+and correct to within the grid — but that does **not** mean the two engines produce
+the *same* grid value for every input (see below).
+
+### The two engines are not value-identical (switching engines changes results)
+
+Each engine is deterministic **per engine** — bit-identical for a given engine
+across platform, compiler, optimisation level, and FP flags. But the two engines
+are **independent approximations** of the same irrational result, so for some inputs
+they land on **adjacent notches**: they can differ by **up to one notch** (one ULP
+of the output grid).
+
+**Why — the table-maker's dilemma.** When the exact mathematical result falls
+extremely close to the midpoint between two grid points, each engine's tiny
+(sub-notch) approximation error can tip round-to-nearest to the *opposite*
+neighbour. No finite working precision rules this out for every transcendental —
+guaranteeing a single correctly-rounded value in all cases is the open,
+unbounded-cost table-maker's dilemma, so the library does not promise it.
+
+*Example.* `sinh(4)` on a `notch<1, 4096>` grid is `111779.5008…` — only `0.0008`
+of a notch above the midpoint `111779.5`. The default `double` engine rounds up to
+`111780/4096`; the integer/CORDIC engine rounds down to `111779/4096`. Both are
+within the grid's resolution of the true value; they simply disagree by one notch.
+
+**Consequence — switching engines is not value-preserving.** You **cannot** rebuild
+with the other engine and expect bit-identical results: toggling `-DBOUND_MATH_FIXED`
+can change individual transcendental values by up to a notch. Golden vectors,
+record-and-replay corpora, lockstep peers, and any cross-build comparison are valid
+**within a single engine only** — pick one engine for any dataset that must stay
+bit-comparable, and never mix outputs from the two engines. (Algebraic results —
+`+ − × ÷`, conversions, rounding — *are* identical across engines; this caveat is
+specific to the transcendental `bnd::math` functions.)
 
 ## Compile-time determinism
 

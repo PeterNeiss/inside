@@ -60,18 +60,19 @@ namespace d = bnd::math::dbl::detail;
 //---------------------------------------------------------------------------
 TEST_CASE("dbl: cbrt of negatives and atan2 on the axes", "[dbl][cover]")
 {
-  // cbrt(x<0) = -cbrt(-x)
-  REQUIRE(std::fabs(d::d_cbrt(-8.0)  - (-2.0)) < 1e-12);
-  REQUIRE(std::fabs(d::d_cbrt(-27.0) - (-3.0)) < 1e-12);
-  REQUIRE(std::fabs(d::d_cbrt(27.0)  -   3.0)  < 1e-12);
+  // cbrt(x<0) = -cbrt(-x). Determinism: exact golden outputs (the engine's own
+  // polynomial is bit-identical across platforms; cube roots land 1 ULP off).
+  REQUIRE(d::d_cbrt(-8.0)  == -0x1.fffffffffffffp+0);  // -2 (1 ULP low)
+  REQUIRE(d::d_cbrt(-27.0) == -0x1.7ffffffffffffp+1);  // -3 (1 ULP low)
+  REQUIRE(d::d_cbrt(27.0)  ==  0x1.7ffffffffffffp+1);  //  3 (1 ULP low)
 
-  // atan2 with x == 0: the y>0 / y<0 / y==0 axis cases.
-  REQUIRE(std::fabs(d::d_atan2(1.0, 0.0)  - std::atan2(1.0, 0.0))  < 1e-12);  // +pi/2
-  REQUIRE(std::fabs(d::d_atan2(-1.0, 0.0) - std::atan2(-1.0, 0.0)) < 1e-12);  // -pi/2
-  REQUIRE(d::d_atan2(0.0, 0.0) == 0.0);                                        //  0
+  // atan2 with x == 0: the y>0 / y<0 / y==0 axis cases (exact constants).
+  REQUIRE(d::d_atan2(1.0, 0.0)  ==  0x1.921fb54442d18p+0);  // +pi/2
+  REQUIRE(d::d_atan2(-1.0, 0.0) == -0x1.921fb54442d18p+0);  // -pi/2
+  REQUIRE(d::d_atan2(0.0, 0.0)  ==  0.0);                   //  0
   // and the x<0 reflective branch for good measure
-  REQUIRE(std::fabs(d::d_atan2(1.0, -1.0)  - std::atan2(1.0, -1.0))  < 1e-12);
-  REQUIRE(std::fabs(d::d_atan2(-1.0, -1.0) - std::atan2(-1.0, -1.0)) < 1e-12);
+  REQUIRE(d::d_atan2(1.0, -1.0)  ==  0x1.2d97c7f3321d2p+1);  //  3pi/4
+  REQUIRE(d::d_atan2(-1.0, -1.0) == -0x1.2d97c7f3321d2p+1);  // -3pi/4
 }
 #endif // !BND_MATH_FIXED
 

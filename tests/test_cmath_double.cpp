@@ -81,7 +81,7 @@ TEST_CASE("dbl: end-to-end on real (double-backed) bounds", "[dbl][real]")
   // escape from the grid).
   ang x = 0.6;
   amp y = math::dbl::sin_core<amp>(x);
-  REQUIRE(std::fabs(double(y) - std::sin(0.6)) < 2.0 / 65536);   // ~one notch
+  REQUIRE(double(y) == 0x1.211ap-1);   // determinism: sin(0.6) snapped to 1/65536 (~0.56476)
   const double scaled = double(y) * 65536.0;
   REQUIRE(scaled == std::trunc(scaled));                         // exact grid point
 
@@ -112,12 +112,11 @@ TEST_CASE("dbl: real-storage arithmetic composes (double, grid-typed)", "[dbl][r
   static_assert(std::is_same_v<decltype(w)::raw_type, double>);
   static_assert(std::is_same_v<decltype(d)::raw_type, double>);
 
-  // Each operand and result snaps to its grid, so the composed value tracks the
-  // ideal to ~a notch (not full double precision — that's the grid's job).
-  double sv = std::sin(0.6);
-  REQUIRE(std::fabs(double(y) - 2.5 * sv)       < 1e-4);
-  REQUIRE(std::fabs(double(w) - 3.5 * sv)       < 1e-4);
-  REQUIRE(std::fabs(double(d) - (sv - 0.1))     < 1e-4);
+  // Each operand and result snaps to its grid; pin the exact composed grid values
+  // (deterministic across platforms). Ideals: 2.5·sin.6, 3.5·sin.6, sin.6−0.1.
+  REQUIRE(double(y) == 0x1.69608p+0);   // ~1.41190
+  REQUIRE(double(w) == 0x1.f9ed8p+0);   // ~1.97644
+  REQUIRE(double(d) == 0x1.dbccp-2);    // ~0.46484
 
   REQUIRE((s > amp{0.5}));     // compares in double, no truncation
   REQUIRE((s == s));
@@ -140,7 +139,7 @@ TEST_CASE("dbl: mixed-sign sqrt returns expected on the double engine", "[dbl][r
   in nine = 9.0;
   auto r = math::sqrt(nine);
   REQUIRE(r.has_value());
-  REQUIRE(std::fabs(double(*r) - 3.0) < 1e-15);
+  REQUIRE(double(*r) == 3.0);   // sqrt(9) lands exactly on the grid
 
   in zero = 0.0;
   auto r0 = math::sqrt(zero);
@@ -162,15 +161,15 @@ TEST_CASE("dbl: circle<M> degree angle uses the double engine", "[dbl][real][cir
   math::amp<65536> y, c;
   math::sin(deg, y);
   math::cos(deg, c);
-  REQUIRE(std::fabs(double(y) - std::sin(47.0 * std::numbers::pi / 180.0)) < 2.0 / 65536);
-  REQUIRE(std::fabs(double(c) - std::cos(47.0 * std::numbers::pi / 180.0)) < 2.0 / 65536);
+  REQUIRE(double(y) == 0x1.7674p-1);   // sin(47°) snapped to 1/65536 (~0.73135)
+  REQUIRE(double(c) == 0x1.5d2ep-1);   // cos(47°) snapped to 1/65536 (~0.68201)
 
   // exact at cardinal degrees
   math::circle<360> d0 = 0.0, d180 = 180.0;
   math::amp<65536> s0, s180;
   math::sin(d0, s0);  math::sin(d180, s180);
   REQUIRE(double(s0) == 0.0);
-  REQUIRE(std::fabs(double(s180)) < 1e-15);
+  REQUIRE(double(s180) == 0.0);   // sin(180°) is exactly 0
 }
 
 // The algebraic tier (abs/floor/ceil/round/trunc/fmod) is exercised at compile
