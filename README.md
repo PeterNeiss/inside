@@ -1,5 +1,7 @@
 # bound
 
+[![CI](https://github.com/NiceAndPeter/bound/actions/workflows/ci.yml/badge.svg)](https://github.com/NiceAndPeter/bound/actions/workflows/ci.yml)
+
 > **Status: alpha.** The library is under active development and the public API
 > may change between versions. `bound` was developed with
 > [Claude Code](https://claude.com/claude-code), Anthropic's agentic coding tool.

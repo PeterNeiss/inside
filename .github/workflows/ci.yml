@@ -1,0 +1,122 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    name: linux ${{ matrix.cc }} ${{ matrix.build }}${{ matrix.note }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-24.04, cc: gcc,   ver: 13, build: Debug }
+          - { os: ubuntu-24.04, cc: gcc,   ver: 13, build: Release }
+          - { os: ubuntu-24.04, cc: gcc,   ver: 14, build: Debug }
+          - { os: ubuntu-24.04, cc: gcc,   ver: 14, build: Release, heavy: true }
+          - { os: ubuntu-24.04, cc: clang, ver: 18, build: Debug }
+          - { os: ubuntu-24.04, cc: clang, ver: 18, build: Release }
+          - { os: ubuntu-22.04, cc: gcc,   ver: 12, build: Debug,   extra: "-DBOUND_CXX20=ON",      note: " (C++20)" }
+          - { os: ubuntu-24.04, cc: gcc,   ver: 14, build: Release, extra: "-DBOUND_MATH_FIXED=ON", note: " (CORDIC)", heavy: true }
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build
+          if [ "${{ matrix.cc }}" = "gcc" ]; then
+            sudo apt-get install -y g++-${{ matrix.ver }}
+            echo "CC=gcc-${{ matrix.ver }}"  >> "$GITHUB_ENV"
+            echo "CXX=g++-${{ matrix.ver }}" >> "$GITHUB_ENV"
+          else
+            sudo apt-get install -y clang-${{ matrix.ver }}
+            echo "CC=clang-${{ matrix.ver }}"    >> "$GITHUB_ENV"
+            echo "CXX=clang++-${{ matrix.ver }}" >> "$GITHUB_ENV"
+          fi
+
+      - name: Configure
+        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ matrix.build }} ${{ matrix.extra }}
+
+      - name: Build
+        run: cmake --build build -j
+
+      - name: Unit tests
+        run: ctest --test-dir build --output-on-failure -LE example
+
+      - name: Examples
+        run: ctest --test-dir build --output-on-failure -L example
+
+      - name: Single-header smokes
+        run: cmake --build build --target single_header_smoke single_header_freestanding_smoke
+
+      # bound_fuzz and bench are large, slow-to-compile EXCLUDE_FROM_ALL targets,
+      # so they are exercised only in Release on representative cells (one per
+      # math engine) rather than across the whole matrix. bench is build-only —
+      # a benchmark has no pass/fail; building it verifies it stays compilable.
+      - name: Fuzz + bench (Release, representative cells)
+        if: matrix.heavy
+        run: |
+          cmake --build build --target bound_fuzz bench -j
+          ./build/bound_fuzz
+
+  windows:
+    name: windows msvc ${{ matrix.build }}
+    runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        build: [Debug, Release]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -B build -G "Visual Studio 17 2022"
+
+      - name: Build
+        run: cmake --build build --config ${{ matrix.build }} -j
+
+      - name: Unit tests
+        run: ctest --test-dir build -C ${{ matrix.build }} --output-on-failure -LE example
+
+      - name: Examples
+        run: ctest --test-dir build -C ${{ matrix.build }} --output-on-failure -L example
+
+      - name: Single-header smokes
+        run: cmake --build build --config ${{ matrix.build }} --target single_header_smoke single_header_freestanding_smoke
+
+  macos:
+    name: macos appleclang ${{ matrix.build }}
+    runs-on: macos-14
+    strategy:
+      fail-fast: false
+      matrix:
+        build: [Debug, Release]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Ninja
+        run: brew install ninja
+
+      - name: Configure
+        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ matrix.build }}
+
+      - name: Build
+        run: cmake --build build -j
+
+      - name: Unit tests
+        run: ctest --test-dir build --output-on-failure -LE example
+
+      - name: Examples
+        run: ctest --test-dir build --output-on-failure -L example
+
+      - name: Single-header smokes
+        run: cmake --build build --target single_header_smoke single_header_freestanding_smoke

@@ -126,12 +126,17 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(ctrack)
 
-add_executable(bench tests/bench.cpp)
+# bench (ctrack) and bound_fuzz are EXCLUDE_FROM_ALL: both are large, slow-to-
+# compile test harnesses (the all-in-one fuzz TU instantiates every property
+# across the whole grid catalogue) that validate nothing an end user compiles,
+# so the default `cmake --build` stays lean. Build on demand with
+# `--target bench` / `--target bound_fuzz`.
+add_executable(bench EXCLUDE_FROM_ALL tests/bench.cpp)
 target_link_libraries(bench PUBLIC bound::bound)
 get_target_property(CTRACK_INCLUDE_DIRS ctrack INTERFACE_INCLUDE_DIRECTORIES)
 target_include_directories(bench SYSTEM PUBLIC ${CTRACK_INCLUDE_DIRS})
 
-add_executable(bound_fuzz tests/fuzz.cpp)
+add_executable(bound_fuzz EXCLUDE_FROM_ALL tests/fuzz.cpp)
 target_link_libraries(bound_fuzz PUBLIC bound::bound)
 
 #---------------------------------------------------------------------------
