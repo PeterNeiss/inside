@@ -5,7 +5,8 @@
 #define BNDcmathHPP
 
 #include "bound/bound.hpp"
-#include "bound/cmath_double.hpp"   // the default (double) math engine
+#include "bound/cmath_double.hpp"   // the double (binary64) math engine
+#include "bound/cmath_float.hpp"    // the float  (binary32) math engine
 
 #include "slim/expected.hpp"     // slim::expected, slim::unexpected
 
@@ -2232,6 +2233,148 @@ namespace bnd::math
       return slim::expected<Out, errc>{store<Out>(r)};
     }
   } // namespace dbl
+
+  namespace flt
+  {
+    // Public-shaped float-engine entry points — binary32 compute, same shapes as
+    // dbl:: (qualify shared helpers as bnd::math::detail::; *_core/store/d_* are
+    // this namespace's own). A third value set (float ≠ double ≠ cordic).
+    template <boundable In>
+      requires (Lower<In> == bnd::detail::rational{0})
+    [[nodiscard]] BND_DBL_FN auto sqrt(In x) noexcept
+    { static_assert(bnd::math::detail::require_snap<In>()); return sqrt_core<bnd::math::detail::sqrt_auto_t<In>>(x); }
+
+    template <boundable In>
+      requires (Lower<In> < bnd::detail::rational{0})
+    [[nodiscard]] BND_DBL_FN auto sqrt(In x) noexcept
+    {
+      static_assert(bnd::math::detail::require_snap<In>());
+      using Out = bnd::math::detail::sqrt_signed_auto_t<In>;
+      float v = static_cast<float>(x);
+      if (v < 0.0f)
+        return slim::expected<Out, errc>{slim::unexpected(errc::domain_error)};
+      return slim::expected<Out, errc>{store<Out>(detail::d_sqrt(v))};
+    }
+
+    template <boundable In>
+    [[nodiscard]] BND_DBL_FN auto exp2(In x) noexcept
+    { static_assert(bnd::math::detail::require_snap<In>()); return exp2_core<bnd::math::detail::exp2_auto_t<In>>(x); }
+
+    template <boundable In>
+    [[nodiscard]] BND_DBL_FN auto log2(In x) noexcept
+    {
+      static_assert(bnd::math::detail::require_snap<In>());
+      static_assert(Lower<In> > 0, "bnd::math::flt::log2: input must be strictly positive");
+      return log2_core<bnd::math::detail::log2_auto_t<In>>(x);
+    }
+
+    template <boundable In>
+    [[nodiscard]] BND_DBL_FN auto exp(In x) noexcept
+    { static_assert(bnd::math::detail::require_snap<In>()); return exp_core<bnd::math::detail::exp_auto_t<In>>(x); }
+
+    template <boundable In>
+    [[nodiscard]] BND_DBL_FN auto log(In x) noexcept
+    {
+      static_assert(bnd::math::detail::require_snap<In>());
+      static_assert(Lower<In> > 0, "bnd::math::flt::log: input must be strictly positive");
+      return log_core<bnd::math::detail::log_auto_t<In>>(x);
+    }
+
+    template <imax Base, boundable In>
+    [[nodiscard]] BND_DBL_FN auto pow_base(In x) noexcept
+    {
+      static_assert(bnd::math::detail::require_snap<In>());
+      using Out = bnd::math::detail::pow_base_auto_t<Base, In>;
+      return store<Out>(detail::d_pow(static_cast<float>(Base), static_cast<float>(x)));
+    }
+
+    template <boundable In>
+    [[nodiscard]] BND_DBL_FN auto sin(In angle) noexcept
+    { static_assert(bnd::math::detail::require_snap<In>()); return sin_core<bnd::math::detail::sin_auto_t<In>>(angle); }
+
+    template <boundable In>
+    [[nodiscard]] BND_DBL_FN auto cos(In angle) noexcept
+    { static_assert(bnd::math::detail::require_snap<In>()); return cos_core<bnd::math::detail::cos_auto_t<In>>(angle); }
+
+    template <boundable In>
+    [[nodiscard]] BND_DBL_FN auto tan(In angle) noexcept
+    {
+      static_assert(bnd::math::detail::require_snap<In>());
+      using Out = bnd::math::detail::tan_auto_t<In>;
+      float x = static_cast<float>(angle);
+      float c = detail::d_cos(x);
+      if (c == 0.0f)
+        return slim::expected<Out, errc>{slim::unexpected(errc::division_by_zero)};
+      float t = detail::d_sin(x) / c;
+      if constexpr (!has_flag(BoundPolicy<Out>, clamp))   // clamp Out: saturate below
+        if (t < static_cast<float>(Lower<Out>) || t > static_cast<float>(Upper<Out>))
+          return slim::expected<Out, errc>{slim::unexpected(errc::overflow)};
+      return slim::expected<Out, errc>{store<Out>(t)};
+    }
+
+    template <boundable In>
+    [[nodiscard]] BND_DBL_FN auto atan2(In y, In x) noexcept
+    { static_assert(bnd::math::detail::require_snap<In>()); return atan2_core<bnd::math::detail::atan2_auto_t<In>>(y, x); }
+
+    template <boundable In>
+    [[nodiscard]] BND_DBL_FN auto atan(In x) noexcept
+    { static_assert(bnd::math::detail::require_snap<In>()); return atan_core<bnd::math::detail::atan_auto_t<In>>(x); }
+
+    template <boundable In>
+    [[nodiscard]] BND_DBL_FN auto asin(In x) noexcept
+    { static_assert(bnd::math::detail::require_snap<In>()); return asin_core<bnd::math::detail::asin_auto_t<In>>(x); }
+
+    template <boundable In>
+    [[nodiscard]] BND_DBL_FN auto acos(In x) noexcept
+    { static_assert(bnd::math::detail::require_snap<In>()); return acos_core<bnd::math::detail::acos_auto_t<In>>(x); }
+
+    template <boundable In>
+    [[nodiscard]] BND_DBL_FN auto sinh(In x) noexcept
+    { static_assert(bnd::math::detail::require_snap<In>()); return sinh_core<bnd::math::detail::sinh_auto_t<In>>(x); }
+
+    template <boundable In>
+    [[nodiscard]] BND_DBL_FN auto cosh(In x) noexcept
+    { static_assert(bnd::math::detail::require_snap<In>()); return cosh_core<bnd::math::detail::cosh_auto_t<In>>(x); }
+
+    template <boundable In>
+    [[nodiscard]] BND_DBL_FN auto tanh(In x) noexcept
+    { static_assert(bnd::math::detail::require_snap<In>()); return tanh_core<bnd::math::detail::tanh_auto_t<In>>(x); }
+
+    template <boundable In>
+    [[nodiscard]] BND_DBL_FN auto log10(In x) noexcept
+    {
+      static_assert(bnd::math::detail::require_snap<In>());
+      static_assert(Lower<In> > 0, "bnd::math::flt::log10: input must be strictly positive");
+      return log10_core<bnd::math::detail::log10_auto_t<In>>(x);
+    }
+
+    template <boundable In>
+    [[nodiscard]] BND_DBL_FN auto cbrt(In x) noexcept
+    { static_assert(bnd::math::detail::require_snap<In>()); return cbrt_core<bnd::math::detail::cbrt_auto_t<In>>(x); }
+
+    template <boundable InX, boundable InY>
+    [[nodiscard]] BND_DBL_FN auto hypot(InX x, InY y) noexcept
+    {
+      static_assert(bnd::math::detail::require_snap<InX>() && bnd::math::detail::require_snap<InY>());
+      return hypot_core<bnd::math::detail::hypot_auto_t<InX, InY>>(x, y);
+    }
+
+    template <boundable InB, boundable InE>
+      requires (Lower<InB> > bnd::detail::rational{0})
+    [[nodiscard]] BND_DBL_FN auto pow(InB base, InE exp) noexcept
+    {
+      static_assert(bnd::math::detail::require_snap<InB>() && bnd::math::detail::require_snap<InE>());
+      using Out = bnd::math::detail::pow_auto_t<InB, InE>;
+      float b = static_cast<float>(base);
+      if (b <= 0.0f)
+        return slim::expected<Out, errc>{slim::unexpected(errc::domain_error)};
+      float r = detail::d_pow(b, static_cast<float>(exp));
+      if constexpr (!has_flag(BoundPolicy<Out>, clamp))   // clamp Out: saturate below
+        if (r < static_cast<float>(Lower<Out>) || r > static_cast<float>(Upper<Out>))
+          return slim::expected<Out, errc>{slim::unexpected(errc::overflow)};
+      return slim::expected<Out, errc>{store<Out>(r)};
+    }
+  } // namespace flt
 #endif // !BND_MATH_NO_FP
 }
 

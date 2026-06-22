@@ -215,16 +215,17 @@ FPU-free build. The default double engine is the right choice everywhere
 else: it carries the same grid guarantees and is reproducible across IEEE-754
 platforms compiled without `-ffast-math`.
 
-## Choosing an engine per call (`cordic::` / `dbl::`)
+## Choosing an engine per call (`cordic::` / `dbl::` / `flt::`)
 
-The unqualified `bnd::math::fn` uses the build's default engine. Both engines are
-also reachable by name, **callable side-by-side in the same binary**:
+The unqualified `bnd::math::fn` uses the build's default engine. All three engines
+are also reachable by name, **callable side-by-side in the same binary**:
 
 | Namespace | Engine | Availability |
 |---|---|---|
 | `bnd::math::cordic::fn` | integer / CORDIC | **always** (constexpr, FPU-free) |
-| `bnd::math::dbl::fn` | `double` | unless `BND_MATH_NO_FP` |
-| `bnd::math::fn` | the default | alias of `cordic` under `BND_MATH_FIXED`/`BND_MATH_NO_FP`, else `dbl` |
+| `bnd::math::dbl::fn` | `double` (binary64) | unless `BND_MATH_NO_FP` |
+| `bnd::math::flt::fn` | `float` (binary32) | unless `BND_MATH_NO_FP` |
+| `bnd::math::fn` | the default | `cordic` under `BND_MATH_FIXED`/`BND_MATH_NO_FP`, else `dbl` |
 
 The qualified entry points have the **same signatures, domains, auto-deduced
 output grids, and domain `static_assert`s** as the unqualified one — only the
@@ -235,14 +236,36 @@ using A = bound<{{-8, 8}, notch<1, 16384>}, round_nearest | real>;
 
 auto a = math::cordic::sin(A{1});   // bit-exact across every target — replay/sim
 auto b = math::dbl::sin(A{1});      // ~2× faster — hot, accuracy-insensitive path
+auto f = math::flt::sin(A{1});      // binary32 — single-precision FPUs (Cortex-M4F)
 auto c = math::sin(A{1});           // whichever the build selected
 ```
 
-Because the engines are independent approximations, `cordic::fn` and `dbl::fn`
-can disagree by up to one notch on rounding ties (the table-maker's dilemma — see
+Because the engines are independent approximations, they can disagree by a notch
+or two on rounding ties (the table-maker's dilemma — see
 [determinism.md](determinism.md)); algebraically-exact inputs (e.g. `sqrt(4)`,
-`pow(2,4)`) land identically. Under `BND_MATH_NO_FP` the `dbl::` namespace is not
-defined, so a `dbl::` call there is a compile error; `cordic::` always works.
+`pow(2,4)`) land identically on all three. Under `BND_MATH_NO_FP` neither `dbl::`
+nor `flt::` is defined, so a call to either there is a compile error; `cordic::`
+always works.
+
+### The `flt` (binary32) engine
+
+`flt::` evaluates the same fixed polynomials as `dbl::` but in single precision,
+with its own compile-time-derived Cody-Waite range-reduction constants and the
+correctly-rounded `std::fma(float)`/`std::sqrt(float)` — so it is **bit-identical
+on every IEEE-754 binary32 platform** (same determinism contract as `dbl`). It
+exists for **single-precision-only FPUs** (Cortex-M4F and similar) and for
+size/speed where double-grade precision isn't needed.
+
+- It is a **third value set**: `float ≠ double ≠ cordic`. Snapped results differ
+  from the double engine by up to a few notches on fine grids; on coarse grids
+  (notch ≫ binary32 ULP) they typically coincide.
+- It keeps the **shared input domain** (e.g. `sin`/`cos` over `|x| ≤ 2²⁰`): the
+  constexpr split holds float reduction across that range (precision degrades
+  toward the edge but stays float-grade), so the same programs compile on every
+  engine.
+- Precision: trig ≈ 1 ULP of `float`, `exp`/compositions a handful of ULP, then
+  quantized onto the output grid. Ships its own golden pins
+  (`tests/test_math_engines.cpp`).
 
 ## Compiling without floating point (`BND_MATH_NO_FP`)
 

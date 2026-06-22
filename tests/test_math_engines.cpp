@@ -65,6 +65,59 @@ TEST_CASE("double engine is callable side-by-side and agrees on special values",
   REQUIRE(rational{*p} == 16);
 }
 
+TEST_CASE("float engine is callable side-by-side and agrees on special values",
+          "[cmath][engines][flt]")
+{
+  REQUIRE(rational{math::flt::sin(Ang{0})}    == 0);
+  REQUIRE(rational{math::flt::cos(Ang{0})}    == 1);
+  REQUIRE(rational{math::flt::atan(Ang{0})}   == 0);
+  REQUIRE(rational{math::flt::sinh(Ang{0})}   == 0);
+  REQUIRE(rational{math::flt::cosh(Ang{0})}   == 1);
+  REQUIRE(rational{math::flt::tanh(Ang{0})}   == 0);
+  REQUIRE(rational{math::flt::sqrt(Sq{4})}    == 2);
+  REQUIRE(rational{math::flt::cbrt(Ang{8})}   == 2);
+  REQUIRE(rational{math::flt::log10(Pos{100})} == 2);
+  REQUIRE(rational{math::flt::exp(Ang{0})}    == 1);
+
+  auto p = math::flt::pow(Pos{2}, Ang{4});
+  REQUIRE(p.has_value());
+  REQUIRE(rational{*p} == 16);
+}
+
+// Golden pins for the float engine: the EXACT grid-snapped rational the binary32
+// engine must produce, bit-for-bit, on every IEEE-754 binary32 platform. These
+// are a THIRD value set (float ≠ double ≠ cordic); regenerate only on a
+// deliberate engine change. Grid: notch 1/16384 real (Ang/Pos/Sq above).
+#define EXACT_FLT(expr, N, D) REQUIRE(rational{(expr)} == rational{N, D})
+
+TEST_CASE("float engine golden pins are bit-exact (determinism)",
+          "[cmath][engines][flt][determinism]")
+{
+  EXACT_FLT(math::flt::sin(Ang{1}),    13787, 16384);
+  EXACT_FLT(math::flt::cos(Ang{1}),     2213,  4096);
+  EXACT_FLT(math::flt::atan(Ang{1}),    3217,  4096);
+  EXACT_FLT(math::flt::exp(Ang{2}),    60531,  8192);
+  EXACT_FLT(math::flt::log(Pos{10}),   18863,  8192);
+  EXACT_FLT(math::flt::log10(Pos{50}),  6959,  4096);
+  EXACT_FLT(math::flt::sqrt(Sq{2}),    11585,  8192);
+  EXACT_FLT(math::flt::cbrt(Ang{2}),   20643, 16384);
+  EXACT_FLT(math::flt::sinh(Ang{2}),   29711,  8192);
+  EXACT_FLT(math::flt::tanh(Ang{1}),    6239,  8192);
+}
+
+TEST_CASE("all three engines coexist in one binary and meet at exact points",
+          "[cmath][engines][mix]")
+{
+  // Phase-4 property: cordic + dbl + flt all instantiated in the same TU.
+  REQUIRE(rational{math::flt::sqrt(Sq{4})}    == rational{math::dbl::sqrt(Sq{4})});
+  REQUIRE(rational{math::flt::cos(Ang{0})}    == rational{math::cordic::cos(Ang{0})});
+  // A pole errors through the expected channel under the float engine too.
+  using TanAng = bound<{{-2, 2}, notch<1, 4096>}, round_nearest | real>;
+  auto tf = math::flt::tan(TanAng{0});
+  REQUIRE(tf.has_value());
+  REQUIRE(rational{*tf} == 0);
+}
+
 TEST_CASE("both engines coexist in one binary and meet at exact points",
           "[cmath][engines][mix]")
 {
