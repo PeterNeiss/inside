@@ -44,18 +44,23 @@ auto s = math::sin(angle{1});       // amplitude bound in [-1, 1]
 auto h = math::hypot(s, s);         // √(s²+s²), output grid auto-deduced
 ```
 
-## The `snap` requirement (and `real` as a fast storage option)
+## The `snap` requirement (and `f64` as a fast storage option)
+
+> **Naming:** the double-backed storage flag is now spelled **`f64`**; **`real`
+> is a deprecated alias** kept for one release. The two are bit-identical, so the
+> examples below (and existing code) compile under either spelling. New code
+> should prefer `f64`.
 
 A transcendental result is irrational and must be **rounded onto the operand's
 grid**, so every transcendental operand must carry a policy that **permits
-rounding** — i.e. the **`snap`** bit (`snap`, any `round_*` mode, or `real`,
+rounding** — i.e. the **`snap`** bit (`snap`, any `round_*` mode, or `f64`,
 which implies `round_nearest`). Omitting it is a compile error. This is the only
 hard requirement: `math::sin` etc. work on **any snap-capable grid**, including
 plain integer grids and non-dyadic ones (e.g. a `notch<1,100>` money grid) —
 the value is computed by the engine and snapped to the grid via exact rational
 rounding.
 
-`real` is **not** required — it is an optional **storage** flag that buys speed:
+`f64` is **not** required — it is an optional **storage** flag that buys speed:
 
 - Under the default engine `real` selects **double-backed storage** on the
   bound's grid — the raw *is* the value, so input marshalling into the engine is

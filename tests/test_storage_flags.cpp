@@ -135,6 +135,24 @@ TEST_CASE("representation flags resolve widest-wins", "[storage][policy]")
   REQUIRE(DI{42}.raw() == 42);
 }
 
+TEST_CASE("f64 is the canonical double-backed flag; real is its alias",
+          "[storage][f64]")
+{
+  // `real` was renamed `f64`; the alias is bit-identical, so old code compiles.
+  STATIC_REQUIRE(bnd::f64 == bnd::real);
+  STATIC_REQUIRE(has_flag(bnd::f64, round_nearest));   // still carries snap/round
+
+#ifndef BND_MATH_FIXED
+  // f64 selects binary64-backed storage exactly as `real` did (storage is
+  // independent of the compute engine — true in the double AND float builds).
+  using F = bound<{{0, 4}, notch<1, 256>}, round_nearest | f64>;
+  using R = bound<{{0, 4}, notch<1, 256>}, round_nearest | real>;
+  STATIC_REQUIRE(std::is_same_v<F::raw_type, double>);
+  STATIC_REQUIRE(std::is_same_v<F::raw_type, R::raw_type>);
+  STATIC_REQUIRE(detail::real_raw<F>);
+#endif
+}
+
 TEST_CASE("representation flags compose with behavior policies",
           "[storage][policy]")
 {

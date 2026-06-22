@@ -3405,13 +3405,19 @@ namespace bnd
   // Representation flags — select raw storage. Without one, storage is deduced
   // from the grid (notch-0 → rational; unit notch at/below 0 → integer value;
   // else 0-based index). Binary ops OR operand policies; storage resolves
-  // widest-wins: exact > real > direct > indexed > deduced.
+  // widest-wins: exact > f64 > direct > indexed > deduced.
   //
-  // `real` — math operand. Double-backed storage under the default engine (value
+  // `f64` — math operand, binary64-backed storage under the default engine (value
   // held as IEEE-754 double, notch nominal); an ordinary round_nearest integer
   // bound under BND_MATH_FIXED. Power-of-2 notch + dyadic Lower required so
-  // on-grid values are exact in double.
-  inline static constexpr policy_flag real{(1ull << 37) | round_nearest};
+  // on-grid values are exact in double (see `double_exact`).
+  inline static constexpr policy_flag f64{(1ull << 37) | round_nearest};
+
+  // `real` — deprecated spelling of `f64`, kept as an alias for one release. New
+  // code should use `f64` (binary64 storage); a future `f32` brings binary32
+  // storage. The flag is purely a storage choice — transcendentals gate on
+  // `snap`, not on this (see cmath.hpp).
+  inline static constexpr policy_flag real = f64;
 
   // `exact` — force rational raw storage on any grid. Values still obey the grid;
   // exact fractions, no notch-count limit, no double. Slowest; overflow-checked
