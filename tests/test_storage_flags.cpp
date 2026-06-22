@@ -179,6 +179,14 @@ TEST_CASE("math output lands in f32 storage (flt engine pairs with f32)",
   STATIC_REQUIRE(detail::f32_raw<decltype(r)>);
   REQUIRE(rational{s} == 0);
   REQUIRE(rational{r} == 2);
+
+  // Auto-demote: an f32 input whose result grid overflows binary32 (exp's range
+  // e^20 ≈ 4.85e8 > 2^24, still < 2^53) widens its OUTPUT to f64 storage rather
+  // than hard-erroring — the deduced output never static_asserts on f32 overflow.
+  using Big = bound<{{0, 20}, notch<1, 256>}, round_nearest | f32>;
+  auto e = math::flt::exp(Big{2});
+  STATIC_REQUIRE(detail::f64_raw<decltype(e)>);   // demoted f32 → f64
+  REQUIRE(rational{e} > rational{7});             // ≈ 7.39
 }
 #endif // !BND_MATH_FIXED
 

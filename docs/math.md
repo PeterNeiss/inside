@@ -282,8 +282,11 @@ so `flt` reads it, computes, and stores the result straight in `float` — no
 `double` round-trip. On a single-precision-only FPU that keeps the whole path in
 hardware float; with `f64`/rational storage the boundary marshalling goes through
 `double` (soft-float on such targets). Because binary32 has only a 24-bit
-significand, an `f32` result grid that a function would overflow (e.g. `exp` of a
-large argument on a fine grid) is a compile error — widen the grid or use `f64`.
+significand, an `f32` grid too fine for `float` but representable in `double`
+**auto-widens its storage to `f64`** (the value stays exact) — so a deduced `f32`
+output whose grid overflows binary32 (e.g. `exp` of a large argument on a fine
+grid) stores its result in `double` instead of failing to compile. Only a grid
+too fine for `double` as well is a hard error (`exact` is the escape hatch).
 
 ## Compiling without floating point (`BND_MATH_NO_FP`)
 

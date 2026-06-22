@@ -3823,6 +3823,14 @@ namespace bnd
   template <grid G>
   inline constexpr bool float_exact = compute_float_exact<G>();
 
+  // Demote an fp STORAGE flag a result grid can't represent — for DEDUCED policies
+  // (cmath auto-outputs, which inherit the operand's storage flag), so a deduced
+  // f32 output whose grid overflows binary32 silently widens instead of hard-
+  // erroring. (A grid a user spells `f32` on directly still static_asserts in
+  // storage_pick — that's deliberate misuse, not deduction.) f32 needs float_exact,
+  // f64 needs double_exact (Notch == 0 continuous fits either). When the flag
+  // doesn't fit: widen f32→f64 if double holds the grid, else drop the fp flag so
+  // storage is deduced. The snap/round bits are preserved.
   // Storage for a bound<G, P>: representation flags pick the raw type, widest-wins
   // (exact > real > direct > indexed > deduced).
   //   exact   → rational raw on any grid.
@@ -3853,13 +3861,19 @@ namespace bnd
     else if constexpr (((P & bnd::f32) == bnd::f32)
                     && (float_exact<G> || G.Notch == 0))
       return float{};
+    else if constexpr (((P & bnd::f32) == bnd::f32) && double_exact<G>)
+      // `f32` requested on a grid too fine for float but representable in double:
+      // WIDEN the storage to binary64. This makes a deduced f32 output (a cmath
+      // result inheriting the operand's flag) whose grid overflows float store its
+      // value in double rather than hard-erroring — the value stays exact. The f32
+      // POLICY bit remains (harmless; storage is raw-driven via fp_raw).
+      return double{};
     else if constexpr (((P & bnd::f32) == bnd::f32) && dyadic_grid<G>)
     {
-      // `f32` requested on a dyadic grid float can't represent exactly. Arithmetic
-      // demotes f32→f64 (or drops it) before reaching here, so this is direct misuse.
-      static_assert(float_exact<G>,
-        "f32 storage: grid exceeds float's 24-bit significand — use `f64` for the "
-        "wider range, or `exact`");
+      // Too fine for double too → genuinely unrepresentable as fp storage.
+      static_assert(double_exact<G>,
+        "f32 storage: grid exceeds double's 53-bit significand — coarsen the "
+        "notch/range or use `exact`");
       return float{};    // unreachable; fixes the deduced return type
     }
 #endif
