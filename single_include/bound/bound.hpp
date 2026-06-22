@@ -8296,42 +8296,54 @@ namespace bnd::math::flt
     else { Out o{}; o = bnd::detail::rational{static_cast<double>(f)}; return o; }
   }
 
+  // Read an input bound as `float`. An f32-backed operand IS a binary32 raw, so
+  // read it directly — no double hop (keeps the whole flt+f32 path in hardware
+  // float on a single-precision FPU). Any other storage decodes via double then
+  // narrows; float→double→float round-trips to the same float, so this is a pure
+  // optimization with no value change.
+  template <typename In>
+  [[nodiscard]] BND_DBL_FN float to_float(In x)
+  {
+    if constexpr (bnd::detail::f32_raw<In>) return x.raw();
+    else                                    return static_cast<float>(static_cast<double>(x));
+  }
+
   template <typename Out, typename In>
-  [[nodiscard]] BND_DBL_FN Out sin_core(In x)  { return store<Out>(detail::d_sin(static_cast<float>(static_cast<double>(x)))); }
+  [[nodiscard]] BND_DBL_FN Out sin_core(In x)  { return store<Out>(detail::d_sin(to_float(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BND_DBL_FN Out cos_core(In x)  { return store<Out>(detail::d_cos(static_cast<float>(static_cast<double>(x)))); }
+  [[nodiscard]] BND_DBL_FN Out cos_core(In x)  { return store<Out>(detail::d_cos(to_float(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BND_DBL_FN Out exp_core(In x)  { return store<Out>(detail::d_exp(static_cast<float>(static_cast<double>(x)))); }
+  [[nodiscard]] BND_DBL_FN Out exp_core(In x)  { return store<Out>(detail::d_exp(to_float(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BND_DBL_FN Out sqrt_core(In x) { return store<Out>(detail::d_sqrt(static_cast<float>(static_cast<double>(x)))); }
+  [[nodiscard]] BND_DBL_FN Out sqrt_core(In x) { return store<Out>(detail::d_sqrt(to_float(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BND_DBL_FN Out log_core(In x)  { return store<Out>(detail::d_log(static_cast<float>(static_cast<double>(x)))); }
+  [[nodiscard]] BND_DBL_FN Out log_core(In x)  { return store<Out>(detail::d_log(to_float(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BND_DBL_FN Out exp2_core(In x) { return store<Out>(detail::d_exp2(static_cast<float>(static_cast<double>(x)))); }
+  [[nodiscard]] BND_DBL_FN Out exp2_core(In x) { return store<Out>(detail::d_exp2(to_float(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BND_DBL_FN Out log2_core(In x) { return store<Out>(detail::d_log2(static_cast<float>(static_cast<double>(x)))); }
+  [[nodiscard]] BND_DBL_FN Out log2_core(In x) { return store<Out>(detail::d_log2(to_float(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BND_DBL_FN Out log10_core(In x){ return store<Out>(detail::d_log10(static_cast<float>(static_cast<double>(x)))); }
+  [[nodiscard]] BND_DBL_FN Out log10_core(In x){ return store<Out>(detail::d_log10(to_float(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BND_DBL_FN Out cbrt_core(In x) { return store<Out>(detail::d_cbrt(static_cast<float>(static_cast<double>(x)))); }
+  [[nodiscard]] BND_DBL_FN Out cbrt_core(In x) { return store<Out>(detail::d_cbrt(to_float(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BND_DBL_FN Out sinh_core(In x) { return store<Out>(detail::d_sinh(static_cast<float>(static_cast<double>(x)))); }
+  [[nodiscard]] BND_DBL_FN Out sinh_core(In x) { return store<Out>(detail::d_sinh(to_float(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BND_DBL_FN Out cosh_core(In x) { return store<Out>(detail::d_cosh(static_cast<float>(static_cast<double>(x)))); }
+  [[nodiscard]] BND_DBL_FN Out cosh_core(In x) { return store<Out>(detail::d_cosh(to_float(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BND_DBL_FN Out tanh_core(In x) { return store<Out>(detail::d_tanh(static_cast<float>(static_cast<double>(x)))); }
+  [[nodiscard]] BND_DBL_FN Out tanh_core(In x) { return store<Out>(detail::d_tanh(to_float(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BND_DBL_FN Out atan_core(In x) { return store<Out>(detail::d_atan(static_cast<float>(static_cast<double>(x)))); }
+  [[nodiscard]] BND_DBL_FN Out atan_core(In x) { return store<Out>(detail::d_atan(to_float(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BND_DBL_FN Out asin_core(In x) { return store<Out>(detail::d_asin(static_cast<float>(static_cast<double>(x)))); }
+  [[nodiscard]] BND_DBL_FN Out asin_core(In x) { return store<Out>(detail::d_asin(to_float(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BND_DBL_FN Out acos_core(In x) { return store<Out>(detail::d_acos(static_cast<float>(static_cast<double>(x)))); }
+  [[nodiscard]] BND_DBL_FN Out acos_core(In x) { return store<Out>(detail::d_acos(to_float(x))); }
   template <typename Out, typename In>
   [[nodiscard]] BND_DBL_FN Out atan2_core(In y, In x)
-  { return store<Out>(detail::d_atan2(static_cast<float>(static_cast<double>(y)), static_cast<float>(static_cast<double>(x)))); }
+  { return store<Out>(detail::d_atan2(to_float(y), to_float(x))); }
   template <typename Out, typename InX, typename InY>
   [[nodiscard]] BND_DBL_FN Out hypot_core(InX x, InY y)
-  { return store<Out>(detail::d_hypot(static_cast<float>(static_cast<double>(x)), static_cast<float>(static_cast<double>(y)))); }
+  { return store<Out>(detail::d_hypot(to_float(x), to_float(y))); }
 } // namespace bnd::math::flt
 
 #endif // !BND_MATH_NO_FP
@@ -9541,7 +9553,7 @@ namespace bnd::math
 #if defined(BND_MATH_NO_FP)
     return sqrt_signed_impl<Out>(x);
 #elif defined(BND_MATH_FLOAT)
-    float v = static_cast<float>(static_cast<double>(x));
+    float v = flt::to_float(x);
     if (v < 0.0f)
       return slim::expected<Out, errc>{slim::unexpected(errc::domain_error)};
     return slim::expected<Out, errc>{flt::store<Out>(flt::detail::d_sqrt(v))};
@@ -9618,7 +9630,7 @@ namespace bnd::math
 #if defined(BND_MATH_NO_FP)
     return pow_base_impl<Base, Out>(x);
 #elif defined(BND_MATH_FLOAT)
-    return flt::store<Out>(flt::detail::d_pow(static_cast<float>(Base), static_cast<float>(static_cast<double>(x))));
+    return flt::store<Out>(flt::detail::d_pow(static_cast<float>(Base), flt::to_float(x)));
 #else
     return dbl::store<Out>(dbl::detail::d_pow(static_cast<double>(Base), static_cast<double>(x)));
 #endif
@@ -9711,7 +9723,7 @@ namespace bnd::math
 #if defined(BND_MATH_NO_FP)
     return tan_impl<Out>(angle);
 #elif defined(BND_MATH_FLOAT)
-    float x = static_cast<float>(static_cast<double>(angle));
+    float x = flt::to_float(angle);
     float c = flt::detail::d_cos(x);
     if (c == 0.0f)
       return slim::expected<Out, errc>{slim::unexpected(errc::division_by_zero)};
@@ -9834,7 +9846,7 @@ namespace bnd::math
     constexpr int  W = detail::working_bits<AMP>();
     out = detail::sin_slot<M, W>(bnd::detail::raw_imax(angle));
 #elif defined(BND_MATH_FLOAT)
-    out = flt::detail::d_sin(static_cast<float>(static_cast<double>(angle)) * (flt::detail::kPi / 180.0f));
+    out = flt::detail::d_sin(flt::to_float(angle) * (flt::detail::kPi / 180.0f));
 #else
     out = dbl::detail::d_sin(static_cast<double>(angle) * (dbl::detail::kPi / 180.0));
 #endif
@@ -9850,7 +9862,7 @@ namespace bnd::math
     constexpr int  W = detail::working_bits<AMP>();
     out = detail::sin_slot<M, W>(bnd::detail::raw_imax(angle) + M / 4);
 #elif defined(BND_MATH_FLOAT)
-    out = flt::detail::d_cos(static_cast<float>(static_cast<double>(angle)) * (flt::detail::kPi / 180.0f));
+    out = flt::detail::d_cos(flt::to_float(angle) * (flt::detail::kPi / 180.0f));
 #else
     out = dbl::detail::d_cos(static_cast<double>(angle) * (dbl::detail::kPi / 180.0));
 #endif
@@ -9872,7 +9884,7 @@ namespace bnd::math
     out = (detail::sin_slot<M, W>(i) / c).value();             // sin / cos
     return true;
 #elif defined(BND_MATH_FLOAT)
-    float rad = static_cast<float>(static_cast<double>(angle)) * (flt::detail::kPi / 180.0f);
+    float rad = flt::to_float(angle) * (flt::detail::kPi / 180.0f);
     float c = flt::detail::d_cos(rad);
     if (c == 0.0f) return false;                               // pole
     out = flt::detail::d_sin(rad) / c;
@@ -10351,10 +10363,10 @@ namespace bnd::math
 #if defined(BND_MATH_NO_FP)
     return pow_impl<Out>(base, exp);
 #elif defined(BND_MATH_FLOAT)
-    float b = static_cast<float>(static_cast<double>(base));
+    float b = flt::to_float(base);
     if (b <= 0.0f)
       return slim::expected<Out, errc>{slim::unexpected(errc::domain_error)};
-    float r = flt::detail::d_pow(b, static_cast<float>(static_cast<double>(exp)));
+    float r = flt::detail::d_pow(b, flt::to_float(exp));
     if constexpr (!has_flag(BoundPolicy<Out>, clamp))   // clamp Out: saturate below
       if (r < static_cast<float>(static_cast<double>(Lower<Out>)) || r > static_cast<float>(static_cast<double>(Upper<Out>)))
         return slim::expected<Out, errc>{slim::unexpected(errc::overflow)};
@@ -10653,7 +10665,7 @@ namespace bnd::math
     {
       static_assert(bnd::math::detail::require_snap<In>());
       using Out = bnd::math::detail::sqrt_signed_auto_t<In>;
-      float v = static_cast<float>(static_cast<double>(x));
+      float v = flt::to_float(x);
       if (v < 0.0f)
         return slim::expected<Out, errc>{slim::unexpected(errc::domain_error)};
       return slim::expected<Out, errc>{store<Out>(detail::d_sqrt(v))};
@@ -10688,7 +10700,7 @@ namespace bnd::math
     {
       static_assert(bnd::math::detail::require_snap<In>());
       using Out = bnd::math::detail::pow_base_auto_t<Base, In>;
-      return store<Out>(detail::d_pow(static_cast<float>(Base), static_cast<float>(static_cast<double>(x))));
+      return store<Out>(detail::d_pow(static_cast<float>(Base), flt::to_float(x)));
     }
 
     template <boundable In>
@@ -10704,7 +10716,7 @@ namespace bnd::math
     {
       static_assert(bnd::math::detail::require_snap<In>());
       using Out = bnd::math::detail::tan_auto_t<In>;
-      float x = static_cast<float>(static_cast<double>(angle));
+      float x = flt::to_float(angle);
       float c = detail::d_cos(x);
       if (c == 0.0f)
         return slim::expected<Out, errc>{slim::unexpected(errc::division_by_zero)};
@@ -10768,10 +10780,10 @@ namespace bnd::math
     {
       static_assert(bnd::math::detail::require_snap<InB>() && bnd::math::detail::require_snap<InE>());
       using Out = bnd::math::detail::pow_auto_t<InB, InE>;
-      float b = static_cast<float>(static_cast<double>(base));
+      float b = flt::to_float(base);
       if (b <= 0.0f)
         return slim::expected<Out, errc>{slim::unexpected(errc::domain_error)};
-      float r = detail::d_pow(b, static_cast<float>(static_cast<double>(exp)));
+      float r = detail::d_pow(b, flt::to_float(exp));
       if constexpr (!has_flag(BoundPolicy<Out>, clamp))   // clamp Out: saturate below
         if (r < static_cast<float>(static_cast<double>(Lower<Out>)) || r > static_cast<float>(static_cast<double>(Upper<Out>)))
           return slim::expected<Out, errc>{slim::unexpected(errc::overflow)};

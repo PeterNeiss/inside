@@ -234,42 +234,54 @@ namespace bnd::math::flt
     else { Out o{}; o = bnd::detail::rational{static_cast<double>(f)}; return o; }
   }
 
+  // Read an input bound as `float`. An f32-backed operand IS a binary32 raw, so
+  // read it directly — no double hop (keeps the whole flt+f32 path in hardware
+  // float on a single-precision FPU). Any other storage decodes via double then
+  // narrows; float→double→float round-trips to the same float, so this is a pure
+  // optimization with no value change.
+  template <typename In>
+  [[nodiscard]] BND_DBL_FN float to_float(In x)
+  {
+    if constexpr (bnd::detail::f32_raw<In>) return x.raw();
+    else                                    return static_cast<float>(static_cast<double>(x));
+  }
+
   template <typename Out, typename In>
-  [[nodiscard]] BND_DBL_FN Out sin_core(In x)  { return store<Out>(detail::d_sin(static_cast<float>(static_cast<double>(x)))); }
+  [[nodiscard]] BND_DBL_FN Out sin_core(In x)  { return store<Out>(detail::d_sin(to_float(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BND_DBL_FN Out cos_core(In x)  { return store<Out>(detail::d_cos(static_cast<float>(static_cast<double>(x)))); }
+  [[nodiscard]] BND_DBL_FN Out cos_core(In x)  { return store<Out>(detail::d_cos(to_float(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BND_DBL_FN Out exp_core(In x)  { return store<Out>(detail::d_exp(static_cast<float>(static_cast<double>(x)))); }
+  [[nodiscard]] BND_DBL_FN Out exp_core(In x)  { return store<Out>(detail::d_exp(to_float(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BND_DBL_FN Out sqrt_core(In x) { return store<Out>(detail::d_sqrt(static_cast<float>(static_cast<double>(x)))); }
+  [[nodiscard]] BND_DBL_FN Out sqrt_core(In x) { return store<Out>(detail::d_sqrt(to_float(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BND_DBL_FN Out log_core(In x)  { return store<Out>(detail::d_log(static_cast<float>(static_cast<double>(x)))); }
+  [[nodiscard]] BND_DBL_FN Out log_core(In x)  { return store<Out>(detail::d_log(to_float(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BND_DBL_FN Out exp2_core(In x) { return store<Out>(detail::d_exp2(static_cast<float>(static_cast<double>(x)))); }
+  [[nodiscard]] BND_DBL_FN Out exp2_core(In x) { return store<Out>(detail::d_exp2(to_float(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BND_DBL_FN Out log2_core(In x) { return store<Out>(detail::d_log2(static_cast<float>(static_cast<double>(x)))); }
+  [[nodiscard]] BND_DBL_FN Out log2_core(In x) { return store<Out>(detail::d_log2(to_float(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BND_DBL_FN Out log10_core(In x){ return store<Out>(detail::d_log10(static_cast<float>(static_cast<double>(x)))); }
+  [[nodiscard]] BND_DBL_FN Out log10_core(In x){ return store<Out>(detail::d_log10(to_float(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BND_DBL_FN Out cbrt_core(In x) { return store<Out>(detail::d_cbrt(static_cast<float>(static_cast<double>(x)))); }
+  [[nodiscard]] BND_DBL_FN Out cbrt_core(In x) { return store<Out>(detail::d_cbrt(to_float(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BND_DBL_FN Out sinh_core(In x) { return store<Out>(detail::d_sinh(static_cast<float>(static_cast<double>(x)))); }
+  [[nodiscard]] BND_DBL_FN Out sinh_core(In x) { return store<Out>(detail::d_sinh(to_float(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BND_DBL_FN Out cosh_core(In x) { return store<Out>(detail::d_cosh(static_cast<float>(static_cast<double>(x)))); }
+  [[nodiscard]] BND_DBL_FN Out cosh_core(In x) { return store<Out>(detail::d_cosh(to_float(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BND_DBL_FN Out tanh_core(In x) { return store<Out>(detail::d_tanh(static_cast<float>(static_cast<double>(x)))); }
+  [[nodiscard]] BND_DBL_FN Out tanh_core(In x) { return store<Out>(detail::d_tanh(to_float(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BND_DBL_FN Out atan_core(In x) { return store<Out>(detail::d_atan(static_cast<float>(static_cast<double>(x)))); }
+  [[nodiscard]] BND_DBL_FN Out atan_core(In x) { return store<Out>(detail::d_atan(to_float(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BND_DBL_FN Out asin_core(In x) { return store<Out>(detail::d_asin(static_cast<float>(static_cast<double>(x)))); }
+  [[nodiscard]] BND_DBL_FN Out asin_core(In x) { return store<Out>(detail::d_asin(to_float(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BND_DBL_FN Out acos_core(In x) { return store<Out>(detail::d_acos(static_cast<float>(static_cast<double>(x)))); }
+  [[nodiscard]] BND_DBL_FN Out acos_core(In x) { return store<Out>(detail::d_acos(to_float(x))); }
   template <typename Out, typename In>
   [[nodiscard]] BND_DBL_FN Out atan2_core(In y, In x)
-  { return store<Out>(detail::d_atan2(static_cast<float>(static_cast<double>(y)), static_cast<float>(static_cast<double>(x)))); }
+  { return store<Out>(detail::d_atan2(to_float(y), to_float(x))); }
   template <typename Out, typename InX, typename InY>
   [[nodiscard]] BND_DBL_FN Out hypot_core(InX x, InY y)
-  { return store<Out>(detail::d_hypot(static_cast<float>(static_cast<double>(x)), static_cast<float>(static_cast<double>(y)))); }
+  { return store<Out>(detail::d_hypot(to_float(x), to_float(y))); }
 } // namespace bnd::math::flt
 
 #endif // !BND_MATH_NO_FP

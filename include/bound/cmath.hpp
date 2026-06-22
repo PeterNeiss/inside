@@ -1215,7 +1215,7 @@ namespace bnd::math
 #if defined(BND_MATH_NO_FP)
     return sqrt_signed_impl<Out>(x);
 #elif defined(BND_MATH_FLOAT)
-    float v = static_cast<float>(static_cast<double>(x));
+    float v = flt::to_float(x);
     if (v < 0.0f)
       return slim::expected<Out, errc>{slim::unexpected(errc::domain_error)};
     return slim::expected<Out, errc>{flt::store<Out>(flt::detail::d_sqrt(v))};
@@ -1292,7 +1292,7 @@ namespace bnd::math
 #if defined(BND_MATH_NO_FP)
     return pow_base_impl<Base, Out>(x);
 #elif defined(BND_MATH_FLOAT)
-    return flt::store<Out>(flt::detail::d_pow(static_cast<float>(Base), static_cast<float>(static_cast<double>(x))));
+    return flt::store<Out>(flt::detail::d_pow(static_cast<float>(Base), flt::to_float(x)));
 #else
     return dbl::store<Out>(dbl::detail::d_pow(static_cast<double>(Base), static_cast<double>(x)));
 #endif
@@ -1385,7 +1385,7 @@ namespace bnd::math
 #if defined(BND_MATH_NO_FP)
     return tan_impl<Out>(angle);
 #elif defined(BND_MATH_FLOAT)
-    float x = static_cast<float>(static_cast<double>(angle));
+    float x = flt::to_float(angle);
     float c = flt::detail::d_cos(x);
     if (c == 0.0f)
       return slim::expected<Out, errc>{slim::unexpected(errc::division_by_zero)};
@@ -1508,7 +1508,7 @@ namespace bnd::math
     constexpr int  W = detail::working_bits<AMP>();
     out = detail::sin_slot<M, W>(bnd::detail::raw_imax(angle));
 #elif defined(BND_MATH_FLOAT)
-    out = flt::detail::d_sin(static_cast<float>(static_cast<double>(angle)) * (flt::detail::kPi / 180.0f));
+    out = flt::detail::d_sin(flt::to_float(angle) * (flt::detail::kPi / 180.0f));
 #else
     out = dbl::detail::d_sin(static_cast<double>(angle) * (dbl::detail::kPi / 180.0));
 #endif
@@ -1524,7 +1524,7 @@ namespace bnd::math
     constexpr int  W = detail::working_bits<AMP>();
     out = detail::sin_slot<M, W>(bnd::detail::raw_imax(angle) + M / 4);
 #elif defined(BND_MATH_FLOAT)
-    out = flt::detail::d_cos(static_cast<float>(static_cast<double>(angle)) * (flt::detail::kPi / 180.0f));
+    out = flt::detail::d_cos(flt::to_float(angle) * (flt::detail::kPi / 180.0f));
 #else
     out = dbl::detail::d_cos(static_cast<double>(angle) * (dbl::detail::kPi / 180.0));
 #endif
@@ -1546,7 +1546,7 @@ namespace bnd::math
     out = (detail::sin_slot<M, W>(i) / c).value();             // sin / cos
     return true;
 #elif defined(BND_MATH_FLOAT)
-    float rad = static_cast<float>(static_cast<double>(angle)) * (flt::detail::kPi / 180.0f);
+    float rad = flt::to_float(angle) * (flt::detail::kPi / 180.0f);
     float c = flt::detail::d_cos(rad);
     if (c == 0.0f) return false;                               // pole
     out = flt::detail::d_sin(rad) / c;
@@ -2025,10 +2025,10 @@ namespace bnd::math
 #if defined(BND_MATH_NO_FP)
     return pow_impl<Out>(base, exp);
 #elif defined(BND_MATH_FLOAT)
-    float b = static_cast<float>(static_cast<double>(base));
+    float b = flt::to_float(base);
     if (b <= 0.0f)
       return slim::expected<Out, errc>{slim::unexpected(errc::domain_error)};
-    float r = flt::detail::d_pow(b, static_cast<float>(static_cast<double>(exp)));
+    float r = flt::detail::d_pow(b, flt::to_float(exp));
     if constexpr (!has_flag(BoundPolicy<Out>, clamp))   // clamp Out: saturate below
       if (r < static_cast<float>(static_cast<double>(Lower<Out>)) || r > static_cast<float>(static_cast<double>(Upper<Out>)))
         return slim::expected<Out, errc>{slim::unexpected(errc::overflow)};
@@ -2327,7 +2327,7 @@ namespace bnd::math
     {
       static_assert(bnd::math::detail::require_snap<In>());
       using Out = bnd::math::detail::sqrt_signed_auto_t<In>;
-      float v = static_cast<float>(static_cast<double>(x));
+      float v = flt::to_float(x);
       if (v < 0.0f)
         return slim::expected<Out, errc>{slim::unexpected(errc::domain_error)};
       return slim::expected<Out, errc>{store<Out>(detail::d_sqrt(v))};
@@ -2362,7 +2362,7 @@ namespace bnd::math
     {
       static_assert(bnd::math::detail::require_snap<In>());
       using Out = bnd::math::detail::pow_base_auto_t<Base, In>;
-      return store<Out>(detail::d_pow(static_cast<float>(Base), static_cast<float>(static_cast<double>(x))));
+      return store<Out>(detail::d_pow(static_cast<float>(Base), flt::to_float(x)));
     }
 
     template <boundable In>
@@ -2378,7 +2378,7 @@ namespace bnd::math
     {
       static_assert(bnd::math::detail::require_snap<In>());
       using Out = bnd::math::detail::tan_auto_t<In>;
-      float x = static_cast<float>(static_cast<double>(angle));
+      float x = flt::to_float(angle);
       float c = detail::d_cos(x);
       if (c == 0.0f)
         return slim::expected<Out, errc>{slim::unexpected(errc::division_by_zero)};
@@ -2442,10 +2442,10 @@ namespace bnd::math
     {
       static_assert(bnd::math::detail::require_snap<InB>() && bnd::math::detail::require_snap<InE>());
       using Out = bnd::math::detail::pow_auto_t<InB, InE>;
-      float b = static_cast<float>(static_cast<double>(base));
+      float b = flt::to_float(base);
       if (b <= 0.0f)
         return slim::expected<Out, errc>{slim::unexpected(errc::domain_error)};
-      float r = detail::d_pow(b, static_cast<float>(static_cast<double>(exp)));
+      float r = detail::d_pow(b, flt::to_float(exp));
       if constexpr (!has_flag(BoundPolicy<Out>, clamp))   // clamp Out: saturate below
         if (r < static_cast<float>(static_cast<double>(Lower<Out>)) || r > static_cast<float>(static_cast<double>(Upper<Out>)))
           return slim::expected<Out, errc>{slim::unexpected(errc::overflow)};
