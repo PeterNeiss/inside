@@ -77,7 +77,7 @@ template <boundable B>
 typename B::raw_type random_in_range_raw(std::mt19937_64& rng)
 {
   using raw = typename B::raw_type;
-  if constexpr (real_raw<B>)
+  if constexpr (f64_raw<B>)
   {
     // `real` (double-backed) bounds hold a grid point as a double — generate a
     // random in-range grid point Lower + k·Notch (the integer-cast branch below

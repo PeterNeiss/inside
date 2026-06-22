@@ -74,8 +74,12 @@ namespace bnd
     // no grid to snap to. Anything else is rejected here rather than silently
     // demoted to integer storage.
     static_assert(!has_flag(P, real) || detail::dyadic_grid<G> || G.Notch == 0,
-                  "bnd: the `real` policy requires a dyadic grid (power-of-two "
+                  "bnd: the `real`/`f64` policy requires a dyadic grid (power-of-two "
                   "notch and Lower, so values are exactly representable in double)");
+    static_assert(!has_flag(P, f32) || detail::dyadic_grid<G> || G.Notch == 0,
+                  "bnd: the `f32` policy requires a dyadic grid (power-of-two notch "
+                  "and Lower); values must also fit float's 24-bit significand "
+                  "(checked at storage selection — see `float_exact`)");
 #endif
     // Representation flags vs grid shape (exact has no requirement; a result
     // policy may carry several flags — storage selection resolves widest-wins,
@@ -110,8 +114,9 @@ namespace bnd
     // Value-init `bound{}` still zero-fills where a zero raw is genuinely wanted.)
     constexpr bound() = default;
 
-    // `real` storage holds the value as a double directly. An arithmetic rhs
-    // casts straight to double; a bound rhs goes through its exact rational view.
+    // fp storage (f64/f32) holds the value as a floating raw directly. An
+    // arithmetic rhs casts straight to double; a bound rhs goes through its exact
+    // rational view.
     private:
     template <numeric A>
     constexpr double to_double(A const& value)
@@ -120,10 +125,12 @@ namespace bnd
       else                                   return static_cast<double>(detail::as_rational(value));
     }
     public:
-    // Snap a value onto `real` storage: lossless on the dyadic grid. Out-of-range
-    // values run the same policy cascade as the fractional path (clamp → wrap →
-    // sentinel/checked-report → store as-is); all arithmetic stays in double.
-    constexpr void store_real(double v)
+    // Snap a value onto fp storage: lossless on the (fp-exact) dyadic grid — the
+    // snap is computed in double and narrowed to the raw type (double or float),
+    // which is exact because every grid point fits the raw's significand. Out-of-
+    // range values run the same policy cascade as the fractional path (clamp →
+    // wrap → sentinel/checked-report → store as-is).
+    constexpr void store_fp(double v)
     {
       // NaN/±inf would reach snap_double's integer cast (UB); reject like the
       // non-real path. `v - v` is 0 for every finite v, NaN otherwise.
@@ -159,20 +166,20 @@ namespace bnd
           return;            // sentinel stored / reported (error_code mode)
         // no handler (unchecked policy): fall through and store snapped as-is
       }
-      Raw = G.snap_double(v);
+      Raw = static_cast<raw_type>(G.snap_double(v));   // narrow to float for f32 (lossless)
     }
 
     template <numeric A>
     constexpr void store_value(A const& value)
     {
-      if constexpr (detail::real_raw<bound>)
-        store_real(to_double(value));
+      if constexpr (detail::fp_raw<bound>)
+        store_fp(to_double(value));
       else if constexpr (is_bound_v<A>)
       {
         // A `real` SOURCE holds its value as a double raw; the assignment engine's
         // integer offset formula (Lower + raw·Notch) would misread it. Extract as
         // a double and route through the arithmetic-source path.
-        if constexpr (detail::real_raw<A>)
+        if constexpr (detail::fp_raw<A>)
           detail::assignment<bound, double>::assign(*this, detail::as_double(value), make_policy<P>());
         else
           detail::assignment<bound, A>::assign(*this, value, make_policy<P>());
@@ -193,8 +200,8 @@ namespace bnd
       // The one-shot `pol` widens the assignable check (a clamp/round passed here
       // relaxes the notch/interval clause), so a notch-incompatible boundable source
       // is accepted — e.g. clamp_round<B>(some_bound). Body honours `pol` as before.
-      if constexpr (detail::real_raw<bound>)
-        store_real(to_double(value));
+      if constexpr (detail::fp_raw<bound>)
+        store_fp(to_double(value));
       else
         detail::assignment<bound, A>::assign(*this, value, pol);
     }
@@ -207,8 +214,8 @@ namespace bnd
       requires bound_assignable<bound, A, P>
     constexpr bound(A value, errc& ec)
     {
-      if constexpr (detail::real_raw<bound>)
-        store_real(to_double(value));
+      if constexpr (detail::fp_raw<bound>)
+        store_fp(to_double(value));
       else
         detail::assignment<bound, A>::assign(*this, value, make_policy<P>(ec));
     }
@@ -315,7 +322,7 @@ namespace bnd
              && G.Interval.Upper <= bnd::detail::rational{std::numeric_limits<imax>::max()})
     { return detail::to_value(*this); }
 
-    constexpr explicit(!has_flag(P, real)) operator double() const
+    constexpr explicit(!has_flag(P, real) && !has_flag(P, f32)) operator double() const
       requires ((P & (round_floor | round_ceil | round_nearest
                     | round_half_even | snap)) != 0)
     { return detail::as_double(*this); }
@@ -430,7 +437,7 @@ namespace bnd
     [[nodiscard]] constexpr negative operator-() const
     {
       negative neg;
-      if constexpr (detail::real_raw<bound>)
+      if constexpr (detail::fp_raw<bound>)
         neg = negative::from_raw(-Raw);
       else if constexpr (detail::rational_raw<bound>)
         neg = negative::from_raw(-(Raw));
@@ -703,7 +710,7 @@ namespace bnd
     if constexpr (Grid<L> == Grid<R>)
       return lhs.raw() <=> rhs.raw();
     // double-backed (`real`) operand: compare in double (raw_imax would truncate)
-    else if constexpr (detail::real_raw<L> || detail::real_raw<R>)
+    else if constexpr (detail::fp_raw<L> || detail::fp_raw<R>)
       return detail::as_double(lhs) <=> detail::as_double(rhs);
     // both integer-direct (notch=1, Raw==value): compare as integers
     else if constexpr (!detail::rational_raw<L> && !detail::rational_raw<R>
@@ -718,7 +725,7 @@ namespace bnd
   {
     if constexpr (Grid<L> == Grid<R>)
       return lhs.raw() == rhs.raw();
-    else if constexpr (detail::real_raw<L> || detail::real_raw<R>)
+    else if constexpr (detail::fp_raw<L> || detail::fp_raw<R>)
       return detail::as_double(lhs) == detail::as_double(rhs);
     else if constexpr (!detail::rational_raw<L> && !detail::rational_raw<R>
                        && !detail::index_raw<L> && !detail::index_raw<R>)

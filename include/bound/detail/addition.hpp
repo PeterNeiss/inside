@@ -24,16 +24,22 @@ namespace bnd::detail
       "addition: result grid's notch/interval exceeds the representable rational "
       "range — coarsen the operand grids");
     static constexpr grid result_grid = (Grid<L> + Grid<R>).value();
-    // Propagate `real` only when the result grid stays exactly representable in
-    // double; otherwise drop it so storage_pick deduces an exact representation
-    // (the double sum would diverge from the exact sum — see grid::double_exact).
-    static constexpr bool any_real =
+    // Propagate fp storage only when the result grid stays exactly representable
+    // in the chosen width; otherwise demote (f32→f64) or drop it so storage_pick
+    // deduces an exact representation (the fp sum would diverge from the exact sum
+    // — see grid::double_exact / float_exact). Widest-wins: prefer f32 only when
+    // both operands are f32-only and the result fits float; an f64 operand or a
+    // too-fine-for-float result widens to f64; too fine for double → exact.
+    static constexpr bool any_f64 =
         (BoundPolicy<L> & bnd::real) == bnd::real || (BoundPolicy<R> & bnd::real) == bnd::real;
-    static constexpr bool keep_real = any_real && double_exact<result_grid>;
+    static constexpr bool any_f32 =
+        (BoundPolicy<L> & bnd::f32) == bnd::f32 || (BoundPolicy<R> & bnd::f32) == bnd::f32;
+    static constexpr bool keep_f32 = any_f32 && !any_f64 && float_exact<result_grid>;
+    static constexpr bool keep_f64 = !keep_f32 && (any_f64 || any_f32) && double_exact<result_grid>;
     // Carry both operands' representation flags (widest-wins at storage selection).
     static constexpr policy_flag rep =
         ((BoundPolicy<L> | BoundPolicy<R>) & (bnd::exact | bnd::direct | bnd::indexed))
-        | (keep_real ? bnd::real : none);
+        | (keep_f64 ? bnd::real : none) | (keep_f32 ? bnd::f32 : none);
     using result = bound<result_grid, rep != none ? rep : checked>;
 
     template <policy_flag F>
@@ -68,9 +74,9 @@ namespace bnd::detail
     static constexpr auto add(L lhs, R rhs, policy<F, E> policy = {}, A&& action = {}) -> add_return_t<F, A>
   {
     result res;
-    if constexpr (real_raw<result>)
+    if constexpr (fp_raw<result>)
     {
-      res = result::from_raw(Grid<result>.snap_double(as_double(lhs) + as_double(rhs)));
+      res = result::from_raw(raw_cast<result>(Grid<result>.snap_double(as_double(lhs) + as_double(rhs))));
     }
     else if constexpr (rational_raw<result>)
     {

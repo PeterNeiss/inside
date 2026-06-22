@@ -217,7 +217,7 @@ namespace bnd::detail
         // or NotchCount, no rounding. real takes the endpoint as a double, rational
         // the exact constant (a double round-trip would lose non-dyadic endpoints);
         // raw_from_offset<L> adds Lower back for direct-encoded storage.
-        if constexpr (real_raw<L>)
+        if constexpr (fp_raw<L>)
           lhs = L::from_raw((rhs < Lower<L>) ? static_cast<double>(Lower<L>)
                                              : static_cast<double>(Upper<L>));
         else if constexpr (rational_raw<L>)
@@ -263,10 +263,10 @@ namespace bnd::detail
       {
         if constexpr (rational_raw<L> && Notch<L> == 0)
         { lhs = L::from_raw(rhs); return true; }   // continuous: store verbatim
-        else if constexpr (real_raw<L>)
+        else if constexpr (fp_raw<L>)
         {
           // real target: raw IS the value — snap to the dyadic grid (range handling
-          // already ran in the assign cascade; finite guard mirrors store_real's).
+          // already ran in the assign cascade; finite guard mirrors store_f64's).
           const double v = static_cast<double>(rhs);
           if (!(v - v == 0))
             detail::raise(errc::not_finite, "non-finite double");
@@ -306,7 +306,7 @@ namespace bnd::detail
           // instead of two rational ops. round_quotient is invariant under reduction,
           // so the slot is bit-identical to the rational path. Oversized denominators
           // fall through (the kMaxDen guard keeps every product inside imax).
-          if constexpr (HasQFormatFastPath<L> && !real_raw<L> && Notch<L> != 0)
+          if constexpr (HasQFormatFastPath<L> && !fp_raw<L> && Notch<L> != 0)
           {
             constexpr imax K  = abs_den(Notch<L>.Denominator);
             constexpr imax Lo = LowerImax<L>;
@@ -399,7 +399,7 @@ namespace bnd::detail
         if constexpr (rational_raw<L>)
           return Lower<R>;
         else if constexpr (Notch<L> == 0)
-          // Continuous real_raw L: no grid to land on, mapping unused (store
+          // Continuous fp_raw L: no grid to land on, mapping unused (store
           // routes through snap_double). 0 avoids the /Notch<L> divide-by-zero.
           return rational{0};
         else if constexpr (rational_raw<R>)
@@ -413,7 +413,7 @@ namespace bnd::detail
         if constexpr (rational_raw<L>)
           return Notch<R>;
         else if constexpr (Notch<L> == 0)
-          // Continuous real_raw L (see calcOffset). A denominator-1 Factor also
+          // Continuous fp_raw L (see calcOffset). A denominator-1 Factor also
           // makes assign_notch_ok vacuously true (any value representable).
           return rational{0};
         else if constexpr (rational_raw<R>)
@@ -430,7 +430,7 @@ namespace bnd::detail
       // sides (not rational, not real).
       static constexpr bool is_integer_mapping =
           !rational_raw<L> && !rational_raw<R>
-          && !real_raw<L> && !real_raw<R>
+          && !fp_raw<L> && !fp_raw<R>
           && abs_den(Factor.Denominator) == 1 && abs_den(Offset.Denominator) == 1;
 
       // Map rhs.Raw into L's raw space (requires is_integer_mapping). The
@@ -469,7 +469,7 @@ namespace bnd::detail
       {
         // RawLo/RawHi are already the correct Raw (no raw_from_offset). Real storage
         // takes the endpoint as a double (RawLo/Hi truncate fractional dyadic endpoints).
-        if constexpr (real_raw<L>)
+        if constexpr (fp_raw<L>)
           lhs = L::from_raw((as_rational(rhs) < Lower<L>)
             ? static_cast<double>(Lower<L>) : static_cast<double>(Upper<L>));
         else
@@ -538,7 +538,7 @@ namespace bnd::detail
       template<typename P>
       static constexpr void store(L& lhs, R const& rhs, P&&)
       {
-        if constexpr (real_raw<L>)
+        if constexpr (fp_raw<L>)
           // real target: raw IS the value — decode the source and snap to the dyadic
           // grid (the offset machinery below mis-encodes a double raw).
           lhs = L::from_raw(Grid<L>.snap_double(as_double(rhs)));

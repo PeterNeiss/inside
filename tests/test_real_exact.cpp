@@ -36,7 +36,7 @@ namespace
   template <class R>
   void check_bits(const R& r, const char* op)
   {
-    if constexpr (real_raw<R>)
+    if constexpr (f64_raw<R>)
     {
       const double v = r.raw();
       INFO(op << " raw=" << v);

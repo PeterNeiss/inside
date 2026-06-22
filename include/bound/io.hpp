@@ -133,10 +133,10 @@ namespace bnd
   // rational-raw bound has no std::to_string at all.) A continuous (Notch == 0)
   // real bound prints the double.
   template <boundable B>
-    requires (detail::real_raw<B> || detail::rational_raw<B>)
+    requires (detail::fp_raw<B> || detail::rational_raw<B>)
   inline std::string to_string(B b)
   {
-    if constexpr (detail::real_raw<B> && Notch<B> == bnd::detail::rational{0})
+    if constexpr (detail::fp_raw<B> && Notch<B> == bnd::detail::rational{0})
       return std::to_string(detail::as_double(b));
     else
       return to_string(bnd::detail::as_rational(b));

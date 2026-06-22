@@ -24,25 +24,31 @@ namespace bnd::detail
       "multiplication: result grid's notch/interval exceeds the representable "
       "rational range — coarsen the operand grids");
     static constexpr grid result_grid = (Grid<L> * Grid<R>).value();
-    static constexpr bool any_real =
+    // fp storage propagation (see addition.hpp): the product grid (notch = N_L·N_R)
+    // is finer, so demote f32→f64 / drop f64 when it outgrows the width — the fp
+    // product would round below the result notch. Widest-wins: f32 only if both
+    // operands f32-only and product fits float; else widen to f64; else exact.
+    static constexpr bool any_f64 =
         (BoundPolicy<L> & bnd::real) == bnd::real || (BoundPolicy<R> & bnd::real) == bnd::real;
-    // Drop `real` when the product grid (notch = N_L·N_R) outgrows double's
-    // 53-bit significand — the double product would round below the result notch.
-    static constexpr bool keep_real = any_real && double_exact<result_grid>;
+    static constexpr bool any_f32 =
+        (BoundPolicy<L> & bnd::f32) == bnd::f32 || (BoundPolicy<R> & bnd::f32) == bnd::f32;
+    static constexpr bool keep_f32 = any_f32 && !any_f64 && float_exact<result_grid>;
+    static constexpr bool keep_f64 = !keep_f32 && (any_f64 || any_f32) && double_exact<result_grid>;
+    static constexpr bool dropped_fp = (any_f64 || any_f32) && !keep_f64 && !keep_f32;
     // Carry both operands' representation flags (widest-wins at storage selection).
     static constexpr policy_flag rep =
         ((BoundPolicy<L> | BoundPolicy<R>) & (bnd::exact | bnd::direct | bnd::indexed))
-        | (keep_real ? bnd::real : none);
+        | (keep_f64 ? bnd::real : none) | (keep_f32 ? bnd::f32 : none);
     using result = bound<result_grid, rep != none ? rep : checked>;
 
-    // The dropped-`real` case (any_real && !keep_real) lands on a rational result
-    // when the product grid outgrows uint index space; its product numerator can
-    // exceed `umax`, so check it (the result carries `checked`) rather than wrap.
+    // The dropped-fp case lands on a rational result when the product grid outgrows
+    // uint index space; its product numerator can exceed `umax`, so check it (the
+    // result carries `checked`) rather than wrap.
     template <typename P>
     static constexpr bool needs_overflow_check =
         rational_raw<result>
         && (((BoundPolicy<L> | BoundPolicy<R>) & checked) || plain<P>::test(checked)
-            || (any_real && !keep_real))
+            || dropped_fp)
         && !rational_mul_is_safe(Grid<L>, Grid<R>);
 
     template <typename P>
@@ -60,9 +66,9 @@ namespace bnd::detail
     template <typename P, typename A = no_action>
     static constexpr auto mul(L lhs, R rhs, P&& policy, A&& action = {}) -> mul_return_t<P, A>
   {
-    if constexpr (real_raw<result>)
+    if constexpr (fp_raw<result>)
     {
-      return result::from_raw(Grid<result>.snap_double(as_double(lhs) * as_double(rhs)));
+      return result::from_raw(raw_cast<result>(Grid<result>.snap_double(as_double(lhs) * as_double(rhs))));
     }
     else if constexpr (rational_raw<result>)
     {
@@ -84,7 +90,7 @@ namespace bnd::detail
       from_value(res, to_value(lhs) * to_value(rhs));
       return res;
     }
-    else if constexpr (real_raw<L> || real_raw<R> || rational_raw<L> || rational_raw<R>)
+    else if constexpr (fp_raw<L> || fp_raw<R> || rational_raw<L> || rational_raw<R>)
     {
       // An operand whose raw is a double/rational can't feed the integer
       // four-quadrant formula below (it reads the raw as an integer offset).

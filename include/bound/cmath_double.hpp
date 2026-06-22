@@ -226,9 +226,10 @@ namespace bnd::math::dbl
   template <typename Out>
   [[nodiscard]] BND_DBL_FN Out store(double d)
   {
-    // `real` (double-backed) Out stores the double directly; a non-`real` snap grid
-    // assigns through the rational path, snapping via Out's round policy.
-    if constexpr (has_flag(BoundPolicy<Out>, real)) return Out{d};
+    // An fp-backed Out (f64 or f32) stores the value directly via its raw (an f32
+    // Out narrows double→float, lossless on its float-exact grid); a non-fp snap
+    // grid assigns through the rational path, snapping via Out's round policy.
+    if constexpr (bnd::detail::fp_raw<Out>) return Out{d};
     else { Out o{}; o = bnd::detail::rational{d}; return o; }
   }
 

@@ -154,17 +154,21 @@ namespace bnd::detail
             ? grid{interval{rational{0}, (Upper<L> / Notch<R>).value()}, Notch<L>}
             : *(Grid<L> / Grid<R>);
 
-    static constexpr bool any_real =
+    static constexpr bool any_f64 =
         (BoundPolicy<L> & bnd::real) == bnd::real || (BoundPolicy<R> & bnd::real) == bnd::real;
-    // Keep `real` for a continuous result (Notch 0: double stores the quotient
-    // verbatim) or a double-exact dyadic result; otherwise drop it (the double
-    // quotient would not land on the result grid). See grid::double_exact.
-    static constexpr bool keep_real =
-        any_real && (result_grid.Notch == 0 || double_exact<result_grid>);
+    static constexpr bool any_f32 =
+        (BoundPolicy<L> & bnd::f32) == bnd::f32 || (BoundPolicy<R> & bnd::f32) == bnd::f32;
+    // Keep fp for a continuous result (Notch 0: the raw stores the quotient
+    // verbatim) or an fp-exact dyadic result; otherwise demote f32→f64 / drop f64
+    // (the fp quotient would not land on the result grid). Widest-wins as in mul.
+    static constexpr bool keep_f32 =
+        any_f32 && !any_f64 && (result_grid.Notch == 0 || float_exact<result_grid>);
+    static constexpr bool keep_f64 =
+        !keep_f32 && (any_f64 || any_f32) && (result_grid.Notch == 0 || double_exact<result_grid>);
     // Carry both operands' representation flags (widest-wins at storage selection).
     static constexpr policy_flag rep =
         ((BoundPolicy<L> | BoundPolicy<R>) & (bnd::exact | bnd::direct | bnd::indexed))
-        | (keep_real ? bnd::real : none);
+        | (keep_f64 ? bnd::real : none) | (keep_f32 ? bnd::f32 : none);
     using result = bound<result_grid, rep != none ? rep : checked>;
 
     template <policy_flag G = F>
@@ -175,7 +179,7 @@ namespace bnd::detail
     // (overflow). So when the divisor excludes zero AND this is false, `div`
     // returns a plain `result` rather than optional<result>.
     static constexpr bool may_overflow_nonzero =
-        !native_div && !real_raw<result> && (needs_overflow_check<F> != 0);
+        !native_div && !fp_raw<result> && (needs_overflow_check<F> != 0);
 
     // Real division can still fail on a zero divisor, so it uses the same
     // return-type rule as the rest: plain `result` when the op cannot fail
@@ -218,14 +222,14 @@ namespace bnd::detail
     [[maybe_unused]] constexpr bool zero_unchecked = DivisorExcludesZero<R>
         || (((G | F | BoundPolicy<L> | BoundPolicy<R>) & ignore_zero) != 0);
 
-    if constexpr (real_raw<result>)
+    if constexpr (fp_raw<result>)
     {
       // Real division reports zero like every other path (throw / report /
       // action / nullopt). Finite operands keep the quotient finite, so no
       // non-finite ever reaches storage.
       if constexpr (!zero_unchecked)
         if (as_double(rhs) == 0.0) return fail(errc::division_by_zero, "division by zero in div");
-      return result::from_raw(Grid<result>.snap_double(as_double(lhs) / as_double(rhs)));
+      return result::from_raw(raw_cast<result>(Grid<result>.snap_double(as_double(lhs) / as_double(rhs))));
     }
     else if constexpr (native_div_qformat)
     {

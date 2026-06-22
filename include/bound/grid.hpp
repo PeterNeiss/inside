@@ -232,6 +232,29 @@ namespace bnd
   template <grid G>
   inline constexpr bool double_exact = compute_double_exact<G>();
 
+  // `float`-exactness: the binary32 analogue of double_exact. Every on-grid value
+  // v = N·2^(−f) must fit float's 24-bit significand (|N| < 2^24) with f ≤ 126
+  // (notch ≥ float's smallest normal, so no on-grid value is subnormal).
+  // Necessary precondition for `f32` (binary32-backed) storage.
+  template <grid G>
+  constexpr bool compute_float_exact() noexcept
+  {
+    if constexpr (!dyadic_grid<G>) return false;
+    else
+    {
+      constexpr int f = log2_pow2_mag(abs_den(G.Notch.Denominator));
+      if (f > 126) return false;
+      umax nlo = 0, nhi = 0;
+      if (!scaled_numerator(G.Interval.Lower, f, nlo)) return false;
+      if (!scaled_numerator(G.Interval.Upper, f, nhi)) return false;
+      constexpr umax lim = umax{1} << 24;
+      return nlo < lim && nhi < lim;
+    }
+  }
+
+  template <grid G>
+  inline constexpr bool float_exact = compute_float_exact<G>();
+
   // Storage for a bound<G, P>: representation flags pick the raw type, widest-wins
   // (exact > real > direct > indexed > deduced).
   //   exact   → rational raw on any grid.
@@ -251,13 +274,25 @@ namespace bnd
       return double{};
     else if constexpr (((P & bnd::real) == bnd::real) && dyadic_grid<G>)
     {
-      // `real` explicitly requested on a dyadic grid double can't represent
+      // `real`/`f64` explicitly requested on a dyadic grid double can't represent
       // exactly (max |value·2^f| ≥ 2^53, or notch below the smallest normal).
-      // Arithmetic drops `real` before reaching here, so this is direct misuse.
+      // Arithmetic drops the flag before reaching here, so this is direct misuse.
       static_assert(double_exact<G>,
-        "real storage: grid exceeds double's 53-bit significand — coarsen the "
+        "f64 storage: grid exceeds double's 53-bit significand — coarsen the "
         "notch/range or use `exact`");
       return double{};   // unreachable; fixes the deduced return type
+    }
+    else if constexpr (((P & bnd::f32) == bnd::f32)
+                    && (float_exact<G> || G.Notch == 0))
+      return float{};
+    else if constexpr (((P & bnd::f32) == bnd::f32) && dyadic_grid<G>)
+    {
+      // `f32` requested on a dyadic grid float can't represent exactly. Arithmetic
+      // demotes f32→f64 (or drops it) before reaching here, so this is direct misuse.
+      static_assert(float_exact<G>,
+        "f32 storage: grid exceeds float's 24-bit significand — use `f64` for the "
+        "wider range, or `exact`");
+      return float{};    // unreachable; fixes the deduced return type
     }
 #endif
     else if constexpr ((P & bnd::direct) == bnd::direct && G.Notch == 1)

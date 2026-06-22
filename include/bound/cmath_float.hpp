@@ -223,14 +223,14 @@ namespace bnd::math::flt::detail
 namespace bnd::math::flt
 {
   // Engine cores: bound in → `float` math → bound out. Storing the float result:
-  // a `real` (double-backed) bound takes Out{double(f)} (widening is exact); a
-  // non-`real` snap grid assigns through the rational path, snapping via Out's
-  // round policy. (An f32-backed bound — Phase 4b — will store the float raw
-  // directly; until then it routes through the same paths.)
+  // an fp-backed Out (f32 OR f64) stores the value directly via its float/double
+  // raw (the natural pairing for `flt` is `f32` — no rational, no double round-
+  // trip on the result); any other snap grid assigns through the rational path,
+  // snapping via Out's round policy.
   template <typename Out>
   [[nodiscard]] BND_DBL_FN Out store(float f)
   {
-    if constexpr (has_flag(BoundPolicy<Out>, real)) return Out{static_cast<double>(f)};
+    if constexpr (bnd::detail::fp_raw<Out>) return Out{static_cast<double>(f)};
     else { Out o{}; o = bnd::detail::rational{static_cast<double>(f)}; return o; }
   }
 

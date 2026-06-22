@@ -53,10 +53,17 @@ namespace bnd
   // on-grid values are exact in double (see `double_exact`).
   inline static constexpr policy_flag f64{(1ull << 37) | round_nearest};
 
+  // `f32` — binary32-backed storage (raw held as IEEE-754 float, notch nominal);
+  // the single-precision sibling of `f64`, for float-only FPUs (Cortex-M4F) and
+  // the `flt` engine. Power-of-2 notch + dyadic Lower required AND every on-grid
+  // value must fit float's 24-bit significand (see `float_exact`). Like `f64` it
+  // is an ordinary round_nearest integer bound under BND_MATH_FIXED. Widest-wins
+  // storage order: exact > f64 > f32 > direct > indexed > deduced.
+  inline static constexpr policy_flag f32{(1ull << 41) | round_nearest};
+
   // `real` — deprecated spelling of `f64`, kept as an alias for one release. New
-  // code should use `f64` (binary64 storage); a future `f32` brings binary32
-  // storage. The flag is purely a storage choice — transcendentals gate on
-  // `snap`, not on this (see cmath.hpp).
+  // code should use `f64` (binary64 storage) or `f32` (binary32). The flag is
+  // purely a storage choice — transcendentals gate on `snap`, not on this.
   inline static constexpr policy_flag real = f64;
 
   // `exact` — force rational raw storage on any grid. Values still obey the grid;

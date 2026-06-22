@@ -124,7 +124,7 @@ TEST_CASE("representation flags resolve widest-wins", "[storage][policy]")
   // BND_MATH_FIXED the real arm is elided and direct wins).
   using RD = bound<{0, 4}, real | direct>;
 #ifndef BND_MATH_FIXED
-  STATIC_REQUIRE(detail::real_raw<RD>);
+  STATIC_REQUIRE(detail::f64_raw<RD>);
 #else
   STATIC_REQUIRE(detail::value_raw<RD>);
 #endif
@@ -134,6 +134,53 @@ TEST_CASE("representation flags resolve widest-wins", "[storage][policy]")
   STATIC_REQUIRE(detail::value_raw<DI>);
   REQUIRE(DI{42}.raw() == 42);
 }
+
+#ifndef BND_MATH_FIXED
+TEST_CASE("f32 selects binary32-backed storage; arithmetic demotes when too fine",
+          "[storage][f32]")
+{
+  using F = bound<{{-8, 8}, notch<1, 256>}, round_nearest | f32>;
+  STATIC_REQUIRE(std::is_same_v<F::raw_type, float>);
+  STATIC_REQUIRE(detail::f32_raw<F>);
+  STATIC_REQUIRE(detail::fp_raw<F> && !detail::f64_raw<F>);
+
+  // Construct/read are lossless on the float-exact grid.
+  F a{rational{3, 2}};
+  REQUIRE(static_cast<double>(a) == 1.5);
+  REQUIRE(rational{a + F{rational{1, 4}}} == rational{7, 4});   // 1.75
+  REQUIRE(rational{a * F{2}} == 3);
+
+  // f32 ⊕ f32 stays f32 while the result grid still fits float...
+  using Sum = decltype(F{} + F{});                              // notch 1/256, |v|≤16
+  STATIC_REQUIRE(detail::f32_raw<Sum>);
+
+  // ...but a product whose grid outgrows float's 24-bit significand demotes to f64
+  // (notch 1/65536, |v|≤2^16 → 2^32 > 2^24, but < 2^53).
+  using Wide = bound<{{-256, 256}, notch<1, 256>}, round_nearest | f32>;
+  using WideProd = decltype(Wide{} * Wide{});
+  STATIC_REQUIRE(detail::f64_raw<WideProd>);
+
+  // Mixing f32 with f64 widens to f64; exact still beats both.
+  using D = bound<{{-8, 8}, notch<1, 256>}, round_nearest | f64>;
+  STATIC_REQUIRE(detail::f64_raw<decltype(F{} + D{})>);
+  using E = bound<{{-8, 8}, notch<1, 256>}, exact>;
+  STATIC_REQUIRE(detail::rational_raw<decltype(E{} + F{})>);
+}
+
+TEST_CASE("math output lands in f32 storage (flt engine pairs with f32)",
+          "[storage][f32][cmath]")
+{
+  using Ang = bound<{{-8, 8}, notch<1, 256>}, round_nearest | f32>;
+  using Sq  = bound<{{0, 16}, notch<1, 256>}, round_nearest | f32>;
+  // The float engine stores its result straight into the f32 raw (no rational).
+  auto s = math::flt::sin(Ang{0});
+  auto r = math::flt::sqrt(Sq{4});
+  STATIC_REQUIRE(detail::f32_raw<decltype(s)>);
+  STATIC_REQUIRE(detail::f32_raw<decltype(r)>);
+  REQUIRE(rational{s} == 0);
+  REQUIRE(rational{r} == 2);
+}
+#endif // !BND_MATH_FIXED
 
 TEST_CASE("f64 is the canonical double-backed flag; real is its alias",
           "[storage][f64]")
@@ -149,7 +196,7 @@ TEST_CASE("f64 is the canonical double-backed flag; real is its alias",
   using R = bound<{{0, 4}, notch<1, 256>}, round_nearest | real>;
   STATIC_REQUIRE(std::is_same_v<F::raw_type, double>);
   STATIC_REQUIRE(std::is_same_v<F::raw_type, R::raw_type>);
-  STATIC_REQUIRE(detail::real_raw<F>);
+  STATIC_REQUIRE(detail::f64_raw<F>);
 #endif
 }
 
@@ -256,7 +303,7 @@ TEST_CASE("atan / atan2 accept magnitudes beyond 1", "[cmath][atan][domain]")
 }
 
 // Regression: per-operation policy overrides (`with_*`, `on_*`, `policy(ec)`)
-// route through the assignment engine, which previously had no real_raw arm
+// route through the assignment engine, which previously had no f64_raw arm
 // and wrote integer offsets into the double raw (e.g. with_clamp stored the
 // notch COUNT instead of the endpoint).
 TEST_CASE("per-operation policies work on real-backed bounds",

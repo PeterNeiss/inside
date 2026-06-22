@@ -49,7 +49,7 @@ is proven elsewhere. `clamp`, `wrap`, and `sentinel` are mutually exclusive
 | `round_half_even` | banker's rounding — half to even (implies `snap`) |
 | `ignore_zero` | skip the divide-by-zero check — `a / 0` / `a % 0` is UB (binary `div`/`mod`); compound `/= 0` / `%= 0` no-op |
 | `ignore_domain` | suppress the runtime domain check |
-| `f64` / `exact` / `direct` / `indexed` | **representation flags** — select how the raw value is stored; see the next section (`real` is a deprecated alias of `f64`) |
+| `f64` / `f32` / `exact` / `direct` / `indexed` | **representation flags** — select how the raw value is stored; see the next section (`real` is a deprecated alias of `f64`) |
 
 ## Representation flags
 
@@ -60,6 +60,7 @@ Besides the *behavior* flags above, four flags select the **representation**
 | Flag | Forces | Grid requirement | Notes |
 |---|---|---|---|
 | `f64` | IEEE-754 `double` raw (the value itself, snapped to the grid) | dyadic **and** double-exact (every value fits `double`'s 53-bit significand) | bundles `round_nearest`; the fast math-storage flag. Arithmetic drops `f64` to an exact representation when a result grid is too fine for `double`. Under `BND_MATH_FIXED` it falls back to integer storage. **`real` is a deprecated alias of `f64`.** |
+| `f32` | IEEE-754 `float` raw (the value itself, snapped to the grid) | dyadic **and** float-exact (every value fits `float`'s 24-bit significand) | the binary32 sibling of `f64`, for single-precision FPUs and the `flt` engine. Arithmetic **demotes `f32`→`f64`** when a result grid outgrows `float` (then drops to exact when it outgrows `double`). Under `BND_MATH_FIXED` it falls back to integer storage. |
 | `exact` | exact-fraction raw on **any** grid | none | no notch-count limit, no `double` anywhere; arithmetic is exact — on notched grids overflow is usually provably impossible and `+ − ×` return plain bounds (no `optional`) |
 | `direct` | raw == value as a plain integer | `Notch == 1` | e.g. `bound<{5, 100}, direct>` stores 5..100, not index 0..95 — the raw equals the wire/debugger value |
 | `indexed` | raw == 0-based notch index | `Notch != 0` | e.g. `bound<{-5, 5}, indexed>` stores 0..10 unsigned — dense layout for serialization |
@@ -73,7 +74,7 @@ using slot   = bound<{-5, 5},  indexed>;      // raw() == 0..10, dense unsigned
 
 Binary arithmetic ORs the policies of both operands, so a result can carry
 several representation flags; storage selection resolves them
-**widest-wins**: `exact > f64 > direct > indexed > deduced`. An
+**widest-wins**: `exact > f64 > f32 > direct > indexed > deduced`. An
 `exact + f64` sum is therefore exact, and a `f64` math chain stays
 double-backed end to end — no errors at mixed call sites.
 

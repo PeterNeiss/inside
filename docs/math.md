@@ -277,6 +277,14 @@ size/speed where double-grade precision isn't needed.
   quantized onto the output grid. Ships its own golden pins
   (`tests/test_math_engines.cpp`).
 
+**Pair `flt` with `f32` storage.** An `f32`-backed operand holds a binary32 raw,
+so `flt` reads it, computes, and stores the result straight in `float` — no
+`double` round-trip. On a single-precision-only FPU that keeps the whole path in
+hardware float; with `f64`/rational storage the boundary marshalling goes through
+`double` (soft-float on such targets). Because binary32 has only a 24-bit
+significand, an `f32` result grid that a function would overflow (e.g. `exp` of a
+large argument on a fine grid) is a compile error — widen the grid or use `f64`.
+
 ## Compiling without floating point (`BND_MATH_NO_FP`)
 
 On a target with no hardware FPU and no `<cmath>`, define **`BND_MATH_NO_FP`**
