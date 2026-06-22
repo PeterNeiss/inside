@@ -41,11 +41,18 @@
 //     platform built without `-ffast-math`. Fast (~ns); needs an FPU; runtime.
 //   * `BND_MATH_FIXED` — integer/CORDIC engine (this file): FPU-free, constexpr,
 //     UNCONDITIONALLY bit-identical (any platform/flags). For embedded/portability.
+//   * `BND_MATH_FLOAT` — float (binary32) engine (`cmath_float.hpp`): like the
+//     double engine but single precision, for single-precision-only FPUs.
+//
+// The macro picks only which engine the UNQUALIFIED `bnd::math::fn` uses; all
+// engines are always reachable by namespace (`cordic::`/`dbl::`/`flt::`). Default
+// selection (the dispatch below): `BND_MATH_NO_FP`→cordic, else
+// `BND_MATH_FLOAT`→flt, else dbl.
 //
 // `BND_MATH_NO_FP` (implied by `BND_MATH_FIXED`, auto-enabled when
-// `__STDC_HOSTED__ == 0`) compiles the double engine and its `<cmath>` out
-// entirely, leaving the integer engine — so the library, including the single
-// header, builds with no hardware floating point. The dispatch below keys on it.
+// `__STDC_HOSTED__ == 0`) compiles the double AND float engines and their
+// `<cmath>` out entirely, leaving the integer engine — so the library, including
+// the single header, builds with no hardware floating point.
 //
 // =====================================================================
 //   INTEGER (CORDIC) ENGINE — BIT-EXACT REPRODUCIBILITY CONTRACT
@@ -1187,8 +1194,10 @@ namespace bnd::math
   [[nodiscard]] BND_MATH_FN auto sqrt(In x) noexcept
   {
     static_assert(detail::require_snap<In>());
-#ifdef BND_MATH_NO_FP
+#if defined(BND_MATH_NO_FP)
     return sqrt_impl<detail::sqrt_auto_t<In>>(x);
+#elif defined(BND_MATH_FLOAT)
+    return flt::sqrt_core<detail::sqrt_auto_t<In>>(x);
 #else
     return dbl::sqrt_core<detail::sqrt_auto_t<In>>(x);
 #endif
@@ -1203,8 +1212,13 @@ namespace bnd::math
   {
     static_assert(detail::require_snap<In>());
     using Out = detail::sqrt_signed_auto_t<In>;
-#ifdef BND_MATH_NO_FP
+#if defined(BND_MATH_NO_FP)
     return sqrt_signed_impl<Out>(x);
+#elif defined(BND_MATH_FLOAT)
+    float v = static_cast<float>(static_cast<double>(x));
+    if (v < 0.0f)
+      return slim::expected<Out, errc>{slim::unexpected(errc::domain_error)};
+    return slim::expected<Out, errc>{flt::store<Out>(flt::detail::d_sqrt(v))};
 #else
     double v = static_cast<double>(x);
     if (v < 0.0)
@@ -1217,8 +1231,10 @@ namespace bnd::math
   [[nodiscard]] BND_MATH_FN auto exp2(In x) noexcept
   {
     static_assert(detail::require_snap<In>());
-#ifdef BND_MATH_NO_FP
+#if defined(BND_MATH_NO_FP)
     return exp2_impl<detail::exp2_auto_t<In>>(x);
+#elif defined(BND_MATH_FLOAT)
+    return flt::exp2_core<detail::exp2_auto_t<In>>(x);
 #else
     return dbl::exp2_core<detail::exp2_auto_t<In>>(x);
 #endif
@@ -1229,11 +1245,13 @@ namespace bnd::math
   {
     static_assert(detail::require_snap<In>());
     // Domain guard belongs on the shared entry point, not just the fixed
-    // engine's *_impl: the double engine's log_core has no singularity check,
+    // engine's *_impl: the FP engines' log_core has no singularity check,
     // so log2(x<=0) would silently store finite garbage (e.g. log2(0) ≈ -7).
     static_assert(Lower<In> > 0, "bnd::math::log2: input must be strictly positive");
-#ifdef BND_MATH_NO_FP
+#if defined(BND_MATH_NO_FP)
     return log2_impl<detail::log2_auto_t<In>>(x);
+#elif defined(BND_MATH_FLOAT)
+    return flt::log2_core<detail::log2_auto_t<In>>(x);
 #else
     return dbl::log2_core<detail::log2_auto_t<In>>(x);
 #endif
@@ -1243,8 +1261,10 @@ namespace bnd::math
   [[nodiscard]] BND_MATH_FN auto exp(In x) noexcept
   {
     static_assert(detail::require_snap<In>());
-#ifdef BND_MATH_NO_FP
+#if defined(BND_MATH_NO_FP)
     return exp_impl<detail::exp_auto_t<In>>(x);
+#elif defined(BND_MATH_FLOAT)
+    return flt::exp_core<detail::exp_auto_t<In>>(x);
 #else
     return dbl::exp_core<detail::exp_auto_t<In>>(x);
 #endif
@@ -1255,8 +1275,10 @@ namespace bnd::math
   {
     static_assert(detail::require_snap<In>());
     static_assert(Lower<In> > 0, "bnd::math::log: input must be strictly positive");
-#ifdef BND_MATH_NO_FP
+#if defined(BND_MATH_NO_FP)
     return log_impl<detail::log_auto_t<In>>(x);
+#elif defined(BND_MATH_FLOAT)
+    return flt::log_core<detail::log_auto_t<In>>(x);
 #else
     return dbl::log_core<detail::log_auto_t<In>>(x);
 #endif
@@ -1267,8 +1289,10 @@ namespace bnd::math
   {
     static_assert(detail::require_snap<In>());
     using Out = detail::pow_base_auto_t<Base, In>;
-#ifdef BND_MATH_NO_FP
+#if defined(BND_MATH_NO_FP)
     return pow_base_impl<Base, Out>(x);
+#elif defined(BND_MATH_FLOAT)
+    return flt::store<Out>(flt::detail::d_pow(static_cast<float>(Base), static_cast<float>(static_cast<double>(x))));
 #else
     return dbl::store<Out>(dbl::detail::d_pow(static_cast<double>(Base), static_cast<double>(x)));
 #endif
@@ -1318,8 +1342,10 @@ namespace bnd::math
   [[nodiscard]] BND_MATH_FN auto sin(In angle) noexcept
   {
     static_assert(detail::require_snap<In>());
-#ifdef BND_MATH_NO_FP
+#if defined(BND_MATH_NO_FP)
     return sin_impl<detail::sin_auto_t<In>>(angle);
+#elif defined(BND_MATH_FLOAT)
+    return flt::sin_core<detail::sin_auto_t<In>>(angle);
 #else
     return dbl::sin_core<detail::sin_auto_t<In>>(angle);
 #endif
@@ -1329,8 +1355,10 @@ namespace bnd::math
   [[nodiscard]] BND_MATH_FN auto cos(In angle) noexcept
   {
     static_assert(detail::require_snap<In>());
-#ifdef BND_MATH_NO_FP
+#if defined(BND_MATH_NO_FP)
     return cos_impl<detail::cos_auto_t<In>>(angle);
+#elif defined(BND_MATH_FLOAT)
+    return flt::cos_core<detail::cos_auto_t<In>>(angle);
 #else
     return dbl::cos_core<detail::cos_auto_t<In>>(angle);
 #endif
@@ -1340,8 +1368,10 @@ namespace bnd::math
   [[nodiscard]] BND_MATH_FN auto atan2(In y, In x) noexcept
   {
     static_assert(detail::require_snap<In>());
-#ifdef BND_MATH_NO_FP
+#if defined(BND_MATH_NO_FP)
     return atan2_impl<detail::atan2_auto_t<In>>(y, x);
+#elif defined(BND_MATH_FLOAT)
+    return flt::atan2_core<detail::atan2_auto_t<In>>(y, x);
 #else
     return dbl::atan2_core<detail::atan2_auto_t<In>>(y, x);
 #endif
@@ -1352,8 +1382,18 @@ namespace bnd::math
   {
     static_assert(detail::require_snap<In>());
     using Out = detail::tan_auto_t<In>;
-#ifdef BND_MATH_NO_FP
+#if defined(BND_MATH_NO_FP)
     return tan_impl<Out>(angle);
+#elif defined(BND_MATH_FLOAT)
+    float x = static_cast<float>(static_cast<double>(angle));
+    float c = flt::detail::d_cos(x);
+    if (c == 0.0f)
+      return slim::expected<Out, errc>{slim::unexpected(errc::division_by_zero)};
+    float t = flt::detail::d_sin(x) / c;
+    if constexpr (!has_flag(BoundPolicy<Out>, clamp))   // clamp Out: saturate below
+      if (t < static_cast<float>(static_cast<double>(Lower<Out>)) || t > static_cast<float>(static_cast<double>(Upper<Out>)))
+        return slim::expected<Out, errc>{slim::unexpected(errc::overflow)};
+    return slim::expected<Out, errc>{flt::store<Out>(t)};
 #else
     double x = static_cast<double>(angle);
     double c = dbl::detail::d_cos(x);
@@ -1463,10 +1503,12 @@ namespace bnd::math
   BND_MATH_FN void sin(DEG angle, AMP& out) noexcept
   {
     static_assert(detail::valid_circle<DEG>());
-#ifdef BND_MATH_NO_FP
+#if defined(BND_MATH_NO_FP)
     constexpr imax M = detail::circle_slots<DEG>;
     constexpr int  W = detail::working_bits<AMP>();
     out = detail::sin_slot<M, W>(bnd::detail::raw_imax(angle));
+#elif defined(BND_MATH_FLOAT)
+    out = flt::detail::d_sin(static_cast<float>(static_cast<double>(angle)) * (flt::detail::kPi / 180.0f));
 #else
     out = dbl::detail::d_sin(static_cast<double>(angle) * (dbl::detail::kPi / 180.0));
 #endif
@@ -1477,10 +1519,12 @@ namespace bnd::math
   BND_MATH_FN void cos(DEG angle, AMP& out) noexcept
   {
     static_assert(detail::valid_circle<DEG>());
-#ifdef BND_MATH_NO_FP
+#if defined(BND_MATH_NO_FP)
     constexpr imax M = detail::circle_slots<DEG>;
     constexpr int  W = detail::working_bits<AMP>();
     out = detail::sin_slot<M, W>(bnd::detail::raw_imax(angle) + M / 4);
+#elif defined(BND_MATH_FLOAT)
+    out = flt::detail::d_cos(static_cast<float>(static_cast<double>(angle)) * (flt::detail::kPi / 180.0f));
 #else
     out = dbl::detail::d_cos(static_cast<double>(angle) * (dbl::detail::kPi / 180.0));
 #endif
@@ -1493,13 +1537,19 @@ namespace bnd::math
   [[nodiscard]] BND_MATH_FN bool tan(DEG angle, AMP& out) noexcept
   {
     static_assert(detail::valid_circle<DEG>());
-#ifdef BND_MATH_NO_FP
+#if defined(BND_MATH_NO_FP)
     constexpr imax M = detail::circle_slots<DEG>;
     constexpr int  W = detail::working_bits<AMP>();
     imax i = bnd::detail::raw_imax(angle);
     bnd::detail::rational c = detail::sin_slot<M, W>(i + M / 4);
     if (c == 0) return false;                                  // pole
     out = (detail::sin_slot<M, W>(i) / c).value();             // sin / cos
+    return true;
+#elif defined(BND_MATH_FLOAT)
+    float rad = static_cast<float>(static_cast<double>(angle)) * (flt::detail::kPi / 180.0f);
+    float c = flt::detail::d_cos(rad);
+    if (c == 0.0f) return false;                               // pole
+    out = flt::detail::d_sin(rad) / c;
     return true;
 #else
     double rad = static_cast<double>(angle) * (dbl::detail::kPi / 180.0);
@@ -1852,8 +1902,10 @@ namespace bnd::math
   [[nodiscard]] BND_MATH_FN auto atan(In x) noexcept
   {
     static_assert(detail::require_snap<In>());
-#ifdef BND_MATH_NO_FP
+#if defined(BND_MATH_NO_FP)
     return atan_impl<detail::atan_auto_t<In>>(x);
+#elif defined(BND_MATH_FLOAT)
+    return flt::atan_core<detail::atan_auto_t<In>>(x);
 #else
     return dbl::atan_core<detail::atan_auto_t<In>>(x);
 #endif
@@ -1863,8 +1915,10 @@ namespace bnd::math
   [[nodiscard]] BND_MATH_FN auto asin(In x) noexcept
   {
     static_assert(detail::require_snap<In>());
-#ifdef BND_MATH_NO_FP
+#if defined(BND_MATH_NO_FP)
     return asin_impl<detail::asin_auto_t<In>>(x);
+#elif defined(BND_MATH_FLOAT)
+    return flt::asin_core<detail::asin_auto_t<In>>(x);
 #else
     return dbl::asin_core<detail::asin_auto_t<In>>(x);
 #endif
@@ -1874,8 +1928,10 @@ namespace bnd::math
   [[nodiscard]] BND_MATH_FN auto acos(In x) noexcept
   {
     static_assert(detail::require_snap<In>());
-#ifdef BND_MATH_NO_FP
+#if defined(BND_MATH_NO_FP)
     return acos_impl<detail::acos_auto_t<In>>(x);
+#elif defined(BND_MATH_FLOAT)
+    return flt::acos_core<detail::acos_auto_t<In>>(x);
 #else
     return dbl::acos_core<detail::acos_auto_t<In>>(x);
 #endif
@@ -1885,8 +1941,10 @@ namespace bnd::math
   [[nodiscard]] BND_MATH_FN auto sinh(In x) noexcept
   {
     static_assert(detail::require_snap<In>());
-#ifdef BND_MATH_NO_FP
+#if defined(BND_MATH_NO_FP)
     return sinh_impl<detail::sinh_auto_t<In>>(x);
+#elif defined(BND_MATH_FLOAT)
+    return flt::sinh_core<detail::sinh_auto_t<In>>(x);
 #else
     return dbl::sinh_core<detail::sinh_auto_t<In>>(x);
 #endif
@@ -1896,8 +1954,10 @@ namespace bnd::math
   [[nodiscard]] BND_MATH_FN auto cosh(In x) noexcept
   {
     static_assert(detail::require_snap<In>());
-#ifdef BND_MATH_NO_FP
+#if defined(BND_MATH_NO_FP)
     return cosh_impl<detail::cosh_auto_t<In>>(x);
+#elif defined(BND_MATH_FLOAT)
+    return flt::cosh_core<detail::cosh_auto_t<In>>(x);
 #else
     return dbl::cosh_core<detail::cosh_auto_t<In>>(x);
 #endif
@@ -1907,8 +1967,10 @@ namespace bnd::math
   [[nodiscard]] BND_MATH_FN auto tanh(In x) noexcept
   {
     static_assert(detail::require_snap<In>());
-#ifdef BND_MATH_NO_FP
+#if defined(BND_MATH_NO_FP)
     return tanh_impl<detail::tanh_auto_t<In>>(x);
+#elif defined(BND_MATH_FLOAT)
+    return flt::tanh_core<detail::tanh_auto_t<In>>(x);
 #else
     return dbl::tanh_core<detail::tanh_auto_t<In>>(x);
 #endif
@@ -1919,8 +1981,10 @@ namespace bnd::math
   {
     static_assert(detail::require_snap<In>());
     static_assert(Lower<In> > 0, "bnd::math::log10: input must be strictly positive");
-#ifdef BND_MATH_NO_FP
+#if defined(BND_MATH_NO_FP)
     return log10_impl<detail::log10_auto_t<In>>(x);
+#elif defined(BND_MATH_FLOAT)
+    return flt::log10_core<detail::log10_auto_t<In>>(x);
 #else
     return dbl::log10_core<detail::log10_auto_t<In>>(x);
 #endif
@@ -1930,8 +1994,10 @@ namespace bnd::math
   [[nodiscard]] BND_MATH_FN auto cbrt(In x) noexcept
   {
     static_assert(detail::require_snap<In>());
-#ifdef BND_MATH_NO_FP
+#if defined(BND_MATH_NO_FP)
     return cbrt_impl<detail::cbrt_auto_t<In>>(x);
+#elif defined(BND_MATH_FLOAT)
+    return flt::cbrt_core<detail::cbrt_auto_t<In>>(x);
 #else
     return dbl::cbrt_core<detail::cbrt_auto_t<In>>(x);
 #endif
@@ -1941,8 +2007,10 @@ namespace bnd::math
   [[nodiscard]] BND_MATH_FN auto hypot(InX x, InY y) noexcept
   {
     static_assert(detail::require_snap<InX>() && detail::require_snap<InY>());
-#ifdef BND_MATH_NO_FP
+#if defined(BND_MATH_NO_FP)
     return hypot_impl<detail::hypot_auto_t<InX, InY>>(x, y);
+#elif defined(BND_MATH_FLOAT)
+    return flt::hypot_core<detail::hypot_auto_t<InX, InY>>(x, y);
 #else
     return dbl::hypot_core<detail::hypot_auto_t<InX, InY>>(x, y);
 #endif
@@ -1954,8 +2022,17 @@ namespace bnd::math
   {
     static_assert(detail::require_snap<InB>() && detail::require_snap<InE>());
     using Out = detail::pow_auto_t<InB, InE>;
-#ifdef BND_MATH_NO_FP
+#if defined(BND_MATH_NO_FP)
     return pow_impl<Out>(base, exp);
+#elif defined(BND_MATH_FLOAT)
+    float b = static_cast<float>(static_cast<double>(base));
+    if (b <= 0.0f)
+      return slim::expected<Out, errc>{slim::unexpected(errc::domain_error)};
+    float r = flt::detail::d_pow(b, static_cast<float>(static_cast<double>(exp)));
+    if constexpr (!has_flag(BoundPolicy<Out>, clamp))   // clamp Out: saturate below
+      if (r < static_cast<float>(static_cast<double>(Lower<Out>)) || r > static_cast<float>(static_cast<double>(Upper<Out>)))
+        return slim::expected<Out, errc>{slim::unexpected(errc::overflow)};
+    return slim::expected<Out, errc>{flt::store<Out>(r)};
 #else
     double b = static_cast<double>(base);
     if (b <= 0.0)
@@ -2250,7 +2327,7 @@ namespace bnd::math
     {
       static_assert(bnd::math::detail::require_snap<In>());
       using Out = bnd::math::detail::sqrt_signed_auto_t<In>;
-      float v = static_cast<float>(x);
+      float v = static_cast<float>(static_cast<double>(x));
       if (v < 0.0f)
         return slim::expected<Out, errc>{slim::unexpected(errc::domain_error)};
       return slim::expected<Out, errc>{store<Out>(detail::d_sqrt(v))};
@@ -2285,7 +2362,7 @@ namespace bnd::math
     {
       static_assert(bnd::math::detail::require_snap<In>());
       using Out = bnd::math::detail::pow_base_auto_t<Base, In>;
-      return store<Out>(detail::d_pow(static_cast<float>(Base), static_cast<float>(x)));
+      return store<Out>(detail::d_pow(static_cast<float>(Base), static_cast<float>(static_cast<double>(x))));
     }
 
     template <boundable In>
@@ -2301,13 +2378,13 @@ namespace bnd::math
     {
       static_assert(bnd::math::detail::require_snap<In>());
       using Out = bnd::math::detail::tan_auto_t<In>;
-      float x = static_cast<float>(angle);
+      float x = static_cast<float>(static_cast<double>(angle));
       float c = detail::d_cos(x);
       if (c == 0.0f)
         return slim::expected<Out, errc>{slim::unexpected(errc::division_by_zero)};
       float t = detail::d_sin(x) / c;
       if constexpr (!has_flag(BoundPolicy<Out>, clamp))   // clamp Out: saturate below
-        if (t < static_cast<float>(Lower<Out>) || t > static_cast<float>(Upper<Out>))
+        if (t < static_cast<float>(static_cast<double>(Lower<Out>)) || t > static_cast<float>(static_cast<double>(Upper<Out>)))
           return slim::expected<Out, errc>{slim::unexpected(errc::overflow)};
       return slim::expected<Out, errc>{store<Out>(t)};
     }
@@ -2365,12 +2442,12 @@ namespace bnd::math
     {
       static_assert(bnd::math::detail::require_snap<InB>() && bnd::math::detail::require_snap<InE>());
       using Out = bnd::math::detail::pow_auto_t<InB, InE>;
-      float b = static_cast<float>(base);
+      float b = static_cast<float>(static_cast<double>(base));
       if (b <= 0.0f)
         return slim::expected<Out, errc>{slim::unexpected(errc::domain_error)};
-      float r = detail::d_pow(b, static_cast<float>(exp));
+      float r = detail::d_pow(b, static_cast<float>(static_cast<double>(exp)));
       if constexpr (!has_flag(BoundPolicy<Out>, clamp))   // clamp Out: saturate below
-        if (r < static_cast<float>(Lower<Out>) || r > static_cast<float>(Upper<Out>))
+        if (r < static_cast<float>(static_cast<double>(Lower<Out>)) || r > static_cast<float>(static_cast<double>(Upper<Out>)))
           return slim::expected<Out, errc>{slim::unexpected(errc::overflow)};
       return slim::expected<Out, errc>{store<Out>(r)};
     }

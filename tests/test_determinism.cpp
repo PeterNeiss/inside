@@ -26,6 +26,12 @@ using namespace bnd::detail;
 #define EXACT_ERR(expr)       do { auto _r = (expr); REQUIRE_FALSE(_r.has_value()); \
                                    REQUIRE(_r.error() == errc::domain_error); } while (0)
 
+// These pins are the DEFAULT engine's values (double / CORDIC, which agree here
+// except the one #ifdef'd case). The float engine is a third value set, so under
+// BND_MATH_FLOAT the unqualified math::fn produces different snapped values — its
+// determinism is pinned separately in test_math_engines.cpp.
+#ifndef BND_MATH_FLOAT
+
 TEST_CASE("determinism: asin / acos across grids and domain corners", "[determinism][cmath]")
 {
   using A1 = bound<{{-1, 1}, notch<1, 65536>}, round_nearest | real>;
@@ -199,3 +205,5 @@ TEST_CASE("determinism: sin / cos / tan radian corners", "[determinism][cmath]")
   EXACT_OK(math::tan(RAD{0}),     0,     1);
   EXACT_OK(math::tan(RAD{1}),  25517, 16384);  // ~1.5574
 }
+
+#endif // !BND_MATH_FLOAT

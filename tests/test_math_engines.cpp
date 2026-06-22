@@ -141,8 +141,10 @@ TEST_CASE("unqualified name aliases the build's default engine",
           "[cmath][engines][default]")
 {
   // bnd::math::sin must equal the selected engine bit-for-bit.
-#ifdef BND_MATH_NO_FP
+#if defined(BND_MATH_NO_FP)
   REQUIRE(rational{math::sin(Ang{1})} == rational{math::cordic::sin(Ang{1})});
+#elif defined(BND_MATH_FLOAT)
+  REQUIRE(rational{math::sin(Ang{1})} == rational{math::flt::sin(Ang{1})});
 #else
   REQUIRE(rational{math::sin(Ang{1})} == rational{math::dbl::sin(Ang{1})});
 #endif

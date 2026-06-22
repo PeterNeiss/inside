@@ -225,7 +225,12 @@ are also reachable by name, **callable side-by-side in the same binary**:
 | `bnd::math::cordic::fn` | integer / CORDIC | **always** (constexpr, FPU-free) |
 | `bnd::math::dbl::fn` | `double` (binary64) | unless `BND_MATH_NO_FP` |
 | `bnd::math::flt::fn` | `float` (binary32) | unless `BND_MATH_NO_FP` |
-| `bnd::math::fn` | the default | `cordic` under `BND_MATH_FIXED`/`BND_MATH_NO_FP`, else `dbl` |
+| `bnd::math::fn` | the default | `cordic` under `BND_MATH_FIXED`/`BND_MATH_NO_FP`; `flt` under `BND_MATH_FLOAT`; else `dbl` |
+
+Select the unqualified default at build time: `-DBOUND_MATH_FIXED=ON` (integer),
+`-DBOUND_MATH_FLOAT=ON` (binary32), or neither (binary64). The macro only changes
+what the bare `bnd::math::fn` name means — `cordic::`/`dbl::`/`flt::` stay
+individually reachable regardless.
 
 The qualified entry points have the **same signatures, domains, auto-deduced
 output grids, and domain `static_assert`s** as the unqualified one — only the

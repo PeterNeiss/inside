@@ -26,6 +26,7 @@ jobs:
           - { os: ubuntu-24.04, cc: clang, ver: 18, build: Release }
           - { os: ubuntu-22.04, cc: gcc,   ver: 12, build: Debug,   extra: "-DBOUND_CXX20=ON",      note: " (C++20)" }
           - { os: ubuntu-24.04, cc: gcc,   ver: 14, build: Release, extra: "-DBOUND_MATH_FIXED=ON", note: " (CORDIC)", heavy: true }
+          - { os: ubuntu-24.04, cc: gcc,   ver: 14, build: Release, extra: "-DBOUND_MATH_FLOAT=ON", note: " (float)" }
           # Native ARM64 (free for public repos): exercises a different ABI/codegen —
           # the Release cell runs the fuzz harness as a cross-arch bit-exactness check.
           - { os: ubuntu-24.04-arm, cc: gcc, ver: 14, build: Debug,   note: " (arm64)" }

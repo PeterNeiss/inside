@@ -28,6 +28,15 @@ if(BOUND_MATH_FIXED)
     target_compile_definitions(bound_bound INTERFACE BND_MATH_FIXED)
 endif()
 
+# -DBOUND_MATH_FLOAT=ON makes the UNQUALIFIED bnd::math::fn use the float
+# (binary32) engine — for single-precision-only FPUs. All engines stay reachable
+# by namespace (cordic::/dbl::/flt::) regardless; this only picks the default.
+# Ignored under BOUND_MATH_FIXED (the integer engine wins / no FP).
+option(BOUND_MATH_FLOAT "Default bnd::math to the float (binary32) engine instead of double" OFF)
+if(BOUND_MATH_FLOAT)
+    target_compile_definitions(bound_bound INTERFACE BND_MATH_FLOAT)
+endif()
+
 # By default an incompatible assignment/conversion (`b = x;`, `bound{x}`, a by-value
 # bound argument) reports the *reason* at compile time via named static_asserts. That
 # makes `bound` advertise itself is_constructible/convertible from incompatible types
