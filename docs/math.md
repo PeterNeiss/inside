@@ -215,6 +215,35 @@ FPU-free build. The default double engine is the right choice everywhere
 else: it carries the same grid guarantees and is reproducible across IEEE-754
 platforms compiled without `-ffast-math`.
 
+## Choosing an engine per call (`cordic::` / `dbl::`)
+
+The unqualified `bnd::math::fn` uses the build's default engine. Both engines are
+also reachable by name, **callable side-by-side in the same binary**:
+
+| Namespace | Engine | Availability |
+|---|---|---|
+| `bnd::math::cordic::fn` | integer / CORDIC | **always** (constexpr, FPU-free) |
+| `bnd::math::dbl::fn` | `double` | unless `BND_MATH_NO_FP` |
+| `bnd::math::fn` | the default | alias of `cordic` under `BND_MATH_FIXED`/`BND_MATH_NO_FP`, else `dbl` |
+
+The qualified entry points have the **same signatures, domains, auto-deduced
+output grids, and domain `static_assert`s** as the unqualified one — only the
+compute backend differs. This lets one program pick per call site:
+
+```cpp
+using A = bound<{{-8, 8}, notch<1, 16384>}, round_nearest | real>;
+
+auto a = math::cordic::sin(A{1});   // bit-exact across every target — replay/sim
+auto b = math::dbl::sin(A{1});      // ~2× faster — hot, accuracy-insensitive path
+auto c = math::sin(A{1});           // whichever the build selected
+```
+
+Because the engines are independent approximations, `cordic::fn` and `dbl::fn`
+can disagree by up to one notch on rounding ties (the table-maker's dilemma — see
+[determinism.md](determinism.md)); algebraically-exact inputs (e.g. `sqrt(4)`,
+`pow(2,4)`) land identically. Under `BND_MATH_NO_FP` the `dbl::` namespace is not
+defined, so a `dbl::` call there is a compile error; `cordic::` always works.
+
 ## Compiling without floating point (`BND_MATH_NO_FP`)
 
 On a target with no hardware FPU and no `<cmath>`, define **`BND_MATH_NO_FP`**
