@@ -97,14 +97,16 @@ under `include/` with `cmake --build build --target amalgamate` (see
   and STL/ranges integration. Plus predefined hardware-width aliases
   (`bnd::u8`, `bnd::unorm16`, `bnd::q8_8`, …) in `bound/formats.hpp`.
   See [docs/storage.md](docs/storage.md).
-- **Reproducible math, two engines** — a `<cmath>`-shaped function set over
+- **Reproducible math, three engines** — a `<cmath>`-shaped function set over
   bounds (`sin`/`cos`/`tan`, `asin`/`acos`/`atan`/`atan2`, `sinh`/`cosh`/`tanh`,
-  `exp`/`log`/`log2`/`log10`/`pow`, `sqrt`/`cbrt`/`hypot`). One API, two
-  build-time engines: a fast `double` engine (default, bit-identical across
-  IEEE-754 platforms) and an integer/CORDIC engine
-  (`-DBOUND_MATH_FIXED=ON` — `constexpr`, FPU-free, bit-identical
-  unconditionally). Math operands carry the `real` policy; angles are
-  radians; output grids auto-deduce. See [docs/math.md](docs/math.md).
+  `exp`/`log`/`log2`/`log10`/`pow`, `sqrt`/`cbrt`/`hypot`). One API; three engines
+  callable side-by-side by namespace (`dbl::` binary64, `flt::` binary32,
+  `cordic::` integer/FPU-free `constexpr`), each bit-identical across platforms.
+  The unqualified `bnd::math::fn` picks the build default (`-DBOUND_MATH_FIXED=ON`
+  → cordic, `-DBOUND_MATH_FLOAT=ON` → float, else double); `-DBND_MATH_NO_FP`
+  drops `<cmath>` for bare metal. Operands need only the `snap` bit (`f64`/`f32`
+  storage is an optional fast path); angles are radians; output grids auto-deduce.
+  See [docs/math.md](docs/math.md).
 - **Library internals** — grid invariants, storage decision tree, Q-format
   fast path, policy cascade. See [docs/internals.md](docs/internals.md).
 
@@ -166,7 +168,8 @@ scenario, native baseline paired with each bound case). Lower is better.
 | `transform(b += 1)` 10k uint8-width elts (unsafe) | 1.02 µs | 1.02 µs | **1.0×** (SIMD) |
 | Q-format store from exact fraction | ~6 ns | n/a | n/a |
 | Q-format store from `double` | ~46 ns | n/a | n/a |
-| `math::sin` (`real` operand, double engine) | 35 ns | 23 ns (`std::sin`) | 1.5× |
+| `math::sin` (`f64` operand, double engine) | 62 ns | 107 ns (`std::sin`) | **0.58×** |
+| `math::flt::sin` (`f32` operand, float engine) | 72 ns | 77 ns (`std::sinf`) | **0.94×** |
 | `math::fmod` (integer grids) | 19 ns | 25 ns (`std::fmod`) | **0.76×** |
 
 Notes:
@@ -185,10 +188,18 @@ Notes:
   no-overflow is proven upfront, then convert back to a `checked` bound
   after the loop.
 - The `math::*` rows measure the call alone (the bench constructs inputs
-  outside the timed blocks); `real`-policy operands are double-backed, so
-  input marshalling is free and the gap to `std::` is the output grid-snap.
+  outside the timed blocks); `f64`/`f32` operands are fp-backed, so input
+  marshalling is free and the gap to `std::` is the output grid-snap.
   `math::fmod` on commensurable integer grids beats `std::fmod` — it is a
   single integer remainder.
+- The two `math::sin` rows are a fresh same-run measurement (so they are
+  directly comparable to each other; absolute ns is machine-dependent — here
+  the own-polynomial double engine even edges out this libm's `std::sin`). The
+  **float engine** (`math::flt::*`, binary32) tracks the double engine closely
+  on a double-capable host (~1.15× here) and is comparable to `std::sinf`; its
+  real win is on **single-precision-only FPUs** (Cortex-M4F), where pairing it
+  with `f32` storage keeps the whole path in hardware `float` — no soft-`double`
+  at the I/O boundary — rather than throughput on this box.
 
 ## Build & Test
 

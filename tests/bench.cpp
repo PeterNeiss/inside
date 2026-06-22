@@ -468,6 +468,8 @@ void bench_cmath()
   using log_in_t  = bound<{{0x1p-8_r, 256}, notch<1, 256>}, round_nearest | real>;
   using pow_in_t  = bound<{{-9, 9}, notch<1, 16384>}, round_nearest | real>;
   using angle_t   = bound<{{-8, 8}, notch<1, 16384>}, round_nearest | real>;
+  // Same grid, f32 (binary32) storage — the natural pairing for the float engine.
+  using angle_f32_t = bound<{{-8, 8}, notch<1, 16384>}, round_nearest | f32>;
   using tan_in_t  = bound<{{-0.75_r, 0.75_r}, notch<1, 16384>}, round_nearest | real>;
   using atan2_in_t= bound<{{-1, 1}, notch<1, 16384>}, round_nearest | real>;
   using fmod_x_t  = bound<{{-8, 8}, notch<1, 16384>}, round_nearest>;
@@ -482,6 +484,7 @@ void bench_cmath()
   std::vector<exp2_in_t>  v_exp2;  std::vector<log2_in_t>  v_log2;
   std::vector<exp_in_t>   v_exp;   std::vector<log_in_t>   v_log;
   std::vector<pow_in_t>   v_pow;   std::vector<angle_t>    v_ang;
+  std::vector<angle_f32_t> v_angf;
   std::vector<tan_in_t>   v_tan;   std::vector<atan2_in_t> v_aty, v_atx;
   std::vector<fmod_x_t>   v_fmx;   std::vector<fmod_y_t>   v_fmy;
   std::vector<double> d_qs, d_q, d_log2, d_log, d_tan, d_aty, d_atx, d_fmy;
@@ -501,6 +504,7 @@ void bench_cmath()
     v_exp2.push_back(exp2_in_t{qs}); v_log2.push_back(log2_in_t{rl2});
     v_exp.push_back(exp_in_t{qs});   v_log.push_back(log_in_t{rl});
     v_pow.push_back(pow_in_t{qs});   v_ang.push_back(angle_t{qs});
+    v_angf.push_back(angle_f32_t{qs});
     v_tan.push_back(tan_in_t{rt});   v_aty.push_back(atan2_in_t{ry});
     v_atx.push_back(atan2_in_t{rx}); v_fmx.push_back(fmod_x_t{qs});
     v_fmy.push_back(fmod_y_t{rfy});
@@ -603,6 +607,14 @@ void bench_cmath()
     { CTRACK_NAME("std::sin    double");
       auto r = std::sin(d_qs[j]);
       do_not_optimize(r); }
+#ifndef BND_MATH_FIXED
+    { CTRACK_NAME("math::flt::sin f32");          // float engine, f32-backed input
+      auto r = bnd::math::flt::sin(v_angf[j]);
+      do_not_optimize(r.raw()); }
+    { CTRACK_NAME("std::sinf   float");
+      auto r = std::sin(static_cast<float>(d_qs[j]));
+      do_not_optimize(r); }
+#endif
 
     { CTRACK_NAME("math::cos   bound");
       auto r = bnd::math::cos(v_ang[j]);
