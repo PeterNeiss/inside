@@ -30,13 +30,13 @@ TEST_CASE("counter saturates; ring_counter wraps", "[formats][counter]")
 TEST_CASE("formats map to native byte widths", "[formats][storage]")
 {
   // Native integers
-  STATIC_REQUIRE(sizeof(u8)  == 1);
-  STATIC_REQUIRE(sizeof(u16) == 2);
-  STATIC_REQUIRE(sizeof(u32) == 4);
-  STATIC_REQUIRE(sizeof(i8)  == 1);
-  STATIC_REQUIRE(sizeof(i16) == 2);
-  STATIC_REQUIRE(sizeof(i32) == 4);
-  STATIC_REQUIRE(sizeof(i64) == 8);
+  STATIC_REQUIRE(sizeof(byte)  == 1);
+  STATIC_REQUIRE(sizeof(word) == 2);
+  STATIC_REQUIRE(sizeof(dword) == 4);
+  STATIC_REQUIRE(sizeof(sbyte)  == 1);
+  STATIC_REQUIRE(sizeof(sword) == 2);
+  STATIC_REQUIRE(sizeof(sdword) == 4);
+  STATIC_REQUIRE(sizeof(sqword) == 8);
 
   // Unsigned normalized
   STATIC_REQUIRE(sizeof(unorm8)  == 1);
@@ -54,13 +54,13 @@ TEST_CASE("formats map to native byte widths", "[formats][storage]")
 //---------------------------------------------------------------------------
 TEST_CASE("formats keep zero-overhead optional", "[formats][optional]")
 {
-  STATIC_REQUIRE(sizeof(slim::optional<u8>)      == sizeof(u8));
-  STATIC_REQUIRE(sizeof(slim::optional<i16>)     == sizeof(i16));
+  STATIC_REQUIRE(sizeof(slim::optional<byte>)      == sizeof(byte));
+  STATIC_REQUIRE(sizeof(slim::optional<sword>)     == sizeof(sword));
   STATIC_REQUIRE(sizeof(slim::optional<unorm8>)  == sizeof(unorm8));
   STATIC_REQUIRE(sizeof(slim::optional<unorm16>) == sizeof(unorm16));
   STATIC_REQUIRE(sizeof(slim::optional<q8_8>)    == sizeof(q8_8));
 
-  slim::optional<u8> o = u8{200};
+  slim::optional<byte> o = byte{200};
   REQUIRE(o.has_value());
   REQUIRE(*o == 200);
   o = slim::nullopt;
@@ -73,10 +73,10 @@ TEST_CASE("formats keep zero-overhead optional", "[formats][optional]")
 TEST_CASE("formats round-trip representative values", "[formats][values]")
 {
   // Native integers — top usable value is one below the native max.
-  REQUIRE(u8{254}  == 254);
-  REQUIRE(u8{0}    == 0);
-  REQUIRE(i16{-32767} == -32767);
-  REQUIRE(i16{32767}  == 32767);
+  REQUIRE(byte{254}  == 254);
+  REQUIRE(byte{0}    == 0);
+  REQUIRE(sword{-32767} == -32767);
+  REQUIRE(sword{32767}  == 32767);
 
   // UNORM — both endpoints exact, plus a representable interior point.
   REQUIRE(unorm8{0.0_r} == 0);
@@ -95,13 +95,13 @@ TEST_CASE("formats round-trip representative values", "[formats][values]")
 //---------------------------------------------------------------------------
 TEST_CASE("formats: wide-type extremes round-trip", "[formats][values]")
 {
-  REQUIRE(u16{65534} == 65534);
-  REQUIRE(u32{4294967294} == 4294967294);
-  REQUIRE(i8{-127} == -127);
-  REQUIRE(i32{-2147483647} == -2147483647);
-  REQUIRE(i32{2147483647}  == 2147483647);
-  REQUIRE(i64{-9223372036854775807LL} == -9223372036854775807LL);
-  REQUIRE(i64{9223372036854775807LL}  == 9223372036854775807LL);
+  REQUIRE(word{65534} == 65534);
+  REQUIRE(dword{4294967294} == 4294967294);
+  REQUIRE(sbyte{-127} == -127);
+  REQUIRE(sdword{-2147483647} == -2147483647);
+  REQUIRE(sdword{2147483647}  == 2147483647);
+  REQUIRE(sqword{-9223372036854775807LL} == -9223372036854775807LL);
+  REQUIRE(sqword{9223372036854775807LL}  == 9223372036854775807LL);
   REQUIRE(unorm32{1.0_r} == 1);
   REQUIRE(unorm32{0.0_r} == 0);
 }
@@ -111,7 +111,7 @@ TEST_CASE("formats: wide-type extremes round-trip", "[formats][values]")
 //---------------------------------------------------------------------------
 TEST_CASE("formats reject the reserved top value", "[formats][checked]")
 {
-  REQUIRE_THROWS([]{ u8 x{255}; (void)x; }());      // 255 is the reserved slot
-  REQUIRE_THROWS([]{ i16 x{-32768}; (void)x; }());  // INT16_MIN is reserved
-  REQUIRE_NOTHROW([]{ u8 x{254}; (void)x; }());
+  REQUIRE_THROWS([]{ byte x{255}; (void)x; }());      // 255 is the reserved slot
+  REQUIRE_THROWS([]{ sword x{-32768}; (void)x; }());  // INT16_MIN is reserved
+  REQUIRE_NOTHROW([]{ byte x{254}; (void)x; }());
 }

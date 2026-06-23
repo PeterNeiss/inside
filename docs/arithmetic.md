@@ -3,8 +3,8 @@
 Binary operations compute the result grid at compile time:
 
 ```cpp
-using u8 = bound<{0, 255}>;
-u8 a{100}, b{200};
+using lvl = bound<{0, 255}>;
+lvl a{100}, b{200};
 
 auto sum  = a + b;   // bound<{0, 510}>
 auto diff = a - b;   // bound<{-255, 255}>
@@ -397,12 +397,12 @@ All `optional`-returning operators propagate `nullopt`: if either operand is
 `nullopt`, the result is `nullopt`.
 
 ```cpp
-using u8 = bound<{1, 255}>;
-slim::optional<u8> a{u8{100}};
-slim::optional<u8> none{slim::nullopt};
+using lvl = bound<{1, 255}>;
+slim::optional<lvl> a{lvl{100}};
+slim::optional<lvl> none{slim::nullopt};
 
-auto r1 = a + u8{10};     // optional<bound<{2, 510}>>, has value 110
-auto r2 = none + u8{10};  // optional<bound<{2, 510}>>, nullopt
+auto r1 = a + lvl{10};     // optional<bound<{2, 510}>>, has value 110
+auto r2 = none + lvl{10};  // optional<bound<{2, 510}>>, nullopt
 ```
 
 

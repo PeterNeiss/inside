@@ -95,7 +95,7 @@ under `include/` with `cmake --build build --target amalgamate` (see
   `slim::optional` with a sentinel
   encoding (no size overhead), `bound_range` for compile-time iteration,
   and STL/ranges integration. Plus predefined hardware-width aliases
-  (`bnd::u8`, `bnd::unorm16`, `bnd::q8_8`, …) in `bound/formats.hpp`.
+  (`bnd::byte`, `bnd::unorm16`, `bnd::q8_8`, …) in `bound/formats.hpp`.
   See [docs/storage.md](docs/storage.md).
 - **Reproducible math, three engines** — a `<cmath>`-shaped function set over
   bounds (`sin`/`cos`/`tan`, `asin`/`acos`/`atan`/`atan2`, `sinh`/`cosh`/`tanh`,
@@ -142,7 +142,8 @@ selection:
 | [`sensor_fusion.cpp`](examples/sensor_fusion.cpp)   | Weighted average across sensors with disparate fixed-point ranges |
 | [`torus_map.cpp`](examples/torus_map.cpp)           | 2-D sub-pixel position with `wrap` on both axes and edge-crossing events |
 | [`algorithms.cpp`](examples/algorithms.cpp)         | STL and ranges algorithms (sort, find, transform, accumulate, …) |
-| [`formats.cpp`](examples/formats.cpp)               | Predefined hardware-width types (`u8` / `i16` / `unorm16` / `q8_8`) and interop |
+| [`formats.cpp`](examples/formats.cpp)               | Predefined hardware-width types (`byte` / `sword` / `unorm16` / `q8_8`) and interop |
+| [`storage_flags.cpp`](examples/storage_flags.cpp)   | Pin the raw type with the `u8`…`u64` width flags (value vs `indexed`); compile-time fit check |
 
 Build and run any example:
 

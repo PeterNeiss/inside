@@ -49,11 +49,11 @@ is proven elsewhere. `clamp`, `wrap`, and `sentinel` are mutually exclusive
 | `round_half_even` | banker's rounding — half to even (implies `snap`) |
 | `ignore_zero` | skip the divide-by-zero check — `a / 0` / `a % 0` is UB (binary `div`/`mod`); compound `/= 0` / `%= 0` no-op |
 | `ignore_domain` | suppress the runtime domain check |
-| `f64` / `f32` / `exact` / `direct` / `indexed` | **representation flags** — select how the raw value is stored; see the next section (`real` is a deprecated alias of `f64`) |
+| `f64` / `f32` / `exact` / `direct` / `indexed` / `i8`…`u64` | **representation flags** — select how the raw value is stored; see the next section (`real` is a deprecated alias of `f64`) |
 
 ## Representation flags
 
-Besides the *behavior* flags above, four flags select the **representation**
+Besides the *behavior* flags above, these flags select the **representation**
 — what the raw storage holds. Without one, storage is deduced from the grid
 (see [storage.md](storage.md#choosing-the-representation)).
 
@@ -62,6 +62,7 @@ Besides the *behavior* flags above, four flags select the **representation**
 | `f64` | IEEE-754 `double` raw (the value itself, snapped to the grid) | dyadic **and** double-exact (every value fits `double`'s 53-bit significand) | bundles `round_nearest`; the fast math-storage flag. Arithmetic drops `f64` to an exact representation when a result grid is too fine for `double`. Under `BND_MATH_FIXED` it falls back to integer storage. **`real` is a deprecated alias of `f64`.** |
 | `f32` | IEEE-754 `float` raw (the value itself, snapped to the grid) | dyadic **and** float-exact (every value fits `float`'s 24-bit significand) | the binary32 sibling of `f64`, for single-precision FPUs and the `flt` engine. Arithmetic **demotes `f32`→`f64`** when a result grid outgrows `float` (then drops to exact when it outgrows `double`). Under `BND_MATH_FIXED` it falls back to integer storage. |
 | `exact` | exact-fraction raw on **any** grid | none | no notch-count limit, no `double` anywhere; arithmetic is exact — on notched grids overflow is usually provably impossible and `+ − ×` return plain bounds (no `optional`) |
+| `i8 u8 i16 u16 i32 u32 i64 u64` | the named fixed-width integer raw | value storage needs `Notch == 1` and the value range to fit (add `indexed` for a notched grid) | **pins the exact backing type** (e.g. a `uint16_t` where deduction would pick `uint8_t`) for a fixed wire layout. Bare = value storage (`raw() == value`, like `direct`); `+ indexed` = 0-based index storage. **No silent widening** — a type too small for the grid is a compile error. One width flag at a time; dropped on arithmetic results. |
 | `direct` | raw == value as a plain integer | `Notch == 1` | e.g. `bound<{5, 100}, direct>` stores 5..100, not index 0..95 — the raw equals the wire/debugger value |
 | `indexed` | raw == 0-based notch index | `Notch != 0` | e.g. `bound<{-5, 5}, indexed>` stores 0..10 unsigned — dense layout for serialization |
 
@@ -70,11 +71,12 @@ using gain   = bound<{{0, 4}, notch<1, 65536>}, round_nearest | real>;  // math 
 using ratio  = bound<{{0, 1}, notch<1, 3>},     exact>;                 // thirds, exactly
 using regval = bound<{5, 100}, direct>;       // raw() == value, interop-friendly
 using slot   = bound<{-5, 5},  indexed>;      // raw() == 0..10, dense unsigned
+using wire   = bound<{0, 100}, u16>;          // pin uint16_t, raw() == value
 ```
 
 Binary arithmetic ORs the policies of both operands, so a result can carry
 several representation flags; storage selection resolves them
-**widest-wins**: `exact > f64 > f32 > direct > indexed > deduced`. An
+**widest-wins**: `exact > f64 > f32 > {width} > direct > indexed > deduced`. An
 `exact + f64` sum is therefore exact, and a `f64` math chain stays
 double-backed end to end — no errors at mixed call sites.
 

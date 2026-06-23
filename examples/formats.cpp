@@ -13,24 +13,24 @@ using namespace bnd;
 int main()
 {
   // 1. Native byte widths — the whole point of the set.
-  static_assert(sizeof(u8) == 1 && sizeof(i16) == 2 && sizeof(unorm16) == 2
+  static_assert(sizeof(byte) == 1 && sizeof(sword) == 2 && sizeof(unorm16) == 2
              && sizeof(q8_8) == 2 && sizeof(q16_16) == 4);
-  std::cout << "byte widths: u8=" << sizeof(u8)
-            << " i16=" << sizeof(i16)
+  std::cout << "byte widths: byte=" << sizeof(byte)
+            << " sword=" << sizeof(sword)
             << " unorm16=" << sizeof(unorm16)
             << " q8_8=" << sizeof(q8_8)
             << " q16_16=" << sizeof(q16_16) << "\n";
 
-  // 2. PCM-style mixing: sum two 16-bit samples, saturate back into i16.
-  i16 a{30000}, b{20000};
-  i16 mixed{0};
+  // 2. PCM-style mixing: sum two 16-bit samples, saturate back into sword.
+  sword a{30000}, b{20000};
+  sword mixed{0};
   mixed.with_clamp() = a + b;          // 50000 saturates to +32767
   std::cout << "mix " << a << " + " << b << " -> " << mixed << " (clamped)\n";
 
-  // 3. Apply a normalized [0,1] gain to a sample, round back to i16.
+  // 3. Apply a normalized [0,1] gain to a sample, round back to sword.
   unorm16 gain{0.5_b};                 // unorm reaches exactly 0 and 1
-  i16 sample{10000};
-  i16 out{0};
+  sword sample{10000};
+  sword out{0};
   out.with_snap<round_nearest>() = gain * sample;
   std::cout << "gain " << gain << " * " << sample << " -> " << out << "\n";
 
@@ -42,10 +42,10 @@ int main()
   std::cout << "q16_16 " << fine << "\n";
 
   // 5. slim::optional<bound> stays zero-overhead (sentinel-encoded).
-  static_assert(sizeof(slim::optional<u8>) == sizeof(u8));
-  slim::optional<u8> maybe = u8{200};
-  std::cout << "optional<u8> holds " << *maybe
-            << " (sizeof " << sizeof(maybe) << " == " << sizeof(u8) << ")\n";
+  static_assert(sizeof(slim::optional<byte>) == sizeof(byte));
+  slim::optional<byte> maybe = byte{200};
+  std::cout << "optional<byte> holds " << *maybe
+            << " (sizeof " << sizeof(maybe) << " == " << sizeof(byte) << ")\n";
   maybe = slim::nullopt;
   std::cout << "after reset: has_value=" << std::boolalpha << maybe.has_value() << "\n";
 

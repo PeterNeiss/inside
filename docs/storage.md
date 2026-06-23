@@ -49,8 +49,8 @@ using ratio = bound<{{-10, 10}, 0}>;    // Raw: exact-fraction representation
 ratio f = bound<{2, 2}>{2} / just<3>;   // exact 2/3
 f.numerator();                          // 2  (denominator() == 3)
 
-using u8 = bound<{1, 255}>;
-auto q = u8{7} / u8{3};                 // slim::optional<bound> (exact-fraction raw)
+using lvl = bound<{1, 255}>;
+auto q = lvl{7} / lvl{3};               // slim::optional<bound> (exact-fraction raw)
                                         // *q is exactly 7/3
 ```
 
@@ -60,7 +60,7 @@ for each grid.
 
 ## Choosing the representation
 
-The rules above are the **default deduction**. Four policy flags override it
+The rules above are the **default deduction**. Several policy flags override it
 (see [policies.md](policies.md#representation-flags) for the full table):
 
 ```cpp
@@ -70,13 +70,26 @@ using ratio  = bound<{{0, 1}, notch<1, 3>}, exact>;
                                        // Raw: exact fraction on a NOTCHED grid
 using regval = bound<{5, 100}, direct>; // Raw: uint8_t, raw() == value (5..100)
 using slot   = bound<{-5, 5}, indexed>; // Raw: uint8_t, raw() == index (0..10)
+using wide   = bound<{0, 100}, u16>;    // Raw: uint16_t (pinned width, raw() == value)
+using sidx   = bound<{0, 4, notch<1,16>}, u32 | indexed>; // Raw: uint32_t index
 ```
 
-`real` is the math-operand flag ([math.md](math.md)); `exact` lifts the
+`real`/`f32`/`f64` are the math-operand flags ([math.md](math.md)); `exact` lifts the
 notch-count limit and removes `double` entirely; `direct` makes the raw equal
 the wire/debugger value for interop; `indexed` gives signed grids a dense
-unsigned layout for serialization. Mixed-flag results from arithmetic resolve
-widest-wins: `exact > real > direct > indexed > deduced`. `real` is selected only
+unsigned layout for serialization.
+
+The **fixed-width flags** `i8 u8 i16 u16 i32 u32 i64 u64` pin the exact backing
+integer type instead of letting deduction pick the smallest fit (e.g. force a
+`uint16_t` even where `uint8_t` would do, for a fixed wire layout). A bare width
+flag means value storage (`raw() == value`, so `Notch == 1`, like `direct`); add
+`indexed` for 0-based index storage on a notched grid. Unlike deduction or the fp
+flags there is **no silent widening** — a type too small for the grid is a
+compile error (`storage_pick` static_asserts the range fits). Mixed-flag results
+from arithmetic resolve widest-wins: `exact > f64 > f32 > {width} > direct >
+indexed > deduced` (width flags are dropped on arithmetic results, which deduce
+their own width). See [`examples/storage_flags.cpp`](../examples/storage_flags.cpp)
+for value/index storage and the compile-time fit check. `real` is selected only
 when the grid is **double-exact** (every value fits `double`'s 53-bit significand);
 otherwise it is dropped and deduction proceeds — and a result grid finer than the
 `uint64` index space deduces `rational`, keeping the result exact.
@@ -101,27 +114,28 @@ NaN/Inf.
 ## Predefined hardware formats
 
 `#include "bound/formats.hpp"` for a curated set of `bnd::` aliases that map to
-native byte widths — so you can write `bnd::u8` / `bnd::unorm16` / `bnd::q8_8`
-instead of spelling the grid and policy by hand.
+native byte widths — so you can write `bnd::byte` / `bnd::unorm16` / `bnd::q8_8`
+instead of spelling the grid and policy by hand. (The bare `u8`/`i16`/… names are
+storage *flags*, so the native-width types use width words instead.)
 
 | Type | Range / notch | Storage |
 |---|---|---|
-| `u8` `u16` `u32` | `[0, 254]` … `[0, 2³²−2]` | uint8 / uint16 / uint32 |
-| `i8` `i16` `i32` `i64` | `[−127, 127]` … | int8 / int16 / int32 / int64 |
+| `byte` `word` `dword` | `[0, 254]` … `[0, 2³²−2]` | uint8 / uint16 / uint32 |
+| `sbyte` `sword` `sdword` `sqword` | `[−127, 127]` … | int8 / int16 / int32 / int64 |
 | `unorm8` `unorm16` `unorm32` | `[0,1]`, notch 1/254, 1/65534, 1/(2³²−2) | uint8 / uint16 / uint32 |
 | `q4_4` `q8_8` `q16_16` | `[0,15]`/`[0,255]`/`[0,65535]`, notch 1/16, 1/256, 1/65536 | uint8 / uint16 / uint32 |
 
 **The reserved-top tradeoff.** Because the top value of each storage type is
 the reserved sentinel slot (above), a *full*-width range would promote to the
-next-larger type. These aliases instead stop one short of the sentinel — `u8`
+next-larger type. These aliases instead stop one short of the sentinel — `byte`
 is `[0, 254]`, not `[0, 255]`; `unorm8` uses notch 1/254 (still reaching 1.0
 exactly). The payoff is native byte size **and** a still-zero-overhead
 `slim::optional` (the sentinel slot is retained). Q-formats already have
 headroom, so they keep their full natural range and power-of-two notches.
 
-`u64` is intentionally absent: the library's internal value path is `imax`
-(`int64`), so unsigned values above 2⁶³−1 can't round-trip — use `i64` or a
-hand-rolled grid.
+An unsigned `qword` is intentionally absent: the library's internal value path is
+`imax` (`int64`), so unsigned values above 2⁶³−1 can't round-trip — use `sqword`
+or a hand-rolled grid.
 
 **Performance.** Multiplication is unaffected by the (non-power-of-two) UNORM
 notches — it operates on raw notch indices, with the denominator folded into

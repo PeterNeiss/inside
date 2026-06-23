@@ -45,7 +45,9 @@ namespace bnd
   // Representation flags — select raw storage. Without one, storage is deduced
   // from the grid (notch-0 → rational; unit notch at/below 0 → integer value;
   // else 0-based index). Binary ops OR operand policies; storage resolves
-  // widest-wins: exact > f64 > direct > indexed > deduced.
+  // widest-wins: exact > f64 > f32 > {width} > direct > indexed > deduced.
+  // ({width} = the fixed-width integer flags i8..u64 declared below; they pin the
+  // exact backing type rather than letting deduction pick the smallest fit.)
   //
   // `f64` — math operand, binary64-backed storage under the default engine (value
   // held as IEEE-754 double, notch nominal); an ordinary round_nearest integer
@@ -65,6 +67,28 @@ namespace bnd
   // code should use `f64` (binary64 storage) or `f32` (binary32). The flag is
   // purely a storage choice — transcendentals gate on `snap`, not on this.
   inline static constexpr policy_flag real = f64;
+
+  // Fixed-width integer raw storage — pin the exact backing type instead of
+  // letting deduction pick the smallest fit. A bare width flag means *value*
+  // storage (raw == value, like `direct`, so Notch == 1 and the value range must
+  // fit the type); OR in `indexed` for 0-based notch-index storage. `storage_pick`
+  // static_asserts the type is big enough for the grid (no silent widening). One
+  // width flag at a time. Unlike `f32`/`f64` these carry no `round_nearest` — they
+  // are plain integer storage, like `direct`/`indexed`. Widest-wins storage order:
+  // exact > f64 > f32 > {width} > direct > indexed > deduced.
+  inline static constexpr policy_flag i8 {1ull << 42};
+  inline static constexpr policy_flag u8 {1ull << 43};
+  inline static constexpr policy_flag i16{1ull << 44};
+  inline static constexpr policy_flag u16{1ull << 45};
+  inline static constexpr policy_flag i32{1ull << 46};
+  inline static constexpr policy_flag u32{1ull << 47};
+  inline static constexpr policy_flag i64{1ull << 48};
+  inline static constexpr policy_flag u64{1ull << 49};
+
+  // OR of every fixed-width flag — lets storage_pick test "any width pinned" and
+  // count set bits (exactly one allowed) in a single mask.
+  inline static constexpr policy_flag raw_width_mask
+    {i8 | u8 | i16 | u16 | i32 | u32 | i64 | u64};
 
   // `exact` — force rational raw storage on any grid. Values still obey the grid;
   // exact fractions, no notch-count limit, no double. Slowest; overflow-checked

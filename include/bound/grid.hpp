@@ -255,6 +255,53 @@ namespace bnd
   template <grid G>
   inline constexpr bool float_exact = compute_float_exact<G>();
 
+  // Fixed-width raw storage (policy_flag.hpp i8..u64) — pin the exact backing
+  // type instead of letting storage_min pick the smallest fit.
+  //
+  // has_width_flag / width_flag_count: detect "a width is pinned" and enforce
+  // exactly one (combining two width flags is a misuse, caught in storage_pick).
+  constexpr bool has_width_flag(policy_flag P) noexcept
+  { return (P & bnd::raw_width_mask) != bnd::none; }
+
+  constexpr int width_flag_count(policy_flag P) noexcept
+  {
+    policy_flag w = P & bnd::raw_width_mask;
+    int n = 0;
+    for (; w; w >>= 1) n += static_cast<int>(w & 1);
+    return n;
+  }
+
+  // Map the single set width bit to its C++ type (only valid when has_width_flag).
+  template <policy_flag P>
+  using raw_type_of =
+    std::conditional_t<(P & bnd::i8 ) == bnd::i8 , std::int8_t,
+    std::conditional_t<(P & bnd::u8 ) == bnd::u8 , std::uint8_t,
+    std::conditional_t<(P & bnd::i16) == bnd::i16, std::int16_t,
+    std::conditional_t<(P & bnd::u16) == bnd::u16, std::uint16_t,
+    std::conditional_t<(P & bnd::i32) == bnd::i32, std::int32_t,
+    std::conditional_t<(P & bnd::u32) == bnd::u32, std::uint32_t,
+    std::conditional_t<(P & bnd::i64) == bnd::i64, std::int64_t,
+                                                    std::uint64_t>>>>>>>;
+
+  // Does raw type R hold every reachable raw value of grid G under the given
+  // encoding? Index storage runs 0..max_notch (unsigned); value storage runs
+  // Lower..Upper. The strict margins (max-1 unsigned / min+1 signed) match the
+  // sentinel-slot reservation in smallest_uint_for / smallest_int_for.
+  template <grid G, typename R, bool Index>
+  constexpr bool storage_fits() noexcept
+  {
+    using lim = std::numeric_limits<R>;
+    if constexpr (Index)
+      return G.notch_count_representable()
+          && G.max_notch() < static_cast<umax>(lim::max());
+    else if constexpr (std::is_unsigned_v<R>)
+      return G.Interval.Lower >= 0
+          && G.Interval.Upper <= rational{static_cast<umax>(lim::max()) - 1};
+    else
+      return G.Interval.Lower >= rational{static_cast<imax>(lim::min()) + 1}
+          && G.Interval.Upper <= rational{static_cast<imax>(lim::max())};
+  }
+
   // Demote an fp STORAGE flag a result grid can't represent — for DEDUCED policies
   // (cmath auto-outputs, which inherit the operand's storage flag), so a deduced
   // f32 output whose grid overflows binary32 silently widens instead of hard-
@@ -309,6 +356,23 @@ namespace bnd
       return float{};    // unreachable; fixes the deduced return type
     }
 #endif
+    else if constexpr (has_width_flag(P))
+    {
+      // User-pinned raw width (i8..u64). Encoding follows `indexed` (0-based
+      // notch index) else value storage (raw == value, Notch == 1 like `direct`).
+      // No silent widening — a type too small for the grid is a hard error.
+      static_assert(width_flag_count(P) == 1,
+        "storage: pick a single fixed-width flag (e.g. `u16`), not several");
+      using R = raw_type_of<P>;
+      constexpr bool idx = (P & bnd::indexed) == bnd::indexed;
+      static_assert(idx ? (G.Notch != 0) : (G.Notch == 1),
+        "fixed-width storage: value storage needs Notch == 1 — add `indexed` to "
+        "store a notched grid's 0-based index instead");
+      static_assert(storage_fits<G, R, idx>(),
+        "fixed-width storage: the chosen raw type is too small for this grid — "
+        "widen the flag, coarsen the grid/notch, or use `exact`");
+      return R{};
+    }
     else if constexpr ((P & bnd::direct) == bnd::direct && G.Notch == 1)
       return std::conditional_t<(G.Interval.Lower < 0),
           smallest_int_for<trunc(G.Interval.Lower), trunc(G.Interval.Upper)>,

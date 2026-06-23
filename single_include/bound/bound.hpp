@@ -3405,7 +3405,9 @@ namespace bnd
   // Representation flags — select raw storage. Without one, storage is deduced
   // from the grid (notch-0 → rational; unit notch at/below 0 → integer value;
   // else 0-based index). Binary ops OR operand policies; storage resolves
-  // widest-wins: exact > f64 > direct > indexed > deduced.
+  // widest-wins: exact > f64 > f32 > {width} > direct > indexed > deduced.
+  // ({width} = the fixed-width integer flags i8..u64 declared below; they pin the
+  // exact backing type rather than letting deduction pick the smallest fit.)
   //
   // `f64` — math operand, binary64-backed storage under the default engine (value
   // held as IEEE-754 double, notch nominal); an ordinary round_nearest integer
@@ -3425,6 +3427,28 @@ namespace bnd
   // code should use `f64` (binary64 storage) or `f32` (binary32). The flag is
   // purely a storage choice — transcendentals gate on `snap`, not on this.
   inline static constexpr policy_flag real = f64;
+
+  // Fixed-width integer raw storage — pin the exact backing type instead of
+  // letting deduction pick the smallest fit. A bare width flag means *value*
+  // storage (raw == value, like `direct`, so Notch == 1 and the value range must
+  // fit the type); OR in `indexed` for 0-based notch-index storage. `storage_pick`
+  // static_asserts the type is big enough for the grid (no silent widening). One
+  // width flag at a time. Unlike `f32`/`f64` these carry no `round_nearest` — they
+  // are plain integer storage, like `direct`/`indexed`. Widest-wins storage order:
+  // exact > f64 > f32 > {width} > direct > indexed > deduced.
+  inline static constexpr policy_flag i8 {1ull << 42};
+  inline static constexpr policy_flag u8 {1ull << 43};
+  inline static constexpr policy_flag i16{1ull << 44};
+  inline static constexpr policy_flag u16{1ull << 45};
+  inline static constexpr policy_flag i32{1ull << 46};
+  inline static constexpr policy_flag u32{1ull << 47};
+  inline static constexpr policy_flag i64{1ull << 48};
+  inline static constexpr policy_flag u64{1ull << 49};
+
+  // OR of every fixed-width flag — lets storage_pick test "any width pinned" and
+  // count set bits (exactly one allowed) in a single mask.
+  inline static constexpr policy_flag raw_width_mask
+    {i8 | u8 | i16 | u16 | i32 | u32 | i64 | u64};
 
   // `exact` — force rational raw storage on any grid. Values still obey the grid;
   // exact fractions, no notch-count limit, no double. Slowest; overflow-checked
@@ -3823,6 +3847,53 @@ namespace bnd
   template <grid G>
   inline constexpr bool float_exact = compute_float_exact<G>();
 
+  // Fixed-width raw storage (policy_flag.hpp i8..u64) — pin the exact backing
+  // type instead of letting storage_min pick the smallest fit.
+  //
+  // has_width_flag / width_flag_count: detect "a width is pinned" and enforce
+  // exactly one (combining two width flags is a misuse, caught in storage_pick).
+  constexpr bool has_width_flag(policy_flag P) noexcept
+  { return (P & bnd::raw_width_mask) != bnd::none; }
+
+  constexpr int width_flag_count(policy_flag P) noexcept
+  {
+    policy_flag w = P & bnd::raw_width_mask;
+    int n = 0;
+    for (; w; w >>= 1) n += static_cast<int>(w & 1);
+    return n;
+  }
+
+  // Map the single set width bit to its C++ type (only valid when has_width_flag).
+  template <policy_flag P>
+  using raw_type_of =
+    std::conditional_t<(P & bnd::i8 ) == bnd::i8 , std::int8_t,
+    std::conditional_t<(P & bnd::u8 ) == bnd::u8 , std::uint8_t,
+    std::conditional_t<(P & bnd::i16) == bnd::i16, std::int16_t,
+    std::conditional_t<(P & bnd::u16) == bnd::u16, std::uint16_t,
+    std::conditional_t<(P & bnd::i32) == bnd::i32, std::int32_t,
+    std::conditional_t<(P & bnd::u32) == bnd::u32, std::uint32_t,
+    std::conditional_t<(P & bnd::i64) == bnd::i64, std::int64_t,
+                                                    std::uint64_t>>>>>>>;
+
+  // Does raw type R hold every reachable raw value of grid G under the given
+  // encoding? Index storage runs 0..max_notch (unsigned); value storage runs
+  // Lower..Upper. The strict margins (max-1 unsigned / min+1 signed) match the
+  // sentinel-slot reservation in smallest_uint_for / smallest_int_for.
+  template <grid G, typename R, bool Index>
+  constexpr bool storage_fits() noexcept
+  {
+    using lim = std::numeric_limits<R>;
+    if constexpr (Index)
+      return G.notch_count_representable()
+          && G.max_notch() < static_cast<umax>(lim::max());
+    else if constexpr (std::is_unsigned_v<R>)
+      return G.Interval.Lower >= 0
+          && G.Interval.Upper <= rational{static_cast<umax>(lim::max()) - 1};
+    else
+      return G.Interval.Lower >= rational{static_cast<imax>(lim::min()) + 1}
+          && G.Interval.Upper <= rational{static_cast<imax>(lim::max())};
+  }
+
   // Demote an fp STORAGE flag a result grid can't represent — for DEDUCED policies
   // (cmath auto-outputs, which inherit the operand's storage flag), so a deduced
   // f32 output whose grid overflows binary32 silently widens instead of hard-
@@ -3877,6 +3948,23 @@ namespace bnd
       return float{};    // unreachable; fixes the deduced return type
     }
 #endif
+    else if constexpr (has_width_flag(P))
+    {
+      // User-pinned raw width (i8..u64). Encoding follows `indexed` (0-based
+      // notch index) else value storage (raw == value, Notch == 1 like `direct`).
+      // No silent widening — a type too small for the grid is a hard error.
+      static_assert(width_flag_count(P) == 1,
+        "storage: pick a single fixed-width flag (e.g. `u16`), not several");
+      using R = raw_type_of<P>;
+      constexpr bool idx = (P & bnd::indexed) == bnd::indexed;
+      static_assert(idx ? (G.Notch != 0) : (G.Notch == 1),
+        "fixed-width storage: value storage needs Notch == 1 — add `indexed` to "
+        "store a notched grid's 0-based index instead");
+      static_assert(storage_fits<G, R, idx>(),
+        "fixed-width storage: the chosen raw type is too small for this grid — "
+        "widen the flag, coarsen the grid/notch, or use `exact`");
+      return R{};
+    }
     else if constexpr ((P & bnd::direct) == bnd::direct && G.Notch == 1)
       return std::conditional_t<(G.Interval.Lower < 0),
           smallest_int_for<trunc(G.Interval.Lower), trunc(G.Interval.Upper)>,
@@ -4122,6 +4210,10 @@ namespace bnd
     inline constexpr bool value_raw =
          !fp_raw<B> && !rational_raw<B>
       && ((BoundPolicy<B> & bnd::direct) == bnd::direct
+          // A pinned width flag without `indexed` is value storage (raw == value)
+          // regardless of Lower's sign — storage_pick checked the range fits.
+          || (has_width_flag(BoundPolicy<B>)
+              && (BoundPolicy<B> & bnd::indexed) != bnd::indexed)
           || ((BoundPolicy<B> & bnd::indexed) != bnd::indexed
               && Notch<B> == 1
               && (Lower<B> == 0 || std::signed_integral<raw_t<B>>)));
@@ -10803,12 +10895,16 @@ namespace bnd::math
 
 //---------------------------------------------------------------------------
 // formats — predefined `bound` aliases mapping to hardware byte widths, so you
-// can write `bnd::u8` / `bnd::unorm16` / `bnd::q8_8` directly.
+// can write `bnd::byte` / `bnd::unorm16` / `bnd::q8_8` directly.
+//
+// The bare `u8`/`i16`/… names are storage-policy flags (policy_flag.hpp); the
+// native-width *types* below use width words instead: `byte`/`word`/`dword`
+// (unsigned 8/16/32) and `sbyte`/`sword`/`sdword`/`sqword` (signed 8/16/32/64).
 //
 // Reserved-top tradeoff: each storage type's extreme value is a sentinel slot
 // (zero-overhead slim::optional<bound>), chosen with a strict `<` margin — so a
 // full-width range like {0,255} would promote to uint16. To stay at native
-// width these aliases stop one short: `u8` is [0, 254]. Q-format types already
+// width these aliases stop one short: `byte` is [0, 254]. Q-format types already
 // have headroom, so they keep full range with power-of-two notches.
 //
 // These default to `checked`; for wraparound/saturation declare your own (e.g.
@@ -10820,18 +10916,18 @@ namespace bnd
   // Native integer widths — direct storage (Raw == value), `checked`.
   // Range is the native width minus the one reserved sentinel value.
   //-------------------------------------------------------------------------
-  using u8  = bound<{0, 254}>;                          // uint8
-  using u16 = bound<{0, 65534}>;                        // uint16
-  using u32 = bound<{0, 4294967294}>;                   // uint32
-  // u64 is intentionally absent: the library's internal value path is `imax`
-  // (int64) — `to_value` returns `imax` — so unsigned values above 2^63-1
-  // cannot round-trip through arithmetic/compare. Use `i64` or a hand-rolled
-  // grid if you need 64-bit storage.
+  using byte  = bound<{0, 254}>;                         // uint8
+  using word  = bound<{0, 65534}>;                       // uint16
+  using dword = bound<{0, 4294967294}>;                  // uint32
+  // qword (unsigned 64) is intentionally absent: the library's internal value
+  // path is `imax` (int64) — `to_value` returns `imax` — so unsigned values above
+  // 2^63-1 cannot round-trip through arithmetic/compare. Use `sqword` or a
+  // hand-rolled grid if you need 64-bit storage.
 
-  using i8  = bound<{-127, 127}>;                        // int8
-  using i16 = bound<{-32767, 32767}>;                    // int16
-  using i32 = bound<{-2147483647, 2147483647}>;          // int32
-  using i64 = bound<{-9223372036854775807, 9223372036854775807}>; // int64
+  using sbyte  = bound<{-127, 127}>;                      // int8
+  using sword  = bound<{-32767, 32767}>;                  // int16
+  using sdword = bound<{-2147483647, 2147483647}>;        // int32
+  using sqword = bound<{-9223372036854775807, 9223372036854775807}>; // int64
 
   //-------------------------------------------------------------------------
   // Unsigned normalized (UNORM) — [0, 1] at N-bit resolution, `round_nearest`.

@@ -23,7 +23,7 @@ using q8_8 = bound<{{0, 255}, notch<1, 256>}, round_nearest>;  // == bnd::q8_8
 ```
 
 `#include "bound/formats.hpp"` for the curated aliases: `q4_4`, `q8_8`, `q16_16`
-(uint8/16/32), `u8`…`i64`, and `unorm8/16/32` (`[0,1]` at N-bit resolution).
+(uint8/16/32), `byte`…`sqword`, and `unorm8/16/32` (`[0,1]` at N-bit resolution).
 
 The traits that classify these grids (in `include/bound/generic.hpp`):
 
@@ -92,7 +92,7 @@ The smallest-type selection reserves one raw slot for the zero-overhead
 `slim::optional<bound>` sentinel. So `bound<{0,255}>` promotes to **uint16** (raw
 255 is the sentinel), halving SIMD lanes versus native `uint8_t`. Cap one short —
 `bound<{0,254}>` fits **uint8** and runs at exactly native speed. The
-`formats.hpp` aliases already do this (`u8` is `[0,254]`); Q-format types have
+`formats.hpp` aliases already do this (`byte` is `[0,254]`); Q-format types have
 headroom and keep full range.
 
 ## Performance (x86-64, `-O3 -DNDEBUG`, `tests/bench.cpp`)

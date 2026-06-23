@@ -9,6 +9,7 @@
 
 #include "bound/bound.hpp"
 #include "bound/cmath.hpp"
+#include "bound/formats.hpp"   // bnd::byte — cross-check explicit u8 flag agrees
 #include "bound/io.hpp"
 
 #include <catch2/catch_test_macros.hpp>
@@ -103,6 +104,66 @@ TEST_CASE("indexed forces raw == 0-based index where deduction picks a value",
   REQUIRE(I{5}.raw()  == 10);
   REQUIRE(rational{I{-5}} == -5);
   REQUIRE(static_cast<imax>(I{3}) == 3);
+}
+
+TEST_CASE("fixed-width flags pin the raw type (value storage)",
+          "[storage][width]")
+{
+  // Deduced: {0,100} fits uint8. The width flag pins a wider type instead.
+  STATIC_REQUIRE(std::is_same_v<bound<{0, 100}>::raw_type, std::uint8_t>);
+
+  using W = bound<{0, 100}, u16>;
+  STATIC_REQUIRE(std::is_same_v<W::raw_type, std::uint16_t>);
+  STATIC_REQUIRE(detail::value_raw<W>);                 // raw == value
+  REQUIRE(W{42}.raw() == 42);
+  REQUIRE(rational{W{42}} == 42);
+  REQUIRE(static_cast<imax>(W{42}) == 42);
+
+  // Signed width holds negatives directly (value storage, not an index).
+  using S = bound<{-5, 5}, i8>;
+  STATIC_REQUIRE(std::is_same_v<S::raw_type, std::int8_t>);
+  STATIC_REQUIRE(detail::value_raw<S>);
+  REQUIRE(S{-5}.raw() == -5);
+  REQUIRE(S{0}.raw()  == 0);
+  REQUIRE(rational{S{-3}} == -3);
+
+  // Unsigned width with a non-zero Lower is still VALUE storage (the width flag
+  // overrides deduction, which would otherwise pick an index for Lower != 0).
+  using V = bound<{5, 100}, u8>;
+  STATIC_REQUIRE(std::is_same_v<V::raw_type, std::uint8_t>);
+  STATIC_REQUIRE(detail::value_raw<V>);
+  REQUIRE(V{42}.raw() == 42);                           // raw IS the value, not 37
+  REQUIRE(bound<{5, 100}>{42}.raw() == 37);             // deduced index for contrast
+
+  // bnd::byte (formats.hpp) and an explicit u8 flag agree on the raw type.
+  STATIC_REQUIRE(std::is_same_v<byte::raw_type, bound<{0, 254}, u8>::raw_type>);
+
+  // These are deliberate compile errors (storage_pick static_asserts) — there is
+  // no silent widening for a user-pinned width, so they cannot be instantiated:
+  //   bound<{0, 100000}, u8>       // value range overflows uint8
+  //   bound<{-200, 0}, u8>         // unsigned type can't hold negatives
+  //   bound<{0, 100}, u8 | u16>    // more than one width flag
+  //   bound<{{0,4},notch<1,16>}, u16>  // value storage needs Notch == 1
+}
+
+TEST_CASE("a width flag with `indexed` pins the raw type for index storage",
+          "[storage][width][indexed]")
+{
+  // Notched grid: value storage is impossible, so index storage in the pinned
+  // type. {0,4} step 1/16 → 64 slots; pin uint32 even though uint8 would fit.
+  using I = bound<{{0, 4}, notch<1, 16>}, u32 | indexed>;
+  STATIC_REQUIRE(std::is_same_v<I::raw_type, std::uint32_t>);
+  STATIC_REQUIRE(detail::index_raw<I>);
+  REQUIRE(I{rational{0}}.raw() == 0);
+  REQUIRE(I{rational{4}}.raw() == 64);
+  REQUIRE(rational{I{rational{1, 16}}} == rational{1, 16});
+
+  // Round-trip a forced-wide unit grid through assignment and comparison.
+  using B = bound<{0, 10}, u32>;
+  STATIC_REQUIRE(std::is_same_v<B::raw_type, std::uint32_t>);
+  B x{7}; B y{x};
+  REQUIRE(y == x);
+  REQUIRE(y == 7);
 }
 
 TEST_CASE("representation flags resolve widest-wins", "[storage][policy]")

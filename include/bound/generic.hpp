@@ -136,6 +136,10 @@ namespace bnd
     inline constexpr bool value_raw =
          !fp_raw<B> && !rational_raw<B>
       && ((BoundPolicy<B> & bnd::direct) == bnd::direct
+          // A pinned width flag without `indexed` is value storage (raw == value)
+          // regardless of Lower's sign — storage_pick checked the range fits.
+          || (has_width_flag(BoundPolicy<B>)
+              && (BoundPolicy<B> & bnd::indexed) != bnd::indexed)
           || ((BoundPolicy<B> & bnd::indexed) != bnd::indexed
               && Notch<B> == 1
               && (Lower<B> == 0 || std::signed_integral<raw_t<B>>)));
