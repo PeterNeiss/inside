@@ -92,6 +92,13 @@ jobs:
           cmake --build build --target bound_fuzz -j
           ./build/bound_fuzz 1 500
 
+      # Sanitized cell: actually RUN the freestanding smoke (the step above only
+      # builds it). Under BOUND_SANITIZE this target picks up ASan+UBSan, so the
+      # -fno-exceptions / BND_NO_STRING error path is exercised, not just compiled.
+      - name: Freestanding smoke run (sanitizers)
+        if: matrix.san
+        run: ./build/single_header_freestanding_smoke
+
   coverage:
     name: linux gcc coverage
     runs-on: ubuntu-24.04

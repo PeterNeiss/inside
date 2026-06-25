@@ -319,6 +319,16 @@ target_include_directories(single_header_freestanding_smoke PRIVATE
 target_compile_definitions(single_header_freestanding_smoke PRIVATE BND_NO_STRING)
 target_compile_options(single_header_freestanding_smoke PRIVATE
     $<$<CXX_COMPILER_ID:GNU,Clang>:-fno-exceptions>)
+# This target doesn't link bound::bound (it sees only single_include/), so the
+# BOUND_SANITIZE interface flags don't reach it — apply them here so the
+# -fno-exceptions error path gets exercised under ASan+UBSan too.
+if(BOUND_SANITIZE)
+    target_compile_options(single_header_freestanding_smoke PRIVATE
+        -fsanitize=address,undefined -fno-sanitize-recover=all
+        -fno-omit-frame-pointer -g)
+    target_link_options(single_header_freestanding_smoke PRIVATE
+        -fsanitize=address,undefined)
+endif()
 if(BOUND_MATH_FIXED)
     target_compile_definitions(single_header_freestanding_smoke PRIVATE BND_MATH_FIXED)
 endif()

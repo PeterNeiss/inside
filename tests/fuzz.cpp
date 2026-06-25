@@ -1457,6 +1457,53 @@ void run_props(fuzz_state& s, long iters, const char* name)
   guarded(s, [&]{ prop_range<B>(s, iters); });
 }
 
+#ifndef BND_MATH_NO_FP
+//---------------------------------------------------------------------------
+// Cross-engine differential oracle.
+//
+// The three transcendental engines (cordic / dbl / flt) are independent
+// approximations. determinism.md and the cmath.hpp engine note guarantee they
+// land within ~one output notch of each other on a shared snap grid (the
+// table-maker's dilemma is the only divergence). Nothing enforced that bound —
+// the engine tests only pinned exact special values. This sweep turns the
+// guarantee into a property: on one grid, cordic must agree with both dbl and
+// flt. Restricted to O(1)-output functions (sin/cos/tanh/atan, sqrt on [0,4])
+// so the binary32 `flt` engine's coarser precision still falls inside the notch
+// budget. Only meaningful when the FP engines exist (BND_MATH_FIXED implies
+// BND_MATH_NO_FP, leaving only cordic — nothing to compare).
+//---------------------------------------------------------------------------
+void prop_cross_engine(fuzz_state& s, long iters)
+{
+  using A = bound<{{-8, 8}, notch<1, 16384>}, round_nearest | real>;   // angle / general
+  using P = bound<{{0, 4},  notch<1, 16384>}, round_nearest | real>;   // sqrt domain
+  s.current_grid = "cmath";
+  s.current_prop = "cross_engine";
+  // 8 output notches: comfortably catches a divergent/wrong engine while
+  // absorbing legitimate ±1-notch tie disagreement and binary32 rounding.
+  const rational tol{8, 16384};
+  auto agree = [&](rational x, rational y) { return approx_le(x, y, tol); };
+
+  for (long i = 0; i < iters; ++i)
+  {
+    s.iter = i;
+    A a = A::from_raw(random_in_range_raw<A>(s.rng));
+
+    FUZZ_REQUIRE(s, agree(rational{math::cordic::sin(a)},  rational{math::dbl::sin(a)}));
+    FUZZ_REQUIRE(s, agree(rational{math::cordic::sin(a)},  rational{math::flt::sin(a)}));
+    FUZZ_REQUIRE(s, agree(rational{math::cordic::cos(a)},  rational{math::dbl::cos(a)}));
+    FUZZ_REQUIRE(s, agree(rational{math::cordic::cos(a)},  rational{math::flt::cos(a)}));
+    FUZZ_REQUIRE(s, agree(rational{math::cordic::tanh(a)}, rational{math::dbl::tanh(a)}));
+    FUZZ_REQUIRE(s, agree(rational{math::cordic::tanh(a)}, rational{math::flt::tanh(a)}));
+    FUZZ_REQUIRE(s, agree(rational{math::cordic::atan(a)}, rational{math::dbl::atan(a)}));
+    FUZZ_REQUIRE(s, agree(rational{math::cordic::atan(a)}, rational{math::flt::atan(a)}));
+
+    P p = P::from_raw(random_in_range_raw<P>(s.rng));
+    FUZZ_REQUIRE(s, agree(rational{math::cordic::sqrt(p)}, rational{math::dbl::sqrt(p)}));
+    FUZZ_REQUIRE(s, agree(rational{math::cordic::sqrt(p)}, rational{math::flt::sqrt(p)}));
+  }
+}
+#endif // !BND_MATH_NO_FP
+
 //---------------------------------------------------------------------------
 // main
 //---------------------------------------------------------------------------
@@ -1519,6 +1566,9 @@ int main(int argc, char** argv)
   guarded(s, [&]{ prop_atan2(s, iters); });
   guarded(s, [&]{ prop_extended_math(s, iters); });
   guarded(s, [&]{ prop_wrap_fractional(s, iters); });
+#ifndef BND_MATH_NO_FP
+  guarded(s, [&]{ prop_cross_engine(s, iters); });
+#endif
 
   // Cross-grid arithmetic: mix grids of different lower/upper but same notch.
   guarded(s, [&]{ prop_cross_add<bound<{0, 100}>, bound<{-100, 100}>>(s, iters, "u100+s100"); });
