@@ -103,6 +103,28 @@ if(BOUND_COVERAGE)
     target_link_options   (bound_bound INTERFACE --coverage)
 endif()
 
+#---------------------------------------------------------------------------
+# Sanitizers (opt-in; AddressSanitizer + UndefinedBehaviorSanitizer).
+# The library leans on hand-rolled 128-bit intermediates, signed-overflow
+# detection, and bit-shifts in the fast paths — exactly the UB UBSan catches.
+# -fno-sanitize-recover=all makes any finding a hard failure (non-zero exit)
+# so CI fails instead of merely logging. Applied to the bound INTERFACE so it
+# propagates to every test/example/fuzz TU. GCC or Clang only.
+#---------------------------------------------------------------------------
+option(BOUND_SANITIZE "Build tests with AddressSanitizer + UBSan" OFF)
+if(BOUND_SANITIZE)
+    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        message(FATAL_ERROR "BOUND_SANITIZE requires GCC or Clang")
+    endif()
+    if(BOUND_COVERAGE)
+        message(FATAL_ERROR "BOUND_SANITIZE and BOUND_COVERAGE are mutually exclusive")
+    endif()
+    target_compile_options(bound_bound INTERFACE
+        -fsanitize=address,undefined -fno-sanitize-recover=all
+        -fno-omit-frame-pointer -g)
+    target_link_options(bound_bound INTERFACE -fsanitize=address,undefined)
+endif()
+
 enable_testing()
 
 include(FetchContent)

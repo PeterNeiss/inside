@@ -14,6 +14,11 @@ jobs:
   linux:
     name: linux ${{ matrix.cc }} ${{ matrix.build }}${{ matrix.note }}
     runs-on: ${{ matrix.os }}
+    # Harmless on non-sanitized cells; makes any ASan/UBSan finding a hard,
+    # stack-traced failure on the sanitizer cell.
+    env:
+      ASAN_OPTIONS: halt_on_error=1
+      UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
     strategy:
       fail-fast: false
       matrix:
@@ -27,6 +32,10 @@ jobs:
           - { os: ubuntu-22.04, cc: gcc,   ver: 12, build: Debug,   extra: "-DBOUND_CXX20=ON",      note: " (C++20)" }
           - { os: ubuntu-24.04, cc: gcc,   ver: 14, build: Release, extra: "-DBOUND_MATH_FIXED=ON", note: " (CORDIC)", heavy: true }
           - { os: ubuntu-24.04, cc: gcc,   ver: 14, build: Release, extra: "-DBOUND_MATH_FLOAT=ON", note: " (float)" }
+          # AddressSanitizer + UBSan. The fast paths lean on hand-rolled 128-bit
+          # intermediates, signed-overflow detection and bit-shifts — exactly the
+          # UB UBSan catches. Debug + Clang for the sharpest diagnostics.
+          - { os: ubuntu-24.04, cc: clang, ver: 18, build: Debug, extra: "-DBOUND_SANITIZE=ON", note: " (sanitizers)", san: true }
           # Native ARM64 (free for public repos): exercises a different ABI/codegen —
           # the Release cell runs the fuzz harness as a cross-arch bit-exactness check.
           - { os: ubuntu-24.04-arm, cc: gcc, ver: 14, build: Debug,   note: " (arm64)" }
@@ -72,6 +81,16 @@ jobs:
         run: |
           cmake --build build --target bound_fuzz bench -j
           ./build/bound_fuzz
+
+      # Sanitized cell: run the property fuzzer under ASan+UBSan, but a short
+      # fixed run (seed 1, 500 iters/property ≈ 90M checks, ~75s) — sanitizers
+      # are ~2-10x, so the long sweep stays on the `heavy` cells above.
+      - name: Fuzz (sanitizers, short)
+        if: matrix.san
+        timeout-minutes: 8
+        run: |
+          cmake --build build --target bound_fuzz -j
+          ./build/bound_fuzz 1 500
 
   windows:
     name: windows msvc ${{ matrix.arch }} ${{ matrix.build }}
