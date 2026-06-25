@@ -7,10 +7,10 @@
 // can silently break either property while every functional test still passes.
 //
 // This TU is never run. It is compiled at -O2 and inspected with objdump by
-// tests/check_codegen.sh, which asserts:
-//   * add_fast contains no `call` — the integer fast path stayed fully inlined,
-//     with no fallback to the error handler / rational path leaking in;
-//   * add_loop contains a packed-integer add — the fast path still autovectorizes.
+// tests/check_codegen.sh, which asserts that both functions are call-free — i.e.
+// the integer fast path stayed fully inlined to a bare machine add, with no
+// fallback to the error handler / rational path leaking in. Whether add_loop
+// autovectorizes is reported but not gated (it varies by compiler version).
 //
 // Both functions are extern "C" so the symbol names survive un-mangled and the
 // disassembly is easy to slice. x86-64 GNU/Clang only (see CMakeLists guard).
