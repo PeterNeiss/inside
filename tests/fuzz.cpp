@@ -810,7 +810,7 @@ void prop_optional_throws(fuzz_state& s)
     got_throw = true;
     what = e.what();
   }
-  catch (...) {}
+  catch (...) {}  // NOLINT(bugprone-empty-catch): deliberate — the assert below verifies the expected throw fired
   FUZZ_REQUIRE(s, got_throw);
   FUZZ_REQUIRE(s, !what.empty());
 
@@ -823,7 +823,7 @@ void prop_optional_throws(fuzz_state& s)
     (void)bad;
   }
   catch (slim::bad_optional_access const&) { sentinel_throw = true; }
-  catch (...) {}
+  catch (...) {}  // NOLINT(bugprone-empty-catch): deliberate — the assert below verifies the expected throw fired
   FUZZ_REQUIRE(s, sentinel_throw);
 }
 
