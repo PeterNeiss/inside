@@ -173,6 +173,31 @@ jobs:
           name: perf-baseline
           path: tests/perf_baseline.json
 
+  clang-tidy:
+    name: linux clang-tidy
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build clang-18 clang-tidy-18 clang-tools-18
+
+      # clang-tidy parses straight from compile_commands.json (no build step).
+      # Configure with clang so the database carries clang-compatible flags.
+      - name: Configure
+        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
+                   -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_CXX_COMPILER=clang++-18
+
+      # WarningsAsErrors: '*' in .clang-tidy makes any enabled-check finding fail.
+      # Header diagnostics are scoped to include/bound/ via HeaderFilterRegex.
+      - name: clang-tidy
+        timeout-minutes: 15
+        run: run-clang-tidy-18 -p build -quiet
+                   -header-filter '.*/include/bound/.*'
+                   tests/*.cpp examples/*.cpp
+
   windows:
     name: windows msvc ${{ matrix.arch }} ${{ matrix.build }}
     runs-on: ${{ matrix.os }}

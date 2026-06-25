@@ -88,6 +88,11 @@ TEST_CASE("compound /= 0_r (rational zero) reports error", "[bound][compound][ra
 TEST_CASE("increment / decrement", "[bound][compound][inc]")
 {
   using u10 = bound<{0, 10}>;
+  // The ++/-- happens inside each lambda body, fully sequenced before the lambda
+  // returns; the `== N` compares the lambda's *result*, not a mutated operand. So
+  // bugprone-inc-dec-in-conditions (which assumes a side-effect inside the
+  // condition) is a false positive from the STATIC_REQUIRE macro expansion.
+  // NOLINTBEGIN(bugprone-inc-dec-in-conditions)
   STATIC_REQUIRE([]{ u10 a{5}; ++a; return a.as<imax>(); }() == 6);
   STATIC_REQUIRE([]{ u10 a{5}; a++; return a.as<imax>(); }() == 6);
   STATIC_REQUIRE([]{ u10 a{5}; --a; return a.as<imax>(); }() == 4);
@@ -96,4 +101,5 @@ TEST_CASE("increment / decrement", "[bound][compound][inc]")
   // post-inc/dec returns the old value
   STATIC_REQUIRE([]{ u10 a{5}; auto r = a++; return r.as<imax>(); }() == 5);
   STATIC_REQUIRE([]{ u10 a{5}; auto r = a--; return r.as<imax>(); }() == 5);
+  // NOLINTEND(bugprone-inc-dec-in-conditions)
 }

@@ -1,0 +1,39 @@
+# clang-tidy configuration for bound.
+#
+# A bug-finding gate, not a restyle. bound is header-only and heavily templated,
+# doing deliberate low-level numeric work (raw casts, modular arithmetic, many
+# literals) with an intentional style (public members for NTTP/memcpy, `l`/`r`
+# operand names, `int`-based enums). A broad check set drowns in findings that
+# fight those choices, so the set is narrowed to correctness checks; each
+# exclusion below is specific and justified rather than a blanket family-off.
+#
+# Header diagnostics are scoped to include/bound/ via HeaderFilterRegex, so the
+# vendored include/slim/ headers, Catch2, and the standard library stay silent;
+# findings in the test/example TU bodies (the project's own code) still surface.
+#
+# Style families (readability-*, modernize-*, cppcoreguidelines-*, hicpp-*,
+# fuchsia-*, altera-*, llvmlibc-*) are intentionally not enabled.
+Checks: >
+  -*,
+  bugprone-*,
+  -bugprone-narrowing-conversions,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-branch-clone,
+  -bugprone-signed-char-misuse,
+  -bugprone-exception-escape,
+  performance-*,
+  -performance-enum-size,
+  portability-*,
+  misc-unused-using-decls
+WarningsAsErrors: '*'
+# Per-check rationale for the exclusions above (each is a deliberate design fit,
+# not a blanket family-off):
+#   narrowing-conversions   — intentional, guarded numeric narrowing (MSVC: C4244/C4305)
+#   branch-clone            — structurally-identical bodies in `if constexpr` chains (FP)
+#   signed-char-misuse      — `i8` is a numeric raw-storage type; sign-extension is intended
+#   exception-escape        — bound's `noexcept` helpers route errors through the replaceable
+#                             `raise()` handler (traps under -fno-exceptions); by design
+#   enum-size               — `errc`/`round_mode` are deliberately `int`-based
+#   easily-swappable-params — pervasive (lo, hi)/(x, y) numeric pairs; not actionable
+HeaderFilterRegex: '.*/include/bound/.*'
+FormatStyle: none
