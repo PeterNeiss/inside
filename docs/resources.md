@@ -20,6 +20,7 @@ partial / related · **○** no · **—** not applicable.
 |---|---|---|---|---|---|---|---|---|---|
 | **bound** | bounded rational grids | ● | ● | clamp / wrap / sentinel / round / snap / throw / `errc` | ● | ● | ● (two engines) | ● | ◐ ¹⁰ |
 | **bounded::integer** | integers | ● | ● | policy on narrowing (clamp / modulo / throw / assume) | ○ | ○ | ○ | — | ○ ¹¹ |
+| **Intel safe-arithmetic** | integers | ● ¹⁹ | ● | compile-time proof (reject) / runtime `safe::function` | ○ | ○ | ○ | — | ○ ²⁰ |
 | **Boost.SafeNumerics** | integers | ◐ ¹ | ◐ ² | detect → exception (custom exception / trap policy) | ○ | ○ | ○ | — | ◐ ¹² |
 | **CNL** | fixed-point + elastic ints | ◐ ³ | ● | composable: native / saturated / throwing / undefined | ● | ◐ ⁴ | ○ | ● | ◐ ¹³ |
 | **fpm** | fixed-point | ○ | ○ | ○ (wraps, no checks) | ● | ○ | ● (full `<cmath>`) | ● | ◐ ¹⁴ |
@@ -34,6 +35,7 @@ partial / related · **○** no · **—** not applicable.
 |---|---|---|---|---|---|
 | **bound** | ● | ● ⁹ | C++23 (C++20 backport) | **none yet (TBD)** | **alpha · single-author · not yet battle-tested** |
 | **bounded::integer** | ○ (C++ modules) ⁸ | ○ | C++20+ (clang 22+) | BSL-1.0 | mature · active |
+| **Intel safe-arithmetic** | ● | ○ | C++20 | BSL-1.0 | **pre-release · WIP (not for production)** |
 | **Boost.SafeNumerics** | ● | ○ | C++14 | BSL-1.0 | mature (Boost) |
 | **CNL** | ● | ○ | C++20 (v1.x: C++11) | BSL-1.0 | mature · standards-track (P0828) |
 | **fpm** | ● | ○ | C++11 | MIT | mature · stable |
@@ -68,7 +70,11 @@ user-overridable (no exceptions); no documented `-ffreestanding`. ¹⁶ a custom
 `SafeIntException` / overflow handler avoids exceptions; integer-only (no `<cmath>`).
 ¹⁷ `trapping<T>` traps without exceptions, but the repo is archived / partial.
 ¹⁸ strong-typedef only — no overflow checks, so nothing to throw, but no
-numeric-safety story either. Freestanding marks are best-effort from each project's
+numeric-safety story either. ¹⁹ also models disjoint interval *unions* (e.g.
+`ival<-1000,-1> || ival<1,1000>` to exclude zero), not just a single `[lo,hi]`;
+arithmetic propagates ranges via the Cartesian product of the operand intervals.
+²⁰ no documented freestanding / `-fno-exceptions` path; integer-only (no `<cmath>`).
+Freestanding marks are best-effort from each project's
 docs as of June 2026 — corrections welcome.</sub>
 
 A filled-in cell is **not** a verdict. The mature, widely deployed options here
@@ -89,6 +95,15 @@ column. Pick the tool that fits: if you need overflow-safe plain integers,
   without explicit casts is guaranteed not to overflow. `bound` generalises the
   same widening idea from integers to rational *grids* (lower, upper, notch).
   See also the author's writeup at <http://doublewise.net/c++/bounded/>.
+- **[Intel safe-arithmetic](https://github.com/intel/safe-arithmetic)** (Intel —
+  *not* an official Intel product) — a C++20 library that encodes integer ranges
+  into the type as `ival_s32<MIN, MAX>` and propagates them through arithmetic,
+  with the twist that it also models *disjoint* interval unions (e.g. excluding
+  zero so division is provably safe). Where `bounded::integer` widens, `safe`
+  goes further: it demands a compile-time *proof* that each operation stays in
+  range, falling back to runtime `safe::function` validation only where the proof
+  can't be discharged statically. The same range-in-the-type spirit as `bound`,
+  scoped to integers; still pre-release.
 - **[Boost.SafeNumerics](https://www.boost.org/libs/safe_numerics/)** (Robert
   Ramey) — drop-in replacements for the built-in integer types that detect, and
   by policy raise on, results that would be incorrect. Shares `bound`'s "make
