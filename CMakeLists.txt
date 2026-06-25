@@ -355,6 +355,37 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 
 #---------------------------------------------------------------------------
+# Performance regression gates (label "perf"; excluded from the normal unit run)
+#
+#  * codegen guard — compiles the arithmetic fast paths at -O2 and asserts via
+#    objdump that the scalar path stays call-free and the loop vectorizes. Pure
+#    disassembly inspection (x86-64 mnemonics), so it is x86-64 GNU/Clang only;
+#    it compiles independently of the build type, so coverage/sanitizer flags on
+#    the bound interface don't perturb it.
+#  * cachegrind instruction-count gate — see tests/check_perf.py; opt-in via the
+#    perf CI cell, which has valgrind.
+#---------------------------------------------------------------------------
+if(UNIX AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang"
+        AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|amd64|AMD64")
+    add_test(NAME codegen_guard
+        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_codegen.sh
+                ${CMAKE_CXX_COMPILER}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests/perf_codegen.cpp
+                ${CMAKE_CURRENT_SOURCE_DIR}/include
+                ${CMAKE_CXX_STANDARD})
+    set_tests_properties(codegen_guard PROPERTIES LABELS "perf")
+endif()
+
+# Dedicated, deterministic perf workload for the cachegrind gate. Small fixed
+# work scaled by BND_PERF_SCALE (compile-time), kept lean so cachegrind (~20-50x)
+# stays inside the CI budget. EXCLUDE_FROM_ALL — built only by the perf cell.
+add_executable(perf_workload EXCLUDE_FROM_ALL tests/perf_workload.cpp)
+target_link_libraries(perf_workload PRIVATE bound::bound)
+if(WIN32 AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    target_link_options(perf_workload PRIVATE -Wl,--allow-multiple-definition)
+endif()
+
+#---------------------------------------------------------------------------
 # Install / package config
 #
 # Headers go to <prefix>/include/bound/ and <prefix>/include/slim/.

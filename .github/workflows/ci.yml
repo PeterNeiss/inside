@@ -132,6 +132,47 @@ jobs:
           name: coverage-html
           path: build/coverage/
 
+  perf:
+    name: linux gcc perf gate
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build g++-14 valgrind
+          echo "CC=gcc-14"  >> "$GITHUB_ENV"
+          echo "CXX=g++-14" >> "$GITHUB_ENV"
+
+      - name: Configure
+        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      # codegen guard (call-free + vectorized fast paths) runs as a labelled
+      # ctest; it also runs across the linux matrix above, but pinning it here
+      # keeps the perf signals in one place.
+      - name: Codegen guard
+        run: ctest --test-dir build --output-on-failure -L perf
+
+      # Cachegrind instruction-count gate. Deterministic, so stable on shared
+      # runners. If tests/perf_baseline.json is absent the script bootstraps it
+      # (writes + passes) and uploads it below for review/commit; once committed,
+      # this gate fails a >5% instruction-count regression.
+      - name: Cachegrind gate
+        timeout-minutes: 10
+        run: |
+          cmake --build build --target perf_workload -j
+          python3 tests/check_perf.py \
+            --binary build/perf_workload \
+            --baseline tests/perf_baseline.json \
+            --key integer_qformat --tol 0.05
+
+      - name: Upload perf baseline
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-baseline
+          path: tests/perf_baseline.json
+
   windows:
     name: windows msvc ${{ matrix.arch }} ${{ matrix.build }}
     runs-on: ${{ matrix.os }}
