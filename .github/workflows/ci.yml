@@ -92,6 +92,39 @@ jobs:
           cmake --build build --target bound_fuzz -j
           ./build/bound_fuzz 1 500
 
+  coverage:
+    name: linux gcc coverage
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build g++-14 lcov
+          echo "CC=gcc-14"  >> "$GITHUB_ENV"
+          echo "CXX=g++-14" >> "$GITHUB_ENV"
+
+      - name: Configure
+        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DBOUND_COVERAGE=ON
+
+      # Build everything first: the `coverage` target runs ctest, which includes
+      # the example tests — those must exist or ctest reports them "Not Run".
+      - name: Build
+        run: cmake --build build -j
+
+      - name: Coverage
+        run: cmake --build build --target coverage
+
+      - name: Summary
+        run: lcov --summary build/coverage.info
+
+      - name: Upload HTML report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-html
+          path: build/coverage/
+
   windows:
     name: windows msvc ${{ matrix.arch }} ${{ matrix.build }}
     runs-on: ${{ matrix.os }}
