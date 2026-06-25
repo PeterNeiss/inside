@@ -103,6 +103,28 @@ if(BOUND_COVERAGE)
     target_link_options   (bound_bound INTERFACE --coverage)
 endif()
 
+#---------------------------------------------------------------------------
+# Sanitizers (opt-in; AddressSanitizer + UndefinedBehaviorSanitizer).
+# The library leans on hand-rolled 128-bit intermediates, signed-overflow
+# detection, and bit-shifts in the fast paths — exactly the UB UBSan catches.
+# -fno-sanitize-recover=all makes any finding a hard failure (non-zero exit)
+# so CI fails instead of merely logging. Applied to the bound INTERFACE so it
+# propagates to every test/example/fuzz TU. GCC or Clang only.
+#---------------------------------------------------------------------------
+option(BOUND_SANITIZE "Build tests with AddressSanitizer + UBSan" OFF)
+if(BOUND_SANITIZE)
+    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        message(FATAL_ERROR "BOUND_SANITIZE requires GCC or Clang")
+    endif()
+    if(BOUND_COVERAGE)
+        message(FATAL_ERROR "BOUND_SANITIZE and BOUND_COVERAGE are mutually exclusive")
+    endif()
+    target_compile_options(bound_bound INTERFACE
+        -fsanitize=address,undefined -fno-sanitize-recover=all
+        -fno-omit-frame-pointer -g)
+    target_link_options(bound_bound INTERFACE -fsanitize=address,undefined)
+endif()
+
 enable_testing()
 
 include(FetchContent)
@@ -297,6 +319,16 @@ target_include_directories(single_header_freestanding_smoke PRIVATE
 target_compile_definitions(single_header_freestanding_smoke PRIVATE BND_NO_STRING)
 target_compile_options(single_header_freestanding_smoke PRIVATE
     $<$<CXX_COMPILER_ID:GNU,Clang>:-fno-exceptions>)
+# This target doesn't link bound::bound (it sees only single_include/), so the
+# BOUND_SANITIZE interface flags don't reach it — apply them here so the
+# -fno-exceptions error path gets exercised under ASan+UBSan too.
+if(BOUND_SANITIZE)
+    target_compile_options(single_header_freestanding_smoke PRIVATE
+        -fsanitize=address,undefined -fno-sanitize-recover=all
+        -fno-omit-frame-pointer -g)
+    target_link_options(single_header_freestanding_smoke PRIVATE
+        -fsanitize=address,undefined)
+endif()
 if(BOUND_MATH_FIXED)
     target_compile_definitions(single_header_freestanding_smoke PRIVATE BND_MATH_FIXED)
 endif()
@@ -320,6 +352,37 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/nofp_poison"
         "${CMAKE_CURRENT_SOURCE_DIR}/single_include")
     target_compile_definitions(single_header_nofp_smoke PRIVATE BND_MATH_NO_FP)
+endif()
+
+#---------------------------------------------------------------------------
+# Performance regression gates (label "perf"; excluded from the normal unit run)
+#
+#  * codegen guard — compiles the arithmetic fast paths at -O2 and asserts via
+#    objdump that the scalar path stays call-free and the loop vectorizes. Pure
+#    disassembly inspection (x86-64 mnemonics), so it is x86-64 GNU/Clang only;
+#    it compiles independently of the build type, so coverage/sanitizer flags on
+#    the bound interface don't perturb it.
+#  * cachegrind instruction-count gate — see tests/check_perf.py; opt-in via the
+#    perf CI cell, which has valgrind.
+#---------------------------------------------------------------------------
+if(UNIX AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang"
+        AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|amd64|AMD64")
+    add_test(NAME codegen_guard
+        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_codegen.sh
+                ${CMAKE_CXX_COMPILER}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests/perf_codegen.cpp
+                ${CMAKE_CURRENT_SOURCE_DIR}/include
+                ${CMAKE_CXX_STANDARD})
+    set_tests_properties(codegen_guard PROPERTIES LABELS "perf")
+endif()
+
+# Dedicated, deterministic perf workload for the cachegrind gate. Small fixed
+# work scaled by BND_PERF_SCALE (compile-time), kept lean so cachegrind (~20-50x)
+# stays inside the CI budget. EXCLUDE_FROM_ALL — built only by the perf cell.
+add_executable(perf_workload EXCLUDE_FROM_ALL tests/perf_workload.cpp)
+target_link_libraries(perf_workload PRIVATE bound::bound)
+if(WIN32 AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    target_link_options(perf_workload PRIVATE -Wl,--allow-multiple-definition)
 endif()
 
 #---------------------------------------------------------------------------

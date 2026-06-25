@@ -315,4 +315,25 @@ TEST_CASE("over-fine real product deduces rational, stays exact", "[real][exact]
   REQUIRE(static_cast<rational>(*p) == rational{umax{1} << 34});
 }
 
+//---------------------------------------------------------------------------
+// A real (double-backed) target rejects non-finite assignments: NaN/inf can
+// never be an on-grid value, so the store guard reports errc::not_finite rather
+// than poisoning the raw double. Exercises the non-finite branch in
+// store_checked for fp_raw storage.
+//---------------------------------------------------------------------------
+TEST_CASE("real storage rejects non-finite assignment", "[real][error]")
+{
+  using R = bound<{{-8, 8}, notch<1, 65536>}, real>;
+  static_assert(std::is_same_v<R::raw_type, double>);
+
+  auto threw_not_finite = [](auto&& fn) {
+    try { fn(); return false; }
+    catch (bnd::bound_error const& e) { return e.code == errc::not_finite; }
+  };
+
+  REQUIRE(threw_not_finite([]{ R x = std::nan(""); (void)x; }));
+  REQUIRE(threw_not_finite([]{ R x = std::numeric_limits<double>::infinity(); (void)x; }));
+  REQUIRE(threw_not_finite([]{ R x = -std::numeric_limits<double>::infinity(); (void)x; }));
+}
+
 #endif // !BND_MATH_FIXED

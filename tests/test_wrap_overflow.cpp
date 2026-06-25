@@ -79,6 +79,26 @@ TEST_CASE("wrap on a grid spanning more than imax", "[wrap][overflow]")
   REQUIRE(static_cast<rational>(b) == 0);
 }
 
+TEST_CASE("wrap is identity on a grid spanning the whole u64 range", "[wrap][overflow]")
+{
+  // span == 2^64-1, so `urange = upper - lower + 1` wraps to 0 in umax: every
+  // u64 bit pattern is already in range, so the wrap is the identity and the
+  // value is stored verbatim. Exercises the urange==0 fast path in apply_wrap.
+  // Identity is a raw round-trip: lower is 0, so the stored raw is exactly the
+  // input reinterpreted as u64 (a negative input keeps its two's-complement bits
+  // — it is not reducible, since the whole u64 range is in-grid).
+  using All = bound<{0, 18446744073709551615ULL}, wrap>;
+  static_assert(std::is_same_v<All::raw_type, std::uint64_t>);
+  for (long long v : { 0LL, 123456789LL, -1LL,
+                       std::numeric_limits<long long>::max(),
+                       std::numeric_limits<long long>::min() })
+  {
+    All b = v;
+    INFO("v=" << v);
+    REQUIRE(b.raw() == static_cast<std::uint64_t>(v));     // identity, no reduction
+  }
+}
+
 TEST_CASE("wrap still correct on a small symmetric grid", "[wrap]")
 {
   using S = bound<{-3, 3}, wrap>;                          // range 7
