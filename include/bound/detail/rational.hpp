@@ -50,6 +50,44 @@ namespace bnd::detail
   constexpr std::strong_ordering cmp128(u128 a, u128 b)
   { return (a.hi != b.hi) ? (a.hi <=> b.hi) : (a.lo <=> b.lo); }
 
+  // 128×64 product with an overflow flag (result beyond 128 bits).
+  struct mul128_result { u128 value; bool overflowed; };
+  constexpr mul128_result mul128(u128 a, umax b)
+  {
+    const u128 low  = umul(a.lo, b);
+    const u128 high = umul(a.hi, b);
+    const umax hi_sum = high.lo + low.hi;
+    return {u128{hi_sum, low.lo}, high.hi != 0 || hi_sum < low.hi};
+  }
+
+  // Quotient/remainder of a 128-bit dividend by a 64-bit divisor. Requires
+  // 1 <= d <= imax_max (the rational-denominator domain) so the portable
+  // partial remainder can never overflow when shifted.
+  struct divmod128_result { u128 quotient; umax remainder; };
+  constexpr divmod128_result divmod128(u128 n, umax d)
+  {
+#if defined(__SIZEOF_INT128__)
+    using u128n = unsigned __int128;
+    const u128n wide = (static_cast<u128n>(n.hi) << 64) | n.lo;
+    const u128n q = wide / d;
+    return {u128{static_cast<umax>(q >> 64), static_cast<umax>(q)},
+            static_cast<umax>(wide % d)};
+#else
+    // Portable (MSVC): restoring shift-subtract divide — the same construction
+    // as cmath.hpp's to_fixed fallback.
+    u128 q{0, 0};
+    umax r = 0;
+    for (int i = 127; i >= 0; --i)
+    {
+      r = (r << 1) | ((i >= 64 ? (n.hi >> (i - 64)) : (n.lo >> i)) & 1u);
+      q.hi = (q.hi << 1) | (q.lo >> 63);
+      q.lo <<= 1;
+      if (r >= d) { r -= d; q.lo |= 1; }
+    }
+    return {q, r};
+#endif
+  }
+
   //---------------------------------------------------------------------------
   // trim
   //---------------------------------------------------------------------------

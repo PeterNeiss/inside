@@ -89,9 +89,9 @@ namespace
   // Input grids — dyadic 2^-14 lattices with `real` (f64) storage, the fp
   // engines' intended pairing: results snap through the fp store path. All
   // engines run the identical grids, so notch-unit errors compare 1:1.
-  // (Integer-index snap grids currently route fp-engine stores through the
-  // 64-bit rational cold path, which overflows for full-mantissa results on
-  // grids with |Lower| ≫ 1 — see the store_checked overflow reporting.)
+  // (Integer-index snap grids also work — full-mantissa results store via the
+  // 128-bit rounded path — but `real` keeps the published table's store
+  // semantics uniform across engines.)
   using angle_grid = bound<{{-8, 8},        notch<1, 16384>}, round_nearest | real>;
   using tan_grid   = bound<{{-1.5, 1.5},   notch<1, 16384>}, round_nearest | real>;
   using unit_grid  = bound<{{-1, 1},       notch<1, 16384>}, round_nearest | real>;

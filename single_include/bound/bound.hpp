@@ -2183,6 +2183,44 @@ namespace bnd::detail
   constexpr std::strong_ordering cmp128(u128 a, u128 b)
   { return (a.hi != b.hi) ? (a.hi <=> b.hi) : (a.lo <=> b.lo); }
 
+  // 128×64 product with an overflow flag (result beyond 128 bits).
+  struct mul128_result { u128 value; bool overflowed; };
+  constexpr mul128_result mul128(u128 a, umax b)
+  {
+    const u128 low  = umul(a.lo, b);
+    const u128 high = umul(a.hi, b);
+    const umax hi_sum = high.lo + low.hi;
+    return {u128{hi_sum, low.lo}, high.hi != 0 || hi_sum < low.hi};
+  }
+
+  // Quotient/remainder of a 128-bit dividend by a 64-bit divisor. Requires
+  // 1 <= d <= imax_max (the rational-denominator domain) so the portable
+  // partial remainder can never overflow when shifted.
+  struct divmod128_result { u128 quotient; umax remainder; };
+  constexpr divmod128_result divmod128(u128 n, umax d)
+  {
+#if defined(__SIZEOF_INT128__)
+    using u128n = unsigned __int128;
+    const u128n wide = (static_cast<u128n>(n.hi) << 64) | n.lo;
+    const u128n q = wide / d;
+    return {u128{static_cast<umax>(q >> 64), static_cast<umax>(q)},
+            static_cast<umax>(wide % d)};
+#else
+    // Portable (MSVC): restoring shift-subtract divide — the same construction
+    // as cmath.hpp's to_fixed fallback.
+    u128 q{0, 0};
+    umax r = 0;
+    for (int i = 127; i >= 0; --i)
+    {
+      r = (r << 1) | ((i >= 64 ? (n.hi >> (i - 64)) : (n.lo >> i)) & 1u);
+      q.hi = (q.hi << 1) | (q.lo >> 63);
+      q.lo <<= 1;
+      if (r >= d) { r -= d; q.lo |= 1; }
+    }
+    return {q, r};
+#endif
+  }
+
   //---------------------------------------------------------------------------
   // trim
   //---------------------------------------------------------------------------
@@ -4519,6 +4557,25 @@ namespace bnd
     template <boundable B, typename P, policy_flag F>
     inline constexpr bool HasPolicy = has_flag(BoundPolicy<B>, F) || plain<P>::test(F);
 
+    // Rounds the split offset quotient q + r/den (r < den ≤ imax_max) per L's
+    // rounding policy — q/r form so no expression can overflow umax
+    // (num + den/2 could, for num near umax). Shared by round_quotient's
+    // offset rule and the 128-bit wide store (assignment.hpp).
+    template <boundable L, typename P>
+    [[nodiscard]] constexpr umax round_offset(umax q, umax r, umax den) noexcept
+    {
+      if constexpr (HasPolicy<L, P, round_nearest>)        return (r * 2 >= den) ? q + 1 : q;
+      else if constexpr (HasPolicy<L, P, round_floor>)     return q;
+      else if constexpr (HasPolicy<L, P, round_ceil>)      return (r != 0) ? q + 1 : q;
+      else if constexpr (HasPolicy<L, P, round_half_even>)
+      {
+        if (r * 2 < den) return q;
+        if (r * 2 > den) return q + 1;
+        return (q & 1) ? q + 1 : q;
+      }
+      else                                                 return q;
+    }
+
     // Round the non-negative offset quotient num/den (den >= 1) to an integer
     // notch index per L's rounding policy.
     //
@@ -4541,27 +4598,8 @@ namespace bnd
                                 :  static_cast<imax>(zl.Numerator))
           : imax{0};
 
-      // Offset rule: rounds num/den (≥ 0) directly, in q/r form so no formula
-      // can overflow umax (num + den/2 could, for num near umax). Used for
-      // exotic Lower/Notch (no integral value index) and as the fallback when
-      // the signed value-index rebuild below cannot fit 64 bits.
-      const auto offset_rule = [num, den]() -> umax
-      {
-        const umax q = num / den, r = num % den;
-        if constexpr (HasPolicy<L, P, round_nearest>)        return (r * 2 >= den) ? q + 1 : q;
-        else if constexpr (HasPolicy<L, P, round_floor>)     return q;
-        else if constexpr (HasPolicy<L, P, round_ceil>)      return (r != 0) ? q + 1 : q;
-        else if constexpr (HasPolicy<L, P, round_half_even>)
-        {
-          if (r * 2 < den) return q;
-          if (r * 2 > den) return q + 1;
-          return (q & 1) ? q + 1 : q;
-        }
-        else                                                 return q;
-      };
-
       if constexpr (!vidx)
-        return offset_rule();
+        return round_offset<L, P>(num / den, num % den, den);
       else
       {
         // Round the signed value-index NUM/di exactly like detail::div_rounded.
@@ -4573,7 +4611,7 @@ namespace bnd
         if (num > static_cast<umax>(std::numeric_limits<imax>::max())
             || mul_overflow(m, di, &mdi)
             || add_overflow(mdi, static_cast<imax>(num), &NUM)) [[unlikely]]
-          return offset_rule();
+          return round_offset<L, P>(num / den, num % den, den);
         const imax t   = NUM / di;                 // C++ truncation toward zero
         const imax rr  = NUM % di;                 // sign of NUM, |rr| < di
         imax J;
@@ -4988,6 +5026,92 @@ namespace bnd::detail
           action.fn(lhs, q);
       }
 
+      // 128-bit rounded store — the offset slot of an in-range rhs computed
+      // directly in wide arithmetic when the exact 64-bit rational formation
+      // of (rhs − Lower)/Notch overflows (full-mantissa fp-derived sources on
+      // grids with large |Lower|):
+      //     slot + remainder/divisor = (rhs − Lower)·d_n / (a_dr·a_dl·n_n)
+      // The compile-time divisor factors are gcd-reduced first, so the only
+      // wide operations are one 128×64 multiply and one 128÷64 divide.
+      // ok == false when the reduced divisor or dividend exceeds the 128-bit
+      // envelope (or rhs is out of range — callers check range first).
+      struct wide_quotient { umax slot; umax remainder; umax divisor; bool ok; };
+
+      static constexpr wide_quotient wide_offset_quotient(rational const& rv)
+      {
+        if constexpr (Notch<L> == 0)
+          return {};                       // continuous grids never index slots
+        else
+        {
+          constexpr umax n_l     = Lower<L>.Numerator;
+          constexpr umax a_dl    = abs_den(Lower<L>.Denominator);
+          constexpr bool low_neg = Lower<L>.Denominator < 0;
+          constexpr umax n_n     = Notch<L>.Numerator;   // Notch > 0: d_n > 0
+          constexpr umax d_n     = static_cast<umax>(Notch<L>.Denominator);
+
+          // Compile-time divisor part; a grid whose a_dl·n_n cannot fit umax
+          // is beyond the wide envelope entirely.
+          constexpr umax den_ct = []{
+            umax p;
+            return mul_overflow(a_dl, n_n, &p) ? umax{0} : p;
+          }();
+          if constexpr (den_ct == 0)
+            return {};
+          else
+          {
+            constexpr umax g1   = std::gcd(d_n, den_ct);
+            constexpr umax d_n1 = d_n / g1;
+            constexpr umax den1 = den_ct / g1;
+
+            const umax a_dr    = abs_den(rv.Denominator);
+            const bool rhs_neg = rv.Denominator < 0;
+
+            // Offset numerator over the common denominator a_dr·a_dl:
+            //   s_r·n_r·a_dl − s_l·n_l·a_dr  (≥ 0 for in-range rhs).
+            // Each product is < 2^127 (numerator < 2^64, denominator ≤ imax),
+            // so the same-sign sum below cannot carry out of 128 bits.
+            const u128 val = umul(rv.Numerator, a_dl);
+            const u128 low = umul(n_l, a_dr);
+            u128 offset;
+            if (!rhs_neg && low_neg)
+              offset = u128{val.hi + low.hi + (val.lo + low.lo < val.lo ? 1u : 0u),
+                            val.lo + low.lo};
+            else if (!rhs_neg && !low_neg)
+            {
+              if (cmp128(val, low) < 0) return {};         // rhs < Lower
+              offset = u128{val.hi - low.hi - (val.lo < low.lo ? 1u : 0u),
+                            val.lo - low.lo};
+            }
+            else if (rhs_neg && low_neg)
+            {
+              if (cmp128(low, val) < 0) return {};         // rhs < Lower
+              offset = u128{low.hi - val.hi - (low.lo < val.lo ? 1u : 0u),
+                            low.lo - val.lo};
+            }
+            else
+              return {};                                   // rhs < 0 ≤ Lower
+
+            const umax g2    = std::gcd(d_n1, a_dr);
+            const umax d_n2  = d_n1 / g2;
+            const umax a_dr1 = a_dr / g2;
+
+            umax divisor;
+            if (mul_overflow(a_dr1, den1, &divisor)
+                || divisor > static_cast<umax>(std::numeric_limits<imax>::max()))
+              return {};
+
+            const mul128_result dividend = mul128(offset, d_n2);
+            if (dividend.overflowed)
+              return {};
+
+            const divmod128_result qr = divmod128(dividend.value, divisor);
+            if (qr.quotient.hi != 0)
+              return {};                    // slot beyond any 64-bit index space
+            return {qr.quotient.lo, qr.remainder, divisor, true};
+          }
+        }
+      }
+
       template<typename P, typename A = no_action>
       static constexpr bool store_checked(L& lhs, R rhs, P&& policy, A&& action = {})
       {
@@ -5076,16 +5200,36 @@ namespace bnd::detail
           }
 
           // The exact quotient can overflow the 64-bit rational range (huge
-          // source denominator × fine notch). Report it as an overflow through
-          // the policy channel instead of dereferencing nullopt — a throw here
-          // would escape noexcept callers (the math engines) as terminate.
+          // source denominator × fine notch). Recompute the slot directly in
+          // 128-bit (wide_offset_quotient above); only a result beyond even
+          // that envelope reports errc::overflow — never a nullopt deref,
+          // which would escape noexcept callers (the math engines) as
+          // terminate. Rounding here is the offset rule (round_offset), the
+          // same semantics round_quotient falls back to past 64 bits.
           const auto quotient = (rhs - Lower<L>)/Notch<L>;
           if (!quotient.has_value()) [[unlikely]]
           {
-            if constexpr (error_action<plain<A>>)
-            { action.fn(lhs, errc::overflow, errc_message(errc::overflow)); return false; }
-            policy.report(errc::overflow);
-            return false;
+            const wide_quotient wide = wide_offset_quotient(rational{rhs});
+            if (!wide.ok)
+            {
+              if constexpr (error_action<plain<A>>)
+              { action.fn(lhs, errc::overflow, errc_message(errc::overflow)); return false; }
+              policy.report(errc::overflow);
+              return false;
+            }
+            if (wide.remainder == 0)
+            { store_slot(wide.slot); return true; }
+            if constexpr (has_round_flag)
+            { store_slot(round_offset<L, P>(wide.slot, wide.remainder, wide.divisor)); return true; }
+            if (policy.round_check()) [[unlikely]]
+            {
+              if constexpr (error_action<plain<A>>)
+              { action.fn(lhs, errc::rounding_error, errc_message(errc::rounding_error)); return false; }
+              policy.report(errc::rounding_error);
+              return false;
+            }
+            store_slot(round_offset<L, P>(wide.slot, wide.remainder, wide.divisor));
+            return true;
           }
           rational raw = *quotient;
           umax den = static_cast<umax>(raw.Denominator);
