@@ -6,6 +6,7 @@
 
 #include "bound/core.hpp"
 #include "bound/casts.hpp"
+#include "bound/detail/rep.hpp"
 
 #include <algorithm>
 #include <ranges>
@@ -246,6 +247,36 @@ namespace bnd
   { return a + (b - a) * t; }
 
   //---------------------------------------------------------------------------
+  // common_bound — the "hull" type able to hold every value of L and R exactly:
+  // interval hull + notch gcd (grid `hull`), representation propagated by the
+  // same widest-wins rule as arithmetic results (detail::fp_rep). Backs the
+  // std::common_type specialisation (numeric_limits.hpp) and mixed-grid
+  // min/max below. The primary has no `type` when the hull grid is
+  // unrepresentable, so common_type_t SFINAEs away instead of erroring.
+  //---------------------------------------------------------------------------
+  namespace detail
+  {
+    template <boundable Lhs, boundable Rhs>
+    struct common_bound {};
+
+    // Same type stays itself (policy included) — mirrors std::common_type<T, T>.
+    template <boundable Same>
+    struct common_bound<Same, Same> { using type = Same; };
+
+    template <boundable Lhs, boundable Rhs>
+      requires (!std::same_as<Lhs, Rhs>) && (hull(Grid<Lhs>, Grid<Rhs>).has_value())
+    struct common_bound<Lhs, Rhs>
+    {
+      static constexpr grid hull_grid = *hull(Grid<Lhs>, Grid<Rhs>);
+      using type = bound<hull_grid,
+                         fp_rep<Lhs, Rhs, hull_grid, /*AllowContinuous=*/true>::result_policy>;
+    };
+  }
+
+  template <boundable Lhs, boundable Rhs>
+  using common_bound_t = typename detail::common_bound<Lhs, Rhs>::type;
+
+  //---------------------------------------------------------------------------
   // std-vocabulary helpers — ADL-found `min` / `max` / `midpoint` for generic
   // code. min/max mirror std; midpoint returns the *exact* average on a refined
   // grid (so, unlike std::midpoint, it neither rounds nor overflows). There is
@@ -256,6 +287,16 @@ namespace bnd
 
   template <boundable T>
   [[nodiscard]] constexpr T max(T a, T b) { return (a < b) ? b : a; }
+
+  // Mixed-grid forms return the common hull type (both operands convert
+  // losslessly — the hull is assignable from each by construction).
+  template <boundable Lhs, boundable Rhs> requires (!std::same_as<Lhs, Rhs>)
+  [[nodiscard]] constexpr auto min(Lhs a, Rhs b) -> common_bound_t<Lhs, Rhs>
+  { common_bound_t<Lhs, Rhs> ca{a}, cb{b}; return (cb < ca) ? cb : ca; }
+
+  template <boundable Lhs, boundable Rhs> requires (!std::same_as<Lhs, Rhs>)
+  [[nodiscard]] constexpr auto max(Lhs a, Rhs b) -> common_bound_t<Lhs, Rhs>
+  { common_bound_t<Lhs, Rhs> ca{a}, cb{b}; return (ca < cb) ? cb : ca; }
 
   template <boundable T>
   [[nodiscard]] constexpr auto midpoint(T a, T b) { return (a + b) * just<frac<1, 2>>; }

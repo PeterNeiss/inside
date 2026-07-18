@@ -4,6 +4,7 @@
 #ifndef BNDadditionHPP
 #define BNDadditionHPP
 
+#include "bound/detail/rep.hpp"
 #include "bound/generic.hpp"
 #include "bound/grid.hpp"
 #include "bound/policy.hpp"
@@ -24,23 +25,9 @@ namespace bnd::detail
       "addition: result grid's notch/interval exceeds the representable rational "
       "range — coarsen the operand grids");
     static constexpr grid result_grid = (Grid<L> + Grid<R>).value();
-    // Propagate fp storage only when the result grid stays exactly representable
-    // in the chosen width; otherwise demote (f32→f64) or drop it so storage_pick
-    // deduces an exact representation (the fp sum would diverge from the exact sum
-    // — see grid::double_exact / float_exact). Widest-wins: prefer f32 only when
-    // both operands are f32-only and the result fits float; an f64 operand or a
-    // too-fine-for-float result widens to f64; too fine for double → exact.
-    static constexpr bool any_f64 =
-        (BoundPolicy<L> & bnd::real) == bnd::real || (BoundPolicy<R> & bnd::real) == bnd::real;
-    static constexpr bool any_f32 =
-        (BoundPolicy<L> & bnd::f32) == bnd::f32 || (BoundPolicy<R> & bnd::f32) == bnd::f32;
-    static constexpr bool keep_f32 = any_f32 && !any_f64 && float_exact<result_grid>;
-    static constexpr bool keep_f64 = !keep_f32 && (any_f64 || any_f32) && double_exact<result_grid>;
-    // Carry both operands' representation flags (widest-wins at storage selection).
-    static constexpr policy_flag rep =
-        ((BoundPolicy<L> | BoundPolicy<R>) & (bnd::exact | bnd::direct | bnd::indexed))
-        | (keep_f64 ? bnd::real : none) | (keep_f32 ? bnd::f32 : none);
-    using result = bound<result_grid, rep != none ? rep : checked>;
+    // fp / representation propagation — shared rule in detail/rep.hpp.
+    using rep_t = fp_rep<L, R, result_grid>;
+    using result = bound<result_grid, rep_t::result_policy>;
 
     template <policy_flag F>
     static constexpr bool needs_overflow_check =

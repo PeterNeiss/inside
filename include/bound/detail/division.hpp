@@ -4,6 +4,7 @@
 #ifndef BNDdivisionHPP
 #define BNDdivisionHPP
 
+#include "bound/detail/rep.hpp"
 #include "bound/generic.hpp"
 #include "bound/grid.hpp"
 #include "bound/policy.hpp"
@@ -154,22 +155,10 @@ namespace bnd::detail
             ? grid{interval{rational{0}, (Upper<L> / Notch<R>).value()}, Notch<L>}
             : *(Grid<L> / Grid<R>);
 
-    static constexpr bool any_f64 =
-        (BoundPolicy<L> & bnd::real) == bnd::real || (BoundPolicy<R> & bnd::real) == bnd::real;
-    static constexpr bool any_f32 =
-        (BoundPolicy<L> & bnd::f32) == bnd::f32 || (BoundPolicy<R> & bnd::f32) == bnd::f32;
-    // Keep fp for a continuous result (Notch 0: the raw stores the quotient
-    // verbatim) or an fp-exact dyadic result; otherwise demote f32→f64 / drop f64
-    // (the fp quotient would not land on the result grid). Widest-wins as in mul.
-    static constexpr bool keep_f32 =
-        any_f32 && !any_f64 && (result_grid.Notch == 0 || float_exact<result_grid>);
-    static constexpr bool keep_f64 =
-        !keep_f32 && (any_f64 || any_f32) && (result_grid.Notch == 0 || double_exact<result_grid>);
-    // Carry both operands' representation flags (widest-wins at storage selection).
-    static constexpr policy_flag rep =
-        ((BoundPolicy<L> | BoundPolicy<R>) & (bnd::exact | bnd::direct | bnd::indexed))
-        | (keep_f64 ? bnd::real : none) | (keep_f32 ? bnd::f32 : none);
-    using result = bound<result_grid, rep != none ? rep : checked>;
+    // fp / representation propagation — shared rule in detail/rep.hpp.
+    // AllowContinuous: a continuous quotient (Notch 0) keeps fp verbatim.
+    using rep_t = fp_rep<L, R, result_grid, /*AllowContinuous=*/true>;
+    using result = bound<result_grid, rep_t::result_policy>;
 
     template <policy_flag G = F>
     static constexpr bool needs_overflow_check =

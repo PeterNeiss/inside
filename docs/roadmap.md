@@ -81,6 +81,21 @@ For completeness — these came up alongside the above but are *not* blocked by 
   with no language dependency. See [freestanding.md](freestanding.md).
 - **`dyn_bound`** (runtime-valued bounds) — evaluated and **declined** on design grounds
   (no space/time-efficient implementation), not deferred.
+- **Type-level interval unions** — Intel's [safe-arithmetic](resources.md) models
+  *disjoint* interval unions in the type (`ival<-1000,-1> || ival<1,1000>`), so e.g. a
+  zero-excluding divisor makes division provably total at compile time. `bound`'s
+  `grid::operator/` already computes the two zero-free halves internally
+  (`grid.hpp`) — the missing piece is expressing the union in the *type* (a
+  `bound` over a set of grids) rather than collapsing to the hull. Large surface
+  (every operator/predicate would need a union story), so this stays a design
+  sketch until a concrete use case demands it.
+- **128-bit rounded store** — the cold assignment path forms `(rhs − Lower)/Notch` as
+  an exact 64-bit rational before rounding; a full-mantissa `double`-derived source
+  (denominator 2^52+) on a grid with large `|Lower|` can need 65+ bits *before* the
+  round even though the rounded slot index is tiny. Mixed-sign offsets are rescued in
+  128-bit and the rest report `errc::overflow` today; computing the *rounded* index
+  directly in 128-bit (as `to_fixed` already does in `cmath.hpp`) would make those
+  stores exact instead of an error.
 - **Modules / compile-time-footprint work** — parked for later; modules is C++20, not a
   blocker.
 

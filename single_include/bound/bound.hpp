@@ -2718,10 +2718,37 @@ namespace bnd::detail
     if constexpr (Checked)
     {
       if (mul_overflow(a_ad, b_ad_r, &denominator)    ||   // = lcm(a_ad, b_ad)
-          mul_overflow(a.Numerator, b_ad_r, &A)       ||
-          mul_overflow(b.Numerator, a_ad_r, &B)       ||
           denominator > static_cast<umax>(std::numeric_limits<imax>::max()))
       {
+        if (std::is_constant_evaluated()) { constexpr_error<"rational +: denominator overflow">(); }
+        return ret_t{slim::nullopt};
+      }
+      if (mul_overflow(a.Numerator, b_ad_r, &A) ||
+          mul_overflow(b.Numerator, a_ad_r, &B))
+      {
+        // Mixed signs: |A − B| can fit umax even when a cross-product alone
+        // does not (e.g. 1024 − m/2^54 forms 1024·2^54 == 2^64 before the
+        // subtraction brings it back in range — the dbl-engine store path hit
+        // exactly this). Retry the difference in 128-bit before giving up.
+        if (a_neg != b_neg)
+        {
+          const u128 A128 = umul(a.Numerator, b_ad_r);
+          const u128 B128 = umul(b.Numerator, a_ad_r);
+          const bool a_bigger = cmp128(A128, B128) > 0;
+          const u128 big   = a_bigger ? A128 : B128;
+          const u128 small = a_bigger ? B128 : A128;
+          const u128 diff{big.hi - small.hi - (big.lo < small.lo ? 1u : 0u),
+                          big.lo - small.lo};
+          if (diff.hi == 0)
+          {
+            rational r;
+            r.Numerator   = diff.lo;
+            r.Denominator = (a_neg ? a_bigger : !a_bigger) ? -denominator
+                                                           :  denominator;
+            trim(r.Numerator, r.Denominator);
+            return ret_t{r};
+          }
+        }
         if (std::is_constant_evaluated()) { constexpr_error<"rational +: cross-multiplication overflow">(); }
         return ret_t{slim::nullopt};
       }
@@ -4055,6 +4082,26 @@ namespace bnd
                   lhs.Interval / interval{rhs.Interval.Lower, -step});
     }
   }
+
+  //---------------------------------------------------------------------------
+  // hull
+  //---------------------------------------------------------------------------
+  // The smallest grid that represents every value of both operands exactly:
+  // interval hull + notch gcd. A valid grid anchors Lower on a multiple of its
+  // notch, so both lattices are sub-lattices of the gcd lattice — no offset
+  // term is needed, and the hull is a valid grid by construction. A continuous
+  // operand (Notch 0) makes the hull continuous. nullopt when the notch gcd's
+  // combined denominator exceeds the representable rational range.
+  //---------------------------------------------------------------------------
+  inline constexpr slim::optional<grid> hull(const grid& lhs, const grid& rhs)
+  {
+    const interval iv{std::min(lhs.Interval.Lower, rhs.Interval.Lower),
+                      std::max(lhs.Interval.Upper, rhs.Interval.Upper)};
+    if (lhs.Notch == 0 || rhs.Notch == 0)
+      return grid{iv, detail::rational{0}};
+    return lift([iv](detail::rational g){ return grid{iv, g}; },
+                detail::gcd(lhs.Notch, rhs.Notch));
+  }
 } // namespace bnd
 
 namespace slim
@@ -4494,26 +4541,39 @@ namespace bnd
                                 :  static_cast<imax>(zl.Numerator))
           : imax{0};
 
-      if constexpr (!vidx)
+      // Offset rule: rounds num/den (≥ 0) directly, in q/r form so no formula
+      // can overflow umax (num + den/2 could, for num near umax). Used for
+      // exotic Lower/Notch (no integral value index) and as the fallback when
+      // the signed value-index rebuild below cannot fit 64 bits.
+      const auto offset_rule = [num, den]() -> umax
       {
-        // Exotic Lower/Notch (no integral value index) — historical offset rule.
-        if constexpr (HasPolicy<L, P, round_nearest>)        return (num + den / 2) / den;
-        else if constexpr (HasPolicy<L, P, round_floor>)     return num / den;
-        else if constexpr (HasPolicy<L, P, round_ceil>)      return (num + den - 1) / den;
+        const umax q = num / den, r = num % den;
+        if constexpr (HasPolicy<L, P, round_nearest>)        return (r * 2 >= den) ? q + 1 : q;
+        else if constexpr (HasPolicy<L, P, round_floor>)     return q;
+        else if constexpr (HasPolicy<L, P, round_ceil>)      return (r != 0) ? q + 1 : q;
         else if constexpr (HasPolicy<L, P, round_half_even>)
         {
-          umax q = num / den, r = num % den;
           if (r * 2 < den) return q;
           if (r * 2 > den) return q + 1;
           return (q & 1) ? q + 1 : q;
         }
-        else                                                 return num / den;
-      }
+        else                                                 return q;
+      };
+
+      if constexpr (!vidx)
+        return offset_rule();
       else
       {
         // Round the signed value-index NUM/di exactly like detail::div_rounded.
-        const imax di  = static_cast<imax>(den);
-        const imax NUM = m * di + static_cast<imax>(num);
+        // A numerator or m·di beyond imax (fp-derived sources on grids with
+        // large |Lower·count|) cannot rebuild the signed index — fall back to
+        // the offset rule, which differs only at exact ties on negative values.
+        const imax di = static_cast<imax>(den);
+        imax mdi, NUM;
+        if (num > static_cast<umax>(std::numeric_limits<imax>::max())
+            || mul_overflow(m, di, &mdi)
+            || add_overflow(mdi, static_cast<imax>(num), &NUM)) [[unlikely]]
+          return offset_rule();
         const imax t   = NUM / di;                 // C++ truncation toward zero
         const imax rr  = NUM % di;                 // sign of NUM, |rr| < di
         imax J;
@@ -5015,7 +5075,19 @@ namespace bnd::detail
             }
           }
 
-          rational raw = ((rhs - Lower<L>)/Notch<L>).value();
+          // The exact quotient can overflow the 64-bit rational range (huge
+          // source denominator × fine notch). Report it as an overflow through
+          // the policy channel instead of dereferencing nullopt — a throw here
+          // would escape noexcept callers (the math engines) as terminate.
+          const auto quotient = (rhs - Lower<L>)/Notch<L>;
+          if (!quotient.has_value()) [[unlikely]]
+          {
+            if constexpr (error_action<plain<A>>)
+            { action.fn(lhs, errc::overflow, errc_message(errc::overflow)); return false; }
+            policy.report(errc::overflow);
+            return false;
+          }
+          rational raw = *quotient;
           umax den = static_cast<umax>(raw.Denominator);
           if (den == 1)
           { store_slot(raw.Numerator); return true; }
@@ -5656,6 +5728,49 @@ namespace bnd
 //---------------------------------------------------------------------------
 
 
+// ======================================================================
+//  bound/detail/rep.hpp
+// ======================================================================
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+
+
+//---------------------------------------------------------------------------
+// rep — representation-flag propagation for binary arithmetic results, shared
+// by addition/multiplication/division. Propagate fp storage only when the
+// result grid stays exactly representable in the chosen width; otherwise
+// demote (f32→f64) or drop it so storage_pick deduces an exact representation
+// (the fp result would diverge from the exact result — see grid::double_exact
+// / float_exact). Widest-wins: prefer f32 only when both operands are
+// f32-only and the result fits float; an f64 operand or a too-fine-for-float
+// result widens to f64; too fine for double → exact. Division sets
+// AllowContinuous: a continuous result (Notch 0) keeps fp regardless — the
+// raw stores the quotient verbatim, so there is no grid to land on.
+//---------------------------------------------------------------------------
+namespace bnd::detail
+{
+  template <boundable Lhs, boundable Rhs, grid ResultGrid, bool AllowContinuous = false>
+  struct fp_rep
+  {
+    static constexpr bool any_f64 =
+        (BoundPolicy<Lhs> & bnd::real) == bnd::real || (BoundPolicy<Rhs> & bnd::real) == bnd::real;
+    static constexpr bool any_f32 =
+        (BoundPolicy<Lhs> & bnd::f32) == bnd::f32 || (BoundPolicy<Rhs> & bnd::f32) == bnd::f32;
+    static constexpr bool continuous_ok = AllowContinuous && ResultGrid.Notch == 0;
+    static constexpr bool keep_f32 =
+        any_f32 && !any_f64 && (continuous_ok || float_exact<ResultGrid>);
+    static constexpr bool keep_f64 =
+        !keep_f32 && (any_f64 || any_f32) && (continuous_ok || double_exact<ResultGrid>);
+    static constexpr bool dropped_fp = (any_f64 || any_f32) && !keep_f64 && !keep_f32;
+    // Carry both operands' representation flags (widest-wins at storage selection).
+    static constexpr policy_flag rep =
+        ((BoundPolicy<Lhs> | BoundPolicy<Rhs>) & (bnd::exact | bnd::direct | bnd::indexed))
+        | (keep_f64 ? bnd::real : none) | (keep_f32 ? bnd::f32 : none);
+    // The result bound's policy: the propagated representation, or plain checked.
+    static constexpr policy_flag result_policy = rep != none ? rep : checked;
+  };
+}
+
 //---------------------------------------------------------------------------
 // addition — `add(L, R, policy, action) -> bound<G>`, G = Grid<L> + Grid<R>.
 // The grid arithmetic is sound by construction (the result interval contains
@@ -5672,23 +5787,9 @@ namespace bnd::detail
       "addition: result grid's notch/interval exceeds the representable rational "
       "range — coarsen the operand grids");
     static constexpr grid result_grid = (Grid<L> + Grid<R>).value();
-    // Propagate fp storage only when the result grid stays exactly representable
-    // in the chosen width; otherwise demote (f32→f64) or drop it so storage_pick
-    // deduces an exact representation (the fp sum would diverge from the exact sum
-    // — see grid::double_exact / float_exact). Widest-wins: prefer f32 only when
-    // both operands are f32-only and the result fits float; an f64 operand or a
-    // too-fine-for-float result widens to f64; too fine for double → exact.
-    static constexpr bool any_f64 =
-        (BoundPolicy<L> & bnd::real) == bnd::real || (BoundPolicy<R> & bnd::real) == bnd::real;
-    static constexpr bool any_f32 =
-        (BoundPolicy<L> & bnd::f32) == bnd::f32 || (BoundPolicy<R> & bnd::f32) == bnd::f32;
-    static constexpr bool keep_f32 = any_f32 && !any_f64 && float_exact<result_grid>;
-    static constexpr bool keep_f64 = !keep_f32 && (any_f64 || any_f32) && double_exact<result_grid>;
-    // Carry both operands' representation flags (widest-wins at storage selection).
-    static constexpr policy_flag rep =
-        ((BoundPolicy<L> | BoundPolicy<R>) & (bnd::exact | bnd::direct | bnd::indexed))
-        | (keep_f64 ? bnd::real : none) | (keep_f32 ? bnd::f32 : none);
-    using result = bound<result_grid, rep != none ? rep : checked>;
+    // fp / representation propagation — shared rule in detail/rep.hpp.
+    using rep_t = fp_rep<L, R, result_grid>;
+    using result = bound<result_grid, rep_t::result_policy>;
 
     template <policy_flag F>
     static constexpr bool needs_overflow_check =
@@ -5792,22 +5893,11 @@ namespace bnd::detail
       "multiplication: result grid's notch/interval exceeds the representable "
       "rational range — coarsen the operand grids");
     static constexpr grid result_grid = (Grid<L> * Grid<R>).value();
-    // fp storage propagation (see addition.hpp): the product grid (notch = N_L·N_R)
-    // is finer, so demote f32→f64 / drop f64 when it outgrows the width — the fp
-    // product would round below the result notch. Widest-wins: f32 only if both
-    // operands f32-only and product fits float; else widen to f64; else exact.
-    static constexpr bool any_f64 =
-        (BoundPolicy<L> & bnd::real) == bnd::real || (BoundPolicy<R> & bnd::real) == bnd::real;
-    static constexpr bool any_f32 =
-        (BoundPolicy<L> & bnd::f32) == bnd::f32 || (BoundPolicy<R> & bnd::f32) == bnd::f32;
-    static constexpr bool keep_f32 = any_f32 && !any_f64 && float_exact<result_grid>;
-    static constexpr bool keep_f64 = !keep_f32 && (any_f64 || any_f32) && double_exact<result_grid>;
-    static constexpr bool dropped_fp = (any_f64 || any_f32) && !keep_f64 && !keep_f32;
-    // Carry both operands' representation flags (widest-wins at storage selection).
-    static constexpr policy_flag rep =
-        ((BoundPolicy<L> | BoundPolicy<R>) & (bnd::exact | bnd::direct | bnd::indexed))
-        | (keep_f64 ? bnd::real : none) | (keep_f32 ? bnd::f32 : none);
-    using result = bound<result_grid, rep != none ? rep : checked>;
+    // fp / representation propagation — shared rule in detail/rep.hpp. The product
+    // grid (notch = N_L·N_R) is finer, so demotion/dropping is the common case.
+    using rep_t = fp_rep<L, R, result_grid>;
+    static constexpr bool dropped_fp = rep_t::dropped_fp;
+    using result = bound<result_grid, rep_t::result_policy>;
 
     // The dropped-fp case lands on a rational result when the product grid outgrows
     // uint index space; its product numerator can exceed `umax`, so check it (the
@@ -6080,22 +6170,10 @@ namespace bnd::detail
             ? grid{interval{rational{0}, (Upper<L> / Notch<R>).value()}, Notch<L>}
             : *(Grid<L> / Grid<R>);
 
-    static constexpr bool any_f64 =
-        (BoundPolicy<L> & bnd::real) == bnd::real || (BoundPolicy<R> & bnd::real) == bnd::real;
-    static constexpr bool any_f32 =
-        (BoundPolicy<L> & bnd::f32) == bnd::f32 || (BoundPolicy<R> & bnd::f32) == bnd::f32;
-    // Keep fp for a continuous result (Notch 0: the raw stores the quotient
-    // verbatim) or an fp-exact dyadic result; otherwise demote f32→f64 / drop f64
-    // (the fp quotient would not land on the result grid). Widest-wins as in mul.
-    static constexpr bool keep_f32 =
-        any_f32 && !any_f64 && (result_grid.Notch == 0 || float_exact<result_grid>);
-    static constexpr bool keep_f64 =
-        !keep_f32 && (any_f64 || any_f32) && (result_grid.Notch == 0 || double_exact<result_grid>);
-    // Carry both operands' representation flags (widest-wins at storage selection).
-    static constexpr policy_flag rep =
-        ((BoundPolicy<L> | BoundPolicy<R>) & (bnd::exact | bnd::direct | bnd::indexed))
-        | (keep_f64 ? bnd::real : none) | (keep_f32 ? bnd::f32 : none);
-    using result = bound<result_grid, rep != none ? rep : checked>;
+    // fp / representation propagation — shared rule in detail/rep.hpp.
+    // AllowContinuous: a continuous quotient (Notch 0) keeps fp verbatim.
+    using rep_t = fp_rep<L, R, result_grid, /*AllowContinuous=*/true>;
+    using result = bound<result_grid, rep_t::result_policy>;
 
     template <policy_flag G = F>
     static constexpr bool needs_overflow_check =
@@ -7427,6 +7505,36 @@ namespace bnd
   { return a + (b - a) * t; }
 
   //---------------------------------------------------------------------------
+  // common_bound — the "hull" type able to hold every value of L and R exactly:
+  // interval hull + notch gcd (grid `hull`), representation propagated by the
+  // same widest-wins rule as arithmetic results (detail::fp_rep). Backs the
+  // std::common_type specialisation (numeric_limits.hpp) and mixed-grid
+  // min/max below. The primary has no `type` when the hull grid is
+  // unrepresentable, so common_type_t SFINAEs away instead of erroring.
+  //---------------------------------------------------------------------------
+  namespace detail
+  {
+    template <boundable Lhs, boundable Rhs>
+    struct common_bound {};
+
+    // Same type stays itself (policy included) — mirrors std::common_type<T, T>.
+    template <boundable Same>
+    struct common_bound<Same, Same> { using type = Same; };
+
+    template <boundable Lhs, boundable Rhs>
+      requires (!std::same_as<Lhs, Rhs>) && (hull(Grid<Lhs>, Grid<Rhs>).has_value())
+    struct common_bound<Lhs, Rhs>
+    {
+      static constexpr grid hull_grid = *hull(Grid<Lhs>, Grid<Rhs>);
+      using type = bound<hull_grid,
+                         fp_rep<Lhs, Rhs, hull_grid, /*AllowContinuous=*/true>::result_policy>;
+    };
+  }
+
+  template <boundable Lhs, boundable Rhs>
+  using common_bound_t = typename detail::common_bound<Lhs, Rhs>::type;
+
+  //---------------------------------------------------------------------------
   // std-vocabulary helpers — ADL-found `min` / `max` / `midpoint` for generic
   // code. min/max mirror std; midpoint returns the *exact* average on a refined
   // grid (so, unlike std::midpoint, it neither rounds nor overflows). There is
@@ -7437,6 +7545,16 @@ namespace bnd
 
   template <boundable T>
   [[nodiscard]] constexpr T max(T a, T b) { return (a < b) ? b : a; }
+
+  // Mixed-grid forms return the common hull type (both operands convert
+  // losslessly — the hull is assignable from each by construction).
+  template <boundable Lhs, boundable Rhs> requires (!std::same_as<Lhs, Rhs>)
+  [[nodiscard]] constexpr auto min(Lhs a, Rhs b) -> common_bound_t<Lhs, Rhs>
+  { common_bound_t<Lhs, Rhs> ca{a}, cb{b}; return (cb < ca) ? cb : ca; }
+
+  template <boundable Lhs, boundable Rhs> requires (!std::same_as<Lhs, Rhs>)
+  [[nodiscard]] constexpr auto max(Lhs a, Rhs b) -> common_bound_t<Lhs, Rhs>
+  { common_bound_t<Lhs, Rhs> ca{a}, cb{b}; return (ca < cb) ? cb : ca; }
 
   template <boundable T>
   [[nodiscard]] constexpr auto midpoint(T a, T b) { return (a + b) * just<frac<1, 2>>; }
@@ -11247,10 +11365,17 @@ struct std::formatter<bnd::detail::rational>
 
 
 //---------------------------------------------------------------------------
-// numeric_limits / hash — std:: specialisations for bound<G, P>. numeric_limits
-// reports the *grid* bounds (Lower/Upper), not the raw type's limits. std::hash
-// hashes the Raw member (rational raw: Numerator+Denominator, boost-style combine).
+// numeric_limits / hash / common_type — std:: specialisations for bound<G, P>.
+// numeric_limits reports the *grid* bounds (Lower/Upper), not the raw type's
+// limits. std::hash hashes the Raw member (rational raw: Numerator+Denominator,
+// boost-style combine). std::common_type is the grid hull (see bnd::common_bound
+// in arithmetic.hpp) so mixed-grid bounds interoperate with generic code.
 //---------------------------------------------------------------------------
+
+template <bnd::grid G1, bnd::policy_flag P1, bnd::grid G2, bnd::policy_flag P2>
+struct std::common_type<bnd::bound<G1, P1>, bnd::bound<G2, P2>>
+  : bnd::detail::common_bound<bnd::bound<G1, P1>, bnd::bound<G2, P2>> {};
+
 
 template <bnd::grid G, bnd::policy_flag P>
 struct std::numeric_limits<bnd::bound<G, P>>

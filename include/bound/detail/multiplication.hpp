@@ -4,6 +4,7 @@
 #ifndef BNDmultiplicationHPP
 #define BNDmultiplicationHPP
 
+#include "bound/detail/rep.hpp"
 #include "bound/generic.hpp"
 #include "bound/grid.hpp"
 #include "bound/policy.hpp"
@@ -24,22 +25,11 @@ namespace bnd::detail
       "multiplication: result grid's notch/interval exceeds the representable "
       "rational range — coarsen the operand grids");
     static constexpr grid result_grid = (Grid<L> * Grid<R>).value();
-    // fp storage propagation (see addition.hpp): the product grid (notch = N_L·N_R)
-    // is finer, so demote f32→f64 / drop f64 when it outgrows the width — the fp
-    // product would round below the result notch. Widest-wins: f32 only if both
-    // operands f32-only and product fits float; else widen to f64; else exact.
-    static constexpr bool any_f64 =
-        (BoundPolicy<L> & bnd::real) == bnd::real || (BoundPolicy<R> & bnd::real) == bnd::real;
-    static constexpr bool any_f32 =
-        (BoundPolicy<L> & bnd::f32) == bnd::f32 || (BoundPolicy<R> & bnd::f32) == bnd::f32;
-    static constexpr bool keep_f32 = any_f32 && !any_f64 && float_exact<result_grid>;
-    static constexpr bool keep_f64 = !keep_f32 && (any_f64 || any_f32) && double_exact<result_grid>;
-    static constexpr bool dropped_fp = (any_f64 || any_f32) && !keep_f64 && !keep_f32;
-    // Carry both operands' representation flags (widest-wins at storage selection).
-    static constexpr policy_flag rep =
-        ((BoundPolicy<L> | BoundPolicy<R>) & (bnd::exact | bnd::direct | bnd::indexed))
-        | (keep_f64 ? bnd::real : none) | (keep_f32 ? bnd::f32 : none);
-    using result = bound<result_grid, rep != none ? rep : checked>;
+    // fp / representation propagation — shared rule in detail/rep.hpp. The product
+    // grid (notch = N_L·N_R) is finer, so demotion/dropping is the common case.
+    using rep_t = fp_rep<L, R, result_grid>;
+    static constexpr bool dropped_fp = rep_t::dropped_fp;
+    using result = bound<result_grid, rep_t::result_policy>;
 
     // The dropped-fp case lands on a rational result when the product grid outgrows
     // uint index space; its product numerator can exceed `umax`, so check it (the

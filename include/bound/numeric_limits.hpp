@@ -8,12 +8,20 @@
 
 #include <limits>
 #include <functional>
+#include <type_traits>   // std::common_type
 
 //---------------------------------------------------------------------------
-// numeric_limits / hash — std:: specialisations for bound<G, P>. numeric_limits
-// reports the *grid* bounds (Lower/Upper), not the raw type's limits. std::hash
-// hashes the Raw member (rational raw: Numerator+Denominator, boost-style combine).
+// numeric_limits / hash / common_type — std:: specialisations for bound<G, P>.
+// numeric_limits reports the *grid* bounds (Lower/Upper), not the raw type's
+// limits. std::hash hashes the Raw member (rational raw: Numerator+Denominator,
+// boost-style combine). std::common_type is the grid hull (see bnd::common_bound
+// in arithmetic.hpp) so mixed-grid bounds interoperate with generic code.
 //---------------------------------------------------------------------------
+
+template <bnd::grid G1, bnd::policy_flag P1, bnd::grid G2, bnd::policy_flag P2>
+struct std::common_type<bnd::bound<G1, P1>, bnd::bound<G2, P2>>
+  : bnd::detail::common_bound<bnd::bound<G1, P1>, bnd::bound<G2, P2>> {};
+
 
 template <bnd::grid G, bnd::policy_flag P>
 struct std::numeric_limits<bnd::bound<G, P>>
