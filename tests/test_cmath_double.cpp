@@ -274,4 +274,26 @@ TEST_CASE("dbl: transcendental tier on real bounds matches std::", "[dbl][real][
   }
 }
 
+
+//---------------------------------------------------------------------------
+// 2026-07 regression: full-mantissa engine results must store onto plain
+// integer-index snap grids (not just `real` ones). tan's auto output grid
+// has |Lower| ~ 1024, so a full-mantissa double result once overflowed the
+// exact 64-bit (rhs - Lower)/Notch store and terminated through the noexcept
+// engine; the 128-bit rounded store now lands the correctly rounded slot.
+//---------------------------------------------------------------------------
+TEST_CASE("dbl engine stores full-mantissa results onto integer-index snap grids",
+          "[cmath][dbl][storage][regression]")
+{
+  using Ang = bound<{{-8, 8}, notch<1, 16384>}, round_nearest>;   // integer-index storage
+  constexpr double half_notch = 0.5 / 16384.0;
+
+  for (double x : {1.0, 1.5, -1.5, 0.4636})
+  {
+    auto t = math::dbl::tan(Ang{x});
+    REQUIRE(t.has_value());
+    REQUIRE(std::fabs(static_cast<double>(*t) - std::tan(x)) <= half_notch * 1.01);
+  }
+}
+
 #endif // !BND_MATH_FIXED

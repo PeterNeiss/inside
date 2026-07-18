@@ -398,6 +398,25 @@ namespace bnd
     template <boundable B, typename P, policy_flag F>
     inline constexpr bool HasPolicy = has_flag(BoundPolicy<B>, F) || plain<P>::test(F);
 
+    // Rounds the split offset quotient q + r/den (r < den ≤ imax_max) per L's
+    // rounding policy — q/r form so no expression can overflow umax
+    // (num + den/2 could, for num near umax). Shared by round_quotient's
+    // offset rule and the 128-bit wide store (assignment.hpp).
+    template <boundable L, typename P>
+    [[nodiscard]] constexpr umax round_offset(umax q, umax r, umax den) noexcept
+    {
+      if constexpr (HasPolicy<L, P, round_nearest>)        return (r * 2 >= den) ? q + 1 : q;
+      else if constexpr (HasPolicy<L, P, round_floor>)     return q;
+      else if constexpr (HasPolicy<L, P, round_ceil>)      return (r != 0) ? q + 1 : q;
+      else if constexpr (HasPolicy<L, P, round_half_even>)
+      {
+        if (r * 2 < den) return q;
+        if (r * 2 > den) return q + 1;
+        return (q & 1) ? q + 1 : q;
+      }
+      else                                                 return q;
+    }
+
     // Round the non-negative offset quotient num/den (den >= 1) to an integer
     // notch index per L's rounding policy.
     //
@@ -420,27 +439,8 @@ namespace bnd
                                 :  static_cast<imax>(zl.Numerator))
           : imax{0};
 
-      // Offset rule: rounds num/den (≥ 0) directly, in q/r form so no formula
-      // can overflow umax (num + den/2 could, for num near umax). Used for
-      // exotic Lower/Notch (no integral value index) and as the fallback when
-      // the signed value-index rebuild below cannot fit 64 bits.
-      const auto offset_rule = [num, den]() -> umax
-      {
-        const umax q = num / den, r = num % den;
-        if constexpr (HasPolicy<L, P, round_nearest>)        return (r * 2 >= den) ? q + 1 : q;
-        else if constexpr (HasPolicy<L, P, round_floor>)     return q;
-        else if constexpr (HasPolicy<L, P, round_ceil>)      return (r != 0) ? q + 1 : q;
-        else if constexpr (HasPolicy<L, P, round_half_even>)
-        {
-          if (r * 2 < den) return q;
-          if (r * 2 > den) return q + 1;
-          return (q & 1) ? q + 1 : q;
-        }
-        else                                                 return q;
-      };
-
       if constexpr (!vidx)
-        return offset_rule();
+        return round_offset<L, P>(num / den, num % den, den);
       else
       {
         // Round the signed value-index NUM/di exactly like detail::div_rounded.
@@ -452,7 +452,7 @@ namespace bnd
         if (num > static_cast<umax>(std::numeric_limits<imax>::max())
             || mul_overflow(m, di, &mdi)
             || add_overflow(mdi, static_cast<imax>(num), &NUM)) [[unlikely]]
-          return offset_rule();
+          return round_offset<L, P>(num / den, num % den, den);
         const imax t   = NUM / di;                 // C++ truncation toward zero
         const imax rr  = NUM % di;                 // sign of NUM, |rr| < di
         imax J;

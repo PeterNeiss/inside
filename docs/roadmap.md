@@ -89,13 +89,18 @@ For completeness — these came up alongside the above but are *not* blocked by 
   `bound` over a set of grids) rather than collapsing to the hull. Large surface
   (every operator/predicate would need a union story), so this stays a design
   sketch until a concrete use case demands it.
-- **128-bit rounded store** — the cold assignment path forms `(rhs − Lower)/Notch` as
-  an exact 64-bit rational before rounding; a full-mantissa `double`-derived source
-  (denominator 2^52+) on a grid with large `|Lower|` can need 65+ bits *before* the
-  round even though the rounded slot index is tiny. Mixed-sign offsets are rescued in
-  128-bit and the rest report `errc::overflow` today; computing the *rounded* index
-  directly in 128-bit (as `to_fixed` already does in `cmath.hpp`) would make those
-  stores exact instead of an error.
+- **128-bit rounded store** — **done.** The cold assignment path forms
+  `(rhs − Lower)/Notch` as an exact 64-bit rational before rounding; a full-mantissa
+  `double`-derived source (denominator 2^52+) on a grid with large `|Lower|` can need
+  65+ bits *before* the round even though the rounded slot index is tiny. When that
+  exact formation overflows, `wide_offset_quotient` (assignment.hpp) now computes the
+  slot directly — compile-time divisor factors gcd-reduced first, then one 128×64
+  multiply and one 128÷64 divide (`mul128`/`divmod128` in rational.hpp, native
+  `__int128` or portable shift-subtract). Rounding in that regime is the offset rule
+  (`round_offset`), the same fallback `round_quotient` uses past 64 bits. Only
+  results beyond even the 128-bit envelope report `errc::overflow`. One caveat: at
+  *constant evaluation* the transient rational overflow still surfaces as the
+  intentional `constexpr_error` diagnostic before the fallback can engage.
 - **Modules / compile-time-footprint work** — parked for later; modules is C++20, not a
   blocker.
 
