@@ -585,10 +585,37 @@ namespace bnd::detail
     if constexpr (Checked)
     {
       if (mul_overflow(a_ad, b_ad_r, &denominator)    ||   // = lcm(a_ad, b_ad)
-          mul_overflow(a.Numerator, b_ad_r, &A)       ||
-          mul_overflow(b.Numerator, a_ad_r, &B)       ||
           denominator > static_cast<umax>(std::numeric_limits<imax>::max()))
       {
+        if (std::is_constant_evaluated()) { constexpr_error<"rational +: denominator overflow">(); }
+        return ret_t{slim::nullopt};
+      }
+      if (mul_overflow(a.Numerator, b_ad_r, &A) ||
+          mul_overflow(b.Numerator, a_ad_r, &B))
+      {
+        // Mixed signs: |A − B| can fit umax even when a cross-product alone
+        // does not (e.g. 1024 − m/2^54 forms 1024·2^54 == 2^64 before the
+        // subtraction brings it back in range — the dbl-engine store path hit
+        // exactly this). Retry the difference in 128-bit before giving up.
+        if (a_neg != b_neg)
+        {
+          const u128 A128 = umul(a.Numerator, b_ad_r);
+          const u128 B128 = umul(b.Numerator, a_ad_r);
+          const bool a_bigger = cmp128(A128, B128) > 0;
+          const u128 big   = a_bigger ? A128 : B128;
+          const u128 small = a_bigger ? B128 : A128;
+          const u128 diff{big.hi - small.hi - (big.lo < small.lo ? 1u : 0u),
+                          big.lo - small.lo};
+          if (diff.hi == 0)
+          {
+            rational r;
+            r.Numerator   = diff.lo;
+            r.Denominator = (a_neg ? a_bigger : !a_bigger) ? -denominator
+                                                           :  denominator;
+            trim(r.Numerator, r.Denominator);
+            return ret_t{r};
+          }
+        }
         if (std::is_constant_evaluated()) { constexpr_error<"rational +: cross-multiplication overflow">(); }
         return ret_t{slim::nullopt};
       }

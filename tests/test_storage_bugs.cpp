@@ -162,3 +162,36 @@ TEST_CASE("Bug F: real div-by-zero is reported, not a silent inf",
   REQUIRE(z.error() == errc::division_by_zero);
 }
 #endif // !BND_MATH_FIXED
+
+//---------------------------------------------------------------------------
+// 2026-07: fp-derived rational store on a snap grid with |Lower| ≫ 1. The
+// cold store path forms (rhs − Lower)/Notch exactly; with a full-mantissa
+// double source (den 2^54) that once dereferenced a nullopt (terminate
+// through the noexcept math engines). Now: the fitting case stores the
+// correctly rounded slot, the truly unrepresentable case reports
+// errc::overflow through the policy channel.
+//---------------------------------------------------------------------------
+TEST_CASE("fp-derived rational store on a wide snap grid rounds or reports",
+          "[storage][overflow][regression]")
+{
+  using wide = bound<{{-1024, 1024}, notch<1, 16384>}, round_nearest>;
+
+  SECTION("negative value: offset fits after the 128-bit rescue")
+  {
+    wide slot{};
+    slot = rational{umax{9006646171630191}, imax{-18014398509481984}};  // ≈ -0.4999693
+    // ·16384 = -8191.49692… → round_nearest → -8191/16384
+    REQUIRE(rational{slot} == rational{umax{8191}, imax{-16384}});
+  }
+
+  SECTION("positive value: exact offset needs > 64 bits → errc::overflow, no terminate")
+  {
+    wide slot{};
+    try
+    {
+      slot = rational{umax{9006646171630191}, imax{18014398509481984}}; // ≈ +0.4999693
+      FAIL("expected the default handler to throw");
+    }
+    catch (bound_error const& e) { REQUIRE(e.code == errc::overflow); }
+  }
+}

@@ -158,6 +158,10 @@ target_include_directories(bound_tests SYSTEM PRIVATE ${CATCH2_INCLUDE_DIRS})
 # PRE_TEST defers discovery to test invocation, under the configured emulator.
 catch_discover_tests(bound_tests DISCOVERY_MODE PRE_TEST)
 
+# Compile-fail diagnostics suite — regression-tests that ill-formed uses stay
+# ill-formed and keep their intended messages (see tests/fail/CMakeLists.txt).
+add_subdirectory(tests/fail)
+
 #---------------------------------------------------------------------------
 # ctrack (benchmarking)
 #---------------------------------------------------------------------------
@@ -183,6 +187,18 @@ target_include_directories(bench SYSTEM PUBLIC ${CTRACK_INCLUDE_DIRS})
 add_executable(bound_fuzz EXCLUDE_FROM_ALL tests/fuzz.cpp)
 target_link_libraries(bound_fuzz PUBLIC bound::bound)
 
+# Accuracy characterization (fpm-style): sweeps every math engine against a
+# long-double <cmath> reference and emits a markdown error table. On demand:
+# `--target bound_accuracy` to build, `--target accuracy_report` to regenerate
+# the committed docs/accuracy.md.
+add_executable(bound_accuracy EXCLUDE_FROM_ALL tests/accuracy.cpp)
+target_link_libraries(bound_accuracy PUBLIC bound::bound)
+
+add_custom_target(accuracy_report
+  COMMAND bound_accuracy ${CMAKE_CURRENT_SOURCE_DIR}/docs/accuracy.md
+  COMMENT "Regenerating docs/accuracy.md")
+add_dependencies(accuracy_report bound_accuracy)
+
 #---------------------------------------------------------------------------
 # MinGW link workaround
 #---------------------------------------------------------------------------
@@ -192,7 +208,7 @@ target_link_libraries(bound_fuzz PUBLIC bound::bound)
 # "multiple definition of std::type_info::operator==". Tolerate it on MinGW
 # (the two definitions are identical); harmless elsewhere, so it stays scoped.
 if(WIN32 AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    foreach(tgt bound_tests bench bound_fuzz)
+    foreach(tgt bound_tests bench bound_fuzz bound_accuracy)
         target_link_options(${tgt} PRIVATE -Wl,--allow-multiple-definition)
     endforeach()
 endif()

@@ -345,7 +345,19 @@ namespace bnd::detail
             }
           }
 
-          rational raw = ((rhs - Lower<L>)/Notch<L>).value();
+          // The exact quotient can overflow the 64-bit rational range (huge
+          // source denominator × fine notch). Report it as an overflow through
+          // the policy channel instead of dereferencing nullopt — a throw here
+          // would escape noexcept callers (the math engines) as terminate.
+          const auto quotient = (rhs - Lower<L>)/Notch<L>;
+          if (!quotient.has_value()) [[unlikely]]
+          {
+            if constexpr (error_action<plain<A>>)
+            { action.fn(lhs, errc::overflow, errc_message(errc::overflow)); return false; }
+            policy.report(errc::overflow);
+            return false;
+          }
+          rational raw = *quotient;
           umax den = static_cast<umax>(raw.Denominator);
           if (den == 1)
           { store_slot(raw.Numerator); return true; }

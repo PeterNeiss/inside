@@ -463,6 +463,26 @@ namespace bnd
                   lhs.Interval / interval{rhs.Interval.Lower, -step});
     }
   }
+
+  //---------------------------------------------------------------------------
+  // hull
+  //---------------------------------------------------------------------------
+  // The smallest grid that represents every value of both operands exactly:
+  // interval hull + notch gcd. A valid grid anchors Lower on a multiple of its
+  // notch, so both lattices are sub-lattices of the gcd lattice — no offset
+  // term is needed, and the hull is a valid grid by construction. A continuous
+  // operand (Notch 0) makes the hull continuous. nullopt when the notch gcd's
+  // combined denominator exceeds the representable rational range.
+  //---------------------------------------------------------------------------
+  inline constexpr slim::optional<grid> hull(const grid& lhs, const grid& rhs)
+  {
+    const interval iv{std::min(lhs.Interval.Lower, rhs.Interval.Lower),
+                      std::max(lhs.Interval.Upper, rhs.Interval.Upper)};
+    if (lhs.Notch == 0 || rhs.Notch == 0)
+      return grid{iv, detail::rational{0}};
+    return lift([iv](detail::rational g){ return grid{iv, g}; },
+                detail::gcd(lhs.Notch, rhs.Notch));
+  }
 } // namespace bnd
 
 namespace slim

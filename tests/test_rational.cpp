@@ -463,3 +463,25 @@ TEST_CASE("rational trunc / floor / round", "[rational][reduce]")
     REQUIRE(round((0_r))    ==  0);
   }
 }
+
+//---------------------------------------------------------------------------
+// 2026-07: mixed-sign addition rescued in 128-bit. `1024 − m/2^54` forms the
+// cross-product 1024·2^54 == 2^64 (one past umax) before the subtraction
+// brings the numerator back into range — the dbl-engine store path hit
+// exactly this via `rhs - Lower` and terminated through noexcept.
+//---------------------------------------------------------------------------
+TEST_CASE("mixed-sign add rescues a cross-product overflow when the difference fits",
+          "[rational][overflow][regression]")
+{
+  // -0.49996929771979287 as an exact double fraction: den 2^54.
+  const rational fp_value{umax{9006646171630191}, imax{-18014398509481984}};
+
+  const auto offset = fp_value + rational{1024};
+  REQUIRE(offset.has_value());
+  REQUIRE(offset->Numerator   == umax{18437737427537921425u});
+  REQUIRE(offset->Denominator == imax{18014398509481984});
+
+  // Same-sign sums past umax stay nullopt (the result truly needs > 64 bits).
+  const rational positive{umax{9006646171630191}, imax{18014398509481984}};
+  REQUIRE_FALSE((positive + rational{1024}).has_value());
+}
