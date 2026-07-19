@@ -5324,6 +5324,61 @@ namespace bnd::detail
           && !fp_raw<L> && !fp_raw<R>
           && abs_den(Factor.Denominator) == 1 && abs_den(Offset.Denominator) == 1;
 
+      // Non-integer mapping folded to one integer multiply-add:
+      //   Offset + Factor·raw = (o_s·f_d + raw·f_n·o_d) / (o_d·f_d)
+      // with every coefficient compile-time. round_quotient is invariant under
+      // fraction reduction, so rounding the unreduced pair is bit-identical to
+      // reducing through the two rational ops first. ok gates on every product
+      // (including the worst-case runtime numerator over R's raw range)
+      // provably fitting imax; mul/add/den are zeroed when not ok.
+      struct affine_map_t { imax mul; imax add; imax den; bool ok; };
+      static constexpr affine_map_t affine_map = []{
+        constexpr affine_map_t no{0, 0, 0, false};
+        if constexpr (rational_raw<L> || rational_raw<R> || fp_raw<L> || fp_raw<R>
+                      || Notch<L> == 0 || is_integer_mapping)
+          return no;
+        else
+        {
+          constexpr umax cap = static_cast<umax>(std::numeric_limits<imax>::max());
+          if (Factor.Numerator > cap || Offset.Numerator > cap)
+            return no;
+          const imax f_n = static_cast<imax>(Factor.Numerator);  // Factor > 0
+          const imax f_d = abs_den(Factor.Denominator);
+          const imax o_s = (Offset.Denominator < 0)
+              ? -static_cast<imax>(Offset.Numerator)
+              :  static_cast<imax>(Offset.Numerator);
+          const imax o_d = abs_den(Offset.Denominator);
+          affine_map_t m{0, 0, 0, true};
+          if (mul_overflow(f_n, o_d, &m.mul) || mul_overflow(o_s, f_d, &m.add)
+              || mul_overflow(o_d, f_d, &m.den))
+            return no;
+          // worst-case |numerator| over R's raw range
+          const imax rmax = std::max(RawHi<R> < 0 ? -RawHi<R> : RawHi<R>,
+                                     RawLo<R> < 0 ? -RawLo<R> : RawLo<R>);
+          imax term, num;
+          if (mul_overflow(rmax, m.mul, &term)
+              || add_overflow(term, m.add < 0 ? -m.add : m.add, &num))
+            return no;
+          // round_quotient equivalence: rounding is reduction-invariant, but
+          // its value-index-vs-offset branch CHOICE keys on m·di + num fitting
+          // imax — mirror those checks for the unreduced den so both forms
+          // take the same branch (ties on negatives differ across branches).
+          constexpr auto zl = (Lower<L> / Notch<L>).value_or(rational{0});
+          if (abs_den(zl.Denominator) == 1)
+          {
+            if (zl.Numerator > cap)
+              return no;
+            const imax mbias = (zl.Denominator < 0)
+                ? -static_cast<imax>(zl.Numerator)
+                :  static_cast<imax>(zl.Numerator);
+            imax mdi, total;
+            if (mul_overflow(mbias, m.den, &mdi) || add_overflow(mdi, num, &total))
+              return no;
+          }
+          return m;
+        }
+      }();
+
       // Map rhs.Raw into L's raw space (requires is_integer_mapping). The
       // Offset/Factor formula assumes offset encoding both sides; for direct
       // storage, subtract Lower<R> first (R-value → R-offset) and add Lower<L>
@@ -5440,6 +5495,19 @@ namespace bnd::detail
             lhs = L::from_raw(raw_cast<L>(rhs.raw()));
           else
             lhs = L::from_raw(raw_cast<L>(map_raw(rhs.raw())));
+        }
+        else if constexpr (affine_map.ok)
+        {
+          // Folded non-integer mapping: one multiply-add, then the same
+          // round_quotient (invariant under reduction — bit-identical to the
+          // rational chain below).
+          const imax num = affine_map.add
+                         + static_cast<imax>(rhs.raw()) * affine_map.mul;
+          const umax q = round_quotient<L, P>(
+              static_cast<umax>(num < 0 ? -num : num),
+              static_cast<umax>(affine_map.den));
+          lhs = L::from_raw(num < 0 ? raw_from_offset<L>(-static_cast<imax>(q))
+                                    : raw_from_offset<L>(q));
         }
         else
         {
@@ -5956,6 +6024,47 @@ namespace bnd::detail
                                             result,
                                             return_type_for<F>>;
 
+    // Mixed integer-aligned / notch-offset fast path: with a unit-numerator
+    // result notch 1/d, both operand offsets in result-notch units are exact
+    // integer math — (to_value − Lower)·d for the integer-aligned operand,
+    // raw·widen for the notch-offset one (offsets compose because
+    // Lower<result> = Lower<L> + Lower<R>). Gated on an index-raw result and
+    // the result slot count fitting imax so no intermediate can overflow
+    // (each operand contribution ≤ its own span/N ≤ the result slot count).
+    static constexpr bool mixed_offset_ok = []{
+      if constexpr (rational_raw<L> || rational_raw<R> || rational_raw<result>
+                    || fp_raw<L> || fp_raw<R>          // double raws: no integer offset
+                    || fp_raw<result> || !index_raw<result>
+                    || (IsIntegerAligned<L> && IsIntegerAligned<R>)
+                    || (index_raw<L> && index_raw<R>)
+                    || Notch<result> == 0 || Notch<result>.Numerator != 1)
+        return false;
+      else
+      {
+        constexpr auto span = Upper<result> - Lower<result>;
+        if (!span.has_value())
+          return false;
+        const auto slots = *span / Notch<result>;
+        return slots.has_value()
+            && (*slots).Numerator
+                 <= static_cast<umax>(std::numeric_limits<imax>::max());
+      }
+    }();
+
+    // One operand's offset in result-notch units (see mixed_offset_ok).
+    // Defined inline (MSVC and constrained partial specializations).
+    template <boundable X>
+    static constexpr imax mixed_offset_units(X const& x, imax widen)
+    {
+      if constexpr (IsIntegerAligned<X>)
+      {
+        constexpr imax den = static_cast<imax>(abs_den(Notch<result>.Denominator));
+        return (to_value(x) - LowerImax<X>) * den;
+      }
+      else
+        return raw_imax(x) * widen;
+    }
+
     // Result notch is gcd(NL, NR); scale each raw up to it before adding —
     // lhs_widen = NL/Nresult, rhs_widen = NR/Nresult (exact, Nresult divides both).
     // Guard the continuous-grid case (Notch<result> == 0): the rational divide-by-zero
@@ -5994,14 +6103,21 @@ namespace bnd::detail
       else
         res = result::from_raw(rational::add_unchecked(lhs, rhs));
     }
+    else if constexpr (mixed_offset_ok)
+    {
+      // Mixed integer-aligned / notch-offset operands, pure integer offsets
+      // (see mixed_offset_ok above).
+      res = result::from_raw(raw_cast<result>(mixed_offset_units(lhs, lhs_widen)
+                                            + mixed_offset_units(rhs, rhs_widen)));
+    }
     else if constexpr (rational_raw<L> || rational_raw<R>
                        || !((IsIntegerAligned<L> && IsIntegerAligned<R>)
                             || (index_raw<L> && index_raw<R>)))
     {
-      // Rational store: a rational-raw operand, or a direct integer bound mixed
-      // with a fractional notch-offset one (where neither to_value nor offset-widen
-      // is exact — to_value would truncate the fractional operand). Compute the
-      // exact rational sum and convert to result's raw via raw_from_offset.
+      // Rational store: a rational-raw operand, or a mix the integer fast
+      // paths can't express exactly (non-unit result notch numerator, or a
+      // slot count past imax). Compute the exact rational sum and convert to
+      // result's raw via raw_from_offset.
       auto sum = rational::add_unchecked(lhs,rhs);
       res = result::from_raw(raw_from_offset<result>(
           ((sum - Lower<result>) / Notch<result>).value().Numerator));

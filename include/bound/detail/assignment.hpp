@@ -551,6 +551,61 @@ namespace bnd::detail
           && !fp_raw<L> && !fp_raw<R>
           && abs_den(Factor.Denominator) == 1 && abs_den(Offset.Denominator) == 1;
 
+      // Non-integer mapping folded to one integer multiply-add:
+      //   Offset + Factor·raw = (o_s·f_d + raw·f_n·o_d) / (o_d·f_d)
+      // with every coefficient compile-time. round_quotient is invariant under
+      // fraction reduction, so rounding the unreduced pair is bit-identical to
+      // reducing through the two rational ops first. ok gates on every product
+      // (including the worst-case runtime numerator over R's raw range)
+      // provably fitting imax; mul/add/den are zeroed when not ok.
+      struct affine_map_t { imax mul; imax add; imax den; bool ok; };
+      static constexpr affine_map_t affine_map = []{
+        constexpr affine_map_t no{0, 0, 0, false};
+        if constexpr (rational_raw<L> || rational_raw<R> || fp_raw<L> || fp_raw<R>
+                      || Notch<L> == 0 || is_integer_mapping)
+          return no;
+        else
+        {
+          constexpr umax cap = static_cast<umax>(std::numeric_limits<imax>::max());
+          if (Factor.Numerator > cap || Offset.Numerator > cap)
+            return no;
+          const imax f_n = static_cast<imax>(Factor.Numerator);  // Factor > 0
+          const imax f_d = abs_den(Factor.Denominator);
+          const imax o_s = (Offset.Denominator < 0)
+              ? -static_cast<imax>(Offset.Numerator)
+              :  static_cast<imax>(Offset.Numerator);
+          const imax o_d = abs_den(Offset.Denominator);
+          affine_map_t m{0, 0, 0, true};
+          if (mul_overflow(f_n, o_d, &m.mul) || mul_overflow(o_s, f_d, &m.add)
+              || mul_overflow(o_d, f_d, &m.den))
+            return no;
+          // worst-case |numerator| over R's raw range
+          const imax rmax = std::max(RawHi<R> < 0 ? -RawHi<R> : RawHi<R>,
+                                     RawLo<R> < 0 ? -RawLo<R> : RawLo<R>);
+          imax term, num;
+          if (mul_overflow(rmax, m.mul, &term)
+              || add_overflow(term, m.add < 0 ? -m.add : m.add, &num))
+            return no;
+          // round_quotient equivalence: rounding is reduction-invariant, but
+          // its value-index-vs-offset branch CHOICE keys on m·di + num fitting
+          // imax — mirror those checks for the unreduced den so both forms
+          // take the same branch (ties on negatives differ across branches).
+          constexpr auto zl = (Lower<L> / Notch<L>).value_or(rational{0});
+          if (abs_den(zl.Denominator) == 1)
+          {
+            if (zl.Numerator > cap)
+              return no;
+            const imax mbias = (zl.Denominator < 0)
+                ? -static_cast<imax>(zl.Numerator)
+                :  static_cast<imax>(zl.Numerator);
+            imax mdi, total;
+            if (mul_overflow(mbias, m.den, &mdi) || add_overflow(mdi, num, &total))
+              return no;
+          }
+          return m;
+        }
+      }();
+
       // Map rhs.Raw into L's raw space (requires is_integer_mapping). The
       // Offset/Factor formula assumes offset encoding both sides; for direct
       // storage, subtract Lower<R> first (R-value → R-offset) and add Lower<L>
@@ -667,6 +722,19 @@ namespace bnd::detail
             lhs = L::from_raw(raw_cast<L>(rhs.raw()));
           else
             lhs = L::from_raw(raw_cast<L>(map_raw(rhs.raw())));
+        }
+        else if constexpr (affine_map.ok)
+        {
+          // Folded non-integer mapping: one multiply-add, then the same
+          // round_quotient (invariant under reduction — bit-identical to the
+          // rational chain below).
+          const imax num = affine_map.add
+                         + static_cast<imax>(rhs.raw()) * affine_map.mul;
+          const umax q = round_quotient<L, P>(
+              static_cast<umax>(num < 0 ? -num : num),
+              static_cast<umax>(affine_map.den));
+          lhs = L::from_raw(num < 0 ? raw_from_offset<L>(-static_cast<imax>(q))
+                                    : raw_from_offset<L>(q));
         }
         else
         {
