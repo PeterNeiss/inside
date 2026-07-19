@@ -191,3 +191,75 @@ TEST_CASE("bound_range::strided visits every step-th value", "[range][strided]")
   for (auto v : f.strided(2)) fseen.push_back(rational{v});
   REQUIRE(fseen == std::vector<rational>{rational{0}, rational{1, 2}, rational{1}});
 }
+
+//---------------------------------------------------------------------------
+// storage-kind decode — operator* takes integer fast arms for index/value
+// raws (see range.hpp); every arm must agree with the analytic
+// Lower + index·Notch, and the ctor must invert it. [perf-paths] pins which
+// arm each representative type dispatches to.
+//---------------------------------------------------------------------------
+namespace
+{
+  template <typename RangeType>
+  void require_decodes_analytically()
+  {
+    using value_type = typename RangeType::value_type;
+    RangeType r;
+    std::size_t position = 0;
+    for (auto b : r)
+    {
+      rational expected = (Lower<value_type>
+          + (rational{position} * Notch<value_type>).value()).value();
+      REQUIRE(as_rational(b) == expected);
+      ++position;
+    }
+    REQUIRE(position == r.size());
+  }
+}
+
+TEST_CASE("bound_range: decode agrees with Lower + i*Notch on every storage kind",
+          "[range][perf-paths]")
+{
+  require_decodes_analytically<bound_range<{0, 999}>>();                    // value raw
+  require_decodes_analytically<bound_range<{-500, 500}>>();                 // value raw, signed
+  require_decodes_analytically<bound_range<{{0, 4}, notch<1, 256>}>>();     // index raw
+  require_decodes_analytically<bound_range<{{-2, 2}, notch<1, 4>}>>();      // index raw, offset Lower
+  require_decodes_analytically<bound_range<{0, 100}, sentinel>>();          // sentinel slot excluded
+  require_decodes_analytically<bound_range<{{0, 2}, notch<1, 3>}, exact>>();          // rational raw fallback
+#ifndef BND_MATH_FIXED   // under BND_MATH_FIXED the real storage arm is elided
+  require_decodes_analytically<bound_range<{{0, 4}, notch<1, 256>}, real | round_nearest>>(); // fp raw fallback
+#endif
+}
+
+TEST_CASE("bound_range: start ctor inverts the decode on every storage kind",
+          "[range][perf-paths]")
+{
+  auto first_equals_start = [](auto range_tag, auto start_value) {
+    using RangeType = decltype(range_tag);
+    typename RangeType::value_type start{start_value};
+    RangeType r{start};
+    REQUIRE(as_rational(*r.begin()) == as_rational(start));
+  };
+  first_equals_start(bound_range<{0, 999}>{}, 500);
+  first_equals_start(bound_range<{{0, 4}, notch<1, 256>}>{}, 2);
+  first_equals_start(bound_range<{{0, 2}, notch<1, 3>}, exact>{}, 1);
+}
+
+TEST_CASE("bound_range: sentinel policy never yields the sentinel slot", "[range][perf-paths]")
+{
+  for (auto b : bound_range<{0, 100}, sentinel>{})
+    REQUIRE(!b.is_sentinel());
+}
+
+TEST_CASE("bound_range: fast decode arms engage (dispatch pins)", "[range][perf-paths]")
+{
+  // The operator* fast arms are gated on the storage kind; these pins fail if
+  // a storage-selection change silently reroutes a type to another arm.
+  STATIC_REQUIRE(value_raw<bound_range<{0, 999}>::value_type>);
+  STATIC_REQUIRE(index_raw<bound_range<{{0, 4}, notch<1, 256>}>::value_type>);
+  STATIC_REQUIRE(index_raw<bound_range<{{-2, 2}, notch<1, 4>}>::value_type>);
+  STATIC_REQUIRE(rational_raw<bound_range<{{0, 2}, notch<1, 3>}, exact>::value_type>);
+#ifndef BND_MATH_FIXED   // under BND_MATH_FIXED the real storage arm is elided
+  STATIC_REQUIRE(fp_raw<bound_range<{{0, 4}, notch<1, 256>}, real | round_nearest>::value_type>);
+#endif
+}

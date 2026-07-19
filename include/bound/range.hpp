@@ -106,20 +106,52 @@ namespace bnd
 
       constexpr value_type operator*() const
       {
-        // value = Lower + index * Notch  (always exact: lies on the grid).
-        bnd::detail::rational val = (G.Interval.Lower
-                        + (bnd::detail::rational{index} * G.Notch).value()).value();
-        return value_type{val};
+        // value = Lower + index * Notch (always exact: lies on the grid).
+        // Integer-backed storages decode without the rational/assignment
+        // engine: for index storage the iterator index IS the raw (it stays in
+        // [0, NotchCount] and the sentinel slot is a numeric_limits extreme
+        // outside that span); integer-grid value storage is a multiply-add in
+        // raw space. Rational/fp raws keep the exact generic path.
+        if constexpr (bnd::detail::index_raw<value_type>)
+          return value_type::from_raw(
+              static_cast<typename value_type::raw_type>(index));
+        else if constexpr (bnd::detail::value_raw<value_type>
+                           && bnd::detail::abs_den(Notch<value_type>.Denominator) == 1
+                           && bnd::detail::abs_den(Lower<value_type>.Denominator) == 1)
+        {
+          constexpr imax notch_step = static_cast<imax>(Notch<value_type>.Numerator);
+          return value_type::from_raw(static_cast<typename value_type::raw_type>(
+              bnd::detail::LowerImax<value_type>
+              + static_cast<imax>(index) * notch_step));
+        }
+        else
+        {
+          bnd::detail::rational val = (G.Interval.Lower
+                          + (bnd::detail::rational{index} * G.Notch).value()).value();
+          return value_type{val};
+        }
       }
 
       constexpr value_type operator[](difference_type n) const
       { return *(*this + n); }
 
       // Advance / retreat: `remaining` is the position counter (advancing
-      // decreases it), so the <=> below flips the comparison.
-      constexpr iterator& operator++() { return *this += 1; }
+      // decreases it), so the <=> below flips the comparison. Single steps
+      // wrap by compare instead of the euclidean mod in `+= n` (index stays
+      // in [0, slot_count) — the mod would cost two divides per element).
+      constexpr iterator& operator++()
+      {
+        index = (index + 1 == slot_count) ? 0 : index + 1;
+        --remaining;
+        return *this;
+      }
       constexpr iterator  operator++(int) { auto t = *this; ++*this; return t; }
-      constexpr iterator& operator--() { return *this -= 1; }
+      constexpr iterator& operator--()
+      {
+        index = (index == 0) ? slot_count - 1 : index - 1;
+        ++remaining;
+        return *this;
+      }
       constexpr iterator  operator--(int) { auto t = *this; --*this; return t; }
 
       constexpr iterator& operator+=(difference_type n)
@@ -152,11 +184,27 @@ namespace bnd
     constexpr bound_range(value_type start)
     {
       // Map a grid value back to its notch index: (start - Lower) / Notch.
-      // The result has integer denominator (start is on the grid) so the
-      // numerator is the index directly.
-      auto offset = ((detail::as_rational(start) - G.Interval.Lower)
-                     / G.Notch).value();
-      start_index_ = offset.Numerator;
+      // Same storage split as iterator::operator* — index raw already is the
+      // notch index; integer-grid value raw divides out the (integer) step.
+      if constexpr (detail::index_raw<value_type>)
+        start_index_ = static_cast<umax>(start.raw());
+      else if constexpr (detail::value_raw<value_type>
+                         && detail::abs_den(Notch<value_type>.Denominator) == 1
+                         && detail::abs_den(Lower<value_type>.Denominator) == 1)
+      {
+        constexpr imax notch_step = static_cast<imax>(Notch<value_type>.Numerator);
+        start_index_ = static_cast<umax>(
+            (static_cast<imax>(start.raw()) - detail::LowerImax<value_type>)
+            / notch_step);
+      }
+      else
+      {
+        // The result has integer denominator (start is on the grid) so the
+        // numerator is the index directly.
+        auto offset = ((detail::as_rational(start) - G.Interval.Lower)
+                       / G.Notch).value();
+        start_index_ = offset.Numerator;
+      }
     }
 
     constexpr iterator begin() const
