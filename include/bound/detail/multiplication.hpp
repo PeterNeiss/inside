@@ -58,7 +58,10 @@ namespace bnd::detail
   {
     if constexpr (fp_raw<result>)
     {
-      return result::from_raw(raw_cast<result>(Grid<result>.snap_double(as_double(lhs) * as_double(rhs))));
+      // Exact by construction, no snap (see addition.hpp): operands are notch
+      // multiples, the product index |ia·ib| stays under the double_exact 2^53
+      // gate, so the double multiply is exact and on the result lattice.
+      return result::from_raw(raw_cast<result>(as_double(lhs) * as_double(rhs)));
     }
     else if constexpr (rational_raw<result>)
     {

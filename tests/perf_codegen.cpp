@@ -41,3 +41,14 @@ extern "C" void bnd_perf_add_loop(const long* __restrict a,
     out[i] = static_cast<long>((I::from_raw(static_cast<I::raw_type>(a[i]))
                               + I::from_raw(static_cast<I::raw_type>(b[i]))).raw());
 }
+
+// Multiply fast path: the four-quadrant integer multiply must likewise stay
+// call-free (no fallback into the rational branch).
+using M = bound<{-1000, 1000}>;
+
+extern "C" long bnd_perf_mul_fast(long a, long b)
+{
+  M x = M::from_raw(static_cast<M::raw_type>(a));
+  M y = M::from_raw(static_cast<M::raw_type>(b));
+  return static_cast<long>((x * y).raw());
+}

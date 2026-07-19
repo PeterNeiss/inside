@@ -198,11 +198,13 @@ namespace bnd
     }
     umax den = umax{1} << den_pow;
 
-    // den is a power of two, so reduce by cancelling shared factors of two.
-    while (significand && (significand & 1) == 0 && den != 1)
+    // den is a power of two, so the whole reduction is one shift by the
+    // shared factor count (bounded by den's exponent).
+    if (significand != 0)
     {
-      significand >>= 1;
-      den >>= 1;
+      const int shift = std::min(std::countr_zero(significand), den_pow);
+      significand >>= shift;
+      den >>= shift;
     }
     return {significand, den};
   }

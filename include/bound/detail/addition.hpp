@@ -63,7 +63,12 @@ namespace bnd::detail
     result res;
     if constexpr (fp_raw<result>)
     {
-      res = result::from_raw(raw_cast<result>(Grid<result>.snap_double(as_double(lhs) + as_double(rhs))));
+      // Exact by construction, no snap: fp storage is kept only when the
+      // result grid is double/float-exact (fp_rep), and grid values are notch
+      // multiples, so the sum is itself a representable result-grid point and
+      // the double add is exact. (Division still snaps — a quotient is not a
+      // grid point.)
+      res = result::from_raw(raw_cast<result>(as_double(lhs) + as_double(rhs)));
     }
     else if constexpr (rational_raw<result>)
     {

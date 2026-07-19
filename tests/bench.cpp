@@ -1,466 +1,626 @@
-#include <algorithm>
-#include <cmath>
-#include <cstdint>
-#include <iostream>
-#include <stdexcept>
-#include <vector>
+//---------------------------------------------------------------------------
+// bound<> microbenchmarks — ankerl::nanobench.
+//
+// Every group is one nanobench table with the NATIVE implementation as its
+// first row, so the `relative` column reads directly as "bound costs X% of
+// native" (100% = parity, >100% = faster than native). Hardware perf
+// counters (instructions, cycles, branch misses) appear when the kernel
+// grants perf_event access; otherwise the table degrades to wall time.
+//
+//   ./bench                     # tables to stdout
+//   ./bench <file.md>           # write tables to <file.md> (docs/performance.md)
+//   ./bench <file.md> <file.json>  # additionally dump raw JSON per group
+//
+// The `perf_report` CMake target regenerates docs/performance.md with it.
+// Unlike its ctrack predecessor this needs no print-and-clear memory
+// workaround: nanobench aggregates per epoch (constant memory).
+//---------------------------------------------------------------------------
+#define ANKERL_NANOBENCH_IMPLEMENT
+#include <nanobench.h>
 
-#include "ctrack.hpp"
 #include "bound/bound.hpp"
 #include "bound/cmath.hpp"
 
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
+#include <fstream>
+#include <iostream>
+#include <numeric>
+#include <stdexcept>
+#include <vector>
+
 using namespace bnd;
 using namespace bnd::detail;
+using ankerl::nanobench::Bench;
+using ankerl::nanobench::doNotOptimizeAway;
 
-//---------------------------------------------------------------------------
-// compiler barrier
-//---------------------------------------------------------------------------
-template <typename T>
-inline void do_not_optimize(T const& value)
+namespace
 {
-  asm volatile("" : : "r,m"(value) : "memory");
+  std::ostream* g_out  = &std::cout;
+  std::ostream* g_json = nullptr;
+
+  // One table per operation; the first row is the native baseline for the
+  // `relative` column. minIters pins enough work per epoch that sub-ns rows
+  // measure stably even on a laptop governor (batched groups pass a small
+  // count: their unit of work is already `batch` elements).
+  Bench group(char const* title, std::uint64_t minIters = 300'000)
+  {
+    Bench bench;
+    bench.output(g_out).title(title).unit("op").relative(true)
+         .performanceCounters(true).minEpochIterations(minIters);
+    return bench;
+  }
+
+  void finish(Bench& bench)
+  {
+    if (g_json != nullptr)
+      bench.render(ankerl::nanobench::templates::json(), *g_json);
+  }
+
+  //-------------------------------------------------------------------------
+  // checked_u8: minimal exception-checked bounded integer [0, 200] — the
+  // "hand-rolled safety" baseline.
+  //-------------------------------------------------------------------------
+  struct checked_u8
+  {
+    std::uint8_t value{};
+    checked_u8() = default;
+    explicit checked_u8(int v)
+    {
+      if (v < 0 || v > 200) throw std::out_of_range("checked_u8");
+      value = static_cast<std::uint8_t>(v);
+    }
+    friend checked_u8 operator+(checked_u8 a, checked_u8 b)
+    {
+      int sum = a.value + b.value;
+      if (sum > 200) throw std::out_of_range("checked_u8 +");
+      checked_u8 r; r.value = static_cast<std::uint8_t>(sum); return r;
+    }
+    friend checked_u8 operator*(checked_u8 a, checked_u8 b)
+    {
+      int prod = a.value * b.value;
+      if (prod > 200) throw std::out_of_range("checked_u8 *");
+      checked_u8 r; r.value = static_cast<std::uint8_t>(prod); return r;
+    }
+  };
+
+  using u200  = bound<{0, 200}, unsafe>;
+  using u200k = bound<{0, 200'000}, unsafe>;
+  using u200k_checked = bound<{0, 200'000}, checked>;
+  using s100k = bound<{-100'000, 100'000}, unsafe>;
+  using s9k   = bound<{-500, 9000}, unsafe>;
+  using u255  = bound<{0, 255}, unsafe>;
+
+  // Cycling input pool — defeats constant folding in the scalar groups (the
+  // old bench used literal constants, which let both sides fold).
+  constexpr std::size_t kMask = 1023;
+  struct scalar_inputs
+  {
+    std::vector<int> a, b;
+    scalar_inputs(int alo, int ahi, int blo, int bhi)
+    {
+      for (std::size_t i = 0; i <= kMask; ++i)
+      {
+        a.push_back(alo + static_cast<int>((i * 7 + 3) % static_cast<std::size_t>(ahi - alo + 1)));
+        b.push_back(blo + static_cast<int>((i * 13 + 5) % static_cast<std::size_t>(bhi - blo + 1)));
+      }
+    }
+  };
 }
 
 //---------------------------------------------------------------------------
-// checked_u8: minimal runtime-checked bounded integer [0, 200]
+// scalar integer ops (u8 [0,200] value range) — native / clamped / checked /
+// bound. Operand pairs are chosen so no overflow/throw ever fires.
 //---------------------------------------------------------------------------
-struct checked_u8
+static void bench_scalar_u8()
 {
-  std::uint8_t value{};
+  static const scalar_inputs in{0, 90, 0, 90};        // sum ≤ 180, in range
+  std::size_t i = 0;
 
-  checked_u8() = default;
-  explicit checked_u8(int v)
-  {
-    if (v < 0 || v > 200) throw std::out_of_range("checked_u8");
-    value = static_cast<std::uint8_t>(v);
-  }
+  auto bench = group("construct (u8 [0,200])");
+  bench.run("native uint8", [&] {
+    ++i;
+    auto v = static_cast<std::uint8_t>(in.a[i & kMask]);
+    doNotOptimizeAway(v);
+  });
+  bench.run("native clamped", [&] {
+    ++i;
+    auto v = static_cast<std::uint8_t>(std::clamp(in.a[i & kMask], 0, 200));
+    doNotOptimizeAway(v);
+  });
+  bench.run("checked (exceptions)", [&] {
+    ++i;
+    checked_u8 v(in.a[i & kMask]);
+    doNotOptimizeAway(v.value);
+  });
+  bench.run("bound<unsafe>", [&] {
+    ++i;
+    u200 v(in.a[i & kMask]);
+    doNotOptimizeAway(v.raw());
+  });
+  finish(bench);
 
-  friend checked_u8 operator+(checked_u8 a, checked_u8 b)
-  {
-    int sum = a.value + b.value;
-    if (sum > 200) throw std::out_of_range("checked_u8 +");
-    checked_u8 r; r.value = static_cast<std::uint8_t>(sum); return r;
-  }
+  auto add = group("add (u8 [0,200])");
+  add.run("native uint8", [&] {
+    ++i;
+    auto c = static_cast<std::uint8_t>(in.a[i & kMask] + in.b[i & kMask]);
+    doNotOptimizeAway(c);
+  });
+  add.run("native clamped", [&] {
+    ++i;
+    auto c = static_cast<std::uint8_t>(std::clamp(in.a[i & kMask] + in.b[i & kMask], 0, 200));
+    doNotOptimizeAway(c);
+  });
+  add.run("checked (exceptions)", [&] {
+    ++i;
+    checked_u8 a(in.a[i & kMask]), b(in.b[i & kMask]);
+    doNotOptimizeAway((a + b).value);
+  });
+  add.run("bound<unsafe>", [&] {
+    ++i;
+    u200 a(in.a[i & kMask]), b(in.b[i & kMask]);
+    doNotOptimizeAway((a + b).raw());
+  });
+  finish(add);
 
-  friend checked_u8 operator*(checked_u8 a, checked_u8 b)
-  {
-    int prod = a.value * b.value;
-    if (prod > 200) throw std::out_of_range("checked_u8 *");
-    checked_u8 r; r.value = static_cast<std::uint8_t>(prod); return r;
-  }
-};
+  static const scalar_inputs min{1, 14, 1, 14};       // product ≤ 196
+  auto mul = group("mul (u8 [0,200])");
+  mul.run("native uint8", [&] {
+    ++i;
+    auto c = static_cast<std::uint8_t>(min.a[i & kMask] * min.b[i & kMask]);
+    doNotOptimizeAway(c);
+  });
+  mul.run("checked (exceptions)", [&] {
+    ++i;
+    checked_u8 a(min.a[i & kMask]), b(min.b[i & kMask]);
+    doNotOptimizeAway((a * b).value);
+  });
+  mul.run("bound<unsafe>", [&] {
+    ++i;
+    u200 a(min.a[i & kMask]), b(min.b[i & kMask]);
+    doNotOptimizeAway((a * b).raw());
+  });
+  finish(mul);
+
+  static const scalar_inputs din{20, 200, 1, 9};
+  auto dv = group("div (u8 [0,200])");
+  dv.run("native uint8", [&] {
+    ++i;
+    auto c = static_cast<std::uint8_t>(din.a[i & kMask] / din.b[i & kMask]);
+    doNotOptimizeAway(c);
+  });
+  dv.run("bound a / b (rational result)", [&] {
+    ++i;
+    u200 a(din.a[i & kMask]), b(din.b[i & kMask]);
+    doNotOptimizeAway((a / b)->raw());
+  });
+  dv.run("bound div(a, b, truncated)", [&] {
+    ++i;
+    u200 a(din.a[i & kMask]), b(din.b[i & kMask]);
+    doNotOptimizeAway(div(a, b, truncated)->raw());
+  });
+  finish(dv);
+}
 
 //---------------------------------------------------------------------------
-// benchmarks
+// compound ops — ++/-- and /= (Tier-1 optimization targets).
 //---------------------------------------------------------------------------
-static constexpr std::size_t N = 5'000'000;
-
-using u200 = bound<{0, 200}, unsafe>;
-
-void bench_construct()
+static void bench_compound()
 {
-  for (std::size_t i = 0; i < N; ++i)
-  {
-    { CTRACK_NAME("construct native");
-      auto v = static_cast<std::uint8_t>(i % 201);
-      do_not_optimize(v); }
+  auto inc = group("increment (u32 [0,200000])");
+  inc.run("native ++", [&] {
+    static std::uint32_t v = 0;
+    ++v; if (v > 199'999) v = 0;
+    doNotOptimizeAway(v);
+  });
+  inc.run("bound ++", [&] {
+    static u200k v{0};
+    ++v; if (v.raw() > 199'999) v = 0;
+    doNotOptimizeAway(v.raw());
+  });
+  finish(inc);
 
-    { CTRACK_NAME("construct clamped");
-      auto v = static_cast<std::uint8_t>(std::clamp(i % std::size_t{256}, std::size_t{0}, std::size_t{200}));
-      do_not_optimize(v); }
-
-    { CTRACK_NAME("construct checked");
-      checked_u8 v(static_cast<int>(i % 201));
-      do_not_optimize(v.value); }
-
-    { CTRACK_NAME("construct bound");
-      u200 v(static_cast<int>(i % 201));
-      do_not_optimize(v.raw()); }
-  }
+  static const scalar_inputs din{20, 200, 2, 9};
+  std::size_t i = 0;
+  auto dva = group("compound /= (u8 [0,200])");
+  dva.run("native /=", [&] {
+    ++i;
+    auto a = static_cast<std::uint8_t>(din.a[i & kMask]);
+    a = static_cast<std::uint8_t>(a / static_cast<std::uint8_t>(din.b[i & kMask]));
+    doNotOptimizeAway(a);
+  });
+  dva.run("bound /=", [&] {
+    ++i;
+    u200 a(din.a[i & kMask]);
+    a /= u200(din.b[i & kMask]);
+    doNotOptimizeAway(a.raw());
+  });
+  finish(dva);
 }
 
-void bench_add()
-{
-  constexpr int a_val = 30, b_val = 50;
-
-  for (std::size_t i = 0; i < N; ++i)
-  {
-    { CTRACK_NAME("add native");
-      std::uint8_t a = a_val, b = b_val;
-      auto c = static_cast<std::uint8_t>(a + b);
-      do_not_optimize(c); }
-
-    { CTRACK_NAME("add clamped");
-      std::uint8_t a = a_val, b = b_val;
-      auto c = static_cast<std::uint8_t>(std::clamp(a + b, 0, 200));
-      do_not_optimize(c); }
-
-    { CTRACK_NAME("add checked");
-      checked_u8 a(a_val), b(b_val);
-      auto c = a + b;
-      do_not_optimize(c.value); }
-
-    { CTRACK_NAME("add bound");
-      u200 a(a_val), b(b_val);
-      auto c = a + b;
-      do_not_optimize(c.raw()); }
-  }
-}
-
-void bench_mul()
-{
-  constexpr int a_val = 7, b_val = 14;
-
-  for (std::size_t i = 0; i < N; ++i)
-  {
-    { CTRACK_NAME("mul native");
-      std::uint8_t a = a_val, b = b_val;
-      auto c = static_cast<std::uint8_t>(a * b);
-      do_not_optimize(c); }
-
-    { CTRACK_NAME("mul clamped");
-      std::uint8_t a = a_val, b = b_val;
-      auto c = static_cast<std::uint8_t>(std::clamp(a * b, 0, 200));
-      do_not_optimize(c); }
-
-    { CTRACK_NAME("mul checked");
-      checked_u8 a(a_val), b(b_val);
-      auto c = a * b;
-      do_not_optimize(c.value); }
-
-    { CTRACK_NAME("mul bound");
-      u200 a(a_val), b(b_val);
-      auto c = a * b;
-      do_not_optimize(c.raw()); }
-  }
-}
-
-void bench_div()
-{
-  constexpr int a_val = 100, b_val = 7;
-
-  for (std::size_t i = 0; i < N; ++i)
-  {
-    { CTRACK_NAME("div native");
-      std::uint8_t a = a_val, b = b_val;
-      auto c = static_cast<std::uint8_t>(a / b);
-      do_not_optimize(c); }
-
-    { CTRACK_NAME("div bound (rational)");
-      u200 a(a_val), b(b_val);
-      auto c = a / b;
-      do_not_optimize(c->raw()); }
-
-    { CTRACK_NAME("div bound (integer)");
-      u200 a(a_val), b(b_val);
-      auto c = div(a, b, truncated);
-      do_not_optimize(c->raw()); }
-  }
-}
-
-void bench_accumulate()
+//---------------------------------------------------------------------------
+// accumulation over 1000 elements (per-element rates via batch()).
+//---------------------------------------------------------------------------
+static void bench_accumulate()
 {
   constexpr std::size_t SZ = 1000;
-  constexpr std::size_t ITERS = N / SZ;
-
-  // All use the same element type: uint32_t / bound<{0, 200'000}>
-  using u200k         = bound<{0, 200'000}, unsafe>;
-  using u200k_checked = bound<{0, 200'000}, checked>;
-
   std::vector<std::uint32_t> nv(SZ);
   std::vector<u200k> bv(SZ);
-  std::vector<u200k_checked> bv_checked(SZ);
+  std::vector<u200k_checked> bvc(SZ);
   for (std::size_t i = 0; i < SZ; ++i)
   {
-    nv[i] = static_cast<std::uint32_t>(i % 5);
-    bv[i] = static_cast<int>(i % 5);
-    bv_checked[i] = static_cast<int>(i % 5);
+    nv[i]  = static_cast<std::uint32_t>(i % 5);
+    bv[i]  = static_cast<int>(i % 5);
+    bvc[i] = static_cast<int>(i % 5);
   }
 
-  for (std::size_t i = 0; i < ITERS; ++i)
-  {
-    { CTRACK_NAME("accum native");
-      std::uint32_t sum = 0;
-      for (auto v : nv) sum += v;
-      do_not_optimize(sum); }
-
-    { CTRACK_NAME("accum bound");
-      u200k sum(0);
-      for (auto v : bv) sum += v;
-      do_not_optimize(sum.raw()); }
-
-    { CTRACK_NAME("accum bound<checked>");
-      u200k_checked sum(0);
-      for (auto v : bv_checked) sum += v;
-      do_not_optimize(sum.raw()); }
-
-    // Bulk form: one deferred range check instead of one per element —
-    // validates the TOTAL, vectorizes like the unsafe loop.
-    { CTRACK_NAME("bnd::sum<checked>");
-      auto sum = bnd::sum<u200k_checked>(bv_checked);
-      do_not_optimize(sum.raw()); }
-  }
+  auto bench = group("accumulate 1000 (u32 [0,200000], per element)", 300);
+  bench.batch(SZ);
+  bench.run("native loop", [&] {
+    std::uint32_t sum = 0;
+    for (auto v : nv) sum += v;
+    doNotOptimizeAway(sum);
+  });
+  bench.run("bound<unsafe> loop", [&] {
+    u200k sum{0};
+    for (auto v : bv) sum += v;
+    doNotOptimizeAway(sum.raw());
+  });
+  bench.run("bound<checked> loop", [&] {
+    u200k_checked sum{0};
+    for (auto v : bvc) sum += v;
+    doNotOptimizeAway(sum.raw());
+  });
+  bench.run("bnd::sum<checked> (bulk check)", [&] {
+    doNotOptimizeAway(bnd::sum<u200k_checked>(bvc).raw());
+  });
+  bench.run("std::accumulate native", [&] {
+    doNotOptimizeAway(std::accumulate(nv.begin(), nv.end(), std::uint32_t{0}));
+  });
+  bench.run("std::accumulate bound", [&] {
+    doNotOptimizeAway(std::accumulate(bv.begin(), bv.end(), u200k{0}, std::plus<>{}).raw());
+  });
+  finish(bench);
 }
 
-void bench_int_vs_bound()
+//---------------------------------------------------------------------------
+// signed scalar / accumulate ([-100k, 100k]) — negative values throughout.
+//---------------------------------------------------------------------------
+static void bench_signed()
 {
+  static const scalar_inputs in{-500, 500, -500, 500};
+  std::size_t i = 0;
+
+  auto add = group("add (signed [-100k,100k])");
+  add.run("native int", [&] {
+    ++i;
+    int c = in.a[i & kMask] + in.b[i & kMask];
+    doNotOptimizeAway(c);
+  });
+  add.run("bound<unsafe>", [&] {
+    ++i;
+    s100k a(in.a[i & kMask]), b(in.b[i & kMask]);
+    doNotOptimizeAway((a + b).raw());
+  });
+  finish(add);
+
+  static const scalar_inputs min{-14, 14, -14, 14};
+  auto mul = group("mul (signed [-100k,100k])");
+  mul.run("native int", [&] {
+    ++i;
+    int c = min.a[i & kMask] * min.b[i & kMask];
+    doNotOptimizeAway(c);
+  });
+  mul.run("bound<unsafe>", [&] {
+    ++i;
+    s100k a(min.a[i & kMask]), b(min.b[i & kMask]);
+    doNotOptimizeAway((a * b).raw());
+  });
+  finish(mul);
+
   constexpr std::size_t SZ = 1000;
-  constexpr std::size_t ITERS = N / SZ;
-
-  // int (signed 32-bit) vs bound<{-100'000, 100'000}, unsafe> (uint32_t storage)
-  // Uses negative numbers throughout
-  using s100k = bound<{-100'000, 100'000}, unsafe>;
-
   std::vector<int> iv(SZ);
   std::vector<s100k> bv(SZ);
-  for (std::size_t i = 0; i < SZ; ++i)
+  for (std::size_t j = 0; j < SZ; ++j)
   {
-    int val = static_cast<int>(i % 11) - 5; // -5 to +5
-    iv[i] = val;
-    bv[i] = val;
+    int val = static_cast<int>(j % 11) - 5;
+    iv[j] = val;
+    bv[j] = val;
   }
-
-  for (std::size_t i = 0; i < ITERS; ++i)
-  {
-    { CTRACK_NAME("int construct");
-      int v = static_cast<int>(i % 201) - 100; // -100 to +100
-      do_not_optimize(v); }
-
-    { CTRACK_NAME("bound construct");
-      s100k v(static_cast<int>(i % 201) - 100);
-      do_not_optimize(v.raw()); }
-
-    { CTRACK_NAME("int add");
-      int a = -300, b = 500;
-      int c = a + b;
-      do_not_optimize(c); }
-
-    { CTRACK_NAME("bound add");
-      s100k a(-300), b(500);
-      auto c = a + b;
-      do_not_optimize(c.raw()); }
-
-    { CTRACK_NAME("int mul");
-      int a = -7, b = 14;
-      int c = a * b;
-      do_not_optimize(c); }
-
-    { CTRACK_NAME("bound mul");
-      s100k a(-7), b(14);
-      auto c = a * b;
-      do_not_optimize(c.raw()); }
-
-    { CTRACK_NAME("int accum");
-      int sum = 0;
-      for (auto v : iv) sum += v;
-      do_not_optimize(sum); }
-
-    { CTRACK_NAME("bound accum");
-      s100k sum(0);
-      for (auto v : bv) sum += v;
-      do_not_optimize(sum.raw()); }
-  }
+  auto acc = group("accumulate 1000 (signed, per element)", 300);
+  acc.batch(SZ);
+  acc.run("native loop", [&] {
+    int sum = 0;
+    for (auto v : iv) sum += v;
+    doNotOptimizeAway(sum);
+  });
+  acc.run("bound<unsafe> loop", [&] {
+    s100k sum{0};
+    for (auto v : bv) sum += v;
+    doNotOptimizeAway(sum.raw());
+  });
+  finish(acc);
 }
 
-void bench_fixed_point()
+//---------------------------------------------------------------------------
+// fixed point — Q8.8, signed Q1.14, Q16.16, and the checked Q8.8 variant.
+//---------------------------------------------------------------------------
+static void bench_fixed_point()
 {
+  using fp   = bound<{{0, 255}, 1.0 / 256}, unsafe>;
+  using fp_c = bound<{{0, 255}, 1.0 / 256}, checked>;
+  static const scalar_inputs in{0, 90, 0, 90};
+  std::size_t i = 0;
+
+  auto ctor = group("Q8.8 construct");
+  ctor.run("native int<<8", [&] {
+    ++i;
+    std::int32_t v = in.a[i & kMask] << 8;
+    doNotOptimizeAway(v);
+  });
+  ctor.run("bound<unsafe>", [&] {
+    ++i;
+    fp v(in.a[i & kMask]);
+    doNotOptimizeAway(v.raw());
+  });
+  ctor.run("bound<checked>", [&] {
+    ++i;
+    fp_c v(in.a[i & kMask]);
+    doNotOptimizeAway(v.raw());
+  });
+  finish(ctor);
+
+  auto add = group("Q8.8 add");
+  add.run("native", [&] {
+    ++i;
+    std::int32_t a = in.a[i & kMask] << 8, b = in.b[i & kMask] << 8;
+    doNotOptimizeAway(a + b);
+  });
+  add.run("bound<unsafe>", [&] {
+    ++i;
+    fp a(in.a[i & kMask]), b(in.b[i & kMask]);
+    doNotOptimizeAway((a + b).raw());
+  });
+  add.run("bound<checked>", [&] {
+    ++i;
+    fp_c a(in.a[i & kMask]), b(in.b[i & kMask]);
+    doNotOptimizeAway((a + b).raw());
+  });
+  finish(add);
+
+  static const scalar_inputs min{1, 15, 1, 15};
+  auto mul = group("Q8.8 mul");
+  mul.run("native (a*b)>>8", [&] {
+    ++i;
+    std::int32_t a = min.a[i & kMask] << 8, b = min.b[i & kMask] << 8;
+    doNotOptimizeAway((a * b) >> 8);
+  });
+  mul.run("bound<unsafe>", [&] {
+    ++i;
+    fp a(min.a[i & kMask]), b(min.b[i & kMask]);
+    doNotOptimizeAway((a * b).raw());
+  });
+  finish(mul);
+
+  static const scalar_inputs din{16, 200, 1, 8};
+  auto dv = group("Q8.8 div (truncated)");
+  dv.run("native (a<<8)/b", [&] {
+    ++i;
+    std::int32_t a = din.a[i & kMask] << 8, b = din.b[i & kMask] << 8;
+    doNotOptimizeAway((a << 8) / b);
+  });
+  dv.run("bound div(a, b, truncated)", [&] {
+    ++i;
+    fp a(din.a[i & kMask]), b(din.b[i & kMask]);
+    doNotOptimizeAway(div(a, b, truncated)->raw());
+  });
+  finish(dv);
+
   constexpr std::size_t SZ = 1000;
-  constexpr std::size_t ITERS = N / SZ;
-
-  // Fixed-point 8.8: native int16_t with manual shift vs bound<{{0, 255}, 1.0/256}>
-  using fp = bound<{{0, 255}, 1.0/256}, unsafe>;
-
   std::vector<std::int32_t> nv(SZ);
   std::vector<fp> bv(SZ);
-  for (std::size_t i = 0; i < SZ; ++i)
+  for (std::size_t j = 0; j < SZ; ++j)
   {
-    int val = static_cast<int>(i % 5);
-    nv[i] = val << 8; // fixed-point: value * 256
-    bv[i] = val;
+    int val = static_cast<int>(j % 5);
+    nv[j] = val << 8;
+    bv[j] = val;
   }
+  auto acc = group("Q8.8 accumulate 1000 (per element)", 300);
+  acc.batch(SZ);
+  acc.run("native loop", [&] {
+    std::int32_t sum = 0;
+    for (auto v : nv) sum += v;
+    doNotOptimizeAway(sum);
+  });
+  acc.run("bound<unsafe> loop", [&] {
+    fp sum{0};
+    for (auto v : bv) sum += v;
+    doNotOptimizeAway(sum.raw());
+  });
+  finish(acc);
 
-  for (std::size_t i = 0; i < ITERS; ++i)
-  {
-    { CTRACK_NAME("fixed native construct");
-      std::int32_t v = static_cast<std::int32_t>((i % 201)) << 8;
-      do_not_optimize(v); }
+  // signed Q1.14 audio grid
+  using q14 = bound<{{-1, 1}, notch<1, 16384>}, unsafe>;
+  static_assert(sizeof(q14) == 2);
+  auto q14g = group("Q1.14 signed add");
+  q14g.run("native int", [&] {
+    ++i;
+    std::int32_t a = 5000, b = -3000 + static_cast<int>(i & 63);
+    doNotOptimizeAway(a + b);
+  });
+  q14g.run("bound (raw-level)", [&] {
+    auto a = q14::from_raw(20000);
+    ++i;
+    auto b = q14::from_raw(static_cast<std::uint16_t>(10000 + (i & 63)));
+    doNotOptimizeAway((a + b).raw());
+  });
+  finish(q14g);
 
-    { CTRACK_NAME("fixed bound construct");
-      fp v(static_cast<int>(i % 201));
-      do_not_optimize(v.raw()); }
-
-    { CTRACK_NAME("fixed native add");
-      std::int32_t a = 30 << 8, b = 50 << 8;
-      std::int32_t c = a + b;
-      do_not_optimize(c); }
-
-    { CTRACK_NAME("fixed bound add");
-      fp a(30), b(50);
-      auto c = a + b;
-      do_not_optimize(c.raw()); }
-
-    { CTRACK_NAME("fixed native accum");
-      std::int32_t sum = 0;
-      for (auto v : nv) sum += v;
-      do_not_optimize(sum); }
-
-    { CTRACK_NAME("fixed bound accum");
-      fp sum(0);
-      for (auto v : bv) sum += v;
-      do_not_optimize(sum.raw()); }
-
-    { CTRACK_NAME("fixed native mul");
-      std::int32_t a = 30 << 8, b = 5 << 8;
-      std::int32_t c = (a * b) >> 8;  // renormalize Q8.8
-      do_not_optimize(c); }
-
-    { CTRACK_NAME("fixed bound mul");
-      fp a(30), b(5);
-      auto c = a * b;
-      do_not_optimize(c.raw()); }
-
-    { CTRACK_NAME("fixed native div");
-      std::int32_t a = 200 << 8, b = 8 << 8;
-      std::int32_t c = (a << 8) / b;  // renormalize Q8.8
-      do_not_optimize(c); }
-
-    { CTRACK_NAME("fixed bound div");
-      fp a(200), b(8);
-      auto c = div(a, b, truncated);
-      do_not_optimize(c->raw()); }
-  }
+  // Q16.16
+  using q16 = bound<{{0, 65535}, notch<1, 65536>}, unsafe>;
+  static_assert(sizeof(q16) == 4);
+  auto q16g = group("Q16.16 add");
+  q16g.run("native int64", [&] {
+    ++i;
+    std::int64_t a = static_cast<std::int64_t>(in.a[i & kMask]) << 16;
+    std::int64_t b = static_cast<std::int64_t>(in.b[i & kMask]) << 16;
+    doNotOptimizeAway(a + b);
+  });
+  q16g.run("bound<unsafe>", [&] {
+    ++i;
+    q16 a(in.a[i & kMask]), b(in.b[i & kMask]);
+    doNotOptimizeAway((a + b).raw());
+  });
+  finish(q16g);
 }
 
-void bench_fixed_point_signed()
+//---------------------------------------------------------------------------
+// stores & conversions — double/fraction sources, rounding, cross-grid,
+// casts, comparison (Tier-2 measurement lives here).
+//---------------------------------------------------------------------------
+static void bench_store_convert()
 {
-  // Signed Q1.14-style audio: bound<{{-1, 1}, 1/16384}, unsafe>
-  // vs native int16 with explicit *16384 scaling.
-  using fp = bound<{{-1, 1}, notch<1, 16384>}, unsafe>;
-  static_assert(sizeof(fp) == 2);
+  std::size_t i = 0;
 
-  for (std::size_t i = 0; i < N; ++i)
-  {
-    int v = static_cast<int>(i % 201) - 100; // [-100, 100]
-
-    { CTRACK_NAME("signed fixed native construct");
-      std::int32_t s = (v * 16384) / 100;  // scale into Q1.14 range
-      do_not_optimize(s); }
-
-    { CTRACK_NAME("signed fixed bound construct");
-      auto s = fp::from_raw(static_cast<std::uint16_t>((v + 100) * 163));  // raw-level
-      do_not_optimize(s.raw()); }
-
-    { CTRACK_NAME("signed fixed native add");
-      std::int32_t a = 5000, b = -3000;
-      std::int32_t c = a + b;
-      do_not_optimize(c); }
-
-    { CTRACK_NAME("signed fixed bound add");
-      auto a = fp::from_raw(20000);
-      auto b = fp::from_raw(10000);
-      auto c = a + b;
-      do_not_optimize(c.raw()); }
-  }
-}
-
-void bench_fixed_point_checked()
-{
-  // Same Q8.8 grid as bench_fixed_point but with `checked` policy — measures
-  // runtime-domain-check overhead vs the unsafe baseline.
-  using fp = bound<{{0, 255}, 1.0/256}, checked>;
-
-  for (std::size_t i = 0; i < N; ++i)
-  {
-    { CTRACK_NAME("checked fixed bound construct");
-      fp v(static_cast<int>(i % 201));
-      do_not_optimize(v.raw()); }
-
-    { CTRACK_NAME("checked fixed bound add");
-      fp a(30), b(50);
-      auto c = a + b;
-      do_not_optimize(c.raw()); }
-  }
-}
-
-void bench_fixed_point_q16()
-{
-  // Q16.16: bound<{{0, 65535}, 1/65536}, unsafe> vs int64 with <<16 scaling.
-  // Skip mul/div: Q16.16*Q16.16 forces a wider result type than uint32.
-  using fp = bound<{{0, 65535}, notch<1, 65536>}, unsafe>;
-  static_assert(sizeof(fp) == 4);
-
-  constexpr std::size_t SZ = 1000;
-  constexpr std::size_t ITERS = N / SZ;
-
-  std::vector<std::int64_t> nv(SZ);
-  std::vector<fp> bv(SZ);
-  for (std::size_t i = 0; i < SZ; ++i)
-  {
-    int v = static_cast<int>(i % 5);
-    nv[i] = static_cast<std::int64_t>(v) << 16;
-    bv[i] = v;
-  }
-
-  for (std::size_t i = 0; i < ITERS; ++i)
-  {
-    { CTRACK_NAME("q16 native construct");
-      std::int64_t v = static_cast<std::int64_t>(i % 1001) << 16;
-      do_not_optimize(v); }
-
-    { CTRACK_NAME("q16 bound construct");
-      fp v(static_cast<int>(i % 1001));
-      do_not_optimize(v.raw()); }
-
-    { CTRACK_NAME("q16 native add");
-      std::int64_t a = 30LL << 16, b = 50LL << 16;
-      std::int64_t c = a + b;
-      do_not_optimize(c); }
-
-    { CTRACK_NAME("q16 bound add");
-      fp a(30), b(50);
-      auto c = a + b;
-      do_not_optimize(c.raw()); }
-
-    { CTRACK_NAME("q16 native accum");
-      std::int64_t sum = 0;
-      for (auto v : nv) sum += v;
-      do_not_optimize(sum); }
-
-    { CTRACK_NAME("q16 bound accum");
-      fp sum(0);
-      for (auto v : bv) sum += v;
-      do_not_optimize(sum.raw()); }
-  }
-}
-
-void bench_round_nearest()
-{
-  // Compare truncation (snap) vs round_nearest for float->bound assignment
-  // Celsius: -40 to 60 in 0.5 steps
   using celsius_trunc = bound<{{-40, 60}, 0.5}, snap>;
   using celsius_round = bound<{{-40, 60}, 0.5}, round_nearest>;
-
-  for (std::size_t i = 0; i < N; ++i)
-  {
+  auto assign = group("assign from double ([-40,60] step 0.5)");
+  assign.run("truncate (snap)", [&] {
+    ++i;
     double val = -40.0 + static_cast<double>(i % 200) * 0.5 + 0.3;
+    celsius_trunc c = val;
+    doNotOptimizeAway(c.raw());
+  });
+  assign.run("round_nearest", [&] {
+    ++i;
+    double val = -40.0 + static_cast<double>(i % 200) * 0.5 + 0.3;
+    celsius_round c = val;
+    doNotOptimizeAway(c.raw());
+  });
+  finish(assign);
 
-    { CTRACK_NAME("assign truncate");
-      celsius_trunc c = val;
-      do_not_optimize(c.raw()); }
+  using fp = bound<{{0, 255}, 1.0 / 256}, round_nearest>;
+  auto store = group("Q8.8 store");
+  store.run("from fraction (rational)", [&] {
+    ++i;
+    rational q{static_cast<imax>(i & 0xFFF), 256};
+    fp v{q};
+    doNotOptimizeAway(v.raw());
+  });
+  store.run("from double", [&] {
+    ++i;
+    double d = static_cast<double>(i & 0xFFF) / 256.0;
+    fp v{d};
+    doNotOptimizeAway(v.raw());
+  });
+  finish(store);
 
-    { CTRACK_NAME("assign round_nearest");
-      celsius_round c = val;
-      do_not_optimize(c.raw()); }
+  // cross-grid assignment
+  using narrow  = bound<{0, 100}, unsafe>;
+  using tenths  = bound<{{0, 100}, notch<1, 10>}, unsafe>;
+  using quarters= bound<{{0, 100}, notch<1, 4>}, round_nearest>;
+  auto cga = group("cross-grid assign");
+  cga.run("same-grid copy", [&] {
+    ++i;
+    s9k a(static_cast<int>(i % 9000) - 500);
+    s9k b = a;
+    doNotOptimizeAway(b.raw());
+  });
+  cga.run("integer mapping ([0,100] -> [-500,9000])", [&] {
+    ++i;
+    narrow a(static_cast<int>(i % 101));
+    s9k b = a;
+    doNotOptimizeAway(b.raw());
+  });
+  cga.run("non-integer snap (1/10 -> 1/4 grid)", [&] {
+    ++i;
+    tenths a = rational{static_cast<imax>(i % 1000), 10};
+    quarters b = a.with_snap();
+    doNotOptimizeAway(b.raw());
+  });
+  finish(cga);
+
+  // comparison
+  using q14a = bound<{{-8, 8},  notch<1, 16384>}, unsafe>;
+  using q14b = bound<{{-4, 12}, notch<1, 16384>}, unsafe>;
+  std::vector<std::int16_t> ni(kMask + 1);
+  std::vector<s9k> bi(kMask + 1);
+  std::vector<q14a> ia(kMask + 1);
+  std::vector<q14b> ib(kMask + 1);
+  for (std::size_t j = 0; j <= kMask; ++j)
+  {
+    auto v = static_cast<std::int16_t>((j * 7 + 13) % 9501 - 500);
+    ni[j] = v;
+    bi[j] = static_cast<int>(v);
+    ia[j] = rational{static_cast<imax>(j % 200) - 100, 16};
+    ib[j] = rational{static_cast<imax>((j * 3) % 200) - 60, 16};
   }
+  auto cmp = group("comparison <");
+  cmp.run("native int16", [&] {
+    ++i;
+    bool r = ni[i & kMask] < ni[(i + 7) & kMask];
+    doNotOptimizeAway(r);
+  });
+  cmp.run("bound same grid", [&] {
+    ++i;
+    bool r = bi[i & kMask] < bi[(i + 7) & kMask];
+    doNotOptimizeAway(r);
+  });
+  cmp.run("bound index raw, same notch, cross interval", [&] {
+    ++i;
+    bool r = ia[i & kMask] < ib[i & kMask];
+    doNotOptimizeAway(r);
+  });
+  finish(cmp);
+
+  // casts
+  auto casts = group("casts (s9k value into u200)");
+  casts.run("native clamp", [&] {
+    ++i;
+    int v = static_cast<int>(i % 9000) - 500;
+    auto c = static_cast<std::uint8_t>(std::clamp(v, 0, 200));
+    doNotOptimizeAway(c);
+  });
+  casts.run("clamp_cast", [&] {
+    ++i;
+    s9k v(static_cast<int>(i % 9000) - 500);
+    doNotOptimizeAway(clamp_cast<u200>(v).raw());
+  });
+  casts.run("checked construction (in range)", [&] {
+    ++i;
+    using u200c = bound<{0, 200}, checked>;
+    s9k v(static_cast<int>(i % 200));
+    doNotOptimizeAway(u200c{v}.raw());
+  });
+  finish(casts);
+
+  // dot
+  static const scalar_inputs din{-90, 90, -90, 90};
+  auto dg = group("dot (2D, signed)");
+  dg.run("native int", [&] {
+    ++i;
+    int ax = din.a[i & kMask], ay = din.b[i & kMask];
+    int bx = din.b[(i + 3) & kMask], by = din.a[(i + 5) & kMask];
+    doNotOptimizeAway(ax * bx + ay * by);
+  });
+  dg.run("bnd::dot", [&] {
+    using c100 = bound<{-100, 100}, unsafe>;
+    ++i;
+    c100 ax(din.a[i & kMask]), ay(din.b[i & kMask]);
+    c100 bx(din.b[(i + 3) & kMask]), by(din.a[(i + 5) & kMask]);
+    doNotOptimizeAway(bnd::dot(ax, ay, bx, by).raw());
+  });
+  finish(dg);
 }
 
 //---------------------------------------------------------------------------
-// cmath benchmarks — integer-only constexpr transcendentals.
-// Inputs match the Q-formats used in tests/test_cmath.cpp.
+// cmath — bound math engines vs std double, per function. Inputs pre-built
+// (grids match tests/test_cmath.cpp).
 //---------------------------------------------------------------------------
-void bench_cmath()
+static void bench_cmath()
 {
-  using algeb_t = bound<{{-8, 8}, notch<1, 16384>}, round_nearest | real>;
+  using algeb_t   = bound<{{-8, 8}, notch<1, 16384>}, round_nearest | real>;
   using sqrt_in_t = bound<{{0, 4}, notch<1, 65536>}, round_nearest | real>;
   using exp2_in_t = bound<{{-4, 4}, notch<1, 16384>}, round_nearest | real>;
   using log2_in_t = bound<{{0x1p-8_r, 256}, notch<1, 16384>}, round_nearest | real>;
@@ -468,17 +628,12 @@ void bench_cmath()
   using log_in_t  = bound<{{0x1p-8_r, 256}, notch<1, 256>}, round_nearest | real>;
   using pow_in_t  = bound<{{-9, 9}, notch<1, 16384>}, round_nearest | real>;
   using angle_t   = bound<{{-8, 8}, notch<1, 16384>}, round_nearest | real>;
-  // Same grid, f32 (binary32) storage — the natural pairing for the float engine.
   using angle_f32_t = bound<{{-8, 8}, notch<1, 16384>}, round_nearest | f32>;
   using tan_in_t  = bound<{{-0.75_r, 0.75_r}, notch<1, 16384>}, round_nearest | real>;
   using atan2_in_t= bound<{{-1, 1}, notch<1, 16384>}, round_nearest | real>;
   using fmod_x_t  = bound<{{-8, 8}, notch<1, 16384>}, round_nearest>;
   using fmod_y_t  = bound<{{0.25_r, 4}, notch<1, 16384>}, round_nearest>;
 
-  // Inputs are PRE-BUILT so each timed block measures the math call alone,
-  // not bound/double construction from a rational (that cost is measured
-  // separately by the two "constr ..." blocks below). 4096 entries stride
-  // the original k = i & 0xFFFF recurrence across its full range.
   constexpr std::size_t M = 4096;
   std::vector<algeb_t>    v_alg, v_alg2; std::vector<sqrt_in_t> v_sqrt;
   std::vector<exp2_in_t>  v_exp2;  std::vector<log2_in_t>  v_log2;
@@ -514,184 +669,65 @@ void bench_cmath()
     d_atx.push_back(static_cast<double>(rx));   d_fmy.push_back(static_cast<double>(rfy));
   }
 
-  // 30 timed blocks per iter — use a reduced count so ctrack's per-event
-  // storage (~70 B/event, no aggregation) stays in proportion with the
-  // ~4-block benches above. N/16 ≈ 312K → ~9.4M events.
-  constexpr std::size_t N_CMATH = N / 16;
-  for (std::size_t i = 0; i < N_CMATH; ++i)
-  {
-    const std::size_t j = i & (M - 1);
-    auto k = static_cast<imax>(i & 0xFFFF);
-    rational qs = rational{k - 32768, 16384};
+  std::size_t i = 0;
+  constexpr std::size_t J = M - 1;
 
-    // ---- input construction (the cost the call blocks no longer carry) ----
-    { CTRACK_NAME("constr bound  rational");
-      algeb_t x{qs};
-      do_not_optimize(x.raw()); }
-    { CTRACK_NAME("constr double rational");
-      double d = static_cast<double>(qs);
-      do_not_optimize(d); }
+  // std double first (native baseline), bound second.
+#define BND_CMATH_GROUP(title, std_expr, bnd_expr)                       \
+  {                                                                      \
+    auto bench = group(title, 50'000);                               \
+    bench.run("std double", [&] { ++i; doNotOptimizeAway(std_expr); });  \
+    bench.run("bnd::math bound", [&] { ++i; doNotOptimizeAway(bnd_expr); }); \
+    finish(bench);                                                       \
+  }
 
-    // ---- abs / floor / round ----
-    { CTRACK_NAME("math::abs   bound");
-      auto r = bnd::math::abs(v_alg[j]);
-      do_not_optimize(r.raw()); }
-    { CTRACK_NAME("std::abs    double");
-      auto r = std::abs(d_qs[j]);
-      do_not_optimize(r); }
+  BND_CMATH_GROUP("math: abs",   std::abs(d_qs[i & J]),   bnd::math::abs(v_alg[i & J]).raw())
+  BND_CMATH_GROUP("math: floor", std::floor(d_qs[i & J]), bnd::math::floor(v_alg[i & J]).raw())
+  BND_CMATH_GROUP("math: round", std::round(d_qs[i & J]), bnd::math::round(v_alg[i & J]).raw())
+  BND_CMATH_GROUP("math: sqrt",  std::sqrt(d_q[i & J]),   bnd::math::sqrt(v_sqrt[i & J]).raw())
+  BND_CMATH_GROUP("math: exp2",  std::exp2(d_qs[i & J]),  bnd::math::exp2(v_exp2[i & J]).raw())
+  BND_CMATH_GROUP("math: log2",  std::log2(d_log2[i & J]),bnd::math::log2(v_log2[i & J]).raw())
+  BND_CMATH_GROUP("math: exp",   std::exp(d_qs[i & J]),   bnd::math::exp(v_exp[i & J]).raw())
+  BND_CMATH_GROUP("math: log",   std::log(d_log[i & J]),  bnd::math::log(v_log[i & J]).raw())
+  BND_CMATH_GROUP("math: pow10", std::pow(10.0, d_qs[i & J]), bnd::math::pow_base<10>(v_pow[i & J]).raw())
+  BND_CMATH_GROUP("math: sin",   std::sin(d_qs[i & J]),   bnd::math::sin(v_ang[i & J]).raw())
+  BND_CMATH_GROUP("math: cos",   std::cos(d_qs[i & J]),   bnd::math::cos(v_ang[i & J]).raw())
+  BND_CMATH_GROUP("math: tan",   std::tan(d_tan[i & J]),  bnd::math::tan(v_tan[i & J]))
+  BND_CMATH_GROUP("math: atan2", std::atan2(d_aty[i & J], d_atx[i & J]),
+                                 bnd::math::atan2(v_aty[i & J], v_atx[i & J]).raw())
+  BND_CMATH_GROUP("math: fmod",  std::fmod(d_qs[i & J], d_fmy[i & J]),
+                                 bnd::math::fmod(v_fmx[i & J], v_fmy[i & J]).raw())
+  BND_CMATH_GROUP("math: asin",  std::asin(d_aty[i & J]), bnd::math::asin(v_aty[i & J]).raw())
+  BND_CMATH_GROUP("math: tanh",  std::tanh(d_qs[i & J]),  bnd::math::tanh(v_exp[i & J]).raw())
+  BND_CMATH_GROUP("math: cbrt",  std::cbrt(d_qs[i & J]),  bnd::math::cbrt(v_alg[i & J]).raw())
+  BND_CMATH_GROUP("math: hypot", std::hypot(d_qs[i & J], d_q[i & J]),
+                                 bnd::math::hypot(v_alg[i & J], v_alg2[i & J]).raw())
+#undef BND_CMATH_GROUP
 
-    { CTRACK_NAME("math::floor bound");
-      auto r = bnd::math::floor(v_alg[j]);
-      do_not_optimize(r.raw()); }
-    { CTRACK_NAME("std::floor  double");
-      auto r = std::floor(d_qs[j]);
-      do_not_optimize(r); }
-
-    { CTRACK_NAME("math::round bound");
-      auto r = bnd::math::round(v_alg[j]);
-      do_not_optimize(r.raw()); }
-    { CTRACK_NAME("std::round  double");
-      auto r = std::round(d_qs[j]);
-      do_not_optimize(r); }
-
-    // ---- sqrt ----
-    { CTRACK_NAME("math::sqrt  bound");
-      auto r = bnd::math::sqrt(v_sqrt[j]);
-      do_not_optimize(r.raw()); }
-    { CTRACK_NAME("std::sqrt   double");
-      auto r = std::sqrt(d_q[j]);
-      do_not_optimize(r); }
-
-    // ---- exp2 / log2 ----
-    { CTRACK_NAME("math::exp2  bound");
-      auto r = bnd::math::exp2(v_exp2[j]);
-      do_not_optimize(r.raw()); }
-    { CTRACK_NAME("std::exp2   double");
-      auto r = std::exp2(d_qs[j]);
-      do_not_optimize(r); }
-
-    { CTRACK_NAME("math::log2  bound");
-      auto r = bnd::math::log2(v_log2[j]);
-      do_not_optimize(r.raw()); }
-    { CTRACK_NAME("std::log2   double");
-      auto r = std::log2(d_log2[j]);
-      do_not_optimize(r); }
-
-    // ---- exp / log ----
-    { CTRACK_NAME("math::exp   bound");
-      auto r = bnd::math::exp(v_exp[j]);
-      do_not_optimize(r.raw()); }
-    { CTRACK_NAME("std::exp    double");
-      auto r = std::exp(d_qs[j]);
-      do_not_optimize(r); }
-
-    { CTRACK_NAME("math::log   bound");
-      auto r = bnd::math::log(v_log[j]);
-      do_not_optimize(r.raw()); }
-    { CTRACK_NAME("std::log    double");
-      auto r = std::log(d_log[j]);
-      do_not_optimize(r); }
-
-    // ---- pow_base<10> ----
-    { CTRACK_NAME("math::pow10 bound");
-      auto r = bnd::math::pow_base<10>(v_pow[j]);
-      do_not_optimize(r.raw()); }
-    { CTRACK_NAME("std::pow10  double");
-      auto r = std::pow(10.0, d_qs[j]);
-      do_not_optimize(r); }
-
-    // ---- sin / cos ----
-    { CTRACK_NAME("math::sin   bound");
-      auto r = bnd::math::sin(v_ang[j]);
-      do_not_optimize(r.raw()); }
-    { CTRACK_NAME("std::sin    double");
-      auto r = std::sin(d_qs[j]);
-      do_not_optimize(r); }
 #ifndef BND_MATH_FIXED
-    { CTRACK_NAME("math::flt::sin f32");          // float engine, f32-backed input
-      auto r = bnd::math::flt::sin(v_angf[j]);
-      do_not_optimize(r.raw()); }
-    { CTRACK_NAME("std::sinf   float");
-      auto r = std::sin(static_cast<float>(d_qs[j]));
-      do_not_optimize(r); }
+  {
+    auto bench = group("math: sin (binary32 / float engine)", 50'000);
+    bench.run("std sinf", [&] {
+      ++i;
+      doNotOptimizeAway(std::sin(static_cast<float>(d_qs[i & J])));
+    });
+    bench.run("bnd::math::flt::sin (f32 bound)", [&] {
+      ++i;
+      doNotOptimizeAway(bnd::math::flt::sin(v_angf[i & J]).raw());
+    });
+    finish(bench);
+  }
 #endif
-
-    { CTRACK_NAME("math::cos   bound");
-      auto r = bnd::math::cos(v_ang[j]);
-      do_not_optimize(r.raw()); }
-    { CTRACK_NAME("std::cos    double");
-      auto r = std::cos(d_qs[j]);
-      do_not_optimize(r); }
-
-    // ---- tan (returns expected, unwrap with operator*) ----
-    { CTRACK_NAME("math::tan   bound");
-      auto r = bnd::math::tan(v_tan[j]);
-      do_not_optimize(r); }
-    { CTRACK_NAME("std::tan    double");
-      auto r = std::tan(d_tan[j]);
-      do_not_optimize(r); }
-
-    // ---- atan2 ----
-    { CTRACK_NAME("math::atan2 bound");
-      auto r = bnd::math::atan2(v_aty[j], v_atx[j]);
-      do_not_optimize(r.raw()); }
-    { CTRACK_NAME("std::atan2  double");
-      auto r = std::atan2(d_aty[j], d_atx[j]);
-      do_not_optimize(r); }
-
-    // ---- fmod ----
-    { CTRACK_NAME("math::fmod  bound");
-      auto r = bnd::math::fmod(v_fmx[j], v_fmy[j]);
-      do_not_optimize(r.raw()); }
-    { CTRACK_NAME("std::fmod   double");
-      auto r = std::fmod(d_qs[j], d_fmy[j]);
-      do_not_optimize(r); }
-
-    // ---- extended transcendentals (#3) ----
-    { CTRACK_NAME("math::asin  bound");
-      auto r = bnd::math::asin(v_aty[j]);
-      do_not_optimize(r.raw()); }
-    { CTRACK_NAME("std::asin   double");
-      auto r = std::asin(d_aty[j]);
-      do_not_optimize(r); }
-
-    { CTRACK_NAME("math::tanh  bound");
-      auto r = bnd::math::tanh(v_exp[j]);
-      do_not_optimize(r.raw()); }
-    { CTRACK_NAME("std::tanh   double");
-      auto r = std::tanh(d_qs[j]);
-      do_not_optimize(r); }
-
-    { CTRACK_NAME("math::cbrt  bound");
-      auto r = bnd::math::cbrt(v_alg[j]);
-      do_not_optimize(r.raw()); }
-    { CTRACK_NAME("std::cbrt   double");
-      auto r = std::cbrt(d_qs[j]);
-      do_not_optimize(r); }
-
-    { CTRACK_NAME("math::hypot bound");
-      auto r = bnd::math::hypot(v_alg[j], v_alg2[j]);
-      do_not_optimize(r.raw()); }
-    { CTRACK_NAME("std::hypot  double");
-      auto r = std::hypot(d_qs[j], d_q[j]);
-      do_not_optimize(r); }
-  }
 }
 
 //---------------------------------------------------------------------------
-// STL algorithm benchmarks
+// STL algorithms over 10k elements (per-element rates via batch()).
 //---------------------------------------------------------------------------
-namespace rng = std::ranges;
-
-using u255 = bound<{0, 255}, unsafe>;
-using s9k  = bound<{-500, 9000}, unsafe>;
-
-void bench_sort_algo()
+static void bench_algorithms()
 {
+  namespace rng = std::ranges;
   constexpr std::size_t SZ = 10'000;
-  constexpr std::size_t ITERS = N / SZ;
 
-  // prepare identical data
   std::vector<std::int16_t> nv(SZ);
   std::vector<s9k> bv(SZ);
   for (std::size_t i = 0; i < SZ; ++i)
@@ -700,325 +736,175 @@ void bench_sort_algo()
     nv[i] = val;
     bv[i] = static_cast<int>(val);
   }
-
   auto nv_copy = nv;
   auto bv_copy = bv;
 
-  for (std::size_t i = 0; i < ITERS; ++i)
-  {
-    { CTRACK_NAME("sort native");
-      nv = nv_copy;
-      rng::sort(nv);
-      do_not_optimize(nv[0]); }
+  auto sort = group("sort 10k (per element)", 30);
+  sort.batch(SZ);
+  sort.run("native int16", [&] {
+    nv = nv_copy;
+    rng::sort(nv);
+    doNotOptimizeAway(nv[0]);
+  });
+  sort.run("bound", [&] {
+    bv = bv_copy;
+    rng::sort(bv);
+    doNotOptimizeAway(bv[0].raw());
+  });
+  finish(sort);
 
-    { CTRACK_NAME("sort bound");
-      bv = bv_copy;
-      rng::sort(bv);
-      do_not_optimize(bv[0].raw()); }
-  }
-}
+  auto nth = group("nth_element 10k (per element)", 30);
+  nth.batch(SZ);
+  nth.run("native int16", [&] {
+    nv = nv_copy;
+    std::nth_element(nv.begin(), nv.begin() + SZ / 2, nv.end());
+    doNotOptimizeAway(nv[SZ / 2]);
+  });
+  nth.run("bound", [&] {
+    bv = bv_copy;
+    std::nth_element(bv.begin(), bv.begin() + SZ / 2, bv.end());
+    doNotOptimizeAway(bv[SZ / 2].raw());
+  });
+  finish(nth);
 
-void bench_find_algo()
-{
-  constexpr std::size_t SZ = 10'000;
-  constexpr std::size_t ITERS = N / SZ;
+  auto part = group("partition 10k (per element)", 30);
+  part.batch(SZ);
+  part.run("native int16", [&] {
+    nv = nv_copy;
+    auto p = std::partition(nv.begin(), nv.end(), [](std::int16_t v) { return v >= 0; });
+    doNotOptimizeAway(*p);
+  });
+  part.run("bound", [&] {
+    bv = bv_copy;
+    auto p = std::partition(bv.begin(), bv.end(), [](s9k v) { return v >= 0; });
+    doNotOptimizeAway(p->raw());
+  });
+  finish(part);
 
-  std::vector<std::int16_t> nv(SZ);
-  std::vector<s9k> bv(SZ);
-  for (std::size_t i = 0; i < SZ; ++i)
-  {
-    auto val = static_cast<std::int16_t>(i % 9501 - 500);
-    nv[i] = val;
-    bv[i] = static_cast<int>(val);
-  }
+  // sorted copies for the search benches
+  std::vector<std::int16_t> ns = nv_copy;
+  std::vector<s9k> bs = bv_copy;
+  rng::sort(ns);
+  rng::sort(bs);
+  std::size_t i = 0;
 
-  auto target_n = static_cast<std::int16_t>(7000);
-  s9k target_b(7000);
+  auto find = group("find / count 10k (per element)", 30);
+  find.batch(SZ);
+  find.run("find native", [&] {
+    doNotOptimizeAway(*rng::find(nv_copy, static_cast<std::int16_t>(7000)));
+  });
+  find.run("find bound", [&] {
+    doNotOptimizeAway(rng::find(bv_copy, s9k{7000})->raw());
+  });
+  find.run("count native", [&] {
+    doNotOptimizeAway(rng::count(nv_copy, static_cast<std::int16_t>(42)));
+  });
+  find.run("count bound", [&] {
+    doNotOptimizeAway(rng::count(bv_copy, s9k{42}));
+  });
+  finish(find);
 
-  for (std::size_t i = 0; i < ITERS; ++i)
-  {
-    { CTRACK_NAME("find native");
-      auto it = rng::find(nv, target_n);
-      do_not_optimize(*it); }
+  auto mm = group("min/max_element 10k (per element)", 30);
+  mm.batch(SZ);
+  mm.run("min_element native", [&] { doNotOptimizeAway(*rng::min_element(nv_copy)); });
+  mm.run("min_element bound",  [&] { doNotOptimizeAway(rng::min_element(bv_copy)->raw()); });
+  mm.run("max_element native", [&] { doNotOptimizeAway(*rng::max_element(nv_copy)); });
+  mm.run("max_element bound",  [&] { doNotOptimizeAway(rng::max_element(bv_copy)->raw()); });
+  finish(mm);
 
-    { CTRACK_NAME("find bound");
-      auto it = rng::find(bv, target_b);
-      do_not_optimize(it->raw()); }
-
-    { CTRACK_NAME("count native");
-      auto c = rng::count(nv, static_cast<std::int16_t>(42));
-      do_not_optimize(c); }
-
-    { CTRACK_NAME("count bound");
-      auto c = rng::count(bv, s9k{42});
-      do_not_optimize(c); }
-  }
-}
-
-void bench_transform_algo()
-{
-  constexpr std::size_t SZ = 10'000;
-  constexpr std::size_t ITERS = N / SZ;
-
-  using u254 = bound<{0, 254}, unsafe>;   // fits uint8 (255 = sentinel slot)
-  static_assert(sizeof(u254) == 1);
-
-  std::vector<std::uint8_t> nv(SZ);
-  std::vector<u255> bv(SZ);
-  std::vector<u254> b8v(SZ);
-  std::vector<std::uint8_t> nout(SZ);
-  std::vector<u255> bout(SZ);
-  std::vector<u254> b8out(SZ);
-
-  for (std::size_t i = 0; i < SZ; ++i)
-  {
-    nv[i] = static_cast<std::uint8_t>(i % 250);
-    bv[i] = static_cast<int>(i % 250);
-    b8v[i] = static_cast<int>(i % 250);
-  }
-
-  for (std::size_t i = 0; i < ITERS; ++i)
-  {
-    { CTRACK_NAME("transform native");
-      std::transform(nv.begin(), nv.end(), nout.begin(),
-        [](std::uint8_t v) -> std::uint8_t { return static_cast<std::uint8_t>(v + 1); });
-      do_not_optimize(nout[0]); }
-
-    { CTRACK_NAME("transform bound");
-      std::transform(bv.begin(), bv.end(), bout.begin(),
-        [](u255 v) { v += 1_b; return v; });
-      do_not_optimize(bout[0].raw()); }
-
-    // Same-width comparison: u255's raw is uint16 (raw 255 is the reserved
-    // slim::optional sentinel slot), so the block above compares 16-bit
-    // lanes against the native 8-bit lanes — a storage-width gap, not
-    // abstraction cost. {0, 254} fits uint8 and should match native.
-    { CTRACK_NAME("transform bound u8");
-      std::transform(b8v.begin(), b8v.end(), b8out.begin(),
-        [](u254 v) { v += 1_b; return v; });
-      do_not_optimize(b8out[0].raw()); }
-  }
-}
-
-void bench_minmax_algo()
-{
-  constexpr std::size_t SZ = 10'000;
-  constexpr std::size_t ITERS = N / SZ;
-
-  std::vector<std::int16_t> nv(SZ);
-  std::vector<s9k> bv(SZ);
-  for (std::size_t i = 0; i < SZ; ++i)
-  {
-    auto val = static_cast<std::int16_t>((i * 7 + 13) % 9501 - 500);
-    nv[i] = val;
-    bv[i] = static_cast<int>(val);
-  }
-
-  for (std::size_t i = 0; i < ITERS; ++i)
-  {
-    { CTRACK_NAME("min_element native");
-      auto it = rng::min_element(nv);
-      do_not_optimize(*it); }
-
-    { CTRACK_NAME("min_element bound");
-      auto it = rng::min_element(bv);
-      do_not_optimize(it->raw()); }
-
-    { CTRACK_NAME("max_element native");
-      auto it = rng::max_element(nv);
-      do_not_optimize(*it); }
-
-    { CTRACK_NAME("max_element bound");
-      auto it = rng::max_element(bv);
-      do_not_optimize(it->raw()); }
-  }
-}
-
-void bench_lower_bound_algo()
-{
-  constexpr std::size_t SZ = 10'000;
-  constexpr std::size_t ITERS = N / SZ;
-
-  std::vector<std::int16_t> nv(SZ);
-  std::vector<s9k> bv(SZ);
-  for (std::size_t i = 0; i < SZ; ++i)
-  {
-    auto val = static_cast<std::int16_t>(static_cast<int>(i) - 500);
-    nv[i] = val;
-    bv[i] = static_cast<int>(val);
-  }
-  // already sorted
-
-  for (std::size_t i = 0; i < ITERS; ++i)
-  {
+  auto lb = group("lower_bound 10k");
+  lb.run("native int16", [&] {
+    ++i;
     auto target = static_cast<std::int16_t>(static_cast<int>(i % 9501) - 500);
+    doNotOptimizeAway(*rng::lower_bound(ns, target));
+  });
+  lb.run("bound", [&] {
+    ++i;
+    auto target = s9k{static_cast<int>(i % 9501) - 500};
+    doNotOptimizeAway(rng::lower_bound(bs, target)->raw());
+  });
+  finish(lb);
 
-    { CTRACK_NAME("lower_bound native");
-      auto it = rng::lower_bound(nv, target);
-      do_not_optimize(*it); }
-
-    { CTRACK_NAME("lower_bound bound");
-      auto it = rng::lower_bound(bv, s9k{static_cast<int>(target)});
-      do_not_optimize(it->raw()); }
-  }
-}
-
-void bench_std_sort()
-{
-  constexpr std::size_t SZ = 10'000;
-  constexpr std::size_t ITERS = N / SZ;
-
-  std::vector<std::int16_t> nv(SZ);
-  std::vector<s9k> bv(SZ);
-  for (std::size_t i = 0; i < SZ; ++i)
+  // transform with the uint8-width type (255 is the sentinel slot -> u255 is
+  // 16-bit; u254 fits uint8 and compares lane-for-lane with native).
+  using u254 = bound<{0, 254}, unsafe>;
+  static_assert(sizeof(u254) == 1);
+  std::vector<std::uint8_t> tn(SZ);
+  std::vector<u255> tb(SZ);
+  std::vector<u254> t8(SZ);
+  std::vector<std::uint8_t> tno(SZ);
+  std::vector<u255> tbo(SZ);
+  std::vector<u254> t8o(SZ);
+  for (std::size_t j = 0; j < SZ; ++j)
   {
-    auto val = static_cast<std::int16_t>((i * 7 + 13) % 9501 - 500);
-    nv[i] = val;
-    bv[i] = static_cast<int>(val);
+    tn[j] = static_cast<std::uint8_t>(j % 250);
+    tb[j] = static_cast<int>(j % 250);
+    t8[j] = static_cast<int>(j % 250);
   }
-
-  auto nv_copy = nv;
-  auto bv_copy = bv;
-
-  for (std::size_t i = 0; i < ITERS; ++i)
-  {
-    { CTRACK_NAME("std::sort native");
-      nv = nv_copy;
-      std::sort(nv.begin(), nv.end());
-      do_not_optimize(nv[0]); }
-
-    { CTRACK_NAME("std::sort bound");
-      bv = bv_copy;
-      std::sort(bv.begin(), bv.end());
-      do_not_optimize(bv[0].raw()); }
-  }
-}
-
-void bench_nth_element()
-{
-  constexpr std::size_t SZ = 10'000;
-  constexpr std::size_t ITERS = N / SZ;
-
-  std::vector<std::int16_t> nv(SZ);
-  std::vector<s9k> bv(SZ);
-  for (std::size_t i = 0; i < SZ; ++i)
-  {
-    auto val = static_cast<std::int16_t>((i * 7 + 13) % 9501 - 500);
-    nv[i] = val;
-    bv[i] = static_cast<int>(val);
-  }
-
-  auto nv_copy = nv;
-  auto bv_copy = bv;
-  auto nth = static_cast<long>(SZ / 2);
-
-  for (std::size_t i = 0; i < ITERS; ++i)
-  {
-    { CTRACK_NAME("nth_element native");
-      nv = nv_copy;
-      std::nth_element(nv.begin(), nv.begin() + nth, nv.end());
-      do_not_optimize(nv[static_cast<std::size_t>(nth)]); }
-
-    { CTRACK_NAME("nth_element bound");
-      bv = bv_copy;
-      std::nth_element(bv.begin(), bv.begin() + nth, bv.end());
-      do_not_optimize(bv[static_cast<std::size_t>(nth)].raw()); }
-  }
-}
-
-void bench_partition()
-{
-  constexpr std::size_t SZ = 10'000;
-  constexpr std::size_t ITERS = N / SZ;
-
-  std::vector<std::int16_t> nv(SZ);
-  std::vector<s9k> bv(SZ);
-  for (std::size_t i = 0; i < SZ; ++i)
-  {
-    auto val = static_cast<std::int16_t>((i * 7 + 13) % 9501 - 500);
-    nv[i] = val;
-    bv[i] = static_cast<int>(val);
-  }
-
-  auto nv_copy = nv;
-  auto bv_copy = bv;
-
-  for (std::size_t i = 0; i < ITERS; ++i)
-  {
-    { CTRACK_NAME("partition native");
-      nv = nv_copy;
-      auto p = std::partition(nv.begin(), nv.end(),
-        [](std::int16_t v) { return v >= 0; });
-      do_not_optimize(*p); }
-
-    { CTRACK_NAME("partition bound");
-      bv = bv_copy;
-      auto p = std::partition(bv.begin(), bv.end(),
-        [](s9k v) { return v >= 0; });
-      do_not_optimize(p->raw()); }
-  }
-}
-
-void bench_std_accumulate()
-{
-  constexpr std::size_t SZ = 1000;
-  constexpr std::size_t ITERS = N / SZ;
-
-  using u200k = bound<{0, 200'000}, unsafe>;
-
-  std::vector<std::uint32_t> nv(SZ);
-  std::vector<u200k> bv(SZ);
-  for (std::size_t i = 0; i < SZ; ++i)
-  {
-    nv[i] = static_cast<std::uint32_t>(i % 5);
-    bv[i] = static_cast<int>(i % 5);
-  }
-
-  for (std::size_t i = 0; i < ITERS; ++i)
-  {
-    { CTRACK_NAME("std::accumulate native");
-      auto sum = std::accumulate(nv.begin(), nv.end(), std::uint32_t{0});
-      do_not_optimize(sum); }
-
-    { CTRACK_NAME("std::accumulate bound");
-      auto sum = std::accumulate(bv.begin(), bv.end(), u200k{0}, std::plus<>{});
-      do_not_optimize(sum.raw()); }
-  }
+  auto tf = group("transform v+1 10k (per element)", 30);
+  tf.batch(SZ);
+  tf.run("native uint8", [&] {
+    std::transform(tn.begin(), tn.end(), tno.begin(),
+      [](std::uint8_t v) -> std::uint8_t { return static_cast<std::uint8_t>(v + 1); });
+    doNotOptimizeAway(tno[0]);
+  });
+  tf.run("bound u255 (16-bit storage)", [&] {
+    std::transform(tb.begin(), tb.end(), tbo.begin(),
+      [](u255 v) { v += 1_b; return v; });
+    doNotOptimizeAway(tbo[0].raw());
+  });
+  tf.run("bound u254 (8-bit storage)", [&] {
+    std::transform(t8.begin(), t8.end(), t8o.begin(),
+      [](u254 v) { v += 1_b; return v; });
+    doNotOptimizeAway(t8o[0].raw());
+  });
+  finish(tf);
 }
 
 //---------------------------------------------------------------------------
 // main
 //---------------------------------------------------------------------------
-int main()
+int main(int argc, char** argv)
 {
-  std::cout << "bound<> benchmark (" << N << " iterations)\n\n";
+  std::ofstream md_file;
+  std::ofstream json_file;
+  if (argc > 1)
+  {
+    md_file.open(argv[1]);
+    if (!md_file) { std::cerr << "cannot open " << argv[1] << '\n'; return 1; }
+    g_out = &md_file;
+  }
+  if (argc > 2)
+  {
+    json_file.open(argv[2]);
+    if (!json_file) { std::cerr << "cannot open " << argv[2] << '\n'; return 1; }
+    g_json = &json_file;
+  }
 
-  // Print + clear after each bench: ctrack stores every Event uncompressed
-  // (~70 B/event), so accumulating all benches before a single print pushed
-  // peak RSS toward 30 GB. Clearing between functions bounds peak memory
-  // to a single bench's event volume.
-  #define RUN(fn) do { std::cout << "\n=== " #fn " ===\n"; fn(); ctrack::result_print(); } while (0)
-  RUN(bench_construct);
-  RUN(bench_add);
-  RUN(bench_mul);
-  RUN(bench_div);
-  RUN(bench_accumulate);
-  RUN(bench_int_vs_bound);
-  RUN(bench_fixed_point);
-  RUN(bench_fixed_point_signed);
-  RUN(bench_fixed_point_checked);
-  RUN(bench_fixed_point_q16);
-  RUN(bench_round_nearest);
-  RUN(bench_cmath);
-  RUN(bench_sort_algo);
-  RUN(bench_find_algo);
-  RUN(bench_transform_algo);
-  RUN(bench_minmax_algo);
-  RUN(bench_lower_bound_algo);
-  RUN(bench_std_sort);
-  RUN(bench_nth_element);
-  RUN(bench_partition);
-  RUN(bench_std_accumulate);
-  #undef RUN
+  if (argc > 1)
+    *g_out <<
+      "# Performance\n\n"
+      "Generated by `bench` (tests/bench.cpp, ankerl::nanobench) — do not edit\n"
+      "by hand. Regenerate with `cmake --build <build-dir> --target perf_report`\n"
+      "(Release, `-O3`, no `-march`; single run on the maintainer's machine).\n\n"
+      "Each table's FIRST row is the native implementation; the `relative`\n"
+      "column reads as native-time / row-time, so 100% is native parity and\n"
+      "smaller percentages are slower. Absolute ns/op values are host-specific\n"
+      "— the ratios are the stable signal. Instruction/cycle/branch columns\n"
+      "appear when the kernel grants perf-counter access.\n\n"
+      "Known slow paths (measured in the tables below, by design):\n"
+      "mixed direct/index-grid addition and cross-grid non-integer stores take\n"
+      "the exact rational path (see `docs/internals.md`); `bound<checked>`\n"
+      "element-wise loops keep a per-element range check — prefer `bnd::sum`'s\n"
+      "bulk check, which validates the total instead.\n\n";
+
+  bench_scalar_u8();
+  bench_compound();
+  bench_accumulate();
+  bench_signed();
+  bench_fixed_point();
+  bench_store_convert();
+  bench_cmath();
+  bench_algorithms();
   return 0;
 }
