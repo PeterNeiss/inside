@@ -319,6 +319,24 @@ static void bench_signed()
   });
   finish(mul);
 
+  // mixed integer-grid + quarter-notch-grid add (Tier-3 fast path): the
+  // native pairing is the same math on a hand-scaled 1/4 fixed-point lattice.
+  using whole    = bound<{0, 100}, unsafe>;
+  using quarters = bound<{{0, 1}, notch<1, 4>}, unsafe>;
+  auto mixed = group("add (mixed integer + 1/4-notch grids)");
+  mixed.run("native int<<2 + q2", [&] {
+    ++i;
+    std::int32_t a = in.a[i & kMask] << 2, b = static_cast<std::int32_t>(i & 3);
+    doNotOptimizeAway(a + b);
+  });
+  mixed.run("bound", [&] {
+    ++i;
+    whole a(in.a[i & kMask]);
+    quarters b = quarters::from_raw(static_cast<quarters::raw_type>(i & 3));
+    doNotOptimizeAway((a + b).raw());
+  });
+  finish(mixed);
+
   constexpr std::size_t SZ = 1000;
   std::vector<int> iv(SZ);
   std::vector<s100k> bv(SZ);
@@ -893,10 +911,11 @@ int main(int argc, char** argv)
       "— the ratios are the stable signal. Instruction/cycle/branch columns\n"
       "appear when the kernel grants perf-counter access.\n\n"
       "Known slow paths (measured in the tables below, by design):\n"
-      "mixed direct/index-grid addition and cross-grid non-integer stores take\n"
-      "the exact rational path (see `docs/internals.md`); `bound<checked>`\n"
-      "element-wise loops keep a per-element range check — prefer `bnd::sum`'s\n"
-      "bulk check, which validates the total instead.\n\n";
+      "arithmetic with a rational-raw operand takes the exact rational path\n"
+      "(the mixed integer/notch-offset add and cross-grid non-integer stores\n"
+      "now have folded integer fast paths, gated on imax-safe spans);\n"
+      "`bound<checked>` element-wise loops keep a per-element range check —\n"
+      "prefer `bnd::sum`'s bulk check, which validates the total instead.\n\n";
 
   bench_scalar_u8();
   bench_compound();

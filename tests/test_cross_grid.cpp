@@ -137,3 +137,33 @@ TEST_CASE("regression: fractional + integer-direct keeps the fraction", "[cross]
   REQUIRE(static_cast<rational>(Frac{5.25}  - Int{3})  == rational{9u, 4});   //   2.25
   REQUIRE(static_cast<rational>(Int{4} - Frac{1.5})    == rational{5u, 2});   //   2.5
 }
+
+//---------------------------------------------------------------------------
+// 2026-07 Tier-3 fast paths: pin that the integer folds stay engaged for the
+// shapes they were built for — and stay OUT of the fp-raw shapes (a double
+// raw has no integer offset; test_real_exact caught exactly that during
+// development).
+//---------------------------------------------------------------------------
+TEST_CASE("tier-3 integer fast paths stay engaged (and fp stays excluded)",
+          "[cross][arith][perf-paths]")
+{
+  using whole    = bound<{0, 100}>;
+  using quarters = bound<{{0, 1}, notch<1, 4>}>;
+  STATIC_REQUIRE(detail::addition<whole, quarters>::mixed_offset_ok);
+
+  using tenths       = bound<{{0, 100}, notch<1, 10>}>;
+  using quarter_grid = bound<{{0, 100}, notch<1, 4>}, round_nearest>;
+  STATIC_REQUIRE(detail::assignment<quarter_grid, tenths>::affine_map.ok);
+
+  // fp-backed operands must not take the integer offset path.
+  using coarse_real = bound<{{0, (umax{1} << 40)}, notch<1, 2>}, real>;
+  using fine_real   = bound<{{0, 1}, notch<1, (1u << 20)>}, real>;
+  if constexpr (detail::fp_raw<coarse_real>)
+    STATIC_REQUIRE_FALSE(detail::addition<coarse_real, fine_real>::mixed_offset_ok);
+
+  // value check across a negative Lower, at compile time (constexpr path).
+  using signed_whole = bound<{-50, 50}>;
+  using eighths      = bound<{{-2, 2}, notch<1, 8>}>;
+  STATIC_REQUIRE(rational{signed_whole{-7} + eighths{-0.625_b}}
+                 == rational{umax{61}, imax{-8}});
+}

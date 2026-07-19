@@ -45,6 +45,47 @@ namespace bnd::detail
                                             result,
                                             return_type_for<F>>;
 
+    // Mixed integer-aligned / notch-offset fast path: with a unit-numerator
+    // result notch 1/d, both operand offsets in result-notch units are exact
+    // integer math — (to_value − Lower)·d for the integer-aligned operand,
+    // raw·widen for the notch-offset one (offsets compose because
+    // Lower<result> = Lower<L> + Lower<R>). Gated on an index-raw result and
+    // the result slot count fitting imax so no intermediate can overflow
+    // (each operand contribution ≤ its own span/N ≤ the result slot count).
+    static constexpr bool mixed_offset_ok = []{
+      if constexpr (rational_raw<L> || rational_raw<R> || rational_raw<result>
+                    || fp_raw<L> || fp_raw<R>          // double raws: no integer offset
+                    || fp_raw<result> || !index_raw<result>
+                    || (IsIntegerAligned<L> && IsIntegerAligned<R>)
+                    || (index_raw<L> && index_raw<R>)
+                    || Notch<result> == 0 || Notch<result>.Numerator != 1)
+        return false;
+      else
+      {
+        constexpr auto span = Upper<result> - Lower<result>;
+        if (!span.has_value())
+          return false;
+        const auto slots = *span / Notch<result>;
+        return slots.has_value()
+            && (*slots).Numerator
+                 <= static_cast<umax>(std::numeric_limits<imax>::max());
+      }
+    }();
+
+    // One operand's offset in result-notch units (see mixed_offset_ok).
+    // Defined inline (MSVC and constrained partial specializations).
+    template <boundable X>
+    static constexpr imax mixed_offset_units(X const& x, imax widen)
+    {
+      if constexpr (IsIntegerAligned<X>)
+      {
+        constexpr imax den = static_cast<imax>(abs_den(Notch<result>.Denominator));
+        return (to_value(x) - LowerImax<X>) * den;
+      }
+      else
+        return raw_imax(x) * widen;
+    }
+
     // Result notch is gcd(NL, NR); scale each raw up to it before adding —
     // lhs_widen = NL/Nresult, rhs_widen = NR/Nresult (exact, Nresult divides both).
     // Guard the continuous-grid case (Notch<result> == 0): the rational divide-by-zero
@@ -83,14 +124,21 @@ namespace bnd::detail
       else
         res = result::from_raw(rational::add_unchecked(lhs, rhs));
     }
+    else if constexpr (mixed_offset_ok)
+    {
+      // Mixed integer-aligned / notch-offset operands, pure integer offsets
+      // (see mixed_offset_ok above).
+      res = result::from_raw(raw_cast<result>(mixed_offset_units(lhs, lhs_widen)
+                                            + mixed_offset_units(rhs, rhs_widen)));
+    }
     else if constexpr (rational_raw<L> || rational_raw<R>
                        || !((IsIntegerAligned<L> && IsIntegerAligned<R>)
                             || (index_raw<L> && index_raw<R>)))
     {
-      // Rational store: a rational-raw operand, or a direct integer bound mixed
-      // with a fractional notch-offset one (where neither to_value nor offset-widen
-      // is exact — to_value would truncate the fractional operand). Compute the
-      // exact rational sum and convert to result's raw via raw_from_offset.
+      // Rational store: a rational-raw operand, or a mix the integer fast
+      // paths can't express exactly (non-unit result notch numerator, or a
+      // slot count past imax). Compute the exact rational sum and convert to
+      // result's raw via raw_from_offset.
       auto sum = rational::add_unchecked(lhs,rhs);
       res = result::from_raw(raw_from_offset<result>(
           ((sum - Lower<result>) / Notch<result>).value().Numerator));
