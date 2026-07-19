@@ -67,7 +67,7 @@ Besides the *behavior* flags above, these flags select the **representation**
 | `indexed` | raw == 0-based notch index | `Notch != 0` | e.g. `bound<{-5, 5}, indexed>` stores 0..10 unsigned — dense layout for serialization |
 
 ```cpp
-using gain   = bound<{{0, 4}, notch<1, 65536>}, round_nearest | real>;  // math operand
+using gain   = bound<{{0, 4}, notch<1, 65536>}, round_nearest | f64>;  // math operand
 using ratio  = bound<{{0, 1}, notch<1, 3>},     exact>;                 // thirds, exactly
 using regval = bound<{5, 100}, direct>;       // raw() == value, interop-friendly
 using slot   = bound<{-5, 5},  indexed>;      // raw() == 0..10, dense unsigned
@@ -157,7 +157,7 @@ auto q = div(d, z, on_overflow([&](auto& res, errc c) {
 }));
 ```
 
-### `policy_ref` compound assignment with a real or bound RHS
+### `policy_ref` compound assignment with a floating-point or bound RHS
 
 `x.on_wrap(...) += rhs` (and `-=`, `*=`, `/=`) accept a `float` / `double` RHS
 or another bound. So a runtime `double` delta flows straight through the

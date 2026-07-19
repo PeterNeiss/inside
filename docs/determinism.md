@@ -16,8 +16,9 @@ die." Reproducibility is the antidote.)
 | Layer | Reproducible? | Condition |
 |---|---|---|
 | Integer & rational storage / `+ − × ÷` | **Always** | none — fixed-width `int64`, exact rational |
-| `real` (double-backed) storage & arithmetic | **Yes** | IEEE-754 binary64, round-to-nearest, no `-ffast-math` |
+| `f64` / `f32` (float-backed) storage & arithmetic | **Yes** | IEEE-754 binary64/binary32, round-to-nearest, no `-ffast-math` |
 | `bnd::math` — default `double` engine | **Yes** | same as above |
+| `bnd::math` — `float` engine (`-DBOUND_MATH_FLOAT=ON`) | **Yes** | IEEE-754 binary32, round-to-nearest, no `-ffast-math` |
 | `bnd::math` — integer/CORDIC engine (`-DBOUND_MATH_FIXED=ON`) | **Yes, unconditionally** | any platform, any flags, no FPU |
 | Compile-time constants & coefficients | **Always** | `constexpr`, no external codegen |
 
@@ -26,15 +27,15 @@ assumptions (e.g. an x86 host replaying a soft-float embedded core), build with
 `-DBOUND_MATH_FIXED=ON`. Otherwise the default engine is reproducible on every
 conforming IEEE-754 platform built without `-ffast-math`.
 
-> **"Reproducible" means per engine.** Each `bnd::math` engine is bit-identical for
-> a given engine, but the `double` and integer/CORDIC engines are **not**
-> value-identical to *each other* — their transcendentals can differ by up to one
-> output notch, so switching engines is not value-preserving. See
-> [The two engines are not value-identical](#the-two-engines-are-not-value-identical-switching-engines-changes-results).
+> **"Reproducible" means per engine.** Each `bnd::math` engine is bit-identical
+> within itself, but the three engines (`dbl` / `flt` / `cordic`) are **not**
+> value-identical to *each other* — their transcendentals can differ by a notch
+> or two, so switching engines is not value-preserving. See
+> [The engines are not value-identical](#the-engines-are-not-value-identical-switching-engines-changes-results).
 
 ## The integer & rational core is deterministic by construction
 
-Every non-`real` bound stores its value as a fixed-width integer index/value, and
+Every bound without `f64`/`f32` storage holds a fixed-width integer index/value, and
 all of its arithmetic is integer or exact-rational. There is no floating point on
 these paths, so there is nothing for the platform to round differently:
 
@@ -51,12 +52,14 @@ these paths, so there is nothing for the platform to round differently:
 Two builds on two architectures that take an integer/rational path produce the
 same bits, period.
 
-## The `real` (double-backed) path
+## The `f64` (double-backed) path
 
-A `real` bound holds its value as an IEEE-754 `double`. It is only ever selected
-on a **`double_exact`** grid — dyadic *and* every on-grid value within the 53-bit
-significand (see [math.md](math.md#the-real-policy-requirement) and
-[storage.md](storage.md#choosing-the-representation)). Consequences for
+An `f64` bound (`real` is the deprecated spelling) holds its value as an
+IEEE-754 `double`. It is only ever selected on a **`double_exact`** grid —
+dyadic *and* every on-grid value within the 53-bit significand (see
+[math.md](math.md#the-snap-requirement-and-f64-as-a-fast-storage-option) and
+[storage.md](storage.md#choosing-the-representation)). The same reasoning
+applies to `f32` with binary32's 24-bit significand. Consequences for
 determinism:
 
 - On-grid values are *exactly* representable, so storing/loading is lossless.
@@ -65,18 +68,19 @@ determinism:
   safe — the same rounding rule as the integer engine.
 - On-grid `+ − ×` whose exact result still fits the result grid are computed
   exactly; an operation whose result `double` *cannot* represent **drops the
-  `real` flag** and stores the result in exact (rational/integer) storage, so
-  `real` math never silently diverges from the exact grid arithmetic.
+  `f64` flag** and stores the result in exact (rational/integer) storage, so
+  `f64` math never silently diverges from the exact grid arithmetic.
 
 **Condition.** IEEE-754 correctly-rounded `+ − × ÷` are deterministic given:
 round-to-nearest-even (the default), IEEE-754 binary64, and **no `-ffast-math`**
 (which permits value-changing reassociation). On 32-bit x86, compile for SSE2 —
 the legacy x87 stack evaluates at 80-bit extended precision and will not match.
 
-## The two `bnd::math` engines
+## The three `bnd::math` engines
 
-`bnd::math` (`sin`/`cos`/`tan`/`exp`/`log`/`sqrt`/…) ships **one API over two
-compile-time engines**, both reproducible — they differ only in how strong the
+`bnd::math` (`sin`/`cos`/`tan`/`exp`/`log`/`sqrt`/…) ships **one API over three
+engines** (`dbl` / `flt` / `cordic`, all reachable by namespace; one is the
+build default) — each reproducible; they differ only in how strong the
 guarantee is.
 
 ### Default — the `double` engine
@@ -95,6 +99,14 @@ bit-to-bit between vendors); it evaluates its own fixed polynomials using only
 the three IEEE-754-well-defined primitives. Explicit `std::fma` removes the
 "did the compiler contract `a*b+c`?" ambiguity. Fast (~ns), needs an FPU, runs at
 runtime.
+
+### `-DBOUND_MATH_FLOAT=ON` — the `float` engine
+
+The same construction in single precision: fixed polynomials, explicit
+`std::fma(float)`, its own compile-time-derived range-reduction constants.
+**Bit-identical on every IEEE-754 binary32 platform** under the same conditions
+as the double engine. It exists for single-precision-only FPUs (Cortex-M4F and
+similar) — see [math.md](math.md#the-flt-binary32-engine).
 
 ### `-DBOUND_MATH_FIXED=ON` — the integer/CORDIC engine
 
@@ -116,17 +128,17 @@ This engine is **unconditionally** bit-identical — any platform, any flags, no
 FPU required — at the cost of speed. Use it for embedded / soft-float targets or
 when you must match results across a heterogeneous fleet.
 
-Both engines write to the same auto-deduced output grids, so each is reproducible
-and correct to within the grid — but that does **not** mean the two engines produce
+All engines write to the same auto-deduced output grids, so each is reproducible
+and correct to within the grid — but that does **not** mean two engines produce
 the *same* grid value for every input (see below).
 
-### The two engines are not value-identical (switching engines changes results)
+### The engines are not value-identical (switching engines changes results)
 
 Each engine is deterministic **per engine** — bit-identical for a given engine
-across platform, compiler, optimisation level, and FP flags. But the two engines
-are **independent approximations** of the same irrational result, so for some inputs
-they land on **adjacent notches**: they can differ by **up to one notch** (one ULP
-of the output grid).
+across platform, compiler, optimisation level, and FP flags. But the engines
+are **independent approximations** of the same irrational result, so for some
+inputs they land on **adjacent notches**: any two engines can differ by a notch
+(a couple on fine grids under `flt`) — a ULP or two of the output grid.
 
 **Why — the table-maker's dilemma.** When the exact mathematical result falls
 extremely close to the midpoint between two grid points, each engine's tiny
@@ -141,11 +153,12 @@ of a notch above the midpoint `111779.5`. The default `double` engine rounds up 
 within the grid's resolution of the true value; they simply disagree by one notch.
 
 **Consequence — switching engines is not value-preserving.** You **cannot** rebuild
-with the other engine and expect bit-identical results: toggling `-DBOUND_MATH_FIXED`
-can change individual transcendental values by up to a notch. Golden vectors,
-record-and-replay corpora, lockstep peers, and any cross-build comparison are valid
-**within a single engine only** — pick one engine for any dataset that must stay
-bit-comparable, and never mix outputs from the two engines. (Algebraic results —
+with another engine and expect bit-identical results: toggling `-DBOUND_MATH_FIXED`
+or `-DBOUND_MATH_FLOAT` can change individual transcendental values by a notch.
+Golden vectors, record-and-replay corpora, lockstep peers, and any cross-build
+comparison are valid **within a single engine only** — pick one engine for any
+dataset that must stay bit-comparable, and never mix outputs from different
+engines. (Algebraic results —
 `+ − × ÷`, conversions, rounding — *are* identical across engines; this caveat is
 specific to the transcendental `bnd::math` functions.)
 
@@ -170,6 +183,6 @@ could drift from the source.
 | You want to… | Read |
 |---|---|
 | call sin/cos/sqrt/… and pick an engine | [math.md](math.md) |
-| understand `real` / double-backed storage | [storage.md](storage.md) |
+| understand `f64` / double-backed storage | [storage.md](storage.md) |
 | pick fast grids (fixed-point) | [fixed-point.md](fixed-point.md) |
 | know *why* it's shaped this way | [internals.md](internals.md) |

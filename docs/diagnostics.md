@@ -23,12 +23,20 @@ bound<grid{interval{rational{3,1}, rational{3,1}}, rational{0,1}}, 17179869184>
 | `1<<2` | 4 | `ignore_domain` |
 | `1<<4` | 16 | `snap` |
 | `1<<5` | 32 | `round_nearest` (+ snap) |
+| `1<<6` | 64 | `round_floor` (+ snap) |
+| `1<<7` | 128 | `round_ceil` (+ snap) |
+| `1<<8` | 256 | `round_half_even` (+ snap) |
 | `1<<32` | 4294967296 | `clamp` |
 | `1<<33` | 8589934592 | `wrap` |
 | `1<<34` | 17179869184 | `checked` (the default `P`) |
 | `1<<35` | 34359738368 | `sentinel` |
-| `1<<37` | … | `real` |
+| `1<<36` | … | `unsafe` (+ ignore_domain, snap, ignore_zero) |
+| `1<<37` | … | `f64` (+ round_nearest; `real` is the deprecated alias) |
 | `1<<38` | … | `exact` |
+| `1<<39` | … | `direct` |
+| `1<<40` | … | `indexed` |
+| `1<<41` | … | `f32` (+ round_nearest) |
+| `1<<42`…`1<<49` | … | width flags `i8 u8 i16 u16 i32 u32 i64 u64` |
 
 So `17179869184` is simply `checked`, the default policy every `bound` carries unless you
 choose another. (Full table: `include/bound/policy_flag.hpp`.)

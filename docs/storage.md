@@ -64,7 +64,7 @@ The rules above are the **default deduction**. Several policy flags override it
 (see [policies.md](policies.md#representation-flags) for the full table):
 
 ```cpp
-using gain   = bound<{{0, 4}, notch<1, 65536>}, round_nearest | real>;
+using gain   = bound<{{0, 4}, notch<1, 65536>}, round_nearest | f64>;
                                        // Raw: double (math operand, double-exact grid)
 using ratio  = bound<{{0, 1}, notch<1, 3>}, exact>;
                                        // Raw: exact fraction on a NOTCHED grid
@@ -74,7 +74,8 @@ using wide   = bound<{0, 100}, u16>;    // Raw: uint16_t (pinned width, raw() ==
 using sidx   = bound<{0, 4, notch<1,16>}, u32 | indexed>; // Raw: uint32_t index
 ```
 
-`real`/`f32`/`f64` are the math-operand flags ([math.md](math.md)); `exact` lifts the
+`f64`/`f32` are the math-operand flags ([math.md](math.md); `real` is the
+deprecated spelling of `f64`); `exact` lifts the
 notch-count limit and removes `double` entirely; `direct` makes the raw equal
 the wire/debugger value for interop; `indexed` gives signed grids a dense
 unsigned layout for serialization.
@@ -89,7 +90,7 @@ compile error (`storage_pick` static_asserts the range fits). Mixed-flag results
 from arithmetic resolve widest-wins: `exact > f64 > f32 > {width} > direct >
 indexed > deduced` (width flags are dropped on arithmetic results, which deduce
 their own width). See [`examples/storage_flags.cpp`](../examples/storage_flags.cpp)
-for value/index storage and the compile-time fit check. `real` is selected only
+for value/index storage and the compile-time fit check. `f64` is selected only
 when the grid is **double-exact** (every value fits `double`'s 53-bit significand);
 otherwise it is dropped and deduction proceeds — and a result grid finer than the
 `uint64` index space deduces `rational`, keeping the result exact.
@@ -106,7 +107,7 @@ otherwise it is dropped and deduction proceeds — and a result grid finer than 
 flag, so `sizeof(slim::optional<bound>) == sizeof(bound)`. The sentinel is
 `numeric_limits<raw>::max()` for unsigned types and `numeric_limits<raw>::min()`
 for signed types. This costs one value from the representable range (e.g.
-`int8_t` gives 255 usable values: −127..127). For `real` (double) raw the
+`int8_t` gives 255 usable values: −127..127). For `f64` (double) raw the
 sentinel is that same `numeric_limits<raw>::max()` rule applied to `double`,
 i.e. the finite, comparable `DBL_MAX` — unreachable as an on-grid value, never a
 NaN/Inf.

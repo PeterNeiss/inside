@@ -79,7 +79,7 @@ explicit precisely because it drops the guarantee.
 - `numerator()` / `denominator()` — exact read-out, no rounding.
 - implicit `operator imax()` for integer-aligned grids (so a bound indexes
   an array directly).
-- explicit `double(b)` — opt in to floating point. (`real`-policy math
+- explicit `double(b)` — opt in to floating point. (`f64`-policy math
   operands convert implicitly — their value is exact in `double`.)
 
 See [conversions.md](conversions.md).
@@ -87,10 +87,11 @@ See [conversions.md](conversions.md).
 ## Math on bounds
 
 `bnd::math` is a `<cmath>`-shaped, reproducible function set over bounds —
-`sin`/`cos`/`sqrt`/`exp`/`log`/`atan2`/… Math operands carry the `real`
-policy flag (`bound<G, round_nearest | real>`); one API runs on either of
-two engines — a fast IEEE-754 `double` engine (default) or a bit-exact,
-`constexpr` integer engine (`-DBOUND_MATH_FIXED=ON`). Angles are radians;
+`sin`/`cos`/`sqrt`/`exp`/`log`/`atan2`/… Math operands typically carry the
+`f64` storage flag (`bound<G, round_nearest | f64>`); one API runs on any of
+three engines — a fast IEEE-754 `double` engine (`dbl`, the default), a
+binary32 engine for single-precision FPUs (`flt`), and a bit-exact,
+`constexpr`, FPU-free integer engine (`cordic`). Angles are radians;
 output grids auto-deduce from the input; runtime-conditional failures (a
 `tan` pole, a negative `sqrt`) surface as `slim::expected`.
 See [math.md](math.md).
@@ -104,4 +105,8 @@ See [math.md](math.md).
 | convert / cast / read out | [conversions.md](conversions.md) |
 | iterate, store, use with the STL | [storage.md](storage.md) |
 | call sin/cos/sqrt/… | [math.md](math.md) |
+| map your Qm.n fixed-point habits | [fixed-point.md](fixed-point.md) |
+| replay bit-identically (lockstep, fuzzing) | [determinism.md](determinism.md) |
+| build for bare metal / no exceptions | [freestanding.md](freestanding.md) |
+| use the one-file header (Compiler Explorer) | [single-header.md](single-header.md) |
 | know *why* it's shaped this way | [internals.md](internals.md) |

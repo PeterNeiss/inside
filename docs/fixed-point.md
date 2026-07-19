@@ -61,13 +61,14 @@ template <boundable B> inline constexpr bool IsQFormat =
 |---|---|---|---|
 | `direct` | the value, as a plain integer (Notch 1) | cheapest — one int | integer ranges, interop (`raw()` == wire value) |
 | deduced / `indexed` | 0-based notch index | one int (+ a shift/offset to read the value) | Q-format, dense serialization |
-| `real` | the value as IEEE-754 `double` | one double; FPU | math operands (sin/cos/…) |
+| `f64` | the value as IEEE-754 `double` | one double; FPU | math operands (sin/cos/…) |
+| `f32` | the value as IEEE-754 `float` | one float; single-precision FPU is enough | math operands on float-only FPUs (Cortex-M4F), `flt` engine |
 | `exact` | exact fraction (`rational`) | **gcd/lcm per op** | when rounding is unacceptable |
 
 Storage is deduced from the grid unless a representation flag overrides it (see
 [storage.md](storage.md#choosing-the-representation)). Rule of thumb: integer-raw
-(direct/indexed) and `real` are cheap; **rational is the slow one** — avoid it in
-hot loops.
+(direct/indexed) and `f64`/`f32` are cheap; **rational is the slow one** — avoid it
+in hot loops.
 
 ## Which grids are fast
 
@@ -80,7 +81,7 @@ hot loops.
    `(a << log2 N) / b` (`HasQFormatFastPath` / `q_format_encode` in
    `generic.hpp`; the Q-format divide in `detail/division.hpp`). Construction is
    ~native (Q8.8 / Q16.16 measure at ~0.97×).
-3. **`real` dyadic, `double_exact` grids** — the right choice for transcendental
+3. **`f64` dyadic, `double_exact` grids** — the right choice for transcendental
    math: the raw *is* the `double`, so feeding `bnd::math` is free marshalling.
 4. **Avoid in hot loops:** non-power-of-two notches and continuous (Notch 0) grids
    fall to rational storage (gcd/lcm every op). For bulk reductions use
@@ -109,7 +110,7 @@ breaks autovectorisation — use `unsafe` inside proven-safe inner loops, or
 
 - **Hot integer/fixed-point math:** integer-aligned or Q-format grids; `unsafe`
   or `snap` in the inner loop, convert back to `checked` after.
-- **Transcendentals:** `real` on a dyadic `double_exact` grid (see
+- **Transcendentals:** `f64` on a dyadic `double_exact` grid (see
   [math.md](math.md)).
 - **No rounding allowed:** `exact` — accept the rational cost.
 - **SIMD byte/halfword loops:** keep the range one below the type max (use the

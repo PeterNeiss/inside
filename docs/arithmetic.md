@@ -219,9 +219,9 @@ auto p = bnd::lerp (a, b, t);          // a + (b - a) * t   (t a [0,1] bound)
 ```
 
 A sqrt-free squared distance is just `dot(dx, dy, dx, dy)`; compare it against
-a squared-radius point-bound to test a hit without leaving the bounded world.
-See [`usebound/spacesim`](../../usebound) for these driving collision and
-autopilot steering entirely in bound-space.
+a squared-radius point-bound to test a hit without leaving the bounded world —
+e.g. a 2-D space sim can drive collision and autopilot steering entirely in
+bound-space.
 
 ## Rounding
 
@@ -352,7 +352,7 @@ world. The overload dispatches per RHS kind:
 error code, or is silent under `ignore_zero` — see
 [policies.md](policies.md#error-code-mode)). This is the same per-path
 zero check used by `bound / bound`; see
-[Division § Why the result is `slim::optional`](#why-the-result-is-slimoptional).
+[Division § When the result is `slim::optional`](#when-the-result-is-slimoptional-and-when-it-isnt).
 
 ```cpp
 using rn = bound<{{0, 100}, notch<1, 100>}, round_nearest>;
@@ -377,10 +377,10 @@ auto prod = mul_all(a, b);      // bound<{0, 10000}>, value 200
 Operations return `slim::optional<bound>` in two cases:
 
 1. **Division and modulo** — the divisor could be zero. See
-   [Division § Why the result is `slim::optional`](#why-the-result-is-slimoptional)
+   [Division § When the result is `slim::optional`](#when-the-result-is-slimoptional-and-when-it-isnt)
    for the two distinct failure modes division has (divide-by-zero on every
    path, plus denominator overflow on the rational path under `checked`).
-   `real` (double-backed) division participates identically: a real `÷` whose
+   `f64` (double-backed) division participates identically: an `f64` `÷` whose
    divisor grid can be zero returns `slim::optional` and reports
    `errc::division_by_zero` on a zero divisor — it is not a silent path.
 
@@ -388,9 +388,9 @@ Operations return `slim::optional<bound>` in two cases:
    an integer raw type (see [storage.md](storage.md)), the result uses
    `rational` as its raw storage. Addition and multiplication on such types
    return `slim::optional` because rational arithmetic can overflow
-   (`lcm(b, d)` of the denominators may exceed `imax`). This also covers a `real`
-   result grid too fine for `double`: `real` is dropped and the exact result is
-   stored as `rational`, so an unrepresentable `real ×` returns `slim::optional`
+   (`lcm(b, d)` of the denominators may exceed `imax`). This also covers an `f64`
+   result grid too fine for `double`: `f64` is dropped and the exact result is
+   stored as `rational`, so an unrepresentable `f64 ×` returns `slim::optional`
    (overflow-checked) rather than silently losing precision.
 
 All `optional`-returning operators propagate `nullopt`: if either operand is

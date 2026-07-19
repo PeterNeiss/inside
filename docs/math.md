@@ -1,13 +1,15 @@
-# `bnd::math` — reproducible math, one API, two engines
+# `bnd::math` — reproducible math, one API, three engines
 
 `bound/cmath.hpp` provides a `<cmath>`-shaped function set that operates on
 `bound` values instead of `float`/`double`. There is **one public API** and
-**two engines**, selected at build time — interchangeable at the source/API level,
-but **not** value-for-value (see the engine caveat below):
+**three engines** — interchangeable at the source/API level, but pairwise **not**
+value-for-value (see the engine caveat below). One is picked as the build
+default; all three stay callable by namespace in the same binary:
 
-| Engine | Selected by | Reproducibility | constexpr | Speed |
+| Engine | Default when | Reproducibility | constexpr | Speed |
 |---|---|---|---|---|
-| **double** (default) | — | bit-identical on every IEEE-754 binary64 platform compiled without `-ffast-math` (round-to-nearest) | no | ~2× faster |
+| **double** (binary64, default) | — | bit-identical on every IEEE-754 binary64 platform compiled without `-ffast-math` (round-to-nearest) | no | ~2× faster |
+| **float** (binary32) | CMake `-DBOUND_MATH_FLOAT=ON` (macro `BND_MATH_FLOAT`) | bit-identical on every IEEE-754 binary32 platform (same contract as double) | no | single-precision FPUs (Cortex-M4F) |
 | **integer / CORDIC** | CMake `-DBOUND_MATH_FIXED=ON` (macro `BND_MATH_FIXED`) | bit-identical **unconditionally** — any platform, any flags, no FPU required | yes | embedded-friendly |
 
 > The double engine's "constexpr: no" lifts automatically on C++26 toolchains
@@ -16,18 +18,19 @@ but **not** value-for-value (see the engine caveat below):
 
 The double engine evaluates its own fixed polynomials (`std::fma` Horner,
 hex-float coefficients, Cody-Waite range reduction) plus the correctly-rounded
-`std::sqrt` — no `<cmath>` transcendentals anywhere. The integer engine runs
-Q.30 fixed-point CORDIC/Newton cores. Both snap results onto the same
-auto-deduced output grid, so the two engines are **feature- and
-signature-identical**: the same source compiles against either.
+`std::sqrt` — no `<cmath>` transcendentals anywhere. The float engine runs the
+same polynomial shapes in single precision. The integer engine runs Q.30
+fixed-point CORDIC/Newton cores. All three snap results onto the same
+auto-deduced output grid, so the engines are **feature- and
+signature-identical**: the same source compiles against any of them.
 
 > Engine = speed/representation; grid = precision. The result **type** does not
 > depend on the engine, and each engine is bit-reproducible across platforms.
-> The grid-snapped **value**, however, can differ between the two engines by up to
-> one notch on rare rounding ties (the table-maker's dilemma): the engines are
+> The grid-snapped **value**, however, can differ between engines by up to
+> a notch or two on rare rounding ties (the table-maker's dilemma): the engines are
 > independent approximations, so **switching engines is not value-preserving**.
 > Don't mix or compare outputs from different engines — see
-> [determinism.md](determinism.md) ("The two engines are not value-identical").
+> [determinism.md](determinism.md) ("The engines are not value-identical").
 > (Algebraic ops — `+ − × ÷`, conversions, rounding — *are* identical across
 > engines; only the transcendentals can differ.)
 
@@ -38,8 +41,8 @@ For the full reproducibility story across the whole library (not just
 #include "bound/cmath.hpp"
 using namespace bnd;
 
-// Math operands carry the `real` policy (see below).
-using angle = bound<{{-8, 8}, notch<1, 16384>}, round_nearest | real>;
+// Math operands here carry the `f64` storage flag (optional — see below).
+using angle = bound<{{-8, 8}, notch<1, 16384>}, round_nearest | f64>;
 auto s = math::sin(angle{1});       // amplitude bound in [-1, 1]
 auto h = math::hypot(s, s);         // √(s²+s²), output grid auto-deduced
 ```
@@ -62,17 +65,17 @@ rounding.
 
 `f64` is **not** required — it is an optional **storage** flag that buys speed:
 
-- Under the default engine `real` selects **double-backed storage** on the
+- Under the default engine `f64` selects **double-backed storage** on the
   bound's grid — the raw *is* the value, so input marshalling into the engine is
   free (the large speedup over integer-index I/O). Values still obey the grid:
   they snap to the notch on store. Out-of-range stores run the usual policy
   cascade (clamp / wrap / sentinel / checked report).
-- Without `real`, a snap-capable grid still works — the engine's `double`/integer
+- Without `f64`, a snap-capable grid still works — the engine's `double`/integer
   result is snapped to the grid through the assignment path (a touch slower; no
-  double fast path). Use `real` when the grid is dyadic and you want the speed.
-- Under `BND_MATH_FIXED` `real` is an ordinary `round_nearest` integer-backed
+  double fast path). Use `f64` when the grid is dyadic and you want the speed.
+- Under `BND_MATH_FIXED` `f64` is an ordinary `round_nearest` integer-backed
   bound — the source compiles unchanged.
-- `real` requires a grid that is **exactly representable in `double`**: dyadic
+- `f64` requires a grid that is **exactly representable in `double`**: dyadic
   (power-of-two notch and Lower) **and** within the 53-bit significand — writing
   a value as `N·2^(−f)` with `f = log2(notch denominator)`, every on-grid value
   must satisfy `|N| < 2^53` (and `f ≤ 1022`, so no value is subnormal). That is
@@ -81,14 +84,14 @@ rounding.
   (*"grid exceeds double's 53-bit significand — coarsen the notch/range or use
   `exact`"*).
 - An operation whose **result** grid would exceed that bound automatically drops
-  `real` and stores the result exactly (rational/integer), so `real` math never
+  `f64` and stores the result exactly (rational/integer), so `f64` math never
   silently diverges from the exact grid arithmetic — it trades the double fast
   path for exactness only where `double` cannot represent the result.
 
 Pure grid operations — `abs` / `floor` / `ceil` / `round` / `trunc` /
-`fmod` — do **not** require `real`: they have no engine and act on any bound.
+`fmod` — do **not** require `f64`: they have no engine and act on any bound.
 
-See [policies.md](policies.md#representation-flags) for `real` among the
+See [policies.md](policies.md#representation-flags) for `f64` among the
 other representation flags.
 
 ## Conventions
@@ -116,30 +119,30 @@ other representation flags.
     (~1e-6–1e-9 depending on composition depth), then quantize onto the
     output grid.
   - Algebraically-exact results (e.g. `cbrt(8)`, `hypot(3,4)`, `pow(2,10)`)
-    land exactly under both engines.
+    land exactly under every engine.
   - Measured per-function error tables for all three engines (max/mean in
     output-notch units, against a long-double reference) are in
     [accuracy.md](accuracy.md), regenerated by the `accuracy_report` build
     target.
 - **Input-range limits** below are engine-shared `static_assert` envelopes,
-  kept identical for both engines so the same programs compile everywhere.
+  kept identical across all engines so the same programs compile everywhere.
   The trig/root/atan limits (±2^20) come from the integer engine's working
   scale; the `exp`/`exp2`/`pow` limits are **output representability** —
   e.g. e^44's exact numerator exceeds any grid's integer range — and cannot
   widen without coupling them to the output grid.
 - **constexpr.** The math functions are `constexpr` only under
   `BND_MATH_FIXED` (the double engine's `std::fma`/`std::sqrt` are runtime).
-  The compile-time output-grid deduction uses the integer cores in **both**
-  builds, so grids and types never depend on the engine.
+  The compile-time output-grid deduction uses the integer cores in **every**
+  build, so grids and types never depend on the engine.
 
-## Algebraic tier (exact, no polynomials, no `real` needed)
+## Algebraic tier (exact, no polynomials, no `f64` needed)
 
 | Function | Domain | Output | Errors | Notes |
 |---|---|---|---|---|
 | `abs(x)` | all | `[0, max\|·\|]` | — | exact |
 | `floor(x)` / `ceil(x)` / `round(x)` / `trunc(x)` | all | integer notch | — | exact; `round` is half-away-from-zero |
 | `fmod(x, y)` | `y` must not span 0 | sign of `x` | — | truncated-division convention, exact. Integer-backed operands on commensurable notches take a single-integer-remainder fast path (faster than `std::fmod`). |
-| `pown<E>(x)` | all, `E ≥ 0` compile-time | corner-widened per multiply | optional per the checked-exact rules | repeated squaring in bound-space — exact, negative bases fine, no `real` needed |
+| `pown<E>(x)` | all, `E ≥ 0` compile-time | corner-widened per multiply | optional per the checked-exact rules | repeated squaring in bound-space — exact, negative bases fine, no `f64` needed |
 
 ## Roots
 
@@ -246,7 +249,7 @@ output grids, and domain `static_assert`s** as the unqualified one — only the
 compute backend differs. This lets one program pick per call site:
 
 ```cpp
-using A = bound<{{-8, 8}, notch<1, 16384>}, round_nearest | real>;
+using A = bound<{{-8, 8}, notch<1, 16384>}, round_nearest | f64>;
 
 auto a = math::cordic::sin(A{1});   // bit-exact across every target — replay/sim
 auto b = math::dbl::sin(A{1});      // ~2× faster — hot, accuracy-insensitive path

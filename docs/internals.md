@@ -1,7 +1,7 @@
 # bound library — internals
 
 This document explains *why* the library is shaped the way it is. It is not a
-tutorial; for that see `README.md`. Use this when you need to add a new
+tutorial; for that see [tutorial.md](tutorial.md). Use this when you need to add a new
 arithmetic operator, debug a storage-shape edge case, or reason about
 performance.
 
@@ -38,7 +38,7 @@ reachable value of `a + b` for `a : A, b : B` is by construction inside
 ## 2. Storage encoding
 
 Representation is selected by the policy's **representation flags**
-(`exact` / `real` / `direct` / `indexed`, see
+(`exact` / `f64` / `f32` / `direct` / `indexed` / the `i8`…`u64` width flags, see
 [policies.md](policies.md#representation-flags)), with grid deduction as the
 default. `storage_pick<G, P>` (`include/bound/grid.hpp`) resolves the flags
 **widest-wins** — a result of mixed-representation arithmetic ORs both
@@ -47,11 +47,11 @@ operand policies, and the widest representation present wins:
 ```text
   exact in P ──────────────────────────▶  rational raw   (raw IS the value, exact fraction)
        │ no
-  real in P AND double_exact grid ─────▶  double raw     (raw IS the value; default engine
+  f64 in P AND double_exact grid ──────▶  double raw     (raw IS the value; default engine
        │ no   (elided under BND_MATH_FIXED)               only — fixed engine falls through.
        │                                                  Direct misuse on a too-fine grid is a
        │                                                  static_assert; arithmetic instead DROPS
-       │                                                  `real` when the result isn't double_exact)
+       │                                                  `f64` when the result isn't double_exact)
   direct in P AND Notch == 1 ──────────▶  integer raw    (raw IS the value)
        │ no
   indexed in P AND Notch != 0 ─────────▶  unsigned raw   (raw = 0-based notch index)
@@ -189,8 +189,8 @@ ambiguous. Indexing reaches `size_t` through imax's standard conversion.
 `bound::operator rational()` — **implicit**. Lossless and mathematically
 exact, so no risk in letting it happen silently.
 
-`bound::operator double()` — `explicit((P & real) != real)`. A
-`real`-policy bound lives on a double-exact grid, so every value is exactly
+`bound::operator double()` — `explicit((P & f64) != f64)`. An
+`f64`-policy bound lives on a double-exact grid, so every value is exactly
 representable in `double` and the conversion is lossless — implicit, by the
 same rule as `operator rational`. For everything else the conversion can
 round, so it is **explicit** AND gated on a rounding policy flag; strict
@@ -241,7 +241,7 @@ Per-operation audit:
 
 | Operation | Shape | Causes |
 |---|---|---|
-| `a + b`, `a − b`, `a × b` (integer/real raws) | `bound` | total — result grid contains every value by construction |
+| `a + b`, `a − b`, `a × b` (integer/float-backed raws) | `bound` | total — result grid contains every value by construction |
 | same, rational raw + `checked`, overflow not provably excluded | `optional` | exact-arithmetic overflow. Notched grids bound the denominators, so most `exact` arithmetic PROVES safety at compile time and returns a plain `bound`; continuous (Notch 0) grids hold arbitrary rationals and keep the wrapper |
 | `a / b`, `mod` (divisor grid excludes 0) | `bound` | total |
 | `a / b`, `mod` (divisor may be 0) | `optional` | division by zero (rational overflow folds in) |
@@ -279,8 +279,9 @@ is what keeps the core free of `<string>`/`<ostream>`/`<format>`/`<cmath>`:
 | `bound/range.hpp`       | `bound_range<G, P>` iterator helper |
 | `bound/generic.hpp`     | Public grid/policy introspection (`Grid` / `BoundPolicy` / `Interval` / `Lower` / `Upper` / `Notch`) and the `boundable` / `numeric` / `bound_assignable` concepts. Storage/raw/dispatch plumbing (`raw_t`, the `rational_raw` / `real_raw` / `value_raw` / `index_raw` predicates, `as_double`, `to_value` / `from_value`, `raw_cast` / `raw_imax`, `q_format_encode/decode`, `NotchCount`, `RawLo/Hi`, `sentinel_raw`, `detail::as_rational`, …) lives in `bnd::detail` |
 | `bound/detail/assignment.hpp`  | `bnd::detail::assignment<L, R>` specialisations for integral / fractional / boundable rhs (incl. the Q-format integer shortcut for fractional rhs) |
-| `bound/cmath.hpp`       | `bnd::math` — the `<cmath>`-shaped public API (trig, inverse trig, hyperbolic, exp/log/pow, sqrt/cbrt/hypot) over bounds, dispatching to one of two engines. The integer/CORDIC cores live in `bnd::math::detail` here — they also serve as the compile-time output-grid oracle for **both** engines. See [math.md](math.md) |
-| `bound/cmath_double.hpp` | The default **double engine** cores (`d_sin`, `d_exp`, … — own `std::fma`-Horner polynomials, Cody-Waite reduction, correctly-rounded `std::sqrt`); selected unless `BND_MATH_FIXED` is defined |
+| `bound/cmath.hpp`       | `bnd::math` — the `<cmath>`-shaped public API (trig, inverse trig, hyperbolic, exp/log/pow, sqrt/cbrt/hypot) over bounds, dispatching to one of three engines (`dbl` / `flt` / `cordic`). The integer/CORDIC cores live in `bnd::math::detail` here — they also serve as the compile-time output-grid oracle for **every** engine. See [math.md](math.md) |
+| `bound/cmath_double.hpp` | The default **double engine** cores (`d_sin`, `d_exp`, … — own `std::fma`-Horner polynomials, Cody-Waite reduction, correctly-rounded `std::sqrt`); compiled out under `BND_MATH_NO_FP` |
+| `bound/cmath_float.hpp` | The **float engine** cores (binary32 siblings of the double cores, own compile-time-derived range-reduction constants); default under `BND_MATH_FLOAT`, compiled out under `BND_MATH_NO_FP` |
 | `bound/detail/addition.hpp`, `multiplication.hpp`, `division.hpp` | `bnd::detail::addition<L, R>`, `multiplication<L, R>`, `division<L, R, F>`, `modulo<L, R, F>` — implementation detail, included via `bound.hpp` |
 | `bound/detail/overflow.hpp`, `debug.hpp` | `add_overflow` / `sub_overflow` / `mul_overflow` (builtins + portable fallback); `errc`, the replaceable `error_handler` + `detail::raise` funnel — implementation detail |
 | `bound/detail/rational.hpp`    | `rational`, its arithmetic, sentinel traits |
@@ -289,3 +290,7 @@ is what keeps the core free of `<string>`/`<ostream>`/`<format>`/`<cmath>`:
 | `bound/io.hpp`          | **All** string/stream/`std::format` support — `to_string`, `to_string_debug`, `operator<<`, `std::formatter`, `type_name`. Opt-in and the *only* place `<string>`/`<ostream>`/`<format>` enter; gated by `BND_NO_STRING` in the single header (see [freestanding.md](freestanding.md)) |
 | `bound/formats.hpp`     | Curated Q-format aliases (`q4_4`, `q8_8`, `q16_16`, …); opt-in |
 | `slim/optional.hpp`     | Reusable sentinel-based optional; `bnd::` consumes it via `sentinel_traits` |
+
+The whole tree is also amalgamated into `single_include/bound/bound.hpp` by a
+pure-CMake generator — see [single-header.md](single-header.md) for usage and
+the regeneration workflow.

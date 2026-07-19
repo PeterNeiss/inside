@@ -75,10 +75,12 @@ this page that C++26 does **not** unblock.
 
 For completeness — these came up alongside the above but are *not* blocked by the language:
 
-- **Freestanding `<cmath>` removal** — the core is already freestanding; only the math
-  engine pulls `<cmath>`. Gating the double-engine include under `BND_MATH_FIXED` and
-  swapping its three `std::` calls for `__builtin_*` would remove the header on GCC/Clang
-  with no language dependency. See [freestanding.md](freestanding.md).
+- **Freestanding `<cmath>` removal** — **done.** `BND_MATH_NO_FP` compiles the
+  floating-point engines — and their `#include <cmath>` — out wholesale (no
+  `__builtin_*` swap needed), leaving the always-present integer/CORDIC engine to
+  serve the full `bnd::math` API. Auto-enabled under `-ffreestanding`, implied by
+  `BND_MATH_FIXED`; a CI smoke compiles the single header against a poison `<cmath>`
+  shim to keep it that way. See [freestanding.md](freestanding.md#math-without-cmath-bnd_math_no_fp).
 - **`dyn_bound`** (runtime-valued bounds) — evaluated and **declined** on design grounds
   (no space/time-efficient implementation), not deferred.
 - **Type-level interval unions** — Intel's [safe-arithmetic](resources.md) models
