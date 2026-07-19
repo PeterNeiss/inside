@@ -24,7 +24,7 @@ import sys
 import tempfile
 
 
-def run_cachegrind(binary: str) -> int:
+def run_cachegrind(binary: str, key: str) -> int:
     """Run the binary under cachegrind and return total Ir (instructions)."""
     with tempfile.TemporaryDirectory() as td:
         out = os.path.join(td, "cg.out")
@@ -33,6 +33,7 @@ def run_cachegrind(binary: str) -> int:
             "--cache-sim=no", "--branch-sim=no",   # Ir only: faster, fewer moving parts
             f"--cachegrind-out-file={out}",
             binary,
+            key,                                   # workload selector (argv[1])
         ]
         proc = subprocess.run(cmd, capture_output=True, text=True)
         if proc.returncode != 0:
@@ -51,15 +52,15 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--binary", required=True)
     ap.add_argument("--baseline", required=True)
-    ap.add_argument("--key", default="default",
-                    help="workload key in the baseline JSON")
+    ap.add_argument("--key", default="integer_qformat",
+                    help="workload key (baseline JSON entry AND binary argv[1])")
     ap.add_argument("--tol", type=float, default=0.05,
                     help="allowed fractional growth before failing (default 5%%)")
     ap.add_argument("--update", action="store_true",
                     help="overwrite the baseline entry with the measured value")
     args = ap.parse_args()
 
-    ir = run_cachegrind(args.binary)
+    ir = run_cachegrind(args.binary, args.key)
     print(f"[perf] {args.key}: Ir = {ir:,}")
 
     baseline = {}

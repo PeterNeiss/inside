@@ -154,18 +154,21 @@ jobs:
       - name: Codegen guard
         run: ctest --test-dir build --output-on-failure -L perf
 
-      # Cachegrind instruction-count gate. Deterministic, so stable on shared
-      # runners. If tests/perf_baseline.json is absent the script bootstraps it
-      # (writes + passes) and uploads it below for review/commit; once committed,
-      # this gate fails a >5% instruction-count regression.
+      # Cachegrind instruction-count gate, one run per workload key.
+      # Deterministic, so stable on shared runners. If a key is absent from
+      # tests/perf_baseline.json the script bootstraps it (writes + passes) and
+      # uploads it below for review/commit; once committed, each key gates a
+      # >5% instruction-count regression on its fast path.
       - name: Cachegrind gate
-        timeout-minutes: 10
+        timeout-minutes: 15
         run: |
           cmake --build build --target perf_workload -j
-          python3 tests/check_perf.py \
-            --binary build/perf_workload \
-            --baseline tests/perf_baseline.json \
-            --key integer_qformat --tol 0.05
+          for key in integer_qformat integer_mul qformat_div cross_grid_assign checked_add; do
+            python3 tests/check_perf.py \
+              --binary build/perf_workload \
+              --baseline tests/perf_baseline.json \
+              --key "$key" --tol 0.05
+          done
 
       - name: Upload perf baseline
         uses: actions/upload-artifact@v4

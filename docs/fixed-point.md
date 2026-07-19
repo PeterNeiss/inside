@@ -95,22 +95,15 @@ The smallest-type selection reserves one raw slot for the zero-overhead
 `formats.hpp` aliases already do this (`byte` is `[0,254]`); Q-format types have
 headroom and keep full range.
 
-## Performance (x86-64, `-O3 -DNDEBUG`, `tests/bench.cpp`)
+## Performance
 
-| Workload | bound | native | ratio |
-|---|---|---|---|
-| `bound<{0,200}> ±/×/÷` (integer raw, unsafe) | 13 ns | 13 ns | **1.0×** |
-| Q8.8 construct | 13 ns | 14 ns | **0.97×** |
-| Q16.16 construct | 14 ns | 14 ns | **0.97×** |
-| `accumulate(unsafe)` 1000 | 64 ns | 64 ns | 1.0× (vectorized) |
-| `accumulate(checked)` 1000 | 274 ns | 64 ns | 4.3× (scalar — check blocks SIMD) |
-| `bnd::sum<checked>` 1000 (one deferred check) | 105 ns | 64 ns | **1.6×** (vectorized) |
-| `math::sin` (`real`, double engine) | 35 ns | 23 ns | 1.5× |
-
-`checked` on a tight loop costs ~4× because the per-element domain check breaks
-autovectorisation — use `unsafe` inside proven-safe inner loops, or `bnd::sum`
-for a single deferred check. See the full table and notes in the
-[README](../README.md#performance).
+The generated per-operation tables — Q8.8/Q16.16 construct/add/mul/div,
+accumulation, and the math engines, each with a native baseline and hardware
+counters — are in [performance.md](performance.md) (`perf_report` target).
+The short version: unchecked Q-format arithmetic sits at native parity;
+`checked` on a tight loop costs ~4× because the per-element domain check
+breaks autovectorisation — use `unsafe` inside proven-safe inner loops, or
+`bnd::sum` for a single deferred check.
 
 ## Choosing your grid
 

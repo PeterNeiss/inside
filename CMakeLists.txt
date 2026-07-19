@@ -163,26 +163,32 @@ catch_discover_tests(bound_tests DISCOVERY_MODE PRE_TEST)
 add_subdirectory(tests/fail)
 
 #---------------------------------------------------------------------------
-# ctrack (benchmarking)
+# nanobench (benchmarking)
 #---------------------------------------------------------------------------
-set(DISABLE_EXAMPLES ON  CACHE BOOL "" FORCE)
-set(BUILD_TESTS      OFF CACHE BOOL "" FORCE)   # ctrack's timing-based tests are flaky
 FetchContent_Declare(
-  ctrack
-  GIT_REPOSITORY https://github.com/Compaile/ctrack.git
-  GIT_TAG        v1.1.0
+  nanobench
+  GIT_REPOSITORY https://github.com/martinus/nanobench.git
+  GIT_TAG        v4.3.11
 )
-FetchContent_MakeAvailable(ctrack)
+FetchContent_MakeAvailable(nanobench)
 
-# bench (ctrack) and bound_fuzz are EXCLUDE_FROM_ALL: both are large, slow-to-
-# compile test harnesses (the all-in-one fuzz TU instantiates every property
-# across the whole grid catalogue) that validate nothing an end user compiles,
-# so the default `cmake --build` stays lean. Build on demand with
+# bench (nanobench) and bound_fuzz are EXCLUDE_FROM_ALL: both are large,
+# slow-to-compile test harnesses (the all-in-one fuzz TU instantiates every
+# property across the whole grid catalogue) that validate nothing an end user
+# compiles, so the default `cmake --build` stays lean. Build on demand with
 # `--target bench` / `--target bound_fuzz`.
 add_executable(bench EXCLUDE_FROM_ALL tests/bench.cpp)
 target_link_libraries(bench PUBLIC bound::bound)
-get_target_property(CTRACK_INCLUDE_DIRS ctrack INTERFACE_INCLUDE_DIRECTORIES)
-target_include_directories(bench SYSTEM PUBLIC ${CTRACK_INCLUDE_DIRS})
+get_target_property(NANOBENCH_INCLUDE_DIRS nanobench INTERFACE_INCLUDE_DIRECTORIES)
+target_include_directories(bench SYSTEM PUBLIC ${NANOBENCH_INCLUDE_DIRS})
+
+# Regenerates the committed performance tables (same pattern as
+# accuracy_report): every nanobench group prints native first, so the
+# relative column is the bound-vs-native ratio.
+add_custom_target(perf_report
+  COMMAND bench ${CMAKE_CURRENT_SOURCE_DIR}/docs/performance.md
+  COMMENT "Regenerating docs/performance.md")
+add_dependencies(perf_report bench)
 
 add_executable(bound_fuzz EXCLUDE_FROM_ALL tests/fuzz.cpp)
 target_link_libraries(bound_fuzz PUBLIC bound::bound)

@@ -547,9 +547,33 @@ namespace bnd
     template <boundable R>
     constexpr bound& operator+=(R const& rhs)
     {
+      // Point-bound rhs (just<v> / 1_b / ++) whose value is a whole number of
+      // this grid's notches: the raw delta is a compile-time constant and the
+      // raw encoding cancels every Lower term (raw(v+d) = raw(v) + d/Notch for
+      // offset and direct storage alike), so this compiles to one integer add.
+      if constexpr (!detail::rational_raw<bound> && Notch<bound> != 0
+                    && Lower<R> == Upper<R>
+                    && (Lower<R> / Notch<bound>).has_value()
+                    && detail::abs_den((*(Lower<R> / Notch<bound>)).Denominator) == 1)
+      {
+        constexpr auto quotient = *(Lower<R> / Notch<bound>);
+        constexpr imax delta = (quotient.Denominator < 0)
+            ? -static_cast<imax>(quotient.Numerator)
+            :  static_cast<imax>(quotient.Numerator);
+        if constexpr (P & (clamp | wrap | checked | sentinel))
+        {
+          imax new_raw = detail::raw_imax(*this) + delta;
+          if (new_raw < detail::RawLo<bound> || new_raw > detail::RawHi<bound>)
+            return apply_raw_overflow(new_raw);
+          Raw = detail::raw_cast<bound>(new_raw);
+        }
+        else
+          Raw = detail::raw_cast<bound>(detail::raw_imax(*this) + delta);
+        return *this;
+      }
       // Fast path: raw-level integer addition, safe when raw_a + raw_b is the raw
       // of value_a + value_b — direct storage, or offset encoding with Lower==0 both.
-      if constexpr (!detail::rational_raw<bound> && !detail::rational_raw<R>
+      else if constexpr (!detail::rational_raw<bound> && !detail::rational_raw<R>
                     && Notch<bound> == Notch<R>
                     && (!detail::index_raw<R>
                         || (Lower<bound> == 0 && Lower<R> == 0)))
@@ -604,7 +628,14 @@ namespace bnd
     constexpr bound& assign_op_result(Result const& r)
     {
       if constexpr (requires { typename Result::value_type; })
-        *this = r.value();
+      {
+        // A failed op (nullopt) has already been reported through the policy
+        // channel; keep *this unchanged instead of dereferencing — a
+        // non-throwing installed handler must not turn into
+        // bad_optional_access here. `*r` (not value()): no second check.
+        if (r.has_value())
+          *this = *r;
+      }
       else
         *this = r;
       return *this;
@@ -637,6 +668,9 @@ namespace bnd
     constexpr bound& operator*=(R const& rhs)
     { return assign_op_result(*this * rhs); }
 
+    // The outer zero check is semantic, not redundant: the binary `a / b`
+    // yields nullopt on a zero divisor (optional vocabulary), so the compound
+    // form's report comes from here. (Measured perf-neutral to remove.)
     template <boundable R>
     constexpr bound& operator/=(R const& rhs)
     {
@@ -665,9 +699,25 @@ namespace bnd
       return assign_op_result(bnd::detail::rational{*this} / rhs);
     }
 
-    constexpr bound& operator++()    { return *this += bnd::detail::rational{1}; }
+    // ++/-- add the point bound `just<±1>` through the boundable += (which has
+    // the raw-level integer fast path) instead of the rational round-trip,
+    // which decodes to rational and re-stores through the full quotient/
+    // rounding machinery (~30× the instructions on an integer grid). `just`
+    // itself is declared after the class, so spell the point bound directly.
+    constexpr bound& operator++()
+    {
+      // constexpr local: the point bound is materialised at compile time (the
+      // ctor's error path otherwise blocks constant folding at -O3).
+      constexpr auto one_b = bound<grid{bnd::detail::rational{1}}>{bnd::detail::rational{1}};
+      return *this += one_b;
+    }
     constexpr bound  operator++(int) { bound t = *this; ++*this; return t; }
-    constexpr bound& operator--()    { return *this -= bnd::detail::rational{1}; }
+    constexpr bound& operator--()
+    {
+      constexpr auto minus_one_b =
+          bound<grid{bnd::detail::rational{-1}}>{bnd::detail::rational{-1}};
+      return *this += minus_one_b;
+    }
     constexpr bound  operator--(int) { bound t = *this; --*this; return t; }
 
     template <numeric A>
@@ -703,6 +753,41 @@ namespace bnd
   //---------------------------------------------------------------------------
   // comparison
   //---------------------------------------------------------------------------
+  namespace detail
+  {
+    // Integer value-index comparison eligibility: an integer-backed bound
+    // whose value indices (value/Notch — integral by the grid anchor
+    // invariant) fit imax, so two same-notch bounds compare as
+    // `bias + raw` without a rational decode.
+    template <boundable B>
+    inline constexpr bool index_cmp_fits = []{
+      if constexpr (rational_raw<B> || fp_raw<B> || Notch<B> == 0)
+        return false;
+      else
+      {
+        constexpr auto lo = Lower<B> / Notch<B>;
+        constexpr auto hi = Upper<B> / Notch<B>;
+        constexpr umax cap = static_cast<umax>(std::numeric_limits<imax>::max());
+        return lo.has_value() && hi.has_value()
+            && (*lo).Numerator <= cap && (*hi).Numerator <= cap;
+      }
+    }();
+
+    // Signed value index of Raw == 0: Lower/Notch for offset (index) storage,
+    // 0 for direct storage (raw is already the value == the index at notch 1).
+    template <boundable B>
+    inline constexpr imax index_cmp_bias = []{
+      if constexpr (index_raw<B>)
+      {
+        constexpr auto lo = *(Lower<B> / Notch<B>);
+        return (lo.Denominator < 0) ? -static_cast<imax>(lo.Numerator)
+                                    :  static_cast<imax>(lo.Numerator);
+      }
+      else
+        return imax{0};
+    }();
+  }
+
   template <boundable L, boundable R>
   constexpr auto operator<=>(L const& lhs, R const& rhs)
   {
@@ -716,6 +801,13 @@ namespace bnd
     else if constexpr (!detail::rational_raw<L> && !detail::rational_raw<R>
                        && !detail::index_raw<L> && !detail::index_raw<R>)
       return detail::raw_imax(lhs) <=> detail::raw_imax(rhs);
+    // same nonzero notch, integer-backed: compare signed value indices
+    // (compile-time bias + raw) — e.g. two same-Q-format fixed-point types
+    // with different intervals, without the rational decode.
+    else if constexpr (Notch<L> == Notch<R>
+                       && detail::index_cmp_fits<L> && detail::index_cmp_fits<R>)
+      return (detail::index_cmp_bias<L> + detail::raw_imax(lhs))
+         <=> (detail::index_cmp_bias<R> + detail::raw_imax(rhs));
     else
       return detail::as_rational(lhs) <=> detail::as_rational(rhs);
   }
@@ -730,6 +822,10 @@ namespace bnd
     else if constexpr (!detail::rational_raw<L> && !detail::rational_raw<R>
                        && !detail::index_raw<L> && !detail::index_raw<R>)
       return detail::raw_imax(lhs) == detail::raw_imax(rhs);
+    else if constexpr (Notch<L> == Notch<R>
+                       && detail::index_cmp_fits<L> && detail::index_cmp_fits<R>)
+      return (detail::index_cmp_bias<L> + detail::raw_imax(lhs))
+          == (detail::index_cmp_bias<R> + detail::raw_imax(rhs));
     else
       return detail::as_rational(lhs) == detail::as_rational(rhs);
   }

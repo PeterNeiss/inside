@@ -418,7 +418,10 @@ namespace bnd::math
       // at angle 0, but sin(kπ) must be exactly 0 (pole detection in tan relies
       // on it). Quadrant peaks (turn_w == quarter) round to ±1 on the grid.
       if (turn_w == 0) return rational{0};
-      imax rad = fmul(turn_w, to_fixed(two_pi_r, W), W);
+      // Bound as constexpr so the 128-bit divide inside to_fixed is guaranteed
+      // compile-time (same pattern as sqrt2_w) — args are all constants.
+      constexpr imax two_pi_w = to_fixed(two_pi_r, W);
+      imax rad = fmul(turn_w, two_pi_w, W);
       imax s, c;
       cordic_sincos<W, N>(rad, s, c);
       return fixed_to_rational(flip ? -s : s, W);
@@ -577,7 +580,8 @@ namespace bnd::math
     {
       imax k   = (x_w + (imax{1} << (W - 1))) >> W;        // round to nearest int
       imax f_w = x_w - (k << W);                            // ∈ [−2^(W−1), 2^(W−1)]
-      imax fr_w = fmul(f_w, to_fixed(ln2_r, W), W);         // f·ln2 (natural)
+      constexpr imax ln2_w = to_fixed(ln2_r, W);            // compile-time constant
+      imax fr_w = fmul(f_w, ln2_w, W);                      // f·ln2 (natural)
       imax er_w;
       if (fr_w == 0) er_w = imax{1} << W;                   // 2^k exactly
       else { imax sh, ch; cordic_sinhcosh<W, hyp_len(W)>(fr_w, sh, ch); er_w = sh + ch; }
@@ -596,18 +600,25 @@ namespace bnd::math
       imax one  = imax{1} << W;
       imax m_w  = (e >= 0) ? (w_w >> e) : (w_w << (-e));   // m·2^W ∈ [2^W, 2^(W+1))
       imax z    = cordic_atanh_vec<W, hyp_len(W)>(m_w + one, m_w - one);
-      return e * to_fixed(ln2_r, W) + 2 * z;
+      constexpr imax ln2_w = to_fixed(ln2_r, W);           // compile-time constant
+      return e * ln2_w + 2 * z;
     }
 
     // log2(x) at scale 2^W as imax: ln(x)·log2(e).
     template <int W>
     constexpr imax log2_to_fixed(rational x) noexcept
-    { return fmul(ln_to_fixed<W>(x), to_fixed(inv_ln2_r, W), W); }
+    {
+      constexpr imax inv_ln2_w = to_fixed(inv_ln2_r, W);   // compile-time constant
+      return fmul(ln_to_fixed<W>(x), inv_ln2_w, W);
+    }
 
     // e^(v_w / 2^W) as a rational: 2^(v·log2 e).
     template <int W>
     constexpr rational exp_from_fixed(imax v_w) noexcept
-    { return exp2_from_fixed<W>(fmul(v_w, to_fixed(inv_ln2_r, W), W)); }
+    {
+      constexpr imax inv_ln2_w = to_fixed(inv_ln2_r, W);   // compile-time constant
+      return exp2_from_fixed<W>(fmul(v_w, inv_ln2_w, W));
+    }
 
     // Rational-input wrappers (inputs are small-denominator values; fine to
     // marshal through to_fixed). pow/cbrt compose via the *_fixed primitives
