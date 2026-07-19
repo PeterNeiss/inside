@@ -13,6 +13,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <limits>
 #include <vector>
 
 using namespace bnd;
@@ -166,4 +167,88 @@ TEST_CASE("tier-3 integer fast paths stay engaged (and fp stays excluded)",
   using eighths      = bound<{{-2, 2}, notch<1, 8>}>;
   STATIC_REQUIRE(rational{signed_whole{-7} + eighths{-0.625_b}}
                  == rational{umax{61}, imax{-8}});
+}
+
+TEST_CASE("regression: cross-grid assign onto rational storage keeps the value",
+          "[cross][assign][regression][exact]")
+{
+  // The boundable-rhs store used the notch-index machinery for rational-raw
+  // targets: an index-raw source had its VALUE rounded to a whole number
+  // (7/3 -> 2/1) and a rational-raw source had the grid transform applied to
+  // a raw that already was the value (5/3 -> corrupted). Both must store the
+  // exact source value.
+  using exact_t = bound<{{0, 4}, notch<1, 3>}, exact | round_nearest>;
+
+  using index_src = bound<{{0, 4}, notch<1, 3>}, round_nearest>;
+  exact_t from_index;
+  from_index = index_src{rational{7, 3}};
+  REQUIRE(from_index.raw() == rational{7, 3});
+
+  using exact_wide = bound<{{-4, 4}, notch<1, 3>}, exact | round_nearest>;
+  exact_t from_exact;
+  from_exact = exact_wide{rational{5, 3}};
+  REQUIRE(from_exact.raw() == rational{5, 3});
+
+  using value_src = bound<{0, 4}, snap>;
+  exact_t from_value_raw;
+  from_value_raw = value_src{3};
+  REQUIRE(from_value_raw.raw() == rational{3});
+
+  using real_src = bound<{{0, 4}, notch<1, 256>}, real | round_nearest>;
+  using exact_dyadic = bound<{{0, 4}, notch<1, 256>}, exact | round_nearest>;
+  exact_dyadic from_real;
+  from_real = real_src{rational{513, 256}};
+  REQUIRE(from_real.raw() == rational{513, 256});
+
+  // rounding still happens when the source is off the target grid
+  using exact_coarse = bound<{{0, 4}, 1}, exact | round_nearest>;
+  exact_coarse rounded;
+  rounded = index_src{rational{7, 3}};     // 2.33 -> 2 on the unit grid
+  REQUIRE(rounded.raw() == rational{2});
+}
+
+TEST_CASE("scalar comparison integer arm agrees with the rational decode",
+          "[cross][compare][perf-paths]")
+{
+  // Q-format (index raw) vs integral scalar takes the cross-multiplied
+  // integer arm; every verdict must match the exact rational comparison,
+  // including at A's numeric_limits extremes.
+  using q88 = bound<{{0, 255}, notch<1, 256>}, round_nearest>;
+  STATIC_REQUIRE(scalar_index_cmp_fits<q88, int>);
+
+  auto agree = [](auto probe, auto scalar) {
+    rational exact_lhs = as_rational(probe);
+    rational exact_rhs{scalar};
+    REQUIRE((probe == scalar) == (exact_lhs == exact_rhs));
+    REQUIRE((probe <  scalar) == (exact_lhs <  exact_rhs));
+    REQUIRE((probe >  scalar) == (exact_lhs >  exact_rhs));
+  };
+  for (int scalar : {std::numeric_limits<int>::min(), -1, 0, 41, 42, 43, 255,
+                     std::numeric_limits<int>::max()})
+  {
+    agree(q88{42}, scalar);
+    agree(q88{rational{10753, 256}}, scalar);   // 42 + 1/256: != 42, > 42
+    agree(q88{rational{10751, 256}}, scalar);   // 42 - 1/256: != 42, < 42
+    agree(q88{0}, scalar);
+    agree(q88{255}, scalar);
+  }
+
+  // offset index grid (negative Lower -> nonzero bias)
+  using offset_q = bound<{{-8, 8}, notch<1, 16384>}, round_nearest>;
+  STATIC_REQUIRE(scalar_index_cmp_fits<offset_q, int>);
+  for (int scalar : {std::numeric_limits<int>::min(), -9, -8, -1, 0, 1, 8,
+                     std::numeric_limits<int>::max()})
+  {
+    agree(offset_q{-8}, scalar);
+    agree(offset_q{rational{-1, 16384}}, scalar);
+    agree(offset_q{0}, scalar);
+    agree(offset_q{8}, scalar);
+  }
+
+  // 64-bit scalars whose cross term c·d can overflow imax are excluded and
+  // fall back to the exact rational path — still correct.
+  STATIC_REQUIRE(!scalar_index_cmp_fits<q88, long long>);
+  REQUIRE(q88{42} < std::numeric_limits<long long>::max());
+  REQUIRE(q88{42} > std::numeric_limits<long long>::min());
+  REQUIRE(!(q88{42} == std::numeric_limits<long long>::max()));
 }

@@ -709,12 +709,18 @@ namespace bnd::detail
       }
 
       template<typename P>
-      static constexpr void store(L& lhs, R const& rhs, P&&)
+      static constexpr void store(L& lhs, R const& rhs, P&& policy)
       {
         if constexpr (fp_raw<L>)
           // real target: raw IS the value — decode the source and snap to the dyadic
           // grid (the offset machinery below mis-encodes a double raw).
           lhs = L::from_raw(Grid<L>.snap_double(as_double(rhs)));
+        else if constexpr (rational_raw<L>)
+          // rational target: raw IS the value — snap the decoded source through
+          // the rational-rhs store (the offset machinery below would round the
+          // VALUE to a notch index and store that number as the raw).
+          assignment<L, rational>::store_checked(lhs, as_rational(rhs), policy,
+                                                 no_action{});
         else if constexpr (is_integer_mapping)
         {
           // exact: Factor and Offset have integer denominators, no rounding ambiguity
