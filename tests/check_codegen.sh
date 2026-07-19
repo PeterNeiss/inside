@@ -25,7 +25,7 @@ fail() { echo "CODEGEN GUARD FAILED: $1"; echo "----- disassembly -----"; echo "
 # addition-dispatch bug, where an operand silently dropped to the value path).
 # Checked on both the scalar and the loop body, so the fallback is caught
 # whether or not the loop happens to vectorize.
-for fn in bnd_perf_add_fast bnd_perf_add_loop bnd_perf_mul_fast; do
+for fn in bnd_perf_add_fast bnd_perf_add_loop bnd_perf_mul_fast bnd_perf_sub_compound bnd_perf_fp_add bnd_perf_range_sum; do
   body="$(printf '%s\n' "$DIS" | sed -n "/<$fn>:/,/^\$/p")"
   [ -n "$body" ] || fail "could not find $fn in the disassembly" "$DIS"
   if printf '%s\n' "$body" | grep -qE '\bcall[a-z]*\b'; then
