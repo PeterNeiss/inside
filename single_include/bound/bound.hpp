@@ -5482,12 +5482,18 @@ namespace bnd::detail
       }
 
       template<typename P>
-      static constexpr void store(L& lhs, R const& rhs, P&&)
+      static constexpr void store(L& lhs, R const& rhs, P&& policy)
       {
         if constexpr (fp_raw<L>)
           // real target: raw IS the value — decode the source and snap to the dyadic
           // grid (the offset machinery below mis-encodes a double raw).
           lhs = L::from_raw(Grid<L>.snap_double(as_double(rhs)));
+        else if constexpr (rational_raw<L>)
+          // rational target: raw IS the value — snap the decoded source through
+          // the rational-rhs store (the offset machinery below would round the
+          // VALUE to a notch index and store that number as the raw).
+          assignment<L, rational>::store_checked(lhs, as_rational(rhs), policy,
+                                                 no_action{});
         else if constexpr (is_integer_mapping)
         {
           // exact: Factor and Offset have integer denominators, no rounding ambiguity
@@ -7231,8 +7237,8 @@ namespace bnd
 
     private:
     // Out-of-range tail for raw-space compound arithmetic: dispatch on policy
-    // (clamp/wrap/sentinel/checked) and store back to `Raw`. Called from
-    // `operator+=(boundable)` only.
+    // (clamp/wrap/sentinel/checked) and store back to `Raw`. Called from the
+    // raw fast paths of `operator+=(boundable)` and `operator-=(boundable)`.
     constexpr bound& apply_raw_overflow(imax new_raw)
     {
       if constexpr (P & clamp)
@@ -7291,7 +7297,45 @@ namespace bnd
 
     template <boundable R>
     constexpr bound& operator-=(R const& rhs)
-    { return *this += (-rhs); }
+    {
+      // Raw-space fast path, the subtraction mirror of +='s: with equal
+      // notches, raw(v_l − v_r) = raw_l − raw_r − bias, where the bias is
+      // Lower<R>/Notch for an index-raw rhs (its raw is Lower-relative) and 0
+      // for a value-raw rhs. Delegating to `+= (-rhs)` instead shifts R's
+      // Lower by negation and defeats +='s raw path for index-backed grids.
+      if constexpr (!detail::rational_raw<bound> && !detail::rational_raw<R>
+                    && !detail::fp_raw<bound> && !detail::fp_raw<R>
+                    && Notch<bound> != 0 && Notch<bound> == Notch<R>
+                    && (!detail::index_raw<R>
+                        || ((Lower<R> / Notch<bound>).has_value()
+                            && detail::abs_den((*(Lower<R> / Notch<bound>)).Denominator) == 1)))
+      {
+        constexpr imax bias = [] {
+          if constexpr (detail::index_raw<R>)
+          {
+            constexpr auto quotient = *(Lower<R> / Notch<bound>);
+            return (quotient.Denominator < 0)
+                ? -static_cast<imax>(quotient.Numerator)
+                :  static_cast<imax>(quotient.Numerator);
+          }
+          else
+            return imax{0};
+        }();
+        if constexpr (P & (clamp | wrap | checked | sentinel))
+        {
+          imax new_raw = detail::raw_imax(*this) - detail::raw_imax(rhs) - bias;
+          if (new_raw < detail::RawLo<bound> || new_raw > detail::RawHi<bound>)
+            return apply_raw_overflow(new_raw);
+          Raw = detail::raw_cast<bound>(new_raw);
+        }
+        else
+          Raw = detail::raw_cast<bound>(
+              detail::raw_imax(*this) - detail::raw_imax(rhs) - bias);
+        return *this;
+      }
+      else
+        return *this += (-rhs);
+    }
 
     template <std::same_as<bnd::detail::rational> A>
     constexpr bound& operator-=(A const& rhs)
@@ -7463,11 +7507,53 @@ namespace bnd
       return detail::as_rational(lhs) == detail::as_rational(rhs);
   }
 
+  namespace detail
+  {
+    // bound ⋈ integral scalar without the rational decode: with the positive
+    // notch n/d, value ⋈ c ⟺ (bias + raw)·n ⋈ c·d — both sides exact
+    // integers (bias + raw is the signed value index, exact ordering AND
+    // equality since c·d is exact too). Eligible when both cross terms
+    // provably fit imax for every representable c of type A.
+    template <boundable B, typename A>
+    inline constexpr bool scalar_index_cmp_fits = []{
+      if constexpr (!std::integral<A> || !index_raw<B> || !index_cmp_fits<B>)
+        return false;
+      else
+      {
+        constexpr umax cap = static_cast<umax>(std::numeric_limits<imax>::max());
+        constexpr umax notch_num = Notch<B>.Numerator;
+        constexpr umax notch_den = static_cast<umax>(Notch<B>.Denominator); // Notch > 0
+        constexpr umax index_mag = []{
+          constexpr auto lo = *(Lower<B> / Notch<B>);
+          constexpr auto hi = *(Upper<B> / Notch<B>);
+          return lo.Numerator > hi.Numerator ? lo.Numerator : hi.Numerator;
+        }();
+        constexpr umax scalar_mag = []{
+          umax mag = static_cast<umax>(std::numeric_limits<A>::max());
+          if constexpr (std::signed_integral<A>)
+          {
+            umax min_mag = static_cast<umax>(
+                -(std::numeric_limits<A>::min() + 1)) + 1;
+            if (min_mag > mag) mag = min_mag;
+          }
+          return mag;
+        }();
+        umax product;
+        return !mul_overflow(index_mag, notch_num, &product) && product <= cap
+            && !mul_overflow(scalar_mag, notch_den, &product) && product <= cap;
+      }
+    }();
+  }
+
   template <boundable B, arithmetic A>
   constexpr auto operator<=>(B const& lhs, A rhs)
   {
     if constexpr (detail::value_raw<B>)
       return detail::raw_imax(lhs) <=> static_cast<imax>(rhs);
+    else if constexpr (detail::scalar_index_cmp_fits<B, A>)
+      return (detail::index_cmp_bias<B> + detail::raw_imax(lhs))
+                 * static_cast<imax>(Notch<B>.Numerator)
+         <=> static_cast<imax>(rhs) * Notch<B>.Denominator;
     else
       return detail::as_rational(lhs) <=> bnd::detail::rational{rhs};
   }
@@ -7477,6 +7563,10 @@ namespace bnd
   {
     if constexpr (detail::value_raw<B>)
       return detail::raw_imax(lhs) == static_cast<imax>(rhs);
+    else if constexpr (detail::scalar_index_cmp_fits<B, A>)
+      return (detail::index_cmp_bias<B> + detail::raw_imax(lhs))
+                 * static_cast<imax>(Notch<B>.Numerator)
+          == static_cast<imax>(rhs) * Notch<B>.Denominator;
     else
       return detail::as_rational(lhs) == bnd::detail::rational{rhs};
   }
@@ -8285,20 +8375,52 @@ namespace bnd
 
       constexpr value_type operator*() const
       {
-        // value = Lower + index * Notch  (always exact: lies on the grid).
-        bnd::detail::rational val = (G.Interval.Lower
-                        + (bnd::detail::rational{index} * G.Notch).value()).value();
-        return value_type{val};
+        // value = Lower + index * Notch (always exact: lies on the grid).
+        // Integer-backed storages decode without the rational/assignment
+        // engine: for index storage the iterator index IS the raw (it stays in
+        // [0, NotchCount] and the sentinel slot is a numeric_limits extreme
+        // outside that span); integer-grid value storage is a multiply-add in
+        // raw space. Rational/fp raws keep the exact generic path.
+        if constexpr (bnd::detail::index_raw<value_type>)
+          return value_type::from_raw(
+              static_cast<typename value_type::raw_type>(index));
+        else if constexpr (bnd::detail::value_raw<value_type>
+                           && bnd::detail::abs_den(Notch<value_type>.Denominator) == 1
+                           && bnd::detail::abs_den(Lower<value_type>.Denominator) == 1)
+        {
+          constexpr imax notch_step = static_cast<imax>(Notch<value_type>.Numerator);
+          return value_type::from_raw(static_cast<typename value_type::raw_type>(
+              bnd::detail::LowerImax<value_type>
+              + static_cast<imax>(index) * notch_step));
+        }
+        else
+        {
+          bnd::detail::rational val = (G.Interval.Lower
+                          + (bnd::detail::rational{index} * G.Notch).value()).value();
+          return value_type{val};
+        }
       }
 
       constexpr value_type operator[](difference_type n) const
       { return *(*this + n); }
 
       // Advance / retreat: `remaining` is the position counter (advancing
-      // decreases it), so the <=> below flips the comparison.
-      constexpr iterator& operator++() { return *this += 1; }
+      // decreases it), so the <=> below flips the comparison. Single steps
+      // wrap by compare instead of the euclidean mod in `+= n` (index stays
+      // in [0, slot_count) — the mod would cost two divides per element).
+      constexpr iterator& operator++()
+      {
+        index = (index + 1 == slot_count) ? 0 : index + 1;
+        --remaining;
+        return *this;
+      }
       constexpr iterator  operator++(int) { auto t = *this; ++*this; return t; }
-      constexpr iterator& operator--() { return *this -= 1; }
+      constexpr iterator& operator--()
+      {
+        index = (index == 0) ? slot_count - 1 : index - 1;
+        ++remaining;
+        return *this;
+      }
       constexpr iterator  operator--(int) { auto t = *this; --*this; return t; }
 
       constexpr iterator& operator+=(difference_type n)
@@ -8331,11 +8453,27 @@ namespace bnd
     constexpr bound_range(value_type start)
     {
       // Map a grid value back to its notch index: (start - Lower) / Notch.
-      // The result has integer denominator (start is on the grid) so the
-      // numerator is the index directly.
-      auto offset = ((detail::as_rational(start) - G.Interval.Lower)
-                     / G.Notch).value();
-      start_index_ = offset.Numerator;
+      // Same storage split as iterator::operator* — index raw already is the
+      // notch index; integer-grid value raw divides out the (integer) step.
+      if constexpr (detail::index_raw<value_type>)
+        start_index_ = static_cast<umax>(start.raw());
+      else if constexpr (detail::value_raw<value_type>
+                         && detail::abs_den(Notch<value_type>.Denominator) == 1
+                         && detail::abs_den(Lower<value_type>.Denominator) == 1)
+      {
+        constexpr imax notch_step = static_cast<imax>(Notch<value_type>.Numerator);
+        start_index_ = static_cast<umax>(
+            (static_cast<imax>(start.raw()) - detail::LowerImax<value_type>)
+            / notch_step);
+      }
+      else
+      {
+        // The result has integer denominator (start is on the grid) so the
+        // numerator is the index directly.
+        auto offset = ((detail::as_rational(start) - G.Interval.Lower)
+                       / G.Notch).value();
+        start_index_ = offset.Numerator;
+      }
     }
 
     constexpr iterator begin() const

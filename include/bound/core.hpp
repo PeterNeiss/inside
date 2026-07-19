@@ -598,8 +598,8 @@ namespace bnd
 
     private:
     // Out-of-range tail for raw-space compound arithmetic: dispatch on policy
-    // (clamp/wrap/sentinel/checked) and store back to `Raw`. Called from
-    // `operator+=(boundable)` only.
+    // (clamp/wrap/sentinel/checked) and store back to `Raw`. Called from the
+    // raw fast paths of `operator+=(boundable)` and `operator-=(boundable)`.
     constexpr bound& apply_raw_overflow(imax new_raw)
     {
       if constexpr (P & clamp)
@@ -658,7 +658,45 @@ namespace bnd
 
     template <boundable R>
     constexpr bound& operator-=(R const& rhs)
-    { return *this += (-rhs); }
+    {
+      // Raw-space fast path, the subtraction mirror of +='s: with equal
+      // notches, raw(v_l − v_r) = raw_l − raw_r − bias, where the bias is
+      // Lower<R>/Notch for an index-raw rhs (its raw is Lower-relative) and 0
+      // for a value-raw rhs. Delegating to `+= (-rhs)` instead shifts R's
+      // Lower by negation and defeats +='s raw path for index-backed grids.
+      if constexpr (!detail::rational_raw<bound> && !detail::rational_raw<R>
+                    && !detail::fp_raw<bound> && !detail::fp_raw<R>
+                    && Notch<bound> != 0 && Notch<bound> == Notch<R>
+                    && (!detail::index_raw<R>
+                        || ((Lower<R> / Notch<bound>).has_value()
+                            && detail::abs_den((*(Lower<R> / Notch<bound>)).Denominator) == 1)))
+      {
+        constexpr imax bias = [] {
+          if constexpr (detail::index_raw<R>)
+          {
+            constexpr auto quotient = *(Lower<R> / Notch<bound>);
+            return (quotient.Denominator < 0)
+                ? -static_cast<imax>(quotient.Numerator)
+                :  static_cast<imax>(quotient.Numerator);
+          }
+          else
+            return imax{0};
+        }();
+        if constexpr (P & (clamp | wrap | checked | sentinel))
+        {
+          imax new_raw = detail::raw_imax(*this) - detail::raw_imax(rhs) - bias;
+          if (new_raw < detail::RawLo<bound> || new_raw > detail::RawHi<bound>)
+            return apply_raw_overflow(new_raw);
+          Raw = detail::raw_cast<bound>(new_raw);
+        }
+        else
+          Raw = detail::raw_cast<bound>(
+              detail::raw_imax(*this) - detail::raw_imax(rhs) - bias);
+        return *this;
+      }
+      else
+        return *this += (-rhs);
+    }
 
     template <std::same_as<bnd::detail::rational> A>
     constexpr bound& operator-=(A const& rhs)
@@ -830,11 +868,53 @@ namespace bnd
       return detail::as_rational(lhs) == detail::as_rational(rhs);
   }
 
+  namespace detail
+  {
+    // bound ⋈ integral scalar without the rational decode: with the positive
+    // notch n/d, value ⋈ c ⟺ (bias + raw)·n ⋈ c·d — both sides exact
+    // integers (bias + raw is the signed value index, exact ordering AND
+    // equality since c·d is exact too). Eligible when both cross terms
+    // provably fit imax for every representable c of type A.
+    template <boundable B, typename A>
+    inline constexpr bool scalar_index_cmp_fits = []{
+      if constexpr (!std::integral<A> || !index_raw<B> || !index_cmp_fits<B>)
+        return false;
+      else
+      {
+        constexpr umax cap = static_cast<umax>(std::numeric_limits<imax>::max());
+        constexpr umax notch_num = Notch<B>.Numerator;
+        constexpr umax notch_den = static_cast<umax>(Notch<B>.Denominator); // Notch > 0
+        constexpr umax index_mag = []{
+          constexpr auto lo = *(Lower<B> / Notch<B>);
+          constexpr auto hi = *(Upper<B> / Notch<B>);
+          return lo.Numerator > hi.Numerator ? lo.Numerator : hi.Numerator;
+        }();
+        constexpr umax scalar_mag = []{
+          umax mag = static_cast<umax>(std::numeric_limits<A>::max());
+          if constexpr (std::signed_integral<A>)
+          {
+            umax min_mag = static_cast<umax>(
+                -(std::numeric_limits<A>::min() + 1)) + 1;
+            if (min_mag > mag) mag = min_mag;
+          }
+          return mag;
+        }();
+        umax product;
+        return !mul_overflow(index_mag, notch_num, &product) && product <= cap
+            && !mul_overflow(scalar_mag, notch_den, &product) && product <= cap;
+      }
+    }();
+  }
+
   template <boundable B, arithmetic A>
   constexpr auto operator<=>(B const& lhs, A rhs)
   {
     if constexpr (detail::value_raw<B>)
       return detail::raw_imax(lhs) <=> static_cast<imax>(rhs);
+    else if constexpr (detail::scalar_index_cmp_fits<B, A>)
+      return (detail::index_cmp_bias<B> + detail::raw_imax(lhs))
+                 * static_cast<imax>(Notch<B>.Numerator)
+         <=> static_cast<imax>(rhs) * Notch<B>.Denominator;
     else
       return detail::as_rational(lhs) <=> bnd::detail::rational{rhs};
   }
@@ -844,6 +924,10 @@ namespace bnd
   {
     if constexpr (detail::value_raw<B>)
       return detail::raw_imax(lhs) == static_cast<imax>(rhs);
+    else if constexpr (detail::scalar_index_cmp_fits<B, A>)
+      return (detail::index_cmp_bias<B> + detail::raw_imax(lhs))
+                 * static_cast<imax>(Notch<B>.Numerator)
+          == static_cast<imax>(rhs) * Notch<B>.Denominator;
     else
       return detail::as_rational(lhs) == bnd::detail::rational{rhs};
   }
