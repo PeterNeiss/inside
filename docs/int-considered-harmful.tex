@@ -1,0 +1,1621 @@
+% "int considered harmful"
+%
+% Build:  pdflatex -interaction=nonstopmode int-considered-harmful.tex   (x3)
+% Run from the docs/ directory; listings are read from int-considered-harmful/.
+
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage[margin=2.5cm,top=2.6cm,bottom=2.6cm]{geometry}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{caption}
+\usepackage{longtable}
+\usepackage[hidelinks,colorlinks=true,linkcolor=linkblue,urlcolor=linkblue,
+            citecolor=linkblue]{hyperref}
+
+% ---------------------------------------------------------------- colours ---
+\definecolor{linkblue}{HTML}{1A4F8A}
+\definecolor{codebg}{HTML}{F6F7F9}
+\definecolor{codeframe}{HTML}{D8DCE2}
+\definecolor{termbg}{HTML}{F2F0EC}
+\definecolor{termframe}{HTML}{D5CFC4}
+\definecolor{kw}{HTML}{0B5394}
+\definecolor{cmt}{HTML}{6B7A86}
+\definecolor{str}{HTML}{A03030}
+\definecolor{num}{HTML}{2E6F40}
+\definecolor{rulegray}{HTML}{888888}
+\definecolor{badred}{HTML}{9B1C1C}
+\definecolor{goodgreen}{HTML}{1F6B3B}
+
+% ---------------------------------------------------------------- headers ---
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0.3pt}
+\fancyhead[L]{\small\itshape int considered harmful}
+\fancyhead[R]{\small\thepage}
+
+\titleformat{\section}{\Large\bfseries}{\thesection}{0.7em}{}
+\titleformat{\subsection}{\large\bfseries}{\thesubsection}{0.6em}{}
+\titlespacing*{\section}{0pt}{1.6em}{0.7em}
+\titlespacing*{\subsection}{0pt}{1.2em}{0.5em}
+
+\setlist[itemize]{leftmargin=1.3em,topsep=0.3em,itemsep=0.25em}
+\setlist[enumerate]{leftmargin=1.6em,topsep=0.3em,itemsep=0.25em}
+
+% --------------------------------------------------------------- listings ---
+\lstdefinestyle{cpp}{
+  language=C++,
+  basicstyle=\ttfamily\footnotesize,
+  keywordstyle=\color{kw}\bfseries,
+  commentstyle=\color{cmt}\itshape,
+  stringstyle=\color{str},
+  numberstyle=\tiny\color{rulegray},
+  backgroundcolor=\color{codebg},
+  frame=single,
+  rulecolor=\color{codeframe},
+  framesep=5pt,
+  xleftmargin=6pt,
+  xrightmargin=2pt,
+  breaklines=true,
+  breakatwhitespace=true,
+  showstringspaces=false,
+  columns=fullflexible,
+  keepspaces=true,
+  tabsize=2,
+  aboveskip=0.9em,
+  belowskip=0.9em,
+  morekeywords={constexpr,consteval,static_assert,noexcept,auto,using,
+                nullptr,uint8_t,int16_t,int64_t,uint16_t,size_t,concept,
+                requires,co_await,decltype},
+}
+
+\lstdefinestyle{term}{
+  basicstyle=\ttfamily\footnotesize,
+  backgroundcolor=\color{termbg},
+  frame=single,
+  rulecolor=\color{termframe},
+  framesep=5pt,
+  xleftmargin=6pt,
+  xrightmargin=2pt,
+  breaklines=true,
+  showstringspaces=false,
+  columns=fullflexible,
+  keepspaces=true,
+  aboveskip=0.7em,
+  belowskip=0.9em,
+}
+
+\lstset{style=cpp}
+
+\newcommand{\code}[1]{\texttt{\small #1}}
+\newcommand{\file}[1]{\texttt{\small #1}}
+
+% caption for a code/output pair
+\newcommand{\exhibit}[1]{\vspace{0.2em}\noindent{\small\itshape #1}\par\vspace{-0.4em}}
+
+% ------------------------------------------------------------ bench tables ---
+\newenvironment{benchtable}[1]{%
+  \par\vspace{0.6em}\noindent{\small\bfseries #1}\par\vspace{0.2em}
+  \small
+  \begin{tabular}{r r r l}
+  \toprule
+  rel. & ns/op & ins/op & implementation \\
+  \midrule
+}{%
+  \bottomrule
+  \end{tabular}\par\vspace{0.8em}
+}
+
+% variant carrying the "does this row enforce the range?" column
+\newenvironment{benchtablec}[1]{%
+  \par\vspace{0.6em}\noindent{\small\bfseries #1}\par\vspace{0.2em}
+  \small
+  \begin{tabular}{r r r c l}
+  \toprule
+  rel. & ns/op & ins/op & enforces? & implementation \\
+  \midrule
+}{%
+  \bottomrule
+  \end{tabular}\par\vspace{0.8em}
+}
+
+% ================================================================= title ====
+\title{\vspace{-1.5cm}\textbf{\code{int} considered harmful}\\[0.4em]
+       \large A case against the default integer, and a type that fixes it}
+\author{Peter Neiss}
+\date{26 July 2026}
+
+\begin{document}
+\maketitle
+\thispagestyle{plain}
+
+\begin{abstract}
+\noindent
+C++'s \code{int} is not a number. It is a platform-dependent bit pattern whose
+behaviour is undefined at both ends of its range, which silently changes width
+and signedness in the middle of expressions, which rounds without being asked,
+and which carries no record of what it is counting. Every one of those
+properties is a defect, and all of them are load-bearing in code that ships
+today.
+
+This paper does two things. First it puts \code{int} in the dock: eleven
+hazards, each a complete program, compiled and run, with the real output
+reproduced. One of them causes GCC to emit \emph{no machine code at all} for
+\code{main}. It then makes the same case, more briefly, against reaching for
+\code{double} instead --- the reflex fix that trades one kind of silent
+wrongness for another.
+
+Second, it presents \code{bound}, a header-only C++23 library in which the
+range and the step size of a number live in its type. Arithmetic widens its
+result type at compile time, so overflow is not merely detected but
+unreachable; division by zero is a value you can test rather than a signal that
+kills the process; fractional values are exact rationals rather than binary
+approximations; and what happens at the edge of a range is a policy you state
+in the declaration. On performance we find no single answer: against code
+providing the same guarantee, \code{bound} is by turns \emph{faster} (it
+discharges at compile time checks that hand-written code must perform at
+runtime), exactly free (byte-identical machine code), and substantially slower
+(exact rational arithmetic, reproducible transcendentals). We report all three,
+with the programs that produced them.
+\end{abstract}
+
+\vspace{0.5em}
+\noindent\rule{\textwidth}{0.4pt}
+\vspace{0.3em}
+
+{\small
+\noindent\textbf{A note on evidence.} Every program in this paper lives in
+\file{docs/int-considered-harmful/} in the \code{bound} repository. Every
+output block was captured by running the program, not written by hand. All
+measurements come from the repository's generated \file{docs/performance.md} or
+from named commits; none are estimates. Compiler is GCC 15.2.0 on
+\mbox{x86-64} Linux unless stated otherwise. \code{bound} is alpha software and
+its API may change.
+
+\smallskip
+\noindent\textbf{On AI assistance.} This paper was drafted with
+\href{https://claude.com/claude-code}{Claude Code}, which wrote the example
+programs, compiled and ran them to capture the outputs reproduced here,
+extracted the benchmark figures from the repository's generated reports, and
+produced the typeset document. The \code{bound} library itself was likewise
+developed with Claude Code. The argument, the framing and the final review are
+the author's; the claims were checked against the compiler and the repository
+rather than taken on the model's word, and the reader is invited to do the
+same --- every program is included so that they can.
+}
+
+\vspace{0.8em}
+\noindent\rule{\textwidth}{0.4pt}
+
+\tableofcontents
+\newpage
+
+% ============================================================================
+\section{The thesis}
+
+Dijkstra's 1968 letter did not argue that \code{goto} produced wrong answers.
+It argued that \code{goto} destroyed the correspondence between the program on
+the page and the process it described, so that a reader could no longer reason
+about what was true at a given point. The objection was about
+\emph{tractability}, not arithmetic.
+
+The case against \code{int} is narrower and, in a sense, worse. \code{int} does
+produce wrong answers. It produces them silently, it produces them in code that
+compiles without a warning at maximum diagnostic settings, and --- the part
+practitioners consistently underestimate --- it produces them by causing the
+compiler to \emph{delete code the programmer wrote}, including the code written
+to check for the very failure that occurs.
+
+The root of it is a mismatch of models. The programmer thinks of \code{int} as
+$\mathbb{Z}$, the integers. The standard defines it as a finite set with
+undefined behaviour at the boundary, and permits the optimiser to assume the
+boundary is never reached. Those two models agree over the range where testing
+usually happens and diverge exactly where it usually does not.
+
+What follows from the mismatch is a family of defects that no amount of
+discipline fully removes, because the information needed to check the operation
+--- what range is this value allowed to occupy? what is it counting? what
+should happen if it leaves? --- is not present in the program at the point
+where the operation happens. It exists only in the programmer's head and, if
+you are fortunate, in a comment.
+
+\code{bound}'s proposal is to put that information in the type, where the
+compiler can act on it. The remainder of this paper establishes that the
+problem is real (\S\ref{sec:indictment}--\S\ref{sec:double}), that the usual
+defences do not solve it (\S\ref{sec:mitigations}), and that a type-level
+answer does (\S\ref{sec:bound}--\S\ref{sec:correctness}), at a cost that is
+sometimes nothing at all and sometimes substantial
+(\S\ref{sec:performance}).
+
+% ============================================================================
+\section{The indictment}\label{sec:indictment}
+
+\subsection{Signed overflow is undefined, and the optimiser believes it}
+
+The first thing to establish is that signed overflow is not wraparound. It is
+undefined behaviour, which means the compiler may assume it does not occur and
+optimise on that assumption. Consider a function that asks whether adding one
+to a number makes it bigger.
+
+\lstinputlisting[firstline=12,lastline=17]{int-considered-harmful/h01_overflow_ub.cpp}
+
+\noindent
+Since \code{x + 1 > x} can only be false if \code{x + 1} overflows, and
+overflow is undefined, the compiler concludes the expression is always true. It
+does not warn. It deletes the comparison:
+
+\begin{lstlisting}[style=term]
+$ g++ -std=c++23 -O0 h01_overflow_ub.cpp -o h01 && objdump -d h01
+0000000000001149 <grows(int)>:
+    1149:   endbr64
+    114d:   push   %rbp
+    114e:   mov    %rsp,%rbp
+    1151:   mov    %edi,-0x4(%rbp)     <- argument stored...
+    1154:   mov    $0x1,%eax           <- ...and ignored. Return 1.
+    1159:   pop    %rbp
+    115a:   ret
+\end{lstlisting}
+
+\noindent
+Note the optimisation level: \textbf{\code{-O0}}. This is not an aggressive
+release-build transformation that a debug build would protect you from. GCC
+folds the comparison during translation, before optimisation proper begins. The
+check cannot be written in a way that survives, because the check is the thing
+being deleted.
+
+\begin{lstlisting}[style=term]
+INT_MAX            = 2147483647
+grows(INT_MAX)     = yes, always
+INT_MAX + 1        = -2147483648
+\end{lstlisting}
+
+\noindent
+The last two lines are worth reading together. The program reports that adding
+one to \code{INT\_MAX} always produces a larger value, and then prints the
+smaller value it produced.
+
+\subsection{The same assumption deletes an entire function}
+
+That was a folded comparison. The assumption compounds. Here is a loop whose
+induction variable starts near the top of the range:
+
+\lstinputlisting[firstline=11,lastline=25]{int-considered-harmful/h02_overflow_loop.cpp}
+
+\noindent
+At \code{-O0} the counter wraps to a negative value, \code{i > 0} goes false,
+and the loop exits after three iterations. At \code{-O2} the compiler reasons
+that \code{i > 0} can never become false without overflow, and overflow is
+undefined, therefore the loop is infinite, therefore the code after it is
+unreachable, therefore \code{main} has no reachable exit. What it emits is:
+
+\begin{lstlisting}[style=term]
+$ g++ -std=c++23 -O2 -Wall h02_overflow_loop.cpp -o h02
+$ objdump -d h02
+
+0000000000001040 <main>:
+    1040:   endbr64
+    1044:   cs nopw 0x0(%rax,%rax,1)
+    104e:   xchg   %ax,%ax
+
+0000000000001050 <_start>:
+\end{lstlisting}
+
+\noindent
+That is the whole of \code{main}: an endbranch landing pad and five bytes of
+alignment padding. There is no loop, no \code{printf}, and \textbf{no
+\code{ret} instruction}. Execution falls out of \code{main} into whatever
+follows it in the text segment:
+
+\begin{lstlisting}[style=term]
+$ ./h02
+Segmentation fault (core dumped)          [exit 139]
+
+$ ./h02_compiled_at_O0
+iterations = 3
+\end{lstlisting}
+
+\noindent
+\code{-Wall} produced no diagnostic. The same source, the same compiler, two
+optimisation levels: one prints \code{3}, the other crashes before executing a
+single instruction of the program. This is the strongest available argument
+that undefined behaviour is not a theoretical concern about edge-case values.
+It is a compile-time contract, and breaking it does not corrupt your result ---
+it deletes your program.
+
+\subsection{Two's complement is asymmetric}
+
+There are $2^{31}$ negative \code{int} values and $2^{31}-1$ positive ones.
+Negation therefore has no correct answer at one point in the range, and neither
+does absolute value.
+
+\lstinputlisting[firstline=13,lastline=18]{int-considered-harmful/h03_intmin.cpp}
+\begin{lstlisting}[style=term]
+INT_MIN            = -2147483648
+INT_MAX            = 2147483647
+-INT_MIN           = -2147483648   <- still negative
+abs(INT_MIN)       = -2147483648   <- still negative
+\end{lstlisting}
+
+\noindent
+\code{std::abs} is a function whose entire purpose is to return a non-negative
+value, and it returns a negative one. It is not a bug in the standard library;
+there is no value it could return that would be correct.
+
+\subsection{Division has two undefined inputs and no error value}
+
+Floating point has \code{NaN} and infinities. Integer division has neither, so
+its two invalid inputs --- division by zero, and \code{INT\_MIN / -1}, whose
+true answer is \code{INT\_MAX + 1} --- cannot be represented as results. On
+x86-64 both raise \code{SIGFPE} and terminate the process.
+
+\begin{lstlisting}[style=term]
+$ ./h04_divzero 0
+about to evaluate 10 / 0 ...
+Floating point exception (core dumped)          [exit 136]
+
+$ ./h04_divzero 1
+about to evaluate -2147483648 / -1 ...
+Floating point exception (core dumped)          [exit 136]
+\end{lstlisting}
+
+\noindent
+The second case is the one that surprises people: a division whose operands are
+both perfectly ordinary-looking, with no zero in sight, that kills the process.
+Any code that divides by a runtime value must check for two special cases, and
+almost none does.
+
+\subsection{Mixed signed/unsigned comparison}
+
+When an \code{int} meets an \code{unsigned} in a comparison, the usual
+arithmetic conversions make both unsigned. A negative value becomes an enormous
+positive one.
+
+\lstinputlisting[firstline=12,lastline=23]{int-considered-harmful/h05_signed_unsigned.cpp}
+\begin{lstlisting}[style=term]
+-1 < 0u            = false
+v.size()           = 0
+v.size() - 1       = 18446744073709551615   <- not -1
+loop body entered  = 4 times on an EMPTY vector
+\end{lstlisting}
+
+\noindent
+The loop iterates over an empty container. Without the escape hatch it would
+run roughly $1.8\times10^{19}$ times, indexing far past the end of the
+allocation on the first pass. This is among the most common sources of
+exploitable memory-safety bugs in C++ code, and it arises from a
+\emph{comparison}.
+
+\subsection{Small types do not stay small}
+
+Integral promotion means the operands of an expression are frequently not the
+types you wrote, and the result is frequently not the type of the operands.
+
+\lstinputlisting[firstline=11,lastline=27]{int-considered-harmful/h06_promotion.cpp}
+\begin{lstlisting}[style=term]
+uint8 * uint8 -> int? yes
+200 * 200          = 40000
+stored back in u8  = 64   <- truncated
+char is signed?    yes (platform-dependent)
+sizeof(int)        = 4 bytes here; the standard promises >= 2
+\end{lstlisting}
+
+\noindent
+Three separate portability hazards sit in that output. The multiplication of
+two 8-bit values happens in \code{int}, so the intermediate is fine but the
+store truncates. The signedness of bare \code{char} is
+implementation-defined --- code that treats it as either is wrong somewhere.
+And \code{sizeof(int)} is 4 here but the standard guarantees only 2, which is
+not academic: it is 2 on a great deal of shipping embedded hardware.
+
+\subsection{Division truncates, and not in the direction you expect}
+
+\lstinputlisting[firstline=9,lastline=16]{int-considered-harmful/h07_truncdiv.cpp}
+\begin{lstlisting}[style=term]
+ 7 / 2             = 3   (exact answer 3.5)
+-7 / 2             = -3   (rounds toward zero, not down)
+ 7 % 2             = 1
+-7 % 2             = -1   <- negative remainder
+mean(90,90,91)     = 90   (true mean 90.333...)
+\end{lstlisting}
+
+\noindent
+Integer division rounds toward zero, which is neither floor nor
+round-to-nearest. It is the only rounding mode available, it is applied
+silently, and it is the wrong one for most arithmetic people actually want:
+computing an average, splitting a bill, scaling a value by a percentage.
+The remainder is negative for negative operands, which breaks the common
+idiom \code{if (x \% n == k)} for indexing into cyclic structures.
+
+\subsection{Shifts}
+
+\lstinputlisting[firstline=8,lastline=20]{int-considered-harmful/h08_shift.cpp}
+\begin{lstlisting}[style=term]
+1 << 31            = -2147483648   <- undefined behaviour
+-8 >> 1            = -4
+\end{lstlisting}
+
+\noindent
+Shifting a bit into the sign position of a signed type is undefined; so is
+shifting by an amount greater than or equal to the width, and shifting by a
+negative amount. The value printed above happens to be what the hardware does.
+It is not what the standard promises, and the optimiser is not obliged to agree
+with the hardware.
+
+\subsection{Narrowing is silent}
+
+\lstinputlisting[firstline=10,lastline=23]{int-considered-harmful/h11_narrowing.cpp}
+\begin{lstlisting}[style=term]
+velocity (64-bit)  = 40000
+stored as 16-bit   = -25536   <- sign flipped
+int 300 -> char    = 44
+\end{lstlisting}
+
+\noindent
+A positive velocity becomes a negative one. This is, in miniature, the Ariane 5
+Flight 501 failure of June 1996: a 64-bit floating-point horizontal-velocity
+value converted to a 16-bit signed integer, in inertial-reference software
+carried over unchanged from Ariane 4, where the value's range had been provably
+smaller. The conversion overflowed 37 seconds after ignition, the guidance
+computers shut down, and the vehicle was destroyed with its payload. The
+software was correct for the range it had been written against; nothing in the
+type system recorded what that range was.
+
+\subsection{The midpoint bug}
+
+\lstinputlisting[firstline=8,lastline=19]{int-considered-harmful/h10_binsearch.cpp}
+\begin{lstlisting}[style=term]
+lo                 = 2147483644
+hi                 = 2147483646
+(lo + hi) / 2      = -3   <- outside [lo, hi]
+lo + (hi - lo) / 2 = 2147483645   <- correct
+\end{lstlisting}
+
+\noindent
+The midpoint of two values inside the range lands outside it. This is the bug
+Jon Bentley described in \emph{Programming Pearls} (1986) and Joshua Bloch
+rediscovered in the JDK in 2006, where \code{Arrays.binarySearch} had carried it
+for nine years. If a bug of this shape can live that long in one of the most
+scrutinised standard libraries in existence, written by people who knew about
+it, the problem is not insufficient care.
+
+\subsection{The semantic hazard: \code{int} does not know what it counts}
+
+Every hazard so far has been about range. This one is about meaning, and it is
+the one no sanitizer will ever catch, because the arithmetic is valid.
+
+\lstinputlisting[firstline=7,lastline=26]{int-considered-harmful/h09_units.cpp}
+\begin{lstlisting}[style=term]
+subtotal (cents)   = 3683
+shipping (dollars) = 5
+total              = 3688   <- charged 5 cents for shipping
+compiles clean, runs clean, bills the customer wrong.
+\end{lstlisting}
+
+\noindent
+An \code{int} holding cents and an \code{int} holding dollars are the same
+type. Adding them is well-defined, warning-free, sanitizer-clean, and wrong.
+The Mars Climate Orbiter was lost in 1999 to precisely this class of error
+across a software interface --- pound-force-seconds where newton-seconds were
+expected. No range check would have caught it, because no value was out of
+range. The information that would have caught it --- what the number
+\emph{means} --- was never written down anywhere the compiler could see.
+
+% ============================================================================
+\section{``Just use \code{double}''}\label{sec:double}
+
+The common response to the preceding section is to reach for floating point.
+\code{double} has a much wider range, it does not trap on division by zero, and
+it represents fractions. It is a reasonable instinct and it is the right tool
+for a genuine class of problems. But it is not a fix for the problems above; it
+substitutes a different family of silent wrongness, and this section is
+deliberately shorter than the last one only because the failures are more
+widely known --- not because they are less serious.
+
+\subsection{Decimal fractions are not representable}
+
+\begin{lstlisting}[style=term]
+0.1 + 0.2          = 0.30000000000000004441
+0.3                = 0.29999999999999998890
+0.1 + 0.2 == 0.3   ? false
+\end{lstlisting}
+
+\noindent
+Neither \code{0.1} nor \code{0.2} nor \code{0.3} exists in binary floating
+point. The literals are the nearest representable neighbours, and the sum of
+the first two is not the neighbour of the third.
+
+\subsection{The error accumulates}
+
+\lstinputlisting[firstline=6,lastline=15]{int-considered-harmful/d02_money_drift.cpp}
+\begin{lstlisting}[style=term]
+10000 x $0.01      = 100.00000000001425348728
+expected           = 100.00000000000000000000
+exactly $100.00    ? false
+error              = 0.00000000001425348728
+\end{lstlisting}
+
+\noindent
+Ten thousand transactions --- a quiet morning for a payment system --- and the
+ledger no longer balances to the cent. The error is small, which is precisely
+what makes it dangerous: it survives testing and shows up in reconciliation.
+
+\subsection{Addition is not associative}
+
+\lstinputlisting[firstline=7,lastline=16]{int-considered-harmful/d03_assoc.cpp}
+\begin{lstlisting}[style=term]
+(a + b) + c        = 1.0
+a + (b + c)        = 0.0
+equal              ? false
+\end{lstlisting}
+
+\noindent
+The same three values, the same operator, two groupings, two answers. The
+practical consequence is that the result of a summation depends on the order
+the data was visited in. Parallelise a reduction across a different number of
+threads, or let the optimiser re-associate a loop, and the answer changes.
+Results stop being reproducible --- not across platforms, but across
+\emph{runs}.
+
+\subsection{Integers stop counting at $2^{53}$}
+
+\lstinputlisting[firstline=7,lastline=18]{int-considered-harmful/d04_precision.cpp}
+\begin{lstlisting}[style=term]
+2^53               = 9007199254740992.0
+2^53 + 1           = 9007199254740992.0   <- unchanged
+2^53 + 1 == 2^53   ? true
+(1e16 + 1) - 1e16  = 0.0   (should be 1)
+\end{lstlisting}
+
+\noindent
+Beyond $2^{53}$ a \code{double} cannot represent consecutive integers, so a
+counter silently stops incrementing --- a real hazard for identifiers and
+timestamps in systems that pass numbers through JSON, where \code{double} is
+the only numeric type. The second line shows catastrophic cancellation:
+subtracting near-equal quantities annihilates every digit that mattered.
+
+\subsection{\code{NaN} breaks equality and ordering}
+
+\begin{lstlisting}[style=term]
+0.0 / 0.0          = -nan
+1.0 / 0.0          = inf   <- no error reported
+nan == nan         ? false   <- breaks equality
+nan < 1            ? false
+nan > 1            ? false   <- neither; breaks sorting
+nan + 1000         = -nan   <- contaminates the whole total
+\end{lstlisting}
+
+\noindent
+\code{double} does not trap, which is often described as an advantage. The cost
+is that an invalid operation produces a value that propagates silently through
+every subsequent computation, and that violates the strict-weak-ordering
+requirement \code{std::sort} relies on --- sorting a range containing
+\code{NaN} is undefined behaviour, and can walk off the end of the buffer.
+
+\medskip
+\noindent
+The honest summary is that floating point is excellent at what it was designed
+for: approximating continuous quantities across an enormous dynamic range. It
+is a poor fit for money, for counting, for identifiers, and for anything
+requiring reproducibility. Reaching for it to escape \code{int}'s problems
+means adopting a different set.
+
+% ============================================================================
+\section{Why the usual defences fall short}\label{sec:mitigations}
+
+Before proposing something new, it is worth being precise about why the
+existing tools do not close the gap.
+
+\paragraph{Sanitizers are runtime instruments.} UBSan genuinely detects signed
+overflow, and it is valuable. But it detects it only when the offending input
+actually occurs, in a build that carries the instrumentation, and it cannot
+detect what the optimiser already deleted. Running our very first example under
+UBSan:
+
+\begin{lstlisting}[style=term]
+$ g++ -std=c++23 -O2 -fsanitize=undefined h01_overflow_ub.cpp && ./a.out
+h01_overflow_ub.cpp:23:14: runtime error: signed integer overflow:
+    2147483647 + 1 cannot be represented in type 'int'
+INT_MAX            = 2147483647
+grows(INT_MAX)     = yes, always
+INT_MAX + 1        = -2147483648
+\end{lstlisting}
+
+\noindent
+UBSan reports line 23 --- the \code{printf} argument. It says nothing about
+\code{grows()}, where the comparison was folded away at translation time. There
+was no overflow left to instrument, because there was no arithmetic left. The
+diagnostic misses the defect that motivated the example.
+
+\paragraph{\code{-ftrapv} and \code{-fwrapv} change the language.}
+\code{-fwrapv} defines overflow as wrapping, which removes the undefined
+behaviour and the optimiser's licence with it. That is a real improvement, and
+it makes the wrong answer reliable rather than unpredictable: the midpoint bug
+still computes a negative midpoint. It is a fix for the UB, not for the
+arithmetic.
+
+\paragraph{Assertions are manual, and unenforced.} A precondition check is only
+present where somebody remembered to write it, expresses a range the type
+system does not know, and is frequently compiled out in release builds. It is
+documentation with a runtime cost, not a guarantee.
+
+\paragraph{Static analysis is partial by construction.} Range analysis across
+function boundaries and through data structures is undecidable in general.
+Analysers are useful and they are not complete; they cannot tell you that this
+\code{int} is cents and that one is dollars, because nothing in the program
+says so.
+
+\paragraph{Safe-integer libraries solve one hazard.} Wrapper types that check
+for overflow on every operation (\code{boost::safe\_numerics},
+\code{SafeInt}) genuinely fix hazards \S2.1--\S2.2. They do not address units,
+they do not address rounding policy, they do not give you a range narrower than
+the underlying type, and they detect at runtime what could have been rejected
+at compile time.
+
+\medskip
+\noindent
+The common thread: each tool operates at a point where the necessary
+information has already been discarded. The range this value may occupy, the
+quantity it measures, the rounding rule that applies, and what should happen at
+the boundary are all decisions the programmer made and then failed to record in
+a form the compiler can act upon. The proposal in the next section is simply
+to record them.
+
+% ============================================================================
+\section{\code{bound}: putting the range in the type}\label{sec:bound}
+
+\code{bound} is a header-only C++23 library (with a C++20 fallback) built
+around a single template:
+
+\begin{lstlisting}
+template<grid G, policy_flag P>
+struct bound;                        // include/bound/core.hpp:62
+\end{lstlisting}
+
+\noindent
+The \code{grid} is a compile-time value carrying an interval (lower and upper
+bound) and a \emph{notch} --- the step size, held as an exact rational. Every
+value of the type is exactly $\text{Lower} + k \cdot \text{Notch}$ for some
+integer $k$. The \code{policy} says what happens when a value would leave the
+range. Storage is selected automatically: the narrowest of
+\code{uint8}\ldots\code{int64}, \code{float}/\code{double}, or an exact
+fraction, that can represent every point on the grid.
+
+\begin{lstlisting}
+using namespace bnd;
+
+using pct    = bound<{0, 100}>;                    // integers 0..100
+using money  = bound<{{0, 1'000'000}, notch<1,100>}, round_nearest>;  // cents
+using angle  = bound<{0, 359}, wrap>;              // modular
+using sample = bound<{{-1, 1}, notch<1,16384>}, round_nearest>;       // Q1.14
+\end{lstlisting}
+
+\noindent
+Three properties follow, and between them they account for most of
+\S\ref{sec:indictment}.
+
+\subsection{Arithmetic widens, so overflow is unreachable}
+
+The result type of an operation is computed at compile time from the operand
+grids. Adding two values in $[10, 255]$ yields a type whose range is
+$[20, 510]$ --- wide enough that no representable input can overflow it. There
+is no overflow to be undefined, no check to perform, and nothing for the
+optimiser to exploit.
+
+\lstinputlisting[firstline=12,lastline=33]{int-considered-harmful/b01_no_overflow.cpp}
+\begin{lstlisting}[style=term]
+a + b              = 236
+a - b              = -204   (no wraparound)
+(lo + hi) / 2      = 2147483645   (still in range)
+\end{lstlisting}
+
+\noindent
+Three things happened there. The sum was verified at compile time by
+\code{static\_assert}, so a wrong answer would have been a build failure rather
+than a test failure. The difference of two \emph{unsigned-ranged} values
+produced $-204$: because the result grid is $[-245, 245]$, the type widened to
+a signed representation rather than wrapping. And the midpoint computation from
+\S2.10 --- the one that produced $-3$ in \code{int} --- stayed in range,
+because \code{lo + hi} was evaluated in a grid wide enough to hold it before
+the division.
+
+\subsection{Division by zero is a value, not a signal}
+
+Where the divisor's grid can include zero, division returns
+\code{slim::optional}. Where the grid provably excludes zero, it returns a
+plain value with nothing to unwrap --- the check is elided because the type
+proves it unnecessary.
+
+\lstinputlisting[firstline=13,lastline=35]{int-considered-harmful/b02_divzero.cpp}
+\begin{lstlisting}[style=term]
+7 / 3              = 2 1/3   (exact, not 2)
+div(7, 3, trunc)   = 2
+10 / 0             = nullopt   (no SIGFPE)
+\end{lstlisting}
+
+\noindent
+Note the first line. The default result of division is \emph{exact}: $7/3$ is
+represented as the rational $2\tfrac{1}{3}$, not truncated to $2$. Truncation
+is still available, but you ask for it by name, per call. The failure that
+terminated the process in \S2.4 is now a value the caller can test.
+
+\subsection{Rounding is stated, not inherited}
+
+\lstinputlisting[firstline=15,lastline=33]{int-considered-harmful/b07_rounding.cpp}
+\begin{lstlisting}[style=term]
+native  -7 / 2     = -3   (toward zero, always)
+round_to_nearest   = -4
+floored            = -4
+ceiled             = -3
+truncated          = -3
+exact              = -3.5
+\end{lstlisting}
+
+\noindent
+Each mode is honoured, including for negative operands, where the distinction
+between truncation and flooring actually bites. The repository pins this with a
+property test asserting $(a/b) \cdot b + a \bmod b = a$ across whole grids for
+every mode, including negative divisors
+(\file{tests/test\_div\_round.cpp:129--152}).
+
+\subsection{The edge is a policy you declare}
+
+Out-of-range values are only reachable when assigning into a narrower type ---
+never from arithmetic. What happens then is part of the declaration:
+
+\lstinputlisting[firstline=17,lastline=45]{int-considered-harmful/b03_policies.cpp}
+\begin{lstlisting}[style=term]
+checked  200 ->    value outside interval
+clamp    150 ->    100
+wrap     370 ->    10
+sentinel  10 ->    nullopt
+with_clamp() 150 -> 100
+\end{lstlisting}
+
+\noindent
+The wrapping behaviour that \code{int} gives you unasked and undefined is
+available here as \code{wrap} --- explicitly requested, well-defined, and
+producing $370 \rightarrow 10$ on a $[0,359]$ grid rather than
+$\text{INT\_MAX}+1 \rightarrow \text{INT\_MIN}$. The default is \code{checked},
+which reports rather than storing a value it cannot represent.
+
+\subsection{Negation reflects the type}
+
+The asymmetry of \S2.3 disappears because negating a
+$[\text{Lower},\text{Upper}]$ value yields a value of type
+$[-\text{Upper},-\text{Lower}]$:
+
+\lstinputlisting[firstline=12,lastline=27]{int-considered-harmful/b10_negation.cpp}
+\begin{lstlisting}[style=term]
+coldest            = -40
+-coldest           = 40   (representable by construction)
+-hottest           = -125
+\end{lstlisting}
+
+\noindent
+There is no value whose negation falls outside the negated type, so
+\code{-INT\_MIN} has no analogue. The same reasoning gives an \code{abs} that
+cannot return a negative number.
+
+\subsection{The scale is part of the type}
+
+The units failure of \S2.11 is a failure to record what a number means.
+\code{bound} records the scale in the notch, so a value on a cent grid and a
+value on a dollar grid are different types, and combining them converts:
+
+\lstinputlisting[firstline=14,lastline=32]{int-considered-harmful/b05_units.cpp}
+\begin{lstlisting}[style=term]
+subtotal           = $36.83
+shipping           = $5
+total              = $41.83   (not $36.88)
+\end{lstlisting}
+
+\noindent
+The \code{int} version of this program charged five cents for shipping. Here
+the dollar value is scaled onto the cent grid automatically, because the
+compiler knows what each grid's step size is.
+
+Bare integers cannot enter the arithmetic at all --- there is nothing to say
+what grid they belong to --- and the diagnostic says so directly:
+
+\begin{lstlisting}[style=term]
+$ g++ -std=c++23 -I ../../include x01_bare_int_rejected.cpp
+   15 |   auto bad = x + 1;      // error: no grid for the literal
+include/bound/arithmetic.hpp:492:27: error: static assertion failed:
+   a bound can only be added to another bound: give the scalar a grid --
+   write `a + 1_b` (or `a + just<1>` / `a + one`), or `a + bound<{lo,hi}>{n}`
+   for a runtime value with a known range
+\end{lstlisting}
+
+\subsection{Bounded indices}
+
+\lstinputlisting[firstline=13,lastline=33]{int-considered-harmful/b08_index.cpp}
+\begin{lstlisting}[style=term]
+data[7]            = 49
+index 10           = nullopt   (no out-of-bounds access possible)
+sum of all slots   = 285
+\end{lstlisting}
+
+\noindent
+The bounds check happens once, at construction, rather than at every access or
+not at all. An index that exists is in range by construction; one that would
+not be simply fails to be created.
+
+% ============================================================================
+\section{A worked migration}\label{sec:migration}
+
+An invoice calculation, in \code{int}. It has three defects, and the compiler
+mentions none of them.
+
+\lstinputlisting[firstline=10,lastline=22]{int-considered-harmful/m_before.cpp}
+\begin{lstlisting}[style=term]
+subtotal (cents)   = 268435456
+tax  (8%)          = -21474836   <- overflowed
+discount (1/3)     = 89478485   <- truncated
+total              = 157482135
+
+expected tax       = 21474836.48
+expected discount  = 89478485.33
+\end{lstlisting}
+
+\noindent
+The invoice is for \$2,684,354.56 --- large, but not implausible. Computing 8\%
+of it as \code{subtotal * 8 / 100} overflows \code{int} at the multiplication,
+and the tax comes out \emph{negative}. The discount silently loses its
+fractional part. The total is meaningless, and every intermediate looks like a
+perfectly ordinary integer.
+
+The same calculation in \code{bound}:
+
+\lstinputlisting[firstline=14,lastline=45]{int-considered-harmful/m_after.cpp}
+\begin{lstlisting}[style=term]
+subtotal           = $2684354.56
+tax  (8%)          = $214748.36   (exact, no overflow)
+discount (1/3)     = $894784.85   (rounded to nearest cent)
+total              = $2004318.07
+
+discount on a 1/300 grid       = $894784 64/75   (nothing was lost)
+as an exact fraction of a dollar = 67108864/75
+\end{lstlisting}
+
+\noindent
+What changed, and what it cost:
+
+\begin{itemize}
+\item \textbf{The overflow is gone by construction.} \code{subtotal * 0.08\_b}
+      widens to a grid that can hold the product. There is no check, because
+      there is nothing to check.
+\item \textbf{The tax is exact to the cent.} \code{0.08} is parsed as an exact
+      rational, not as the nearest \code{double}. The product is exact, and
+      assigning it into \code{money} snaps to the nearest cent because
+      \code{money} was declared \code{round\_nearest}. Truncating instead would
+      require saying so.
+\item \textbf{The third stays exact until it is stored.} The last two lines
+      prove it: stored onto a grid of thirds-of-a-cent, the discount is
+      $67108864/75$ dollars exactly. The rounding in the line above it happened
+      once, at the point of storage, by a stated rule --- not silently at every
+      intermediate step.
+\item \textbf{The friction is real but small.} Literals need a grid
+      (\code{0.08\_b}), non-representable constants need \code{frac<1,3>}
+      rather than \code{1.0/3.0}, and the declaration of \code{money} is a line
+      of thought that the \code{int} version never had to have. That line is
+      the point: it is where the range, the scale, and the rounding rule got
+      written down.
+\end{itemize}
+
+% ============================================================================
+\section{Correctness}\label{sec:correctness}
+
+\subsection{Errors caught before the program runs}
+
+The strongest claim \code{bound} makes is not that it detects errors but that
+it rejects them at compile time. Because grids are compile-time values and the
+arithmetic is \code{constexpr}, whole categories of defect become build
+failures.
+
+\lstinputlisting[firstline=17,lastline=33]{int-considered-harmful/b06_compile_time.cpp}
+
+\noindent
+Every line above is a \code{static\_assert}. If any were false the file would
+not build, and no test would need to run to discover it. An out-of-range
+constant is likewise rejected outright:
+
+\begin{lstlisting}[style=term]
+$ g++ -std=c++23 -I ../../include x02_range_rejected.cpp
+error: 'constexpr void bnd::policy<W,E>::report(bnd::errc)'
+       called in a constant expression
+error: call to non-'constexpr' function 'void bnd::detail::raise(bnd::errc,
+       const char*)'
+\end{lstlisting}
+
+\noindent
+The mechanism is worth understanding: the error path is deliberately
+non-\code{constexpr}, so reaching it during constant evaluation is
+automatically a compile error. The library's own test suite
+(\file{tests/test\_constexpr.cpp}) is written almost entirely in
+\code{STATIC\_REQUIRE} on this basis.
+
+\subsection{The error vocabulary}
+
+\code{bound} reports failure in one of several shapes, and which one you get is
+determined by how you spell the call. The design rule is that the shape matches
+the caller's role.
+
+\begin{center}
+\small
+\begin{tabular}{@{}l l p{6.6cm}@{}}
+\toprule
+Shape & Spelling & When \\
+\midrule
+Plain value & \code{a + b} & The type proves the operation cannot fail. \\
+\code{optional} & \code{a / b}, \code{try\_make} & Failure has one obvious cause; the caller only needs to know it happened. \\
+\code{expected<T,errc>} & \code{to<T>()}, \code{math::sqrt} & Several distinct causes; the caller needs to know which. \\
+Error code & \code{x.policy(ec) = v} & Hot paths, or bulk operations where the first error should stick. \\
+Throwing & default \code{checked} & Programming errors that should not be handled locally. \\
+Callback & \code{on\_clamp}, \code{on\_wrap} & The event is expected and carries data (a carry, an overshoot). \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent
+The codes themselves are a small closed enumeration
+(\file{detail/debug.hpp:55}):
+
+\begin{lstlisting}
+enum class errc { domain_error, division_by_zero, overflow,
+                  rounding_error, not_a_value, not_finite };
+\end{lstlisting}
+
+\noindent
+There is no \code{<system\_error>} dependency. Where exceptions are
+unavailable, \code{set\_error\_handler} replaces the failure path globally,
+which is what allows the library to run freestanding on bare metal.
+
+The callback shape is more useful than it first appears, because some
+``errors'' are the actual semantics of the domain. A clock is the canonical
+case: seconds overflowing 59 is not a fault, it is a carry.
+
+\begin{lstlisting}
+void add_seconds(auto n)
+{
+  seconds.on_wrap([&](auto, auto carry) { add_minutes(carry); }) += n;
+}
+\end{lstlisting}
+
+\noindent
+That is the whole of the carry logic from \file{examples/clock.cpp} --- the
+wrap event delivers the overshoot to the next field up, and the cascade to
+minutes and hours falls out of the same pattern.
+
+\subsection{Exactness}
+
+Because the notch is an exact rational rather than a binary fraction, grids
+like ``cents'' and ``thirds'' are represented without approximation. The money
+example from \S\ref{sec:double} run in \code{bound}:
+
+\lstinputlisting[firstline=14,lastline=29]{int-considered-harmful/b04_money.cpp}
+\begin{lstlisting}[style=term]
+10000 x $0.01      = $100
+exactly $100.00    ? true
+as a fraction      = 100/1
+\end{lstlisting}
+
+\noindent
+Ten thousand additions of one cent produce exactly one hundred dollars, in four
+bytes of storage --- the same computation that drifted by
+$1.4\times10^{-11}$ in \code{double}. The \code{static\_assert(sizeof(money) ==
+4)} in that listing is doing real work: exactness here does not require
+arbitrary-precision arithmetic, because the grid is known at compile time and
+the value is stored as an integer count of notches.
+
+Floating-point storage is still available, but only where it is provably
+lossless: the \code{f64} and \code{f32} flags are permitted only on
+\emph{dyadic} grids --- power-of-two notch and lower bound --- so that every
+grid point is exactly representable in the significand. This is enforced by
+\code{static\_assert}, and a grid too fine for the requested float silently
+falls back to exact rational storage rather than losing precision. The rule
+that decides it is the same $2^{53}$ boundary that \S\ref{sec:double}
+demonstrated.
+
+\subsection{Reproducibility}
+
+For integer and rational storage, \code{+ - * /} are reproducible
+unconditionally --- the repository's determinism document states it plainly:
+``There is no floating point on these paths, so there is nothing for the
+platform to round differently.'' Conversion from \code{double} decomposes the
+value from its IEEE-754 bits rather than computing with it, so it needs no FPU
+and no \code{<cmath>}.
+
+For transcendentals, \code{bnd::math} ships three engines behind one API, of
+which the integer CORDIC engine is reproducible ``unconditionally $\ldots$ any
+platform, any flags, no FPU.'' Its contract is worth quoting because it is
+unusually specific:
+
+\begin{quote}\small
+Every function below produces bit-identical output $\ldots$ across compiler,
+platform, optimisation level, and FP flags. 1. NO \code{<cmath>}/FPU/intrinsics;
+hot paths are integer-only over int64. 2. NO runtime-derived tables $\ldots$
+3. NO external code generators $\ldots$ 5. Each transcendental ships checked-in
+\code{static\_assert} vectors pinning its bit-exact output.
+\end{quote}
+
+\noindent
+Measured against a long-double reference, the double engine's maximum error is
+exactly 0.5000 notches for essentially every function --- correctly rounded ---
+and the CORDIC engine stays below 0.9 notches (\file{docs/accuracy.md}).
+
+One honest caveat, which the library documents itself: the three engines are
+reproducible individually but are \emph{not} value-identical to each other. A
+golden vector captured under one engine is valid for that engine only. This is
+the table-maker's dilemma, not a defect, but it does mean the engine choice is
+part of your reproducibility contract.
+
+% ============================================================================
+\section{Performance}\label{sec:performance}
+
+An abstraction that costs nothing is suspicious. This one does not have a
+single cost at all, and the most important thing to say about its performance
+is that \textbf{the cost is not a number, it is a range with a negative end}.
+Depending on what the code is doing, using \code{bound} instead of \code{int}
+can make the program faster, leave it unchanged instruction-for-instruction, or
+make it substantially slower. All three regimes are measured in this section:
+
+\begin{center}
+\small
+\begin{tabular}{@{}l >{\raggedright\arraybackslash}p{5.1cm} >{\raggedright\arraybackslash}p{5.9cm}@{}}
+\toprule
+Regime & When & Measured \\
+\midrule
+\textbf{Negative cost} & A chain of operations whose intermediate ranges the
+compiler can discharge, replacing checks the equivalent hand-written code must
+perform at runtime. &
+22\% faster than native checked (\S\ref{sec:checks}); comparison at 100.2\%
+of native with fewer instructions \\[0.6em]
+\textbf{Zero cost} & Integer-aligned operands on the same grid, where all the
+range reasoning happens in the type system. &
+Byte-identical disassembly (\S\ref{sec:performance});
+\code{bound<unsafe>} at 99.9\% (\S\ref{sec:fair}) \\[0.6em]
+\textbf{Additional cost} & Exact rational storage, bit-reproducible
+transcendentals, and element-wise checking through generic algorithms. &
+\code{bound<exact>} $\approx$8$\times$ \code{double};
+\code{bnd::math} at 9--12\% of \code{std};
+\code{std::accumulate} at 2.9\% \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent
+Which regime you land in is mostly determined by how the code is written rather
+than by the library: staying in bound-space lets the grid arithmetic discharge
+obligations, while round-tripping through raw \code{int} at every step forces a
+check at each boundary and forfeits the advantage. A single headline number ---
+in either direction --- would be a misrepresentation, so this section reports
+all three with the programs that produced them.
+
+\subsection{The fast path is byte-identical to native}
+
+The headline claim is that when both operands are integer-aligned on the same
+grid, the operation lowers to a plain machine instruction. That claim is
+testable, so here is the test:
+
+\lstinputlisting[firstline=15,lastline=27]{int-considered-harmful/p01_codegen.cpp}
+\begin{lstlisting}[style=term]
+$ g++ -std=c++23 -O2 -I ../../include -c p01_codegen.cpp && objdump -d p01.o
+
+0000000000000000 <bound_add(bound<...>, bound<...>)>:
+   0:   endbr64
+   4:   lea    (%rdi,%rsi,1),%eax
+   7:   ret
+
+0000000000000010 <native_add(int, int)>:
+  10:   endbr64
+  14:   lea    (%rdi,%rsi,1),%eax
+  17:   ret
+\end{lstlisting}
+
+\noindent
+The two functions are byte-identical. All of the range reasoning happened in
+the type system and left no trace in the object code. Loops over these types
+still vectorise: both the \code{bound} and the native loop emit packed SIMD
+adds, the \code{bound} version on 16-bit lanes (its storage for $[0,1000]$ is
+narrower than \code{int}) and the native version on 32-bit lanes.
+
+This is not an accident that could regress unnoticed. The repository enforces
+it in CI: \file{tests/check\_codegen.sh} compiles six named kernels at
+\code{-O2}, disassembles them, and \textbf{fails the build if any of them
+contains a \code{call} instruction}. A committed cachegrind baseline
+(\file{tests/perf\_baseline.json}) guards instruction counts separately.
+
+\subsection{What it costs, and against what}
+
+The tables below are extracted from the repository's generated benchmark
+report. \textbf{Read the \emph{rel.} column as a fraction of the first row's
+throughput}: 100\% is parity with that row, and smaller is slower. Absolute
+nanosecond figures are host-specific; the report itself warns that CPU
+frequency scaling and turbo were active during the run, so the ratios --- not
+the times --- are the signal.
+
+The choice of baseline matters more than any individual number, and it is
+easy to read these tables unfairly in \code{bound}'s favour or against it.
+\textbf{The 100\% row is always plain, unchecked native \code{int}}: a bare
+cast and an add, with no range enforcement of any kind. It is the fastest
+thing in the table because it is not doing the job. It is the code from
+\S\ref{sec:indictment} --- the code that overflows silently, that lets 300
+become 44, that computes a negative midpoint. Comparing \code{bound} against
+it measures the cost of correctness that the baseline never pays.
+
+The benchmark therefore also carries two \emph{hand-written native} baselines
+that do enforce a range, and these are the honest comparison
+(\file{tests/bench.cpp:65}):
+
+\begin{itemize}
+\item \code{native clamped} --- the same arithmetic wrapped in
+      \code{std::clamp(v, 0, 200)}.
+\item \code{checked (exceptions)} --- a minimal hand-rolled bounded integer
+      struct that range-checks in its constructor and in \code{operator+},
+      throwing \code{std::out\_of\_range} on violation.
+\end{itemize}
+
+\noindent
+Neither of those is \code{bound}; both are ordinary C++ a competent programmer
+would write to get the guarantee \code{bound} provides. In the tables below the
+\code{bound} rows are the ones named \code{bound<...>}, \code{bnd::}, or
+\code{bound}; everything else is a native reference point.
+
+\subsection{The like-for-like comparison}\label{sec:fair}
+
+The generated report does not pair \code{bound<checked>} against an
+equivalently-checked native implementation for the same operation, so the
+question ``what does \code{bound} cost against code that does the same job?''
+cannot be answered from it directly. \file{p02\_fair\_bench.cpp} in the
+companion directory answers it by measuring all five contenders on the same
+data in the same program: a summed pass over 4096 values, repeated 20{,}000
+times, with inputs chosen so that no contender ever actually throws.
+
+\begin{center}
+\small
+\begin{tabular}{@{}l r r c r@{}}
+\toprule
+Implementation & ns/op & vs.\ unchecked & enforces? & vs.\ safe native \\
+\midrule
+\code{native unchecked}   & 0.441 & 100.0\% & no  & --- \\
+\code{native clamped}     & 0.463 &  95.4\% & yes & 100.0\% \\
+\code{native checked}     & 0.519 &  85.0\% & yes &  89.2\% \\
+\code{bound<checked>}     & 0.530 &  83.3\% & yes & \textbf{87.4\%} \\
+\code{bound<unsafe>}      & 0.442 &  99.9\% & no  & --- \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent
+\emph{Mean of three runs; GCC 15.2.0, \code{-O2}, x86-64. The final column is
+relative to \code{native clamped}, the fastest native implementation that
+actually enforces the range.}
+
+Read against the correct baseline the result is very different from what the
+unchecked column suggests:
+
+\begin{itemize}
+\item \code{bound<checked>} runs at \textbf{87.4\%} of the fastest safe native
+      code, and at \textbf{97.9\%} of the hand-rolled checked struct --- within
+      noise of the code you would have written by hand to get the same
+      guarantee.
+\item \code{bound<unsafe>} runs at \textbf{99.9\%} of unchecked native, which
+      is the same conclusion the disassembly in \S\ref{sec:performance}
+      reached by a different route.
+\item The cost of the guarantee itself, in plain C++ with no library involved,
+      is 5--15\%. That is most of what the \code{bound<checked>} row is paying
+      for. The library's own overhead on top of it is about 2\%.
+\end{itemize}
+
+\noindent
+This is a favourable measurement pattern and it should be labelled as one: a
+tight loop over contiguous data, where every contender vectorises and the
+branch predictor sees the same outcome every iteration. It is not evidence
+that \code{bound} is free in all circumstances --- the tables that follow show
+cases where it is decidedly not. It is evidence for the narrower claim that
+\emph{when you compare against code doing the same work, the gap is small},
+and that most of the dramatic slowdowns reported against ``native'' are
+measuring the absence of a safety check rather than the presence of a library.
+
+\subsection{Where are the checks?}\label{sec:checks}
+
+The table above still shows \code{bound<checked>} marginally behind the
+hand-rolled native struct, which is a fair thing to be suspicious of:
+\code{bound} holds strictly more compile-time information, so it should be able
+to prove some checks unnecessary and delete them. It does. The reason it gains
+nothing in that particular benchmark is that the benchmark gives it nothing to
+prove --- every iteration converts a raw \code{int} into a bound and
+immediately narrows the result back, which is the one shape where a check is
+genuinely unavoidable.
+
+Disassembling each phase separately shows exactly where a check is emitted and
+where it is not:
+
+\begin{center}
+\small
+\begin{tabular}{@{}l l c@{}}
+\toprule
+Operation & Emitted & Check? \\
+\midrule
+\code{bchecked(int v)}            & \code{cmp \$0xc8,\%edi; ja ...} & yes \\
+\code{auto c = a + b} (kept wide) & \code{movzbl; movzbl; lea; ret} & \textbf{none} \\
+\code{bchecked c = a + b}         & \code{add; cmp \$0xc8,\%rax; jg ...} & yes \\
+\code{checked\_u8 c = a + b} (native) & \code{add; cmp \$0xc8,\%eax; jg ...} & yes \\
+\code{bchecked b = a} (same grid)  & \code{movzbl; ret} & \textbf{none} \\
+\code{wide w = a} (widening)       & \code{movzbl; ret} & \textbf{none} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent
+A check appears in exactly two places: entering \code{bound} from a raw integer
+whose range nothing knows, and narrowing a wide result into a smaller grid.
+Everywhere the grid arithmetic can discharge the obligation --- same-grid
+copies, widening assignments, and every intermediate in an expression --- the
+check is gone, and \code{bound}'s narrowing check is instruction-for-instruction
+what the native struct emits.
+
+The consequence shows up as soon as there is a \emph{chain} of operations
+rather than a single one. A native checked type must re-validate after every
+step, because each intermediate has to fit back into the checked type.
+\code{bound} lets the intermediates widen into grids computed at compile time
+and checks only the final store. Summing four values in $[0,50]$ into a total
+declared as $[0,200]$ (\file{p03\_check\_elision.cpp}):
+
+\begin{center}
+\small
+\begin{tabular}{@{}l r r c@{}}
+\toprule
+Implementation & ns/op & vs.\ unchecked & runtime checks \\
+\midrule
+\code{native unchecked}  & 0.881 & 100.0\% & 0 \\
+\code{native checked}    & 1.085 &  81.2\% & 3 \\
+\code{bound<checked>}    & 0.888 &  \textbf{99.2\%} & \textbf{0} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent
+\code{bound<checked>} is \textbf{22\% faster than the native checked type} here,
+and within 1\% of native code that performs no checking at all --- while
+providing the guarantee that the unchecked version does not. Zero checks, not
+one: four values in $[0,50]$ sum to $[0,200]$, which is exactly the declared
+range of the result, so the final store is proved safe too. The whole function
+is:
+
+\begin{lstlisting}[style=term]
+endbr64
+add    %esi,%edi
+add    %edx,%edi
+add    %ecx,%edi
+movzbl %dil,%eax
+ret
+\end{lstlisting}
+
+\noindent
+That is byte-for-byte the unchecked native chain. The native checked version,
+by contrast, emits three \code{cmp}/\code{jg} pairs, a cold path per throw
+site, and enough register pressure to spill.
+
+The proof is real rather than skipped: narrow the result type by one, to
+$[0,199]$, and the sum no longer provably fits --- the store check reappears in
+the disassembly immediately. This is the answer to ``why use a library instead
+of writing the checks by hand'': the hand-written checks are the ones that
+cannot be removed, because nothing in \code{int} records what has already been
+established.
+
+\begin{benchtablec}{construct (u8 [0,200])}
+  100.0\% & 4.71 & 98.00 & no & \texttt{native uint8} \\
+  63.5\% & 7.41 & 162.00 & yes & \texttt{native clamped} \\
+  87.6\% & 5.37 & 124.00 & yes & \texttt{native checked (exceptions)} \\
+  34.3\% & 13.71 & 211.00 & no & \texttt{bound<unsafe>} \\
+\end{benchtablec}
+
+\begin{benchtablec}{add (u8 [0,200])}
+  100.0\% & 6.52 & 151.00 & no & \texttt{native uint8} \\
+  69.2\% & 9.42 & 216.00 & yes & \texttt{native clamped} \\
+  61.7\% & 10.57 & 234.00 & yes & \texttt{native checked (exceptions)} \\
+  16.5\% & 39.60 & 541.00 & no & \texttt{bound<unsafe>} \\
+\end{benchtablec}
+
+\begin{benchtable}{increment (u32 [0,200000])}
+  100.0\% & 2.34 & 43.00 & \texttt{native ++} \\
+  24.3\% & 9.61 & 135.00 & \texttt{bound ++} \\
+\end{benchtable}
+
+\begin{benchtable}{accumulate 1000 (u32 [0,200000], per element)}
+  100.0\% & 0.83 & 24.11 & \texttt{native loop} \\
+  36.4\% & 2.28 & 59.12 & \texttt{bound<unsafe> loop} \\
+  15.9\% & 5.20 & 101.12 & \texttt{bound<checked> loop} \\
+  52.0\% & 1.59 & 34.20 & \texttt{bnd::sum<checked> (bulk check)} \\
+  107.8\% & 0.77 & 23.12 & \texttt{std::accumulate native} \\
+  2.9\% & 28.50 & 329.24 & \texttt{std::accumulate bound} \\
+\end{benchtable}
+
+\noindent
+The accumulate table carries the single most actionable result in the report.
+A \code{bound<checked>} element-wise loop runs at 15.9\% of native because it
+range-checks every element. Using \code{bnd::sum}, which validates the total
+instead of each addend, moves it to 52.0\% --- a 3.3$\times$ improvement from
+choosing the right API for the job. The final row, \code{std::accumulate} over
+\code{bound} at 2.9\%, is the cost of routing through a generic algorithm that
+cannot use the bulk path.
+
+\begin{benchtable}{comparison ==}
+  100.0\% & 7.01 & 152.00 & \texttt{native int16} \\
+  76.5\% & 9.17 & 186.00 & \texttt{bound same grid} \\
+  100.2\% & 7.00 & 136.00 & \texttt{bound == int scalar (value raw)} \\
+  100.4\% & 6.99 & 139.00 & \texttt{bound Q8.8 == int scalar (index raw)} \\
+\end{benchtable}
+
+\noindent
+Comparison against a scalar reaches native parity --- and does so with
+\emph{fewer} instructions than the native path (136 and 139 against 152),
+because the grid tells the compiler the comparison can be done on raw storage
+without a conversion.
+
+\begin{benchtable}{f64-backed add (dyadic 1/16384 grid)}
+  100.0\% & 7.13 & 147.00 & \texttt{native double} \\
+  42.5\% & 16.78 & 294.00 & \texttt{bound<f64>} \\
+\end{benchtable}
+
+\begin{benchtable}{exact-backed add (rational storage)}
+  100.0\% & 36.37 & 453.96 & \texttt{native fraction} \\
+  505.5\% & 7.19 & 147.00 & \texttt{std double (reference)} \\
+  64.8\% & 56.12 & 800.93 & \texttt{bound<exact>} \\
+\end{benchtable}
+
+\noindent
+Exact rational arithmetic costs about 35\% against a hand-rolled reduced
+\code{int64} fraction, and roughly 8$\times$ against \code{double} --- which is
+the price of the exactness demonstrated in \S\ref{sec:correctness}, not an
+inefficiency. If you do not need exact thirds, do not ask for them.
+
+\begin{benchtable}{math: sqrt}
+  100.0\% & 4.97 & 108.00 & \texttt{std double} \\
+  10.5\% & 47.15 & 670.00 & \texttt{bnd::math bound} \\
+\end{benchtable}
+
+\begin{benchtable}{math: sin}
+  100.0\% & 7.62 & 174.52 & \texttt{std double} \\
+  11.8\% & 64.41 & 845.13 & \texttt{bnd::math bound} \\
+\end{benchtable}
+
+\noindent
+The transcendentals are the most expensive thing in the library, running at
+roughly 9--12\% of \code{std}. They buy bit-exact reproducibility across
+platform, optimisation level and FP flags, and in the CORDIC engine's case they
+run with no FPU at all. That is a real trade and it should be made
+deliberately.
+
+\begin{benchtable}{sort 10k (per element)}
+  100.0\% & 281.65 & 3{,}942.63 & \texttt{native int16} \\
+  80.3\% & 350.93 & 4{,}892.36 & \texttt{bound} \\
+\end{benchtable}
+
+\begin{benchtable}{transform v+1 10k (per element)}
+  100.0\% & 1.33 & 38.02 & \texttt{native uint8} \\
+  22.5\% & 5.94 & 102.02 & \texttt{bound u255 (16-bit storage)} \\
+  23.1\% & 5.78 & 102.02 & \texttt{bound u254 (8-bit storage)} \\
+\end{benchtable}
+
+\subsection{Reading these numbers honestly}
+
+Five conclusions, stated plainly:
+
+\begin{enumerate}
+\item \textbf{There is no single cost.} The measurements in this section span
+      negative cost (22\% faster than checked native, \S\ref{sec:checks}), zero
+      cost (byte-identical codegen, \S\ref{sec:performance}) and real cost
+      (8$\times$ for exact rationals). Any summary of the form ``\code{bound}
+      costs $N$\%'' is wrong in at least one direction; the honest question is
+      always \emph{which regime does my code sit in}.
+\item \textbf{Compare against code that does the same job.} The single largest
+      source of misleading numbers here is the unchecked native baseline. It is
+      the fastest row in every table because it enforces nothing --- it is the
+      code whose failures fill \S\ref{sec:indictment}. Measured against native
+      code that actually enforces the range, \code{bound<checked>} runs at
+      87.4\% (\S\ref{sec:fair}), not the 16.5\% that the unchecked column in
+      the imported \code{add} table implies --- and on a chain of operations it
+      is 22\% \emph{faster} than the checked native type
+      (\S\ref{sec:checks}).
+\item \textbf{The fast paths are genuinely free.} Aligned integer arithmetic
+      and scalar comparison compile to the same instructions as \code{int},
+      verified by disassembly and guarded in CI. \code{bound<unsafe>} measured
+      at 99.9\% of unchecked native in \S\ref{sec:fair}, by a different method,
+      which is the same answer.
+\item \textbf{Some paths genuinely cost, and no baseline choice rescues them.}
+      Exact rational arithmetic is roughly 8$\times$ \code{double};
+      \code{bnd::math} transcendentals run at 9--12\% of \code{std}; a
+      \code{std::accumulate} over \code{bound} lands at 2.9\%. These buy
+      exactness and bit-reproducibility respectively, and if you do not need
+      those properties you should not pay for them.
+\item \textbf{API choice dominates policy choice.} Moving from a checked
+      element-wise loop to \code{bnd::sum} gained more (3.3$\times$) than
+      switching from \code{checked} to \code{unsafe} does. Reach for the bulk
+      operations before reaching for the unsafe policy.
+\end{enumerate}
+
+\noindent
+The imported tables are a single run on one machine with frequency scaling
+enabled; \S\ref{sec:fair} is a mean of three runs of a program included in the
+companion directory. Both establish orders of magnitude, not precise ratios.
+Anyone making a decision on the margin should re-run \code{perf\_report} and
+\file{p02\_fair\_bench.cpp} on their own hardware.
+
+% ============================================================================
+\section{When not to use this}\label{sec:limits}
+
+Intellectual honesty requires the other side of the ledger.
+
+\begin{itemize}
+\item \textbf{It is alpha software.} The README says so; the public API may
+      change between versions. That is a real adoption risk for long-lived
+      code.
+\item \textbf{It requires C++23} (with a C++20 fallback), which rules out a
+      good deal of existing work. GCC 13+, Clang 16+, MSVC 19.36+.
+\item \textbf{Compile times increase.} The arithmetic is a compile-time
+      computation over grids; that work has to happen somewhere, and it happens
+      in your build.
+\item \textbf{Error messages are template errors.} The library invests in this
+      --- the \code{x01} diagnostic quoted in \S\ref{sec:bound} is a
+      hand-written message naming the fix --- but a mistake off the guided path
+      still produces the kind of output C++ templates produce.
+\item \textbf{Widening surprises \code{auto} users.} The type of \code{a + b}
+      is not the type of \code{a}. This is the mechanism that makes overflow
+      unreachable, and it means \code{auto} variables in a chain of arithmetic
+      acquire progressively wider types. That is correct, and it is not what
+      most C++ programmers expect.
+\item \textbf{Not everything needs it.} A loop counter over a small container
+      is not where numeric bugs come from. The cases that justify the
+      machinery are the ones where a wrong answer is expensive: money, physical
+      units, fixed-point signal processing, embedded registers, control loops,
+      anything crossing a system boundary.
+\end{itemize}
+
+% ============================================================================
+\section{Conclusion}
+
+The defects catalogued in \S\ref{sec:indictment} are not exotic. They are the
+arithmetic behaviour of the type that C++ programmers reach for by default,
+several million times a day. They are not caused by carelessness --- the
+midpoint bug survived nine years in the JDK, and Ariane 5 was destroyed by code
+that had been correct on the previous vehicle. They persist because the
+information required to catch them is absent from the program at the point
+where it would be needed.
+
+\code{int} does not know its range, so it cannot check it. It does not know
+what it counts, so it cannot object to being added to something else. It has no
+rounding policy, so it truncates. It has no representation for failure, so
+division by zero kills the process. And because its overflow is undefined
+rather than merely wrong, the compiler is entitled to reason from the
+assumption that the failure cannot occur --- which is how a program that should
+print \code{3} becomes a \code{main} containing no instructions.
+
+Writing those four facts into the type is not a large idea, and it does not
+require a new language. \code{bound} demonstrates that a range, a step size and
+an edge policy are enough to make overflow unreachable rather than merely
+detected, to make division by zero a value, to make rounding a decision, and to
+make a unit mismatch a compile error --- while emitting, on its fast paths,
+byte-for-byte the same instructions as the \code{int} it replaces.
+
+Dijkstra's closing argument was that the quality of a programmer is a
+decreasing function of the density of \code{goto} statements in their
+programs. That is not the claim here. The claim is narrower and easier to
+check: for any numeric quantity in your program, you already know its range,
+its units, and what should happen at its limits. Writing that down costs a
+line. Not writing it down costs whatever the bug costs.
+
+% ============================================================================
+\appendix
+\section{Building the examples}
+
+Every program cited in this paper is in \file{docs/int-considered-harmful/} in
+the repository.
+
+\begin{lstlisting}[style=term]
+# the int and double hazard programs need nothing but a compiler
+g++ -std=c++23 -O2 h01_overflow_ub.cpp -o h01
+g++ -std=c++23 -O0 h01_overflow_ub.cpp -o h01_O0    # compare the two
+
+# the bound programs need the library on the include path
+g++ -std=c++23 -O2 -I ../../include b01_no_overflow.cpp -o b01
+
+# or against the committed single header, with no other -I
+g++ -std=c++23 -O2 -I ../../single_include b01_no_overflow.cpp -o b01
+
+# the two x*.cpp files are expected to FAIL to compile, by design
+g++ -std=c++23 -I ../../include x01_bare_int_rejected.cpp    # error, as intended
+\end{lstlisting}
+
+\noindent
+The library itself builds with CMake 3.24+:
+
+\begin{lstlisting}[style=term]
+cmake -B build && cmake --build build
+ctest --test-dir build --output-on-failure
+ctest --test-dir build -L example        # run the 30+ example programs
+\end{lstlisting}
+
+\section{Program index}
+
+\begin{center}
+\small
+\begin{tabular}{@{}l l@{}}
+\toprule
+File & Demonstrates \\
+\midrule
+\file{h01\_overflow\_ub.cpp}      & Overflow check folded away, even at \code{-O0} \\
+\file{h02\_overflow\_loop.cpp}    & \code{main} compiled to no instructions \\
+\file{h03\_intmin.cpp}            & \code{-INT\_MIN} and \code{abs(INT\_MIN)} negative \\
+\file{h04\_divzero.cpp}           & \code{SIGFPE} on \code{x/0} and \code{INT\_MIN/-1} \\
+\file{h05\_signed\_unsigned.cpp}  & Loop over an empty container \\
+\file{h06\_promotion.cpp}         & Promotion, \code{char} signedness, \code{int} width \\
+\file{h07\_truncdiv.cpp}          & Truncation toward zero, negative remainder \\
+\file{h08\_shift.cpp}             & Shift into the sign bit \\
+\file{h09\_units.cpp}             & Cents added to dollars \\
+\file{h10\_binsearch.cpp}         & Midpoint outside the range \\
+\file{h11\_narrowing.cpp}         & Silent narrowing (Ariane 5) \\
+\midrule
+\file{d01\_decimal.cpp}           & \code{0.1 + 0.2 != 0.3} \\
+\file{d02\_money\_drift.cpp}      & Accumulated drift on a running total \\
+\file{d03\_assoc.cpp}             & Addition is not associative \\
+\file{d04\_precision.cpp}         & $2^{53}$; catastrophic cancellation \\
+\file{d05\_nan.cpp}               & \code{NaN} breaks equality and ordering \\
+\midrule
+\file{b01\_no\_overflow.cpp}      & Widening arithmetic; the midpoint, fixed \\
+\file{b02\_divzero.cpp}           & Division as \code{optional}; exact by default \\
+\file{b03\_policies.cpp}          & \code{checked} / \code{clamp} / \code{wrap} / \code{sentinel} \\
+\file{b04\_money.cpp}             & Exact cents in four bytes \\
+\file{b05\_units.cpp}             & Scale in the type \\
+\file{b06\_compile\_time.cpp}     & Range errors as build failures \\
+\file{b07\_rounding.cpp}          & Every rounding mode honoured \\
+\file{b08\_index.cpp}             & Bounded indices \\
+\file{b10\_negation.cpp}          & Negation reflects the grid \\
+\midrule
+\file{m\_before.cpp} / \file{m\_after.cpp} & The worked migration \\
+\file{x01\_bare\_int\_rejected.cpp} & Bare literal rejected (expected failure) \\
+\file{x02\_range\_rejected.cpp}     & Out-of-range constant rejected (expected failure) \\
+\file{p01\_codegen.cpp}             & Fast path vs.\ native disassembly \\
+\file{p02\_fair\_bench.cpp}         & Like-for-like benchmark vs.\ checked native \\
+\file{p03\_check\_elision.cpp}      & Chain of ops: bound elides checks native cannot \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{References}
+
+\begin{enumerate}[leftmargin=1.8em]
+\item E.~W. Dijkstra, ``Go To Statement Considered Harmful,''
+      \emph{Communications of the ACM}, 11(3):147--148, March 1968.
+\item J.~Bentley, \emph{Programming Pearls}, Addison-Wesley, 1986 --- the
+      binary search midpoint.
+\item J.~Bloch, ``Extra, Extra --- Read All About It: Nearly All Binary
+      Searches and Mergesorts are Broken,'' Google Research Blog, June 2006.
+\item J.~L. Lions et al., \emph{ARIANE 5 Flight 501 Failure: Report by the
+      Inquiry Board}, ESA/CNES, July 1996.
+\item NASA, \emph{Mars Climate Orbiter Mishap Investigation Board Phase I
+      Report}, November 1999.
+\item D.~Goldberg, ``What Every Computer Scientist Should Know About
+      Floating-Point Arithmetic,'' \emph{ACM Computing Surveys},
+      23(1):5--48, 1991.
+\item ISO/IEC 14882, \emph{Programming languages --- C++}, \S7.1 [expr.pre]
+      (undefined behaviour on overflow), \S7.4 [conv.integral].
+\item The \code{bound} repository: \file{README.md}, \file{docs/tutorial.md},
+      \file{docs/policies.md}, \file{docs/arithmetic.md},
+      \file{docs/determinism.md}, \file{docs/accuracy.md},
+      \file{docs/performance.md}.
+\end{enumerate}
+
+\end{document}
