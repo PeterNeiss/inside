@@ -45,9 +45,9 @@ namespace beman::inside::math
 }
 
 //---------------------------------------------------------------------------
-// inside — the public struct users include. Defines `inside<G, P>` and its
-// per-instance operators; free-function arithmetic and `inside_range` also live
-// here. Heavy lifting is delegated to addition/multiplication/division.hpp
+// inside — defines `inside<G, P>` and its member operators. Free-function
+// arithmetic (arithmetic.hpp), casts (casts.hpp) and `inside_range` (range.hpp)
+// follow in the umbrella. Heavy lifting is delegated to addition/multiplication/division.hpp
 // (per-operator code), assignment.hpp (narrowing/clamp/wrap), and
 // generic.hpp/policy.hpp (traits + policy machinery).
 //---------------------------------------------------------------------------
@@ -69,7 +69,7 @@ namespace beman::inside
     // no grid to snap to. Anything else is rejected here rather than silently
     // demoted to integer storage.
     static_assert(!has_flag(P, f64) || detail::dyadic_grid<G> || G.Notch == 0,
-                  "inside: the `f64`/`f64` policy requires a dyadic grid (power-of-two "
+                  "inside: the `f64` policy requires a dyadic grid (power-of-two "
                   "notch and Lower, so values are exactly representable in double)");
     static_assert(!has_flag(P, f32) || detail::dyadic_grid<G> || G.Notch == 0,
                   "inside: the `f32` policy requires a dyadic grid (power-of-two notch "
@@ -271,9 +271,9 @@ namespace beman::inside
     //                       path. No second implicit integer operator (would make
     //                       `imax_var += b` ambiguous).
     //   operator rational — implicit; lossless and exact.
-    //   operator double   — implicit for `f64` bounds (dyadic grid → lossless);
+    //   operator double   — implicit for an `f64` inside (dyadic grid → lossless);
     //                       explicit otherwise and gated on a rounding flag.
-    //                       Strict bounds opt in via `to<double>().value()`.
+    //                       A strict inside opts in via `to<double>().value()`.
     //   to<T>()           — typed-error narrowing/widening → `expected<T, errc>`
     //                       (overflow / domain_error).
     //   as<T>()           — non-expected sibling; throws on error. For known-
@@ -661,15 +661,15 @@ namespace beman::inside
     {
       // constexpr local: the point inside is materialised at compile time (the
       // ctor's error path otherwise blocks constant folding at -O3).
-      constexpr auto one_b = inside<grid{detail::rational{1}}>{detail::rational{1}};
-      return *this += one_b;
+      constexpr auto kOne = inside<grid{detail::rational{1}}>{detail::rational{1}};
+      return *this += kOne;
     }
     constexpr inside  operator++(int) { inside t = *this; ++*this; return t; }
     constexpr inside& operator--()
     {
-      constexpr auto minus_one_b =
+      constexpr auto kMinusOne =
           inside<grid{detail::rational{-1}}>{detail::rational{-1}};
-      return *this += minus_one_b;
+      return *this += kMinusOne;
     }
     constexpr inside  operator--(int) { inside t = *this; --*this; return t; }
 
@@ -705,7 +705,7 @@ namespace beman::inside
   {
     // Integer value-index comparison eligibility: an integer-backed inside
     // whose value indices (value/Notch — integral by the grid anchor
-    // invariant) fit imax, so two same-notch bounds compare as
+    // invariant) fit imax, so two same-notch insides compare as
     // `bias + raw` without a rational decode.
     template <insidable B>
     inline constexpr bool index_cmp_fits = []{
@@ -849,7 +849,7 @@ namespace beman::inside
   inline constexpr auto just = inside<grid{value}>{value};
 
   //---------------------------------------------------------------------------
-  // zero / one — universal exact constants. Single-point bounds that assign into
+  // zero / one — universal exact constants. Single-point insides that assign into
   // any grid able to represent the value (compile-time checked) and otherwise
   // behave as 0 / 1. `b = zero;` is a compile error when 0 is not on b's grid.
   //---------------------------------------------------------------------------
@@ -861,7 +861,7 @@ namespace beman::inside
   //   5_ins           // inside<{5, 5}>            integer
   //   1.25_ins        // inside<{rational{5,4}}>   decimal
   //   1.5e2_ins       // inside<{150}>             decimal scientific
-  //   0xff_b        // inside<{255}>             hex integer
+  //   0xff_ins        // inside<{255}>             hex integer
   //   0b1010_ins      // inside<{10}>              binary integer
   //   0x1p15_ins      // inside<{32768}>           hex with 2^N exponent (Q-format)
   //   0x1p-15_ins     // inside<{rational{1,32768}}>   1/2^15 grid notch

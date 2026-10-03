@@ -72,8 +72,7 @@ namespace beman::inside
   // the single-precision sibling of `f64`, for float-only FPUs (Cortex-M4F) and
   // the `flt` engine. Power-of-2 notch + dyadic Lower required AND every on-grid
   // value must fit float's 24-bit significand (see `float_exact`). Like `f64` it
-  // is an ordinary round_nearest integer inside under BEMAN_INSIDE_MATH_CORDIC. Widest-wins
-  // storage order: exact > f64 > f32 > direct > indexed > deduced.
+  // is an ordinary round_nearest integer inside under BEMAN_INSIDE_MATH_CORDIC.
   inline constexpr policy_flag f32{(1ull << 41) | round_nearest};
 
 
@@ -83,8 +82,7 @@ namespace beman::inside
   // fit the type); OR in `indexed` for 0-based notch-index storage. `storage_pick`
   // static_asserts the type is big enough for the grid (no silent widening). One
   // width flag at a time. Unlike `f32`/`f64` these carry no `round_nearest` — they
-  // are plain integer storage, like `direct`/`indexed`. Widest-wins storage order:
-  // exact > f64 > f32 > {width} > direct > indexed > deduced.
+  // are plain integer storage, like `direct`/`indexed`.
   inline constexpr policy_flag i8 {1ull << 42};
   inline constexpr policy_flag u8 {1ull << 43};
   inline constexpr policy_flag i16{1ull << 44};

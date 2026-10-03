@@ -650,7 +650,7 @@ namespace beman::inside::detail
     private:
       // Grid of the wrap "excess"/carry handed to an on_wrap action:
       // floor((value − Lower) / range) for value ∈ R's interval (range = span + notch).
-      // Both operands are bounds, so — like the clamp overshoot — the carry has a
+      // Both operands are insides, so — like the clamp overshoot — the carry has a
       // known range and is delivered as an inside, not a raw imax.
       static constexpr grid wrap_excess_grid()
       {
@@ -671,7 +671,7 @@ namespace beman::inside::detail
           lhs = L::from_raw((as_rational(rhs) < lower_of<L>)
             ? raw_cast<L>(raw_lo<L>) : raw_cast<L>(raw_hi<L>));
         // Overshoot (rhs − clamped) as an inside, via the result-grid inference of normal
-        // inside arithmetic: both operands are bounds, so the overshoot is too. It is always
+        // inside arithmetic: both operands are insides, so the overshoot is too. It is always
         // in-grid and on-notch for grid_of<R> − grid_of<L>, so the construction is exact.
         if constexpr (clamp_action<plain_t<A>>)
         {

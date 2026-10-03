@@ -402,7 +402,7 @@ namespace beman::inside::detail
   }
 
   //---------------------------------------------------------------------------
-  // _ins / _r literal parser — shared between inside.hpp's `_ins` and `_r` below.
+  // _ins / _r literal parser — shared between core.hpp's `_ins` and `_r` below.
   // Accepts:
   //   integer:           5, 1'000
   //   decimal:           1.25, .5
@@ -410,7 +410,8 @@ namespace beman::inside::detail
   //   hex integer:       0xff
   //   binary integer:    0b1010
   //   hex float (Q-fmt): 0x1p15, 0x1p-15, 0x1.8p3
-  // Exact (no double round-trip). Overflow -> consteval throw.
+  // Exact (no double round-trip). A malformed or overflowing literal fails
+  // constant evaluation via `constexpr_error<Msg>()`.
   //---------------------------------------------------------------------------
     consteval int parse_digit(char c, int base)
     {

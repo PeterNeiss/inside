@@ -128,7 +128,7 @@ namespace beman::inside
   [[nodiscard]] auto to_string(V value)
   { return std::to_string(value); }
 
-  // `f64` (double-backed) and `exact` (rational-backed) bounds: render the
+  // `f64` (double-backed) and `exact` (rational-backed) insides: render the
   // exact rational form. (Without this overload a f64 inside would fall to the
   // generic `std::to_string(double)` and print a lossy 6-digit form, and a
   // rational-raw inside has no std::to_string at all.) A continuous (Notch == 0)

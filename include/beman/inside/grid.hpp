@@ -288,19 +288,13 @@ namespace beman::inside
           && G.Interval.Upper <= rational{static_cast<imax>(lim::max())};
   }
 
-  // Demote an fp STORAGE flag a result grid can't represent — for DEDUCED policies
-  // (cmath auto-outputs, which inherit the operand's storage flag), so a deduced
-  // f32 output whose grid overflows binary32 silently widens instead of hard-
-  // erroring. (A grid a user spells `f32` on directly still static_asserts in
-  // storage_pick — that's deliberate misuse, not deduction.) f32 needs float_exact,
-  // f64 needs double_exact (Notch == 0 continuous fits either). When the flag
-  // doesn't fit: widen f32→f64 if double holds the grid, else drop the fp flag so
-  // storage is deduced. The snap/round bits are preserved.
   // Storage for an inside<G, P>: representation flags pick the raw type, widest-wins
   // (exact > f64 > f32 > {width} > direct > indexed > deduced).
   //   exact   → rational raw on any grid.
   //   f64     → double-backed under the default engine, on a dyadic or notch-0
   //             grid; elided under BEMAN_INSIDE_MATH_CORDIC (falls through to deduced).
+  //   f32     → float-backed when float holds the grid, else widened to double.
+  //   {width} → the pinned i8..u64 type, value or (with `indexed`) index storage.
   //   direct  → raw == value, plain integer (Notch == 1).
   //   indexed → raw == 0-based notch index (Notch != 0).
   //   none    → storage_min deduction.
@@ -315,7 +309,7 @@ namespace beman::inside
       return double{};
     else if constexpr (has_flag(P, f64) && dyadic_grid<G>)
     {
-      // `f64`/`f64` explicitly requested on a dyadic grid double can't represent
+      // `f64` explicitly requested on a dyadic grid double can't represent
       // exactly (max |value·2^f| ≥ 2^53, or notch below the smallest normal).
       // Arithmetic drops the flag before reaching here, so this is direct misuse.
       static_assert(double_exact<G>,

@@ -386,7 +386,7 @@ namespace beman::inside
   // "beman/inside/io.hpp" so the core stays free of <string_view>.)
 
   // Subset of arithmetic excluding integrals — the rhs types that need the
-  // rational-arithmetic assignment path. (Named to avoid clashing with `f64`.)
+  // rational-arithmetic assignment path.
   template<typename T>
   concept fractional = std::floating_point<T> || std::same_as<rational, T>;
 
@@ -962,7 +962,7 @@ namespace beman::inside::detail
   }
 
   //---------------------------------------------------------------------------
-  // _ins / _r literal parser — shared between inside.hpp's `_ins` and `_r` below.
+  // _ins / _r literal parser — shared between core.hpp's `_ins` and `_r` below.
   // Accepts:
   //   integer:           5, 1'000
   //   decimal:           1.25, .5
@@ -970,7 +970,8 @@ namespace beman::inside::detail
   //   hex integer:       0xff
   //   binary integer:    0b1010
   //   hex float (Q-fmt): 0x1p15, 0x1p-15, 0x1.8p3
-  // Exact (no double round-trip). Overflow -> consteval throw.
+  // Exact (no double round-trip). A malformed or overflowing literal fails
+  // constant evaluation via `constexpr_error<Msg>()`.
   //---------------------------------------------------------------------------
     consteval int parse_digit(char c, int base)
     {
@@ -1776,8 +1777,7 @@ namespace beman::inside
   // the single-precision sibling of `f64`, for float-only FPUs (Cortex-M4F) and
   // the `flt` engine. Power-of-2 notch + dyadic Lower required AND every on-grid
   // value must fit float's 24-bit significand (see `float_exact`). Like `f64` it
-  // is an ordinary round_nearest integer inside under BEMAN_INSIDE_MATH_CORDIC. Widest-wins
-  // storage order: exact > f64 > f32 > direct > indexed > deduced.
+  // is an ordinary round_nearest integer inside under BEMAN_INSIDE_MATH_CORDIC.
   inline constexpr policy_flag f32{(1ull << 41) | round_nearest};
 
 
@@ -1787,8 +1787,7 @@ namespace beman::inside
   // fit the type); OR in `indexed` for 0-based notch-index storage. `storage_pick`
   // static_asserts the type is big enough for the grid (no silent widening). One
   // width flag at a time. Unlike `f32`/`f64` these carry no `round_nearest` — they
-  // are plain integer storage, like `direct`/`indexed`. Widest-wins storage order:
-  // exact > f64 > f32 > {width} > direct > indexed > deduced.
+  // are plain integer storage, like `direct`/`indexed`.
   inline constexpr policy_flag i8 {1ull << 42};
   inline constexpr policy_flag u8 {1ull << 43};
   inline constexpr policy_flag i16{1ull << 44};
@@ -2242,19 +2241,13 @@ namespace beman::inside
           && G.Interval.Upper <= rational{static_cast<imax>(lim::max())};
   }
 
-  // Demote an fp STORAGE flag a result grid can't represent — for DEDUCED policies
-  // (cmath auto-outputs, which inherit the operand's storage flag), so a deduced
-  // f32 output whose grid overflows binary32 silently widens instead of hard-
-  // erroring. (A grid a user spells `f32` on directly still static_asserts in
-  // storage_pick — that's deliberate misuse, not deduction.) f32 needs float_exact,
-  // f64 needs double_exact (Notch == 0 continuous fits either). When the flag
-  // doesn't fit: widen f32→f64 if double holds the grid, else drop the fp flag so
-  // storage is deduced. The snap/round bits are preserved.
   // Storage for an inside<G, P>: representation flags pick the raw type, widest-wins
   // (exact > f64 > f32 > {width} > direct > indexed > deduced).
   //   exact   → rational raw on any grid.
   //   f64     → double-backed under the default engine, on a dyadic or notch-0
   //             grid; elided under BEMAN_INSIDE_MATH_CORDIC (falls through to deduced).
+  //   f32     → float-backed when float holds the grid, else widened to double.
+  //   {width} → the pinned i8..u64 type, value or (with `indexed`) index storage.
   //   direct  → raw == value, plain integer (Notch == 1).
   //   indexed → raw == 0-based notch index (Notch != 0).
   //   none    → storage_min deduction.
@@ -2269,7 +2262,7 @@ namespace beman::inside
       return double{};
     else if constexpr (has_flag(P, f64) && dyadic_grid<G>)
     {
-      // `f64`/`f64` explicitly requested on a dyadic grid double can't represent
+      // `f64` explicitly requested on a dyadic grid double can't represent
       // exactly (max |value·2^f| ≥ 2^53, or notch below the smallest normal).
       // Arithmetic drops the flag before reaching here, so this is direct misuse.
       static_assert(double_exact<G>,
@@ -3707,7 +3700,7 @@ namespace beman::inside::detail
     private:
       // Grid of the wrap "excess"/carry handed to an on_wrap action:
       // floor((value − Lower) / range) for value ∈ R's interval (range = span + notch).
-      // Both operands are bounds, so — like the clamp overshoot — the carry has a
+      // Both operands are insides, so — like the clamp overshoot — the carry has a
       // known range and is delivered as an inside, not a raw imax.
       static constexpr grid wrap_excess_grid()
       {
@@ -3728,7 +3721,7 @@ namespace beman::inside::detail
           lhs = L::from_raw((as_rational(rhs) < lower_of<L>)
             ? raw_cast<L>(raw_lo<L>) : raw_cast<L>(raw_hi<L>));
         // Overshoot (rhs − clamped) as an inside, via the result-grid inference of normal
-        // inside arithmetic: both operands are bounds, so the overshoot is too. It is always
+        // inside arithmetic: both operands are insides, so the overshoot is too. It is always
         // in-grid and on-notch for grid_of<R> − grid_of<L>, so the construction is exact.
         if constexpr (clamp_action<plain_t<A>>)
         {
@@ -5014,9 +5007,9 @@ namespace beman::inside::math
 }
 
 //---------------------------------------------------------------------------
-// inside — the public struct users include. Defines `inside<G, P>` and its
-// per-instance operators; free-function arithmetic and `inside_range` also live
-// here. Heavy lifting is delegated to addition/multiplication/division.hpp
+// inside — defines `inside<G, P>` and its member operators. Free-function
+// arithmetic (arithmetic.hpp), casts (casts.hpp) and `inside_range` (range.hpp)
+// follow in the umbrella. Heavy lifting is delegated to addition/multiplication/division.hpp
 // (per-operator code), assignment.hpp (narrowing/clamp/wrap), and
 // generic.hpp/policy.hpp (traits + policy machinery).
 //---------------------------------------------------------------------------
@@ -5038,7 +5031,7 @@ namespace beman::inside
     // no grid to snap to. Anything else is rejected here rather than silently
     // demoted to integer storage.
     static_assert(!has_flag(P, f64) || detail::dyadic_grid<G> || G.Notch == 0,
-                  "inside: the `f64`/`f64` policy requires a dyadic grid (power-of-two "
+                  "inside: the `f64` policy requires a dyadic grid (power-of-two "
                   "notch and Lower, so values are exactly representable in double)");
     static_assert(!has_flag(P, f32) || detail::dyadic_grid<G> || G.Notch == 0,
                   "inside: the `f32` policy requires a dyadic grid (power-of-two notch "
@@ -5240,9 +5233,9 @@ namespace beman::inside
     //                       path. No second implicit integer operator (would make
     //                       `imax_var += b` ambiguous).
     //   operator rational — implicit; lossless and exact.
-    //   operator double   — implicit for `f64` bounds (dyadic grid → lossless);
+    //   operator double   — implicit for an `f64` inside (dyadic grid → lossless);
     //                       explicit otherwise and gated on a rounding flag.
-    //                       Strict bounds opt in via `to<double>().value()`.
+    //                       A strict inside opts in via `to<double>().value()`.
     //   to<T>()           — typed-error narrowing/widening → `expected<T, errc>`
     //                       (overflow / domain_error).
     //   as<T>()           — non-expected sibling; throws on error. For known-
@@ -5630,15 +5623,15 @@ namespace beman::inside
     {
       // constexpr local: the point inside is materialised at compile time (the
       // ctor's error path otherwise blocks constant folding at -O3).
-      constexpr auto one_b = inside<grid{detail::rational{1}}>{detail::rational{1}};
-      return *this += one_b;
+      constexpr auto kOne = inside<grid{detail::rational{1}}>{detail::rational{1}};
+      return *this += kOne;
     }
     constexpr inside  operator++(int) { inside t = *this; ++*this; return t; }
     constexpr inside& operator--()
     {
-      constexpr auto minus_one_b =
+      constexpr auto kMinusOne =
           inside<grid{detail::rational{-1}}>{detail::rational{-1}};
-      return *this += minus_one_b;
+      return *this += kMinusOne;
     }
     constexpr inside  operator--(int) { inside t = *this; --*this; return t; }
 
@@ -5674,7 +5667,7 @@ namespace beman::inside
   {
     // Integer value-index comparison eligibility: an integer-backed inside
     // whose value indices (value/Notch — integral by the grid anchor
-    // invariant) fit imax, so two same-notch bounds compare as
+    // invariant) fit imax, so two same-notch insides compare as
     // `bias + raw` without a rational decode.
     template <insidable B>
     inline constexpr bool index_cmp_fits = []{
@@ -5818,7 +5811,7 @@ namespace beman::inside
   inline constexpr auto just = inside<grid{value}>{value};
 
   //---------------------------------------------------------------------------
-  // zero / one — universal exact constants. Single-point bounds that assign into
+  // zero / one — universal exact constants. Single-point insides that assign into
   // any grid able to represent the value (compile-time checked) and otherwise
   // behave as 0 / 1. `b = zero;` is a compile error when 0 is not on b's grid.
   //---------------------------------------------------------------------------
@@ -5830,7 +5823,7 @@ namespace beman::inside
   //   5_ins           // inside<{5, 5}>            integer
   //   1.25_ins        // inside<{rational{5,4}}>   decimal
   //   1.5e2_ins       // inside<{150}>             decimal scientific
-  //   0xff_b        // inside<{255}>             hex integer
+  //   0xff_ins        // inside<{255}>             hex integer
   //   0b1010_ins      // inside<{10}>              binary integer
   //   0x1p15_ins      // inside<{32768}>           hex with 2^N exponent (Q-format)
   //   0x1p-15_ins     // inside<{rational{1,32768}}>   1/2^15 grid notch
@@ -7081,17 +7074,12 @@ namespace beman::inside::math::flt::detail
 
 
 
-// The public beman::inside::math::* functions dispatch to the double engine (default) or
-// the integer/CORDIC engine (`-DBEMAN_INSIDE_MATH_CORDIC`). The integer engine is
-// always `constexpr`; the double engine becomes `constexpr` automatically on
-// C++26 toolchains where <cmath> is constexpr (P1383 — std::fma / std::sqrt /
-// std::nearbyint; feature macro __cpp_lib_constexpr_cmath). That branch is
-// inert (and untested) until such a toolchain exists. Decision 2026-06-12:
-// no compile-time softfloat emulation — wait for the standard.
-// BEMAN_INSIDE_MATH_NO_FP (resolved in cmath_double.hpp, included above) selects the
-// integer/CORDIC engine and is implied by BEMAN_INSIDE_MATH_CORDIC — so the integer engine
-// is constexpr here. The double engine becomes constexpr only on a C++26 toolchain
-// with constexpr <cmath> (P1383); that branch is inert until such a toolchain.
+// BEMAN_INSIDE_MATH_FN: the integer/CORDIC engine (selected by BEMAN_INSIDE_MATH_NO_FP,
+// resolved in cmath_double.hpp and implied by BEMAN_INSIDE_MATH_CORDIC) is always
+// `constexpr`. The FP engines become `constexpr` only on a C++26 toolchain with
+// constexpr <cmath> (P1383; __cpp_lib_constexpr_cmath) — that branch is inert and
+// untested until such a toolchain exists. Decision 2026-06-12: no compile-time
+// softfloat emulation — wait for the standard.
 #if defined(BEMAN_INSIDE_MATH_NO_FP) \
     || (defined(__cpp_lib_constexpr_cmath) && __cpp_lib_constexpr_cmath >= 202202L)
 #  define BEMAN_INSIDE_MATH_FN constexpr
@@ -7100,12 +7088,12 @@ namespace beman::inside::math::flt::detail
 #endif
 
 //---------------------------------------------------------------------------
-// beman::inside::math — one transcendental API, two interchangeable engines selected by
-// the `BEMAN_INSIDE_MATH_CORDIC` macro. Both are feature-equivalent (same functions,
+// beman::inside::math — one transcendental API, three interchangeable engines selected by
+// the `BEMAN_INSIDE_MATH_CORDIC` / `BEMAN_INSIDE_MATH_FLOAT` macros. All are feature-equivalent (same functions,
 // signatures, domains):
 //
 //   * DEFAULT — double engine (`cmath_double.hpp`): hardware `double`
-//     polynomials on `f64` bounds. Bit-identical on any IEEE-754 binary64
+//     polynomials on `f64` insides. Bit-identical on any IEEE-754 binary64
 //     platform built without `-ffast-math`. Fast (~ns); needs an FPU; runtime.
 //   * `BEMAN_INSIDE_MATH_CORDIC` — integer/CORDIC engine (this file): FPU-free, constexpr,
 //     UNCONDITIONALLY bit-identical (any platform/flags). For embedded/portability.
@@ -7230,11 +7218,10 @@ namespace beman::inside::math
     template <typename F, insidable Out>
     inline constexpr F upper_fp = static_cast<F>(static_cast<double>(upper_of<Out>));
 
-    // Every transcendental operand must carry the `f64` policy flag: under the
-    // default engine it selects double-backed dyadic storage, under BEMAN_INSIDE_MATH_CORDIC
-    // integer round_nearest. Requiring it keeps both engines' call sites identical
-    // and avoids the slow integer-I/O path. Pure grid ops (abs/floor/ceil/round/
-    // trunc/fmod) have no engine and don't require it.
+    // Every transcendental operand must permit rounding (the `snap` bit, carried by
+    // `f64`/`f32` and every `round_*` mode): the result is rounded onto the output
+    // grid, which inherits the operand's policy. Pure grid ops (abs/floor/ceil/
+    // round/trunc/fmod) round nothing and don't require it.
     template <insidable In>
     consteval bool require_snap() noexcept
     {
@@ -7246,7 +7233,7 @@ namespace beman::inside::math
     }
   }
 
-  // Public irrational constants as POINT-BOUNDS, so they compose directly in
+  // Public irrational constants as point insides, so they compose directly in
   // inside-space (`angle * math::pi`) with no rational on the surface.
   inline constexpr auto pi     = just<detail::kPiRat>;
   inline constexpr auto two_pi = just<detail::kTwoPiRat>;
@@ -8028,7 +8015,7 @@ namespace beman::inside::math
   // pow_base<Base>(x) = Base^x for compile-time-known integer Base ≥ 2.
   // Implemented as exp2(x · log2(Base)) with log2(Base) from the grid-scaled
   // `log2_to_fixed` core — no hand-typed magic constants.
-  // For Base = 10, this is the building block for `db_to_linear`.
+  // For Base = 10 it builds decibel → linear gain (see examples/decibels.cpp).
   namespace cordic {
   template <insidable Out, imax Base, insidable In>
   [[nodiscard]] constexpr Out pow_base_into(In x)
@@ -8306,10 +8293,8 @@ namespace beman::inside::math
   //---------------------------------------------------------------------------
   // Auto-deducing forms — algebraic tier.
   //
-  // Each function gets a second overload that derives `Out` from `In` and
-  // delegates to the explicit form. `f<Out>(x)` picks the explicit form, `f(x)`
-  // the auto form (explicit Out can't be deduced from a parameter, so it drops
-  // out). Notch policy: abs/fmod inherit `notch_of<In>`; floor/ceil/round/trunc
+  // Each `fn_into<Out>(x)` has an auto form `fn(x)` that derives `Out` from `In`
+  // and delegates to it. Notch policy: abs/fmod inherit `notch_of<In>`; floor/ceil/round/trunc
   // deduce `notch<1>` since their outputs are integer-valued.
   //---------------------------------------------------------------------------
 
@@ -8331,15 +8316,6 @@ namespace beman::inside::math
     else if constexpr (E % 2)  return x * pown<E - 1>(x);
     else                       { auto h = pown<E / 2>(x); return h * h; }
   }
-
-  namespace detail
-  {
-    using namespace beman::inside::detail;
-
-    // (fmod has no auto form: with two insidable inputs, `fmod<X>(x, y)` is
-    // ambiguous between the explicit-Out and auto overloads — partial ordering
-    // can't tell them apart. The explicit form is the canonical entry point.)
-  } // namespace detail
 
   template <insidable In>
   [[nodiscard]] constexpr auto abs(In x) { return abs_into<detail::abs_auto_t<In>>(x); }
@@ -8621,7 +8597,7 @@ namespace beman::inside::math
                     "beman::inside::math: circle angle must carry the wrap policy");
       static_assert(has_flag(policy_of<In>, f64),
                     "beman::inside::math: circle angle must carry the `f64` policy "
-                    "(circle<M> already does; custom angle bounds must add `| f64`)");
+                    "(circle<M> already does; custom angle types must add `| f64`)");
       static_assert(circle_slots<In> % 4 == 0,
                     "beman::inside::math: circle slot count M must be divisible by 4");
       return true;
@@ -9561,7 +9537,7 @@ namespace beman::inside
   [[nodiscard]] auto to_string(V value)
   { return std::to_string(value); }
 
-  // `f64` (double-backed) and `exact` (rational-backed) bounds: render the
+  // `f64` (double-backed) and `exact` (rational-backed) insides: render the
   // exact rational form. (Without this overload a f64 inside would fall to the
   // generic `std::to_string(double)` and print a lossy 6-digit form, and a
   // rational-raw inside has no std::to_string at all.) A continuous (Notch == 0)

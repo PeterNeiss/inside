@@ -14,17 +14,12 @@
 #include <array>
 #include <bit>
 
-// The public beman::inside::math::* functions dispatch to the double engine (default) or
-// the integer/CORDIC engine (`-DBEMAN_INSIDE_MATH_CORDIC`). The integer engine is
-// always `constexpr`; the double engine becomes `constexpr` automatically on
-// C++26 toolchains where <cmath> is constexpr (P1383 — std::fma / std::sqrt /
-// std::nearbyint; feature macro __cpp_lib_constexpr_cmath). That branch is
-// inert (and untested) until such a toolchain exists. Decision 2026-06-12:
-// no compile-time softfloat emulation — wait for the standard.
-// BEMAN_INSIDE_MATH_NO_FP (resolved in cmath_double.hpp, included above) selects the
-// integer/CORDIC engine and is implied by BEMAN_INSIDE_MATH_CORDIC — so the integer engine
-// is constexpr here. The double engine becomes constexpr only on a C++26 toolchain
-// with constexpr <cmath> (P1383); that branch is inert until such a toolchain.
+// BEMAN_INSIDE_MATH_FN: the integer/CORDIC engine (selected by BEMAN_INSIDE_MATH_NO_FP,
+// resolved in cmath_double.hpp and implied by BEMAN_INSIDE_MATH_CORDIC) is always
+// `constexpr`. The FP engines become `constexpr` only on a C++26 toolchain with
+// constexpr <cmath> (P1383; __cpp_lib_constexpr_cmath) — that branch is inert and
+// untested until such a toolchain exists. Decision 2026-06-12: no compile-time
+// softfloat emulation — wait for the standard.
 #if defined(BEMAN_INSIDE_MATH_NO_FP) \
     || (defined(__cpp_lib_constexpr_cmath) && __cpp_lib_constexpr_cmath >= 202202L)
 #  define BEMAN_INSIDE_MATH_FN constexpr
@@ -33,12 +28,12 @@
 #endif
 
 //---------------------------------------------------------------------------
-// beman::inside::math — one transcendental API, two interchangeable engines selected by
-// the `BEMAN_INSIDE_MATH_CORDIC` macro. Both are feature-equivalent (same functions,
+// beman::inside::math — one transcendental API, three interchangeable engines selected by
+// the `BEMAN_INSIDE_MATH_CORDIC` / `BEMAN_INSIDE_MATH_FLOAT` macros. All are feature-equivalent (same functions,
 // signatures, domains):
 //
 //   * DEFAULT — double engine (`cmath_double.hpp`): hardware `double`
-//     polynomials on `f64` bounds. Bit-identical on any IEEE-754 binary64
+//     polynomials on `f64` insides. Bit-identical on any IEEE-754 binary64
 //     platform built without `-ffast-math`. Fast (~ns); needs an FPU; runtime.
 //   * `BEMAN_INSIDE_MATH_CORDIC` — integer/CORDIC engine (this file): FPU-free, constexpr,
 //     UNCONDITIONALLY bit-identical (any platform/flags). For embedded/portability.
@@ -163,11 +158,10 @@ namespace beman::inside::math
     template <typename F, insidable Out>
     inline constexpr F upper_fp = static_cast<F>(static_cast<double>(upper_of<Out>));
 
-    // Every transcendental operand must carry the `f64` policy flag: under the
-    // default engine it selects double-backed dyadic storage, under BEMAN_INSIDE_MATH_CORDIC
-    // integer round_nearest. Requiring it keeps both engines' call sites identical
-    // and avoids the slow integer-I/O path. Pure grid ops (abs/floor/ceil/round/
-    // trunc/fmod) have no engine and don't require it.
+    // Every transcendental operand must permit rounding (the `snap` bit, carried by
+    // `f64`/`f32` and every `round_*` mode): the result is rounded onto the output
+    // grid, which inherits the operand's policy. Pure grid ops (abs/floor/ceil/
+    // round/trunc/fmod) round nothing and don't require it.
     template <insidable In>
     consteval bool require_snap() noexcept
     {
@@ -179,7 +173,7 @@ namespace beman::inside::math
     }
   }
 
-  // Public irrational constants as POINT-BOUNDS, so they compose directly in
+  // Public irrational constants as point insides, so they compose directly in
   // inside-space (`angle * math::pi`) with no rational on the surface.
   inline constexpr auto pi     = just<detail::kPiRat>;
   inline constexpr auto two_pi = just<detail::kTwoPiRat>;
@@ -961,7 +955,7 @@ namespace beman::inside::math
   // pow_base<Base>(x) = Base^x for compile-time-known integer Base ≥ 2.
   // Implemented as exp2(x · log2(Base)) with log2(Base) from the grid-scaled
   // `log2_to_fixed` core — no hand-typed magic constants.
-  // For Base = 10, this is the building block for `db_to_linear`.
+  // For Base = 10 it builds decibel → linear gain (see examples/decibels.cpp).
   namespace cordic {
   template <insidable Out, imax Base, insidable In>
   [[nodiscard]] constexpr Out pow_base_into(In x)
@@ -1239,10 +1233,8 @@ namespace beman::inside::math
   //---------------------------------------------------------------------------
   // Auto-deducing forms — algebraic tier.
   //
-  // Each function gets a second overload that derives `Out` from `In` and
-  // delegates to the explicit form. `f<Out>(x)` picks the explicit form, `f(x)`
-  // the auto form (explicit Out can't be deduced from a parameter, so it drops
-  // out). Notch policy: abs/fmod inherit `notch_of<In>`; floor/ceil/round/trunc
+  // Each `fn_into<Out>(x)` has an auto form `fn(x)` that derives `Out` from `In`
+  // and delegates to it. Notch policy: abs/fmod inherit `notch_of<In>`; floor/ceil/round/trunc
   // deduce `notch<1>` since their outputs are integer-valued.
   //---------------------------------------------------------------------------
 
@@ -1264,15 +1256,6 @@ namespace beman::inside::math
     else if constexpr (E % 2)  return x * pown<E - 1>(x);
     else                       { auto h = pown<E / 2>(x); return h * h; }
   }
-
-  namespace detail
-  {
-    using namespace beman::inside::detail;
-
-    // (fmod has no auto form: with two insidable inputs, `fmod<X>(x, y)` is
-    // ambiguous between the explicit-Out and auto overloads — partial ordering
-    // can't tell them apart. The explicit form is the canonical entry point.)
-  } // namespace detail
 
   template <insidable In>
   [[nodiscard]] constexpr auto abs(In x) { return abs_into<detail::abs_auto_t<In>>(x); }
@@ -1554,7 +1537,7 @@ namespace beman::inside::math
                     "beman::inside::math: circle angle must carry the wrap policy");
       static_assert(has_flag(policy_of<In>, f64),
                     "beman::inside::math: circle angle must carry the `f64` policy "
-                    "(circle<M> already does; custom angle bounds must add `| f64`)");
+                    "(circle<M> already does; custom angle types must add `| f64`)");
       static_assert(circle_slots<In> % 4 == 0,
                     "beman::inside::math: circle slot count M must be divisible by 4");
       return true;
