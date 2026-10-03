@@ -5288,49 +5288,24 @@ namespace beman::inside
     }
 
     // to<T>() — typed-error scalar extraction (mirrors rational::to<T>, extended
-    // to signed and floating point). Returns `errc::overflow` (out of T's
-    // range) and `errc::domain_error`
-    // (negative into unsigned T); fractional truncation is silent.
-    template <std::unsigned_integral T>
+    // to signed and floating point). Returns `errc::overflow` (out of T's range;
+    // `errc::domain_error` for a negative value into unsigned T); fractional
+    // truncation is silent. Bounds the grid already satisfies are not checked.
+    template <std::integral T>
     [[nodiscard]] constexpr std::expected<T, errc> to() const
     {
-      constexpr bool needs_neg_check = (Lower<inside> < 0);
-      constexpr bool needs_max_check =
-          (Upper<inside> > detail::rational{std::numeric_limits<T>::max()});
-
-      if constexpr (!needs_neg_check && !needs_max_check)
+      using lim = std::numeric_limits<T>;
+      constexpr bool check_lo = Lower<inside> < detail::rational{lim::min()};
+      constexpr bool check_hi = Upper<inside> > detail::rational{lim::max()};
+      if constexpr (!check_lo && !check_hi)
         return static_cast<T>(detail::to_value(*this));
       else
       {
-        auto r = detail::as_rational(*this);
-        if constexpr (needs_neg_check)
-          if (r < 0) return std::unexpected{errc::domain_error};
-        if constexpr (needs_max_check)
-          if (r > detail::rational{std::numeric_limits<T>::max()})
-            return std::unexpected{errc::overflow};
-        return static_cast<T>(trunc(r));
-      }
-    }
-
-    template <std::signed_integral T>
-    [[nodiscard]] constexpr std::expected<T, errc> to() const
-    {
-      constexpr bool needs_min_check =
-          (Lower<inside> < detail::rational{std::numeric_limits<T>::min()});
-      constexpr bool needs_max_check =
-          (Upper<inside> > detail::rational{std::numeric_limits<T>::max()});
-
-      if constexpr (!needs_min_check && !needs_max_check)
-        return static_cast<T>(detail::to_value(*this));
-      else
-      {
-        auto r = detail::as_rational(*this);
-        if constexpr (needs_min_check)
-          if (r < detail::rational{std::numeric_limits<T>::min()})
-            return std::unexpected{errc::overflow};
-        if constexpr (needs_max_check)
-          if (r > detail::rational{std::numeric_limits<T>::max()})
-            return std::unexpected{errc::overflow};
+        const auto r = detail::as_rational(*this);
+        if (check_lo && r < detail::rational{lim::min()})
+          return std::unexpected{std::unsigned_integral<T> ? errc::domain_error : errc::overflow};
+        if (check_hi && r > detail::rational{lim::max()})
+          return std::unexpected{errc::overflow};
         return static_cast<T>(trunc(r));
       }
     }
@@ -5415,15 +5390,15 @@ namespace beman::inside
     template <policy_flag F = none>
     [[nodiscard]] constexpr auto policy() &
     {
-       auto pol = make_policy<P | F>();
-       return detail::policy_ref<inside, decltype(pol)>{*this, pol};
+      auto pol = make_policy<P | F>();
+      return detail::policy_ref<inside, decltype(pol)>{*this, pol};
     }
 
     template <policy_flag F = none>
     [[nodiscard]] constexpr auto policy() &&
     {
-       auto pol = make_policy<P | F>();
-       return detail::policy_buffer<inside, decltype(pol)>{std::move(*this), pol};
+      auto pol = make_policy<P | F>();
+      return detail::policy_buffer<inside, decltype(pol)>{std::move(*this), pol};
     }
 
     template <policy_flag F = none>
@@ -5436,35 +5411,31 @@ namespace beman::inside
     // with_snap<Mode>() — opt this assignment into snapping with the given rounding
     // mode. Bare `with_snap()` is truncate-toward-zero (Mode == snap); pass an
     // explicit mode for the others: with_snap<round_nearest>(), <round_floor>,
-    // <round_ceil>, <round_half_even>. The `&&` overloads forward the rvalue receiver
-    // so a temporary yields a value-owning policy_buffer (see policy<F>() above) —
-    // `*this` is an lvalue inside the body, hence the explicit std::move.
+    // <round_ceil>, <round_half_even>. The `&&` overloads forward a temporary
+    // receiver so it yields a value-owning policy_buffer (see policy<F>()).
+    // (Deducing `this` would fold each pair, but GCC 13 lacks it.)
     template <policy_flag Mode = snap>
-    [[nodiscard]] constexpr auto with_snap() &
+    [[nodiscard]] constexpr auto with_snap() &  { return check_snap<Mode>(), policy<Mode>(); }
+    template <policy_flag Mode = snap>
+    [[nodiscard]] constexpr auto with_snap() && { return check_snap<Mode>(), std::move(*this).template policy<Mode>(); }
+    [[nodiscard]] constexpr auto with_clamp() &  { return policy<clamp>(); }
+    [[nodiscard]] constexpr auto with_clamp() && { return std::move(*this).template policy<clamp>(); }
+    [[nodiscard]] constexpr auto with_wrap() &   { return policy<wrap>(); }
+    [[nodiscard]] constexpr auto with_wrap() &&  { return std::move(*this).template policy<wrap>(); }
+
+    private:
+    template <policy_flag Mode>
+    static constexpr void check_snap()
     {
       static_assert(has_flag(Mode, snap),
         "with_snap<Mode>: Mode must be a snapping mode — snap (truncate), round_nearest, "
         "round_floor, round_ceil, or round_half_even");
-      return policy<Mode>();
     }
-    template <policy_flag Mode = snap>
-    [[nodiscard]] constexpr auto with_snap() &&
-    {
-      static_assert(has_flag(Mode, snap),
-        "with_snap<Mode>: Mode must be a snapping mode — snap (truncate), round_nearest, "
-        "round_floor, round_ceil, or round_half_even");
-      return std::move(*this).template policy<Mode>();
-    }
-    [[nodiscard]] constexpr auto with_clamp() &         { return policy<clamp>(); }
-    [[nodiscard]] constexpr auto with_clamp() &&        { return std::move(*this).template policy<clamp>(); }
-    [[nodiscard]] constexpr auto with_wrap()  &         { return policy<wrap>(); }
-    [[nodiscard]] constexpr auto with_wrap()  &&        { return std::move(*this).template policy<wrap>(); }
 
     // Shared builder for the single-action fluent hooks below. Merges the tag's
     // implied policy flag, then returns a policy_ref bound to *this carrying the
     // tagged action. Each on_* hook is a thin wrapper that fixes the tag.
     // Internal: consumed only by the on_* hooks below.
-    private:
     template <template <class> class Tag, typename A>
     [[nodiscard]] constexpr auto make_action_ref(A&& action)
     {
@@ -5505,66 +5476,46 @@ namespace beman::inside
       // this grid's notches: the raw delta is a compile-time constant and the
       // raw encoding cancels every Lower term (raw(v+d) = raw(v) + d/Notch for
       // offset and direct storage alike), so this compiles to one integer add.
-      if constexpr (!detail::rational_raw<inside> && Notch<inside> != 0
+      if constexpr (!detail::rational_raw<inside> && !detail::fp_raw<inside> && Notch<inside> != 0
                     && Lower<R> == Upper<R>
                     && (Lower<R> / Notch<inside>).has_value()
                     && detail::abs_den((*(Lower<R> / Notch<inside>)).Denominator) == 1)
       {
-        constexpr auto quotient = *(Lower<R> / Notch<inside>);
-        constexpr imax delta = signed_numerator(quotient);
-        if constexpr (P & (clamp | wrap | checked))
-        {
-          imax new_raw = detail::raw_imax(*this) + delta;
-          if (new_raw < detail::RawLo<inside> || new_raw > detail::RawHi<inside>)
-            return apply_raw_overflow(new_raw);
-          Raw = detail::raw_cast<inside>(new_raw);
-        }
-        else
-          Raw = detail::raw_cast<inside>(detail::raw_imax(*this) + delta);
-        return *this;
+        constexpr imax delta = signed_numerator(*(Lower<R> / Notch<inside>));
+        return store_raw(detail::raw_imax(*this) + delta);
       }
       // Fast path: raw-level integer addition, safe when raw_a + raw_b is the raw
       // of value_a + value_b — direct storage, or offset encoding with Lower==0 both.
       else if constexpr (!detail::rational_raw<inside> && !detail::rational_raw<R>
+                    && !detail::fp_raw<inside> && !detail::fp_raw<R>
                     && Notch<inside> == Notch<R>
                     && (!detail::index_raw<R>
                         || (Lower<inside> == 0 && Lower<R> == 0)))
-      {
-        if constexpr (P & (clamp | wrap | checked))
-        {
-          imax new_raw = detail::raw_imax(*this) + detail::raw_imax(rhs);
-          if (new_raw < detail::RawLo<inside> || new_raw > detail::RawHi<inside>)
-            return apply_raw_overflow(new_raw);
-          Raw = detail::raw_cast<inside>(new_raw);
-        }
-        else
-          Raw += detail::raw_cast<inside>(rhs.raw());
-        return *this;
-      }
+        return store_raw(detail::raw_imax(*this) + detail::raw_imax(rhs));
       else
-      {
-        *this = *this + rhs;
-        return *this;
-      }
+        return *this = *this + rhs;
     }
 
     private:
-    // Out-of-range tail for raw-space compound arithmetic: dispatch on policy
-    // (clamp/wrap/checked) and store back to `Raw`. Called from the
-    // raw fast paths of `operator+=(insidable)` and `operator-=(insidable)`.
-    constexpr inside& apply_raw_overflow(imax new_raw)
+    // Store a raw computed by the raw-space fast paths of += and -=. Under
+    // clamp/wrap/checked an out-of-range raw is clamped, wrapped or reported.
+    constexpr inside& store_raw(imax new_raw)
     {
-      if constexpr (P & clamp)
-        // RawLo/RawHi are already raw-space constants, so no raw_from_offset.
-        Raw = detail::raw_cast<inside>(new_raw < detail::RawLo<inside> ? detail::RawLo<inside> : detail::RawHi<inside>);
-      else if constexpr (P & wrap)
-      {
-        constexpr imax range = detail::RawHi<inside> - detail::RawLo<inside> + 1;
-        new_raw = detail::euclid_mod(new_raw - detail::RawLo<inside>, range) + detail::RawLo<inside>;
-        Raw = detail::raw_cast<inside>(new_raw);
-      }
-      else
-        make_policy<P>().report(errc::domain_error);
+      constexpr imax lo = detail::RawLo<inside>, hi = detail::RawHi<inside>;
+      if constexpr (P & (clamp | wrap | checked))
+        if (new_raw < lo || new_raw > hi)
+        {
+          if constexpr (P & clamp)
+            new_raw = new_raw < lo ? lo : hi;
+          else if constexpr (P & wrap)
+            new_raw = detail::euclid_mod(new_raw - lo, hi - lo + 1) + lo;
+          else
+          {
+            make_policy<P>().report(errc::domain_error);
+            return *this;
+          }
+        }
+      Raw = detail::raw_cast<inside>(new_raw);
       return *this;
     }
     public:
@@ -5591,11 +5542,11 @@ namespace beman::inside
       return *this;
     }
 
-    constexpr bool report_div_by_zero([[maybe_unused]] const char* msg)
+    constexpr inside& report_div_by_zero()
     {
       if constexpr (!(P & ignore_zero))
         make_policy<P>().report(errc::division_by_zero);
-      return false;   // caller returns *this directly
+      return *this;
     }
     public:
 
@@ -5622,25 +5573,10 @@ namespace beman::inside
                             && detail::abs_den((*(Lower<R> / Notch<inside>)).Denominator) == 1)))
       {
         constexpr imax bias = [] {
-          if constexpr (detail::index_raw<R>)
-          {
-            constexpr auto quotient = *(Lower<R> / Notch<inside>);
-            return signed_numerator(quotient);
-          }
-          else
-            return imax{0};
+          if constexpr (detail::index_raw<R>) return signed_numerator(*(Lower<R> / Notch<inside>));
+          else                                return imax{0};
         }();
-        if constexpr (P & (clamp | wrap | checked))
-        {
-          imax new_raw = detail::raw_imax(*this) - detail::raw_imax(rhs) - bias;
-          if (new_raw < detail::RawLo<inside> || new_raw > detail::RawHi<inside>)
-            return apply_raw_overflow(new_raw);
-          Raw = detail::raw_cast<inside>(new_raw);
-        }
-        else
-          Raw = detail::raw_cast<inside>(
-              detail::raw_imax(*this) - detail::raw_imax(rhs) - bias);
-        return *this;
+        return store_raw(detail::raw_imax(*this) - detail::raw_imax(rhs) - bias);
       }
       else
         return *this += (-rhs);
@@ -5661,7 +5597,7 @@ namespace beman::inside
     constexpr inside& operator/=(R const& rhs)
     {
       if (rhs == 0)
-      { report_div_by_zero("operator/= division by zero"); return *this; }
+        return report_div_by_zero();
       return assign_op_result(*this / rhs);
     }
 
@@ -5669,7 +5605,7 @@ namespace beman::inside
     constexpr inside& operator%=(R const& rhs)
     {
       if (rhs == 0)
-      { report_div_by_zero("operator%= division by zero"); return *this; }
+        return report_div_by_zero();
       return assign_op_result(mod(*this, rhs, make_policy<P>()));
     }
 
@@ -5681,7 +5617,7 @@ namespace beman::inside
     constexpr inside& operator/=(A const& rhs)
     {
       if (detail::is_canonical_zero(rhs))
-      { report_div_by_zero("operator/= division by zero"); return *this; }
+        return report_div_by_zero();
       return assign_op_result(detail::rational{*this} / rhs);
     }
 
@@ -5768,47 +5704,40 @@ namespace beman::inside
     }();
   }
 
-  template <insidable L, insidable R>
-  constexpr auto operator<=>(L const& lhs, R const& rhs)
+  namespace detail
   {
-    // same grid: Raw is monotonically ordered regardless of storage kind
-    if constexpr (Grid<L> == Grid<R>)
-      return lhs.raw() <=> rhs.raw();
-    // double-backed (`real`) operand: compare in double (raw_imax would truncate)
-    else if constexpr (detail::fp_raw<L> || detail::fp_raw<R>)
-      return detail::as_double(lhs) <=> detail::as_double(rhs);
-    // both integer-direct (notch=1, Raw==value): compare as integers
-    else if constexpr (!detail::rational_raw<L> && !detail::rational_raw<R>
-                       && !detail::index_raw<L> && !detail::index_raw<R>)
-      return detail::raw_imax(lhs) <=> detail::raw_imax(rhs);
-    // same nonzero notch, integer-backed: compare signed value indices
-    // (compile-time bias + raw) — e.g. two same-Q-format fixed-point types
-    // with different intervals, without the rational decode.
-    else if constexpr (Notch<L> == Notch<R>
-                       && detail::index_cmp_fits<L> && detail::index_cmp_fits<R>)
-      return (detail::index_cmp_bias<L> + detail::raw_imax(lhs))
-         <=> (detail::index_cmp_bias<R> + detail::raw_imax(rhs));
-    else
-      return detail::as_rational(lhs) <=> detail::as_rational(rhs);
+    inline constexpr auto three_way = [](auto const& a, auto const& b) { return a <=> b; };
+    inline constexpr auto equal_to  = [](auto const& a, auto const& b) { return a == b; };
+
+    // inside ⋈ inside (⋈ = `cmp`: <=> or ==) in the cheapest exact form the two
+    // storage shapes allow.
+    template <insidable L, insidable R, class Cmp>
+    constexpr auto compare(L const& lhs, R const& rhs, Cmp cmp)
+    {
+      // same grid: Raw is monotonically ordered regardless of storage kind
+      if constexpr (Grid<L> == Grid<R>)
+        return cmp(lhs.raw(), rhs.raw());
+      // double-backed (`real`) operand: compare in double (raw_imax would truncate)
+      else if constexpr (fp_raw<L> || fp_raw<R>)
+        return cmp(as_double(lhs), as_double(rhs));
+      // both integer-direct (notch=1, Raw==value): compare as integers
+      else if constexpr (value_raw<L> && value_raw<R>)
+        return cmp(raw_imax(lhs), raw_imax(rhs));
+      // same nonzero notch, integer-backed: compare signed value indices
+      // (compile-time bias + raw) — e.g. two same-Q-format fixed-point types
+      // with different intervals, without the rational decode.
+      else if constexpr (Notch<L> == Notch<R> && index_cmp_fits<L> && index_cmp_fits<R>)
+        return cmp(index_cmp_bias<L> + raw_imax(lhs), index_cmp_bias<R> + raw_imax(rhs));
+      else
+        return cmp(as_rational(lhs), as_rational(rhs));
+    }
   }
 
   template <insidable L, insidable R>
-  constexpr bool operator==(L const& lhs, R const& rhs)
-  {
-    if constexpr (Grid<L> == Grid<R>)
-      return lhs.raw() == rhs.raw();
-    else if constexpr (detail::fp_raw<L> || detail::fp_raw<R>)
-      return detail::as_double(lhs) == detail::as_double(rhs);
-    else if constexpr (!detail::rational_raw<L> && !detail::rational_raw<R>
-                       && !detail::index_raw<L> && !detail::index_raw<R>)
-      return detail::raw_imax(lhs) == detail::raw_imax(rhs);
-    else if constexpr (Notch<L> == Notch<R>
-                       && detail::index_cmp_fits<L> && detail::index_cmp_fits<R>)
-      return (detail::index_cmp_bias<L> + detail::raw_imax(lhs))
-          == (detail::index_cmp_bias<R> + detail::raw_imax(rhs));
-    else
-      return detail::as_rational(lhs) == detail::as_rational(rhs);
-  }
+  constexpr auto operator<=>(L const& lhs, R const& rhs) { return detail::compare(lhs, rhs, detail::three_way); }
+
+  template <insidable L, insidable R>
+  constexpr bool operator==(L const& lhs, R const& rhs) { return detail::compare(lhs, rhs, detail::equal_to); }
 
   namespace detail
   {
@@ -5848,31 +5777,33 @@ namespace beman::inside
     }();
   }
 
-  template <insidable B, arithmetic A>
-  constexpr auto operator<=>(B const& lhs, A rhs)
+  namespace detail
   {
-    if constexpr (detail::value_raw<B>)
-      return detail::raw_imax(lhs) <=> static_cast<imax>(rhs);
-    else if constexpr (detail::scalar_index_cmp_fits<B, A>)
-      return (detail::index_cmp_bias<B> + detail::raw_imax(lhs))
-                 * static_cast<imax>(Notch<B>.Numerator)
-         <=> static_cast<imax>(rhs) * Notch<B>.Denominator;
-    else
-      return detail::as_rational(lhs) <=> detail::rational{rhs};
+    // inside ⋈ arithmetic scalar. Integer storage compares as integers when the
+    // scalar's type fits imax, and in double when it is floating point and the
+    // grid's values are exact in double; everything else goes through rational.
+    template <insidable B, arithmetic A, class Cmp>
+    constexpr auto compare_scalar(B const& lhs, A rhs, Cmp cmp)
+    {
+      constexpr bool imax_scalar = std::signed_integral<A> || (std::unsigned_integral<A> && sizeof(A) < sizeof(imax));
+      constexpr bool double_exact_values = Lower<B> >= rational{-(imax{1} << 53)} && Upper<B> <= rational{imax{1} << 53};
+      if constexpr (value_raw<B> && imax_scalar)
+        return cmp(raw_imax(lhs), static_cast<imax>(rhs));
+      else if constexpr (value_raw<B> && std::floating_point<A> && double_exact_values)
+        return cmp(static_cast<double>(raw_imax(lhs)), static_cast<double>(rhs));
+      else if constexpr (scalar_index_cmp_fits<B, A>)
+        return cmp((index_cmp_bias<B> + raw_imax(lhs)) * static_cast<imax>(Notch<B>.Numerator),
+                   static_cast<imax>(rhs) * Notch<B>.Denominator);
+      else
+        return cmp(as_rational(lhs), rational{rhs});
+    }
   }
 
   template <insidable B, arithmetic A>
-  constexpr bool operator==(B const& lhs, A rhs)
-  {
-    if constexpr (detail::value_raw<B>)
-      return detail::raw_imax(lhs) == static_cast<imax>(rhs);
-    else if constexpr (detail::scalar_index_cmp_fits<B, A>)
-      return (detail::index_cmp_bias<B> + detail::raw_imax(lhs))
-                 * static_cast<imax>(Notch<B>.Numerator)
-          == static_cast<imax>(rhs) * Notch<B>.Denominator;
-    else
-      return detail::as_rational(lhs) == detail::rational{rhs};
-  }
+  constexpr auto operator<=>(B const& lhs, A rhs) { return detail::compare_scalar(lhs, rhs, detail::three_way); }
+
+  template <insidable B, arithmetic A>
+  constexpr bool operator==(B const& lhs, A rhs) { return detail::compare_scalar(lhs, rhs, detail::equal_to); }
 
   //---------------------------------------------------------------------------
   // just

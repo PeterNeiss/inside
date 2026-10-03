@@ -263,3 +263,35 @@ TEST(StorageBugsTest, error_code_ctor_reports_on_checked_real_target)
   EXPECT_EQ(ec, errc::domain_error);
 }
 #endif
+
+//---------------------------------------------------------------------------
+// Comparing integer storage with a floating or wide unsigned scalar must not
+// truncate or wrap the scalar.
+//---------------------------------------------------------------------------
+TEST(StorageBugsTest, scalar_comparison_does_not_truncate_the_scalar)
+{
+  using namespace beman::inside;
+  inside<{-10, 10}> one{1}, minus_one{-1};
+  static_assert(detail::value_raw<decltype(one)>);
+  EXPECT_FALSE(one == 1.5);
+  EXPECT_TRUE(one < 1.5);
+  EXPECT_TRUE(minus_one > -1.5);
+  EXPECT_TRUE(one == 1.0);
+  EXPECT_TRUE(one < std::numeric_limits<std::uint64_t>::max());
+}
+
+#ifndef BEMAN_INSIDE_MATH_FIXED
+// ++ / += point on `real` storage adds the value, not a notch count to the raw.
+TEST(StorageBugsTest, increment_on_real_storage)
+{
+  using namespace beman::inside;
+  using rl = inside<{{-4, 4}, notch<1, 256>}, real | round_nearest>;
+  rl x{rational{3, 2}};
+  ++x;
+  EXPECT_EQ(x.raw(), 2.5);
+  x += 1_ins;
+  EXPECT_EQ(x.raw(), 3.5);
+  --x;
+  EXPECT_EQ(x.raw(), 2.5);
+}
+#endif
