@@ -2067,36 +2067,43 @@ namespace beman::inside
     // (Raw → double decoding lives in `detail::as_double` (generic.hpp): the
     // decode depends on the storage KIND, not the raw type's signedness — a
     // `direct`-policy inside has an unsigned raw that IS the value.)
+  };
 
-    // Snap a double onto this (dyadic) grid by `m` — the same rounding rule as
-    // integer storage (rounding_of; ties of `nearest` half away from zero). On an
-    // fp grid the notch is a power of two, so v/notch is the exact signed value
-    // index. A continuous grid (notch 0) has nothing to snap to. |index| ≥ 2^52 is
-    // already integral, so the imax narrowing below is always safe.
-    [[nodiscard]] constexpr double snap_double(double v, detail::round_mode m = detail::round_mode::nearest) const
+  namespace detail
+  {
+  // Snap a double onto the (dyadic) grid G by rounding mode M — the same rule
+  // as integer storage (rounding_of; ties of `nearest` half away from zero). On
+  // an fp grid the notch is a power of two, so v/notch is the exact signed value
+  // index. A continuous grid (notch 0) has nothing to snap to. |index| >= 2^52 is
+  // already integral, so the imax narrowing below is always safe. G and M are
+  // template parameters so each store compiles to its own branch-free rounding.
+  template <grid G, round_mode M = round_mode::nearest>
+  [[nodiscard]] constexpr double snap_double(double v) noexcept
+  {
+    if constexpr (G.Notch == rational{0})
+      return v;
+    else
     {
-      if (Notch == detail::rational{0}) return v;
-      const double nd = static_cast<double>(Notch);
-      const double q  = v / nd;
+      constexpr double nd = static_cast<double>(G.Notch);
+      const double q = v / nd;
       if ((q < 0 ? -q : q) >= 4503599627370496.0)        // 2^52
         return v;
       const imax   t = static_cast<imax>(q);              // toward zero
       const double f = q - static_cast<double>(t);        // exact, sign of q, |f| < 1
       imax k = t;
-      switch (m)
+      if constexpr (M == round_mode::nearest)
       {
-        case detail::round_mode::nearest:   k += (f >= 0.5) - (f <= -0.5); break;
-        case detail::round_mode::floor:     k -= (f < 0); break;
-        case detail::round_mode::ceil:      k += (f > 0); break;
-        case detail::round_mode::half_even:
-          k += (f > 0.5  || (f ==  0.5 && (t & 1)))
-             - (f < -0.5 || (f == -0.5 && (t & 1)));
-          break;
-        case detail::round_mode::trunc:     break;
+        k += (f >= 0.5);
+        if constexpr (G.Interval.Lower < 0) k -= (f <= -0.5);   // dead on a grid ≥ 0
       }
+      else if constexpr (M == round_mode::floor)     k -= (f < 0);
+      else if constexpr (M == round_mode::ceil)      k += (f > 0);
+      else if constexpr (M == round_mode::half_even) k += (f > 0.5  || (f ==  0.5 && (t & 1)))
+                                                       - (f < -0.5 || (f == -0.5 && (t & 1)));
       return static_cast<double>(k) * nd;
     }
-  };
+  }
+  }
 
   // Smallest raw type holding every reachable index in G. Order: notch-zero →
   // rational (no integer index space); index count too large for any integer →
@@ -3354,7 +3361,7 @@ namespace beman::inside::detail
           const double v = static_cast<double>(rhs);
           if (!(v - v == 0))
             detail::raise(errc::not_finite, "non-finite double");
-          lhs = L::from_raw(Grid<L>.snap_double(v, rounding_for<L, P>));
+          lhs = L::from_raw(snap_double<Grid<L>, rounding_for<L, P>>(v));
           return true;
         }
         else if constexpr (Lower<L> == Upper<L>)
@@ -3709,7 +3716,7 @@ namespace beman::inside::detail
         if constexpr (fp_raw<L>)
           // real target: raw IS the value — decode the source and snap to the dyadic
           // grid (the offset machinery below mis-encodes a double raw).
-          lhs = L::from_raw(Grid<L>.snap_double(as_double(rhs), rounding_for<L, P>));
+          lhs = L::from_raw(snap_double<Grid<L>, rounding_for<L, P>>(as_double(rhs)));
         else if constexpr (rational_raw<L>)
           // rational target: raw IS the value — snap the decoded source through
           // the rational-rhs store (the offset machinery below would round the
@@ -4755,7 +4762,7 @@ namespace beman::inside::detail
       // non-finite ever reaches storage.
       if constexpr (!zero_unchecked)
         if (as_double(rhs) == 0.0) return fail(errc::division_by_zero, "division by zero in div");
-      return result::from_raw(raw_cast<result>(Grid<result>.snap_double(as_double(lhs) / as_double(rhs), rmode)));
+      return result::from_raw(raw_cast<result>(snap_double<Grid<result>, rmode>(as_double(lhs) / as_double(rhs))));
     }
     else if constexpr (native_div_qformat)
     {
@@ -5042,7 +5049,7 @@ namespace beman::inside
           return;            // reported (error_code mode)
         // no handler (unchecked policy): fall through and store snapped as-is
       }
-      Raw = static_cast<raw_type>(G.snap_double(v, detail::rounding_of(F)));   // float for f32: lossless
+      Raw = static_cast<raw_type>(detail::snap_double<G, detail::rounding_of(F)>(v));   // float for f32: lossless
     }
 
     // The one store every constructor and assignment goes through; fp storage

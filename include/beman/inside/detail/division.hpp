@@ -221,7 +221,7 @@ namespace beman::inside::detail
       // non-finite ever reaches storage.
       if constexpr (!zero_unchecked)
         if (as_double(rhs) == 0.0) return fail(errc::division_by_zero, "division by zero in div");
-      return result::from_raw(raw_cast<result>(Grid<result>.snap_double(as_double(lhs) / as_double(rhs), rmode)));
+      return result::from_raw(raw_cast<result>(snap_double<Grid<result>, rmode>(as_double(lhs) / as_double(rhs))));
     }
     else if constexpr (native_div_qformat)
     {
