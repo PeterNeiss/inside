@@ -149,7 +149,7 @@ target those. If you use the single header or the headers without CMake, add
 
 | Compiler   | Version | C++ Standards | Standard Library  |
 |------------|---------|---------------|-------------------|
-| GCC        | 16-13   | C++26-C++23   | libstdc++         |
+| GCC        | 16-14   | C++26-C++23   | libstdc++         |
 | Clang      | 22-19   | C++26-C++23   | libstdc++, libc++ |
 | Clang      | 18      | C++26-C++23   | libc++            |
 | AppleClang | latest  | C++26-C++23   | libc++            |

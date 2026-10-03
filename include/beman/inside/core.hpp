@@ -22,6 +22,11 @@
 #include <expected>   // std::expected, std::unexpected
 #include <utility>    // std::pair
 
+// Deducing `this` (P0847) folds the lvalue/rvalue overload pairs below.
+#if defined(__GNUC__) && !defined(__clang__) && __GNUC__ < 14
+#  error "beman.inside requires GCC 14 or newer (deducing this)"
+#endif
+
 // Forward-declare the `beman::inside::math` entry points used in-class, so the bodies
 // pass `-Wtemplate-body` without pulling cmath.hpp in unconditionally (its
 // definitions live there).
@@ -393,18 +398,14 @@ namespace beman::inside
     // back into b, and cheap for the common immediate use). On an *rvalue* receiver
     // it returns a policy_buffer that OWNS the moved-in value, so a snapped temporary
     // survives being returned/stored (`return (a*b).with_snap();`) — no dangling.
-    template <policy_flag F = none>
-    [[nodiscard]] constexpr auto policy() &
+    template <policy_flag F = none, typename Self>
+    [[nodiscard]] constexpr auto policy(this Self&& self)
     {
       auto pol = make_policy<P | F>();
-      return detail::policy_ref<inside, decltype(pol)>{*this, pol};
-    }
-
-    template <policy_flag F = none>
-    [[nodiscard]] constexpr auto policy() &&
-    {
-      auto pol = make_policy<P | F>();
-      return detail::policy_buffer<inside, decltype(pol)>{std::move(*this), pol};
+      if constexpr (std::is_lvalue_reference_v<Self>)
+        return detail::policy_ref<inside, decltype(pol)>{self, pol};
+      else
+        return detail::policy_buffer<inside, decltype(pol)>{std::move(self), pol};
     }
 
     template <policy_flag F = none>
@@ -417,31 +418,25 @@ namespace beman::inside
     // with_snap<Mode>() — opt this assignment into snapping with the given rounding
     // mode. Bare `with_snap()` is truncate-toward-zero (Mode == snap); pass an
     // explicit mode for the others: with_snap<round_nearest>(), <round_floor>,
-    // <round_ceil>, <round_half_even>. The `&&` overloads forward a temporary
-    // receiver so it yields a value-owning policy_buffer (see policy<F>()).
-    // (Deducing `this` would fold each pair, but GCC 13 lacks it.)
-    template <policy_flag Mode = snap>
-    [[nodiscard]] constexpr auto with_snap() &  { return check_snap<Mode>(), policy<Mode>(); }
-    template <policy_flag Mode = snap>
-    [[nodiscard]] constexpr auto with_snap() && { return check_snap<Mode>(), std::move(*this).template policy<Mode>(); }
-    [[nodiscard]] constexpr auto with_clamp() &  { return policy<clamp>(); }
-    [[nodiscard]] constexpr auto with_clamp() && { return std::move(*this).template policy<clamp>(); }
-    [[nodiscard]] constexpr auto with_wrap() &   { return policy<wrap>(); }
-    [[nodiscard]] constexpr auto with_wrap() &&  { return std::move(*this).template policy<wrap>(); }
-
-    private:
-    template <policy_flag Mode>
-    static constexpr void check_snap()
+    // <round_ceil>, <round_half_even>. Like policy<F>(), a temporary receiver
+    // yields a value-owning policy_buffer.
+    template <policy_flag Mode = snap, typename Self>
+    [[nodiscard]] constexpr auto with_snap(this Self&& self)
     {
       static_assert(has_flag(Mode, snap),
         "with_snap<Mode>: Mode must be a snapping mode — snap (truncate), round_nearest, "
         "round_floor, round_ceil, or round_half_even");
+      return std::forward<Self>(self).template policy<Mode>();
     }
+    template <typename Self>
+    [[nodiscard]] constexpr auto with_clamp(this Self&& self) { return std::forward<Self>(self).template policy<clamp>(); }
+    template <typename Self>
+    [[nodiscard]] constexpr auto with_wrap(this Self&& self)  { return std::forward<Self>(self).template policy<wrap>(); }
 
-    // Shared builder for the single-action fluent hooks below. Merges the tag's
-    // implied policy flag, then returns a policy_ref bound to *this carrying the
-    // tagged action. Each on_* hook is a thin wrapper that fixes the tag.
-    // Internal: consumed only by the on_* hooks below.
+    private:
+    // Shared builder for the single-action fluent hooks below (internal). Merges
+    // the tag's implied policy flag, then returns a policy_ref bound to *this
+    // carrying the tagged action. Each on_* hook is a thin wrapper that fixes the tag.
     template <template <class> class Tag, typename A>
     [[nodiscard]] constexpr auto make_action_ref(A&& action)
     {
