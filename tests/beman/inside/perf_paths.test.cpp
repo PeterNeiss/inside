@@ -65,16 +65,16 @@ TEST(PerfPathsTest, wrap_policy_range_check_still_fires)
 // Q-format division: native_div_qformat matches rational arithmetic
 TEST(PerfPathsTest, q_format_division_native_div_qformat_matches_rational_arithmetic)
 {
-  using fp = inside<{{0, 255}, 0x1p-8_r}>;   // Q8.8; the `truncated` call policy
+  using fp = inside<{{0, 255}, 0x1p-8_r}>;   // Q8.8; the `snapped` call policy
                                             // supplies snap for the native
                                             // path, without unsafe's ignore_zero
 
   // Spot checks against expected Q-format integer-truncation values.
-  auto q1 = div(fp{200}, fp{8}, truncated);
+  auto q1 = div(fp{200}, fp{8}, snapped);
   ASSERT_TRUE(q1.has_value());
   ASSERT_EQ(*q1, 25);
 
-  auto q2 = div(fp{255}, fp{1}, truncated);
+  auto q2 = div(fp{255}, fp{1}, snapped);
   ASSERT_TRUE(q2.has_value());
   ASSERT_EQ(*q2, 255);
 
@@ -82,12 +82,12 @@ TEST(PerfPathsTest, q_format_division_native_div_qformat_matches_rational_arithm
   // dividing — (51200 * 256) / 768 = 17066 (= floor(66.6667 * 256)) — same
   // as native `(a << 8) / b`. NOT 66 * 256 = 16896 (that would be
   // truncate-then-scale, which loses fractional precision).
-  auto q3 = div(fp{200}, fp{3}, truncated);
+  auto q3 = div(fp{200}, fp{3}, snapped);
   ASSERT_TRUE(q3.has_value());
   ASSERT_EQ((*q3).raw(), 17066);
 
   // Divide by zero produces errc::division_by_zero.
-  auto q4 = div(fp{1}, fp{0}, truncated);
+  auto q4 = div(fp{1}, fp{0}, snapped);
   ASSERT_FALSE(q4.has_value());
   ASSERT_EQ(q4.error(), errc::division_by_zero);
 }
@@ -96,7 +96,7 @@ TEST(PerfPathsTest, q_format_division_native_div_qformat_matches_rational_arithm
 TEST(PerfPathsTest, q_format_division_result_type_is_q_format_same_notch_as_l)
 {
   using fp = inside<{{0, 255}, 0x1p-8_r}, unsafe>;
-  auto q = div(fp{200}, fp{8}, truncated);
+  auto q = div(fp{200}, fp{8}, snapped);
   using R = std::remove_cvref_t<decltype(*q)>;
   static_assert(notch_of<R> == notch_of<fp>);   // same Q-format, not rational-raw
   static_assert(!(rational_raw<R>));

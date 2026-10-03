@@ -18,7 +18,7 @@ The free functions `add`, `sub`, `mul`, `div`, and `mod` take one of three
 trailing forms:
 
 - `op(l, r [, policy [, action]])` — a named convenience policy
-  (`beman::inside::truncated`, `beman::inside::round_to_nearest`, `beman::inside::clamped`,
+  (`beman::inside::snapped`, `beman::inside::rounded_nearest`, `beman::inside::clamped`,
   `beman::inside::wrapped`, or any `policy<F>`), optionally followed by one action;
 - `op(l, r, on_*(…), …)` — one or more `on_*` action factories (at least one
   `on_overflow`); the policy is the flags those actions imply;
@@ -57,12 +57,12 @@ Both native paths divide in 32 bits when both operand ranges fit (the integer
 path excludes `INT32_MIN`, so `a / -1` cannot overflow), so `/` and `%` on small
 grids run at native speed rather than as a 64-bit divide.
 
-**Rounding mode (native paths).** Plain `snap` (== `truncated`) truncates toward
+**Rounding mode (native paths).** Plain `snap` (== `snapped`) truncates toward
 zero — the historical, C++-`/` behaviour. Any rounding-mode flag rounds the quotient
 instead: `round_nearest` (half away from zero), `round_floor` (toward −∞),
 `round_ceil` (toward +∞), `round_half_even` (banker's). The remainder from `%` stays
 consistent with the rounded quotient, so `(a / b) * b + a % b == a` for every mode
-(e.g. under `round_floor`, `(-8) % 3 == 1`; under `truncated`, `(-8) % 3 == -2`).
+(e.g. under `round_floor`, `(-8) % 3 == 1`; under `snapped`, `(-8) % 3 == -2`).
 
 ```cpp
 using val = inside<{0, 100}>;
@@ -72,7 +72,7 @@ val a{7}, b{3};
 auto exact = a / b;                            // inside<{rational}>, value 7/3
 
 // Per-call integer truncation (path B).
-auto quot  = div(a, b, truncated);             // inside<{0, 33}> integer raw, value 2
+auto quot  = div(a, b, snapped);             // inside<{0, 33}> integer raw, value 2
 
 // Type-level integer truncation (path B again — gating is on policy,
 // not on the operator's call site).
@@ -81,7 +81,7 @@ auto q     = fast{7} / fast{3};                // inside<{0, 33}> integer raw, v
 
 // Q-format same-notch (path A).
 using fp = inside<{{0, 255}, notch<1, 256>}, unsafe>;   // Q8.8; unsafe implies snap
-auto qfp = div(fp{200}, fp{3}, truncated);     // Q8.8 raw 17066 ≈ 66.6641
+auto qfp = div(fp{200}, fp{3}, snapped);     // Q8.8 raw 17066 ≈ 66.6641
 ```
 
 The Q-format spot check matches `tests/beman/inside/perf_paths.test.cpp` to the bit
@@ -142,11 +142,11 @@ using fast = inside<{0, 100}, snap>;
 auto q1 = fast{7} / fast{3};               // -> 2
 
 // 2. Per-call: OR `snap` into the operation's flags.
-auto q2 = div(val{7}, val{3}, truncated);  // -> 2
+auto q2 = div(val{7}, val{3}, snapped);  // -> 2
 
 // 3. Same as (2) using the operation's named policy alias.
-//    `truncated = make_policy<snap>()`; siblings include
-//    `round_to_nearest`, `clamped`, `wrapped` — see `beman/inside/policy.hpp`.
+//    `snapped = make_policy<snap>()`; siblings include
+//    `rounded_nearest`, `clamped`, `wrapped` — see `beman/inside/policy.hpp`.
 ```
 
 Without any of these, `operator/` always takes path C and returns a
@@ -175,7 +175,7 @@ the results.
 ### Examples and tests
 
 - [examples/division.cpp](../examples/division.cpp) — paths B and C side by
-  side; default exact-rational vs `div(a, b, truncated)`.
+  side; default exact-rational vs `div(a, b, snapped)`.
 - [examples/integer_division.cpp](../examples/integer_division.cpp) — the
   type-level vs per-call forms of path B.
 - [tests/beman/inside/inside_arithmetic.test.cpp](../tests/beman/inside/inside_arithmetic.test.cpp) — the

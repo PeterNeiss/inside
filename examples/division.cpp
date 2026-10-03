@@ -23,7 +23,7 @@ int main()
     std::cout << "7 / 3 (exact)    = " << *result << "\n";  // 7/3
 
   // Integer division with per-call policy
-  auto quotient = div(a, b, truncated);
+  auto quotient = div(a, b, snapped);
   if (quotient)
     std::cout << "7 / 3 (integer)  = " << *quotient << "\n";  // 2
 

@@ -210,10 +210,10 @@ static void bench_scalar_u8()
     u200 a(din.a[i & kMask]), b(din.b[i & kMask]);
     doNotOptimizeAway((a / b)->raw());
   });
-  dv.run("inside div(a, b, truncated)", [&] {
+  dv.run("inside div(a, b, snapped)", [&] {
     ++i;
     u200 a(din.a[i & kMask]), b(din.b[i & kMask]);
-    doNotOptimizeAway(div(a, b, truncated)->raw());
+    doNotOptimizeAway(div(a, b, snapped)->raw());
   });
   finish(dv);
 
@@ -232,10 +232,10 @@ static void bench_scalar_u8()
     d9 b(din.b[i & kMask]);
     doNotOptimizeAway((a % b).raw());
   });
-  md.run("inside mod(a, b, truncated) (zero-checked)", [&] {
+  md.run("inside mod(a, b, snapped) (zero-checked)", [&] {
     ++i;
     u200 a(din.a[i & kMask]), b(din.b[i & kMask]);
-    doNotOptimizeAway(mod(a, b, truncated)->raw());
+    doNotOptimizeAway(mod(a, b, snapped)->raw());
   });
   finish(md);
 }
@@ -568,16 +568,16 @@ static void bench_fixed_point()
   finish(mul);
 
   static const scalar_inputs din{16, 200, 1, 8};
-  auto dv = group("Q8.8 div (truncated)");
+  auto dv = group("Q8.8 div (snapped)");
   dv.run("native (a<<8)/b", [&] {
     ++i;
     std::int32_t a = din.a[i & kMask] << 8, b = din.b[i & kMask] << 8;
     doNotOptimizeAway((a << 8) / b);
   });
-  dv.run("inside div(a, b, truncated)", [&] {
+  dv.run("inside div(a, b, snapped)", [&] {
     ++i;
     fp a(din.a[i & kMask]), b(din.b[i & kMask]);
-    doNotOptimizeAway(div(a, b, truncated)->raw());
+    doNotOptimizeAway(div(a, b, snapped)->raw());
   });
   finish(dv);
 
@@ -1526,14 +1526,14 @@ int main(int argc, char** argv)
       "instruction count changed.\n\n"
       "| Group / row | ns before | ns after | instr. before → after | Verdict |\n"
       "|---|--:|--:|--:|---|\n"
-      "| div (u8) `a / b`, `div(a, b, truncated)` | 2.04 | 2.06 | 13 → 11 | unchanged |\n"
+      "| div (u8) `a / b`, `div(a, b, snapped)` | 2.04 | 2.06 | 13 → 11 | unchanged |\n"
       "| compound `/=` (u8) | 2.04 | 2.05 | 18 → 15 | unchanged |\n"
       "| exact-backed div `inside<exact>` | 17.01 | 18.16 | 177 → 161 | noise (wide spread before, 13.0–17.5) |\n"
       "| rational engine add | 8.32 | 8.17 | 177 → 183 | within noise |\n"
       "| rational engine mul | 10.44 | 10.48 | 202 → 194 | within noise |\n"
       "| exact-backed add `inside<exact>` | 6.36 | 6.86 | 134 → 146 | harness artifact¹ |\n"
       "| casts `clamp_cast` | 0.75 | 1.52 | 18 → 39 | harness artifact¹ |\n"
-      "| mod (u8) `%`, `mod(a, b, truncated)` | 2.04 | 2.05 | 14 → 14, 11 → 11 | unchanged |\n"
+      "| mod (u8) `%`, `mod(a, b, snapped)` | 2.04 | 2.05 | 14 → 14, 11 → 11 | unchanged |\n"
       "| transform v+1, `inside<{0,255}>` vs native | 1.92× native | 1.00× native | 7528 → 3775 | **faster** — now uint8 storage² |\n\n"
       "¹ Standalone microbenchmarks of these exact kernels, built against both\n"
       "commits, show identical instruction counts and timings (`clamp_cast` 18 instr. /\n"

@@ -101,7 +101,7 @@ namespace
       const long b = static_cast<long>((x >> 11) % 15984) + 16;   // raw ∈ [16, 15999]
       Qn qa = Qn::from_raw(static_cast<Qn::raw_type>(a));
       Qn qb = Qn::from_raw(static_cast<Qn::raw_type>(b));
-      acc += static_cast<long>(div(qa, qb, truncated)->raw());    // native Q divide
+      acc += static_cast<long>(div(qa, qb, snapped)->raw());    // native Q divide
     }
     return acc;
   }

@@ -109,7 +109,7 @@ TEST(InsideArithmeticTest, inside_div_rational_vs_integer_paths)
     SCOPED_TRACE("per-call snap");
     using u100 = inside<{0, 100}>;
     constexpr u100 a{51}, b{8};
-    constexpr auto d = div(a, b, truncated);
+    constexpr auto d = div(a, b, snapped);
     static_assert(!(std::is_same_v<typename decltype(d)::value_type::raw_type, rational>));
     static_assert(*d == 6);
   }
@@ -129,7 +129,7 @@ TEST(InsideArithmeticTest, inside_div_rational_vs_integer_paths)
     static_assert(index_raw<off>);
 
     constexpr off a{50}, b{10};
-    constexpr auto q = div(a, b, truncated);
+    constexpr auto q = div(a, b, snapped);
     // off's grid {5,100} excludes zero, so div returns a plain inside (no expected).
     static_assert(!(std::is_same_v<typename decltype(q)::raw_type, rational>));
     static_assert(q == 5);
@@ -139,7 +139,7 @@ TEST(InsideArithmeticTest, inside_div_rational_vs_integer_paths)
     SCOPED_TRACE("non-unit notch trunc");
     using step2 = inside<{{0, 10}, 2}>;
     constexpr step2 a{10}, b{6};
-    constexpr auto q = div(a, b, truncated);
+    constexpr auto q = div(a, b, snapped);
     static_assert(*q == 1);
   }
 
@@ -147,7 +147,7 @@ TEST(InsideArithmeticTest, inside_div_rational_vs_integer_paths)
     SCOPED_TRACE("offset + non-unit notch");
     using step5 = inside<{{5, 15}, 5}>;
     constexpr step5 a{15}, b{5};
-    constexpr auto q = div(a, b, truncated);
+    constexpr auto q = div(a, b, snapped);
     // {5,15} excludes zero → plain inside result.
     static_assert(q == 3);
   }
@@ -203,7 +203,7 @@ TEST(InsideArithmeticTest, inside_modulo)
 
   using u50 = inside<{0, 50}>;
   constexpr u50 e{23}, f{7};
-  constexpr auto r = mod(e, f, truncated);
+  constexpr auto r = mod(e, f, snapped);
   static_assert(*r == 2);
 }
 

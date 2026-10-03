@@ -469,7 +469,7 @@ void prop_modulo(fuzz_state& s, long iters)
         BI a = BI::from_raw(random_in_range_raw<BI>(s.rng));
         BI b = BI::from_raw(random_in_range_raw<BI>(s.rng));
         if (b == 0) continue;  // possible if hi <= 0 and zero is in range
-        auto r = mod(a, b, truncated);
+        auto r = mod(a, b, snapped);
         imax expected = as<imax>(a) % as<imax>(b);
         // mod returns a plain inside when B's grid excludes zero, else expected.
         if constexpr (is_expected_v<decltype(r)>)
@@ -490,7 +490,7 @@ void prop_modulo(fuzz_state& s, long iters)
         BI a = BI::from_raw(random_in_range_raw<BI>(s.rng));
         BI b{0};
         do { b = BI::from_raw(random_in_range_raw<BI>(s.rng)); } while (b == 0);
-        auto r = mod(a, b, truncated);
+        auto r = mod(a, b, snapped);
         imax expected = as<imax>(a) % as<imax>(b);
         // mod returns a plain inside when B's grid excludes zero, else expected.
         if constexpr (is_expected_v<decltype(r)>)

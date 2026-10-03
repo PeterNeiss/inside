@@ -23,7 +23,7 @@ int main()
     std::cout << "7 / 3 (rational) = " << *exact << "\n";  // 7/3
 
   // Per-call integer division: truncates like native C++ division
-  auto quotient = div(a, b, truncated);
+  auto quotient = div(a, b, snapped);
   if (quotient)
     std::cout << "7 / 3 (integer)  = " << *quotient << "\n";  // 2
 
@@ -44,7 +44,7 @@ int main()
   // Exact division works as expected
   val ten = 10;
   val two = 2;
-  auto five = div(ten, two, truncated);
+  auto five = div(ten, two, snapped);
   if (five)
     std::cout << "10 / 2 (integer) = " << *five << "\n";  // 5
 
