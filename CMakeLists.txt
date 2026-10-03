@@ -69,6 +69,20 @@ option(
     OFF
 )
 
+# The double/float math engines evaluate their polynomials with std::fma, which
+# is what makes them bit-reproducible across platforms. Baseline x86-64 has no
+# FMA instruction, so without -mfma every std::fma is a software-emulated libm
+# call (math::sin ~4x slower; the results are identical either way). ON adds
+# -mfma to everything that links beman::inside on x86-64 GCC/Clang. The binary
+# then needs AVX+FMA (-mfma implies AVX; Intel Haswell / AMD Piledriver, 2013+) and
+# dies with SIGILL on older ones — turn this OFF to target those. AArch64 and
+# other ISAs with FMA in their baseline need nothing.
+option(
+    BEMAN_INSIDE_FMA
+    "Add -mfma on x86-64 GCC/Clang so std::fma is one instruction, not a libm call. Default: ON. Values: { ON, OFF }."
+    ON
+)
+
 # for find of beman_install_library and configure_build_telemetry
 include(infra/cmake/beman-install-library.cmake)
 include(infra/cmake/BuildTelemetryConfig.cmake)
@@ -96,6 +110,12 @@ if(BEMAN_INSIDE_STRICT_SFINAE)
     target_compile_definitions(
         beman.inside
         INTERFACE BEMAN_INSIDE_STRICT_SFINAE
+    )
+endif()
+if(BEMAN_INSIDE_FMA AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$")
+    target_compile_options(
+        beman.inside
+        INTERFACE $<$<COMPILE_LANG_AND_ID:CXX,GNU,Clang,AppleClang>:-mfma>
     )
 endif()
 

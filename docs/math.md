@@ -24,6 +24,12 @@ fixed-point CORDIC/Newton cores. All three snap results onto the same
 auto-deduced output grid, so the engines are **feature- and
 signature-identical**: the same source compiles against any of them.
 
+On x86-64 the FP engines' speed depends on hardware FMA: without `-mfma`,
+`std::fma` is a software-emulated libm call and each polynomial pays for it
+(`math::sin` 20.8 ns → 5.1 ns with `-mfma`, bit-identical results). The CMake
+option `BEMAN_INSIDE_FMA` (default `ON`) adds `-mfma` for x86-64 GCC/Clang —
+see the README for the CPU requirement it implies.
+
 > Engine = speed/representation; grid = precision. The result **type** does not
 > depend on the engine, and each engine is bit-reproducible across platforms.
 > The grid-snapped **value**, however, can differ between engines by up to

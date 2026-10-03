@@ -128,10 +128,22 @@ Library options:
 | `BEMAN_INSIDE_MATH_FIXED` | `OFF` | Use the integer/CORDIC math engine (FPU-free) instead of the double engine |
 | `BEMAN_INSIDE_MATH_FLOAT` | `OFF` | Make unqualified `beman::inside::math` use the float (binary32) engine |
 | `BEMAN_INSIDE_STRICT_SFINAE` | `OFF` | Drop the assignment diagnostic overloads so `is_constructible` stays honest |
+| `BEMAN_INSIDE_FMA` | `ON` | Add `-mfma` on x86-64 GCC/Clang so the math engines' `std::fma` is one instruction (see below) |
 | `BEMAN_INSIDE_BUILD_TOOLS` | `OFF` | Build the benchmarks, property fuzzer, accuracy sweep and perf workload |
 
 Math-engine selection and bare-metal builds are covered in
 [docs/freestanding.md](docs/freestanding.md) and [docs/math.md](docs/math.md).
+
+**FMA on x86-64.** The double and float math engines use `std::fma` so that
+their results are bit-identical on every platform. Baseline x86-64 has no FMA
+instruction, so without `-mfma` each `std::fma` is a software-emulated libm call
+and `math::sin` is about 4× slower (20.8 ns vs 5.1 ns; the results do not
+change). `BEMAN_INSIDE_FMA` (default `ON`) therefore adds `-mfma` to every
+target that links `beman::inside` on x86-64 GCC/Clang. The resulting binary
+needs a CPU with AVX and FMA (Intel Haswell / AMD Piledriver, 2013 or later) and
+stops with `SIGILL` on older ones; configure with `-DBEMAN_INSIDE_FMA=OFF` to
+target those. If you use the single header or the headers without CMake, add
+`-mfma` (or `-march=x86-64-v3`) yourself to get the fast path.
 
 ### Supported Platforms
 
