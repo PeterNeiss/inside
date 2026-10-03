@@ -86,6 +86,13 @@ namespace beman::inside::math
     inline constexpr rational pi_r{1068966896, 340262731};
     inline constexpr rational two_pi_r = 2 * pi_r;
 
+    // Out's interval endpoints as F (via double, like the runtime value), folded
+    // at compile time for the FP engines' range checks.
+    template <typename F, insidable Out>
+    inline constexpr F lower_fp = static_cast<F>(static_cast<double>(Lower<Out>));
+    template <typename F, insidable Out>
+    inline constexpr F upper_fp = static_cast<F>(static_cast<double>(Upper<Out>));
+
     // Every transcendental operand must carry the `real` policy flag: under the
     // default engine it selects double-backed dyadic storage, under BEMAN_INSIDE_MATH_FIXED
     // integer round_nearest. Requiring it keeps both engines' call sites identical
@@ -445,7 +452,10 @@ namespace beman::inside::math
     {
       const imax a_w = to_fixed(a, W);
       if constexpr (Lower<In> >= -1024 && Upper<In> <= 1024)
-        return fmul(a_w, to_fixed(inv_two_pi, W), W);
+      {
+        constexpr imax inv_two_pi_w = to_fixed(inv_two_pi, W);
+        return fmul(a_w, inv_two_pi_w, W);
+      }
       else
       {
         constexpr int  S    = W + 24;                 // ≤ 55 for W ≤ 31
@@ -806,7 +816,7 @@ namespace beman::inside::math
                   "beman::inside::math::pow_base: Out must be non-negative");
 
     constexpr int W = detail::working_bits<Out>();
-    imax lb_w = detail::log2_to_fixed<W>(beman::inside::detail::rational{Base});   // log2(Base)·2^W
+    constexpr imax lb_w = detail::log2_to_fixed<W>(beman::inside::detail::rational{Base});   // log2(Base)·2^W
     imax sc_w = detail::fmul(detail::to_fixed(beman::inside::detail::rational{x}, W), lb_w, W);
     return detail::store_grid<Out>(detail::exp2_from_fixed<W>(sc_w));
   }
@@ -848,7 +858,7 @@ namespace beman::inside::math
     // and add the rotation back at the end.
     //   Q2 (x<0, y≥0): (x',y') = (y, −x),  θ = CORDIC + π/2.
     //   Q3 (x<0, y<0): (x',y') = (−y, x),  θ = CORDIC − π/2.
-    imax half_pi_w = detail::to_fixed(detail::pi_r / 2, W);
+    constexpr imax half_pi_w = detail::to_fixed(detail::pi_r / 2, W);
     imax pre_rotation = 0;
     if (x_w < 0) {
       if (y_w >= 0) { imax nx = y_w;  imax ny = -x_w; x_w = nx; y_w = ny; pre_rotation =  half_pi_w; }
@@ -1403,7 +1413,7 @@ namespace beman::inside::math
       return std::expected<Out, errc>{std::unexpected(errc::division_by_zero)};
     float t = flt::detail::d_sin(x) / c;
     if constexpr (!has_flag(InsidePolicy<Out>, clamp))   // clamp Out: saturate below
-      if (t < static_cast<float>(static_cast<double>(Lower<Out>)) || t > static_cast<float>(static_cast<double>(Upper<Out>)))
+      if (t < beman::inside::math::detail::lower_fp<float, Out> || t > beman::inside::math::detail::upper_fp<float, Out>)
         return std::expected<Out, errc>{std::unexpected(errc::overflow)};
     return std::expected<Out, errc>{flt::store<Out>(t)};
 #else
@@ -1413,7 +1423,7 @@ namespace beman::inside::math
       return std::expected<Out, errc>{std::unexpected(errc::division_by_zero)};
     double t = dbl::detail::d_sin(x) / c;
     if constexpr (!has_flag(InsidePolicy<Out>, clamp))   // clamp Out: saturate below
-      if (t < static_cast<double>(Lower<Out>) || t > static_cast<double>(Upper<Out>))
+      if (t < beman::inside::math::detail::lower_fp<double, Out> || t > beman::inside::math::detail::upper_fp<double, Out>)
         return std::expected<Out, errc>{std::unexpected(errc::overflow)};
     return std::expected<Out, errc>{dbl::store<Out>(t)};
 #endif
@@ -1658,8 +1668,10 @@ namespace beman::inside::math
     }
 
     // --- log10, cbrt ------------------------------------------------------
+    inline constexpr imax inv_ln10_w = inv_ln10_fixed<kRefBits>();
+
     constexpr rational log10_endpoint(rational v) noexcept
-    { return fixed_to_rational(fmul(ln_to_fixed<kRefBits>(v), inv_ln10_fixed<kRefBits>(), kRefBits), kRefBits); }
+    { return fixed_to_rational(fmul(ln_to_fixed<kRefBits>(v), inv_ln10_w, kRefBits), kRefBits); }
 
     // cbrt(v) = sign(v)·e^(ln|v|/3); cbrt(0) = 0.
     constexpr rational cbrt_endpoint(rational v) noexcept
@@ -2042,7 +2054,7 @@ namespace beman::inside::math
       return std::expected<Out, errc>{std::unexpected(errc::domain_error)};
     float r = flt::detail::d_pow(b, flt::to_float(exp));
     if constexpr (!has_flag(InsidePolicy<Out>, clamp))   // clamp Out: saturate below
-      if (r < static_cast<float>(static_cast<double>(Lower<Out>)) || r > static_cast<float>(static_cast<double>(Upper<Out>)))
+      if (r < beman::inside::math::detail::lower_fp<float, Out> || r > beman::inside::math::detail::upper_fp<float, Out>)
         return std::expected<Out, errc>{std::unexpected(errc::overflow)};
     return std::expected<Out, errc>{flt::store<Out>(r)};
 #else
@@ -2051,7 +2063,7 @@ namespace beman::inside::math
       return std::expected<Out, errc>{std::unexpected(errc::domain_error)};
     double r = dbl::detail::d_pow(b, static_cast<double>(exp));
     if constexpr (!has_flag(InsidePolicy<Out>, clamp))   // clamp Out: saturate below
-      if (r < static_cast<double>(Lower<Out>) || r > static_cast<double>(Upper<Out>))
+      if (r < beman::inside::math::detail::lower_fp<double, Out> || r > beman::inside::math::detail::upper_fp<double, Out>)
         return std::expected<Out, errc>{std::unexpected(errc::overflow)};
     return std::expected<Out, errc>{dbl::store<Out>(r)};
 #endif
@@ -2254,7 +2266,7 @@ namespace beman::inside::math
         return std::expected<Out, errc>{std::unexpected(errc::division_by_zero)};
       double t = detail::d_sin(x) / c;
       if constexpr (!has_flag(InsidePolicy<Out>, clamp))   // clamp Out: saturate below
-        if (t < static_cast<double>(Lower<Out>) || t > static_cast<double>(Upper<Out>))
+        if (t < beman::inside::math::detail::lower_fp<double, Out> || t > beman::inside::math::detail::upper_fp<double, Out>)
           return std::expected<Out, errc>{std::unexpected(errc::overflow)};
       return std::expected<Out, errc>{store<Out>(t)};
     }
@@ -2317,7 +2329,7 @@ namespace beman::inside::math
         return std::expected<Out, errc>{std::unexpected(errc::domain_error)};
       double r = detail::d_pow(b, static_cast<double>(exp));
       if constexpr (!has_flag(InsidePolicy<Out>, clamp))   // clamp Out: saturate below
-        if (r < static_cast<double>(Lower<Out>) || r > static_cast<double>(Upper<Out>))
+        if (r < beman::inside::math::detail::lower_fp<double, Out> || r > beman::inside::math::detail::upper_fp<double, Out>)
           return std::expected<Out, errc>{std::unexpected(errc::overflow)};
       return std::expected<Out, errc>{store<Out>(r)};
     }
@@ -2396,7 +2408,7 @@ namespace beman::inside::math
         return std::expected<Out, errc>{std::unexpected(errc::division_by_zero)};
       float t = detail::d_sin(x) / c;
       if constexpr (!has_flag(InsidePolicy<Out>, clamp))   // clamp Out: saturate below
-        if (t < static_cast<float>(static_cast<double>(Lower<Out>)) || t > static_cast<float>(static_cast<double>(Upper<Out>)))
+        if (t < beman::inside::math::detail::lower_fp<float, Out> || t > beman::inside::math::detail::upper_fp<float, Out>)
           return std::expected<Out, errc>{std::unexpected(errc::overflow)};
       return std::expected<Out, errc>{store<Out>(t)};
     }
@@ -2459,7 +2471,7 @@ namespace beman::inside::math
         return std::expected<Out, errc>{std::unexpected(errc::domain_error)};
       float r = detail::d_pow(b, flt::to_float(exp));
       if constexpr (!has_flag(InsidePolicy<Out>, clamp))   // clamp Out: saturate below
-        if (r < static_cast<float>(static_cast<double>(Lower<Out>)) || r > static_cast<float>(static_cast<double>(Upper<Out>)))
+        if (r < beman::inside::math::detail::lower_fp<float, Out> || r > beman::inside::math::detail::upper_fp<float, Out>)
           return std::expected<Out, errc>{std::unexpected(errc::overflow)};
       return std::expected<Out, errc>{store<Out>(r)};
     }
