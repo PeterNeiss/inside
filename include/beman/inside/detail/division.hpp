@@ -45,37 +45,48 @@ namespace beman::inside::detail
     return round_mode::trunc;
   }
 
-  // |v| as umax, safe for imax_min (negating it would be UB).
-  constexpr umax uabs(imax v) noexcept
-  { return v < 0 ? ~static_cast<umax>(v) + 1u : static_cast<umax>(v); }
-
   // Round the signed exact quotient a/b (b != 0) to an integer per `m`.
-  constexpr imax div_rounded(imax a, imax b, round_mode m) noexcept
+  template <std::signed_integral T>
+  constexpr T div_rounded(T a, T b, round_mode m) noexcept
   {
-    const imax t = a / b;                     // C++ truncation toward zero
-    const imax r = a % b;                     // sign of a, |r| < |b|
+    using U = std::make_unsigned_t<T>;
+    const T t = a / b;                        // C++ truncation toward zero
+    const T r = a % b;                        // sign of a, |r| < |b|
     if (r == 0 || m == round_mode::trunc) return t;
     const bool neg = (a < 0) != (b < 0);      // exact quotient is negative
-    const umax ar = uabs(r), ab = uabs(b);    // ab - ar is safe: 0 < ar < ab
+    // |r|, |b| in U (safe for T::min); ab - ar is safe: 0 < ar < ab
+    const U ar = r < 0 ? U(~U(r) + 1u) : U(r);
+    const U ab = b < 0 ? U(~U(b) + 1u) : U(b);
+    const T away = neg ? T(t - 1) : T(t + 1);
     switch (m)
     {
-      case round_mode::floor:   return neg ? t - 1 : t;
-      case round_mode::ceil:    return neg ? t : t + 1;
-      case round_mode::nearest:                       // half away from zero
-        return (ar >= ab - ar) ? (neg ? t - 1 : t + 1) : t;
+      case round_mode::floor:   return neg ? away : t;
+      case round_mode::ceil:    return neg ? t : away;
+      case round_mode::nearest: return (ar >= ab - ar) ? away : t;   // half away from zero
       case round_mode::half_even:
-        if (ar < ab - ar) return t;
-        if (ar > ab - ar) return neg ? t - 1 : t + 1;
-        return (t & 1) == 0 ? t : (neg ? t - 1 : t + 1);   // tie → even
+        if (ar != ab - ar) return (ar < ab - ar) ? t : away;
+        return (t & 1) == 0 ? t : away;                           // tie → even
       default:                  return t;
     }
   }
 
+  // The narrowest signed type in which native div/mod of L by R is exact: int32
+  // when both value ranges fit (excluding INT32_MIN, so a / -1 cannot overflow),
+  // else imax. A 32-bit divide is markedly cheaper than a 64-bit one.
+  template <insidable L, insidable R>
+  using native_div_t = std::conditional_t<
+      (LowerImax<L> > std::numeric_limits<std::int32_t>::min()
+       && UpperImax<L> <= std::numeric_limits<std::int32_t>::max()
+       && LowerImax<R> > std::numeric_limits<std::int32_t>::min()
+       && UpperImax<R> <= std::numeric_limits<std::int32_t>::max()),
+      std::int32_t, imax>;
+
   // Round a non-negative quotient num/den (den != 0) per `m`. Used by the
   // Q-format path, whose raws are non-negative (Lower == 0).
-  constexpr umax round_uquotient(umax num, umax den, round_mode m) noexcept
+  template <std::unsigned_integral U>
+  constexpr U round_uquotient(U num, U den, round_mode m) noexcept
   {
-    const umax t = num / den, r = num % den;
+    const U t = num / den, r = num % den;
     if (r == 0 || m == round_mode::trunc) return t;
     switch (m)
     {
@@ -228,16 +239,20 @@ namespace beman::inside::detail
       if constexpr (!zero_unchecked)
         if (rhs.raw() == 0) return fail(errc::division_by_zero, "division by zero in div");
       constexpr umax N = abs_den(Notch<L>.Denominator);
-      return result::from_raw(raw_cast<result>(round_uquotient(
-          static_cast<umax>(lhs.raw()) * N, static_cast<umax>(rhs.raw()), rmode)));
+      // 32-bit divide when the scaled dividend fits (Q8.8, Q16.15, ...).
+      using U = std::conditional_t<(NotchCount<L> <= std::numeric_limits<std::uint32_t>::max() / N),
+                                   std::uint32_t, umax>;
+      return result::from_raw(raw_cast<result>(round_uquotient<U>(
+          static_cast<U>(static_cast<U>(lhs.raw()) * U{N}), static_cast<U>(rhs.raw()), rmode)));
     }
     else if constexpr (native_div_integer)
     {
-      imax rhs_val = to_value(rhs);
+      using T = native_div_t<L, R>;
+      const T rhs_val = static_cast<T>(to_value(rhs));
       if constexpr (!zero_unchecked)
         if (rhs_val == 0) return fail(errc::division_by_zero, "division by zero in div");
       result res;
-      from_value(res, div_rounded(to_value(lhs), rhs_val, rmode));
+      from_value(res, imax{div_rounded(static_cast<T>(to_value(lhs)), rhs_val, rmode)});
       return res;
     }
     else if constexpr (needs_overflow_check<G>)
@@ -302,7 +317,8 @@ namespace beman::inside::detail
   template<policy_flag G, typename E, typename A>
   constexpr auto modulo<L,R,F>::mod(L lhs, R rhs, policy<G, E> policy, A&& action) -> mod_return_t<A>
   {
-    imax rhs_val = to_value(rhs);
+    using T = native_div_t<L, R>;
+    const T rhs_val = static_cast<T>(to_value(rhs));
     // Zero check elided when R's grid excludes zero (mod_return_t is plain
     // `result`) or `ignore_zero` is set (zero divisor is then UB, matching `%= 0`).
     constexpr bool zero_unchecked = DivisorExcludesZero<R>
@@ -313,8 +329,9 @@ namespace beman::inside::detail
                                             "division by zero in mod");
     result res;
     // Remainder consistent with the rounded quotient (trunc → C++ `%`).
-    const imax lhs_val = to_value(lhs);
-    from_value(res, lhs_val - div_rounded(lhs_val, rhs_val, rmode) * rhs_val);
+    const T lhs_val = static_cast<T>(to_value(lhs));
+    // The product stays in imax: q·b can exceed |a| + |b| ≥ 2^31 in T.
+    from_value(res, lhs_val - imax{div_rounded(lhs_val, rhs_val, rmode)} * rhs_val);
     return res;
   }
 } // namespace beman::inside::detail

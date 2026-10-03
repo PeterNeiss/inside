@@ -158,3 +158,27 @@ TEST(PerfPathsTest, multiply_by_point_matches_exact_product)
   inside<{0, 200}> a{3}, b{4};
   EXPECT_EQ(rational{midpoint(a, b)}, (rational{7, 2}));
 }
+
+//---------------------------------------------------------------------------
+// Native div/mod narrowed to int32 — boundary values must match the 64-bit result.
+//---------------------------------------------------------------------------
+TEST(PerfPathsTest, int32_native_div_mod_matches_wide_reference)
+{
+  constexpr std::int64_t M = 2147483647;   // INT32_MAX; INT32_MIN is excluded
+  using A = inside<{-M, M}>;
+  using B = inside<{-(M / 2 + 2), M / 2 + 2}>;
+  static_assert(std::same_as<native_div_t<A, B>, std::int32_t>);
+  for (std::int64_t a : std::initializer_list<std::int64_t>{-M, -M + 1, -7, 0, 7, M - 1, M})
+    for (std::int64_t b : std::initializer_list<std::int64_t>{-(M / 2 + 2), -(M / 2 + 1), -3, -1, 1, 3, M / 2 + 1, M / 2 + 2})
+      for (round_mode m : {round_mode::trunc, round_mode::floor, round_mode::ceil,
+                           round_mode::nearest, round_mode::half_even})
+      {
+        const std::int64_t q = div_rounded(a, b, m);
+        EXPECT_EQ(div_rounded(static_cast<std::int32_t>(a), static_cast<std::int32_t>(b), m), q);
+      }
+  // q·b exceeds INT32_MAX here (ceil(M / (M/2 + 1)) = 2); mod must still be exact.
+  A a{M};
+  B b{M / 2 + 1};
+  auto r = mod(a, b, make_policy<round_ceil>());
+  EXPECT_EQ(rational{*r}, rational{M - 2 * (M / 2 + 1)});
+}
