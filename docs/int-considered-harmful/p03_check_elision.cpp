@@ -1,14 +1,14 @@
-// Where bound's compile-time range information actually pays: a CHAIN of
+// Where inside's compile-time range information actually pays: a CHAIN of
 // operations on values that are already typed.
 //
 // A native checked type must re-validate after every step, because each
-// intermediate has to fit back into the checked type. bound lets the
+// intermediate has to fit back into the checked type. inside lets the
 // intermediates widen -- their grids are computed at compile time and provably
 // cannot overflow -- so the only check is the final store.
 //
 //   4 inputs in [0,50]  ->  sum in [0,200]
 //     native checked : 3 checks (one per addition)
-//     bound<checked> : 0 checks
+//     inside<checked> : 0 checks
 //
 // Zero, not one: four values in [0,50] sum to [0,200], which is exactly the
 // declared range of `total`, so even the final store is proved safe at compile
@@ -27,9 +27,9 @@
 #include <stdexcept>
 #include <vector>
 
-#include "bound/bound.hpp"
+#include <beman/inside/inside.hpp>
 
-using namespace bnd;
+using namespace beman::inside;
 
 template<typename T>
 [[gnu::always_inline]] inline void sink(T&& v)
@@ -60,8 +60,8 @@ struct checked_u8
   }
 };
 
-using part  = bound<{0, 50}, checked>;    // an input
-using total = bound<{0, 200}, checked>;   // the declared result range
+using part  = inside<{0, 50}, checked>;    // an input
+using total = inside<{0, 200}, checked>;   // the declared result range
 
 template<typename F>
 static double time_ns_per_op(F&& f)
@@ -100,7 +100,7 @@ int main()
       }
   });
 
-  const double bnd_chain = time_ns_per_op([&] {
+  const double ins_chain = time_ns_per_op([&] {
     for (int r = 0; r < kReps; ++r)
       for (int i = 0; i < kN; ++i)
       {
@@ -129,8 +129,8 @@ int main()
   std::printf("-----------------------------------------------------------\n");
   std::printf("%-24s %8.3f %9.1f%% %8s\n", "native unchecked", raw, 100.0 * raw / raw, "0");
   std::printf("%-24s %8.3f %9.1f%% %8s\n", "native checked",   native, 100.0 * raw / native, "3");
-  std::printf("%-24s %8.3f %9.1f%% %8s\n", "bound<checked>",   bnd_chain, 100.0 * raw / bnd_chain, "0");
+  std::printf("%-24s %8.3f %9.1f%% %8s\n", "inside<checked>",   ins_chain, 100.0 * raw / ins_chain, "0");
   std::printf("\nbound<checked> vs native checked: %.1f%% "
-              "(>100%% means bound is faster)\n", 100.0 * native / bnd_chain);
+              "(>100%% means inside is faster)\n", 100.0 * native / ins_chain);
   return 0;
 }

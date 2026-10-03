@@ -4,18 +4,18 @@
 
 #include <iostream>
 
-#include "bound/bound.hpp"
-#include "bound/io.hpp"
+#include <beman/inside/inside.hpp>
+#include <beman/inside/io.hpp>
 
-using namespace bnd;
+using namespace beman::inside;
 
 int main()
 {
-  using temp = bound<{-40, 125}>;   // an asymmetric range, on purpose
+  using temp = inside<{-40, 125}>;   // an asymmetric range, on purpose
 
   constexpr temp coldest{-40};
 
-  // -coldest has type bound<{-125, 40}> -- the interval is mirrored.
+  // -coldest has type inside<{-125, 40}> -- the interval is mirrored.
   static_assert(-coldest == 40);
   std::cout << "coldest            = " << coldest << "\n";
   std::cout << "-coldest           = " << (-coldest) << "   (representable by construction)\n";

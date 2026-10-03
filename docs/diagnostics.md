@@ -1,13 +1,13 @@
-# Reading a `bound<>` in a compiler error
+# Reading an `inside<>` in a compiler error
 
-A bound is spelled `bound<grid G, policy_flag P>`. Compilers print both template
+An inside is spelled `inside<grid G, policy_flag P>`. Compilers print both template
 arguments structurally, so an error mentions the *whole* type — which looks noisy until
 you know the three things it is showing you.
 
 ## Decoding the type
 
 ```
-bound<grid{interval{rational{3,1}, rational{3,1}}, rational{0,1}}, 17179869184>
+inside<grid{interval{rational{3,1}, rational{3,1}}, rational{0,1}}, 17179869184>
        └────────── interval [lo, hi] ──────────┘  └─ notch ─┘   └── policy P ──┘
 ```
 
@@ -38,32 +38,32 @@ bound<grid{interval{rational{3,1}, rational{3,1}}, rational{0,1}}, 17179869184>
 | `1<<41` | … | `f32` (+ round_nearest) |
 | `1<<42`…`1<<49` | … | width flags `i8 u8 i16 u16 i32 u32 i64 u64` |
 
-So `17179869184` is simply `checked`, the default policy every `bound` carries unless you
-choose another. (Full table: `include/bound/policy_flag.hpp`.)
+So `17179869184` is simply `checked`, the default policy every `inside` carries unless you
+choose another. (Full table: `include/beman/inside/policy_flag.hpp`.)
 
 ## The common surprise: it's the interval, not the notch
 
 ```cpp
-auto square(bound<> x) { return x * x; }   // bound<> defaults to grid {[0,0], 0}
-square(3_b);                               // 3_b is the point [3,3]
+auto square(inside<> x) { return x * x; }   // inside<> defaults to grid {[0,0], 0}
+square(3_ins);                               // 3_ins is the point [3,3]
 ```
 
-`bound<>` defaults to the **empty grid `[0,0]`** — it can represent only `0`. Passing `3`
+`inside<>` defaults to the **empty grid `[0,0]`** — it can represent only `0`. Passing `3`
 is out of range, so the conversion is rejected. The fix is in *your* signature: give
 `square` a grid wide enough, or make it generic:
 
 ```cpp
 template <grid G, policy_flag P>
-auto square(bound<G, P> x) { return x * x; }
+auto square(inside<G, P> x) { return x * x; }
 ```
 
 ## Getting the *reason* at compile time
 
-By default `bound` turns an impossible assignment/conversion into a **named** message
+By default `inside` turns an impossible assignment/conversion into a **named** message
 instead of the compiler's bare "could not convert":
 
 ```
-error: static assertion failed: bound_assignable: rhs interval lies entirely outside
+error: static assertion failed: inside_assignable: rhs interval lies entirely outside
        lhs interval and the policy (not wrap/clamp) cannot bring it into range …
 ```
 
@@ -74,15 +74,15 @@ Two clauses you'll see: *interval lies entirely outside* (value can't fit the ra
 You can also ask explicitly, anywhere:
 
 ```cpp
-static_assert(bnd::why_assignable<DstBound, decltype(src)>);  // prints the named reasons
+static_assert(beman::inside::why_assignable<DstInside, decltype(src)>);  // prints the named reasons
 ```
 
-## `BOUND_STRICT_SFINAE` — turning the hints off
+## `BEMAN_INSIDE_STRICT_SFINAE` — turning the hints off
 
-The automatic hints work by giving `bound` a diagnostic overload for incompatible types,
+The automatic hints work by giving `inside` a diagnostic overload for incompatible types,
 which makes `std::is_constructible` / `std::convertible_to` report `true` for them (the
-error surfaces on *use*, not on the trait). If you embed `bound` in `std::variant`,
+error surfaces on *use*, not on the trait). If you embed `inside` in `std::variant`,
 `std::optional`, or other trait-driven generic code that *probes* convertibility, configure
-with `-DBOUND_STRICT_SFINAE=ON` (defines `BND_STRICT_SFINAE`). That drops the diagnostic
-overloads — `bound` becomes SFINAE-pure with honest traits, at the cost of the bare
-"could not convert" message. `bnd::why_assignable` still works in strict builds.
+with `-DBEMAN_INSIDE_STRICT_SFINAE=ON` (defines `BEMAN_INSIDE_STRICT_SFINAE`). That drops the diagnostic
+overloads — `inside` becomes SFINAE-pure with honest traits, at the cost of the bare
+"could not convert" message. `beman::inside::why_assignable` still works in strict builds.

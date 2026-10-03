@@ -8,14 +8,14 @@
 // The repo enforces exactly this in CI: tests/check_codegen.sh disassembles
 // the kernels and fails the build if any of them contains a `call`.
 
-#include "bound/bound.hpp"
+#include <beman/inside/inside.hpp>
 
-using namespace bnd;
+using namespace beman::inside;
 
-using val = bound<{0, 1000}, unsafe>;
+using val = inside<{0, 1000}, unsafe>;
 
-// The bound version.
-[[gnu::noinline]] val bound_add(val a, val b)
+// The inside version.
+[[gnu::noinline]] val inside_add(val a, val b)
 {
   return val{a.raw() + b.raw()};
 }
@@ -27,10 +27,10 @@ using val = bound<{0, 1000}, unsafe>;
 }
 
 // A loop, to check that vectorization still happens.
-[[gnu::noinline]] void bound_loop(val* data, int n)
+[[gnu::noinline]] void inside_loop(val* data, int n)
 {
   for (int i = 0; i < n; ++i)
-    data[i] += 1_b;
+    data[i] += 1_ins;
 }
 
 [[gnu::noinline]] void native_loop(int* data, int n)

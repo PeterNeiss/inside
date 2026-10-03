@@ -14,7 +14,7 @@ g++ -std=c++23 -O2 h01_overflow_ub.cpp -o h01
 g++ -std=c++23 -O0 h01_overflow_ub.cpp -o h01_O0    # compare the two
 ```
 
-The `b*` (bound), `m_after` and `p01` programs need the library on the include
+The `b*` (inside), `m_after` and `p01` programs need the library on the include
 path:
 
 ```bash
@@ -30,7 +30,7 @@ g++ -std=c++23 -O2 -I ../../single_include b01_no_overflow.cpp -o b01
 ## Programs that are meant to fail
 
 `x01_bare_int_rejected.cpp` and `x02_range_rejected.cpp` are **expected not to
-compile** — they demonstrate errors that `bound` moves to build time. Their
+compile** — they demonstrate errors that `inside` moves to build time. Their
 diagnostics are quoted in the paper.
 
 ## Programs that crash or hang, on purpose
@@ -46,9 +46,9 @@ made. Output in the paper is from GCC 15.2.0 on x86-64 Linux.
 
 ## Benchmarks
 
-`p02_fair_bench.cpp` compares `bound<checked>` against native code providing
+`p02_fair_bench.cpp` compares `inside<checked>` against native code providing
 the *same* guarantee (clamped, and a hand-rolled checked struct), not against
-unchecked native. `p03_check_elision.cpp` shows where `bound`'s compile-time
+unchecked native. `p03_check_elision.cpp` shows where `inside`'s compile-time
 range information actually pays: on a chain of operations it emits zero runtime
 checks where the native checked type needs three.
 
@@ -63,7 +63,7 @@ g++ -std=c++23 -O2 -I ../../include -c p01_codegen.cpp -o p01.o
 objdump -d --no-show-raw-insn -C p01.o
 ```
 
-`bound_add` and `native_add` lower to identical instructions. The repository
+`inside_add` and `native_add` lower to identical instructions. The repository
 enforces the same property in CI via `tests/check_codegen.sh`.
 
 ## Rebuilding the paper

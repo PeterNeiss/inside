@@ -2,28 +2,28 @@
 
 #include <iostream>
 
-#include "bound/bound.hpp"
-#include "bound/io.hpp"
+#include <beman/inside/inside.hpp>
+#include <beman/inside/io.hpp>
 
-using namespace bnd;
+using namespace beman::inside;
 
 int main()
 {
-  using degree = bound<{0, 359}, wrap>;
+  using degree = inside<{0, 359}, wrap>;
 
   degree heading = 350;
   std::cout << "heading:  " << heading << "\n";
 
   // Turn right 30 degrees (wraps past 360)
-  heading += 30_b;
+  heading += 30_ins;
   std::cout << "+30:      " << heading << "\n";  // 20
 
   // Turn left 90 degrees
-  heading += -90_b;
+  heading += -90_ins;
   std::cout << "-90:      " << heading << "\n";  // 290
 
   // Full rotation
-  heading += 360_b;
+  heading += 360_ins;
   std::cout << "+360:     " << heading << "\n";  // 290 (unchanged)
 
   return 0;

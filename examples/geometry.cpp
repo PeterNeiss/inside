@@ -1,27 +1,27 @@
-// Bound-space 2-D geometry with `dot`, `cross`, and `lerp`.
+// Inside-space 2-D geometry with `dot`, `cross`, and `lerp`.
 //
 // The three vector helpers keep planar geometry inside the bounded world — no
 // dropping to a raw scalar to form a dot product, a 2-D cross (the z-component,
 // the classic "which side of a line" test), or a linear interpolation. Each
 // widens its result grid like the underlying `+`/`*`, so the result is a plain
-// `bound` that provably can't overflow.
+// `inside` that provably can't overflow.
 //
 // Demonstrates:
 //   - `dot`   — projection magnitude and a perpendicularity test (dot == 0)
 //   - `cross` — signed area / left-vs-right side of a directed segment
-//   - `lerp`  — interpolating a point along a path, t a [0, 1] fixed-point bound
+//   - `lerp`  — interpolating a point along a path, t a [0, 1] fixed-point inside
 
 #include <iostream>
 
-#include "bound/bound.hpp"
-#include "bound/io.hpp"
+#include <beman/inside/inside.hpp>
+#include <beman/inside/io.hpp>
 
-using namespace bnd;
+using namespace beman::inside;
 
 int main()
 {
   // Screen-ish coordinates, integer pixels in [-100, 100].
-  using coord = bound<{-100, 100}>;
+  using coord = inside<{-100, 100}>;
 
   // Two vectors a = (3, 4), b = (4, -3) — chosen to be perpendicular.
   coord ax{3}, ay{4};
@@ -34,7 +34,7 @@ int main()
   std::cout << "dot(a, b)      = " << ab
             << (ab == 0 ? "   (perpendicular)\n" : "\n");
 
-  // |a|^2 via dot(a, a) — stays exact in bound-space, no sqrt needed for a
+  // |a|^2 via dot(a, a) — stays exact in inside-space, no sqrt needed for a
   // length comparison.
   std::cout << "dot(a, a)=|a|^2 = " << dot(ax, ay, ax, ay) << "   (= 25 = 5^2)\n";
 
@@ -55,10 +55,10 @@ int main()
   std::cout << "  point (5,-3)   is " << side(0, 0, 10, 0, 5, -3) << "\n";
   std::cout << "  point (5, 0)   is " << side(0, 0, 10, 0, 5, 0)  << "\n";
 
-  // lerp(a, b, t) = a + (b - a) * t. `t` is a [0, 1] fixed-point bound, so the
-  // interpolation never leaves bound-space; dyadic t values are exact.
-  using axis = bound<{0, 100}>;
-  using t_t  = bound<{{0, 1}, notch<1, 16>}, round_nearest>;
+  // lerp(a, b, t) = a + (b - a) * t. `t` is a [0, 1] fixed-point inside, so the
+  // interpolation never leaves inside-space; dyadic t values are exact.
+  using axis = inside<{0, 100}>;
+  using t_t  = inside<{{0, 1}, notch<1, 16>}, round_nearest>;
   axis x0{20}, x1{80};
   std::cout << "\nlerp x from " << x0 << " to " << x1 << ":\n";
   for (t_t t : { t_t{0}, t_t{0.25}, t_t{0.5}, t_t{0.75}, t_t{1} })

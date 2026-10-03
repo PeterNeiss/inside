@@ -1,6 +1,6 @@
-# bound
+# inside
 
-[![CI](https://github.com/NiceAndPeter/bound/actions/workflows/ci.yml/badge.svg)](https://github.com/NiceAndPeter/bound/actions/workflows/ci.yml)
+[![CI](https://github.com/NiceAndPeter/inside/actions/workflows/ci.yml/badge.svg)](https://github.com/NiceAndPeter/inside/actions/workflows/ci.yml)
 
 > **Status: alpha** — the public API may change between versions. Developed with
 > [Claude Code](https://claude.com/claude-code).
@@ -26,30 +26,30 @@ range** — the range and step size live in the *type*.
 ## Quick start
 
 ```cpp
-#include "bound/bound.hpp"
-using namespace bnd;
+#include <beman/inside/inside.hpp>
+using namespace beman::inside;
 
 // A percentage: integer values in [0, 100].
-using pct = bound<{0, 100}>;
+using pct = inside<{0, 100}>;
 pct x = 42;
 pct y = 58;
-auto sum = x + y;                          // bound<{0, 200}> — no overflow possible
-auto z = x + 1_b;                          // scalars need a grid: 1_b, not 1
+auto sum = x + y;                          // inside<{0, 200}> — no overflow possible
+auto z = x + 1_ins;                          // scalars need a grid: 1_ins, not 1
 
 // Fractional grid: −1 .. 1 in 1/16 384 steps (Q1.14 audio sample).
-using sample = bound<{{-1, 1}, notch<1, 16384>}, round_nearest>;
+using sample = inside<{{-1, 1}, notch<1, 16384>}, round_nearest>;
 sample s = 0.5;                            // dyadic literal — exact
 s.numerator();                             // 1   (denominator() == 2): exact read-out
 
 // Clamped percentage: saturates instead of throwing.
-using safe_pct = bound<{0, 100}, clamp>;
+using safe_pct = inside<{0, 100}, clamp>;
 safe_pct p = 150;                          // p == 100
 ```
 
-## New to bound? Start with the tutorial
+## New to inside? Start with the tutorial
 
 **[docs/tutorial.md](docs/tutorial.md)** is a 10-minute tour of the mental
-model — what a bound *is*, why arithmetic widens, and how a value flows through
+model — what an inside *is*, why arithmetic widens, and how a value flows through
 a program. Read it first; everything else builds on it.
 
 ## Documentation
@@ -58,7 +58,7 @@ a program. Read it first; everything else builds on it.
 [arithmetic & rounding](docs/arithmetic.md) ·
 [conversions & casts](docs/conversions.md) ·
 [storage & STL integration](docs/storage.md) ·
-[`bnd::math` — bit-exact math](docs/math.md)
+[`beman::inside::math` — bit-exact math](docs/math.md)
 
 **Special topics** — [for fixed-point users](docs/fixed-point.md) ·
 [determinism & reproducibility](docs/determinism.md) ·
@@ -95,5 +95,5 @@ C++20/GCC-12 mode, math-engine selection, and bare-metal builds are covered in
 ## Single header
 
 The library also ships as one self-contained file,
-[`single_include/bound/bound.hpp`](single_include/bound/bound.hpp) — ideal for
+[`single_include/beman/inside/inside.hpp`](single_include/beman/inside/inside.hpp) — ideal for
 Compiler Explorer. See [docs/single-header.md](docs/single-header.md).

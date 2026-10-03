@@ -3,20 +3,20 @@
 //
 // Demonstrates:
 //   - Three-level on_wrap cascade (similar to clock.cpp but with year axis)
-//   - `_b` literal for compile-time constants (DAYS_PER_MONTH)
+//   - `_ins` literal for compile-time constants (DAYS_PER_MONTH)
 //   - Modulo `%` for day-of-week (under `snap`)
 
 #include <iostream>
 
-#include "bound/bound.hpp"
-#include "bound/io.hpp"
+#include <beman/inside/inside.hpp>
+#include <beman/inside/io.hpp>
 
-using namespace bnd;
+using namespace beman::inside;
 
-using day_t   = bound<{1, 30}, wrap>;       // 1-30, wraps to 1 after 30
-using month_t = bound<{1, 12}, wrap>;       // 1-12, wraps to 1 after 12
-using year_t  = bound<{1900, 2200}>;
-using dow_t   = bound<{0, 6}, snap>; // 0=Sun..6=Sat (currently unused)
+using day_t   = inside<{1, 30}, wrap>;       // 1-30, wraps to 1 after 30
+using month_t = inside<{1, 12}, wrap>;       // 1-12, wraps to 1 after 12
+using year_t  = inside<{1900, 2200}>;
+using dow_t   = inside<{0, 6}, snap>; // 0=Sun..6=Sat (currently unused)
 
 struct date
 {
@@ -24,8 +24,8 @@ struct date
   month_t month{1};
   year_t  year{2000};
 
-  // `n` is `numeric` (a bound delta or the bound carry), not `int`/`arithmetic`:
-  // the bound-RHS `+=` makes the wrap carry a bound, so the day→month→year cascade
+  // `n` is `numeric` (an inside delta or the inside carry), not `int`/`arithmetic`:
+  // the inside-RHS `+=` makes the wrap carry an inside, so the day→month→year cascade
   // threads bounds, not raw integers.
   void add_days(numeric auto n)
   {
@@ -53,27 +53,27 @@ int main()
   d.year = year_t{2026};
   std::cout << "start:       " << d << "\n";
 
-  // _b literal as a compile-time constant for the cycle length.
-  constexpr auto days_per_month = 30_b;
+  // _ins literal as a compile-time constant for the cycle length.
+  constexpr auto days_per_month = 30_ins;
   std::cout << "(days per month constant: " << days_per_month << ")\n";
 
-  d.add_days(20_b);
+  d.add_days(20_ins);
   std::cout << "+20 days:    " << d << "\n";
 
-  d.add_days(45_b);
+  d.add_days(45_ins);
   std::cout << "+45 days:    " << d << "\n";
 
-  d.add_months(11_b);
+  d.add_months(11_ins);
   std::cout << "+11 months:  " << d << "\n";
 
   // Big jump that cascades all three axes.
-  d.add_days(400_b);
+  d.add_days(400_ins);
   std::cout << "+400 days:   " << d << "\n";
 
   // Day-of-week via modulo. Each calendar day maps to a weekday in [0, 6].
   // Sample the next 10 days from a known Sunday reference.
-  using big_day_t = bound<{0, 1000000}, snap>;
-  using week_size = bound<{1, 7},       snap>;
+  using big_day_t = inside<{0, 1000000}, snap>;
+  using week_size = inside<{1, 7},       snap>;
   constexpr week_size seven{7};
 
   std::cout << "\nday-of-week sequence (0=Sun..6=Sat):\n";
@@ -81,7 +81,7 @@ int main()
   {
     big_day_t ordinal{14000 + n};
     // `seven` has grid {1,7}, which excludes zero, so `%` cannot be
-    // division-by-zero: the result is a plain bound, no optional to unwrap.
+    // division-by-zero: the result is a plain inside, no optional to unwrap.
     auto dow = ordinal % seven;
     std::cout << "  day " << ordinal << " -> dow " << dow << "\n";
   }

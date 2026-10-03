@@ -5,15 +5,15 @@
 #include <iomanip>
 #include <iostream>
 
-#include "bound/bound.hpp"
-#include "bound/io.hpp"
-#include "bound/formats.hpp"
+#include <beman/inside/inside.hpp>
+#include <beman/inside/io.hpp>
+#include <beman/inside/formats.hpp>
 
-using namespace bnd;
+using namespace beman::inside;
 
 int main()
 {
-  // The common Q-formats are predefined in <bound/formats.hpp>:
+  // The common Q-formats are predefined in <beman/inside/formats.hpp>:
   static_assert(sizeof(q4_4)   == 1);   // [0, 15],    notch 1/16    -> uint8
   static_assert(sizeof(q8_8)   == 2);   // [0, 255],   notch 1/256   -> uint16
   static_assert(sizeof(q16_16) == 4);   // [0, 65535], notch 1/65536 -> uint32
@@ -23,11 +23,11 @@ int main()
   // `notch<N, D>` (exact rational), since the equivalent double loses precision.
 
   // Q1.7: 1 integer bit, 7 fraction bits   -> 128 steps in [0, 1+127/128]
-  using q1_7 = bound<{{0, 1}, 1.0/128}>;
+  using q1_7 = inside<{{0, 1}, 1.0/128}>;
   static_assert(sizeof(q1_7) == 1);
 
   // Half-step signed: -50 to 50 in 0.5 increments (201 steps, fits uint8)
-  using half_signed = bound<{{-50, 50}, 0.5}>;
+  using half_signed = inside<{{-50, 50}, 0.5}>;
   static_assert(sizeof(half_signed) == 1);
 
   q4_4        a{3.25};      auto sum_a = a + a;

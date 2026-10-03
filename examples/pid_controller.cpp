@@ -9,25 +9,25 @@
 
 #include <iostream>
 
-#include "bound/bound.hpp"
-#include "bound/io.hpp"
-#include "bound/formats.hpp"
+#include <beman/inside/inside.hpp>
+#include <beman/inside/io.hpp>
+#include <beman/inside/formats.hpp>
 
-using namespace bnd;
+using namespace beman::inside;
 
 // Sensor error in [-10, 10] with 1/16 resolution.
-using err_t = bound<{{-10, 10}, notch<1, 16>}, round_nearest | clamp>;
+using err_t = inside<{{-10, 10}, notch<1, 16>}, round_nearest | clamp>;
 
 // Integrator accumulates errors; clamp-saturating to prevent wind-up.
-using integ_t = bound<{{-200, 200}, notch<1, 16>}, round_nearest | clamp>;
+using integ_t = inside<{{-200, 200}, notch<1, 16>}, round_nearest | clamp>;
 
 // Gain coefficients: [0, 4] with 1/256 step.
-using gain_t = bound<{{0, 4}, notch<1, 256>}, round_nearest>;
+using gain_t = inside<{{0, 4}, notch<1, 256>}, round_nearest>;
 
 // Actuator command in [-100, 100] integer steps. `clamp | round_nearest`
-// lets `output_t{raw}` saturate AND round the wider rational/bound input
+// lets `output_t{raw}` saturate AND round the wider rational/inside input
 // in one step — no explicit `clamp_round<output_t>(...)` cast needed.
-using output_t = bound<{-100, 100}, clamp | round_nearest>;
+using output_t = inside<{-100, 100}, clamp | round_nearest>;
 
 struct pid
 {
@@ -44,14 +44,14 @@ struct pid
     // on_clamp fires when the integrator hits its saturation boundary —
     // classic wind-up indicator. The callback receives the overshoot so
     // we could derate the gain adaptively; here we just count events.
-    // `policy_ref::operator+=` now takes a boundable RHS directly — no
+    // `policy_ref::operator+=` now takes a insidable RHS directly — no
     // need to drop to double for the integrator update.
     integral.on_clamp([&](auto& self, auto overshoot) {
       (void)self; (void)overshoot;
       ++windup_events;
     }) += err;
 
-    // Three weighted terms — each is a bound on a wider grid than err.
+    // Three weighted terms — each is an inside on a wider grid than err.
     auto p_term = kp * err;
     auto i_term = ki * integral;
     auto d_term = kd * (err - previous);

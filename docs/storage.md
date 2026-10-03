@@ -1,8 +1,8 @@
 # Storage, iteration & standard-library integration
 
-Each `bound` stores a single `Raw` member. The storage type is selected
+Each `inside` stores a single `Raw` member. The storage type is selected
 automatically per grid; this page summarises the user-visible rules and
-shows how `bound` integrates with the standard containers and algorithms.
+shows how `inside` integrates with the standard containers and algorithms.
 For the full decision tree see [internals.md](internals.md); for which grids are
 fastest (from a fixed-point perspective) see [fixed-point.md](fixed-point.md).
 
@@ -13,9 +13,9 @@ is the smallest `uint8_t`…`uint64_t` that can hold `(Upper − Lower) / Notch`
 The value is recovered as `Raw * Notch + Lower` (offset encoding).
 
 ```cpp
-using pct  = bound<{0, 100}>;          // Raw: uint8_t  (101 values)
-using big  = bound<{0, 100'000}>;      // Raw: uint32_t (100 001 values)
-using step = bound<{{0, 5}, 0.5}>;     // Raw: uint8_t  (10 steps)
+using pct  = inside<{0, 100}>;          // Raw: uint8_t  (101 values)
+using big  = inside<{0, 100'000}>;      // Raw: uint32_t (100 001 values)
+using step = inside<{{0, 5}, 0.5}>;     // Raw: uint8_t  (10 steps)
 ```
 
 When `Lower == 0` and `Notch == 1`, `Raw` equals the value directly — no
@@ -27,30 +27,30 @@ directly (`Raw == value`) with no offset, matching native `int` performance
 exactly.
 
 ```cpp
-using temp = bound<{-40, 85}>;          // Raw: int8_t  (direct storage)
-using pos  = bound<{-100'000, 100'000}>;// Raw: int32_t (direct storage)
-using diff = bound<{-255, 255}>;        // Raw: int16_t (direct storage)
+using temp = inside<{-40, 85}>;          // Raw: int8_t  (direct storage)
+using pos  = inside<{-100'000, 100'000}>;// Raw: int32_t (direct storage)
+using diff = inside<{-255, 255}>;        // Raw: int16_t (direct storage)
 ```
 
 Grids with `Lower < 0` and a fractional notch still use unsigned offset
 encoding:
 
 ```cpp
-using fstep = bound<{{-5, 5}, 0.5}>;    // Raw: uint8_t (20 steps, offset encoding)
+using fstep = inside<{{-5, 5}, 0.5}>;    // Raw: uint8_t (20 steps, offset encoding)
 ```
 
 **Exact-fraction storage** — when `Notch == 0`, `Raw` becomes the internal
-exact-fraction representation (`bnd::detail::rational`). This happens for grids
+exact-fraction representation (`beman::inside::detail::rational`). This happens for grids
 with `Notch == 0`, division results, and single-value grids. You never name
 that type; you read the value back out with `numerator()` / `denominator()`.
 
 ```cpp
-using ratio = bound<{{-10, 10}, 0}>;    // Raw: exact-fraction representation
-ratio f = bound<{2, 2}>{2} / just<3>;   // exact 2/3
+using ratio = inside<{{-10, 10}, 0}>;    // Raw: exact-fraction representation
+ratio f = inside<{2, 2}>{2} / just<3>;   // exact 2/3
 f.numerator();                          // 2  (denominator() == 3)
 
-using lvl = bound<{1, 255}>;
-auto q = lvl{7} / lvl{3};               // slim::optional<bound> (exact-fraction raw)
+using lvl = inside<{1, 255}>;
+auto q = lvl{7} / lvl{3};               // slim::optional<inside> (exact-fraction raw)
                                         // *q is exactly 7/3
 ```
 
@@ -64,14 +64,14 @@ The rules above are the **default deduction**. Several policy flags override it
 (see [policies.md](policies.md#representation-flags) for the full table):
 
 ```cpp
-using gain   = bound<{{0, 4}, notch<1, 65536>}, round_nearest | f64>;
+using gain   = inside<{{0, 4}, notch<1, 65536>}, round_nearest | f64>;
                                        // Raw: double (math operand, double-exact grid)
-using ratio  = bound<{{0, 1}, notch<1, 3>}, exact>;
+using ratio  = inside<{{0, 1}, notch<1, 3>}, exact>;
                                        // Raw: exact fraction on a NOTCHED grid
-using regval = bound<{5, 100}, direct>; // Raw: uint8_t, raw() == value (5..100)
-using slot   = bound<{-5, 5}, indexed>; // Raw: uint8_t, raw() == index (0..10)
-using wide   = bound<{0, 100}, u16>;    // Raw: uint16_t (pinned width, raw() == value)
-using sidx   = bound<{0, 4, notch<1,16>}, u32 | indexed>; // Raw: uint32_t index
+using regval = inside<{5, 100}, direct>; // Raw: uint8_t, raw() == value (5..100)
+using slot   = inside<{-5, 5}, indexed>; // Raw: uint8_t, raw() == index (0..10)
+using wide   = inside<{0, 100}, u16>;    // Raw: uint16_t (pinned width, raw() == value)
+using sidx   = inside<{0, 4, notch<1,16>}, u32 | indexed>; // Raw: uint32_t index
 ```
 
 `f64`/`f32` are the math-operand flags ([math.md](math.md); `real` is the
@@ -97,14 +97,14 @@ otherwise it is dropped and deduction proceeds — and a result grid finer than 
 
 > **Sentinel slot and SIMD width.** The smallest-type selection reserves one
 > raw slot for the `slim::optional` sentinel (next section). That makes
-> `bound<{0, 255}>` a **uint16**, not uint8 — raw 255 is the sentinel. In
+> `inside<{0, 255}>` a **uint16**, not uint8 — raw 255 is the sentinel. In
 > SIMD-width-sensitive loops this halves the lanes versus native `uint8_t`;
-> a `bound<{0, 254}>` fits uint8 and runs at exactly native speed.
+> an `inside<{0, 254}>` fits uint8 and runs at exactly native speed.
 
-## `slim::optional<bound>` sentinel
+## `slim::optional<inside>` sentinel
 
-`slim::optional<bound>` uses a sentinel value instead of a separate bool
-flag, so `sizeof(slim::optional<bound>) == sizeof(bound)`. The sentinel is
+`slim::optional<inside>` uses a sentinel value instead of a separate bool
+flag, so `sizeof(slim::optional<inside>) == sizeof(inside)`. The sentinel is
 `numeric_limits<raw>::max()` for unsigned types and `numeric_limits<raw>::min()`
 for signed types. This costs one value from the representable range (e.g.
 `int8_t` gives 255 usable values: −127..127). For `f64` (double) raw the
@@ -114,8 +114,8 @@ NaN/Inf.
 
 ## Predefined hardware formats
 
-`#include "bound/formats.hpp"` for a curated set of `bnd::` aliases that map to
-native byte widths — so you can write `bnd::byte` / `bnd::unorm16` / `bnd::q8_8`
+`#include <beman/inside/formats.hpp>` for a curated set of `beman::inside::` aliases that map to
+native byte widths — so you can write `beman::inside::byte` / `beman::inside::unorm16` / `beman::inside::q8_8`
 instead of spelling the grid and policy by hand. (The bare `u8`/`i16`/… names are
 storage *flags*, so the native-width types use width words instead.)
 
@@ -144,24 +144,24 @@ the compile-time result grid. Power-of-two notches give only a negligible
 shift-vs-constant-multiply edge on division/construction. The integer types are
 direct storage (native-speed). Behavior is composable: these default to
 `checked`; for register-style `wrap`/`clamp` declare your own variant, e.g.
-`bound<{0,254}, wrap>`.
+`inside<{0,254}, wrap>`.
 
 ## Raw storage access
 
-`bound::Raw` is a public data member, but most code should not touch it
+`inside::Raw` is a public data member, but most code should not touch it
 directly. The supported access patterns are:
 
-- **`b.is_sentinel()`** — public probe for "does this bound currently hold
+- **`b.is_sentinel()`** — public probe for "does this inside currently hold
   the sentinel value?". The canonical answer to "is this slot empty?" under
   `sentinel` policy.
-- **`B::make_sentinel()`** — static factory returning a bound in the sentinel
+- **`B::make_sentinel()`** — static factory returning an inside in the sentinel
   (empty) state. The supported way to construct one; wraps the underlying
-  `bnd::sentinel_raw<B>()` raw pattern so callers never touch `Raw`.
-- **`B::from_raw(raw)`** — static factory constructing a bound directly from a
+  `beman::inside::sentinel_raw<B>()` raw pattern so callers never touch `Raw`.
+- **`B::from_raw(raw)`** — static factory constructing an inside directly from a
   storage-layout raw value, with no validation (same trust contract as
   `unsafe`). The supported entry point for raw-level construction in tests,
   fast paths, and same-grid raw transfer.
-- **`bnd::sentinel_raw<B>()`** — the raw byte pattern reserved for the sentinel
+- **`beman::inside::sentinel_raw<B>()`** — the raw byte pattern reserved for the sentinel
   that `make_sentinel()` wraps. Useful for interop with C APIs that need the
   pattern directly.
 - **`slim::optional<B>::from_maybe_sentinel(b)`** — non-throwing factory:
@@ -174,36 +174,36 @@ directly. The supported access patterns are:
   trusted raw construction. Outside `unsafe`, the library assumes `Raw` always
   encodes either a valid grid value or the sentinel.
 
-## Iteration: `bound_range`
+## Iteration: `inside_range`
 
-`bound_range` provides range-based for loop support:
+`inside_range` provides range-based for loop support:
 
 ```cpp
 // Iterate over all values in the grid [0, 9].
-for (auto i : bound_range<{0, 9}>{})
+for (auto i : inside_range<{0, 9}>{})
   std::cout << i;  // 0 1 2 3 4 5 6 7 8 9
 
 // Wrapping iteration starting at 5 (visits all values once).
-for (auto i : bound_range<{0, 9}>{5})
+for (auto i : inside_range<{0, 9}>{5})
   std::cout << i;  // 5 6 7 8 9 0 1 2 3 4
 ```
 
 The yielded values are bounds, not raw integers, so they slot directly into
 `vec[i]` via the implicit `operator imax()` (the standard imax → size_t
 conversion does the rest — see
-[conversions.md](conversions.md#implicit-operator-conversions-on-bound)):
+[conversions.md](conversions.md#implicit-operator-conversions-on-inside)):
 
 ```cpp
 std::vector<int> bins(10);
-for (auto i : bound_range<{0, 9}>{})
+for (auto i : inside_range<{0, 9}>{})
   bins[i] = some_value(i);   // no .as<>() needed
 ```
 
-`bound_range` is a random-access, sized range, so the standard view adaptors
+`inside_range` is a random-access, sized range, so the standard view adaptors
 work on it directly. It also offers two conveniences:
 
 ```cpp
-bound_range<{0, 9}> r;
+inside_range<{0, 9}> r;
 for (auto i : std::views::reverse(r)) { ... }   // 9 8 7 … 0
 for (auto i : r.strided(3))          { ... }    // 0 3 6 9  (every 3rd value)
 for (auto [idx, v] : r.indexed())    { ... }    // (0,0) (1,1) …  position + value
@@ -214,84 +214,84 @@ for (auto [idx, v] : r.indexed())    { ... }    // (0,0) (1,1) …  position + v
 
 ## Compile-time constants
 
-`bnd::zero` and `bnd::one` are built-in point-bounds for the two values you reach
+`beman::inside::zero` and `beman::inside::one` are built-in point-bounds for the two values you reach
 for most. They **assign into any grid that can exactly represent the value**
 (verified at compile time — out of range, or off a notch, is a compile error)
 and otherwise stand in for `0` / `1` in comparison and arithmetic:
 
 ```cpp
-bound<{0, 200}>          a = zero;     // ok — stored as 0, no runtime check
-bound<{{0, 1}, notch<1, 256>}> q = one; // ok — exact (raw 256)
-bound<{5, 10}>           b = zero;     // ✗ compile error: 0 is not on this grid
+inside<{0, 200}>          a = zero;     // ok — stored as 0, no runtime check
+inside<{{0, 1}, notch<1, 256>}> q = one; // ok — exact (raw 256)
+inside<{5, 10}>           b = zero;     // ✗ compile error: 0 is not on this grid
 
 if (a == zero) { ... }                 // comparison
-auto c = a + one;                      // arithmetic — stays a bound
+auto c = a + one;                      // arithmetic — stays an inside
 ```
 
-For any other constant, `just<value>` creates a single-value bound:
+For any other constant, `just<value>` creates a single-value inside:
 
 ```cpp
-constexpr auto pi   = just<3>;          // bound<{3, 3}>
-constexpr auto step = just<frac<1, 4>>; // exact 1/4 point-bound
+constexpr auto pi   = just<3>;          // inside<{3, 3}>
+constexpr auto step = just<frac<1, 4>>; // exact 1/4 point-inside
 ```
 
-The `_b` literal is shorthand for `just<N>`:
+The `_ins` literal is shorthand for `just<N>`:
 
 ```cpp
-auto five = 5_b;                // bound<{5, 5}>
-auto x    = 10_b + my_bound;    // grid widens via just<N> + bound
+auto five = 5_ins;                // inside<{5, 5}>
+auto x    = 10_ins + my_inside;    // grid widens via just<N> + inside
 ```
 
 ## `std`-vocabulary helpers
 
-`bound/arithmetic.hpp` provides ADL-found `bnd::min`, `bnd::max`, and
-`bnd::midpoint` (alongside `lerp` / `dot` / `cross`) so bounds drop into generic
-code that calls them unqualified. `min` / `max` return the same bound type;
+`beman/inside/arithmetic.hpp` provides ADL-found `beman::inside::min`, `beman::inside::max`, and
+`beman::inside::midpoint` (alongside `lerp` / `dot` / `cross`) so bounds drop into generic
+code that calls them unqualified. `min` / `max` return the same inside type;
 `midpoint` returns the **exact** average on a refined grid — the true midpoint
 of two grid points need not land on the grid, so unlike `std::midpoint` on
 integers it neither rounds nor overflows.
 
 ```cpp
-bound<{0, 100}> a = 30, b = 71;
-auto lo  = bnd::min(a, b);        // 30
-auto mid = bnd::midpoint(a, b);   // exactly 50.5 (refined grid), never 50
+inside<{0, 100}> a = 30, b = 71;
+auto lo  = beman::inside::min(a, b);        // 30
+auto mid = beman::inside::midpoint(a, b);   // exactly 50.5 (refined grid), never 50
 ```
 
-There is no `bnd::clamp` free function: the name belongs to the `clamp` policy
+There is no `beman::inside::clamp` free function: the name belongs to the `clamp` policy
 flag. To clamp a value into a grid, use the `clamp` policy or
 `clamp_cast<Target>` (see [conversions.md](conversions.md)).
 
 ## `std` integration
 
-`bound` specialises `std::hash` (works in `unordered_set` / `unordered_map`)
-and `std::numeric_limits`, so `numeric_limits<bound<{0,100}>>::max()`
+`inside` specialises `std::hash` (works in `unordered_set` / `unordered_map`)
+and `std::numeric_limits`, so `numeric_limits<inside<{0,100}>>::max()`
 returns the upper bound, and `is_signed` / `is_integer` / `is_bounded` etc.
-all report correctly. Include `bound/numeric_limits.hpp` to pull both in.
+all report correctly. Include `beman/inside/numeric_limits.hpp` to pull both in.
 
 ```cpp
-#include "bound/numeric_limits.hpp"
+#include <beman/inside/numeric_limits.hpp>
 
-std::unordered_set<bound<{0, 9}>> s;
-s.insert(bound<{0, 9}>{3});
+std::unordered_set<inside<{0, 9}>> s;
+s.insert(inside<{0, 9}>{3});
 
-static_assert(std::numeric_limits<bound<{-40, 60}>>::is_signed);
-static_assert(std::numeric_limits<bound<{0,  100}>>::max() == 100);
+static_assert(std::numeric_limits<inside<{-40, 60}>>::is_signed);
+static_assert(std::numeric_limits<inside<{0,  100}>>::max() == 100);
 ```
 
 ## STL algorithms
 
-`bound` types work with standard algorithms out of the box — both
+`inside` types work with standard algorithms out of the box — both
 `std::ranges` and classic iterator-based forms:
 
 ```cpp
 #include <algorithm>
 #include <numeric>
 #include <vector>
-#include "bound/bound.hpp"
-using namespace bnd;
+#include <beman/inside/inside.hpp>
+using namespace beman::inside;
 
-using celsius = bound<{{-40, 60}, 0.5}, round_nearest>;
-using score   = bound<{0, 1000}>;
+using celsius = inside<{{-40, 60}, 0.5}, round_nearest>;
+using score   = inside<{0, 1000}>;
 
 std::vector<celsius> temps = {21.5, -5.0, 37.0, 0.0, 15.5};
 
@@ -306,7 +306,7 @@ std::sort(temps.begin(), temps.end(), std::greater<>{});
 std::nth_element(temps.begin(), temps.begin() + 2, temps.end());
 
 // Accumulate into a wider type to avoid overflow.
-using wide = bound<{0, 100'000}>;
+using wide = inside<{0, 100'000}>;
 std::vector<score> scores = {100, 250, 500};
 auto total = std::reduce    (scores.begin(), scores.end(), wide{0}, std::plus<>{});
 auto sum   = std::accumulate(scores.begin(), scores.end(), wide{0}, std::plus<>{});

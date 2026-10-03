@@ -5,13 +5,13 @@
 
 #include <iostream>
 
-#include "bound/bound.hpp"
-#include "bound/io.hpp"
+#include <beman/inside/inside.hpp>
+#include <beman/inside/io.hpp>
 
-using namespace bnd;
+using namespace beman::inside;
 
-using money   = bound<{{0, 1'000'000}, notch<1, 100>}, round_nearest>;
-using dollars = bound<{0, 1000}>;   // whole dollars only
+using money   = inside<{{0, 1'000'000}, notch<1, 100>}, round_nearest>;
+using dollars = inside<{0, 1000}>;   // whole dollars only
 
 int main()
 {

@@ -1,16 +1,16 @@
 # Resources — prior art & talks
 
-`bound` did not appear in a vacuum. The idea that a number's range belongs in its
+`inside` did not appear in a vacuum. The idea that a number's range belongs in its
 *type*, that arithmetic should *widen* that range automatically, and that
 fixed-point and overflow safety deserve first-class library support has been
 explored by several excellent projects. This page collects the prior art that
-shaped `bound`'s thinking, plus talks worth watching if these ideas are new to
+shaped `inside`'s thinking, plus talks worth watching if these ideas are new to
 you. And yes — we're aware that adding one more safe-numerics library to the
 pile is its own kind of joke ([xkcd #927, "Standards"](https://xkcd.com/927/)).
 
 ## Feature matrix
 
-How `bound` compares to the projects below. This is meant to be *fair*, not
+How `inside` compares to the projects below. This is meant to be *fair*, not
 flattering — see the caveat after the tables. Legend: **●** full · **◐**
 partial / related · **○** no · **—** not applicable.
 
@@ -18,7 +18,7 @@ partial / related · **○** no · **—** not applicable.
 
 | Library | Domain | Range in type `[lo,hi]` | Auto-widening result | Out-of-range handling | Fixed-point | Rational / exact | Transcendental math | Determinism / FPU-free | Freestanding / `-fno-exceptions` |
 |---|---|---|---|---|---|---|---|---|---|
-| **bound** | bounded rational grids | ● | ● | clamp / wrap / sentinel / round / snap / throw / `errc` | ● | ● | ● (three engines) | ● | ◐ ¹⁰ |
+| **inside** | bounded rational grids | ● | ● | clamp / wrap / sentinel / round / snap / throw / `errc` | ● | ● | ● (three engines) | ● | ◐ ¹⁰ |
 | **bounded::integer** | integers | ● | ● | policy on narrowing (clamp / modulo / throw / assume) | ○ | ○ | ○ | — | ○ ¹¹ |
 | **Intel safe-arithmetic** | integers | ● ¹⁹ | ● | compile-time proof (reject) / runtime `safe::function` | ○ | ○ | ○ | — | ○ ²⁰ |
 | **Boost.SafeNumerics** | integers | ◐ ¹ | ◐ ² | detect → exception (custom exception / trap policy) | ○ | ○ | ○ | — | ◐ ¹² |
@@ -33,7 +33,7 @@ partial / related · **○** no · **—** not applicable.
 
 | Library | Header-only | Single header | Min C++ | License | Maturity / status |
 |---|---|---|---|---|---|
-| **bound** | ● | ● ⁹ | C++23 (C++20 backport) | **none yet (TBD)** | **alpha · single-author · not yet battle-tested** |
+| **inside** | ● | ● ⁹ | C++23 (C++20 backport) | **none yet (TBD)** | **alpha · single-author · not yet battle-tested** |
 | **bounded::integer** | ○ (C++ modules) ⁸ | ○ | C++20+ (clang 22+) | BSL-1.0 | mature · active |
 | **Intel safe-arithmetic** | ● | ○ | C++20 | BSL-1.0 | **pre-release · WIP (not for production)** |
 | **Boost.SafeNumerics** | ● | ○ | C++14 | BSL-1.0 | mature (Boost) |
@@ -52,14 +52,14 @@ through arithmetic. ⁶ `ranged<T>` constrains a range; repo archived April 2026
 with only `trapping<T>` fully implemented. ⁷ `Trigonometric` / `ExpLog` / `Root`
 mix-ins delegate to `<cmath>` on the wrapped type. ⁸ implemented as C++20
 modules, so not header-only in the classic sense. ⁹ a *generated* amalgamation of
-the multi-file source (`single_include/bound/bound.hpp`, standard-library-only),
+the multi-file source (`single_include/beman/inside/inside.hpp`, standard-library-only),
 rebuilt by a CMake target — SafeInt (`SafeInt.hpp`) and PSsst (`pssst.h`) are
 instead authored as a single file; the rest ship a multi-header tree (fpm, e.g.,
 splits `fixed.hpp` / `math.hpp` / `ios.hpp`).
 ¹⁰ core compiles `-ffreestanding -fno-exceptions` (no `<system_error>`; a
-replaceable `error_handler`; strings/printing in the opt-in `bound/io.hpp`, droppable
-via `BND_NO_STRING`). `BND_MATH_NO_FP` (auto under `-ffreestanding`) compiles the
-`<cmath>` dependency out of `bnd::math` entirely; full `-ffreestanding` still depends
+replaceable `error_handler`; strings/printing in the opt-in `beman/inside/io.hpp`, droppable
+via `BEMAN_INSIDE_NO_STRING`). `BEMAN_INSIDE_MATH_NO_FP` (auto under `-ffreestanding`) compiles the
+`<cmath>` dependency out of `beman::inside::math` entirely; full `-ffreestanding` still depends
 on the stdlib's freestanding maturity — see
 [freestanding.md](freestanding.md). ¹¹ C++20 modules (clang-only) with throwing
 policies; no documented freestanding / no-exceptions path. ¹² `-fno-exceptions` via the
@@ -80,31 +80,31 @@ docs as of June 2026 — corrections welcome.</sub>
 
 A filled-in cell is **not** a verdict. The mature, widely deployed options here
 (Boost.SafeNumerics, SafeInt, CNL, fpm) have years of production hardening, broad
-compiler support, and real licenses; `bound` is alpha, currently unlicensed,
-single-author, and not yet battle-tested. What `bound` brings that the others
+compiler support, and real licenses; `inside` is alpha, currently unlicensed,
+single-author, and not yet battle-tested. What `inside` brings that the others
 don't combine is *rational* grids with arbitrary `[lower, upper]` bounds **and**
 reproducible transcendental math over those grids — not dominance of every
 column. Pick the tool that fits: if you need overflow-safe plain integers,
 `bounded::integer` or Boost.SafeNumerics are proven; for pure fixed-point DSP,
-`fpm` or CNL; `bound` is for when the *domain* of a value is part of its type.
+`fpm` or CNL; `inside` is for when the *domain* of a value is part of its type.
 
 ## Implementation patterns compared
 
 A 2026-07 pass over these libraries' *implementation* patterns (not just their
-feature sets), asking what `bound` should adopt. Kept, with the source named:
+feature sets), asking what `inside` should adopt. Kept, with the source named:
 
 - **Compile-fail diagnostics tests** (bounded::integer, CNL) — `tests/fail/`
   regression-tests that ill-formed uses stay ill-formed *and* keep their
   intended `static_assert` message (each TU names its expected diagnostic in a
   `// EXPECT:` line; a control TU proves the harness builds valid code).
 - **Published accuracy characterization** (fpm) — fpm ships per-function
-  accuracy tables for its math; `bound` now does too:
+  accuracy tables for its math; `inside` now does too:
   [accuracy.md](accuracy.md), generated by `tests/accuracy.cpp` sweeping all
   three engines against a long-double reference. (Its first run found a real
   bug: a 64-bit overflow terminate in the fp→snap-grid store path.)
 - **`std::common_type` interop** (bounded::integer) — mixed-grid bounds now
   have a common type (the grid hull: interval hull + notch gcd), plus
-  mixed-grid `bnd::min`/`max` returning it.
+  mixed-grid `beman::inside::min`/`max` returning it.
 - **Single-concern helpers** (CNL's component style) — the per-operator fp
   representation-propagation logic, once copy-pasted across
   addition/multiplication/division, is one trait (`detail/rep.hpp`).
@@ -112,17 +112,17 @@ feature sets), asking what `bound` should adopt. Kept, with the source named:
 Considered and **not** adopted, with reasons:
 
 - **CRTP operator mix-ins** (PSsst, and Boost's operator-generation style) —
-  `bound`'s operators dispatch on storage shape with `if constexpr`, which a
+  `inside`'s operators dispatch on storage shape with `if constexpr`, which a
   generic mix-in base can't see; hand-written operators stay.
 - **Selectable promotion policies** (Boost.SafeNumerics `native`/`automatic`) —
-  `bound` always auto-widens the result grid; a "native" mode would reintroduce
+  `inside` always auto-widens the result grid; a "native" mode would reintroduce
   exactly the silent narrowing the library exists to prevent.
 - **Constraint/verifier splitting** (type_safe) — the policy bitmask plus
   tagged `on_*` actions already separate *what* is enforced from *what happens*
   on violation, without a second customization axis.
 - **Type-per-concern wrapper stacking** (CNL) — composing
   `overflow<rounding<scaled<int>>>`-style layers trades one flat policy set for
-  N interacting wrapper semantics; `bound`'s single `policy_flag` set keeps one
+  N interacting wrapper semantics; `inside`'s single `policy_flag` set keeps one
   place to reason about flag interaction (mutual exclusions are
   `static_assert`ed in one spot).
 - **Disjoint interval unions** (Intel safe-arithmetic) — genuinely attractive
@@ -135,7 +135,7 @@ Considered and **not** adopted, with reasons:
 - **[bounded::integer](https://github.com/davidstone/bounded-integer)** (David
   Stone) — the closest prior art. Integer types carry a compile-time
   `[min, max]` range, and arithmetic widens the result range so that code
-  without explicit casts is guaranteed not to overflow. `bound` generalises the
+  without explicit casts is guaranteed not to overflow. `inside` generalises the
   same widening idea from integers to rational *grids* (lower, upper, notch).
   See also the author's writeup at <http://doublewise.net/c++/bounded/>.
 - **[Intel safe-arithmetic](https://github.com/intel/safe-arithmetic)** (Intel —
@@ -145,11 +145,11 @@ Considered and **not** adopted, with reasons:
   zero so division is provably safe). Where `bounded::integer` widens, `safe`
   goes further: it demands a compile-time *proof* that each operation stays in
   range, falling back to runtime `safe::function` validation only where the proof
-  can't be discharged statically. The same range-in-the-type spirit as `bound`,
+  can't be discharged statically. The same range-in-the-type spirit as `inside`,
   scoped to integers; still pre-release.
 - **[Boost.SafeNumerics](https://www.boost.org/libs/safe_numerics/)** (Robert
   Ramey) — drop-in replacements for the built-in integer types that detect, and
-  by policy raise on, results that would be incorrect. Shares `bound`'s "make
+  by policy raise on, results that would be incorrect. Shares `inside`'s "make
   the unsafe operation impossible rather than merely discouraged" stance, with a
   configurable exception/error policy.
   [[github](https://github.com/boostorg/safe_numerics)]
@@ -159,7 +159,7 @@ Considered and **not** adopted, with reasons:
   types. CNL underpins the C++ fixed-point standardisation effort.
 - **[fpm](https://github.com/MikeLankamp/fpm)** (Mike Lankamp) — header-only
   fixed-point math with a `<cmath>`-shaped API (trig, pow, log, …) implemented in
-  pure integer arithmetic. A direct point of comparison for `bound`'s
+  pure integer arithmetic. A direct point of comparison for `inside`'s
   integer/CORDIC math engine (FPU-free, deterministic) — see
   [docs/math.md](math.md).
 - **[type_safe](https://github.com/foonathan/type_safe)** (Jonathan Müller) —
@@ -171,10 +171,10 @@ Considered and **not** adopted, with reasons:
 - **[google/integers](https://github.com/google/integers)** (Fuchsia Security
   Team — *not* an official Google product) — safer integer types for C++,
   including a `ranged<T>` that constrains an integer to a value range. A close
-  cousin of `bound`'s range-in-the-type model, focused on integers.
+  cousin of `inside`'s range-in-the-type model, focused on integers.
 - **[PSsst — Peter Sommerlad's Simple Strong Typing](https://github.com/PeterSommerlad/PSsst)**
   (Peter Sommerlad) — a tiny `strong<T, Tag>` base for building safe numeric
-  wrappers with only the operators you opt into. Kindred to `bound`'s view that
+  wrappers with only the operators you opt into. Kindred to `inside`'s view that
   a bounded quantity is a *type*, not a runtime check.
 
 ## Talks & videos
@@ -188,18 +188,18 @@ Considered and **not** adopted, with reasons:
   fixed-point types — "do for integers what the STL does for pointers."
 - **"Removing undefined behavior from integer operations: the bounded::integer
   library"** — David Stone, C++Now 2014. The auto-widening-range model that most
-  directly parallels `bound`. (Overview discussion on
+  directly parallels `inside`. (Overview discussion on
   [CppCast ep. 22](https://isocpp.org/blog/2015/08/cppcast-episode-22-bounded-integers-with-david-stone).)
 - **["Cross-Platform Floating-Point Determinism Out of the Box"](https://www.youtube.com/watch?v=7MatbTHGG6Q)**
   — Sherry Ignatchenko, CppCon 2024. Why cross-platform floating-point
-  reproducibility is hard and how to get it — directly relevant to `bound`'s
+  reproducibility is hard and how to get it — directly relevant to `inside`'s
   bit-exact guarantees in [docs/determinism.md](determinism.md).
 - **["Simplest Strong Typing instead of Language Proposal (P0109)"](https://www.youtube.com/watch?v=ABkxMSbejZI)**
   — Peter Sommerlad, C++Now 2021. The design behind PSsst and the case for
   strong numeric types as a library, not a language feature.
 - **["int != safe && int != ℤ"](https://www.youtube.com/watch?v=YyNE6Y2mv1o)**
   — Peter Sommerlad, Meeting C++ 2025. Why the built-in `int` is neither safe
-  nor a mathematical integer — the exact gap `bound` sets out to close.
+  nor a mathematical integer — the exact gap `inside` sets out to close.
 
 ## Blog posts & articles
 

@@ -4,14 +4,14 @@
 
 #include <iostream>
 
-#include "bound/bound.hpp"
-#include "bound/io.hpp"
+#include <beman/inside/inside.hpp>
+#include <beman/inside/io.hpp>
 
-using namespace bnd;
+using namespace beman::inside;
 
 int main()
 {
-  using u8 = bound<{10, 255}>;
+  using u8 = inside<{10, 255}>;
   constexpr u8 a{16};
   constexpr u8 b{220};
 
@@ -25,7 +25,7 @@ int main()
 
   // The midpoint computation that breaks binary search cannot break here:
   // lo + hi is computed in a grid wide enough to hold it.
-  using idx = bound<{0, 2147483647}>;
+  using idx = inside<{0, 2147483647}>;
   idx lo{2147483644};
   idx hi{2147483646};
   auto mid = (lo + hi) / just<2>;

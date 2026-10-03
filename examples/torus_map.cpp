@@ -4,26 +4,26 @@
 // Demonstrates:
 //   - `wrap` policy on two fractional-notch axes (sub-pixel positions)
 //   - `on_wrap` callback to drive a side-effect on edge crossing
-//   - `bound_range` for iterating over integer-cell viewport coordinates
+//   - `inside_range` for iterating over integer-cell viewport coordinates
 
 #include <iostream>
 
-#include "bound/bound.hpp"
-#include "bound/io.hpp"
-#include "bound/formats.hpp"
+#include <beman/inside/inside.hpp>
+#include <beman/inside/io.hpp>
+#include <beman/inside/formats.hpp>
 
-using namespace bnd;
+using namespace beman::inside;
 
 // Position grid: 0..63 inclusive in 1/16-pixel steps. wrap-on-edge.
-using pos_t = bound<{{0, 64}, notch<1, 16>}, wrap | round_nearest>;
+using pos_t = inside<{{0, 64}, notch<1, 16>}, wrap | round_nearest>;
 
 // A signed per-tick movement delta, same 1/16 notch family as pos_t. A runtime
-// step has a range — name it — so `x += d` stays bound += bound.
-using pos_delta_t = bound<{{-64, 64}, notch<1, 16>}, round_nearest>;
+// step has a range — name it — so `x += d` stays inside += inside.
+using pos_delta_t = inside<{{-64, 64}, notch<1, 16>}, round_nearest>;
 
 // Integer cell coords for the viewport iterator (a separate grid because
-// bound_range needs notch 1 with integer Lower).
-using cell_t = bound<{0, 63}>;
+// inside_range needs notch 1 with integer Lower).
+using cell_t = inside<{0, 63}>;
 
 struct sprite
 {
@@ -33,8 +33,8 @@ struct sprite
 
   void step(pos_delta_t dx, pos_delta_t dy)
   {
-    // The move delta is a bound (same notch family as the position), so the
-    // update stays bound += bound and routes through the round-nearest
+    // The move delta is an inside (same notch family as the position), so the
+    // update stays inside += inside and routes through the round-nearest
     // assignment — the on_wrap callback still fires on each edge crossing.
     x.on_wrap([&](auto&, auto carry) {
       (void)carry;
@@ -71,12 +71,12 @@ int main()
               << ", " << s.edge_y_crossings << ")\n";
   }
 
-  // bound_range over the integer viewport — typical for tilemap iteration.
+  // inside_range over the integer viewport — typical for tilemap iteration.
   // Print the column indices where x would land on an integer notch given
   // the current sub-pixel position.
-  std::cout << "\nviewport columns (bound_range<{0,63}>) — first 8:\n  ";
+  std::cout << "\nviewport columns (inside_range<{0,63}>) — first 8:\n  ";
   int shown = 0;
-  for (auto c : bound_range<{0, 63}>{})
+  for (auto c : inside_range<{0, 63}>{})
   {
     if (shown++ >= 8) break;
     std::cout << c << " ";

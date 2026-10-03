@@ -4,13 +4,13 @@
 
 #include <iostream>
 
-#include "bound/bound.hpp"
-#include "bound/io.hpp"
+#include <beman/inside/inside.hpp>
+#include <beman/inside/io.hpp>
 
-using namespace bnd;
+using namespace beman::inside;
 
-using pct   = bound<{0, 100}>;
-using angle = bound<{0, 359}, wrap>;
+using pct   = inside<{0, 100}>;
+using angle = inside<{0, 359}, wrap>;
 
 int main()
 {

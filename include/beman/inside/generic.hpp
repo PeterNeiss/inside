@@ -1,0 +1,604 @@
+//---------------------------------------------------------------------------
+// Copyright (C) 2026 Peter Neiss
+//---------------------------------------------------------------------------
+#ifndef BEMAN_INSIDE_GENERIC_HPP
+#define BEMAN_INSIDE_GENERIC_HPP
+
+#define BEMAN_INSIDE_SLIM_OPTIONAL_LEAN_AND_MEAN
+#include <beman/inside/slim/optional.hpp>
+
+#include <beman/inside/detail/debug.hpp>
+#include <beman/inside/grid.hpp>
+#include <beman/inside/policy_flag.hpp>
+
+//---------------------------------------------------------------------------
+// generic — type-level traits and predicates used everywhere else. Public
+// grid/policy introspection (`Grid<B>`, `InsidePolicy<B>`, `Lower/Upper/Notch<B>`,
+// `Interval<B>`) plus the `insidable`/`numeric`/`inside_assignable` concepts; the
+// storage-shape predicates and raw/value converters are internal (`beman::inside::detail`).
+//---------------------------------------------------------------------------
+namespace beman::inside
+{
+  template <grid G = grid{{0, 0}, 0}, policy_flag P = checked> struct inside;
+
+  template <class>                 inline constexpr bool is_inside_v = false;
+  template <grid G, policy_flag P> inline constexpr bool is_inside_v<inside<G, P>> = true;
+
+  template <typename B>
+  concept insidable = is_inside_v<std::remove_cvref_t<B>>;
+
+  //---------------------------------------------------------------------------
+  // Public grid/policy introspection — extract an inside's template parameters.
+  // These mirror std::numeric_limits: they report what the grid is, used
+  // opaquely (the rational return type is never named by callers).
+  //---------------------------------------------------------------------------
+  template <insidable B>
+  inline constexpr grid Grid = []<grid G, policy_flag P>(inside<G, P>){ return G; } (B{});
+
+  template <insidable B>
+  inline constexpr policy_flag InsidePolicy = []<grid G, policy_flag P>(inside<G, P>){ return P; } (B{});
+
+  template <typename T>
+  inline constexpr interval Interval = {0,0};
+
+  template <insidable B>
+  inline constexpr interval Interval<B> = []<grid G, policy_flag P>(inside<G, P>){ return G.Interval; } (B{});
+
+  template <std::integral I>
+  inline constexpr interval Interval<I> =
+      {std::numeric_limits<I>::lowest(), std::numeric_limits<I>::max()};
+
+  template <insidable B>
+  inline constexpr beman::inside::detail::rational Lower = []<grid G, policy_flag P>(inside<G, P>){ return G.Interval.Lower; } (B{});
+
+  template <insidable B>
+  inline constexpr beman::inside::detail::rational Upper = []<grid G, policy_flag P>(inside<G, P>){ return G.Interval.Upper; } (B{});
+
+  template <insidable B>
+  inline constexpr beman::inside::detail::rational Notch = []<grid G, policy_flag P>(inside<G, P>){ return G.Notch; } (B{});
+
+  template <typename N>
+  concept numeric = insidable<N> or arithmetic<N>;
+
+  //---------------------------------------------------------------------------
+  // Internal plumbing — storage shape, raw/value conversion, dispatch.
+  //---------------------------------------------------------------------------
+  namespace detail
+  {
+    template<typename T>
+    using plain = std::remove_cvref_t<T>;
+
+    // Always-false but template-dependent: lets a `static_assert` inside a
+    // template body fire only when that template is actually instantiated
+    // (e.g. the guidance overloads that make `inside + 1` ill-formed).
+    template<typename...>
+    inline constexpr bool dependent_false = false;
+
+    //-------------------------------------------------------------------------
+    // Conversion-helper legend — the value/raw plumbing reused across the
+    // engine. "value space" = the number an inside denotes; "raw space" = how it
+    // is stored (see §2 "Storage encoding" in docs/internals.md). Use this to
+    // tell the similarly-named helpers apart:
+    //
+    //   as_rational(x)         value → rational    exact view of a scalar or inside
+    //   as_double(b)           raw   → double       kind-aware decode; lossy off dyadic grids
+    //   to_value(b)            raw   → imax         the inside's integer value (decodes an index)
+    //   from_value(b, v)       imax  → raw          store integer value v into b (inverse of to_value)
+    //   raw_cast<B>(x)         x     → raw_t<B>     TYPE cast only — no value arithmetic
+    //   raw_imax(b)            raw   → imax         widen the raw bits (NOT the value for index storage)
+    //   raw_from_offset<B>(o)  index → raw_t<B>     adds RawLo for direct storage; identity for index
+    //-------------------------------------------------------------------------
+
+    // Uniform rational view of a scalar or inside (rational{v} / operator rational()).
+    template <numeric N>
+    [[nodiscard]] constexpr rational as_rational(N v)
+    {
+      if constexpr (arithmetic<N>) return rational{v};
+      else                         return v;
+    }
+
+    // Canonical-zero test for a divisor. rational stores zero as {0, 1}, so
+    // Numerator == 0 catches it regardless of representation; other types compare
+    // against their own zero.
+    template <typename T>
+    [[nodiscard]] constexpr bool is_canonical_zero(T const& v)
+    {
+      if constexpr (std::same_as<T, rational>) return v.Numerator == 0;
+      else                                      return v == T{0};
+    }
+
+    template <insidable B>
+    using raw_t = typename B::raw_type;
+
+    // How an inside's value lives in its raw storage — four disjoint encodings
+    // (selected by policy flags or deduced; see grid.hpp storage_pick):
+    //   rational_raw — raw IS the value, as a rational.
+    //   f64_raw      — raw IS the value, as an IEEE-754 double (dyadic grids only).
+    //   f32_raw      — raw IS the value, as an IEEE-754 float  (dyadic grids only).
+    //   value_raw    — raw IS the value, as a plain integer.
+    //   index_raw    — raw is a 0-based notch index; value = Lower + raw*Notch.
+    template <insidable B>
+    inline constexpr bool f64_raw = std::is_same_v<raw_t<B>, double>;
+
+    template <insidable B>
+    inline constexpr bool f32_raw = std::is_same_v<raw_t<B>, float>;
+
+    // fp_raw — value held directly in a floating-point raw (f64 or f32). These
+    // share every value-path branch: read/store/compare/arithmetic compute in
+    // double, narrowing to the raw type on store (lossless on an fp-exact grid).
+    template <insidable B>
+    inline constexpr bool fp_raw = f64_raw<B> || f32_raw<B>;
+
+    template <insidable B>
+    inline constexpr bool rational_raw = std::is_same_v<raw_t<B>, rational>;
+
+    template <insidable B>
+    inline constexpr bool value_raw =
+         !fp_raw<B> && !rational_raw<B>
+      && ((InsidePolicy<B> & beman::inside::direct) == beman::inside::direct
+          // A pinned width flag without `indexed` is value storage (raw == value)
+          // regardless of Lower's sign — storage_pick checked the range fits.
+          || (has_width_flag(InsidePolicy<B>)
+              && (InsidePolicy<B> & beman::inside::indexed) != beman::inside::indexed)
+          || ((InsidePolicy<B> & beman::inside::indexed) != beman::inside::indexed
+              && Notch<B> == 1
+              && (Lower<B> == 0 || std::signed_integral<raw_t<B>>)));
+
+    template <insidable B>
+    inline constexpr bool index_raw =
+         !fp_raw<B> && !rational_raw<B> && !value_raw<B>;
+
+    // Ungated double view of any inside, for the `real` arithmetic arms (the
+    // public operator double() is gated on a rounding flag; this is always
+    // available). Everything but index storage holds the value verbatim; an
+    // index decodes through the grid.
+    template <insidable B>
+    [[nodiscard]] constexpr double as_double(B const& b) noexcept
+    {
+      if constexpr (!index_raw<B>)
+        return static_cast<double>(b.raw());
+      else
+        return static_cast<double>((*(b.raw() * Notch<B>) + Lower<B>).value());
+    }
+
+    template <insidable B>
+    using negative = inside<-Grid<B>, InsidePolicy<B>>;
+
+    // True when R's interval cannot contain zero — so `a / b` can return a plain
+    // `inside` instead of `optional<inside>` (see detail/division.hpp). A point
+    // grid at 0 is *not* excluded.
+    template <insidable R>
+    inline constexpr bool DivisorExcludesZero = (Lower<R> > 0) || (Upper<R> < 0);
+
+    // Storage-agnostic int truncation of interval endpoints — intent-revealing
+    // `static_cast<imax>(Lower<B>)`. Used by from_value, RawLo, the fast paths.
+    template <insidable B>
+    inline constexpr imax LowerImax = trunc(Lower<B>);
+
+    template <insidable B>
+    inline constexpr imax UpperImax = trunc(Upper<B>);
+
+    // Slot count via grid::max_notch (overflow-safe: 0 when it doesn't fit umax,
+    // for grids that store as rational and never use the index).
+    template <insidable B>
+    inline constexpr umax NotchCount = Grid<B>.max_notch();
+
+    //-------------------------------------------------------------------------
+    // grid_value_bounds / rational_mul_is_safe / rational_add_is_safe
+    //
+    // Conservative compile-time inside on the (numerator, denominator) of any
+    // canonical value on a grid, and derived "can the rational op of two grid
+    // values overflow imax" predicates — letting checked exact arithmetic drop
+    // the optional wrapper when the grids prove no overflow is reachable.
+    //
+    // For a notched grid every value v = lo + k·notch over the common denominator
+    // dC = |lo.den|·|hi.den|·|notch.den| is linear in k, so the max scaled
+    // numerator is at an endpoint. A continuous grid (Notch == 0, non-point) has
+    // unbounded denominators — nothing provable, so the helpers return false.
+    //-------------------------------------------------------------------------
+    constexpr bool grid_value_bounds(grid g, umax& max_num, umax& max_den) noexcept
+    {
+      if (g.Notch.Numerator == 0 && !(g.Interval.Lower == g.Interval.Upper))
+        return false;                          // continuous: dens unbounded
+
+      umax d_lo = abs_den(g.Interval.Lower.Denominator);
+      umax d_hi = abs_den(g.Interval.Upper.Denominator);
+      umax d_no = (g.Notch.Numerator == 0) ? umax{1} : abs_den(g.Notch.Denominator);
+
+      umax d_common;
+      if (mul_overflow(d_lo, d_hi, &d_common)) return false;
+      if (mul_overflow(d_common, d_no, &d_common)) return false;
+
+      umax lo_scaled, hi_scaled;
+      if (mul_overflow(g.Interval.Lower.Numerator, d_common / d_lo, &lo_scaled)) return false;
+      if (mul_overflow(g.Interval.Upper.Numerator, d_common / d_hi, &hi_scaled)) return false;
+
+      max_num = lo_scaled > hi_scaled ? lo_scaled : hi_scaled;
+      max_den = d_common;
+      return true;
+    }
+
+    constexpr bool rational_mul_is_safe(grid g_l, grid g_r) noexcept
+    {
+      umax n_l, d_l, n_r, d_r;
+      if (!grid_value_bounds(g_l, n_l, d_l)) return false;
+      if (!grid_value_bounds(g_r, n_r, d_r)) return false;
+
+      umax num_prod, den_prod;
+      if (mul_overflow(n_l, n_r, &num_prod)) return false;
+      if (mul_overflow(d_l, d_r, &den_prod)) return false;
+      if (den_prod > static_cast<umax>(std::numeric_limits<imax>::max())) return false;
+      return true;
+    }
+
+    // add_impl's worst case over the conservative common denominator
+    // D = d_l*d_r: scaled numerators A <= n_l*d_r and B <= n_r*d_l, sum
+    // A + B. (The same-denominator and lcm-reduced paths only shrink these;
+    // mixed signs subtract magnitudes.)
+    constexpr bool rational_add_is_safe(grid g_l, grid g_r) noexcept
+    {
+      umax n_l, d_l, n_r, d_r;
+      if (!grid_value_bounds(g_l, n_l, d_l)) return false;
+      if (!grid_value_bounds(g_r, n_r, d_r)) return false;
+
+      umax den, a, b, sum;
+      if (mul_overflow(d_l, d_r, &den)) return false;
+      if (den > static_cast<umax>(std::numeric_limits<imax>::max())) return false;
+      if (mul_overflow(n_l, d_r, &a)) return false;
+      if (mul_overflow(n_r, d_l, &b)) return false;
+      if (add_overflow(a, b, &sum)) return false;
+      return true;
+    }
+
+    // Notch is a non-zero integer (denominator 1) — the grid is notch-aligned,
+    // so values map 1:1 to integers. Gates the implicit imax/size_t conversions.
+    template <grid G>
+    inline constexpr bool notch_is_unit_integer =
+      abs_den(G.Notch.Denominator) == 1 && G.Notch.Numerator != 0;
+
+    // ONLY type conversion, NO value representation conversion calculation
+    template <insidable B>
+    constexpr raw_t<B> raw_cast(auto value)
+    {
+      return static_cast<raw_t<B>>(value);
+    }
+
+    template <insidable B>
+    constexpr raw_t<B> raw_cast(rational value)
+    {
+      if constexpr (rational_raw<B>)
+        return value;
+      else
+        return value.to<raw_t<B>>().value_or(0);
+    }
+
+    // Widen raw storage to imax. Distinct from `to_value(b)` for notch-stored
+    // grids where raw is an index rather than a value — naming separates the
+    // two intents that today both spell `static_cast<imax>`.
+    template <insidable B>
+    constexpr imax raw_imax(B b) noexcept { return static_cast<imax>(b.raw()); }
+
+    //-------------------------------------------------------------------------
+    // Q-format integer fast path: for grids with integer Lower, unit-numerator
+    // Notch, and raw fitting imax, value↔raw is pure integer arithmetic. Shared
+    // by operator rational(), from_value, and assignment::store.
+    //-------------------------------------------------------------------------
+    template <insidable B>
+    inline constexpr bool HasQFormatFastPath =
+        abs_den(Lower<B>.Denominator) == 1
+        && Notch<B>.Numerator == 1
+        && !rational_raw<B>
+        && (std::signed_integral<raw_t<B>>
+            || NotchCount<B> <= static_cast<umax>(std::numeric_limits<imax>::max()));
+
+    // value → raw, integer math only. Pre: HasQFormatFastPath<B>.
+    template <insidable B>
+    constexpr raw_t<B> q_format_encode(imax value) noexcept
+    {
+      constexpr imax nd = abs_den(Notch<B>.Denominator);
+      return raw_cast<B>((value - LowerImax<B>) * nd);
+    }
+
+    // raw → rational, integer math only. Pre: HasQFormatFastPath<B>.
+    template <insidable B>
+    constexpr rational q_format_decode(B b) noexcept
+    {
+      constexpr imax nd = abs_den(Notch<B>.Denominator);
+      return rational{raw_imax(b) + LowerImax<B> * nd, nd};
+    }
+
+    // Library-internal extraction helper. Always succeeds (returns `imax`
+    // unconditionally) but does not check the value fits in any narrower
+    // target. User code should prefer `b.to<T>()`, which carries a typed
+    // overflow error.
+    template <insidable B>
+    constexpr imax to_value(B b)
+    {
+      if constexpr (!index_raw<B>)
+        return raw_imax(b);
+      else // index storage
+        return trunc(as_rational(b));
+    }
+
+    template <insidable B>
+    constexpr void from_value(B& b, imax val)
+    {
+      if constexpr (!index_raw<B>)
+        b = B::from_raw(raw_cast<B>(val));
+      else if constexpr (HasQFormatFastPath<B>)
+        b = B::from_raw(q_format_encode<B>(val));
+      else // index storage, generic rational path
+      {
+        auto offset = (rational{val} - Lower<B>) / Notch<B>;
+        b = B::from_raw(raw_cast<B>(offset.value().Numerator));
+      }
+    }
+
+    //-------------------------------------------------------------------------
+    // RawLo / RawHi / raw_from_offset — map interval endpoints to raw space. For
+    // notch-offset storage the raw is a 0-based index (RawLo == 0); for direct
+    // storage the raw IS the value (RawLo == LowerImax<B>), so an offset needs
+    // RawLo<L> added back before storing.
+    //-------------------------------------------------------------------------
+    template <insidable B>
+    inline constexpr imax RawLo = !index_raw<B> ? LowerImax<B> : 0;
+
+    template <insidable B>
+    inline constexpr imax RawHi = !index_raw<B> ? UpperImax<B> : static_cast<imax>(NotchCount<B>);
+
+    template <insidable L>
+    constexpr raw_t<L> raw_from_offset(umax offset) noexcept
+    {
+      if constexpr (!index_raw<L>)
+        return raw_cast<L>(static_cast<imax>(offset) + RawLo<L>);
+      else
+        return raw_cast<L>(offset);
+    }
+
+    template <insidable L>
+    constexpr raw_t<L> raw_from_offset(imax offset) noexcept
+    {
+      if constexpr (!index_raw<L>)
+        return raw_cast<L>(offset + RawLo<L>);
+      else
+        return raw_cast<L>(static_cast<umax>(offset));
+    }
+
+    //-------------------------------------------------------------------------
+    // IsIntegerInterval vs IsIntegerAligned — easy to confuse, both needed.
+    //   IsIntegerInterval<B>: Lower and Upper integer (Notch may be fractional,
+    //     e.g. inside<{0,100}, 1/10>). Lets Lower/Upper be used as imax constants.
+    //   IsIntegerAligned<B>: Notch and Lower integer ⇒ IsIntegerInterval (not the
+    //     converse). Precondition for native integer raw arithmetic (Raw == value).
+    //-------------------------------------------------------------------------
+    template <insidable B>
+    inline constexpr bool IsIntegerInterval =
+        abs_den(Lower<B>.Denominator) == 1 && abs_den(Upper<B>.Denominator) == 1;
+
+    template <insidable B>
+    inline constexpr bool IsIntegerAligned =
+        abs_den(Notch<B>.Denominator) == 1 && abs_den(Lower<B>.Denominator) == 1;
+
+    // Q-format: the canonical fixed-point shape (Q8.8, Q16.16, ...). Notch has
+    // unit numerator with integer denominator > 1, Lower is an integer at 0.
+    // Value = Raw / Notch.Denominator. Used to gate the integer fast path for
+    // fixed-point division, which would otherwise fall into the slow rational
+    // route because Notch.Denominator > 1 disqualifies IsIntegerAligned.
+    template <insidable B>
+    inline constexpr bool IsQFormat =
+           !rational_raw<B>
+        && Notch<B>.Numerator == 1
+        && abs_den(Notch<B>.Denominator) > 1
+        && abs_den(Lower<B>.Denominator) == 1
+        && Lower<B> == 0;
+
+    // Policy test: checks both type-level and per-operation policy.
+    // Composite flags (e.g. round_nearest = bit5 | snap) require all
+    // their bits set — having a subset like just `snap` does NOT match.
+    template <insidable B, typename P, policy_flag F>
+    inline constexpr bool HasPolicy = has_flag(InsidePolicy<B>, F) || plain<P>::test(F);
+
+    // Rounds the split offset quotient q + r/den (r < den ≤ imax_max) per L's
+    // rounding policy — q/r form so no expression can overflow umax
+    // (num + den/2 could, for num near umax). Shared by round_quotient's
+    // offset rule and the 128-bit wide store (assignment.hpp).
+    template <insidable L, typename P>
+    [[nodiscard]] constexpr umax round_offset(umax q, umax r, umax den) noexcept
+    {
+      if constexpr (HasPolicy<L, P, round_nearest>)        return (r * 2 >= den) ? q + 1 : q;
+      else if constexpr (HasPolicy<L, P, round_floor>)     return q;
+      else if constexpr (HasPolicy<L, P, round_ceil>)      return (r != 0) ? q + 1 : q;
+      else if constexpr (HasPolicy<L, P, round_half_even>)
+      {
+        if (r * 2 < den) return q;
+        if (r * 2 > den) return q + 1;
+        return (q & 1) ? q + 1 : q;
+      }
+      else                                                 return q;
+    }
+
+    // Round the non-negative offset quotient num/den (den >= 1) to an integer
+    // notch index per L's rounding policy.
+    //
+    // Tie/sign rules are in VALUE space, not offset space, so assigning a value
+    // rounds it the same way dividing down to it does (detail::div_rounded is the
+    // reference). The offset num/den is >= 0 (sign lost by subtracting Lower), so
+    // we rebuild the signed value-index NUM = m·den + num (m = Lower/Notch), round
+    // it like div_rounded, and return the offset J - m. m is integral on every
+    // dyadic/integer-aligned/Q-format grid; otherwise fall back to offset rounding.
+    template <insidable L, typename P>
+    [[nodiscard]] constexpr umax round_quotient(umax num, umax den) noexcept
+    {
+      constexpr rational zl =
+          (Notch<L> == rational{0})
+            ? rational{0}
+            : (Lower<L> / Notch<L>).value_or(rational{0});
+      constexpr bool vidx = (zl.Denominator == 1 || zl.Denominator == -1);
+      constexpr imax m = vidx
+          ? (zl.Denominator < 0 ? -static_cast<imax>(zl.Numerator)
+                                :  static_cast<imax>(zl.Numerator))
+          : imax{0};
+
+      if constexpr (!vidx)
+        return round_offset<L, P>(num / den, num % den, den);
+      else
+      {
+        // Round the signed value-index NUM/di exactly like detail::div_rounded.
+        // A numerator or m·di beyond imax (fp-derived sources on grids with
+        // large |Lower·count|) cannot rebuild the signed index — fall back to
+        // the offset rule, which differs only at exact ties on negative values.
+        const imax di = static_cast<imax>(den);
+        imax mdi, NUM;
+        if (num > static_cast<umax>(std::numeric_limits<imax>::max())
+            || mul_overflow(m, di, &mdi)
+            || add_overflow(mdi, static_cast<imax>(num), &NUM)) [[unlikely]]
+          return round_offset<L, P>(num / den, num % den, den);
+        const imax t   = NUM / di;                 // C++ truncation toward zero
+        const imax rr  = NUM % di;                 // sign of NUM, |rr| < di
+        imax J;
+        if (rr == 0)
+          J = t;
+        else
+        {
+          const bool neg = NUM < 0;
+          const umax ar  = (rr < 0) ? ~static_cast<umax>(rr) + 1u
+                                    :  static_cast<umax>(rr);
+          const umax ab  = static_cast<umax>(di);  // ab - ar safe: 0 < ar < ab
+          if constexpr (HasPolicy<L, P, round_nearest>)        // half away from zero
+            J = (ar >= ab - ar) ? (neg ? t - 1 : t + 1) : t;
+          else if constexpr (HasPolicy<L, P, round_floor>)     // toward -inf
+            J = neg ? t - 1 : t;
+          else if constexpr (HasPolicy<L, P, round_ceil>)      // toward +inf
+            J = neg ? t : t + 1;
+          else if constexpr (HasPolicy<L, P, round_half_even>) // tie -> even value
+          {
+            if      (ar < ab - ar) J = t;
+            else if (ar > ab - ar) J = neg ? t - 1 : t + 1;
+            else                   J = (t & 1) == 0 ? t : (neg ? t - 1 : t + 1);
+          }
+          else                                                 // snap: toward zero
+            J = t;
+        }
+        return static_cast<umax>(J - m);           // offset index k = J - m (>= 0)
+      }
+    }
+
+    // Forward decl — defined in assignment.hpp
+    template <typename L, typename R> struct assignment;
+
+    // A single-point source (Lower == Upper) carries one value, so the only
+    // question is whether it lands on L's grid — admitting e.g. `3_ins` into
+    // `{{0,9},3}` while rejecting `1_ins` and out-of-range points.
+    template <typename L, typename R>
+    inline constexpr bool point_exactly_assignable =
+      (Lower<R> == Upper<R>) && Grid<L>.representable(Lower<R>);
+
+    template <insidable B>
+    [[nodiscard]] constexpr raw_t<B> sentinel_raw()
+    {
+      if constexpr (std::is_same_v<raw_t<B>, rational>)
+        return rational::make_sentinel();
+      else if constexpr (std::signed_integral<raw_t<B>>)
+        return std::numeric_limits<raw_t<B>>::min();
+      else
+        // Unsigned: max(). Real (double): DBL_MAX — a finite, normal, comparable
+        // slot, unreachable as an on-grid value (grids stay < 2^53), so the real
+        // raw never holds NaN/inf/subnormal, only this sentinel, ±0, or a normal.
+        return std::numeric_limits<raw_t<B>>::max();
+    }
+
+    // "Is this raw the reserved sentinel slot?" — rational counts any zero
+    // denominator; everything else (incl. real's finite DBL_MAX) is `==`.
+    template <insidable B>
+    [[nodiscard]] constexpr bool raw_is_sentinel(raw_t<B> const& r)
+    {
+      if constexpr (std::is_same_v<raw_t<B>, rational>)
+        return r.Denominator == 0;
+      else
+        return r == sentinel_raw<B>();
+    }
+
+    // Tail of the policy cascade: sentinel sets sentinel raw, checked reports.
+    // Returns true if a policy handled the failure (caller should return).
+    // Cheap default — reports through the static category message (no string).
+    template <insidable B, typename P>
+    constexpr bool domain_fail(B& b, P&& policy)
+    {
+      if constexpr (HasPolicy<B, P, sentinel>)
+      {
+        b = B::from_raw(sentinel_raw<B>());
+        return true;
+      }
+      else if (policy.domain_check())
+      {
+        policy.report(errc::domain_error);
+        return true;
+      }
+      return false;
+    }
+
+    // The two non-trivial clauses of `inside_assignable`, named so the concept and
+    // its `inside_assignable_why` diagnostic share one definition. Concepts (not
+    // bools) so `||` short-circuits *instantiation* (e.g. assignment<L,R>::Factor
+    // is never formed when R isn't insidable).
+    template <typename L, typename R, policy_flag P = checked>
+    concept assign_intervals_ok =
+      (!insidable<R> && !std::integral<R>)
+      // wrap/clamp bring any value into range, so a disjoint rhs interval is fine
+      // for them (the integral-rhs path already allows it — int's interval is unbounded).
+      || ((InsidePolicy<L> | P) & (wrap | clamp)) != 0
+      || not excludes(Interval<L>, Interval<R>);
+
+    template <typename L, typename R, policy_flag P>
+    concept assign_notch_ok =
+      !insidable<R> || abs_den(assignment<L, R>::Factor.Denominator) == 1
+      || ((InsidePolicy<L> | P) & snap) != 0
+      || point_exactly_assignable<L, R>;
+  } // namespace detail
+
+  // Compile-time prerequisites for L = R, gating three failure modes at the call
+  // site: (1) R is numeric; (2) intervals overlap (typed-interval R only —
+  // skipped for float/rational, which have no static interval); (3) integer
+  // notch ratio or snap set (else R's notch doesn't divide L's; opt into
+  // rounding). Named `inside_assignable` to avoid shadowing std::assignable_from.
+  template <typename L, typename R, policy_flag P = checked>
+  concept inside_assignable =
+    numeric<R>
+    && detail::assign_intervals_ok<L, R, P>
+    && detail::assign_notch_ok<L, R, P>;
+
+  // Diagnostic helper: instantiating `inside_assignable_why<L,R,P>` fires a named
+  // static_assert per failed clause, so a developer can see which tripped. Backs
+  // both the default-build diagnostic fallbacks in `inside` (core.hpp, gated by
+  // `BEMAN_INSIDE_STRICT_SFINAE`) and the public `why_assignable` probe below.
+  template <typename L, typename R, policy_flag P = checked>
+  struct inside_assignable_why
+  {
+    // Collapse each clause to a plain bool *before* the static_assert. Asserting on
+    // a concept-id makes GCC dump the whole satisfaction tree ("constraints not
+    // satisfied / no operand of the disjunction…") on top of the message; a bool
+    // condition prints just the message. Each clause is self-guarding (the inner
+    // disjunctions gate `assignment<L,R>::Factor` on `insidable<R>`), so evaluating
+    // all three unconditionally is safe even when R is not numeric.
+    static constexpr bool is_numeric   = numeric<R>;
+    static constexpr bool intervals_ok = detail::assign_intervals_ok<L, R, P>;
+    static constexpr bool notch_ok     = detail::assign_notch_ok<L, R, P>;
+    static_assert(is_numeric,
+      "inside_assignable: rhs is not numeric (must be an inside or arithmetic type)");
+    static_assert(intervals_ok,
+      "inside_assignable: rhs interval lies entirely outside lhs interval and the policy "
+      "(not wrap/clamp) cannot bring it into range — assignment can never succeed");
+    static_assert(notch_ok,
+      "inside_assignable: incompatible notches — use `with_snap()` or `policy<snap>()` to allow rounding");
+    static constexpr bool value = inside_assignable<L, R, P>;
+  };
+
+  // Public manual probe: `static_assert(beman::inside::why_assignable<DstInside, decltype(src)>);`
+  // emits the named per-clause reasons in any build — including a strict
+  // (`BEMAN_INSIDE_STRICT_SFINAE`) build where the automatic in-`inside` fallbacks are absent.
+  template <typename Dst, typename Src, policy_flag P = InsidePolicy<Dst>>
+  inline constexpr bool why_assignable =
+    inside_assignable_why<Dst, std::remove_cvref_t<Src>, P>::value;
+} // namespace beman::inside
+
+#endif // BEMAN_INSIDE_GENERIC_HPP

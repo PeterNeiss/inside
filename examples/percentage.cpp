@@ -2,14 +2,14 @@
 
 #include <iostream>
 
-#include "bound/bound.hpp"
-#include "bound/io.hpp"
+#include <beman/inside/inside.hpp>
+#include <beman/inside/io.hpp>
 
-using namespace bnd;
+using namespace beman::inside;
 
 int main()
 {
-  using pct = bound<{0, 100}, clamp>;
+  using pct = inside<{0, 100}, clamp>;
 
   pct brightness = 80;
   std::cout << "brightness: " << brightness << "\n";
@@ -22,14 +22,14 @@ int main()
 
   // adjust with +=, clamping is automatic
   brightness = 80;
-  brightness += 50_b;  // clamped to 100
+  brightness += 50_ins;  // clamped to 100
   std::cout << "+= 50:     " << brightness << "\n";
 
-  brightness += -200_b;  // clamped to 0
+  brightness += -200_ins;  // clamped to 0
   std::cout << "+= -200:   " << brightness << "\n";
 
   // per-operation clamp on a strict (throwing) type
-  bound<{0, 100}> strict_pct(50);
+  inside<{0, 100}> strict_pct(50);
   strict_pct.with_clamp() = 200;
   std::cout << "with_clamp: " << strict_pct << "\n";
 

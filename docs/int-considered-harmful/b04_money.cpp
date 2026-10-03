@@ -4,16 +4,16 @@
 
 #include <iostream>
 
-#include "bound/bound.hpp"
-#include "bound/io.hpp"
+#include <beman/inside/inside.hpp>
+#include <beman/inside/io.hpp>
 
-using namespace bnd;
+using namespace beman::inside;
 
 int main()
 {
   // 0..$1,000,000 in 1-cent steps. 0.01 is not exact in binary, so the
   // notch is given as an exact rational -- not as 0.01.
-  using money = bound<{{0, 1'000'000}, notch<1, 100>}, round_nearest>;
+  using money = inside<{{0, 1'000'000}, notch<1, 100>}, round_nearest>;
   static_assert(sizeof(money) == 4);   // still four bytes
 
   money total{0};

@@ -4,14 +4,14 @@
 
 #include <iostream>
 
-#include "bound/bound.hpp"
-#include "bound/io.hpp"
+#include <beman/inside/inside.hpp>
+#include <beman/inside/io.hpp>
 
-using namespace bnd;
+using namespace beman::inside;
 
 int main()
 {
-  using val = bound<{0, 100}>;
+  using val = inside<{0, 100}>;
 
   val a = 7;
   val b = 3;
@@ -27,7 +27,7 @@ int main()
     std::cout << "7 / 3 (integer)  = " << *quotient << "\n";  // 2
 
   // Type-level policy: operator/ uses native division automatically
-  using fast = bound<{0, 100}, snap>;
+  using fast = inside<{0, 100}, snap>;
   fast x = 22;
   fast y = 7;
   auto q = x / y;

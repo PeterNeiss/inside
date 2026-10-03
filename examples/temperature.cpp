@@ -2,14 +2,14 @@
 
 #include <iostream>
 
-#include "bound/bound.hpp"
-#include "bound/io.hpp"
+#include <beman/inside/inside.hpp>
+#include <beman/inside/io.hpp>
 
-using namespace bnd;
+using namespace beman::inside;
 
 int main()
 {
-  using celsius = bound<{{-40, 60}, 0.5}, round_nearest>;
+  using celsius = inside<{{-40, 60}, 0.5}, round_nearest>;
 
   celsius room = 21.4;
   celsius freezing = 0;

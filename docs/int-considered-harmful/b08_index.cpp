@@ -5,10 +5,10 @@
 #include <array>
 #include <iostream>
 
-#include "bound/bound.hpp"
-#include "bound/io.hpp"
+#include <beman/inside/inside.hpp>
+#include <beman/inside/io.hpp>
 
-using namespace bnd;
+using namespace beman::inside;
 
 int main()
 {
@@ -16,7 +16,7 @@ int main()
   for (std::size_t i = 0; i < data.size(); ++i)
     data[i] = static_cast<int>(i * i);
 
-  using index = bound<{0, 9}, sentinel>;
+  using index = inside<{0, 9}, sentinel>;
 
   // In range: usable directly.
   index i{7};
@@ -29,7 +29,7 @@ int main()
 
   // Iterating the valid slots exactly, with no off-by-one to get wrong.
   int sum = 0;
-  for (auto k : bound_range<{0, 9}>{})
+  for (auto k : inside_range<{0, 9}>{})
     sum += data[k.to<std::size_t>().value()];
   std::cout << "sum of all slots   = " << sum << "\n";
   return 0;

@@ -1,7 +1,7 @@
-# `bnd::math` — reproducible math, one API, three engines
+# `beman::inside::math` — reproducible math, one API, three engines
 
-`bound/cmath.hpp` provides a `<cmath>`-shaped function set that operates on
-`bound` values instead of `float`/`double`. There is **one public API** and
+`beman/inside/cmath.hpp` provides a `<cmath>`-shaped function set that operates on
+`inside` values instead of `float`/`double`. There is **one public API** and
 **three engines** — interchangeable at the source/API level, but pairwise **not**
 value-for-value (see the engine caveat below). One is picked as the build
 default; all three stay callable by namespace in the same binary:
@@ -9,8 +9,8 @@ default; all three stay callable by namespace in the same binary:
 | Engine | Default when | Reproducibility | constexpr | Speed |
 |---|---|---|---|---|
 | **double** (binary64, default) | — | bit-identical on every IEEE-754 binary64 platform compiled without `-ffast-math` (round-to-nearest) | no | ~2× faster |
-| **float** (binary32) | CMake `-DBOUND_MATH_FLOAT=ON` (macro `BND_MATH_FLOAT`) | bit-identical on every IEEE-754 binary32 platform (same contract as double) | no | single-precision FPUs (Cortex-M4F) |
-| **integer / CORDIC** | CMake `-DBOUND_MATH_FIXED=ON` (macro `BND_MATH_FIXED`) | bit-identical **unconditionally** — any platform, any flags, no FPU required | yes | embedded-friendly |
+| **float** (binary32) | CMake `-DBEMAN_INSIDE_MATH_FLOAT=ON` (macro `BEMAN_INSIDE_MATH_FLOAT`) | bit-identical on every IEEE-754 binary32 platform (same contract as double) | no | single-precision FPUs (Cortex-M4F) |
+| **integer / CORDIC** | CMake `-DBEMAN_INSIDE_MATH_FIXED=ON` (macro `BEMAN_INSIDE_MATH_FIXED`) | bit-identical **unconditionally** — any platform, any flags, no FPU required | yes | embedded-friendly |
 
 > The double engine's "constexpr: no" lifts automatically on C++26 toolchains
 > with constexpr `<cmath>` (P1383, `__cpp_lib_constexpr_cmath`) — the gate is
@@ -35,15 +35,15 @@ signature-identical**: the same source compiles against any of them.
 > engines; only the transcendentals can differ.)
 
 For the full reproducibility story across the whole library (not just
-`bnd::math`), see [determinism.md](determinism.md).
+`beman::inside::math`), see [determinism.md](determinism.md).
 
 ```cpp
-#include "bound/cmath.hpp"
-using namespace bnd;
+#include <beman/inside/cmath.hpp>
+using namespace beman::inside;
 
 // Math operands here carry the `f64` storage flag (optional — see below).
-using angle = bound<{{-8, 8}, notch<1, 16384>}, round_nearest | f64>;
-auto s = math::sin(angle{1});       // amplitude bound in [-1, 1]
+using angle = inside<{{-8, 8}, notch<1, 16384>}, round_nearest | f64>;
+auto s = math::sin(angle{1});       // amplitude inside in [-1, 1]
 auto h = math::hypot(s, s);         // √(s²+s²), output grid auto-deduced
 ```
 
@@ -66,15 +66,15 @@ rounding.
 `f64` is **not** required — it is an optional **storage** flag that buys speed:
 
 - Under the default engine `f64` selects **double-backed storage** on the
-  bound's grid — the raw *is* the value, so input marshalling into the engine is
+  inside's grid — the raw *is* the value, so input marshalling into the engine is
   free (the large speedup over integer-index I/O). Values still obey the grid:
   they snap to the notch on store. Out-of-range stores run the usual policy
   cascade (clamp / wrap / sentinel / checked report).
 - Without `f64`, a snap-capable grid still works — the engine's `double`/integer
   result is snapped to the grid through the assignment path (a touch slower; no
   double fast path). Use `f64` when the grid is dyadic and you want the speed.
-- Under `BND_MATH_FIXED` `f64` is an ordinary `round_nearest` integer-backed
-  bound — the source compiles unchanged.
+- Under `BEMAN_INSIDE_MATH_FIXED` `f64` is an ordinary `round_nearest` integer-backed
+  inside — the source compiles unchanged.
 - `f64` requires a grid that is **exactly representable in `double`**: dyadic
   (power-of-two notch and Lower) **and** within the 53-bit significand — writing
   a value as `N·2^(−f)` with `f = log2(notch denominator)`, every on-grid value
@@ -83,13 +83,13 @@ rounding.
   grid that is non-dyadic **or** too fine for `double` is a compile error
   (*"grid exceeds double's 53-bit significand — coarsen the notch/range or use
   `exact`"*).
-- An operation whose **result** grid would exceed that bound automatically drops
+- An operation whose **result** grid would exceed that inside automatically drops
   `f64` and stores the result exactly (rational/integer), so `f64` math never
   silently diverges from the exact grid arithmetic — it trades the double fast
   path for exactness only where `double` cannot represent the result.
 
 Pure grid operations — `abs` / `floor` / `ceil` / `round` / `trunc` /
-`fmod` — do **not** require `f64`: they have no engine and act on any bound.
+`fmod` — do **not** require `f64`: they have no engine and act on any inside.
 
 See [policies.md](policies.md#representation-flags) for `f64` among the
 other representation flags.
@@ -100,7 +100,7 @@ other representation flags.
   `asin`/`acos`/`atan`/`atan2` return radians. (There is no turns-valued
   public API.)
 - **Output grids are auto-deduced.** Calling `f(x)` with no explicit template
-  argument deduces the result `bound` from the input's interval and notch:
+  argument deduces the result `inside` from the input's interval and notch:
   the interval is the function's true range over the input, rounded *outward*
   to the input's notch; the notch and policy are inherited (with
   `round_nearest` added, since transcendental results carry sub-notch drift).
@@ -108,7 +108,7 @@ other representation flags.
 - **Error model.** A domain limit that is knowable from the *type* is a
   `static_assert` (compile error). A failure that depends on the *runtime
   value* is reported through `slim::expected<Out, errc>`. Total functions
-  return the bound directly. When an explicit `Out` carries `clamp`, a
+  return the inside directly. When an explicit `Out` carries `clamp`, a
   result that merely leaves `Out`'s interval **saturates** instead of
   erroring (poles and domain errors still error).
 - **Precision.**
@@ -131,7 +131,7 @@ other representation flags.
   e.g. e^44's exact numerator exceeds any grid's integer range — and cannot
   widen without coupling them to the output grid.
 - **constexpr.** The math functions are `constexpr` only under
-  `BND_MATH_FIXED` (the double engine's `std::fma`/`std::sqrt` are runtime).
+  `BEMAN_INSIDE_MATH_FIXED` (the double engine's `std::fma`/`std::sqrt` are runtime).
   The compile-time output-grid deduction uses the integer cores in **every**
   build, so grids and types never depend on the engine.
 
@@ -142,7 +142,7 @@ other representation flags.
 | `abs(x)` | all | `[0, max\|·\|]` | — | exact |
 | `floor(x)` / `ceil(x)` / `round(x)` / `trunc(x)` | all | integer notch | — | exact; `round` is half-away-from-zero |
 | `fmod(x, y)` | `y` must not span 0 | sign of `x` | — | truncated-division convention, exact. Integer-backed operands on commensurable notches take a single-integer-remainder fast path (faster than `std::fmod`). |
-| `pown<E>(x)` | all, `E ≥ 0` compile-time | corner-widened per multiply | optional per the checked-exact rules | repeated squaring in bound-space — exact, negative bases fine, no `f64` needed |
+| `pown<E>(x)` | all, `E ≥ 0` compile-time | corner-widened per multiply | optional per the checked-exact rules | repeated squaring in inside-space — exact, negative bases fine, no `f64` needed |
 
 ## Roots
 
@@ -182,12 +182,12 @@ other representation flags.
 ## Constants
 
 `math::pi` and `math::two_pi` are point-bounds (`just<…>`), so they compose
-directly in bound-space: `angle * math::two_pi`.
+directly in inside-space: `angle * math::two_pi`.
 
 ## Using `expected` results
 
 ```cpp
-auto t = math::tan(angle{1});          // expected<bound, errc>
+auto t = math::tan(angle{1});          // expected<inside, errc>
 if (t) use(*t);
 else if (t.error() == errc::division_by_zero) /* at a pole */;
 
@@ -199,14 +199,14 @@ Expected results compose with arithmetic directly — the chain stays an
 `expected` and the first error wins:
 
 ```cpp
-auto r = math::sqrt(signed_in{v}) * gain + offset;   // expected<bound, errc>
+auto r = math::sqrt(signed_in{v}) * gain + offset;   // expected<inside, errc>
 ```
 
 To drop the cause and enter the zero-cost `optional` chaining world instead,
-convert with `bnd::ok(...)`:
+convert with `beman::inside::ok(...)`:
 
 ```cpp
-auto o = ok(math::tan(angle{x})) * gain;             // optional<bound>
+auto o = ok(math::tan(angle{x})) * gain;             // optional<inside>
 ```
 
 See [arithmetic.md](arithmetic.md) for the bridge rules (error precedence,
@@ -217,7 +217,7 @@ vocabulary.
 ## Selecting the integer engine
 
 ```bash
-cmake -B build-fixed -DBOUND_CXX20=ON -DBOUND_MATH_FIXED=ON
+cmake -B build-fixed -DBEMAN_INSIDE_CXX20=ON -DBEMAN_INSIDE_MATH_FIXED=ON
 cmake --build build-fixed
 ```
 
@@ -229,19 +229,19 @@ platforms compiled without `-ffast-math`.
 
 ## Choosing an engine per call (`cordic::` / `dbl::` / `flt::`)
 
-The unqualified `bnd::math::fn` uses the build's default engine. All three engines
+The unqualified `beman::inside::math::fn` uses the build's default engine. All three engines
 are also reachable by name, **callable side-by-side in the same binary**:
 
 | Namespace | Engine | Availability |
 |---|---|---|
-| `bnd::math::cordic::fn` | integer / CORDIC | **always** (constexpr, FPU-free) |
-| `bnd::math::dbl::fn` | `double` (binary64) | unless `BND_MATH_NO_FP` |
-| `bnd::math::flt::fn` | `float` (binary32) | unless `BND_MATH_NO_FP` |
-| `bnd::math::fn` | the default | `cordic` under `BND_MATH_FIXED`/`BND_MATH_NO_FP`; `flt` under `BND_MATH_FLOAT`; else `dbl` |
+| `beman::inside::math::cordic::fn` | integer / CORDIC | **always** (constexpr, FPU-free) |
+| `beman::inside::math::dbl::fn` | `double` (binary64) | unless `BEMAN_INSIDE_MATH_NO_FP` |
+| `beman::inside::math::flt::fn` | `float` (binary32) | unless `BEMAN_INSIDE_MATH_NO_FP` |
+| `beman::inside::math::fn` | the default | `cordic` under `BEMAN_INSIDE_MATH_FIXED`/`BEMAN_INSIDE_MATH_NO_FP`; `flt` under `BEMAN_INSIDE_MATH_FLOAT`; else `dbl` |
 
-Select the unqualified default at build time: `-DBOUND_MATH_FIXED=ON` (integer),
-`-DBOUND_MATH_FLOAT=ON` (binary32), or neither (binary64). The macro only changes
-what the bare `bnd::math::fn` name means — `cordic::`/`dbl::`/`flt::` stay
+Select the unqualified default at build time: `-DBEMAN_INSIDE_MATH_FIXED=ON` (integer),
+`-DBEMAN_INSIDE_MATH_FLOAT=ON` (binary32), or neither (binary64). The macro only changes
+what the bare `beman::inside::math::fn` name means — `cordic::`/`dbl::`/`flt::` stay
 individually reachable regardless.
 
 The qualified entry points have the **same signatures, domains, auto-deduced
@@ -249,7 +249,7 @@ output grids, and domain `static_assert`s** as the unqualified one — only the
 compute backend differs. This lets one program pick per call site:
 
 ```cpp
-using A = bound<{{-8, 8}, notch<1, 16384>}, round_nearest | f64>;
+using A = inside<{{-8, 8}, notch<1, 16384>}, round_nearest | f64>;
 
 auto a = math::cordic::sin(A{1});   // bit-exact across every target — replay/sim
 auto b = math::dbl::sin(A{1});      // ~2× faster — hot, accuracy-insensitive path
@@ -260,7 +260,7 @@ auto c = math::sin(A{1});           // whichever the build selected
 Because the engines are independent approximations, they can disagree by a notch
 or two on rounding ties (the table-maker's dilemma — see
 [determinism.md](determinism.md)); algebraically-exact inputs (e.g. `sqrt(4)`,
-`pow(2,4)`) land identically on all three. Under `BND_MATH_NO_FP` neither `dbl::`
+`pow(2,4)`) land identically on all three. Under `BEMAN_INSIDE_MATH_NO_FP` neither `dbl::`
 nor `flt::` is defined, so a call to either there is a compile error; `cordic::`
 always works.
 
@@ -295,12 +295,12 @@ output whose grid overflows binary32 (e.g. `exp` of a large argument on a fine
 grid) stores its result in `double` instead of failing to compile. Only a grid
 too fine for `double` as well is a hard error (`exact` is the escape hatch).
 
-## Compiling without floating point (`BND_MATH_NO_FP`)
+## Compiling without floating point (`BEMAN_INSIDE_MATH_NO_FP`)
 
-On a target with no hardware FPU and no `<cmath>`, define **`BND_MATH_NO_FP`**
+On a target with no hardware FPU and no `<cmath>`, define **`BEMAN_INSIDE_MATH_NO_FP`**
 (any value). It compiles the double engine — and its `#include <cmath>` — out
 **entirely**, leaving the always-present integer/CORDIC engine to serve the full
-`bnd::math` API. The public surface, output grids, and types are unchanged: only
+`beman::inside::math` API. The public surface, output grids, and types are unchanged: only
 the compute backend differs.
 
 - **No `<cmath>`, no `std::fma`/`std::sqrt`** are referenced anywhere in the
@@ -310,13 +310,13 @@ the compute backend differs.
   a *poison* `<cmath>` shim first on the include path, so the build fails if any
   `<cmath>` is pulled in.
 - **Auto-enabled** when `__STDC_HOSTED__ == 0` (i.e. `-ffreestanding`) and
-  **implied by `BND_MATH_FIXED`** — selecting the integer engine is itself an
+  **implied by `BEMAN_INSIDE_MATH_FIXED`** — selecting the integer engine is itself an
   FP-free build.
-- All transcendentals are `constexpr` under `BND_MATH_NO_FP` (the integer engine),
+- All transcendentals are `constexpr` under `BEMAN_INSIDE_MATH_NO_FP` (the integer engine),
   so they evaluate at compile time as well as runtime.
 
 ```bash
 # bare-metal: integer engine, no <cmath>, single header
 g++ -std=c++23 -ffreestanding -I single_include my_app.cpp     # NO_FP auto-on
-g++ -std=c++23 -DBND_MATH_NO_FP -I single_include my_app.cpp   # or force it
+g++ -std=c++23 -DBEMAN_INSIDE_MATH_NO_FP -I single_include my_app.cpp   # or force it
 ```

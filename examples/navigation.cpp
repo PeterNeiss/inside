@@ -1,5 +1,5 @@
 // Range, bearing, and elevation to a target — the inverse-trig + hypot corner
-// of bnd::math. All operands carry the `real` policy (the transcendentals
+// of beman::inside::math. All operands carry the `real` policy (the transcendentals
 // require it); angles come back in radians, consistent with sin/cos/atan2.
 //
 // Demonstrates:
@@ -13,11 +13,11 @@
 
 #include <iostream>
 
-#include "bound/bound.hpp"
-#include "bound/io.hpp"
-#include "bound/cmath.hpp"
+#include <beman/inside/inside.hpp>
+#include <beman/inside/io.hpp>
+#include <beman/inside/cmath.hpp>
 
-using namespace bnd;
+using namespace beman::inside;
 
 int main()
 {
@@ -25,7 +25,7 @@ int main()
   // notch is the standard math-operand shape; the fine notch also sharpens the
   // deduced bearing grid (atan2's output inherits the input notch). Magnitudes
   // stay well under the 2^20 working-scale envelope hypot/atan2 require.
-  using pos_t = bound<{{-1024, 1024}, notch<1, 256>}, round_nearest | real>;
+  using pos_t = inside<{{-1024, 1024}, notch<1, 256>}, round_nearest | real>;
 
   struct target { pos_t east; pos_t north; const char* label; };
   const target targets[] = {
@@ -50,7 +50,7 @@ int main()
   // asin / acos recover an angle from a normalized ratio in [-1, 1] — e.g. an
   // elevation whose sine (height / slant-range) is known. Inputs are `real`
   // bounds clamped to the [-1, 1] domain the functions require.
-  using ratio_t = bound<{{-1, 1}, notch<1, 4096>}, round_nearest | real>;
+  using ratio_t = inside<{{-1, 1}, notch<1, 4096>}, round_nearest | real>;
   std::cout << "\nInverse trig (radians):\n";
   std::cout << "  r        asin(r)        acos(r)\n";
   for (ratio_t r : { ratio_t{-1}, ratio_t{-0.5}, ratio_t{0}, ratio_t{0.5}, ratio_t{1} })

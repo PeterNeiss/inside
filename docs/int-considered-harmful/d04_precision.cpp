@@ -1,6 +1,6 @@
 // Double hazard 4: beyond 2^53 a double cannot represent consecutive
 // integers, so counters and ids silently stop incrementing.
-// (bound encodes exactly this limit as its `double_exact` rule.)
+// (inside encodes exactly this limit as its `double_exact` rule.)
 
 #include <cstdio>
 

@@ -5,16 +5,16 @@
 #include <iostream>
 #include <vector>
 
-#include "bound/bound.hpp"
-#include "bound/io.hpp"
+#include <beman/inside/inside.hpp>
+#include <beman/inside/io.hpp>
 
-using namespace bnd;
+using namespace beman::inside;
 
 int main()
 {
   // 0..$1,000,000 in 1¢ steps -> 100M+1 steps fits uint32.
   // 0.01 is not exact in binary, so the notch is given as an exact rational.
-  using money = bound<{{0, 1'000'000}, notch<1, 100>}, round_nearest>;
+  using money = inside<{{0, 1'000'000}, notch<1, 100>}, round_nearest>;
   static_assert(sizeof(money) == 4);
 
   // Running total: line items add exactly, no float drift.
@@ -23,9 +23,9 @@ int main()
   for (auto i : items) subtotal += i;
   std::cout << "subtotal: $" << subtotal << "\n";
 
-  // Apply 8% sales tax. `bound * rational` returns a rational; `round_nearest`
+  // Apply 8% sales tax. `inside * rational` returns a rational; `round_nearest`
   // on `money` snaps the assignment to the nearest 1¢ notch.
-  money tax = subtotal * 0.08_b;
+  money tax = subtotal * 0.08_ins;
   std::cout << "tax (8%): $" << tax << "\n";
 
   money total = subtotal + tax;
@@ -33,7 +33,7 @@ int main()
 
   // Issue a refund, capped at the total. `clamped` saturates rather than
   // throwing if the requested refund exceeds what was paid. `std::min`
-  // works on two `money` values directly via the bound's spaceship operator.
+  // works on two `money` values directly via the inside's spaceship operator.
   money requested_refund{100.00};
   money refund{0};
   refund.with_clamp() = std::min(requested_refund, total);

@@ -2,7 +2,7 @@
 //
 // Demonstrates:
 //   - `mul_all` to chain damage multipliers (crit * vulnerable * armor_pen)
-//   - Implicit clamping when assigning a wider bound into a clamp-policy
+//   - Implicit clamping when assigning a wider inside into a clamp-policy
 //     target (level-scaling that may exceed the HP range)
 //   - `on_clamp` callback on HP to fire "full health" and "downed" hooks
 //   - Fixed-point multipliers in [0, 4] with 1/16 resolution
@@ -12,22 +12,22 @@
 
 #include <iostream>
 
-#include "bound/bound.hpp"
-#include "bound/io.hpp"
+#include <beman/inside/inside.hpp>
+#include <beman/inside/io.hpp>
 
-using namespace bnd;
+using namespace beman::inside;
 
 // Health in [0, 100], clamp-saturating.
-using hp_t  = bound<{0, 100}, clamp>;
+using hp_t  = inside<{0, 100}, clamp>;
 
 // Damage multipliers in [0, 4] with 1/16 step (Q2.4-ish).
-using mult_t = bound<{{0, 4}, notch<1, 16>}, round_nearest>;
+using mult_t = inside<{{0, 4}, notch<1, 16>}, round_nearest>;
 
 // Base damage in [0, 50] integer.
-using damage_t = bound<{0, 50}>;
+using damage_t = inside<{0, 50}>;
 
 // A widened pool that level-scaling can produce — values may exceed hp_t.
-using big_pool_t = bound<{0, 1000}>;
+using big_pool_t = inside<{0, 1000}>;
 
 int main()
 {
@@ -46,10 +46,10 @@ int main()
   auto chain = mul_all(crit, vuln, pen);
   // chain has interval [0, 64] notch 1/4096 — convert to a hit damage by
   // scaling base, then snap to an integer HP deduction. `base * chain` returns
-  // a plain `bound` (the static-overflow check on multiplication elides the
+  // a plain `inside` (the static-overflow check on multiplication elides the
   // optional wrapper). Assigning it into a `round_nearest` integer grid rounds
   // it to the nearest whole point of damage — no rational, no cast.
-  using dealt_t = bound<{0, 3200}, round_nearest>;
+  using dealt_t = inside<{0, 3200}, round_nearest>;
   dealt_t dealt{base * chain};   // integer damage, snapped to the round_nearest grid
   std::cout << "damage chain (2.0 * 1.25 * 1.5) on base 10 = " << dealt << "\n";
 
@@ -69,16 +69,16 @@ int main()
       std::cout << "[downed — overshoot " << overshoot << "]\n";
       downed = true;
     }
-  }) -= 200_b;
+  }) -= 200_ins;
   std::cout << "HP after big hit: " << hp << "  (downed=" << std::boolalpha << downed << ")\n";
 
   // Heal via clamp-saturation back to full.
   hp.on_clamp([&](auto&, auto) { std::cout << "[heal saturated to max HP]\n"; })
-    += 250_b;
+    += 250_ins;
   std::cout << "HP after heal: " << hp << "\n";
 
   // Level-scaled max-HP buff — could exceed hp_t. Because `hp_t` carries a
-  // `clamp` policy, the implicit bound→bound conversion already clips at the
+  // `clamp` policy, the implicit inside→inside conversion already clips at the
   // boundary: no `clamp_cast` needed when the target type already says
   // what to do with out-of-range values.
   big_pool_t bonus{180};

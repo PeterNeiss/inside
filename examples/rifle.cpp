@@ -1,13 +1,13 @@
-// Rifle / magazine / reserve simulation built on the bound policy system.
+// Rifle / magazine / reserve simulation built on the inside policy system.
 //
 // Three classes, each leaning on a different policy:
 //
-//   - `magazine` holds the round count as `bound<{0, capacity}, wrap>` —
+//   - `magazine` holds the round count as `inside<{0, capacity}, wrap>` —
 //     31 distinct states, and the wrap from 0 back up to capacity is
 //     exactly the magazine-swap event.
 //   - `rifle` owns a magazine and the per-weapon trigger-event counters
 //     (`pulled_trigger`, `missed_shots`, `reloads`, `rounds_dropped`).
-//   - `player` owns a rifle plus a `bound<{0, 200}, clamp>` reserve pool;
+//   - `player` owns a rifle plus an `inside<{0, 200}, clamp>` reserve pool;
 //     withdrawals saturate at 0 so we never underflow, and the on_clamp
 //     overshoot tells us how short the reserve was without an explicit
 //     `std::min` or extraction cast.
@@ -18,24 +18,24 @@
 //   - Partial reloads when the reserve is short of a full mag
 //   - Per-shot counters: pulled_trigger, missed_shots, dry_clicks
 //   - Combat-reload that drops the partial mag (rounds_dropped)
-//   - End-to-end without any explicit casts — every bound ↔ integer
+//   - End-to-end without any explicit casts — every inside ↔ integer
 //     interaction flows through the implicit operators or the policy
 //     callbacks.
 
 #include <iostream>
 #include <string_view>
 
-#include "bound/bound.hpp"
-#include "bound/io.hpp"
-#include "bound/formats.hpp"
+#include <beman/inside/inside.hpp>
+#include <beman/inside/io.hpp>
+#include <beman/inside/formats.hpp>
 
-using namespace bnd;
+using namespace beman::inside;
 
 class magazine
 {
 public:
   static constexpr auto capacity = just<30>;
-  using count_t = bound<{0, capacity}, wrap>;     // 31 states; wraps at empty
+  using count_t = inside<{0, capacity}, wrap>;     // 31 states; wraps at empty
 
   count_t rounds{capacity};                        // start full
 
@@ -55,7 +55,7 @@ public:
 class player
 {
 public:
-  using reserve_t = bound<{0, 200}, clamp>;
+  using reserve_t = inside<{0, 200}, clamp>;
   reserve_t reserve{60};                            // two spare mags' worth
   rifle weapon;
   counter<1'000'000> dry_clicks{0};                 // mag empty AND reserve empty
@@ -90,13 +90,13 @@ void player::pull_trigger()
     ++weapon.reloads;
     if (shortfall > 0)
       m = magazine::capacity - magazine::count_t{shortfall};
-  }) -= 1_b;
+  }) -= 1_ins;
 }
 
 void player::combat_reload()
 {
   // The partial mag is dropped; accumulate its round count. `rounds_dropped` is a
-  // saturating `counter`, so this stays bound += bound (the count_t magazine value).
+  // saturating `counter`, so this stays inside += inside (the count_t magazine value).
   weapon.rounds_dropped += weapon.mag.rounds;
 
   magazine::count_t shortfall = 0;

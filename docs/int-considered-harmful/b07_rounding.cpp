@@ -4,15 +4,15 @@
 
 #include <iostream>
 
-#include "bound/bound.hpp"
-#include "bound/io.hpp"
+#include <beman/inside/inside.hpp>
+#include <beman/inside/io.hpp>
 
-using namespace bnd;
+using namespace beman::inside;
 
 int main()
 {
-  using val = bound<{-100, 100}>;
-  using pos = bound<{1, 100}>;   // divisor grid excludes zero
+  using val = inside<{-100, 100}>;
+  using pos = inside<{1, 100}>;   // divisor grid excludes zero
 
   val  n{-7};
   pos  d{2};

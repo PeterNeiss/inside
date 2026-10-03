@@ -1,18 +1,18 @@
 # Conversions
 
-This page covers the conversion surface between `bound` and scalar
+This page covers the conversion surface between `inside` and scalar
 arithmetic types — the exact integer-pair read-out, the named casts, the
 conversion predicates, the implicit conversion operators, and the idioms for
 writing literal values into bounds.
 
 > **Note.** The exact fractional representation type is an internal
-> implementation detail (`bnd::detail::rational`) and is **not** part of the
+> implementation detail (`beman::inside::detail::rational`) and is **not** part of the
 > public surface. You never name it, receive it, or operate on it: scalars
-> enter a bound through construction or `_b` / `just<>` / `frac<N,D>`, and
+> enter an inside through construction or `_ins` / `just<>` / `frac<N,D>`, and
 > exact values come back out through `numerator()` / `denominator()`. Stay in
-> bound-space for arithmetic — that is where the no-overflow guarantee lives.
+> inside-space for arithmetic — that is where the no-overflow guarantee lives.
 
-## Implicit operator conversions on `bound`
+## Implicit operator conversions on `inside`
 
 | Conversion | When it applies | Purpose |
 |---|---|---|
@@ -26,7 +26,7 @@ imax → size_t conversion; if your build enables `-Wsign-conversion`, index
 sites will surface that conversion as a warning.
 
 ```cpp
-bound<{0, 100}> b{42};
+inside<{0, 100}> b{42};
 if (b == 42) { ... }      // arithmetic compare, no conversion needed
 if (b < 50)  { ... }      // works on bounds and scalars
 
@@ -36,8 +36,8 @@ vec[b] = 0;                // no .as<>() — imax, then imax → size_t
 
 double e = double(b);      // explicit (rounding-gated operator double())
 
-using gain = bound<{{0, 4}, notch<1, 65536>}, round_nearest | f64>;
-double d = gain{0.5};      // implicit — an f64 bound's value is exact in double (double-exact grid)
+using gain = inside<{{0, 4}, notch<1, 65536>}, round_nearest | f64>;
+double d = gain{0.5};      // implicit — an f64 inside's value is exact in double (double-exact grid)
                            // (`real` is the deprecated spelling of `f64`)
 ```
 
@@ -45,13 +45,13 @@ For wide grids (Upper > imax_max) the implicit operators are SFINAE-disabled
 — use the typed-error `to<T>()` instead:
 
 ```cpp
-using wide = bound<{0, std::numeric_limits<std::uint64_t>::max()}>;
+using wide = inside<{0, std::numeric_limits<std::uint64_t>::max()}>;
 auto r = wide{huge}.to<std::uint64_t>();   // slim::expected<uint64_t, errc>
 ```
 
 ## Named extraction: `to<T>()` and `as<T>()`
 
-`bound::to<T>()` returns `slim::expected<T, errc>` — each failure surfaces as a
+`inside::to<T>()` returns `slim::expected<T, errc>` — each failure surfaces as a
 distinct typed error: sentinel-state → `errc::not_a_value`, out of T's range →
 `errc::overflow`, negative-into-unsigned → `errc::domain_error`:
 
@@ -73,28 +73,28 @@ ADL). In generic code the free form avoids the `template` disambiguator a
 dependent member call would need (`b.template as<imax>()`):
 
 ```cpp
-template <boundable B>
+template <insidable B>
 imax oracle(B a, B b) { return as<imax>(a) % as<imax>(b); }
 ```
 
 > **Floating-point gate.** `as<double>()` (member and free) shares
-> `operator double()`'s policy gate: a strict bound — one without a rounding
+> `operator double()`'s policy gate: a strict inside — one without a rounding
 > flag — rejects both at compile time. `to<double>()` stays ungated; it is
 > the explicit opt-in for strict bounds.
 
 ## Exact read-out: `numerator()` / `denominator()`
 
-A fractional (Q-format) bound holds an exact value. To read it back out
+A fractional (Q-format) inside holds an exact value. To read it back out
 exactly — without naming the internal representation — use the integer-pair
 accessors. The numerator carries the sign; the denominator is positive; an
-integer-notch bound reports a denominator of 1.
+integer-notch inside reports a denominator of 1.
 
 ```cpp
-bound<{{-4, 4}, notch<1, 16>}, round_nearest> g{0.1875};
+inside<{{-4, 4}, notch<1, 16>}, round_nearest> g{0.1875};
 g.numerator();     //  3
 g.denominator();   // 16        →  exactly 3/16
 
-bound<{0, 100}> hp{42};
+inside<{0, 100}> hp{42};
 hp.numerator();    // 42
 hp.denominator();  //  1
 ```
@@ -113,14 +113,14 @@ call site — particularly useful inside `std::transform` lambdas.
 |---|---|
 | `clamp_cast<B>(v)`     | clamp to `[Lower, Upper]`, never throw |
 | `wrap_cast<B>(v)`      | modular reduction into the target interval |
-| `checked_cast<B>(v)`   | throw `bnd::bound_error` on overflow or off-notch |
+| `checked_cast<B>(v)`   | throw `beman::inside::inside_error` on overflow or off-notch |
 | `unchecked_cast<B>(v)` | trust the caller — UB if out of range |
 | `clamp_floor<B>(v)`    | clamp + round toward −∞ |
 | `clamp_ceil<B>(v)`     | clamp + round toward +∞ |
 | `clamp_round<B>(v)`    | clamp + round to nearest |
 
 ```cpp
-using pct = bound<{0, 100}>;
+using pct = inside<{0, 100}>;
 
 clamp_cast    <pct>(150);   // 100  (clamps regardless of B's declared policy)
 wrap_cast     <pct>(105);   // 4    (modular reduction into [0, 100])
@@ -132,18 +132,18 @@ For `double → bounded` pipelines (audio / graphics / DSP), the `clamp_*`
 family composes clamping with a rounding mode:
 
 ```cpp
-using coarse = bound<{{0, 10}, 2}>;
+using coarse = inside<{{0, 10}, 2}>;
 clamp_floor<coarse>(3.0);   // 2   (clamp + floor)
 clamp_ceil <coarse>(3.0);   // 4   (clamp + ceil)
 clamp_round<coarse>(3.0);   // 4   (clamp + round to nearest)
 clamp_floor<coarse>(15.0);  // 10  (out-of-range clamps to upper)
 ```
 
-The source may also be a **bound** on a finer or incompatible grid — the one-shot
+The source may also be a **inside** on a finer or incompatible grid — the one-shot
 rounding relaxes the notch check, so a fine value rounds onto the target:
 
 ```cpp
-using small = bound<{{0, 10}, notch<1, 10>}, clamp>;
+using small = inside<{{0, 10}, notch<1, 10>}, clamp>;
 small a = 2.5;
 clamp_round<small>(a * a);  // 6.3  (6.25 rounded onto the 1/10 grid, then clamped)
 ```
@@ -156,20 +156,20 @@ The fluent equivalent is the value form of `with_snap()` —
 
 For typed API boundaries — actuator commands, fused sensor outputs, anything
 that takes "saturate and snap to my grid" semantics — the idiom is to put
-`clamp | round_nearest` on the target bound's policy and write `T{value}`:
+`clamp | round_nearest` on the target inside's policy and write `T{value}`:
 
 ```cpp
 // Before — explicit clamp_round at the boundary:
-using output_t = bound<{-100, 100}, clamp>;
+using output_t = inside<{-100, 100}, clamp>;
 return clamp_round<output_t>(raw);
 
 // After — policy carries the intent, `T{raw}` snaps automatically:
-using output_t = bound<{-100, 100}, clamp | round_nearest>;
+using output_t = inside<{-100, 100}, clamp | round_nearest>;
 return output_t{raw};
 ```
 
 The `clamp_*` free functions are still the right choice for one-off conversions
-where the call site needs to override the bound's declared policy.
+where the call site needs to override the inside's declared policy.
 [examples/pid_controller.cpp](../examples/pid_controller.cpp) and
 [examples/sensor_fusion.cpp](../examples/sensor_fusion.cpp) demonstrate the
 boundary-policy form.
@@ -191,32 +191,32 @@ filters around a sample-collection loop.
 
 ## Idiom: writing literal values into bounds
 
-Pick the shape that matches the context. All stay in bound-space — none
+Pick the shape that matches the context. All stay in inside-space — none
 names the internal representation.
 
 | Shape | When to use |
 |---|---|
-| Bare literal (`0`, `0.5`, `100`) | Constructing a bound (`pct{42}`, `gain{0.5}`), comparisons (`b == 5`, `b < 50`), or compound assignment (`b += 1`). Dyadic decimals (`0.5`, `0.25`, `0x1p-8`) are binary-exact and fine as grid endpoints. |
-| `_b` literal (`0`, `0.5_b`, `0xff_b`) | A *bound* operand for arithmetic — `a + 1_b`, `a * 2_b`, `b > 0.5_b`. Gives a scalar a grid so it joins bound arithmetic; the result stays a bound. The parse is exact (no double round-trip). |
-| `just<V>` | A compile-time point-bound from any structural NTTP value — `just<2>`, `just<math::pi>`. Same role as `_b` for non-literal constants. |
+| Bare literal (`0`, `0.5`, `100`) | Constructing an inside (`pct{42}`, `gain{0.5}`), comparisons (`b == 5`, `b < 50`), or compound assignment (`b += 1`). Dyadic decimals (`0.5`, `0.25`, `0x1p-8`) are binary-exact and fine as grid endpoints. |
+| `_ins` literal (`0`, `0.5_ins`, `0xff_b`) | A *inside* operand for arithmetic — `a + 1_ins`, `a * 2_ins`, `b > 0.5_ins`. Gives a scalar a grid so it joins inside arithmetic; the result stays an inside. The parse is exact (no double round-trip). |
+| `just<V>` | A compile-time point-inside from any structural NTTP value — `just<2>`, `just<math::pi>`. Same role as `_ins` for non-literal constants. |
 | `zero` / `one` | Built-in point-bounds for 0 / 1. Assign into any grid that can exactly represent the value (compile-time checked — out of range or off-notch is an error); also stand in for the value in comparison/arithmetic — `b == zero`, `b + one`. |
-| `notch<N, D>` | The grid **step** in a `bound<{...}>` spec — `notch<1, 16384>`. |
+| `notch<N, D>` | The grid **step** in an `inside<{...}>` spec — `notch<1, 16384>`. |
 | `frac<N, D>` | An exact **non-dyadic** grid endpoint that no floating literal can spell — `frac<-6, 5>` for −1.2, `frac<3, 5>` for 0.6. Signed numerator. |
 
 Examples:
 
 ```cpp
-// Construct + compare — bare / _b literals.
-using pct = bound<{0, 100}>;
+// Construct + compare — bare / _ins literals.
+using pct = inside<{0, 100}>;
 pct x = 42;
-auto y = x + 1_b;                 // bound + bound, stays bounded
+auto y = x + 1_ins;                 // inside + inside, stays bounded
 if (x > 50) { ... }              // bare scalar compare is fine
 
 // Exact non-dyadic grid endpoints — frac<N,D> (1.2 and 0.6 are not dyadic):
-using db_div20 = bound<{{frac<-6, 5>, frac<3, 5>}, notch<1, 40>}, round_nearest>;
+using db_div20 = inside<{{frac<-6, 5>, frac<3, 5>}, notch<1, 40>}, round_nearest>;
 
-// A runtime fraction n/16 without leaving bound-space: divide by a grid'd 16.
-vel_t v{ bound<{-12, 12}>{n} / just<16> };
+// A runtime fraction n/16 without leaving inside-space: divide by a grid'd 16.
+vel_t v{ inside<{-12, 12}>{n} / just<16> };
 ```
 
 Dyadic decimals are exact as plain literals: `0.5` is exactly 1/2, `0x1p-8`
@@ -225,37 +225,37 @@ binary fraction (e.g. 1/3, 8/100, −6/5).
 
 ## Comparing bounds
 
-`bound` compares directly with arithmetic types and other bounds — no
+`inside` compares directly with arithmetic types and other bounds — no
 `static_cast` needed:
 
 ```cpp
-bound<{0, 100}> a{42}, b{58};
+inside<{0, 100}> a{42}, b{58};
 REQUIRE(a == 42);
 REQUIRE(a < 50);
 REQUIRE(a + b == 100);
 ```
 
-Mixed-type comparisons (`bound<G1> < bound<G2>`) compute on a common
+Mixed-type comparisons (`inside<G1> < inside<G2>`) compute on a common
 representation chosen at compile time — no implicit narrowing.
 
 ## `std::print` / `std::format` integration
 
-`bound/io.hpp` ships a `std::formatter` specialization for
-`bound<G, P>`. Empty `{}` matches `operator<<` (exact value — a whole number
+`beman/inside/io.hpp` ships a `std::formatter` specialization for
+`inside<G, P>`. Empty `{}` matches `operator<<` (exact value — a whole number
 or an `N/D` fraction); non-empty specs route by storage shape — integer grids
 go through `std::formatter<imax>` (`{:>4}`, `{:#x}`, `{:b}`, …), fractional
 grids through `std::formatter<double>` (`{:.2f}`, `{:e}`).
 
 ```cpp
-#include "bound/io.hpp"
+#include <beman/inside/io.hpp>
 #include <print>
 
-bound<{0, 100}> hp{42};
+inside<{0, 100}> hp{42};
 std::println("HP = {}",       hp);       // 42
 std::println("HP = {:>5}",    hp);       //    42
 std::println("HP = {:#04x}",  hp);       // 0x2a
 
-bound<{{0, 1}, notch<1, 16>}, round_nearest> g{0.625};
+inside<{{0, 1}, notch<1, 16>}, round_nearest> g{0.625};
 std::println("gain = {}",    g);          // 5/8
 std::println("gain = {:.3f}", g);          // 0.625
 ```

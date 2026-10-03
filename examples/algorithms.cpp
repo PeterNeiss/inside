@@ -1,21 +1,21 @@
-// STL and ranges algorithm examples with bound types.
+// STL and ranges algorithm examples with inside types.
 
 #include <algorithm>
 #include <iostream>
 #include <numeric>
 #include <vector>
 
-#include "bound/bound.hpp"
-#include "bound/io.hpp"
+#include <beman/inside/inside.hpp>
+#include <beman/inside/io.hpp>
 
 namespace rng = std::ranges;
-using namespace bnd;
+using namespace beman::inside;
 
-using celsius   = bound<{{-40, 60}, 0.5}, round_nearest>;
-using channel   = bound<{0, 255}, clamp>;
-using pct       = bound<{0, 100}, clamp>;
-using score     = bound<{0, 1000}>;
-using altitude  = bound<{-500, 9000}>;
+using celsius   = inside<{{-40, 60}, 0.5}, round_nearest>;
+using channel   = inside<{0, 255}, clamp>;
+using pct       = inside<{0, 100}, clamp>;
+using score     = inside<{0, 1000}>;
+using altitude  = inside<{-500, 9000}>;
 
 template <typename T>
 void print(std::string_view label, std::vector<T> const& v)
@@ -98,7 +98,7 @@ int main()
     // darken: subtract 50 from each channel (clamp prevents underflow)
     rng::transform(src, dst.begin(), [](channel c) {
       auto d = c;
-      d -= 50_b;
+      d -= 50_ins;
       return d;
     });
     print("original", src);
@@ -108,14 +108,14 @@ int main()
   // --- reduce ---
   std::cout << "\n--- reduce ---\n";
   {
-    using wide_score = bound<{0, 100'000}>;
+    using wide_score = inside<{0, 100'000}>;
     std::vector<score> scores = {100, 250, 500, 750, 1000};
     auto total = std::reduce(scores.begin(), scores.end(), wide_score{0}, std::plus<>{});
     std::cout << "total: " << total << "\n";
 
     // transform_reduce: weighted sum
     std::vector<score> weights = {2, 3, 5};
-    using wide = bound<{0, 1'000'000}>;
+    using wide = inside<{0, 1'000'000}>;
     auto dot = std::transform_reduce(
       scores.begin(), scores.begin() + 3, weights.begin(), wide{0},
       std::plus<>{}, [](score a, score b) { return a * b; });
@@ -175,14 +175,14 @@ int main()
 
     // std::accumulate
     std::vector<channel> rgb = {200, 150, 100};
-    using wide_ch = bound<{0, 100'000}>;
+    using wide_ch = inside<{0, 100'000}>;
     auto brightness = std::accumulate(rgb.begin(), rgb.end(), wide_ch{0}, std::plus<>{});
     std::cout << "accumulate brightness: " << brightness << "\n";
 
     // std::inner_product
     std::vector<score> a = {10, 20, 30};
     std::vector<score> b = {3, 2, 1};
-    using wide_score = bound<{0, 1'000'000}>;
+    using wide_score = inside<{0, 1'000'000}>;
     auto dot = std::inner_product(a.begin(), a.end(), b.begin(), wide_score{0},
                                   std::plus<>{}, [](score x, score y) { return x * y; });
     std::cout << "inner_product: " << dot << "\n";
@@ -243,18 +243,18 @@ int main()
     print("iota", iota_v);
   }
 
-  // --- bound_range ---
-  std::cout << "\n--- bound_range ---\n";
+  // --- inside_range ---
+  std::cout << "\n--- inside_range ---\n";
   {
     std::cout << "for_each [0..9]: ";
-    for (auto i : bound_range<{0, 9}>{})
+    for (auto i : inside_range<{0, 9}>{})
       std::cout << i << " ";
     std::cout << "\n";
 
     // wrap-around range starting at 7
     std::cout << "wrap from 7:    ";
-    using idx = bound<{0, 9}>;
-    for (auto i : bound_range<{0, 9}>{idx{7}})
+    using idx = inside<{0, 9}>;
+    for (auto i : inside_range<{0, 9}>{idx{7}})
       std::cout << i << " ";
     std::cout << "\n";
   }

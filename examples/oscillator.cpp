@@ -1,36 +1,36 @@
-// Quadrature oscillator: integer phase accumulator + bnd::math::sin/cos.
+// Quadrature oscillator: integer phase accumulator + beman::inside::math::sin/cos.
 //
 // Demonstrates:
 //   - A plain `uint16_t` phase counter — integer overflow on `+=` IS the
 //     periodic wrap. The same property `turns_t<N>.Raw` used internally
 //     before the trig API moved to a radians-first design; now exposed
-//     here as the natural integer pattern instead of a special bound.
-//   - Per-step conversion of the counter to a radians-valued bound via a
+//     here as the natural integer pattern instead of a special inside.
+//   - Per-step conversion of the counter to a radians-valued inside via a
 //     constexpr `rad_per_slot` constant — one rational multiply, then
-//     `bnd::math::sin(angle_bound)` / `bnd::math::cos(angle_bound)`.
+//     `beman::inside::math::sin(angle_inside)` / `beman::inside::math::cos(angle_inside)`.
 //   - A frequency-swept variant where the per-sample increment changes
 //     each step — exactly the pattern a chirp generator or vibrato LFO uses.
 
 #include <cstdint>
 #include <iostream>
 
-#include "bound/bound.hpp"
-#include "bound/io.hpp"
-#include "bound/cmath.hpp"
+#include <beman/inside/inside.hpp>
+#include <beman/inside/io.hpp>
+#include <beman/inside/cmath.hpp>
 
-using namespace bnd;
+using namespace beman::inside;
 
 int main()
 {
-  // Radians-valued angle bound covering one full cycle. ±8 rad is wider
+  // Radians-valued angle inside covering one full cycle. ±8 rad is wider
   // than 2π so the conversion result always fits without saturation.
-  using angle_t = bound<{{-8, 8}, notch<1, 16384>}, round_nearest | real>;
+  using angle_t = inside<{{-8, 8}, notch<1, 16384>}, round_nearest | real>;
 
   // 2π / 65536 — the radians-per-slot for a uint16 phase counter, as a
-  // compile-time point-bound. Multiplying the phase (lifted into a bound) by
-  // it converts counter → radians without leaving bound-space.
+  // compile-time point-inside. Multiplying the phase (lifted into an inside) by
+  // it converts counter → radians without leaving inside-space.
   constexpr auto rad_per_slot = math::two_pi / just<65536>;
-  using phase_b = bound<{0, 65535}>;
+  using phase_b = inside<{0, 65535}>;
 
   std::cout << "Fixed-frequency oscillator (1/8 turn per sample, 8 samples = 1 cycle):\n";
   std::cout << "  i   sin              cos\n";

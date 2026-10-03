@@ -1,12 +1,12 @@
-// A like-for-like benchmark: bound against native code that enforces the
+// A like-for-like benchmark: inside against native code that enforces the
 // SAME guarantee, not against unchecked native code that enforces nothing.
 //
 // The four contenders, all computing the same sums over [0, 200]:
 //   1. native unchecked   -- plain uint8_t. No range enforcement at all.
 //   2. native clamped     -- std::clamp on every result.
 //   3. native checked     -- hand-rolled bounded struct, throws out_of_range.
-//   4. bound<checked>     -- the library's default policy.
-//   5. bound<unsafe>      -- the library with checking switched off.
+//   4. inside<checked>     -- the library's default policy.
+//   5. inside<unsafe>      -- the library with checking switched off.
 //
 // Contenders 2, 3 and 4 provide the same guarantee. Those are the rows that
 // belong in a fair comparison. 1 is included only to show what the guarantee
@@ -21,9 +21,9 @@
 #include <stdexcept>
 #include <vector>
 
-#include "bound/bound.hpp"
+#include <beman/inside/inside.hpp>
 
-using namespace bnd;
+using namespace beman::inside;
 
 // ---------------------------------------------------------------- helpers ---
 template<typename T>
@@ -36,7 +36,7 @@ static constexpr int kN    = 4096;     // values per pass
 static constexpr int kReps = 20000;    // passes
 
 // A hand-rolled checked bounded integer: what you would write to get the
-// guarantee bound gives you, in plain C++.
+// guarantee inside gives you, in plain C++.
 struct checked_u8
 {
   std::uint8_t value{};
@@ -56,8 +56,8 @@ struct checked_u8
   }
 };
 
-using bchecked = bound<{0, 200}, checked>;
-using bunsafe  = bound<{0, 200}, unsafe>;
+using bchecked = inside<{0, 200}, checked>;
+using bunsafe  = inside<{0, 200}, unsafe>;
 
 template<typename F>
 static double time_ns_per_op(F&& f)
@@ -108,7 +108,7 @@ int main()
       }
   });
 
-  const double bound_checked = time_ns_per_op([&] {
+  const double inside_checked = time_ns_per_op([&] {
     for (int r = 0; r < kReps; ++r)
       for (int i = 0; i < kN; ++i)
       {
@@ -118,7 +118,7 @@ int main()
       }
   });
 
-  const double bound_unsafe = time_ns_per_op([&] {
+  const double inside_unsafe = time_ns_per_op([&] {
     for (int r = 0; r < kReps; ++r)
       for (int i = 0; i < kN; ++i)
       {
@@ -141,13 +141,13 @@ int main()
   row("native unchecked",  native,         false);
   row("native clamped",    clamped,        true);
   row("native checked",    checked_native, true);
-  row("bound<checked>",    bound_checked,  true);
-  row("bound<unsafe>",     bound_unsafe,   false);
+  row("inside<checked>",    inside_checked,  true);
+  row("inside<unsafe>",     inside_unsafe,   false);
 
   std::printf("\nfair comparison (same guarantee, vs best safe native):\n");
   const double best_safe = std::min(clamped, checked_native);
   std::printf("  best safe native   = %.3f ns/op\n", best_safe);
-  std::printf("  bound<checked>     = %.3f ns/op  -> %.1f%% of safe native\n",
-              bound_checked, 100.0 * best_safe / bound_checked);
+  std::printf("  inside<checked>     = %.3f ns/op  -> %.1f%% of safe native\n",
+              inside_checked, 100.0 * best_safe / inside_checked);
   return 0;
 }

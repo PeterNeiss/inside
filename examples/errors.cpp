@@ -5,16 +5,16 @@
 #include <iostream>
 #include <limits>
 
-#include "bound/bound.hpp"
-#include "bound/io.hpp"
+#include <beman/inside/inside.hpp>
+#include <beman/inside/io.hpp>
 
-using namespace bnd;
+using namespace beman::inside;
 
-using checked_100 = bound<{0, 100}, checked>;
-using clamp_100   = bound<{0, 100}, clamp>;
-using wrap_360    = bound<{0, 359}, wrap>;
-using sentinel_9  = bound<{0, 9}, sentinel>;
-using coarse      = bound<{{0, 10}, 2}>;   // notch 2: rounding_error demo
+using checked_100 = inside<{0, 100}, checked>;
+using clamp_100   = inside<{0, 100}, clamp>;
+using wrap_360    = inside<{0, 359}, wrap>;
+using sentinel_9  = inside<{0, 9}, sentinel>;
+using coarse      = inside<{{0, 10}, 2}>;   // notch 2: rounding_error demo
 
 int main()
 {
@@ -27,7 +27,7 @@ int main()
     checked_100 x = 200;
     (void)x;
   }
-  catch (bnd::bound_error& e)
+  catch (beman::inside::inside_error& e)
   {
     std::cout << "throw:    " << errc_message(e.code) << "\n";
   }
@@ -42,9 +42,9 @@ int main()
   std::cout << "in-range: " << *ok << "\n";
 
 
-  // === Section 2: Per-operation overrides on a default-checked bound ===
+  // === Section 2: Per-operation overrides on a default-checked inside ===
 
-  bnd::errc ec{};
+  beman::inside::errc ec{};
   checked_100 z(50);
   z.policy(ec) = 200;
   std::cout << "policy ec:" << (ec != errc{} ? errc_message(ec) : "no error")
@@ -58,7 +58,7 @@ int main()
   }) = 200;
   std::cout << "          (r=" << r << ")" << "\n";
 
-  bound<{0, 100}> w(50);
+  inside<{0, 100}> w(50);
   w.policy<ignore_domain>() = 200;
   std::cout << "ignored:  raw=" << w << " (domain check skipped)" << "\n";
 
@@ -86,7 +86,7 @@ int main()
 
 
   // === Section 4: Free-function error_code overload ===
-  // add / sub / mul / div / mod accept an bnd::errc& directly; ec is
+  // add / sub / mul / div / mod accept an beman::inside::errc& directly; ec is
   // set on overflow or division-by-zero, the result is nullopt on failure.
 
   ec = errc{};
@@ -112,20 +112,20 @@ int main()
   // === Section 6: Inspection callbacks for non-error policies ===
 
   // on_clamp / on_wrap auto-merge their implied policy bit, so the base
-  // bound need not be a clamp/wrap type.
-  bound<{0, 100}> p(80);
+  // inside need not be a clamp/wrap type.
+  inside<{0, 100}> p(80);
   p.on_clamp([](auto& self, auto overshoot) {
     std::cout << "on_clamp: overshoot=" << overshoot
               << " (saturated to " << self << ")" << "\n";
   }) = 150;
 
-  bound<{0, 59}> sec(50);
+  inside<{0, 59}> sec(50);
   sec.on_wrap([](auto& self, auto carry) {
     std::cout << "on_wrap:  carry=" << carry
               << " (wrapped to " << self << ")" << "\n";
   }) = 75;
 
-  // .with(...) packs multiple callbacks for one operation. The bound add
+  // .with(...) packs multiple callbacks for one operation. The inside add
   // overshoots [0,100], so the narrowing fires on_clamp; on_overflow is packed
   // too but stays silent (a range-bounded operand can't overflow imax).
   clamp_100 combo(50);
@@ -136,7 +136,7 @@ int main()
     on_clamp([](auto&, auto over) {
       std::cout << "combo:    on_clamp overshoot=" << over << "\n";
     })
-  ) += 200_b;
+  ) += 200_ins;
   std::cout << "          (combo=" << combo << ")" << "\n";
 
   return 0;

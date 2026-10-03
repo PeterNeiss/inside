@@ -3,16 +3,16 @@
 
 #include <iostream>
 
-#include "bound/bound.hpp"
-#include "bound/io.hpp"
+#include <beman/inside/inside.hpp>
+#include <beman/inside/io.hpp>
 
-using namespace bnd;
+using namespace beman::inside;
 
-using channel = bound<{0, 255}, clamp>;
+using channel = inside<{0, 255}, clamp>;
 
 // A signed per-channel adjustment. A runtime delta has a range — name it — so
-// `R += amount` stays bound += bound (a raw int is no longer an arithmetic RHS).
-using channel_delta = bound<{-512, 512}>;
+// `R += amount` stays inside += inside (a raw int is no longer an arithmetic RHS).
+using channel_delta = inside<{-512, 512}>;
 
 struct rgb
 {

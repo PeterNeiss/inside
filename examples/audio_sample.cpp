@@ -4,46 +4,46 @@
 // to the boundary instead of wrapping or throwing.
 //
 // No `<cmath>` in the example body — the sine waveforms come from
-// `bnd::math::sin` on a radians-valued bound. The 2π scaling is one
-// bound × bound multiply via inline `just<math::two_pi>`.
+// `beman::inside::math::sin` on a radians-valued inside. The 2π scaling is one
+// inside × inside multiply via inline `just<math::two_pi>`.
 
 #include <iostream>
 #include <vector>
 
-#include "bound/bound.hpp"
-#include "bound/io.hpp"
-#include "bound/cmath.hpp"
+#include <beman/inside/inside.hpp>
+#include <beman/inside/io.hpp>
+#include <beman/inside/cmath.hpp>
 
-using namespace bnd;
+using namespace beman::inside;
 
 int main()
 {
   // Signed fractional grid: 32769 steps in [-1, 1] -> uint16 storage
-  using sample = bound<{{-1, 1}, notch<1, 16384>}, round_nearest>;
+  using sample = inside<{{-1, 1}, notch<1, 16384>}, round_nearest>;
   static_assert(sizeof(sample) == 2);
 
   // Two sine waves; combined peaks exceed unity to exercise clamping.
   // wave_b is phase-shifted by -π/6 (= 30° behind wave_a).
   constexpr std::size_t N = 8;
 
-  using time_t    = bound<{{ 0,  1}, notch<1,     N>}, round_nearest>;
-  using offset_t  = bound<{{-2,  2}, notch<1, 16384>}, round_nearest>;
-  using angle_t   = bound<{{-4, 10}, notch<1, 16384>}, round_nearest | real>;
-  using gainfac_t = bound<{{ 0,  1}, notch<1,  1024>}, round_nearest>;
+  using time_t    = inside<{{ 0,  1}, notch<1,     N>}, round_nearest>;
+  using offset_t  = inside<{{-2,  2}, notch<1, 16384>}, round_nearest>;
+  using angle_t   = inside<{{-4, 10}, notch<1, 16384>}, round_nearest | real>;
+  using gainfac_t = inside<{{ 0,  1}, notch<1,  1024>}, round_nearest>;
 
   constexpr offset_t  off_a{0};
   constexpr offset_t  off_b{-math::pi / just<6>};
-  constexpr gainfac_t gain_a{0.8_b};
-  constexpr gainfac_t gain_b{0.6_b};
+  constexpr gainfac_t gain_a{0.8_ins};
+  constexpr gainfac_t gain_b{0.6_ins};
 
   std::vector<sample> wave_a(N), wave_b(N);
-  for (auto i : bound_range<{0, N-1}>{})
+  for (auto i : inside_range<{0, N-1}>{})
   {
-    time_t  t{i / just<N>};   // bound / bound — give the divisor N a grid
-    angle_t base{t * math::two_pi};                            // bound × bound, snap
-    angle_t a_a{base + off_a};                                        // bound + bound
-    angle_t a_b{base + off_b};                                        // bound + bound
-    wave_a[i] = sample{gain_a * math::sin(a_a)};                     // bound × bound
+    time_t  t{i / just<N>};   // inside / inside — give the divisor N a grid
+    angle_t base{t * math::two_pi};                            // inside × inside, snap
+    angle_t a_a{base + off_a};                                        // inside + inside
+    angle_t a_b{base + off_b};                                        // inside + inside
+    wave_a[i] = sample{gain_a * math::sin(a_a)};                     // inside × inside
     wave_b[i] = sample{gain_b * math::sin(a_b)};
   }
 
@@ -59,8 +59,8 @@ int main()
   }
 
   // Peak detection over the buffer (max magnitude). `math::abs` keeps us in
-  // the bound world; the result is signed-stripped via |x| <= max.
-  using abs_t = bound<{{0, 1}, notch<1, 16384>}, round_nearest>;
+  // the inside world; the result is signed-stripped via |x| <= max.
+  using abs_t = inside<{{0, 1}, notch<1, 16384>}, round_nearest>;
   abs_t peak{0};
   for (auto s : wave_a)
   {

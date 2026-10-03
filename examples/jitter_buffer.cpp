@@ -5,26 +5,26 @@
 // Demonstrates:
 //   - `sentinel` policy and `on_sentinel` callback (per-write hook)
 //   - `checked_cast` for slot-index validation
-//   - `bound_range` to walk every slot in playback order
+//   - `inside_range` to walk every slot in playback order
 //   - Fixed-point packet timestamps (1/8 ms resolution)
 
 #include <iostream>
 #include <vector>
 
-#include "bound/bound.hpp"
-#include "bound/io.hpp"
+#include <beman/inside/inside.hpp>
+#include <beman/inside/io.hpp>
 
-using namespace bnd;
+using namespace beman::inside;
 
 // Window of 16 slots indexed 0..15.
-using slot_id_t = bound<{0, 15}>;
+using slot_id_t = inside<{0, 15}>;
 
 // Slot contents: relative offset from the playback base (0..63), with a
 // sentinel slot indicating "empty / dropped".
-using packet_id_t = bound<{0, 63}, sentinel>;
+using packet_id_t = inside<{0, 63}, sentinel>;
 
 // Timestamp in 1/8 ms — fixed-point precision tied to the audio frame.
-using ts_t = bound<{{0, 8000}, notch<1, 8>}, round_nearest>;
+using ts_t = inside<{{0, 8000}, notch<1, 8>}, round_nearest>;
 
 int main()
 {
@@ -58,7 +58,7 @@ int main()
     insert(seq, 0);
 
   std::cout << "\nplayback order (sentinel = dropped/empty):\n";
-  for (auto slot : bound_range<{0, 15}>{})
+  for (auto slot : inside_range<{0, 15}>{})
   {
     auto& s = slots[slot];
     // `is_sentinel()` is the public probe for the slot's empty state under

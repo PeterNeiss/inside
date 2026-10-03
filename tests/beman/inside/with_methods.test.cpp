@@ -1,0 +1,237 @@
+#include <beman/inside/inside.hpp>
+#include <beman/inside/io.hpp>
+
+#include <catch2/catch_test_macros.hpp>
+#include <type_traits>
+
+using namespace beman::inside;
+using namespace beman::inside::detail;
+
+//---------------------------------------------------------------------------
+// with_clamp
+//---------------------------------------------------------------------------
+TEST_CASE("with_clamp: integer rhs, both directions", "[inside][with][clamp]")
+{
+  using u100 = inside<{0, 100}>;
+  u100 x{50};
+
+  x.with_clamp() = 150;     REQUIRE(x == 100);
+  x.with_clamp() = -50;     REQUIRE(x == 0);
+  x.with_clamp() = 75;      REQUIRE(x == 75);   // in-range passes through
+}
+
+TEST_CASE("with_clamp: float rhs", "[inside][with][clamp]")
+{
+  using u10 = inside<{{0, 10}, 0.5}>;
+  u10 x{5};
+
+  x.with_clamp() = 100.0;   REQUIRE(x == 10);
+  x.with_clamp() = -5.0;    REQUIRE(x == 0);
+  x.with_clamp() = 3.5;     REQUIRE(x == 3.5_r);
+}
+
+TEST_CASE("with_clamp: inside rhs", "[inside][with][clamp][inside2inside]")
+{
+  using wide   = inside<{0, 200}>;
+  using narrow = inside<{0, 100}>;
+  narrow n{0};
+  wide   over{150};
+
+  n.with_clamp() = over;    REQUIRE(n == 100);
+
+  wide under_zero{0};
+  n.with_clamp() = under_zero;  REQUIRE(n == 0);
+}
+
+TEST_CASE("with_clamp: signed inside", "[inside][with][clamp][signed]")
+{
+  using s = inside<{-100, 100}>;
+  s x{0};
+
+  x.with_clamp() = 200;     REQUIRE(x == 100);
+  x.with_clamp() = -200;    REQUIRE(x == -100);
+}
+
+//---------------------------------------------------------------------------
+// with_wrap
+//---------------------------------------------------------------------------
+TEST_CASE("with_wrap: integer rhs, both directions", "[inside][with][wrap]")
+{
+  using u10 = inside<{0, 9}>;
+  u10 x{5};
+
+  x.with_wrap() = 13;       REQUIRE(x == 3);   // 13 % 10
+  x.with_wrap() = 23;       REQUIRE(x == 3);   // 23 % 10
+  x.with_wrap() = -1;       REQUIRE(x == 9);   // -1 wraps to top
+  x.with_wrap() = -11;      REQUIRE(x == 9);
+  x.with_wrap() = 5;        REQUIRE(x == 5);   // in-range
+}
+
+TEST_CASE("with_wrap: signed inside", "[inside][with][wrap][signed]")
+{
+  using s = inside<{-5, 5}>;   // 11 values
+  s x{0};
+
+  // 6 ≡ -5 (mod 11) within [-5, 5]
+  x.with_wrap() = 6;        REQUIRE(x == -5);
+  // 17 = 6 + 11 ≡ -5 (mod 11)
+  x.with_wrap() = 17;       REQUIRE(x == -5);
+  // -6 ≡ 5 (mod 11)
+  x.with_wrap() = -6;       REQUIRE(x == 5);
+}
+
+TEST_CASE("with_wrap: inside rhs", "[inside][with][wrap][inside2inside]")
+{
+  using src = inside<{0, 100}>;
+  using dst = inside<{0, 9}>;
+  dst d{0};
+
+  src high{45};
+  d.with_wrap() = high;     REQUIRE(d == 5);   // 45 % 10
+}
+
+//---------------------------------------------------------------------------
+// with_snap (truncates toward zero)
+//---------------------------------------------------------------------------
+TEST_CASE("with_snap: inside rhs with finer notch", "[inside][with][snap]")
+{
+  using coarse = inside<{{0, 10}, 2}>;
+  using fine   = inside<{{0, 10}, 1}>;
+
+  coarse c{0};
+  c.with_snap() = fine{3};   REQUIRE(c == 2);   // 3 truncates toward zero -> 2
+  c.with_snap() = fine{4};   REQUIRE(c == 4);   // exact
+  c.with_snap() = fine{5};   REQUIRE(c == 4);   // 5 -> 4
+  c.with_snap() = fine{7};   REQUIRE(c == 6);   // 7 -> 6
+}
+
+TEST_CASE("with_snap: float rhs not on notch", "[inside][with][snap]")
+{
+  using coarse = inside<{{0, 10}, 2}>;
+  coarse c{0};
+
+  c.with_snap() = 3.0;       REQUIRE(c == 2);   // 3 truncates to 2
+  c.with_snap() = 3.99;      REQUIRE(c == 2);
+  c.with_snap() = 4.0;       REQUIRE(c == 4);   // exact
+}
+
+//---------------------------------------------------------------------------
+// with_snap<round_nearest> (round half away)
+//---------------------------------------------------------------------------
+TEST_CASE("with_snap<round_nearest>: float rhs", "[inside][with][round_nearest]")
+{
+  using coarse = inside<{{0, 10}, 2}>;
+  coarse c{0};
+
+  c.with_snap<round_nearest>() = 3.0;    REQUIRE(c == 4);   // halfway-up: 3 -> 4
+  c.with_snap<round_nearest>() = 2.99;   REQUIRE(c == 2);
+  c.with_snap<round_nearest>() = 3.01;   REQUIRE(c == 4);
+  c.with_snap<round_nearest>() = 4.0;    REQUIRE(c == 4);   // exact
+
+  using half = inside<{{0, 10}, 0.5}>;
+  half h;
+  h.with_snap<round_nearest>() = 3.3;    REQUIRE(h == 3.5_r);  // 3.5
+  h.with_snap<round_nearest>() = 3.2;    REQUIRE(h == 3);                // 3.0
+}
+
+TEST_CASE("with_snap<round_nearest>: inside rhs incompatible notches",
+          "[inside][with][round_nearest][inside2inside]")
+{
+  using coarse = inside<{{0, 10}, 2}>;
+  using fine   = inside<{{0, 10}, 1}>;
+
+  coarse c{0};
+  c.with_snap<round_nearest>() = fine{3};   REQUIRE(c == 4);   // 3 -> 4 (round half up)
+  c.with_snap<round_nearest>() = fine{5};   REQUIRE(c == 6);   // 5 -> 6
+  c.with_snap<round_nearest>() = fine{4};   REQUIRE(c == 4);   // exact
+}
+
+//---------------------------------------------------------------------------
+// with_snap vs with_snap<round_nearest> divergence
+//---------------------------------------------------------------------------
+TEST_CASE("with_snap vs with_snap<round_nearest> disagree on halfway",
+          "[inside][with][snap]")
+{
+  using coarse = inside<{{0, 10}, 2}>;
+  coarse c{0};
+
+  c.with_snap()         = 3.0;   REQUIRE(c == 2);   // toward zero
+  c.with_snap<round_nearest>() = 3.0;   REQUIRE(c == 4);   // half away from zero
+}
+
+//---------------------------------------------------------------------------
+// with_snap<Mode> — the Mode template parameter selects the rounding mode.
+// One value driven through every mode; +3 / -3 sit halfway between notches so
+// floor / ceil / truncate diverge by sign.
+//---------------------------------------------------------------------------
+TEST_CASE("with_snap<Mode> selects the rounding mode", "[inside][with][snap][mode]")
+{
+  using coarse = inside<{{-10, 10}, 2}>;   // grid: … -4 -2 0 2 4 …
+  coarse c{0};
+
+  // +3 is halfway between 2 and 4.
+  c.with_snap()                  = 3.0;  REQUIRE(c == 2);  // default == truncate toward zero
+  c.with_snap<snap>()            = 3.0;  REQUIRE(c == 2);  // explicit snap == the default
+  c.with_snap<round_floor>()     = 3.0;  REQUIRE(c == 2);  // toward −∞
+  c.with_snap<round_ceil>()      = 3.0;  REQUIRE(c == 4);  // toward +∞
+  c.with_snap<round_nearest>()   = 3.0;  REQUIRE(c == 4);  // half away from zero
+  c.with_snap<round_half_even>() = 3.0;  REQUIRE(c == 4);  // tie → even quotient
+
+  // −3 is halfway between −4 and −2: floor / ceil / truncate now disagree.
+  c.with_snap()                  = -3.0; REQUIRE(c == -2); // truncate toward zero
+  c.with_snap<round_floor>()     = -3.0; REQUIRE(c == -4); // toward −∞
+  c.with_snap<round_ceil>()      = -3.0; REQUIRE(c == -2); // toward +∞
+  c.with_snap<round_nearest>()   = -3.0; REQUIRE(c == -4); // half away from zero
+  c.with_snap<round_half_even>() = -3.0; REQUIRE(c == -4); // tie → even quotient
+}
+
+// A snapped temporary returned by value: with_snap() on an rvalue yields a
+// value-owning policy_buffer (moves the product in), so this is safe — the buffer
+// outlives the `num*num` temporary. Defined at namespace scope so the temporary is
+// truly gone by the time the caller reads the result.
+namespace { using small_t = beman::inside::inside<{{0, 10}, notch<1, 10>}, clamp>;
+            auto square(small_t n) { return (n * n).with_snap(); } }
+
+//---------------------------------------------------------------------------
+// with_snap() as a value. On an lvalue it converts through a (reference) policy_ref;
+// on a *temporary* it returns a value-owning policy_buffer, so the snapped result can
+// be returned/stored without dangling. Either way the target's own policy (clamp) and
+// the proxy's snap merge via HasPolicy.
+//---------------------------------------------------------------------------
+TEST_CASE("with_snap() proxy converts to a value (RHS / return position)",
+          "[inside][with][snap][convert]")
+{
+  using small = small_t;
+  small a = 2.5;                                  // exact (dyadic) on the 1/10 grid
+
+  // a*a is 6.25 on the finer 1/100 grid — off small's notch. These compile because
+  // the proxy converts to `small`, applying clamp (range) + snap (notch).
+  small trunc   = (a * a).with_snap();                // 6.25 → 6.2 (truncate)
+  small nearest = (a * a).with_snap<round_nearest>(); // 6.25 → 6.3 (nearest)
+  REQUIRE(trunc   == 6.2_r);
+  REQUIRE(nearest == 6.3_r);
+
+  // Out-of-range still clamps, via small's own policy merged in at conversion.
+  small four = 4;
+  REQUIRE(small((four * four).with_snap()) == 10);    // 16 → clamp → 10
+
+  // Safety: `auto square(){ return (n*n).with_snap(); }` returns the value-owning
+  // buffer; converting it to `small` after the temporary is gone is well-defined.
+  small from_temp = square(small{2.5});
+  small clamped   = square(small{4});
+  REQUIRE(from_temp == 6.2_r);
+  REQUIRE(clamped   == 10);
+
+  // Receiver category picks the proxy kind: lvalue → policy_ref (reference),
+  // rvalue → policy_buffer (owns the value). Both convert to small; neither to a
+  // target whose interval the value can never enter (conversion stays constrained).
+  using big = decltype(small{} * small{});
+  STATIC_REQUIRE(std::is_same_v<decltype(std::declval<big&>().with_snap()),
+                                policy_ref<big, policy<InsidePolicy<big> | snap>>>);
+  STATIC_REQUIRE(std::is_same_v<decltype(std::declval<big>().with_snap()),
+                                policy_buffer<big, policy<InsidePolicy<big> | snap>>>);
+  STATIC_REQUIRE(std::is_convertible_v<decltype(std::declval<big&>().with_snap()), small>);
+  STATIC_REQUIRE(std::is_convertible_v<decltype(std::declval<big >().with_snap()), small>);
+  STATIC_REQUIRE(!std::is_convertible_v<decltype(std::declval<big&>().with_snap()),
+                                        inside<{{1000, 2000}, 1}>>);
+}

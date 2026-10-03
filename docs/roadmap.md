@@ -9,13 +9,13 @@ which doors the standard still has to open.
 ## Adoptable with C++26 (turn on when toolchains ship)
 
 ### Constexpr double math engine
-The default (double) `bnd::math` engine is runtime-only today; the integer/CORDIC
-engine (`-DBND_MATH_FIXED`) is already `constexpr`. Constexpr `<cmath>`
+The default (double) `beman::inside::math` engine is runtime-only today; the integer/CORDIC
+engine (`-DBEMAN_INSIDE_MATH_FIXED`) is already `constexpr`. Constexpr `<cmath>`
 ([P1383], feature macro `__cpp_lib_constexpr_cmath`) makes the double engine
 `constexpr` too.
 
-The **gate is already planted**: `BND_MATH_FN` (`bound/cmath.hpp`) and `BND_DBL_FN`
-(`bound/cmath_double.hpp`) expand to `constexpr` exactly when a toolchain defines the
+The **gate is already planted**: `BEMAN_INSIDE_MATH_FN` (`beman/inside/cmath.hpp`) and `BEMAN_INSIDE_DBL_FN`
+(`beman/inside/cmath_double.hpp`) expand to `constexpr` exactly when a toolchain defines the
 macro, and to nothing otherwise — so the upgrade is automatic, no source change needed.
 
 > Caveat: the engine uses `std::fma`, `std::sqrt`, and `std::nearbyint`. GCC already
@@ -25,7 +25,7 @@ macro, and to nothing otherwise — so the upgrade is automatic, no source chang
 > worth the weight — the library waits for the standard instead.
 
 ### "Every rational" grids — unbounded `bigratio` NTTP via static promotion
-A `bound`'s grid is a non-type template parameter built from `rational { umax Numerator;
+An `inside`'s grid is a non-type template parameter built from `rational { umax Numerator;
 imax Denominator; }` — two 64-bit integers. That fixed width is the ceiling on how fine
 or how large a grid can be: a combined denominator past `imax::max()` falls back to exact
 storage or errors.
@@ -75,20 +75,20 @@ this page that C++26 does **not** unblock.
 
 For completeness — these came up alongside the above but are *not* blocked by the language:
 
-- **Freestanding `<cmath>` removal** — **done.** `BND_MATH_NO_FP` compiles the
+- **Freestanding `<cmath>` removal** — **done.** `BEMAN_INSIDE_MATH_NO_FP` compiles the
   floating-point engines — and their `#include <cmath>` — out wholesale (no
   `__builtin_*` swap needed), leaving the always-present integer/CORDIC engine to
-  serve the full `bnd::math` API. Auto-enabled under `-ffreestanding`, implied by
-  `BND_MATH_FIXED`; a CI smoke compiles the single header against a poison `<cmath>`
-  shim to keep it that way. See [freestanding.md](freestanding.md#math-without-cmath-bnd_math_no_fp).
-- **`dyn_bound`** (runtime-valued bounds) — evaluated and **declined** on design grounds
+  serve the full `beman::inside::math` API. Auto-enabled under `-ffreestanding`, implied by
+  `BEMAN_INSIDE_MATH_FIXED`; a CI smoke compiles the single header against a poison `<cmath>`
+  shim to keep it that way. See [freestanding.md](freestanding.md#math-without-cmath-ins_math_no_fp).
+- **`dyn_inside`** (runtime-valued bounds) — evaluated and **declined** on design grounds
   (no space/time-efficient implementation), not deferred.
 - **Type-level interval unions** — Intel's [safe-arithmetic](resources.md) models
   *disjoint* interval unions in the type (`ival<-1000,-1> || ival<1,1000>`), so e.g. a
-  zero-excluding divisor makes division provably total at compile time. `bound`'s
+  zero-excluding divisor makes division provably total at compile time. `inside`'s
   `grid::operator/` already computes the two zero-free halves internally
   (`grid.hpp`) — the missing piece is expressing the union in the *type* (a
-  `bound` over a set of grids) rather than collapsing to the hull. Large surface
+  `inside` over a set of grids) rather than collapsing to the hull. Large surface
   (every operator/predicate would need a union story), so this stays a design
   sketch until a concrete use case demands it.
 - **128-bit rounded store** — **done.** The cold assignment path forms

@@ -1,7 +1,7 @@
 // Latency histogram with fixed-point bin edges and outlier rejection.
 //
 // Demonstrates:
-//   - `bound_range` for iterating over bin indices
+//   - `inside_range` for iterating over bin indices
 //   - `will_conversion_overflow` to gate out-of-range samples before insert
 //   - `is_conversion_lossy` to count samples that don't land on a notch
 //   - Fixed-point bin boundaries (latency in ms with 0.1 resolution)
@@ -10,20 +10,20 @@
 #include <iomanip>
 #include <vector>
 
-#include "bound/bound.hpp"
-#include "bound/io.hpp"
-#include "bound/formats.hpp"
-#include "bound/numeric_limits.hpp"
-#include "bound/predicates.hpp"
+#include <beman/inside/inside.hpp>
+#include <beman/inside/io.hpp>
+#include <beman/inside/formats.hpp>
+#include <beman/inside/numeric_limits.hpp>
+#include <beman/inside/predicates.hpp>
 
-using namespace bnd;
+using namespace beman::inside;
 
 // Latency samples in [0, 100] ms with 0.1 ms resolution.
-using latency_t = bound<{{0, 100}, notch<1, 10>}, round_nearest>;
+using latency_t = inside<{{0, 100}, notch<1, 10>}, round_nearest>;
 
 // 10 bins: 0-9.9, 10-19.9, ..., 90-100 ms.
 using bin_id_t  = counter<9>;                   // saturating per-bin count (caps at bar height 9)
-using bin_idx_t = bound<{0, 9}, round_floor>;   // computed bin index (floor on assignment)
+using bin_idx_t = inside<{0, 9}, round_floor>;   // computed bin index (floor on assignment)
 
 int main()
 {
@@ -58,16 +58,16 @@ int main()
     ++bins[bin];
   }
 
-  // bound_range iterates every bin index — works because the grid has
+  // inside_range iterates every bin index — works because the grid has
   // notch 1 and integer lower bound. The implicit `operator imax()` (plus
   // the standard imax → size_t conversion) lets `bins[b]` index the vector
   // without an explicit `.as<>()`.
-  using bin_label_t = bound<{0, 99}>;
+  using bin_label_t = inside<{0, 99}>;
   std::cout << "bin    count\n";
-  for (bin_idx_t b : bound_range<{0, 9}>{})
+  for (bin_idx_t b : inside_range<{0, 9}>{})
   {
-    bin_label_t lo{b * just<10>};  // bound × bound: {0,9}×{10,10} → {0,90}, fits statically
-    bin_label_t hi{lo + just<9>};  // bound + bound, widened then narrowed to bin_label_t
+    bin_label_t lo{b * just<10>};  // inside × inside: {0,9}×{10,10} → {0,90}, fits statically
+    bin_label_t hi{lo + just<9>};  // inside + inside, widened then narrowed to bin_label_t
     std::cout << " " << lo << "-" << hi << "  " << bins[b] << "\n";
   }
 

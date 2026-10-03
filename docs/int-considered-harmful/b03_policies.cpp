@@ -4,15 +4,15 @@
 
 #include <iostream>
 
-#include "bound/bound.hpp"
-#include "bound/io.hpp"
+#include <beman/inside/inside.hpp>
+#include <beman/inside/io.hpp>
 
-using namespace bnd;
+using namespace beman::inside;
 
-using checked_100 = bound<{0, 100}, checked>;
-using clamp_100   = bound<{0, 100}, clamp>;
-using wrap_360    = bound<{0, 359}, wrap>;
-using sentinel_9  = bound<{0, 9}, sentinel>;
+using checked_100 = inside<{0, 100}, checked>;
+using clamp_100   = inside<{0, 100}, clamp>;
+using wrap_360    = inside<{0, 359}, wrap>;
+using sentinel_9  = inside<{0, 9}, sentinel>;
 
 int main()
 {
@@ -22,7 +22,7 @@ int main()
     checked_100 x = 200;
     (void)x;
   }
-  catch (bnd::bound_error& e)
+  catch (beman::inside::inside_error& e)
   {
     std::cout << "checked  200 ->    " << errc_message(e.code) << "\n";
   }

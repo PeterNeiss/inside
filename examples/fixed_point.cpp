@@ -4,16 +4,16 @@
 
 #include <iostream>
 
-#include "bound/bound.hpp"
-#include "bound/io.hpp"
-#include "bound/formats.hpp"
+#include <beman/inside/inside.hpp>
+#include <beman/inside/io.hpp>
+#include <beman/inside/formats.hpp>
 
-using namespace bnd;
+using namespace beman::inside;
 
 int main()
 {
   // 8.8 fixed-point: values from 0 to 255 in steps of 1/256.
-  // This is exactly the predefined `bnd::q8_8` from <bound/formats.hpp>.
+  // This is exactly the predefined `beman::inside::q8_8` from <beman/inside/formats.hpp>.
   using fp8 = q8_8;
 
   fp8 a = 3.5;
@@ -31,7 +31,7 @@ int main()
   std::cout << "a * b = " << prod << "\n";  // 25.375
 
   // Half-step grid: sensor readings at 0.5 resolution
-  using sensor = bound<{{0, 50}, 0.5}>;
+  using sensor = inside<{{0, 50}, 0.5}>;
 
   sensor reading = 23.5;
   sensor offset  = 2.5;
@@ -40,7 +40,7 @@ int main()
   std::cout << "reading + offset = " << adjusted << "\n";  // 26
 
   // Quarter-step grid: fine-grained control
-  using knob = bound<{{0, 10}, 0.25}>;
+  using knob = inside<{{0, 10}, 0.25}>;
 
   knob volume = 7.75;
   std::cout << "volume = " << volume << "\n";  // 7.75

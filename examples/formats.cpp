@@ -1,14 +1,14 @@
-// Predefined hardware-width types from <bound/formats.hpp>.
+// Predefined hardware-width types from <beman/inside/formats.hpp>.
 // Each maps to a native byte width (uint8/int16/...), so they read and store
 // like the machine types you hand to an audio buffer, pixel, or DSP register —
 // while still carrying a compile-time range and policy.
 
 #include <iostream>
 
-#include "bound/formats.hpp"
-#include "bound/io.hpp"
+#include <beman/inside/formats.hpp>
+#include <beman/inside/io.hpp>
 
-using namespace bnd;
+using namespace beman::inside;
 
 int main()
 {
@@ -28,7 +28,7 @@ int main()
   std::cout << "mix " << a << " + " << b << " -> " << mixed << " (clamped)\n";
 
   // 3. Apply a normalized [0,1] gain to a sample, round back to sword.
-  unorm16 gain{0.5_b};                 // unorm reaches exactly 0 and 1
+  unorm16 gain{0.5_ins};                 // unorm reaches exactly 0 and 1
   sword sample{10000};
   sword out{0};
   out.with_snap<round_nearest>() = gain * sample;
@@ -41,7 +41,7 @@ int main()
   q16_16 fine{1000.125};
   std::cout << "q16_16 " << fine << "\n";
 
-  // 5. slim::optional<bound> stays zero-overhead (sentinel-encoded).
+  // 5. slim::optional<inside> stays zero-overhead (sentinel-encoded).
   static_assert(sizeof(slim::optional<byte>) == sizeof(byte));
   slim::optional<byte> maybe = byte{200};
   std::cout << "optional<byte> holds " << *maybe

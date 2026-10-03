@@ -5,14 +5,14 @@
 
 #include <iostream>
 
-#include "bound/bound.hpp"
-#include "bound/io.hpp"
+#include <beman/inside/inside.hpp>
+#include <beman/inside/io.hpp>
 
-using namespace bnd;
+using namespace beman::inside;
 
 int main()
 {
-  using val = bound<{0, 100}>;
+  using val = inside<{0, 100}>;
 
   val a = 7;
   val b = 3;

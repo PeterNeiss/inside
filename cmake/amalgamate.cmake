@@ -1,64 +1,64 @@
 #---------------------------------------------------------------------------
 # Copyright (C) 2026 Peter Neiss
 #---------------------------------------------------------------------------
-# Pure-CMake amalgamator: inlines the bound/ + slim/ header tree into a single
+# Pure-CMake amalgamator: inlines the beman/inside/ header tree into a single
 # self-contained header. Run as a script:
 #
-#   cmake -D BOUND_AMALGAMATE_INCLUDE_DIR=<repo>/include \
-#         -D BOUND_AMALGAMATE_OUTPUT=<repo>/single_include/bound/bound.hpp \
-#         -D BOUND_AMALGAMATE_VERSION=1.0.0 \
-#         [-D BOUND_AMALGAMATE_COMPARE=<committed header>] \
+#   cmake -D BEMAN_INSIDE_AMALGAMATE_INCLUDE_DIR=<repo>/include \
+#         -D BEMAN_INSIDE_AMALGAMATE_OUTPUT=<repo>/single_include/beman/inside/inside.hpp \
+#         -D BEMAN_INSIDE_AMALGAMATE_VERSION=1.0.0 \
+#         [-D BEMAN_INSIDE_AMALGAMATE_COMPARE=<committed header>] \
 #         -P cmake/amalgamate.cmake
 #
 # Algorithm (mirrors the C preprocessor closely enough to be correct here):
-#   * Roots = all public headers (include/bound/*.hpp); detail/* and slim/* are
-#     pulled in transitively. bound.hpp is emitted first for readability.
+#   * Roots = all public headers (include/beman/inside/*.hpp); detail/* and slim/* are
+#     pulled in transitively. inside.hpp is emitted first for readability.
 #   * Each file is emitted at most once (a global EMITTED set mirrors the
 #     original include guards' "include once").
-#   * Internal #include "bound/.." / "slim/.." are replaced *in place* by the
+#   * Internal #include <beman/inside/..> are replaced *in place* by the
 #     included file's body, preserving any surrounding #ifdef.
-#   * The file's own include guard (#ifndef BND<x>HPP / #define / trailing
+#   * The file's own include guard (#ifndef BEMAN_INSIDE_<x>_HPP / #define / trailing
 #     #endif) and #pragma once are dropped; one outer guard wraps the result.
 #   * Per-file Copyright / SPDX banner lines are dropped; one banner up top.
 #   * #include <system> at conditional-depth 0 is hoisted+deduped to the top;
 #     conditional ones (e.g. <format> under #ifdef __cpp_lib_format) stay in
 #     place so their guard is preserved.
 #
-# Assumption (holds for bound's acyclic, non-branching include graph): no header
+# Assumption (holds for inside's acyclic, non-branching include graph): no header
 # is included from two mutually-exclusive #ifdef branches, so emit-once dedup and
 # hoisting of a child's depth-0 system includes are always safe.
 #---------------------------------------------------------------------------
 cmake_minimum_required(VERSION 3.24)
 
-foreach(_req IN ITEMS BOUND_AMALGAMATE_INCLUDE_DIR BOUND_AMALGAMATE_OUTPUT)
+foreach(_req IN ITEMS BEMAN_INSIDE_AMALGAMATE_INCLUDE_DIR BEMAN_INSIDE_AMALGAMATE_OUTPUT)
   if(NOT DEFINED ${_req})
     message(FATAL_ERROR "amalgamate: ${_req} is not set")
   endif()
 endforeach()
-if(NOT DEFINED BOUND_AMALGAMATE_VERSION)
-  set(BOUND_AMALGAMATE_VERSION "unknown")
+if(NOT DEFINED BEMAN_INSIDE_AMALGAMATE_VERSION)
+  set(BEMAN_INSIDE_AMALGAMATE_VERSION "unknown")
 endif()
 
-get_filename_component(INC "${BOUND_AMALGAMATE_INCLUDE_DIR}" ABSOLUTE)
+get_filename_component(INC "${BEMAN_INSIDE_AMALGAMATE_INCLUDE_DIR}" ABSOLUTE)
 if(NOT IS_DIRECTORY "${INC}")
   message(FATAL_ERROR "amalgamate: include dir not found: ${INC}")
 endif()
 
 string(ASCII 10 NL)    # newline, for list-free line splitting
 
-set(BODY_FILE "${BOUND_AMALGAMATE_OUTPUT}.body.tmp")
-get_filename_component(_out_dir "${BOUND_AMALGAMATE_OUTPUT}" DIRECTORY)
+set(BODY_FILE "${BEMAN_INSIDE_AMALGAMATE_OUTPUT}.body.tmp")
+get_filename_component(_out_dir "${BEMAN_INSIDE_AMALGAMATE_OUTPUT}" DIRECTORY)
 file(MAKE_DIRECTORY "${_out_dir}")
 file(WRITE "${BODY_FILE}" "")
 set_property(GLOBAL PROPERTY AMALG_EMITTED "")
 set_property(GLOBAL PROPERTY AMALG_SYS "")
 # When TRUE, a header's depth-0 system includes are kept inline rather than
-# hoisted to the top — used for bound/io.hpp so its <string>/<ostream>/<format>
-# stay inside the BND_NO_STRING guard and vanish when the block is dropped.
+# hoisted to the top — used for beman/inside/io.hpp so its <string>/<ostream>/<format>
+# stay inside the BEMAN_INSIDE_NO_STRING guard and vanish when the block is dropped.
 set_property(GLOBAL PROPERTY AMALG_INLINE_SYS FALSE)
 
 #---------------------------------------------------------------------------
-# amalg_process(<rel>) — inline the header at <INC>/<rel> (e.g. "bound/core.hpp")
+# amalg_process(<rel>) — inline the header at <INC>/<rel> (e.g. "beman/inside/core.hpp")
 # into BODY_FILE, recursing into its internal includes.
 #---------------------------------------------------------------------------
 function(amalg_process rel)
@@ -103,9 +103,9 @@ function(amalg_process rel)
       string(SUBSTRING "${content}" "${_rest}" -1 content)
     endif()
 
-    # --- file include guard: drop #ifndef BND<x>HPP / #define <same> ---------
+    # --- file include guard: drop #ifndef BEMAN_INSIDE_<x>_HPP / #define <same>
     if(guard_macro STREQUAL "" AND
-       line MATCHES "^[ \t]*#[ \t]*ifndef[ \t]+(BND[A-Za-z0-9_]*HPP)[ \t]*$")
+       line MATCHES "^[ \t]*#[ \t]*ifndef[ \t]+(BEMAN_INSIDE_[A-Za-z0-9_]*_HPP)[ \t]*$")
       set(guard_macro "${CMAKE_MATCH_1}")
       set(expect_define TRUE)
       continue()
@@ -129,10 +129,10 @@ function(amalg_process rel)
     # Flush what we have, then recurse so the child's body lands exactly where
     # the directive was (preserving any surrounding #ifdef). The directive line
     # itself is dropped.
-    if(line MATCHES "^[ \t]*#[ \t]*include[ \t]*[<\"](bound|slim)/([^\">]+)[>\"]")
+    if(line MATCHES "^[ \t]*#[ \t]*include[ \t]*[<\"]beman/inside/([^\">]+)[>\"]")
       file(APPEND "${BODY_FILE}" "${buf}")
       set(buf "")
-      amalg_process("${CMAKE_MATCH_1}/${CMAKE_MATCH_2}")
+      amalg_process("beman/inside/${CMAKE_MATCH_1}")
       continue()
     endif()
 
@@ -169,30 +169,30 @@ function(amalg_process rel)
 endfunction()
 
 #---------------------------------------------------------------------------
-# Roots: every public header, bound.hpp first.
+# Roots: every public header, inside.hpp first.
 #---------------------------------------------------------------------------
-file(GLOB root_abs "${INC}/bound/*.hpp")
+file(GLOB root_abs "${INC}/beman/inside/*.hpp")
 list(SORT root_abs)
 set(roots "")
 foreach(r IN LISTS root_abs)
   get_filename_component(name "${r}" NAME)
-  list(APPEND roots "bound/${name}")
+  list(APPEND roots "beman/inside/${name}")
 endforeach()
-list(REMOVE_ITEM roots "bound/bound.hpp")
-list(INSERT roots 0 "bound/bound.hpp")
+list(REMOVE_ITEM roots "beman/inside/inside.hpp")
+list(INSERT roots 0 "beman/inside/inside.hpp")
 
-# bound/io.hpp gathers all <string>/<ostream>/<format> support; wrap its inlined
-# body in BND_NO_STRING so a freestanding single-header user can drop it (and its
+# beman/inside/io.hpp gathers all <string>/<ostream>/<format> support; wrap its inlined
+# body in BEMAN_INSIDE_NO_STRING so a freestanding single-header user can drop it (and its
 # heavy system includes) by defining the macro. Processed like any root, but its
 # depth-0 system includes are kept inline (see AMALG_INLINE_SYS) so they sit
 # inside the guard.
 foreach(r IN LISTS roots)
-  if(r STREQUAL "bound/io.hpp")
-    file(APPEND "${BODY_FILE}" "${NL}#ifndef BND_NO_STRING${NL}")
+  if(r STREQUAL "beman/inside/io.hpp")
+    file(APPEND "${BODY_FILE}" "${NL}#ifndef BEMAN_INSIDE_NO_STRING${NL}")
     set_property(GLOBAL PROPERTY AMALG_INLINE_SYS TRUE)
     amalg_process("${r}")
     set_property(GLOBAL PROPERTY AMALG_INLINE_SYS FALSE)
-    file(APPEND "${BODY_FILE}" "${NL}#endif // BND_NO_STRING${NL}")
+    file(APPEND "${BODY_FILE}" "${NL}#endif // BEMAN_INSIDE_NO_STRING${NL}")
   else()
     amalg_process("${r}")
   endif()
@@ -211,40 +211,40 @@ file(REMOVE "${BODY_FILE}")
 
 set(banner
 "//---------------------------------------------------------------------------
-// bound ${BOUND_AMALGAMATE_VERSION} — single-header amalgamation
+// inside ${BEMAN_INSIDE_AMALGAMATE_VERSION} — single-header amalgamation
 //
 //   *** GENERATED FILE — DO NOT EDIT BY HAND ***
 //
 // Regenerate with:  cmake --build <build-dir> --target amalgamate
-// Source of truth:  include/bound/*.hpp, include/slim/*.hpp
+// Source of truth:  include/beman/inside/*.hpp, include/beman/inside/slim/*.hpp
 //
 // Copyright (C) 2026 Peter Neiss
 // slim/* components are MIT-licensed (SPDX-License-Identifier: MIT).
 //---------------------------------------------------------------------------
-#ifndef BND_SINGLE_HEADER_HPP
-#define BND_SINGLE_HEADER_HPP
+#ifndef BEMAN_INSIDE_SINGLE_HEADER_HPP
+#define BEMAN_INSIDE_SINGLE_HEADER_HPP
 
 ${sys_block}
 ")
 
-file(WRITE "${BOUND_AMALGAMATE_OUTPUT}" "${banner}${body}\n#endif // BND_SINGLE_HEADER_HPP\n")
+file(WRITE "${BEMAN_INSIDE_AMALGAMATE_OUTPUT}" "${banner}${body}\n#endif // BEMAN_INSIDE_SINGLE_HEADER_HPP\n")
 
 #---------------------------------------------------------------------------
 # Drift check mode.
 #---------------------------------------------------------------------------
-if(DEFINED BOUND_AMALGAMATE_COMPARE)
+if(DEFINED BEMAN_INSIDE_AMALGAMATE_COMPARE)
   execute_process(
     COMMAND "${CMAKE_COMMAND}" -E compare_files
-            "${BOUND_AMALGAMATE_OUTPUT}" "${BOUND_AMALGAMATE_COMPARE}"
+            "${BEMAN_INSIDE_AMALGAMATE_OUTPUT}" "${BEMAN_INSIDE_AMALGAMATE_COMPARE}"
     RESULT_VARIABLE _diff)
   if(_diff)
     message(FATAL_ERROR
       "Single header is out of date:\n"
-      "  ${BOUND_AMALGAMATE_COMPARE}\n"
+      "  ${BEMAN_INSIDE_AMALGAMATE_COMPARE}\n"
       "differs from a freshly generated amalgamation. Run the 'amalgamate' "
       "target and commit the result.")
   endif()
   message(STATUS "amalgamate: single header is up to date.")
 else()
-  message(STATUS "amalgamate: wrote ${BOUND_AMALGAMATE_OUTPUT}")
+  message(STATUS "amalgamate: wrote ${BEMAN_INSIDE_AMALGAMATE_OUTPUT}")
 endif()

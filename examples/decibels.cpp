@@ -1,4 +1,4 @@
-// Decibel ↔ linear conversion using `bnd::math::pow_base<10>` and `log`.
+// Decibel ↔ linear conversion using `beman::inside::math::pow_base<10>` and `log`.
 //
 // Demonstrates:
 //   - `db_to_linear`: 10^(dB/20) via `pow_base<10>`. This is the building
@@ -10,16 +10,16 @@
 
 #include <version>
 
-#include "bound/bound.hpp"
-#include "bound/io.hpp"
-#include "bound/cmath.hpp"
+#include <beman/inside/inside.hpp>
+#include <beman/inside/io.hpp>
+#include <beman/inside/cmath.hpp>
 
 #if defined(__cpp_lib_print)
 #include <print>
 using std::println;
 #else
 // GCC 12 / C++20 lack <print>. Minimal stand-in covering the `{}` forms this
-// example uses, rendered through the bound/rational operator<< from print.hpp.
+// example uses, rendered through the inside/rational operator<< from print.hpp.
 #include <iostream>
 #include <sstream>
 #include <string_view>
@@ -42,21 +42,21 @@ void println(std::string_view fmt, Ts const&... args)
 } // namespace
 #endif
 
-using namespace bnd;
+using namespace beman::inside;
 
 // dB in [-24, 12] at 0.5 dB resolution — matches a typical mixer fader range.
-using db_t       = bound<{{-24, 12}, notch<1, 2>}, round_nearest>;
+using db_t       = inside<{{-24, 12}, notch<1, 2>}, round_nearest>;
 // dB/20 intermediate. Range chosen to cover [-1.2, 0.6] (the true range for
 // dB ∈ [-24, 12]) but rounded out to integer endpoints so the grid validates
 // against the 1/65536 notch. The fine notch is deliberate — auto-deduced
 // pow_base<10> output inherits Notch<In>, and a coarser exponent grid would
 // snap the linear output to audible 0.025-wide steps.
-using db_div20_t = bound<{{-2, 1}, notch<1, 65536>}, round_nearest | real>;
+using db_div20_t = inside<{{-2, 1}, notch<1, 65536>}, round_nearest | real>;
 // Linear amplitude. dB ∈ [-24, 12] ⇒ amp ∈ [10^-1.2, 10^0.6] ≈ [0.063, 3.98].
-using gain_t     = bound<{{0x1p-8, 4}, notch<1, 65536>}, round_nearest | real>;
+using gain_t     = inside<{{0x1p-8, 4}, notch<1, 65536>}, round_nearest | real>;
 
 // dB → linear: 10^(dB/20).
-static BND_MATH_FN gain_t db_to_linear(db_t db)
+static BEMAN_INSIDE_MATH_FN gain_t db_to_linear(db_t db)
 {
   db_div20_t exponent{db / just<20>};
   return gain_t{math::pow_base<10>(exponent)};
@@ -64,9 +64,9 @@ static BND_MATH_FN gain_t db_to_linear(db_t db)
 
 // linear → dB: 20·log10(amp) = (20/ln(10)) · ln(amp).
 // 20/ln(10) ≈ 8.685889638. As an 8-digit rational source: 86858896/10^7.
-static BND_MATH_FN db_t linear_to_db(gain_t amp)
+static BEMAN_INSIDE_MATH_FN db_t linear_to_db(gain_t amp)
 {
-  // 20/ln(10) as an exact point-bound (no rational on the surface).
+  // 20/ln(10) as an exact point-inside (no rational on the surface).
   constexpr auto k20_over_ln10 = just<frac<86858896, 10000000>>;
   auto log_amp = math::log(amp);
   return db_t{k20_over_ln10 * log_amp};
@@ -74,7 +74,7 @@ static BND_MATH_FN db_t linear_to_db(gain_t amp)
 
 int main()
 {
-  // `std::println` works on bound / rational because `bound/formatter.hpp`
+  // `std::println` works on inside / rational because `beman/inside/formatter.hpp`
   // ships `std::formatter` specializations for both. Empty `{}` keeps the
   // exact rational rendering — same string `operator<<` would produce.
   println("dB → linear → dB round-trip:");

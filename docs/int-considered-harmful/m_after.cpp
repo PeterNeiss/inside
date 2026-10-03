@@ -1,4 +1,4 @@
-// MIGRATION, AFTER: the same invoice in bound.
+// MIGRATION, AFTER: the same invoice in inside.
 //
 // The overflow is gone (the product widens), the tax is exact to the cent
 // by an explicitly chosen rounding mode, and the discount keeps its exact
@@ -6,13 +6,13 @@
 
 #include <iostream>
 
-#include "bound/bound.hpp"
-#include "bound/io.hpp"
+#include <beman/inside/inside.hpp>
+#include <beman/inside/io.hpp>
 
-using namespace bnd;
+using namespace beman::inside;
 
 // Dollars in 1-cent steps, up to $10M. The scale is part of the type.
-using money = bound<{{0, 10'000'000}, notch<1, 100>}, round_nearest>;
+using money = inside<{{0, 10'000'000}, notch<1, 100>}, round_nearest>;
 
 int main()
 {
@@ -20,7 +20,7 @@ int main()
 
   // subtotal * 0.08 widens; nothing can overflow. Assigning back into
   // `money` snaps to the nearest cent, because `money` says round_nearest.
-  auto  tax_exact = subtotal * 0.08_b;
+  auto  tax_exact = subtotal * 0.08_ins;
   money tax       = tax_exact;
 
   // A third of the subtotal is not representable in cents. It stays exact
@@ -37,7 +37,7 @@ int main()
 
   // The intermediate really is exact: a grid in thirds of a cent stores
   // the same value with nothing rounded away.
-  using third_cent = bound<{{0, 10'000'000}, notch<1, 300>}, round_nearest>;
+  using third_cent = inside<{{0, 10'000'000}, notch<1, 300>}, round_nearest>;
   third_cent discount_exact = disc_exact;
 
   std::cout << "\ndiscount on a 1/300 grid       = $" << discount_exact

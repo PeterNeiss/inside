@@ -1,22 +1,22 @@
-// Bounded ID allocator backed by std::unordered_set<bound>.
+// Bounded ID allocator backed by std::unordered_set<inside>.
 //
 // Demonstrates:
-//   - `std::hash<bound>` integration (via numeric_limits.hpp)
-//   - `std::numeric_limits<bound>::max()` capacity query
+//   - `std::hash<inside>` integration (via numeric_limits.hpp)
+//   - `std::numeric_limits<inside>::max()` capacity query
 //   - `try_make` for guarded construction from untrusted input
 //   - Conversion predicate `will_conversion_overflow` to fail fast
 
 #include <iostream>
 #include <unordered_set>
 
-#include "bound/bound.hpp"
-#include "bound/io.hpp"
-#include "bound/numeric_limits.hpp"
-#include "bound/predicates.hpp"
+#include <beman/inside/inside.hpp>
+#include <beman/inside/io.hpp>
+#include <beman/inside/numeric_limits.hpp>
+#include <beman/inside/predicates.hpp>
 
-using namespace bnd;
+using namespace beman::inside;
 
-using pool_id = bound<{0, 999}>;
+using pool_id = inside<{0, 999}>;
 
 struct id_pool
 {
@@ -68,7 +68,7 @@ int main()
   pool.release(42);
   std::cout << "\nafter release(42): " << pool.allocated.size() << " IDs\n";
 
-  // try_make returns slim::expected<bound, errc>: a value on success, the
+  // try_make returns slim::expected<inside, errc>: a value on success, the
   // failure reason on out-of-range / rounding / overflow inputs. Either way
   // no exception is thrown.
   auto bad  = pool_id::try_make(2000);

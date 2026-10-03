@@ -4,12 +4,12 @@
 // runtime surprise. The equivalent `int` code (h11_narrowing.cpp) is
 // accepted silently.
 
-#include "bound/bound.hpp"
+#include <beman/inside/inside.hpp>
 
-using namespace bnd;
+using namespace beman::inside;
 
 int main()
 {
-  constexpr bound<{0, 100}> pct{150};   // error: 150 is outside [0, 100]
+  constexpr inside<{0, 100}> pct{150};   // error: 150 is outside [0, 100]
   return static_cast<int>(pct.raw());
 }

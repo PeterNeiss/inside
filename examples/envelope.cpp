@@ -1,4 +1,4 @@
-// Envelope shaping with bnd::math::exp and bnd::math::exp2.
+// Envelope shaping with beman::inside::math::exp and beman::inside::math::exp2.
 //
 // Demonstrates:
 //   - Exponential decay envelope:  a(t) = a0 · exp(-t/τ).
@@ -6,31 +6,31 @@
 //     This is the canonical "log-scale knob" used in synthesizer pitch controls
 //     and graphic-EQ band layouts.
 //   - Both run with integer/constexpr math; the only float anywhere is in the
-//     stream operator's decimal formatting (via the bound's `to_string`).
+//     stream operator's decimal formatting (via the inside's `to_string`).
 
 #include <iostream>
 
-#include "bound/bound.hpp"
-#include "bound/io.hpp"
-#include "bound/cmath.hpp"
+#include <beman/inside/inside.hpp>
+#include <beman/inside/io.hpp>
+#include <beman/inside/cmath.hpp>
 
-using namespace bnd;
+using namespace beman::inside;
 
 int main()
 {
   // Decay envelope: amp(t) = amp0 · exp(-t/τ), with τ = 1.0, amp0 = 1.0.
   // We sample t at 0, 0.25, 0.5, …, 2.0 — eight points along the decay curve.
   // exp(-2.0) ≈ 0.1353, comfortably inside [0, 1].
-  using time_t  = bound<{{-4, 0}, notch<1, 1024>}, round_nearest | real>;
-  using amp_t   = bound<{{0, 1}, notch<1, 16384>}, round_nearest>;
+  using time_t  = inside<{{-4, 0}, notch<1, 1024>}, round_nearest | real>;
+  using amp_t   = inside<{{0, 1}, notch<1, 16384>}, round_nearest>;
 
   std::cout << "Exponential decay envelope (τ = 1):\n";
   std::cout << "    t       exp(-t)\n";
   for (int n = 0; n <= 8; ++n) {
     // -t/τ — negative time means decay. We sweep t = 0, 0.25, …, 2.0. The
     // fractional time comes from an integer draw divided by a grid'd 4, all in
-    // bound-space (no rational): n/4 is `-neg_t`.
-    time_t neg_t{bound<{-8, 0}>{-n} / just<4>};
+    // inside-space (no rational): n/4 is `-neg_t`.
+    time_t neg_t{inside<{-8, 0}>{-n} / just<4>};
     amp_t  a{math::exp(neg_t)};
     std::cout << "    " << -neg_t << "    " << a << "\n";
   }
@@ -42,13 +42,13 @@ int main()
   std::cout << "    step    freq (Hz)\n";
 
   // Exponent for exp2: step/4 ∈ [0, 4]. exp2 input range fits comfortably.
-  using exponent_t = bound<{{0, 4}, notch<1, 1024>}, round_nearest | real>;
+  using exponent_t = inside<{{0, 4}, notch<1, 1024>}, round_nearest | real>;
   // Multiplier 2^(step/4) ∈ [1, 16].
-  using mult_t     = bound<{{0, 16}, notch<1, 16384>}, round_nearest>;
+  using mult_t     = inside<{{0, 16}, notch<1, 16384>}, round_nearest>;
 
   constexpr auto base_freq = just<20>;
   for (int step = 0; step <= 16; ++step) {
-    exponent_t e{bound<{0, 16}>{step} / just<4>};
+    exponent_t e{inside<{0, 16}>{step} / just<4>};
     mult_t     m{math::exp2(e)};
     auto       freq = base_freq * m;
     std::cout << "    " << step

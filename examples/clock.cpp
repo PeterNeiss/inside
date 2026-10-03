@@ -5,16 +5,16 @@
 
 #include <iostream>
 
-#include "bound/bound.hpp"
-#include "bound/io.hpp"
+#include <beman/inside/inside.hpp>
+#include <beman/inside/io.hpp>
 
-using namespace bnd;
+using namespace beman::inside;
 
 struct clock24
 {
-  using hour_t   = bound<{0, 23}, wrap>;
-  using minute_t = bound<{0, 59}, wrap>;
-  using second_t = bound<{0, 59}, wrap>;
+  using hour_t   = inside<{0, 23}, wrap>;
+  using minute_t = inside<{0, 59}, wrap>;
+  using second_t = inside<{0, 59}, wrap>;
 
   hour_t   hours{0};
   minute_t minutes{0};
@@ -54,14 +54,14 @@ int main()
   clock24 t(23, 59, 45);
   std::cout << "start:      " << t << "\n";
 
-  // Pass the delta as a bound (`_b` literal): the `+=` is bound-RHS, so the wrap
-  // carry threaded through the sec→min→hour cascade is itself a bound, not a raw
-  // integer — the whole cascade stays in bound-space. (Large deltas land on a
+  // Pass the delta as an inside (`_ins` literal): the `+=` is inside-RHS, so the wrap
+  // carry threaded through the sec→min→hour cascade is itself an inside, not a raw
+  // integer — the whole cascade stays in inside-space. (Large deltas land on a
   // disjoint sub-grid, which wrap accepts.)
-  t.add_seconds(20_b);
+  t.add_seconds(20_ins);
   std::cout << "+20 sec:    " << t << "\n";
 
-  t.add_minutes(90_b);
+  t.add_minutes(90_ins);
   std::cout << "+90 min:    " << t << "\n";
 
   t.add_seconds(just<3600 + 1800 + 30>);
