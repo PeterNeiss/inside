@@ -249,7 +249,7 @@ undefined behaviour, which means the compiler may assume it does not occur and
 optimise on that assumption. Consider a function that asks whether adding one
 to a number makes it bigger.
 
-\lstinputlisting[firstline=12,lastline=17]{int-considered-harmful/h01_overflow_ub.cpp}
+\lstinputlisting[firstline=13,lastline=18]{int-considered-harmful/h01_overflow_ub.cpp}
 
 \noindent
 Since \code{x + 1 > x} can only be false if \code{x + 1} overflows, and
@@ -291,7 +291,7 @@ smaller value it produced.
 That was a folded comparison. The assumption compounds. Here is a loop whose
 induction variable starts near the top of the range:
 
-\lstinputlisting[firstline=11,lastline=25]{int-considered-harmful/h02_overflow_loop.cpp}
+\lstinputlisting[firstline=12,lastline=26]{int-considered-harmful/h02_overflow_loop.cpp}
 
 \noindent
 At \code{-O0} the counter wraps to a negative value, \code{i > 0} goes false,
@@ -340,7 +340,7 @@ There are $2^{31}$ negative \code{int} values and $2^{31}-1$ positive ones.
 Negation therefore has no correct answer at one point in the range, and neither
 does absolute value.
 
-\lstinputlisting[firstline=13,lastline=18]{int-considered-harmful/h03_intmin.cpp}
+\lstinputlisting[firstline=14,lastline=19]{int-considered-harmful/h03_intmin.cpp}
 \begin{lstlisting}[style=term]
 INT_MIN            = -2147483648
 INT_MAX            = 2147483647
@@ -382,7 +382,7 @@ When an \code{int} meets an \code{unsigned} in a comparison, the usual
 arithmetic conversions make both unsigned. A negative value becomes an enormous
 positive one.
 
-\lstinputlisting[firstline=12,lastline=23]{int-considered-harmful/h05_signed_unsigned.cpp}
+\lstinputlisting[firstline=13,lastline=24]{int-considered-harmful/h05_signed_unsigned.cpp}
 \begin{lstlisting}[style=term]
 -1 < 0u            = false
 v.size()           = 0
@@ -402,7 +402,7 @@ exploitable memory-safety bugs in C++ code, and it arises from a
 Integral promotion means the operands of an expression are frequently not the
 types you wrote, and the result is frequently not the type of the operands.
 
-\lstinputlisting[firstline=11,lastline=27]{int-considered-harmful/h06_promotion.cpp}
+\lstinputlisting[firstline=12,lastline=28]{int-considered-harmful/h06_promotion.cpp}
 \begin{lstlisting}[style=term]
 uint8 * uint8 -> int? yes
 200 * 200          = 40000
@@ -421,7 +421,7 @@ not academic: it is 2 on a great deal of shipping embedded hardware.
 
 \subsection{Division truncates, and not in the direction you expect}
 
-\lstinputlisting[firstline=9,lastline=16]{int-considered-harmful/h07_truncdiv.cpp}
+\lstinputlisting[firstline=10,lastline=17]{int-considered-harmful/h07_truncdiv.cpp}
 \begin{lstlisting}[style=term]
  7 / 2             = 3   (exact answer 3.5)
 -7 / 2             = -3   (rounds toward zero, not down)
@@ -440,7 +440,7 @@ idiom \code{if (x \% n == k)} for indexing into cyclic structures.
 
 \subsection{Shifts}
 
-\lstinputlisting[firstline=8,lastline=20]{int-considered-harmful/h08_shift.cpp}
+\lstinputlisting[firstline=9,lastline=21]{int-considered-harmful/h08_shift.cpp}
 \begin{lstlisting}[style=term]
 1 << 31            = -2147483648   <- undefined behaviour
 -8 >> 1            = -4
@@ -455,7 +455,7 @@ with the hardware.
 
 \subsection{Narrowing is silent}
 
-\lstinputlisting[firstline=10,lastline=23]{int-considered-harmful/h11_narrowing.cpp}
+\lstinputlisting[firstline=11,lastline=24]{int-considered-harmful/h11_narrowing.cpp}
 \begin{lstlisting}[style=term]
 velocity (64-bit)  = 40000
 stored as 16-bit   = -25536   <- sign flipped
@@ -474,7 +474,7 @@ type system recorded what that range was.
 
 \subsection{The midpoint bug}
 
-\lstinputlisting[firstline=8,lastline=19]{int-considered-harmful/h10_binsearch.cpp}
+\lstinputlisting[firstline=9,lastline=20]{int-considered-harmful/h10_binsearch.cpp}
 \begin{lstlisting}[style=term]
 lo                 = 2147483644
 hi                 = 2147483646
@@ -495,7 +495,7 @@ it, the problem is not insufficient care.
 Every hazard so far has been about range. This one is about meaning, and it is
 the one no sanitizer will ever catch, because the arithmetic is valid.
 
-\lstinputlisting[firstline=7,lastline=26]{int-considered-harmful/h09_units.cpp}
+\lstinputlisting[firstline=8,lastline=27]{int-considered-harmful/h09_units.cpp}
 \begin{lstlisting}[style=term]
 subtotal (cents)   = 3683
 shipping (dollars) = 5
@@ -538,7 +538,7 @@ the first two is not the neighbour of the third.
 
 \subsection{The error accumulates}
 
-\lstinputlisting[firstline=6,lastline=15]{int-considered-harmful/d02_money_drift.cpp}
+\lstinputlisting[firstline=7,lastline=16]{int-considered-harmful/d02_money_drift.cpp}
 \begin{lstlisting}[style=term]
 10000 x $0.01      = 100.00000000001425348728
 expected           = 100.00000000000000000000
@@ -553,7 +553,7 @@ what makes it dangerous: it survives testing and shows up in reconciliation.
 
 \subsection{Addition is not associative}
 
-\lstinputlisting[firstline=7,lastline=16]{int-considered-harmful/d03_assoc.cpp}
+\lstinputlisting[firstline=8,lastline=17]{int-considered-harmful/d03_assoc.cpp}
 \begin{lstlisting}[style=term]
 (a + b) + c        = 1.0
 a + (b + c)        = 0.0
@@ -570,7 +570,7 @@ Results stop being reproducible --- not across platforms, but across
 
 \subsection{Integers stop counting at $2^{53}$}
 
-\lstinputlisting[firstline=7,lastline=18]{int-considered-harmful/d04_precision.cpp}
+\lstinputlisting[firstline=8,lastline=19]{int-considered-harmful/d04_precision.cpp}
 \begin{lstlisting}[style=term]
 2^53               = 9007199254740992.0
 2^53 + 1           = 9007199254740992.0   <- unchanged
@@ -713,7 +713,7 @@ $[20, 510]$ --- wide enough that no representable input can overflow it. There
 is no overflow to be undefined, no check to perform, and nothing for the
 optimiser to exploit.
 
-\lstinputlisting[firstline=12,lastline=33]{int-considered-harmful/b01_no_overflow.cpp}
+\lstinputlisting[firstline=13,lastline=34]{int-considered-harmful/b01_no_overflow.cpp}
 \begin{lstlisting}[style=term]
 a + b              = 236
 a - b              = -204   (no wraparound)
@@ -737,7 +737,7 @@ Where the divisor's grid can include zero, division returns
 plain value with nothing to unwrap --- the check is elided because the type
 proves it unnecessary.
 
-\lstinputlisting[firstline=13,lastline=35]{int-considered-harmful/b02_divzero.cpp}
+\lstinputlisting[firstline=14,lastline=36]{int-considered-harmful/b02_divzero.cpp}
 \begin{lstlisting}[style=term]
 7 / 3              = 2 1/3   (exact, not 2)
 div(7, 3, trunc)   = 2
@@ -752,7 +752,7 @@ terminated the process in \S2.4 is now a value the caller can test.
 
 \subsection{Rounding is stated, not inherited}
 
-\lstinputlisting[firstline=15,lastline=33]{int-considered-harmful/b07_rounding.cpp}
+\lstinputlisting[firstline=16,lastline=34]{int-considered-harmful/b07_rounding.cpp}
 \begin{lstlisting}[style=term]
 native  -7 / 2     = -3   (toward zero, always)
 round_to_nearest   = -4
@@ -774,7 +774,7 @@ every mode, including negative divisors
 Out-of-range values are only reachable when assigning into a narrower type ---
 never from arithmetic. What happens then is part of the declaration:
 
-\lstinputlisting[firstline=17,lastline=45]{int-considered-harmful/b03_policies.cpp}
+\lstinputlisting[firstline=18,lastline=46]{int-considered-harmful/b03_policies.cpp}
 \begin{lstlisting}[style=term]
 checked  200 ->    value outside interval
 clamp    150 ->    100
@@ -796,7 +796,7 @@ The asymmetry of \S2.3 disappears because negating a
 $[\text{Lower},\text{Upper}]$ value yields a value of type
 $[-\text{Upper},-\text{Lower}]$:
 
-\lstinputlisting[firstline=12,lastline=27]{int-considered-harmful/b10_negation.cpp}
+\lstinputlisting[firstline=13,lastline=28]{int-considered-harmful/b10_negation.cpp}
 \begin{lstlisting}[style=term]
 coldest            = -40
 -coldest           = 40   (representable by construction)
@@ -814,7 +814,7 @@ The units failure of \S2.11 is a failure to record what a number means.
 \code{inside} records the scale in the notch, so a value on a cent grid and a
 value on a dollar grid are different types, and combining them converts:
 
-\lstinputlisting[firstline=14,lastline=32]{int-considered-harmful/b05_units.cpp}
+\lstinputlisting[firstline=15,lastline=33]{int-considered-harmful/b05_units.cpp}
 \begin{lstlisting}[style=term]
 subtotal           = $36.83
 shipping           = $5
@@ -840,7 +840,7 @@ include/beman/inside/arithmetic.hpp:492:27: error: static assertion failed:
 
 \subsection{Bounded indices}
 
-\lstinputlisting[firstline=13,lastline=33]{int-considered-harmful/b08_index.cpp}
+\lstinputlisting[firstline=14,lastline=34]{int-considered-harmful/b08_index.cpp}
 \begin{lstlisting}[style=term]
 data[7]            = 49
 index 10           = nullopt   (no out-of-bounds access possible)
@@ -858,7 +858,7 @@ not be simply fails to be created.
 An invoice calculation, in \code{int}. It has three defects, and the compiler
 mentions none of them.
 
-\lstinputlisting[firstline=10,lastline=22]{int-considered-harmful/m_before.cpp}
+\lstinputlisting[firstline=11,lastline=23]{int-considered-harmful/m_before.cpp}
 \begin{lstlisting}[style=term]
 subtotal (cents)   = 268435456
 tax  (8%)          = -21474836   <- overflowed
@@ -878,7 +878,7 @@ perfectly ordinary integer.
 
 The same calculation in \code{inside}:
 
-\lstinputlisting[firstline=14,lastline=45]{int-considered-harmful/m_after.cpp}
+\lstinputlisting[firstline=15,lastline=46]{int-considered-harmful/m_after.cpp}
 \begin{lstlisting}[style=term]
 subtotal           = $2684354.56
 tax  (8%)          = $214748.36   (exact, no overflow)
@@ -924,7 +924,7 @@ it rejects them at compile time. Because grids are compile-time values and the
 arithmetic is \code{constexpr}, whole categories of defect become build
 failures.
 
-\lstinputlisting[firstline=17,lastline=33]{int-considered-harmful/b06_compile_time.cpp}
+\lstinputlisting[firstline=18,lastline=34]{int-considered-harmful/b06_compile_time.cpp}
 
 \noindent
 Every line above is a \code{static\_assert}. If any were false the file would
@@ -1004,7 +1004,7 @@ Because the notch is an exact rational rather than a binary fraction, grids
 like ``cents'' and ``thirds'' are represented without approximation. The money
 example from \S\ref{sec:double} run in \code{inside}:
 
-\lstinputlisting[firstline=14,lastline=29]{int-considered-harmful/b04_money.cpp}
+\lstinputlisting[firstline=15,lastline=30]{int-considered-harmful/b04_money.cpp}
 \begin{lstlisting}[style=term]
 10000 x $0.01      = $100
 exactly $100.00    ? true
@@ -1109,7 +1109,7 @@ The headline claim is that when both operands are integer-aligned on the same
 grid, the operation lowers to a plain machine instruction. That claim is
 testable, so here is the test:
 
-\lstinputlisting[firstline=15,lastline=27]{int-considered-harmful/p01_codegen.cpp}
+\lstinputlisting[firstline=16,lastline=28]{int-considered-harmful/p01_codegen.cpp}
 \begin{lstlisting}[style=term]
 $ g++ -std=c++23 -O2 -I ../../include -c p01_codegen.cpp && objdump -d p01.o
 
@@ -1346,7 +1346,7 @@ established.
 
 \noindent
 The accumulate table carries the single most actionable result in the report.
-A \code{inside<checked>} element-wise loop runs at 15.9\% of native because it
+An \code{inside<checked>} element-wise loop runs at 15.9\% of native because it
 range-checks every element. Using \code{beman::inside::sum}, which validates the total
 instead of each addend, moves it to 52.0\% --- a 3.3$\times$ improvement from
 choosing the right API for the job. The final row, \code{std::accumulate} over

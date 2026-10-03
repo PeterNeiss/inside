@@ -139,7 +139,7 @@ clamp_round<coarse>(3.0);   // 4   (clamp + round to nearest)
 clamp_floor<coarse>(15.0);  // 10  (out-of-range clamps to upper)
 ```
 
-The source may also be a **inside** on a finer or incompatible grid — the one-shot
+The source may also be an **inside** on a finer or incompatible grid — the one-shot
 rounding relaxes the notch check, so a fine value rounds onto the target:
 
 ```cpp
