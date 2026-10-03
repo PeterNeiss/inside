@@ -7305,6 +7305,36 @@ namespace beman::inside::math
     constexpr rational cos_from_turn_fixed(imax turn_w) noexcept
     { return sin_from_turn_fixed<W, N>(turn_w + (imax{1} << (W - 2))); }
 
+    // tan(x) for a Q.W turn-phase as a Q.W fixed-point value, from ONE rotation:
+    // reduce to quadrant q and r ∈ [0, ¼ turn], take sin r / cos r from a single
+    // cordic_sincos pass, and divide in fixed point. Exact zeros at r == 0 and
+    // r == ¼ turn keep the poles exact. Returns false on a pole.
+    template <int W, int N>
+    constexpr bool tan_from_turn_fixed(imax turn_w, imax& tan_w) noexcept
+    {
+      constexpr imax one_turn = imax{1} << W, quarter = imax{1} << (W - 2);
+      turn_w &= (one_turn - 1);                        // wrap into [0, 1) turn
+      const imax q = turn_w / quarter;                 // quadrant 0..3
+      const imax r = turn_w - q * quarter;             // [0, ¼ turn)
+      imax s = 0, c = imax{1} << W;                    // r == 0: sin 0, cos 1
+      if (r != 0)
+      {
+        constexpr imax two_pi_w = to_fixed(two_pi_r, W);
+        cordic_sincos<W, N>(fmul(r, two_pi_w, W), s, c);
+      }
+      // tan = sin/cos per quadrant: q0 s/c, q1 −c/s, q2 s/c, q3 −c/s.
+      const imax num = (q & 1) ? -c : s;
+      const imax den = (q & 1) ?  s : c;
+      if (den == 0) return false;                      // pole (q odd, r == 0)
+      // round-half-away((num << W) / den); |num| ≤ 2^W so num·2^W fits imax.
+      const imax n = num * (imax{1} << W);
+      const imax ad = den < 0 ? -den : den;
+      const imax an = n < 0 ? -n : n;
+      const imax mag = (an + ad / 2) / ad;
+      tan_w = ((n < 0) != (den < 0)) ? -mag : mag;
+      return true;
+    }
+
     // 1/(2π) as a rational, for radians→turn reduction at any scale.
     inline constexpr rational inv_two_pi =
       (rational{1} / two_pi_r).value();
@@ -7560,6 +7590,25 @@ namespace beman::inside::math
   {
     using namespace beman::inside::detail;
 
+    // Shared tail of tan_impl / tan_turn_impl: pole → division_by_zero; outside
+    // Out → overflow (a clamp Out saturates in the store instead).
+    template <insidable Out, int W>
+    constexpr std::expected<Out, errc> tan_store(imax turn_w) noexcept
+    {
+      imax t_w;
+      if (!tan_from_turn_fixed<W, W>(turn_w, t_w))
+        return std::unexpected(errc::division_by_zero);
+      if constexpr (!has_flag(InsidePolicy<Out>, clamp))
+      {
+        // t_w/2^W ∈ [lo, hi]  ⇔  ⌈lo·2^W⌉ ≤ t_w ≤ ⌊hi·2^W⌋
+        constexpr imax lo_w = ceil ((Lower<Out> * rational{imax{1} << W}).value());
+        constexpr imax hi_w = floor((Upper<Out> * rational{imax{1} << W}).value());
+        if (t_w < lo_w || t_w > hi_w)
+          return std::unexpected(errc::overflow);
+      }
+      return store_grid<Out>(fixed_to_rational(t_w, W));
+    }
+
     // tan (turn-input, internal). sin/cos from the grid-scaled engine, divided
     // with a pole guard. Returns `unexpected(errc::division_by_zero)` when the
     // phase lands on a pole (cos == 0) and `unexpected(errc::overflow)` when the
@@ -7574,18 +7623,7 @@ namespace beman::inside::math
       imax raw    = raw_imax(phase);
       imax turn_w = (W >= N) ? (raw << (W - N)) : (raw >> (N - W));
 
-      rational sin_v = sin_from_turn_fixed<W, W>(turn_w);
-      rational cos_v = cos_from_turn_fixed<W, W>(turn_w);
-      if (cos_v == 0) return std::unexpected(errc::division_by_zero);
-
-      rational tan_v = (sin_v / cos_v).value();
-      // Under a clamp policy the out-of-range result saturates via the
-      // store below instead of erroring; the pole stays an error.
-      if constexpr (!has_flag(InsidePolicy<Out>, clamp))
-        if (tan_v < Lower<Out> || tan_v > Upper<Out>)
-          return std::unexpected(errc::overflow);
-
-      return detail::store_grid<Out>(tan_v);
+      return tan_store<Out, W>(turn_w);
     }
   } // namespace detail
 
@@ -7601,19 +7639,7 @@ namespace beman::inside::math
     constexpr int W = detail::working_bits<Out>();
     imax turn_w = detail::rad_to_turn_w<W, In>(angle);
 
-    rational sin_v = detail::sin_from_turn_fixed<W, W>(turn_w);
-    rational cos_v = detail::cos_from_turn_fixed<W, W>(turn_w);
-
-    if (cos_v == 0) return std::unexpected(errc::division_by_zero);
-
-    rational tan_v = (sin_v / cos_v).value();
-    // Under a clamp policy the out-of-range result saturates via the store
-    // below instead of erroring; the pole stays an error.
-    if constexpr (!has_flag(InsidePolicy<Out>, clamp))
-      if (tan_v < Lower<Out> || tan_v > Upper<Out>)
-        return std::unexpected(errc::overflow);
-
-    return detail::store_grid<Out>(tan_v);
+    return detail::tan_store<Out, W>(turn_w);
   }
 
 
