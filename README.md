@@ -153,7 +153,6 @@ target those. If you use the single header or the headers without CMake, add
 | Clang      | 22-19   | C++26-C++23   | libstdc++, libc++ |
 | Clang      | 18      | C++26-C++23   | libc++            |
 | AppleClang | latest  | C++26-C++23   | libc++            |
-| MSVC       | latest  | C++23         | MSVC STL          |
 
 ## Development
 

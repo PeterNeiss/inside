@@ -65,7 +65,7 @@ namespace beman::inside::detail
     return {u128{static_cast<umax>(q >> 64), static_cast<umax>(q)},
             static_cast<umax>(wide % d)};
 #else
-    // Portable (MSVC): restoring shift-subtract divide — the same construction
+    // Portable (no __int128, 32-bit targets): restoring shift-subtract divide — the same construction
     // as cmath.hpp's to_fixed fallback.
     u128 q{0, 0};
     umax r = 0;
@@ -895,7 +895,7 @@ namespace beman::inside::detail
     u128n B = static_cast<u128n>(rhs.Numerator) * lhs_ad;
     return lhs_neg ? (B <=> A) : (A <=> B);
 #else
-    // Portable path (MSVC): form each product as {hi, lo} and compare lexically.
+    // Portable path (no __int128): form each product as {hi, lo} and compare lexically.
     const u128 A = umul(lhs.Numerator, rhs_ad);
     const u128 B = umul(rhs.Numerator, lhs_ad);
     return lhs_neg ? cmp128(B, A) : cmp128(A, B);

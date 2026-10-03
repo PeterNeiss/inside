@@ -29,7 +29,7 @@ namespace
     __int128 r = (((static_cast<__int128>(v) - static_cast<__int128>(lo)) % range) + range) % range;
     return static_cast<long long>(r + lo);
 #else
-    // MSVC has no __int128: u64 modular reduction. `v - lo` can exceed 64 signed bits
+    // u64 modular reduction (no __int128 needed). `v - lo` can exceed 64 signed bits
     // at the extremes, so reduce in unsigned (two's-complement) space.
     unsigned long long urange = static_cast<unsigned long long>(hi)
                               - static_cast<unsigned long long>(lo) + 1ull;

@@ -204,7 +204,7 @@ namespace beman::inside::math
       // gcc/clang: native 128-bit, constexpr-friendly.
       umax r = static_cast<umax>((static_cast<unsigned __int128>(ua) * ub) >> W);
 #else
-      // portable: 32-bit split → 128-bit (hi:lo) → shift. Also the MSVC path.
+      // portable (no __int128): 32-bit split → 128-bit (hi:lo) → shift.
       umax al = ua & 0xffffffffu, ah = ua >> 32;
       umax bl = ub & 0xffffffffu, bh = ub >> 32;
       umax ll = al * bl, lh = al * bh, hl = ah * bl, hh = ah * bh;

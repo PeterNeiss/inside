@@ -16,11 +16,6 @@ namespace beman::inside::detail
   // each routing through `store` (in-range) and `handle_out_of_range` /
   // `apply_clamp` / `apply_wrap` (policy). The insidable path also exposes
   // `is_integer_mapping` / `map_raw` — a pure-integer formula in the hot path.
-  //
-  // NOTE: every member is defined *inline* in its specialization body (rather
-  // than out-of-line). MSVC cannot reliably match out-of-line definitions of
-  // member function templates to constrained partial specializations
-  // (C2244/C2995/C3855); inlining sidesteps that and keeps the code portable.
   //---------------------------------------------------------------------------
   // needs_runtime_domain_check<L, P, A>: true iff any out-of-range handler would
   // fire (an action, a clamp/wrap bit, or default-throw under checked).

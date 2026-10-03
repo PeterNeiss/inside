@@ -74,7 +74,6 @@ namespace beman::inside::detail
     }();
 
     // One operand's offset in result-notch units (see mixed_offset_ok).
-    // Defined inline (MSVC and constrained partial specializations).
     template <insidable X>
     static constexpr imax mixed_offset_units(X const& x, imax widen)
     {
@@ -89,16 +88,13 @@ namespace beman::inside::detail
 
     // Result notch is gcd(NL, NR); scale each raw up to it before adding —
     // lhs_widen = NL/Nresult, rhs_widen = NR/Nresult (exact, Nresult divides both).
-    // Guard the continuous-grid case (Notch<result> == 0): the rational divide-by-zero
-    // path returns an error on GCC/Clang but MSVC's constexpr evaluator rejects it
-    // (C2131). widen is unused on the continuous/rational result path, so 1 is fine.
+    // A continuous result (Notch<result> == 0) has no widen (it takes the
+    // rational path), so 1 stands in.
     static constexpr imax lhs_widen = (Notch<result> == 0) ? imax{1}
         : (Notch<L> / Notch<result>).value_or(rational{1}).Numerator;
     static constexpr imax rhs_widen = (Notch<result> == 0) ? imax{1}
         : (Notch<R> / Notch<result>).value_or(rational{1}).Numerator;
 
-    // Defined inline (not out-of-line): MSVC mishandles out-of-line member
-    // templates of constrained partial specializations.
     template <policy_flag F = none, typename E = empty_ref, typename A = no_action>
     static constexpr auto add(L lhs, R rhs, policy<F, E> policy = {}, A&& action = {}) -> add_return_t<F, A>
   {

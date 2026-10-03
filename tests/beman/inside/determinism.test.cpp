@@ -5,7 +5,7 @@
 // NOT verify that — they would pass a sub-tolerance cross-platform drift. These
 // tests instead pin each function's EXACT output (`==`) at representative and
 // corner inputs, across a VARIETY of grids (notch resolution, interval, storage),
-// so the multi-arch CI (x64 + ARM64 × GCC/Clang/MSVC/AppleClang, both engines)
+// so the multi-arch CI (x64 + ARM64 × GCC/Clang/AppleClang, both engines)
 // locks the values bit-for-bit.
 //
 // Values were captured from the library itself; comments give the approximate true

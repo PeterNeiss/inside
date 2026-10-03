@@ -15,7 +15,6 @@
 #include <algorithm>
 #include <array>
 #include <bit>
-#include <climits>
 #include <compare>
 #include <concepts>
 #include <cstddef>
@@ -554,183 +553,23 @@ namespace beman::inside
 
 
 //---------------------------------------------------------------------------
-// overflow — overflow-detecting add/sub/mul for integers. Wraps
-// __builtin_*_overflow when available, with portable non_builtin_* fallbacks.
-// Used by rational::*_impl and every checked arithmetic path.
+// overflow — overflow-detecting add/sub/mul for integers: the GCC/Clang
+// __builtin_*_overflow intrinsics. Return true on overflow; *result holds the
+// wrapped value either way. Used by rational::*_impl and every checked path.
 //---------------------------------------------------------------------------
-
-#if defined(__has_builtin)
-  #if __has_builtin(__builtin_add_overflow) \
-   && __has_builtin(__builtin_sub_overflow) \
-   && __has_builtin(__builtin_mul_overflow)
-    #define BEMAN_INSIDE_HAVE_BUILTIN 1
-  #endif
-#endif
-
-// GCC 5.0+ ships these builtins even where __has_builtin is unavailable.
-#if !defined(BEMAN_INSIDE_HAVE_BUILTIN) && defined(__GNUC__) && __GNUC__ >= 5
-  #define BEMAN_INSIDE_HAVE_BUILTIN 1
-#endif
-
 namespace beman::inside
 {
-  template<std::integral T>
-  [[nodiscard]] constexpr bool non_builtin_add_overflow(T l, T r, T* result) noexcept
-  {
-    if constexpr (std::numeric_limits<T>::is_signed)
-    {
-      if constexpr(sizeof(T) == sizeof(std::int64_t))
-      {
-        *result = static_cast<T>(static_cast<uint64_t>(l) + static_cast<uint64_t>(r));
-        if (l < 0)
-          return (r<0) && (*result > l);
-        else
-          return (r >= 0) && (*result < l);
-      }
-      else
-      {
-        std::int64_t res {l};
-        res += r;
-        *result = static_cast<T>(res);
-        return res != *result;
-      }
-    }
-    else
-    { // unsigned
-      if constexpr(sizeof(T) == sizeof(std::uint64_t))
-      {
-        *result = l + r;
-        return *result < l; // wrapped when true
-      }
-      else
-      {
-        std::uint64_t res {l};
-        res += r;
-        *result = static_cast<T>(res);
-        return res != *result;
-      }
-    }
-  }
+  template <std::integral T>
+  [[nodiscard]] constexpr bool add_overflow(T l, T r, T* result) noexcept
+  { return __builtin_add_overflow(l, r, result); }
 
-  template<std::integral T>
-  [[nodiscard]] constexpr bool non_builtin_mul_overflow(T l, T r, T* result) noexcept
-  {
-    if constexpr (std::numeric_limits<T>::is_signed)
-    {
-      if constexpr(sizeof(T) == sizeof(std::int64_t))
-      {
-        bool resultnegative { (l < 0) != (r < 0) };
-        uint64_t res{};
-        auto abs64 { [](int64_t value) -> uint64_t { return value < 0? 1ULL + ~static_cast<uint64_t>(value):static_cast<uint64_t>(value);} };
-        if (not non_builtin_mul_overflow(abs64(l), abs64(r), &res))
-        {
-          if (resultnegative)
-          {
-            if (res <= static_cast<uint64_t>(std::numeric_limits<int64_t>::max()) + 1ull)
-            {
-              *result = static_cast<T>(1ULL + ~res); // two's complement
-              return false;
-            }
-          }
-          else
-          {
-            if (res <= static_cast<uint64_t>(std::numeric_limits<int64_t>::max()))
-            {
-              *result = static_cast<T>(res);
-              return false;
-            }
-          }
-        }
-        return true; // overflow
-      }
-      else
-      {
-        std::int64_t res {l};
-        res *= r;
-        *result = static_cast<T>(res);
-        return res != *result; // detect overflow bits
-      }
-    }
-    else
-    { // unsigned
-      if constexpr(sizeof(T) == sizeof(std::uint64_t))
-      {
-        // compute high-parts and low-parts
-        uint64_t lhigh { l >> 32 };
-        uint64_t llow { l & 0xffff'ffffULL} ;
-        uint64_t rhigh { r >> 32 };
-        uint64_t rlow { r & 0xffff'ffffULL} ;
-        if (lhigh > 0 && rhigh > 0) return true;
-        uint64_t high_low{ lhigh>0 ? lhigh*rlow : rhigh*llow };
-        if (high_low >> 32) return true; // overflow
-        uint64_t low_low { llow * rlow } ;
-        *result = (high_low << 32) + low_low;
+  template <std::integral T>
+  [[nodiscard]] constexpr bool sub_overflow(T l, T r, T* result) noexcept
+  { return __builtin_sub_overflow(l, r, result); }
 
-        return *result < low_low; // detect overflow
-      }
-      else
-      {
-        std::uint64_t res {l};
-        res *= r;
-        *result = static_cast<T>(res);
-        return res != *result;
-      }
-    }
-  }
-
-  template<std::integral T>
-  [[nodiscard]] constexpr bool non_builtin_sub_overflow(T l, T r, T* result) noexcept
-  {
-    if constexpr (std::numeric_limits<T>::is_signed)
-    {
-      // Negating T::min() is signed-overflow UB, so detect it before negating:
-      // when r == T::min(), `l - r` fits only if l < 0.
-      if (r == std::numeric_limits<T>::min())
-      {
-        if (l >= 0) return true;
-        *result = static_cast<T>(l - r);
-        return false;
-      }
-      return non_builtin_add_overflow(l, static_cast<T>(-r), result);
-    }
-    else
-    {
-      *result = static_cast<T>(l - r);
-      return r > l;
-    }
-  }
-
-#ifdef BEMAN_INSIDE_HAVE_BUILTIN
-  template<std::integral T>
-  [[nodiscard]]
-  constexpr bool add_overflow(T l, T r, T* result) noexcept
-  { return __builtin_add_overflow(l,r,result); }
-
-  template<std::integral T>
-  [[nodiscard]]
-  constexpr bool sub_overflow(T l, T r, T* result) noexcept
-  { return __builtin_sub_overflow(l,r,result); }
-
-  template<std::integral T>
-  [[nodiscard]]
-  constexpr bool mul_overflow(T l, T r, T* result) noexcept
-  { return __builtin_mul_overflow(l,r,result); }
-#else // DIY
-  template<std::integral T>
-  [[nodiscard]]
-  constexpr bool add_overflow(T l, T r, T* result) noexcept
-  { return non_builtin_add_overflow(l,r,result); }
-
-  template<std::integral T>
-  [[nodiscard]]
-  constexpr bool sub_overflow(T l, T r, T* result) noexcept
-  { return non_builtin_sub_overflow(l,r,result); }
-
-  template<std::integral T>
-  [[nodiscard]]
-  constexpr bool mul_overflow(T l, T r, T* result) noexcept
-  { return non_builtin_mul_overflow(l,r,result); }
-#endif
+  template <std::integral T>
+  [[nodiscard]] constexpr bool mul_overflow(T l, T r, T* result) noexcept
+  { return __builtin_mul_overflow(l, r, result); }
 } // namespace beman::inside
 
 
@@ -783,7 +622,7 @@ namespace beman::inside::detail
     return {u128{static_cast<umax>(q >> 64), static_cast<umax>(q)},
             static_cast<umax>(wide % d)};
 #else
-    // Portable (MSVC): restoring shift-subtract divide — the same construction
+    // Portable (no __int128, 32-bit targets): restoring shift-subtract divide — the same construction
     // as cmath.hpp's to_fixed fallback.
     u128 q{0, 0};
     umax r = 0;
@@ -1613,7 +1452,7 @@ namespace beman::inside::detail
     u128n B = static_cast<u128n>(rhs.Numerator) * lhs_ad;
     return lhs_neg ? (B <=> A) : (A <=> B);
 #else
-    // Portable path (MSVC): form each product as {hi, lo} and compare lexically.
+    // Portable path (no __int128): form each product as {hi, lo} and compare lexically.
     const u128 A = umul(lhs.Numerator, rhs_ad);
     const u128 B = umul(rhs.Numerator, lhs_ad);
     return lhs_neg ? cmp128(B, A) : cmp128(A, B);
@@ -3285,11 +3124,6 @@ namespace beman::inside::detail
   // each routing through `store` (in-range) and `handle_out_of_range` /
   // `apply_clamp` / `apply_wrap` (policy). The insidable path also exposes
   // `is_integer_mapping` / `map_raw` — a pure-integer formula in the hot path.
-  //
-  // NOTE: every member is defined *inline* in its specialization body (rather
-  // than out-of-line). MSVC cannot reliably match out-of-line definitions of
-  // member function templates to constrained partial specializations
-  // (C2244/C2995/C3855); inlining sidesteps that and keeps the code portable.
   //---------------------------------------------------------------------------
   // needs_runtime_domain_check<L, P, A>: true iff any out-of-range handler would
   // fire (an action, a clamp/wrap bit, or default-throw under checked).
@@ -4542,7 +4376,6 @@ namespace beman::inside::detail
     }();
 
     // One operand's offset in result-notch units (see mixed_offset_ok).
-    // Defined inline (MSVC and constrained partial specializations).
     template <insidable X>
     static constexpr imax mixed_offset_units(X const& x, imax widen)
     {
@@ -4557,16 +4390,13 @@ namespace beman::inside::detail
 
     // Result notch is gcd(NL, NR); scale each raw up to it before adding —
     // lhs_widen = NL/Nresult, rhs_widen = NR/Nresult (exact, Nresult divides both).
-    // Guard the continuous-grid case (Notch<result> == 0): the rational divide-by-zero
-    // path returns an error on GCC/Clang but MSVC's constexpr evaluator rejects it
-    // (C2131). widen is unused on the continuous/rational result path, so 1 is fine.
+    // A continuous result (Notch<result> == 0) has no widen (it takes the
+    // rational path), so 1 stands in.
     static constexpr imax lhs_widen = (Notch<result> == 0) ? imax{1}
         : (Notch<L> / Notch<result>).value_or(rational{1}).Numerator;
     static constexpr imax rhs_widen = (Notch<result> == 0) ? imax{1}
         : (Notch<R> / Notch<result>).value_or(rational{1}).Numerator;
 
-    // Defined inline (not out-of-line): MSVC mishandles out-of-line member
-    // templates of constrained partial specializations.
     template <policy_flag F = none, typename E = empty_ref, typename A = no_action>
     static constexpr auto add(L lhs, R rhs, policy<F, E> policy = {}, A&& action = {}) -> add_return_t<F, A>
   {
@@ -7596,7 +7426,7 @@ namespace beman::inside::math
       // gcc/clang: native 128-bit, constexpr-friendly.
       umax r = static_cast<umax>((static_cast<unsigned __int128>(ua) * ub) >> W);
 #else
-      // portable: 32-bit split → 128-bit (hi:lo) → shift. Also the MSVC path.
+      // portable (no __int128): 32-bit split → 128-bit (hi:lo) → shift.
       umax al = ua & 0xffffffffu, ah = ua >> 32;
       umax bl = ub & 0xffffffffu, bh = ub >> 32;
       umax ll = al * bl, lh = al * bh, hl = ah * bl, hh = ah * bh;
