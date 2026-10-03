@@ -750,7 +750,11 @@ namespace beman::inside::detail
                       || point_exactly_assignable<L, R>,
           "incompatible notches: use with_snap() or policy<snap>() to allow rounding");
 
-        if constexpr (not includes(Interval<L>, Interval<R>))
+        // A `real` source holds its value as a double raw, which the raw-mapping
+        // formulas below would misread as an index: take the double path.
+        if constexpr (fp_raw<R>)
+          return assignment<L, double>::assign(lhs, as_double(rhs), policy, std::forward<A>(action));
+        else if constexpr (not includes(Interval<L>, Interval<R>))
         {
           if constexpr (needs_runtime_domain_check<L, plain<P>, plain<A>>)
           {

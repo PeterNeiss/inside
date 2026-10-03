@@ -3864,7 +3864,11 @@ namespace beman::inside::detail
                       || point_exactly_assignable<L, R>,
           "incompatible notches: use with_snap() or policy<snap>() to allow rounding");
 
-        if constexpr (not includes(Interval<L>, Interval<R>))
+        // A `real` source holds its value as a double raw, which the raw-mapping
+        // formulas below would misread as an index: take the double path.
+        if constexpr (fp_raw<R>)
+          return assignment<L, double>::assign(lhs, as_double(rhs), policy, std::forward<A>(action));
+        else if constexpr (not includes(Interval<L>, Interval<R>))
         {
           if constexpr (needs_runtime_domain_check<L, plain<P>, plain<A>>)
           {
@@ -5094,24 +5098,16 @@ namespace beman::inside
     // Value-init `inside{}` still zero-fills where a zero raw is genuinely wanted.)
     constexpr inside() = default;
 
-    // fp storage (f64/f32) holds the value as a floating raw directly. An
-    // arithmetic rhs casts straight to double; an inside rhs goes through its exact
-    // rational view.
     private:
-    template <numeric A>
-    constexpr double to_double(A const& value)
-    {
-      if constexpr (std::is_arithmetic_v<A>) return value;
-      else                                   return static_cast<double>(detail::as_rational(value));
-    }
-    public:
     // Snap a value onto fp storage: lossless on the (fp-exact) dyadic grid — the
     // snap is computed in double and narrowed to the raw type (double or float),
     // which is exact because every grid point fits the raw's significand. Out-of-
     // range values run the same policy cascade as the fractional path (clamp →
-    // wrap → checked-report → store as-is).
-    constexpr void store_fp(double v)
+    // wrap → checked-report → store as-is), with Pol's one-shot flags merged in.
+    template <typename Pol>
+    constexpr void store_fp(double v, Pol& pol)
     {
+      constexpr policy_flag F = P | detail::policy_flags_of<std::remove_cvref_t<Pol>>;
       // NaN/±inf would reach snap_double's integer cast (UB); reject like the
       // non-real path. `v - v` is 0 for every finite v, NaN otherwise.
       if (!(v - v == 0))
@@ -5120,9 +5116,9 @@ namespace beman::inside
       const double hi = static_cast<double>(G.Interval.Upper);
       if (v < lo || v > hi)
       {
-        if constexpr (has_flag(P, clamp))
+        if constexpr (has_flag(F, clamp))
           v = v < lo ? lo : hi;
-        else if constexpr (has_flag(P, wrap))
+        else if constexpr (has_flag(F, wrap))
         {
           // Fold into [Lower, Lower + range), range = span + notch — the same
           // convention as the fractional apply_wrap. floor(q) without an
@@ -5142,49 +5138,42 @@ namespace beman::inside
           }
           v -= kd * range;
         }
-        else if (detail::domain_fail(*this, make_policy<P>()))
+        else if (detail::domain_fail(*this, pol))
           return;            // reported (error_code mode)
         // no handler (unchecked policy): fall through and store snapped as-is
       }
       Raw = static_cast<raw_type>(G.snap_double(v));   // narrow to float for f32 (lossless)
     }
 
-    template <numeric A>
-    constexpr void store_value(A const& value)
+    // The one store every constructor and assignment goes through; fp storage
+    // takes the value as a double.
+    template <numeric A, typename Pol>
+    constexpr void store_value(A const& value, Pol&& pol)
     {
-      if constexpr (detail::fp_raw<inside>)
-        store_fp(to_double(value));
-      else if constexpr (is_inside_v<A>)
-      {
-        // A `real` SOURCE holds its value as a double raw; the assignment engine's
-        // integer offset formula (Lower + raw·Notch) would misread it. Extract as
-        // a double and route through the arithmetic-source path.
-        if constexpr (detail::fp_raw<A>)
-          detail::assignment<inside, double>::assign(*this, detail::as_double(value), make_policy<P>());
-        else
-          detail::assignment<inside, A>::assign(*this, value, make_policy<P>());
-      }
+      if constexpr (!detail::fp_raw<inside>)
+        detail::assignment<inside, A>::assign(*this, value, pol);
+      else if constexpr (std::is_arithmetic_v<A>)
+        store_fp(static_cast<double>(value), pol);
       else
-        detail::assignment<inside, A>::assign(*this, value, make_policy<P>());
+        store_fp(static_cast<double>(detail::as_rational(value)), pol);
     }
+
+    template <numeric A>
+    constexpr void store_value(A const& value) { store_value(value, make_policy<P>()); }
+    public:
 
     template <numeric A>
       requires inside_assignable<inside, A, P>
     constexpr inside(A value)
     { store_value(value); }
 
+    // One-shot policy: `pol`'s flags widen the assignable check (a clamp/round
+    // relaxes the interval/notch clause, e.g. clamp_round<B>(some_inside)) and
+    // apply to this store. If it reports an error (ec mode), Raw is ill-defined.
     template <numeric A, typename Pol>
       requires inside_assignable<inside, A, P | detail::policy_flags_of<std::remove_cvref_t<Pol>>>
-    constexpr inside(A value, Pol&& pol)   // if assign reports an error (ec mode), Raw is
-    {                                     // left ill-defined — check the error before reading
-      // The one-shot `pol` widens the assignable check (a clamp/round passed here
-      // relaxes the notch/interval clause), so a notch-incompatible insidable source
-      // is accepted — e.g. clamp_round<B>(some_inside). Body honours `pol` as before.
-      if constexpr (detail::fp_raw<inside>)
-        store_fp(to_double(value));
-      else
-        detail::assignment<inside, A>::assign(*this, value, pol);
-    }
+    constexpr inside(A value, Pol&& pol)
+    { store_value(value, pol); }
 
     // Error-code construction: `inside x(value, ec)`. Needs its own overload (a raw
     // error_code would bind the Pol&& template above). On a reported (out-of-range)
@@ -5193,12 +5182,7 @@ namespace beman::inside
     template <numeric A>
       requires inside_assignable<inside, A, P>
     constexpr inside(A value, errc& ec)
-    {
-      if constexpr (detail::fp_raw<inside>)
-        store_fp(to_double(value));
-      else
-        detail::assignment<inside, A>::assign(*this, value, make_policy<P>(ec));
-    }
+    { store_value(value, make_policy<P>(ec)); }
 
     // expected<A> sink — unwrap once at the construction boundary so callers can
     // chain checked arithmetic without per-step `.value()`. Throws

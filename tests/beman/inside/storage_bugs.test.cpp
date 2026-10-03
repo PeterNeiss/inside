@@ -217,3 +217,49 @@ TEST(StorageBugsTest, fp_derived_rational_store_on_a_wide_snap_grid_uses_the_128
     catch (inside_error const& e) { ASSERT_EQ(e.code, errc::rounding_error); }
   }
 }
+
+#ifndef BEMAN_INSIDE_MATH_FIXED   // `real` storage is compiled out under the integer engine
+//---------------------------------------------------------------------------
+// A `real` (double-raw) source through every store path, and one-shot
+// policies on a `real` target. The raw is the value, not a notch index.
+//---------------------------------------------------------------------------
+namespace
+{
+  using RealSmall = beman::inside::inside<{{0, 4}, beman::inside::notch<1, 4>}, beman::inside::real>;
+  using RealWide  = beman::inside::inside<{{-8, 8}, beman::inside::notch<1, 4>}, beman::inside::real>;
+  using Int10     = beman::inside::inside<{0, 10}>;
+}
+
+TEST(StorageBugsTest, real_source_into_integer_grid_reads_the_value)
+{
+  using namespace beman::inside;
+  const RealWide half = RealWide::from_raw(2.5);
+  EXPECT_EQ(detail::to_value(clamp_round<Int10>(half)), 3);
+  Int10 i{0};
+  i.with_snap<round_nearest>() = half;
+  EXPECT_EQ(detail::to_value(i), 3);
+  Int10 j = (half * just<2>).with_snap();
+  EXPECT_EQ(detail::to_value(j), 5);
+}
+
+TEST(StorageBugsTest, one_shot_policy_applies_to_real_target)
+{
+  using namespace beman::inside;
+  const RealWide big = RealWide::from_raw(7.5), low = RealWide::from_raw(-1.0);
+  EXPECT_EQ(clamp_cast<RealSmall>(big).raw(), 4.0);
+  EXPECT_EQ(clamp_cast<RealSmall>(low).raw(), 0.0);
+  EXPECT_EQ(wrap_cast<RealSmall>(big).raw(), 7.5 - 4.25);
+  RealSmall r = RealSmall::from_raw(1.0);
+  r.with_clamp() = big;
+  EXPECT_EQ(r.raw(), 4.0);
+}
+
+TEST(StorageBugsTest, error_code_ctor_reports_on_checked_real_target)
+{
+  using namespace beman::inside;
+  using Checked = inside<{{0, 4}, notch<1, 4>}, real | checked>;
+  errc ec{};
+  Checked c(RealWide::from_raw(7.5), ec);
+  EXPECT_EQ(ec, errc::domain_error);
+}
+#endif
