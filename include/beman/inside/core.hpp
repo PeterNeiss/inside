@@ -18,7 +18,9 @@
 #include <beman/inside/detail/assignment.hpp>
 #include <beman/inside/predicates.hpp>
 
+#include <bit>        // std::countr_zero, std::has_single_bit
 #include <expected>   // std::expected, std::unexpected
+#include <utility>    // std::pair
 
 // Forward-declare the `beman::inside::math` entry points used in-class, so the bodies
 // pass `-Wtemplate-body` without pulling cmath.hpp in unconditionally (its
@@ -379,17 +381,35 @@ namespace beman::inside
     // numerator() / denominator() — the exact value of a fractional inside as an
     // integer pair (sign on the numerator, denominator positive). The supported
     // exact read-out that keeps callers in plain integers. Integer-notch ⇒ den == 1.
-    [[nodiscard]] constexpr imax numerator() const
-    {
-      auto r = detail::as_rational(*this);
-      return (r.Denominator < 0) ? -r.Numerator : r.Numerator;
-    }
+    [[nodiscard]] constexpr imax numerator() const   { return fraction().first; }
+    [[nodiscard]] constexpr imax denominator() const { return fraction().second; }
 
-    [[nodiscard]] constexpr imax denominator() const
+    private:
+    // The reduced exact value as {numerator, positive denominator}. Integer
+    // grids need no division; dyadic Q-format grids reduce by shifting out
+    // common factors of two instead of a gcd.
+    constexpr std::pair<imax, imax> fraction() const
     {
-      auto r = detail::as_rational(*this);
-      return detail::abs_den(r.Denominator);
+      if constexpr (detail::index_raw<inside> && detail::IsIntegerAligned<inside>)
+        return {detail::to_value(*this), 1};
+      else if constexpr (detail::index_raw<inside> && detail::HasQFormatFastPath<inside>
+                         && std::has_single_bit(detail::abs_den(G.Notch.Denominator)))
+      {
+        constexpr imax nd = detail::abs_den(G.Notch.Denominator);
+        constexpr int  k  = std::countr_zero(static_cast<umax>(nd));
+        const imax num = detail::raw_imax(*this) + detail::LowerImax<inside> * nd;
+        const int  tz  = std::countr_zero(static_cast<umax>(num));   // num == 0: 64
+        const int  s   = tz < k ? tz : k;
+        return {num >> s, nd >> s};
+      }
+      else
+      {
+        auto r = detail::as_rational(*this);
+        return {(r.Denominator < 0) ? -r.Numerator : r.Numerator,
+                static_cast<imax>(detail::abs_den(r.Denominator))};
+      }
     }
+    public:
 
     // Integer reductions (floor/ceil/round/trunc) and abs live as free
     // functions in `beman::inside::math` — `beman::inside::math::floor(b)` etc. (auto-deduced Out)

@@ -2990,7 +2990,14 @@ namespace beman::inside
     {
       if constexpr (!index_raw<B>)
         return raw_imax(b);
-      else // index storage
+      else if constexpr (abs_den(Notch<B>.Denominator) == 1 && abs_den(Lower<B>.Denominator) == 1)
+        return LowerImax<B> + raw_imax(b) * static_cast<imax>(Notch<B>.Numerator);
+      else if constexpr (HasQFormatFastPath<B>)
+      {
+        constexpr imax nd = abs_den(Notch<B>.Denominator);
+        return (raw_imax(b) + LowerImax<B> * nd) / nd;   // q_format_decode, truncated
+      }
+      else // index storage, generic rational path
         return trunc(as_rational(b));
     }
 
@@ -2999,6 +3006,8 @@ namespace beman::inside
     {
       if constexpr (!index_raw<B>)
         b = B::from_raw(raw_cast<B>(val));
+      else if constexpr (abs_den(Notch<B>.Denominator) == 1 && abs_den(Lower<B>.Denominator) == 1)
+        b = B::from_raw(raw_cast<B>((val - LowerImax<B>) / static_cast<imax>(Notch<B>.Numerator)));
       else if constexpr (HasQFormatFastPath<B>)
         b = B::from_raw(q_format_encode<B>(val));
       else // index storage, generic rational path
@@ -5520,17 +5529,35 @@ namespace beman::inside
     // numerator() / denominator() — the exact value of a fractional inside as an
     // integer pair (sign on the numerator, denominator positive). The supported
     // exact read-out that keeps callers in plain integers. Integer-notch ⇒ den == 1.
-    [[nodiscard]] constexpr imax numerator() const
-    {
-      auto r = detail::as_rational(*this);
-      return (r.Denominator < 0) ? -r.Numerator : r.Numerator;
-    }
+    [[nodiscard]] constexpr imax numerator() const   { return fraction().first; }
+    [[nodiscard]] constexpr imax denominator() const { return fraction().second; }
 
-    [[nodiscard]] constexpr imax denominator() const
+    private:
+    // The reduced exact value as {numerator, positive denominator}. Integer
+    // grids need no division; dyadic Q-format grids reduce by shifting out
+    // common factors of two instead of a gcd.
+    constexpr std::pair<imax, imax> fraction() const
     {
-      auto r = detail::as_rational(*this);
-      return detail::abs_den(r.Denominator);
+      if constexpr (detail::index_raw<inside> && detail::IsIntegerAligned<inside>)
+        return {detail::to_value(*this), 1};
+      else if constexpr (detail::index_raw<inside> && detail::HasQFormatFastPath<inside>
+                         && std::has_single_bit(detail::abs_den(G.Notch.Denominator)))
+      {
+        constexpr imax nd = detail::abs_den(G.Notch.Denominator);
+        constexpr int  k  = std::countr_zero(static_cast<umax>(nd));
+        const imax num = detail::raw_imax(*this) + detail::LowerImax<inside> * nd;
+        const int  tz  = std::countr_zero(static_cast<umax>(num));   // num == 0: 64
+        const int  s   = tz < k ? tz : k;
+        return {num >> s, nd >> s};
+      }
+      else
+      {
+        auto r = detail::as_rational(*this);
+        return {(r.Denominator < 0) ? -r.Numerator : r.Numerator,
+                static_cast<imax>(detail::abs_den(r.Denominator))};
+      }
     }
+    public:
 
     // Integer reductions (floor/ceil/round/trunc) and abs live as free
     // functions in `beman::inside::math` — `beman::inside::math::floor(b)` etc. (auto-deduced Out)

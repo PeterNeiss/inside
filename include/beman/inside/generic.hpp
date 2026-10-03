@@ -315,7 +315,14 @@ namespace beman::inside
     {
       if constexpr (!index_raw<B>)
         return raw_imax(b);
-      else // index storage
+      else if constexpr (abs_den(Notch<B>.Denominator) == 1 && abs_den(Lower<B>.Denominator) == 1)
+        return LowerImax<B> + raw_imax(b) * static_cast<imax>(Notch<B>.Numerator);
+      else if constexpr (HasQFormatFastPath<B>)
+      {
+        constexpr imax nd = abs_den(Notch<B>.Denominator);
+        return (raw_imax(b) + LowerImax<B> * nd) / nd;   // q_format_decode, truncated
+      }
+      else // index storage, generic rational path
         return trunc(as_rational(b));
     }
 
@@ -324,6 +331,8 @@ namespace beman::inside
     {
       if constexpr (!index_raw<B>)
         b = B::from_raw(raw_cast<B>(val));
+      else if constexpr (abs_den(Notch<B>.Denominator) == 1 && abs_den(Lower<B>.Denominator) == 1)
+        b = B::from_raw(raw_cast<B>((val - LowerImax<B>) / static_cast<imax>(Notch<B>.Numerator)));
       else if constexpr (HasQFormatFastPath<B>)
         b = B::from_raw(q_format_encode<B>(val));
       else // index storage, generic rational path

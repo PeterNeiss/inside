@@ -182,3 +182,32 @@ TEST(PerfPathsTest, int32_native_div_mod_matches_wide_reference)
   auto r = mod(a, b, make_policy<round_ceil>());
   EXPECT_EQ(rational{*r}, rational{M - 2 * (M / 2 + 1)});
 }
+
+//---------------------------------------------------------------------------
+// numerator()/denominator() and to_value fast paths agree with the rational view.
+//---------------------------------------------------------------------------
+TEST(PerfPathsTest, fraction_and_to_value_fast_paths_match_rational)
+{
+  using Q = inside<{-4, 4, frac<1, 8>}>;            // dyadic, negative Lower
+  static_assert(index_raw<Q> && HasQFormatFastPath<Q>);
+  for (imax k = 0; k <= 64; ++k)
+  {
+    Q q = Q::from_raw(static_cast<Q::raw_type>(k));
+    const rational r{q};
+    const imax num = (r.Denominator < 0) ? -r.Numerator : r.Numerator;
+    EXPECT_EQ(q.numerator(), num);
+    EXPECT_EQ(q.denominator(), static_cast<imax>(abs_den(r.Denominator)));
+    EXPECT_EQ(to_value(q), trunc(r));
+  }
+  using I = inside<{-30, 90, 3}>;                    // integer notch 3, index storage
+  static_assert(index_raw<I> && IsIntegerAligned<I>);
+  for (imax v = -30; v <= 90; v += 3)
+  {
+    I i{v};
+    EXPECT_EQ(to_value(i), v);
+    EXPECT_EQ(i.numerator(), v);
+    EXPECT_EQ(i.denominator(), 1);
+    I j; from_value(j, v);
+    EXPECT_EQ(j.raw(), i.raw());
+  }
+}
