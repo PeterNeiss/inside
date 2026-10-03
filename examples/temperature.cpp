@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Temperature with fractional notch: Celsius from -40 to 60 in 0.5 degree steps.
 
 #include <iostream>

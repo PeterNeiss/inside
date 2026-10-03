@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Hazard 3: two's complement is asymmetric. There is no positive INT_MIN,
 // so negation and absolute value have no correct answer to give.
 

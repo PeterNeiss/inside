@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Inside-space 2-D geometry with `dot`, `cross`, and `lerp`.
 //
 // The three vector helpers keep planar geometry inside the bounded world — no

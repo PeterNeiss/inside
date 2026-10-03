@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Double hazard 4: beyond 2^53 a double cannot represent consecutive
 // integers, so counters and ids silently stop incrementing.
 // (inside encodes exactly this limit as its `double_exact` rule.)

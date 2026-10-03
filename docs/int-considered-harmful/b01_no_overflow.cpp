@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Answer to hazards 1, 2 and 10: arithmetic cannot overflow, because the
 // result TYPE widens at compile time to hold every value the operands
 // could possibly produce. There is no overflow to be undefined.

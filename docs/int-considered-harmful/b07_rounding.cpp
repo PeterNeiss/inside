@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Answer to hazard 7: rounding is a decision you state, not a default you
 // inherit. Native integer division always truncates toward zero; here each
 // mode is honoured, including for negative values.

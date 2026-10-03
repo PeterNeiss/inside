@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Weighted average across three temperature sensors with disparate ranges.
 //
 // Demonstrates:

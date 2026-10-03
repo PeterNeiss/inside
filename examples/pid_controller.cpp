@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // PID controller with fixed-point error terms and a saturating output.
 //
 // Demonstrates:

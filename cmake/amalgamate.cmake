@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #---------------------------------------------------------------------------
 # Copyright (C) 2026 Peter Neiss
 #---------------------------------------------------------------------------
@@ -210,8 +211,9 @@ file(READ "${BODY_FILE}" body)
 file(REMOVE "${BODY_FILE}")
 
 set(banner
-"//---------------------------------------------------------------------------
-// inside ${BEMAN_INSIDE_AMALGAMATE_VERSION} — single-header amalgamation
+"// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//---------------------------------------------------------------------------
+// beman.inside ${BEMAN_INSIDE_AMALGAMATE_VERSION} — single-header amalgamation
 //
 //   *** GENERATED FILE — DO NOT EDIT BY HAND ***
 //
@@ -219,7 +221,7 @@ set(banner
 // Source of truth:  include/beman/inside/*.hpp, include/beman/inside/slim/*.hpp
 //
 // Copyright (C) 2026 Peter Neiss
-// slim/* components are MIT-licensed (SPDX-License-Identifier: MIT).
+// beman::inside::slim components (slim/*.hpp) are MIT-licensed.
 //---------------------------------------------------------------------------
 #ifndef BEMAN_INSIDE_SINGLE_HEADER_HPP
 #define BEMAN_INSIDE_SINGLE_HEADER_HPP

@@ -16,7 +16,7 @@
 #if defined(__cpp_lib_expected)
 // C++23 toolchains: slim::expected IS std::expected — user code composes
 // with the standard vocabulary (monadic ops included); the backport below
-// serves only toolchains without <expected> (GCC 12 / BEMAN_INSIDE_CXX20).
+// serves only toolchains without <expected> (GCC 12 / CMAKE_CXX_STANDARD=20).
 #include <expected>
 
 namespace beman::inside::slim {

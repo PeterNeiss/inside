@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Bounded array indexing with safe for loops.
 
 #include <iostream>

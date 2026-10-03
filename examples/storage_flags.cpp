@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Fixed-width storage flags from <beman/inside/policy_flag.hpp>.
 //
 // By default an inside picks the *smallest* raw integer that fits its grid. The

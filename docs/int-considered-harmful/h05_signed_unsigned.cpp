@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Hazard 5: mixed signed/unsigned comparison. The usual arithmetic
 // conversions quietly turn the signed operand unsigned, so a negative
 // number becomes an enormous positive one.

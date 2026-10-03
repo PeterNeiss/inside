@@ -100,7 +100,7 @@ headroom and keep full range.
 
 The generated per-operation tables — Q8.8/Q16.16 construct/add/mul/div,
 accumulation, and the math engines, each with a native baseline and hardware
-counters — are in [performance.md](performance.md) (`perf_report` target).
+counters — are in [performance.md](performance.md) (`beman.inside.perf_report` target).
 The short version: unchecked Q-format arithmetic sits at native parity;
 `checked` on a tight loop costs ~4× because the per-element domain check
 breaks autovectorisation — use `unsafe` inside proven-safe inner loops, or

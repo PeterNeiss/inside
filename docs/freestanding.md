@@ -11,7 +11,7 @@ where the current limits are.
 > core arithmetic library then needs no hosted-only header. Transcendental math is
 > included: under `BEMAN_INSIDE_MATH_NO_FP` (auto-enabled by `-ffreestanding`) the `<cmath>`
 > dependency is compiled out entirely — see
-> [Math without `<cmath>`](#math-without-cmath-ins_math_no_fp).
+> [Math without `<cmath>`](#math-without-cmath-beman_inside_math_no_fp).
 
 ## What you get
 
@@ -119,20 +119,21 @@ compute backend differs.
 - All transcendentals are `constexpr` under `BEMAN_INSIDE_MATH_NO_FP`, so they evaluate at
   compile time as well as runtime.
 
-See [Compiling without floating point](math.md#compiling-without-floating-point-ins_math_no_fp)
+See [Compiling without floating point](math.md#compiling-without-floating-point-beman_inside_math_no_fp)
 in the math guide for the full story and the engine trade-offs.
 
 ## Older toolchains: C++20 / GCC 12 mode
 
 The library also builds against **C++20 on GCC 12**: configure with
-`-DBEMAN_INSIDE_CXX20=ON`. In that mode the error channel uses the bundled
+`-DCMAKE_CXX_STANDARD=20`. In that mode the error channel uses the bundled
 `slim::expected` backport instead of `<expected>`, and the `std::format`
 integration is feature-gated off (`to_string()` / `operator<<` remain available)
 — everything else is identical.
 
 ```bash
-cmake -B build20 -DBEMAN_INSIDE_CXX20=ON -DCMAKE_CXX_COMPILER=g++-12
-cmake --build build20
+cmake -S . -B build/gcc12 -DCMAKE_CXX_STANDARD=20 -DCMAKE_CXX_COMPILER=g++-12 \
+      -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES=infra/cmake/use-fetch-content.cmake
+cmake --build build/gcc12
 ```
 
 ## Limitations & caveats
@@ -156,12 +157,12 @@ cmake --build build20
 
 ## Worked example
 
-`tests/single_header_freestanding_smoke.cpp` is a complete TU that sees **only** the
+`tests/beman/inside/single_header_freestanding_smoke.cpp` is a complete TU that sees **only** the
 amalgamated single header with the string block dropped and exceptions off. It installs
 a trapping handler and exercises clamp/wrap, the error-code channel, and checked
 arithmetic:
 
 ```sh
-cmake --build <build-dir> --target single_header_freestanding_smoke
+ctest --test-dir <build-dir> -R single_header_freestanding_smoke
 # compiled with: -DBEMAN_INSIDE_NO_STRING -fno-exceptions, -I single_include only
 ```

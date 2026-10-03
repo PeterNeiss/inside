@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Hazard 2: the same assumption turns a terminating loop into an endless one.
 // `i > 0` is true for every i the compiler believes is reachable, because
 // reaching INT_MAX and incrementing would be UB.

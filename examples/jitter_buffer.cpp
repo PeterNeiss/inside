@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Reorder buffer with `sentinel` policy: each slot holds a packet's seq
 // number, and an out-of-range write trips on_sentinel — exactly the "this
 // packet arrived too late to fit the window" event a jitter buffer needs.

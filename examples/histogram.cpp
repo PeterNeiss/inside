@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Latency histogram with fixed-point bin edges and outlier rejection.
 //
 // Demonstrates:

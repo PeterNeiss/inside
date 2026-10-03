@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Answer to hazard 4: division by zero is a value you can test, not a
 // signal that kills the process. The result is slim::optional; a divisor
 // grid that provably excludes zero gives you a plain value with nothing

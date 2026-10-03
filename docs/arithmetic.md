@@ -73,7 +73,7 @@ using fp = inside<{{0, 255}, notch<1, 256>}, unsafe>;   // Q8.8; unsafe implies 
 auto qfp = div(fp{200}, fp{3}, truncated);     // Q8.8 raw 17066 ≈ 66.6641
 ```
 
-The Q-format spot check matches `tests/test_perf_paths.cpp:70-95` to the bit
+The Q-format spot check matches `tests/beman/inside/perf_paths.test.cpp` to the bit
 (`200 / 3 ≈ 66.6667`; the formula multiplies before dividing, so the result
 is `(51200 × 256) / 768 = 17066` — i.e. `floor(66.6667 × 256)`, **not**
 `66 × 256 = 16896`, which would lose the fractional precision).
@@ -157,10 +157,10 @@ the results.
   side; default exact-rational vs `div(a, b, truncated)`.
 - [examples/integer_division.cpp](../examples/integer_division.cpp) — the
   type-level vs per-call forms of path B.
-- [tests/test_inside_arithmetic.cpp](../tests/test_inside_arithmetic.cpp) — the
+- [tests/beman/inside/inside_arithmetic.test.cpp](../tests/beman/inside/inside_arithmetic.test.cpp) — the
   `"inside div: rational vs integer paths"` case covers paths B and C across
   unit / non-unit notch and signed bounds.
-- [tests/test_perf_paths.cpp](../tests/test_perf_paths.cpp) — the
+- [tests/beman/inside/perf_paths.test.cpp](../tests/beman/inside/perf_paths.test.cpp) — the
   Q-format fast-path correctness test with the bit-exact 200/3 → 17066
   reference.
 

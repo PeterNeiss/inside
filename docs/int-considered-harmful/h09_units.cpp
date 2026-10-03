@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Hazard 9: the semantic failure. An int holding cents and an int holding
 // dollars are the same type. Nothing in the language notices the mix-up,
 // and no sanitizer will ever flag it -- the arithmetic is perfectly valid.

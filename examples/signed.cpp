@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Signed integer bounds: negative ranges with direct storage.
 // When lower < 0 and notch == 1, Raw stores the value directly as a signed
 // integer — no offset arithmetic, matching native int performance.

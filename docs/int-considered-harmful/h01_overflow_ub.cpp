@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Hazard 1: signed overflow is undefined behaviour, not wraparound.
 // The compiler is entitled to assume it never happens -- and then to
 // delete the code you wrote to check for it.

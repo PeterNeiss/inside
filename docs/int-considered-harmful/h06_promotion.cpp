@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Hazard 6: integral promotion. Small types do not stay small, `char`
 // signedness is implementation-defined, and the result type of an
 // expression is rarely the type of its operands.

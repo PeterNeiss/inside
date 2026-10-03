@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Tour of every error-handling mechanism plus the policy alternatives
 // that avoid errors entirely (clamp / wrap / sentinel).
 // See clock.cpp for a fuller on_wrap workflow.

@@ -38,9 +38,9 @@ or other tooling). After editing any header under `include/`, regenerate and
 commit it:
 
 ```bash
-cmake --build build --target amalgamate            # rewrites single_include/beman/inside/inside.hpp
+cmake --build build --target beman.inside.amalgamate  # rewrites single_include/beman/inside/inside.hpp
 ctest --test-dir build -L tooling                  # amalgamate_up_to_date: fails if it drifted
-cmake --build build --target single_header_smoke   # compiles a TU seeing ONLY single_include/
+ctest --test-dir build -R single_header_smoke        # compiles a TU seeing ONLY single_include/
 ```
 
 `ctest` runs `amalgamate_up_to_date` as part of the normal suite, so a stale

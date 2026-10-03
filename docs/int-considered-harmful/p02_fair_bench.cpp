@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // A like-for-like benchmark: inside against native code that enforces the
 // SAME guarantee, not against unchecked native code that enforces nothing.
 //

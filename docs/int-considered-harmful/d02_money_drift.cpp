@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Double hazard 2: the error accumulates. A running total over a day's
 // transactions drifts away from the answer the ledger expects.
 

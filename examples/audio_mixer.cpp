@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // 4-channel audio mixer with per-channel dB gain and master-bus peak detection.
 //
 // Demonstrates:

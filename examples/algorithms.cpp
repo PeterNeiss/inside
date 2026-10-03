@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // STL and ranges algorithm examples with inside types.
 
 #include <algorithm>

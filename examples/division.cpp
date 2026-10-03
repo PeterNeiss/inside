@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Division produces rational results by default.
 // The result is always slim::optional (division by zero yields nullopt).
 // With snap, division uses native integer division instead.

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // DOES NOT COMPILE, BY DESIGN.
 //
 // A constant that cannot fit the target range is a build error, not a

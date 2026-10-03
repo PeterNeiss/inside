@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Decibel ↔ linear conversion using `beman::inside::math::pow_base<10>` and `log`.
 //
 // Demonstrates:

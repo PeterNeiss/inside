@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Hazard 4: integer division has two undefined inputs, and neither one
 // produces a value you can test for. There is no integer NaN.
 //

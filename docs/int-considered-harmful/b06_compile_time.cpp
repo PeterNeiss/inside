@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // The strongest correctness claim: the checks run at compile time.
 // Everything below is a static_assert -- if any of it were wrong, this
 // file would not build, and no test would need to run.

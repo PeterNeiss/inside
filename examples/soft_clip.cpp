@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Hyperbolic and logarithmic corners of beman::inside::math: a `tanh` soft-clipper plus
 // `sinh`/`cosh`, `log2`, and `cbrt`. Every operand carries the `real` policy on
 // a dyadic grid (the math-operand shape), so the whole thing is constexpr and

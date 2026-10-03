@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Range, bearing, and elevation to a target — the inverse-trig + hypot corner
 // of beman::inside::math. All operands carry the `real` policy (the transcendentals
 // require it); angles come back in radians, consistent with sin/cos/atan2.

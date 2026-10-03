@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Answer to the double hazards: an exact 1-cent notch. The value is
 // Lower + k*Notch over an exact rational, so a running total cannot drift.
 // Compare d02_money_drift.cpp, which is the same computation in double.

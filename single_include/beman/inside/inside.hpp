@@ -1,5 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //---------------------------------------------------------------------------
-// inside 1.0.0 — single-header amalgamation
+// beman.inside 1.0.0 — single-header amalgamation
 //
 //   *** GENERATED FILE — DO NOT EDIT BY HAND ***
 //
@@ -7,7 +8,7 @@
 // Source of truth:  include/beman/inside/*.hpp, include/beman/inside/slim/*.hpp
 //
 // Copyright (C) 2026 Peter Neiss
-// slim/* components are MIT-licensed (SPDX-License-Identifier: MIT).
+// beman::inside::slim components (slim/*.hpp) are MIT-licensed.
 //---------------------------------------------------------------------------
 #ifndef BEMAN_INSIDE_SINGLE_HEADER_HPP
 #define BEMAN_INSIDE_SINGLE_HEADER_HPP
@@ -315,11 +316,13 @@ protected:
     static bool is_sentinel(const std::any& v) noexcept { return !v.has_value(); }
 };
 
+// Not constexpr: std::thread::id is not a literal type before C++23 (P2448),
+// so clang rejects a constexpr function returning it under -std=c++20.
 template<>
 struct sentinel_traits<std::thread::id> {
 protected:
-    static constexpr std::thread::id sentinel() noexcept { return std::thread::id{}; }
-    static constexpr bool is_sentinel(const std::thread::id& v) noexcept { return v == std::thread::id{}; }
+    static std::thread::id sentinel() noexcept { return std::thread::id{}; }
+    static bool is_sentinel(const std::thread::id& v) noexcept { return v == std::thread::id{}; }
 };
 
 template<>
@@ -1475,7 +1478,7 @@ namespace beman::inside
 #if defined(__cpp_lib_expected)
 // C++23 toolchains: slim::expected IS std::expected — user code composes
 // with the standard vocabulary (monadic ops included); the backport below
-// serves only toolchains without <expected> (GCC 12 / BEMAN_INSIDE_CXX20).
+// serves only toolchains without <expected> (GCC 12 / CMAKE_CXX_STANDARD=20).
 #include <expected>
 
 namespace beman::inside::slim {

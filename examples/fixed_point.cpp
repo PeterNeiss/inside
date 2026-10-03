@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Fixed-point arithmetic using fractional notch grids.
 // A grid with notch 1/256 gives 8-bit fractional precision (8.8 fixed-point).
 // The library handles all scaling automatically — no manual bit shifting.

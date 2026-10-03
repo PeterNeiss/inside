@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Double hazard 3: floating-point addition is not associative, so the
 // answer depends on the order you happened to visit the data in.
 // Parallelise a sum, change the chunk count, get a different result.

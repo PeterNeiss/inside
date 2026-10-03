@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Hazard 7: integer division silently discards the remainder, and it
 // rounds toward zero -- which is neither floor nor nearest. You do not
 // get to say which you wanted.

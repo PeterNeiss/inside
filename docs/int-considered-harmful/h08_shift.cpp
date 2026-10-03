@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Hazard 8: shifts have undefined and implementation-defined corners.
 
 #include <climits>

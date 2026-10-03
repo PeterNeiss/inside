@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // MIGRATION, BEFORE: an invoice calculation in int.
 //
 // Three separate defects, none of which the compiler mentions:

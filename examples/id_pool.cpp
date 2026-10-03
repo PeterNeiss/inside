@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Bounded ID allocator backed by std::unordered_set<inside>.
 //
 // Demonstrates:

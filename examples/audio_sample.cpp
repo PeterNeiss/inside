@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Signed fixed-point audio samples in [-1, 1] with mixing.
 // A 1/16384 notch gives ~Q1.14 precision and fits uint16 storage.
 // Mixing two waveforms can exceed [-1, 1] at peaks; `with_clamp()` saturates

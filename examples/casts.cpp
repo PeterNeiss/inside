@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // The named-cast family — explicit "double in, bounded out" conversions whose
 // intent (clamp / wrap / trust, and the rounding direction) reads at the call
 // site. Their canonical home is inside a `std::ranges::transform` lambda, where

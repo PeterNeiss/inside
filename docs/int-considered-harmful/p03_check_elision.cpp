@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Where inside's compile-time range information actually pays: a CHAIN of
 // operations on values that are already typed.
 //

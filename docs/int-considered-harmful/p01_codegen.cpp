@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Performance exhibit: when both operands are integer-aligned on the same
 // grid, `a + b` must lower to a plain machine add -- no branch into the
 // checked/clamp/rational fallback.

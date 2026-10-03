@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Rifle / magazine / reserve simulation built on the inside policy system.
 //
 // Three classes, each leaning on a different policy:

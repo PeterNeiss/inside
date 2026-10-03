@@ -43,7 +43,7 @@ that this requires GoogleTest to be installed.
 cmake \
   -B build \
   -S . \
-  -DCMAKE_CXX_STANDARD=17 \
+  -DCMAKE_CXX_STANDARD=23 \
   # Your extra arguments here.
 cmake --build build
 ctest --test-dir build
@@ -73,7 +73,7 @@ Example commands:
 cmake \
   -B build \
   -S . \
-  -DCMAKE_CXX_STANDARD=17 \
+  -DCMAKE_CXX_STANDARD=23 \
   -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
 cmake --build build
 ctest --test-dir build
@@ -97,7 +97,7 @@ Example commands:
 cmake \
   -B build \
   -S . \
-  -DCMAKE_CXX_STANDARD=17 \
+  -DCMAKE_CXX_STANDARD=23 \
   -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES=./infra/cmake/use-fetch-content.cmake
 cmake --build build
 ctest --test-dir build
@@ -128,6 +128,26 @@ Values: `{ ON, OFF }`.
 
 Enable building examples. Default: `ON`. Values: `{ ON, OFF }`.
 
+### `BEMAN_INSIDE_BUILD_TOOLS`
+
+Build the benchmarks (`beman.inside.bench`, nanobench), the property fuzzer
+(`beman.inside.fuzz`), the math accuracy sweep (`beman.inside.accuracy`) and the
+cachegrind perf workload (`beman.inside.perf_workload`). Also adds the
+`beman.inside.perf_report` and `beman.inside.accuracy_report` targets that
+regenerate `docs/performance.md` and `docs/accuracy.md`. Default: `OFF`.
+Values: `{ ON, OFF }`.
+
+### `BEMAN_INSIDE_MATH_FIXED` / `BEMAN_INSIDE_MATH_FLOAT`
+
+Select the default `beman::inside::math` engine: the integer/CORDIC engine
+(FPU-free) or the float (binary32) engine instead of the double engine.
+Default: `OFF`. Values: `{ ON, OFF }`.
+
+### `BEMAN_INSIDE_STRICT_SFINAE`
+
+Drop the assignment/conversion diagnostic overloads so `is_constructible` /
+`is_convertible` stay honest. Default: `OFF`. Values: `{ ON, OFF }`.
+
 ### `BEMAN_INSIDE_INSTALL_CONFIG_FILE_PACKAGE`
 
 Enable installing the CMake config file package. Default: `ON`.
@@ -137,3 +157,15 @@ This is required so that users of `beman.inside` can use
 `find_package(beman.inside)` to locate the library.
 
 </details>
+
+## Maintenance targets
+
+- `beman.inside.amalgamate` regenerates the committed single header
+  `single_include/beman/inside/inside.hpp`. The
+  `beman.inside.tests.amalgamate_up_to_date` test fails when it is stale.
+- The compile-fail suite (`tests/beman/inside/fail/`, ctest label
+  `compile-fail`) checks that ill-formed uses keep their diagnostics; each case
+  names the expected message on its first line (`// EXPECT: ...`).
+- `tests/beman/inside/check_perf.py` runs the cachegrind instruction-count gate
+  against `tests/beman/inside/perf_baseline.json` (needs valgrind and
+  `BEMAN_INSIDE_BUILD_TOOLS=ON`).

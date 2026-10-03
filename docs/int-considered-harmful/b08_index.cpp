@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // A bounded index cannot leave the array. The valid range is the type,
 // so the bounds check happens once -- at construction -- rather than at
 // every access, or not at all.

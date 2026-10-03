@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Hazard 10: "Nearly All Binary Searches Are Broken" (Bentley 1986,
 // Bloch 2006). The midpoint computation overflows for large ranges --
 // a bug that lived in the JDK for nine years.

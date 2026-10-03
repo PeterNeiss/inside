@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Double hazard 5: NaN propagates silently and breaks the ordering that
 // containers and algorithms rely on. It is not equal to itself.
 

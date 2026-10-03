@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // RGB color channels clamped to [0, 255].
 // Brightening a pixel by adding to each channel naturally saturates.
 

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Predefined hardware-width types from <beman/inside/formats.hpp>.
 // Each maps to a native byte width (uint8/int16/...), so they read and store
 // like the machine types you hand to an audio buffer, pixel, or DSP register —

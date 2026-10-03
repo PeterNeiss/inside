@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // 2-D playfield on a torus: sprite position wraps at the edges, with an
 // on_wrap callback firing the "crossed edge" game event.
 //

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Hazard 11: narrowing conversions. Assigning a wider value into a
 // narrower type is not an error, it is a silent truncation.
 //

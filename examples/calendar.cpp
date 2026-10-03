@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Simplified calendar with day → month → year cascade via `on_wrap`.
 // Months are 30 days for clarity; real calendars need leap-year handling.
 //

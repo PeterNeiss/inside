@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Modular packet sequence numbers (TCP/QUIC-style) with epoch tracking.
 //
 // Demonstrates:

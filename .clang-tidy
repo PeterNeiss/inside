@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 # clang-tidy configuration for inside.
 #
 # A bug-finding gate, not a restyle. inside is header-only and heavily templated,

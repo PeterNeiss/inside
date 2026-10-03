@@ -64,7 +64,7 @@ objdump -d --no-show-raw-insn -C p01.o
 ```
 
 `inside_add` and `native_add` lower to identical instructions. The repository
-enforces the same property in CI via `tests/check_codegen.sh`.
+enforces the same property in CI via `tests/beman/inside/check_codegen.sh`.
 
 ## Rebuilding the paper
 

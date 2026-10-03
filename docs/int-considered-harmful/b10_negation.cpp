@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Answer to hazard 3: negation returns the REFLECTED type. The result of
 // negating a [Lower, Upper] value lives in [-Upper, -Lower], so the
 // asymmetry that makes -INT_MIN impossible simply does not arise.

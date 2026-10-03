@@ -256,11 +256,13 @@ protected:
     static bool is_sentinel(const std::any& v) noexcept { return !v.has_value(); }
 };
 
+// Not constexpr: std::thread::id is not a literal type before C++23 (P2448),
+// so clang rejects a constexpr function returning it under -std=c++20.
 template<>
 struct sentinel_traits<std::thread::id> {
 protected:
-    static constexpr std::thread::id sentinel() noexcept { return std::thread::id{}; }
-    static constexpr bool is_sentinel(const std::thread::id& v) noexcept { return v == std::thread::id{}; }
+    static std::thread::id sentinel() noexcept { return std::thread::id{}; }
+    static bool is_sentinel(const std::thread::id& v) noexcept { return v == std::thread::id{}; }
 };
 
 template<>

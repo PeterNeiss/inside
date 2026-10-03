@@ -80,7 +80,7 @@ For completeness — these came up alongside the above but are *not* blocked by 
   `__builtin_*` swap needed), leaving the always-present integer/CORDIC engine to
   serve the full `beman::inside::math` API. Auto-enabled under `-ffreestanding`, implied by
   `BEMAN_INSIDE_MATH_FIXED`; a CI smoke compiles the single header against a poison `<cmath>`
-  shim to keep it that way. See [freestanding.md](freestanding.md#math-without-cmath-ins_math_no_fp).
+  shim to keep it that way. See [freestanding.md](freestanding.md#math-without-cmath-beman_inside_math_no_fp).
 - **`dyn_inside`** (runtime-valued bounds) — evaluated and **declined** on design grounds
   (no space/time-efficient implementation), not deferred.
 - **Type-level interval unions** — Intel's [safe-arithmetic](resources.md) models

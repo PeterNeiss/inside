@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Answer to hazard 9: the scale is part of the type. A value on a
 // 1-cent grid and a value on a 1-dollar grid are different types, and
 // combining them converts rather than pretending they are the same

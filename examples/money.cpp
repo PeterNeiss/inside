@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Currency arithmetic with cents precision.
 // A 0.01 notch over [0, 1'000'000] gives exact two-decimal storage in uint32 —
 // no float drift on running totals.

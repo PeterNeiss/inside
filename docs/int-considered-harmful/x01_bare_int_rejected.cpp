@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // DOES NOT COMPILE, BY DESIGN.
 //
 // A bare integer literal carries no grid, so it cannot enter inside

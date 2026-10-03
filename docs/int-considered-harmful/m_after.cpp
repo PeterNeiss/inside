@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // MIGRATION, AFTER: the same invoice in inside.
 //
 // The overflow is gone (the product widens), the tax is exact to the cent

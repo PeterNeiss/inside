@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Quadrature oscillator: integer phase accumulator + beman::inside::math::sin/cos.
 //
 // Demonstrates:

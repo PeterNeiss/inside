@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Wrapping angle arithmetic: heading in degrees [0, 359].
 
 #include <iostream>

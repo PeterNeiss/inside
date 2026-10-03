@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Double hazard 1: decimal fractions are not representable in binary.
 // The value you wrote is not the value you got.
 

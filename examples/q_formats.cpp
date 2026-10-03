@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Q-format reference: which fractional grid maps to which storage size.
 // Pick the smallest grid that covers your value range and precision needs;
 // the library selects the narrowest unsigned/signed type automatically.

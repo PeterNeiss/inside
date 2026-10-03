@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Integer division with snap policy.
 // By default, division produces exact rational results.
 // With snap, division uses native integer division for zero overhead.

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Clamped percentage: values outside [0, 100] are saturated to the boundary.
 
 #include <iostream>

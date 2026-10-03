@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // A 24-hour clock using wrap with carry.
 // When seconds overflow 59, the excess carries into minutes.
 // When minutes overflow 59, the excess carries into hours.

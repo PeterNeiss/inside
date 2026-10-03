@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Answer to the "what happens at the edge" question. Out-of-range is only
 // reachable on assignment into a narrower type, and the policy in the type
 // decides the outcome -- explicitly, at the point of declaration.

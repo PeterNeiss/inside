@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Envelope shaping with beman::inside::math::exp and beman::inside::math::exp2.
 //
 // Demonstrates:
