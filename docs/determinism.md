@@ -147,10 +147,12 @@ neighbour. No finite working precision rules this out for every transcendental �
 guaranteeing a single correctly-rounded value in all cases is the open,
 unbounded-cost table-maker's dilemma, so the library does not promise it.
 
-*Example.* `sinh(4)` on a `notch<1, 4096>` grid is `111779.5008…` — only `0.0008`
-of a notch above the midpoint `111779.5`. The default `double` engine rounds up to
-`111780/4096`; the integer/CORDIC engine rounds down to `111779/4096`. Both are
-within the grid's resolution of the true value; they simply disagree by one notch.
+*Example.* Suppose a true result sits only `0.0008` of a notch above the midpoint
+between two grid points. An engine whose sub-notch error is `+0.001` rounds up, one
+whose error is `−0.001` rounds down. Both are within the grid's resolution of the
+true value; they simply disagree by one notch. (`sinh(4)` on a `notch<1, 4096>`
+grid, `111779.502…`, was such a case until the CORDIC engine's precision change
+below; both engines now give `111780/4096`.)
 
 **Consequence — switching engines is not value-preserving.** You **cannot** rebuild
 with another engine and expect bit-identical results: toggling `-DBEMAN_INSIDE_MATH_FIXED`
@@ -161,6 +163,27 @@ dataset that must stay bit-comparable, and never mix outputs from different
 engines. (Algebraic results —
 `+ − × ÷`, conversions, rounding — *are* identical across engines; this caveat is
 specific to the transcendental `beman::inside::math` functions.)
+
+## Value stability over time
+
+Determinism across platforms is half of the promise; the other half is that a
+given input keeps producing the same bits **from one release to the next**, so
+stored results, golden files and replay logs stay valid after an upgrade.
+
+- The transcendental values are pinned by exact-value tests
+  (`tests/beman/inside/determinism.test.cpp`, `math_engines.test.cpp`,
+  `cmath.test.cpp`, `constexpr.test.cpp`). They are the contract: a change that
+  alters any of them does not merge silently.
+- Values change only deliberately, in a documented release: the change re-pins the
+  affected tests in the same commit and is listed in the table below, by engine and
+  function. Algebraic results (`+ − × ÷`, conversions, rounding) never change.
+- Within the log below, every engine stays as reproducible across platforms as
+  before; only the specific values listed move.
+
+| Change | Engine | Functions | Effect on values |
+|---|---|---|---|
+| 2026-10 (branch `perf-readability`) | CORDIC | asin, acos, sinh, cosh, tanh, log10, cbrt, hypot, sqrt | Runtime evaluation at the output grid's precision (+4 guard bits), one-exponential sinh/cosh, table-seeded sqrt. Last-bit differences in the working value; on the pinned and accuracy grids one snapped value moved (`sinh(4)` on `notch<1, 4096>`: 111779 → 111780 /4096, now correctly rounded). Accuracy unchanged within ±0.01 notch ([accuracy.md](accuracy.md)). |
+| 2026-10 (same) | CORDIC, dbl, flt | tan (all), cos (dbl) | One shared range reduction / one CORDIC rotation. No pinned or accuracy-grid value moved. |
 
 ## Compile-time determinism
 
