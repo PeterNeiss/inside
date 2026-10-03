@@ -7617,6 +7617,19 @@ namespace beman::inside::math
     {
       const umax n = v.Numerator;
       const umax d = abs_den(v.Denominator);
+      const auto sign = [&](umax q) { return (v.Denominator < 0) ? -static_cast<imax>(q) : static_cast<imax>(q); };
+      // Power-of-two denominator (every core result and fixed_to_rational):
+      // a shift, with round-half-up as the last shifted-out bit.
+      if (std::has_single_bit(d))
+      {
+        const int D = std::countr_zero(d);
+        if (W >= D) return sign(n << (W - D));
+        const int sh = D - W;
+        return sign((n >> sh) + ((n >> (sh - 1)) & 1u));
+      }
+      // n·2^W + d/2 below 2^64: one 64-bit divide (d < 2^63).
+      if (n < (umax{1} << (63 - W)))
+        return sign(((n << W) + d / 2) / d);
 #if defined(__SIZEOF_INT128__)
       using u128 = unsigned __int128;
       const u128 t = (u128{n} << W) + d / 2;
@@ -7637,7 +7650,7 @@ namespace beman::inside::math
         if (r >= d) { r -= d; q |= 1; }
       }
 #endif
-      return (v.Denominator < 0) ? -static_cast<imax>(q) : static_cast<imax>(q);
+      return sign(q);
     }
     constexpr rational fixed_to_rational(imax x, int W) noexcept
     { return rational{x, imax{1} << W}; }
