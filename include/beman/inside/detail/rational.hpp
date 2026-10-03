@@ -16,7 +16,7 @@
 #include <compare>
 #include <limits>
 #include <tuple>
-#include <type_traits>      // std::is_constant_evaluated
+#include <type_traits>
 
 namespace beman::inside::detail
 {
@@ -119,7 +119,7 @@ namespace beman::inside::detail
   //---------------------------------------------------------------------------
   // Failure aborts constant evaluation via `detail::constexpr_error<Msg>()` — a
   // non-constexpr [[noreturn]] helper carrying the message in an NTTP (literal
-  // parsers and the checked paths under `if (std::is_constant_evaluated())`),
+  // parsers and the checked paths' `fail<"...">` under `if consteval`),
   // hard-failing the build with the text in the diagnostic; at runtime those
   // paths fall through to `std::unexpected`. No `throw`, so it is -fno-exceptions clean.
 
@@ -267,6 +267,25 @@ namespace beman::inside::detail
   {
     if (v.Numerator == 0) return 0;
     return (v.Denominator < 0) ? -1 : 1;
+  }
+
+  // A rational from already-canonical parts (magnitude, signed denominator):
+  // no gcd, no domain checks.
+  [[nodiscard]] constexpr rational make_raw(umax num, imax den) noexcept
+  {
+    rational r;
+    r.Numerator   = num;
+    r.Denominator = den;
+    return r;
+  }
+
+  // A checked op failed: during constant evaluation that is a compile error
+  // naming the cause; at runtime it is an error value.
+  template <fixed_string Msg>
+  constexpr std::unexpected<errc> fail(errc code)
+  {
+    if consteval { constexpr_error<Msg>(); }
+    return std::unexpected{code};
   }
 
   // The numerator with the value's sign, as imax (callers ensure it fits).
@@ -576,10 +595,7 @@ namespace beman::inside::detail
         if constexpr (Checked)
         {
           if (add_overflow(a.Numerator, b.Numerator, &numerator))
-          {
-            if (std::is_constant_evaluated()) { constexpr_error<"rational +: numerator overflow (same denominator)">(); }
-            return ret_t{std::unexpected{errc::overflow}};
-          }
+          { return ret_t{fail<"rational +: numerator overflow (same denominator)">(errc::overflow)}; }
         }
         else
           numerator = a.Numerator + b.Numerator;
@@ -616,10 +632,7 @@ namespace beman::inside::detail
     {
       if (mul_overflow(a_ad, b_ad_r, &denominator)    ||   // = lcm(a_ad, b_ad)
           denominator > static_cast<umax>(std::numeric_limits<imax>::max()))
-      {
-        if (std::is_constant_evaluated()) { constexpr_error<"rational +: denominator overflow">(); }
-        return ret_t{std::unexpected{errc::overflow}};
-      }
+      { return ret_t{fail<"rational +: denominator overflow">(errc::overflow)}; }
       if (mul_overflow(a.Numerator, b_ad_r, &A) ||
           mul_overflow(b.Numerator, a_ad_r, &B))
       {
@@ -646,8 +659,7 @@ namespace beman::inside::detail
             return ret_t{r};
           }
         }
-        if (std::is_constant_evaluated()) { constexpr_error<"rational +: cross-multiplication overflow">(); }
-        return ret_t{std::unexpected{errc::overflow}};
+        return ret_t{fail<"rational +: cross-multiplication overflow">(errc::overflow)};
       }
     }
     else
@@ -663,10 +675,7 @@ namespace beman::inside::detail
       if constexpr (Checked)
       {
         if (add_overflow(A, B, &numerator))
-        {
-          if (std::is_constant_evaluated()) { constexpr_error<"rational +: numerator sum overflow">(); }
-          return ret_t{std::unexpected{errc::overflow}};
-        }
+        { return ret_t{fail<"rational +: numerator sum overflow">(errc::overflow)}; }
       }
       else
         numerator = A + B;
@@ -712,18 +721,12 @@ namespace beman::inside::detail
       if constexpr (Checked)
       {
         if (mul_overflow(a.Numerator, b.Numerator, &numerator))
-        {
-          if (std::is_constant_evaluated()) { constexpr_error<"rational *: numerator overflow">(); }
-          return ret_t{std::unexpected{errc::overflow}};
-        }
+        { return ret_t{fail<"rational *: numerator overflow">(errc::overflow)}; }
       }
       else
         numerator = a.Numerator * b.Numerator;
 
-      rational r;
-      r.Numerator = numerator;
-      r.Denominator = r_neg ? imax{-1} : imax{1};
-      return ret_t{r};
+      return ret_t{make_raw(numerator, r_neg ? imax{-1} : imax{1})};
     }
 
     trim(a.Numerator, b_ad);
@@ -736,10 +739,7 @@ namespace beman::inside::detail
       if (mul_overflow(a.Numerator, b.Numerator, &numerator) ||
           mul_overflow(a_ad, b_ad, &denominator)             ||
           denominator > static_cast<umax>(std::numeric_limits<imax>::max()))
-      {
-        if (std::is_constant_evaluated()) { constexpr_error<"rational *: numerator or denominator overflow">(); }
-        return ret_t{std::unexpected{errc::overflow}};
-      }
+      { return ret_t{fail<"rational *: numerator or denominator overflow">(errc::overflow)}; }
     }
     else
     {
@@ -749,11 +749,7 @@ namespace beman::inside::detail
 
     // The cross-trims above guarantee gcd(numerator, denominator) == 1, so
     // bypass rational(num, den) and skip its redundant trim.
-    rational r;
-    r.Numerator   = numerator;
-    r.Denominator = r_neg ? -denominator
-                           :  denominator;
-    return ret_t{r};
+    return ret_t{make_raw(numerator, r_neg ? -denominator : denominator)};
   }
 
   //---------------------------------------------------------------------------
@@ -772,21 +768,12 @@ namespace beman::inside::detail
       // a.Numerator goes into the result's Denominator slot, so it must fit in
       // imax (else the umax→imax conversion wraps and a later -Denominator is UB).
       if (a.Numerator == 0)
-      {
-        if (std::is_constant_evaluated()) { constexpr_error<"rational inv: division by zero">(); }
-        return ret_t{std::unexpected{errc::division_by_zero}};
-      }
+      { return ret_t{fail<"rational inv: division by zero">(errc::division_by_zero)}; }
       if (a.Numerator > static_cast<umax>(std::numeric_limits<imax>::max()))
-      {
-        if (std::is_constant_evaluated()) { constexpr_error<"rational inv: numerator out of denominator range">(); }
-        return ret_t{std::unexpected{errc::overflow}};
-      }
+      { return ret_t{fail<"rational inv: numerator out of denominator range">(errc::overflow)}; }
     }
 
-    rational r;
-    r.Numerator   = abs_den(a.Denominator);
-    r.Denominator = signed_numerator(a);
-    return ret_t{r};
+    return ret_t{make_raw(abs_den(a.Denominator), signed_numerator(a))};
   }
 
   // div(a, b) = a * inv(b). The checked path goes through inv_impl<true> so
@@ -836,10 +823,7 @@ namespace beman::inside::detail
       return *this;
 
     // Already trimmed; flip the sign-encoding directly without re-running trim.
-    rational r;
-    r.Numerator = Numerator;
-    r.Denominator = -Denominator;
-    return r;
+    return make_raw(Numerator, -Denominator);
   }
 
   //---------------------------------------------------------------------------
@@ -939,129 +923,50 @@ namespace beman::inside::detail
     && (std::same_as<unwrap_t<L>, rational> || std::same_as<unwrap_t<R>, rational>);
 
   //---------------------------------------------------------------------------
-  // operator*
+  // Binary operators: the checked rational ⋈ rational cores, then per operator
+  // the arithmetic-operand forms (direct construction, no lift overhead), the
+  // expected-operand form (propagates via lift), and the compound assignments.
+  // Compound assignments unwrap with .value() — std::bad_expected_access on
+  // overflow; callers needing a non-throwing path use the binary operators.
   //---------------------------------------------------------------------------
+  inline constexpr std::expected<rational, errc> operator+(rational const& lhs, rational const& rhs)
+  { return rational::add_impl<true>(lhs, rhs); }
+
+  inline constexpr std::expected<rational, errc> operator-(rational const& lhs, rational const& rhs)
+  { return operator+(lhs, -rhs); }
+
   inline constexpr std::expected<rational, errc> operator*(rational const& lhs, rational const& rhs)
   { return rational::mul_impl<true>(lhs, rhs); }
 
-  // arithmetic operand — direct construction, no lift overhead
-  template <arithmetic T>
-  inline constexpr auto operator*(T lhs, rational const& rhs)
-  { return rational{lhs} * rhs; }
-
-  template <arithmetic T>
-  inline constexpr auto operator*(rational const& lhs, T rhs)
-  { return lhs * rational{rhs}; }
-
-  // expected operand(s) — propagate via lift
-  template <class L, class R> requires rational_lift_operands<L, R>
-  inline constexpr auto operator*(L const& lhs, R const& rhs)
-  { return lift([](auto const& a, auto const& b){ return a * b; }, lhs, rhs); }
-
-  //---------------------------------------------------------------------------
-  // operator/
-  //---------------------------------------------------------------------------
   inline constexpr std::expected<rational, errc> operator/(rational const& lhs, rational const& rhs)
   { return rational::div_impl<true>(lhs, rhs); }
-
-  template <arithmetic T>
-  inline constexpr auto operator/(T lhs, rational const& rhs)
-  { return rational{lhs} / rhs; }
-
-  template <arithmetic T>
-  inline constexpr auto operator/(rational const& lhs, T rhs)
-  { return lhs / rational{rhs}; }
-
-  template <class L, class R> requires rational_lift_operands<L, R>
-  inline constexpr auto operator/(L const& lhs, R const& rhs)
-  { return lift([](auto const& a, auto const& b){ return a / b; }, lhs, rhs); }
-
-  //---------------------------------------------------------------------------
-  // operator+
-  //---------------------------------------------------------------------------
-  inline constexpr std::expected<rational, errc> operator+(const rational& lhs, const rational& rhs)
-  { return rational::add_impl<true>(lhs, rhs); }
-
-  template <arithmetic T>
-  inline constexpr auto operator+(T lhs, rational const& rhs)
-  { return rational{lhs} + rhs; }
-
-  template <arithmetic T>
-  inline constexpr auto operator+(rational const& lhs, T rhs)
-  { return lhs + rational{rhs}; }
-
-  template <class L, class R> requires rational_lift_operands<L, R>
-  inline constexpr auto operator+(L const& lhs, R const& rhs)
-  { return lift([](auto const& a, auto const& b){ return a + b; }, lhs, rhs); }
-
-  //---------------------------------------------------------------------------
-  // operator-
-  //---------------------------------------------------------------------------
-  inline constexpr std::expected<rational, errc> operator-(const rational& lhs, const rational& rhs)
-  { return operator+(lhs, -rhs); }
-
-  template <arithmetic T>
-  inline constexpr auto operator-(T lhs, rational const& rhs)
-  { return rational{lhs} - rhs; }
-
-  template <arithmetic T>
-  inline constexpr auto operator-(rational const& lhs, T rhs)
-  { return lhs - rational{rhs}; }
-
-  template <class L, class R> requires rational_lift_operands<L, R>
-  inline constexpr auto operator-(L const& lhs, R const& rhs)
-  { return lift([](auto const& a, auto const& b){ return a - b; }, lhs, rhs); }
 
   inline constexpr std::expected<rational, errc> operator-(std::expected<rational, errc> const& v)
   { return lift([](rational r){ return -r; }, v); }
 
-  //---------------------------------------------------------------------------
-  // Compound-assignment definitions — unwrap the checked binary op result.
-  // .value() throws std::bad_expected_access on overflow; callers that
-  // need a non-throwing path must use the binary operators directly.
-  //---------------------------------------------------------------------------
-  inline constexpr rational& rational::operator+=(rational const& rhs)
-  { *this = (*this + rhs).value(); return *this; }
+#define BEMAN_INSIDE_RATIONAL_OP(op)                                                   \
+  template <arithmetic T>                                                              \
+  inline constexpr auto operator op(T lhs, rational const& rhs)                        \
+  { return rational{lhs} op rhs; }                                                     \
+  template <arithmetic T>                                                              \
+  inline constexpr auto operator op(rational const& lhs, T rhs)                        \
+  { return lhs op rational{rhs}; }                                                     \
+  template <class L, class R> requires rational_lift_operands<L, R>                    \
+  inline constexpr auto operator op(L const& lhs, R const& rhs)                        \
+  { return lift([](auto const& a, auto const& b){ return a op b; }, lhs, rhs); }       \
+  inline constexpr rational& rational::operator op##=(rational const& rhs)             \
+  { *this = (*this op rhs).value(); return *this; }                                    \
+  template <arithmetic T>                                                              \
+  inline constexpr rational& operator op##=(rational& lhs, T rhs)                      \
+  { return lhs op##= rational{rhs}; }                                                  \
+  inline constexpr rational& operator op##=(rational& lhs, std::expected<rational, errc> const& rhs) \
+  { return lhs op##= rhs.value(); }
 
-  inline constexpr rational& rational::operator-=(rational const& rhs)
-  { *this = (*this - rhs).value(); return *this; }
-
-  inline constexpr rational& rational::operator*=(rational const& rhs)
-  { *this = (*this * rhs).value(); return *this; }
-
-  inline constexpr rational& rational::operator/=(rational const& rhs)
-  { *this = (*this / rhs).value(); return *this; }
-
-  // Forwarding overloads — accept arithmetic RHS (lifted via rational{}) and
-  // expected<rational, errc> RHS (unwrapped via .value()) so callers can
-  // chain `r += rational * rational` without a manual unwrap.
-  template <arithmetic T>
-  inline constexpr rational& operator+=(rational& lhs, T rhs)
-  { return lhs += rational{rhs}; }
-
-  template <arithmetic T>
-  inline constexpr rational& operator-=(rational& lhs, T rhs)
-  { return lhs -= rational{rhs}; }
-
-  template <arithmetic T>
-  inline constexpr rational& operator*=(rational& lhs, T rhs)
-  { return lhs *= rational{rhs}; }
-
-  template <arithmetic T>
-  inline constexpr rational& operator/=(rational& lhs, T rhs)
-  { return lhs /= rational{rhs}; }
-
-  inline constexpr rational& operator+=(rational& lhs, std::expected<rational, errc> const& rhs)
-  { return lhs += rhs.value(); }
-
-  inline constexpr rational& operator-=(rational& lhs, std::expected<rational, errc> const& rhs)
-  { return lhs -= rhs.value(); }
-
-  inline constexpr rational& operator*=(rational& lhs, std::expected<rational, errc> const& rhs)
-  { return lhs *= rhs.value(); }
-
-  inline constexpr rational& operator/=(rational& lhs, std::expected<rational, errc> const& rhs)
-  { return lhs /= rhs.value(); }
+  BEMAN_INSIDE_RATIONAL_OP(+)
+  BEMAN_INSIDE_RATIONAL_OP(-)
+  BEMAN_INSIDE_RATIONAL_OP(*)
+  BEMAN_INSIDE_RATIONAL_OP(/)
+#undef BEMAN_INSIDE_RATIONAL_OP
 
   //---------------------------------------------------------------------------
   // divides_evenly
