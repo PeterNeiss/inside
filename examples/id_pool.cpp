@@ -5,7 +5,7 @@
 //   - `std::hash<inside>` integration (via numeric_limits.hpp)
 //   - `std::numeric_limits<inside>::max()` capacity query
 //   - `try_make` for guarded construction from untrusted input
-//   - Conversion predicate `will_conversion_overflow` to fail fast
+//   - Conversion predicate `conversion_overflows` to fail fast
 
 #include <iostream>
 #include <unordered_set>
@@ -29,9 +29,9 @@ struct id_pool
   bool allocate(int request)
   {
     // Bail before construction if the request is out of range — exposes
-    // the will_conversion_overflow predicate as a fail-fast gate at the
+    // the conversion_overflows predicate as a fail-fast gate at the
     // trust boundary (e.g. parsing IDs from a wire format).
-    if (will_conversion_overflow<pool_id>(request))
+    if (conversion_overflows<pool_id>(request))
     {
       std::cout << "  reject (out of range): " << request << "\n";
       return false;

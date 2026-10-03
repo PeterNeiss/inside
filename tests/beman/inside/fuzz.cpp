@@ -985,7 +985,7 @@ void prop_casts_fixed(fuzz_state& s, long iters)
 template <insidable B>
 void prop_predicates(fuzz_state& s, long iters)
 {
-  // will_conversion_* / is_conversion_lossy must agree with the actual
+  // conversion_overflows / conversion_rounds / conversion_is_lossy must agree with the actual
   // checked conversion outcome.
   if constexpr (is_integer_aligned<B> && !rational_raw<B>)
   {
@@ -998,9 +998,9 @@ void prop_predicates(fuzz_state& s, long iters)
       s.iter = i;
       imax v = lo + random_wide_int(s.rng, span);
       bool in_range = (v >= lo && v <= hi);
-      FUZZ_REQUIRE(s, will_conversion_overflow<B>(v) == !in_range);
-      FUZZ_REQUIRE(s, !will_conversion_trunc<B>(v));      // integer grid never truncates
-      bool lossy = is_conversion_lossy<B>(v);
+      FUZZ_REQUIRE(s, conversion_overflows<B>(v) == !in_range);
+      FUZZ_REQUIRE(s, !conversion_rounds<B>(v));      // integer grid never truncates
+      bool lossy = conversion_is_lossy<B>(v);
       bool threw = throws_with_any({errc::overflow, errc::rounding_error},
                                    [&]{ (void)checked_cast<B>(v); });
       FUZZ_REQUIRE(s, lossy == threw);
@@ -1020,23 +1020,23 @@ void prop_predicates(fuzz_state& s, long iters)
       umax k = dist(s.rng);
       double on_notch = static_cast<double>((lo + (rational{k} * notch).value()).value());
       // On-notch, in range: nothing lost.
-      FUZZ_REQUIRE(s, !will_conversion_overflow<B>(on_notch));
-      FUZZ_REQUIRE(s, !will_conversion_trunc<B>(on_notch));
-      FUZZ_REQUIRE(s, !is_conversion_lossy<B>(on_notch));
+      FUZZ_REQUIRE(s, !conversion_overflows<B>(on_notch));
+      FUZZ_REQUIRE(s, !conversion_rounds<B>(on_notch));
+      FUZZ_REQUIRE(s, !conversion_is_lossy<B>(on_notch));
       // Half-notch midpoint, in range: truncates (lossy) but does not overflow.
       if (k < max_index_v<B>)
       {
         double mid = on_notch + static_cast<double>(half);
-        FUZZ_REQUIRE(s, !will_conversion_overflow<B>(mid));
-        FUZZ_REQUIRE(s, will_conversion_trunc<B>(mid));
-        FUZZ_REQUIRE(s, is_conversion_lossy<B>(mid));
+        FUZZ_REQUIRE(s, !conversion_overflows<B>(mid));
+        FUZZ_REQUIRE(s, conversion_rounds<B>(mid));
+        FUZZ_REQUIRE(s, conversion_is_lossy<B>(mid));
         FUZZ_REQUIRE(s, throws_with(errc::rounding_error,
                                     [&]{ (void)checked_cast<B>(mid); }));
       }
       // Above the top notch: overflow (lossy).
       double over = static_cast<double>((hi + notch).value());
-      FUZZ_REQUIRE(s, will_conversion_overflow<B>(over));
-      FUZZ_REQUIRE(s, is_conversion_lossy<B>(over));
+      FUZZ_REQUIRE(s, conversion_overflows<B>(over));
+      FUZZ_REQUIRE(s, conversion_is_lossy<B>(over));
     }
   }
 }

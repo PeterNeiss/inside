@@ -4958,14 +4958,14 @@ namespace beman::inside::detail
 //---------------------------------------------------------------------------
 // predicates — pure inspection (no conversion, no state change) to branch
 // before a construction that might throw or report an error:
-//   will_conversion_overflow<B>(v) — v falls outside B's interval.
-//   will_conversion_trunc<B>(v) — v is in-range but off-notch (would round).
-//   is_conversion_lossy<B>(v)      — OR of the two.
+//   conversion_overflows<B>(v) — v falls outside B's interval.
+//   conversion_rounds<B>(v)    — v is in-range but off-notch (would round).
+//   conversion_is_lossy<B>(v)  — either of the two.
 //---------------------------------------------------------------------------
 namespace beman::inside
 {
   template <insidable B, numeric A>
-  [[nodiscard]] constexpr bool will_conversion_overflow(A value) noexcept
+  [[nodiscard]] constexpr bool conversion_overflows(A value) noexcept
   {
     if constexpr (std::floating_point<A>)
       if (!(value - value == 0)) return true;   // NaN / ±inf fit no grid (and must not raise here)
@@ -4973,7 +4973,7 @@ namespace beman::inside
   }
 
   template <insidable B, numeric A>
-  [[nodiscard]] constexpr bool will_conversion_trunc(A value) noexcept
+  [[nodiscard]] constexpr bool conversion_rounds(A value) noexcept
   {
     if constexpr (notch_of<B> == 0)
       return false;                       // continuous grid: no notch to miss
@@ -4987,11 +4987,11 @@ namespace beman::inside
     return !offset.has_value() || detail::abs_den(offset->Denominator) != 1;
   }
 
-  template <insidable B, typename A>
-  [[nodiscard]] constexpr bool is_conversion_lossy(A value) noexcept
+  template <insidable B, numeric A>
+  [[nodiscard]] constexpr bool conversion_is_lossy(A value) noexcept
   {
-    return will_conversion_overflow<B>(value)
-        || will_conversion_trunc<B>(value);
+    return conversion_overflows<B>(value)
+        || conversion_rounds<B>(value);
   }
 } // namespace beman::inside
 
@@ -5882,21 +5882,21 @@ namespace beman::inside
   // clamp_floor / clamp_ceil / clamp_round — compose `clamp` with a rounding
   // mode: the canonical "double in, bounded integer out, never throw" pipeline.
   //---------------------------------------------------------------------------
-  template <policy_flag RoundMode, insidable B, numeric N>
+  template <insidable B, policy_flag RoundMode, numeric N>
   [[nodiscard]] constexpr B clamp_with_rounding(N value)
   { return B{value, make_policy<clamp | RoundMode>()}; }
 
   template <insidable B, numeric N>
   [[nodiscard]] constexpr B clamp_floor(N value)
-  { return clamp_with_rounding<round_floor, B>(value); }
+  { return clamp_with_rounding<B, round_floor>(value); }
 
   template <insidable B, numeric N>
   [[nodiscard]] constexpr B clamp_ceil(N value)
-  { return clamp_with_rounding<round_ceil, B>(value); }
+  { return clamp_with_rounding<B, round_ceil>(value); }
 
   template <insidable B, numeric N>
   [[nodiscard]] constexpr B clamp_round(N value)
-  { return clamp_with_rounding<round_nearest, B>(value); }
+  { return clamp_with_rounding<B, round_nearest>(value); }
 
   // `checked_cast` — throws (via the installed handler) when the value would not
   // fit exactly: errc::overflow out of the interval (as to<T> and the predicate
@@ -5905,9 +5905,9 @@ namespace beman::inside
   template <insidable B, numeric A>
   [[nodiscard]] constexpr B checked_cast(A value)
   {
-    if (will_conversion_overflow<B>(value))
+    if (conversion_overflows<B>(value))
       detail::raise(errc::overflow, "checked_cast: value out of inside interval");
-    if (will_conversion_trunc<B>(value))
+    if (conversion_rounds<B>(value))
       detail::raise(errc::rounding_error, "checked_cast: value does not land on notch");
     return B{value, make_policy<snap>()};
   }

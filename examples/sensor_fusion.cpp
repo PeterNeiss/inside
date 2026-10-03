@@ -3,7 +3,7 @@
 //
 // Demonstrates:
 //   - Per-sensor fixed-point grids (different lower/upper/notch each)
-//   - `will_conversion_overflow` predicate as a soft outlier filter
+//   - `conversion_overflows` predicate as a soft outlier filter
 //   - Rational-weighted average to keep the fused value exact
 //   - `clamp | round_nearest` on the output type to snap the fused value onto
 //     the output grid (no explicit `clamp_round` cast)
@@ -30,7 +30,7 @@ using fused_t = inside<{-40, 60}, clamp | round_nearest>;
 int main()
 {
   // Three readings — one outdoor reading is a clear outlier (-50, below
-  // grid). will_conversion_overflow rejects it before construction.
+  // grid). conversion_overflows rejects it before construction.
   double raw[] = { 22.5,  21.7,  -50.0,  22.0,  23.25 };
 
   // Weights per sensor, in 1/8 step — could be tuned by confidence.
@@ -60,15 +60,15 @@ int main()
   };
 
   accept.template operator()<outdoor_t>(raw[0], w_outdoor, "outdoor",
-         [](double v){ return !will_conversion_overflow<outdoor_t>(v); });
+         [](double v){ return !conversion_overflows<outdoor_t>(v); });
   accept.template operator()<indoor_t >(raw[1], w_indoor,  "indoor ",
-         [](double v){ return !will_conversion_overflow<indoor_t>(v); });
+         [](double v){ return !conversion_overflows<indoor_t>(v); });
   accept.template operator()<outdoor_t>(raw[2], w_outdoor, "outdoor",
-         [](double v){ return !will_conversion_overflow<outdoor_t>(v); });
+         [](double v){ return !conversion_overflows<outdoor_t>(v); });
   accept.template operator()<ground_t >(raw[3], w_ground,  "ground ",
-         [](double v){ return !will_conversion_overflow<ground_t>(v); });
+         [](double v){ return !conversion_overflows<ground_t>(v); });
   accept.template operator()<indoor_t >(raw[4], w_indoor,  "indoor ",
-         [](double v){ return !will_conversion_overflow<indoor_t>(v); });
+         [](double v){ return !conversion_overflows<indoor_t>(v); });
 
   // Divide in inside-space: the weight grid includes 0, so `/` yields an
   // expected<inside, errc>; the fused_t ctor unwraps it and clamp-rounds in one step.

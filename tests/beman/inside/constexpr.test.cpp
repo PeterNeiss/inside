@@ -373,19 +373,19 @@ TEST(ConstexprTest, constexpr_clamp_floor_clamp_ceil_clamp_round)
 TEST(ConstexprTest, constexpr_conversion_predicates)
 {
   using pct = inside<{0, 100}>;
-  static_assert(!(will_conversion_overflow<pct>(  50)));
-  static_assert(will_conversion_overflow<pct>( 150));
-  static_assert(will_conversion_overflow<pct>(  -1));
-  static_assert(!(will_conversion_overflow<pct>(   0)));
+  static_assert(!(conversion_overflows<pct>(  50)));
+  static_assert(conversion_overflows<pct>( 150));
+  static_assert(conversion_overflows<pct>(  -1));
+  static_assert(!(conversion_overflows<pct>(   0)));
 
   using coarse = inside<{{0, 10}, 2}>;
-  static_assert(!(will_conversion_trunc<coarse>(4)));
-  static_assert(will_conversion_trunc<coarse>(3));
-  static_assert(!(will_conversion_trunc<coarse>(11)));
+  static_assert(!(conversion_rounds<coarse>(4)));
+  static_assert(conversion_rounds<coarse>(3));
+  static_assert(!(conversion_rounds<coarse>(11)));
 
-  static_assert(!(is_conversion_lossy<coarse>(4)));
-  static_assert(is_conversion_lossy<coarse>(3));
-  static_assert(is_conversion_lossy<coarse>(20));
+  static_assert(!(conversion_is_lossy<coarse>(4)));
+  static_assert(conversion_is_lossy<coarse>(3));
+  static_assert(conversion_is_lossy<coarse>(20));
 }
 
 //---------------------------------------------------------------------------

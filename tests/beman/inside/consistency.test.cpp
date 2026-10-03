@@ -328,12 +328,12 @@ TEST(ConsistencyTest, pow_envelope_agrees_across_engines)
 #endif
 }
 
-// will_conversion_trunc sees the notch of an `exact` (rational-raw) grid.
+// conversion_rounds sees the notch of an `exact` (rational-raw) grid.
 TEST(ConsistencyTest, trunc_predicate_on_exact_notched_grid)
 {
   using E = inside<{{0, 1}, notch<1, 3>}, exact>;
-  EXPECT_TRUE(will_conversion_trunc<E>(0.5));
-  EXPECT_FALSE(will_conversion_trunc<E>(q(1, 3)));
+  EXPECT_TRUE(conversion_rounds<E>(0.5));
+  EXPECT_FALSE(conversion_rounds<E>(q(1, 3)));
 }
 
 // numeric_limits reports the rounding mode stores use, and integer-ness of any

@@ -184,14 +184,14 @@ boundary-policy form.
 Inspect a value *before* attempting an unsafe construction:
 
 ```cpp
-will_conversion_overflow<pct>(150);    // true  — out of [0, 100]
-will_conversion_trunc<pct>(3.5);    // true  — doesn't land on notch 1
-is_conversion_lossy     <pct>(150);    // true  — overflow OR truncation
+conversion_overflows<pct>(150);    // true  — out of [0, 100]
+conversion_rounds<pct>(3.5);    // true  — doesn't land on notch 1
+conversion_is_lossy     <pct>(150);    // true  — overflow OR truncation
 ```
 
 All three are pure inspection — none performs the conversion or has
 side effects. They are `noexcept` and never raise: a NaN or infinity counts as
-overflow (`will_conversion_overflow` is true, `will_conversion_trunc` false), and a
+overflow (`conversion_overflows` is true, `conversion_rounds` false), and a
 continuous grid (notch 0) never truncates. See
 [examples/histogram.cpp](../examples/histogram.cpp) for these as outlier
 filters around a sample-collection loop.

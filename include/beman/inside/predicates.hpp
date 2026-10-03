@@ -11,14 +11,14 @@
 //---------------------------------------------------------------------------
 // predicates — pure inspection (no conversion, no state change) to branch
 // before a construction that might throw or report an error:
-//   will_conversion_overflow<B>(v) — v falls outside B's interval.
-//   will_conversion_trunc<B>(v) — v is in-range but off-notch (would round).
-//   is_conversion_lossy<B>(v)      — OR of the two.
+//   conversion_overflows<B>(v) — v falls outside B's interval.
+//   conversion_rounds<B>(v)    — v is in-range but off-notch (would round).
+//   conversion_is_lossy<B>(v)  — either of the two.
 //---------------------------------------------------------------------------
 namespace beman::inside
 {
   template <insidable B, numeric A>
-  [[nodiscard]] constexpr bool will_conversion_overflow(A value) noexcept
+  [[nodiscard]] constexpr bool conversion_overflows(A value) noexcept
   {
     if constexpr (std::floating_point<A>)
       if (!(value - value == 0)) return true;   // NaN / ±inf fit no grid (and must not raise here)
@@ -26,7 +26,7 @@ namespace beman::inside
   }
 
   template <insidable B, numeric A>
-  [[nodiscard]] constexpr bool will_conversion_trunc(A value) noexcept
+  [[nodiscard]] constexpr bool conversion_rounds(A value) noexcept
   {
     if constexpr (notch_of<B> == 0)
       return false;                       // continuous grid: no notch to miss
@@ -40,11 +40,11 @@ namespace beman::inside
     return !offset.has_value() || detail::abs_den(offset->Denominator) != 1;
   }
 
-  template <insidable B, typename A>
-  [[nodiscard]] constexpr bool is_conversion_lossy(A value) noexcept
+  template <insidable B, numeric A>
+  [[nodiscard]] constexpr bool conversion_is_lossy(A value) noexcept
   {
-    return will_conversion_overflow<B>(value)
-        || will_conversion_trunc<B>(value);
+    return conversion_overflows<B>(value)
+        || conversion_rounds<B>(value);
   }
 } // namespace beman::inside
 

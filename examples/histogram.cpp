@@ -3,8 +3,8 @@
 //
 // Demonstrates:
 //   - `inside_range` for iterating over bin indices
-//   - `will_conversion_overflow` to gate out-of-range samples before insert
-//   - `is_conversion_lossy` to count samples that don't land on a notch
+//   - `conversion_overflows` to gate out-of-range samples before insert
+//   - `conversion_is_lossy` to count samples that don't land on a notch
 //   - Fixed-point bin boundaries (latency in ms with 0.1 resolution)
 
 #include <iostream>
@@ -34,7 +34,7 @@ int main()
   double samples[] = {
      2.5,  7.0, 12.3, 18.7, 25.0, 33.4, 47.8, 51.5, 62.1, 71.9,
     88.0, 95.5,
-    150.0, -5.0,        // out-of-range → rejected by will_conversion_overflow
+    150.0, -5.0,        // out-of-range → rejected by conversion_overflows
      3.05,              // sub-notch (1/10 grid doesn't include 3.05) → counts as lossy
   };
 
@@ -43,12 +43,12 @@ int main()
 
   for (double s : samples)
   {
-    if (will_conversion_overflow<latency_t>(s))
+    if (conversion_overflows<latency_t>(s))
     {
       ++rejected;
       continue;
     }
-    if (is_conversion_lossy<latency_t>(s))
+    if (conversion_is_lossy<latency_t>(s))
       ++lossy;   // accept but flag
 
     latency_t lat{s};

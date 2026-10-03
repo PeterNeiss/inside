@@ -39,17 +39,17 @@ TEST(CoverageCornersTest, checked_cast_returns_the_value_on_the_in_range_happy_p
 }
 
 //---------------------------------------------------------------------------
-// predicates.hpp:39 — will_conversion_trunc returns false out of range
+// predicates.hpp:39 — conversion_rounds returns false out of range
 //---------------------------------------------------------------------------
-// will_conversion_trunc is false for out-of-range values (runtime)
+// conversion_rounds is false for out-of-range values (runtime)
 TEST(CoverageCornersTest, will_conversion_trunc_is_false_for_out_of_range_values_runtime)
 {
   using coarse = inside<{{0, 10}, 2}>;
   // Out of range is overflow, not truncation: the predicate is false.
-  ASSERT_FALSE(will_conversion_trunc<coarse>(11));
-  ASSERT_FALSE(will_conversion_trunc<coarse>(-1));
+  ASSERT_FALSE(conversion_rounds<coarse>(11));
+  ASSERT_FALSE(conversion_rounds<coarse>(-1));
   // Contrast: off-notch but in range is truncation.
-  ASSERT_TRUE(will_conversion_trunc<coarse>(3));
+  ASSERT_TRUE(conversion_rounds<coarse>(3));
 }
 
 #ifndef BEMAN_INSIDE_MATH_CORDIC

@@ -63,37 +63,37 @@ TEST(CastsTest, hash_specialization_works_with_unordered_set)
 //---------------------------------------------------------------------------
 // predicates
 //---------------------------------------------------------------------------
-// will_conversion_overflow
-TEST(CastsTest, will_conversion_overflow)
+// conversion_overflows
+TEST(CastsTest, conversion_overflows)
 {
   using pct = inside<{0, 100}>;
 
-  static_assert(!(will_conversion_overflow<pct>(50)));
-  static_assert(will_conversion_overflow<pct>(150));
-  static_assert(will_conversion_overflow<pct>(-1));
-  static_assert(!(will_conversion_overflow<pct>(0)));
-  static_assert(!(will_conversion_overflow<pct>(100)));
+  static_assert(!(conversion_overflows<pct>(50)));
+  static_assert(conversion_overflows<pct>(150));
+  static_assert(conversion_overflows<pct>(-1));
+  static_assert(!(conversion_overflows<pct>(0)));
+  static_assert(!(conversion_overflows<pct>(100)));
 }
 
-// will_conversion_trunc detects non-notch values
-TEST(CastsTest, will_conversion_trunc_detects_non_notch_values)
+// conversion_rounds detects non-notch values
+TEST(CastsTest, conversion_rounds_detects_non_notch_values)
 {
   using coarse = inside<{{0, 10}, 2}>;          // notch 2
 
-  static_assert(!(will_conversion_trunc<coarse>(0)));
-  static_assert(!(will_conversion_trunc<coarse>(4)));
-  static_assert(will_conversion_trunc<coarse>(3));     // doesn't land on 2-notch
-  static_assert(!(will_conversion_trunc<coarse>(11))); // out of range, not truncation
+  static_assert(!(conversion_rounds<coarse>(0)));
+  static_assert(!(conversion_rounds<coarse>(4)));
+  static_assert(conversion_rounds<coarse>(3));     // doesn't land on 2-notch
+  static_assert(!(conversion_rounds<coarse>(11))); // out of range, not truncation
 }
 
-// is_conversion_lossy combines both
-TEST(CastsTest, is_conversion_lossy_combines_both)
+// conversion_is_lossy combines both
+TEST(CastsTest, conversion_is_lossy_combines_both)
 {
   using coarse = inside<{{0, 10}, 2}>;
 
-  static_assert(!(is_conversion_lossy<coarse>(4)));
-  static_assert(is_conversion_lossy<coarse>(3));   // truncation
-  static_assert(is_conversion_lossy<coarse>(20));  // overflow
+  static_assert(!(conversion_is_lossy<coarse>(4)));
+  static_assert(conversion_is_lossy<coarse>(3));   // truncation
+  static_assert(conversion_is_lossy<coarse>(20));  // overflow
 }
 
 //---------------------------------------------------------------------------
