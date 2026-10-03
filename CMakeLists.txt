@@ -9,12 +9,8 @@ project(
     VERSION 1.0.0
 )
 
-# The library targets C++23 by default but is C++20-clean (GCC 12): under C++20
-# the std::format integration and the slim::optional move_only_function
-# specialization are feature-gated off, and the error channel uses the
-# slim::expected backport instead of <expected>. The standard is selected with
-# CMAKE_CXX_STANDARD (the presets default to 23); the library itself only
-# requires cxx_std_20.
+# The library requires C++23: fallible operations return std::expected<T, errc>.
+# The standard is selected with CMAKE_CXX_STANDARD (the presets default to 23).
 
 # [CMAKE.SKIP_TESTS]
 option(
@@ -88,7 +84,7 @@ set_target_properties(
     beman.inside
     PROPERTIES VERIFY_INTERFACE_HEADER_SETS ${PROJECT_IS_TOP_LEVEL}
 )
-target_compile_features(beman.inside INTERFACE cxx_std_20)
+target_compile_features(beman.inside INTERFACE cxx_std_23)
 
 if(BEMAN_INSIDE_MATH_FIXED)
     target_compile_definitions(beman.inside INTERFACE BEMAN_INSIDE_MATH_FIXED)

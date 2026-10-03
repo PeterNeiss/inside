@@ -675,7 +675,7 @@ to record them.
 % ============================================================================
 \section{\code{inside}: putting the range in the type}\label{sec:inside}
 
-\code{inside} is a header-only C++23 library (with a C++20 fallback) built
+\code{inside} is a header-only C++23 library built
 around a single template:
 
 \begin{lstlisting}
@@ -733,7 +733,7 @@ the division.
 \subsection{Division by zero is a value, not a signal}
 
 Where the divisor's grid can include zero, division returns
-\code{slim::optional}. Where the grid provably excludes zero, it returns a
+\code{std::expected<inside, errc>}. Where the grid provably excludes zero, it returns a
 plain value with nothing to unwrap --- the check is elided because the type
 proves it unnecessary.
 
@@ -741,7 +741,7 @@ proves it unnecessary.
 \begin{lstlisting}[style=term]
 7 / 3              = 2 1/3   (exact, not 2)
 div(7, 3, trunc)   = 2
-10 / 0             = nullopt   (no SIGFPE)
+10 / 0             = division by zero   (no SIGFPE)
 \end{lstlisting}
 
 \noindent
@@ -779,7 +779,7 @@ never from arithmetic. What happens then is part of the declaration:
 checked  200 ->    value outside interval
 clamp    150 ->    100
 wrap     370 ->    10
-sentinel  10 ->    nullopt
+try_make  10 ->    value outside interval
 with_clamp() 150 -> 100
 \end{lstlisting}
 
@@ -843,7 +843,7 @@ include/beman/inside/arithmetic.hpp:492:27: error: static assertion failed:
 \lstinputlisting[firstline=14,lastline=34]{int-considered-harmful/b08_index.cpp}
 \begin{lstlisting}[style=term]
 data[7]            = 49
-index 10           = nullopt   (no out-of-bounds access possible)
+index 10           = value outside interval   (no out-of-bounds access possible)
 sum of all slots   = 285
 \end{lstlisting}
 
@@ -959,8 +959,7 @@ the caller's role.
 Shape & Spelling & When \\
 \midrule
 Plain value & \code{a + b} & The type proves the operation cannot fail. \\
-\code{optional} & \code{a / b}, \code{try\_make} & Failure has one obvious cause; the caller only needs to know it happened. \\
-\code{expected<T,errc>} & \code{to<T>()}, \code{math::sqrt} & Several distinct causes; the caller needs to know which. \\
+\code{expected<T,errc>} & \code{a / b}, \code{try\_make}, \code{to<T>()}, \code{math::sqrt} & The operation can fail; the caller tests the result and, if it cares, reads the cause. \\
 Error code & \code{x.policy(ec) = v} & Hot paths, or bulk operations where the first error should stick. \\
 Throwing & default \code{checked} & Programming errors that should not be handled locally. \\
 Callback & \code{on\_clamp}, \code{on\_wrap} & The event is expected and carries data (a carry, an overshoot). \\
@@ -974,7 +973,7 @@ The codes themselves are a small closed enumeration
 
 \begin{lstlisting}
 enum class errc { domain_error, division_by_zero, overflow,
-                  rounding_error, not_a_value, not_finite };
+                  rounding_error, not_finite };
 \end{lstlisting}
 
 \noindent
@@ -1464,8 +1463,8 @@ Intellectual honesty requires the other side of the ledger.
 \item \textbf{It is alpha software.} The README says so; the public API may
       change between versions. That is a real adoption risk for long-lived
       code.
-\item \textbf{It requires C++23} (with a C++20 fallback), which rules out a
-      good deal of existing work. GCC 13+, Clang 16+, MSVC 19.36+.
+\item \textbf{It requires C++23}, which rules out a good deal of existing
+      work. GCC 13+, Clang 19+ (Clang 18 with libc++), MSVC 19.36+.
 \item \textbf{Compile times increase.} The arithmetic is a compile-time
       computation over grids; that work has to happen somewhere, and it happens
       in your build.
@@ -1576,8 +1575,8 @@ File & Demonstrates \\
 \file{d05\_nan.cpp}               & \code{NaN} breaks equality and ordering \\
 \midrule
 \file{b01\_no\_overflow.cpp}      & Widening arithmetic; the midpoint, fixed \\
-\file{b02\_divzero.cpp}           & Division as \code{optional}; exact by default \\
-\file{b03\_policies.cpp}          & \code{checked} / \code{clamp} / \code{wrap} / \code{sentinel} \\
+\file{b02\_divzero.cpp}           & Division as \code{expected}; exact by default \\
+\file{b03\_policies.cpp}          & \code{checked} / \code{clamp} / \code{wrap} / \code{try\_make} \\
 \file{b04\_money.cpp}             & Exact cents in four bytes \\
 \file{b05\_units.cpp}             & Scale in the type \\
 \file{b06\_compile\_time.cpp}     & Range errors as build failures \\

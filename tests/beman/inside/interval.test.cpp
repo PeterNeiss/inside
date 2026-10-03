@@ -146,9 +146,3 @@ TEST(IntervalTest, interval_rational_notch)
   }
 }
 
-// interval sentinel
-TEST(IntervalTest, interval_sentinel)
-{
-  // sentinel_traits<interval> reports sentinel via sentinel_traits<rational>
-  ASSERT_FALSE(slim::optional<interval>{}.has_value());
-}

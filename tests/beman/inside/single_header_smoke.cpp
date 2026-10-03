@@ -3,8 +3,8 @@
 // Copyright (C) 2026 Peter Neiss
 //---------------------------------------------------------------------------
 // Self-containment check for the amalgamated single header. This TU is compiled
-// with ONLY single_include/ on the include path (no include/inside, no
-// include/slim), so it fails to build unless the generated header is fully
+// with ONLY single_include/ on the include path (no include/), so it fails to
+// build unless the generated header is fully
 // self-sufficient. Built on demand via the `single_header_smoke` target; it is
 // not part of the default build (EXCLUDE_FROM_ALL).
 //---------------------------------------------------------------------------

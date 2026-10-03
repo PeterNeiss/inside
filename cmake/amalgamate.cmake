@@ -12,7 +12,7 @@
 #         -P cmake/amalgamate.cmake
 #
 # Algorithm (mirrors the C preprocessor closely enough to be correct here):
-#   * Roots = all public headers (include/beman/inside/*.hpp); detail/* and slim/* are
+#   * Roots = all public headers (include/beman/inside/*.hpp); detail/* is
 #     pulled in transitively. inside.hpp is emitted first for readability.
 #   * Each file is emitted at most once (a global EMITTED set mirrors the
 #     original include guards' "include once").
@@ -218,10 +218,9 @@ set(banner
 //   *** GENERATED FILE — DO NOT EDIT BY HAND ***
 //
 // Regenerate with:  cmake --build <build-dir> --target amalgamate
-// Source of truth:  include/beman/inside/*.hpp, include/beman/inside/slim/*.hpp
+// Source of truth:  include/beman/inside/*.hpp, include/beman/inside/detail/*.hpp
 //
 // Copyright (C) 2026 Peter Neiss
-// beman::inside::slim components (slim/*.hpp) are MIT-licensed.
 //---------------------------------------------------------------------------
 #ifndef BEMAN_INSIDE_SINGLE_HEADER_HPP
 #define BEMAN_INSIDE_SINGLE_HEADER_HPP

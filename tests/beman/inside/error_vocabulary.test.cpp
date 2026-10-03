@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// The error vocabulary has three shapes, each by role (see docs/internals.md):
+// The error vocabulary has two shapes, each by role (see docs/internals.md):
 //   policy cascade        — narrowing INTO an inside,
-//   slim::optional<inside> — fallible inside arithmetic (zero-cost, chaining),
-//   slim::expected<T,errc>— fallible queries/math where the cause matters.
-// These tests cover the BRIDGES between the families: beman::inside::ok() and the
-// expected-lift operators.
+//   std::expected<T,errc> — every fallible result: inside arithmetic (division,
+//                           modulo, checked rational overflow), queries and math.
+// These tests cover the expected-lift operators that chain those results.
 
 #include <beman/inside/arithmetic.hpp>
 #include <beman/inside/cmath.hpp>
 
 #include <gtest/gtest.h>
+
+#include <expected>
 
 using namespace beman::inside;
 using beman::inside::detail::rational;
@@ -19,27 +20,10 @@ namespace
   // Mixed-sign sqrt: deterministic expected results under both engines.
   using sq_in  = inside<{{-4, 4}, notch<1, 256>}, round_nearest | real>;
   using num_t  = inside<{0, 100}>;
-  using den_t  = inside<{-5, 5}>;     // spans zero → division returns optional
-}
+  using den_t  = inside<{-5, 5}>;     // spans zero → division returns expected
 
-// ok() drops the cause and enters the optional world
-TEST(ErrorVocabularyTest, ok_drops_the_cause_and_enters_the_optional_world)
-{
-  auto good = math::sqrt(sq_in{1});            // expected, value 1
-  auto bad  = math::sqrt(sq_in{-1});           // expected, domain_error
-
-  auto og = ok(good);
-  auto ob = ok(bad);
-  static_assert(detail::is_slim_optional_v<decltype(og)>);
-  ASSERT_TRUE(og.has_value());
-  ASSERT_EQ(*og, 1);
-  ASSERT_TRUE(!ob.has_value());
-
-  // ...and chains on through the existing optional lifts.
-  auto chained = ok(math::sqrt(sq_in{1})) + num_t{4};
-  ASSERT_TRUE(chained.has_value());
-  ASSERT_EQ(*chained, 5);
-  ASSERT_TRUE(!(ok(math::sqrt(sq_in{-1})) + num_t{4}).has_value());
+  std::expected<num_t, errc> num_ok(int v) { return num_t{v}; }
+  std::expected<num_t, errc> num_err(errc e) { return std::unexpected{e}; }
 }
 
 // expected-lift operators keep the cause end to end
@@ -58,47 +42,59 @@ TEST(ErrorVocabularyTest, expected_lift_operators_keep_the_cause_end_to_end)
   ASSERT_EQ(e.error(), errc::domain_error);
 
   // First (left) error wins when two errors meet.
-  slim::expected<num_t, errc> left {slim::unexpected{errc::domain_error}};
-  slim::expected<num_t, errc> right{slim::unexpected{errc::overflow}};
-  auto both = left + right;
+  auto both = num_err(errc::domain_error) + num_err(errc::overflow);
   ASSERT_TRUE(!both.has_value());
   ASSERT_EQ(both.error(), errc::domain_error);
 }
 
-// division inside an expected chain maps nullopt to its cause
-TEST(ErrorVocabularyTest, division_inside_an_expected_chain_maps_nullopt_to_its_cause)
+// inside division returns expected with the division_by_zero cause
+TEST(ErrorVocabularyTest, inside_division_reports_division_by_zero)
 {
-  slim::expected<num_t, errc> ea{num_t{10}};
-
-  auto q = ea / den_t{2};
+  auto q = num_t{10} / den_t{2};
+  static_assert(detail::expected_like<decltype(q)>);
   ASSERT_TRUE(q.has_value());
   ASSERT_EQ(rational{*q}, 5);
 
-  auto z = ea / den_t{0};
+  auto z = num_t{10} / den_t{0};
+  ASSERT_TRUE(!z.has_value());
+  ASSERT_EQ(z.error(), errc::division_by_zero);
+
+  // A division error keeps its cause through the rest of the chain.
+  auto chain = num_t{10} / den_t{0} * num_t{3} + num_t{1};
+  ASSERT_TRUE(!chain.has_value());
+  ASSERT_EQ(chain.error(), errc::division_by_zero);
+}
+
+// division inside an expected chain reports its own cause
+TEST(ErrorVocabularyTest, division_inside_an_expected_chain_reports_its_cause)
+{
+  auto q = num_ok(10) / den_t{2};
+  ASSERT_TRUE(q.has_value());
+  ASSERT_EQ(rational{*q}, 5);
+
+  auto z = num_ok(10) / den_t{0};
   ASSERT_TRUE(!z.has_value());
   ASSERT_EQ(z.error(), errc::division_by_zero);
 }
 
-// operator% participates in both lift families
-TEST(ErrorVocabularyTest, operator_participates_in_both_lift_families)
+// operator% chains through expected
+TEST(ErrorVocabularyTest, modulo_chains_through_expected)
 {
   // mod requires snap in the merged policy (integer-valued grids).
   using mnum = inside<{0, 100}, snap>;
   using nz   = inside<{1, 5},  snap>;   // divisor grid excludes zero
   using span = inside<{-5, 5}, snap>;   // divisor grid spans zero
+  auto en = []() -> std::expected<mnum, errc> { return mnum{17}; };
 
-  // optional chain.
-  slim::optional<mnum> on{mnum{17}};
-  auto m = on % nz{5};
+  auto m = en() % nz{5};
   ASSERT_TRUE(m.has_value());
   ASSERT_EQ(*m, 2);
 
-  // expected chain: value path and zero-divisor mapping.
-  slim::expected<mnum, errc> en{mnum{17}};
-  auto q = en % span{5};
+  // value path and zero-divisor cause.
+  auto q = en() % span{5};
   ASSERT_TRUE(q.has_value());
   ASSERT_EQ(rational{*q}, 2);
-  auto z = en % span{0};
+  auto z = en() % span{0};
   ASSERT_TRUE(!z.has_value());
   ASSERT_EQ(z.error(), errc::division_by_zero);
 }

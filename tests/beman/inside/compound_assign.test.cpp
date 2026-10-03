@@ -165,11 +165,6 @@ TEST(CompoundAssignTest, compound_policy_tail_at_the_raw_edges)
   wrapped -= q_wrap{rational{1, 4}};       // 0 − 1/4 wraps to Upper − ... = 3
   ASSERT_EQ(rational{wrapped}, rational{3});
 
-  using q_sent = inside<{{0, 255}, notch<1, 256>}, sentinel | snap>;
-  q_sent sent{1};
-  sent -= q_sent{100};
-  ASSERT_TRUE(sent.is_sentinel());
-
   using q_checked = inside<{{0, 255}, notch<1, 256>}, checked>;
   q_checked reported{1};
   ASSERT_THROW((void)(([&]{ reported -= q_checked{100}; }())), beman::inside::inside_error);

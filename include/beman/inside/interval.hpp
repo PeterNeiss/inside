@@ -12,25 +12,12 @@
 #include <initializer_list>
 #include <tuple>
 
-namespace beman::inside { struct interval; }
-
-namespace beman::inside::slim
-{
-  template<>
-  struct sentinel_traits<beman::inside::interval>
-  {
-    protected:
-      static constexpr beman::inside::interval sentinel() noexcept;
-      static constexpr bool is_sentinel(const beman::inside::interval& v) noexcept;
-  };
-} // namespace beman::inside::slim
-
 namespace beman::inside
 {
   //---------------------------------------------------------------------------
   // interval — structural NTTP type (public members only) with inclusive Lower
   // and Upper bounds. Like `grid`, its operator+/-/*// computes result intervals
-  // at compile time; division returns nullopt when the divisor straddles zero
+  // at compile time; division returns errc::division_by_zero when the divisor straddles zero
   // (grid::operator/ re-runs on the two zero-free halves and unions them).
   //---------------------------------------------------------------------------
   struct interval
@@ -58,7 +45,7 @@ namespace beman::inside
     constexpr bool divides_evenly(const detail::rational& notch) const
     { return beman::inside::detail::divides_evenly((Upper - Lower).value(), notch); }
 
-    constexpr slim::optional<detail::rational> operator/(const detail::rational& notch) const
+    constexpr std::expected<detail::rational, errc> operator/(const detail::rational& notch) const
     { return (Upper - Lower) / notch; }
   };
 
@@ -95,16 +82,16 @@ namespace beman::inside
     }
   }
 
-  constexpr slim::optional<interval> operator+  (const interval&, const interval&);
-  constexpr slim::optional<interval> operator-  (const interval&, const interval&);
-  constexpr slim::optional<interval> operator*  (const interval&, const interval&);
-  constexpr slim::optional<interval> operator/  (const interval&, const interval&);
-  constexpr auto                     operator<=>(const interval&, const interval&) -> std::partial_ordering;
+  constexpr std::expected<interval, errc> operator+  (const interval&, const interval&);
+  constexpr std::expected<interval, errc> operator-  (const interval&, const interval&);
+  constexpr std::expected<interval, errc> operator*  (const interval&, const interval&);
+  constexpr std::expected<interval, errc> operator/  (const interval&, const interval&);
+  constexpr auto                          operator<=>(const interval&, const interval&) -> std::partial_ordering;
 
   //---------------------------------------------------------------------------
   // operator+
   //---------------------------------------------------------------------------
-  inline constexpr slim::optional<interval> operator+(const interval& lhs, const interval& rhs)
+  inline constexpr std::expected<interval, errc> operator+(const interval& lhs, const interval& rhs)
   {
     return lift(
       [](detail::rational l, detail::rational u){ return interval{l, u}; },
@@ -114,7 +101,7 @@ namespace beman::inside
   //---------------------------------------------------------------------------
   // operator-
   //---------------------------------------------------------------------------
-  inline constexpr slim::optional<interval> operator-(const interval& lhs, const interval& rhs)
+  inline constexpr std::expected<interval, errc> operator-(const interval& lhs, const interval& rhs)
   {
     return operator+(lhs, -rhs);
   }
@@ -122,7 +109,7 @@ namespace beman::inside
   //---------------------------------------------------------------------------
   // operator*
   //---------------------------------------------------------------------------
-  inline constexpr slim::optional<interval> operator*(const interval& lhs, const interval& rhs)
+  inline constexpr std::expected<interval, errc> operator*(const interval& lhs, const interval& rhs)
   {
     return lift(detail::corner_hull,
       lhs.Lower * rhs.Lower, lhs.Lower * rhs.Upper,
@@ -132,10 +119,10 @@ namespace beman::inside
   //---------------------------------------------------------------------------
   // operator/
   //---------------------------------------------------------------------------
-  inline constexpr slim::optional<interval> operator/(const interval& lhs, const interval& rhs)
+  inline constexpr std::expected<interval, errc> operator/(const interval& lhs, const interval& rhs)
   {
     if (includes(rhs, 0))
-      return slim::nullopt;
+      return std::unexpected{errc::division_by_zero};
 
     return lift(detail::corner_hull,
       lhs.Lower / rhs.Lower, lhs.Lower / rhs.Upper,
@@ -160,15 +147,6 @@ namespace beman::inside
   }
 
 } // namespace beman::inside
-
-namespace beman::inside::slim
-{
-  constexpr beman::inside::interval sentinel_traits<beman::inside::interval>::sentinel() noexcept
-  { return beman::inside::interval{beman::inside::detail::rational::make_sentinel(), beman::inside::detail::rational::make_sentinel()}; }
-
-  constexpr bool sentinel_traits<beman::inside::interval>::is_sentinel(const beman::inside::interval& v) noexcept
-  { return v.Lower.Denominator == 0; }
-} // namespace beman::inside::slim
 
 //---------------------------------------------------------------------------
 // Structured bindings: `auto [lo, hi] = interval{...};`

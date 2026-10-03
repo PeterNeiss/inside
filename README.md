@@ -11,7 +11,7 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 [![Coverage](https://coveralls.io/repos/github/NiceAndPeter/inside/badge.svg?branch=main)](https://coveralls.io/github/NiceAndPeter/inside?branch=main)
 <!-- markdownlint-restore -->
 
-`beman.inside` is a header-only C++23 library (C++20 fallback) for numbers that
+`beman.inside` is a header-only C++23 library for numbers that
 **cannot go out of range** — the range and step size live in the *type*. It
 follows the layout and tooling of [The Beman Standard](https://github.com/bemanproject/beman/blob/main/docs/beman_standard.md).
 
@@ -19,7 +19,8 @@ follows the layout and tooling of [The Beman Standard](https://github.com/bemanp
   time to hold every possible value — no runtime surprises.
 - **You decide what happens at the edges.** Out-of-range is only possible when a
   value is assigned into a narrower type, and a policy you pick — `clamp`
-  (saturate), `wrap` (modular), `sentinel`, checked error — decides the outcome.
+  (saturate), `wrap` (modular), checked error — decides the outcome. Fallible
+  results such as division come back as `std::expected<inside, errc>`.
 - **It's fixed-point, done by the compiler.** Think Qm.n with the scale and
   range checked for you; the optimal raw storage (uint8…int64, double, exact
   fraction) is picked automatically.
@@ -39,8 +40,6 @@ The public API may change between versions. Developed with
 ## License
 
 `beman.inside` is licensed under the Apache License v2.0 with LLVM Exceptions.
-The `beman::inside::slim` components (`slim/optional.hpp`, `slim/expected.hpp`)
-are MIT-licensed.
 
 ## Usage
 
@@ -111,8 +110,8 @@ ideal for Compiler Explorer. See [docs/single-header.md](docs/single-header.md).
 
 This project requires at least the following to build:
 
-* A C++ compiler that conforms to the C++20 standard or greater (C++23 is the
-  default and enables `std::format` / `<expected>` integration)
+* A C++ compiler and standard library that conform to C++23 (the library needs
+  `<expected>`)
 * CMake 3.30 or later
 * (Test Only) GoogleTest
 
@@ -131,19 +130,17 @@ Library options:
 | `BEMAN_INSIDE_STRICT_SFINAE` | `OFF` | Drop the assignment diagnostic overloads so `is_constructible` stays honest |
 | `BEMAN_INSIDE_BUILD_TOOLS` | `OFF` | Build the benchmarks, property fuzzer, accuracy sweep and perf workload |
 
-C++20/GCC-12 mode, math-engine selection, and bare-metal builds are covered in
+Math-engine selection and bare-metal builds are covered in
 [docs/freestanding.md](docs/freestanding.md) and [docs/math.md](docs/math.md).
 
 ### Supported Platforms
 
 | Compiler   | Version | C++ Standards | Standard Library  |
 |------------|---------|---------------|-------------------|
-| GCC        | 16-13   | C++26-C++20   | libstdc++         |
-| GCC        | 12      | C++20         | libstdc++         |
-| Clang      | 22-19   | C++26-C++20   | libstdc++, libc++ |
-| Clang      | 18      | C++26-C++20   | libc++            |
-| Clang      | 18      | C++23-C++20   | libstdc++         |
-| AppleClang | latest  | C++26-C++20   | libc++            |
+| GCC        | 16-13   | C++26-C++23   | libstdc++         |
+| Clang      | 22-19   | C++26-C++23   | libstdc++, libc++ |
+| Clang      | 18      | C++26-C++23   | libc++            |
+| AppleClang | latest  | C++26-C++23   | libc++            |
 | MSVC       | latest  | C++23         | MSVC STL          |
 
 ## Development

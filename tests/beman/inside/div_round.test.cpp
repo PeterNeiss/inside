@@ -134,7 +134,7 @@ namespace
 // div/mod property sweep vs reference, every mode
 TEST(DivRoundTest, div_mod_property_sweep_vs_reference_every_mode)
 {
-  // Divisor grids exclude zero so results are plain (non-optional).
+  // Divisor grids exclude zero so results are plain (non-expected).
   using NA = inside<{-40, 40}, round_nearest>;     using ND = inside<{-7, -1}, round_nearest>;   // negative divisors too
   using NPos = inside<{1, 7}, round_nearest>;
   sweep_div_mod<NA, NPos, ref_near>();

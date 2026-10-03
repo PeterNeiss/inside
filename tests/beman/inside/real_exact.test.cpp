@@ -31,8 +31,8 @@ using namespace beman::inside::detail;
 
 namespace
 {
-  // A stored real result must be exactly: the sentinel, ±0, or a normal double.
-  // Never a non-sentinel NaN/inf/subnormal.
+  // A stored real result must be exactly ±0 or a normal double. Never a
+  // NaN/inf/subnormal.
   template <class R>
   void check_bits(const R& r, const char* op)
   {
@@ -40,11 +40,8 @@ namespace
     {
       const double v = r.raw();
       SCOPED_TRACE(::testing::Message() << op << " raw=" << v);
-      if (!r.is_sentinel())
-      {
-        ASSERT_TRUE(std::isfinite(v));
-        ASSERT_TRUE((v == 0.0 || std::isnormal(v)));
-      }
+      ASSERT_TRUE(std::isfinite(v));
+      ASSERT_TRUE((v == 0.0 || std::isnormal(v)));
     }
   }
 
@@ -284,27 +281,22 @@ TEST(RealExactTest, chained_real_arithmetic_stays_exact_vs_the_rational_oracle)
 }
 
 //---------------------------------------------------------------------------
-// Sentinel round-trips through is_sentinel, and a real inside's raw is never a
-// non-sentinel NaN/inf/subnormal. The real sentinel is a finite, comparable slot.
+// A real inside's raw is never a NaN/inf/subnormal.
 //---------------------------------------------------------------------------
-// real sentinel round-trips; raw stays clean
-TEST(RealExactTest, real_sentinel_round_trips_raw_stays_clean)
+// real raw stays clean
+TEST(RealExactTest, real_raw_stays_clean)
 {
-  using R = inside<{{-4, 4}, notch<1, 1024>}, real | sentinel>;
+  using R = inside<{{-4, 4}, notch<1, 1024>}, real>;
   static_assert(std::is_same_v<R::raw_type, double>);
 
-  R s = R::make_sentinel();
-  ASSERT_TRUE(s.is_sentinel());
-
   R v = 1.5;
-  ASSERT_FALSE(v.is_sentinel());
   ASSERT_TRUE(std::isnormal(v.raw()));
 }
 
 //---------------------------------------------------------------------------
 // Real division by zero flows through the error vocabulary (like the integer/
-// rational path), instead of silently storing inf/a sentinel. The return type
-// widens to optional<result> exactly when the divisor grid can be zero.
+// rational path), instead of silently storing inf. The return type widens to
+// expected<result, errc> exactly when the divisor grid can be zero.
 //---------------------------------------------------------------------------
 // real division by zero is reported, not stored as inf
 TEST(RealExactTest, real_division_by_zero_is_reported_not_stored_as_inf)
@@ -312,19 +304,20 @@ TEST(RealExactTest, real_division_by_zero_is_reported_not_stored_as_inf)
   using N  = inside<{{1, 4}, notch<1, 1024>}, real>;
   using Dz = inside<{{0, 4}, notch<1, 1024>}, real>;   // divisor grid spans zero
 
-  // divisor can be zero -> return widens to optional; zero divisor -> nullopt
+  // divisor can be zero -> return widens to expected; zero divisor -> error
   auto q = N{3.0} / Dz{0.0};
   ASSERT_FALSE(q.has_value());
+  ASSERT_EQ(q.error(), errc::division_by_zero);
   ASSERT_TRUE((N{3.0} / Dz{2.0}).has_value());            // nonzero divisor: value present
 
-  // divisor excludes zero -> plain (non-optional) result; double() compiles only
-  // because it is an inside, not an optional
+  // divisor excludes zero -> plain (non-expected) result; double() compiles only
+  // because it is an inside, not an expected
   auto p = N{3.0} / N{2.0};
   ASSERT_TRUE(static_cast<double>(p) == 1.5);
 
   // expected lift surfaces the error code
-  slim::expected<N, errc> en{N{3.0}};
-  auto z = en / Dz{0.0};
+  auto en = []() -> std::expected<N, errc> { return N{3.0}; };
+  auto z = en() / Dz{0.0};
   ASSERT_FALSE(z.has_value());
   ASSERT_EQ(z.error(), errc::division_by_zero);
 }
@@ -341,7 +334,7 @@ TEST(RealExactTest, over_fine_real_product_deduces_rational_stays_exact)
   static_assert(std::is_same_v<A::raw_type, double>);
 
   // product grid {0, 2^34} notch 2^-32 → 2^66 slots > umax → rational storage,
-  // overflow-checked (return widens to optional). 2^17 * 2^17 = 2^34 is exact.
+  // overflow-checked (return widens to expected). 2^17 * 2^17 = 2^34 is exact.
   A a = static_cast<double>(1u << 17);
   auto p = a * a;
   ASSERT_TRUE(p.has_value());

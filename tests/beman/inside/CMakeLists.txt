@@ -68,7 +68,7 @@ target_include_directories(
 )
 target_compile_features(
     beman.inside.tests.single_header_smoke
-    PRIVATE cxx_std_20
+    PRIVATE cxx_std_23
 )
 target_link_libraries(
     beman.inside.tests.single_header_smoke
@@ -89,7 +89,7 @@ target_include_directories(
 )
 target_compile_features(
     beman.inside.tests.single_header_freestanding_smoke
-    PRIVATE cxx_std_20
+    PRIVATE cxx_std_23
 )
 target_compile_definitions(
     beman.inside.tests.single_header_freestanding_smoke
@@ -137,7 +137,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     )
     target_compile_features(
         beman.inside.tests.single_header_nofp_smoke
-        PRIVATE cxx_std_20
+        PRIVATE cxx_std_23
     )
     target_compile_definitions(
         beman.inside.tests.single_header_nofp_smoke

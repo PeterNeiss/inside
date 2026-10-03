@@ -12,12 +12,6 @@ int main()
 {
   int arr[] = {10, 20, 30, 40, 50, 60, 70, 80, 90, 100};
 
-  // Regular for loop with slim::optional + sentinel policy
-  using index = inside<{0, std::extent_v<decltype(arr)> - 1}, sentinel>;
-  std::cout << "regular for loop:" << "\n";
-  for (slim::optional<index> i = 0; i; ++i)
-    std::cout << "  arr[" << *i << "] = " << arr[*i] << "\n";
-
   // Range-based for loop
   std::cout << "range for loop:" << "\n";
   for (auto i : inside_range<{0, 9}>{})
@@ -29,7 +23,7 @@ int main()
     std::cout << "  arr[" << i << "] = " << arr[i] << "\n";
 
   // `.indexed()` pairs each inside with its 0-based position (the inside-range
-  // stand-in for std::views::enumerate, working on C++20 too).
+  // counterpart of std::views::enumerate).
   std::cout << "indexed():" << "\n";
   for (auto [pos, i] : inside_range<{0, 9}>{}.indexed())
     std::cout << "  #" << pos << " -> arr[" << i << "] = " << arr[i] << "\n";

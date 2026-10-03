@@ -86,11 +86,12 @@ TEST(GridTest, grid_arithmetic)
   }
 
   {
-    SCOPED_TRACE("divide by zero-only interval yields nullopt");
+    SCOPED_TRACE("divide by zero-only interval yields division_by_zero");
     grid a{{0, 10}, 1};
     grid zero{{0, 0}, 0};         // pure zero-point grid
     auto r = a / zero;
     ASSERT_FALSE(r.has_value());
+    ASSERT_EQ(r.error(), errc::division_by_zero);
   }
 
   {
@@ -154,10 +155,3 @@ TEST(GridTest, grid_validate)
   static_assert(grid::validate<grid{0_r}>());                   // point grid, notch=0
 }
 
-// grid sentinel
-TEST(GridTest, grid_sentinel)
-{
-  ASSERT_FALSE(slim::optional<grid>{}.has_value());
-  auto s = grid::make_sentinel();
-  ASSERT_EQ(s.Notch.Denominator, 0);
-}

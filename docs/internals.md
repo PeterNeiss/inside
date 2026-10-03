@@ -65,8 +65,7 @@ operand policies, and the widest representation present wins:
 ```
 
 `storage_min<G>` picks the smallest integer type that can hold every
-reachable index (with the sentinel-slot margin, see
-[storage.md](storage.md)).
+reachable index, using the type's full range (see [storage.md](storage.md)).
 
 Four **disjoint predicates** in `include/beman/inside/generic.hpp` classify a
 inside's encoding (the first two read the raw type alone; the integer pair
@@ -165,7 +164,7 @@ installed handler throws `beman::inside::inside_error` (carrying the `errc`) by 
 under `-fno-exceptions`. There is no `<system_error>` dependency.
 
 The flag bits live in `policy_flag` (`include/beman/inside/policy_flag.hpp`):
-`clamp`, `wrap`, `sentinel`, `checked`, `unsafe`, `snap`,
+`clamp`, `wrap`, `checked`, `unsafe`, `snap`,
 `ignore_domain`, `ignore_zero`, `round_floor`, `round_ceil`,
 `round_nearest`, `round_half_even`.
 
@@ -229,39 +228,41 @@ index storage they differ — `Raw` is an index, `to_value` multiplies by
 
 ## 7. Error vocabulary
 
-Three shapes, each by role — nothing is flattened; each earns its place:
+Two shapes, each by role:
 
 | Shape | Role | Why this shape |
 |---|---|---|
-| policy cascade (`error_handler`/throw / `errc` / sentinel / clamp / wrap / `on_*`) | NARROWING a value *into* an inside (construction, assignment, compound ops) | the caller chose the failure semantics on the type or operation |
-| `slim::optional<inside>` | fallible inside-valued ARITHMETIC (`/`, `%`, checked exact `+`/`×`) | single dominant cause per op; **zero size overhead** (sentinel encoding); auto-chains through the lift operators |
-| `slim::expected<T, errc>` | fallible QUERIES and MATH (`to<T>()`, `tan`, `pow`, mixed-sign `sqrt`) | multiple causes the caller dispatches on; uniform across `beman::inside::math` |
+| policy cascade (`error_handler`/throw / `errc` / clamp / wrap / `on_*`) | NARROWING a value *into* an inside (construction, assignment, compound ops) | the caller chose the failure semantics on the type or operation |
+| `std::expected<T, errc>` | every fallible RESULT: inside ARITHMETIC (`/`, `%`, checked exact `+`/`×`), QUERIES and MATH (`to<T>()`, `try_make`, `tan`, `pow`, mixed-sign `sqrt`) | the caller tests the result and can dispatch on the cause; auto-chains through the lift operators; uniform across `beman::inside::math` |
+
+`std::expected<inside, errc>` is larger than `inside` (it adds a flag and an
+`errc`), so it only ever appears as a **parameter or return value** — never as
+stored state (a data member, container element or iterator state) — and only
+where the operation can actually fail: a result type the grids prove total stays
+a plain `inside`.
 
 Per-operation audit:
 
 | Operation | Shape | Causes |
 |---|---|---|
 | `a + b`, `a − b`, `a × b` (integer/float-backed raws) | `inside` | total — result grid contains every value by construction |
-| same, rational raw + `checked`, overflow not provably excluded | `optional` | exact-arithmetic overflow. Notched grids inside the denominators, so most `exact` arithmetic PROVES safety at compile time and returns a plain `inside`; continuous (Notch 0) grids hold arbitrary rationals and keep the wrapper |
+| same, rational raw + `checked`, overflow not provably excluded | `expected` | `overflow`. Notched grids inside the denominators, so most `exact` arithmetic PROVES safety at compile time and returns a plain `inside`; continuous (Notch 0) grids hold arbitrary rationals and keep the wrapper |
 | `a / b`, `mod` (divisor grid excludes 0) | `inside` | total |
-| `a / b`, `mod` (divisor may be 0) | `optional` | division by zero (rational overflow folds in) |
+| `a / b`, `mod` (divisor may be 0) | `expected` | `division_by_zero`, `overflow` (rational raw) |
 | `math::sin/cos/exp/log/…` | `inside` | total over the asserted domain |
 | `math::tan` | `expected` | `division_by_zero` (pole), `overflow` (past Out) |
 | `math::pow` | `expected` | `division_by_zero`, `overflow` (envelope) |
 | `math::sqrt` (mixed-sign) | `expected` | `domain_error` (negative value) |
-| `to<T>()` | `expected` | `not_a_value` (sentinel), `overflow` (out of range), `domain_error` (negative→unsigned) |
+| `to<T>()` | `expected` | `overflow` (out of range), `domain_error` (negative→unsigned) |
 | `as<T>()` | `T` | asserts (caller vouches for the range) |
-| `try_make` | `expected` | `errc`: out of range / off-notch / sentinel |
+| `try_make` | `expected` | `errc`: out of range / off-notch |
 | construction / assignment | policy cascade | per the inside's policy |
 | `beman::inside::sum<Target>` | `Target` | Target's policy, applied once to the total |
 
-Bridging the families (`lift.hpp` / `arithmetic.hpp`): `beman::inside::ok(e)` converts
-an expected into the optional world (deliberately dropping the cause);
-the expected-lift operators keep `expected` chains intact (first/left error
-wins; a division's nullopt maps to `division_by_zero`). Mixing an `expected`
-and an `optional` operand in one expression is a compile error with guidance
-— the optional's original cause is unknowable, so the library won't invent
-one.
+Chaining (`lift.hpp` / `arithmetic.hpp`): the expected-lift operators keep
+`expected` chains intact — `a / b * gain + offset` is an
+`expected<inside, errc>` end to end. The first (left) error wins and keeps its
+cause; an operation that fails inside the chain reports its own.
 
 ## 8. Header layout
 
@@ -275,21 +276,21 @@ is what keeps the core free of `<string>`/`<ostream>`/`<format>`/`<cmath>`:
 |---|---|
 | `beman/inside/inside.hpp`       | `inside<G, P>` struct, compound assignments, `<=>`, `==`, `_ins` literal, increment/decrement |
 | `beman/inside/casts.hpp`       | `clamp_cast`, `wrap_cast`, `checked_cast`, `unchecked_cast`, `clamp_floor` / `clamp_ceil` / `clamp_round` |
-| `beman/inside/arithmetic.hpp`  | Free `add` / `sub` / `mul` / `div` / `mod`, variadic folds `add_all` / `mul_all`, `operator+` / `-` / `*` / `/` / `%`, optional-lift overloads |
+| `beman/inside/arithmetic.hpp`  | Free `add` / `sub` / `mul` / `div` / `mod`, variadic folds `add_all` / `mul_all`, `operator+` / `-` / `*` / `/` / `%`, expected-lift overloads |
 | `beman/inside/range.hpp`       | `inside_range<G, P>` iterator helper |
-| `beman/inside/generic.hpp`     | Public grid/policy introspection (`Grid` / `InsidePolicy` / `Interval` / `Lower` / `Upper` / `Notch`) and the `insidable` / `numeric` / `inside_assignable` concepts. Storage/raw/dispatch plumbing (`raw_t`, the `rational_raw` / `real_raw` / `value_raw` / `index_raw` predicates, `as_double`, `to_value` / `from_value`, `raw_cast` / `raw_imax`, `q_format_encode/decode`, `NotchCount`, `RawLo/Hi`, `sentinel_raw`, `detail::as_rational`, …) lives in `beman::inside::detail` |
+| `beman/inside/generic.hpp`     | Public grid/policy introspection (`Grid` / `InsidePolicy` / `Interval` / `Lower` / `Upper` / `Notch`) and the `insidable` / `numeric` / `inside_assignable` concepts. Storage/raw/dispatch plumbing (`raw_t`, the `rational_raw` / `real_raw` / `value_raw` / `index_raw` predicates, `as_double`, `to_value` / `from_value`, `raw_cast` / `raw_imax`, `q_format_encode/decode`, `NotchCount`, `RawLo/Hi`, `detail::as_rational`, …) lives in `beman::inside::detail` |
 | `beman/inside/detail/assignment.hpp`  | `beman::inside::detail::assignment<L, R>` specialisations for integral / fractional / insidable rhs (incl. the Q-format integer shortcut for fractional rhs) |
 | `beman/inside/cmath.hpp`       | `beman::inside::math` — the `<cmath>`-shaped public API (trig, inverse trig, hyperbolic, exp/log/pow, sqrt/cbrt/hypot) over bounds, dispatching to one of three engines (`dbl` / `flt` / `cordic`). The integer/CORDIC cores live in `beman::inside::math::detail` here — they also serve as the compile-time output-grid oracle for **every** engine. See [math.md](math.md) |
 | `beman/inside/cmath_double.hpp` | The default **double engine** cores (`d_sin`, `d_exp`, … — own `std::fma`-Horner polynomials, Cody-Waite reduction, correctly-rounded `std::sqrt`); compiled out under `BEMAN_INSIDE_MATH_NO_FP` |
 | `beman/inside/cmath_float.hpp` | The **float engine** cores (binary32 siblings of the double cores, own compile-time-derived range-reduction constants); default under `BEMAN_INSIDE_MATH_FLOAT`, compiled out under `BEMAN_INSIDE_MATH_NO_FP` |
 | `beman/inside/detail/addition.hpp`, `multiplication.hpp`, `division.hpp` | `beman::inside::detail::addition<L, R>`, `multiplication<L, R>`, `division<L, R, F>`, `modulo<L, R, F>` — implementation detail, included via `inside.hpp` |
 | `beman/inside/detail/overflow.hpp`, `debug.hpp` | `add_overflow` / `sub_overflow` / `mul_overflow` (builtins + portable fallback); `errc`, the replaceable `error_handler` + `detail::raise` funnel — implementation detail |
-| `beman/inside/detail/rational.hpp`    | `rational`, its arithmetic, sentinel traits |
+| `beman/inside/detail/rational.hpp`    | `rational` and its checked / unchecked arithmetic |
 | `beman/inside/grid.hpp`        | `grid`, `storage_min`, grid operators |
 | `beman/inside/numeric_limits.hpp` | `std::numeric_limits<inside>` and `std::hash<inside>` specialisations (opt-in) |
 | `beman/inside/io.hpp`          | **All** string/stream/`std::format` support — `to_string`, `to_string_debug`, `operator<<`, `std::formatter`, `type_name`. Opt-in and the *only* place `<string>`/`<ostream>`/`<format>` enter; gated by `BEMAN_INSIDE_NO_STRING` in the single header (see [freestanding.md](freestanding.md)) |
 | `beman/inside/formats.hpp`     | Curated Q-format aliases (`q4_4`, `q8_8`, `q16_16`, …); opt-in |
-| `beman/inside/slim/optional.hpp`     | Reusable sentinel-based optional; `beman::inside::` consumes it via `sentinel_traits` |
+| `beman/inside/lift.hpp`        | `lift` — monadic composition over `std::expected<T, errc>` arguments |
 
 The whole tree is also amalgamated into `single_include/beman/inside/inside.hpp` by a
 pure-CMake generator — see [single-header.md](single-header.md) for usage and

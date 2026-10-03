@@ -110,9 +110,8 @@ namespace beman::inside
         // value = Lower + index * Notch (always exact: lies on the grid).
         // Integer-backed storages decode without the rational/assignment
         // engine: for index storage the iterator index IS the raw (it stays in
-        // [0, NotchCount] and the sentinel slot is a numeric_limits extreme
-        // outside that span); integer-grid value storage is a multiply-add in
-        // raw space. Rational/fp raws keep the exact generic path.
+        // [0, NotchCount], which the raw type holds); integer-grid value
+        // storage is a multiply-add in raw space. Rational/fp raws keep the exact generic path.
         if constexpr (beman::inside::detail::index_raw<value_type>)
           return value_type::from_raw(
               static_cast<typename value_type::raw_type>(index));

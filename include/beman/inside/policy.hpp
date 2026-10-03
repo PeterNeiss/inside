@@ -69,7 +69,7 @@ namespace beman::inside
       if (std::is_constant_evaluated())
         detail::constexpr_error<
           "inside: value out of range during constant evaluation "
-          "(checked policy hit; choose clamp/wrap/sentinel or widen the interval)">();
+          "(checked policy hit; choose clamp/wrap or widen the interval)">();
       if constexpr (std::is_same_v<E, detail::error_ref>)
         E::Code = E::Code != errc{} ? E::Code : code;
       else
@@ -102,7 +102,7 @@ namespace beman::inside
 
     // True for policy specializations that carry a beman::inside::errc& reference.
     // Free-fn arithmetic uses this to decide whether to call policy.report on
-    // failure (which sets ec) vs. returning silent nullopt (no-arg form).
+    // failure (which sets ec) vs. returning a silent std::unexpected (no-arg form).
     template<typename T>             inline constexpr bool UsesErrorRef = false;
     template<policy_flag F>          inline constexpr bool UsesErrorRef<policy<F, error_ref>> = true;
   }
@@ -119,17 +119,18 @@ namespace beman::inside
   { return policy<F,detail::error_ref>{ec}; }
 
   //---------------------------------------------------------------------------
-  // report_or_nullopt — uniform "rational arithmetic failed" handler shared by
-  // addition/multiplication/division/modulo. Three compile-time behaviors:
+  // report_or_unexpected — uniform "rational arithmetic failed" handler shared
+  // by addition/multiplication/division/modulo. Three compile-time behaviors:
   // overflow_action<A> → fire it on a default Result; UsesErrorRef<P> →
-  // policy.report then nullopt; plain throw-policy → nullopt.
+  // policy.report then std::unexpected{code}; plain throw-policy →
+  // std::unexpected{code}.
   //---------------------------------------------------------------------------
   namespace detail
   {
   template <insidable Result, typename A, typename P>
-  constexpr auto report_or_nullopt(A&& action, P&& policy, errc code,
-                                   [[maybe_unused]] const char* what)
-    -> std::conditional_t<overflow_action<A>, Result, slim::optional<Result>>
+  constexpr auto report_or_unexpected(A&& action, P&& policy, errc code,
+                                      [[maybe_unused]] const char* what)
+    -> std::conditional_t<overflow_action<A>, Result, std::expected<Result, errc>>
   {
     if constexpr (overflow_action<A>)
     {
@@ -141,7 +142,7 @@ namespace beman::inside
     {
       if constexpr (UsesErrorRef<std::remove_cvref_t<P>>)
         policy.report(code);
-      return slim::nullopt;
+      return std::unexpected{code};
     }
   }
   } // namespace detail
@@ -174,8 +175,6 @@ namespace beman::inside
       return assignment<Dst, C>::assign(dst, src, policy, pick_action_in<IsClampActionPred>(actions));
     else if constexpr (has_action<IsWrapActionPred, As...>)
       return assignment<Dst, C>::assign(dst, src, policy, pick_action_in<IsWrapActionPred>(actions));
-    else if constexpr (has_action<IsSentinelActionPred, As...>)
-      return assignment<Dst, C>::assign(dst, src, policy, pick_action_in<IsSentinelActionPred>(actions));
     else if constexpr (has_action<IsErrorActionPred, As...>)
       return assignment<Dst, C>::assign(dst, src, policy, pick_action_in<IsErrorActionPred>(actions));
     else
@@ -210,18 +209,16 @@ namespace beman::inside
   {
     private:
     // Conflict diagnostics: at most one assignment-time tag (clamp / wrap /
-    // sentinel / error), at most one of each kind, no clamp+wrap.
+    // error), at most one of each kind, no clamp+wrap.
     static constexpr unsigned _clamp_count    = count_action_matches<IsClampActionPred,    As...>;
     static constexpr unsigned _wrap_count     = count_action_matches<IsWrapActionPred,     As...>;
-    static constexpr unsigned _sentinel_count = count_action_matches<IsSentinelActionPred, As...>;
     static constexpr unsigned _error_count    = count_action_matches<IsErrorActionPred,    As...>;
     static constexpr unsigned _overflow_count = count_action_matches<IsOverflowActionPred, As...>;
 
-    static_assert(_clamp_count + _wrap_count + _sentinel_count + _error_count <= 1,
-      "on_clamp / on_wrap / on_sentinel / on_error are mutually exclusive in a single policy_ref");
+    static_assert(_clamp_count + _wrap_count + _error_count <= 1,
+      "on_clamp / on_wrap / on_error are mutually exclusive in a single policy_ref");
     static_assert(_clamp_count    <= 1, "duplicate on_clamp");
     static_assert(_wrap_count     <= 1, "duplicate on_wrap");
-    static_assert(_sentinel_count <= 1, "duplicate on_sentinel");
     static_assert(_error_count    <= 1, "duplicate on_error");
     static_assert(_overflow_count <= 1, "duplicate on_overflow");
 
@@ -270,10 +267,10 @@ namespace beman::inside
       return r;
     }
 
-    // optional<C> sink — unwrap once at the proxy boundary so callers can chain
+    // expected<C> sink — unwrap once at the proxy boundary so callers can chain
     // checked arithmetic into `.with_clamp() = ...` without per-step `.value()`.
     template <numeric C>
-    constexpr B& operator=(slim::optional<C> const& other)
+    constexpr B& operator=(std::expected<C, errc> const& other)
     { return assign_with_picked(other.value()); }
 
     private:
@@ -289,21 +286,22 @@ namespace beman::inside
     //-------------------------------------------------------------------------
     // insidable RHS overloads — route through the inside's arithmetic, then
     // assign via assign_with_picked so callbacks fire on the narrowing back to B.
-    // An optional<inside> result (rational-raw overflow) surfaces errc::overflow
-    // through on_overflow if registered, else report.
+    // An expected<inside> result carrying an error (rational-raw overflow,
+    // division by zero) surfaces its errc through on_overflow if registered,
+    // else report.
     //-------------------------------------------------------------------------
     private:
     template <typename R>
     constexpr B& finalise_arith(R&& result, [[maybe_unused]] const char* msg)
     {
-      if constexpr (requires { typename plain<R>::value_type; })
+      if constexpr (is_expected_v<R>)
       {
         if (!result.has_value()) [[unlikely]]
         {
           if constexpr (has_action<IsOverflowActionPred, As...>)
-            pick_action_in<IsOverflowActionPred>(Actions).fn(Ref, errc::overflow);
+            pick_action_in<IsOverflowActionPred>(Actions).fn(Ref, result.error());
           else
-            Policy.report(errc::overflow);
+            Policy.report(result.error());
           return Ref;
         }
         return assign_with_picked(result.value());

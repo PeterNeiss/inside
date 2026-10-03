@@ -65,13 +65,13 @@ TEST(LiteralsTest, ins_literal_produces_point_inside_just_value)
   static_assert(Lower<decltype(q14_notch)> == rational{1, 16384});
 }
 
-// a_b / b_b ~= rational{a,b} - value-equivalent (optional-wrapped)
-TEST(LiteralsTest, a_b_b_b_rational_a_b_value_equivalent_optional_wrapped)
+// a_b / b_b ~= rational{a,b} - value-equivalent (expected-wrapped)
+TEST(LiteralsTest, a_b_b_b_rational_a_b_value_equivalent_expected_wrapped)
 {
   // Verification §6 from the plan: `inside / inside` is the *checked* division,
-  // so the result is `slim::optional<inside>` even when both operands are
+  // so the result is `std::expected<inside, errc>` even when both operands are
   // point bounds. The inner inside has grid {a/b, a/b}, value a/b — so value
-  // equality holds, but the type carries an optional wrapper. For a fully
+  // equality holds, but the type carries an expected wrapper. For a fully
   // unwrapped point inside, write `just<rational{a, b}>` directly, or use the
   // `_r` literal forms (`3_r / 4_r` has the same property at the rational layer).
   constexpr auto three_quarters = 3_ins / 4_ins;

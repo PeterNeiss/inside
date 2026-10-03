@@ -2,8 +2,8 @@
 
 The whole library is also available as one self-contained header at
 [`single_include/beman/inside/inside.hpp`](../single_include/beman/inside/inside.hpp). It inlines
-the entire `inside/` + `slim/` tree, so it needs only the C++ standard library —
-there are no `inside/...` or `slim/...` sub-includes left to resolve. Drop the one
+the entire `inside/` tree, so it needs only the C++ standard library —
+there are no `inside/...` sub-includes left to resolve. Drop the one
 file into a project, put `single_include/` on the include path, and use it exactly
 as the full tree:
 
@@ -12,8 +12,8 @@ as the full tree:
 ```
 
 It is behaviourally identical to the multi-header form; the engine switches
-(`-DBEMAN_INSIDE_MATH_FIXED`, `-DBEMAN_INSIDE_MATH_FLOAT`), `BEMAN_INSIDE_MATH_NO_FP`, and the C++20
-mode apply the same way, as ordinary compiler flags. The string/printing layer
+(`-DBEMAN_INSIDE_MATH_FIXED`, `-DBEMAN_INSIDE_MATH_FLOAT`) and `BEMAN_INSIDE_MATH_NO_FP`
+apply the same way, as ordinary compiler flags. The string/printing layer
 is wrapped in a guard — define `BEMAN_INSIDE_NO_STRING` to drop it and its
 `<string>`/`<ostream>`/`<format>` includes wholesale (see
 [freestanding.md](freestanding.md)).

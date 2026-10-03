@@ -38,7 +38,7 @@ namespace beman::inside::detail
 
     template <policy_flag F = none>
     using return_type_for = std::conditional_t<needs_overflow_check<F>,
-                                               slim::optional<result>,
+                                               std::expected<result, errc>,
                                                result>;
 
     template <policy_flag F, typename A>
@@ -90,7 +90,7 @@ namespace beman::inside::detail
     // Result notch is gcd(NL, NR); scale each raw up to it before adding —
     // lhs_widen = NL/Nresult, rhs_widen = NR/Nresult (exact, Nresult divides both).
     // Guard the continuous-grid case (Notch<result> == 0): the rational divide-by-zero
-    // path returns nullopt on GCC/Clang but MSVC's constexpr evaluator rejects it
+    // path returns an error on GCC/Clang but MSVC's constexpr evaluator rejects it
     // (C2131). widen is unused on the continuous/rational result path, so 1 is fine.
     static constexpr imax lhs_widen = (Notch<result> == 0) ? imax{1}
         : (Notch<L> / Notch<result>).value_or(rational{1}).Numerator;
@@ -118,8 +118,8 @@ namespace beman::inside::detail
       {
         auto sum = rational::add(lhs,rhs);
         if (!sum) [[unlikely]]
-          return report_or_nullopt<result>(action, policy, errc::overflow,
-                                           "rational overflow in add");
+          return report_or_unexpected<result>(action, policy, errc::overflow,
+                                              "rational overflow in add");
         res = result::from_raw(*sum);
       }
       else

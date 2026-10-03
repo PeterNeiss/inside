@@ -10,23 +10,10 @@
 #include <beman/inside/interval.hpp>
 #include <beman/inside/policy_flag.hpp>
 
-#include <beman/inside/slim/expected.hpp>     // slim::expected, slim::unexpected
+#include <expected>   // std::expected, std::unexpected
 
 #include <algorithm>
 #include <concepts>              // std::convertible_to (grid corner ctors)
-
-namespace beman::inside { struct grid; }
-
-namespace beman::inside::slim
-{
-  template<>
-  struct sentinel_traits<beman::inside::grid>
-  {
-    protected:
-      static constexpr beman::inside::grid sentinel() noexcept;
-      static constexpr bool is_sentinel(const beman::inside::grid& v) noexcept;
-  };
-} // namespace beman::inside::slim
 
 namespace beman::inside
 {
@@ -76,15 +63,15 @@ namespace beman::inside
     // Runtime sibling of validate<G>(): same invariants, but returns a typed
     // error instead of failing a static_assert — for grids built from runtime
     // config. A value, so it can't be an inside<G,P> template argument.
-    [[nodiscard]] static constexpr slim::expected<grid, errc>
+    [[nodiscard]] static constexpr std::expected<grid, errc>
     try_make(interval iv, detail::rational notch)
     {
       if (iv.Lower > iv.Upper)
-        return slim::unexpected{errc::domain_error};
+        return std::unexpected{errc::domain_error};
       if (!iv.divides_evenly(notch))
-        return slim::unexpected{errc::rounding_error};
+        return std::unexpected{errc::rounding_error};
       if (notch != 0 && !detail::divides_evenly(iv.Lower, notch))
-        return slim::unexpected{errc::rounding_error};
+        return std::unexpected{errc::rounding_error};
       return grid{iv, notch};
     }
 
@@ -119,9 +106,9 @@ namespace beman::inside
     {
       if (!includes(Interval, v)) return false;
       if (Notch == 0) return true;
-      auto diff = v - Interval.Lower;            // optional<rational>
+      auto diff = v - Interval.Lower;            // expected<rational, errc>
       if (!diff) return false;
-      auto off = diff.value() / Notch;           // optional<rational>
+      auto off = diff.value() / Notch;           // expected<rational, errc>
       return off.has_value() && detail::abs_den(off->Denominator) == 1;
     }
 
@@ -161,9 +148,6 @@ namespace beman::inside
       }
       return lo + r * nd;
     }
-
-    static constexpr grid make_sentinel() noexcept
-    { return grid{interval{detail::rational{0}, detail::rational{0}}, detail::rational::make_sentinel()}; }
   };
 
   // Smallest raw type holding every reachable index in G. Order: notch-zero →
@@ -286,20 +270,20 @@ namespace beman::inside
 
   // Does raw type R hold every reachable raw value of grid G under the given
   // encoding? Index storage runs 0..max_notch (unsigned); value storage runs
-  // Lower..Upper. The strict margins (max-1 unsigned / min+1 signed) match the
-  // sentinel-slot reservation in smallest_uint_for / smallest_int_for.
+  // Lower..Upper. The full range of R is usable, matching smallest_uint_for /
+  // smallest_int_for.
   template <grid G, typename R, bool Index>
   constexpr bool storage_fits() noexcept
   {
     using lim = std::numeric_limits<R>;
     if constexpr (Index)
       return G.notch_count_representable()
-          && G.max_notch() < static_cast<umax>(lim::max());
+          && G.max_notch() <= static_cast<umax>(lim::max());
     else if constexpr (std::is_unsigned_v<R>)
       return G.Interval.Lower >= 0
-          && G.Interval.Upper <= rational{static_cast<umax>(lim::max()) - 1};
+          && G.Interval.Upper <= rational{static_cast<umax>(lim::max())};
     else
-      return G.Interval.Lower >= rational{static_cast<imax>(lim::min()) + 1}
+      return G.Interval.Lower >= rational{static_cast<imax>(lim::min())}
           && G.Interval.Upper <= rational{static_cast<imax>(lim::max())};
   }
 
@@ -388,18 +372,18 @@ namespace beman::inside
   using storage_for = decltype(storage_pick<G, P>());
   }
 
-  constexpr slim::optional<grid> operator+(const grid&, const grid&);
-  constexpr slim::optional<grid> operator-(const grid&, const grid&);
-  constexpr slim::optional<grid> operator*(const grid&, const grid&);
-  constexpr slim::optional<grid> operator/(const grid&, const grid&);
+  constexpr std::expected<grid, errc> operator+(const grid&, const grid&);
+  constexpr std::expected<grid, errc> operator-(const grid&, const grid&);
+  constexpr std::expected<grid, errc> operator*(const grid&, const grid&);
+  constexpr std::expected<grid, errc> operator/(const grid&, const grid&);
 
   //---------------------------------------------------------------------------
   // operator+
   //---------------------------------------------------------------------------
-  inline constexpr slim::optional<grid> operator+(const grid& lhs, const grid& rhs)
+  inline constexpr std::expected<grid, errc> operator+(const grid& lhs, const grid& rhs)
   {
-    // gcd returns optional — lift it so a notch-denominator overflow produces
-    // nullopt rather than a silently wrapped result grid.
+    // gcd returns expected — lift it so a notch-denominator overflow produces
+    // errc::overflow rather than a silently wrapped result grid.
     return lift(
       [](interval i, detail::rational n){ return grid{i, n}; },
       lhs.Interval + rhs.Interval, detail::gcd(lhs.Notch, rhs.Notch));
@@ -408,7 +392,7 @@ namespace beman::inside
   //---------------------------------------------------------------------------
   // operator-
   //---------------------------------------------------------------------------
-  inline constexpr slim::optional<grid> operator-(const grid& lhs, const grid& rhs)
+  inline constexpr std::expected<grid, errc> operator-(const grid& lhs, const grid& rhs)
   {
     return operator+(lhs, -rhs);
   }
@@ -416,7 +400,7 @@ namespace beman::inside
   //---------------------------------------------------------------------------
   // operator*
   //---------------------------------------------------------------------------
-  inline constexpr slim::optional<grid> operator*(const grid& lhs, const grid& rhs)
+  inline constexpr std::expected<grid, errc> operator*(const grid& lhs, const grid& rhs)
   {
     return lift(
       [](interval i, detail::rational n){ return grid{i, n}; },
@@ -426,7 +410,7 @@ namespace beman::inside
   //---------------------------------------------------------------------------
   // operator/
   //---------------------------------------------------------------------------
-  inline constexpr slim::optional<grid> operator/(const grid& lhs, const grid& rhs)
+  inline constexpr std::expected<grid, errc> operator/(const grid& lhs, const grid& rhs)
   {
     auto d = lhs.Interval / rhs.Interval;
     if (d.has_value())
@@ -434,7 +418,7 @@ namespace beman::inside
 
     // Divisor interval includes zero — exclude zero for result interval.
     if (rhs.Interval.Lower == 0 && rhs.Interval.Upper == 0)
-      return slim::nullopt;
+      return std::unexpected{errc::division_by_zero};
 
     // `step` = smallest non-zero divisor magnitude; splits the divisor interval
     // into positive [step, Upper] and negative [Lower, -step] (skipping zero).
@@ -472,10 +456,10 @@ namespace beman::inside
   // interval hull + notch gcd. A valid grid anchors Lower on a multiple of its
   // notch, so both lattices are sub-lattices of the gcd lattice — no offset
   // term is needed, and the hull is a valid grid by construction. A continuous
-  // operand (Notch 0) makes the hull continuous. nullopt when the notch gcd's
+  // operand (Notch 0) makes the hull continuous. errc::overflow when the notch gcd's
   // combined denominator exceeds the representable rational range.
   //---------------------------------------------------------------------------
-  inline constexpr slim::optional<grid> hull(const grid& lhs, const grid& rhs)
+  inline constexpr std::expected<grid, errc> hull(const grid& lhs, const grid& rhs)
   {
     const interval iv{std::min(lhs.Interval.Lower, rhs.Interval.Lower),
                       std::max(lhs.Interval.Upper, rhs.Interval.Upper)};
@@ -485,15 +469,6 @@ namespace beman::inside
                 detail::gcd(lhs.Notch, rhs.Notch));
   }
 } // namespace beman::inside
-
-namespace beman::inside::slim
-{
-  constexpr beman::inside::grid sentinel_traits<beman::inside::grid>::sentinel() noexcept
-  { return beman::inside::grid::make_sentinel(); }
-
-  constexpr bool sentinel_traits<beman::inside::grid>::is_sentinel(const beman::inside::grid& v) noexcept
-  { return v.Notch.Denominator == 0; }
-} // namespace beman::inside::slim
 
 //---------------------------------------------------------------------------
 // Structured bindings: `auto [iv, notch] = some_grid;`

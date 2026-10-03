@@ -5,10 +5,9 @@
 //   *** GENERATED FILE — DO NOT EDIT BY HAND ***
 //
 // Regenerate with:  cmake --build <build-dir> --target amalgamate
-// Source of truth:  include/beman/inside/*.hpp, include/beman/inside/slim/*.hpp
+// Source of truth:  include/beman/inside/*.hpp, include/beman/inside/detail/*.hpp
 //
 // Copyright (C) 2026 Peter Neiss
-// beman::inside::slim components (slim/*.hpp) are MIT-licensed.
 //---------------------------------------------------------------------------
 #ifndef BEMAN_INSIDE_SINGLE_HEADER_HPP
 #define BEMAN_INSIDE_SINGLE_HEADER_HPP
@@ -21,19 +20,16 @@
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
-#include <exception>
+#include <expected>
 #include <functional>
 #include <initializer_list>
 #include <iterator>
 #include <limits>
-#include <memory>
 #include <numeric>
-#include <optional>
 #include <ranges>
 #include <tuple>
 #include <type_traits>
 #include <utility>
-#include <version>
 
 // ======================================================================
 //  beman/inside/inside.hpp
@@ -63,1206 +59,6 @@
 // ======================================================================
 //---------------------------------------------------------------------------
 //---------------------------------------------------------------------------
-
-#define BEMAN_INSIDE_SLIM_OPTIONAL_LEAN_AND_MEAN
-
-// ======================================================================
-//  beman/inside/slim/optional.hpp
-// ======================================================================
-// slim::optional — sentinel-based optional for C++23
-//
-// `beman::inside::slim` is a self-contained utility namespace; `slim::optional`
-// depends on nothing else in the library and is reusable on its own. The inside
-// library consumes it by specialising `slim::sentinel_traits<beman::inside::inside<G,P>>`
-// and `slim::sentinel_traits<beman::inside::rational>`, so `slim::optional<inside<...>>`
-// has the same size as the underlying inside (the sentinel reserves one value
-// from the representable range — see README "slim::optional sentinel").
-
-
-
-#ifndef BEMAN_INSIDE_SLIM_OPTIONAL_LEAN_AND_MEAN
-#include <any>
-#include <chrono>
-#include <complex>
-#include <coroutine>
-#include <functional>
-#include <span>
-#include <stop_token>
-#include <string_view>
-#include <thread>
-#endif
-
-namespace beman::inside::slim {
-
-// Exception type — inherits from std::bad_optional_access so user code that
-// catches the standard type also catches ours.
-class bad_optional_access : public std::bad_optional_access {
-    const char* msg_;
-public:
-    explicit bad_optional_access(const char* msg = "bad optional access") noexcept
-        : msg_(msg) {}
-
-    const char* what() const noexcept override {
-        return msg_;
-    }
-};
-
-// Failure funnel for the empty-access paths. Throws bad_optional_access when
-// exceptions are enabled; otherwise traps — so slim::optional is usable under
-// -fno-exceptions / freestanding without depending on the exception ABI.
-namespace detail {
-[[noreturn]] inline void throw_bad_optional_access(const char* msg) {
-#if defined(__cpp_exceptions) || defined(__EXCEPTIONS)
-    throw bad_optional_access(msg);
-#else
-    (void)msg;
-#  if defined(__GNUC__) || defined(__clang__)
-    __builtin_trap();
-#  else
-    std::abort();
-#  endif
-#endif
-}
-} // namespace detail
-
-// Tag types — aliased to the std equivalents so a single set of constructor
-// overloads handles both `slim::nullopt` and `std::nullopt`.
-using nullopt_t = std::nullopt_t;
-inline constexpr std::nullopt_t nullopt = std::nullopt;
-using in_place_t = std::in_place_t;
-inline constexpr std::in_place_t in_place{};
-
-// ============================================================================
-// sentinel_traits<T>: customization point for sentinel values.
-//
-// Users specialize this for their own types to enable slim::optional support.
-// Each specialization must provide:
-//   static [constexpr] T sentinel() noexcept;
-//   static [constexpr] bool is_sentinel(const T& v) noexcept;
-// ============================================================================
-
-// Primary template — undefined (opt-in via specialization)
-template<class T>
-struct sentinel_traits;
-
-// Concept: is sentinel_traits<T> a complete type? The primary template is never
-// defined, so completeness tracks opt-in specializations.
-template<class T>
-concept has_sentinel_traits = requires { sizeof(sentinel_traits<T>); };
-
-// Escape-hatch specialization: a "never-empty" traits. When used as the
-// Traits parameter of slim::optional, is_sentinel is always false, so the
-// optional always reports has_value()==true and collapses to sizeof(T).
-template<typename T>
-struct never_empty {
-protected:
-    static constexpr T sentinel() { detail::throw_bad_optional_access("never_empty"); }
-    static constexpr bool is_sentinel(const T&) noexcept { return false; }
-};
-
-// Dual escape-hatch: "always-empty" traits — the optional has no T storage
-// (sizeof == 1) and reports has_value()==false. For conditional return types
-// whose no-value branch structurally never produces a value:
-//
-//     if constexpr (cacheable) return slim::optional<T>{...};
-//     else                     return slim::optional<T, slim::always_empty<T>>{};
-template<typename T>
-struct always_empty {
-protected:
-    static T sentinel() = delete;  // never invoked — specialization has no value_
-    static constexpr bool is_sentinel(const T&) noexcept { return true; }
-};
-
-// ── Scalar specializations ──
-// Built-in specializations make sentinel()/is_sentinel() protected, accessed
-// only by slim::optional<T, Traits> (which inherits publicly from Traits). User
-// specializations should do the same.
-
-// Signed integers (excluding bool)
-template<class T>
-    requires (std::signed_integral<T> && !std::same_as<T, bool>)
-struct sentinel_traits<T>
-{
-protected:
-    static constexpr T sentinel() noexcept { return std::numeric_limits<T>::min(); }
-    static constexpr bool is_sentinel(const T& v) noexcept { return v == std::numeric_limits<T>::min(); }
-};
-
-// Unsigned integers (excluding bool, char8_t)
-template<class T>
-    requires (std::unsigned_integral<T> && !std::same_as<T, bool>
-              && !std::same_as<T, char8_t>
-              && !std::same_as<T, char16_t>
-              && !std::same_as<T, char32_t>)
-struct sentinel_traits<T>
-{
-protected:
-    static constexpr T sentinel() noexcept { return std::numeric_limits<T>::max(); }
-    static constexpr bool is_sentinel(const T& v) noexcept { return v == std::numeric_limits<T>::max(); }
-};
-
-// float/double/long double — NaN sentinel, all NaN values disallowed.
-// v != v is true iff v is any NaN, and is constexpr everywhere.
-template<>
-struct sentinel_traits<float> {
-protected:
-    static constexpr float sentinel() noexcept { return std::numeric_limits<float>::quiet_NaN(); }
-    static constexpr bool is_sentinel(const float& v) noexcept { return v != v; }
-};
-
-template<>
-struct sentinel_traits<double> {
-protected:
-    static constexpr double sentinel() noexcept { return std::numeric_limits<double>::quiet_NaN(); }
-    static constexpr bool is_sentinel(const double& v) noexcept { return v != v; }
-};
-
-template<>
-struct sentinel_traits<long double> {
-protected:
-    static constexpr long double sentinel() noexcept { return std::numeric_limits<long double>::quiet_NaN(); }
-    static constexpr bool is_sentinel(const long double& v) noexcept { return v != v; }
-};
-
-// Pointers → nullptr
-template<class T>
-struct sentinel_traits<T*> {
-protected:
-    static constexpr T* sentinel() noexcept { return nullptr; }
-    static constexpr bool is_sentinel(T* const& v) noexcept { return v == nullptr; }
-};
-
-// char16_t → 0xFFFF (Unicode noncharacter)
-template<>
-struct sentinel_traits<char16_t> {
-protected:
-    static constexpr char16_t sentinel() noexcept { return 0xFFFF; }
-    static constexpr bool is_sentinel(const char16_t& v) noexcept { return v == static_cast<char16_t>(0xFFFF); }
-};
-
-// char32_t → 0xFFFFFFFF (beyond Unicode range)
-template<>
-struct sentinel_traits<char32_t> {
-protected:
-    static constexpr char32_t sentinel() noexcept { return 0xFFFFFFFF; }
-    static constexpr bool is_sentinel(const char32_t& v) noexcept { return v == static_cast<char32_t>(0xFFFFFFFF); }
-};
-
-// ── Standard library type specializations ──
-
-#ifndef BEMAN_INSIDE_SLIM_OPTIONAL_LEAN_AND_MEAN
-
-template<class T, class D>
-struct sentinel_traits<std::unique_ptr<T, D>> {
-protected:
-    static std::unique_ptr<T, D> sentinel() noexcept { return nullptr; }
-    static bool is_sentinel(const std::unique_ptr<T, D>& v) noexcept { return !v; }
-};
-
-template<class T>
-struct sentinel_traits<std::shared_ptr<T>> {
-protected:
-    static std::shared_ptr<T> sentinel() noexcept { return nullptr; }
-    static bool is_sentinel(const std::shared_ptr<T>& v) noexcept { return !v; }
-};
-
-template<class CharT, class Traits>
-struct sentinel_traits<std::basic_string_view<CharT, Traits>> {
-protected:
-    static constexpr std::basic_string_view<CharT, Traits> sentinel() noexcept {
-        return std::basic_string_view<CharT, Traits>{nullptr, 0};
-    }
-    static constexpr bool is_sentinel(const std::basic_string_view<CharT, Traits>& v) noexcept {
-        return v.data() == nullptr;
-    }
-};
-
-template<class T, std::size_t E>
-struct sentinel_traits<std::span<T, E>> {
-protected:
-    static constexpr std::span<T, E> sentinel() noexcept { return std::span<T, E>{}; }
-    static constexpr bool is_sentinel(const std::span<T, E>& v) noexcept { return v.data() == nullptr; }
-};
-
-template<class F>
-struct sentinel_traits<std::function<F>> {
-protected:
-    static std::function<F> sentinel() noexcept { return nullptr; }
-    static bool is_sentinel(const std::function<F>& v) noexcept { return !v; }
-};
-
-// std::move_only_function is C++23 (libstdc++ ships it from GCC 13); gate the
-// specialization so C++20 / GCC 12 builds still compile this header.
-#ifdef __cpp_lib_move_only_function
-template<class F>
-struct sentinel_traits<std::move_only_function<F>> {
-protected:
-    static std::move_only_function<F> sentinel() noexcept { return {}; }
-    static bool is_sentinel(const std::move_only_function<F>& v) noexcept { return !v; }
-};
-#endif
-
-template<class P>
-struct sentinel_traits<std::coroutine_handle<P>> {
-protected:
-    static constexpr std::coroutine_handle<P> sentinel() noexcept { return std::coroutine_handle<P>{}; }
-    static constexpr bool is_sentinel(const std::coroutine_handle<P>& v) noexcept { return !v; }
-};
-
-template<>
-struct sentinel_traits<std::any> {
-protected:
-    static std::any sentinel() noexcept { return std::any{}; }
-    static bool is_sentinel(const std::any& v) noexcept { return !v.has_value(); }
-};
-
-// Not constexpr: std::thread::id is not a literal type before C++23 (P2448),
-// so clang rejects a constexpr function returning it under -std=c++20.
-template<>
-struct sentinel_traits<std::thread::id> {
-protected:
-    static std::thread::id sentinel() noexcept { return std::thread::id{}; }
-    static bool is_sentinel(const std::thread::id& v) noexcept { return v == std::thread::id{}; }
-};
-
-template<>
-struct sentinel_traits<std::stop_token> {
-protected:
-    static std::stop_token sentinel() noexcept { return std::stop_token{}; }
-    static bool is_sentinel(const std::stop_token& v) noexcept { return !v.stop_possible(); }
-};
-
-// chrono::duration — uses the underlying Rep's sentinel (min() for integers, NaN for floats).
-// Accesses the (protected) members of sentinel_traits<Rep> via inheritance.
-template<class Rep, class Period>
-    requires has_sentinel_traits<Rep>
-struct sentinel_traits<std::chrono::duration<Rep, Period>> : private sentinel_traits<Rep> {
-protected:
-    static constexpr std::chrono::duration<Rep, Period> sentinel() noexcept {
-        return std::chrono::duration<Rep, Period>{sentinel_traits<Rep>::sentinel()};
-    }
-    static constexpr bool is_sentinel(const std::chrono::duration<Rep, Period>& v) noexcept {
-        return sentinel_traits<Rep>::is_sentinel(v.count());
-    }
-};
-
-// chrono::time_point — uses the underlying Duration's sentinel
-template<class Clock, class Duration>
-    requires has_sentinel_traits<Duration>
-struct sentinel_traits<std::chrono::time_point<Clock, Duration>> : private sentinel_traits<Duration> {
-protected:
-    static constexpr std::chrono::time_point<Clock, Duration> sentinel() noexcept {
-        return std::chrono::time_point<Clock, Duration>{sentinel_traits<Duration>::sentinel()};
-    }
-    static constexpr bool is_sentinel(const std::chrono::time_point<Clock, Duration>& v) noexcept {
-        return sentinel_traits<Duration>::is_sentinel(v.time_since_epoch());
-    }
-};
-
-template<class T>
-struct sentinel_traits<std::complex<T>> {
-protected:
-    static constexpr std::complex<T> sentinel() noexcept {
-        return std::complex<T>{std::numeric_limits<T>::quiet_NaN(), std::numeric_limits<T>::quiet_NaN()};
-    }
-    static constexpr bool is_sentinel(const std::complex<T>& v) noexcept {
-        return v.real() != v.real();
-    }
-};
-
-#endif // !BEMAN_INSIDE_SLIM_OPTIONAL_LEAN_AND_MEAN
-
-// exception_ptr — available in both modes (uses <exception> which is always included)
-template<>
-struct sentinel_traits<std::exception_ptr> {
-protected:
-    static std::exception_ptr sentinel() noexcept { return std::exception_ptr{}; }
-    static bool is_sentinel(const std::exception_ptr& v) noexcept { return !v; }
-};
-
-// ── Types deliberately NOT supported ──
-//
-// std::string, std::u8string, etc.  — empty string is a valid value
-// std::error_code                   — default (0) means "success", a valid value
-// std::weak_ptr<T>                  — expired state is indistinguishable from sentinel
-// std::variant<Ts...>               — cannot deliberately construct valueless state
-// std::future<T>, std::shared_future<T> — move-only, rarely stored in containers
-// std::filesystem::path             — empty path is a valid value
-// std::regex                        — heavyweight, niche use case
-// Containers (vector, map, etc.)    — empty is a valid state
-// std::reference_wrapper<T>         — always holds a reference, no empty state
-// Mutex/thread types                — not copyable or movable
-
-// ============================================================================
-// optional: sentinel-based optional with no bool flag
-// ============================================================================
-
-template<class T, class Traits = sentinel_traits<T>>
-class optional;
-
-// Helper trait to detect optional types (slim or std)
-namespace detail {
-template<class> inline constexpr bool is_optional_v = false;
-template<class T, class Tr> inline constexpr bool is_optional_v<optional<T, Tr>> = true;
-template<class T> inline constexpr bool is_optional_v<std::optional<T>> = true;
-
-// Detects slim::optional<T, never_empty<T>> — used to forbid such results
-// from monadic operations whose empty branch cannot construct one.
-template<class> inline constexpr bool is_never_empty_optional_v = false;
-template<class T>
-inline constexpr bool is_never_empty_optional_v<optional<T, never_empty<T>>> = true;
-}
-
-// Publicly inherits from Traits so any public members users attach to
-// their sentinel_traits specialization (constants, typedefs, helpers) are
-// reachable through the optional. Empty-base optimization keeps
-// sizeof(optional<T>) == sizeof(T) whenever Traits has no data members.
-template<class T, class Traits>
-class optional : public Traits {
-    T value_;
-
-    // Throws if v matches the trait's sentinel. The check (and the unwind
-    // path it implies) is elided at compile time when the target trait has
-    // no representable empty state — under never_empty<T>, is_sentinel
-    // always returns false, so the function reduces to a no-op and the
-    // exception handler vanishes from generated code.
-    static constexpr void validate_not_sentinel(const T& v) {
-        if constexpr (can_be_empty) {
-            if (Traits::is_sentinel(v)) {
-                detail::throw_bad_optional_access("Cannot construct optional with sentinel value");
-            }
-        }
-    }
-
-    static_assert(has_sentinel_traits<T> || !std::same_as<Traits, sentinel_traits<T>>,
-        "slim::optional<T>: no sentinel_traits<T> specialization is visible. "
-        "Either provide one, supply a custom Traits as the second template "
-        "parameter, or use slim::optional<T, slim::never_empty<T>>.");
-
-public:
-    using value_type = T;
-    using traits_type = Traits;
-
-    // True iff this optional has a representable empty state. False only for
-    // the never_empty escape-hatch traits.
-    static constexpr bool can_be_empty = !std::same_as<Traits, never_empty<T>>;
-
-    // Public accessor for the trait's sentinel value (the bit pattern that
-    // means "empty"). Useful for interop with C APIs that need the sentinel.
-    static constexpr T sentinel_value() noexcept(noexcept(Traits::sentinel()))
-        requires (can_be_empty)
-    {
-        return Traits::sentinel();
-    }
-
-    // Default constructor — trivial whenever T is trivially default
-    // constructible. In that case value_ is left in T's default-initialized
-    // state (indeterminate for scalars, value-initialized for class types);
-    // use `optional o = nullopt;` if you need a guaranteed-empty optional.
-    constexpr optional() requires std::is_trivially_default_constructible_v<T> = default;
-
-    // Fallback: sentinel-initializing default constructor for T that is not
-    // trivially default constructible (only available under sentinel traits,
-    // since the never-empty variant has no sentinel to fall back to).
-    constexpr optional() noexcept(noexcept(T(Traits::sentinel())))
-        requires (!std::is_trivially_default_constructible_v<T>)
-        : value_(Traits::sentinel()) {}
-
-    constexpr optional(nullopt_t) noexcept(noexcept(T(Traits::sentinel())))
-      requires (can_be_empty)
-        : value_(Traits::sentinel()) {}
-
-    constexpr optional(const optional& other) = default;
-    constexpr optional(optional&& other) noexcept(std::is_nothrow_move_constructible_v<T>) = default;
-
-    template<class... Args>
-        requires std::is_constructible_v<T, Args...>
-    constexpr explicit optional(in_place_t, Args&&... args)
-        : value_(std::forward<Args>(args)...)
-    {
-        validate_not_sentinel(value_);
-    }
-
-    template<class U = T>
-        requires (!std::same_as<std::remove_cvref_t<U>, optional> &&
-                  !std::same_as<std::remove_cvref_t<U>, in_place_t> &&
-                  !std::same_as<std::remove_cvref_t<U>, nullopt_t> &&
-                  std::is_constructible_v<T, U>)
-    constexpr explicit(!std::is_convertible_v<U, T>)
-    optional(U&& value)
-        : value_(std::forward<U>(value))
-    {
-        validate_not_sentinel(value_);
-    }
-
-    // Non-throwing factory: collapses a sentinel-valued T to nullopt instead
-    // of throwing. The throwing single-value ctor stays the default ("you
-    // promised this wasn't a sentinel"); this factory is the public escape
-    // hatch for "test if T already encodes empty".
-    template<class U = T>
-        requires (std::is_constructible_v<T, U>)
-    static constexpr optional from_maybe_sentinel(U&& value)
-        noexcept(std::is_nothrow_constructible_v<T, U>)
-    {
-        optional o{nullopt};
-        if constexpr (can_be_empty)
-        {
-            T tmp(std::forward<U>(value));
-            if (!Traits::is_sentinel(tmp))
-                o.value_ = std::move(tmp);
-        }
-        else
-        {
-            o.value_ = T(std::forward<U>(value));
-        }
-        return o;
-    }
-
-    // Construct from another optional with different T and/or Traits.
-    // The validate_not_sentinel call is retained because *other may be a
-    // legitimate value under TrU's traits but happen to coincide with this
-    // optional's sentinel under Traits.
-    template<class U, class TrU>
-        requires (!(std::same_as<U, T> && std::same_as<TrU, Traits>) &&
-                  std::is_constructible_v<T, const U&>)
-    constexpr explicit(!std::is_convertible_v<const U&, T>)
-    optional(const optional<U, TrU>& other)
-        : value_(other.has_value() ? *other : Traits::sentinel())
-    {
-        if (has_value()) {
-            validate_not_sentinel(value_);
-        }
-    }
-
-    template<class U, class TrU>
-        requires (!(std::same_as<U, T> && std::same_as<TrU, Traits>) &&
-                  std::is_constructible_v<T, U&&>)
-    constexpr explicit(!std::is_convertible_v<U&&, T>)
-    optional(optional<U, TrU>&& other)
-        : value_(other.has_value() ? std::move(*other) : Traits::sentinel())
-    {
-        if (has_value()) {
-            validate_not_sentinel(value_);
-        }
-    }
-
-    // Construct from std::optional
-    template<class U = T>
-        requires (std::is_constructible_v<T, const U&>)
-    constexpr explicit(!std::is_convertible_v<const U&, T>)
-    optional(const std::optional<U>& other)
-        : value_(other.has_value() ? *other : Traits::sentinel())
-    {
-        if (has_value()) {
-            validate_not_sentinel(value_);
-        }
-    }
-
-    template<class U = T>
-        requires (std::is_constructible_v<T, U&&>)
-    constexpr explicit(!std::is_convertible_v<U&&, T>)
-    optional(std::optional<U>&& other)
-        : value_(other.has_value() ? std::move(*other) : Traits::sentinel())
-    {
-        if (has_value()) {
-            validate_not_sentinel(value_);
-        }
-    }
-
-    constexpr ~optional() = default;
-
-    // Assignment
-    constexpr optional& operator=(nullopt_t) noexcept(noexcept(std::declval<T&>() = Traits::sentinel()))
-      requires (can_be_empty)
-    {
-        value_ = Traits::sentinel();
-        return *this;
-    }
-
-    constexpr optional& operator=(const optional& other) = default;
-    constexpr optional& operator=(optional&& other) noexcept(std::is_nothrow_move_assignable_v<T>) = default;
-
-    template<class U = T>
-        requires (!std::same_as<std::remove_cvref_t<U>, optional> &&
-                  std::is_constructible_v<T, U> &&
-                  std::is_assignable_v<T&, U>)
-    constexpr optional& operator=(U&& value) {
-        value_ = std::forward<U>(value);
-        validate_not_sentinel(value_);
-        return *this;
-    }
-
-    template<class U, class TrU>
-        requires (!(std::same_as<U, T> && std::same_as<TrU, Traits>) &&
-                  std::is_constructible_v<T, const U&> &&
-                  std::is_assignable_v<T&, const U&>)
-    constexpr optional& operator=(const optional<U, TrU>& other) {
-        if (other.has_value()) {
-            value_ = *other;
-            validate_not_sentinel(value_);
-        } else {
-            value_ = Traits::sentinel();
-        }
-        return *this;
-    }
-
-    template<class U, class TrU>
-        requires (!(std::same_as<U, T> && std::same_as<TrU, Traits>) &&
-                  std::is_constructible_v<T, U> &&
-                  std::is_assignable_v<T&, U>)
-    constexpr optional& operator=(optional<U, TrU>&& other) {
-        if (other.has_value()) {
-            value_ = std::move(*other);
-            validate_not_sentinel(value_);
-        } else {
-            value_ = Traits::sentinel();
-        }
-        return *this;
-    }
-
-    // Assign from std::optional
-    template<class U = T>
-        requires (std::is_constructible_v<T, const U&> &&
-                  std::is_assignable_v<T&, const U&>)
-    constexpr optional& operator=(const std::optional<U>& other) {
-        if (other.has_value()) {
-            value_ = *other;
-            validate_not_sentinel(value_);
-        } else {
-            value_ = Traits::sentinel();
-        }
-        return *this;
-    }
-
-    template<class U = T>
-        requires (std::is_constructible_v<T, U> &&
-                  std::is_assignable_v<T&, U>)
-    constexpr optional& operator=(std::optional<U>&& other) {
-        if (other.has_value()) {
-            value_ = std::move(*other);
-            validate_not_sentinel(value_);
-        } else {
-            value_ = Traits::sentinel();
-        }
-        return *this;
-    }
-
-    // Conversion to std::optional
-    constexpr operator std::optional<T>() const {
-        if (has_value()) {
-            return std::optional<T>{value_};
-        }
-        return std::nullopt;
-    }
-
-    // Observers
-    constexpr bool has_value() const noexcept {
-        return !Traits::is_sentinel(value_);
-    }
-
-    constexpr explicit operator bool() const noexcept {
-        return has_value();
-    }
-
-#if defined(__cpp_explicit_this_parameter) && __cpp_explicit_this_parameter >= 202110L
-    // value() / operator* / operator-> use C++23 deducing-this so a single
-    // function template covers all four cv/ref qualifications.
-    template<class Self>
-    constexpr auto&& value(this Self&& self) {
-        if (!self.has_value()) {
-            detail::throw_bad_optional_access("optional has no value");
-        }
-        return std::forward<Self>(self).value_;
-    }
-
-    template<class Self>
-    constexpr auto&& operator*(this Self&& self) noexcept {
-        return std::forward<Self>(self).value_;
-    }
-
-    template<class Self>
-    constexpr auto operator->(this Self&& self) noexcept {
-        return std::addressof(self.value_);
-    }
-
-    template<class Self, class U>
-        requires std::is_convertible_v<U, T>
-    constexpr T value_or(this Self&& self, U&& default_value) {
-        return self.has_value()
-            ? static_cast<T>(std::forward<Self>(self).value_)
-            : static_cast<T>(std::forward<U>(default_value));
-    }
-#else
-    constexpr T& value() & {
-        if (!has_value()) detail::throw_bad_optional_access("optional has no value");
-        return value_;
-    }
-    constexpr const T& value() const& {
-        if (!has_value()) detail::throw_bad_optional_access("optional has no value");
-        return value_;
-    }
-    constexpr T&& value() && {
-        if (!has_value()) detail::throw_bad_optional_access("optional has no value");
-        return std::move(value_);
-    }
-    constexpr const T&& value() const&& {
-        if (!has_value()) detail::throw_bad_optional_access("optional has no value");
-        return std::move(value_);
-    }
-
-    constexpr T& operator*() & noexcept { return value_; }
-    constexpr const T& operator*() const& noexcept { return value_; }
-    constexpr T&& operator*() && noexcept { return std::move(value_); }
-    constexpr const T&& operator*() const&& noexcept { return std::move(value_); }
-
-    constexpr T* operator->() noexcept { return std::addressof(value_); }
-    constexpr const T* operator->() const noexcept { return std::addressof(value_); }
-
-    template<class U>
-        requires std::is_convertible_v<U, T>
-    constexpr T value_or(U&& default_value) const& {
-        return has_value()
-            ? static_cast<T>(value_)
-            : static_cast<T>(std::forward<U>(default_value));
-    }
-    template<class U>
-        requires std::is_convertible_v<U, T>
-    constexpr T value_or(U&& default_value) && {
-        return has_value()
-            ? static_cast<T>(std::move(value_))
-            : static_cast<T>(std::forward<U>(default_value));
-    }
-#endif
-
-    // Modifiers
-    constexpr void reset() noexcept(noexcept(std::declval<T&>() = Traits::sentinel()))
-        requires (can_be_empty)
-    {
-        value_ = Traits::sentinel();
-    }
-
-    template<class... Args>
-        requires std::is_constructible_v<T, Args...>
-    constexpr T& emplace(Args&&... args)
-    {
-        // Not noexcept: validate_not_sentinel can throw bad_optional_access
-        // when args... happens to construct the sentinel. Construct into a
-        // temporary first so that if construction or validation throws,
-        // value_ is left untouched (strong exception guarantee).
-        T tmp(std::forward<Args>(args)...);
-        validate_not_sentinel(tmp);
-        value_ = std::move(tmp);
-        return value_;
-    }
-
-    // Move the value out and reset to empty. Unlike a plain move, this
-    // guarantees has_value() == false afterwards — useful given that
-    // sentinel-based moves do not normally disengage the source.
-    constexpr T take()
-        requires (can_be_empty && std::is_move_constructible_v<T>)
-    {
-        if (!has_value()) {
-            detail::throw_bad_optional_access("optional has no value");
-        }
-        T out = std::move(value_);
-        value_ = Traits::sentinel();
-        return out;
-    }
-
-    // Swap
-    constexpr void swap(optional& other)
-        noexcept(std::is_nothrow_move_constructible_v<T> &&
-                 std::is_nothrow_swappable_v<T>)
-    {
-        using std::swap;
-        swap(value_, other.value_);
-    }
-
-    // Monadic operations (C++23)
-#if defined(__cpp_explicit_this_parameter) && __cpp_explicit_this_parameter >= 202110L
-    template<class Self, class F>
-        requires detail::is_optional_v<std::remove_cvref_t<
-                     std::invoke_result_t<F, decltype(std::declval<Self>().value_)>>> &&
-                 (!detail::is_never_empty_optional_v<std::remove_cvref_t<
-                     std::invoke_result_t<F, decltype(std::declval<Self>().value_)>>>)
-    constexpr auto and_then(this Self&& self, F&& f) {
-        using U = std::remove_cvref_t<
-            std::invoke_result_t<F, decltype(std::forward<Self>(self).value_)>>;
-        if (self.has_value()) {
-            return std::forward<F>(f)(std::forward<Self>(self).value_);
-        } else {
-            return U(std::nullopt);
-        }
-    }
-
-    template<class Self, class F>
-    constexpr auto transform(this Self&& self, F&& f) {
-        using U = std::remove_cvref_t<
-            std::invoke_result_t<F, decltype(std::forward<Self>(self).value_)>>;
-        if constexpr (std::same_as<U, T>) {
-            // Propagate Traits when result type matches.
-            if (self.has_value())
-                return optional<U, Traits>{std::forward<F>(f)(std::forward<Self>(self).value_)};
-            // never_empty has no nullopt ctor, so its empty branch is
-            // constrained away; this keeps the return well-formed (it never
-            // runs — has_value() is always true above).
-            if constexpr (std::same_as<Traits, never_empty<T>>) {
-                return optional<U, Traits>{std::forward<F>(f)(std::forward<Self>(self).value_)};
-            } else {
-                return optional<U, Traits>(nullopt);
-            }
-        } else if constexpr (has_sentinel_traits<U>) {
-            if (self.has_value()) {
-                return optional<U>{std::forward<F>(f)(std::forward<Self>(self).value_)};
-            } else {
-                return optional<U>(nullopt);
-            }
-        } else {
-            if (self.has_value()) {
-                return std::optional<U>{std::forward<F>(f)(std::forward<Self>(self).value_)};
-            } else {
-                return std::optional<U>(std::nullopt);
-            }
-        }
-    }
-
-    // or_else: invokes f with the Traits subobject so the recovery callable
-    // can use trait-provided constants/helpers when fabricating a fallback.
-    // f must be invocable as f(Traits const&) and return something
-    // convertible to optional.
-    template<class Self, class F>
-        requires std::is_invocable_v<F, const Traits&> &&
-                 std::is_convertible_v<std::invoke_result_t<F, const Traits&>, optional>
-    constexpr optional or_else(this Self&& self, F&& f) {
-        if (self.has_value()) {
-            return std::forward<Self>(self);
-        } else {
-            return std::forward<F>(f)(static_cast<const Traits&>(self));
-        }
-    }
-#else
-    // and_then — const& and && overloads
-    template<class F>
-        requires detail::is_optional_v<std::remove_cvref_t<
-                     std::invoke_result_t<F, const T&>>> &&
-                 (!detail::is_never_empty_optional_v<std::remove_cvref_t<
-                     std::invoke_result_t<F, const T&>>>)
-    constexpr auto and_then(F&& f) const& {
-        using U = std::remove_cvref_t<std::invoke_result_t<F, const T&>>;
-        if (has_value()) return std::forward<F>(f)(value_);
-        return U(std::nullopt);
-    }
-    template<class F>
-        requires detail::is_optional_v<std::remove_cvref_t<
-                     std::invoke_result_t<F, T&&>>> &&
-                 (!detail::is_never_empty_optional_v<std::remove_cvref_t<
-                     std::invoke_result_t<F, T&&>>>)
-    constexpr auto and_then(F&& f) && {
-        using U = std::remove_cvref_t<std::invoke_result_t<F, T&&>>;
-        if (has_value()) return std::forward<F>(f)(std::move(value_));
-        return U(std::nullopt);
-    }
-
-    // transform — const& and && overloads
-    template<class F>
-    constexpr auto transform(F&& f) const& {
-        using U = std::remove_cvref_t<std::invoke_result_t<F, const T&>>;
-        if constexpr (std::same_as<U, T>) {
-            if (has_value())
-                return optional<U, Traits>{std::forward<F>(f)(value_)};
-            // never_empty's empty branch is constrained away; keep a
-            // well-formed return (unreachable — has_value() is always true).
-            if constexpr (std::same_as<Traits, never_empty<T>>)
-                return optional<U, Traits>{std::forward<F>(f)(value_)};
-            else
-                return optional<U, Traits>(nullopt);
-        } else if constexpr (has_sentinel_traits<U>) {
-            if (has_value()) return optional<U>{std::forward<F>(f)(value_)};
-            return optional<U>(nullopt);
-        } else {
-            if (has_value()) return std::optional<U>{std::forward<F>(f)(value_)};
-            return std::optional<U>(std::nullopt);
-        }
-    }
-    template<class F>
-    constexpr auto transform(F&& f) && {
-        using U = std::remove_cvref_t<std::invoke_result_t<F, T&&>>;
-        if constexpr (std::same_as<U, T>) {
-            if (has_value())
-                return optional<U, Traits>{std::forward<F>(f)(std::move(value_))};
-            // never_empty's empty branch is constrained away; keep a
-            // well-formed return (unreachable — has_value() is always true).
-            if constexpr (std::same_as<Traits, never_empty<T>>)
-                return optional<U, Traits>{std::forward<F>(f)(std::move(value_))};
-            else
-                return optional<U, Traits>(nullopt);
-        } else if constexpr (has_sentinel_traits<U>) {
-            if (has_value()) return optional<U>{std::forward<F>(f)(std::move(value_))};
-            return optional<U>(nullopt);
-        } else {
-            if (has_value()) return std::optional<U>{std::forward<F>(f)(std::move(value_))};
-            return std::optional<U>(std::nullopt);
-        }
-    }
-
-    // or_else — const& and && overloads
-    template<class F>
-        requires std::is_invocable_v<F, const Traits&> &&
-                 std::is_convertible_v<std::invoke_result_t<F, const Traits&>, optional>
-    constexpr optional or_else(F&& f) const& {
-        if (has_value()) return *this;
-        return std::forward<F>(f)(static_cast<const Traits&>(*this));
-    }
-    template<class F>
-        requires std::is_invocable_v<F, const Traits&> &&
-                 std::is_convertible_v<std::invoke_result_t<F, const Traits&>, optional>
-    constexpr optional or_else(F&& f) && {
-        if (has_value()) return std::move(*this);
-        return std::forward<F>(f)(static_cast<const Traits&>(*this));
-    }
-#endif
-};
-
-// ============================================================================
-// optional<T, always_empty<T>> — partial specialization with no T storage
-// ============================================================================
-//
-// Carries no value_ member (sizeof 1, gone under [[no_unique_address]]);
-// has_value() is always false. Members needing a stored T (operator*/->, value
-// constructors, emplace, …) are deliberately not provided, so using them is a
-// compile error. Pick via `if constexpr` in templated return types:
-//   if constexpr (cond) return slim::optional<T>{...};
-//   else                return slim::optional<T, slim::always_empty<T>>{};
-template<class T>
-class optional<T, always_empty<T>> : public always_empty<T> {
-public:
-    using value_type = T;
-    using traits_type = always_empty<T>;
-    static constexpr bool can_be_empty = true;
-
-    constexpr optional() noexcept = default;
-    constexpr optional(nullopt_t) noexcept {}
-    constexpr optional(const optional&) noexcept = default;
-    constexpr optional(optional&&) noexcept = default;
-
-    // Convert from any other optional (slim or std). The source value is
-    // discarded — this branch structurally never holds a value.
-    template<class U, class TrU>
-    constexpr optional(const optional<U, TrU>&) noexcept {}
-    template<class U, class TrU>
-    constexpr optional(optional<U, TrU>&&) noexcept {}
-    template<class U>
-    constexpr optional(const std::optional<U>&) noexcept {}
-    template<class U>
-    constexpr optional(std::optional<U>&&) noexcept {}
-
-    constexpr ~optional() = default;
-
-    constexpr optional& operator=(nullopt_t) noexcept { return *this; }
-    constexpr optional& operator=(const optional&) noexcept = default;
-    constexpr optional& operator=(optional&&) noexcept = default;
-    template<class U, class TrU>
-    constexpr optional& operator=(const optional<U, TrU>&) noexcept { return *this; }
-    template<class U, class TrU>
-    constexpr optional& operator=(optional<U, TrU>&&) noexcept { return *this; }
-
-    // Convert to std::optional — always nullopt.
-    constexpr operator std::optional<T>() const noexcept { return std::nullopt; }
-
-    constexpr bool has_value() const noexcept { return false; }
-    constexpr explicit operator bool() const noexcept { return false; }
-
-    [[noreturn]] constexpr T value() const {
-        detail::throw_bad_optional_access("always_empty optional has no value");
-    }
-
-    template<class U>
-        requires std::is_convertible_v<U, T>
-    constexpr T value_or(U&& default_value) const {
-        return static_cast<T>(std::forward<U>(default_value));
-    }
-
-    constexpr void reset() noexcept {}
-
-    constexpr void swap(optional&) noexcept {}
-
-    // Monadic operations: trivially short-circuit. The lambdas are never
-    // invoked — only their return type is used to compute the result type.
-    template<class F>
-        requires detail::is_optional_v<std::remove_cvref_t<std::invoke_result_t<F, const T&>>> &&
-                 (!detail::is_never_empty_optional_v<std::remove_cvref_t<std::invoke_result_t<F, const T&>>>)
-    constexpr auto and_then(F&&) const {
-        using U = std::remove_cvref_t<std::invoke_result_t<F, const T&>>;
-        return U(std::nullopt);
-    }
-
-    template<class F>
-    constexpr auto transform(F&&) const {
-        using U = std::remove_cvref_t<std::invoke_result_t<F, const T&>>;
-        if constexpr (has_sentinel_traits<U>) {
-            return optional<U>(nullopt);
-        } else {
-            return std::optional<U>(std::nullopt);
-        }
-    }
-
-    // or_else: the lambda may run for side effects, but its return value is
-    // structurally another always_empty optional, so we always return *this.
-    template<class F>
-        requires std::is_invocable_v<F, const always_empty<T>&> &&
-                 std::is_convertible_v<std::invoke_result_t<F, const always_empty<T>&>, optional>
-    constexpr optional or_else(F&& f) const {
-        (void)std::forward<F>(f)(static_cast<const always_empty<T>&>(*this));
-        return *this;
-    }
-};
-
-// Comparisons for the always_empty specialization. The generic templates
-// below would short-circuit on has_value() at runtime, but they call
-// `*lhs == *rhs` in unreachable branches — and operator* is deliberately
-// not provided on the always_empty specialization, so those templates fail
-// to instantiate. These overloads are picked first by partial-ordering.
-template<class T>
-constexpr bool operator==(const optional<T, always_empty<T>>&,
-                          const optional<T, always_empty<T>>&) noexcept {
-    return true;
-}
-
-template<class T>
-constexpr std::strong_ordering operator<=>(const optional<T, always_empty<T>>&,
-                                           const optional<T, always_empty<T>>&) noexcept {
-    return std::strong_ordering::equal;
-}
-
-// always_empty vs any other optional (slim or std): equal iff the other is
-// also empty.
-template<class T, class Tr>
-constexpr bool operator==(const optional<T, always_empty<T>>&,
-                          const optional<T, Tr>& other) noexcept {
-    return !other.has_value();
-}
-template<class T, class Tr>
-constexpr bool operator==(const optional<T, Tr>& other,
-                          const optional<T, always_empty<T>>&) noexcept {
-    return !other.has_value();
-}
-template<class T, class U>
-constexpr bool operator==(const optional<T, always_empty<T>>&,
-                          const std::optional<U>& other) noexcept {
-    return !other.has_value();
-}
-template<class T, class U>
-constexpr bool operator==(const std::optional<U>& other,
-                          const optional<T, always_empty<T>>&) noexcept {
-    return !other.has_value();
-}
-
-// always_empty vs nullopt: trivially equal.
-template<class T>
-constexpr bool operator==(const optional<T, always_empty<T>>&, nullopt_t) noexcept {
-    return true;
-}
-
-// ============================================================================
-// Comparison operators — optional vs optional
-// ============================================================================
-
-template<class T, class Tr>
-constexpr bool operator==(const optional<T, Tr>& lhs, const optional<T, Tr>& rhs) {
-    if (lhs.has_value() != rhs.has_value()) {
-        return false;
-    }
-    if (!lhs.has_value()) {
-        return true;
-    }
-    return *lhs == *rhs;
-}
-
-template<class T, class Tr>
-constexpr std::compare_three_way_result_t<T> operator<=>(const optional<T, Tr>& lhs, const optional<T, Tr>& rhs)
-    requires std::three_way_comparable<T>
-{
-    if (lhs.has_value() && rhs.has_value()) {
-        return *lhs <=> *rhs;
-    }
-    return lhs.has_value() <=> rhs.has_value();
-}
-
-// ============================================================================
-// Comparison operators — optional vs std::optional
-// ============================================================================
-
-template<class T, class Tr>
-    requires (!std::is_same_v<Tr, always_empty<T>>)
-constexpr bool operator==(const optional<T, Tr>& lhs, const std::optional<T>& rhs) {
-    if (lhs.has_value() != rhs.has_value()) {
-        return false;
-    }
-    if (!lhs.has_value()) {
-        return true;
-    }
-    return *lhs == *rhs;
-}
-
-template<class T, class Tr>
-    requires (!std::is_same_v<Tr, always_empty<T>>)
-constexpr bool operator==(const std::optional<T>& lhs, const optional<T, Tr>& rhs) {
-    return rhs == lhs;
-}
-
-template<class T, class Tr>
-constexpr std::compare_three_way_result_t<T> operator<=>(const optional<T, Tr>& lhs, const std::optional<T>& rhs)
-    requires std::three_way_comparable<T>
-{
-    if (lhs.has_value() && rhs.has_value()) {
-        return *lhs <=> *rhs;
-    }
-    return lhs.has_value() <=> rhs.has_value();
-}
-
-// ============================================================================
-// Comparison with nullopt
-// ============================================================================
-
-template<class T, class Tr>
-constexpr bool operator==(const optional<T, Tr>& opt, nullopt_t) noexcept {
-    return !opt.has_value();
-}
-
-template<class T, class Tr>
-constexpr std::strong_ordering operator<=>(const optional<T, Tr>& opt, nullopt_t) noexcept {
-    return opt.has_value() <=> false;
-}
-
-// ============================================================================
-// Comparison with T
-// ============================================================================
-
-template<class T, class Tr, class U>
-    requires (!detail::is_optional_v<std::remove_cvref_t<U>> &&
-              !std::same_as<std::remove_cvref_t<U>, nullopt_t>)
-constexpr bool operator==(const optional<T, Tr>& opt, const U& value) {
-    return opt.has_value() && (*opt == value);
-}
-
-template<class T, class Tr, class U>
-    requires (!detail::is_optional_v<std::remove_cvref_t<U>> &&
-              !std::same_as<std::remove_cvref_t<U>, nullopt_t> &&
-              std::three_way_comparable_with<T, U>)
-constexpr std::compare_three_way_result_t<T, U> operator<=>(const optional<T, Tr>& opt, const U& value) {
-    return opt.has_value() ? *opt <=> value : std::strong_ordering::less;
-}
-
-// ============================================================================
-// Specialized algorithms
-// ============================================================================
-
-template<class T, class Tr>
-constexpr void swap(optional<T, Tr>& lhs, optional<T, Tr>& rhs)
-    noexcept(noexcept(lhs.swap(rhs)))
-{
-    lhs.swap(rhs);
-}
-
-template<class T>
-constexpr optional<std::decay_t<T>> make_optional(T&& value) {
-    return optional<std::decay_t<T>>(std::forward<T>(value));
-}
-
-template<class T, class... Args>
-constexpr optional<T> make_optional(Args&&... args) {
-    return optional<T>(in_place, std::forward<Args>(args)...);
-}
-
-// Trait-aware overloads: explicitly select the Traits parameter.
-template<class T, class Traits, class U>
-    requires std::is_constructible_v<T, U&&>
-constexpr optional<T, Traits> make_optional(U&& value) {
-    return optional<T, Traits>(std::forward<U>(value));
-}
-
-template<class T, class Traits, class... Args>
-    requires std::is_constructible_v<T, Args...>
-constexpr optional<T, Traits> make_optional(Args&&... args) {
-    return optional<T, Traits>(in_place, std::forward<Args>(args)...);
-}
-
-// Deduction guides
-template<class T>
-optional(T) -> optional<T>;
-
-template<class T, class... Args>
-optional(in_place_t, T, Args...) -> optional<T>;
-
-// ============================================================================
-// Hash support
-// ============================================================================
-
-} // namespace beman::inside::slim
-
-// Extend std::hash for optional
-namespace std {
-
-template<class T, class Tr>
-struct hash<beman::inside::slim::optional<T, Tr>> {
-    constexpr size_t operator()(const beman::inside::slim::optional<T, Tr>& opt) const
-        noexcept(noexcept(hash<T>{}(std::declval<T>())))
-        requires requires { hash<T>{}(std::declval<T>()); }
-    {
-        if (!opt.has_value()) {
-            // Distinct sentinel hash to reduce collision with hash<T>{}(T{}).
-            return static_cast<size_t>(-1);
-        }
-        return hash<T>{}(*opt);
-    }
-};
-
-// Hash specialization for always_empty optional — does not require hash<T>.
-template<class T>
-struct hash<beman::inside::slim::optional<T, beman::inside::slim::always_empty<T>>> {
-    constexpr size_t operator()(const beman::inside::slim::optional<T, beman::inside::slim::always_empty<T>>&) const noexcept {
-        return static_cast<size_t>(-1);
-    }
-};
-
-// numeric_limits for beman::inside::slim::optional — reflects the reduced valid range when
-// the default sentinel traits are used. For never_empty<T> (no value is
-// reserved) the limits are inherited unchanged.
-template<class T, class Tr>
-    requires beman::inside::slim::has_sentinel_traits<T> && numeric_limits<T>::is_specialized
-struct numeric_limits<beman::inside::slim::optional<T, Tr>> : numeric_limits<T> {
-private:
-    static constexpr bool reserves_value =
-        std::same_as<Tr, beman::inside::slim::sentinel_traits<T>>;
-public:
-    static constexpr T min() noexcept {
-        if constexpr (reserves_value && std::signed_integral<T>)
-            return numeric_limits<T>::min() + 1;
-        else
-            return numeric_limits<T>::min();
-    }
-
-    static constexpr T lowest() noexcept {
-        if constexpr (reserves_value && std::signed_integral<T>)
-            return numeric_limits<T>::min() + 1;
-        else
-            return numeric_limits<T>::lowest();
-    }
-
-    static constexpr T max() noexcept {
-        if constexpr (reserves_value && (std::unsigned_integral<T> || std::same_as<T, char16_t> || std::same_as<T, char32_t>))
-            return numeric_limits<T>::max() - 1;
-        else
-            return numeric_limits<T>::max();
-    }
-
-    static constexpr bool has_quiet_NaN =
-        (reserves_value && std::floating_point<T>) ? false : numeric_limits<T>::has_quiet_NaN;
-    static constexpr bool has_signaling_NaN =
-        (reserves_value && std::floating_point<T>) ? false : numeric_limits<T>::has_signaling_NaN;
-};
-
-} // namespace std
 
 
 // ======================================================================
@@ -1325,7 +121,6 @@ namespace beman::inside
     division_by_zero,   // divisor is zero
     overflow,           // rational arithmetic overflow
     rounding_error,     // notch incompatibility
-    not_a_value,        // operand is in its sentinel (NaN-like) state
     not_finite,         // non-finite double input (NaN/Inf)
   };
 
@@ -1340,7 +135,6 @@ namespace beman::inside
       case errc::division_by_zero: return "division by zero";
       case errc::overflow:         return "rational arithmetic overflow";
       case errc::rounding_error:   return "notch incompatibility";
-      case errc::not_a_value:      return "not a value (sentinel state)";
       case errc::not_finite:       return "non-finite floating-point value";
     }
     return "unknown inside error";
@@ -1448,304 +242,91 @@ namespace beman::inside
 
 
 // ======================================================================
-//  beman/inside/grid.hpp
-// ======================================================================
-//---------------------------------------------------------------------------
-//---------------------------------------------------------------------------
-
-
-// ======================================================================
 //  beman/inside/lift.hpp
 // ======================================================================
 //---------------------------------------------------------------------------
 //---------------------------------------------------------------------------
 
 
-// ======================================================================
-//  beman/inside/slim/expected.hpp
-// ======================================================================
-// slim::expected — minimal C++20 backport of std::expected
-//
-// Lives in `beman::inside::slim` but depends on nothing else in the library. Mirrors the subset of
-// C++23 std::expected the library consumes (value/error access, `unexpected`,
-// deref, throwing value()), giving one error-channel code path even on C++20
-// toolchains lacking <expected>. Scope is deliberately small: T and E are
-// trivially-copyable here, so storage is a flag-guarded pair, not a union. No
-// expected<void, E>, no monadic ops.
-
-
-
-#if defined(__cpp_lib_expected)
-// C++23 toolchains: slim::expected IS std::expected — user code composes
-// with the standard vocabulary (monadic ops included); the backport below
-// serves only toolchains without <expected> (GCC 12 / CMAKE_CXX_STANDARD=20).
-#include <expected>
-
-namespace beman::inside::slim {
-template<class T, class E> using expected   = std::expected<T, E>;
-// Import the class template by name (not an alias template): call sites use CTAD
-// — `unexpected(errc::…)` — and CTAD through an alias template (P1814) is not
-// implemented by every C++23 toolchain (e.g. AppleClang 15).
-using std::unexpected;
-// std::bad_expected_access<E> derives from the <void> base, so catching this
-// alias catches every instantiation — same role as the backport's type.
-using bad_expected_access = std::bad_expected_access<void>;
-} // namespace beman::inside::slim
-
-#else // ── C++20 backport ─────────────────────────────────────────────────
-
-#include <exception>
-#include <type_traits>
-#include <utility>
-
-namespace beman::inside::slim {
-
-// Thrown by expected::value() when the object holds an error. Mirrors
-// std::bad_expected_access closely enough for the library's needs (the inside
-// code only relies on "value() throws when empty").
-class bad_expected_access : public std::exception {
-    const char* msg_;
-public:
-    explicit bad_expected_access(const char* msg = "bad expected access") noexcept
-        : msg_(msg) {}
-    const char* what() const noexcept override { return msg_; }
-};
-
-// Throws when exceptions are enabled; otherwise traps — keeps value() usable
-// under -fno-exceptions / freestanding.
-namespace detail {
-[[noreturn]] inline void throw_bad_expected_access(const char* msg) {
-#if defined(__cpp_exceptions) || defined(__EXCEPTIONS)
-    throw bad_expected_access(msg);
-#else
-    (void)msg;
-#  if defined(__GNUC__) || defined(__clang__)
-    __builtin_trap();
-#  else
-    std::abort();
-#  endif
-#endif
-}
-} // namespace detail
-
-// ── unexpected<E>: the error wrapper used to construct the error state ──
-template<class E>
-class unexpected {
-    E error_;
-public:
-    constexpr explicit unexpected(const E& e) : error_(e) {}
-    constexpr explicit unexpected(E&& e) : error_(std::move(e)) {}
-
-    constexpr const E&  error() const&  noexcept { return error_; }
-    constexpr E&        error() &       noexcept { return error_; }
-    constexpr const E&& error() const&& noexcept { return std::move(error_); }
-    constexpr E&&       error() &&      noexcept { return std::move(error_); }
-};
-
-// Deduction guide so `slim::unexpected{errc::overflow}` deduces E.
-template<class E>
-unexpected(E) -> unexpected<E>;
-
-// ── expected<T, E> ──
-template<class T, class E>
-class expected {
-    T value_{};
-    E error_{};
-    bool has_value_{true};
-
-public:
-    using value_type      = T;
-    using error_type      = E;
-    using unexpected_type = unexpected<E>;
-
-    // Value state — implicit so `return some_T;` works at call sites.
-    constexpr expected() = default;
-    constexpr expected(const T& v) : value_(v), has_value_(true) {}
-    constexpr expected(T&& v) : value_(std::move(v)), has_value_(true) {}
-
-    // Value state from a convertible source (e.g. `return static_cast<T>(x);`
-    // already yields T, but integral promotions at call sites benefit).
-    template<class U = T>
-        requires (!std::is_same_v<std::remove_cvref_t<U>, expected> &&
-                  !std::is_same_v<std::remove_cvref_t<U>, unexpected<E>> &&
-                  std::is_constructible_v<T, U> &&
-                  std::is_convertible_v<U, T>)
-    constexpr expected(U&& v) : value_(std::forward<U>(v)), has_value_(true) {}
-
-    // Error state — implicit from slim::unexpected so `return slim::unexpected{e};`
-    // works at call sites.
-    constexpr expected(const unexpected<E>& u) : error_(u.error()), has_value_(false) {}
-    constexpr expected(unexpected<E>&& u) : error_(std::move(u).error()), has_value_(false) {}
-
-    // Observers
-    [[nodiscard]] constexpr bool has_value() const noexcept { return has_value_; }
-    [[nodiscard]] constexpr explicit operator bool() const noexcept { return has_value_; }
-
-    [[nodiscard]] constexpr const T& value() const& {
-        if (!has_value_) detail::throw_bad_expected_access("expected has no value");
-        return value_;
-    }
-    [[nodiscard]] constexpr T& value() & {
-        if (!has_value_) detail::throw_bad_expected_access("expected has no value");
-        return value_;
-    }
-    [[nodiscard]] constexpr T&& value() && {
-        if (!has_value_) detail::throw_bad_expected_access("expected has no value");
-        return std::move(value_);
-    }
-
-    [[nodiscard]] constexpr const E& error() const& noexcept { return error_; }
-    [[nodiscard]] constexpr E&       error() &      noexcept { return error_; }
-    [[nodiscard]] constexpr E&&      error() &&     noexcept { return std::move(error_); }
-
-    [[nodiscard]] constexpr const T& operator*() const& noexcept { return value_; }
-    [[nodiscard]] constexpr T&       operator*() &      noexcept { return value_; }
-    [[nodiscard]] constexpr T&&      operator*() &&     noexcept { return std::move(value_); }
-
-    [[nodiscard]] constexpr const T* operator->() const noexcept { return std::addressof(value_); }
-    [[nodiscard]] constexpr T*       operator->()       noexcept { return std::addressof(value_); }
-
-    template<class U>
-        requires std::is_convertible_v<U, T>
-    [[nodiscard]] constexpr T value_or(U&& default_value) const& {
-        return has_value_ ? value_ : static_cast<T>(std::forward<U>(default_value));
-    }
-    template<class U>
-        requires std::is_convertible_v<U, T>
-    [[nodiscard]] constexpr T value_or(U&& default_value) && {
-        return has_value_ ? std::move(value_) : static_cast<T>(std::forward<U>(default_value));
-    }
-};
-
-} // namespace beman::inside::slim
-
-#endif // __cpp_lib_expected
-
 
 //---------------------------------------------------------------------------
-// lift — monadic composition for `slim::optional`. `lift(op, args...)` unwraps
-// each optional arg, calls `op`, and re-wraps; a nullopt arg short-circuits to
-// nullopt. An `op` already returning optional<R> is forwarded as-is. Used
-// pervasively by interval/grid/inside arithmetic and rational's operators.
+// lift — monadic composition for `std::expected<T, errc>`. `lift(op, args...)`
+// unwraps each expected arg, calls `op`, and re-wraps; the first arg holding an
+// error short-circuits with that error. An `op` already returning expected<R>
+// is forwarded as-is, so the inner operation reports its own cause. Used by
+// interval/grid/inside arithmetic and rational's operators.
+//
+// std::expected is larger than its value (flag + errc), so it only ever
+// travels as a parameter or return value — never as stored state.
 //---------------------------------------------------------------------------
 namespace beman::inside
 {
   namespace detail
   {
-    template <class T> struct is_slim_optional : std::false_type {};
-    template <class T> struct is_slim_optional<slim::optional<T>> : std::true_type {};
+    template <class T> struct is_expected : std::false_type {};
+    template <class T, class E> struct is_expected<std::expected<T, E>> : std::true_type {};
 
     template <class T>
-    inline constexpr bool is_slim_optional_v =
-        is_slim_optional<std::remove_cvref_t<T>>::value;
+    inline constexpr bool is_expected_v = is_expected<std::remove_cvref_t<T>>::value;
 
-    // strip slim::optional<X> down to X, leave non-optional unchanged
+    // Any std::expected specialization (cv/ref-stripped).
+    template <typename T>
+    concept expected_like = is_expected_v<T>;
+
+    // strip expected<X, E> down to X, leave non-expected unchanged
     template <class T> struct unwrap { using type = T; };
-    template <class T> struct unwrap<slim::optional<T>> { using type = T; };
+    template <class T, class E> struct unwrap<std::expected<T, E>> { using type = T; };
     template <class T> using unwrap_t = typename unwrap<std::remove_cvref_t<T>>::type;
 
     template <class T>
     constexpr decltype(auto) lift_unwrap(T&& v)
     {
-      if constexpr (is_slim_optional_v<T>)
+      if constexpr (is_expected_v<T>)
         return *std::forward<T>(v);
       else
         return std::forward<T>(v);
     }
 
+    // Copy an arg's error into `e`; true if the arg holds one.
     template <class T>
-    constexpr bool lift_engaged(T const& v)
+    constexpr bool lift_take_error([[maybe_unused]] T const& v, [[maybe_unused]] errc& e)
     {
-      if constexpr (is_slim_optional_v<T>)
-        return v.has_value();
-      else
-        return true;
-    }
-
-    // expected-like: the std::expected access surface (slim backport or std).
-    // The error_type requirement keeps inside and optional out.
-    template <typename T>
-    concept expected_like = requires(std::remove_cvref_t<T> const& e) {
-      typename std::remove_cvref_t<T>::value_type;
-      typename std::remove_cvref_t<T>::error_type;
-      { e.has_value() } -> std::convertible_to<bool>;
-      e.error();
-      *e;
-    };
-
-    // strip expected<X, E> down to X, leave non-expected unchanged
-    template <typename T>
-    struct expected_value { using type = std::remove_cvref_t<T>; };
-    template <typename T> requires expected_like<T>
-    struct expected_value<T>
-    { using type = typename std::remove_cvref_t<T>::value_type; };
-    template <typename T>
-    using expected_value_t = typename expected_value<T>::type;
-
-    template <class T>
-    constexpr decltype(auto) expected_unwrap(T const& v)
-    {
-      if constexpr (expected_like<T>) return *v;
-      else                            return v;
+      if constexpr (is_expected_v<T>)
+        if (!v.has_value()) { e = v.error(); return true; }
+      return false;
     }
   }
 
   //---------------------------------------------------------------------------
-  // ok(expected) — deliberately drop the error cause and enter the zero-cost
-  // optional world (sentinel encoding, auto-chaining lift operators):
-  //     ok(math::tan(x)) * gain + offset      // optional<inside> chain
-  // Works for both the C++20 backport and std::expected.
-  //---------------------------------------------------------------------------
-  template <typename T, typename E>
-  [[nodiscard]] constexpr slim::optional<T> ok(slim::expected<T, E> const& e)
-  { return e.has_value() ? slim::optional<T>{*e} : slim::optional<T>{slim::nullopt}; }
-
-  //---------------------------------------------------------------------------
-  // lift_expected(op, map_nullopt, lhs, rhs) — binary lift over expected
-  // operands: the left error short-circuits; an `op` that returns optional (a
-  // division chain) maps its nullopt to `map_nullopt`.
-  //---------------------------------------------------------------------------
-  template <class Op, class E, class L, class R>
-  constexpr auto lift_expected(Op op, E map_nullopt, L const& lhs, R const& rhs)
-  {
-    using Raw = std::remove_cvref_t<
-        decltype(op(detail::expected_unwrap(lhs), detail::expected_unwrap(rhs)))>;
-    using Out = detail::unwrap_t<Raw>;
-    using Ret = slim::expected<Out, E>;
-
-    if constexpr (detail::expected_like<L>)
-      if (!lhs.has_value()) return Ret{slim::unexpected{lhs.error()}};
-    if constexpr (detail::expected_like<R>)
-      if (!rhs.has_value()) return Ret{slim::unexpected{rhs.error()}};
-
-    auto r = op(detail::expected_unwrap(lhs), detail::expected_unwrap(rhs));
-    if constexpr (detail::is_slim_optional_v<Raw>)
-      return r.has_value() ? Ret{*r} : Ret{slim::unexpected{map_nullopt}};
-    else
-      return Ret{r};
-  }
-
-  //---------------------------------------------------------------------------
-  // lift(op, args...) — call op on the unwrapped args → optional<result>; nullopt
-  // if any optional arg is empty. An op already returning optional<R> passes through.
+  // lift(op, args...) — call op on the unwrapped args → expected<result, errc>;
+  // the first erroneous arg (left to right) short-circuits with its error. An op
+  // already returning expected<R, errc> passes through.
   //---------------------------------------------------------------------------
   template <class Op, class... Args>
   constexpr auto lift(Op op, Args&&... args)
   {
     using R = std::remove_cvref_t<
         decltype(op(detail::lift_unwrap(std::forward<Args>(args))...))>;
-    using Ret = std::conditional_t<detail::is_slim_optional_v<R>, R, slim::optional<R>>;
+    using Ret = std::conditional_t<detail::is_expected_v<R>, R, std::expected<R, errc>>;
 
-    if (!(detail::lift_engaged(args) && ...))
-      return Ret{slim::nullopt};
+    errc e{};
+    if ((detail::lift_take_error(args, e) || ...))
+      return Ret{std::unexpected{e}};
 
-    if constexpr (detail::is_slim_optional_v<R>)
+    if constexpr (detail::is_expected_v<R>)
       return op(detail::lift_unwrap(std::forward<Args>(args))...);
     else
       return Ret{op(detail::lift_unwrap(std::forward<Args>(args))...)};
   }
 
 } // namespace beman::inside
+
+
+// ======================================================================
+//  beman/inside/grid.hpp
+// ======================================================================
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
 
 
 // ======================================================================
@@ -1782,25 +363,22 @@ namespace beman::inside
   namespace detail
   {
 
-  // Strict `<` reserves the type's max as the sentinel slot for
-  // slim::optional<inside>, so a grid whose max_notch lands on a type's max
-  // promotes to the next-wider type (e.g. inside<{0,255}> uses uint16_t, not
-  // uint8_t). A valid grid value can thus never collide with the sentinel.
+  // Smallest unsigned type whose range holds every index 0..N.
   template <std::uintmax_t N>
   using smallest_uint_for =
     std::conditional_t<(N == 0), rational,
-    std::conditional_t<(N < UINT8_MAX),  std::uint8_t,
-    std::conditional_t<(N < UINT16_MAX), std::uint16_t,
-    std::conditional_t<(N < UINT32_MAX), std::uint32_t,
-                                          std::uint64_t>>>>;
+    std::conditional_t<(N <= UINT8_MAX),  std::uint8_t,
+    std::conditional_t<(N <= UINT16_MAX), std::uint16_t,
+    std::conditional_t<(N <= UINT32_MAX), std::uint32_t,
+                                           std::uint64_t>>>>;
 
-  // +1 on min accounts for sentinel value reserved by slim::optional
+  // Smallest signed type whose range holds Low..High.
   template <std::intmax_t Low, std::intmax_t High>
   using smallest_int_for =
-    std::conditional_t<(Low >= INT8_MIN+1 && High <= INT8_MAX),   std::int8_t,
-    std::conditional_t<(Low >= INT16_MIN+1 && High <= INT16_MAX), std::int16_t,
-    std::conditional_t<(Low >= INT32_MIN+1 && High <= INT32_MAX), std::int32_t,
-                                                                   std::int64_t>>>;
+    std::conditional_t<(Low >= INT8_MIN  && High <= INT8_MAX),  std::int8_t,
+    std::conditional_t<(Low >= INT16_MIN && High <= INT16_MAX), std::int16_t,
+    std::conditional_t<(Low >= INT32_MIN && High <= INT32_MAX), std::int32_t,
+                                                                 std::int64_t>>>;
 
   // (type_name<T>() — used only by the debug stringifier — lives in
   // "beman/inside/io.hpp" so the core stays free of <string_view>.)
@@ -2158,19 +736,6 @@ namespace beman::inside
 
 
 
-namespace beman::inside::detail { struct rational; }
-
-namespace beman::inside::slim
-{
-  template<>
-  struct sentinel_traits<beman::inside::detail::rational>
-  {
-    protected:
-      static constexpr beman::inside::detail::rational sentinel() noexcept;
-      static constexpr bool is_sentinel(const beman::inside::detail::rational& v) noexcept;
-  };
-} // namespace beman::inside::slim
-
 namespace beman::inside::detail
 {
   constexpr umax abs_den(imax d) { return (d >= 0) ? static_cast<umax>(d) : umax{0} - static_cast<umax>(d); }
@@ -2256,11 +821,11 @@ namespace beman::inside::detail
     b /= g;
   }
 
-  constexpr slim::optional<rational> operator+(rational const&, rational const&);
-  constexpr slim::optional<rational> operator/(rational const&, rational const&);
-  constexpr slim::optional<rational> operator-(rational const&, rational const&);
+  constexpr std::expected<rational, errc> operator+(rational const&, rational const&);
+  constexpr std::expected<rational, errc> operator/(rational const&, rational const&);
+  constexpr std::expected<rational, errc> operator-(rational const&, rational const&);
 
-  constexpr slim::optional<rational> operator*(rational const&, rational const&);
+  constexpr std::expected<rational, errc> operator*(rational const&, rational const&);
   constexpr auto     operator<=>(rational, rational) -> std::strong_ordering;
 
   //---------------------------------------------------------------------------
@@ -2270,7 +835,7 @@ namespace beman::inside::detail
   // non-constexpr [[noreturn]] helper carrying the message in an NTTP (literal
   // parsers and the checked paths under `if (std::is_constant_evaluated())`),
   // hard-failing the build with the text in the diagnostic; at runtime those
-  // paths fall through to `nullopt`. No `throw`, so it is -fno-exceptions clean.
+  // paths fall through to `std::unexpected`. No `throw`, so it is -fno-exceptions clean.
 
   //---------------------------------------------------------------------------
   // rational — structural type for NTTP (public members only). Sign is encoded
@@ -2299,13 +864,13 @@ namespace beman::inside::detail
     { canonicalize(Numerator, Denominator); }
 
     // Implicit unwrap of a checked result, so coefficient expressions read as
-    // plain arithmetic (`rational two_pi = 2 * pi;`); empty optional (overflow) is
-    // a compile error in constant evaluation, a throw at runtime. same_as-constrained
-    // (not a plain `rational(optional<rational>)`) because optional's own converting
-    // ctor is gated on `is_constructible_v<rational, U>` — a non-template overload
-    // would make that trait depend on itself.
+    // plain arithmetic (`rational two_pi = 2 * pi;`); an error (overflow) is a
+    // compile error in constant evaluation, a throw at runtime. same_as-constrained
+    // (not a plain `rational(expected<rational, errc>)`) because expected's own
+    // converting ctor is gated on `is_constructible_v<rational, U>` — a
+    // non-template overload would make that trait depend on itself.
     template <class O>
-      requires std::same_as<std::remove_cvref_t<O>, slim::optional<rational>>
+      requires std::same_as<std::remove_cvref_t<O>, std::expected<rational, errc>>
     constexpr rational(O&& o) : rational(o.value()) {}
 
     // operator== by default for structural type
@@ -2316,7 +881,7 @@ namespace beman::inside::detail
     constexpr rational operator-() const;
 
     template <std::unsigned_integral T>
-    constexpr slim::expected<T, errc> to() const;
+    constexpr std::expected<T, errc> to() const;
 
     template <std::unsigned_integral T>
     explicit constexpr operator T () const
@@ -2344,18 +909,11 @@ namespace beman::inside::detail
     constexpr rational operator+() const { return *this; }
 
     // Compound-assign: forward to the checked binary op and unwrap via .value()
-    // — overflow surfaces as slim::bad_optional_access (no error channel here).
+    // — overflow surfaces as std::bad_expected_access (no error channel here).
     constexpr rational& operator+=(rational const& rhs);
     constexpr rational& operator-=(rational const& rhs);
     constexpr rational& operator*=(rational const& rhs);
     constexpr rational& operator/=(rational const& rhs);
-
-    // The sentinel slot is {N, 0}; only make_sentinel() can produce one.
-    [[nodiscard]] constexpr bool is_sentinel() const noexcept
-    { return Denominator == 0; }
-
-    [[nodiscard]] static constexpr rational make_sentinel() noexcept
-    { rational r; r.Numerator = 1; r.Denominator = 0; return r; }
 
     // Unchecked arithmetic — caller takes responsibility for non-overflow
     // (and non-zero operand for div_unchecked / inv_unchecked).
@@ -2364,12 +922,13 @@ namespace beman::inside::detail
     static constexpr rational div_unchecked(rational, rational);
     static constexpr rational inv_unchecked(rational);
 
-    static constexpr slim::optional<rational> add(rational a, rational b)
+    static constexpr std::expected<rational, errc> add(rational a, rational b)
     { return a + b; }
-    static constexpr slim::optional<rational> inv(rational);
+    static constexpr std::expected<rational, errc> inv(rational);
 
-    // Shared algorithm bodies. Checked=true returns optional<rational>, reporting
-    // overflow (throw at compile time / nullopt at runtime); Checked=false
+    // Shared algorithm bodies. Checked=true returns expected<rational, errc>,
+    // reporting overflow / division_by_zero (a compile error at compile time,
+    // std::unexpected at runtime); Checked=false
     // silently overflows — the caller must guarantee its absence.
     template <bool Checked> static constexpr auto add_impl(rational const&, rational const&);
     template <bool Checked> static constexpr auto mul_impl(rational const&, rational const&);
@@ -2378,7 +937,7 @@ namespace beman::inside::detail
 
   private:
     // Domain check + canonical-zero + gcd reduction; used by the integral ctors.
-    // Two domain errors: Denominator == 0 (undefined; also the reserved sentinel)
+    // Two domain errors: Denominator == 0 (undefined)
     // and Denominator == imax_min (cannot be negated without UB, which every
     // sign-flip in the file assumes is well-defined).
     static constexpr void canonicalize(umax& num, imax& den)
@@ -2405,7 +964,7 @@ namespace beman::inside::detail
   };
 
 
-  [[nodiscard]] constexpr slim::optional<rational> gcd(rational const&, rational const&);
+  [[nodiscard]] constexpr std::expected<rational, errc> gcd(rational const&, rational const&);
   [[nodiscard]] constexpr rational abs(rational);
 
   [[nodiscard]] constexpr bool divides_evenly(rational const&, rational const&);
@@ -2472,10 +1031,10 @@ namespace beman::inside::detail
   //---------------------------------------------------------------------------
   // gcd
   //---------------------------------------------------------------------------
-  // Returns nullopt if the combined denominator lcm = (a/gcd)·b would exceed
+  // Returns errc::overflow if the combined denominator lcm = (a/gcd)·b would exceed
   // imax_max (sign-bit reservation) — traps the mul_overflow then range-checks.
   //---------------------------------------------------------------------------
-  [[nodiscard]] constexpr slim::optional<rational> gcd(rational const& lhs, rational const& rhs)
+  [[nodiscard]] constexpr std::expected<rational, errc> gcd(rational const& lhs, rational const& rhs)
   {
     umax a = abs_den(lhs.Denominator);
     umax b = abs_den(rhs.Denominator);
@@ -2483,9 +1042,9 @@ namespace beman::inside::detail
 
     umax denominator;
     if (mul_overflow(a / g, b, &denominator))
-      return slim::nullopt;
+      return std::unexpected{errc::overflow};
     if (denominator > static_cast<umax>(std::numeric_limits<imax>::max()))
-      return slim::nullopt;
+      return std::unexpected{errc::overflow};
 
     auto numerator = std::gcd(lhs.Numerator, rhs.Numerator);
     return rational{numerator, denominator};
@@ -2524,10 +1083,9 @@ namespace beman::inside::detail
   // to
   //---------------------------------------------------------------------------
   template <std::unsigned_integral T>
-  constexpr slim::expected<T, errc> rational::to() const
+  constexpr std::expected<T, errc> rational::to() const
   {
-    if (is_sentinel())   return slim::unexpected{errc::not_a_value};
-    if (Denominator < 0) return slim::unexpected{errc::domain_error};
+    if (Denominator < 0) return std::unexpected{errc::domain_error};
     return static_cast<T>(Numerator / abs_den(Denominator));
   }
 
@@ -2706,7 +1264,7 @@ namespace beman::inside::detail
   template <bool Checked>
   inline constexpr auto rational::add_impl(rational const& a, rational const& b)
   {
-    using ret_t = std::conditional_t<Checked, slim::optional<rational>, rational>;
+    using ret_t = std::conditional_t<Checked, std::expected<rational, errc>, rational>;
 
     if (a == -b) return ret_t{0_r};
     if (a.Numerator == 0) return ret_t{b};
@@ -2727,7 +1285,7 @@ namespace beman::inside::detail
           if (add_overflow(a.Numerator, b.Numerator, &numerator))
           {
             if (std::is_constant_evaluated()) { constexpr_error<"rational +: numerator overflow (same denominator)">(); }
-            return ret_t{slim::nullopt};
+            return ret_t{std::unexpected{errc::overflow}};
           }
         }
         else
@@ -2767,7 +1325,7 @@ namespace beman::inside::detail
           denominator > static_cast<umax>(std::numeric_limits<imax>::max()))
       {
         if (std::is_constant_evaluated()) { constexpr_error<"rational +: denominator overflow">(); }
-        return ret_t{slim::nullopt};
+        return ret_t{std::unexpected{errc::overflow}};
       }
       if (mul_overflow(a.Numerator, b_ad_r, &A) ||
           mul_overflow(b.Numerator, a_ad_r, &B))
@@ -2796,7 +1354,7 @@ namespace beman::inside::detail
           }
         }
         if (std::is_constant_evaluated()) { constexpr_error<"rational +: cross-multiplication overflow">(); }
-        return ret_t{slim::nullopt};
+        return ret_t{std::unexpected{errc::overflow}};
       }
     }
     else
@@ -2814,7 +1372,7 @@ namespace beman::inside::detail
         if (add_overflow(A, B, &numerator))
         {
           if (std::is_constant_evaluated()) { constexpr_error<"rational +: numerator sum overflow">(); }
-          return ret_t{slim::nullopt};
+          return ret_t{std::unexpected{errc::overflow}};
         }
       }
       else
@@ -2846,7 +1404,7 @@ namespace beman::inside::detail
   template <bool Checked>
   inline constexpr auto rational::mul_impl(rational const& a_in, rational const& b_in)
   {
-    using ret_t = std::conditional_t<Checked, slim::optional<rational>, rational>;
+    using ret_t = std::conditional_t<Checked, std::expected<rational, errc>, rational>;
     rational a = a_in, b = b_in;
 
     if (a.Numerator == 0 || b.Numerator == 0) return ret_t{0_r};
@@ -2863,7 +1421,7 @@ namespace beman::inside::detail
         if (mul_overflow(a.Numerator, b.Numerator, &numerator))
         {
           if (std::is_constant_evaluated()) { constexpr_error<"rational *: numerator overflow">(); }
-          return ret_t{slim::nullopt};
+          return ret_t{std::unexpected{errc::overflow}};
         }
       }
       else
@@ -2887,7 +1445,7 @@ namespace beman::inside::detail
           denominator > static_cast<umax>(std::numeric_limits<imax>::max()))
       {
         if (std::is_constant_evaluated()) { constexpr_error<"rational *: numerator or denominator overflow">(); }
-        return ret_t{slim::nullopt};
+        return ret_t{std::unexpected{errc::overflow}};
       }
     }
     else
@@ -2914,17 +1472,21 @@ namespace beman::inside::detail
   template <bool Checked>
   inline constexpr auto rational::inv_impl(rational const& a)
   {
-    using ret_t = std::conditional_t<Checked, slim::optional<rational>, rational>;
+    using ret_t = std::conditional_t<Checked, std::expected<rational, errc>, rational>;
 
     if constexpr (Checked)
     {
       // a.Numerator goes into the result's Denominator slot, so it must fit in
       // imax (else the umax→imax conversion wraps and a later -Denominator is UB).
-      if (a.Numerator == 0 ||
-          a.Numerator > static_cast<umax>(std::numeric_limits<imax>::max()))
+      if (a.Numerator == 0)
       {
-        if (std::is_constant_evaluated()) { constexpr_error<"rational inv: numerator zero or out of denominator range">(); }
-        return ret_t{slim::nullopt};
+        if (std::is_constant_evaluated()) { constexpr_error<"rational inv: division by zero">(); }
+        return ret_t{std::unexpected{errc::division_by_zero}};
+      }
+      if (a.Numerator > static_cast<umax>(std::numeric_limits<imax>::max()))
+      {
+        if (std::is_constant_evaluated()) { constexpr_error<"rational inv: numerator out of denominator range">(); }
+        return ret_t{std::unexpected{errc::overflow}};
       }
     }
 
@@ -2940,12 +1502,12 @@ namespace beman::inside::detail
   template <bool Checked>
   inline constexpr auto rational::div_impl(rational const& a, rational const& b)
   {
-    using ret_t = std::conditional_t<Checked, slim::optional<rational>, rational>;
+    using ret_t = std::conditional_t<Checked, std::expected<rational, errc>, rational>;
 
     if constexpr (Checked)
     {
       auto inv_b = inv_impl<true>(b);
-      if (!inv_b.has_value()) return ret_t{slim::nullopt};
+      if (!inv_b.has_value()) return ret_t{std::unexpected{inv_b.error()}};
       return mul_impl<true>(a, *inv_b);
     }
     else
@@ -2969,7 +1531,7 @@ namespace beman::inside::detail
   inline constexpr rational rational::inv_unchecked(rational a)
   { return inv_impl<false>(a); }
 
-  inline constexpr slim::optional<rational> rational::inv(rational a)
+  inline constexpr std::expected<rational, errc> rational::inv(rational a)
   { return inv_impl<true>(a); }
 
   //---------------------------------------------------------------------------
@@ -3055,11 +1617,11 @@ namespace beman::inside::detail
   }
 
   template <typename T>
-  inline constexpr auto operator<=>(slim::optional<T> lhs, const rational& rhs)
+  inline constexpr auto operator<=>(std::expected<T, errc> const& lhs, const rational& rhs)
   { return rational{lhs.value()} <=> rhs; }
 
   template <typename T>
-  inline constexpr auto operator<=>(rational const& lhs, slim::optional<T> rhs)
+  inline constexpr auto operator<=>(rational const& lhs, std::expected<T, errc> const& rhs)
   { return lhs <=> rational{rhs.value()}; }
 
   template <arithmetic T>
@@ -3071,22 +1633,22 @@ namespace beman::inside::detail
   { return lhs <=> rational{rhs}; }
 
   //---------------------------------------------------------------------------
-  // Optional-lifting operators — one generic overload per arithmetic operator
-  // that engages when an operand is a slim::optional, both unwrap to arithmetic,
+  // Expected-lifting operators — one generic overload per arithmetic operator
+  // that engages when an operand is a std::expected, both unwrap to arithmetic,
   // and at least one to rational. Gating on `arithmetic` (not `insidable`, which
-  // isn't visible this low) excludes inside operands, so inside-involving optional
+  // isn't visible this low) excludes inside operands, so inside-involving expected
   // expressions partition cleanly to arithmetic.hpp's generic instead.
   //---------------------------------------------------------------------------
   template <class L, class R>
   concept rational_lift_operands =
-       (is_slim_optional_v<L> || is_slim_optional_v<R>)
+       (is_expected_v<L> || is_expected_v<R>)
     && arithmetic<unwrap_t<L>> && arithmetic<unwrap_t<R>>
     && (std::same_as<unwrap_t<L>, rational> || std::same_as<unwrap_t<R>, rational>);
 
   //---------------------------------------------------------------------------
   // operator*
   //---------------------------------------------------------------------------
-  inline constexpr slim::optional<rational> operator*(rational const& lhs, rational const& rhs)
+  inline constexpr std::expected<rational, errc> operator*(rational const& lhs, rational const& rhs)
   { return rational::mul_impl<true>(lhs, rhs); }
 
   // arithmetic operand — direct construction, no lift overhead
@@ -3098,7 +1660,7 @@ namespace beman::inside::detail
   inline constexpr auto operator*(rational const& lhs, T rhs)
   { return lhs * rational{rhs}; }
 
-  // optional operand(s) — propagate via lift
+  // expected operand(s) — propagate via lift
   template <class L, class R> requires rational_lift_operands<L, R>
   inline constexpr auto operator*(L const& lhs, R const& rhs)
   { return lift([](auto const& a, auto const& b){ return a * b; }, lhs, rhs); }
@@ -3106,7 +1668,7 @@ namespace beman::inside::detail
   //---------------------------------------------------------------------------
   // operator/
   //---------------------------------------------------------------------------
-  inline constexpr slim::optional<rational> operator/(rational const& lhs, rational const& rhs)
+  inline constexpr std::expected<rational, errc> operator/(rational const& lhs, rational const& rhs)
   { return rational::div_impl<true>(lhs, rhs); }
 
   template <arithmetic T>
@@ -3124,7 +1686,7 @@ namespace beman::inside::detail
   //---------------------------------------------------------------------------
   // operator+
   //---------------------------------------------------------------------------
-  inline constexpr slim::optional<rational> operator+(const rational& lhs, const rational& rhs)
+  inline constexpr std::expected<rational, errc> operator+(const rational& lhs, const rational& rhs)
   { return rational::add_impl<true>(lhs, rhs); }
 
   template <arithmetic T>
@@ -3142,7 +1704,7 @@ namespace beman::inside::detail
   //---------------------------------------------------------------------------
   // operator-
   //---------------------------------------------------------------------------
-  inline constexpr slim::optional<rational> operator-(const rational& lhs, const rational& rhs)
+  inline constexpr std::expected<rational, errc> operator-(const rational& lhs, const rational& rhs)
   { return operator+(lhs, -rhs); }
 
   template <arithmetic T>
@@ -3157,12 +1719,12 @@ namespace beman::inside::detail
   inline constexpr auto operator-(L const& lhs, R const& rhs)
   { return lift([](auto const& a, auto const& b){ return a - b; }, lhs, rhs); }
 
-  inline constexpr slim::optional<rational> operator-(slim::optional<rational> const& v)
+  inline constexpr std::expected<rational, errc> operator-(std::expected<rational, errc> const& v)
   { return lift([](rational r){ return -r; }, v); }
 
   //---------------------------------------------------------------------------
   // Compound-assignment definitions — unwrap the checked binary op result.
-  // .value() throws slim::bad_optional_access on overflow; callers that
+  // .value() throws std::bad_expected_access on overflow; callers that
   // need a non-throwing path must use the binary operators directly.
   //---------------------------------------------------------------------------
   inline constexpr rational& rational::operator+=(rational const& rhs)
@@ -3178,7 +1740,7 @@ namespace beman::inside::detail
   { *this = (*this / rhs).value(); return *this; }
 
   // Forwarding overloads — accept arithmetic RHS (lifted via rational{}) and
-  // slim::optional<rational> RHS (unwrapped via .value()) so callers can
+  // expected<rational, errc> RHS (unwrapped via .value()) so callers can
   // chain `r += rational * rational` without a manual unwrap.
   template <arithmetic T>
   inline constexpr rational& operator+=(rational& lhs, T rhs)
@@ -3196,16 +1758,16 @@ namespace beman::inside::detail
   inline constexpr rational& operator/=(rational& lhs, T rhs)
   { return lhs /= rational{rhs}; }
 
-  inline constexpr rational& operator+=(rational& lhs, slim::optional<rational> const& rhs)
+  inline constexpr rational& operator+=(rational& lhs, std::expected<rational, errc> const& rhs)
   { return lhs += rhs.value(); }
 
-  inline constexpr rational& operator-=(rational& lhs, slim::optional<rational> const& rhs)
+  inline constexpr rational& operator-=(rational& lhs, std::expected<rational, errc> const& rhs)
   { return lhs -= rhs.value(); }
 
-  inline constexpr rational& operator*=(rational& lhs, slim::optional<rational> const& rhs)
+  inline constexpr rational& operator*=(rational& lhs, std::expected<rational, errc> const& rhs)
   { return lhs *= rhs.value(); }
 
-  inline constexpr rational& operator/=(rational& lhs, slim::optional<rational> const& rhs)
+  inline constexpr rational& operator/=(rational& lhs, std::expected<rational, errc> const& rhs)
   { return lhs /= rhs.value(); }
 
   //---------------------------------------------------------------------------
@@ -3241,13 +1803,6 @@ namespace beman::inside
   inline constexpr detail::rational frac = detail::rational{N, D};
 } // namespace beman::inside
 
-namespace beman::inside::slim
-{
-  constexpr beman::inside::detail::rational sentinel_traits<beman::inside::detail::rational>::sentinel() noexcept { return beman::inside::detail::rational::make_sentinel(); }
-  constexpr bool sentinel_traits<beman::inside::detail::rational>::is_sentinel(const beman::inside::detail::rational& v) noexcept
-  { return v.is_sentinel(); }
-} // namespace beman::inside::slim
-
 
 
 // ======================================================================
@@ -3258,25 +1813,12 @@ namespace beman::inside::slim
 
 
 
-namespace beman::inside { struct interval; }
-
-namespace beman::inside::slim
-{
-  template<>
-  struct sentinel_traits<beman::inside::interval>
-  {
-    protected:
-      static constexpr beman::inside::interval sentinel() noexcept;
-      static constexpr bool is_sentinel(const beman::inside::interval& v) noexcept;
-  };
-} // namespace beman::inside::slim
-
 namespace beman::inside
 {
   //---------------------------------------------------------------------------
   // interval — structural NTTP type (public members only) with inclusive Lower
   // and Upper bounds. Like `grid`, its operator+/-/*// computes result intervals
-  // at compile time; division returns nullopt when the divisor straddles zero
+  // at compile time; division returns errc::division_by_zero when the divisor straddles zero
   // (grid::operator/ re-runs on the two zero-free halves and unions them).
   //---------------------------------------------------------------------------
   struct interval
@@ -3304,7 +1846,7 @@ namespace beman::inside
     constexpr bool divides_evenly(const detail::rational& notch) const
     { return beman::inside::detail::divides_evenly((Upper - Lower).value(), notch); }
 
-    constexpr slim::optional<detail::rational> operator/(const detail::rational& notch) const
+    constexpr std::expected<detail::rational, errc> operator/(const detail::rational& notch) const
     { return (Upper - Lower) / notch; }
   };
 
@@ -3341,16 +1883,16 @@ namespace beman::inside
     }
   }
 
-  constexpr slim::optional<interval> operator+  (const interval&, const interval&);
-  constexpr slim::optional<interval> operator-  (const interval&, const interval&);
-  constexpr slim::optional<interval> operator*  (const interval&, const interval&);
-  constexpr slim::optional<interval> operator/  (const interval&, const interval&);
-  constexpr auto                     operator<=>(const interval&, const interval&) -> std::partial_ordering;
+  constexpr std::expected<interval, errc> operator+  (const interval&, const interval&);
+  constexpr std::expected<interval, errc> operator-  (const interval&, const interval&);
+  constexpr std::expected<interval, errc> operator*  (const interval&, const interval&);
+  constexpr std::expected<interval, errc> operator/  (const interval&, const interval&);
+  constexpr auto                          operator<=>(const interval&, const interval&) -> std::partial_ordering;
 
   //---------------------------------------------------------------------------
   // operator+
   //---------------------------------------------------------------------------
-  inline constexpr slim::optional<interval> operator+(const interval& lhs, const interval& rhs)
+  inline constexpr std::expected<interval, errc> operator+(const interval& lhs, const interval& rhs)
   {
     return lift(
       [](detail::rational l, detail::rational u){ return interval{l, u}; },
@@ -3360,7 +1902,7 @@ namespace beman::inside
   //---------------------------------------------------------------------------
   // operator-
   //---------------------------------------------------------------------------
-  inline constexpr slim::optional<interval> operator-(const interval& lhs, const interval& rhs)
+  inline constexpr std::expected<interval, errc> operator-(const interval& lhs, const interval& rhs)
   {
     return operator+(lhs, -rhs);
   }
@@ -3368,7 +1910,7 @@ namespace beman::inside
   //---------------------------------------------------------------------------
   // operator*
   //---------------------------------------------------------------------------
-  inline constexpr slim::optional<interval> operator*(const interval& lhs, const interval& rhs)
+  inline constexpr std::expected<interval, errc> operator*(const interval& lhs, const interval& rhs)
   {
     return lift(detail::corner_hull,
       lhs.Lower * rhs.Lower, lhs.Lower * rhs.Upper,
@@ -3378,10 +1920,10 @@ namespace beman::inside
   //---------------------------------------------------------------------------
   // operator/
   //---------------------------------------------------------------------------
-  inline constexpr slim::optional<interval> operator/(const interval& lhs, const interval& rhs)
+  inline constexpr std::expected<interval, errc> operator/(const interval& lhs, const interval& rhs)
   {
     if (includes(rhs, 0))
-      return slim::nullopt;
+      return std::unexpected{errc::division_by_zero};
 
     return lift(detail::corner_hull,
       lhs.Lower / rhs.Lower, lhs.Lower / rhs.Upper,
@@ -3406,15 +1948,6 @@ namespace beman::inside
   }
 
 } // namespace beman::inside
-
-namespace beman::inside::slim
-{
-  constexpr beman::inside::interval sentinel_traits<beman::inside::interval>::sentinel() noexcept
-  { return beman::inside::interval{beman::inside::detail::rational::make_sentinel(), beman::inside::detail::rational::make_sentinel()}; }
-
-  constexpr bool sentinel_traits<beman::inside::interval>::is_sentinel(const beman::inside::interval& v) noexcept
-  { return v.Lower.Denominator == 0; }
-} // namespace beman::inside::slim
 
 //---------------------------------------------------------------------------
 // Structured bindings: `auto [lo, hi] = interval{...};`
@@ -3473,7 +2006,6 @@ namespace beman::inside
   // unary — mutually exclusive
   inline static constexpr policy_flag clamp   {1ull << 32}; // saturate to boundary
   inline static constexpr policy_flag wrap    {1ull << 33}; // modular arithmetic
-  inline static constexpr policy_flag sentinel{1ull << 35}; // overflow -> sentinel (nullopt)
 
   // Representation flags — select raw storage. Without one, storage is deduced
   // from the grid (notch-0 → rational; unit notch at/below 0 → integer value;
@@ -3570,7 +2102,6 @@ namespace beman::inside
   template<typename F> struct on_clamp_t    { [[no_unique_address]] F fn; };
   template<typename F> struct on_wrap_t     { [[no_unique_address]] F fn; };
   template<typename F> struct on_error_t    { [[no_unique_address]] F fn; };
-  template<typename F> struct on_sentinel_t { [[no_unique_address]] F fn; };
   template<typename F> struct on_overflow_t { [[no_unique_address]] F fn; };
 
   //---------------------------------------------------------------------------
@@ -3582,8 +2113,6 @@ namespace beman::inside
   { return on_wrap_t<std::remove_cvref_t<F>>{std::forward<F>(fn)}; }
   template<typename F> [[nodiscard]] constexpr auto on_error(F&& fn)
   { return on_error_t<std::remove_cvref_t<F>>{std::forward<F>(fn)}; }
-  template<typename F> [[nodiscard]] constexpr auto on_sentinel(F&& fn)
-  { return on_sentinel_t<std::remove_cvref_t<F>>{std::forward<F>(fn)}; }
   template<typename F> [[nodiscard]] constexpr auto on_overflow(F&& fn)
   { return on_overflow_t<std::remove_cvref_t<F>>{std::forward<F>(fn)}; }
 
@@ -3597,15 +2126,12 @@ namespace beman::inside
   template<typename F> struct IsWrapActionPred<on_wrap_t<F>>     : std::true_type {};
   template<typename T> struct IsErrorActionPred    : std::false_type {};
   template<typename F> struct IsErrorActionPred<on_error_t<F>>    : std::true_type {};
-  template<typename T> struct IsSentinelActionPred : std::false_type {};
-  template<typename F> struct IsSentinelActionPred<on_sentinel_t<F>> : std::true_type {};
   template<typename T> struct IsOverflowActionPred : std::false_type {};
   template<typename F> struct IsOverflowActionPred<on_overflow_t<F>> : std::true_type {};
 
   template<typename T> concept clamp_action    = IsClampActionPred   <std::remove_cvref_t<T>>::value;
   template<typename T> concept wrap_action     = IsWrapActionPred    <std::remove_cvref_t<T>>::value;
   template<typename T> concept error_action    = IsErrorActionPred   <std::remove_cvref_t<T>>::value;
-  template<typename T> concept sentinel_action = IsSentinelActionPred<std::remove_cvref_t<T>>::value;
   template<typename T> concept overflow_action = IsOverflowActionPred<std::remove_cvref_t<T>>::value;
 
   //---------------------------------------------------------------------------
@@ -3616,7 +2142,6 @@ namespace beman::inside
   template<typename F> inline constexpr policy_flag implied_flags<on_clamp_t<F>>    = clamp;
   template<typename F> inline constexpr policy_flag implied_flags<on_wrap_t<F>>     = wrap;
   template<typename F> inline constexpr policy_flag implied_flags<on_error_t<F>>    = checked;
-  template<typename F> inline constexpr policy_flag implied_flags<on_sentinel_t<F>> = sentinel;
   template<typename F> inline constexpr policy_flag implied_flags<on_overflow_t<F>> = checked;
 
   //---------------------------------------------------------------------------
@@ -3679,19 +2204,6 @@ namespace beman::inside
 
 
 
-namespace beman::inside { struct grid; }
-
-namespace beman::inside::slim
-{
-  template<>
-  struct sentinel_traits<beman::inside::grid>
-  {
-    protected:
-      static constexpr beman::inside::grid sentinel() noexcept;
-      static constexpr bool is_sentinel(const beman::inside::grid& v) noexcept;
-  };
-} // namespace beman::inside::slim
-
 namespace beman::inside
 {
   //---------------------------------------------------------------------------
@@ -3740,15 +2252,15 @@ namespace beman::inside
     // Runtime sibling of validate<G>(): same invariants, but returns a typed
     // error instead of failing a static_assert — for grids built from runtime
     // config. A value, so it can't be an inside<G,P> template argument.
-    [[nodiscard]] static constexpr slim::expected<grid, errc>
+    [[nodiscard]] static constexpr std::expected<grid, errc>
     try_make(interval iv, detail::rational notch)
     {
       if (iv.Lower > iv.Upper)
-        return slim::unexpected{errc::domain_error};
+        return std::unexpected{errc::domain_error};
       if (!iv.divides_evenly(notch))
-        return slim::unexpected{errc::rounding_error};
+        return std::unexpected{errc::rounding_error};
       if (notch != 0 && !detail::divides_evenly(iv.Lower, notch))
-        return slim::unexpected{errc::rounding_error};
+        return std::unexpected{errc::rounding_error};
       return grid{iv, notch};
     }
 
@@ -3783,9 +2295,9 @@ namespace beman::inside
     {
       if (!includes(Interval, v)) return false;
       if (Notch == 0) return true;
-      auto diff = v - Interval.Lower;            // optional<rational>
+      auto diff = v - Interval.Lower;            // expected<rational, errc>
       if (!diff) return false;
-      auto off = diff.value() / Notch;           // optional<rational>
+      auto off = diff.value() / Notch;           // expected<rational, errc>
       return off.has_value() && detail::abs_den(off->Denominator) == 1;
     }
 
@@ -3825,9 +2337,6 @@ namespace beman::inside
       }
       return lo + r * nd;
     }
-
-    static constexpr grid make_sentinel() noexcept
-    { return grid{interval{detail::rational{0}, detail::rational{0}}, detail::rational::make_sentinel()}; }
   };
 
   // Smallest raw type holding every reachable index in G. Order: notch-zero →
@@ -3950,20 +2459,20 @@ namespace beman::inside
 
   // Does raw type R hold every reachable raw value of grid G under the given
   // encoding? Index storage runs 0..max_notch (unsigned); value storage runs
-  // Lower..Upper. The strict margins (max-1 unsigned / min+1 signed) match the
-  // sentinel-slot reservation in smallest_uint_for / smallest_int_for.
+  // Lower..Upper. The full range of R is usable, matching smallest_uint_for /
+  // smallest_int_for.
   template <grid G, typename R, bool Index>
   constexpr bool storage_fits() noexcept
   {
     using lim = std::numeric_limits<R>;
     if constexpr (Index)
       return G.notch_count_representable()
-          && G.max_notch() < static_cast<umax>(lim::max());
+          && G.max_notch() <= static_cast<umax>(lim::max());
     else if constexpr (std::is_unsigned_v<R>)
       return G.Interval.Lower >= 0
-          && G.Interval.Upper <= rational{static_cast<umax>(lim::max()) - 1};
+          && G.Interval.Upper <= rational{static_cast<umax>(lim::max())};
     else
-      return G.Interval.Lower >= rational{static_cast<imax>(lim::min()) + 1}
+      return G.Interval.Lower >= rational{static_cast<imax>(lim::min())}
           && G.Interval.Upper <= rational{static_cast<imax>(lim::max())};
   }
 
@@ -4052,18 +2561,18 @@ namespace beman::inside
   using storage_for = decltype(storage_pick<G, P>());
   }
 
-  constexpr slim::optional<grid> operator+(const grid&, const grid&);
-  constexpr slim::optional<grid> operator-(const grid&, const grid&);
-  constexpr slim::optional<grid> operator*(const grid&, const grid&);
-  constexpr slim::optional<grid> operator/(const grid&, const grid&);
+  constexpr std::expected<grid, errc> operator+(const grid&, const grid&);
+  constexpr std::expected<grid, errc> operator-(const grid&, const grid&);
+  constexpr std::expected<grid, errc> operator*(const grid&, const grid&);
+  constexpr std::expected<grid, errc> operator/(const grid&, const grid&);
 
   //---------------------------------------------------------------------------
   // operator+
   //---------------------------------------------------------------------------
-  inline constexpr slim::optional<grid> operator+(const grid& lhs, const grid& rhs)
+  inline constexpr std::expected<grid, errc> operator+(const grid& lhs, const grid& rhs)
   {
-    // gcd returns optional — lift it so a notch-denominator overflow produces
-    // nullopt rather than a silently wrapped result grid.
+    // gcd returns expected — lift it so a notch-denominator overflow produces
+    // errc::overflow rather than a silently wrapped result grid.
     return lift(
       [](interval i, detail::rational n){ return grid{i, n}; },
       lhs.Interval + rhs.Interval, detail::gcd(lhs.Notch, rhs.Notch));
@@ -4072,7 +2581,7 @@ namespace beman::inside
   //---------------------------------------------------------------------------
   // operator-
   //---------------------------------------------------------------------------
-  inline constexpr slim::optional<grid> operator-(const grid& lhs, const grid& rhs)
+  inline constexpr std::expected<grid, errc> operator-(const grid& lhs, const grid& rhs)
   {
     return operator+(lhs, -rhs);
   }
@@ -4080,7 +2589,7 @@ namespace beman::inside
   //---------------------------------------------------------------------------
   // operator*
   //---------------------------------------------------------------------------
-  inline constexpr slim::optional<grid> operator*(const grid& lhs, const grid& rhs)
+  inline constexpr std::expected<grid, errc> operator*(const grid& lhs, const grid& rhs)
   {
     return lift(
       [](interval i, detail::rational n){ return grid{i, n}; },
@@ -4090,7 +2599,7 @@ namespace beman::inside
   //---------------------------------------------------------------------------
   // operator/
   //---------------------------------------------------------------------------
-  inline constexpr slim::optional<grid> operator/(const grid& lhs, const grid& rhs)
+  inline constexpr std::expected<grid, errc> operator/(const grid& lhs, const grid& rhs)
   {
     auto d = lhs.Interval / rhs.Interval;
     if (d.has_value())
@@ -4098,7 +2607,7 @@ namespace beman::inside
 
     // Divisor interval includes zero — exclude zero for result interval.
     if (rhs.Interval.Lower == 0 && rhs.Interval.Upper == 0)
-      return slim::nullopt;
+      return std::unexpected{errc::division_by_zero};
 
     // `step` = smallest non-zero divisor magnitude; splits the divisor interval
     // into positive [step, Upper] and negative [Lower, -step] (skipping zero).
@@ -4136,10 +2645,10 @@ namespace beman::inside
   // interval hull + notch gcd. A valid grid anchors Lower on a multiple of its
   // notch, so both lattices are sub-lattices of the gcd lattice — no offset
   // term is needed, and the hull is a valid grid by construction. A continuous
-  // operand (Notch 0) makes the hull continuous. nullopt when the notch gcd's
+  // operand (Notch 0) makes the hull continuous. errc::overflow when the notch gcd's
   // combined denominator exceeds the representable rational range.
   //---------------------------------------------------------------------------
-  inline constexpr slim::optional<grid> hull(const grid& lhs, const grid& rhs)
+  inline constexpr std::expected<grid, errc> hull(const grid& lhs, const grid& rhs)
   {
     const interval iv{std::min(lhs.Interval.Lower, rhs.Interval.Lower),
                       std::max(lhs.Interval.Upper, rhs.Interval.Upper)};
@@ -4149,15 +2658,6 @@ namespace beman::inside
                 detail::gcd(lhs.Notch, rhs.Notch));
   }
 } // namespace beman::inside
-
-namespace beman::inside::slim
-{
-  constexpr beman::inside::grid sentinel_traits<beman::inside::grid>::sentinel() noexcept
-  { return beman::inside::grid::make_sentinel(); }
-
-  constexpr bool sentinel_traits<beman::inside::grid>::is_sentinel(const beman::inside::grid& v) noexcept
-  { return v.Notch.Denominator == 0; }
-} // namespace beman::inside::slim
 
 //---------------------------------------------------------------------------
 // Structured bindings: `auto [iv, notch] = some_grid;`
@@ -4332,7 +2832,7 @@ namespace beman::inside
     using negative = inside<-Grid<B>, InsidePolicy<B>>;
 
     // True when R's interval cannot contain zero — so `a / b` can return a plain
-    // `inside` instead of `optional<inside>` (see detail/division.hpp). A point
+    // `inside` instead of `expected<inside, errc>` (see detail/division.hpp). A point
     // grid at 0 is *not* excluded.
     template <insidable R>
     inline constexpr bool DivisorExcludesZero = (Lower<R> > 0) || (Upper<R> < 0);
@@ -4356,7 +2856,7 @@ namespace beman::inside
     // Conservative compile-time inside on the (numerator, denominator) of any
     // canonical value on a grid, and derived "can the rational op of two grid
     // values overflow imax" predicates — letting checked exact arithmetic drop
-    // the optional wrapper when the grids prove no overflow is reachable.
+    // the expected wrapper when the grids prove no overflow is reachable.
     //
     // For a notched grid every value v = lo + k·notch over the common denominator
     // dC = |lo.den|·|hi.den|·|notch.den| is linear in k, so the max scaled
@@ -4660,43 +3160,13 @@ namespace beman::inside
     inline constexpr bool point_exactly_assignable =
       (Lower<R> == Upper<R>) && Grid<L>.representable(Lower<R>);
 
-    template <insidable B>
-    [[nodiscard]] constexpr raw_t<B> sentinel_raw()
-    {
-      if constexpr (std::is_same_v<raw_t<B>, rational>)
-        return rational::make_sentinel();
-      else if constexpr (std::signed_integral<raw_t<B>>)
-        return std::numeric_limits<raw_t<B>>::min();
-      else
-        // Unsigned: max(). Real (double): DBL_MAX — a finite, normal, comparable
-        // slot, unreachable as an on-grid value (grids stay < 2^53), so the real
-        // raw never holds NaN/inf/subnormal, only this sentinel, ±0, or a normal.
-        return std::numeric_limits<raw_t<B>>::max();
-    }
-
-    // "Is this raw the reserved sentinel slot?" — rational counts any zero
-    // denominator; everything else (incl. real's finite DBL_MAX) is `==`.
-    template <insidable B>
-    [[nodiscard]] constexpr bool raw_is_sentinel(raw_t<B> const& r)
-    {
-      if constexpr (std::is_same_v<raw_t<B>, rational>)
-        return r.Denominator == 0;
-      else
-        return r == sentinel_raw<B>();
-    }
-
-    // Tail of the policy cascade: sentinel sets sentinel raw, checked reports.
+    // Tail of the policy cascade: checked reports.
     // Returns true if a policy handled the failure (caller should return).
     // Cheap default — reports through the static category message (no string).
     template <insidable B, typename P>
-    constexpr bool domain_fail(B& b, P&& policy)
+    constexpr bool domain_fail([[maybe_unused]] B& b, P&& policy)
     {
-      if constexpr (HasPolicy<B, P, sentinel>)
-      {
-        b = B::from_raw(sentinel_raw<B>());
-        return true;
-      }
-      else if (policy.domain_check())
+      if (policy.domain_check())
       {
         policy.report(errc::domain_error);
         return true;
@@ -4798,7 +3268,7 @@ namespace beman::inside::detail
   // (C2244/C2995/C3855); inlining sidesteps that and keeps the code portable.
   //---------------------------------------------------------------------------
   // needs_runtime_domain_check<L, P, A>: true iff any out-of-range handler would
-  // fire (an action, a clamp/wrap/sentinel bit, or default-throw under checked).
+  // fire (an action, a clamp/wrap bit, or default-throw under checked).
   // When false (typically `unsafe`, no action) the runtime range branch in
   // `assign` is dead code and skipped, letting the autovectorizer kick in.
   //---------------------------------------------------------------------------
@@ -4806,23 +3276,19 @@ namespace beman::inside::detail
   inline constexpr bool needs_runtime_domain_check =
          clamp_action   <plain<A>>
       || wrap_action    <plain<A>>
-      || sentinel_action<plain<A>>
       || error_action   <plain<A>>
       || HasPolicy<L, P, clamp>
       || HasPolicy<L, P, wrap>
-      || HasPolicy<L, P, sentinel>
       || (HasPolicy<L, P, checked> && !HasPolicy<L, P, ignore_domain>);
 
-  // Shared out-of-range policy cascade. Order: clamp/wrap/sentinel/error
-  // *actions*, then clamp/wrap *policy* bits, then `domain_fail`. The four
-  // callers-supplied callables cover how clamp/wrap store, the sentinel-action
-  // value, and the error-message rhs view. `Wrappable` is false on the fractional
+  // Shared out-of-range policy cascade. Order: clamp/wrap/error *actions*, then
+  // clamp/wrap *policy* bits, then `domain_fail`. The three caller-supplied
+  // callables cover how clamp/wrap store and the error-message rhs view. `Wrappable` is false on the fractional
   // path (no wrap *action* branch). Returns true when a handler resolved the write.
   template <bool Wrappable, insidable L, typename P, typename A,
-            typename DoClamp, typename DoWrap, typename SentinelVal, typename MsgView>
+            typename DoClamp, typename DoWrap, typename MsgView>
   constexpr bool dispatch_out_of_range(L& lhs, P&& policy, A&& action,
                                        DoClamp do_clamp, DoWrap do_wrap,
-                                       SentinelVal sentinel_val,
                                        [[maybe_unused]] MsgView msg_view)
   {
     using PA = plain<A>;
@@ -4830,12 +3296,6 @@ namespace beman::inside::detail
     { do_clamp(); return true; }
     else if constexpr (Wrappable && wrap_action<PA>)
     { do_wrap(); return true; }
-    else if constexpr (sentinel_action<PA>)
-    {
-      lhs = L::from_raw(sentinel_raw<L>());
-      action.fn(lhs, sentinel_val());
-      return true;
-    }
     else if constexpr (error_action<PA>)
     {
       action.fn(lhs, errc::domain_error, errc_message(errc::domain_error));
@@ -4915,7 +3375,6 @@ namespace beman::inside::detail
         return dispatch_out_of_range<true>(lhs, policy, action,
           [&]{ apply_clamp(lhs, rhs, lower, upper, action); },
           [&]{ apply_wrap (lhs, rhs, lower, upper, action); },
-          [&]{ return static_cast<imax>(rhs); },
           [&]{ return rhs; });
       }
 
@@ -4940,7 +3399,7 @@ namespace beman::inside::detail
       {
         static_assert(not excludes(Interval<L>, Interval<R>));
 
-        // The out-of-range check runs unconditionally — clamp/wrap/sentinel
+        // The out-of-range check runs unconditionally — clamp/wrap
         // policies handle it via apply_*, which is constexpr-clean. Only the
         // unhandled-checked path winds up calling `policy.report`, which
         // contains its own `std::is_constant_evaluated()` guard.
@@ -4961,7 +3420,7 @@ namespace beman::inside::detail
           else if (not includes(Interval<L>, rhs))
           {
             // Non-integer L bounds: route through the rational path so fractional
-            // Lower/Upper drive clamp/sentinel/error correctly.
+            // Lower/Upper drive clamp/error correctly.
             return assignment<L, rational>::assign(lhs, rational{rhs}, policy, action);
           }
         }
@@ -5210,7 +3669,7 @@ namespace beman::inside::detail
           // The exact quotient can overflow the 64-bit rational range (huge
           // source denominator × fine notch). Recompute the slot directly in
           // 128-bit (wide_offset_quotient above); only a result beyond even
-          // that envelope reports errc::overflow — never a nullopt deref,
+          // that envelope reports errc::overflow — never an unchecked expected deref,
           // which would escape noexcept callers (the math engines) as
           // terminate. Rounding here is the offset rule (round_offset), the
           // same semantics round_quotient falls back to past 64 bits.
@@ -5268,7 +3727,6 @@ namespace beman::inside::detail
           if (dispatch_out_of_range<false>(lhs, policy, action,
                 [&]{ apply_clamp(lhs, rhs, policy, action); },
                 [&]{ apply_wrap (lhs, rhs, policy, action); },
-                [&]{ return rhs; },
                 [&]{ return rhs; }))
             return lhs;
         }
@@ -5480,7 +3938,6 @@ namespace beman::inside::detail
         return dispatch_out_of_range<true>(lhs, policy, action,
           [&]{ apply_clamp(lhs, rhs, action); },
           [&]{ apply_wrap (lhs, rhs, policy, action); },
-          [&]{ return as_rational(rhs); },
           [&]{ return as_rational(rhs); });
       }
 
@@ -5625,7 +4082,7 @@ namespace beman::inside
       if (std::is_constant_evaluated())
         detail::constexpr_error<
           "inside: value out of range during constant evaluation "
-          "(checked policy hit; choose clamp/wrap/sentinel or widen the interval)">();
+          "(checked policy hit; choose clamp/wrap or widen the interval)">();
       if constexpr (std::is_same_v<E, detail::error_ref>)
         E::Code = E::Code != errc{} ? E::Code : code;
       else
@@ -5658,7 +4115,7 @@ namespace beman::inside
 
     // True for policy specializations that carry a beman::inside::errc& reference.
     // Free-fn arithmetic uses this to decide whether to call policy.report on
-    // failure (which sets ec) vs. returning silent nullopt (no-arg form).
+    // failure (which sets ec) vs. returning a silent std::unexpected (no-arg form).
     template<typename T>             inline constexpr bool UsesErrorRef = false;
     template<policy_flag F>          inline constexpr bool UsesErrorRef<policy<F, error_ref>> = true;
   }
@@ -5675,17 +4132,18 @@ namespace beman::inside
   { return policy<F,detail::error_ref>{ec}; }
 
   //---------------------------------------------------------------------------
-  // report_or_nullopt — uniform "rational arithmetic failed" handler shared by
-  // addition/multiplication/division/modulo. Three compile-time behaviors:
+  // report_or_unexpected — uniform "rational arithmetic failed" handler shared
+  // by addition/multiplication/division/modulo. Three compile-time behaviors:
   // overflow_action<A> → fire it on a default Result; UsesErrorRef<P> →
-  // policy.report then nullopt; plain throw-policy → nullopt.
+  // policy.report then std::unexpected{code}; plain throw-policy →
+  // std::unexpected{code}.
   //---------------------------------------------------------------------------
   namespace detail
   {
   template <insidable Result, typename A, typename P>
-  constexpr auto report_or_nullopt(A&& action, P&& policy, errc code,
-                                   [[maybe_unused]] const char* what)
-    -> std::conditional_t<overflow_action<A>, Result, slim::optional<Result>>
+  constexpr auto report_or_unexpected(A&& action, P&& policy, errc code,
+                                      [[maybe_unused]] const char* what)
+    -> std::conditional_t<overflow_action<A>, Result, std::expected<Result, errc>>
   {
     if constexpr (overflow_action<A>)
     {
@@ -5697,7 +4155,7 @@ namespace beman::inside
     {
       if constexpr (UsesErrorRef<std::remove_cvref_t<P>>)
         policy.report(code);
-      return slim::nullopt;
+      return std::unexpected{code};
     }
   }
   } // namespace detail
@@ -5730,8 +4188,6 @@ namespace beman::inside
       return assignment<Dst, C>::assign(dst, src, policy, pick_action_in<IsClampActionPred>(actions));
     else if constexpr (has_action<IsWrapActionPred, As...>)
       return assignment<Dst, C>::assign(dst, src, policy, pick_action_in<IsWrapActionPred>(actions));
-    else if constexpr (has_action<IsSentinelActionPred, As...>)
-      return assignment<Dst, C>::assign(dst, src, policy, pick_action_in<IsSentinelActionPred>(actions));
     else if constexpr (has_action<IsErrorActionPred, As...>)
       return assignment<Dst, C>::assign(dst, src, policy, pick_action_in<IsErrorActionPred>(actions));
     else
@@ -5766,18 +4222,16 @@ namespace beman::inside
   {
     private:
     // Conflict diagnostics: at most one assignment-time tag (clamp / wrap /
-    // sentinel / error), at most one of each kind, no clamp+wrap.
+    // error), at most one of each kind, no clamp+wrap.
     static constexpr unsigned _clamp_count    = count_action_matches<IsClampActionPred,    As...>;
     static constexpr unsigned _wrap_count     = count_action_matches<IsWrapActionPred,     As...>;
-    static constexpr unsigned _sentinel_count = count_action_matches<IsSentinelActionPred, As...>;
     static constexpr unsigned _error_count    = count_action_matches<IsErrorActionPred,    As...>;
     static constexpr unsigned _overflow_count = count_action_matches<IsOverflowActionPred, As...>;
 
-    static_assert(_clamp_count + _wrap_count + _sentinel_count + _error_count <= 1,
-      "on_clamp / on_wrap / on_sentinel / on_error are mutually exclusive in a single policy_ref");
+    static_assert(_clamp_count + _wrap_count + _error_count <= 1,
+      "on_clamp / on_wrap / on_error are mutually exclusive in a single policy_ref");
     static_assert(_clamp_count    <= 1, "duplicate on_clamp");
     static_assert(_wrap_count     <= 1, "duplicate on_wrap");
-    static_assert(_sentinel_count <= 1, "duplicate on_sentinel");
     static_assert(_error_count    <= 1, "duplicate on_error");
     static_assert(_overflow_count <= 1, "duplicate on_overflow");
 
@@ -5826,10 +4280,10 @@ namespace beman::inside
       return r;
     }
 
-    // optional<C> sink — unwrap once at the proxy boundary so callers can chain
+    // expected<C> sink — unwrap once at the proxy boundary so callers can chain
     // checked arithmetic into `.with_clamp() = ...` without per-step `.value()`.
     template <numeric C>
-    constexpr B& operator=(slim::optional<C> const& other)
+    constexpr B& operator=(std::expected<C, errc> const& other)
     { return assign_with_picked(other.value()); }
 
     private:
@@ -5845,21 +4299,22 @@ namespace beman::inside
     //-------------------------------------------------------------------------
     // insidable RHS overloads — route through the inside's arithmetic, then
     // assign via assign_with_picked so callbacks fire on the narrowing back to B.
-    // An optional<inside> result (rational-raw overflow) surfaces errc::overflow
-    // through on_overflow if registered, else report.
+    // An expected<inside> result carrying an error (rational-raw overflow,
+    // division by zero) surfaces its errc through on_overflow if registered,
+    // else report.
     //-------------------------------------------------------------------------
     private:
     template <typename R>
     constexpr B& finalise_arith(R&& result, [[maybe_unused]] const char* msg)
     {
-      if constexpr (requires { typename plain<R>::value_type; })
+      if constexpr (is_expected_v<R>)
       {
         if (!result.has_value()) [[unlikely]]
         {
           if constexpr (has_action<IsOverflowActionPred, As...>)
-            pick_action_in<IsOverflowActionPred>(Actions).fn(Ref, errc::overflow);
+            pick_action_in<IsOverflowActionPred>(Actions).fn(Ref, result.error());
           else
-            Policy.report(errc::overflow);
+            Policy.report(result.error());
           return Ref;
         }
         return assign_with_picked(result.value());
@@ -6025,7 +4480,7 @@ namespace beman::inside::detail
 
     template <policy_flag F = none>
     using return_type_for = std::conditional_t<needs_overflow_check<F>,
-                                               slim::optional<result>,
+                                               std::expected<result, errc>,
                                                result>;
 
     template <policy_flag F, typename A>
@@ -6077,7 +4532,7 @@ namespace beman::inside::detail
     // Result notch is gcd(NL, NR); scale each raw up to it before adding —
     // lhs_widen = NL/Nresult, rhs_widen = NR/Nresult (exact, Nresult divides both).
     // Guard the continuous-grid case (Notch<result> == 0): the rational divide-by-zero
-    // path returns nullopt on GCC/Clang but MSVC's constexpr evaluator rejects it
+    // path returns an error on GCC/Clang but MSVC's constexpr evaluator rejects it
     // (C2131). widen is unused on the continuous/rational result path, so 1 is fine.
     static constexpr imax lhs_widen = (Notch<result> == 0) ? imax{1}
         : (Notch<L> / Notch<result>).value_or(rational{1}).Numerator;
@@ -6105,8 +4560,8 @@ namespace beman::inside::detail
       {
         auto sum = rational::add(lhs,rhs);
         if (!sum) [[unlikely]]
-          return report_or_nullopt<result>(action, policy, errc::overflow,
-                                           "rational overflow in add");
+          return report_or_unexpected<result>(action, policy, errc::overflow,
+                                              "rational overflow in add");
         res = result::from_raw(*sum);
       }
       else
@@ -6190,7 +4645,7 @@ namespace beman::inside::detail
 
     template <typename P>
     using return_type_for = std::conditional_t<needs_overflow_check<P>,
-                                               slim::optional<result>,
+                                               std::expected<result, errc>,
                                                result>;
 
     template <typename P, typename A>
@@ -6216,8 +4671,8 @@ namespace beman::inside::detail
       {
         auto prod = as_rational(lhs) * as_rational(rhs);
         if (!prod) [[unlikely]]
-          return report_or_nullopt<result>(action, policy, errc::overflow,
-                                           "rational overflow in mul");
+          return report_or_unexpected<result>(action, policy, errc::overflow,
+                                              "rational overflow in mul");
         return result::from_raw(raw_cast<result>(*prod));
       }
       else
@@ -6307,7 +4762,7 @@ namespace beman::inside::detail
 
 
 //---------------------------------------------------------------------------
-// division / modulo. `division::div` returns optional<result> (division by zero
+// division / modulo. `division::div` returns expected<result, errc> (division by zero
 // is always runtime-possible). Two paths: native (integer-aligned grids +
 // snap → native integer division) and rational (exact, can overflow under
 // checked). `modulo::mod` is integer-only — non-integer remainders aren't
@@ -6434,7 +4889,7 @@ namespace beman::inside::detail
         div_round_mode(F | InsidePolicy<L> | InsidePolicy<R>);
 
     // A clear diagnostic when the result grid is unrepresentable, instead of the
-    // raw optional-deref / .value() below failing cryptically (mirrors add/mul).
+    // raw expected-deref / .value() below failing cryptically (mirrors add/mul).
     static_assert(native_div_qformat || (Grid<L> / Grid<R>).has_value(),
       "division: result grid not representable (notch/interval exceeds the "
       "representable rational range) — coarsen the operand grids");
@@ -6463,20 +4918,20 @@ namespace beman::inside::detail
 
     // For a nonzero divisor the op fails only on the checked rational path
     // (overflow). So when the divisor excludes zero AND this is false, `div`
-    // returns a plain `result` rather than optional<result>.
+    // returns a plain `result` rather than expected<result, errc>.
     static constexpr bool may_overflow_nonzero =
         !native_div && !fp_raw<result> && (needs_overflow_check<F> != 0);
 
     // Real division can still fail on a zero divisor, so it uses the same
     // return-type rule as the rest: plain `result` when the op cannot fail
     // (overflow-action, or the divisor grid excludes zero with no rational
-    // overflow), else optional<result>. Real has no rational overflow, so
+    // overflow), else expected<result, errc>. Real has no rational overflow, so
     // may_overflow_nonzero is false for it (above).
     template <typename A>
     using div_return_t = std::conditional_t<
         overflow_action<plain<A>> || (DivisorExcludesZero<R> && !may_overflow_nonzero),
         result,
-        slim::optional<result>>;
+        std::expected<result, errc>>;
 
     template <policy_flag G = F, typename E = empty_ref, typename A = no_action>
     static constexpr div_return_t<A> div(L, R, policy<G, E> = {}, A&& = {});
@@ -6495,9 +4950,9 @@ namespace beman::inside::detail
     // Shared by the real and non-real paths (real fails only on a zero divisor).
     [[maybe_unused]] auto fail = [&](errc code, const char* what) -> div_return_t<A> {
       if constexpr (overflow_action<plain<A>>)
-        return report_or_nullopt<result>(action, policy, code, what);   // -> result
+        return report_or_unexpected<result>(action, policy, code, what);   // -> result
       else if constexpr (!DivisorExcludesZero<R> || may_overflow_nonzero)
-        return report_or_nullopt<result>(action, policy, code, what);   // -> optional<result>
+        return report_or_unexpected<result>(action, policy, code, what);   // -> expected<result, errc>
       else
         return result{};   // unreachable: divisor excludes zero, op cannot fail
     };
@@ -6511,7 +4966,7 @@ namespace beman::inside::detail
     if constexpr (fp_raw<result>)
     {
       // Real division reports zero like every other path (throw / report /
-      // action / nullopt). Finite operands keep the quotient finite, so no
+      // action / unexpected). Finite operands keep the quotient finite, so no
       // non-finite ever reaches storage.
       if constexpr (!zero_unchecked)
         if (as_double(rhs) == 0.0) return fail(errc::division_by_zero, "division by zero in div");
@@ -6588,7 +5043,7 @@ namespace beman::inside::detail
     using mod_return_t = std::conditional_t<
         overflow_action<plain<A>> || DivisorExcludesZero<R>,
         result,
-        slim::optional<result>>;
+        std::expected<result, errc>>;
 
     template <policy_flag G = F, typename E = empty_ref, typename A = no_action>
     static constexpr mod_return_t<A> mod(L, R, policy<G, E> = {}, A&& = {});
@@ -6605,8 +5060,8 @@ namespace beman::inside::detail
         || (((G | F | InsidePolicy<L> | InsidePolicy<R>) & ignore_zero) != 0);
     if constexpr (!zero_unchecked)
       if (rhs_val == 0)
-        return report_or_nullopt<result>(action, policy, errc::division_by_zero,
-                                         "division by zero in mod");
+        return report_or_unexpected<result>(action, policy, errc::division_by_zero,
+                                            "division by zero in mod");
     result res;
     // Remainder consistent with the rounded quotient (trunc → C++ `%`).
     const imax lhs_val = to_value(lhs);
@@ -6625,7 +5080,7 @@ namespace beman::inside::detail
 
 //---------------------------------------------------------------------------
 // predicates — pure inspection (no conversion, no state change) to branch
-// before a construction that might throw or land on the sentinel:
+// before a construction that might throw or report an error:
 //   will_conversion_overflow<B>(v) — v falls outside B's interval.
 //   will_conversion_trunc<B>(v) — v is in-range but off-notch (would round).
 //   is_conversion_lossy<B>(v)      — OR of the two.
@@ -6682,20 +5137,9 @@ namespace beman::inside::math
 // inside — the public struct users include. Defines `inside<G, P>` and its
 // per-instance operators; free-function arithmetic and `inside_range` also live
 // here. Heavy lifting is delegated to addition/multiplication/division.hpp
-// (per-operator code), assignment.hpp (narrowing/clamp/wrap/sentinel), and
+// (per-operator code), assignment.hpp (narrowing/clamp/wrap), and
 // generic.hpp/policy.hpp (traits + policy machinery).
 //---------------------------------------------------------------------------
-namespace beman::inside::slim
-{
-  template <beman::inside::grid G, beman::inside::policy_flag P>
-  struct sentinel_traits<beman::inside::inside<G, P>>
-  {
-    protected:
-      static constexpr beman::inside::inside<G, P> sentinel() noexcept;
-      static constexpr bool is_sentinel(const beman::inside::inside<G, P>& v) noexcept;
-  };
-} // namespace beman::inside::slim
-
 namespace beman::inside
 {
   //---------------------------------------------------------------------------
@@ -6706,8 +5150,6 @@ namespace beman::inside
   {
     static_assert(grid::validate<G>());
     static_assert(!(P & clamp) || !(P & wrap), "clamp and wrap are mutually exclusive");
-    static_assert(!(P & sentinel) || !(P & clamp), "sentinel and clamp are mutually exclusive");
-    static_assert(!(P & sentinel) || !(P & wrap), "sentinel and wrap are mutually exclusive");
 #ifndef BEMAN_INSIDE_MATH_FIXED
     // Under the default (double) engine the `real` policy is double-backed, and
     // its value snaps to the grid (Lower + k·Notch). That snap is only exact
@@ -6751,8 +5193,8 @@ namespace beman::inside
 
     // Trivial default ctor — Raw is left uninitialized, like a built-in scalar: a
     // default-constructed inside has no value until assigned. (A previous checked
-    // overload zero-filled Raw, which decoded to an out-of-range value or the {0,0}
-    // rational sentinel for grids not containing 0 — a defined-but-invalid footgun.
+    // overload zero-filled Raw, which decoded to an out-of-range value or an invalid
+    // {0,0} rational for grids not containing 0 — a defined-but-invalid footgun.
     // Value-init `inside{}` still zero-fills where a zero raw is genuinely wanted.)
     constexpr inside() = default;
 
@@ -6771,7 +5213,7 @@ namespace beman::inside
     // snap is computed in double and narrowed to the raw type (double or float),
     // which is exact because every grid point fits the raw's significand. Out-of-
     // range values run the same policy cascade as the fractional path (clamp →
-    // wrap → sentinel/checked-report → store as-is).
+    // wrap → checked-report → store as-is).
     constexpr void store_fp(double v)
     {
       // NaN/±inf would reach snap_double's integer cast (UB); reject like the
@@ -6805,7 +5247,7 @@ namespace beman::inside
           v -= kd * range;
         }
         else if (detail::domain_fail(*this, make_policy<P>()))
-          return;            // sentinel stored / reported (error_code mode)
+          return;            // reported (error_code mode)
         // no handler (unchecked policy): fall through and store snapped as-is
       }
       Raw = static_cast<raw_type>(G.snap_double(v));   // narrow to float for f32 (lossless)
@@ -6862,11 +5304,12 @@ namespace beman::inside
         detail::assignment<inside, A>::assign(*this, value, make_policy<P>(ec));
     }
 
-    // optional<A> sink — unwrap once at the construction boundary so callers can
-    // chain checked arithmetic without per-step `.value()`. Throws on `nullopt`.
+    // expected<A> sink — unwrap once at the construction boundary so callers can
+    // chain checked arithmetic without per-step `.value()`. Throws
+    // std::bad_expected_access on an error.
     template <numeric A>
       requires inside_assignable<inside, A, P>
-    constexpr inside(slim::optional<A> const& value)
+    constexpr inside(std::expected<A, errc> const& value)
     { store_value(value.value()); }
 
     template <numeric B>
@@ -6876,7 +5319,7 @@ namespace beman::inside
 
     template <numeric B>
       requires inside_assignable<inside, B, P>
-    constexpr inside& operator=(slim::optional<B> const& other)
+    constexpr inside& operator=(std::expected<B, errc> const& other)
     { store_value(other.value()); return *this; }
 
     // ---- Diagnostic fallbacks (default on; -DBEMAN_INSIDE_STRICT_SFINAE removes them) ----
@@ -6889,7 +5332,7 @@ namespace beman::inside
     // assignable from incompatible types (the static_assert is in the body, not the
     // immediate context, so trait probes return true then hard-error only on real
     // use). Define BEMAN_INSIDE_STRICT_SFINAE to drop them and restore SFINAE-pure traits for
-    // metaprogramming that probes convertibility (variant/optional/`if constexpr`).
+    // metaprogramming that probes convertibility (variant/expected/`if constexpr`).
 #ifndef BEMAN_INSIDE_STRICT_SFINAE
     template <numeric A>
       requires (!inside_assignable<inside, A, P>)
@@ -6899,9 +5342,9 @@ namespace beman::inside
 
     template <numeric A>
       requires (!inside_assignable<inside, A, P>)
-    constexpr inside(slim::optional<A> const&)
+    constexpr inside(std::expected<A, errc> const&)
     { static_assert(inside_assignable_why<inside, A, P>::value,
-        "inside: cannot construct this inside from the optional's value — see the per-clause notes above"); }
+        "inside: cannot construct this inside from the expected's value — see the per-clause notes above"); }
 
     template <numeric B>
       requires (!inside_assignable<inside, B, P>)
@@ -6911,9 +5354,9 @@ namespace beman::inside
 
     template <numeric B>
       requires (!inside_assignable<inside, B, P>)
-    constexpr inside& operator=(slim::optional<B> const&)
+    constexpr inside& operator=(std::expected<B, errc> const&)
     { static_assert(inside_assignable_why<inside, B, P>::value,
-        "inside: cannot assign this optional's value to this inside — see the per-clause notes above"); return *this; }
+        "inside: cannot assign this expected's value to this inside — see the per-clause notes above"); return *this; }
 #endif
 
     // Trusted construction from a storage-layout raw — no validation; the caller
@@ -6921,28 +5364,6 @@ namespace beman::inside
     // raw transfer (e.g. `unchecked_cast`).
     [[nodiscard]] static constexpr inside from_raw(raw_type r) noexcept
     { inside b; b.Raw = r; return b; }
-
-    // The reserved empty slot used by `slim::optional<inside>` and `sentinel`
-    // policy, without poking `Raw`.
-    [[nodiscard]] static constexpr inside make_sentinel() noexcept
-    { return from_raw(detail::sentinel_raw<inside>()); }
-
-    // Canonical "is this slot empty?" check under `sentinel` policy.
-    [[nodiscard]] constexpr bool is_sentinel() const noexcept
-    {
-      return detail::raw_is_sentinel<inside>(Raw);
-    }
-
-    // to<T>() emptiness predicate: under sentinel policy an empty slot reports
-    // overflow; compiles to constant `false` under every other policy (the
-    // reserved slot is unreachable). Internal: used only by the to<T>() overloads.
-    private:
-    [[nodiscard]] constexpr bool is_sentinel_under_policy() const noexcept
-    {
-      if constexpr (has_flag(P, sentinel)) return is_sentinel();
-      else                               return false;
-    }
-    public:
 
     // Conversion summary:
     //   operator imax     — implicit, when the grid is notch-aligned and fits in
@@ -6954,8 +5375,8 @@ namespace beman::inside
     //                       explicit otherwise and gated on a rounding flag.
     //                       Strict bounds opt in via `to<double>().value()`.
     //   to<T>()           — typed-error narrowing/widening → `expected<T, errc>`
-    //                       (overflow / domain_error / sentinel-state).
-    //   as<T>()           — non-expected sibling; asserts on sentinel. For known-
+    //                       (overflow / domain_error).
+    //   as<T>()           — non-expected sibling; throws on error. For known-
     //                       in-range sites (array indexing). FP shares the gate.
     //   to<T>(b)/as<T>(b) — free-function forms, for generic code.
     constexpr operator imax() const
@@ -6987,14 +5408,12 @@ namespace beman::inside
     }
 
     // to<T>() — typed-error scalar extraction (mirrors rational::to<T>, extended
-    // to signed and floating point). Returns `errc::not_a_value` (sentinel
-    // state), `errc::overflow` (out of T's range), and `errc::domain_error`
+    // to signed and floating point). Returns `errc::overflow` (out of T's
+    // range) and `errc::domain_error`
     // (negative into unsigned T); fractional truncation is silent.
     template <std::unsigned_integral T>
-    [[nodiscard]] constexpr slim::expected<T, errc> to() const
+    [[nodiscard]] constexpr std::expected<T, errc> to() const
     {
-      if (is_sentinel_under_policy()) return slim::unexpected{errc::not_a_value};
-
       constexpr bool needs_neg_check = (Lower<inside> < 0);
       constexpr bool needs_max_check =
           (Upper<inside> > beman::inside::detail::rational{std::numeric_limits<T>::max()});
@@ -7005,19 +5424,17 @@ namespace beman::inside
       {
         auto r = detail::as_rational(*this);
         if constexpr (needs_neg_check)
-          if (r < 0) return slim::unexpected{errc::domain_error};
+          if (r < 0) return std::unexpected{errc::domain_error};
         if constexpr (needs_max_check)
           if (r > beman::inside::detail::rational{std::numeric_limits<T>::max()})
-            return slim::unexpected{errc::overflow};
+            return std::unexpected{errc::overflow};
         return static_cast<T>(trunc(r));
       }
     }
 
     template <std::signed_integral T>
-    [[nodiscard]] constexpr slim::expected<T, errc> to() const
+    [[nodiscard]] constexpr std::expected<T, errc> to() const
     {
-      if (is_sentinel_under_policy()) return slim::unexpected{errc::not_a_value};
-
       constexpr bool needs_min_check =
           (Lower<inside> < beman::inside::detail::rational{std::numeric_limits<T>::min()});
       constexpr bool needs_max_check =
@@ -7030,18 +5447,17 @@ namespace beman::inside
         auto r = detail::as_rational(*this);
         if constexpr (needs_min_check)
           if (r < beman::inside::detail::rational{std::numeric_limits<T>::min()})
-            return slim::unexpected{errc::overflow};
+            return std::unexpected{errc::overflow};
         if constexpr (needs_max_check)
           if (r > beman::inside::detail::rational{std::numeric_limits<T>::max()})
-            return slim::unexpected{errc::overflow};
+            return std::unexpected{errc::overflow};
         return static_cast<T>(trunc(r));
       }
     }
 
     template <std::floating_point T>
-    [[nodiscard]] constexpr slim::expected<T, errc> to() const
+    [[nodiscard]] constexpr std::expected<T, errc> to() const
     {
-      if (is_sentinel_under_policy()) return slim::unexpected{errc::not_a_value};
       return static_cast<T>(detail::as_double(*this));
     }
 
@@ -7168,8 +5584,6 @@ namespace beman::inside
     template <typename A>
     [[nodiscard]] constexpr auto on_error(A&& a)    { return make_action_ref<on_error_t>(std::forward<A>(a)); }
     template <typename A>
-    [[nodiscard]] constexpr auto on_sentinel(A&& a) { return make_action_ref<on_sentinel_t>(std::forward<A>(a)); }
-    template <typename A>
     [[nodiscard]] constexpr auto on_overflow(A&& a) { return make_action_ref<on_overflow_t>(std::forward<A>(a)); }
 
     // Multi-action entry point: combine N tagged actions into one policy_ref.
@@ -7202,7 +5616,7 @@ namespace beman::inside
         constexpr imax delta = (quotient.Denominator < 0)
             ? -static_cast<imax>(quotient.Numerator)
             :  static_cast<imax>(quotient.Numerator);
-        if constexpr (P & (clamp | wrap | checked | sentinel))
+        if constexpr (P & (clamp | wrap | checked))
         {
           imax new_raw = detail::raw_imax(*this) + delta;
           if (new_raw < detail::RawLo<inside> || new_raw > detail::RawHi<inside>)
@@ -7220,7 +5634,7 @@ namespace beman::inside
                     && (!detail::index_raw<R>
                         || (Lower<inside> == 0 && Lower<R> == 0)))
       {
-        if constexpr (P & (clamp | wrap | checked | sentinel))
+        if constexpr (P & (clamp | wrap | checked))
         {
           imax new_raw = detail::raw_imax(*this) + detail::raw_imax(rhs);
           if (new_raw < detail::RawLo<inside> || new_raw > detail::RawHi<inside>)
@@ -7240,7 +5654,7 @@ namespace beman::inside
 
     private:
     // Out-of-range tail for raw-space compound arithmetic: dispatch on policy
-    // (clamp/wrap/sentinel/checked) and store back to `Raw`. Called from the
+    // (clamp/wrap/checked) and store back to `Raw`. Called from the
     // raw fast paths of `operator+=(insidable)` and `operator-=(insidable)`.
     constexpr inside& apply_raw_overflow(imax new_raw)
     {
@@ -7253,8 +5667,6 @@ namespace beman::inside
         new_raw = ((new_raw - detail::RawLo<inside>) % range + range) % range + detail::RawLo<inside>;
         Raw = detail::raw_cast<inside>(new_raw);
       }
-      else if constexpr (P & sentinel)
-        Raw = detail::sentinel_raw<inside>();
       else
         make_policy<P>().report(errc::domain_error);
       return *this;
@@ -7269,12 +5681,12 @@ namespace beman::inside
     template <typename Result>
     constexpr inside& assign_op_result(Result const& r)
     {
-      if constexpr (requires { typename Result::value_type; })
+      if constexpr (detail::is_expected_v<Result>)
       {
-        // A failed op (nullopt) has already been reported through the policy
+        // A failed op (an error) has already been reported through the policy
         // channel; keep *this unchanged instead of dereferencing — a
         // non-throwing installed handler must not turn into
-        // bad_optional_access here. `*r` (not value()): no second check.
+        // bad_expected_access here. `*r` (not value()): no second check.
         if (r.has_value())
           *this = *r;
       }
@@ -7324,7 +5736,7 @@ namespace beman::inside
           else
             return imax{0};
         }();
-        if constexpr (P & (clamp | wrap | checked | sentinel))
+        if constexpr (P & (clamp | wrap | checked))
         {
           imax new_raw = detail::raw_imax(*this) - detail::raw_imax(rhs) - bias;
           if (new_raw < detail::RawLo<inside> || new_raw > detail::RawHi<inside>)
@@ -7349,7 +5761,7 @@ namespace beman::inside
     { return assign_op_result(*this * rhs); }
 
     // The outer zero check is semantic, not redundant: the binary `a / b`
-    // yields nullopt on a zero divisor (optional vocabulary), so the compound
+    // yields an error value on a zero divisor (expected vocabulary), so the compound
     // form's report comes from here. (Measured perf-neutral to remove.)
     template <insidable R>
     constexpr inside& operator/=(R const& rhs)
@@ -7401,17 +5813,12 @@ namespace beman::inside
     constexpr inside  operator--(int) { inside t = *this; --*this; return t; }
 
     template <numeric A>
-    [[nodiscard]] static constexpr slim::expected<inside, errc> try_make(A value)
+    [[nodiscard]] static constexpr std::expected<inside, errc> try_make(A value)
     {
       errc ec{};
       inside result;
       detail::assignment<inside, A>::assign(result, value, make_policy<P>(ec));
-      if (ec != errc{}) return slim::unexpected{ec};
-      // For `sentinel` policy types, an out-of-range write silently sets
-      // result.Raw to the sentinel; surface that as a domain error.
-      if constexpr (has_flag(P, sentinel))
-        if (detail::raw_is_sentinel<inside>(result.Raw))
-          return slim::unexpected{errc::domain_error};
+      if (ec != errc{}) return std::unexpected{ec};
       return result;
     }
   };
@@ -7606,53 +6013,7 @@ namespace beman::inside
   template<char... Chars>
   constexpr auto operator""_ins() { return just<detail::_detail::parse_ins_literal<Chars...>()>; }
 
-  //---------------------------------------------------------------------------
-  // operator++ / operator-- for slim::optional<inside>
-  //---------------------------------------------------------------------------
-  template <insidable B>
-    requires (has_flag(InsidePolicy<B>, sentinel))
-  constexpr slim::optional<B>& operator++(slim::optional<B>& opt)
-  {
-    if (opt) ++(*opt);
-    return opt;
-  }
-
-  template <insidable B>
-    requires (has_flag(InsidePolicy<B>, sentinel))
-  constexpr slim::optional<B> operator++(slim::optional<B>& opt, int)
-  { auto t = opt; ++opt; return t; }
-
-  template <insidable B>
-    requires (has_flag(InsidePolicy<B>, sentinel))
-  constexpr slim::optional<B>& operator--(slim::optional<B>& opt)
-  {
-    if (opt) --(*opt);
-    return opt;
-  }
-
-  template <insidable B>
-    requires (has_flag(InsidePolicy<B>, sentinel))
-  constexpr slim::optional<B> operator--(slim::optional<B>& opt, int)
-  { auto t = opt; --opt; return t; }
-
 } // namespace beman::inside
-
-namespace beman::inside::slim
-{
-  template <beman::inside::grid G, beman::inside::policy_flag P>
-  constexpr beman::inside::inside<G, P> sentinel_traits<beman::inside::inside<G, P>>::sentinel() noexcept
-  {
-    return beman::inside::inside<G, P>::from_raw(beman::inside::detail::sentinel_raw<beman::inside::inside<G, P>>());
-  }
-
-  template <beman::inside::grid G, beman::inside::policy_flag P>
-  constexpr bool sentinel_traits<beman::inside::inside<G, P>>::is_sentinel(const beman::inside::inside<G, P>& v) noexcept
-  {
-    // Rational uses a broader check (any zero denominator); real compares the
-    // reserved NaN bit pattern (NaN != NaN); everything else is plain equality.
-    return beman::inside::detail::raw_is_sentinel<beman::inside::inside<G, P>>(v.raw());
-  }
-} // namespace beman::inside::slim
 
 
 // ======================================================================
@@ -7737,7 +6098,7 @@ namespace beman::inside
 //   add(l, r) / add(l, r, policy<F>{}) / add(l, r, on_overflow(λ)) /
 //   add(l, r, ec) / l + r
 // Plus the variadic folds add_all/mul_all and *_into<Target>, and the
-// slim::optional operator overloads (a nullopt operand propagates through).
+// std::expected operator overloads (an error operand propagates through).
 //---------------------------------------------------------------------------
 namespace beman::inside
 {
@@ -7770,15 +6131,6 @@ namespace beman::inside
   [[nodiscard]] constexpr auto operator+(insidable auto lhs, insidable auto rhs)
   { return add(lhs, rhs); }
 
-  // One overload covers all three optional shapes; the lambda's `l + r` re-enters
-  // resolution on the unwrapped values, inheriting whichever bare overload applies.
-  template <class L, class R>
-    requires (detail::is_slim_optional_v<L> || detail::is_slim_optional_v<R>)
-          && (!detail::expected_like<L> && !detail::expected_like<R>)
-          && (insidable<detail::unwrap_t<L>> || insidable<detail::unwrap_t<R>>)
-          && requires(detail::unwrap_t<L> l, detail::unwrap_t<R> r) { l + r; }
-  constexpr auto operator+(L const& lhs, R const& rhs)
-  { return lift([](auto const& l, auto const& r){ return l + r; }, lhs, rhs); }
 
   //---------------------------------------------------------------------------
   // sub
@@ -7806,13 +6158,6 @@ namespace beman::inside
   [[nodiscard]] constexpr auto operator-(insidable auto lhs, insidable auto rhs)
   { return sub(lhs, rhs); }
 
-  template <class L, class R>
-    requires (detail::is_slim_optional_v<L> || detail::is_slim_optional_v<R>)
-          && (!detail::expected_like<L> && !detail::expected_like<R>)
-          && (insidable<detail::unwrap_t<L>> || insidable<detail::unwrap_t<R>>)
-          && requires(detail::unwrap_t<L> l, detail::unwrap_t<R> r) { l - r; }
-  constexpr auto operator-(L const& lhs, R const& rhs)
-  { return lift([](auto const& l, auto const& r){ return l - r; }, lhs, rhs); }
 
   //---------------------------------------------------------------------------
   // mul
@@ -7841,13 +6186,6 @@ namespace beman::inside
   [[nodiscard]] constexpr auto operator*(insidable auto lhs, insidable auto rhs)
   { return beman::inside::mul(lhs, rhs); }
 
-  template <class L, class R>
-    requires (detail::is_slim_optional_v<L> || detail::is_slim_optional_v<R>)
-          && (!detail::expected_like<L> && !detail::expected_like<R>)
-          && (insidable<detail::unwrap_t<L>> || insidable<detail::unwrap_t<R>>)
-          && requires(detail::unwrap_t<L> l, detail::unwrap_t<R> r) { l * r; }
-  constexpr auto operator*(L const& lhs, R const& rhs)
-  { return lift([](auto const& l, auto const& r){ return l * r; }, lhs, rhs); }
 
   //---------------------------------------------------------------------------
   // add_all / mul_all — variadic folds (pairwise widening, same as `a + b + c`
@@ -8051,13 +6389,6 @@ namespace beman::inside
     return beman::inside::div(lhs, rhs, make_policy<F>());
   }
 
-  template <class L, class R>
-    requires (detail::is_slim_optional_v<L> || detail::is_slim_optional_v<R>)
-          && (!detail::expected_like<L> && !detail::expected_like<R>)
-          && (insidable<detail::unwrap_t<L>> || insidable<detail::unwrap_t<R>>)
-          && requires(detail::unwrap_t<L> l, detail::unwrap_t<R> r) { l / r; }
-  constexpr auto operator/(L const& lhs, R const& rhs)
-  { return lift([](auto const& l, auto const& r){ return l / r; }, lhs, rhs); }
 
   //---------------------------------------------------------------------------
   // mod
@@ -8089,111 +6420,55 @@ namespace beman::inside
     return beman::inside::mod(lhs, rhs, make_policy<F>());
   }
 
-  template <class L, class R>
-    requires (detail::is_slim_optional_v<L> || detail::is_slim_optional_v<R>)
-          && (!detail::expected_like<L> && !detail::expected_like<R>)
-          && (insidable<detail::unwrap_t<L>> || insidable<detail::unwrap_t<R>>)
-          && requires(detail::unwrap_t<L> l, detail::unwrap_t<R> r) { l % r; }
-  constexpr auto operator%(L const& lhs, R const& rhs)
-  { return lift([](auto const& l, auto const& r){ return l % r; }, lhs, rhs); }
 
   //---------------------------------------------------------------------------
-  // expected-lift operators — bridge beman::inside::math's expected results into chains, so
-  // `math::tan(x) * gain + offset` stays an expected end to end (first error
-  // short-circuits). An underlying nullopt maps to the operator's documented
-  // cause: overflow for + − ×, division_by_zero for /. To drop the cause and
-  // enter the optional world instead, convert with `beman::inside::ok(e)` (see lift.hpp).
+  // expected-lift operators — fallible results (division, modulo, checked
+  // rational arithmetic, beman::inside::math) chain without per-step unwrapping:
+  // `a / b * gain + offset` and `math::tan(x) * gain` stay a
+  // std::expected<inside, errc> end to end. The first error short-circuits and
+  // keeps its cause; an operation that fails inside the chain reports its own
+  // (overflow, division_by_zero, ...). One overload per operator covers all
+  // three shapes (expected op inside, inside op expected, expected op expected);
+  // the lambda's `l + r` re-enters resolution on the unwrapped values,
+  // inheriting whichever bare overload applies.
   //---------------------------------------------------------------------------
   namespace detail
   {
     template <class L, class R>
     concept expected_operands =
-        (expected_like<L> || expected_like<R>)
-        && !is_slim_optional_v<L> && !is_slim_optional_v<R>
-        && (insidable<expected_value_t<L>> || insidable<expected_value_t<R>>);
-
-    // Mixing the two vocabularies in one expression is refused: the optional
-    // operand's original cause is unknowable, so we won't invent one.
-    template <class L, class R>
-    concept mixed_error_operands =
-        (expected_like<L> && is_slim_optional_v<R>)
-        || (is_slim_optional_v<L> && expected_like<R>);
+        (is_expected_v<L> || is_expected_v<R>)
+        && (insidable<unwrap_t<L>> || insidable<unwrap_t<R>>);
   }
 
   template <class L, class R>
     requires detail::expected_operands<L, R>
-          && requires(detail::expected_value_t<L> l, detail::expected_value_t<R> r) { l + r; }
+          && requires(detail::unwrap_t<L> l, detail::unwrap_t<R> r) { l + r; }
   constexpr auto operator+(L const& lhs, R const& rhs)
-  { return lift_expected([](auto const& l, auto const& r){ return l + r; },
-                         errc::overflow, lhs, rhs); }
+  { return lift([](auto const& l, auto const& r){ return l + r; }, lhs, rhs); }
 
   template <class L, class R>
     requires detail::expected_operands<L, R>
-          && requires(detail::expected_value_t<L> l, detail::expected_value_t<R> r) { l - r; }
+          && requires(detail::unwrap_t<L> l, detail::unwrap_t<R> r) { l - r; }
   constexpr auto operator-(L const& lhs, R const& rhs)
-  { return lift_expected([](auto const& l, auto const& r){ return l - r; },
-                         errc::overflow, lhs, rhs); }
+  { return lift([](auto const& l, auto const& r){ return l - r; }, lhs, rhs); }
 
   template <class L, class R>
     requires detail::expected_operands<L, R>
-          && requires(detail::expected_value_t<L> l, detail::expected_value_t<R> r) { l * r; }
+          && requires(detail::unwrap_t<L> l, detail::unwrap_t<R> r) { l * r; }
   constexpr auto operator*(L const& lhs, R const& rhs)
-  { return lift_expected([](auto const& l, auto const& r){ return l * r; },
-                         errc::overflow, lhs, rhs); }
+  { return lift([](auto const& l, auto const& r){ return l * r; }, lhs, rhs); }
 
   template <class L, class R>
     requires detail::expected_operands<L, R>
-          && requires(detail::expected_value_t<L> l, detail::expected_value_t<R> r) { l / r; }
+          && requires(detail::unwrap_t<L> l, detail::unwrap_t<R> r) { l / r; }
   constexpr auto operator/(L const& lhs, R const& rhs)
-  { return lift_expected([](auto const& l, auto const& r){ return l / r; },
-                         errc::division_by_zero, lhs, rhs); }
+  { return lift([](auto const& l, auto const& r){ return l / r; }, lhs, rhs); }
 
   template <class L, class R>
     requires detail::expected_operands<L, R>
-          && requires(detail::expected_value_t<L> l, detail::expected_value_t<R> r) { l % r; }
+          && requires(detail::unwrap_t<L> l, detail::unwrap_t<R> r) { l % r; }
   constexpr auto operator%(L const& lhs, R const& rhs)
-  { return lift_expected([](auto const& l, auto const& r){ return l % r; },
-                         errc::division_by_zero, lhs, rhs); }
-
-  template <class L, class R>
-    requires detail::mixed_error_operands<L, R>
-  constexpr auto operator+(L const&, R const&)
-  { static_assert(detail::dependent_false<L, R>,
-      "inside: don't mix expected and optional operands in one expression — "
-      "convert the expected side with beman::inside::ok(e) (drops the error cause) "
-      "or unwrap explicitly"); }
-
-  template <class L, class R>
-    requires detail::mixed_error_operands<L, R>
-  constexpr auto operator-(L const&, R const&)
-  { static_assert(detail::dependent_false<L, R>,
-      "inside: don't mix expected and optional operands in one expression — "
-      "convert the expected side with beman::inside::ok(e) (drops the error cause) "
-      "or unwrap explicitly"); }
-
-  template <class L, class R>
-    requires detail::mixed_error_operands<L, R>
-  constexpr auto operator*(L const&, R const&)
-  { static_assert(detail::dependent_false<L, R>,
-      "inside: don't mix expected and optional operands in one expression — "
-      "convert the expected side with beman::inside::ok(e) (drops the error cause) "
-      "or unwrap explicitly"); }
-
-  template <class L, class R>
-    requires detail::mixed_error_operands<L, R>
-  constexpr auto operator/(L const&, R const&)
-  { static_assert(detail::dependent_false<L, R>,
-      "inside: don't mix expected and optional operands in one expression — "
-      "convert the expected side with beman::inside::ok(e) (drops the error cause) "
-      "or unwrap explicitly"); }
-
-  template <class L, class R>
-    requires detail::mixed_error_operands<L, R>
-  constexpr auto operator%(L const&, R const&)
-  { static_assert(detail::dependent_false<L, R>,
-      "inside: don't mix expected and optional operands in one expression — "
-      "convert the expected side with beman::inside::ok(e) (drops the error cause) "
-      "or unwrap explicitly"); }
+  { return lift([](auto const& l, auto const& r){ return l % r; }, lhs, rhs); }
 
   //---------------------------------------------------------------------------
   // Grid-less scalar operands are rejected. A raw int/double carries no grid, so
@@ -8381,9 +6656,8 @@ namespace beman::inside
         // value = Lower + index * Notch (always exact: lies on the grid).
         // Integer-backed storages decode without the rational/assignment
         // engine: for index storage the iterator index IS the raw (it stays in
-        // [0, NotchCount] and the sentinel slot is a numeric_limits extreme
-        // outside that span); integer-grid value storage is a multiply-add in
-        // raw space. Rational/fp raws keep the exact generic path.
+        // [0, NotchCount], which the raw type holds); integer-grid value
+        // storage is a multiply-add in raw space. Rational/fp raws keep the exact generic path.
         if constexpr (beman::inside::detail::index_raw<value_type>)
           return value_type::from_raw(
               static_cast<typename value_type::raw_type>(index));
@@ -9745,7 +8019,7 @@ namespace beman::inside::math
     // phase lands on a pole (cos == 0) and `unexpected(errc::overflow)` when the
     // result exceeds Out's range.
     template <insidable Out, insidable In>
-    [[nodiscard]] constexpr slim::expected<Out, errc> tan_turn_impl(In phase) noexcept
+    [[nodiscard]] constexpr std::expected<Out, errc> tan_turn_impl(In phase) noexcept
     {
       constexpr int N = turn_bits<In>;
       static_assert(N >= 2 && N <= 30, "beman::inside::math: turn-phase N must be in [2, 30]");
@@ -9756,14 +8030,14 @@ namespace beman::inside::math
 
       rational sin_v = sin_from_turn_fixed<W, W>(turn_w);
       rational cos_v = cos_from_turn_fixed<W, W>(turn_w);
-      if (cos_v == 0) return slim::unexpected(errc::division_by_zero);
+      if (cos_v == 0) return std::unexpected(errc::division_by_zero);
 
       rational tan_v = (sin_v / cos_v).value();
       // Under a clamp policy the out-of-range result saturates via the
       // store below instead of erroring; the pole stays an error.
       if constexpr (!has_flag(InsidePolicy<Out>, clamp))
         if (tan_v < Lower<Out> || tan_v > Upper<Out>)
-          return slim::unexpected(errc::overflow);
+          return std::unexpected(errc::overflow);
 
       return detail::store_grid<Out>(tan_v);
     }
@@ -9773,7 +8047,7 @@ namespace beman::inside::math
   // radians input, divided. Returns `unexpected(division_by_zero)` if cos rounds
   // to 0 (input on a pole), `unexpected(overflow)` if the result exceeds Out.
   template <insidable Out, insidable In>
-  [[nodiscard]] constexpr slim::expected<Out, errc> tan_impl(In angle) noexcept
+  [[nodiscard]] constexpr std::expected<Out, errc> tan_impl(In angle) noexcept
   {
     static_assert(Lower<In> >= -(imax{1} << 20) && Upper<In> <= (imax{1} << 20),
                   "beman::inside::math::tan: input magnitudes must be \u2264 2^20 rad");
@@ -9784,14 +8058,14 @@ namespace beman::inside::math
     beman::inside::detail::rational sin_v = detail::sin_from_turn_fixed<W, W>(turn_w);
     beman::inside::detail::rational cos_v = detail::cos_from_turn_fixed<W, W>(turn_w);
 
-    if (cos_v == 0) return slim::unexpected(errc::division_by_zero);
+    if (cos_v == 0) return std::unexpected(errc::division_by_zero);
 
     beman::inside::detail::rational tan_v = (sin_v / cos_v).value();
     // Under a clamp policy the out-of-range result saturates via the store
     // below instead of erroring; the pole stays an error.
     if constexpr (!has_flag(InsidePolicy<Out>, clamp))
       if (tan_v < Lower<Out> || tan_v > Upper<Out>)
-        return slim::unexpected(errc::overflow);
+        return std::unexpected(errc::overflow);
 
     return detail::store_grid<Out>(tan_v);
   }
@@ -10055,9 +8329,9 @@ namespace beman::inside::math
   // Repeated squaring in inside-space: every multiply widens the result grid
   // corner-correctly, so the result is exact for exact inputs and negative
   // bases are fine. No engine, no `real` requirement — works on any inside
-  // (like abs/floor/fmod). Checked rational raws may return slim::optional
-  // per the usual arithmetic vocabulary. Negative exponents are deferred
-  // (they need the division optional story).
+  // (like abs/floor/fmod). Checked rational raws may return
+  // std::expected<inside, errc> per the usual arithmetic vocabulary. Negative
+  // exponents are deferred (they need the division error story).
   template <imax E, insidable In>
     requires (E >= 0)
   [[nodiscard]] constexpr auto pown(In x) noexcept
@@ -10143,14 +8417,14 @@ namespace beman::inside::math
   // `unexpected(errc::domain_error)` on a negative runtime value, else same as
   // sqrt_impl.
   template <insidable Out, insidable In>
-  [[nodiscard]] constexpr slim::expected<Out, errc> sqrt_signed_impl(In x) noexcept
+  [[nodiscard]] constexpr std::expected<Out, errc> sqrt_signed_impl(In x) noexcept
   {
     static_assert(Lower<Out> <= 0,
                   "beman::inside::math::sqrt: Out must include 0");
 
     beman::inside::detail::rational v = beman::inside::detail::as_rational(x);
     if (v < beman::inside::detail::rational{0})
-      return slim::unexpected(errc::domain_error);
+      return std::unexpected(errc::domain_error);
 
     constexpr int W = detail::working_bits<Out>();
     imax a_w = detail::to_fixed(v, W);
@@ -10273,7 +8547,7 @@ namespace beman::inside::math
   }
 
   // Mixed-sign overload: dispatches to `sqrt_signed_impl`, returning
-  // `slim::expected<inside, errc>` so a negative runtime value surfaces as
+  // `std::expected<inside, errc>` so a negative runtime value surfaces as
   // `unexpected(errc::domain_error)` instead of UB.
   template <insidable In>
     requires (Lower<In> < beman::inside::detail::rational{0})
@@ -10286,13 +8560,13 @@ namespace beman::inside::math
 #elif defined(BEMAN_INSIDE_MATH_FLOAT)
     float v = flt::to_float(x);
     if (v < 0.0f)
-      return slim::expected<Out, errc>{slim::unexpected(errc::domain_error)};
-    return slim::expected<Out, errc>{flt::store<Out>(flt::detail::d_sqrt(v))};
+      return std::expected<Out, errc>{std::unexpected(errc::domain_error)};
+    return std::expected<Out, errc>{flt::store<Out>(flt::detail::d_sqrt(v))};
 #else
     double v = static_cast<double>(x);
     if (v < 0.0)
-      return slim::expected<Out, errc>{slim::unexpected(errc::domain_error)};
-    return slim::expected<Out, errc>{dbl::store<Out>(dbl::detail::d_sqrt(v))};
+      return std::expected<Out, errc>{std::unexpected(errc::domain_error)};
+    return std::expected<Out, errc>{dbl::store<Out>(dbl::detail::d_sqrt(v))};
 #endif
   }
 
@@ -10457,22 +8731,22 @@ namespace beman::inside::math
     float x = flt::to_float(angle);
     float c = flt::detail::d_cos(x);
     if (c == 0.0f)
-      return slim::expected<Out, errc>{slim::unexpected(errc::division_by_zero)};
+      return std::expected<Out, errc>{std::unexpected(errc::division_by_zero)};
     float t = flt::detail::d_sin(x) / c;
     if constexpr (!has_flag(InsidePolicy<Out>, clamp))   // clamp Out: saturate below
       if (t < static_cast<float>(static_cast<double>(Lower<Out>)) || t > static_cast<float>(static_cast<double>(Upper<Out>)))
-        return slim::expected<Out, errc>{slim::unexpected(errc::overflow)};
-    return slim::expected<Out, errc>{flt::store<Out>(t)};
+        return std::expected<Out, errc>{std::unexpected(errc::overflow)};
+    return std::expected<Out, errc>{flt::store<Out>(t)};
 #else
     double x = static_cast<double>(angle);
     double c = dbl::detail::d_cos(x);
     if (c == 0.0)
-      return slim::expected<Out, errc>{slim::unexpected(errc::division_by_zero)};
+      return std::expected<Out, errc>{std::unexpected(errc::division_by_zero)};
     double t = dbl::detail::d_sin(x) / c;
     if constexpr (!has_flag(InsidePolicy<Out>, clamp))   // clamp Out: saturate below
       if (t < static_cast<double>(Lower<Out>) || t > static_cast<double>(Upper<Out>))
-        return slim::expected<Out, errc>{slim::unexpected(errc::overflow)};
-    return slim::expected<Out, errc>{dbl::store<Out>(t)};
+        return std::expected<Out, errc>{std::unexpected(errc::overflow)};
+    return std::expected<Out, errc>{dbl::store<Out>(t)};
 #endif
   }
 
@@ -10633,7 +8907,7 @@ namespace beman::inside::math
   // Extended transcendentals — inverse trig, hyperbolic, log10, pow, cbrt,
   // hypot. Each composes the CORDIC / Newton cores defined above; no new
   // polynomial machinery. Outputs follow the beman::inside::math conventions: angles in
-  // radians, runtime-conditional failures via `slim::expected<Out, errc>`,
+  // radians, runtime-conditional failures via `std::expected<Out, errc>`,
   // statically-knowable domain limits via `static_assert`.
   //===========================================================================
   namespace detail
@@ -10946,23 +9220,23 @@ namespace beman::inside::math
   // interval. The auto form requires Lower<InB> > 0 (so b > 0 is guaranteed
   // and the output range is bounded for deduction).
   template <insidable Out, insidable InB, insidable InE>
-  [[nodiscard]] constexpr slim::expected<Out, errc> pow_impl(InB base, InE exp) noexcept
+  [[nodiscard]] constexpr std::expected<Out, errc> pow_impl(InB base, InE exp) noexcept
   {
     beman::inside::detail::rational bv = base;
     if (bv <= beman::inside::detail::rational{0})
-      return slim::unexpected(errc::domain_error);
+      return std::unexpected(errc::domain_error);
 
     constexpr int W = detail::working_bits<Out>();
     imax sc_w = detail::fmul(detail::to_fixed(beman::inside::detail::rational{exp}, W),
                              detail::log2_to_fixed<W>(bv), W);     // e·log2(b), scale 2^W
     constexpr imax lim = imax{30} << W;
     if (sc_w > lim || sc_w < -lim)
-      return slim::unexpected(errc::overflow);
+      return std::unexpected(errc::overflow);
 
     beman::inside::detail::rational r = detail::exp2_from_fixed<W>(sc_w);
     if constexpr (!has_flag(InsidePolicy<Out>, clamp))   // clamp Out: saturate below
       if (r < Lower<Out> || r > Upper<Out>)
-        return slim::unexpected(errc::overflow);
+        return std::unexpected(errc::overflow);
     return detail::store_grid<Out>(r);
   }
 
@@ -11096,21 +9370,21 @@ namespace beman::inside::math
 #elif defined(BEMAN_INSIDE_MATH_FLOAT)
     float b = flt::to_float(base);
     if (b <= 0.0f)
-      return slim::expected<Out, errc>{slim::unexpected(errc::domain_error)};
+      return std::expected<Out, errc>{std::unexpected(errc::domain_error)};
     float r = flt::detail::d_pow(b, flt::to_float(exp));
     if constexpr (!has_flag(InsidePolicy<Out>, clamp))   // clamp Out: saturate below
       if (r < static_cast<float>(static_cast<double>(Lower<Out>)) || r > static_cast<float>(static_cast<double>(Upper<Out>)))
-        return slim::expected<Out, errc>{slim::unexpected(errc::overflow)};
-    return slim::expected<Out, errc>{flt::store<Out>(r)};
+        return std::expected<Out, errc>{std::unexpected(errc::overflow)};
+    return std::expected<Out, errc>{flt::store<Out>(r)};
 #else
     double b = static_cast<double>(base);
     if (b <= 0.0)
-      return slim::expected<Out, errc>{slim::unexpected(errc::domain_error)};
+      return std::expected<Out, errc>{std::unexpected(errc::domain_error)};
     double r = dbl::detail::d_pow(b, static_cast<double>(exp));
     if constexpr (!has_flag(InsidePolicy<Out>, clamp))   // clamp Out: saturate below
       if (r < static_cast<double>(Lower<Out>) || r > static_cast<double>(Upper<Out>))
-        return slim::expected<Out, errc>{slim::unexpected(errc::overflow)};
-    return slim::expected<Out, errc>{dbl::store<Out>(r)};
+        return std::expected<Out, errc>{std::unexpected(errc::overflow)};
+    return std::expected<Out, errc>{dbl::store<Out>(r)};
 #endif
   }
 
@@ -11256,8 +9530,8 @@ namespace beman::inside::math
       using Out = beman::inside::math::detail::sqrt_signed_auto_t<In>;
       double v = static_cast<double>(x);
       if (v < 0.0)
-        return slim::expected<Out, errc>{slim::unexpected(errc::domain_error)};
-      return slim::expected<Out, errc>{store<Out>(detail::d_sqrt(v))};
+        return std::expected<Out, errc>{std::unexpected(errc::domain_error)};
+      return std::expected<Out, errc>{store<Out>(detail::d_sqrt(v))};
     }
 
     template <insidable In>
@@ -11308,12 +9582,12 @@ namespace beman::inside::math
       double x = static_cast<double>(angle);
       double c = detail::d_cos(x);
       if (c == 0.0)
-        return slim::expected<Out, errc>{slim::unexpected(errc::division_by_zero)};
+        return std::expected<Out, errc>{std::unexpected(errc::division_by_zero)};
       double t = detail::d_sin(x) / c;
       if constexpr (!has_flag(InsidePolicy<Out>, clamp))   // clamp Out: saturate below
         if (t < static_cast<double>(Lower<Out>) || t > static_cast<double>(Upper<Out>))
-          return slim::expected<Out, errc>{slim::unexpected(errc::overflow)};
-      return slim::expected<Out, errc>{store<Out>(t)};
+          return std::expected<Out, errc>{std::unexpected(errc::overflow)};
+      return std::expected<Out, errc>{store<Out>(t)};
     }
 
     template <insidable In>
@@ -11371,12 +9645,12 @@ namespace beman::inside::math
       using Out = beman::inside::math::detail::pow_auto_t<InB, InE>;
       double b = static_cast<double>(base);
       if (b <= 0.0)
-        return slim::expected<Out, errc>{slim::unexpected(errc::domain_error)};
+        return std::expected<Out, errc>{std::unexpected(errc::domain_error)};
       double r = detail::d_pow(b, static_cast<double>(exp));
       if constexpr (!has_flag(InsidePolicy<Out>, clamp))   // clamp Out: saturate below
         if (r < static_cast<double>(Lower<Out>) || r > static_cast<double>(Upper<Out>))
-          return slim::expected<Out, errc>{slim::unexpected(errc::overflow)};
-      return slim::expected<Out, errc>{store<Out>(r)};
+          return std::expected<Out, errc>{std::unexpected(errc::overflow)};
+      return std::expected<Out, errc>{store<Out>(r)};
     }
   } // namespace dbl
 
@@ -11398,8 +9672,8 @@ namespace beman::inside::math
       using Out = beman::inside::math::detail::sqrt_signed_auto_t<In>;
       float v = flt::to_float(x);
       if (v < 0.0f)
-        return slim::expected<Out, errc>{slim::unexpected(errc::domain_error)};
-      return slim::expected<Out, errc>{store<Out>(detail::d_sqrt(v))};
+        return std::expected<Out, errc>{std::unexpected(errc::domain_error)};
+      return std::expected<Out, errc>{store<Out>(detail::d_sqrt(v))};
     }
 
     template <insidable In>
@@ -11450,12 +9724,12 @@ namespace beman::inside::math
       float x = flt::to_float(angle);
       float c = detail::d_cos(x);
       if (c == 0.0f)
-        return slim::expected<Out, errc>{slim::unexpected(errc::division_by_zero)};
+        return std::expected<Out, errc>{std::unexpected(errc::division_by_zero)};
       float t = detail::d_sin(x) / c;
       if constexpr (!has_flag(InsidePolicy<Out>, clamp))   // clamp Out: saturate below
         if (t < static_cast<float>(static_cast<double>(Lower<Out>)) || t > static_cast<float>(static_cast<double>(Upper<Out>)))
-          return slim::expected<Out, errc>{slim::unexpected(errc::overflow)};
-      return slim::expected<Out, errc>{store<Out>(t)};
+          return std::expected<Out, errc>{std::unexpected(errc::overflow)};
+      return std::expected<Out, errc>{store<Out>(t)};
     }
 
     template <insidable In>
@@ -11513,12 +9787,12 @@ namespace beman::inside::math
       using Out = beman::inside::math::detail::pow_auto_t<InB, InE>;
       float b = flt::to_float(base);
       if (b <= 0.0f)
-        return slim::expected<Out, errc>{slim::unexpected(errc::domain_error)};
+        return std::expected<Out, errc>{std::unexpected(errc::domain_error)};
       float r = detail::d_pow(b, flt::to_float(exp));
       if constexpr (!has_flag(InsidePolicy<Out>, clamp))   // clamp Out: saturate below
         if (r < static_cast<float>(static_cast<double>(Lower<Out>)) || r > static_cast<float>(static_cast<double>(Upper<Out>)))
-          return slim::expected<Out, errc>{slim::unexpected(errc::overflow)};
-      return slim::expected<Out, errc>{store<Out>(r)};
+          return std::expected<Out, errc>{std::unexpected(errc::overflow)};
+      return std::expected<Out, errc>{store<Out>(r)};
     }
   } // namespace flt
 #endif // !BEMAN_INSIDE_MATH_NO_FP
@@ -11540,11 +9814,8 @@ namespace beman::inside::math
 // native-width *types* below use width words instead: `byte`/`word`/`dword`
 // (unsigned 8/16/32) and `sbyte`/`sword`/`sdword`/`sqword` (signed 8/16/32/64).
 //
-// Reserved-top tradeoff: each storage type's extreme value is a sentinel slot
-// (zero-overhead slim::optional<inside>), chosen with a strict `<` margin — so a
-// full-width range like {0,255} would promote to uint16. To stay at native
-// width these aliases stop one short: `byte` is [0, 254]. Q-format types already
-// have headroom, so they keep full range with power-of-two notches.
+// Each alias uses the full range of its native storage type: `byte` is
+// [0, 255] in a uint8. Q-format types keep power-of-two notches.
 //
 // These default to `checked`; for wraparound/saturation declare your own (e.g.
 // `inside<{0,254}, wrap>`).
@@ -11553,33 +9824,35 @@ namespace beman::inside
 {
   //-------------------------------------------------------------------------
   // Native integer widths — direct storage (Raw == value), `checked`.
-  // Range is the native width minus the one reserved sentinel value.
+  // Full native range.
   //-------------------------------------------------------------------------
-  using byte  = inside<{0, 254}>;                         // uint8
-  using word  = inside<{0, 65534}>;                       // uint16
-  using dword = inside<{0, 4294967294}>;                  // uint32
+  using byte  = inside<{0, 255}>;                         // uint8
+  using word  = inside<{0, 65535}>;                       // uint16
+  using dword = inside<{0, 4294967295}>;                  // uint32
   // qword (unsigned 64) is intentionally absent: the library's internal value
   // path is `imax` (int64) — `to_value` returns `imax` — so unsigned values above
   // 2^63-1 cannot round-trip through arithmetic/compare. Use `sqword` or a
   // hand-rolled grid if you need 64-bit storage.
 
-  using sbyte  = inside<{-127, 127}>;                      // int8
-  using sword  = inside<{-32767, 32767}>;                  // int16
-  using sdword = inside<{-2147483647, 2147483647}>;        // int32
+  using sbyte  = inside<{-128, 127}>;                      // int8
+  using sword  = inside<{-32768, 32767}>;                  // int16
+  using sdword = inside<{-2147483648, 2147483647}>;        // int32
+  // sqword stays symmetric: the internal value path is `imax`, and -2^63
+  // has no negation in int64.
   using sqword = inside<{-9223372036854775807, 9223372036854775807}>; // int64
 
   //-------------------------------------------------------------------------
   // Unsigned normalized (UNORM) — [0, 1] at N-bit resolution, `round_nearest`.
-  // The notch denominator is one short of the type max so the index fits the
-  // native width; both endpoints (0 and 1) are exactly representable.
+  // The notch denominator is the type max, so the index 0..max fills the native
+  // width; both endpoints (0 and 1) are exactly representable.
   //-------------------------------------------------------------------------
-  using unorm8  = inside<{{0, 1}, notch<1, 254>},        round_nearest>; // uint8
-  using unorm16 = inside<{{0, 1}, notch<1, 65534>},      round_nearest>; // uint16
-  using unorm32 = inside<{{0, 1}, notch<1, 4294967294>}, round_nearest>; // uint32
+  using unorm8  = inside<{{0, 1}, notch<1, 255>},        round_nearest>; // uint8
+  using unorm16 = inside<{{0, 1}, notch<1, 65535>},      round_nearest>; // uint16
+  using unorm32 = inside<{{0, 1}, notch<1, 4294967295>}, round_nearest>; // uint32
 
   //-------------------------------------------------------------------------
   // Q-format fixed-point — unsigned integer.fraction, power-of-two notch,
-  // full natural range (already fits with headroom). `round_nearest`.
+  // full natural range. `round_nearest`.
   //-------------------------------------------------------------------------
   using q4_4   = inside<{{0, 15},    notch<1, 16>},    round_nearest>; // uint8
   using q8_8   = inside<{{0, 255},   notch<1, 256>},   round_nearest>; // uint16

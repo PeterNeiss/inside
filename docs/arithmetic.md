@@ -9,16 +9,16 @@ lvl a{100}, b{200};
 auto sum  = a + b;   // inside<{0, 510}>
 auto diff = a - b;   // inside<{-255, 255}>
 auto prod = a * b;   // inside<{0, 65025}>
-auto quot = a / b;   // slim::optional<inside<{rational}>>
+auto quot = a / b;   // std::expected<inside<{rational}>, errc>
 ```
 
-Division is rich enough to warrant its [own section](#division) below — `inside / inside` picks between three code paths at compile time, and its `slim::optional` result has two distinct failure modes.
+Division is rich enough to warrant its [own section](#division) below — `inside / inside` picks between three code paths at compile time, and its `std::expected` result has two distinct failure causes.
 
 The free functions `add`, `sub`, `mul`, `div`, and `mod` each accept a named
 convenience policy (`beman::inside::truncated`, `beman::inside::round_to_nearest`, `beman::inside::clamped`,
 `beman::inside::wrapped`), one or more `on_*` action factories, or an
 `beman::inside::errc&`, in any order. See
-[policies.md § Callbacks](policies.md#callbacks-on_wrap--on_clamp--on_overflow--on_sentinel--on_error)
+[policies.md § Callbacks](policies.md#callbacks-on_wrap--on_clamp--on_overflow--on_error)
 for the action API. Example — recovering from divide-by-zero:
 
 ```cpp
@@ -32,9 +32,9 @@ auto q = div(x, y, on_overflow([&](auto& res, errc) {
 `inside / inside` returns a plain `inside` when the divisor's grid provably
 excludes zero (`Lower > 0 || Upper < 0` — the `DivisorExcludesZero` trait) and
 the operation can't otherwise fault; then there is nothing to unwrap.
-Otherwise it returns `slim::optional<result>`, because division by zero is a
+Otherwise it returns `std::expected<result, errc>`, because division by zero is a
 runtime possibility (and on the exact-rational path under `checked`, so is
-overflow — which keeps the optional even when the divisor is known nonzero).
+overflow — which keeps the wrapper even when the divisor is known nonzero).
 The library picks one of **three code paths** at compile time, based on the
 operand grids and whether `snap` is in effect.
 
@@ -44,7 +44,7 @@ operand grids and whether `snap` is in effect.
 |---|---|---|---|---|
 | **Q-format fast** | `snap` is set **and** both operands share the same Q-format grid (notch `1/N` with `N ≥ 2`, `Lower == 0`) | `(lhs.Raw × N) ÷ rhs.Raw` — the textbook fixed-point divide, **rounded per the policy's mode** (folds to `(a << log2(N)) / b` for power-of-2 N under plain `snap`) | Q-format integer raw, **same notch as L** | `[0, Upper<L> / Notch<R>]` — Upper *expands* (see below) |
 | **Integer-aligned fast** | `snap` is set **and** both grids are integer-aligned (notch and Lower both have denominator 1) **and** neither operand uses rational raw storage | `to_value(lhs) / to_value(rhs)`, **rounded per the policy's mode** — see below | Integer raw | `Grid<L> / Grid<R>` with each endpoint rounded by the same mode |
-| **Exact rational** *(fall-through)* | everything else | `as_rational(lhs) / rational{rhs}` — exact rational arithmetic. Under `checked` this is the optional-returning `rational::operator/`; under `unsafe` it's the unchecked variant. | `rational` raw — the result type is `inside<{interval, 0}>` | `*(Grid<L> / Grid<R>)` — the grid divider widens the interval when the divisor's range straddles zero |
+| **Exact rational** *(fall-through)* | everything else | `as_rational(lhs) / rational{rhs}` — exact rational arithmetic. Under `checked` this is the expected-returning `rational::operator/`; under `unsafe` it's the unchecked variant. | `rational` raw — the result type is `inside<{interval, 0}>` | `*(Grid<L> / Grid<R>)` — the grid divider widens the interval when the divisor's range straddles zero |
 
 **Rounding mode (native paths).** Plain `snap` (== `truncated`) truncates toward
 zero — the historical, C++-`/` behaviour. Any rounding-mode flag rounds the quotient
@@ -78,7 +78,7 @@ The Q-format spot check matches `tests/beman/inside/perf_paths.test.cpp` to the 
 is `(51200 × 256) / 768 = 17066` — i.e. `floor(66.6667 × 256)`, **not**
 `66 × 256 = 16896`, which would lose the fractional precision).
 
-### When the result is `slim::optional` (and when it isn't)
+### When the result is `std::expected` (and when it isn't)
 
 When the divisor's grid provably **excludes zero** (`Lower > 0 || Upper < 0` —
 the `DivisorExcludesZero` trait in `generic.hpp`) *and* the op can't otherwise
@@ -87,27 +87,37 @@ fault, `operator/` returns a **plain `inside`** — no wrapper to unwrap:
 ```cpp
 using num = inside<{0, 100}, snap>;
 using pos = inside<{1, 10},  snap>;   // grid excludes zero
-auto d = num{42} / pos{3};                   // inside, == 14  (not optional)
+auto d = num{42} / pos{3};                   // inside, == 14  (not expected)
 ```
 
 The integer / Q-format fast paths (A, B) can only fault on divide-by-zero, so a
 zero-excluding divisor makes them total. The exact-rational path (C) under
-`checked` can also overflow, so it keeps the optional even when the divisor is
+`checked` can also overflow, so it keeps the wrapper even when the divisor is
 known nonzero.
 
-Otherwise the result is `slim::optional<result>`, which has two ways to be
-`nullopt`:
+Otherwise the result is `std::expected<result, errc>`, which has two error
+causes:
 
-1. **Divide by zero** — every path runs its own zero check. Path A tests
-   `rhs.Raw == 0` (safe because Q-format Lower is 0, so raw-zero means
+1. **`errc::division_by_zero`** — every path runs its own zero check. Path A
+   tests `rhs.Raw == 0` (safe because Q-format Lower is 0, so raw-zero means
    value-zero); path B tests `to_value(rhs) == 0`; path C tests
-   `rhs.Numerator == 0` (the canonical zero rather than the rational
-   sentinel state).
-2. **Rational denominator overflow** — only on path C, and only under
-   `checked`. The inner `rational::operator/` returns `nullopt` when the
-   resulting denominator can't fit in `imax`; that surfaces as
-   `errc::overflow` (not `errc::division_by_zero`) through
-   `div(a, b, ec)` or an `on_overflow` callback.
+   `rhs.Numerator == 0`.
+2. **`errc::overflow`** — rational denominator overflow, only on path C and
+   only under `checked`. The inner `rational::operator/` returns an error when
+   the resulting denominator can't fit in `imax`; the same code reaches
+   `div(a, b, ec)` and an `on_overflow` callback.
+
+Test the result and read the cause when it matters:
+
+```cpp
+auto q = a / b;
+if (!q) log(errc_message(q.error()));   // "division by zero" or overflow
+```
+
+`std::expected<inside, errc>` is larger than the `inside` it wraps (a flag and
+an `errc` sit beside the value), so keep it where it belongs — as the result
+you test right away, or as an operand passed straight into the next
+operation. Unwrap into a plain `inside` before storing it.
 
 ### Opting into integer-truncation semantics
 
@@ -289,7 +299,7 @@ defined when both operands are integers.
 ```cpp
 using val = inside<{0, 100}, snap>;
 val a{17}, b{5};
-auto r = a % b;  // slim::optional<inside<{0, 99}>>, value 2
+auto r = a % b;  // std::expected<inside<{0, 99}>, errc>, value 2
 ```
 
 The result interval is `[0, max_rem]` for non-negative L, or
@@ -297,8 +307,8 @@ The result interval is `[0, max_rem]` for non-negative L, or
 `max_rem = max(|Lower<R>|, |Upper<R>|) - 1` — the largest remainder
 magnitude any divisor in R's range could produce.
 
-Like division, modulo returns `slim::optional` (division by zero yields
-`nullopt`). Unlike division, modulo has no overflow case — the result's
+Like division, modulo returns `std::expected` (division by zero yields
+`errc::division_by_zero`). Unlike division, modulo has no overflow case — the result's
 range is fixed by R's grid and can't exceed it.
 
 ## Bulk reduction: `beman::inside::sum<Target>(range)`
@@ -323,7 +333,7 @@ auto clipped = beman::inside::sum<bus>(v);           // clamps the TOTAL once
 
 Compound assignment works with integer / floating-point scalars and with
 other bounds on compatible grids. Under an unchecked policy (no
-`checked`/`clamp`/`wrap`/`sentinel`) with value storage, `+=`/`-=`/`*=`
+`checked`/`clamp`/`wrap`) with value storage, `+=`/`-=`/`*=`
 operate directly at the raw type's width — a loop of byte-wide `b += 1`
 vectorizes at the same lane count as native `uint8_t`:
 
@@ -352,7 +362,7 @@ world. The overload dispatches per RHS kind:
 error code, or is silent under `ignore_zero` — see
 [policies.md](policies.md#error-code-mode)). This is the same per-path
 zero check used by `inside / inside`; see
-[Division § When the result is `slim::optional`](#when-the-result-is-slimoptional-and-when-it-isnt).
+[Division § When the result is `std::expected`](#when-the-result-is-stdexpected-and-when-it-isnt).
 
 ```cpp
 using rn = inside<{{0, 100}, notch<1, 100>}, round_nearest>;
@@ -372,60 +382,54 @@ auto sum  = add_all(a, b, c);   // inside<{0, 300}>, value 60
 auto prod = mul_all(a, b);      // inside<{0, 10000}>, value 200
 ```
 
-## When `slim::optional` is returned
+## When `std::expected` is returned
 
-Operations return `slim::optional<inside>` in two cases:
+Operations return `std::expected<inside, errc>` in two cases:
 
 1. **Division and modulo** — the divisor could be zero. See
-   [Division § When the result is `slim::optional`](#when-the-result-is-slimoptional-and-when-it-isnt)
+   [Division § When the result is `std::expected`](#when-the-result-is-stdexpected-and-when-it-isnt)
    for the two distinct failure modes division has (divide-by-zero on every
    path, plus denominator overflow on the rational path under `checked`).
    `f64` (double-backed) division participates identically: an `f64` `÷` whose
-   divisor grid can be zero returns `slim::optional` and reports
+   divisor grid can be zero returns `std::expected` and reports
    `errc::division_by_zero` on a zero divisor — it is not a silent path.
 
 2. **Rational raw storage** — when the result grid can't be represented with
    an integer raw type (see [storage.md](storage.md)), the result uses
    `rational` as its raw storage. Addition and multiplication on such types
-   return `slim::optional` because rational arithmetic can overflow
+   return `std::expected` (`errc::overflow`) because rational arithmetic can overflow
    (`lcm(b, d)` of the denominators may exceed `imax`). This also covers an `f64`
    result grid too fine for `double`: `f64` is dropped and the exact result is
-   stored as `rational`, so an unrepresentable `f64 ×` returns `slim::optional`
+   stored as `rational`, so an unrepresentable `f64 ×` returns `std::expected`
    (overflow-checked) rather than silently losing precision.
 
-All `optional`-returning operators propagate `nullopt`: if either operand is
-`nullopt`, the result is `nullopt`.
+All operators accept `std::expected` operands and propagate errors: if either
+operand holds an error, the result holds that error (the left one when both
+do).
 
 ```cpp
-using lvl = inside<{1, 255}>;
-slim::optional<lvl> a{lvl{100}};
-slim::optional<lvl> none{slim::nullopt};
+using lvl = inside<{0, 255}>;     // divisor grid holds zero → `/` returns expected
+lvl a{100}, b{4}, z{0};
 
-auto r1 = a + lvl{10};     // optional<inside<{2, 510}>>, has value 110
-auto r2 = none + lvl{10};  // optional<inside<{2, 510}>>, nullopt
+auto r1 = a / b + lvl{10};   // expected<inside<…>, errc>, value 35
+auto r2 = a / z + lvl{10};   // expected<inside<…>, errc>, errc::division_by_zero
 ```
 
+### Chaining `expected` results
 
-### Bridging `expected` results into chains
-
-`beman::inside::math`'s fallible functions return `slim::expected<inside, errc>`. Two
-bridges connect that world to arithmetic chains:
+`beman::inside::math`'s fallible functions use the same
+`std::expected<inside, errc>` vocabulary, so their results chain into
+arithmetic directly:
 
 ```cpp
-// Keep the cause: expected-lift operators — first (left) error wins.
+// expected-lift operators — first (left) error wins and keeps its cause.
 auto r = math::sqrt(signed_in{v}) * gain + offset;   // expected<inside, errc>
 if (!r) log(r.error());                              // domain_error from sqrt
-
-// Drop the cause deliberately: ok() enters the zero-cost optional world.
-auto o = ok(math::sqrt(signed_in{v})) * gain + offset;   // optional<inside>
 ```
 
-Inside an expected chain a division whose divisor grid spans zero maps its
-nullopt to `errc::division_by_zero` (the optional vocabulary's single
-dominant cause; a rational-arithmetic overflow inside such a division
-reports the same code). Mixing `expected` and `optional` operands in one
-expression is a **compile error** with guidance — convert with `ok()` or
-unwrap explicitly.
+An operation that fails inside the chain reports its own cause — a division
+by zero reports `errc::division_by_zero`, a rational overflow reports
+`errc::overflow`.
 
-See [internals.md](internals.md#7-error-vocabulary) for the full
-three-shape rule and the per-operation audit.
+See [internals.md](internals.md#7-error-vocabulary) for the full rule and the
+per-operation audit.

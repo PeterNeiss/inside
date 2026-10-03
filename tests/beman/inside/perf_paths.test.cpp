@@ -85,9 +85,10 @@ TEST(PerfPathsTest, q_format_division_native_div_qformat_matches_rational_arithm
   ASSERT_TRUE(q3.has_value());
   ASSERT_EQ((*q3).raw(), 17066);
 
-  // Divide by zero produces nullopt.
+  // Divide by zero produces errc::division_by_zero.
   auto q4 = div(fp{1}, fp{0}, truncated);
   ASSERT_FALSE(q4.has_value());
+  ASSERT_EQ(q4.error(), errc::division_by_zero);
 }
 
 // Q-format division: result type is Q-format (same notch as L)

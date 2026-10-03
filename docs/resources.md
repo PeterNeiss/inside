@@ -18,7 +18,7 @@ partial / related · **○** no · **—** not applicable.
 
 | Library | Domain | Range in type `[lo,hi]` | Auto-widening result | Out-of-range handling | Fixed-point | Rational / exact | Transcendental math | Determinism / FPU-free | Freestanding / `-fno-exceptions` |
 |---|---|---|---|---|---|---|---|---|---|
-| **inside** | bounded rational grids | ● | ● | clamp / wrap / sentinel / round / snap / throw / `errc` | ● | ● | ● (three engines) | ● | ◐ ¹⁰ |
+| **inside** | bounded rational grids | ● | ● | clamp / wrap / round / snap / throw / `errc` / `std::expected` | ● | ● | ● (three engines) | ● | ◐ ¹⁰ |
 | **bounded::integer** | integers | ● | ● | policy on narrowing (clamp / modulo / throw / assume) | ○ | ○ | ○ | — | ○ ¹¹ |
 | **Intel safe-arithmetic** | integers | ● ¹⁹ | ● | compile-time proof (reject) / runtime `safe::function` | ○ | ○ | ○ | — | ○ ²⁰ |
 | **Boost.SafeNumerics** | integers | ◐ ¹ | ◐ ² | detect → exception (custom exception / trap policy) | ○ | ○ | ○ | — | ◐ ¹² |
@@ -33,7 +33,7 @@ partial / related · **○** no · **—** not applicable.
 
 | Library | Header-only | Single header | Min C++ | License | Maturity / status |
 |---|---|---|---|---|---|
-| **inside** | ● | ● ⁹ | C++23 (C++20 backport) | **none yet (TBD)** | **alpha · single-author · not yet battle-tested** |
+| **inside** | ● | ● ⁹ | C++23 | **none yet (TBD)** | **alpha · single-author · not yet battle-tested** |
 | **bounded::integer** | ○ (C++ modules) ⁸ | ○ | C++20+ (clang 22+) | BSL-1.0 | mature · active |
 | **Intel safe-arithmetic** | ● | ○ | C++20 | BSL-1.0 | **pre-release · WIP (not for production)** |
 | **Boost.SafeNumerics** | ● | ○ | C++14 | BSL-1.0 | mature (Boost) |

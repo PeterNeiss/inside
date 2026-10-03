@@ -95,7 +95,7 @@ TEST(StorageBugsTest, bug_c_wrap_policy_fires_for_real_rhs)
 // `gcd(rational, rational)` calls `std::lcm` on |Denominator|s without an
 // overflow check and casts the result to imax via static_cast. Large
 // denominators silently wrap. The fix is to make `gcd` return
-// `slim::optional<rational>` and detect the overflow.
+// `std::expected<rational, errc>` and detect the overflow.
 //
 // Trigger: lcm(2^62, 3) = 3 * 2^62. That fits in umax (≈1.38e19) but
 // exceeds imax_max (≈9.22e18). After the cast to imax it goes negative,
@@ -104,8 +104,8 @@ TEST(StorageBugsTest, bug_c_wrap_policy_fires_for_real_rhs)
 // Bug D: gcd lcm overflow propagates to grid::operator+
 TEST(StorageBugsTest, bug_d_gcd_lcm_overflow_propagates_to_grid_operator_plus)
 {
-  // Use grid arithmetic since gcd's return type changes — the optional
-  // surfaces at grid::operator+ which already returns slim::optional<grid>.
+  // Use grid arithmetic since gcd's return type changes — the error
+  // surfaces at grid::operator+ which already returns expected<grid, errc>.
   constexpr auto big   = rational{1u, imax{1} << 62};
   constexpr auto third = rational{1u, 3};
 
@@ -113,6 +113,7 @@ TEST(StorageBugsTest, bug_d_gcd_lcm_overflow_propagates_to_grid_operator_plus)
   constexpr grid g2{interval{0_r, 1_r}, third};
 
   static_assert(!((g1 + g2).has_value()));
+  static_assert((g1 + g2).error() == errc::overflow);
 }
 
 #ifndef BEMAN_INSIDE_MATH_FIXED
@@ -147,10 +148,9 @@ TEST(StorageBugsTest, bug_e_real_stays_exact_drops_real_when_product_exceeds_2_5
 //
 // Real `÷0` stored a bare `inf` (snap_double then did static_cast<imax>(inf),
 // UB), bypassing the error vocabulary. Fix: real division reports zero like
-// every other path — the return widens to optional<result> when the divisor
-// grid can be zero (nullopt on a zero divisor), and the expected-lift surfaces
-// errc::division_by_zero. The real sentinel stays a finite, comparable value
-// (DBL_MAX), used only for out-of-range stores.
+// every other path — the return widens to expected<result, errc> when the
+// divisor grid can be zero (errc::division_by_zero on a zero divisor), and the
+// expected-lift carries that cause on through a chain.
 //---------------------------------------------------------------------------
 // Bug F: real div-by-zero is reported, not a silent inf
 TEST(StorageBugsTest, bug_f_real_div_by_zero_is_reported_not_a_silent_inf)
@@ -159,10 +159,11 @@ TEST(StorageBugsTest, bug_f_real_div_by_zero_is_reported_not_a_silent_inf)
   using Dz = inside<{{0, 4}, notch<1, 1024>}, real>;   // divisor grid spans zero
 
   auto q = N{3.0} / Dz{0.0};
-  ASSERT_FALSE(q.has_value());                       // optional, nullopt — not inf
+  ASSERT_FALSE(q.has_value());                       // an error — not inf
+  ASSERT_EQ(q.error(), errc::division_by_zero);
 
-  slim::expected<N, errc> en{N{3.0}};
-  auto z = en / Dz{0.0};
+  auto en = []() -> std::expected<N, errc> { return N{3.0}; };
+  auto z = en() / Dz{0.0};
   ASSERT_FALSE(z.has_value());
   ASSERT_EQ(z.error(), errc::division_by_zero);
 }
@@ -171,7 +172,7 @@ TEST(StorageBugsTest, bug_f_real_div_by_zero_is_reported_not_a_silent_inf)
 //---------------------------------------------------------------------------
 // 2026-07: fp-derived rational store on a snap grid with |Lower| ≫ 1. The
 // cold store path forms (rhs − Lower)/Notch exactly; with a full-mantissa
-// double source (den 2^54) that once dereferenced a nullopt (terminate
+// double source (den 2^54) that once dereferenced an empty result (terminate
 // through the noexcept math engines). Now: offsets that fit 64 bits go
 // through the rescued rational path, and offsets beyond it go through the
 // 128-bit rounded store (wide_offset_quotient) — both land on the correctly

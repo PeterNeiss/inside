@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Tour of every error-handling mechanism plus the policy alternatives
-// that avoid errors entirely (clamp / wrap / sentinel).
+// that avoid errors entirely (clamp / wrap).
 // See clock.cpp for a fuller on_wrap workflow.
 
 #include <iostream>
@@ -14,7 +14,7 @@ using namespace beman::inside;
 using checked_100 = inside<{0, 100}, checked>;
 using clamp_100   = inside<{0, 100}, clamp>;
 using wrap_360    = inside<{0, 359}, wrap>;
-using sentinel_9  = inside<{0, 9}, sentinel>;
+using digit       = inside<{0, 9}>;
 using coarse      = inside<{{0, 10}, 2}>;   // notch 2: rounding_error demo
 
 int main()
@@ -88,7 +88,7 @@ int main()
 
   // === Section 4: Free-function error_code overload ===
   // add / sub / mul / div / mod accept an beman::inside::errc& directly; ec is
-  // set on overflow or division-by-zero, the result is nullopt on failure.
+  // set on overflow or division-by-zero, the result holds the error on failure.
 
   ec = errc{};
   auto qz = div(checked_100(10), checked_100(0), ec);
@@ -98,7 +98,7 @@ int main()
 
 
   // === Section 5: Policies that avoid errors entirely ===
-  // clamp saturates, wrap is modular, sentinel yields nullopt.
+  // clamp saturates, wrap is modular; try_make reports instead of throwing.
 
   clamp_100 cl = 150;
   std::cout << "clamp:    150 -> " << cl << "\n";
@@ -106,8 +106,8 @@ int main()
   wrap_360 wr = 370;
   std::cout << "wrap:     370 -> " << wr << "\n";
 
-  auto se = sentinel_9::try_make(10);
-  std::cout << "sentinel: 10  -> " << (se ? "has value" : "nullopt") << "\n";
+  auto tm = digit::try_make(10);
+  std::cout << "try_make: 10  -> " << (tm ? "has value" : errc_message(tm.error())) << "\n";
 
 
   // === Section 6: Inspection callbacks for non-error policies ===

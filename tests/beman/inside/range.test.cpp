@@ -238,7 +238,7 @@ TEST(RangeTest, inside_range_decode_agrees_with_lower_plus_i_notch_on_every_stor
   require_decodes_analytically<inside_range<{-500, 500}>>();                 // value raw, signed
   require_decodes_analytically<inside_range<{{0, 4}, notch<1, 256>}>>();     // index raw
   require_decodes_analytically<inside_range<{{-2, 2}, notch<1, 4>}>>();      // index raw, offset Lower
-  require_decodes_analytically<inside_range<{0, 100}, sentinel>>();          // sentinel slot excluded
+  require_decodes_analytically<inside_range<{0, 255}>>();                    // full-width uint8 raw
   require_decodes_analytically<inside_range<{{0, 2}, notch<1, 3>}, exact>>();          // rational raw fallback
 #ifndef BEMAN_INSIDE_MATH_FIXED   // under BEMAN_INSIDE_MATH_FIXED the real storage arm is elided
   require_decodes_analytically<inside_range<{{0, 4}, notch<1, 256>}, real | round_nearest>>(); // fp raw fallback
@@ -259,11 +259,18 @@ TEST(RangeTest, inside_range_start_ctor_inverts_the_decode_on_every_storage_kind
   first_equals_start(inside_range<{{0, 2}, notch<1, 3>}, exact>{}, 1);
 }
 
-// inside_range: sentinel policy never yields the sentinel slot
-TEST(RangeTest, inside_range_sentinel_policy_never_yields_the_sentinel_slot)
+// inside_range: a grid filling its raw type visits every value once
+TEST(RangeTest, inside_range_full_width_raw_visits_every_value_once)
 {
-  for (auto b : inside_range<{0, 100}, sentinel>{})
-    ASSERT_TRUE(!b.is_sentinel());
+  using r_t = inside_range<{0, 255}>;
+  static_assert(sizeof(r_t::value_type) == 1);
+  int expected = 0;
+  for (auto b : r_t{})
+  {
+    ASSERT_EQ(b, expected);
+    ++expected;
+  }
+  ASSERT_EQ(expected, 256);
 }
 
 // inside_range: fast decode arms engage (dispatch pins)

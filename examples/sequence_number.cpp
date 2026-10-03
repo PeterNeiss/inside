@@ -15,9 +15,8 @@
 
 using namespace beman::inside;
 
-// 16-bit modular sequence space. UINT16_MAX is reserved as the optional
-// sentinel slot, so use {0, 65534} — still wraps cleanly under `wrap`.
-using seq_t  = inside<{0, 65534}, wrap | snap>;
+// 16-bit modular sequence space: the full uint16 range, wrapping under `wrap`.
+using seq_t  = inside<{0, 65535}, wrap | snap>;
 
 // Epoch counter — how many times the SEQ space has wrapped (saturating tally).
 using epoch_t = counter<1000>;

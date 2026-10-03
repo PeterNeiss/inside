@@ -86,8 +86,8 @@ TEST(CoverageCornersTest, dbl_cbrt_of_negatives_and_atan2_on_the_axes)
 TEST(CoverageCornersTest, expected_lift_propagates_a_right_hand_side_error)
 {
   using num_t = inside<{0, 100}>;
-  slim::expected<num_t, errc> left {num_t{5}};                       // valid
-  slim::expected<num_t, errc> right{slim::unexpected{errc::overflow}};
+  std::expected<num_t, errc> left {num_t{5}};                       // valid
+  std::expected<num_t, errc> right{std::unexpected{errc::overflow}};
 
   auto both = left + right;          // lhs OK, rhs error -> rhs.error() wins
   ASSERT_FALSE(both.has_value());
@@ -115,18 +115,19 @@ TEST(CoverageCornersTest, rational_spaceship_cross_multiply_positive_and_negativ
 }
 
 //---------------------------------------------------------------------------
-// rational.hpp:305-306 — gcd()/lcm cofactor multiply overflows umax -> nullopt
-// (distinct from the imax-cap nullopt at :307-308 exercised elsewhere: here
+// rational.hpp:305-306 — gcd()/lcm cofactor multiply overflows umax -> overflow
+// (distinct from the imax-cap overflow at :307-308 exercised elsewhere: here
 //  the product exceeds 2^64, not merely imax_max.)
 //---------------------------------------------------------------------------
-// rational gcd: lcm that overflows umax returns nullopt
-TEST(CoverageCornersTest, rational_gcd_lcm_that_overflows_umax_returns_nullopt)
+// rational gcd: lcm that overflows umax returns overflow
+TEST(CoverageCornersTest, rational_gcd_lcm_that_overflows_umax_returns_overflow)
 {
   // Two odd, coprime denominators near 2^40; their product ~2^80 overflows umax,
   // so the cross-multiplication trap (not the imax cap) fires.
   imax a = (imax{1} << 40) + 1;
   imax b = (imax{1} << 40) + 3;
   ASSERT_FALSE((gcd(rational{1u, a}, rational{1u, b}).has_value()));
+  ASSERT_EQ((gcd(rational{1u, a}, rational{1u, b}).error()), errc::overflow);
 }
 
 //---------------------------------------------------------------------------
@@ -220,7 +221,7 @@ TEST(CoverageCornersTest, compound_and_with_a_snap_inside_rhs_runtime)
 
 //---------------------------------------------------------------------------
 // inside.hpp — operator+=(insidable) result out of range, checked policy with
-// no clamp/wrap/sentinel handler -> report (throws).
+// no clamp/wrap handler -> report (throws).
 //---------------------------------------------------------------------------
 // checked += insidable overflow reports (throws)
 TEST(CoverageCornersTest, checked_plus_insidable_overflow_reports_throws)
@@ -267,16 +268,12 @@ TEST(CoverageCornersTest, on_overflow_compound_subtract_that_does_not_overflow)
 
 #ifndef BEMAN_INSIDE_MATH_FIXED
 //---------------------------------------------------------------------------
-// inside.hpp:161-163 — store_real out-of-range with a reporting/sentinel policy
+// inside.hpp:161-163 — store_real out-of-range with a reporting policy
 // (the clamp/wrap arms are covered elsewhere; the domain_fail arm was not).
 //---------------------------------------------------------------------------
-// real store out of range: sentinel and checked policies
-TEST(CoverageCornersTest, real_store_out_of_range_sentinel_and_checked_policies)
+// real store out of range: checked policy
+TEST(CoverageCornersTest, real_store_out_of_range_checked_policy)
 {
-  using rbs = inside<{{-1, 1}, notch<1, 1024>}, real | sentinel>;
-  rbs s = 5.0;                                   // out of range -> sentinel (domain_fail)
-  ASSERT_EQ(s, rbs::make_sentinel());            // real sentinel is a finite, comparable value
-
   using rbc = inside<{{-1, 1}, notch<1, 1024>}, real | checked>;
   ASSERT_THROW((void)((rbc{5.0})), beman::inside::inside_error);   // out of range -> report (throws)
 }
@@ -343,7 +340,7 @@ TEST(CoverageCornersTest, math_fmod_integer_fast_path_raw_from_offset_imax)
 #ifndef BEMAN_INSIDE_MATH_FIXED
 //---------------------------------------------------------------------------
 // generic.hpp:469 — domain_fail returns false for an unchecked policy
-// (not sentinel, domain_check()==false): the value is stored as-is.
+// (domain_check()==false): the value is stored as-is.
 //---------------------------------------------------------------------------
 // unsafe real store out of range falls through (no report)
 TEST(CoverageCornersTest, unsafe_real_store_out_of_range_falls_through_no_report)

@@ -9,7 +9,7 @@
 #include <beman/inside/cmath_double.hpp>   // the double (binary64) math engine
 #include <beman/inside/cmath_float.hpp>    // the float  (binary32) math engine
 
-#include <beman/inside/slim/expected.hpp>     // slim::expected, slim::unexpected
+#include <expected>   // std::expected, std::unexpected
 
 #include <array>
 #include <bit>
@@ -688,7 +688,7 @@ namespace beman::inside::math
     // phase lands on a pole (cos == 0) and `unexpected(errc::overflow)` when the
     // result exceeds Out's range.
     template <insidable Out, insidable In>
-    [[nodiscard]] constexpr slim::expected<Out, errc> tan_turn_impl(In phase) noexcept
+    [[nodiscard]] constexpr std::expected<Out, errc> tan_turn_impl(In phase) noexcept
     {
       constexpr int N = turn_bits<In>;
       static_assert(N >= 2 && N <= 30, "beman::inside::math: turn-phase N must be in [2, 30]");
@@ -699,14 +699,14 @@ namespace beman::inside::math
 
       rational sin_v = sin_from_turn_fixed<W, W>(turn_w);
       rational cos_v = cos_from_turn_fixed<W, W>(turn_w);
-      if (cos_v == 0) return slim::unexpected(errc::division_by_zero);
+      if (cos_v == 0) return std::unexpected(errc::division_by_zero);
 
       rational tan_v = (sin_v / cos_v).value();
       // Under a clamp policy the out-of-range result saturates via the
       // store below instead of erroring; the pole stays an error.
       if constexpr (!has_flag(InsidePolicy<Out>, clamp))
         if (tan_v < Lower<Out> || tan_v > Upper<Out>)
-          return slim::unexpected(errc::overflow);
+          return std::unexpected(errc::overflow);
 
       return detail::store_grid<Out>(tan_v);
     }
@@ -716,7 +716,7 @@ namespace beman::inside::math
   // radians input, divided. Returns `unexpected(division_by_zero)` if cos rounds
   // to 0 (input on a pole), `unexpected(overflow)` if the result exceeds Out.
   template <insidable Out, insidable In>
-  [[nodiscard]] constexpr slim::expected<Out, errc> tan_impl(In angle) noexcept
+  [[nodiscard]] constexpr std::expected<Out, errc> tan_impl(In angle) noexcept
   {
     static_assert(Lower<In> >= -(imax{1} << 20) && Upper<In> <= (imax{1} << 20),
                   "beman::inside::math::tan: input magnitudes must be \u2264 2^20 rad");
@@ -727,14 +727,14 @@ namespace beman::inside::math
     beman::inside::detail::rational sin_v = detail::sin_from_turn_fixed<W, W>(turn_w);
     beman::inside::detail::rational cos_v = detail::cos_from_turn_fixed<W, W>(turn_w);
 
-    if (cos_v == 0) return slim::unexpected(errc::division_by_zero);
+    if (cos_v == 0) return std::unexpected(errc::division_by_zero);
 
     beman::inside::detail::rational tan_v = (sin_v / cos_v).value();
     // Under a clamp policy the out-of-range result saturates via the store
     // below instead of erroring; the pole stays an error.
     if constexpr (!has_flag(InsidePolicy<Out>, clamp))
       if (tan_v < Lower<Out> || tan_v > Upper<Out>)
-        return slim::unexpected(errc::overflow);
+        return std::unexpected(errc::overflow);
 
     return detail::store_grid<Out>(tan_v);
   }
@@ -998,9 +998,9 @@ namespace beman::inside::math
   // Repeated squaring in inside-space: every multiply widens the result grid
   // corner-correctly, so the result is exact for exact inputs and negative
   // bases are fine. No engine, no `real` requirement — works on any inside
-  // (like abs/floor/fmod). Checked rational raws may return slim::optional
-  // per the usual arithmetic vocabulary. Negative exponents are deferred
-  // (they need the division optional story).
+  // (like abs/floor/fmod). Checked rational raws may return
+  // std::expected<inside, errc> per the usual arithmetic vocabulary. Negative
+  // exponents are deferred (they need the division error story).
   template <imax E, insidable In>
     requires (E >= 0)
   [[nodiscard]] constexpr auto pown(In x) noexcept
@@ -1086,14 +1086,14 @@ namespace beman::inside::math
   // `unexpected(errc::domain_error)` on a negative runtime value, else same as
   // sqrt_impl.
   template <insidable Out, insidable In>
-  [[nodiscard]] constexpr slim::expected<Out, errc> sqrt_signed_impl(In x) noexcept
+  [[nodiscard]] constexpr std::expected<Out, errc> sqrt_signed_impl(In x) noexcept
   {
     static_assert(Lower<Out> <= 0,
                   "beman::inside::math::sqrt: Out must include 0");
 
     beman::inside::detail::rational v = beman::inside::detail::as_rational(x);
     if (v < beman::inside::detail::rational{0})
-      return slim::unexpected(errc::domain_error);
+      return std::unexpected(errc::domain_error);
 
     constexpr int W = detail::working_bits<Out>();
     imax a_w = detail::to_fixed(v, W);
@@ -1216,7 +1216,7 @@ namespace beman::inside::math
   }
 
   // Mixed-sign overload: dispatches to `sqrt_signed_impl`, returning
-  // `slim::expected<inside, errc>` so a negative runtime value surfaces as
+  // `std::expected<inside, errc>` so a negative runtime value surfaces as
   // `unexpected(errc::domain_error)` instead of UB.
   template <insidable In>
     requires (Lower<In> < beman::inside::detail::rational{0})
@@ -1229,13 +1229,13 @@ namespace beman::inside::math
 #elif defined(BEMAN_INSIDE_MATH_FLOAT)
     float v = flt::to_float(x);
     if (v < 0.0f)
-      return slim::expected<Out, errc>{slim::unexpected(errc::domain_error)};
-    return slim::expected<Out, errc>{flt::store<Out>(flt::detail::d_sqrt(v))};
+      return std::expected<Out, errc>{std::unexpected(errc::domain_error)};
+    return std::expected<Out, errc>{flt::store<Out>(flt::detail::d_sqrt(v))};
 #else
     double v = static_cast<double>(x);
     if (v < 0.0)
-      return slim::expected<Out, errc>{slim::unexpected(errc::domain_error)};
-    return slim::expected<Out, errc>{dbl::store<Out>(dbl::detail::d_sqrt(v))};
+      return std::expected<Out, errc>{std::unexpected(errc::domain_error)};
+    return std::expected<Out, errc>{dbl::store<Out>(dbl::detail::d_sqrt(v))};
 #endif
   }
 
@@ -1400,22 +1400,22 @@ namespace beman::inside::math
     float x = flt::to_float(angle);
     float c = flt::detail::d_cos(x);
     if (c == 0.0f)
-      return slim::expected<Out, errc>{slim::unexpected(errc::division_by_zero)};
+      return std::expected<Out, errc>{std::unexpected(errc::division_by_zero)};
     float t = flt::detail::d_sin(x) / c;
     if constexpr (!has_flag(InsidePolicy<Out>, clamp))   // clamp Out: saturate below
       if (t < static_cast<float>(static_cast<double>(Lower<Out>)) || t > static_cast<float>(static_cast<double>(Upper<Out>)))
-        return slim::expected<Out, errc>{slim::unexpected(errc::overflow)};
-    return slim::expected<Out, errc>{flt::store<Out>(t)};
+        return std::expected<Out, errc>{std::unexpected(errc::overflow)};
+    return std::expected<Out, errc>{flt::store<Out>(t)};
 #else
     double x = static_cast<double>(angle);
     double c = dbl::detail::d_cos(x);
     if (c == 0.0)
-      return slim::expected<Out, errc>{slim::unexpected(errc::division_by_zero)};
+      return std::expected<Out, errc>{std::unexpected(errc::division_by_zero)};
     double t = dbl::detail::d_sin(x) / c;
     if constexpr (!has_flag(InsidePolicy<Out>, clamp))   // clamp Out: saturate below
       if (t < static_cast<double>(Lower<Out>) || t > static_cast<double>(Upper<Out>))
-        return slim::expected<Out, errc>{slim::unexpected(errc::overflow)};
-    return slim::expected<Out, errc>{dbl::store<Out>(t)};
+        return std::expected<Out, errc>{std::unexpected(errc::overflow)};
+    return std::expected<Out, errc>{dbl::store<Out>(t)};
 #endif
   }
 
@@ -1576,7 +1576,7 @@ namespace beman::inside::math
   // Extended transcendentals — inverse trig, hyperbolic, log10, pow, cbrt,
   // hypot. Each composes the CORDIC / Newton cores defined above; no new
   // polynomial machinery. Outputs follow the beman::inside::math conventions: angles in
-  // radians, runtime-conditional failures via `slim::expected<Out, errc>`,
+  // radians, runtime-conditional failures via `std::expected<Out, errc>`,
   // statically-knowable domain limits via `static_assert`.
   //===========================================================================
   namespace detail
@@ -1889,23 +1889,23 @@ namespace beman::inside::math
   // interval. The auto form requires Lower<InB> > 0 (so b > 0 is guaranteed
   // and the output range is bounded for deduction).
   template <insidable Out, insidable InB, insidable InE>
-  [[nodiscard]] constexpr slim::expected<Out, errc> pow_impl(InB base, InE exp) noexcept
+  [[nodiscard]] constexpr std::expected<Out, errc> pow_impl(InB base, InE exp) noexcept
   {
     beman::inside::detail::rational bv = base;
     if (bv <= beman::inside::detail::rational{0})
-      return slim::unexpected(errc::domain_error);
+      return std::unexpected(errc::domain_error);
 
     constexpr int W = detail::working_bits<Out>();
     imax sc_w = detail::fmul(detail::to_fixed(beman::inside::detail::rational{exp}, W),
                              detail::log2_to_fixed<W>(bv), W);     // e·log2(b), scale 2^W
     constexpr imax lim = imax{30} << W;
     if (sc_w > lim || sc_w < -lim)
-      return slim::unexpected(errc::overflow);
+      return std::unexpected(errc::overflow);
 
     beman::inside::detail::rational r = detail::exp2_from_fixed<W>(sc_w);
     if constexpr (!has_flag(InsidePolicy<Out>, clamp))   // clamp Out: saturate below
       if (r < Lower<Out> || r > Upper<Out>)
-        return slim::unexpected(errc::overflow);
+        return std::unexpected(errc::overflow);
     return detail::store_grid<Out>(r);
   }
 
@@ -2039,21 +2039,21 @@ namespace beman::inside::math
 #elif defined(BEMAN_INSIDE_MATH_FLOAT)
     float b = flt::to_float(base);
     if (b <= 0.0f)
-      return slim::expected<Out, errc>{slim::unexpected(errc::domain_error)};
+      return std::expected<Out, errc>{std::unexpected(errc::domain_error)};
     float r = flt::detail::d_pow(b, flt::to_float(exp));
     if constexpr (!has_flag(InsidePolicy<Out>, clamp))   // clamp Out: saturate below
       if (r < static_cast<float>(static_cast<double>(Lower<Out>)) || r > static_cast<float>(static_cast<double>(Upper<Out>)))
-        return slim::expected<Out, errc>{slim::unexpected(errc::overflow)};
-    return slim::expected<Out, errc>{flt::store<Out>(r)};
+        return std::expected<Out, errc>{std::unexpected(errc::overflow)};
+    return std::expected<Out, errc>{flt::store<Out>(r)};
 #else
     double b = static_cast<double>(base);
     if (b <= 0.0)
-      return slim::expected<Out, errc>{slim::unexpected(errc::domain_error)};
+      return std::expected<Out, errc>{std::unexpected(errc::domain_error)};
     double r = dbl::detail::d_pow(b, static_cast<double>(exp));
     if constexpr (!has_flag(InsidePolicy<Out>, clamp))   // clamp Out: saturate below
       if (r < static_cast<double>(Lower<Out>) || r > static_cast<double>(Upper<Out>))
-        return slim::expected<Out, errc>{slim::unexpected(errc::overflow)};
-    return slim::expected<Out, errc>{dbl::store<Out>(r)};
+        return std::expected<Out, errc>{std::unexpected(errc::overflow)};
+    return std::expected<Out, errc>{dbl::store<Out>(r)};
 #endif
   }
 
@@ -2199,8 +2199,8 @@ namespace beman::inside::math
       using Out = beman::inside::math::detail::sqrt_signed_auto_t<In>;
       double v = static_cast<double>(x);
       if (v < 0.0)
-        return slim::expected<Out, errc>{slim::unexpected(errc::domain_error)};
-      return slim::expected<Out, errc>{store<Out>(detail::d_sqrt(v))};
+        return std::expected<Out, errc>{std::unexpected(errc::domain_error)};
+      return std::expected<Out, errc>{store<Out>(detail::d_sqrt(v))};
     }
 
     template <insidable In>
@@ -2251,12 +2251,12 @@ namespace beman::inside::math
       double x = static_cast<double>(angle);
       double c = detail::d_cos(x);
       if (c == 0.0)
-        return slim::expected<Out, errc>{slim::unexpected(errc::division_by_zero)};
+        return std::expected<Out, errc>{std::unexpected(errc::division_by_zero)};
       double t = detail::d_sin(x) / c;
       if constexpr (!has_flag(InsidePolicy<Out>, clamp))   // clamp Out: saturate below
         if (t < static_cast<double>(Lower<Out>) || t > static_cast<double>(Upper<Out>))
-          return slim::expected<Out, errc>{slim::unexpected(errc::overflow)};
-      return slim::expected<Out, errc>{store<Out>(t)};
+          return std::expected<Out, errc>{std::unexpected(errc::overflow)};
+      return std::expected<Out, errc>{store<Out>(t)};
     }
 
     template <insidable In>
@@ -2314,12 +2314,12 @@ namespace beman::inside::math
       using Out = beman::inside::math::detail::pow_auto_t<InB, InE>;
       double b = static_cast<double>(base);
       if (b <= 0.0)
-        return slim::expected<Out, errc>{slim::unexpected(errc::domain_error)};
+        return std::expected<Out, errc>{std::unexpected(errc::domain_error)};
       double r = detail::d_pow(b, static_cast<double>(exp));
       if constexpr (!has_flag(InsidePolicy<Out>, clamp))   // clamp Out: saturate below
         if (r < static_cast<double>(Lower<Out>) || r > static_cast<double>(Upper<Out>))
-          return slim::expected<Out, errc>{slim::unexpected(errc::overflow)};
-      return slim::expected<Out, errc>{store<Out>(r)};
+          return std::expected<Out, errc>{std::unexpected(errc::overflow)};
+      return std::expected<Out, errc>{store<Out>(r)};
     }
   } // namespace dbl
 
@@ -2341,8 +2341,8 @@ namespace beman::inside::math
       using Out = beman::inside::math::detail::sqrt_signed_auto_t<In>;
       float v = flt::to_float(x);
       if (v < 0.0f)
-        return slim::expected<Out, errc>{slim::unexpected(errc::domain_error)};
-      return slim::expected<Out, errc>{store<Out>(detail::d_sqrt(v))};
+        return std::expected<Out, errc>{std::unexpected(errc::domain_error)};
+      return std::expected<Out, errc>{store<Out>(detail::d_sqrt(v))};
     }
 
     template <insidable In>
@@ -2393,12 +2393,12 @@ namespace beman::inside::math
       float x = flt::to_float(angle);
       float c = detail::d_cos(x);
       if (c == 0.0f)
-        return slim::expected<Out, errc>{slim::unexpected(errc::division_by_zero)};
+        return std::expected<Out, errc>{std::unexpected(errc::division_by_zero)};
       float t = detail::d_sin(x) / c;
       if constexpr (!has_flag(InsidePolicy<Out>, clamp))   // clamp Out: saturate below
         if (t < static_cast<float>(static_cast<double>(Lower<Out>)) || t > static_cast<float>(static_cast<double>(Upper<Out>)))
-          return slim::expected<Out, errc>{slim::unexpected(errc::overflow)};
-      return slim::expected<Out, errc>{store<Out>(t)};
+          return std::expected<Out, errc>{std::unexpected(errc::overflow)};
+      return std::expected<Out, errc>{store<Out>(t)};
     }
 
     template <insidable In>
@@ -2456,12 +2456,12 @@ namespace beman::inside::math
       using Out = beman::inside::math::detail::pow_auto_t<InB, InE>;
       float b = flt::to_float(base);
       if (b <= 0.0f)
-        return slim::expected<Out, errc>{slim::unexpected(errc::domain_error)};
+        return std::expected<Out, errc>{std::unexpected(errc::domain_error)};
       float r = detail::d_pow(b, flt::to_float(exp));
       if constexpr (!has_flag(InsidePolicy<Out>, clamp))   // clamp Out: saturate below
         if (r < static_cast<float>(static_cast<double>(Lower<Out>)) || r > static_cast<float>(static_cast<double>(Upper<Out>)))
-          return slim::expected<Out, errc>{slim::unexpected(errc::overflow)};
-      return slim::expected<Out, errc>{store<Out>(r)};
+          return std::expected<Out, errc>{std::unexpected(errc::overflow)};
+      return std::expected<Out, errc>{store<Out>(r)};
     }
   } // namespace flt
 #endif // !BEMAN_INSIDE_MATH_NO_FP

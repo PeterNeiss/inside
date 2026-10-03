@@ -258,7 +258,6 @@ TEST(InsideAssignTest, trivial_type_guarantees)
   static_assert(std::is_trivial_v<inside<{{-10, 10}, 0}, unsafe>>);
   static_assert(std::is_trivial_v<inside<{0, 100}, clamp>>);
   static_assert(std::is_trivial_v<inside<{0, 100}, wrap>>);
-  static_assert(std::is_trivial_v<inside<{0, 100}, sentinel>>);
 
   static_assert(std::is_trivially_copyable_v<inside<{0, 100}>>);
   static_assert(std::is_trivially_destructible_v<inside<{0, 100}>>);

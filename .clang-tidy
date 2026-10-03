@@ -8,8 +8,8 @@
 # fight those choices, so the set is narrowed to correctness checks; each
 # exclusion below is specific and justified rather than a blanket family-off.
 #
-# Header diagnostics are scoped to include/beman/inside/ via HeaderFilterRegex, so the
-# vendored include/beman/inside/slim/ headers, Catch2, and the standard library stay silent;
+# Header diagnostics are scoped to include/beman/inside/ via HeaderFilterRegex, so
+# GoogleTest and the standard library stay silent;
 # findings in the test/example TU bodies (the project's own code) still surface.
 #
 # Style families (readability-*, modernize-*, cppcoreguidelines-*, hicpp-*,

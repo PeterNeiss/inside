@@ -42,13 +42,15 @@ int main()
   q16_16 fine{1000.125};
   std::cout << "q16_16 " << fine << "\n";
 
-  // 5. slim::optional<inside> stays zero-overhead (sentinel-encoded).
-  static_assert(sizeof(slim::optional<byte>) == sizeof(byte));
-  slim::optional<byte> maybe = byte{200};
-  std::cout << "optional<byte> holds " << *maybe
-            << " (sizeof " << sizeof(maybe) << " == " << sizeof(byte) << ")\n";
-  maybe = slim::nullopt;
-  std::cout << "after reset: has_value=" << std::boolalpha << maybe.has_value() << "\n";
+  // 5. Native widths use their full range: byte is [0, 255] in one byte.
+  static_assert(sizeof(byte) == 1);
+  byte top{255};
+  std::cout << "byte max " << top << " (sizeof " << sizeof(top) << ")\n";
+
+  // 6. Fallible arithmetic returns std::expected<inside, errc> with the cause.
+  auto q = byte{200} / byte{0};
+  std::cout << "200 / 0: has_value=" << std::boolalpha << q.has_value()
+            << ", error=" << errc_message(q.error()) << "\n";
 
   return 0;
 }

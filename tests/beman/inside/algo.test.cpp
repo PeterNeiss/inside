@@ -5,6 +5,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <expected>
 #include <numeric>
 #include <ranges>
 #include <vector>
@@ -18,14 +19,15 @@ namespace
   using cell  = beman::inside::inside<{0, 100, 0.5}>;
   using accum = beman::inside::inside<{0, 1000, 0.5}>;
 
-  slim::optional<rational> opt_div_zero()
+  std::expected<rational, errc> checked_div_zero()
   { return 1_r / 0; }
 }
 
-// algo: optional rational from div by zero
-TEST(AlgoTest, algo_optional_rational_from_div_by_zero)
+// algo: expected rational from div by zero
+TEST(AlgoTest, algo_expected_rational_from_div_by_zero)
 {
-  ASSERT_FALSE(opt_div_zero().has_value());
+  ASSERT_FALSE(checked_div_zero().has_value());
+  ASSERT_EQ(checked_div_zero().error(), errc::division_by_zero);
 }
 
 // algo: ranges algorithms over vector<inside>

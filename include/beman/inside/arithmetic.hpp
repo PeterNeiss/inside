@@ -18,7 +18,7 @@
 //   add(l, r) / add(l, r, policy<F>{}) / add(l, r, on_overflow(λ)) /
 //   add(l, r, ec) / l + r
 // Plus the variadic folds add_all/mul_all and *_into<Target>, and the
-// slim::optional operator overloads (a nullopt operand propagates through).
+// std::expected operator overloads (an error operand propagates through).
 //---------------------------------------------------------------------------
 namespace beman::inside
 {
@@ -51,15 +51,6 @@ namespace beman::inside
   [[nodiscard]] constexpr auto operator+(insidable auto lhs, insidable auto rhs)
   { return add(lhs, rhs); }
 
-  // One overload covers all three optional shapes; the lambda's `l + r` re-enters
-  // resolution on the unwrapped values, inheriting whichever bare overload applies.
-  template <class L, class R>
-    requires (detail::is_slim_optional_v<L> || detail::is_slim_optional_v<R>)
-          && (!detail::expected_like<L> && !detail::expected_like<R>)
-          && (insidable<detail::unwrap_t<L>> || insidable<detail::unwrap_t<R>>)
-          && requires(detail::unwrap_t<L> l, detail::unwrap_t<R> r) { l + r; }
-  constexpr auto operator+(L const& lhs, R const& rhs)
-  { return lift([](auto const& l, auto const& r){ return l + r; }, lhs, rhs); }
 
   //---------------------------------------------------------------------------
   // sub
@@ -87,13 +78,6 @@ namespace beman::inside
   [[nodiscard]] constexpr auto operator-(insidable auto lhs, insidable auto rhs)
   { return sub(lhs, rhs); }
 
-  template <class L, class R>
-    requires (detail::is_slim_optional_v<L> || detail::is_slim_optional_v<R>)
-          && (!detail::expected_like<L> && !detail::expected_like<R>)
-          && (insidable<detail::unwrap_t<L>> || insidable<detail::unwrap_t<R>>)
-          && requires(detail::unwrap_t<L> l, detail::unwrap_t<R> r) { l - r; }
-  constexpr auto operator-(L const& lhs, R const& rhs)
-  { return lift([](auto const& l, auto const& r){ return l - r; }, lhs, rhs); }
 
   //---------------------------------------------------------------------------
   // mul
@@ -122,13 +106,6 @@ namespace beman::inside
   [[nodiscard]] constexpr auto operator*(insidable auto lhs, insidable auto rhs)
   { return beman::inside::mul(lhs, rhs); }
 
-  template <class L, class R>
-    requires (detail::is_slim_optional_v<L> || detail::is_slim_optional_v<R>)
-          && (!detail::expected_like<L> && !detail::expected_like<R>)
-          && (insidable<detail::unwrap_t<L>> || insidable<detail::unwrap_t<R>>)
-          && requires(detail::unwrap_t<L> l, detail::unwrap_t<R> r) { l * r; }
-  constexpr auto operator*(L const& lhs, R const& rhs)
-  { return lift([](auto const& l, auto const& r){ return l * r; }, lhs, rhs); }
 
   //---------------------------------------------------------------------------
   // add_all / mul_all — variadic folds (pairwise widening, same as `a + b + c`
@@ -332,13 +309,6 @@ namespace beman::inside
     return beman::inside::div(lhs, rhs, make_policy<F>());
   }
 
-  template <class L, class R>
-    requires (detail::is_slim_optional_v<L> || detail::is_slim_optional_v<R>)
-          && (!detail::expected_like<L> && !detail::expected_like<R>)
-          && (insidable<detail::unwrap_t<L>> || insidable<detail::unwrap_t<R>>)
-          && requires(detail::unwrap_t<L> l, detail::unwrap_t<R> r) { l / r; }
-  constexpr auto operator/(L const& lhs, R const& rhs)
-  { return lift([](auto const& l, auto const& r){ return l / r; }, lhs, rhs); }
 
   //---------------------------------------------------------------------------
   // mod
@@ -370,111 +340,55 @@ namespace beman::inside
     return beman::inside::mod(lhs, rhs, make_policy<F>());
   }
 
-  template <class L, class R>
-    requires (detail::is_slim_optional_v<L> || detail::is_slim_optional_v<R>)
-          && (!detail::expected_like<L> && !detail::expected_like<R>)
-          && (insidable<detail::unwrap_t<L>> || insidable<detail::unwrap_t<R>>)
-          && requires(detail::unwrap_t<L> l, detail::unwrap_t<R> r) { l % r; }
-  constexpr auto operator%(L const& lhs, R const& rhs)
-  { return lift([](auto const& l, auto const& r){ return l % r; }, lhs, rhs); }
 
   //---------------------------------------------------------------------------
-  // expected-lift operators — bridge beman::inside::math's expected results into chains, so
-  // `math::tan(x) * gain + offset` stays an expected end to end (first error
-  // short-circuits). An underlying nullopt maps to the operator's documented
-  // cause: overflow for + − ×, division_by_zero for /. To drop the cause and
-  // enter the optional world instead, convert with `beman::inside::ok(e)` (see lift.hpp).
+  // expected-lift operators — fallible results (division, modulo, checked
+  // rational arithmetic, beman::inside::math) chain without per-step unwrapping:
+  // `a / b * gain + offset` and `math::tan(x) * gain` stay a
+  // std::expected<inside, errc> end to end. The first error short-circuits and
+  // keeps its cause; an operation that fails inside the chain reports its own
+  // (overflow, division_by_zero, ...). One overload per operator covers all
+  // three shapes (expected op inside, inside op expected, expected op expected);
+  // the lambda's `l + r` re-enters resolution on the unwrapped values,
+  // inheriting whichever bare overload applies.
   //---------------------------------------------------------------------------
   namespace detail
   {
     template <class L, class R>
     concept expected_operands =
-        (expected_like<L> || expected_like<R>)
-        && !is_slim_optional_v<L> && !is_slim_optional_v<R>
-        && (insidable<expected_value_t<L>> || insidable<expected_value_t<R>>);
-
-    // Mixing the two vocabularies in one expression is refused: the optional
-    // operand's original cause is unknowable, so we won't invent one.
-    template <class L, class R>
-    concept mixed_error_operands =
-        (expected_like<L> && is_slim_optional_v<R>)
-        || (is_slim_optional_v<L> && expected_like<R>);
+        (is_expected_v<L> || is_expected_v<R>)
+        && (insidable<unwrap_t<L>> || insidable<unwrap_t<R>>);
   }
 
   template <class L, class R>
     requires detail::expected_operands<L, R>
-          && requires(detail::expected_value_t<L> l, detail::expected_value_t<R> r) { l + r; }
+          && requires(detail::unwrap_t<L> l, detail::unwrap_t<R> r) { l + r; }
   constexpr auto operator+(L const& lhs, R const& rhs)
-  { return lift_expected([](auto const& l, auto const& r){ return l + r; },
-                         errc::overflow, lhs, rhs); }
+  { return lift([](auto const& l, auto const& r){ return l + r; }, lhs, rhs); }
 
   template <class L, class R>
     requires detail::expected_operands<L, R>
-          && requires(detail::expected_value_t<L> l, detail::expected_value_t<R> r) { l - r; }
+          && requires(detail::unwrap_t<L> l, detail::unwrap_t<R> r) { l - r; }
   constexpr auto operator-(L const& lhs, R const& rhs)
-  { return lift_expected([](auto const& l, auto const& r){ return l - r; },
-                         errc::overflow, lhs, rhs); }
+  { return lift([](auto const& l, auto const& r){ return l - r; }, lhs, rhs); }
 
   template <class L, class R>
     requires detail::expected_operands<L, R>
-          && requires(detail::expected_value_t<L> l, detail::expected_value_t<R> r) { l * r; }
+          && requires(detail::unwrap_t<L> l, detail::unwrap_t<R> r) { l * r; }
   constexpr auto operator*(L const& lhs, R const& rhs)
-  { return lift_expected([](auto const& l, auto const& r){ return l * r; },
-                         errc::overflow, lhs, rhs); }
+  { return lift([](auto const& l, auto const& r){ return l * r; }, lhs, rhs); }
 
   template <class L, class R>
     requires detail::expected_operands<L, R>
-          && requires(detail::expected_value_t<L> l, detail::expected_value_t<R> r) { l / r; }
+          && requires(detail::unwrap_t<L> l, detail::unwrap_t<R> r) { l / r; }
   constexpr auto operator/(L const& lhs, R const& rhs)
-  { return lift_expected([](auto const& l, auto const& r){ return l / r; },
-                         errc::division_by_zero, lhs, rhs); }
+  { return lift([](auto const& l, auto const& r){ return l / r; }, lhs, rhs); }
 
   template <class L, class R>
     requires detail::expected_operands<L, R>
-          && requires(detail::expected_value_t<L> l, detail::expected_value_t<R> r) { l % r; }
+          && requires(detail::unwrap_t<L> l, detail::unwrap_t<R> r) { l % r; }
   constexpr auto operator%(L const& lhs, R const& rhs)
-  { return lift_expected([](auto const& l, auto const& r){ return l % r; },
-                         errc::division_by_zero, lhs, rhs); }
-
-  template <class L, class R>
-    requires detail::mixed_error_operands<L, R>
-  constexpr auto operator+(L const&, R const&)
-  { static_assert(detail::dependent_false<L, R>,
-      "inside: don't mix expected and optional operands in one expression — "
-      "convert the expected side with beman::inside::ok(e) (drops the error cause) "
-      "or unwrap explicitly"); }
-
-  template <class L, class R>
-    requires detail::mixed_error_operands<L, R>
-  constexpr auto operator-(L const&, R const&)
-  { static_assert(detail::dependent_false<L, R>,
-      "inside: don't mix expected and optional operands in one expression — "
-      "convert the expected side with beman::inside::ok(e) (drops the error cause) "
-      "or unwrap explicitly"); }
-
-  template <class L, class R>
-    requires detail::mixed_error_operands<L, R>
-  constexpr auto operator*(L const&, R const&)
-  { static_assert(detail::dependent_false<L, R>,
-      "inside: don't mix expected and optional operands in one expression — "
-      "convert the expected side with beman::inside::ok(e) (drops the error cause) "
-      "or unwrap explicitly"); }
-
-  template <class L, class R>
-    requires detail::mixed_error_operands<L, R>
-  constexpr auto operator/(L const&, R const&)
-  { static_assert(detail::dependent_false<L, R>,
-      "inside: don't mix expected and optional operands in one expression — "
-      "convert the expected side with beman::inside::ok(e) (drops the error cause) "
-      "or unwrap explicitly"); }
-
-  template <class L, class R>
-    requires detail::mixed_error_operands<L, R>
-  constexpr auto operator%(L const&, R const&)
-  { static_assert(detail::dependent_false<L, R>,
-      "inside: don't mix expected and optional operands in one expression — "
-      "convert the expected side with beman::inside::ok(e) (drops the error cause) "
-      "or unwrap explicitly"); }
+  { return lift([](auto const& l, auto const& r){ return l % r; }, lhs, rhs); }
 
   //---------------------------------------------------------------------------
   // Grid-less scalar operands are rejected. A raw int/double carries no grid, so

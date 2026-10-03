@@ -11,7 +11,7 @@
 #include <beman/inside/policy.hpp>
 
 //---------------------------------------------------------------------------
-// division / modulo. `division::div` returns optional<result> (division by zero
+// division / modulo. `division::div` returns expected<result, errc> (division by zero
 // is always runtime-possible). Two paths: native (integer-aligned grids +
 // snap → native integer division) and rational (exact, can overflow under
 // checked). `modulo::mod` is integer-only — non-integer remainders aren't
@@ -138,7 +138,7 @@ namespace beman::inside::detail
         div_round_mode(F | InsidePolicy<L> | InsidePolicy<R>);
 
     // A clear diagnostic when the result grid is unrepresentable, instead of the
-    // raw optional-deref / .value() below failing cryptically (mirrors add/mul).
+    // raw expected-deref / .value() below failing cryptically (mirrors add/mul).
     static_assert(native_div_qformat || (Grid<L> / Grid<R>).has_value(),
       "division: result grid not representable (notch/interval exceeds the "
       "representable rational range) — coarsen the operand grids");
@@ -167,20 +167,20 @@ namespace beman::inside::detail
 
     // For a nonzero divisor the op fails only on the checked rational path
     // (overflow). So when the divisor excludes zero AND this is false, `div`
-    // returns a plain `result` rather than optional<result>.
+    // returns a plain `result` rather than expected<result, errc>.
     static constexpr bool may_overflow_nonzero =
         !native_div && !fp_raw<result> && (needs_overflow_check<F> != 0);
 
     // Real division can still fail on a zero divisor, so it uses the same
     // return-type rule as the rest: plain `result` when the op cannot fail
     // (overflow-action, or the divisor grid excludes zero with no rational
-    // overflow), else optional<result>. Real has no rational overflow, so
+    // overflow), else expected<result, errc>. Real has no rational overflow, so
     // may_overflow_nonzero is false for it (above).
     template <typename A>
     using div_return_t = std::conditional_t<
         overflow_action<plain<A>> || (DivisorExcludesZero<R> && !may_overflow_nonzero),
         result,
-        slim::optional<result>>;
+        std::expected<result, errc>>;
 
     template <policy_flag G = F, typename E = empty_ref, typename A = no_action>
     static constexpr div_return_t<A> div(L, R, policy<G, E> = {}, A&& = {});
@@ -199,9 +199,9 @@ namespace beman::inside::detail
     // Shared by the real and non-real paths (real fails only on a zero divisor).
     [[maybe_unused]] auto fail = [&](errc code, const char* what) -> div_return_t<A> {
       if constexpr (overflow_action<plain<A>>)
-        return report_or_nullopt<result>(action, policy, code, what);   // -> result
+        return report_or_unexpected<result>(action, policy, code, what);   // -> result
       else if constexpr (!DivisorExcludesZero<R> || may_overflow_nonzero)
-        return report_or_nullopt<result>(action, policy, code, what);   // -> optional<result>
+        return report_or_unexpected<result>(action, policy, code, what);   // -> expected<result, errc>
       else
         return result{};   // unreachable: divisor excludes zero, op cannot fail
     };
@@ -215,7 +215,7 @@ namespace beman::inside::detail
     if constexpr (fp_raw<result>)
     {
       // Real division reports zero like every other path (throw / report /
-      // action / nullopt). Finite operands keep the quotient finite, so no
+      // action / unexpected). Finite operands keep the quotient finite, so no
       // non-finite ever reaches storage.
       if constexpr (!zero_unchecked)
         if (as_double(rhs) == 0.0) return fail(errc::division_by_zero, "division by zero in div");
@@ -292,7 +292,7 @@ namespace beman::inside::detail
     using mod_return_t = std::conditional_t<
         overflow_action<plain<A>> || DivisorExcludesZero<R>,
         result,
-        slim::optional<result>>;
+        std::expected<result, errc>>;
 
     template <policy_flag G = F, typename E = empty_ref, typename A = no_action>
     static constexpr mod_return_t<A> mod(L, R, policy<G, E> = {}, A&& = {});
@@ -309,8 +309,8 @@ namespace beman::inside::detail
         || (((G | F | InsidePolicy<L> | InsidePolicy<R>) & ignore_zero) != 0);
     if constexpr (!zero_unchecked)
       if (rhs_val == 0)
-        return report_or_nullopt<result>(action, policy, errc::division_by_zero,
-                                         "division by zero in mod");
+        return report_or_unexpected<result>(action, policy, errc::division_by_zero,
+                                            "division by zero in mod");
     result res;
     // Remainder consistent with the rounded quotient (trunc → C++ `%`).
     const imax lhs_val = to_value(lhs);

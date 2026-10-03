@@ -55,7 +55,7 @@ inside<{0, 359}, wrap>  deg = 370;   // deg == 10 (modular)
 inside<{0, 100}>        q = 150;     // throws (default: checked)
 ```
 
-Policies: `clamp`, `wrap`, `sentinel`, the `round_*` family, plus per-operation
+Policies: `clamp`, `wrap`, the `round_*` family, plus per-operation
 callbacks (`on_clamp`, `on_wrap`, …) and a throw-free `beman::inside::errc` mode.
 See [policies.md](policies.md).
 
@@ -93,7 +93,7 @@ three engines — a fast IEEE-754 `double` engine (`dbl`, the default), a
 binary32 engine for single-precision FPUs (`flt`), and a bit-exact,
 `constexpr`, FPU-free integer engine (`cordic`). Angles are radians;
 output grids auto-deduce from the input; runtime-conditional failures (a
-`tan` pole, a negative `sqrt`) surface as `slim::expected`.
+`tan` pole, a negative `sqrt`) surface as `std::expected`.
 See [math.md](math.md).
 
 ## Where to go next

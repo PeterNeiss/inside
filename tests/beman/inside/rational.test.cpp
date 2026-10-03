@@ -168,12 +168,12 @@ TEST(RationalTest, rational_arithmetic)
     static_assert(rational::inv_unchecked(rational{2u, 3}) == rational{3u, 2});
   }
 
-  // The checked operators return slim::optional<rational>; an implicit
+  // The checked operators return std::expected<rational, errc>; an implicit
   // converting constructor unwraps that into a plain rational so coefficient
-  // expressions read as ordinary arithmetic (no .value()). Overflow on an empty
-  // optional is a compile error in constant evaluation.
+  // expressions read as ordinary arithmetic (no .value()). Overflow is a
+  // compile error in constant evaluation.
   {
-    SCOPED_TRACE("optional<rational> unwraps implicitly into rational");
+    SCOPED_TRACE("expected<rational> unwraps implicitly into rational");
     constexpr rational two_x   = 2 * rational{3};       // int ⊗ rational
     constexpr rational half    = rational{3} / 2;       // rational ⊗ int
     constexpr rational chained = rational{3,2} - rational{1,5};
@@ -205,8 +205,10 @@ TEST(RationalTest, rational_arithmetic)
   }
 
   {
-    SCOPED_TRACE("inv of zero -> nullopt");
+    SCOPED_TRACE("inv of zero -> division_by_zero");
     ASSERT_FALSE(rational::inv(0_r).has_value());
+    ASSERT_EQ(rational::inv(0_r).error(), errc::division_by_zero);
+    ASSERT_EQ((1_r / 0_r).error(), errc::division_by_zero);
   }
 
   {
@@ -234,20 +236,20 @@ TEST(RationalTest, rational_arithmetic)
   }
 
   {
-    SCOPED_TRACE("compound-assign: optional<rational> RHS unwraps the checked op");
+    SCOPED_TRACE("compound-assign: expected<rational> RHS unwraps the checked op");
     rational a{1, 2};
-    // rational * rational returns optional<rational>; += on that unwraps.
+    // rational * rational returns expected<rational>; += on that unwraps.
     a += rational{1, 3} * rational{6, 1};
     ASSERT_EQ(a, (rational{5u, 2}));
   }
 
   {
-    SCOPED_TRACE("compound-assign throws bad_optional_access on overflow");
+    SCOPED_TRACE("compound-assign throws bad_expected_access on overflow");
     constexpr auto M = std::numeric_limits<imax>::max();
     // 1/M + 1/(M-1) — denominator product M*(M-1) overflows imax.
     rational a{1u, M};
     rational b{1u, M - 1};
-    ASSERT_THROW((void)(a += b), slim::bad_optional_access);
+    ASSERT_THROW((void)(a += b), std::bad_expected_access<errc>);
   }
 }
 
@@ -255,8 +257,9 @@ TEST(RationalTest, rational_arithmetic)
 TEST(RationalTest, rational_overflow_detection)
 {
   {
-    SCOPED_TRACE("checked operators return nullopt at runtime");
+    SCOPED_TRACE("checked operators return errc::overflow at runtime");
     ASSERT_FALSE((rational{M} + 1_r).has_value());
+    ASSERT_EQ((rational{M} + 1_r).error(), errc::overflow);
     ASSERT_FALSE((rational{M} * 2_r).has_value());
     ASSERT_FALSE(((rational{M} / rational{1u, 2}).has_value()));
   }
@@ -298,7 +301,7 @@ TEST(RationalTest, rational_overflow_detection)
   }
 
   {
-    SCOPED_TRACE("sub overflow returning nullopt");
+    SCOPED_TRACE("sub overflow returning errc::overflow");
     // -M - 1 would overflow on the negative side
     ASSERT_FALSE(((rational{M, -1} - 1_r).has_value()));
   }
@@ -329,16 +332,10 @@ TEST(RationalTest, rational_overflow_detection)
   }
 }
 
-// rational sentinel
-TEST(RationalTest, rational_sentinel)
+// rational trunc toward zero
+TEST(RationalTest, rational_trunc_toward_zero)
 {
-  rational s = rational::make_sentinel();
-  ASSERT_EQ(s.Denominator, 0);
-
-  // sentinel_traits must agree
-  ASSERT_FALSE(slim::optional<rational>{}.has_value());
-
-  // converting to integer of a non-sentinel rational truncates toward zero
+  // converting to integer truncates toward zero
   ASSERT_EQ((trunc(rational{7u, 2})), 3);
   ASSERT_EQ((trunc(rational{7,  -2})), -3);
 }
@@ -414,14 +411,6 @@ TEST(RationalTest, rational_conversion_to_integer_float)
     ASSERT_FALSE(r.has_value());
     ASSERT_EQ(r.error(), errc::domain_error);
   }
-
-  {
-    SCOPED_TRACE("to<T> reports not_a_value for sentinel rational");
-    rational s = rational::make_sentinel();
-    auto r = s.to<unsigned>();
-    ASSERT_FALSE(r.has_value());
-    ASSERT_EQ(r.error(), errc::not_a_value);
-  }
 }
 
 // rational trunc / floor / round
@@ -490,7 +479,7 @@ TEST(RationalTest, mixed_sign_add_rescues_a_cross_product_overflow_when_the_diff
   ASSERT_TRUE(offset->Numerator   == umax{18437737427537921425u});
   ASSERT_TRUE(offset->Denominator == imax{18014398509481984});
 
-  // Same-sign sums past umax stay nullopt (the result truly needs > 64 bits).
+  // Same-sign sums past umax stay an error (the result truly needs > 64 bits).
   const rational positive{umax{9006646171630191}, imax{18014398509481984}};
   ASSERT_FALSE((positive + rational{1024}).has_value());
 }

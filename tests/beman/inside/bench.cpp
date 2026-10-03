@@ -218,7 +218,7 @@ static void bench_scalar_u8()
   finish(dv);
 
   // divisor grid [1,9] excludes zero -> `%` returns a plain inside; a [0,200]
-  // divisor keeps the zero check and the optional vocabulary.
+  // divisor keeps the zero check and the expected vocabulary.
   using d9 = inside<{1, 9}, unsafe>;
   auto md = group("mod (u8 [20,200] % [1,9])");
   md.run("native %", [&] {
@@ -801,22 +801,6 @@ static void bench_store_convert()
     doNotOptimizeAway(wrap_cast<u200>(v).raw());
   });
   finish(wrp);
-
-  // sentinel policy: out-of-range store yields the empty slot (no handler).
-  using u200s = inside<{0, 200}, sentinel>;
-  auto sst = group("sentinel store (50% out of range)");
-  sst.run("native branch + flag value", [&] {
-    ++i;
-    int v = static_cast<int>(i % 400);
-    auto c = static_cast<std::uint8_t>(v <= 200 ? v : 255);
-    doNotOptimizeAway(c);
-  });
-  sst.run("inside<sentinel>", [&] {
-    ++i;
-    u200s v(static_cast<int>(i % 400));
-    doNotOptimizeAway(v.raw());
-  });
-  finish(sst);
 
   // conversions OUT of inside — the API-boundary direction (stores are above).
   using dyadic_real = inside<{{-8, 8}, notch<1, 16384>}, round_nearest | real>;
@@ -1460,21 +1444,17 @@ static void bench_algorithms()
   });
   finish(lb);
 
-  // transform with the uint8-width type (255 is the sentinel slot -> u255 is
-  // 16-bit; u254 fits uint8 and compares lane-for-lane with native).
-  using u254 = inside<{0, 254}, unsafe>;
-  static_assert(sizeof(u254) == 1);
+  // transform with the uint8-width type: u255 fills uint8 and compares
+  // lane-for-lane with native.
+  static_assert(sizeof(u255) == 1);
   std::vector<std::uint8_t> tn(SZ);
   std::vector<u255> tb(SZ);
-  std::vector<u254> t8(SZ);
   std::vector<std::uint8_t> tno(SZ);
   std::vector<u255> tbo(SZ);
-  std::vector<u254> t8o(SZ);
   for (std::size_t j = 0; j < SZ; ++j)
   {
     tn[j] = static_cast<std::uint8_t>(j % 250);
     tb[j] = static_cast<int>(j % 250);
-    t8[j] = static_cast<int>(j % 250);
   }
   auto tf = group("transform v+1 10k (per element)", 30);
   tf.batch(SZ);
@@ -1483,15 +1463,10 @@ static void bench_algorithms()
       [](std::uint8_t v) -> std::uint8_t { return static_cast<std::uint8_t>(v + 1); });
     doNotOptimizeAway(tno[0]);
   });
-  tf.run("inside u255 (16-bit storage)", [&] {
+  tf.run("inside u255 (8-bit storage)", [&] {
     std::transform(tb.begin(), tb.end(), tbo.begin(),
       [](u255 v) { v += 1_ins; return v; });
     doNotOptimizeAway(tbo[0].raw());
-  });
-  tf.run("inside u254 (8-bit storage)", [&] {
-    std::transform(t8.begin(), t8.end(), t8o.begin(),
-      [](u254 v) { v += 1_ins; return v; });
-    doNotOptimizeAway(t8o[0].raw());
   });
   finish(tf);
 }

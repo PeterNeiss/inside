@@ -39,34 +39,12 @@ TEST(PolicyActionsTest, wrap_policy_on_assignment)
   angle d{180};   ASSERT_EQ(d, 180);
 }
 
-// sentinel policy hides overflow as nullopt
-TEST(PolicyActionsTest, sentinel_policy_hides_overflow_as_nullopt)
-{
-  using idx = inside<{0, 9}, sentinel>;
-
-  idx a{5};
-  ASSERT_EQ(a, 5);
-
-  slim::optional<idx> opt{5};
-  ++opt;
-  ASSERT_TRUE(opt.has_value());
-  ASSERT_EQ(*opt, 6);
-
-  slim::optional<idx> top{9};
-  ++top;
-  ASSERT_FALSE(top.has_value());
-
-  slim::optional<idx> bot{0};
-  --bot;
-  ASSERT_FALSE(bot.has_value());
-}
-
-// sentinel policy on fixed-point grids
-TEST(PolicyActionsTest, sentinel_policy_on_fixed_point_grids)
+// try_make on fixed-point grids
+TEST(PolicyActionsTest, try_make_on_fixed_point_grids)
 {
   {
     SCOPED_TRACE("Q8.8 (notch 1/256) — try_make + in-place ++");
-    using fp = inside<{{0, 255}, 1.0/256}, sentinel>;
+    using fp = inside<{{0, 255}, 1.0/256}>;
     static_assert(sizeof(fp) == 2);
 
     // notch-aligned in-range value
@@ -74,24 +52,22 @@ TEST(PolicyActionsTest, sentinel_policy_on_fixed_point_grids)
     ASSERT_TRUE(ok.has_value());
     ASSERT_TRUE(ok->to<double>().value() == 42.5);
 
-    // out-of-range produces nullopt
+    // out-of-range produces errc::domain_error
     auto high = fp::try_make(300.0);
     ASSERT_FALSE(high.has_value());
+    ASSERT_EQ(high.error(), errc::domain_error);
 
     auto low = fp::try_make(-0.5);
     ASSERT_FALSE(low.has_value());
 
-    // in-place increment past upper bound -> nullopt
-    auto made = fp::try_make(255.0);
-    ASSERT_TRUE(made.has_value());
-    slim::optional<fp> top = *made;
-    ++top;
-    ASSERT_FALSE(top.has_value());
+    // in-place increment past upper bound reports through the checked policy
+    fp top = fp::try_make(255.0).value();
+    ASSERT_ANY_THROW(++top);
   }
 
   {
     SCOPED_TRACE("half-step (notch 0.5) — uint8 storage");
-    using sensor = inside<{{0, 50}, 0.5}, sentinel>;
+    using sensor = inside<{{0, 50}, 0.5}>;
     static_assert(sizeof(sensor) == 1);
 
     auto s = sensor::try_make(23.5);
@@ -104,7 +80,7 @@ TEST(PolicyActionsTest, sentinel_policy_on_fixed_point_grids)
 
   {
     SCOPED_TRACE("signed Q1.14 (notch 1/16384) — uint16 storage");
-    using sample = inside<{{-1, 1}, notch<1, 16384>}, sentinel | round_nearest>;
+    using sample = inside<{{-1, 1}, notch<1, 16384>}, checked | round_nearest>;
     static_assert(sizeof(sample) == 2);
 
     auto s = sample::try_make(0.5);
@@ -121,7 +97,7 @@ TEST(PolicyActionsTest, sentinel_policy_on_fixed_point_grids)
 
   {
     SCOPED_TRACE("Q16.16 (notch 1/65536) — uint32 storage");
-    using fp = inside<{{0, 65535}, notch<1, 65536>}, sentinel>;
+    using fp = inside<{{0, 65535}, notch<1, 65536>}>;
     static_assert(sizeof(fp) == 4);
 
     auto v = fp::try_make(1000.125);
@@ -131,22 +107,6 @@ TEST(PolicyActionsTest, sentinel_policy_on_fixed_point_grids)
     ASSERT_FALSE(fp::try_make(-0.001).has_value());
     ASSERT_FALSE(fp::try_make(70000.0).has_value());
   }
-}
-
-// on_sentinel action on fixed-point grids
-TEST(PolicyActionsTest, on_sentinel_action_on_fixed_point_grids)
-{
-  using fp = inside<{{0, 50}, 0.5}, sentinel>;
-
-  fp v{10.5};
-  rational orig{0u};
-  v.on_sentinel([&](auto& self, auto orig_in){
-    orig = orig_in;
-    self = 0;
-  }) = 75.5;
-
-  ASSERT_TRUE(v.to<double>().value() == 0);
-  ASSERT_EQ(orig, 75.5_r);  // 75.5
 }
 
 // on_wrap action receives inside& and carry
@@ -209,7 +169,7 @@ TEST(PolicyActionsTest, on_clamp_overshoot_is_an_inside_for_an_inside_rhs)
 {
   // A insidable RHS routes clamp through inside arithmetic, so the overshoot is a
   // inside<Grid<R> - Grid<L>> — `over` converts to imax implicitly (it would not
-  // compile against the old raw optional<rational>).
+  // compile against a raw expected<rational>).
   using c100 = inside<{0, 100}, clamp>;
   c100 x{0};
   inside<{0, 200}> v{150};                        // overlaps [0,100], runtime out of range
@@ -231,20 +191,6 @@ TEST(PolicyActionsTest, on_error_action_receives_code_and_message)
   }) = 200;
   ASSERT_TRUE(fired);
   ASSERT_EQ(e, 0);
-}
-
-// on_sentinel action receives original value
-TEST(PolicyActionsTest, on_sentinel_action_receives_original_value)
-{
-  using s100 = inside<{0, 100}, sentinel>;
-  s100 sv{50};
-  imax orig = 0;
-  sv.on_sentinel([&](auto& self, auto orig_in){
-    orig = orig_in;
-    self = 50;
-  }) = 200;
-  ASSERT_EQ(sv, 50);
-  ASSERT_EQ(orig, 200);
 }
 
 // (Removed: "on_overflow on compound op" / "...subtraction" — they fired the
@@ -356,15 +302,16 @@ TEST(PolicyActionsTest, free_fn_add_with_beman_inside_errc_compiles_and_clears_o
   static_assert(requires(c100 x, c100 y, beman::inside::errc& e) { div(x, y, e); });
 }
 
-// no-arg div on div/0 still returns nullopt without throwing
-TEST(PolicyActionsTest, no_arg_div_on_div_0_still_returns_nullopt_without_throwing)
+// no-arg div on div/0 returns an error without throwing
+TEST(PolicyActionsTest, no_arg_div_on_div_0_returns_error_without_throwing)
 {
   // Regression guard for fix 1b's empty_ref/error_ref gate: the no-arg form
-  // must NOT throw on div/0 — it should silently return nullopt.
+  // must NOT throw on div/0 — it should return errc::division_by_zero.
   using c100 = inside<{0, 100}, checked>;
   ASSERT_NO_THROW((void)([]{
     auto q = div(c100{10}, c100{0});
     ASSERT_FALSE(q.has_value());
+    ASSERT_EQ(q.error(), errc::division_by_zero);
   }()));
 }
 

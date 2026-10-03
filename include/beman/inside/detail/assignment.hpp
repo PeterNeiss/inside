@@ -23,7 +23,7 @@ namespace beman::inside::detail
   // (C2244/C2995/C3855); inlining sidesteps that and keeps the code portable.
   //---------------------------------------------------------------------------
   // needs_runtime_domain_check<L, P, A>: true iff any out-of-range handler would
-  // fire (an action, a clamp/wrap/sentinel bit, or default-throw under checked).
+  // fire (an action, a clamp/wrap bit, or default-throw under checked).
   // When false (typically `unsafe`, no action) the runtime range branch in
   // `assign` is dead code and skipped, letting the autovectorizer kick in.
   //---------------------------------------------------------------------------
@@ -31,23 +31,19 @@ namespace beman::inside::detail
   inline constexpr bool needs_runtime_domain_check =
          clamp_action   <plain<A>>
       || wrap_action    <plain<A>>
-      || sentinel_action<plain<A>>
       || error_action   <plain<A>>
       || HasPolicy<L, P, clamp>
       || HasPolicy<L, P, wrap>
-      || HasPolicy<L, P, sentinel>
       || (HasPolicy<L, P, checked> && !HasPolicy<L, P, ignore_domain>);
 
-  // Shared out-of-range policy cascade. Order: clamp/wrap/sentinel/error
-  // *actions*, then clamp/wrap *policy* bits, then `domain_fail`. The four
-  // callers-supplied callables cover how clamp/wrap store, the sentinel-action
-  // value, and the error-message rhs view. `Wrappable` is false on the fractional
+  // Shared out-of-range policy cascade. Order: clamp/wrap/error *actions*, then
+  // clamp/wrap *policy* bits, then `domain_fail`. The three caller-supplied
+  // callables cover how clamp/wrap store and the error-message rhs view. `Wrappable` is false on the fractional
   // path (no wrap *action* branch). Returns true when a handler resolved the write.
   template <bool Wrappable, insidable L, typename P, typename A,
-            typename DoClamp, typename DoWrap, typename SentinelVal, typename MsgView>
+            typename DoClamp, typename DoWrap, typename MsgView>
   constexpr bool dispatch_out_of_range(L& lhs, P&& policy, A&& action,
                                        DoClamp do_clamp, DoWrap do_wrap,
-                                       SentinelVal sentinel_val,
                                        [[maybe_unused]] MsgView msg_view)
   {
     using PA = plain<A>;
@@ -55,12 +51,6 @@ namespace beman::inside::detail
     { do_clamp(); return true; }
     else if constexpr (Wrappable && wrap_action<PA>)
     { do_wrap(); return true; }
-    else if constexpr (sentinel_action<PA>)
-    {
-      lhs = L::from_raw(sentinel_raw<L>());
-      action.fn(lhs, sentinel_val());
-      return true;
-    }
     else if constexpr (error_action<PA>)
     {
       action.fn(lhs, errc::domain_error, errc_message(errc::domain_error));
@@ -140,7 +130,6 @@ namespace beman::inside::detail
         return dispatch_out_of_range<true>(lhs, policy, action,
           [&]{ apply_clamp(lhs, rhs, lower, upper, action); },
           [&]{ apply_wrap (lhs, rhs, lower, upper, action); },
-          [&]{ return static_cast<imax>(rhs); },
           [&]{ return rhs; });
       }
 
@@ -165,7 +154,7 @@ namespace beman::inside::detail
       {
         static_assert(not excludes(Interval<L>, Interval<R>));
 
-        // The out-of-range check runs unconditionally — clamp/wrap/sentinel
+        // The out-of-range check runs unconditionally — clamp/wrap
         // policies handle it via apply_*, which is constexpr-clean. Only the
         // unhandled-checked path winds up calling `policy.report`, which
         // contains its own `std::is_constant_evaluated()` guard.
@@ -186,7 +175,7 @@ namespace beman::inside::detail
           else if (not includes(Interval<L>, rhs))
           {
             // Non-integer L bounds: route through the rational path so fractional
-            // Lower/Upper drive clamp/sentinel/error correctly.
+            // Lower/Upper drive clamp/error correctly.
             return assignment<L, rational>::assign(lhs, rational{rhs}, policy, action);
           }
         }
@@ -435,7 +424,7 @@ namespace beman::inside::detail
           // The exact quotient can overflow the 64-bit rational range (huge
           // source denominator × fine notch). Recompute the slot directly in
           // 128-bit (wide_offset_quotient above); only a result beyond even
-          // that envelope reports errc::overflow — never a nullopt deref,
+          // that envelope reports errc::overflow — never an unchecked expected deref,
           // which would escape noexcept callers (the math engines) as
           // terminate. Rounding here is the offset rule (round_offset), the
           // same semantics round_quotient falls back to past 64 bits.
@@ -493,7 +482,6 @@ namespace beman::inside::detail
           if (dispatch_out_of_range<false>(lhs, policy, action,
                 [&]{ apply_clamp(lhs, rhs, policy, action); },
                 [&]{ apply_wrap (lhs, rhs, policy, action); },
-                [&]{ return rhs; },
                 [&]{ return rhs; }))
             return lhs;
         }
@@ -705,7 +693,6 @@ namespace beman::inside::detail
         return dispatch_out_of_range<true>(lhs, policy, action,
           [&]{ apply_clamp(lhs, rhs, action); },
           [&]{ apply_wrap (lhs, rhs, policy, action); },
-          [&]{ return as_rational(rhs); },
           [&]{ return as_rational(rhs); });
       }
 

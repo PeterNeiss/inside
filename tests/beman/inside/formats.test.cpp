@@ -53,22 +53,19 @@ TEST(FormatsTest, formats_map_to_native_byte_widths)
 }
 
 //---------------------------------------------------------------------------
-// Keeping the sentinel slot means slim::optional stays zero-overhead.
+// Fallible results stay out of storage: std::expected appears only as a
+// return value, so the stored types keep their native width.
 //---------------------------------------------------------------------------
-// formats keep zero-overhead optional
-TEST(FormatsTest, formats_keep_zero_overhead_optional)
+// formats: fallible results are expected, storage stays native
+TEST(FormatsTest, formats_fallible_results_are_expected_storage_stays_native)
 {
-  static_assert(sizeof(slim::optional<byte>)      == sizeof(byte));
-  static_assert(sizeof(slim::optional<sword>)     == sizeof(sword));
-  static_assert(sizeof(slim::optional<unorm8>)  == sizeof(unorm8));
-  static_assert(sizeof(slim::optional<unorm16>) == sizeof(unorm16));
-  static_assert(sizeof(slim::optional<q8_8>)    == sizeof(q8_8));
+  using q = decltype(byte{200} / byte{0});
+  static_assert(is_expected_v<q>);
+  static_assert(sizeof(q) > sizeof(q::value_type));   // why it never becomes storage
 
-  slim::optional<byte> o = byte{200};
-  ASSERT_TRUE(o.has_value());
-  ASSERT_EQ(*o, 200);
-  o = slim::nullopt;
-  ASSERT_FALSE(o.has_value());
+  auto r = byte{200} / byte{0};
+  ASSERT_FALSE(r.has_value());
+  ASSERT_EQ(r.error(), errc::division_by_zero);
 }
 
 //---------------------------------------------------------------------------
@@ -77,16 +74,16 @@ TEST(FormatsTest, formats_keep_zero_overhead_optional)
 // formats round-trip representative values
 TEST(FormatsTest, formats_round_trip_representative_values)
 {
-  // Native integers — top usable value is one below the native max.
-  ASSERT_EQ(byte{254}, 254);
+  // Native integers — the full native range is usable.
+  ASSERT_EQ(byte{255}, 255);
   ASSERT_EQ(byte{0}, 0);
-  ASSERT_EQ(sword{-32767}, -32767);
+  ASSERT_EQ(sword{-32768}, -32768);
   ASSERT_EQ(sword{32767}, 32767);
 
   // UNORM — both endpoints exact, plus a representable interior point.
   ASSERT_EQ(unorm8{0.0_r}, 0);
   ASSERT_EQ(unorm8{1.0_r}, 1);
-  ASSERT_EQ(unorm8{0.5_r}, 0.5_r);     // 127/254 == 1/2
+  ASSERT_EQ(unorm8{0.2_r}, 0.2_r);     // 51/255 == 1/5
   ASSERT_EQ(unorm16{1.0_r}, 1);
 
   // Q-format — fractional values on the grid.
@@ -101,10 +98,11 @@ TEST(FormatsTest, formats_round_trip_representative_values)
 // formats: wide-type extremes round-trip
 TEST(FormatsTest, formats_wide_type_extremes_round_trip)
 {
-  ASSERT_EQ(word{65534}, 65534);
-  ASSERT_EQ(dword{4294967294}, 4294967294);
-  ASSERT_EQ(sbyte{-127}, -127);
-  ASSERT_EQ(sdword{-2147483647}, -2147483647);
+  ASSERT_EQ(word{65535}, 65535);
+  ASSERT_EQ(dword{4294967295}, 4294967295);
+  ASSERT_EQ(sbyte{-128}, -128);
+  ASSERT_EQ(sbyte{127}, 127);
+  ASSERT_EQ(sdword{-2147483648LL}, -2147483648LL);
   ASSERT_EQ(sdword{2147483647}, 2147483647);
   ASSERT_EQ(sqword{-9223372036854775807LL}, -9223372036854775807LL);
   ASSERT_EQ(sqword{9223372036854775807LL}, 9223372036854775807LL);
@@ -113,12 +111,14 @@ TEST(FormatsTest, formats_wide_type_extremes_round_trip)
 }
 
 //---------------------------------------------------------------------------
-// The reserved value is out of range under the default `checked` policy.
+// Values past the native range are out of range under the default `checked`
+// policy.
 //---------------------------------------------------------------------------
-// formats reject the reserved top value
-TEST(FormatsTest, formats_reject_the_reserved_top_value)
+// formats reject values past the native range
+TEST(FormatsTest, formats_reject_values_past_the_native_range)
 {
-  ASSERT_ANY_THROW((void)([]{ byte x{255}; (void)x; }()));      // 255 is the reserved slot
-  ASSERT_ANY_THROW((void)([]{ sword x{-32768}; (void)x; }()));  // INT16_MIN is reserved
-  ASSERT_NO_THROW((void)([]{ byte x{254}; (void)x; }()));
+  ASSERT_ANY_THROW((void)([]{ int v = 256; byte x{v}; (void)x; }()));
+  ASSERT_ANY_THROW((void)([]{ int v = -32769; sword x{v}; (void)x; }()));
+  ASSERT_NO_THROW((void)([]{ int v = 255; byte x{v}; (void)x; }()));
+  ASSERT_NO_THROW((void)([]{ int v = -32768; sword x{v}; (void)x; }()));
 }

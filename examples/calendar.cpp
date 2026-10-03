@@ -82,7 +82,7 @@ int main()
   {
     big_day_t ordinal{14000 + n};
     // `seven` has grid {1,7}, which excludes zero, so `%` cannot be
-    // division-by-zero: the result is a plain inside, no optional to unwrap.
+    // division-by-zero: the result is a plain inside, no expected to unwrap.
     auto dow = ordinal % seven;
     std::cout << "  day " << ordinal << " -> dow " << dow << "\n";
   }

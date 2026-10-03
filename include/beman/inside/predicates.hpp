@@ -10,7 +10,7 @@
 
 //---------------------------------------------------------------------------
 // predicates — pure inspection (no conversion, no state change) to branch
-// before a construction that might throw or land on the sentinel:
+// before a construction that might throw or report an error:
 //   will_conversion_overflow<B>(v) — v falls outside B's interval.
 //   will_conversion_trunc<B>(v) — v is in-range but off-notch (would round).
 //   is_conversion_lossy<B>(v)      — OR of the two.

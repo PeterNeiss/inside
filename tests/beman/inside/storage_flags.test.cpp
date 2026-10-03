@@ -285,13 +285,14 @@ TEST(StorageFlagsTest, representation_flags_compose_with_behavior_policies)
   using EW = inside<{{0, 10}, notch<1, 4>}, exact | wrap | round_nearest>;
   ASSERT_EQ((rational{EW{rational{45, 4}}}), 1);
 
-  // direct + sentinel: out-of-range yields the empty slot.
-  using DS = inside<{5, 100}, direct | sentinel>;
+  // direct + try_make: out-of-range yields errc::domain_error.
+  using DS = inside<{5, 100}, direct | checked>;
   auto ok   = DS::try_make(42);
   auto fail = DS::try_make(200);
   ASSERT_TRUE(ok.has_value());
   ASSERT_EQ(*ok, 42);
   ASSERT_TRUE(!fail.has_value());
+  ASSERT_EQ(fail.error(), errc::domain_error);
 }
 
 // representation flags print the value, not the raw
@@ -323,10 +324,9 @@ TEST(StorageFlagsTest, real_storage_runs_the_full_out_of_range_policy_cascade)
   ASSERT_THROW((void)(RK{9.5}), beman::inside::inside_error);
   ASSERT_TRUE(static_cast<double>(rational{RK{2.5}}) == 2.5);
 
-  // sentinel: out-of-range yields the empty slot.
-  using RS = inside<{{0, 4}, notch<1, 256>}, real | sentinel>;
-  ASSERT_TRUE(RS::try_make(2.0).has_value());
-  ASSERT_TRUE(!RS::try_make(9.5).has_value());
+  // try_make: out-of-range yields errc::domain_error.
+  ASSERT_TRUE(RK::try_make(2.0).has_value());
+  ASSERT_TRUE(!RK::try_make(9.5).has_value());
 
   // unchecked (bare real): stores as-is — unchanged legacy behavior.
   using RU = inside<{{0, 4}, notch<1, 256>}, real>;
@@ -421,7 +421,7 @@ TEST(StorageFlagsTest, per_operation_policies_work_on_real_backed_bounds)
   ASSERT_TRUE(static_cast<double>(rational{w}) == 10.0);
 }
 
-// Issue #4: checked exact arithmetic drops the slim::optional wrapper when
+// Issue #4: checked exact arithmetic drops the std::expected wrapper when
 // the grids PROVE no rational overflow is reachable (notched grids inside the
 // denominators). Continuous (Notch == 0) grids store arbitrary rationals —
 // nothing is provable, so they keep the wrapper (this also fixes a soundness
@@ -433,27 +433,28 @@ TEST(StorageFlagsTest, provably_safe_exact_arithmetic_returns_a_plain_inside)
   E a{rational{3, 4}}, b{rational{5, 4}};
 
   auto s = a + b;
-  static_assert(!detail::is_slim_optional_v<decltype(s)>);
+  static_assert(!detail::is_expected_v<decltype(s)>);
   ASSERT_EQ(rational{s}, 2);
 
   auto d = a - b;
-  static_assert(!detail::is_slim_optional_v<decltype(d)>);
+  static_assert(!detail::is_expected_v<decltype(d)>);
   ASSERT_EQ(rational{d}, (rational{-1, 2}));
 
   auto p = a * b;
-  static_assert(!detail::is_slim_optional_v<decltype(p)>);
+  static_assert(!detail::is_expected_v<decltype(p)>);
   ASSERT_EQ(rational{p}, (rational{15, 16}));
 
   // Continuous grids: denominators unbounded → wrapper stays (add AND mul).
   using C = inside<{{0, 10}, 0}, checked>;
-  static_assert(detail::is_slim_optional_v<decltype(C{} + C{})>);
-  static_assert(detail::is_slim_optional_v<decltype(C{} * C{})>);
+  static_assert(detail::is_expected_v<decltype(C{} + C{})>);
+  static_assert(detail::is_expected_v<decltype(C{} * C{})>);
 
-  // ...and the check is real: huge-denominator values overflow into nullopt
+  // ...and the check is real: huge-denominator values overflow into an error
   // instead of silently wrapping (the pre-fix mul gate claimed these safe).
   C x = C::from_raw(rational{1, imax{1} << 40});
   auto wide = x * x;                      // den 2^80 > imax
   ASSERT_TRUE(!wide.has_value());
+  ASSERT_EQ(wide.error(), errc::overflow);
 }
 
 // Smaller-threads batch: wide trig envelope, pown, clamp saturation.

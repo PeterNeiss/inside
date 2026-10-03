@@ -33,25 +33,22 @@ namespace beman::inside
   namespace detail
   {
 
-  // Strict `<` reserves the type's max as the sentinel slot for
-  // slim::optional<inside>, so a grid whose max_notch lands on a type's max
-  // promotes to the next-wider type (e.g. inside<{0,255}> uses uint16_t, not
-  // uint8_t). A valid grid value can thus never collide with the sentinel.
+  // Smallest unsigned type whose range holds every index 0..N.
   template <std::uintmax_t N>
   using smallest_uint_for =
     std::conditional_t<(N == 0), rational,
-    std::conditional_t<(N < UINT8_MAX),  std::uint8_t,
-    std::conditional_t<(N < UINT16_MAX), std::uint16_t,
-    std::conditional_t<(N < UINT32_MAX), std::uint32_t,
-                                          std::uint64_t>>>>;
+    std::conditional_t<(N <= UINT8_MAX),  std::uint8_t,
+    std::conditional_t<(N <= UINT16_MAX), std::uint16_t,
+    std::conditional_t<(N <= UINT32_MAX), std::uint32_t,
+                                           std::uint64_t>>>>;
 
-  // +1 on min accounts for sentinel value reserved by slim::optional
+  // Smallest signed type whose range holds Low..High.
   template <std::intmax_t Low, std::intmax_t High>
   using smallest_int_for =
-    std::conditional_t<(Low >= INT8_MIN+1 && High <= INT8_MAX),   std::int8_t,
-    std::conditional_t<(Low >= INT16_MIN+1 && High <= INT16_MAX), std::int16_t,
-    std::conditional_t<(Low >= INT32_MIN+1 && High <= INT32_MAX), std::int32_t,
-                                                                   std::int64_t>>>;
+    std::conditional_t<(Low >= INT8_MIN  && High <= INT8_MAX),  std::int8_t,
+    std::conditional_t<(Low >= INT16_MIN && High <= INT16_MAX), std::int16_t,
+    std::conditional_t<(Low >= INT32_MIN && High <= INT32_MAX), std::int32_t,
+                                                                 std::int64_t>>>;
 
   // (type_name<T>() — used only by the debug stringifier — lives in
   // "beman/inside/io.hpp" so the core stays free of <string_view>.)

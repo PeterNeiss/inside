@@ -69,7 +69,7 @@ rounding.
   inside's grid — the raw *is* the value, so input marshalling into the engine is
   free (the large speedup over integer-index I/O). Values still obey the grid:
   they snap to the notch on store. Out-of-range stores run the usual policy
-  cascade (clamp / wrap / sentinel / checked report).
+  cascade (clamp / wrap / checked report).
 - Without `f64`, a snap-capable grid still works — the engine's `double`/integer
   result is snapped to the grid through the assignment path (a touch slower; no
   double fast path). Use `f64` when the grid is dyadic and you want the speed.
@@ -107,7 +107,7 @@ other representation flags.
   Spell `f<Out>(x)` to pick the output grid yourself.
 - **Error model.** A domain limit that is knowable from the *type* is a
   `static_assert` (compile error). A failure that depends on the *runtime
-  value* is reported through `slim::expected<Out, errc>`. Total functions
+  value* is reported through `std::expected<Out, errc>`. Total functions
   return the inside directly. When an explicit `Out` carries `clamp`, a
   result that merely leaves `Out`'s interval **saturates** instead of
   erroring (poles and domain errors still error).
@@ -142,7 +142,7 @@ other representation flags.
 | `abs(x)` | all | `[0, max\|·\|]` | — | exact |
 | `floor(x)` / `ceil(x)` / `round(x)` / `trunc(x)` | all | integer notch | — | exact; `round` is half-away-from-zero |
 | `fmod(x, y)` | `y` must not span 0 | sign of `x` | — | truncated-division convention, exact. Integer-backed operands on commensurable notches take a single-integer-remainder fast path (faster than `std::fmod`). |
-| `pown<E>(x)` | all, `E ≥ 0` compile-time | corner-widened per multiply | optional per the checked-exact rules | repeated squaring in inside-space — exact, negative bases fine, no `f64` needed |
+| `pown<E>(x)` | all, `E ≥ 0` compile-time | corner-widened per multiply | `expected` per the checked-exact rules | repeated squaring in inside-space — exact, negative bases fine, no `f64` needed |
 
 ## Roots
 
@@ -202,15 +202,14 @@ Expected results compose with arithmetic directly — the chain stays an
 auto r = math::sqrt(signed_in{v}) * gain + offset;   // expected<inside, errc>
 ```
 
-To drop the cause and enter the zero-cost `optional` chaining world instead,
-convert with `beman::inside::ok(...)`:
+Division and checked exact arithmetic use the same `expected` vocabulary, so
+math results and arithmetic results chain together:
 
 ```cpp
-auto o = ok(math::tan(angle{x})) * gain;             // optional<inside>
+auto q = math::tan(angle{x}) / divisor;              // expected<inside, errc>
 ```
 
-See [arithmetic.md](arithmetic.md) for the bridge rules (error precedence,
-the no-mixing compile error) and
+See [arithmetic.md](arithmetic.md) for the chaining rules (error precedence) and
 [internals.md](internals.md#7-error-vocabulary) for the full error
 vocabulary.
 

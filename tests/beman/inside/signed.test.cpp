@@ -5,6 +5,8 @@
 #include <gtest/gtest.h>
 
 #include <cstdint>
+#include <expected>
+#include <limits>
 #include <type_traits>
 
 using namespace beman::inside;
@@ -56,14 +58,15 @@ TEST(SignedTest, signed_construction_and_arithmetic)
   ASSERT_EQ(acc2, -25);
 }
 
-// signed sentinel doesn't collide with valid -127
-TEST(SignedTest, signed_sentinel_doesn_t_collide_with_valid_127)
+// signed storage uses the type's full range, including its minimum
+TEST(SignedTest, signed_storage_uses_full_range_including_minimum)
 {
-  using s8 = inside<{-127, 127}>;
-  s8 min_val{-127};
-  slim::optional<s8> opt{min_val};
-  ASSERT_TRUE(opt.has_value());
-  ASSERT_EQ(*opt, -127);
+  using s8 = inside<{-128, 127}>;
+  static_assert(sizeof(s8) == 1);
+  s8 min_val{-128};
+  ASSERT_EQ(min_val, -128);
+  ASSERT_EQ(min_val.raw(), std::numeric_limits<std::int8_t>::min());
+  ASSERT_EQ(-min_val, 128);                  // negation widens the grid
 }
 
 // Regression: signed-direct storage previously recorded the *offset*
@@ -139,19 +142,17 @@ TEST(SignedTest, signed_clamp_wrap)
   ASSERT_EQ(sw{-150}, 51);
 }
 
-// signed optional helpers
-TEST(SignedTest, signed_optional_helpers)
+// signed expected helpers
+TEST(SignedTest, signed_expected_helpers)
 {
   using s32 = inside<{-100000, 100000}>;
-  slim::optional<s32> a{s32{42}};
-  slim::optional<s32> none{slim::nullopt};
-  ASSERT_TRUE(a.has_value());
-  ASSERT_EQ(*a, 42);
-  ASSERT_FALSE(none.has_value());
+  auto a    = []() -> std::expected<s32, errc> { return s32{42}; };
+  auto none = []() -> std::expected<s32, errc> { return std::unexpected{errc::overflow}; };
 
-  auto sum = a + s32{-100};
+  auto sum = a() + s32{-100};
   ASSERT_TRUE(sum.has_value());
   ASSERT_EQ(*sum, -58);
+  ASSERT_FALSE((none() + s32{-100}).has_value());
 }
 
 // comparison across grids

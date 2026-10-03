@@ -451,7 +451,7 @@ void prop_compound_add_inside(fuzz_state& s, long iters)
 template <insidable B>
 void prop_modulo(fuzz_state& s, long iters)
 {
-  // Only applies to integer-aligned grids; result is optional<inside>.
+  // Only applies to integer-aligned grids; result is expected<inside, errc>.
   // mod requires `snap` per the README, so derive a typed alias.
   if constexpr (IsIntegerAligned<B> && !rational_raw<B>)
   {
@@ -471,8 +471,8 @@ void prop_modulo(fuzz_state& s, long iters)
         if (b == 0) continue;  // possible if hi <= 0 and zero is in range
         auto r = mod(a, b, truncated);
         imax expected = as<imax>(a) % as<imax>(b);
-        // mod returns a plain inside when B's grid excludes zero, else optional.
-        if constexpr (is_slim_optional_v<decltype(r)>)
+        // mod returns a plain inside when B's grid excludes zero, else expected.
+        if constexpr (is_expected_v<decltype(r)>)
         {
           FUZZ_REQUIRE(s, r.has_value());
           FUZZ_REQUIRE(s, *r == expected);
@@ -492,8 +492,8 @@ void prop_modulo(fuzz_state& s, long iters)
         do { b = BI::from_raw(random_in_range_raw<BI>(s.rng)); } while (b == 0);
         auto r = mod(a, b, truncated);
         imax expected = as<imax>(a) % as<imax>(b);
-        // mod returns a plain inside when B's grid excludes zero, else optional.
-        if constexpr (is_slim_optional_v<decltype(r)>)
+        // mod returns a plain inside when B's grid excludes zero, else expected.
+        if constexpr (is_expected_v<decltype(r)>)
         {
           FUZZ_REQUIRE(s, r.has_value());
           FUZZ_REQUIRE(s, *r == expected);
@@ -603,7 +603,7 @@ bool throws_with_any(std::initializer_list<errc> codes, Fn&& fn)
 }
 
 // (Removed: prop_compound_imax_overflow — it forced add/sub/mul_overflow by
-// hitting a checked inside with raw imax sentinel RHS. Raw compound assigns are
+// hitting a checked inside with a raw imax extreme RHS. Raw compound assigns are
 // gone, and a range-bounded operand can't overflow imax, so the path is moot.)
 
 template <insidable B>
@@ -637,7 +637,7 @@ template <insidable B>
 void prop_compound_inside_overshoot(fuzz_state& s, long iters)
 {
   // Targets inside.hpp:228-9 — the fast-path += else branch where the result
-  // overshoots and the policy lacks clamp/wrap/sentinel. The catalogue's
+  // overshoots and the policy lacks clamp/wrap. The catalogue's
   // grids already use the default `checked` policy, so the report path throws
   // domain_error. Pick start values where adding `delta` lands outside the
   // grid; skip those that would still fit.
@@ -792,40 +792,40 @@ void prop_interval_eq(fuzz_state& s)
   }
 }
 
-void prop_optional_throws(fuzz_state& s)
+void prop_expected_throws(fuzz_state& s)
 {
-  // Targets beman/inside/slim/optional.hpp:35-36, 38-39, 350, 568.
-  s.current_prop = "optional_throws";
+  // A fallible result holding an error throws std::bad_expected_access from
+  // .value() and from the inside sink constructor.
+  s.current_prop = "expected_throws";
   s.iter = 0;
-  using B = inside<{0, 100}, sentinel>;
-  // Calling .value() on an empty optional throws bad_optional_access.
+  using B = inside<{0, 100}>;
   bool got_throw = false;
   std::string what;
   try
   {
-    slim::optional<B> opt = slim::nullopt;
-    (void)opt.value();
+    (void)(B{7} / B{0}).value();
   }
-  catch (slim::bad_optional_access const& e)
+  catch (std::bad_expected_access<errc> const& e)
   {
     got_throw = true;
     what = e.what();
+    FUZZ_REQUIRE(s, e.error() == errc::division_by_zero);
   }
   catch (...) {}  // NOLINT(bugprone-empty-catch): deliberate — the assert below verifies the expected throw fired
   FUZZ_REQUIRE(s, got_throw);
   FUZZ_REQUIRE(s, !what.empty());
 
-  // Constructing slim::optional<B> from a sentinel-valued B throws.
-  bool sentinel_throw = false;
+  // The inside sink unwraps with .value(), so an error result throws too.
+  bool sink_throw = false;
   try
   {
-    B sentinel_b = B::make_sentinel();
-    slim::optional<B> bad{sentinel_b};
-    (void)bad;
+    using Q = std::remove_cvref_t<decltype(*(B{7} / B{1}))>;
+    Q q{B{7} / B{0}};
+    (void)q;
   }
-  catch (slim::bad_optional_access const&) { sentinel_throw = true; }
+  catch (std::bad_expected_access<errc> const&) { sink_throw = true; }
   catch (...) {}  // NOLINT(bugprone-empty-catch): deliberate — the assert below verifies the expected throw fired
-  FUZZ_REQUIRE(s, sentinel_throw);
+  FUZZ_REQUIRE(s, sink_throw);
 }
 
 template <insidable B>
@@ -863,7 +863,7 @@ void prop_raw_rational_arith(fuzz_state& s, long iters)
   // arithmetic goes through the rational-add/mul paths directly. Most random
   // small-integer values won't overflow the rational machinery, so we mostly
   // exercise the success branches; occasional out-of-range results land in
-  // the nullopt path.
+  // the error path.
   if constexpr (rational_raw<B>)
   {
     s.current_prop = "raw_rational_arith";
@@ -892,7 +892,7 @@ void prop_raw_rational_arith(fuzz_state& s, long iters)
       if (!expect_sum_opt.has_value() || !expect_prod_opt.has_value()) continue;
       rational expect_sum  = *expect_sum_opt;
       rational expect_prod = *expect_prod_opt;
-      // sum/prod is either inside<...> or slim::optional<inside<...>> depending
+      // sum/prod is either inside<...> or std::expected<inside<...>, errc> depending
       // on whether the operation needs an overflow check (driven by policy).
       auto check = [&](auto v, rational expected) {
         if constexpr (requires { v.has_value(); }) {
@@ -1127,7 +1127,7 @@ void prop_sqrt(fuzz_state& s, long iters)
     FUZZ_REQUIRE(s, approx_le(rr, rational{oracle}, tol));
   }
 
-  // Mixed-sign overload returns slim::expected (domain_error for negatives).
+  // Mixed-sign overload returns std::expected (domain_error for negatives).
   s.current_prop = "sqrt_signed";
   using SIn = inside<{{-1, 1}, notch<1, 65536>}, round_nearest | real>;
   for (long i = 0; i < iters; ++i)
@@ -1556,7 +1556,7 @@ int main(int argc, char** argv)
 
   // Standalone (non-grid) properties.
   guarded(s, [&]{ prop_interval_eq(s); });
-  guarded(s, [&]{ prop_optional_throws(s); });
+  guarded(s, [&]{ prop_expected_throws(s); });
 
   // Standalone cmath properties (dedicated domain grids).
   guarded(s, [&]{ prop_cmath_exact(s, iters); });

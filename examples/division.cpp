@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Division produces rational results by default.
-// The result is always slim::optional (division by zero yields nullopt).
+// The result is std::expected<inside, errc> whenever the divisor grid holds
+// zero (division by zero yields errc::division_by_zero).
 // With snap, division uses native integer division instead.
 
 #include <iostream>
@@ -33,11 +34,11 @@ int main()
   if (pi_ish)
     std::cout << "22 / 7 (exact)   = " << *pi_ish << "\n";  // 22/7
 
-  // Division by zero returns nullopt
+  // Division by zero returns errc::division_by_zero
   val zero = 0;
   auto div_zero = val(10) / zero;
   std::cout << "10 / 0           = "
-            << (div_zero.has_value() ? "value" : "nullopt") << "\n";
+            << (div_zero.has_value() ? "value" : errc_message(div_zero.error())) << "\n";
 
   return 0;
 }

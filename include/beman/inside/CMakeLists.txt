@@ -32,6 +32,4 @@ target_sources(
                 policy.hpp
                 predicates.hpp
                 range.hpp
-                slim/expected.hpp
-                slim/optional.hpp
 )

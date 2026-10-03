@@ -5,10 +5,8 @@
 #ifndef BEMAN_INSIDE_GENERIC_HPP
 #define BEMAN_INSIDE_GENERIC_HPP
 
-#define BEMAN_INSIDE_SLIM_OPTIONAL_LEAN_AND_MEAN
-#include <beman/inside/slim/optional.hpp>
-
 #include <beman/inside/detail/debug.hpp>
+#include <beman/inside/lift.hpp>
 #include <beman/inside/grid.hpp>
 #include <beman/inside/policy_flag.hpp>
 
@@ -166,7 +164,7 @@ namespace beman::inside
     using negative = inside<-Grid<B>, InsidePolicy<B>>;
 
     // True when R's interval cannot contain zero — so `a / b` can return a plain
-    // `inside` instead of `optional<inside>` (see detail/division.hpp). A point
+    // `inside` instead of `expected<inside, errc>` (see detail/division.hpp). A point
     // grid at 0 is *not* excluded.
     template <insidable R>
     inline constexpr bool DivisorExcludesZero = (Lower<R> > 0) || (Upper<R> < 0);
@@ -190,7 +188,7 @@ namespace beman::inside
     // Conservative compile-time inside on the (numerator, denominator) of any
     // canonical value on a grid, and derived "can the rational op of two grid
     // values overflow imax" predicates — letting checked exact arithmetic drop
-    // the optional wrapper when the grids prove no overflow is reachable.
+    // the expected wrapper when the grids prove no overflow is reachable.
     //
     // For a notched grid every value v = lo + k·notch over the common denominator
     // dC = |lo.den|·|hi.den|·|notch.den| is linear in k, so the max scaled
@@ -494,43 +492,13 @@ namespace beman::inside
     inline constexpr bool point_exactly_assignable =
       (Lower<R> == Upper<R>) && Grid<L>.representable(Lower<R>);
 
-    template <insidable B>
-    [[nodiscard]] constexpr raw_t<B> sentinel_raw()
-    {
-      if constexpr (std::is_same_v<raw_t<B>, rational>)
-        return rational::make_sentinel();
-      else if constexpr (std::signed_integral<raw_t<B>>)
-        return std::numeric_limits<raw_t<B>>::min();
-      else
-        // Unsigned: max(). Real (double): DBL_MAX — a finite, normal, comparable
-        // slot, unreachable as an on-grid value (grids stay < 2^53), so the real
-        // raw never holds NaN/inf/subnormal, only this sentinel, ±0, or a normal.
-        return std::numeric_limits<raw_t<B>>::max();
-    }
-
-    // "Is this raw the reserved sentinel slot?" — rational counts any zero
-    // denominator; everything else (incl. real's finite DBL_MAX) is `==`.
-    template <insidable B>
-    [[nodiscard]] constexpr bool raw_is_sentinel(raw_t<B> const& r)
-    {
-      if constexpr (std::is_same_v<raw_t<B>, rational>)
-        return r.Denominator == 0;
-      else
-        return r == sentinel_raw<B>();
-    }
-
-    // Tail of the policy cascade: sentinel sets sentinel raw, checked reports.
+    // Tail of the policy cascade: checked reports.
     // Returns true if a policy handled the failure (caller should return).
     // Cheap default — reports through the static category message (no string).
     template <insidable B, typename P>
-    constexpr bool domain_fail(B& b, P&& policy)
+    constexpr bool domain_fail([[maybe_unused]] B& b, P&& policy)
     {
-      if constexpr (HasPolicy<B, P, sentinel>)
-      {
-        b = B::from_raw(sentinel_raw<B>());
-        return true;
-      }
-      else if (policy.domain_check())
+      if (policy.domain_check())
       {
         policy.report(errc::domain_error);
         return true;

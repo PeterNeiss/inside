@@ -15,11 +15,8 @@
 // native-width *types* below use width words instead: `byte`/`word`/`dword`
 // (unsigned 8/16/32) and `sbyte`/`sword`/`sdword`/`sqword` (signed 8/16/32/64).
 //
-// Reserved-top tradeoff: each storage type's extreme value is a sentinel slot
-// (zero-overhead slim::optional<inside>), chosen with a strict `<` margin — so a
-// full-width range like {0,255} would promote to uint16. To stay at native
-// width these aliases stop one short: `byte` is [0, 254]. Q-format types already
-// have headroom, so they keep full range with power-of-two notches.
+// Each alias uses the full range of its native storage type: `byte` is
+// [0, 255] in a uint8. Q-format types keep power-of-two notches.
 //
 // These default to `checked`; for wraparound/saturation declare your own (e.g.
 // `inside<{0,254}, wrap>`).
@@ -28,33 +25,35 @@ namespace beman::inside
 {
   //-------------------------------------------------------------------------
   // Native integer widths — direct storage (Raw == value), `checked`.
-  // Range is the native width minus the one reserved sentinel value.
+  // Full native range.
   //-------------------------------------------------------------------------
-  using byte  = inside<{0, 254}>;                         // uint8
-  using word  = inside<{0, 65534}>;                       // uint16
-  using dword = inside<{0, 4294967294}>;                  // uint32
+  using byte  = inside<{0, 255}>;                         // uint8
+  using word  = inside<{0, 65535}>;                       // uint16
+  using dword = inside<{0, 4294967295}>;                  // uint32
   // qword (unsigned 64) is intentionally absent: the library's internal value
   // path is `imax` (int64) — `to_value` returns `imax` — so unsigned values above
   // 2^63-1 cannot round-trip through arithmetic/compare. Use `sqword` or a
   // hand-rolled grid if you need 64-bit storage.
 
-  using sbyte  = inside<{-127, 127}>;                      // int8
-  using sword  = inside<{-32767, 32767}>;                  // int16
-  using sdword = inside<{-2147483647, 2147483647}>;        // int32
+  using sbyte  = inside<{-128, 127}>;                      // int8
+  using sword  = inside<{-32768, 32767}>;                  // int16
+  using sdword = inside<{-2147483648, 2147483647}>;        // int32
+  // sqword stays symmetric: the internal value path is `imax`, and -2^63
+  // has no negation in int64.
   using sqword = inside<{-9223372036854775807, 9223372036854775807}>; // int64
 
   //-------------------------------------------------------------------------
   // Unsigned normalized (UNORM) — [0, 1] at N-bit resolution, `round_nearest`.
-  // The notch denominator is one short of the type max so the index fits the
-  // native width; both endpoints (0 and 1) are exactly representable.
+  // The notch denominator is the type max, so the index 0..max fills the native
+  // width; both endpoints (0 and 1) are exactly representable.
   //-------------------------------------------------------------------------
-  using unorm8  = inside<{{0, 1}, notch<1, 254>},        round_nearest>; // uint8
-  using unorm16 = inside<{{0, 1}, notch<1, 65534>},      round_nearest>; // uint16
-  using unorm32 = inside<{{0, 1}, notch<1, 4294967294>}, round_nearest>; // uint32
+  using unorm8  = inside<{{0, 1}, notch<1, 255>},        round_nearest>; // uint8
+  using unorm16 = inside<{{0, 1}, notch<1, 65535>},      round_nearest>; // uint16
+  using unorm32 = inside<{{0, 1}, notch<1, 4294967295>}, round_nearest>; // uint32
 
   //-------------------------------------------------------------------------
   // Q-format fixed-point — unsigned integer.fraction, power-of-two notch,
-  // full natural range (already fits with headroom). `round_nearest`.
+  // full natural range. `round_nearest`.
   //-------------------------------------------------------------------------
   using q4_4   = inside<{{0, 15},    notch<1, 16>},    round_nearest>; // uint8
   using q8_8   = inside<{{0, 255},   notch<1, 256>},   round_nearest>; // uint16

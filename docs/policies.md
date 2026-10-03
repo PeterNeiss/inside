@@ -1,7 +1,7 @@
 # Policies
 
 The second template parameter of `inside<G, P>` controls what happens on
-out-of-range assignment, on rounding mismatch, and on the various optional
+out-of-range assignment, on rounding mismatch, and on the various opt-in
 runtime checks. Policies are **flag bits**; combine them with bitwise `|`.
 
 ```cpp
@@ -23,14 +23,14 @@ using angle = inside<{0, 359}, wrap>;
 angle a = 370;     // a == 10
 angle b = -10;     // b == 350
 
-// Sentinel: out-of-range produces nullopt (via slim::optional)
-using index = inside<{0, 9}, sentinel>;
-slim::optional<index> i = 10;  // i == nullopt
+// try_make: out-of-range is a value you test, not a throw
+using index = inside<{0, 9}>;
+auto i = index::try_make(10);  // !i, i.error() == errc::domain_error
 ```
 
 The default `checked` enables runtime domain checks and throws on violations.
 Use `unsafe` to drop runtime checks for maximum performance when correctness
-is proven elsewhere. `clamp`, `wrap`, and `sentinel` are mutually exclusive
+is proven elsewhere. `clamp` and `wrap` are mutually exclusive
 (enforced by `static_assert`).
 
 ## Policy flags
@@ -39,9 +39,8 @@ is proven elsewhere. `clamp`, `wrap`, and `sentinel` are mutually exclusive
 |---|---|
 | `checked` | runtime domain / round / overflow checks (**default**) |
 | `unsafe` | opt out of all runtime checks |
-| `clamp` | saturate to boundary on out-of-range (mutually exclusive with `wrap`/`sentinel`) |
+| `clamp` | saturate to boundary on out-of-range (mutually exclusive with `wrap`) |
 | `wrap` | modular arithmetic on out-of-range |
-| `sentinel` | out-of-range yields `nullopt` via `slim::optional` |
 | `snap` | rounding mismatches truncate toward zero (no error) |
 | `round_nearest` | round to nearest notch, half away from zero (implies `snap`) |
 | `round_floor` | round toward −∞ (implies `snap`) |
@@ -61,7 +60,7 @@ Besides the *behavior* flags above, these flags select the **representation**
 |---|---|---|---|
 | `f64` | IEEE-754 `double` raw (the value itself, snapped to the grid) | dyadic **and** double-exact (every value fits `double`'s 53-bit significand) | bundles `round_nearest`; the fast math-storage flag. Arithmetic drops `f64` to an exact representation when a result grid is too fine for `double`. Under `BEMAN_INSIDE_MATH_FIXED` it falls back to integer storage. **`real` is a deprecated alias of `f64`.** |
 | `f32` | IEEE-754 `float` raw (the value itself, snapped to the grid) | dyadic **and** float-exact (every value fits `float`'s 24-bit significand) | the binary32 sibling of `f64`, for single-precision FPUs and the `flt` engine. Arithmetic **demotes `f32`→`f64`** when a result grid outgrows `float` (then drops to exact when it outgrows `double`). Under `BEMAN_INSIDE_MATH_FIXED` it falls back to integer storage. |
-| `exact` | exact-fraction raw on **any** grid | none | no notch-count limit, no `double` anywhere; arithmetic is exact — on notched grids overflow is usually provably impossible and `+ − ×` return plain bounds (no `optional`) |
+| `exact` | exact-fraction raw on **any** grid | none | no notch-count limit, no `double` anywhere; arithmetic is exact — on notched grids overflow is usually provably impossible and `+ − ×` return plain bounds (no `std::expected`) |
 | `i8 u8 i16 u16 i32 u32 i64 u64` | the named fixed-width integer raw | value storage needs `Notch == 1` and the value range to fit (add `indexed` for a notched grid) | **pins the exact backing type** (e.g. a `uint16_t` where deduction would pick `uint8_t`) for a fixed wire layout. Bare = value storage (`raw() == value`, like `direct`); `+ indexed` = 0-based index storage. **No silent widening** — a type too small for the grid is a compile error. One width flag at a time; dropped on arithmetic results. |
 | `direct` | raw == value as a plain integer | `Notch == 1` | e.g. `inside<{5, 100}, direct>` stores 5..100, not index 0..95 — the raw equals the wire/debugger value |
 | `indexed` | raw == 0-based notch index | `Notch != 0` | e.g. `inside<{-5, 5}, indexed>` stores 0..10 unsigned — dense layout for serialization |
@@ -102,7 +101,7 @@ g.with_snap<round_ceil>()            = 3.0;  // g == 4
 g.with_snap<round_half_even>() = 5.0;  // g == 4 (tie → even)
 ```
 
-## Callbacks: `on_wrap` / `on_clamp` / `on_overflow` / `on_sentinel` / `on_error`
+## Callbacks: `on_wrap` / `on_clamp` / `on_overflow` / `on_error`
 
 Each policy event can fire a zero-overhead callback. Unused handlers are
 eliminated entirely by the compiler (`if constexpr` + `[[no_unique_address]]`).
@@ -113,11 +112,10 @@ stored value) plus an event-specific payload.
 |---|---|---|---|
 | `on_clamp(λ)`    | assignment | a narrowed value leaves the grid and `clamp` saturates it | `λ(inside&, overshoot)` |
 | `on_wrap(λ)`     | assignment | a narrowed value leaves the grid and `wrap` folds it (carry) | `λ(inside&, carry)` |
-| `on_sentinel(λ)` | assignment | an out-of-range write under `sentinel` stores the empty slot | `λ(inside&, original_value)` |
 | `on_error(λ)`    | assignment | a domain / rounding error under `checked` (replaces the throw) | `λ(inside&, errc, std::string_view msg)` |
 | `on_overflow(λ)` | binary arithmetic | a fractional or imax result overflows, or `div`/`mod` divides by zero | `λ(inside&, errc)` |
 
-The first four fire on the **assignment** path — narrowing a value *into* a
+The first three fire on the **assignment** path — narrowing a value *into* a
 inside: a direct `=`, the `.on_*()= …` / `with(…) = …` proxies, and the
 compound `+= / -= / *= / /=`. `on_overflow` fires on the **binary-arithmetic**
 path — the free `add` / `sub` / `mul` / `div` / `mod` and the `+ - * /`
@@ -249,13 +247,13 @@ This — together with not including `beman/inside/io.hpp` (or defining `BEMAN_I
 in the single-header build) — lets the core run with no `<string>`,
 `<system_error>`, or C++ exception-ABI dependency.
 
-## Optional construction
+## Non-throwing construction
 
-`try_make` returns `slim::optional<inside>` instead of throwing:
+`try_make` returns `std::expected<inside, errc>` instead of throwing:
 
 ```cpp
 auto maybe = inside<{0, 100}>::try_make(150);
-if (!maybe) { /* out of range */ }
+if (!maybe) { /* maybe.error() == errc::domain_error */ }
 ```
 
 For types with a `clamp` or `wrap` policy, `try_make` applies the policy

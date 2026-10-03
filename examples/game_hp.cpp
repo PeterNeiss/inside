@@ -48,7 +48,7 @@ int main()
   // chain has interval [0, 64] notch 1/4096 — convert to a hit damage by
   // scaling base, then snap to an integer HP deduction. `base * chain` returns
   // a plain `inside` (the static-overflow check on multiplication elides the
-  // optional wrapper). Assigning it into a `round_nearest` integer grid rounds
+  // expected wrapper). Assigning it into a `round_nearest` integer grid rounds
   // it to the nearest whole point of damage — no rational, no cast.
   using dealt_t = inside<{0, 3200}, round_nearest>;
   dealt_t dealt{base * chain};   // integer damage, snapped to the round_nearest grid

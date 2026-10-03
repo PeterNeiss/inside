@@ -50,7 +50,7 @@ ratio f = inside<{2, 2}>{2} / just<3>;   // exact 2/3
 f.numerator();                          // 2  (denominator() == 3)
 
 using lvl = inside<{1, 255}>;
-auto q = lvl{7} / lvl{3};               // slim::optional<inside> (exact-fraction raw)
+auto q = lvl{7} / lvl{3};               // std::expected<inside, errc> (exact-fraction raw)
                                         // *q is exactly 7/3
 ```
 
@@ -95,22 +95,18 @@ when the grid is **double-exact** (every value fits `double`'s 53-bit significan
 otherwise it is dropped and deduction proceeds — and a result grid finer than the
 `uint64` index space deduces `rational`, keeping the result exact.
 
-> **Sentinel slot and SIMD width.** The smallest-type selection reserves one
-> raw slot for the `slim::optional` sentinel (next section). That makes
-> `inside<{0, 255}>` a **uint16**, not uint8 — raw 255 is the sentinel. In
-> SIMD-width-sensitive loops this halves the lanes versus native `uint8_t`;
-> an `inside<{0, 254}>` fits uint8 and runs at exactly native speed.
+> **Full range and SIMD width.** The smallest-type selection uses each raw
+> type's full range: `inside<{0, 255}>` is a **uint8** and `inside<{-128, 127}>`
+> an **int8**, so SIMD-width-sensitive loops run at the same lane count as
+> native `uint8_t` / `int8_t`.
 
-## `slim::optional<inside>` sentinel
+## Fallible results stay out of storage
 
-`slim::optional<inside>` uses a sentinel value instead of a separate bool
-flag, so `sizeof(slim::optional<inside>) == sizeof(inside)`. The sentinel is
-`numeric_limits<raw>::max()` for unsigned types and `numeric_limits<raw>::min()`
-for signed types. This costs one value from the representable range (e.g.
-`int8_t` gives 255 usable values: −127..127). For `f64` (double) raw the
-sentinel is that same `numeric_limits<raw>::max()` rule applied to `double`,
-i.e. the finite, comparable `DBL_MAX` — unreachable as an on-grid value, never a
-NaN/Inf.
+Fallible operations return `std::expected<inside, errc>`, which is larger than
+the `inside` it wraps (a flag and an `errc` sit beside the value). Use it as a
+return value you test right away, or pass it straight into the next operation;
+unwrap into a plain `inside` before storing it in a member, a container or a
+buffer. Storage keeps its native width.
 
 ## Predefined hardware formats
 
@@ -121,18 +117,16 @@ storage *flags*, so the native-width types use width words instead.)
 
 | Type | Range / notch | Storage |
 |---|---|---|
-| `byte` `word` `dword` | `[0, 254]` … `[0, 2³²−2]` | uint8 / uint16 / uint32 |
-| `sbyte` `sword` `sdword` `sqword` | `[−127, 127]` … | int8 / int16 / int32 / int64 |
-| `unorm8` `unorm16` `unorm32` | `[0,1]`, notch 1/254, 1/65534, 1/(2³²−2) | uint8 / uint16 / uint32 |
+| `byte` `word` `dword` | `[0, 255]` … `[0, 2³²−1]` | uint8 / uint16 / uint32 |
+| `sbyte` `sword` `sdword` | `[−128, 127]` … `[−2³¹, 2³¹−1]` | int8 / int16 / int32 |
+| `sqword` | `[−(2⁶³−1), 2⁶³−1]` | int64 |
+| `unorm8` `unorm16` `unorm32` | `[0,1]`, notch 1/255, 1/65535, 1/(2³²−1) | uint8 / uint16 / uint32 |
 | `q4_4` `q8_8` `q16_16` | `[0,15]`/`[0,255]`/`[0,65535]`, notch 1/16, 1/256, 1/65536 | uint8 / uint16 / uint32 |
 
-**The reserved-top tradeoff.** Because the top value of each storage type is
-the reserved sentinel slot (above), a *full*-width range would promote to the
-next-larger type. These aliases instead stop one short of the sentinel — `byte`
-is `[0, 254]`, not `[0, 255]`; `unorm8` uses notch 1/254 (still reaching 1.0
-exactly). The payoff is native byte size **and** a still-zero-overhead
-`slim::optional` (the sentinel slot is retained). Q-formats already have
-headroom, so they keep their full natural range and power-of-two notches.
+Every alias fills its native type's range: `byte` is `[0, 255]` and `unorm8`
+uses notch 1/255 (reaching 1.0 exactly). `sqword` stays symmetric because the
+internal value path is `imax` and −2⁶³ has no negation in int64. Q-formats keep
+their full natural range and power-of-two notches.
 
 An unsigned `qword` is intentionally absent: the library's internal value path is
 `imax` (`int64`), so unsigned values above 2⁶³−1 can't round-trip — use `sqword`
@@ -144,35 +138,21 @@ the compile-time result grid. Power-of-two notches give only a negligible
 shift-vs-constant-multiply edge on division/construction. The integer types are
 direct storage (native-speed). Behavior is composable: these default to
 `checked`; for register-style `wrap`/`clamp` declare your own variant, e.g.
-`inside<{0,254}, wrap>`.
+`inside<{0,255}, wrap>`.
 
 ## Raw storage access
 
 `inside::Raw` is a public data member, but most code should not touch it
 directly. The supported access patterns are:
 
-- **`b.is_sentinel()`** — public probe for "does this inside currently hold
-  the sentinel value?". The canonical answer to "is this slot empty?" under
-  `sentinel` policy.
-- **`B::make_sentinel()`** — static factory returning an inside in the sentinel
-  (empty) state. The supported way to construct one; wraps the underlying
-  `beman::inside::sentinel_raw<B>()` raw pattern so callers never touch `Raw`.
 - **`B::from_raw(raw)`** — static factory constructing an inside directly from a
   storage-layout raw value, with no validation (same trust contract as
   `unsafe`). The supported entry point for raw-level construction in tests,
   fast paths, and same-grid raw transfer.
-- **`beman::inside::sentinel_raw<B>()`** — the raw byte pattern reserved for the sentinel
-  that `make_sentinel()` wraps. Useful for interop with C APIs that need the
-  pattern directly.
-- **`slim::optional<B>::from_maybe_sentinel(b)`** — non-throwing factory:
-  returns `nullopt` if `b` is the sentinel, otherwise wraps `b`. The plain
-  `slim::optional<B>{b}` constructor still throws on sentinel input — by
-  design, since constructing an "engaged" optional from a sentinel value is
-  usually a bug.
 - **Direct `b.Raw = ...` writes** are only well-defined under `unsafe`
   policy (which opts out of all runtime checks); prefer `B::from_raw(raw)` for
   trusted raw construction. Outside `unsafe`, the library assumes `Raw` always
-  encodes either a valid grid value or the sentinel.
+  encodes a valid grid value.
 
 ## Iteration: `inside_range`
 

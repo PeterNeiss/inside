@@ -13,7 +13,7 @@ using namespace beman::inside;
 using checked_100 = inside<{0, 100}, checked>;
 using clamp_100   = inside<{0, 100}, clamp>;
 using wrap_360    = inside<{0, 359}, wrap>;
-using sentinel_9  = inside<{0, 9}, sentinel>;
+using digit       = inside<{0, 9}>;
 
 int main()
 {
@@ -36,9 +36,9 @@ int main()
   wrap_360 wr = 370;
   std::cout << "wrap     370 ->    " << wr << "\n";
 
-  // sentinel: absence is representable.
-  auto se = sentinel_9::try_make(10);
-  std::cout << "sentinel  10 ->    " << (se ? "has value" : "nullopt") << "\n";
+  // try_make: failure is a value you test, not an exception.
+  auto tm = digit::try_make(10);
+  std::cout << "try_make  10 ->    " << (tm ? "has value" : errc_message(tm.error())) << "\n";
 
   // Per-operation override on an otherwise-checked value.
   checked_100 p{50};

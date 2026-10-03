@@ -44,7 +44,7 @@ namespace beman::inside::detail
 
     template <typename P>
     using return_type_for = std::conditional_t<needs_overflow_check<P>,
-                                               slim::optional<result>,
+                                               std::expected<result, errc>,
                                                result>;
 
     template <typename P, typename A>
@@ -70,8 +70,8 @@ namespace beman::inside::detail
       {
         auto prod = as_rational(lhs) * as_rational(rhs);
         if (!prod) [[unlikely]]
-          return report_or_nullopt<result>(action, policy, errc::overflow,
-                                           "rational overflow in mul");
+          return report_or_unexpected<result>(action, policy, errc::overflow,
+                                              "rational overflow in mul");
         return result::from_raw(raw_cast<result>(*prod));
       }
       else

@@ -34,8 +34,9 @@ jobs:
           {"preset": "msvc-release", "runner": "windows-latest"}
         ]
 
-  # inside requires C++20 (C++23 by default), so there are no c++17 cells.
-  # GCC 12 only has the C++20 fallback path (no <expected> / std::format).
+  # inside requires C++23 (std::expected), so there are no c++20 or older cells.
+  # Clang 18 reports __cpp_concepts < 202002L, which hides libstdc++'s
+  # <expected>; it is tested against libc++ only.
   build-and-test:
     uses: bemanproject/infra-workflows/.github/workflows/reusable-beman-build-and-test.yml@1.7.4
     with:
@@ -59,22 +60,12 @@ jobs:
                 },
                 { "cxxversions": ["c++23"],
                   "tests": [{ "stdlibs": ["libstdc++"], "tests": ["Release.Default"]}]
-                },
-                { "cxxversions": ["c++20"],
-                  "tests": [{ "stdlibs": ["libstdc++"], "tests": ["Release.Default"]}]
                 }
               ]
             },
             { "versions": ["15", "14", "13"],
               "tests": [
-                { "cxxversions": ["c++26", "c++23", "c++20"],
-                  "tests": [{ "stdlibs": ["libstdc++"], "tests": ["Release.Default"]}]
-                }
-              ]
-            },
-            { "versions": ["12"],
-              "tests": [
-                { "cxxversions": ["c++20"],
+                { "cxxversions": ["c++26", "c++23"],
                   "tests": [{ "stdlibs": ["libstdc++"], "tests": ["Release.Default"]}]
                 }
               ]
@@ -93,7 +84,7 @@ jobs:
                     }
                   ]
                 },
-                { "cxxversions": ["c++23", "c++20"],
+                { "cxxversions": ["c++23"],
                   "tests": [
                     { "stdlibs": ["libstdc++", "libc++"], "tests": ["Release.Default"]}
                   ]
@@ -102,7 +93,7 @@ jobs:
             },
             { "versions": ["21", "20", "19"],
               "tests": [
-                { "cxxversions": ["c++26", "c++23", "c++20"],
+                { "cxxversions": ["c++26", "c++23"],
                   "tests": [
                     { "stdlibs": ["libstdc++", "libc++"], "tests": ["Release.Default"]}
                   ]
@@ -111,11 +102,8 @@ jobs:
             },
             { "versions": ["18"],
               "tests": [
-                { "cxxversions": ["c++26", "c++23", "c++20"],
+                { "cxxversions": ["c++26", "c++23"],
                   "tests": [{ "stdlibs": ["libc++"], "tests": ["Release.Default"]}]
-                },
-                { "cxxversions": ["c++23", "c++20"],
-                  "tests": [{ "stdlibs": ["libstdc++"], "tests": ["Release.Default"]}]
                 }
               ]
             }
@@ -123,7 +111,7 @@ jobs:
           "appleclang": [
             { "versions": ["latest"],
               "tests": [
-                { "cxxversions": ["c++26", "c++23", "c++20"],
+                { "cxxversions": ["c++26", "c++23"],
                   "tests": [{ "stdlibs": ["libc++"], "tests": ["Release.Default"]}]
                 }
               ]

@@ -44,7 +44,7 @@ int main()
 
     // mag² = x² + y² in rational (no inside math; the cross-multiplies stay
     // small here, ≤ 2 in magnitude). The checked rational ops return
-    // `slim::optional<rational>`; arithmetic forwards through the optional
+    // `std::expected<rational, errc>`; arithmetic forwards through the expected
     // and the inside ctor unwraps once at the sink.
     auto x2 = p.x * p.x;
     auto y2 = p.y * p.y;

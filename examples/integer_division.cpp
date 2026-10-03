@@ -35,11 +35,11 @@ int main()
   if (q)
     std::cout << "22 / 7 (fast)    = " << *q << "\n";  // 3
 
-  // Division by zero always returns nullopt
+  // Division by zero always returns errc::division_by_zero
   fast zero = 0;
   auto bad = x / zero;
   std::cout << "22 / 0           = "
-            << (bad.has_value() ? "value" : "nullopt") << "\n";
+            << (bad.has_value() ? "value" : errc_message(bad.error())) << "\n";
 
   // Exact division works as expected
   val ten = 10;

@@ -6,30 +6,17 @@
 #define BEMAN_INSIDE_DETAIL_RATIONAL_HPP
 
 #include <beman/inside/math.hpp>            // umax/imax, arithmetic, rational fwd
-#include <beman/inside/lift.hpp>            // lift, is_slim_optional_v, unwrap_t, slim::optional
+#include <beman/inside/lift.hpp>            // lift, is_expected_v, unwrap_t
 #include <beman/inside/detail/overflow.hpp> // add/sub/mul_overflow
 #include <beman/inside/detail/debug.hpp>    // errc, detail::raise, detail::constexpr_error
 
-#include <beman/inside/slim/expected.hpp>     // slim::expected, slim::unexpected
+#include <expected>   // std::expected, std::unexpected
 
 #include <numeric>
 #include <compare>
 #include <limits>
 #include <tuple>
 #include <type_traits>      // std::is_constant_evaluated
-
-namespace beman::inside::detail { struct rational; }
-
-namespace beman::inside::slim
-{
-  template<>
-  struct sentinel_traits<beman::inside::detail::rational>
-  {
-    protected:
-      static constexpr beman::inside::detail::rational sentinel() noexcept;
-      static constexpr bool is_sentinel(const beman::inside::detail::rational& v) noexcept;
-  };
-} // namespace beman::inside::slim
 
 namespace beman::inside::detail
 {
@@ -116,11 +103,11 @@ namespace beman::inside::detail
     b /= g;
   }
 
-  constexpr slim::optional<rational> operator+(rational const&, rational const&);
-  constexpr slim::optional<rational> operator/(rational const&, rational const&);
-  constexpr slim::optional<rational> operator-(rational const&, rational const&);
+  constexpr std::expected<rational, errc> operator+(rational const&, rational const&);
+  constexpr std::expected<rational, errc> operator/(rational const&, rational const&);
+  constexpr std::expected<rational, errc> operator-(rational const&, rational const&);
 
-  constexpr slim::optional<rational> operator*(rational const&, rational const&);
+  constexpr std::expected<rational, errc> operator*(rational const&, rational const&);
   constexpr auto     operator<=>(rational, rational) -> std::strong_ordering;
 
   //---------------------------------------------------------------------------
@@ -130,7 +117,7 @@ namespace beman::inside::detail
   // non-constexpr [[noreturn]] helper carrying the message in an NTTP (literal
   // parsers and the checked paths under `if (std::is_constant_evaluated())`),
   // hard-failing the build with the text in the diagnostic; at runtime those
-  // paths fall through to `nullopt`. No `throw`, so it is -fno-exceptions clean.
+  // paths fall through to `std::unexpected`. No `throw`, so it is -fno-exceptions clean.
 
   //---------------------------------------------------------------------------
   // rational — structural type for NTTP (public members only). Sign is encoded
@@ -159,13 +146,13 @@ namespace beman::inside::detail
     { canonicalize(Numerator, Denominator); }
 
     // Implicit unwrap of a checked result, so coefficient expressions read as
-    // plain arithmetic (`rational two_pi = 2 * pi;`); empty optional (overflow) is
-    // a compile error in constant evaluation, a throw at runtime. same_as-constrained
-    // (not a plain `rational(optional<rational>)`) because optional's own converting
-    // ctor is gated on `is_constructible_v<rational, U>` — a non-template overload
-    // would make that trait depend on itself.
+    // plain arithmetic (`rational two_pi = 2 * pi;`); an error (overflow) is a
+    // compile error in constant evaluation, a throw at runtime. same_as-constrained
+    // (not a plain `rational(expected<rational, errc>)`) because expected's own
+    // converting ctor is gated on `is_constructible_v<rational, U>` — a
+    // non-template overload would make that trait depend on itself.
     template <class O>
-      requires std::same_as<std::remove_cvref_t<O>, slim::optional<rational>>
+      requires std::same_as<std::remove_cvref_t<O>, std::expected<rational, errc>>
     constexpr rational(O&& o) : rational(o.value()) {}
 
     // operator== by default for structural type
@@ -176,7 +163,7 @@ namespace beman::inside::detail
     constexpr rational operator-() const;
 
     template <std::unsigned_integral T>
-    constexpr slim::expected<T, errc> to() const;
+    constexpr std::expected<T, errc> to() const;
 
     template <std::unsigned_integral T>
     explicit constexpr operator T () const
@@ -204,18 +191,11 @@ namespace beman::inside::detail
     constexpr rational operator+() const { return *this; }
 
     // Compound-assign: forward to the checked binary op and unwrap via .value()
-    // — overflow surfaces as slim::bad_optional_access (no error channel here).
+    // — overflow surfaces as std::bad_expected_access (no error channel here).
     constexpr rational& operator+=(rational const& rhs);
     constexpr rational& operator-=(rational const& rhs);
     constexpr rational& operator*=(rational const& rhs);
     constexpr rational& operator/=(rational const& rhs);
-
-    // The sentinel slot is {N, 0}; only make_sentinel() can produce one.
-    [[nodiscard]] constexpr bool is_sentinel() const noexcept
-    { return Denominator == 0; }
-
-    [[nodiscard]] static constexpr rational make_sentinel() noexcept
-    { rational r; r.Numerator = 1; r.Denominator = 0; return r; }
 
     // Unchecked arithmetic — caller takes responsibility for non-overflow
     // (and non-zero operand for div_unchecked / inv_unchecked).
@@ -224,12 +204,13 @@ namespace beman::inside::detail
     static constexpr rational div_unchecked(rational, rational);
     static constexpr rational inv_unchecked(rational);
 
-    static constexpr slim::optional<rational> add(rational a, rational b)
+    static constexpr std::expected<rational, errc> add(rational a, rational b)
     { return a + b; }
-    static constexpr slim::optional<rational> inv(rational);
+    static constexpr std::expected<rational, errc> inv(rational);
 
-    // Shared algorithm bodies. Checked=true returns optional<rational>, reporting
-    // overflow (throw at compile time / nullopt at runtime); Checked=false
+    // Shared algorithm bodies. Checked=true returns expected<rational, errc>,
+    // reporting overflow / division_by_zero (a compile error at compile time,
+    // std::unexpected at runtime); Checked=false
     // silently overflows — the caller must guarantee its absence.
     template <bool Checked> static constexpr auto add_impl(rational const&, rational const&);
     template <bool Checked> static constexpr auto mul_impl(rational const&, rational const&);
@@ -238,7 +219,7 @@ namespace beman::inside::detail
 
   private:
     // Domain check + canonical-zero + gcd reduction; used by the integral ctors.
-    // Two domain errors: Denominator == 0 (undefined; also the reserved sentinel)
+    // Two domain errors: Denominator == 0 (undefined)
     // and Denominator == imax_min (cannot be negated without UB, which every
     // sign-flip in the file assumes is well-defined).
     static constexpr void canonicalize(umax& num, imax& den)
@@ -265,7 +246,7 @@ namespace beman::inside::detail
   };
 
 
-  [[nodiscard]] constexpr slim::optional<rational> gcd(rational const&, rational const&);
+  [[nodiscard]] constexpr std::expected<rational, errc> gcd(rational const&, rational const&);
   [[nodiscard]] constexpr rational abs(rational);
 
   [[nodiscard]] constexpr bool divides_evenly(rational const&, rational const&);
@@ -332,10 +313,10 @@ namespace beman::inside::detail
   //---------------------------------------------------------------------------
   // gcd
   //---------------------------------------------------------------------------
-  // Returns nullopt if the combined denominator lcm = (a/gcd)·b would exceed
+  // Returns errc::overflow if the combined denominator lcm = (a/gcd)·b would exceed
   // imax_max (sign-bit reservation) — traps the mul_overflow then range-checks.
   //---------------------------------------------------------------------------
-  [[nodiscard]] constexpr slim::optional<rational> gcd(rational const& lhs, rational const& rhs)
+  [[nodiscard]] constexpr std::expected<rational, errc> gcd(rational const& lhs, rational const& rhs)
   {
     umax a = abs_den(lhs.Denominator);
     umax b = abs_den(rhs.Denominator);
@@ -343,9 +324,9 @@ namespace beman::inside::detail
 
     umax denominator;
     if (mul_overflow(a / g, b, &denominator))
-      return slim::nullopt;
+      return std::unexpected{errc::overflow};
     if (denominator > static_cast<umax>(std::numeric_limits<imax>::max()))
-      return slim::nullopt;
+      return std::unexpected{errc::overflow};
 
     auto numerator = std::gcd(lhs.Numerator, rhs.Numerator);
     return rational{numerator, denominator};
@@ -384,10 +365,9 @@ namespace beman::inside::detail
   // to
   //---------------------------------------------------------------------------
   template <std::unsigned_integral T>
-  constexpr slim::expected<T, errc> rational::to() const
+  constexpr std::expected<T, errc> rational::to() const
   {
-    if (is_sentinel())   return slim::unexpected{errc::not_a_value};
-    if (Denominator < 0) return slim::unexpected{errc::domain_error};
+    if (Denominator < 0) return std::unexpected{errc::domain_error};
     return static_cast<T>(Numerator / abs_den(Denominator));
   }
 
@@ -566,7 +546,7 @@ namespace beman::inside::detail
   template <bool Checked>
   inline constexpr auto rational::add_impl(rational const& a, rational const& b)
   {
-    using ret_t = std::conditional_t<Checked, slim::optional<rational>, rational>;
+    using ret_t = std::conditional_t<Checked, std::expected<rational, errc>, rational>;
 
     if (a == -b) return ret_t{0_r};
     if (a.Numerator == 0) return ret_t{b};
@@ -587,7 +567,7 @@ namespace beman::inside::detail
           if (add_overflow(a.Numerator, b.Numerator, &numerator))
           {
             if (std::is_constant_evaluated()) { constexpr_error<"rational +: numerator overflow (same denominator)">(); }
-            return ret_t{slim::nullopt};
+            return ret_t{std::unexpected{errc::overflow}};
           }
         }
         else
@@ -627,7 +607,7 @@ namespace beman::inside::detail
           denominator > static_cast<umax>(std::numeric_limits<imax>::max()))
       {
         if (std::is_constant_evaluated()) { constexpr_error<"rational +: denominator overflow">(); }
-        return ret_t{slim::nullopt};
+        return ret_t{std::unexpected{errc::overflow}};
       }
       if (mul_overflow(a.Numerator, b_ad_r, &A) ||
           mul_overflow(b.Numerator, a_ad_r, &B))
@@ -656,7 +636,7 @@ namespace beman::inside::detail
           }
         }
         if (std::is_constant_evaluated()) { constexpr_error<"rational +: cross-multiplication overflow">(); }
-        return ret_t{slim::nullopt};
+        return ret_t{std::unexpected{errc::overflow}};
       }
     }
     else
@@ -674,7 +654,7 @@ namespace beman::inside::detail
         if (add_overflow(A, B, &numerator))
         {
           if (std::is_constant_evaluated()) { constexpr_error<"rational +: numerator sum overflow">(); }
-          return ret_t{slim::nullopt};
+          return ret_t{std::unexpected{errc::overflow}};
         }
       }
       else
@@ -706,7 +686,7 @@ namespace beman::inside::detail
   template <bool Checked>
   inline constexpr auto rational::mul_impl(rational const& a_in, rational const& b_in)
   {
-    using ret_t = std::conditional_t<Checked, slim::optional<rational>, rational>;
+    using ret_t = std::conditional_t<Checked, std::expected<rational, errc>, rational>;
     rational a = a_in, b = b_in;
 
     if (a.Numerator == 0 || b.Numerator == 0) return ret_t{0_r};
@@ -723,7 +703,7 @@ namespace beman::inside::detail
         if (mul_overflow(a.Numerator, b.Numerator, &numerator))
         {
           if (std::is_constant_evaluated()) { constexpr_error<"rational *: numerator overflow">(); }
-          return ret_t{slim::nullopt};
+          return ret_t{std::unexpected{errc::overflow}};
         }
       }
       else
@@ -747,7 +727,7 @@ namespace beman::inside::detail
           denominator > static_cast<umax>(std::numeric_limits<imax>::max()))
       {
         if (std::is_constant_evaluated()) { constexpr_error<"rational *: numerator or denominator overflow">(); }
-        return ret_t{slim::nullopt};
+        return ret_t{std::unexpected{errc::overflow}};
       }
     }
     else
@@ -774,17 +754,21 @@ namespace beman::inside::detail
   template <bool Checked>
   inline constexpr auto rational::inv_impl(rational const& a)
   {
-    using ret_t = std::conditional_t<Checked, slim::optional<rational>, rational>;
+    using ret_t = std::conditional_t<Checked, std::expected<rational, errc>, rational>;
 
     if constexpr (Checked)
     {
       // a.Numerator goes into the result's Denominator slot, so it must fit in
       // imax (else the umax→imax conversion wraps and a later -Denominator is UB).
-      if (a.Numerator == 0 ||
-          a.Numerator > static_cast<umax>(std::numeric_limits<imax>::max()))
+      if (a.Numerator == 0)
       {
-        if (std::is_constant_evaluated()) { constexpr_error<"rational inv: numerator zero or out of denominator range">(); }
-        return ret_t{slim::nullopt};
+        if (std::is_constant_evaluated()) { constexpr_error<"rational inv: division by zero">(); }
+        return ret_t{std::unexpected{errc::division_by_zero}};
+      }
+      if (a.Numerator > static_cast<umax>(std::numeric_limits<imax>::max()))
+      {
+        if (std::is_constant_evaluated()) { constexpr_error<"rational inv: numerator out of denominator range">(); }
+        return ret_t{std::unexpected{errc::overflow}};
       }
     }
 
@@ -800,12 +784,12 @@ namespace beman::inside::detail
   template <bool Checked>
   inline constexpr auto rational::div_impl(rational const& a, rational const& b)
   {
-    using ret_t = std::conditional_t<Checked, slim::optional<rational>, rational>;
+    using ret_t = std::conditional_t<Checked, std::expected<rational, errc>, rational>;
 
     if constexpr (Checked)
     {
       auto inv_b = inv_impl<true>(b);
-      if (!inv_b.has_value()) return ret_t{slim::nullopt};
+      if (!inv_b.has_value()) return ret_t{std::unexpected{inv_b.error()}};
       return mul_impl<true>(a, *inv_b);
     }
     else
@@ -829,7 +813,7 @@ namespace beman::inside::detail
   inline constexpr rational rational::inv_unchecked(rational a)
   { return inv_impl<false>(a); }
 
-  inline constexpr slim::optional<rational> rational::inv(rational a)
+  inline constexpr std::expected<rational, errc> rational::inv(rational a)
   { return inv_impl<true>(a); }
 
   //---------------------------------------------------------------------------
@@ -915,11 +899,11 @@ namespace beman::inside::detail
   }
 
   template <typename T>
-  inline constexpr auto operator<=>(slim::optional<T> lhs, const rational& rhs)
+  inline constexpr auto operator<=>(std::expected<T, errc> const& lhs, const rational& rhs)
   { return rational{lhs.value()} <=> rhs; }
 
   template <typename T>
-  inline constexpr auto operator<=>(rational const& lhs, slim::optional<T> rhs)
+  inline constexpr auto operator<=>(rational const& lhs, std::expected<T, errc> const& rhs)
   { return lhs <=> rational{rhs.value()}; }
 
   template <arithmetic T>
@@ -931,22 +915,22 @@ namespace beman::inside::detail
   { return lhs <=> rational{rhs}; }
 
   //---------------------------------------------------------------------------
-  // Optional-lifting operators — one generic overload per arithmetic operator
-  // that engages when an operand is a slim::optional, both unwrap to arithmetic,
+  // Expected-lifting operators — one generic overload per arithmetic operator
+  // that engages when an operand is a std::expected, both unwrap to arithmetic,
   // and at least one to rational. Gating on `arithmetic` (not `insidable`, which
-  // isn't visible this low) excludes inside operands, so inside-involving optional
+  // isn't visible this low) excludes inside operands, so inside-involving expected
   // expressions partition cleanly to arithmetic.hpp's generic instead.
   //---------------------------------------------------------------------------
   template <class L, class R>
   concept rational_lift_operands =
-       (is_slim_optional_v<L> || is_slim_optional_v<R>)
+       (is_expected_v<L> || is_expected_v<R>)
     && arithmetic<unwrap_t<L>> && arithmetic<unwrap_t<R>>
     && (std::same_as<unwrap_t<L>, rational> || std::same_as<unwrap_t<R>, rational>);
 
   //---------------------------------------------------------------------------
   // operator*
   //---------------------------------------------------------------------------
-  inline constexpr slim::optional<rational> operator*(rational const& lhs, rational const& rhs)
+  inline constexpr std::expected<rational, errc> operator*(rational const& lhs, rational const& rhs)
   { return rational::mul_impl<true>(lhs, rhs); }
 
   // arithmetic operand — direct construction, no lift overhead
@@ -958,7 +942,7 @@ namespace beman::inside::detail
   inline constexpr auto operator*(rational const& lhs, T rhs)
   { return lhs * rational{rhs}; }
 
-  // optional operand(s) — propagate via lift
+  // expected operand(s) — propagate via lift
   template <class L, class R> requires rational_lift_operands<L, R>
   inline constexpr auto operator*(L const& lhs, R const& rhs)
   { return lift([](auto const& a, auto const& b){ return a * b; }, lhs, rhs); }
@@ -966,7 +950,7 @@ namespace beman::inside::detail
   //---------------------------------------------------------------------------
   // operator/
   //---------------------------------------------------------------------------
-  inline constexpr slim::optional<rational> operator/(rational const& lhs, rational const& rhs)
+  inline constexpr std::expected<rational, errc> operator/(rational const& lhs, rational const& rhs)
   { return rational::div_impl<true>(lhs, rhs); }
 
   template <arithmetic T>
@@ -984,7 +968,7 @@ namespace beman::inside::detail
   //---------------------------------------------------------------------------
   // operator+
   //---------------------------------------------------------------------------
-  inline constexpr slim::optional<rational> operator+(const rational& lhs, const rational& rhs)
+  inline constexpr std::expected<rational, errc> operator+(const rational& lhs, const rational& rhs)
   { return rational::add_impl<true>(lhs, rhs); }
 
   template <arithmetic T>
@@ -1002,7 +986,7 @@ namespace beman::inside::detail
   //---------------------------------------------------------------------------
   // operator-
   //---------------------------------------------------------------------------
-  inline constexpr slim::optional<rational> operator-(const rational& lhs, const rational& rhs)
+  inline constexpr std::expected<rational, errc> operator-(const rational& lhs, const rational& rhs)
   { return operator+(lhs, -rhs); }
 
   template <arithmetic T>
@@ -1017,12 +1001,12 @@ namespace beman::inside::detail
   inline constexpr auto operator-(L const& lhs, R const& rhs)
   { return lift([](auto const& a, auto const& b){ return a - b; }, lhs, rhs); }
 
-  inline constexpr slim::optional<rational> operator-(slim::optional<rational> const& v)
+  inline constexpr std::expected<rational, errc> operator-(std::expected<rational, errc> const& v)
   { return lift([](rational r){ return -r; }, v); }
 
   //---------------------------------------------------------------------------
   // Compound-assignment definitions — unwrap the checked binary op result.
-  // .value() throws slim::bad_optional_access on overflow; callers that
+  // .value() throws std::bad_expected_access on overflow; callers that
   // need a non-throwing path must use the binary operators directly.
   //---------------------------------------------------------------------------
   inline constexpr rational& rational::operator+=(rational const& rhs)
@@ -1038,7 +1022,7 @@ namespace beman::inside::detail
   { *this = (*this / rhs).value(); return *this; }
 
   // Forwarding overloads — accept arithmetic RHS (lifted via rational{}) and
-  // slim::optional<rational> RHS (unwrapped via .value()) so callers can
+  // expected<rational, errc> RHS (unwrapped via .value()) so callers can
   // chain `r += rational * rational` without a manual unwrap.
   template <arithmetic T>
   inline constexpr rational& operator+=(rational& lhs, T rhs)
@@ -1056,16 +1040,16 @@ namespace beman::inside::detail
   inline constexpr rational& operator/=(rational& lhs, T rhs)
   { return lhs /= rational{rhs}; }
 
-  inline constexpr rational& operator+=(rational& lhs, slim::optional<rational> const& rhs)
+  inline constexpr rational& operator+=(rational& lhs, std::expected<rational, errc> const& rhs)
   { return lhs += rhs.value(); }
 
-  inline constexpr rational& operator-=(rational& lhs, slim::optional<rational> const& rhs)
+  inline constexpr rational& operator-=(rational& lhs, std::expected<rational, errc> const& rhs)
   { return lhs -= rhs.value(); }
 
-  inline constexpr rational& operator*=(rational& lhs, slim::optional<rational> const& rhs)
+  inline constexpr rational& operator*=(rational& lhs, std::expected<rational, errc> const& rhs)
   { return lhs *= rhs.value(); }
 
-  inline constexpr rational& operator/=(rational& lhs, slim::optional<rational> const& rhs)
+  inline constexpr rational& operator/=(rational& lhs, std::expected<rational, errc> const& rhs)
   { return lhs /= rhs.value(); }
 
   //---------------------------------------------------------------------------
@@ -1100,13 +1084,6 @@ namespace beman::inside
   template <imax N, imax D = 1>
   inline constexpr detail::rational frac = detail::rational{N, D};
 } // namespace beman::inside
-
-namespace beman::inside::slim
-{
-  constexpr beman::inside::detail::rational sentinel_traits<beman::inside::detail::rational>::sentinel() noexcept { return beman::inside::detail::rational::make_sentinel(); }
-  constexpr bool sentinel_traits<beman::inside::detail::rational>::is_sentinel(const beman::inside::detail::rational& v) noexcept
-  { return v.is_sentinel(); }
-} // namespace beman::inside::slim
 
 #endif // BEMAN_INSIDE_DETAIL_RATIONAL_HPP
 

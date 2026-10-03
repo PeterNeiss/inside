@@ -8,8 +8,8 @@
 //   - `rational::inv(0)` and division-by-zero `throw` under
 //     `is_constant_evaluated()` and hard-fail the build — they cannot appear
 //     in a constant expression.
-//   - The unhandled-`checked` path (out-of-range value, no clamp/wrap/
-//     sentinel) still aborts constant evaluation via the
+//   - The unhandled-`checked` path (out-of-range value, no clamp/wrap)
+//     still aborts constant evaluation via the
 //     `is_constant_evaluated()` guard inside `policy::report` (clearer
 //     than the prior unconditional throw).
 
@@ -20,6 +20,7 @@
 #include <gtest/gtest.h>
 
 #include <cstdint>
+#include <expected>
 #include <limits>
 #include <type_traits>
 
@@ -51,14 +52,14 @@ TEST(ConstexprTest, constexpr_rational_identities)
 // constexpr: rational arithmetic
 TEST(ConstexprTest, constexpr_rational_arithmetic)
 {
-  // +/-/*//  return slim::optional<rational>; the * deref is the canonical
+  // +/-/*//  return std::expected<rational, errc>; the * deref is the canonical
   // form used elsewhere in the codebase (mirrors `2_r/3` literal pattern).
   static_assert(*(rational{3u, 2} + rational{1u, 5}) == rational{17u, 10});
   static_assert(*(rational{3u, 4} - rational{1u, 4}) == rational{1u, 2});
   static_assert(*(rational{2u, 3} * rational{3u, 4}) == rational{1u, 2});
   static_assert(*(rational{1u, 2} / rational{1u, 4}) == rational{2u, 1});
 
-  // gcd is also optional-returning
+  // gcd is also expected-returning
   static_assert(*gcd(rational{2u, 3}, rational{1u, 6}) == rational{1u, 6});
 
   // Div-by-zero is runtime-only — at compile time `rational::inv(0)` throws
@@ -126,9 +127,10 @@ TEST(ConstexprTest, constexpr_interval_arithmetic)
   static_assert(*(a - b) == interval{-5, 10});
   static_assert(*(a * b) == interval{0, 50});
 
-  // division by an interval that straddles zero returns nullopt
+  // division by an interval that straddles zero returns division_by_zero
   constexpr interval zero_crossing{-1, 1};
   static_assert(!((a / zero_crossing).has_value()));
+  static_assert((a / zero_crossing).error() == errc::division_by_zero);
 
   // unary minus flips and swaps
   static_assert(-a == interval{-10, 0});
@@ -161,9 +163,10 @@ TEST(ConstexprTest, constexpr_grid_arithmetic_produces_expected_result_grids)
   static_assert(prod.has_value());
   static_assert(prod->Interval == interval{0, 50});
 
-  // div by a zero-only divisor grid is nullopt
+  // div by a zero-only divisor grid is division_by_zero
   constexpr grid g_zero{{0, 0}, 0};
   static_assert(!((g_a / g_zero).has_value()));
+  static_assert((g_a / g_zero).error() == errc::division_by_zero);
 }
 
 // constexpr: grid notch alignment via gcd
@@ -183,19 +186,19 @@ TEST(ConstexprTest, constexpr_grid_notch_alignment_via_gcd)
 // constexpr: storage_min picks the smallest fitting raw
 TEST(ConstexprTest, constexpr_storage_min_picks_the_smallest_fitting_raw)
 {
-  // smallest_uint_for reserves the type's max as the slim::optional sentinel,
-  // so a grid hitting UINT8_MAX exactly promotes to uint16_t.
+  // smallest_uint_for uses the type's full range: a grid hitting UINT8_MAX
+  // exactly still fits uint8_t; one past it promotes to uint16_t.
   static_assert(std::is_same_v<raw_t<inside<{0,   100}>>, std::uint8_t>);
-  static_assert(std::is_same_v<raw_t<inside<{0,   254}>>, std::uint8_t>);
-  static_assert(std::is_same_v<raw_t<inside<{0,   255}>>, std::uint16_t>);
-  static_assert(std::is_same_v<raw_t<inside<{0, 65534}>>, std::uint16_t>);
-  static_assert(std::is_same_v<raw_t<inside<{0, 65535}>>, std::uint32_t>);
+  static_assert(std::is_same_v<raw_t<inside<{0,   255}>>, std::uint8_t>);
+  static_assert(std::is_same_v<raw_t<inside<{0,   256}>>, std::uint16_t>);
+  static_assert(std::is_same_v<raw_t<inside<{0, 65535}>>, std::uint16_t>);
+  static_assert(std::is_same_v<raw_t<inside<{0, 65536}>>, std::uint32_t>);
 
-  // signed-direct: lower < 0 + notch 1 → signed int that fits the range.
-  // INT8_MIN is reserved for the sentinel, so {-128, 127} promotes to int16_t.
+  // signed-direct: lower < 0 + notch 1 → signed int that fits the range,
+  // including the type's minimum.
   static_assert(std::is_same_v<raw_t<inside<{-40,   85}>>, std::int8_t>);
-  static_assert(std::is_same_v<raw_t<inside<{-127, 127}>>, std::int8_t>);
-  static_assert(std::is_same_v<raw_t<inside<{-128, 127}>>, std::int16_t>);
+  static_assert(std::is_same_v<raw_t<inside<{-128, 127}>>, std::int8_t>);
+  static_assert(std::is_same_v<raw_t<inside<{-129, 127}>>, std::int16_t>);
 
   // notch 0 → rational raw
   static_assert(std::is_same_v<raw_t<inside<{{-10, 10}, 0}>>, rational>);
@@ -257,8 +260,8 @@ TEST(ConstexprTest, constexpr_inside_plus_on_fractional_notch_grids)
   static_assert(a * b == rational{15u, 4});
 }
 
-// constexpr: division returns slim::optional
-TEST(ConstexprTest, constexpr_division_returns_slim_optional)
+// constexpr: division returns std::expected
+TEST(ConstexprTest, constexpr_division_returns_expected)
 {
   using v = inside<{1, 255}>;
   constexpr v a{102};
@@ -514,32 +517,35 @@ TEST(ConstexprTest, constexpr_just_n_and_ins_literal)
 //---------------------------------------------------------------------------
 // lift — additional coverage beyond test_lift.cpp
 //---------------------------------------------------------------------------
-// constexpr: lift over multiple slim::optional args
-TEST(ConstexprTest, constexpr_lift_over_multiple_slim_optional_args)
+// constexpr: lift over multiple expected args
+TEST(ConstexprTest, constexpr_lift_over_multiple_expected_args)
 {
   constexpr auto plus = [](int a, int b) { return a + b; };
+  constexpr auto good = [](int v) -> std::expected<int, errc> { return v; };
+  constexpr auto bad  = []() -> std::expected<int, errc> { return std::unexpected{errc::overflow}; };
 
-  constexpr slim::optional<int> a{2}, b{3};
-  static_assert(*lift(plus, a, b) == 5);
+  static_assert(*lift(plus, good(2), good(3)) == 5);
 
-  // one empty → nullopt
-  constexpr slim::optional<int> empty{slim::nullopt};
-  static_assert(!(lift(plus, a, empty).has_value()));
+  // one error → error
+  static_assert(!(lift(plus, good(2), bad()).has_value()));
+  static_assert(lift(plus, good(2), bad()).error() == errc::overflow);
 
-  // three-arg fold over a mix of values and optionals
+  // three-arg fold over a mix of values and expecteds
   constexpr auto sum3 = [](int x, int y, int z) { return x + y + z; };
-  static_assert(*lift(sum3, a, 4, b) == 9);
+  static_assert(*lift(sum3, good(2), 4, good(3)) == 9);
 }
 
 //---------------------------------------------------------------------------
-// slim::optional<inside> size invariant
+// Storage stays plain: std::expected only appears as a return value
 //---------------------------------------------------------------------------
-// constexpr: optional<inside> is the same size as inside
-TEST(ConstexprTest, constexpr_optional_inside_is_the_same_size_as_inside)
+// constexpr: fallible results are expected, inside storage stays native
+TEST(ConstexprTest, constexpr_fallible_results_are_expected_inside_stays_native)
 {
-  // slim::optional<inside> uses a sentinel value rather than a bool flag.
-  static_assert(sizeof(slim::optional<inside<{0, 100}>>)
-                 == sizeof(inside<{0, 100}>));
-  static_assert(sizeof(slim::optional<inside<{-40, 85}>>)
-                 == sizeof(inside<{-40, 85}>));
+  using v = inside<{0, 100}>;
+  using q = decltype(v{} / v{});
+  static_assert(is_expected_v<q>);
+  static_assert(sizeof(inside<{0, 100}>)  == 1);
+  static_assert(sizeof(inside<{0, 255}>)  == 1);
+  static_assert(sizeof(inside<{-40, 85}>) == 1);
+  static_assert(sizeof(inside<{-128, 127}>) == 1);
 }

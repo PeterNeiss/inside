@@ -41,7 +41,6 @@ namespace beman::inside
   // unary — mutually exclusive
   inline static constexpr policy_flag clamp   {1ull << 32}; // saturate to boundary
   inline static constexpr policy_flag wrap    {1ull << 33}; // modular arithmetic
-  inline static constexpr policy_flag sentinel{1ull << 35}; // overflow -> sentinel (nullopt)
 
   // Representation flags — select raw storage. Without one, storage is deduced
   // from the grid (notch-0 → rational; unit notch at/below 0 → integer value;
@@ -138,7 +137,6 @@ namespace beman::inside
   template<typename F> struct on_clamp_t    { [[no_unique_address]] F fn; };
   template<typename F> struct on_wrap_t     { [[no_unique_address]] F fn; };
   template<typename F> struct on_error_t    { [[no_unique_address]] F fn; };
-  template<typename F> struct on_sentinel_t { [[no_unique_address]] F fn; };
   template<typename F> struct on_overflow_t { [[no_unique_address]] F fn; };
 
   //---------------------------------------------------------------------------
@@ -150,8 +148,6 @@ namespace beman::inside
   { return on_wrap_t<std::remove_cvref_t<F>>{std::forward<F>(fn)}; }
   template<typename F> [[nodiscard]] constexpr auto on_error(F&& fn)
   { return on_error_t<std::remove_cvref_t<F>>{std::forward<F>(fn)}; }
-  template<typename F> [[nodiscard]] constexpr auto on_sentinel(F&& fn)
-  { return on_sentinel_t<std::remove_cvref_t<F>>{std::forward<F>(fn)}; }
   template<typename F> [[nodiscard]] constexpr auto on_overflow(F&& fn)
   { return on_overflow_t<std::remove_cvref_t<F>>{std::forward<F>(fn)}; }
 
@@ -165,15 +161,12 @@ namespace beman::inside
   template<typename F> struct IsWrapActionPred<on_wrap_t<F>>     : std::true_type {};
   template<typename T> struct IsErrorActionPred    : std::false_type {};
   template<typename F> struct IsErrorActionPred<on_error_t<F>>    : std::true_type {};
-  template<typename T> struct IsSentinelActionPred : std::false_type {};
-  template<typename F> struct IsSentinelActionPred<on_sentinel_t<F>> : std::true_type {};
   template<typename T> struct IsOverflowActionPred : std::false_type {};
   template<typename F> struct IsOverflowActionPred<on_overflow_t<F>> : std::true_type {};
 
   template<typename T> concept clamp_action    = IsClampActionPred   <std::remove_cvref_t<T>>::value;
   template<typename T> concept wrap_action     = IsWrapActionPred    <std::remove_cvref_t<T>>::value;
   template<typename T> concept error_action    = IsErrorActionPred   <std::remove_cvref_t<T>>::value;
-  template<typename T> concept sentinel_action = IsSentinelActionPred<std::remove_cvref_t<T>>::value;
   template<typename T> concept overflow_action = IsOverflowActionPred<std::remove_cvref_t<T>>::value;
 
   //---------------------------------------------------------------------------
@@ -184,7 +177,6 @@ namespace beman::inside
   template<typename F> inline constexpr policy_flag implied_flags<on_clamp_t<F>>    = clamp;
   template<typename F> inline constexpr policy_flag implied_flags<on_wrap_t<F>>     = wrap;
   template<typename F> inline constexpr policy_flag implied_flags<on_error_t<F>>    = checked;
-  template<typename F> inline constexpr policy_flag implied_flags<on_sentinel_t<F>> = sentinel;
   template<typename F> inline constexpr policy_flag implied_flags<on_overflow_t<F>> = checked;
 
   //---------------------------------------------------------------------------

@@ -46,18 +46,18 @@ For wide grids (Upper > imax_max) the implicit operators are SFINAE-disabled
 
 ```cpp
 using wide = inside<{0, std::numeric_limits<std::uint64_t>::max()}>;
-auto r = wide{huge}.to<std::uint64_t>();   // slim::expected<uint64_t, errc>
+auto r = wide{huge}.to<std::uint64_t>();   // std::expected<uint64_t, errc>
 ```
 
 ## Named extraction: `to<T>()` and `as<T>()`
 
-`inside::to<T>()` returns `slim::expected<T, errc>` — each failure surfaces as a
-distinct typed error: sentinel-state → `errc::not_a_value`, out of T's range →
-`errc::overflow`, negative-into-unsigned → `errc::domain_error`:
+`inside::to<T>()` returns `std::expected<T, errc>` — each failure surfaces as a
+distinct typed error: out of T's range → `errc::overflow`,
+negative-into-unsigned → `errc::domain_error`:
 
 ```cpp
 auto r = b.to<std::uint16_t>();
-if (!r) { /* r.error() is errc::not_a_value, errc::overflow, or errc::domain_error */ }
+if (!r) { /* r.error() is errc::overflow or errc::domain_error */ }
 ```
 
 `as<T>()` is the non-expected sibling — calls `to<T>().value()`. Use it when
@@ -65,7 +65,7 @@ the value is known in-range and you want to fail loud on a logic bug:
 
 ```cpp
 narrow b{42};
-auto v = b.as<std::int16_t>();   // 42; throws on sentinel-state / out-of-range
+auto v = b.as<std::int16_t>();   // 42; throws on out-of-range
 ```
 
 Both also exist as **free functions** — `to<T>(b)` / `as<T>(b)` (found by

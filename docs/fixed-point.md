@@ -49,9 +49,9 @@ template <insidable B> inline constexpr bool IsQFormat =
 - **Narrowing is a policy, not a hope.** Storing back onto a coarser grid runs
   `snap` (truncate), `round_nearest`, `clamp`, `wrap`, or `checked` — you
   choose per type or per operation.
-- **Out-of-range is explicit.** `clamp`/`wrap` saturate/fold; `checked`/`sentinel`
-  report (`slim::optional` / `slim::expected` / `beman::inside::errc`) instead of
-  silently wrapping.
+- **Out-of-range is explicit.** `clamp`/`wrap` saturate/fold; `checked`
+  reports (`std::expected` / `beman::inside::errc`) instead of silently
+  wrapping.
 - **Exactness on tap.** Need no rounding at all? The `exact` policy stores a
   rational and never loses a bit (slower — see below).
 
@@ -87,14 +87,11 @@ in hot loops.
    fall to rational storage (gcd/lcm every op). For bulk reductions use
    `beman::inside::sum` / `mul_all`, which defer the check and keep vectorization.
 
-### The SIMD / sentinel caveat
+### SIMD widths
 
-The smallest-type selection reserves one raw slot for the zero-overhead
-`slim::optional<inside>` sentinel. So `inside<{0,255}>` promotes to **uint16** (raw
-255 is the sentinel), halving SIMD lanes versus native `uint8_t`. Cap one short —
-`inside<{0,254}>` fits **uint8** and runs at exactly native speed. The
-`formats.hpp` aliases already do this (`byte` is `[0,254]`); Q-format types have
-headroom and keep full range.
+The smallest-type selection uses each type's full range: `inside<{0,255}>` is a
+**uint8** and runs lane-for-lane with native `uint8_t`. The `formats.hpp`
+aliases use the full native ranges too (`byte` is `[0,255]`).
 
 ## Performance
 

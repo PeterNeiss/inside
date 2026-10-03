@@ -89,7 +89,7 @@ int main()
   {
     time_t  t{i / just<N>};   // inside / inside — give the divisor N a grid
     // `t * two_pi_bnd` returns a plain `inside`: the static safety check on
-    // rational multiplication folds out the optional wrapper because the
+    // rational multiplication folds out the expected wrapper because the
     // result grid's numerator/denominator products provably fit in umax.
     // Snap the result into angle_t to land on the 1/16384 grid; the
     // subsequent inside + inside then stays on a friendly notch.

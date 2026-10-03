@@ -17,15 +17,15 @@ int main()
   for (std::size_t i = 0; i < data.size(); ++i)
     data[i] = static_cast<int>(i * i);
 
-  using index = inside<{0, 9}, sentinel>;
+  using index = inside<{0, 9}>;
 
   // In range: usable directly.
   index i{7};
   std::cout << "data[7]            = " << data[i.to<std::size_t>().value()] << "\n";
 
-  // Out of range: absence is a value, not a buffer overrun.
+  // Out of range: an error value, not a buffer overrun.
   auto bad = index::try_make(10);
-  std::cout << "index 10           = " << (bad ? "has value" : "nullopt")
+  std::cout << "index 10           = " << (bad ? "has value" : errc_message(bad.error()))
             << "   (no out-of-bounds access possible)\n";
 
   // Iterating the valid slots exactly, with no off-by-one to get wrong.

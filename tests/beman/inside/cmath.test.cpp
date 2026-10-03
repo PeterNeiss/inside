@@ -381,11 +381,10 @@ TEST(CmathTest, beman_inside_math_sqrt_mixed_sign_input_returns_expected)
   ASSERT_EQ(r_neg.error(), errc::domain_error);
 
   // The non-negative overload (Lower == 0) returns inside directly; the
-  // mixed-sign overload returns expected (not optional). Disjoint by `requires`.
+  // mixed-sign overload returns expected. Disjoint by `requires`.
   using nonneg_in = inside<{{0, 1}, notch<1, 65536>}, round_nearest | real>;
   nonneg_in v{0.25_r};
-  static_assert(!(is_slim_optional_v<decltype(math::sqrt(v))>));
-  static_assert(!(is_slim_optional_v<decltype(math::sqrt(pos))>));
+  static_assert(!(is_expected_v<decltype(math::sqrt(v))>));
   ASSERT_EQ(math::sqrt(v), 0.5_r);
 }
 
@@ -805,7 +804,7 @@ TEST(CmathTest, DISABLED_beman_inside_math_atan2_probe_informational)
 
 //---------------------------------------------------------------------------
 // tan: sin/cos with a pole guard. First function in the library that
-// returns slim::expected<Out, errc> — the pattern for any function whose
+// returns std::expected<Out, errc> — the pattern for any function whose
 // output depends on a runtime domain check.
 //---------------------------------------------------------------------------
 namespace

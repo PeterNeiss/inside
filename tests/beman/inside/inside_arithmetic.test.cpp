@@ -4,6 +4,7 @@
 
 #include <gtest/gtest.h>
 
+#include <expected>
 #include <limits>
 #include <type_traits>
 #include <vector>
@@ -114,10 +115,11 @@ TEST(InsideArithmeticTest, inside_div_rational_vs_integer_paths)
   }
 
   {
-    SCOPED_TRACE("division by zero -> nullopt");
+    SCOPED_TRACE("division by zero -> errc::division_by_zero");
     using ui = inside<{0, 100}, snap>;
     ui a{51}, zero{0};
     ASSERT_FALSE((a / zero).has_value());
+    ASSERT_EQ((a / zero).error(), errc::division_by_zero);
   }
 
   {
@@ -128,7 +130,7 @@ TEST(InsideArithmeticTest, inside_div_rational_vs_integer_paths)
 
     constexpr off a{50}, b{10};
     constexpr auto q = div(a, b, truncated);
-    // off's grid {5,100} excludes zero, so div returns a plain inside (no optional).
+    // off's grid {5,100} excludes zero, so div returns a plain inside (no expected).
     static_assert(!(std::is_same_v<typename decltype(q)::raw_type, rational>));
     static_assert(q == 5);
   }
@@ -159,7 +161,7 @@ TEST(InsideArithmeticTest, inside_div_rational_vs_integer_paths)
   }
 
   {
-    SCOPED_TRACE("divisor grid excluding zero yields a non-optional result");
+    SCOPED_TRACE("divisor grid excluding zero yields a non-expected result");
     using num   = inside<{0, 100}, snap>;
     using pos   = inside<{1, 10},  snap>;   // grid excludes zero
     using spanz = inside<{-5, 10}, snap>;   // grid straddles zero
@@ -170,11 +172,11 @@ TEST(InsideArithmeticTest, inside_div_rational_vs_integer_paths)
 
     // Divisor proven nonzero at compile time → plain inside, no unwrap needed.
     static_assert(insidable<decltype(a / p)>);
-    static_assert(!(is_slim_optional_v<decltype(a / p)>));
+    static_assert(!(is_expected_v<decltype(a / p)>));
     static_assert(a / p == 14);
 
-    // Divisor whose grid contains zero → still slim::optional<inside>.
-    static_assert(is_slim_optional_v<decltype(a / s)>);
+    // Divisor whose grid contains zero → std::expected<inside, errc>.
+    static_assert(is_expected_v<decltype(a / s)>);
     ASSERT_TRUE((a / s).has_value());
     ASSERT_EQ(*(a / s), 21);
   }
@@ -193,6 +195,7 @@ TEST(InsideArithmeticTest, inside_modulo)
   // mod-by-zero — runtime only: the `is_constant_evaluated()` throw short-circuits.
   ui a_rt{17}, zero{0};
   ASSERT_FALSE((a_rt % zero).has_value());
+  ASSERT_EQ((a_rt % zero).error(), errc::division_by_zero);
 
   using si = inside<{-100, 100}, snap>;
   constexpr si sa{-17}, sb{5};
@@ -204,55 +207,60 @@ TEST(InsideArithmeticTest, inside_modulo)
   static_assert(*r == 2);
 }
 
-// inside optional ops propagate nullopt
-TEST(InsideArithmeticTest, inside_optional_ops_propagate_nullopt)
+// inside expected ops propagate the error
+TEST(InsideArithmeticTest, inside_expected_ops_propagate_error)
 {
   using u8 = inside<{1, 255}>;
   constexpr u8 a{100}, b{10};
-  constexpr slim::optional<u8> opt_a{a}, opt_b{b};
-  constexpr slim::optional<u8> none{slim::nullopt};
+  struct ex
+  {
+    static constexpr std::expected<u8, errc> ok(u8 v) { return v; }
+    static constexpr std::expected<u8, errc> none() { return std::unexpected{errc::overflow}; }
+  };
 
   // +
-  static_assert(*(opt_a + b)     == 110);
-  static_assert(*(a + opt_b)     == 110);
-  static_assert(*(opt_a + opt_b) == 110);
-  static_assert(!((none + b).has_value()));
-  static_assert(!((a + none).has_value()));
+  static_assert(*(ex::ok(a) + b)        == 110);
+  static_assert(*(a + ex::ok(b))        == 110);
+  static_assert(*(ex::ok(a) + ex::ok(b)) == 110);
+  static_assert(!((ex::none() + b).has_value()));
+  static_assert(!((a + ex::none()).has_value()));
+  static_assert((a + ex::none()).error() == errc::overflow);
 
   // -
-  static_assert(*(opt_a - b) == 90);
-  static_assert(!((none - b).has_value()));
+  static_assert(*(ex::ok(a) - b) == 90);
+  static_assert(!((ex::none() - b).has_value()));
 
   // *
-  static_assert(*(opt_a * b) == 1000);
-  static_assert(!((a * none).has_value()));
+  static_assert(*(ex::ok(a) * b) == 1000);
+  static_assert(!((a * ex::none()).has_value()));
 
   // /
-  static_assert((opt_a / b).has_value());
-  static_assert(*(opt_a / b) == 10);
-  static_assert(!((none / b).has_value()));
+  static_assert((ex::ok(a) / b).has_value());
+  static_assert(*(ex::ok(a) / b) == 10);
+  static_assert(!((ex::none() / b).has_value()));
 }
 
-// inside rational-storage optional ops do not double-wrap
-TEST(InsideArithmeticTest, inside_rational_storage_optional_ops_do_not_double_wrap)
+// inside rational-storage expected ops do not double-wrap
+TEST(InsideArithmeticTest, inside_rational_storage_expected_ops_do_not_double_wrap)
 {
   using frac = inside<{{-10, 10}, 0}>;
   frac f1 = *(2_r/3);
   frac f2 = *(1_r/3);
-  slim::optional<frac> opt1{f1}, opt2{f2};
-  slim::optional<frac> none{slim::nullopt};
+  auto ok   = [](frac v) -> std::expected<frac, errc> { return v; };
+  auto none = []() -> std::expected<frac, errc> { return std::unexpected{errc::overflow}; };
 
-  ASSERT_EQ(*(opt1 + f2), 1);
-  ASSERT_EQ(*(f1 + opt2), 1);
-  ASSERT_FALSE((none + f2).has_value());
+  ASSERT_EQ(*(ok(f1) + f2), 1);
+  ASSERT_EQ(*(f1 + ok(f2)), 1);
+  ASSERT_FALSE((none() + f2).has_value());
+  static_assert(std::is_same_v<decltype(ok(f1) + f2), decltype(f1 + f2)>);
 
-  ASSERT_EQ(*(opt1 - f2), *(1_r/3));
-  ASSERT_EQ(*(opt1 * f2), *(2_r/9));
+  ASSERT_EQ(*(ok(f1) - f2), *(1_r/3));
+  ASSERT_EQ(*(ok(f1) * f2), *(2_r/9));
 
   using pfrac = inside<{{1, 10}, 0}>;
   pfrac p1 = 3, p2 = 2;
-  slim::optional<pfrac> op1{p1}, op2{p2};
-  ASSERT_EQ(*(op1 / p2), *(3_r/2));
+  auto pok = [](pfrac v) -> std::expected<pfrac, errc> { return v; };
+  ASSERT_EQ(*(pok(p1) / p2), *(3_r/2));
 }
 
 // inside action-first arithmetic overloads
@@ -274,9 +282,10 @@ TEST(InsideArithmeticTest, inside_action_first_arithmetic_overloads)
   ASSERT_TRUE(fired);
   ASSERT_EQ(seen, errc::division_by_zero);
 
-  // No-action default: nullopt
+  // No-action default: errc::division_by_zero
   auto q_def = div(d, z);
   ASSERT_FALSE(q_def.has_value());
+  ASSERT_EQ(q_def.error(), errc::division_by_zero);
 }
 
 // inside rational-storage on_overflow free fn
@@ -320,7 +329,7 @@ TEST(InsideArithmeticTest, unary_ins_composes_through_the_literal_parser)
   static_assert(rational{-0x1p-8_ins} == -0x1p-8_r);
 
   // Compose: `5_ins + (-1.5_ins)` — point + point. The result may be wrapped
-  // in optional by the grid arithmetic; either way the value is 3.5.
+  // in expected by the grid arithmetic; either way the value is 3.5.
   static_assert((5_ins + -1.5_ins) == 3.5_r);
 }
 

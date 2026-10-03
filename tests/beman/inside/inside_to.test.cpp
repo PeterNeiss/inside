@@ -46,15 +46,6 @@ TEST(InsideToTest, inside_to_unsigned_t)
   }
 
   {
-    SCOPED_TRACE("sentinel-state inside -> not_a_value");
-    using B = inside<{0, 100}, sentinel>;
-    B b = B::make_sentinel();
-    auto r = b.to<std::uint8_t>();
-    ASSERT_FALSE(r.has_value());
-    ASSERT_EQ(r.error(), errc::not_a_value);
-  }
-
-  {
     SCOPED_TRACE("Q-format fast path");
     using B = inside<{{0, 255}, notch<1, 256>}, round_nearest>;
     ASSERT_TRUE(B{42.5}.to<std::uint8_t>().value() == 42);
@@ -95,15 +86,6 @@ TEST(InsideToTest, inside_to_floating_t)
     SCOPED_TRACE("ordinary value");
     using B = inside<{{0, 1}, notch<1, 2>}>;
     ASSERT_TRUE(B{0.5}.to<double>().value() == 0.5);
-  }
-
-  {
-    SCOPED_TRACE("sentinel-state -> not_a_value");
-    using B = inside<{0, 100}, sentinel>;
-    B b = B::make_sentinel();
-    auto r = b.to<double>();
-    ASSERT_FALSE(r.has_value());
-    ASSERT_EQ(r.error(), errc::not_a_value);
   }
 
   {

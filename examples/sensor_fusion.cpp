@@ -71,7 +71,7 @@ int main()
          [](double v){ return !will_conversion_overflow<indoor_t>(v); });
 
   // Divide in inside-space: the weight grid includes 0, so `/` yields an
-  // optional<inside>; the fused_t ctor unwraps it and clamp-rounds in one step.
+  // expected<inside, errc>; the fused_t ctor unwraps it and clamp-rounds in one step.
   fused_t fused{0};
   if (weight_sum != 0)
     fused = fused_t{weighted_sum / weight_sum};

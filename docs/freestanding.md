@@ -98,8 +98,9 @@ if (ec != beman::inside::errc{})             // first error is sticky
 ```
 
 See [Error code mode](policies.md#error-code-mode) for the full surface. `clamp` /
-`wrap` / `sentinel` policies and `slim::optional` / `slim::expected` results are all
-non-throwing and work unchanged on freestanding.
+`wrap` policies and `std::expected` results are all non-throwing and work unchanged
+on freestanding (test `has_value()` / `error()` rather than calling `.value()`,
+which would need to throw).
 
 ## Math without `<cmath>` (`BEMAN_INSIDE_MATH_NO_FP`)
 
@@ -122,24 +123,10 @@ compute backend differs.
 See [Compiling without floating point](math.md#compiling-without-floating-point-beman_inside_math_no_fp)
 in the math guide for the full story and the engine trade-offs.
 
-## Older toolchains: C++20 / GCC 12 mode
-
-The library also builds against **C++20 on GCC 12**: configure with
-`-DCMAKE_CXX_STANDARD=20`. In that mode the error channel uses the bundled
-`slim::expected` backport instead of `<expected>`, and the `std::format`
-integration is feature-gated off (`to_string()` / `operator<<` remain available)
-— everything else is identical.
-
-```bash
-cmake -S . -B build/gcc12 -DCMAKE_CXX_STANDARD=20 -DCMAKE_CXX_COMPILER=g++-12 \
-      -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES=infra/cmake/use-fetch-content.cmake
-cmake --build build/gcc12
-```
-
 ## Limitations & caveats
 
 - **Toolchain-dependent.** The "core is freestanding" result was verified on GCC 15 /
-  libstdc++, which makes `<ranges>`, `<algorithm>`, `<optional>`, `<memory>`,
+  libstdc++, which makes `<ranges>`, `<algorithm>`, `<expected>`, `<memory>`,
   `<functional>`, `<tuple>`, `<numeric>`, `<string_view>`, … freestanding (C++26
   P2407/P2738). On older libstdc++ or libc++ several of these are still hosted and
   would also block `-ffreestanding`; the library does not work around that.
@@ -151,9 +138,6 @@ cmake --build build/gcc12
 - **Exceptions on + freestanding don't mix** out of the box — the default throwing
   handler needs `<stdexcept>`. Use `-fno-exceptions`, or replace the handler and avoid
   the throwing default.
-- `slim::optional`'s heavyweight standard-type specializations (`<chrono>`, `<thread>`,
-  `<any>`, `<coroutine>`, `<span>`, `<stop_token>`, …) are already compiled out via
-  `BEMAN_INSIDE_SLIM_OPTIONAL_LEAN_AND_MEAN`, which the library defines for its own use.
 
 ## Worked example
 

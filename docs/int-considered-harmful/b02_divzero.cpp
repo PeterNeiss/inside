@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Answer to hazard 4: division by zero is a value you can test, not a
-// signal that kills the process. The result is slim::optional; a divisor
-// grid that provably excludes zero gives you a plain value with nothing
-// to unwrap.
+// signal that kills the process. The result is std::expected<inside, errc>;
+// a divisor grid that provably excludes zero gives you a plain value with
+// nothing to unwrap.
 
 #include <iostream>
 
@@ -28,11 +28,11 @@ int main()
   if (trunc)
     std::cout << "div(7, 3, trunc)   = " << *trunc << "\n";
 
-  // Division by zero: nullopt, and the program keeps running.
+  // Division by zero: an error value, and the program keeps running.
   val zero = 0;
   auto oops = val(10) / zero;
   std::cout << "10 / 0             = "
-            << (oops.has_value() ? "value" : "nullopt")
+            << (oops.has_value() ? "value" : errc_message(oops.error()))
             << "   (no SIGFPE)\n";
 
   return 0;
