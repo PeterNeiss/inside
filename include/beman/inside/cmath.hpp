@@ -93,6 +93,66 @@ namespace beman::inside::math
     template <insidable In>
     inline constexpr policy_flag out_policy = InsidePolicy<In> & ~raw_width_mask;
 
+    // Input-domain checks, one per function, shared by every engine (cordic,
+    // dbl, flt) so all three accept exactly the same input grids. The limits are
+    // the CORDIC working-scale envelope, which also computes every engine's
+    // auto-deduced output grid.
+    template <insidable In>
+    constexpr void domain_acos() noexcept
+    { static_assert(Lower<In> >= -1 && Upper<In> <= 1, "beman::inside::math::acos: input must be in [-1, 1]"); }
+    template <insidable In>
+    constexpr void domain_asin() noexcept
+    { static_assert(Lower<In> >= -1 && Upper<In> <= 1, "beman::inside::math::asin: input must be in [-1, 1]"); }
+    template <insidable In>
+    constexpr void domain_atan() noexcept
+    { static_assert(Lower<In> >= -(imax{1} << 20) && Upper<In> <= (imax{1} << 20), "beman::inside::math::atan: input magnitudes must be \u2264 2^20 for the working-scale envelope"); }
+    template <insidable In>
+    constexpr void domain_atan2() noexcept
+    { static_assert(Lower<In> >= -(imax{1} << 20) && Upper<In> <= (imax{1} << 20), "beman::inside::math::atan2: input magnitudes must be \u2264 2^20 for the working-scale envelope"); }
+    template <insidable In>
+    constexpr void domain_cbrt() noexcept
+    { static_assert(Lower<In> >= -(imax{1} << 20) && Upper<In> <= (imax{1} << 20), "beman::inside::math::cbrt: input magnitude must be ≤ 2^20 for the working-scale envelope"); }
+    template <insidable In>
+    constexpr void domain_cos() noexcept
+    { static_assert(Lower<In> >= -(imax{1} << 20) && Upper<In> <= (imax{1} << 20), "beman::inside::math::cos: input magnitudes must be \u2264 2^20 rad"); }
+    template <insidable In>
+    constexpr void domain_cosh() noexcept
+    { static_assert(Lower<In> >= -10 && Upper<In> <= 10, "beman::inside::math::cosh: input must be in [-10, 10]"); }
+    template <insidable In>
+    constexpr void domain_exp() noexcept
+    { static_assert(Lower<In> >= -20 && Upper<In> <= 20, "beman::inside::math::exp: input must be in [-20, 20]"); }
+    template <insidable In>
+    constexpr void domain_exp2() noexcept
+    { static_assert(Lower<In> >= -30 && Upper<In> <= 30, "beman::inside::math::exp2: input must be in [-30, 30]"); }
+    template <insidable In>
+    constexpr void domain_log() noexcept
+    { static_assert(Lower<In> > 0, "beman::inside::math::log: input must be strictly positive"); }
+    template <insidable In>
+    constexpr void domain_log10() noexcept
+    { static_assert(Lower<In> > 0, "beman::inside::math::log10: input must be strictly positive"); }
+    template <insidable In>
+    constexpr void domain_log2() noexcept
+    { static_assert(Lower<In> > 0, "beman::inside::math::log2: input must be strictly positive"); }
+    template <insidable In>
+    constexpr void domain_sin() noexcept
+    { static_assert(Lower<In> >= -(imax{1} << 20) && Upper<In> <= (imax{1} << 20), "beman::inside::math::sin: input magnitudes must be \u2264 2^20 rad"); }
+    template <insidable In>
+    constexpr void domain_sinh() noexcept
+    { static_assert(Lower<In> >= -10 && Upper<In> <= 10, "beman::inside::math::sinh: input must be in [-10, 10]"); }
+    template <insidable In>
+    constexpr void domain_sqrt() noexcept
+    { static_assert(Lower<In> == 0, "beman::inside::math::sqrt: input must start at 0 (use the mixed-sign overload)"); }
+    template <insidable In>
+    constexpr void domain_tan() noexcept
+    { static_assert(Lower<In> >= -(imax{1} << 20) && Upper<In> <= (imax{1} << 20), "beman::inside::math::tan: input magnitudes must be \u2264 2^20 rad"); }
+    template <insidable In>
+    constexpr void domain_tanh() noexcept
+    { static_assert(Lower<In> >= -10 && Upper<In> <= 10, "beman::inside::math::tanh: input must be in [-10, 10]"); }
+    template <insidable InX, insidable InY>
+    constexpr void domain_hypot() noexcept
+    { static_assert(Lower<InX> >= -(imax{1} << 20) && Upper<InX> <= (imax{1} << 20)
+               && Lower<InY> >= -(imax{1} << 20) && Upper<InY> <= (imax{1} << 20), "beman::inside::math::hypot: input magnitudes must be ≤ 2^20 for the working-scale envelope"); }
+
     // Out's interval endpoints as F (via double, like the runtime value), folded
     // at compile time for the FP engines' range checks.
     template <typename F, insidable Out>
@@ -752,8 +812,7 @@ namespace beman::inside::math
   template <insidable Out, insidable In>
   [[nodiscard]] constexpr Out sin_impl(In angle)
   {
-    static_assert(Lower<In> >= -(imax{1} << 20) && Upper<In> <= (imax{1} << 20),
-                  "beman::inside::math::sin: input magnitudes must be \u2264 2^20 rad");
+    detail::domain_sin<In>();
     static_assert(Lower<Out> <= -1 && Upper<Out> >= 1,
                   "beman::inside::math::sin: Out must cover [-1, 1]");
 
@@ -767,8 +826,7 @@ namespace beman::inside::math
   template <insidable Out, insidable In>
   [[nodiscard]] constexpr Out cos_impl(In angle)
   {
-    static_assert(Lower<In> >= -(imax{1} << 20) && Upper<In> <= (imax{1} << 20),
-                  "beman::inside::math::cos: input magnitudes must be \u2264 2^20 rad");
+    detail::domain_cos<In>();
     static_assert(Lower<Out> <= -1 && Upper<Out> >= 1,
                   "beman::inside::math::cos: Out must cover [-1, 1]");
 
@@ -824,8 +882,7 @@ namespace beman::inside::math
   template <insidable Out, insidable In>
   [[nodiscard]] constexpr std::expected<Out, errc> tan_impl(In angle)
   {
-    static_assert(Lower<In> >= -(imax{1} << 20) && Upper<In> <= (imax{1} << 20),
-                  "beman::inside::math::tan: input magnitudes must be \u2264 2^20 rad");
+    detail::domain_tan<In>();
 
     constexpr int W = detail::working_bits<Out>();
     imax turn_w = detail::rad_to_turn_w<W, In>(angle);
@@ -839,8 +896,7 @@ namespace beman::inside::math
   template <insidable Out, insidable In>
   [[nodiscard]] constexpr Out log2_impl(In x)
   {
-    static_assert(Lower<In> > 0,
-                  "beman::inside::math::log2: input must be strictly positive");
+    detail::domain_log2<In>();
 
     return detail::store_grid<Out>(detail::log2_fixed<detail::working_bits<Out>()>(rational{x}));
   }
@@ -855,8 +911,7 @@ namespace beman::inside::math
   template <insidable Out, insidable In>
   [[nodiscard]] constexpr Out exp2_impl(In x)
   {
-    static_assert(Lower<In> >= -30 && Upper<In> <= 30,
-                  "beman::inside::math::exp2: input must be in [-30, 30]");
+    detail::domain_exp2<In>();
     static_assert(Lower<Out> >= 0,
                   "beman::inside::math::exp2: Out must be non-negative");
 
@@ -869,8 +924,7 @@ namespace beman::inside::math
   template <insidable Out, insidable In>
   [[nodiscard]] constexpr Out exp_impl(In x)
   {
-    static_assert(Lower<In> >= -20 && Upper<In> <= 20,
-                  "beman::inside::math::exp: input must be in [-20, 20]");
+    detail::domain_exp<In>();
     static_assert(Lower<Out> >= 0,
                   "beman::inside::math::exp: Out must be non-negative");
 
@@ -882,8 +936,7 @@ namespace beman::inside::math
   template <insidable Out, insidable In>
   [[nodiscard]] constexpr Out log_impl(In x)
   {
-    static_assert(Lower<In> > 0,
-                  "beman::inside::math::log: input must be strictly positive");
+    detail::domain_log<In>();
 
     return detail::store_grid<Out>(detail::ln_fixed<detail::working_bits<Out>()>(rational{x}));
   }
@@ -913,8 +966,7 @@ namespace beman::inside::math
   template <insidable Out, insidable In>
   [[nodiscard]] constexpr Out atan2_impl(In y, In x)
   {
-    static_assert(Lower<In> >= -(imax{1} << 20) && Upper<In> <= (imax{1} << 20),
-                  "beman::inside::math::atan2: input magnitudes must be \u2264 2^20 for the working-scale envelope");
+    detail::domain_atan2<In>();
     static_assert(Lower<Out> <= -detail::pi_r && Upper<Out> >= detail::pi_r,
                   "beman::inside::math::atan2: Out must cover [-π, π]");
 
@@ -1221,8 +1273,7 @@ namespace beman::inside::math
   template <insidable Out, insidable In>
   [[nodiscard]] constexpr Out sqrt_impl(In x)
   {
-    static_assert(Lower<In> == 0,
-                  "beman::inside::math::sqrt: input must start at 0 (use the mixed-sign overload)");
+    detail::domain_sqrt<In>();
     static_assert(Lower<Out> <= 0,
                   "beman::inside::math::sqrt: Out must include 0");
 
@@ -1790,40 +1841,35 @@ namespace beman::inside::math
   template <insidable Out, insidable In>
   [[nodiscard]] constexpr Out atan_impl(In x)
   {
-    static_assert(Lower<In> >= -(imax{1} << 20) && Upper<In> <= (imax{1} << 20),
-                  "beman::inside::math::atan: input magnitudes must be \u2264 2^20 for the working-scale envelope");
+    detail::domain_atan<In>();
     return detail::store_grid<Out>(detail::atan_fixed<detail::working_bits<Out>()>(rational{x}));
   }
 
   template <insidable Out, insidable In>
   [[nodiscard]] constexpr Out asin_impl(In x)
   {
-    static_assert(Lower<In> >= -1 && Upper<In> <= 1,
-                  "beman::inside::math::asin: input must be in [-1, 1]");
+    detail::domain_asin<In>();
     return detail::store_grid<Out>(detail::asin_endpoint<detail::endpoint_bits<Out>()>(rational{x}));
   }
 
   template <insidable Out, insidable In>
   [[nodiscard]] constexpr Out acos_impl(In x)
   {
-    static_assert(Lower<In> >= -1 && Upper<In> <= 1,
-                  "beman::inside::math::acos: input must be in [-1, 1]");
+    detail::domain_acos<In>();
     return detail::store_grid<Out>(detail::acos_endpoint<detail::endpoint_bits<Out>()>(rational{x}));
   }
 
   template <insidable Out, insidable In>
   [[nodiscard]] constexpr Out sinh_impl(In x)
   {
-    static_assert(Lower<In> >= -10 && Upper<In> <= 10,
-                  "beman::inside::math::sinh: input must be in [-10, 10]");
+    detail::domain_sinh<In>();
     return detail::store_grid<Out>(detail::sinh_endpoint<detail::endpoint_bits<Out>()>(rational{x}));
   }
 
   template <insidable Out, insidable In>
   [[nodiscard]] constexpr Out cosh_impl(In x)
   {
-    static_assert(Lower<In> >= -10 && Upper<In> <= 10,
-                  "beman::inside::math::cosh: input must be in [-10, 10]");
+    detail::domain_cosh<In>();
     static_assert(Lower<Out> <= rational{1},
                   "beman::inside::math::cosh: Out must include 1 (cosh ≥ 1)");
     return detail::store_grid<Out>(detail::cosh_endpoint<detail::endpoint_bits<Out>()>(rational{x}));
@@ -1832,33 +1878,28 @@ namespace beman::inside::math
   template <insidable Out, insidable In>
   [[nodiscard]] constexpr Out tanh_impl(In x)
   {
-    static_assert(Lower<In> >= -10 && Upper<In> <= 10,
-                  "beman::inside::math::tanh: input must be in [-10, 10]");
+    detail::domain_tanh<In>();
     return detail::store_grid<Out>(detail::tanh_endpoint<detail::endpoint_bits<Out>()>(rational{x}));
   }
 
   template <insidable Out, insidable In>
   [[nodiscard]] constexpr Out log10_impl(In x)
   {
-    static_assert(Lower<In> > 0,
-                  "beman::inside::math::log10: input must be strictly positive");
+    detail::domain_log10<In>();
     return detail::store_grid<Out>(detail::log10_endpoint<detail::endpoint_bits<Out>()>(rational{x}));
   }
 
   template <insidable Out, insidable In>
   [[nodiscard]] constexpr Out cbrt_impl(In x)
   {
-    static_assert(Lower<In> >= -(imax{1} << 20) && Upper<In> <= (imax{1} << 20),
-                  "beman::inside::math::cbrt: input magnitude must be ≤ 2^20 for the working-scale envelope");
+    detail::domain_cbrt<In>();
     return detail::store_grid<Out>(detail::cbrt_endpoint<detail::endpoint_bits<Out>()>(rational{x}));
   }
 
   template <insidable Out, insidable InX, insidable InY>
   [[nodiscard]] constexpr Out hypot_impl(InX x, InY y)
   {
-    static_assert(Lower<InX> >= -(imax{1} << 20) && Upper<InX> <= (imax{1} << 20)
-               && Lower<InY> >= -(imax{1} << 20) && Upper<InY> <= (imax{1} << 20),
-                  "beman::inside::math::hypot: input magnitudes must be ≤ 2^20 for the working-scale envelope");
+    detail::domain_hypot<InX, InY>();
     static_assert(Lower<Out> <= 0, "beman::inside::math::hypot: Out must include 0");
     return detail::store_grid<Out>(detail::hypot_endpoint<detail::endpoint_bits<Out>()>(rational{x}, rational{y}));
   }
@@ -1878,8 +1919,13 @@ namespace beman::inside::math
     imax sc_w = detail::fmul(detail::to_fixed(rational{exp}, W),
                              detail::log2_to_fixed<W>(bv), W);     // e·log2(b), scale 2^W
     constexpr imax lim = imax{30} << W;
-    if (sc_w > lim || sc_w < -lim)
-      return std::unexpected(errc::overflow);
+    if (sc_w > lim || sc_w < -lim)                      // outside 2^±30: every engine
+    {                                                   // reports, or clamp saturates
+      if constexpr (has_flag(InsidePolicy<Out>, clamp))
+        return detail::store_grid<Out>(sc_w > 0 ? Upper<Out> : Lower<Out>);
+      else
+        return std::unexpected(errc::overflow);
+    }
 
     rational r = detail::exp2_from_fixed<W>(sc_w);
     if constexpr (!has_flag(InsidePolicy<Out>, clamp))   // clamp Out: saturate below
@@ -2040,25 +2086,23 @@ namespace beman::inside::math
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto exp2(In x)
-    { static_assert(mdetail::require_snap<In>()); return exp2_core<mdetail::exp2_auto_t<In>>(x); }
+    { static_assert(mdetail::require_snap<In>()); mdetail::domain_exp2<In>(); return exp2_core<mdetail::exp2_auto_t<In>>(x); }
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto log2(In x)
     {
-      static_assert(mdetail::require_snap<In>());
-      static_assert(Lower<In> > 0, "beman::inside::math::dbl::log2: input must be strictly positive");
+      static_assert(mdetail::require_snap<In>()); mdetail::domain_log2<In>();
       return log2_core<mdetail::log2_auto_t<In>>(x);
     }
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto exp(In x)
-    { static_assert(mdetail::require_snap<In>()); return exp_core<mdetail::exp_auto_t<In>>(x); }
+    { static_assert(mdetail::require_snap<In>()); mdetail::domain_exp<In>(); return exp_core<mdetail::exp_auto_t<In>>(x); }
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto log(In x)
     {
-      static_assert(mdetail::require_snap<In>());
-      static_assert(Lower<In> > 0, "beman::inside::math::dbl::log: input must be strictly positive");
+      static_assert(mdetail::require_snap<In>()); mdetail::domain_log<In>();
       return log_core<mdetail::log_auto_t<In>>(x);
     }
 
@@ -2072,16 +2116,16 @@ namespace beman::inside::math
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto sin(In angle)
-    { static_assert(mdetail::require_snap<In>()); return sin_core<mdetail::sin_auto_t<In>>(angle); }
+    { static_assert(mdetail::require_snap<In>()); mdetail::domain_sin<In>(); return sin_core<mdetail::sin_auto_t<In>>(angle); }
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto cos(In angle)
-    { static_assert(mdetail::require_snap<In>()); return cos_core<mdetail::cos_auto_t<In>>(angle); }
+    { static_assert(mdetail::require_snap<In>()); mdetail::domain_cos<In>(); return cos_core<mdetail::cos_auto_t<In>>(angle); }
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto tan(In angle)
     {
-      static_assert(mdetail::require_snap<In>());
+      static_assert(mdetail::require_snap<In>()); mdetail::domain_tan<In>();
       using Out = mdetail::tan_auto_t<In>;
       double t;
       if (!detail::d_tan(static_cast<double>(angle), t))
@@ -2094,48 +2138,47 @@ namespace beman::inside::math
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto atan2(In y, In x)
-    { static_assert(mdetail::require_snap<In>()); return atan2_core<mdetail::atan2_auto_t<In>>(y, x); }
+    { static_assert(mdetail::require_snap<In>()); mdetail::domain_atan2<In>(); return atan2_core<mdetail::atan2_auto_t<In>>(y, x); }
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto atan(In x)
-    { static_assert(mdetail::require_snap<In>()); return atan_core<mdetail::atan_auto_t<In>>(x); }
+    { static_assert(mdetail::require_snap<In>()); mdetail::domain_atan<In>(); return atan_core<mdetail::atan_auto_t<In>>(x); }
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto asin(In x)
-    { static_assert(mdetail::require_snap<In>()); return asin_core<mdetail::asin_auto_t<In>>(x); }
+    { static_assert(mdetail::require_snap<In>()); mdetail::domain_asin<In>(); return asin_core<mdetail::asin_auto_t<In>>(x); }
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto acos(In x)
-    { static_assert(mdetail::require_snap<In>()); return acos_core<mdetail::acos_auto_t<In>>(x); }
+    { static_assert(mdetail::require_snap<In>()); mdetail::domain_acos<In>(); return acos_core<mdetail::acos_auto_t<In>>(x); }
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto sinh(In x)
-    { static_assert(mdetail::require_snap<In>()); return sinh_core<mdetail::sinh_auto_t<In>>(x); }
+    { static_assert(mdetail::require_snap<In>()); mdetail::domain_sinh<In>(); return sinh_core<mdetail::sinh_auto_t<In>>(x); }
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto cosh(In x)
-    { static_assert(mdetail::require_snap<In>()); return cosh_core<mdetail::cosh_auto_t<In>>(x); }
+    { static_assert(mdetail::require_snap<In>()); mdetail::domain_cosh<In>(); return cosh_core<mdetail::cosh_auto_t<In>>(x); }
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto tanh(In x)
-    { static_assert(mdetail::require_snap<In>()); return tanh_core<mdetail::tanh_auto_t<In>>(x); }
+    { static_assert(mdetail::require_snap<In>()); mdetail::domain_tanh<In>(); return tanh_core<mdetail::tanh_auto_t<In>>(x); }
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto log10(In x)
     {
-      static_assert(mdetail::require_snap<In>());
-      static_assert(Lower<In> > 0, "beman::inside::math::dbl::log10: input must be strictly positive");
+      static_assert(mdetail::require_snap<In>()); mdetail::domain_log10<In>();
       return log10_core<mdetail::log10_auto_t<In>>(x);
     }
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto cbrt(In x)
-    { static_assert(mdetail::require_snap<In>()); return cbrt_core<mdetail::cbrt_auto_t<In>>(x); }
+    { static_assert(mdetail::require_snap<In>()); mdetail::domain_cbrt<In>(); return cbrt_core<mdetail::cbrt_auto_t<In>>(x); }
 
     template <insidable InX, insidable InY>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto hypot(InX x, InY y)
     {
-      static_assert(mdetail::require_snap<InX>() && mdetail::require_snap<InY>());
+      static_assert(mdetail::require_snap<InX>() && mdetail::require_snap<InY>()); mdetail::domain_hypot<InX, InY>();
       return hypot_core<mdetail::hypot_auto_t<InX, InY>>(x, y);
     }
 
@@ -2149,6 +2192,14 @@ namespace beman::inside::math
       if (b <= 0.0)
         return std::expected<Out, errc>{std::unexpected(errc::domain_error)};
       double r = detail::d_pow(b, static_cast<double>(exp));
+      if (!(r <= 0x1p30 && r >= 0x1p-30))                  // the 2^±30 envelope, as cordic
+      {
+        if constexpr (has_flag(InsidePolicy<Out>, clamp))
+          return std::expected<Out, errc>{store<Out>(r > 1.0 ? mdetail::upper_fp<double, Out>
+                                                             : mdetail::lower_fp<double, Out>)};
+        else
+          return std::expected<Out, errc>{std::unexpected(errc::overflow)};
+      }
       if constexpr (!has_flag(InsidePolicy<Out>, clamp))   // clamp Out: saturate below
         if (r < mdetail::lower_fp<double, Out> || r > mdetail::upper_fp<double, Out>)
           return std::expected<Out, errc>{std::unexpected(errc::overflow)};
@@ -2180,25 +2231,23 @@ namespace beman::inside::math
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto exp2(In x)
-    { static_assert(mdetail::require_snap<In>()); return exp2_core<mdetail::exp2_auto_t<In>>(x); }
+    { static_assert(mdetail::require_snap<In>()); mdetail::domain_exp2<In>(); return exp2_core<mdetail::exp2_auto_t<In>>(x); }
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto log2(In x)
     {
-      static_assert(mdetail::require_snap<In>());
-      static_assert(Lower<In> > 0, "beman::inside::math::flt::log2: input must be strictly positive");
+      static_assert(mdetail::require_snap<In>()); mdetail::domain_log2<In>();
       return log2_core<mdetail::log2_auto_t<In>>(x);
     }
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto exp(In x)
-    { static_assert(mdetail::require_snap<In>()); return exp_core<mdetail::exp_auto_t<In>>(x); }
+    { static_assert(mdetail::require_snap<In>()); mdetail::domain_exp<In>(); return exp_core<mdetail::exp_auto_t<In>>(x); }
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto log(In x)
     {
-      static_assert(mdetail::require_snap<In>());
-      static_assert(Lower<In> > 0, "beman::inside::math::flt::log: input must be strictly positive");
+      static_assert(mdetail::require_snap<In>()); mdetail::domain_log<In>();
       return log_core<mdetail::log_auto_t<In>>(x);
     }
 
@@ -2212,16 +2261,16 @@ namespace beman::inside::math
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto sin(In angle)
-    { static_assert(mdetail::require_snap<In>()); return sin_core<mdetail::sin_auto_t<In>>(angle); }
+    { static_assert(mdetail::require_snap<In>()); mdetail::domain_sin<In>(); return sin_core<mdetail::sin_auto_t<In>>(angle); }
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto cos(In angle)
-    { static_assert(mdetail::require_snap<In>()); return cos_core<mdetail::cos_auto_t<In>>(angle); }
+    { static_assert(mdetail::require_snap<In>()); mdetail::domain_cos<In>(); return cos_core<mdetail::cos_auto_t<In>>(angle); }
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto tan(In angle)
     {
-      static_assert(mdetail::require_snap<In>());
+      static_assert(mdetail::require_snap<In>()); mdetail::domain_tan<In>();
       using Out = mdetail::tan_auto_t<In>;
       float t;
       if (!detail::d_tan(flt::to_float(angle), t))
@@ -2234,48 +2283,47 @@ namespace beman::inside::math
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto atan2(In y, In x)
-    { static_assert(mdetail::require_snap<In>()); return atan2_core<mdetail::atan2_auto_t<In>>(y, x); }
+    { static_assert(mdetail::require_snap<In>()); mdetail::domain_atan2<In>(); return atan2_core<mdetail::atan2_auto_t<In>>(y, x); }
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto atan(In x)
-    { static_assert(mdetail::require_snap<In>()); return atan_core<mdetail::atan_auto_t<In>>(x); }
+    { static_assert(mdetail::require_snap<In>()); mdetail::domain_atan<In>(); return atan_core<mdetail::atan_auto_t<In>>(x); }
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto asin(In x)
-    { static_assert(mdetail::require_snap<In>()); return asin_core<mdetail::asin_auto_t<In>>(x); }
+    { static_assert(mdetail::require_snap<In>()); mdetail::domain_asin<In>(); return asin_core<mdetail::asin_auto_t<In>>(x); }
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto acos(In x)
-    { static_assert(mdetail::require_snap<In>()); return acos_core<mdetail::acos_auto_t<In>>(x); }
+    { static_assert(mdetail::require_snap<In>()); mdetail::domain_acos<In>(); return acos_core<mdetail::acos_auto_t<In>>(x); }
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto sinh(In x)
-    { static_assert(mdetail::require_snap<In>()); return sinh_core<mdetail::sinh_auto_t<In>>(x); }
+    { static_assert(mdetail::require_snap<In>()); mdetail::domain_sinh<In>(); return sinh_core<mdetail::sinh_auto_t<In>>(x); }
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto cosh(In x)
-    { static_assert(mdetail::require_snap<In>()); return cosh_core<mdetail::cosh_auto_t<In>>(x); }
+    { static_assert(mdetail::require_snap<In>()); mdetail::domain_cosh<In>(); return cosh_core<mdetail::cosh_auto_t<In>>(x); }
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto tanh(In x)
-    { static_assert(mdetail::require_snap<In>()); return tanh_core<mdetail::tanh_auto_t<In>>(x); }
+    { static_assert(mdetail::require_snap<In>()); mdetail::domain_tanh<In>(); return tanh_core<mdetail::tanh_auto_t<In>>(x); }
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto log10(In x)
     {
-      static_assert(mdetail::require_snap<In>());
-      static_assert(Lower<In> > 0, "beman::inside::math::flt::log10: input must be strictly positive");
+      static_assert(mdetail::require_snap<In>()); mdetail::domain_log10<In>();
       return log10_core<mdetail::log10_auto_t<In>>(x);
     }
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto cbrt(In x)
-    { static_assert(mdetail::require_snap<In>()); return cbrt_core<mdetail::cbrt_auto_t<In>>(x); }
+    { static_assert(mdetail::require_snap<In>()); mdetail::domain_cbrt<In>(); return cbrt_core<mdetail::cbrt_auto_t<In>>(x); }
 
     template <insidable InX, insidable InY>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto hypot(InX x, InY y)
     {
-      static_assert(mdetail::require_snap<InX>() && mdetail::require_snap<InY>());
+      static_assert(mdetail::require_snap<InX>() && mdetail::require_snap<InY>()); mdetail::domain_hypot<InX, InY>();
       return hypot_core<mdetail::hypot_auto_t<InX, InY>>(x, y);
     }
 
@@ -2289,6 +2337,14 @@ namespace beman::inside::math
       if (b <= 0.0f)
         return std::expected<Out, errc>{std::unexpected(errc::domain_error)};
       float r = detail::d_pow(b, flt::to_float(exp));
+      if (!(r <= 0x1p30f && r >= 0x1p-30f))                // the 2^±30 envelope, as cordic
+      {
+        if constexpr (has_flag(InsidePolicy<Out>, clamp))
+          return std::expected<Out, errc>{store<Out>(r > 1.0f ? mdetail::upper_fp<float, Out>
+                                                              : mdetail::lower_fp<float, Out>)};
+        else
+          return std::expected<Out, errc>{std::unexpected(errc::overflow)};
+      }
       if constexpr (!has_flag(InsidePolicy<Out>, clamp))   // clamp Out: saturate below
         if (r < mdetail::lower_fp<float, Out> || r > mdetail::upper_fp<float, Out>)
           return std::expected<Out, errc>{std::unexpected(errc::overflow)};

@@ -302,3 +302,27 @@ TEST(ConsistencyTest, non_finite_input_goes_through_the_policy)
   EXPECT_EQ(FC{inf}.raw(), 10.0);
 #endif
 }
+
+// pow: every engine reports the 2^±30 envelope, and saturates under clamp.
+TEST(ConsistencyTest, pow_envelope_agrees_across_engines)
+{
+  using B = inside<{1, 4}, round_nearest | clamp>;
+  using E = inside<{0, 20}, round_nearest | clamp>;
+  const auto c = math::cordic::pow(B{4}, E{20});
+  ASSERT_TRUE(c.has_value());
+#ifndef BEMAN_INSIDE_MATH_NO_FP
+  const auto d = math::dbl::pow(B{4}, E{20});
+  const auto f = math::flt::pow(B{4}, E{20});
+  ASSERT_TRUE(d.has_value());
+  ASSERT_TRUE(f.has_value());
+  EXPECT_EQ(rational{*c}, rational{*d});
+  EXPECT_EQ(rational{*c}, rational{*f});
+#endif
+  using Bc = inside<{1, 4}, round_nearest>;
+  using Ec = inside<{0, 20}, round_nearest>;
+  EXPECT_EQ(math::cordic::pow(Bc{4}, Ec{20}).error(), errc::overflow);
+#ifndef BEMAN_INSIDE_MATH_NO_FP
+  EXPECT_EQ(math::dbl::pow(Bc{4}, Ec{20}).error(), errc::overflow);
+  EXPECT_EQ(math::flt::pow(Bc{4}, Ec{20}).error(), errc::overflow);
+#endif
+}
