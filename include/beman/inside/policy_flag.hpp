@@ -163,10 +163,10 @@ namespace beman::inside
   // The lambda receives the inside by mutable reference as its first argument,
   // so the handler can override the value the policy was about to store.
   //---------------------------------------------------------------------------
-  template<typename F> struct on_clamp_t    { [[no_unique_address]] F fn; };
-  template<typename F> struct on_wrap_t     { [[no_unique_address]] F fn; };
-  template<typename F> struct on_error_t    { [[no_unique_address]] F fn; };
-  template<typename F> struct on_overflow_t { [[no_unique_address]] F fn; };
+  template<typename F> struct on_clamp_t    { [[no_unique_address]] F Fn; };
+  template<typename F> struct on_wrap_t     { [[no_unique_address]] F Fn; };
+  template<typename F> struct on_error_t    { [[no_unique_address]] F Fn; };
+  template<typename F> struct on_overflow_t { [[no_unique_address]] F Fn; };
 
   //---------------------------------------------------------------------------
   // CTAD-style factories — drop the on_overflow_t{lambda} brace-init.

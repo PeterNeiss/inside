@@ -27,8 +27,13 @@ namespace beman::inside
 
   namespace detail { struct rational; }
 
-  template<typename T>
-  concept arithmetic = std::integral<T> || std::floating_point<T> || std::same_as<detail::rational,T>;
+  namespace detail
+  {
+    // A plain number a grid-less value can be: integral, floating point, or the
+    // library's exact rational. Internal; the public operand concept is `numeric`.
+    template<typename T>
+    concept arithmetic = std::integral<T> || std::floating_point<T> || std::same_as<rational, T>;
+  }
 
   namespace detail
   {

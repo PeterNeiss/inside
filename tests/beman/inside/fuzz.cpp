@@ -583,7 +583,7 @@ template <typename Fn>
 bool throws_with(errc expected, Fn&& fn)
 {
   try { fn(); }
-  catch (beman::inside::inside_error const& e) { return e.code == expected; }
+  catch (beman::inside::inside_error const& e) { return e.Code == expected; }
   catch (...) { return false; }
   return false;
 }
@@ -595,7 +595,7 @@ bool throws_with_any(std::initializer_list<errc> codes, Fn&& fn)
 {
   try { fn(); }
   catch (beman::inside::inside_error const& e) {
-    for (auto c : codes) if (e.code == c) return true;
+    for (auto c : codes) if (e.Code == c) return true;
     return false;
   }
   catch (...) { return false; }

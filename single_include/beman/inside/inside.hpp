@@ -143,16 +143,16 @@ namespace beman::inside
   //---------------------------------------------------------------------------
   // inside_error — the exception thrown by the default handler. Derives from
   // std::runtime_error (the library's only <stdexcept> use) and carries the
-  // originating `errc` so `catch (inside_error& e) { e.code; }` replaces the old
+  // originating `errc` so `catch (inside_error& e) { e.Code; }` replaces the old
   // `e.code() == make_error_code(...)` idiom.
   //---------------------------------------------------------------------------
   struct inside_error : std::runtime_error
   {
-    errc code;
+    errc Code;
     explicit inside_error(errc c)
-      : std::runtime_error(errc_message(c)), code(c) {}
+      : std::runtime_error(errc_message(c)), Code(c) {}
     inside_error(errc c, const char* what)
-      : std::runtime_error(what ? what : errc_message(c)), code(c) {}
+      : std::runtime_error(what ? what : errc_message(c)), Code(c) {}
   };
 #endif
 
@@ -218,25 +218,23 @@ namespace beman::inside
     template <unsigned N>
     struct fixed_string
     {
-      char data[N]{};
+      char Data[N]{};
       constexpr fixed_string(const char (&s)[N])
-      { for (unsigned i = 0; i < N; ++i) data[i] = s[i]; }
+      { for (unsigned i = 0; i < N; ++i) Data[i] = s[i]; }
     };
 
     template <fixed_string Msg>
     [[noreturn]] BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE
     inline void constexpr_error()
-    { raise(errc::overflow, Msg.data); }
-  } // namespace detail
+    { raise(errc::overflow, Msg.Data); }
 
-  //---------------------------------------------------------------------------
-  // diagnostics
-  //---------------------------------------------------------------------------
-  template <typename... Ts>
-  struct print_types
-  {
-      static_assert(!sizeof...(Ts), "=== PRINT_TYPES ===");
-  };
+    // Debug helper: instantiating print_types<Ts...> fails and names Ts.
+    template <typename... Ts>
+    struct print_types
+    {
+        static_assert(!sizeof...(Ts), "=== PRINT_TYPES ===");
+    };
+  } // namespace detail
 } // namespace beman::inside
 
 
@@ -356,8 +354,13 @@ namespace beman::inside
 
   namespace detail { struct rational; }
 
-  template<typename T>
-  concept arithmetic = std::integral<T> || std::floating_point<T> || std::same_as<detail::rational,T>;
+  namespace detail
+  {
+    // A plain number a grid-less value can be: integral, floating point, or the
+    // library's exact rational. Internal; the public operand concept is `numeric`.
+    template<typename T>
+    concept arithmetic = std::integral<T> || std::floating_point<T> || std::same_as<rational, T>;
+  }
 
   namespace detail
   {
@@ -582,7 +585,7 @@ namespace beman::inside::detail
   // 64×64 → 128-bit unsigned product, as {hi, lo}. Native where the target has
   // unsigned __int128; else a schoolbook 32-bit split (32-bit targets) — the
   // same construction trusted in cmath.hpp's fmul, so both are bit-exact.
-  struct u128 { umax hi; umax lo; };
+  struct u128 { umax Hi; umax Lo; };
   constexpr u128 umul(umax a, umax b)
   {
 #if defined(__SIZEOF_INT128__)
@@ -597,27 +600,27 @@ namespace beman::inside::detail
              (ll & 0xffffffffu) | (mid << 32) };
   }
   constexpr std::strong_ordering cmp128(u128 a, u128 b)
-  { return (a.hi != b.hi) ? (a.hi <=> b.hi) : (a.lo <=> b.lo); }
+  { return (a.Hi != b.Hi) ? (a.Hi <=> b.Hi) : (a.Lo <=> b.Lo); }
 
   // 128×64 product with an overflow flag (result beyond 128 bits).
-  struct mul128_result { u128 value; bool overflowed; };
+  struct mul128_result { u128 Value; bool Overflowed; };
   constexpr mul128_result mul128(u128 a, umax b)
   {
-    const u128 low  = umul(a.lo, b);
-    const u128 high = umul(a.hi, b);
-    const umax hi_sum = high.lo + low.hi;
-    return {u128{hi_sum, low.lo}, high.hi != 0 || hi_sum < low.hi};
+    const u128 low  = umul(a.Lo, b);
+    const u128 high = umul(a.Hi, b);
+    const umax hi_sum = high.Lo + low.Hi;
+    return {u128{hi_sum, low.Lo}, high.Hi != 0 || hi_sum < low.Hi};
   }
 
   // Quotient/remainder of a 128-bit dividend by a 64-bit divisor. Requires
   // 1 <= d <= imax_max (the rational-denominator domain) so the portable
   // partial remainder can never overflow when shifted.
-  struct divmod128_result { u128 quotient; umax remainder; };
+  struct divmod128_result { u128 Quotient; umax Remainder; };
   constexpr divmod128_result divmod128(u128 n, umax d)
   {
 #if defined(__SIZEOF_INT128__)
     using u128n = unsigned __int128;
-    const u128n wide = (static_cast<u128n>(n.hi) << 64) | n.lo;
+    const u128n wide = (static_cast<u128n>(n.Hi) << 64) | n.Lo;
     const u128n q = wide / d;
     return {u128{static_cast<umax>(q >> 64), static_cast<umax>(q)},
             static_cast<umax>(wide % d)};
@@ -628,10 +631,10 @@ namespace beman::inside::detail
     umax r = 0;
     for (int i = 127; i >= 0; --i)
     {
-      r = (r << 1) | ((i >= 64 ? (n.hi >> (i - 64)) : (n.lo >> i)) & 1u);
-      q.hi = (q.hi << 1) | (q.lo >> 63);
-      q.lo <<= 1;
-      if (r >= d) { r -= d; q.lo |= 1; }
+      r = (r << 1) | ((i >= 64 ? (n.Hi >> (i - 64)) : (n.Lo >> i)) & 1u);
+      q.Hi = (q.Hi << 1) | (q.Lo >> 63);
+      q.Lo <<= 1;
+      if (r >= d) { r -= d; q.Lo |= 1; }
     }
     return {q, r};
 #endif
@@ -1201,12 +1204,12 @@ namespace beman::inside::detail
           const bool a_bigger = cmp128(A128, B128) > 0;
           const u128 big   = a_bigger ? A128 : B128;
           const u128 small = a_bigger ? B128 : A128;
-          const u128 diff{big.hi - small.hi - (big.lo < small.lo ? 1u : 0u),
-                          big.lo - small.lo};
-          if (diff.hi == 0)
+          const u128 diff{big.Hi - small.Hi - (big.Lo < small.Lo ? 1u : 0u),
+                          big.Lo - small.Lo};
+          if (diff.Hi == 0)
           {
             rational r;
-            r.Numerator   = diff.lo;
+            r.Numerator   = diff.Lo;
             r.Denominator = (a_neg ? a_bigger : !a_bigger) ? -denominator
                                                            :  denominator;
             trim(r.Numerator, r.Denominator);
@@ -1582,7 +1585,7 @@ namespace beman::inside
 
     constexpr interval(detail::rational lower, detail::rational upper)
      :Lower{lower}, Upper{upper} { }
-    constexpr interval(arithmetic auto lower, arithmetic auto upper)
+    constexpr interval(detail::arithmetic auto lower, detail::arithmetic auto upper)
      :Lower{lower}, Upper{upper} { }
 
     template <auto I>
@@ -1610,7 +1613,7 @@ namespace beman::inside
   [[nodiscard]] constexpr bool includes(interval const& iv, detail::rational const& r)
   { return iv.Lower <= r && r <= iv.Upper; }
 
-  [[nodiscard]] constexpr bool includes(interval const& iv, arithmetic auto a)
+  [[nodiscard]] constexpr bool includes(interval const& iv, detail::arithmetic auto a)
   { return includes(iv, detail::rational{a}); }
 
   // `excludes` means *strictly disjoint* — the intervals share no value.
@@ -1864,10 +1867,10 @@ namespace beman::inside
   // The lambda receives the inside by mutable reference as its first argument,
   // so the handler can override the value the policy was about to store.
   //---------------------------------------------------------------------------
-  template<typename F> struct on_clamp_t    { [[no_unique_address]] F fn; };
-  template<typename F> struct on_wrap_t     { [[no_unique_address]] F fn; };
-  template<typename F> struct on_error_t    { [[no_unique_address]] F fn; };
-  template<typename F> struct on_overflow_t { [[no_unique_address]] F fn; };
+  template<typename F> struct on_clamp_t    { [[no_unique_address]] F Fn; };
+  template<typename F> struct on_wrap_t     { [[no_unique_address]] F Fn; };
+  template<typename F> struct on_error_t    { [[no_unique_address]] F Fn; };
+  template<typename F> struct on_overflow_t { [[no_unique_address]] F Fn; };
 
   //---------------------------------------------------------------------------
   // CTAD-style factories — drop the on_overflow_t{lambda} brace-init.
@@ -2482,7 +2485,7 @@ namespace beman::inside
   template <insidable B> inline constexpr detail::rational notch_of = grid_of<B>.Notch;
 
   template <typename N>
-  concept numeric = insidable<N> or arithmetic<N>;
+  concept numeric = insidable<N> or detail::arithmetic<N>;
 
   //---------------------------------------------------------------------------
   // Internal plumbing — storage shape, raw/value conversion, dispatch.
@@ -3102,7 +3105,7 @@ namespace beman::inside::detail
     { do_wrap(); return true; }
     else if constexpr (error_action<PA>)
     {
-      action.fn(lhs, errc::domain_error, errc_message(errc::domain_error));
+      action.Fn(lhs, errc::domain_error, errc_message(errc::domain_error));
       return true;
     }
     else if constexpr (has_policy<L, P, clamp>)
@@ -3135,7 +3138,7 @@ namespace beman::inside::detail
         imax overshoot = static_cast<imax>(rhs) - clamped;
         from_value(lhs, clamped);
         if constexpr (clamp_action<plain_t<A>>)
-          action.fn(lhs, overshoot);
+          action.Fn(lhs, overshoot);
       }
 
       template<typename A>
@@ -3149,7 +3152,7 @@ namespace beman::inside::detail
         if (urange == 0)                              // span == 2^64−1: wrap is identity
         {
           from_value(lhs, ri);
-          if constexpr (wrap_action<plain_t<A>>) action.fn(lhs, imax{0});
+          if constexpr (wrap_action<plain_t<A>>) action.Fn(lhs, imax{0});
           return;
         }
         umax w;
@@ -3169,7 +3172,7 @@ namespace beman::inside::detail
         }
         from_value(lhs, static_cast<imax>(static_cast<umax>(lower) + w));
         if constexpr (wrap_action<plain_t<A>>)
-          action.fn(lhs, excess);
+          action.Fn(lhs, excess);
       }
 
       template<typename P, typename A>
@@ -3287,7 +3290,7 @@ namespace beman::inside::detail
               (rhs < lower_of<L>) ? umax{0} : max_index_v<L>));
 
         if constexpr (clamp_action<plain_t<A>>)
-          action.fn(lhs, overshoot);
+          action.Fn(lhs, overshoot);
       }
 
     public:
@@ -3320,7 +3323,7 @@ namespace beman::inside::detail
         assignment<L, rational>::store_checked(lhs, wrapped, policy, action);
 
         if constexpr (wrap_action<plain_t<A>>)
-          action.fn(lhs, q);
+          action.Fn(lhs, q);
       }
 
       // 128-bit rounded store — the offset slot of an in-range rhs computed
@@ -3332,7 +3335,7 @@ namespace beman::inside::detail
       // wide operations are one 128×64 multiply and one 128÷64 divide.
       // ok == false when the reduced divisor or dividend exceeds the 128-bit
       // envelope (or rhs is out of range — callers check range first).
-      struct wide_quotient { umax slot; umax remainder; umax divisor; bool ok; };
+      struct wide_quotient { umax Slot; umax Remainder; umax Divisor; bool Ok; };
 
       static constexpr wide_quotient wide_offset_quotient(rational const& rv)
       {
@@ -3371,19 +3374,19 @@ namespace beman::inside::detail
             const u128 low = umul(n_l, a_dr);
             u128 offset;
             if (!rhs_neg && low_neg)
-              offset = u128{val.hi + low.hi + (val.lo + low.lo < val.lo ? 1u : 0u),
-                            val.lo + low.lo};
+              offset = u128{val.Hi + low.Hi + (val.Lo + low.Lo < val.Lo ? 1u : 0u),
+                            val.Lo + low.Lo};
             else if (!rhs_neg && !low_neg)
             {
               if (cmp128(val, low) < 0) return {};         // rhs < Lower
-              offset = u128{val.hi - low.hi - (val.lo < low.lo ? 1u : 0u),
-                            val.lo - low.lo};
+              offset = u128{val.Hi - low.Hi - (val.Lo < low.Lo ? 1u : 0u),
+                            val.Lo - low.Lo};
             }
             else if (rhs_neg && low_neg)
             {
               if (cmp128(low, val) < 0) return {};         // rhs < Lower
-              offset = u128{low.hi - val.hi - (low.lo < val.lo ? 1u : 0u),
-                            low.lo - val.lo};
+              offset = u128{low.Hi - val.Hi - (low.Lo < val.Lo ? 1u : 0u),
+                            low.Lo - val.Lo};
             }
             else
               return {};                                   // rhs < 0 ≤ Lower
@@ -3398,13 +3401,13 @@ namespace beman::inside::detail
               return {};
 
             const mul128_result dividend = mul128(offset, d_n2);
-            if (dividend.overflowed)
+            if (dividend.Overflowed)
               return {};
 
-            const divmod128_result qr = divmod128(dividend.value, divisor);
-            if (qr.quotient.hi != 0)
+            const divmod128_result qr = divmod128(dividend.Value, divisor);
+            if (qr.Quotient.Hi != 0)
               return {};                    // slot beyond any 64-bit index space
-            return {qr.quotient.lo, qr.remainder, divisor, true};
+            return {qr.Quotient.Lo, qr.Remainder, divisor, true};
           }
         }
       }
@@ -3507,25 +3510,25 @@ namespace beman::inside::detail
           if (!quotient.has_value()) [[unlikely]]
           {
             const wide_quotient wide = wide_offset_quotient(rational{rhs});
-            if (!wide.ok)
+            if (!wide.Ok)
             {
               if constexpr (error_action<plain_t<A>>)
-              { action.fn(lhs, errc::overflow, errc_message(errc::overflow)); return false; }
+              { action.Fn(lhs, errc::overflow, errc_message(errc::overflow)); return false; }
               policy.report(errc::overflow);
               return false;
             }
-            if (wide.remainder == 0)
-            { store_slot(wide.slot); return true; }
+            if (wide.Remainder == 0)
+            { store_slot(wide.Slot); return true; }
             if constexpr (has_round_flag)
-            { store_slot(round_offset<L, P>(wide.slot, wide.remainder, wide.divisor)); return true; }
+            { store_slot(round_offset<L, P>(wide.Slot, wide.Remainder, wide.Divisor)); return true; }
             if (policy.round_check()) [[unlikely]]
             {
               if constexpr (error_action<plain_t<A>>)
-              { action.fn(lhs, errc::rounding_error, errc_message(errc::rounding_error)); return false; }
+              { action.Fn(lhs, errc::rounding_error, errc_message(errc::rounding_error)); return false; }
               policy.report(errc::rounding_error);
               return false;
             }
-            store_slot(round_offset<L, P>(wide.slot, wide.remainder, wide.divisor));
+            store_slot(round_offset<L, P>(wide.Slot, wide.Remainder, wide.Divisor));
             return true;
           }
           rational raw = *quotient;
@@ -3538,7 +3541,7 @@ namespace beman::inside::detail
           else if (policy.round_check()) [[unlikely]]
           {
             if constexpr (error_action<plain_t<A>>)
-            { action.fn(lhs, errc::rounding_error, errc_message(errc::rounding_error)); return false; }
+            { action.Fn(lhs, errc::rounding_error, errc_message(errc::rounding_error)); return false; }
             policy.report(errc::rounding_error);
             return false;
           }
@@ -3560,7 +3563,7 @@ namespace beman::inside::detail
               if (rhs == rhs)
                 return assignment<L, rational>::assign(lhs, rhs > 0 ? upper_of<L> : lower_of<L>, policy);
             if constexpr (error_action<plain_t<A>>)
-              action.fn(lhs, errc::not_finite, errc_message(errc::not_finite));
+              action.Fn(lhs, errc::not_finite, errc_message(errc::not_finite));
             else
               policy.report(errc::not_finite);
             return lhs;
@@ -3637,7 +3640,7 @@ namespace beman::inside::detail
       // reducing through the two rational ops first. ok gates on every product
       // (including the worst-case runtime numerator over R's raw range)
       // provably fitting imax; mul/add/den are zeroed when not ok.
-      struct affine_map_t { imax mul; imax add; imax den; bool ok; };
+      struct affine_map_t { imax Mul; imax Add; imax Den; bool Ok; };
       static constexpr affine_map_t affine_map = []{
         constexpr affine_map_t no{0, 0, 0, false};
         if constexpr (rational_raw<L> || rational_raw<R> || fp_raw<L> || fp_raw<R>
@@ -3653,16 +3656,16 @@ namespace beman::inside::detail
           const imax o_s = signed_numerator(Offset);
           const imax o_d = abs_den(Offset.Denominator);
           affine_map_t m{0, 0, 0, true};
-          if (mul_overflow(f_n, o_d, &m.mul) || mul_overflow(o_s, f_d, &m.add)
-              || mul_overflow(o_d, f_d, &m.den))
+          if (mul_overflow(f_n, o_d, &m.Mul) || mul_overflow(o_s, f_d, &m.Add)
+              || mul_overflow(o_d, f_d, &m.Den))
             return no;
           // worst-case |numerator| over R's raw range
           constexpr imax hi_mag = raw_hi<R> < 0 ? -raw_hi<R> : raw_hi<R>;
           constexpr imax lo_mag = raw_lo<R> < 0 ? -raw_lo<R> : raw_lo<R>;
           const imax rmax = hi_mag > lo_mag ? hi_mag : lo_mag;
           imax term, num;
-          if (mul_overflow(rmax, m.mul, &term)
-              || add_overflow(term, m.add < 0 ? -m.add : m.add, &num))
+          if (mul_overflow(rmax, m.Mul, &term)
+              || add_overflow(term, m.Add < 0 ? -m.Add : m.Add, &num))
             return no;
           // round_quotient equivalence: rounding is reduction-invariant, but
           // its value-index-vs-offset branch CHOICE keys on m·di + num fitting
@@ -3675,7 +3678,7 @@ namespace beman::inside::detail
               return no;
             const imax mbias = signed_numerator(zl);
             imax mdi, total;
-            if (mul_overflow(mbias, m.den, &mdi) || add_overflow(mdi, num, &total))
+            if (mul_overflow(mbias, m.Den, &mdi) || add_overflow(mdi, num, &total))
               return no;
           }
           return m;
@@ -3731,7 +3734,7 @@ namespace beman::inside::detail
         {
           constexpr grid OG = (grid_of<R> - grid_of<L>).value();
           beman::inside::inside<OG> overshoot{ (as_rational(rhs) - as_rational(lhs)).value() };
-          action.fn(lhs, overshoot);
+          action.Fn(lhs, overshoot);
         }
       }
 
@@ -3758,7 +3761,7 @@ namespace beman::inside::detail
           if (wrapped < 0) { wrapped += range; --excess; }
           from_value(lhs, wrapped + lower);
           if constexpr (wrap_action<plain_t<A>>)
-            action.fn(lhs, beman::inside::inside<wrap_excess_grid()>{excess});   // carry as an inside
+            action.Fn(lhs, beman::inside::inside<wrap_excess_grid()>{excess});   // carry as an inside
         }
         else if constexpr (wrap_action<plain_t<A>>)
         {
@@ -3767,7 +3770,7 @@ namespace beman::inside::detail
           // handing it to the user action.
           assignment<L, rational>::apply_wrap(lhs, as_rational(rhs), policy,
             beman::inside::on_wrap([&](auto& self, imax q){
-              action.fn(self, beman::inside::inside<wrap_excess_grid()>{q});
+              action.Fn(self, beman::inside::inside<wrap_excess_grid()>{q});
             }));
         }
         else
@@ -3807,16 +3810,16 @@ namespace beman::inside::detail
           else
             lhs = L::from_raw(raw_cast<L>(map_raw(rhs.raw())));
         }
-        else if constexpr (affine_map.ok)
+        else if constexpr (affine_map.Ok)
         {
           // Folded non-integer mapping: one multiply-add, then the same
           // round_quotient (invariant under reduction — bit-identical to the
           // rational chain below).
-          const imax num = affine_map.add
-                         + static_cast<imax>(rhs.raw()) * affine_map.mul;
+          const imax num = affine_map.Add
+                         + static_cast<imax>(rhs.raw()) * affine_map.Mul;
           const umax q = round_quotient<L, P>(
               static_cast<umax>(num < 0 ? -num : num),
-              static_cast<umax>(affine_map.den));
+              static_cast<umax>(affine_map.Den));
           lhs = L::from_raw(num < 0 ? raw_from_offset<L>(-static_cast<imax>(q))
                                     : raw_from_offset<L>(q));
         }
@@ -3997,7 +4000,7 @@ namespace beman::inside
     if constexpr (overflow_action<A>)
     {
       Result res;
-      action.fn(res, code);
+      action.Fn(res, code);
       return res;
     }
     else
@@ -4077,17 +4080,17 @@ namespace beman::inside
     private:
     // Conflict diagnostics: at most one assignment-time tag (clamp / wrap /
     // error), at most one of each kind, no clamp+wrap.
-    static constexpr unsigned _clamp_count    = count_action_matches<is_clamp_action,    As...>;
-    static constexpr unsigned _wrap_count     = count_action_matches<is_wrap_action,     As...>;
-    static constexpr unsigned _error_count    = count_action_matches<is_error_action,    As...>;
-    static constexpr unsigned _overflow_count = count_action_matches<is_overflow_action, As...>;
+    static constexpr unsigned ClampCount    = count_action_matches<is_clamp_action,    As...>;
+    static constexpr unsigned WrapCount     = count_action_matches<is_wrap_action,     As...>;
+    static constexpr unsigned ErrorCount    = count_action_matches<is_error_action,    As...>;
+    static constexpr unsigned OverflowCount = count_action_matches<is_overflow_action, As...>;
 
-    static_assert(_clamp_count + _wrap_count + _error_count <= 1,
+    static_assert(ClampCount + WrapCount + ErrorCount <= 1,
       "on_clamp / on_wrap / on_error are mutually exclusive in a single policy_ref");
-    static_assert(_clamp_count    <= 1, "duplicate on_clamp");
-    static_assert(_wrap_count     <= 1, "duplicate on_wrap");
-    static_assert(_error_count    <= 1, "duplicate on_error");
-    static_assert(_overflow_count <= 1, "duplicate on_overflow");
+    static_assert(ClampCount    <= 1, "duplicate on_clamp");
+    static_assert(WrapCount     <= 1, "duplicate on_wrap");
+    static_assert(ErrorCount    <= 1, "duplicate on_error");
+    static_assert(OverflowCount <= 1, "duplicate on_overflow");
 
     public:
     B& Ref;
@@ -4144,7 +4147,7 @@ namespace beman::inside
     constexpr void report_zero(errc code, const char* what)
     {
       if constexpr (has_action<is_error_action, As...>)
-        pick_action_in<is_error_action>(Actions).fn(Ref, code, what);
+        pick_action_in<is_error_action>(Actions).Fn(Ref, code, what);
       else if constexpr (!has_policy<B, P, ignore_zero>)
         Policy.report(code);
     }
@@ -4168,7 +4171,7 @@ namespace beman::inside
           if (result.error() == errc::division_by_zero)
             report_zero(errc::division_by_zero, msg);       // on_error / ignore_zero, like rational /=
           else if constexpr (has_action<is_overflow_action, As...>)
-            pick_action_in<is_overflow_action>(Actions).fn(Ref, result.error());
+            pick_action_in<is_overflow_action>(Actions).Fn(Ref, result.error());
           else
             Policy.report(result.error());
           return Ref;
@@ -5802,10 +5805,10 @@ namespace beman::inside
     }
   }
 
-  template <insidable B, arithmetic A>
+  template <insidable B, detail::arithmetic A>
   constexpr auto operator<=>(B const& lhs, A rhs) { return detail::compare_scalar(lhs, rhs, detail::three_way); }
 
-  template <insidable B, arithmetic A>
+  template <insidable B, detail::arithmetic A>
   constexpr bool operator==(B const& lhs, A rhs) { return detail::compare_scalar(lhs, rhs, detail::equal_to); }
 
   //---------------------------------------------------------------------------
@@ -6323,58 +6326,58 @@ namespace beman::inside
     template <class R>
     struct enumerate_view
     {
-      R base_;
+      R Base;
 
       struct iterator
       {
-        std::ranges::iterator_t<const R> it{};
-        std::size_t index{0};
+        std::ranges::iterator_t<const R> It{};
+        std::size_t Index{0};
 
         using value_type      = std::pair<std::size_t, std::ranges::range_value_t<R>>;
         using difference_type  = std::ptrdiff_t;
 
-        constexpr value_type operator*() const { return {index, *it}; }
-        constexpr iterator& operator++() { ++it; ++index; return *this; }
+        constexpr value_type operator*() const { return {Index, *It}; }
+        constexpr iterator& operator++() { ++It; ++Index; return *this; }
         constexpr iterator  operator++(int) { auto t = *this; ++*this; return t; }
-        constexpr bool operator==(iterator const& o) const { return it == o.it; }
+        constexpr bool operator==(iterator const& o) const { return It == o.It; }
       };
 
-      constexpr iterator begin() const { return {std::ranges::begin(base_), 0}; }
-      constexpr iterator end()   const { return {std::ranges::end(base_), 0}; }
+      constexpr iterator begin() const { return {std::ranges::begin(Base), 0}; }
+      constexpr iterator end()   const { return {std::ranges::end(Base), 0}; }
     };
 
-    // stride_view — C++20 stand-in for std::views::stride (C++23). Visits every
+    // stride_view — stand-in for std::views::stride (likewise). Visits every
     // `step`-th element; forward-only, and the advance checks `end` so a length
     // that isn't a multiple of the stride still terminates.
     template <class R>
     struct stride_view
     {
-      R base_;
-      std::size_t step_{1};
+      R Base;
+      std::size_t Step{1};
 
       struct iterator
       {
-        std::ranges::iterator_t<const R> it{};
-        std::ranges::iterator_t<const R> end{};
-        std::size_t step{1};
+        std::ranges::iterator_t<const R> It{};
+        std::ranges::iterator_t<const R> End{};
+        std::size_t Step{1};
 
         using value_type      = std::ranges::range_value_t<R>;
         using difference_type = std::ptrdiff_t;
 
-        constexpr value_type operator*() const { return *it; }
+        constexpr value_type operator*() const { return *It; }
         constexpr iterator& operator++()
         {
-          for (std::size_t k = 0; k < step && it != end; ++k) ++it;
+          for (std::size_t k = 0; k < Step && It != End; ++k) ++It;
           return *this;
         }
         constexpr iterator operator++(int) { auto t = *this; ++*this; return t; }
-        constexpr bool operator==(iterator const& o) const { return it == o.it; }
+        constexpr bool operator==(iterator const& o) const { return It == o.It; }
       };
 
       constexpr iterator begin() const
-      { return {std::ranges::begin(base_), std::ranges::end(base_), step_}; }
+      { return {std::ranges::begin(Base), std::ranges::end(Base), Step}; }
       constexpr iterator end() const
-      { return {std::ranges::end(base_), std::ranges::end(base_), step_}; }
+      { return {std::ranges::end(Base), std::ranges::end(Base), Step}; }
     };
   } // namespace detail
 
@@ -6395,17 +6398,17 @@ namespace beman::inside
       using value_type        = inside<G, P>;
       using difference_type   = imax;
 
-      umax start {0};   // slot of the first element (the range wraps past the top)
-      imax pos   {0};   // position in [0, slot_count]; the loop variable
+      umax Start {0};   // slot of the first element (the range wraps past the top)
+      imax Pos   {0};   // position in [0, slot_count]; the loop variable
 
       constexpr iterator() = default;
-      constexpr iterator(umax s, imax p) : start{s}, pos{p} {}
+      constexpr iterator(umax s, imax p) : Start{s}, Pos{p} {}
 
-      // Grid slot of this position: start + pos, wrapped once (no overflow).
+      // Grid slot of this position: Start + Pos, wrapped once (no overflow).
       constexpr umax slot() const
       {
-        const umax p = static_cast<umax>(pos);
-        return p < slot_count - start ? start + p : p - (slot_count - start);
+        const umax p = static_cast<umax>(Pos);
+        return p < slot_count - Start ? Start + p : p - (slot_count - Start);
       }
 
       constexpr value_type operator*() const
@@ -6438,25 +6441,25 @@ namespace beman::inside
       constexpr value_type operator[](difference_type n) const
       { return *(*this + n); }
 
-      constexpr iterator& operator++() { ++pos; return *this; }
-      constexpr iterator  operator++(int) { auto t = *this; ++pos; return t; }
-      constexpr iterator& operator--() { --pos; return *this; }
-      constexpr iterator  operator--(int) { auto t = *this; --pos; return t; }
-      constexpr iterator& operator+=(difference_type n) { pos += n; return *this; }
-      constexpr iterator& operator-=(difference_type n) { pos -= n; return *this; }
+      constexpr iterator& operator++() { ++Pos; return *this; }
+      constexpr iterator  operator++(int) { auto t = *this; ++Pos; return t; }
+      constexpr iterator& operator--() { --Pos; return *this; }
+      constexpr iterator  operator--(int) { auto t = *this; --Pos; return t; }
+      constexpr iterator& operator+=(difference_type n) { Pos += n; return *this; }
+      constexpr iterator& operator-=(difference_type n) { Pos -= n; return *this; }
 
       constexpr iterator operator+(difference_type n) const { auto t = *this; t += n; return t; }
       constexpr iterator operator-(difference_type n) const { auto t = *this; t -= n; return t; }
       friend constexpr iterator operator+(difference_type n, iterator it) { return it + n; }
 
-      constexpr difference_type operator-(iterator o) const { return pos - o.pos; }
-      constexpr bool operator==(iterator o) const { return pos == o.pos; }
-      constexpr auto operator<=>(iterator o) const { return pos <=> o.pos; }
+      constexpr difference_type operator-(iterator o) const { return Pos - o.Pos; }
+      constexpr bool operator==(iterator o) const { return Pos == o.Pos; }
+      constexpr auto operator<=>(iterator o) const { return Pos <=> o.Pos; }
     };
 
-    umax start_index_;
+    umax StartIndex;
 
-    constexpr inside_range() : start_index_{0} {}
+    constexpr inside_range() : StartIndex{0} {}
 
     constexpr inside_range(value_type start)
     {
@@ -6464,13 +6467,13 @@ namespace beman::inside
       // Same storage split as iterator::operator* — index raw already is the
       // notch index; integer-grid value raw divides out the (integer) step.
       if constexpr (detail::index_raw<value_type>)
-        start_index_ = static_cast<umax>(start.raw());
+        StartIndex = static_cast<umax>(start.raw());
       else if constexpr (detail::value_raw<value_type>
                          && detail::abs_den(notch_of<value_type>.Denominator) == 1
                          && detail::abs_den(lower_of<value_type>.Denominator) == 1)
       {
         constexpr imax notch_step = static_cast<imax>(notch_of<value_type>.Numerator);
-        start_index_ = static_cast<umax>(
+        StartIndex = static_cast<umax>(
             (static_cast<imax>(start.raw()) - detail::lower_imax<value_type>)
             / notch_step);
       }
@@ -6480,12 +6483,12 @@ namespace beman::inside
         // numerator is the index directly.
         auto offset = ((detail::as_rational(start) - G.Interval.Lower)
                        / G.Notch).value();
-        start_index_ = offset.Numerator;
+        StartIndex = offset.Numerator;
       }
     }
 
-    constexpr iterator begin() const { return {start_index_, 0}; }
-    constexpr iterator end() const   { return {start_index_, static_cast<imax>(slot_count)}; }
+    constexpr iterator begin() const { return {StartIndex, 0}; }
+    constexpr iterator end() const   { return {StartIndex, static_cast<imax>(slot_count)}; }
 
     constexpr std::size_t size() const { return slot_count; }
 
@@ -7149,8 +7152,8 @@ namespace beman::inside::math
 
     // Exact rational source for the irrational constants — the fixed-point cores
     // need the exact form; bit-identical across platforms.
-    inline constexpr rational pi_r{1068966896, 340262731};
-    inline constexpr rational two_pi_r = 2 * pi_r;
+    inline constexpr rational kPiRat{1068966896, 340262731};
+    inline constexpr rational kTwoPiRat = 2 * kPiRat;
 
     // Policy of an auto-deduced output: the input's, minus any fixed-width
     // storage flag (i8 … u64) — the output range differs, as for arithmetic.
@@ -7245,8 +7248,8 @@ namespace beman::inside::math
 
   // Public irrational constants as POINT-BOUNDS, so they compose directly in
   // inside-space (`angle * math::pi`) with no rational on the surface.
-  inline constexpr auto pi     = just<detail::pi_r>;
-  inline constexpr auto two_pi = just<detail::two_pi_r>;
+  inline constexpr auto pi     = just<detail::kPiRat>;
+  inline constexpr auto two_pi = just<detail::kTwoPiRat>;
 
   namespace detail
   {
@@ -7459,14 +7462,14 @@ namespace beman::inside::math
     template <insidable Out>
     constexpr int working_bits() noexcept
     {
-      constexpr int GUARD = 6;
+      constexpr int kGuard = 6;
       umax den        = abs_den(notch_of<Out>.Denominator);   // 1/notch
       int  notch_bits = (den <= 1) ? 0 : std::bit_width(den - 1);
       imax hi  = ceil(abs(upper_of<Out>));
       imax lo  = ceil(abs(lower_of<Out>));
       imax mag = (hi > lo) ? hi : lo;
       int  int_bits = (mag <= 1) ? 0 : std::bit_width(static_cast<umax>(mag));
-      int  W = notch_bits + int_bits + GUARD;
+      int  W = notch_bits + int_bits + kGuard;
       return (W < 12) ? 12 : (W > 31) ? 31 : W;
     }
 
@@ -7481,12 +7484,12 @@ namespace beman::inside::math
       return W < 30 ? W : 30;
     }
 
-    // atan(2^-i) in RADIANS at scale 2^W. i=0 is π/4 (exact, from pi_r); i≥1
+    // atan(2^-i) in RADIANS at scale 2^W. i=0 is π/4 (exact, from kPiRat); i≥1
     // uses the fast-converging series atan(z)=z−z³/3+z⁵/5−… for tiny z=2^-i.
     constexpr imax atan_pow2_fixed(int i, int W) noexcept
     {
       if (i == 0)
-        return to_fixed(pi_r / 4, W);
+        return to_fixed(kPiRat / 4, W);
       if (W - i < 1) return 0;
       imax z = imax{1} << (W - i);
       imax z2 = fmul(z, z, W), term = z, acc = 0;
@@ -7540,9 +7543,9 @@ namespace beman::inside::math
       return y;
     }
 
-    // √2 as a rational (literal source, like pi_r / ln2_r), for sqrt's odd-
+    // √2 as a rational (literal source, like kPiRat / kLn2Rat), for sqrt's odd-
     // exponent step.
-    inline constexpr rational sqrt2_r{1414213562, 1000000000};
+    inline constexpr rational kSqrt2Rat{1414213562, 1000000000};
 
     // √a at scale 2^W, a_w = a·2^W ≥ 0. Reduce a = m·2^e, m ∈ [1,2);
     // √a = √m · 2^(e/2), √m = m·(1/√m) via rsqrt; odd e multiplies in √2.
@@ -7555,7 +7558,7 @@ namespace beman::inside::math
       int  e    = lead - W;
       imax m_w  = (e >= 0) ? (a_w >> e) : (a_w << (-e));    // m·2^W ∈ [2^W, 2^(W+1))
       imax sm   = fmul(m_w, rsqrt_seeded<W>(m_w), W);                     // √m · 2^W
-      if (e & 1) { constexpr imax sqrt2_w = to_fixed(sqrt2_r, W); sm = fmul(sm, sqrt2_w, W); }
+      if (e & 1) { constexpr imax sqrt2_w = to_fixed(kSqrt2Rat, W); sm = fmul(sm, sqrt2_w, W); }
       int h = e >> 1;                                       // floor(e/2)
       return (h >= 0) ? (sm << h) : (sm >> (-h));
     }
@@ -7613,7 +7616,7 @@ namespace beman::inside::math
       if (turn_w == 0) return rational{0};
       // Bound as constexpr so the 128-bit divide inside to_fixed is guaranteed
       // compile-time (same pattern as sqrt2_w) — args are all constants.
-      constexpr imax two_pi_w = to_fixed(two_pi_r, W);
+      constexpr imax two_pi_w = to_fixed(kTwoPiRat, W);
       imax rad = fmul(turn_w, two_pi_w, W);
       imax s, c;
       cordic_sincos<W, N>(rad, s, c);
@@ -7637,7 +7640,7 @@ namespace beman::inside::math
       imax s = 0, c = imax{1} << W;                    // r == 0: sin 0, cos 1
       if (r != 0)
       {
-        constexpr imax two_pi_w = to_fixed(two_pi_r, W);
+        constexpr imax two_pi_w = to_fixed(kTwoPiRat, W);
         cordic_sincos<W, N>(fmul(r, two_pi_w, W), s, c);
       }
       // tan = sin/cos per quadrant: q0 s/c, q1 −c/s, q2 s/c, q3 −c/s.
@@ -7654,8 +7657,8 @@ namespace beman::inside::math
     }
 
     // 1/(2π) as a rational, for radians→turn reduction at any scale.
-    inline constexpr rational inv_two_pi =
-      (rational{1} / two_pi_r).value();
+    inline constexpr rational kInvTwoPiRat =
+      (rational{1} / kTwoPiRat).value();
 
     // radians → turn at scale 2^W. The single-term product's error (~2^-(W+1))
     // scales with |a|, capping the envelope at ±1024 rad — grids within it keep
@@ -7668,14 +7671,14 @@ namespace beman::inside::math
       const imax a_w = to_fixed(a, W);
       if constexpr (lower_of<In> >= -1024 && upper_of<In> <= 1024)
       {
-        constexpr imax inv_two_pi_w = to_fixed(inv_two_pi, W);
+        constexpr imax inv_two_pi_w = to_fixed(kInvTwoPiRat, W);
         return fmul(a_w, inv_two_pi_w, W);
       }
       else
       {
         constexpr int  S    = W + 24;                 // ≤ 55 for W ≤ 31
-        constexpr imax hi_w = to_fixed(inv_two_pi, W);
-        constexpr rational lo = inv_two_pi - fixed_to_rational(hi_w, W);
+        constexpr imax hi_w = to_fixed(kInvTwoPiRat, W);
+        constexpr rational lo = kInvTwoPiRat - fixed_to_rational(hi_w, W);
         constexpr imax lo_s = to_fixed(lo, S);
         return fmul(a_w, hi_w, W) + fmul(a_w, lo_s, S);
       }
@@ -7705,8 +7708,8 @@ namespace beman::inside::math
 
     // ln 2 as a rational (10-digit literal), plus its reciprocal — for exp/log
     // range reduction and base changes.
-    inline constexpr rational ln2_r{6931471806, 10000000000};
-    inline constexpr rational inv_ln2_r = (rational{1} / ln2_r).value();
+    inline constexpr rational kLn2Rat{6931471806, 10000000000};
+    inline constexpr rational kInvLn2Rat = (rational{1} / kLn2Rat).value();
 
     // atanh(2^-i) at scale 2^W (series; 2^-i ≤ ½ ⇒ converges). i ≥ 1 only.
     constexpr imax atanh_pow2_fixed(int i, int W) noexcept
@@ -7806,7 +7809,7 @@ namespace beman::inside::math
     {
       imax k   = (x_w + (imax{1} << (W - 1))) >> W;        // round to nearest int
       imax f_w = x_w - (k << W);                            // ∈ [−2^(W−1), 2^(W−1)]
-      constexpr imax ln2_w = to_fixed(ln2_r, W);            // compile-time constant
+      constexpr imax ln2_w = to_fixed(kLn2Rat, W);            // compile-time constant
       imax fr_w = fmul(f_w, ln2_w, W);                      // f·ln2 (natural)
       imax er_w;
       if (fr_w == 0) er_w = imax{1} << W;                   // 2^k exactly
@@ -7826,7 +7829,7 @@ namespace beman::inside::math
       imax one  = imax{1} << W;
       imax m_w  = (e >= 0) ? (w_w >> e) : (w_w << (-e));   // m·2^W ∈ [2^W, 2^(W+1))
       imax z    = cordic_atanh_vec<W, hyp_len(W)>(m_w + one, m_w - one);
-      constexpr imax ln2_w = to_fixed(ln2_r, W);           // compile-time constant
+      constexpr imax ln2_w = to_fixed(kLn2Rat, W);           // compile-time constant
       return e * ln2_w + 2 * z;
     }
 
@@ -7834,7 +7837,7 @@ namespace beman::inside::math
     template <int W>
     constexpr imax log2_to_fixed(rational x) noexcept
     {
-      constexpr imax inv_ln2_w = to_fixed(inv_ln2_r, W);   // compile-time constant
+      constexpr imax inv_ln2_w = to_fixed(kInvLn2Rat, W);   // compile-time constant
       return fmul(log_to_fixed<W>(x), inv_ln2_w, W);
     }
 
@@ -7842,7 +7845,7 @@ namespace beman::inside::math
     template <int W>
     constexpr rational exp_from_fixed(imax v_w) noexcept
     {
-      constexpr imax inv_ln2_w = to_fixed(inv_ln2_r, W);   // compile-time constant
+      constexpr imax inv_ln2_w = to_fixed(kInvLn2Rat, W);   // compile-time constant
       return exp2_from_fixed<W>(fmul(v_w, inv_ln2_w, W));
     }
 
@@ -8052,7 +8055,7 @@ namespace beman::inside::math
   {
     detail::domain_atan2<InY>();
     detail::domain_atan2<InX>();
-    static_assert(lower_of<Out> <= -detail::pi_r && upper_of<Out> >= detail::pi_r,
+    static_assert(lower_of<Out> <= -detail::kPiRat && upper_of<Out> >= detail::kPiRat,
                   "beman::inside::math::atan2: Out must cover [-π, π]");
 
     constexpr int W = detail::working_bits<Out>();
@@ -8079,7 +8082,7 @@ namespace beman::inside::math
     // and add the rotation back at the end.
     //   Q2 (x<0, y≥0): (x',y') = (y, −x),  θ = CORDIC + π/2.
     //   Q3 (x<0, y<0): (x',y') = (−y, x),  θ = CORDIC − π/2.
-    constexpr imax half_pi_w = detail::to_fixed(detail::pi_r / 2, W);
+    constexpr imax half_pi_w = detail::to_fixed(detail::kPiRat / 2, W);
     imax pre_rotation = 0;
     if (x_w < 0) {
       if (y_w >= 0) { imax nx = y_w;  imax ny = -x_w; x_w = nx; y_w = ny; pre_rotation =  half_pi_w; }
@@ -8512,8 +8515,8 @@ namespace beman::inside::math
     // ±π endpoints are irrational and would violate the grid's divides-evenly
     // invariant against a rational notch.
     template <insidable In, insidable InX = In>
-    using atan2_auto_t = inside<{{floor_to_notch(-pi_r, gcd_notch<In, InX>),
-                                  ceil_to_notch ( pi_r, gcd_notch<In, InX>)},
+    using atan2_auto_t = inside<{{floor_to_notch(-kPiRat, gcd_notch<In, InX>),
+                                  ceil_to_notch ( kPiRat, gcd_notch<In, InX>)},
                                  gcd_notch<In, InX>}, out_policy<In> | round_nearest>;
 
     template <insidable In>
@@ -8715,7 +8718,7 @@ namespace beman::inside::math
       }
       rational inv = 1 / av;
       imax rad = cordic_atan2_rad<W, W>(to_fixed(inv, W), imax{1} << W);
-      rational mag = pi_r / 2 - fixed_to_rational(rad, W);
+      rational mag = kPiRat / 2 - fixed_to_rational(rad, W);
       return (v < rational{0}) ? -mag : mag;
     }
 
@@ -8727,7 +8730,7 @@ namespace beman::inside::math
       imax v_w = to_fixed(v, W);
       imax c_w = sqrt_fixed<W>(one - fmul(v_w, v_w, W));   // √(1−v²) ≥ 0
       if (c_w == 0) {                                                    // v = ±1 → ±π/2
-        rational half_pi = pi_r / 2;
+        rational half_pi = kPiRat / 2;
         return (v < rational{0}) ? -half_pi : half_pi;
       }
       imax rad = cordic_atan2_rad<W, W>(v_w, c_w);        // x = c_w > 0
@@ -8738,7 +8741,7 @@ namespace beman::inside::math
     template <int W = kRefBits>
     constexpr rational acos_endpoint(rational v) noexcept
     {
-      rational half_pi = pi_r / 2;
+      rational half_pi = kPiRat / 2;
       return half_pi - asin_endpoint<W>(v);
     }
 
@@ -9646,20 +9649,20 @@ namespace beman::inside
 namespace beman::inside::detail
 {
   // Shared spec handling: an empty `{}` is left to the derived format() (exact
-  // to_string); a non-empty spec is parsed and applied by `numeric_`.
+  // to_string); a non-empty spec is parsed and applied by `Numeric`.
   template <class Inner>
   struct numeric_spec_formatter
   {
-    Inner numeric_{};
-    bool  has_spec_ = false;
+    Inner Numeric{};
+    bool  HasSpec = false;
 
     constexpr auto parse(std::format_parse_context& ctx)
     {
       auto it = ctx.begin();
       if (it != ctx.end() && *it != '}')
       {
-        has_spec_ = true;
-        return numeric_.parse(ctx);
+        HasSpec = true;
+        return Numeric.parse(ctx);
       }
       return it;
     }
@@ -9682,9 +9685,9 @@ struct std::formatter<beman::inside::inside<G, P>>
   auto format(B const& b, Ctx& ctx) const
   {
     if constexpr (integer_path)
-      return this->numeric_.format(beman::inside::detail::to_value(b), ctx);
-    else if (this->has_spec_)
-      return this->numeric_.format(
+      return this->Numeric.format(beman::inside::detail::to_value(b), ctx);
+    else if (this->HasSpec)
+      return this->Numeric.format(
           static_cast<double>(beman::inside::detail::rational{b}), ctx);
     else
       return std::format_to(ctx.out(), "{}", beman::inside::to_string(b));
@@ -9698,8 +9701,8 @@ struct std::formatter<beman::inside::detail::rational>
   template <typename Ctx>
   auto format(beman::inside::detail::rational const& r, Ctx& ctx) const
   {
-    if (has_spec_)
-      return numeric_.format(static_cast<double>(r), ctx);
+    if (HasSpec)
+      return Numeric.format(static_cast<double>(r), ctx);
     return std::format_to(ctx.out(), "{}", beman::inside::to_string(r));
   }
 };

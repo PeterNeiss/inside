@@ -354,7 +354,7 @@ TEST(RealExactTest, real_storage_rejects_non_finite_assignment)
 
   auto threw_not_finite = [](auto&& fn) {
     try { fn(); return false; }
-    catch (beman::inside::inside_error const& e) { return e.code == errc::not_finite; }
+    catch (beman::inside::inside_error const& e) { return e.Code == errc::not_finite; }
   };
 
   ASSERT_TRUE(threw_not_finite([]{ R x = std::nan(""); (void)x; }));

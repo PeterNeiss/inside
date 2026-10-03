@@ -216,20 +216,20 @@ namespace beman::inside
 namespace beman::inside::detail
 {
   // Shared spec handling: an empty `{}` is left to the derived format() (exact
-  // to_string); a non-empty spec is parsed and applied by `numeric_`.
+  // to_string); a non-empty spec is parsed and applied by `Numeric`.
   template <class Inner>
   struct numeric_spec_formatter
   {
-    Inner numeric_{};
-    bool  has_spec_ = false;
+    Inner Numeric{};
+    bool  HasSpec = false;
 
     constexpr auto parse(std::format_parse_context& ctx)
     {
       auto it = ctx.begin();
       if (it != ctx.end() && *it != '}')
       {
-        has_spec_ = true;
-        return numeric_.parse(ctx);
+        HasSpec = true;
+        return Numeric.parse(ctx);
       }
       return it;
     }
@@ -252,9 +252,9 @@ struct std::formatter<beman::inside::inside<G, P>>
   auto format(B const& b, Ctx& ctx) const
   {
     if constexpr (integer_path)
-      return this->numeric_.format(beman::inside::detail::to_value(b), ctx);
-    else if (this->has_spec_)
-      return this->numeric_.format(
+      return this->Numeric.format(beman::inside::detail::to_value(b), ctx);
+    else if (this->HasSpec)
+      return this->Numeric.format(
           static_cast<double>(beman::inside::detail::rational{b}), ctx);
     else
       return std::format_to(ctx.out(), "{}", beman::inside::to_string(b));
@@ -268,8 +268,8 @@ struct std::formatter<beman::inside::detail::rational>
   template <typename Ctx>
   auto format(beman::inside::detail::rational const& r, Ctx& ctx) const
   {
-    if (has_spec_)
-      return numeric_.format(static_cast<double>(r), ctx);
+    if (HasSpec)
+      return Numeric.format(static_cast<double>(r), ctx);
     return std::format_to(ctx.out(), "{}", beman::inside::to_string(r));
   }
 };

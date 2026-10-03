@@ -48,7 +48,7 @@ namespace beman::inside::detail
     { do_wrap(); return true; }
     else if constexpr (error_action<PA>)
     {
-      action.fn(lhs, errc::domain_error, errc_message(errc::domain_error));
+      action.Fn(lhs, errc::domain_error, errc_message(errc::domain_error));
       return true;
     }
     else if constexpr (has_policy<L, P, clamp>)
@@ -81,7 +81,7 @@ namespace beman::inside::detail
         imax overshoot = static_cast<imax>(rhs) - clamped;
         from_value(lhs, clamped);
         if constexpr (clamp_action<plain_t<A>>)
-          action.fn(lhs, overshoot);
+          action.Fn(lhs, overshoot);
       }
 
       template<typename A>
@@ -95,7 +95,7 @@ namespace beman::inside::detail
         if (urange == 0)                              // span == 2^64−1: wrap is identity
         {
           from_value(lhs, ri);
-          if constexpr (wrap_action<plain_t<A>>) action.fn(lhs, imax{0});
+          if constexpr (wrap_action<plain_t<A>>) action.Fn(lhs, imax{0});
           return;
         }
         umax w;
@@ -115,7 +115,7 @@ namespace beman::inside::detail
         }
         from_value(lhs, static_cast<imax>(static_cast<umax>(lower) + w));
         if constexpr (wrap_action<plain_t<A>>)
-          action.fn(lhs, excess);
+          action.Fn(lhs, excess);
       }
 
       template<typename P, typename A>
@@ -233,7 +233,7 @@ namespace beman::inside::detail
               (rhs < lower_of<L>) ? umax{0} : max_index_v<L>));
 
         if constexpr (clamp_action<plain_t<A>>)
-          action.fn(lhs, overshoot);
+          action.Fn(lhs, overshoot);
       }
 
     public:
@@ -266,7 +266,7 @@ namespace beman::inside::detail
         assignment<L, rational>::store_checked(lhs, wrapped, policy, action);
 
         if constexpr (wrap_action<plain_t<A>>)
-          action.fn(lhs, q);
+          action.Fn(lhs, q);
       }
 
       // 128-bit rounded store — the offset slot of an in-range rhs computed
@@ -278,7 +278,7 @@ namespace beman::inside::detail
       // wide operations are one 128×64 multiply and one 128÷64 divide.
       // ok == false when the reduced divisor or dividend exceeds the 128-bit
       // envelope (or rhs is out of range — callers check range first).
-      struct wide_quotient { umax slot; umax remainder; umax divisor; bool ok; };
+      struct wide_quotient { umax Slot; umax Remainder; umax Divisor; bool Ok; };
 
       static constexpr wide_quotient wide_offset_quotient(rational const& rv)
       {
@@ -317,19 +317,19 @@ namespace beman::inside::detail
             const u128 low = umul(n_l, a_dr);
             u128 offset;
             if (!rhs_neg && low_neg)
-              offset = u128{val.hi + low.hi + (val.lo + low.lo < val.lo ? 1u : 0u),
-                            val.lo + low.lo};
+              offset = u128{val.Hi + low.Hi + (val.Lo + low.Lo < val.Lo ? 1u : 0u),
+                            val.Lo + low.Lo};
             else if (!rhs_neg && !low_neg)
             {
               if (cmp128(val, low) < 0) return {};         // rhs < Lower
-              offset = u128{val.hi - low.hi - (val.lo < low.lo ? 1u : 0u),
-                            val.lo - low.lo};
+              offset = u128{val.Hi - low.Hi - (val.Lo < low.Lo ? 1u : 0u),
+                            val.Lo - low.Lo};
             }
             else if (rhs_neg && low_neg)
             {
               if (cmp128(low, val) < 0) return {};         // rhs < Lower
-              offset = u128{low.hi - val.hi - (low.lo < val.lo ? 1u : 0u),
-                            low.lo - val.lo};
+              offset = u128{low.Hi - val.Hi - (low.Lo < val.Lo ? 1u : 0u),
+                            low.Lo - val.Lo};
             }
             else
               return {};                                   // rhs < 0 ≤ Lower
@@ -344,13 +344,13 @@ namespace beman::inside::detail
               return {};
 
             const mul128_result dividend = mul128(offset, d_n2);
-            if (dividend.overflowed)
+            if (dividend.Overflowed)
               return {};
 
-            const divmod128_result qr = divmod128(dividend.value, divisor);
-            if (qr.quotient.hi != 0)
+            const divmod128_result qr = divmod128(dividend.Value, divisor);
+            if (qr.Quotient.Hi != 0)
               return {};                    // slot beyond any 64-bit index space
-            return {qr.quotient.lo, qr.remainder, divisor, true};
+            return {qr.Quotient.Lo, qr.Remainder, divisor, true};
           }
         }
       }
@@ -453,25 +453,25 @@ namespace beman::inside::detail
           if (!quotient.has_value()) [[unlikely]]
           {
             const wide_quotient wide = wide_offset_quotient(rational{rhs});
-            if (!wide.ok)
+            if (!wide.Ok)
             {
               if constexpr (error_action<plain_t<A>>)
-              { action.fn(lhs, errc::overflow, errc_message(errc::overflow)); return false; }
+              { action.Fn(lhs, errc::overflow, errc_message(errc::overflow)); return false; }
               policy.report(errc::overflow);
               return false;
             }
-            if (wide.remainder == 0)
-            { store_slot(wide.slot); return true; }
+            if (wide.Remainder == 0)
+            { store_slot(wide.Slot); return true; }
             if constexpr (has_round_flag)
-            { store_slot(round_offset<L, P>(wide.slot, wide.remainder, wide.divisor)); return true; }
+            { store_slot(round_offset<L, P>(wide.Slot, wide.Remainder, wide.Divisor)); return true; }
             if (policy.round_check()) [[unlikely]]
             {
               if constexpr (error_action<plain_t<A>>)
-              { action.fn(lhs, errc::rounding_error, errc_message(errc::rounding_error)); return false; }
+              { action.Fn(lhs, errc::rounding_error, errc_message(errc::rounding_error)); return false; }
               policy.report(errc::rounding_error);
               return false;
             }
-            store_slot(round_offset<L, P>(wide.slot, wide.remainder, wide.divisor));
+            store_slot(round_offset<L, P>(wide.Slot, wide.Remainder, wide.Divisor));
             return true;
           }
           rational raw = *quotient;
@@ -484,7 +484,7 @@ namespace beman::inside::detail
           else if (policy.round_check()) [[unlikely]]
           {
             if constexpr (error_action<plain_t<A>>)
-            { action.fn(lhs, errc::rounding_error, errc_message(errc::rounding_error)); return false; }
+            { action.Fn(lhs, errc::rounding_error, errc_message(errc::rounding_error)); return false; }
             policy.report(errc::rounding_error);
             return false;
           }
@@ -506,7 +506,7 @@ namespace beman::inside::detail
               if (rhs == rhs)
                 return assignment<L, rational>::assign(lhs, rhs > 0 ? upper_of<L> : lower_of<L>, policy);
             if constexpr (error_action<plain_t<A>>)
-              action.fn(lhs, errc::not_finite, errc_message(errc::not_finite));
+              action.Fn(lhs, errc::not_finite, errc_message(errc::not_finite));
             else
               policy.report(errc::not_finite);
             return lhs;
@@ -583,7 +583,7 @@ namespace beman::inside::detail
       // reducing through the two rational ops first. ok gates on every product
       // (including the worst-case runtime numerator over R's raw range)
       // provably fitting imax; mul/add/den are zeroed when not ok.
-      struct affine_map_t { imax mul; imax add; imax den; bool ok; };
+      struct affine_map_t { imax Mul; imax Add; imax Den; bool Ok; };
       static constexpr affine_map_t affine_map = []{
         constexpr affine_map_t no{0, 0, 0, false};
         if constexpr (rational_raw<L> || rational_raw<R> || fp_raw<L> || fp_raw<R>
@@ -599,16 +599,16 @@ namespace beman::inside::detail
           const imax o_s = signed_numerator(Offset);
           const imax o_d = abs_den(Offset.Denominator);
           affine_map_t m{0, 0, 0, true};
-          if (mul_overflow(f_n, o_d, &m.mul) || mul_overflow(o_s, f_d, &m.add)
-              || mul_overflow(o_d, f_d, &m.den))
+          if (mul_overflow(f_n, o_d, &m.Mul) || mul_overflow(o_s, f_d, &m.Add)
+              || mul_overflow(o_d, f_d, &m.Den))
             return no;
           // worst-case |numerator| over R's raw range
           constexpr imax hi_mag = raw_hi<R> < 0 ? -raw_hi<R> : raw_hi<R>;
           constexpr imax lo_mag = raw_lo<R> < 0 ? -raw_lo<R> : raw_lo<R>;
           const imax rmax = hi_mag > lo_mag ? hi_mag : lo_mag;
           imax term, num;
-          if (mul_overflow(rmax, m.mul, &term)
-              || add_overflow(term, m.add < 0 ? -m.add : m.add, &num))
+          if (mul_overflow(rmax, m.Mul, &term)
+              || add_overflow(term, m.Add < 0 ? -m.Add : m.Add, &num))
             return no;
           // round_quotient equivalence: rounding is reduction-invariant, but
           // its value-index-vs-offset branch CHOICE keys on m·di + num fitting
@@ -621,7 +621,7 @@ namespace beman::inside::detail
               return no;
             const imax mbias = signed_numerator(zl);
             imax mdi, total;
-            if (mul_overflow(mbias, m.den, &mdi) || add_overflow(mdi, num, &total))
+            if (mul_overflow(mbias, m.Den, &mdi) || add_overflow(mdi, num, &total))
               return no;
           }
           return m;
@@ -677,7 +677,7 @@ namespace beman::inside::detail
         {
           constexpr grid OG = (grid_of<R> - grid_of<L>).value();
           beman::inside::inside<OG> overshoot{ (as_rational(rhs) - as_rational(lhs)).value() };
-          action.fn(lhs, overshoot);
+          action.Fn(lhs, overshoot);
         }
       }
 
@@ -704,7 +704,7 @@ namespace beman::inside::detail
           if (wrapped < 0) { wrapped += range; --excess; }
           from_value(lhs, wrapped + lower);
           if constexpr (wrap_action<plain_t<A>>)
-            action.fn(lhs, beman::inside::inside<wrap_excess_grid()>{excess});   // carry as an inside
+            action.Fn(lhs, beman::inside::inside<wrap_excess_grid()>{excess});   // carry as an inside
         }
         else if constexpr (wrap_action<plain_t<A>>)
         {
@@ -713,7 +713,7 @@ namespace beman::inside::detail
           // handing it to the user action.
           assignment<L, rational>::apply_wrap(lhs, as_rational(rhs), policy,
             beman::inside::on_wrap([&](auto& self, imax q){
-              action.fn(self, beman::inside::inside<wrap_excess_grid()>{q});
+              action.Fn(self, beman::inside::inside<wrap_excess_grid()>{q});
             }));
         }
         else
@@ -753,16 +753,16 @@ namespace beman::inside::detail
           else
             lhs = L::from_raw(raw_cast<L>(map_raw(rhs.raw())));
         }
-        else if constexpr (affine_map.ok)
+        else if constexpr (affine_map.Ok)
         {
           // Folded non-integer mapping: one multiply-add, then the same
           // round_quotient (invariant under reduction — bit-identical to the
           // rational chain below).
-          const imax num = affine_map.add
-                         + static_cast<imax>(rhs.raw()) * affine_map.mul;
+          const imax num = affine_map.Add
+                         + static_cast<imax>(rhs.raw()) * affine_map.Mul;
           const umax q = round_quotient<L, P>(
               static_cast<umax>(num < 0 ? -num : num),
-              static_cast<umax>(affine_map.den));
+              static_cast<umax>(affine_map.Den));
           lhs = L::from_raw(num < 0 ? raw_from_offset<L>(-static_cast<imax>(q))
                                     : raw_from_offset<L>(q));
         }

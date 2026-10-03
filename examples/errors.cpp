@@ -30,7 +30,7 @@ int main()
   }
   catch (beman::inside::inside_error& e)
   {
-    std::cout << "throw:    " << errc_message(e.code) << "\n";
+    std::cout << "throw:    " << errc_message(e.Code) << "\n";
   }
 
   auto maybe = checked_100::try_make(200);

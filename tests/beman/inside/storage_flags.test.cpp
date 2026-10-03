@@ -349,7 +349,7 @@ TEST(StorageFlagsTest, non_finite_doubles_are_rejected_both_engines)
   // domain_error used for finite-but-out-of-interval values), both engines.
   try { R{nan}; FAIL() << "expected throw"; }
   catch (const beman::inside::inside_error& e)
-  { ASSERT_EQ(e.code, errc::not_finite); }
+  { ASSERT_EQ(e.Code, errc::not_finite); }
 }
 
 // Full-domain inverse trig (improvement #2): atan beyond |x| ≤ 1 via

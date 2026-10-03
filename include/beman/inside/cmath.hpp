@@ -85,8 +85,8 @@ namespace beman::inside::math
 
     // Exact rational source for the irrational constants — the fixed-point cores
     // need the exact form; bit-identical across platforms.
-    inline constexpr rational pi_r{1068966896, 340262731};
-    inline constexpr rational two_pi_r = 2 * pi_r;
+    inline constexpr rational kPiRat{1068966896, 340262731};
+    inline constexpr rational kTwoPiRat = 2 * kPiRat;
 
     // Policy of an auto-deduced output: the input's, minus any fixed-width
     // storage flag (i8 … u64) — the output range differs, as for arithmetic.
@@ -181,8 +181,8 @@ namespace beman::inside::math
 
   // Public irrational constants as POINT-BOUNDS, so they compose directly in
   // inside-space (`angle * math::pi`) with no rational on the surface.
-  inline constexpr auto pi     = just<detail::pi_r>;
-  inline constexpr auto two_pi = just<detail::two_pi_r>;
+  inline constexpr auto pi     = just<detail::kPiRat>;
+  inline constexpr auto two_pi = just<detail::kTwoPiRat>;
 
   namespace detail
   {
@@ -395,14 +395,14 @@ namespace beman::inside::math
     template <insidable Out>
     constexpr int working_bits() noexcept
     {
-      constexpr int GUARD = 6;
+      constexpr int kGuard = 6;
       umax den        = abs_den(notch_of<Out>.Denominator);   // 1/notch
       int  notch_bits = (den <= 1) ? 0 : std::bit_width(den - 1);
       imax hi  = ceil(abs(upper_of<Out>));
       imax lo  = ceil(abs(lower_of<Out>));
       imax mag = (hi > lo) ? hi : lo;
       int  int_bits = (mag <= 1) ? 0 : std::bit_width(static_cast<umax>(mag));
-      int  W = notch_bits + int_bits + GUARD;
+      int  W = notch_bits + int_bits + kGuard;
       return (W < 12) ? 12 : (W > 31) ? 31 : W;
     }
 
@@ -417,12 +417,12 @@ namespace beman::inside::math
       return W < 30 ? W : 30;
     }
 
-    // atan(2^-i) in RADIANS at scale 2^W. i=0 is π/4 (exact, from pi_r); i≥1
+    // atan(2^-i) in RADIANS at scale 2^W. i=0 is π/4 (exact, from kPiRat); i≥1
     // uses the fast-converging series atan(z)=z−z³/3+z⁵/5−… for tiny z=2^-i.
     constexpr imax atan_pow2_fixed(int i, int W) noexcept
     {
       if (i == 0)
-        return to_fixed(pi_r / 4, W);
+        return to_fixed(kPiRat / 4, W);
       if (W - i < 1) return 0;
       imax z = imax{1} << (W - i);
       imax z2 = fmul(z, z, W), term = z, acc = 0;
@@ -476,9 +476,9 @@ namespace beman::inside::math
       return y;
     }
 
-    // √2 as a rational (literal source, like pi_r / ln2_r), for sqrt's odd-
+    // √2 as a rational (literal source, like kPiRat / kLn2Rat), for sqrt's odd-
     // exponent step.
-    inline constexpr rational sqrt2_r{1414213562, 1000000000};
+    inline constexpr rational kSqrt2Rat{1414213562, 1000000000};
 
     // √a at scale 2^W, a_w = a·2^W ≥ 0. Reduce a = m·2^e, m ∈ [1,2);
     // √a = √m · 2^(e/2), √m = m·(1/√m) via rsqrt; odd e multiplies in √2.
@@ -491,7 +491,7 @@ namespace beman::inside::math
       int  e    = lead - W;
       imax m_w  = (e >= 0) ? (a_w >> e) : (a_w << (-e));    // m·2^W ∈ [2^W, 2^(W+1))
       imax sm   = fmul(m_w, rsqrt_seeded<W>(m_w), W);                     // √m · 2^W
-      if (e & 1) { constexpr imax sqrt2_w = to_fixed(sqrt2_r, W); sm = fmul(sm, sqrt2_w, W); }
+      if (e & 1) { constexpr imax sqrt2_w = to_fixed(kSqrt2Rat, W); sm = fmul(sm, sqrt2_w, W); }
       int h = e >> 1;                                       // floor(e/2)
       return (h >= 0) ? (sm << h) : (sm >> (-h));
     }
@@ -549,7 +549,7 @@ namespace beman::inside::math
       if (turn_w == 0) return rational{0};
       // Bound as constexpr so the 128-bit divide inside to_fixed is guaranteed
       // compile-time (same pattern as sqrt2_w) — args are all constants.
-      constexpr imax two_pi_w = to_fixed(two_pi_r, W);
+      constexpr imax two_pi_w = to_fixed(kTwoPiRat, W);
       imax rad = fmul(turn_w, two_pi_w, W);
       imax s, c;
       cordic_sincos<W, N>(rad, s, c);
@@ -573,7 +573,7 @@ namespace beman::inside::math
       imax s = 0, c = imax{1} << W;                    // r == 0: sin 0, cos 1
       if (r != 0)
       {
-        constexpr imax two_pi_w = to_fixed(two_pi_r, W);
+        constexpr imax two_pi_w = to_fixed(kTwoPiRat, W);
         cordic_sincos<W, N>(fmul(r, two_pi_w, W), s, c);
       }
       // tan = sin/cos per quadrant: q0 s/c, q1 −c/s, q2 s/c, q3 −c/s.
@@ -590,8 +590,8 @@ namespace beman::inside::math
     }
 
     // 1/(2π) as a rational, for radians→turn reduction at any scale.
-    inline constexpr rational inv_two_pi =
-      (rational{1} / two_pi_r).value();
+    inline constexpr rational kInvTwoPiRat =
+      (rational{1} / kTwoPiRat).value();
 
     // radians → turn at scale 2^W. The single-term product's error (~2^-(W+1))
     // scales with |a|, capping the envelope at ±1024 rad — grids within it keep
@@ -604,14 +604,14 @@ namespace beman::inside::math
       const imax a_w = to_fixed(a, W);
       if constexpr (lower_of<In> >= -1024 && upper_of<In> <= 1024)
       {
-        constexpr imax inv_two_pi_w = to_fixed(inv_two_pi, W);
+        constexpr imax inv_two_pi_w = to_fixed(kInvTwoPiRat, W);
         return fmul(a_w, inv_two_pi_w, W);
       }
       else
       {
         constexpr int  S    = W + 24;                 // ≤ 55 for W ≤ 31
-        constexpr imax hi_w = to_fixed(inv_two_pi, W);
-        constexpr rational lo = inv_two_pi - fixed_to_rational(hi_w, W);
+        constexpr imax hi_w = to_fixed(kInvTwoPiRat, W);
+        constexpr rational lo = kInvTwoPiRat - fixed_to_rational(hi_w, W);
         constexpr imax lo_s = to_fixed(lo, S);
         return fmul(a_w, hi_w, W) + fmul(a_w, lo_s, S);
       }
@@ -641,8 +641,8 @@ namespace beman::inside::math
 
     // ln 2 as a rational (10-digit literal), plus its reciprocal — for exp/log
     // range reduction and base changes.
-    inline constexpr rational ln2_r{6931471806, 10000000000};
-    inline constexpr rational inv_ln2_r = (rational{1} / ln2_r).value();
+    inline constexpr rational kLn2Rat{6931471806, 10000000000};
+    inline constexpr rational kInvLn2Rat = (rational{1} / kLn2Rat).value();
 
     // atanh(2^-i) at scale 2^W (series; 2^-i ≤ ½ ⇒ converges). i ≥ 1 only.
     constexpr imax atanh_pow2_fixed(int i, int W) noexcept
@@ -742,7 +742,7 @@ namespace beman::inside::math
     {
       imax k   = (x_w + (imax{1} << (W - 1))) >> W;        // round to nearest int
       imax f_w = x_w - (k << W);                            // ∈ [−2^(W−1), 2^(W−1)]
-      constexpr imax ln2_w = to_fixed(ln2_r, W);            // compile-time constant
+      constexpr imax ln2_w = to_fixed(kLn2Rat, W);            // compile-time constant
       imax fr_w = fmul(f_w, ln2_w, W);                      // f·ln2 (natural)
       imax er_w;
       if (fr_w == 0) er_w = imax{1} << W;                   // 2^k exactly
@@ -762,7 +762,7 @@ namespace beman::inside::math
       imax one  = imax{1} << W;
       imax m_w  = (e >= 0) ? (w_w >> e) : (w_w << (-e));   // m·2^W ∈ [2^W, 2^(W+1))
       imax z    = cordic_atanh_vec<W, hyp_len(W)>(m_w + one, m_w - one);
-      constexpr imax ln2_w = to_fixed(ln2_r, W);           // compile-time constant
+      constexpr imax ln2_w = to_fixed(kLn2Rat, W);           // compile-time constant
       return e * ln2_w + 2 * z;
     }
 
@@ -770,7 +770,7 @@ namespace beman::inside::math
     template <int W>
     constexpr imax log2_to_fixed(rational x) noexcept
     {
-      constexpr imax inv_ln2_w = to_fixed(inv_ln2_r, W);   // compile-time constant
+      constexpr imax inv_ln2_w = to_fixed(kInvLn2Rat, W);   // compile-time constant
       return fmul(log_to_fixed<W>(x), inv_ln2_w, W);
     }
 
@@ -778,7 +778,7 @@ namespace beman::inside::math
     template <int W>
     constexpr rational exp_from_fixed(imax v_w) noexcept
     {
-      constexpr imax inv_ln2_w = to_fixed(inv_ln2_r, W);   // compile-time constant
+      constexpr imax inv_ln2_w = to_fixed(kInvLn2Rat, W);   // compile-time constant
       return exp2_from_fixed<W>(fmul(v_w, inv_ln2_w, W));
     }
 
@@ -988,7 +988,7 @@ namespace beman::inside::math
   {
     detail::domain_atan2<InY>();
     detail::domain_atan2<InX>();
-    static_assert(lower_of<Out> <= -detail::pi_r && upper_of<Out> >= detail::pi_r,
+    static_assert(lower_of<Out> <= -detail::kPiRat && upper_of<Out> >= detail::kPiRat,
                   "beman::inside::math::atan2: Out must cover [-π, π]");
 
     constexpr int W = detail::working_bits<Out>();
@@ -1015,7 +1015,7 @@ namespace beman::inside::math
     // and add the rotation back at the end.
     //   Q2 (x<0, y≥0): (x',y') = (y, −x),  θ = CORDIC + π/2.
     //   Q3 (x<0, y<0): (x',y') = (−y, x),  θ = CORDIC − π/2.
-    constexpr imax half_pi_w = detail::to_fixed(detail::pi_r / 2, W);
+    constexpr imax half_pi_w = detail::to_fixed(detail::kPiRat / 2, W);
     imax pre_rotation = 0;
     if (x_w < 0) {
       if (y_w >= 0) { imax nx = y_w;  imax ny = -x_w; x_w = nx; y_w = ny; pre_rotation =  half_pi_w; }
@@ -1448,8 +1448,8 @@ namespace beman::inside::math
     // ±π endpoints are irrational and would violate the grid's divides-evenly
     // invariant against a rational notch.
     template <insidable In, insidable InX = In>
-    using atan2_auto_t = inside<{{floor_to_notch(-pi_r, gcd_notch<In, InX>),
-                                  ceil_to_notch ( pi_r, gcd_notch<In, InX>)},
+    using atan2_auto_t = inside<{{floor_to_notch(-kPiRat, gcd_notch<In, InX>),
+                                  ceil_to_notch ( kPiRat, gcd_notch<In, InX>)},
                                  gcd_notch<In, InX>}, out_policy<In> | round_nearest>;
 
     template <insidable In>
@@ -1651,7 +1651,7 @@ namespace beman::inside::math
       }
       rational inv = 1 / av;
       imax rad = cordic_atan2_rad<W, W>(to_fixed(inv, W), imax{1} << W);
-      rational mag = pi_r / 2 - fixed_to_rational(rad, W);
+      rational mag = kPiRat / 2 - fixed_to_rational(rad, W);
       return (v < rational{0}) ? -mag : mag;
     }
 
@@ -1663,7 +1663,7 @@ namespace beman::inside::math
       imax v_w = to_fixed(v, W);
       imax c_w = sqrt_fixed<W>(one - fmul(v_w, v_w, W));   // √(1−v²) ≥ 0
       if (c_w == 0) {                                                    // v = ±1 → ±π/2
-        rational half_pi = pi_r / 2;
+        rational half_pi = kPiRat / 2;
         return (v < rational{0}) ? -half_pi : half_pi;
       }
       imax rad = cordic_atan2_rad<W, W>(v_w, c_w);        // x = c_w > 0
@@ -1674,7 +1674,7 @@ namespace beman::inside::math
     template <int W = kRefBits>
     constexpr rational acos_endpoint(rational v) noexcept
     {
-      rational half_pi = pi_r / 2;
+      rational half_pi = kPiRat / 2;
       return half_pi - asin_endpoint<W>(v);
     }
 

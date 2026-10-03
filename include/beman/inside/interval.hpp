@@ -27,7 +27,7 @@ namespace beman::inside
 
     constexpr interval(detail::rational lower, detail::rational upper)
      :Lower{lower}, Upper{upper} { }
-    constexpr interval(arithmetic auto lower, arithmetic auto upper)
+    constexpr interval(detail::arithmetic auto lower, detail::arithmetic auto upper)
      :Lower{lower}, Upper{upper} { }
 
     template <auto I>
@@ -55,7 +55,7 @@ namespace beman::inside
   [[nodiscard]] constexpr bool includes(interval const& iv, detail::rational const& r)
   { return iv.Lower <= r && r <= iv.Upper; }
 
-  [[nodiscard]] constexpr bool includes(interval const& iv, arithmetic auto a)
+  [[nodiscard]] constexpr bool includes(interval const& iv, detail::arithmetic auto a)
   { return includes(iv, detail::rational{a}); }
 
   // `excludes` means *strictly disjoint* — the intervals share no value.

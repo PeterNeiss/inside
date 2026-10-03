@@ -698,7 +698,7 @@ namespace
   { return rational{atan2_out_t{math::atan2(atan2_in_t{y}, atan2_in_t{x})}}; }
 
   // Radian references derived from the library's own π.
-  constexpr rational kPi      = math::detail::pi_r;
+  constexpr rational kPi      = math::detail::kPiRat;
   constexpr rational kHalfPi  = rational::mul_unchecked(kPi, rational{1, 2});
   constexpr rational kQrtPi   = rational::mul_unchecked(kPi, rational{1, 4});
   constexpr rational k3QrtPi  = rational::mul_unchecked(kPi, rational{3, 4});
@@ -747,23 +747,23 @@ TEST(CmathTest, beman_inside_math_atan2_sin_cos_round_trip)
   // notch (the grid validator requires `(Upper - Lower) / Notch` be
   // integer). ±8 rad comfortably covers ±2π for sweep tests.
   using angle_t = inside<{{-8, 8}, notch<1, 16384>}, round_nearest | f64>;
-  const rational two_pi_r = math::detail::two_pi_r;
+  const rational kTwoPiRat = math::detail::kTwoPiRat;
   for (unsigned i = 0; i < 16; ++i) {
     unsigned phase_raw = i * 1024;  // 0..15/16 turn in Q.14 raw
     rational turn_r{static_cast<imax>(phase_raw), 16384};
-    rational ang_r{rational::mul_unchecked(turn_r, two_pi_r)};  // 0..2π
+    rational ang_r{rational::mul_unchecked(turn_r, kTwoPiRat)};  // 0..2π
     angle_t  phase{ang_r};
     auto s = atan2_in_t{math::sin(phase)};
     auto c = atan2_in_t{math::cos(phase)};
     rational recovered = rational{atan2_out_t{math::atan2(s, c)}};  // (-π, π] rad
 
     // Expected angle wrapped into (-π, π] to match atan2's range.
-    rational want = (ang_r > kPi) ? (ang_r - two_pi_r).value() : ang_r;
+    rational want = (ang_r > kPi) ? (ang_r - kTwoPiRat).value() : ang_r;
 
     // Diff, wrapped across the ±π seam (φ = ±π may land on either side).
     rational diff = (recovered - want).value();
-    if (diff >  kPi) diff = (diff - two_pi_r).value();
-    if (diff < -kPi) diff = (diff + two_pi_r).value();
+    if (diff >  kPi) diff = (diff - kTwoPiRat).value();
+    if (diff < -kPi) diff = (diff + kTwoPiRat).value();
 
     // sin/cos quantize to 1/16384 before atan2 sees them; allow a few notches.
     ASSERT_TRUE((beman::inside::detail::abs(diff) <= rational{16, 16384}));
@@ -1337,7 +1337,7 @@ namespace
   using pos_in2_t = inside<{{1, 1024}, notch<1, 65536>}, round_nearest | f64>;
 
   // True references from the library's own π.
-  constexpr rational kPi_x     = math::detail::pi_r;
+  constexpr rational kPi_x     = math::detail::kPiRat;
   constexpr rational kHalfPi_x = rational::mul_unchecked(kPi_x, rational{1, 2});
 
   constexpr rational approx_tol{1, 4096};   // ~2.4e-4, covers every grid here

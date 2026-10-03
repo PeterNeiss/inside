@@ -45,7 +45,7 @@ TEST(ErrorHandlerTest, default_handler_throws_inside_error_carrying_the_code__do
   {
     SCOPED_TRACE("domain_error on out-of-range assignment");
     try { c100 x{200}; (void)x; FAIL() << "expected throw"; }
-    catch (inside_error const& e) { ASSERT_EQ(e.code, errc::domain_error); }
+    catch (inside_error const& e) { ASSERT_EQ(e.Code, errc::domain_error); }
   }
 
   // what() defaults to the static category message.
@@ -63,7 +63,7 @@ TEST(ErrorHandlerTest, default_handler_throws_inside_error_carrying_the_code__ro
     SCOPED_TRACE("rounding_error on off-notch checked cast");
     using coarse = inside<{{0, 10}, 2}>;     // notch 2: 3 doesn't land
     try { (void)checked_cast<coarse>(3); FAIL() << "expected throw"; }
-    catch (inside_error const& e) { ASSERT_EQ(e.code, errc::rounding_error); }
+    catch (inside_error const& e) { ASSERT_EQ(e.Code, errc::rounding_error); }
   }
 
   // what() defaults to the static category message.
@@ -81,7 +81,7 @@ TEST(ErrorHandlerTest, default_handler_throws_inside_error_carrying_the_code__no
     SCOPED_TRACE("not_finite on non-finite f64 input");
     using R = inside<{0.0, 1.0}, f64>;
     try { R r{std::numeric_limits<double>::infinity()}; (void)r; FAIL() << "expected throw"; }
-    catch (inside_error const& e) { ASSERT_EQ(e.code, errc::not_finite); }
+    catch (inside_error const& e) { ASSERT_EQ(e.Code, errc::not_finite); }
   }
 
   // what() defaults to the static category message.

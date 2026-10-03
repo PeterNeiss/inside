@@ -378,7 +378,7 @@ TEST(ConsistencyTest, casts_take_inside_sources)
   EXPECT_EQ(rational{checked_cast<Dst>(Src{q(4)})}, q(4));
   EXPECT_THROW((void)checked_cast<Dst>(Src{q(9, 2)}), inside_error);     // off notch
   try { (void)checked_cast<Dst>(Src{q(12)}); FAIL(); }
-  catch (inside_error const& e) { EXPECT_EQ(e.code, errc::overflow); }  // out of range
+  catch (inside_error const& e) { EXPECT_EQ(e.Code, errc::overflow); }  // out of range
   EXPECT_EQ(rational{unchecked_cast<Dst>(Src{q(4)})}, q(4));
 }
 

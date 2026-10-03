@@ -31,58 +31,58 @@ namespace beman::inside
     template <class R>
     struct enumerate_view
     {
-      R base_;
+      R Base;
 
       struct iterator
       {
-        std::ranges::iterator_t<const R> it{};
-        std::size_t index{0};
+        std::ranges::iterator_t<const R> It{};
+        std::size_t Index{0};
 
         using value_type      = std::pair<std::size_t, std::ranges::range_value_t<R>>;
         using difference_type  = std::ptrdiff_t;
 
-        constexpr value_type operator*() const { return {index, *it}; }
-        constexpr iterator& operator++() { ++it; ++index; return *this; }
+        constexpr value_type operator*() const { return {Index, *It}; }
+        constexpr iterator& operator++() { ++It; ++Index; return *this; }
         constexpr iterator  operator++(int) { auto t = *this; ++*this; return t; }
-        constexpr bool operator==(iterator const& o) const { return it == o.it; }
+        constexpr bool operator==(iterator const& o) const { return It == o.It; }
       };
 
-      constexpr iterator begin() const { return {std::ranges::begin(base_), 0}; }
-      constexpr iterator end()   const { return {std::ranges::end(base_), 0}; }
+      constexpr iterator begin() const { return {std::ranges::begin(Base), 0}; }
+      constexpr iterator end()   const { return {std::ranges::end(Base), 0}; }
     };
 
-    // stride_view — C++20 stand-in for std::views::stride (C++23). Visits every
+    // stride_view — stand-in for std::views::stride (likewise). Visits every
     // `step`-th element; forward-only, and the advance checks `end` so a length
     // that isn't a multiple of the stride still terminates.
     template <class R>
     struct stride_view
     {
-      R base_;
-      std::size_t step_{1};
+      R Base;
+      std::size_t Step{1};
 
       struct iterator
       {
-        std::ranges::iterator_t<const R> it{};
-        std::ranges::iterator_t<const R> end{};
-        std::size_t step{1};
+        std::ranges::iterator_t<const R> It{};
+        std::ranges::iterator_t<const R> End{};
+        std::size_t Step{1};
 
         using value_type      = std::ranges::range_value_t<R>;
         using difference_type = std::ptrdiff_t;
 
-        constexpr value_type operator*() const { return *it; }
+        constexpr value_type operator*() const { return *It; }
         constexpr iterator& operator++()
         {
-          for (std::size_t k = 0; k < step && it != end; ++k) ++it;
+          for (std::size_t k = 0; k < Step && It != End; ++k) ++It;
           return *this;
         }
         constexpr iterator operator++(int) { auto t = *this; ++*this; return t; }
-        constexpr bool operator==(iterator const& o) const { return it == o.it; }
+        constexpr bool operator==(iterator const& o) const { return It == o.It; }
       };
 
       constexpr iterator begin() const
-      { return {std::ranges::begin(base_), std::ranges::end(base_), step_}; }
+      { return {std::ranges::begin(Base), std::ranges::end(Base), Step}; }
       constexpr iterator end() const
-      { return {std::ranges::end(base_), std::ranges::end(base_), step_}; }
+      { return {std::ranges::end(Base), std::ranges::end(Base), Step}; }
     };
   } // namespace detail
 
@@ -103,17 +103,17 @@ namespace beman::inside
       using value_type        = inside<G, P>;
       using difference_type   = imax;
 
-      umax start {0};   // slot of the first element (the range wraps past the top)
-      imax pos   {0};   // position in [0, slot_count]; the loop variable
+      umax Start {0};   // slot of the first element (the range wraps past the top)
+      imax Pos   {0};   // position in [0, slot_count]; the loop variable
 
       constexpr iterator() = default;
-      constexpr iterator(umax s, imax p) : start{s}, pos{p} {}
+      constexpr iterator(umax s, imax p) : Start{s}, Pos{p} {}
 
-      // Grid slot of this position: start + pos, wrapped once (no overflow).
+      // Grid slot of this position: Start + Pos, wrapped once (no overflow).
       constexpr umax slot() const
       {
-        const umax p = static_cast<umax>(pos);
-        return p < slot_count - start ? start + p : p - (slot_count - start);
+        const umax p = static_cast<umax>(Pos);
+        return p < slot_count - Start ? Start + p : p - (slot_count - Start);
       }
 
       constexpr value_type operator*() const
@@ -146,25 +146,25 @@ namespace beman::inside
       constexpr value_type operator[](difference_type n) const
       { return *(*this + n); }
 
-      constexpr iterator& operator++() { ++pos; return *this; }
-      constexpr iterator  operator++(int) { auto t = *this; ++pos; return t; }
-      constexpr iterator& operator--() { --pos; return *this; }
-      constexpr iterator  operator--(int) { auto t = *this; --pos; return t; }
-      constexpr iterator& operator+=(difference_type n) { pos += n; return *this; }
-      constexpr iterator& operator-=(difference_type n) { pos -= n; return *this; }
+      constexpr iterator& operator++() { ++Pos; return *this; }
+      constexpr iterator  operator++(int) { auto t = *this; ++Pos; return t; }
+      constexpr iterator& operator--() { --Pos; return *this; }
+      constexpr iterator  operator--(int) { auto t = *this; --Pos; return t; }
+      constexpr iterator& operator+=(difference_type n) { Pos += n; return *this; }
+      constexpr iterator& operator-=(difference_type n) { Pos -= n; return *this; }
 
       constexpr iterator operator+(difference_type n) const { auto t = *this; t += n; return t; }
       constexpr iterator operator-(difference_type n) const { auto t = *this; t -= n; return t; }
       friend constexpr iterator operator+(difference_type n, iterator it) { return it + n; }
 
-      constexpr difference_type operator-(iterator o) const { return pos - o.pos; }
-      constexpr bool operator==(iterator o) const { return pos == o.pos; }
-      constexpr auto operator<=>(iterator o) const { return pos <=> o.pos; }
+      constexpr difference_type operator-(iterator o) const { return Pos - o.Pos; }
+      constexpr bool operator==(iterator o) const { return Pos == o.Pos; }
+      constexpr auto operator<=>(iterator o) const { return Pos <=> o.Pos; }
     };
 
-    umax start_index_;
+    umax StartIndex;
 
-    constexpr inside_range() : start_index_{0} {}
+    constexpr inside_range() : StartIndex{0} {}
 
     constexpr inside_range(value_type start)
     {
@@ -172,13 +172,13 @@ namespace beman::inside
       // Same storage split as iterator::operator* — index raw already is the
       // notch index; integer-grid value raw divides out the (integer) step.
       if constexpr (detail::index_raw<value_type>)
-        start_index_ = static_cast<umax>(start.raw());
+        StartIndex = static_cast<umax>(start.raw());
       else if constexpr (detail::value_raw<value_type>
                          && detail::abs_den(notch_of<value_type>.Denominator) == 1
                          && detail::abs_den(lower_of<value_type>.Denominator) == 1)
       {
         constexpr imax notch_step = static_cast<imax>(notch_of<value_type>.Numerator);
-        start_index_ = static_cast<umax>(
+        StartIndex = static_cast<umax>(
             (static_cast<imax>(start.raw()) - detail::lower_imax<value_type>)
             / notch_step);
       }
@@ -188,12 +188,12 @@ namespace beman::inside
         // numerator is the index directly.
         auto offset = ((detail::as_rational(start) - G.Interval.Lower)
                        / G.Notch).value();
-        start_index_ = offset.Numerator;
+        StartIndex = offset.Numerator;
       }
     }
 
-    constexpr iterator begin() const { return {start_index_, 0}; }
-    constexpr iterator end() const   { return {start_index_, static_cast<imax>(slot_count)}; }
+    constexpr iterator begin() const { return {StartIndex, 0}; }
+    constexpr iterator end() const   { return {StartIndex, static_cast<imax>(slot_count)}; }
 
     constexpr std::size_t size() const { return slot_count; }
 

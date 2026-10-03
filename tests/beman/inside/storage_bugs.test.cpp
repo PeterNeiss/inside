@@ -214,7 +214,7 @@ TEST(StorageBugsTest, fp_derived_rational_store_on_a_wide_snap_grid_uses_the_128
       slot = rational{umax{9006646171630191}, imax{18014398509481984}};
       FAIL() << "expected the default handler to throw";
     }
-    catch (inside_error const& e) { ASSERT_EQ(e.code, errc::rounding_error); }
+    catch (inside_error const& e) { ASSERT_EQ(e.Code, errc::rounding_error); }
   }
 }
 

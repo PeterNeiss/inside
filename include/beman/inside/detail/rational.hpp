@@ -25,7 +25,7 @@ namespace beman::inside::detail
   // 64×64 → 128-bit unsigned product, as {hi, lo}. Native where the target has
   // unsigned __int128; else a schoolbook 32-bit split (32-bit targets) — the
   // same construction trusted in cmath.hpp's fmul, so both are bit-exact.
-  struct u128 { umax hi; umax lo; };
+  struct u128 { umax Hi; umax Lo; };
   constexpr u128 umul(umax a, umax b)
   {
 #if defined(__SIZEOF_INT128__)
@@ -40,27 +40,27 @@ namespace beman::inside::detail
              (ll & 0xffffffffu) | (mid << 32) };
   }
   constexpr std::strong_ordering cmp128(u128 a, u128 b)
-  { return (a.hi != b.hi) ? (a.hi <=> b.hi) : (a.lo <=> b.lo); }
+  { return (a.Hi != b.Hi) ? (a.Hi <=> b.Hi) : (a.Lo <=> b.Lo); }
 
   // 128×64 product with an overflow flag (result beyond 128 bits).
-  struct mul128_result { u128 value; bool overflowed; };
+  struct mul128_result { u128 Value; bool Overflowed; };
   constexpr mul128_result mul128(u128 a, umax b)
   {
-    const u128 low  = umul(a.lo, b);
-    const u128 high = umul(a.hi, b);
-    const umax hi_sum = high.lo + low.hi;
-    return {u128{hi_sum, low.lo}, high.hi != 0 || hi_sum < low.hi};
+    const u128 low  = umul(a.Lo, b);
+    const u128 high = umul(a.Hi, b);
+    const umax hi_sum = high.Lo + low.Hi;
+    return {u128{hi_sum, low.Lo}, high.Hi != 0 || hi_sum < low.Hi};
   }
 
   // Quotient/remainder of a 128-bit dividend by a 64-bit divisor. Requires
   // 1 <= d <= imax_max (the rational-denominator domain) so the portable
   // partial remainder can never overflow when shifted.
-  struct divmod128_result { u128 quotient; umax remainder; };
+  struct divmod128_result { u128 Quotient; umax Remainder; };
   constexpr divmod128_result divmod128(u128 n, umax d)
   {
 #if defined(__SIZEOF_INT128__)
     using u128n = unsigned __int128;
-    const u128n wide = (static_cast<u128n>(n.hi) << 64) | n.lo;
+    const u128n wide = (static_cast<u128n>(n.Hi) << 64) | n.Lo;
     const u128n q = wide / d;
     return {u128{static_cast<umax>(q >> 64), static_cast<umax>(q)},
             static_cast<umax>(wide % d)};
@@ -71,10 +71,10 @@ namespace beman::inside::detail
     umax r = 0;
     for (int i = 127; i >= 0; --i)
     {
-      r = (r << 1) | ((i >= 64 ? (n.hi >> (i - 64)) : (n.lo >> i)) & 1u);
-      q.hi = (q.hi << 1) | (q.lo >> 63);
-      q.lo <<= 1;
-      if (r >= d) { r -= d; q.lo |= 1; }
+      r = (r << 1) | ((i >= 64 ? (n.Hi >> (i - 64)) : (n.Lo >> i)) & 1u);
+      q.Hi = (q.Hi << 1) | (q.Lo >> 63);
+      q.Lo <<= 1;
+      if (r >= d) { r -= d; q.Lo |= 1; }
     }
     return {q, r};
 #endif
@@ -644,12 +644,12 @@ namespace beman::inside::detail
           const bool a_bigger = cmp128(A128, B128) > 0;
           const u128 big   = a_bigger ? A128 : B128;
           const u128 small = a_bigger ? B128 : A128;
-          const u128 diff{big.hi - small.hi - (big.lo < small.lo ? 1u : 0u),
-                          big.lo - small.lo};
-          if (diff.hi == 0)
+          const u128 diff{big.Hi - small.Hi - (big.Lo < small.Lo ? 1u : 0u),
+                          big.Lo - small.Lo};
+          if (diff.Hi == 0)
           {
             rational r;
-            r.Numerator   = diff.lo;
+            r.Numerator   = diff.Lo;
             r.Denominator = (a_neg ? a_bigger : !a_bigger) ? -denominator
                                                            :  denominator;
             trim(r.Numerator, r.Denominator);

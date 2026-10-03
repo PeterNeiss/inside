@@ -62,7 +62,7 @@ namespace beman::inside
   template <insidable B> inline constexpr detail::rational notch_of = grid_of<B>.Notch;
 
   template <typename N>
-  concept numeric = insidable<N> or arithmetic<N>;
+  concept numeric = insidable<N> or detail::arithmetic<N>;
 
   //---------------------------------------------------------------------------
   // Internal plumbing — storage shape, raw/value conversion, dispatch.

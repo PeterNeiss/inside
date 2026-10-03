@@ -82,16 +82,16 @@ namespace beman::inside
   //---------------------------------------------------------------------------
   // inside_error — the exception thrown by the default handler. Derives from
   // std::runtime_error (the library's only <stdexcept> use) and carries the
-  // originating `errc` so `catch (inside_error& e) { e.code; }` replaces the old
+  // originating `errc` so `catch (inside_error& e) { e.Code; }` replaces the old
   // `e.code() == make_error_code(...)` idiom.
   //---------------------------------------------------------------------------
   struct inside_error : std::runtime_error
   {
-    errc code;
+    errc Code;
     explicit inside_error(errc c)
-      : std::runtime_error(errc_message(c)), code(c) {}
+      : std::runtime_error(errc_message(c)), Code(c) {}
     inside_error(errc c, const char* what)
-      : std::runtime_error(what ? what : errc_message(c)), code(c) {}
+      : std::runtime_error(what ? what : errc_message(c)), Code(c) {}
   };
 #endif
 
@@ -157,25 +157,23 @@ namespace beman::inside
     template <unsigned N>
     struct fixed_string
     {
-      char data[N]{};
+      char Data[N]{};
       constexpr fixed_string(const char (&s)[N])
-      { for (unsigned i = 0; i < N; ++i) data[i] = s[i]; }
+      { for (unsigned i = 0; i < N; ++i) Data[i] = s[i]; }
     };
 
     template <fixed_string Msg>
     [[noreturn]] BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE
     inline void constexpr_error()
-    { raise(errc::overflow, Msg.data); }
-  } // namespace detail
+    { raise(errc::overflow, Msg.Data); }
 
-  //---------------------------------------------------------------------------
-  // diagnostics
-  //---------------------------------------------------------------------------
-  template <typename... Ts>
-  struct print_types
-  {
-      static_assert(!sizeof...(Ts), "=== PRINT_TYPES ===");
-  };
+    // Debug helper: instantiating print_types<Ts...> fails and names Ts.
+    template <typename... Ts>
+    struct print_types
+    {
+        static_assert(!sizeof...(Ts), "=== PRINT_TYPES ===");
+    };
+  } // namespace detail
 } // namespace beman::inside
 
 #endif // BEMAN_INSIDE_DETAIL_DEBUG_HPP

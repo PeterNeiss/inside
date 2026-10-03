@@ -135,7 +135,7 @@ namespace beman::inside
     if constexpr (overflow_action<A>)
     {
       Result res;
-      action.fn(res, code);
+      action.Fn(res, code);
       return res;
     }
     else
@@ -215,17 +215,17 @@ namespace beman::inside
     private:
     // Conflict diagnostics: at most one assignment-time tag (clamp / wrap /
     // error), at most one of each kind, no clamp+wrap.
-    static constexpr unsigned _clamp_count    = count_action_matches<is_clamp_action,    As...>;
-    static constexpr unsigned _wrap_count     = count_action_matches<is_wrap_action,     As...>;
-    static constexpr unsigned _error_count    = count_action_matches<is_error_action,    As...>;
-    static constexpr unsigned _overflow_count = count_action_matches<is_overflow_action, As...>;
+    static constexpr unsigned ClampCount    = count_action_matches<is_clamp_action,    As...>;
+    static constexpr unsigned WrapCount     = count_action_matches<is_wrap_action,     As...>;
+    static constexpr unsigned ErrorCount    = count_action_matches<is_error_action,    As...>;
+    static constexpr unsigned OverflowCount = count_action_matches<is_overflow_action, As...>;
 
-    static_assert(_clamp_count + _wrap_count + _error_count <= 1,
+    static_assert(ClampCount + WrapCount + ErrorCount <= 1,
       "on_clamp / on_wrap / on_error are mutually exclusive in a single policy_ref");
-    static_assert(_clamp_count    <= 1, "duplicate on_clamp");
-    static_assert(_wrap_count     <= 1, "duplicate on_wrap");
-    static_assert(_error_count    <= 1, "duplicate on_error");
-    static_assert(_overflow_count <= 1, "duplicate on_overflow");
+    static_assert(ClampCount    <= 1, "duplicate on_clamp");
+    static_assert(WrapCount     <= 1, "duplicate on_wrap");
+    static_assert(ErrorCount    <= 1, "duplicate on_error");
+    static_assert(OverflowCount <= 1, "duplicate on_overflow");
 
     public:
     B& Ref;
@@ -282,7 +282,7 @@ namespace beman::inside
     constexpr void report_zero(errc code, const char* what)
     {
       if constexpr (has_action<is_error_action, As...>)
-        pick_action_in<is_error_action>(Actions).fn(Ref, code, what);
+        pick_action_in<is_error_action>(Actions).Fn(Ref, code, what);
       else if constexpr (!has_policy<B, P, ignore_zero>)
         Policy.report(code);
     }
@@ -306,7 +306,7 @@ namespace beman::inside
           if (result.error() == errc::division_by_zero)
             report_zero(errc::division_by_zero, msg);       // on_error / ignore_zero, like rational /=
           else if constexpr (has_action<is_overflow_action, As...>)
-            pick_action_in<is_overflow_action>(Actions).fn(Ref, result.error());
+            pick_action_in<is_overflow_action>(Actions).Fn(Ref, result.error());
           else
             Policy.report(result.error());
           return Ref;

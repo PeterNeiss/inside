@@ -836,10 +836,10 @@ namespace beman::inside
     }
   }
 
-  template <insidable B, arithmetic A>
+  template <insidable B, detail::arithmetic A>
   constexpr auto operator<=>(B const& lhs, A rhs) { return detail::compare_scalar(lhs, rhs, detail::three_way); }
 
-  template <insidable B, arithmetic A>
+  template <insidable B, detail::arithmetic A>
   constexpr bool operator==(B const& lhs, A rhs) { return detail::compare_scalar(lhs, rhs, detail::equal_to); }
 
   //---------------------------------------------------------------------------

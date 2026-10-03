@@ -161,7 +161,7 @@ TEST(CrossGridTest, tier_3_integer_fast_paths_stay_engaged_and_fp_stays_excluded
 
   using tenths       = inside<{{0, 100}, notch<1, 10>}>;
   using quarter_grid = inside<{{0, 100}, notch<1, 4>}, round_nearest>;
-  static_assert(detail::assignment<quarter_grid, tenths>::affine_map.ok);
+  static_assert(detail::assignment<quarter_grid, tenths>::affine_map.Ok);
 
   // fp-backed operands must not take the integer offset path.
   using coarse_real = inside<{{0, (umax{1} << 40)}, notch<1, 2>}, f64>;
