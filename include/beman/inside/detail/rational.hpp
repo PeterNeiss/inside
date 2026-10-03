@@ -20,7 +20,7 @@
 
 namespace beman::inside::detail
 {
-  constexpr umax abs_den(imax d) { return (d >= 0) ? static_cast<umax>(d) : umax{0} - static_cast<umax>(d); }
+  [[nodiscard]] constexpr umax abs_den(imax d) noexcept { return (d >= 0) ? static_cast<umax>(d) : umax{0} - static_cast<umax>(d); }
 
   // 64×64 → 128-bit unsigned product, as {hi, lo}. Native where the target has
   // unsigned __int128; else a schoolbook 32-bit split (32-bit targets) — the
@@ -107,12 +107,12 @@ namespace beman::inside::detail
     b /= g;
   }
 
-  constexpr std::expected<rational, errc> operator+(rational const&, rational const&);
-  constexpr std::expected<rational, errc> operator/(rational const&, rational const&);
-  constexpr std::expected<rational, errc> operator-(rational const&, rational const&);
+  [[nodiscard]] constexpr std::expected<rational, errc> operator+(rational const&, rational const&);
+  [[nodiscard]] constexpr std::expected<rational, errc> operator/(rational const&, rational const&);
+  [[nodiscard]] constexpr std::expected<rational, errc> operator-(rational const&, rational const&);
 
-  constexpr std::expected<rational, errc> operator*(rational const&, rational const&);
-  constexpr auto     operator<=>(rational, rational) -> std::strong_ordering;
+  [[nodiscard]] constexpr std::expected<rational, errc> operator*(rational const&, rational const&);
+  [[nodiscard]] constexpr auto     operator<=>(rational, rational) -> std::strong_ordering;
 
   //---------------------------------------------------------------------------
   // Overflow / malformed-literal signalling
@@ -160,11 +160,11 @@ namespace beman::inside::detail
     constexpr rational(O&& o) : rational(o.value()) {}
 
     // operator== by default for structural type
-    constexpr bool operator==(const rational&) const = default;
+    [[nodiscard]] constexpr bool operator==(const rational&) const = default;
     template <arithmetic T>
-    constexpr bool operator==(T value) const { return operator==(rational{value}); }
+    [[nodiscard]] constexpr bool operator==(T value) const { return operator==(rational{value}); }
 
-    constexpr rational operator-() const;
+    [[nodiscard]] constexpr rational operator-() const;
 
     template <std::unsigned_integral T>
     constexpr std::expected<T, errc> to() const;
@@ -192,7 +192,7 @@ namespace beman::inside::detail
     }
 
     // allow unary+ for generic programming
-    constexpr rational operator+() const { return *this; }
+    [[nodiscard]] constexpr rational operator+() const { return *this; }
 
     // Compound-assign: forward to the checked binary op and unwrap via .value()
     // — overflow surfaces as std::bad_expected_access (no error channel here).
@@ -814,7 +814,7 @@ namespace beman::inside::detail
   //---------------------------------------------------------------------------
   // operator-
   //---------------------------------------------------------------------------
-  inline constexpr rational rational::operator-() const
+  [[nodiscard]] inline constexpr rational rational::operator-() const
   {
     if (Numerator == 0)
       return *this;
@@ -826,7 +826,7 @@ namespace beman::inside::detail
   //---------------------------------------------------------------------------
   // operator<=>
   //---------------------------------------------------------------------------
-  inline constexpr auto operator<=>(rational lhs, rational rhs) -> std::strong_ordering
+  [[nodiscard]] inline constexpr auto operator<=>(rational lhs, rational rhs) -> std::strong_ordering
   {
     int lhs_sign = sign(lhs);
     int rhs_sign = sign(rhs);
@@ -891,19 +891,19 @@ namespace beman::inside::detail
   }
 
   template <typename T>
-  inline constexpr auto operator<=>(std::expected<T, errc> const& lhs, const rational& rhs)
+  [[nodiscard]] inline constexpr auto operator<=>(std::expected<T, errc> const& lhs, const rational& rhs)
   { return rational{lhs.value()} <=> rhs; }
 
   template <typename T>
-  inline constexpr auto operator<=>(rational const& lhs, std::expected<T, errc> const& rhs)
+  [[nodiscard]] inline constexpr auto operator<=>(rational const& lhs, std::expected<T, errc> const& rhs)
   { return lhs <=> rational{rhs.value()}; }
 
   template <arithmetic T>
-  inline constexpr auto operator<=>(T lhs, const rational& rhs)
+  [[nodiscard]] inline constexpr auto operator<=>(T lhs, const rational& rhs)
   { return rational{lhs} <=> rhs; }
 
   template <arithmetic T>
-  inline constexpr auto operator<=>(rational const& lhs, T rhs)
+  [[nodiscard]] inline constexpr auto operator<=>(rational const& lhs, T rhs)
   { return lhs <=> rational{rhs}; }
 
   //---------------------------------------------------------------------------
@@ -926,30 +926,30 @@ namespace beman::inside::detail
   // Compound assignments unwrap with .value() — std::bad_expected_access on
   // overflow; callers needing a non-throwing path use the binary operators.
   //---------------------------------------------------------------------------
-  inline constexpr std::expected<rational, errc> operator+(rational const& lhs, rational const& rhs)
+  [[nodiscard]] inline constexpr std::expected<rational, errc> operator+(rational const& lhs, rational const& rhs)
   { return rational::add_impl<true>(lhs, rhs); }
 
-  inline constexpr std::expected<rational, errc> operator-(rational const& lhs, rational const& rhs)
+  [[nodiscard]] inline constexpr std::expected<rational, errc> operator-(rational const& lhs, rational const& rhs)
   { return operator+(lhs, -rhs); }
 
-  inline constexpr std::expected<rational, errc> operator*(rational const& lhs, rational const& rhs)
+  [[nodiscard]] inline constexpr std::expected<rational, errc> operator*(rational const& lhs, rational const& rhs)
   { return rational::mul_impl<true>(lhs, rhs); }
 
-  inline constexpr std::expected<rational, errc> operator/(rational const& lhs, rational const& rhs)
+  [[nodiscard]] inline constexpr std::expected<rational, errc> operator/(rational const& lhs, rational const& rhs)
   { return rational::div_impl<true>(lhs, rhs); }
 
-  inline constexpr std::expected<rational, errc> operator-(std::expected<rational, errc> const& v)
+  [[nodiscard]] inline constexpr std::expected<rational, errc> operator-(std::expected<rational, errc> const& v)
   { return lift([](rational r){ return -r; }, v); }
 
 #define BEMAN_INSIDE_RATIONAL_OP(op)                                                   \
   template <arithmetic T>                                                              \
-  inline constexpr auto operator op(T lhs, rational const& rhs)                        \
+  [[nodiscard]] inline constexpr auto operator op(T lhs, rational const& rhs)          \
   { return rational{lhs} op rhs; }                                                     \
   template <arithmetic T>                                                              \
-  inline constexpr auto operator op(rational const& lhs, T rhs)                        \
+  [[nodiscard]] inline constexpr auto operator op(rational const& lhs, T rhs)          \
   { return lhs op rational{rhs}; }                                                     \
   template <class L, class R> requires rational_lift_operands<L, R>                    \
-  inline constexpr auto operator op(L const& lhs, R const& rhs)                        \
+  [[nodiscard]] inline constexpr auto operator op(L const& lhs, R const& rhs)          \
   { return lift([](auto const& a, auto const& b){ return a op b; }, lhs, rhs); }       \
   inline constexpr rational& rational::operator op##=(rational const& rhs)             \
   { *this = (*this op rhs).value(); return *this; }                                    \

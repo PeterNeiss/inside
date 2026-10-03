@@ -81,7 +81,7 @@ namespace beman::inside
     // (p/r)·(s/q); mul_overflow flags when it exceeds umax. Returns false (and
     // count is meaningless) on overflow — such a grid stores as rational, never
     // an index, so the count is never used.
-    constexpr bool max_index_checked(umax& out) const
+    [[nodiscard]] constexpr bool max_index_checked(umax& out) const
     {
       if (Notch == 0) { out = 0; return true; }
       const detail::rational span = (Interval.Upper - Interval.Lower).value();
@@ -93,16 +93,16 @@ namespace beman::inside
 
     // Index-storage slot count (0 on overflow; the over-flow branch of storage_min
     // is discarded for such grids, which pick rational storage instead).
-    constexpr umax max_index() const { umax c = 0; (void)max_index_checked(c); return c; }
+    [[nodiscard]] constexpr umax max_index() const { umax c = 0; (void)max_index_checked(c); return c; }
 
     // True when the slot count fits umax (index storage is possible). False ⇒ the
     // grid is still valid but stores its value as a rational, never an index.
-    constexpr bool max_index_representable() const { umax c = 0; return max_index_checked(c); }
+    [[nodiscard]] constexpr bool max_index_representable() const { umax c = 0; return max_index_checked(c); }
 
     // True when `v` is an *exact* slot: in the interval AND on a notch (notch-0
     // grids store verbatim, so any in-range value qualifies). Used to admit a
     // single representable value (e.g. `0_ins`) regardless of whole-range mapping.
-    constexpr bool representable(detail::rational v) const
+    [[nodiscard]] constexpr bool representable(detail::rational v) const noexcept
     {
       if (!includes(Interval, v)) return false;
       if (Notch == 0) return true;
@@ -113,8 +113,8 @@ namespace beman::inside
     }
 
     // operator== be default for structural type
-    constexpr bool operator==(const grid& rhs) const = default;
-    constexpr grid operator-() const { return {-Interval, Notch}; }
+    [[nodiscard]] constexpr bool operator==(const grid& rhs) const = default;
+    [[nodiscard]] constexpr grid operator-() const { return {-Interval, Notch}; }
 
     // (Raw → double decoding lives in `detail::as_double` (generic.hpp): the
     // decode depends on the storage KIND, not the raw type's signedness — a
@@ -373,15 +373,15 @@ namespace beman::inside
   using storage_for_t = decltype(storage_pick<G, P>());
   }
 
-  constexpr std::expected<grid, errc> operator+(const grid&, const grid&);
-  constexpr std::expected<grid, errc> operator-(const grid&, const grid&);
-  constexpr std::expected<grid, errc> operator*(const grid&, const grid&);
-  constexpr std::expected<grid, errc> operator/(const grid&, const grid&);
+  [[nodiscard]] constexpr std::expected<grid, errc> operator+(const grid&, const grid&);
+  [[nodiscard]] constexpr std::expected<grid, errc> operator-(const grid&, const grid&);
+  [[nodiscard]] constexpr std::expected<grid, errc> operator*(const grid&, const grid&);
+  [[nodiscard]] constexpr std::expected<grid, errc> operator/(const grid&, const grid&);
 
   //---------------------------------------------------------------------------
   // operator+
   //---------------------------------------------------------------------------
-  inline constexpr std::expected<grid, errc> operator+(const grid& lhs, const grid& rhs)
+  [[nodiscard]] inline constexpr std::expected<grid, errc> operator+(const grid& lhs, const grid& rhs)
   {
     // gcd returns expected — lift it so a notch-denominator overflow produces
     // errc::overflow rather than a silently wrapped result grid.
@@ -393,7 +393,7 @@ namespace beman::inside
   //---------------------------------------------------------------------------
   // operator-
   //---------------------------------------------------------------------------
-  inline constexpr std::expected<grid, errc> operator-(const grid& lhs, const grid& rhs)
+  [[nodiscard]] inline constexpr std::expected<grid, errc> operator-(const grid& lhs, const grid& rhs)
   {
     return operator+(lhs, -rhs);
   }
@@ -401,7 +401,7 @@ namespace beman::inside
   //---------------------------------------------------------------------------
   // operator*
   //---------------------------------------------------------------------------
-  inline constexpr std::expected<grid, errc> operator*(const grid& lhs, const grid& rhs)
+  [[nodiscard]] inline constexpr std::expected<grid, errc> operator*(const grid& lhs, const grid& rhs)
   {
     // A point operand c (notch 0) scales the other lattice exactly: its notch
     // becomes N·|c|, so `x * just<c>` keeps integer storage instead of turning
@@ -418,7 +418,7 @@ namespace beman::inside
   //---------------------------------------------------------------------------
   // operator/
   //---------------------------------------------------------------------------
-  inline constexpr std::expected<grid, errc> operator/(const grid& lhs, const grid& rhs)
+  [[nodiscard]] inline constexpr std::expected<grid, errc> operator/(const grid& lhs, const grid& rhs)
   {
     auto d = lhs.Interval / rhs.Interval;
     if (d.has_value())
@@ -467,7 +467,7 @@ namespace beman::inside
   // operand (Notch 0) makes the hull continuous. errc::overflow when the notch gcd's
   // combined denominator exceeds the representable rational range.
   //---------------------------------------------------------------------------
-  inline constexpr std::expected<grid, errc> hull(const grid& lhs, const grid& rhs)
+  [[nodiscard]] inline constexpr std::expected<grid, errc> hull(const grid& lhs, const grid& rhs)
   {
     const interval iv{lhs.Interval.Lower < rhs.Interval.Lower ? lhs.Interval.Lower : rhs.Interval.Lower,
                       lhs.Interval.Upper < rhs.Interval.Upper ? rhs.Interval.Upper : lhs.Interval.Upper};

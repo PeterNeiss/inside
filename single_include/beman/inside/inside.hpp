@@ -300,7 +300,7 @@ namespace beman::inside
   // already returning expected<R, errc> passes through.
   //---------------------------------------------------------------------------
   template <class Op, class... Args>
-  constexpr auto lift(Op op, Args&&... args)
+  [[nodiscard]] constexpr auto lift(Op op, Args&&... args)
   {
     using R = std::remove_cvref_t<
         decltype(op(detail::lift_unwrap(std::forward<Args>(args))...))>;
@@ -391,7 +391,7 @@ namespace beman::inside
   concept fractional = std::floating_point<T> || std::same_as<rational, T>;
 
   template <std::signed_integral V>
-  constexpr umax safe_abs(V value)
+  [[nodiscard]] constexpr umax safe_abs(V value) noexcept
   { return (value >= 0) ? static_cast<umax>(value) : umax{0} - static_cast<umax>(value); }
 
   inline constexpr double frexp(double value, int* exp) noexcept
@@ -580,7 +580,7 @@ namespace beman::inside
 
 namespace beman::inside::detail
 {
-  constexpr umax abs_den(imax d) { return (d >= 0) ? static_cast<umax>(d) : umax{0} - static_cast<umax>(d); }
+  [[nodiscard]] constexpr umax abs_den(imax d) noexcept { return (d >= 0) ? static_cast<umax>(d) : umax{0} - static_cast<umax>(d); }
 
   // 64×64 → 128-bit unsigned product, as {hi, lo}. Native where the target has
   // unsigned __int128; else a schoolbook 32-bit split (32-bit targets) — the
@@ -667,12 +667,12 @@ namespace beman::inside::detail
     b /= g;
   }
 
-  constexpr std::expected<rational, errc> operator+(rational const&, rational const&);
-  constexpr std::expected<rational, errc> operator/(rational const&, rational const&);
-  constexpr std::expected<rational, errc> operator-(rational const&, rational const&);
+  [[nodiscard]] constexpr std::expected<rational, errc> operator+(rational const&, rational const&);
+  [[nodiscard]] constexpr std::expected<rational, errc> operator/(rational const&, rational const&);
+  [[nodiscard]] constexpr std::expected<rational, errc> operator-(rational const&, rational const&);
 
-  constexpr std::expected<rational, errc> operator*(rational const&, rational const&);
-  constexpr auto     operator<=>(rational, rational) -> std::strong_ordering;
+  [[nodiscard]] constexpr std::expected<rational, errc> operator*(rational const&, rational const&);
+  [[nodiscard]] constexpr auto     operator<=>(rational, rational) -> std::strong_ordering;
 
   //---------------------------------------------------------------------------
   // Overflow / malformed-literal signalling
@@ -720,11 +720,11 @@ namespace beman::inside::detail
     constexpr rational(O&& o) : rational(o.value()) {}
 
     // operator== by default for structural type
-    constexpr bool operator==(const rational&) const = default;
+    [[nodiscard]] constexpr bool operator==(const rational&) const = default;
     template <arithmetic T>
-    constexpr bool operator==(T value) const { return operator==(rational{value}); }
+    [[nodiscard]] constexpr bool operator==(T value) const { return operator==(rational{value}); }
 
-    constexpr rational operator-() const;
+    [[nodiscard]] constexpr rational operator-() const;
 
     template <std::unsigned_integral T>
     constexpr std::expected<T, errc> to() const;
@@ -752,7 +752,7 @@ namespace beman::inside::detail
     }
 
     // allow unary+ for generic programming
-    constexpr rational operator+() const { return *this; }
+    [[nodiscard]] constexpr rational operator+() const { return *this; }
 
     // Compound-assign: forward to the checked binary op and unwrap via .value()
     // — overflow surfaces as std::bad_expected_access (no error channel here).
@@ -1374,7 +1374,7 @@ namespace beman::inside::detail
   //---------------------------------------------------------------------------
   // operator-
   //---------------------------------------------------------------------------
-  inline constexpr rational rational::operator-() const
+  [[nodiscard]] inline constexpr rational rational::operator-() const
   {
     if (Numerator == 0)
       return *this;
@@ -1386,7 +1386,7 @@ namespace beman::inside::detail
   //---------------------------------------------------------------------------
   // operator<=>
   //---------------------------------------------------------------------------
-  inline constexpr auto operator<=>(rational lhs, rational rhs) -> std::strong_ordering
+  [[nodiscard]] inline constexpr auto operator<=>(rational lhs, rational rhs) -> std::strong_ordering
   {
     int lhs_sign = sign(lhs);
     int rhs_sign = sign(rhs);
@@ -1451,19 +1451,19 @@ namespace beman::inside::detail
   }
 
   template <typename T>
-  inline constexpr auto operator<=>(std::expected<T, errc> const& lhs, const rational& rhs)
+  [[nodiscard]] inline constexpr auto operator<=>(std::expected<T, errc> const& lhs, const rational& rhs)
   { return rational{lhs.value()} <=> rhs; }
 
   template <typename T>
-  inline constexpr auto operator<=>(rational const& lhs, std::expected<T, errc> const& rhs)
+  [[nodiscard]] inline constexpr auto operator<=>(rational const& lhs, std::expected<T, errc> const& rhs)
   { return lhs <=> rational{rhs.value()}; }
 
   template <arithmetic T>
-  inline constexpr auto operator<=>(T lhs, const rational& rhs)
+  [[nodiscard]] inline constexpr auto operator<=>(T lhs, const rational& rhs)
   { return rational{lhs} <=> rhs; }
 
   template <arithmetic T>
-  inline constexpr auto operator<=>(rational const& lhs, T rhs)
+  [[nodiscard]] inline constexpr auto operator<=>(rational const& lhs, T rhs)
   { return lhs <=> rational{rhs}; }
 
   //---------------------------------------------------------------------------
@@ -1486,30 +1486,30 @@ namespace beman::inside::detail
   // Compound assignments unwrap with .value() — std::bad_expected_access on
   // overflow; callers needing a non-throwing path use the binary operators.
   //---------------------------------------------------------------------------
-  inline constexpr std::expected<rational, errc> operator+(rational const& lhs, rational const& rhs)
+  [[nodiscard]] inline constexpr std::expected<rational, errc> operator+(rational const& lhs, rational const& rhs)
   { return rational::add_impl<true>(lhs, rhs); }
 
-  inline constexpr std::expected<rational, errc> operator-(rational const& lhs, rational const& rhs)
+  [[nodiscard]] inline constexpr std::expected<rational, errc> operator-(rational const& lhs, rational const& rhs)
   { return operator+(lhs, -rhs); }
 
-  inline constexpr std::expected<rational, errc> operator*(rational const& lhs, rational const& rhs)
+  [[nodiscard]] inline constexpr std::expected<rational, errc> operator*(rational const& lhs, rational const& rhs)
   { return rational::mul_impl<true>(lhs, rhs); }
 
-  inline constexpr std::expected<rational, errc> operator/(rational const& lhs, rational const& rhs)
+  [[nodiscard]] inline constexpr std::expected<rational, errc> operator/(rational const& lhs, rational const& rhs)
   { return rational::div_impl<true>(lhs, rhs); }
 
-  inline constexpr std::expected<rational, errc> operator-(std::expected<rational, errc> const& v)
+  [[nodiscard]] inline constexpr std::expected<rational, errc> operator-(std::expected<rational, errc> const& v)
   { return lift([](rational r){ return -r; }, v); }
 
 #define BEMAN_INSIDE_RATIONAL_OP(op)                                                   \
   template <arithmetic T>                                                              \
-  inline constexpr auto operator op(T lhs, rational const& rhs)                        \
+  [[nodiscard]] inline constexpr auto operator op(T lhs, rational const& rhs)          \
   { return rational{lhs} op rhs; }                                                     \
   template <arithmetic T>                                                              \
-  inline constexpr auto operator op(rational const& lhs, T rhs)                        \
+  [[nodiscard]] inline constexpr auto operator op(rational const& lhs, T rhs)          \
   { return lhs op rational{rhs}; }                                                     \
   template <class L, class R> requires rational_lift_operands<L, R>                    \
-  inline constexpr auto operator op(L const& lhs, R const& rhs)                        \
+  [[nodiscard]] inline constexpr auto operator op(L const& lhs, R const& rhs)          \
   { return lift([](auto const& a, auto const& b){ return a op b; }, lhs, rhs); }       \
   inline constexpr rational& rational::operator op##=(rational const& rhs)             \
   { *this = (*this op rhs).value(); return *this; }                                    \
@@ -1595,43 +1595,43 @@ namespace beman::inside
       return true;
     }
 
-    constexpr bool operator==(const interval& rhs) const = default;
-    constexpr interval operator-() const { return interval{-Upper, -Lower}; }
+    [[nodiscard]] constexpr bool operator==(const interval& rhs) const = default;
+    [[nodiscard]] constexpr interval operator-() const { return interval{-Upper, -Lower}; }
 
-    constexpr bool divides_evenly(const detail::rational& notch) const
+    [[nodiscard]] constexpr bool divides_evenly(const detail::rational& notch) const
     { return detail::divides_evenly((Upper - Lower).value(), notch); }
 
-    constexpr std::expected<detail::rational, errc> operator/(const detail::rational& notch) const
+    [[nodiscard]] constexpr std::expected<detail::rational, errc> operator/(const detail::rational& notch) const
     { return (Upper - Lower) / notch; }
   };
 
   // Containment / disjointness — free functions over the public endpoints
   // (siblings of the binary interval operators below).
-  [[nodiscard]] constexpr bool includes(interval const& iv, interval const& rhs)
+  [[nodiscard]] constexpr bool includes(interval const& iv, interval const& rhs) noexcept
   { return iv.Lower <= rhs.Lower && rhs.Upper <= iv.Upper; }
 
-  [[nodiscard]] constexpr bool includes(interval const& iv, detail::rational const& r)
+  [[nodiscard]] constexpr bool includes(interval const& iv, detail::rational const& r) noexcept
   { return iv.Lower <= r && r <= iv.Upper; }
 
-  [[nodiscard]] constexpr bool includes(interval const& iv, detail::arithmetic auto a)
+  [[nodiscard]] constexpr bool includes(interval const& iv, detail::arithmetic auto a) noexcept
   { return includes(iv, detail::rational{a}); }
 
   // `excludes` means *strictly disjoint* — the intervals share no value.
   // `!includes()` is weaker: it only rules out total containment, so two
   // overlapping intervals are `!includes` AND `!excludes`.
-  [[nodiscard]] constexpr bool excludes(interval const& iv, interval const& rhs)
+  [[nodiscard]] constexpr bool excludes(interval const& iv, interval const& rhs) noexcept
   { return rhs.Upper < iv.Lower || iv.Upper < rhs.Lower; }
 
   // The `includes(rhs, iv)` clause catches rhs wholly containing iv (where
   // neither rhs endpoint lands in iv, so the other checks would miss it).
-  [[nodiscard]] constexpr bool overlaps(interval const& iv, interval const& rhs)
+  [[nodiscard]] constexpr bool overlaps(interval const& iv, interval const& rhs) noexcept
   { return includes(rhs, iv) || includes(iv, rhs.Lower) || includes(iv, rhs.Upper); }
 
   // The min/max hull of four endpoint combinations — the result interval of an
   // interval product or quotient (interval arithmetic's four-corner rule).
   namespace detail
   {
-    constexpr interval corner_hull(rational a, rational b, rational c, rational d) noexcept
+    [[nodiscard]] constexpr interval corner_hull(rational a, rational b, rational c, rational d) noexcept
     {
       const rational lo1 = a < b ? a : b, hi1 = a < b ? b : a;
       const rational lo2 = c < d ? c : d, hi2 = c < d ? d : c;
@@ -1639,16 +1639,16 @@ namespace beman::inside
     }
   }
 
-  constexpr std::expected<interval, errc> operator+  (const interval&, const interval&);
-  constexpr std::expected<interval, errc> operator-  (const interval&, const interval&);
-  constexpr std::expected<interval, errc> operator*  (const interval&, const interval&);
-  constexpr std::expected<interval, errc> operator/  (const interval&, const interval&);
-  constexpr auto                          operator<=>(const interval&, const interval&) -> std::partial_ordering;
+  [[nodiscard]] constexpr std::expected<interval, errc> operator+  (const interval&, const interval&);
+  [[nodiscard]] constexpr std::expected<interval, errc> operator-  (const interval&, const interval&);
+  [[nodiscard]] constexpr std::expected<interval, errc> operator*  (const interval&, const interval&);
+  [[nodiscard]] constexpr std::expected<interval, errc> operator/  (const interval&, const interval&);
+  [[nodiscard]] constexpr auto                          operator<=>(const interval&, const interval&) -> std::partial_ordering;
 
   //---------------------------------------------------------------------------
   // operator+
   //---------------------------------------------------------------------------
-  inline constexpr std::expected<interval, errc> operator+(const interval& lhs, const interval& rhs)
+  [[nodiscard]] inline constexpr std::expected<interval, errc> operator+(const interval& lhs, const interval& rhs)
   {
     return lift(
       [](detail::rational l, detail::rational u){ return interval{l, u}; },
@@ -1658,7 +1658,7 @@ namespace beman::inside
   //---------------------------------------------------------------------------
   // operator-
   //---------------------------------------------------------------------------
-  inline constexpr std::expected<interval, errc> operator-(const interval& lhs, const interval& rhs)
+  [[nodiscard]] inline constexpr std::expected<interval, errc> operator-(const interval& lhs, const interval& rhs)
   {
     return operator+(lhs, -rhs);
   }
@@ -1666,7 +1666,7 @@ namespace beman::inside
   //---------------------------------------------------------------------------
   // operator*
   //---------------------------------------------------------------------------
-  inline constexpr std::expected<interval, errc> operator*(const interval& lhs, const interval& rhs)
+  [[nodiscard]] inline constexpr std::expected<interval, errc> operator*(const interval& lhs, const interval& rhs)
   {
     return lift(detail::corner_hull,
       lhs.Lower * rhs.Lower, lhs.Lower * rhs.Upper,
@@ -1676,7 +1676,7 @@ namespace beman::inside
   //---------------------------------------------------------------------------
   // operator/
   //---------------------------------------------------------------------------
-  inline constexpr std::expected<interval, errc> operator/(const interval& lhs, const interval& rhs)
+  [[nodiscard]] inline constexpr std::expected<interval, errc> operator/(const interval& lhs, const interval& rhs)
   {
     if (includes(rhs, 0))
       return std::unexpected{errc::division_by_zero};
@@ -1689,7 +1689,7 @@ namespace beman::inside
   //---------------------------------------------------------------------------
   // operator<=>
   //---------------------------------------------------------------------------
-  inline constexpr auto operator<=>(const interval& lhs, const interval& rhs) -> std::partial_ordering
+  [[nodiscard]] inline constexpr auto operator<=>(const interval& lhs, const interval& rhs) -> std::partial_ordering
   {
     if (lhs.Upper < rhs.Lower)
       return std::partial_ordering::less;
@@ -2035,7 +2035,7 @@ namespace beman::inside
     // (p/r)·(s/q); mul_overflow flags when it exceeds umax. Returns false (and
     // count is meaningless) on overflow — such a grid stores as rational, never
     // an index, so the count is never used.
-    constexpr bool max_index_checked(umax& out) const
+    [[nodiscard]] constexpr bool max_index_checked(umax& out) const
     {
       if (Notch == 0) { out = 0; return true; }
       const detail::rational span = (Interval.Upper - Interval.Lower).value();
@@ -2047,16 +2047,16 @@ namespace beman::inside
 
     // Index-storage slot count (0 on overflow; the over-flow branch of storage_min
     // is discarded for such grids, which pick rational storage instead).
-    constexpr umax max_index() const { umax c = 0; (void)max_index_checked(c); return c; }
+    [[nodiscard]] constexpr umax max_index() const { umax c = 0; (void)max_index_checked(c); return c; }
 
     // True when the slot count fits umax (index storage is possible). False ⇒ the
     // grid is still valid but stores its value as a rational, never an index.
-    constexpr bool max_index_representable() const { umax c = 0; return max_index_checked(c); }
+    [[nodiscard]] constexpr bool max_index_representable() const { umax c = 0; return max_index_checked(c); }
 
     // True when `v` is an *exact* slot: in the interval AND on a notch (notch-0
     // grids store verbatim, so any in-range value qualifies). Used to admit a
     // single representable value (e.g. `0_ins`) regardless of whole-range mapping.
-    constexpr bool representable(detail::rational v) const
+    [[nodiscard]] constexpr bool representable(detail::rational v) const noexcept
     {
       if (!includes(Interval, v)) return false;
       if (Notch == 0) return true;
@@ -2067,8 +2067,8 @@ namespace beman::inside
     }
 
     // operator== be default for structural type
-    constexpr bool operator==(const grid& rhs) const = default;
-    constexpr grid operator-() const { return {-Interval, Notch}; }
+    [[nodiscard]] constexpr bool operator==(const grid& rhs) const = default;
+    [[nodiscard]] constexpr grid operator-() const { return {-Interval, Notch}; }
 
     // (Raw → double decoding lives in `detail::as_double` (generic.hpp): the
     // decode depends on the storage KIND, not the raw type's signedness — a
@@ -2327,15 +2327,15 @@ namespace beman::inside
   using storage_for_t = decltype(storage_pick<G, P>());
   }
 
-  constexpr std::expected<grid, errc> operator+(const grid&, const grid&);
-  constexpr std::expected<grid, errc> operator-(const grid&, const grid&);
-  constexpr std::expected<grid, errc> operator*(const grid&, const grid&);
-  constexpr std::expected<grid, errc> operator/(const grid&, const grid&);
+  [[nodiscard]] constexpr std::expected<grid, errc> operator+(const grid&, const grid&);
+  [[nodiscard]] constexpr std::expected<grid, errc> operator-(const grid&, const grid&);
+  [[nodiscard]] constexpr std::expected<grid, errc> operator*(const grid&, const grid&);
+  [[nodiscard]] constexpr std::expected<grid, errc> operator/(const grid&, const grid&);
 
   //---------------------------------------------------------------------------
   // operator+
   //---------------------------------------------------------------------------
-  inline constexpr std::expected<grid, errc> operator+(const grid& lhs, const grid& rhs)
+  [[nodiscard]] inline constexpr std::expected<grid, errc> operator+(const grid& lhs, const grid& rhs)
   {
     // gcd returns expected — lift it so a notch-denominator overflow produces
     // errc::overflow rather than a silently wrapped result grid.
@@ -2347,7 +2347,7 @@ namespace beman::inside
   //---------------------------------------------------------------------------
   // operator-
   //---------------------------------------------------------------------------
-  inline constexpr std::expected<grid, errc> operator-(const grid& lhs, const grid& rhs)
+  [[nodiscard]] inline constexpr std::expected<grid, errc> operator-(const grid& lhs, const grid& rhs)
   {
     return operator+(lhs, -rhs);
   }
@@ -2355,7 +2355,7 @@ namespace beman::inside
   //---------------------------------------------------------------------------
   // operator*
   //---------------------------------------------------------------------------
-  inline constexpr std::expected<grid, errc> operator*(const grid& lhs, const grid& rhs)
+  [[nodiscard]] inline constexpr std::expected<grid, errc> operator*(const grid& lhs, const grid& rhs)
   {
     // A point operand c (notch 0) scales the other lattice exactly: its notch
     // becomes N·|c|, so `x * just<c>` keeps integer storage instead of turning
@@ -2372,7 +2372,7 @@ namespace beman::inside
   //---------------------------------------------------------------------------
   // operator/
   //---------------------------------------------------------------------------
-  inline constexpr std::expected<grid, errc> operator/(const grid& lhs, const grid& rhs)
+  [[nodiscard]] inline constexpr std::expected<grid, errc> operator/(const grid& lhs, const grid& rhs)
   {
     auto d = lhs.Interval / rhs.Interval;
     if (d.has_value())
@@ -2421,7 +2421,7 @@ namespace beman::inside
   // operand (Notch 0) makes the hull continuous. errc::overflow when the notch gcd's
   // combined denominator exceeds the representable rational range.
   //---------------------------------------------------------------------------
-  inline constexpr std::expected<grid, errc> hull(const grid& lhs, const grid& rhs)
+  [[nodiscard]] inline constexpr std::expected<grid, errc> hull(const grid& lhs, const grid& rhs)
   {
     const interval iv{lhs.Interval.Lower < rhs.Interval.Lower ? lhs.Interval.Lower : rhs.Interval.Lower,
                       lhs.Interval.Upper < rhs.Interval.Upper ? rhs.Interval.Upper : lhs.Interval.Upper};
@@ -2685,13 +2685,13 @@ namespace beman::inside
 
     // ONLY type conversion, NO value representation conversion calculation
     template <insidable B>
-    constexpr raw_t<B> raw_cast(auto value)
+    [[nodiscard]] constexpr raw_t<B> raw_cast(auto value) noexcept
     {
       return static_cast<raw_t<B>>(value);
     }
 
     template <insidable B>
-    constexpr raw_t<B> raw_cast(rational value)
+    [[nodiscard]] constexpr raw_t<B> raw_cast(rational value) noexcept
     {
       if constexpr (rational_raw<B>)
         return value;
@@ -2739,7 +2739,7 @@ namespace beman::inside
     // target. User code should prefer `b.to<T>()`, which carries a typed
     // overflow error.
     template <insidable B>
-    constexpr imax to_value(B b)
+    [[nodiscard]] constexpr imax to_value(B b) noexcept
     {
       if constexpr (!index_raw<B>)
         return raw_imax(b);
@@ -5740,10 +5740,10 @@ namespace beman::inside
   }
 
   template <insidable L, insidable R>
-  constexpr auto operator<=>(L const& lhs, R const& rhs) { return detail::compare(lhs, rhs, detail::three_way); }
+  [[nodiscard]] constexpr auto operator<=>(L const& lhs, R const& rhs) { return detail::compare(lhs, rhs, detail::three_way); }
 
   template <insidable L, insidable R>
-  constexpr bool operator==(L const& lhs, R const& rhs) { return detail::compare(lhs, rhs, detail::equal_to); }
+  [[nodiscard]] constexpr bool operator==(L const& lhs, R const& rhs) { return detail::compare(lhs, rhs, detail::equal_to); }
 
   namespace detail
   {
@@ -5806,10 +5806,10 @@ namespace beman::inside
   }
 
   template <insidable B, detail::arithmetic A>
-  constexpr auto operator<=>(B const& lhs, A rhs) { return detail::compare_scalar(lhs, rhs, detail::three_way); }
+  [[nodiscard]] constexpr auto operator<=>(B const& lhs, A rhs) { return detail::compare_scalar(lhs, rhs, detail::three_way); }
 
   template <insidable B, detail::arithmetic A>
-  constexpr bool operator==(B const& lhs, A rhs) { return detail::compare_scalar(lhs, rhs, detail::equal_to); }
+  [[nodiscard]] constexpr bool operator==(B const& lhs, A rhs) { return detail::compare_scalar(lhs, rhs, detail::equal_to); }
 
   //---------------------------------------------------------------------------
   // just
@@ -6255,7 +6255,7 @@ namespace beman::inside
   template <class L, class R>                                                        \
     requires detail::expected_operands<L, R>                                         \
           && requires(detail::unwrap_t<L> l, detail::unwrap_t<R> r) { l op r; }      \
-  constexpr auto operator op(L const& lhs, R const& rhs)                             \
+  [[nodiscard]] constexpr auto operator op(L const& lhs, R const& rhs)               \
   { return lift([](auto const& l, auto const& r) { return l op r; }, lhs, rhs); }
 
   BEMAN_INSIDE_LIFT_OP(+)
@@ -6336,10 +6336,10 @@ namespace beman::inside
         using value_type      = std::pair<std::size_t, std::ranges::range_value_t<R>>;
         using difference_type  = std::ptrdiff_t;
 
-        constexpr value_type operator*() const { return {Index, *It}; }
+        [[nodiscard]] constexpr value_type operator*() const { return {Index, *It}; }
         constexpr iterator& operator++() { ++It; ++Index; return *this; }
         constexpr iterator  operator++(int) { auto t = *this; ++*this; return t; }
-        constexpr bool operator==(iterator const& o) const { return It == o.It; }
+        [[nodiscard]] constexpr bool operator==(iterator const& o) const { return It == o.It; }
       };
 
       constexpr iterator begin() const { return {std::ranges::begin(Base), 0}; }
@@ -6364,14 +6364,14 @@ namespace beman::inside
         using value_type      = std::ranges::range_value_t<R>;
         using difference_type = std::ptrdiff_t;
 
-        constexpr value_type operator*() const { return *It; }
+        [[nodiscard]] constexpr value_type operator*() const { return *It; }
         constexpr iterator& operator++()
         {
           for (std::size_t k = 0; k < Step && It != End; ++k) ++It;
           return *this;
         }
         constexpr iterator operator++(int) { auto t = *this; ++*this; return t; }
-        constexpr bool operator==(iterator const& o) const { return It == o.It; }
+        [[nodiscard]] constexpr bool operator==(iterator const& o) const { return It == o.It; }
       };
 
       constexpr iterator begin() const
@@ -6411,7 +6411,7 @@ namespace beman::inside
         return p < slot_count - Start ? Start + p : p - (slot_count - Start);
       }
 
-      constexpr value_type operator*() const
+      [[nodiscard]] constexpr value_type operator*() const
       {
         // value = Lower + index * Notch (always exact: lies on the grid).
         // Integer-backed storages decode without the rational/assignment
@@ -6438,7 +6438,7 @@ namespace beman::inside
         }
       }
 
-      constexpr value_type operator[](difference_type n) const
+      [[nodiscard]] constexpr value_type operator[](difference_type n) const
       { return *(*this + n); }
 
       constexpr iterator& operator++() { ++Pos; return *this; }
@@ -6448,13 +6448,13 @@ namespace beman::inside
       constexpr iterator& operator+=(difference_type n) { Pos += n; return *this; }
       constexpr iterator& operator-=(difference_type n) { Pos -= n; return *this; }
 
-      constexpr iterator operator+(difference_type n) const { auto t = *this; t += n; return t; }
-      constexpr iterator operator-(difference_type n) const { auto t = *this; t -= n; return t; }
-      friend constexpr iterator operator+(difference_type n, iterator it) { return it + n; }
+      [[nodiscard]] constexpr iterator operator+(difference_type n) const { auto t = *this; t += n; return t; }
+      [[nodiscard]] constexpr iterator operator-(difference_type n) const { auto t = *this; t -= n; return t; }
+      [[nodiscard]] friend constexpr iterator operator+(difference_type n, iterator it) { return it + n; }
 
-      constexpr difference_type operator-(iterator o) const { return Pos - o.Pos; }
-      constexpr bool operator==(iterator o) const { return Pos == o.Pos; }
-      constexpr auto operator<=>(iterator o) const { return Pos <=> o.Pos; }
+      [[nodiscard]] constexpr difference_type operator-(iterator o) const { return Pos - o.Pos; }
+      [[nodiscard]] constexpr bool operator==(iterator o) const { return Pos == o.Pos; }
+      [[nodiscard]] constexpr auto operator<=>(iterator o) const { return Pos <=> o.Pos; }
     };
 
     umax StartIndex;
@@ -9464,7 +9464,7 @@ namespace beman::inside
   // to_string — pretty-prints `rational`, `interval`, `grid`, plus a fallback
   // for plain arithmetic types and the exact-rational form for insidables.
   //-------------------------------------------------------------------------
-  inline std::string to_string(beman::inside::detail::rational r)
+  [[nodiscard]] inline std::string to_string(beman::inside::detail::rational r)
   {
     std::string str;
     if (r.Denominator < 0)
@@ -9534,7 +9534,7 @@ namespace beman::inside
     return str;
   }
 
-  inline std::string to_string(interval ival)
+  [[nodiscard]] inline std::string to_string(interval ival)
   {
     std::string str{"["};
 
@@ -9545,7 +9545,7 @@ namespace beman::inside
     return str;
   }
 
-  inline std::string to_string(grid g)
+  [[nodiscard]] inline std::string to_string(grid g)
   {
     std::string str{"{"};
 
@@ -9558,7 +9558,7 @@ namespace beman::inside
 
   // delegate to std::to_string
   template <typename V>
-  auto to_string(V value)
+  [[nodiscard]] auto to_string(V value)
   { return std::to_string(value); }
 
   // `f64` (double-backed) and `exact` (rational-backed) bounds: render the
@@ -9568,7 +9568,7 @@ namespace beman::inside
   // f64 inside prints the double.
   template <insidable B>
     requires (detail::fp_raw<B> || detail::rational_raw<B>)
-  inline std::string to_string(B b)
+  [[nodiscard]] inline std::string to_string(B b)
   {
     if constexpr (detail::fp_raw<B> && notch_of<B> == beman::inside::detail::rational{0})
       return std::to_string(detail::as_double(b));
@@ -9604,11 +9604,11 @@ namespace beman::inside
   // inspecting failing tests or storage choices.
   //-------------------------------------------------------------------------
   template <insidable B>
-  inline std::string to_string(B b)
+  [[nodiscard]] inline std::string to_string(B b)
   { return beman::inside::to_string(detail::as_rational(b)); }
 
   template <insidable B>
-  inline std::string to_string_debug(B b)
+  [[nodiscard]] inline std::string to_string_debug(B b)
   {
     std::string str;
     str += beman::inside::to_string(detail::as_rational(b));

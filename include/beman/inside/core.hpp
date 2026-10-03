@@ -771,10 +771,10 @@ namespace beman::inside
   }
 
   template <insidable L, insidable R>
-  constexpr auto operator<=>(L const& lhs, R const& rhs) { return detail::compare(lhs, rhs, detail::three_way); }
+  [[nodiscard]] constexpr auto operator<=>(L const& lhs, R const& rhs) { return detail::compare(lhs, rhs, detail::three_way); }
 
   template <insidable L, insidable R>
-  constexpr bool operator==(L const& lhs, R const& rhs) { return detail::compare(lhs, rhs, detail::equal_to); }
+  [[nodiscard]] constexpr bool operator==(L const& lhs, R const& rhs) { return detail::compare(lhs, rhs, detail::equal_to); }
 
   namespace detail
   {
@@ -837,10 +837,10 @@ namespace beman::inside
   }
 
   template <insidable B, detail::arithmetic A>
-  constexpr auto operator<=>(B const& lhs, A rhs) { return detail::compare_scalar(lhs, rhs, detail::three_way); }
+  [[nodiscard]] constexpr auto operator<=>(B const& lhs, A rhs) { return detail::compare_scalar(lhs, rhs, detail::three_way); }
 
   template <insidable B, detail::arithmetic A>
-  constexpr bool operator==(B const& lhs, A rhs) { return detail::compare_scalar(lhs, rhs, detail::equal_to); }
+  [[nodiscard]] constexpr bool operator==(B const& lhs, A rhs) { return detail::compare_scalar(lhs, rhs, detail::equal_to); }
 
   //---------------------------------------------------------------------------
   // just

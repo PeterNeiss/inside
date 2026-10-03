@@ -262,13 +262,13 @@ namespace beman::inside
 
     // ONLY type conversion, NO value representation conversion calculation
     template <insidable B>
-    constexpr raw_t<B> raw_cast(auto value)
+    [[nodiscard]] constexpr raw_t<B> raw_cast(auto value) noexcept
     {
       return static_cast<raw_t<B>>(value);
     }
 
     template <insidable B>
-    constexpr raw_t<B> raw_cast(rational value)
+    [[nodiscard]] constexpr raw_t<B> raw_cast(rational value) noexcept
     {
       if constexpr (rational_raw<B>)
         return value;
@@ -316,7 +316,7 @@ namespace beman::inside
     // target. User code should prefer `b.to<T>()`, which carries a typed
     // overflow error.
     template <insidable B>
-    constexpr imax to_value(B b)
+    [[nodiscard]] constexpr imax to_value(B b) noexcept
     {
       if constexpr (!index_raw<B>)
         return raw_imax(b);

@@ -66,7 +66,7 @@ namespace beman::inside
   // already returning expected<R, errc> passes through.
   //---------------------------------------------------------------------------
   template <class Op, class... Args>
-  constexpr auto lift(Op op, Args&&... args)
+  [[nodiscard]] constexpr auto lift(Op op, Args&&... args)
   {
     using R = std::remove_cvref_t<
         decltype(op(detail::lift_unwrap(std::forward<Args>(args))...))>;

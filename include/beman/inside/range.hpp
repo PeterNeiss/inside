@@ -41,10 +41,10 @@ namespace beman::inside
         using value_type      = std::pair<std::size_t, std::ranges::range_value_t<R>>;
         using difference_type  = std::ptrdiff_t;
 
-        constexpr value_type operator*() const { return {Index, *It}; }
+        [[nodiscard]] constexpr value_type operator*() const { return {Index, *It}; }
         constexpr iterator& operator++() { ++It; ++Index; return *this; }
         constexpr iterator  operator++(int) { auto t = *this; ++*this; return t; }
-        constexpr bool operator==(iterator const& o) const { return It == o.It; }
+        [[nodiscard]] constexpr bool operator==(iterator const& o) const { return It == o.It; }
       };
 
       constexpr iterator begin() const { return {std::ranges::begin(Base), 0}; }
@@ -69,14 +69,14 @@ namespace beman::inside
         using value_type      = std::ranges::range_value_t<R>;
         using difference_type = std::ptrdiff_t;
 
-        constexpr value_type operator*() const { return *It; }
+        [[nodiscard]] constexpr value_type operator*() const { return *It; }
         constexpr iterator& operator++()
         {
           for (std::size_t k = 0; k < Step && It != End; ++k) ++It;
           return *this;
         }
         constexpr iterator operator++(int) { auto t = *this; ++*this; return t; }
-        constexpr bool operator==(iterator const& o) const { return It == o.It; }
+        [[nodiscard]] constexpr bool operator==(iterator const& o) const { return It == o.It; }
       };
 
       constexpr iterator begin() const
@@ -116,7 +116,7 @@ namespace beman::inside
         return p < slot_count - Start ? Start + p : p - (slot_count - Start);
       }
 
-      constexpr value_type operator*() const
+      [[nodiscard]] constexpr value_type operator*() const
       {
         // value = Lower + index * Notch (always exact: lies on the grid).
         // Integer-backed storages decode without the rational/assignment
@@ -143,7 +143,7 @@ namespace beman::inside
         }
       }
 
-      constexpr value_type operator[](difference_type n) const
+      [[nodiscard]] constexpr value_type operator[](difference_type n) const
       { return *(*this + n); }
 
       constexpr iterator& operator++() { ++Pos; return *this; }
@@ -153,13 +153,13 @@ namespace beman::inside
       constexpr iterator& operator+=(difference_type n) { Pos += n; return *this; }
       constexpr iterator& operator-=(difference_type n) { Pos -= n; return *this; }
 
-      constexpr iterator operator+(difference_type n) const { auto t = *this; t += n; return t; }
-      constexpr iterator operator-(difference_type n) const { auto t = *this; t -= n; return t; }
-      friend constexpr iterator operator+(difference_type n, iterator it) { return it + n; }
+      [[nodiscard]] constexpr iterator operator+(difference_type n) const { auto t = *this; t += n; return t; }
+      [[nodiscard]] constexpr iterator operator-(difference_type n) const { auto t = *this; t -= n; return t; }
+      [[nodiscard]] friend constexpr iterator operator+(difference_type n, iterator it) { return it + n; }
 
-      constexpr difference_type operator-(iterator o) const { return Pos - o.Pos; }
-      constexpr bool operator==(iterator o) const { return Pos == o.Pos; }
-      constexpr auto operator<=>(iterator o) const { return Pos <=> o.Pos; }
+      [[nodiscard]] constexpr difference_type operator-(iterator o) const { return Pos - o.Pos; }
+      [[nodiscard]] constexpr bool operator==(iterator o) const { return Pos == o.Pos; }
+      [[nodiscard]] constexpr auto operator<=>(iterator o) const { return Pos <=> o.Pos; }
     };
 
     umax StartIndex;

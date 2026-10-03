@@ -37,43 +37,43 @@ namespace beman::inside
       return true;
     }
 
-    constexpr bool operator==(const interval& rhs) const = default;
-    constexpr interval operator-() const { return interval{-Upper, -Lower}; }
+    [[nodiscard]] constexpr bool operator==(const interval& rhs) const = default;
+    [[nodiscard]] constexpr interval operator-() const { return interval{-Upper, -Lower}; }
 
-    constexpr bool divides_evenly(const detail::rational& notch) const
+    [[nodiscard]] constexpr bool divides_evenly(const detail::rational& notch) const
     { return detail::divides_evenly((Upper - Lower).value(), notch); }
 
-    constexpr std::expected<detail::rational, errc> operator/(const detail::rational& notch) const
+    [[nodiscard]] constexpr std::expected<detail::rational, errc> operator/(const detail::rational& notch) const
     { return (Upper - Lower) / notch; }
   };
 
   // Containment / disjointness — free functions over the public endpoints
   // (siblings of the binary interval operators below).
-  [[nodiscard]] constexpr bool includes(interval const& iv, interval const& rhs)
+  [[nodiscard]] constexpr bool includes(interval const& iv, interval const& rhs) noexcept
   { return iv.Lower <= rhs.Lower && rhs.Upper <= iv.Upper; }
 
-  [[nodiscard]] constexpr bool includes(interval const& iv, detail::rational const& r)
+  [[nodiscard]] constexpr bool includes(interval const& iv, detail::rational const& r) noexcept
   { return iv.Lower <= r && r <= iv.Upper; }
 
-  [[nodiscard]] constexpr bool includes(interval const& iv, detail::arithmetic auto a)
+  [[nodiscard]] constexpr bool includes(interval const& iv, detail::arithmetic auto a) noexcept
   { return includes(iv, detail::rational{a}); }
 
   // `excludes` means *strictly disjoint* — the intervals share no value.
   // `!includes()` is weaker: it only rules out total containment, so two
   // overlapping intervals are `!includes` AND `!excludes`.
-  [[nodiscard]] constexpr bool excludes(interval const& iv, interval const& rhs)
+  [[nodiscard]] constexpr bool excludes(interval const& iv, interval const& rhs) noexcept
   { return rhs.Upper < iv.Lower || iv.Upper < rhs.Lower; }
 
   // The `includes(rhs, iv)` clause catches rhs wholly containing iv (where
   // neither rhs endpoint lands in iv, so the other checks would miss it).
-  [[nodiscard]] constexpr bool overlaps(interval const& iv, interval const& rhs)
+  [[nodiscard]] constexpr bool overlaps(interval const& iv, interval const& rhs) noexcept
   { return includes(rhs, iv) || includes(iv, rhs.Lower) || includes(iv, rhs.Upper); }
 
   // The min/max hull of four endpoint combinations — the result interval of an
   // interval product or quotient (interval arithmetic's four-corner rule).
   namespace detail
   {
-    constexpr interval corner_hull(rational a, rational b, rational c, rational d) noexcept
+    [[nodiscard]] constexpr interval corner_hull(rational a, rational b, rational c, rational d) noexcept
     {
       const rational lo1 = a < b ? a : b, hi1 = a < b ? b : a;
       const rational lo2 = c < d ? c : d, hi2 = c < d ? d : c;
@@ -81,16 +81,16 @@ namespace beman::inside
     }
   }
 
-  constexpr std::expected<interval, errc> operator+  (const interval&, const interval&);
-  constexpr std::expected<interval, errc> operator-  (const interval&, const interval&);
-  constexpr std::expected<interval, errc> operator*  (const interval&, const interval&);
-  constexpr std::expected<interval, errc> operator/  (const interval&, const interval&);
-  constexpr auto                          operator<=>(const interval&, const interval&) -> std::partial_ordering;
+  [[nodiscard]] constexpr std::expected<interval, errc> operator+  (const interval&, const interval&);
+  [[nodiscard]] constexpr std::expected<interval, errc> operator-  (const interval&, const interval&);
+  [[nodiscard]] constexpr std::expected<interval, errc> operator*  (const interval&, const interval&);
+  [[nodiscard]] constexpr std::expected<interval, errc> operator/  (const interval&, const interval&);
+  [[nodiscard]] constexpr auto                          operator<=>(const interval&, const interval&) -> std::partial_ordering;
 
   //---------------------------------------------------------------------------
   // operator+
   //---------------------------------------------------------------------------
-  inline constexpr std::expected<interval, errc> operator+(const interval& lhs, const interval& rhs)
+  [[nodiscard]] inline constexpr std::expected<interval, errc> operator+(const interval& lhs, const interval& rhs)
   {
     return lift(
       [](detail::rational l, detail::rational u){ return interval{l, u}; },
@@ -100,7 +100,7 @@ namespace beman::inside
   //---------------------------------------------------------------------------
   // operator-
   //---------------------------------------------------------------------------
-  inline constexpr std::expected<interval, errc> operator-(const interval& lhs, const interval& rhs)
+  [[nodiscard]] inline constexpr std::expected<interval, errc> operator-(const interval& lhs, const interval& rhs)
   {
     return operator+(lhs, -rhs);
   }
@@ -108,7 +108,7 @@ namespace beman::inside
   //---------------------------------------------------------------------------
   // operator*
   //---------------------------------------------------------------------------
-  inline constexpr std::expected<interval, errc> operator*(const interval& lhs, const interval& rhs)
+  [[nodiscard]] inline constexpr std::expected<interval, errc> operator*(const interval& lhs, const interval& rhs)
   {
     return lift(detail::corner_hull,
       lhs.Lower * rhs.Lower, lhs.Lower * rhs.Upper,
@@ -118,7 +118,7 @@ namespace beman::inside
   //---------------------------------------------------------------------------
   // operator/
   //---------------------------------------------------------------------------
-  inline constexpr std::expected<interval, errc> operator/(const interval& lhs, const interval& rhs)
+  [[nodiscard]] inline constexpr std::expected<interval, errc> operator/(const interval& lhs, const interval& rhs)
   {
     if (includes(rhs, 0))
       return std::unexpected{errc::division_by_zero};
@@ -131,7 +131,7 @@ namespace beman::inside
   //---------------------------------------------------------------------------
   // operator<=>
   //---------------------------------------------------------------------------
-  inline constexpr auto operator<=>(const interval& lhs, const interval& rhs) -> std::partial_ordering
+  [[nodiscard]] inline constexpr auto operator<=>(const interval& lhs, const interval& rhs) -> std::partial_ordering
   {
     if (lhs.Upper < rhs.Lower)
       return std::partial_ordering::less;

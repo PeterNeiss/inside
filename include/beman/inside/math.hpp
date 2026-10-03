@@ -64,7 +64,7 @@ namespace beman::inside
   concept fractional = std::floating_point<T> || std::same_as<rational, T>;
 
   template <std::signed_integral V>
-  constexpr umax safe_abs(V value)
+  [[nodiscard]] constexpr umax safe_abs(V value) noexcept
   { return (value >= 0) ? static_cast<umax>(value) : umax{0} - static_cast<umax>(value); }
 
   inline constexpr double frexp(double value, int* exp) noexcept

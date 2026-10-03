@@ -31,7 +31,7 @@ namespace beman::inside
   // to_string — pretty-prints `rational`, `interval`, `grid`, plus a fallback
   // for plain arithmetic types and the exact-rational form for insidables.
   //-------------------------------------------------------------------------
-  inline std::string to_string(beman::inside::detail::rational r)
+  [[nodiscard]] inline std::string to_string(beman::inside::detail::rational r)
   {
     std::string str;
     if (r.Denominator < 0)
@@ -101,7 +101,7 @@ namespace beman::inside
     return str;
   }
 
-  inline std::string to_string(interval ival)
+  [[nodiscard]] inline std::string to_string(interval ival)
   {
     std::string str{"["};
 
@@ -112,7 +112,7 @@ namespace beman::inside
     return str;
   }
 
-  inline std::string to_string(grid g)
+  [[nodiscard]] inline std::string to_string(grid g)
   {
     std::string str{"{"};
 
@@ -125,7 +125,7 @@ namespace beman::inside
 
   // delegate to std::to_string
   template <typename V>
-  auto to_string(V value)
+  [[nodiscard]] auto to_string(V value)
   { return std::to_string(value); }
 
   // `f64` (double-backed) and `exact` (rational-backed) bounds: render the
@@ -135,7 +135,7 @@ namespace beman::inside
   // f64 inside prints the double.
   template <insidable B>
     requires (detail::fp_raw<B> || detail::rational_raw<B>)
-  inline std::string to_string(B b)
+  [[nodiscard]] inline std::string to_string(B b)
   {
     if constexpr (detail::fp_raw<B> && notch_of<B> == beman::inside::detail::rational{0})
       return std::to_string(detail::as_double(b));
@@ -171,11 +171,11 @@ namespace beman::inside
   // inspecting failing tests or storage choices.
   //-------------------------------------------------------------------------
   template <insidable B>
-  inline std::string to_string(B b)
+  [[nodiscard]] inline std::string to_string(B b)
   { return beman::inside::to_string(detail::as_rational(b)); }
 
   template <insidable B>
-  inline std::string to_string_debug(B b)
+  [[nodiscard]] inline std::string to_string_debug(B b)
   {
     std::string str;
     str += beman::inside::to_string(detail::as_rational(b));

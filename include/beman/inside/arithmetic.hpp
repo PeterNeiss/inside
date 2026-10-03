@@ -338,7 +338,7 @@ namespace beman::inside
   template <class L, class R>                                                        \
     requires detail::expected_operands<L, R>                                         \
           && requires(detail::unwrap_t<L> l, detail::unwrap_t<R> r) { l op r; }      \
-  constexpr auto operator op(L const& lhs, R const& rhs)                             \
+  [[nodiscard]] constexpr auto operator op(L const& lhs, R const& rhs)               \
   { return lift([](auto const& l, auto const& r) { return l op r; }, lhs, rhs); }
 
   BEMAN_INSIDE_LIFT_OP(+)
