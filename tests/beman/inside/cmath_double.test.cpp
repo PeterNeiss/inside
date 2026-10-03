@@ -41,34 +41,34 @@ namespace
 // dbl: exact special values (IEEE reproducibility anchors)
 TEST(CmathDoubleTest, dbl_exact_special_values_ieee_reproducibility_anchors)
 {
-  ASSERT_EQ(d::d_sin(0.0), 0.0);
-  ASSERT_EQ(d::d_cos(0.0), 1.0);
-  ASSERT_EQ(d::d_exp(0.0), 1.0);
-  ASSERT_EQ(d::d_log(1.0), 0.0);
-  ASSERT_EQ(d::d_sqrt(4.0), 2.0);
-  ASSERT_EQ(d::d_sqrt(0.0), 0.0);
-  ASSERT_EQ(d::d_atan(0.0), 0.0);
-  ASSERT_EQ(d::d_exp2(0.0), 1.0);
-  ASSERT_EQ(d::d_cbrt(0.0), 0.0);
+  ASSERT_EQ(d::fp_sin(0.0), 0.0);
+  ASSERT_EQ(d::fp_cos(0.0), 1.0);
+  ASSERT_EQ(d::fp_exp(0.0), 1.0);
+  ASSERT_EQ(d::fp_log(1.0), 0.0);
+  ASSERT_EQ(d::fp_sqrt(4.0), 2.0);
+  ASSERT_EQ(d::fp_sqrt(0.0), 0.0);
+  ASSERT_EQ(d::fp_atan(0.0), 0.0);
+  ASSERT_EQ(d::fp_exp2(0.0), 1.0);
+  ASSERT_EQ(d::fp_cbrt(0.0), 0.0);
 }
 
 // dbl: accuracy within a few ULP of std::
 TEST(CmathDoubleTest, dbl_accuracy_within_a_few_ulp_of_std)
 {
   // sin/cos with full range reduction (large arguments stay accurate).
-  ASSERT_TRUE((max_abs(d::d_sin, std::sin, -50.0, 50.0, 7e-4) < 1e-15));
-  ASSERT_TRUE((max_abs(d::d_cos, std::cos, -50.0, 50.0, 7e-4) < 1e-14));
-  ASSERT_TRUE((max_abs(d::d_atan, std::atan, -20.0, 20.0, 7e-4) < 1e-15));
-  ASSERT_TRUE((max_abs(d::d_log, std::log, 1e-3, 1e3, 1e-3) < 1e-14));
+  ASSERT_TRUE((max_abs(d::fp_sin, std::sin, -50.0, 50.0, 7e-4) < 1e-15));
+  ASSERT_TRUE((max_abs(d::fp_cos, std::cos, -50.0, 50.0, 7e-4) < 1e-14));
+  ASSERT_TRUE((max_abs(d::fp_atan, std::atan, -20.0, 20.0, 7e-4) < 1e-15));
+  ASSERT_TRUE((max_abs(d::fp_log, std::log, 1e-3, 1e3, 1e-3) < 1e-14));
 
   // exp/exp2/pow as relative error.
   double me = 0;
-  for (double x = -20; x <= 20; x += 3e-4) me = std::max(me, std::fabs(d::d_exp(x) - std::exp(x)) / std::exp(x));
+  for (double x = -20; x <= 20; x += 3e-4) me = std::max(me, std::fabs(d::fp_exp(x) - std::exp(x)) / std::exp(x));
   ASSERT_TRUE(me < 1e-14);
 
   // asin/acos near the full domain.
   double ma = 0;
-  for (double x = -0.999; x <= 0.999; x += 3e-4) ma = std::max(ma, std::fabs(d::d_asin(x) - std::asin(x)));
+  for (double x = -0.999; x <= 0.999; x += 3e-4) ma = std::max(ma, std::fabs(d::fp_asin(x) - std::asin(x)));
   ASSERT_TRUE(ma < 1e-14);
 }
 
@@ -84,14 +84,14 @@ TEST(CmathDoubleTest, dbl_end_to_end_on_real_double_backed_bounds)
   // EXACTLY on a grid point (double engine = speed at grid precision, not an
   // escape from the grid).
   ang x = 0.6;
-  amp y = math::dbl::sin_core<amp>(x);
+  amp y = math::dbl::sin_into<amp>(x);
   ASSERT_EQ(double(y), 0x1.211ap-1);   // determinism: sin(0.6) snapped to 1/65536 (~0.56476)
   const double scaled = double(y) * 65536.0;
   ASSERT_EQ(scaled, std::trunc(scaled));                         // exact grid point
 
   // sin(0) round-trips to exactly 0.
   ang z = 0.0;
-  ASSERT_EQ(double(math::dbl::sin_core<amp>(z)), 0.0);
+  ASSERT_EQ(double(math::dbl::sin_into<amp>(z)), 0.0);
 
   // the input snaps on the way in, too: 0.6 → nearest 1/65536.
   const double xs = double(x) * 65536.0;
@@ -106,7 +106,7 @@ TEST(CmathDoubleTest, dbl_real_storage_arithmetic_composes_double_grid_typed)
   using ang = inside<{{-8, 8}, notch<1, 65536>}, f64>;
 
   ang ph = 0.6; gn gain = 2.5;
-  amp s = math::dbl::sin_core<amp>(ph);
+  amp s = math::dbl::sin_into<amp>(ph);
 
   auto y = gain * s;            // real * real
   auto w = y + s;              // real + real

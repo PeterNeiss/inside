@@ -56,25 +56,25 @@ TEST(CoverageCornersTest, will_conversion_trunc_is_false_for_out_of_range_values
 namespace d = beman::inside::math::dbl::detail;
 
 //---------------------------------------------------------------------------
-// cmath_double.hpp:162-163 — d_cbrt negative branch
-// cmath_double.hpp:205-207 — d_atan2 on the axes (x == 0)
+// cmath_double.hpp:162-163 — fp_cbrt negative branch
+// cmath_double.hpp:205-207 — fp_atan2 on the axes (x == 0)
 //---------------------------------------------------------------------------
 // dbl: cbrt of negatives and atan2 on the axes
 TEST(CoverageCornersTest, dbl_cbrt_of_negatives_and_atan2_on_the_axes)
 {
   // cbrt(x<0) = -cbrt(-x). Determinism: exact golden outputs (the engine's own
   // polynomial is bit-identical across platforms; cube roots land 1 ULP off).
-  ASSERT_EQ(d::d_cbrt(-8.0), -0x1.fffffffffffffp+0);  // -2 (1 ULP low)
-  ASSERT_EQ(d::d_cbrt(-27.0), -0x1.7ffffffffffffp+1);  // -3 (1 ULP low)
-  ASSERT_EQ(d::d_cbrt(27.0), 0x1.7ffffffffffffp+1);  //  3 (1 ULP low)
+  ASSERT_EQ(d::fp_cbrt(-8.0), -0x1.fffffffffffffp+0);  // -2 (1 ULP low)
+  ASSERT_EQ(d::fp_cbrt(-27.0), -0x1.7ffffffffffffp+1);  // -3 (1 ULP low)
+  ASSERT_EQ(d::fp_cbrt(27.0), 0x1.7ffffffffffffp+1);  //  3 (1 ULP low)
 
   // atan2 with x == 0: the y>0 / y<0 / y==0 axis cases (exact constants).
-  ASSERT_EQ((d::d_atan2(1.0, 0.0)), 0x1.921fb54442d18p+0);  // +pi/2
-  ASSERT_EQ((d::d_atan2(-1.0, 0.0)), -0x1.921fb54442d18p+0);  // -pi/2
-  ASSERT_EQ((d::d_atan2(0.0, 0.0)), 0.0);                   //  0
+  ASSERT_EQ((d::fp_atan2(1.0, 0.0)), 0x1.921fb54442d18p+0);  // +pi/2
+  ASSERT_EQ((d::fp_atan2(-1.0, 0.0)), -0x1.921fb54442d18p+0);  // -pi/2
+  ASSERT_EQ((d::fp_atan2(0.0, 0.0)), 0.0);                   //  0
   // and the x<0 reflective branch for good measure
-  ASSERT_EQ((d::d_atan2(1.0, -1.0)), 0x1.2d97c7f3321d2p+1);  //  3pi/4
-  ASSERT_EQ((d::d_atan2(-1.0, -1.0)), -0x1.2d97c7f3321d2p+1);  // -3pi/4
+  ASSERT_EQ((d::fp_atan2(1.0, -1.0)), 0x1.2d97c7f3321d2p+1);  //  3pi/4
+  ASSERT_EQ((d::fp_atan2(-1.0, -1.0)), -0x1.2d97c7f3321d2p+1);  // -3pi/4
 }
 #endif // !BEMAN_INSIDE_MATH_CORDIC
 

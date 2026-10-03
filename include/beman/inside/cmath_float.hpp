@@ -19,7 +19,7 @@
 #ifndef BEMAN_INSIDE_CMATH_FLOAT_HPP
 #define BEMAN_INSIDE_CMATH_FLOAT_HPP
 
-#include <beman/inside/cmath_double.hpp>  // resolves BEMAN_INSIDE_MATH_NO_FP; BEMAN_INSIDE_DBL_FN; store base
+#include <beman/inside/cmath_double.hpp>  // resolves BEMAN_INSIDE_MATH_NO_FP; BEMAN_INSIDE_FP_FN; store base
 
 #ifndef BEMAN_INSIDE_MATH_NO_FP
 
@@ -69,7 +69,7 @@ namespace beman::inside::math::flt::detail
   inline constexpr float kTanPi12   = 0x1.126146p-2f;             // tan(π/12)
 
   // sin(r), r ∈ [−π/4, π/4]: r·P(r²) to r¹¹ (float-sufficient).
-  inline BEMAN_INSIDE_DBL_FN float sin_poly(float r)
+  inline BEMAN_INSIDE_FP_FN float sin_poly(float r)
   {
     float z = r * r;
     float p = horner(z,
@@ -79,7 +79,7 @@ namespace beman::inside::math::flt::detail
   }
 
   // cos(r), r ∈ [−π/4, π/4]: Q(r²) to r¹⁰.
-  inline BEMAN_INSIDE_DBL_FN float cos_poly(float r)
+  inline BEMAN_INSIDE_FP_FN float cos_poly(float r)
   {
     float z = r * r;
     return horner(z,
@@ -88,7 +88,7 @@ namespace beman::inside::math::flt::detail
   }
 
   // e^r, r ∈ [−ln2/2, ln2/2]: Σ rᵏ/k! to r⁷.
-  inline BEMAN_INSIDE_DBL_FN float exp_poly(float r)
+  inline BEMAN_INSIDE_FP_FN float exp_poly(float r)
   {
     return horner(r,
                   1.0f / 5040.0f, 1.0f / 720.0f, 1.0f / 120.0f, 1.0f / 24.0f,
@@ -96,7 +96,7 @@ namespace beman::inside::math::flt::detail
   }
 
   // Shared quadrant reduction: x → (r ∈ [−π/4,π/4], q = quadrant mod 4).
-  inline BEMAN_INSIDE_DBL_FN float reduce_quadrant(float x, long& q)
+  inline BEMAN_INSIDE_FP_FN float reduce_quadrant(float x, long& q)
   {
     float k = std::nearbyint(x * kTwoOverPi);
     float r = fma(-k, kPio2Hi, x);
@@ -105,7 +105,7 @@ namespace beman::inside::math::flt::detail
     return r;
   }
 
-  inline BEMAN_INSIDE_DBL_FN float d_sin(float x)
+  inline BEMAN_INSIDE_FP_FN float fp_sin(float x)
   {
     long q; float r = reduce_quadrant(x, q);
     switch (q) {
@@ -118,7 +118,7 @@ namespace beman::inside::math::flt::detail
 
   // cos via quadrant reduction (NOT sin(x+π/2): shifting the float input would
   // lose bits for large x — the double engine can afford that, float cannot).
-  inline BEMAN_INSIDE_DBL_FN float d_cos(float x)
+  inline BEMAN_INSIDE_FP_FN float fp_cos(float x)
   {
     long q; float r = reduce_quadrant(x, q);
     switch (q) {
@@ -131,7 +131,7 @@ namespace beman::inside::math::flt::detail
 
   // tan from one reduction: s/c in even quadrants, −c/s in odd ones. False on
   // a pole (odd quadrant with s == 0).
-  inline BEMAN_INSIDE_DBL_FN bool d_tan(float x, float& t)
+  inline BEMAN_INSIDE_FP_FN bool fp_tan(float x, float& t)
   {
     long q; float r = reduce_quadrant(x, q);
     const float s = sin_poly(r), c = cos_poly(r);
@@ -146,7 +146,7 @@ namespace beman::inside::math::flt::detail
   }
 
   // e^x = 2^k · e^r, x = k·ln2 + r, r ∈ [−ln2/2, ln2/2].
-  inline BEMAN_INSIDE_DBL_FN float d_exp(float x)
+  inline BEMAN_INSIDE_FP_FN float fp_exp(float x)
   {
     float k = std::nearbyint(x * kLog2e);
     float r = fma(-k, kLn2Hi, x);
@@ -154,11 +154,11 @@ namespace beman::inside::math::flt::detail
     return std::ldexp(exp_poly(r), static_cast<int>(k));
   }
 
-  inline BEMAN_INSIDE_DBL_FN float d_sqrt(float x) { return std::sqrt(x); }   // correctly rounded
+  inline BEMAN_INSIDE_FP_FN float fp_sqrt(float x) { return std::sqrt(x); }   // correctly rounded
 
   // ln(x): frexp to m∈[½,1), rebalance to [√½,√2); ln = e·ln2 + 2·atanh(f),
   // f = (m−1)/(m+1). Pre: x > 0.
-  inline BEMAN_INSIDE_DBL_FN float d_log(float x)
+  inline BEMAN_INSIDE_FP_FN float fp_log(float x)
   {
     int e;
     float m = std::frexp(x, &e);
@@ -172,28 +172,28 @@ namespace beman::inside::math::flt::detail
   }
 
   // Compositions on the validated primitives (same shapes as the double engine).
-  inline BEMAN_INSIDE_DBL_FN float d_exp2(float x)  { return d_exp(x * kLn2Full); }
-  inline BEMAN_INSIDE_DBL_FN float d_log2(float x)  { return d_log(x) * kLog2e; }
-  inline BEMAN_INSIDE_DBL_FN float d_log10(float x) { return d_log(x) * kLog10e; }
-  inline BEMAN_INSIDE_DBL_FN float d_pow(float b, float e) { return d_exp(e * d_log(b)); }
-  inline BEMAN_INSIDE_DBL_FN float d_cbrt(float x)
+  inline BEMAN_INSIDE_FP_FN float fp_exp2(float x)  { return fp_exp(x * kLn2Full); }
+  inline BEMAN_INSIDE_FP_FN float fp_log2(float x)  { return fp_log(x) * kLog2e; }
+  inline BEMAN_INSIDE_FP_FN float fp_log10(float x) { return fp_log(x) * kLog10e; }
+  inline BEMAN_INSIDE_FP_FN float fp_pow(float b, float e) { return fp_exp(e * fp_log(b)); }
+  inline BEMAN_INSIDE_FP_FN float fp_cbrt(float x)
   {
     if (x == 0.0f) return 0.0f;
-    float m = d_exp(d_log(x < 0 ? -x : x) * (1.0f / 3.0f));
+    float m = fp_exp(fp_log(x < 0 ? -x : x) * (1.0f / 3.0f));
     return x < 0 ? -m : m;
   }
-  inline BEMAN_INSIDE_DBL_FN float d_sinh(float x) { float e = d_exp(x); return (e - 1.0f / e) * 0.5f; }
-  inline BEMAN_INSIDE_DBL_FN float d_cosh(float x) { float e = d_exp(x); return (e + 1.0f / e) * 0.5f; }
-  inline BEMAN_INSIDE_DBL_FN float d_tanh(float x)
+  inline BEMAN_INSIDE_FP_FN float fp_sinh(float x) { float e = fp_exp(x); return (e - 1.0f / e) * 0.5f; }
+  inline BEMAN_INSIDE_FP_FN float fp_cosh(float x) { float e = fp_exp(x); return (e + 1.0f / e) * 0.5f; }
+  inline BEMAN_INSIDE_FP_FN float fp_tanh(float x)
   {
-    float e = d_exp(x + x);             // e^{2x}
+    float e = fp_exp(x + x);             // e^{2x}
     return (e - 1.0f) / (e + 1.0f);
   }
-  inline BEMAN_INSIDE_DBL_FN float d_hypot(float x, float y) { return d_sqrt(x * x + y * y); }
+  inline BEMAN_INSIDE_FP_FN float fp_hypot(float x, float y) { return fp_sqrt(x * x + y * y); }
 
   // atan(x): reduce |x|>1 via reciprocal; |a|>tan(π/12) via the π/6 addition
   // formula → |t| ≤ tan(π/12); atan(t) = t·P(t²) Taylor.
-  inline BEMAN_INSIDE_DBL_FN float d_atan(float x)
+  inline BEMAN_INSIDE_FP_FN float fp_atan(float x)
   {
     bool neg = x < 0; float a = neg ? -x : x;
     bool inv = a > 1.0f; if (inv) a = 1.0f / a;
@@ -208,20 +208,20 @@ namespace beman::inside::math::flt::detail
     return neg ? -r : r;
   }
 
-  inline BEMAN_INSIDE_DBL_FN float d_atan2(float y, float x)
+  inline BEMAN_INSIDE_FP_FN float fp_atan2(float y, float x)
   {
-    if (x > 0.0f) return d_atan(y / x);
-    if (x < 0.0f) return d_atan(y / x) + (y >= 0.0f ? kPi : -kPi);
+    if (x > 0.0f) return fp_atan(y / x);
+    if (x < 0.0f) return fp_atan(y / x) + (y >= 0.0f ? kPi : -kPi);
     if (y > 0.0f) return kPiHalf;
     if (y < 0.0f) return -kPiHalf;
     return 0.0f;
   }
 
-  inline BEMAN_INSIDE_DBL_FN float d_asin(float x) { return d_atan(x / d_sqrt((1.0f - x) * (1.0f + x))); }
-  inline BEMAN_INSIDE_DBL_FN float d_acos(float x) { return kPiHalf - d_asin(x); }
+  inline BEMAN_INSIDE_FP_FN float fp_asin(float x) { return fp_atan(x / fp_sqrt((1.0f - x) * (1.0f + x))); }
+  inline BEMAN_INSIDE_FP_FN float fp_acos(float x) { return kPiHalf - fp_asin(x); }
 } // namespace beman::inside::math::flt::detail
 
-namespace beman::inside::math::flt
+namespace beman::inside::math::flt::detail
 {
   // Engine cores: inside in → `float` math → inside out. Storing the float result:
   // an fp-backed Out (f32 OR f64) stores the value directly via its float/double
@@ -229,7 +229,7 @@ namespace beman::inside::math::flt
   // trip on the result); any other snap grid assigns through the rational path,
   // snapping via Out's round policy.
   template <typename Out>
-  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out store(float f)
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out store(float f)
   {
     if constexpr (beman::inside::detail::fp_raw<Out>) return Out{static_cast<double>(f)};
     else { Out o{}; o = beman::inside::detail::rational{static_cast<double>(f)}; return o; }
@@ -241,48 +241,48 @@ namespace beman::inside::math::flt
   // narrows; float→double→float round-trips to the same float, so this is a pure
   // optimization with no value change.
   template <typename In>
-  [[nodiscard]] BEMAN_INSIDE_DBL_FN float to_float(In x)
+  [[nodiscard]] BEMAN_INSIDE_FP_FN float to_float(In x)
   {
     if constexpr (beman::inside::detail::f32_raw<In>) return x.raw();
     else                                    return static_cast<float>(static_cast<double>(x));
   }
 
   template <typename Out, typename In>
-  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out sin_core(In x)  { return store<Out>(detail::d_sin(to_float(x))); }
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out sin_core(In x)  { return store<Out>(detail::fp_sin(to_float(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out cos_core(In x)  { return store<Out>(detail::d_cos(to_float(x))); }
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out cos_core(In x)  { return store<Out>(detail::fp_cos(to_float(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out exp_core(In x)  { return store<Out>(detail::d_exp(to_float(x))); }
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out exp_core(In x)  { return store<Out>(detail::fp_exp(to_float(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out sqrt_core(In x) { return store<Out>(detail::d_sqrt(to_float(x))); }
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out sqrt_core(In x) { return store<Out>(detail::fp_sqrt(to_float(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out log_core(In x)  { return store<Out>(detail::d_log(to_float(x))); }
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out log_core(In x)  { return store<Out>(detail::fp_log(to_float(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out exp2_core(In x) { return store<Out>(detail::d_exp2(to_float(x))); }
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out exp2_core(In x) { return store<Out>(detail::fp_exp2(to_float(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out log2_core(In x) { return store<Out>(detail::d_log2(to_float(x))); }
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out log2_core(In x) { return store<Out>(detail::fp_log2(to_float(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out log10_core(In x){ return store<Out>(detail::d_log10(to_float(x))); }
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out log10_core(In x){ return store<Out>(detail::fp_log10(to_float(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out cbrt_core(In x) { return store<Out>(detail::d_cbrt(to_float(x))); }
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out cbrt_core(In x) { return store<Out>(detail::fp_cbrt(to_float(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out sinh_core(In x) { return store<Out>(detail::d_sinh(to_float(x))); }
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out sinh_core(In x) { return store<Out>(detail::fp_sinh(to_float(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out cosh_core(In x) { return store<Out>(detail::d_cosh(to_float(x))); }
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out cosh_core(In x) { return store<Out>(detail::fp_cosh(to_float(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out tanh_core(In x) { return store<Out>(detail::d_tanh(to_float(x))); }
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out tanh_core(In x) { return store<Out>(detail::fp_tanh(to_float(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out atan_core(In x) { return store<Out>(detail::d_atan(to_float(x))); }
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out atan_core(In x) { return store<Out>(detail::fp_atan(to_float(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out asin_core(In x) { return store<Out>(detail::d_asin(to_float(x))); }
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out asin_core(In x) { return store<Out>(detail::fp_asin(to_float(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out acos_core(In x) { return store<Out>(detail::d_acos(to_float(x))); }
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out acos_core(In x) { return store<Out>(detail::fp_acos(to_float(x))); }
   template <typename Out, typename InY, typename InX>
-  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out atan2_core(InY y, InX x)
-  { return store<Out>(detail::d_atan2(to_float(y), to_float(x))); }
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out atan2_core(InY y, InX x)
+  { return store<Out>(detail::fp_atan2(to_float(y), to_float(x))); }
   template <typename Out, typename InX, typename InY>
-  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out hypot_core(InX x, InY y)
-  { return store<Out>(detail::d_hypot(to_float(x), to_float(y))); }
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out hypot_core(InX x, InY y)
+  { return store<Out>(detail::fp_hypot(to_float(x), to_float(y))); }
 } // namespace beman::inside::math::flt
 
 #endif // !BEMAN_INSIDE_MATH_NO_FP

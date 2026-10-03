@@ -5007,11 +5007,11 @@ namespace beman::inside
 // definitions live there).
 namespace beman::inside::math
 {
-  template <insidable Out, insidable In> constexpr Out floor_impl(In x);
-  template <insidable Out, insidable In> constexpr Out ceil_impl (In x);
-  template <insidable Out, insidable In> constexpr Out round_impl(In x);
-  template <insidable Out, insidable In> constexpr Out trunc_impl(In x);
-  template <insidable Out, insidable In> constexpr Out abs_impl  (In x);
+  template <insidable Out, insidable In> constexpr Out floor_into(In x);
+  template <insidable Out, insidable In> constexpr Out ceil_into (In x);
+  template <insidable Out, insidable In> constexpr Out round_into(In x);
+  template <insidable Out, insidable In> constexpr Out trunc_into(In x);
+  template <insidable Out, insidable In> constexpr Out abs_into  (In x);
   template <insidable In> constexpr auto floor(In x);
   template <insidable In> constexpr auto ceil (In x);
   template <insidable In> constexpr auto round(In x);
@@ -5357,7 +5357,7 @@ namespace beman::inside
 
     // Integer reductions (floor/ceil/round/trunc) and abs live as free
     // functions in `beman::inside::math` — `beman::inside::math::floor(b)` etc. (auto-deduced Out)
-    // or `beman::inside::math::floor_impl<Out>(b)` for an explicit output grid. There is
+    // or `beman::inside::math::floor_into<Out>(b)` for an explicit output grid. There is
     // deliberately no member-syntax alias: one spelling, in `<beman/inside/cmath.hpp>`.
 
     [[nodiscard]] constexpr negative operator-() const
@@ -6540,12 +6540,12 @@ namespace beman::inside
 
 #include <cmath>            // std::fma, std::sqrt, std::nearbyint ONLY
 
-// `BEMAN_INSIDE_DBL_FN`: the engine cores become `constexpr` on C++26 toolchains with
+// `BEMAN_INSIDE_FP_FN`: the engine cores become `constexpr` on C++26 toolchains with
 // constexpr <cmath> (P1383). Inert otherwise — see BEMAN_INSIDE_MATH_FN in cmath.hpp.
 #if defined(__cpp_lib_constexpr_cmath) && __cpp_lib_constexpr_cmath >= 202202L
-#  define BEMAN_INSIDE_DBL_FN constexpr
+#  define BEMAN_INSIDE_FP_FN constexpr
 #else
-#  define BEMAN_INSIDE_DBL_FN
+#  define BEMAN_INSIDE_FP_FN
 #endif
 
 namespace beman::inside::math::dbl::detail
@@ -6555,7 +6555,7 @@ namespace beman::inside::math::dbl::detail
   // c0·z^n + c1·z^(n-1) + … + cn as an fma chain from the highest coefficient
   // down (Horner) — the same operation order as writing the chain out by hand.
   template <std::floating_point T, typename... C>
-  [[gnu::always_inline]] inline BEMAN_INSIDE_DBL_FN T horner(T z, T c0, C... cs)
+  [[gnu::always_inline]] inline BEMAN_INSIDE_FP_FN T horner(T z, T c0, C... cs)
   {
     T p = c0;
     ((p = fma(p, z, static_cast<T>(cs))), ...);
@@ -6570,7 +6570,7 @@ namespace beman::inside::math::dbl::detail
   inline constexpr double kLog2e    = 0x1.71547652b82fep+0;   // 1/ln2
 
   // sin(r), r ∈ [−π/4, π/4]: r·P(r²), P = Σ (−1)ᵏ zᵏ/(2k+1)! to z⁷ (r¹⁵).
-  inline BEMAN_INSIDE_DBL_FN double sin_poly(double r)
+  inline BEMAN_INSIDE_FP_FN double sin_poly(double r)
   {
     double z = r * r;
     double p = horner(z,
@@ -6580,7 +6580,7 @@ namespace beman::inside::math::dbl::detail
   }
 
   // cos(r), r ∈ [−π/4, π/4]: Q(r²), Q = Σ (−1)ᵏ zᵏ/(2k)! to z⁸ (r¹⁶).
-  inline BEMAN_INSIDE_DBL_FN double cos_poly(double r)
+  inline BEMAN_INSIDE_FP_FN double cos_poly(double r)
   {
     double z = r * r;
     return horner(z,
@@ -6590,7 +6590,7 @@ namespace beman::inside::math::dbl::detail
   }
 
   // e^r, r ∈ [−ln2/2, ln2/2]: Σ rᵏ/k! to r¹².
-  inline BEMAN_INSIDE_DBL_FN double exp_poly(double r)
+  inline BEMAN_INSIDE_FP_FN double exp_poly(double r)
   {
     return horner(r,
                   1.0 / 479001600.0, 1.0 / 39916800.0, 1.0 / 3628800.0, 1.0 / 362880.0,
@@ -6600,7 +6600,7 @@ namespace beman::inside::math::dbl::detail
   }
 
   // Shared quadrant reduction: x → (r ∈ [−π/4,π/4], q = quadrant mod 4).
-  inline BEMAN_INSIDE_DBL_FN double reduce_quadrant(double x, long& q)
+  inline BEMAN_INSIDE_FP_FN double reduce_quadrant(double x, long& q)
   {
     double k = std::nearbyint(x * kTwoOverPi);
     double r = fma(-k, kHalfPiHi, x);
@@ -6609,7 +6609,7 @@ namespace beman::inside::math::dbl::detail
     return r;
   }
 
-  inline BEMAN_INSIDE_DBL_FN double d_sin(double x)
+  inline BEMAN_INSIDE_FP_FN double fp_sin(double x)
   {
     long q; double r = reduce_quadrant(x, q);
     switch (q) {
@@ -6620,7 +6620,7 @@ namespace beman::inside::math::dbl::detail
     }
   }
 
-  inline BEMAN_INSIDE_DBL_FN double d_cos(double x)
+  inline BEMAN_INSIDE_FP_FN double fp_cos(double x)
   {
     long q; double r = reduce_quadrant(x, q);
     switch (q) {
@@ -6633,7 +6633,7 @@ namespace beman::inside::math::dbl::detail
 
   // tan from one reduction: s/c in even quadrants, −c/s in odd ones. False on
   // a pole (odd quadrant with s == 0).
-  inline BEMAN_INSIDE_DBL_FN bool d_tan(double x, double& t)
+  inline BEMAN_INSIDE_FP_FN bool fp_tan(double x, double& t)
   {
     long q; double r = reduce_quadrant(x, q);
     const double s = sin_poly(r), c = cos_poly(r);
@@ -6648,7 +6648,7 @@ namespace beman::inside::math::dbl::detail
   }
 
   // e^x = 2^k · e^r, x = k·ln2 + r, r ∈ [−ln2/2, ln2/2].
-  inline BEMAN_INSIDE_DBL_FN double d_exp(double x)
+  inline BEMAN_INSIDE_FP_FN double fp_exp(double x)
   {
     double k = std::nearbyint(x * kLog2e);
     double r = fma(-k, kLn2Hi, x);
@@ -6656,13 +6656,13 @@ namespace beman::inside::math::dbl::detail
     return beman::inside::detail::ldexp(exp_poly(r), static_cast<int>(k));
   }
 
-  inline BEMAN_INSIDE_DBL_FN double d_sqrt(double x) { return std::sqrt(x); }   // correctly rounded
+  inline BEMAN_INSIDE_FP_FN double fp_sqrt(double x) { return std::sqrt(x); }   // correctly rounded
 
   inline constexpr double kSqrtHalf = 0x1.6a09e667f3bcdp-1; // √½
 
   // ln(x): frexp to m∈[½,1), rebalance to [√½,√2); ln(x) = e·ln2 + 2·atanh(f),
   // f = (m−1)/(m+1) ∈ [−0.18,0.18] (atanh series converges fast). Pre: x > 0.
-  inline BEMAN_INSIDE_DBL_FN double d_log(double x)
+  inline BEMAN_INSIDE_FP_FN double fp_log(double x)
   {
     int e;
     double m = beman::inside::detail::frexp(x, &e);
@@ -6682,26 +6682,26 @@ namespace beman::inside::math::dbl::detail
   inline constexpr double kLog10e   = 0x1.bcb7b1526e50ep-2;  // 1/ln10
 
   // Compositions on the validated primitives.
-  inline BEMAN_INSIDE_DBL_FN double d_exp2(double x)  { return d_exp(x * kLn2Full); }
-  inline BEMAN_INSIDE_DBL_FN double d_log2(double x)  { return d_log(x) * kLog2e; }
-  inline BEMAN_INSIDE_DBL_FN double d_log10(double x) { return d_log(x) * kLog10e; }
-  inline BEMAN_INSIDE_DBL_FN double d_pow(double b, double e) { return d_exp(e * d_log(b)); }
-  inline BEMAN_INSIDE_DBL_FN double d_cbrt(double x)
+  inline BEMAN_INSIDE_FP_FN double fp_exp2(double x)  { return fp_exp(x * kLn2Full); }
+  inline BEMAN_INSIDE_FP_FN double fp_log2(double x)  { return fp_log(x) * kLog2e; }
+  inline BEMAN_INSIDE_FP_FN double fp_log10(double x) { return fp_log(x) * kLog10e; }
+  inline BEMAN_INSIDE_FP_FN double fp_pow(double b, double e) { return fp_exp(e * fp_log(b)); }
+  inline BEMAN_INSIDE_FP_FN double fp_cbrt(double x)
   {
     if (x == 0.0) return 0.0;
-    double m = d_exp(d_log(x < 0 ? -x : x) * (1.0 / 3.0));
+    double m = fp_exp(fp_log(x < 0 ? -x : x) * (1.0 / 3.0));
     return x < 0 ? -m : m;
   }
-  inline BEMAN_INSIDE_DBL_FN double d_sinh(double x) { double e = d_exp(x); return (e - 1.0 / e) * 0.5; }
-  inline BEMAN_INSIDE_DBL_FN double d_cosh(double x) { double e = d_exp(x); return (e + 1.0 / e) * 0.5; }
-  inline BEMAN_INSIDE_DBL_FN double d_tanh(double x)
+  inline BEMAN_INSIDE_FP_FN double fp_sinh(double x) { double e = fp_exp(x); return (e - 1.0 / e) * 0.5; }
+  inline BEMAN_INSIDE_FP_FN double fp_cosh(double x) { double e = fp_exp(x); return (e + 1.0 / e) * 0.5; }
+  inline BEMAN_INSIDE_FP_FN double fp_tanh(double x)
   {
-    double e = d_exp(x + x);            // e^{2x}
+    double e = fp_exp(x + x);            // e^{2x}
     return (e - 1.0) / (e + 1.0);
   }
   // √(x²+y²). The public domain caps |x|,|y| ≤ 2^20, so x²+y² ≤ 2^41 — no
   // overflow, no scaling needed; the correctly-rounded √ keeps it accurate.
-  inline BEMAN_INSIDE_DBL_FN double d_hypot(double x, double y) { return d_sqrt(x * x + y * y); }
+  inline BEMAN_INSIDE_FP_FN double fp_hypot(double x, double y) { return fp_sqrt(x * x + y * y); }
 
   inline constexpr double kPi      = 0x1.921fb54442d18p+1;   // π
   inline constexpr double kPiHalf  = 0x1.921fb54442d18p+0;   // π/2
@@ -6711,7 +6711,7 @@ namespace beman::inside::math::dbl::detail
 
   // atan(x). Reduce |x|>1 via reciprocal (π/2 − atan(1/x)); then |a|>tan(π/12)
   // via the π/6 addition formula → |t| ≤ tan(π/12); atan(t) = t·P(t²) Taylor.
-  inline BEMAN_INSIDE_DBL_FN double d_atan(double x)
+  inline BEMAN_INSIDE_FP_FN double fp_atan(double x)
   {
     bool neg = x < 0; double a = neg ? -x : x;
     bool inv = a > 1.0; if (inv) a = 1.0 / a;
@@ -6727,27 +6727,27 @@ namespace beman::inside::math::dbl::detail
     return neg ? -r : r;
   }
 
-  inline BEMAN_INSIDE_DBL_FN double d_atan2(double y, double x)
+  inline BEMAN_INSIDE_FP_FN double fp_atan2(double y, double x)
   {
-    if (x > 0.0) return d_atan(y / x);
-    if (x < 0.0) return d_atan(y / x) + (y >= 0.0 ? kPi : -kPi);
+    if (x > 0.0) return fp_atan(y / x);
+    if (x < 0.0) return fp_atan(y / x) + (y >= 0.0 ? kPi : -kPi);
     if (y > 0.0) return kPiHalf;
     if (y < 0.0) return -kPiHalf;
     return 0.0;
   }
 
-  inline BEMAN_INSIDE_DBL_FN double d_asin(double x) { return d_atan(x / d_sqrt((1.0 - x) * (1.0 + x))); }
-  inline BEMAN_INSIDE_DBL_FN double d_acos(double x) { return kPiHalf - d_asin(x); }
+  inline BEMAN_INSIDE_FP_FN double fp_asin(double x) { return fp_atan(x / fp_sqrt((1.0 - x) * (1.0 + x))); }
+  inline BEMAN_INSIDE_FP_FN double fp_acos(double x) { return kPiHalf - fp_asin(x); }
 } // namespace beman::inside::math::dbl::detail
 
-namespace beman::inside::math::dbl
+namespace beman::inside::math::dbl::detail
 {
   // Engine cores: `f64` (double-backed) inside in → `double` math → inside out.
   // The inside I/O is a plain double read/store (operator double / Out{double}),
   // so the cost is the polynomial itself. These plug into the shared public
   // surface as `fn_core` under the default build.
   template <typename Out>
-  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out store(double d)
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out store(double d)
   {
     // An fp-backed Out (f64 or f32) stores the value directly via its raw (an f32
     // Out narrows double→float, lossless on its float-exact grid); a non-fp snap
@@ -6757,41 +6757,41 @@ namespace beman::inside::math::dbl
   }
 
   template <typename Out, typename In>
-  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out sin_core(In x)  { return store<Out>(detail::d_sin(static_cast<double>(x))); }
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out sin_core(In x)  { return store<Out>(detail::fp_sin(static_cast<double>(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out cos_core(In x)  { return store<Out>(detail::d_cos(static_cast<double>(x))); }
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out cos_core(In x)  { return store<Out>(detail::fp_cos(static_cast<double>(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out exp_core(In x)  { return store<Out>(detail::d_exp(static_cast<double>(x))); }
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out exp_core(In x)  { return store<Out>(detail::fp_exp(static_cast<double>(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out sqrt_core(In x) { return store<Out>(detail::d_sqrt(static_cast<double>(x))); }
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out sqrt_core(In x) { return store<Out>(detail::fp_sqrt(static_cast<double>(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out log_core(In x)  { return store<Out>(detail::d_log(static_cast<double>(x))); }
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out log_core(In x)  { return store<Out>(detail::fp_log(static_cast<double>(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out exp2_core(In x) { return store<Out>(detail::d_exp2(static_cast<double>(x))); }
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out exp2_core(In x) { return store<Out>(detail::fp_exp2(static_cast<double>(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out log2_core(In x) { return store<Out>(detail::d_log2(static_cast<double>(x))); }
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out log2_core(In x) { return store<Out>(detail::fp_log2(static_cast<double>(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out log10_core(In x){ return store<Out>(detail::d_log10(static_cast<double>(x))); }
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out log10_core(In x){ return store<Out>(detail::fp_log10(static_cast<double>(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out cbrt_core(In x) { return store<Out>(detail::d_cbrt(static_cast<double>(x))); }
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out cbrt_core(In x) { return store<Out>(detail::fp_cbrt(static_cast<double>(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out sinh_core(In x) { return store<Out>(detail::d_sinh(static_cast<double>(x))); }
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out sinh_core(In x) { return store<Out>(detail::fp_sinh(static_cast<double>(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out cosh_core(In x) { return store<Out>(detail::d_cosh(static_cast<double>(x))); }
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out cosh_core(In x) { return store<Out>(detail::fp_cosh(static_cast<double>(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out tanh_core(In x) { return store<Out>(detail::d_tanh(static_cast<double>(x))); }
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out tanh_core(In x) { return store<Out>(detail::fp_tanh(static_cast<double>(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out atan_core(In x) { return store<Out>(detail::d_atan(static_cast<double>(x))); }
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out atan_core(In x) { return store<Out>(detail::fp_atan(static_cast<double>(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out asin_core(In x) { return store<Out>(detail::d_asin(static_cast<double>(x))); }
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out asin_core(In x) { return store<Out>(detail::fp_asin(static_cast<double>(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out acos_core(In x) { return store<Out>(detail::d_acos(static_cast<double>(x))); }
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out acos_core(In x) { return store<Out>(detail::fp_acos(static_cast<double>(x))); }
   template <typename Out, typename InY, typename InX>
-  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out atan2_core(InY y, InX x)
-  { return store<Out>(detail::d_atan2(static_cast<double>(y), static_cast<double>(x))); }
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out atan2_core(InY y, InX x)
+  { return store<Out>(detail::fp_atan2(static_cast<double>(y), static_cast<double>(x))); }
   template <typename Out, typename InX, typename InY>
-  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out hypot_core(InX x, InY y)
-  { return store<Out>(detail::d_hypot(static_cast<double>(x), static_cast<double>(y))); }
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out hypot_core(InX x, InY y)
+  { return store<Out>(detail::fp_hypot(static_cast<double>(x), static_cast<double>(y))); }
 } // namespace beman::inside::math::dbl
 
 #endif // !BEMAN_INSIDE_MATH_NO_FP
@@ -6866,7 +6866,7 @@ namespace beman::inside::math::flt::detail
   inline constexpr float kTanPi12   = 0x1.126146p-2f;             // tan(π/12)
 
   // sin(r), r ∈ [−π/4, π/4]: r·P(r²) to r¹¹ (float-sufficient).
-  inline BEMAN_INSIDE_DBL_FN float sin_poly(float r)
+  inline BEMAN_INSIDE_FP_FN float sin_poly(float r)
   {
     float z = r * r;
     float p = horner(z,
@@ -6876,7 +6876,7 @@ namespace beman::inside::math::flt::detail
   }
 
   // cos(r), r ∈ [−π/4, π/4]: Q(r²) to r¹⁰.
-  inline BEMAN_INSIDE_DBL_FN float cos_poly(float r)
+  inline BEMAN_INSIDE_FP_FN float cos_poly(float r)
   {
     float z = r * r;
     return horner(z,
@@ -6885,7 +6885,7 @@ namespace beman::inside::math::flt::detail
   }
 
   // e^r, r ∈ [−ln2/2, ln2/2]: Σ rᵏ/k! to r⁷.
-  inline BEMAN_INSIDE_DBL_FN float exp_poly(float r)
+  inline BEMAN_INSIDE_FP_FN float exp_poly(float r)
   {
     return horner(r,
                   1.0f / 5040.0f, 1.0f / 720.0f, 1.0f / 120.0f, 1.0f / 24.0f,
@@ -6893,7 +6893,7 @@ namespace beman::inside::math::flt::detail
   }
 
   // Shared quadrant reduction: x → (r ∈ [−π/4,π/4], q = quadrant mod 4).
-  inline BEMAN_INSIDE_DBL_FN float reduce_quadrant(float x, long& q)
+  inline BEMAN_INSIDE_FP_FN float reduce_quadrant(float x, long& q)
   {
     float k = std::nearbyint(x * kTwoOverPi);
     float r = fma(-k, kPio2Hi, x);
@@ -6902,7 +6902,7 @@ namespace beman::inside::math::flt::detail
     return r;
   }
 
-  inline BEMAN_INSIDE_DBL_FN float d_sin(float x)
+  inline BEMAN_INSIDE_FP_FN float fp_sin(float x)
   {
     long q; float r = reduce_quadrant(x, q);
     switch (q) {
@@ -6915,7 +6915,7 @@ namespace beman::inside::math::flt::detail
 
   // cos via quadrant reduction (NOT sin(x+π/2): shifting the float input would
   // lose bits for large x — the double engine can afford that, float cannot).
-  inline BEMAN_INSIDE_DBL_FN float d_cos(float x)
+  inline BEMAN_INSIDE_FP_FN float fp_cos(float x)
   {
     long q; float r = reduce_quadrant(x, q);
     switch (q) {
@@ -6928,7 +6928,7 @@ namespace beman::inside::math::flt::detail
 
   // tan from one reduction: s/c in even quadrants, −c/s in odd ones. False on
   // a pole (odd quadrant with s == 0).
-  inline BEMAN_INSIDE_DBL_FN bool d_tan(float x, float& t)
+  inline BEMAN_INSIDE_FP_FN bool fp_tan(float x, float& t)
   {
     long q; float r = reduce_quadrant(x, q);
     const float s = sin_poly(r), c = cos_poly(r);
@@ -6943,7 +6943,7 @@ namespace beman::inside::math::flt::detail
   }
 
   // e^x = 2^k · e^r, x = k·ln2 + r, r ∈ [−ln2/2, ln2/2].
-  inline BEMAN_INSIDE_DBL_FN float d_exp(float x)
+  inline BEMAN_INSIDE_FP_FN float fp_exp(float x)
   {
     float k = std::nearbyint(x * kLog2e);
     float r = fma(-k, kLn2Hi, x);
@@ -6951,11 +6951,11 @@ namespace beman::inside::math::flt::detail
     return std::ldexp(exp_poly(r), static_cast<int>(k));
   }
 
-  inline BEMAN_INSIDE_DBL_FN float d_sqrt(float x) { return std::sqrt(x); }   // correctly rounded
+  inline BEMAN_INSIDE_FP_FN float fp_sqrt(float x) { return std::sqrt(x); }   // correctly rounded
 
   // ln(x): frexp to m∈[½,1), rebalance to [√½,√2); ln = e·ln2 + 2·atanh(f),
   // f = (m−1)/(m+1). Pre: x > 0.
-  inline BEMAN_INSIDE_DBL_FN float d_log(float x)
+  inline BEMAN_INSIDE_FP_FN float fp_log(float x)
   {
     int e;
     float m = std::frexp(x, &e);
@@ -6969,28 +6969,28 @@ namespace beman::inside::math::flt::detail
   }
 
   // Compositions on the validated primitives (same shapes as the double engine).
-  inline BEMAN_INSIDE_DBL_FN float d_exp2(float x)  { return d_exp(x * kLn2Full); }
-  inline BEMAN_INSIDE_DBL_FN float d_log2(float x)  { return d_log(x) * kLog2e; }
-  inline BEMAN_INSIDE_DBL_FN float d_log10(float x) { return d_log(x) * kLog10e; }
-  inline BEMAN_INSIDE_DBL_FN float d_pow(float b, float e) { return d_exp(e * d_log(b)); }
-  inline BEMAN_INSIDE_DBL_FN float d_cbrt(float x)
+  inline BEMAN_INSIDE_FP_FN float fp_exp2(float x)  { return fp_exp(x * kLn2Full); }
+  inline BEMAN_INSIDE_FP_FN float fp_log2(float x)  { return fp_log(x) * kLog2e; }
+  inline BEMAN_INSIDE_FP_FN float fp_log10(float x) { return fp_log(x) * kLog10e; }
+  inline BEMAN_INSIDE_FP_FN float fp_pow(float b, float e) { return fp_exp(e * fp_log(b)); }
+  inline BEMAN_INSIDE_FP_FN float fp_cbrt(float x)
   {
     if (x == 0.0f) return 0.0f;
-    float m = d_exp(d_log(x < 0 ? -x : x) * (1.0f / 3.0f));
+    float m = fp_exp(fp_log(x < 0 ? -x : x) * (1.0f / 3.0f));
     return x < 0 ? -m : m;
   }
-  inline BEMAN_INSIDE_DBL_FN float d_sinh(float x) { float e = d_exp(x); return (e - 1.0f / e) * 0.5f; }
-  inline BEMAN_INSIDE_DBL_FN float d_cosh(float x) { float e = d_exp(x); return (e + 1.0f / e) * 0.5f; }
-  inline BEMAN_INSIDE_DBL_FN float d_tanh(float x)
+  inline BEMAN_INSIDE_FP_FN float fp_sinh(float x) { float e = fp_exp(x); return (e - 1.0f / e) * 0.5f; }
+  inline BEMAN_INSIDE_FP_FN float fp_cosh(float x) { float e = fp_exp(x); return (e + 1.0f / e) * 0.5f; }
+  inline BEMAN_INSIDE_FP_FN float fp_tanh(float x)
   {
-    float e = d_exp(x + x);             // e^{2x}
+    float e = fp_exp(x + x);             // e^{2x}
     return (e - 1.0f) / (e + 1.0f);
   }
-  inline BEMAN_INSIDE_DBL_FN float d_hypot(float x, float y) { return d_sqrt(x * x + y * y); }
+  inline BEMAN_INSIDE_FP_FN float fp_hypot(float x, float y) { return fp_sqrt(x * x + y * y); }
 
   // atan(x): reduce |x|>1 via reciprocal; |a|>tan(π/12) via the π/6 addition
   // formula → |t| ≤ tan(π/12); atan(t) = t·P(t²) Taylor.
-  inline BEMAN_INSIDE_DBL_FN float d_atan(float x)
+  inline BEMAN_INSIDE_FP_FN float fp_atan(float x)
   {
     bool neg = x < 0; float a = neg ? -x : x;
     bool inv = a > 1.0f; if (inv) a = 1.0f / a;
@@ -7005,20 +7005,20 @@ namespace beman::inside::math::flt::detail
     return neg ? -r : r;
   }
 
-  inline BEMAN_INSIDE_DBL_FN float d_atan2(float y, float x)
+  inline BEMAN_INSIDE_FP_FN float fp_atan2(float y, float x)
   {
-    if (x > 0.0f) return d_atan(y / x);
-    if (x < 0.0f) return d_atan(y / x) + (y >= 0.0f ? kPi : -kPi);
+    if (x > 0.0f) return fp_atan(y / x);
+    if (x < 0.0f) return fp_atan(y / x) + (y >= 0.0f ? kPi : -kPi);
     if (y > 0.0f) return kPiHalf;
     if (y < 0.0f) return -kPiHalf;
     return 0.0f;
   }
 
-  inline BEMAN_INSIDE_DBL_FN float d_asin(float x) { return d_atan(x / d_sqrt((1.0f - x) * (1.0f + x))); }
-  inline BEMAN_INSIDE_DBL_FN float d_acos(float x) { return kPiHalf - d_asin(x); }
+  inline BEMAN_INSIDE_FP_FN float fp_asin(float x) { return fp_atan(x / fp_sqrt((1.0f - x) * (1.0f + x))); }
+  inline BEMAN_INSIDE_FP_FN float fp_acos(float x) { return kPiHalf - fp_asin(x); }
 } // namespace beman::inside::math::flt::detail
 
-namespace beman::inside::math::flt
+namespace beman::inside::math::flt::detail
 {
   // Engine cores: inside in → `float` math → inside out. Storing the float result:
   // an fp-backed Out (f32 OR f64) stores the value directly via its float/double
@@ -7026,7 +7026,7 @@ namespace beman::inside::math::flt
   // trip on the result); any other snap grid assigns through the rational path,
   // snapping via Out's round policy.
   template <typename Out>
-  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out store(float f)
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out store(float f)
   {
     if constexpr (beman::inside::detail::fp_raw<Out>) return Out{static_cast<double>(f)};
     else { Out o{}; o = beman::inside::detail::rational{static_cast<double>(f)}; return o; }
@@ -7038,48 +7038,48 @@ namespace beman::inside::math::flt
   // narrows; float→double→float round-trips to the same float, so this is a pure
   // optimization with no value change.
   template <typename In>
-  [[nodiscard]] BEMAN_INSIDE_DBL_FN float to_float(In x)
+  [[nodiscard]] BEMAN_INSIDE_FP_FN float to_float(In x)
   {
     if constexpr (beman::inside::detail::f32_raw<In>) return x.raw();
     else                                    return static_cast<float>(static_cast<double>(x));
   }
 
   template <typename Out, typename In>
-  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out sin_core(In x)  { return store<Out>(detail::d_sin(to_float(x))); }
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out sin_core(In x)  { return store<Out>(detail::fp_sin(to_float(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out cos_core(In x)  { return store<Out>(detail::d_cos(to_float(x))); }
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out cos_core(In x)  { return store<Out>(detail::fp_cos(to_float(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out exp_core(In x)  { return store<Out>(detail::d_exp(to_float(x))); }
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out exp_core(In x)  { return store<Out>(detail::fp_exp(to_float(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out sqrt_core(In x) { return store<Out>(detail::d_sqrt(to_float(x))); }
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out sqrt_core(In x) { return store<Out>(detail::fp_sqrt(to_float(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out log_core(In x)  { return store<Out>(detail::d_log(to_float(x))); }
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out log_core(In x)  { return store<Out>(detail::fp_log(to_float(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out exp2_core(In x) { return store<Out>(detail::d_exp2(to_float(x))); }
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out exp2_core(In x) { return store<Out>(detail::fp_exp2(to_float(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out log2_core(In x) { return store<Out>(detail::d_log2(to_float(x))); }
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out log2_core(In x) { return store<Out>(detail::fp_log2(to_float(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out log10_core(In x){ return store<Out>(detail::d_log10(to_float(x))); }
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out log10_core(In x){ return store<Out>(detail::fp_log10(to_float(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out cbrt_core(In x) { return store<Out>(detail::d_cbrt(to_float(x))); }
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out cbrt_core(In x) { return store<Out>(detail::fp_cbrt(to_float(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out sinh_core(In x) { return store<Out>(detail::d_sinh(to_float(x))); }
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out sinh_core(In x) { return store<Out>(detail::fp_sinh(to_float(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out cosh_core(In x) { return store<Out>(detail::d_cosh(to_float(x))); }
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out cosh_core(In x) { return store<Out>(detail::fp_cosh(to_float(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out tanh_core(In x) { return store<Out>(detail::d_tanh(to_float(x))); }
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out tanh_core(In x) { return store<Out>(detail::fp_tanh(to_float(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out atan_core(In x) { return store<Out>(detail::d_atan(to_float(x))); }
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out atan_core(In x) { return store<Out>(detail::fp_atan(to_float(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out asin_core(In x) { return store<Out>(detail::d_asin(to_float(x))); }
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out asin_core(In x) { return store<Out>(detail::fp_asin(to_float(x))); }
   template <typename Out, typename In>
-  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out acos_core(In x) { return store<Out>(detail::d_acos(to_float(x))); }
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out acos_core(In x) { return store<Out>(detail::fp_acos(to_float(x))); }
   template <typename Out, typename InY, typename InX>
-  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out atan2_core(InY y, InX x)
-  { return store<Out>(detail::d_atan2(to_float(y), to_float(x))); }
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out atan2_core(InY y, InX x)
+  { return store<Out>(detail::fp_atan2(to_float(y), to_float(x))); }
   template <typename Out, typename InX, typename InY>
-  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out hypot_core(InX x, InY y)
-  { return store<Out>(detail::d_hypot(to_float(x), to_float(y))); }
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out hypot_core(InX x, InY y)
+  { return store<Out>(detail::fp_hypot(to_float(x), to_float(y))); }
 } // namespace beman::inside::math::flt
 
 #endif // !BEMAN_INSIDE_MATH_NO_FP
@@ -7218,9 +7218,6 @@ namespace beman::inside::math
     template <insidable In>
     constexpr void domain_sinh() noexcept
     { static_assert(lower_of<In> >= -10 && upper_of<In> <= 10, "beman::inside::math::sinh: input must be in [-10, 10]"); }
-    template <insidable In>
-    constexpr void domain_sqrt() noexcept
-    { static_assert(lower_of<In> == 0, "beman::inside::math::sqrt: input must start at 0 (use the mixed-sign overload)"); }
     template <insidable In>
     constexpr void domain_tan() noexcept
     { static_assert(lower_of<In> >= -(imax{1} << 20) && upper_of<In> <= (imax{1} << 20), "beman::inside::math::tan: input magnitudes must be \u2264 2^20 rad"); }
@@ -7830,7 +7827,7 @@ namespace beman::inside::math
     // ln(w) at scale 2^W as a fixed-point imax. Leading-bit reduce w = 2^e·m,
     // m ∈ [1,2); ln(w) = e·ln2 + 2·atanh((m−1)/(m+1)). Pre: w > 0.
     template <int W>
-    constexpr imax ln_to_fixed(rational w) noexcept
+    constexpr imax log_to_fixed(rational w) noexcept
     {
       imax w_w  = to_fixed(w, W);
       int  lead = 63 - std::countl_zero(static_cast<umax>(w_w));
@@ -7847,7 +7844,7 @@ namespace beman::inside::math
     constexpr imax log2_to_fixed(rational x) noexcept
     {
       constexpr imax inv_ln2_w = to_fixed(inv_ln2_r, W);   // compile-time constant
-      return fmul(ln_to_fixed<W>(x), inv_ln2_w, W);
+      return fmul(log_to_fixed<W>(x), inv_ln2_w, W);
     }
 
     // e^(v_w / 2^W) as a rational: 2^(v·log2 e).
@@ -7862,16 +7859,16 @@ namespace beman::inside::math
     // marshal through to_fixed). pow/cbrt compose via the *_fixed primitives
     // above instead, to avoid rational-denominator blow-up.
     template <int W>
-    constexpr rational exp_fixed(rational v) noexcept
+    constexpr rational exp_rat(rational v) noexcept
     { return exp_from_fixed<W>(to_fixed(v, W)); }
     template <int W>
-    constexpr rational ln_fixed(rational w) noexcept
-    { return fixed_to_rational(ln_to_fixed<W>(w), W); }
+    constexpr rational log_rat(rational w) noexcept
+    { return fixed_to_rational(log_to_fixed<W>(w), W); }
     template <int W>
-    constexpr rational exp2_fixed(rational x) noexcept
+    constexpr rational exp2_rat(rational x) noexcept
     { return exp2_from_fixed<W>(to_fixed(x, W)); }
     template <int W>
-    constexpr rational log2_fixed(rational x) noexcept
+    constexpr rational log2_rat(rational x) noexcept
     { return fixed_to_rational(log2_to_fixed<W>(x), W); }
 
     // 1/ln10 at scale 2^W — for log10 = ln·(1/ln10), composed in fixed-point.
@@ -7880,7 +7877,7 @@ namespace beman::inside::math
     {
       // ln10 ≈ 2.302585 (small, no overflow): derive the rational once, marshal.
       return to_fixed((rational{1} /
-                       fixed_to_rational(ln_to_fixed<W>(rational{10}), W)).value(), W);
+                       fixed_to_rational(log_to_fixed<W>(rational{10}), W)).value(), W);
     }
   } // namespace detail
 
@@ -7888,8 +7885,9 @@ namespace beman::inside::math
   // Converts to a turn (× 1/(2π)) at the grid-derived working scale, then runs
   // the circular-CORDIC reducer. Inputs up to |angle| ≤ 2^20 rad (see
   // rad_to_turn_w for the reduction split beyond ±1024).
+  namespace cordic {
   template <insidable Out, insidable In>
-  [[nodiscard]] constexpr Out sin_impl(In angle)
+  [[nodiscard]] constexpr Out sin_into(In angle)
   {
     detail::domain_sin<In>();
     static_assert(lower_of<Out> <= -1 && upper_of<Out> >= 1,
@@ -7899,11 +7897,13 @@ namespace beman::inside::math
     imax turn_w = detail::rad_to_turn_w<W, In>(angle);
     return detail::store_grid<Out>(detail::sin_from_turn_fixed<W, W>(turn_w));
   }
+  } // namespace cordic
 
   // cos: radians-valued inside → amplitude. cos(x) = sin(x + π/2) — add a
   // quarter-turn before the quadrant reducer, same precision as sin.
+  namespace cordic {
   template <insidable Out, insidable In>
-  [[nodiscard]] constexpr Out cos_impl(In angle)
+  [[nodiscard]] constexpr Out cos_into(In angle)
   {
     detail::domain_cos<In>();
     static_assert(lower_of<Out> <= -1 && upper_of<Out> >= 1,
@@ -7913,12 +7913,13 @@ namespace beman::inside::math
     imax turn_w = detail::rad_to_turn_w<W, In>(angle);
     return detail::store_grid<Out>(detail::cos_from_turn_fixed<W, W>(turn_w));
   }
+  } // namespace cordic
 
   namespace detail
   {
     using namespace beman::inside::detail;
 
-    // Shared tail of tan_impl / tan_turn_impl: pole → division_by_zero; outside
+    // Shared tail of tan_into / tan_turn_impl: pole → division_by_zero; outside
     // Out → overflow (a clamp Out saturates in the store instead).
     template <insidable Out, int W>
     constexpr std::expected<Out, errc> tan_store(imax turn_w)
@@ -7958,8 +7959,9 @@ namespace beman::inside::math
   // tan: radians-valued inside → amplitude, with pole guard. sin/cos from the
   // radians input, divided. Returns `unexpected(division_by_zero)` if cos rounds
   // to 0 (input on a pole), `unexpected(overflow)` if the result exceeds Out.
+  namespace cordic {
   template <insidable Out, insidable In>
-  [[nodiscard]] constexpr std::expected<Out, errc> tan_impl(In angle)
+  [[nodiscard]] constexpr std::expected<Out, errc> tan_into(In angle)
   {
     detail::domain_tan<In>();
 
@@ -7968,64 +7970,74 @@ namespace beman::inside::math
 
     return detail::tan_store<Out, W>(turn_w);
   }
+  } // namespace cordic
 
 
   // log2: positive inside → inside. log2(x) = ln(x)·log2(e) via the grid-scaled
-  // hyperbolic-CORDIC `log2_fixed` core (leading-bit reduction + atanh vectoring).
+  // hyperbolic-CORDIC `log2_rat` core (leading-bit reduction + atanh vectoring).
+  namespace cordic {
   template <insidable Out, insidable In>
-  [[nodiscard]] constexpr Out log2_impl(In x)
+  [[nodiscard]] constexpr Out log2_into(In x)
   {
     detail::domain_log2<In>();
 
-    return detail::store_grid<Out>(detail::log2_fixed<detail::working_bits<Out>()>(rational{x}));
+    return detail::store_grid<Out>(detail::log2_rat<detail::working_bits<Out>()>(rational{x}));
   }
+  } // namespace cordic
 
   // exp2: inside → inside, returning 2^x. 2^x = e^(x·ln2) via the grid-scaled
-  // hyperbolic-CORDIC `exp2_fixed` core (integer/fractional split + sinh/cosh).
+  // hyperbolic-CORDIC `exp2_rat` core (integer/fractional split + sinh/cosh).
   //
   // Restrict |x| ≤ 30 so the rational denominator 2^(30 - k) fits in int63.
   // The output `Out` must include non-negative values and cover at least
   // [2^lower_of<In>, 2^upper_of<In>] — anything narrower needs `clamp` to absorb
   // overflow at the assignment.
+  namespace cordic {
   template <insidable Out, insidable In>
-  [[nodiscard]] constexpr Out exp2_impl(In x)
+  [[nodiscard]] constexpr Out exp2_into(In x)
   {
     detail::domain_exp2<In>();
     static_assert(lower_of<Out> >= 0,
                   "beman::inside::math::exp2: Out must be non-negative");
 
-    return detail::store_grid<Out>(detail::exp2_fixed<detail::working_bits<Out>()>(rational{x}));
+    return detail::store_grid<Out>(detail::exp2_rat<detail::working_bits<Out>()>(rational{x}));
   }
+  } // namespace cordic
 
   // exp: thin wrapper. exp(x) = exp2(x · log2(e)). The scaling factor
   // log2(e) ≈ 1.4427, so x must stay inside [-30/log2(e), 30/log2(e)] ≈
   // [-20.79, 20.79] for exp2's denominator-shift envelope. We use [-20, 20].
+  namespace cordic {
   template <insidable Out, insidable In>
-  [[nodiscard]] constexpr Out exp_impl(In x)
+  [[nodiscard]] constexpr Out exp_into(In x)
   {
     detail::domain_exp<In>();
     static_assert(lower_of<Out> >= 0,
                   "beman::inside::math::exp: Out must be non-negative");
 
-    return detail::store_grid<Out>(detail::exp_fixed<detail::working_bits<Out>()>(rational{x}));
+    return detail::store_grid<Out>(detail::exp_rat<detail::working_bits<Out>()>(rational{x}));
   }
+  } // namespace cordic
 
   // log: thin wrapper. log(x) = log2(x) · ln(2). Result precision matches
   // log2 minus 1-2 ULP from the final fixed-point scaling.
+  namespace cordic {
   template <insidable Out, insidable In>
-  [[nodiscard]] constexpr Out log_impl(In x)
+  [[nodiscard]] constexpr Out log_into(In x)
   {
     detail::domain_log<In>();
 
-    return detail::store_grid<Out>(detail::ln_fixed<detail::working_bits<Out>()>(rational{x}));
+    return detail::store_grid<Out>(detail::log_rat<detail::working_bits<Out>()>(rational{x}));
   }
+  } // namespace cordic
 
   // pow_base<Base>(x) = Base^x for compile-time-known integer Base ≥ 2.
   // Implemented as exp2(x · log2(Base)) with log2(Base) from the grid-scaled
   // `log2_to_fixed` core — no hand-typed magic constants.
   // For Base = 10, this is the building block for `db_to_linear`.
-  template <imax Base, insidable Out, insidable In>
-  [[nodiscard]] constexpr Out pow_base_impl(In x)
+  namespace cordic {
+  template <insidable Out, imax Base, insidable In>
+  [[nodiscard]] constexpr Out pow_base_into(In x)
   {
     static_assert(Base >= 2, "beman::inside::math::pow_base: Base must be ≥ 2");
     static_assert(lower_of<Out> >= 0,
@@ -8036,14 +8048,16 @@ namespace beman::inside::math
     imax sc_w = detail::fmul(detail::to_fixed(rational{x}, W), lb_w, W);
     return detail::store_grid<Out>(detail::exp2_from_fixed<W>(sc_w));
   }
+  } // namespace cordic
 
 
   // atan2: signed inside, signed inside → radians ∈ [-π, π], via CORDIC vectoring
   // with quadrant pre-rotation. CORDIC depends only on y/x, so inputs beyond
   // magnitude 1 are normalized by the larger magnitude (exact rational division);
   // inputs already in [-1, 1] skip it.
+  namespace cordic {
   template <insidable Out, insidable InY, insidable InX>
-  [[nodiscard]] constexpr Out atan2_impl(InY y, InX x)
+  [[nodiscard]] constexpr Out atan2_into(InY y, InX x)
   {
     detail::domain_atan2<InY>();
     detail::domain_atan2<InX>();
@@ -8084,6 +8098,7 @@ namespace beman::inside::math
     imax rad = detail::cordic_atan2_rad<W, W>(y_w, x_w) + pre_rotation;   // radians, scale W
     return detail::store_grid<Out>(detail::fixed_to_rational(rad, W));
   }
+  } // namespace cordic
 
   namespace detail
   {
@@ -8148,7 +8163,7 @@ namespace beman::inside::math
 
   // |x|. Output Lower must be ≥ 0 (the result is always non-negative).
   template <insidable Out, insidable In>
-  [[nodiscard]] constexpr Out abs_impl(In x)
+  [[nodiscard]] constexpr Out abs_into(In x)
   {
     static_assert(lower_of<Out> <= 0,
                   "beman::inside::math::abs: Out must include 0");
@@ -8160,7 +8175,7 @@ namespace beman::inside::math
 
   // ⌊x⌋ — largest integer ≤ x.
   template <insidable Out, insidable In>
-  [[nodiscard]] constexpr Out floor_impl(In x)
+  [[nodiscard]] constexpr Out floor_into(In x)
   {
     if constexpr (detail::fp_direct<Out, detail::floor_auto_t<In>, In>)
       return detail::fp_direct_store<Out>(x, detail::fp_floor);
@@ -8170,7 +8185,7 @@ namespace beman::inside::math
 
   // ⌈x⌉ — smallest integer ≥ x.
   template <insidable Out, insidable In>
-  [[nodiscard]] constexpr Out ceil_impl(In x)
+  [[nodiscard]] constexpr Out ceil_into(In x)
   {
     if constexpr (detail::fp_direct<Out, detail::ceil_auto_t<In>, In>)
       return detail::fp_direct_store<Out>(x, detail::fp_ceil);
@@ -8181,7 +8196,7 @@ namespace beman::inside::math
   // x rounded to nearest integer, half-away-from-zero (matches the existing
   // `rational::round()` convention used throughout the library).
   template <insidable Out, insidable In>
-  [[nodiscard]] constexpr Out round_impl(In x)
+  [[nodiscard]] constexpr Out round_into(In x)
   {
     if constexpr (detail::fp_direct<Out, detail::round_auto_t<In>, In>)
       return detail::fp_direct_store<Out>(x, detail::fp_round);
@@ -8192,7 +8207,7 @@ namespace beman::inside::math
   // x truncated toward zero. Distinct from floor for negative inputs:
   // trunc(-1.7) = -1 vs floor(-1.7) = -2.
   template <insidable Out, insidable In>
-  [[nodiscard]] constexpr Out trunc_impl(In x)
+  [[nodiscard]] constexpr Out trunc_into(In x)
   {
     if constexpr (detail::fp_direct<Out, detail::trunc_auto_t<In>, In>)
       return detail::fp_direct_store<Out>(x, detail::fp_trunc);
@@ -8246,7 +8261,7 @@ namespace beman::inside::math
   }
 
   // x mod y = x − ⌊x/y⌋·y (truncated-division convention, matching std::fmod).
-  // Result has the sign of x. Pre: y != 0 (fmod_impl checks it).
+  // Result has the sign of x. Pre: y != 0 (fmod_into checks it).
   template <insidable Out, insidable InX, insidable InY>
   [[nodiscard]] constexpr Out fmod_nonzero(InX x, InY y)
   {
@@ -8282,7 +8297,7 @@ namespace beman::inside::math
   // Like `/`: a plain Out when y's grid excludes 0, else expected<Out, errc>
   // with division_by_zero for y == 0.
   template <insidable Out, insidable InX, insidable InY>
-  [[nodiscard]] constexpr auto fmod_impl(InX x, InY y)
+  [[nodiscard]] constexpr auto fmod_into(InX x, InY y)
   {
     if constexpr (beman::inside::detail::divisor_excludes_zero<InY>)
       return fmod_nonzero<Out>(x, y);
@@ -8333,27 +8348,28 @@ namespace beman::inside::math
   } // namespace detail
 
   template <insidable In>
-  [[nodiscard]] constexpr auto abs(In x) { return abs_impl<detail::abs_auto_t<In>>(x); }
+  [[nodiscard]] constexpr auto abs(In x) { return abs_into<detail::abs_auto_t<In>>(x); }
 
   template <insidable In>
-  [[nodiscard]] constexpr auto floor(In x) { return floor_impl<detail::floor_auto_t<In>>(x); }
+  [[nodiscard]] constexpr auto floor(In x) { return floor_into<detail::floor_auto_t<In>>(x); }
 
   template <insidable In>
-  [[nodiscard]] constexpr auto ceil(In x) { return ceil_impl<detail::ceil_auto_t<In>>(x); }
+  [[nodiscard]] constexpr auto ceil(In x) { return ceil_into<detail::ceil_auto_t<In>>(x); }
 
   template <insidable In>
-  [[nodiscard]] constexpr auto round(In x) { return round_impl<detail::round_auto_t<In>>(x); }
+  [[nodiscard]] constexpr auto round(In x) { return round_into<detail::round_auto_t<In>>(x); }
 
   template <insidable In>
-  [[nodiscard]] constexpr auto trunc(In x) { return trunc_impl<detail::trunc_auto_t<In>>(x); }
+  [[nodiscard]] constexpr auto trunc(In x) { return trunc_into<detail::trunc_auto_t<In>>(x); }
 
   // sqrt: non-negative inside → inside. Newton-Raphson on grid-scaled integer math
   // with a leading-bit initial guess; input must have Lower == 0. The mixed-sign
   // overload below accepts Lower < 0 and errors on a negative runtime value.
+  namespace cordic {
   template <insidable Out, insidable In>
-  [[nodiscard]] constexpr Out sqrt_impl(In x)
+    requires (lower_of<In> == rational{0})
+  [[nodiscard]] constexpr Out sqrt_into(In x)
   {
-    detail::domain_sqrt<In>();
     static_assert(lower_of<Out> <= 0,
                   "beman::inside::math::sqrt: Out must include 0");
 
@@ -8361,12 +8377,15 @@ namespace beman::inside::math
     imax a_w = detail::to_fixed(rational{x}, W);
     return detail::store_grid<Out>(detail::fixed_to_rational(detail::sqrt_fixed<W>(a_w), W));
   }
+  } // namespace cordic
 
   // Mixed-sign sqrt: accepts inputs whose interval crosses zero. Returns
   // `unexpected(errc::domain_error)` on a negative runtime value, else same as
-  // sqrt_impl.
+  // sqrt_into.
+  namespace cordic {
   template <insidable Out, insidable In>
-  [[nodiscard]] constexpr std::expected<Out, errc> sqrt_signed_impl(In x)
+    requires (lower_of<In> < rational{0})
+  [[nodiscard]] constexpr std::expected<Out, errc> sqrt_into(In x)
   {
     static_assert(lower_of<Out> <= 0,
                   "beman::inside::math::sqrt: Out must include 0");
@@ -8379,6 +8398,7 @@ namespace beman::inside::math
     imax a_w = detail::to_fixed(v, W);
     return detail::store_grid<Out>(detail::fixed_to_rational(detail::sqrt_fixed<W>(a_w), W));
   }
+  } // namespace cordic
 
   //---------------------------------------------------------------------------
   // Auto-deducing forms — monotonic transcendental tier. Each derives Out from
@@ -8415,16 +8435,16 @@ namespace beman::inside::math
     }
 
     constexpr rational exp2_endpoint(rational v) noexcept
-    { return exp2_fixed<kRefBits>(v); }
+    { return exp2_rat<kRefBits>(v); }
 
     constexpr rational log2_endpoint(rational v) noexcept
-    { return log2_fixed<kRefBits>(v); }
+    { return log2_rat<kRefBits>(v); }
 
     constexpr rational exp_endpoint(rational v) noexcept
-    { return exp_fixed<kRefBits>(v); }
+    { return exp_rat<kRefBits>(v); }
 
     constexpr rational log_endpoint(rational v) noexcept
-    { return ln_fixed<kRefBits>(v); }
+    { return log_rat<kRefBits>(v); }
 
     template <imax Base>
     constexpr rational pow_base_endpoint(rational v) noexcept
@@ -8527,7 +8547,7 @@ namespace beman::inside::math
 
   template <insidable InX, insidable InY>
   [[nodiscard]] constexpr auto fmod(InX x, InY y)
-  { return fmod_impl<detail::fmod_auto_t<InX, InY>>(x, y); }
+  { return fmod_into<detail::fmod_auto_t<InX, InY>>(x, y); }
 
   //===========================================================================
   // Grid-native periodic trig: circle<M> angle + caller-owned amplitude.
@@ -8593,71 +8613,71 @@ namespace beman::inside::math
 
     // Recover the slot count M from a circle-shaped angle: the degree period
     // 360 divided by the notch. The public entry points validate the shape.
-    template <insidable DEG>
+    template <insidable In>
     inline constexpr imax circle_slots =
-      round((rational{360} / notch_of<DEG>).value());
+      round((rational{360} / notch_of<In>).value());
 
     // Shared shape check for the circle-input entry points.
-    template <insidable DEG>
+    template <insidable In>
     constexpr bool valid_circle() noexcept
     {
-      static_assert(lower_of<DEG> == 0,
+      static_assert(lower_of<In> == 0,
                     "beman::inside::math: circle angle must have Lower 0 (degrees)");
-      static_assert(has_flag(policy_of<DEG>, wrap),
+      static_assert(has_flag(policy_of<In>, wrap),
                     "beman::inside::math: circle angle must carry the wrap policy");
-      static_assert(has_flag(policy_of<DEG>, f64),
+      static_assert(has_flag(policy_of<In>, f64),
                     "beman::inside::math: circle angle must carry the `f64` policy "
                     "(circle<M> already does; custom angle bounds must add `| f64`)");
-      static_assert(circle_slots<DEG> % 4 == 0,
+      static_assert(circle_slots<In> % 4 == 0,
                     "beman::inside::math: circle slot count M must be divisible by 4");
       return true;
     }
   } // namespace detail
 
   // sin(angle) → out, on out's amplitude grid. angle is a circle<M>. Reference
-  // output (not a return) lets AMP be deduced from the caller's object and reuses
+  // output (not a return) lets Out be deduced from the caller's object and reuses
   // its assignment policy for the final rounding.
-  template <insidable DEG, insidable AMP>
-  BEMAN_INSIDE_MATH_FN void sin(DEG angle, AMP& out)
+  template <insidable In, insidable Out>
+  BEMAN_INSIDE_MATH_FN void sin(In angle, Out& out)
   {
-    static_assert(detail::valid_circle<DEG>());
+    static_assert(detail::valid_circle<In>());
 #if defined(BEMAN_INSIDE_MATH_NO_FP)
-    constexpr imax M = detail::circle_slots<DEG>;
-    constexpr int  W = detail::working_bits<AMP>();
+    constexpr imax M = detail::circle_slots<In>;
+    constexpr int  W = detail::working_bits<Out>();
     out = detail::sin_slot<M, W>(beman::inside::detail::raw_imax(angle));
 #elif defined(BEMAN_INSIDE_MATH_FLOAT)
-    out = flt::detail::d_sin(flt::to_float(angle) * (flt::detail::kPi / 180.0f));
+    out = flt::detail::fp_sin(flt::detail::to_float(angle) * (flt::detail::kPi / 180.0f));
 #else
-    out = dbl::detail::d_sin(static_cast<double>(angle) * (dbl::detail::kPi / 180.0));
+    out = dbl::detail::fp_sin(static_cast<double>(angle) * (dbl::detail::kPi / 180.0));
 #endif
   }
 
   // cos(angle) → out. cos(x) = sin(x + ¼ turn): shift the slot by M/4.
-  template <insidable DEG, insidable AMP>
-  BEMAN_INSIDE_MATH_FN void cos(DEG angle, AMP& out)
+  template <insidable In, insidable Out>
+  BEMAN_INSIDE_MATH_FN void cos(In angle, Out& out)
   {
-    static_assert(detail::valid_circle<DEG>());
+    static_assert(detail::valid_circle<In>());
 #if defined(BEMAN_INSIDE_MATH_NO_FP)
-    constexpr imax M = detail::circle_slots<DEG>;
-    constexpr int  W = detail::working_bits<AMP>();
+    constexpr imax M = detail::circle_slots<In>;
+    constexpr int  W = detail::working_bits<Out>();
     out = detail::sin_slot<M, W>(beman::inside::detail::raw_imax(angle) + M / 4);
 #elif defined(BEMAN_INSIDE_MATH_FLOAT)
-    out = flt::detail::d_cos(flt::to_float(angle) * (flt::detail::kPi / 180.0f));
+    out = flt::detail::fp_cos(flt::detail::to_float(angle) * (flt::detail::kPi / 180.0f));
 #else
-    out = dbl::detail::d_cos(static_cast<double>(angle) * (dbl::detail::kPi / 180.0));
+    out = dbl::detail::fp_cos(static_cast<double>(angle) * (dbl::detail::kPi / 180.0));
 #endif
   }
 
   // tan(angle) → out = sin/cos. Returns false (and leaves out untouched) when
   // the angle lands exactly on a pole (cos == 0); overflow of the amplitude
   // grid is handled by out's own policy (e.g. clamp).
-  template <insidable DEG, insidable AMP>
-  [[nodiscard]] BEMAN_INSIDE_MATH_FN bool tan(DEG angle, AMP& out)
+  template <insidable In, insidable Out>
+  [[nodiscard]] BEMAN_INSIDE_MATH_FN bool tan(In angle, Out& out)
   {
-    static_assert(detail::valid_circle<DEG>());
+    static_assert(detail::valid_circle<In>());
 #if defined(BEMAN_INSIDE_MATH_NO_FP)
-    constexpr imax M = detail::circle_slots<DEG>;
-    constexpr int  W = detail::working_bits<AMP>();
+    constexpr imax M = detail::circle_slots<In>;
+    constexpr int  W = detail::working_bits<Out>();
     imax i = beman::inside::detail::raw_imax(angle);
     rational c = detail::sin_slot<M, W>(i + M / 4);
     if (c == 0) return false;                                  // pole
@@ -8665,12 +8685,12 @@ namespace beman::inside::math
     return true;
 #elif defined(BEMAN_INSIDE_MATH_FLOAT)
     float t;
-    if (!flt::detail::d_tan(flt::to_float(angle) * (flt::detail::kPi / 180.0f), t)) return false;   // pole
+    if (!flt::detail::fp_tan(flt::detail::to_float(angle) * (flt::detail::kPi / 180.0f), t)) return false;   // pole
     out = t;
     return true;
 #else
     double t;
-    if (!dbl::detail::d_tan(static_cast<double>(angle) * (dbl::detail::kPi / 180.0), t)) return false;   // pole
+    if (!dbl::detail::fp_tan(static_cast<double>(angle) * (dbl::detail::kPi / 180.0), t)) return false;   // pole
     out = t;
     return true;
 #endif
@@ -8694,7 +8714,7 @@ namespace beman::inside::math
     // keeping the CORDIC argument inside its [-1, 1] window. Inputs with
     // |v| ≤ 1 take the original branch unchanged (bit-identical results).
     template <int W>
-    constexpr rational atan_fixed(rational v) noexcept
+    constexpr rational atan_rat(rational v) noexcept
     {
       rational av = abs(v);
       if (av <= rational{1})
@@ -8741,7 +8761,7 @@ namespace beman::inside::math
     template <int W>
     constexpr void exp_pair(rational v, imax& big, imax& small) noexcept
     {
-      big   = to_fixed(exp_fixed<W>(abs(v)), W);
+      big   = to_fixed(exp_rat<W>(abs(v)), W);
       small = ((imax{1} << (2 * W)) + big / 2) / big;
     }
 
@@ -8770,7 +8790,7 @@ namespace beman::inside::math
     {
       constexpr imax one = imax{1} << W;
       rational av = abs(v);
-      imax u = to_fixed(exp_fixed<W>(av * -2), W);
+      imax u = to_fixed(exp_rat<W>(av * -2), W);
       imax t = ((one - u) << W) / (one + u);
       return (v < rational{0}) ? fixed_to_rational(-t, W)
                                             : fixed_to_rational(t, W);
@@ -8782,7 +8802,7 @@ namespace beman::inside::math
 
     template <int W = kRefBits>
     constexpr rational log10_endpoint(rational v) noexcept
-    { return fixed_to_rational(fmul(ln_to_fixed<W>(v), inv_ln10_w<W>, W), W); }
+    { return fixed_to_rational(fmul(log_to_fixed<W>(v), inv_ln10_w<W>, W), W); }
 
     // cbrt(v) = sign(v)·e^(ln|v|/3); cbrt(0) = 0.
     template <int W = kRefBits>
@@ -8790,7 +8810,7 @@ namespace beman::inside::math
     {
       if (v == rational{0}) return rational{0};
       rational av = abs(v);
-      rational mag = exp_from_fixed<W>(ln_to_fixed<W>(av) / 3);
+      rational mag = exp_from_fixed<W>(log_to_fixed<W>(av) / 3);
       return (v < rational{0}) ? -mag : mag;
     }
 
@@ -8837,7 +8857,7 @@ namespace beman::inside::math
     // family. acos is decreasing; cosh is even (min at 0 if the interval
     // spans it). round_nearest lands sub-notch drift onto the grid.
     template <insidable In>
-    using atan_auto_t = outward_t<In, atan_fixed<working_bits<In>()>(lower_of<In>), atan_fixed<working_bits<In>()>(upper_of<In>)>;
+    using atan_auto_t = outward_t<In, atan_rat<working_bits<In>()>(lower_of<In>), atan_rat<working_bits<In>()>(upper_of<In>)>;
 
     template <insidable In>
     using asin_auto_t = outward_t<In, asin_endpoint(lower_of<In>), asin_endpoint(upper_of<In>)>;
@@ -8917,78 +8937,97 @@ namespace beman::inside::math
   } // namespace detail
 
   // --- explicit-Out impls -------------------------------------------------
+  namespace cordic {
   template <insidable Out, insidable In>
-  [[nodiscard]] constexpr Out atan_impl(In x)
+  [[nodiscard]] constexpr Out atan_into(In x)
   {
     detail::domain_atan<In>();
-    return detail::store_grid<Out>(detail::atan_fixed<detail::working_bits<Out>()>(rational{x}));
+    return detail::store_grid<Out>(detail::atan_rat<detail::working_bits<Out>()>(rational{x}));
   }
+  } // namespace cordic
 
+  namespace cordic {
   template <insidable Out, insidable In>
-  [[nodiscard]] constexpr Out asin_impl(In x)
+  [[nodiscard]] constexpr Out asin_into(In x)
   {
     detail::domain_asin<In>();
     return detail::store_grid<Out>(detail::asin_endpoint<detail::endpoint_bits<Out>()>(rational{x}));
   }
+  } // namespace cordic
 
+  namespace cordic {
   template <insidable Out, insidable In>
-  [[nodiscard]] constexpr Out acos_impl(In x)
+  [[nodiscard]] constexpr Out acos_into(In x)
   {
     detail::domain_acos<In>();
     return detail::store_grid<Out>(detail::acos_endpoint<detail::endpoint_bits<Out>()>(rational{x}));
   }
+  } // namespace cordic
 
+  namespace cordic {
   template <insidable Out, insidable In>
-  [[nodiscard]] constexpr Out sinh_impl(In x)
+  [[nodiscard]] constexpr Out sinh_into(In x)
   {
     detail::domain_sinh<In>();
     return detail::store_grid<Out>(detail::sinh_endpoint<detail::endpoint_bits<Out>()>(rational{x}));
   }
+  } // namespace cordic
 
+  namespace cordic {
   template <insidable Out, insidable In>
-  [[nodiscard]] constexpr Out cosh_impl(In x)
+  [[nodiscard]] constexpr Out cosh_into(In x)
   {
     detail::domain_cosh<In>();
     static_assert(lower_of<Out> <= rational{1},
                   "beman::inside::math::cosh: Out must include 1 (cosh ≥ 1)");
     return detail::store_grid<Out>(detail::cosh_endpoint<detail::endpoint_bits<Out>()>(rational{x}));
   }
+  } // namespace cordic
 
+  namespace cordic {
   template <insidable Out, insidable In>
-  [[nodiscard]] constexpr Out tanh_impl(In x)
+  [[nodiscard]] constexpr Out tanh_into(In x)
   {
     detail::domain_tanh<In>();
     return detail::store_grid<Out>(detail::tanh_endpoint<detail::endpoint_bits<Out>()>(rational{x}));
   }
+  } // namespace cordic
 
+  namespace cordic {
   template <insidable Out, insidable In>
-  [[nodiscard]] constexpr Out log10_impl(In x)
+  [[nodiscard]] constexpr Out log10_into(In x)
   {
     detail::domain_log10<In>();
     return detail::store_grid<Out>(detail::log10_endpoint<detail::endpoint_bits<Out>()>(rational{x}));
   }
+  } // namespace cordic
 
+  namespace cordic {
   template <insidable Out, insidable In>
-  [[nodiscard]] constexpr Out cbrt_impl(In x)
+  [[nodiscard]] constexpr Out cbrt_into(In x)
   {
     detail::domain_cbrt<In>();
     return detail::store_grid<Out>(detail::cbrt_endpoint<detail::endpoint_bits<Out>()>(rational{x}));
   }
+  } // namespace cordic
 
+  namespace cordic {
   template <insidable Out, insidable InX, insidable InY>
-  [[nodiscard]] constexpr Out hypot_impl(InX x, InY y)
+  [[nodiscard]] constexpr Out hypot_into(InX x, InY y)
   {
     detail::domain_hypot<InX, InY>();
     static_assert(lower_of<Out> <= 0, "beman::inside::math::hypot: Out must include 0");
     return detail::store_grid<Out>(detail::hypot_endpoint<detail::endpoint_bits<Out>()>(rational{x}, rational{y}));
   }
+  } // namespace cordic
 
   // pow: b^e for runtime base b > 0. Returns `expected` — `overflow` when
   // e·log2(b) leaves exp2's [-30, 30] envelope or the result leaves Out's
   // interval. The auto form requires lower_of<InB> > 0 (so b > 0 is guaranteed
   // and the output range is bounded for deduction).
+  namespace cordic {
   template <insidable Out, insidable InB, insidable InE>
-  [[nodiscard]] constexpr std::expected<Out, errc> pow_impl(InB base, InE exp)
+  [[nodiscard]] constexpr std::expected<Out, errc> pow_into(InB base, InE exp)
   {
     rational bv = base;
     if (bv <= rational{0})
@@ -9012,6 +9051,7 @@ namespace beman::inside::math
         return std::unexpected(errc::overflow);
     return detail::store_grid<Out>(r);
   }
+  } // namespace cordic
 
   //===========================================================================
   // Explicit engine namespaces — call a chosen engine regardless of the build
@@ -9032,101 +9072,101 @@ namespace beman::inside::math
     template <insidable In>
       requires (lower_of<In> == rational{0})
     [[nodiscard]] constexpr auto sqrt(In x)
-    { static_assert(detail::require_snap<In>()); return sqrt_impl<detail::sqrt_auto_t<In>>(x); }
+    { static_assert(detail::require_snap<In>()); return sqrt_into<detail::sqrt_auto_t<In>>(x); }
 
     template <insidable In>
       requires (lower_of<In> < rational{0})
     [[nodiscard]] constexpr auto sqrt(In x)
-    { static_assert(detail::require_snap<In>()); return sqrt_signed_impl<detail::sqrt_signed_auto_t<In>>(x); }
+    { static_assert(detail::require_snap<In>()); return sqrt_into<detail::sqrt_signed_auto_t<In>>(x); }
 
     template <insidable In>
     [[nodiscard]] constexpr auto exp2(In x)
-    { static_assert(detail::require_snap<In>()); return exp2_impl<detail::exp2_auto_t<In>>(x); }
+    { static_assert(detail::require_snap<In>()); return exp2_into<detail::exp2_auto_t<In>>(x); }
 
     template <insidable In>
     [[nodiscard]] constexpr auto log2(In x)
     {
       static_assert(detail::require_snap<In>());
       static_assert(lower_of<In> > 0, "beman::inside::math::cordic::log2: input must be strictly positive");
-      return log2_impl<detail::log2_auto_t<In>>(x);
+      return log2_into<detail::log2_auto_t<In>>(x);
     }
 
     template <insidable In>
     [[nodiscard]] constexpr auto exp(In x)
-    { static_assert(detail::require_snap<In>()); return exp_impl<detail::exp_auto_t<In>>(x); }
+    { static_assert(detail::require_snap<In>()); return exp_into<detail::exp_auto_t<In>>(x); }
 
     template <insidable In>
     [[nodiscard]] constexpr auto log(In x)
     {
       static_assert(detail::require_snap<In>());
       static_assert(lower_of<In> > 0, "beman::inside::math::cordic::log: input must be strictly positive");
-      return log_impl<detail::log_auto_t<In>>(x);
+      return log_into<detail::log_auto_t<In>>(x);
     }
 
     template <imax Base, insidable In>
     [[nodiscard]] constexpr auto pow_base(In x)
-    { static_assert(detail::require_snap<In>()); return pow_base_impl<Base, detail::pow_base_auto_t<Base, In>>(x); }
+    { static_assert(detail::require_snap<In>()); return pow_base_into<detail::pow_base_auto_t<Base, In>, Base>(x); }
 
     template <insidable In>
     [[nodiscard]] constexpr auto sin(In angle)
-    { static_assert(detail::require_snap<In>()); return sin_impl<detail::sin_auto_t<In>>(angle); }
+    { static_assert(detail::require_snap<In>()); return sin_into<detail::sin_auto_t<In>>(angle); }
 
     template <insidable In>
     [[nodiscard]] constexpr auto cos(In angle)
-    { static_assert(detail::require_snap<In>()); return cos_impl<detail::cos_auto_t<In>>(angle); }
+    { static_assert(detail::require_snap<In>()); return cos_into<detail::cos_auto_t<In>>(angle); }
 
     template <insidable In>
     [[nodiscard]] constexpr auto tan(In angle)
-    { static_assert(detail::require_snap<In>()); return tan_impl<detail::tan_auto_t<In>>(angle); }
+    { static_assert(detail::require_snap<In>()); return tan_into<detail::tan_auto_t<In>>(angle); }
 
     template <insidable InY, insidable InX>
     [[nodiscard]] constexpr auto atan2(InY y, InX x)
     {
       static_assert(detail::require_snap<InY>() && detail::require_snap<InX>());
-      return atan2_impl<detail::atan2_auto_t<InY, InX>>(y, x);
+      return atan2_into<detail::atan2_auto_t<InY, InX>>(y, x);
     }
 
     template <insidable In>
     [[nodiscard]] constexpr auto atan(In x)
-    { static_assert(detail::require_snap<In>()); return atan_impl<detail::atan_auto_t<In>>(x); }
+    { static_assert(detail::require_snap<In>()); return atan_into<detail::atan_auto_t<In>>(x); }
 
     template <insidable In>
     [[nodiscard]] constexpr auto asin(In x)
-    { static_assert(detail::require_snap<In>()); return asin_impl<detail::asin_auto_t<In>>(x); }
+    { static_assert(detail::require_snap<In>()); return asin_into<detail::asin_auto_t<In>>(x); }
 
     template <insidable In>
     [[nodiscard]] constexpr auto acos(In x)
-    { static_assert(detail::require_snap<In>()); return acos_impl<detail::acos_auto_t<In>>(x); }
+    { static_assert(detail::require_snap<In>()); return acos_into<detail::acos_auto_t<In>>(x); }
 
     template <insidable In>
     [[nodiscard]] constexpr auto sinh(In x)
-    { static_assert(detail::require_snap<In>()); return sinh_impl<detail::sinh_auto_t<In>>(x); }
+    { static_assert(detail::require_snap<In>()); return sinh_into<detail::sinh_auto_t<In>>(x); }
 
     template <insidable In>
     [[nodiscard]] constexpr auto cosh(In x)
-    { static_assert(detail::require_snap<In>()); return cosh_impl<detail::cosh_auto_t<In>>(x); }
+    { static_assert(detail::require_snap<In>()); return cosh_into<detail::cosh_auto_t<In>>(x); }
 
     template <insidable In>
     [[nodiscard]] constexpr auto tanh(In x)
-    { static_assert(detail::require_snap<In>()); return tanh_impl<detail::tanh_auto_t<In>>(x); }
+    { static_assert(detail::require_snap<In>()); return tanh_into<detail::tanh_auto_t<In>>(x); }
 
     template <insidable In>
     [[nodiscard]] constexpr auto log10(In x)
     {
       static_assert(detail::require_snap<In>());
       static_assert(lower_of<In> > 0, "beman::inside::math::cordic::log10: input must be strictly positive");
-      return log10_impl<detail::log10_auto_t<In>>(x);
+      return log10_into<detail::log10_auto_t<In>>(x);
     }
 
     template <insidable In>
     [[nodiscard]] constexpr auto cbrt(In x)
-    { static_assert(detail::require_snap<In>()); return cbrt_impl<detail::cbrt_auto_t<In>>(x); }
+    { static_assert(detail::require_snap<In>()); return cbrt_into<detail::cbrt_auto_t<In>>(x); }
 
     template <insidable InX, insidable InY>
     [[nodiscard]] constexpr auto hypot(InX x, InY y)
     {
       static_assert(detail::require_snap<InX>() && detail::require_snap<InY>());
-      return hypot_impl<detail::hypot_auto_t<InX, InY>>(x, y);
+      return hypot_into<detail::hypot_auto_t<InX, InY>>(x, y);
     }
 
     template <insidable InB, insidable InE>
@@ -9134,7 +9174,7 @@ namespace beman::inside::math
     [[nodiscard]] constexpr auto pow(InB base, InE exp)
     {
       static_assert(detail::require_snap<InB>() && detail::require_snap<InE>());
-      return pow_impl<detail::pow_auto_t<InB, InE>>(base, exp);
+      return pow_into<detail::pow_auto_t<InB, InE>>(base, exp);
     }
   } // namespace cordic
 
@@ -9143,304 +9183,128 @@ namespace beman::inside::math
   namespace mdetail = beman::inside::math::detail;
 
 #ifndef BEMAN_INSIDE_MATH_NO_FP
+  //---------------------------------------------------------------------------
+  // The FP engines' public API, written once for both float types. Each
+  // function has an explicit-output form `fn_into<Out>` (domain-checked) and
+  // the auto form `fn`, which deduces Out and calls it. Inside each namespace
+  // `fp_t` is the engine's float type, `to_fp` reads an inside as one, `detail::`
+  // names the engine's own cores and `mdetail::` the shared helpers.
+  //---------------------------------------------------------------------------
+#define BEMAN_INSIDE_FP_UNARY(fn)                                                         \
+    template <insidable Out, insidable In>                                                \
+    [[nodiscard]] BEMAN_INSIDE_FP_FN Out fn##_into(In x)                                 \
+    { mdetail::domain_##fn<In>(); return detail::fn##_core<Out>(x); }                             \
+    template <insidable In>                                                               \
+    [[nodiscard]] BEMAN_INSIDE_FP_FN auto fn(In x)                                       \
+    { static_assert(mdetail::require_snap<In>()); return fn##_into<mdetail::fn##_auto_t<In>>(x); }
+
+#define BEMAN_INSIDE_FP_ENGINE_API                                                        \
+    BEMAN_INSIDE_FP_UNARY(exp2)  BEMAN_INSIDE_FP_UNARY(log2)  BEMAN_INSIDE_FP_UNARY(exp)  \
+    BEMAN_INSIDE_FP_UNARY(log)   BEMAN_INSIDE_FP_UNARY(log10) BEMAN_INSIDE_FP_UNARY(sin)  \
+    BEMAN_INSIDE_FP_UNARY(cos)   BEMAN_INSIDE_FP_UNARY(atan)  BEMAN_INSIDE_FP_UNARY(asin) \
+    BEMAN_INSIDE_FP_UNARY(acos)  BEMAN_INSIDE_FP_UNARY(sinh)  BEMAN_INSIDE_FP_UNARY(cosh) \
+    BEMAN_INSIDE_FP_UNARY(tanh)  BEMAN_INSIDE_FP_UNARY(cbrt)                              \
+                                                                                          \
+    template <insidable Out, insidable In> requires (lower_of<In> == rational{0})         \
+    [[nodiscard]] BEMAN_INSIDE_FP_FN Out sqrt_into(In x) { return detail::sqrt_core<Out>(x); }   \
+    template <insidable Out, insidable In> requires (lower_of<In> < rational{0})          \
+    [[nodiscard]] BEMAN_INSIDE_FP_FN std::expected<Out, errc> sqrt_into(In x)            \
+    {                                                                                     \
+      const fp_t v = to_fp(x);                                                            \
+      if (v < fp_t{0}) return std::unexpected(errc::domain_error);                        \
+      return detail::store<Out>(detail::fp_sqrt(v));                                               \
+    }                                                                                     \
+    template <insidable In> requires (lower_of<In> == rational{0})                        \
+    [[nodiscard]] BEMAN_INSIDE_FP_FN auto sqrt(In x)                                     \
+    { static_assert(mdetail::require_snap<In>()); return sqrt_into<mdetail::sqrt_auto_t<In>>(x); } \
+    template <insidable In> requires (lower_of<In> < rational{0})                         \
+    [[nodiscard]] BEMAN_INSIDE_FP_FN auto sqrt(In x)                                     \
+    { static_assert(mdetail::require_snap<In>()); return sqrt_into<mdetail::sqrt_signed_auto_t<In>>(x); } \
+                                                                                          \
+    template <insidable Out, insidable In>                                                \
+    [[nodiscard]] BEMAN_INSIDE_FP_FN std::expected<Out, errc> tan_into(In angle)         \
+    {                                                                                     \
+      mdetail::domain_tan<In>();                                                          \
+      fp_t t;                                                                             \
+      if (!detail::fp_tan(to_fp(angle), t)) return std::unexpected(errc::division_by_zero); \
+      if constexpr (!has_flag(policy_of<Out>, clamp))   /* clamp Out: saturate below */   \
+        if (t < mdetail::lower_fp<fp_t, Out> || t > mdetail::upper_fp<fp_t, Out>)         \
+          return std::unexpected(errc::overflow);                                         \
+      return detail::store<Out>(t);                                                               \
+    }                                                                                     \
+    template <insidable In>                                                               \
+    [[nodiscard]] BEMAN_INSIDE_FP_FN auto tan(In angle)                                  \
+    { static_assert(mdetail::require_snap<In>()); return tan_into<mdetail::tan_auto_t<In>>(angle); } \
+                                                                                          \
+    template <insidable Out, imax Base, insidable In>                                     \
+    [[nodiscard]] BEMAN_INSIDE_FP_FN Out pow_base_into(In x)                             \
+    { return detail::store<Out>(detail::fp_pow(static_cast<fp_t>(Base), to_fp(x))); }              \
+    template <imax Base, insidable In>                                                    \
+    [[nodiscard]] BEMAN_INSIDE_FP_FN auto pow_base(In x)                                 \
+    { static_assert(mdetail::require_snap<In>()); return pow_base_into<mdetail::pow_base_auto_t<Base, In>, Base>(x); } \
+                                                                                          \
+    template <insidable Out, insidable InY, insidable InX>                                \
+    [[nodiscard]] BEMAN_INSIDE_FP_FN Out atan2_into(InY y, InX x)                        \
+    { mdetail::domain_atan2<InY>(); mdetail::domain_atan2<InX>(); return detail::atan2_core<Out>(y, x); } \
+    template <insidable InY, insidable InX>                                               \
+    [[nodiscard]] BEMAN_INSIDE_FP_FN auto atan2(InY y, InX x)                            \
+    {                                                                                     \
+      static_assert(mdetail::require_snap<InY>() && mdetail::require_snap<InX>());        \
+      return atan2_into<mdetail::atan2_auto_t<InY, InX>>(y, x);                           \
+    }                                                                                     \
+                                                                                          \
+    template <insidable Out, insidable InX, insidable InY>                                \
+    [[nodiscard]] BEMAN_INSIDE_FP_FN Out hypot_into(InX x, InY y)                        \
+    { mdetail::domain_hypot<InX, InY>(); return detail::hypot_core<Out>(x, y); }                  \
+    template <insidable InX, insidable InY>                                               \
+    [[nodiscard]] BEMAN_INSIDE_FP_FN auto hypot(InX x, InY y)                            \
+    {                                                                                     \
+      static_assert(mdetail::require_snap<InX>() && mdetail::require_snap<InY>());        \
+      return hypot_into<mdetail::hypot_auto_t<InX, InY>>(x, y);                           \
+    }                                                                                     \
+                                                                                          \
+    template <insidable Out, insidable InB, insidable InE>                                \
+    [[nodiscard]] BEMAN_INSIDE_FP_FN std::expected<Out, errc> pow_into(InB base, InE exp) \
+    {                                                                                     \
+      const fp_t b = to_fp(base);                                                         \
+      if (b <= fp_t{0}) return std::unexpected(errc::domain_error);                       \
+      const fp_t r = detail::fp_pow(b, to_fp(exp));                                        \
+      if (!(r <= static_cast<fp_t>(0x1p30) && r >= static_cast<fp_t>(0x1p-30)))           \
+      {                                       /* the 2^±30 envelope, as cordic */         \
+        if constexpr (has_flag(policy_of<Out>, clamp))                                    \
+          return detail::store<Out>(r > fp_t{1} ? mdetail::upper_fp<fp_t, Out> : mdetail::lower_fp<fp_t, Out>); \
+        else                                                                              \
+          return std::unexpected(errc::overflow);                                         \
+      }                                                                                   \
+      if constexpr (!has_flag(policy_of<Out>, clamp))   /* clamp Out: saturate below */   \
+        if (r < mdetail::lower_fp<fp_t, Out> || r > mdetail::upper_fp<fp_t, Out>)         \
+          return std::unexpected(errc::overflow);                                         \
+      return detail::store<Out>(r);                                                               \
+    }                                                                                     \
+    template <insidable InB, insidable InE> requires (lower_of<InB> > rational{0})        \
+    [[nodiscard]] BEMAN_INSIDE_FP_FN auto pow(InB base, InE exp)                         \
+    {                                                                                     \
+      static_assert(mdetail::require_snap<InB>() && mdetail::require_snap<InE>());        \
+      return pow_into<mdetail::pow_auto_t<InB, InE>>(base, exp);                          \
+    }
+
   namespace dbl
   {
-    // Public-shaped double-engine entry points. `detail::` here would resolve to
-    // beman::inside::math::dbl::detail (the engine cores), so the shared deduction/helpers
-    // are qualified as `mdetail::`; the `*_core`/`store`/`d_*` names are
-    // this namespace's own. Absent under BEMAN_INSIDE_MATH_NO_FP (no FP, no <cmath>).
+    using fp_t = double;
     template <insidable In>
-      requires (lower_of<In> == rational{0})
-    [[nodiscard]] BEMAN_INSIDE_DBL_FN auto sqrt(In x)
-    { static_assert(mdetail::require_snap<In>()); return sqrt_core<mdetail::sqrt_auto_t<In>>(x); }
-
-    template <insidable In>
-      requires (lower_of<In> < rational{0})
-    [[nodiscard]] BEMAN_INSIDE_DBL_FN auto sqrt(In x)
-    {
-      static_assert(mdetail::require_snap<In>());
-      using Out = mdetail::sqrt_signed_auto_t<In>;
-      double v = static_cast<double>(x);
-      if (v < 0.0)
-        return std::expected<Out, errc>{std::unexpected(errc::domain_error)};
-      return std::expected<Out, errc>{store<Out>(detail::d_sqrt(v))};
-    }
-
-    template <insidable In>
-    [[nodiscard]] BEMAN_INSIDE_DBL_FN auto exp2(In x)
-    { static_assert(mdetail::require_snap<In>()); mdetail::domain_exp2<In>(); return exp2_core<mdetail::exp2_auto_t<In>>(x); }
-
-    template <insidable In>
-    [[nodiscard]] BEMAN_INSIDE_DBL_FN auto log2(In x)
-    {
-      static_assert(mdetail::require_snap<In>()); mdetail::domain_log2<In>();
-      return log2_core<mdetail::log2_auto_t<In>>(x);
-    }
-
-    template <insidable In>
-    [[nodiscard]] BEMAN_INSIDE_DBL_FN auto exp(In x)
-    { static_assert(mdetail::require_snap<In>()); mdetail::domain_exp<In>(); return exp_core<mdetail::exp_auto_t<In>>(x); }
-
-    template <insidable In>
-    [[nodiscard]] BEMAN_INSIDE_DBL_FN auto log(In x)
-    {
-      static_assert(mdetail::require_snap<In>()); mdetail::domain_log<In>();
-      return log_core<mdetail::log_auto_t<In>>(x);
-    }
-
-    template <imax Base, insidable In>
-    [[nodiscard]] BEMAN_INSIDE_DBL_FN auto pow_base(In x)
-    {
-      static_assert(mdetail::require_snap<In>());
-      using Out = mdetail::pow_base_auto_t<Base, In>;
-      return store<Out>(detail::d_pow(static_cast<double>(Base), static_cast<double>(x)));
-    }
-
-    template <insidable In>
-    [[nodiscard]] BEMAN_INSIDE_DBL_FN auto sin(In angle)
-    { static_assert(mdetail::require_snap<In>()); mdetail::domain_sin<In>(); return sin_core<mdetail::sin_auto_t<In>>(angle); }
-
-    template <insidable In>
-    [[nodiscard]] BEMAN_INSIDE_DBL_FN auto cos(In angle)
-    { static_assert(mdetail::require_snap<In>()); mdetail::domain_cos<In>(); return cos_core<mdetail::cos_auto_t<In>>(angle); }
-
-    template <insidable In>
-    [[nodiscard]] BEMAN_INSIDE_DBL_FN auto tan(In angle)
-    {
-      static_assert(mdetail::require_snap<In>()); mdetail::domain_tan<In>();
-      using Out = mdetail::tan_auto_t<In>;
-      double t;
-      if (!detail::d_tan(static_cast<double>(angle), t))
-        return std::expected<Out, errc>{std::unexpected(errc::division_by_zero)};
-      if constexpr (!has_flag(policy_of<Out>, clamp))   // clamp Out: saturate below
-        if (t < mdetail::lower_fp<double, Out> || t > mdetail::upper_fp<double, Out>)
-          return std::expected<Out, errc>{std::unexpected(errc::overflow)};
-      return std::expected<Out, errc>{store<Out>(t)};
-    }
-
-    template <insidable InY, insidable InX>
-    [[nodiscard]] BEMAN_INSIDE_DBL_FN auto atan2(InY y, InX x)
-    {
-      static_assert(mdetail::require_snap<InY>() && mdetail::require_snap<InX>());
-      mdetail::domain_atan2<InY>(); mdetail::domain_atan2<InX>();
-      return atan2_core<mdetail::atan2_auto_t<InY, InX>>(y, x);
-    }
-
-    template <insidable In>
-    [[nodiscard]] BEMAN_INSIDE_DBL_FN auto atan(In x)
-    { static_assert(mdetail::require_snap<In>()); mdetail::domain_atan<In>(); return atan_core<mdetail::atan_auto_t<In>>(x); }
-
-    template <insidable In>
-    [[nodiscard]] BEMAN_INSIDE_DBL_FN auto asin(In x)
-    { static_assert(mdetail::require_snap<In>()); mdetail::domain_asin<In>(); return asin_core<mdetail::asin_auto_t<In>>(x); }
-
-    template <insidable In>
-    [[nodiscard]] BEMAN_INSIDE_DBL_FN auto acos(In x)
-    { static_assert(mdetail::require_snap<In>()); mdetail::domain_acos<In>(); return acos_core<mdetail::acos_auto_t<In>>(x); }
-
-    template <insidable In>
-    [[nodiscard]] BEMAN_INSIDE_DBL_FN auto sinh(In x)
-    { static_assert(mdetail::require_snap<In>()); mdetail::domain_sinh<In>(); return sinh_core<mdetail::sinh_auto_t<In>>(x); }
-
-    template <insidable In>
-    [[nodiscard]] BEMAN_INSIDE_DBL_FN auto cosh(In x)
-    { static_assert(mdetail::require_snap<In>()); mdetail::domain_cosh<In>(); return cosh_core<mdetail::cosh_auto_t<In>>(x); }
-
-    template <insidable In>
-    [[nodiscard]] BEMAN_INSIDE_DBL_FN auto tanh(In x)
-    { static_assert(mdetail::require_snap<In>()); mdetail::domain_tanh<In>(); return tanh_core<mdetail::tanh_auto_t<In>>(x); }
-
-    template <insidable In>
-    [[nodiscard]] BEMAN_INSIDE_DBL_FN auto log10(In x)
-    {
-      static_assert(mdetail::require_snap<In>()); mdetail::domain_log10<In>();
-      return log10_core<mdetail::log10_auto_t<In>>(x);
-    }
-
-    template <insidable In>
-    [[nodiscard]] BEMAN_INSIDE_DBL_FN auto cbrt(In x)
-    { static_assert(mdetail::require_snap<In>()); mdetail::domain_cbrt<In>(); return cbrt_core<mdetail::cbrt_auto_t<In>>(x); }
-
-    template <insidable InX, insidable InY>
-    [[nodiscard]] BEMAN_INSIDE_DBL_FN auto hypot(InX x, InY y)
-    {
-      static_assert(mdetail::require_snap<InX>() && mdetail::require_snap<InY>()); mdetail::domain_hypot<InX, InY>();
-      return hypot_core<mdetail::hypot_auto_t<InX, InY>>(x, y);
-    }
-
-    template <insidable InB, insidable InE>
-      requires (lower_of<InB> > rational{0})
-    [[nodiscard]] BEMAN_INSIDE_DBL_FN auto pow(InB base, InE exp)
-    {
-      static_assert(mdetail::require_snap<InB>() && mdetail::require_snap<InE>());
-      using Out = mdetail::pow_auto_t<InB, InE>;
-      double b = static_cast<double>(base);
-      if (b <= 0.0)
-        return std::expected<Out, errc>{std::unexpected(errc::domain_error)};
-      double r = detail::d_pow(b, static_cast<double>(exp));
-      if (!(r <= 0x1p30 && r >= 0x1p-30))                  // the 2^±30 envelope, as cordic
-      {
-        if constexpr (has_flag(policy_of<Out>, clamp))
-          return std::expected<Out, errc>{store<Out>(r > 1.0 ? mdetail::upper_fp<double, Out>
-                                                             : mdetail::lower_fp<double, Out>)};
-        else
-          return std::expected<Out, errc>{std::unexpected(errc::overflow)};
-      }
-      if constexpr (!has_flag(policy_of<Out>, clamp))   // clamp Out: saturate below
-        if (r < mdetail::lower_fp<double, Out> || r > mdetail::upper_fp<double, Out>)
-          return std::expected<Out, errc>{std::unexpected(errc::overflow)};
-      return std::expected<Out, errc>{store<Out>(r)};
-    }
+    [[nodiscard]] BEMAN_INSIDE_FP_FN fp_t to_fp(In x) { return static_cast<double>(x); }
+    BEMAN_INSIDE_FP_ENGINE_API
   } // namespace dbl
 
   namespace flt
   {
-    // Public-shaped float-engine entry points — binary32 compute, same shapes as
-    // dbl:: (qualify shared helpers as mdetail::; *_core/store/d_* are
-    // this namespace's own). A third value set (float ≠ double ≠ cordic).
+    using fp_t = float;
     template <insidable In>
-      requires (lower_of<In> == rational{0})
-    [[nodiscard]] BEMAN_INSIDE_DBL_FN auto sqrt(In x)
-    { static_assert(mdetail::require_snap<In>()); return sqrt_core<mdetail::sqrt_auto_t<In>>(x); }
-
-    template <insidable In>
-      requires (lower_of<In> < rational{0})
-    [[nodiscard]] BEMAN_INSIDE_DBL_FN auto sqrt(In x)
-    {
-      static_assert(mdetail::require_snap<In>());
-      using Out = mdetail::sqrt_signed_auto_t<In>;
-      float v = flt::to_float(x);
-      if (v < 0.0f)
-        return std::expected<Out, errc>{std::unexpected(errc::domain_error)};
-      return std::expected<Out, errc>{store<Out>(detail::d_sqrt(v))};
-    }
-
-    template <insidable In>
-    [[nodiscard]] BEMAN_INSIDE_DBL_FN auto exp2(In x)
-    { static_assert(mdetail::require_snap<In>()); mdetail::domain_exp2<In>(); return exp2_core<mdetail::exp2_auto_t<In>>(x); }
-
-    template <insidable In>
-    [[nodiscard]] BEMAN_INSIDE_DBL_FN auto log2(In x)
-    {
-      static_assert(mdetail::require_snap<In>()); mdetail::domain_log2<In>();
-      return log2_core<mdetail::log2_auto_t<In>>(x);
-    }
-
-    template <insidable In>
-    [[nodiscard]] BEMAN_INSIDE_DBL_FN auto exp(In x)
-    { static_assert(mdetail::require_snap<In>()); mdetail::domain_exp<In>(); return exp_core<mdetail::exp_auto_t<In>>(x); }
-
-    template <insidable In>
-    [[nodiscard]] BEMAN_INSIDE_DBL_FN auto log(In x)
-    {
-      static_assert(mdetail::require_snap<In>()); mdetail::domain_log<In>();
-      return log_core<mdetail::log_auto_t<In>>(x);
-    }
-
-    template <imax Base, insidable In>
-    [[nodiscard]] BEMAN_INSIDE_DBL_FN auto pow_base(In x)
-    {
-      static_assert(mdetail::require_snap<In>());
-      using Out = mdetail::pow_base_auto_t<Base, In>;
-      return store<Out>(detail::d_pow(static_cast<float>(Base), flt::to_float(x)));
-    }
-
-    template <insidable In>
-    [[nodiscard]] BEMAN_INSIDE_DBL_FN auto sin(In angle)
-    { static_assert(mdetail::require_snap<In>()); mdetail::domain_sin<In>(); return sin_core<mdetail::sin_auto_t<In>>(angle); }
-
-    template <insidable In>
-    [[nodiscard]] BEMAN_INSIDE_DBL_FN auto cos(In angle)
-    { static_assert(mdetail::require_snap<In>()); mdetail::domain_cos<In>(); return cos_core<mdetail::cos_auto_t<In>>(angle); }
-
-    template <insidable In>
-    [[nodiscard]] BEMAN_INSIDE_DBL_FN auto tan(In angle)
-    {
-      static_assert(mdetail::require_snap<In>()); mdetail::domain_tan<In>();
-      using Out = mdetail::tan_auto_t<In>;
-      float t;
-      if (!detail::d_tan(flt::to_float(angle), t))
-        return std::expected<Out, errc>{std::unexpected(errc::division_by_zero)};
-      if constexpr (!has_flag(policy_of<Out>, clamp))   // clamp Out: saturate below
-        if (t < mdetail::lower_fp<float, Out> || t > mdetail::upper_fp<float, Out>)
-          return std::expected<Out, errc>{std::unexpected(errc::overflow)};
-      return std::expected<Out, errc>{store<Out>(t)};
-    }
-
-    template <insidable InY, insidable InX>
-    [[nodiscard]] BEMAN_INSIDE_DBL_FN auto atan2(InY y, InX x)
-    {
-      static_assert(mdetail::require_snap<InY>() && mdetail::require_snap<InX>());
-      mdetail::domain_atan2<InY>(); mdetail::domain_atan2<InX>();
-      return atan2_core<mdetail::atan2_auto_t<InY, InX>>(y, x);
-    }
-
-    template <insidable In>
-    [[nodiscard]] BEMAN_INSIDE_DBL_FN auto atan(In x)
-    { static_assert(mdetail::require_snap<In>()); mdetail::domain_atan<In>(); return atan_core<mdetail::atan_auto_t<In>>(x); }
-
-    template <insidable In>
-    [[nodiscard]] BEMAN_INSIDE_DBL_FN auto asin(In x)
-    { static_assert(mdetail::require_snap<In>()); mdetail::domain_asin<In>(); return asin_core<mdetail::asin_auto_t<In>>(x); }
-
-    template <insidable In>
-    [[nodiscard]] BEMAN_INSIDE_DBL_FN auto acos(In x)
-    { static_assert(mdetail::require_snap<In>()); mdetail::domain_acos<In>(); return acos_core<mdetail::acos_auto_t<In>>(x); }
-
-    template <insidable In>
-    [[nodiscard]] BEMAN_INSIDE_DBL_FN auto sinh(In x)
-    { static_assert(mdetail::require_snap<In>()); mdetail::domain_sinh<In>(); return sinh_core<mdetail::sinh_auto_t<In>>(x); }
-
-    template <insidable In>
-    [[nodiscard]] BEMAN_INSIDE_DBL_FN auto cosh(In x)
-    { static_assert(mdetail::require_snap<In>()); mdetail::domain_cosh<In>(); return cosh_core<mdetail::cosh_auto_t<In>>(x); }
-
-    template <insidable In>
-    [[nodiscard]] BEMAN_INSIDE_DBL_FN auto tanh(In x)
-    { static_assert(mdetail::require_snap<In>()); mdetail::domain_tanh<In>(); return tanh_core<mdetail::tanh_auto_t<In>>(x); }
-
-    template <insidable In>
-    [[nodiscard]] BEMAN_INSIDE_DBL_FN auto log10(In x)
-    {
-      static_assert(mdetail::require_snap<In>()); mdetail::domain_log10<In>();
-      return log10_core<mdetail::log10_auto_t<In>>(x);
-    }
-
-    template <insidable In>
-    [[nodiscard]] BEMAN_INSIDE_DBL_FN auto cbrt(In x)
-    { static_assert(mdetail::require_snap<In>()); mdetail::domain_cbrt<In>(); return cbrt_core<mdetail::cbrt_auto_t<In>>(x); }
-
-    template <insidable InX, insidable InY>
-    [[nodiscard]] BEMAN_INSIDE_DBL_FN auto hypot(InX x, InY y)
-    {
-      static_assert(mdetail::require_snap<InX>() && mdetail::require_snap<InY>()); mdetail::domain_hypot<InX, InY>();
-      return hypot_core<mdetail::hypot_auto_t<InX, InY>>(x, y);
-    }
-
-    template <insidable InB, insidable InE>
-      requires (lower_of<InB> > rational{0})
-    [[nodiscard]] BEMAN_INSIDE_DBL_FN auto pow(InB base, InE exp)
-    {
-      static_assert(mdetail::require_snap<InB>() && mdetail::require_snap<InE>());
-      using Out = mdetail::pow_auto_t<InB, InE>;
-      float b = flt::to_float(base);
-      if (b <= 0.0f)
-        return std::expected<Out, errc>{std::unexpected(errc::domain_error)};
-      float r = detail::d_pow(b, flt::to_float(exp));
-      if (!(r <= 0x1p30f && r >= 0x1p-30f))                // the 2^±30 envelope, as cordic
-      {
-        if constexpr (has_flag(policy_of<Out>, clamp))
-          return std::expected<Out, errc>{store<Out>(r > 1.0f ? mdetail::upper_fp<float, Out>
-                                                              : mdetail::lower_fp<float, Out>)};
-        else
-          return std::expected<Out, errc>{std::unexpected(errc::overflow)};
-      }
-      if constexpr (!has_flag(policy_of<Out>, clamp))   // clamp Out: saturate below
-        if (r < mdetail::lower_fp<float, Out> || r > mdetail::upper_fp<float, Out>)
-          return std::expected<Out, errc>{std::unexpected(errc::overflow)};
-      return std::expected<Out, errc>{store<Out>(r)};
-    }
+    [[nodiscard]] BEMAN_INSIDE_FP_FN fp_t to_fp(In x) { return detail::to_float(x); }
+    BEMAN_INSIDE_FP_ENGINE_API
   } // namespace flt
+#undef BEMAN_INSIDE_FP_ENGINE_API
+#undef BEMAN_INSIDE_FP_UNARY
 #endif // !BEMAN_INSIDE_MATH_NO_FP
 
   //---------------------------------------------------------------------------
@@ -9459,6 +9323,26 @@ namespace beman::inside::math
   namespace default_engine = dbl;
 #endif
   using default_engine::sqrt;
+  using default_engine::sqrt_into;
+  using default_engine::exp2_into;
+  using default_engine::log2_into;
+  using default_engine::exp_into;
+  using default_engine::log_into;
+  using default_engine::pow_base_into;
+  using default_engine::sin_into;
+  using default_engine::cos_into;
+  using default_engine::tan_into;
+  using default_engine::atan2_into;
+  using default_engine::atan_into;
+  using default_engine::asin_into;
+  using default_engine::acos_into;
+  using default_engine::sinh_into;
+  using default_engine::cosh_into;
+  using default_engine::tanh_into;
+  using default_engine::log10_into;
+  using default_engine::cbrt_into;
+  using default_engine::hypot_into;
+  using default_engine::pow_into;
   using default_engine::exp2;
   using default_engine::log2;
   using default_engine::exp;

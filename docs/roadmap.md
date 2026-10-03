@@ -14,7 +14,7 @@ engine (`-DBEMAN_INSIDE_MATH_CORDIC`) is already `constexpr`. Constexpr `<cmath>
 ([P1383], feature macro `__cpp_lib_constexpr_cmath`) makes the double engine
 `constexpr` too.
 
-The **gate is already planted**: `BEMAN_INSIDE_MATH_FN` (`beman/inside/cmath.hpp`) and `BEMAN_INSIDE_DBL_FN`
+The **gate is already planted**: `BEMAN_INSIDE_MATH_FN` (`beman/inside/cmath.hpp`) and `BEMAN_INSIDE_FP_FN`
 (`beman/inside/cmath_double.hpp`) expand to `constexpr` exactly when a toolchain defines the
 macro, and to nothing otherwise — so the upgrade is automatic, no source change needed.
 

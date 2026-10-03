@@ -1300,8 +1300,8 @@ TEST(CmathTest, beman_inside_math_reductions_on_an_inside)
 
   // Explicit Out form picks a caller-chosen grid.
   using out = inside<{-5, 5}>;
-  ASSERT_TRUE(math::floor_impl<out>(x) == -2);
-  ASSERT_TRUE(math::ceil_impl <out>(y) ==  3);
+  ASSERT_TRUE(math::floor_into<out>(x) == -2);
+  ASSERT_TRUE(math::ceil_into <out>(y) ==  3);
 }
 
 // beman::inside::math: decimal probe at the inside level

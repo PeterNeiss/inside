@@ -1246,7 +1246,7 @@ static void bench_cmath()
   std::vector<tan_in_t>   v_tan;   std::vector<atan2_in_t> v_aty, v_atx;
   std::vector<fmod_x_t>   v_fmx;   std::vector<fmod_y_t>   v_fmy;
   std::vector<pow_b_t>    v_powb;  std::vector<pow_e_t>    v_powe;
-  std::vector<double> d_qs, d_q, d_log2, d_log, d_tan, d_aty, d_atx, d_fmy,
+  std::vector<double> d_qs, d_q, fp_log2, fp_log, fp_tan, d_aty, d_atx, d_fmy,
                       d_powb, d_powe;
   for (std::size_t j = 0; j < M; ++j)
   {
@@ -1273,8 +1273,8 @@ static void bench_cmath()
     d_powb.push_back(static_cast<double>(rpb));
     d_powe.push_back(static_cast<double>(qs));
     d_qs.push_back(static_cast<double>(qs));   d_q.push_back(static_cast<double>(q));
-    d_log2.push_back(static_cast<double>(rl2)); d_log.push_back(static_cast<double>(rl));
-    d_tan.push_back(static_cast<double>(rt));   d_aty.push_back(static_cast<double>(ry));
+    fp_log2.push_back(static_cast<double>(rl2)); fp_log.push_back(static_cast<double>(rl));
+    fp_tan.push_back(static_cast<double>(rt));   d_aty.push_back(static_cast<double>(ry));
     d_atx.push_back(static_cast<double>(rx));   d_fmy.push_back(static_cast<double>(rfy));
   }
 
@@ -1295,13 +1295,13 @@ static void bench_cmath()
   BEMAN_INSIDE_CMATH_GROUP("math: round", std::round(d_qs[i & J]), beman::inside::math::round(v_alg[i & J]).raw())
   BEMAN_INSIDE_CMATH_GROUP("math: sqrt",  std::sqrt(d_q[i & J]),   beman::inside::math::sqrt(v_sqrt[i & J]).raw())
   BEMAN_INSIDE_CMATH_GROUP("math: exp2",  std::exp2(d_qs[i & J]),  beman::inside::math::exp2(v_exp2[i & J]).raw())
-  BEMAN_INSIDE_CMATH_GROUP("math: log2",  std::log2(d_log2[i & J]),beman::inside::math::log2(v_log2[i & J]).raw())
+  BEMAN_INSIDE_CMATH_GROUP("math: log2",  std::log2(fp_log2[i & J]),beman::inside::math::log2(v_log2[i & J]).raw())
   BEMAN_INSIDE_CMATH_GROUP("math: exp",   std::exp(d_qs[i & J]),   beman::inside::math::exp(v_exp[i & J]).raw())
-  BEMAN_INSIDE_CMATH_GROUP("math: log",   std::log(d_log[i & J]),  beman::inside::math::log(v_log[i & J]).raw())
+  BEMAN_INSIDE_CMATH_GROUP("math: log",   std::log(fp_log[i & J]),  beman::inside::math::log(v_log[i & J]).raw())
   BEMAN_INSIDE_CMATH_GROUP("math: pow10", std::pow(10.0, d_qs[i & J]), beman::inside::math::pow_base<10>(v_pow[i & J]).raw())
   BEMAN_INSIDE_CMATH_GROUP("math: sin",   std::sin(d_qs[i & J]),   beman::inside::math::sin(v_ang[i & J]).raw())
   BEMAN_INSIDE_CMATH_GROUP("math: cos",   std::cos(d_qs[i & J]),   beman::inside::math::cos(v_ang[i & J]).raw())
-  BEMAN_INSIDE_CMATH_GROUP("math: tan",   std::tan(d_tan[i & J]),  beman::inside::math::tan(v_tan[i & J]))
+  BEMAN_INSIDE_CMATH_GROUP("math: tan",   std::tan(fp_tan[i & J]),  beman::inside::math::tan(v_tan[i & J]))
   BEMAN_INSIDE_CMATH_GROUP("math: atan2", std::atan2(d_aty[i & J], d_atx[i & J]),
                                  beman::inside::math::atan2(v_aty[i & J], v_atx[i & J]).raw())
   BEMAN_INSIDE_CMATH_GROUP("math: fmod",  std::fmod(d_qs[i & J], d_fmy[i & J]),
@@ -1315,7 +1315,7 @@ static void bench_cmath()
   BEMAN_INSIDE_CMATH_GROUP("math: atan",  std::atan(d_aty[i & J]), beman::inside::math::atan(v_aty[i & J]).raw())
   BEMAN_INSIDE_CMATH_GROUP("math: acos",  std::acos(d_aty[i & J]), beman::inside::math::acos(v_aty[i & J]).raw())
   BEMAN_INSIDE_CMATH_GROUP("math: sinh",  std::sinh(d_qs[i & J]),  beman::inside::math::sinh(v_exp[i & J]).raw())
-  BEMAN_INSIDE_CMATH_GROUP("math: log10", std::log10(d_log[i & J]),beman::inside::math::log10(v_log[i & J]).raw())
+  BEMAN_INSIDE_CMATH_GROUP("math: log10", std::log10(fp_log[i & J]),beman::inside::math::log10(v_log[i & J]).raw())
   BEMAN_INSIDE_CMATH_GROUP("math: pown<3>", d_qs[i & J] * d_qs[i & J] * d_qs[i & J],
                                  beman::inside::math::pown<3>(v_alg[i & J]).raw())
   BEMAN_INSIDE_CMATH_GROUP("math: pow (expected)",

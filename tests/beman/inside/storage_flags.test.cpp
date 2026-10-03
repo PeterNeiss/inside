@@ -497,7 +497,7 @@ TEST(StorageFlagsTest, pown_e_exact_compile_time_integer_powers_on_any_inside)
 TEST(StorageFlagsTest, tan_saturates_instead_of_erroring_when_out_carries_clamp)
 {
   // Explicit-Out spelling is the impl form (`tan<T>(x)` would bind T as the
-  // INPUT of the auto form). tan_impl's CORDIC core is compiled in both
+  // INPUT of the auto form). cordic::tan_into is compiled in both
   // engine builds (it is the compile-time grid oracle), so one path tests
   // both configs.
   using in_t  = inside<{{-2, 2}, notch<1, 16384>}, round_nearest | f64>;
@@ -505,11 +505,11 @@ TEST(StorageFlagsTest, tan_saturates_instead_of_erroring_when_out_carries_clamp)
   using err_t = inside<{{-1, 1}, notch<1, 16384>}, round_nearest | f64>;
 
   // tan(1.2) ≈ 2.57 — beyond [-1, 1].
-  auto sat = math::tan_impl<sat_t>(in_t{1.2});
+  auto sat = math::cordic::tan_into<sat_t>(in_t{1.2});
   ASSERT_TRUE(sat.has_value());
   ASSERT_TRUE(static_cast<double>(rational{*sat}) == 1.0);   // clamped to Upper
 
-  auto err = math::tan_impl<err_t>(in_t{1.2});
+  auto err = math::cordic::tan_into<err_t>(in_t{1.2});
   ASSERT_TRUE(!err.has_value());
   ASSERT_EQ(err.error(), errc::overflow);
 }
