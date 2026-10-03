@@ -497,7 +497,7 @@ namespace beman::inside
                         || (Lower<inside> == 0 && Lower<R> == 0)))
         return store_raw(detail::raw_imax(*this) + detail::raw_imax(rhs));
       else
-        return *this = *this + rhs;
+        return assign_op_result(*this + rhs);
     }
 
     private:
@@ -506,7 +506,8 @@ namespace beman::inside
     constexpr inside& store_raw(imax new_raw)
     {
       constexpr imax lo = detail::RawLo<inside>, hi = detail::RawHi<inside>;
-      if constexpr (P & (clamp | wrap | checked))
+      if constexpr (has_any_flag(P, clamp | wrap)
+                    || (has_flag(P, checked) && !has_flag(P, ignore_domain)))
         if (new_raw < lo || new_raw > hi)
         {
           if constexpr (P & clamp)
@@ -534,21 +535,24 @@ namespace beman::inside
     {
       if constexpr (detail::is_expected_v<Result>)
       {
-        // A failed op (an error) has already been reported through the policy
-        // channel; keep *this unchanged instead of dereferencing — a
-        // non-throwing installed handler must not turn into
-        // bad_expected_access here. `*r` (not value()): no second check.
+        // A failed op is reported through this type's policy (throw / handler);
+        // *this stays unchanged. `*r` (not value()): no bad_expected_access.
         if (r.has_value())
           *this = *r;
+        else
+          make_policy<P>().report(r.error());
       }
       else
         *this = r;
       return *this;
     }
 
+    // A zero divisor in /= or %=; ignore_zero on either operand silences it,
+    // as it does for div/mod.
+    template <typename R>
     constexpr inside& report_div_by_zero()
     {
-      if constexpr (!(P & ignore_zero))
+      if constexpr (!has_flag(P | InsidePolicy<R>, ignore_zero))
         make_policy<P>().report(errc::division_by_zero);
       return *this;
     }
@@ -601,7 +605,7 @@ namespace beman::inside
     constexpr inside& operator/=(R const& rhs)
     {
       if (rhs == 0)
-        return report_div_by_zero();
+        return report_div_by_zero<R>();
       return assign_op_result(*this / rhs);
     }
 
@@ -609,7 +613,7 @@ namespace beman::inside
     constexpr inside& operator%=(R const& rhs)
     {
       if (rhs == 0)
-        return report_div_by_zero();
+        return report_div_by_zero<R>();
       return assign_op_result(mod(*this, rhs, make_policy<P>()));
     }
 
@@ -621,7 +625,7 @@ namespace beman::inside
     constexpr inside& operator/=(A const& rhs)
     {
       if (detail::is_canonical_zero(rhs))
-        return report_div_by_zero();
+        return report_div_by_zero<inside>();
       return assign_op_result(detail::rational{*this} / rhs);
     }
 

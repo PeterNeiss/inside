@@ -298,7 +298,9 @@ namespace beman::inside
       {
         if (!result.has_value()) [[unlikely]]
         {
-          if constexpr (has_action<IsOverflowActionPred, As...>)
+          if (result.error() == errc::division_by_zero)
+            report_zero(errc::division_by_zero, msg);       // on_error / ignore_zero, like rational /=
+          else if constexpr (has_action<IsOverflowActionPred, As...>)
             pick_action_in<IsOverflowActionPred>(Actions).fn(Ref, result.error());
           else
             Policy.report(result.error());
@@ -310,36 +312,28 @@ namespace beman::inside
         return assign_with_picked(std::forward<R>(result));
     }
 
-    // Shared body for the fractional `+=`/`-=`/`*=`/`/=` operators: the rational
-    // RHS lifts Ref to rational and routes the checked result through
-    // `finalise_arith`; any other fractional RHS lifts both sides to double.
-    template <fractional C, typename RatOp, typename DblOp>
-    constexpr B& fractional_assign(C const& rhs, RatOp rat_op, DblOp dbl_op,
-                                   const char* msg)
-    {
-      if constexpr (std::same_as<C, rational>)
-        return finalise_arith(rat_op(rational{Ref}, rhs), msg);
-      else
-        return assign_with_picked(dbl_op(static_cast<double>(Ref),
-                                         static_cast<double>(rhs)));
-    }
+    // Shared body for the rational `+=`/`-=`/`*=`/`/=` operators: lift Ref to
+    // rational and route the checked result through `finalise_arith`.
+    template <typename RatOp>
+    constexpr B& rational_assign(rational const& rhs, RatOp rat_op, const char* msg)
+    { return finalise_arith(rat_op(rational{Ref}, rhs), msg); }
     public:
 
     template <insidable C>
     constexpr B& operator+=(C const& rhs)
-    { return finalise_arith(Ref + rhs, "policy_ref::operator+= overflow"); }
+    { return finalise_arith(add(Ref, rhs, Policy), "policy_ref::operator+= overflow"); }
 
     template <insidable C>
     constexpr B& operator-=(C const& rhs)
-    { return finalise_arith(Ref - rhs, "policy_ref::operator-= overflow"); }
+    { return finalise_arith(sub(Ref, rhs, Policy), "policy_ref::operator-= overflow"); }
 
     template <insidable C>
     constexpr B& operator*=(C const& rhs)
-    { return finalise_arith(Ref * rhs, "policy_ref::operator*= overflow"); }
+    { return finalise_arith(mul(Ref, rhs, Policy), "policy_ref::operator*= overflow"); }
 
     template <insidable C>
     constexpr B& operator/=(C const& rhs)
-    { return finalise_arith(Ref / rhs, "policy_ref::operator/= division/overflow"); }
+    { return finalise_arith(div(Ref, rhs, Policy), "policy_ref::operator/= division/overflow"); }
 
     template <insidable C>
     constexpr B& operator%=(C const& rhs)
@@ -354,22 +348,19 @@ namespace beman::inside
     template <std::same_as<rational> C>
     constexpr B& operator+=(C const& rhs)
     {
-      return fractional_assign(rhs, [](rational a, rational b){ return a + b; },
-        [](double a, double b){ return a + b; }, "policy_ref::operator+= overflow");
+      return rational_assign(rhs, [](rational a, rational b){ return a + b; }, "policy_ref::operator+= overflow");
     }
 
     template <std::same_as<rational> C>
     constexpr B& operator-=(C const& rhs)
     {
-      return fractional_assign(rhs, [](rational a, rational b){ return a - b; },
-        [](double a, double b){ return a - b; }, "policy_ref::operator-= overflow");
+      return rational_assign(rhs, [](rational a, rational b){ return a - b; }, "policy_ref::operator-= overflow");
     }
 
     template <std::same_as<rational> C>
     constexpr B& operator*=(C const& rhs)
     {
-      return fractional_assign(rhs, [](rational a, rational b){ return a * b; },
-        [](double a, double b){ return a * b; }, "policy_ref::operator*= overflow");
+      return rational_assign(rhs, [](rational a, rational b){ return a * b; }, "policy_ref::operator*= overflow");
     }
 
     template <std::same_as<rational> C>
@@ -380,8 +371,7 @@ namespace beman::inside
         report_zero(errc::division_by_zero, "policy_ref::operator/= division by zero");
         return Ref;
       }
-      return fractional_assign(rhs, [](rational a, rational b){ return a / b; },
-        [](double a, double b){ return a / b; }, "policy_ref::operator/= division/overflow");
+      return rational_assign(rhs, [](rational a, rational b){ return a / b; }, "policy_ref::operator/= division/overflow");
     }
   };
   } // namespace detail

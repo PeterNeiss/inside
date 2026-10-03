@@ -4155,7 +4155,9 @@ namespace beman::inside
       {
         if (!result.has_value()) [[unlikely]]
         {
-          if constexpr (has_action<IsOverflowActionPred, As...>)
+          if (result.error() == errc::division_by_zero)
+            report_zero(errc::division_by_zero, msg);       // on_error / ignore_zero, like rational /=
+          else if constexpr (has_action<IsOverflowActionPred, As...>)
             pick_action_in<IsOverflowActionPred>(Actions).fn(Ref, result.error());
           else
             Policy.report(result.error());
@@ -4167,36 +4169,28 @@ namespace beman::inside
         return assign_with_picked(std::forward<R>(result));
     }
 
-    // Shared body for the fractional `+=`/`-=`/`*=`/`/=` operators: the rational
-    // RHS lifts Ref to rational and routes the checked result through
-    // `finalise_arith`; any other fractional RHS lifts both sides to double.
-    template <fractional C, typename RatOp, typename DblOp>
-    constexpr B& fractional_assign(C const& rhs, RatOp rat_op, DblOp dbl_op,
-                                   const char* msg)
-    {
-      if constexpr (std::same_as<C, rational>)
-        return finalise_arith(rat_op(rational{Ref}, rhs), msg);
-      else
-        return assign_with_picked(dbl_op(static_cast<double>(Ref),
-                                         static_cast<double>(rhs)));
-    }
+    // Shared body for the rational `+=`/`-=`/`*=`/`/=` operators: lift Ref to
+    // rational and route the checked result through `finalise_arith`.
+    template <typename RatOp>
+    constexpr B& rational_assign(rational const& rhs, RatOp rat_op, const char* msg)
+    { return finalise_arith(rat_op(rational{Ref}, rhs), msg); }
     public:
 
     template <insidable C>
     constexpr B& operator+=(C const& rhs)
-    { return finalise_arith(Ref + rhs, "policy_ref::operator+= overflow"); }
+    { return finalise_arith(add(Ref, rhs, Policy), "policy_ref::operator+= overflow"); }
 
     template <insidable C>
     constexpr B& operator-=(C const& rhs)
-    { return finalise_arith(Ref - rhs, "policy_ref::operator-= overflow"); }
+    { return finalise_arith(sub(Ref, rhs, Policy), "policy_ref::operator-= overflow"); }
 
     template <insidable C>
     constexpr B& operator*=(C const& rhs)
-    { return finalise_arith(Ref * rhs, "policy_ref::operator*= overflow"); }
+    { return finalise_arith(mul(Ref, rhs, Policy), "policy_ref::operator*= overflow"); }
 
     template <insidable C>
     constexpr B& operator/=(C const& rhs)
-    { return finalise_arith(Ref / rhs, "policy_ref::operator/= division/overflow"); }
+    { return finalise_arith(div(Ref, rhs, Policy), "policy_ref::operator/= division/overflow"); }
 
     template <insidable C>
     constexpr B& operator%=(C const& rhs)
@@ -4211,22 +4205,19 @@ namespace beman::inside
     template <std::same_as<rational> C>
     constexpr B& operator+=(C const& rhs)
     {
-      return fractional_assign(rhs, [](rational a, rational b){ return a + b; },
-        [](double a, double b){ return a + b; }, "policy_ref::operator+= overflow");
+      return rational_assign(rhs, [](rational a, rational b){ return a + b; }, "policy_ref::operator+= overflow");
     }
 
     template <std::same_as<rational> C>
     constexpr B& operator-=(C const& rhs)
     {
-      return fractional_assign(rhs, [](rational a, rational b){ return a - b; },
-        [](double a, double b){ return a - b; }, "policy_ref::operator-= overflow");
+      return rational_assign(rhs, [](rational a, rational b){ return a - b; }, "policy_ref::operator-= overflow");
     }
 
     template <std::same_as<rational> C>
     constexpr B& operator*=(C const& rhs)
     {
-      return fractional_assign(rhs, [](rational a, rational b){ return a * b; },
-        [](double a, double b){ return a * b; }, "policy_ref::operator*= overflow");
+      return rational_assign(rhs, [](rational a, rational b){ return a * b; }, "policy_ref::operator*= overflow");
     }
 
     template <std::same_as<rational> C>
@@ -4237,8 +4228,7 @@ namespace beman::inside
         report_zero(errc::division_by_zero, "policy_ref::operator/= division by zero");
         return Ref;
       }
-      return fractional_assign(rhs, [](rational a, rational b){ return a / b; },
-        [](double a, double b){ return a / b; }, "policy_ref::operator/= division/overflow");
+      return rational_assign(rhs, [](rational a, rational b){ return a / b; }, "policy_ref::operator/= division/overflow");
     }
   };
   } // namespace detail
@@ -5472,7 +5462,7 @@ namespace beman::inside
                         || (Lower<inside> == 0 && Lower<R> == 0)))
         return store_raw(detail::raw_imax(*this) + detail::raw_imax(rhs));
       else
-        return *this = *this + rhs;
+        return assign_op_result(*this + rhs);
     }
 
     private:
@@ -5481,7 +5471,8 @@ namespace beman::inside
     constexpr inside& store_raw(imax new_raw)
     {
       constexpr imax lo = detail::RawLo<inside>, hi = detail::RawHi<inside>;
-      if constexpr (P & (clamp | wrap | checked))
+      if constexpr (has_any_flag(P, clamp | wrap)
+                    || (has_flag(P, checked) && !has_flag(P, ignore_domain)))
         if (new_raw < lo || new_raw > hi)
         {
           if constexpr (P & clamp)
@@ -5509,21 +5500,24 @@ namespace beman::inside
     {
       if constexpr (detail::is_expected_v<Result>)
       {
-        // A failed op (an error) has already been reported through the policy
-        // channel; keep *this unchanged instead of dereferencing — a
-        // non-throwing installed handler must not turn into
-        // bad_expected_access here. `*r` (not value()): no second check.
+        // A failed op is reported through this type's policy (throw / handler);
+        // *this stays unchanged. `*r` (not value()): no bad_expected_access.
         if (r.has_value())
           *this = *r;
+        else
+          make_policy<P>().report(r.error());
       }
       else
         *this = r;
       return *this;
     }
 
+    // A zero divisor in /= or %=; ignore_zero on either operand silences it,
+    // as it does for div/mod.
+    template <typename R>
     constexpr inside& report_div_by_zero()
     {
-      if constexpr (!(P & ignore_zero))
+      if constexpr (!has_flag(P | InsidePolicy<R>, ignore_zero))
         make_policy<P>().report(errc::division_by_zero);
       return *this;
     }
@@ -5576,7 +5570,7 @@ namespace beman::inside
     constexpr inside& operator/=(R const& rhs)
     {
       if (rhs == 0)
-        return report_div_by_zero();
+        return report_div_by_zero<R>();
       return assign_op_result(*this / rhs);
     }
 
@@ -5584,7 +5578,7 @@ namespace beman::inside
     constexpr inside& operator%=(R const& rhs)
     {
       if (rhs == 0)
-        return report_div_by_zero();
+        return report_div_by_zero<R>();
       return assign_op_result(mod(*this, rhs, make_policy<P>()));
     }
 
@@ -5596,7 +5590,7 @@ namespace beman::inside
     constexpr inside& operator/=(A const& rhs)
     {
       if (detail::is_canonical_zero(rhs))
-        return report_div_by_zero();
+        return report_div_by_zero<inside>();
       return assign_op_result(detail::rational{*this} / rhs);
     }
 

@@ -216,3 +216,46 @@ TEST(ConsistencyTest, exact_arithmetic_is_overflow_checked)
   using D = inside<{0, 10}, direct | checked>;
   static_assert(has_flag(InsidePolicy<decltype(D{1} + D{2})>, checked));
 }
+
+//---------------------------------------------------------------------------
+// Compound operators report an error result through the type's policy — never
+// a silent no-op, never std::bad_expected_access.
+//---------------------------------------------------------------------------
+TEST(ConsistencyTest, compound_ops_report_errors_through_the_policy)
+{
+  constexpr imax big = (imax{1} << 62) - 1;
+  using E = inside<{{0, 1}, rational{0}}, exact | checked>;
+  E e{q(1, big)};
+  EXPECT_THROW(e += q(1, big - 2), inside_error);        // rational RHS overflow
+  EXPECT_EQ(rational{e}, q(1, big));                     // left unchanged
+  EXPECT_THROW(e += E{q(1, big - 2)}, inside_error);     // slow path, rational overflow
+  EXPECT_THROW(e *= E{q(1, big - 2)}, inside_error);
+}
+
+// The raw += fast path honours ignore_domain like plain assignment does.
+TEST(ConsistencyTest, compound_fast_path_honours_ignore_domain)
+{
+  using X = inside<{0, 10}, checked | ignore_domain>;
+  X x{10};
+  EXPECT_NO_THROW(x += 1_ins);
+  X y{10};
+  EXPECT_NO_THROW(y = y + 1_ins);
+}
+
+// ignore_zero on either operand silences a zero divisor in /= and %=, as in
+// div/mod; policy_ref /= routes a zero divisor through on_error / ignore_zero.
+TEST(ConsistencyTest, zero_divisor_handling_agrees)
+{
+  using X = inside<{0, 10}, checked | snap>;
+  using Z = inside<{0, 10}, checked | snap | ignore_zero>;
+  X x{6};
+  EXPECT_NO_THROW(x /= Z{0});
+  EXPECT_NO_THROW(x %= Z{0});
+  EXPECT_THROW(x /= X{0}, inside_error);
+
+  bool called = false;
+  X b{6};
+  b.on_error([&](auto&, errc e, auto) { called = (e == errc::division_by_zero); }) /= X{0};
+  EXPECT_TRUE(called);
+  EXPECT_NO_THROW(b.policy<ignore_zero>() /= X{0});
+}
