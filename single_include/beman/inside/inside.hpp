@@ -5938,22 +5938,48 @@ namespace beman::inside
   //---------------------------------------------------------------------------
   namespace detail
   {
+    // Arithmetic fires only on_overflow; any other action would be silently
+    // ignored, so it is rejected.
+    template <class A>
+    inline constexpr bool arith_action =
+        std::same_as<std::remove_cvref_t<A>, no_action> || overflow_action<std::remove_cvref_t<A>>;
+
     template <class Op, class L, class R, policy_like P = policy<>, class A = no_action>
     constexpr auto arith(Op op, L const& l, R const& r, P&& pol = {}, A&& act = {})
-    { return op(l, r, std::forward<P>(pol), std::forward<A>(act)); }
+    {
+      static_assert(arith_action<A>,
+        "add/sub/mul/div/mod fire only on_overflow; on_clamp / on_wrap / on_error "
+        "apply to assignment — use them with b.with(...) or a cast");
+      return op(l, r, std::forward<P>(pol), std::forward<A>(act));
+    }
 
-    // Action-first form: at least one on_overflow (the only kind arithmetic
-    // fires; other tags are accepted for forward-compat).
+    // Action-first form: on_overflow actions (the only kind arithmetic fires;
+    // any other tag is rejected below with a message, not a bare mismatch).
+    template <class A>
+    inline constexpr bool is_action_tag =
+        IsOverflowActionPred<A>::value || IsClampActionPred<A>::value
+        || IsWrapActionPred<A>::value || IsErrorActionPred<A>::value;
+
     template <class Op, class L, class R, class... Actions>
       requires (sizeof...(Actions) >= 1)
-            && has_action<IsOverflowActionPred, std::remove_cvref_t<Actions>...>
+            && (is_action_tag<std::remove_cvref_t<Actions>> && ...)
     constexpr auto arith(Op op, L const& l, R const& r, Actions&&... acts)
-    { return op(l, r, make_policy<merged_implied_flags<Actions...>>(),
-                pick_action<IsOverflowActionPred>(acts...)); }
+    {
+      static_assert((overflow_action<std::remove_cvref_t<Actions>> && ...),
+        "add/sub/mul/div/mod fire only on_overflow; on_clamp / on_wrap / on_error "
+        "apply to assignment — use them with b.with(...) or a cast");
+      return op(l, r, make_policy<merged_implied_flags<Actions...>>(),
+                pick_action<IsOverflowActionPred>(acts...));
+    }
 
     template <class Op, class L, class R, class A = no_action>
     constexpr auto arith(Op op, L const& l, R const& r, errc& ec, A&& act = {})
-    { return op(l, r, make_policy<checked>(ec), std::forward<A>(act)); }
+    {
+      static_assert(arith_action<A>,
+        "add/sub/mul/div/mod fire only on_overflow; on_clamp / on_wrap / on_error "
+        "apply to assignment — use them with b.with(...) or a cast");
+      return op(l, r, make_policy<checked>(ec), std::forward<A>(act));
+    }
 
     template <class P> inline constexpr policy_flag flags_of = policy_flags_of<std::remove_cvref_t<P>>;
 

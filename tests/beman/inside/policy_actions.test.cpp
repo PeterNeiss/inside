@@ -228,8 +228,7 @@ TEST(PolicyActionsTest, free_fn_pack_form)
     on_overflow([&](auto& res, errc c){
       of = true; seen = c;
       res = std::remove_cvref_t<decltype(res)>{1};
-    }),
-    on_clamp([](auto&, auto){}));   // inert here, accepted
+    }));
   (void)q;
   ASSERT_TRUE(of);
   ASSERT_EQ(seen, errc::division_by_zero);
@@ -240,7 +239,8 @@ TEST(PolicyActionsTest, free_fn_pack_form)
   using u100 = inside<{0, 100}>;
   auto noop = [](auto&, auto){};
   static_assert(requires(u100 x, u100 y) { add(x, y, on_overflow(noop)); });
-  static_assert(requires(u100 x, u100 y) { add(x, y, on_overflow(noop), on_clamp(noop)); });
+  // on_clamp / on_wrap / on_error never fire in free arithmetic and are
+  // rejected (static_assert; see fail/arith_unused_action.cpp).
 }
 
 // mod free-fn with on_overflow recovers from div/0
