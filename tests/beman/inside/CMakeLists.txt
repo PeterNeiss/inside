@@ -8,8 +8,8 @@ include(GoogleTest)
 #---------------------------------------------------------------------------
 file(GLOB BEMAN_INSIDE_TEST_SOURCES CONFIGURE_DEPENDS *.test.cpp)
 # cmath.test.cpp covers the integer/CORDIC engine only (the whole TU is under
-# #ifdef BEMAN_INSIDE_MATH_FIXED); built alone it would hold zero tests.
-if(NOT BEMAN_INSIDE_MATH_FIXED)
+# #ifdef BEMAN_INSIDE_MATH_CORDIC); built alone it would hold zero tests.
+if(NOT BEMAN_INSIDE_MATH_CORDIC)
     list(FILTER BEMAN_INSIDE_TEST_SOURCES EXCLUDE REGEX "/cmath\\.test\\.cpp$")
 endif()
 foreach(test_src ${BEMAN_INSIDE_TEST_SOURCES})
@@ -109,8 +109,8 @@ foreach(
     beman.inside.tests.single_header_smoke
     beman.inside.tests.single_header_freestanding_smoke
 )
-    if(BEMAN_INSIDE_MATH_FIXED)
-        target_compile_definitions(${smoke} PRIVATE BEMAN_INSIDE_MATH_FIXED)
+    if(BEMAN_INSIDE_MATH_CORDIC)
+        target_compile_definitions(${smoke} PRIVATE BEMAN_INSIDE_MATH_CORDIC)
     endif()
     add_test(NAME ${smoke} COMMAND ${smoke})
 endforeach()
@@ -210,8 +210,8 @@ if(BEMAN_INSIDE_BUILD_TOOLS)
 
     # Accuracy characterization: sweeps every math engine against a long-double
     # <cmath> reference and emits a markdown error table. Needs the dbl/flt
-    # engines, which BEMAN_INSIDE_MATH_FIXED compiles out.
-    if(NOT BEMAN_INSIDE_MATH_FIXED)
+    # engines, which BEMAN_INSIDE_MATH_CORDIC compiles out.
+    if(NOT BEMAN_INSIDE_MATH_CORDIC)
         add_executable(beman.inside.accuracy accuracy.cpp)
         target_link_libraries(
             beman.inside.accuracy

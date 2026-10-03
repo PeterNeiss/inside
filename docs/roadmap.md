@@ -10,7 +10,7 @@ which doors the standard still has to open.
 
 ### Constexpr double math engine
 The default (double) `beman::inside::math` engine is runtime-only today; the integer/CORDIC
-engine (`-DBEMAN_INSIDE_MATH_FIXED`) is already `constexpr`. Constexpr `<cmath>`
+engine (`-DBEMAN_INSIDE_MATH_CORDIC`) is already `constexpr`. Constexpr `<cmath>`
 ([P1383], feature macro `__cpp_lib_constexpr_cmath`) makes the double engine
 `constexpr` too.
 
@@ -79,7 +79,7 @@ For completeness — these came up alongside the above but are *not* blocked by 
   floating-point engines — and their `#include <cmath>` — out wholesale (no
   `__builtin_*` swap needed), leaving the always-present integer/CORDIC engine to
   serve the full `beman::inside::math` API. Auto-enabled under `-ffreestanding`, implied by
-  `BEMAN_INSIDE_MATH_FIXED`; a CI smoke compiles the single header against a poison `<cmath>`
+  `BEMAN_INSIDE_MATH_CORDIC`; a CI smoke compiles the single header against a poison `<cmath>`
   shim to keep it that way. See [freestanding.md](freestanding.md#math-without-cmath-beman_inside_math_no_fp).
 - **`dyn_inside`** (runtime-valued bounds) — evaluated and **declined** on design grounds
   (no space/time-efficient implementation), not deferred.

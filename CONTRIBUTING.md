@@ -137,7 +137,7 @@ cachegrind perf workload (`beman.inside.perf_workload`). Also adds the
 regenerate `docs/performance.md` and `docs/accuracy.md`. Default: `OFF`.
 Values: `{ ON, OFF }`.
 
-### `BEMAN_INSIDE_MATH_FIXED` / `BEMAN_INSIDE_MATH_FLOAT`
+### `BEMAN_INSIDE_MATH_CORDIC` / `BEMAN_INSIDE_MATH_FLOAT`
 
 Select the default `beman::inside::math` engine: the integer/CORDIC engine
 (FPU-free) or the float (binary32) engine instead of the double engine.

@@ -15,9 +15,9 @@
 // Resolved here, in a header every other one includes, so storage selection and
 // the math headers always agree. Define it to force the FP-free build; it is
 // auto-enabled on freestanding targets (__STDC_HOSTED__ == 0) and by
-// BEMAN_INSIDE_MATH_FIXED. Public API and grid deduction are unchanged.
+// BEMAN_INSIDE_MATH_CORDIC. Public API and grid deduction are unchanged.
 #if !defined(BEMAN_INSIDE_MATH_NO_FP)
-#  if defined(BEMAN_INSIDE_MATH_FIXED) || (defined(__STDC_HOSTED__) && __STDC_HOSTED__ == 0)
+#  if defined(BEMAN_INSIDE_MATH_CORDIC) || (defined(__STDC_HOSTED__) && __STDC_HOSTED__ == 0)
 #    define BEMAN_INSIDE_MATH_NO_FP
 #  endif
 #endif
@@ -64,7 +64,7 @@ namespace beman::inside
   //
   // `f64` — math operand, binary64-backed storage under the default engine (value
   // held as IEEE-754 double, notch nominal); an ordinary round_nearest integer
-  // inside under BEMAN_INSIDE_MATH_FIXED. Power-of-2 notch + dyadic Lower required so
+  // inside under BEMAN_INSIDE_MATH_CORDIC. Power-of-2 notch + dyadic Lower required so
   // on-grid values are exact in double (see `double_exact`).
   inline constexpr policy_flag f64{(1ull << 37) | round_nearest};
 
@@ -72,7 +72,7 @@ namespace beman::inside
   // the single-precision sibling of `f64`, for float-only FPUs (Cortex-M4F) and
   // the `flt` engine. Power-of-2 notch + dyadic Lower required AND every on-grid
   // value must fit float's 24-bit significand (see `float_exact`). Like `f64` it
-  // is an ordinary round_nearest integer inside under BEMAN_INSIDE_MATH_FIXED. Widest-wins
+  // is an ordinary round_nearest integer inside under BEMAN_INSIDE_MATH_CORDIC. Widest-wins
   // storage order: exact > f64 > f32 > direct > indexed > deduced.
   inline constexpr policy_flag f32{(1ull << 41) | round_nearest};
 

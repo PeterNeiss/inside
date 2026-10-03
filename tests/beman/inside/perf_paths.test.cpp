@@ -216,7 +216,7 @@ TEST(PerfPathsTest, fraction_and_to_value_fast_paths_match_rational)
 //---------------------------------------------------------------------------
 // Double-backed abs/floor/ceil/round/trunc match the exact rational results.
 //---------------------------------------------------------------------------
-#ifndef BEMAN_INSIDE_MATH_FIXED
+#ifndef BEMAN_INSIDE_MATH_CORDIC
 TEST(PerfPathsTest, fp_algebraic_fast_path_matches_rational)
 {
   using X = inside<{{-8, 8}, notch<1, 4>}, round_nearest | f64>;

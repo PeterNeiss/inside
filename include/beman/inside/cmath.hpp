@@ -15,14 +15,14 @@
 #include <bit>
 
 // The public beman::inside::math::* functions dispatch to the double engine (default) or
-// the integer/CORDIC engine (`-DBEMAN_INSIDE_MATH_FIXED`). The integer engine is
+// the integer/CORDIC engine (`-DBEMAN_INSIDE_MATH_CORDIC`). The integer engine is
 // always `constexpr`; the double engine becomes `constexpr` automatically on
 // C++26 toolchains where <cmath> is constexpr (P1383 — std::fma / std::sqrt /
 // std::nearbyint; feature macro __cpp_lib_constexpr_cmath). That branch is
 // inert (and untested) until such a toolchain exists. Decision 2026-06-12:
 // no compile-time softfloat emulation — wait for the standard.
 // BEMAN_INSIDE_MATH_NO_FP (resolved in cmath_double.hpp, included above) selects the
-// integer/CORDIC engine and is implied by BEMAN_INSIDE_MATH_FIXED — so the integer engine
+// integer/CORDIC engine and is implied by BEMAN_INSIDE_MATH_CORDIC — so the integer engine
 // is constexpr here. The double engine becomes constexpr only on a C++26 toolchain
 // with constexpr <cmath> (P1383); that branch is inert until such a toolchain.
 #if defined(BEMAN_INSIDE_MATH_NO_FP) \
@@ -34,13 +34,13 @@
 
 //---------------------------------------------------------------------------
 // beman::inside::math — one transcendental API, two interchangeable engines selected by
-// the `BEMAN_INSIDE_MATH_FIXED` macro. Both are feature-equivalent (same functions,
+// the `BEMAN_INSIDE_MATH_CORDIC` macro. Both are feature-equivalent (same functions,
 // signatures, domains):
 //
 //   * DEFAULT — double engine (`cmath_double.hpp`): hardware `double`
 //     polynomials on `f64` bounds. Bit-identical on any IEEE-754 binary64
 //     platform built without `-ffast-math`. Fast (~ns); needs an FPU; runtime.
-//   * `BEMAN_INSIDE_MATH_FIXED` — integer/CORDIC engine (this file): FPU-free, constexpr,
+//   * `BEMAN_INSIDE_MATH_CORDIC` — integer/CORDIC engine (this file): FPU-free, constexpr,
 //     UNCONDITIONALLY bit-identical (any platform/flags). For embedded/portability.
 //   * `BEMAN_INSIDE_MATH_FLOAT` — float (binary32) engine (`cmath_float.hpp`): like the
 //     double engine but single precision, for single-precision-only FPUs.
@@ -50,7 +50,7 @@
 // selection (the dispatch below): `BEMAN_INSIDE_MATH_NO_FP`→cordic, else
 // `BEMAN_INSIDE_MATH_FLOAT`→flt, else dbl.
 //
-// `BEMAN_INSIDE_MATH_NO_FP` (implied by `BEMAN_INSIDE_MATH_FIXED`, auto-enabled when
+// `BEMAN_INSIDE_MATH_NO_FP` (implied by `BEMAN_INSIDE_MATH_CORDIC`, auto-enabled when
 // `__STDC_HOSTED__ == 0`) compiles the double AND float engines and their
 // `<cmath>` out entirely, leaving the integer engine — so the library, including
 // the single header, builds with no hardware floating point.
@@ -167,7 +167,7 @@ namespace beman::inside::math
     inline constexpr F upper_fp = static_cast<F>(static_cast<double>(upper_of<Out>));
 
     // Every transcendental operand must carry the `f64` policy flag: under the
-    // default engine it selects double-backed dyadic storage, under BEMAN_INSIDE_MATH_FIXED
+    // default engine it selects double-backed dyadic storage, under BEMAN_INSIDE_MATH_CORDIC
     // integer round_nearest. Requiring it keeps both engines' call sites identical
     // and avoids the slow integer-I/O path. Pure grid ops (abs/floor/ceil/round/
     // trunc/fmod) have no engine and don't require it.

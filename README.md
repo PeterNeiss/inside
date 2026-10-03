@@ -125,7 +125,7 @@ Library options:
 
 | Option | Default | Effect |
 |--------|---------|--------|
-| `BEMAN_INSIDE_MATH_FIXED` | `OFF` | Use the integer/CORDIC math engine (FPU-free) instead of the double engine |
+| `BEMAN_INSIDE_MATH_CORDIC` | `OFF` | Use the integer/CORDIC math engine (FPU-free) instead of the double engine |
 | `BEMAN_INSIDE_MATH_FLOAT` | `OFF` | Make unqualified `beman::inside::math` use the float (binary32) engine |
 | `BEMAN_INSIDE_STRICT_SFINAE` | `OFF` | Drop the assignment diagnostic overloads so `is_constructible` stays honest |
 | `BEMAN_INSIDE_FMA` | `ON` | Add `-mfma` on x86-64 GCC/Clang so the math engines' `std::fma` is one instruction (see below) |

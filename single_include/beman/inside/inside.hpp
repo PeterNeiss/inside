@@ -1716,9 +1716,9 @@ namespace beman::inside
 // Resolved here, in a header every other one includes, so storage selection and
 // the math headers always agree. Define it to force the FP-free build; it is
 // auto-enabled on freestanding targets (__STDC_HOSTED__ == 0) and by
-// BEMAN_INSIDE_MATH_FIXED. Public API and grid deduction are unchanged.
+// BEMAN_INSIDE_MATH_CORDIC. Public API and grid deduction are unchanged.
 #if !defined(BEMAN_INSIDE_MATH_NO_FP)
-#  if defined(BEMAN_INSIDE_MATH_FIXED) || (defined(__STDC_HOSTED__) && __STDC_HOSTED__ == 0)
+#  if defined(BEMAN_INSIDE_MATH_CORDIC) || (defined(__STDC_HOSTED__) && __STDC_HOSTED__ == 0)
 #    define BEMAN_INSIDE_MATH_NO_FP
 #  endif
 #endif
@@ -1765,7 +1765,7 @@ namespace beman::inside
   //
   // `f64` — math operand, binary64-backed storage under the default engine (value
   // held as IEEE-754 double, notch nominal); an ordinary round_nearest integer
-  // inside under BEMAN_INSIDE_MATH_FIXED. Power-of-2 notch + dyadic Lower required so
+  // inside under BEMAN_INSIDE_MATH_CORDIC. Power-of-2 notch + dyadic Lower required so
   // on-grid values are exact in double (see `double_exact`).
   inline constexpr policy_flag f64{(1ull << 37) | round_nearest};
 
@@ -1773,7 +1773,7 @@ namespace beman::inside
   // the single-precision sibling of `f64`, for float-only FPUs (Cortex-M4F) and
   // the `flt` engine. Power-of-2 notch + dyadic Lower required AND every on-grid
   // value must fit float's 24-bit significand (see `float_exact`). Like `f64` it
-  // is an ordinary round_nearest integer inside under BEMAN_INSIDE_MATH_FIXED. Widest-wins
+  // is an ordinary round_nearest integer inside under BEMAN_INSIDE_MATH_CORDIC. Widest-wins
   // storage order: exact > f64 > f32 > direct > indexed > deduced.
   inline constexpr policy_flag f32{(1ull << 41) | round_nearest};
 
@@ -2251,7 +2251,7 @@ namespace beman::inside
   // (exact > f64 > f32 > {width} > direct > indexed > deduced).
   //   exact   → rational raw on any grid.
   //   f64     → double-backed under the default engine, on a dyadic or notch-0
-  //             grid; elided under BEMAN_INSIDE_MATH_FIXED (falls through to deduced).
+  //             grid; elided under BEMAN_INSIDE_MATH_CORDIC (falls through to deduced).
   //   direct  → raw == value, plain integer (Notch == 1).
   //   indexed → raw == 0-based notch index (Notch != 0).
   //   none    → storage_min deduction.
@@ -6530,7 +6530,7 @@ namespace beman::inside
 //     only std::fma/sqrt/nearbyint (well-defined) and the constexpr ldexp.
 //   * Horner evaluation with explicit std::fma (immune to FMA-contraction).
 //   * Cody-Waite range reduction for full-precision args.
-// The default engine; `BEMAN_INSIDE_MATH_FIXED` selects the integer CORDIC engine instead.
+// The default engine; `BEMAN_INSIDE_MATH_CORDIC` selects the integer CORDIC engine instead.
 //---------------------------------------------------------------------------
 
 
@@ -7088,14 +7088,14 @@ namespace beman::inside::math::flt
 
 
 // The public beman::inside::math::* functions dispatch to the double engine (default) or
-// the integer/CORDIC engine (`-DBEMAN_INSIDE_MATH_FIXED`). The integer engine is
+// the integer/CORDIC engine (`-DBEMAN_INSIDE_MATH_CORDIC`). The integer engine is
 // always `constexpr`; the double engine becomes `constexpr` automatically on
 // C++26 toolchains where <cmath> is constexpr (P1383 — std::fma / std::sqrt /
 // std::nearbyint; feature macro __cpp_lib_constexpr_cmath). That branch is
 // inert (and untested) until such a toolchain exists. Decision 2026-06-12:
 // no compile-time softfloat emulation — wait for the standard.
 // BEMAN_INSIDE_MATH_NO_FP (resolved in cmath_double.hpp, included above) selects the
-// integer/CORDIC engine and is implied by BEMAN_INSIDE_MATH_FIXED — so the integer engine
+// integer/CORDIC engine and is implied by BEMAN_INSIDE_MATH_CORDIC — so the integer engine
 // is constexpr here. The double engine becomes constexpr only on a C++26 toolchain
 // with constexpr <cmath> (P1383); that branch is inert until such a toolchain.
 #if defined(BEMAN_INSIDE_MATH_NO_FP) \
@@ -7107,13 +7107,13 @@ namespace beman::inside::math::flt
 
 //---------------------------------------------------------------------------
 // beman::inside::math — one transcendental API, two interchangeable engines selected by
-// the `BEMAN_INSIDE_MATH_FIXED` macro. Both are feature-equivalent (same functions,
+// the `BEMAN_INSIDE_MATH_CORDIC` macro. Both are feature-equivalent (same functions,
 // signatures, domains):
 //
 //   * DEFAULT — double engine (`cmath_double.hpp`): hardware `double`
 //     polynomials on `f64` bounds. Bit-identical on any IEEE-754 binary64
 //     platform built without `-ffast-math`. Fast (~ns); needs an FPU; runtime.
-//   * `BEMAN_INSIDE_MATH_FIXED` — integer/CORDIC engine (this file): FPU-free, constexpr,
+//   * `BEMAN_INSIDE_MATH_CORDIC` — integer/CORDIC engine (this file): FPU-free, constexpr,
 //     UNCONDITIONALLY bit-identical (any platform/flags). For embedded/portability.
 //   * `BEMAN_INSIDE_MATH_FLOAT` — float (binary32) engine (`cmath_float.hpp`): like the
 //     double engine but single precision, for single-precision-only FPUs.
@@ -7123,7 +7123,7 @@ namespace beman::inside::math::flt
 // selection (the dispatch below): `BEMAN_INSIDE_MATH_NO_FP`→cordic, else
 // `BEMAN_INSIDE_MATH_FLOAT`→flt, else dbl.
 //
-// `BEMAN_INSIDE_MATH_NO_FP` (implied by `BEMAN_INSIDE_MATH_FIXED`, auto-enabled when
+// `BEMAN_INSIDE_MATH_NO_FP` (implied by `BEMAN_INSIDE_MATH_CORDIC`, auto-enabled when
 // `__STDC_HOSTED__ == 0`) compiles the double AND float engines and their
 // `<cmath>` out entirely, leaving the integer engine — so the library, including
 // the single header, builds with no hardware floating point.
@@ -7240,7 +7240,7 @@ namespace beman::inside::math
     inline constexpr F upper_fp = static_cast<F>(static_cast<double>(upper_of<Out>));
 
     // Every transcendental operand must carry the `f64` policy flag: under the
-    // default engine it selects double-backed dyadic storage, under BEMAN_INSIDE_MATH_FIXED
+    // default engine it selects double-backed dyadic storage, under BEMAN_INSIDE_MATH_CORDIC
     // integer round_nearest. Requiring it keeps both engines' call sites identical
     // and avoids the slow integer-I/O path. Pure grid ops (abs/floor/ceil/round/
     // trunc/fmod) have no engine and don't require it.

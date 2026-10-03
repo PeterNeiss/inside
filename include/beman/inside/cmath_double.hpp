@@ -8,7 +8,7 @@
 //     only std::fma/sqrt/nearbyint (well-defined) and the constexpr ldexp.
 //   * Horner evaluation with explicit std::fma (immune to FMA-contraction).
 //   * Cody-Waite range reduction for full-precision args.
-// The default engine; `BEMAN_INSIDE_MATH_FIXED` selects the integer CORDIC engine instead.
+// The default engine; `BEMAN_INSIDE_MATH_CORDIC` selects the integer CORDIC engine instead.
 //---------------------------------------------------------------------------
 #ifndef BEMAN_INSIDE_CMATH_DOUBLE_HPP
 #define BEMAN_INSIDE_CMATH_DOUBLE_HPP

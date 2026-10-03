@@ -12,7 +12,7 @@ as the full tree:
 ```
 
 It is behaviourally identical to the multi-header form; the engine switches
-(`-DBEMAN_INSIDE_MATH_FIXED`, `-DBEMAN_INSIDE_MATH_FLOAT`) and `BEMAN_INSIDE_MATH_NO_FP`
+(`-DBEMAN_INSIDE_MATH_CORDIC`, `-DBEMAN_INSIDE_MATH_FLOAT`) and `BEMAN_INSIDE_MATH_NO_FP`
 apply the same way, as ordinary compiler flags. The string/printing layer
 is wrapped in a guard — define `BEMAN_INSIDE_NO_STRING` to drop it and its
 `<string>`/`<ostream>`/`<format>` includes wholesale (see

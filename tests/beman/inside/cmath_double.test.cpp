@@ -20,9 +20,9 @@
 #include <cmath>
 #include <numbers>
 
-// The double engine is the default; under -DBEMAN_INSIDE_MATH_FIXED the `f64` bounds
+// The double engine is the default; under -DBEMAN_INSIDE_MATH_CORDIC the `f64` bounds
 // are integer-backed and these double-storage assertions don't apply.
-#ifndef BEMAN_INSIDE_MATH_FIXED
+#ifndef BEMAN_INSIDE_MATH_CORDIC
 
 using namespace beman::inside;
 namespace d = beman::inside::math::dbl::detail;
@@ -180,7 +180,7 @@ TEST(CmathDoubleTest, dbl_circle_m_degree_angle_uses_the_double_engine)
 }
 
 // The algebraic tier (abs/floor/ceil/round/trunc/fmod) is exercised at compile
-// time in test_cmath.cpp — but that whole file is `#ifdef BEMAN_INSIDE_MATH_FIXED`, so on
+// time in test_cmath.cpp — but that whole file is `#ifdef BEMAN_INSIDE_MATH_CORDIC`, so on
 // the default double engine these functions had NO runtime coverage at all. They
 // route a power-of-two-denominator result through `store_grid`, whose integer
 // fast path used to mis-store a `f64` (double-backed) result as its grid INDEX
@@ -220,7 +220,7 @@ TEST(CmathDoubleTest, dbl_algebraic_tier_on_real_bounds_matches_std)
 }
 
 // The transcendental tier (log/exp/asin/.../cbrt) had NO runtime coverage on the
-// double engine — its only tests are the `#ifdef BEMAN_INSIDE_MATH_FIXED` static_asserts
+// double engine — its only tests are the `#ifdef BEMAN_INSIDE_MATH_CORDIC` static_asserts
 // in test_cmath.cpp. These cross-check the double engine against std:: to ~a
 // notch, the same oracle a cross-engine diff would use.
 // dbl: transcendental tier on f64 bounds matches std::
@@ -304,4 +304,4 @@ TEST(CmathDoubleTest, dbl_engine_stores_full_mantissa_results_onto_integer_index
   }
 }
 
-#endif // !BEMAN_INSIDE_MATH_FIXED
+#endif // !BEMAN_INSIDE_MATH_CORDIC

@@ -240,7 +240,7 @@ TEST(RangeTest, inside_range_decode_agrees_with_lower_plus_i_notch_on_every_stor
   require_decodes_analytically<inside_range<{{-2, 2}, notch<1, 4>}>>();      // index raw, offset Lower
   require_decodes_analytically<inside_range<{0, 255}>>();                    // full-width uint8 raw
   require_decodes_analytically<inside_range<{{0, 2}, notch<1, 3>}, exact>>();          // rational raw fallback
-#ifndef BEMAN_INSIDE_MATH_FIXED   // under BEMAN_INSIDE_MATH_FIXED the f64 storage arm is elided
+#ifndef BEMAN_INSIDE_MATH_CORDIC   // under BEMAN_INSIDE_MATH_CORDIC the f64 storage arm is elided
   require_decodes_analytically<inside_range<{{0, 4}, notch<1, 256>}, f64 | round_nearest>>(); // fp raw fallback
 #endif
 }
@@ -282,7 +282,7 @@ TEST(RangeTest, inside_range_fast_decode_arms_engage_dispatch_pins)
   static_assert(index_raw<inside_range<{{0, 4}, notch<1, 256>}>::value_type>);
   static_assert(index_raw<inside_range<{{-2, 2}, notch<1, 4>}>::value_type>);
   static_assert(rational_raw<inside_range<{{0, 2}, notch<1, 3>}, exact>::value_type>);
-#ifndef BEMAN_INSIDE_MATH_FIXED   // under BEMAN_INSIDE_MATH_FIXED the f64 storage arm is elided
+#ifndef BEMAN_INSIDE_MATH_CORDIC   // under BEMAN_INSIDE_MATH_CORDIC the f64 storage arm is elided
   static_assert(fp_raw<inside_range<{{0, 4}, notch<1, 256>}, f64 | round_nearest>::value_type>);
 #endif
 }

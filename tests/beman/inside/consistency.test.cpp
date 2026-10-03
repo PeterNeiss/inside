@@ -17,7 +17,7 @@ using namespace beman::inside::detail;
 
 namespace { rational q(imax n, imax d = 1) { return rational{n, d}; } }
 
-#ifndef BEMAN_INSIDE_MATH_FIXED   // f64 storage is compiled out under the integer engine
+#ifndef BEMAN_INSIDE_MATH_CORDIC   // f64 storage is compiled out under the integer engine
 
 //---------------------------------------------------------------------------
 // One tie rule (half away from zero) and honoured rounding modes on f64 storage.
@@ -77,7 +77,7 @@ TEST(ConsistencyTest, integer_source_off_notch_rounds_like_rational_source)
   EXPECT_EQ(rational{Ex{3}}, q(4));
 }
 
-#ifndef BEMAN_INSIDE_MATH_FIXED
+#ifndef BEMAN_INSIDE_MATH_CORDIC
 TEST(ConsistencyTest, f64_target_from_integer_snaps_on_every_path)
 {
   using F = inside<{{0, 10}, 2}, f64>;
@@ -116,7 +116,7 @@ TEST(ConsistencyTest, wrap_then_round_stays_on_the_grid)
   EXPECT_EQ(rational{W{q(-3, 10)}}, q(0));               // -0.3 → 0
   EXPECT_EQ(rational{W{q(-7, 10)}}, q(8));               // -0.7 → -1 ≡ 8
   EXPECT_EQ(rational{W{q(39, 4)}}, q(1));                // 9.75 → 10 ≡ 1
-#ifndef BEMAN_INSIDE_MATH_FIXED
+#ifndef BEMAN_INSIDE_MATH_CORDIC
   using F = inside<{{0, 8}, 1}, f64 | wrap>;
   EXPECT_EQ(F{8.5}.raw(), 0.0);
   EXPECT_EQ(F{-0.3}.raw(), 0.0);
@@ -143,7 +143,7 @@ TEST(ConsistencyTest, unchecked_cast_respects_storage_flags)
   EXPECT_EQ(rational{unchecked_cast<D>(7)}, q(7));
   using W = inside<{5, 100}, u16>;
   EXPECT_EQ(rational{unchecked_cast<W>(7)}, q(7));
-#ifndef BEMAN_INSIDE_MATH_FIXED
+#ifndef BEMAN_INSIDE_MATH_CORDIC
   using F = inside<{{0, 4}, notch<1, 2>}, f64>;
   EXPECT_EQ(unchecked_cast<F>(1.5).raw(), 1.5);
 #endif
@@ -170,7 +170,7 @@ TEST(ConsistencyTest, math_output_drops_width_flags)
   EXPECT_EQ(rational{math::abs(B8{-128})}, q(128));
 }
 
-#ifndef BEMAN_INSIDE_MATH_FIXED
+#ifndef BEMAN_INSIDE_MATH_CORDIC
 // An f64 inside compared with an inside whose values are not exact in double
 // compares exactly, not after rounding the other side to double.
 TEST(ConsistencyTest, fp_vs_exact_comparison_is_exact)
@@ -294,7 +294,7 @@ TEST(ConsistencyTest, non_finite_input_goes_through_the_policy)
   using C = inside<{0, 10}, round_nearest | clamp>;
   EXPECT_EQ(rational{C{inf}}, q(10));
   EXPECT_EQ(rational{C{-inf}}, q(0));
-#ifndef BEMAN_INSIDE_MATH_FIXED
+#ifndef BEMAN_INSIDE_MATH_CORDIC
   using F = inside<{{0, 10}, notch<1, 2>}, f64>;
   errc fe{};
   F f(nan, fe);

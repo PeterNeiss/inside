@@ -37,10 +37,10 @@ option(
 
 # beman::inside::math engine select. Default: the reproducible double engine (own
 # polynomials + std::fma + std::sqrt; requires an IEEE-754 FPU, no -ffast-math).
-# BEMAN_INSIDE_MATH_FIXED=ON selects the integer/CORDIC engine — FPU-free and
+# BEMAN_INSIDE_MATH_CORDIC=ON selects the integer/CORDIC engine — FPU-free and
 # unconditionally reproducible, for embedded / maximum-portability targets.
 option(
-    BEMAN_INSIDE_MATH_FIXED
+    BEMAN_INSIDE_MATH_CORDIC
     "Use the integer/CORDIC math engine instead of the double engine. Default: OFF. Values: { ON, OFF }."
     OFF
 )
@@ -48,7 +48,7 @@ option(
 # BEMAN_INSIDE_MATH_FLOAT=ON makes the UNQUALIFIED beman::inside::math::fn use
 # the float (binary32) engine — for single-precision-only FPUs. All engines stay
 # reachable by namespace (cordic::/dbl::/flt::) regardless; this only picks the
-# default. Ignored under BEMAN_INSIDE_MATH_FIXED (the integer engine wins / no FP).
+# default. Ignored under BEMAN_INSIDE_MATH_CORDIC (the integer engine wins / no FP).
 option(
     BEMAN_INSIDE_MATH_FLOAT
     "Default beman::inside::math to the float (binary32) engine instead of double. Default: OFF. Values: { ON, OFF }."
@@ -100,8 +100,8 @@ set_target_properties(
 )
 target_compile_features(beman.inside INTERFACE cxx_std_23)
 
-if(BEMAN_INSIDE_MATH_FIXED)
-    target_compile_definitions(beman.inside INTERFACE BEMAN_INSIDE_MATH_FIXED)
+if(BEMAN_INSIDE_MATH_CORDIC)
+    target_compile_definitions(beman.inside INTERFACE BEMAN_INSIDE_MATH_CORDIC)
 endif()
 if(BEMAN_INSIDE_MATH_FLOAT)
     target_compile_definitions(beman.inside INTERFACE BEMAN_INSIDE_MATH_FLOAT)

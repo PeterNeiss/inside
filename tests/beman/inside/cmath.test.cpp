@@ -3,7 +3,7 @@
 //
 // Every assertion here pins a specific integer output for a specific integer
 // input — the unconditional bit-exact contract of the fixed engine. These run
-// under `-DBEMAN_INSIDE_MATH_FIXED=ON` (the integer engine); the default build uses the
+// under `-DBEMAN_INSIDE_MATH_CORDIC=ON` (the integer engine); the default build uses the
 // double engine, covered by test_cmath_double.cpp.
 
 #include <beman/inside/cmath.hpp>
@@ -14,7 +14,7 @@
 
 #include <iostream>
 
-#ifdef BEMAN_INSIDE_MATH_FIXED
+#ifdef BEMAN_INSIDE_MATH_CORDIC
 
 using namespace beman::inside;
 using namespace beman::inside::detail;
@@ -1428,4 +1428,4 @@ TEST(CmathTest, beman_inside_math_pow_base_exp_with_expected)
   ASSERT_TRUE((approx(rational{*p3}, rational{3})));
 }
 
-#endif // BEMAN_INSIDE_MATH_FIXED
+#endif // BEMAN_INSIDE_MATH_CORDIC

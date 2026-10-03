@@ -300,7 +300,7 @@ namespace beman::inside
   // (exact > f64 > f32 > {width} > direct > indexed > deduced).
   //   exact   → rational raw on any grid.
   //   f64     → double-backed under the default engine, on a dyadic or notch-0
-  //             grid; elided under BEMAN_INSIDE_MATH_FIXED (falls through to deduced).
+  //             grid; elided under BEMAN_INSIDE_MATH_CORDIC (falls through to deduced).
   //   direct  → raw == value, plain integer (Notch == 1).
   //   indexed → raw == 0-based notch index (Notch != 0).
   //   none    → storage_min deduction.

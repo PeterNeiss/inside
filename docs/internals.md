@@ -54,7 +54,7 @@ operand policies, and the widest representation present wins:
   exact in P ──────────────────────────▶  rational raw   (raw IS the value, exact fraction)
        │ no
   f64 in P AND double_exact grid ──────▶  double raw     (raw IS the value; default engine
-       │ no   (elided under BEMAN_INSIDE_MATH_FIXED)               only — fixed engine falls through.
+       │ no   (elided under BEMAN_INSIDE_MATH_CORDIC)               only — fixed engine falls through.
        │                                                  Direct misuse on a too-fine grid is a
        │                                                  static_assert; arithmetic instead DROPS
        │                                                  `f64` when the result isn't double_exact)

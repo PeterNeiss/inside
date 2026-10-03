@@ -1323,7 +1323,7 @@ static void bench_cmath()
                                  (*beman::inside::math::pow(v_powb[i & J], v_powe[i & J])).raw())
 #undef BEMAN_INSIDE_CMATH_GROUP
 
-#ifndef BEMAN_INSIDE_MATH_FIXED
+#ifndef BEMAN_INSIDE_MATH_CORDIC
   {
     auto bench = group("math: sin (binary32 / float engine)", 50'000);
     bench.run("std sinf", [&] {

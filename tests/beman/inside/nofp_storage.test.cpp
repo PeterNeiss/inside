@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// BEMAN_INSIDE_MATH_NO_FP alone (not BEMAN_INSIDE_MATH_FIXED): fp storage flags
+// BEMAN_INSIDE_MATH_NO_FP alone (not BEMAN_INSIDE_MATH_CORDIC): fp storage flags
 // fall back to integer storage, so storage and the FP-free math agree.
 #define BEMAN_INSIDE_MATH_NO_FP
 

@@ -185,9 +185,9 @@ TEST(StorageFlagsTest, representation_flags_resolve_widest_wins)
   static_assert(detail::rational_raw<Both>);
 
   // real beats direct on a dyadic unit grid (default engine only — under
-  // BEMAN_INSIDE_MATH_FIXED the f64 arm is elided and direct wins).
+  // BEMAN_INSIDE_MATH_CORDIC the f64 arm is elided and direct wins).
   using RD = inside<{0, 4}, f64 | direct>;
-#ifndef BEMAN_INSIDE_MATH_FIXED
+#ifndef BEMAN_INSIDE_MATH_CORDIC
   static_assert(detail::f64_raw<RD>);
 #else
   static_assert(detail::value_raw<RD>);
@@ -199,7 +199,7 @@ TEST(StorageFlagsTest, representation_flags_resolve_widest_wins)
   ASSERT_EQ(DI{42}.raw(), 42);
 }
 
-#ifndef BEMAN_INSIDE_MATH_FIXED
+#ifndef BEMAN_INSIDE_MATH_CORDIC
 // f32 selects binary32-backed storage; arithmetic demotes when too fine
 TEST(StorageFlagsTest, f32_selects_binary32_backed_storage_arithmetic_demotes_when_too_fine)
 {
@@ -252,7 +252,7 @@ TEST(StorageFlagsTest, math_output_lands_in_f32_storage_flt_engine_pairs_with_f3
   static_assert(detail::f64_raw<decltype(e)>);   // demoted f32 → f64
   ASSERT_TRUE(rational{e} > rational{7});             // ≈ 7.39
 }
-#endif // !BEMAN_INSIDE_MATH_FIXED
+#endif // !BEMAN_INSIDE_MATH_CORDIC
 
 // f64 is the canonical double-backed flag; real is its alias
 TEST(StorageFlagsTest, f64_is_the_canonical_double_backed_flag_real_is_its_alias)
@@ -261,7 +261,7 @@ TEST(StorageFlagsTest, f64_is_the_canonical_double_backed_flag_real_is_its_alias
   static_assert(beman::inside::f64 == beman::inside::f64);
   static_assert(has_flag(beman::inside::f64, round_nearest));   // still carries snap/round
 
-#ifndef BEMAN_INSIDE_MATH_FIXED
+#ifndef BEMAN_INSIDE_MATH_CORDIC
   // f64 selects binary64-backed storage exactly as `f64` did (storage is
   // independent of the compute engine — true in the double AND float builds).
   using F = inside<{{0, 4}, notch<1, 256>}, round_nearest | f64>;

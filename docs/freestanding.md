@@ -112,7 +112,7 @@ and the floating-point engines — including their `#include <cmath>` — are co
 compute backend differs.
 
 - **Auto-enabled** when `__STDC_HOSTED__ == 0` (i.e. `-ffreestanding`), and **implied
-  by `BEMAN_INSIDE_MATH_FIXED`** — selecting the integer engine is itself an FP-free build.
+  by `BEMAN_INSIDE_MATH_CORDIC`** — selecting the integer engine is itself an FP-free build.
 - Holds for the modular headers **and** the amalgamated
   [single header](single-header.md). A CI smoke (`single_header_nofp_smoke`) compiles
   the single header with a *poison* `<cmath>` shim first on the include path, so the

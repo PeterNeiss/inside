@@ -1473,7 +1473,7 @@ void run_props(fuzz_state& s, long iters, const char* name)
 // guarantee into a property: on one grid, cordic must agree with both dbl and
 // flt. Restricted to O(1)-output functions (sin/cos/tanh/atan, sqrt on [0,4])
 // so the binary32 `flt` engine's coarser precision still falls inside the notch
-// budget. Only meaningful when the FP engines exist (BEMAN_INSIDE_MATH_FIXED implies
+// budget. Only meaningful when the FP engines exist (BEMAN_INSIDE_MATH_CORDIC implies
 // BEMAN_INSIDE_MATH_NO_FP, leaving only cordic — nothing to compare).
 //---------------------------------------------------------------------------
 void prop_cross_engine(fuzz_state& s, long iters)

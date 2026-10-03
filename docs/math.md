@@ -10,7 +10,7 @@ default; all three stay callable by namespace in the same binary:
 |---|---|---|---|---|
 | **double** (binary64, default) | — | bit-identical on every IEEE-754 binary64 platform compiled without `-ffast-math` (round-to-nearest) | no | fastest — ~10–15× the CORDIC engine with `-mfma` (`sin` 5.8 vs 81 ns, `exp` 8.9 vs 121 ns) |
 | **float** (binary32) | CMake `-DBEMAN_INSIDE_MATH_FLOAT=ON` (macro `BEMAN_INSIDE_MATH_FLOAT`) | bit-identical on every IEEE-754 binary32 platform (same contract as double) | no | single-precision FPUs (Cortex-M4F) |
-| **integer / CORDIC** | CMake `-DBEMAN_INSIDE_MATH_FIXED=ON` (macro `BEMAN_INSIDE_MATH_FIXED`) | bit-identical **unconditionally** — any platform, any flags, no FPU required | yes | embedded-friendly |
+| **integer / CORDIC** | CMake `-DBEMAN_INSIDE_MATH_CORDIC=ON` (macro `BEMAN_INSIDE_MATH_CORDIC`) | bit-identical **unconditionally** — any platform, any flags, no FPU required | yes | embedded-friendly |
 
 > The double engine's "constexpr: no" lifts automatically on C++26 toolchains
 > with constexpr `<cmath>` (P1383, `__cpp_lib_constexpr_cmath`) — the gate is
@@ -80,7 +80,7 @@ rounding.
 - Without `f64`, a snap-capable grid still works — the engine's `double`/integer
   result is snapped to the grid through the assignment path (a touch slower; no
   double fast path). Use `f64` when the grid is dyadic and you want the speed.
-- Under `BEMAN_INSIDE_MATH_FIXED` `f64` is an ordinary `round_nearest` integer-backed
+- Under `BEMAN_INSIDE_MATH_CORDIC` `f64` is an ordinary `round_nearest` integer-backed
   inside — the source compiles unchanged.
 - `f64` requires a grid that is **exactly representable in `double`**: dyadic
   (power-of-two notch and Lower) **and** within the 53-bit significand — writing
@@ -142,7 +142,7 @@ other representation flags.
   e.g. e^44's exact numerator exceeds any grid's integer range — and cannot
   widen without coupling them to the output grid.
 - **constexpr.** The math functions are `constexpr` only under
-  `BEMAN_INSIDE_MATH_FIXED` (the double engine's `std::fma`/`std::sqrt` are runtime).
+  `BEMAN_INSIDE_MATH_CORDIC` (the double engine's `std::fma`/`std::sqrt` are runtime).
   The compile-time output-grid deduction uses the integer cores in **every**
   build, so grids and types never depend on the engine.
 
@@ -227,7 +227,7 @@ vocabulary.
 ## Selecting the integer engine
 
 ```bash
-cmake --preset gcc-release -DCMAKE_CXX_STANDARD=20 -DBEMAN_INSIDE_MATH_FIXED=ON
+cmake --preset gcc-release -DCMAKE_CXX_STANDARD=20 -DBEMAN_INSIDE_MATH_CORDIC=ON
 cmake --build build-fixed
 ```
 
@@ -247,12 +247,12 @@ are also reachable by name, **callable side-by-side in the same binary**:
 | `beman::inside::math::cordic::fn` | integer / CORDIC | **always** (constexpr, FPU-free) |
 | `beman::inside::math::dbl::fn` | `double` (binary64) | unless `BEMAN_INSIDE_MATH_NO_FP` |
 | `beman::inside::math::flt::fn` | `float` (binary32) | unless `BEMAN_INSIDE_MATH_NO_FP` |
-| `beman::inside::math::fn` | the default | `cordic` under `BEMAN_INSIDE_MATH_FIXED`/`BEMAN_INSIDE_MATH_NO_FP`; `flt` under `BEMAN_INSIDE_MATH_FLOAT`; else `dbl` |
+| `beman::inside::math::fn` | the default | `cordic` under `BEMAN_INSIDE_MATH_CORDIC`/`BEMAN_INSIDE_MATH_NO_FP`; `flt` under `BEMAN_INSIDE_MATH_FLOAT`; else `dbl` |
 
 `beman::inside::math::default_engine` is a namespace alias for the selected
 engine; the unqualified functions are using-declarations of it.
 
-Select the unqualified default at build time: `-DBEMAN_INSIDE_MATH_FIXED=ON` (integer),
+Select the unqualified default at build time: `-DBEMAN_INSIDE_MATH_CORDIC=ON` (integer),
 `-DBEMAN_INSIDE_MATH_FLOAT=ON` (binary32), or neither (binary64). The macro only changes
 what the bare `beman::inside::math::fn` name means — `cordic::`/`dbl::`/`flt::` stay
 individually reachable regardless.
@@ -323,7 +323,7 @@ the compute backend differs.
   a *poison* `<cmath>` shim first on the include path, so the build fails if any
   `<cmath>` is pulled in.
 - **Auto-enabled** when `__STDC_HOSTED__ == 0` (i.e. `-ffreestanding`) and
-  **implied by `BEMAN_INSIDE_MATH_FIXED`** — selecting the integer engine is itself an
+  **implied by `BEMAN_INSIDE_MATH_CORDIC`** — selecting the integer engine is itself an
   FP-free build.
 - All transcendentals are `constexpr` under `BEMAN_INSIDE_MATH_NO_FP` (the integer engine),
   so they evaluate at compile time as well as runtime.

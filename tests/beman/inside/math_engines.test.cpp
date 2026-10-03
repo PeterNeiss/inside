@@ -16,7 +16,7 @@ using namespace beman::inside::detail;
 namespace
 {
   // A double-backed f64 grid (works under both engines: `f64` ⊃ snap; under
-  // BEMAN_INSIDE_MATH_FIXED it is an ordinary round_nearest integer-backed inside).
+  // BEMAN_INSIDE_MATH_CORDIC it is an ordinary round_nearest integer-backed inside).
   using Ang = inside<{{-8, 8}, notch<1, 16384>}, round_nearest | f64>;
   using Pos = inside<{{1, 1000}, notch<1, 16384>}, round_nearest | f64>;
   using Sq  = inside<{{0, 16}, notch<1, 16384>}, round_nearest | f64>;   // sqrt needs Lower 0

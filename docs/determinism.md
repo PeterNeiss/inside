@@ -19,12 +19,12 @@ die." Reproducibility is the antidote.)
 | `f64` / `f32` (float-backed) storage & arithmetic | **Yes** | IEEE-754 binary64/binary32, round-to-nearest, no `-ffast-math` |
 | `beman::inside::math` — default `double` engine | **Yes** | same as above |
 | `beman::inside::math` — `float` engine (`-DBEMAN_INSIDE_MATH_FLOAT=ON`) | **Yes** | IEEE-754 binary32, round-to-nearest, no `-ffast-math` |
-| `beman::inside::math` — integer/CORDIC engine (`-DBEMAN_INSIDE_MATH_FIXED=ON`) | **Yes, unconditionally** | any platform, any flags, no FPU |
+| `beman::inside::math` — integer/CORDIC engine (`-DBEMAN_INSIDE_MATH_CORDIC=ON`) | **Yes, unconditionally** | any platform, any flags, no FPU |
 | Compile-time constants & coefficients | **Always** | `constexpr`, no external codegen |
 
 If you need bit-identical output on heterogeneous targets with *no* build-flag
 assumptions (e.g. an x86 host replaying a soft-float embedded core), build with
-`-DBEMAN_INSIDE_MATH_FIXED=ON`. Otherwise the default engine is reproducible on every
+`-DBEMAN_INSIDE_MATH_CORDIC=ON`. Otherwise the default engine is reproducible on every
 conforming IEEE-754 platform built without `-ffast-math`.
 
 > **"Reproducible" means per engine.** Each `beman::inside::math` engine is bit-identical
@@ -108,7 +108,7 @@ The same construction in single precision: fixed polynomials, explicit
 as the double engine. It exists for single-precision-only FPUs (Cortex-M4F and
 similar) — see [math.md](math.md#the-flt-binary32-engine).
 
-### `-DBEMAN_INSIDE_MATH_FIXED=ON` — the integer/CORDIC engine
+### `-DBEMAN_INSIDE_MATH_CORDIC=ON` — the integer/CORDIC engine
 
 The reproducibility contract, verbatim from `include/beman/inside/cmath.hpp`:
 
@@ -155,7 +155,7 @@ grid, `111779.502…`, was such a case until the CORDIC engine's precision chang
 below; both engines now give `111780/4096`.)
 
 **Consequence — switching engines is not value-preserving.** You **cannot** rebuild
-with another engine and expect bit-identical results: toggling `-DBEMAN_INSIDE_MATH_FIXED`
+with another engine and expect bit-identical results: toggling `-DBEMAN_INSIDE_MATH_CORDIC`
 or `-DBEMAN_INSIDE_MATH_FLOAT` can change individual transcendental values by a notch.
 Golden vectors, record-and-replay corpora, lockstep peers, and any cross-build
 comparison are valid **within a single engine only** — pick one engine for any
@@ -201,7 +201,7 @@ could drift from the source.
   `BEMAN_INSIDE_FMA` (default `ON`) adds it on x86-64 and the results are identical.
 - Toolchain: GCC 14+ or Clang 18+ in C++23 mode (MSVC is not supported).
 - For a guarantee that survives *any* of the above being wrong, build with
-  `-DBEMAN_INSIDE_MATH_FIXED=ON`.
+  `-DBEMAN_INSIDE_MATH_CORDIC=ON`.
 
 ## Where to go next
 

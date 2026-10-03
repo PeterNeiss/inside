@@ -49,7 +49,7 @@ jobs:
                       "tests": [
                         "Debug.Default", "Release.Default", "Release.TSan",
                         "Release.MaxSan", "Debug.Werror", "Debug.Coverage",
-                        "Release.-DBEMAN_INSIDE_MATH_FIXED=ON",
+                        "Release.-DBEMAN_INSIDE_MATH_CORDIC=ON",
                         "Release.-DBEMAN_INSIDE_MATH_FLOAT=ON",
                         "Debug.-DBEMAN_INSIDE_STRICT_SFINAE=ON"
                       ]
