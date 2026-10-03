@@ -10,7 +10,7 @@
 //
 // Values were captured from the library itself; comments give the approximate true
 // result. Grid snapping makes many of them exact (e.g. log10(1000)=3, hypot(3,4)=5).
-// The double and CORDIC engines agree on every pin here except one (marked #ifdef).
+// The double and CORDIC engines agree on every pin here.
 
 #include <beman/inside/inside.hpp>
 #include <beman/inside/cmath.hpp>
@@ -27,8 +27,7 @@ using namespace beman::inside::detail;
 #define EXACT_ERR(expr)       do { auto _r = (expr); ASSERT_FALSE(_r.has_value()); \
                                    ASSERT_EQ(_r.error(), errc::domain_error); } while (0)
 
-// These pins are the DEFAULT engine's values (double / CORDIC, which agree here
-// except the one #ifdef'd case). The float engine is a third value set, so under
+// These pins are the DEFAULT engine's values (double / CORDIC, which agree here). The float engine is a third value set, so under
 // BEMAN_INSIDE_MATH_FLOAT the unqualified math::fn produces different snapped values — its
 // determinism is pinned separately in test_math_engines.cpp.
 #ifndef BEMAN_INSIDE_MATH_FLOAT
@@ -92,13 +91,8 @@ TEST(DeterminismTest, determinism_sinh_cosh_tanh_across_grids_and_corners)
   EXACT(math::sinh(H2{-1}),2407, -2048);
   EXACT(math::cosh(H2{-1}), 395,   256);
   EXACT(math::tanh(H2{-1}),3119, -4096);
-  // sinh(4) on the coarse 1/4096 grid is the only value the two engines round
-  // differently (by one notch) — pin per engine.
-#ifdef BEMAN_INSIDE_MATH_FIXED
-  EXACT(math::sinh(H2{4}), 111779, 4096);
-#else
+  // sinh(4)·4096 = 111779.502…: a near-tie the engines now both round up.
   EXACT(math::sinh(H2{4}),  27945, 1024);
-#endif
   EXACT(math::cosh(H2{4}), 111855, 4096);
   EXACT(math::tanh(H2{4}),   4093, 4096);
 }

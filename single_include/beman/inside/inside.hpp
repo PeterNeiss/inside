@@ -7233,6 +7233,17 @@ namespace beman::inside::math
       return (W < 12) ? 12 : (W > 31) ? 31 : W;
     }
 
+    // Working scale for the composed endpoint functions (asin, tanh, log10,
+    // cbrt, ...): several fixed-point stages each add error, so they need more
+    // guard bits than one CORDIC pass; capped at the reference scale.
+    inline constexpr int kEndpointGuard = 4;
+    template <insidable Out>
+    constexpr int endpoint_bits() noexcept
+    {
+      constexpr int W = working_bits<Out>() + kEndpointGuard;
+      return W < 30 ? W : 30;
+    }
+
     // atan(2^-i) in RADIANS at scale 2^W. i=0 is π/4 (exact, from pi_r); i≥1
     // uses the fast-converging series atan(z)=z−z³/3+z⁵/5−… for tiny z=2^-i.
     constexpr imax atan_pow2_fixed(int i, int W) noexcept
@@ -8407,76 +8418,85 @@ namespace beman::inside::math
     }
 
     // asin(v) = atan2(v, sqrt(1 − v²)); v ∈ [−1, 1] → result ∈ [−π/2, π/2].
+    template <int W = kRefBits>
     constexpr rational asin_endpoint(rational v) noexcept
     {
-      imax one = imax{1} << kRefBits;
-      imax v_w = to_fixed(v, kRefBits);
-      imax c_w = sqrt_fixed<kRefBits>(one - fmul(v_w, v_w, kRefBits));   // √(1−v²) ≥ 0
+      imax one = imax{1} << W;
+      imax v_w = to_fixed(v, W);
+      imax c_w = sqrt_fixed<W>(one - fmul(v_w, v_w, W));   // √(1−v²) ≥ 0
       if (c_w == 0) {                                                    // v = ±1 → ±π/2
         rational half_pi = pi_r / 2;
         return (v < rational{0}) ? -half_pi : half_pi;
       }
-      imax rad = cordic_atan2_rad<kRefBits, kRefBits>(v_w, c_w);        // x = c_w > 0
-      return fixed_to_rational(rad, kRefBits);
+      imax rad = cordic_atan2_rad<W, W>(v_w, c_w);        // x = c_w > 0
+      return fixed_to_rational(rad, W);
     }
 
     // acos(v) = π/2 − asin(v); v ∈ [−1, 1] → result ∈ [0, π].
+    template <int W = kRefBits>
     constexpr rational acos_endpoint(rational v) noexcept
     {
       rational half_pi = pi_r / 2;
-      return half_pi - asin_endpoint(v);
+      return half_pi - asin_endpoint<W>(v);
     }
 
     // --- hyperbolic (from e^x via the exp core) ---------------------------
-    // sinh/cosh = (e^v ∓ e^-v)/2, combined in fixed-point at kRefBits, not as
+    // sinh/cosh = (e^v ∓ e^-v)/2, combined in fixed-point at W, not as
     // rationals: e^v and e^-v have wildly different denominators and the rational
     // cross-multiply overflows imax. At scale kRefBits each term is one scaled
     // integer (|v| ≤ 10 ⇒ e^|v|·2^30 ≤ 2.4e13, well inside int63).
+    template <int W = kRefBits>
     constexpr rational sinh_endpoint(rational v) noexcept
     {
-      imax ex  = to_fixed(exp_fixed<kRefBits>(v),  kRefBits);
-      imax enx = to_fixed(exp_fixed<kRefBits>(-v), kRefBits);
-      return fixed_to_rational((ex - enx) / 2, kRefBits);
+      imax ex  = to_fixed(exp_fixed<W>(v),  W);
+      imax enx = to_fixed(exp_fixed<W>(-v), W);
+      return fixed_to_rational((ex - enx) / 2, W);
     }
 
+    template <int W = kRefBits>
     constexpr rational cosh_endpoint(rational v) noexcept
     {
-      imax ex  = to_fixed(exp_fixed<kRefBits>(v),  kRefBits);
-      imax enx = to_fixed(exp_fixed<kRefBits>(-v), kRefBits);
-      return fixed_to_rational((ex + enx) / 2, kRefBits);
+      imax ex  = to_fixed(exp_fixed<W>(v),  W);
+      imax enx = to_fixed(exp_fixed<W>(-v), W);
+      return fixed_to_rational((ex + enx) / 2, W);
     }
 
     // tanh via the overflow-safe form tanh(x) = (1 − e^-2|x|)/(1 + e^-2|x|),
-    // odd-extended for x < 0. With u = e^-2|x| ∈ (0, 1] at scale kRefBits, the
-    // quotient `((1−u)·2^kRefBits)/(1+u)` keeps the dividend bounded.
+    // odd-extended for x < 0. With u = e^-2|x| ∈ (0, 1] at scale W, the
+    // quotient `((1−u)·2^W)/(1+u)` keeps the dividend bounded.
+    template <int W = kRefBits>
     constexpr rational tanh_endpoint(rational v) noexcept
     {
-      constexpr imax one = imax{1} << kRefBits;
+      constexpr imax one = imax{1} << W;
       rational av = abs(v);
-      imax u = to_fixed(exp_fixed<kRefBits>(av * -2), kRefBits);
-      imax t = ((one - u) << kRefBits) / (one + u);
-      return (v < rational{0}) ? fixed_to_rational(-t, kRefBits)
-                                            : fixed_to_rational(t, kRefBits);
+      imax u = to_fixed(exp_fixed<W>(av * -2), W);
+      imax t = ((one - u) << W) / (one + u);
+      return (v < rational{0}) ? fixed_to_rational(-t, W)
+                                            : fixed_to_rational(t, W);
     }
 
     // --- log10, cbrt ------------------------------------------------------
-    inline constexpr imax inv_ln10_w = inv_ln10_fixed<kRefBits>();
+    template <int W>
+    inline constexpr imax inv_ln10_w = inv_ln10_fixed<W>();
 
+    template <int W = kRefBits>
     constexpr rational log10_endpoint(rational v) noexcept
-    { return fixed_to_rational(fmul(ln_to_fixed<kRefBits>(v), inv_ln10_w, kRefBits), kRefBits); }
+    { return fixed_to_rational(fmul(ln_to_fixed<W>(v), inv_ln10_w<W>, W), W); }
 
     // cbrt(v) = sign(v)·e^(ln|v|/3); cbrt(0) = 0.
+    template <int W = kRefBits>
     constexpr rational cbrt_endpoint(rational v) noexcept
     {
       if (v == rational{0}) return rational{0};
       rational av = abs(v);
-      rational mag = exp_from_fixed<kRefBits>(ln_to_fixed<kRefBits>(av) / 3);
+      rational mag = exp_from_fixed<W>(ln_to_fixed<W>(av) / 3);
       return (v < rational{0}) ? -mag : mag;
     }
 
     // hypot(x, y) = sqrt(x²+y²), computed as m·sqrt((x/m)²+(y/m)²) with
     // m = max(|x|,|y|) so the radicand stays in [1, 2]. Exact rational scaling;
     // reuses the grid-scaled sqrt_fixed.
+    template <int W = kRefBits>
     constexpr rational hypot_endpoint(rational x,
                                                    rational y) noexcept
     {
@@ -8487,16 +8507,16 @@ namespace beman::inside::math
       // Form the radicand (x/m)²+(y/m)² ∈ [1, 2] at scale kRefBits — keeping it
       // a rational overflows imax (the squared numerators cross-multiply to
       // ~1e24). Each ratio is ≤ 1, so its fixed-point square fits comfortably.
-      imax rx = to_fixed(x / m, kRefBits);
-      imax ry = to_fixed(y / m, kRefBits);
-      imax s_w = fmul(rx, rx, kRefBits) + fmul(ry, ry, kRefBits);
-      const imax root_w = sqrt_fixed<kRefBits>(s_w);
+      imax rx = to_fixed(x / m, W);
+      imax ry = to_fixed(y / m, W);
+      imax s_w = fmul(rx, rx, W) + fmul(ry, ry, W);
+      const imax root_w = sqrt_fixed<W>(s_w);
       // Exact rational product when it fits; a wide-denominator m can push m·root
       // past imax, so fall back to the fixed-point form (|m| ≤ 2^20 envelope).
-      if (auto exact = m * fixed_to_rational(root_w, kRefBits))
+      if (auto exact = m * fixed_to_rational(root_w, W))
         return *exact;
-      return fixed_to_rational(fmul(to_fixed(m, kRefBits), root_w, kRefBits),
-                               kRefBits);
+      return fixed_to_rational(fmul(to_fixed(m, W), root_w, W),
+                               W);
     }
 
     // pow(b, e) = 2^(e·log2(b)), b > 0. The exponent e·log2(b) is saturated into
@@ -8609,7 +8629,7 @@ namespace beman::inside::math
   {
     static_assert(Lower<In> >= -1 && Upper<In> <= 1,
                   "beman::inside::math::asin: input must be in [-1, 1]");
-    return detail::store_grid<Out>(detail::asin_endpoint(rational{x}));
+    return detail::store_grid<Out>(detail::asin_endpoint<detail::endpoint_bits<Out>()>(rational{x}));
   }
 
   template <insidable Out, insidable In>
@@ -8617,7 +8637,7 @@ namespace beman::inside::math
   {
     static_assert(Lower<In> >= -1 && Upper<In> <= 1,
                   "beman::inside::math::acos: input must be in [-1, 1]");
-    return detail::store_grid<Out>(detail::acos_endpoint(rational{x}));
+    return detail::store_grid<Out>(detail::acos_endpoint<detail::endpoint_bits<Out>()>(rational{x}));
   }
 
   template <insidable Out, insidable In>
@@ -8625,7 +8645,7 @@ namespace beman::inside::math
   {
     static_assert(Lower<In> >= -10 && Upper<In> <= 10,
                   "beman::inside::math::sinh: input must be in [-10, 10]");
-    return detail::store_grid<Out>(detail::sinh_endpoint(rational{x}));
+    return detail::store_grid<Out>(detail::sinh_endpoint<detail::endpoint_bits<Out>()>(rational{x}));
   }
 
   template <insidable Out, insidable In>
@@ -8635,7 +8655,7 @@ namespace beman::inside::math
                   "beman::inside::math::cosh: input must be in [-10, 10]");
     static_assert(Lower<Out> <= rational{1},
                   "beman::inside::math::cosh: Out must include 1 (cosh ≥ 1)");
-    return detail::store_grid<Out>(detail::cosh_endpoint(rational{x}));
+    return detail::store_grid<Out>(detail::cosh_endpoint<detail::endpoint_bits<Out>()>(rational{x}));
   }
 
   template <insidable Out, insidable In>
@@ -8643,7 +8663,7 @@ namespace beman::inside::math
   {
     static_assert(Lower<In> >= -10 && Upper<In> <= 10,
                   "beman::inside::math::tanh: input must be in [-10, 10]");
-    return detail::store_grid<Out>(detail::tanh_endpoint(rational{x}));
+    return detail::store_grid<Out>(detail::tanh_endpoint<detail::endpoint_bits<Out>()>(rational{x}));
   }
 
   template <insidable Out, insidable In>
@@ -8651,7 +8671,7 @@ namespace beman::inside::math
   {
     static_assert(Lower<In> > 0,
                   "beman::inside::math::log10: input must be strictly positive");
-    return detail::store_grid<Out>(detail::log10_endpoint(rational{x}));
+    return detail::store_grid<Out>(detail::log10_endpoint<detail::endpoint_bits<Out>()>(rational{x}));
   }
 
   template <insidable Out, insidable In>
@@ -8659,7 +8679,7 @@ namespace beman::inside::math
   {
     static_assert(Lower<In> >= -(imax{1} << 20) && Upper<In> <= (imax{1} << 20),
                   "beman::inside::math::cbrt: input magnitude must be ≤ 2^20 for the working-scale envelope");
-    return detail::store_grid<Out>(detail::cbrt_endpoint(rational{x}));
+    return detail::store_grid<Out>(detail::cbrt_endpoint<detail::endpoint_bits<Out>()>(rational{x}));
   }
 
   template <insidable Out, insidable InX, insidable InY>
@@ -8669,7 +8689,7 @@ namespace beman::inside::math
                && Lower<InY> >= -(imax{1} << 20) && Upper<InY> <= (imax{1} << 20),
                   "beman::inside::math::hypot: input magnitudes must be ≤ 2^20 for the working-scale envelope");
     static_assert(Lower<Out> <= 0, "beman::inside::math::hypot: Out must include 0");
-    return detail::store_grid<Out>(detail::hypot_endpoint(rational{x}, rational{y}));
+    return detail::store_grid<Out>(detail::hypot_endpoint<detail::endpoint_bits<Out>()>(rational{x}, rational{y}));
   }
 
   // pow: b^e for runtime base b > 0. Returns `expected` — `overflow` when
