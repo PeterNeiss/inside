@@ -309,7 +309,7 @@ namespace beman::inside
   {
     if constexpr (has_flag(P, exact))
       return detail::rational{};
-#ifndef BEMAN_INSIDE_MATH_FIXED
+#ifndef BEMAN_INSIDE_MATH_NO_FP
     else if constexpr (has_flag(P, real)
                     && (double_exact<G> || G.Notch == 0))
       return double{};

@@ -9,6 +9,19 @@
 #include <type_traits>
 #include <utility>
 
+// BEMAN_INSIDE_MATH_NO_FP — no hardware floating point anywhere: the f64/f32
+// storage flags fall back to deduced integer storage, and the double/float math
+// engines compile out (the integer/CORDIC engine carries every transcendental).
+// Resolved here, in a header every other one includes, so storage selection and
+// the math headers always agree. Define it to force the FP-free build; it is
+// auto-enabled on freestanding targets (__STDC_HOSTED__ == 0) and by
+// BEMAN_INSIDE_MATH_FIXED. Public API and grid deduction are unchanged.
+#if !defined(BEMAN_INSIDE_MATH_NO_FP)
+#  if defined(BEMAN_INSIDE_MATH_FIXED) || (defined(__STDC_HOSTED__) && __STDC_HOSTED__ == 0)
+#    define BEMAN_INSIDE_MATH_NO_FP
+#  endif
+#endif
+
 namespace beman::inside
 {
   //---------------------------------------------------------------------------

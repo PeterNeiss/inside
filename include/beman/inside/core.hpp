@@ -61,7 +61,7 @@ namespace beman::inside
   {
     static_assert(grid::validate<G>());
     static_assert(!(P & clamp) || !(P & wrap), "clamp and wrap are mutually exclusive");
-#ifndef BEMAN_INSIDE_MATH_FIXED
+#ifndef BEMAN_INSIDE_MATH_NO_FP
     // Under the default (double) engine the `real` policy is double-backed, and
     // its value snaps to the grid (Lower + k·Notch). That snap is only exact
     // when the grid is dyadic — power-of-two notch and Lower — so grid points

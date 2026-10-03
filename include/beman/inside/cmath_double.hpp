@@ -16,19 +16,7 @@
 #include <beman/inside/math.hpp>   // beman::inside::detail::ldexp (constexpr, reproducible)
 #include <beman/inside/inside.hpp>  // complete inside/rational + has_flag/InsidePolicy/real (store<>)
 
-// BEMAN_INSIDE_MATH_NO_FP — resolved here (the lowest math header) so both this file and
-// cmath.hpp see it. When defined, the library uses NO hardware floating point and
-// NO <cmath>: the double (FP) engine below compiles out and the always-present
-// integer/CORDIC engine carries every transcendental. Define it (any value) to
-// force the FP-free path; it is auto-enabled on freestanding targets
-// (__STDC_HOSTED__ == 0) and whenever the integer engine is selected as the
-// default (BEMAN_INSIDE_MATH_FIXED). The integer engine is constexpr and bit-exact, so the
-// public API and grid deduction are unchanged — only the compute backend differs.
-#if !defined(BEMAN_INSIDE_MATH_NO_FP)
-#  if defined(BEMAN_INSIDE_MATH_FIXED) || (defined(__STDC_HOSTED__) && __STDC_HOSTED__ == 0)
-#    define BEMAN_INSIDE_MATH_NO_FP
-#  endif
-#endif
+// BEMAN_INSIDE_MATH_NO_FP is resolved in policy_flag.hpp (included via inside.hpp).
 
 #ifndef BEMAN_INSIDE_MATH_NO_FP   // ===== FP engine present (needs <cmath> + an FPU) =====
 
