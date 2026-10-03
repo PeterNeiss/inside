@@ -3017,6 +3017,10 @@ namespace beman::inside
       }
     }
 
+    // x mod m into [0, m) for m > 0 — one division (vs `((x % m) + m) % m`).
+    [[nodiscard]] constexpr imax euclid_mod(imax x, imax m) noexcept
+    { const imax r = x % m; return r < 0 ? r + m : r; }
+
     //-------------------------------------------------------------------------
     // RawLo / RawHi / raw_from_offset — map interval endpoints to raw space. For
     // notch-offset storage the raw is a 0-based index (RawLo == 0); for direct
@@ -3925,8 +3929,10 @@ namespace beman::inside::detail
           constexpr imax upper = UpperImax<L>;
           imax range = upper - lower + 1;
           imax shifted = rhs_imax - lower;
-          imax wrapped = ((shifted % range) + range) % range;
-          imax excess  = (shifted < 0) ? ((shifted - range + 1) / range) : (shifted / range);
+          // floor division: one divide yields both the wrap and the carry
+          imax excess  = shifted / range;
+          imax wrapped = shifted % range;
+          if (wrapped < 0) { wrapped += range; --excess; }
           from_value(lhs, wrapped + lower);
           if constexpr (wrap_action<plain<A>>)
             action.fn(lhs, beman::inside::inside<wrap_excess_grid()>{excess});   // carry as an inside
@@ -5736,7 +5742,7 @@ namespace beman::inside
       else if constexpr (P & wrap)
       {
         constexpr imax range = detail::RawHi<inside> - detail::RawLo<inside> + 1;
-        new_raw = ((new_raw - detail::RawLo<inside>) % range + range) % range + detail::RawLo<inside>;
+        new_raw = detail::euclid_mod(new_raw - detail::RawLo<inside>, range) + detail::RawLo<inside>;
         Raw = detail::raw_cast<inside>(new_raw);
       }
       else
@@ -6777,7 +6783,7 @@ namespace beman::inside
         constexpr imax M = slot_count;
         imax i = static_cast<imax>(index) + n;
         // euclidean mod so negative n still lands in [0, slot_count)
-        i = ((i % M) + M) % M;
+        i = beman::inside::detail::euclid_mod(i, M);
         index = i;
         remaining -= n;
         return *this;
@@ -8930,7 +8936,7 @@ namespace beman::inside::math
     constexpr rational sin_slot(imax i) noexcept
     {
       constexpr imax half = M / 2, quarter = M / 4;
-      i = ((i % M) + M) % M;                  // wrap into [0, M)
+      i = euclid_mod(i, M);                   // wrap into [0, M)
       bool flip = i >= half;
       if (flip) i -= half;                    // sin(π + x) = -sin(x)
       if (i > quarter) i = half - i;          // sin(π - x) =  sin(x)

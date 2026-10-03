@@ -342,6 +342,10 @@ namespace beman::inside
       }
     }
 
+    // x mod m into [0, m) for m > 0 — one division (vs `((x % m) + m) % m`).
+    [[nodiscard]] constexpr imax euclid_mod(imax x, imax m) noexcept
+    { const imax r = x % m; return r < 0 ? r + m : r; }
+
     //-------------------------------------------------------------------------
     // RawLo / RawHi / raw_from_offset — map interval endpoints to raw space. For
     // notch-offset storage the raw is a 0-based index (RawLo == 0); for direct

@@ -159,7 +159,7 @@ namespace beman::inside
         constexpr imax M = slot_count;
         imax i = static_cast<imax>(index) + n;
         // euclidean mod so negative n still lands in [0, slot_count)
-        i = ((i % M) + M) % M;
+        i = beman::inside::detail::euclid_mod(i, M);
         index = i;
         remaining -= n;
         return *this;

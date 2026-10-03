@@ -664,8 +664,10 @@ namespace beman::inside::detail
           constexpr imax upper = UpperImax<L>;
           imax range = upper - lower + 1;
           imax shifted = rhs_imax - lower;
-          imax wrapped = ((shifted % range) + range) % range;
-          imax excess  = (shifted < 0) ? ((shifted - range + 1) / range) : (shifted / range);
+          // floor division: one divide yields both the wrap and the carry
+          imax excess  = shifted / range;
+          imax wrapped = shifted % range;
+          if (wrapped < 0) { wrapped += range; --excess; }
           from_value(lhs, wrapped + lower);
           if constexpr (wrap_action<plain<A>>)
             action.fn(lhs, beman::inside::inside<wrap_excess_grid()>{excess});   // carry as an inside

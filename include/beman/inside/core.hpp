@@ -588,7 +588,7 @@ namespace beman::inside
       else if constexpr (P & wrap)
       {
         constexpr imax range = detail::RawHi<inside> - detail::RawLo<inside> + 1;
-        new_raw = ((new_raw - detail::RawLo<inside>) % range + range) % range + detail::RawLo<inside>;
+        new_raw = detail::euclid_mod(new_raw - detail::RawLo<inside>, range) + detail::RawLo<inside>;
         Raw = detail::raw_cast<inside>(new_raw);
       }
       else

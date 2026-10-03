@@ -1527,7 +1527,7 @@ namespace beman::inside::math
     constexpr rational sin_slot(imax i) noexcept
     {
       constexpr imax half = M / 2, quarter = M / 4;
-      i = ((i % M) + M) % M;                  // wrap into [0, M)
+      i = euclid_mod(i, M);                   // wrap into [0, M)
       bool flip = i >= half;
       if (flip) i -= half;                    // sin(π + x) = -sin(x)
       if (i > quarter) i = half - i;          // sin(π - x) =  sin(x)
