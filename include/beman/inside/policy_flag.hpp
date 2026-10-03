@@ -20,27 +20,27 @@ namespace beman::inside
   // statically, compilation fails unless the matching ignore flag is set; else a
   // runtime check is inserted that throws (or reports via an error_code param).
   // Binary operations OR the flags of both operands.
-  inline static constexpr policy_flag none         {0ull};
-  inline static constexpr policy_flag ignore_zero  {1ull << 1};
-  inline static constexpr policy_flag ignore_domain{1ull << 2};
+  inline constexpr policy_flag none         {0ull};
+  inline constexpr policy_flag ignore_zero  {1ull << 1};
+  inline constexpr policy_flag ignore_domain{1ull << 2};
   // `snap` — an off-notch value is rounded to fit the grid instead of
   // rejected; on its own truncate-toward-zero. Without it, an off-notch value is
   // a compile/runtime error and div/mod fall through to exact-rational results.
-  inline static constexpr policy_flag snap     {1ull << 4};
-  inline static constexpr policy_flag round_nearest {(1ull << 5) | snap};
+  inline constexpr policy_flag snap     {1ull << 4};
+  inline constexpr policy_flag round_nearest {(1ull << 5) | snap};
   // Rounding modes each pick a unique bit and OR in `snap`. Conceptually
   // exclusive; combining two is allowed but dispatch (assignment.hpp) picks the
   // first match: nearest → floor → ceil → half_even → trunc.
-  inline static constexpr policy_flag round_floor     {(1ull << 6) | snap};
-  inline static constexpr policy_flag round_ceil      {(1ull << 7) | snap};
-  inline static constexpr policy_flag round_half_even {(1ull << 8) | snap};
+  inline constexpr policy_flag round_floor     {(1ull << 6) | snap};
+  inline constexpr policy_flag round_ceil      {(1ull << 7) | snap};
+  inline constexpr policy_flag round_half_even {(1ull << 8) | snap};
 
   // runtime checking — opt-in
-  inline static constexpr policy_flag checked{1ull << 34}; // enable runtime domain/overflow checks
+  inline constexpr policy_flag checked{1ull << 34}; // enable runtime domain/overflow checks
 
   // unary — mutually exclusive
-  inline static constexpr policy_flag clamp   {1ull << 32}; // saturate to boundary
-  inline static constexpr policy_flag wrap    {1ull << 33}; // modular arithmetic
+  inline constexpr policy_flag clamp   {1ull << 32}; // saturate to boundary
+  inline constexpr policy_flag wrap    {1ull << 33}; // modular arithmetic
 
   // Representation flags — select raw storage. Without one, storage is deduced
   // from the grid (notch-0 → rational; unit notch at/below 0 → integer value;
@@ -53,7 +53,7 @@ namespace beman::inside
   // held as IEEE-754 double, notch nominal); an ordinary round_nearest integer
   // inside under BEMAN_INSIDE_MATH_FIXED. Power-of-2 notch + dyadic Lower required so
   // on-grid values are exact in double (see `double_exact`).
-  inline static constexpr policy_flag f64{(1ull << 37) | round_nearest};
+  inline constexpr policy_flag f64{(1ull << 37) | round_nearest};
 
   // `f32` — binary32-backed storage (raw held as IEEE-754 float, notch nominal);
   // the single-precision sibling of `f64`, for float-only FPUs (Cortex-M4F) and
@@ -61,12 +61,12 @@ namespace beman::inside
   // value must fit float's 24-bit significand (see `float_exact`). Like `f64` it
   // is an ordinary round_nearest integer inside under BEMAN_INSIDE_MATH_FIXED. Widest-wins
   // storage order: exact > f64 > f32 > direct > indexed > deduced.
-  inline static constexpr policy_flag f32{(1ull << 41) | round_nearest};
+  inline constexpr policy_flag f32{(1ull << 41) | round_nearest};
 
   // `real` — deprecated spelling of `f64`, kept as an alias for one release. New
   // code should use `f64` (binary64 storage) or `f32` (binary32). The flag is
   // purely a storage choice — transcendentals gate on `snap`, not on this.
-  inline static constexpr policy_flag real = f64;
+  inline constexpr policy_flag real = f64;
 
   // Fixed-width integer raw storage — pin the exact backing type instead of
   // letting deduction pick the smallest fit. A bare width flag means *value*
@@ -76,39 +76,39 @@ namespace beman::inside
   // width flag at a time. Unlike `f32`/`f64` these carry no `round_nearest` — they
   // are plain integer storage, like `direct`/`indexed`. Widest-wins storage order:
   // exact > f64 > f32 > {width} > direct > indexed > deduced.
-  inline static constexpr policy_flag i8 {1ull << 42};
-  inline static constexpr policy_flag u8 {1ull << 43};
-  inline static constexpr policy_flag i16{1ull << 44};
-  inline static constexpr policy_flag u16{1ull << 45};
-  inline static constexpr policy_flag i32{1ull << 46};
-  inline static constexpr policy_flag u32{1ull << 47};
-  inline static constexpr policy_flag i64{1ull << 48};
-  inline static constexpr policy_flag u64{1ull << 49};
+  inline constexpr policy_flag i8 {1ull << 42};
+  inline constexpr policy_flag u8 {1ull << 43};
+  inline constexpr policy_flag i16{1ull << 44};
+  inline constexpr policy_flag u16{1ull << 45};
+  inline constexpr policy_flag i32{1ull << 46};
+  inline constexpr policy_flag u32{1ull << 47};
+  inline constexpr policy_flag i64{1ull << 48};
+  inline constexpr policy_flag u64{1ull << 49};
 
   // OR of every fixed-width flag — lets storage_pick test "any width pinned" and
   // count set bits (exactly one allowed) in a single mask.
-  inline static constexpr policy_flag raw_width_mask
+  inline constexpr policy_flag raw_width_mask
     {i8 | u8 | i16 | u16 | i32 | u32 | i64 | u64};
 
   // `exact` — force rational raw storage on any grid. Values still obey the grid;
   // exact fractions, no notch-count limit, no double. Slowest; overflow-checked
   // rational math. Identical under both engines.
-  inline static constexpr policy_flag exact{1ull << 38};
+  inline constexpr policy_flag exact{1ull << 38};
 
   // `direct` — force raw == value (plain integer) where deduction would pick a
   // 0-based index (inside<{5,100}> stores 5..100). Wire/debugger value for interop.
   // Requires Notch == 1.
-  inline static constexpr policy_flag direct{1ull << 39};
+  inline constexpr policy_flag direct{1ull << 39};
 
   // `indexed` — force raw == 0-based notch index where deduction would pick
   // direct storage (inside<{-5,5}> stores 0..10). Dense unsigned layout. Requires
   // Notch != 0.
-  inline static constexpr policy_flag indexed{1ull << 40};
+  inline constexpr policy_flag indexed{1ull << 40};
 
   // opt-out of `checked`: no domain/round/overflow/div-by-zero checks (reading
   // out-of-range or dividing by zero is UB; `/= 0` no-ops, `a / 0` skips the
   // check). Includes `snap` so notch-incompatible assigns compile.
-  inline static constexpr policy_flag unsafe
+  inline constexpr policy_flag unsafe
     {(1ull << 36) | ignore_domain | snap | ignore_zero};
 
   //---------------------------------------------------------------------------

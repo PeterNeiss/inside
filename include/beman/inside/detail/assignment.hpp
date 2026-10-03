@@ -562,8 +562,9 @@ namespace beman::inside::detail
               || mul_overflow(o_d, f_d, &m.den))
             return no;
           // worst-case |numerator| over R's raw range
-          const imax rmax = std::max(RawHi<R> < 0 ? -RawHi<R> : RawHi<R>,
-                                     RawLo<R> < 0 ? -RawLo<R> : RawLo<R>);
+          constexpr imax hi_mag = RawHi<R> < 0 ? -RawHi<R> : RawHi<R>;
+          constexpr imax lo_mag = RawLo<R> < 0 ? -RawLo<R> : RawLo<R>;
+          const imax rmax = hi_mag > lo_mag ? hi_mag : lo_mag;
           imax term, num;
           if (mul_overflow(rmax, m.mul, &term)
               || add_overflow(term, m.add < 0 ? -m.add : m.add, &num))

@@ -8,9 +8,7 @@
 #include <beman/inside/lift.hpp>
 #include <beman/inside/detail/rational.hpp>
 
-#include <algorithm>
 #include <initializer_list>
-#include <tuple>
 
 namespace beman::inside
 {
@@ -77,8 +75,9 @@ namespace beman::inside
   {
     constexpr interval corner_hull(rational a, rational b, rational c, rational d) noexcept
     {
-      auto [lo, hi] = std::minmax({a, b, c, d});
-      return interval{lo, hi};
+      const rational lo1 = a < b ? a : b, hi1 = a < b ? b : a;
+      const rational lo2 = c < d ? c : d, hi2 = c < d ? d : c;
+      return interval{lo1 < lo2 ? lo1 : lo2, hi1 < hi2 ? hi2 : hi1};
     }
   }
 
@@ -147,22 +146,5 @@ namespace beman::inside
   }
 
 } // namespace beman::inside
-
-//---------------------------------------------------------------------------
-// Structured bindings: `auto [lo, hi] = interval{...};`
-//---------------------------------------------------------------------------
-template <> struct std::tuple_size<beman::inside::interval> : std::integral_constant<std::size_t, 2> {};
-template <std::size_t I> struct std::tuple_element<I, beman::inside::interval> { using type = beman::inside::detail::rational; };
-
-namespace beman::inside
-{
-  template <std::size_t I, class Iv>
-    requires std::same_as<std::remove_cvref_t<Iv>, beman::inside::interval>
-  constexpr auto&& get(Iv&& iv) noexcept
-  {
-    if constexpr (I == 0) return std::forward<Iv>(iv).Lower;
-    else                  return std::forward<Iv>(iv).Upper;
-  }
-}
 
 #endif // BEMAN_INSIDE_INTERVAL_HPP

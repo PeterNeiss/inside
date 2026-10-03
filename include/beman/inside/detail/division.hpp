@@ -285,7 +285,7 @@ namespace beman::inside::detail
     static_assert(native_mod, "modulo requires integer-valued grids and snap");
 
     static constexpr imax max_rem =
-        std::max(abs_den(LowerImax<R>), abs_den(UpperImax<R>)) - 1;
+        (abs_den(LowerImax<R>) > abs_den(UpperImax<R>) ? abs_den(LowerImax<R>) : abs_den(UpperImax<R>)) - 1;
 
     // Remainder consistent with the rounded quotient: r = a − round(a/b)·b. Under
     // truncation it takes the dividend's sign (non-negative for a non-negative

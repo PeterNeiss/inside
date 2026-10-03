@@ -13,9 +13,6 @@ using namespace beman::inside::detail;
 // grid structured binding
 TEST(GridTest, grid_structured_binding)
 {
-  static_assert(std::tuple_size_v<grid> == 2);
-  static_assert(std::is_same_v<std::tuple_element_t<0, grid>, interval>);
-  static_assert(std::is_same_v<std::tuple_element_t<1, grid>, rational>);
 
   grid g{{0, 100}, 2};
   auto [iv, notch] = g;

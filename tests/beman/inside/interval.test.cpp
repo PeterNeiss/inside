@@ -9,8 +9,6 @@ using namespace beman::inside::detail;
 // interval structured binding
 TEST(IntervalTest, interval_structured_binding)
 {
-  static_assert(std::tuple_size_v<interval> == 2);
-  static_assert(std::is_same_v<std::tuple_element_t<0, interval>, rational>);
 
   interval iv{-3, 5};
   auto [lo, hi] = iv;

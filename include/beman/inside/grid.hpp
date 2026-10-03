@@ -12,7 +12,7 @@
 
 #include <expected>   // std::expected, std::unexpected
 
-#include <algorithm>
+#include <bit>
 #include <concepts>              // std::convertible_to (grid corner ctors)
 
 namespace beman::inside
@@ -167,17 +167,14 @@ namespace beman::inside
   // Dyadic grid: power-of-2 notch denominator and Lower denominator, so every
   // on-grid value is exactly representable in IEEE-754 `double`. Precondition
   // for double-backed (`real`) storage.
-  constexpr bool is_pow2(umax n) { return n != 0 && (n & (n - 1)) == 0; }
-
   template <grid G>
   inline constexpr bool dyadic_grid =
        G.Notch.Numerator != 0
-    && is_pow2(detail::abs_den(G.Notch.Denominator))
-    && is_pow2(detail::abs_den(G.Interval.Lower.Denominator));
+    && std::has_single_bit(detail::abs_den(G.Notch.Denominator))
+    && std::has_single_bit(detail::abs_den(G.Interval.Lower.Denominator));
 
-  // log2 of a power-of-two magnitude (>= 1); 0 for 1. (grid.hpp can't include
-  // cmath.hpp — that depends on us — so this mirrors detail::log2_pow2.)
-  constexpr int log2_pow2_mag(umax d) noexcept { int n = 0; while (d > 1) { d >>= 1; ++n; } return n; }
+  // log2 of a power-of-two magnitude (>= 1); 0 for 1.
+  constexpr int log2_pow2_mag(umax d) noexcept { return std::countr_zero(d); }
 
   // |r · 2^f| as an integer. On a dyadic grid every endpoint's denominator is a
   // power of two dividing 2^f, so r·2^f is integral. Writes |N| and returns true
@@ -249,12 +246,7 @@ namespace beman::inside
   { return (P & raw_width_mask) != none; }
 
   constexpr int width_flag_count(policy_flag P) noexcept
-  {
-    policy_flag w = P & raw_width_mask;
-    int n = 0;
-    for (; w; w >>= 1) n += static_cast<int>(w & 1);
-    return n;
-  }
+  { return std::popcount(P & raw_width_mask); }
 
   // Map the single set width bit to its C++ type (only valid when has_width_flag).
   template <policy_flag P>
@@ -438,8 +430,8 @@ namespace beman::inside
     {
       return lift(
         [](interval pos, interval neg){
-          return grid{interval{std::min(neg.Lower, pos.Lower),
-                               std::max(neg.Upper, pos.Upper)}, detail::rational{0}};
+          return grid{interval{neg.Lower < pos.Lower ? neg.Lower : pos.Lower,
+                               neg.Upper < pos.Upper ? pos.Upper : neg.Upper}, detail::rational{0}};
         },
         lhs.Interval / interval{step, rhs.Interval.Upper},
         lhs.Interval / interval{rhs.Interval.Lower, -step});
@@ -468,31 +460,13 @@ namespace beman::inside
   //---------------------------------------------------------------------------
   inline constexpr std::expected<grid, errc> hull(const grid& lhs, const grid& rhs)
   {
-    const interval iv{std::min(lhs.Interval.Lower, rhs.Interval.Lower),
-                      std::max(lhs.Interval.Upper, rhs.Interval.Upper)};
+    const interval iv{lhs.Interval.Lower < rhs.Interval.Lower ? lhs.Interval.Lower : rhs.Interval.Lower,
+                      lhs.Interval.Upper < rhs.Interval.Upper ? rhs.Interval.Upper : lhs.Interval.Upper};
     if (lhs.Notch == 0 || rhs.Notch == 0)
       return grid{iv, detail::rational{0}};
     return lift([iv](detail::rational g){ return grid{iv, g}; },
                 detail::gcd(lhs.Notch, rhs.Notch));
   }
 } // namespace beman::inside
-
-//---------------------------------------------------------------------------
-// Structured bindings: `auto [iv, notch] = some_grid;`
-//---------------------------------------------------------------------------
-template <> struct std::tuple_size<beman::inside::grid> : std::integral_constant<std::size_t, 2> {};
-template <> struct std::tuple_element<0, beman::inside::grid> { using type = beman::inside::interval; };
-template <> struct std::tuple_element<1, beman::inside::grid> { using type = beman::inside::detail::rational; };
-
-namespace beman::inside
-{
-  template <std::size_t I, class G>
-    requires std::same_as<std::remove_cvref_t<G>, beman::inside::grid>
-  constexpr auto&& get(G&& g) noexcept
-  {
-    if constexpr (I == 0) return std::forward<G>(g).Interval;
-    else                  return std::forward<G>(g).Notch;
-  }
-}
 
 #endif // BEMAN_INSIDE_GRID_HPP

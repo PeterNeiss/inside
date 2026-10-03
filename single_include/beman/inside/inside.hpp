@@ -1633,8 +1633,9 @@ namespace beman::inside
   {
     constexpr interval corner_hull(rational a, rational b, rational c, rational d) noexcept
     {
-      auto [lo, hi] = std::minmax({a, b, c, d});
-      return interval{lo, hi};
+      const rational lo1 = a < b ? a : b, hi1 = a < b ? b : a;
+      const rational lo2 = c < d ? c : d, hi2 = c < d ? d : c;
+      return interval{lo1 < lo2 ? lo1 : lo2, hi1 < hi2 ? hi2 : hi1};
     }
   }
 
@@ -1704,23 +1705,6 @@ namespace beman::inside
 
 } // namespace beman::inside
 
-//---------------------------------------------------------------------------
-// Structured bindings: `auto [lo, hi] = interval{...};`
-//---------------------------------------------------------------------------
-template <> struct std::tuple_size<beman::inside::interval> : std::integral_constant<std::size_t, 2> {};
-template <std::size_t I> struct std::tuple_element<I, beman::inside::interval> { using type = beman::inside::detail::rational; };
-
-namespace beman::inside
-{
-  template <std::size_t I, class Iv>
-    requires std::same_as<std::remove_cvref_t<Iv>, beman::inside::interval>
-  constexpr auto&& get(Iv&& iv) noexcept
-  {
-    if constexpr (I == 0) return std::forward<Iv>(iv).Lower;
-    else                  return std::forward<Iv>(iv).Upper;
-  }
-}
-
 
 // ======================================================================
 //  beman/inside/policy_flag.hpp
@@ -1740,27 +1724,27 @@ namespace beman::inside
   // statically, compilation fails unless the matching ignore flag is set; else a
   // runtime check is inserted that throws (or reports via an error_code param).
   // Binary operations OR the flags of both operands.
-  inline static constexpr policy_flag none         {0ull};
-  inline static constexpr policy_flag ignore_zero  {1ull << 1};
-  inline static constexpr policy_flag ignore_domain{1ull << 2};
+  inline constexpr policy_flag none         {0ull};
+  inline constexpr policy_flag ignore_zero  {1ull << 1};
+  inline constexpr policy_flag ignore_domain{1ull << 2};
   // `snap` — an off-notch value is rounded to fit the grid instead of
   // rejected; on its own truncate-toward-zero. Without it, an off-notch value is
   // a compile/runtime error and div/mod fall through to exact-rational results.
-  inline static constexpr policy_flag snap     {1ull << 4};
-  inline static constexpr policy_flag round_nearest {(1ull << 5) | snap};
+  inline constexpr policy_flag snap     {1ull << 4};
+  inline constexpr policy_flag round_nearest {(1ull << 5) | snap};
   // Rounding modes each pick a unique bit and OR in `snap`. Conceptually
   // exclusive; combining two is allowed but dispatch (assignment.hpp) picks the
   // first match: nearest → floor → ceil → half_even → trunc.
-  inline static constexpr policy_flag round_floor     {(1ull << 6) | snap};
-  inline static constexpr policy_flag round_ceil      {(1ull << 7) | snap};
-  inline static constexpr policy_flag round_half_even {(1ull << 8) | snap};
+  inline constexpr policy_flag round_floor     {(1ull << 6) | snap};
+  inline constexpr policy_flag round_ceil      {(1ull << 7) | snap};
+  inline constexpr policy_flag round_half_even {(1ull << 8) | snap};
 
   // runtime checking — opt-in
-  inline static constexpr policy_flag checked{1ull << 34}; // enable runtime domain/overflow checks
+  inline constexpr policy_flag checked{1ull << 34}; // enable runtime domain/overflow checks
 
   // unary — mutually exclusive
-  inline static constexpr policy_flag clamp   {1ull << 32}; // saturate to boundary
-  inline static constexpr policy_flag wrap    {1ull << 33}; // modular arithmetic
+  inline constexpr policy_flag clamp   {1ull << 32}; // saturate to boundary
+  inline constexpr policy_flag wrap    {1ull << 33}; // modular arithmetic
 
   // Representation flags — select raw storage. Without one, storage is deduced
   // from the grid (notch-0 → rational; unit notch at/below 0 → integer value;
@@ -1773,7 +1757,7 @@ namespace beman::inside
   // held as IEEE-754 double, notch nominal); an ordinary round_nearest integer
   // inside under BEMAN_INSIDE_MATH_FIXED. Power-of-2 notch + dyadic Lower required so
   // on-grid values are exact in double (see `double_exact`).
-  inline static constexpr policy_flag f64{(1ull << 37) | round_nearest};
+  inline constexpr policy_flag f64{(1ull << 37) | round_nearest};
 
   // `f32` — binary32-backed storage (raw held as IEEE-754 float, notch nominal);
   // the single-precision sibling of `f64`, for float-only FPUs (Cortex-M4F) and
@@ -1781,12 +1765,12 @@ namespace beman::inside
   // value must fit float's 24-bit significand (see `float_exact`). Like `f64` it
   // is an ordinary round_nearest integer inside under BEMAN_INSIDE_MATH_FIXED. Widest-wins
   // storage order: exact > f64 > f32 > direct > indexed > deduced.
-  inline static constexpr policy_flag f32{(1ull << 41) | round_nearest};
+  inline constexpr policy_flag f32{(1ull << 41) | round_nearest};
 
   // `real` — deprecated spelling of `f64`, kept as an alias for one release. New
   // code should use `f64` (binary64 storage) or `f32` (binary32). The flag is
   // purely a storage choice — transcendentals gate on `snap`, not on this.
-  inline static constexpr policy_flag real = f64;
+  inline constexpr policy_flag real = f64;
 
   // Fixed-width integer raw storage — pin the exact backing type instead of
   // letting deduction pick the smallest fit. A bare width flag means *value*
@@ -1796,39 +1780,39 @@ namespace beman::inside
   // width flag at a time. Unlike `f32`/`f64` these carry no `round_nearest` — they
   // are plain integer storage, like `direct`/`indexed`. Widest-wins storage order:
   // exact > f64 > f32 > {width} > direct > indexed > deduced.
-  inline static constexpr policy_flag i8 {1ull << 42};
-  inline static constexpr policy_flag u8 {1ull << 43};
-  inline static constexpr policy_flag i16{1ull << 44};
-  inline static constexpr policy_flag u16{1ull << 45};
-  inline static constexpr policy_flag i32{1ull << 46};
-  inline static constexpr policy_flag u32{1ull << 47};
-  inline static constexpr policy_flag i64{1ull << 48};
-  inline static constexpr policy_flag u64{1ull << 49};
+  inline constexpr policy_flag i8 {1ull << 42};
+  inline constexpr policy_flag u8 {1ull << 43};
+  inline constexpr policy_flag i16{1ull << 44};
+  inline constexpr policy_flag u16{1ull << 45};
+  inline constexpr policy_flag i32{1ull << 46};
+  inline constexpr policy_flag u32{1ull << 47};
+  inline constexpr policy_flag i64{1ull << 48};
+  inline constexpr policy_flag u64{1ull << 49};
 
   // OR of every fixed-width flag — lets storage_pick test "any width pinned" and
   // count set bits (exactly one allowed) in a single mask.
-  inline static constexpr policy_flag raw_width_mask
+  inline constexpr policy_flag raw_width_mask
     {i8 | u8 | i16 | u16 | i32 | u32 | i64 | u64};
 
   // `exact` — force rational raw storage on any grid. Values still obey the grid;
   // exact fractions, no notch-count limit, no double. Slowest; overflow-checked
   // rational math. Identical under both engines.
-  inline static constexpr policy_flag exact{1ull << 38};
+  inline constexpr policy_flag exact{1ull << 38};
 
   // `direct` — force raw == value (plain integer) where deduction would pick a
   // 0-based index (inside<{5,100}> stores 5..100). Wire/debugger value for interop.
   // Requires Notch == 1.
-  inline static constexpr policy_flag direct{1ull << 39};
+  inline constexpr policy_flag direct{1ull << 39};
 
   // `indexed` — force raw == 0-based notch index where deduction would pick
   // direct storage (inside<{-5,5}> stores 0..10). Dense unsigned layout. Requires
   // Notch != 0.
-  inline static constexpr policy_flag indexed{1ull << 40};
+  inline constexpr policy_flag indexed{1ull << 40};
 
   // opt-out of `checked`: no domain/round/overflow/div-by-zero checks (reading
   // out-of-range or dividing by zero is UB; `/= 0` no-ops, `a / 0` skips the
   // check). Includes `snap` so notch-incompatible assigns compile.
-  inline static constexpr policy_flag unsafe
+  inline constexpr policy_flag unsafe
     {(1ull << 36) | ignore_domain | snap | ignore_zero};
 
   //---------------------------------------------------------------------------
@@ -2111,17 +2095,14 @@ namespace beman::inside
   // Dyadic grid: power-of-2 notch denominator and Lower denominator, so every
   // on-grid value is exactly representable in IEEE-754 `double`. Precondition
   // for double-backed (`real`) storage.
-  constexpr bool is_pow2(umax n) { return n != 0 && (n & (n - 1)) == 0; }
-
   template <grid G>
   inline constexpr bool dyadic_grid =
        G.Notch.Numerator != 0
-    && is_pow2(detail::abs_den(G.Notch.Denominator))
-    && is_pow2(detail::abs_den(G.Interval.Lower.Denominator));
+    && std::has_single_bit(detail::abs_den(G.Notch.Denominator))
+    && std::has_single_bit(detail::abs_den(G.Interval.Lower.Denominator));
 
-  // log2 of a power-of-two magnitude (>= 1); 0 for 1. (grid.hpp can't include
-  // cmath.hpp — that depends on us — so this mirrors detail::log2_pow2.)
-  constexpr int log2_pow2_mag(umax d) noexcept { int n = 0; while (d > 1) { d >>= 1; ++n; } return n; }
+  // log2 of a power-of-two magnitude (>= 1); 0 for 1.
+  constexpr int log2_pow2_mag(umax d) noexcept { return std::countr_zero(d); }
 
   // |r · 2^f| as an integer. On a dyadic grid every endpoint's denominator is a
   // power of two dividing 2^f, so r·2^f is integral. Writes |N| and returns true
@@ -2193,12 +2174,7 @@ namespace beman::inside
   { return (P & raw_width_mask) != none; }
 
   constexpr int width_flag_count(policy_flag P) noexcept
-  {
-    policy_flag w = P & raw_width_mask;
-    int n = 0;
-    for (; w; w >>= 1) n += static_cast<int>(w & 1);
-    return n;
-  }
+  { return std::popcount(P & raw_width_mask); }
 
   // Map the single set width bit to its C++ type (only valid when has_width_flag).
   template <policy_flag P>
@@ -2382,8 +2358,8 @@ namespace beman::inside
     {
       return lift(
         [](interval pos, interval neg){
-          return grid{interval{std::min(neg.Lower, pos.Lower),
-                               std::max(neg.Upper, pos.Upper)}, detail::rational{0}};
+          return grid{interval{neg.Lower < pos.Lower ? neg.Lower : pos.Lower,
+                               neg.Upper < pos.Upper ? pos.Upper : neg.Upper}, detail::rational{0}};
         },
         lhs.Interval / interval{step, rhs.Interval.Upper},
         lhs.Interval / interval{rhs.Interval.Lower, -step});
@@ -2412,32 +2388,14 @@ namespace beman::inside
   //---------------------------------------------------------------------------
   inline constexpr std::expected<grid, errc> hull(const grid& lhs, const grid& rhs)
   {
-    const interval iv{std::min(lhs.Interval.Lower, rhs.Interval.Lower),
-                      std::max(lhs.Interval.Upper, rhs.Interval.Upper)};
+    const interval iv{lhs.Interval.Lower < rhs.Interval.Lower ? lhs.Interval.Lower : rhs.Interval.Lower,
+                      lhs.Interval.Upper < rhs.Interval.Upper ? rhs.Interval.Upper : lhs.Interval.Upper};
     if (lhs.Notch == 0 || rhs.Notch == 0)
       return grid{iv, detail::rational{0}};
     return lift([iv](detail::rational g){ return grid{iv, g}; },
                 detail::gcd(lhs.Notch, rhs.Notch));
   }
 } // namespace beman::inside
-
-//---------------------------------------------------------------------------
-// Structured bindings: `auto [iv, notch] = some_grid;`
-//---------------------------------------------------------------------------
-template <> struct std::tuple_size<beman::inside::grid> : std::integral_constant<std::size_t, 2> {};
-template <> struct std::tuple_element<0, beman::inside::grid> { using type = beman::inside::interval; };
-template <> struct std::tuple_element<1, beman::inside::grid> { using type = beman::inside::detail::rational; };
-
-namespace beman::inside
-{
-  template <std::size_t I, class G>
-    requires std::same_as<std::remove_cvref_t<G>, beman::inside::grid>
-  constexpr auto&& get(G&& g) noexcept
-  {
-    if constexpr (I == 0) return std::forward<G>(g).Interval;
-    else                  return std::forward<G>(g).Notch;
-  }
-}
 
 
 //---------------------------------------------------------------------------
@@ -3581,8 +3539,9 @@ namespace beman::inside::detail
               || mul_overflow(o_d, f_d, &m.den))
             return no;
           // worst-case |numerator| over R's raw range
-          const imax rmax = std::max(RawHi<R> < 0 ? -RawHi<R> : RawHi<R>,
-                                     RawLo<R> < 0 ? -RawLo<R> : RawLo<R>);
+          constexpr imax hi_mag = RawHi<R> < 0 ? -RawHi<R> : RawHi<R>;
+          constexpr imax lo_mag = RawLo<R> < 0 ? -RawLo<R> : RawLo<R>;
+          const imax rmax = hi_mag > lo_mag ? hi_mag : lo_mag;
           imax term, num;
           if (mul_overflow(rmax, m.mul, &term)
               || add_overflow(term, m.add < 0 ? -m.add : m.add, &num))
@@ -4824,7 +4783,7 @@ namespace beman::inside::detail
     static_assert(native_mod, "modulo requires integer-valued grids and snap");
 
     static constexpr imax max_rem =
-        std::max(abs_den(LowerImax<R>), abs_den(UpperImax<R>)) - 1;
+        (abs_den(LowerImax<R>) > abs_den(UpperImax<R>) ? abs_den(LowerImax<R>) : abs_den(UpperImax<R>)) - 1;
 
     // Remainder consistent with the rounded quotient: r = a − round(a/b)·b. Under
     // truncation it takes the dividend's sign (non-negative for a non-negative
