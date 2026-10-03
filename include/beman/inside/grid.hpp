@@ -129,7 +129,9 @@ namespace beman::inside
   // index. A continuous grid (notch 0) has nothing to snap to. |index| >= 2^52 is
   // already integral, so the imax narrowing below is always safe. G and M are
   // template parameters so each store compiles to its own branch-free rounding.
-  template <grid G, round_mode M = round_mode::nearest>
+  // AnySign: v may lie below a grid that starts at 0 or higher (the wrap path
+  // rounds out-of-range values); otherwise that half of the tie test is dead.
+  template <grid G, round_mode M = round_mode::nearest, bool AnySign = (G.Interval.Lower < 0)>
   [[nodiscard]] constexpr double snap_double(double v) noexcept
   {
     if constexpr (G.Notch == rational{0})
@@ -146,7 +148,7 @@ namespace beman::inside
       if constexpr (M == round_mode::nearest)
       {
         k += (f >= 0.5);
-        if constexpr (G.Interval.Lower < 0) k -= (f <= -0.5);   // dead on a grid ≥ 0
+        if constexpr (AnySign) k -= (f <= -0.5);
       }
       else if constexpr (M == round_mode::floor)     k -= (f < 0);
       else if constexpr (M == round_mode::ceil)      k += (f > 0);

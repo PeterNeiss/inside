@@ -101,3 +101,34 @@ TEST(ConsistencyTest, integer_wrap_uses_span_plus_notch)
   EXPECT_EQ(rational{U{12}}, q(1));
   EXPECT_EQ(rational{U{-1}}, q(10));
 }
+
+//---------------------------------------------------------------------------
+// wrap + rounding never leaves the grid: rounding up to Upper + notch is the
+// same point as Lower on the circle.
+//---------------------------------------------------------------------------
+TEST(ConsistencyTest, wrap_then_round_stays_on_the_grid)
+{
+  using W = inside<{0, 8}, wrap | round_nearest>;
+  EXPECT_EQ(rational{W{q(17, 2)}}, q(0));                // 8.5 → 9 ≡ 0
+  EXPECT_EQ(rational{W{q(-3, 10)}}, q(0));               // -0.3 → 0
+  EXPECT_EQ(rational{W{q(-7, 10)}}, q(8));               // -0.7 → -1 ≡ 8
+  EXPECT_EQ(rational{W{q(39, 4)}}, q(1));                // 9.75 → 10 ≡ 1
+#ifndef BEMAN_INSIDE_MATH_FIXED
+  using F = inside<{{0, 8}, 1}, f64 | wrap>;
+  EXPECT_EQ(F{8.5}.raw(), 0.0);
+  EXPECT_EQ(F{-0.3}.raw(), 0.0);
+  EXPECT_EQ(F{-0.7}.raw(), 8.0);
+#endif
+}
+
+// An inside source with off-integer values wraps after rounding by the target's
+// policy, exactly like the same value given as a rational.
+TEST(ConsistencyTest, inside_source_wrap_rounds_first)
+{
+  using L = inside<{0, 10}, wrap | round_nearest>;
+  using R = inside<{{0, 20}, notch<1, 2>}>;
+  L a{0};
+  a = R{q(25, 2)};
+  EXPECT_EQ(rational{a}, rational{L{q(25, 2)}});
+  EXPECT_EQ(rational{a}, q(2));                          // 12.5 → 13 ≡ 2
+}

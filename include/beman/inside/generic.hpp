@@ -424,6 +424,35 @@ namespace beman::inside
       : HasPolicy<L, P, round_nearest>   ? round_mode::nearest
       :                                    round_mode::trunc;
 
+    // v rounded onto L's lattice {k·Notch} by rounding_for<L, P> (value index,
+    // ties half away from zero) — not limited to [Lower, Upper], so wrap can
+    // round first and fold an on-lattice value after. Lower/Notch is an integer
+    // on every valid grid, so the lattice points are exactly the grid's.
+    template <insidable L, typename P>
+    [[nodiscard]] constexpr rational round_to_lattice(rational v)
+    {
+      if constexpr (Notch<L> == 0)
+        return v;
+      else
+      {
+        const rational qv = (v / Notch<L>).value();
+        constexpr round_mode m = rounding_for<L, P>;
+        imax k;
+        if constexpr (m == round_mode::nearest)    k = round(qv);
+        else if constexpr (m == round_mode::floor) k = floor(qv);
+        else if constexpr (m == round_mode::ceil)  k = ceil(qv);
+        else if constexpr (m == round_mode::half_even)
+        {
+          const imax f = floor(qv);
+          const rational frac = (qv - rational{f}).value();
+          const rational half{1, 2};
+          k = frac > half ? f + 1 : frac < half ? f : ((f & 1) ? f + 1 : f);
+        }
+        else                                       k = trunc(qv);
+        return (rational{k} * Notch<L>).value();
+      }
+    }
+
     // Rounds the split offset quotient q + r/den (r < den ≤ imax_max) per L's
     // rounding policy — q/r form so no expression can overflow umax
     // (num + den/2 could, for num near umax). Shared by round_quotient's

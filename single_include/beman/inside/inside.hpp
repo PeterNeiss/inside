@@ -2077,7 +2077,9 @@ namespace beman::inside
   // index. A continuous grid (notch 0) has nothing to snap to. |index| >= 2^52 is
   // already integral, so the imax narrowing below is always safe. G and M are
   // template parameters so each store compiles to its own branch-free rounding.
-  template <grid G, round_mode M = round_mode::nearest>
+  // AnySign: v may lie below a grid that starts at 0 or higher (the wrap path
+  // rounds out-of-range values); otherwise that half of the tie test is dead.
+  template <grid G, round_mode M = round_mode::nearest, bool AnySign = (G.Interval.Lower < 0)>
   [[nodiscard]] constexpr double snap_double(double v) noexcept
   {
     if constexpr (G.Notch == rational{0})
@@ -2094,7 +2096,7 @@ namespace beman::inside
       if constexpr (M == round_mode::nearest)
       {
         k += (f >= 0.5);
-        if constexpr (G.Interval.Lower < 0) k -= (f <= -0.5);   // dead on a grid ≥ 0
+        if constexpr (AnySign) k -= (f <= -0.5);
       }
       else if constexpr (M == round_mode::floor)     k -= (f < 0);
       else if constexpr (M == round_mode::ceil)      k += (f > 0);
@@ -2839,6 +2841,35 @@ namespace beman::inside
       : HasPolicy<L, P, round_nearest>   ? round_mode::nearest
       :                                    round_mode::trunc;
 
+    // v rounded onto L's lattice {k·Notch} by rounding_for<L, P> (value index,
+    // ties half away from zero) — not limited to [Lower, Upper], so wrap can
+    // round first and fold an on-lattice value after. Lower/Notch is an integer
+    // on every valid grid, so the lattice points are exactly the grid's.
+    template <insidable L, typename P>
+    [[nodiscard]] constexpr rational round_to_lattice(rational v)
+    {
+      if constexpr (Notch<L> == 0)
+        return v;
+      else
+      {
+        const rational qv = (v / Notch<L>).value();
+        constexpr round_mode m = rounding_for<L, P>;
+        imax k;
+        if constexpr (m == round_mode::nearest)    k = round(qv);
+        else if constexpr (m == round_mode::floor) k = floor(qv);
+        else if constexpr (m == round_mode::ceil)  k = ceil(qv);
+        else if constexpr (m == round_mode::half_even)
+        {
+          const imax f = floor(qv);
+          const rational frac = (qv - rational{f}).value();
+          const rational half{1, 2};
+          k = frac > half ? f + 1 : frac < half ? f : ((f & 1) ? f + 1 : f);
+        }
+        else                                       k = trunc(qv);
+        return (rational{k} * Notch<L>).value();
+      }
+    }
+
     // Rounds the split offset quotient q + r/den (r < den ≤ imax_max) per L's
     // rounding policy — q/r form so no expression can overflow umax
     // (num + den/2 could, for num near umax). Shared by round_quotient's
@@ -3268,7 +3299,12 @@ namespace beman::inside::detail
       template<typename P, typename A>
       static constexpr void apply_wrap(L& lhs, R rhs, P&& policy, A&& action)
       {
+        // Round onto the lattice first (by the policy, like every other store),
+        // then fold: an on-lattice value folds onto a grid point, so rounding
+        // can never carry it past Upper.
         rational rhs_r{rhs};
+        if constexpr (HasPolicy<L, P, snap>)
+          rhs_r = round_to_lattice<L, P>(rhs_r);
         rational lower_r = Lower<L>;
         rational range   = ((Upper<L> - lower_r).value() + Notch<L>).value();
         // q = floor((rhs - lower) / range), wrapped = rhs - q * range
@@ -3686,10 +3722,11 @@ namespace beman::inside::detail
       {
         // The integer modular wrap (range = Upper - Lower + 1, integer values) is
         // only correct on a unit-integer grid — notch 1 with integer bounds, so
-        // consecutive integers are adjacent grid points. Any other grid (fractional
-        // notch, non-integer bounds) routes through the rational modular wrap.
+        // consecutive integers are adjacent grid points — and for a source whose
+        // values are integers (no rounding to do). Anything else routes through
+        // the rational modular wrap, which rounds by the policy first.
         if constexpr (IsIntegerInterval<L> && abs_den(Notch<L>.Denominator) == 1
-                      && Notch<L>.Numerator == 1)
+                      && Notch<L>.Numerator == 1 && !fp_raw<R> && IsIntegerAligned<R>)
         {
           // Unit-integer fast path: modular wrap on the integer value.
           imax rhs_imax = trunc(as_rational(rhs));
@@ -5048,6 +5085,9 @@ namespace beman::inside
           v = v < lo ? lo : hi;
         else if constexpr (has_flag(F, wrap))
         {
+          // Round onto the lattice first, as the rational path does, so the
+          // folded value is a grid point and cannot round up past Upper.
+          v = detail::snap_double<G, detail::rounding_of(F), /*AnySign=*/true>(v);
           // Fold into [Lower, Lower + range), range = span + notch — the same
           // convention as the fractional apply_wrap. floor(q) without an
           // unguarded imax cast: for |q| >= 2^52 the double is already integral

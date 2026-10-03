@@ -248,7 +248,12 @@ namespace beman::inside::detail
       template<typename P, typename A>
       static constexpr void apply_wrap(L& lhs, R rhs, P&& policy, A&& action)
       {
+        // Round onto the lattice first (by the policy, like every other store),
+        // then fold: an on-lattice value folds onto a grid point, so rounding
+        // can never carry it past Upper.
         rational rhs_r{rhs};
+        if constexpr (HasPolicy<L, P, snap>)
+          rhs_r = round_to_lattice<L, P>(rhs_r);
         rational lower_r = Lower<L>;
         rational range   = ((Upper<L> - lower_r).value() + Notch<L>).value();
         // q = floor((rhs - lower) / range), wrapped = rhs - q * range
@@ -666,10 +671,11 @@ namespace beman::inside::detail
       {
         // The integer modular wrap (range = Upper - Lower + 1, integer values) is
         // only correct on a unit-integer grid — notch 1 with integer bounds, so
-        // consecutive integers are adjacent grid points. Any other grid (fractional
-        // notch, non-integer bounds) routes through the rational modular wrap.
+        // consecutive integers are adjacent grid points — and for a source whose
+        // values are integers (no rounding to do). Anything else routes through
+        // the rational modular wrap, which rounds by the policy first.
         if constexpr (IsIntegerInterval<L> && abs_den(Notch<L>.Denominator) == 1
-                      && Notch<L>.Numerator == 1)
+                      && Notch<L>.Numerator == 1 && !fp_raw<R> && IsIntegerAligned<R>)
         {
           // Unit-integer fast path: modular wrap on the integer value.
           imax rhs_imax = trunc(as_rational(rhs));

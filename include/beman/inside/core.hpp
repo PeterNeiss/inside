@@ -131,6 +131,9 @@ namespace beman::inside
           v = v < lo ? lo : hi;
         else if constexpr (has_flag(F, wrap))
         {
+          // Round onto the lattice first, as the rational path does, so the
+          // folded value is a grid point and cannot round up past Upper.
+          v = detail::snap_double<G, detail::rounding_of(F), /*AnySign=*/true>(v);
           // Fold into [Lower, Lower + range), range = span + notch — the same
           // convention as the fractional apply_wrap. floor(q) without an
           // unguarded imax cast: for |q| >= 2^52 the double is already integral
