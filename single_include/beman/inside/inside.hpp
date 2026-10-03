@@ -4330,15 +4330,11 @@ namespace beman::inside::detail
         && has_any_flag(F | policy_of<L> | policy_of<R>, checked | exact)
         && !rational_add_is_safe(grid_of<L>, grid_of<R>);
 
-    template <policy_flag F = none>
-    using return_type_for_t = std::conditional_t<needs_overflow_check<F>,
-                                               std::expected<result, errc>,
-                                               result>;
-
+    // Plain result when an overflow action takes the failure or no check is
+    // needed; else std::expected<result, errc>.
     template <policy_flag F, typename A>
-    using add_return_t = std::conditional_t<overflow_action<plain_t<A>>,
-                                            result,
-                                            return_type_for_t<F>>;
+    using return_t = std::conditional_t<overflow_action<plain_t<A>> || !needs_overflow_check<F>,
+                                        result, std::expected<result, errc>>;
 
     // Mixed integer-aligned / notch-offset fast path: with a unit-numerator
     // result notch 1/d, both operand offsets in result-notch units are exact
@@ -4390,7 +4386,7 @@ namespace beman::inside::detail
         : (notch_of<R> / notch_of<result>).value_or(rational{1}).Numerator;
 
     template <policy_flag F = none, typename E = empty_ref, typename A = no_action>
-    static constexpr auto add(L lhs, R rhs, policy<F, E> policy = {}, A&& action = {}) -> add_return_t<F, A>
+    static constexpr auto add(L lhs, R rhs, policy<F, E> policy = {}, A&& action = {}) -> return_t<F, A>
   {
     result res;
     if constexpr (fp_raw<result>)
@@ -4484,22 +4480,17 @@ namespace beman::inside::detail
     // The dropped-fp case lands on a rational result when the product grid outgrows
     // uint index space; its product numerator can exceed `umax`, so check it (the
     // result carries `checked`) rather than wrap.
-    template <typename P>
+    template <policy_flag F>
     static constexpr bool needs_overflow_check =
         rational_raw<result>
-        && (has_any_flag(policy_of<L> | policy_of<R>, checked | exact)
-            || plain_t<P>::test(checked) || dropped_fp)
+        && (has_any_flag(F | policy_of<L> | policy_of<R>, checked | exact) || dropped_fp)
         && !rational_mul_is_safe(grid_of<L>, grid_of<R>);
 
-    template <typename P>
-    using return_type_for_t = std::conditional_t<needs_overflow_check<P>,
-                                               std::expected<result, errc>,
-                                               result>;
-
-    template <typename P, typename A>
-    using mul_return_t = std::conditional_t<overflow_action<plain_t<A>>,
-                                            result,
-                                            return_type_for_t<P>>;
+    // Plain result when an overflow action takes the failure or no check is
+    // needed; else std::expected<result, errc>.
+    template <policy_flag F, typename A>
+    using return_t = std::conditional_t<overflow_action<plain_t<A>> || !needs_overflow_check<F>,
+                                        result, std::expected<result, errc>>;
 
     // `x * just<c>` (c != 0): the result lattice is x's lattice scaled by c
     // (see grid operator*), so the result offset IS x's offset — counted from
@@ -4521,7 +4512,7 @@ namespace beman::inside::detail
     }
 
     template <typename P, typename A = no_action>
-    static constexpr auto mul(L lhs, R rhs, P&& policy, A&& action = {}) -> mul_return_t<P, A>
+    static constexpr auto mul(L lhs, R rhs, P&& policy, A&& action = {}) -> return_t<policy_flags_of<plain_t<P>>, A>
   {
     if constexpr (fp_raw<result>)
     {
@@ -4536,7 +4527,7 @@ namespace beman::inside::detail
       return scale_by_point<(lower_of<L> < 0)>(rhs);
     else if constexpr (rational_raw<result>)
     {
-      if constexpr (needs_overflow_check<P>)
+      if constexpr (needs_overflow_check<policy_flags_of<plain_t<P>>>)
       {
         auto prod = as_rational(lhs) * as_rational(rhs);
         if (!prod) [[unlikely]]
@@ -4799,13 +4790,13 @@ namespace beman::inside::detail
     // overflow), else expected<result, errc>. Real has no rational overflow, so
     // may_overflow_nonzero is false for it (above).
     template <typename A>
-    using div_return_t = std::conditional_t<
+    using return_t = std::conditional_t<
         overflow_action<plain_t<A>> || (divisor_excludes_zero<R> && !may_overflow_nonzero),
         result,
         std::expected<result, errc>>;
 
     template <policy_flag G = F, typename E = empty_ref, typename A = no_action>
-    static constexpr div_return_t<A> div(L, R, policy<G, E> = {}, A&& = {});
+    static constexpr return_t<A> div(L, R, policy<G, E> = {}, A&& = {});
   };
 
   //---------------------------------------------------------------------------
@@ -4813,13 +4804,13 @@ namespace beman::inside::detail
   //---------------------------------------------------------------------------
   template<insidable L, insidable R, policy_flag F>
   template<policy_flag G, typename E, typename A>
-  constexpr auto division<L,R,F>::div(L lhs, R rhs, policy<G, E> policy, A&& action) -> div_return_t<A>
+  constexpr auto division<L,R,F>::div(L lhs, R rhs, policy<G, E> policy, A&& action) -> return_t<A>
   {
-    // `fail` must stay well-formed even when div_return_t narrowed to plain
+    // `fail` must stay well-formed even when return_t narrowed to plain
     // `result` (divisor excludes zero, no overflow); there every call to it is
     // removed by the guards below, so the final arm is dead (return-type only).
     // Shared by the f64 and non-f64 paths (f64 fails only on a zero divisor).
-    [[maybe_unused]] auto fail = [&](errc code, const char* what) -> div_return_t<A> {
+    [[maybe_unused]] auto fail = [&](errc code, const char* what) -> return_t<A> {
       if constexpr (overflow_action<plain_t<A>>)
         return report_or_unexpected<result>(action, policy, code, what);   // -> result
       else if constexpr (!divisor_excludes_zero<R> || may_overflow_nonzero)
@@ -4915,22 +4906,22 @@ namespace beman::inside::detail
     // Modulo never overflows (the remainder fits result_grid), so the only
     // failure is a zero divisor — excluded by the grid → plain `result`.
     template <typename A>
-    using mod_return_t = std::conditional_t<
+    using return_t = std::conditional_t<
         overflow_action<plain_t<A>> || divisor_excludes_zero<R>,
         result,
         std::expected<result, errc>>;
 
     template <policy_flag G = F, typename E = empty_ref, typename A = no_action>
-    static constexpr mod_return_t<A> mod(L, R, policy<G, E> = {}, A&& = {});
+    static constexpr return_t<A> mod(L, R, policy<G, E> = {}, A&& = {});
   };
 
   template<insidable L, insidable R, policy_flag F>
   template<policy_flag G, typename E, typename A>
-  constexpr auto modulo<L,R,F>::mod(L lhs, R rhs, policy<G, E> policy, A&& action) -> mod_return_t<A>
+  constexpr auto modulo<L,R,F>::mod(L lhs, R rhs, policy<G, E> policy, A&& action) -> return_t<A>
   {
     using T = native_div_t<L, R>;
     const T rhs_val = static_cast<T>(to_value(rhs));
-    // Zero check elided when R's grid excludes zero (mod_return_t is plain
+    // Zero check elided when R's grid excludes zero (return_t is plain
     // `result`) or `ignore_zero` is set (zero divisor is then UB, matching `%= 0`).
     constexpr bool zero_unchecked = divisor_excludes_zero<R>
         || (((G | F | policy_of<L> | policy_of<R>) & ignore_zero) != 0);
@@ -6048,10 +6039,10 @@ namespace beman::inside
   // Binary operators: +, -, * use the default policy; / and % carry the
   // operands' own policies (snap/rounding select the native integer paths).
   [[nodiscard]] constexpr auto operator+(insidable auto lhs, insidable auto rhs)
-  { return add(lhs, rhs); }
+  { return beman::inside::add(lhs, rhs); }
 
   [[nodiscard]] constexpr auto operator-(insidable auto lhs, insidable auto rhs)
-  { return sub(lhs, rhs); }
+  { return beman::inside::sub(lhs, rhs); }
 
   [[nodiscard]] constexpr auto operator*(insidable auto lhs, insidable auto rhs)
   { return beman::inside::mul(lhs, rhs); }

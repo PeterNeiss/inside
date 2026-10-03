@@ -179,13 +179,13 @@ namespace beman::inside::detail
     // overflow), else expected<result, errc>. Real has no rational overflow, so
     // may_overflow_nonzero is false for it (above).
     template <typename A>
-    using div_return_t = std::conditional_t<
+    using return_t = std::conditional_t<
         overflow_action<plain_t<A>> || (divisor_excludes_zero<R> && !may_overflow_nonzero),
         result,
         std::expected<result, errc>>;
 
     template <policy_flag G = F, typename E = empty_ref, typename A = no_action>
-    static constexpr div_return_t<A> div(L, R, policy<G, E> = {}, A&& = {});
+    static constexpr return_t<A> div(L, R, policy<G, E> = {}, A&& = {});
   };
 
   //---------------------------------------------------------------------------
@@ -193,13 +193,13 @@ namespace beman::inside::detail
   //---------------------------------------------------------------------------
   template<insidable L, insidable R, policy_flag F>
   template<policy_flag G, typename E, typename A>
-  constexpr auto division<L,R,F>::div(L lhs, R rhs, policy<G, E> policy, A&& action) -> div_return_t<A>
+  constexpr auto division<L,R,F>::div(L lhs, R rhs, policy<G, E> policy, A&& action) -> return_t<A>
   {
-    // `fail` must stay well-formed even when div_return_t narrowed to plain
+    // `fail` must stay well-formed even when return_t narrowed to plain
     // `result` (divisor excludes zero, no overflow); there every call to it is
     // removed by the guards below, so the final arm is dead (return-type only).
     // Shared by the f64 and non-f64 paths (f64 fails only on a zero divisor).
-    [[maybe_unused]] auto fail = [&](errc code, const char* what) -> div_return_t<A> {
+    [[maybe_unused]] auto fail = [&](errc code, const char* what) -> return_t<A> {
       if constexpr (overflow_action<plain_t<A>>)
         return report_or_unexpected<result>(action, policy, code, what);   // -> result
       else if constexpr (!divisor_excludes_zero<R> || may_overflow_nonzero)
@@ -295,22 +295,22 @@ namespace beman::inside::detail
     // Modulo never overflows (the remainder fits result_grid), so the only
     // failure is a zero divisor — excluded by the grid → plain `result`.
     template <typename A>
-    using mod_return_t = std::conditional_t<
+    using return_t = std::conditional_t<
         overflow_action<plain_t<A>> || divisor_excludes_zero<R>,
         result,
         std::expected<result, errc>>;
 
     template <policy_flag G = F, typename E = empty_ref, typename A = no_action>
-    static constexpr mod_return_t<A> mod(L, R, policy<G, E> = {}, A&& = {});
+    static constexpr return_t<A> mod(L, R, policy<G, E> = {}, A&& = {});
   };
 
   template<insidable L, insidable R, policy_flag F>
   template<policy_flag G, typename E, typename A>
-  constexpr auto modulo<L,R,F>::mod(L lhs, R rhs, policy<G, E> policy, A&& action) -> mod_return_t<A>
+  constexpr auto modulo<L,R,F>::mod(L lhs, R rhs, policy<G, E> policy, A&& action) -> return_t<A>
   {
     using T = native_div_t<L, R>;
     const T rhs_val = static_cast<T>(to_value(rhs));
-    // Zero check elided when R's grid excludes zero (mod_return_t is plain
+    // Zero check elided when R's grid excludes zero (return_t is plain
     // `result`) or `ignore_zero` is set (zero divisor is then UB, matching `%= 0`).
     constexpr bool zero_unchecked = divisor_excludes_zero<R>
         || (((G | F | policy_of<L> | policy_of<R>) & ignore_zero) != 0);

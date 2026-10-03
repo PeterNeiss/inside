@@ -36,15 +36,11 @@ namespace beman::inside::detail
         && has_any_flag(F | policy_of<L> | policy_of<R>, checked | exact)
         && !rational_add_is_safe(grid_of<L>, grid_of<R>);
 
-    template <policy_flag F = none>
-    using return_type_for_t = std::conditional_t<needs_overflow_check<F>,
-                                               std::expected<result, errc>,
-                                               result>;
-
+    // Plain result when an overflow action takes the failure or no check is
+    // needed; else std::expected<result, errc>.
     template <policy_flag F, typename A>
-    using add_return_t = std::conditional_t<overflow_action<plain_t<A>>,
-                                            result,
-                                            return_type_for_t<F>>;
+    using return_t = std::conditional_t<overflow_action<plain_t<A>> || !needs_overflow_check<F>,
+                                        result, std::expected<result, errc>>;
 
     // Mixed integer-aligned / notch-offset fast path: with a unit-numerator
     // result notch 1/d, both operand offsets in result-notch units are exact
@@ -96,7 +92,7 @@ namespace beman::inside::detail
         : (notch_of<R> / notch_of<result>).value_or(rational{1}).Numerator;
 
     template <policy_flag F = none, typename E = empty_ref, typename A = no_action>
-    static constexpr auto add(L lhs, R rhs, policy<F, E> policy = {}, A&& action = {}) -> add_return_t<F, A>
+    static constexpr auto add(L lhs, R rhs, policy<F, E> policy = {}, A&& action = {}) -> return_t<F, A>
   {
     result res;
     if constexpr (fp_raw<result>)

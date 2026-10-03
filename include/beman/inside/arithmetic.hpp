@@ -125,10 +125,10 @@ namespace beman::inside
   // Binary operators: +, -, * use the default policy; / and % carry the
   // operands' own policies (snap/rounding select the native integer paths).
   [[nodiscard]] constexpr auto operator+(insidable auto lhs, insidable auto rhs)
-  { return add(lhs, rhs); }
+  { return beman::inside::add(lhs, rhs); }
 
   [[nodiscard]] constexpr auto operator-(insidable auto lhs, insidable auto rhs)
-  { return sub(lhs, rhs); }
+  { return beman::inside::sub(lhs, rhs); }
 
   [[nodiscard]] constexpr auto operator*(insidable auto lhs, insidable auto rhs)
   { return beman::inside::mul(lhs, rhs); }

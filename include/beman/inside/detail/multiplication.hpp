@@ -35,22 +35,17 @@ namespace beman::inside::detail
     // The dropped-fp case lands on a rational result when the product grid outgrows
     // uint index space; its product numerator can exceed `umax`, so check it (the
     // result carries `checked`) rather than wrap.
-    template <typename P>
+    template <policy_flag F>
     static constexpr bool needs_overflow_check =
         rational_raw<result>
-        && (has_any_flag(policy_of<L> | policy_of<R>, checked | exact)
-            || plain_t<P>::test(checked) || dropped_fp)
+        && (has_any_flag(F | policy_of<L> | policy_of<R>, checked | exact) || dropped_fp)
         && !rational_mul_is_safe(grid_of<L>, grid_of<R>);
 
-    template <typename P>
-    using return_type_for_t = std::conditional_t<needs_overflow_check<P>,
-                                               std::expected<result, errc>,
-                                               result>;
-
-    template <typename P, typename A>
-    using mul_return_t = std::conditional_t<overflow_action<plain_t<A>>,
-                                            result,
-                                            return_type_for_t<P>>;
+    // Plain result when an overflow action takes the failure or no check is
+    // needed; else std::expected<result, errc>.
+    template <policy_flag F, typename A>
+    using return_t = std::conditional_t<overflow_action<plain_t<A>> || !needs_overflow_check<F>,
+                                        result, std::expected<result, errc>>;
 
     // `x * just<c>` (c != 0): the result lattice is x's lattice scaled by c
     // (see grid operator*), so the result offset IS x's offset — counted from
@@ -72,7 +67,7 @@ namespace beman::inside::detail
     }
 
     template <typename P, typename A = no_action>
-    static constexpr auto mul(L lhs, R rhs, P&& policy, A&& action = {}) -> mul_return_t<P, A>
+    static constexpr auto mul(L lhs, R rhs, P&& policy, A&& action = {}) -> return_t<policy_flags_of<plain_t<P>>, A>
   {
     if constexpr (fp_raw<result>)
     {
@@ -87,7 +82,7 @@ namespace beman::inside::detail
       return scale_by_point<(lower_of<L> < 0)>(rhs);
     else if constexpr (rational_raw<result>)
     {
-      if constexpr (needs_overflow_check<P>)
+      if constexpr (needs_overflow_check<policy_flags_of<plain_t<P>>>)
       {
         auto prod = as_rational(lhs) * as_rational(rhs);
         if (!prod) [[unlikely]]
