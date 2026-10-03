@@ -4859,14 +4859,18 @@ namespace beman::inside
   template <insidable B, numeric A>
   [[nodiscard]] constexpr bool will_conversion_overflow(A value) noexcept
   {
+    if constexpr (std::floating_point<A>)
+      if (!(value - value == 0)) return true;   // NaN / ±inf fit no grid (and must not raise here)
     return not includes(Interval<B>, detail::as_rational(value));
   }
 
   template <insidable B, numeric A>
   [[nodiscard]] constexpr bool will_conversion_trunc(A value) noexcept
   {
-    if constexpr (detail::rational_raw<B>)
-      return false;                       // rational raw stores any value exactly
+    if constexpr (detail::rational_raw<B> || Notch<B> == 0)
+      return false;                       // rational raw / continuous grid: no notch to miss
+    if constexpr (std::floating_point<A>)
+      if (!(value - value == 0)) return false;   // non-finite — overflow, not truncation
     detail::rational r = detail::as_rational(value);
     if (not includes(Interval<B>, r))
       return false;                       // out-of-range — overflow, not truncation

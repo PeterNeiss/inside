@@ -295,3 +295,18 @@ TEST(StorageBugsTest, increment_on_real_storage)
   EXPECT_EQ(x.raw(), 2.5);
 }
 #endif
+
+// The noexcept conversion predicates classify non-finite input instead of raising.
+TEST(StorageBugsTest, predicates_handle_non_finite_input)
+{
+  using namespace beman::inside;
+  using B = inside<{0, 10}>;
+  const double nan = std::numeric_limits<double>::quiet_NaN();
+  const double inf = std::numeric_limits<double>::infinity();
+  EXPECT_TRUE(will_conversion_overflow<B>(nan));
+  EXPECT_TRUE(will_conversion_overflow<B>(-inf));
+  EXPECT_FALSE(will_conversion_trunc<B>(nan));
+  EXPECT_TRUE(is_conversion_lossy<B>(inf));
+  EXPECT_FALSE(is_conversion_lossy<B>(3.0));
+  EXPECT_TRUE(will_conversion_trunc<B>(3.5));
+}
