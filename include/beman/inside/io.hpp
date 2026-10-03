@@ -239,12 +239,14 @@ namespace beman::inside::detail
 template <beman::inside::grid G, beman::inside::policy_flag P>
 struct std::formatter<beman::inside::inside<G, P>>
   : beman::inside::detail::numeric_spec_formatter<
-      std::conditional_t<beman::inside::detail::IsIntegerAligned<beman::inside::inside<G, P>>,
+      std::conditional_t<beman::inside::detail::IsIntegerAligned<beman::inside::inside<G, P>> && G.Notch != 0,
                          std::formatter<beman::inside::imax>,
                          std::formatter<double>>>
 {
   using B = beman::inside::inside<G, P>;
-  static constexpr bool integer_path = beman::inside::detail::IsIntegerAligned<B>;
+  // Integer formatting only for a notched integer grid: a continuous grid
+  // (notch 0) holds fractions even between integer bounds.
+  static constexpr bool integer_path = beman::inside::detail::IsIntegerAligned<B> && G.Notch != 0;
 
   template <typename Ctx>
   auto format(B const& b, Ctx& ctx) const

@@ -212,3 +212,15 @@ TEST(FormatTest, type_name_covers_all_raw_types)
   ASSERT_TRUE(type_name<rational>()      == "rational");
   ASSERT_TRUE(type_name<float>()         == "unknown");
 }
+
+#ifdef __cpp_lib_format
+// A continuous grid with integer bounds still holds fractions: `{}` must not
+// format it through the integer path.
+TEST(FormatTest, continuous_grid_with_integer_bounds_formats_the_fraction)
+{
+  using C = inside<{{0, 10}, rational{0}}>;
+  const C c{rational{2, 3}};
+  EXPECT_NE(std::format("{}", c), "0");
+  EXPECT_EQ(std::format("{:.3f}", c), "0.667");
+}
+#endif

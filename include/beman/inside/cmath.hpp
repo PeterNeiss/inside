@@ -88,6 +88,11 @@ namespace beman::inside::math
     inline constexpr rational pi_r{1068966896, 340262731};
     inline constexpr rational two_pi_r = 2 * pi_r;
 
+    // Policy of an auto-deduced output: the input's, minus any fixed-width
+    // storage flag (i8 … u64) — the output range differs, as for arithmetic.
+    template <insidable In>
+    inline constexpr policy_flag out_policy = InsidePolicy<In> & ~raw_width_mask;
+
     // Out's interval endpoints as F (via double, like the runtime value), folded
     // at compile time for the FP engines' range checks.
     template <typename F, insidable Out>
@@ -956,27 +961,27 @@ namespace beman::inside::math
 
     template <insidable In>
     using abs_auto_t = inside<{{rational{0}, abs_auto_upper<In>},
-                              Notch<In>}, InsidePolicy<In>>;
+                              Notch<In>}, out_policy<In>>;
 
     template <insidable In>
     using floor_auto_t = inside<{{rational{floor(Lower<In>)},
                                   rational{floor(Upper<In>)}},
-                                 notch<1>}, InsidePolicy<In>>;
+                                 notch<1>}, out_policy<In>>;
 
     template <insidable In>
     using ceil_auto_t = inside<{{rational{ceil(Lower<In>)},
                                  rational{ceil(Upper<In>)}},
-                                notch<1>}, InsidePolicy<In>>;
+                                notch<1>}, out_policy<In>>;
 
     template <insidable In>
     using round_auto_t = inside<{{rational{round(Lower<In>)},
                                   rational{round(Upper<In>)}},
-                                 notch<1>}, InsidePolicy<In>>;
+                                 notch<1>}, out_policy<In>>;
 
     template <insidable In>
     using trunc_auto_t = inside<{{rational{trunc(Lower<In>)},
                                   rational{trunc(Upper<In>)}},
-                                 notch<1>}, InsidePolicy<In>>;
+                                 notch<1>}, out_policy<In>>;
 
     // Double-backed fast path for the algebraic tier. |x| and the integer
     // roundings of a grid value are exact in double (|x| < 2^53 on a
@@ -1286,7 +1291,7 @@ namespace beman::inside::math
     template <insidable In>
     using sqrt_auto_t = inside<{{rational{0},
                                 ceil_to_notch(sqrt_endpoint(Upper<In>), Notch<In>)},
-                               Notch<In>}, InsidePolicy<In> | round_nearest>;
+                               Notch<In>}, out_policy<In> | round_nearest>;
 
     // Mixed-sign sqrt: Upper of the result is sqrt of the larger absolute
     // endpoint, since the runtime value can be anywhere in [Lower, Upper].
@@ -1299,13 +1304,13 @@ namespace beman::inside::math
     using sqrt_signed_auto_t = inside<{{rational{0},
                                        ceil_to_notch(sqrt_endpoint(sqrt_signed_upper<In>),
                                                      Notch<In>)},
-                                      Notch<In>}, InsidePolicy<In> | round_nearest>;
+                                      Notch<In>}, out_policy<In> | round_nearest>;
 
     // Auto output grid for results in [lo, hi]: the endpoints rounded outward
     // to In's notch, with In's notch and policy (plus round_nearest).
     template <insidable In, rational Lo, rational Hi>
     using outward_t = inside<{{floor_to_notch(Lo, Notch<In>), ceil_to_notch(Hi, Notch<In>)},
-                              Notch<In>}, InsidePolicy<In> | round_nearest>;
+                              Notch<In>}, out_policy<In> | round_nearest>;
 
     template <insidable In>
     using exp2_auto_t = outward_t<In, exp2_endpoint(Lower<In>), exp2_endpoint(Upper<In>)>;
@@ -1338,7 +1343,7 @@ namespace beman::inside::math
 
     template <insidable In>
     using sin_auto_t = inside<{{-rational{1}, rational{1}},
-                               Notch<In>}, InsidePolicy<In> | round_nearest>;
+                               Notch<In>}, out_policy<In> | round_nearest>;
 
     template <insidable In>
     using cos_auto_t = sin_auto_t<In>;
@@ -1351,11 +1356,11 @@ namespace beman::inside::math
 
     template <insidable In>
     using tan_auto_t = inside<{{-rational{1024}, rational{1024}},
-                               Notch<In>}, InsidePolicy<In> | round_nearest>;
+                               Notch<In>}, out_policy<In> | round_nearest>;
 
     template <insidable InX, insidable InY>
     using fmod_auto_t = inside<{{-abs(Upper<InY>), abs(Upper<InY>)},
-                                Notch<InX>}, InsidePolicy<InX> | round_nearest>;
+                                Notch<InX>}, out_policy<InX> | round_nearest>;
   } // namespace detail
 
   template <insidable InX, insidable InY>
@@ -1717,7 +1722,7 @@ namespace beman::inside::math
     template <insidable InX, insidable InY>
     using hypot_auto_t = inside<{{rational{0},
                                  ceil_to_notch(hypot_auto_hi<InX, InY>, Notch<InX>)},
-                                Notch<InX>}, InsidePolicy<InX> | round_nearest>;
+                                Notch<InX>}, out_policy<InX> | round_nearest>;
 
     // pow output: extrema of b^e over the input rectangle occur at corners
     // (monotone in each argument for b > 0). Min and max of the 4 corners.
@@ -1746,7 +1751,7 @@ namespace beman::inside::math
     template <insidable InB, insidable InE>
     using pow_auto_t = inside<{{floor_to_notch(pow_auto_lo<InB, InE>, Notch<InB>),
                                ceil_to_notch (pow_auto_hi<InB, InE>, Notch<InB>)},
-                              Notch<InB>}, InsidePolicy<InB> | round_nearest>;
+                              Notch<InB>}, out_policy<InB> | round_nearest>;
   } // namespace detail
 
   // --- explicit-Out impls -------------------------------------------------

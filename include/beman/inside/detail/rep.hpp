@@ -37,8 +37,13 @@ namespace beman::inside::detail
         !keep_f32 && (any_f64 || any_f32) && (continuous_ok || double_exact<ResultGrid>);
     static constexpr bool dropped_fp = (any_f64 || any_f32) && !keep_f64 && !keep_f32;
     // Carry both operands' representation flags (widest-wins at storage selection).
+    // `direct` needs notch 1 and `indexed` a non-zero notch; a result grid
+    // that cannot hold them drops them (storage is then deduced).
+    static constexpr policy_flag carried =
+        (InsidePolicy<Lhs> | InsidePolicy<Rhs>)
+        & (exact | (ResultGrid.Notch == 1 ? direct : none) | (ResultGrid.Notch != 0 ? indexed : none));
     static constexpr policy_flag rep =
-        ((InsidePolicy<Lhs> | InsidePolicy<Rhs>) & (exact | direct | indexed))
+        carried
         | (keep_f64 ? real : none) | (keep_f32 ? f32 : none);
     // The result inside's policy: the propagated representation, or plain checked.
     static constexpr policy_flag result_policy = rep != none ? rep : checked;

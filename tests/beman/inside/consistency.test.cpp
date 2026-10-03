@@ -132,3 +132,37 @@ TEST(ConsistencyTest, inside_source_wrap_rounds_first)
   EXPECT_EQ(rational{a}, rational{L{q(25, 2)}});
   EXPECT_EQ(rational{a}, q(2));                          // 12.5 → 13 ≡ 2
 }
+
+// unchecked_cast keeps the target's storage layout (representation flags).
+TEST(ConsistencyTest, unchecked_cast_respects_storage_flags)
+{
+  using D = inside<{5, 100}, direct>;
+  EXPECT_EQ(rational{unchecked_cast<D>(7)}, q(7));
+  using W = inside<{5, 100}, u16>;
+  EXPECT_EQ(rational{unchecked_cast<W>(7)}, q(7));
+#ifndef BEMAN_INSIDE_MATH_FIXED
+  using F = inside<{{0, 4}, notch<1, 2>}, f64>;
+  EXPECT_EQ(unchecked_cast<F>(1.5).raw(), 1.5);
+#endif
+}
+
+// Representation flags carried into a result are dropped when the result grid
+// cannot hold them, instead of tripping inside's static_asserts.
+TEST(ConsistencyTest, result_drops_invalid_direct_and_indexed)
+{
+  using D  = inside<{0, 10}, direct>;
+  using H  = inside<{{0, 1}, notch<1, 2>}>;
+  using IX = inside<{1, 10}, indexed>;
+  EXPECT_EQ(rational{D{3} * H{q(1, 2)}}, q(3, 2));
+  auto dd = D{6} / D{3};
+  EXPECT_EQ(rational{*dd}, q(2));
+  auto ii = IX{6} / IX{3};
+  EXPECT_EQ(rational{ii}, q(2));
+}
+
+// Math auto-output types do not inherit fixed-width storage flags.
+TEST(ConsistencyTest, math_output_drops_width_flags)
+{
+  using B8 = inside<{-128, 127}, i8 | round_nearest>;
+  EXPECT_EQ(rational{math::abs(B8{-128})}, q(128));
+}

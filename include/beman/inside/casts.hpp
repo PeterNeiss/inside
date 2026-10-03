@@ -61,7 +61,10 @@ namespace beman::inside
   template <insidable B, arithmetic A>
   [[nodiscard]] constexpr B unchecked_cast(A value)
   {
-    using twin = inside<Grid<B>, unsafe>;
+    // Keep B's representation flags so the twin's raw layout is B's.
+    constexpr policy_flag representation =
+        InsidePolicy<B> & (exact | f64 | f32 | direct | indexed | raw_width_mask);
+    using twin = inside<Grid<B>, unsafe | representation>;
     return B::from_raw(twin{value}.raw());   // same grid → identical raw layout
   }
 
