@@ -31,30 +31,35 @@ namespace beman::inside
   // These mirror std::numeric_limits: they report what the grid is, used
   // opaquely (the rational return type is never named by callers).
   //---------------------------------------------------------------------------
-  template <insidable B>
-  inline constexpr grid Grid = []<grid G, policy_flag P>(inside<G, P>){ return G; } (B{});
+  namespace detail
+  {
+    template <typename B> struct inside_params;
+    template <grid G, policy_flag P> struct inside_params<inside<G, P>>
+    {
+      static constexpr grid        grid_v   = G;
+      static constexpr policy_flag policy_v = P;
+    };
+  }
 
   template <insidable B>
-  inline constexpr policy_flag InsidePolicy = []<grid G, policy_flag P>(inside<G, P>){ return P; } (B{});
+  inline constexpr grid Grid = detail::inside_params<std::remove_cvref_t<B>>::grid_v;
+
+  template <insidable B>
+  inline constexpr policy_flag InsidePolicy = detail::inside_params<std::remove_cvref_t<B>>::policy_v;
 
   template <typename T>
   inline constexpr interval Interval = {0,0};
 
   template <insidable B>
-  inline constexpr interval Interval<B> = []<grid G, policy_flag P>(inside<G, P>){ return G.Interval; } (B{});
+  inline constexpr interval Interval<B> = Grid<B>.Interval;
 
   template <std::integral I>
   inline constexpr interval Interval<I> =
       {std::numeric_limits<I>::lowest(), std::numeric_limits<I>::max()};
 
-  template <insidable B>
-  inline constexpr detail::rational Lower = []<grid G, policy_flag P>(inside<G, P>){ return G.Interval.Lower; } (B{});
-
-  template <insidable B>
-  inline constexpr detail::rational Upper = []<grid G, policy_flag P>(inside<G, P>){ return G.Interval.Upper; } (B{});
-
-  template <insidable B>
-  inline constexpr detail::rational Notch = []<grid G, policy_flag P>(inside<G, P>){ return G.Notch; } (B{});
+  template <insidable B> inline constexpr detail::rational Lower = Grid<B>.Interval.Lower;
+  template <insidable B> inline constexpr detail::rational Upper = Grid<B>.Interval.Upper;
+  template <insidable B> inline constexpr detail::rational Notch = Grid<B>.Notch;
 
   template <typename N>
   concept numeric = insidable<N> or arithmetic<N>;
