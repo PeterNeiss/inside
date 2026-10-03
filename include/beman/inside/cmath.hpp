@@ -1461,16 +1461,14 @@ namespace beman::inside::math
     out = (detail::sin_slot<M, W>(i) / c).value();             // sin / cos
     return true;
 #elif defined(BEMAN_INSIDE_MATH_FLOAT)
-    float rad = flt::to_float(angle) * (flt::detail::kPi / 180.0f);
-    float c = flt::detail::d_cos(rad);
-    if (c == 0.0f) return false;                               // pole
-    out = flt::detail::d_sin(rad) / c;
+    float t;
+    if (!flt::detail::d_tan(flt::to_float(angle) * (flt::detail::kPi / 180.0f), t)) return false;   // pole
+    out = t;
     return true;
 #else
-    double rad = static_cast<double>(angle) * (dbl::detail::kPi / 180.0);
-    double c = dbl::detail::d_cos(rad);
-    if (c == 0.0) return false;                                // pole
-    out = dbl::detail::d_sin(rad) / c;
+    double t;
+    if (!dbl::detail::d_tan(static_cast<double>(angle) * (dbl::detail::kPi / 180.0), t)) return false;   // pole
+    out = t;
     return true;
 #endif
   }
@@ -1993,11 +1991,9 @@ namespace beman::inside::math
     {
       static_assert(mdetail::require_snap<In>());
       using Out = mdetail::tan_auto_t<In>;
-      double x = static_cast<double>(angle);
-      double c = detail::d_cos(x);
-      if (c == 0.0)
+      double t;
+      if (!detail::d_tan(static_cast<double>(angle), t))
         return std::expected<Out, errc>{std::unexpected(errc::division_by_zero)};
-      double t = detail::d_sin(x) / c;
       if constexpr (!has_flag(InsidePolicy<Out>, clamp))   // clamp Out: saturate below
         if (t < mdetail::lower_fp<double, Out> || t > mdetail::upper_fp<double, Out>)
           return std::expected<Out, errc>{std::unexpected(errc::overflow)};
@@ -2135,11 +2131,9 @@ namespace beman::inside::math
     {
       static_assert(mdetail::require_snap<In>());
       using Out = mdetail::tan_auto_t<In>;
-      float x = flt::to_float(angle);
-      float c = detail::d_cos(x);
-      if (c == 0.0f)
+      float t;
+      if (!detail::d_tan(flt::to_float(angle), t))
         return std::expected<Out, errc>{std::unexpected(errc::division_by_zero)};
-      float t = detail::d_sin(x) / c;
       if constexpr (!has_flag(InsidePolicy<Out>, clamp))   // clamp Out: saturate below
         if (t < mdetail::lower_fp<float, Out> || t > mdetail::upper_fp<float, Out>)
           return std::expected<Out, errc>{std::unexpected(errc::overflow)};

@@ -6427,12 +6427,19 @@ namespace beman::inside::math::dbl::detail
                   1.0);
   }
 
-  inline BEMAN_INSIDE_DBL_FN double d_sin(double x)
+  // Shared quadrant reduction: x → (r ∈ [−π/4,π/4], q = quadrant mod 4).
+  inline BEMAN_INSIDE_DBL_FN double reduce_quadrant(double x, long& q)
   {
     double k = std::nearbyint(x * kTwoOverPi);
     double r = fma(-k, kHalfPiHi, x);
     r = fma(-k, kHalfPiLo, r);
-    long q = static_cast<long>(k) & 3;
+    q = static_cast<long>(k) & 3;
+    return r;
+  }
+
+  inline BEMAN_INSIDE_DBL_FN double d_sin(double x)
+  {
+    long q; double r = reduce_quadrant(x, q);
     switch (q) {
       case 0:  return sin_poly(r);
       case 1:  return cos_poly(r);
@@ -6441,7 +6448,32 @@ namespace beman::inside::math::dbl::detail
     }
   }
 
-  inline BEMAN_INSIDE_DBL_FN double d_cos(double x) { return d_sin(x + (kHalfPiHi + kHalfPiLo)); }
+  inline BEMAN_INSIDE_DBL_FN double d_cos(double x)
+  {
+    long q; double r = reduce_quadrant(x, q);
+    switch (q) {
+      case 0:  return cos_poly(r);
+      case 1:  return -sin_poly(r);
+      case 2:  return -cos_poly(r);
+      default: return sin_poly(r);
+    }
+  }
+
+  // tan from one reduction: s/c in even quadrants, −c/s in odd ones. False on
+  // a pole (odd quadrant with s == 0).
+  inline BEMAN_INSIDE_DBL_FN bool d_tan(double x, double& t)
+  {
+    long q; double r = reduce_quadrant(x, q);
+    const double s = sin_poly(r), c = cos_poly(r);
+    if (q & 1)
+    {
+      if (s == 0.0) return false;
+      t = -c / s;
+    }
+    else
+      t = s / c;
+    return true;
+  }
 
   // e^x = 2^k · e^r, x = k·ln2 + r, r ∈ [−ln2/2, ln2/2].
   inline BEMAN_INSIDE_DBL_FN double d_exp(double x)
@@ -6720,6 +6752,22 @@ namespace beman::inside::math::flt::detail
       case 2:  return -cos_poly(r);
       default: return sin_poly(r);
     }
+  }
+
+  // tan from one reduction: s/c in even quadrants, −c/s in odd ones. False on
+  // a pole (odd quadrant with s == 0).
+  inline BEMAN_INSIDE_DBL_FN bool d_tan(float x, float& t)
+  {
+    long q; float r = reduce_quadrant(x, q);
+    const float s = sin_poly(r), c = cos_poly(r);
+    if (q & 1)
+    {
+      if (s == 0.0f) return false;
+      t = -c / s;
+    }
+    else
+      t = s / c;
+    return true;
   }
 
   // e^x = 2^k · e^r, x = k·ln2 + r, r ∈ [−ln2/2, ln2/2].
@@ -8314,16 +8362,14 @@ namespace beman::inside::math
     out = (detail::sin_slot<M, W>(i) / c).value();             // sin / cos
     return true;
 #elif defined(BEMAN_INSIDE_MATH_FLOAT)
-    float rad = flt::to_float(angle) * (flt::detail::kPi / 180.0f);
-    float c = flt::detail::d_cos(rad);
-    if (c == 0.0f) return false;                               // pole
-    out = flt::detail::d_sin(rad) / c;
+    float t;
+    if (!flt::detail::d_tan(flt::to_float(angle) * (flt::detail::kPi / 180.0f), t)) return false;   // pole
+    out = t;
     return true;
 #else
-    double rad = static_cast<double>(angle) * (dbl::detail::kPi / 180.0);
-    double c = dbl::detail::d_cos(rad);
-    if (c == 0.0) return false;                                // pole
-    out = dbl::detail::d_sin(rad) / c;
+    double t;
+    if (!dbl::detail::d_tan(static_cast<double>(angle) * (dbl::detail::kPi / 180.0), t)) return false;   // pole
+    out = t;
     return true;
 #endif
   }
@@ -8846,11 +8892,9 @@ namespace beman::inside::math
     {
       static_assert(mdetail::require_snap<In>());
       using Out = mdetail::tan_auto_t<In>;
-      double x = static_cast<double>(angle);
-      double c = detail::d_cos(x);
-      if (c == 0.0)
+      double t;
+      if (!detail::d_tan(static_cast<double>(angle), t))
         return std::expected<Out, errc>{std::unexpected(errc::division_by_zero)};
-      double t = detail::d_sin(x) / c;
       if constexpr (!has_flag(InsidePolicy<Out>, clamp))   // clamp Out: saturate below
         if (t < mdetail::lower_fp<double, Out> || t > mdetail::upper_fp<double, Out>)
           return std::expected<Out, errc>{std::unexpected(errc::overflow)};
@@ -8988,11 +9032,9 @@ namespace beman::inside::math
     {
       static_assert(mdetail::require_snap<In>());
       using Out = mdetail::tan_auto_t<In>;
-      float x = flt::to_float(angle);
-      float c = detail::d_cos(x);
-      if (c == 0.0f)
+      float t;
+      if (!detail::d_tan(flt::to_float(angle), t))
         return std::expected<Out, errc>{std::unexpected(errc::division_by_zero)};
-      float t = detail::d_sin(x) / c;
       if constexpr (!has_flag(InsidePolicy<Out>, clamp))   // clamp Out: saturate below
         if (t < mdetail::lower_fp<float, Out> || t > mdetail::upper_fp<float, Out>)
           return std::expected<Out, errc>{std::unexpected(errc::overflow)};

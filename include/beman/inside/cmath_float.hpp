@@ -129,6 +129,22 @@ namespace beman::inside::math::flt::detail
     }
   }
 
+  // tan from one reduction: s/c in even quadrants, −c/s in odd ones. False on
+  // a pole (odd quadrant with s == 0).
+  inline BEMAN_INSIDE_DBL_FN bool d_tan(float x, float& t)
+  {
+    long q; float r = reduce_quadrant(x, q);
+    const float s = sin_poly(r), c = cos_poly(r);
+    if (q & 1)
+    {
+      if (s == 0.0f) return false;
+      t = -c / s;
+    }
+    else
+      t = s / c;
+    return true;
+  }
+
   // e^x = 2^k · e^r, x = k·ln2 + r, r ∈ [−ln2/2, ln2/2].
   inline BEMAN_INSIDE_DBL_FN float d_exp(float x)
   {
