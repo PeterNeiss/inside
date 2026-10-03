@@ -29,21 +29,12 @@ namespace beman::inside::detail
 
   //---------------------------------------------------------------------------
   // Rounding mode for the native div & mod paths (fire when `snap` is set).
-  // Decided from the combined flags with assignment.hpp's precedence (nearest →
-  // floor → ceil → half_even → trunc); `snap` alone is truncate-toward-zero.
+  // Decided from the combined flags by rounding_of (policy_flag.hpp), the one
+  // precedence all rounding paths share; `snap` alone is truncate-toward-zero.
   // The runtime quotient and the compile-time grid endpoints MUST agree on the
   // mode (both read div_round_mode), or a result could escape its own grid.
   //---------------------------------------------------------------------------
-  enum class round_mode { trunc, nearest, floor, ceil, half_even };
-
-  constexpr round_mode div_round_mode(policy_flag eff) noexcept
-  {
-    if ((eff & round_nearest)   == round_nearest)   return round_mode::nearest;
-    if ((eff & round_floor)     == round_floor)     return round_mode::floor;
-    if ((eff & round_ceil)      == round_ceil)      return round_mode::ceil;
-    if (has_flag(eff, round_half_even)) return round_mode::half_even;
-    return round_mode::trunc;
-  }
+  constexpr round_mode div_round_mode(policy_flag eff) noexcept { return rounding_of(eff); }
 
   // Round the signed exact quotient a/b (b != 0) to an integer per `m`.
   template <std::signed_integral T>
@@ -230,7 +221,7 @@ namespace beman::inside::detail
       // non-finite ever reaches storage.
       if constexpr (!zero_unchecked)
         if (as_double(rhs) == 0.0) return fail(errc::division_by_zero, "division by zero in div");
-      return result::from_raw(raw_cast<result>(Grid<result>.snap_double(as_double(lhs) / as_double(rhs))));
+      return result::from_raw(raw_cast<result>(Grid<result>.snap_double(as_double(lhs) / as_double(rhs), rmode)));
     }
     else if constexpr (native_div_qformat)
     {

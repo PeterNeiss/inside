@@ -341,7 +341,7 @@ namespace beman::inside::detail
           const double v = static_cast<double>(rhs);
           if (!(v - v == 0))
             detail::raise(errc::not_finite, "non-finite double");
-          lhs = L::from_raw(Grid<L>.snap_double(v));
+          lhs = L::from_raw(Grid<L>.snap_double(v, rounding_for<L, P>));
           return true;
         }
         else if constexpr (Lower<L> == Upper<L>)
@@ -696,7 +696,7 @@ namespace beman::inside::detail
         if constexpr (fp_raw<L>)
           // real target: raw IS the value — decode the source and snap to the dyadic
           // grid (the offset machinery below mis-encodes a double raw).
-          lhs = L::from_raw(Grid<L>.snap_double(as_double(rhs)));
+          lhs = L::from_raw(Grid<L>.snap_double(as_double(rhs), rounding_for<L, P>));
         else if constexpr (rational_raw<L>)
           // rational target: raw IS the value — snap the decoded source through
           // the rational-rhs store (the offset machinery below would round the

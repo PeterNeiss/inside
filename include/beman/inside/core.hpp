@@ -153,7 +153,7 @@ namespace beman::inside
           return;            // reported (error_code mode)
         // no handler (unchecked policy): fall through and store snapped as-is
       }
-      Raw = static_cast<raw_type>(G.snap_double(v));   // narrow to float for f32 (lossless)
+      Raw = static_cast<raw_type>(G.snap_double(v, detail::rounding_of(F)));   // float for f32: lossless
     }
 
     // The one store every constructor and assignment goes through; fp storage

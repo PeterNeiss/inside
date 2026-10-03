@@ -415,6 +415,15 @@ namespace beman::inside
     template <insidable B, typename P, policy_flag F>
     inline constexpr bool HasPolicy = has_flag(InsidePolicy<B>, F) || plain<P>::test(F);
 
+    // rounding_of (policy_flag.hpp) over L's type policy and the call's policy P.
+    template <insidable L, typename P>
+    inline constexpr round_mode rounding_for =
+        HasPolicy<L, P, round_floor>     ? round_mode::floor
+      : HasPolicy<L, P, round_ceil>      ? round_mode::ceil
+      : HasPolicy<L, P, round_half_even> ? round_mode::half_even
+      : HasPolicy<L, P, round_nearest>   ? round_mode::nearest
+      :                                    round_mode::trunc;
+
     // Rounds the split offset quotient q + r/den (r < den ≤ imax_max) per L's
     // rounding policy — q/r form so no expression can overflow umax
     // (num + den/2 could, for num near umax). Shared by round_quotient's
@@ -422,10 +431,11 @@ namespace beman::inside
     template <insidable L, typename P>
     [[nodiscard]] constexpr umax round_offset(umax q, umax r, umax den) noexcept
     {
-      if constexpr (HasPolicy<L, P, round_nearest>)        return (r * 2 >= den) ? q + 1 : q;
-      else if constexpr (HasPolicy<L, P, round_floor>)     return q;
-      else if constexpr (HasPolicy<L, P, round_ceil>)      return (r != 0) ? q + 1 : q;
-      else if constexpr (HasPolicy<L, P, round_half_even>)
+      constexpr round_mode m = rounding_for<L, P>;
+      if constexpr (m == round_mode::nearest)        return (r * 2 >= den) ? q + 1 : q;
+      else if constexpr (m == round_mode::floor)     return q;
+      else if constexpr (m == round_mode::ceil)      return (r != 0) ? q + 1 : q;
+      else if constexpr (m == round_mode::half_even)
       {
         if (r * 2 < den) return q;
         if (r * 2 > den) return q + 1;
@@ -480,13 +490,14 @@ namespace beman::inside
           const umax ar  = (rr < 0) ? ~static_cast<umax>(rr) + 1u
                                     :  static_cast<umax>(rr);
           const umax ab  = static_cast<umax>(di);  // ab - ar safe: 0 < ar < ab
-          if constexpr (HasPolicy<L, P, round_nearest>)        // half away from zero
+          constexpr round_mode mode = rounding_for<L, P>;
+          if constexpr (mode == round_mode::nearest)        // half away from zero
             J = (ar >= ab - ar) ? (neg ? t - 1 : t + 1) : t;
-          else if constexpr (HasPolicy<L, P, round_floor>)     // toward -inf
+          else if constexpr (mode == round_mode::floor)     // toward -inf
             J = neg ? t - 1 : t;
-          else if constexpr (HasPolicy<L, P, round_ceil>)      // toward +inf
+          else if constexpr (mode == round_mode::ceil)      // toward +inf
             J = neg ? t : t + 1;
-          else if constexpr (HasPolicy<L, P, round_half_even>) // tie -> even value
+          else if constexpr (mode == round_mode::half_even) // tie -> even value
           {
             if      (ar < ab - ar) J = t;
             else if (ar > ab - ar) J = neg ? t - 1 : t + 1;

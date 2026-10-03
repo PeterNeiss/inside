@@ -124,6 +124,26 @@ namespace beman::inside
   [[nodiscard]] constexpr bool has_any_flag(policy_flag set, policy_flag flags) noexcept
   { return (set & flags) != none; }
 
+  namespace detail
+  {
+    // The rounding mode a flag set selects — the ONE precedence every rounding
+    // path uses (integer, rational and fp storage, division, math stores).
+    // An explicit directional or half-even mode beats round_nearest (which f64 /
+    // f32 carry by default, so `f64 | round_floor` floors); `snap` alone, or no
+    // rounding flag at all, truncates toward zero. Ties of `nearest` go half
+    // away from zero.
+    enum class round_mode { trunc, nearest, floor, ceil, half_even };
+
+    [[nodiscard]] constexpr round_mode rounding_of(policy_flag f) noexcept
+    {
+      if (has_flag(f, round_floor))     return round_mode::floor;
+      if (has_flag(f, round_ceil))      return round_mode::ceil;
+      if (has_flag(f, round_half_even)) return round_mode::half_even;
+      if (has_flag(f, round_nearest))   return round_mode::nearest;
+      return round_mode::trunc;
+    }
+  }
+
   //---------------------------------------------------------------------------
   // no_action — zero-overhead default for overflow callbacks
   //---------------------------------------------------------------------------

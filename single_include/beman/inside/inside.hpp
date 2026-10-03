@@ -1828,6 +1828,26 @@ namespace beman::inside
   [[nodiscard]] constexpr bool has_any_flag(policy_flag set, policy_flag flags) noexcept
   { return (set & flags) != none; }
 
+  namespace detail
+  {
+    // The rounding mode a flag set selects — the ONE precedence every rounding
+    // path uses (integer, rational and fp storage, division, math stores).
+    // An explicit directional or half-even mode beats round_nearest (which f64 /
+    // f32 carry by default, so `f64 | round_floor` floors); `snap` alone, or no
+    // rounding flag at all, truncates toward zero. Ties of `nearest` go half
+    // away from zero.
+    enum class round_mode { trunc, nearest, floor, ceil, half_even };
+
+    [[nodiscard]] constexpr round_mode rounding_of(policy_flag f) noexcept
+    {
+      if (has_flag(f, round_floor))     return round_mode::floor;
+      if (has_flag(f, round_ceil))      return round_mode::ceil;
+      if (has_flag(f, round_half_even)) return round_mode::half_even;
+      if (has_flag(f, round_nearest))   return round_mode::nearest;
+      return round_mode::trunc;
+    }
+  }
+
   //---------------------------------------------------------------------------
   // no_action — zero-overhead default for overflow callbacks
   //---------------------------------------------------------------------------
@@ -2048,33 +2068,33 @@ namespace beman::inside
     // decode depends on the storage KIND, not the raw type's signedness — a
     // `direct`-policy inside has an unsigned raw that IS the value.)
 
-    // Snap a double to the nearest grid point `Lower + k·Notch`. `real` storage
-    // is only selected for dyadic grids, so the snap is lossless. A continuous
-    // grid (Notch == 0) passes `v` through. The round stays constexpr/<cmath>-free.
-    constexpr double snap_double(double v) const
+    // Snap a double onto this (dyadic) grid by `m` — the same rounding rule as
+    // integer storage (rounding_of; ties of `nearest` half away from zero). On an
+    // fp grid the notch is a power of two, so v/notch is the exact signed value
+    // index. A continuous grid (notch 0) has nothing to snap to. |index| ≥ 2^52 is
+    // already integral, so the imax narrowing below is always safe.
+    [[nodiscard]] constexpr double snap_double(double v, detail::round_mode m = detail::round_mode::nearest) const
     {
       if (Notch == detail::rational{0}) return v;
-      const double lo = static_cast<double>(Interval.Lower);
       const double nd = static_cast<double>(Notch);
-      const double q  = (v - lo) / nd;
-      // Round q to the nearest integer, half away from zero (matching the
-      // integer engine's round_nearest). Narrow to imax only when provably safe;
-      // for |q| >= 2^52 the double is already integral, so snap is a no-op.
-      // This avoids the `floor(q+0.5)` double-rounding flaw and the unguarded
-      // double->imax cast (UB for huge q).
-      double r;
-      const double aq = q < 0 ? -q : q;
-      if (aq >= 4503599627370496.0)            // 2^52
-        r = q;
-      else
+      const double q  = v / nd;
+      if ((q < 0 ? -q : q) >= 4503599627370496.0)        // 2^52
+        return v;
+      const imax   t = static_cast<imax>(q);              // toward zero
+      const double f = q - static_cast<double>(t);        // exact, sign of q, |f| < 1
+      imax k = t;
+      switch (m)
       {
-        const imax   t    = static_cast<imax>(q);   // trunc toward zero; |q| < 2^52 < imax
-        const double frac = q - static_cast<double>(t);
-        if      (frac >=  0.5) r = static_cast<double>(t + 1);
-        else if (frac <= -0.5) r = static_cast<double>(t - 1);
-        else                   r = static_cast<double>(t);
+        case detail::round_mode::nearest:   k += (f >= 0.5) - (f <= -0.5); break;
+        case detail::round_mode::floor:     k -= (f < 0); break;
+        case detail::round_mode::ceil:      k += (f > 0); break;
+        case detail::round_mode::half_even:
+          k += (f > 0.5  || (f ==  0.5 && (t & 1)))
+             - (f < -0.5 || (f == -0.5 && (t & 1)));
+          break;
+        case detail::round_mode::trunc:     break;
       }
-      return lo + r * nd;
+      return static_cast<double>(k) * nd;
     }
   };
 
@@ -2803,6 +2823,15 @@ namespace beman::inside
     template <insidable B, typename P, policy_flag F>
     inline constexpr bool HasPolicy = has_flag(InsidePolicy<B>, F) || plain<P>::test(F);
 
+    // rounding_of (policy_flag.hpp) over L's type policy and the call's policy P.
+    template <insidable L, typename P>
+    inline constexpr round_mode rounding_for =
+        HasPolicy<L, P, round_floor>     ? round_mode::floor
+      : HasPolicy<L, P, round_ceil>      ? round_mode::ceil
+      : HasPolicy<L, P, round_half_even> ? round_mode::half_even
+      : HasPolicy<L, P, round_nearest>   ? round_mode::nearest
+      :                                    round_mode::trunc;
+
     // Rounds the split offset quotient q + r/den (r < den ≤ imax_max) per L's
     // rounding policy — q/r form so no expression can overflow umax
     // (num + den/2 could, for num near umax). Shared by round_quotient's
@@ -2810,10 +2839,11 @@ namespace beman::inside
     template <insidable L, typename P>
     [[nodiscard]] constexpr umax round_offset(umax q, umax r, umax den) noexcept
     {
-      if constexpr (HasPolicy<L, P, round_nearest>)        return (r * 2 >= den) ? q + 1 : q;
-      else if constexpr (HasPolicy<L, P, round_floor>)     return q;
-      else if constexpr (HasPolicy<L, P, round_ceil>)      return (r != 0) ? q + 1 : q;
-      else if constexpr (HasPolicy<L, P, round_half_even>)
+      constexpr round_mode m = rounding_for<L, P>;
+      if constexpr (m == round_mode::nearest)        return (r * 2 >= den) ? q + 1 : q;
+      else if constexpr (m == round_mode::floor)     return q;
+      else if constexpr (m == round_mode::ceil)      return (r != 0) ? q + 1 : q;
+      else if constexpr (m == round_mode::half_even)
       {
         if (r * 2 < den) return q;
         if (r * 2 > den) return q + 1;
@@ -2868,13 +2898,14 @@ namespace beman::inside
           const umax ar  = (rr < 0) ? ~static_cast<umax>(rr) + 1u
                                     :  static_cast<umax>(rr);
           const umax ab  = static_cast<umax>(di);  // ab - ar safe: 0 < ar < ab
-          if constexpr (HasPolicy<L, P, round_nearest>)        // half away from zero
+          constexpr round_mode mode = rounding_for<L, P>;
+          if constexpr (mode == round_mode::nearest)        // half away from zero
             J = (ar >= ab - ar) ? (neg ? t - 1 : t + 1) : t;
-          else if constexpr (HasPolicy<L, P, round_floor>)     // toward -inf
+          else if constexpr (mode == round_mode::floor)     // toward -inf
             J = neg ? t - 1 : t;
-          else if constexpr (HasPolicy<L, P, round_ceil>)      // toward +inf
+          else if constexpr (mode == round_mode::ceil)      // toward +inf
             J = neg ? t : t + 1;
-          else if constexpr (HasPolicy<L, P, round_half_even>) // tie -> even value
+          else if constexpr (mode == round_mode::half_even) // tie -> even value
           {
             if      (ar < ab - ar) J = t;
             else if (ar > ab - ar) J = neg ? t - 1 : t + 1;
@@ -3323,7 +3354,7 @@ namespace beman::inside::detail
           const double v = static_cast<double>(rhs);
           if (!(v - v == 0))
             detail::raise(errc::not_finite, "non-finite double");
-          lhs = L::from_raw(Grid<L>.snap_double(v));
+          lhs = L::from_raw(Grid<L>.snap_double(v, rounding_for<L, P>));
           return true;
         }
         else if constexpr (Lower<L> == Upper<L>)
@@ -3678,7 +3709,7 @@ namespace beman::inside::detail
         if constexpr (fp_raw<L>)
           // real target: raw IS the value — decode the source and snap to the dyadic
           // grid (the offset machinery below mis-encodes a double raw).
-          lhs = L::from_raw(Grid<L>.snap_double(as_double(rhs)));
+          lhs = L::from_raw(Grid<L>.snap_double(as_double(rhs), rounding_for<L, P>));
         else if constexpr (rational_raw<L>)
           // rational target: raw IS the value — snap the decoded source through
           // the rational-rhs store (the offset machinery below would round the
@@ -4532,21 +4563,12 @@ namespace beman::inside::detail
 
   //---------------------------------------------------------------------------
   // Rounding mode for the native div & mod paths (fire when `snap` is set).
-  // Decided from the combined flags with assignment.hpp's precedence (nearest →
-  // floor → ceil → half_even → trunc); `snap` alone is truncate-toward-zero.
+  // Decided from the combined flags by rounding_of (policy_flag.hpp), the one
+  // precedence all rounding paths share; `snap` alone is truncate-toward-zero.
   // The runtime quotient and the compile-time grid endpoints MUST agree on the
   // mode (both read div_round_mode), or a result could escape its own grid.
   //---------------------------------------------------------------------------
-  enum class round_mode { trunc, nearest, floor, ceil, half_even };
-
-  constexpr round_mode div_round_mode(policy_flag eff) noexcept
-  {
-    if ((eff & round_nearest)   == round_nearest)   return round_mode::nearest;
-    if ((eff & round_floor)     == round_floor)     return round_mode::floor;
-    if ((eff & round_ceil)      == round_ceil)      return round_mode::ceil;
-    if (has_flag(eff, round_half_even)) return round_mode::half_even;
-    return round_mode::trunc;
-  }
+  constexpr round_mode div_round_mode(policy_flag eff) noexcept { return rounding_of(eff); }
 
   // Round the signed exact quotient a/b (b != 0) to an integer per `m`.
   template <std::signed_integral T>
@@ -4733,7 +4755,7 @@ namespace beman::inside::detail
       // non-finite ever reaches storage.
       if constexpr (!zero_unchecked)
         if (as_double(rhs) == 0.0) return fail(errc::division_by_zero, "division by zero in div");
-      return result::from_raw(raw_cast<result>(Grid<result>.snap_double(as_double(lhs) / as_double(rhs))));
+      return result::from_raw(raw_cast<result>(Grid<result>.snap_double(as_double(lhs) / as_double(rhs), rmode)));
     }
     else if constexpr (native_div_qformat)
     {
@@ -5020,7 +5042,7 @@ namespace beman::inside
           return;            // reported (error_code mode)
         // no handler (unchecked policy): fall through and store snapped as-is
       }
-      Raw = static_cast<raw_type>(G.snap_double(v));   // narrow to float for f32 (lossless)
+      Raw = static_cast<raw_type>(G.snap_double(v, detail::rounding_of(F)));   // float for f32: lossless
     }
 
     // The one store every constructor and assignment goes through; fp storage
@@ -7170,10 +7192,9 @@ namespace beman::inside::math
     // storage, raw fits imax, assigned with round_nearest. (Unlike the Q-format
     // fast path this does NOT require integer Lower — Lower·K is an exact
     // integer by the grid invariant regardless.) The math results all carry a
-    // power-of-two denominator, so the offset index is formed with integer
-    // shifts + round-half-up — identical to the rational assignment path
-    // (round_quotient round_nearest is `(num+den/2)/den`, invariant under
-    // fraction reduction), but skipping `(value−Lower)/Notch`'s GCD reductions.
+    // power-of-two denominator, so the value index is formed with integer
+    // shifts, rounded half away from zero — the same rule as the rational
+    // assignment path (round_quotient), minus `(value−Lower)/Notch`'s GCDs.
     template <insidable Out>
     inline constexpr bool grid_fast_store =
         Notch<Out>.Numerator == 1
@@ -7181,7 +7202,7 @@ namespace beman::inside::math
         // `real` storage holds the VALUE, not an offset index, so route it
         // through the rational fallback `Out{r}` (same guard as fmod_int_fast).
         && !fp_raw<Out>
-        && has_flag(InsidePolicy<Out>, round_nearest)
+        && rounding_of(InsidePolicy<Out>) == round_mode::nearest
         && (std::signed_integral<raw_t<Out>>
             || NotchCount<Out>
                  <= static_cast<umax>(std::numeric_limits<imax>::max()));
@@ -7206,8 +7227,12 @@ namespace beman::inside::math
           constexpr imax lim = std::numeric_limits<imax>::max() / 2 / K;
           if (-lim <= num && num <= lim)
           {
-            imax half = (D > 0) ? (imax{1} << (D - 1)) : 0;
-            imax off  = ((K * num + half) >> D) - m;      // round-half-up((value−Lower)·K)
+            // value index round(value·K), ties half away from zero like the
+            // assignment path: round the magnitude, then restore the sign.
+            const imax half = (D > 0) ? (imax{1} << (D - 1)) : 0;
+            const imax x    = K * num;
+            const imax idx  = x >= 0 ? (x + half) >> D : -((-x + half) >> D);
+            const imax off  = idx - m;
             if (off >= 0 && static_cast<umax>(off) <= NotchCount<Out>)
               return Out::from_raw(raw_from_offset<Out>(static_cast<umax>(off)));
           }

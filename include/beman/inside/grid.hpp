@@ -120,33 +120,33 @@ namespace beman::inside
     // decode depends on the storage KIND, not the raw type's signedness — a
     // `direct`-policy inside has an unsigned raw that IS the value.)
 
-    // Snap a double to the nearest grid point `Lower + k·Notch`. `real` storage
-    // is only selected for dyadic grids, so the snap is lossless. A continuous
-    // grid (Notch == 0) passes `v` through. The round stays constexpr/<cmath>-free.
-    constexpr double snap_double(double v) const
+    // Snap a double onto this (dyadic) grid by `m` — the same rounding rule as
+    // integer storage (rounding_of; ties of `nearest` half away from zero). On an
+    // fp grid the notch is a power of two, so v/notch is the exact signed value
+    // index. A continuous grid (notch 0) has nothing to snap to. |index| ≥ 2^52 is
+    // already integral, so the imax narrowing below is always safe.
+    [[nodiscard]] constexpr double snap_double(double v, detail::round_mode m = detail::round_mode::nearest) const
     {
       if (Notch == detail::rational{0}) return v;
-      const double lo = static_cast<double>(Interval.Lower);
       const double nd = static_cast<double>(Notch);
-      const double q  = (v - lo) / nd;
-      // Round q to the nearest integer, half away from zero (matching the
-      // integer engine's round_nearest). Narrow to imax only when provably safe;
-      // for |q| >= 2^52 the double is already integral, so snap is a no-op.
-      // This avoids the `floor(q+0.5)` double-rounding flaw and the unguarded
-      // double->imax cast (UB for huge q).
-      double r;
-      const double aq = q < 0 ? -q : q;
-      if (aq >= 4503599627370496.0)            // 2^52
-        r = q;
-      else
+      const double q  = v / nd;
+      if ((q < 0 ? -q : q) >= 4503599627370496.0)        // 2^52
+        return v;
+      const imax   t = static_cast<imax>(q);              // toward zero
+      const double f = q - static_cast<double>(t);        // exact, sign of q, |f| < 1
+      imax k = t;
+      switch (m)
       {
-        const imax   t    = static_cast<imax>(q);   // trunc toward zero; |q| < 2^52 < imax
-        const double frac = q - static_cast<double>(t);
-        if      (frac >=  0.5) r = static_cast<double>(t + 1);
-        else if (frac <= -0.5) r = static_cast<double>(t - 1);
-        else                   r = static_cast<double>(t);
+        case detail::round_mode::nearest:   k += (f >= 0.5) - (f <= -0.5); break;
+        case detail::round_mode::floor:     k -= (f < 0); break;
+        case detail::round_mode::ceil:      k += (f > 0); break;
+        case detail::round_mode::half_even:
+          k += (f > 0.5  || (f ==  0.5 && (t & 1)))
+             - (f < -0.5 || (f == -0.5 && (t & 1)));
+          break;
+        case detail::round_mode::trunc:     break;
       }
-      return lo + r * nd;
+      return static_cast<double>(k) * nd;
     }
   };
 

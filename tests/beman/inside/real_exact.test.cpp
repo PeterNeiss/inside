@@ -213,9 +213,8 @@ namespace
   void check_snap(double x)
   {
     R r = x;
-    const double lo = static_cast<double>(Lower<R>);
     const double nd = static_cast<double>(Notch<R>);
-    const double expect = lo + std::round((x - lo) / nd) * nd;
+    const double expect = std::round(x / nd) * nd;   // value index, ties away from zero
     SCOPED_TRACE(::testing::Message() << "x=" << x << " expect=" << expect << " got=" << static_cast<double>(r));
     ASSERT_TRUE(static_cast<double>(r) == expect);
   }

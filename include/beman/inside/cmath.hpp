@@ -269,10 +269,9 @@ namespace beman::inside::math
     // storage, raw fits imax, assigned with round_nearest. (Unlike the Q-format
     // fast path this does NOT require integer Lower — Lower·K is an exact
     // integer by the grid invariant regardless.) The math results all carry a
-    // power-of-two denominator, so the offset index is formed with integer
-    // shifts + round-half-up — identical to the rational assignment path
-    // (round_quotient round_nearest is `(num+den/2)/den`, invariant under
-    // fraction reduction), but skipping `(value−Lower)/Notch`'s GCD reductions.
+    // power-of-two denominator, so the value index is formed with integer
+    // shifts, rounded half away from zero — the same rule as the rational
+    // assignment path (round_quotient), minus `(value−Lower)/Notch`'s GCDs.
     template <insidable Out>
     inline constexpr bool grid_fast_store =
         Notch<Out>.Numerator == 1
@@ -280,7 +279,7 @@ namespace beman::inside::math
         // `real` storage holds the VALUE, not an offset index, so route it
         // through the rational fallback `Out{r}` (same guard as fmod_int_fast).
         && !fp_raw<Out>
-        && has_flag(InsidePolicy<Out>, round_nearest)
+        && rounding_of(InsidePolicy<Out>) == round_mode::nearest
         && (std::signed_integral<raw_t<Out>>
             || NotchCount<Out>
                  <= static_cast<umax>(std::numeric_limits<imax>::max()));
@@ -305,8 +304,12 @@ namespace beman::inside::math
           constexpr imax lim = std::numeric_limits<imax>::max() / 2 / K;
           if (-lim <= num && num <= lim)
           {
-            imax half = (D > 0) ? (imax{1} << (D - 1)) : 0;
-            imax off  = ((K * num + half) >> D) - m;      // round-half-up((value−Lower)·K)
+            // value index round(value·K), ties half away from zero like the
+            // assignment path: round the magnitude, then restore the sign.
+            const imax half = (D > 0) ? (imax{1} << (D - 1)) : 0;
+            const imax x    = K * num;
+            const imax idx  = x >= 0 ? (x + half) >> D : -((-x + half) >> D);
+            const imax off  = idx - m;
             if (off >= 0 && static_cast<umax>(off) <= NotchCount<Out>)
               return Out::from_raw(raw_from_offset<Out>(static_cast<umax>(off)));
           }
