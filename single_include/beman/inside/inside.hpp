@@ -8092,30 +8092,26 @@ namespace beman::inside::math
                                                      Notch<In>)},
                                       Notch<In>}, InsidePolicy<In> | round_nearest>;
 
-    template <insidable In>
-    using exp2_auto_t = inside<{{floor_to_notch(exp2_endpoint(Lower<In>), Notch<In>),
-                                ceil_to_notch (exp2_endpoint(Upper<In>), Notch<In>)},
-                               Notch<In>}, InsidePolicy<In> | round_nearest>;
-
-    template <insidable In>
-    using log2_auto_t = inside<{{floor_to_notch(log2_endpoint(Lower<In>), Notch<In>),
-                                ceil_to_notch (log2_endpoint(Upper<In>), Notch<In>)},
-                               Notch<In>}, InsidePolicy<In> | round_nearest>;
-
-    template <insidable In>
-    using exp_auto_t = inside<{{floor_to_notch(exp_endpoint(Lower<In>), Notch<In>),
-                               ceil_to_notch (exp_endpoint(Upper<In>), Notch<In>)},
+    // Auto output grid for results in [lo, hi]: the endpoints rounded outward
+    // to In's notch, with In's notch and policy (plus round_nearest).
+    template <insidable In, rational Lo, rational Hi>
+    using outward_t = inside<{{floor_to_notch(Lo, Notch<In>), ceil_to_notch(Hi, Notch<In>)},
                               Notch<In>}, InsidePolicy<In> | round_nearest>;
 
     template <insidable In>
-    using log_auto_t = inside<{{floor_to_notch(log_endpoint(Lower<In>), Notch<In>),
-                               ceil_to_notch (log_endpoint(Upper<In>), Notch<In>)},
-                              Notch<In>}, InsidePolicy<In> | round_nearest>;
+    using exp2_auto_t = outward_t<In, exp2_endpoint(Lower<In>), exp2_endpoint(Upper<In>)>;
+
+    template <insidable In>
+    using log2_auto_t = outward_t<In, log2_endpoint(Lower<In>), log2_endpoint(Upper<In>)>;
+
+    template <insidable In>
+    using exp_auto_t = outward_t<In, exp_endpoint(Lower<In>), exp_endpoint(Upper<In>)>;
+
+    template <insidable In>
+    using log_auto_t = outward_t<In, log_endpoint(Lower<In>), log_endpoint(Upper<In>)>;
 
     template <imax Base, insidable In>
-    using pow_base_auto_t = inside<{{floor_to_notch(pow_base_endpoint<Base>(Lower<In>), Notch<In>),
-                                    ceil_to_notch (pow_base_endpoint<Base>(Upper<In>), Notch<In>)},
-                                   Notch<In>}, InsidePolicy<In> | round_nearest>;
+    using pow_base_auto_t = outward_t<In, pow_base_endpoint<Base>(Lower<In>), pow_base_endpoint<Base>(Upper<In>)>;
   } // namespace detail
 
   //---------------------------------------------------------------------------
@@ -8142,9 +8138,7 @@ namespace beman::inside::math
     // ±π endpoints are irrational and would violate the grid's divides-evenly
     // invariant against a rational notch.
     template <insidable In>
-    using atan2_auto_t = inside<{{floor_to_notch(-pi_r, Notch<In>),
-                                 ceil_to_notch (pi_r, Notch<In>)},
-                                Notch<In>}, InsidePolicy<In> | round_nearest>;
+    using atan2_auto_t = outward_t<In, -pi_r, pi_r>;
 
     template <insidable In>
     using tan_auto_t = inside<{{-rational{1024}, rational{1024}},
@@ -8450,24 +8444,16 @@ namespace beman::inside::math
     // family. acos is decreasing; cosh is even (min at 0 if the interval
     // spans it). round_nearest lands sub-notch drift onto the grid.
     template <insidable In>
-    using atan_auto_t = inside<{{floor_to_notch(atan_fixed<working_bits<In>()>(Lower<In>), Notch<In>),
-                                ceil_to_notch (atan_fixed<working_bits<In>()>(Upper<In>), Notch<In>)},
-                               Notch<In>}, InsidePolicy<In> | round_nearest>;
+    using atan_auto_t = outward_t<In, atan_fixed<working_bits<In>()>(Lower<In>), atan_fixed<working_bits<In>()>(Upper<In>)>;
 
     template <insidable In>
-    using asin_auto_t = inside<{{floor_to_notch(asin_endpoint(Lower<In>), Notch<In>),
-                                ceil_to_notch (asin_endpoint(Upper<In>), Notch<In>)},
-                               Notch<In>}, InsidePolicy<In> | round_nearest>;
+    using asin_auto_t = outward_t<In, asin_endpoint(Lower<In>), asin_endpoint(Upper<In>)>;
 
     template <insidable In>
-    using acos_auto_t = inside<{{floor_to_notch(acos_endpoint(Upper<In>), Notch<In>),
-                                ceil_to_notch (acos_endpoint(Lower<In>), Notch<In>)},
-                               Notch<In>}, InsidePolicy<In> | round_nearest>;
+    using acos_auto_t = outward_t<In, acos_endpoint(Upper<In>), acos_endpoint(Lower<In>)>;
 
     template <insidable In>
-    using sinh_auto_t = inside<{{floor_to_notch(sinh_endpoint(Lower<In>), Notch<In>),
-                                ceil_to_notch (sinh_endpoint(Upper<In>), Notch<In>)},
-                               Notch<In>}, InsidePolicy<In> | round_nearest>;
+    using sinh_auto_t = outward_t<In, sinh_endpoint(Lower<In>), sinh_endpoint(Upper<In>)>;
 
     template <insidable In>
     inline constexpr rational cosh_auto_lo =
@@ -8482,24 +8468,16 @@ namespace beman::inside::math
         ? cosh_endpoint(Lower<In>) : cosh_endpoint(Upper<In>);
 
     template <insidable In>
-    using cosh_auto_t = inside<{{floor_to_notch(cosh_auto_lo<In>, Notch<In>),
-                                ceil_to_notch (cosh_auto_hi<In>, Notch<In>)},
-                               Notch<In>}, InsidePolicy<In> | round_nearest>;
+    using cosh_auto_t = outward_t<In, cosh_auto_lo<In>, cosh_auto_hi<In>>;
 
     template <insidable In>
-    using tanh_auto_t = inside<{{floor_to_notch(tanh_endpoint(Lower<In>), Notch<In>),
-                                ceil_to_notch (tanh_endpoint(Upper<In>), Notch<In>)},
-                               Notch<In>}, InsidePolicy<In> | round_nearest>;
+    using tanh_auto_t = outward_t<In, tanh_endpoint(Lower<In>), tanh_endpoint(Upper<In>)>;
 
     template <insidable In>
-    using log10_auto_t = inside<{{floor_to_notch(log10_endpoint(Lower<In>), Notch<In>),
-                                 ceil_to_notch (log10_endpoint(Upper<In>), Notch<In>)},
-                                Notch<In>}, InsidePolicy<In> | round_nearest>;
+    using log10_auto_t = outward_t<In, log10_endpoint(Lower<In>), log10_endpoint(Upper<In>)>;
 
     template <insidable In>
-    using cbrt_auto_t = inside<{{floor_to_notch(cbrt_endpoint(Lower<In>), Notch<In>),
-                                ceil_to_notch (cbrt_endpoint(Upper<In>), Notch<In>)},
-                               Notch<In>}, InsidePolicy<In> | round_nearest>;
+    using cbrt_auto_t = outward_t<In, cbrt_endpoint(Lower<In>), cbrt_endpoint(Upper<In>)>;
 
     // hypot output: non-negative, Upper at the largest-magnitude corner.
     template <insidable InX, insidable InY>
