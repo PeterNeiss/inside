@@ -77,6 +77,8 @@
 //---------------------------------------------------------------------------
 namespace beman::inside::math
 {
+  using beman::inside::detail::rational;
+
   namespace detail
   {
     using namespace beman::inside::detail;
@@ -746,12 +748,12 @@ namespace beman::inside::math
     constexpr int W = detail::working_bits<Out>();
     imax turn_w = detail::rad_to_turn_w<W, In>(angle);
 
-    beman::inside::detail::rational sin_v = detail::sin_from_turn_fixed<W, W>(turn_w);
-    beman::inside::detail::rational cos_v = detail::cos_from_turn_fixed<W, W>(turn_w);
+    rational sin_v = detail::sin_from_turn_fixed<W, W>(turn_w);
+    rational cos_v = detail::cos_from_turn_fixed<W, W>(turn_w);
 
     if (cos_v == 0) return std::unexpected(errc::division_by_zero);
 
-    beman::inside::detail::rational tan_v = (sin_v / cos_v).value();
+    rational tan_v = (sin_v / cos_v).value();
     // Under a clamp policy the out-of-range result saturates via the store
     // below instead of erroring; the pole stays an error.
     if constexpr (!has_flag(InsidePolicy<Out>, clamp))
@@ -770,7 +772,7 @@ namespace beman::inside::math
     static_assert(Lower<In> > 0,
                   "beman::inside::math::log2: input must be strictly positive");
 
-    return detail::store_grid<Out>(detail::log2_fixed<detail::working_bits<Out>()>(beman::inside::detail::rational{x}));
+    return detail::store_grid<Out>(detail::log2_fixed<detail::working_bits<Out>()>(rational{x}));
   }
 
   // exp2: inside → inside, returning 2^x. 2^x = e^(x·ln2) via the grid-scaled
@@ -788,7 +790,7 @@ namespace beman::inside::math
     static_assert(Lower<Out> >= 0,
                   "beman::inside::math::exp2: Out must be non-negative");
 
-    return detail::store_grid<Out>(detail::exp2_fixed<detail::working_bits<Out>()>(beman::inside::detail::rational{x}));
+    return detail::store_grid<Out>(detail::exp2_fixed<detail::working_bits<Out>()>(rational{x}));
   }
 
   // exp: thin wrapper. exp(x) = exp2(x · log2(e)). The scaling factor
@@ -802,7 +804,7 @@ namespace beman::inside::math
     static_assert(Lower<Out> >= 0,
                   "beman::inside::math::exp: Out must be non-negative");
 
-    return detail::store_grid<Out>(detail::exp_fixed<detail::working_bits<Out>()>(beman::inside::detail::rational{x}));
+    return detail::store_grid<Out>(detail::exp_fixed<detail::working_bits<Out>()>(rational{x}));
   }
 
   // log: thin wrapper. log(x) = log2(x) · ln(2). Result precision matches
@@ -813,7 +815,7 @@ namespace beman::inside::math
     static_assert(Lower<In> > 0,
                   "beman::inside::math::log: input must be strictly positive");
 
-    return detail::store_grid<Out>(detail::ln_fixed<detail::working_bits<Out>()>(beman::inside::detail::rational{x}));
+    return detail::store_grid<Out>(detail::ln_fixed<detail::working_bits<Out>()>(rational{x}));
   }
 
   // pow_base<Base>(x) = Base^x for compile-time-known integer Base ≥ 2.
@@ -828,8 +830,8 @@ namespace beman::inside::math
                   "beman::inside::math::pow_base: Out must be non-negative");
 
     constexpr int W = detail::working_bits<Out>();
-    constexpr imax lb_w = detail::log2_to_fixed<W>(beman::inside::detail::rational{Base});   // log2(Base)·2^W
-    imax sc_w = detail::fmul(detail::to_fixed(beman::inside::detail::rational{x}, W), lb_w, W);
+    constexpr imax lb_w = detail::log2_to_fixed<W>(rational{Base});   // log2(Base)·2^W
+    imax sc_w = detail::fmul(detail::to_fixed(rational{x}, W), lb_w, W);
     return detail::store_grid<Out>(detail::exp2_from_fixed<W>(sc_w));
   }
 
@@ -847,12 +849,12 @@ namespace beman::inside::math
                   "beman::inside::math::atan2: Out must cover [-π, π]");
 
     constexpr int W = detail::working_bits<Out>();
-    beman::inside::detail::rational yv = y, xv = x;
+    rational yv = y, xv = x;
     {
-      beman::inside::detail::rational ay = beman::inside::detail::abs(yv);
-      beman::inside::detail::rational ax = beman::inside::detail::abs(xv);
-      beman::inside::detail::rational m  = (ax > ay) ? ax : ay;
-      if (m > beman::inside::detail::rational{1})
+      rational ay = beman::inside::detail::abs(yv);
+      rational ax = beman::inside::detail::abs(xv);
+      rational m  = (ax > ay) ? ax : ay;
+      if (m > rational{1})
       {
         yv = yv / m;
         xv = xv / m;
@@ -951,7 +953,7 @@ namespace beman::inside::math
     if constexpr (detail::fp_direct<Out, detail::abs_auto_t<In>, In>)
       return detail::fp_direct_store<Out>(x, [](double v) { return v < 0 ? -v : v; });
     else
-      return detail::store_grid<Out>(beman::inside::detail::abs(beman::inside::detail::rational{x}));
+      return detail::store_grid<Out>(beman::inside::detail::abs(rational{x}));
   }
 
   // ⌊x⌋ — largest integer ≤ x.
@@ -961,7 +963,7 @@ namespace beman::inside::math
     if constexpr (detail::fp_direct<Out, detail::floor_auto_t<In>, In>)
       return detail::fp_direct_store<Out>(x, detail::fp_floor);
     else
-      return detail::store_grid<Out>(floor(beman::inside::detail::rational{x}));
+      return detail::store_grid<Out>(floor(rational{x}));
   }
 
   // ⌈x⌉ — smallest integer ≥ x.
@@ -971,7 +973,7 @@ namespace beman::inside::math
     if constexpr (detail::fp_direct<Out, detail::ceil_auto_t<In>, In>)
       return detail::fp_direct_store<Out>(x, detail::fp_ceil);
     else
-      return detail::store_grid<Out>(ceil(beman::inside::detail::rational{x}));
+      return detail::store_grid<Out>(ceil(rational{x}));
   }
 
   // x rounded to nearest integer, half-away-from-zero (matches the existing
@@ -982,7 +984,7 @@ namespace beman::inside::math
     if constexpr (detail::fp_direct<Out, detail::round_auto_t<In>, In>)
       return detail::fp_direct_store<Out>(x, detail::fp_round);
     else
-      return detail::store_grid<Out>(round(beman::inside::detail::rational{x}));
+      return detail::store_grid<Out>(round(rational{x}));
   }
 
   // x truncated toward zero. Distinct from floor for negative inputs:
@@ -993,7 +995,7 @@ namespace beman::inside::math
     if constexpr (detail::fp_direct<Out, detail::trunc_auto_t<In>, In>)
       return detail::fp_direct_store<Out>(x, detail::fp_trunc);
     else
-      return detail::store_grid<Out>(trunc(beman::inside::detail::rational{x}));
+      return detail::store_grid<Out>(trunc(rational{x}));
   }
 
   namespace detail
@@ -1049,7 +1051,7 @@ namespace beman::inside::math
     if constexpr (detail::fmod_int_fast<Out, InX, InY>)
     {
       // One integer remainder in g-units; bit-identical to the rational path.
-      constexpr beman::inside::detail::rational g = *beman::inside::detail::gcd(Notch<InX>, Notch<InY>);
+      constexpr rational g = *beman::inside::detail::gcd(Notch<InX>, Notch<InY>);
       constexpr imax wx  = trunc((Notch<InX> / g).value());
       constexpr imax wy  = trunc((Notch<InY> / g).value());
       constexpr imax wo  = trunc((g / Notch<Out>).value());
@@ -1065,12 +1067,12 @@ namespace beman::inside::math
     }
     else
     {
-      beman::inside::detail::rational xv = x;
-      beman::inside::detail::rational yv = y;
-      beman::inside::detail::rational q  = xv / yv;
+      rational xv = x;
+      rational yv = y;
+      rational q  = xv / yv;
       imax     qt = trunc(q);
-      beman::inside::detail::rational qy = qt * yv;
-      beman::inside::detail::rational r  = xv - qy;
+      rational qy = qt * yv;
+      rational r  = xv - qy;
       return detail::store_grid<Out>(r);
     }
   }
@@ -1140,7 +1142,7 @@ namespace beman::inside::math
                   "beman::inside::math::sqrt: Out must include 0");
 
     constexpr int W = detail::working_bits<Out>();
-    imax a_w = detail::to_fixed(beman::inside::detail::rational{x}, W);
+    imax a_w = detail::to_fixed(rational{x}, W);
     return detail::store_grid<Out>(detail::fixed_to_rational(detail::sqrt_fixed<W>(a_w), W));
   }
 
@@ -1153,8 +1155,8 @@ namespace beman::inside::math
     static_assert(Lower<Out> <= 0,
                   "beman::inside::math::sqrt: Out must include 0");
 
-    beman::inside::detail::rational v = beman::inside::detail::as_rational(x);
-    if (v < beman::inside::detail::rational{0})
+    rational v = beman::inside::detail::as_rational(x);
+    if (v < rational{0})
       return std::unexpected(errc::domain_error);
 
     constexpr int W = detail::working_bits<Out>();
@@ -1318,8 +1320,8 @@ namespace beman::inside::math
   // Power-of-two M is optimal (reflection is a bitmask); any M%4==0 works.
   //===========================================================================
   template <std::uint64_t M>
-  using circle = inside<{{beman::inside::detail::rational{0},
-                         beman::inside::detail::rational{std::uint64_t{360} * (M - 1),
+  using circle = inside<{{rational{0},
+                         rational{std::uint64_t{360} * (M - 1),
                                                static_cast<imax>(M)}},
                         notch<360, static_cast<imax>(M)>}, real | wrap>;
 
@@ -1327,7 +1329,7 @@ namespace beman::inside::math
   // `sin(circle<M>, amp<K>&)` — angle precision (M) and amplitude precision (K)
   // are chosen independently.
   template <std::uint64_t K>
-  using amp = inside<{{beman::inside::detail::rational{-1}, beman::inside::detail::rational{1}},
+  using amp = inside<{{rational{-1}, rational{1}},
                      notch<1, static_cast<imax>(K)>}, real>;
 
   namespace detail
@@ -1434,7 +1436,7 @@ namespace beman::inside::math
     constexpr imax M = detail::circle_slots<DEG>;
     constexpr int  W = detail::working_bits<AMP>();
     imax i = beman::inside::detail::raw_imax(angle);
-    beman::inside::detail::rational c = detail::sin_slot<M, W>(i + M / 4);
+    rational c = detail::sin_slot<M, W>(i + M / 4);
     if (c == 0) return false;                                  // pole
     out = (detail::sin_slot<M, W>(i) / c).value();             // sin / cos
     return true;
@@ -1696,7 +1698,7 @@ namespace beman::inside::math
   {
     static_assert(Lower<In> >= -(imax{1} << 20) && Upper<In> <= (imax{1} << 20),
                   "beman::inside::math::atan: input magnitudes must be \u2264 2^20 for the working-scale envelope");
-    return detail::store_grid<Out>(detail::atan_fixed<detail::working_bits<Out>()>(beman::inside::detail::rational{x}));
+    return detail::store_grid<Out>(detail::atan_fixed<detail::working_bits<Out>()>(rational{x}));
   }
 
   template <insidable Out, insidable In>
@@ -1704,7 +1706,7 @@ namespace beman::inside::math
   {
     static_assert(Lower<In> >= -1 && Upper<In> <= 1,
                   "beman::inside::math::asin: input must be in [-1, 1]");
-    return detail::store_grid<Out>(detail::asin_endpoint(beman::inside::detail::rational{x}));
+    return detail::store_grid<Out>(detail::asin_endpoint(rational{x}));
   }
 
   template <insidable Out, insidable In>
@@ -1712,7 +1714,7 @@ namespace beman::inside::math
   {
     static_assert(Lower<In> >= -1 && Upper<In> <= 1,
                   "beman::inside::math::acos: input must be in [-1, 1]");
-    return detail::store_grid<Out>(detail::acos_endpoint(beman::inside::detail::rational{x}));
+    return detail::store_grid<Out>(detail::acos_endpoint(rational{x}));
   }
 
   template <insidable Out, insidable In>
@@ -1720,7 +1722,7 @@ namespace beman::inside::math
   {
     static_assert(Lower<In> >= -10 && Upper<In> <= 10,
                   "beman::inside::math::sinh: input must be in [-10, 10]");
-    return detail::store_grid<Out>(detail::sinh_endpoint(beman::inside::detail::rational{x}));
+    return detail::store_grid<Out>(detail::sinh_endpoint(rational{x}));
   }
 
   template <insidable Out, insidable In>
@@ -1728,9 +1730,9 @@ namespace beman::inside::math
   {
     static_assert(Lower<In> >= -10 && Upper<In> <= 10,
                   "beman::inside::math::cosh: input must be in [-10, 10]");
-    static_assert(Lower<Out> <= beman::inside::detail::rational{1},
+    static_assert(Lower<Out> <= rational{1},
                   "beman::inside::math::cosh: Out must include 1 (cosh ≥ 1)");
-    return detail::store_grid<Out>(detail::cosh_endpoint(beman::inside::detail::rational{x}));
+    return detail::store_grid<Out>(detail::cosh_endpoint(rational{x}));
   }
 
   template <insidable Out, insidable In>
@@ -1738,7 +1740,7 @@ namespace beman::inside::math
   {
     static_assert(Lower<In> >= -10 && Upper<In> <= 10,
                   "beman::inside::math::tanh: input must be in [-10, 10]");
-    return detail::store_grid<Out>(detail::tanh_endpoint(beman::inside::detail::rational{x}));
+    return detail::store_grid<Out>(detail::tanh_endpoint(rational{x}));
   }
 
   template <insidable Out, insidable In>
@@ -1746,7 +1748,7 @@ namespace beman::inside::math
   {
     static_assert(Lower<In> > 0,
                   "beman::inside::math::log10: input must be strictly positive");
-    return detail::store_grid<Out>(detail::log10_endpoint(beman::inside::detail::rational{x}));
+    return detail::store_grid<Out>(detail::log10_endpoint(rational{x}));
   }
 
   template <insidable Out, insidable In>
@@ -1754,7 +1756,7 @@ namespace beman::inside::math
   {
     static_assert(Lower<In> >= -(imax{1} << 20) && Upper<In> <= (imax{1} << 20),
                   "beman::inside::math::cbrt: input magnitude must be ≤ 2^20 for the working-scale envelope");
-    return detail::store_grid<Out>(detail::cbrt_endpoint(beman::inside::detail::rational{x}));
+    return detail::store_grid<Out>(detail::cbrt_endpoint(rational{x}));
   }
 
   template <insidable Out, insidable InX, insidable InY>
@@ -1764,7 +1766,7 @@ namespace beman::inside::math
                && Lower<InY> >= -(imax{1} << 20) && Upper<InY> <= (imax{1} << 20),
                   "beman::inside::math::hypot: input magnitudes must be ≤ 2^20 for the working-scale envelope");
     static_assert(Lower<Out> <= 0, "beman::inside::math::hypot: Out must include 0");
-    return detail::store_grid<Out>(detail::hypot_endpoint(beman::inside::detail::rational{x}, beman::inside::detail::rational{y}));
+    return detail::store_grid<Out>(detail::hypot_endpoint(rational{x}, rational{y}));
   }
 
   // pow: b^e for runtime base b > 0. Returns `expected` — `overflow` when
@@ -1774,18 +1776,18 @@ namespace beman::inside::math
   template <insidable Out, insidable InB, insidable InE>
   [[nodiscard]] constexpr std::expected<Out, errc> pow_impl(InB base, InE exp) noexcept
   {
-    beman::inside::detail::rational bv = base;
-    if (bv <= beman::inside::detail::rational{0})
+    rational bv = base;
+    if (bv <= rational{0})
       return std::unexpected(errc::domain_error);
 
     constexpr int W = detail::working_bits<Out>();
-    imax sc_w = detail::fmul(detail::to_fixed(beman::inside::detail::rational{exp}, W),
+    imax sc_w = detail::fmul(detail::to_fixed(rational{exp}, W),
                              detail::log2_to_fixed<W>(bv), W);     // e·log2(b), scale 2^W
     constexpr imax lim = imax{30} << W;
     if (sc_w > lim || sc_w < -lim)
       return std::unexpected(errc::overflow);
 
-    beman::inside::detail::rational r = detail::exp2_from_fixed<W>(sc_w);
+    rational r = detail::exp2_from_fixed<W>(sc_w);
     if constexpr (!has_flag(InsidePolicy<Out>, clamp))   // clamp Out: saturate below
       if (r < Lower<Out> || r > Upper<Out>)
         return std::unexpected(errc::overflow);
@@ -1809,12 +1811,12 @@ namespace beman::inside::math
   namespace cordic
   {
     template <insidable In>
-      requires (Lower<In> == beman::inside::detail::rational{0})
+      requires (Lower<In> == rational{0})
     [[nodiscard]] constexpr auto sqrt(In x) noexcept
     { static_assert(detail::require_snap<In>()); return sqrt_impl<detail::sqrt_auto_t<In>>(x); }
 
     template <insidable In>
-      requires (Lower<In> < beman::inside::detail::rational{0})
+      requires (Lower<In> < rational{0})
     [[nodiscard]] constexpr auto sqrt(In x) noexcept
     { static_assert(detail::require_snap<In>()); return sqrt_signed_impl<detail::sqrt_signed_auto_t<In>>(x); }
 
@@ -1906,7 +1908,7 @@ namespace beman::inside::math
     }
 
     template <insidable InB, insidable InE>
-      requires (Lower<InB> > beman::inside::detail::rational{0})
+      requires (Lower<InB> > rational{0})
     [[nodiscard]] constexpr auto pow(InB base, InE exp) noexcept
     {
       static_assert(detail::require_snap<InB>() && detail::require_snap<InE>());
@@ -1914,24 +1916,28 @@ namespace beman::inside::math
     }
   } // namespace cordic
 
+  // The shared deduction/helpers, as seen from the engine namespaces (where a
+  // bare `detail::` names the engine's own cores).
+  namespace mdetail = beman::inside::math::detail;
+
 #ifndef BEMAN_INSIDE_MATH_NO_FP
   namespace dbl
   {
     // Public-shaped double-engine entry points. `detail::` here would resolve to
     // beman::inside::math::dbl::detail (the engine cores), so the shared deduction/helpers
-    // are qualified as `beman::inside::math::detail::`; the `*_core`/`store`/`d_*` names are
+    // are qualified as `mdetail::`; the `*_core`/`store`/`d_*` names are
     // this namespace's own. Absent under BEMAN_INSIDE_MATH_NO_FP (no FP, no <cmath>).
     template <insidable In>
-      requires (Lower<In> == beman::inside::detail::rational{0})
+      requires (Lower<In> == rational{0})
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto sqrt(In x) noexcept
-    { static_assert(beman::inside::math::detail::require_snap<In>()); return sqrt_core<beman::inside::math::detail::sqrt_auto_t<In>>(x); }
+    { static_assert(mdetail::require_snap<In>()); return sqrt_core<mdetail::sqrt_auto_t<In>>(x); }
 
     template <insidable In>
-      requires (Lower<In> < beman::inside::detail::rational{0})
+      requires (Lower<In> < rational{0})
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto sqrt(In x) noexcept
     {
-      static_assert(beman::inside::math::detail::require_snap<In>());
-      using Out = beman::inside::math::detail::sqrt_signed_auto_t<In>;
+      static_assert(mdetail::require_snap<In>());
+      using Out = mdetail::sqrt_signed_auto_t<In>;
       double v = static_cast<double>(x);
       if (v < 0.0)
         return std::expected<Out, errc>{std::unexpected(errc::domain_error)};
@@ -1940,119 +1946,119 @@ namespace beman::inside::math
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto exp2(In x) noexcept
-    { static_assert(beman::inside::math::detail::require_snap<In>()); return exp2_core<beman::inside::math::detail::exp2_auto_t<In>>(x); }
+    { static_assert(mdetail::require_snap<In>()); return exp2_core<mdetail::exp2_auto_t<In>>(x); }
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto log2(In x) noexcept
     {
-      static_assert(beman::inside::math::detail::require_snap<In>());
+      static_assert(mdetail::require_snap<In>());
       static_assert(Lower<In> > 0, "beman::inside::math::dbl::log2: input must be strictly positive");
-      return log2_core<beman::inside::math::detail::log2_auto_t<In>>(x);
+      return log2_core<mdetail::log2_auto_t<In>>(x);
     }
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto exp(In x) noexcept
-    { static_assert(beman::inside::math::detail::require_snap<In>()); return exp_core<beman::inside::math::detail::exp_auto_t<In>>(x); }
+    { static_assert(mdetail::require_snap<In>()); return exp_core<mdetail::exp_auto_t<In>>(x); }
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto log(In x) noexcept
     {
-      static_assert(beman::inside::math::detail::require_snap<In>());
+      static_assert(mdetail::require_snap<In>());
       static_assert(Lower<In> > 0, "beman::inside::math::dbl::log: input must be strictly positive");
-      return log_core<beman::inside::math::detail::log_auto_t<In>>(x);
+      return log_core<mdetail::log_auto_t<In>>(x);
     }
 
     template <imax Base, insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto pow_base(In x) noexcept
     {
-      static_assert(beman::inside::math::detail::require_snap<In>());
-      using Out = beman::inside::math::detail::pow_base_auto_t<Base, In>;
+      static_assert(mdetail::require_snap<In>());
+      using Out = mdetail::pow_base_auto_t<Base, In>;
       return store<Out>(detail::d_pow(static_cast<double>(Base), static_cast<double>(x)));
     }
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto sin(In angle) noexcept
-    { static_assert(beman::inside::math::detail::require_snap<In>()); return sin_core<beman::inside::math::detail::sin_auto_t<In>>(angle); }
+    { static_assert(mdetail::require_snap<In>()); return sin_core<mdetail::sin_auto_t<In>>(angle); }
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto cos(In angle) noexcept
-    { static_assert(beman::inside::math::detail::require_snap<In>()); return cos_core<beman::inside::math::detail::cos_auto_t<In>>(angle); }
+    { static_assert(mdetail::require_snap<In>()); return cos_core<mdetail::cos_auto_t<In>>(angle); }
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto tan(In angle) noexcept
     {
-      static_assert(beman::inside::math::detail::require_snap<In>());
-      using Out = beman::inside::math::detail::tan_auto_t<In>;
+      static_assert(mdetail::require_snap<In>());
+      using Out = mdetail::tan_auto_t<In>;
       double x = static_cast<double>(angle);
       double c = detail::d_cos(x);
       if (c == 0.0)
         return std::expected<Out, errc>{std::unexpected(errc::division_by_zero)};
       double t = detail::d_sin(x) / c;
       if constexpr (!has_flag(InsidePolicy<Out>, clamp))   // clamp Out: saturate below
-        if (t < beman::inside::math::detail::lower_fp<double, Out> || t > beman::inside::math::detail::upper_fp<double, Out>)
+        if (t < mdetail::lower_fp<double, Out> || t > mdetail::upper_fp<double, Out>)
           return std::expected<Out, errc>{std::unexpected(errc::overflow)};
       return std::expected<Out, errc>{store<Out>(t)};
     }
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto atan2(In y, In x) noexcept
-    { static_assert(beman::inside::math::detail::require_snap<In>()); return atan2_core<beman::inside::math::detail::atan2_auto_t<In>>(y, x); }
+    { static_assert(mdetail::require_snap<In>()); return atan2_core<mdetail::atan2_auto_t<In>>(y, x); }
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto atan(In x) noexcept
-    { static_assert(beman::inside::math::detail::require_snap<In>()); return atan_core<beman::inside::math::detail::atan_auto_t<In>>(x); }
+    { static_assert(mdetail::require_snap<In>()); return atan_core<mdetail::atan_auto_t<In>>(x); }
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto asin(In x) noexcept
-    { static_assert(beman::inside::math::detail::require_snap<In>()); return asin_core<beman::inside::math::detail::asin_auto_t<In>>(x); }
+    { static_assert(mdetail::require_snap<In>()); return asin_core<mdetail::asin_auto_t<In>>(x); }
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto acos(In x) noexcept
-    { static_assert(beman::inside::math::detail::require_snap<In>()); return acos_core<beman::inside::math::detail::acos_auto_t<In>>(x); }
+    { static_assert(mdetail::require_snap<In>()); return acos_core<mdetail::acos_auto_t<In>>(x); }
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto sinh(In x) noexcept
-    { static_assert(beman::inside::math::detail::require_snap<In>()); return sinh_core<beman::inside::math::detail::sinh_auto_t<In>>(x); }
+    { static_assert(mdetail::require_snap<In>()); return sinh_core<mdetail::sinh_auto_t<In>>(x); }
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto cosh(In x) noexcept
-    { static_assert(beman::inside::math::detail::require_snap<In>()); return cosh_core<beman::inside::math::detail::cosh_auto_t<In>>(x); }
+    { static_assert(mdetail::require_snap<In>()); return cosh_core<mdetail::cosh_auto_t<In>>(x); }
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto tanh(In x) noexcept
-    { static_assert(beman::inside::math::detail::require_snap<In>()); return tanh_core<beman::inside::math::detail::tanh_auto_t<In>>(x); }
+    { static_assert(mdetail::require_snap<In>()); return tanh_core<mdetail::tanh_auto_t<In>>(x); }
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto log10(In x) noexcept
     {
-      static_assert(beman::inside::math::detail::require_snap<In>());
+      static_assert(mdetail::require_snap<In>());
       static_assert(Lower<In> > 0, "beman::inside::math::dbl::log10: input must be strictly positive");
-      return log10_core<beman::inside::math::detail::log10_auto_t<In>>(x);
+      return log10_core<mdetail::log10_auto_t<In>>(x);
     }
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto cbrt(In x) noexcept
-    { static_assert(beman::inside::math::detail::require_snap<In>()); return cbrt_core<beman::inside::math::detail::cbrt_auto_t<In>>(x); }
+    { static_assert(mdetail::require_snap<In>()); return cbrt_core<mdetail::cbrt_auto_t<In>>(x); }
 
     template <insidable InX, insidable InY>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto hypot(InX x, InY y) noexcept
     {
-      static_assert(beman::inside::math::detail::require_snap<InX>() && beman::inside::math::detail::require_snap<InY>());
-      return hypot_core<beman::inside::math::detail::hypot_auto_t<InX, InY>>(x, y);
+      static_assert(mdetail::require_snap<InX>() && mdetail::require_snap<InY>());
+      return hypot_core<mdetail::hypot_auto_t<InX, InY>>(x, y);
     }
 
     template <insidable InB, insidable InE>
-      requires (Lower<InB> > beman::inside::detail::rational{0})
+      requires (Lower<InB> > rational{0})
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto pow(InB base, InE exp) noexcept
     {
-      static_assert(beman::inside::math::detail::require_snap<InB>() && beman::inside::math::detail::require_snap<InE>());
-      using Out = beman::inside::math::detail::pow_auto_t<InB, InE>;
+      static_assert(mdetail::require_snap<InB>() && mdetail::require_snap<InE>());
+      using Out = mdetail::pow_auto_t<InB, InE>;
       double b = static_cast<double>(base);
       if (b <= 0.0)
         return std::expected<Out, errc>{std::unexpected(errc::domain_error)};
       double r = detail::d_pow(b, static_cast<double>(exp));
       if constexpr (!has_flag(InsidePolicy<Out>, clamp))   // clamp Out: saturate below
-        if (r < beman::inside::math::detail::lower_fp<double, Out> || r > beman::inside::math::detail::upper_fp<double, Out>)
+        if (r < mdetail::lower_fp<double, Out> || r > mdetail::upper_fp<double, Out>)
           return std::expected<Out, errc>{std::unexpected(errc::overflow)};
       return std::expected<Out, errc>{store<Out>(r)};
     }
@@ -2061,19 +2067,19 @@ namespace beman::inside::math
   namespace flt
   {
     // Public-shaped float-engine entry points — binary32 compute, same shapes as
-    // dbl:: (qualify shared helpers as beman::inside::math::detail::; *_core/store/d_* are
+    // dbl:: (qualify shared helpers as mdetail::; *_core/store/d_* are
     // this namespace's own). A third value set (float ≠ double ≠ cordic).
     template <insidable In>
-      requires (Lower<In> == beman::inside::detail::rational{0})
+      requires (Lower<In> == rational{0})
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto sqrt(In x) noexcept
-    { static_assert(beman::inside::math::detail::require_snap<In>()); return sqrt_core<beman::inside::math::detail::sqrt_auto_t<In>>(x); }
+    { static_assert(mdetail::require_snap<In>()); return sqrt_core<mdetail::sqrt_auto_t<In>>(x); }
 
     template <insidable In>
-      requires (Lower<In> < beman::inside::detail::rational{0})
+      requires (Lower<In> < rational{0})
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto sqrt(In x) noexcept
     {
-      static_assert(beman::inside::math::detail::require_snap<In>());
-      using Out = beman::inside::math::detail::sqrt_signed_auto_t<In>;
+      static_assert(mdetail::require_snap<In>());
+      using Out = mdetail::sqrt_signed_auto_t<In>;
       float v = flt::to_float(x);
       if (v < 0.0f)
         return std::expected<Out, errc>{std::unexpected(errc::domain_error)};
@@ -2082,119 +2088,119 @@ namespace beman::inside::math
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto exp2(In x) noexcept
-    { static_assert(beman::inside::math::detail::require_snap<In>()); return exp2_core<beman::inside::math::detail::exp2_auto_t<In>>(x); }
+    { static_assert(mdetail::require_snap<In>()); return exp2_core<mdetail::exp2_auto_t<In>>(x); }
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto log2(In x) noexcept
     {
-      static_assert(beman::inside::math::detail::require_snap<In>());
+      static_assert(mdetail::require_snap<In>());
       static_assert(Lower<In> > 0, "beman::inside::math::flt::log2: input must be strictly positive");
-      return log2_core<beman::inside::math::detail::log2_auto_t<In>>(x);
+      return log2_core<mdetail::log2_auto_t<In>>(x);
     }
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto exp(In x) noexcept
-    { static_assert(beman::inside::math::detail::require_snap<In>()); return exp_core<beman::inside::math::detail::exp_auto_t<In>>(x); }
+    { static_assert(mdetail::require_snap<In>()); return exp_core<mdetail::exp_auto_t<In>>(x); }
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto log(In x) noexcept
     {
-      static_assert(beman::inside::math::detail::require_snap<In>());
+      static_assert(mdetail::require_snap<In>());
       static_assert(Lower<In> > 0, "beman::inside::math::flt::log: input must be strictly positive");
-      return log_core<beman::inside::math::detail::log_auto_t<In>>(x);
+      return log_core<mdetail::log_auto_t<In>>(x);
     }
 
     template <imax Base, insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto pow_base(In x) noexcept
     {
-      static_assert(beman::inside::math::detail::require_snap<In>());
-      using Out = beman::inside::math::detail::pow_base_auto_t<Base, In>;
+      static_assert(mdetail::require_snap<In>());
+      using Out = mdetail::pow_base_auto_t<Base, In>;
       return store<Out>(detail::d_pow(static_cast<float>(Base), flt::to_float(x)));
     }
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto sin(In angle) noexcept
-    { static_assert(beman::inside::math::detail::require_snap<In>()); return sin_core<beman::inside::math::detail::sin_auto_t<In>>(angle); }
+    { static_assert(mdetail::require_snap<In>()); return sin_core<mdetail::sin_auto_t<In>>(angle); }
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto cos(In angle) noexcept
-    { static_assert(beman::inside::math::detail::require_snap<In>()); return cos_core<beman::inside::math::detail::cos_auto_t<In>>(angle); }
+    { static_assert(mdetail::require_snap<In>()); return cos_core<mdetail::cos_auto_t<In>>(angle); }
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto tan(In angle) noexcept
     {
-      static_assert(beman::inside::math::detail::require_snap<In>());
-      using Out = beman::inside::math::detail::tan_auto_t<In>;
+      static_assert(mdetail::require_snap<In>());
+      using Out = mdetail::tan_auto_t<In>;
       float x = flt::to_float(angle);
       float c = detail::d_cos(x);
       if (c == 0.0f)
         return std::expected<Out, errc>{std::unexpected(errc::division_by_zero)};
       float t = detail::d_sin(x) / c;
       if constexpr (!has_flag(InsidePolicy<Out>, clamp))   // clamp Out: saturate below
-        if (t < beman::inside::math::detail::lower_fp<float, Out> || t > beman::inside::math::detail::upper_fp<float, Out>)
+        if (t < mdetail::lower_fp<float, Out> || t > mdetail::upper_fp<float, Out>)
           return std::expected<Out, errc>{std::unexpected(errc::overflow)};
       return std::expected<Out, errc>{store<Out>(t)};
     }
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto atan2(In y, In x) noexcept
-    { static_assert(beman::inside::math::detail::require_snap<In>()); return atan2_core<beman::inside::math::detail::atan2_auto_t<In>>(y, x); }
+    { static_assert(mdetail::require_snap<In>()); return atan2_core<mdetail::atan2_auto_t<In>>(y, x); }
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto atan(In x) noexcept
-    { static_assert(beman::inside::math::detail::require_snap<In>()); return atan_core<beman::inside::math::detail::atan_auto_t<In>>(x); }
+    { static_assert(mdetail::require_snap<In>()); return atan_core<mdetail::atan_auto_t<In>>(x); }
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto asin(In x) noexcept
-    { static_assert(beman::inside::math::detail::require_snap<In>()); return asin_core<beman::inside::math::detail::asin_auto_t<In>>(x); }
+    { static_assert(mdetail::require_snap<In>()); return asin_core<mdetail::asin_auto_t<In>>(x); }
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto acos(In x) noexcept
-    { static_assert(beman::inside::math::detail::require_snap<In>()); return acos_core<beman::inside::math::detail::acos_auto_t<In>>(x); }
+    { static_assert(mdetail::require_snap<In>()); return acos_core<mdetail::acos_auto_t<In>>(x); }
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto sinh(In x) noexcept
-    { static_assert(beman::inside::math::detail::require_snap<In>()); return sinh_core<beman::inside::math::detail::sinh_auto_t<In>>(x); }
+    { static_assert(mdetail::require_snap<In>()); return sinh_core<mdetail::sinh_auto_t<In>>(x); }
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto cosh(In x) noexcept
-    { static_assert(beman::inside::math::detail::require_snap<In>()); return cosh_core<beman::inside::math::detail::cosh_auto_t<In>>(x); }
+    { static_assert(mdetail::require_snap<In>()); return cosh_core<mdetail::cosh_auto_t<In>>(x); }
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto tanh(In x) noexcept
-    { static_assert(beman::inside::math::detail::require_snap<In>()); return tanh_core<beman::inside::math::detail::tanh_auto_t<In>>(x); }
+    { static_assert(mdetail::require_snap<In>()); return tanh_core<mdetail::tanh_auto_t<In>>(x); }
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto log10(In x) noexcept
     {
-      static_assert(beman::inside::math::detail::require_snap<In>());
+      static_assert(mdetail::require_snap<In>());
       static_assert(Lower<In> > 0, "beman::inside::math::flt::log10: input must be strictly positive");
-      return log10_core<beman::inside::math::detail::log10_auto_t<In>>(x);
+      return log10_core<mdetail::log10_auto_t<In>>(x);
     }
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto cbrt(In x) noexcept
-    { static_assert(beman::inside::math::detail::require_snap<In>()); return cbrt_core<beman::inside::math::detail::cbrt_auto_t<In>>(x); }
+    { static_assert(mdetail::require_snap<In>()); return cbrt_core<mdetail::cbrt_auto_t<In>>(x); }
 
     template <insidable InX, insidable InY>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto hypot(InX x, InY y) noexcept
     {
-      static_assert(beman::inside::math::detail::require_snap<InX>() && beman::inside::math::detail::require_snap<InY>());
-      return hypot_core<beman::inside::math::detail::hypot_auto_t<InX, InY>>(x, y);
+      static_assert(mdetail::require_snap<InX>() && mdetail::require_snap<InY>());
+      return hypot_core<mdetail::hypot_auto_t<InX, InY>>(x, y);
     }
 
     template <insidable InB, insidable InE>
-      requires (Lower<InB> > beman::inside::detail::rational{0})
+      requires (Lower<InB> > rational{0})
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto pow(InB base, InE exp) noexcept
     {
-      static_assert(beman::inside::math::detail::require_snap<InB>() && beman::inside::math::detail::require_snap<InE>());
-      using Out = beman::inside::math::detail::pow_auto_t<InB, InE>;
+      static_assert(mdetail::require_snap<InB>() && mdetail::require_snap<InE>());
+      using Out = mdetail::pow_auto_t<InB, InE>;
       float b = flt::to_float(base);
       if (b <= 0.0f)
         return std::expected<Out, errc>{std::unexpected(errc::domain_error)};
       float r = detail::d_pow(b, flt::to_float(exp));
       if constexpr (!has_flag(InsidePolicy<Out>, clamp))   // clamp Out: saturate below
-        if (r < beman::inside::math::detail::lower_fp<float, Out> || r > beman::inside::math::detail::upper_fp<float, Out>)
+        if (r < mdetail::lower_fp<float, Out> || r > mdetail::upper_fp<float, Out>)
           return std::expected<Out, errc>{std::unexpected(errc::overflow)};
       return std::expected<Out, errc>{store<Out>(r)};
     }
