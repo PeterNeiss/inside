@@ -1263,115 +1263,6 @@ namespace beman::inside::math
                                    Notch<In>}, InsidePolicy<In> | round_nearest>;
   } // namespace detail
 
-  template <insidable In>
-    requires (Lower<In> == beman::inside::detail::rational{0})
-  [[nodiscard]] BEMAN_INSIDE_MATH_FN auto sqrt(In x) noexcept
-  {
-    static_assert(detail::require_snap<In>());
-#if defined(BEMAN_INSIDE_MATH_NO_FP)
-    return sqrt_impl<detail::sqrt_auto_t<In>>(x);
-#elif defined(BEMAN_INSIDE_MATH_FLOAT)
-    return flt::sqrt_core<detail::sqrt_auto_t<In>>(x);
-#else
-    return dbl::sqrt_core<detail::sqrt_auto_t<In>>(x);
-#endif
-  }
-
-  // Mixed-sign overload: dispatches to `sqrt_signed_impl`, returning
-  // `std::expected<inside, errc>` so a negative runtime value surfaces as
-  // `unexpected(errc::domain_error)` instead of UB.
-  template <insidable In>
-    requires (Lower<In> < beman::inside::detail::rational{0})
-  [[nodiscard]] BEMAN_INSIDE_MATH_FN auto sqrt(In x) noexcept
-  {
-    static_assert(detail::require_snap<In>());
-    using Out = detail::sqrt_signed_auto_t<In>;
-#if defined(BEMAN_INSIDE_MATH_NO_FP)
-    return sqrt_signed_impl<Out>(x);
-#elif defined(BEMAN_INSIDE_MATH_FLOAT)
-    float v = flt::to_float(x);
-    if (v < 0.0f)
-      return std::expected<Out, errc>{std::unexpected(errc::domain_error)};
-    return std::expected<Out, errc>{flt::store<Out>(flt::detail::d_sqrt(v))};
-#else
-    double v = static_cast<double>(x);
-    if (v < 0.0)
-      return std::expected<Out, errc>{std::unexpected(errc::domain_error)};
-    return std::expected<Out, errc>{dbl::store<Out>(dbl::detail::d_sqrt(v))};
-#endif
-  }
-
-  template <insidable In>
-  [[nodiscard]] BEMAN_INSIDE_MATH_FN auto exp2(In x) noexcept
-  {
-    static_assert(detail::require_snap<In>());
-#if defined(BEMAN_INSIDE_MATH_NO_FP)
-    return exp2_impl<detail::exp2_auto_t<In>>(x);
-#elif defined(BEMAN_INSIDE_MATH_FLOAT)
-    return flt::exp2_core<detail::exp2_auto_t<In>>(x);
-#else
-    return dbl::exp2_core<detail::exp2_auto_t<In>>(x);
-#endif
-  }
-
-  template <insidable In>
-  [[nodiscard]] BEMAN_INSIDE_MATH_FN auto log2(In x) noexcept
-  {
-    static_assert(detail::require_snap<In>());
-    // Domain guard belongs on the shared entry point, not just the fixed
-    // engine's *_impl: the FP engines' log_core has no singularity check,
-    // so log2(x<=0) would silently store finite garbage (e.g. log2(0) ≈ -7).
-    static_assert(Lower<In> > 0, "beman::inside::math::log2: input must be strictly positive");
-#if defined(BEMAN_INSIDE_MATH_NO_FP)
-    return log2_impl<detail::log2_auto_t<In>>(x);
-#elif defined(BEMAN_INSIDE_MATH_FLOAT)
-    return flt::log2_core<detail::log2_auto_t<In>>(x);
-#else
-    return dbl::log2_core<detail::log2_auto_t<In>>(x);
-#endif
-  }
-
-  template <insidable In>
-  [[nodiscard]] BEMAN_INSIDE_MATH_FN auto exp(In x) noexcept
-  {
-    static_assert(detail::require_snap<In>());
-#if defined(BEMAN_INSIDE_MATH_NO_FP)
-    return exp_impl<detail::exp_auto_t<In>>(x);
-#elif defined(BEMAN_INSIDE_MATH_FLOAT)
-    return flt::exp_core<detail::exp_auto_t<In>>(x);
-#else
-    return dbl::exp_core<detail::exp_auto_t<In>>(x);
-#endif
-  }
-
-  template <insidable In>
-  [[nodiscard]] BEMAN_INSIDE_MATH_FN auto log(In x) noexcept
-  {
-    static_assert(detail::require_snap<In>());
-    static_assert(Lower<In> > 0, "beman::inside::math::log: input must be strictly positive");
-#if defined(BEMAN_INSIDE_MATH_NO_FP)
-    return log_impl<detail::log_auto_t<In>>(x);
-#elif defined(BEMAN_INSIDE_MATH_FLOAT)
-    return flt::log_core<detail::log_auto_t<In>>(x);
-#else
-    return dbl::log_core<detail::log_auto_t<In>>(x);
-#endif
-  }
-
-  template <imax Base, insidable In>
-  [[nodiscard]] BEMAN_INSIDE_MATH_FN auto pow_base(In x) noexcept
-  {
-    static_assert(detail::require_snap<In>());
-    using Out = detail::pow_base_auto_t<Base, In>;
-#if defined(BEMAN_INSIDE_MATH_NO_FP)
-    return pow_base_impl<Base, Out>(x);
-#elif defined(BEMAN_INSIDE_MATH_FLOAT)
-    return flt::store<Out>(flt::detail::d_pow(static_cast<float>(Base), flt::to_float(x)));
-#else
-    return dbl::store<Out>(dbl::detail::d_pow(static_cast<double>(Base), static_cast<double>(x)));
-#endif
-  }
-
   //---------------------------------------------------------------------------
   // Auto-deducing forms — trig + atan2 + tan + fmod.
   //
@@ -1408,78 +1299,6 @@ namespace beman::inside::math
     using fmod_auto_t = inside<{{-abs(Upper<InY>), abs(Upper<InY>)},
                                 Notch<InX>}, InsidePolicy<InX> | round_nearest>;
   } // namespace detail
-
-  // Public auto-form trig — radians input, std::sin-shaped. The only
-  // public trig entry points; the turn-input workers live in `detail::`
-  // (`sin_turn_impl`, `cos_turn_impl`, `tan_turn_impl`) for internal use.
-  template <insidable In>
-  [[nodiscard]] BEMAN_INSIDE_MATH_FN auto sin(In angle) noexcept
-  {
-    static_assert(detail::require_snap<In>());
-#if defined(BEMAN_INSIDE_MATH_NO_FP)
-    return sin_impl<detail::sin_auto_t<In>>(angle);
-#elif defined(BEMAN_INSIDE_MATH_FLOAT)
-    return flt::sin_core<detail::sin_auto_t<In>>(angle);
-#else
-    return dbl::sin_core<detail::sin_auto_t<In>>(angle);
-#endif
-  }
-
-  template <insidable In>
-  [[nodiscard]] BEMAN_INSIDE_MATH_FN auto cos(In angle) noexcept
-  {
-    static_assert(detail::require_snap<In>());
-#if defined(BEMAN_INSIDE_MATH_NO_FP)
-    return cos_impl<detail::cos_auto_t<In>>(angle);
-#elif defined(BEMAN_INSIDE_MATH_FLOAT)
-    return flt::cos_core<detail::cos_auto_t<In>>(angle);
-#else
-    return dbl::cos_core<detail::cos_auto_t<In>>(angle);
-#endif
-  }
-
-  template <insidable In>
-  [[nodiscard]] BEMAN_INSIDE_MATH_FN auto atan2(In y, In x) noexcept
-  {
-    static_assert(detail::require_snap<In>());
-#if defined(BEMAN_INSIDE_MATH_NO_FP)
-    return atan2_impl<detail::atan2_auto_t<In>>(y, x);
-#elif defined(BEMAN_INSIDE_MATH_FLOAT)
-    return flt::atan2_core<detail::atan2_auto_t<In>>(y, x);
-#else
-    return dbl::atan2_core<detail::atan2_auto_t<In>>(y, x);
-#endif
-  }
-
-  template <insidable In>
-  [[nodiscard]] BEMAN_INSIDE_MATH_FN auto tan(In angle) noexcept
-  {
-    static_assert(detail::require_snap<In>());
-    using Out = detail::tan_auto_t<In>;
-#if defined(BEMAN_INSIDE_MATH_NO_FP)
-    return tan_impl<Out>(angle);
-#elif defined(BEMAN_INSIDE_MATH_FLOAT)
-    float x = flt::to_float(angle);
-    float c = flt::detail::d_cos(x);
-    if (c == 0.0f)
-      return std::expected<Out, errc>{std::unexpected(errc::division_by_zero)};
-    float t = flt::detail::d_sin(x) / c;
-    if constexpr (!has_flag(InsidePolicy<Out>, clamp))   // clamp Out: saturate below
-      if (t < beman::inside::math::detail::lower_fp<float, Out> || t > beman::inside::math::detail::upper_fp<float, Out>)
-        return std::expected<Out, errc>{std::unexpected(errc::overflow)};
-    return std::expected<Out, errc>{flt::store<Out>(t)};
-#else
-    double x = static_cast<double>(angle);
-    double c = dbl::detail::d_cos(x);
-    if (c == 0.0)
-      return std::expected<Out, errc>{std::unexpected(errc::division_by_zero)};
-    double t = dbl::detail::d_sin(x) / c;
-    if constexpr (!has_flag(InsidePolicy<Out>, clamp))   // clamp Out: saturate below
-      if (t < beman::inside::math::detail::lower_fp<double, Out> || t > beman::inside::math::detail::upper_fp<double, Out>)
-        return std::expected<Out, errc>{std::unexpected(errc::overflow)};
-    return std::expected<Out, errc>{dbl::store<Out>(t)};
-#endif
-  }
 
   template <insidable InX, insidable InY>
   [[nodiscard]] constexpr auto fmod(InX x, InY y) noexcept
@@ -1973,154 +1792,6 @@ namespace beman::inside::math
     return detail::store_grid<Out>(r);
   }
 
-  // --- public auto-deducing forms ----------------------------------------
-  template <insidable In>
-  [[nodiscard]] BEMAN_INSIDE_MATH_FN auto atan(In x) noexcept
-  {
-    static_assert(detail::require_snap<In>());
-#if defined(BEMAN_INSIDE_MATH_NO_FP)
-    return atan_impl<detail::atan_auto_t<In>>(x);
-#elif defined(BEMAN_INSIDE_MATH_FLOAT)
-    return flt::atan_core<detail::atan_auto_t<In>>(x);
-#else
-    return dbl::atan_core<detail::atan_auto_t<In>>(x);
-#endif
-  }
-
-  template <insidable In>
-  [[nodiscard]] BEMAN_INSIDE_MATH_FN auto asin(In x) noexcept
-  {
-    static_assert(detail::require_snap<In>());
-#if defined(BEMAN_INSIDE_MATH_NO_FP)
-    return asin_impl<detail::asin_auto_t<In>>(x);
-#elif defined(BEMAN_INSIDE_MATH_FLOAT)
-    return flt::asin_core<detail::asin_auto_t<In>>(x);
-#else
-    return dbl::asin_core<detail::asin_auto_t<In>>(x);
-#endif
-  }
-
-  template <insidable In>
-  [[nodiscard]] BEMAN_INSIDE_MATH_FN auto acos(In x) noexcept
-  {
-    static_assert(detail::require_snap<In>());
-#if defined(BEMAN_INSIDE_MATH_NO_FP)
-    return acos_impl<detail::acos_auto_t<In>>(x);
-#elif defined(BEMAN_INSIDE_MATH_FLOAT)
-    return flt::acos_core<detail::acos_auto_t<In>>(x);
-#else
-    return dbl::acos_core<detail::acos_auto_t<In>>(x);
-#endif
-  }
-
-  template <insidable In>
-  [[nodiscard]] BEMAN_INSIDE_MATH_FN auto sinh(In x) noexcept
-  {
-    static_assert(detail::require_snap<In>());
-#if defined(BEMAN_INSIDE_MATH_NO_FP)
-    return sinh_impl<detail::sinh_auto_t<In>>(x);
-#elif defined(BEMAN_INSIDE_MATH_FLOAT)
-    return flt::sinh_core<detail::sinh_auto_t<In>>(x);
-#else
-    return dbl::sinh_core<detail::sinh_auto_t<In>>(x);
-#endif
-  }
-
-  template <insidable In>
-  [[nodiscard]] BEMAN_INSIDE_MATH_FN auto cosh(In x) noexcept
-  {
-    static_assert(detail::require_snap<In>());
-#if defined(BEMAN_INSIDE_MATH_NO_FP)
-    return cosh_impl<detail::cosh_auto_t<In>>(x);
-#elif defined(BEMAN_INSIDE_MATH_FLOAT)
-    return flt::cosh_core<detail::cosh_auto_t<In>>(x);
-#else
-    return dbl::cosh_core<detail::cosh_auto_t<In>>(x);
-#endif
-  }
-
-  template <insidable In>
-  [[nodiscard]] BEMAN_INSIDE_MATH_FN auto tanh(In x) noexcept
-  {
-    static_assert(detail::require_snap<In>());
-#if defined(BEMAN_INSIDE_MATH_NO_FP)
-    return tanh_impl<detail::tanh_auto_t<In>>(x);
-#elif defined(BEMAN_INSIDE_MATH_FLOAT)
-    return flt::tanh_core<detail::tanh_auto_t<In>>(x);
-#else
-    return dbl::tanh_core<detail::tanh_auto_t<In>>(x);
-#endif
-  }
-
-  template <insidable In>
-  [[nodiscard]] BEMAN_INSIDE_MATH_FN auto log10(In x) noexcept
-  {
-    static_assert(detail::require_snap<In>());
-    static_assert(Lower<In> > 0, "beman::inside::math::log10: input must be strictly positive");
-#if defined(BEMAN_INSIDE_MATH_NO_FP)
-    return log10_impl<detail::log10_auto_t<In>>(x);
-#elif defined(BEMAN_INSIDE_MATH_FLOAT)
-    return flt::log10_core<detail::log10_auto_t<In>>(x);
-#else
-    return dbl::log10_core<detail::log10_auto_t<In>>(x);
-#endif
-  }
-
-  template <insidable In>
-  [[nodiscard]] BEMAN_INSIDE_MATH_FN auto cbrt(In x) noexcept
-  {
-    static_assert(detail::require_snap<In>());
-#if defined(BEMAN_INSIDE_MATH_NO_FP)
-    return cbrt_impl<detail::cbrt_auto_t<In>>(x);
-#elif defined(BEMAN_INSIDE_MATH_FLOAT)
-    return flt::cbrt_core<detail::cbrt_auto_t<In>>(x);
-#else
-    return dbl::cbrt_core<detail::cbrt_auto_t<In>>(x);
-#endif
-  }
-
-  template <insidable InX, insidable InY>
-  [[nodiscard]] BEMAN_INSIDE_MATH_FN auto hypot(InX x, InY y) noexcept
-  {
-    static_assert(detail::require_snap<InX>() && detail::require_snap<InY>());
-#if defined(BEMAN_INSIDE_MATH_NO_FP)
-    return hypot_impl<detail::hypot_auto_t<InX, InY>>(x, y);
-#elif defined(BEMAN_INSIDE_MATH_FLOAT)
-    return flt::hypot_core<detail::hypot_auto_t<InX, InY>>(x, y);
-#else
-    return dbl::hypot_core<detail::hypot_auto_t<InX, InY>>(x, y);
-#endif
-  }
-
-  template <insidable InB, insidable InE>
-    requires (Lower<InB> > beman::inside::detail::rational{0})
-  [[nodiscard]] BEMAN_INSIDE_MATH_FN auto pow(InB base, InE exp) noexcept
-  {
-    static_assert(detail::require_snap<InB>() && detail::require_snap<InE>());
-    using Out = detail::pow_auto_t<InB, InE>;
-#if defined(BEMAN_INSIDE_MATH_NO_FP)
-    return pow_impl<Out>(base, exp);
-#elif defined(BEMAN_INSIDE_MATH_FLOAT)
-    float b = flt::to_float(base);
-    if (b <= 0.0f)
-      return std::expected<Out, errc>{std::unexpected(errc::domain_error)};
-    float r = flt::detail::d_pow(b, flt::to_float(exp));
-    if constexpr (!has_flag(InsidePolicy<Out>, clamp))   // clamp Out: saturate below
-      if (r < beman::inside::math::detail::lower_fp<float, Out> || r > beman::inside::math::detail::upper_fp<float, Out>)
-        return std::expected<Out, errc>{std::unexpected(errc::overflow)};
-    return std::expected<Out, errc>{flt::store<Out>(r)};
-#else
-    double b = static_cast<double>(base);
-    if (b <= 0.0)
-      return std::expected<Out, errc>{std::unexpected(errc::domain_error)};
-    double r = dbl::detail::d_pow(b, static_cast<double>(exp));
-    if constexpr (!has_flag(InsidePolicy<Out>, clamp))   // clamp Out: saturate below
-      if (r < beman::inside::math::detail::lower_fp<double, Out> || r > beman::inside::math::detail::upper_fp<double, Out>)
-        return std::expected<Out, errc>{std::unexpected(errc::overflow)};
-    return std::expected<Out, errc>{dbl::store<Out>(r)};
-#endif
-  }
-
   //===========================================================================
   // Explicit engine namespaces — call a chosen engine regardless of the build
   // default. `cordic::fn` (integer/CORDIC, ALWAYS present) and `dbl::fn` (the
@@ -2529,6 +2200,42 @@ namespace beman::inside::math
     }
   } // namespace flt
 #endif // !BEMAN_INSIDE_MATH_NO_FP
+
+  //---------------------------------------------------------------------------
+  // The unqualified API (`beman::inside::math::sin` etc.) is the build's default
+  // engine: CORDIC under BEMAN_INSIDE_MATH_NO_FP, float under
+  // BEMAN_INSIDE_MATH_FLOAT, else double. Every engine stays reachable by name.
+  // Trig takes radians (std::sin-shaped; the turn-input workers are internal).
+  // sqrt of a mixed-sign input, tan and pow return std::expected<inside, errc>
+  // (domain_error / division_by_zero / overflow) instead of UB.
+  //---------------------------------------------------------------------------
+#if defined(BEMAN_INSIDE_MATH_NO_FP)
+  namespace default_engine = cordic;
+#elif defined(BEMAN_INSIDE_MATH_FLOAT)
+  namespace default_engine = flt;
+#else
+  namespace default_engine = dbl;
+#endif
+  using default_engine::sqrt;
+  using default_engine::exp2;
+  using default_engine::log2;
+  using default_engine::exp;
+  using default_engine::log;
+  using default_engine::pow_base;
+  using default_engine::sin;
+  using default_engine::cos;
+  using default_engine::tan;
+  using default_engine::atan2;
+  using default_engine::atan;
+  using default_engine::asin;
+  using default_engine::acos;
+  using default_engine::sinh;
+  using default_engine::cosh;
+  using default_engine::tanh;
+  using default_engine::log10;
+  using default_engine::cbrt;
+  using default_engine::hypot;
+  using default_engine::pow;
 }
 
 #endif
