@@ -32,16 +32,16 @@
 // definitions live there).
 namespace beman::inside::math
 {
-  template <insidable Out, insidable In> constexpr Out floor_impl(In x) noexcept;
-  template <insidable Out, insidable In> constexpr Out ceil_impl (In x) noexcept;
-  template <insidable Out, insidable In> constexpr Out round_impl(In x) noexcept;
-  template <insidable Out, insidable In> constexpr Out trunc_impl(In x) noexcept;
-  template <insidable Out, insidable In> constexpr Out abs_impl  (In x) noexcept;
-  template <insidable In> constexpr auto floor(In x) noexcept;
-  template <insidable In> constexpr auto ceil (In x) noexcept;
-  template <insidable In> constexpr auto round(In x) noexcept;
-  template <insidable In> constexpr auto trunc(In x) noexcept;
-  template <insidable In> constexpr auto abs  (In x) noexcept;
+  template <insidable Out, insidable In> constexpr Out floor_impl(In x);
+  template <insidable Out, insidable In> constexpr Out ceil_impl (In x);
+  template <insidable Out, insidable In> constexpr Out round_impl(In x);
+  template <insidable Out, insidable In> constexpr Out trunc_impl(In x);
+  template <insidable Out, insidable In> constexpr Out abs_impl  (In x);
+  template <insidable In> constexpr auto floor(In x);
+  template <insidable In> constexpr auto ceil (In x);
+  template <insidable In> constexpr auto round(In x);
+  template <insidable In> constexpr auto trunc(In x);
+  template <insidable In> constexpr auto abs  (In x);
 }
 
 //---------------------------------------------------------------------------

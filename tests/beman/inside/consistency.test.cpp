@@ -259,3 +259,16 @@ TEST(ConsistencyTest, zero_divisor_handling_agrees)
   EXPECT_TRUE(called);
   EXPECT_NO_THROW(b.policy<ignore_zero>() /= X{0});
 }
+
+// The math store fast path range-checks the exact value before rounding, like
+// assignment: 8.25 into [0, 8] is out of range, not 8.
+TEST(ConsistencyTest, math_store_checks_range_before_rounding)
+{
+  using O = inside<{0, 8}, checked | round_nearest>;
+  EXPECT_THROW((void)O{q(33, 4)}, inside_error);
+  EXPECT_THROW((void)math::detail::store_grid<O>(q(33, 4)), inside_error);
+  EXPECT_THROW((void)math::detail::store_grid<O>(q(-1, 4)), inside_error);
+  EXPECT_EQ(rational{math::detail::store_grid<O>(q(31, 4))}, q(8));
+  using C = inside<{0, 8}, clamp | round_nearest>;
+  EXPECT_EQ(rational{math::detail::store_grid<C>(q(33, 4))}, q(8));
+}
