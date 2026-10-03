@@ -8,6 +8,7 @@
 
 #include <beman/inside/inside.hpp>
 #include <beman/inside/detail/rational.hpp>
+#include <beman/inside/cmath.hpp>
 
 #include <gtest/gtest.h>
 #include <stdexcept>
@@ -211,3 +212,24 @@ TEST(PerfPathsTest, fraction_and_to_value_fast_paths_match_rational)
     EXPECT_EQ(j.raw(), i.raw());
   }
 }
+
+//---------------------------------------------------------------------------
+// Double-backed abs/floor/ceil/round/trunc match the exact rational results.
+//---------------------------------------------------------------------------
+#ifndef BEMAN_INSIDE_MATH_FIXED
+TEST(PerfPathsTest, fp_algebraic_fast_path_matches_rational)
+{
+  using X = inside<{{-8, 8}, notch<1, 4>}, round_nearest | real>;
+  static_assert(fp_raw<X>);
+  for (int k = -32; k <= 32; ++k)
+  {
+    const X x = X::from_raw(k / 4.0);
+    const rational r{x};
+    EXPECT_EQ(rational{math::abs(x)}, abs(r));
+    EXPECT_EQ(rational{math::floor(x)}, rational{floor(r)});
+    EXPECT_EQ(rational{math::ceil(x)}, rational{ceil(r)});
+    EXPECT_EQ(rational{math::round(x)}, rational{round(r)});
+    EXPECT_EQ(rational{math::trunc(x)}, rational{trunc(r)});
+  }
+}
+#endif

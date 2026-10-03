@@ -869,6 +869,62 @@ namespace beman::inside::math
     return detail::store_grid<Out>(detail::fixed_to_rational(rad, W));
   }
 
+  namespace detail
+  {
+    // max(|Lower<In>|, |Upper<In>|) as a constexpr rational. Used to size
+    // the auto-deduced abs output.
+    template <insidable In>
+    inline constexpr rational abs_auto_upper =
+      (abs(Lower<In>) > abs(Upper<In>))
+        ? abs(Lower<In>) : abs(Upper<In>);
+
+    template <insidable In>
+    using abs_auto_t = inside<{{rational{0}, abs_auto_upper<In>},
+                              Notch<In>}, InsidePolicy<In>>;
+
+    template <insidable In>
+    using floor_auto_t = inside<{{rational{floor(Lower<In>)},
+                                  rational{floor(Upper<In>)}},
+                                 notch<1>}, InsidePolicy<In>>;
+
+    template <insidable In>
+    using ceil_auto_t = inside<{{rational{ceil(Lower<In>)},
+                                 rational{ceil(Upper<In>)}},
+                                notch<1>}, InsidePolicy<In>>;
+
+    template <insidable In>
+    using round_auto_t = inside<{{rational{round(Lower<In>)},
+                                  rational{round(Upper<In>)}},
+                                 notch<1>}, InsidePolicy<In>>;
+
+    template <insidable In>
+    using trunc_auto_t = inside<{{rational{trunc(Lower<In>)},
+                                  rational{trunc(Upper<In>)}},
+                                 notch<1>}, InsidePolicy<In>>;
+
+    // Double-backed fast path for the algebraic tier. |x| and the integer
+    // roundings of a grid value are exact in double (|x| < 2^53 on a
+    // double_exact grid, so the imax cast cannot overflow), and the
+    // auto-deduced Out holds every result by construction, so the result is
+    // stored as the raw without the rational round-trip.
+    template <insidable Out, insidable AutoOut, insidable In>
+    inline constexpr bool fp_direct =
+        std::same_as<Out, AutoOut> && fp_raw<In> && fp_raw<Out>;
+
+    template <insidable Out, insidable In, typename F>
+    constexpr Out fp_direct_store(In x, F f) noexcept
+    { return Out::from_raw(raw_cast<Out>(f(static_cast<double>(x.raw())))); }
+
+    constexpr double fp_trunc(double v) noexcept { return static_cast<double>(static_cast<imax>(v)); }
+    constexpr double fp_floor(double v) noexcept { const double t = fp_trunc(v); return t > v ? t - 1 : t; }
+    constexpr double fp_ceil (double v) noexcept { const double t = fp_trunc(v); return t < v ? t + 1 : t; }
+    constexpr double fp_round(double v) noexcept   // half away from zero, like rational round()
+    {
+      const double t = fp_trunc(v), f = v - t;     // exact: v and t share the grid
+      return f >= 0.5 ? t + 1 : f <= -0.5 ? t - 1 : t;
+    }
+  }
+
   //---------------------------------------------------------------------------
   // Algebraic tier — exact, no polynomial machinery. Each function wraps the
   // corresponding `rational` operation and routes through `Out`'s assignment.
@@ -880,21 +936,30 @@ namespace beman::inside::math
   {
     static_assert(Lower<Out> <= 0,
                   "beman::inside::math::abs: Out must include 0");
-    return detail::store_grid<Out>(beman::inside::detail::abs(beman::inside::detail::rational{x}));
+    if constexpr (detail::fp_direct<Out, detail::abs_auto_t<In>, In>)
+      return detail::fp_direct_store<Out>(x, [](double v) { return v < 0 ? -v : v; });
+    else
+      return detail::store_grid<Out>(beman::inside::detail::abs(beman::inside::detail::rational{x}));
   }
 
   // ⌊x⌋ — largest integer ≤ x.
   template <insidable Out, insidable In>
   [[nodiscard]] constexpr Out floor_impl(In x) noexcept
   {
-    return detail::store_grid<Out>(floor(beman::inside::detail::rational{x}));
+    if constexpr (detail::fp_direct<Out, detail::floor_auto_t<In>, In>)
+      return detail::fp_direct_store<Out>(x, detail::fp_floor);
+    else
+      return detail::store_grid<Out>(floor(beman::inside::detail::rational{x}));
   }
 
   // ⌈x⌉ — smallest integer ≥ x.
   template <insidable Out, insidable In>
   [[nodiscard]] constexpr Out ceil_impl(In x) noexcept
   {
-    return detail::store_grid<Out>(ceil(beman::inside::detail::rational{x}));
+    if constexpr (detail::fp_direct<Out, detail::ceil_auto_t<In>, In>)
+      return detail::fp_direct_store<Out>(x, detail::fp_ceil);
+    else
+      return detail::store_grid<Out>(ceil(beman::inside::detail::rational{x}));
   }
 
   // x rounded to nearest integer, half-away-from-zero (matches the existing
@@ -902,7 +967,10 @@ namespace beman::inside::math
   template <insidable Out, insidable In>
   [[nodiscard]] constexpr Out round_impl(In x) noexcept
   {
-    return detail::store_grid<Out>(round(beman::inside::detail::rational{x}));
+    if constexpr (detail::fp_direct<Out, detail::round_auto_t<In>, In>)
+      return detail::fp_direct_store<Out>(x, detail::fp_round);
+    else
+      return detail::store_grid<Out>(round(beman::inside::detail::rational{x}));
   }
 
   // x truncated toward zero. Distinct from floor for negative inputs:
@@ -910,7 +978,10 @@ namespace beman::inside::math
   template <insidable Out, insidable In>
   [[nodiscard]] constexpr Out trunc_impl(In x) noexcept
   {
-    return detail::store_grid<Out>(trunc(beman::inside::detail::rational{x}));
+    if constexpr (detail::fp_direct<Out, detail::trunc_auto_t<In>, In>)
+      return detail::fp_direct_store<Out>(x, detail::fp_trunc);
+    else
+      return detail::store_grid<Out>(trunc(beman::inside::detail::rational{x}));
   }
 
   namespace detail
@@ -1024,37 +1095,6 @@ namespace beman::inside::math
   namespace detail
   {
     using namespace beman::inside::detail;
-
-    // max(|Lower<In>|, |Upper<In>|) as a constexpr rational. Used to size
-    // the auto-deduced abs output.
-    template <insidable In>
-    inline constexpr rational abs_auto_upper =
-      (abs(Lower<In>) > abs(Upper<In>))
-        ? abs(Lower<In>) : abs(Upper<In>);
-
-    template <insidable In>
-    using abs_auto_t = inside<{{rational{0}, abs_auto_upper<In>},
-                              Notch<In>}, InsidePolicy<In>>;
-
-    template <insidable In>
-    using floor_auto_t = inside<{{rational{floor(Lower<In>)},
-                                  rational{floor(Upper<In>)}},
-                                 notch<1>}, InsidePolicy<In>>;
-
-    template <insidable In>
-    using ceil_auto_t = inside<{{rational{ceil(Lower<In>)},
-                                 rational{ceil(Upper<In>)}},
-                                notch<1>}, InsidePolicy<In>>;
-
-    template <insidable In>
-    using round_auto_t = inside<{{rational{round(Lower<In>)},
-                                  rational{round(Upper<In>)}},
-                                 notch<1>}, InsidePolicy<In>>;
-
-    template <insidable In>
-    using trunc_auto_t = inside<{{rational{trunc(Lower<In>)},
-                                  rational{trunc(Upper<In>)}},
-                                 notch<1>}, InsidePolicy<In>>;
 
     // (fmod has no auto form: with two insidable inputs, `fmod<X>(x, y)` is
     // ambiguous between the explicit-Out and auto overloads — partial ordering
