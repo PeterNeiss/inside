@@ -208,7 +208,7 @@ namespace { using small_t = beman::inside::inside<{{0, 10}, notch<1, 10>}, clamp
 // with_snap() as a value. On an lvalue it converts through a (reference) policy_ref;
 // on a *temporary* it returns a value-owning policy_buffer, so the snapped result can
 // be returned/stored without dangling. Either way the target's own policy (clamp) and
-// the proxy's snap merge via HasPolicy.
+// the proxy's snap merge via has_policy.
 //---------------------------------------------------------------------------
 // with_snap() proxy converts to a value (RHS / return position)
 TEST(WithMethodsTest, with_snap_proxy_converts_to_a_value_rhs_return_position)

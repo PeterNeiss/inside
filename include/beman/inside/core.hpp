@@ -87,7 +87,7 @@ namespace beman::inside
                   "requires a notch (Notch != 0)");
 
     using negative = inside<-G, P>;
-    using raw_type = detail::storage_for<G, P>;
+    using raw_type = detail::storage_for_t<G, P>;
 
     private:
     raw_type Raw;
@@ -301,7 +301,7 @@ namespace beman::inside
       // Q-format-with-integer-Lower fast path skips the generic path's three
       // rational ops. Falls through to the rational path when the raw is too wide
       // to widen safely (e.g. uint64 from a Q16.16 × Q16.16 result type).
-      if constexpr (detail::HasQFormatFastPath<inside>)
+      if constexpr (detail::has_qformat_fast_path<inside>)
         return detail::q_format_decode(*this);
 
       return (*(Raw * G.Notch) + G.Interval.Lower).value();
@@ -359,14 +359,14 @@ namespace beman::inside
     // common factors of two instead of a gcd.
     constexpr std::pair<imax, imax> fraction() const
     {
-      if constexpr (detail::index_raw<inside> && detail::IsIntegerAligned<inside>)
+      if constexpr (detail::index_raw<inside> && detail::is_integer_aligned<inside>)
         return {detail::to_value(*this), 1};
-      else if constexpr (detail::index_raw<inside> && detail::HasQFormatFastPath<inside>
+      else if constexpr (detail::index_raw<inside> && detail::has_qformat_fast_path<inside>
                          && std::has_single_bit(detail::abs_den(G.Notch.Denominator)))
       {
         constexpr imax nd = detail::abs_den(G.Notch.Denominator);
         constexpr int  k  = std::countr_zero(static_cast<umax>(nd));
-        const imax num = detail::raw_imax(*this) + detail::LowerImax<inside> * nd;
+        const imax num = detail::raw_imax(*this) + detail::lower_imax<inside> * nd;
         const int  tz  = std::countr_zero(static_cast<umax>(num));   // num == 0: 64
         const int  s   = tz < k ? tz : k;
         return {num >> s, nd >> s};
@@ -396,9 +396,9 @@ namespace beman::inside
         detail::from_value(neg, -detail::to_value(*this));
       else
         // Unsigned-offset fast path: with `value = Raw*Notch + Lower`, negating
-        // is `NotchCount - Raw` (index from the opposite end) — no rational ops.
+        // is `max_index_v - Raw` (index from the opposite end) — no rational ops.
         // Unreachable for direct storage, so `Raw` here is guaranteed an offset.
-        neg = negative::from_raw(detail::raw_cast<negative>(detail::NotchCount<inside> - Raw));
+        neg = negative::from_raw(detail::raw_cast<negative>(detail::max_index_v<inside> - Raw));
       return neg;
     }
 
@@ -511,7 +511,7 @@ namespace beman::inside
     // clamp/wrap/checked an out-of-range raw is clamped, wrapped or reported.
     constexpr inside& store_raw(imax new_raw)
     {
-      constexpr imax lo = detail::RawLo<inside>, hi = detail::RawHi<inside>;
+      constexpr imax lo = detail::raw_lo<inside>, hi = detail::raw_hi<inside>;
       if constexpr (has_any_flag(P, clamp | wrap)
                     || (has_flag(P, checked) && !has_flag(P, ignore_domain)))
         if (new_raw < lo || new_raw > hi)
@@ -872,7 +872,7 @@ namespace beman::inside
   // rational.hpp. `-1.5_ins` parses as `-(1.5_ins)`.
   //---------------------------------------------------------------------------
   template<char... Chars>
-  constexpr auto operator""_ins() { return just<detail::_detail::parse_ins_literal<Chars...>()>; }
+  constexpr auto operator""_ins() { return just<detail::parse_ins_literal<Chars...>()>; }
 
 } // namespace beman::inside
 

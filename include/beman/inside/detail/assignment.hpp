@@ -24,12 +24,12 @@ namespace beman::inside::detail
   //---------------------------------------------------------------------------
   template <insidable L, typename P, typename A>
   inline constexpr bool needs_runtime_domain_check =
-         clamp_action   <plain<A>>
-      || wrap_action    <plain<A>>
-      || error_action   <plain<A>>
-      || HasPolicy<L, P, clamp>
-      || HasPolicy<L, P, wrap>
-      || (HasPolicy<L, P, checked> && !HasPolicy<L, P, ignore_domain>);
+         clamp_action   <plain_t<A>>
+      || wrap_action    <plain_t<A>>
+      || error_action   <plain_t<A>>
+      || has_policy<L, P, clamp>
+      || has_policy<L, P, wrap>
+      || (has_policy<L, P, checked> && !has_policy<L, P, ignore_domain>);
 
   // Shared out-of-range policy cascade. Order: clamp/wrap/error *actions*, then
   // clamp/wrap *policy* bits, then `domain_fail`. The three caller-supplied
@@ -41,7 +41,7 @@ namespace beman::inside::detail
                                        DoClamp do_clamp, DoWrap do_wrap,
                                        [[maybe_unused]] MsgView msg_view)
   {
-    using PA = plain<A>;
+    using PA = plain_t<A>;
     if constexpr (clamp_action<PA>)
     { do_clamp(); return true; }
     else if constexpr (Wrappable && wrap_action<PA>)
@@ -51,9 +51,9 @@ namespace beman::inside::detail
       action.fn(lhs, errc::domain_error, errc_message(errc::domain_error));
       return true;
     }
-    else if constexpr (HasPolicy<L, P, clamp>)
+    else if constexpr (has_policy<L, P, clamp>)
     { do_clamp(); return true; }
-    else if constexpr (HasPolicy<L, P, wrap>)
+    else if constexpr (has_policy<L, P, wrap>)
     { do_wrap(); return true; }
     else
       return domain_fail(lhs, policy);
@@ -80,7 +80,7 @@ namespace beman::inside::detail
         imax clamped = static_cast<imax>(rhs) < lower ? lower : upper;
         imax overshoot = static_cast<imax>(rhs) - clamped;
         from_value(lhs, clamped);
-        if constexpr (clamp_action<plain<A>>)
+        if constexpr (clamp_action<plain_t<A>>)
           action.fn(lhs, overshoot);
       }
 
@@ -95,7 +95,7 @@ namespace beman::inside::detail
         if (urange == 0)                              // span == 2^64−1: wrap is identity
         {
           from_value(lhs, ri);
-          if constexpr (wrap_action<plain<A>>) action.fn(lhs, imax{0});
+          if constexpr (wrap_action<plain_t<A>>) action.fn(lhs, imax{0});
           return;
         }
         umax w;
@@ -114,7 +114,7 @@ namespace beman::inside::detail
           excess = -static_cast<imax>((dist + urange - 1u) / urange);          // −ceil(dist/range)
         }
         from_value(lhs, static_cast<imax>(static_cast<umax>(lower) + w));
-        if constexpr (wrap_action<plain<A>>)
+        if constexpr (wrap_action<plain_t<A>>)
           action.fn(lhs, excess);
       }
 
@@ -134,7 +134,7 @@ namespace beman::inside::detail
           lhs = L::from_raw(raw_cast<L>(rhs));
         else if constexpr (lower_of<L> == upper_of<L>)
           lhs = L::from_raw(0);   // notch_storage point grid: 0 is the only offset
-        else if constexpr (HasQFormatFastPath<L>)
+        else if constexpr (has_qformat_fast_path<L>)
           lhs = L::from_raw(q_format_encode<L>(static_cast<imax>(rhs)));
         else // index storage on a notch 1/K grid: the offset is an exact integer
         {
@@ -165,14 +165,14 @@ namespace beman::inside::detail
           // contains its own `std::is_constant_evaluated()` guard.
           if constexpr (not includes(interval_of<L>, interval_of<R>))
           {
-            if constexpr (IsIntegerInterval<L>)
+            if constexpr (is_integer_interval<L>)
             {
               // Skip the runtime range branch entirely when every handler would
               // be dead anyway — the dead branch otherwise inhibits autovec.
-              if constexpr (needs_runtime_domain_check<L, plain<P>, plain<A>>)
+              if constexpr (needs_runtime_domain_check<L, plain_t<P>, plain_t<A>>)
               {
-                constexpr imax lower = LowerImax<L>;
-                constexpr imax upper = UpperImax<L>;
+                constexpr imax lower = lower_imax<L>;
+                constexpr imax upper = upper_imax<L>;
                 if (static_cast<imax>(rhs) < lower || static_cast<imax>(rhs) > upper) [[unlikely]]
                 {
                   // The integer clamp/wrap formulas need consecutive integers to be
@@ -220,7 +220,7 @@ namespace beman::inside::detail
           overshoot = rhs - clamped;
 
         // The clamp target is an interval endpoint — a grid point — so the slot is 0
-        // or NotchCount, no rounding. f64 takes the endpoint as a double, rational
+        // or max_index_v, no rounding. f64 takes the endpoint as a double, rational
         // the exact constant (a double round-trip would lose non-dyadic endpoints);
         // raw_from_offset<L> adds Lower back for direct-encoded storage.
         if constexpr (fp_raw<L>)
@@ -230,9 +230,9 @@ namespace beman::inside::detail
           lhs = L::from_raw((rhs < lower_of<L>) ? lower_of<L> : upper_of<L>);
         else
           lhs = L::from_raw(raw_from_offset<L>(
-              (rhs < lower_of<L>) ? umax{0} : NotchCount<L>));
+              (rhs < lower_of<L>) ? umax{0} : max_index_v<L>));
 
-        if constexpr (clamp_action<plain<A>>)
+        if constexpr (clamp_action<plain_t<A>>)
           action.fn(lhs, overshoot);
       }
 
@@ -252,7 +252,7 @@ namespace beman::inside::detail
         // then fold: an on-lattice value folds onto a grid point, so rounding
         // can never carry it past Upper.
         rational rhs_r{rhs};
-        if constexpr (HasPolicy<L, P, snap>)
+        if constexpr (has_policy<L, P, snap>)
           rhs_r = round_to_lattice<L, P>(rhs_r);
         rational lower_r = lower_of<L>;
         rational range   = ((upper_of<L> - lower_r).value() + notch_of<L>).value();
@@ -265,7 +265,7 @@ namespace beman::inside::detail
         // notch / rounding policy logic is exercised once.
         assignment<L, rational>::store_checked(lhs, wrapped, policy, action);
 
-        if constexpr (wrap_action<plain<A>>)
+        if constexpr (wrap_action<plain_t<A>>)
           action.fn(lhs, q);
       }
 
@@ -376,7 +376,7 @@ namespace beman::inside::detail
           if constexpr (rational_raw<L>)
             lhs = L::from_raw(lower_of<L>);
           else if constexpr (!index_raw<L>)
-            lhs = L::from_raw(raw_cast<L>(RawLo<L>));
+            lhs = L::from_raw(raw_cast<L>(raw_lo<L>));
           else
             lhs = L::from_raw(0);
           return true;
@@ -394,19 +394,19 @@ namespace beman::inside::detail
           };
 
           constexpr bool has_round_flag =
-               HasPolicy<L, P, round_nearest> || HasPolicy<L, P, round_floor>
-            || HasPolicy<L, P, round_ceil>    || HasPolicy<L, P, round_half_even>
-            || HasPolicy<L, P, snap>;
+               has_policy<L, P, round_nearest> || has_policy<L, P, round_floor>
+            || has_policy<L, P, round_ceil>    || has_policy<L, P, round_half_even>
+            || has_policy<L, P, snap>;
 
           // Q-format integer shortcut: with integer Lower and notch 1/K the offset is
           // (num − Lo·aden)·(K/g) / (aden/g), g = gcd(aden, K) — one gcd + integer ops
           // instead of two rational ops. round_quotient is invariant under reduction,
           // so the slot is bit-identical to the rational path. Oversized denominators
           // fall through (the kMaxDen guard keeps every product inside imax).
-          if constexpr (HasQFormatFastPath<L> && !fp_raw<L> && notch_of<L> != 0)
+          if constexpr (has_qformat_fast_path<L> && !fp_raw<L> && notch_of<L> != 0)
           {
             constexpr imax K  = abs_den(notch_of<L>.Denominator);
-            constexpr imax Lo = LowerImax<L>;
+            constexpr imax Lo = lower_imax<L>;
             constexpr umax kKM = []{
               // 2 · K · M with saturation (M bounds |value| and the offset span)
               umax k = static_cast<umax>(K);
@@ -455,7 +455,7 @@ namespace beman::inside::detail
             const wide_quotient wide = wide_offset_quotient(rational{rhs});
             if (!wide.ok)
             {
-              if constexpr (error_action<plain<A>>)
+              if constexpr (error_action<plain_t<A>>)
               { action.fn(lhs, errc::overflow, errc_message(errc::overflow)); return false; }
               policy.report(errc::overflow);
               return false;
@@ -466,7 +466,7 @@ namespace beman::inside::detail
             { store_slot(round_offset<L, P>(wide.slot, wide.remainder, wide.divisor)); return true; }
             if (policy.round_check()) [[unlikely]]
             {
-              if constexpr (error_action<plain<A>>)
+              if constexpr (error_action<plain_t<A>>)
               { action.fn(lhs, errc::rounding_error, errc_message(errc::rounding_error)); return false; }
               policy.report(errc::rounding_error);
               return false;
@@ -483,7 +483,7 @@ namespace beman::inside::detail
             store_slot(round_quotient<L, P>(raw.Numerator, den));
           else if (policy.round_check()) [[unlikely]]
           {
-            if constexpr (error_action<plain<A>>)
+            if constexpr (error_action<plain_t<A>>)
             { action.fn(lhs, errc::rounding_error, errc_message(errc::rounding_error)); return false; }
             policy.report(errc::rounding_error);
             return false;
@@ -502,10 +502,10 @@ namespace beman::inside::detail
         if constexpr (std::floating_point<R>)
           if (!(rhs - rhs == 0)) [[unlikely]]
           {
-            if constexpr (HasPolicy<L, P, clamp>)
+            if constexpr (has_policy<L, P, clamp>)
               if (rhs == rhs)
                 return assignment<L, rational>::assign(lhs, rhs > 0 ? upper_of<L> : lower_of<L>, policy);
-            if constexpr (error_action<plain<A>>)
+            if constexpr (error_action<plain_t<A>>)
               action.fn(lhs, errc::not_finite, errc_message(errc::not_finite));
             else
               policy.report(errc::not_finite);
@@ -603,8 +603,8 @@ namespace beman::inside::detail
               || mul_overflow(o_d, f_d, &m.den))
             return no;
           // worst-case |numerator| over R's raw range
-          constexpr imax hi_mag = RawHi<R> < 0 ? -RawHi<R> : RawHi<R>;
-          constexpr imax lo_mag = RawLo<R> < 0 ? -RawLo<R> : RawLo<R>;
+          constexpr imax hi_mag = raw_hi<R> < 0 ? -raw_hi<R> : raw_hi<R>;
+          constexpr imax lo_mag = raw_lo<R> < 0 ? -raw_lo<R> : raw_lo<R>;
           const imax rmax = hi_mag > lo_mag ? hi_mag : lo_mag;
           imax term, num;
           if (mul_overflow(rmax, m.mul, &term)
@@ -636,13 +636,13 @@ namespace beman::inside::detail
       {
         imax r_offset = rhs_raw;
         if constexpr (!index_raw<R>)
-          r_offset -= RawLo<R>;
+          r_offset -= raw_lo<R>;
 
         // Offset is an exact integer here, so trunc(Offset) is a constexpr constant.
         imax l_offset = static_cast<imax>(Factor.Numerator) * r_offset + trunc(Offset);
 
         if constexpr (!index_raw<L>)
-          return l_offset + RawLo<L>;
+          return l_offset + raw_lo<L>;
         else
           return l_offset;
       }
@@ -662,18 +662,18 @@ namespace beman::inside::detail
       template<typename A>
       static constexpr void apply_clamp(L& lhs, R const& rhs, A&& action)
       {
-        // RawLo/RawHi are already the correct Raw (no raw_from_offset). Real storage
-        // takes the endpoint as a double (RawLo/Hi truncate fractional dyadic endpoints).
+        // raw_lo/raw_hi are already the correct Raw (no raw_from_offset). Real storage
+        // takes the endpoint as a double (raw_lo/Hi truncate fractional dyadic endpoints).
         if constexpr (fp_raw<L>)
           lhs = L::from_raw((as_rational(rhs) < lower_of<L>)
             ? static_cast<double>(lower_of<L>) : static_cast<double>(upper_of<L>));
         else
           lhs = L::from_raw((as_rational(rhs) < lower_of<L>)
-            ? raw_cast<L>(RawLo<L>) : raw_cast<L>(RawHi<L>));
+            ? raw_cast<L>(raw_lo<L>) : raw_cast<L>(raw_hi<L>));
         // Overshoot (rhs − clamped) as an inside, via the result-grid inference of normal
         // inside arithmetic: both operands are bounds, so the overshoot is too. It is always
         // in-grid and on-notch for grid_of<R> − grid_of<L>, so the construction is exact.
-        if constexpr (clamp_action<plain<A>>)
+        if constexpr (clamp_action<plain_t<A>>)
         {
           constexpr grid OG = (grid_of<R> - grid_of<L>).value();
           beman::inside::inside<OG> overshoot{ (as_rational(rhs) - as_rational(lhs)).value() };
@@ -689,13 +689,13 @@ namespace beman::inside::detail
         // consecutive integers are adjacent grid points — and for a source whose
         // values are integers (no rounding to do). Anything else routes through
         // the rational modular wrap, which rounds by the policy first.
-        if constexpr (IsIntegerInterval<L> && abs_den(notch_of<L>.Denominator) == 1
-                      && notch_of<L>.Numerator == 1 && !fp_raw<R> && IsIntegerAligned<R>)
+        if constexpr (is_integer_interval<L> && abs_den(notch_of<L>.Denominator) == 1
+                      && notch_of<L>.Numerator == 1 && !fp_raw<R> && is_integer_aligned<R>)
         {
           // Unit-integer fast path: modular wrap on the integer value.
           imax rhs_imax = trunc(as_rational(rhs));
-          constexpr imax lower = LowerImax<L>;
-          constexpr imax upper = UpperImax<L>;
+          constexpr imax lower = lower_imax<L>;
+          constexpr imax upper = upper_imax<L>;
           imax range = upper - lower + 1;
           imax shifted = rhs_imax - lower;
           // floor division: one divide yields both the wrap and the carry
@@ -703,10 +703,10 @@ namespace beman::inside::detail
           imax wrapped = shifted % range;
           if (wrapped < 0) { wrapped += range; --excess; }
           from_value(lhs, wrapped + lower);
-          if constexpr (wrap_action<plain<A>>)
+          if constexpr (wrap_action<plain_t<A>>)
             action.fn(lhs, beman::inside::inside<wrap_excess_grid()>{excess});   // carry as an inside
         }
-        else if constexpr (wrap_action<plain<A>>)
+        else if constexpr (wrap_action<plain_t<A>>)
         {
           // Fractional destination with a wrap action: reuse the rational modular-wrap
           // path for the store/rounding, but wrap its imax carry `q` into an inside before
@@ -786,10 +786,10 @@ namespace beman::inside::detail
       {
         // wrap/clamp bring any value into range, so a disjoint rhs interval is fine
         // for them (matches the integral-rhs path); only strict policies reject it.
-        static_assert(HasPolicy<L, P, wrap> || HasPolicy<L, P, clamp>
+        static_assert(has_policy<L, P, wrap> || has_policy<L, P, clamp>
                       || not excludes(interval_of<L>, interval_of<R>),
           "rhs interval lies entirely outside lhs interval and the policy cannot bring it into range");
-        static_assert(abs_den(Factor.Denominator) == 1 || HasPolicy<L, P, snap>
+        static_assert(abs_den(Factor.Denominator) == 1 || has_policy<L, P, snap>
                       || point_exactly_assignable<L, R>,
           "incompatible notches: use with_snap() or policy<snap>() to allow rounding");
 
@@ -799,11 +799,11 @@ namespace beman::inside::detail
           return assignment<L, double>::assign(lhs, as_double(rhs), policy, std::forward<A>(action));
         else if constexpr (not includes(interval_of<L>, interval_of<R>))
         {
-          if constexpr (needs_runtime_domain_check<L, plain<P>, plain<A>>)
+          if constexpr (needs_runtime_domain_check<L, plain_t<P>, plain_t<A>>)
           {
             if constexpr (is_integer_mapping)
             {
-              if (imax mapped = map_raw(rhs.raw()); mapped < RawLo<L> || mapped > RawHi<L>)
+              if (imax mapped = map_raw(rhs.raw()); mapped < raw_lo<L> || mapped > raw_hi<L>)
                 if (try_clamp_or_fail(lhs, rhs, policy, action)) return lhs;
             }
             else if (not includes(interval_of<L>, as_rational(rhs)))

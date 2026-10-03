@@ -352,7 +352,7 @@ namespace beman::inside::math
         && !fp_raw<Out>
         && rounding_of(policy_of<Out>) == round_mode::nearest
         && (std::signed_integral<raw_t<Out>>
-            || NotchCount<Out>
+            || max_index_v<Out>
                  <= static_cast<umax>(std::numeric_limits<imax>::max()));
 
     // Store a power-of-two-denominator result (the shape every core returns)
@@ -377,7 +377,7 @@ namespace beman::inside::math
           // must lie in [m, m + max index]·2^D (floor / ceil via arithmetic shifts).
           if (-lim <= num && num <= lim
               && ((K * num) >> D) >= m
-              && -((-(K * num)) >> D) <= m + static_cast<imax>(NotchCount<Out>))
+              && -((-(K * num)) >> D) <= m + static_cast<imax>(max_index_v<Out>))
           {
             // value index round(value·K), ties half away from zero like the
             // assignment path: round the magnitude, then restore the sign.
@@ -1149,7 +1149,7 @@ namespace beman::inside::math
         return false;
       if (notch_of<InX> == 0 || notch_of<InY> == 0 || notch_of<Out> == 0)
         return false;
-      if (!DivisorExcludesZero<InY>)
+      if (!divisor_excludes_zero<InY>)
         return false;
       auto go = gcd(notch_of<InX>, notch_of<InY>);
       if (!go.has_value()) return false;
@@ -1211,7 +1211,7 @@ namespace beman::inside::math
   template <insidable Out, insidable InX, insidable InY>
   [[nodiscard]] constexpr auto fmod_impl(InX x, InY y)
   {
-    if constexpr (beman::inside::detail::DivisorExcludesZero<InY>)
+    if constexpr (beman::inside::detail::divisor_excludes_zero<InY>)
       return fmod_nonzero<Out>(x, y);
     else
     {

@@ -118,8 +118,8 @@ namespace
   template <class A, class B, imax (*Ref)(imax, imax)>
   void sweep_div_mod()
   {
-    for (imax a = LowerImax<A>; a <= UpperImax<A>; ++a)
-      for (imax b = LowerImax<B>; b <= UpperImax<B>; ++b)
+    for (imax a = lower_imax<A>; a <= upper_imax<A>; ++a)
+      for (imax b = lower_imax<B>; b <= upper_imax<B>; ++b)
       {
         if (b == 0) continue;
         A ba{a}; B bb{b};

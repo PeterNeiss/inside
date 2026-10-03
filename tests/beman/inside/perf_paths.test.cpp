@@ -190,7 +190,7 @@ TEST(PerfPathsTest, int32_native_div_mod_matches_wide_reference)
 TEST(PerfPathsTest, fraction_and_to_value_fast_paths_match_rational)
 {
   using Q = inside<{-4, 4, frac<1, 8>}>;            // dyadic, negative Lower
-  static_assert(index_raw<Q> && HasQFormatFastPath<Q>);
+  static_assert(index_raw<Q> && has_qformat_fast_path<Q>);
   for (imax k = 0; k <= 64; ++k)
   {
     Q q = Q::from_raw(static_cast<Q::raw_type>(k));
@@ -201,7 +201,7 @@ TEST(PerfPathsTest, fraction_and_to_value_fast_paths_match_rational)
     EXPECT_EQ(to_value(q), trunc(r));
   }
   using I = inside<{-30, 90, 3}>;                    // integer notch 3, index storage
-  static_assert(index_raw<I> && IsIntegerAligned<I>);
+  static_assert(index_raw<I> && is_integer_aligned<I>);
   for (imax v = -30; v <= 90; v += 3)
   {
     I i{v};

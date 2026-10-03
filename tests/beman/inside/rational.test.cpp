@@ -373,7 +373,7 @@ TEST(RationalTest, rational_helpers)
     // M / (1/2) = M*2 is mathematically an integer (M sits on the 1/2 lattice),
     // so divides_evenly is true even though the quotient numerator overflows
     // umax. Representability of the index count is a separate concern
-    // (grid::notch_count), not part of the lattice-alignment predicate.
+    // (grid::max_index_checked), not part of the lattice-alignment predicate.
     ASSERT_TRUE((divides_evenly(rational{M}, rational{1, 2})));
     // genuinely unaligned stays false (no overflow involved)
     ASSERT_FALSE((divides_evenly(rational{1u, 2}, rational{1u, 3})));

@@ -32,7 +32,7 @@ struct std::numeric_limits<beman::inside::inside<G, P>>
   static constexpr bool is_specialized = true;
   static constexpr bool is_signed      = (G.Interval.Lower < beman::inside::detail::rational{0});
   // Every value is an integer: a non-zero integer notch over an integer Lower.
-  static constexpr bool is_integer     = beman::inside::detail::IsIntegerAligned<B> && G.Notch != 0;
+  static constexpr bool is_integer     = beman::inside::detail::is_integer_aligned<B> && G.Notch != 0;
   static constexpr bool is_exact       = true;     // rational + integer raw are both exact
   static constexpr bool is_bounded     = true;
   static constexpr bool is_modulo      = (P & beman::inside::wrap) != 0;

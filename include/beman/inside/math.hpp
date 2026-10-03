@@ -35,7 +35,7 @@ namespace beman::inside
 
   // Smallest unsigned type whose range holds every index 0..N.
   template <std::uintmax_t N>
-  using smallest_uint_for =
+  using smallest_uint_for_t =
     std::conditional_t<(N == 0), rational,
     std::conditional_t<(N <= UINT8_MAX),  std::uint8_t,
     std::conditional_t<(N <= UINT16_MAX), std::uint16_t,
@@ -44,7 +44,7 @@ namespace beman::inside
 
   // Smallest signed type whose range holds Low..High.
   template <std::intmax_t Low, std::intmax_t High>
-  using smallest_int_for =
+  using smallest_int_for_t =
     std::conditional_t<(Low >= INT8_MIN  && High <= INT8_MAX),  std::int8_t,
     std::conditional_t<(Low >= INT16_MIN && High <= INT16_MAX), std::int16_t,
     std::conditional_t<(Low >= INT32_MIN && High <= INT32_MAX), std::int32_t,

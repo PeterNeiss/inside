@@ -184,19 +184,19 @@ namespace beman::inside
   {
   // Action detection: the `*Pred` struct is the primary detector; the concept
   // derives from it and strips cvref so the ref form matches the value form.
-  template<typename T> struct IsClampActionPred    : std::false_type {};
-  template<typename F> struct IsClampActionPred<on_clamp_t<F>>    : std::true_type {};
-  template<typename T> struct IsWrapActionPred     : std::false_type {};
-  template<typename F> struct IsWrapActionPred<on_wrap_t<F>>     : std::true_type {};
-  template<typename T> struct IsErrorActionPred    : std::false_type {};
-  template<typename F> struct IsErrorActionPred<on_error_t<F>>    : std::true_type {};
-  template<typename T> struct IsOverflowActionPred : std::false_type {};
-  template<typename F> struct IsOverflowActionPred<on_overflow_t<F>> : std::true_type {};
+  template<typename T> struct is_clamp_action    : std::false_type {};
+  template<typename F> struct is_clamp_action<on_clamp_t<F>>    : std::true_type {};
+  template<typename T> struct is_wrap_action     : std::false_type {};
+  template<typename F> struct is_wrap_action<on_wrap_t<F>>     : std::true_type {};
+  template<typename T> struct is_error_action    : std::false_type {};
+  template<typename F> struct is_error_action<on_error_t<F>>    : std::true_type {};
+  template<typename T> struct is_overflow_action : std::false_type {};
+  template<typename F> struct is_overflow_action<on_overflow_t<F>> : std::true_type {};
 
-  template<typename T> concept clamp_action    = IsClampActionPred   <std::remove_cvref_t<T>>::value;
-  template<typename T> concept wrap_action     = IsWrapActionPred    <std::remove_cvref_t<T>>::value;
-  template<typename T> concept error_action    = IsErrorActionPred   <std::remove_cvref_t<T>>::value;
-  template<typename T> concept overflow_action = IsOverflowActionPred<std::remove_cvref_t<T>>::value;
+  template<typename T> concept clamp_action    = is_clamp_action   <std::remove_cvref_t<T>>::value;
+  template<typename T> concept wrap_action     = is_wrap_action    <std::remove_cvref_t<T>>::value;
+  template<typename T> concept error_action    = is_error_action   <std::remove_cvref_t<T>>::value;
+  template<typename T> concept overflow_action = is_overflow_action<std::remove_cvref_t<T>>::value;
 
   //---------------------------------------------------------------------------
   // implied_flags<A> — single source of truth for "this action requires these
@@ -223,7 +223,7 @@ namespace beman::inside
   inline constexpr unsigned count_action_matches =
     (0u + ... + (Trait<std::remove_cvref_t<As>>::value ? 1u : 0u));
 
-  // OR of implied_flags<plain<A>> across the pack.
+  // OR of implied_flags<plain_t<A>> across the pack.
   template<typename... As>
   inline constexpr policy_flag merged_implied_flags =
     (none | ... | implied_flags<std::remove_cvref_t<As>>);
@@ -231,8 +231,6 @@ namespace beman::inside
   // pick_action<Trait>(actions...) returns a reference to the first pack element
   // matching the trait, or a static `no_action` fallback if none does. Conflict
   // diagnostics elsewhere ensure at most one match.
-  namespace _detail
-  {
     template<template<typename> class Trait>
     inline no_action& pick_action_fallback()
     { static no_action n; return n; }
@@ -244,13 +242,12 @@ namespace beman::inside
       else if constexpr (sizeof...(Rest) > 0) return pick_action_impl<Trait>(rest...);
       else return pick_action_fallback<Trait>();
     }
-  }
 
   template<template<typename> class Trait, typename... As>
   constexpr auto& pick_action(As&... as)
   {
-    if constexpr (sizeof...(As) == 0) return _detail::pick_action_fallback<Trait>();
-    else return _detail::pick_action_impl<Trait>(as...);
+    if constexpr (sizeof...(As) == 0) return pick_action_fallback<Trait>();
+    else return pick_action_impl<Trait>(as...);
   }
 
   // Same, but operating on a tuple (lvalue or rvalue ref).

@@ -412,8 +412,6 @@ namespace beman::inside::detail
   //   hex float (Q-fmt): 0x1p15, 0x1p-15, 0x1.8p3
   // Exact (no double round-trip). Overflow -> consteval throw.
   //---------------------------------------------------------------------------
-  namespace _detail
-  {
     consteval int parse_digit(char c, int base)
     {
       if (c >= '0' && c <= '9')
@@ -561,10 +559,9 @@ namespace beman::inside::detail
 
       return rational{num, den};
     }
-  }
 
   template<char... Chars>
-  constexpr rational operator ""_r() { return _detail::parse_ins_literal<Chars...>(); }
+  constexpr rational operator ""_r() { return parse_ins_literal<Chars...>(); }
 
   // notch<N, D> is defined publicly in `namespace beman::inside` (see the re-export block
   // at the end of this header) so consumers spell it without naming the

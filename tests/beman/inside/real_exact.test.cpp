@@ -76,13 +76,13 @@ namespace
     }
   }
 
-  // Random on-grid value for a f64 inside: lo + k*notch, k in [0, NotchCount].
+  // Random on-grid value for a f64 inside: lo + k*notch, k in [0, max_index_v].
   template <class T>
   double on_grid_value(std::mt19937_64& rng)
   {
     const double lo = static_cast<double>(lower_of<T>);
     const double nd = static_cast<double>(notch_of<T>);
-    const umax   cnt = NotchCount<T>;
+    const umax   cnt = max_index_v<T>;
     std::uniform_int_distribution<umax> d(0, cnt);
     return lo + static_cast<double>(d(rng)) * nd;
   }

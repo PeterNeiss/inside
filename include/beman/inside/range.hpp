@@ -91,10 +91,10 @@ namespace beman::inside
   struct inside_range
   {
     using value_type = inside<G, P>;
-    static_assert(G.notch_count_representable()
-                  && detail::NotchCount<value_type> < std::numeric_limits<umax>::max(),
+    static_assert(G.max_index_representable()
+                  && detail::max_index_v<value_type> < std::numeric_limits<umax>::max(),
                   "inside_range: the grid has more points than a 64-bit count can hold");
-    static constexpr umax slot_count = detail::NotchCount<value_type> + 1;
+    static constexpr umax slot_count = detail::max_index_v<value_type> + 1;
 
     struct iterator
     {
@@ -121,7 +121,7 @@ namespace beman::inside
         // value = Lower + index * Notch (always exact: lies on the grid).
         // Integer-backed storages decode without the rational/assignment
         // engine: for index storage the iterator index IS the raw (it stays in
-        // [0, NotchCount], which the raw type holds); integer-grid value
+        // [0, max_index_v], which the raw type holds); integer-grid value
         // storage is a multiply-add in raw space. Rational/fp raws keep the exact generic path.
         if constexpr (detail::index_raw<value_type>)
           return value_type::from_raw(
@@ -132,7 +132,7 @@ namespace beman::inside
         {
           constexpr imax notch_step = static_cast<imax>(notch_of<value_type>.Numerator);
           return value_type::from_raw(static_cast<typename value_type::raw_type>(
-              detail::LowerImax<value_type>
+              detail::lower_imax<value_type>
               + static_cast<imax>(slot()) * notch_step));
         }
         else
@@ -179,7 +179,7 @@ namespace beman::inside
       {
         constexpr imax notch_step = static_cast<imax>(notch_of<value_type>.Numerator);
         start_index_ = static_cast<umax>(
-            (static_cast<imax>(start.raw()) - detail::LowerImax<value_type>)
+            (static_cast<imax>(start.raw()) - detail::lower_imax<value_type>)
             / notch_step);
       }
       else

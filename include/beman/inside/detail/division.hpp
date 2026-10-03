@@ -25,7 +25,7 @@ namespace beman::inside::detail
   inline constexpr bool integer_native_ops =
       ((F | policy_of<L> | policy_of<R>) & snap)
       && !rational_raw<L> && !rational_raw<R>
-      && IsIntegerAligned<L> && IsIntegerAligned<R>;
+      && is_integer_aligned<L> && is_integer_aligned<R>;
 
   //---------------------------------------------------------------------------
   // Rounding mode for the native div & mod paths (fire when `snap` is set).
@@ -66,10 +66,10 @@ namespace beman::inside::detail
   // else imax. A 32-bit divide is markedly cheaper than a 64-bit one.
   template <insidable L, insidable R>
   using native_div_t = std::conditional_t<
-      (LowerImax<L> > std::numeric_limits<std::int32_t>::min()
-       && UpperImax<L> <= std::numeric_limits<std::int32_t>::max()
-       && LowerImax<R> > std::numeric_limits<std::int32_t>::min()
-       && UpperImax<R> <= std::numeric_limits<std::int32_t>::max()),
+      (lower_imax<L> > std::numeric_limits<std::int32_t>::min()
+       && upper_imax<L> <= std::numeric_limits<std::int32_t>::max()
+       && lower_imax<R> > std::numeric_limits<std::int32_t>::min()
+       && upper_imax<R> <= std::numeric_limits<std::int32_t>::max()),
       std::int32_t, imax>;
 
   // Round a non-negative quotient num/den (den != 0) per `m`. Used by the
@@ -130,7 +130,7 @@ namespace beman::inside::detail
 
     static constexpr bool native_div_qformat =
         ((F | policy_of<L> | policy_of<R>) & snap)
-        && IsQFormat<L> && IsQFormat<R>
+        && is_qformat<L> && is_qformat<R>
         && notch_of<L> == notch_of<R>;
 
     static constexpr bool native_div = native_div_integer || native_div_qformat;
@@ -180,7 +180,7 @@ namespace beman::inside::detail
     // may_overflow_nonzero is false for it (above).
     template <typename A>
     using div_return_t = std::conditional_t<
-        overflow_action<plain<A>> || (DivisorExcludesZero<R> && !may_overflow_nonzero),
+        overflow_action<plain_t<A>> || (divisor_excludes_zero<R> && !may_overflow_nonzero),
         result,
         std::expected<result, errc>>;
 
@@ -200,9 +200,9 @@ namespace beman::inside::detail
     // removed by the guards below, so the final arm is dead (return-type only).
     // Shared by the f64 and non-f64 paths (f64 fails only on a zero divisor).
     [[maybe_unused]] auto fail = [&](errc code, const char* what) -> div_return_t<A> {
-      if constexpr (overflow_action<plain<A>>)
+      if constexpr (overflow_action<plain_t<A>>)
         return report_or_unexpected<result>(action, policy, code, what);   // -> result
-      else if constexpr (!DivisorExcludesZero<R> || may_overflow_nonzero)
+      else if constexpr (!divisor_excludes_zero<R> || may_overflow_nonzero)
         return report_or_unexpected<result>(action, policy, code, what);   // -> expected<result, errc>
       else
         return result{};   // unreachable: divisor excludes zero, op cannot fail
@@ -210,8 +210,8 @@ namespace beman::inside::detail
 
     // Div-by-zero check elided when R's grid excludes zero, or `ignore_zero` is
     // set (zero divisor is then UB, matching the `/= 0` no-op). The fail arms stay
-    // keyed on DivisorExcludesZero (which narrows the return type; ignore_zero doesn't).
-    [[maybe_unused]] constexpr bool zero_unchecked = DivisorExcludesZero<R>
+    // keyed on divisor_excludes_zero (which narrows the return type; ignore_zero doesn't).
+    [[maybe_unused]] constexpr bool zero_unchecked = divisor_excludes_zero<R>
         || (((G | F | policy_of<L> | policy_of<R>) & ignore_zero) != 0);
 
     if constexpr (fp_raw<result>)
@@ -231,7 +231,7 @@ namespace beman::inside::detail
         if (rhs.raw() == 0) return fail(errc::division_by_zero, "division by zero in div");
       constexpr umax N = abs_den(notch_of<L>.Denominator);
       // 32-bit divide when the scaled dividend fits (Q8.8, Q16.15, ...).
-      using U = std::conditional_t<(NotchCount<L> <= std::numeric_limits<std::uint32_t>::max() / N),
+      using U = std::conditional_t<(max_index_v<L> <= std::numeric_limits<std::uint32_t>::max() / N),
                                    std::uint32_t, umax>;
       return result::from_raw(raw_cast<result>(round_uquotient<U>(
           static_cast<U>(static_cast<U>(lhs.raw()) * U{N}), static_cast<U>(rhs.raw()), rmode)));
@@ -276,7 +276,7 @@ namespace beman::inside::detail
     static_assert(native_mod, "modulo requires integer-valued grids and snap");
 
     static constexpr imax max_rem =
-        (abs_den(LowerImax<R>) > abs_den(UpperImax<R>) ? abs_den(LowerImax<R>) : abs_den(UpperImax<R>)) - 1;
+        (abs_den(lower_imax<R>) > abs_den(upper_imax<R>) ? abs_den(lower_imax<R>) : abs_den(upper_imax<R>)) - 1;
 
     // Remainder consistent with the rounded quotient: r = a − round(a/b)·b. Under
     // truncation it takes the dividend's sign (non-negative for a non-negative
@@ -286,7 +286,7 @@ namespace beman::inside::detail
         div_round_mode(F | policy_of<L> | policy_of<R>);
 
     static constexpr grid result_grid =
-        (rmode == round_mode::trunc && LowerImax<L> >= 0)
+        (rmode == round_mode::trunc && lower_imax<L> >= 0)
         ? grid{imax{0}, max_rem}
         : grid{-max_rem, max_rem};
 
@@ -296,7 +296,7 @@ namespace beman::inside::detail
     // failure is a zero divisor — excluded by the grid → plain `result`.
     template <typename A>
     using mod_return_t = std::conditional_t<
-        overflow_action<plain<A>> || DivisorExcludesZero<R>,
+        overflow_action<plain_t<A>> || divisor_excludes_zero<R>,
         result,
         std::expected<result, errc>>;
 
@@ -312,7 +312,7 @@ namespace beman::inside::detail
     const T rhs_val = static_cast<T>(to_value(rhs));
     // Zero check elided when R's grid excludes zero (mod_return_t is plain
     // `result`) or `ignore_zero` is set (zero divisor is then UB, matching `%= 0`).
-    constexpr bool zero_unchecked = DivisorExcludesZero<R>
+    constexpr bool zero_unchecked = divisor_excludes_zero<R>
         || (((G | F | policy_of<L> | policy_of<R>) & ignore_zero) != 0);
     if constexpr (!zero_unchecked)
       if (rhs_val == 0)

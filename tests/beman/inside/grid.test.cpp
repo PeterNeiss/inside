@@ -21,12 +21,12 @@ TEST(GridTest, grid_structured_binding)
   ASSERT_EQ(notch, 2);
 }
 
-// grid construction and max_notch
+// grid construction and max_index
 TEST(GridTest, grid_construction_and_max_notch)
 {
-  static_assert(grid{{0, 100}, 1}.max_notch() == 100);
-  static_assert(grid{{1, 5},   0.25}.max_notch() == 16);
-  static_assert(grid{{0, std::numeric_limits<umax>::max()}, 1}.max_notch()
+  static_assert(grid{{0, 100}, 1}.max_index() == 100);
+  static_assert(grid{{1, 5},   0.25}.max_index() == 16);
+  static_assert(grid{{0, std::numeric_limits<umax>::max()}, 1}.max_index()
                  == std::numeric_limits<umax>::max());
 }
 
@@ -46,16 +46,16 @@ TEST(GridTest, just_inside_values_work_as_grid_corners)
 TEST(GridTest, grid_storage_min_selection)
 {
   // Notch 0 -> rational
-  static_assert(std::is_same_v<storage_min<grid{{0,10}, 0}>, rational>);
+  static_assert(std::is_same_v<storage_min_t<grid{{0,10}, 0}>, rational>);
 
   // Notch 1, lower 0 -> smallest unsigned that fits Upper
-  static_assert(std::is_same_v<storage_min<grid{0, 100,  1}>, std::uint8_t>);
-  static_assert(std::is_same_v<storage_min<grid{0, 1000, 1}>, std::uint16_t>);
-  static_assert(std::is_same_v<storage_min<grid{0, 100000, 1}>, std::uint32_t>);
+  static_assert(std::is_same_v<storage_min_t<grid{0, 100,  1}>, std::uint8_t>);
+  static_assert(std::is_same_v<storage_min_t<grid{0, 1000, 1}>, std::uint16_t>);
+  static_assert(std::is_same_v<storage_min_t<grid{0, 100000, 1}>, std::uint32_t>);
 
   // Signed integer case (notch 1, negative lower)
-  static_assert(std::is_same_v<storage_min<grid{-127, 127, 1}>,    std::int8_t>);
-  static_assert(std::is_same_v<storage_min<grid{-32000, 32000, 1}>, std::int16_t>);
+  static_assert(std::is_same_v<storage_min_t<grid{-127, 127, 1}>,    std::int8_t>);
+  static_assert(std::is_same_v<storage_min_t<grid{-32000, 32000, 1}>, std::int16_t>);
 }
 
 // grid arithmetic

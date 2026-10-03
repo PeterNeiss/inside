@@ -39,18 +39,18 @@ namespace beman::inside::detail
     static constexpr bool needs_overflow_check =
         rational_raw<result>
         && (has_any_flag(policy_of<L> | policy_of<R>, checked | exact)
-            || plain<P>::test(checked) || dropped_fp)
+            || plain_t<P>::test(checked) || dropped_fp)
         && !rational_mul_is_safe(grid_of<L>, grid_of<R>);
 
     template <typename P>
-    using return_type_for = std::conditional_t<needs_overflow_check<P>,
+    using return_type_for_t = std::conditional_t<needs_overflow_check<P>,
                                                std::expected<result, errc>,
                                                result>;
 
     template <typename P, typename A>
-    using mul_return_t = std::conditional_t<overflow_action<plain<A>>,
+    using mul_return_t = std::conditional_t<overflow_action<plain_t<A>>,
                                             result,
-                                            return_type_for<P>>;
+                                            return_type_for_t<P>>;
 
     // `x * just<c>` (c != 0): the result lattice is x's lattice scaled by c
     // (see grid operator*), so the result offset IS x's offset — counted from
@@ -64,11 +64,11 @@ namespace beman::inside::detail
     template <bool Negate, insidable X>
     static constexpr result scale_by_point(X const& x)
     {
-      static_assert(NotchCount<result> == NotchCount<X>);
+      static_assert(max_index_v<result> == max_index_v<X>);
       umax off;
       if constexpr (index_raw<X>) off = static_cast<umax>(x.raw());
-      else                        off = static_cast<umax>(raw_imax(x) - RawLo<X>);
-      return result::from_raw(raw_from_offset<result>(Negate ? NotchCount<X> - off : off));
+      else                        off = static_cast<umax>(raw_imax(x) - raw_lo<X>);
+      return result::from_raw(raw_from_offset<result>(Negate ? max_index_v<X> - off : off));
     }
 
     template <typename P, typename A = no_action>
@@ -99,7 +99,7 @@ namespace beman::inside::detail
         return result::from_raw(raw_cast<result>(rational::mul_unchecked(
             as_rational(lhs), as_rational(rhs))));
     }
-    else if constexpr (IsIntegerAligned<L> && IsIntegerAligned<R> && IsIntegerAligned<result>)
+    else if constexpr (is_integer_aligned<L> && is_integer_aligned<R> && is_integer_aligned<result>)
     {
       result res;
       from_value(res, to_value(lhs) * to_value(rhs));
@@ -126,10 +126,10 @@ namespace beman::inside::detail
       // Normalize lhs.raw() / rhs.raw() to *offsets* regardless of L's / R's
       // storage shape. The formulas below all assume offset arithmetic.
       umax lhs_offset = !index_raw<L>
-          ? static_cast<umax>(raw_imax(lhs) - RawLo<L>)
+          ? static_cast<umax>(raw_imax(lhs) - raw_lo<L>)
           : static_cast<umax>(lhs.raw());
       umax rhs_offset = !index_raw<R>
-          ? static_cast<umax>(raw_imax(rhs) - RawLo<R>)
+          ? static_cast<umax>(raw_imax(rhs) - raw_lo<R>)
           : static_cast<umax>(rhs.raw());
 
       // Absolute notch index of each operand endpoint (Lower/Notch, Upper/Notch).
@@ -140,7 +140,7 @@ namespace beman::inside::detail
       // Integral promotion would make `raw * raw` an `int * int` (UB above
       // INT_MAX), so cast to umax to multiply in 64-bit unsigned space. The four
       // branches cover the sign quadrants: lower_of<result> is one of the four
-      // corner products; sign-flipped helpers (negative<L>/<R>) reduce each to
+      // corner products; sign-flipped helpers (negative_t<L>/<R>) reduce each to
       // the all-positive formula. The static_assert guards the case analysis.
       if constexpr (lower_of<result> == (lower_of<L> * lower_of<R>).value())
       {
@@ -150,18 +150,18 @@ namespace beman::inside::detail
       }
 
       if constexpr (lower_of<result> == (upper_of<L> * upper_of<R>).value())
-      { return multiplication<negative<L>, negative<R>>::mul(-lhs, -rhs, std::forward<P>(policy)); }
+      { return multiplication<negative_t<L>, negative_t<R>>::mul(-lhs, -rhs, std::forward<P>(policy)); }
 
       if constexpr (lower_of<result> == (upper_of<L> * lower_of<R>).value())
       {
-        umax negLhs = NotchCount<L> - lhs_offset;
+        umax negLhs = max_index_v<L> - lhs_offset;
         return to_result(negLhs * idxLoR
                          + rhs_offset * idxHiL
                          - negLhs * rhs_offset);
       }
 
       if constexpr (lower_of<result> == (lower_of<L> * upper_of<R>).value())
-      { return -multiplication<L, negative<R>>::mul(lhs, -rhs, std::forward<P>(policy)); }
+      { return -multiplication<L, negative_t<R>>::mul(lhs, -rhs, std::forward<P>(policy)); }
 
       static_assert(lower_of<result> == (lower_of<L> * lower_of<R>).value()
                  || lower_of<result> == (upper_of<L> * upper_of<R>).value()

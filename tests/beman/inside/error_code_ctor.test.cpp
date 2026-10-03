@@ -3,7 +3,7 @@
 // documented (docs/policies.md "Error code mode").
 //
 // Regression: a raw beman::inside::errc inside the generic `inside(A, Pol&&)` ctor
-// template as a policy type, so `HasPolicy<L, beman::inside::errc, ...>` was
+// template as a policy type, so `has_policy<L, beman::inside::errc, ...>` was
 // ill-formed and the documented form did not compile. A dedicated
 // `inside(A, beman::inside::errc&)` overload now wraps ec in the type's own policy.
 // On a reported (out-of-range) error the inside's value is ill-defined — the

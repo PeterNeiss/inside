@@ -81,7 +81,7 @@ namespace beman::inside
     // (p/r)·(s/q); mul_overflow flags when it exceeds umax. Returns false (and
     // count is meaningless) on overflow — such a grid stores as rational, never
     // an index, so the count is never used.
-    constexpr bool notch_count(umax& out) const
+    constexpr bool max_index_checked(umax& out) const
     {
       if (Notch == 0) { out = 0; return true; }
       const detail::rational span = (Interval.Upper - Interval.Lower).value();
@@ -93,11 +93,11 @@ namespace beman::inside
 
     // Index-storage slot count (0 on overflow; the over-flow branch of storage_min
     // is discarded for such grids, which pick rational storage instead).
-    constexpr umax max_notch() const { umax c = 0; (void)notch_count(c); return c; }
+    constexpr umax max_index() const { umax c = 0; (void)max_index_checked(c); return c; }
 
     // True when the slot count fits umax (index storage is possible). False ⇒ the
     // grid is still valid but stores its value as a rational, never an index.
-    constexpr bool notch_count_representable() const { umax c = 0; return notch_count(c); }
+    constexpr bool max_index_representable() const { umax c = 0; return max_index_checked(c); }
 
     // True when `v` is an *exact* slot: in the interval AND on a notch (notch-0
     // grids store verbatim, so any in-range value qualifies). Used to admit a
@@ -162,16 +162,16 @@ namespace beman::inside
   // Smallest raw type holding every reachable index in G. Order: notch-zero →
   // rational (no integer index space); index count too large for any integer →
   // rational (store the value's fraction directly, no index); signed-direct fits
-  // Lower < 0 with notch 1; unsigned-offset (max_notch slots) otherwise.
+  // Lower < 0 with notch 1; unsigned-offset (max_index slots) otherwise.
   namespace detail
   {
   template <grid G>
-  using storage_min =
+  using storage_min_t =
     std::conditional_t<(G.Notch == 0), detail::rational,
-    std::conditional_t<(!G.notch_count_representable()), detail::rational,
+    std::conditional_t<(!G.max_index_representable()), detail::rational,
     std::conditional_t<(G.Interval.Lower < 0 && G.Notch == 1),
-      smallest_int_for<trunc(G.Interval.Lower), trunc(G.Interval.Upper)>,
-      smallest_uint_for<G.max_notch()>>>>;
+      smallest_int_for_t<trunc(G.Interval.Lower), trunc(G.Interval.Upper)>,
+      smallest_uint_for_t<G.max_index()>>>>;
 
   // Dyadic grid: power-of-2 notch denominator and Lower denominator, so every
   // on-grid value is exactly representable in IEEE-754 `double`. Precondition
@@ -259,7 +259,7 @@ namespace beman::inside
 
   // Map the single set width bit to its C++ type (only valid when has_width_flag).
   template <policy_flag P>
-  using raw_type_of =
+  using raw_type_of_t =
     std::conditional_t<(P & i8 ) == i8 , std::int8_t,
     std::conditional_t<(P & u8 ) == u8 , std::uint8_t,
     std::conditional_t<(P & i16) == i16, std::int16_t,
@@ -270,7 +270,7 @@ namespace beman::inside
                                                     std::uint64_t>>>>>>>;
 
   // Does raw type R hold every reachable raw value of grid G under the given
-  // encoding? Index storage runs 0..max_notch (unsigned); value storage runs
+  // encoding? Index storage runs 0..max_index (unsigned); value storage runs
   // Lower..Upper. The full range of R is usable, matching smallest_uint_for /
   // smallest_int_for.
   template <grid G, typename R, bool Index>
@@ -278,8 +278,8 @@ namespace beman::inside
   {
     using lim = std::numeric_limits<R>;
     if constexpr (Index)
-      return G.notch_count_representable()
-          && G.max_notch() <= static_cast<umax>(lim::max());
+      return G.max_index_representable()
+          && G.max_index() <= static_cast<umax>(lim::max());
     else if constexpr (std::is_unsigned_v<R>)
       return G.Interval.Lower >= 0
           && G.Interval.Upper <= rational{static_cast<umax>(lim::max())};
@@ -349,7 +349,7 @@ namespace beman::inside
       // No silent widening — a type too small for the grid is a hard error.
       static_assert(width_flag_count(P) == 1,
         "storage: pick a single fixed-width flag (e.g. `u16`), not several");
-      using R = raw_type_of<P>;
+      using R = raw_type_of_t<P>;
       constexpr bool idx = (P & indexed) == indexed;
       static_assert(idx ? (G.Notch != 0) : (G.Notch == 1),
         "fixed-width storage: value storage needs Notch == 1 — add `indexed` to "
@@ -361,16 +361,16 @@ namespace beman::inside
     }
     else if constexpr ((P & direct) == direct && G.Notch == 1)
       return std::conditional_t<(G.Interval.Lower < 0),
-          smallest_int_for<trunc(G.Interval.Lower), trunc(G.Interval.Upper)>,
-          smallest_uint_for<static_cast<umax>(trunc(G.Interval.Upper))>>{};
+          smallest_int_for_t<trunc(G.Interval.Lower), trunc(G.Interval.Upper)>,
+          smallest_uint_for_t<static_cast<umax>(trunc(G.Interval.Upper))>>{};
     else if constexpr ((P & indexed) == indexed && G.Notch != 0)
-      return smallest_uint_for<G.max_notch()>{};
+      return smallest_uint_for_t<G.max_index()>{};
     else
-      return storage_min<G>{};
+      return storage_min_t<G>{};
   }
 
   template <grid G, policy_flag P>
-  using storage_for = decltype(storage_pick<G, P>());
+  using storage_for_t = decltype(storage_pick<G, P>());
   }
 
   constexpr std::expected<grid, errc> operator+(const grid&, const grid&);

@@ -80,18 +80,18 @@ namespace beman::inside
   policy(errc&) -> policy<none, detail::error_ref>;
 
   //---------------------------------------------------------------------------
-  // IsPolicy — true for policy<F,E> specializations, false otherwise.
+  // is_policy — true for policy<F,E> specializations, false otherwise.
   // Used to gate free-fn overloads so they don't accidentally bind P = action tag.
   //---------------------------------------------------------------------------
   namespace detail
   {
-    template<typename T>             inline constexpr bool IsPolicy = false;
-    template<policy_flag F, typename E> inline constexpr bool IsPolicy<policy<F,E>> = true;
+    template<typename T>             inline constexpr bool is_policy = false;
+    template<policy_flag F, typename E> inline constexpr bool is_policy<policy<F,E>> = true;
 
-    // Concept form of IsPolicy — pulls cvref off so the constraint matches
+    // Concept form of is_policy — pulls cvref off so the constraint matches
     // forwarded `policy<F,E>` references in template parameters.
     template<typename T>
-    concept policy_like = IsPolicy<std::remove_cvref_t<T>>;
+    concept policy_like = is_policy<std::remove_cvref_t<T>>;
 
     // policy_flags_of<T> — the flag-set a one-shot `policy<F,E>` carries (else
     // `none`). Lets the value+policy constructor and policy_ref's conversion fold
@@ -103,8 +103,8 @@ namespace beman::inside
     // True for policy specializations that carry a beman::inside::errc& reference.
     // Free-fn arithmetic uses this to decide whether to call policy.report on
     // failure (which sets ec) vs. returning a silent std::unexpected (no-arg form).
-    template<typename T>             inline constexpr bool UsesErrorRef = false;
-    template<policy_flag F>          inline constexpr bool UsesErrorRef<policy<F, error_ref>> = true;
+    template<typename T>             inline constexpr bool uses_error_ref = false;
+    template<policy_flag F>          inline constexpr bool uses_error_ref<policy<F, error_ref>> = true;
   }
 
   //---------------------------------------------------------------------------
@@ -121,7 +121,7 @@ namespace beman::inside
   //---------------------------------------------------------------------------
   // report_or_unexpected — uniform "rational arithmetic failed" handler shared
   // by addition/multiplication/division/modulo. Three compile-time behaviors:
-  // overflow_action<A> → fire it on a default Result; UsesErrorRef<P> →
+  // overflow_action<A> → fire it on a default Result; uses_error_ref<P> →
   // policy.report then std::unexpected{code}; plain throw-policy →
   // std::unexpected{code}.
   //---------------------------------------------------------------------------
@@ -140,7 +140,7 @@ namespace beman::inside
     }
     else
     {
-      if constexpr (UsesErrorRef<std::remove_cvref_t<P>>)
+      if constexpr (uses_error_ref<std::remove_cvref_t<P>>)
         policy.report(code);
       return std::unexpected{code};
     }
@@ -171,12 +171,12 @@ namespace beman::inside
   template <insidable Dst, numeric C, typename P, typename... As>
   constexpr Dst& dispatch_assign(Dst& dst, C const& src, P& policy, std::tuple<As...>& actions)
   {
-    if constexpr (has_action<IsClampActionPred, As...>)
-      return assignment<Dst, C>::assign(dst, src, policy, pick_action_in<IsClampActionPred>(actions));
-    else if constexpr (has_action<IsWrapActionPred, As...>)
-      return assignment<Dst, C>::assign(dst, src, policy, pick_action_in<IsWrapActionPred>(actions));
-    else if constexpr (has_action<IsErrorActionPred, As...>)
-      return assignment<Dst, C>::assign(dst, src, policy, pick_action_in<IsErrorActionPred>(actions));
+    if constexpr (has_action<is_clamp_action, As...>)
+      return assignment<Dst, C>::assign(dst, src, policy, pick_action_in<is_clamp_action>(actions));
+    else if constexpr (has_action<is_wrap_action, As...>)
+      return assignment<Dst, C>::assign(dst, src, policy, pick_action_in<is_wrap_action>(actions));
+    else if constexpr (has_action<is_error_action, As...>)
+      return assignment<Dst, C>::assign(dst, src, policy, pick_action_in<is_error_action>(actions));
     else
       return assignment<Dst, C>::assign(dst, src, policy);
   }
@@ -210,10 +210,10 @@ namespace beman::inside
     private:
     // Conflict diagnostics: at most one assignment-time tag (clamp / wrap /
     // error), at most one of each kind, no clamp+wrap.
-    static constexpr unsigned _clamp_count    = count_action_matches<IsClampActionPred,    As...>;
-    static constexpr unsigned _wrap_count     = count_action_matches<IsWrapActionPred,     As...>;
-    static constexpr unsigned _error_count    = count_action_matches<IsErrorActionPred,    As...>;
-    static constexpr unsigned _overflow_count = count_action_matches<IsOverflowActionPred, As...>;
+    static constexpr unsigned _clamp_count    = count_action_matches<is_clamp_action,    As...>;
+    static constexpr unsigned _wrap_count     = count_action_matches<is_wrap_action,     As...>;
+    static constexpr unsigned _error_count    = count_action_matches<is_error_action,    As...>;
+    static constexpr unsigned _overflow_count = count_action_matches<is_overflow_action, As...>;
 
     static_assert(_clamp_count + _wrap_count + _error_count <= 1,
       "on_clamp / on_wrap / on_error are mutually exclusive in a single policy_ref");
@@ -255,7 +255,7 @@ namespace beman::inside
 
     // Value read-out: a one-shot policy ref converts to any inside the assignment
     // could satisfy, applying the target's own policy (range) plus this ref's
-    // carried flags (notch/rounding) via HasPolicy's merge. Makes
+    // carried flags (notch/rounding) via has_policy's merge. Makes
     // `Target t = (a * b).with_snap();` / `return (a * b).with_snap();` compile.
     // Constrained so the proxy stays SFINAE-friendly (no over-broad convertibility).
     template <insidable Target>
@@ -276,9 +276,9 @@ namespace beman::inside
     private:
     constexpr void report_zero(errc code, const char* what)
     {
-      if constexpr (has_action<IsErrorActionPred, As...>)
-        pick_action_in<IsErrorActionPred>(Actions).fn(Ref, code, what);
-      else if constexpr (!HasPolicy<B, P, ignore_zero>)
+      if constexpr (has_action<is_error_action, As...>)
+        pick_action_in<is_error_action>(Actions).fn(Ref, code, what);
+      else if constexpr (!has_policy<B, P, ignore_zero>)
         Policy.report(code);
     }
 
@@ -300,8 +300,8 @@ namespace beman::inside
         {
           if (result.error() == errc::division_by_zero)
             report_zero(errc::division_by_zero, msg);       // on_error / ignore_zero, like rational /=
-          else if constexpr (has_action<IsOverflowActionPred, As...>)
-            pick_action_in<IsOverflowActionPred>(Actions).fn(Ref, result.error());
+          else if constexpr (has_action<is_overflow_action, As...>)
+            pick_action_in<is_overflow_action>(Actions).fn(Ref, result.error());
           else
             Policy.report(result.error());
           return Ref;

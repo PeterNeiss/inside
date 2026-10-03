@@ -131,7 +131,7 @@ TEST(CrossGridTest, cross_grid_compare_arith_asymmetric_offsets_same_notch)
 // fractional notch-offset inside to a direct-storage (integer) inside used to
 // drop the fractional part (-7.75 + (-3) silently became -10, not -10.75)
 // because the dispatch chose the integer `to_value` path. The integer path is
-// now gated on IsIntegerAligned of BOTH operands (matching multiplication).
+// now gated on is_integer_aligned of BOTH operands (matching multiplication).
 // regression: fractional + integer-direct keeps the fraction
 TEST(CrossGridTest, regression_fractional_plus_integer_direct_keeps_the_fraction)
 {

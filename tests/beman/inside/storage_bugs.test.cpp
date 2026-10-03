@@ -38,11 +38,11 @@ TEST(StorageBugsTest, bug_a_rational_mixed_add_into_direct_storage_result)
 // Bug B — multiplication.hpp:117
 //
 // The third-quadrant case (lower_of<result> == upper_of<L> * lower_of<R>) computes
-// `negRaw = NotchCount<L> - lhs.Raw`. That formula treats lhs.Raw as a
+// `negRaw = max_index_v<L> - lhs.Raw`. That formula treats lhs.Raw as a
 // notch-offset, which is correct for offset-encoded raws but wrong for
 // direct-storage signed raws (where Raw is the value).
 //
-// The IsIntegerAligned fast path (multiplication.hpp:70-87) catches the
+// The is_integer_aligned fast path (multiplication.hpp:70-87) catches the
 // all-integer case, so the bug only surfaces when one operand has a
 // fractional notch (which forces the result to be non-integer-aligned and
 // skips the fast path). L stays direct (Notch_L = 1, signed lower).
@@ -63,8 +63,8 @@ TEST(StorageBugsTest, bug_b_signed_direct_multiplication_third_quadrant)
 //---------------------------------------------------------------------------
 // Bug C — assignment.hpp:428
 //
-// `assign(insidable, real R)` checks for `HasPolicy<L, P, clamp>` but not
-// for `HasPolicy<L, P, wrap>`. An `inside<{...}, wrap>` constructed from a
+// `assign(insidable, real R)` checks for `has_policy<L, P, clamp>` but not
+// for `has_policy<L, P, wrap>`. An `inside<{...}, wrap>` constructed from a
 // double silently stores the unwrapped value (which may be out of range)
 // because it falls through `domain_fail` without `checked` set.
 //

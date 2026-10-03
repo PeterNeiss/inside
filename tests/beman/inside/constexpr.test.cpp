@@ -484,15 +484,15 @@ TEST(ConstexprTest, constexpr_implied_flags_merged_implied_flags)
                  == (clamp | checked));
 }
 
-// constexpr: IsPolicy / UsesErrorRef
+// constexpr: is_policy / uses_error_ref
 TEST(ConstexprTest, constexpr_ispolicy_useserrorref)
 {
-  static_assert(IsPolicy<policy<checked>>);
-  static_assert(IsPolicy<policy<none, error_ref>>);
-  static_assert(!(IsPolicy<int>));
+  static_assert(is_policy<policy<checked>>);
+  static_assert(is_policy<policy<none, error_ref>>);
+  static_assert(!(is_policy<int>));
 
-  static_assert(!(UsesErrorRef<policy<checked>>));
-  static_assert(UsesErrorRef<policy<checked, error_ref>>);
+  static_assert(!(uses_error_ref<policy<checked>>));
+  static_assert(uses_error_ref<policy<checked, error_ref>>);
 }
 
 //---------------------------------------------------------------------------

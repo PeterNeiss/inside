@@ -37,7 +37,7 @@ auto q = div(x, y, on_overflow([&](auto& res, errc) {
 ## Division
 
 `inside / inside` returns a plain `inside` when the divisor's grid provably
-excludes zero (`Lower > 0 || Upper < 0` — the `DivisorExcludesZero` trait) and
+excludes zero (`Lower > 0 || Upper < 0` — the `divisor_excludes_zero` trait) and
 the operation can't otherwise fault; then there is nothing to unwrap.
 Otherwise it returns `std::expected<result, errc>`, because division by zero is a
 runtime possibility (and on the exact-rational path under `checked`, so is
@@ -92,7 +92,7 @@ is `(51200 × 256) / 768 = 17066` — i.e. `floor(66.6667 × 256)`, **not**
 ### When the result is `std::expected` (and when it isn't)
 
 When the divisor's grid provably **excludes zero** (`Lower > 0 || Upper < 0` —
-the `DivisorExcludesZero` trait in `generic.hpp`) *and* the op can't otherwise
+the `divisor_excludes_zero` trait in `generic.hpp`) *and* the op can't otherwise
 fault, `operator/` returns a **plain `inside`** — no wrapper to unwrap:
 
 ```cpp

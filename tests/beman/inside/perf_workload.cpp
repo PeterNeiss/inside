@@ -89,7 +89,7 @@ namespace
   std::int64_t run_qformat_div()
   {
     // The native Q-format divide requires Lower == 0 on BOTH grids
-    // (IsQFormat), so the divisor grid necessarily spans zero and div returns
+    // (is_qformat), so the divisor grid necessarily spans zero and div returns
     // an expected — divisor raws stay >= 16, so it always has a value and the
     // measured work is the native `(a << log2 N) / b` path plus its zero test.
     using Qn = inside<{{0, 1000}, notch<1, 16>}>;

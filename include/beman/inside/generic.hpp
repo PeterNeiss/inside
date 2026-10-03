@@ -70,7 +70,7 @@ namespace beman::inside
   namespace detail
   {
     template<typename T>
-    using plain = std::remove_cvref_t<T>;
+    using plain_t = std::remove_cvref_t<T>;
 
     // Always-false but template-dependent: lets a `static_assert` inside a
     // template body fire only when that template is actually instantiated
@@ -90,7 +90,7 @@ namespace beman::inside
     //   from_value(b, v)       imax  → raw          store integer value v into b (inverse of to_value)
     //   raw_cast<B>(x)         x     → raw_t<B>     TYPE cast only — no value arithmetic
     //   raw_imax(b)            raw   → imax         widen the raw bits (NOT the value for index storage)
-    //   raw_from_offset<B>(o)  index → raw_t<B>     adds RawLo for direct storage; identity for index
+    //   raw_from_offset<B>(o)  index → raw_t<B>     adds raw_lo for direct storage; identity for index
     //-------------------------------------------------------------------------
 
     // Uniform rational view of a scalar or inside (rational{v} / operator rational()).
@@ -166,26 +166,26 @@ namespace beman::inside
     }
 
     template <insidable B>
-    using negative = inside<-grid_of<B>, policy_of<B>>;
+    using negative_t = inside<-grid_of<B>, policy_of<B>>;
 
     // True when R's interval cannot contain zero — so `a / b` can return a plain
     // `inside` instead of `expected<inside, errc>` (see detail/division.hpp). A point
     // grid at 0 is *not* excluded.
     template <insidable R>
-    inline constexpr bool DivisorExcludesZero = (lower_of<R> > 0) || (upper_of<R> < 0);
+    inline constexpr bool divisor_excludes_zero = (lower_of<R> > 0) || (upper_of<R> < 0);
 
     // Storage-agnostic int truncation of interval endpoints — intent-revealing
-    // `static_cast<imax>(lower_of<B>)`. Used by from_value, RawLo, the fast paths.
+    // `static_cast<imax>(lower_of<B>)`. Used by from_value, raw_lo, the fast paths.
     template <insidable B>
-    inline constexpr imax LowerImax = trunc(lower_of<B>);
+    inline constexpr imax lower_imax = trunc(lower_of<B>);
 
     template <insidable B>
-    inline constexpr imax UpperImax = trunc(upper_of<B>);
+    inline constexpr imax upper_imax = trunc(upper_of<B>);
 
-    // Slot count via grid::max_notch (overflow-safe: 0 when it doesn't fit umax,
+    // Slot count via grid::max_index (overflow-safe: 0 when it doesn't fit umax,
     // for grids that store as rational and never use the index).
     template <insidable B>
-    inline constexpr umax NotchCount = grid_of<B>.max_notch();
+    inline constexpr umax max_index_v = grid_of<B>.max_index();
 
     //-------------------------------------------------------------------------
     // grid_value_bounds / rational_mul_is_safe / rational_add_is_safe
@@ -288,27 +288,27 @@ namespace beman::inside
     // by operator rational(), from_value, and assignment::store.
     //-------------------------------------------------------------------------
     template <insidable B>
-    inline constexpr bool HasQFormatFastPath =
+    inline constexpr bool has_qformat_fast_path =
         abs_den(lower_of<B>.Denominator) == 1
         && notch_of<B>.Numerator == 1
         && !rational_raw<B>
         && (std::signed_integral<raw_t<B>>
-            || NotchCount<B> <= static_cast<umax>(std::numeric_limits<imax>::max()));
+            || max_index_v<B> <= static_cast<umax>(std::numeric_limits<imax>::max()));
 
-    // value → raw, integer math only. Pre: HasQFormatFastPath<B>.
+    // value → raw, integer math only. Pre: has_qformat_fast_path<B>.
     template <insidable B>
     constexpr raw_t<B> q_format_encode(imax value) noexcept
     {
       constexpr imax nd = abs_den(notch_of<B>.Denominator);
-      return raw_cast<B>((value - LowerImax<B>) * nd);
+      return raw_cast<B>((value - lower_imax<B>) * nd);
     }
 
-    // raw → rational, integer math only. Pre: HasQFormatFastPath<B>.
+    // raw → rational, integer math only. Pre: has_qformat_fast_path<B>.
     template <insidable B>
     constexpr rational q_format_decode(B b) noexcept
     {
       constexpr imax nd = abs_den(notch_of<B>.Denominator);
-      return rational{raw_imax(b) + LowerImax<B> * nd, nd};
+      return rational{raw_imax(b) + lower_imax<B> * nd, nd};
     }
 
     // Library-internal extraction helper. Always succeeds (returns `imax`
@@ -321,11 +321,11 @@ namespace beman::inside
       if constexpr (!index_raw<B>)
         return raw_imax(b);
       else if constexpr (abs_den(notch_of<B>.Denominator) == 1 && abs_den(lower_of<B>.Denominator) == 1)
-        return LowerImax<B> + raw_imax(b) * static_cast<imax>(notch_of<B>.Numerator);
-      else if constexpr (HasQFormatFastPath<B>)
+        return lower_imax<B> + raw_imax(b) * static_cast<imax>(notch_of<B>.Numerator);
+      else if constexpr (has_qformat_fast_path<B>)
       {
         constexpr imax nd = abs_den(notch_of<B>.Denominator);
-        return (raw_imax(b) + LowerImax<B> * nd) / nd;   // q_format_decode, truncated
+        return (raw_imax(b) + lower_imax<B> * nd) / nd;   // q_format_decode, truncated
       }
       else // index storage, generic rational path
         return trunc(as_rational(b));
@@ -337,8 +337,8 @@ namespace beman::inside
       if constexpr (!index_raw<B>)
         b = B::from_raw(raw_cast<B>(val));
       else if constexpr (abs_den(notch_of<B>.Denominator) == 1 && abs_den(lower_of<B>.Denominator) == 1)
-        b = B::from_raw(raw_cast<B>((val - LowerImax<B>) / static_cast<imax>(notch_of<B>.Numerator)));
-      else if constexpr (HasQFormatFastPath<B>)
+        b = B::from_raw(raw_cast<B>((val - lower_imax<B>) / static_cast<imax>(notch_of<B>.Numerator)));
+      else if constexpr (has_qformat_fast_path<B>)
         b = B::from_raw(q_format_encode<B>(val));
       else // index storage, generic rational path
       {
@@ -352,22 +352,22 @@ namespace beman::inside
     { const imax r = x % m; return r < 0 ? r + m : r; }
 
     //-------------------------------------------------------------------------
-    // RawLo / RawHi / raw_from_offset — map interval endpoints to raw space. For
-    // notch-offset storage the raw is a 0-based index (RawLo == 0); for direct
-    // storage the raw IS the value (RawLo == LowerImax<B>), so an offset needs
-    // RawLo<L> added back before storing.
+    // raw_lo / raw_hi / raw_from_offset — map interval endpoints to raw space. For
+    // notch-offset storage the raw is a 0-based index (raw_lo == 0); for direct
+    // storage the raw IS the value (raw_lo == lower_imax<B>), so an offset needs
+    // raw_lo<L> added back before storing.
     //-------------------------------------------------------------------------
     template <insidable B>
-    inline constexpr imax RawLo = !index_raw<B> ? LowerImax<B> : 0;
+    inline constexpr imax raw_lo = !index_raw<B> ? lower_imax<B> : 0;
 
     template <insidable B>
-    inline constexpr imax RawHi = !index_raw<B> ? UpperImax<B> : static_cast<imax>(NotchCount<B>);
+    inline constexpr imax raw_hi = !index_raw<B> ? upper_imax<B> : static_cast<imax>(max_index_v<B>);
 
     template <insidable L>
     constexpr raw_t<L> raw_from_offset(umax offset) noexcept
     {
       if constexpr (!index_raw<L>)
-        return raw_cast<L>(static_cast<imax>(offset) + RawLo<L>);
+        return raw_cast<L>(static_cast<imax>(offset) + raw_lo<L>);
       else
         return raw_cast<L>(offset);
     }
@@ -376,33 +376,33 @@ namespace beman::inside
     constexpr raw_t<L> raw_from_offset(imax offset) noexcept
     {
       if constexpr (!index_raw<L>)
-        return raw_cast<L>(offset + RawLo<L>);
+        return raw_cast<L>(offset + raw_lo<L>);
       else
         return raw_cast<L>(static_cast<umax>(offset));
     }
 
     //-------------------------------------------------------------------------
-    // IsIntegerInterval vs IsIntegerAligned — easy to confuse, both needed.
-    //   IsIntegerInterval<B>: Lower and Upper integer (Notch may be fractional,
+    // is_integer_interval vs is_integer_aligned — easy to confuse, both needed.
+    //   is_integer_interval<B>: Lower and Upper integer (Notch may be fractional,
     //     e.g. inside<{0,100}, 1/10>). Lets Lower/Upper be used as imax constants.
-    //   IsIntegerAligned<B>: Notch and Lower integer ⇒ IsIntegerInterval (not the
+    //   is_integer_aligned<B>: Notch and Lower integer ⇒ is_integer_interval (not the
     //     converse). Precondition for native integer raw arithmetic (Raw == value).
     //-------------------------------------------------------------------------
     template <insidable B>
-    inline constexpr bool IsIntegerInterval =
+    inline constexpr bool is_integer_interval =
         abs_den(lower_of<B>.Denominator) == 1 && abs_den(upper_of<B>.Denominator) == 1;
 
     template <insidable B>
-    inline constexpr bool IsIntegerAligned =
+    inline constexpr bool is_integer_aligned =
         abs_den(notch_of<B>.Denominator) == 1 && abs_den(lower_of<B>.Denominator) == 1;
 
     // Q-format: the canonical fixed-point shape (Q8.8, Q16.16, ...). Notch has
     // unit numerator with integer denominator > 1, Lower is an integer at 0.
     // Value = Raw / Notch.Denominator. Used to gate the integer fast path for
     // fixed-point division, which would otherwise fall into the slow rational
-    // route because Notch.Denominator > 1 disqualifies IsIntegerAligned.
+    // route because Notch.Denominator > 1 disqualifies is_integer_aligned.
     template <insidable B>
-    inline constexpr bool IsQFormat =
+    inline constexpr bool is_qformat =
            !rational_raw<B>
         && notch_of<B>.Numerator == 1
         && abs_den(notch_of<B>.Denominator) > 1
@@ -413,15 +413,15 @@ namespace beman::inside
     // Composite flags (e.g. round_nearest = bit5 | snap) require all
     // their bits set — having a subset like just `snap` does NOT match.
     template <insidable B, typename P, policy_flag F>
-    inline constexpr bool HasPolicy = has_flag(policy_of<B>, F) || plain<P>::test(F);
+    inline constexpr bool has_policy = has_flag(policy_of<B>, F) || plain_t<P>::test(F);
 
     // rounding_of (policy_flag.hpp) over L's type policy and the call's policy P.
     template <insidable L, typename P>
     inline constexpr round_mode rounding_for =
-        HasPolicy<L, P, round_floor>     ? round_mode::floor
-      : HasPolicy<L, P, round_ceil>      ? round_mode::ceil
-      : HasPolicy<L, P, round_half_even> ? round_mode::half_even
-      : HasPolicy<L, P, round_nearest>   ? round_mode::nearest
+        has_policy<L, P, round_floor>     ? round_mode::floor
+      : has_policy<L, P, round_ceil>      ? round_mode::ceil
+      : has_policy<L, P, round_half_even> ? round_mode::half_even
+      : has_policy<L, P, round_nearest>   ? round_mode::nearest
       :                                    round_mode::trunc;
 
     // v rounded onto L's lattice {k·Notch} by rounding_for<L, P> (value index,

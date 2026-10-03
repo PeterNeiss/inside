@@ -23,7 +23,7 @@ enforced at type-instantiation time by `grid::validate` (`grid::validate` in `in
 - **`Lower ≤ Upper`** (rational comparison).
 - **`Interval.divides_evenly(Notch)`** — there must be an integer number of
   notches between Lower and Upper. The notch count is exposed as
-  `NotchCount<B>` (`include/beman/inside/generic.hpp`).
+  `max_index_v<B>` (`include/beman/inside/generic.hpp`).
 - **`Notch == 0` is legal** and means "any rational in the interval". The
   storage shape changes accordingly (see §2).
 - **`Lower/Notch` and `Upper/Notch` resolve to integer rationals** when `Notch != 0`.
@@ -62,7 +62,7 @@ operand policies, and the widest representation present wins:
        │ no
   indexed in P AND Notch != 0 ─────────▶  unsigned raw   (raw = 0-based notch index)
        │ no
-  deduced (storage_min<G>):
+  deduced (storage_min_t<G>):
         Notch == 0                  ───▶  rational raw   (continuous grid)
         index count > umax          ───▶  rational raw   (too fine for any integer index)
         Notch == 1 AND (Lower == 0
@@ -70,7 +70,7 @@ operand policies, and the widest representation present wins:
         otherwise                   ───▶  unsigned raw   (raw = 0-based notch index)
 ```
 
-`storage_min<G>` picks the smallest integer type that can hold every
+`storage_min_t<G>` picks the smallest integer type that can hold every
 reachable index, using the type's full range (see [storage.md](storage.md)).
 
 Four **disjoint predicates** in `include/beman/inside/generic.hpp` classify a
@@ -92,10 +92,10 @@ value raw; `detail::as_double` is the kind-aware raw → double decoder.
 Two more predicates classify the grid's integer-ness (independent of the
 storage encoding), gating arithmetic fast paths:
 
-- `IsIntegerInterval<B>` — `Lower` and `Upper` have integer denominators
+- `is_integer_interval<B>` — `Lower` and `Upper` have integer denominators
   (Notch may still be fractional, e.g. `{0, 100}, 1/10`).
-- `IsIntegerAligned<B>` — `Notch` and `Lower` have integer denominators.
-  Under the divides-evenly invariant this implies `IsIntegerInterval`,
+- `is_integer_aligned<B>` — `Notch` and `Lower` have integer denominators.
+  Under the divides-evenly invariant this implies `is_integer_interval`,
   but the converse is not true. Both predicates exist because they gate
   different fast paths.
 
@@ -105,7 +105,7 @@ storage encoding), gating arithmetic fast paths:
 
 For grids with **integer Lower, unit-numerator Notch** (e.g. `1/256`,
 `1/65536`), and a raw that fits in `imax`, the rational ↔ value conversion
-collapses to integer arithmetic. The gate is `HasQFormatFastPath<B>`
+collapses to integer arithmetic. The gate is `has_qformat_fast_path<B>`
 (`include/beman/inside/generic.hpp`):
 
 ```cpp
@@ -113,7 +113,7 @@ abs_den(lower_of<B>.Denominator) == 1
 && notch_of<B>.Numerator == 1
 && !rational_raw<B>
 && (std::signed_integral<raw_t<B>>          // raw fits imax
-    || NotchCount<B> <= imax_max)
+    || max_index_v<B> <= imax_max)
 ```
 
 Two helpers, used at three call sites:
@@ -125,7 +125,7 @@ Two helpers, used at three call sites:
 
 The raw-fits-in-`imax` clause exists because the Q-format result type of a
 multiplication can land on `uint64_t` raw (e.g. `Q16.16 × Q16.16` produces
-`NotchCount ≈ 2^64`); widening that to `imax` via `raw_imax` would wrap.
+`max_index_v ≈ 2^64`); widening that to `imax` via `raw_imax` would wrap.
 When the gate is false, control falls through to the slow but correct
 rational path — `(*(Raw * Notch) + Lower).value()` for decode,
 `((rhs - Lower) / Notch).value().Numerator` for encode.
@@ -286,7 +286,7 @@ is what keeps the core free of `<string>`/`<ostream>`/`<format>`/`<cmath>`:
 | `beman/inside/casts.hpp`       | `clamp_cast`, `wrap_cast`, `checked_cast`, `unchecked_cast`, `clamp_floor` / `clamp_ceil` / `clamp_round` |
 | `beman/inside/arithmetic.hpp`  | Free `add` / `sub` / `mul` / `div` / `mod` (one variadic overload each; `detail::arith` maps the three call forms — policy, actions, `errc&` — onto the op's core), variadic folds `add_all` / `mul_all`, `operator+` / `-` / `*` / `/` / `%`, expected-lift overloads |
 | `beman/inside/range.hpp`       | `inside_range<G, P>` iterator helper |
-| `beman/inside/generic.hpp`     | Public grid/policy introspection (`Grid` / `InsidePolicy` / `Interval` / `Lower` / `Upper` / `Notch`) and the `insidable` / `numeric` / `inside_assignable` concepts. Storage/raw/dispatch plumbing (`raw_t`, the `rational_raw` / `real_raw` / `value_raw` / `index_raw` predicates, `as_double`, `to_value` / `from_value`, `raw_cast` / `raw_imax`, `q_format_encode/decode`, `NotchCount`, `RawLo/Hi`, `detail::as_rational`, …) lives in `beman::inside::detail` |
+| `beman/inside/generic.hpp`     | Public grid/policy introspection (`Grid` / `InsidePolicy` / `Interval` / `Lower` / `Upper` / `Notch`) and the `insidable` / `numeric` / `inside_assignable` concepts. Storage/raw/dispatch plumbing (`raw_t`, the `rational_raw` / `real_raw` / `value_raw` / `index_raw` predicates, `as_double`, `to_value` / `from_value`, `raw_cast` / `raw_imax`, `q_format_encode/decode`, `max_index_v`, `raw_lo/Hi`, `detail::as_rational`, …) lives in `beman::inside::detail` |
 | `beman/inside/detail/assignment.hpp`  | `beman::inside::detail::assignment<L, R>` specialisations for integral / fractional / insidable rhs (incl. the Q-format integer shortcut for fractional rhs) |
 | `beman/inside/cmath.hpp`       | `beman::inside::math` — the `<cmath>`-shaped public API (trig, inverse trig, hyperbolic, exp/log/pow, sqrt/cbrt/hypot) over bounds, re-exported from the build's `default_engine` (`dbl` / `flt` / `cordic`). The integer/CORDIC cores live in `beman::inside::math::detail` here — they also serve as the compile-time output-grid oracle for **every** engine. See [math.md](math.md) |
 | `beman/inside/cmath_double.hpp` | The default **double engine** cores (`d_sin`, `d_exp`, … — own `std::fma`-Horner polynomials, Cody-Waite reduction, correctly-rounded `std::sqrt`); compiled out under `BEMAN_INSIDE_MATH_NO_FP` |

@@ -37,14 +37,14 @@ namespace beman::inside::detail
         && !rational_add_is_safe(grid_of<L>, grid_of<R>);
 
     template <policy_flag F = none>
-    using return_type_for = std::conditional_t<needs_overflow_check<F>,
+    using return_type_for_t = std::conditional_t<needs_overflow_check<F>,
                                                std::expected<result, errc>,
                                                result>;
 
     template <policy_flag F, typename A>
-    using add_return_t = std::conditional_t<overflow_action<plain<A>>,
+    using add_return_t = std::conditional_t<overflow_action<plain_t<A>>,
                                             result,
-                                            return_type_for<F>>;
+                                            return_type_for_t<F>>;
 
     // Mixed integer-aligned / notch-offset fast path: with a unit-numerator
     // result notch 1/d, both operand offsets in result-notch units are exact
@@ -57,7 +57,7 @@ namespace beman::inside::detail
       if constexpr (rational_raw<L> || rational_raw<R> || rational_raw<result>
                     || fp_raw<L> || fp_raw<R>          // double raws: no integer offset
                     || fp_raw<result> || !index_raw<result>
-                    || (IsIntegerAligned<L> && IsIntegerAligned<R>)
+                    || (is_integer_aligned<L> && is_integer_aligned<R>)
                     || (index_raw<L> && index_raw<R>)
                     || notch_of<result> == 0 || notch_of<result>.Numerator != 1)
         return false;
@@ -77,10 +77,10 @@ namespace beman::inside::detail
     template <insidable X>
     static constexpr imax mixed_offset_units(X const& x, imax widen)
     {
-      if constexpr (IsIntegerAligned<X>)
+      if constexpr (is_integer_aligned<X>)
       {
         constexpr imax den = static_cast<imax>(abs_den(notch_of<result>.Denominator));
-        return (to_value(x) - LowerImax<X>) * den;
+        return (to_value(x) - lower_imax<X>) * den;
       }
       else
         return raw_imax(x) * widen;
@@ -129,7 +129,7 @@ namespace beman::inside::detail
                                             + mixed_offset_units(rhs, rhs_widen)));
     }
     else if constexpr (rational_raw<L> || rational_raw<R>
-                       || !((IsIntegerAligned<L> && IsIntegerAligned<R>)
+                       || !((is_integer_aligned<L> && is_integer_aligned<R>)
                             || (index_raw<L> && index_raw<R>)))
     {
       // Rational store: a rational-raw operand, or a mix the integer fast
@@ -140,7 +140,7 @@ namespace beman::inside::detail
       res = result::from_raw(raw_from_offset<result>(
           ((sum - lower_of<result>) / notch_of<result>).value().Numerator));
     }
-    else if constexpr (IsIntegerAligned<L> && IsIntegerAligned<R>)
+    else if constexpr (is_integer_aligned<L> && is_integer_aligned<R>)
     {
       // Both operands are integer-valued (Notch and Lower integers), so the
       // value-space add is exact.

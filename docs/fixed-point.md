@@ -29,11 +29,11 @@ The traits that classify these grids (in `include/beman/inside/generic.hpp`):
 
 ```cpp
 // notch and Lower are whole numbers (denominator 1)
-template <insidable B> inline constexpr bool IsIntegerAligned =
+template <insidable B> inline constexpr bool is_integer_aligned =
     abs_den(notch_of<B>.Denominator) == 1 && abs_den(lower_of<B>.Denominator) == 1;
 
 // Qm.N: unit-numerator power-of-two notch (1/2^N), Lower == 0
-template <insidable B> inline constexpr bool IsQFormat =
+template <insidable B> inline constexpr bool is_qformat =
        !rational_raw<B> && notch_of<B>.Numerator == 1
     && abs_den(notch_of<B>.Denominator) > 1
     && abs_den(lower_of<B>.Denominator) == 1 && lower_of<B> == 0;
@@ -80,7 +80,7 @@ in hot loops.
    wide unchecked loops vectorize at native lane count.
 2. **Q-format grids (notch `1/2^N`, Lower 0)** — power-of-two notch means scaling
    is a shift. Division of two same-notch Q-format operands takes the fast path
-   `(a << log2 N) / b` (`HasQFormatFastPath` / `q_format_encode` in
+   `(a << log2 N) / b` (`has_qformat_fast_path` / `q_format_encode` in
    `generic.hpp`; the Q-format divide in `detail/division.hpp`). Construction is
    ~native (Q8.8 / Q16.16 measure at ~0.97×).
 3. **`f64` dyadic, `double_exact` grids** — the right choice for transcendental

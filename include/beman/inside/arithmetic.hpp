@@ -50,8 +50,8 @@ namespace beman::inside
     // any other tag is rejected below with a message, not a bare mismatch).
     template <class A>
     inline constexpr bool is_action_tag =
-        IsOverflowActionPred<A>::value || IsClampActionPred<A>::value
-        || IsWrapActionPred<A>::value || IsErrorActionPred<A>::value;
+        is_overflow_action<A>::value || is_clamp_action<A>::value
+        || is_wrap_action<A>::value || is_error_action<A>::value;
 
     template <class Op, class L, class R, class... Actions>
       requires (sizeof...(Actions) >= 1)
@@ -62,7 +62,7 @@ namespace beman::inside
         "add/sub/mul/div/mod fire only on_overflow; on_clamp / on_wrap / on_error "
         "apply to assignment — use them with b.with(...) or a cast");
       return op(l, r, make_policy<merged_implied_flags<Actions...>>(),
-                pick_action<IsOverflowActionPred>(acts...));
+                pick_action<is_overflow_action>(acts...));
     }
 
     template <class Op, class L, class R, class A = no_action>
