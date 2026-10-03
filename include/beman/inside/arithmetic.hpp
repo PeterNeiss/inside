@@ -23,89 +23,95 @@
 namespace beman::inside
 {
   //---------------------------------------------------------------------------
-  // add
+  // add / sub / mul / div / mod — each takes one of three trailing forms:
+  //   op(l, r [, policy [, action]])   explicit per-call policy (+ action)
+  //   op(l, r, on_overflow(λ), ...)    tagged actions (policy = their implied flags)
+  //   op(l, r, ec [, action])          error-code form (checked, reports into ec)
+  // detail::arith normalises the form to (policy, action) for the op's core.
   //---------------------------------------------------------------------------
-  template <insidable L, insidable R, detail::policy_like P = policy<>, typename A = no_action>
-  [[nodiscard]] constexpr auto add(L const& lhs, R const& rhs, P&& policy = {}, A&& action = {})
-  { return detail::addition<L,R>::add(lhs, rhs, std::forward<P>(policy), std::forward<A>(action)); }
+  namespace detail
+  {
+    template <class Op, class L, class R, policy_like P = policy<>, class A = no_action>
+    constexpr auto arith(Op op, L const& l, R const& r, P&& pol = {}, A&& act = {})
+    { return op(l, r, std::forward<P>(pol), std::forward<A>(act)); }
 
-  // Action-first form: 1+ tagged actions, at least one of which is on_overflow
-  // (the only kind arithmetic itself fires; others are kept for forward-compat).
-  template <insidable L, insidable R, typename... Actions>
-    requires (sizeof...(Actions) >= 1)
-          && detail::has_action<detail::IsOverflowActionPred, std::remove_cvref_t<Actions>...>
-  [[nodiscard]] constexpr auto add(L const& lhs, R const& rhs, Actions&&... actions)
-  { return detail::addition<L,R>::add(lhs, rhs,
-      make_policy<detail::merged_implied_flags<Actions...>>(),
-      detail::pick_action<detail::IsOverflowActionPred>(actions...)); }
+    // Action-first form: at least one on_overflow (the only kind arithmetic
+    // fires; other tags are accepted for forward-compat).
+    template <class Op, class L, class R, class... Actions>
+      requires (sizeof...(Actions) >= 1)
+            && has_action<IsOverflowActionPred, std::remove_cvref_t<Actions>...>
+    constexpr auto arith(Op op, L const& l, R const& r, Actions&&... acts)
+    { return op(l, r, make_policy<merged_implied_flags<Actions...>>(),
+                pick_action<IsOverflowActionPred>(acts...)); }
 
-  template <insidable L, insidable R, typename A = no_action>
-  [[nodiscard]] constexpr auto add(L const& lhs, R const& rhs,
-                                   errc& ec, A&& action = {})
-  { return detail::addition<L,R>::add(lhs, rhs, make_policy<checked>(ec),
-      std::forward<A>(action)); }
+    template <class Op, class L, class R, class A = no_action>
+    constexpr auto arith(Op op, L const& l, R const& r, errc& ec, A&& act = {})
+    { return op(l, r, make_policy<checked>(ec), std::forward<A>(act)); }
 
-  //---------------------------------------------------------------------------
-  // operator+
-  //---------------------------------------------------------------------------
+    template <class P> inline constexpr policy_flag flags_of = policy_flags_of<std::remove_cvref_t<P>>;
+
+    struct add_op
+    {
+      template <class L, class R, class P, class A>
+      constexpr auto operator()(L const& l, R const& r, P&& p, A&& a) const
+      { return addition<L, R>::add(l, r, std::forward<P>(p), std::forward<A>(a)); }
+    };
+    struct sub_op
+    {
+      template <class L, class R, class P, class A>
+      constexpr auto operator()(L const& l, R const& r, P&& p, A&& a) const
+      { return add_op{}(l, -r, std::forward<P>(p), std::forward<A>(a)); }
+    };
+    struct mul_op
+    {
+      template <class L, class R, class P, class A>
+      constexpr auto operator()(L const& l, R const& r, P&& p, A&& a) const
+      { return multiplication<L, R>::mul(l, r, std::forward<P>(p), std::forward<A>(a)); }
+    };
+    struct div_op
+    {
+      template <class L, class R, class P, class A>
+      constexpr auto operator()(L const& l, R const& r, P&& p, A&& a) const
+      { return division<L, R, flags_of<P>>::div(l, r, p, std::forward<A>(a)); }
+    };
+    struct mod_op
+    {
+      template <class L, class R, class P, class A>
+      constexpr auto operator()(L const& l, R const& r, P&& p, A&& a) const
+      { return modulo<L, R, flags_of<P>>::mod(l, r, p, std::forward<A>(a)); }
+    };
+  }
+
+#define BEMAN_INSIDE_ARITH_FN(name, op)                                              \
+  template <insidable L, insidable R, class... Args>                                 \
+    requires requires(L const& l, R const& r, Args&&... args)                        \
+      { detail::arith(detail::op{}, l, r, std::forward<Args>(args)...); }            \
+  [[nodiscard]] constexpr auto name(L const& lhs, R const& rhs, Args&&... args)      \
+  { return detail::arith(detail::op{}, lhs, rhs, std::forward<Args>(args)...); }
+
+  BEMAN_INSIDE_ARITH_FN(add, add_op)
+  BEMAN_INSIDE_ARITH_FN(sub, sub_op)
+  BEMAN_INSIDE_ARITH_FN(mul, mul_op)
+  BEMAN_INSIDE_ARITH_FN(div, div_op)
+  BEMAN_INSIDE_ARITH_FN(mod, mod_op)
+#undef BEMAN_INSIDE_ARITH_FN
+
+  // Binary operators: +, -, * use the default policy; / and % carry the
+  // operands' own policies (snap/rounding select the native integer paths).
   [[nodiscard]] constexpr auto operator+(insidable auto lhs, insidable auto rhs)
   { return add(lhs, rhs); }
 
-
-  //---------------------------------------------------------------------------
-  // sub
-  //---------------------------------------------------------------------------
-  template <insidable L, insidable R, detail::policy_like P = policy<>, typename A = no_action>
-  [[nodiscard]] constexpr auto sub(L const& lhs, R const& rhs, P&& policy = {}, A&& action = {})
-  { return add(lhs, -rhs, std::forward<P>(policy), std::forward<A>(action)); }
-
-  template <insidable L, insidable R, typename... Actions>
-    requires (sizeof...(Actions) >= 1)
-          && detail::has_action<detail::IsOverflowActionPred, std::remove_cvref_t<Actions>...>
-  [[nodiscard]] constexpr auto sub(L const& lhs, R const& rhs, Actions&&... actions)
-  { return add(lhs, -rhs,
-      make_policy<detail::merged_implied_flags<Actions...>>(),
-      detail::pick_action<detail::IsOverflowActionPred>(actions...)); }
-
-  template <insidable L, insidable R, typename A = no_action>
-  [[nodiscard]] constexpr auto sub(L const& lhs, R const& rhs,
-                                   errc& ec, A&& action = {})
-  { return add(lhs, -rhs, make_policy<checked>(ec), std::forward<A>(action)); }
-
-  //---------------------------------------------------------------------------
-  // operator-
-  //---------------------------------------------------------------------------
   [[nodiscard]] constexpr auto operator-(insidable auto lhs, insidable auto rhs)
   { return sub(lhs, rhs); }
 
-
-  //---------------------------------------------------------------------------
-  // mul
-  //---------------------------------------------------------------------------
-  template <insidable L, insidable R, detail::policy_like P = policy<>, typename A = no_action>
-  [[nodiscard]] constexpr auto mul(L const& lhs, R const& rhs, P&& policy = {}, A&& action = {})
-  { return detail::multiplication<L,R>::mul(lhs, rhs, std::forward<P>(policy), std::forward<A>(action)); }
-
-  template <insidable L, insidable R, typename... Actions>
-    requires (sizeof...(Actions) >= 1)
-          && detail::has_action<detail::IsOverflowActionPred, std::remove_cvref_t<Actions>...>
-  [[nodiscard]] constexpr auto mul(L const& lhs, R const& rhs, Actions&&... actions)
-  { return detail::multiplication<L,R>::mul(lhs, rhs,
-      make_policy<detail::merged_implied_flags<Actions...>>(),
-      detail::pick_action<detail::IsOverflowActionPred>(actions...)); }
-
-  template <insidable L, insidable R, typename A = no_action>
-  [[nodiscard]] constexpr auto mul(L const& lhs, R const& rhs,
-                                   errc& ec, A&& action = {})
-  { return detail::multiplication<L,R>::mul(lhs, rhs, make_policy<checked>(ec),
-      std::forward<A>(action)); }
-
-  //---------------------------------------------------------------------------
-  // operator*
-  //---------------------------------------------------------------------------
   [[nodiscard]] constexpr auto operator*(insidable auto lhs, insidable auto rhs)
   { return beman::inside::mul(lhs, rhs); }
 
+  [[nodiscard]] constexpr auto operator/(insidable auto lhs, insidable auto rhs)
+  { return beman::inside::div(lhs, rhs, make_policy<InsidePolicy<decltype(lhs)> | InsidePolicy<decltype(rhs)>>()); }
+
+  [[nodiscard]] constexpr auto operator%(insidable auto lhs, insidable auto rhs)
+  { return beman::inside::mod(lhs, rhs, make_policy<InsidePolicy<decltype(lhs)> | InsidePolicy<decltype(rhs)>>()); }
 
   //---------------------------------------------------------------------------
   // add_all / mul_all — variadic folds (pairwise widening, same as `a + b + c`
@@ -280,68 +286,6 @@ namespace beman::inside
   [[nodiscard]] constexpr auto midpoint(T a, T b) { return (a + b) * just<frac<1, 2>>; }
 
   //---------------------------------------------------------------------------
-  // div
-  //---------------------------------------------------------------------------
-  template <insidable L, insidable R, policy_flag F = none, typename A = no_action>
-  [[nodiscard]] constexpr auto div(L lhs, R rhs, policy<F> pol = {}, A&& action = {})
-  { return detail::division<L, R, F>::div(lhs, rhs, pol, std::forward<A>(action)); }
-
-  template <insidable L, insidable R, typename... Actions>
-    requires (sizeof...(Actions) >= 1)
-          && detail::has_action<detail::IsOverflowActionPred, std::remove_cvref_t<Actions>...>
-  [[nodiscard]] constexpr auto div(L lhs, R rhs, Actions&&... actions)
-  { return detail::division<L, R, detail::merged_implied_flags<Actions...>>::div(lhs, rhs,
-      make_policy<detail::merged_implied_flags<Actions...>>(),
-      detail::pick_action<detail::IsOverflowActionPred>(actions...)); }
-
-  template <insidable L, insidable R, typename A = no_action>
-  [[nodiscard]] constexpr auto div(L lhs, R rhs,
-                                   errc& ec, A&& action = {})
-  { return detail::division<L, R, checked>::div(lhs, rhs, make_policy<checked>(ec),
-      std::forward<A>(action)); }
-
-  //---------------------------------------------------------------------------
-  // operator/
-  //---------------------------------------------------------------------------
-  [[nodiscard]] constexpr auto operator/(insidable auto lhs, insidable auto rhs)
-  {
-    constexpr policy_flag F = InsidePolicy<decltype(lhs)> | InsidePolicy<decltype(rhs)>;
-    return beman::inside::div(lhs, rhs, make_policy<F>());
-  }
-
-
-  //---------------------------------------------------------------------------
-  // mod
-  //---------------------------------------------------------------------------
-  template <insidable L, insidable R, policy_flag F = none, typename A = no_action>
-  [[nodiscard]] constexpr auto mod(L lhs, R rhs, policy<F> pol = {}, A&& action = {})
-  { return detail::modulo<L, R, F>::mod(lhs, rhs, pol, std::forward<A>(action)); }
-
-  template <insidable L, insidable R, typename... Actions>
-    requires (sizeof...(Actions) >= 1)
-          && detail::has_action<detail::IsOverflowActionPred, std::remove_cvref_t<Actions>...>
-  [[nodiscard]] constexpr auto mod(L lhs, R rhs, Actions&&... actions)
-  { return detail::modulo<L, R, detail::merged_implied_flags<Actions...>>::mod(lhs, rhs,
-      make_policy<detail::merged_implied_flags<Actions...>>(),
-      detail::pick_action<detail::IsOverflowActionPred>(actions...)); }
-
-  template <insidable L, insidable R, typename A = no_action>
-  [[nodiscard]] constexpr auto mod(L lhs, R rhs,
-                                   errc& ec, A&& action = {})
-  { return detail::modulo<L, R, checked>::mod(lhs, rhs, make_policy<checked>(ec),
-      std::forward<A>(action)); }
-
-  //---------------------------------------------------------------------------
-  // operator%
-  //---------------------------------------------------------------------------
-  [[nodiscard]] constexpr auto operator%(insidable auto lhs, insidable auto rhs)
-  {
-    constexpr policy_flag F = InsidePolicy<decltype(lhs)> | InsidePolicy<decltype(rhs)>;
-    return beman::inside::mod(lhs, rhs, make_policy<F>());
-  }
-
-
-  //---------------------------------------------------------------------------
   // expected-lift operators — fallible results (division, modulo, checked
   // rational arithmetic, beman::inside::math) chain without per-step unwrapping:
   // `a / b * gain + offset` and `math::tan(x) * gain` stay a
@@ -360,35 +304,19 @@ namespace beman::inside
         && (insidable<unwrap_t<L>> || insidable<unwrap_t<R>>);
   }
 
-  template <class L, class R>
-    requires detail::expected_operands<L, R>
-          && requires(detail::unwrap_t<L> l, detail::unwrap_t<R> r) { l + r; }
-  constexpr auto operator+(L const& lhs, R const& rhs)
-  { return lift([](auto const& l, auto const& r){ return l + r; }, lhs, rhs); }
+#define BEMAN_INSIDE_LIFT_OP(op)                                                     \
+  template <class L, class R>                                                        \
+    requires detail::expected_operands<L, R>                                         \
+          && requires(detail::unwrap_t<L> l, detail::unwrap_t<R> r) { l op r; }      \
+  constexpr auto operator op(L const& lhs, R const& rhs)                             \
+  { return lift([](auto const& l, auto const& r) { return l op r; }, lhs, rhs); }
 
-  template <class L, class R>
-    requires detail::expected_operands<L, R>
-          && requires(detail::unwrap_t<L> l, detail::unwrap_t<R> r) { l - r; }
-  constexpr auto operator-(L const& lhs, R const& rhs)
-  { return lift([](auto const& l, auto const& r){ return l - r; }, lhs, rhs); }
-
-  template <class L, class R>
-    requires detail::expected_operands<L, R>
-          && requires(detail::unwrap_t<L> l, detail::unwrap_t<R> r) { l * r; }
-  constexpr auto operator*(L const& lhs, R const& rhs)
-  { return lift([](auto const& l, auto const& r){ return l * r; }, lhs, rhs); }
-
-  template <class L, class R>
-    requires detail::expected_operands<L, R>
-          && requires(detail::unwrap_t<L> l, detail::unwrap_t<R> r) { l / r; }
-  constexpr auto operator/(L const& lhs, R const& rhs)
-  { return lift([](auto const& l, auto const& r){ return l / r; }, lhs, rhs); }
-
-  template <class L, class R>
-    requires detail::expected_operands<L, R>
-          && requires(detail::unwrap_t<L> l, detail::unwrap_t<R> r) { l % r; }
-  constexpr auto operator%(L const& lhs, R const& rhs)
-  { return lift([](auto const& l, auto const& r){ return l % r; }, lhs, rhs); }
+  BEMAN_INSIDE_LIFT_OP(+)
+  BEMAN_INSIDE_LIFT_OP(-)
+  BEMAN_INSIDE_LIFT_OP(*)
+  BEMAN_INSIDE_LIFT_OP(/)
+  BEMAN_INSIDE_LIFT_OP(%)
+#undef BEMAN_INSIDE_LIFT_OP
 
   //---------------------------------------------------------------------------
   // Grid-less scalar operands are rejected. A raw int/double carries no grid, so
@@ -403,70 +331,25 @@ namespace beman::inside
   //---------------------------------------------------------------------------
   template <typename A> concept raw_scalar = std::integral<A> || std::floating_point<A>;
 
-  template <insidable B, raw_scalar A> B operator+(B const&, A) {
-    static_assert(detail::dependent_false<B>,
-      "an inside can only be added to another inside: give the scalar a grid — "
-      "write `a + 1_ins` (or `a + just<1>` / `a + one`), or `a + inside<{lo,hi}>{n}` "
-      "for a runtime value with a known range"); }
-  template <raw_scalar A, insidable B> B operator+(A, B const&) {
-    static_assert(detail::dependent_false<B>,
-      "a scalar can only be added to an inside that is itself an inside: write "
-      "`1_ins + a` / `just<1> + a` / `one + a`, or `inside<{lo,hi}>{n} + a`"); }
+#define BEMAN_INSIDE_SCALAR_MSG                                                      \
+  "an inside cannot be combined with a raw scalar: give the scalar a grid — "        \
+  "`1_ins`, `just<1>`, `one`, or `inside<{lo,hi}>{n}` for a runtime value with a "   \
+  "known range"
+#define BEMAN_INSIDE_NO_SCALAR(op)                                                   \
+  template <insidable B, raw_scalar A> B operator op(B const&, A)                    \
+  { static_assert(detail::dependent_false<B>, BEMAN_INSIDE_SCALAR_MSG); }            \
+  template <raw_scalar A, insidable B> B operator op(A, B const&)                    \
+  { static_assert(detail::dependent_false<B>, BEMAN_INSIDE_SCALAR_MSG); }            \
+  template <insidable B, raw_scalar A> B& operator op##=(B&, A)                      \
+  { static_assert(detail::dependent_false<B>, BEMAN_INSIDE_SCALAR_MSG); }
 
-  template <insidable B, raw_scalar A> B operator-(B const&, A) {
-    static_assert(detail::dependent_false<B>,
-      "subtract an inside, not a raw scalar: write `a - 1_ins` / `a - just<1>` / "
-      "`a - one`, or `a - inside<{lo,hi}>{n}` for a runtime value with a known range"); }
-  template <raw_scalar A, insidable B> B operator-(A, B const&) {
-    static_assert(detail::dependent_false<B>,
-      "subtract from an inside, not a raw scalar: write `1_ins - a` / `just<1> - "
-      "a` / `one - a`, or `inside<{lo,hi}>{n} - a`"); }
-
-  template <insidable B, raw_scalar A> B operator*(B const&, A) {
-    static_assert(detail::dependent_false<B>,
-      "multiply by an inside, not a raw scalar: write `a * 2_ins` / `a * just<2>`, "
-      "or `a * inside<{lo,hi}>{n}` for a runtime value with a known range"); }
-  template <raw_scalar A, insidable B> B operator*(A, B const&) {
-    static_assert(detail::dependent_false<B>,
-      "multiply an inside by an inside, not a raw scalar: write `2_ins * a` / "
-      "`just<2> * a`, or `inside<{lo,hi}>{n} * a`"); }
-
-  template <insidable B, raw_scalar A> B operator/(B const&, A) {
-    static_assert(detail::dependent_false<B>,
-      "divide by an inside, not a raw scalar: write `a / 2_ins` / `a / just<2>`, "
-      "or `a / inside<{lo,hi}>{n}` for a runtime value with a known range"); }
-  template <raw_scalar A, insidable B> B operator/(A, B const&) {
-    static_assert(detail::dependent_false<B>,
-      "divide an inside by an inside, not a raw scalar: write `6_ins / a` / "
-      "`just<6> / a`, or `inside<{lo,hi}>{n} / a`"); }
-
-  //---------------------------------------------------------------------------
-  // Compound assignment with a raw scalar is ill-formed for the same reason —
-  // an inside is mutated by another inside (or a rational), never a bare number.
-  // These guidance overloads turn `b += 1` into a readable diagnostic instead
-  // of a generic "no viable operator+=". Same SFINAE-transparent shape as the
-  // binary operators above.
-  //---------------------------------------------------------------------------
-  template <insidable B, raw_scalar A> B& operator+=(B&, A) {
-    static_assert(detail::dependent_false<B>,
-      "add an inside, not a raw scalar: write `b += 1_ins` / `b += just<1>`, or "
-      "`b += inside<{lo,hi}>{n}` for a runtime value with a known range"); }
-  template <insidable B, raw_scalar A> B& operator-=(B&, A) {
-    static_assert(detail::dependent_false<B>,
-      "subtract an inside, not a raw scalar: write `b -= 1_ins` / `b -= just<1>`, "
-      "or `b -= inside<{lo,hi}>{n}` for a runtime value with a known range"); }
-  template <insidable B, raw_scalar A> B& operator*=(B&, A) {
-    static_assert(detail::dependent_false<B>,
-      "multiply by an inside, not a raw scalar: write `b *= 2_ins` / `b *= just<2>`, "
-      "or `b *= inside<{lo,hi}>{n}` for a runtime value with a known range"); }
-  template <insidable B, raw_scalar A> B& operator/=(B&, A) {
-    static_assert(detail::dependent_false<B>,
-      "divide by an inside, not a raw scalar: write `b /= 2_ins` / `b /= just<2>`, "
-      "or `b /= inside<{lo,hi}>{n}` for a runtime value with a known range"); }
-  template <insidable B, raw_scalar A> B& operator%=(B&, A) {
-    static_assert(detail::dependent_false<B>,
-      "take the modulus by an inside, not a raw scalar: write `b %= 2_ins` / "
-      "`b %= just<2>`, or `b %= inside<{lo,hi}>{n}` for a runtime value"); }
+  BEMAN_INSIDE_NO_SCALAR(+)
+  BEMAN_INSIDE_NO_SCALAR(-)
+  BEMAN_INSIDE_NO_SCALAR(*)
+  BEMAN_INSIDE_NO_SCALAR(/)
+  BEMAN_INSIDE_NO_SCALAR(%)
+#undef BEMAN_INSIDE_NO_SCALAR
+#undef BEMAN_INSIDE_SCALAR_MSG
 
 } // namespace beman::inside
 
