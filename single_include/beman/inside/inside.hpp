@@ -3156,47 +3156,68 @@ namespace beman::inside::detail
           lhs = L::from_raw(0);   // notch_storage point grid: 0 is the only offset
         else if constexpr (HasQFormatFastPath<L>)
           lhs = L::from_raw(q_format_encode<L>(static_cast<imax>(rhs)));
-        else // index storage, generic rational path
+        else // index storage on a notch 1/K grid: the offset is an exact integer
         {
           rational raw = ((rhs - Interval<L>.Lower)/Notch<L>).value();
-          lhs = L::from_raw(raw_cast<L>(raw.Numerator / static_cast<umax>(raw.Denominator)));
+          lhs = L::from_raw(raw_cast<L>(raw.Numerator));
         }
       }
 
     public:
+      // An integer lands on L's grid whenever the notch is 1/K over an integer
+      // Lower (or the grid is continuous); otherwise it may fall between notches
+      // and must round or report exactly like the same value given as a rational.
+      static constexpr bool integers_on_grid =
+          Notch<L> == 0 || (Notch<L>.Numerator == 1 && abs_den(Lower<L>.Denominator) == 1);
+
       template<typename P, typename A = no_action>
       static constexpr L& assign(L& lhs, R const& rhs, P&& policy, A&& action = {})
       {
         static_assert(not excludes(Interval<L>, Interval<R>));
 
-        // The out-of-range check runs unconditionally — clamp/wrap
-        // policies handle it via apply_*, which is constexpr-clean. Only the
-        // unhandled-checked path winds up calling `policy.report`, which
-        // contains its own `std::is_constant_evaluated()` guard.
-        if constexpr (not includes(Interval<L>, Interval<R>))
+        if constexpr (!integers_on_grid)
+          return assignment<L, rational>::assign(lhs, rational{rhs}, policy, std::forward<A>(action));
+        else
         {
-          if constexpr (IsIntegerInterval<L>)
+          // The out-of-range check runs unconditionally — clamp/wrap
+          // policies handle it via apply_*, which is constexpr-clean. Only the
+          // unhandled-checked path winds up calling `policy.report`, which
+          // contains its own `std::is_constant_evaluated()` guard.
+          if constexpr (not includes(Interval<L>, Interval<R>))
           {
-            // Skip the runtime range branch entirely when every handler would
-            // be dead anyway — the dead branch otherwise inhibits autovec.
-            if constexpr (needs_runtime_domain_check<L, plain<P>, plain<A>>)
+            if constexpr (IsIntegerInterval<L>)
             {
-              constexpr imax lower = LowerImax<L>;
-              constexpr imax upper = UpperImax<L>;
-              if (static_cast<imax>(rhs) < lower || static_cast<imax>(rhs) > upper) [[unlikely]]
-                if (handle_out_of_range(lhs, rhs, lower, upper, policy, action)) return lhs;
+              // Skip the runtime range branch entirely when every handler would
+              // be dead anyway — the dead branch otherwise inhibits autovec.
+              if constexpr (needs_runtime_domain_check<L, plain<P>, plain<A>>)
+              {
+                constexpr imax lower = LowerImax<L>;
+                constexpr imax upper = UpperImax<L>;
+                if (static_cast<imax>(rhs) < lower || static_cast<imax>(rhs) > upper) [[unlikely]]
+                {
+                  // The integer clamp/wrap formulas need consecutive integers to be
+                  // adjacent grid points (notch 1); a finer notch wraps modulo
+                  // span + notch on the rational path.
+                  if constexpr (Notch<L> == 1)
+                  {
+                    if (handle_out_of_range(lhs, rhs, lower, upper, policy, action)) return lhs;
+                  }
+                  else
+                    return assignment<L, rational>::assign(lhs, rational{rhs}, policy, action);
+                }
+              }
+            }
+            else if (not includes(Interval<L>, rhs))
+            {
+              // Non-integer L bounds: route through the rational path so fractional
+              // Lower/Upper drive clamp/error correctly.
+              return assignment<L, rational>::assign(lhs, rational{rhs}, policy, action);
             }
           }
-          else if (not includes(Interval<L>, rhs))
-          {
-            // Non-integer L bounds: route through the rational path so fractional
-            // Lower/Upper drive clamp/error correctly.
-            return assignment<L, rational>::assign(lhs, rational{rhs}, policy, action);
-          }
-        }
 
-        store(lhs, rhs);
-        return lhs;
+          store(lhs, rhs);
+          return lhs;
+        }
       }
   };
 
