@@ -8445,20 +8445,30 @@ namespace beman::inside::math
     // rationals: e^v and e^-v have wildly different denominators and the rational
     // cross-multiply overflows imax. At scale kRefBits each term is one scaled
     // integer (|v| ≤ 10 ⇒ e^|v|·2^30 ≤ 2.4e13, well inside int63).
+    // e^|v| and e^-|v| at scale W from ONE exponential: the small term is the
+    // rounded fixed-point reciprocal of the large one (2^2W ≤ 2^60 fits imax).
+    template <int W>
+    constexpr void exp_pair(rational v, imax& big, imax& small) noexcept
+    {
+      big   = to_fixed(exp_fixed<W>(abs(v)), W);
+      small = ((imax{1} << (2 * W)) + big / 2) / big;
+    }
+
     template <int W = kRefBits>
     constexpr rational sinh_endpoint(rational v) noexcept
     {
-      imax ex  = to_fixed(exp_fixed<W>(v),  W);
-      imax enx = to_fixed(exp_fixed<W>(-v), W);
-      return fixed_to_rational((ex - enx) / 2, W);
+      imax big, small;
+      exp_pair<W>(v, big, small);
+      const imax h = (big - small) / 2;
+      return fixed_to_rational(v < rational{0} ? -h : h, W);
     }
 
     template <int W = kRefBits>
     constexpr rational cosh_endpoint(rational v) noexcept
     {
-      imax ex  = to_fixed(exp_fixed<W>(v),  W);
-      imax enx = to_fixed(exp_fixed<W>(-v), W);
-      return fixed_to_rational((ex + enx) / 2, W);
+      imax big, small;
+      exp_pair<W>(v, big, small);
+      return fixed_to_rational((big + small) / 2, W);
     }
 
     // tanh via the overflow-safe form tanh(x) = (1 − e^-2|x|)/(1 + e^-2|x|),
