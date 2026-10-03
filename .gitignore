@@ -1,7 +1,26 @@
-build/
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+/.cache
+/compile_commands.json
+/build
 build*/
 Testing/
 tags
+
+# ignore emacs temp files
+*~
+\#*\#
+
+# ignore vscode settings
+.vscode
+
+# ignore vim swap files
+.swp
+
+# ignore merge/patch backup files
+.orig
+
+# local Claude Code state
 claude/
 continue.txt
 .claude/
