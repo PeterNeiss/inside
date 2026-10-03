@@ -206,3 +206,13 @@ TEST(ConsistencyTest, fmod_zero_divisor_is_an_error_value)
   EXPECT_EQ(r.error(), errc::division_by_zero);
   EXPECT_EQ(rational{*math::fmod(X{7}, X{-3})}, q(1));
 }
+
+// `exact` (rational) arithmetic is overflow-checked, and a result keeps the
+// operands' `checked` even when it carries a representation flag.
+TEST(ConsistencyTest, exact_arithmetic_is_overflow_checked)
+{
+  using E = inside<{{0, 1}, rational{0}}, exact>;
+  static_assert(detail::is_expected_v<decltype(E{q(1, 3)} + E{q(1, 7)})>);
+  using D = inside<{0, 10}, direct | checked>;
+  static_assert(has_flag(InsidePolicy<decltype(D{1} + D{2})>, checked));
+}

@@ -4283,8 +4283,11 @@ namespace beman::inside::detail
     static constexpr policy_flag rep =
         carried
         | (keep_f64 ? real : none) | (keep_f32 ? f32 : none);
-    // The result inside's policy: the propagated representation, or plain checked.
-    static constexpr policy_flag result_policy = rep != none ? rep : checked;
+    // The result inside's policy: the propagated representation plus the
+    // operands' `checked` (a representation flag must not switch checking off),
+    // or plain checked.
+    static constexpr policy_flag result_policy =
+        rep != none ? rep | ((InsidePolicy<Lhs> | InsidePolicy<Rhs>) & checked) : checked;
   };
 }
 
@@ -4311,7 +4314,7 @@ namespace beman::inside::detail
     template <policy_flag F>
     static constexpr bool needs_overflow_check =
         rational_raw<result>
-        && ((F | InsidePolicy<L> | InsidePolicy<R>) & checked)
+        && has_any_flag(F | InsidePolicy<L> | InsidePolicy<R>, checked | exact)
         && !rational_add_is_safe(Grid<L>, Grid<R>);
 
     template <policy_flag F = none>
@@ -4471,8 +4474,8 @@ namespace beman::inside::detail
     template <typename P>
     static constexpr bool needs_overflow_check =
         rational_raw<result>
-        && (((InsidePolicy<L> | InsidePolicy<R>) & checked) || plain<P>::test(checked)
-            || dropped_fp)
+        && (has_any_flag(InsidePolicy<L> | InsidePolicy<R>, checked | exact)
+            || plain<P>::test(checked) || dropped_fp)
         && !rational_mul_is_safe(Grid<L>, Grid<R>);
 
     template <typename P>
@@ -4769,7 +4772,7 @@ namespace beman::inside::detail
 
     template <policy_flag G = F>
     static constexpr bool needs_overflow_check =
-        ((G | F | InsidePolicy<L> | InsidePolicy<R>) & checked);
+        has_any_flag(G | F | InsidePolicy<L> | InsidePolicy<R>, checked | exact);
 
     // For a nonzero divisor the op fails only on the checked rational path
     // (overflow). So when the divisor excludes zero AND this is false, `div`

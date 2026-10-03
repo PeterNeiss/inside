@@ -45,8 +45,11 @@ namespace beman::inside::detail
     static constexpr policy_flag rep =
         carried
         | (keep_f64 ? real : none) | (keep_f32 ? f32 : none);
-    // The result inside's policy: the propagated representation, or plain checked.
-    static constexpr policy_flag result_policy = rep != none ? rep : checked;
+    // The result inside's policy: the propagated representation plus the
+    // operands' `checked` (a representation flag must not switch checking off),
+    // or plain checked.
+    static constexpr policy_flag result_policy =
+        rep != none ? rep | ((InsidePolicy<Lhs> | InsidePolicy<Rhs>) & checked) : checked;
   };
 }
 #endif

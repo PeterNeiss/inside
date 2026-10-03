@@ -38,8 +38,8 @@ namespace beman::inside::detail
     template <typename P>
     static constexpr bool needs_overflow_check =
         rational_raw<result>
-        && (((InsidePolicy<L> | InsidePolicy<R>) & checked) || plain<P>::test(checked)
-            || dropped_fp)
+        && (has_any_flag(InsidePolicy<L> | InsidePolicy<R>, checked | exact)
+            || plain<P>::test(checked) || dropped_fp)
         && !rational_mul_is_safe(Grid<L>, Grid<R>);
 
     template <typename P>
