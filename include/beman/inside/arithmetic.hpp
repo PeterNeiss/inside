@@ -134,10 +134,10 @@ namespace beman::inside
   { return beman::inside::mul(lhs, rhs); }
 
   [[nodiscard]] constexpr auto operator/(insidable auto lhs, insidable auto rhs)
-  { return beman::inside::div(lhs, rhs, make_policy<InsidePolicy<decltype(lhs)> | InsidePolicy<decltype(rhs)>>()); }
+  { return beman::inside::div(lhs, rhs, make_policy<policy_of<decltype(lhs)> | policy_of<decltype(rhs)>>()); }
 
   [[nodiscard]] constexpr auto operator%(insidable auto lhs, insidable auto rhs)
-  { return beman::inside::mod(lhs, rhs, make_policy<InsidePolicy<decltype(lhs)> | InsidePolicy<decltype(rhs)>>()); }
+  { return beman::inside::mod(lhs, rhs, make_policy<policy_of<decltype(lhs)> | policy_of<decltype(rhs)>>()); }
 
   //---------------------------------------------------------------------------
   // add_all / mul_all — variadic folds (pairwise widening, same as `a + b + c`
@@ -198,8 +198,8 @@ namespace beman::inside
         rational part = [&]
         {
           if constexpr (detail::index_raw<B>)
-            return ((rational{acc} * Notch<B>).value()
-                    + (rational{cnt} * Lower<B>).value()).value();
+            return ((rational{acc} * notch_of<B>).value()
+                    + (rational{cnt} * lower_of<B>).value()).value();
           else
             return rational{acc};
         }();
@@ -274,10 +274,10 @@ namespace beman::inside
     struct common_inside<Same, Same> { using type = Same; };
 
     template <insidable Lhs, insidable Rhs>
-      requires (!std::same_as<Lhs, Rhs>) && (hull(Grid<Lhs>, Grid<Rhs>).has_value())
+      requires (!std::same_as<Lhs, Rhs>) && (hull(grid_of<Lhs>, grid_of<Rhs>).has_value())
     struct common_inside<Lhs, Rhs>
     {
-      static constexpr grid hull_grid = *hull(Grid<Lhs>, Grid<Rhs>);
+      static constexpr grid hull_grid = *hull(grid_of<Lhs>, grid_of<Rhs>);
       using type = inside<hull_grid,
                          fp_rep<Lhs, Rhs, hull_grid, /*AllowContinuous=*/true>::result_policy>;
     };

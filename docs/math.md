@@ -188,7 +188,7 @@ other representation flags.
 | `exp(x)` / `exp2(x)` | `exp`: `[-20, 20]`, `exp2`: `[-30, 30]` | `≥ 0` | — | `exp = exp2(x·log2 e)` |
 | `log(x)` / `log2(x)` / `log10(x)` | `x > 0` | monotone | — | |
 | `pow_base<B>(x)` | integer `B ≥ 2` | `≥ 0` | — | `exp2(x·log2 B)`, `B` compile-time |
-| `pow(base, exp)` | `Lower<base> > 0` | corner-deduced | `expected`; `overflow` if `exp·log2 base` leaves `[-30,30]` or result leaves `Out` | runtime base |
+| `pow(base, exp)` | `lower_of<base> > 0` | corner-deduced | `expected`; `overflow` if `exp·log2 base` leaves `[-30,30]` or result leaves `Out` | runtime base |
 
 ## Constants
 

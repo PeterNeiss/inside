@@ -11,7 +11,7 @@
 #include <beman/inside/policy.hpp>
 
 //---------------------------------------------------------------------------
-// addition — `add(L, R, policy, action) -> inside<G>`, G = Grid<L> + Grid<R>.
+// addition — `add(L, R, policy, action) -> inside<G>`, G = grid_of<L> + grid_of<R>.
 // The grid arithmetic is sound by construction (the result interval contains
 // every runtime sum), so overflow can only happen on rational-raw results.
 // Specialises on the storage shapes: rational result, mixed rational/integer,
@@ -22,10 +22,10 @@ namespace beman::inside::detail
   template <insidable L, insidable R = L>
   struct addition
   {
-    static_assert((Grid<L> + Grid<R>).has_value(),
+    static_assert((grid_of<L> + grid_of<R>).has_value(),
       "addition: result grid's notch/interval exceeds the representable rational "
       "range — coarsen the operand grids");
-    static constexpr grid result_grid = (Grid<L> + Grid<R>).value();
+    static constexpr grid result_grid = (grid_of<L> + grid_of<R>).value();
     // fp / representation propagation — shared rule in detail/rep.hpp.
     using rep_t = fp_rep<L, R, result_grid>;
     using result = inside<result_grid, rep_t::result_policy>;
@@ -33,8 +33,8 @@ namespace beman::inside::detail
     template <policy_flag F>
     static constexpr bool needs_overflow_check =
         rational_raw<result>
-        && has_any_flag(F | InsidePolicy<L> | InsidePolicy<R>, checked | exact)
-        && !rational_add_is_safe(Grid<L>, Grid<R>);
+        && has_any_flag(F | policy_of<L> | policy_of<R>, checked | exact)
+        && !rational_add_is_safe(grid_of<L>, grid_of<R>);
 
     template <policy_flag F = none>
     using return_type_for = std::conditional_t<needs_overflow_check<F>,
@@ -50,7 +50,7 @@ namespace beman::inside::detail
     // result notch 1/d, both operand offsets in result-notch units are exact
     // integer math — (to_value − Lower)·d for the integer-aligned operand,
     // raw·widen for the notch-offset one (offsets compose because
-    // Lower<result> = Lower<L> + Lower<R>). Gated on an index-raw result and
+    // lower_of<result> = lower_of<L> + lower_of<R>). Gated on an index-raw result and
     // the result slot count fitting imax so no intermediate can overflow
     // (each operand contribution ≤ its own span/N ≤ the result slot count).
     static constexpr bool mixed_offset_ok = []{
@@ -59,14 +59,14 @@ namespace beman::inside::detail
                     || fp_raw<result> || !index_raw<result>
                     || (IsIntegerAligned<L> && IsIntegerAligned<R>)
                     || (index_raw<L> && index_raw<R>)
-                    || Notch<result> == 0 || Notch<result>.Numerator != 1)
+                    || notch_of<result> == 0 || notch_of<result>.Numerator != 1)
         return false;
       else
       {
-        constexpr auto span = Upper<result> - Lower<result>;
+        constexpr auto span = upper_of<result> - lower_of<result>;
         if (!span.has_value())
           return false;
-        const auto slots = *span / Notch<result>;
+        const auto slots = *span / notch_of<result>;
         return slots.has_value()
             && (*slots).Numerator
                  <= static_cast<umax>(std::numeric_limits<imax>::max());
@@ -79,7 +79,7 @@ namespace beman::inside::detail
     {
       if constexpr (IsIntegerAligned<X>)
       {
-        constexpr imax den = static_cast<imax>(abs_den(Notch<result>.Denominator));
+        constexpr imax den = static_cast<imax>(abs_den(notch_of<result>.Denominator));
         return (to_value(x) - LowerImax<X>) * den;
       }
       else
@@ -88,12 +88,12 @@ namespace beman::inside::detail
 
     // Result notch is gcd(NL, NR); scale each raw up to it before adding —
     // lhs_widen = NL/Nresult, rhs_widen = NR/Nresult (exact, Nresult divides both).
-    // A continuous result (Notch<result> == 0) has no widen (it takes the
+    // A continuous result (notch_of<result> == 0) has no widen (it takes the
     // rational path), so 1 stands in.
-    static constexpr imax lhs_widen = (Notch<result> == 0) ? imax{1}
-        : (Notch<L> / Notch<result>).value_or(rational{1}).Numerator;
-    static constexpr imax rhs_widen = (Notch<result> == 0) ? imax{1}
-        : (Notch<R> / Notch<result>).value_or(rational{1}).Numerator;
+    static constexpr imax lhs_widen = (notch_of<result> == 0) ? imax{1}
+        : (notch_of<L> / notch_of<result>).value_or(rational{1}).Numerator;
+    static constexpr imax rhs_widen = (notch_of<result> == 0) ? imax{1}
+        : (notch_of<R> / notch_of<result>).value_or(rational{1}).Numerator;
 
     template <policy_flag F = none, typename E = empty_ref, typename A = no_action>
     static constexpr auto add(L lhs, R rhs, policy<F, E> policy = {}, A&& action = {}) -> add_return_t<F, A>
@@ -138,7 +138,7 @@ namespace beman::inside::detail
       // result's raw via raw_from_offset.
       auto sum = rational::add_unchecked(lhs,rhs);
       res = result::from_raw(raw_from_offset<result>(
-          ((sum - Lower<result>) / Notch<result>).value().Numerator));
+          ((sum - lower_of<result>) / notch_of<result>).value().Numerator));
     }
     else if constexpr (IsIntegerAligned<L> && IsIntegerAligned<R>)
     {
@@ -149,7 +149,7 @@ namespace beman::inside::detail
     else
     {
       // Both notch-offset: scale each raw to the result notch and add in offset
-      // space (offsets compose because result Lower = Lower<L> + Lower<R>).
+      // space (offsets compose because result Lower = lower_of<L> + lower_of<R>).
       res = result::from_raw(raw_cast<result>(raw_imax(lhs) * lhs_widen + raw_imax(rhs) * rhs_widen));
     }
     return res;

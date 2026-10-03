@@ -51,7 +51,7 @@ using db_t       = inside<{{-24, 12}, notch<1, 2>}, round_nearest>;
 // dB/20 intermediate. Range chosen to cover [-1.2, 0.6] (the true range for
 // dB ∈ [-24, 12]) but rounded out to integer endpoints so the grid validates
 // against the 1/65536 notch. The fine notch is deliberate — auto-deduced
-// pow_base<10> output inherits Notch<In>, and a coarser exponent grid would
+// pow_base<10> output inherits notch_of<In>, and a coarser exponent grid would
 // snap the linear output to audible 0.025-wide steps.
 using db_div20_t = inside<{{-2, 1}, notch<1, 65536>}, round_nearest | f64>;
 // Linear amplitude. dB ∈ [-24, 12] ⇒ amp ∈ [10^-1.2, 10^0.6] ≈ [0.063, 3.98].

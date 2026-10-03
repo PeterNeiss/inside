@@ -176,7 +176,7 @@ TEST(StorageFlagsTest, representation_flags_resolve_widest_wins)
   using Ex = inside<{{0, 4}, notch<1, 256>}, exact | round_nearest>;
   using Re = inside<{{0, 4}, notch<1, 256>}, round_nearest | f64>;
   using Sum = decltype(Ex{} + Re{});
-  static_assert((InsidePolicy<Sum> & exact) == exact);
+  static_assert((policy_of<Sum> & exact) == exact);
   static_assert(detail::rational_raw<Sum>);
   ASSERT_EQ((rational{Sum{Ex{rational{1, 256}} + Re{rational{2, 256}}}}), (rational{3, 256}));
 
@@ -485,8 +485,8 @@ TEST(StorageFlagsTest, pown_e_exact_compile_time_integer_powers_on_any_inside)
 
   // Result grid widens corner-correctly: (-10..10)^3 covers ±1000.
   using cube_t = decltype(math::pown<3>(s8{}));
-  static_assert(Lower<cube_t> <= -1000);
-  static_assert(Upper<cube_t> >= 1000);
+  static_assert(lower_of<cube_t> <= -1000);
+  static_assert(upper_of<cube_t> >= 1000);
 
   // Exact on fractional grids.
   using q = inside<{{0, 2}, notch<1, 4>}, round_nearest>;

@@ -137,7 +137,7 @@ namespace beman::inside
     requires (detail::fp_raw<B> || detail::rational_raw<B>)
   inline std::string to_string(B b)
   {
-    if constexpr (detail::fp_raw<B> && Notch<B> == beman::inside::detail::rational{0})
+    if constexpr (detail::fp_raw<B> && notch_of<B> == beman::inside::detail::rational{0})
       return std::to_string(detail::as_double(b));
     else
       return to_string(beman::inside::detail::as_rational(b));
@@ -183,7 +183,7 @@ namespace beman::inside
     str += beman::inside::to_string(+b.raw());
     str += "[" + std::string(detail::type_name<detail::raw_t<B>>());
     str += " Max:" + beman::inside::to_string(+detail::NotchCount<B>) + "] ";
-    str += beman::inside::to_string(Grid<B>);
+    str += beman::inside::to_string(grid_of<B>);
     str += "}";
     return str;
   }

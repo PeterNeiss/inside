@@ -17,7 +17,7 @@ using namespace beman::inside::detail;
 //---------------------------------------------------------------------------
 // Bug A — addition.hpp:90
 //
-// The rational-mixed `add` branch stores `((sum - Lower<result>) / Notch<result>)`
+// The rational-mixed `add` branch stores `((sum - lower_of<result>) / notch_of<result>)`
 // directly into `res.Raw`. That's the L-offset, but when the result type is
 // !index_raw<result> the Raw must hold the *value*. Same encoding-
 // mismatch class as the previously-fixed assignment paths.
@@ -37,7 +37,7 @@ TEST(StorageBugsTest, bug_a_rational_mixed_add_into_direct_storage_result)
 //---------------------------------------------------------------------------
 // Bug B — multiplication.hpp:117
 //
-// The third-quadrant case (Lower<result> == Upper<L> * Lower<R>) computes
+// The third-quadrant case (lower_of<result> == upper_of<L> * lower_of<R>) computes
 // `negRaw = NotchCount<L> - lhs.Raw`. That formula treats lhs.Raw as a
 // notch-offset, which is correct for offset-encoded raws but wrong for
 // direct-storage signed raws (where Raw is the value).
@@ -53,7 +53,7 @@ TEST(StorageBugsTest, bug_b_signed_direct_multiplication_third_quadrant)
   using L = inside<{-5, 5}>;                            // signed-direct, integer-aligned
   using R = inside<{{-10, 10}, rational{1u, 2}}>;       // notch 1/2, not direct, not integer-aligned
 
-  // Lower<result> = Upper<L> * Lower<R> = 5 * -10 = -50 → third quadrant.
+  // lower_of<result> = upper_of<L> * lower_of<R> = 5 * -10 = -50 → third quadrant.
   // Without the fix, L{2} * R{1} produces value -3 instead of 2.
   static_assert(L{ 2} * R{rational{ 1u}} == rational{ 2u});
   static_assert(L{ 3} * R{rational{ 2u}} == rational{ 6u});

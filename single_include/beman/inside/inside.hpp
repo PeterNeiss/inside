@@ -2438,8 +2438,8 @@ namespace beman::inside
 
 //---------------------------------------------------------------------------
 // generic — type-level traits and predicates used everywhere else. Public
-// grid/policy introspection (`Grid<B>`, `InsidePolicy<B>`, `Lower/Upper/Notch<B>`,
-// `Interval<B>`) plus the `insidable`/`numeric`/`inside_assignable` concepts; the
+// grid/policy introspection (`grid_of<B>`, `policy_of<B>`, `Lower/Upper/notch_of<B>`,
+// `interval_of<B>`) plus the `insidable`/`numeric`/`inside_assignable` concepts; the
 // storage-shape predicates and raw/value converters are internal (`beman::inside::detail`).
 //---------------------------------------------------------------------------
 namespace beman::inside
@@ -2468,24 +2468,24 @@ namespace beman::inside
   }
 
   template <insidable B>
-  inline constexpr grid Grid = detail::inside_params<std::remove_cvref_t<B>>::grid_v;
+  inline constexpr grid grid_of = detail::inside_params<std::remove_cvref_t<B>>::grid_v;
 
   template <insidable B>
-  inline constexpr policy_flag InsidePolicy = detail::inside_params<std::remove_cvref_t<B>>::policy_v;
+  inline constexpr policy_flag policy_of = detail::inside_params<std::remove_cvref_t<B>>::policy_v;
 
   template <typename T>
-  inline constexpr interval Interval = {0,0};
+  inline constexpr interval interval_of = {0,0};
 
   template <insidable B>
-  inline constexpr interval Interval<B> = Grid<B>.Interval;
+  inline constexpr interval interval_of<B> = grid_of<B>.Interval;
 
   template <std::integral I>
-  inline constexpr interval Interval<I> =
+  inline constexpr interval interval_of<I> =
       {std::numeric_limits<I>::lowest(), std::numeric_limits<I>::max()};
 
-  template <insidable B> inline constexpr detail::rational Lower = Grid<B>.Interval.Lower;
-  template <insidable B> inline constexpr detail::rational Upper = Grid<B>.Interval.Upper;
-  template <insidable B> inline constexpr detail::rational Notch = Grid<B>.Notch;
+  template <insidable B> inline constexpr detail::rational lower_of = grid_of<B>.Interval.Lower;
+  template <insidable B> inline constexpr detail::rational upper_of = grid_of<B>.Interval.Upper;
+  template <insidable B> inline constexpr detail::rational notch_of = grid_of<B>.Notch;
 
   template <typename N>
   concept numeric = insidable<N> or arithmetic<N>;
@@ -2565,14 +2565,14 @@ namespace beman::inside
     template <insidable B>
     inline constexpr bool value_raw =
          !fp_raw<B> && !rational_raw<B>
-      && ((InsidePolicy<B> & direct) == direct
+      && ((policy_of<B> & direct) == direct
           // A pinned width flag without `indexed` is value storage (raw == value)
           // regardless of Lower's sign — storage_pick checked the range fits.
-          || (has_width_flag(InsidePolicy<B>)
-              && (InsidePolicy<B> & indexed) != indexed)
-          || ((InsidePolicy<B> & indexed) != indexed
-              && Notch<B> == 1
-              && (Lower<B> == 0 || std::signed_integral<raw_t<B>>)));
+          || (has_width_flag(policy_of<B>)
+              && (policy_of<B> & indexed) != indexed)
+          || ((policy_of<B> & indexed) != indexed
+              && notch_of<B> == 1
+              && (lower_of<B> == 0 || std::signed_integral<raw_t<B>>)));
 
     template <insidable B>
     inline constexpr bool index_raw =
@@ -2588,30 +2588,30 @@ namespace beman::inside
       if constexpr (!index_raw<B>)
         return static_cast<double>(b.raw());
       else
-        return static_cast<double>((*(b.raw() * Notch<B>) + Lower<B>).value());
+        return static_cast<double>((*(b.raw() * notch_of<B>) + lower_of<B>).value());
     }
 
     template <insidable B>
-    using negative = inside<-Grid<B>, InsidePolicy<B>>;
+    using negative = inside<-grid_of<B>, policy_of<B>>;
 
     // True when R's interval cannot contain zero — so `a / b` can return a plain
     // `inside` instead of `expected<inside, errc>` (see detail/division.hpp). A point
     // grid at 0 is *not* excluded.
     template <insidable R>
-    inline constexpr bool DivisorExcludesZero = (Lower<R> > 0) || (Upper<R> < 0);
+    inline constexpr bool DivisorExcludesZero = (lower_of<R> > 0) || (upper_of<R> < 0);
 
     // Storage-agnostic int truncation of interval endpoints — intent-revealing
-    // `static_cast<imax>(Lower<B>)`. Used by from_value, RawLo, the fast paths.
+    // `static_cast<imax>(lower_of<B>)`. Used by from_value, RawLo, the fast paths.
     template <insidable B>
-    inline constexpr imax LowerImax = trunc(Lower<B>);
+    inline constexpr imax LowerImax = trunc(lower_of<B>);
 
     template <insidable B>
-    inline constexpr imax UpperImax = trunc(Upper<B>);
+    inline constexpr imax UpperImax = trunc(upper_of<B>);
 
     // Slot count via grid::max_notch (overflow-safe: 0 when it doesn't fit umax,
     // for grids that store as rational and never use the index).
     template <insidable B>
-    inline constexpr umax NotchCount = Grid<B>.max_notch();
+    inline constexpr umax NotchCount = grid_of<B>.max_notch();
 
     //-------------------------------------------------------------------------
     // grid_value_bounds / rational_mul_is_safe / rational_add_is_safe
@@ -2715,8 +2715,8 @@ namespace beman::inside
     //-------------------------------------------------------------------------
     template <insidable B>
     inline constexpr bool HasQFormatFastPath =
-        abs_den(Lower<B>.Denominator) == 1
-        && Notch<B>.Numerator == 1
+        abs_den(lower_of<B>.Denominator) == 1
+        && notch_of<B>.Numerator == 1
         && !rational_raw<B>
         && (std::signed_integral<raw_t<B>>
             || NotchCount<B> <= static_cast<umax>(std::numeric_limits<imax>::max()));
@@ -2725,7 +2725,7 @@ namespace beman::inside
     template <insidable B>
     constexpr raw_t<B> q_format_encode(imax value) noexcept
     {
-      constexpr imax nd = abs_den(Notch<B>.Denominator);
+      constexpr imax nd = abs_den(notch_of<B>.Denominator);
       return raw_cast<B>((value - LowerImax<B>) * nd);
     }
 
@@ -2733,7 +2733,7 @@ namespace beman::inside
     template <insidable B>
     constexpr rational q_format_decode(B b) noexcept
     {
-      constexpr imax nd = abs_den(Notch<B>.Denominator);
+      constexpr imax nd = abs_den(notch_of<B>.Denominator);
       return rational{raw_imax(b) + LowerImax<B> * nd, nd};
     }
 
@@ -2746,11 +2746,11 @@ namespace beman::inside
     {
       if constexpr (!index_raw<B>)
         return raw_imax(b);
-      else if constexpr (abs_den(Notch<B>.Denominator) == 1 && abs_den(Lower<B>.Denominator) == 1)
-        return LowerImax<B> + raw_imax(b) * static_cast<imax>(Notch<B>.Numerator);
+      else if constexpr (abs_den(notch_of<B>.Denominator) == 1 && abs_den(lower_of<B>.Denominator) == 1)
+        return LowerImax<B> + raw_imax(b) * static_cast<imax>(notch_of<B>.Numerator);
       else if constexpr (HasQFormatFastPath<B>)
       {
-        constexpr imax nd = abs_den(Notch<B>.Denominator);
+        constexpr imax nd = abs_den(notch_of<B>.Denominator);
         return (raw_imax(b) + LowerImax<B> * nd) / nd;   // q_format_decode, truncated
       }
       else // index storage, generic rational path
@@ -2762,13 +2762,13 @@ namespace beman::inside
     {
       if constexpr (!index_raw<B>)
         b = B::from_raw(raw_cast<B>(val));
-      else if constexpr (abs_den(Notch<B>.Denominator) == 1 && abs_den(Lower<B>.Denominator) == 1)
-        b = B::from_raw(raw_cast<B>((val - LowerImax<B>) / static_cast<imax>(Notch<B>.Numerator)));
+      else if constexpr (abs_den(notch_of<B>.Denominator) == 1 && abs_den(lower_of<B>.Denominator) == 1)
+        b = B::from_raw(raw_cast<B>((val - LowerImax<B>) / static_cast<imax>(notch_of<B>.Numerator)));
       else if constexpr (HasQFormatFastPath<B>)
         b = B::from_raw(q_format_encode<B>(val));
       else // index storage, generic rational path
       {
-        auto offset = (rational{val} - Lower<B>) / Notch<B>;
+        auto offset = (rational{val} - lower_of<B>) / notch_of<B>;
         b = B::from_raw(raw_cast<B>(offset.value().Numerator));
       }
     }
@@ -2816,11 +2816,11 @@ namespace beman::inside
     //-------------------------------------------------------------------------
     template <insidable B>
     inline constexpr bool IsIntegerInterval =
-        abs_den(Lower<B>.Denominator) == 1 && abs_den(Upper<B>.Denominator) == 1;
+        abs_den(lower_of<B>.Denominator) == 1 && abs_den(upper_of<B>.Denominator) == 1;
 
     template <insidable B>
     inline constexpr bool IsIntegerAligned =
-        abs_den(Notch<B>.Denominator) == 1 && abs_den(Lower<B>.Denominator) == 1;
+        abs_den(notch_of<B>.Denominator) == 1 && abs_den(lower_of<B>.Denominator) == 1;
 
     // Q-format: the canonical fixed-point shape (Q8.8, Q16.16, ...). Notch has
     // unit numerator with integer denominator > 1, Lower is an integer at 0.
@@ -2830,16 +2830,16 @@ namespace beman::inside
     template <insidable B>
     inline constexpr bool IsQFormat =
            !rational_raw<B>
-        && Notch<B>.Numerator == 1
-        && abs_den(Notch<B>.Denominator) > 1
-        && abs_den(Lower<B>.Denominator) == 1
-        && Lower<B> == 0;
+        && notch_of<B>.Numerator == 1
+        && abs_den(notch_of<B>.Denominator) > 1
+        && abs_den(lower_of<B>.Denominator) == 1
+        && lower_of<B> == 0;
 
     // Policy test: checks both type-level and per-operation policy.
     // Composite flags (e.g. round_nearest = bit5 | snap) require all
     // their bits set — having a subset like just `snap` does NOT match.
     template <insidable B, typename P, policy_flag F>
-    inline constexpr bool HasPolicy = has_flag(InsidePolicy<B>, F) || plain<P>::test(F);
+    inline constexpr bool HasPolicy = has_flag(policy_of<B>, F) || plain<P>::test(F);
 
     // rounding_of (policy_flag.hpp) over L's type policy and the call's policy P.
     template <insidable L, typename P>
@@ -2857,11 +2857,11 @@ namespace beman::inside
     template <insidable L, typename P>
     [[nodiscard]] constexpr rational round_to_lattice(rational v)
     {
-      if constexpr (Notch<L> == 0)
+      if constexpr (notch_of<L> == 0)
         return v;
       else
       {
-        const rational qv = (v / Notch<L>).value();
+        const rational qv = (v / notch_of<L>).value();
         constexpr round_mode m = rounding_for<L, P>;
         imax k;
         if constexpr (m == round_mode::nearest)    k = round(qv);
@@ -2875,7 +2875,7 @@ namespace beman::inside
           k = frac > half ? f + 1 : frac < half ? f : ((f & 1) ? f + 1 : f);
         }
         else                                       k = trunc(qv);
-        return (rational{k} * Notch<L>).value();
+        return (rational{k} * notch_of<L>).value();
       }
     }
 
@@ -2912,9 +2912,9 @@ namespace beman::inside
     [[nodiscard]] constexpr umax round_quotient(umax num, umax den) noexcept
     {
       constexpr rational zl =
-          (Notch<L> == rational{0})
+          (notch_of<L> == rational{0})
             ? rational{0}
-            : (Lower<L> / Notch<L>).value_or(rational{0});
+            : (lower_of<L> / notch_of<L>).value_or(rational{0});
       constexpr bool vidx = (zl.Denominator == 1 || zl.Denominator == -1);
       constexpr imax m = vidx
           ? signed_numerator(zl)
@@ -2973,7 +2973,7 @@ namespace beman::inside
     // `{{0,9},3}` while rejecting `1_ins` and out-of-range points.
     template <typename L, typename R>
     inline constexpr bool point_exactly_assignable =
-      (Lower<R> == Upper<R>) && Grid<L>.representable(Lower<R>);
+      (lower_of<R> == upper_of<R>) && grid_of<L>.representable(lower_of<R>);
 
     // Tail of the policy cascade: checked reports.
     // Returns true if a policy handled the failure (caller should return).
@@ -2998,13 +2998,13 @@ namespace beman::inside
       (!insidable<R> && !std::integral<R>)
       // wrap/clamp bring any value into range, so a disjoint rhs interval is fine
       // for them (the integral-rhs path already allows it — int's interval is unbounded).
-      || ((InsidePolicy<L> | P) & (wrap | clamp)) != 0
-      || not excludes(Interval<L>, Interval<R>);
+      || ((policy_of<L> | P) & (wrap | clamp)) != 0
+      || not excludes(interval_of<L>, interval_of<R>);
 
     template <typename L, typename R, policy_flag P>
     concept assign_notch_ok =
       !insidable<R> || abs_den(assignment<L, R>::Factor.Denominator) == 1
-      || ((InsidePolicy<L> | P) & snap) != 0
+      || ((policy_of<L> | P) & snap) != 0
       || point_exactly_assignable<L, R>;
   } // namespace detail
 
@@ -3048,7 +3048,7 @@ namespace beman::inside
   // Public manual probe: `static_assert(beman::inside::why_assignable<DstInside, decltype(src)>);`
   // emits the named per-clause reasons in any build — including a strict
   // (`BEMAN_INSIDE_STRICT_SFINAE`) build where the automatic in-`inside` fallbacks are absent.
-  template <typename Dst, typename Src, policy_flag P = InsidePolicy<Dst>>
+  template <typename Dst, typename Src, policy_flag P = policy_of<Dst>>
   inline constexpr bool why_assignable =
     inside_assignable_why<Dst, std::remove_cvref_t<Src>, P>::value;
 } // namespace beman::inside
@@ -3192,13 +3192,13 @@ namespace beman::inside::detail
       {
         if constexpr (!index_raw<L>)
           lhs = L::from_raw(raw_cast<L>(rhs));
-        else if constexpr (Lower<L> == Upper<L>)
+        else if constexpr (lower_of<L> == upper_of<L>)
           lhs = L::from_raw(0);   // notch_storage point grid: 0 is the only offset
         else if constexpr (HasQFormatFastPath<L>)
           lhs = L::from_raw(q_format_encode<L>(static_cast<imax>(rhs)));
         else // index storage on a notch 1/K grid: the offset is an exact integer
         {
-          rational raw = ((rhs - Interval<L>.Lower)/Notch<L>).value();
+          rational raw = ((rhs - interval_of<L>.Lower)/notch_of<L>).value();
           lhs = L::from_raw(raw_cast<L>(raw.Numerator));
         }
       }
@@ -3208,12 +3208,12 @@ namespace beman::inside::detail
       // Lower (or the grid is continuous); otherwise it may fall between notches
       // and must round or report exactly like the same value given as a rational.
       static constexpr bool integers_on_grid =
-          Notch<L> == 0 || (Notch<L>.Numerator == 1 && abs_den(Lower<L>.Denominator) == 1);
+          notch_of<L> == 0 || (notch_of<L>.Numerator == 1 && abs_den(lower_of<L>.Denominator) == 1);
 
       template<typename P, typename A = no_action>
       static constexpr L& assign(L& lhs, R const& rhs, P&& policy, A&& action = {})
       {
-        static_assert(not excludes(Interval<L>, Interval<R>));
+        static_assert(not excludes(interval_of<L>, interval_of<R>));
 
         if constexpr (!integers_on_grid)
           return assignment<L, rational>::assign(lhs, rational{rhs}, policy, std::forward<A>(action));
@@ -3223,7 +3223,7 @@ namespace beman::inside::detail
           // policies handle it via apply_*, which is constexpr-clean. Only the
           // unhandled-checked path winds up calling `policy.report`, which
           // contains its own `std::is_constant_evaluated()` guard.
-          if constexpr (not includes(Interval<L>, Interval<R>))
+          if constexpr (not includes(interval_of<L>, interval_of<R>))
           {
             if constexpr (IsIntegerInterval<L>)
             {
@@ -3238,7 +3238,7 @@ namespace beman::inside::detail
                   // The integer clamp/wrap formulas need consecutive integers to be
                   // adjacent grid points (notch 1); a finer notch wraps modulo
                   // span + notch on the rational path.
-                  if constexpr (Notch<L> == 1)
+                  if constexpr (notch_of<L> == 1)
                   {
                     if (handle_out_of_range(lhs, rhs, lower, upper, policy, action)) return lhs;
                   }
@@ -3247,7 +3247,7 @@ namespace beman::inside::detail
                 }
               }
             }
-            else if (not includes(Interval<L>, rhs))
+            else if (not includes(interval_of<L>, rhs))
             {
               // Non-integer L bounds: route through the rational path so fractional
               // Lower/Upper drive clamp/error correctly.
@@ -3272,7 +3272,7 @@ namespace beman::inside::detail
       template<typename P, typename A>
       static constexpr void apply_clamp(L& lhs, R rhs, P&&, A&& action)
       {
-        R clamped = (rhs < Lower<L>) ? static_cast<R>(Lower<L>) : static_cast<R>(Upper<L>);
+        R clamped = (rhs < lower_of<L>) ? static_cast<R>(lower_of<L>) : static_cast<R>(upper_of<L>);
         R overshoot;
         if constexpr (std::same_as<R, rational>)
           overshoot = (rhs - clamped).value_or(rational{0});
@@ -3284,13 +3284,13 @@ namespace beman::inside::detail
         // the exact constant (a double round-trip would lose non-dyadic endpoints);
         // raw_from_offset<L> adds Lower back for direct-encoded storage.
         if constexpr (fp_raw<L>)
-          lhs = L::from_raw((rhs < Lower<L>) ? static_cast<double>(Lower<L>)
-                                             : static_cast<double>(Upper<L>));
+          lhs = L::from_raw((rhs < lower_of<L>) ? static_cast<double>(lower_of<L>)
+                                             : static_cast<double>(upper_of<L>));
         else if constexpr (rational_raw<L>)
-          lhs = L::from_raw((rhs < Lower<L>) ? Lower<L> : Upper<L>);
+          lhs = L::from_raw((rhs < lower_of<L>) ? lower_of<L> : upper_of<L>);
         else
           lhs = L::from_raw(raw_from_offset<L>(
-              (rhs < Lower<L>) ? umax{0} : NotchCount<L>));
+              (rhs < lower_of<L>) ? umax{0} : NotchCount<L>));
 
         if constexpr (clamp_action<plain<A>>)
           action.fn(lhs, overshoot);
@@ -3314,8 +3314,8 @@ namespace beman::inside::detail
         rational rhs_r{rhs};
         if constexpr (HasPolicy<L, P, snap>)
           rhs_r = round_to_lattice<L, P>(rhs_r);
-        rational lower_r = Lower<L>;
-        rational range   = ((Upper<L> - lower_r).value() + Notch<L>).value();
+        rational lower_r = lower_of<L>;
+        rational range   = ((upper_of<L> - lower_r).value() + notch_of<L>).value();
         // q = floor((rhs - lower) / range), wrapped = rhs - q * range
         rational shifted = (rhs_r - lower_r).value();
         imax q = floor((shifted / range).value());
@@ -3342,15 +3342,15 @@ namespace beman::inside::detail
 
       static constexpr wide_quotient wide_offset_quotient(rational const& rv)
       {
-        if constexpr (Notch<L> == 0)
+        if constexpr (notch_of<L> == 0)
           return {};                       // continuous grids never index slots
         else
         {
-          constexpr umax n_l     = Lower<L>.Numerator;
-          constexpr umax a_dl    = abs_den(Lower<L>.Denominator);
-          constexpr bool low_neg = Lower<L>.Denominator < 0;
-          constexpr umax n_n     = Notch<L>.Numerator;   // Notch > 0: d_n > 0
-          constexpr umax d_n     = static_cast<umax>(Notch<L>.Denominator);
+          constexpr umax n_l     = lower_of<L>.Numerator;
+          constexpr umax a_dl    = abs_den(lower_of<L>.Denominator);
+          constexpr bool low_neg = lower_of<L>.Denominator < 0;
+          constexpr umax n_n     = notch_of<L>.Numerator;   // Notch > 0: d_n > 0
+          constexpr umax d_n     = static_cast<umax>(notch_of<L>.Denominator);
 
           // Compile-time divisor part; a grid whose a_dl·n_n cannot fit umax
           // is beyond the wide envelope entirely.
@@ -3418,7 +3418,7 @@ namespace beman::inside::detail
       template<typename P, typename A = no_action>
       static constexpr bool store_checked(L& lhs, R rhs, P&& policy, A&& action = {})
       {
-        if constexpr (rational_raw<L> && Notch<L> == 0)
+        if constexpr (rational_raw<L> && notch_of<L> == 0)
         { lhs = L::from_raw(rhs); return true; }   // continuous: store verbatim
         else if constexpr (fp_raw<L>)
         {
@@ -3427,14 +3427,14 @@ namespace beman::inside::detail
           const double v = static_cast<double>(rhs);
           if (!(v - v == 0)) [[unlikely]]                  // assign() screens these first
           { policy.report(errc::not_finite); return false; }
-          lhs = L::from_raw(snap_double<Grid<L>, rounding_for<L, P>>(v));
+          lhs = L::from_raw(snap_double<grid_of<L>, rounding_for<L, P>>(v));
           return true;
         }
-        else if constexpr (Lower<L> == Upper<L>)
+        else if constexpr (lower_of<L> == upper_of<L>)
         {
           // Singleton grid: offset encoding → Raw=0; rational/direct → Raw = Lower.
           if constexpr (rational_raw<L>)
-            lhs = L::from_raw(Lower<L>);
+            lhs = L::from_raw(lower_of<L>);
           else if constexpr (!index_raw<L>)
             lhs = L::from_raw(raw_cast<L>(RawLo<L>));
           else
@@ -3448,7 +3448,7 @@ namespace beman::inside::detail
           auto store_slot = [&](auto k)
           {
             if constexpr (rational_raw<L>)
-              lhs = L::from_raw((Lower<L> + (rational{k} * Notch<L>).value()).value());
+              lhs = L::from_raw((lower_of<L> + (rational{k} * notch_of<L>).value()).value());
             else
               lhs = L::from_raw(raw_from_offset<L>(k));
           };
@@ -3463,16 +3463,16 @@ namespace beman::inside::detail
           // instead of two rational ops. round_quotient is invariant under reduction,
           // so the slot is bit-identical to the rational path. Oversized denominators
           // fall through (the kMaxDen guard keeps every product inside imax).
-          if constexpr (HasQFormatFastPath<L> && !fp_raw<L> && Notch<L> != 0)
+          if constexpr (HasQFormatFastPath<L> && !fp_raw<L> && notch_of<L> != 0)
           {
-            constexpr imax K  = abs_den(Notch<L>.Denominator);
+            constexpr imax K  = abs_den(notch_of<L>.Denominator);
             constexpr imax Lo = LowerImax<L>;
             constexpr umax kKM = []{
               // 2 · K · M with saturation (M bounds |value| and the offset span)
               umax k = static_cast<umax>(K);
               umax m = static_cast<umax>(
-                  ceil(((detail::abs(Lower<L>) > detail::abs(Upper<L>)
-                      ? detail::abs(Lower<L>) : detail::abs(Upper<L>))
+                  ceil(((detail::abs(lower_of<L>) > detail::abs(upper_of<L>)
+                      ? detail::abs(lower_of<L>) : detail::abs(upper_of<L>))
                    ))) * 2 + 2;
               if (k > std::numeric_limits<umax>::max() / m)
                 return std::numeric_limits<umax>::max();
@@ -3509,7 +3509,7 @@ namespace beman::inside::detail
           // which would escape noexcept callers (the math engines) as
           // terminate. Rounding here is the offset rule (round_offset), the
           // same semantics round_quotient falls back to past 64 bits.
-          const auto quotient = (rhs - Lower<L>)/Notch<L>;
+          const auto quotient = (rhs - lower_of<L>)/notch_of<L>;
           if (!quotient.has_value()) [[unlikely]]
           {
             const wide_quotient wide = wide_offset_quotient(rational{rhs});
@@ -3564,7 +3564,7 @@ namespace beman::inside::detail
           {
             if constexpr (HasPolicy<L, P, clamp>)
               if (rhs == rhs)
-                return assignment<L, rational>::assign(lhs, rhs > 0 ? Upper<L> : Lower<L>, policy);
+                return assignment<L, rational>::assign(lhs, rhs > 0 ? upper_of<L> : lower_of<L>, policy);
             if constexpr (error_action<plain<A>>)
               action.fn(lhs, errc::not_finite, errc_message(errc::not_finite));
             else
@@ -3572,7 +3572,7 @@ namespace beman::inside::detail
             return lhs;
           }
 
-        if (not includes(Interval<L>, rhs)) [[unlikely]]
+        if (not includes(interval_of<L>, rhs)) [[unlikely]]
         {
           // Fractional path has no wrap *action* branch (Wrappable = false).
           if (dispatch_out_of_range<false>(lhs, policy, action,
@@ -3596,33 +3596,33 @@ namespace beman::inside::detail
     private:
       // Offset/Factor map rhs.Raw → lhs.Raw via `lhs.Raw = Factor·rhs.Raw + Offset`.
       // Branches: L rational (pass value through), R rational (pre-divide by
-      // Notch<L>), both integer (the hot path, collapses to integer math).
+      // notch_of<L>), both integer (the hot path, collapses to integer math).
       static constexpr rational calcOffset()
       {
         if constexpr (rational_raw<L>)
-          return Lower<R>;
-        else if constexpr (Notch<L> == 0)
+          return lower_of<R>;
+        else if constexpr (notch_of<L> == 0)
           // Continuous fp_raw L: no grid to land on, mapping unused (store
-          // routes through snap_double). 0 avoids the /Notch<L> divide-by-zero.
+          // routes through snap_double). 0 avoids the /notch_of<L> divide-by-zero.
           return rational{0};
         else if constexpr (rational_raw<R>)
-          return -(Lower<L>/Notch<L>).value();
+          return -(lower_of<L>/notch_of<L>).value();
         else
-          return ((Lower<R> - Lower<L>)/Notch<L>).value();
+          return ((lower_of<R> - lower_of<L>)/notch_of<L>).value();
       }
 
       static constexpr rational calcFactor()
       {
         if constexpr (rational_raw<L>)
-          return Notch<R>;
-        else if constexpr (Notch<L> == 0)
+          return notch_of<R>;
+        else if constexpr (notch_of<L> == 0)
           // Continuous fp_raw L (see calcOffset). A denominator-1 Factor also
           // makes assign_notch_ok vacuously true (any value representable).
           return rational{0};
         else if constexpr (rational_raw<R>)
-          return (rational{1}/Notch<L>).value();
+          return (rational{1}/notch_of<L>).value();
         else
-          return (Notch<R>/Notch<L>).value();
+          return (notch_of<R>/notch_of<L>).value();
       }
 
     public:
@@ -3647,7 +3647,7 @@ namespace beman::inside::detail
       static constexpr affine_map_t affine_map = []{
         constexpr affine_map_t no{0, 0, 0, false};
         if constexpr (rational_raw<L> || rational_raw<R> || fp_raw<L> || fp_raw<R>
-                      || Notch<L> == 0 || is_integer_mapping)
+                      || notch_of<L> == 0 || is_integer_mapping)
           return no;
         else
         {
@@ -3674,7 +3674,7 @@ namespace beman::inside::detail
           // its value-index-vs-offset branch CHOICE keys on m·di + num fitting
           // imax — mirror those checks for the unreduced den so both forms
           // take the same branch (ties on negatives differ across branches).
-          constexpr auto zl = (Lower<L> / Notch<L>).value_or(rational{0});
+          constexpr auto zl = (lower_of<L> / notch_of<L>).value_or(rational{0});
           if (abs_den(zl.Denominator) == 1)
           {
             if (zl.Numerator > cap)
@@ -3690,7 +3690,7 @@ namespace beman::inside::detail
 
       // Map rhs.Raw into L's raw space (requires is_integer_mapping). The
       // Offset/Factor formula assumes offset encoding both sides; for direct
-      // storage, subtract Lower<R> first (R-value → R-offset) and add Lower<L>
+      // storage, subtract lower_of<R> first (R-value → R-offset) and add lower_of<L>
       // after (raw_from_offset<L>). All integer (is_integer_mapping guarantees it).
       static constexpr imax map_raw(auto rhs_raw)
       {
@@ -3714,9 +3714,9 @@ namespace beman::inside::detail
       // known range and is delivered as an inside, not a raw imax.
       static constexpr grid wrap_excess_grid()
       {
-        constexpr rational range = ((Upper<L> - Lower<L>).value() + Notch<L>).value();
-        return grid{ floor(((Lower<R> - Lower<L>).value() / range).value()),
-                     floor(((Upper<R> - Lower<L>).value() / range).value()) };
+        constexpr rational range = ((upper_of<L> - lower_of<L>).value() + notch_of<L>).value();
+        return grid{ floor(((lower_of<R> - lower_of<L>).value() / range).value()),
+                     floor(((upper_of<R> - lower_of<L>).value() / range).value()) };
       }
 
       template<typename A>
@@ -3725,17 +3725,17 @@ namespace beman::inside::detail
         // RawLo/RawHi are already the correct Raw (no raw_from_offset). Real storage
         // takes the endpoint as a double (RawLo/Hi truncate fractional dyadic endpoints).
         if constexpr (fp_raw<L>)
-          lhs = L::from_raw((as_rational(rhs) < Lower<L>)
-            ? static_cast<double>(Lower<L>) : static_cast<double>(Upper<L>));
+          lhs = L::from_raw((as_rational(rhs) < lower_of<L>)
+            ? static_cast<double>(lower_of<L>) : static_cast<double>(upper_of<L>));
         else
-          lhs = L::from_raw((as_rational(rhs) < Lower<L>)
+          lhs = L::from_raw((as_rational(rhs) < lower_of<L>)
             ? raw_cast<L>(RawLo<L>) : raw_cast<L>(RawHi<L>));
         // Overshoot (rhs − clamped) as an inside, via the result-grid inference of normal
         // inside arithmetic: both operands are bounds, so the overshoot is too. It is always
-        // in-grid and on-notch for Grid<R> − Grid<L>, so the construction is exact.
+        // in-grid and on-notch for grid_of<R> − grid_of<L>, so the construction is exact.
         if constexpr (clamp_action<plain<A>>)
         {
-          constexpr grid OG = (Grid<R> - Grid<L>).value();
+          constexpr grid OG = (grid_of<R> - grid_of<L>).value();
           beman::inside::inside<OG> overshoot{ (as_rational(rhs) - as_rational(lhs)).value() };
           action.fn(lhs, overshoot);
         }
@@ -3749,8 +3749,8 @@ namespace beman::inside::detail
         // consecutive integers are adjacent grid points — and for a source whose
         // values are integers (no rounding to do). Anything else routes through
         // the rational modular wrap, which rounds by the policy first.
-        if constexpr (IsIntegerInterval<L> && abs_den(Notch<L>.Denominator) == 1
-                      && Notch<L>.Numerator == 1 && !fp_raw<R> && IsIntegerAligned<R>)
+        if constexpr (IsIntegerInterval<L> && abs_den(notch_of<L>.Denominator) == 1
+                      && notch_of<L>.Numerator == 1 && !fp_raw<R> && IsIntegerAligned<R>)
         {
           // Unit-integer fast path: modular wrap on the integer value.
           imax rhs_imax = trunc(as_rational(rhs));
@@ -3798,7 +3798,7 @@ namespace beman::inside::detail
         if constexpr (fp_raw<L>)
           // f64 target: raw IS the value — decode the source and snap to the dyadic
           // grid (the offset machinery below mis-encodes a double raw).
-          lhs = L::from_raw(snap_double<Grid<L>, rounding_for<L, P>>(as_double(rhs)));
+          lhs = L::from_raw(snap_double<grid_of<L>, rounding_for<L, P>>(as_double(rhs)));
         else if constexpr (rational_raw<L>)
           // rational target: raw IS the value — snap the decoded source through
           // the rational-rhs store (the offset machinery below would round the
@@ -3833,7 +3833,7 @@ namespace beman::inside::detail
           // Round the L-offset to a notch index in VALUE space via round_quotient
           // (same as the scalar path), honouring every rounding mode.
           umax q = round_quotient<L, P>(rat.Numerator, ad);
-          // rat is the L-offset; raw_from_offset<L> adds Lower<L> back for direct storage.
+          // rat is the L-offset; raw_from_offset<L> adds lower_of<L> back for direct storage.
           lhs = L::from_raw((rat.Denominator < 0)
             ? raw_from_offset<L>(-static_cast<imax>(q))
             : raw_from_offset<L>(q));
@@ -3847,7 +3847,7 @@ namespace beman::inside::detail
         // wrap/clamp bring any value into range, so a disjoint rhs interval is fine
         // for them (matches the integral-rhs path); only strict policies reject it.
         static_assert(HasPolicy<L, P, wrap> || HasPolicy<L, P, clamp>
-                      || not excludes(Interval<L>, Interval<R>),
+                      || not excludes(interval_of<L>, interval_of<R>),
           "rhs interval lies entirely outside lhs interval and the policy cannot bring it into range");
         static_assert(abs_den(Factor.Denominator) == 1 || HasPolicy<L, P, snap>
                       || point_exactly_assignable<L, R>,
@@ -3857,7 +3857,7 @@ namespace beman::inside::detail
         // formulas below would misread as an index: take the double path.
         if constexpr (fp_raw<R>)
           return assignment<L, double>::assign(lhs, as_double(rhs), policy, std::forward<A>(action));
-        else if constexpr (not includes(Interval<L>, Interval<R>))
+        else if constexpr (not includes(interval_of<L>, interval_of<R>))
         {
           if constexpr (needs_runtime_domain_check<L, plain<P>, plain<A>>)
           {
@@ -3866,7 +3866,7 @@ namespace beman::inside::detail
               if (imax mapped = map_raw(rhs.raw()); mapped < RawLo<L> || mapped > RawHi<L>)
                 if (try_clamp_or_fail(lhs, rhs, policy, action)) return lhs;
             }
-            else if (not includes(Interval<L>, as_rational(rhs)))
+            else if (not includes(interval_of<L>, as_rational(rhs)))
               if (try_clamp_or_fail(lhs, rhs, policy, action)) return lhs;
           }
         }
@@ -4063,7 +4063,7 @@ namespace beman::inside
     [[no_unique_address]] std::tuple<As...> Actions;
 
     template <insidable Target>
-      requires inside_assignable<Target, B, InsidePolicy<Target> | policy_flags_of<P>>
+      requires inside_assignable<Target, B, policy_of<Target> | policy_flags_of<P>>
     constexpr operator Target()
     {
       Target r;
@@ -4127,7 +4127,7 @@ namespace beman::inside
     // `Target t = (a * b).with_snap();` / `return (a * b).with_snap();` compile.
     // Constrained so the proxy stays SFINAE-friendly (no over-broad convertibility).
     template <insidable Target>
-      requires inside_assignable<Target, B, InsidePolicy<Target> | policy_flags_of<P>>
+      requires inside_assignable<Target, B, policy_of<Target> | policy_flags_of<P>>
     constexpr operator Target()
     {
       Target r;
@@ -4279,9 +4279,9 @@ namespace beman::inside::detail
   struct fp_rep
   {
     static constexpr bool any_f64 =
-        has_flag(InsidePolicy<Lhs>, f64) || has_flag(InsidePolicy<Rhs>, f64);
+        has_flag(policy_of<Lhs>, f64) || has_flag(policy_of<Rhs>, f64);
     static constexpr bool any_f32 =
-        has_flag(InsidePolicy<Lhs>, f32) || has_flag(InsidePolicy<Rhs>, f32);
+        has_flag(policy_of<Lhs>, f32) || has_flag(policy_of<Rhs>, f32);
     static constexpr bool continuous_ok = AllowContinuous && ResultGrid.Notch == 0;
     static constexpr bool keep_f32 =
         any_f32 && !any_f64 && (continuous_ok || float_exact<ResultGrid>);
@@ -4292,7 +4292,7 @@ namespace beman::inside::detail
     // `direct` needs notch 1 and `indexed` a non-zero notch; a result grid
     // that cannot hold them drops them (storage is then deduced).
     static constexpr policy_flag carried =
-        (InsidePolicy<Lhs> | InsidePolicy<Rhs>)
+        (policy_of<Lhs> | policy_of<Rhs>)
         & (exact | (ResultGrid.Notch == 1 ? direct : none) | (ResultGrid.Notch != 0 ? indexed : none));
     static constexpr policy_flag rep =
         carried
@@ -4301,12 +4301,12 @@ namespace beman::inside::detail
     // operands' `checked` (a representation flag must not switch checking off),
     // or plain checked.
     static constexpr policy_flag result_policy =
-        rep != none ? rep | ((InsidePolicy<Lhs> | InsidePolicy<Rhs>) & checked) : checked;
+        rep != none ? rep | ((policy_of<Lhs> | policy_of<Rhs>) & checked) : checked;
   };
 }
 
 //---------------------------------------------------------------------------
-// addition — `add(L, R, policy, action) -> inside<G>`, G = Grid<L> + Grid<R>.
+// addition — `add(L, R, policy, action) -> inside<G>`, G = grid_of<L> + grid_of<R>.
 // The grid arithmetic is sound by construction (the result interval contains
 // every runtime sum), so overflow can only happen on rational-raw results.
 // Specialises on the storage shapes: rational result, mixed rational/integer,
@@ -4317,10 +4317,10 @@ namespace beman::inside::detail
   template <insidable L, insidable R = L>
   struct addition
   {
-    static_assert((Grid<L> + Grid<R>).has_value(),
+    static_assert((grid_of<L> + grid_of<R>).has_value(),
       "addition: result grid's notch/interval exceeds the representable rational "
       "range — coarsen the operand grids");
-    static constexpr grid result_grid = (Grid<L> + Grid<R>).value();
+    static constexpr grid result_grid = (grid_of<L> + grid_of<R>).value();
     // fp / representation propagation — shared rule in detail/rep.hpp.
     using rep_t = fp_rep<L, R, result_grid>;
     using result = inside<result_grid, rep_t::result_policy>;
@@ -4328,8 +4328,8 @@ namespace beman::inside::detail
     template <policy_flag F>
     static constexpr bool needs_overflow_check =
         rational_raw<result>
-        && has_any_flag(F | InsidePolicy<L> | InsidePolicy<R>, checked | exact)
-        && !rational_add_is_safe(Grid<L>, Grid<R>);
+        && has_any_flag(F | policy_of<L> | policy_of<R>, checked | exact)
+        && !rational_add_is_safe(grid_of<L>, grid_of<R>);
 
     template <policy_flag F = none>
     using return_type_for = std::conditional_t<needs_overflow_check<F>,
@@ -4345,7 +4345,7 @@ namespace beman::inside::detail
     // result notch 1/d, both operand offsets in result-notch units are exact
     // integer math — (to_value − Lower)·d for the integer-aligned operand,
     // raw·widen for the notch-offset one (offsets compose because
-    // Lower<result> = Lower<L> + Lower<R>). Gated on an index-raw result and
+    // lower_of<result> = lower_of<L> + lower_of<R>). Gated on an index-raw result and
     // the result slot count fitting imax so no intermediate can overflow
     // (each operand contribution ≤ its own span/N ≤ the result slot count).
     static constexpr bool mixed_offset_ok = []{
@@ -4354,14 +4354,14 @@ namespace beman::inside::detail
                     || fp_raw<result> || !index_raw<result>
                     || (IsIntegerAligned<L> && IsIntegerAligned<R>)
                     || (index_raw<L> && index_raw<R>)
-                    || Notch<result> == 0 || Notch<result>.Numerator != 1)
+                    || notch_of<result> == 0 || notch_of<result>.Numerator != 1)
         return false;
       else
       {
-        constexpr auto span = Upper<result> - Lower<result>;
+        constexpr auto span = upper_of<result> - lower_of<result>;
         if (!span.has_value())
           return false;
-        const auto slots = *span / Notch<result>;
+        const auto slots = *span / notch_of<result>;
         return slots.has_value()
             && (*slots).Numerator
                  <= static_cast<umax>(std::numeric_limits<imax>::max());
@@ -4374,7 +4374,7 @@ namespace beman::inside::detail
     {
       if constexpr (IsIntegerAligned<X>)
       {
-        constexpr imax den = static_cast<imax>(abs_den(Notch<result>.Denominator));
+        constexpr imax den = static_cast<imax>(abs_den(notch_of<result>.Denominator));
         return (to_value(x) - LowerImax<X>) * den;
       }
       else
@@ -4383,12 +4383,12 @@ namespace beman::inside::detail
 
     // Result notch is gcd(NL, NR); scale each raw up to it before adding —
     // lhs_widen = NL/Nresult, rhs_widen = NR/Nresult (exact, Nresult divides both).
-    // A continuous result (Notch<result> == 0) has no widen (it takes the
+    // A continuous result (notch_of<result> == 0) has no widen (it takes the
     // rational path), so 1 stands in.
-    static constexpr imax lhs_widen = (Notch<result> == 0) ? imax{1}
-        : (Notch<L> / Notch<result>).value_or(rational{1}).Numerator;
-    static constexpr imax rhs_widen = (Notch<result> == 0) ? imax{1}
-        : (Notch<R> / Notch<result>).value_or(rational{1}).Numerator;
+    static constexpr imax lhs_widen = (notch_of<result> == 0) ? imax{1}
+        : (notch_of<L> / notch_of<result>).value_or(rational{1}).Numerator;
+    static constexpr imax rhs_widen = (notch_of<result> == 0) ? imax{1}
+        : (notch_of<R> / notch_of<result>).value_or(rational{1}).Numerator;
 
     template <policy_flag F = none, typename E = empty_ref, typename A = no_action>
     static constexpr auto add(L lhs, R rhs, policy<F, E> policy = {}, A&& action = {}) -> add_return_t<F, A>
@@ -4433,7 +4433,7 @@ namespace beman::inside::detail
       // result's raw via raw_from_offset.
       auto sum = rational::add_unchecked(lhs,rhs);
       res = result::from_raw(raw_from_offset<result>(
-          ((sum - Lower<result>) / Notch<result>).value().Numerator));
+          ((sum - lower_of<result>) / notch_of<result>).value().Numerator));
     }
     else if constexpr (IsIntegerAligned<L> && IsIntegerAligned<R>)
     {
@@ -4444,7 +4444,7 @@ namespace beman::inside::detail
     else
     {
       // Both notch-offset: scale each raw to the result notch and add in offset
-      // space (offsets compose because result Lower = Lower<L> + Lower<R>).
+      // space (offsets compose because result Lower = lower_of<L> + lower_of<R>).
       res = result::from_raw(raw_cast<result>(raw_imax(lhs) * lhs_widen + raw_imax(rhs) * rhs_widen));
     }
     return res;
@@ -4461,9 +4461,9 @@ namespace beman::inside::detail
 
 
 //---------------------------------------------------------------------------
-// multiplication — `mul(L, R, policy, action) -> inside<Grid<L> * Grid<R>>`. The
+// multiplication — `mul(L, R, policy, action) -> inside<grid_of<L> * grid_of<R>>`. The
 // integer hot path branches on which corner of the four-quadrant product hits
-// `Lower<result>`, doing the arithmetic as `umax * umax` (no signed overflow)
+// `lower_of<result>`, doing the arithmetic as `umax * umax` (no signed overflow)
 // plus integer offset corrections. Rational-result and all-integer-aligned
 // cases come first.
 //---------------------------------------------------------------------------
@@ -4472,10 +4472,10 @@ namespace beman::inside::detail
   template <insidable L, insidable R = L>
   struct multiplication
   {
-    static_assert((Grid<L> * Grid<R>).has_value(),
+    static_assert((grid_of<L> * grid_of<R>).has_value(),
       "multiplication: result grid's notch/interval exceeds the representable "
       "rational range — coarsen the operand grids");
-    static constexpr grid result_grid = (Grid<L> * Grid<R>).value();
+    static constexpr grid result_grid = (grid_of<L> * grid_of<R>).value();
     // fp / representation propagation — shared rule in detail/rep.hpp. The product
     // grid (notch = N_L·N_R) is finer, so demotion/dropping is the common case.
     using rep_t = fp_rep<L, R, result_grid>;
@@ -4488,9 +4488,9 @@ namespace beman::inside::detail
     template <typename P>
     static constexpr bool needs_overflow_check =
         rational_raw<result>
-        && (has_any_flag(InsidePolicy<L> | InsidePolicy<R>, checked | exact)
+        && (has_any_flag(policy_of<L> | policy_of<R>, checked | exact)
             || plain<P>::test(checked) || dropped_fp)
-        && !rational_mul_is_safe(Grid<L>, Grid<R>);
+        && !rational_mul_is_safe(grid_of<L>, grid_of<R>);
 
     template <typename P>
     using return_type_for = std::conditional_t<needs_overflow_check<P>,
@@ -4507,8 +4507,8 @@ namespace beman::inside::detail
     // the far end when c < 0. No multiply at all.
     template <insidable Point, insidable X>
     static constexpr bool point_scale =
-        Lower<Point> == Upper<Point> && Lower<Point> != 0
-        && !rational_raw<X> && !fp_raw<X> && Notch<X> != 0
+        lower_of<Point> == upper_of<Point> && lower_of<Point> != 0
+        && !rational_raw<X> && !fp_raw<X> && notch_of<X> != 0
         && !rational_raw<result> && !fp_raw<result>;
 
     template <bool Negate, insidable X>
@@ -4532,9 +4532,9 @@ namespace beman::inside::detail
       return result::from_raw(raw_cast<result>(as_double(lhs) * as_double(rhs)));
     }
     else if constexpr (point_scale<R, L>)
-      return scale_by_point<(Lower<R> < 0)>(lhs);
+      return scale_by_point<(lower_of<R> < 0)>(lhs);
     else if constexpr (point_scale<L, R>)
-      return scale_by_point<(Lower<L> < 0)>(rhs);
+      return scale_by_point<(lower_of<L> < 0)>(rhs);
     else if constexpr (rational_raw<result>)
     {
       if constexpr (needs_overflow_check<P>)
@@ -4564,12 +4564,12 @@ namespace beman::inside::detail
       // dropped from the result (grid not double-exact) but operands stay f64.
       auto prod = rational::mul_unchecked(as_rational(lhs), as_rational(rhs));
       return result::from_raw(raw_from_offset<result>(
-          ((prod - Lower<result>) / Notch<result>).value().Numerator));
+          ((prod - lower_of<result>) / notch_of<result>).value().Numerator));
     }
     else
     {
       // Result writes go through raw_from_offset so direct-storage results
-      // get Lower<result> added back to recover the value.
+      // get lower_of<result> added back to recover the value.
       auto to_result = [](auto raw_offset)
       { return result::from_raw(raw_from_offset<result>(static_cast<umax>(raw_offset))); };
 
@@ -4583,26 +4583,26 @@ namespace beman::inside::detail
           : static_cast<umax>(rhs.raw());
 
       // Absolute notch index of each operand endpoint (Lower/Notch, Upper/Notch).
-      constexpr umax idxLoL = (Lower<L>/Notch<L>).value_or(rational{0}).Numerator;
-      constexpr umax idxLoR = (Lower<R>/Notch<R>).value_or(rational{0}).Numerator;
-      constexpr umax idxHiL = (Upper<L>/Notch<L>).value_or(rational{0}).Numerator;
+      constexpr umax idxLoL = (lower_of<L>/notch_of<L>).value_or(rational{0}).Numerator;
+      constexpr umax idxLoR = (lower_of<R>/notch_of<R>).value_or(rational{0}).Numerator;
+      constexpr umax idxHiL = (upper_of<L>/notch_of<L>).value_or(rational{0}).Numerator;
 
       // Integral promotion would make `raw * raw` an `int * int` (UB above
       // INT_MAX), so cast to umax to multiply in 64-bit unsigned space. The four
-      // branches cover the sign quadrants: Lower<result> is one of the four
+      // branches cover the sign quadrants: lower_of<result> is one of the four
       // corner products; sign-flipped helpers (negative<L>/<R>) reduce each to
       // the all-positive formula. The static_assert guards the case analysis.
-      if constexpr (Lower<result> == (Lower<L> * Lower<R>).value())
+      if constexpr (lower_of<result> == (lower_of<L> * lower_of<R>).value())
       {
         return to_result(lhs_offset * rhs_offset
                          + lhs_offset * idxLoR
                          + rhs_offset * idxLoL);
       }
 
-      if constexpr (Lower<result> == (Upper<L> * Upper<R>).value())
+      if constexpr (lower_of<result> == (upper_of<L> * upper_of<R>).value())
       { return multiplication<negative<L>, negative<R>>::mul(-lhs, -rhs, std::forward<P>(policy)); }
 
-      if constexpr (Lower<result> == (Upper<L> * Lower<R>).value())
+      if constexpr (lower_of<result> == (upper_of<L> * lower_of<R>).value())
       {
         umax negLhs = NotchCount<L> - lhs_offset;
         return to_result(negLhs * idxLoR
@@ -4610,13 +4610,13 @@ namespace beman::inside::detail
                          - negLhs * rhs_offset);
       }
 
-      if constexpr (Lower<result> == (Lower<L> * Upper<R>).value())
+      if constexpr (lower_of<result> == (lower_of<L> * upper_of<R>).value())
       { return -multiplication<L, negative<R>>::mul(lhs, -rhs, std::forward<P>(policy)); }
 
-      static_assert(Lower<result> == (Lower<L> * Lower<R>).value()
-                 || Lower<result> == (Upper<L> * Upper<R>).value()
-                 || Lower<result> == (Upper<L> * Lower<R>).value()
-                 || Lower<result> == (Lower<L> * Upper<R>).value(),
+      static_assert(lower_of<result> == (lower_of<L> * lower_of<R>).value()
+                 || lower_of<result> == (upper_of<L> * upper_of<R>).value()
+                 || lower_of<result> == (upper_of<L> * lower_of<R>).value()
+                 || lower_of<result> == (lower_of<L> * upper_of<R>).value(),
                  "multiplication: internal logic error");
     }
   }
@@ -4644,7 +4644,7 @@ namespace beman::inside::detail
   // truncation (snap) — the prerequisite for native integer div / mod.
   template <insidable L, insidable R, policy_flag F>
   inline constexpr bool integer_native_ops =
-      ((F | InsidePolicy<L> | InsidePolicy<R>) & snap)
+      ((F | policy_of<L> | policy_of<R>) & snap)
       && !rational_raw<L> && !rational_raw<R>
       && IsIntegerAligned<L> && IsIntegerAligned<R>;
 
@@ -4750,22 +4750,22 @@ namespace beman::inside::detail
     static constexpr bool native_div_integer = integer_native_ops<L, R, F>;
 
     static constexpr bool native_div_qformat =
-        ((F | InsidePolicy<L> | InsidePolicy<R>) & snap)
+        ((F | policy_of<L> | policy_of<R>) & snap)
         && IsQFormat<L> && IsQFormat<R>
-        && Notch<L> == Notch<R>;
+        && notch_of<L> == notch_of<R>;
 
     static constexpr bool native_div = native_div_integer || native_div_qformat;
 
     // The rounding mode for the native paths (shared by the grid and runtime).
     static constexpr round_mode rmode =
-        div_round_mode(F | InsidePolicy<L> | InsidePolicy<R>);
+        div_round_mode(F | policy_of<L> | policy_of<R>);
 
     // A clear diagnostic when the result grid is unrepresentable, instead of the
     // raw expected-deref / .value() below failing cryptically (mirrors add/mul).
-    static_assert(native_div_qformat || (Grid<L> / Grid<R>).has_value(),
+    static_assert(native_div_qformat || (grid_of<L> / grid_of<R>).has_value(),
       "division: result grid not representable (notch/interval exceeds the "
       "representable rational range) — coarsen the operand grids");
-    static_assert(!native_div_qformat || (Upper<L> / Notch<R>).has_value(),
+    static_assert(!native_div_qformat || (upper_of<L> / notch_of<R>).has_value(),
       "division: Q-format result grid not representable — coarsen the operand grids");
 
     // Native-integer endpoints rounded with the same mode as the runtime
@@ -4773,11 +4773,11 @@ namespace beman::inside::detail
     // is always exact, so its grid is unchanged.)
     static constexpr grid result_grid =
         native_div_integer
-            ? grid{round_rat_lo((*(Grid<L> / Grid<R>)).Interval.Lower, rmode),
-                   round_rat_hi((*(Grid<L> / Grid<R>)).Interval.Upper, rmode)}
+            ? grid{round_rat_lo((*(grid_of<L> / grid_of<R>)).Interval.Lower, rmode),
+                   round_rat_hi((*(grid_of<L> / grid_of<R>)).Interval.Upper, rmode)}
       : native_div_qformat
-            ? grid{interval{rational{0}, (Upper<L> / Notch<R>).value()}, Notch<L>}
-            : *(Grid<L> / Grid<R>);
+            ? grid{interval{rational{0}, (upper_of<L> / notch_of<R>).value()}, notch_of<L>}
+            : *(grid_of<L> / grid_of<R>);
 
     // fp / representation propagation — shared rule in detail/rep.hpp.
     // AllowContinuous: a continuous quotient (Notch 0) keeps fp verbatim.
@@ -4786,7 +4786,7 @@ namespace beman::inside::detail
 
     template <policy_flag G = F>
     static constexpr bool needs_overflow_check =
-        has_any_flag(G | F | InsidePolicy<L> | InsidePolicy<R>, checked | exact);
+        has_any_flag(G | F | policy_of<L> | policy_of<R>, checked | exact);
 
     // For a nonzero divisor the op fails only on the checked rational path
     // (overflow). So when the divisor excludes zero AND this is false, `div`
@@ -4833,7 +4833,7 @@ namespace beman::inside::detail
     // set (zero divisor is then UB, matching the `/= 0` no-op). The fail arms stay
     // keyed on DivisorExcludesZero (which narrows the return type; ignore_zero doesn't).
     [[maybe_unused]] constexpr bool zero_unchecked = DivisorExcludesZero<R>
-        || (((G | F | InsidePolicy<L> | InsidePolicy<R>) & ignore_zero) != 0);
+        || (((G | F | policy_of<L> | policy_of<R>) & ignore_zero) != 0);
 
     if constexpr (fp_raw<result>)
     {
@@ -4842,15 +4842,15 @@ namespace beman::inside::detail
       // non-finite ever reaches storage.
       if constexpr (!zero_unchecked)
         if (as_double(rhs) == 0.0) return fail(errc::division_by_zero, "division by zero in div");
-      return result::from_raw(raw_cast<result>(snap_double<Grid<result>, rmode>(as_double(lhs) / as_double(rhs))));
+      return result::from_raw(raw_cast<result>(snap_double<grid_of<result>, rmode>(as_double(lhs) / as_double(rhs))));
     }
     else if constexpr (native_div_qformat)
     {
-      // rhs.Raw == 0 iff rhs.value == 0 (Lower<R> == 0). Formula folds to
+      // rhs.Raw == 0 iff rhs.value == 0 (lower_of<R> == 0). Formula folds to
       // `(a << log2 N)/b` for power-of-two N — the native Q-format idiom.
       if constexpr (!zero_unchecked)
         if (rhs.raw() == 0) return fail(errc::division_by_zero, "division by zero in div");
-      constexpr umax N = abs_den(Notch<L>.Denominator);
+      constexpr umax N = abs_den(notch_of<L>.Denominator);
       // 32-bit divide when the scaled dividend fits (Q8.8, Q16.15, ...).
       using U = std::conditional_t<(NotchCount<L> <= std::numeric_limits<std::uint32_t>::max() / N),
                                    std::uint32_t, umax>;
@@ -4904,7 +4904,7 @@ namespace beman::inside::detail
     // dividend grid); any directional mode can flip the sign, so the grid widens
     // to the symmetric ±max_rem (|r| ≤ max_rem for every mode).
     static constexpr round_mode rmode =
-        div_round_mode(F | InsidePolicy<L> | InsidePolicy<R>);
+        div_round_mode(F | policy_of<L> | policy_of<R>);
 
     static constexpr grid result_grid =
         (rmode == round_mode::trunc && LowerImax<L> >= 0)
@@ -4934,7 +4934,7 @@ namespace beman::inside::detail
     // Zero check elided when R's grid excludes zero (mod_return_t is plain
     // `result`) or `ignore_zero` is set (zero divisor is then UB, matching `%= 0`).
     constexpr bool zero_unchecked = DivisorExcludesZero<R>
-        || (((G | F | InsidePolicy<L> | InsidePolicy<R>) & ignore_zero) != 0);
+        || (((G | F | policy_of<L> | policy_of<R>) & ignore_zero) != 0);
     if constexpr (!zero_unchecked)
       if (rhs_val == 0)
         return report_or_unexpected<result>(action, policy, errc::division_by_zero,
@@ -4970,21 +4970,21 @@ namespace beman::inside
   {
     if constexpr (std::floating_point<A>)
       if (!(value - value == 0)) return true;   // NaN / ±inf fit no grid (and must not raise here)
-    return not includes(Interval<B>, detail::as_rational(value));
+    return not includes(interval_of<B>, detail::as_rational(value));
   }
 
   template <insidable B, numeric A>
   [[nodiscard]] constexpr bool will_conversion_trunc(A value) noexcept
   {
-    if constexpr (Notch<B> == 0)
+    if constexpr (notch_of<B> == 0)
       return false;                       // continuous grid: no notch to miss
     if constexpr (std::floating_point<A>)
       if (!(value - value == 0)) return false;   // non-finite — overflow, not truncation
     detail::rational r = detail::as_rational(value);
-    if (not includes(Interval<B>, r))
+    if (not includes(interval_of<B>, r))
       return false;                       // out-of-range — overflow, not truncation
     // In-range: truncation occurs iff (value - Lower) / Notch is non-integer.
-    auto offset = (r - Lower<B>) / Notch<B>;
+    auto offset = (r - lower_of<B>) / notch_of<B>;
     return !offset.has_value() || detail::abs_den(offset->Denominator) != 1;
   }
 
@@ -5291,8 +5291,8 @@ namespace beman::inside
     [[nodiscard]] constexpr std::expected<T, errc> to() const
     {
       using lim = std::numeric_limits<T>;
-      constexpr bool check_lo = Lower<inside> < detail::rational{lim::min()};
-      constexpr bool check_hi = Upper<inside> > detail::rational{lim::max()};
+      constexpr bool check_lo = lower_of<inside> < detail::rational{lim::min()};
+      constexpr bool check_hi = upper_of<inside> > detail::rational{lim::max()};
       if constexpr (!check_lo && !check_hi)
         return static_cast<T>(detail::to_value(*this));
       else
@@ -5462,21 +5462,21 @@ namespace beman::inside
       // this grid's notches: the raw delta is a compile-time constant and the
       // raw encoding cancels every Lower term (raw(v+d) = raw(v) + d/Notch for
       // offset and direct storage alike), so this compiles to one integer add.
-      if constexpr (!detail::rational_raw<inside> && !detail::fp_raw<inside> && Notch<inside> != 0
-                    && Lower<R> == Upper<R>
-                    && (Lower<R> / Notch<inside>).has_value()
-                    && detail::abs_den((*(Lower<R> / Notch<inside>)).Denominator) == 1)
+      if constexpr (!detail::rational_raw<inside> && !detail::fp_raw<inside> && notch_of<inside> != 0
+                    && lower_of<R> == upper_of<R>
+                    && (lower_of<R> / notch_of<inside>).has_value()
+                    && detail::abs_den((*(lower_of<R> / notch_of<inside>)).Denominator) == 1)
       {
-        constexpr imax delta = signed_numerator(*(Lower<R> / Notch<inside>));
+        constexpr imax delta = signed_numerator(*(lower_of<R> / notch_of<inside>));
         return store_raw(detail::raw_imax(*this) + delta);
       }
       // Fast path: raw-level integer addition, safe when raw_a + raw_b is the raw
       // of value_a + value_b — direct storage, or offset encoding with Lower==0 both.
       else if constexpr (!detail::rational_raw<inside> && !detail::rational_raw<R>
                     && !detail::fp_raw<inside> && !detail::fp_raw<R>
-                    && Notch<inside> == Notch<R>
+                    && notch_of<inside> == notch_of<R>
                     && (!detail::index_raw<R>
-                        || (Lower<inside> == 0 && Lower<R> == 0)))
+                        || (lower_of<inside> == 0 && lower_of<R> == 0)))
         return store_raw(detail::raw_imax(*this) + detail::raw_imax(rhs));
       else
         return assign_op_result(*this + rhs);
@@ -5534,7 +5534,7 @@ namespace beman::inside
     template <typename R>
     constexpr inside& report_div_by_zero()
     {
-      if constexpr (!has_flag(P | InsidePolicy<R>, ignore_zero))
+      if constexpr (!has_flag(P | policy_of<R>, ignore_zero))
         make_policy<P>().report(errc::division_by_zero);
       return *this;
     }
@@ -5552,18 +5552,18 @@ namespace beman::inside
     {
       // Raw-space fast path, the subtraction mirror of +='s: with equal
       // notches, raw(v_l − v_r) = raw_l − raw_r − bias, where the bias is
-      // Lower<R>/Notch for an index-raw rhs (its raw is Lower-relative) and 0
+      // lower_of<R>/Notch for an index-raw rhs (its raw is Lower-relative) and 0
       // for a value-raw rhs. Delegating to `+= (-rhs)` instead shifts R's
       // Lower by negation and defeats +='s raw path for index-backed grids.
       if constexpr (!detail::rational_raw<inside> && !detail::rational_raw<R>
                     && !detail::fp_raw<inside> && !detail::fp_raw<R>
-                    && Notch<inside> != 0 && Notch<inside> == Notch<R>
+                    && notch_of<inside> != 0 && notch_of<inside> == notch_of<R>
                     && (!detail::index_raw<R>
-                        || ((Lower<R> / Notch<inside>).has_value()
-                            && detail::abs_den((*(Lower<R> / Notch<inside>)).Denominator) == 1)))
+                        || ((lower_of<R> / notch_of<inside>).has_value()
+                            && detail::abs_den((*(lower_of<R> / notch_of<inside>)).Denominator) == 1)))
       {
         constexpr imax bias = [] {
-          if constexpr (detail::index_raw<R>) return signed_numerator(*(Lower<R> / Notch<inside>));
+          if constexpr (detail::index_raw<R>) return signed_numerator(*(lower_of<R> / notch_of<inside>));
           else                                return imax{0};
         }();
         return store_raw(detail::raw_imax(*this) - detail::raw_imax(rhs) - bias);
@@ -5685,12 +5685,12 @@ namespace beman::inside
     // `bias + raw` without a rational decode.
     template <insidable B>
     inline constexpr bool index_cmp_fits = []{
-      if constexpr (rational_raw<B> || fp_raw<B> || Notch<B> == 0)
+      if constexpr (rational_raw<B> || fp_raw<B> || notch_of<B> == 0)
         return false;
       else
       {
-        constexpr auto lo = Lower<B> / Notch<B>;
-        constexpr auto hi = Upper<B> / Notch<B>;
+        constexpr auto lo = lower_of<B> / notch_of<B>;
+        constexpr auto hi = upper_of<B> / notch_of<B>;
         constexpr umax cap = static_cast<umax>(std::numeric_limits<imax>::max());
         return lo.has_value() && hi.has_value()
             && (*lo).Numerator <= cap && (*hi).Numerator <= cap;
@@ -5703,7 +5703,7 @@ namespace beman::inside
     inline constexpr imax index_cmp_bias = []{
       if constexpr (index_raw<B>)
       {
-        constexpr auto lo = *(Lower<B> / Notch<B>);
+        constexpr auto lo = *(lower_of<B> / notch_of<B>);
         return signed_numerator(lo);
       }
       else
@@ -5718,7 +5718,7 @@ namespace beman::inside
 
     // Every value of B is exactly a double (fp storage, or a double-exact grid).
     template <insidable B>
-    inline constexpr bool exact_in_double = fp_raw<B> || double_exact<Grid<B>>;
+    inline constexpr bool exact_in_double = fp_raw<B> || double_exact<grid_of<B>>;
 
     // inside ⋈ inside (⋈ = `cmp`: <=> or ==) in the cheapest exact form the two
     // storage shapes allow.
@@ -5726,7 +5726,7 @@ namespace beman::inside
     constexpr auto compare(L const& lhs, R const& rhs, Cmp cmp)
     {
       // same grid: Raw is monotonically ordered regardless of storage kind
-      if constexpr (Grid<L> == Grid<R>)
+      if constexpr (grid_of<L> == grid_of<R>)
         return cmp(lhs.raw(), rhs.raw());
       // an fp-backed operand: compare in double when both sides' values are
       // exact in double (raw_imax would truncate the fp raw); otherwise the
@@ -5739,7 +5739,7 @@ namespace beman::inside
       // same nonzero notch, integer-backed: compare signed value indices
       // (compile-time bias + raw) — e.g. two same-Q-format fixed-point types
       // with different intervals, without the rational decode.
-      else if constexpr (Notch<L> == Notch<R> && index_cmp_fits<L> && index_cmp_fits<R>)
+      else if constexpr (notch_of<L> == notch_of<R> && index_cmp_fits<L> && index_cmp_fits<R>)
         return cmp(index_cmp_bias<L> + raw_imax(lhs), index_cmp_bias<R> + raw_imax(rhs));
       else
         return cmp(as_rational(lhs), as_rational(rhs));
@@ -5766,11 +5766,11 @@ namespace beman::inside
       else
       {
         constexpr umax cap = static_cast<umax>(std::numeric_limits<imax>::max());
-        constexpr umax notch_num = Notch<B>.Numerator;
-        constexpr umax notch_den = static_cast<umax>(Notch<B>.Denominator); // Notch > 0
+        constexpr umax notch_num = notch_of<B>.Numerator;
+        constexpr umax notch_den = static_cast<umax>(notch_of<B>.Denominator); // Notch > 0
         constexpr umax index_mag = []{
-          constexpr auto lo = *(Lower<B> / Notch<B>);
-          constexpr auto hi = *(Upper<B> / Notch<B>);
+          constexpr auto lo = *(lower_of<B> / notch_of<B>);
+          constexpr auto hi = *(upper_of<B> / notch_of<B>);
           return lo.Numerator > hi.Numerator ? lo.Numerator : hi.Numerator;
         }();
         constexpr umax scalar_mag = []{
@@ -5799,14 +5799,14 @@ namespace beman::inside
     constexpr auto compare_scalar(B const& lhs, A rhs, Cmp cmp)
     {
       constexpr bool imax_scalar = std::signed_integral<A> || (std::unsigned_integral<A> && sizeof(A) < sizeof(imax));
-      constexpr bool double_exact_values = Lower<B> >= rational{-(imax{1} << 53)} && Upper<B> <= rational{imax{1} << 53};
+      constexpr bool double_exact_values = lower_of<B> >= rational{-(imax{1} << 53)} && upper_of<B> <= rational{imax{1} << 53};
       if constexpr (value_raw<B> && imax_scalar)
         return cmp(raw_imax(lhs), static_cast<imax>(rhs));
       else if constexpr (value_raw<B> && std::floating_point<A> && double_exact_values)
         return cmp(static_cast<double>(raw_imax(lhs)), static_cast<double>(rhs));
       else if constexpr (scalar_index_cmp_fits<B, A>)
-        return cmp((index_cmp_bias<B> + raw_imax(lhs)) * static_cast<imax>(Notch<B>.Numerator),
-                   static_cast<imax>(rhs) * Notch<B>.Denominator);
+        return cmp((index_cmp_bias<B> + raw_imax(lhs)) * static_cast<imax>(notch_of<B>.Numerator),
+                   static_cast<imax>(rhs) * notch_of<B>.Denominator);
       else
         return cmp(as_rational(lhs), rational{rhs});
     }
@@ -5920,8 +5920,8 @@ namespace beman::inside
   {
     // Keep B's representation flags so the twin's raw layout is B's.
     constexpr policy_flag representation =
-        InsidePolicy<B> & (exact | f64 | f32 | direct | indexed | raw_width_mask);
-    using twin = inside<Grid<B>, unsafe | representation>;
+        policy_of<B> & (exact | f64 | f32 | direct | indexed | raw_width_mask);
+    using twin = inside<grid_of<B>, unsafe | representation>;
     return B::from_raw(twin{value}.raw());   // same grid → identical raw layout
   }
 
@@ -6058,10 +6058,10 @@ namespace beman::inside
   { return beman::inside::mul(lhs, rhs); }
 
   [[nodiscard]] constexpr auto operator/(insidable auto lhs, insidable auto rhs)
-  { return beman::inside::div(lhs, rhs, make_policy<InsidePolicy<decltype(lhs)> | InsidePolicy<decltype(rhs)>>()); }
+  { return beman::inside::div(lhs, rhs, make_policy<policy_of<decltype(lhs)> | policy_of<decltype(rhs)>>()); }
 
   [[nodiscard]] constexpr auto operator%(insidable auto lhs, insidable auto rhs)
-  { return beman::inside::mod(lhs, rhs, make_policy<InsidePolicy<decltype(lhs)> | InsidePolicy<decltype(rhs)>>()); }
+  { return beman::inside::mod(lhs, rhs, make_policy<policy_of<decltype(lhs)> | policy_of<decltype(rhs)>>()); }
 
   //---------------------------------------------------------------------------
   // add_all / mul_all — variadic folds (pairwise widening, same as `a + b + c`
@@ -6122,8 +6122,8 @@ namespace beman::inside
         rational part = [&]
         {
           if constexpr (detail::index_raw<B>)
-            return ((rational{acc} * Notch<B>).value()
-                    + (rational{cnt} * Lower<B>).value()).value();
+            return ((rational{acc} * notch_of<B>).value()
+                    + (rational{cnt} * lower_of<B>).value()).value();
           else
             return rational{acc};
         }();
@@ -6198,10 +6198,10 @@ namespace beman::inside
     struct common_inside<Same, Same> { using type = Same; };
 
     template <insidable Lhs, insidable Rhs>
-      requires (!std::same_as<Lhs, Rhs>) && (hull(Grid<Lhs>, Grid<Rhs>).has_value())
+      requires (!std::same_as<Lhs, Rhs>) && (hull(grid_of<Lhs>, grid_of<Rhs>).has_value())
     struct common_inside<Lhs, Rhs>
     {
-      static constexpr grid hull_grid = *hull(Grid<Lhs>, Grid<Rhs>);
+      static constexpr grid hull_grid = *hull(grid_of<Lhs>, grid_of<Rhs>);
       using type = inside<hull_grid,
                          fp_rep<Lhs, Rhs, hull_grid, /*AllowContinuous=*/true>::result_policy>;
     };
@@ -6429,10 +6429,10 @@ namespace beman::inside
           return value_type::from_raw(
               static_cast<typename value_type::raw_type>(slot()));
         else if constexpr (detail::value_raw<value_type>
-                           && detail::abs_den(Notch<value_type>.Denominator) == 1
-                           && detail::abs_den(Lower<value_type>.Denominator) == 1)
+                           && detail::abs_den(notch_of<value_type>.Denominator) == 1
+                           && detail::abs_den(lower_of<value_type>.Denominator) == 1)
         {
-          constexpr imax notch_step = static_cast<imax>(Notch<value_type>.Numerator);
+          constexpr imax notch_step = static_cast<imax>(notch_of<value_type>.Numerator);
           return value_type::from_raw(static_cast<typename value_type::raw_type>(
               detail::LowerImax<value_type>
               + static_cast<imax>(slot()) * notch_step));
@@ -6476,10 +6476,10 @@ namespace beman::inside
       if constexpr (detail::index_raw<value_type>)
         start_index_ = static_cast<umax>(start.raw());
       else if constexpr (detail::value_raw<value_type>
-                         && detail::abs_den(Notch<value_type>.Denominator) == 1
-                         && detail::abs_den(Lower<value_type>.Denominator) == 1)
+                         && detail::abs_den(notch_of<value_type>.Denominator) == 1
+                         && detail::abs_den(lower_of<value_type>.Denominator) == 1)
       {
-        constexpr imax notch_step = static_cast<imax>(Notch<value_type>.Numerator);
+        constexpr imax notch_step = static_cast<imax>(notch_of<value_type>.Numerator);
         start_index_ = static_cast<umax>(
             (static_cast<imax>(start.raw()) - detail::LowerImax<value_type>)
             / notch_step);
@@ -7165,13 +7165,13 @@ namespace beman::inside::math
     // Policy of an auto-deduced output: the input's, minus any fixed-width
     // storage flag (i8 … u64) — the output range differs, as for arithmetic.
     template <insidable In>
-    inline constexpr policy_flag out_policy = InsidePolicy<In> & ~raw_width_mask;
+    inline constexpr policy_flag out_policy = policy_of<In> & ~raw_width_mask;
 
     // Output notch for a two-input function: the gcd of both input notches (0
     // if either is continuous), so swapping or mixing input types is symmetric.
     template <insidable A, insidable B>
     inline constexpr rational gcd_notch =
-        (Notch<A> == 0 || Notch<B> == 0) ? rational{0} : *gcd(Notch<A>, Notch<B>);
+        (notch_of<A> == 0 || notch_of<B> == 0) ? rational{0} : *gcd(notch_of<A>, notch_of<B>);
 
     // Input-domain checks, one per function, shared by every engine (cordic,
     // dbl, flt) so all three accept exactly the same input grids. The limits are
@@ -7179,66 +7179,66 @@ namespace beman::inside::math
     // auto-deduced output grid.
     template <insidable In>
     constexpr void domain_acos() noexcept
-    { static_assert(Lower<In> >= -1 && Upper<In> <= 1, "beman::inside::math::acos: input must be in [-1, 1]"); }
+    { static_assert(lower_of<In> >= -1 && upper_of<In> <= 1, "beman::inside::math::acos: input must be in [-1, 1]"); }
     template <insidable In>
     constexpr void domain_asin() noexcept
-    { static_assert(Lower<In> >= -1 && Upper<In> <= 1, "beman::inside::math::asin: input must be in [-1, 1]"); }
+    { static_assert(lower_of<In> >= -1 && upper_of<In> <= 1, "beman::inside::math::asin: input must be in [-1, 1]"); }
     template <insidable In>
     constexpr void domain_atan() noexcept
-    { static_assert(Lower<In> >= -(imax{1} << 20) && Upper<In> <= (imax{1} << 20), "beman::inside::math::atan: input magnitudes must be \u2264 2^20 for the working-scale envelope"); }
+    { static_assert(lower_of<In> >= -(imax{1} << 20) && upper_of<In> <= (imax{1} << 20), "beman::inside::math::atan: input magnitudes must be \u2264 2^20 for the working-scale envelope"); }
     template <insidable In>
     constexpr void domain_atan2() noexcept
-    { static_assert(Lower<In> >= -(imax{1} << 20) && Upper<In> <= (imax{1} << 20), "beman::inside::math::atan2: input magnitudes must be \u2264 2^20 for the working-scale envelope"); }
+    { static_assert(lower_of<In> >= -(imax{1} << 20) && upper_of<In> <= (imax{1} << 20), "beman::inside::math::atan2: input magnitudes must be \u2264 2^20 for the working-scale envelope"); }
     template <insidable In>
     constexpr void domain_cbrt() noexcept
-    { static_assert(Lower<In> >= -(imax{1} << 20) && Upper<In> <= (imax{1} << 20), "beman::inside::math::cbrt: input magnitude must be ≤ 2^20 for the working-scale envelope"); }
+    { static_assert(lower_of<In> >= -(imax{1} << 20) && upper_of<In> <= (imax{1} << 20), "beman::inside::math::cbrt: input magnitude must be ≤ 2^20 for the working-scale envelope"); }
     template <insidable In>
     constexpr void domain_cos() noexcept
-    { static_assert(Lower<In> >= -(imax{1} << 20) && Upper<In> <= (imax{1} << 20), "beman::inside::math::cos: input magnitudes must be \u2264 2^20 rad"); }
+    { static_assert(lower_of<In> >= -(imax{1} << 20) && upper_of<In> <= (imax{1} << 20), "beman::inside::math::cos: input magnitudes must be \u2264 2^20 rad"); }
     template <insidable In>
     constexpr void domain_cosh() noexcept
-    { static_assert(Lower<In> >= -10 && Upper<In> <= 10, "beman::inside::math::cosh: input must be in [-10, 10]"); }
+    { static_assert(lower_of<In> >= -10 && upper_of<In> <= 10, "beman::inside::math::cosh: input must be in [-10, 10]"); }
     template <insidable In>
     constexpr void domain_exp() noexcept
-    { static_assert(Lower<In> >= -20 && Upper<In> <= 20, "beman::inside::math::exp: input must be in [-20, 20]"); }
+    { static_assert(lower_of<In> >= -20 && upper_of<In> <= 20, "beman::inside::math::exp: input must be in [-20, 20]"); }
     template <insidable In>
     constexpr void domain_exp2() noexcept
-    { static_assert(Lower<In> >= -30 && Upper<In> <= 30, "beman::inside::math::exp2: input must be in [-30, 30]"); }
+    { static_assert(lower_of<In> >= -30 && upper_of<In> <= 30, "beman::inside::math::exp2: input must be in [-30, 30]"); }
     template <insidable In>
     constexpr void domain_log() noexcept
-    { static_assert(Lower<In> > 0, "beman::inside::math::log: input must be strictly positive"); }
+    { static_assert(lower_of<In> > 0, "beman::inside::math::log: input must be strictly positive"); }
     template <insidable In>
     constexpr void domain_log10() noexcept
-    { static_assert(Lower<In> > 0, "beman::inside::math::log10: input must be strictly positive"); }
+    { static_assert(lower_of<In> > 0, "beman::inside::math::log10: input must be strictly positive"); }
     template <insidable In>
     constexpr void domain_log2() noexcept
-    { static_assert(Lower<In> > 0, "beman::inside::math::log2: input must be strictly positive"); }
+    { static_assert(lower_of<In> > 0, "beman::inside::math::log2: input must be strictly positive"); }
     template <insidable In>
     constexpr void domain_sin() noexcept
-    { static_assert(Lower<In> >= -(imax{1} << 20) && Upper<In> <= (imax{1} << 20), "beman::inside::math::sin: input magnitudes must be \u2264 2^20 rad"); }
+    { static_assert(lower_of<In> >= -(imax{1} << 20) && upper_of<In> <= (imax{1} << 20), "beman::inside::math::sin: input magnitudes must be \u2264 2^20 rad"); }
     template <insidable In>
     constexpr void domain_sinh() noexcept
-    { static_assert(Lower<In> >= -10 && Upper<In> <= 10, "beman::inside::math::sinh: input must be in [-10, 10]"); }
+    { static_assert(lower_of<In> >= -10 && upper_of<In> <= 10, "beman::inside::math::sinh: input must be in [-10, 10]"); }
     template <insidable In>
     constexpr void domain_sqrt() noexcept
-    { static_assert(Lower<In> == 0, "beman::inside::math::sqrt: input must start at 0 (use the mixed-sign overload)"); }
+    { static_assert(lower_of<In> == 0, "beman::inside::math::sqrt: input must start at 0 (use the mixed-sign overload)"); }
     template <insidable In>
     constexpr void domain_tan() noexcept
-    { static_assert(Lower<In> >= -(imax{1} << 20) && Upper<In> <= (imax{1} << 20), "beman::inside::math::tan: input magnitudes must be \u2264 2^20 rad"); }
+    { static_assert(lower_of<In> >= -(imax{1} << 20) && upper_of<In> <= (imax{1} << 20), "beman::inside::math::tan: input magnitudes must be \u2264 2^20 rad"); }
     template <insidable In>
     constexpr void domain_tanh() noexcept
-    { static_assert(Lower<In> >= -10 && Upper<In> <= 10, "beman::inside::math::tanh: input must be in [-10, 10]"); }
+    { static_assert(lower_of<In> >= -10 && upper_of<In> <= 10, "beman::inside::math::tanh: input must be in [-10, 10]"); }
     template <insidable InX, insidable InY>
     constexpr void domain_hypot() noexcept
-    { static_assert(Lower<InX> >= -(imax{1} << 20) && Upper<InX> <= (imax{1} << 20)
-               && Lower<InY> >= -(imax{1} << 20) && Upper<InY> <= (imax{1} << 20), "beman::inside::math::hypot: input magnitudes must be ≤ 2^20 for the working-scale envelope"); }
+    { static_assert(lower_of<InX> >= -(imax{1} << 20) && upper_of<InX> <= (imax{1} << 20)
+               && lower_of<InY> >= -(imax{1} << 20) && upper_of<InY> <= (imax{1} << 20), "beman::inside::math::hypot: input magnitudes must be ≤ 2^20 for the working-scale envelope"); }
 
     // Out's interval endpoints as F (via double, like the runtime value), folded
     // at compile time for the FP engines' range checks.
     template <typename F, insidable Out>
-    inline constexpr F lower_fp = static_cast<F>(static_cast<double>(Lower<Out>));
+    inline constexpr F lower_fp = static_cast<F>(static_cast<double>(lower_of<Out>));
     template <typename F, insidable Out>
-    inline constexpr F upper_fp = static_cast<F>(static_cast<double>(Upper<Out>));
+    inline constexpr F upper_fp = static_cast<F>(static_cast<double>(upper_of<Out>));
 
     // Every transcendental operand must carry the `f64` policy flag: under the
     // default engine it selects double-backed dyadic storage, under BEMAN_INSIDE_MATH_FIXED
@@ -7248,7 +7248,7 @@ namespace beman::inside::math
     template <insidable In>
     consteval bool require_snap() noexcept
     {
-      static_assert(has_flag(InsidePolicy<In>, snap),
+      static_assert(has_flag(policy_of<In>, snap),
           "beman::inside::math: a transcendental result is rounded onto the grid — its "
           "operand must permit rounding. Declare it with `round_nearest` (or "
           "`snap` / a `round_*` mode / `f64`).");
@@ -7286,11 +7286,11 @@ namespace beman::inside::math
     // and derive N from its grid.
     template <insidable In>
     inline constexpr int turn_bits = []{
-      static_assert(Lower<In> == 0,
+      static_assert(lower_of<In> == 0,
                     "beman::inside::math: turn-phase input must have Lower == 0");
-      static_assert(Notch<In>.Numerator == 1,
+      static_assert(notch_of<In>.Numerator == 1,
                     "beman::inside::math: turn-phase input must have notch 1/2^N");
-      return log2_pow2(abs_den(Notch<In>.Denominator));
+      return log2_pow2(abs_den(notch_of<In>.Denominator));
     }();
 
     // Forward declarations of the CORDIC engine pieces the turn-input workers
@@ -7308,7 +7308,7 @@ namespace beman::inside::math
     {
       constexpr int N = turn_bits<In>;
       static_assert(N >= 2 && N <= 30, "beman::inside::math: turn-phase N must be in [2, 30]");
-      static_assert(Lower<Out> <= -1 && Upper<Out> >= 1,
+      static_assert(lower_of<Out> <= -1 && upper_of<Out> >= 1,
                     "beman::inside::math: Out must cover [-1, 1]");
 
       constexpr int W = working_bits<Out>();
@@ -7419,12 +7419,12 @@ namespace beman::inside::math
     // assignment path (round_quotient), minus `(value−Lower)/Notch`'s GCDs.
     template <insidable Out>
     inline constexpr bool grid_fast_store =
-        Notch<Out>.Numerator == 1
+        notch_of<Out>.Numerator == 1
         && !rational_raw<Out>
         // `f64` storage holds the VALUE, not an offset index, so route it
         // through the rational fallback `Out{r}` (same guard as fmod_int_fast).
         && !fp_raw<Out>
-        && rounding_of(InsidePolicy<Out>) == round_mode::nearest
+        && rounding_of(policy_of<Out>) == round_mode::nearest
         && (std::signed_integral<raw_t<Out>>
             || NotchCount<Out>
                  <= static_cast<umax>(std::numeric_limits<imax>::max()));
@@ -7442,8 +7442,8 @@ namespace beman::inside::math
         {
           int  D   = std::countr_zero(den);
           imax num = signed_numerator(r);
-          constexpr imax K = abs_den(Notch<Out>.Denominator);  // 1/notch
-          constexpr imax m = trunc((Lower<Out> * rational{K}).value()); // Lower·K (exact int)
+          constexpr imax K = abs_den(notch_of<Out>.Denominator);  // 1/notch
+          constexpr imax m = trunc((lower_of<Out> * rational{K}).value()); // Lower·K (exact int)
           // K·num + half must fit imax (a wide-denominator r, e.g. hypot's
           // 2^46, would wrap K·num and silently store `value mod 2^k`).
           constexpr imax lim = std::numeric_limits<imax>::max() / 2 / K;
@@ -7473,10 +7473,10 @@ namespace beman::inside::math
     constexpr int working_bits() noexcept
     {
       constexpr int GUARD = 6;
-      umax den        = abs_den(Notch<Out>.Denominator);   // 1/notch
+      umax den        = abs_den(notch_of<Out>.Denominator);   // 1/notch
       int  notch_bits = (den <= 1) ? 0 : std::bit_width(den - 1);
-      imax hi  = ceil(abs(Upper<Out>));
-      imax lo  = ceil(abs(Lower<Out>));
+      imax hi  = ceil(abs(upper_of<Out>));
+      imax lo  = ceil(abs(lower_of<Out>));
       imax mag = (hi > lo) ? hi : lo;
       int  int_bits = (mag <= 1) ? 0 : std::bit_width(static_cast<umax>(mag));
       int  W = notch_bits + int_bits + GUARD;
@@ -7679,7 +7679,7 @@ namespace beman::inside::math
     constexpr imax rad_to_turn_w(rational a) noexcept
     {
       const imax a_w = to_fixed(a, W);
-      if constexpr (Lower<In> >= -1024 && Upper<In> <= 1024)
+      if constexpr (lower_of<In> >= -1024 && upper_of<In> <= 1024)
       {
         constexpr imax inv_two_pi_w = to_fixed(inv_two_pi, W);
         return fmul(a_w, inv_two_pi_w, W);
@@ -7893,7 +7893,7 @@ namespace beman::inside::math
   [[nodiscard]] constexpr Out sin_impl(In angle)
   {
     detail::domain_sin<In>();
-    static_assert(Lower<Out> <= -1 && Upper<Out> >= 1,
+    static_assert(lower_of<Out> <= -1 && upper_of<Out> >= 1,
                   "beman::inside::math::sin: Out must cover [-1, 1]");
 
     constexpr int W = detail::working_bits<Out>();
@@ -7907,7 +7907,7 @@ namespace beman::inside::math
   [[nodiscard]] constexpr Out cos_impl(In angle)
   {
     detail::domain_cos<In>();
-    static_assert(Lower<Out> <= -1 && Upper<Out> >= 1,
+    static_assert(lower_of<Out> <= -1 && upper_of<Out> >= 1,
                   "beman::inside::math::cos: Out must cover [-1, 1]");
 
     constexpr int W = detail::working_bits<Out>();
@@ -7927,11 +7927,11 @@ namespace beman::inside::math
       imax t_w;
       if (!tan_from_turn_fixed<W, W>(turn_w, t_w))
         return std::unexpected(errc::division_by_zero);
-      if constexpr (!has_flag(InsidePolicy<Out>, clamp))
+      if constexpr (!has_flag(policy_of<Out>, clamp))
       {
         // t_w/2^W ∈ [lo, hi]  ⇔  ⌈lo·2^W⌉ ≤ t_w ≤ ⌊hi·2^W⌋
-        constexpr imax lo_w = ceil ((Lower<Out> * rational{imax{1} << W}).value());
-        constexpr imax hi_w = floor((Upper<Out> * rational{imax{1} << W}).value());
+        constexpr imax lo_w = ceil ((lower_of<Out> * rational{imax{1} << W}).value());
+        constexpr imax hi_w = floor((upper_of<Out> * rational{imax{1} << W}).value());
         if (t_w < lo_w || t_w > hi_w)
           return std::unexpected(errc::overflow);
       }
@@ -7986,13 +7986,13 @@ namespace beman::inside::math
   //
   // Restrict |x| ≤ 30 so the rational denominator 2^(30 - k) fits in int63.
   // The output `Out` must include non-negative values and cover at least
-  // [2^Lower<In>, 2^Upper<In>] — anything narrower needs `clamp` to absorb
+  // [2^lower_of<In>, 2^upper_of<In>] — anything narrower needs `clamp` to absorb
   // overflow at the assignment.
   template <insidable Out, insidable In>
   [[nodiscard]] constexpr Out exp2_impl(In x)
   {
     detail::domain_exp2<In>();
-    static_assert(Lower<Out> >= 0,
+    static_assert(lower_of<Out> >= 0,
                   "beman::inside::math::exp2: Out must be non-negative");
 
     return detail::store_grid<Out>(detail::exp2_fixed<detail::working_bits<Out>()>(rational{x}));
@@ -8005,7 +8005,7 @@ namespace beman::inside::math
   [[nodiscard]] constexpr Out exp_impl(In x)
   {
     detail::domain_exp<In>();
-    static_assert(Lower<Out> >= 0,
+    static_assert(lower_of<Out> >= 0,
                   "beman::inside::math::exp: Out must be non-negative");
 
     return detail::store_grid<Out>(detail::exp_fixed<detail::working_bits<Out>()>(rational{x}));
@@ -8029,7 +8029,7 @@ namespace beman::inside::math
   [[nodiscard]] constexpr Out pow_base_impl(In x)
   {
     static_assert(Base >= 2, "beman::inside::math::pow_base: Base must be ≥ 2");
-    static_assert(Lower<Out> >= 0,
+    static_assert(lower_of<Out> >= 0,
                   "beman::inside::math::pow_base: Out must be non-negative");
 
     constexpr int W = detail::working_bits<Out>();
@@ -8048,7 +8048,7 @@ namespace beman::inside::math
   {
     detail::domain_atan2<InY>();
     detail::domain_atan2<InX>();
-    static_assert(Lower<Out> <= -detail::pi_r && Upper<Out> >= detail::pi_r,
+    static_assert(lower_of<Out> <= -detail::pi_r && upper_of<Out> >= detail::pi_r,
                   "beman::inside::math::atan2: Out must cover [-π, π]");
 
     constexpr int W = detail::working_bits<Out>();
@@ -8088,35 +8088,35 @@ namespace beman::inside::math
 
   namespace detail
   {
-    // max(|Lower<In>|, |Upper<In>|) as a constexpr rational. Used to size
+    // max(|lower_of<In>|, |upper_of<In>|) as a constexpr rational. Used to size
     // the auto-deduced abs output.
     template <insidable In>
     inline constexpr rational abs_auto_upper =
-      (abs(Lower<In>) > abs(Upper<In>))
-        ? abs(Lower<In>) : abs(Upper<In>);
+      (abs(lower_of<In>) > abs(upper_of<In>))
+        ? abs(lower_of<In>) : abs(upper_of<In>);
 
     template <insidable In>
     using abs_auto_t = inside<{{rational{0}, abs_auto_upper<In>},
-                              Notch<In>}, out_policy<In>>;
+                              notch_of<In>}, out_policy<In>>;
 
     template <insidable In>
-    using floor_auto_t = inside<{{rational{floor(Lower<In>)},
-                                  rational{floor(Upper<In>)}},
+    using floor_auto_t = inside<{{rational{floor(lower_of<In>)},
+                                  rational{floor(upper_of<In>)}},
                                  notch<1>}, out_policy<In>>;
 
     template <insidable In>
-    using ceil_auto_t = inside<{{rational{ceil(Lower<In>)},
-                                 rational{ceil(Upper<In>)}},
+    using ceil_auto_t = inside<{{rational{ceil(lower_of<In>)},
+                                 rational{ceil(upper_of<In>)}},
                                 notch<1>}, out_policy<In>>;
 
     template <insidable In>
-    using round_auto_t = inside<{{rational{round(Lower<In>)},
-                                  rational{round(Upper<In>)}},
+    using round_auto_t = inside<{{rational{round(lower_of<In>)},
+                                  rational{round(upper_of<In>)}},
                                  notch<1>}, out_policy<In>>;
 
     template <insidable In>
-    using trunc_auto_t = inside<{{rational{trunc(Lower<In>)},
-                                  rational{trunc(Upper<In>)}},
+    using trunc_auto_t = inside<{{rational{trunc(lower_of<In>)},
+                                  rational{trunc(upper_of<In>)}},
                                  notch<1>}, out_policy<In>>;
 
     // Double-backed fast path for the algebraic tier. |x| and the integer
@@ -8151,7 +8151,7 @@ namespace beman::inside::math
   template <insidable Out, insidable In>
   [[nodiscard]] constexpr Out abs_impl(In x)
   {
-    static_assert(Lower<Out> <= 0,
+    static_assert(lower_of<Out> <= 0,
                   "beman::inside::math::abs: Out must include 0");
     if constexpr (detail::fp_direct<Out, detail::abs_auto_t<In>, In>)
       return detail::fp_direct_store<Out>(x, [](double v) { return v < 0 ? -v : v; });
@@ -8207,11 +8207,11 @@ namespace beman::inside::math
 
     // Gate for fmod's integer fast path. When both operands and Out are
     // integer-backed on commensurable notches, fmod collapses to ONE integer
-    // remainder in units of g = gcd(Notch<InX>, Notch<InY>): with x = a·g and
+    // remainder in units of g = gcd(notch_of<InX>, notch_of<InY>): with x = a·g and
     // y = b·g, x − trunc(x/y)·y = (a − (a/b)·b)·g = (a % b)·g exactly (C++ %
     // is truncated division, the same convention). Conditions:
     //   * integer raws only (rational/double raws keep the rational path),
-    //   * non-zero notches, g on Out's grid (g / Notch<Out> integer),
+    //   * non-zero notches, g on Out's grid (g / notch_of<Out> integer),
     //   * divisor grid excludes zero (no runtime zero check needed),
     //   * Out's interval covers ±max|y| (result magnitude is < |y|),
     //   * all unit counts fit comfortably in imax (headroom 4).
@@ -8221,26 +8221,26 @@ namespace beman::inside::math
        || rational_raw<InY> || fp_raw<InY>
        || rational_raw<Out> || fp_raw<Out>)
         return false;
-      if (Notch<InX> == 0 || Notch<InY> == 0 || Notch<Out> == 0)
+      if (notch_of<InX> == 0 || notch_of<InY> == 0 || notch_of<Out> == 0)
         return false;
       if (!DivisorExcludesZero<InY>)
         return false;
-      auto go = gcd(Notch<InX>, Notch<InY>);
+      auto go = gcd(notch_of<InX>, notch_of<InY>);
       if (!go.has_value()) return false;
       rational g = *go;
-      auto qo = g / Notch<Out>;
+      auto qo = g / notch_of<Out>;
       if (!qo.has_value() || abs_den(qo->Denominator) != 1)
         return false;
       rational maxx =
-          abs(Lower<InX>) > abs(Upper<InX>)
-            ? abs(Lower<InX>) : abs(Upper<InX>);
+          abs(lower_of<InX>) > abs(upper_of<InX>)
+            ? abs(lower_of<InX>) : abs(upper_of<InX>);
       rational maxy =
-          abs(Lower<InY>) > abs(Upper<InY>)
-            ? abs(Lower<InY>) : abs(Upper<InY>);
-      if (Lower<Out> > -maxy || Upper<Out> < maxy)
+          abs(lower_of<InY>) > abs(upper_of<InY>)
+            ? abs(lower_of<InY>) : abs(upper_of<InY>);
+      if (lower_of<Out> > -maxy || upper_of<Out> < maxy)
         return false;
       constexpr umax lim = static_cast<umax>(std::numeric_limits<imax>::max() / 4);
-      auto ux = maxx / g;  auto uy = maxy / g;  auto uo = maxy / Notch<Out>;
+      auto ux = maxx / g;  auto uy = maxy / g;  auto uo = maxy / notch_of<Out>;
       return ux.has_value() && uy.has_value() && uo.has_value()
           && ux->Numerator <= lim && uy->Numerator <= lim && uo->Numerator <= lim;
     }();
@@ -8254,13 +8254,13 @@ namespace beman::inside::math
     if constexpr (detail::fmod_int_fast<Out, InX, InY>)
     {
       // One integer remainder in g-units; bit-identical to the rational path.
-      constexpr rational g = *beman::inside::detail::gcd(Notch<InX>, Notch<InY>);
-      constexpr imax wx  = trunc((Notch<InX> / g).value());
-      constexpr imax wy  = trunc((Notch<InY> / g).value());
-      constexpr imax wo  = trunc((g / Notch<Out>).value());
-      constexpr imax lox = trunc((Lower<InX> / g).value());   // exact: grid invariant
-      constexpr imax loy = trunc((Lower<InY> / g).value());
-      constexpr imax loo = trunc((Lower<Out> / Notch<Out>).value());
+      constexpr rational g = *beman::inside::detail::gcd(notch_of<InX>, notch_of<InY>);
+      constexpr imax wx  = trunc((notch_of<InX> / g).value());
+      constexpr imax wy  = trunc((notch_of<InY> / g).value());
+      constexpr imax wo  = trunc((g / notch_of<Out>).value());
+      constexpr imax lox = trunc((lower_of<InX> / g).value());   // exact: grid invariant
+      constexpr imax loy = trunc((lower_of<InY> / g).value());
+      constexpr imax loo = trunc((lower_of<Out> / notch_of<Out>).value());
       const imax a = beman::inside::detail::raw_imax(x) * wx
                    + (beman::inside::detail::index_raw<InX> ? lox : 0);
       const imax b = beman::inside::detail::raw_imax(y) * wy
@@ -8301,7 +8301,7 @@ namespace beman::inside::math
   // Each function gets a second overload that derives `Out` from `In` and
   // delegates to the explicit form. `f<Out>(x)` picks the explicit form, `f(x)`
   // the auto form (explicit Out can't be deduced from a parameter, so it drops
-  // out). Notch policy: abs/fmod inherit `Notch<In>`; floor/ceil/round/trunc
+  // out). Notch policy: abs/fmod inherit `notch_of<In>`; floor/ceil/round/trunc
   // deduce `notch<1>` since their outputs are integer-valued.
   //---------------------------------------------------------------------------
 
@@ -8355,7 +8355,7 @@ namespace beman::inside::math
   [[nodiscard]] constexpr Out sqrt_impl(In x)
   {
     detail::domain_sqrt<In>();
-    static_assert(Lower<Out> <= 0,
+    static_assert(lower_of<Out> <= 0,
                   "beman::inside::math::sqrt: Out must include 0");
 
     constexpr int W = detail::working_bits<Out>();
@@ -8369,7 +8369,7 @@ namespace beman::inside::math
   template <insidable Out, insidable In>
   [[nodiscard]] constexpr std::expected<Out, errc> sqrt_signed_impl(In x)
   {
-    static_assert(Lower<Out> <= 0,
+    static_assert(lower_of<Out> <= 0,
                   "beman::inside::math::sqrt: Out must include 0");
 
     rational v = beman::inside::detail::as_rational(x);
@@ -8384,7 +8384,7 @@ namespace beman::inside::math
   //---------------------------------------------------------------------------
   // Auto-deducing forms — monotonic transcendental tier. Each derives Out from
   // In: Lower/Upper from running the engine cores on the input endpoints at
-  // compile time, rounded outward to Notch<In> so the deduced inside covers the
+  // compile time, rounded outward to notch_of<In> so the deduced inside covers the
   // true range even for irrational endpoints; notch and policy inherited from In.
   //---------------------------------------------------------------------------
   namespace detail
@@ -8435,47 +8435,47 @@ namespace beman::inside::math
       return exp2_from_fixed<kRefBits>(sc_w);
     }
 
-    // Deduction aliases. Each rounds endpoints outward to Notch<In> and adds
+    // Deduction aliases. Each rounds endpoints outward to notch_of<In> and adds
     // `round_nearest` — the cores emit sub-notch drift, so the assignment needs
     // a rounding rule to land on the grid.
     template <insidable In>
     using sqrt_auto_t = inside<{{rational{0},
-                                ceil_to_notch(sqrt_endpoint(Upper<In>), Notch<In>)},
-                               Notch<In>}, out_policy<In> | round_nearest>;
+                                ceil_to_notch(sqrt_endpoint(upper_of<In>), notch_of<In>)},
+                               notch_of<In>}, out_policy<In> | round_nearest>;
 
     // Mixed-sign sqrt: Upper of the result is sqrt of the larger absolute
     // endpoint, since the runtime value can be anywhere in [Lower, Upper].
     template <insidable In>
     inline constexpr rational sqrt_signed_upper =
-        (abs(Lower<In>) > abs(Upper<In>))
-            ? abs(Lower<In>) : abs(Upper<In>);
+        (abs(lower_of<In>) > abs(upper_of<In>))
+            ? abs(lower_of<In>) : abs(upper_of<In>);
 
     template <insidable In>
     using sqrt_signed_auto_t = inside<{{rational{0},
                                        ceil_to_notch(sqrt_endpoint(sqrt_signed_upper<In>),
-                                                     Notch<In>)},
-                                      Notch<In>}, out_policy<In> | round_nearest>;
+                                                     notch_of<In>)},
+                                      notch_of<In>}, out_policy<In> | round_nearest>;
 
     // Auto output grid for results in [lo, hi]: the endpoints rounded outward
     // to In's notch, with In's notch and policy (plus round_nearest).
     template <insidable In, rational Lo, rational Hi>
-    using outward_t = inside<{{floor_to_notch(Lo, Notch<In>), ceil_to_notch(Hi, Notch<In>)},
-                              Notch<In>}, out_policy<In> | round_nearest>;
+    using outward_t = inside<{{floor_to_notch(Lo, notch_of<In>), ceil_to_notch(Hi, notch_of<In>)},
+                              notch_of<In>}, out_policy<In> | round_nearest>;
 
     template <insidable In>
-    using exp2_auto_t = outward_t<In, exp2_endpoint(Lower<In>), exp2_endpoint(Upper<In>)>;
+    using exp2_auto_t = outward_t<In, exp2_endpoint(lower_of<In>), exp2_endpoint(upper_of<In>)>;
 
     template <insidable In>
-    using log2_auto_t = outward_t<In, log2_endpoint(Lower<In>), log2_endpoint(Upper<In>)>;
+    using log2_auto_t = outward_t<In, log2_endpoint(lower_of<In>), log2_endpoint(upper_of<In>)>;
 
     template <insidable In>
-    using exp_auto_t = outward_t<In, exp_endpoint(Lower<In>), exp_endpoint(Upper<In>)>;
+    using exp_auto_t = outward_t<In, exp_endpoint(lower_of<In>), exp_endpoint(upper_of<In>)>;
 
     template <insidable In>
-    using log_auto_t = outward_t<In, log_endpoint(Lower<In>), log_endpoint(Upper<In>)>;
+    using log_auto_t = outward_t<In, log_endpoint(lower_of<In>), log_endpoint(upper_of<In>)>;
 
     template <imax Base, insidable In>
-    using pow_base_auto_t = outward_t<In, pow_base_endpoint<Base>(Lower<In>), pow_base_endpoint<Base>(Upper<In>)>;
+    using pow_base_auto_t = outward_t<In, pow_base_endpoint<Base>(lower_of<In>), pow_base_endpoint<Base>(upper_of<In>)>;
   } // namespace detail
 
   //---------------------------------------------------------------------------
@@ -8493,7 +8493,7 @@ namespace beman::inside::math
 
     template <insidable In>
     using sin_auto_t = inside<{{-rational{1}, rational{1}},
-                               Notch<In>}, out_policy<In> | round_nearest>;
+                               notch_of<In>}, out_policy<In> | round_nearest>;
 
     template <insidable In>
     using cos_auto_t = sin_auto_t<In>;
@@ -8508,12 +8508,12 @@ namespace beman::inside::math
 
     template <insidable In>
     using tan_auto_t = inside<{{-rational{1024}, rational{1024}},
-                               Notch<In>}, out_policy<In> | round_nearest>;
+                               notch_of<In>}, out_policy<In> | round_nearest>;
 
     // fmod's result: |r| < |y| and |r| ≤ |x|, with the sign of x, on the gcd of
     // both notches (x − k·y lies on that lattice, so the result is exact).
     template <insidable B>
-    inline constexpr rational max_abs = abs(Lower<B>) > abs(Upper<B>) ? abs(Lower<B>) : abs(Upper<B>);
+    inline constexpr rational max_abs = abs(lower_of<B>) > abs(upper_of<B>) ? abs(lower_of<B>) : abs(upper_of<B>);
 
     template <insidable InX, insidable InY>
     inline constexpr rational fmod_bound =
@@ -8521,8 +8521,8 @@ namespace beman::inside::math
 
 
     template <insidable InX, insidable InY>
-    using fmod_auto_t = inside<{{(Lower<InX> < 0 ? -fmod_bound<InX, InY> : rational{0}),
-                                 (Upper<InX> > 0 ?  fmod_bound<InX, InY> : rational{0})},
+    using fmod_auto_t = inside<{{(lower_of<InX> < 0 ? -fmod_bound<InX, InY> : rational{0}),
+                                 (upper_of<InX> > 0 ?  fmod_bound<InX, InY> : rational{0})},
                                 gcd_notch<InX, InY>}, out_policy<InX> | round_nearest>;
   } // namespace detail
 
@@ -8596,17 +8596,17 @@ namespace beman::inside::math
     // 360 divided by the notch. The public entry points validate the shape.
     template <insidable DEG>
     inline constexpr imax circle_slots =
-      round((rational{360} / Notch<DEG>).value());
+      round((rational{360} / notch_of<DEG>).value());
 
     // Shared shape check for the circle-input entry points.
     template <insidable DEG>
     constexpr bool valid_circle() noexcept
     {
-      static_assert(Lower<DEG> == 0,
+      static_assert(lower_of<DEG> == 0,
                     "beman::inside::math: circle angle must have Lower 0 (degrees)");
-      static_assert(has_flag(InsidePolicy<DEG>, wrap),
+      static_assert(has_flag(policy_of<DEG>, wrap),
                     "beman::inside::math: circle angle must carry the wrap policy");
-      static_assert(has_flag(InsidePolicy<DEG>, f64),
+      static_assert(has_flag(policy_of<DEG>, f64),
                     "beman::inside::math: circle angle must carry the `f64` policy "
                     "(circle<M> already does; custom angle bounds must add `| f64`)");
       static_assert(circle_slots<DEG> % 4 == 0,
@@ -8838,49 +8838,49 @@ namespace beman::inside::math
     // family. acos is decreasing; cosh is even (min at 0 if the interval
     // spans it). round_nearest lands sub-notch drift onto the grid.
     template <insidable In>
-    using atan_auto_t = outward_t<In, atan_fixed<working_bits<In>()>(Lower<In>), atan_fixed<working_bits<In>()>(Upper<In>)>;
+    using atan_auto_t = outward_t<In, atan_fixed<working_bits<In>()>(lower_of<In>), atan_fixed<working_bits<In>()>(upper_of<In>)>;
 
     template <insidable In>
-    using asin_auto_t = outward_t<In, asin_endpoint(Lower<In>), asin_endpoint(Upper<In>)>;
+    using asin_auto_t = outward_t<In, asin_endpoint(lower_of<In>), asin_endpoint(upper_of<In>)>;
 
     template <insidable In>
-    using acos_auto_t = outward_t<In, acos_endpoint(Upper<In>), acos_endpoint(Lower<In>)>;
+    using acos_auto_t = outward_t<In, acos_endpoint(upper_of<In>), acos_endpoint(lower_of<In>)>;
 
     template <insidable In>
-    using sinh_auto_t = outward_t<In, sinh_endpoint(Lower<In>), sinh_endpoint(Upper<In>)>;
+    using sinh_auto_t = outward_t<In, sinh_endpoint(lower_of<In>), sinh_endpoint(upper_of<In>)>;
 
     template <insidable In>
     inline constexpr rational cosh_auto_lo =
-      (Lower<In> <= rational{0} && Upper<In> >= rational{0})
+      (lower_of<In> <= rational{0} && upper_of<In> >= rational{0})
         ? rational{1}
-        : (cosh_endpoint(Lower<In>) < cosh_endpoint(Upper<In>)
-             ? cosh_endpoint(Lower<In>) : cosh_endpoint(Upper<In>));
+        : (cosh_endpoint(lower_of<In>) < cosh_endpoint(upper_of<In>)
+             ? cosh_endpoint(lower_of<In>) : cosh_endpoint(upper_of<In>));
 
     template <insidable In>
     inline constexpr rational cosh_auto_hi =
-      (cosh_endpoint(Lower<In>) > cosh_endpoint(Upper<In>))
-        ? cosh_endpoint(Lower<In>) : cosh_endpoint(Upper<In>);
+      (cosh_endpoint(lower_of<In>) > cosh_endpoint(upper_of<In>))
+        ? cosh_endpoint(lower_of<In>) : cosh_endpoint(upper_of<In>);
 
     template <insidable In>
     using cosh_auto_t = outward_t<In, cosh_auto_lo<In>, cosh_auto_hi<In>>;
 
     template <insidable In>
-    using tanh_auto_t = outward_t<In, tanh_endpoint(Lower<In>), tanh_endpoint(Upper<In>)>;
+    using tanh_auto_t = outward_t<In, tanh_endpoint(lower_of<In>), tanh_endpoint(upper_of<In>)>;
 
     template <insidable In>
-    using log10_auto_t = outward_t<In, log10_endpoint(Lower<In>), log10_endpoint(Upper<In>)>;
+    using log10_auto_t = outward_t<In, log10_endpoint(lower_of<In>), log10_endpoint(upper_of<In>)>;
 
     template <insidable In>
-    using cbrt_auto_t = outward_t<In, cbrt_endpoint(Lower<In>), cbrt_endpoint(Upper<In>)>;
+    using cbrt_auto_t = outward_t<In, cbrt_endpoint(lower_of<In>), cbrt_endpoint(upper_of<In>)>;
 
     // hypot output: non-negative, Upper at the largest-magnitude corner.
     template <insidable InX, insidable InY>
     inline constexpr rational hypot_auto_hi =
       hypot_endpoint(
-        (abs(Lower<InX>) > abs(Upper<InX>)
-           ? abs(Lower<InX>) : abs(Upper<InX>)),
-        (abs(Lower<InY>) > abs(Upper<InY>)
-           ? abs(Lower<InY>) : abs(Upper<InY>)));
+        (abs(lower_of<InX>) > abs(upper_of<InX>)
+           ? abs(lower_of<InX>) : abs(upper_of<InX>)),
+        (abs(lower_of<InY>) > abs(upper_of<InY>)
+           ? abs(lower_of<InY>) : abs(upper_of<InY>)));
 
     template <insidable InX, insidable InY>
     using hypot_auto_t = inside<{{rational{0},
@@ -8891,8 +8891,8 @@ namespace beman::inside::math
     // (monotone in each argument for b > 0). Min and max of the 4 corners.
     template <insidable InB, insidable InE>
     inline constexpr rational pow_corner[4] = {
-      pow_endpoint(Lower<InB>, Lower<InE>), pow_endpoint(Lower<InB>, Upper<InE>),
-      pow_endpoint(Upper<InB>, Lower<InE>), pow_endpoint(Upper<InB>, Upper<InE>),
+      pow_endpoint(lower_of<InB>, lower_of<InE>), pow_endpoint(lower_of<InB>, upper_of<InE>),
+      pow_endpoint(upper_of<InB>, lower_of<InE>), pow_endpoint(upper_of<InB>, upper_of<InE>),
     };
 
     template <insidable InB, insidable InE>
@@ -8912,9 +8912,9 @@ namespace beman::inside::math
     }();
 
     template <insidable InB, insidable InE>
-    using pow_auto_t = inside<{{floor_to_notch(pow_auto_lo<InB, InE>, Notch<InB>),
-                               ceil_to_notch (pow_auto_hi<InB, InE>, Notch<InB>)},
-                              Notch<InB>}, out_policy<InB> | round_nearest>;
+    using pow_auto_t = inside<{{floor_to_notch(pow_auto_lo<InB, InE>, notch_of<InB>),
+                               ceil_to_notch (pow_auto_hi<InB, InE>, notch_of<InB>)},
+                              notch_of<InB>}, out_policy<InB> | round_nearest>;
   } // namespace detail
 
   // --- explicit-Out impls -------------------------------------------------
@@ -8950,7 +8950,7 @@ namespace beman::inside::math
   [[nodiscard]] constexpr Out cosh_impl(In x)
   {
     detail::domain_cosh<In>();
-    static_assert(Lower<Out> <= rational{1},
+    static_assert(lower_of<Out> <= rational{1},
                   "beman::inside::math::cosh: Out must include 1 (cosh ≥ 1)");
     return detail::store_grid<Out>(detail::cosh_endpoint<detail::endpoint_bits<Out>()>(rational{x}));
   }
@@ -8980,13 +8980,13 @@ namespace beman::inside::math
   [[nodiscard]] constexpr Out hypot_impl(InX x, InY y)
   {
     detail::domain_hypot<InX, InY>();
-    static_assert(Lower<Out> <= 0, "beman::inside::math::hypot: Out must include 0");
+    static_assert(lower_of<Out> <= 0, "beman::inside::math::hypot: Out must include 0");
     return detail::store_grid<Out>(detail::hypot_endpoint<detail::endpoint_bits<Out>()>(rational{x}, rational{y}));
   }
 
   // pow: b^e for runtime base b > 0. Returns `expected` — `overflow` when
   // e·log2(b) leaves exp2's [-30, 30] envelope or the result leaves Out's
-  // interval. The auto form requires Lower<InB> > 0 (so b > 0 is guaranteed
+  // interval. The auto form requires lower_of<InB> > 0 (so b > 0 is guaranteed
   // and the output range is bounded for deduction).
   template <insidable Out, insidable InB, insidable InE>
   [[nodiscard]] constexpr std::expected<Out, errc> pow_impl(InB base, InE exp)
@@ -9001,15 +9001,15 @@ namespace beman::inside::math
     constexpr imax lim = imax{30} << W;
     if (sc_w > lim || sc_w < -lim)                      // outside 2^±30: every engine
     {                                                   // reports, or clamp saturates
-      if constexpr (has_flag(InsidePolicy<Out>, clamp))
-        return detail::store_grid<Out>(sc_w > 0 ? Upper<Out> : Lower<Out>);
+      if constexpr (has_flag(policy_of<Out>, clamp))
+        return detail::store_grid<Out>(sc_w > 0 ? upper_of<Out> : lower_of<Out>);
       else
         return std::unexpected(errc::overflow);
     }
 
     rational r = detail::exp2_from_fixed<W>(sc_w);
-    if constexpr (!has_flag(InsidePolicy<Out>, clamp))   // clamp Out: saturate below
-      if (r < Lower<Out> || r > Upper<Out>)
+    if constexpr (!has_flag(policy_of<Out>, clamp))   // clamp Out: saturate below
+      if (r < lower_of<Out> || r > upper_of<Out>)
         return std::unexpected(errc::overflow);
     return detail::store_grid<Out>(r);
   }
@@ -9031,12 +9031,12 @@ namespace beman::inside::math
   namespace cordic
   {
     template <insidable In>
-      requires (Lower<In> == rational{0})
+      requires (lower_of<In> == rational{0})
     [[nodiscard]] constexpr auto sqrt(In x)
     { static_assert(detail::require_snap<In>()); return sqrt_impl<detail::sqrt_auto_t<In>>(x); }
 
     template <insidable In>
-      requires (Lower<In> < rational{0})
+      requires (lower_of<In> < rational{0})
     [[nodiscard]] constexpr auto sqrt(In x)
     { static_assert(detail::require_snap<In>()); return sqrt_signed_impl<detail::sqrt_signed_auto_t<In>>(x); }
 
@@ -9048,7 +9048,7 @@ namespace beman::inside::math
     [[nodiscard]] constexpr auto log2(In x)
     {
       static_assert(detail::require_snap<In>());
-      static_assert(Lower<In> > 0, "beman::inside::math::cordic::log2: input must be strictly positive");
+      static_assert(lower_of<In> > 0, "beman::inside::math::cordic::log2: input must be strictly positive");
       return log2_impl<detail::log2_auto_t<In>>(x);
     }
 
@@ -9060,7 +9060,7 @@ namespace beman::inside::math
     [[nodiscard]] constexpr auto log(In x)
     {
       static_assert(detail::require_snap<In>());
-      static_assert(Lower<In> > 0, "beman::inside::math::cordic::log: input must be strictly positive");
+      static_assert(lower_of<In> > 0, "beman::inside::math::cordic::log: input must be strictly positive");
       return log_impl<detail::log_auto_t<In>>(x);
     }
 
@@ -9115,7 +9115,7 @@ namespace beman::inside::math
     [[nodiscard]] constexpr auto log10(In x)
     {
       static_assert(detail::require_snap<In>());
-      static_assert(Lower<In> > 0, "beman::inside::math::cordic::log10: input must be strictly positive");
+      static_assert(lower_of<In> > 0, "beman::inside::math::cordic::log10: input must be strictly positive");
       return log10_impl<detail::log10_auto_t<In>>(x);
     }
 
@@ -9131,7 +9131,7 @@ namespace beman::inside::math
     }
 
     template <insidable InB, insidable InE>
-      requires (Lower<InB> > rational{0})
+      requires (lower_of<InB> > rational{0})
     [[nodiscard]] constexpr auto pow(InB base, InE exp)
     {
       static_assert(detail::require_snap<InB>() && detail::require_snap<InE>());
@@ -9151,12 +9151,12 @@ namespace beman::inside::math
     // are qualified as `mdetail::`; the `*_core`/`store`/`d_*` names are
     // this namespace's own. Absent under BEMAN_INSIDE_MATH_NO_FP (no FP, no <cmath>).
     template <insidable In>
-      requires (Lower<In> == rational{0})
+      requires (lower_of<In> == rational{0})
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto sqrt(In x)
     { static_assert(mdetail::require_snap<In>()); return sqrt_core<mdetail::sqrt_auto_t<In>>(x); }
 
     template <insidable In>
-      requires (Lower<In> < rational{0})
+      requires (lower_of<In> < rational{0})
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto sqrt(In x)
     {
       static_assert(mdetail::require_snap<In>());
@@ -9213,7 +9213,7 @@ namespace beman::inside::math
       double t;
       if (!detail::d_tan(static_cast<double>(angle), t))
         return std::expected<Out, errc>{std::unexpected(errc::division_by_zero)};
-      if constexpr (!has_flag(InsidePolicy<Out>, clamp))   // clamp Out: saturate below
+      if constexpr (!has_flag(policy_of<Out>, clamp))   // clamp Out: saturate below
         if (t < mdetail::lower_fp<double, Out> || t > mdetail::upper_fp<double, Out>)
           return std::expected<Out, errc>{std::unexpected(errc::overflow)};
       return std::expected<Out, errc>{store<Out>(t)};
@@ -9270,7 +9270,7 @@ namespace beman::inside::math
     }
 
     template <insidable InB, insidable InE>
-      requires (Lower<InB> > rational{0})
+      requires (lower_of<InB> > rational{0})
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto pow(InB base, InE exp)
     {
       static_assert(mdetail::require_snap<InB>() && mdetail::require_snap<InE>());
@@ -9281,13 +9281,13 @@ namespace beman::inside::math
       double r = detail::d_pow(b, static_cast<double>(exp));
       if (!(r <= 0x1p30 && r >= 0x1p-30))                  // the 2^±30 envelope, as cordic
       {
-        if constexpr (has_flag(InsidePolicy<Out>, clamp))
+        if constexpr (has_flag(policy_of<Out>, clamp))
           return std::expected<Out, errc>{store<Out>(r > 1.0 ? mdetail::upper_fp<double, Out>
                                                              : mdetail::lower_fp<double, Out>)};
         else
           return std::expected<Out, errc>{std::unexpected(errc::overflow)};
       }
-      if constexpr (!has_flag(InsidePolicy<Out>, clamp))   // clamp Out: saturate below
+      if constexpr (!has_flag(policy_of<Out>, clamp))   // clamp Out: saturate below
         if (r < mdetail::lower_fp<double, Out> || r > mdetail::upper_fp<double, Out>)
           return std::expected<Out, errc>{std::unexpected(errc::overflow)};
       return std::expected<Out, errc>{store<Out>(r)};
@@ -9300,12 +9300,12 @@ namespace beman::inside::math
     // dbl:: (qualify shared helpers as mdetail::; *_core/store/d_* are
     // this namespace's own). A third value set (float ≠ double ≠ cordic).
     template <insidable In>
-      requires (Lower<In> == rational{0})
+      requires (lower_of<In> == rational{0})
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto sqrt(In x)
     { static_assert(mdetail::require_snap<In>()); return sqrt_core<mdetail::sqrt_auto_t<In>>(x); }
 
     template <insidable In>
-      requires (Lower<In> < rational{0})
+      requires (lower_of<In> < rational{0})
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto sqrt(In x)
     {
       static_assert(mdetail::require_snap<In>());
@@ -9362,7 +9362,7 @@ namespace beman::inside::math
       float t;
       if (!detail::d_tan(flt::to_float(angle), t))
         return std::expected<Out, errc>{std::unexpected(errc::division_by_zero)};
-      if constexpr (!has_flag(InsidePolicy<Out>, clamp))   // clamp Out: saturate below
+      if constexpr (!has_flag(policy_of<Out>, clamp))   // clamp Out: saturate below
         if (t < mdetail::lower_fp<float, Out> || t > mdetail::upper_fp<float, Out>)
           return std::expected<Out, errc>{std::unexpected(errc::overflow)};
       return std::expected<Out, errc>{store<Out>(t)};
@@ -9419,7 +9419,7 @@ namespace beman::inside::math
     }
 
     template <insidable InB, insidable InE>
-      requires (Lower<InB> > rational{0})
+      requires (lower_of<InB> > rational{0})
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto pow(InB base, InE exp)
     {
       static_assert(mdetail::require_snap<InB>() && mdetail::require_snap<InE>());
@@ -9430,13 +9430,13 @@ namespace beman::inside::math
       float r = detail::d_pow(b, flt::to_float(exp));
       if (!(r <= 0x1p30f && r >= 0x1p-30f))                // the 2^±30 envelope, as cordic
       {
-        if constexpr (has_flag(InsidePolicy<Out>, clamp))
+        if constexpr (has_flag(policy_of<Out>, clamp))
           return std::expected<Out, errc>{store<Out>(r > 1.0f ? mdetail::upper_fp<float, Out>
                                                               : mdetail::lower_fp<float, Out>)};
         else
           return std::expected<Out, errc>{std::unexpected(errc::overflow)};
       }
-      if constexpr (!has_flag(InsidePolicy<Out>, clamp))   // clamp Out: saturate below
+      if constexpr (!has_flag(policy_of<Out>, clamp))   // clamp Out: saturate below
         if (r < mdetail::lower_fp<float, Out> || r > mdetail::upper_fp<float, Out>)
           return std::expected<Out, errc>{std::unexpected(errc::overflow)};
       return std::expected<Out, errc>{store<Out>(r)};
@@ -9693,7 +9693,7 @@ namespace beman::inside
     requires (detail::fp_raw<B> || detail::rational_raw<B>)
   inline std::string to_string(B b)
   {
-    if constexpr (detail::fp_raw<B> && Notch<B> == beman::inside::detail::rational{0})
+    if constexpr (detail::fp_raw<B> && notch_of<B> == beman::inside::detail::rational{0})
       return std::to_string(detail::as_double(b));
     else
       return to_string(beman::inside::detail::as_rational(b));
@@ -9739,7 +9739,7 @@ namespace beman::inside
     str += beman::inside::to_string(+b.raw());
     str += "[" + std::string(detail::type_name<detail::raw_t<B>>());
     str += " Max:" + beman::inside::to_string(+detail::NotchCount<B>) + "] ";
-    str += beman::inside::to_string(Grid<B>);
+    str += beman::inside::to_string(grid_of<B>);
     str += "}";
     return str;
   }

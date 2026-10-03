@@ -23,7 +23,7 @@ namespace beman::inside::detail
   // truncation (snap) — the prerequisite for native integer div / mod.
   template <insidable L, insidable R, policy_flag F>
   inline constexpr bool integer_native_ops =
-      ((F | InsidePolicy<L> | InsidePolicy<R>) & snap)
+      ((F | policy_of<L> | policy_of<R>) & snap)
       && !rational_raw<L> && !rational_raw<R>
       && IsIntegerAligned<L> && IsIntegerAligned<R>;
 
@@ -129,22 +129,22 @@ namespace beman::inside::detail
     static constexpr bool native_div_integer = integer_native_ops<L, R, F>;
 
     static constexpr bool native_div_qformat =
-        ((F | InsidePolicy<L> | InsidePolicy<R>) & snap)
+        ((F | policy_of<L> | policy_of<R>) & snap)
         && IsQFormat<L> && IsQFormat<R>
-        && Notch<L> == Notch<R>;
+        && notch_of<L> == notch_of<R>;
 
     static constexpr bool native_div = native_div_integer || native_div_qformat;
 
     // The rounding mode for the native paths (shared by the grid and runtime).
     static constexpr round_mode rmode =
-        div_round_mode(F | InsidePolicy<L> | InsidePolicy<R>);
+        div_round_mode(F | policy_of<L> | policy_of<R>);
 
     // A clear diagnostic when the result grid is unrepresentable, instead of the
     // raw expected-deref / .value() below failing cryptically (mirrors add/mul).
-    static_assert(native_div_qformat || (Grid<L> / Grid<R>).has_value(),
+    static_assert(native_div_qformat || (grid_of<L> / grid_of<R>).has_value(),
       "division: result grid not representable (notch/interval exceeds the "
       "representable rational range) — coarsen the operand grids");
-    static_assert(!native_div_qformat || (Upper<L> / Notch<R>).has_value(),
+    static_assert(!native_div_qformat || (upper_of<L> / notch_of<R>).has_value(),
       "division: Q-format result grid not representable — coarsen the operand grids");
 
     // Native-integer endpoints rounded with the same mode as the runtime
@@ -152,11 +152,11 @@ namespace beman::inside::detail
     // is always exact, so its grid is unchanged.)
     static constexpr grid result_grid =
         native_div_integer
-            ? grid{round_rat_lo((*(Grid<L> / Grid<R>)).Interval.Lower, rmode),
-                   round_rat_hi((*(Grid<L> / Grid<R>)).Interval.Upper, rmode)}
+            ? grid{round_rat_lo((*(grid_of<L> / grid_of<R>)).Interval.Lower, rmode),
+                   round_rat_hi((*(grid_of<L> / grid_of<R>)).Interval.Upper, rmode)}
       : native_div_qformat
-            ? grid{interval{rational{0}, (Upper<L> / Notch<R>).value()}, Notch<L>}
-            : *(Grid<L> / Grid<R>);
+            ? grid{interval{rational{0}, (upper_of<L> / notch_of<R>).value()}, notch_of<L>}
+            : *(grid_of<L> / grid_of<R>);
 
     // fp / representation propagation — shared rule in detail/rep.hpp.
     // AllowContinuous: a continuous quotient (Notch 0) keeps fp verbatim.
@@ -165,7 +165,7 @@ namespace beman::inside::detail
 
     template <policy_flag G = F>
     static constexpr bool needs_overflow_check =
-        has_any_flag(G | F | InsidePolicy<L> | InsidePolicy<R>, checked | exact);
+        has_any_flag(G | F | policy_of<L> | policy_of<R>, checked | exact);
 
     // For a nonzero divisor the op fails only on the checked rational path
     // (overflow). So when the divisor excludes zero AND this is false, `div`
@@ -212,7 +212,7 @@ namespace beman::inside::detail
     // set (zero divisor is then UB, matching the `/= 0` no-op). The fail arms stay
     // keyed on DivisorExcludesZero (which narrows the return type; ignore_zero doesn't).
     [[maybe_unused]] constexpr bool zero_unchecked = DivisorExcludesZero<R>
-        || (((G | F | InsidePolicy<L> | InsidePolicy<R>) & ignore_zero) != 0);
+        || (((G | F | policy_of<L> | policy_of<R>) & ignore_zero) != 0);
 
     if constexpr (fp_raw<result>)
     {
@@ -221,15 +221,15 @@ namespace beman::inside::detail
       // non-finite ever reaches storage.
       if constexpr (!zero_unchecked)
         if (as_double(rhs) == 0.0) return fail(errc::division_by_zero, "division by zero in div");
-      return result::from_raw(raw_cast<result>(snap_double<Grid<result>, rmode>(as_double(lhs) / as_double(rhs))));
+      return result::from_raw(raw_cast<result>(snap_double<grid_of<result>, rmode>(as_double(lhs) / as_double(rhs))));
     }
     else if constexpr (native_div_qformat)
     {
-      // rhs.Raw == 0 iff rhs.value == 0 (Lower<R> == 0). Formula folds to
+      // rhs.Raw == 0 iff rhs.value == 0 (lower_of<R> == 0). Formula folds to
       // `(a << log2 N)/b` for power-of-two N — the native Q-format idiom.
       if constexpr (!zero_unchecked)
         if (rhs.raw() == 0) return fail(errc::division_by_zero, "division by zero in div");
-      constexpr umax N = abs_den(Notch<L>.Denominator);
+      constexpr umax N = abs_den(notch_of<L>.Denominator);
       // 32-bit divide when the scaled dividend fits (Q8.8, Q16.15, ...).
       using U = std::conditional_t<(NotchCount<L> <= std::numeric_limits<std::uint32_t>::max() / N),
                                    std::uint32_t, umax>;
@@ -283,7 +283,7 @@ namespace beman::inside::detail
     // dividend grid); any directional mode can flip the sign, so the grid widens
     // to the symmetric ±max_rem (|r| ≤ max_rem for every mode).
     static constexpr round_mode rmode =
-        div_round_mode(F | InsidePolicy<L> | InsidePolicy<R>);
+        div_round_mode(F | policy_of<L> | policy_of<R>);
 
     static constexpr grid result_grid =
         (rmode == round_mode::trunc && LowerImax<L> >= 0)
@@ -313,7 +313,7 @@ namespace beman::inside::detail
     // Zero check elided when R's grid excludes zero (mod_return_t is plain
     // `result`) or `ignore_zero` is set (zero divisor is then UB, matching `%= 0`).
     constexpr bool zero_unchecked = DivisorExcludesZero<R>
-        || (((G | F | InsidePolicy<L> | InsidePolicy<R>) & ignore_zero) != 0);
+        || (((G | F | policy_of<L> | policy_of<R>) & ignore_zero) != 0);
     if constexpr (!zero_unchecked)
       if (rhs_val == 0)
         return report_or_unexpected<result>(action, policy, errc::division_by_zero,

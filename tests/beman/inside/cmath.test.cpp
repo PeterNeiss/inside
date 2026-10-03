@@ -1011,9 +1011,9 @@ TEST(CmathTest, beman_inside_math_abs_auto_deduced_output)
 
   // Deduced output type covers [0, 8] with notch 1/16384.
   using deduced = decltype(math::abs(algeb_in_t{0}));
-  static_assert(Lower<deduced> == 0);
-  static_assert(Upper<deduced> == 8);
-  static_assert(Notch<deduced> == beman::inside::notch<1, 16384>);
+  static_assert(lower_of<deduced> == 0);
+  static_assert(upper_of<deduced> == 8);
+  static_assert(notch_of<deduced> == beman::inside::notch<1, 16384>);
 }
 
 // beman::inside::math::floor / ceil / round / trunc: auto-deduced output
@@ -1023,7 +1023,7 @@ TEST(CmathTest, beman_inside_math_floor_ceil_round_trunc_auto_deduced_output)
   constexpr auto f_pos = math::floor(algeb_in_t{1.7_r});
   static_assert(f_pos == 1);
   using floor_deduced = decltype(math::floor(algeb_in_t{0}));
-  static_assert(Notch<floor_deduced> == beman::inside::notch<1>);
+  static_assert(notch_of<floor_deduced> == beman::inside::notch<1>);
 
   // ceil
   constexpr auto c_neg = math::ceil(algeb_in_t{-1.3_r});
@@ -1046,7 +1046,7 @@ TEST(CmathTest, beman_inside_math_explicit_and_auto_forms_produce_identical_valu
   // form values directly.
   constexpr algeb_in_t x{rational{-7, 3}};   // ≈ -2.333
 
-  // abs's auto type uses Notch<In> = 1/16384, so 7/3 snaps to nearest grid
+  // abs's auto type uses notch_of<In> = 1/16384, so 7/3 snaps to nearest grid
   // point: round(7/3 · 16384) = 38229 → 38229/16384.
   ASSERT_EQ(rational{math::abs(x)}, (rational{38229, 16384}));
   ASSERT_EQ(rational{math::floor(x)}, -3);
@@ -1075,9 +1075,9 @@ TEST(CmathTest, beman_inside_math_sqrt_auto_deduced_output)
 {
   // Input [0, 4] with notch 1/65536. Auto output range: [0, ceil_notch(2)] = [0, 2].
   using deduced = decltype(math::sqrt(sqrt_in_t{0}));
-  static_assert(Lower<deduced> == 0);
-  static_assert(Upper<deduced> == 2);
-  static_assert(Notch<deduced> == beman::inside::notch<1, 65536>);
+  static_assert(lower_of<deduced> == 0);
+  static_assert(upper_of<deduced> == 2);
+  static_assert(notch_of<deduced> == beman::inside::notch<1, 65536>);
 
   // Spot checks: integer perfect squares land exactly on the grid.
   ASSERT_EQ(rational{math::sqrt(sqrt_input(65536))}, 1); // √1 = 1
@@ -1090,8 +1090,8 @@ TEST(CmathTest, beman_inside_math_exp2_auto_deduced_output)
 {
   using deduced = decltype(math::exp2(exp2_in_t{0}));
   // True range [1/16, 16]; deduced inside rounds outward to input's notch.
-  static_assert(Lower<deduced> <= 0.0625_r);
-  static_assert(Upper<deduced> >= 16);
+  static_assert(lower_of<deduced> <= 0.0625_r);
+  static_assert(upper_of<deduced> >= 16);
 
   ASSERT_EQ(rational{math::exp2(exp2_from(rational{ 0}))}, 1);
   ASSERT_EQ(rational{math::exp2(exp2_from(rational{ 1}))}, 2);
@@ -1102,8 +1102,8 @@ TEST(CmathTest, beman_inside_math_exp2_auto_deduced_output)
 TEST(CmathTest, beman_inside_math_log2_auto_deduced_output)
 {
   using deduced = decltype(math::log2(log2_in_t{1}));
-  static_assert(Lower<deduced> <= -8);
-  static_assert(Upper<deduced> >= 8);
+  static_assert(lower_of<deduced> <= -8);
+  static_assert(upper_of<deduced> >= 8);
 
   ASSERT_EQ(rational{math::log2(log2_from(1_r))}, 0);
   ASSERT_EQ(rational{math::log2(log2_from(2_r))}, 1);
@@ -1145,15 +1145,15 @@ TEST(CmathTest, beman_inside_math_phase_2_composition)
 TEST(CmathTest, beman_inside_math_sin_cos_auto_deduced_output)
 {
   // Public sin/cos take radians; the auto-deduced output is [-1, 1]
-  // with `Notch<In>` inherited and `round_nearest` added to policy.
+  // with `notch_of<In>` inherited and `round_nearest` added to policy.
   // Angle inside uses round integer endpoints that divide evenly by the
   // notch (the grid validator requires `(Upper - Lower) / Notch` be
   // integer). ±8 rad comfortably covers ±2π for sweep tests.
   using angle_t = inside<{{-8, 8}, notch<1, 16384>}, round_nearest | f64>;
   using deduced = decltype(math::sin(angle_t{0}));
-  static_assert(Lower<deduced> == -1);
-  static_assert(Upper<deduced> == rational{ 1});
-  static_assert(Notch<deduced> == beman::inside::notch<1, 16384>);
+  static_assert(lower_of<deduced> == -1);
+  static_assert(upper_of<deduced> == rational{ 1});
+  static_assert(notch_of<deduced> == beman::inside::notch<1, 16384>);
 
   // Spot checks at exact radian angles. `math::pi` / `math::two_pi`
   // come from the public constants in `beman/inside/cmath.hpp`. `div_unchecked`
@@ -1245,9 +1245,9 @@ TEST(CmathTest, beman_inside_math_atan2_auto_deduced_output)
 {
   using deduced = decltype(math::atan2(atan2_in_t{0}, atan2_in_t{0}));
   // Output covers [-π, π] in radians, rounded outward to the inherited notch.
-  static_assert(Lower<deduced> <= -kPi);
-  static_assert(Upper<deduced> >=  kPi);
-  static_assert(Notch<deduced> == beman::inside::notch<1, 16384>);
+  static_assert(lower_of<deduced> <= -kPi);
+  static_assert(upper_of<deduced> >=  kPi);
+  static_assert(notch_of<deduced> == beman::inside::notch<1, 16384>);
 
   // Axis cases match the explicit form's behavior (radians).
   ASSERT_TRUE((near_rad(rational{math::atan2(atan2_in_t{0},  atan2_in_t{ 1})}, rational{0})));

@@ -222,8 +222,8 @@ namespace
     std::size_t position = 0;
     for (auto b : r)
     {
-      rational expected = (Lower<value_type>
-          + (rational{position} * Notch<value_type>).value()).value();
+      rational expected = (lower_of<value_type>
+          + (rational{position} * notch_of<value_type>).value()).value();
       ASSERT_EQ(as_rational(b), expected);
       ++position;
     }

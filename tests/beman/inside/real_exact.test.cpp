@@ -80,8 +80,8 @@ namespace
   template <class T>
   double on_grid_value(std::mt19937_64& rng)
   {
-    const double lo = static_cast<double>(Lower<T>);
-    const double nd = static_cast<double>(Notch<T>);
+    const double lo = static_cast<double>(lower_of<T>);
+    const double nd = static_cast<double>(notch_of<T>);
     const umax   cnt = NotchCount<T>;
     std::uniform_int_distribution<umax> d(0, cnt);
     return lo + static_cast<double>(d(rng)) * nd;
@@ -91,8 +91,8 @@ namespace
   void sweep(std::mt19937_64& rng, int iters)
   {
     // include the endpoints (max-magnitude is the binding case)
-    oracle_check<A, B>(A{static_cast<double>(Upper<A>)}, B{static_cast<double>(Upper<B>)});
-    oracle_check<A, B>(A{static_cast<double>(Lower<A>)}, B{static_cast<double>(Lower<B>)});
+    oracle_check<A, B>(A{static_cast<double>(upper_of<A>)}, B{static_cast<double>(upper_of<B>)});
+    oracle_check<A, B>(A{static_cast<double>(lower_of<A>)}, B{static_cast<double>(lower_of<B>)});
     for (int i = 0; i < iters; ++i)
       oracle_check<A, B>(A{on_grid_value<A>(rng)}, B{on_grid_value<B>(rng)});
   }
@@ -213,7 +213,7 @@ namespace
   void check_snap(double x)
   {
     R r = x;
-    const double nd = static_cast<double>(Notch<R>);
+    const double nd = static_cast<double>(notch_of<R>);
     const double expect = std::round(x / nd) * nd;   // value index, ties away from zero
     SCOPED_TRACE(::testing::Message() << "x=" << x << " expect=" << expect << " got=" << static_cast<double>(r));
     ASSERT_TRUE(static_cast<double>(r) == expect);
@@ -228,7 +228,7 @@ namespace
 TEST(RealExactTest, real_assignment_snaps_to_nearest_grid_ties_away_from_zero)
 {
   using R = inside<{{-4, 4}, notch<1, 256>}, f64>;    // double-exact, crosses zero
-  const double nd = static_cast<double>(Notch<R>);
+  const double nd = static_cast<double>(notch_of<R>);
 
   // exact half-way ties on both sides of zero
   for (int k = -1000; k < 1000; ++k)
@@ -260,7 +260,7 @@ TEST(RealExactTest, chained_real_arithmetic_stays_exact_vs_the_rational_oracle)
   std::mt19937_64 rng(static_cast<unsigned>(::testing::UnitTest::GetInstance()->random_seed()) ^ 0x243F6A8885A308D3ull);
 
   auto val = [&](){
-    const double nd = static_cast<double>(Notch<A>);
+    const double nd = static_cast<double>(notch_of<A>);
     std::uniform_int_distribution<int> d(-4 * 4096, 4 * 4096);
     return A{ d(rng) * nd };
   };

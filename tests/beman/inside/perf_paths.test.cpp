@@ -98,7 +98,7 @@ TEST(PerfPathsTest, q_format_division_result_type_is_q_format_same_notch_as_l)
   using fp = inside<{{0, 255}, 0x1p-8_r}, unsafe>;
   auto q = div(fp{200}, fp{8}, truncated);
   using R = std::remove_cvref_t<decltype(*q)>;
-  static_assert(Notch<R> == Notch<fp>);   // same Q-format, not rational-raw
+  static_assert(notch_of<R> == notch_of<fp>);   // same Q-format, not rational-raw
   static_assert(!(rational_raw<R>));
 }
 
@@ -140,10 +140,10 @@ TEST(PerfPathsTest, multiply_by_point_keeps_integer_storage)
   using U = inside<{0, 200}>;
   using R3 = decltype(U{} * just<3>);
   static_assert(!rational_raw<R3>);
-  static_assert(Notch<R3> == 3 && Lower<R3> == 0 && Upper<R3> == 600);
+  static_assert(notch_of<R3> == 3 && lower_of<R3> == 0 && upper_of<R3> == 600);
   using RH = decltype(midpoint(U{}, U{}));
   static_assert(!rational_raw<RH>);
-  static_assert(Notch<RH> == rational{1, 2});
+  static_assert(notch_of<RH> == rational{1, 2});
 }
 
 TEST(PerfPathsTest, multiply_by_point_matches_exact_product)

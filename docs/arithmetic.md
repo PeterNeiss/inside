@@ -49,9 +49,9 @@ operand grids and whether `snap` is in effect.
 
 | Path | Triggered when… | Algorithm | Result storage | Result interval |
 |---|---|---|---|---|
-| **Q-format fast** | `snap` is set **and** both operands share the same Q-format grid (notch `1/N` with `N ≥ 2`, `Lower == 0`) | `(lhs.Raw × N) ÷ rhs.Raw` — the textbook fixed-point divide, **rounded per the policy's mode** (folds to `(a << log2(N)) / b` for power-of-2 N under plain `snap`) | Q-format integer raw, **same notch as L** | `[0, Upper<L> / Notch<R>]` — Upper *expands* (see below) |
-| **Integer-aligned fast** | `snap` is set **and** both grids are integer-aligned (notch and Lower both have denominator 1) **and** neither operand uses rational raw storage | `to_value(lhs) / to_value(rhs)`, **rounded per the policy's mode** — see below | Integer raw | `Grid<L> / Grid<R>` with each endpoint rounded by the same mode |
-| **Exact rational** *(fall-through)* | everything else | `as_rational(lhs) / rational{rhs}` — exact rational arithmetic. Under `checked` this is the expected-returning `rational::operator/`; under `unsafe` it's the unchecked variant. | `rational` raw — the result type is `inside<{interval, 0}>` | `*(Grid<L> / Grid<R>)` — the grid divider widens the interval when the divisor's range straddles zero |
+| **Q-format fast** | `snap` is set **and** both operands share the same Q-format grid (notch `1/N` with `N ≥ 2`, `Lower == 0`) | `(lhs.Raw × N) ÷ rhs.Raw` — the textbook fixed-point divide, **rounded per the policy's mode** (folds to `(a << log2(N)) / b` for power-of-2 N under plain `snap`) | Q-format integer raw, **same notch as L** | `[0, upper_of<L> / notch_of<R>]` — Upper *expands* (see below) |
+| **Integer-aligned fast** | `snap` is set **and** both grids are integer-aligned (notch and Lower both have denominator 1) **and** neither operand uses rational raw storage | `to_value(lhs) / to_value(rhs)`, **rounded per the policy's mode** — see below | Integer raw | `grid_of<L> / grid_of<R>` with each endpoint rounded by the same mode |
+| **Exact rational** *(fall-through)* | everything else | `as_rational(lhs) / rational{rhs}` — exact rational arithmetic. Under `checked` this is the expected-returning `rational::operator/`; under `unsafe` it's the unchecked variant. | `rational` raw — the result type is `inside<{interval, 0}>` | `*(grid_of<L> / grid_of<R>)` — the grid divider widens the interval when the divisor's range straddles zero |
 
 Both native paths divide in 32 bits when both operand ranges fit (the integer
 path excludes `INT32_MIN`, so `a / -1` cannot overflow), so `/` and `%` on small
@@ -162,7 +162,7 @@ using fp = inside<{{0, 255}, notch<1, 256>}, unsafe>;   // Q8.8
 auto q = fp{1} / fp{1};   // type: inside<{{0, 65280}, notch<1, 256>}>, value 1
 ```
 
-The result's upper bound is `Upper<L> / Notch<R> = 255 / (1/256) = 65 280`,
+The result's upper bound is `upper_of<L> / notch_of<R> = 255 / (1/256) = 65 280`,
 not `255`. The smallest non-zero divisor in a Q8.8 grid is `1/256`, so an
 input of `255` could be divided by `1/256` and produce `65 280` — the
 result type must be wide enough to hold every possible quotient.
@@ -319,8 +319,8 @@ auto r = a % b;  // std::expected<inside<{0, 99}>, errc>, value 2
 ```
 
 The result interval is `[0, max_rem]` for non-negative L, or
-`[-max_rem, max_rem]` if `Lower<L> < 0`, where
-`max_rem = max(|Lower<R>|, |Upper<R>|) - 1` — the largest remainder
+`[-max_rem, max_rem]` if `lower_of<L> < 0`, where
+`max_rem = max(|lower_of<R>|, |upper_of<R>|) - 1` — the largest remainder
 magnitude any divisor in R's range could produce.
 
 Like division, modulo returns `std::expected` (division by zero yields

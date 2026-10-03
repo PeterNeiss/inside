@@ -505,8 +505,8 @@ TEST(ConstexprTest, constexpr_just_n_and_ins_literal)
   static_assert(just<42> == 42);
 
   constexpr auto five = 5_ins;
-  static_assert(Lower<decltype(five)> == 5);
-  static_assert(Upper<decltype(five)> == 5);
+  static_assert(lower_of<decltype(five)> == 5);
+  static_assert(upper_of<decltype(five)> == 5);
   static_assert(five == 5);
 
   // Composes with inside — grid widens via add

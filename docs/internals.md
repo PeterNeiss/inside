@@ -31,7 +31,7 @@ enforced at type-instantiation time by `grid::validate` (`grid::validate` in `in
 These invariants let the library compute result grids at compile time
 without runtime overflow checks for grid arithmetic itself — every
 reachable value of `a + b` for `a : A, b : B` is by construction inside
-`Grid<A> + Grid<B>`.
+`grid_of<A> + grid_of<B>`.
 
 **Point operands.** A point grid (`just<c>`, `1_ins`; Lower == Upper, notch 0)
 in a product scales the other operand's lattice: `grid × point{c}` has notch
@@ -109,8 +109,8 @@ collapses to integer arithmetic. The gate is `HasQFormatFastPath<B>`
 (`include/beman/inside/generic.hpp`):
 
 ```cpp
-abs_den(Lower<B>.Denominator) == 1
-&& Notch<B>.Numerator == 1
+abs_den(lower_of<B>.Denominator) == 1
+&& notch_of<B>.Numerator == 1
 && !rational_raw<B>
 && (std::signed_integral<raw_t<B>>          // raw fits imax
     || NotchCount<B> <= imax_max)

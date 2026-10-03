@@ -73,7 +73,7 @@ TEST(SignedTest, signed_storage_uses_full_range_including_minimum)
 // (rhs - Lower) instead of the value when constructed from f64-valued
 // rhs (rational/double) or from another inside via the inside-to-inside
 // store path. Both paths now route through `raw_from_offset<L>`, which
-// adds Lower<L> back for direct-storage targets.
+// adds lower_of<L> back for direct-storage targets.
 // signed-direct ctor from rational/double preserves value
 TEST(SignedTest, signed_direct_ctor_from_rational_double_preserves_value)
 {

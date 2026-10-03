@@ -14,7 +14,7 @@
 #define BEMAN_INSIDE_CMATH_DOUBLE_HPP
 
 #include <beman/inside/math.hpp>   // beman::inside::detail::ldexp (constexpr, reproducible)
-#include <beman/inside/inside.hpp>  // complete inside/rational + has_flag/InsidePolicy/f64 (store<>)
+#include <beman/inside/inside.hpp>  // complete inside/rational + has_flag/policy_of/f64 (store<>)
 
 // BEMAN_INSIDE_MATH_NO_FP is resolved in policy_flag.hpp (included via inside.hpp).
 

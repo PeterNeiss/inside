@@ -12,8 +12,8 @@
 
 //---------------------------------------------------------------------------
 // generic — type-level traits and predicates used everywhere else. Public
-// grid/policy introspection (`Grid<B>`, `InsidePolicy<B>`, `Lower/Upper/Notch<B>`,
-// `Interval<B>`) plus the `insidable`/`numeric`/`inside_assignable` concepts; the
+// grid/policy introspection (`grid_of<B>`, `policy_of<B>`, `Lower/Upper/notch_of<B>`,
+// `interval_of<B>`) plus the `insidable`/`numeric`/`inside_assignable` concepts; the
 // storage-shape predicates and raw/value converters are internal (`beman::inside::detail`).
 //---------------------------------------------------------------------------
 namespace beman::inside
@@ -42,24 +42,24 @@ namespace beman::inside
   }
 
   template <insidable B>
-  inline constexpr grid Grid = detail::inside_params<std::remove_cvref_t<B>>::grid_v;
+  inline constexpr grid grid_of = detail::inside_params<std::remove_cvref_t<B>>::grid_v;
 
   template <insidable B>
-  inline constexpr policy_flag InsidePolicy = detail::inside_params<std::remove_cvref_t<B>>::policy_v;
+  inline constexpr policy_flag policy_of = detail::inside_params<std::remove_cvref_t<B>>::policy_v;
 
   template <typename T>
-  inline constexpr interval Interval = {0,0};
+  inline constexpr interval interval_of = {0,0};
 
   template <insidable B>
-  inline constexpr interval Interval<B> = Grid<B>.Interval;
+  inline constexpr interval interval_of<B> = grid_of<B>.Interval;
 
   template <std::integral I>
-  inline constexpr interval Interval<I> =
+  inline constexpr interval interval_of<I> =
       {std::numeric_limits<I>::lowest(), std::numeric_limits<I>::max()};
 
-  template <insidable B> inline constexpr detail::rational Lower = Grid<B>.Interval.Lower;
-  template <insidable B> inline constexpr detail::rational Upper = Grid<B>.Interval.Upper;
-  template <insidable B> inline constexpr detail::rational Notch = Grid<B>.Notch;
+  template <insidable B> inline constexpr detail::rational lower_of = grid_of<B>.Interval.Lower;
+  template <insidable B> inline constexpr detail::rational upper_of = grid_of<B>.Interval.Upper;
+  template <insidable B> inline constexpr detail::rational notch_of = grid_of<B>.Notch;
 
   template <typename N>
   concept numeric = insidable<N> or arithmetic<N>;
@@ -139,14 +139,14 @@ namespace beman::inside
     template <insidable B>
     inline constexpr bool value_raw =
          !fp_raw<B> && !rational_raw<B>
-      && ((InsidePolicy<B> & direct) == direct
+      && ((policy_of<B> & direct) == direct
           // A pinned width flag without `indexed` is value storage (raw == value)
           // regardless of Lower's sign — storage_pick checked the range fits.
-          || (has_width_flag(InsidePolicy<B>)
-              && (InsidePolicy<B> & indexed) != indexed)
-          || ((InsidePolicy<B> & indexed) != indexed
-              && Notch<B> == 1
-              && (Lower<B> == 0 || std::signed_integral<raw_t<B>>)));
+          || (has_width_flag(policy_of<B>)
+              && (policy_of<B> & indexed) != indexed)
+          || ((policy_of<B> & indexed) != indexed
+              && notch_of<B> == 1
+              && (lower_of<B> == 0 || std::signed_integral<raw_t<B>>)));
 
     template <insidable B>
     inline constexpr bool index_raw =
@@ -162,30 +162,30 @@ namespace beman::inside
       if constexpr (!index_raw<B>)
         return static_cast<double>(b.raw());
       else
-        return static_cast<double>((*(b.raw() * Notch<B>) + Lower<B>).value());
+        return static_cast<double>((*(b.raw() * notch_of<B>) + lower_of<B>).value());
     }
 
     template <insidable B>
-    using negative = inside<-Grid<B>, InsidePolicy<B>>;
+    using negative = inside<-grid_of<B>, policy_of<B>>;
 
     // True when R's interval cannot contain zero — so `a / b` can return a plain
     // `inside` instead of `expected<inside, errc>` (see detail/division.hpp). A point
     // grid at 0 is *not* excluded.
     template <insidable R>
-    inline constexpr bool DivisorExcludesZero = (Lower<R> > 0) || (Upper<R> < 0);
+    inline constexpr bool DivisorExcludesZero = (lower_of<R> > 0) || (upper_of<R> < 0);
 
     // Storage-agnostic int truncation of interval endpoints — intent-revealing
-    // `static_cast<imax>(Lower<B>)`. Used by from_value, RawLo, the fast paths.
+    // `static_cast<imax>(lower_of<B>)`. Used by from_value, RawLo, the fast paths.
     template <insidable B>
-    inline constexpr imax LowerImax = trunc(Lower<B>);
+    inline constexpr imax LowerImax = trunc(lower_of<B>);
 
     template <insidable B>
-    inline constexpr imax UpperImax = trunc(Upper<B>);
+    inline constexpr imax UpperImax = trunc(upper_of<B>);
 
     // Slot count via grid::max_notch (overflow-safe: 0 when it doesn't fit umax,
     // for grids that store as rational and never use the index).
     template <insidable B>
-    inline constexpr umax NotchCount = Grid<B>.max_notch();
+    inline constexpr umax NotchCount = grid_of<B>.max_notch();
 
     //-------------------------------------------------------------------------
     // grid_value_bounds / rational_mul_is_safe / rational_add_is_safe
@@ -289,8 +289,8 @@ namespace beman::inside
     //-------------------------------------------------------------------------
     template <insidable B>
     inline constexpr bool HasQFormatFastPath =
-        abs_den(Lower<B>.Denominator) == 1
-        && Notch<B>.Numerator == 1
+        abs_den(lower_of<B>.Denominator) == 1
+        && notch_of<B>.Numerator == 1
         && !rational_raw<B>
         && (std::signed_integral<raw_t<B>>
             || NotchCount<B> <= static_cast<umax>(std::numeric_limits<imax>::max()));
@@ -299,7 +299,7 @@ namespace beman::inside
     template <insidable B>
     constexpr raw_t<B> q_format_encode(imax value) noexcept
     {
-      constexpr imax nd = abs_den(Notch<B>.Denominator);
+      constexpr imax nd = abs_den(notch_of<B>.Denominator);
       return raw_cast<B>((value - LowerImax<B>) * nd);
     }
 
@@ -307,7 +307,7 @@ namespace beman::inside
     template <insidable B>
     constexpr rational q_format_decode(B b) noexcept
     {
-      constexpr imax nd = abs_den(Notch<B>.Denominator);
+      constexpr imax nd = abs_den(notch_of<B>.Denominator);
       return rational{raw_imax(b) + LowerImax<B> * nd, nd};
     }
 
@@ -320,11 +320,11 @@ namespace beman::inside
     {
       if constexpr (!index_raw<B>)
         return raw_imax(b);
-      else if constexpr (abs_den(Notch<B>.Denominator) == 1 && abs_den(Lower<B>.Denominator) == 1)
-        return LowerImax<B> + raw_imax(b) * static_cast<imax>(Notch<B>.Numerator);
+      else if constexpr (abs_den(notch_of<B>.Denominator) == 1 && abs_den(lower_of<B>.Denominator) == 1)
+        return LowerImax<B> + raw_imax(b) * static_cast<imax>(notch_of<B>.Numerator);
       else if constexpr (HasQFormatFastPath<B>)
       {
-        constexpr imax nd = abs_den(Notch<B>.Denominator);
+        constexpr imax nd = abs_den(notch_of<B>.Denominator);
         return (raw_imax(b) + LowerImax<B> * nd) / nd;   // q_format_decode, truncated
       }
       else // index storage, generic rational path
@@ -336,13 +336,13 @@ namespace beman::inside
     {
       if constexpr (!index_raw<B>)
         b = B::from_raw(raw_cast<B>(val));
-      else if constexpr (abs_den(Notch<B>.Denominator) == 1 && abs_den(Lower<B>.Denominator) == 1)
-        b = B::from_raw(raw_cast<B>((val - LowerImax<B>) / static_cast<imax>(Notch<B>.Numerator)));
+      else if constexpr (abs_den(notch_of<B>.Denominator) == 1 && abs_den(lower_of<B>.Denominator) == 1)
+        b = B::from_raw(raw_cast<B>((val - LowerImax<B>) / static_cast<imax>(notch_of<B>.Numerator)));
       else if constexpr (HasQFormatFastPath<B>)
         b = B::from_raw(q_format_encode<B>(val));
       else // index storage, generic rational path
       {
-        auto offset = (rational{val} - Lower<B>) / Notch<B>;
+        auto offset = (rational{val} - lower_of<B>) / notch_of<B>;
         b = B::from_raw(raw_cast<B>(offset.value().Numerator));
       }
     }
@@ -390,11 +390,11 @@ namespace beman::inside
     //-------------------------------------------------------------------------
     template <insidable B>
     inline constexpr bool IsIntegerInterval =
-        abs_den(Lower<B>.Denominator) == 1 && abs_den(Upper<B>.Denominator) == 1;
+        abs_den(lower_of<B>.Denominator) == 1 && abs_den(upper_of<B>.Denominator) == 1;
 
     template <insidable B>
     inline constexpr bool IsIntegerAligned =
-        abs_den(Notch<B>.Denominator) == 1 && abs_den(Lower<B>.Denominator) == 1;
+        abs_den(notch_of<B>.Denominator) == 1 && abs_den(lower_of<B>.Denominator) == 1;
 
     // Q-format: the canonical fixed-point shape (Q8.8, Q16.16, ...). Notch has
     // unit numerator with integer denominator > 1, Lower is an integer at 0.
@@ -404,16 +404,16 @@ namespace beman::inside
     template <insidable B>
     inline constexpr bool IsQFormat =
            !rational_raw<B>
-        && Notch<B>.Numerator == 1
-        && abs_den(Notch<B>.Denominator) > 1
-        && abs_den(Lower<B>.Denominator) == 1
-        && Lower<B> == 0;
+        && notch_of<B>.Numerator == 1
+        && abs_den(notch_of<B>.Denominator) > 1
+        && abs_den(lower_of<B>.Denominator) == 1
+        && lower_of<B> == 0;
 
     // Policy test: checks both type-level and per-operation policy.
     // Composite flags (e.g. round_nearest = bit5 | snap) require all
     // their bits set — having a subset like just `snap` does NOT match.
     template <insidable B, typename P, policy_flag F>
-    inline constexpr bool HasPolicy = has_flag(InsidePolicy<B>, F) || plain<P>::test(F);
+    inline constexpr bool HasPolicy = has_flag(policy_of<B>, F) || plain<P>::test(F);
 
     // rounding_of (policy_flag.hpp) over L's type policy and the call's policy P.
     template <insidable L, typename P>
@@ -431,11 +431,11 @@ namespace beman::inside
     template <insidable L, typename P>
     [[nodiscard]] constexpr rational round_to_lattice(rational v)
     {
-      if constexpr (Notch<L> == 0)
+      if constexpr (notch_of<L> == 0)
         return v;
       else
       {
-        const rational qv = (v / Notch<L>).value();
+        const rational qv = (v / notch_of<L>).value();
         constexpr round_mode m = rounding_for<L, P>;
         imax k;
         if constexpr (m == round_mode::nearest)    k = round(qv);
@@ -449,7 +449,7 @@ namespace beman::inside
           k = frac > half ? f + 1 : frac < half ? f : ((f & 1) ? f + 1 : f);
         }
         else                                       k = trunc(qv);
-        return (rational{k} * Notch<L>).value();
+        return (rational{k} * notch_of<L>).value();
       }
     }
 
@@ -486,9 +486,9 @@ namespace beman::inside
     [[nodiscard]] constexpr umax round_quotient(umax num, umax den) noexcept
     {
       constexpr rational zl =
-          (Notch<L> == rational{0})
+          (notch_of<L> == rational{0})
             ? rational{0}
-            : (Lower<L> / Notch<L>).value_or(rational{0});
+            : (lower_of<L> / notch_of<L>).value_or(rational{0});
       constexpr bool vidx = (zl.Denominator == 1 || zl.Denominator == -1);
       constexpr imax m = vidx
           ? signed_numerator(zl)
@@ -547,7 +547,7 @@ namespace beman::inside
     // `{{0,9},3}` while rejecting `1_ins` and out-of-range points.
     template <typename L, typename R>
     inline constexpr bool point_exactly_assignable =
-      (Lower<R> == Upper<R>) && Grid<L>.representable(Lower<R>);
+      (lower_of<R> == upper_of<R>) && grid_of<L>.representable(lower_of<R>);
 
     // Tail of the policy cascade: checked reports.
     // Returns true if a policy handled the failure (caller should return).
@@ -572,13 +572,13 @@ namespace beman::inside
       (!insidable<R> && !std::integral<R>)
       // wrap/clamp bring any value into range, so a disjoint rhs interval is fine
       // for them (the integral-rhs path already allows it — int's interval is unbounded).
-      || ((InsidePolicy<L> | P) & (wrap | clamp)) != 0
-      || not excludes(Interval<L>, Interval<R>);
+      || ((policy_of<L> | P) & (wrap | clamp)) != 0
+      || not excludes(interval_of<L>, interval_of<R>);
 
     template <typename L, typename R, policy_flag P>
     concept assign_notch_ok =
       !insidable<R> || abs_den(assignment<L, R>::Factor.Denominator) == 1
-      || ((InsidePolicy<L> | P) & snap) != 0
+      || ((policy_of<L> | P) & snap) != 0
       || point_exactly_assignable<L, R>;
   } // namespace detail
 
@@ -622,7 +622,7 @@ namespace beman::inside
   // Public manual probe: `static_assert(beman::inside::why_assignable<DstInside, decltype(src)>);`
   // emits the named per-clause reasons in any build — including a strict
   // (`BEMAN_INSIDE_STRICT_SFINAE`) build where the automatic in-`inside` fallbacks are absent.
-  template <typename Dst, typename Src, policy_flag P = InsidePolicy<Dst>>
+  template <typename Dst, typename Src, policy_flag P = policy_of<Dst>>
   inline constexpr bool why_assignable =
     inside_assignable_why<Dst, std::remove_cvref_t<Src>, P>::value;
 } // namespace beman::inside

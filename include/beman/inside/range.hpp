@@ -127,10 +127,10 @@ namespace beman::inside
           return value_type::from_raw(
               static_cast<typename value_type::raw_type>(slot()));
         else if constexpr (detail::value_raw<value_type>
-                           && detail::abs_den(Notch<value_type>.Denominator) == 1
-                           && detail::abs_den(Lower<value_type>.Denominator) == 1)
+                           && detail::abs_den(notch_of<value_type>.Denominator) == 1
+                           && detail::abs_den(lower_of<value_type>.Denominator) == 1)
         {
-          constexpr imax notch_step = static_cast<imax>(Notch<value_type>.Numerator);
+          constexpr imax notch_step = static_cast<imax>(notch_of<value_type>.Numerator);
           return value_type::from_raw(static_cast<typename value_type::raw_type>(
               detail::LowerImax<value_type>
               + static_cast<imax>(slot()) * notch_step));
@@ -174,10 +174,10 @@ namespace beman::inside
       if constexpr (detail::index_raw<value_type>)
         start_index_ = static_cast<umax>(start.raw());
       else if constexpr (detail::value_raw<value_type>
-                         && detail::abs_den(Notch<value_type>.Denominator) == 1
-                         && detail::abs_den(Lower<value_type>.Denominator) == 1)
+                         && detail::abs_den(notch_of<value_type>.Denominator) == 1
+                         && detail::abs_den(lower_of<value_type>.Denominator) == 1)
       {
-        constexpr imax notch_step = static_cast<imax>(Notch<value_type>.Numerator);
+        constexpr imax notch_step = static_cast<imax>(notch_of<value_type>.Numerator);
         start_index_ = static_cast<umax>(
             (static_cast<imax>(start.raw()) - detail::LowerImax<value_type>)
             / notch_step);

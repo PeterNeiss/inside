@@ -39,7 +39,7 @@ TEST(GridTest, just_inside_values_work_as_grid_corners)
   static_assert(grid{just<2>}                == grid{2});       // 1-arg point grid
   static_assert(grid{just<0>, just<8>, just<2>} == grid{0, 8, 2});
   // ...and as inside<> grid-spec corners (the rifle.cpp use case).
-  static_assert(Grid<inside<{0, just<30>}, wrap>> == Grid<inside<{0, 30}, wrap>>);
+  static_assert(grid_of<inside<{0, just<30>}, wrap>> == grid_of<inside<{0, 30}, wrap>>);
 }
 
 // grid storage_min selection

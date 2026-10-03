@@ -145,8 +145,8 @@ TEST(CastsTest, unchecked_cast_bypasses_runtime_checks)
 TEST(CastsTest, ins_literal_produces_just_n)
 {
   constexpr auto five = 5_ins;
-  static_assert(Lower<decltype(five)> == 5);
-  static_assert(Upper<decltype(five)> == 5);
+  static_assert(lower_of<decltype(five)> == 5);
+  static_assert(upper_of<decltype(five)> == 5);
   static_assert(five == 5);
 
   // Composes with inside arithmetic — grid widens through addition.

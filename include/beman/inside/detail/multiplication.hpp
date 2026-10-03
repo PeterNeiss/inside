@@ -11,9 +11,9 @@
 #include <beman/inside/policy.hpp>
 
 //---------------------------------------------------------------------------
-// multiplication — `mul(L, R, policy, action) -> inside<Grid<L> * Grid<R>>`. The
+// multiplication — `mul(L, R, policy, action) -> inside<grid_of<L> * grid_of<R>>`. The
 // integer hot path branches on which corner of the four-quadrant product hits
-// `Lower<result>`, doing the arithmetic as `umax * umax` (no signed overflow)
+// `lower_of<result>`, doing the arithmetic as `umax * umax` (no signed overflow)
 // plus integer offset corrections. Rational-result and all-integer-aligned
 // cases come first.
 //---------------------------------------------------------------------------
@@ -22,10 +22,10 @@ namespace beman::inside::detail
   template <insidable L, insidable R = L>
   struct multiplication
   {
-    static_assert((Grid<L> * Grid<R>).has_value(),
+    static_assert((grid_of<L> * grid_of<R>).has_value(),
       "multiplication: result grid's notch/interval exceeds the representable "
       "rational range — coarsen the operand grids");
-    static constexpr grid result_grid = (Grid<L> * Grid<R>).value();
+    static constexpr grid result_grid = (grid_of<L> * grid_of<R>).value();
     // fp / representation propagation — shared rule in detail/rep.hpp. The product
     // grid (notch = N_L·N_R) is finer, so demotion/dropping is the common case.
     using rep_t = fp_rep<L, R, result_grid>;
@@ -38,9 +38,9 @@ namespace beman::inside::detail
     template <typename P>
     static constexpr bool needs_overflow_check =
         rational_raw<result>
-        && (has_any_flag(InsidePolicy<L> | InsidePolicy<R>, checked | exact)
+        && (has_any_flag(policy_of<L> | policy_of<R>, checked | exact)
             || plain<P>::test(checked) || dropped_fp)
-        && !rational_mul_is_safe(Grid<L>, Grid<R>);
+        && !rational_mul_is_safe(grid_of<L>, grid_of<R>);
 
     template <typename P>
     using return_type_for = std::conditional_t<needs_overflow_check<P>,
@@ -57,8 +57,8 @@ namespace beman::inside::detail
     // the far end when c < 0. No multiply at all.
     template <insidable Point, insidable X>
     static constexpr bool point_scale =
-        Lower<Point> == Upper<Point> && Lower<Point> != 0
-        && !rational_raw<X> && !fp_raw<X> && Notch<X> != 0
+        lower_of<Point> == upper_of<Point> && lower_of<Point> != 0
+        && !rational_raw<X> && !fp_raw<X> && notch_of<X> != 0
         && !rational_raw<result> && !fp_raw<result>;
 
     template <bool Negate, insidable X>
@@ -82,9 +82,9 @@ namespace beman::inside::detail
       return result::from_raw(raw_cast<result>(as_double(lhs) * as_double(rhs)));
     }
     else if constexpr (point_scale<R, L>)
-      return scale_by_point<(Lower<R> < 0)>(lhs);
+      return scale_by_point<(lower_of<R> < 0)>(lhs);
     else if constexpr (point_scale<L, R>)
-      return scale_by_point<(Lower<L> < 0)>(rhs);
+      return scale_by_point<(lower_of<L> < 0)>(rhs);
     else if constexpr (rational_raw<result>)
     {
       if constexpr (needs_overflow_check<P>)
@@ -114,12 +114,12 @@ namespace beman::inside::detail
       // dropped from the result (grid not double-exact) but operands stay f64.
       auto prod = rational::mul_unchecked(as_rational(lhs), as_rational(rhs));
       return result::from_raw(raw_from_offset<result>(
-          ((prod - Lower<result>) / Notch<result>).value().Numerator));
+          ((prod - lower_of<result>) / notch_of<result>).value().Numerator));
     }
     else
     {
       // Result writes go through raw_from_offset so direct-storage results
-      // get Lower<result> added back to recover the value.
+      // get lower_of<result> added back to recover the value.
       auto to_result = [](auto raw_offset)
       { return result::from_raw(raw_from_offset<result>(static_cast<umax>(raw_offset))); };
 
@@ -133,26 +133,26 @@ namespace beman::inside::detail
           : static_cast<umax>(rhs.raw());
 
       // Absolute notch index of each operand endpoint (Lower/Notch, Upper/Notch).
-      constexpr umax idxLoL = (Lower<L>/Notch<L>).value_or(rational{0}).Numerator;
-      constexpr umax idxLoR = (Lower<R>/Notch<R>).value_or(rational{0}).Numerator;
-      constexpr umax idxHiL = (Upper<L>/Notch<L>).value_or(rational{0}).Numerator;
+      constexpr umax idxLoL = (lower_of<L>/notch_of<L>).value_or(rational{0}).Numerator;
+      constexpr umax idxLoR = (lower_of<R>/notch_of<R>).value_or(rational{0}).Numerator;
+      constexpr umax idxHiL = (upper_of<L>/notch_of<L>).value_or(rational{0}).Numerator;
 
       // Integral promotion would make `raw * raw` an `int * int` (UB above
       // INT_MAX), so cast to umax to multiply in 64-bit unsigned space. The four
-      // branches cover the sign quadrants: Lower<result> is one of the four
+      // branches cover the sign quadrants: lower_of<result> is one of the four
       // corner products; sign-flipped helpers (negative<L>/<R>) reduce each to
       // the all-positive formula. The static_assert guards the case analysis.
-      if constexpr (Lower<result> == (Lower<L> * Lower<R>).value())
+      if constexpr (lower_of<result> == (lower_of<L> * lower_of<R>).value())
       {
         return to_result(lhs_offset * rhs_offset
                          + lhs_offset * idxLoR
                          + rhs_offset * idxLoL);
       }
 
-      if constexpr (Lower<result> == (Upper<L> * Upper<R>).value())
+      if constexpr (lower_of<result> == (upper_of<L> * upper_of<R>).value())
       { return multiplication<negative<L>, negative<R>>::mul(-lhs, -rhs, std::forward<P>(policy)); }
 
-      if constexpr (Lower<result> == (Upper<L> * Lower<R>).value())
+      if constexpr (lower_of<result> == (upper_of<L> * lower_of<R>).value())
       {
         umax negLhs = NotchCount<L> - lhs_offset;
         return to_result(negLhs * idxLoR
@@ -160,13 +160,13 @@ namespace beman::inside::detail
                          - negLhs * rhs_offset);
       }
 
-      if constexpr (Lower<result> == (Lower<L> * Upper<R>).value())
+      if constexpr (lower_of<result> == (lower_of<L> * upper_of<R>).value())
       { return -multiplication<L, negative<R>>::mul(lhs, -rhs, std::forward<P>(policy)); }
 
-      static_assert(Lower<result> == (Lower<L> * Lower<R>).value()
-                 || Lower<result> == (Upper<L> * Upper<R>).value()
-                 || Lower<result> == (Upper<L> * Lower<R>).value()
-                 || Lower<result> == (Lower<L> * Upper<R>).value(),
+      static_assert(lower_of<result> == (lower_of<L> * lower_of<R>).value()
+                 || lower_of<result> == (upper_of<L> * upper_of<R>).value()
+                 || lower_of<result> == (upper_of<L> * lower_of<R>).value()
+                 || lower_of<result> == (lower_of<L> * upper_of<R>).value(),
                  "multiplication: internal logic error");
     }
   }

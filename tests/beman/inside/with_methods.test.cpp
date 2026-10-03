@@ -239,9 +239,9 @@ TEST(WithMethodsTest, with_snap_proxy_converts_to_a_value_rhs_return_position)
   // target whose interval the value can never enter (conversion stays constrained).
   using big = decltype(small{} * small{});
   static_assert(std::is_same_v<decltype(std::declval<big&>().with_snap()),
-                                policy_ref<big, policy<InsidePolicy<big> | snap>>>);
+                                policy_ref<big, policy<policy_of<big> | snap>>>);
   static_assert(std::is_same_v<decltype(std::declval<big>().with_snap()),
-                                policy_buffer<big, policy<InsidePolicy<big> | snap>>>);
+                                policy_buffer<big, policy<policy_of<big> | snap>>>);
   static_assert(std::is_convertible_v<decltype(std::declval<big&>().with_snap()), small>);
   static_assert(std::is_convertible_v<decltype(std::declval<big >().with_snap()), small>);
   static_assert(!std::is_convertible_v<decltype(std::declval<big&>().with_snap()),

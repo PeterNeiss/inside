@@ -54,15 +54,15 @@ TEST(LiteralsTest, r_literal_hex_float_binary_exponent_p)
 TEST(LiteralsTest, ins_literal_produces_point_inside_just_value)
 {
   constexpr auto five = 5_ins;
-  static_assert(Lower<decltype(five)> == 5);
-  static_assert(Upper<decltype(five)> == 5);
+  static_assert(lower_of<decltype(five)> == 5);
+  static_assert(upper_of<decltype(five)> == 5);
 
   constexpr auto quarter = 0.25_ins;
-  static_assert(Lower<decltype(quarter)> == rational{1, 4});
-  static_assert(Upper<decltype(quarter)> == rational{1, 4});
+  static_assert(lower_of<decltype(quarter)> == rational{1, 4});
+  static_assert(upper_of<decltype(quarter)> == rational{1, 4});
 
   constexpr auto q14_notch = 0x1p-14_ins;
-  static_assert(Lower<decltype(q14_notch)> == rational{1, 16384});
+  static_assert(lower_of<decltype(q14_notch)> == rational{1, 16384});
 }
 
 // a_b / b_b ~= rational{a,b} - value-equivalent (expected-wrapped)
@@ -80,8 +80,8 @@ TEST(LiteralsTest, a_b_b_b_rational_a_b_value_equivalent_expected_wrapped)
 
   // The inner inside *is* a point inside with the expected grid.
   using inner_t = typename decltype(three_quarters)::value_type;
-  static_assert(Lower<inner_t> == rational{3, 4});
-  static_assert(Upper<inner_t> == rational{3, 4});
+  static_assert(lower_of<inner_t> == rational{3, 4});
+  static_assert(upper_of<inner_t> == rational{3, 4});
 }
 
 // _r and _ins agree

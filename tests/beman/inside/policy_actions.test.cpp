@@ -168,7 +168,7 @@ TEST(PolicyActionsTest, on_clamp_action_receives_overshoot)
 TEST(PolicyActionsTest, on_clamp_overshoot_is_an_inside_for_an_inside_rhs)
 {
   // A insidable RHS routes clamp through inside arithmetic, so the overshoot is a
-  // inside<Grid<R> - Grid<L>> — `over` converts to imax implicitly (it would not
+  // inside<grid_of<R> - grid_of<L>> — `over` converts to imax implicitly (it would not
   // compile against a raw expected<rational>).
   using c100 = inside<{0, 100}, clamp>;
   c100 x{0};

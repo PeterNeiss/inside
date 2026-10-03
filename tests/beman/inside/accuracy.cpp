@@ -43,9 +43,9 @@ namespace
   stats sweep(EngineFn engine_fn, ReferenceFn reference_fn,
               long target_samples = 20000)
   {
-    const long double lo        = to_long_double(Lower<In>);
-    const long double in_notch  = to_long_double(Notch<In>);
-    const long double span      = to_long_double(Upper<In>) - lo;
+    const long double lo        = to_long_double(lower_of<In>);
+    const long double in_notch  = to_long_double(notch_of<In>);
+    const long double span      = to_long_double(upper_of<In>) - lo;
     const long        count     = static_cast<long>(span / in_notch);
     const long        stride    = count > target_samples ? count / target_samples : 1;
 
@@ -67,7 +67,7 @@ namespace
       const auto result = [&]{
         if constexpr (failable) return *outcome; else return outcome; }();
       const long double out_notch =
-          to_long_double(Notch<std::remove_cv_t<decltype(result)>>);
+          to_long_double(notch_of<std::remove_cv_t<decltype(result)>>);
       const long double err =
           std::fabs(to_long_double(detail::rational{result}) - reference_fn(value))
           / (out_notch > 0.0L ? out_notch : 1.0L);

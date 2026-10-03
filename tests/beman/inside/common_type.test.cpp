@@ -77,9 +77,9 @@ TEST(CommonTypeTest, common_type_of_mixed_grids_is_the_hull_type)
   using halves  = inside<{{-50, 50}, notch<1, 2>}>;
   using common  = std::common_type_t<percent, halves>;
 
-  static_assert(Lower<common> == detail::rational{-50});
-  static_assert(Upper<common> == detail::rational{100});
-  static_assert(Notch<common> == (notch<1, 2>));
+  static_assert(lower_of<common> == detail::rational{-50});
+  static_assert(upper_of<common> == detail::rational{100});
+  static_assert(notch_of<common> == (notch<1, 2>));
   static_assert(std::same_as<common, common_inside_t<percent, halves>>);
   static_assert(std::same_as<common, std::common_type_t<halves, percent>>);
 

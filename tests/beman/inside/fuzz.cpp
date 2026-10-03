@@ -83,23 +83,23 @@ typename B::raw_type random_in_range_raw(std::mt19937_64& rng)
     // `f64` (double-backed) bounds hold a grid point as a double — generate a
     // random in-range grid point Lower + k·Notch (the integer-cast branch below
     // would truncate a fractional Lower and land below range, e.g. log2 of ~0).
-    if constexpr (Notch<B> == rational{0})
+    if constexpr (notch_of<B> == rational{0})
     {
-      std::uniform_real_distribution<double> dist(static_cast<double>(Lower<B>),
-                                                  static_cast<double>(Upper<B>));
+      std::uniform_real_distribution<double> dist(static_cast<double>(lower_of<B>),
+                                                  static_cast<double>(upper_of<B>));
       return dist(rng);
     }
     else
     {
       std::uniform_int_distribution<umax> dist(0, NotchCount<B>);
-      return static_cast<double>(Lower<B>)
-           + static_cast<double>(dist(rng)) * static_cast<double>(Notch<B>);
+      return static_cast<double>(lower_of<B>)
+           + static_cast<double>(dist(rng)) * static_cast<double>(notch_of<B>);
     }
   }
   else if constexpr (!index_raw<B>)
   {
-    auto lo = trunc(Lower<B>);
-    auto hi = trunc(Upper<B>);
+    auto lo = trunc(lower_of<B>);
+    auto hi = trunc(upper_of<B>);
     std::uniform_int_distribution<imax> dist(lo, hi);
     return static_cast<raw>(dist(rng));
   }
@@ -162,8 +162,8 @@ void prop_round_trip(fuzz_state& s, long iters)
     auto raw = random_in_range_raw<B>(s.rng);
     B b = B::from_raw(raw);
     rational v = to_rational(b);
-    FUZZ_REQUIRE(s, v >= Lower<B>);
-    FUZZ_REQUIRE(s, v <= Upper<B>);
+    FUZZ_REQUIRE(s, v >= lower_of<B>);
+    FUZZ_REQUIRE(s, v <= upper_of<B>);
   }
   }
 }
@@ -174,8 +174,8 @@ void prop_native_compare(fuzz_state& s, long iters)
   if constexpr (IsIntegerAligned<B> && !rational_raw<B>)
   {
     s.current_prop = "native_compare";
-    auto lo = trunc(Lower<B>);
-    auto hi = trunc(Upper<B>);
+    auto lo = trunc(lower_of<B>);
+    auto hi = trunc(upper_of<B>);
     std::uniform_int_distribution<imax> dist(lo, hi);
     for (long i = 0; i < iters; ++i)
     {
@@ -196,9 +196,9 @@ void prop_clamp(fuzz_state& s, long iters)
   if constexpr (IsIntegerAligned<B> && !rational_raw<B>)
   {
     s.current_prop = "clamp";
-    using BC = inside<Grid<B>, clamp>;
-    auto lo = trunc(Lower<B>);
-    auto hi = trunc(Upper<B>);
+    using BC = inside<grid_of<B>, clamp>;
+    auto lo = trunc(lower_of<B>);
+    auto hi = trunc(upper_of<B>);
     imax span = (hi - lo) * 3 + 100;
     for (long i = 0; i < iters; ++i)
     {
@@ -217,9 +217,9 @@ void prop_wrap(fuzz_state& s, long iters)
   if constexpr (IsIntegerAligned<B> && !rational_raw<B>)
   {
     s.current_prop = "wrap";
-    using BW = inside<Grid<B>, wrap>;
-    auto lo = trunc(Lower<B>);
-    auto hi = trunc(Upper<B>);
+    using BW = inside<grid_of<B>, wrap>;
+    auto lo = trunc(lower_of<B>);
+    auto hi = trunc(upper_of<B>);
     imax range = hi - lo + 1;
     imax span = range * 3 + 100;
     for (long i = 0; i < iters; ++i)
@@ -239,8 +239,8 @@ void prop_try_make(fuzz_state& s, long iters)
   if constexpr (IsIntegerAligned<B> && !rational_raw<B>)
   {
     s.current_prop = "try_make";
-    auto lo = trunc(Lower<B>);
-    auto hi = trunc(Upper<B>);
+    auto lo = trunc(lower_of<B>);
+    auto hi = trunc(upper_of<B>);
     imax span = (hi - lo) * 3 + 100;
     for (long i = 0; i < iters; ++i)
     {
@@ -260,9 +260,9 @@ void prop_on_clamp(fuzz_state& s, long iters)
   if constexpr (IsIntegerAligned<B> && !rational_raw<B>)
   {
     s.current_prop = "on_clamp";
-    using BC = inside<Grid<B>, clamp>;
-    auto lo = trunc(Lower<B>);
-    auto hi = trunc(Upper<B>);
+    using BC = inside<grid_of<B>, clamp>;
+    auto lo = trunc(lower_of<B>);
+    auto hi = trunc(upper_of<B>);
     imax span = (hi - lo) * 2 + 50;
     for (long i = 0; i < iters; ++i)
     {
@@ -379,8 +379,8 @@ void prop_round_trip_construct(fuzz_state& s, long iters)
   if constexpr (IsIntegerAligned<B> && !rational_raw<B>)
   {
     s.current_prop = "round_trip_construct";
-    auto lo = trunc(Lower<B>);
-    auto hi = trunc(Upper<B>);
+    auto lo = trunc(lower_of<B>);
+    auto hi = trunc(upper_of<B>);
     std::uniform_int_distribution<imax> dist(lo, hi);
     for (long i = 0; i < iters; ++i)
     {
@@ -426,9 +426,9 @@ void prop_compound_add_inside(fuzz_state& s, long iters)
     s.current_prop = "compound_add_inside";
     // The delta is itself an inside (raw int RHS is now ill-formed). A signed grid
     // spanning ±(Upper−Lower) covers every in-range delta.
-    using Delta = inside<{Lower<B> - Upper<B>, Upper<B> - Lower<B>}>;
-    auto lo = trunc(Lower<B>);
-    auto hi = trunc(Upper<B>);
+    using Delta = inside<{lower_of<B> - upper_of<B>, upper_of<B> - lower_of<B>}>;
+    auto lo = trunc(lower_of<B>);
+    auto hi = trunc(upper_of<B>);
     // Pick integer initial value and delta such that the result stays in range
     // (the type is `checked` by default; we don't want to throw).
     std::uniform_int_distribution<imax> dist(lo, hi);
@@ -456,9 +456,9 @@ void prop_modulo(fuzz_state& s, long iters)
   if constexpr (IsIntegerAligned<B> && !rational_raw<B>)
   {
     s.current_prop = "modulo";
-    using BI = inside<Grid<B>, snap>;
-    auto lo = trunc(Lower<B>);
-    auto hi = trunc(Upper<B>);
+    using BI = inside<grid_of<B>, snap>;
+    auto lo = trunc(lower_of<B>);
+    auto hi = trunc(upper_of<B>);
     if (lo > 0 || hi <= 0)
     {
       // Trivially: no zero-divisor risk if zero isn't representable; just
@@ -511,9 +511,9 @@ void prop_increment_wrap(fuzz_state& s, long iters)
   if constexpr (IsIntegerAligned<B> && !rational_raw<B>)
   {
     s.current_prop = "increment_wrap";
-    using BW = inside<Grid<B>, wrap>;
-    auto lo = trunc(Lower<B>);
-    auto hi = trunc(Upper<B>);
+    using BW = inside<grid_of<B>, wrap>;
+    auto lo = trunc(lower_of<B>);
+    auto hi = trunc(upper_of<B>);
     imax range = hi - lo + 1;
     std::uniform_int_distribution<imax> dist(lo, hi);
     for (long i = 0; i < iters; ++i)
@@ -538,7 +538,7 @@ template <insidable B>
 void prop_div_by_zero(fuzz_state& s, long iters)
 {
   if constexpr (IsIntegerAligned<B> && !rational_raw<B>
-                && Lower<B> <= 0 && Upper<B> >= 0)
+                && lower_of<B> <= 0 && upper_of<B> >= 0)
   {
     s.current_prop = "div_by_zero";
     B zero{0};
@@ -619,8 +619,8 @@ void prop_compound_div_mod_zero(fuzz_state& s, long iters)
     // The divisor is the constant 0_r, so any in-range dividend throws; pick
     // `start` from the grid's actual [lo, hi] (a fully-negative grid has hi < 1,
     // so the old std::max(1, lo) built an inverted, UB distribution range).
-    const imax lo = trunc(Lower<B>);
-    const imax hi = trunc(Upper<B>);
+    const imax lo = trunc(lower_of<B>);
+    const imax hi = trunc(upper_of<B>);
     std::uniform_int_distribution<imax> dist(lo, hi);
     for (long i = 0; i < iters; ++i)
     {
@@ -644,8 +644,8 @@ void prop_compound_inside_overshoot(fuzz_state& s, long iters)
   if constexpr (IsIntegerAligned<B> && !rational_raw<B>)
   {
     s.current_prop = "compound_inside_overshoot";
-    auto lo = trunc(Lower<B>);
-    auto hi = trunc(Upper<B>);
+    auto lo = trunc(lower_of<B>);
+    auto hi = trunc(upper_of<B>);
     auto range = hi - lo;
     if (range < 2) return;
     std::uniform_int_distribution<imax> dist(lo, hi);
@@ -677,12 +677,12 @@ void prop_non_notch_assign(fuzz_state& s, long iters)
     s.current_prop = "non_notch_assign";
     // The catalogue's B already uses the default `checked` policy, so a non-
     // notch-aligned assignment to B must throw rounding_error.
-    using BIR = inside<Grid<B>, snap>;       // silent floor
-    using BRN = inside<Grid<B>, round_nearest>;      // nearest
-    using BNONE = inside<Grid<B>, none>;             // truly-unchecked → line 299
-    rational notch = Notch<B>;
-    rational lo    = Lower<B>;
-    rational hi    = Upper<B>;
+    using BIR = inside<grid_of<B>, snap>;       // silent floor
+    using BRN = inside<grid_of<B>, round_nearest>;      // nearest
+    using BNONE = inside<grid_of<B>, none>;             // truly-unchecked → line 299
+    rational notch = notch_of<B>;
+    rational lo    = lower_of<B>;
+    rational hi    = upper_of<B>;
     rational half  = (notch / 2_r).value();
 
     for (long i = 0; i < iters; ++i)
@@ -752,9 +752,9 @@ void prop_subnormal_construct(fuzz_state& s, long iters)
   if constexpr (!IsIntegerAligned<B> && !rational_raw<B>)
   {
     s.current_prop = "subnormal_construct";
-    using BIR = inside<Grid<B>, snap>;
-    rational lo = Lower<B>;
-    rational hi = Upper<B>;
+    using BIR = inside<grid_of<B>, snap>;
+    rational lo = lower_of<B>;
+    rational hi = upper_of<B>;
     bool zero_in_range = (lo <= 0) && (hi >= 0);
     if (!zero_in_range) return;
     std::uniform_real_distribution<double> mantissa(1.0, 2.0);
@@ -848,7 +848,7 @@ void prop_compound_add_same_inside(fuzz_state& s, long iters)
       rational dr = to_rational(delta);
       rational expect = (ar + dr).value();
       // Skip if result lands outside the grid (avoids checked-policy throw).
-      if (expect < Lower<B> || expect > Upper<B>) continue;
+      if (expect < lower_of<B> || expect > upper_of<B>) continue;
       a += delta;
       FUZZ_REQUIRE(s, to_rational(a) == expect);
     }
@@ -867,8 +867,8 @@ void prop_raw_rational_arith(fuzz_state& s, long iters)
   if constexpr (rational_raw<B>)
   {
     s.current_prop = "raw_rational_arith";
-    rational lo = Lower<B>;
-    rational hi = Upper<B>;
+    rational lo = lower_of<B>;
+    rational hi = upper_of<B>;
     std::uniform_int_distribution<imax> num_dist(
         trunc(lo) + 1, trunc(hi) - 1);
     std::uniform_int_distribution<imax> den_dist(1, 7);
@@ -917,8 +917,8 @@ template <insidable B>
 inline constexpr bool DyadicNotch = []{
   if constexpr (rational_raw<B> || IsIntegerAligned<B>) return false;
   else {
-    imax d = abs_den(Notch<B>.Denominator);
-    return Notch<B>.Numerator == 1 && (d & (d - 1)) == 0;
+    imax d = abs_den(notch_of<B>.Denominator);
+    return notch_of<B>.Numerator == 1 && (d & (d - 1)) == 0;
   }
 }();
 
@@ -929,8 +929,8 @@ void prop_casts(fuzz_state& s, long iters)
   if constexpr (IsIntegerAligned<B> && !rational_raw<B>)
   {
     s.current_prop = "casts";
-    auto lo = trunc(Lower<B>);
-    auto hi = trunc(Upper<B>);
+    auto lo = trunc(lower_of<B>);
+    auto hi = trunc(upper_of<B>);
     imax range = hi - lo + 1;
     imax span = range * 3 + 100;
     for (long i = 0; i < iters; ++i)
@@ -965,8 +965,8 @@ void prop_casts_fixed(fuzz_state& s, long iters)
   if constexpr (DyadicNotch<B>)
   {
     s.current_prop = "casts_fixed";
-    rational notch = Notch<B>;
-    rational lo    = Lower<B>;
+    rational notch = notch_of<B>;
+    rational lo    = lower_of<B>;
     rational half  = (notch / 2_r).value();
     for (long i = 0; i < iters; ++i)
     {
@@ -990,8 +990,8 @@ void prop_predicates(fuzz_state& s, long iters)
   if constexpr (IsIntegerAligned<B> && !rational_raw<B>)
   {
     s.current_prop = "predicates";
-    auto lo = trunc(Lower<B>);
-    auto hi = trunc(Upper<B>);
+    auto lo = trunc(lower_of<B>);
+    auto hi = trunc(upper_of<B>);
     imax span = (hi - lo) * 3 + 100;
     for (long i = 0; i < iters; ++i)
     {
@@ -1009,9 +1009,9 @@ void prop_predicates(fuzz_state& s, long iters)
   else if constexpr (DyadicNotch<B>)
   {
     s.current_prop = "predicates";
-    rational notch = Notch<B>;
-    rational lo    = Lower<B>;
-    rational hi    = Upper<B>;
+    rational notch = notch_of<B>;
+    rational lo    = lower_of<B>;
+    rational hi    = upper_of<B>;
     rational half  = (notch / 2_r).value();
     for (long i = 0; i < iters; ++i)
     {
@@ -1052,21 +1052,21 @@ void prop_range(fuzz_state& s, long iters)
     if constexpr (N <= 100000)
     {
       s.current_prop = "range";
-      using R = inside_range<Grid<B>>;
+      using R = inside_range<grid_of<B>>;
       long it = std::min<long>(iters, 200);
       std::uniform_int_distribution<umax> kdist(0, N - 1);
       for (long i = 0; i < it; ++i)
       {
         s.iter = i;
         umax k = kdist(s.rng);
-        rational start = (Lower<B> + (rational{k} * Notch<B>).value()).value();
+        rational start = (lower_of<B> + (rational{k} * notch_of<B>).value()).value();
         R r{typename R::value_type{start}};
         FUZZ_REQUIRE(s, r.size() == N);
         umax idx = 0;
         for (auto b : r)
         {
           umax slot = (k + idx) % N;
-          rational expect = (Lower<B> + (rational{slot} * Notch<B>).value()).value();
+          rational expect = (lower_of<B> + (rational{slot} * notch_of<B>).value()).value();
           FUZZ_REQUIRE(s, to_rational(b) == expect);
           // random-access indexing agrees with the sequential walk.
           FUZZ_REQUIRE(s, to_rational(r.begin()[static_cast<imax>(idx)]) == expect);

@@ -148,7 +148,7 @@ TEST(CompoundAssignTest, compound_raw_fast_path_agrees_with_binary_subtraction)
   index_lhs -= lo{300};
   ASSERT_EQ(rational{index_lhs}, rational{1200});
   wide value_lhs{1500};                    // value-raw lhs, index-raw rhs:
-  value_lhs -= hi{1200};                   // bias = Lower<R>/Notch = 1000
+  value_lhs -= hi{1200};                   // bias = lower_of<R>/Notch = 1000
   ASSERT_EQ(rational{value_lhs}, rational{300});
 }
 

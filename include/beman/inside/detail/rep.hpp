@@ -27,9 +27,9 @@ namespace beman::inside::detail
   struct fp_rep
   {
     static constexpr bool any_f64 =
-        has_flag(InsidePolicy<Lhs>, f64) || has_flag(InsidePolicy<Rhs>, f64);
+        has_flag(policy_of<Lhs>, f64) || has_flag(policy_of<Rhs>, f64);
     static constexpr bool any_f32 =
-        has_flag(InsidePolicy<Lhs>, f32) || has_flag(InsidePolicy<Rhs>, f32);
+        has_flag(policy_of<Lhs>, f32) || has_flag(policy_of<Rhs>, f32);
     static constexpr bool continuous_ok = AllowContinuous && ResultGrid.Notch == 0;
     static constexpr bool keep_f32 =
         any_f32 && !any_f64 && (continuous_ok || float_exact<ResultGrid>);
@@ -40,7 +40,7 @@ namespace beman::inside::detail
     // `direct` needs notch 1 and `indexed` a non-zero notch; a result grid
     // that cannot hold them drops them (storage is then deduced).
     static constexpr policy_flag carried =
-        (InsidePolicy<Lhs> | InsidePolicy<Rhs>)
+        (policy_of<Lhs> | policy_of<Rhs>)
         & (exact | (ResultGrid.Notch == 1 ? direct : none) | (ResultGrid.Notch != 0 ? indexed : none));
     static constexpr policy_flag rep =
         carried
@@ -49,7 +49,7 @@ namespace beman::inside::detail
     // operands' `checked` (a representation flag must not switch checking off),
     // or plain checked.
     static constexpr policy_flag result_policy =
-        rep != none ? rep | ((InsidePolicy<Lhs> | InsidePolicy<Rhs>) & checked) : checked;
+        rep != none ? rep | ((policy_of<Lhs> | policy_of<Rhs>) & checked) : checked;
   };
 }
 #endif

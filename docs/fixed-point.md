@@ -30,13 +30,13 @@ The traits that classify these grids (in `include/beman/inside/generic.hpp`):
 ```cpp
 // notch and Lower are whole numbers (denominator 1)
 template <insidable B> inline constexpr bool IsIntegerAligned =
-    abs_den(Notch<B>.Denominator) == 1 && abs_den(Lower<B>.Denominator) == 1;
+    abs_den(notch_of<B>.Denominator) == 1 && abs_den(lower_of<B>.Denominator) == 1;
 
 // Qm.N: unit-numerator power-of-two notch (1/2^N), Lower == 0
 template <insidable B> inline constexpr bool IsQFormat =
-       !rational_raw<B> && Notch<B>.Numerator == 1
-    && abs_den(Notch<B>.Denominator) > 1
-    && abs_den(Lower<B>.Denominator) == 1 && Lower<B> == 0;
+       !rational_raw<B> && notch_of<B>.Numerator == 1
+    && abs_den(notch_of<B>.Denominator) > 1
+    && abs_den(lower_of<B>.Denominator) == 1 && lower_of<B> == 0;
 ```
 
 ## What `inside` adds over a raw integer Qm.n

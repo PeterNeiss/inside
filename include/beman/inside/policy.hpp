@@ -195,7 +195,7 @@ namespace beman::inside
     [[no_unique_address]] std::tuple<As...> Actions;
 
     template <insidable Target>
-      requires inside_assignable<Target, B, InsidePolicy<Target> | policy_flags_of<P>>
+      requires inside_assignable<Target, B, policy_of<Target> | policy_flags_of<P>>
     constexpr operator Target()
     {
       Target r;
@@ -259,7 +259,7 @@ namespace beman::inside
     // `Target t = (a * b).with_snap();` / `return (a * b).with_snap();` compile.
     // Constrained so the proxy stays SFINAE-friendly (no over-broad convertibility).
     template <insidable Target>
-      requires inside_assignable<Target, B, InsidePolicy<Target> | policy_flags_of<P>>
+      requires inside_assignable<Target, B, policy_of<Target> | policy_flags_of<P>>
     constexpr operator Target()
     {
       Target r;

@@ -36,7 +36,7 @@ TEST(InsideArithmeticTest, inside_add)
 TEST(InsideArithmeticTest, inside_add_mixed_notch_with_offset_storage)
 {
   // Regression: the notch-offset add path must scale each operand's raw from
-  // its own notch up to the result notch (lhs_widen = Notch<L>/Notch<result>).
+  // its own notch up to the result notch (lhs_widen = notch_of<L>/notch_of<result>).
   // A previous inversion left the scale at 1 whenever notches differed, so the
   // sum was only correct when the lhs offset happened to be 0 or notches were
   // equal. These exercise different notches AND a non-zero (and negative-Lower)

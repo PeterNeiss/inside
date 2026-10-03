@@ -22,21 +22,21 @@ namespace beman::inside
   {
     if constexpr (std::floating_point<A>)
       if (!(value - value == 0)) return true;   // NaN / ±inf fit no grid (and must not raise here)
-    return not includes(Interval<B>, detail::as_rational(value));
+    return not includes(interval_of<B>, detail::as_rational(value));
   }
 
   template <insidable B, numeric A>
   [[nodiscard]] constexpr bool will_conversion_trunc(A value) noexcept
   {
-    if constexpr (Notch<B> == 0)
+    if constexpr (notch_of<B> == 0)
       return false;                       // continuous grid: no notch to miss
     if constexpr (std::floating_point<A>)
       if (!(value - value == 0)) return false;   // non-finite — overflow, not truncation
     detail::rational r = detail::as_rational(value);
-    if (not includes(Interval<B>, r))
+    if (not includes(interval_of<B>, r))
       return false;                       // out-of-range — overflow, not truncation
     // In-range: truncation occurs iff (value - Lower) / Notch is non-integer.
-    auto offset = (r - Lower<B>) / Notch<B>;
+    auto offset = (r - lower_of<B>) / notch_of<B>;
     return !offset.has_value() || detail::abs_den(offset->Denominator) != 1;
   }
 
