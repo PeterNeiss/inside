@@ -52,8 +52,25 @@ namespace beman::inside::detail
                                             result,
                                             return_type_for<P>>;
 
-    // Defined inline (not out-of-line): MSVC mishandles out-of-line member
-    // templates of constrained partial specializations.
+    // `x * just<c>` (c != 0): the result lattice is x's lattice scaled by c
+    // (see grid operator*), so the result offset IS x's offset — counted from
+    // the far end when c < 0. No multiply at all.
+    template <insidable Point, insidable X>
+    static constexpr bool point_scale =
+        Lower<Point> == Upper<Point> && Lower<Point> != 0
+        && !rational_raw<X> && !fp_raw<X> && Notch<X> != 0
+        && !rational_raw<result> && !fp_raw<result>;
+
+    template <bool Negate, insidable X>
+    static constexpr result scale_by_point(X const& x)
+    {
+      static_assert(NotchCount<result> == NotchCount<X>);
+      umax off;
+      if constexpr (index_raw<X>) off = static_cast<umax>(x.raw());
+      else                        off = static_cast<umax>(raw_imax(x) - RawLo<X>);
+      return result::from_raw(raw_from_offset<result>(Negate ? NotchCount<X> - off : off));
+    }
+
     template <typename P, typename A = no_action>
     static constexpr auto mul(L lhs, R rhs, P&& policy, A&& action = {}) -> mul_return_t<P, A>
   {
@@ -64,6 +81,10 @@ namespace beman::inside::detail
       // gate, so the double multiply is exact and on the result lattice.
       return result::from_raw(raw_cast<result>(as_double(lhs) * as_double(rhs)));
     }
+    else if constexpr (point_scale<R, L>)
+      return scale_by_point<(Lower<R> < 0)>(lhs);
+    else if constexpr (point_scale<L, R>)
+      return scale_by_point<(Lower<L> < 0)>(rhs);
     else if constexpr (rational_raw<result>)
     {
       if constexpr (needs_overflow_check<P>)

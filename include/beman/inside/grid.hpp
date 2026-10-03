@@ -402,9 +402,16 @@ namespace beman::inside
   //---------------------------------------------------------------------------
   inline constexpr std::expected<grid, errc> operator*(const grid& lhs, const grid& rhs)
   {
+    // A point operand c (notch 0) scales the other lattice exactly: its notch
+    // becomes N·|c|, so `x * just<c>` keeps integer storage instead of turning
+    // continuous (rational-backed).
+    const bool lp = lhs.Interval.Lower == lhs.Interval.Upper;
+    const bool rp = rhs.Interval.Lower == rhs.Interval.Upper;
+    const detail::rational ln = (lp && !rp) ? detail::abs(lhs.Interval.Lower) : lhs.Notch;
+    const detail::rational rn = (rp && !lp) ? detail::abs(rhs.Interval.Lower) : rhs.Notch;
     return lift(
       [](interval i, detail::rational n){ return grid{i, n}; },
-      lhs.Interval * rhs.Interval, lhs.Notch * rhs.Notch);
+      lhs.Interval * rhs.Interval, ln * rn);
   }
 
   //---------------------------------------------------------------------------

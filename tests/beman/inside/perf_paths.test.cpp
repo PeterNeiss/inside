@@ -129,3 +129,32 @@ TEST(PerfPathsTest, operator_rational_handles_fractional_q_format_value)
   rational r = b;
   ASSERT_EQ(r, 0.5_r);
 }
+
+//---------------------------------------------------------------------------
+// Point-operand multiply — `x * just<c>` scales x's lattice (notch N·|c|), so the
+// product keeps integer storage and its offset is x's offset (mirrored for c < 0).
+//---------------------------------------------------------------------------
+TEST(PerfPathsTest, multiply_by_point_keeps_integer_storage)
+{
+  using U = inside<{0, 200}>;
+  using R3 = decltype(U{} * just<3>);
+  static_assert(!rational_raw<R3>);
+  static_assert(Notch<R3> == 3 && Lower<R3> == 0 && Upper<R3> == 600);
+  using RH = decltype(midpoint(U{}, U{}));
+  static_assert(!rational_raw<RH>);
+  static_assert(Notch<RH> == rational{1, 2});
+}
+
+TEST(PerfPathsTest, multiply_by_point_matches_exact_product)
+{
+  for (int v : {-100, -7, 0, 1, 99, 100})
+  {
+    inside<{-100, 100}> x{v};
+    EXPECT_EQ(rational{x * just<3>}, rational{3 * v});
+    EXPECT_EQ(rational{just<3> * x}, rational{3 * v});
+    EXPECT_EQ(rational{x * just<-2>}, rational{-2 * v});
+    EXPECT_EQ((rational{x * just<frac<-1, 4>>}), (rational{v} * rational(-1, 4)).value());
+  }
+  inside<{0, 200}> a{3}, b{4};
+  EXPECT_EQ(rational{midpoint(a, b)}, (rational{7, 2}));
+}
