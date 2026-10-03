@@ -7263,14 +7263,9 @@ namespace beman::inside::math
       return acc;
     }
 
-    // Newton iterations to converge rsqrt to W bits from the y=1 seed (a∈[1,2],
-    // ~2-bit start, quadratic): ≈ ceil(log2 W) + 1.
-    constexpr int rsqrt_iters(int W) noexcept
-    { int n = 3; while ((1 << n) < W) ++n; return n + 1; }
-
-    // 1/sqrt(a) at scale 2^W for a ∈ [1,2], division-free Newton (y←y(3−ay²)/2).
-    // `iters` lets the runtime sqrt path scale work with W while the
-    // compile-time CORDIC gains stay at a fixed high count.
+    // 1/sqrt(a) at scale 2^W for a ∈ [1,2], division-free Newton (y←y(3−ay²)/2)
+    // from y = 1, `iters` steps. Compile-time use (CORDIC gains, the seed table);
+    // the runtime sqrt path seeds from a table instead (rsqrt_seeded).
     constexpr imax rsqrt_fixed(imax a, int W, int iters) noexcept
     {
       imax one = imax{1} << W, three = 3 * one, y = one;
@@ -7278,6 +7273,33 @@ namespace beman::inside::math
         imax ay2 = fmul(a, fmul(y, y, W), W);
         y = fmul(y, three - ay2, W) >> 1;
       }
+      return y;
+    }
+
+    // 1/√m for m ∈ [1, 2) at scale 2^30, sampled at the midpoints of 16 cells
+    // (top 4 fraction bits of m): ≤ 1.1% error, a ~6.6-bit Newton start.
+    inline constexpr auto rsqrt_seed_tbl = []{
+      std::array<imax, 16> t{};
+      for (int i = 0; i < 16; ++i)
+      {
+        const imax m_mid = (imax{1} << 30) + (((2 * imax{i} + 1)) << 25);   // 1 + (i+½)/16
+        t[static_cast<std::size_t>(i)] = rsqrt_fixed(m_mid, 30, 12);
+      }
+      return t;
+    }();
+
+    // 1/√m at scale 2^W for m·2^W ∈ [2^W, 2^(W+1)): table seed, then Newton
+    // (y ← y(3−my²)/2, error squares each step): 2 steps reach ~24 bits, 3 ~47.
+    template <int W>
+    constexpr imax rsqrt_seeded(imax m_w) noexcept
+    {
+      static_assert(W >= 4 && W <= 31);
+      constexpr int iters = (W <= 20) ? 2 : 3;
+      const imax seed = rsqrt_seed_tbl[static_cast<std::size_t>((m_w >> (W - 4)) & 15)];
+      imax y = (W <= 30) ? (seed >> (30 - W)) : (seed << (W - 30));
+      constexpr imax three = imax{3} << W;
+      for (int k = 0; k < iters; ++k)
+        y = fmul(y, three - fmul(m_w, fmul(y, y, W), W), W) >> 1;
       return y;
     }
 
@@ -7295,7 +7317,7 @@ namespace beman::inside::math
       int  lead = 63 - std::countl_zero(static_cast<umax>(a_w));
       int  e    = lead - W;
       imax m_w  = (e >= 0) ? (a_w >> e) : (a_w << (-e));    // m·2^W ∈ [2^W, 2^(W+1))
-      imax sm   = fmul(m_w, rsqrt_fixed(m_w, W, rsqrt_iters(W)), W);        // √m · 2^W
+      imax sm   = fmul(m_w, rsqrt_seeded<W>(m_w), W);                     // √m · 2^W
       if (e & 1) { constexpr imax sqrt2_w = to_fixed(sqrt2_r, W); sm = fmul(sm, sqrt2_w, W); }
       int h = e >> 1;                                       // floor(e/2)
       return (h >= 0) ? (sm << h) : (sm >> (-h));
