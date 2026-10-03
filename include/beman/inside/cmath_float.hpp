@@ -29,6 +29,7 @@
 namespace beman::inside::math::flt::detail
 {
   using std::fma;
+  using beman::inside::math::dbl::detail::horner;
 
   // Constexpr Cody-Waite split of a high-precision (double) reference into a
   // float `hi` with `keep` significant mantissa bits (low bits zeroed, so k·hi
@@ -71,12 +72,9 @@ namespace beman::inside::math::flt::detail
   inline BEMAN_INSIDE_DBL_FN float sin_poly(float r)
   {
     float z = r * r;
-    float p = -1.0f / 39916800.0f;       // −1/11!
-    p = fma(p, z,  1.0f / 362880.0f);    //  1/9!
-    p = fma(p, z, -1.0f / 5040.0f);      // −1/7!
-    p = fma(p, z,  1.0f / 120.0f);       //  1/5!
-    p = fma(p, z, -1.0f / 6.0f);         // −1/3!
-    p = fma(p, z,  1.0f);                //  1
+    float p = horner(z,
+                     -1.0f / 39916800.0f, 1.0f / 362880.0f, -1.0f / 5040.0f, 1.0f / 120.0f,
+                     -1.0f / 6.0f, 1.0f);
     return r * p;
   }
 
@@ -84,27 +82,17 @@ namespace beman::inside::math::flt::detail
   inline BEMAN_INSIDE_DBL_FN float cos_poly(float r)
   {
     float z = r * r;
-    float p = -1.0f / 3628800.0f;        // −1/10!
-    p = fma(p, z,  1.0f / 40320.0f);     //  1/8!
-    p = fma(p, z, -1.0f / 720.0f);       // −1/6!
-    p = fma(p, z,  1.0f / 24.0f);        //  1/4!
-    p = fma(p, z, -1.0f / 2.0f);         // −1/2!
-    p = fma(p, z,  1.0f);                //  1
-    return p;
+    return horner(z,
+                  -1.0f / 3628800.0f, 1.0f / 40320.0f, -1.0f / 720.0f, 1.0f / 24.0f,
+                  -1.0f / 2.0f, 1.0f);
   }
 
   // e^r, r ∈ [−ln2/2, ln2/2]: Σ rᵏ/k! to r⁷.
   inline BEMAN_INSIDE_DBL_FN float exp_poly(float r)
   {
-    float p = 1.0f / 5040.0f;            // 1/7!
-    p = fma(p, r, 1.0f / 720.0f);        // 1/6!
-    p = fma(p, r, 1.0f / 120.0f);        // 1/5!
-    p = fma(p, r, 1.0f / 24.0f);         // 1/4!
-    p = fma(p, r, 1.0f / 6.0f);          // 1/3!
-    p = fma(p, r, 1.0f / 2.0f);          // 1/2!
-    p = fma(p, r, 1.0f);                 // 1/1!
-    p = fma(p, r, 1.0f);                 // 1
-    return p;
+    return horner(r,
+                  1.0f / 5040.0f, 1.0f / 720.0f, 1.0f / 120.0f, 1.0f / 24.0f,
+                  1.0f / 6.0f, 1.0f / 2.0f, 1.0f, 1.0f);
   }
 
   // Shared quadrant reduction: x → (r ∈ [−π/4,π/4], q = quadrant mod 4).
@@ -161,11 +149,7 @@ namespace beman::inside::math::flt::detail
     if (m < kSqrtHalf) { m += m; --e; }
     float f  = (m - 1.0f) / (m + 1.0f);
     float f2 = f * f;
-    float p = 1.0f / 9.0f;
-    p = fma(p, f2, 1.0f / 7.0f);
-    p = fma(p, f2, 1.0f / 5.0f);
-    p = fma(p, f2, 1.0f / 3.0f);
-    p = fma(p, f2, 1.0f);
+    float p = horner(f2, 1.0f / 9.0f, 1.0f / 7.0f, 1.0f / 5.0f, 1.0f / 3.0f, 1.0f);
     float logm = 2.0f * f * p;
     float r = fma(static_cast<float>(e), kLn2Hi, logm);
     return fma(static_cast<float>(e), kLn2Lo, r);
@@ -200,9 +184,9 @@ namespace beman::inside::math::flt::detail
     float off = 0.0f;
     if (a > kTanPi12) { a = (a - kInvSqrt3) / fma(a, kInvSqrt3, 1.0f); off = kPiSixth; }
     float z = a * a;
-    float p = 1.0f / 13.0f;
-    p = fma(p, z, -1.0f / 11.0f); p = fma(p, z,  1.0f / 9.0f); p = fma(p, z, -1.0f / 7.0f);
-    p = fma(p, z,  1.0f / 5.0f);  p = fma(p, z, -1.0f / 3.0f); p = fma(p, z,  1.0f);
+    float p = horner(z,
+                     1.0f / 13.0f, -1.0f / 11.0f, 1.0f / 9.0f, -1.0f / 7.0f,
+                     1.0f / 5.0f, -1.0f / 3.0f, 1.0f);
     float r = off + a * p;
     if (inv) r = kPiHalf - r;
     return neg ? -r : r;

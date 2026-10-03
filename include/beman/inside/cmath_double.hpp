@@ -46,6 +46,16 @@ namespace beman::inside::math::dbl::detail
 {
   using std::fma;
 
+  // c0·z^n + c1·z^(n-1) + … + cn as an fma chain from the highest coefficient
+  // down (Horner) — the same operation order as writing the chain out by hand.
+  template <std::floating_point T, typename... C>
+  [[gnu::always_inline]] inline BEMAN_INSIDE_DBL_FN T horner(T z, T c0, C... cs)
+  {
+    T p = c0;
+    ((p = fma(p, z, static_cast<T>(cs))), ...);
+    return p;
+  }
+
   inline constexpr double kHalfPiHi = 0x1.921fb54442d18p+0;   // π/2  high
   inline constexpr double kHalfPiLo = 0x1.1a62633145c07p-54;  // π/2  low
   inline constexpr double kTwoOverPi = 0x1.45f306dc9c883p-1;  // 2/π
@@ -57,14 +67,9 @@ namespace beman::inside::math::dbl::detail
   inline BEMAN_INSIDE_DBL_FN double sin_poly(double r)
   {
     double z = r * r;
-    double p = -1.0 / 1307674368000.0;             // −1/15!
-    p = fma(p, z,  1.0 / 6227020800.0);            //  1/13!
-    p = fma(p, z, -1.0 / 39916800.0);              // −1/11!
-    p = fma(p, z,  1.0 / 362880.0);                //  1/9!
-    p = fma(p, z, -1.0 / 5040.0);                  // −1/7!
-    p = fma(p, z,  1.0 / 120.0);                   //  1/5!
-    p = fma(p, z, -1.0 / 6.0);                     // −1/3!
-    p = fma(p, z,  1.0);                           //  1/1!
+    double p = horner(z,
+                      -1.0 / 1307674368000.0, 1.0 / 6227020800.0, -1.0 / 39916800.0, 1.0 / 362880.0,
+                      -1.0 / 5040.0, 1.0 / 120.0, -1.0 / 6.0, 1.0);
     return r * p;
   }
 
@@ -72,35 +77,20 @@ namespace beman::inside::math::dbl::detail
   inline BEMAN_INSIDE_DBL_FN double cos_poly(double r)
   {
     double z = r * r;
-    double p =  1.0 / 20922789888000.0;            //  1/16!
-    p = fma(p, z, -1.0 / 87178291200.0);           // −1/14!
-    p = fma(p, z,  1.0 / 479001600.0);             //  1/12!
-    p = fma(p, z, -1.0 / 3628800.0);               // −1/10!
-    p = fma(p, z,  1.0 / 40320.0);                 //  1/8!
-    p = fma(p, z, -1.0 / 720.0);                   // −1/6!
-    p = fma(p, z,  1.0 / 24.0);                    //  1/4!
-    p = fma(p, z, -1.0 / 2.0);                     // −1/2!
-    p = fma(p, z,  1.0);                           //  1
-    return p;
+    return horner(z,
+                  1.0 / 20922789888000.0, -1.0 / 87178291200.0, 1.0 / 479001600.0, -1.0 / 3628800.0,
+                  1.0 / 40320.0, -1.0 / 720.0, 1.0 / 24.0, -1.0 / 2.0,
+                  1.0);
   }
 
   // e^r, r ∈ [−ln2/2, ln2/2]: Σ rᵏ/k! to r¹².
   inline BEMAN_INSIDE_DBL_FN double exp_poly(double r)
   {
-    double p = 1.0 / 479001600.0;                  // 1/12!
-    p = fma(p, r, 1.0 / 39916800.0);               // 1/11!
-    p = fma(p, r, 1.0 / 3628800.0);                // 1/10!
-    p = fma(p, r, 1.0 / 362880.0);                 // 1/9!
-    p = fma(p, r, 1.0 / 40320.0);                  // 1/8!
-    p = fma(p, r, 1.0 / 5040.0);                   // 1/7!
-    p = fma(p, r, 1.0 / 720.0);                    // 1/6!
-    p = fma(p, r, 1.0 / 120.0);                    // 1/5!
-    p = fma(p, r, 1.0 / 24.0);                     // 1/4!
-    p = fma(p, r, 1.0 / 6.0);                      // 1/3!
-    p = fma(p, r, 1.0 / 2.0);                      // 1/2!
-    p = fma(p, r, 1.0);                            // 1/1!
-    p = fma(p, r, 1.0);                            // 1
-    return p;
+    return horner(r,
+                  1.0 / 479001600.0, 1.0 / 39916800.0, 1.0 / 3628800.0, 1.0 / 362880.0,
+                  1.0 / 40320.0, 1.0 / 5040.0, 1.0 / 720.0, 1.0 / 120.0,
+                  1.0 / 24.0, 1.0 / 6.0, 1.0 / 2.0, 1.0,
+                  1.0);
   }
 
   inline BEMAN_INSIDE_DBL_FN double d_sin(double x)
@@ -141,15 +131,10 @@ namespace beman::inside::math::dbl::detail
     if (m < kSqrtHalf) { m += m; --e; }
     double f  = (m - 1.0) / (m + 1.0);
     double f2 = f * f;
-    double p = 1.0 / 17.0;
-    p = fma(p, f2, 1.0 / 15.0);
-    p = fma(p, f2, 1.0 / 13.0);
-    p = fma(p, f2, 1.0 / 11.0);
-    p = fma(p, f2, 1.0 / 9.0);
-    p = fma(p, f2, 1.0 / 7.0);
-    p = fma(p, f2, 1.0 / 5.0);
-    p = fma(p, f2, 1.0 / 3.0);
-    p = fma(p, f2, 1.0);
+    double p = horner(f2,
+                      1.0 / 17.0, 1.0 / 15.0, 1.0 / 13.0, 1.0 / 11.0,
+                      1.0 / 9.0, 1.0 / 7.0, 1.0 / 5.0, 1.0 / 3.0,
+                      1.0);
     double logm = 2.0 * f * p;
     double r = fma(static_cast<double>(e), kLn2Hi, logm);
     return fma(static_cast<double>(e), kLn2Lo, r);
@@ -195,11 +180,10 @@ namespace beman::inside::math::dbl::detail
     double off = 0.0;
     if (a > kTanPi12) { a = (a - kInvSqrt3) / fma(a, kInvSqrt3, 1.0); off = kPiSixth; }
     double z = a * a;
-    double p = -1.0 / 23.0;
-    p = fma(p, z,  1.0 / 21.0); p = fma(p, z, -1.0 / 19.0); p = fma(p, z,  1.0 / 17.0);
-    p = fma(p, z, -1.0 / 15.0); p = fma(p, z,  1.0 / 13.0); p = fma(p, z, -1.0 / 11.0);
-    p = fma(p, z,  1.0 / 9.0);  p = fma(p, z, -1.0 / 7.0);  p = fma(p, z,  1.0 / 5.0);
-    p = fma(p, z, -1.0 / 3.0);  p = fma(p, z,  1.0);
+    double p = horner(z,
+                      -1.0 / 23.0, 1.0 / 21.0, -1.0 / 19.0, 1.0 / 17.0,
+                      -1.0 / 15.0, 1.0 / 13.0, -1.0 / 11.0, 1.0 / 9.0,
+                      -1.0 / 7.0, 1.0 / 5.0, -1.0 / 3.0, 1.0);
     double r = off + a * p;
     if (inv) r = kPiHalf - r;
     return neg ? -r : r;
