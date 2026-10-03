@@ -1,8 +1,9 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Deterministic perf workload for the cachegrind instruction-count gate
-// (tests/check_perf.py). It runs a fixed amount of representative inside
+// (tests/beman/inside/check_perf.py). It runs a fixed amount of representative inside
 // arithmetic and prints a checksum; check_perf.py runs it under
 // `valgrind --tool=cachegrind` and compares the total retired-instruction count
-// (Ir) against tests/perf_baseline.json within a tolerance. Instruction counts
+// (Ir) against tests/beman/inside/perf_baseline.json within a tolerance. Instruction counts
 // are deterministic regardless of host load, so this is a stable signal even on
 // noisy shared CI runners — unlike wall-clock timing.
 //

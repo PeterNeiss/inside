@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Codegen guard for the arithmetic fast paths.
 //
 // inside's headline claim is zero-overhead, autovec-friendly arithmetic: when
@@ -7,7 +8,7 @@
 // can silently break either property while every functional test still passes.
 //
 // This TU is never run. It is compiled at -O2 and inspected with objdump by
-// tests/check_codegen.sh, which asserts that both functions are call-free — i.e.
+// tests/beman/inside/check_codegen.sh, which asserts that both functions are call-free — i.e.
 // the integer fast path stayed fully inlined to a bare machine add, with no
 // fallback to the error handler / rational path leaking in. Whether add_loop
 // autovectorizes is reported but not gated (it varies by compiler version).

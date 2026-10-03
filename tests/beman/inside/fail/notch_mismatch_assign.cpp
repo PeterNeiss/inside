@@ -1,4 +1,5 @@
 // EXPECT: incompatible notches
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // A source lattice that does not land on the target lattice needs explicit
 // rounding permission (`with_snap()` / `policy<snap>()`); without it the
 // assignment is ill-formed.

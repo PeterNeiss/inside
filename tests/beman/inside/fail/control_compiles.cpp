@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Control case: valid code that MUST compile through the same harness — a
 // broken harness (misconfigured compiler, always-failing builds) fails here.
 #include <beman/inside/inside.hpp>

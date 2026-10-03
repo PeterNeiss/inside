@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Determinism golden pins for the transcendental functions.
 //
 // The library advertises bit-exact reproducibility. Accuracy-vs-std tolerances do
@@ -14,17 +15,17 @@
 #include <beman/inside/inside.hpp>
 #include <beman/inside/cmath.hpp>
 
-#include <catch2/catch_test_macros.hpp>
+#include <gtest/gtest.h>
 
 using namespace beman::inside;
 using namespace beman::inside::detail;
 
 // rational{expr} == rational{N, D}  (sign carried in D, as the library encodes it)
-#define EXACT(expr, N, D)     REQUIRE(rational{(expr)} == rational{N, D})
-#define EXACT_OK(expr, N, D)  do { auto _r = (expr); REQUIRE(_r.has_value()); \
-                                   REQUIRE(rational{*_r} == rational{N, D}); } while (0)
-#define EXACT_ERR(expr)       do { auto _r = (expr); REQUIRE_FALSE(_r.has_value()); \
-                                   REQUIRE(_r.error() == errc::domain_error); } while (0)
+#define EXACT(expr, N, D)     ASSERT_EQ(rational{(expr)}, (rational{N, D}))
+#define EXACT_OK(expr, N, D)  do { auto _r = (expr); ASSERT_TRUE(_r.has_value()); \
+                                   ASSERT_EQ(rational{*_r}, (rational{N, D})); } while (0)
+#define EXACT_ERR(expr)       do { auto _r = (expr); ASSERT_FALSE(_r.has_value()); \
+                                   ASSERT_EQ(_r.error(), errc::domain_error); } while (0)
 
 // These pins are the DEFAULT engine's values (double / CORDIC, which agree here
 // except the one #ifdef'd case). The float engine is a third value set, so under
@@ -32,7 +33,8 @@ using namespace beman::inside::detail;
 // determinism is pinned separately in test_math_engines.cpp.
 #ifndef BEMAN_INSIDE_MATH_FLOAT
 
-TEST_CASE("determinism: asin / acos across grids and domain corners", "[determinism][cmath]")
+// determinism: asin / acos across grids and domain corners
+TEST(DeterminismTest, determinism_asin_acos_across_grids_and_domain_corners)
 {
   using A1 = inside<{{-1, 1}, notch<1, 65536>}, round_nearest | real>;
   using A2 = inside<{{-1, 1}, notch<1, 4096>},  round_nearest | real>;
@@ -63,7 +65,8 @@ TEST_CASE("determinism: asin / acos across grids and domain corners", "[determin
   EXACT(math::acos(A2{rational{65535,65536}}),     0,     1);
 }
 
-TEST_CASE("determinism: sinh / cosh / tanh across grids and corners", "[determinism][cmath]")
+// determinism: sinh / cosh / tanh across grids and corners
+TEST(DeterminismTest, determinism_sinh_cosh_tanh_across_grids_and_corners)
 {
   using H1 = inside<{{-10, 10}, notch<1, 65536>}, round_nearest | real>;
   using H2 = inside<{{-4, 4},   notch<1, 4096>},  round_nearest | real>;
@@ -100,7 +103,8 @@ TEST_CASE("determinism: sinh / cosh / tanh across grids and corners", "[determin
   EXACT(math::tanh(H2{4}),   4093, 4096);
 }
 
-TEST_CASE("determinism: log10 across grids and corners", "[determinism][cmath]")
+// determinism: log10 across grids and corners
+TEST(DeterminismTest, determinism_log10_across_grids_and_corners)
 {
   using L1 = inside<{{1, 1024}, notch<1, 65536>}, round_nearest | real>;
   using L2 = inside<{{1, 256},  notch<1, 4096>},  round_nearest | real>;
@@ -116,7 +120,8 @@ TEST_CASE("determinism: log10 across grids and corners", "[determinism][cmath]")
   EXACT(math::log10(L2{256}),    1233,   512);    // ~2.4082, upper edge
 }
 
-TEST_CASE("determinism: hypot across grids and corners", "[determinism][cmath]")
+// determinism: hypot across grids and corners
+TEST(DeterminismTest, determinism_hypot_across_grids_and_corners)
 {
   using P1 = inside<{{-16, 16}, notch<1, 65536>}, round_nearest | real>;
   using P2 = inside<{{-4, 4},   notch<1, 4096>},  round_nearest | real>;
@@ -131,7 +136,8 @@ TEST_CASE("determinism: hypot across grids and corners", "[determinism][cmath]")
   EXACT(math::hypot(P2{rational{1,2}}, P2{rational{1,2}}), 181, 256);  // ~0.7071
 }
 
-TEST_CASE("determinism: pow across grids and corners", "[determinism][cmath]")
+// determinism: pow across grids and corners
+TEST(DeterminismTest, determinism_pow_across_grids_and_corners)
 {
   using PB1 = inside<{{1, 16}, notch<1, 65536>}, round_nearest | real>;
   using PE1 = inside<{{-4, 8}, notch<1, 65536>}, round_nearest | real>;
@@ -147,7 +153,8 @@ TEST_CASE("determinism: pow across grids and corners", "[determinism][cmath]")
   EXACT_OK(math::pow(PB2{3}, PE2{0}),  1, 1);
 }
 
-TEST_CASE("determinism: sqrt across grids, corners, and the error path", "[determinism][cmath]")
+// determinism: sqrt across grids, corners, and the error path
+TEST(DeterminismTest, determinism_sqrt_across_grids_corners_and_the_error_path)
 {
   using S1   = inside<{{0, 4},   notch<1, 65536>}, round_nearest | real>;
   using S2   = inside<{{0, 256}, notch<1, 256>},   round_nearest | real>;
@@ -162,7 +169,8 @@ TEST_CASE("determinism: sqrt across grids, corners, and the error path", "[deter
   EXACT_ERR(math::sqrt(Smix{-1}));       // determinism of the error path
 }
 
-TEST_CASE("determinism: cbrt across grids and corners", "[determinism][cmath]")
+// determinism: cbrt across grids and corners
+TEST(DeterminismTest, determinism_cbrt_across_grids_and_corners)
 {
   using C1 = inside<{{-16, 16}, notch<1, 65536>}, round_nearest | real>;
   using C2 = inside<{{-8, 8},   notch<1, 1024>},  round_nearest | real>;
@@ -174,7 +182,8 @@ TEST_CASE("determinism: cbrt across grids and corners", "[determinism][cmath]")
   EXACT(math::cbrt(C1{-8}), 2, -1);  EXACT(math::cbrt(C2{-8}), 2, -1);  // -2
 }
 
-TEST_CASE("determinism: atan / atan2 corners across quadrants and axes", "[determinism][cmath]")
+// determinism: atan / atan2 corners across quadrants and axes
+TEST(DeterminismTest, determinism_atan_atan2_corners_across_quadrants_and_axes)
 {
   using AT1 = inside<{{-16, 16}, notch<1, 16384>}, round_nearest | real>;
   using AT2 = inside<{{-1, 1},   notch<1, 65536>}, round_nearest | real>;
@@ -194,7 +203,8 @@ TEST_CASE("determinism: atan / atan2 corners across quadrants and axes", "[deter
   EXACT(math::atan2(AT1{4},  AT1{0}),  3217, 2048);   // +y axis (pi/2)
 }
 
-TEST_CASE("determinism: sin / cos / tan radian corners", "[determinism][cmath]")
+// determinism: sin / cos / tan radian corners
+TEST(DeterminismTest, determinism_sin_cos_tan_radian_corners)
 {
   using RAD = inside<{{-8, 8}, notch<1, 16384>}, round_nearest | real>;
 

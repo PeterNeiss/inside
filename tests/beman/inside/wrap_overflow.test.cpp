@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // wrap policy must reduce out-of-range integers without signed overflow.
 //
 // Regression: apply_wrap computed `range = upper - lower + 1` and
@@ -12,7 +13,7 @@
 #include <beman/inside/inside.hpp>
 #include <beman/inside/io.hpp>
 
-#include <catch2/catch_test_macros.hpp>
+#include <gtest/gtest.h>
 #include <cstdint>
 
 using namespace beman::inside;
@@ -46,7 +47,8 @@ namespace
   }
 }
 
-TEST_CASE("wrap reduces extreme integers with no signed overflow", "[wrap][overflow]")
+// wrap reduces extreme integers with no signed overflow
+TEST(WrapOverflowTest, wrap_reduces_extreme_integers_with_no_signed_overflow)
 {
   using W = inside<{-5000000000LL, 5000000000LL}, wrap>;   // span 1e10 > would-be int32
   constexpr long long lo = -5000000000LL, hi = 5000000000LL;
@@ -59,14 +61,15 @@ TEST_CASE("wrap reduces extreme integers with no signed overflow", "[wrap][overf
     W b = v;
     const long long got = static_cast<long long>(static_cast<rational>(b).Numerator)
                         * (static_cast<rational>(b).Denominator < 0 ? -1 : 1);
-    INFO("v=" << v);
-    REQUIRE(got == wrap_ref(v, lo, hi));
-    REQUIRE(got >= lo);
-    REQUIRE(got <= hi);
+    SCOPED_TRACE(::testing::Message() << "v=" << v);
+    ASSERT_EQ(got, (wrap_ref(v, lo, hi)));
+    ASSERT_TRUE(got >= lo);
+    ASSERT_TRUE(got <= hi);
   }
 }
 
-TEST_CASE("wrap on a grid spanning more than imax", "[wrap][overflow]")
+// wrap on a grid spanning more than imax
+TEST(WrapOverflowTest, wrap_on_a_grid_spanning_more_than_imax)
 {
   // Unsigned-storage grid whose span exceeds INT64_MAX.
   using Big = inside<{0, 12000000000000000000ULL}, wrap>;   // span ~1.2e19 > imax
@@ -74,12 +77,13 @@ TEST_CASE("wrap on a grid spanning more than imax", "[wrap][overflow]")
 
   // A value above the top wraps to near the bottom; one below 0 wraps to the top.
   Big a = -1;                                              // -1 -> hi
-  REQUIRE(static_cast<rational>(a) == rational{hi, 1});
+  ASSERT_TRUE((static_cast<rational>(a) == rational{hi, 1}));
   Big b = 0;
-  REQUIRE(static_cast<rational>(b) == 0);
+  ASSERT_TRUE(static_cast<rational>(b) == 0);
 }
 
-TEST_CASE("wrap is identity on a grid spanning the whole u64 range", "[wrap][overflow]")
+// wrap is identity on a grid spanning the whole u64 range
+TEST(WrapOverflowTest, wrap_is_identity_on_a_grid_spanning_the_whole_u64_range)
 {
   // span == 2^64-1, so `urange = upper - lower + 1` wraps to 0 in umax: every
   // u64 bit pattern is already in range, so the wrap is the identity and the
@@ -94,16 +98,17 @@ TEST_CASE("wrap is identity on a grid spanning the whole u64 range", "[wrap][ove
                        std::numeric_limits<long long>::min() })
   {
     All b = v;
-    INFO("v=" << v);
-    REQUIRE(b.raw() == static_cast<std::uint64_t>(v));     // identity, no reduction
+    SCOPED_TRACE(::testing::Message() << "v=" << v);
+    ASSERT_TRUE(b.raw() == static_cast<std::uint64_t>(v));     // identity, no reduction
   }
 }
 
-TEST_CASE("wrap still correct on a small symmetric grid", "[wrap]")
+// wrap still correct on a small symmetric grid
+TEST(WrapOverflowTest, wrap_still_correct_on_a_small_symmetric_grid)
 {
   using S = inside<{-3, 3}, wrap>;                          // range 7
-  REQUIRE(static_cast<rational>(S{0}  =  4) == -3);        // 4  -> -3
-  REQUIRE(static_cast<rational>(S{0}  = -4) ==  3);        // -4 ->  3
-  REQUIRE(static_cast<rational>(S{0}  = 10) ==  3);        // 10 ->  3
-  REQUIRE(static_cast<rational>(S{0}  = -3) == -3);        // on-edge unchanged
+  ASSERT_TRUE(static_cast<rational>(S{0}  =  4) == -3);        // 4  -> -3
+  ASSERT_TRUE(static_cast<rational>(S{0}  = -4) ==  3);        // -4 ->  3
+  ASSERT_TRUE(static_cast<rational>(S{0}  = 10) ==  3);        // 10 ->  3
+  ASSERT_TRUE(static_cast<rational>(S{0}  = -3) == -3);        // on-edge unchanged
 }

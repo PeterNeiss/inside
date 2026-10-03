@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Differential tests for the portable overflow-detection fallbacks
 // (beman::inside::non_builtin_{add,sub,mul}_overflow) against the compiler builtins.
 //
@@ -9,7 +10,7 @@
 
 #include <beman/inside/detail/overflow.hpp>
 
-#include <catch2/catch_test_macros.hpp>
+#include <gtest/gtest.h>
 
 #include <cstdint>
 #include <limits>
@@ -31,16 +32,16 @@ namespace
   {
     T rr, rn;
     bool or_ = ref_add(a, b, &rr), on = non_builtin_add_overflow(a, b, &rn);
-    REQUIRE(or_ == on);
-    if (!or_) REQUIRE(rr == rn);
+    ASSERT_EQ(or_, on);
+    if (!or_) { ASSERT_EQ(rr, rn); }
 
     or_ = ref_sub(a, b, &rr); on = non_builtin_sub_overflow(a, b, &rn);
-    REQUIRE(or_ == on);
-    if (!or_) REQUIRE(rr == rn);
+    ASSERT_EQ(or_, on);
+    if (!or_) { ASSERT_EQ(rr, rn); }
 
     or_ = ref_mul(a, b, &rr); on = non_builtin_mul_overflow(a, b, &rn);
-    REQUIRE(or_ == on);
-    if (!or_) REQUIRE(rr == rn);
+    ASSERT_EQ(or_, on);
+    if (!or_) { ASSERT_EQ(rr, rn); }
   }
 
   // Boundary-heavy value set for the wide types.
@@ -66,7 +67,8 @@ namespace
 
 #ifdef BEMAN_INSIDE_HAVE_BUILTIN
 
-TEST_CASE("overflow fallbacks: exhaustive 8-bit vs builtins", "[overflow][fallback]")
+// overflow fallbacks: exhaustive 8-bit vs builtins
+TEST(OverflowTest, overflow_fallbacks_exhaustive_8_bit_vs_builtins)
 {
   for (int a = -128; a <= 127; ++a)
     for (int b = -128; b <= 127; ++b)
@@ -77,7 +79,8 @@ TEST_CASE("overflow fallbacks: exhaustive 8-bit vs builtins", "[overflow][fallba
       check_all<std::uint8_t>(static_cast<std::uint8_t>(a), static_cast<std::uint8_t>(b));
 }
 
-TEST_CASE("overflow fallbacks: 16-bit boundary + sampled vs builtins", "[overflow][fallback]")
+// overflow fallbacks: 16-bit boundary + sampled vs builtins
+TEST(OverflowTest, overflow_fallbacks_16_bit_boundary_plus_sampled_vs_builtins)
 {
   // Boundary pairs (exact corner behaviour).
   for (auto a : boundary_values<std::int16_t>())
@@ -98,7 +101,8 @@ TEST_CASE("overflow fallbacks: 16-bit boundary + sampled vs builtins", "[overflo
   }
 }
 
-TEST_CASE("overflow fallbacks: 32/64-bit boundary + random vs builtins", "[overflow][fallback]")
+// overflow fallbacks: 32/64-bit boundary + random vs builtins
+TEST(OverflowTest, overflow_fallbacks_32_64_bit_boundary_plus_random_vs_builtins)
 {
   for (auto a : boundary_values<std::int32_t>())
     for (auto b : boundary_values<std::int32_t>())
@@ -124,8 +128,8 @@ TEST_CASE("overflow fallbacks: 32/64-bit boundary + random vs builtins", "[overf
       std::uint64_t rr, rn;
       bool or_ = __builtin_mul_overflow(a, b, &rr);
       bool on  = non_builtin_mul_overflow(a, b, &rn);
-      REQUIRE(or_ == on);
-      if (!or_) REQUIRE(rr == rn);
+      ASSERT_EQ(or_, on);
+      if (!or_) { ASSERT_EQ(rr, rn); }
     }
 
   // Signed 64-bit subtraction near INT64_MIN — the negate-before-subtract trap.
@@ -135,19 +139,20 @@ TEST_CASE("overflow fallbacks: 32/64-bit boundary + random vs builtins", "[overf
     std::int64_t rr, rn;
     bool or_ = __builtin_sub_overflow(a, i64min, &rr);
     bool on  = non_builtin_sub_overflow<std::int64_t>(a, i64min, &rn);
-    REQUIRE(or_ == on);
-    if (!or_) REQUIRE(rr == rn);
+    ASSERT_EQ(or_, on);
+    if (!or_) { ASSERT_EQ(rr, rn); }
   }
 }
 
-TEST_CASE("overflow fallbacks are usable in constant expressions", "[overflow][fallback][constexpr]")
+// overflow fallbacks are usable in constant expressions
+TEST(OverflowTest, overflow_fallbacks_are_usable_in_constant_expressions)
 {
   constexpr auto add_ok = [] { std::int32_t r{}; return !non_builtin_add_overflow<std::int32_t>(2, 3, &r) && r == 5; }();
   constexpr auto sub_min = [] { std::int8_t r{}; return non_builtin_sub_overflow<std::int8_t>(5, std::numeric_limits<std::int8_t>::min(), &r); }();
   constexpr auto mul_ovf = [] { std::int8_t r{}; return non_builtin_mul_overflow<std::int8_t>(100, 100, &r); }();
-  STATIC_REQUIRE(add_ok);
-  STATIC_REQUIRE(sub_min);   // 5 - (-128) = 133 > 127 → overflow
-  STATIC_REQUIRE(mul_ovf);
+  static_assert(add_ok);
+  static_assert(sub_min);   // 5 - (-128) = 133 > 127 → overflow
+  static_assert(mul_ovf);
 }
 
 #endif // BEMAN_INSIDE_HAVE_BUILTIN

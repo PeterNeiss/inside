@@ -1,4 +1,5 @@
 // EXPECT: must permit rounding
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Transcendentals round their result onto the grid, so the operand must carry
 // `snap` (via round_nearest / a round_* mode / real) — require_snap fires.
 #include <beman/inside/inside.hpp>

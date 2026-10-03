@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Bit-exact contract tests for the beman::inside::math INTEGER (CORDIC) engine.
 //
 // Every assertion here pins a specific integer output for a specific integer
@@ -9,7 +10,7 @@
 #include <beman/inside/io.hpp>
 #include <beman/inside/inside.hpp>
 
-#include <catch2/catch_test_macros.hpp>
+#include <gtest/gtest.h>
 
 #include <iostream>
 
@@ -93,7 +94,8 @@ namespace
 // Exact-by-symmetry: range reduction sends these phases to x_q30 = 0,
 // so the polynomial evaluator returns exactly 0 with no rounding error.
 //---------------------------------------------------------------------------
-TEST_CASE("beman::inside::math::sin: exact at multiples of pi", "[cmath][sin][constexpr]")
+// beman::inside::math::sin: exact at multiples of pi
+TEST(CmathTest, beman_inside_math_sin_exact_at_multiples_of_pi)
 {
   static_assert(sin_q14(0)     == 0);   // sin(0)     = 0
   static_assert(sin_q14(32768) == 0);   // sin(π)     = 0
@@ -105,7 +107,8 @@ TEST_CASE("beman::inside::math::sin: exact at multiples of pi", "[cmath][sin][co
 // exactly (raw = ±16384). The Taylor truncation + kRadPerSlotQ30 rounding
 // error is below 1 Q.14 ULP, so the result rounds back to the boundary.
 //---------------------------------------------------------------------------
-TEST_CASE("beman::inside::math::sin: quadrant peaks", "[cmath][sin][constexpr]")
+// beman::inside::math::sin: quadrant peaks
+TEST(CmathTest, beman_inside_math_sin_quadrant_peaks)
 {
   static_assert(sin_q14(16384) ==  16384);   //  sin(π/2)
   static_assert(sin_q14(49152) == -16384);   //  sin(3π/2)
@@ -115,7 +118,8 @@ TEST_CASE("beman::inside::math::sin: quadrant peaks", "[cmath][sin][constexpr]")
 // Bit-exact sweep at known-significant phases. Values pinned to the exact
 // Q.14 raw the constexpr evaluator produces. Same int on every platform.
 //---------------------------------------------------------------------------
-TEST_CASE("beman::inside::math::sin: bit-exact sweep", "[cmath][sin][constexpr]")
+// beman::inside::math::sin: bit-exact sweep
+TEST(CmathTest, beman_inside_math_sin_bit_exact_sweep)
 {
   // Phase 1/12 turn = π/6 rad. sin(π/6) = 0.5 → expected raw ≈ 8192.
   static_assert(sin_q14(65536/12) == 8192);
@@ -150,7 +154,8 @@ TEST_CASE("beman::inside::math::sin: bit-exact sweep", "[cmath][sin][constexpr]"
 // a table lookup — no radians conversion. Pins the bit-exact amplitude the
 // table produces; identical on every platform.
 //---------------------------------------------------------------------------
-TEST_CASE("beman::inside::math::sin(circle): cardinal degrees", "[cmath][sin][circle][constexpr]")
+// beman::inside::math::sin(circle): cardinal degrees
+TEST(CmathTest, beman_inside_math_sin_circle_cardinal_degrees)
 {
   static_assert(circ_sin_qk<360>(0)   ==      0);   // sin(0°)   =  0
   static_assert(circ_sin_qk<360>(90)  ==  16384);   // sin(90°)  =  1
@@ -166,7 +171,8 @@ TEST_CASE("beman::inside::math::sin(circle): cardinal degrees", "[cmath][sin][ci
   static_assert(circ_sin_qk<256>(90)  ==  16384);
 }
 
-TEST_CASE("beman::inside::math::cos(circle): cardinal degrees", "[cmath][cos][circle][constexpr]")
+// beman::inside::math::cos(circle): cardinal degrees
+TEST(CmathTest, beman_inside_math_cos_circle_cardinal_degrees)
 {
   static_assert(circ_cos_qk<360>(0)   ==  16384);   // cos(0°)   =  1
   static_assert(circ_cos_qk<360>(90)  ==      0);   // cos(90°)  =  0
@@ -180,7 +186,8 @@ TEST_CASE("beman::inside::math::cos(circle): cardinal degrees", "[cmath][cos][ci
 // angle advanced past 360° a thousand times lands on the *identical* slot as
 // its in-range equivalent, because one revolution is exactly M notch steps.
 //---------------------------------------------------------------------------
-TEST_CASE("beman::inside::math::sin(circle): drift-free wrap", "[cmath][sin][circle][constexpr]")
+// beman::inside::math::sin(circle): drift-free wrap
+TEST(CmathTest, beman_inside_math_sin_circle_drift_free_wrap)
 {
   static_assert([]{
     math::circle<360> b = 30;
@@ -197,7 +204,8 @@ TEST_CASE("beman::inside::math::sin(circle): drift-free wrap", "[cmath][sin][cir
   }() == 8192);
 }
 
-TEST_CASE("beman::inside::math::tan(circle): value and pole", "[cmath][tan][circle][constexpr]")
+// beman::inside::math::tan(circle): value and pole
+TEST(CmathTest, beman_inside_math_tan_circle_value_and_pole)
 {
   static_assert([]{
     math::circle<360> a = 45; math::amp<16384> y;
@@ -218,7 +226,8 @@ TEST_CASE("beman::inside::math::tan(circle): value and pole", "[cmath][tan][circ
 // not a fixed Q.30 tier. The same angle lands on the nearest representable
 // value of a coarse and a fine grid alike.
 //---------------------------------------------------------------------------
-TEST_CASE("beman::inside::math::sin(circle): precision follows the grid", "[cmath][sin][circle][constexpr]")
+// beman::inside::math::sin(circle): precision follows the grid
+TEST(CmathTest, beman_inside_math_sin_circle_precision_follows_the_grid)
 {
   // sin(30°) = 0.5 is exactly representable on every amp<K>; the engine hits it
   // on a tiny grid and a large one.
@@ -235,19 +244,22 @@ TEST_CASE("beman::inside::math::sin(circle): precision follows the grid", "[cmat
 // against a future refactor that breaks the phase-shift wiring even when
 // sin's own vectors still pass.
 //---------------------------------------------------------------------------
-TEST_CASE("beman::inside::math::cos: quadrant peaks", "[cmath][cos][constexpr]")
+// beman::inside::math::cos: quadrant peaks
+TEST(CmathTest, beman_inside_math_cos_quadrant_peaks)
 {
   static_assert(cos_q14(0)     ==  16384);   //  cos(0)    =  1
   static_assert(cos_q14(32768) == -16384);   //  cos(π)    = -1
 }
 
-TEST_CASE("beman::inside::math::cos: zero crossings", "[cmath][cos][constexpr]")
+// beman::inside::math::cos: zero crossings
+TEST(CmathTest, beman_inside_math_cos_zero_crossings)
 {
   static_assert(cos_q14(16384) == 0);        //  cos(π/2)  = 0
   static_assert(cos_q14(49152) == 0);        //  cos(3π/2) = 0
 }
 
-TEST_CASE("beman::inside::math::cos: bit-exact sweep", "[cmath][cos][constexpr]")
+// beman::inside::math::cos: bit-exact sweep
+TEST(CmathTest, beman_inside_math_cos_bit_exact_sweep)
 {
   // cos(π/4) = √2/2 ≈ 0.7071068 → 11585.
   static_assert(cos_q14(65536/8)  == 11585);
@@ -275,13 +287,15 @@ TEST_CASE("beman::inside::math::cos: bit-exact sweep", "[cmath][cos][constexpr]"
 // adding new vectors or auditing a tweak; not load-bearing for the bit
 // contract (the static_asserts above are).
 //---------------------------------------------------------------------------
-TEST_CASE("beman::inside::math::sin: probe (informational)", "[cmath][sin][.probe]")
+// beman::inside::math::sin: probe (informational)
+TEST(CmathTest, DISABLED_beman_inside_math_sin_probe_informational)
 {
   for (unsigned i = 0; i <= 65535; i += 4096)
     std::cout << "sin_q14(" << i << ") = " << sin_q14(i) << "\n";
 }
 
-TEST_CASE("beman::inside::math::cos: probe (informational)", "[cmath][cos][.probe]")
+// beman::inside::math::cos: probe (informational)
+TEST(CmathTest, DISABLED_beman_inside_math_cos_probe_informational)
 {
   for (unsigned i = 0; i <= 65535; i += 4096)
     std::cout << "cos_q14(" << i << ") = " << cos_q14(i) << "\n";
@@ -308,7 +322,8 @@ namespace
   }
 }
 
-TEST_CASE("beman::inside::math::sqrt: exact corners", "[cmath][sqrt][constexpr]")
+// beman::inside::math::sqrt: exact corners
+TEST(CmathTest, beman_inside_math_sqrt_exact_corners)
 {
   static_assert(sqrt_q14(0)      == 0);          // sqrt(0)    = 0
   static_assert(sqrt_q14(16384)  == 8192);       // sqrt(0.25) = 0.5
@@ -316,7 +331,8 @@ TEST_CASE("beman::inside::math::sqrt: exact corners", "[cmath][sqrt][constexpr]"
   static_assert(sqrt_q14(262144) == 32768);      // sqrt(4)    = 2
 }
 
-TEST_CASE("beman::inside::math::sqrt: irrationals", "[cmath][sqrt][constexpr]")
+// beman::inside::math::sqrt: irrationals
+TEST(CmathTest, beman_inside_math_sqrt_irrationals)
 {
   // sqrt(0.5) = √2/2 ≈ 0.7071068 → Q.14 ≈ 11585.
   static_assert(sqrt_q14(32768) == 11585);
@@ -334,97 +350,94 @@ TEST_CASE("beman::inside::math::sqrt: irrationals", "[cmath][sqrt][constexpr]")
   static_assert(sqrt_q14(1) == 64);
 }
 
-TEST_CASE("beman::inside::math::sqrt: probe (informational)", "[cmath][sqrt][.probe]")
+// beman::inside::math::sqrt: probe (informational)
+TEST(CmathTest, DISABLED_beman_inside_math_sqrt_probe_informational)
 {
   for (unsigned i = 0; i <= 262144u; i += 16384)
     std::cout << "sqrt_q14(" << i << ") = " << sqrt_q14(i) << "\n";
 }
 
-TEST_CASE("beman::inside::math::sqrt: mixed-sign input returns expected", "[cmath][sqrt][mixed_sign]")
+// beman::inside::math::sqrt: mixed-sign input returns expected
+TEST(CmathTest, beman_inside_math_sqrt_mixed_sign_input_returns_expected)
 {
   using signed_in = inside<{{-1, 1}, notch<1, 65536>}, round_nearest | real>;
 
   // Non-negative runtime value → value with the usual Q.30 result.
   signed_in pos{0.25_r};
   auto r_pos = math::sqrt(pos);
-  REQUIRE(r_pos.has_value());
-  REQUIRE(*r_pos == 0.5_r);
+  ASSERT_TRUE(r_pos.has_value());
+  ASSERT_EQ(*r_pos, 0.5_r);
 
   // Zero → value, result is 0.
   signed_in zero{0};
   auto r_zero = math::sqrt(zero);
-  REQUIRE(r_zero.has_value());
-  REQUIRE(*r_zero == 0);
+  ASSERT_TRUE(r_zero.has_value());
+  ASSERT_EQ(*r_zero, 0);
 
   // Negative runtime value → unexpected(domain_error).
   signed_in neg{-0.5_r};
   auto r_neg = math::sqrt(neg);
-  REQUIRE_FALSE(r_neg.has_value());
-  REQUIRE(r_neg.error() == errc::domain_error);
+  ASSERT_FALSE(r_neg.has_value());
+  ASSERT_EQ(r_neg.error(), errc::domain_error);
 
   // The non-negative overload (Lower == 0) returns inside directly; the
   // mixed-sign overload returns expected (not optional). Disjoint by `requires`.
   using nonneg_in = inside<{{0, 1}, notch<1, 65536>}, round_nearest | real>;
   nonneg_in v{0.25_r};
-  STATIC_REQUIRE_FALSE(is_slim_optional_v<decltype(math::sqrt(v))>);
-  STATIC_REQUIRE_FALSE(is_slim_optional_v<decltype(math::sqrt(pos))>);
-  REQUIRE(math::sqrt(v) == 0.5_r);
+  static_assert(!(is_slim_optional_v<decltype(math::sqrt(v))>));
+  static_assert(!(is_slim_optional_v<decltype(math::sqrt(pos))>));
+  ASSERT_EQ(math::sqrt(v), 0.5_r);
 }
 
 //---------------------------------------------------------------------------
 // Decimal-display tests: inside in, inside out, no raw extraction. The
-// comparisons run at the inside-value level; Catch2 stringifies failures
+// comparisons run at the inside-value level; GoogleTest prints failures
 // via `beman/inside/print.hpp`'s `operator<<`, so any mismatch reports e.g.
 // `1 == 0.99993896484375` instead of `16384 == 16383`. The companion
 // probes also print every value as decimal for at-a-glance auditing.
 //---------------------------------------------------------------------------
-TEST_CASE("beman::inside::math::sin: inside-typed equality (decimal display)",
-          "[cmath][sin][decimal]")
+// beman::inside::math::sin: inside-typed equality (decimal display)
+TEST(CmathTest, beman_inside_math_sin_inside_typed_equality_decimal_display)
 {
   // Exact-on-the-grid cases: the Taylor truncation and rad-per-slot
   // rounding sum to less than 1 Q.14 ULP at these phases, so the result
   // lands exactly on 0 / ±1.
-  REQUIRE(sample_t{sin_turn(phase_from(0))}     == sample_t{ 0});
-  REQUIRE(sample_t{sin_turn(phase_from(16384))} == sample_t{ 1});
-  REQUIRE(sample_t{sin_turn(phase_from(32768))} == sample_t{ 0});
-  REQUIRE(sample_t{sin_turn(phase_from(49152))} == sample_t{-1});
+  ASSERT_EQ(sample_t{sin_turn(phase_from(0))}, sample_t{ 0});
+  ASSERT_EQ(sample_t{sin_turn(phase_from(16384))}, sample_t{ 1});
+  ASSERT_EQ(sample_t{sin_turn(phase_from(32768))}, sample_t{ 0});
+  ASSERT_EQ(sample_t{sin_turn(phase_from(49152))}, sample_t{-1});
 
   // Off-grid cases: pin against the exact rational the Q.14 grid rounds to.
   // 11585/16384 = 0.70709228515625 — sin(π/4) snapped to the sample grid.
-  REQUIRE(sample_t{sin_turn(phase_from(8192))}
-          == sample_t{rational{11585, 16384}});
-  REQUIRE(sample_t{sin_turn(phase_from(24576))}
-          == sample_t{rational{11585, 16384}});
+  ASSERT_EQ(sample_t{sin_turn(phase_from(8192))}, (sample_t{rational{11585, 16384}}));
+  ASSERT_EQ(sample_t{sin_turn(phase_from(24576))}, (sample_t{rational{11585, 16384}}));
 }
 
-TEST_CASE("beman::inside::math::cos: inside-typed equality (decimal display)",
-          "[cmath][cos][decimal]")
+// beman::inside::math::cos: inside-typed equality (decimal display)
+TEST(CmathTest, beman_inside_math_cos_inside_typed_equality_decimal_display)
 {
-  REQUIRE(sample_t{cos_turn(phase_from(0))}     == sample_t{ 1});
-  REQUIRE(sample_t{cos_turn(phase_from(16384))} == sample_t{ 0});
-  REQUIRE(sample_t{cos_turn(phase_from(32768))} == sample_t{-1});
-  REQUIRE(sample_t{cos_turn(phase_from(49152))} == sample_t{ 0});
+  ASSERT_EQ(sample_t{cos_turn(phase_from(0))}, sample_t{ 1});
+  ASSERT_EQ(sample_t{cos_turn(phase_from(16384))}, sample_t{ 0});
+  ASSERT_EQ(sample_t{cos_turn(phase_from(32768))}, sample_t{-1});
+  ASSERT_EQ(sample_t{cos_turn(phase_from(49152))}, sample_t{ 0});
 
   // cos(π/4) = sin(π/4) = √2/2 → 11585/16384.
-  REQUIRE(sample_t{cos_turn(phase_from(8192))}
-          == sample_t{rational{11585, 16384}});
+  ASSERT_EQ(sample_t{cos_turn(phase_from(8192))}, (sample_t{rational{11585, 16384}}));
 }
 
-TEST_CASE("beman::inside::math::sqrt: inside-typed equality (decimal display)",
-          "[cmath][sqrt][decimal]")
+// beman::inside::math::sqrt: inside-typed equality (decimal display)
+TEST(CmathTest, beman_inside_math_sqrt_inside_typed_equality_decimal_display)
 {
   // Exact-on-the-grid cases.
-  REQUIRE(sqrt_out_t{math::sqrt(sqrt_input(0))}      == sqrt_out_t{0});
-  REQUIRE(sqrt_out_t{math::sqrt(sqrt_input(16384))}  == sqrt_out_t{0.5_r});
-  REQUIRE(sqrt_out_t{math::sqrt(sqrt_input(65536))}  == sqrt_out_t{1});
-  REQUIRE(sqrt_out_t{math::sqrt(sqrt_input(262144))} == sqrt_out_t{2});
+  ASSERT_EQ(sqrt_out_t{math::sqrt(sqrt_input(0))}, sqrt_out_t{0});
+  ASSERT_EQ(sqrt_out_t{math::sqrt(sqrt_input(16384))}, sqrt_out_t{0.5_r});
+  ASSERT_EQ(sqrt_out_t{math::sqrt(sqrt_input(65536))}, sqrt_out_t{1});
+  ASSERT_EQ(sqrt_out_t{math::sqrt(sqrt_input(262144))}, sqrt_out_t{2});
 
   // Off-grid: sqrt(2) ≈ 1.4142136 → double-rounded to 23171/16384 ≈ 1.4142.
-  REQUIRE(sqrt_out_t{math::sqrt(sqrt_input(131072))}
-          == sqrt_out_t{rational{23171, 16384}});
+  ASSERT_EQ(sqrt_out_t{math::sqrt(sqrt_input(131072))}, (sqrt_out_t{rational{23171, 16384}}));
   // sqrt(0.5) ≈ 0.7071068 → 11585/16384.
-  REQUIRE(sqrt_out_t{math::sqrt(sqrt_input(32768))}
-          == sqrt_out_t{rational{11585, 16384}});
+  ASSERT_EQ(sqrt_out_t{math::sqrt(sqrt_input(32768))}, (sqrt_out_t{rational{11585, 16384}}));
 }
 
 //---------------------------------------------------------------------------
@@ -453,7 +466,8 @@ namespace
   }
 }
 
-TEST_CASE("beman::inside::math::exp2: integer powers", "[cmath][exp2][constexpr]")
+// beman::inside::math::exp2: integer powers
+TEST(CmathTest, beman_inside_math_exp2_integer_powers)
 {
   static_assert(exp2_q14(rational{ 0})              == 16384);  // 2^0  = 1
   static_assert(exp2_q14(rational{ 1})              == 32768);  // 2^1  = 2
@@ -466,8 +480,8 @@ TEST_CASE("beman::inside::math::exp2: integer powers", "[cmath][exp2][constexpr]
   static_assert(exp2_q14(-4_r)              == 1024);   // 2^-4 = 1/16
 }
 
-TEST_CASE("beman::inside::math::exp2: half-integer (irrational results)",
-          "[cmath][exp2][constexpr]")
+// beman::inside::math::exp2: half-integer (irrational results)
+TEST(CmathTest, beman_inside_math_exp2_half_integer_irrational_results)
 {
   // 2^(1/2) = √2 ≈ 1.41421356 → Q.14 ≈ 23170.
   static_assert(exp2_q14(0.5_r) == 23170);
@@ -479,15 +493,17 @@ TEST_CASE("beman::inside::math::exp2: half-integer (irrational results)",
   static_assert(exp2_q14(0.25_r) == 19484);
 }
 
-TEST_CASE("beman::inside::math::exp2: decimal display", "[cmath][exp2][decimal]")
+// beman::inside::math::exp2: decimal display
+TEST(CmathTest, beman_inside_math_exp2_decimal_display)
 {
-  REQUIRE(exp2_out_t{math::exp2(exp2_from(rational{ 0}))} == exp2_out_t{1});
-  REQUIRE(exp2_out_t{math::exp2(exp2_from(rational{ 1}))} == exp2_out_t{2});
-  REQUIRE(exp2_out_t{math::exp2(exp2_from(-1_r))} == exp2_out_t{0.5_r});
-  REQUIRE(exp2_out_t{math::exp2(exp2_from(-2_r))} == exp2_out_t{0.25_r});
+  ASSERT_EQ(exp2_out_t{math::exp2(exp2_from(rational{ 0}))}, exp2_out_t{1});
+  ASSERT_EQ(exp2_out_t{math::exp2(exp2_from(rational{ 1}))}, exp2_out_t{2});
+  ASSERT_EQ(exp2_out_t{math::exp2(exp2_from(-1_r))}, exp2_out_t{0.5_r});
+  ASSERT_EQ(exp2_out_t{math::exp2(exp2_from(-2_r))}, exp2_out_t{0.25_r});
 }
 
-TEST_CASE("beman::inside::math::exp2: probe (informational)", "[cmath][exp2][.probe]")
+// beman::inside::math::exp2: probe (informational)
+TEST(CmathTest, DISABLED_beman_inside_math_exp2_probe_informational)
 {
   for (int n = -8; n <= 8; ++n) {
     rational xv{n, 2};
@@ -514,7 +530,8 @@ namespace
   }
 }
 
-TEST_CASE("beman::inside::math::log2: integer powers", "[cmath][log2][constexpr]")
+// beman::inside::math::log2: integer powers
+TEST(CmathTest, beman_inside_math_log2_integer_powers)
 {
   static_assert(log2_q14(1_r)       == 0);
   static_assert(log2_q14(2_r)       == 16384);    // log2(2) = 1
@@ -527,7 +544,8 @@ TEST_CASE("beman::inside::math::log2: integer powers", "[cmath][log2][constexpr]
   static_assert(log2_q14(0.0625_r)   == -65536);
 }
 
-TEST_CASE("beman::inside::math::log2: irrational results", "[cmath][log2][constexpr]")
+// beman::inside::math::log2: irrational results
+TEST(CmathTest, beman_inside_math_log2_irrational_results)
 {
   // log2(√2) = 0.5 → Q.14 = 8192.
   static_assert(log2_q14(rational{23170, 16384}) == 8192);
@@ -542,15 +560,17 @@ TEST_CASE("beman::inside::math::log2: irrational results", "[cmath][log2][conste
   static_assert(log2_q14(10_r) == 54426);
 }
 
-TEST_CASE("beman::inside::math::log2: decimal display", "[cmath][log2][decimal]")
+// beman::inside::math::log2: decimal display
+TEST(CmathTest, beman_inside_math_log2_decimal_display)
 {
-  REQUIRE(log2_out_t{math::log2(log2_from(1_r))} == log2_out_t{0});
-  REQUIRE(log2_out_t{math::log2(log2_from(2_r))} == log2_out_t{1});
-  REQUIRE(log2_out_t{math::log2(log2_from(4_r))} == log2_out_t{2});
-  REQUIRE(log2_out_t{math::log2(log2_from(0.5_r))} == log2_out_t{-1});
+  ASSERT_EQ(log2_out_t{math::log2(log2_from(1_r))}, log2_out_t{0});
+  ASSERT_EQ(log2_out_t{math::log2(log2_from(2_r))}, log2_out_t{1});
+  ASSERT_EQ(log2_out_t{math::log2(log2_from(4_r))}, log2_out_t{2});
+  ASSERT_EQ(log2_out_t{math::log2(log2_from(0.5_r))}, log2_out_t{-1});
 }
 
-TEST_CASE("beman::inside::math::log2: exp2 round-trip", "[cmath][log2][exp2]")
+// beman::inside::math::log2: exp2 round-trip
+TEST(CmathTest, beman_inside_math_log2_exp2_round_trip)
 {
   // log2(exp2(x)) should round-trip to x. The intermediate Q.14 of exp2's
   // output loses precision below 1/16384, so the round-trip is exact only
@@ -558,11 +578,12 @@ TEST_CASE("beman::inside::math::log2: exp2 round-trip", "[cmath][log2][exp2]")
   for (int n = -4; n <= 4; ++n) {
     auto e = exp2_out_t{math::exp2(exp2_from(rational{n}))};
     auto l = log2_out_t{math::log2(log2_in_t{e})};
-    REQUIRE(l == log2_out_t{n});
+    ASSERT_EQ(l, log2_out_t{n});
   }
 }
 
-TEST_CASE("beman::inside::math::log2: probe (informational)", "[cmath][log2][.probe]")
+// beman::inside::math::log2: probe (informational)
+TEST(CmathTest, DISABLED_beman_inside_math_log2_probe_informational)
 {
   for (int n = -4; n <= 4; ++n) {
     rational xv = (n >= 0) ? rational{imax{1} << n} : rational{1, imax{1} << -n};
@@ -588,71 +609,62 @@ namespace
   using pow10_out_t = inside<{{0, 65536}, notch<1, 256>}, round_nearest | real>;
 }
 
-TEST_CASE("beman::inside::math::exp: integer points", "[cmath][exp][constexpr]")
+// beman::inside::math::exp: integer points
+TEST(CmathTest, beman_inside_math_exp_integer_points)
 {
   // exp(0) = 1 exactly.
   static_assert(exp_out_t{math::exp(exp_in_t{0})} == exp_out_t{1});
   // exp(1) = e ≈ 2.71828. Pinned to the algorithm's Q.8 output (256 notches/unit).
   // Q.8 of e: round(2.71828 · 256) = 696.
-  REQUIRE(exp_out_t{math::exp(exp_in_t{1})} == exp_out_t{rational{696, 256}});
+  ASSERT_EQ(exp_out_t{math::exp(exp_in_t{1})}, (exp_out_t{rational{696, 256}}));
   // exp(-1) = 1/e ≈ 0.36788 → Q.8 = round(0.36788 · 256) = 94.
-  REQUIRE(exp_out_t{math::exp(exp_in_t{-1})} == exp_out_t{rational{94, 256}});
+  ASSERT_EQ(exp_out_t{math::exp(exp_in_t{-1})}, (exp_out_t{rational{94, 256}}));
   // exp(ln(2)) should be 2 (rounded to grid).
-  REQUIRE(exp_out_t{math::exp(exp_in_t{0.693_r})} == exp_out_t{2});
+  ASSERT_EQ(exp_out_t{math::exp(exp_in_t{0.693_r})}, exp_out_t{2});
 }
 
-TEST_CASE("beman::inside::math::log: integer points", "[cmath][log][constexpr]")
+// beman::inside::math::log: integer points
+TEST(CmathTest, beman_inside_math_log_integer_points)
 {
   // log(1) = 0 exactly.
   static_assert(log_out_t{math::log(log_in_t{1})} == log_out_t{0});
   // log(e) ≈ 1. log_in_t snaps 2.718 to nearest grid point (696/256 =
   // 2.71875), and log(2.71875) ≈ 1.000183 → Q.14 = 16387.
-  REQUIRE(log_out_t{math::log(log_in_t{2.718_r})}
-          == log_out_t{rational{16384, 16384}});
+  ASSERT_EQ(log_out_t{math::log(log_in_t{2.718_r})}, (log_out_t{rational{16384, 16384}}));
   // log(2) ≈ 0.69315 → after double rounding (Q.8 auto → Q.14 log_out_t)
   // it lands on 177/256 = 11328/16384.
-  REQUIRE(log_out_t{math::log(log_in_t{2})}
-          == log_out_t{rational{11328, 16384}});
+  ASSERT_EQ(log_out_t{math::log(log_in_t{2})}, (log_out_t{rational{11328, 16384}}));
 }
 
-TEST_CASE("beman::inside::math::pow_base<10>: integer powers",
-          "[cmath][pow_base][constexpr]")
+// beman::inside::math::pow_base<10>: integer powers
+TEST(CmathTest, beman_inside_math_pow_base_10_integer_powers)
 {
   // 10^0 = 1, 10^1 = 10, 10^2 = 100, 10^3 = 1000, …
   // pow10_out_t has notch 1/256, so values pin exactly when on the grid.
   static_assert(pow10_out_t{math::pow_base<10>(pow10_in_t{0})}
                 == pow10_out_t{1});
-  REQUIRE(pow10_out_t{math::pow_base<10>(pow10_in_t{1})}
-          == pow10_out_t{10});
-  REQUIRE(pow10_out_t{math::pow_base<10>(pow10_in_t{2})}
-          == pow10_out_t{100});
-  REQUIRE(pow10_out_t{math::pow_base<10>(pow10_in_t{3})}
-          == pow10_out_t{1000});
-  REQUIRE(pow10_out_t{math::pow_base<10>(pow10_in_t{4})}
-          == pow10_out_t{10000});
-  REQUIRE(pow10_out_t{math::pow_base<10>(pow10_in_t{-1})}
-          == pow10_out_t{0.1_r});
-  REQUIRE(pow10_out_t{math::pow_base<10>(pow10_in_t{-2})}
-          == pow10_out_t{0.01_r});
+  ASSERT_EQ(pow10_out_t{math::pow_base<10>(pow10_in_t{1})}, pow10_out_t{10});
+  ASSERT_EQ(pow10_out_t{math::pow_base<10>(pow10_in_t{2})}, pow10_out_t{100});
+  ASSERT_EQ(pow10_out_t{math::pow_base<10>(pow10_in_t{3})}, pow10_out_t{1000});
+  ASSERT_EQ(pow10_out_t{math::pow_base<10>(pow10_in_t{4})}, pow10_out_t{10000});
+  ASSERT_EQ(pow10_out_t{math::pow_base<10>(pow10_in_t{-1})}, pow10_out_t{0.1_r});
+  ASSERT_EQ(pow10_out_t{math::pow_base<10>(pow10_in_t{-2})}, pow10_out_t{0.01_r});
 }
 
-TEST_CASE("beman::inside::math::pow_base<10>: db_to_linear endpoints",
-          "[cmath][pow_base][audio]")
+// beman::inside::math::pow_base<10>: db_to_linear endpoints
+TEST(CmathTest, beman_inside_math_pow_base_10_db_to_linear_endpoints)
 {
   // The audio-mixer dB use case: 10^(dB/20) for dB ∈ [-24, 12].
   // 10^(0/20) = 1, 10^(20/20) = 10, 10^(-20/20) = 0.1.
-  REQUIRE(pow10_out_t{math::pow_base<10>(pow10_in_t{0_r})}
-          == pow10_out_t{1});
-  REQUIRE(pow10_out_t{math::pow_base<10>(pow10_in_t{1_r})}
-          == pow10_out_t{10});
+  ASSERT_EQ(pow10_out_t{math::pow_base<10>(pow10_in_t{0_r})}, pow10_out_t{1});
+  ASSERT_EQ(pow10_out_t{math::pow_base<10>(pow10_in_t{1_r})}, pow10_out_t{10});
   // 10^(6/20) = 10^0.3 ≈ 1.9953 (the "+6 dB doubles" approximation).
   // Algorithm rounds to 511/256 = 1.99609 (~0.04% above ideal).
-  REQUIRE(pow10_out_t{math::pow_base<10>(pow10_in_t{0.3_r})}
-          == pow10_out_t{rational{511, 256}});
+  ASSERT_EQ(pow10_out_t{math::pow_base<10>(pow10_in_t{0.3_r})}, (pow10_out_t{rational{511, 256}}));
 }
 
-TEST_CASE("beman::inside::math: exp/log/pow_base decimal probe",
-          "[cmath][exp][log][pow_base][.probe]")
+// beman::inside::math: exp/log/pow_base decimal probe
+TEST(CmathTest, DISABLED_beman_inside_math_exp_log_pow_base_decimal_probe)
 {
   std::cout << "\n  exp sweep:\n";
   for (int n = -3; n <= 3; ++n)
@@ -697,7 +709,8 @@ namespace
   { return beman::inside::detail::abs((got - want).value()) <= kTol; }
 }
 
-TEST_CASE("beman::inside::math::atan2: axis cases", "[cmath][atan2][constexpr]")
+// beman::inside::math::atan2: axis cases
+TEST(CmathTest, beman_inside_math_atan2_axis_cases)
 {
   static_assert(near_rad(atan2_rad(0_r,  1_r),  rational{0}));   // atan2(0, 1) = 0
   static_assert(near_rad(atan2_rad(1_r,  0_r),  kHalfPi));       // atan2(1, 0) = +π/2
@@ -706,7 +719,8 @@ TEST_CASE("beman::inside::math::atan2: axis cases", "[cmath][atan2][constexpr]")
   static_assert(near_rad(atan2_rad(0_r,  0_r),  rational{0}));   // convention
 }
 
-TEST_CASE("beman::inside::math::atan2: diagonal cases", "[cmath][atan2][constexpr]")
+// beman::inside::math::atan2: diagonal cases
+TEST(CmathTest, beman_inside_math_atan2_diagonal_cases)
 {
   static_assert(near_rad(atan2_rad(rational{1}, rational{1}),  kQrtPi));   // +π/4
   static_assert(near_rad(atan2_rad(-1_r, rational{1}),        -kQrtPi));   // -π/4
@@ -714,16 +728,17 @@ TEST_CASE("beman::inside::math::atan2: diagonal cases", "[cmath][atan2][constexp
   static_assert(near_rad(atan2_rad(-1_r, -1_r),              -k3QrtPi));   // -3π/4
 }
 
-TEST_CASE("beman::inside::math::atan2: decimal display", "[cmath][atan2][decimal]")
+// beman::inside::math::atan2: decimal display
+TEST(CmathTest, beman_inside_math_atan2_decimal_display)
 {
-  REQUIRE(near_rad(atan2_rad(0_r,  1_r), rational{0}));
-  REQUIRE(near_rad(atan2_rad(1_r,  0_r), kHalfPi));
-  REQUIRE(near_rad(atan2_rad(-1_r, 0_r), -kHalfPi));
-  REQUIRE(near_rad(atan2_rad(1_r,  1_r), kQrtPi));
+  ASSERT_TRUE((near_rad(atan2_rad(0_r,  1_r), rational{0})));
+  ASSERT_TRUE((near_rad(atan2_rad(1_r,  0_r), kHalfPi)));
+  ASSERT_TRUE((near_rad(atan2_rad(-1_r, 0_r), -kHalfPi)));
+  ASSERT_TRUE((near_rad(atan2_rad(1_r,  1_r), kQrtPi)));
 }
 
-TEST_CASE("beman::inside::math::atan2: sin/cos round-trip",
-          "[cmath][atan2][sin][cos]")
+// beman::inside::math::atan2: sin/cos round-trip
+TEST(CmathTest, beman_inside_math_atan2_sin_cos_round_trip)
 {
   // For any phase φ, atan2(sin φ, cos φ) should round-trip back to φ
   // (modulo Q.14 grid rounding from the trip through sample_t). The
@@ -752,12 +767,12 @@ TEST_CASE("beman::inside::math::atan2: sin/cos round-trip",
     if (diff < -kPi) diff = (diff + two_pi_r).value();
 
     // sin/cos quantize to 1/16384 before atan2 sees them; allow a few notches.
-    REQUIRE(beman::inside::detail::abs(diff) <= rational{16, 16384});
+    ASSERT_TRUE((beman::inside::detail::abs(diff) <= rational{16, 16384}));
   }
 }
 
-TEST_CASE("beman::inside::math::atan2: probe (informational)",
-          "[cmath][atan2][.probe]")
+// beman::inside::math::atan2: probe (informational)
+TEST(CmathTest, DISABLED_beman_inside_math_atan2_probe_informational)
 {
   std::cout << "\n  atan2 axis cases:\n";
   std::cout << "    atan2( 0,  1) = "
@@ -816,13 +831,15 @@ namespace
   }
 }
 
-TEST_CASE("beman::inside::math::tan: exact-zero phases", "[cmath][tan][constexpr]")
+// beman::inside::math::tan: exact-zero phases
+TEST(CmathTest, beman_inside_math_tan_exact_zero_phases)
 {
   static_assert(tan_q10(0)     == 0);          // tan(0)  = 0
   static_assert(tan_q10(32768) == 0);          // tan(π)  = 0
 }
 
-TEST_CASE("beman::inside::math::tan: +/-pi/4 = +/-1", "[cmath][tan][constexpr]")
+// beman::inside::math::tan: +/-pi/4 = +/-1
+TEST(CmathTest, beman_inside_math_tan_plus_pi_4_plus_1)
 {
   // tan(π/4) = 1 → Q.10 = 1024.
   static_assert(tan_q10(8192)  ==  1024);
@@ -834,39 +851,41 @@ TEST_CASE("beman::inside::math::tan: +/-pi/4 = +/-1", "[cmath][tan][constexpr]")
   static_assert(tan_q10(57344) == -1024);
 }
 
-TEST_CASE("beman::inside::math::tan: pole returns division_by_zero",
-          "[cmath][tan][error]")
+// beman::inside::math::tan: pole returns division_by_zero
+TEST(CmathTest, beman_inside_math_tan_pole_returns_division_by_zero)
 {
   // tan(π/2): raw 16384 lands exactly on a pole.
   auto r = tan_turn(tan_phase_from(16384));
-  REQUIRE_FALSE(r.has_value());
-  REQUIRE(r.error() == errc::division_by_zero);
+  ASSERT_FALSE(r.has_value());
+  ASSERT_EQ(r.error(), errc::division_by_zero);
 
   // tan(3π/2): raw 49152 also on a pole.
   auto r2 = tan_turn(tan_phase_from(49152));
-  REQUIRE_FALSE(r2.has_value());
-  REQUIRE(r2.error() == errc::division_by_zero);
+  ASSERT_FALSE(r2.has_value());
+  ASSERT_EQ(r2.error(), errc::division_by_zero);
 }
 
-TEST_CASE("beman::inside::math::tan: near-pole returns overflow",
-          "[cmath][tan][error]")
+// beman::inside::math::tan: near-pole returns overflow
+TEST(CmathTest, beman_inside_math_tan_near_pole_returns_overflow)
 {
   // One Q.16 phase slot off the π/2 pole. tan jumps to a huge value.
   // tan(π/2 - δ) ≈ 1/δ, δ ≈ 9.6e-5 rad → tan ≈ 1.04e4, exceeding the
   // auto-deduced [−1024, 1024] envelope.
   auto r = tan_turn(tan_phase_from(16383));
-  REQUIRE_FALSE(r.has_value());
-  REQUIRE(r.error() == errc::overflow);
+  ASSERT_FALSE(r.has_value());
+  ASSERT_EQ(r.error(), errc::overflow);
 }
 
-TEST_CASE("beman::inside::math::tan: decimal display", "[cmath][tan][decimal]")
+// beman::inside::math::tan: decimal display
+TEST(CmathTest, beman_inside_math_tan_decimal_display)
 {
-  REQUIRE(tan_out_t{tan_turn(tan_phase_from(0)).value()}     == tan_out_t{0});
-  REQUIRE(tan_out_t{tan_turn(tan_phase_from(8192)).value()}  == tan_out_t{1});
-  REQUIRE(tan_out_t{tan_turn(tan_phase_from(24576)).value()} == tan_out_t{-1});
+  ASSERT_EQ(tan_out_t{tan_turn(tan_phase_from(0)).value()}, tan_out_t{0});
+  ASSERT_EQ(tan_out_t{tan_turn(tan_phase_from(8192)).value()}, tan_out_t{1});
+  ASSERT_EQ(tan_out_t{tan_turn(tan_phase_from(24576)).value()}, tan_out_t{-1});
 }
 
-TEST_CASE("beman::inside::math::tan: probe (informational)", "[cmath][tan][.probe]")
+// beman::inside::math::tan: probe (informational)
+TEST(CmathTest, DISABLED_beman_inside_math_tan_probe_informational)
 {
   std::cout << "\n  tan sweep:\n";
   for (unsigned i = 0; i <= 65536u; i += 4096) {
@@ -889,7 +908,8 @@ namespace
   using algeb_int_t = inside<{{-8, 8}, notch<1>}, round_nearest | real>;
 }
 
-TEST_CASE("beman::inside::math::abs", "[cmath][algebraic][constexpr]")
+// beman::inside::math::abs
+TEST(CmathTest, beman_inside_math_abs)
 {
   static_assert(algeb_abs_t{math::abs(algeb_in_t{rational{ 5, 2}})}
                 == algeb_abs_t{2.5_r});
@@ -899,8 +919,8 @@ TEST_CASE("beman::inside::math::abs", "[cmath][algebraic][constexpr]")
                 == algeb_abs_t{0});
 }
 
-TEST_CASE("beman::inside::math::floor / ceil / round / trunc",
-          "[cmath][algebraic][constexpr]")
+// beman::inside::math::floor / ceil / round / trunc
+TEST(CmathTest, beman_inside_math_floor_ceil_round_trunc)
 {
   // floor: rounds toward -∞.
   static_assert(algeb_int_t{math::floor(algeb_in_t{rational{ 17, 10}})}
@@ -929,7 +949,8 @@ TEST_CASE("beman::inside::math::floor / ceil / round / trunc",
                 == algeb_int_t{-1});   // trunc(-1.7) = -1
 }
 
-TEST_CASE("beman::inside::math::fmod", "[cmath][algebraic][constexpr]")
+// beman::inside::math::fmod
+TEST(CmathTest, beman_inside_math_fmod)
 {
   // Positive dividend, positive divisor.
   static_assert(algeb_in_t{math::fmod(algeb_in_t{7_r},
@@ -952,8 +973,8 @@ TEST_CASE("beman::inside::math::fmod", "[cmath][algebraic][constexpr]")
                 == algeb_in_t{2});
 }
 
-TEST_CASE("beman::inside::math: algebraic tier decimal probe",
-          "[cmath][algebraic][.probe]")
+// beman::inside::math: algebraic tier decimal probe
+TEST(CmathTest, DISABLED_beman_inside_math_algebraic_tier_decimal_probe)
 {
   std::cout << "\n  algebraic tier:\n";
   std::cout << "    abs(-2.5)        = "
@@ -979,14 +1000,15 @@ TEST_CASE("beman::inside::math: algebraic tier decimal probe",
 // overload (`math::abs(x)` etc.) produces an inside whose value equals what
 // the explicit form would produce on the deduced type.
 //---------------------------------------------------------------------------
-TEST_CASE("beman::inside::math::abs: auto-deduced output", "[cmath][algebraic][auto]")
+// beman::inside::math::abs: auto-deduced output
+TEST(CmathTest, beman_inside_math_abs_auto_deduced_output)
 {
   // Input is signed [-8, 8]; auto output range is [0, 8] with same notch.
   constexpr auto y_neg = math::abs(algeb_in_t{-2.5_r});
   constexpr auto y_pos = math::abs(algeb_in_t{rational{ 5, 2}});
   static_assert(y_neg == y_pos);
   // Result still compares equal to a sample_t-shape rational value.
-  REQUIRE(y_neg == 2.5_r);
+  ASSERT_EQ(y_neg, 2.5_r);
 
   // Deduced output type covers [0, 8] with notch 1/16384.
   using deduced = decltype(math::abs(algeb_in_t{0}));
@@ -995,8 +1017,8 @@ TEST_CASE("beman::inside::math::abs: auto-deduced output", "[cmath][algebraic][a
   static_assert(Notch<deduced> == beman::inside::notch<1, 16384>);
 }
 
-TEST_CASE("beman::inside::math::floor / ceil / round / trunc: auto-deduced output",
-          "[cmath][algebraic][auto]")
+// beman::inside::math::floor / ceil / round / trunc: auto-deduced output
+TEST(CmathTest, beman_inside_math_floor_ceil_round_trunc_auto_deduced_output)
 {
   // floor: [-8, 8] input → [-8, 8] integer output, notch<1>.
   constexpr auto f_pos = math::floor(algeb_in_t{1.7_r});
@@ -1017,8 +1039,8 @@ TEST_CASE("beman::inside::math::floor / ceil / round / trunc: auto-deduced outpu
   static_assert(t_neg == -1);
 }
 
-TEST_CASE("beman::inside::math: explicit and auto forms produce identical values",
-          "[cmath][algebraic][auto]")
+// beman::inside::math: explicit and auto forms produce identical values
+TEST(CmathTest, beman_inside_math_explicit_and_auto_forms_produce_identical_values)
 {
   // With explicit forms removed (auto is the only public surface), there's
   // no separate "explicit vs auto" comparison to make. Spot-check the auto
@@ -1027,14 +1049,15 @@ TEST_CASE("beman::inside::math: explicit and auto forms produce identical values
 
   // abs's auto type uses Notch<In> = 1/16384, so 7/3 snaps to nearest grid
   // point: round(7/3 · 16384) = 38229 → 38229/16384.
-  REQUIRE(rational{math::abs(x)}   == rational{38229, 16384});
-  REQUIRE(rational{math::floor(x)} == -3);
-  REQUIRE(rational{math::ceil(x)}  == -2);
-  REQUIRE(rational{math::round(x)} == -2);
-  REQUIRE(rational{math::trunc(x)} == -2);
+  ASSERT_EQ(rational{math::abs(x)}, (rational{38229, 16384}));
+  ASSERT_EQ(rational{math::floor(x)}, -3);
+  ASSERT_EQ(rational{math::ceil(x)}, -2);
+  ASSERT_EQ(rational{math::round(x)}, -2);
+  ASSERT_EQ(rational{math::trunc(x)}, -2);
 }
 
-TEST_CASE("beman::inside::math: auto-form composition", "[cmath][algebraic][auto]")
+// beman::inside::math: auto-form composition
+TEST(CmathTest, beman_inside_math_auto_form_composition)
 {
   // The composition floor(abs(x)) auto-deduces an integer-storage result
   // from a Q.14 signed input. No explicit type spelled anywhere.
@@ -1048,7 +1071,8 @@ TEST_CASE("beman::inside::math: auto-form composition", "[cmath][algebraic][auto
 // log, log2, pow_base). Endpoints computed at compile time via the Q.30
 // cores; deduced output range covers the true mathematical result.
 //---------------------------------------------------------------------------
-TEST_CASE("beman::inside::math::sqrt: auto-deduced output", "[cmath][sqrt][auto]")
+// beman::inside::math::sqrt: auto-deduced output
+TEST(CmathTest, beman_inside_math_sqrt_auto_deduced_output)
 {
   // Input [0, 4] with notch 1/65536. Auto output range: [0, ceil_notch(2)] = [0, 2].
   using deduced = decltype(math::sqrt(sqrt_in_t{0}));
@@ -1057,67 +1081,69 @@ TEST_CASE("beman::inside::math::sqrt: auto-deduced output", "[cmath][sqrt][auto]
   static_assert(Notch<deduced> == beman::inside::notch<1, 65536>);
 
   // Spot checks: integer perfect squares land exactly on the grid.
-  REQUIRE(rational{math::sqrt(sqrt_input(65536))}  == 1); // √1 = 1
-  REQUIRE(rational{math::sqrt(sqrt_input(262144))} == 2); // √4 = 2
-  REQUIRE(rational{math::sqrt(sqrt_input(16384))}
-          == 0.5_r);                                       // √0.25 = 0.5
+  ASSERT_EQ(rational{math::sqrt(sqrt_input(65536))}, 1); // √1 = 1
+  ASSERT_EQ(rational{math::sqrt(sqrt_input(262144))}, 2); // √4 = 2
+  ASSERT_EQ(rational{math::sqrt(sqrt_input(16384))}, 0.5_r);                                       // √0.25 = 0.5
 }
 
-TEST_CASE("beman::inside::math::exp2: auto-deduced output", "[cmath][exp2][auto]")
+// beman::inside::math::exp2: auto-deduced output
+TEST(CmathTest, beman_inside_math_exp2_auto_deduced_output)
 {
   using deduced = decltype(math::exp2(exp2_in_t{0}));
   // True range [1/16, 16]; deduced inside rounds outward to input's notch.
   static_assert(Lower<deduced> <= 0.0625_r);
   static_assert(Upper<deduced> >= 16);
 
-  REQUIRE(rational{math::exp2(exp2_from(rational{ 0}))} == 1);
-  REQUIRE(rational{math::exp2(exp2_from(rational{ 1}))} == 2);
-  REQUIRE(rational{math::exp2(exp2_from(-1_r))} == 0.5_r);
+  ASSERT_EQ(rational{math::exp2(exp2_from(rational{ 0}))}, 1);
+  ASSERT_EQ(rational{math::exp2(exp2_from(rational{ 1}))}, 2);
+  ASSERT_EQ(rational{math::exp2(exp2_from(-1_r))}, 0.5_r);
 }
 
-TEST_CASE("beman::inside::math::log2: auto-deduced output", "[cmath][log2][auto]")
+// beman::inside::math::log2: auto-deduced output
+TEST(CmathTest, beman_inside_math_log2_auto_deduced_output)
 {
   using deduced = decltype(math::log2(log2_in_t{1}));
   static_assert(Lower<deduced> <= -8);
   static_assert(Upper<deduced> >= 8);
 
-  REQUIRE(rational{math::log2(log2_from(1_r))} == 0);
-  REQUIRE(rational{math::log2(log2_from(2_r))} == 1);
-  REQUIRE(rational{math::log2(log2_from(0.5_r))} == -1);
+  ASSERT_EQ(rational{math::log2(log2_from(1_r))}, 0);
+  ASSERT_EQ(rational{math::log2(log2_from(2_r))}, 1);
+  ASSERT_EQ(rational{math::log2(log2_from(0.5_r))}, -1);
 }
 
-TEST_CASE("beman::inside::math::exp / log: auto-deduced output",
-          "[cmath][exp][log][auto]")
+// beman::inside::math::exp / log: auto-deduced output
+TEST(CmathTest, beman_inside_math_exp_log_auto_deduced_output)
 {
   // Identity points are exact on the algorithm's output.
-  REQUIRE(rational{math::exp(exp_in_t{0})} == 1);
-  REQUIRE(rational{math::log(log_in_t{1})} == 0);
+  ASSERT_EQ(rational{math::exp(exp_in_t{0})}, 1);
+  ASSERT_EQ(rational{math::log(log_in_t{1})}, 0);
 }
 
-TEST_CASE("beman::inside::math::pow_base<10>: auto-deduced output",
-          "[cmath][pow_base][auto]")
+// beman::inside::math::pow_base<10>: auto-deduced output
+TEST(CmathTest, beman_inside_math_pow_base_10_auto_deduced_output)
 {
   // Integer powers land exactly on the grid.
-  REQUIRE(rational{math::pow_base<10>(pow10_in_t{0})} == 1);
-  REQUIRE(rational{math::pow_base<10>(pow10_in_t{1})} == 10);
-  REQUIRE(rational{math::pow_base<10>(pow10_in_t{2})} == 100);
+  ASSERT_EQ(rational{math::pow_base<10>(pow10_in_t{0})}, 1);
+  ASSERT_EQ(rational{math::pow_base<10>(pow10_in_t{1})}, 10);
+  ASSERT_EQ(rational{math::pow_base<10>(pow10_in_t{2})}, 100);
 }
 
-TEST_CASE("beman::inside::math: phase-2 composition", "[cmath][auto]")
+// beman::inside::math: phase-2 composition
+TEST(CmathTest, beman_inside_math_phase_2_composition)
 {
   // sqrt(exp2(x)) — both auto-deduced, no explicit type spelled.
   // exp2(2) = 4 → sqrt(4) = 2. Auto type chain works.
   auto e = math::exp2(exp2_in_t{2});
   auto s = math::sqrt(decltype(sqrt_in_t{0}){rational{e}});
-  REQUIRE(rational{s} == 2);
+  ASSERT_EQ(rational{s}, 2);
 }
 
 //---------------------------------------------------------------------------
 // Auto-deduction phase 3 — trig + atan2. Output ranges are hardcoded full
 // ranges; notch inherits from input.
 //---------------------------------------------------------------------------
-TEST_CASE("beman::inside::math::sin / cos: auto-deduced output",
-          "[cmath][sin][cos][auto]")
+// beman::inside::math::sin / cos: auto-deduced output
+TEST(CmathTest, beman_inside_math_sin_cos_auto_deduced_output)
 {
   // Public sin/cos take radians; the auto-deduced output is [-1, 1]
   // with `Notch<In>` inherited and `round_nearest` added to policy.
@@ -1135,11 +1161,11 @@ TEST_CASE("beman::inside::math::sin / cos: auto-deduced output",
   // is the unchecked rational division — the constants are small, so
   // overflow is impossible at compile time.
   constexpr rational half_pi = rational::div_unchecked(math::pi, 2_r);
-  REQUIRE(rational{math::sin(angle_t{0})}             == 0);
-  REQUIRE(rational{math::sin(angle_t{ half_pi})}      == 1);
-  REQUIRE(rational{math::sin(angle_t{-half_pi})}      == -1);
-  REQUIRE(rational{math::cos(angle_t{0})}             == 1);
-  REQUIRE(rational{math::cos(angle_t{math::pi})}      == -1);
+  ASSERT_EQ(rational{math::sin(angle_t{0})}, 0);
+  ASSERT_EQ(rational{math::sin(angle_t{ half_pi})}, 1);
+  ASSERT_EQ(rational{math::sin(angle_t{-half_pi})}, -1);
+  ASSERT_EQ(rational{math::cos(angle_t{0})}, 1);
+  ASSERT_EQ(rational{math::cos(angle_t{math::pi})}, -1);
 }
 
 //---------------------------------------------------------------------------
@@ -1150,8 +1176,8 @@ TEST_CASE("beman::inside::math::sin / cos: auto-deduced output",
 // rad) also lock the conversion bit-pattern so a future refactor that
 // changes the radian path is forced to update the expected ULP.
 //---------------------------------------------------------------------------
-TEST_CASE("beman::inside::math::sin: radians identity points",
-          "[cmath][sin][radians]")
+// beman::inside::math::sin: radians identity points
+TEST(CmathTest, beman_inside_math_sin_radians_identity_points)
 {
   using angle_t = inside<{{-8, 8}, notch<1, 16384>}, round_nearest | real>;
   using amp_t   = inside<{{-1, 1}, notch<1, 16384>}, round_nearest | real>;
@@ -1159,44 +1185,42 @@ TEST_CASE("beman::inside::math::sin: radians identity points",
   constexpr rational half_pi = rational::div_unchecked(math::pi, 2_r);
 
   // Exact values on the Q.14 grid (within ±1 ULP of mathematical truth).
-  REQUIRE(amp_t{math::sin(angle_t{0})}            == amp_t{0});
-  REQUIRE(amp_t{math::sin(angle_t{ half_pi})}     == amp_t{1});
-  REQUIRE(amp_t{math::sin(angle_t{-half_pi})}     == amp_t{-1});
+  ASSERT_EQ(amp_t{math::sin(angle_t{0})}, amp_t{0});
+  ASSERT_EQ(amp_t{math::sin(angle_t{ half_pi})}, amp_t{1});
+  ASSERT_EQ(amp_t{math::sin(angle_t{-half_pi})}, amp_t{-1});
 
   // sin(π) and sin(2π) are 0 mathematically; the radian → Q.30 turn
   // conversion picks up at most a couple of Q.30 ULPs, which then round
   // to 0 on the Q.14 grid.
-  REQUIRE(amp_t{math::sin(angle_t{math::pi})}     == amp_t{0});
-  REQUIRE(amp_t{math::sin(angle_t{math::two_pi})} == amp_t{0});
+  ASSERT_EQ(amp_t{math::sin(angle_t{math::pi})}, amp_t{0});
+  ASSERT_EQ(amp_t{math::sin(angle_t{math::two_pi})}, amp_t{0});
 
   // Off-grid: 1 rad. sin(1) ≈ 0.8414709848. The radians → Q.30 turn →
   // Q.30 sin chain rounds to 13787/16384 (one Q.14 ULP below the
   // mathematical 13788). Pinned to the algorithm's actual output.
-  REQUIRE(amp_t{math::sin(angle_t{1_r})}
-          == amp_t{rational{13787, 16384}});
+  ASSERT_EQ(amp_t{math::sin(angle_t{1_r})}, (amp_t{rational{13787, 16384}}));
 }
 
-TEST_CASE("beman::inside::math::cos: radians identity points",
-          "[cmath][cos][radians]")
+// beman::inside::math::cos: radians identity points
+TEST(CmathTest, beman_inside_math_cos_radians_identity_points)
 {
   using angle_t = inside<{{-8, 8}, notch<1, 16384>}, round_nearest | real>;
   using amp_t   = inside<{{-1, 1}, notch<1, 16384>}, round_nearest | real>;
 
   constexpr rational half_pi = rational::div_unchecked(math::pi, 2_r);
 
-  REQUIRE(amp_t{math::cos(angle_t{0})}            == amp_t{ 1});
-  REQUIRE(amp_t{math::cos(angle_t{ half_pi})}     == amp_t{ 0});
-  REQUIRE(amp_t{math::cos(angle_t{-half_pi})}     == amp_t{ 0});
-  REQUIRE(amp_t{math::cos(angle_t{math::pi})}     == amp_t{-1});
-  REQUIRE(amp_t{math::cos(angle_t{math::two_pi})} == amp_t{ 1});
+  ASSERT_EQ(amp_t{math::cos(angle_t{0})}, amp_t{ 1});
+  ASSERT_EQ(amp_t{math::cos(angle_t{ half_pi})}, amp_t{ 0});
+  ASSERT_EQ(amp_t{math::cos(angle_t{-half_pi})}, amp_t{ 0});
+  ASSERT_EQ(amp_t{math::cos(angle_t{math::pi})}, amp_t{-1});
+  ASSERT_EQ(amp_t{math::cos(angle_t{math::two_pi})}, amp_t{ 1});
 
   // cos(1) ≈ 0.5403023059 → Q.14 = 8852/16384.
-  REQUIRE(amp_t{math::cos(angle_t{1_r})}
-          == amp_t{rational{8852, 16384}});
+  ASSERT_EQ(amp_t{math::cos(angle_t{1_r})}, (amp_t{rational{8852, 16384}}));
 }
 
-TEST_CASE("beman::inside::math::tan: radians identity points",
-          "[cmath][tan][radians]")
+// beman::inside::math::tan: radians identity points
+TEST(CmathTest, beman_inside_math_tan_radians_identity_points)
 {
   using angle_t = inside<{{-8, 8}, notch<1, 16384>}, round_nearest | real>;
   using out_t   = inside<{{-10, 10}, notch<1, 1024>}, round_nearest | real>;
@@ -1205,19 +1229,20 @@ TEST_CASE("beman::inside::math::tan: radians identity points",
 
   // tan(0) = 0, tan(±π/4) = ±1.
   auto r0 = math::tan(angle_t{0});
-  REQUIRE(r0.has_value());
-  REQUIRE(out_t{r0.value()} == out_t{0});
+  ASSERT_TRUE(r0.has_value());
+  ASSERT_EQ(out_t{r0.value()}, out_t{0});
 
   auto rp = math::tan(angle_t{ pi_over_4});
-  REQUIRE(rp.has_value());
-  REQUIRE(out_t{rp.value()} == out_t{1});
+  ASSERT_TRUE(rp.has_value());
+  ASSERT_EQ(out_t{rp.value()}, out_t{1});
 
   auto rn = math::tan(angle_t{-pi_over_4});
-  REQUIRE(rn.has_value());
-  REQUIRE(out_t{rn.value()} == out_t{-1});
+  ASSERT_TRUE(rn.has_value());
+  ASSERT_EQ(out_t{rn.value()}, out_t{-1});
 }
 
-TEST_CASE("beman::inside::math::atan2: auto-deduced output", "[cmath][atan2][auto]")
+// beman::inside::math::atan2: auto-deduced output
+TEST(CmathTest, beman_inside_math_atan2_auto_deduced_output)
 {
   using deduced = decltype(math::atan2(atan2_in_t{0}, atan2_in_t{0}));
   // Output covers [-π, π] in radians, rounded outward to the inherited notch.
@@ -1226,14 +1251,15 @@ TEST_CASE("beman::inside::math::atan2: auto-deduced output", "[cmath][atan2][aut
   static_assert(Notch<deduced> == beman::inside::notch<1, 16384>);
 
   // Axis cases match the explicit form's behavior (radians).
-  REQUIRE(near_rad(rational{math::atan2(atan2_in_t{0},  atan2_in_t{ 1})}, rational{0}));
-  REQUIRE(near_rad(rational{math::atan2(atan2_in_t{1},  atan2_in_t{ 0})}, kHalfPi));
-  REQUIRE(near_rad(rational{math::atan2(atan2_in_t{0},  atan2_in_t{-1})}, kPi));
-  REQUIRE(near_rad(rational{math::atan2(atan2_in_t{-1}, atan2_in_t{ 0})}, -kHalfPi));
-  REQUIRE(near_rad(rational{math::atan2(atan2_in_t{1},  atan2_in_t{ 1})}, kQrtPi));
+  ASSERT_TRUE((near_rad(rational{math::atan2(atan2_in_t{0},  atan2_in_t{ 1})}, rational{0})));
+  ASSERT_TRUE((near_rad(rational{math::atan2(atan2_in_t{1},  atan2_in_t{ 0})}, kHalfPi)));
+  ASSERT_TRUE((near_rad(rational{math::atan2(atan2_in_t{0},  atan2_in_t{-1})}, kPi)));
+  ASSERT_TRUE((near_rad(rational{math::atan2(atan2_in_t{-1}, atan2_in_t{ 0})}, -kHalfPi)));
+  ASSERT_TRUE((near_rad(rational{math::atan2(atan2_in_t{1},  atan2_in_t{ 1})}, kQrtPi)));
 }
 
-TEST_CASE("beman::inside::math: full auto-form chain", "[cmath][auto]")
+// beman::inside::math: full auto-form chain
+TEST(CmathTest, beman_inside_math_full_auto_form_chain)
 {
   // Compose three auto-deduced calls in a single expression. No explicit
   // inside types spelled in the chain itself; the type system carries the
@@ -1251,36 +1277,36 @@ TEST_CASE("beman::inside::math: full auto-form chain", "[cmath][auto]")
   auto angle = math::atan2(s, c);    // back to ≈ π/4 radians
 
   // Should round-trip to π/4 within the grid + CORDIC tolerance.
-  REQUIRE(near_rad(rational{angle}, kQrtPi));
+  ASSERT_TRUE((near_rad(rational{angle}, kQrtPi)));
 }
 
-TEST_CASE("beman::inside::math reductions on an inside",
-          "[cmath][reduce]")
+// beman::inside::math reductions on an inside
+TEST(CmathTest, beman_inside_math_reductions_on_an_inside)
 {
   using fxd = inside<{{-3.5_r, 3.5_r}, notch<1, 4>}>;
   fxd x{-1.75_r};
   fxd y{2.25_r};
 
   // Auto-deduced output grid (integer-valued, notch 1).
-  REQUIRE(math::floor(x) == -2);
-  REQUIRE(math::ceil (x) == -1);
-  REQUIRE(math::round(x) == -2);
-  REQUIRE(math::trunc(x) == -1);
-  REQUIRE(math::abs  (x) == 1.75_r);
+  ASSERT_EQ(math::floor(x), -2);
+  ASSERT_EQ(math::ceil (x), -1);
+  ASSERT_EQ(math::round(x), -2);
+  ASSERT_EQ(math::trunc(x), -1);
+  ASSERT_EQ(math::abs  (x), 1.75_r);
 
-  REQUIRE(math::floor(y) ==  2);
-  REQUIRE(math::ceil (y) ==  3);
-  REQUIRE(math::round(y) ==  2);
-  REQUIRE(math::trunc(y) ==  2);
+  ASSERT_EQ(math::floor(y), 2);
+  ASSERT_EQ(math::ceil (y), 3);
+  ASSERT_EQ(math::round(y), 2);
+  ASSERT_EQ(math::trunc(y), 2);
 
   // Explicit Out form picks a caller-chosen grid.
   using out = inside<{-5, 5}>;
-  REQUIRE(math::floor_impl<out>(x) == -2);
-  REQUIRE(math::ceil_impl <out>(y) ==  3);
+  ASSERT_TRUE(math::floor_impl<out>(x) == -2);
+  ASSERT_TRUE(math::ceil_impl <out>(y) ==  3);
 }
 
-TEST_CASE("beman::inside::math: decimal probe at the inside level",
-          "[cmath][decimal][.probe]")
+// beman::inside::math: decimal probe at the inside level
+TEST(CmathTest, DISABLED_beman_inside_math_decimal_probe_at_the_inside_level)
 {
   std::cout << "\n  sin sweep (inside output, decimal):\n";
   for (unsigned i = 0; i <= 65536u; i += 8192)
@@ -1320,80 +1346,87 @@ namespace
   { return beman::inside::detail::abs((got - want).value()) <= approx_tol; }
 }
 
-TEST_CASE("beman::inside::math::atan: known values (radians)", "[cmath][atan]")
+// beman::inside::math::atan: known values (radians)
+TEST(CmathTest, beman_inside_math_atan_known_values_radians)
 {
-  REQUIRE(approx(rational{math::atan(inv_in2_t{rational{1, 2}})}, rational{4636476, 10000000}));
-  REQUIRE(approx(rational{math::atan(inv_in2_t{1})},  rational::mul_unchecked(kPi_x, rational{1, 4})));
-  REQUIRE(approx(rational{math::atan(inv_in2_t{0})},  rational{0}));
-  REQUIRE(approx(rational{math::atan(inv_in2_t{-1})}, rational::mul_unchecked(kPi_x, rational{-1, 4})));
+  ASSERT_TRUE((approx(rational{math::atan(inv_in2_t{rational{1, 2}})}, rational{4636476, 10000000})));
+  ASSERT_TRUE((approx(rational{math::atan(inv_in2_t{1})},  rational::mul_unchecked(kPi_x, rational{1, 4}))));
+  ASSERT_TRUE((approx(rational{math::atan(inv_in2_t{0})},  rational{0})));
+  ASSERT_TRUE((approx(rational{math::atan(inv_in2_t{-1})}, rational::mul_unchecked(kPi_x, rational{-1, 4}))));
 }
 
-TEST_CASE("beman::inside::math::asin / acos: known values (radians)", "[cmath][asin][acos]")
+// beman::inside::math::asin / acos: known values (radians)
+TEST(CmathTest, beman_inside_math_asin_acos_known_values_radians)
 {
-  REQUIRE(approx(rational{math::asin(inv_in2_t{0})},  rational{0}));
-  REQUIRE(approx(rational{math::asin(inv_in2_t{1})},  kHalfPi_x));
-  REQUIRE(approx(rational{math::asin(inv_in2_t{-1})}, -kHalfPi_x));
-  REQUIRE(approx(rational{math::asin(inv_in2_t{rational{1, 2}})}, rational::mul_unchecked(kPi_x, rational{1, 6})));
+  ASSERT_TRUE((approx(rational{math::asin(inv_in2_t{0})},  rational{0})));
+  ASSERT_TRUE((approx(rational{math::asin(inv_in2_t{1})},  kHalfPi_x)));
+  ASSERT_TRUE((approx(rational{math::asin(inv_in2_t{-1})}, -kHalfPi_x)));
+  ASSERT_TRUE((approx(rational{math::asin(inv_in2_t{rational{1, 2}})}, rational::mul_unchecked(kPi_x, rational{1, 6}))));
 
-  REQUIRE(approx(rational{math::acos(inv_in2_t{1})},  rational{0}));
-  REQUIRE(approx(rational{math::acos(inv_in2_t{-1})}, kPi_x));
-  REQUIRE(approx(rational{math::acos(inv_in2_t{0})},  kHalfPi_x));
+  ASSERT_TRUE((approx(rational{math::acos(inv_in2_t{1})},  rational{0})));
+  ASSERT_TRUE((approx(rational{math::acos(inv_in2_t{-1})}, kPi_x)));
+  ASSERT_TRUE((approx(rational{math::acos(inv_in2_t{0})},  kHalfPi_x)));
 }
 
-TEST_CASE("beman::inside::math::sinh / cosh / tanh: known values", "[cmath][sinh][cosh][tanh]")
+// beman::inside::math::sinh / cosh / tanh: known values
+TEST(CmathTest, beman_inside_math_sinh_cosh_tanh_known_values)
 {
   // sinh(0)=0, cosh(0)=1, tanh(0)=0 — exact.
-  REQUIRE(rational{math::sinh(hyp_in_t{0})} == 0);
-  REQUIRE(rational{math::cosh(hyp_in_t{0})} == 1);
-  REQUIRE(rational{math::tanh(hyp_in_t{0})} == 0);
+  ASSERT_EQ(rational{math::sinh(hyp_in_t{0})}, 0);
+  ASSERT_EQ(rational{math::cosh(hyp_in_t{0})}, 1);
+  ASSERT_EQ(rational{math::tanh(hyp_in_t{0})}, 0);
   // sinh(1) ≈ 1.175201, cosh(1) ≈ 1.543081, tanh(1) ≈ 0.761594
-  REQUIRE(approx(rational{math::sinh(hyp_in_t{1})}, rational{11752012, 10000000}));
-  REQUIRE(approx(rational{math::cosh(hyp_in_t{1})}, rational{15430806, 10000000}));
-  REQUIRE(approx(rational{math::tanh(hyp_in_t{1})}, rational{7615942, 10000000}));
+  ASSERT_TRUE((approx(rational{math::sinh(hyp_in_t{1})}, rational{11752012, 10000000})));
+  ASSERT_TRUE((approx(rational{math::cosh(hyp_in_t{1})}, rational{15430806, 10000000})));
+  ASSERT_TRUE((approx(rational{math::tanh(hyp_in_t{1})}, rational{7615942, 10000000})));
   // cosh is even.
-  REQUIRE(approx(rational{math::cosh(hyp_in_t{-2})}, rational{math::cosh(hyp_in_t{2})}));
+  ASSERT_TRUE((approx(rational{math::cosh(hyp_in_t{-2})}, rational{math::cosh(hyp_in_t{2})})));
 }
 
-TEST_CASE("beman::inside::math::log10: known values", "[cmath][log10]")
+// beman::inside::math::log10: known values
+TEST(CmathTest, beman_inside_math_log10_known_values)
 {
-  REQUIRE(approx(rational{math::log10(pos_in2_t{1})},   rational{0}));
-  REQUIRE(approx(rational{math::log10(pos_in2_t{10})},  rational{1}));
-  REQUIRE(approx(rational{math::log10(pos_in2_t{100})}, rational{2}));
-  REQUIRE(approx(rational{math::log10(pos_in2_t{2})},   rational{30103, 100000}));
+  ASSERT_TRUE((approx(rational{math::log10(pos_in2_t{1})},   rational{0})));
+  ASSERT_TRUE((approx(rational{math::log10(pos_in2_t{10})},  rational{1})));
+  ASSERT_TRUE((approx(rational{math::log10(pos_in2_t{100})}, rational{2})));
+  ASSERT_TRUE((approx(rational{math::log10(pos_in2_t{2})},   rational{30103, 100000})));
 }
 
-TEST_CASE("beman::inside::math::cbrt: exact and signed", "[cmath][cbrt][constexpr]")
+// beman::inside::math::cbrt: exact and signed
+TEST(CmathTest, beman_inside_math_cbrt_exact_and_signed)
 {
   // Perfect cubes of powers of two are exact through the Q.30 log/exp cores.
   static_assert(rational{math::cbrt(cbrt_in_t{8})}  == 2);
   static_assert(rational{math::cbrt(cbrt_in_t{-8})} == -2);
   static_assert(rational{math::cbrt(cbrt_in_t{0})}  == 0);
   static_assert(rational{math::cbrt(cbrt_in_t{1})}  == 1);
-  REQUIRE(approx(rational{math::cbrt(cbrt_in_t{2})}, rational{12599210, 10000000}));
+  ASSERT_TRUE((approx(rational{math::cbrt(cbrt_in_t{2})}, rational{12599210, 10000000})));
 }
 
-TEST_CASE("beman::inside::math::hypot: Pythagorean", "[cmath][hypot]")
+// beman::inside::math::hypot: Pythagorean
+TEST(CmathTest, beman_inside_math_hypot_pythagorean)
 {
   using h_t = inside<{{-16, 16}, notch<1, 65536>}, round_nearest | real>;
-  REQUIRE(approx(rational{math::hypot(h_t{3}, h_t{4})},  rational{5}));
-  REQUIRE(approx(rational{math::hypot(h_t{5}, h_t{12})}, rational{13}));
-  REQUIRE(approx(rational{math::hypot(h_t{0}, h_t{0})},  rational{0}));
-  REQUIRE(approx(rational{math::hypot(h_t{-3}, h_t{4})}, rational{5}));
+  ASSERT_TRUE((approx(rational{math::hypot(h_t{3}, h_t{4})},  rational{5})));
+  ASSERT_TRUE((approx(rational{math::hypot(h_t{5}, h_t{12})}, rational{13})));
+  ASSERT_TRUE((approx(rational{math::hypot(h_t{0}, h_t{0})},  rational{0})));
+  ASSERT_TRUE((approx(rational{math::hypot(h_t{-3}, h_t{4})}, rational{5})));
 }
 
-TEST_CASE("beman::inside::math::pow: base^exp with expected", "[cmath][pow]")
+// beman::inside::math::pow: base^exp with expected
+TEST(CmathTest, beman_inside_math_pow_base_exp_with_expected)
 {
   using b_t = inside<{{1, 16}, notch<1, 65536>}, round_nearest | real>;
   using e_t = inside<{{-8, 16}, notch<1, 65536>}, round_nearest | real>;
   auto p1 = math::pow(b_t{2}, e_t{10});      // 1024
-  REQUIRE(p1.has_value());
-  REQUIRE(approx(rational{*p1}, rational{1024}));
+  ASSERT_TRUE(p1.has_value());
+  ASSERT_TRUE((approx(rational{*p1}, rational{1024})));
   auto p2 = math::pow(b_t{2}, e_t{0});       // 1
-  REQUIRE(p2.has_value());
-  REQUIRE(approx(rational{*p2}, rational{1}));
+  ASSERT_TRUE(p2.has_value());
+  ASSERT_TRUE((approx(rational{*p2}, rational{1})));
   auto p3 = math::pow(b_t{9}, e_t{rational{1, 2}});  // 3
-  REQUIRE(p3.has_value());
-  REQUIRE(approx(rational{*p3}, rational{3}));
+  ASSERT_TRUE(p3.has_value());
+  ASSERT_TRUE((approx(rational{*p3}, rational{3})));
 }
 
 #endif // BEMAN_INSIDE_MATH_FIXED

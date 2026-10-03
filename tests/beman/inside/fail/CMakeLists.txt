@@ -37,13 +37,22 @@ foreach(src ${BEMAN_INSIDE_FAIL_SOURCES})
             ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR} --target
             ${fail_target} --config $<CONFIG>
     )
-    set_tests_properties(
-        ${fail_target}
-        PROPERTIES
-            PASS_REGULAR_EXPRESSION "${expected_message}"
-            RUN_SERIAL TRUE
-            LABELS "compile-fail"
-    )
+    if(BEMAN_INSIDE_STRICT_SFINAE)
+        # Strict mode drops the diagnostic overloads that carry the named
+        # messages; the case must still be ill-formed, just without the hint.
+        set_tests_properties(
+            ${fail_target}
+            PROPERTIES WILL_FAIL TRUE RUN_SERIAL TRUE LABELS "compile-fail"
+        )
+    else()
+        set_tests_properties(
+            ${fail_target}
+            PROPERTIES
+                PASS_REGULAR_EXPRESSION "${expected_message}"
+                RUN_SERIAL TRUE
+                LABELS "compile-fail"
+        )
+    endif()
 endforeach()
 
 add_library(

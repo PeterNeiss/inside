@@ -1,7 +1,8 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #include <beman/inside/inside.hpp>
 #include <beman/inside/io.hpp>
 
-#include <catch2/catch_test_macros.hpp>
+#include <gtest/gtest.h>
 
 #include <limits>
 
@@ -13,454 +14,462 @@ namespace
   constexpr umax M = std::numeric_limits<umax>::max();
 }
 
-TEST_CASE("rational construction normalises", "[rational][construction]")
+// rational construction normalises
+TEST(RationalTest, rational_construction_normalises)
 {
-  SECTION("zero numerator collapses denominator")
   {
-    REQUIRE(rational{0u, 7}      == rational{0u, 1});
-    REQUIRE(rational{0,  -5}     == rational{0u, 1});
-    REQUIRE((0_r).Denominator == 1);
+    SCOPED_TRACE("zero numerator collapses denominator");
+    ASSERT_EQ((rational{0u, 7}), (rational{0u, 1}));
+    ASSERT_EQ((rational{0,  -5}), (rational{0u, 1}));
+    ASSERT_EQ((0_r).Denominator, 1);
   }
 
-  SECTION("negative denominator carries sign onto rational")
   {
+    SCOPED_TRACE("negative denominator carries sign onto rational");
     rational a{1, -2};
-    REQUIRE(a.Numerator == 1u);
-    REQUIRE(a.Denominator == -2);
-    REQUIRE(a < 0);
-    REQUIRE(rational{-1, 2}  == rational{1, -2});
-    REQUIRE(rational{-1, -2} == rational{1,  2});
+    ASSERT_EQ(a.Numerator, 1u);
+    ASSERT_EQ(a.Denominator, -2);
+    ASSERT_TRUE(a < 0);
+    ASSERT_EQ((rational{-1, 2}), (rational{1, -2}));
+    ASSERT_EQ((rational{-1, -2}), (rational{1,  2}));
   }
 
-  SECTION("GCD reduction at construction")
   {
-    REQUIRE(rational{6u, 8}  == rational{3u, 4});
-    REQUIRE(rational{6,  -8} == rational{3, -4});
-    REQUIRE(rational{100u, 25} == rational{4u, 1});
+    SCOPED_TRACE("GCD reduction at construction");
+    ASSERT_EQ((rational{6u, 8}), (rational{3u, 4}));
+    ASSERT_EQ((rational{6,  -8}), (rational{3, -4}));
+    ASSERT_EQ((rational{100u, 25}), (rational{4u, 1}));
   }
 
-  SECTION("denominator zero throws")
   {
-    REQUIRE_THROWS_AS((rational{1u, 0}), beman::inside::inside_error);
-    REQUIRE_THROWS_AS((rational{1,  0}), beman::inside::inside_error);
+    SCOPED_TRACE("denominator zero throws");
+    ASSERT_THROW((void)((rational{1u, 0})), beman::inside::inside_error);
+    ASSERT_THROW((void)((rational{1,  0})), beman::inside::inside_error);
   }
 
-  SECTION("denominator imax_min throws (cannot be negated without UB)")
   {
+    SCOPED_TRACE("denominator imax_min throws (cannot be negated without UB)");
     constexpr auto imin = std::numeric_limits<imax>::min();
-    REQUIRE_THROWS_AS((rational{1u, imin}), beman::inside::inside_error);
-    REQUIRE_THROWS_AS((rational{1,  imin}), beman::inside::inside_error);
+    ASSERT_THROW((void)((rational{1u, imin})), beman::inside::inside_error);
+    ASSERT_THROW((void)((rational{1,  imin})), beman::inside::inside_error);
     // Negative-num path: the validation must run BEFORE the mem-init
     // negation, otherwise -imax_min would be signed overflow (UB).
-    REQUIRE_THROWS_AS((rational{-1, imin}), beman::inside::inside_error);
+    ASSERT_THROW((void)((rational{-1, imin})), beman::inside::inside_error);
   }
 
-  SECTION("from int min")
   {
+    SCOPED_TRACE("from int min");
     constexpr rational a{std::numeric_limits<int>::min()};
-    REQUIRE(a.Denominator < 0);
-    REQUIRE(a < 0);
+    ASSERT_TRUE(a.Denominator < 0);
+    ASSERT_TRUE(a < 0);
   }
 
-  SECTION("from double")
   {
-    REQUIRE(rational{0.5}   == rational{1u, 2});
-    REQUIRE(rational{-0.25} == rational{1, -4});
-    REQUIRE(rational{0.0}   == rational{0u, 1});
+    SCOPED_TRACE("from double");
+    ASSERT_EQ(rational{0.5}, (rational{1u, 2}));
+    ASSERT_EQ(rational{-0.25}, (rational{1, -4}));
+    ASSERT_EQ(rational{0.0}, (rational{0u, 1}));
   }
 
-  SECTION("user-defined literals")
   {
-    REQUIRE(1_r          == rational{1u, 1});
-    REQUIRE(*(3_r/2)     == rational{3u, 2});
-    REQUIRE(*(-6_r/16)   == rational{-3, 8});
-    REQUIRE(2.5_r        == rational{5u, 2});
+    SCOPED_TRACE("user-defined literals");
+    ASSERT_EQ(1_r, (rational{1u, 1}));
+    ASSERT_EQ(*(3_r/2), (rational{3u, 2}));
+    ASSERT_EQ(*(-6_r/16), (rational{-3, 8}));
+    ASSERT_EQ(2.5_r, (rational{5u, 2}));
   }
 }
 
-TEST_CASE("rational comparison", "[rational][comparison]")
+// rational comparison
+TEST(RationalTest, rational_comparison)
 {
-  SECTION("ordering")
   {
-    STATIC_REQUIRE(-1_r < 0_r);
-    STATIC_REQUIRE(0_r  < 1_r);
-    STATIC_REQUIRE(rational{-3, 2} < rational{-2, 3});
-    STATIC_REQUIRE(rational{1u, 2} < rational{2u, 3});
+    SCOPED_TRACE("ordering");
+    static_assert(-1_r < 0_r);
+    static_assert(0_r  < 1_r);
+    static_assert(rational{-3, 2} < rational{-2, 3});
+    static_assert(rational{1u, 2} < rational{2u, 3});
   }
 
-  SECTION("equality across normalisation")
   {
-    REQUIRE(rational{2u, 4}  == rational{1u, 2});
-    REQUIRE(rational{-2, 4}  == rational{1, -2});
-    REQUIRE(rational{0u, 5}  == rational{0u, 9});
+    SCOPED_TRACE("equality across normalisation");
+    ASSERT_EQ((rational{2u, 4}), (rational{1u, 2}));
+    ASSERT_EQ((rational{-2, 4}), (rational{1, -2}));
+    ASSERT_EQ((rational{0u, 5}), (rational{0u, 9}));
   }
 
-  SECTION("comparison with arithmetic")
   {
-    REQUIRE(rational{3u, 2} > 1);
-    REQUIRE(rational{1u, 2} < 1.0);
-    REQUIRE(rational{5u, 1} == 5);
+    SCOPED_TRACE("comparison with arithmetic");
+    ASSERT_TRUE((rational{3u, 2} > 1));
+    ASSERT_TRUE((rational{1u, 2} < 1.0));
+    ASSERT_EQ((rational{5u, 1}), 5);
   }
 
-  SECTION("comparison cross-trims so big denominators don't always overflow")
   {
+    SCOPED_TRACE("comparison cross-trims so big denominators don't always overflow");
     constexpr imax half = static_cast<imax>(M / 2);
     rational a{static_cast<umax>(half), half};   // -> 1
     rational b{1u};
-    REQUIRE(a == b);
+    ASSERT_EQ(a, b);
   }
 
-  SECTION("cross-multiplication uses 128-bit, never overflows")
   {
+    SCOPED_TRACE("cross-multiplication uses 128-bit, never overflows");
     // M/2 vs (M-1)/3: numerators are consecutive (coprime) and denominators
     // {2,3} are coprime, so cross-trim cannot reduce either pair and the 64-bit
     // products overflow umax — but the 128-bit cross-multiply compares them
     // exactly. a - b = (M+2)/6 > 0, so a > b.
     rational a{M, 2};
     rational b{M - 1, 3};
-    REQUIRE(a > b);
-    REQUIRE(b < a);
-    REQUIRE_FALSE(a < b);
+    ASSERT_TRUE(a > b);
+    ASSERT_TRUE(b < a);
+    ASSERT_FALSE(a < b);
   }
 }
 
-TEST_CASE("rational arithmetic", "[rational][arithmetic]")
+// rational arithmetic
+TEST(RationalTest, rational_arithmetic)
 {
-  SECTION("add / sub / mul / div basic")
   {
-    STATIC_REQUIRE(rational{3,2} + rational{1,5} == rational{17u,10});
-    STATIC_REQUIRE(rational{3,2} - rational{1,5} == rational{13u,10});
-    STATIC_REQUIRE(rational{3,2} / rational{1,2} == 3_r);
-    STATIC_REQUIRE(*(rational{3,2} * rational{1,2}) == rational{3u, 4});
+    SCOPED_TRACE("add / sub / mul / div basic");
+    static_assert(rational{3,2} + rational{1,5} == rational{17u,10});
+    static_assert(rational{3,2} - rational{1,5} == rational{13u,10});
+    static_assert(rational{3,2} / rational{1,2} == 3_r);
+    static_assert(*(rational{3,2} * rational{1,2}) == rational{3u, 4});
   }
 
-  SECTION("zero arms")
   {
-    REQUIRE(*(rational{3u, 2} + 0_r) == rational{3u, 2});
-    REQUIRE(*(0_r     + rational{3u, 2}) == rational{3u, 2});
-    REQUIRE(*(rational{3u, 2} * 0_r) == 0_r);
-    REQUIRE(*(0_r     / rational{3u, 2}) == 0_r);
+    SCOPED_TRACE("zero arms");
+    ASSERT_EQ((*(rational{3u, 2} + 0_r)), (rational{3u, 2}));
+    ASSERT_EQ((*(0_r     + rational{3u, 2})), (rational{3u, 2}));
+    ASSERT_EQ((*(rational{3u, 2} * 0_r)), 0_r);
+    ASSERT_EQ((*(0_r     / rational{3u, 2})), 0_r);
   }
 
-  SECTION("negation and unary plus")
   {
-    REQUIRE(-rational{3u, 4} == rational{3, -4});
-    REQUIRE(-0_r    == 0_r);             // -0 == 0
-    REQUIRE(+rational{3u, 4} == rational{3u, 4});
+    SCOPED_TRACE("negation and unary plus");
+    ASSERT_EQ((-rational{3u, 4}), (rational{3, -4}));
+    ASSERT_EQ(-0_r, 0_r);             // -0 == 0
+    ASSERT_EQ((+rational{3u, 4}), (rational{3u, 4}));
   }
 
-  SECTION("self-cancel returns zero")
   {
+    SCOPED_TRACE("self-cancel returns zero");
     rational a{3u, 7};
-    REQUIRE(*(a + (-a)) == 0_r);
-    REQUIRE(*(a - a)    == 0_r);
+    ASSERT_EQ(*(a + (-a)), 0_r);
+    ASSERT_EQ(*(a - a), 0_r);
   }
 
-  SECTION("unchecked variants")
   {
-    STATIC_REQUIRE(rational::add_unchecked(2_r, 3_r) == 5_r);
-    STATIC_REQUIRE(rational::mul_unchecked(2_r, 3_r) == 6_r);
-    STATIC_REQUIRE(rational::div_unchecked(6_r, 3_r) == 2_r);
-    STATIC_REQUIRE(rational::inv_unchecked(rational{2u, 3}) == rational{3u, 2});
+    SCOPED_TRACE("unchecked variants");
+    static_assert(rational::add_unchecked(2_r, 3_r) == 5_r);
+    static_assert(rational::mul_unchecked(2_r, 3_r) == 6_r);
+    static_assert(rational::div_unchecked(6_r, 3_r) == 2_r);
+    static_assert(rational::inv_unchecked(rational{2u, 3}) == rational{3u, 2});
   }
 
   // The checked operators return slim::optional<rational>; an implicit
   // converting constructor unwraps that into a plain rational so coefficient
   // expressions read as ordinary arithmetic (no .value()). Overflow on an empty
   // optional is a compile error in constant evaluation.
-  SECTION("optional<rational> unwraps implicitly into rational")
   {
+    SCOPED_TRACE("optional<rational> unwraps implicitly into rational");
     constexpr rational two_x   = 2 * rational{3};       // int ⊗ rational
     constexpr rational half    = rational{3} / 2;       // rational ⊗ int
     constexpr rational chained = rational{3,2} - rational{1,5};
-    STATIC_REQUIRE(two_x   == 6_r);
-    STATIC_REQUIRE(half    == rational{3u, 2});
-    STATIC_REQUIRE(chained == rational{13u, 10});
+    static_assert(two_x   == 6_r);
+    static_assert(half    == rational{3u, 2});
+    static_assert(chained == rational{13u, 10});
 
     // Bit-identical to the prior mul_unchecked form it replaces.
-    STATIC_REQUIRE(half == rational::mul_unchecked(rational{3}, rational{1, 2}));
+    static_assert(half == rational::mul_unchecked(rational{3}, rational{1, 2}));
 
     // Assignment (not just copy-init) also unwraps.
     rational acc{0u, 1};
     acc = 2 * rational{3};
-    REQUIRE(acc == 6_r);
+    ASSERT_EQ(acc, 6_r);
   }
 
-  SECTION("inv basic")
   {
-    STATIC_REQUIRE(*rational::inv(rational{3u, 2}) == rational{2u, 3});
-    STATIC_REQUIRE(*rational::inv(rational{1u, 5}) == 5_r);
-    STATIC_REQUIRE(*rational::inv(5_r)    == rational{1u, 5});
+    SCOPED_TRACE("inv basic");
+    static_assert(*rational::inv(rational{3u, 2}) == rational{2u, 3});
+    static_assert(*rational::inv(rational{1u, 5}) == 5_r);
+    static_assert(*rational::inv(5_r)    == rational{1u, 5});
 
     // Sign preservation (denominator carries the sign)
-    STATIC_REQUIRE(*rational::inv(rational{-3, 2}) == rational{-2, 3});
-    STATIC_REQUIRE(*rational::inv(rational{3, -2}) == rational{-2, 3});
+    static_assert(*rational::inv(rational{-3, 2}) == rational{-2, 3});
+    static_assert(*rational::inv(rational{3, -2}) == rational{-2, 3});
 
     // Involutive
-    STATIC_REQUIRE(*rational::inv(*rational::inv(rational{7u, 11})) == rational{7u, 11});
+    static_assert(*rational::inv(*rational::inv(rational{7u, 11})) == rational{7u, 11});
   }
 
-  SECTION("inv of zero -> nullopt")
   {
-    REQUIRE_FALSE(rational::inv(0_r).has_value());
+    SCOPED_TRACE("inv of zero -> nullopt");
+    ASSERT_FALSE(rational::inv(0_r).has_value());
   }
 
-  SECTION("compound-assign: rational RHS")
   {
+    SCOPED_TRACE("compound-assign: rational RHS");
     rational a{3, 2};
     a += rational{1, 5};
-    REQUIRE(a == rational{17u, 10});
+    ASSERT_EQ(a, (rational{17u, 10}));
     a -= rational{1, 5};
-    REQUIRE(a == rational{3u, 2});
+    ASSERT_EQ(a, (rational{3u, 2}));
     a *= rational{1, 2};
-    REQUIRE(a == rational{3u, 4});
+    ASSERT_EQ(a, (rational{3u, 4}));
     a /= rational{1, 2};
-    REQUIRE(a == rational{3u, 2});
+    ASSERT_EQ(a, (rational{3u, 2}));
   }
 
-  SECTION("compound-assign: arithmetic RHS")
   {
+    SCOPED_TRACE("compound-assign: arithmetic RHS");
     rational a{3, 2};
     a += 1;
-    REQUIRE(a == rational{5u, 2});
+    ASSERT_EQ(a, (rational{5u, 2}));
     a *= 2;
-    REQUIRE(a == 5_r);
+    ASSERT_EQ(a, 5_r);
     a /= 5;
-    REQUIRE(a == 1_r);
+    ASSERT_EQ(a, 1_r);
   }
 
-  SECTION("compound-assign: optional<rational> RHS unwraps the checked op")
   {
+    SCOPED_TRACE("compound-assign: optional<rational> RHS unwraps the checked op");
     rational a{1, 2};
     // rational * rational returns optional<rational>; += on that unwraps.
     a += rational{1, 3} * rational{6, 1};
-    REQUIRE(a == rational{5u, 2});
+    ASSERT_EQ(a, (rational{5u, 2}));
   }
 
-  SECTION("compound-assign throws bad_optional_access on overflow")
   {
+    SCOPED_TRACE("compound-assign throws bad_optional_access on overflow");
     constexpr auto M = std::numeric_limits<imax>::max();
     // 1/M + 1/(M-1) — denominator product M*(M-1) overflows imax.
     rational a{1u, M};
     rational b{1u, M - 1};
-    REQUIRE_THROWS_AS(a += b, slim::bad_optional_access);
+    ASSERT_THROW((void)(a += b), slim::bad_optional_access);
   }
 }
 
-TEST_CASE("rational overflow detection", "[rational][overflow]")
+// rational overflow detection
+TEST(RationalTest, rational_overflow_detection)
 {
-  SECTION("checked operators return nullopt at runtime")
   {
-    REQUIRE_FALSE((rational{M} + 1_r).has_value());
-    REQUIRE_FALSE((rational{M} * 2_r).has_value());
-    REQUIRE_FALSE((rational{M} / rational{1u, 2}).has_value());
+    SCOPED_TRACE("checked operators return nullopt at runtime");
+    ASSERT_FALSE((rational{M} + 1_r).has_value());
+    ASSERT_FALSE((rational{M} * 2_r).has_value());
+    ASSERT_FALSE(((rational{M} / rational{1u, 2}).has_value()));
   }
 
-  SECTION("subtraction goes through add(-rhs)")
   {
+    SCOPED_TRACE("subtraction goes through add(-rhs)");
     // M - (-1) = M+1 -> overflow
-    REQUIRE_FALSE((rational{M} - rational{1, -1}).has_value());
+    ASSERT_FALSE(((rational{M} - rational{1, -1}).has_value()));
   }
 
-  SECTION("cross-trim avoids spurious overflow on common factors")
   {
+    SCOPED_TRACE("cross-trim avoids spurious overflow on common factors");
     // (M/5)/2 + (M/5)/2 — common denominator avoids cross-multiplication.
     auto small = rational{M / 5, 2};
-    REQUIRE((small + small).has_value());
+    ASSERT_TRUE((small + small).has_value());
   }
 
-  SECTION("add cross-trim on unequal denominators avoids spurious overflow")
   {
+    SCOPED_TRACE("add cross-trim on unequal denominators avoids spurious overflow");
     // gcd(4, 6) = 2; lcm = 12. With cross-trim a_ad'=2, b_ad'=3, so
     // (M/5) * b_ad' = (M/5)*3 fits, whereas (M/5)*6 (no cross-trim) would
     // overflow.
     auto a = rational{M / 5, 4};
     auto b = rational{1u, 6};
-    REQUIRE((a + b).has_value());
+    ASSERT_TRUE((a + b).has_value());
   }
 
-  SECTION("add unequal-denominator value correctness")
   {
+    SCOPED_TRACE("add unequal-denominator value correctness");
     // Catches regressions in the lcm-based common-denominator computation.
     // 1/4 + 1/6 = 3/12 + 2/12 = 5/12         (gcd=2, lcm=12)
-    STATIC_REQUIRE(*(rational{1u, 4} + rational{1u, 6}) == rational{5u, 12});
+    static_assert(*(rational{1u, 4} + rational{1u, 6}) == rational{5u, 12});
     // 1/2 + 1/3 = 3/6 + 2/6 = 5/6            (gcd=1, lcm=6)
-    STATIC_REQUIRE(*(rational{1u, 2} + rational{1u, 3}) == rational{5u, 6});
+    static_assert(*(rational{1u, 2} + rational{1u, 3}) == rational{5u, 6});
     // 3/8 + 5/12 = 9/24 + 10/24 = 19/24      (gcd=4, lcm=24)
-    STATIC_REQUIRE(*(rational{3u, 8} + rational{5u, 12}) == rational{19u, 24});
+    static_assert(*(rational{3u, 8} + rational{5u, 12}) == rational{19u, 24});
     // mixed signs: 5/6 - 1/4 = 10/12 - 3/12 = 7/12
-    STATIC_REQUIRE(*(rational{5u, 6} + rational{1, -4}) == rational{7u, 12});
+    static_assert(*(rational{5u, 6} + rational{1, -4}) == rational{7u, 12});
   }
 
-  SECTION("sub overflow returning nullopt")
   {
+    SCOPED_TRACE("sub overflow returning nullopt");
     // -M - 1 would overflow on the negative side
-    REQUIRE_FALSE((rational{M, -1} - 1_r).has_value());
+    ASSERT_FALSE(((rational{M, -1} - 1_r).has_value()));
   }
 
-  SECTION("checked arithmetic rejects denominators exceeding imax_max")
   {
+    SCOPED_TRACE("checked arithmetic rejects denominators exceeding imax_max");
     // 2^62 * 3 = 1.5 * 2^63 — fits in umax, exceeds imax_max.
     // (Coprime denominators so the cross-trim cannot reduce the lcm.)
     imax p62 = imax{1} << 62;
 
     // mul: a_ad * b_ad after cross-trim still > imax_max.
-    REQUIRE_FALSE((rational{1u, p62} * rational{1u, 3}).has_value());
+    ASSERT_FALSE(((rational{1u, p62} * rational{1u, 3}).has_value()));
 
     // add: lcm > imax_max.
-    REQUIRE_FALSE((rational{1u, p62} + rational{1u, 3}).has_value());
+    ASSERT_FALSE(((rational{1u, p62} + rational{1u, 3}).has_value()));
 
     // inv of M (M > imax_max) would land M in the result's Denominator slot.
-    REQUIRE_FALSE(rational::inv(rational{M, 1}).has_value());
+    ASSERT_FALSE((rational::inv(rational{M, 1}).has_value()));
 
     // div via the checked path inherits the inv range check.
-    REQUIRE_FALSE((rational{1u, 1} / rational{M, 1}).has_value());
+    ASSERT_FALSE(((rational{1u, 1} / rational{M, 1}).has_value()));
   }
 
-  SECTION("add to_string sees overflow boundary fall-through")
   {
-    REQUIRE(beman::inside::to_string(rational{M, 2})     == "9223372036854775807 1/2");
-    REQUIRE(beman::inside::to_string(rational{M / 5, 2}) == "1844674407370955161.5");
+    SCOPED_TRACE("add to_string sees overflow boundary fall-through");
+    ASSERT_EQ((beman::inside::to_string(rational{M, 2})), "9223372036854775807 1/2");
+    ASSERT_EQ((beman::inside::to_string(rational{M / 5, 2})), "1844674407370955161.5");
   }
 }
 
-TEST_CASE("rational sentinel", "[rational][sentinel]")
+// rational sentinel
+TEST(RationalTest, rational_sentinel)
 {
   rational s = rational::make_sentinel();
-  REQUIRE(s.Denominator == 0);
+  ASSERT_EQ(s.Denominator, 0);
 
   // sentinel_traits must agree
-  REQUIRE_FALSE(slim::optional<rational>{}.has_value());
+  ASSERT_FALSE(slim::optional<rational>{}.has_value());
 
   // converting to integer of a non-sentinel rational truncates toward zero
-  REQUIRE(trunc(rational{7u, 2}) ==  3);
-  REQUIRE(trunc(rational{7,  -2}) == -3);
+  ASSERT_EQ((trunc(rational{7u, 2})), 3);
+  ASSERT_EQ((trunc(rational{7,  -2})), -3);
 }
 
-TEST_CASE("rational helpers", "[rational][helpers]")
+// rational helpers
+TEST(RationalTest, rational_helpers)
 {
-  SECTION("abs")
   {
-    REQUIRE(abs(rational{3, -4}) == rational{3u, 4});
-    REQUIRE(abs(rational{3u, 4}) == rational{3u, 4});
-    REQUIRE(abs(0_r)    == 0_r);
+    SCOPED_TRACE("abs");
+    ASSERT_EQ((abs(rational{3, -4})), (rational{3u, 4}));
+    ASSERT_EQ((abs(rational{3u, 4})), (rational{3u, 4}));
+    ASSERT_EQ(abs(0_r), 0_r);
   }
 
-  SECTION("gcd")
   {
-    REQUIRE(gcd(rational{6u, 1}, rational{8u, 1}) == rational{2u, 1});
-    REQUIRE(gcd(rational{1u, 2}, rational{1u, 3}) == rational{1u, 6});
+    SCOPED_TRACE("gcd");
+    ASSERT_EQ((gcd(rational{6u, 1}, rational{8u, 1})), (rational{2u, 1}));
+    ASSERT_EQ((gcd(rational{1u, 2}, rational{1u, 3})), (rational{1u, 6}));
 
     // Denominator-lcm overflow: lcm(2^62, 3) = 3 * 2^62 > imax_max.
-    REQUIRE_FALSE(gcd(rational{1u, imax{1} << 62}, rational{1u, 3}).has_value());
+    ASSERT_FALSE((gcd(rational{1u, imax{1} << 62}, rational{1u, 3}).has_value()));
   }
 
-  SECTION("divides_evenly")
   {
-    REQUIRE(divides_evenly(rational{6u, 1}, rational{2u, 1}));
-    REQUIRE_FALSE(divides_evenly(rational{6u, 1}, rational{4u, 1}));
-    REQUIRE(divides_evenly(rational{1u, 2}, rational{1u, 4}));
+    SCOPED_TRACE("divides_evenly");
+    ASSERT_TRUE((divides_evenly(rational{6u, 1}, rational{2u, 1})));
+    ASSERT_FALSE((divides_evenly(rational{6u, 1}, rational{4u, 1})));
+    ASSERT_TRUE((divides_evenly(rational{1u, 2}, rational{1u, 4})));
     // by convention divisor==0 returns true
-    REQUIRE(divides_evenly(rational{6u, 1}, 0_r));
+    ASSERT_TRUE((divides_evenly(rational{6u, 1}, 0_r)));
   }
 
-  SECTION("divides_evenly is alignment-only, independent of representability")
   {
+    SCOPED_TRACE("divides_evenly is alignment-only, independent of representability");
     // M / (1/2) = M*2 is mathematically an integer (M sits on the 1/2 lattice),
     // so divides_evenly is true even though the quotient numerator overflows
     // umax. Representability of the index count is a separate concern
     // (grid::notch_count), not part of the lattice-alignment predicate.
-    REQUIRE(divides_evenly(rational{M}, rational{1, 2}));
+    ASSERT_TRUE((divides_evenly(rational{M}, rational{1, 2})));
     // genuinely unaligned stays false (no overflow involved)
-    REQUIRE_FALSE(divides_evenly(rational{1u, 2}, rational{1u, 3}));
+    ASSERT_FALSE((divides_evenly(rational{1u, 2}, rational{1u, 3})));
   }
 }
 
-TEST_CASE("rational conversion to integer/float", "[rational][conversion]")
+// rational conversion to integer/float
+TEST(RationalTest, rational_conversion_to_integer_float)
 {
-  SECTION("to_unsigned floors, rejects negatives")
   {
-    REQUIRE(static_cast<unsigned>(rational{7u, 2}) == 3u);
-    REQUIRE_THROWS_AS(static_cast<unsigned>(rational{7, -2}), beman::inside::inside_error);
+    SCOPED_TRACE("to_unsigned floors, rejects negatives");
+    ASSERT_TRUE((static_cast<unsigned>(rational{7u, 2}) == 3u));
+    ASSERT_THROW((void)(static_cast<unsigned>(rational{7, -2})), beman::inside::inside_error);
   }
 
-  SECTION("to_signed rounds toward zero (operator T)")
   {
-    REQUIRE(static_cast<int>(rational{7u, 2})  ==  3);
-    REQUIRE(static_cast<int>(rational{7,  -2}) == -3);
+    SCOPED_TRACE("to_signed rounds toward zero (operator T)");
+    ASSERT_TRUE((static_cast<int>(rational{7u, 2})  ==  3));
+    ASSERT_TRUE((static_cast<int>(rational{7,  -2}) == -3));
   }
 
-  SECTION("to_double")
   {
-    REQUIRE(static_cast<double>(rational{1u, 2})  == 0.5);
-    REQUIRE(static_cast<double>(rational{1u, -2}) == -0.5);
-    REQUIRE(static_cast<double>(0_r)     == 0.0);
+    SCOPED_TRACE("to_double");
+    ASSERT_TRUE((static_cast<double>(rational{1u, 2})  == 0.5));
+    ASSERT_TRUE((static_cast<double>(rational{1u, -2}) == -0.5));
+    ASSERT_TRUE(static_cast<double>(0_r)     == 0.0);
   }
 
-  SECTION("to<T> reports domain_error for negative rational")
   {
+    SCOPED_TRACE("to<T> reports domain_error for negative rational");
     rational pos{5u, 2};
     rational neg{5,  -2};
-    REQUIRE(pos.to<unsigned>().value() == 2u);
+    ASSERT_TRUE(pos.to<unsigned>().value() == 2u);
     auto r = neg.to<unsigned>();
-    REQUIRE_FALSE(r.has_value());
-    REQUIRE(r.error() == errc::domain_error);
+    ASSERT_FALSE(r.has_value());
+    ASSERT_EQ(r.error(), errc::domain_error);
   }
 
-  SECTION("to<T> reports not_a_value for sentinel rational")
   {
+    SCOPED_TRACE("to<T> reports not_a_value for sentinel rational");
     rational s = rational::make_sentinel();
     auto r = s.to<unsigned>();
-    REQUIRE_FALSE(r.has_value());
-    REQUIRE(r.error() == errc::not_a_value);
+    ASSERT_FALSE(r.has_value());
+    ASSERT_EQ(r.error(), errc::not_a_value);
   }
 }
 
-TEST_CASE("rational trunc / floor / round", "[rational][reduce]")
+// rational trunc / floor / round
+TEST(RationalTest, rational_trunc_floor_round)
 {
-  SECTION("trunc — toward zero")
   {
-    REQUIRE(trunc(rational{7u, 2})  ==  3);   //  3.5 -> 3
-    REQUIRE(trunc(rational{7,  -2}) == -3);   // -3.5 -> -3
-    REQUIRE(trunc(rational{1u, 2})  ==  0);
-    REQUIRE(trunc(rational{1,  -2}) ==  0);
-    REQUIRE(trunc(rational{4u, 1})  ==  4);
-    REQUIRE(trunc((0_r))     ==  0);
+    SCOPED_TRACE("trunc — toward zero");
+    ASSERT_EQ((trunc(rational{7u, 2})), 3);   //  3.5 -> 3
+    ASSERT_EQ((trunc(rational{7,  -2})), -3);   // -3.5 -> -3
+    ASSERT_EQ((trunc(rational{1u, 2})), 0);
+    ASSERT_EQ((trunc(rational{1,  -2})), 0);
+    ASSERT_EQ((trunc(rational{4u, 1})), 4);
+    ASSERT_EQ(trunc((0_r)), 0);
   }
 
-  SECTION("floor — toward -inf")
   {
-    REQUIRE(floor(rational{7u, 2})  ==  3);   //  3.5 -> 3
-    REQUIRE(floor(rational{7,  -2}) == -4);   // -3.5 -> -4
-    REQUIRE(floor(rational{1u, 2})  ==  0);
-    REQUIRE(floor(rational{1,  -2}) == -1);   // -0.5 -> -1
-    REQUIRE(floor(rational{4u, 1})  ==  4);
-    REQUIRE(floor(rational{4,  -1}) == -4);   // exact integer: no step
-    REQUIRE(floor((0_r))     ==  0);
+    SCOPED_TRACE("floor — toward -inf");
+    ASSERT_EQ((floor(rational{7u, 2})), 3);   //  3.5 -> 3
+    ASSERT_EQ((floor(rational{7,  -2})), -4);   // -3.5 -> -4
+    ASSERT_EQ((floor(rational{1u, 2})), 0);
+    ASSERT_EQ((floor(rational{1,  -2})), -1);   // -0.5 -> -1
+    ASSERT_EQ((floor(rational{4u, 1})), 4);
+    ASSERT_EQ((floor(rational{4,  -1})), -4);   // exact integer: no step
+    ASSERT_EQ(floor((0_r)), 0);
   }
 
-  SECTION("ceil — toward +inf")
   {
-    REQUIRE(ceil(rational{7u, 2})  ==  4);   //  3.5 ->  4
-    REQUIRE(ceil(rational{7,  -2}) == -3);   // -3.5 -> -3
-    REQUIRE(ceil(rational{1u, 2})  ==  1);   //  0.5 ->  1
-    REQUIRE(ceil(rational{1,  -2}) ==  0);   // -0.5 ->  0
-    REQUIRE(ceil(rational{4u, 1})  ==  4);   // exact integer: no step
-    REQUIRE(ceil(rational{4,  -1}) == -4);
-    REQUIRE(ceil((0_r))     ==  0);
+    SCOPED_TRACE("ceil — toward +inf");
+    ASSERT_EQ((ceil(rational{7u, 2})), 4);   //  3.5 ->  4
+    ASSERT_EQ((ceil(rational{7,  -2})), -3);   // -3.5 -> -3
+    ASSERT_EQ((ceil(rational{1u, 2})), 1);   //  0.5 ->  1
+    ASSERT_EQ((ceil(rational{1,  -2})), 0);   // -0.5 ->  0
+    ASSERT_EQ((ceil(rational{4u, 1})), 4);   // exact integer: no step
+    ASSERT_EQ((ceil(rational{4,  -1})), -4);
+    ASSERT_EQ(ceil((0_r)), 0);
   }
 
-  SECTION("round — half away from zero")
   {
-    REQUIRE(round(rational{1u, 2}) ==  1);    //  0.5 ->  1
-    REQUIRE(round(rational{1,  -2}) == -1);   // -0.5 -> -1
-    REQUIRE(round(rational{3u, 2}) ==  2);    //  1.5 ->  2
-    REQUIRE(round(rational{3,  -2}) == -2);   // -1.5 -> -2
-    REQUIRE(round(rational{1u, 4}) ==  0);    //  0.25 -> 0
-    REQUIRE(round(rational{1u, 3}) ==  0);    //  ~0.33 -> 0
-    REQUIRE(round(rational{2u, 3}) ==  1);    //  ~0.67 -> 1
-    REQUIRE(round(rational{2,  -3}) == -1);
-    REQUIRE(round((0_r))    ==  0);
+    SCOPED_TRACE("round — half away from zero");
+    ASSERT_EQ((round(rational{1u, 2})), 1);    //  0.5 ->  1
+    ASSERT_EQ((round(rational{1,  -2})), -1);   // -0.5 -> -1
+    ASSERT_EQ((round(rational{3u, 2})), 2);    //  1.5 ->  2
+    ASSERT_EQ((round(rational{3,  -2})), -2);   // -1.5 -> -2
+    ASSERT_EQ((round(rational{1u, 4})), 0);    //  0.25 -> 0
+    ASSERT_EQ((round(rational{1u, 3})), 0);    //  ~0.33 -> 0
+    ASSERT_EQ((round(rational{2u, 3})), 1);    //  ~0.67 -> 1
+    ASSERT_EQ((round(rational{2,  -3})), -1);
+    ASSERT_EQ(round((0_r)), 0);
   }
 }
 
@@ -470,18 +479,18 @@ TEST_CASE("rational trunc / floor / round", "[rational][reduce]")
 // brings the numerator back into range — the dbl-engine store path hit
 // exactly this via `rhs - Lower` and terminated through noexcept.
 //---------------------------------------------------------------------------
-TEST_CASE("mixed-sign add rescues a cross-product overflow when the difference fits",
-          "[rational][overflow][regression]")
+// mixed-sign add rescues a cross-product overflow when the difference fits
+TEST(RationalTest, mixed_sign_add_rescues_a_cross_product_overflow_when_the_difference_fits)
 {
   // -0.49996929771979287 as an exact double fraction: den 2^54.
   const rational fp_value{umax{9006646171630191}, imax{-18014398509481984}};
 
   const auto offset = fp_value + rational{1024};
-  REQUIRE(offset.has_value());
-  REQUIRE(offset->Numerator   == umax{18437737427537921425u});
-  REQUIRE(offset->Denominator == imax{18014398509481984});
+  ASSERT_TRUE(offset.has_value());
+  ASSERT_TRUE(offset->Numerator   == umax{18437737427537921425u});
+  ASSERT_TRUE(offset->Denominator == imax{18014398509481984});
 
   // Same-sign sums past umax stay nullopt (the result truly needs > 64 bits).
   const rational positive{umax{9006646171630191}, imax{18014398509481984}};
-  REQUIRE_FALSE((positive + rational{1024}).has_value());
+  ASSERT_FALSE((positive + rational{1024}).has_value());
 }

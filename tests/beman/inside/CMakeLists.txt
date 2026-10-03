@@ -1,15 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-include(FetchContent)
-FetchContent_Declare(
-    Catch2
-    GIT_REPOSITORY https://github.com/catchorg/Catch2.git
-    GIT_TAG v3.8.1
-    SYSTEM
-)
-FetchContent_MakeAvailable(Catch2)
-list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
-include(Catch)
+find_package(GTest REQUIRED)
+include(GoogleTest)
 
 #---------------------------------------------------------------------------
 # Unit tests: one executable per <name>.test.cpp
@@ -28,12 +20,16 @@ foreach(test_src ${BEMAN_INSIDE_TEST_SOURCES})
     target_sources(${test_target} PRIVATE ${test_src})
     target_link_libraries(
         ${test_target}
-        PRIVATE beman::inside beman.inside.warnings Catch2::Catch2WithMain
+        PRIVATE beman::inside beman.inside.warnings GTest::gtest_main
     )
     # DISCOVERY_MODE PRE_TEST: enumerate tests at `ctest` time, not at build
     # time, so cross builds (where the host can't run the target binary)
     # discover through the configured emulator.
-    catch_discover_tests(${test_target} DISCOVERY_MODE PRE_TEST)
+    gtest_discover_tests(
+        ${test_target}
+        DISCOVERY_MODE PRE_TEST
+        DISCOVERY_TIMEOUT 60
+    )
 endforeach()
 
 # Compile-fail diagnostics suite — regression-tests that ill-formed uses stay
@@ -183,6 +179,7 @@ endif()
 # Tooling (opt-in): benchmarks, property fuzzer, accuracy sweep, perf workload
 #---------------------------------------------------------------------------
 if(BEMAN_INSIDE_BUILD_TOOLS)
+    include(FetchContent)
     FetchContent_Declare(
         nanobench
         GIT_REPOSITORY https://github.com/martinus/nanobench.git
@@ -212,17 +209,21 @@ if(BEMAN_INSIDE_BUILD_TOOLS)
     )
 
     # Accuracy characterization: sweeps every math engine against a long-double
-    # <cmath> reference and emits a markdown error table.
-    add_executable(beman.inside.accuracy accuracy.cpp)
-    target_link_libraries(
-        beman.inside.accuracy
-        PRIVATE beman::inside beman.inside.warnings
-    )
-    add_custom_target(
-        beman.inside.accuracy_report
-        COMMAND beman.inside.accuracy ${PROJECT_SOURCE_DIR}/docs/accuracy.md
-        COMMENT "Regenerating docs/accuracy.md"
-    )
+    # <cmath> reference and emits a markdown error table. Needs the dbl/flt
+    # engines, which BEMAN_INSIDE_MATH_FIXED compiles out.
+    if(NOT BEMAN_INSIDE_MATH_FIXED)
+        add_executable(beman.inside.accuracy accuracy.cpp)
+        target_link_libraries(
+            beman.inside.accuracy
+            PRIVATE beman::inside beman.inside.warnings
+        )
+        add_custom_target(
+            beman.inside.accuracy_report
+            COMMAND
+                beman.inside.accuracy ${PROJECT_SOURCE_DIR}/docs/accuracy.md
+            COMMENT "Regenerating docs/accuracy.md"
+        )
+    endif()
 
     # Cachegrind instruction-count workload, driven by check_perf.py.
     add_executable(beman.inside.perf_workload perf_workload.cpp)

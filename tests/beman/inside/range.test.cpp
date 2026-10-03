@@ -1,7 +1,8 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #include <beman/inside/range.hpp>
 #include <beman/inside/io.hpp>
 
-#include <catch2/catch_test_macros.hpp>
+#include <gtest/gtest.h>
 
 #include <algorithm>
 #include <iterator>
@@ -36,96 +37,105 @@ static_assert(std::ranges::random_access_range<frac_grid>);
 //---------------------------------------------------------------------------
 // basic iteration
 //---------------------------------------------------------------------------
-TEST_CASE("inside_range: default iteration walks every slot once", "[range]")
+// inside_range: default iteration walks every slot once
+TEST(RangeTest, inside_range_default_iteration_walks_every_slot_once)
 {
   small_grid r;
   std::vector<int> seen;
   for (auto b : r) seen.push_back(int(to_value(b)));
-  REQUIRE(seen == std::vector<int>{0, 1, 2, 3, 4});
+  ASSERT_TRUE((seen == std::vector<int>{0, 1, 2, 3, 4}));
 }
 
-TEST_CASE("inside_range: mid-range start wraps around", "[range]")
+// inside_range: mid-range start wraps around
+TEST(RangeTest, inside_range_mid_range_start_wraps_around)
 {
   small_grid r{small_grid::value_type{2}};
   std::vector<int> seen;
   for (auto b : r) seen.push_back(int(to_value(b)));
-  REQUIRE(seen == std::vector<int>{2, 3, 4, 0, 1});
+  ASSERT_TRUE((seen == std::vector<int>{2, 3, 4, 0, 1}));
 }
 
-TEST_CASE("inside_range: fractional notch iterates exact values", "[range]")
+// inside_range: fractional notch iterates exact values
+TEST(RangeTest, inside_range_fractional_notch_iterates_exact_values)
 {
   frac_grid r;
   std::vector<rational> seen;
   for (auto b : r) seen.push_back(b);  // inside -> rational is implicit
-  REQUIRE(seen == std::vector<rational>{0_r, 0.5_r, 1_r, 1.5_r, 2_r});
+  ASSERT_TRUE((seen == std::vector<rational>{0_r, 0.5_r, 1_r, 1.5_r, 2_r}));
 }
 
 //---------------------------------------------------------------------------
 // random-access arithmetic
 //---------------------------------------------------------------------------
-TEST_CASE("inside_range: iterator arithmetic", "[range][random_access]")
+// inside_range: iterator arithmetic
+TEST(RangeTest, inside_range_iterator_arithmetic)
 {
   small_grid r;
   auto b = r.begin();
   auto e = r.end();
 
-  REQUIRE(e - b == 5);
-  REQUIRE((b + 5) == e);
-  REQUIRE((e - 5) == b);
-  REQUIRE(int(to_value(*(b + 3))) == 3);
-  REQUIRE(int(to_value(b[2]))     == 2);
+  ASSERT_EQ(e - b, 5);
+  ASSERT_EQ((b + 5), e);
+  ASSERT_EQ((e - 5), b);
+  ASSERT_EQ(int(to_value(*(b + 3))), 3);
+  ASSERT_EQ(int(to_value(b[2])), 2);
 
   auto it = b + 2;
-  REQUIRE(int(to_value(*it)) == 2);
+  ASSERT_EQ(int(to_value(*it)), 2);
   it += 2;
-  REQUIRE(int(to_value(*it)) == 4);
+  ASSERT_EQ(int(to_value(*it)), 4);
   it -= 3;
-  REQUIRE(int(to_value(*it)) == 1);
-  REQUIRE(it - b == 1);
+  ASSERT_EQ(int(to_value(*it)), 1);
+  ASSERT_EQ(it - b, 1);
 }
 
-TEST_CASE("inside_range: ordering and equality", "[range][random_access]")
+// inside_range: ordering and equality
+TEST(RangeTest, inside_range_ordering_and_equality)
 {
   small_grid r;
   auto b = r.begin();
   auto m = b + 2;
   auto e = r.end();
 
-  REQUIRE(b == b);
-  REQUIRE(b != m);
-  REQUIRE(b <  m);
-  REQUIRE(m <= m);
-  REQUIRE(e >  m);
+  ASSERT_EQ(b, b);
+  ASSERT_TRUE(b != m);
+  ASSERT_TRUE(b <  m);
+  ASSERT_TRUE(m <= m);
+  ASSERT_TRUE(e >  m);
 }
 
 //---------------------------------------------------------------------------
 // std::ranges interop
 //---------------------------------------------------------------------------
-TEST_CASE("inside_range: std::ranges::size", "[range][ranges]")
+// inside_range: std::ranges::size
+TEST(RangeTest, inside_range_std_ranges_size)
 {
   small_grid r;
-  REQUIRE(std::ranges::size(r) == 5);
+  ASSERT_EQ(std::ranges::size(r), 5);
 }
 
-TEST_CASE("inside_range: std::views::take", "[range][ranges]")
+// inside_range: std::views::take
+TEST(RangeTest, inside_range_std_views_take)
 {
   small_grid r;
   std::vector<int> seen;
   for (auto b : r | std::views::take(3))
     seen.push_back(int(to_value(b)));
-  REQUIRE(seen == std::vector<int>{0, 1, 2});
+  ASSERT_TRUE((seen == std::vector<int>{0, 1, 2}));
 }
 
-TEST_CASE("inside_range: std::views::reverse", "[range][ranges]")
+// inside_range: std::views::reverse
+TEST(RangeTest, inside_range_std_views_reverse)
 {
   small_grid r;
   std::vector<int> seen;
   for (auto b : r | std::views::reverse)
     seen.push_back(int(to_value(b)));
-  REQUIRE(seen == std::vector<int>{4, 3, 2, 1, 0});
+  ASSERT_TRUE((seen == std::vector<int>{4, 3, 2, 1, 0}));
 }
 
-TEST_CASE("inside_range: backwards iteration via operator--", "[range]")
+// inside_range: backwards iteration via operator--
+TEST(RangeTest, inside_range_backwards_iteration_via_operator)
 {
   small_grid r;
   auto it = r.end();
@@ -135,43 +145,47 @@ TEST_CASE("inside_range: backwards iteration via operator--", "[range]")
     --it;
     seen.push_back(int(to_value(*it)));
   }
-  REQUIRE(seen == std::vector<int>{4, 3, 2, 1, 0});
+  ASSERT_TRUE((seen == std::vector<int>{4, 3, 2, 1, 0}));
 }
 
-TEST_CASE("inside_range: postfix ++ / -- behave standard", "[range]")
+// inside_range: postfix ++ / -- behave standard
+TEST(RangeTest, inside_range_postfix_plus_plus_behave_standard)
 {
   small_grid r;
   auto it = r.begin();
   auto snap = it++;
-  REQUIRE(int(to_value(*snap)) == 0);
-  REQUIRE(int(to_value(*it))   == 1);
+  ASSERT_EQ(int(to_value(*snap)), 0);
+  ASSERT_EQ(int(to_value(*it)), 1);
 
   auto snap2 = it--;
-  REQUIRE(int(to_value(*snap2)) == 1);
-  REQUIRE(int(to_value(*it))    == 0);
+  ASSERT_EQ(int(to_value(*snap2)), 1);
+  ASSERT_EQ(int(to_value(*it)), 0);
 }
 
-TEST_CASE("inside_range::indexed pairs each value with its position", "[range][indexed]")
+// inside_range::indexed pairs each value with its position
+TEST(RangeTest, inside_range_indexed_pairs_each_value_with_its_position)
 {
   small_grid r;
   std::vector<std::pair<imax, imax>> seen;
   for (auto [i, v] : r.indexed())
     seen.emplace_back(i, v);
-  REQUIRE(seen == std::vector<std::pair<imax, imax>>{
+  ASSERT_TRUE((seen == std::vector<std::pair<imax, imax>>{
     {0, 0}, {1, 1}, {2, 2}, {3, 3}, {4, 4}
-  });
+  }));
 }
 
-TEST_CASE("inside_range works with std::views::reverse", "[range][reverse]")
+// inside_range works with std::views::reverse
+TEST(RangeTest, inside_range_works_with_std_views_reverse)
 {
   small_grid r;   // 0,1,2,3,4
   std::vector<imax> seen;
   for (auto v : std::views::reverse(r))
     seen.push_back(v);
-  REQUIRE(seen == std::vector<imax>{4, 3, 2, 1, 0});
+  ASSERT_TRUE((seen == std::vector<imax>{4, 3, 2, 1, 0}));
 }
 
-TEST_CASE("inside_range::strided visits every step-th value", "[range][strided]")
+// inside_range::strided visits every step-th value
+TEST(RangeTest, inside_range_strided_visits_every_step_th_value)
 {
   small_grid r;   // 0,1,2,3,4
   auto collect = [&](std::size_t step) {
@@ -179,17 +193,17 @@ TEST_CASE("inside_range::strided visits every step-th value", "[range][strided]"
     for (auto v : r.strided(step)) seen.push_back(v);
     return seen;
   };
-  REQUIRE(collect(1) == std::vector<imax>{0, 1, 2, 3, 4});
-  REQUIRE(collect(2) == std::vector<imax>{0, 2, 4});
-  REQUIRE(collect(3) == std::vector<imax>{0, 3});
-  REQUIRE(collect(5) == std::vector<imax>{0});
+  ASSERT_TRUE((collect(1) == std::vector<imax>{0, 1, 2, 3, 4}));
+  ASSERT_TRUE((collect(2) == std::vector<imax>{0, 2, 4}));
+  ASSERT_TRUE((collect(3) == std::vector<imax>{0, 3}));
+  ASSERT_TRUE(collect(5) == std::vector<imax>{0});
 
   // Fractional grid strides over notch values too.
   using frac_grid = inside_range<{{0, 1}, notch<1, 4>}>;  // 0,.25,.5,.75,1
   frac_grid f;
   std::vector<rational> fseen;
   for (auto v : f.strided(2)) fseen.push_back(rational{v});
-  REQUIRE(fseen == std::vector<rational>{rational{0}, rational{1, 2}, rational{1}});
+  ASSERT_TRUE((fseen == std::vector<rational>{rational{0}, rational{1, 2}, rational{1}}));
 }
 
 //---------------------------------------------------------------------------
@@ -210,15 +224,15 @@ namespace
     {
       rational expected = (Lower<value_type>
           + (rational{position} * Notch<value_type>).value()).value();
-      REQUIRE(as_rational(b) == expected);
+      ASSERT_EQ(as_rational(b), expected);
       ++position;
     }
-    REQUIRE(position == r.size());
+    ASSERT_EQ(position, r.size());
   }
 }
 
-TEST_CASE("inside_range: decode agrees with Lower + i*Notch on every storage kind",
-          "[range][perf-paths]")
+// inside_range: decode agrees with Lower + i*Notch on every storage kind
+TEST(RangeTest, inside_range_decode_agrees_with_lower_plus_i_notch_on_every_storage_kind)
 {
   require_decodes_analytically<inside_range<{0, 999}>>();                    // value raw
   require_decodes_analytically<inside_range<{-500, 500}>>();                 // value raw, signed
@@ -231,35 +245,37 @@ TEST_CASE("inside_range: decode agrees with Lower + i*Notch on every storage kin
 #endif
 }
 
-TEST_CASE("inside_range: start ctor inverts the decode on every storage kind",
-          "[range][perf-paths]")
+// inside_range: start ctor inverts the decode on every storage kind
+TEST(RangeTest, inside_range_start_ctor_inverts_the_decode_on_every_storage_kind)
 {
   auto first_equals_start = [](auto range_tag, auto start_value) {
     using RangeType = decltype(range_tag);
     typename RangeType::value_type start{start_value};
     RangeType r{start};
-    REQUIRE(as_rational(*r.begin()) == as_rational(start));
+    ASSERT_EQ(as_rational(*r.begin()), as_rational(start));
   };
   first_equals_start(inside_range<{0, 999}>{}, 500);
   first_equals_start(inside_range<{{0, 4}, notch<1, 256>}>{}, 2);
   first_equals_start(inside_range<{{0, 2}, notch<1, 3>}, exact>{}, 1);
 }
 
-TEST_CASE("inside_range: sentinel policy never yields the sentinel slot", "[range][perf-paths]")
+// inside_range: sentinel policy never yields the sentinel slot
+TEST(RangeTest, inside_range_sentinel_policy_never_yields_the_sentinel_slot)
 {
   for (auto b : inside_range<{0, 100}, sentinel>{})
-    REQUIRE(!b.is_sentinel());
+    ASSERT_TRUE(!b.is_sentinel());
 }
 
-TEST_CASE("inside_range: fast decode arms engage (dispatch pins)", "[range][perf-paths]")
+// inside_range: fast decode arms engage (dispatch pins)
+TEST(RangeTest, inside_range_fast_decode_arms_engage_dispatch_pins)
 {
   // The operator* fast arms are gated on the storage kind; these pins fail if
   // a storage-selection change silently reroutes a type to another arm.
-  STATIC_REQUIRE(value_raw<inside_range<{0, 999}>::value_type>);
-  STATIC_REQUIRE(index_raw<inside_range<{{0, 4}, notch<1, 256>}>::value_type>);
-  STATIC_REQUIRE(index_raw<inside_range<{{-2, 2}, notch<1, 4>}>::value_type>);
-  STATIC_REQUIRE(rational_raw<inside_range<{{0, 2}, notch<1, 3>}, exact>::value_type>);
+  static_assert(value_raw<inside_range<{0, 999}>::value_type>);
+  static_assert(index_raw<inside_range<{{0, 4}, notch<1, 256>}>::value_type>);
+  static_assert(index_raw<inside_range<{{-2, 2}, notch<1, 4>}>::value_type>);
+  static_assert(rational_raw<inside_range<{{0, 2}, notch<1, 3>}, exact>::value_type>);
 #ifndef BEMAN_INSIDE_MATH_FIXED   // under BEMAN_INSIDE_MATH_FIXED the real storage arm is elided
-  STATIC_REQUIRE(fp_raw<inside_range<{{0, 4}, notch<1, 256>}, real | round_nearest>::value_type>);
+  static_assert(fp_raw<inside_range<{{0, 4}, notch<1, 256>}, real | round_nearest>::value_type>);
 #endif
 }

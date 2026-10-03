@@ -1,4 +1,5 @@
-// Bugs surfaced by the 2026-05 post-fix audit. Each TEST_CASE here should
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+// Bugs surfaced by the 2026-05 post-fix audit. Each TEST here should
 // fail on the unfixed build and pass after the corresponding fix lands.
 
 #include <beman/inside/inside.hpp>
@@ -6,7 +7,7 @@
 #include <beman/inside/detail/rational.hpp>
 #include <beman/inside/grid.hpp>
 
-#include <catch2/catch_test_macros.hpp>
+#include <gtest/gtest.h>
 
 #include <cmath>
 
@@ -21,7 +22,8 @@ using namespace beman::inside::detail;
 // !index_raw<result> the Raw must hold the *value*. Same encoding-
 // mismatch class as the previously-fixed assignment paths.
 //---------------------------------------------------------------------------
-TEST_CASE("Bug A: rational-mixed add into direct-storage result", "[inside][addition][regression]")
+// Bug A: rational-mixed add into direct-storage result
+TEST(StorageBugsTest, bug_a_rational_mixed_add_into_direct_storage_result)
 {
   using L = inside<{-5, 5}>;                          // signed-direct
   using R = inside<{{-10, 10}, 0_r}>;        // rational raw
@@ -29,7 +31,7 @@ TEST_CASE("Bug A: rational-mixed add into direct-storage result", "[inside][addi
   constexpr L l{2};
   constexpr R r{1_r};
   // Result grid: {-15, 15}, notch 1 → signed-direct.
-  STATIC_REQUIRE(l + r == 3);
+  static_assert(l + r == 3);
 }
 
 //---------------------------------------------------------------------------
@@ -45,16 +47,17 @@ TEST_CASE("Bug A: rational-mixed add into direct-storage result", "[inside][addi
 // fractional notch (which forces the result to be non-integer-aligned and
 // skips the fast path). L stays direct (Notch_L = 1, signed lower).
 //---------------------------------------------------------------------------
-TEST_CASE("Bug B: signed-direct multiplication third quadrant", "[inside][multiplication][regression]")
+// Bug B: signed-direct multiplication third quadrant
+TEST(StorageBugsTest, bug_b_signed_direct_multiplication_third_quadrant)
 {
   using L = inside<{-5, 5}>;                            // signed-direct, integer-aligned
   using R = inside<{{-10, 10}, rational{1u, 2}}>;       // notch 1/2, not direct, not integer-aligned
 
   // Lower<result> = Upper<L> * Lower<R> = 5 * -10 = -50 → third quadrant.
   // Without the fix, L{2} * R{1} produces value -3 instead of 2.
-  STATIC_REQUIRE(L{ 2} * R{rational{ 1u}} == rational{ 2u});
-  STATIC_REQUIRE(L{ 3} * R{rational{ 2u}} == rational{ 6u});
-  STATIC_REQUIRE(L{ 0} * R{rational{ 5u}} == rational{ 0u});
+  static_assert(L{ 2} * R{rational{ 1u}} == rational{ 2u});
+  static_assert(L{ 3} * R{rational{ 2u}} == rational{ 6u});
+  static_assert(L{ 0} * R{rational{ 5u}} == rational{ 0u});
 }
 
 //---------------------------------------------------------------------------
@@ -69,20 +72,21 @@ TEST_CASE("Bug B: signed-direct multiplication third quadrant", "[inside][multip
 // `is_constant_evaluated()` throw in assignment::assign fires before the
 // policy machinery can react).
 //---------------------------------------------------------------------------
-TEST_CASE("Bug C: wrap policy fires for real rhs", "[inside][wrap][regression]")
+// Bug C: wrap policy fires for real rhs
+TEST(StorageBugsTest, bug_c_wrap_policy_fires_for_real_rhs)
 {
   using L = inside<{0, 100}, wrap>;
 
   // 120 wraps once into [0, 100] → 19 (since the range is 101 inclusive).
-  REQUIRE(L{double{120.0}} == 19);
+  ASSERT_EQ(L{double{120.0}}, 19);
 
   // negative wraps to the upper side
-  REQUIRE(L{double{-5.0}} == 96);
+  ASSERT_EQ(L{double{-5.0}}, 96);
 
   // signed-range wrap
   using S = inside<{-50, 50}, wrap>;
   // 75 wraps once: 75 - 101 = -26.
-  REQUIRE(S{double{75.0}} == -26);
+  ASSERT_EQ(S{double{75.0}}, -26);
 }
 
 //---------------------------------------------------------------------------
@@ -97,7 +101,8 @@ TEST_CASE("Bug C: wrap policy fires for real rhs", "[inside][wrap][regression]")
 // exceeds imax_max (≈9.22e18). After the cast to imax it goes negative,
 // producing a bogus rational.
 //---------------------------------------------------------------------------
-TEST_CASE("Bug D: gcd lcm overflow propagates to grid::operator+", "[inside][grid][rational][regression]")
+// Bug D: gcd lcm overflow propagates to grid::operator+
+TEST(StorageBugsTest, bug_d_gcd_lcm_overflow_propagates_to_grid_operator_plus)
 {
   // Use grid arithmetic since gcd's return type changes — the optional
   // surfaces at grid::operator+ which already returns slim::optional<grid>.
@@ -107,7 +112,7 @@ TEST_CASE("Bug D: gcd lcm overflow propagates to grid::operator+", "[inside][gri
   constexpr grid g1{interval{0_r, 1_r}, big};
   constexpr grid g2{interval{0_r, 1_r}, third};
 
-  STATIC_REQUIRE_FALSE((g1 + g2).has_value());
+  static_assert(!((g1 + g2).has_value()));
 }
 
 #ifndef BEMAN_INSIDE_MATH_FIXED
@@ -124,8 +129,8 @@ TEST_CASE("Bug D: gcd lcm overflow propagates to grid::operator+", "[inside][gri
 // grid isn't double-exact drops `real` and falls back to exact storage, so the
 // result equals the exact rational product.
 //---------------------------------------------------------------------------
-TEST_CASE("Bug E: real * stays exact (drops real when product exceeds 2^53)",
-          "[inside][real][regression]")
+// Bug E: real * stays exact (drops real when product exceeds 2^53)
+TEST(StorageBugsTest, bug_e_real_stays_exact_drops_real_when_product_exceeds_2_53)
 {
   using U = inside<{{0, 4}, notch<1, (1u << 26)>}, real>;   // exact operand (f=26)
   static_assert(std::is_same_v<U::raw_type, double>);
@@ -134,7 +139,7 @@ TEST_CASE("Bug E: real * stays exact (drops real when product exceeds 2^53)",
   auto p = a * a;                                          // product grid f=52 > 53 bits
   static_assert(!std::is_same_v<decltype(p)::raw_type, double>);   // real dropped
   const rational ar = static_cast<rational>(a);
-  REQUIRE(static_cast<rational>(p) == *(ar * ar));
+  ASSERT_TRUE(static_cast<rational>(p) == *(ar * ar));
 }
 
 //---------------------------------------------------------------------------
@@ -147,19 +152,19 @@ TEST_CASE("Bug E: real * stays exact (drops real when product exceeds 2^53)",
 // errc::division_by_zero. The real sentinel stays a finite, comparable value
 // (DBL_MAX), used only for out-of-range stores.
 //---------------------------------------------------------------------------
-TEST_CASE("Bug F: real div-by-zero is reported, not a silent inf",
-          "[inside][real][regression]")
+// Bug F: real div-by-zero is reported, not a silent inf
+TEST(StorageBugsTest, bug_f_real_div_by_zero_is_reported_not_a_silent_inf)
 {
   using N  = inside<{{1, 4}, notch<1, 1024>}, real>;
   using Dz = inside<{{0, 4}, notch<1, 1024>}, real>;   // divisor grid spans zero
 
   auto q = N{3.0} / Dz{0.0};
-  REQUIRE_FALSE(q.has_value());                       // optional, nullopt — not inf
+  ASSERT_FALSE(q.has_value());                       // optional, nullopt — not inf
 
   slim::expected<N, errc> en{N{3.0}};
   auto z = en / Dz{0.0};
-  REQUIRE_FALSE(z.has_value());
-  REQUIRE(z.error() == errc::division_by_zero);
+  ASSERT_FALSE(z.has_value());
+  ASSERT_EQ(z.error(), errc::division_by_zero);
 }
 #endif // !BEMAN_INSIDE_MATH_FIXED
 
@@ -172,26 +177,26 @@ TEST_CASE("Bug F: real div-by-zero is reported, not a silent inf",
 // 128-bit rounded store (wide_offset_quotient) — both land on the correctly
 // rounded slot.
 //---------------------------------------------------------------------------
-TEST_CASE("fp-derived rational store on a wide snap grid uses the 128-bit path",
-          "[storage][overflow][regression]")
+// fp-derived rational store on a wide snap grid uses the 128-bit path
+TEST(StorageBugsTest, fp_derived_rational_store_on_a_wide_snap_grid_uses_the_128_bit_path)
 {
   using wide = inside<{{-1024, 1024}, notch<1, 16384>}, round_nearest>;
 
-  SECTION("negative value: offset fits after the 128-bit add rescue")
   {
+    SCOPED_TRACE("negative value: offset fits after the 128-bit add rescue");
     wide slot{};
     slot = rational{umax{9006646171630191}, imax{-18014398509481984}};  // ≈ -0.4999693
     // ·16384 = -8191.49692… → round_nearest → -8191/16384
-    REQUIRE(rational{slot} == rational{umax{8191}, imax{-16384}});
+    ASSERT_EQ(rational{slot}, (rational{umax{8191}, imax{-16384}}));
   }
 
-  SECTION("positive value: exact offset needs > 64 bits → 128-bit rounded store")
   {
+    SCOPED_TRACE("positive value: exact offset needs > 64 bits → 128-bit rounded store");
     wide slot{};
     slot = rational{umax{9006646171630191}, imax{18014398509481984}};   // ≈ +0.4999693
     // (1024 + v)·16384 = 16785407.49692… → round_nearest → slot 16785407
     // → value 8191/16384 (0.49993896…, the nearest grid point)
-    REQUIRE(rational{slot} == rational{umax{8191}, imax{16384}});
+    ASSERT_EQ(rational{slot}, (rational{umax{8191}, imax{16384}}));
   }
 
   // (No constexpr section: at constant evaluation the transient rational
@@ -199,15 +204,15 @@ TEST_CASE("fp-derived rational store on a wide snap grid uses the 128-bit path",
   // before the wide fallback can engage — the 128-bit path is runtime-only
   // in practice, though itself constexpr-capable.)
 
-  SECTION("strict policy off-notch in the wide regime → rounding_error")
   {
+    SCOPED_TRACE("strict policy off-notch in the wide regime → rounding_error");
     using strict = inside<{{-1024, 1024}, notch<1, 16384>}>;   // checked, no round flag
     strict slot{};
     try
     {
       slot = rational{umax{9006646171630191}, imax{18014398509481984}};
-      FAIL("expected the default handler to throw");
+      FAIL() << "expected the default handler to throw";
     }
-    catch (inside_error const& e) { REQUIRE(e.code == errc::rounding_error); }
+    catch (inside_error const& e) { ASSERT_EQ(e.code, errc::rounding_error); }
   }
 }

@@ -1,8 +1,9 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Freestanding-leaning smoke test: sees ONLY the amalgamated single header, with
 // the string/printing block dropped (BEMAN_INSIDE_NO_STRING) and exceptions off
 // (-fno-exceptions, set by CMake). Proves the core needs neither <string> nor
 // the exception ABI on its own surface — a custom beman::inside::error_handler stands in
-// for the default throw. Build: `--target single_header_freestanding_smoke`.
+// for the default throw. Runs as the ctest test of the same name.
 
 #include <beman/inside/inside.hpp>   // the single header (single_include/ is the only -I)
 

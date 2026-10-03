@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // FP-free smoke test: compiles the amalgamated single header with BEMAN_INSIDE_MATH_NO_FP,
 // the no-hardware-floating-point path. Proves two things at compile time:
 //   1. The single header builds with NO <cmath> — a poison <cmath> shim (placed

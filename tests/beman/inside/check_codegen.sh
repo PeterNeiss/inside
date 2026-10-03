@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Codegen guard: compile tests/perf_codegen.cpp at -O2 and assert the arithmetic
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# Codegen guard: compile tests/beman/inside/perf_codegen.cpp at -O2 and assert the arithmetic
 # fast paths did not regress — see that file's header for the rationale.
 #
 # Usage: check_codegen.sh <cxx> <source> <include-dir> <std>

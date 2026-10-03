@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Phase-1: transcendentals are gated on `snap` (rounding permission), not `real`
 // (double storage). This exercises the new capability — `beman::inside::math` on NON-`real`
 // snap grids: integer-index storage and non-dyadic (1/100) grids — using exact
@@ -6,46 +7,46 @@
 #include <beman/inside/inside.hpp>
 #include <beman/inside/cmath.hpp>
 
-#include <catch2/catch_test_macros.hpp>
+#include <gtest/gtest.h>
 
 using namespace beman::inside;
 using namespace beman::inside::detail;
 
-TEST_CASE("snap-gated transcendentals on non-real grids (integer & 1/100)",
-          "[cmath][snap][nonreal]")
+// snap-gated transcendentals on non-real grids (integer & 1/100)
+TEST(MathSnapGridsTest, snap_gated_transcendentals_on_non_real_grids_integer_1_100)
 {
   // round_nearest implies snap but NOT real → these are integer/index-stored,
   // not double-backed. Pre-Phase-1 these were a hard `require_real` compile error.
   using Ang = inside<{{-8, 8}, notch<1, 16384>}, round_nearest>;     // integer-index storage
-  REQUIRE(rational{math::sin(Ang{0})}  == 0);
-  REQUIRE(rational{math::cos(Ang{0})}  == 1);
-  REQUIRE(rational{math::atan(Ang{0})} == 0);
+  ASSERT_EQ(rational{math::sin(Ang{0})}, 0);
+  ASSERT_EQ(rational{math::cos(Ang{0})}, 1);
+  ASSERT_EQ(rational{math::atan(Ang{0})}, 0);
 
   using Sq = inside<{{0, 16}, notch<1, 100>}, round_nearest>;        // non-dyadic 1/100 grid
-  REQUIRE(rational{math::sqrt(Sq{0})} == 0);
-  REQUIRE(rational{math::sqrt(Sq{4})} == 2);
+  ASSERT_EQ(rational{math::sqrt(Sq{0})}, 0);
+  ASSERT_EQ(rational{math::sqrt(Sq{4})}, 2);
 
   using Lg = inside<{{1, 1000}, notch<1, 100>}, round_nearest>;
-  REQUIRE(rational{math::log10(Lg{1})}   == 0);
-  REQUIRE(rational{math::log10(Lg{100})} == 2);
+  ASSERT_EQ(rational{math::log10(Lg{1})}, 0);
+  ASSERT_EQ(rational{math::log10(Lg{100})}, 2);
 
   using Cb = inside<{{-8, 8}, notch<1, 100>}, round_nearest>;
-  REQUIRE(rational{math::cbrt(Cb{0})}  ==  0);
-  REQUIRE(rational{math::cbrt(Cb{8})}  ==  2);
-  REQUIRE(rational{math::cbrt(Cb{-8})} == -2);
+  ASSERT_EQ(rational{math::cbrt(Cb{0})}, 0);
+  ASSERT_EQ(rational{math::cbrt(Cb{8})}, 2);
+  ASSERT_EQ(rational{math::cbrt(Cb{-8})}, -2);
 
   using Hy = inside<{{-10, 10}, notch<1, 100>}, round_nearest>;
-  REQUIRE(rational{math::sinh(Hy{0})} == 0);
-  REQUIRE(rational{math::cosh(Hy{0})} == 1);
-  REQUIRE(rational{math::tanh(Hy{0})} == 0);
+  ASSERT_EQ(rational{math::sinh(Hy{0})}, 0);
+  ASSERT_EQ(rational{math::cosh(Hy{0})}, 1);
+  ASSERT_EQ(rational{math::tanh(Hy{0})}, 0);
 
   using Ex = inside<{{-4, 4}, notch<1, 100>}, round_nearest>;
-  REQUIRE(rational{math::exp(Ex{0})} == 1);
+  ASSERT_EQ(rational{math::exp(Ex{0})}, 1);
 
   // pow returns expected; 2^4 snaps exactly onto the 1/100 grid.
   using B = inside<{{1, 16}, notch<1, 100>}, round_nearest>;
   using E = inside<{{-4, 8}, notch<1, 100>}, round_nearest>;
   auto p = math::pow(B{2}, E{4});
-  REQUIRE(p.has_value());
-  REQUIRE(rational{*p} == 16);
+  ASSERT_TRUE(p.has_value());
+  ASSERT_EQ(rational{*p}, 16);
 }

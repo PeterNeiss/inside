@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Integer / Q-format division and modulo honour the rounding-mode policy.
 //
 // Historically the native div/mod paths gated only on the `snap` bit and
@@ -11,7 +12,7 @@
 
 #include <cstdlib>
 
-#include <catch2/catch_test_macros.hpp>
+#include <gtest/gtest.h>
 
 using namespace beman::inside;
 using namespace beman::inside::detail;
@@ -41,71 +42,75 @@ namespace
   }
 }
 
-TEST_CASE("integer division honours each rounding mode", "[div][round]")
+// integer division honours each rounding mode
+TEST(DivRoundTest, integer_division_honours_each_rounding_mode)
 {
   using Nn = inside<{-100, 100}, round_nearest>;   using Nnd = inside<{1, 10}, round_nearest>;
-  REQUIRE(static_cast<rational>(Nn{-8} / Nnd{3}) == -3);   // round to nearest, not -2
-  REQUIRE(static_cast<rational>(Nn{ 8} / Nnd{3}) ==  3);
-  REQUIRE(static_cast<rational>(Nn{ 7} / Nnd{2}) ==  4);   // 3.5 → 4 (half away)
-  REQUIRE(static_cast<rational>(Nn{-7} / Nnd{2}) == -4);
+  ASSERT_TRUE(static_cast<rational>(Nn{-8} / Nnd{3}) == -3);   // round to nearest, not -2
+  ASSERT_TRUE(static_cast<rational>(Nn{ 8} / Nnd{3}) ==  3);
+  ASSERT_TRUE(static_cast<rational>(Nn{ 7} / Nnd{2}) ==  4);   // 3.5 → 4 (half away)
+  ASSERT_TRUE(static_cast<rational>(Nn{-7} / Nnd{2}) == -4);
 
   using Ff = inside<{-100, 100}, round_floor>;     using Ffd = inside<{1, 10}, round_floor>;
-  REQUIRE(static_cast<rational>(Ff{-8} / Ffd{3}) == -3);   // floor(-2.667)
-  REQUIRE(static_cast<rational>(Ff{ 8} / Ffd{3}) ==  2);   // floor(2.667)
+  ASSERT_TRUE(static_cast<rational>(Ff{-8} / Ffd{3}) == -3);   // floor(-2.667)
+  ASSERT_TRUE(static_cast<rational>(Ff{ 8} / Ffd{3}) ==  2);   // floor(2.667)
 
   using Cc = inside<{-100, 100}, round_ceil>;      using Ccd = inside<{1, 10}, round_ceil>;
-  REQUIRE(static_cast<rational>(Cc{ 8} / Ccd{3}) ==  3);   // ceil(2.667)
-  REQUIRE(static_cast<rational>(Cc{-8} / Ccd{3}) == -2);   // ceil(-2.667)
+  ASSERT_TRUE(static_cast<rational>(Cc{ 8} / Ccd{3}) ==  3);   // ceil(2.667)
+  ASSERT_TRUE(static_cast<rational>(Cc{-8} / Ccd{3}) == -2);   // ceil(-2.667)
 
   using Tt = inside<{-100, 100}, snap>;        using Ttd = inside<{1, 10}, snap>;
-  REQUIRE(static_cast<rational>(Tt{-8} / Ttd{3}) == -2);   // bare snap = truncate
-  REQUIRE(static_cast<rational>(Tt{ 8} / Ttd{3}) ==  2);
+  ASSERT_TRUE(static_cast<rational>(Tt{-8} / Ttd{3}) == -2);   // bare snap = truncate
+  ASSERT_TRUE(static_cast<rational>(Tt{ 8} / Ttd{3}) ==  2);
 }
 
-TEST_CASE("half-even division breaks ties to even", "[div][round]")
+// half-even division breaks ties to even
+TEST(DivRoundTest, half_even_division_breaks_ties_to_even)
 {
   using H = inside<{-100, 100}, round_half_even>;  using Hd = inside<{1, 10}, round_half_even>;
-  REQUIRE(static_cast<rational>(H{5} / Hd{2}) == 2);    // 2.5 → 2 (even)
-  REQUIRE(static_cast<rational>(H{7} / Hd{2}) == 4);    // 3.5 → 4 (even)
-  REQUIRE(static_cast<rational>(H{-5} / Hd{2}) == -2);  // -2.5 → -2
-  REQUIRE(static_cast<rational>(H{9} / Hd{2}) == 4);    // 4.5 → 4
-  REQUIRE(static_cast<rational>(H{3} / Hd{2}) == 2);    // 1.5 → 2
+  ASSERT_TRUE(static_cast<rational>(H{5} / Hd{2}) == 2);    // 2.5 → 2 (even)
+  ASSERT_TRUE(static_cast<rational>(H{7} / Hd{2}) == 4);    // 3.5 → 4 (even)
+  ASSERT_TRUE(static_cast<rational>(H{-5} / Hd{2}) == -2);  // -2.5 → -2
+  ASSERT_TRUE(static_cast<rational>(H{9} / Hd{2}) == 4);    // 4.5 → 4
+  ASSERT_TRUE(static_cast<rational>(H{3} / Hd{2}) == 2);    // 1.5 → 2
 }
 
-TEST_CASE("modulo remainder stays consistent with the rounded quotient", "[mod][round]")
+// modulo remainder stays consistent with the rounded quotient
+TEST(DivRoundTest, modulo_remainder_stays_consistent_with_the_rounded_quotient)
 {
   // For every mode, (a/b)*b + a%b == a.
   using N = inside<{-100, 100}, round_nearest>;  using Nd = inside<{1, 10}, round_nearest>;
-  REQUIRE(static_cast<rational>(N{-8} % Nd{3}) ==  1);   // -8 = (-3)*3 + 1
-  REQUIRE(static_cast<rational>(N{ 8} % Nd{3}) == -1);   //  8 =   3 *3 - 1
+  ASSERT_TRUE(static_cast<rational>(N{-8} % Nd{3}) ==  1);   // -8 = (-3)*3 + 1
+  ASSERT_TRUE(static_cast<rational>(N{ 8} % Nd{3}) == -1);   //  8 =   3 *3 - 1
 
   using F = inside<{-100, 100}, round_floor>;    using Fd = inside<{1, 10}, round_floor>;
-  REQUIRE(static_cast<rational>(F{-8} % Fd{3}) == 1);    // floored remainder ≥ 0 for b>0
-  REQUIRE(static_cast<rational>(F{ 8} % Fd{3}) == 2);
+  ASSERT_TRUE(static_cast<rational>(F{-8} % Fd{3}) == 1);    // floored remainder ≥ 0 for b>0
+  ASSERT_TRUE(static_cast<rational>(F{ 8} % Fd{3}) == 2);
 
   using T = inside<{-100, 100}, snap>;       using Td = inside<{1, 10}, snap>;
-  REQUIRE(static_cast<rational>(T{-8} % Td{3}) == -2);   // truncated remainder (sign of dividend)
+  ASSERT_TRUE(static_cast<rational>(T{-8} % Td{3}) == -2);   // truncated remainder (sign of dividend)
 }
 
-TEST_CASE("Q-format division honours the rounding mode", "[div][round][qformat]")
+// Q-format division honours the rounding mode
+TEST(DivRoundTest, q_format_division_honours_the_rounding_mode)
 {
   using Qn = inside<{{0, 255}, notch<1, 256>}, round_nearest>;
   using Qt = inside<{{0, 255}, notch<1, 256>}, snap>;
   // 200/3 = 66.6667 → on the 1/256 grid: nearest = 17067/256, truncate = 17066/256.
-  REQUIRE(static_cast<rational>(*(Qn{200.0} / Qn{3.0})) == rational{17067u, 256});
-  REQUIRE(static_cast<rational>(*(Qt{200.0} / Qt{3.0})) == rational{17066u, 256});
+  ASSERT_TRUE((static_cast<rational>(*(Qn{200.0} / Qn{3.0})) == rational{17067u, 256}));
+  ASSERT_TRUE((static_cast<rational>(*(Qt{200.0} / Qt{3.0})) == rational{17066u, 256}));
 
   // floor / ceil / half_even also honoured (round_uquotient — Lower == 0, so the
   // quotient is non-negative; these arms were previously untested).
   using Qf = inside<{{0, 255}, notch<1, 256>}, round_floor>;
   using Qc = inside<{{0, 255}, notch<1, 256>}, round_ceil>;
   using Qe = inside<{{0, 255}, notch<1, 256>}, round_half_even>;
-  REQUIRE(static_cast<rational>(*(Qf{200.0} / Qf{3.0})) == rational{17066u, 256});  // floor
-  REQUIRE(static_cast<rational>(*(Qc{200.0} / Qc{3.0})) == rational{17067u, 256});  // ceil
+  ASSERT_TRUE((static_cast<rational>(*(Qf{200.0} / Qf{3.0})) == rational{17066u, 256}));  // floor
+  ASSERT_TRUE((static_cast<rational>(*(Qc{200.0} / Qc{3.0})) == rational{17067u, 256}));  // ceil
   // exact ties on the 1/256 grid: 1.5/256 → 2 (even), 2.5/256 → 2 (even).
-  REQUIRE(static_cast<rational>(*(Qe{rational{3, 256}} / Qe{2.0})) == rational{2u, 256});
-  REQUIRE(static_cast<rational>(*(Qe{rational{5, 256}} / Qe{2.0})) == rational{2u, 256});
-  REQUIRE(static_cast<rational>(*(Qn{rational{5, 256}} / Qn{2.0})) == rational{3u, 256});  // nearest tie
+  ASSERT_TRUE((static_cast<rational>(*(Qe{rational{3, 256}} / Qe{2.0})) == rational{2u, 256}));
+  ASSERT_TRUE((static_cast<rational>(*(Qe{rational{5, 256}} / Qe{2.0})) == rational{2u, 256}));
+  ASSERT_TRUE((static_cast<rational>(*(Qn{rational{5, 256}} / Qn{2.0})) == rational{3u, 256}));  // nearest tie
 }
 
 namespace
@@ -119,14 +124,15 @@ namespace
         if (b == 0) continue;
         A ba{a}; B bb{b};
         const imax q = Ref(a, b);
-        INFO("a=" << a << " b=" << b << " expected q=" << q);
-        REQUIRE(static_cast<rational>(ba / bb) == q);                 // quotient per mode
-        REQUIRE(static_cast<rational>(ba % bb) == a - q * b);         // remainder a − q·b
+        SCOPED_TRACE(::testing::Message() << "a=" << a << " b=" << b << " expected q=" << q);
+        ASSERT_TRUE(static_cast<rational>(ba / bb) == q);                 // quotient per mode
+        ASSERT_TRUE(static_cast<rational>(ba % bb) == a - q * b);         // remainder a − q·b
       }
   }
 }
 
-TEST_CASE("div/mod property sweep vs reference, every mode", "[div][mod][round][sweep]")
+// div/mod property sweep vs reference, every mode
+TEST(DivRoundTest, div_mod_property_sweep_vs_reference_every_mode)
 {
   // Divisor grids exclude zero so results are plain (non-optional).
   using NA = inside<{-40, 40}, round_nearest>;     using ND = inside<{-7, -1}, round_nearest>;   // negative divisors too

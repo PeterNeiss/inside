@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Cross-grid comparison and arithmetic against an exact rational oracle.
 //
 // The fuzzer covers same-grid comparison and same-notch cross-grid addition;
@@ -11,7 +12,7 @@
 #include <beman/inside/inside.hpp>
 #include <beman/inside/io.hpp>
 
-#include <catch2/catch_test_macros.hpp>
+#include <gtest/gtest.h>
 
 #include <limits>
 #include <vector>
@@ -45,68 +46,72 @@ namespace
         if constexpr (requires { a <=> b; })
         {
           auto got = (a <=> b);
-          INFO("a=" << to_string(ar) << " b=" << to_string(br));
-          REQUIRE((got < 0)  == (ar <  br));
-          REQUIRE((got > 0)  == (ar >  br));
-          REQUIRE((got == 0) == (ar == br));
+          SCOPED_TRACE(::testing::Message() << "a=" << to_string(ar) << " b=" << to_string(br));
+          ASSERT_EQ((got < 0), (ar <  br));
+          ASSERT_EQ((got > 0), (ar >  br));
+          ASSERT_EQ((got == 0), (ar == br));
         }
         if constexpr (requires { a == b; })
         {
-          INFO("== a=" << to_string(ar) << " b=" << to_string(br));
-          REQUIRE((a == b) == (ar == br));
-          REQUIRE((a != b) == (ar != br));
+          SCOPED_TRACE(::testing::Message() << "== a=" << to_string(ar) << " b=" << to_string(br));
+          ASSERT_EQ((a == b), (ar == br));
+          ASSERT_EQ((a != b), (ar != br));
         }
         if constexpr (requires { a < b; })
         {
-          INFO("< a=" << to_string(ar) << " b=" << to_string(br));
-          REQUIRE((a <  b) == (ar <  br));
-          REQUIRE((a <= b) == (ar <= br));
-          REQUIRE((a >  b) == (ar >  br));
-          REQUIRE((a >= b) == (ar >= br));
+          SCOPED_TRACE(::testing::Message() << "< a=" << to_string(ar) << " b=" << to_string(br));
+          ASSERT_EQ((a <  b), (ar <  br));
+          ASSERT_EQ((a <= b), (ar <= br));
+          ASSERT_EQ((a >  b), (ar >  br));
+          ASSERT_EQ((a >= b), (ar >= br));
         }
 
         // --- arithmetic: exact on the widened result grid ---
         if constexpr (requires { a + b; })
         {
-          INFO("+ a=" << to_string(ar) << " b=" << to_string(br));
-          REQUIRE(static_cast<rational>(a + b) == *(ar + br));
+          SCOPED_TRACE(::testing::Message() << "+ a=" << to_string(ar) << " b=" << to_string(br));
+          ASSERT_TRUE(static_cast<rational>(a + b) == *(ar + br));
         }
         if constexpr (requires { a - b; })
         {
-          INFO("- a=" << to_string(ar) << " b=" << to_string(br));
-          REQUIRE(static_cast<rational>(a - b) == *(ar - br));
+          SCOPED_TRACE(::testing::Message() << "- a=" << to_string(ar) << " b=" << to_string(br));
+          ASSERT_TRUE(static_cast<rational>(a - b) == *(ar - br));
         }
         if constexpr (requires { a * b; })
         {
-          INFO("* a=" << to_string(ar) << " b=" << to_string(br));
-          REQUIRE(static_cast<rational>(a * b) == *(ar * br));
+          SCOPED_TRACE(::testing::Message() << "* a=" << to_string(ar) << " b=" << to_string(br));
+          ASSERT_TRUE(static_cast<rational>(a * b) == *(ar * br));
         }
       }
   }
 }
 
-TEST_CASE("cross-grid compare/arith: differing notches (1/2 vs 1/4)", "[cross][compare][arith]")
+// cross-grid compare/arith: differing notches (1/2 vs 1/4)
+TEST(CrossGridTest, cross_grid_compare_arith_differing_notches_1_2_vs_1_4)
 {
   using A = inside<{{-8, 8}, notch<1, 2>}>;
   using B = inside<{{-8, 8}, notch<1, 4>}>;
   check_cross<A, B>(sweep(-8, 8, 0.5), sweep(-8, 8, 0.25));
 }
 
-TEST_CASE("cross-grid compare/arith: integer vs half-notch, different offset", "[cross][compare][arith]")
+// cross-grid compare/arith: integer vs half-notch, different offset
+TEST(CrossGridTest, cross_grid_compare_arith_integer_vs_half_notch_different_offset)
 {
   using A = inside<{0, 100}>;                 // notch 1, Lower 0
   using B = inside<{{-50, 50}, 0.5}>;         // notch 1/2, Lower -50
   check_cross<A, B>(sweep(0, 100, 1.0), sweep(-50, 50, 0.5));
 }
 
-TEST_CASE("cross-grid compare/arith: quarter-notch vs unit signed", "[cross][compare][arith]")
+// cross-grid compare/arith: quarter-notch vs unit signed
+TEST(CrossGridTest, cross_grid_compare_arith_quarter_notch_vs_unit_signed)
 {
   using A = inside<{{-8, 8}, notch<1, 4>}>;
   using B = inside<{-3, 7}>;
   check_cross<A, B>(sweep(-8, 8, 0.25), sweep(-3, 7, 1.0));
 }
 
-TEST_CASE("cross-grid compare/arith: Q8.8 vs Q1.14 (power-of-two notches)", "[cross][compare][arith]")
+// cross-grid compare/arith: Q8.8 vs Q1.14 (power-of-two notches)
+TEST(CrossGridTest, cross_grid_compare_arith_q8_8_vs_q1_14_power_of_two_notches)
 {
   using A = inside<{{0, 255}, notch<1, 256>}>;
   using B = inside<{{-1, 1}, notch<1, 16384>}>;
@@ -114,7 +119,8 @@ TEST_CASE("cross-grid compare/arith: Q8.8 vs Q1.14 (power-of-two notches)", "[cr
   check_cross<A, B>(sweep(0, 4, 1.0 / 256 * 37), sweep(-1, 1, 1.0 / 256 * 5));
 }
 
-TEST_CASE("cross-grid compare/arith: asymmetric offsets, same notch", "[cross][compare][arith]")
+// cross-grid compare/arith: asymmetric offsets, same notch
+TEST(CrossGridTest, cross_grid_compare_arith_asymmetric_offsets_same_notch)
 {
   using A = inside<{{-7, 11}, 0.25}>;
   using B = inside<{{3, 30}, 0.25}>;
@@ -126,17 +132,18 @@ TEST_CASE("cross-grid compare/arith: asymmetric offsets, same notch", "[cross][c
 // drop the fractional part (-7.75 + (-3) silently became -10, not -10.75)
 // because the dispatch chose the integer `to_value` path. The integer path is
 // now gated on IsIntegerAligned of BOTH operands (matching multiplication).
-TEST_CASE("regression: fractional + integer-direct keeps the fraction", "[cross][arith][regression]")
+// regression: fractional + integer-direct keeps the fraction
+TEST(CrossGridTest, regression_fractional_plus_integer_direct_keeps_the_fraction)
 {
   using Frac = inside<{{-8, 8}, notch<1, 4>}>;   // fractional, notch-offset storage
   using Int  = inside<{-3, 7}>;                    // integer, direct storage
 
-  REQUIRE(static_cast<rational>(Frac{-7.75} + Int{-3}) == rational{43, -4});  // -10.75
-  REQUIRE(static_cast<rational>(Frac{0.25}  + Int{2})  == rational{9u, 4});   //   2.25
-  REQUIRE(static_cast<rational>(Frac{5.25}  + Int{7})  == rational{49u, 4});  //  12.25
+  ASSERT_TRUE((static_cast<rational>(Frac{-7.75} + Int{-3}) == rational{43, -4}));  // -10.75
+  ASSERT_TRUE((static_cast<rational>(Frac{0.25}  + Int{2})  == rational{9u, 4}));   //   2.25
+  ASSERT_TRUE((static_cast<rational>(Frac{5.25}  + Int{7})  == rational{49u, 4}));  //  12.25
   // subtraction routes through add(-rhs); same path.
-  REQUIRE(static_cast<rational>(Frac{5.25}  - Int{3})  == rational{9u, 4});   //   2.25
-  REQUIRE(static_cast<rational>(Int{4} - Frac{1.5})    == rational{5u, 2});   //   2.5
+  ASSERT_TRUE((static_cast<rational>(Frac{5.25}  - Int{3})  == rational{9u, 4}));   //   2.25
+  ASSERT_TRUE((static_cast<rational>(Int{4} - Frac{1.5})    == rational{5u, 2}));   //   2.5
 }
 
 //---------------------------------------------------------------------------
@@ -145,32 +152,32 @@ TEST_CASE("regression: fractional + integer-direct keeps the fraction", "[cross]
 // raw has no integer offset; test_real_exact caught exactly that during
 // development).
 //---------------------------------------------------------------------------
-TEST_CASE("tier-3 integer fast paths stay engaged (and fp stays excluded)",
-          "[cross][arith][perf-paths]")
+// tier-3 integer fast paths stay engaged (and fp stays excluded)
+TEST(CrossGridTest, tier_3_integer_fast_paths_stay_engaged_and_fp_stays_excluded)
 {
   using whole    = inside<{0, 100}>;
   using quarters = inside<{{0, 1}, notch<1, 4>}>;
-  STATIC_REQUIRE(detail::addition<whole, quarters>::mixed_offset_ok);
+  static_assert(detail::addition<whole, quarters>::mixed_offset_ok);
 
   using tenths       = inside<{{0, 100}, notch<1, 10>}>;
   using quarter_grid = inside<{{0, 100}, notch<1, 4>}, round_nearest>;
-  STATIC_REQUIRE(detail::assignment<quarter_grid, tenths>::affine_map.ok);
+  static_assert(detail::assignment<quarter_grid, tenths>::affine_map.ok);
 
   // fp-backed operands must not take the integer offset path.
   using coarse_real = inside<{{0, (umax{1} << 40)}, notch<1, 2>}, real>;
   using fine_real   = inside<{{0, 1}, notch<1, (1u << 20)>}, real>;
   if constexpr (detail::fp_raw<coarse_real>)
-    STATIC_REQUIRE_FALSE(detail::addition<coarse_real, fine_real>::mixed_offset_ok);
+    static_assert(!(detail::addition<coarse_real, fine_real>::mixed_offset_ok));
 
   // value check across a negative Lower, at compile time (constexpr path).
   using signed_whole = inside<{-50, 50}>;
   using eighths      = inside<{{-2, 2}, notch<1, 8>}>;
-  STATIC_REQUIRE(rational{signed_whole{-7} + eighths{-0.625_ins}}
+  static_assert(rational{signed_whole{-7} + eighths{-0.625_ins}}
                  == rational{umax{61}, imax{-8}});
 }
 
-TEST_CASE("regression: cross-grid assign onto rational storage keeps the value",
-          "[cross][assign][regression][exact]")
+// regression: cross-grid assign onto rational storage keeps the value
+TEST(CrossGridTest, regression_cross_grid_assign_onto_rational_storage_keeps_the_value)
 {
   // The insidable-rhs store used the notch-index machinery for rational-raw
   // targets: an index-raw source had its VALUE rounded to a whole number
@@ -182,46 +189,46 @@ TEST_CASE("regression: cross-grid assign onto rational storage keeps the value",
   using index_src = inside<{{0, 4}, notch<1, 3>}, round_nearest>;
   exact_t from_index;
   from_index = index_src{rational{7, 3}};
-  REQUIRE(from_index.raw() == rational{7, 3});
+  ASSERT_EQ(from_index.raw(), (rational{7, 3}));
 
   using exact_wide = inside<{{-4, 4}, notch<1, 3>}, exact | round_nearest>;
   exact_t from_exact;
   from_exact = exact_wide{rational{5, 3}};
-  REQUIRE(from_exact.raw() == rational{5, 3});
+  ASSERT_EQ(from_exact.raw(), (rational{5, 3}));
 
   using value_src = inside<{0, 4}, snap>;
   exact_t from_value_raw;
   from_value_raw = value_src{3};
-  REQUIRE(from_value_raw.raw() == rational{3});
+  ASSERT_EQ(from_value_raw.raw(), rational{3});
 
   using real_src = inside<{{0, 4}, notch<1, 256>}, real | round_nearest>;
   using exact_dyadic = inside<{{0, 4}, notch<1, 256>}, exact | round_nearest>;
   exact_dyadic from_real;
   from_real = real_src{rational{513, 256}};
-  REQUIRE(from_real.raw() == rational{513, 256});
+  ASSERT_EQ(from_real.raw(), (rational{513, 256}));
 
   // rounding still happens when the source is off the target grid
   using exact_coarse = inside<{{0, 4}, 1}, exact | round_nearest>;
   exact_coarse rounded;
   rounded = index_src{rational{7, 3}};     // 2.33 -> 2 on the unit grid
-  REQUIRE(rounded.raw() == rational{2});
+  ASSERT_EQ(rounded.raw(), rational{2});
 }
 
-TEST_CASE("scalar comparison integer arm agrees with the rational decode",
-          "[cross][compare][perf-paths]")
+// scalar comparison integer arm agrees with the rational decode
+TEST(CrossGridTest, scalar_comparison_integer_arm_agrees_with_the_rational_decode)
 {
   // Q-format (index raw) vs integral scalar takes the cross-multiplied
   // integer arm; every verdict must match the exact rational comparison,
   // including at A's numeric_limits extremes.
   using q88 = inside<{{0, 255}, notch<1, 256>}, round_nearest>;
-  STATIC_REQUIRE(scalar_index_cmp_fits<q88, int>);
+  static_assert(scalar_index_cmp_fits<q88, int>);
 
   auto agree = [](auto probe, auto scalar) {
     rational exact_lhs = as_rational(probe);
     rational exact_rhs{scalar};
-    REQUIRE((probe == scalar) == (exact_lhs == exact_rhs));
-    REQUIRE((probe <  scalar) == (exact_lhs <  exact_rhs));
-    REQUIRE((probe >  scalar) == (exact_lhs >  exact_rhs));
+    ASSERT_EQ((probe == scalar), (exact_lhs == exact_rhs));
+    ASSERT_EQ((probe <  scalar), (exact_lhs <  exact_rhs));
+    ASSERT_EQ((probe >  scalar), (exact_lhs >  exact_rhs));
   };
   for (int scalar : {std::numeric_limits<int>::min(), -1, 0, 41, 42, 43, 255,
                      std::numeric_limits<int>::max()})
@@ -235,7 +242,7 @@ TEST_CASE("scalar comparison integer arm agrees with the rational decode",
 
   // offset index grid (negative Lower -> nonzero bias)
   using offset_q = inside<{{-8, 8}, notch<1, 16384>}, round_nearest>;
-  STATIC_REQUIRE(scalar_index_cmp_fits<offset_q, int>);
+  static_assert(scalar_index_cmp_fits<offset_q, int>);
   for (int scalar : {std::numeric_limits<int>::min(), -9, -8, -1, 0, 1, 8,
                      std::numeric_limits<int>::max()})
   {
@@ -247,8 +254,8 @@ TEST_CASE("scalar comparison integer arm agrees with the rational decode",
 
   // 64-bit scalars whose cross term c·d can overflow imax are excluded and
   // fall back to the exact rational path — still correct.
-  STATIC_REQUIRE(!scalar_index_cmp_fits<q88, long long>);
-  REQUIRE(q88{42} < std::numeric_limits<long long>::max());
-  REQUIRE(q88{42} > std::numeric_limits<long long>::min());
-  REQUIRE(!(q88{42} == std::numeric_limits<long long>::max()));
+  static_assert(!scalar_index_cmp_fits<q88, long long>);
+  ASSERT_TRUE(q88{42} < std::numeric_limits<long long>::max());
+  ASSERT_TRUE(q88{42} > std::numeric_limits<long long>::min());
+  ASSERT_TRUE(!(q88{42} == std::numeric_limits<long long>::max()));
 }

@@ -1,7 +1,8 @@
-// Compile-time correctness suite. Every assertion here is `STATIC_REQUIRE`
-// (or `static_assert`), so a regression in grid arithmetic, storage selection,
-// trait predicates, or policy machinery fails the build rather than waiting
-// for runtime test execution.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+// Compile-time correctness suite. Every assertion here is a `static_assert`,
+// so a regression in grid arithmetic, storage selection, trait predicates, or
+// policy machinery fails the build rather than waiting for runtime test
+// execution.
 //
 // Library quirks to respect:
 //   - `rational::inv(0)` and division-by-zero `throw` under
@@ -16,7 +17,7 @@
 #include <beman/inside/numeric_limits.hpp>
 #include <beman/inside/predicates.hpp>
 
-#include <catch2/catch_test_macros.hpp>
+#include <gtest/gtest.h>
 
 #include <cstdint>
 #include <limits>
@@ -28,380 +29,394 @@ using namespace beman::inside::detail;
 //---------------------------------------------------------------------------
 // rational
 //---------------------------------------------------------------------------
-TEST_CASE("constexpr: rational identities", "[constexpr][rational]")
+// constexpr: rational identities
+TEST(ConstexprTest, constexpr_rational_identities)
 {
   // construction + canonicalisation
-  STATIC_REQUIRE(rational{6u, 8} == rational{3u, 4});
-  STATIC_REQUIRE(rational{0u, 7} == rational{0u, 1});
-  STATIC_REQUIRE(rational{-1, 2} == rational{1, -2});
-  STATIC_REQUIRE(rational{-1, -2} == rational{1, 2});
+  static_assert(rational{6u, 8} == rational{3u, 4});
+  static_assert(rational{0u, 7} == rational{0u, 1});
+  static_assert(rational{-1, 2} == rational{1, -2});
+  static_assert(rational{-1, -2} == rational{1, 2});
 
   // sign + abs
-  STATIC_REQUIRE(sign(rational{1, -2}) == -1);
-  STATIC_REQUIRE(sign((0_r)) == 0);
-  STATIC_REQUIRE(sign(rational{3u, 4}) == 1);
-  STATIC_REQUIRE(abs(rational{3, -4}) == rational{3u, 4});
+  static_assert(sign(rational{1, -2}) == -1);
+  static_assert(sign((0_r)) == 0);
+  static_assert(sign(rational{3u, 4}) == 1);
+  static_assert(abs(rational{3, -4}) == rational{3u, 4});
 
   // unary minus
-  STATIC_REQUIRE(-rational{3u, 4} == rational{3, -4});
+  static_assert(-rational{3u, 4} == rational{3, -4});
 }
 
-TEST_CASE("constexpr: rational arithmetic", "[constexpr][rational]")
+// constexpr: rational arithmetic
+TEST(ConstexprTest, constexpr_rational_arithmetic)
 {
   // +/-/*//  return slim::optional<rational>; the * deref is the canonical
   // form used elsewhere in the codebase (mirrors `2_r/3` literal pattern).
-  STATIC_REQUIRE(*(rational{3u, 2} + rational{1u, 5}) == rational{17u, 10});
-  STATIC_REQUIRE(*(rational{3u, 4} - rational{1u, 4}) == rational{1u, 2});
-  STATIC_REQUIRE(*(rational{2u, 3} * rational{3u, 4}) == rational{1u, 2});
-  STATIC_REQUIRE(*(rational{1u, 2} / rational{1u, 4}) == rational{2u, 1});
+  static_assert(*(rational{3u, 2} + rational{1u, 5}) == rational{17u, 10});
+  static_assert(*(rational{3u, 4} - rational{1u, 4}) == rational{1u, 2});
+  static_assert(*(rational{2u, 3} * rational{3u, 4}) == rational{1u, 2});
+  static_assert(*(rational{1u, 2} / rational{1u, 4}) == rational{2u, 1});
 
   // gcd is also optional-returning
-  STATIC_REQUIRE(*gcd(rational{2u, 3}, rational{1u, 6}) == rational{1u, 6});
+  static_assert(*gcd(rational{2u, 3}, rational{1u, 6}) == rational{1u, 6});
 
   // Div-by-zero is runtime-only — at compile time `rational::inv(0)` throws
   // under `is_constant_evaluated()`, which hard-fails the build.
 }
 
-TEST_CASE("constexpr: rational rounding helpers", "[constexpr][rational]")
+// constexpr: rational rounding helpers
+TEST(ConstexprTest, constexpr_rational_rounding_helpers)
 {
   // 7/2 = 3.5
-  STATIC_REQUIRE(trunc(rational{7u, 2}) == 3);
-  STATIC_REQUIRE(floor(rational{7u, 2}) == 3);
-  STATIC_REQUIRE(round(rational{7u, 2}) == 4);
+  static_assert(trunc(rational{7u, 2}) == 3);
+  static_assert(floor(rational{7u, 2}) == 3);
+  static_assert(round(rational{7u, 2}) == 4);
 
   // -7/2 = -3.5 — floor steps further toward -inf, round goes half-away-from-zero
-  STATIC_REQUIRE(trunc(rational{7, -2}) == -3);
-  STATIC_REQUIRE(floor(rational{7, -2}) == -4);
-  STATIC_REQUIRE(round(rational{7, -2}) == -4);
+  static_assert(trunc(rational{7, -2}) == -3);
+  static_assert(floor(rational{7, -2}) == -4);
+  static_assert(round(rational{7, -2}) == -4);
 }
 
-TEST_CASE("constexpr: rational inv and divides_evenly", "[constexpr][rational]")
+// constexpr: rational inv and divides_evenly
+TEST(ConstexprTest, constexpr_rational_inv_and_divides_evenly)
 {
-  STATIC_REQUIRE(*rational::inv(rational{3u, 4}) == rational{4u, 3});
-  STATIC_REQUIRE(*rational::inv(rational{2u, 7}) == rational{7u, 2});
+  static_assert(*rational::inv(rational{3u, 4}) == rational{4u, 3});
+  static_assert(*rational::inv(rational{2u, 7}) == rational{7u, 2});
   // `rational::inv(0_r)` is runtime-only — see file header.
 
-  STATIC_REQUIRE(divides_evenly(6_r, 2_r));
-  STATIC_REQUIRE_FALSE(divides_evenly(7_r, 2_r));
-  STATIC_REQUIRE(divides_evenly(0_r, 2_r));
+  static_assert(divides_evenly(6_r, 2_r));
+  static_assert(!(divides_evenly(7_r, 2_r)));
+  static_assert(divides_evenly(0_r, 2_r));
 }
 
 //---------------------------------------------------------------------------
 // interval
 //---------------------------------------------------------------------------
-TEST_CASE("constexpr: interval predicates", "[constexpr][interval]")
+// constexpr: interval predicates
+TEST(ConstexprTest, constexpr_interval_predicates)
 {
   constexpr interval a{0, 10};
   constexpr interval b{5, 15};
   constexpr interval c{20, 30};
   constexpr interval inner{2, 8};
 
-  STATIC_REQUIRE(includes(a, 5));
-  STATIC_REQUIRE(includes(a, 0));
-  STATIC_REQUIRE(includes(a, 10));
-  STATIC_REQUIRE_FALSE(includes(a, 11));
+  static_assert(includes(a, 5));
+  static_assert(includes(a, 0));
+  static_assert(includes(a, 10));
+  static_assert(!(includes(a, 11)));
 
-  STATIC_REQUIRE(includes(a, inner));
-  STATIC_REQUIRE_FALSE(includes(inner, a));
+  static_assert(includes(a, inner));
+  static_assert(!(includes(inner, a)));
 
-  STATIC_REQUIRE(overlaps(a, b));
-  STATIC_REQUIRE_FALSE(excludes(a, b));
-  STATIC_REQUIRE(excludes(a, c));
-  STATIC_REQUIRE_FALSE(overlaps(a, c));
+  static_assert(overlaps(a, b));
+  static_assert(!(excludes(a, b)));
+  static_assert(excludes(a, c));
+  static_assert(!(overlaps(a, c)));
 }
 
-TEST_CASE("constexpr: interval arithmetic", "[constexpr][interval]")
+// constexpr: interval arithmetic
+TEST(ConstexprTest, constexpr_interval_arithmetic)
 {
   constexpr interval a{0, 10};
   constexpr interval b{0, 5};
 
-  STATIC_REQUIRE(*(a + b) == interval{0, 15});
-  STATIC_REQUIRE(*(a - b) == interval{-5, 10});
-  STATIC_REQUIRE(*(a * b) == interval{0, 50});
+  static_assert(*(a + b) == interval{0, 15});
+  static_assert(*(a - b) == interval{-5, 10});
+  static_assert(*(a * b) == interval{0, 50});
 
   // division by an interval that straddles zero returns nullopt
   constexpr interval zero_crossing{-1, 1};
-  STATIC_REQUIRE_FALSE((a / zero_crossing).has_value());
+  static_assert(!((a / zero_crossing).has_value()));
 
   // unary minus flips and swaps
-  STATIC_REQUIRE(-a == interval{-10, 0});
+  static_assert(-a == interval{-10, 0});
 }
 
-TEST_CASE("constexpr: interval divides_evenly", "[constexpr][interval]")
+// constexpr: interval divides_evenly
+TEST(ConstexprTest, constexpr_interval_divides_evenly)
 {
   constexpr interval grid_iv{0, 10};
-  STATIC_REQUIRE(grid_iv.divides_evenly(2_r));
-  STATIC_REQUIRE(grid_iv.divides_evenly(rational{1u, 2}));   // 10 / 0.5 = 20
-  STATIC_REQUIRE_FALSE(grid_iv.divides_evenly(3_r));
+  static_assert(grid_iv.divides_evenly(2_r));
+  static_assert(grid_iv.divides_evenly(rational{1u, 2}));   // 10 / 0.5 = 20
+  static_assert(!(grid_iv.divides_evenly(3_r)));
 }
 
 //---------------------------------------------------------------------------
 // grid
 //---------------------------------------------------------------------------
-TEST_CASE("constexpr: grid arithmetic produces expected result grids",
-          "[constexpr][grid]")
+// constexpr: grid arithmetic produces expected result grids
+TEST(ConstexprTest, constexpr_grid_arithmetic_produces_expected_result_grids)
 {
   constexpr grid g_a{{0, 10}, 1};
   constexpr grid g_b{{0,  5}, 1};
 
   constexpr auto sum  = g_a + g_b;
-  STATIC_REQUIRE(sum.has_value());
-  STATIC_REQUIRE(sum->Interval == interval{0, 15});
-  STATIC_REQUIRE(sum->Notch == 1);
+  static_assert(sum.has_value());
+  static_assert(sum->Interval == interval{0, 15});
+  static_assert(sum->Notch == 1);
 
   constexpr auto prod = g_a * g_b;
-  STATIC_REQUIRE(prod.has_value());
-  STATIC_REQUIRE(prod->Interval == interval{0, 50});
+  static_assert(prod.has_value());
+  static_assert(prod->Interval == interval{0, 50});
 
   // div by a zero-only divisor grid is nullopt
   constexpr grid g_zero{{0, 0}, 0};
-  STATIC_REQUIRE_FALSE((g_a / g_zero).has_value());
+  static_assert(!((g_a / g_zero).has_value()));
 }
 
-TEST_CASE("constexpr: grid notch alignment via gcd", "[constexpr][grid]")
+// constexpr: grid notch alignment via gcd
+TEST(ConstexprTest, constexpr_grid_notch_alignment_via_gcd)
 {
   // (notch 1) + (notch 0.5) → gcd = 0.5
   constexpr grid coarse{{0, 10}, 1};
   constexpr grid fine{{0, 5}, rational{1u, 2}};
   constexpr auto r = coarse + fine;
-  STATIC_REQUIRE(r.has_value());
-  STATIC_REQUIRE(r->Notch == rational{1u, 2});
+  static_assert(r.has_value());
+  static_assert(r->Notch == rational{1u, 2});
 }
 
 //---------------------------------------------------------------------------
 // storage selection
 //---------------------------------------------------------------------------
-TEST_CASE("constexpr: storage_min picks the smallest fitting raw",
-          "[constexpr][storage]")
+// constexpr: storage_min picks the smallest fitting raw
+TEST(ConstexprTest, constexpr_storage_min_picks_the_smallest_fitting_raw)
 {
   // smallest_uint_for reserves the type's max as the slim::optional sentinel,
   // so a grid hitting UINT8_MAX exactly promotes to uint16_t.
-  STATIC_REQUIRE(std::is_same_v<raw_t<inside<{0,   100}>>, std::uint8_t>);
-  STATIC_REQUIRE(std::is_same_v<raw_t<inside<{0,   254}>>, std::uint8_t>);
-  STATIC_REQUIRE(std::is_same_v<raw_t<inside<{0,   255}>>, std::uint16_t>);
-  STATIC_REQUIRE(std::is_same_v<raw_t<inside<{0, 65534}>>, std::uint16_t>);
-  STATIC_REQUIRE(std::is_same_v<raw_t<inside<{0, 65535}>>, std::uint32_t>);
+  static_assert(std::is_same_v<raw_t<inside<{0,   100}>>, std::uint8_t>);
+  static_assert(std::is_same_v<raw_t<inside<{0,   254}>>, std::uint8_t>);
+  static_assert(std::is_same_v<raw_t<inside<{0,   255}>>, std::uint16_t>);
+  static_assert(std::is_same_v<raw_t<inside<{0, 65534}>>, std::uint16_t>);
+  static_assert(std::is_same_v<raw_t<inside<{0, 65535}>>, std::uint32_t>);
 
   // signed-direct: lower < 0 + notch 1 → signed int that fits the range.
   // INT8_MIN is reserved for the sentinel, so {-128, 127} promotes to int16_t.
-  STATIC_REQUIRE(std::is_same_v<raw_t<inside<{-40,   85}>>, std::int8_t>);
-  STATIC_REQUIRE(std::is_same_v<raw_t<inside<{-127, 127}>>, std::int8_t>);
-  STATIC_REQUIRE(std::is_same_v<raw_t<inside<{-128, 127}>>, std::int16_t>);
+  static_assert(std::is_same_v<raw_t<inside<{-40,   85}>>, std::int8_t>);
+  static_assert(std::is_same_v<raw_t<inside<{-127, 127}>>, std::int8_t>);
+  static_assert(std::is_same_v<raw_t<inside<{-128, 127}>>, std::int16_t>);
 
   // notch 0 → rational raw
-  STATIC_REQUIRE(std::is_same_v<raw_t<inside<{{-10, 10}, 0}>>, rational>);
+  static_assert(std::is_same_v<raw_t<inside<{{-10, 10}, 0}>>, rational>);
 
   // fractional notch with unsigned offset (signed lower forced into offset
   // encoding because notch != 1).
-  STATIC_REQUIRE(std::is_same_v<raw_t<inside<{{-5, 5}, rational{1u, 2}}>>,
+  static_assert(std::is_same_v<raw_t<inside<{{-5, 5}, rational{1u, 2}}>>,
                                 std::uint8_t>);
 }
 
-TEST_CASE("constexpr: storage-kind classification",
-          "[constexpr][storage]")
+// constexpr: storage-kind classification
+TEST(ConstexprTest, constexpr_storage_kind_classification)
 {
   // The disjoint storage encodings, deduced from the grid.
   // value_raw: Raw == value as a plain int (notch 1 + lower 0, or signed raw).
-  STATIC_REQUIRE(value_raw<inside<{0,   100}>>);
-  STATIC_REQUIRE(value_raw<inside<{-40,  85}>>);
+  static_assert(value_raw<inside<{0,   100}>>);
+  static_assert(value_raw<inside<{-40,  85}>>);
   // rational_raw: notch 0 — Raw is the value as a rational.
-  STATIC_REQUIRE(rational_raw<inside<{{-10, 10}, 0}>>);
+  static_assert(rational_raw<inside<{{-10, 10}, 0}>>);
   // index_raw: notch 1 with non-zero unsigned lower, OR fractional notch — Raw
   // is a 0-based notch index.
-  STATIC_REQUIRE(index_raw<inside<{5, 100}>>);
-  STATIC_REQUIRE(index_raw<inside<{{0, 5}, rational{1u, 2}}>>);
+  static_assert(index_raw<inside<{5, 100}>>);
+  static_assert(index_raw<inside<{{0, 5}, rational{1u, 2}}>>);
 }
 
 //---------------------------------------------------------------------------
 // inside arithmetic
 //---------------------------------------------------------------------------
-TEST_CASE("constexpr: inside +/-/* on signed-direct grids",
-          "[constexpr][inside][arithmetic]")
+// constexpr: inside +/-/* on signed-direct grids
+TEST(ConstexprTest, constexpr_inside_plus_on_signed_direct_grids)
 {
   using s = inside<{-100, 100}>;
   constexpr s a{30}, b{20};
-  STATIC_REQUIRE(a + b == 50);
-  STATIC_REQUIRE(a - b == 10);
-  STATIC_REQUIRE(b - a == -10);
-  STATIC_REQUIRE(a * b == 600);
-  STATIC_REQUIRE(-a == -30);
+  static_assert(a + b == 50);
+  static_assert(a - b == 10);
+  static_assert(b - a == -10);
+  static_assert(a * b == 600);
+  static_assert(-a == -30);
 }
 
-TEST_CASE("constexpr: inside +/-/* on offset-encoded grids",
-          "[constexpr][inside][arithmetic]")
+// constexpr: inside +/-/* on offset-encoded grids
+TEST(ConstexprTest, constexpr_inside_plus_on_offset_encoded_grids)
 {
   using o = inside<{10, 50}>;                 // offset encoding (uint8 raw)
-  STATIC_REQUIRE(index_raw<o>);
+  static_assert(index_raw<o>);
 
   constexpr o a{15}, b{40};
-  STATIC_REQUIRE(a + b == 55);
-  STATIC_REQUIRE(b - a == 25);
+  static_assert(a + b == 55);
+  static_assert(b - a == 25);
 }
 
-TEST_CASE("constexpr: inside +/-/* on fractional-notch grids",
-          "[constexpr][inside][arithmetic]")
+// constexpr: inside +/-/* on fractional-notch grids
+TEST(ConstexprTest, constexpr_inside_plus_on_fractional_notch_grids)
 {
   using f = inside<{{0, 10}, rational{1u, 2}}>;     // notch 1/2
   constexpr f a{rational{3u, 2}}, b{rational{5u, 2}};
-  STATIC_REQUIRE(a + b == 4);
-  STATIC_REQUIRE(b - a == 1);
-  STATIC_REQUIRE(a * b == rational{15u, 4});
+  static_assert(a + b == 4);
+  static_assert(b - a == 1);
+  static_assert(a * b == rational{15u, 4});
 }
 
-TEST_CASE("constexpr: division returns slim::optional", "[constexpr][inside][div]")
+// constexpr: division returns slim::optional
+TEST(ConstexprTest, constexpr_division_returns_slim_optional)
 {
   using v = inside<{1, 255}>;
   constexpr v a{102};
   constexpr v b{16};
   constexpr auto q = a / b;
-  STATIC_REQUIRE(q.has_value());
-  STATIC_REQUIRE(*q == *(51_r / 8));
+  static_assert(q.has_value());
+  static_assert(*q == *(51_r / 8));
 
   // snap selects native integer division — result has integer raw
   using vi = inside<{0, 100}, snap>;
   constexpr vi p{51}, r{8};
   constexpr auto qi = p / r;
-  STATIC_REQUIRE_FALSE(std::is_same_v<typename decltype(qi)::value_type::raw_type,
-                                       rational>);
-  STATIC_REQUIRE(*qi == 6);
+  static_assert(!(std::is_same_v<typename decltype(qi)::value_type::raw_type,
+                                       rational>));
+  static_assert(*qi == 6);
 }
 
-TEST_CASE("constexpr: modulo under snap", "[constexpr][inside][mod]")
+// constexpr: modulo under snap
+TEST(ConstexprTest, constexpr_modulo_under_snap)
 {
   using v = inside<{0, 100}, snap>;
   constexpr v a{17}, b{5};
   constexpr auto m = a % b;
-  STATIC_REQUIRE(m.has_value());
-  STATIC_REQUIRE(*m == 2);
+  static_assert(m.has_value());
+  static_assert(*m == 2);
 }
 
-TEST_CASE("constexpr: add_all / mul_all folds", "[constexpr][inside][fold]")
+// constexpr: add_all / mul_all folds
+TEST(ConstexprTest, constexpr_add_all_mul_all_folds)
 {
   using v = inside<{0, 100}>;
   constexpr v a{10}, b{20}, c{30}, d{40};
-  STATIC_REQUIRE(add_all(a, b, c, d) == 100);
+  static_assert(add_all(a, b, c, d) == 100);
 
   constexpr v p{2}, q{3}, r{5};
-  STATIC_REQUIRE(mul_all(p, q, r) == 30);
+  static_assert(mul_all(p, q, r) == 30);
 }
 
 //---------------------------------------------------------------------------
 // casts
 //---------------------------------------------------------------------------
-TEST_CASE("constexpr: unchecked_cast preserves in-range values",
-          "[constexpr][inside][cast]")
+// constexpr: unchecked_cast preserves in-range values
+TEST(ConstexprTest, constexpr_unchecked_cast_preserves_in_range_values)
 {
   using pct = inside<{0, 100}>;
-  STATIC_REQUIRE(unchecked_cast<pct>(42) == 42);
-  STATIC_REQUIRE(unchecked_cast<pct>(0)  ==  0);
-  STATIC_REQUIRE(unchecked_cast<pct>(100) == 100);
+  static_assert(unchecked_cast<pct>(42) == 42);
+  static_assert(unchecked_cast<pct>(0)  ==  0);
+  static_assert(unchecked_cast<pct>(100) == 100);
 }
 
-TEST_CASE("constexpr: checked_cast with in-range values",
-          "[constexpr][inside][cast]")
+// constexpr: checked_cast with in-range values
+TEST(ConstexprTest, constexpr_checked_cast_with_in_range_values)
 {
   using pct = inside<{0, 100}>;
-  STATIC_REQUIRE(checked_cast<pct>( 42) ==  42);
-  STATIC_REQUIRE(checked_cast<pct>(100) == 100);
-  STATIC_REQUIRE(checked_cast<pct>(  0) ==   0);
+  static_assert(checked_cast<pct>( 42) ==  42);
+  static_assert(checked_cast<pct>(100) == 100);
+  static_assert(checked_cast<pct>(  0) ==   0);
 }
 
-TEST_CASE("constexpr: clamp_cast clamps out-of-range",
-          "[constexpr][inside][cast]")
+// constexpr: clamp_cast clamps out-of-range
+TEST(ConstexprTest, constexpr_clamp_cast_clamps_out_of_range)
 {
   using pct = inside<{0, 100}>;
-  STATIC_REQUIRE(clamp_cast<pct>(150) == 100);
-  STATIC_REQUIRE(clamp_cast<pct>(-5)  ==   0);
-  STATIC_REQUIRE(clamp_cast<pct>( 42) ==  42);
+  static_assert(clamp_cast<pct>(150) == 100);
+  static_assert(clamp_cast<pct>(-5)  ==   0);
+  static_assert(clamp_cast<pct>( 42) ==  42);
 }
 
-TEST_CASE("constexpr: wrap_cast wraps modulo the grid",
-          "[constexpr][inside][cast]")
+// constexpr: wrap_cast wraps modulo the grid
+TEST(ConstexprTest, constexpr_wrap_cast_wraps_modulo_the_grid)
 {
   using angle = inside<{0, 359}>;
-  STATIC_REQUIRE(wrap_cast<angle>(370) ==  10);
-  STATIC_REQUIRE(wrap_cast<angle>(-10) == 350);
-  STATIC_REQUIRE(wrap_cast<angle>(180) == 180);
+  static_assert(wrap_cast<angle>(370) ==  10);
+  static_assert(wrap_cast<angle>(-10) == 350);
+  static_assert(wrap_cast<angle>(180) == 180);
 }
 
-TEST_CASE("constexpr: add_all_into / mul_all_into clip to target grid",
-          "[constexpr][inside][fold]")
+// constexpr: add_all_into / mul_all_into clip to target grid
+TEST(ConstexprTest, constexpr_add_all_into_mul_all_into_clip_to_target_grid)
 {
   using bus = inside<{-100, 100}, clamp>;
   using ch  = inside<{-50, 50}>;
   constexpr ch a{30}, b{40}, c{45};
 
   // Naive widened sum would be 115; add_all_into clips to bus's interval.
-  STATIC_REQUIRE(add_all_into<bus>(a, b, c) == 100);
-  STATIC_REQUIRE(add_all_into<bus>(ch{10}, ch{-5}, ch{3}) == 8);
+  static_assert(add_all_into<bus>(a, b, c) == 100);
+  static_assert(add_all_into<bus>(ch{10}, ch{-5}, ch{3}) == 8);
 
   using small = inside<{0, 50}, clamp>;
   using v = inside<{0, 10}>;
-  STATIC_REQUIRE(mul_all_into<small>(v{4}, v{5}) == 20);
-  STATIC_REQUIRE(mul_all_into<small>(v{6}, v{10}) == 50);  // 60 clamped
+  static_assert(mul_all_into<small>(v{4}, v{5}) == 20);
+  static_assert(mul_all_into<small>(v{6}, v{10}) == 50);  // 60 clamped
 }
 
-TEST_CASE("constexpr: clamp_floor / clamp_ceil / clamp_round",
-          "[constexpr][inside][cast][round]")
+// constexpr: clamp_floor / clamp_ceil / clamp_round
+TEST(ConstexprTest, constexpr_clamp_floor_clamp_ceil_clamp_round)
 {
   using coarse = inside<{{0, 10}, 2}>;
-  STATIC_REQUIRE(clamp_floor<coarse>( 3.0) == 2);
-  STATIC_REQUIRE(clamp_ceil <coarse>( 3.0) == 4);
-  STATIC_REQUIRE(clamp_round<coarse>( 3.0) == 4);
+  static_assert(clamp_floor<coarse>( 3.0) == 2);
+  static_assert(clamp_ceil <coarse>( 3.0) == 4);
+  static_assert(clamp_round<coarse>( 3.0) == 4);
 
   // out of range clamps to boundary
-  STATIC_REQUIRE(clamp_floor<coarse>(15.0) == 10);
-  STATIC_REQUIRE(clamp_floor<coarse>(-3.0) ==  0);
+  static_assert(clamp_floor<coarse>(15.0) == 10);
+  static_assert(clamp_floor<coarse>(-3.0) ==  0);
 }
 
-TEST_CASE("constexpr: conversion predicates", "[constexpr][inside][predicates]")
+// constexpr: conversion predicates
+TEST(ConstexprTest, constexpr_conversion_predicates)
 {
   using pct = inside<{0, 100}>;
-  STATIC_REQUIRE_FALSE(will_conversion_overflow<pct>(  50));
-  STATIC_REQUIRE      (will_conversion_overflow<pct>( 150));
-  STATIC_REQUIRE      (will_conversion_overflow<pct>(  -1));
-  STATIC_REQUIRE_FALSE(will_conversion_overflow<pct>(   0));
+  static_assert(!(will_conversion_overflow<pct>(  50)));
+  static_assert(will_conversion_overflow<pct>( 150));
+  static_assert(will_conversion_overflow<pct>(  -1));
+  static_assert(!(will_conversion_overflow<pct>(   0)));
 
   using coarse = inside<{{0, 10}, 2}>;
-  STATIC_REQUIRE_FALSE(will_conversion_trunc<coarse>(4));
-  STATIC_REQUIRE      (will_conversion_trunc<coarse>(3));
-  STATIC_REQUIRE_FALSE(will_conversion_trunc<coarse>(11));
+  static_assert(!(will_conversion_trunc<coarse>(4)));
+  static_assert(will_conversion_trunc<coarse>(3));
+  static_assert(!(will_conversion_trunc<coarse>(11)));
 
-  STATIC_REQUIRE_FALSE(is_conversion_lossy<coarse>(4));
-  STATIC_REQUIRE      (is_conversion_lossy<coarse>(3));
-  STATIC_REQUIRE      (is_conversion_lossy<coarse>(20));
+  static_assert(!(is_conversion_lossy<coarse>(4)));
+  static_assert(is_conversion_lossy<coarse>(3));
+  static_assert(is_conversion_lossy<coarse>(20));
 }
 
 //---------------------------------------------------------------------------
 // numeric_limits
 //---------------------------------------------------------------------------
-TEST_CASE("constexpr: numeric_limits<inside>", "[constexpr][numeric_limits]")
+// constexpr: numeric_limits<inside>
+TEST(ConstexprTest, constexpr_numeric_limits_inside)
 {
   using pct = inside<{0, 100}>;
   using nl  = std::numeric_limits<pct>;
-  STATIC_REQUIRE(nl::is_specialized);
-  STATIC_REQUIRE(nl::is_bounded);
-  STATIC_REQUIRE(nl::is_integer);
-  STATIC_REQUIRE(nl::is_exact);
-  STATIC_REQUIRE_FALSE(nl::is_signed);
-  STATIC_REQUIRE_FALSE(nl::is_modulo);
-  STATIC_REQUIRE(nl::min()    == pct{0});
-  STATIC_REQUIRE(nl::max()    == pct{100});
-  STATIC_REQUIRE(nl::lowest() == pct{0});
+  static_assert(nl::is_specialized);
+  static_assert(nl::is_bounded);
+  static_assert(nl::is_integer);
+  static_assert(nl::is_exact);
+  static_assert(!(nl::is_signed));
+  static_assert(!(nl::is_modulo));
+  static_assert(nl::min()    == pct{0});
+  static_assert(nl::max()    == pct{100});
+  static_assert(nl::lowest() == pct{0});
 
   // signed grid → is_signed
   using temp = inside<{-40, 60}>;
-  STATIC_REQUIRE(std::numeric_limits<temp>::is_signed);
+  static_assert(std::numeric_limits<temp>::is_signed);
 
   // wrap policy → is_modulo
   using ang = inside<{0, 359}, wrap>;
-  STATIC_REQUIRE(std::numeric_limits<ang>::is_modulo);
+  static_assert(std::numeric_limits<ang>::is_modulo);
 }
 
 //---------------------------------------------------------------------------
 // inside_range
 //---------------------------------------------------------------------------
-TEST_CASE("constexpr: inside_range iterates the full grid", "[constexpr][range]")
+// constexpr: inside_range iterates the full grid
+TEST(ConstexprTest, constexpr_inside_range_iterates_the_full_grid)
 {
   // 0 + 1 + ... + 9 = 45
   constexpr imax sum = [] {
@@ -410,7 +425,7 @@ TEST_CASE("constexpr: inside_range iterates the full grid", "[constexpr][range]"
       s += imax{i};
     return s;
   }();
-  STATIC_REQUIRE(sum == 45);
+  static_assert(sum == 45);
 
   // wrap-start: visits every element exactly once, starting mid-range
   constexpr imax sum_from_5 = [] {
@@ -419,10 +434,11 @@ TEST_CASE("constexpr: inside_range iterates the full grid", "[constexpr][range]"
       s += imax{i};
     return s;
   }();
-  STATIC_REQUIRE(sum_from_5 == 45);
+  static_assert(sum_from_5 == 45);
 }
 
-TEST_CASE("constexpr: inside_range on fractional notch grid", "[constexpr][range]")
+// constexpr: inside_range on fractional notch grid
+TEST(ConstexprTest, constexpr_inside_range_on_fractional_notch_grid)
 {
   // {-1, 1} with notch 1/2: visits -1, -0.5, 0, 0.5, 1 (5 slots).
   // Sum: -1 + -0.5 + 0 + 0.5 + 1 = 0 (so we count instead).
@@ -431,7 +447,7 @@ TEST_CASE("constexpr: inside_range on fractional notch grid", "[constexpr][range
     for (auto v : inside_range<{{-1, 1}, notch<1, 2>}>{}) { (void)v; ++n; }
     return n;
   }();
-  STATIC_REQUIRE(count == 5);
+  static_assert(count == 5);
 
   // Sum the doubled values (-1 + -0.5 + 0 + 0.5 + 1) * 2 = 0
   constexpr imax twice_sum = [] {
@@ -440,14 +456,14 @@ TEST_CASE("constexpr: inside_range on fractional notch grid", "[constexpr][range
       s += static_cast<imax>(2 * v.to<double>().value());
     return s;
   }();
-  STATIC_REQUIRE(twice_sum == 0);
+  static_assert(twice_sum == 0);
 }
 
 //---------------------------------------------------------------------------
 // policy machinery
 //---------------------------------------------------------------------------
-TEST_CASE("constexpr: implied_flags / merged_implied_flags",
-          "[constexpr][policy]")
+// constexpr: implied_flags / merged_implied_flags
+TEST(ConstexprTest, constexpr_implied_flags_merged_implied_flags)
 {
   auto noop = [](auto&, auto) {};
   auto noerr = [](auto&, errc) {};
@@ -456,72 +472,74 @@ TEST_CASE("constexpr: implied_flags / merged_implied_flags",
   using overflow_tag = on_overflow_t<decltype(noerr)>;
   using wrap_tag     = on_wrap_t<decltype(noop)>;
 
-  STATIC_REQUIRE(implied_flags<clamp_tag>    == clamp);
-  STATIC_REQUIRE(implied_flags<wrap_tag>     == wrap);
-  STATIC_REQUIRE(implied_flags<overflow_tag> == checked);
+  static_assert(implied_flags<clamp_tag>    == clamp);
+  static_assert(implied_flags<wrap_tag>     == wrap);
+  static_assert(implied_flags<overflow_tag> == checked);
 
   // OR-merge across the pack
-  STATIC_REQUIRE(merged_implied_flags<clamp_tag, overflow_tag>
+  static_assert(merged_implied_flags<clamp_tag, overflow_tag>
                  == (clamp | checked));
 }
 
-TEST_CASE("constexpr: IsPolicy / UsesErrorRef",
-          "[constexpr][policy]")
+// constexpr: IsPolicy / UsesErrorRef
+TEST(ConstexprTest, constexpr_ispolicy_useserrorref)
 {
-  STATIC_REQUIRE(IsPolicy<policy<checked>>);
-  STATIC_REQUIRE(IsPolicy<policy<none, error_ref>>);
-  STATIC_REQUIRE_FALSE(IsPolicy<int>);
+  static_assert(IsPolicy<policy<checked>>);
+  static_assert(IsPolicy<policy<none, error_ref>>);
+  static_assert(!(IsPolicy<int>));
 
-  STATIC_REQUIRE_FALSE(UsesErrorRef<policy<checked>>);
-  STATIC_REQUIRE(UsesErrorRef<policy<checked, error_ref>>);
+  static_assert(!(UsesErrorRef<policy<checked>>));
+  static_assert(UsesErrorRef<policy<checked, error_ref>>);
 }
 
 //---------------------------------------------------------------------------
 // just / _ins literal
 //---------------------------------------------------------------------------
-TEST_CASE("constexpr: just<N> and _ins literal", "[constexpr][literal]")
+// constexpr: just<N> and _ins literal
+TEST(ConstexprTest, constexpr_just_n_and_ins_literal)
 {
-  STATIC_REQUIRE(just<1>  == 1);
-  STATIC_REQUIRE(just<42> == 42);
+  static_assert(just<1>  == 1);
+  static_assert(just<42> == 42);
 
   constexpr auto five = 5_ins;
-  STATIC_REQUIRE(Lower<decltype(five)> == 5);
-  STATIC_REQUIRE(Upper<decltype(five)> == 5);
-  STATIC_REQUIRE(five == 5);
+  static_assert(Lower<decltype(five)> == 5);
+  static_assert(Upper<decltype(five)> == 5);
+  static_assert(five == 5);
 
   // Composes with inside — grid widens via add
   using pct = inside<{0, 100}>;
-  STATIC_REQUIRE(10_ins + pct{40} == 50);
+  static_assert(10_ins + pct{40} == 50);
 }
 
 //---------------------------------------------------------------------------
 // lift — additional coverage beyond test_lift.cpp
 //---------------------------------------------------------------------------
-TEST_CASE("constexpr: lift over multiple slim::optional args", "[constexpr][lift]")
+// constexpr: lift over multiple slim::optional args
+TEST(ConstexprTest, constexpr_lift_over_multiple_slim_optional_args)
 {
   constexpr auto plus = [](int a, int b) { return a + b; };
 
   constexpr slim::optional<int> a{2}, b{3};
-  STATIC_REQUIRE(*lift(plus, a, b) == 5);
+  static_assert(*lift(plus, a, b) == 5);
 
   // one empty → nullopt
   constexpr slim::optional<int> empty{slim::nullopt};
-  STATIC_REQUIRE_FALSE(lift(plus, a, empty).has_value());
+  static_assert(!(lift(plus, a, empty).has_value()));
 
   // three-arg fold over a mix of values and optionals
   constexpr auto sum3 = [](int x, int y, int z) { return x + y + z; };
-  STATIC_REQUIRE(*lift(sum3, a, 4, b) == 9);
+  static_assert(*lift(sum3, a, 4, b) == 9);
 }
 
 //---------------------------------------------------------------------------
 // slim::optional<inside> size invariant
 //---------------------------------------------------------------------------
-TEST_CASE("constexpr: optional<inside> is the same size as inside",
-          "[constexpr][optional][size]")
+// constexpr: optional<inside> is the same size as inside
+TEST(ConstexprTest, constexpr_optional_inside_is_the_same_size_as_inside)
 {
   // slim::optional<inside> uses a sentinel value rather than a bool flag.
-  STATIC_REQUIRE(sizeof(slim::optional<inside<{0, 100}>>)
+  static_assert(sizeof(slim::optional<inside<{0, 100}>>)
                  == sizeof(inside<{0, 100}>));
-  STATIC_REQUIRE(sizeof(slim::optional<inside<{-40, 85}>>)
+  static_assert(sizeof(slim::optional<inside<{-40, 85}>>)
                  == sizeof(inside<{-40, 85}>));
 }

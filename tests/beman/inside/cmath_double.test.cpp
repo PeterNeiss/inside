@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Tests for the beman::inside::math double engine (cmath_double.hpp).
 //
 // The engine is a reproducible libm in `double` (own polynomials, std::fma,
@@ -14,7 +15,7 @@
 #include <beman/inside/cmath.hpp>
 #include <beman/inside/inside.hpp>
 
-#include <catch2/catch_test_macros.hpp>
+#include <gtest/gtest.h>
 
 #include <cmath>
 #include <numbers>
@@ -37,39 +38,42 @@ namespace
   }
 }
 
-TEST_CASE("dbl: exact special values (IEEE reproducibility anchors)", "[dbl]")
+// dbl: exact special values (IEEE reproducibility anchors)
+TEST(CmathDoubleTest, dbl_exact_special_values_ieee_reproducibility_anchors)
 {
-  REQUIRE(d::d_sin(0.0)  == 0.0);
-  REQUIRE(d::d_cos(0.0)  == 1.0);
-  REQUIRE(d::d_exp(0.0)  == 1.0);
-  REQUIRE(d::d_log(1.0)  == 0.0);
-  REQUIRE(d::d_sqrt(4.0) == 2.0);
-  REQUIRE(d::d_sqrt(0.0) == 0.0);
-  REQUIRE(d::d_atan(0.0) == 0.0);
-  REQUIRE(d::d_exp2(0.0) == 1.0);
-  REQUIRE(d::d_cbrt(0.0) == 0.0);
+  ASSERT_EQ(d::d_sin(0.0), 0.0);
+  ASSERT_EQ(d::d_cos(0.0), 1.0);
+  ASSERT_EQ(d::d_exp(0.0), 1.0);
+  ASSERT_EQ(d::d_log(1.0), 0.0);
+  ASSERT_EQ(d::d_sqrt(4.0), 2.0);
+  ASSERT_EQ(d::d_sqrt(0.0), 0.0);
+  ASSERT_EQ(d::d_atan(0.0), 0.0);
+  ASSERT_EQ(d::d_exp2(0.0), 1.0);
+  ASSERT_EQ(d::d_cbrt(0.0), 0.0);
 }
 
-TEST_CASE("dbl: accuracy within a few ULP of std::", "[dbl]")
+// dbl: accuracy within a few ULP of std::
+TEST(CmathDoubleTest, dbl_accuracy_within_a_few_ulp_of_std)
 {
   // sin/cos with full range reduction (large arguments stay accurate).
-  REQUIRE(max_abs(d::d_sin, std::sin, -50.0, 50.0, 7e-4) < 1e-15);
-  REQUIRE(max_abs(d::d_cos, std::cos, -50.0, 50.0, 7e-4) < 1e-14);
-  REQUIRE(max_abs(d::d_atan, std::atan, -20.0, 20.0, 7e-4) < 1e-15);
-  REQUIRE(max_abs(d::d_log, std::log, 1e-3, 1e3, 1e-3) < 1e-14);
+  ASSERT_TRUE((max_abs(d::d_sin, std::sin, -50.0, 50.0, 7e-4) < 1e-15));
+  ASSERT_TRUE((max_abs(d::d_cos, std::cos, -50.0, 50.0, 7e-4) < 1e-14));
+  ASSERT_TRUE((max_abs(d::d_atan, std::atan, -20.0, 20.0, 7e-4) < 1e-15));
+  ASSERT_TRUE((max_abs(d::d_log, std::log, 1e-3, 1e3, 1e-3) < 1e-14));
 
   // exp/exp2/pow as relative error.
   double me = 0;
   for (double x = -20; x <= 20; x += 3e-4) me = std::max(me, std::fabs(d::d_exp(x) - std::exp(x)) / std::exp(x));
-  REQUIRE(me < 1e-14);
+  ASSERT_TRUE(me < 1e-14);
 
   // asin/acos near the full domain.
   double ma = 0;
   for (double x = -0.999; x <= 0.999; x += 3e-4) ma = std::max(ma, std::fabs(d::d_asin(x) - std::asin(x)));
-  REQUIRE(ma < 1e-14);
+  ASSERT_TRUE(ma < 1e-14);
 }
 
-TEST_CASE("dbl: end-to-end on real (double-backed) bounds", "[dbl][real]")
+// dbl: end-to-end on real (double-backed) bounds
+TEST(CmathDoubleTest, dbl_end_to_end_on_real_double_backed_bounds)
 {
   using ang = inside<{{-8, 8}, notch<1, 65536>}, real>;
   using amp = inside<{{-1, 1}, notch<1, 65536>}, real>;
@@ -81,20 +85,21 @@ TEST_CASE("dbl: end-to-end on real (double-backed) bounds", "[dbl][real]")
   // escape from the grid).
   ang x = 0.6;
   amp y = math::dbl::sin_core<amp>(x);
-  REQUIRE(double(y) == 0x1.211ap-1);   // determinism: sin(0.6) snapped to 1/65536 (~0.56476)
+  ASSERT_EQ(double(y), 0x1.211ap-1);   // determinism: sin(0.6) snapped to 1/65536 (~0.56476)
   const double scaled = double(y) * 65536.0;
-  REQUIRE(scaled == std::trunc(scaled));                         // exact grid point
+  ASSERT_EQ(scaled, std::trunc(scaled));                         // exact grid point
 
   // sin(0) round-trips to exactly 0.
   ang z = 0.0;
-  REQUIRE(double(math::dbl::sin_core<amp>(z)) == 0.0);
+  ASSERT_EQ(double(math::dbl::sin_core<amp>(z)), 0.0);
 
   // the input snaps on the way in, too: 0.6 → nearest 1/65536.
   const double xs = double(x) * 65536.0;
-  REQUIRE(xs == std::trunc(xs));
+  ASSERT_EQ(xs, std::trunc(xs));
 }
 
-TEST_CASE("dbl: real-storage arithmetic composes (double, grid-typed)", "[dbl][real]")
+// dbl: real-storage arithmetic composes (double, grid-typed)
+TEST(CmathDoubleTest, dbl_real_storage_arithmetic_composes_double_grid_typed)
 {
   using amp = inside<{{-1, 1}, notch<1, 65536>}, real>;
   using gn  = inside<{{0, 4},  notch<1, 65536>}, real>;
@@ -114,22 +119,23 @@ TEST_CASE("dbl: real-storage arithmetic composes (double, grid-typed)", "[dbl][r
 
   // Each operand and result snaps to its grid; pin the exact composed grid values
   // (deterministic across platforms). Ideals: 2.5·sin.6, 3.5·sin.6, sin.6−0.1.
-  REQUIRE(double(y) == 0x1.69608p+0);   // ~1.41190
-  REQUIRE(double(w) == 0x1.f9ed8p+0);   // ~1.97644
-  REQUIRE(double(d) == 0x1.dbccp-2);    // ~0.46484
+  ASSERT_EQ(double(y), 0x1.69608p+0);   // ~1.41190
+  ASSERT_EQ(double(w), 0x1.f9ed8p+0);   // ~1.97644
+  ASSERT_EQ(double(d), 0x1.dbccp-2);    // ~0.46484
 
-  REQUIRE((s > amp{0.5}));     // compares in double, no truncation
-  REQUIRE((s == s));
+  ASSERT_TRUE((s > amp{0.5}));     // compares in double, no truncation
+  ASSERT_TRUE((s == s));
 
   // real division → double (continuous result grid, double-backed)
   using pos = inside<{{1, 4}, notch<1, 65536>}, real>;
   pos a3 = 3.0, b2 = 2.0;
   auto q = a3 / b2;
   static_assert(std::is_same_v<decltype(q)::raw_type, double>);
-  REQUIRE(double(q) == 1.5);
+  ASSERT_EQ(double(q), 1.5);
 }
 
-TEST_CASE("dbl: mixed-sign sqrt returns expected on the double engine", "[dbl][real]")
+// dbl: mixed-sign sqrt returns expected on the double engine
+TEST(CmathDoubleTest, dbl_mixed_sign_sqrt_returns_expected_on_the_double_engine)
 {
   // Interval crosses zero → the expected-returning overload. A non-negative
   // runtime value yields the root; a negative value surfaces domain_error
@@ -138,21 +144,22 @@ TEST_CASE("dbl: mixed-sign sqrt returns expected on the double engine", "[dbl][r
 
   in nine = 9.0;
   auto r = math::sqrt(nine);
-  REQUIRE(r.has_value());
-  REQUIRE(double(*r) == 3.0);   // sqrt(9) lands exactly on the grid
+  ASSERT_TRUE(r.has_value());
+  ASSERT_EQ(double(*r), 3.0);   // sqrt(9) lands exactly on the grid
 
   in zero = 0.0;
   auto r0 = math::sqrt(zero);
-  REQUIRE(r0.has_value());
-  REQUIRE(double(*r0) == 0.0);
+  ASSERT_TRUE(r0.has_value());
+  ASSERT_EQ(double(*r0), 0.0);
 
   in neg = -1.0;
   auto rn = math::sqrt(neg);
-  REQUIRE_FALSE(rn.has_value());
-  REQUIRE(rn.error() == errc::domain_error);
+  ASSERT_FALSE(rn.has_value());
+  ASSERT_EQ(rn.error(), errc::domain_error);
 }
 
-TEST_CASE("dbl: circle<M> degree angle uses the double engine", "[dbl][real][circle]")
+// dbl: circle<M> degree angle uses the double engine
+TEST(CmathDoubleTest, dbl_circle_m_degree_angle_uses_the_double_engine)
 {
   static_assert(std::is_same_v<math::circle<360>::raw_type, double>, "circle must be double-backed in the default build");
   static_assert(std::is_same_v<math::amp<65536>::raw_type, double>, "amp must be double-backed in the default build");
@@ -161,15 +168,15 @@ TEST_CASE("dbl: circle<M> degree angle uses the double engine", "[dbl][real][cir
   math::amp<65536> y, c;
   math::sin(deg, y);
   math::cos(deg, c);
-  REQUIRE(double(y) == 0x1.7674p-1);   // sin(47°) snapped to 1/65536 (~0.73135)
-  REQUIRE(double(c) == 0x1.5d2ep-1);   // cos(47°) snapped to 1/65536 (~0.68201)
+  ASSERT_EQ(double(y), 0x1.7674p-1);   // sin(47°) snapped to 1/65536 (~0.73135)
+  ASSERT_EQ(double(c), 0x1.5d2ep-1);   // cos(47°) snapped to 1/65536 (~0.68201)
 
   // exact at cardinal degrees
   math::circle<360> d0 = 0.0, d180 = 180.0;
   math::amp<65536> s0, s180;
   math::sin(d0, s0);  math::sin(d180, s180);
-  REQUIRE(double(s0) == 0.0);
-  REQUIRE(double(s180) == 0.0);   // sin(180°) is exactly 0
+  ASSERT_EQ(double(s0), 0.0);
+  ASSERT_EQ(double(s180), 0.0);   // sin(180°) is exactly 0
 }
 
 // The algebraic tier (abs/floor/ceil/round/trunc/fmod) is exercised at compile
@@ -179,35 +186,36 @@ TEST_CASE("dbl: circle<M> degree angle uses the double engine", "[dbl][real][cir
 // fast path used to mis-store a `real` (double-backed) result as its grid INDEX
 // (e.g. fmod(7,3) came out 147448 instead of 1). This pins the double-engine
 // algebraic tier on `real` bounds against std::.
-TEST_CASE("dbl: algebraic tier on real bounds matches std::", "[dbl][real][algebraic]")
+// dbl: algebraic tier on real bounds matches std::
+TEST(CmathDoubleTest, dbl_algebraic_tier_on_real_bounds_matches_std)
 {
   using in_t  = inside<{{-8, 8}, notch<1, 16384>}, round_nearest | real>;
   using int_t = inside<{{-8, 8}, notch<1>},        round_nearest | real>;
   using abs_t = inside<{{0, 8},  notch<1, 16384>}, round_nearest | real>;
 
-  SECTION("fmod keeps the dividend's sign (truncated division)")
   {
-    REQUIRE(double(in_t{math::fmod(in_t{7.0},  in_t{3.0})}) ==  std::fmod(7.0, 3.0));   // 1
-    REQUIRE(double(in_t{math::fmod(in_t{-7.0}, in_t{3.0})}) ==  std::fmod(-7.0, 3.0));  // -1
-    REQUIRE(double(in_t{math::fmod(in_t{5.5},  in_t{2.0})}) ==  std::fmod(5.5, 2.0));   // 1.5
-    REQUIRE(double(in_t{math::fmod(in_t{7.0},  in_t{2.5})}) ==  std::fmod(7.0, 2.5));   // 2
+    SCOPED_TRACE("fmod keeps the dividend's sign (truncated division)");
+    ASSERT_EQ((double(in_t{math::fmod(in_t{7.0},  in_t{3.0})})), (std::fmod(7.0, 3.0)));   // 1
+    ASSERT_EQ((double(in_t{math::fmod(in_t{-7.0}, in_t{3.0})})), (std::fmod(-7.0, 3.0)));  // -1
+    ASSERT_EQ((double(in_t{math::fmod(in_t{5.5},  in_t{2.0})})), (std::fmod(5.5, 2.0)));   // 1.5
+    ASSERT_EQ((double(in_t{math::fmod(in_t{7.0},  in_t{2.5})})), (std::fmod(7.0, 2.5)));   // 2
   }
 
-  SECTION("floor / ceil / round / trunc")
   {
-    REQUIRE(double(int_t{math::floor(in_t{1.7})})  == std::floor(1.7));   //  1
-    REQUIRE(double(int_t{math::floor(in_t{-1.3})}) == std::floor(-1.3));  // -2
-    REQUIRE(double(int_t{math::ceil(in_t{-1.3})})  == std::ceil(-1.3));   // -1
-    REQUIRE(double(int_t{math::ceil(in_t{1.2})})   == std::ceil(1.2));    //  2
-    REQUIRE(double(int_t{math::round(in_t{1.5})})  == 2.0);               // half away from 0
-    REQUIRE(double(int_t{math::trunc(in_t{-1.7})}) == std::trunc(-1.7));  // -1
+    SCOPED_TRACE("floor / ceil / round / trunc");
+    ASSERT_EQ(double(int_t{math::floor(in_t{1.7})}), std::floor(1.7));   //  1
+    ASSERT_EQ(double(int_t{math::floor(in_t{-1.3})}), std::floor(-1.3));  // -2
+    ASSERT_EQ(double(int_t{math::ceil(in_t{-1.3})}), std::ceil(-1.3));   // -1
+    ASSERT_EQ(double(int_t{math::ceil(in_t{1.2})}), std::ceil(1.2));    //  2
+    ASSERT_EQ(double(int_t{math::round(in_t{1.5})}), 2.0);               // half away from 0
+    ASSERT_EQ(double(int_t{math::trunc(in_t{-1.7})}), std::trunc(-1.7));  // -1
   }
 
-  SECTION("abs")
   {
-    REQUIRE(double(abs_t{math::abs(in_t{-2.5})}) == 2.5);
-    REQUIRE(double(abs_t{math::abs(in_t{ 2.5})}) == 2.5);
-    REQUIRE(double(abs_t{math::abs(in_t{ 0.0})}) == 0.0);
+    SCOPED_TRACE("abs");
+    ASSERT_EQ(double(abs_t{math::abs(in_t{-2.5})}), 2.5);
+    ASSERT_EQ(double(abs_t{math::abs(in_t{ 2.5})}), 2.5);
+    ASSERT_EQ(double(abs_t{math::abs(in_t{ 0.0})}), 0.0);
   }
 }
 
@@ -215,65 +223,65 @@ TEST_CASE("dbl: algebraic tier on real bounds matches std::", "[dbl][real][algeb
 // double engine — its only tests are the `#ifdef BEMAN_INSIDE_MATH_FIXED` static_asserts
 // in test_cmath.cpp. These cross-check the double engine against std:: to ~a
 // notch, the same oracle a cross-engine diff would use.
-TEST_CASE("dbl: transcendental tier on real bounds matches std::", "[dbl][real][transcendental]")
+// dbl: transcendental tier on real bounds matches std::
+TEST(CmathDoubleTest, dbl_transcendental_tier_on_real_bounds_matches_std)
 {
   constexpr double tol = 4.0 / 16384;   // a few notches
 
-  SECTION("log / log2 / log10 — strictly positive domain")
   {
+    SCOPED_TRACE("log / log2 / log10 — strictly positive domain");
     using p = inside<{{1, 16}, notch<1, 16384>}, round_nearest | real>;
     using o = inside<{{-4, 4}, notch<1, 16384>}, round_nearest | real>;
     for (double x : {1.0, 1.5, 2.0, std::numbers::e, 8.0, 10.0, 16.0})
     {
-      REQUIRE(std::fabs(double(o{math::log(p{x})})   - std::log(x))   < tol);
-      REQUIRE(std::fabs(double(o{math::log2(p{x})})  - std::log2(x))  < tol);
-      REQUIRE(std::fabs(double(o{math::log10(p{x})}) - std::log10(x)) < tol);
+      ASSERT_TRUE(std::fabs(double(o{math::log(p{x})})   - std::log(x))   < tol);
+      ASSERT_TRUE(std::fabs(double(o{math::log2(p{x})})  - std::log2(x))  < tol);
+      ASSERT_TRUE(std::fabs(double(o{math::log10(p{x})}) - std::log10(x)) < tol);
     }
     // Anchors that must be exact-ish on the grid.
-    REQUIRE(std::fabs(double(o{math::log(p{1.0})}))   < tol);   // log 1 = 0
-    REQUIRE(std::fabs(double(o{math::log2(p{8.0})})  - 3.0) < tol);
-    REQUIRE(std::fabs(double(o{math::log10(p{10.0})}) - 1.0) < tol);
+    ASSERT_TRUE(std::fabs(double(o{math::log(p{1.0})}))   < tol);   // log 1 = 0
+    ASSERT_TRUE(std::fabs(double(o{math::log2(p{8.0})})  - 3.0) < tol);
+    ASSERT_TRUE(std::fabs(double(o{math::log10(p{10.0})}) - 1.0) < tol);
   }
 
-  SECTION("exp / exp2")
   {
+    SCOPED_TRACE("exp / exp2");
     using e_in  = inside<{{-2, 2}, notch<1, 16384>}, round_nearest | real>;
     using e_out = inside<{{0, 8},  notch<1, 16384>}, round_nearest | real>;
     for (double x : {-2.0, -1.0, -0.5, 0.0, 0.5, 1.0, 2.0})
     {
-      REQUIRE(std::fabs(double(e_out{math::exp(e_in{x})})  - std::exp(x))  < tol);
-      REQUIRE(std::fabs(double(e_out{math::exp2(e_in{x})}) - std::exp2(x)) < tol);
+      ASSERT_TRUE(std::fabs(double(e_out{math::exp(e_in{x})})  - std::exp(x))  < tol);
+      ASSERT_TRUE(std::fabs(double(e_out{math::exp2(e_in{x})}) - std::exp2(x)) < tol);
     }
   }
 
-  SECTION("asin / acos / atan on their domains")
   {
+    SCOPED_TRACE("asin / acos / atan on their domains");
     using u = inside<{{-1, 1}, notch<1, 16384>}, round_nearest | real>;
     using o = inside<{{-2, 2}, notch<1, 16384>}, round_nearest | real>;
     for (double x : {-0.9, -0.5, 0.0, 0.25, 0.5, 0.9})
     {
-      REQUIRE(std::fabs(double(o{math::asin(u{x})}) - std::asin(x)) < tol);
-      REQUIRE(std::fabs(double(o{math::acos(u{x})}) - std::acos(x)) < tol);
-      REQUIRE(std::fabs(double(o{math::atan(o{x})}) - std::atan(x)) < tol);
+      ASSERT_TRUE(std::fabs(double(o{math::asin(u{x})}) - std::asin(x)) < tol);
+      ASSERT_TRUE(std::fabs(double(o{math::acos(u{x})}) - std::acos(x)) < tol);
+      ASSERT_TRUE(std::fabs(double(o{math::atan(o{x})}) - std::atan(x)) < tol);
     }
   }
 
-  SECTION("sinh / cosh / tanh / cbrt")
   {
+    SCOPED_TRACE("sinh / cosh / tanh / cbrt");
     using s_in  = inside<{{-2, 2}, notch<1, 16384>}, round_nearest | real>;
     using s_out = inside<{{-4, 4}, notch<1, 16384>}, round_nearest | real>;
     using c_in  = inside<{{1, 8},  notch<1, 16384>}, round_nearest | real>;
     for (double x : {-2.0, -1.0, 0.0, 1.0, 2.0})
     {
-      REQUIRE(std::fabs(double(s_out{math::sinh(s_in{x})}) - std::sinh(x)) < tol);
-      REQUIRE(std::fabs(double(s_out{math::cosh(s_in{x})}) - std::cosh(x)) < tol);
-      REQUIRE(std::fabs(double(s_out{math::tanh(s_in{x})}) - std::tanh(x)) < tol);
+      ASSERT_TRUE(std::fabs(double(s_out{math::sinh(s_in{x})}) - std::sinh(x)) < tol);
+      ASSERT_TRUE(std::fabs(double(s_out{math::cosh(s_in{x})}) - std::cosh(x)) < tol);
+      ASSERT_TRUE(std::fabs(double(s_out{math::tanh(s_in{x})}) - std::tanh(x)) < tol);
     }
     for (double x : {1.0, 2.0, 3.375, 8.0})
-      REQUIRE(std::fabs(double(s_out{math::cbrt(c_in{x})}) - std::cbrt(x)) < tol);
+      ASSERT_TRUE(std::fabs(double(s_out{math::cbrt(c_in{x})}) - std::cbrt(x)) < tol);
   }
 }
-
 
 //---------------------------------------------------------------------------
 // 2026-07 regression: full-mantissa engine results must store onto plain
@@ -282,8 +290,8 @@ TEST_CASE("dbl: transcendental tier on real bounds matches std::", "[dbl][real][
 // exact 64-bit (rhs - Lower)/Notch store and terminated through the noexcept
 // engine; the 128-bit rounded store now lands the correctly rounded slot.
 //---------------------------------------------------------------------------
-TEST_CASE("dbl engine stores full-mantissa results onto integer-index snap grids",
-          "[cmath][dbl][storage][regression]")
+// dbl engine stores full-mantissa results onto integer-index snap grids
+TEST(CmathDoubleTest, dbl_engine_stores_full_mantissa_results_onto_integer_index_snap_grids)
 {
   using Ang = inside<{{-8, 8}, notch<1, 16384>}, round_nearest>;   // integer-index storage
   constexpr double half_notch = 0.5 / 16384.0;
@@ -291,8 +299,8 @@ TEST_CASE("dbl engine stores full-mantissa results onto integer-index snap grids
   for (double x : {1.0, 1.5, -1.5, 0.4636})
   {
     auto t = math::dbl::tan(Ang{x});
-    REQUIRE(t.has_value());
-    REQUIRE(std::fabs(static_cast<double>(*t) - std::tan(x)) <= half_notch * 1.01);
+    ASSERT_TRUE(t.has_value());
+    ASSERT_TRUE(std::fabs(static_cast<double>(*t) - std::tan(x)) <= half_notch * 1.01);
   }
 }
 

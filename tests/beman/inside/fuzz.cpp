@@ -1,11 +1,12 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //---------------------------------------------------------------------------
 // Copyright (C) 2026 Peter Neiss
 //---------------------------------------------------------------------------
-// inside_fuzz: deterministic property-based fuzz harness.
+// beman.inside.fuzz: deterministic property-based fuzz harness.
 //
-//   ./inside_fuzz             # random seed (printed at startup)
-//   ./inside_fuzz <seed>      # reproduce a previous run
-//   ./inside_fuzz <seed> N    # N iterations per property (default 10000)
+//   ./beman.inside.fuzz             # random seed (printed at startup)
+//   ./beman.inside.fuzz <seed>      # reproduce a previous run
+//   ./beman.inside.fuzz <seed> N    # N iterations per property (default 10000)
 //
 // On any failure, prints the seed and the failing property + iteration.
 // Run with the same seed to reproduce.
@@ -1516,7 +1517,7 @@ int main(int argc, char** argv)
   if (argc > 2) iters = std::stol(argv[2]);
   s.rng.seed(s.seed);
 
-  std::cout << "inside_fuzz: seed=" << s.seed << " iters=" << iters << "\n";
+  std::cout << "beman.inside.fuzz: seed=" << s.seed << " iters=" << iters << "\n";
 
   run_props<inside<{0, 100}>>                    (s, iters, "u100");
   run_props<inside<{-100, 100}>>                 (s, iters, "s100");

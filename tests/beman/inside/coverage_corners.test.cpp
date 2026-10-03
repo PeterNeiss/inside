@@ -1,10 +1,11 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Corner-case tests closing coverage holes surfaced by the gcov build
-// (configure with -DBEMAN_INSIDE_COVERAGE=ON, then `make coverage`).
+// (configure a Debug build with --coverage, e.g. the CI's Debug.Coverage cell).
 //
-// Each TEST_CASE names the library file:line(s) it is meant to exercise. Many
-// of these paths were already checked at *compile* time via STATIC_REQUIRE —
+// Each TEST names the library file:line(s) it is meant to exercise. Many
+// of these paths were already checked at *compile* time via static_assert —
 // which gcov does not count — so the assertions here are deliberately runtime
-// (plain REQUIRE) to drive the instrumented code.
+// (plain ASSERT_*) to drive the instrumented code.
 
 #include <beman/inside/inside.hpp>
 #include <beman/inside/cmath.hpp>
@@ -15,7 +16,7 @@
 #include <beman/inside/math.hpp>
 #include <beman/inside/detail/rational.hpp>
 
-#include <catch2/catch_test_macros.hpp>
+#include <gtest/gtest.h>
 
 #include <cmath>
 #include <limits>
@@ -24,31 +25,31 @@ using namespace beman::inside;
 using namespace beman::inside::detail;
 
 //---------------------------------------------------------------------------
-// casts.hpp:66 — checked_cast success return (was STATIC_REQUIRE only)
+// casts.hpp:66 — checked_cast success return (was static_assert only)
 //---------------------------------------------------------------------------
-TEST_CASE("checked_cast returns the value on the in-range happy path (runtime)",
-          "[cast][cover]")
+// checked_cast returns the value on the in-range happy path (runtime)
+TEST(CoverageCornersTest, checked_cast_returns_the_value_on_the_in_range_happy_path_runtime)
 {
   using pct = inside<{0, 100}>;
-  pct p = checked_cast<pct>(42);          // runtime call, not STATIC_REQUIRE
-  REQUIRE(p == 42);
+  pct p = checked_cast<pct>(42);          // runtime call, not static_assert
+  ASSERT_EQ(p, 42);
 
   using coarse = inside<{{0, 10}, 2}>;
-  REQUIRE(checked_cast<coarse>(4) == coarse{4});   // on-notch, in-range
+  ASSERT_TRUE(checked_cast<coarse>(4) == coarse{4});   // on-notch, in-range
 }
 
 //---------------------------------------------------------------------------
 // predicates.hpp:39 — will_conversion_trunc returns false out of range
 //---------------------------------------------------------------------------
-TEST_CASE("will_conversion_trunc is false for out-of-range values (runtime)",
-          "[predicates][cover]")
+// will_conversion_trunc is false for out-of-range values (runtime)
+TEST(CoverageCornersTest, will_conversion_trunc_is_false_for_out_of_range_values_runtime)
 {
   using coarse = inside<{{0, 10}, 2}>;
   // Out of range is overflow, not truncation: the predicate is false.
-  REQUIRE_FALSE(will_conversion_trunc<coarse>(11));
-  REQUIRE_FALSE(will_conversion_trunc<coarse>(-1));
+  ASSERT_FALSE(will_conversion_trunc<coarse>(11));
+  ASSERT_FALSE(will_conversion_trunc<coarse>(-1));
   // Contrast: off-notch but in range is truncation.
-  REQUIRE(will_conversion_trunc<coarse>(3));
+  ASSERT_TRUE(will_conversion_trunc<coarse>(3));
 }
 
 #ifndef BEMAN_INSIDE_MATH_FIXED
@@ -58,21 +59,22 @@ namespace d = beman::inside::math::dbl::detail;
 // cmath_double.hpp:162-163 — d_cbrt negative branch
 // cmath_double.hpp:205-207 — d_atan2 on the axes (x == 0)
 //---------------------------------------------------------------------------
-TEST_CASE("dbl: cbrt of negatives and atan2 on the axes", "[dbl][cover]")
+// dbl: cbrt of negatives and atan2 on the axes
+TEST(CoverageCornersTest, dbl_cbrt_of_negatives_and_atan2_on_the_axes)
 {
   // cbrt(x<0) = -cbrt(-x). Determinism: exact golden outputs (the engine's own
   // polynomial is bit-identical across platforms; cube roots land 1 ULP off).
-  REQUIRE(d::d_cbrt(-8.0)  == -0x1.fffffffffffffp+0);  // -2 (1 ULP low)
-  REQUIRE(d::d_cbrt(-27.0) == -0x1.7ffffffffffffp+1);  // -3 (1 ULP low)
-  REQUIRE(d::d_cbrt(27.0)  ==  0x1.7ffffffffffffp+1);  //  3 (1 ULP low)
+  ASSERT_EQ(d::d_cbrt(-8.0), -0x1.fffffffffffffp+0);  // -2 (1 ULP low)
+  ASSERT_EQ(d::d_cbrt(-27.0), -0x1.7ffffffffffffp+1);  // -3 (1 ULP low)
+  ASSERT_EQ(d::d_cbrt(27.0), 0x1.7ffffffffffffp+1);  //  3 (1 ULP low)
 
   // atan2 with x == 0: the y>0 / y<0 / y==0 axis cases (exact constants).
-  REQUIRE(d::d_atan2(1.0, 0.0)  ==  0x1.921fb54442d18p+0);  // +pi/2
-  REQUIRE(d::d_atan2(-1.0, 0.0) == -0x1.921fb54442d18p+0);  // -pi/2
-  REQUIRE(d::d_atan2(0.0, 0.0)  ==  0.0);                   //  0
+  ASSERT_EQ((d::d_atan2(1.0, 0.0)), 0x1.921fb54442d18p+0);  // +pi/2
+  ASSERT_EQ((d::d_atan2(-1.0, 0.0)), -0x1.921fb54442d18p+0);  // -pi/2
+  ASSERT_EQ((d::d_atan2(0.0, 0.0)), 0.0);                   //  0
   // and the x<0 reflective branch for good measure
-  REQUIRE(d::d_atan2(1.0, -1.0)  ==  0x1.2d97c7f3321d2p+1);  //  3pi/4
-  REQUIRE(d::d_atan2(-1.0, -1.0) == -0x1.2d97c7f3321d2p+1);  // -3pi/4
+  ASSERT_EQ((d::d_atan2(1.0, -1.0)), 0x1.2d97c7f3321d2p+1);  //  3pi/4
+  ASSERT_EQ((d::d_atan2(-1.0, -1.0)), -0x1.2d97c7f3321d2p+1);  // -3pi/4
 }
 #endif // !BEMAN_INSIDE_MATH_FIXED
 
@@ -80,35 +82,36 @@ TEST_CASE("dbl: cbrt of negatives and atan2 on the axes", "[dbl][cover]")
 // lift.hpp:116 — binary expected-lift short-circuits on a RIGHT-side error
 // (the left-error short-circuit at :114 was already covered).
 //---------------------------------------------------------------------------
-TEST_CASE("expected-lift propagates a right-hand-side error", "[errors][lift][cover]")
+// expected-lift propagates a right-hand-side error
+TEST(CoverageCornersTest, expected_lift_propagates_a_right_hand_side_error)
 {
   using num_t = inside<{0, 100}>;
   slim::expected<num_t, errc> left {num_t{5}};                       // valid
   slim::expected<num_t, errc> right{slim::unexpected{errc::overflow}};
 
   auto both = left + right;          // lhs OK, rhs error -> rhs.error() wins
-  REQUIRE_FALSE(both.has_value());
-  REQUIRE(both.error() == errc::overflow);
+  ASSERT_FALSE(both.has_value());
+  ASSERT_EQ(both.error(), errc::overflow);
 }
 
 //---------------------------------------------------------------------------
 // rational.hpp:846-866 — operator<=> cross-multiply path at runtime
-// (the existing ordering tests are STATIC_REQUIRE; the runtime path, and the
+// (the existing ordering tests are static_assert; the runtime path, and the
 //  lhs_neg branch at :863-864, were uncovered.)
 //---------------------------------------------------------------------------
-TEST_CASE("rational spaceship cross-multiply, positive and negative",
-          "[rational][cover]")
+// rational spaceship cross-multiply, positive and negative
+TEST(CoverageCornersTest, rational_spaceship_cross_multiply_positive_and_negative)
 {
   using std::strong_ordering;
 
   // Both denominators != 1, no overflow, positive operands.
-  REQUIRE((rational{1u, 2} <=> rational{1u, 3}) == strong_ordering::greater);
-  REQUIRE((rational{1u, 3} <=> rational{1u, 2}) == strong_ordering::less);
-  REQUIRE((rational{2u, 6} <=> rational{1u, 3}) == strong_ordering::equal);
+  ASSERT_EQ(((rational{1u, 2} <=> rational{1u, 3})), strong_ordering::greater);
+  ASSERT_EQ(((rational{1u, 3} <=> rational{1u, 2})), strong_ordering::less);
+  ASSERT_EQ(((rational{2u, 6} <=> rational{1u, 3})), strong_ordering::equal);
 
   // Both negative -> the lhs_neg flip (B <=> A).
-  REQUIRE((rational{1, -2} <=> rational{1, -3}) == strong_ordering::less);     // -1/2 < -1/3
-  REQUIRE((rational{1, -3} <=> rational{1, -2}) == strong_ordering::greater);  // -1/3 > -1/2
+  ASSERT_EQ(((rational{1, -2} <=> rational{1, -3})), strong_ordering::less);     // -1/2 < -1/3
+  ASSERT_EQ(((rational{1, -3} <=> rational{1, -2})), strong_ordering::greater);  // -1/3 > -1/2
 }
 
 //---------------------------------------------------------------------------
@@ -116,14 +119,14 @@ TEST_CASE("rational spaceship cross-multiply, positive and negative",
 // (distinct from the imax-cap nullopt at :307-308 exercised elsewhere: here
 //  the product exceeds 2^64, not merely imax_max.)
 //---------------------------------------------------------------------------
-TEST_CASE("rational gcd: lcm that overflows umax returns nullopt",
-          "[rational][overflow][cover]")
+// rational gcd: lcm that overflows umax returns nullopt
+TEST(CoverageCornersTest, rational_gcd_lcm_that_overflows_umax_returns_nullopt)
 {
   // Two odd, coprime denominators near 2^40; their product ~2^80 overflows umax,
   // so the cross-multiplication trap (not the imax cap) fires.
   imax a = (imax{1} << 40) + 1;
   imax b = (imax{1} << 40) + 3;
-  REQUIRE_FALSE(gcd(rational{1u, a}, rational{1u, b}).has_value());
+  ASSERT_FALSE((gcd(rational{1u, a}, rational{1u, b}).has_value()));
 }
 
 //---------------------------------------------------------------------------
@@ -132,33 +135,33 @@ TEST_CASE("rational gcd: lcm that overflows umax returns nullopt",
 // denominator overflow (:547-550) and the cross-multiply overflow (:589-595)
 // were already covered; this is the third, post-cross-multiply overflow.
 //---------------------------------------------------------------------------
-TEST_CASE("rational add: numerator sum overflow on unequal denominators",
-          "[rational][overflow][cover]")
+// rational add: numerator sum overflow on unequal denominators
+TEST(CoverageCornersTest, rational_add_numerator_sum_overflow_on_unequal_denominators)
 {
   // Denominators 2 and 6 (odd numerators so neither reduces). After cross-
   // multiply A = num_a*3, B = num_b*1 each fit in umax, but A + B exceeds 2^64.
   rational a{5999999999999999999u, 2};   // odd numerator -> stays /2
   rational b{ 999999999999999997u, 6};   // coprime to 6   -> stays /6
-  REQUIRE_FALSE((a + b).has_value());
+  ASSERT_FALSE((a + b).has_value());
 }
 
 //---------------------------------------------------------------------------
 // format.hpp:56-58 — decimal fraction needs leading-zero padding.
 //---------------------------------------------------------------------------
-TEST_CASE("rational to_string zero-pads short decimal fractions",
-          "[rational][format][cover]")
+// rational to_string zero-pads short decimal fractions
+TEST(CoverageCornersTest, rational_to_string_zero_pads_short_decimal_fractions)
 {
-  REQUIRE(beman::inside::to_string(rational{1u, 16})  == "0.0625");   // frac "625" -> "0625"
-  REQUIRE(beman::inside::to_string(rational{1u, 100}) == "0.01");     // frac  "1"  -> "01"
-  REQUIRE(beman::inside::to_string(rational{3u, 16})  == "0.1875");
+  ASSERT_EQ((beman::inside::to_string(rational{1u, 16})), "0.0625");   // frac "625" -> "0625"
+  ASSERT_EQ((beman::inside::to_string(rational{1u, 100})), "0.01");     // frac  "1"  -> "01"
+  ASSERT_EQ((beman::inside::to_string(rational{3u, 16})), "0.1875");
 }
 
 //---------------------------------------------------------------------------
 // math.hpp:158-166 — constexpr ldexp into the subnormal range, including the
 // round-to-nearest-even ++mantissa at :165-166. Validated against std::ldexp.
 //---------------------------------------------------------------------------
-TEST_CASE("ldexp into subnormal range matches std::ldexp (with rounding)",
-          "[math][cover]")
+// ldexp into subnormal range matches std::ldexp (with rounding)
+TEST(CoverageCornersTest, ldexp_into_subnormal_range_matches_std_ldexp_with_rounding)
 {
   const double mants[] = {1.0, 1.5, 1.9999999999,
                           0x1.fffffffffffffp0,    // all-ones mantissa: forces round-up
@@ -166,30 +169,32 @@ TEST_CASE("ldexp into subnormal range matches std::ldexp (with rounding)",
                           0x1.0000000000001p0};
   for (int e = -1080; e <= -1020; ++e)
     for (double m : mants)
-      REQUIRE(beman::inside::detail::ldexp(m, e) == std::ldexp(m, e));
+      ASSERT_EQ((beman::inside::detail::ldexp(m, e)), (std::ldexp(m, e)));
 }
 
 //---------------------------------------------------------------------------
 // math.hpp:193-194 — abs_fraction on a subnormal (no implicit leading 1)
 // math.hpp:215-219 — magnitudes below ~2^-62: significand-drop / flush-to-zero
 //---------------------------------------------------------------------------
-TEST_CASE("rational from subnormal and very small doubles", "[math][rational][cover]")
+// rational from subnormal and very small doubles
+TEST(CoverageCornersTest, rational_from_subnormal_and_very_small_doubles)
 {
   // Subnormal input: exercises the e==0 branch, then collapses to 0 (drop>=64).
-  REQUIRE(rational{std::numeric_limits<double>::denorm_min()} == 0_r);
+  ASSERT_EQ(rational{std::numeric_limits<double>::denorm_min()}, 0_r);
 
   // Normal but below 2^-62: the significand is shifted down and recovered by
   // the trailing reduction, yielding the exact dyadic fraction.
-  REQUIRE(rational{0x1p-40} == rational{1u, imax{1} << 40});
+  ASSERT_EQ(rational{0x1p-40}, (rational{1u, imax{1} << 40}));
 
   // Far below the cap: drops to a hard zero.
-  REQUIRE(rational{0x1p-70} == 0_r);
+  ASSERT_EQ(rational{0x1p-70}, 0_r);
 }
 
 //---------------------------------------------------------------------------
 // inside.hpp:733-734 — operator/=(integral)   inside.hpp:744-745 — operator%=
 //---------------------------------------------------------------------------
-TEST_CASE("compound /= and %= with a snap inside rhs (runtime)", "[inside][compound][cover]")
+// compound /= and %= with a snap inside rhs (runtime)
+TEST(CoverageCornersTest, compound_and_with_a_snap_inside_rhs_runtime)
 {
   // Integer division/modulo now flow through the insidable path; `snap`
   // gives the same C++ trunc-toward-zero / dividend-signed-remainder semantics
@@ -198,31 +203,32 @@ TEST_CASE("compound /= and %= with a snap inside rhs (runtime)", "[inside][compo
 
   sb a{20};
   a /= sb{3};                      // integer division, truncates toward zero
-  REQUIRE(a == 6);
+  ASSERT_EQ(a, 6);
 
   sb n{-20};
   n /= sb{3};
-  REQUIRE(n == -6);
+  ASSERT_EQ(n, -6);
 
   sb b{20};
   b %= sb{7};
-  REQUIRE(b == 6);
+  ASSERT_EQ(b, 6);
 
   sb m{-20};
   m %= sb{7};
-  REQUIRE(m == -6);                // C++ remainder keeps the dividend's sign
+  ASSERT_EQ(m, -6);                // C++ remainder keeps the dividend's sign
 }
 
 //---------------------------------------------------------------------------
 // inside.hpp — operator+=(insidable) result out of range, checked policy with
 // no clamp/wrap/sentinel handler -> report (throws).
 //---------------------------------------------------------------------------
-TEST_CASE("checked += insidable overflow reports (throws)", "[inside][compound][cover]")
+// checked += insidable overflow reports (throws)
+TEST(CoverageCornersTest, checked_plus_insidable_overflow_reports_throws)
 {
   using c100 = inside<{0, 100}, checked>;
   c100 a{80};
   c100 b{50};
-  REQUIRE_THROWS_AS(a += b, beman::inside::inside_error);   // 130 not in [0,100]
+  ASSERT_THROW((void)(a += b), beman::inside::inside_error);   // 130 not in [0,100]
 }
 
 //---------------------------------------------------------------------------
@@ -230,8 +236,8 @@ TEST_CASE("checked += insidable overflow reports (throws)", "[inside][compound][
 // The existing on_error test assigns an integer (a different assign overload);
 // this drives the fractional (double) overload.
 //---------------------------------------------------------------------------
-TEST_CASE("on_error fires for an out-of-range double assignment",
-          "[inside][policy][on_error][cover]")
+// on_error fires for an out-of-range double assignment
+TEST(CoverageCornersTest, on_error_fires_for_an_out_of_range_double_assignment)
 {
   using c100 = inside<{0, 100}, checked>;
   c100 e{50};
@@ -240,23 +246,23 @@ TEST_CASE("on_error fires for an out-of-range double assignment",
     fired = (code == errc::domain_error) && !msg.empty();
     self = 0;
   }) = 200.5;                      // fractional, out of [0,100]
-  REQUIRE(fired);
-  REQUIRE(e == 0);
+  ASSERT_TRUE(fired);
+  ASSERT_EQ(e, 0);
 }
 
 //---------------------------------------------------------------------------
 // policy.hpp — action-decorated operator-=(insidable) on the NON-overflow path
 // (existing tests only exercise the overflowing arm).
 //---------------------------------------------------------------------------
-TEST_CASE("on_overflow compound subtract that does not overflow",
-          "[inside][policy][compound][cover]")
+// on_overflow compound subtract that does not overflow
+TEST(CoverageCornersTest, on_overflow_compound_subtract_that_does_not_overflow)
 {
   using c100 = inside<{0, 100}, checked>;
   c100 acc{50};
   bool fired = false;
   acc.on_overflow([&](auto&, errc) { fired = true; }) -= 10_ins;   // 40, no overflow
-  REQUIRE_FALSE(fired);
-  REQUIRE(acc == 40);
+  ASSERT_FALSE(fired);
+  ASSERT_EQ(acc, 40);
 }
 
 #ifndef BEMAN_INSIDE_MATH_FIXED
@@ -264,15 +270,15 @@ TEST_CASE("on_overflow compound subtract that does not overflow",
 // inside.hpp:161-163 — store_real out-of-range with a reporting/sentinel policy
 // (the clamp/wrap arms are covered elsewhere; the domain_fail arm was not).
 //---------------------------------------------------------------------------
-TEST_CASE("real store out of range: sentinel and checked policies",
-          "[inside][real][cover]")
+// real store out of range: sentinel and checked policies
+TEST(CoverageCornersTest, real_store_out_of_range_sentinel_and_checked_policies)
 {
   using rbs = inside<{{-1, 1}, notch<1, 1024>}, real | sentinel>;
   rbs s = 5.0;                                   // out of range -> sentinel (domain_fail)
-  REQUIRE(s == rbs::make_sentinel());            // real sentinel is a finite, comparable value
+  ASSERT_EQ(s, rbs::make_sentinel());            // real sentinel is a finite, comparable value
 
   using rbc = inside<{{-1, 1}, notch<1, 1024>}, real | checked>;
-  REQUIRE_THROWS_AS((rbc{5.0}), beman::inside::inside_error);   // out of range -> report (throws)
+  ASSERT_THROW((void)((rbc{5.0})), beman::inside::inside_error);   // out of range -> report (throws)
 }
 #endif // !BEMAN_INSIDE_MATH_FIXED
 
@@ -281,19 +287,19 @@ TEST_CASE("real store out of range: sentinel and checked policies",
 // target decodes the source and snaps to the dyadic grid.
 //---------------------------------------------------------------------------
 #ifndef BEMAN_INSIDE_MATH_FIXED
-TEST_CASE("inside -> real conversion snaps onto the double grid",
-          "[inside][real][convert][cover]")
+// inside -> real conversion snaps onto the double grid
+TEST(CoverageCornersTest, inside_to_real_conversion_snaps_onto_the_double_grid)
 {
   using src_t = inside<{-2, 2}>;                          // integer-backed source
   using rb    = inside<{{-2, 2}, notch<1, 1024>}, real>;  // double-backed target
 
   src_t src{1};
   rb dst = src;                                          // insidable -> real store
-  REQUIRE(double(dst) == 1.0);
+  ASSERT_EQ(double(dst), 1.0);
 
   src_t neg{-2};
   rb dn = neg;
-  REQUIRE(double(dn) == -2.0);
+  ASSERT_EQ(double(dn), -2.0);
 }
 #endif // !BEMAN_INSIDE_MATH_FIXED
 
@@ -304,16 +310,16 @@ TEST_CASE("inside -> real conversion snaps onto the double grid",
 // `clamp` policy (not checked, not snap) takes the :476 else-branch
 // and truncates an in-range off-notch value silently.
 //---------------------------------------------------------------------------
-TEST_CASE("clamp policy truncates an in-range off-notch fractional assignment",
-          "[inside][policy][round][cover]")
+// clamp policy truncates an in-range off-notch fractional assignment
+TEST(CoverageCornersTest, clamp_policy_truncates_an_in_range_off_notch_fractional_assignment)
 {
   using b = inside<{{0, 10}, notch<1, 2>}, clamp>;          // notch 1/2
   b x{0};
   x = 0.3;                          // in range, off the 1/2 grid → truncates to 0
-  REQUIRE(x == 0);
+  ASSERT_EQ(x, 0);
 
   x = 0.9;                          // 0.9 → 1.8 half-notches → truncates to 1 half → 0.5
-  REQUIRE(static_cast<rational>(x) == rational{1u, 2});
+  ASSERT_TRUE((static_cast<rational>(x) == rational{1u, 2}));
 }
 
 //---------------------------------------------------------------------------
@@ -322,16 +328,16 @@ TEST_CASE("clamp policy truncates an in-range off-notch fractional assignment",
 // signed offset. Needs non-real, non-rational integer grids and a divisor
 // that excludes zero. math::fmod was otherwise only static_assert-tested.
 //---------------------------------------------------------------------------
-TEST_CASE("math::fmod integer fast path (raw_from_offset imax)",
-          "[cmath][fmod][cover]")
+// math::fmod integer fast path (raw_from_offset imax)
+TEST(CoverageCornersTest, math_fmod_integer_fast_path_raw_from_offset_imax)
 {
   using in_t  = inside<{{-8, 8}, notch<1, 16384>}, round_nearest>;  // integer-backed
   using div_t = inside<{{ 1, 8}, notch<1, 16384>}, round_nearest>;  // excludes zero
   using out_t = inside<{{-8, 8}, notch<1, 16384>}, round_nearest>;
 
-  REQUIRE(static_cast<rational>(math::fmod<out_t>(in_t{7_r},  div_t{3_r})) == 1);
-  REQUIRE(static_cast<rational>(math::fmod<out_t>(in_t{-7_r}, div_t{3_r})) == -1);  // signed offset
-  REQUIRE(static_cast<rational>(math::fmod<out_t>(in_t{5.5_r}, div_t{2_r})) == rational{3u, 2});
+  ASSERT_TRUE((static_cast<rational>(math::fmod<out_t>(in_t{7_r},  div_t{3_r})) == 1));
+  ASSERT_TRUE((static_cast<rational>(math::fmod<out_t>(in_t{-7_r}, div_t{3_r})) == -1));  // signed offset
+  ASSERT_TRUE((static_cast<rational>(math::fmod<out_t>(in_t{5.5_r}, div_t{2_r})) == rational{3u, 2}));
 }
 
 #ifndef BEMAN_INSIDE_MATH_FIXED
@@ -339,12 +345,12 @@ TEST_CASE("math::fmod integer fast path (raw_from_offset imax)",
 // generic.hpp:469 — domain_fail returns false for an unchecked policy
 // (not sentinel, domain_check()==false): the value is stored as-is.
 //---------------------------------------------------------------------------
-TEST_CASE("unsafe real store out of range falls through (no report)",
-          "[inside][real][unsafe][cover]")
+// unsafe real store out of range falls through (no report)
+TEST(CoverageCornersTest, unsafe_real_store_out_of_range_falls_through_no_report)
 {
   using rb = inside<{{-1, 1}, notch<1, 1024>}, real | unsafe>;
   rb x = 5.0;                       // out of range, unsafe: stored as-is, no throw
-  REQUIRE(double(x) == 5.0);
+  ASSERT_EQ(double(x), 5.0);
 }
 #endif // !BEMAN_INSIDE_MATH_FIXED
 
@@ -353,8 +359,8 @@ TEST_CASE("unsafe real store out of range falls through (no report)",
 // rational (non-integer-mapping) path where the target offset is NEGATIVE, so
 // raw_from_offset() is reached through the negated branch.
 //---------------------------------------------------------------------------
-TEST_CASE("cross-grid conversion of a negative off-notch value",
-          "[inside][convert][cover]")
+// cross-grid conversion of a negative off-notch value
+TEST(CoverageCornersTest, cross_grid_conversion_of_a_negative_off_notch_value)
 {
   // notch 1/2 source -> notch 1/3 target: Factor = 3/2 (non-integer mapping),
   // so the rational store path runs; the negative value drives the
@@ -367,9 +373,9 @@ TEST_CASE("cross-grid conversion of a negative off-notch value",
   // snap truncates toward ZERO in value space (matching the scalar store
   // path and div_rounded): -1.5 on the 1/3 grid → -4/3. (Was -5/3 when the old
   // path truncated the non-negative offset — i.e. toward -inf in value space.)
-  REQUIRE(static_cast<rational>(d) == rational{4, -3});
+  ASSERT_TRUE((static_cast<rational>(d) == rational{4, -3}));
 
   src_t s2{1.5};
   dst_t d2 = s2;                    // +1.5 toward zero → 4/3 (unchanged)
-  REQUIRE(static_cast<rational>(d2) == rational{4u, 3});
+  ASSERT_TRUE((static_cast<rational>(d2) == rational{4u, 3}));
 }

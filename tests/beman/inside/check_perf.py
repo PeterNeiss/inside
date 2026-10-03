@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """Cachegrind instruction-count regression gate.
 
 Runs a workload binary under `valgrind --tool=cachegrind`, reads the total
@@ -12,7 +13,7 @@ run and exits 0 with a notice — so the first CI run produces the baseline as a
 artifact to review and commit. Subsequent runs gate against it.
 
 Usage:
-  check_perf.py --binary build/perf_workload --baseline tests/perf_baseline.json
+  check_perf.py --binary build/<preset>/tests/beman/inside/beman.inside.perf_workload --baseline tests/beman/inside/perf_baseline.json
                 [--key integer_qformat] [--tol 0.05] [--update]
 """
 import argparse

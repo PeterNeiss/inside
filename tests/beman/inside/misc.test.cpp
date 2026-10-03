@@ -1,32 +1,35 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #include <beman/inside/inside.hpp>
 #include <beman/inside/io.hpp>
 #include <beman/inside/numeric_limits.hpp>
 
-#include <catch2/catch_test_macros.hpp>
+#include <gtest/gtest.h>
 
 using namespace beman::inside;
 using namespace beman::inside::detail;
 
-TEST_CASE("implicit cast to imax", "[inside][cast]")
+// implicit cast to imax
+TEST(MiscTest, implicit_cast_to_imax)
 {
   using idx = inside<{0, 9}>;
   idx a{5};
   imax val = a;
-  REQUIRE(val == 5);
+  ASSERT_EQ(val, 5);
 
   using idx2 = inside<{1, 10}>;
   idx2 b{7};
   imax val2 = b;
-  REQUIRE(val2 == 7);
+  ASSERT_EQ(val2, 7);
 
   // array subscript without explicit cast
   int arr[] = {10, 20, 30, 40, 50};
   using ai = inside<{0, 4}>;
   ai c{3};
-  REQUIRE(arr[c] == 40);
+  ASSERT_EQ(arr[c], 40);
 }
 
-TEST_CASE("inside_range sequential", "[inside][range]")
+// inside_range sequential
+TEST(MiscTest, inside_range_sequential)
 {
   int count = 0;
   imax sum = 0;
@@ -36,11 +39,12 @@ TEST_CASE("inside_range sequential", "[inside][range]")
     sum += v;
     ++count;
   }
-  REQUIRE(count == 10);
-  REQUIRE(sum   == 45);
+  ASSERT_EQ(count, 10);
+  ASSERT_EQ(sum, 45);
 }
 
-TEST_CASE("inside_range wrapping start", "[inside][range][wrap]")
+// inside_range wrapping start
+TEST(MiscTest, inside_range_wrapping_start)
 {
   int count = 0;
   imax first = -1, last = -1;
@@ -50,12 +54,13 @@ TEST_CASE("inside_range wrapping start", "[inside][range][wrap]")
     last = i;
     ++count;
   }
-  REQUIRE(count == 10);
-  REQUIRE(first ==  7);
-  REQUIRE(last  ==  6);
+  ASSERT_EQ(count, 10);
+  ASSERT_EQ(first, 7);
+  ASSERT_EQ(last, 6);
 }
 
-TEST_CASE("inside_range over signed inside", "[inside][range][signed]")
+// inside_range over signed inside
+TEST(MiscTest, inside_range_over_signed_inside)
 {
   int count = 0;
   imax first = 0, last = 0;
@@ -65,92 +70,96 @@ TEST_CASE("inside_range over signed inside", "[inside][range][signed]")
     last = i;
     ++count;
   }
-  REQUIRE(count == 5);
-  REQUIRE(first == -2);
-  REQUIRE(last  ==  2);
+  ASSERT_EQ(count, 5);
+  ASSERT_EQ(first, -2);
+  ASSERT_EQ(last, 2);
 }
 
-TEST_CASE("inside_range size 1", "[inside][range][edge]")
+// inside_range size 1
+TEST(MiscTest, inside_range_size_1)
 {
   int count = 0;
   for (auto i : inside_range<{5, 5}>{})
   {
-    REQUIRE(i == 5);
+    ASSERT_EQ(i, 5);
     ++count;
   }
-  REQUIRE(count == 1);
+  ASSERT_EQ(count, 1);
 }
 
-TEST_CASE("inside_range size 1 with negative point", "[inside][range][edge]")
+// inside_range size 1 with negative point
+TEST(MiscTest, inside_range_size_1_with_negative_point)
 {
   int count = 0;
   for (auto i : inside_range<{-3, -3}>{})
   {
-    REQUIRE(i == -3);
+    ASSERT_EQ(i, -3);
     ++count;
   }
-  REQUIRE(count == 1);
+  ASSERT_EQ(count, 1);
 }
 
-TEST_CASE("inside<{x,x}> singleton round-trips its value",
-          "[inside][edge][singleton]")
+// inside<{x,x}> singleton round-trips its value
+TEST(MiscTest, inside_x_x_singleton_round_trips_its_value)
 {
   using point_pos = inside<{5, 5}>;
   point_pos a{5};
-  REQUIRE(a == 5);
+  ASSERT_EQ(a, 5);
   imax av = a;            // implicit
-  REQUIRE(av == 5);
+  ASSERT_EQ(av, 5);
 
   using point_neg = inside<{-3, -3}>;
   point_neg b{-3};
-  REQUIRE(b == -3);
+  ASSERT_EQ(b, -3);
   imax bv = b;
-  REQUIRE(bv == -3);
+  ASSERT_EQ(bv, -3);
 
   // Float assignment to single-value rational-storage grid (notch=0)
   using point_fp = inside<{2.5_r}>;
   point_fp c = 2.5;
-  REQUIRE(c == 2.5_r);
+  ASSERT_EQ(c, 2.5_r);
 }
 
-TEST_CASE("default-constructed inside is well-formed", "[inside][default]")
+// default-constructed inside is well-formed
+TEST(MiscTest, default_constructed_inside_is_well_formed)
 {
   inside<> b;
   (void)b;
-  SUCCEED("default ctor compiles");
+  SUCCEED() << "default ctor compiles";
 }
 
-TEST_CASE("numeric_limits epsilon / round_error report 0 for exact types",
-          "[inside][numeric_limits]")
+// numeric_limits epsilon / round_error report 0 for exact types
+TEST(MiscTest, numeric_limits_epsilon_round_error_report_0_for_exact_types)
 {
   // 0 is in the interval and on the grid → epsilon == 0.
   using u8 = inside<{0, 255}>;
-  STATIC_REQUIRE(std::numeric_limits<u8>::epsilon()     == 0);
-  STATIC_REQUIRE(std::numeric_limits<u8>::round_error() == 0);
+  static_assert(std::numeric_limits<u8>::epsilon()     == 0);
+  static_assert(std::numeric_limits<u8>::round_error() == 0);
 
   using i8 = inside<{-100, 100}>;
-  STATIC_REQUIRE(std::numeric_limits<i8>::epsilon()     == 0);
-  STATIC_REQUIRE(std::numeric_limits<i8>::round_error() == 0);
+  static_assert(std::numeric_limits<i8>::epsilon()     == 0);
+  static_assert(std::numeric_limits<i8>::round_error() == 0);
 
   using half = inside<{{-40, 60}, 0.5_r}>;
-  STATIC_REQUIRE(std::numeric_limits<half>::epsilon()     == 0);
-  STATIC_REQUIRE(std::numeric_limits<half>::round_error() == 0);
+  static_assert(std::numeric_limits<half>::epsilon()     == 0);
+  static_assert(std::numeric_limits<half>::round_error() == 0);
 
   // Rational raw (Notch = 0) — still exact, epsilon = 0.
   using r01 = inside<{{0_r, 1_r}, 0}>;
-  STATIC_REQUIRE(std::numeric_limits<r01>::epsilon() == 0);
+  static_assert(std::numeric_limits<r01>::epsilon() == 0);
 
   // 0 is *outside* the interval — fall back to Lower (the closest representable).
   using above_zero = inside<{10, 100}>;
-  STATIC_REQUIRE(std::numeric_limits<above_zero>::epsilon()     == 10);
-  STATIC_REQUIRE(std::numeric_limits<above_zero>::round_error() == 10);
+  static_assert(std::numeric_limits<above_zero>::epsilon()     == 10);
+  static_assert(std::numeric_limits<above_zero>::round_error() == 10);
 }
 
-TEST_CASE("errc_message stringifies every errc", "[error][category]")
+// errc_message stringifies every errc
+TEST(MiscTest, errc_message_stringifies_every_errc)
 {
-  REQUIRE(std::string_view{errc_message(errc::domain_error)}     == "value outside interval");
-  REQUIRE(std::string_view{errc_message(errc::division_by_zero)}  == "division by zero");
-  REQUIRE(std::string_view{errc_message(errc::overflow)}          == "rational arithmetic overflow");
-  REQUIRE(std::string_view{errc_message(errc::rounding_error)}    == "notch incompatibility");
-  REQUIRE(std::string_view{errc_message(static_cast<errc>(999))}  == "unknown inside error");
+  ASSERT_EQ(std::string_view{errc_message(errc::domain_error)}, "value outside interval");
+  ASSERT_EQ(std::string_view{errc_message(errc::division_by_zero)}, "division by zero");
+  ASSERT_EQ(std::string_view{errc_message(errc::overflow)}, "rational arithmetic overflow");
+  ASSERT_EQ(std::string_view{errc_message(errc::rounding_error)}, "notch incompatibility");
+  ASSERT_EQ(std::string_view{errc_message(static_cast<errc>(999))}, "unknown inside error");
 }

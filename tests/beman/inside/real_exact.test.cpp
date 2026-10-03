@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // real (double-backed) arithmetic vs. the exact rational oracle.
 //
 // Premise of the `real` policy: on a dyadic grid every on-grid value is exact in
@@ -15,8 +16,7 @@
 #include <beman/inside/inside.hpp>
 #include <beman/inside/io.hpp>
 
-#include <catch2/catch_test_macros.hpp>
-#include <catch2/catch_get_random_seed.hpp>
+#include <gtest/gtest.h>
 
 #include <cmath>
 #include <random>
@@ -39,11 +39,11 @@ namespace
     if constexpr (f64_raw<R>)
     {
       const double v = r.raw();
-      INFO(op << " raw=" << v);
+      SCOPED_TRACE(::testing::Message() << op << " raw=" << v);
       if (!r.is_sentinel())
       {
-        REQUIRE(std::isfinite(v));
-        REQUIRE((v == 0.0 || std::isnormal(v)));
+        ASSERT_TRUE(std::isfinite(v));
+        ASSERT_TRUE((v == 0.0 || std::isnormal(v)));
       }
     }
   }
@@ -59,22 +59,22 @@ namespace
     if constexpr (requires { a + b; })
     {
       auto r = a + b;
-      INFO("+ a=" << to_string(ar) << " b=" << to_string(br));
-      REQUIRE(static_cast<rational>(r) == *(ar + br));
+      SCOPED_TRACE(::testing::Message() << "+ a=" << to_string(ar) << " b=" << to_string(br));
+      ASSERT_TRUE(static_cast<rational>(r) == *(ar + br));
       check_bits(r, "+");
     }
     if constexpr (requires { a - b; })
     {
       auto r = a - b;
-      INFO("- a=" << to_string(ar) << " b=" << to_string(br));
-      REQUIRE(static_cast<rational>(r) == *(ar - br));
+      SCOPED_TRACE(::testing::Message() << "- a=" << to_string(ar) << " b=" << to_string(br));
+      ASSERT_TRUE(static_cast<rational>(r) == *(ar - br));
       check_bits(r, "-");
     }
     if constexpr (requires { a * b; })
     {
       auto r = a * b;
-      INFO("* a=" << to_string(ar) << " b=" << to_string(br));
-      REQUIRE(static_cast<rational>(r) == *(ar * br));
+      SCOPED_TRACE(::testing::Message() << "* a=" << to_string(ar) << " b=" << to_string(br));
+      ASSERT_TRUE(static_cast<rational>(r) == *(ar * br));
       check_bits(r, "*");
     }
   }
@@ -107,7 +107,8 @@ namespace
 // 2^28-1 < 2^53); the product 16 - 2^-23 + 2^-52 rounds off the 2^-52 term
 // because |product| ~ 16 has ULP 2^-49. The exact path keeps it.
 //---------------------------------------------------------------------------
-TEST_CASE("real * drops bits below the product-binade ULP", "[real][exact][mantissa]")
+// real * drops bits below the product-binade ULP
+TEST(RealExactTest, real_drops_bits_below_the_product_binade_ulp)
 {
   using U = inside<{{0, 4}, notch<1, (1u << 26)>}, real>;   // f=26, exact operand
   static_assert(std::is_same_v<U::raw_type, double>);
@@ -116,36 +117,51 @@ TEST_CASE("real * drops bits below the product-binade ULP", "[real][exact][manti
   const rational ar = static_cast<rational>(a);
 
   auto p = a * a;
-  INFO("a=" << to_string(ar));
-  REQUIRE(static_cast<rational>(p) == *(ar * ar));
+  SCOPED_TRACE(::testing::Message() << "a=" << to_string(ar));
+  ASSERT_TRUE(static_cast<rational>(p) == *(ar * ar));
 }
 
 //---------------------------------------------------------------------------
 // Fuzz sweep across dyadic real grids spanning double-exact and
 // double-inexact cases (the latter via product numerators crossing 2^53).
 //---------------------------------------------------------------------------
-TEST_CASE("real +,-,* match the exact rational oracle", "[real][exact][fuzz]")
+// real +,-,* match the exact rational oracle / double-exact: small notches, modest range (must always hold)
+TEST(RealExactTest, real_plus_match_the_exact_rational_oracle__double_exact_small_notches_modest_range_must_always_hold)
 {
-  std::mt19937_64 rng(Catch::getSeed() ^ 0x9E3779B97F4A7C15ull);
+  std::mt19937_64 rng(static_cast<unsigned>(::testing::UnitTest::GetInstance()->random_seed()) ^ 0x9E3779B97F4A7C15ull);
 
-  SECTION("double-exact: small notches, modest range (must always hold)")
   {
+    SCOPED_TRACE("double-exact: small notches, modest range (must always hold)");
     using A = inside<{{-8, 8}, notch<1, 65536>}, real>;
     using B = inside<{{-8, 8}, notch<1, 256>}, real>;
     sweep<A, A>(rng, 2000);
     sweep<A, B>(rng, 2000);
   }
 
-  SECTION("mantissa: product numerator crosses 2^53")
+}
+
+// real +,-,* match the exact rational oracle / mantissa: product numerator crosses 2^53
+TEST(RealExactTest, real_plus_match_the_exact_rational_oracle__mantissa_product_numerator_crosses_2_53)
+{
+  std::mt19937_64 rng(static_cast<unsigned>(::testing::UnitTest::GetInstance()->random_seed()) ^ 0x9E3779B97F4A7C15ull);
+
   {
+    SCOPED_TRACE("mantissa: product numerator crosses 2^53");
     using A = inside<{{0, 4}, notch<1, (1u << 26)>}, real>;     // f=26
     using B = inside<{{0, 4}, notch<1, (1u << 27)>}, real>;     // f=27 -> f_prod=53
     sweep<A, A>(rng, 2000);
     sweep<A, B>(rng, 2000);
   }
 
-  SECTION("exponent-coarsening: fine value combined with a large one")
+}
+
+// real +,-,* match the exact rational oracle / exponent-coarsening: fine value combined with a large one
+TEST(RealExactTest, real_plus_match_the_exact_rational_oracle__exponent_coarsening_fine_value_combined_with_a_large_one)
+{
+  std::mt19937_64 rng(static_cast<unsigned>(::testing::UnitTest::GetInstance()->random_seed()) ^ 0x9E3779B97F4A7C15ull);
+
   {
+    SCOPED_TRACE("exponent-coarsening: fine value combined with a large one");
     // A lives in a high binade (ULP ~2^-12); B carries bits down to 2^-20.
     // A+B / A*B must keep B's sub-ULP bits, but the double op drops them.
     using A = inside<{{0, (umax{1} << 40)}, notch<1, 2>}, real>;   // large, coarse
@@ -153,8 +169,15 @@ TEST_CASE("real +,-,* match the exact rational oracle", "[real][exact][fuzz]")
     sweep<A, B>(rng, 2000);
   }
 
-  SECTION("signed grids cross zero (all four multiply quadrants)")
+}
+
+// real +,-,* match the exact rational oracle / signed grids cross zero (all four multiply quadrants)
+TEST(RealExactTest, real_plus_match_the_exact_rational_oracle__signed_grids_cross_zero_all_four_multiply_quadrants)
+{
+  std::mt19937_64 rng(static_cast<unsigned>(::testing::UnitTest::GetInstance()->random_seed()) ^ 0x9E3779B97F4A7C15ull);
+
   {
+    SCOPED_TRACE("signed grids cross zero (all four multiply quadrants)");
     using A = inside<{{-8, 8}, notch<1, 1024>}, real>;
     using B = inside<{{-4, 12}, notch<1, 4096>}, real>;            // asymmetric, crosses 0
     sweep<A, A>(rng, 3000);
@@ -164,8 +187,15 @@ TEST_CASE("real +,-,* match the exact rational oracle", "[real][exact][fuzz]")
     sweep<C, C>(rng, 3000);
   }
 
-  SECTION("mixed: real operand with a non-real one")
+}
+
+// real +,-,* match the exact rational oracle / mixed: real operand with a non-real one
+TEST(RealExactTest, real_plus_match_the_exact_rational_oracle__mixed_real_operand_with_a_non_real_one)
+{
+  std::mt19937_64 rng(static_cast<unsigned>(::testing::UnitTest::GetInstance()->random_seed()) ^ 0x9E3779B97F4A7C15ull);
+
   {
+    SCOPED_TRACE("mixed: real operand with a non-real one");
     using Re  = inside<{{-8, 8}, notch<1, 1024>}, real>;
     using Int = inside<{-5, 5}>;                       // integer-direct storage
     using Fr  = inside<{{-8, 8}, notch<1, 4>}>;        // fractional notch-offset storage
@@ -189,8 +219,8 @@ namespace
     const double lo = static_cast<double>(Lower<R>);
     const double nd = static_cast<double>(Notch<R>);
     const double expect = lo + std::round((x - lo) / nd) * nd;
-    INFO("x=" << x << " expect=" << expect << " got=" << static_cast<double>(r));
-    REQUIRE(static_cast<double>(r) == expect);
+    SCOPED_TRACE(::testing::Message() << "x=" << x << " expect=" << expect << " got=" << static_cast<double>(r));
+    ASSERT_TRUE(static_cast<double>(r) == expect);
   }
 }
 
@@ -198,8 +228,8 @@ namespace
 // snap_double rounding: half away from zero, no predecessor-of-0.5 error, on
 // both signs. Exercises exact ties (k+0.5 notches) and random off-grid inputs.
 //---------------------------------------------------------------------------
-TEST_CASE("real assignment snaps to nearest grid, ties away from zero",
-          "[real][exact][snap]")
+// real assignment snaps to nearest grid, ties away from zero
+TEST(RealExactTest, real_assignment_snaps_to_nearest_grid_ties_away_from_zero)
 {
   using R = inside<{{-4, 4}, notch<1, 256>}, real>;    // double-exact, crosses zero
   const double nd = static_cast<double>(Notch<R>);
@@ -212,7 +242,7 @@ TEST_CASE("real assignment snaps to nearest grid, ties away from zero",
   }
 
   // random off-grid inputs
-  std::mt19937_64 rng(Catch::getSeed() ^ 0xD1B54A32D192ED03ull);
+  std::mt19937_64 rng(static_cast<unsigned>(::testing::UnitTest::GetInstance()->random_seed()) ^ 0xD1B54A32D192ED03ull);
   std::uniform_real_distribution<double> d(-3.999, 3.999);
   for (int i = 0; i < 20000; ++i) check_snap<R>(d(rng));
 
@@ -227,11 +257,11 @@ TEST_CASE("real assignment snaps to nearest grid, ties away from zero",
 // (catches divergence/storage faults that only appear after a real result is
 // fed back into another op, possibly after `real` was dropped).
 //---------------------------------------------------------------------------
-TEST_CASE("chained real arithmetic stays exact vs the rational oracle",
-          "[real][exact][chain]")
+// chained real arithmetic stays exact vs the rational oracle
+TEST(RealExactTest, chained_real_arithmetic_stays_exact_vs_the_rational_oracle)
 {
   using A = inside<{{-4, 4}, notch<1, 4096>}, real>;
-  std::mt19937_64 rng(Catch::getSeed() ^ 0x243F6A8885A308D3ull);
+  std::mt19937_64 rng(static_cast<unsigned>(::testing::UnitTest::GetInstance()->random_seed()) ^ 0x243F6A8885A308D3ull);
 
   auto val = [&](){
     const double nd = static_cast<double>(Notch<A>);
@@ -246,10 +276,10 @@ TEST_CASE("chained real arithmetic stays exact vs the rational oracle",
     const rational br = static_cast<rational>(b);
     const rational cr = static_cast<rational>(c);
 
-    INFO("a=" << to_string(ar) << " b=" << to_string(br) << " c=" << to_string(cr));
-    REQUIRE(static_cast<rational>((a * b) + c) == *(*(ar * br) + cr));
-    REQUIRE(static_cast<rational>((a + b) * c) == *(*(ar + br) * cr));
-    REQUIRE(static_cast<rational>((a - b) * c) == *(*(ar - br) * cr));
+    SCOPED_TRACE(::testing::Message() << "a=" << to_string(ar) << " b=" << to_string(br) << " c=" << to_string(cr));
+    ASSERT_TRUE(static_cast<rational>((a * b) + c) == *(*(ar * br) + cr));
+    ASSERT_TRUE(static_cast<rational>((a + b) * c) == *(*(ar + br) * cr));
+    ASSERT_TRUE(static_cast<rational>((a - b) * c) == *(*(ar - br) * cr));
   }
 }
 
@@ -257,17 +287,18 @@ TEST_CASE("chained real arithmetic stays exact vs the rational oracle",
 // Sentinel round-trips through is_sentinel, and a real inside's raw is never a
 // non-sentinel NaN/inf/subnormal. The real sentinel is a finite, comparable slot.
 //---------------------------------------------------------------------------
-TEST_CASE("real sentinel round-trips; raw stays clean", "[real][exact][sentinel]")
+// real sentinel round-trips; raw stays clean
+TEST(RealExactTest, real_sentinel_round_trips_raw_stays_clean)
 {
   using R = inside<{{-4, 4}, notch<1, 1024>}, real | sentinel>;
   static_assert(std::is_same_v<R::raw_type, double>);
 
   R s = R::make_sentinel();
-  REQUIRE(s.is_sentinel());
+  ASSERT_TRUE(s.is_sentinel());
 
   R v = 1.5;
-  REQUIRE_FALSE(v.is_sentinel());
-  REQUIRE(std::isnormal(v.raw()));
+  ASSERT_FALSE(v.is_sentinel());
+  ASSERT_TRUE(std::isnormal(v.raw()));
 }
 
 //---------------------------------------------------------------------------
@@ -275,26 +306,27 @@ TEST_CASE("real sentinel round-trips; raw stays clean", "[real][exact][sentinel]
 // rational path), instead of silently storing inf/a sentinel. The return type
 // widens to optional<result> exactly when the divisor grid can be zero.
 //---------------------------------------------------------------------------
-TEST_CASE("real division by zero is reported, not stored as inf", "[real][exact][div0]")
+// real division by zero is reported, not stored as inf
+TEST(RealExactTest, real_division_by_zero_is_reported_not_stored_as_inf)
 {
   using N  = inside<{{1, 4}, notch<1, 1024>}, real>;
   using Dz = inside<{{0, 4}, notch<1, 1024>}, real>;   // divisor grid spans zero
 
   // divisor can be zero -> return widens to optional; zero divisor -> nullopt
   auto q = N{3.0} / Dz{0.0};
-  REQUIRE_FALSE(q.has_value());
-  REQUIRE((N{3.0} / Dz{2.0}).has_value());            // nonzero divisor: value present
+  ASSERT_FALSE(q.has_value());
+  ASSERT_TRUE((N{3.0} / Dz{2.0}).has_value());            // nonzero divisor: value present
 
   // divisor excludes zero -> plain (non-optional) result; double() compiles only
   // because it is an inside, not an optional
   auto p = N{3.0} / N{2.0};
-  REQUIRE(static_cast<double>(p) == 1.5);
+  ASSERT_TRUE(static_cast<double>(p) == 1.5);
 
   // expected lift surfaces the error code
   slim::expected<N, errc> en{N{3.0}};
   auto z = en / Dz{0.0};
-  REQUIRE_FALSE(z.has_value());
-  REQUIRE(z.error() == errc::division_by_zero);
+  ASSERT_FALSE(z.has_value());
+  ASSERT_EQ(z.error(), errc::division_by_zero);
 }
 
 //---------------------------------------------------------------------------
@@ -302,7 +334,8 @@ TEST_CASE("real division by zero is reported, not stored as inf", "[real][exact]
 // — exact, no cryptic compile error — and an unrepresentable product reports
 // overflow rather than silently wrapping.
 //---------------------------------------------------------------------------
-TEST_CASE("over-fine real product deduces rational, stays exact", "[real][exact][fallback]")
+// over-fine real product deduces rational, stays exact
+TEST(RealExactTest, over_fine_real_product_deduces_rational_stays_exact)
 {
   using A = inside<{{0, (1u << 17)}, notch<1, (1u << 16)>}, real>;   // N up to 2^33 < 2^53
   static_assert(std::is_same_v<A::raw_type, double>);
@@ -311,8 +344,8 @@ TEST_CASE("over-fine real product deduces rational, stays exact", "[real][exact]
   // overflow-checked (return widens to optional). 2^17 * 2^17 = 2^34 is exact.
   A a = static_cast<double>(1u << 17);
   auto p = a * a;
-  REQUIRE(p.has_value());
-  REQUIRE(static_cast<rational>(*p) == rational{umax{1} << 34});
+  ASSERT_TRUE(p.has_value());
+  ASSERT_TRUE(static_cast<rational>(*p) == rational{umax{1} << 34});
 }
 
 //---------------------------------------------------------------------------
@@ -321,7 +354,8 @@ TEST_CASE("over-fine real product deduces rational, stays exact", "[real][exact]
 // than poisoning the raw double. Exercises the non-finite branch in
 // store_checked for fp_raw storage.
 //---------------------------------------------------------------------------
-TEST_CASE("real storage rejects non-finite assignment", "[real][error]")
+// real storage rejects non-finite assignment
+TEST(RealExactTest, real_storage_rejects_non_finite_assignment)
 {
   using R = inside<{{-8, 8}, notch<1, 65536>}, real>;
   static_assert(std::is_same_v<R::raw_type, double>);
@@ -331,9 +365,9 @@ TEST_CASE("real storage rejects non-finite assignment", "[real][error]")
     catch (beman::inside::inside_error const& e) { return e.code == errc::not_finite; }
   };
 
-  REQUIRE(threw_not_finite([]{ R x = std::nan(""); (void)x; }));
-  REQUIRE(threw_not_finite([]{ R x = std::numeric_limits<double>::infinity(); (void)x; }));
-  REQUIRE(threw_not_finite([]{ R x = -std::numeric_limits<double>::infinity(); (void)x; }));
+  ASSERT_TRUE(threw_not_finite([]{ R x = std::nan(""); (void)x; }));
+  ASSERT_TRUE(threw_not_finite([]{ R x = std::numeric_limits<double>::infinity(); (void)x; }));
+  ASSERT_TRUE(threw_not_finite([]{ R x = -std::numeric_limits<double>::infinity(); (void)x; }));
 }
 
 #endif // !BEMAN_INSIDE_MATH_FIXED
