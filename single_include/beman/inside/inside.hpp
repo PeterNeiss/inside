@@ -3429,8 +3429,8 @@ namespace beman::inside::detail
           // real target: raw IS the value — snap to the dyadic grid (range handling
           // already ran in the assign cascade; finite guard mirrors store_f64's).
           const double v = static_cast<double>(rhs);
-          if (!(v - v == 0))
-            detail::raise(errc::not_finite, "non-finite double");
+          if (!(v - v == 0)) [[unlikely]]                  // assign() screens these first
+          { policy.report(errc::not_finite); return false; }
           lhs = L::from_raw(snap_double<Grid<L>, rounding_for<L, P>>(v));
           return true;
         }
@@ -3561,6 +3561,21 @@ namespace beman::inside::detail
       template<typename P, typename A = no_action>
       static constexpr L& assign(L& lhs, R const& rhs, P&& policy, A&& action = {})
       {
+        // NaN / ±inf: no rational value to round or range-check. clamp saturates
+        // an infinity; everything else reports not_finite through the policy.
+        if constexpr (std::floating_point<R>)
+          if (!(rhs - rhs == 0)) [[unlikely]]
+          {
+            if constexpr (HasPolicy<L, P, clamp>)
+              if (rhs == rhs)
+                return assignment<L, rational>::assign(lhs, rhs > 0 ? Upper<L> : Lower<L>, policy);
+            if constexpr (error_action<plain<A>>)
+              action.fn(lhs, errc::not_finite, errc_message(errc::not_finite));
+            else
+              policy.report(errc::not_finite);
+            return lhs;
+          }
+
         if (not includes(Interval<L>, rhs)) [[unlikely]]
         {
           // Fractional path has no wrap *action* branch (Wrappable = false).
@@ -5084,12 +5099,18 @@ namespace beman::inside
     constexpr void store_fp(double v, Pol& pol)
     {
       constexpr policy_flag F = P | detail::policy_flags_of<std::remove_cvref_t<Pol>>;
-      // NaN/±inf would reach snap_double's integer cast (UB); reject like the
-      // non-real path. `v - v` is 0 for every finite v, NaN otherwise.
-      if (!(v - v == 0))
-        detail::raise(errc::not_finite, "non-finite double");
       const double lo = static_cast<double>(G.Interval.Lower);
       const double hi = static_cast<double>(G.Interval.Upper);
+      // NaN/±inf (`v - v` is NaN exactly then): clamp saturates an infinity,
+      // anything else reports not_finite through the policy, like the
+      // rational path.
+      if (!(v - v == 0)) [[unlikely]]
+      {
+        if constexpr (has_flag(F, clamp))
+          if (v == v) { Raw = static_cast<raw_type>(v > 0 ? hi : lo); return; }
+        pol.report(errc::not_finite);
+        return;
+      }
       if (v < lo || v > hi)
       {
         if constexpr (has_flag(F, clamp))

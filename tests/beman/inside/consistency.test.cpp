@@ -9,6 +9,8 @@
 
 #include <gtest/gtest.h>
 
+#include <limits>
+
 using namespace beman::inside;
 using namespace beman::inside::detail;
 
@@ -271,4 +273,32 @@ TEST(ConsistencyTest, math_store_checks_range_before_rounding)
   EXPECT_EQ(rational{math::detail::store_grid<O>(q(31, 4))}, q(8));
   using C = inside<{0, 8}, clamp | round_nearest>;
   EXPECT_EQ(rational{math::detail::store_grid<C>(q(33, 4))}, q(8));
+}
+
+// NaN / ±inf go through the policy like any other bad value: the error-code
+// constructor and try_make report not_finite, clamp saturates an infinity.
+TEST(ConsistencyTest, non_finite_input_goes_through_the_policy)
+{
+  const double nan = std::numeric_limits<double>::quiet_NaN();
+  const double inf = std::numeric_limits<double>::infinity();
+  using X = inside<{0, 10}, round_nearest | checked>;
+  errc ec{};
+  X x(nan, ec);
+  EXPECT_EQ(ec, errc::not_finite);
+  auto t = X::try_make(inf);
+  ASSERT_FALSE(t.has_value());
+  EXPECT_EQ(t.error(), errc::not_finite);
+  EXPECT_THROW((void)X{nan}, inside_error);
+
+  using C = inside<{0, 10}, round_nearest | clamp>;
+  EXPECT_EQ(rational{C{inf}}, q(10));
+  EXPECT_EQ(rational{C{-inf}}, q(0));
+#ifndef BEMAN_INSIDE_MATH_FIXED
+  using F = inside<{{0, 10}, notch<1, 2>}, f64>;
+  errc fe{};
+  F f(nan, fe);
+  EXPECT_EQ(fe, errc::not_finite);
+  using FC = inside<{{0, 10}, notch<1, 2>}, f64 | clamp>;
+  EXPECT_EQ(FC{inf}.raw(), 10.0);
+#endif
 }

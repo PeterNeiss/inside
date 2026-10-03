@@ -119,12 +119,18 @@ namespace beman::inside
     constexpr void store_fp(double v, Pol& pol)
     {
       constexpr policy_flag F = P | detail::policy_flags_of<std::remove_cvref_t<Pol>>;
-      // NaN/±inf would reach snap_double's integer cast (UB); reject like the
-      // non-real path. `v - v` is 0 for every finite v, NaN otherwise.
-      if (!(v - v == 0))
-        detail::raise(errc::not_finite, "non-finite double");
       const double lo = static_cast<double>(G.Interval.Lower);
       const double hi = static_cast<double>(G.Interval.Upper);
+      // NaN/±inf (`v - v` is NaN exactly then): clamp saturates an infinity,
+      // anything else reports not_finite through the policy, like the
+      // rational path.
+      if (!(v - v == 0)) [[unlikely]]
+      {
+        if constexpr (has_flag(F, clamp))
+          if (v == v) { Raw = static_cast<raw_type>(v > 0 ? hi : lo); return; }
+        pol.report(errc::not_finite);
+        return;
+      }
       if (v < lo || v > hi)
       {
         if constexpr (has_flag(F, clamp))
