@@ -269,6 +269,13 @@ namespace beman::inside::detail
     return (v.Denominator < 0) ? -1 : 1;
   }
 
+  // The numerator with the value's sign, as imax (callers ensure it fits).
+  [[nodiscard]] constexpr imax signed_numerator(rational v) noexcept
+  {
+    const imax n = static_cast<imax>(v.Numerator);
+    return (v.Denominator < 0) ? -n : n;
+  }
+
   [[nodiscard]] constexpr imax trunc(rational v)
   {
     umax q = v.Numerator / abs_den(v.Denominator);
@@ -778,7 +785,7 @@ namespace beman::inside::detail
 
     rational r;
     r.Numerator   = abs_den(a.Denominator);
-    r.Denominator = (a.Denominator < 0) ? -a.Numerator : a.Numerator;
+    r.Denominator = signed_numerator(a);
     return ret_t{r};
   }
 

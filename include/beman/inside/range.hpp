@@ -119,22 +119,22 @@ namespace beman::inside
         // engine: for index storage the iterator index IS the raw (it stays in
         // [0, NotchCount], which the raw type holds); integer-grid value
         // storage is a multiply-add in raw space. Rational/fp raws keep the exact generic path.
-        if constexpr (beman::inside::detail::index_raw<value_type>)
+        if constexpr (detail::index_raw<value_type>)
           return value_type::from_raw(
               static_cast<typename value_type::raw_type>(slot()));
-        else if constexpr (beman::inside::detail::value_raw<value_type>
-                           && beman::inside::detail::abs_den(Notch<value_type>.Denominator) == 1
-                           && beman::inside::detail::abs_den(Lower<value_type>.Denominator) == 1)
+        else if constexpr (detail::value_raw<value_type>
+                           && detail::abs_den(Notch<value_type>.Denominator) == 1
+                           && detail::abs_den(Lower<value_type>.Denominator) == 1)
         {
           constexpr imax notch_step = static_cast<imax>(Notch<value_type>.Numerator);
           return value_type::from_raw(static_cast<typename value_type::raw_type>(
-              beman::inside::detail::LowerImax<value_type>
+              detail::LowerImax<value_type>
               + static_cast<imax>(slot()) * notch_step));
         }
         else
         {
-          beman::inside::detail::rational val = (G.Interval.Lower
-                          + (beman::inside::detail::rational{slot()} * G.Notch).value()).value();
+          detail::rational val = (G.Interval.Lower
+                          + (detail::rational{slot()} * G.Notch).value()).value();
           return value_type{val};
         }
       }

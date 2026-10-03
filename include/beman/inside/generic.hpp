@@ -48,13 +48,13 @@ namespace beman::inside
       {std::numeric_limits<I>::lowest(), std::numeric_limits<I>::max()};
 
   template <insidable B>
-  inline constexpr beman::inside::detail::rational Lower = []<grid G, policy_flag P>(inside<G, P>){ return G.Interval.Lower; } (B{});
+  inline constexpr detail::rational Lower = []<grid G, policy_flag P>(inside<G, P>){ return G.Interval.Lower; } (B{});
 
   template <insidable B>
-  inline constexpr beman::inside::detail::rational Upper = []<grid G, policy_flag P>(inside<G, P>){ return G.Interval.Upper; } (B{});
+  inline constexpr detail::rational Upper = []<grid G, policy_flag P>(inside<G, P>){ return G.Interval.Upper; } (B{});
 
   template <insidable B>
-  inline constexpr beman::inside::detail::rational Notch = []<grid G, policy_flag P>(inside<G, P>){ return G.Notch; } (B{});
+  inline constexpr detail::rational Notch = []<grid G, policy_flag P>(inside<G, P>){ return G.Notch; } (B{});
 
   template <typename N>
   concept numeric = insidable<N> or arithmetic<N>;
@@ -134,12 +134,12 @@ namespace beman::inside
     template <insidable B>
     inline constexpr bool value_raw =
          !fp_raw<B> && !rational_raw<B>
-      && ((InsidePolicy<B> & beman::inside::direct) == beman::inside::direct
+      && ((InsidePolicy<B> & direct) == direct
           // A pinned width flag without `indexed` is value storage (raw == value)
           // regardless of Lower's sign — storage_pick checked the range fits.
           || (has_width_flag(InsidePolicy<B>)
-              && (InsidePolicy<B> & beman::inside::indexed) != beman::inside::indexed)
-          || ((InsidePolicy<B> & beman::inside::indexed) != beman::inside::indexed
+              && (InsidePolicy<B> & indexed) != indexed)
+          || ((InsidePolicy<B> & indexed) != indexed
               && Notch<B> == 1
               && (Lower<B> == 0 || std::signed_integral<raw_t<B>>)));
 
@@ -447,8 +447,7 @@ namespace beman::inside
             : (Lower<L> / Notch<L>).value_or(rational{0});
       constexpr bool vidx = (zl.Denominator == 1 || zl.Denominator == -1);
       constexpr imax m = vidx
-          ? (zl.Denominator < 0 ? -static_cast<imax>(zl.Numerator)
-                                :  static_cast<imax>(zl.Numerator))
+          ? signed_numerator(zl)
           : imax{0};
 
       if constexpr (!vidx)

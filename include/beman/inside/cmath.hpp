@@ -295,8 +295,7 @@ namespace beman::inside::math
         if ((den & (den - 1)) == 0)                       // power-of-two denom
         {
           int  D   = std::countr_zero(den);
-          imax num = (r.Denominator < 0) ? -r.Numerator
-                                         :  r.Numerator;
+          imax num = signed_numerator(r);
           constexpr imax K = abs_den(Notch<Out>.Denominator);  // 1/notch
           constexpr imax m = trunc((Lower<Out> * rational{K}).value()); // Lower·K (exact int)
           // K·num + half must fit imax (a wide-denominator r, e.g. hypot's

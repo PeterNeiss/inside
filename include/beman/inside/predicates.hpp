@@ -28,7 +28,7 @@ namespace beman::inside
   {
     if constexpr (detail::rational_raw<B>)
       return false;                       // rational raw stores any value exactly
-    beman::inside::detail::rational r = detail::as_rational(value);
+    detail::rational r = detail::as_rational(value);
     if (not includes(Interval<B>, r))
       return false;                       // out-of-range — overflow, not truncation
     // In-range: truncation occurs iff (value - Lower) / Notch is non-integer.

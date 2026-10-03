@@ -172,8 +172,8 @@ namespace beman::inside
   template <grid G>
   inline constexpr bool dyadic_grid =
        G.Notch.Numerator != 0
-    && is_pow2(beman::inside::detail::abs_den(G.Notch.Denominator))
-    && is_pow2(beman::inside::detail::abs_den(G.Interval.Lower.Denominator));
+    && is_pow2(detail::abs_den(G.Notch.Denominator))
+    && is_pow2(detail::abs_den(G.Interval.Lower.Denominator));
 
   // log2 of a power-of-two magnitude (>= 1); 0 for 1. (grid.hpp can't include
   // cmath.hpp — that depends on us — so this mirrors detail::log2_pow2.)
@@ -246,11 +246,11 @@ namespace beman::inside
   // has_width_flag / width_flag_count: detect "a width is pinned" and enforce
   // exactly one (combining two width flags is a misuse, caught in storage_pick).
   constexpr bool has_width_flag(policy_flag P) noexcept
-  { return (P & beman::inside::raw_width_mask) != beman::inside::none; }
+  { return (P & raw_width_mask) != none; }
 
   constexpr int width_flag_count(policy_flag P) noexcept
   {
-    policy_flag w = P & beman::inside::raw_width_mask;
+    policy_flag w = P & raw_width_mask;
     int n = 0;
     for (; w; w >>= 1) n += static_cast<int>(w & 1);
     return n;
@@ -259,13 +259,13 @@ namespace beman::inside
   // Map the single set width bit to its C++ type (only valid when has_width_flag).
   template <policy_flag P>
   using raw_type_of =
-    std::conditional_t<(P & beman::inside::i8 ) == beman::inside::i8 , std::int8_t,
-    std::conditional_t<(P & beman::inside::u8 ) == beman::inside::u8 , std::uint8_t,
-    std::conditional_t<(P & beman::inside::i16) == beman::inside::i16, std::int16_t,
-    std::conditional_t<(P & beman::inside::u16) == beman::inside::u16, std::uint16_t,
-    std::conditional_t<(P & beman::inside::i32) == beman::inside::i32, std::int32_t,
-    std::conditional_t<(P & beman::inside::u32) == beman::inside::u32, std::uint32_t,
-    std::conditional_t<(P & beman::inside::i64) == beman::inside::i64, std::int64_t,
+    std::conditional_t<(P & i8 ) == i8 , std::int8_t,
+    std::conditional_t<(P & u8 ) == u8 , std::uint8_t,
+    std::conditional_t<(P & i16) == i16, std::int16_t,
+    std::conditional_t<(P & u16) == u16, std::uint16_t,
+    std::conditional_t<(P & i32) == i32, std::int32_t,
+    std::conditional_t<(P & u32) == u32, std::uint32_t,
+    std::conditional_t<(P & i64) == i64, std::int64_t,
                                                     std::uint64_t>>>>>>>;
 
   // Does raw type R hold every reachable raw value of grid G under the given
@@ -306,13 +306,13 @@ namespace beman::inside
   template <grid G, policy_flag P>
   constexpr auto storage_pick()
   {
-    if constexpr ((P & beman::inside::exact) == beman::inside::exact)
+    if constexpr (has_flag(P, exact))
       return detail::rational{};
 #ifndef BEMAN_INSIDE_MATH_FIXED
-    else if constexpr (((P & beman::inside::real) == beman::inside::real)
+    else if constexpr (has_flag(P, real)
                     && (double_exact<G> || G.Notch == 0))
       return double{};
-    else if constexpr (((P & beman::inside::real) == beman::inside::real) && dyadic_grid<G>)
+    else if constexpr (has_flag(P, real) && dyadic_grid<G>)
     {
       // `real`/`f64` explicitly requested on a dyadic grid double can't represent
       // exactly (max |value·2^f| ≥ 2^53, or notch below the smallest normal).
@@ -322,17 +322,17 @@ namespace beman::inside
         "notch/range or use `exact`");
       return double{};   // unreachable; fixes the deduced return type
     }
-    else if constexpr (((P & beman::inside::f32) == beman::inside::f32)
+    else if constexpr (has_flag(P, f32)
                     && (float_exact<G> || G.Notch == 0))
       return float{};
-    else if constexpr (((P & beman::inside::f32) == beman::inside::f32) && double_exact<G>)
+    else if constexpr (has_flag(P, f32) && double_exact<G>)
       // `f32` requested on a grid too fine for float but representable in double:
       // WIDEN the storage to binary64. This makes a deduced f32 output (a cmath
       // result inheriting the operand's flag) whose grid overflows float store its
       // value in double rather than hard-erroring — the value stays exact. The f32
       // POLICY bit remains (harmless; storage is raw-driven via fp_raw).
       return double{};
-    else if constexpr (((P & beman::inside::f32) == beman::inside::f32) && dyadic_grid<G>)
+    else if constexpr (has_flag(P, f32) && dyadic_grid<G>)
     {
       // Too fine for double too → genuinely unrepresentable as fp storage.
       static_assert(double_exact<G>,
@@ -349,7 +349,7 @@ namespace beman::inside
       static_assert(width_flag_count(P) == 1,
         "storage: pick a single fixed-width flag (e.g. `u16`), not several");
       using R = raw_type_of<P>;
-      constexpr bool idx = (P & beman::inside::indexed) == beman::inside::indexed;
+      constexpr bool idx = (P & indexed) == indexed;
       static_assert(idx ? (G.Notch != 0) : (G.Notch == 1),
         "fixed-width storage: value storage needs Notch == 1 — add `indexed` to "
         "store a notched grid's 0-based index instead");
@@ -358,11 +358,11 @@ namespace beman::inside
         "widen the flag, coarsen the grid/notch, or use `exact`");
       return R{};
     }
-    else if constexpr ((P & beman::inside::direct) == beman::inside::direct && G.Notch == 1)
+    else if constexpr ((P & direct) == direct && G.Notch == 1)
       return std::conditional_t<(G.Interval.Lower < 0),
           smallest_int_for<trunc(G.Interval.Lower), trunc(G.Interval.Upper)>,
           smallest_uint_for<static_cast<umax>(trunc(G.Interval.Upper))>>{};
-    else if constexpr ((P & beman::inside::indexed) == beman::inside::indexed && G.Notch != 0)
+    else if constexpr ((P & indexed) == indexed && G.Notch != 0)
       return smallest_uint_for<G.max_notch()>{};
     else
       return storage_min<G>{};

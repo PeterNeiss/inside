@@ -27,9 +27,9 @@ namespace beman::inside::detail
   struct fp_rep
   {
     static constexpr bool any_f64 =
-        (InsidePolicy<Lhs> & beman::inside::real) == beman::inside::real || (InsidePolicy<Rhs> & beman::inside::real) == beman::inside::real;
+        has_flag(InsidePolicy<Lhs>, real) || has_flag(InsidePolicy<Rhs>, real);
     static constexpr bool any_f32 =
-        (InsidePolicy<Lhs> & beman::inside::f32) == beman::inside::f32 || (InsidePolicy<Rhs> & beman::inside::f32) == beman::inside::f32;
+        has_flag(InsidePolicy<Lhs>, f32) || has_flag(InsidePolicy<Rhs>, f32);
     static constexpr bool continuous_ok = AllowContinuous && ResultGrid.Notch == 0;
     static constexpr bool keep_f32 =
         any_f32 && !any_f64 && (continuous_ok || float_exact<ResultGrid>);
@@ -38,8 +38,8 @@ namespace beman::inside::detail
     static constexpr bool dropped_fp = (any_f64 || any_f32) && !keep_f64 && !keep_f32;
     // Carry both operands' representation flags (widest-wins at storage selection).
     static constexpr policy_flag rep =
-        ((InsidePolicy<Lhs> | InsidePolicy<Rhs>) & (beman::inside::exact | beman::inside::direct | beman::inside::indexed))
-        | (keep_f64 ? beman::inside::real : none) | (keep_f32 ? beman::inside::f32 : none);
+        ((InsidePolicy<Lhs> | InsidePolicy<Rhs>) & (exact | direct | indexed))
+        | (keep_f64 ? real : none) | (keep_f32 ? f32 : none);
     // The result inside's policy: the propagated representation, or plain checked.
     static constexpr policy_flag result_policy = rep != none ? rep : checked;
   };

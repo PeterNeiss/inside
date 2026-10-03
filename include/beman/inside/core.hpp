@@ -287,8 +287,8 @@ namespace beman::inside
     //   to<T>(b)/as<T>(b) — free-function forms, for generic code.
     constexpr operator imax() const
       requires (detail::notch_is_unit_integer<G>
-             && G.Interval.Lower >= beman::inside::detail::rational{std::numeric_limits<imax>::min()}
-             && G.Interval.Upper <= beman::inside::detail::rational{std::numeric_limits<imax>::max()})
+             && G.Interval.Lower >= detail::rational{std::numeric_limits<imax>::min()}
+             && G.Interval.Upper <= detail::rational{std::numeric_limits<imax>::max()})
     { return detail::to_value(*this); }
 
     constexpr explicit(!has_flag(P, real) && !has_flag(P, f32)) operator double() const
@@ -296,7 +296,7 @@ namespace beman::inside
                     | round_half_even | snap)) != 0)
     { return detail::as_double(*this); }
 
-    constexpr operator beman::inside::detail::rational() const
+    constexpr operator detail::rational() const
     {
       if constexpr (G.Interval.Lower == G.Interval.Upper)
         return G.Interval.Lower;
@@ -322,7 +322,7 @@ namespace beman::inside
     {
       constexpr bool needs_neg_check = (Lower<inside> < 0);
       constexpr bool needs_max_check =
-          (Upper<inside> > beman::inside::detail::rational{std::numeric_limits<T>::max()});
+          (Upper<inside> > detail::rational{std::numeric_limits<T>::max()});
 
       if constexpr (!needs_neg_check && !needs_max_check)
         return static_cast<T>(detail::to_value(*this));
@@ -332,7 +332,7 @@ namespace beman::inside
         if constexpr (needs_neg_check)
           if (r < 0) return std::unexpected{errc::domain_error};
         if constexpr (needs_max_check)
-          if (r > beman::inside::detail::rational{std::numeric_limits<T>::max()})
+          if (r > detail::rational{std::numeric_limits<T>::max()})
             return std::unexpected{errc::overflow};
         return static_cast<T>(trunc(r));
       }
@@ -342,9 +342,9 @@ namespace beman::inside
     [[nodiscard]] constexpr std::expected<T, errc> to() const
     {
       constexpr bool needs_min_check =
-          (Lower<inside> < beman::inside::detail::rational{std::numeric_limits<T>::min()});
+          (Lower<inside> < detail::rational{std::numeric_limits<T>::min()});
       constexpr bool needs_max_check =
-          (Upper<inside> > beman::inside::detail::rational{std::numeric_limits<T>::max()});
+          (Upper<inside> > detail::rational{std::numeric_limits<T>::max()});
 
       if constexpr (!needs_min_check && !needs_max_check)
         return static_cast<T>(detail::to_value(*this));
@@ -352,10 +352,10 @@ namespace beman::inside
       {
         auto r = detail::as_rational(*this);
         if constexpr (needs_min_check)
-          if (r < beman::inside::detail::rational{std::numeric_limits<T>::min()})
+          if (r < detail::rational{std::numeric_limits<T>::min()})
             return std::unexpected{errc::overflow};
         if constexpr (needs_max_check)
-          if (r > beman::inside::detail::rational{std::numeric_limits<T>::max()})
+          if (r > detail::rational{std::numeric_limits<T>::max()})
             return std::unexpected{errc::overflow};
         return static_cast<T>(trunc(r));
       }
@@ -405,7 +405,7 @@ namespace beman::inside
       else
       {
         auto r = detail::as_rational(*this);
-        return {(r.Denominator < 0) ? -r.Numerator : r.Numerator,
+        return {signed_numerator(r),
                 static_cast<imax>(detail::abs_den(r.Denominator))};
       }
     }
@@ -537,9 +537,7 @@ namespace beman::inside
                     && detail::abs_den((*(Lower<R> / Notch<inside>)).Denominator) == 1)
       {
         constexpr auto quotient = *(Lower<R> / Notch<inside>);
-        constexpr imax delta = (quotient.Denominator < 0)
-            ? -static_cast<imax>(quotient.Numerator)
-            :  static_cast<imax>(quotient.Numerator);
+        constexpr imax delta = signed_numerator(quotient);
         if constexpr (P & (clamp | wrap | checked))
         {
           imax new_raw = detail::raw_imax(*this) + delta;
@@ -630,9 +628,9 @@ namespace beman::inside
     // Only a `rational` (a library type) may join an inside in a compound assign;
     // raw int/float/double are ill-formed — give the scalar a grid (`1_ins` /
     // `just<1>` / `inside<{lo,hi}>{n}`), mirroring the binary operators.
-    template <std::same_as<beman::inside::detail::rational> A>
+    template <std::same_as<detail::rational> A>
     constexpr inside& operator+=(A const& rhs)
-    { return assign_op_result(beman::inside::detail::rational{*this} + rhs); }
+    { return assign_op_result(detail::rational{*this} + rhs); }
 
     template <insidable R>
     constexpr inside& operator-=(R const& rhs)
@@ -653,9 +651,7 @@ namespace beman::inside
           if constexpr (detail::index_raw<R>)
           {
             constexpr auto quotient = *(Lower<R> / Notch<inside>);
-            return (quotient.Denominator < 0)
-                ? -static_cast<imax>(quotient.Numerator)
-                :  static_cast<imax>(quotient.Numerator);
+            return signed_numerator(quotient);
           }
           else
             return imax{0};
@@ -676,9 +672,9 @@ namespace beman::inside
         return *this += (-rhs);
     }
 
-    template <std::same_as<beman::inside::detail::rational> A>
+    template <std::same_as<detail::rational> A>
     constexpr inside& operator-=(A const& rhs)
-    { return assign_op_result(beman::inside::detail::rational{*this} - rhs); }
+    { return assign_op_result(detail::rational{*this} - rhs); }
 
     template <insidable R>
     constexpr inside& operator*=(R const& rhs)
@@ -703,16 +699,16 @@ namespace beman::inside
       return assign_op_result(mod(*this, rhs, make_policy<P>()));
     }
 
-    template <std::same_as<beman::inside::detail::rational> A>
+    template <std::same_as<detail::rational> A>
     constexpr inside& operator*=(A const& rhs)
-    { return assign_op_result(beman::inside::detail::rational{*this} * rhs); }
+    { return assign_op_result(detail::rational{*this} * rhs); }
 
-    template <std::same_as<beman::inside::detail::rational> A>
+    template <std::same_as<detail::rational> A>
     constexpr inside& operator/=(A const& rhs)
     {
       if (detail::is_canonical_zero(rhs))
       { report_div_by_zero("operator/= division by zero"); return *this; }
-      return assign_op_result(beman::inside::detail::rational{*this} / rhs);
+      return assign_op_result(detail::rational{*this} / rhs);
     }
 
     // ++/-- add the point inside `just<±1>` through the insidable += (which has
@@ -724,14 +720,14 @@ namespace beman::inside
     {
       // constexpr local: the point inside is materialised at compile time (the
       // ctor's error path otherwise blocks constant folding at -O3).
-      constexpr auto one_b = inside<grid{beman::inside::detail::rational{1}}>{beman::inside::detail::rational{1}};
+      constexpr auto one_b = inside<grid{detail::rational{1}}>{detail::rational{1}};
       return *this += one_b;
     }
     constexpr inside  operator++(int) { inside t = *this; ++*this; return t; }
     constexpr inside& operator--()
     {
       constexpr auto minus_one_b =
-          inside<grid{beman::inside::detail::rational{-1}}>{beman::inside::detail::rational{-1}};
+          inside<grid{detail::rational{-1}}>{detail::rational{-1}};
       return *this += minus_one_b;
     }
     constexpr inside  operator--(int) { inside t = *this; --*this; return t; }
@@ -791,8 +787,7 @@ namespace beman::inside
       if constexpr (index_raw<B>)
       {
         constexpr auto lo = *(Lower<B> / Notch<B>);
-        return (lo.Denominator < 0) ? -static_cast<imax>(lo.Numerator)
-                                    :  static_cast<imax>(lo.Numerator);
+        return signed_numerator(lo);
       }
       else
         return imax{0};
@@ -889,7 +884,7 @@ namespace beman::inside
                  * static_cast<imax>(Notch<B>.Numerator)
          <=> static_cast<imax>(rhs) * Notch<B>.Denominator;
     else
-      return detail::as_rational(lhs) <=> beman::inside::detail::rational{rhs};
+      return detail::as_rational(lhs) <=> detail::rational{rhs};
   }
 
   template <insidable B, arithmetic A>
@@ -902,7 +897,7 @@ namespace beman::inside
                  * static_cast<imax>(Notch<B>.Numerator)
           == static_cast<imax>(rhs) * Notch<B>.Denominator;
     else
-      return detail::as_rational(lhs) == beman::inside::detail::rational{rhs};
+      return detail::as_rational(lhs) == detail::rational{rhs};
   }
 
   //---------------------------------------------------------------------------

@@ -385,8 +385,8 @@ namespace beman::inside::detail
               // 2 · K · M with saturation (M bounds |value| and the offset span)
               umax k = static_cast<umax>(K);
               umax m = static_cast<umax>(
-                  ceil(((beman::inside::detail::abs(Lower<L>) > beman::inside::detail::abs(Upper<L>)
-                      ? beman::inside::detail::abs(Lower<L>) : beman::inside::detail::abs(Upper<L>))
+                  ceil(((detail::abs(Lower<L>) > detail::abs(Upper<L>)
+                      ? detail::abs(Lower<L>) : detail::abs(Upper<L>))
                    ))) * 2 + 2;
               if (k > std::numeric_limits<umax>::max() / m)
                 return std::numeric_limits<umax>::max();
@@ -404,7 +404,7 @@ namespace beman::inside::detail
               const umax g    = std::gcd(aden, static_cast<umax>(K));
               const umax den2 = aden / g;
               const imax k2   = K / static_cast<imax>(g);
-              const imax num  = (rv.Denominator < 0) ? -rv.Numerator : rv.Numerator;
+              const imax num  = signed_numerator(rv);
               const umax onum =                          // ≥ 0: rhs ≥ Lower (in range)
                   static_cast<umax>((num - Lo * static_cast<imax>(aden)) * k2);
               if (den2 == 1)
@@ -555,9 +555,7 @@ namespace beman::inside::detail
             return no;
           const imax f_n = static_cast<imax>(Factor.Numerator);  // Factor > 0
           const imax f_d = abs_den(Factor.Denominator);
-          const imax o_s = (Offset.Denominator < 0)
-              ? -static_cast<imax>(Offset.Numerator)
-              :  static_cast<imax>(Offset.Numerator);
+          const imax o_s = signed_numerator(Offset);
           const imax o_d = abs_den(Offset.Denominator);
           affine_map_t m{0, 0, 0, true};
           if (mul_overflow(f_n, o_d, &m.mul) || mul_overflow(o_s, f_d, &m.add)
@@ -579,9 +577,7 @@ namespace beman::inside::detail
           {
             if (zl.Numerator > cap)
               return no;
-            const imax mbias = (zl.Denominator < 0)
-                ? -static_cast<imax>(zl.Numerator)
-                :  static_cast<imax>(zl.Numerator);
+            const imax mbias = signed_numerator(zl);
             imax mdi, total;
             if (mul_overflow(mbias, m.den, &mdi) || add_overflow(mdi, num, &total))
               return no;

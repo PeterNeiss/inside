@@ -160,7 +160,7 @@ namespace beman::inside
   [[nodiscard]] constexpr Target sum(Rng&& r)
   {
     using B = std::remove_cvref_t<std::ranges::range_reference_t<Rng>>;
-    using beman::inside::detail::rational;
+    using detail::rational;
     rational total{0};
 
     if constexpr ((detail::value_raw<B> || detail::index_raw<B>)

@@ -28,7 +28,7 @@ namespace beman::inside
   namespace detail { struct rational; }
 
   template<typename T>
-  concept arithmetic = std::integral<T> || std::floating_point<T> || std::same_as<beman::inside::detail::rational,T>;
+  concept arithmetic = std::integral<T> || std::floating_point<T> || std::same_as<detail::rational,T>;
 
   namespace detail
   {

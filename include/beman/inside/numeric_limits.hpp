@@ -42,7 +42,7 @@ struct std::numeric_limits<beman::inside::inside<G, P>>
   static constexpr bool is_iec559      = false;
   static constexpr int  radix          = 2;
   static constexpr std::float_round_style round_style =
-      ((P & beman::inside::round_nearest) == beman::inside::round_nearest) ? std::round_to_nearest
+      beman::inside::has_flag(P, beman::inside::round_nearest) ? std::round_to_nearest
                                                        : std::round_toward_zero;
 
   // digits / digits10 forward to the raw type so generic algorithms see the

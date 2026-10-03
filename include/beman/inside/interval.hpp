@@ -43,7 +43,7 @@ namespace beman::inside
     constexpr interval operator-() const { return interval{-Upper, -Lower}; }
 
     constexpr bool divides_evenly(const detail::rational& notch) const
-    { return beman::inside::detail::divides_evenly((Upper - Lower).value(), notch); }
+    { return detail::divides_evenly((Upper - Lower).value(), notch); }
 
     constexpr std::expected<detail::rational, errc> operator/(const detail::rational& notch) const
     { return (Upper - Lower) / notch; }
