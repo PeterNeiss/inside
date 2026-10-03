@@ -713,6 +713,10 @@ namespace beman::inside
     inline constexpr auto three_way = [](auto const& a, auto const& b) { return a <=> b; };
     inline constexpr auto equal_to  = [](auto const& a, auto const& b) { return a == b; };
 
+    // Every value of B is exactly a double (fp storage, or a double-exact grid).
+    template <insidable B>
+    inline constexpr bool exact_in_double = fp_raw<B> || double_exact<Grid<B>>;
+
     // inside ⋈ inside (⋈ = `cmp`: <=> or ==) in the cheapest exact form the two
     // storage shapes allow.
     template <insidable L, insidable R, class Cmp>
@@ -721,8 +725,10 @@ namespace beman::inside
       // same grid: Raw is monotonically ordered regardless of storage kind
       if constexpr (Grid<L> == Grid<R>)
         return cmp(lhs.raw(), rhs.raw());
-      // double-backed (`real`) operand: compare in double (raw_imax would truncate)
-      else if constexpr (fp_raw<L> || fp_raw<R>)
+      // an fp-backed operand: compare in double when both sides' values are
+      // exact in double (raw_imax would truncate the fp raw); otherwise the
+      // rational fallback below keeps the comparison exact.
+      else if constexpr ((fp_raw<L> || fp_raw<R>) && exact_in_double<L> && exact_in_double<R>)
         return cmp(as_double(lhs), as_double(rhs));
       // both integer-direct (notch=1, Raw==value): compare as integers
       else if constexpr (value_raw<L> && value_raw<R>)

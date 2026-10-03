@@ -1105,8 +1105,11 @@ void prop_cmath_exact(fuzz_state& s, long iters)
       // Truncated-division remainder: x - trunc(x/y)*y (matches std::fmod).
       rational q   = (xr / yr).value();
       rational rem = (xr - (rational{trunc(q)} * yr).value()).value();
-      FUZZ_REQUIRE(s, to_rational(math::fmod(x, y)) == rem);
+      const auto r = math::fmod(x, y);       // y's grid spans 0: expected
+      FUZZ_REQUIRE(s, r.has_value() && to_rational(*r) == rem);
     }
+    else
+      FUZZ_REQUIRE(s, math::fmod(x, y).error() == errc::division_by_zero);
   }
 }
 

@@ -1111,9 +1111,9 @@ namespace beman::inside::math
   }
 
   // x mod y = x − ⌊x/y⌋·y (truncated-division convention, matching std::fmod).
-  // Result has the sign of x. Pre: y must not span zero (caller-enforced).
+  // Result has the sign of x. Pre: y != 0 (fmod_impl checks it).
   template <insidable Out, insidable InX, insidable InY>
-  [[nodiscard]] constexpr Out fmod_impl(InX x, InY y) noexcept
+  [[nodiscard]] constexpr Out fmod_nonzero(InX x, InY y) noexcept
   {
     if constexpr (detail::fmod_int_fast<Out, InX, InY>)
     {
@@ -1141,6 +1141,21 @@ namespace beman::inside::math
       rational qy = qt * yv;
       rational r  = xv - qy;
       return detail::store_grid<Out>(r);
+    }
+  }
+
+  // Like `/`: a plain Out when y's grid excludes 0, else expected<Out, errc>
+  // with division_by_zero for y == 0.
+  template <insidable Out, insidable InX, insidable InY>
+  [[nodiscard]] constexpr auto fmod_impl(InX x, InY y)
+  {
+    if constexpr (beman::inside::detail::DivisorExcludesZero<InY>)
+      return fmod_nonzero<Out>(x, y);
+    else
+    {
+      if (y == 0)
+        return std::expected<Out, errc>{std::unexpected(errc::division_by_zero)};
+      return std::expected<Out, errc>{fmod_nonzero<Out>(x, y)};
     }
   }
 
@@ -1358,13 +1373,27 @@ namespace beman::inside::math
     using tan_auto_t = inside<{{-rational{1024}, rational{1024}},
                                Notch<In>}, out_policy<In> | round_nearest>;
 
+    // fmod's result: |r| < |y| and |r| ≤ |x|, with the sign of x, on the gcd of
+    // both notches (x − k·y lies on that lattice, so the result is exact).
+    template <insidable B>
+    inline constexpr rational max_abs = abs(Lower<B>) > abs(Upper<B>) ? abs(Lower<B>) : abs(Upper<B>);
+
     template <insidable InX, insidable InY>
-    using fmod_auto_t = inside<{{-abs(Upper<InY>), abs(Upper<InY>)},
-                                Notch<InX>}, out_policy<InX> | round_nearest>;
+    inline constexpr rational fmod_bound =
+        max_abs<InX> < max_abs<InY> ? max_abs<InX> : max_abs<InY>;
+
+    template <insidable InX, insidable InY>
+    inline constexpr rational fmod_notch =
+        (Notch<InX> == 0 || Notch<InY> == 0) ? rational{0} : *gcd(Notch<InX>, Notch<InY>);
+
+    template <insidable InX, insidable InY>
+    using fmod_auto_t = inside<{{(Lower<InX> < 0 ? -fmod_bound<InX, InY> : rational{0}),
+                                 (Upper<InX> > 0 ?  fmod_bound<InX, InY> : rational{0})},
+                                fmod_notch<InX, InY>}, out_policy<InX> | round_nearest>;
   } // namespace detail
 
   template <insidable InX, insidable InY>
-  [[nodiscard]] constexpr auto fmod(InX x, InY y) noexcept
+  [[nodiscard]] constexpr auto fmod(InX x, InY y)
   { return fmod_impl<detail::fmod_auto_t<InX, InY>>(x, y); }
 
   //===========================================================================

@@ -166,3 +166,43 @@ TEST(ConsistencyTest, math_output_drops_width_flags)
   using B8 = inside<{-128, 127}, i8 | round_nearest>;
   EXPECT_EQ(rational{math::abs(B8{-128})}, q(128));
 }
+
+#ifndef BEMAN_INSIDE_MATH_FIXED
+// An f64 inside compared with an inside whose values are not exact in double
+// compares exactly, not after rounding the other side to double.
+TEST(ConsistencyTest, fp_vs_exact_comparison_is_exact)
+{
+  using F = inside<{{0, 2}, notch<1, 2>}, f64>;
+  using C = inside<{{0, 2}, rational{0}}>;               // continuous, rational raw
+  const C c{(q(1) + q(1, imax{1} << 53)).value()};       // 1 + 2^-53: rounds to 1.0
+  const F one{1};
+  EXPECT_FALSE(one == c);
+  EXPECT_TRUE(one < c);
+  EXPECT_TRUE(c > one);
+  EXPECT_TRUE(one == C{q(1)});                           // equal values still compare equal
+}
+#endif
+
+// fmod: exact result on the gcd notch, sized by both operands, any divisor sign.
+TEST(ConsistencyTest, fmod_output_grid_is_exact_and_large_enough)
+{
+  using X  = inside<{-10, 10}, round_nearest>;
+  using Yn = inside<{-10, -1}, round_nearest>;             // negative divisor
+  EXPECT_EQ(rational{math::fmod(X{7}, Yn{-8})}, q(7));
+  using Yh = inside<{{1, 4}, notch<1, 2>}, round_nearest>;
+  EXPECT_EQ(rational{math::fmod(X{-3}, Yh{q(5, 2)})}, q(-1, 2));   // exact, sign of x
+  EXPECT_EQ(rational{math::fmod(X{3}, Yh{q(5, 2)})}, q(1, 2));
+  using X2 = inside<{{0, 10}, 2}, round_nearest>;            // notch 2 vs divisor notch 1
+  using Y3 = inside<{1, 3}, round_nearest>;
+  EXPECT_EQ(rational{math::fmod(X2{8}, Y3{3})}, q(2));
+}
+
+// fmod with a divisor grid that spans 0 reports a zero divisor like `/`.
+TEST(ConsistencyTest, fmod_zero_divisor_is_an_error_value)
+{
+  using X = inside<{-10, 10}, round_nearest>;
+  auto r = math::fmod(X{7}, X{0});
+  ASSERT_FALSE(r.has_value());
+  EXPECT_EQ(r.error(), errc::division_by_zero);
+  EXPECT_EQ(rational{*math::fmod(X{7}, X{-3})}, q(1));
+}
