@@ -6,6 +6,7 @@
 #include <beman/inside/inside.hpp>
 #include <beman/inside/cmath.hpp>
 #include <beman/inside/detail/rational.hpp>
+#include <beman/inside/numeric_limits.hpp>
 
 #include <gtest/gtest.h>
 
@@ -325,4 +326,25 @@ TEST(ConsistencyTest, pow_envelope_agrees_across_engines)
   EXPECT_EQ(math::dbl::pow(Bc{4}, Ec{20}).error(), errc::overflow);
   EXPECT_EQ(math::flt::pow(Bc{4}, Ec{20}).error(), errc::overflow);
 #endif
+}
+
+// will_conversion_trunc sees the notch of an `exact` (rational-raw) grid.
+TEST(ConsistencyTest, trunc_predicate_on_exact_notched_grid)
+{
+  using E = inside<{{0, 1}, notch<1, 3>}, exact>;
+  EXPECT_TRUE(will_conversion_trunc<E>(0.5));
+  EXPECT_FALSE(will_conversion_trunc<E>(q(1, 3)));
+}
+
+// numeric_limits reports the rounding mode stores use, and integer-ness of any
+// integer grid.
+TEST(ConsistencyTest, numeric_limits_round_style_and_is_integer)
+{
+  static_assert(std::numeric_limits<inside<{0, 10}, round_floor>>::round_style == std::round_toward_neg_infinity);
+  static_assert(std::numeric_limits<inside<{0, 10}, round_ceil>>::round_style == std::round_toward_infinity);
+  static_assert(std::numeric_limits<inside<{0, 10}, round_nearest>>::round_style == std::round_to_nearest);
+  static_assert(std::numeric_limits<inside<{0, 10}, snap>>::round_style == std::round_toward_zero);
+  static_assert(std::numeric_limits<inside<{{0, 10}, 2}>>::is_integer);
+  static_assert(!std::numeric_limits<inside<{{0, 10}, notch<1, 2>}>>::is_integer);
+  SUCCEED();
 }

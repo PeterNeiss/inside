@@ -28,8 +28,8 @@ namespace beman::inside
   template <insidable B, numeric A>
   [[nodiscard]] constexpr bool will_conversion_trunc(A value) noexcept
   {
-    if constexpr (detail::rational_raw<B> || Notch<B> == 0)
-      return false;                       // rational raw / continuous grid: no notch to miss
+    if constexpr (Notch<B> == 0)
+      return false;                       // continuous grid: no notch to miss
     if constexpr (std::floating_point<A>)
       if (!(value - value == 0)) return false;   // non-finite — overflow, not truncation
     detail::rational r = detail::as_rational(value);

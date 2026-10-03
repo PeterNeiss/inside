@@ -10,6 +10,7 @@
 #include <compare>
 #include <cstddef>
 #include <iterator>
+#include <limits>
 #include <ranges>
 #include <utility>
 
@@ -90,6 +91,9 @@ namespace beman::inside
   struct inside_range
   {
     using value_type = inside<G, P>;
+    static_assert(G.notch_count_representable()
+                  && detail::NotchCount<value_type> < std::numeric_limits<umax>::max(),
+                  "inside_range: the grid has more points than a 64-bit count can hold");
     static constexpr umax slot_count = detail::NotchCount<value_type> + 1;
 
     struct iterator

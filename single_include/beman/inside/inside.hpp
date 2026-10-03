@@ -4980,8 +4980,8 @@ namespace beman::inside
   template <insidable B, numeric A>
   [[nodiscard]] constexpr bool will_conversion_trunc(A value) noexcept
   {
-    if constexpr (detail::rational_raw<B> || Notch<B> == 0)
-      return false;                       // rational raw / continuous grid: no notch to miss
+    if constexpr (Notch<B> == 0)
+      return false;                       // continuous grid: no notch to miss
     if constexpr (std::floating_point<A>)
       if (!(value - value == 0)) return false;   // non-finite — overflow, not truncation
     detail::rational r = detail::as_rational(value);
@@ -6372,6 +6372,9 @@ namespace beman::inside
   struct inside_range
   {
     using value_type = inside<G, P>;
+    static_assert(G.notch_count_representable()
+                  && detail::NotchCount<value_type> < std::numeric_limits<umax>::max(),
+                  "inside_range: the grid has more points than a 64-bit count can hold");
     static constexpr umax slot_count = detail::NotchCount<value_type> + 1;
 
     struct iterator
@@ -9822,7 +9825,8 @@ struct std::numeric_limits<beman::inside::inside<G, P>>
 
   static constexpr bool is_specialized = true;
   static constexpr bool is_signed      = (G.Interval.Lower < beman::inside::detail::rational{0});
-  static constexpr bool is_integer     = (G.Notch == beman::inside::detail::rational{1});
+  // Every value is an integer: a non-zero integer notch over an integer Lower.
+  static constexpr bool is_integer     = beman::inside::detail::IsIntegerAligned<B> && G.Notch != 0;
   static constexpr bool is_exact       = true;     // rational + integer raw are both exact
   static constexpr bool is_bounded     = true;
   static constexpr bool is_modulo      = (P & beman::inside::wrap) != 0;
@@ -9832,9 +9836,18 @@ struct std::numeric_limits<beman::inside::inside<G, P>>
   static constexpr bool traps          = (P & beman::inside::checked) != 0;
   static constexpr bool is_iec559      = false;
   static constexpr int  radix          = 2;
-  static constexpr std::float_round_style round_style =
-      beman::inside::has_flag(P, beman::inside::round_nearest) ? std::round_to_nearest
-                                                       : std::round_toward_zero;
+  // The mode stores round by (rounding_of, the one precedence every path uses).
+  static constexpr std::float_round_style round_style = []{
+    using enum beman::inside::detail::round_mode;
+    switch (beman::inside::detail::rounding_of(P))
+    {
+      case floor:     return std::round_toward_neg_infinity;
+      case ceil:      return std::round_toward_infinity;
+      case nearest:
+      case half_even: return std::round_to_nearest;
+      default:        return std::round_toward_zero;
+    }
+  }();
 
   // digits / digits10 forward to the raw type so generic algorithms see the
   // storage size, not the rational interval count.
