@@ -190,7 +190,8 @@ for (auto [idx, v] : r.indexed())    { ... }    // (0,0) (1,1) …  position + v
 ```
 
 `strided` and `indexed` are portable stand-ins for C++23 `std::views::stride`
-/ `std::views::enumerate`, so they compile unchanged on C++20.
+/ `std::views::enumerate`, so they also work with standard libraries that do not
+ship those views yet.
 
 ## Compile-time constants
 
@@ -229,12 +230,13 @@ auto x    = 10_ins + my_inside;    // grid widens via just<N> + inside
 code that calls them unqualified. `min` / `max` return the same inside type;
 `midpoint` returns the **exact** average on a refined grid — the true midpoint
 of two grid points need not land on the grid, so unlike `std::midpoint` on
-integers it neither rounds nor overflows.
+integers it neither rounds nor overflows. The refined grid has half the notch
+and stays integer-backed, so `midpoint` costs about the same as `(a + b) / 2`.
 
 ```cpp
 inside<{0, 100}> a = 30, b = 71;
 auto lo  = beman::inside::min(a, b);        // 30
-auto mid = beman::inside::midpoint(a, b);   // exactly 50.5 (refined grid), never 50
+auto mid = beman::inside::midpoint(a, b);   // exactly 50.5 (notch ½ grid), never 50
 ```
 
 There is no `beman::inside::clamp` free function: the name belongs to the `clamp` policy

@@ -128,6 +128,11 @@ checked_cast  <pct>(42);    // 42   (throws on out-of-range or off-notch)
 unchecked_cast<pct>(42);    // 42   (skips runtime checks)
 ```
 
+The cast's policy applies to every target and source shape: a `real`
+(double-backed) target is clamped or wrapped like any other, and a `real`
+source is read by value (`clamp_round<pct>(r)` with `r == 2.5` gives 3). The
+same holds for the fluent forms — `b.with_clamp() = r`, `(r * k).with_snap()`.
+
 For `double → bounded` pipelines (audio / graphics / DSP), the `clamp_*`
 family composes clamping with a rounding mode:
 
@@ -185,7 +190,9 @@ is_conversion_lossy     <pct>(150);    // true  — overflow OR truncation
 ```
 
 All three are pure inspection — none performs the conversion or has
-side effects. See
+side effects. They are `noexcept` and never raise: a NaN or infinity counts as
+overflow (`will_conversion_overflow` is true, `will_conversion_trunc` false), and a
+continuous grid (notch 0) never truncates. See
 [examples/histogram.cpp](../examples/histogram.cpp) for these as outlier
 filters around a sample-collection loop.
 
@@ -210,7 +217,7 @@ Examples:
 using pct = inside<{0, 100}>;
 pct x = 42;
 auto y = x + 1_ins;                 // inside + inside, stays bounded
-if (x > 50) { ... }              // bare scalar compare is fine
+if (x > 50) { ... }              // bare scalar compare is fine (exact, also for 50.5)
 
 // Exact non-dyadic grid endpoints — frac<N,D> (1.2 and 0.6 are not dyadic):
 using db_div20 = inside<{{frac<-6, 5>, frac<3, 5>}, notch<1, 40>}, round_nearest>;

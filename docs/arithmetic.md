@@ -14,10 +14,17 @@ auto quot = a / b;   // std::expected<inside<{rational}>, errc>
 
 Division is rich enough to warrant its [own section](#division) below — `inside / inside` picks between three code paths at compile time, and its `std::expected` result has two distinct failure causes.
 
-The free functions `add`, `sub`, `mul`, `div`, and `mod` each accept a named
-convenience policy (`beman::inside::truncated`, `beman::inside::round_to_nearest`, `beman::inside::clamped`,
-`beman::inside::wrapped`), one or more `on_*` action factories, or an
-`beman::inside::errc&`, in any order. See
+The free functions `add`, `sub`, `mul`, `div`, and `mod` take one of three
+trailing forms:
+
+- `op(l, r [, policy [, action]])` — a named convenience policy
+  (`beman::inside::truncated`, `beman::inside::round_to_nearest`, `beman::inside::clamped`,
+  `beman::inside::wrapped`, or any `policy<F>`), optionally followed by one action;
+- `op(l, r, on_*(…), …)` — one or more `on_*` action factories (at least one
+  `on_overflow`); the policy is the flags those actions imply;
+- `op(l, r, ec [, action])` — a `beman::inside::errc&` that receives the error.
+
+See
 [policies.md § Callbacks](policies.md#callbacks-on_wrap--on_clamp--on_overflow--on_error)
 for the action API. Example — recovering from divide-by-zero:
 
@@ -45,6 +52,10 @@ operand grids and whether `snap` is in effect.
 | **Q-format fast** | `snap` is set **and** both operands share the same Q-format grid (notch `1/N` with `N ≥ 2`, `Lower == 0`) | `(lhs.Raw × N) ÷ rhs.Raw` — the textbook fixed-point divide, **rounded per the policy's mode** (folds to `(a << log2(N)) / b` for power-of-2 N under plain `snap`) | Q-format integer raw, **same notch as L** | `[0, Upper<L> / Notch<R>]` — Upper *expands* (see below) |
 | **Integer-aligned fast** | `snap` is set **and** both grids are integer-aligned (notch and Lower both have denominator 1) **and** neither operand uses rational raw storage | `to_value(lhs) / to_value(rhs)`, **rounded per the policy's mode** — see below | Integer raw | `Grid<L> / Grid<R>` with each endpoint rounded by the same mode |
 | **Exact rational** *(fall-through)* | everything else | `as_rational(lhs) / rational{rhs}` — exact rational arithmetic. Under `checked` this is the expected-returning `rational::operator/`; under `unsafe` it's the unchecked variant. | `rational` raw — the result type is `inside<{interval, 0}>` | `*(Grid<L> / Grid<R>)` — the grid divider widens the interval when the divisor's range straddles zero |
+
+Both native paths divide in 32 bits when both operand ranges fit (the integer
+path excludes `INT32_MIN`, so `a / -1` cannot overflow), so `/` and `%` on small
+grids run at native speed rather than as a 64-bit divide.
 
 **Rounding mode (native paths).** Plain `snap` (== `truncated`) truncates toward
 zero — the historical, C++-`/` behaviour. Any rounding-mode flag rounds the quotient
@@ -196,9 +207,11 @@ auto d = sub * just<2>;  // ✅ inside × inside → widened inside
 Use `1_ins` / `just<N>` to give a compile-time literal a tight point grid, or
 `inside<{lo,hi}>{n}` to give a runtime value a known range. For the values 0 and
 1, reach for the built-in `zero` / `one` (`sub + one`, `b == zero`). Comparisons
-(`b == 5`, `b < 10`) and compound assignment (`b += 1`) with raw scalars are
-unaffected — they don't manufacture a new value/type, so they never leave the
-bounded world.
+(`b == 5`, `b < 10`, `b < 1.5`) with raw scalars are fine — they don't manufacture
+a new value/type — and exact: a floating scalar is compared at full precision,
+never truncated to an integer. Compound assignment with a raw scalar (`b += 1`)
+is ill-formed like the binary operators ("an inside cannot be combined with a raw
+scalar"); write `b += 1_ins`.
 
 ### Scaling by an exact fraction
 
@@ -212,7 +225,10 @@ auto    half = sub * just<frac<1, 2>>;   // exact ×½, stays an inside
 ```
 
 `just<frac<N, D>>` is the exact-fraction point-inside; `0.5_ins` / `2_ins` cover
-dyadic factors. Read an exact value back out with `numerator()` /
+dyadic factors. Multiplying by a point `c` scales the lattice: the result's notch
+is `N·|c|`, so it keeps integer storage (`sub * just<frac<1, 2>>` has notch 1/200)
+and costs about a native multiply — the raw value is reused, mirrored for
+negative `c`. Read an exact value back out with `numerator()` /
 `denominator()` (see [Conversions](conversions.md)) — never a `rational`.
 
 ## Vector helpers: `dot` / `cross` / `lerp`
@@ -314,11 +330,12 @@ range is fixed by R's grid and can't exceed it.
 ## Bulk reduction: `beman::inside::sum<Target>(range)`
 
 A per-element `target += b` loop re-validates the running total on every
-step, which keeps `checked` accumulation scalar (≈4× slower than `unsafe`).
+step: a compare-and-branch per element, which also stands in the way of
+vectorization (on the reference machine: 9 vs 4 instructions per element).
 `beman::inside::sum<Target>(range)` accumulates exactly with **one** deferred check:
 the *total* is validated/clamped against `Target`'s policy, not every running
-prefix — and the loop vectorizes (≈2.5× measured on checked 1000-element
-sums).
+prefix — and runs within a few percent of the native loop (see
+[performance.md](performance.md), "accumulate 1000").
 
 ```cpp
 using elem = inside<{0, 200'000}, checked>;

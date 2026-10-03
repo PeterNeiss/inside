@@ -45,7 +45,9 @@ template <insidable B> inline constexpr bool IsQFormat =
   the radix point or shift amounts.
 - **Result grids widen automatically.** `a * b` produces a *new* grid whose
   interval and notch are computed at compile time — no manual headroom analysis
-  to avoid overflow. `Q8.8 × Q8.8 → Q16.16`-shaped, exactly.
+  to avoid overflow. `Q8.8 × Q8.8 → Q16.16`-shaped, exactly. Scaling by a
+  constant point (`x * just<c>`) keeps the lattice (notch `N·|c|`) and the
+  integer storage.
 - **Narrowing is a policy, not a hope.** Storing back onto a coarser grid runs
   `snap` (truncate), `round_nearest`, `clamp`, `wrap`, or `checked` — you
   choose per type or per operation.
@@ -99,8 +101,9 @@ The generated per-operation tables — Q8.8/Q16.16 construct/add/mul/div,
 accumulation, and the math engines, each with a native baseline and hardware
 counters — are in [performance.md](performance.md) (`beman.inside.perf_report` target).
 The short version: unchecked Q-format arithmetic sits at native parity;
-`checked` on a tight loop costs ~4× because the per-element domain check
-breaks autovectorisation — use `unsafe` inside proven-safe inner loops, or
+`checked` on a tight loop pays a compare-and-branch per element (9 vs 4
+instructions per element on the reference machine), which also stands in the way
+of autovectorisation — use `unsafe` inside proven-safe inner loops, or
 `beman::inside::sum` for a single deferred check.
 
 ## Choosing your grid

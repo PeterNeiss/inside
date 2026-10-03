@@ -18,12 +18,12 @@ performance.
 ## 1. Grid invariants
 
 Every `inside<G, P>` carries a `grid G` value with the following invariants,
-enforced at type-instantiation time by `grid::validate` (`include/beman/inside/grid.hpp:57`):
+enforced at type-instantiation time by `grid::validate` (`grid::validate` in `include/beman/inside/grid.hpp`):
 
 - **`Lower ≤ Upper`** (rational comparison).
 - **`Interval.divides_evenly(Notch)`** — there must be an integer number of
   notches between Lower and Upper. The notch count is exposed as
-  `NotchCount<B>` (`include/beman/inside/generic.hpp:80`).
+  `NotchCount<B>` (`include/beman/inside/generic.hpp`).
 - **`Notch == 0` is legal** and means "any rational in the interval". The
   storage shape changes accordingly (see §2).
 - **`Lower/Notch` and `Upper/Notch` resolve to integer rationals** when `Notch != 0`.
@@ -32,6 +32,12 @@ These invariants let the library compute result grids at compile time
 without runtime overflow checks for grid arithmetic itself — every
 reachable value of `a + b` for `a : A, b : B` is by construction inside
 `Grid<A> + Grid<B>`.
+
+**Point operands.** A point grid (`just<c>`, `1_ins`; Lower == Upper, notch 0)
+in a product scales the other operand's lattice: `grid × point{c}` has notch
+`N·|c|` (`operator*` in `grid.hpp`) rather than notch 0, so the product keeps
+integer storage. `multiplication::point_scale` then reuses the operand's offset
+as the result's (counted from the far end for `c < 0`) — no multiply at all.
 
 ---
 
@@ -100,7 +106,7 @@ storage encoding), gating arithmetic fast paths:
 For grids with **integer Lower, unit-numerator Notch** (e.g. `1/256`,
 `1/65536`), and a raw that fits in `imax`, the rational ↔ value conversion
 collapses to integer arithmetic. The gate is `HasQFormatFastPath<B>`
-(`include/beman/inside/generic.hpp:142`):
+(`include/beman/inside/generic.hpp`):
 
 ```cpp
 abs_den(Lower<B>.Denominator) == 1
@@ -222,7 +228,9 @@ different "extract the value" intents used to spell the same
 
 When `!index_raw<B>` (raw is the value), `raw_imax(b) == to_value(b)`. For
 index storage they differ — `Raw` is an index, `to_value` multiplies by
-`Notch` and adds `Lower`.
+`Notch` and adds `Lower`. On integer-aligned grids that is one integer
+multiply-add, on Q-format grids one truncating integer divide; only other grids
+go through `rational`. `from_value` mirrors it.
 
 ---
 
@@ -276,15 +284,15 @@ is what keeps the core free of `<string>`/`<ostream>`/`<format>`/`<cmath>`:
 |---|---|
 | `beman/inside/inside.hpp`       | `inside<G, P>` struct, compound assignments, `<=>`, `==`, `_ins` literal, increment/decrement |
 | `beman/inside/casts.hpp`       | `clamp_cast`, `wrap_cast`, `checked_cast`, `unchecked_cast`, `clamp_floor` / `clamp_ceil` / `clamp_round` |
-| `beman/inside/arithmetic.hpp`  | Free `add` / `sub` / `mul` / `div` / `mod`, variadic folds `add_all` / `mul_all`, `operator+` / `-` / `*` / `/` / `%`, expected-lift overloads |
+| `beman/inside/arithmetic.hpp`  | Free `add` / `sub` / `mul` / `div` / `mod` (one variadic overload each; `detail::arith` maps the three call forms — policy, actions, `errc&` — onto the op's core), variadic folds `add_all` / `mul_all`, `operator+` / `-` / `*` / `/` / `%`, expected-lift overloads |
 | `beman/inside/range.hpp`       | `inside_range<G, P>` iterator helper |
 | `beman/inside/generic.hpp`     | Public grid/policy introspection (`Grid` / `InsidePolicy` / `Interval` / `Lower` / `Upper` / `Notch`) and the `insidable` / `numeric` / `inside_assignable` concepts. Storage/raw/dispatch plumbing (`raw_t`, the `rational_raw` / `real_raw` / `value_raw` / `index_raw` predicates, `as_double`, `to_value` / `from_value`, `raw_cast` / `raw_imax`, `q_format_encode/decode`, `NotchCount`, `RawLo/Hi`, `detail::as_rational`, …) lives in `beman::inside::detail` |
 | `beman/inside/detail/assignment.hpp`  | `beman::inside::detail::assignment<L, R>` specialisations for integral / fractional / insidable rhs (incl. the Q-format integer shortcut for fractional rhs) |
-| `beman/inside/cmath.hpp`       | `beman::inside::math` — the `<cmath>`-shaped public API (trig, inverse trig, hyperbolic, exp/log/pow, sqrt/cbrt/hypot) over bounds, dispatching to one of three engines (`dbl` / `flt` / `cordic`). The integer/CORDIC cores live in `beman::inside::math::detail` here — they also serve as the compile-time output-grid oracle for **every** engine. See [math.md](math.md) |
+| `beman/inside/cmath.hpp`       | `beman::inside::math` — the `<cmath>`-shaped public API (trig, inverse trig, hyperbolic, exp/log/pow, sqrt/cbrt/hypot) over bounds, re-exported from the build's `default_engine` (`dbl` / `flt` / `cordic`). The integer/CORDIC cores live in `beman::inside::math::detail` here — they also serve as the compile-time output-grid oracle for **every** engine. See [math.md](math.md) |
 | `beman/inside/cmath_double.hpp` | The default **double engine** cores (`d_sin`, `d_exp`, … — own `std::fma`-Horner polynomials, Cody-Waite reduction, correctly-rounded `std::sqrt`); compiled out under `BEMAN_INSIDE_MATH_NO_FP` |
 | `beman/inside/cmath_float.hpp` | The **float engine** cores (binary32 siblings of the double cores, own compile-time-derived range-reduction constants); default under `BEMAN_INSIDE_MATH_FLOAT`, compiled out under `BEMAN_INSIDE_MATH_NO_FP` |
 | `beman/inside/detail/addition.hpp`, `multiplication.hpp`, `division.hpp` | `beman::inside::detail::addition<L, R>`, `multiplication<L, R>`, `division<L, R, F>`, `modulo<L, R, F>` — implementation detail, included via `inside.hpp` |
-| `beman/inside/detail/overflow.hpp`, `debug.hpp` | `add_overflow` / `sub_overflow` / `mul_overflow` (builtins + portable fallback); `errc`, the replaceable `error_handler` + `detail::raise` funnel — implementation detail |
+| `beman/inside/detail/overflow.hpp`, `debug.hpp` | `add_overflow` / `sub_overflow` / `mul_overflow` (the GCC/Clang `__builtin_*_overflow`); `errc`, the replaceable `error_handler` + `detail::raise` funnel — implementation detail |
 | `beman/inside/detail/rational.hpp`    | `rational` and its checked / unchecked arithmetic |
 | `beman/inside/grid.hpp`        | `grid`, `storage_min`, grid operators |
 | `beman/inside/numeric_limits.hpp` | `std::numeric_limits<inside>` and `std::hash<inside>` specialisations (opt-in) |

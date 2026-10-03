@@ -19,7 +19,7 @@ The **gate is already planted**: `BEMAN_INSIDE_MATH_FN` (`beman/inside/cmath.hpp
 macro, and to nothing otherwise — so the upgrade is automatic, no source change needed.
 
 > Caveat: the engine uses `std::fma`, `std::sqrt`, and `std::nearbyint`. GCC already
-> constant-folds `fma`/`sqrt` but not `nearbyint`; MSVC folds none. So activation is
+> constant-folds `fma`/`sqrt` but not `nearbyint`. So activation is
 > per-function and per-toolchain, not guaranteed by the standard version alone. A
 > softfloat emulation that would enable it *today* was considered and rejected as not
 > worth the weight — the library waits for the standard instead.

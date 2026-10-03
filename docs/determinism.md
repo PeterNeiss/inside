@@ -197,7 +197,9 @@ could drift from the source.
 - Build **without** `-ffast-math` / `-funsafe-math-optimizations`.
 - Keep the default rounding mode (round-to-nearest-even).
 - Target IEEE-754 binary64; on 32-bit x86 use SSE2, not x87.
-- FMA contraction is handled internally (explicit `std::fma`), so `-mfma` is safe.
+- FMA contraction is handled internally (explicit `std::fma`), so `-mfma` is safe;
+  `BEMAN_INSIDE_FMA` (default `ON`) adds it on x86-64 and the results are identical.
+- Toolchain: GCC 14+ or Clang 18+ in C++23 mode (MSVC is not supported).
 - For a guarantee that survives *any* of the above being wrong, build with
   `-DBEMAN_INSIDE_MATH_FIXED=ON`.
 

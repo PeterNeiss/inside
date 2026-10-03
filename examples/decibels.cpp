@@ -19,8 +19,9 @@
 #include <print>
 using std::println;
 #else
-// GCC 12 / C++20 lack <print>. Minimal stand-in covering the `{}` forms this
-// example uses, rendered through the inside/rational operator<< from print.hpp.
+// Kept portable to standard libraries without <print>: a minimal stand-in
+// covering the `{}` forms this example uses, rendered through the
+// inside/rational operator<< from print.hpp.
 #include <iostream>
 #include <sstream>
 #include <string_view>

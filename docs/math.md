@@ -8,7 +8,7 @@ default; all three stay callable by namespace in the same binary:
 
 | Engine | Default when | Reproducibility | constexpr | Speed |
 |---|---|---|---|---|
-| **double** (binary64, default) | — | bit-identical on every IEEE-754 binary64 platform compiled without `-ffast-math` (round-to-nearest) | no | ~2× faster |
+| **double** (binary64, default) | — | bit-identical on every IEEE-754 binary64 platform compiled without `-ffast-math` (round-to-nearest) | no | fastest — ~10–15× the CORDIC engine with `-mfma` (`sin` 5.8 vs 81 ns, `exp` 8.9 vs 121 ns) |
 | **float** (binary32) | CMake `-DBEMAN_INSIDE_MATH_FLOAT=ON` (macro `BEMAN_INSIDE_MATH_FLOAT`) | bit-identical on every IEEE-754 binary32 platform (same contract as double) | no | single-precision FPUs (Cortex-M4F) |
 | **integer / CORDIC** | CMake `-DBEMAN_INSIDE_MATH_FIXED=ON` (macro `BEMAN_INSIDE_MATH_FIXED`) | bit-identical **unconditionally** — any platform, any flags, no FPU required | yes | embedded-friendly |
 
@@ -19,8 +19,9 @@ default; all three stay callable by namespace in the same binary:
 The double engine evaluates its own fixed polynomials (`std::fma` Horner,
 hex-float coefficients, Cody-Waite range reduction) plus the correctly-rounded
 `std::sqrt` — no `<cmath>` transcendentals anywhere. The float engine runs the
-same polynomial shapes in single precision. The integer engine runs Q.30
-fixed-point CORDIC/Newton cores. All three snap results onto the same
+same polynomial shapes in single precision. The integer engine runs
+fixed-point CORDIC/Newton cores at a working precision chosen per output grid
+(see Precision below). All three snap results onto the same
 auto-deduced output grid, so the engines are **feature- and
 signature-identical**: the same source compiles against any of them.
 
@@ -121,9 +122,13 @@ other representation flags.
   - *Double engine:* the cores are accurate to ~1 ULP of `double`, then the
     result is quantized onto the output grid — so the stored value is within
     one notch of the true value.
-  - *Integer engine:* the transcendental cores run in Q.30 fixed point
-    (~1e-6–1e-9 depending on composition depth), then quantize onto the
-    output grid.
+  - *Integer engine:* the transcendental cores run in fixed point at a scale
+    2^W chosen from the output grid: W = notch bits + integer bits of the largest
+    output + 6 guard bits (at least 12, at most 31). The composed functions
+    (asin, acos, sinh, cosh, tanh, log10, cbrt, hypot) add 4 more guard bits,
+    capped at 30. Coarse output grids therefore run fewer CORDIC/Newton steps.
+    The result is then quantized onto the output grid. The compile-time
+    deduction of the auto output grids always uses 30 bits.
   - Algebraically-exact results (e.g. `cbrt(8)`, `hypot(3,4)`, `pow(2,10)`)
     land exactly under every engine.
   - Measured per-function error tables for all three engines (max/mean in
@@ -164,7 +169,7 @@ other representation flags.
 | Function | Domain | Output | Errors | Notes |
 |---|---|---|---|---|
 | `sin(x)` / `cos(x)` | `\|x\| ≤ 2^20` rad | `[-1, 1]` | — | grids beyond ±1024 rad use a two-term 1/2π reduction (fixed engine) |
-| `tan(x)` | `\|x\| ≤ 2^20` rad | `[-1024, 1024]` | `expected`; `division_by_zero` at a pole, `overflow` past `Out` (saturates instead when `Out` carries `clamp`) | sin/cos ratio |
+| `tan(x)` | `\|x\| ≤ 2^20` rad | `[-1024, 1024]` | `expected`; `division_by_zero` at a pole, `overflow` past `Out` (saturates instead when `Out` carries `clamp`) | one range reduction (FP engines) / one CORDIC rotation (integer engine) for both sin and cos, then their ratio; poles are exact |
 | `atan(x)` | `\|x\| ≤ 2^20` | `(-π/2, π/2)` | — | reciprocal reduction for \|x\| > 1 |
 | `asin(x)` | `[-1, 1]` | `[-π/2, π/2]` | — | `atan2(x, √(1-x²))` |
 | `acos(x)` | `[-1, 1]` | `[0, π]` | — | `π/2 - asin(x)` |
@@ -244,6 +249,9 @@ are also reachable by name, **callable side-by-side in the same binary**:
 | `beman::inside::math::flt::fn` | `float` (binary32) | unless `BEMAN_INSIDE_MATH_NO_FP` |
 | `beman::inside::math::fn` | the default | `cordic` under `BEMAN_INSIDE_MATH_FIXED`/`BEMAN_INSIDE_MATH_NO_FP`; `flt` under `BEMAN_INSIDE_MATH_FLOAT`; else `dbl` |
 
+`beman::inside::math::default_engine` is a namespace alias for the selected
+engine; the unqualified functions are using-declarations of it.
+
 Select the unqualified default at build time: `-DBEMAN_INSIDE_MATH_FIXED=ON` (integer),
 `-DBEMAN_INSIDE_MATH_FLOAT=ON` (binary32), or neither (binary64). The macro only changes
 what the bare `beman::inside::math::fn` name means — `cordic::`/`dbl::`/`flt::` stay
@@ -257,7 +265,7 @@ compute backend differs. This lets one program pick per call site:
 using A = inside<{{-8, 8}, notch<1, 16384>}, round_nearest | f64>;
 
 auto a = math::cordic::sin(A{1});   // bit-exact across every target — replay/sim
-auto b = math::dbl::sin(A{1});      // ~2× faster — hot, accuracy-insensitive path
+auto b = math::dbl::sin(A{1});      // ~14× faster with -mfma — hot paths
 auto f = math::flt::sin(A{1});      // binary32 — single-precision FPUs (Cortex-M4F)
 auto c = math::sin(A{1});           // whichever the build selected
 ```
