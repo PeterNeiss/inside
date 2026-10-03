@@ -29,7 +29,7 @@ int main()
 
   using time_t    = inside<{{ 0,  1}, notch<1,     N>}, round_nearest>;
   using offset_t  = inside<{{-2,  2}, notch<1, 16384>}, round_nearest>;
-  using angle_t   = inside<{{-4, 10}, notch<1, 16384>}, round_nearest | real>;
+  using angle_t   = inside<{{-4, 10}, notch<1, 16384>}, round_nearest | f64>;
   using gainfac_t = inside<{{ 0,  1}, notch<1,  1024>}, round_nearest>;
 
   constexpr offset_t  off_a{0};

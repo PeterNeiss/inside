@@ -54,10 +54,10 @@ extern "C" long ins_perf_mul_fast(long a, long b)
   return static_cast<long>((x * y).raw());
 }
 
-// f64-backed fast arm: add on a dyadic `real` grid must lower to a bare
+// f64-backed fast arm: add on a dyadic `f64` grid must lower to a bare
 // double add (one addsd) — the fp arm skips snap_double because the result
 // grid is double-exact by construction.
-using D = inside<{{-8, 8}, notch<1, 16384>}, round_nearest | real>;
+using D = inside<{{-8, 8}, notch<1, 16384>}, round_nearest | f64>;
 
 extern "C" double ins_perf_fp_add(D a, D b)
 {

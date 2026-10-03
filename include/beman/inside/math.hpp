@@ -54,7 +54,7 @@ namespace beman::inside
   // "beman/inside/io.hpp" so the core stays free of <string_view>.)
 
   // Subset of arithmetic excluding integrals — the rhs types that need the
-  // rational-arithmetic assignment path. (Named to avoid clashing with `real`.)
+  // rational-arithmetic assignment path. (Named to avoid clashing with `f64`.)
   template<typename T>
   concept fractional = std::floating_point<T> || std::same_as<rational, T>;
 

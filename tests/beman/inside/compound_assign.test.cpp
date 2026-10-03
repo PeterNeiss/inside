@@ -11,7 +11,7 @@ using namespace beman::inside::detail;
 // `b *= 2.0` are ill-formed (guidance static_assert in arithmetic.hpp). The only
 // non-inside operand a compound assign accepts is a `rational`. As with the binary
 // operators, the guidance overloads are SFINAE-transparent (the static_assert
-// fires only on a real call), so the ill-formedness can't be probed with
+// fires only on a f64 call), so the ill-formedness can't be probed with
 // `requires` — only the sanctioned spellings are positively testable.
 // compound assignment: sanctioned RHS compiles
 TEST(CompoundAssignTest, compound_assignment_sanctioned_rhs_compiles)
@@ -185,7 +185,7 @@ TEST(CompoundAssignTest, compound_non_fast_storages_still_route_through_plus_rhs
   ASSERT_EQ(rational{exact_lhs}, (rational{5, 3}));
 
   // f64-backed falls back (fp raws are excluded from the raw fast path)
-  using rl = inside<{{-4, 4}, notch<1, 256>}, real | round_nearest>;
+  using rl = inside<{{-4, 4}, notch<1, 256>}, f64 | round_nearest>;
   rl real_lhs{rational{3, 2}};
   real_lhs -= rl{rational{1, 4}};
   ASSERT_EQ(rational{real_lhs}, (rational{5, 4}));

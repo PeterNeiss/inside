@@ -110,8 +110,8 @@ namespace beman::inside::detail
       // An operand whose raw is a double/rational can't feed the integer
       // four-quadrant formula below (it reads the raw as an integer offset).
       // Combine exactly as rationals and convert to the result's storage —
-      // mirrors addition's rational-mixed branch. Reached when `real` was
-      // dropped from the result (grid not double-exact) but operands stay real.
+      // mirrors addition's rational-mixed branch. Reached when `f64` was
+      // dropped from the result (grid not double-exact) but operands stay f64.
       auto prod = rational::mul_unchecked(as_rational(lhs), as_rational(rhs));
       return result::from_raw(raw_from_offset<result>(
           ((prod - Lower<result>) / Notch<result>).value().Numerator));

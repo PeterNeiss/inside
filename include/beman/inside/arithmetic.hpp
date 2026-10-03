@@ -179,7 +179,7 @@ namespace beman::inside
   // accumulates raws in imax and applies Target's policy once to the total
   // (semantic difference: the *total* is validated, not every prefix). Fast
   // path: ≤32-bit integer raws, flushed to a rational every 2^30 elements so the
-  // accumulator can't overflow; wider/rational/real take the per-element fold.
+  // accumulator can't overflow; wider/rational/f64 take the per-element fold.
   //---------------------------------------------------------------------------
   template <insidable Target, std::ranges::input_range Rng>
     requires insidable<std::remove_cvref_t<std::ranges::range_reference_t<Rng>>>
@@ -357,7 +357,7 @@ namespace beman::inside
   //
   // Concrete (non-auto) return type on purpose: keeps these SFINAE-transparent,
   // so `requires { b + 1; }` stays well-formed and the static_assert fires only
-  // on a real call.
+  // on a f64 call.
   //---------------------------------------------------------------------------
   template <typename A> concept raw_scalar = std::integral<A> || std::floating_point<A>;
 

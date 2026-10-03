@@ -6,7 +6,7 @@
 //   * accuracy — within a few double-ULP of std:: over sweeps;
 //   * exact special values (reproducibility anchors that hold on every IEEE
 //     platform: sin0=0, cos0=1, exp0=1, log1=0, sqrt4=2);
-//   * end-to-end on `real` (double-backed) bounds — the value flows in/out with
+//   * end-to-end on `f64` (double-backed) bounds — the value flows in/out with
 //     no quantization and no I/O cost.
 //
 // std:: is used only as the *reference* here (tests), never in the library.
@@ -20,7 +20,7 @@
 #include <cmath>
 #include <numbers>
 
-// The double engine is the default; under -DBEMAN_INSIDE_MATH_FIXED the `real` bounds
+// The double engine is the default; under -DBEMAN_INSIDE_MATH_FIXED the `f64` bounds
 // are integer-backed and these double-storage assertions don't apply.
 #ifndef BEMAN_INSIDE_MATH_FIXED
 
@@ -75,11 +75,11 @@ TEST(CmathDoubleTest, dbl_accuracy_within_a_few_ulp_of_std)
 // dbl: end-to-end on real (double-backed) bounds
 TEST(CmathDoubleTest, dbl_end_to_end_on_real_double_backed_bounds)
 {
-  using ang = inside<{{-8, 8}, notch<1, 65536>}, real>;
-  using amp = inside<{{-1, 1}, notch<1, 65536>}, real>;
-  static_assert(std::is_same_v<ang::raw_type, double>, "real inside must be double-backed in the default build");
+  using ang = inside<{{-8, 8}, notch<1, 65536>}, f64>;
+  using amp = inside<{{-1, 1}, notch<1, 65536>}, f64>;
+  static_assert(std::is_same_v<ang::raw_type, double>, "f64 inside must be double-backed in the default build");
 
-  // A `real` inside obeys its grid: the value is stored in double but snapped to
+  // A `f64` inside obeys its grid: the value is stored in double but snapped to
   // the notch (1/65536), so it matches std:: only to ~one notch — and it lands
   // EXACTLY on a grid point (double engine = speed at grid precision, not an
   // escape from the grid).
@@ -98,12 +98,12 @@ TEST(CmathDoubleTest, dbl_end_to_end_on_real_double_backed_bounds)
   ASSERT_EQ(xs, std::trunc(xs));
 }
 
-// dbl: real-storage arithmetic composes (double, grid-typed)
+// dbl: f64-storage arithmetic composes (double, grid-typed)
 TEST(CmathDoubleTest, dbl_real_storage_arithmetic_composes_double_grid_typed)
 {
-  using amp = inside<{{-1, 1}, notch<1, 65536>}, real>;
-  using gn  = inside<{{0, 4},  notch<1, 65536>}, real>;
-  using ang = inside<{{-8, 8}, notch<1, 65536>}, real>;
+  using amp = inside<{{-1, 1}, notch<1, 65536>}, f64>;
+  using gn  = inside<{{0, 4},  notch<1, 65536>}, f64>;
+  using ang = inside<{{-8, 8}, notch<1, 65536>}, f64>;
 
   ang ph = 0.6; gn gain = 2.5;
   amp s = math::dbl::sin_core<amp>(ph);
@@ -112,7 +112,7 @@ TEST(CmathDoubleTest, dbl_real_storage_arithmetic_composes_double_grid_typed)
   auto w = y + s;              // real + real
   auto d = s - amp{0.1};       // real − real (negate + add)
 
-  // results stay double-backed (the `real` policy propagates through arithmetic)
+  // results stay double-backed (the `f64` policy propagates through arithmetic)
   static_assert(std::is_same_v<decltype(y)::raw_type, double>);
   static_assert(std::is_same_v<decltype(w)::raw_type, double>);
   static_assert(std::is_same_v<decltype(d)::raw_type, double>);
@@ -126,8 +126,8 @@ TEST(CmathDoubleTest, dbl_real_storage_arithmetic_composes_double_grid_typed)
   ASSERT_TRUE((s > amp{0.5}));     // compares in double, no truncation
   ASSERT_TRUE((s == s));
 
-  // real division → double (continuous result grid, double-backed)
-  using pos = inside<{{1, 4}, notch<1, 65536>}, real>;
+  // f64 division → double (continuous result grid, double-backed)
+  using pos = inside<{{1, 4}, notch<1, 65536>}, f64>;
   pos a3 = 3.0, b2 = 2.0;
   auto q = a3 / b2;
   static_assert(std::is_same_v<decltype(q)::raw_type, double>);
@@ -140,7 +140,7 @@ TEST(CmathDoubleTest, dbl_mixed_sign_sqrt_returns_expected_on_the_double_engine)
   // Interval crosses zero → the expected-returning overload. A non-negative
   // runtime value yields the root; a negative value surfaces domain_error
   // instead of UB.
-  using in  = inside<{{-4, 9}, notch<1, 65536>}, real>;
+  using in  = inside<{{-4, 9}, notch<1, 65536>}, f64>;
 
   in nine = 9.0;
   auto r = math::sqrt(nine);
@@ -183,15 +183,15 @@ TEST(CmathDoubleTest, dbl_circle_m_degree_angle_uses_the_double_engine)
 // time in test_cmath.cpp — but that whole file is `#ifdef BEMAN_INSIDE_MATH_FIXED`, so on
 // the default double engine these functions had NO runtime coverage at all. They
 // route a power-of-two-denominator result through `store_grid`, whose integer
-// fast path used to mis-store a `real` (double-backed) result as its grid INDEX
+// fast path used to mis-store a `f64` (double-backed) result as its grid INDEX
 // (e.g. fmod(7,3) came out 147448 instead of 1). This pins the double-engine
-// algebraic tier on `real` bounds against std::.
-// dbl: algebraic tier on real bounds matches std::
+// algebraic tier on `f64` bounds against std::.
+// dbl: algebraic tier on f64 bounds matches std::
 TEST(CmathDoubleTest, dbl_algebraic_tier_on_real_bounds_matches_std)
 {
-  using in_t  = inside<{{-8, 8}, notch<1, 16384>}, round_nearest | real>;
-  using int_t = inside<{{-8, 8}, notch<1>},        round_nearest | real>;
-  using abs_t = inside<{{0, 8},  notch<1, 16384>}, round_nearest | real>;
+  using in_t  = inside<{{-8, 8}, notch<1, 16384>}, round_nearest | f64>;
+  using int_t = inside<{{-8, 8}, notch<1>},        round_nearest | f64>;
+  using abs_t = inside<{{0, 8},  notch<1, 16384>}, round_nearest | f64>;
 
   {
     SCOPED_TRACE("fmod keeps the dividend's sign (truncated division)");
@@ -223,15 +223,15 @@ TEST(CmathDoubleTest, dbl_algebraic_tier_on_real_bounds_matches_std)
 // double engine — its only tests are the `#ifdef BEMAN_INSIDE_MATH_FIXED` static_asserts
 // in test_cmath.cpp. These cross-check the double engine against std:: to ~a
 // notch, the same oracle a cross-engine diff would use.
-// dbl: transcendental tier on real bounds matches std::
+// dbl: transcendental tier on f64 bounds matches std::
 TEST(CmathDoubleTest, dbl_transcendental_tier_on_real_bounds_matches_std)
 {
   constexpr double tol = 4.0 / 16384;   // a few notches
 
   {
     SCOPED_TRACE("log / log2 / log10 — strictly positive domain");
-    using p = inside<{{1, 16}, notch<1, 16384>}, round_nearest | real>;
-    using o = inside<{{-4, 4}, notch<1, 16384>}, round_nearest | real>;
+    using p = inside<{{1, 16}, notch<1, 16384>}, round_nearest | f64>;
+    using o = inside<{{-4, 4}, notch<1, 16384>}, round_nearest | f64>;
     for (double x : {1.0, 1.5, 2.0, std::numbers::e, 8.0, 10.0, 16.0})
     {
       ASSERT_TRUE(std::fabs(double(o{math::log(p{x})})   - std::log(x))   < tol);
@@ -246,8 +246,8 @@ TEST(CmathDoubleTest, dbl_transcendental_tier_on_real_bounds_matches_std)
 
   {
     SCOPED_TRACE("exp / exp2");
-    using e_in  = inside<{{-2, 2}, notch<1, 16384>}, round_nearest | real>;
-    using e_out = inside<{{0, 8},  notch<1, 16384>}, round_nearest | real>;
+    using e_in  = inside<{{-2, 2}, notch<1, 16384>}, round_nearest | f64>;
+    using e_out = inside<{{0, 8},  notch<1, 16384>}, round_nearest | f64>;
     for (double x : {-2.0, -1.0, -0.5, 0.0, 0.5, 1.0, 2.0})
     {
       ASSERT_TRUE(std::fabs(double(e_out{math::exp(e_in{x})})  - std::exp(x))  < tol);
@@ -257,8 +257,8 @@ TEST(CmathDoubleTest, dbl_transcendental_tier_on_real_bounds_matches_std)
 
   {
     SCOPED_TRACE("asin / acos / atan on their domains");
-    using u = inside<{{-1, 1}, notch<1, 16384>}, round_nearest | real>;
-    using o = inside<{{-2, 2}, notch<1, 16384>}, round_nearest | real>;
+    using u = inside<{{-1, 1}, notch<1, 16384>}, round_nearest | f64>;
+    using o = inside<{{-2, 2}, notch<1, 16384>}, round_nearest | f64>;
     for (double x : {-0.9, -0.5, 0.0, 0.25, 0.5, 0.9})
     {
       ASSERT_TRUE(std::fabs(double(o{math::asin(u{x})}) - std::asin(x)) < tol);
@@ -269,9 +269,9 @@ TEST(CmathDoubleTest, dbl_transcendental_tier_on_real_bounds_matches_std)
 
   {
     SCOPED_TRACE("sinh / cosh / tanh / cbrt");
-    using s_in  = inside<{{-2, 2}, notch<1, 16384>}, round_nearest | real>;
-    using s_out = inside<{{-4, 4}, notch<1, 16384>}, round_nearest | real>;
-    using c_in  = inside<{{1, 8},  notch<1, 16384>}, round_nearest | real>;
+    using s_in  = inside<{{-2, 2}, notch<1, 16384>}, round_nearest | f64>;
+    using s_out = inside<{{-4, 4}, notch<1, 16384>}, round_nearest | f64>;
+    using c_in  = inside<{{1, 8},  notch<1, 16384>}, round_nearest | f64>;
     for (double x : {-2.0, -1.0, 0.0, 1.0, 2.0})
     {
       ASSERT_TRUE(std::fabs(double(s_out{math::sinh(s_in{x})}) - std::sinh(x)) < tol);
@@ -285,7 +285,7 @@ TEST(CmathDoubleTest, dbl_transcendental_tier_on_real_bounds_matches_std)
 
 //---------------------------------------------------------------------------
 // 2026-07 regression: full-mantissa engine results must store onto plain
-// integer-index snap grids (not just `real` ones). tan's auto output grid
+// integer-index snap grids (not just `f64` ones). tan's auto output grid
 // has |Lower| ~ 1024, so a full-mantissa double result once overflowed the
 // exact 64-bit (rhs - Lower)/Notch store and terminated through the noexcept
 // engine; the 128-bit rounded store now lands the correctly rounded slot.

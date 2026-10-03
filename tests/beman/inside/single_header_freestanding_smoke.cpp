@@ -16,7 +16,7 @@ namespace
   [[noreturn]] void trap_handler(beman::inside::errc code, const char* /*what*/)
   {
     g_last = code;
-    for (;;) {}   // a real target would reset/halt
+    for (;;) {}   // a f64 target would reset/halt
   }
 }
 

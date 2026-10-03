@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// Phase-1: transcendentals are gated on `snap` (rounding permission), not `real`
-// (double storage). This exercises the new capability — `beman::inside::math` on NON-`real`
+// Phase-1: transcendentals are gated on `snap` (rounding permission), not `f64`
+// (double storage). This exercises the new capability — `beman::inside::math` on NON-`f64`
 // snap grids: integer-index storage and non-dyadic (1/100) grids — using exact
 // special values that are bit-exact on both engines and any grid containing them.
 
@@ -12,7 +12,7 @@
 using namespace beman::inside;
 using namespace beman::inside::detail;
 
-// snap-gated transcendentals on non-real grids (integer & 1/100)
+// snap-gated transcendentals on non-f64 grids (integer & 1/100)
 TEST(MathSnapGridsTest, snap_gated_transcendentals_on_non_real_grids_integer_1_100)
 {
   // round_nearest implies snap but NOT real → these are integer/index-stored,

@@ -198,7 +198,7 @@ namespace beman::inside::detail
     // `fail` must stay well-formed even when div_return_t narrowed to plain
     // `result` (divisor excludes zero, no overflow); there every call to it is
     // removed by the guards below, so the final arm is dead (return-type only).
-    // Shared by the real and non-real paths (real fails only on a zero divisor).
+    // Shared by the f64 and non-f64 paths (f64 fails only on a zero divisor).
     [[maybe_unused]] auto fail = [&](errc code, const char* what) -> div_return_t<A> {
       if constexpr (overflow_action<plain<A>>)
         return report_or_unexpected<result>(action, policy, code, what);   // -> result

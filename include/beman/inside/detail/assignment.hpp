@@ -220,7 +220,7 @@ namespace beman::inside::detail
           overshoot = rhs - clamped;
 
         // The clamp target is an interval endpoint — a grid point — so the slot is 0
-        // or NotchCount, no rounding. real takes the endpoint as a double, rational
+        // or NotchCount, no rounding. f64 takes the endpoint as a double, rational
         // the exact constant (a double round-trip would lose non-dyadic endpoints);
         // raw_from_offset<L> adds Lower back for direct-encoded storage.
         if constexpr (fp_raw<L>)
@@ -242,7 +242,7 @@ namespace beman::inside::detail
       // so the wrap path can reuse store_checked after computing the wrapped
       // value.
       //
-      // apply_wrap for real R — modular reduction into [Lower, Lower + range)
+      // apply_wrap for a fractional R — modular reduction into [Lower, Lower + range)
       // followed by store_checked so the rounding policy still applies if rhs
       // doesn't land on a notch after wrapping. range = Upper - Lower + Notch.
       template<typename P, typename A>
@@ -362,7 +362,7 @@ namespace beman::inside::detail
         { lhs = L::from_raw(rhs); return true; }   // continuous: store verbatim
         else if constexpr (fp_raw<L>)
         {
-          // real target: raw IS the value — snap to the dyadic grid (range handling
+          // f64 target: raw IS the value — snap to the dyadic grid (range handling
           // already ran in the assign cascade; finite guard mirrors store_f64's).
           const double v = static_cast<double>(rhs);
           if (!(v - v == 0)) [[unlikely]]                  // assign() screens these first
@@ -570,7 +570,7 @@ namespace beman::inside::detail
       static constexpr rational Factor = calcFactor();
 
       // Raw-space integer-only mapping — requires integer raw storage on both
-      // sides (not rational, not real).
+      // sides (not rational, not f64).
       static constexpr bool is_integer_mapping =
           !rational_raw<L> && !rational_raw<R>
           && !fp_raw<L> && !fp_raw<R>
@@ -736,7 +736,7 @@ namespace beman::inside::detail
       static constexpr void store(L& lhs, R const& rhs, P&& policy)
       {
         if constexpr (fp_raw<L>)
-          // real target: raw IS the value — decode the source and snap to the dyadic
+          // f64 target: raw IS the value — decode the source and snap to the dyadic
           // grid (the offset machinery below mis-encodes a double raw).
           lhs = L::from_raw(snap_double<Grid<L>, rounding_for<L, P>>(as_double(rhs)));
         else if constexpr (rational_raw<L>)
@@ -793,7 +793,7 @@ namespace beman::inside::detail
                       || point_exactly_assignable<L, R>,
           "incompatible notches: use with_snap() or policy<snap>() to allow rounding");
 
-        // A `real` source holds its value as a double raw, which the raw-mapping
+        // A `f64` source holds its value as a double raw, which the raw-mapping
         // formulas below would misread as an index: take the double path.
         if constexpr (fp_raw<R>)
           return assignment<L, double>::assign(lhs, as_double(rhs), policy, std::forward<A>(action));

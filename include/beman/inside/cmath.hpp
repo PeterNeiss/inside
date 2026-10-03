@@ -38,7 +38,7 @@
 // signatures, domains):
 //
 //   * DEFAULT — double engine (`cmath_double.hpp`): hardware `double`
-//     polynomials on `real` bounds. Bit-identical on any IEEE-754 binary64
+//     polynomials on `f64` bounds. Bit-identical on any IEEE-754 binary64
 //     platform built without `-ffast-math`. Fast (~ns); needs an FPU; runtime.
 //   * `BEMAN_INSIDE_MATH_FIXED` — integer/CORDIC engine (this file): FPU-free, constexpr,
 //     UNCONDITIONALLY bit-identical (any platform/flags). For embedded/portability.
@@ -166,7 +166,7 @@ namespace beman::inside::math
     template <typename F, insidable Out>
     inline constexpr F upper_fp = static_cast<F>(static_cast<double>(Upper<Out>));
 
-    // Every transcendental operand must carry the `real` policy flag: under the
+    // Every transcendental operand must carry the `f64` policy flag: under the
     // default engine it selects double-backed dyadic storage, under BEMAN_INSIDE_MATH_FIXED
     // integer round_nearest. Requiring it keeps both engines' call sites identical
     // and avoids the slow integer-I/O path. Pure grid ops (abs/floor/ceil/round/
@@ -177,7 +177,7 @@ namespace beman::inside::math
       static_assert(has_flag(InsidePolicy<In>, snap),
           "beman::inside::math: a transcendental result is rounded onto the grid — its "
           "operand must permit rounding. Declare it with `round_nearest` (or "
-          "`snap` / a `round_*` mode / `real`).");
+          "`snap` / a `round_*` mode / `f64`).");
       return true;
     }
   }
@@ -347,7 +347,7 @@ namespace beman::inside::math
     inline constexpr bool grid_fast_store =
         Notch<Out>.Numerator == 1
         && !rational_raw<Out>
-        // `real` storage holds the VALUE, not an offset index, so route it
+        // `f64` storage holds the VALUE, not an offset index, so route it
         // through the rational fallback `Out{r}` (same guard as fmod_int_fast).
         && !fp_raw<Out>
         && rounding_of(InsidePolicy<Out>) == round_mode::nearest
@@ -1236,7 +1236,7 @@ namespace beman::inside::math
   //---------------------------------------------------------------------------
   // Repeated squaring in inside-space: every multiply widens the result grid
   // corner-correctly, so the result is exact for exact inputs and negative
-  // bases are fine. No engine, no `real` requirement — works on any inside
+  // bases are fine. No engine, no `f64` requirement — works on any inside
   // (like abs/floor/fmod). Checked rational raws may return
   // std::expected<inside, errc> per the usual arithmetic vocabulary. Negative
   // exponents are deferred (they need the division error story).
@@ -1473,14 +1473,14 @@ namespace beman::inside::math
   using circle = inside<{{rational{0},
                          rational{std::uint64_t{360} * (M - 1),
                                                static_cast<imax>(M)}},
-                        notch<360, static_cast<imax>(M)>}, real | wrap>;
+                        notch<360, static_cast<imax>(M)>}, f64 | wrap>;
 
   // Amplitude output grid: [-1, 1] at 1/K resolution. The natural target for
   // `sin(circle<M>, amp<K>&)` — angle precision (M) and amplitude precision (K)
   // are chosen independently.
   template <std::uint64_t K>
   using amp = inside<{{rational{-1}, rational{1}},
-                     notch<1, static_cast<imax>(K)>}, real>;
+                     notch<1, static_cast<imax>(K)>}, f64>;
 
   namespace detail
   {
@@ -1532,9 +1532,9 @@ namespace beman::inside::math
                     "beman::inside::math: circle angle must have Lower 0 (degrees)");
       static_assert(has_flag(InsidePolicy<DEG>, wrap),
                     "beman::inside::math: circle angle must carry the wrap policy");
-      static_assert(has_flag(InsidePolicy<DEG>, real),
-                    "beman::inside::math: circle angle must carry the `real` policy "
-                    "(circle<M> already does; custom angle bounds must add `| real`)");
+      static_assert(has_flag(InsidePolicy<DEG>, f64),
+                    "beman::inside::math: circle angle must carry the `f64` policy "
+                    "(circle<M> already does; custom angle bounds must add `| f64`)");
       static_assert(circle_slots<DEG> % 4 == 0,
                     "beman::inside::math: circle slot count M must be divisible by 4");
       return true;

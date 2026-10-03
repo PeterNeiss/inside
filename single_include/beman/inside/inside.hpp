@@ -383,7 +383,7 @@ namespace beman::inside
   // "beman/inside/io.hpp" so the core stays free of <string_view>.)
 
   // Subset of arithmetic excluding integrals — the rhs types that need the
-  // rational-arithmetic assignment path. (Named to avoid clashing with `real`.)
+  // rational-arithmetic assignment path. (Named to avoid clashing with `f64`.)
   template<typename T>
   concept fractional = std::floating_point<T> || std::same_as<rational, T>;
 
@@ -1780,10 +1780,6 @@ namespace beman::inside
   // storage order: exact > f64 > f32 > direct > indexed > deduced.
   inline constexpr policy_flag f32{(1ull << 41) | round_nearest};
 
-  // `real` — deprecated spelling of `f64`, kept as an alias for one release. New
-  // code should use `f64` (binary64 storage) or `f32` (binary32). The flag is
-  // purely a storage choice — transcendentals gate on `snap`, not on this.
-  inline constexpr policy_flag real = f64;
 
   // Fixed-width integer raw storage — pin the exact backing type instead of
   // letting deduction pick the smallest fit. A bare width flag means *value*
@@ -1832,7 +1828,7 @@ namespace beman::inside
   // Flag-set membership predicates. `has_flag(set, flag)` is true iff EVERY bit
   // of `flag` is present in `set` — reads better than the raw `(set & flag) ==
   // flag` and is correct for composite flags (e.g. `round_nearest` carries
-  // `snap`, `real` carries `round_nearest`), where a bare `set & flag`
+  // `snap`, `f64` carries `round_nearest`), where a bare `set & flag`
   // truthy test would misfire. `has_any_flag` tests for any overlap.
   //---------------------------------------------------------------------------
   [[nodiscard]] constexpr bool has_flag(policy_flag set, policy_flag flag) noexcept
@@ -2136,7 +2132,7 @@ namespace beman::inside
 
   // Dyadic grid: power-of-2 notch denominator and Lower denominator, so every
   // on-grid value is exactly representable in IEEE-754 `double`. Precondition
-  // for double-backed (`real`) storage.
+  // for double-backed (`f64`) storage.
   template <grid G>
   inline constexpr bool dyadic_grid =
        G.Notch.Numerator != 0
@@ -2164,7 +2160,7 @@ namespace beman::inside
   // no coarser than the notch. Writing v = N·2^(−f) with f = log2(den(Notch)),
   // that is |N| < 2^53 (53-bit significand) AND f ≤ 1022 (notch ≥ smallest
   // normal, so no on-grid value is subnormal). The 2^1024 overflow ceiling is
-  // unreachable once |N| < 2^53. Necessary precondition for `real` storage.
+  // unreachable once |N| < 2^53. Necessary precondition for `f64` storage.
   template <grid G>
   constexpr bool compute_double_exact() noexcept
   {
@@ -2258,9 +2254,9 @@ namespace beman::inside
   // doesn't fit: widen f32→f64 if double holds the grid, else drop the fp flag so
   // storage is deduced. The snap/round bits are preserved.
   // Storage for an inside<G, P>: representation flags pick the raw type, widest-wins
-  // (exact > real > direct > indexed > deduced).
+  // (exact > f64 > f32 > {width} > direct > indexed > deduced).
   //   exact   → rational raw on any grid.
-  //   real    → double-backed under the default engine, on a dyadic or notch-0
+  //   f64     → double-backed under the default engine, on a dyadic or notch-0
   //             grid; elided under BEMAN_INSIDE_MATH_FIXED (falls through to deduced).
   //   direct  → raw == value, plain integer (Notch == 1).
   //   indexed → raw == 0-based notch index (Notch != 0).
@@ -2271,12 +2267,12 @@ namespace beman::inside
     if constexpr (has_flag(P, exact))
       return detail::rational{};
 #ifndef BEMAN_INSIDE_MATH_NO_FP
-    else if constexpr (has_flag(P, real)
+    else if constexpr (has_flag(P, f64)
                     && (double_exact<G> || G.Notch == 0))
       return double{};
-    else if constexpr (has_flag(P, real) && dyadic_grid<G>)
+    else if constexpr (has_flag(P, f64) && dyadic_grid<G>)
     {
-      // `real`/`f64` explicitly requested on a dyadic grid double can't represent
+      // `f64`/`f64` explicitly requested on a dyadic grid double can't represent
       // exactly (max |value·2^f| ≥ 2^53, or notch below the smallest normal).
       // Arithmetic drops the flag before reaching here, so this is direct misuse.
       static_assert(double_exact<G>,
@@ -2582,7 +2578,7 @@ namespace beman::inside
     inline constexpr bool index_raw =
          !fp_raw<B> && !rational_raw<B> && !value_raw<B>;
 
-    // Ungated double view of any inside, for the `real` arithmetic arms (the
+    // Ungated double view of any inside, for the `f64` arithmetic arms (the
     // public operator double() is gated on a rounding flag; this is always
     // available). Everything but index storage holds the value verbatim; an
     // index decodes through the grid.
@@ -3284,7 +3280,7 @@ namespace beman::inside::detail
           overshoot = rhs - clamped;
 
         // The clamp target is an interval endpoint — a grid point — so the slot is 0
-        // or NotchCount, no rounding. real takes the endpoint as a double, rational
+        // or NotchCount, no rounding. f64 takes the endpoint as a double, rational
         // the exact constant (a double round-trip would lose non-dyadic endpoints);
         // raw_from_offset<L> adds Lower back for direct-encoded storage.
         if constexpr (fp_raw<L>)
@@ -3306,7 +3302,7 @@ namespace beman::inside::detail
       // so the wrap path can reuse store_checked after computing the wrapped
       // value.
       //
-      // apply_wrap for real R — modular reduction into [Lower, Lower + range)
+      // apply_wrap for a fractional R — modular reduction into [Lower, Lower + range)
       // followed by store_checked so the rounding policy still applies if rhs
       // doesn't land on a notch after wrapping. range = Upper - Lower + Notch.
       template<typename P, typename A>
@@ -3426,7 +3422,7 @@ namespace beman::inside::detail
         { lhs = L::from_raw(rhs); return true; }   // continuous: store verbatim
         else if constexpr (fp_raw<L>)
         {
-          // real target: raw IS the value — snap to the dyadic grid (range handling
+          // f64 target: raw IS the value — snap to the dyadic grid (range handling
           // already ran in the assign cascade; finite guard mirrors store_f64's).
           const double v = static_cast<double>(rhs);
           if (!(v - v == 0)) [[unlikely]]                  // assign() screens these first
@@ -3634,7 +3630,7 @@ namespace beman::inside::detail
       static constexpr rational Factor = calcFactor();
 
       // Raw-space integer-only mapping — requires integer raw storage on both
-      // sides (not rational, not real).
+      // sides (not rational, not f64).
       static constexpr bool is_integer_mapping =
           !rational_raw<L> && !rational_raw<R>
           && !fp_raw<L> && !fp_raw<R>
@@ -3800,7 +3796,7 @@ namespace beman::inside::detail
       static constexpr void store(L& lhs, R const& rhs, P&& policy)
       {
         if constexpr (fp_raw<L>)
-          // real target: raw IS the value — decode the source and snap to the dyadic
+          // f64 target: raw IS the value — decode the source and snap to the dyadic
           // grid (the offset machinery below mis-encodes a double raw).
           lhs = L::from_raw(snap_double<Grid<L>, rounding_for<L, P>>(as_double(rhs)));
         else if constexpr (rational_raw<L>)
@@ -3857,7 +3853,7 @@ namespace beman::inside::detail
                       || point_exactly_assignable<L, R>,
           "incompatible notches: use with_snap() or policy<snap>() to allow rounding");
 
-        // A `real` source holds its value as a double raw, which the raw-mapping
+        // A `f64` source holds its value as a double raw, which the raw-mapping
         // formulas below would misread as an index: take the double path.
         if constexpr (fp_raw<R>)
           return assignment<L, double>::assign(lhs, as_double(rhs), policy, std::forward<A>(action));
@@ -4283,7 +4279,7 @@ namespace beman::inside::detail
   struct fp_rep
   {
     static constexpr bool any_f64 =
-        has_flag(InsidePolicy<Lhs>, real) || has_flag(InsidePolicy<Rhs>, real);
+        has_flag(InsidePolicy<Lhs>, f64) || has_flag(InsidePolicy<Rhs>, f64);
     static constexpr bool any_f32 =
         has_flag(InsidePolicy<Lhs>, f32) || has_flag(InsidePolicy<Rhs>, f32);
     static constexpr bool continuous_ok = AllowContinuous && ResultGrid.Notch == 0;
@@ -4300,7 +4296,7 @@ namespace beman::inside::detail
         & (exact | (ResultGrid.Notch == 1 ? direct : none) | (ResultGrid.Notch != 0 ? indexed : none));
     static constexpr policy_flag rep =
         carried
-        | (keep_f64 ? real : none) | (keep_f32 ? f32 : none);
+        | (keep_f64 ? f64 : none) | (keep_f32 ? f32 : none);
     // The result inside's policy: the propagated representation plus the
     // operands' `checked` (a representation flag must not switch checking off),
     // or plain checked.
@@ -4564,8 +4560,8 @@ namespace beman::inside::detail
       // An operand whose raw is a double/rational can't feed the integer
       // four-quadrant formula below (it reads the raw as an integer offset).
       // Combine exactly as rationals and convert to the result's storage —
-      // mirrors addition's rational-mixed branch. Reached when `real` was
-      // dropped from the result (grid not double-exact) but operands stay real.
+      // mirrors addition's rational-mixed branch. Reached when `f64` was
+      // dropped from the result (grid not double-exact) but operands stay f64.
       auto prod = rational::mul_unchecked(as_rational(lhs), as_rational(rhs));
       return result::from_raw(raw_from_offset<result>(
           ((prod - Lower<result>) / Notch<result>).value().Numerator));
@@ -4823,7 +4819,7 @@ namespace beman::inside::detail
     // `fail` must stay well-formed even when div_return_t narrowed to plain
     // `result` (divisor excludes zero, no overflow); there every call to it is
     // removed by the guards below, so the final arm is dead (return-type only).
-    // Shared by the real and non-real paths (real fails only on a zero divisor).
+    // Shared by the f64 and non-f64 paths (f64 fails only on a zero divisor).
     [[maybe_unused]] auto fail = [&](errc code, const char* what) -> div_return_t<A> {
       if constexpr (overflow_action<plain<A>>)
         return report_or_unexpected<result>(action, policy, code, what);   // -> result
@@ -5042,14 +5038,14 @@ namespace beman::inside
     static_assert(grid::validate<G>());
     static_assert(!(P & clamp) || !(P & wrap), "clamp and wrap are mutually exclusive");
 #ifndef BEMAN_INSIDE_MATH_NO_FP
-    // Under the default (double) engine the `real` policy is double-backed, and
+    // Under the default (double) engine the `f64` policy is double-backed, and
     // its value snaps to the grid (Lower + k·Notch). That snap is only exact
     // when the grid is dyadic — power-of-two notch and Lower — so grid points
     // are representable in IEEE-754 double. A continuous grid (Notch == 0) has
     // no grid to snap to. Anything else is rejected here rather than silently
     // demoted to integer storage.
-    static_assert(!has_flag(P, real) || detail::dyadic_grid<G> || G.Notch == 0,
-                  "inside: the `real`/`f64` policy requires a dyadic grid (power-of-two "
+    static_assert(!has_flag(P, f64) || detail::dyadic_grid<G> || G.Notch == 0,
+                  "inside: the `f64`/`f64` policy requires a dyadic grid (power-of-two "
                   "notch and Lower, so values are exactly representable in double)");
     static_assert(!has_flag(P, f32) || detail::dyadic_grid<G> || G.Notch == 0,
                   "inside: the `f32` policy requires a dyadic grid (power-of-two notch "
@@ -5251,7 +5247,7 @@ namespace beman::inside
     //                       path. No second implicit integer operator (would make
     //                       `imax_var += b` ambiguous).
     //   operator rational — implicit; lossless and exact.
-    //   operator double   — implicit for `real` bounds (dyadic grid → lossless);
+    //   operator double   — implicit for `f64` bounds (dyadic grid → lossless);
     //                       explicit otherwise and gated on a rounding flag.
     //                       Strict bounds opt in via `to<double>().value()`.
     //   to<T>()           — typed-error narrowing/widening → `expected<T, errc>`
@@ -5265,7 +5261,7 @@ namespace beman::inside
              && G.Interval.Upper <= detail::rational{std::numeric_limits<imax>::max()})
     { return detail::to_value(*this); }
 
-    constexpr explicit(!has_flag(P, real) && !has_flag(P, f32)) operator double() const
+    constexpr explicit(!has_flag(P, f64) && !has_flag(P, f32)) operator double() const
       requires ((P & (round_floor | round_ceil | round_nearest
                     | round_half_even | snap)) != 0)
     { return detail::as_double(*this); }
@@ -6107,7 +6103,7 @@ namespace beman::inside
   // accumulates raws in imax and applies Target's policy once to the total
   // (semantic difference: the *total* is validated, not every prefix). Fast
   // path: ≤32-bit integer raws, flushed to a rational every 2^30 elements so the
-  // accumulator can't overflow; wider/rational/real take the per-element fold.
+  // accumulator can't overflow; wider/rational/f64 take the per-element fold.
   //---------------------------------------------------------------------------
   template <insidable Target, std::ranges::input_range Rng>
     requires insidable<std::remove_cvref_t<std::ranges::range_reference_t<Rng>>>
@@ -6285,7 +6281,7 @@ namespace beman::inside
   //
   // Concrete (non-auto) return type on purpose: keeps these SFINAE-transparent,
   // so `requires { b + 1; }` stays well-formed and the static_assert fires only
-  // on a real call.
+  // on a f64 call.
   //---------------------------------------------------------------------------
   template <typename A> concept raw_scalar = std::integral<A> || std::floating_point<A>;
 
@@ -6326,7 +6322,7 @@ namespace beman::inside
 // iterator wraps modulo the slot count so a mid-range start visits every slot
 // once. Models random_access_range + sized_range (so std::ranges algorithms
 // work directly). iterator_category is input_iterator_tag because operator*
-// returns by value; iterator_concept carries the real random-access capability.
+// returns by value; iterator_concept carries the f64 random-access capability.
 //---------------------------------------------------------------------------
 namespace beman::inside
 {
@@ -6747,7 +6743,7 @@ namespace beman::inside::math::dbl::detail
 
 namespace beman::inside::math::dbl
 {
-  // Engine cores: `real` (double-backed) inside in → `double` math → inside out.
+  // Engine cores: `f64` (double-backed) inside in → `double` math → inside out.
   // The inside I/O is a plain double read/store (operator double / Out{double}),
   // so the cost is the polynomial itself. These plug into the shared public
   // surface as `fn_core` under the default build.
@@ -7116,7 +7112,7 @@ namespace beman::inside::math::flt
 // signatures, domains):
 //
 //   * DEFAULT — double engine (`cmath_double.hpp`): hardware `double`
-//     polynomials on `real` bounds. Bit-identical on any IEEE-754 binary64
+//     polynomials on `f64` bounds. Bit-identical on any IEEE-754 binary64
 //     platform built without `-ffast-math`. Fast (~ns); needs an FPU; runtime.
 //   * `BEMAN_INSIDE_MATH_FIXED` — integer/CORDIC engine (this file): FPU-free, constexpr,
 //     UNCONDITIONALLY bit-identical (any platform/flags). For embedded/portability.
@@ -7244,7 +7240,7 @@ namespace beman::inside::math
     template <typename F, insidable Out>
     inline constexpr F upper_fp = static_cast<F>(static_cast<double>(Upper<Out>));
 
-    // Every transcendental operand must carry the `real` policy flag: under the
+    // Every transcendental operand must carry the `f64` policy flag: under the
     // default engine it selects double-backed dyadic storage, under BEMAN_INSIDE_MATH_FIXED
     // integer round_nearest. Requiring it keeps both engines' call sites identical
     // and avoids the slow integer-I/O path. Pure grid ops (abs/floor/ceil/round/
@@ -7255,7 +7251,7 @@ namespace beman::inside::math
       static_assert(has_flag(InsidePolicy<In>, snap),
           "beman::inside::math: a transcendental result is rounded onto the grid — its "
           "operand must permit rounding. Declare it with `round_nearest` (or "
-          "`snap` / a `round_*` mode / `real`).");
+          "`snap` / a `round_*` mode / `f64`).");
       return true;
     }
   }
@@ -7425,7 +7421,7 @@ namespace beman::inside::math
     inline constexpr bool grid_fast_store =
         Notch<Out>.Numerator == 1
         && !rational_raw<Out>
-        // `real` storage holds the VALUE, not an offset index, so route it
+        // `f64` storage holds the VALUE, not an offset index, so route it
         // through the rational fallback `Out{r}` (same guard as fmod_int_fast).
         && !fp_raw<Out>
         && rounding_of(InsidePolicy<Out>) == round_mode::nearest
@@ -8314,7 +8310,7 @@ namespace beman::inside::math
   //---------------------------------------------------------------------------
   // Repeated squaring in inside-space: every multiply widens the result grid
   // corner-correctly, so the result is exact for exact inputs and negative
-  // bases are fine. No engine, no `real` requirement — works on any inside
+  // bases are fine. No engine, no `f64` requirement — works on any inside
   // (like abs/floor/fmod). Checked rational raws may return
   // std::expected<inside, errc> per the usual arithmetic vocabulary. Negative
   // exponents are deferred (they need the division error story).
@@ -8551,14 +8547,14 @@ namespace beman::inside::math
   using circle = inside<{{rational{0},
                          rational{std::uint64_t{360} * (M - 1),
                                                static_cast<imax>(M)}},
-                        notch<360, static_cast<imax>(M)>}, real | wrap>;
+                        notch<360, static_cast<imax>(M)>}, f64 | wrap>;
 
   // Amplitude output grid: [-1, 1] at 1/K resolution. The natural target for
   // `sin(circle<M>, amp<K>&)` — angle precision (M) and amplitude precision (K)
   // are chosen independently.
   template <std::uint64_t K>
   using amp = inside<{{rational{-1}, rational{1}},
-                     notch<1, static_cast<imax>(K)>}, real>;
+                     notch<1, static_cast<imax>(K)>}, f64>;
 
   namespace detail
   {
@@ -8610,9 +8606,9 @@ namespace beman::inside::math
                     "beman::inside::math: circle angle must have Lower 0 (degrees)");
       static_assert(has_flag(InsidePolicy<DEG>, wrap),
                     "beman::inside::math: circle angle must carry the wrap policy");
-      static_assert(has_flag(InsidePolicy<DEG>, real),
-                    "beman::inside::math: circle angle must carry the `real` policy "
-                    "(circle<M> already does; custom angle bounds must add `| real`)");
+      static_assert(has_flag(InsidePolicy<DEG>, f64),
+                    "beman::inside::math: circle angle must carry the `f64` policy "
+                    "(circle<M> already does; custom angle bounds must add `| f64`)");
       static_assert(circle_slots<DEG> % 4 == 0,
                     "beman::inside::math: circle slot count M must be divisible by 4");
       return true;
@@ -9688,11 +9684,11 @@ namespace beman::inside
   auto to_string(V value)
   { return std::to_string(value); }
 
-  // `real` (double-backed) and `exact` (rational-backed) bounds: render the
-  // exact rational form. (Without this overload a real inside would fall to the
+  // `f64` (double-backed) and `exact` (rational-backed) bounds: render the
+  // exact rational form. (Without this overload a f64 inside would fall to the
   // generic `std::to_string(double)` and print a lossy 6-digit form, and a
   // rational-raw inside has no std::to_string at all.) A continuous (Notch == 0)
-  // real inside prints the double.
+  // f64 inside prints the double.
   template <insidable B>
     requires (detail::fp_raw<B> || detail::rational_raw<B>)
   inline std::string to_string(B b)

@@ -274,13 +274,13 @@ TEST(CoverageCornersTest, on_overflow_compound_subtract_that_does_not_overflow)
 // real store out of range: checked policy
 TEST(CoverageCornersTest, real_store_out_of_range_checked_policy)
 {
-  using rbc = inside<{{-1, 1}, notch<1, 1024>}, real | checked>;
+  using rbc = inside<{{-1, 1}, notch<1, 1024>}, f64 | checked>;
   ASSERT_THROW((void)((rbc{5.0})), beman::inside::inside_error);   // out of range -> report (throws)
 }
 #endif // !BEMAN_INSIDE_MATH_FIXED
 
 //---------------------------------------------------------------------------
-// assignment.hpp:609-613 — inside -> inside store into a `real` (double-backed)
+// assignment.hpp:609-613 — inside -> inside store into a `f64` (double-backed)
 // target decodes the source and snaps to the dyadic grid.
 //---------------------------------------------------------------------------
 #ifndef BEMAN_INSIDE_MATH_FIXED
@@ -288,7 +288,7 @@ TEST(CoverageCornersTest, real_store_out_of_range_checked_policy)
 TEST(CoverageCornersTest, inside_to_real_conversion_snaps_onto_the_double_grid)
 {
   using src_t = inside<{-2, 2}>;                          // integer-backed source
-  using rb    = inside<{{-2, 2}, notch<1, 1024>}, real>;  // double-backed target
+  using rb    = inside<{{-2, 2}, notch<1, 1024>}, f64>;  // double-backed target
 
   src_t src{1};
   rb dst = src;                                          // insidable -> real store
@@ -345,7 +345,7 @@ TEST(CoverageCornersTest, math_fmod_integer_fast_path_raw_from_offset_imax)
 // unsafe real store out of range falls through (no report)
 TEST(CoverageCornersTest, unsafe_real_store_out_of_range_falls_through_no_report)
 {
-  using rb = inside<{{-1, 1}, notch<1, 1024>}, real | unsafe>;
+  using rb = inside<{{-1, 1}, notch<1, 1024>}, f64 | unsafe>;
   rb x = 5.0;                       // out of range, unsafe: stored as-is, no throw
   ASSERT_EQ(double(x), 5.0);
 }

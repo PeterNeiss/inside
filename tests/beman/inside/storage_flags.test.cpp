@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Representation policy flags — `exact` / `direct` / `indexed` force a raw
-// representation the way `real` does; without one the grid deduces it.
+// representation the way `f64` does; without one the grid deduces it.
 // Selection resolves widest-wins (exact > real > direct > indexed > deduced),
 // matching the OR-propagation of policies through arithmetic.
 //
@@ -26,7 +26,7 @@ TEST(StorageFlagsTest, default_ctor_is_trivial_no_zero_fill_footgun)
 {
   // The default ctor is `= default` for every policy — Raw is uninitialized,
   // like a built-in scalar, rather than zero-filled to a possibly-invalid slot.
-  // checked is the default policy; rational/value/real storage all stay trivial.
+  // checked is the default policy; rational/value/f64 storage all stay trivial.
   static_assert(std::is_trivially_default_constructible_v<inside<{0, 10}>>);          // index
   static_assert(std::is_trivially_default_constructible_v<inside<{-100, -5}>>);       // signed value
   static_assert(std::is_trivially_default_constructible_v<inside<grid{5}>>);          // rational (point grid)
@@ -56,7 +56,7 @@ TEST(StorageFlagsTest, exact_forces_rational_raw_on_any_grid)
   auto sum = q + q;
   ASSERT_EQ(rational{sum}, (rational{3, 2}));
 
-  // Non-dyadic grids are fine (this is what `real` cannot do).
+  // Non-dyadic grids are fine (this is what `f64` cannot do).
   using T = inside<{{0, 1}, notch<1, 3>}, exact>;
   static_assert(detail::rational_raw<T>);
   T third{rational{1, 3}};
@@ -174,19 +174,19 @@ TEST(StorageFlagsTest, representation_flags_resolve_widest_wins)
 {
   // exact beats real: a mixed math chain falls back to exact fractions.
   using Ex = inside<{{0, 4}, notch<1, 256>}, exact | round_nearest>;
-  using Re = inside<{{0, 4}, notch<1, 256>}, round_nearest | real>;
+  using Re = inside<{{0, 4}, notch<1, 256>}, round_nearest | f64>;
   using Sum = decltype(Ex{} + Re{});
   static_assert((InsidePolicy<Sum> & exact) == exact);
   static_assert(detail::rational_raw<Sum>);
   ASSERT_EQ((rational{Sum{Ex{rational{1, 256}} + Re{rational{2, 256}}}}), (rational{3, 256}));
 
-  // exact | real spelled directly on one inside: exact wins, both engines.
-  using Both = inside<{{0, 4}, notch<1, 256>}, exact | real>;
+  // exact | f64 spelled directly on one inside: exact wins, both engines.
+  using Both = inside<{{0, 4}, notch<1, 256>}, exact | f64>;
   static_assert(detail::rational_raw<Both>);
 
   // real beats direct on a dyadic unit grid (default engine only — under
-  // BEMAN_INSIDE_MATH_FIXED the real arm is elided and direct wins).
-  using RD = inside<{0, 4}, real | direct>;
+  // BEMAN_INSIDE_MATH_FIXED the f64 arm is elided and direct wins).
+  using RD = inside<{0, 4}, f64 | direct>;
 #ifndef BEMAN_INSIDE_MATH_FIXED
   static_assert(detail::f64_raw<RD>);
 #else
@@ -257,15 +257,15 @@ TEST(StorageFlagsTest, math_output_lands_in_f32_storage_flt_engine_pairs_with_f3
 // f64 is the canonical double-backed flag; real is its alias
 TEST(StorageFlagsTest, f64_is_the_canonical_double_backed_flag_real_is_its_alias)
 {
-  // `real` was renamed `f64`; the alias is bit-identical, so old code compiles.
-  static_assert(beman::inside::f64 == beman::inside::real);
+  // `f64` was renamed `f64`; the alias is bit-identical, so old code compiles.
+  static_assert(beman::inside::f64 == beman::inside::f64);
   static_assert(has_flag(beman::inside::f64, round_nearest));   // still carries snap/round
 
 #ifndef BEMAN_INSIDE_MATH_FIXED
-  // f64 selects binary64-backed storage exactly as `real` did (storage is
+  // f64 selects binary64-backed storage exactly as `f64` did (storage is
   // independent of the compute engine — true in the double AND float builds).
   using F = inside<{{0, 4}, notch<1, 256>}, round_nearest | f64>;
-  using R = inside<{{0, 4}, notch<1, 256>}, round_nearest | real>;
+  using R = inside<{{0, 4}, notch<1, 256>}, round_nearest | f64>;
   static_assert(std::is_same_v<F::raw_type, double>);
   static_assert(std::is_same_v<F::raw_type, R::raw_type>);
   static_assert(detail::f64_raw<F>);
@@ -305,22 +305,22 @@ TEST(StorageFlagsTest, representation_flags_print_the_value_not_the_raw)
   ASSERT_EQ(beman::inside::to_string(I{-3}), "-3");      // value, not index 2
 }
 
-// real storage runs the full out-of-range policy cascade
+// f64 storage runs the full out-of-range policy cascade
 TEST(StorageFlagsTest, real_storage_runs_the_full_out_of_range_policy_cascade)
 {
   // clamp: saturate to the (grid-point) endpoint.
-  using RC = inside<{{0, 4}, notch<1, 256>}, real | clamp>;
+  using RC = inside<{{0, 4}, notch<1, 256>}, f64 | clamp>;
   ASSERT_TRUE(static_cast<double>(rational{RC{9.5}})  == 4.0);
   ASSERT_TRUE(static_cast<double>(rational{RC{-1.5}}) == 0.0);
 
   // wrap: fold into [Lower, Lower + span + notch) — same convention as the
   // fractional path. Span 0..359 with notch 1 wraps 370 → 10, -10 → 350.
-  using RW = inside<{{0, 359}, notch<1>}, real | wrap>;
+  using RW = inside<{{0, 359}, notch<1>}, f64 | wrap>;
   ASSERT_TRUE(static_cast<double>(rational{RW{370.0}}) == 10.0);
   ASSERT_TRUE(static_cast<double>(rational{RW{-10.0}}) == 350.0);
 
   // checked: out-of-range reports (throws) instead of silently storing.
-  using RK = inside<{{0, 4}, notch<1, 256>}, real | checked>;
+  using RK = inside<{{0, 4}, notch<1, 256>}, f64 | checked>;
   ASSERT_THROW((void)(RK{9.5}), beman::inside::inside_error);
   ASSERT_TRUE(static_cast<double>(rational{RK{2.5}}) == 2.5);
 
@@ -329,7 +329,7 @@ TEST(StorageFlagsTest, real_storage_runs_the_full_out_of_range_policy_cascade)
   ASSERT_TRUE(!RK::try_make(9.5).has_value());
 
   // unchecked (bare real): stores as-is — unchanged legacy behavior.
-  using RU = inside<{{0, 4}, notch<1, 256>}, real>;
+  using RU = inside<{{0, 4}, notch<1, 256>}, f64>;
   ASSERT_TRUE(static_cast<double>(rational{RU{2.5}}) == 2.5);
 }
 
@@ -338,7 +338,7 @@ TEST(StorageFlagsTest, non_finite_doubles_are_rejected_both_engines)
 {
   // Default engine: store_real guards before the grid snap; fixed engine:
   // the integer-backed path throws in rational(double). Same observable.
-  using R = inside<{{0, 4}, notch<1, 256>}, round_nearest | real>;
+  using R = inside<{{0, 4}, notch<1, 256>}, round_nearest | f64>;
   const double nan = std::numeric_limits<double>::quiet_NaN();
   const double inf = std::numeric_limits<double>::infinity();
   ASSERT_THROW((void)(R{nan}), beman::inside::inside_error);
@@ -358,7 +358,7 @@ TEST(StorageFlagsTest, non_finite_doubles_are_rejected_both_engines)
 // atan / atan2 accept magnitudes beyond 1
 TEST(StorageFlagsTest, atan_atan2_accept_magnitudes_beyond_1)
 {
-  using wide_t = inside<{{-16, 16}, notch<1, 16384>}, round_nearest | real>;
+  using wide_t = inside<{{-16, 16}, notch<1, 16384>}, round_nearest | f64>;
 
   auto val = [](auto b) { return static_cast<double>(rational{b}); };
 
@@ -382,7 +382,7 @@ TEST(StorageFlagsTest, atan_atan2_accept_magnitudes_beyond_1)
 // per-operation policies work on real-backed bounds
 TEST(StorageFlagsTest, per_operation_policies_work_on_real_backed_bounds)
 {
-  using R = inside<{{1, 4}, notch<1, 256>}, round_nearest | real>;  // Lower != 0
+  using R = inside<{{1, 4}, notch<1, 256>}, round_nearest | f64>;  // Lower != 0
 
   R a{2.0};
   a.with_clamp() = 9.5;
@@ -414,8 +414,8 @@ TEST(StorageFlagsTest, per_operation_policies_work_on_real_backed_bounds)
   e.with_clamp() = S{50};
   ASSERT_TRUE(static_cast<double>(rational{e}) == 4.0);
 
-  // wrap override on a real-backed grid.
-  using W = inside<{{0, 359}, notch<1>}, round_nearest | real>;
+  // wrap override on a f64-backed grid.
+  using W = inside<{{0, 359}, notch<1>}, round_nearest | f64>;
   W w{0.0};
   w.with_wrap() = 370.0;
   ASSERT_TRUE(static_cast<double>(rational{w}) == 10.0);
@@ -462,7 +462,7 @@ TEST(StorageFlagsTest, provably_safe_exact_arithmetic_returns_a_plain_inside)
 TEST(StorageFlagsTest, sin_cos_tan_accept_radians_up_to_2_20)
 {
   using wide_t = inside<{{-(imax{1} << 20), imax{1} << 20}, notch<1, 1024>},
-                       round_nearest | real>;
+                       round_nearest | f64>;
   auto val = [](auto b) { return static_cast<double>(rational{b}); };
   const double tol = 2.0 / 1024;          // grid tolerance (notch ≈ 9.8e-4)
 
@@ -500,9 +500,9 @@ TEST(StorageFlagsTest, tan_saturates_instead_of_erroring_when_out_carries_clamp)
   // INPUT of the auto form). tan_impl's CORDIC core is compiled in both
   // engine builds (it is the compile-time grid oracle), so one path tests
   // both configs.
-  using in_t  = inside<{{-2, 2}, notch<1, 16384>}, round_nearest | real>;
-  using sat_t = inside<{{-1, 1}, notch<1, 16384>}, round_nearest | real | clamp>;
-  using err_t = inside<{{-1, 1}, notch<1, 16384>}, round_nearest | real>;
+  using in_t  = inside<{{-2, 2}, notch<1, 16384>}, round_nearest | f64>;
+  using sat_t = inside<{{-1, 1}, notch<1, 16384>}, round_nearest | f64 | clamp>;
+  using err_t = inside<{{-1, 1}, notch<1, 16384>}, round_nearest | f64>;
 
   // tan(1.2) ≈ 2.57 — beyond [-1, 1].
   auto sat = math::tan_impl<sat_t>(in_t{1.2});

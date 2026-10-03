@@ -14,7 +14,7 @@
 #define BEMAN_INSIDE_CMATH_DOUBLE_HPP
 
 #include <beman/inside/math.hpp>   // beman::inside::detail::ldexp (constexpr, reproducible)
-#include <beman/inside/inside.hpp>  // complete inside/rational + has_flag/InsidePolicy/real (store<>)
+#include <beman/inside/inside.hpp>  // complete inside/rational + has_flag/InsidePolicy/f64 (store<>)
 
 // BEMAN_INSIDE_MATH_NO_FP is resolved in policy_flag.hpp (included via inside.hpp).
 
@@ -224,7 +224,7 @@ namespace beman::inside::math::dbl::detail
 
 namespace beman::inside::math::dbl
 {
-  // Engine cores: `real` (double-backed) inside in → `double` math → inside out.
+  // Engine cores: `f64` (double-backed) inside in → `double` math → inside out.
   // The inside I/O is a plain double read/store (operator double / Out{double}),
   // so the cost is the polynomial itself. These plug into the shared public
   // surface as `fn_core` under the default build.

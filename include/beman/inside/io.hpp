@@ -128,11 +128,11 @@ namespace beman::inside
   auto to_string(V value)
   { return std::to_string(value); }
 
-  // `real` (double-backed) and `exact` (rational-backed) bounds: render the
-  // exact rational form. (Without this overload a real inside would fall to the
+  // `f64` (double-backed) and `exact` (rational-backed) bounds: render the
+  // exact rational form. (Without this overload a f64 inside would fall to the
   // generic `std::to_string(double)` and print a lossy 6-digit form, and a
   // rational-raw inside has no std::to_string at all.) A continuous (Notch == 0)
-  // real inside prints the double.
+  // f64 inside prints the double.
   template <insidable B>
     requires (detail::fp_raw<B> || detail::rational_raw<B>)
   inline std::string to_string(B b)

@@ -175,7 +175,7 @@ namespace beman::inside
 
   // Dyadic grid: power-of-2 notch denominator and Lower denominator, so every
   // on-grid value is exactly representable in IEEE-754 `double`. Precondition
-  // for double-backed (`real`) storage.
+  // for double-backed (`f64`) storage.
   template <grid G>
   inline constexpr bool dyadic_grid =
        G.Notch.Numerator != 0
@@ -203,7 +203,7 @@ namespace beman::inside
   // no coarser than the notch. Writing v = N·2^(−f) with f = log2(den(Notch)),
   // that is |N| < 2^53 (53-bit significand) AND f ≤ 1022 (notch ≥ smallest
   // normal, so no on-grid value is subnormal). The 2^1024 overflow ceiling is
-  // unreachable once |N| < 2^53. Necessary precondition for `real` storage.
+  // unreachable once |N| < 2^53. Necessary precondition for `f64` storage.
   template <grid G>
   constexpr bool compute_double_exact() noexcept
   {
@@ -297,9 +297,9 @@ namespace beman::inside
   // doesn't fit: widen f32→f64 if double holds the grid, else drop the fp flag so
   // storage is deduced. The snap/round bits are preserved.
   // Storage for an inside<G, P>: representation flags pick the raw type, widest-wins
-  // (exact > real > direct > indexed > deduced).
+  // (exact > f64 > f32 > {width} > direct > indexed > deduced).
   //   exact   → rational raw on any grid.
-  //   real    → double-backed under the default engine, on a dyadic or notch-0
+  //   f64     → double-backed under the default engine, on a dyadic or notch-0
   //             grid; elided under BEMAN_INSIDE_MATH_FIXED (falls through to deduced).
   //   direct  → raw == value, plain integer (Notch == 1).
   //   indexed → raw == 0-based notch index (Notch != 0).
@@ -310,12 +310,12 @@ namespace beman::inside
     if constexpr (has_flag(P, exact))
       return detail::rational{};
 #ifndef BEMAN_INSIDE_MATH_NO_FP
-    else if constexpr (has_flag(P, real)
+    else if constexpr (has_flag(P, f64)
                     && (double_exact<G> || G.Notch == 0))
       return double{};
-    else if constexpr (has_flag(P, real) && dyadic_grid<G>)
+    else if constexpr (has_flag(P, f64) && dyadic_grid<G>)
     {
-      // `real`/`f64` explicitly requested on a dyadic grid double can't represent
+      // `f64`/`f64` explicitly requested on a dyadic grid double can't represent
       // exactly (max |value·2^f| ≥ 2^53, or notch below the smallest normal).
       // Arithmetic drops the flag before reaching here, so this is direct misuse.
       static_assert(double_exact<G>,

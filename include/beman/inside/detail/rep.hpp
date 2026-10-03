@@ -27,7 +27,7 @@ namespace beman::inside::detail
   struct fp_rep
   {
     static constexpr bool any_f64 =
-        has_flag(InsidePolicy<Lhs>, real) || has_flag(InsidePolicy<Rhs>, real);
+        has_flag(InsidePolicy<Lhs>, f64) || has_flag(InsidePolicy<Rhs>, f64);
     static constexpr bool any_f32 =
         has_flag(InsidePolicy<Lhs>, f32) || has_flag(InsidePolicy<Rhs>, f32);
     static constexpr bool continuous_ok = AllowContinuous && ResultGrid.Notch == 0;
@@ -44,7 +44,7 @@ namespace beman::inside::detail
         & (exact | (ResultGrid.Notch == 1 ? direct : none) | (ResultGrid.Notch != 0 ? indexed : none));
     static constexpr policy_flag rep =
         carried
-        | (keep_f64 ? real : none) | (keep_f32 ? f32 : none);
+        | (keep_f64 ? f64 : none) | (keep_f32 ? f32 : none);
     // The result inside's policy: the propagated representation plus the
     // operands' `checked` (a representation flag must not switch checking off),
     // or plain checked.

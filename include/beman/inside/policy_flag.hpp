@@ -76,10 +76,6 @@ namespace beman::inside
   // storage order: exact > f64 > f32 > direct > indexed > deduced.
   inline constexpr policy_flag f32{(1ull << 41) | round_nearest};
 
-  // `real` — deprecated spelling of `f64`, kept as an alias for one release. New
-  // code should use `f64` (binary64 storage) or `f32` (binary32). The flag is
-  // purely a storage choice — transcendentals gate on `snap`, not on this.
-  inline constexpr policy_flag real = f64;
 
   // Fixed-width integer raw storage — pin the exact backing type instead of
   // letting deduction pick the smallest fit. A bare width flag means *value*
@@ -128,7 +124,7 @@ namespace beman::inside
   // Flag-set membership predicates. `has_flag(set, flag)` is true iff EVERY bit
   // of `flag` is present in `set` — reads better than the raw `(set & flag) ==
   // flag` and is correct for composite flags (e.g. `round_nearest` carries
-  // `snap`, `real` carries `round_nearest`), where a bare `set & flag`
+  // `snap`, `f64` carries `round_nearest`), where a bare `set & flag`
   // truthy test would misfire. `has_any_flag` tests for any overlap.
   //---------------------------------------------------------------------------
   [[nodiscard]] constexpr bool has_flag(policy_flag set, policy_flag flag) noexcept

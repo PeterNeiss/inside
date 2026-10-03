@@ -164,8 +164,8 @@ TEST(CrossGridTest, tier_3_integer_fast_paths_stay_engaged_and_fp_stays_excluded
   static_assert(detail::assignment<quarter_grid, tenths>::affine_map.ok);
 
   // fp-backed operands must not take the integer offset path.
-  using coarse_real = inside<{{0, (umax{1} << 40)}, notch<1, 2>}, real>;
-  using fine_real   = inside<{{0, 1}, notch<1, (1u << 20)>}, real>;
+  using coarse_real = inside<{{0, (umax{1} << 40)}, notch<1, 2>}, f64>;
+  using fine_real   = inside<{{0, 1}, notch<1, (1u << 20)>}, f64>;
   if constexpr (detail::fp_raw<coarse_real>)
     static_assert(!(detail::addition<coarse_real, fine_real>::mixed_offset_ok));
 
@@ -201,7 +201,7 @@ TEST(CrossGridTest, regression_cross_grid_assign_onto_rational_storage_keeps_the
   from_value_raw = value_src{3};
   ASSERT_EQ(from_value_raw.raw(), rational{3});
 
-  using real_src = inside<{{0, 4}, notch<1, 256>}, real | round_nearest>;
+  using real_src = inside<{{0, 4}, notch<1, 256>}, f64 | round_nearest>;
   using exact_dyadic = inside<{{0, 4}, notch<1, 256>}, exact | round_nearest>;
   exact_dyadic from_real;
   from_real = real_src{rational{513, 256}};

@@ -62,14 +62,14 @@ namespace beman::inside
     static_assert(grid::validate<G>());
     static_assert(!(P & clamp) || !(P & wrap), "clamp and wrap are mutually exclusive");
 #ifndef BEMAN_INSIDE_MATH_NO_FP
-    // Under the default (double) engine the `real` policy is double-backed, and
+    // Under the default (double) engine the `f64` policy is double-backed, and
     // its value snaps to the grid (Lower + k·Notch). That snap is only exact
     // when the grid is dyadic — power-of-two notch and Lower — so grid points
     // are representable in IEEE-754 double. A continuous grid (Notch == 0) has
     // no grid to snap to. Anything else is rejected here rather than silently
     // demoted to integer storage.
-    static_assert(!has_flag(P, real) || detail::dyadic_grid<G> || G.Notch == 0,
-                  "inside: the `real`/`f64` policy requires a dyadic grid (power-of-two "
+    static_assert(!has_flag(P, f64) || detail::dyadic_grid<G> || G.Notch == 0,
+                  "inside: the `f64`/`f64` policy requires a dyadic grid (power-of-two "
                   "notch and Lower, so values are exactly representable in double)");
     static_assert(!has_flag(P, f32) || detail::dyadic_grid<G> || G.Notch == 0,
                   "inside: the `f32` policy requires a dyadic grid (power-of-two notch "
@@ -271,7 +271,7 @@ namespace beman::inside
     //                       path. No second implicit integer operator (would make
     //                       `imax_var += b` ambiguous).
     //   operator rational — implicit; lossless and exact.
-    //   operator double   — implicit for `real` bounds (dyadic grid → lossless);
+    //   operator double   — implicit for `f64` bounds (dyadic grid → lossless);
     //                       explicit otherwise and gated on a rounding flag.
     //                       Strict bounds opt in via `to<double>().value()`.
     //   to<T>()           — typed-error narrowing/widening → `expected<T, errc>`
@@ -285,7 +285,7 @@ namespace beman::inside
              && G.Interval.Upper <= detail::rational{std::numeric_limits<imax>::max()})
     { return detail::to_value(*this); }
 
-    constexpr explicit(!has_flag(P, real) && !has_flag(P, f32)) operator double() const
+    constexpr explicit(!has_flag(P, f64) && !has_flag(P, f32)) operator double() const
       requires ((P & (round_floor | round_ceil | round_nearest
                     | round_half_even | snap)) != 0)
     { return detail::as_double(*this); }

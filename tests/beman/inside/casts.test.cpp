@@ -171,7 +171,7 @@ TEST(CastsTest, add_all_mul_all_fold_variadically)
 //---------------------------------------------------------------------------
 // rounding modes (with_snap<round_floor> / with_snap<round_ceil> / with_snap<round_half_even>)
 //---------------------------------------------------------------------------
-// Rounding modes apply when rhs is real-valued (float, double, rational).
+// Rounding modes apply when rhs is f64-valued (float, double, rational).
 // Integer rhs takes the truncation fast path which is *intentionally*
 // rounding-policy-agnostic — see assignment.hpp:store(integral).
 // with_snap<round_floor> rounds toward -inf for double rhs

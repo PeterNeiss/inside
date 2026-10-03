@@ -152,7 +152,7 @@ namespace beman::inside
     inline constexpr bool index_raw =
          !fp_raw<B> && !rational_raw<B> && !value_raw<B>;
 
-    // Ungated double view of any inside, for the `real` arithmetic arms (the
+    // Ungated double view of any inside, for the `f64` arithmetic arms (the
     // public operator double() is gated on a rounding flag; this is always
     // available). Everything but index storage holds the value verbatim; an
     // index decodes through the grid.

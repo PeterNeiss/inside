@@ -87,17 +87,17 @@ namespace
                  function, engine, domain, s.max_err, s.mean_err, s.samples);
   }
 
-  // Input grids — dyadic 2^-14 lattices with `real` (f64) storage, the fp
+  // Input grids — dyadic 2^-14 lattices with `f64` (f64) storage, the fp
   // engines' intended pairing: results snap through the fp store path. All
   // engines run the identical grids, so notch-unit errors compare 1:1.
   // (Integer-index snap grids also work — full-mantissa results store via the
-  // 128-bit rounded path — but `real` keeps the published table's store
+  // 128-bit rounded path — but `f64` keeps the published table's store
   // semantics uniform across engines.)
-  using angle_grid = inside<{{-8, 8},        notch<1, 16384>}, round_nearest | real>;
-  using tan_grid   = inside<{{-1.5, 1.5},   notch<1, 16384>}, round_nearest | real>;
-  using unit_grid  = inside<{{-1, 1},       notch<1, 16384>}, round_nearest | real>;
-  using sqrt_grid  = inside<{{0, 16},       notch<1, 16384>}, round_nearest | real>;
-  using log_grid   = inside<{{1, 1000},     notch<1, 16384>}, round_nearest | real>;
+  using angle_grid = inside<{{-8, 8},        notch<1, 16384>}, round_nearest | f64>;
+  using tan_grid   = inside<{{-1.5, 1.5},   notch<1, 16384>}, round_nearest | f64>;
+  using unit_grid  = inside<{{-1, 1},       notch<1, 16384>}, round_nearest | f64>;
+  using sqrt_grid  = inside<{{0, 16},       notch<1, 16384>}, round_nearest | f64>;
+  using log_grid   = inside<{{1, 1000},     notch<1, 16384>}, round_nearest | f64>;
 }
 
 int main(int argc, char** argv)

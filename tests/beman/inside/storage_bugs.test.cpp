@@ -120,20 +120,20 @@ TEST(StorageBugsTest, bug_d_gcd_lcm_overflow_propagates_to_grid_operator_plus)
 //---------------------------------------------------------------------------
 // Bug E — grid.hpp double_exact / arithmetic.
 //
-// `real` (double-backed) arithmetic silently diverged from the exact grid
+// `f64` (double-backed) arithmetic silently diverged from the exact grid
 // arithmetic whenever a result needed more than double's 53-bit significand.
 // `dyadic_grid<G>` (the old storage guard) checks only power-of-two
 // denominators; it ignores the significand. A real `×` whose product grid
 // outgrows 2^53 (notch = N_L·N_R) dropped the low bits.
 //
-// Fix: `real` is selected only on `double_exact` grids; an op whose result
-// grid isn't double-exact drops `real` and falls back to exact storage, so the
+// Fix: `f64` is selected only on `double_exact` grids; an op whose result
+// grid isn't double-exact drops `f64` and falls back to exact storage, so the
 // result equals the exact rational product.
 //---------------------------------------------------------------------------
 // Bug E: real * stays exact (drops real when product exceeds 2^53)
 TEST(StorageBugsTest, bug_e_real_stays_exact_drops_real_when_product_exceeds_2_53)
 {
-  using U = inside<{{0, 4}, notch<1, (1u << 26)>}, real>;   // exact operand (f=26)
+  using U = inside<{{0, 4}, notch<1, (1u << 26)>}, f64>;   // exact operand (f=26)
   static_assert(std::is_same_v<U::raw_type, double>);
 
   const U a = 4.0 - std::ldexp(1.0, -26);                  // index 2^28-1, exact
@@ -144,10 +144,10 @@ TEST(StorageBugsTest, bug_e_real_stays_exact_drops_real_when_product_exceeds_2_5
 }
 
 //---------------------------------------------------------------------------
-// Bug F — division.hpp real path.
+// Bug F — division.hpp f64 path.
 //
 // Real `÷0` stored a bare `inf` (snap_double then did static_cast<imax>(inf),
-// UB), bypassing the error vocabulary. Fix: real division reports zero like
+// UB), bypassing the error vocabulary. Fix: f64 division reports zero like
 // every other path — the return widens to expected<result, errc> when the
 // divisor grid can be zero (errc::division_by_zero on a zero divisor), and the
 // expected-lift carries that cause on through a chain.
@@ -155,8 +155,8 @@ TEST(StorageBugsTest, bug_e_real_stays_exact_drops_real_when_product_exceeds_2_5
 // Bug F: real div-by-zero is reported, not a silent inf
 TEST(StorageBugsTest, bug_f_real_div_by_zero_is_reported_not_a_silent_inf)
 {
-  using N  = inside<{{1, 4}, notch<1, 1024>}, real>;
-  using Dz = inside<{{0, 4}, notch<1, 1024>}, real>;   // divisor grid spans zero
+  using N  = inside<{{1, 4}, notch<1, 1024>}, f64>;
+  using Dz = inside<{{0, 4}, notch<1, 1024>}, f64>;   // divisor grid spans zero
 
   auto q = N{3.0} / Dz{0.0};
   ASSERT_FALSE(q.has_value());                       // an error — not inf
@@ -218,15 +218,15 @@ TEST(StorageBugsTest, fp_derived_rational_store_on_a_wide_snap_grid_uses_the_128
   }
 }
 
-#ifndef BEMAN_INSIDE_MATH_FIXED   // `real` storage is compiled out under the integer engine
+#ifndef BEMAN_INSIDE_MATH_FIXED   // `f64` storage is compiled out under the integer engine
 //---------------------------------------------------------------------------
-// A `real` (double-raw) source through every store path, and one-shot
-// policies on a `real` target. The raw is the value, not a notch index.
+// A `f64` (double-raw) source through every store path, and one-shot
+// policies on a `f64` target. The raw is the value, not a notch index.
 //---------------------------------------------------------------------------
 namespace
 {
-  using RealSmall = beman::inside::inside<{{0, 4}, beman::inside::notch<1, 4>}, beman::inside::real>;
-  using RealWide  = beman::inside::inside<{{-8, 8}, beman::inside::notch<1, 4>}, beman::inside::real>;
+  using RealSmall = beman::inside::inside<{{0, 4}, beman::inside::notch<1, 4>}, beman::inside::f64>;
+  using RealWide  = beman::inside::inside<{{-8, 8}, beman::inside::notch<1, 4>}, beman::inside::f64>;
   using Int10     = beman::inside::inside<{0, 10}>;
 }
 
@@ -257,7 +257,7 @@ TEST(StorageBugsTest, one_shot_policy_applies_to_real_target)
 TEST(StorageBugsTest, error_code_ctor_reports_on_checked_real_target)
 {
   using namespace beman::inside;
-  using Checked = inside<{{0, 4}, notch<1, 4>}, real | checked>;
+  using Checked = inside<{{0, 4}, notch<1, 4>}, f64 | checked>;
   errc ec{};
   Checked c(RealWide::from_raw(7.5), ec);
   EXPECT_EQ(ec, errc::domain_error);
@@ -281,11 +281,11 @@ TEST(StorageBugsTest, scalar_comparison_does_not_truncate_the_scalar)
 }
 
 #ifndef BEMAN_INSIDE_MATH_FIXED
-// ++ / += point on `real` storage adds the value, not a notch count to the raw.
+// ++ / += point on `f64` storage adds the value, not a notch count to the raw.
 TEST(StorageBugsTest, increment_on_real_storage)
 {
   using namespace beman::inside;
-  using rl = inside<{{-4, 4}, notch<1, 256>}, real | round_nearest>;
+  using rl = inside<{{-4, 4}, notch<1, 256>}, f64 | round_nearest>;
   rl x{rational{3, 2}};
   ++x;
   EXPECT_EQ(x.raw(), 2.5);

@@ -22,7 +22,7 @@ int main()
   // Decay envelope: amp(t) = amp0 · exp(-t/τ), with τ = 1.0, amp0 = 1.0.
   // We sample t at 0, 0.25, 0.5, …, 2.0 — eight points along the decay curve.
   // exp(-2.0) ≈ 0.1353, comfortably inside [0, 1].
-  using time_t  = inside<{{-4, 0}, notch<1, 1024>}, round_nearest | real>;
+  using time_t  = inside<{{-4, 0}, notch<1, 1024>}, round_nearest | f64>;
   using amp_t   = inside<{{0, 1}, notch<1, 16384>}, round_nearest>;
 
   std::cout << "Exponential decay envelope (τ = 1):\n";
@@ -43,7 +43,7 @@ int main()
   std::cout << "    step    freq (Hz)\n";
 
   // Exponent for exp2: step/4 ∈ [0, 4]. exp2 input range fits comfortably.
-  using exponent_t = inside<{{0, 4}, notch<1, 1024>}, round_nearest | real>;
+  using exponent_t = inside<{{0, 4}, notch<1, 1024>}, round_nearest | f64>;
   // Multiplier 2^(step/4) ∈ [1, 16].
   using mult_t     = inside<{{0, 16}, notch<1, 16384>}, round_nearest>;
 

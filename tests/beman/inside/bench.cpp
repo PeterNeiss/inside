@@ -803,7 +803,7 @@ static void bench_store_convert()
   finish(wrp);
 
   // conversions OUT of inside — the API-boundary direction (stores are above).
-  using dyadic_real = inside<{{-8, 8}, notch<1, 16384>}, round_nearest | real>;
+  using dyadic_real = inside<{{-8, 8}, notch<1, 16384>}, round_nearest | f64>;
   std::vector<dyadic_real> rv(kMask + 1);
   std::vector<u200> uv(kMask + 1);
   for (std::size_t j = 0; j <= kMask; ++j)
@@ -983,7 +983,7 @@ static void bench_helpers()
 //---------------------------------------------------------------------------
 static void bench_fp_backed()
 {
-  using dyadic_real = inside<{{-8, 8}, notch<1, 16384>}, round_nearest | real>;
+  using dyadic_real = inside<{{-8, 8}, notch<1, 16384>}, round_nearest | f64>;
   std::vector<dyadic_real> va(kMask + 1), vb(kMask + 1);
   std::vector<double> da(kMask + 1), db(kMask + 1);
   for (std::size_t j = 0; j <= kMask; ++j)
@@ -1000,7 +1000,7 @@ static void bench_fp_backed()
     ++i;
     doNotOptimizeAway(da[i & kMask] + db[i & kMask]);
   });
-  add.run("inside<real>", [&] {
+  add.run("inside<f64>", [&] {
     ++i;
     doNotOptimizeAway((va[i & kMask] + vb[i & kMask]).raw());
   });
@@ -1011,7 +1011,7 @@ static void bench_fp_backed()
     ++i;
     doNotOptimizeAway(da[i & kMask] * db[i & kMask]);
   });
-  mul.run("inside<real>", [&] {
+  mul.run("inside<f64>", [&] {
     ++i;
     doNotOptimizeAway((va[i & kMask] * vb[i & kMask]).raw());
   });
@@ -1221,21 +1221,21 @@ static void bench_range()
 //---------------------------------------------------------------------------
 static void bench_cmath()
 {
-  using algeb_t   = inside<{{-8, 8}, notch<1, 16384>}, round_nearest | real>;
-  using sqrt_in_t = inside<{{0, 4}, notch<1, 65536>}, round_nearest | real>;
-  using exp2_in_t = inside<{{-4, 4}, notch<1, 16384>}, round_nearest | real>;
-  using log2_in_t = inside<{{0x1p-8_r, 256}, notch<1, 16384>}, round_nearest | real>;
-  using exp_in_t  = inside<{{-10, 10}, notch<1, 16384>}, round_nearest | real>;
-  using log_in_t  = inside<{{0x1p-8_r, 256}, notch<1, 256>}, round_nearest | real>;
-  using pow_in_t  = inside<{{-9, 9}, notch<1, 16384>}, round_nearest | real>;
-  using angle_t   = inside<{{-8, 8}, notch<1, 16384>}, round_nearest | real>;
+  using algeb_t   = inside<{{-8, 8}, notch<1, 16384>}, round_nearest | f64>;
+  using sqrt_in_t = inside<{{0, 4}, notch<1, 65536>}, round_nearest | f64>;
+  using exp2_in_t = inside<{{-4, 4}, notch<1, 16384>}, round_nearest | f64>;
+  using log2_in_t = inside<{{0x1p-8_r, 256}, notch<1, 16384>}, round_nearest | f64>;
+  using exp_in_t  = inside<{{-10, 10}, notch<1, 16384>}, round_nearest | f64>;
+  using log_in_t  = inside<{{0x1p-8_r, 256}, notch<1, 256>}, round_nearest | f64>;
+  using pow_in_t  = inside<{{-9, 9}, notch<1, 16384>}, round_nearest | f64>;
+  using angle_t   = inside<{{-8, 8}, notch<1, 16384>}, round_nearest | f64>;
   using angle_f32_t = inside<{{-8, 8}, notch<1, 16384>}, round_nearest | f32>;
-  using tan_in_t  = inside<{{-0.75_r, 0.75_r}, notch<1, 16384>}, round_nearest | real>;
-  using atan2_in_t= inside<{{-1, 1}, notch<1, 16384>}, round_nearest | real>;
+  using tan_in_t  = inside<{{-0.75_r, 0.75_r}, notch<1, 16384>}, round_nearest | f64>;
+  using atan2_in_t= inside<{{-1, 1}, notch<1, 16384>}, round_nearest | f64>;
   using fmod_x_t  = inside<{{-8, 8}, notch<1, 16384>}, round_nearest>;
   using fmod_y_t  = inside<{{0.25_r, 4}, notch<1, 16384>}, round_nearest>;
-  using pow_b_t   = inside<{{1, 16}, notch<1, 65536>}, round_nearest | real>;
-  using pow_e_t   = inside<{{-2, 2}, notch<1, 16384>}, round_nearest | real>;
+  using pow_b_t   = inside<{{1, 16}, notch<1, 65536>}, round_nearest | f64>;
+  using pow_e_t   = inside<{{-2, 2}, notch<1, 16384>}, round_nearest | f64>;
 
   constexpr std::size_t M = 4096;
   std::vector<algeb_t>    v_alg, v_alg2; std::vector<sqrt_in_t> v_sqrt;

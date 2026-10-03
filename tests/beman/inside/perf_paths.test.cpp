@@ -219,7 +219,7 @@ TEST(PerfPathsTest, fraction_and_to_value_fast_paths_match_rational)
 #ifndef BEMAN_INSIDE_MATH_FIXED
 TEST(PerfPathsTest, fp_algebraic_fast_path_matches_rational)
 {
-  using X = inside<{{-8, 8}, notch<1, 4>}, round_nearest | real>;
+  using X = inside<{{-8, 8}, notch<1, 4>}, round_nearest | f64>;
   static_assert(fp_raw<X>);
   for (int k = -32; k <= 32; ++k)
   {
