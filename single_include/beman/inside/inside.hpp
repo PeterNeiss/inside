@@ -6723,11 +6723,18 @@ namespace beman::inside
       using value_type        = inside<G, P>;
       using difference_type   = imax;
 
-      umax index     {0};
-      imax remaining {0};
+      umax start {0};   // slot of the first element (the range wraps past the top)
+      imax pos   {0};   // position in [0, slot_count]; the loop variable
 
       constexpr iterator() = default;
-      constexpr iterator(umax i, imax r) : index{i}, remaining{r} {}
+      constexpr iterator(umax s, imax p) : start{s}, pos{p} {}
+
+      // Grid slot of this position: start + pos, wrapped once (no overflow).
+      constexpr umax slot() const
+      {
+        const umax p = static_cast<umax>(pos);
+        return p < slot_count - start ? start + p : p - (slot_count - start);
+      }
 
       constexpr value_type operator*() const
       {
@@ -6738,7 +6745,7 @@ namespace beman::inside
         // storage is a multiply-add in raw space. Rational/fp raws keep the exact generic path.
         if constexpr (beman::inside::detail::index_raw<value_type>)
           return value_type::from_raw(
-              static_cast<typename value_type::raw_type>(index));
+              static_cast<typename value_type::raw_type>(slot()));
         else if constexpr (beman::inside::detail::value_raw<value_type>
                            && beman::inside::detail::abs_den(Notch<value_type>.Denominator) == 1
                            && beman::inside::detail::abs_den(Lower<value_type>.Denominator) == 1)
@@ -6746,12 +6753,12 @@ namespace beman::inside
           constexpr imax notch_step = static_cast<imax>(Notch<value_type>.Numerator);
           return value_type::from_raw(static_cast<typename value_type::raw_type>(
               beman::inside::detail::LowerImax<value_type>
-              + static_cast<imax>(index) * notch_step));
+              + static_cast<imax>(slot()) * notch_step));
         }
         else
         {
           beman::inside::detail::rational val = (G.Interval.Lower
-                          + (beman::inside::detail::rational{index} * G.Notch).value()).value();
+                          + (beman::inside::detail::rational{slot()} * G.Notch).value()).value();
           return value_type{val};
         }
       }
@@ -6759,46 +6766,20 @@ namespace beman::inside
       constexpr value_type operator[](difference_type n) const
       { return *(*this + n); }
 
-      // Advance / retreat: `remaining` is the position counter (advancing
-      // decreases it), so the <=> below flips the comparison. Single steps
-      // wrap by compare instead of the euclidean mod in `+= n` (index stays
-      // in [0, slot_count) — the mod would cost two divides per element).
-      constexpr iterator& operator++()
-      {
-        index = (index + 1 == slot_count) ? 0 : index + 1;
-        --remaining;
-        return *this;
-      }
-      constexpr iterator  operator++(int) { auto t = *this; ++*this; return t; }
-      constexpr iterator& operator--()
-      {
-        index = (index == 0) ? slot_count - 1 : index - 1;
-        ++remaining;
-        return *this;
-      }
-      constexpr iterator  operator--(int) { auto t = *this; --*this; return t; }
-
-      constexpr iterator& operator+=(difference_type n)
-      {
-        constexpr imax M = slot_count;
-        imax i = static_cast<imax>(index) + n;
-        // euclidean mod so negative n still lands in [0, slot_count)
-        i = beman::inside::detail::euclid_mod(i, M);
-        index = i;
-        remaining -= n;
-        return *this;
-      }
-      constexpr iterator& operator-=(difference_type n) { return *this += -n; }
+      constexpr iterator& operator++() { ++pos; return *this; }
+      constexpr iterator  operator++(int) { auto t = *this; ++pos; return t; }
+      constexpr iterator& operator--() { --pos; return *this; }
+      constexpr iterator  operator--(int) { auto t = *this; --pos; return t; }
+      constexpr iterator& operator+=(difference_type n) { pos += n; return *this; }
+      constexpr iterator& operator-=(difference_type n) { pos -= n; return *this; }
 
       constexpr iterator operator+(difference_type n) const { auto t = *this; t += n; return t; }
       constexpr iterator operator-(difference_type n) const { auto t = *this; t -= n; return t; }
       friend constexpr iterator operator+(difference_type n, iterator it) { return it + n; }
 
-      constexpr difference_type operator-(iterator o) const
-      { return o.remaining - remaining; }
-
-      constexpr bool operator==(iterator o) const { return remaining == o.remaining; }
-      constexpr auto operator<=>(iterator o) const { return o.remaining <=> remaining; }
+      constexpr difference_type operator-(iterator o) const { return pos - o.pos; }
+      constexpr bool operator==(iterator o) const { return pos == o.pos; }
+      constexpr auto operator<=>(iterator o) const { return pos <=> o.pos; }
     };
 
     umax start_index_;
@@ -6831,10 +6812,8 @@ namespace beman::inside
       }
     }
 
-    constexpr iterator begin() const
-    { return {start_index_, static_cast<imax>(slot_count)}; }
-    constexpr iterator end() const
-    { return {start_index_, 0}; }
+    constexpr iterator begin() const { return {start_index_, 0}; }
+    constexpr iterator end() const   { return {start_index_, static_cast<imax>(slot_count)}; }
 
     constexpr std::size_t size() const { return slot_count; }
 

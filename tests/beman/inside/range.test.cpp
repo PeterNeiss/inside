@@ -286,3 +286,22 @@ TEST(RangeTest, inside_range_fast_decode_arms_engage_dispatch_pins)
   static_assert(fp_raw<inside_range<{{0, 4}, notch<1, 256>}, real | round_nearest>::value_type>);
 #endif
 }
+
+// inside_range: random access and reverse on a mid-range start
+TEST(RangeTest, inside_range_mid_start_random_access_and_reverse)
+{
+  small_grid r{small_grid::value_type{3}};
+  const std::vector<int> want{3, 4, 0, 1, 2};
+  auto b = r.begin();
+  for (int k = 0; k < 5; ++k)
+  {
+    EXPECT_EQ(int(to_value(b[k])), want[k]);
+    EXPECT_EQ(int(to_value(*(b + k))), want[k]);
+  }
+  auto e = r.end();
+  EXPECT_EQ(int(to_value(*(e - 1))), 2);
+  EXPECT_EQ(e - b, 5);
+  std::vector<int> rev;
+  for (auto v : std::views::reverse(r)) rev.push_back(int(to_value(v)));
+  EXPECT_TRUE((rev == std::vector<int>{2, 1, 0, 4, 3}));
+}
