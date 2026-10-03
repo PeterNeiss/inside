@@ -5615,6 +5615,23 @@ namespace beman::inside
       return assign_op_result(detail::rational{*this} / rhs);
     }
 
+    // expected<inside> RHS (e.g. `x += a / b`): unwrap once, reporting an error
+    // through this type's policy like any other failed compound op.
+    template <insidable R>
+    constexpr inside& operator+=(std::expected<R, errc> const& rhs) { return rhs ? (*this += *rhs) : report_error(rhs.error()); }
+    template <insidable R>
+    constexpr inside& operator-=(std::expected<R, errc> const& rhs) { return rhs ? (*this -= *rhs) : report_error(rhs.error()); }
+    template <insidable R>
+    constexpr inside& operator*=(std::expected<R, errc> const& rhs) { return rhs ? (*this *= *rhs) : report_error(rhs.error()); }
+    template <insidable R>
+    constexpr inside& operator/=(std::expected<R, errc> const& rhs) { return rhs ? (*this /= *rhs) : report_error(rhs.error()); }
+    template <insidable R>
+    constexpr inside& operator%=(std::expected<R, errc> const& rhs) { return rhs ? (*this %= *rhs) : report_error(rhs.error()); }
+
+    private:
+    constexpr inside& report_error(errc e) { make_policy<P>().report(e); return *this; }
+    public:
+
     // ++/-- add the point inside `just<±1>` through the insidable += (which has
     // the raw-level integer fast path) instead of the rational round-trip,
     // which decodes to rational and re-stores through the full quotient/
@@ -5886,19 +5903,23 @@ namespace beman::inside
   [[nodiscard]] constexpr B clamp_round(N value)
   { return clamp_with_rounding<round_nearest, B>(value); }
 
-  template <insidable B, arithmetic A>
+  // `checked_cast` — throws (via the installed handler) when the value would not
+  // fit exactly: errc::overflow out of the interval (as to<T> and the predicate
+  // name it), errc::rounding_error off the notch. Any numeric source, insides
+  // included; once both checks pass the store is exact.
+  template <insidable B, numeric A>
   [[nodiscard]] constexpr B checked_cast(A value)
   {
     if (will_conversion_overflow<B>(value))
-      detail::raise(errc::domain_error, "checked_cast: value out of inside interval");
+      detail::raise(errc::overflow, "checked_cast: value out of inside interval");
     if (will_conversion_trunc<B>(value))
       detail::raise(errc::rounding_error, "checked_cast: value does not land on notch");
-    return B{value};
+    return B{value, make_policy<snap>()};
   }
 
   // `unchecked_cast` routes through `inside<G, unsafe>` so the compiler elides
   // every domain/round check. UB if the value is actually out of range.
-  template <insidable B, arithmetic A>
+  template <insidable B, numeric A>
   [[nodiscard]] constexpr B unchecked_cast(A value)
   {
     // Keep B's representation flags so the twin's raw layout is B's.
@@ -6217,6 +6238,10 @@ namespace beman::inside
 
   template <insidable T>
   [[nodiscard]] constexpr auto midpoint(T a, T b) { return (a + b) * just<frac<1, 2>>; }
+
+  // Mixed grids: the exact average on the refined sum grid, like the same-type form.
+  template <insidable Lhs, insidable Rhs> requires (!std::same_as<Lhs, Rhs>)
+  [[nodiscard]] constexpr auto midpoint(Lhs a, Rhs b) { return (a + b) * just<frac<1, 2>>; }
 
   //---------------------------------------------------------------------------
   // expected-lift operators — fallible results (division, modulo, checked
@@ -6766,8 +6791,8 @@ namespace beman::inside::math::dbl
   [[nodiscard]] BEMAN_INSIDE_DBL_FN Out asin_core(In x) { return store<Out>(detail::d_asin(static_cast<double>(x))); }
   template <typename Out, typename In>
   [[nodiscard]] BEMAN_INSIDE_DBL_FN Out acos_core(In x) { return store<Out>(detail::d_acos(static_cast<double>(x))); }
-  template <typename Out, typename In>
-  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out atan2_core(In y, In x)
+  template <typename Out, typename InY, typename InX>
+  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out atan2_core(InY y, InX x)
   { return store<Out>(detail::d_atan2(static_cast<double>(y), static_cast<double>(x))); }
   template <typename Out, typename InX, typename InY>
   [[nodiscard]] BEMAN_INSIDE_DBL_FN Out hypot_core(InX x, InY y)
@@ -7054,8 +7079,8 @@ namespace beman::inside::math::flt
   [[nodiscard]] BEMAN_INSIDE_DBL_FN Out asin_core(In x) { return store<Out>(detail::d_asin(to_float(x))); }
   template <typename Out, typename In>
   [[nodiscard]] BEMAN_INSIDE_DBL_FN Out acos_core(In x) { return store<Out>(detail::d_acos(to_float(x))); }
-  template <typename Out, typename In>
-  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out atan2_core(In y, In x)
+  template <typename Out, typename InY, typename InX>
+  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out atan2_core(InY y, InX x)
   { return store<Out>(detail::d_atan2(to_float(y), to_float(x))); }
   template <typename Out, typename InX, typename InY>
   [[nodiscard]] BEMAN_INSIDE_DBL_FN Out hypot_core(InX x, InY y)
@@ -7145,6 +7170,12 @@ namespace beman::inside::math
     // storage flag (i8 … u64) — the output range differs, as for arithmetic.
     template <insidable In>
     inline constexpr policy_flag out_policy = InsidePolicy<In> & ~raw_width_mask;
+
+    // Output notch for a two-input function: the gcd of both input notches (0
+    // if either is continuous), so swapping or mixing input types is symmetric.
+    template <insidable A, insidable B>
+    inline constexpr rational gcd_notch =
+        (Notch<A> == 0 || Notch<B> == 0) ? rational{0} : *gcd(Notch<A>, Notch<B>);
 
     // Input-domain checks, one per function, shared by every engine (cordic,
     // dbl, flt) so all three accept exactly the same input grids. The limits are
@@ -8016,10 +8047,11 @@ namespace beman::inside::math
   // with quadrant pre-rotation. CORDIC depends only on y/x, so inputs beyond
   // magnitude 1 are normalized by the larger magnitude (exact rational division);
   // inputs already in [-1, 1] skip it.
-  template <insidable Out, insidable In>
-  [[nodiscard]] constexpr Out atan2_impl(In y, In x)
+  template <insidable Out, insidable InY, insidable InX>
+  [[nodiscard]] constexpr Out atan2_impl(InY y, InX x)
   {
-    detail::domain_atan2<In>();
+    detail::domain_atan2<InY>();
+    detail::domain_atan2<InX>();
     static_assert(Lower<Out> <= -detail::pi_r && Upper<Out> >= detail::pi_r,
                   "beman::inside::math::atan2: Out must cover [-π, π]");
 
@@ -8473,8 +8505,10 @@ namespace beman::inside::math
     // Output covers [-π, π] rounded outward to notch multiples — the exact
     // ±π endpoints are irrational and would violate the grid's divides-evenly
     // invariant against a rational notch.
-    template <insidable In>
-    using atan2_auto_t = outward_t<In, -pi_r, pi_r>;
+    template <insidable In, insidable InX = In>
+    using atan2_auto_t = inside<{{floor_to_notch(-pi_r, gcd_notch<In, InX>),
+                                  ceil_to_notch ( pi_r, gcd_notch<In, InX>)},
+                                 gcd_notch<In, InX>}, out_policy<In> | round_nearest>;
 
     template <insidable In>
     using tan_auto_t = inside<{{-rational{1024}, rational{1024}},
@@ -8489,14 +8523,11 @@ namespace beman::inside::math
     inline constexpr rational fmod_bound =
         max_abs<InX> < max_abs<InY> ? max_abs<InX> : max_abs<InY>;
 
-    template <insidable InX, insidable InY>
-    inline constexpr rational fmod_notch =
-        (Notch<InX> == 0 || Notch<InY> == 0) ? rational{0} : *gcd(Notch<InX>, Notch<InY>);
 
     template <insidable InX, insidable InY>
     using fmod_auto_t = inside<{{(Lower<InX> < 0 ? -fmod_bound<InX, InY> : rational{0}),
                                  (Upper<InX> > 0 ?  fmod_bound<InX, InY> : rational{0})},
-                                fmod_notch<InX, InY>}, out_policy<InX> | round_nearest>;
+                                gcd_notch<InX, InY>}, out_policy<InX> | round_nearest>;
   } // namespace detail
 
   template <insidable InX, insidable InY>
@@ -8857,8 +8888,8 @@ namespace beman::inside::math
 
     template <insidable InX, insidable InY>
     using hypot_auto_t = inside<{{rational{0},
-                                 ceil_to_notch(hypot_auto_hi<InX, InY>, Notch<InX>)},
-                                Notch<InX>}, out_policy<InX> | round_nearest>;
+                                 ceil_to_notch(hypot_auto_hi<InX, InY>, gcd_notch<InX, InY>)},
+                                gcd_notch<InX, InY>}, out_policy<InX> | round_nearest>;
 
     // pow output: extrema of b^e over the input rectangle occur at corners
     // (monotone in each argument for b > 0). Min and max of the 4 corners.
@@ -9053,9 +9084,12 @@ namespace beman::inside::math
     [[nodiscard]] constexpr auto tan(In angle)
     { static_assert(detail::require_snap<In>()); return tan_impl<detail::tan_auto_t<In>>(angle); }
 
-    template <insidable In>
-    [[nodiscard]] constexpr auto atan2(In y, In x)
-    { static_assert(detail::require_snap<In>()); return atan2_impl<detail::atan2_auto_t<In>>(y, x); }
+    template <insidable InY, insidable InX>
+    [[nodiscard]] constexpr auto atan2(InY y, InX x)
+    {
+      static_assert(detail::require_snap<InY>() && detail::require_snap<InX>());
+      return atan2_impl<detail::atan2_auto_t<InY, InX>>(y, x);
+    }
 
     template <insidable In>
     [[nodiscard]] constexpr auto atan(In x)
@@ -9189,9 +9223,13 @@ namespace beman::inside::math
       return std::expected<Out, errc>{store<Out>(t)};
     }
 
-    template <insidable In>
-    [[nodiscard]] BEMAN_INSIDE_DBL_FN auto atan2(In y, In x)
-    { static_assert(mdetail::require_snap<In>()); mdetail::domain_atan2<In>(); return atan2_core<mdetail::atan2_auto_t<In>>(y, x); }
+    template <insidable InY, insidable InX>
+    [[nodiscard]] BEMAN_INSIDE_DBL_FN auto atan2(InY y, InX x)
+    {
+      static_assert(mdetail::require_snap<InY>() && mdetail::require_snap<InX>());
+      mdetail::domain_atan2<InY>(); mdetail::domain_atan2<InX>();
+      return atan2_core<mdetail::atan2_auto_t<InY, InX>>(y, x);
+    }
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto atan(In x)
@@ -9334,9 +9372,13 @@ namespace beman::inside::math
       return std::expected<Out, errc>{store<Out>(t)};
     }
 
-    template <insidable In>
-    [[nodiscard]] BEMAN_INSIDE_DBL_FN auto atan2(In y, In x)
-    { static_assert(mdetail::require_snap<In>()); mdetail::domain_atan2<In>(); return atan2_core<mdetail::atan2_auto_t<In>>(y, x); }
+    template <insidable InY, insidable InX>
+    [[nodiscard]] BEMAN_INSIDE_DBL_FN auto atan2(InY y, InX x)
+    {
+      static_assert(mdetail::require_snap<InY>() && mdetail::require_snap<InX>());
+      mdetail::domain_atan2<InY>(); mdetail::domain_atan2<InX>();
+      return atan2_core<mdetail::atan2_auto_t<InY, InX>>(y, x);
+    }
 
     template <insidable In>
     [[nodiscard]] BEMAN_INSIDE_DBL_FN auto atan(In x)

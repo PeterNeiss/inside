@@ -46,19 +46,23 @@ namespace beman::inside
   [[nodiscard]] constexpr B clamp_round(N value)
   { return clamp_with_rounding<round_nearest, B>(value); }
 
-  template <insidable B, arithmetic A>
+  // `checked_cast` — throws (via the installed handler) when the value would not
+  // fit exactly: errc::overflow out of the interval (as to<T> and the predicate
+  // name it), errc::rounding_error off the notch. Any numeric source, insides
+  // included; once both checks pass the store is exact.
+  template <insidable B, numeric A>
   [[nodiscard]] constexpr B checked_cast(A value)
   {
     if (will_conversion_overflow<B>(value))
-      detail::raise(errc::domain_error, "checked_cast: value out of inside interval");
+      detail::raise(errc::overflow, "checked_cast: value out of inside interval");
     if (will_conversion_trunc<B>(value))
       detail::raise(errc::rounding_error, "checked_cast: value does not land on notch");
-    return B{value};
+    return B{value, make_policy<snap>()};
   }
 
   // `unchecked_cast` routes through `inside<G, unsafe>` so the compiler elides
   // every domain/round check. UB if the value is actually out of range.
-  template <insidable B, arithmetic A>
+  template <insidable B, numeric A>
   [[nodiscard]] constexpr B unchecked_cast(A value)
   {
     // Keep B's representation flags so the twin's raw layout is B's.

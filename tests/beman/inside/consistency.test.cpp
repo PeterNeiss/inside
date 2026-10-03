@@ -348,3 +348,43 @@ TEST(ConsistencyTest, numeric_limits_round_style_and_is_integer)
   static_assert(!std::numeric_limits<inside<{{0, 10}, notch<1, 2>}>>::is_integer);
   SUCCEED();
 }
+
+//---------------------------------------------------------------------------
+// Feature symmetry.
+//---------------------------------------------------------------------------
+TEST(ConsistencyTest, two_input_math_is_symmetric_in_its_types)
+{
+  using A = inside<{{-1, 1}, notch<1, 16>}, round_nearest>;
+  using B = inside<{{-2, 2}, notch<1, 64>}, round_nearest>;
+  auto t = math::atan2(A{q(1, 2)}, B{q(1, 2)});            // mixed input types
+  EXPECT_EQ(rational{t}, rational{math::atan2(B{q(1, 2)}, B{q(1, 2)})});
+  static_assert(std::same_as<decltype(math::hypot(A{0}, B{0})), decltype(math::hypot(B{0}, A{0}))>);
+}
+
+TEST(ConsistencyTest, compound_ops_accept_expected_rhs)
+{
+  using X = inside<{1, 10}, checked | snap>;
+  using Y = inside<{0, 10}, checked | snap>;                 // divisor may be 0
+  X x{2};
+  x += Y{6} / Y{2};                                           // expected<inside>
+  EXPECT_EQ(rational{x}, q(5));
+  EXPECT_THROW(x += Y{6} / Y{0}, inside_error);              // the error is reported
+}
+
+TEST(ConsistencyTest, casts_take_inside_sources)
+{
+  using Src = inside<{{0, 20}, notch<1, 2>}>;
+  using Dst = inside<{0, 10}>;
+  EXPECT_EQ(rational{checked_cast<Dst>(Src{q(4)})}, q(4));
+  EXPECT_THROW((void)checked_cast<Dst>(Src{q(9, 2)}), inside_error);     // off notch
+  try { (void)checked_cast<Dst>(Src{q(12)}); FAIL(); }
+  catch (inside_error const& e) { EXPECT_EQ(e.code, errc::overflow); }  // out of range
+  EXPECT_EQ(rational{unchecked_cast<Dst>(Src{q(4)})}, q(4));
+}
+
+TEST(ConsistencyTest, midpoint_across_grids)
+{
+  using A = inside<{0, 10}>;
+  using B = inside<{{0, 10}, notch<1, 2>}>;
+  EXPECT_EQ(rational{midpoint(A{3}, B{q(4)})}, q(7, 2));
+}

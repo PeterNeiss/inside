@@ -311,6 +311,10 @@ namespace beman::inside
   template <insidable T>
   [[nodiscard]] constexpr auto midpoint(T a, T b) { return (a + b) * just<frac<1, 2>>; }
 
+  // Mixed grids: the exact average on the refined sum grid, like the same-type form.
+  template <insidable Lhs, insidable Rhs> requires (!std::same_as<Lhs, Rhs>)
+  [[nodiscard]] constexpr auto midpoint(Lhs a, Rhs b) { return (a + b) * just<frac<1, 2>>; }
+
   //---------------------------------------------------------------------------
   // expected-lift operators — fallible results (division, modulo, checked
   // rational arithmetic, beman::inside::math) chain without per-step unwrapping:

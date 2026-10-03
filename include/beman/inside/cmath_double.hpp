@@ -268,8 +268,8 @@ namespace beman::inside::math::dbl
   [[nodiscard]] BEMAN_INSIDE_DBL_FN Out asin_core(In x) { return store<Out>(detail::d_asin(static_cast<double>(x))); }
   template <typename Out, typename In>
   [[nodiscard]] BEMAN_INSIDE_DBL_FN Out acos_core(In x) { return store<Out>(detail::d_acos(static_cast<double>(x))); }
-  template <typename Out, typename In>
-  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out atan2_core(In y, In x)
+  template <typename Out, typename InY, typename InX>
+  [[nodiscard]] BEMAN_INSIDE_DBL_FN Out atan2_core(InY y, InX x)
   { return store<Out>(detail::d_atan2(static_cast<double>(y), static_cast<double>(x))); }
   template <typename Out, typename InX, typename InY>
   [[nodiscard]] BEMAN_INSIDE_DBL_FN Out hypot_core(InX x, InY y)

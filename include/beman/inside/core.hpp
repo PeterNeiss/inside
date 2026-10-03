@@ -635,6 +635,23 @@ namespace beman::inside
       return assign_op_result(detail::rational{*this} / rhs);
     }
 
+    // expected<inside> RHS (e.g. `x += a / b`): unwrap once, reporting an error
+    // through this type's policy like any other failed compound op.
+    template <insidable R>
+    constexpr inside& operator+=(std::expected<R, errc> const& rhs) { return rhs ? (*this += *rhs) : report_error(rhs.error()); }
+    template <insidable R>
+    constexpr inside& operator-=(std::expected<R, errc> const& rhs) { return rhs ? (*this -= *rhs) : report_error(rhs.error()); }
+    template <insidable R>
+    constexpr inside& operator*=(std::expected<R, errc> const& rhs) { return rhs ? (*this *= *rhs) : report_error(rhs.error()); }
+    template <insidable R>
+    constexpr inside& operator/=(std::expected<R, errc> const& rhs) { return rhs ? (*this /= *rhs) : report_error(rhs.error()); }
+    template <insidable R>
+    constexpr inside& operator%=(std::expected<R, errc> const& rhs) { return rhs ? (*this %= *rhs) : report_error(rhs.error()); }
+
+    private:
+    constexpr inside& report_error(errc e) { make_policy<P>().report(e); return *this; }
+    public:
+
     // ++/-- add the point inside `just<±1>` through the insidable += (which has
     // the raw-level integer fast path) instead of the rational round-trip,
     // which decodes to rational and re-stores through the full quotient/

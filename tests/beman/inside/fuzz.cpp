@@ -951,7 +951,7 @@ void prop_casts(fuzz_state& s, long iters)
         FUZZ_REQUIRE(s, unchecked_cast<B>(v) == v);
       }
       else
-        FUZZ_REQUIRE(s, throws_with(errc::domain_error,
+        FUZZ_REQUIRE(s, throws_with(errc::overflow,
                                     [&]{ (void)checked_cast<B>(v); }));
     }
   }
@@ -1001,7 +1001,7 @@ void prop_predicates(fuzz_state& s, long iters)
       FUZZ_REQUIRE(s, will_conversion_overflow<B>(v) == !in_range);
       FUZZ_REQUIRE(s, !will_conversion_trunc<B>(v));      // integer grid never truncates
       bool lossy = is_conversion_lossy<B>(v);
-      bool threw = throws_with_any({errc::domain_error, errc::rounding_error},
+      bool threw = throws_with_any({errc::overflow, errc::rounding_error},
                                    [&]{ (void)checked_cast<B>(v); });
       FUZZ_REQUIRE(s, lossy == threw);
     }
