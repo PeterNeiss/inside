@@ -22,12 +22,16 @@ namespace beman::inside::detail
 {
   constexpr umax abs_den(imax d) { return (d >= 0) ? static_cast<umax>(d) : umax{0} - static_cast<umax>(d); }
 
-  // Portable 64×64 → 128-bit unsigned product, as {hi, lo}. Used where a native
-  // unsigned __int128 is unavailable (MSVC). Schoolbook 32-bit split — the same
-  // construction trusted in cmath.hpp's fmul, so it stays bit-exact.
+  // 64×64 → 128-bit unsigned product, as {hi, lo}. Native where the target has
+  // unsigned __int128; else a schoolbook 32-bit split (32-bit targets) — the
+  // same construction trusted in cmath.hpp's fmul, so both are bit-exact.
   struct u128 { umax hi; umax lo; };
   constexpr u128 umul(umax a, umax b)
   {
+#if defined(__SIZEOF_INT128__)
+    const unsigned __int128 p = static_cast<unsigned __int128>(a) * b;
+    return {static_cast<umax>(p >> 64), static_cast<umax>(p)};
+#endif
     umax al = a & 0xffffffffu, ah = a >> 32;
     umax bl = b & 0xffffffffu, bh = b >> 32;
     umax ll = al * bl, lh = al * bh, hl = ah * bl, hh = ah * bh;
@@ -548,7 +552,7 @@ namespace beman::inside::detail
   {
     using ret_t = std::conditional_t<Checked, std::expected<rational, errc>, rational>;
 
-    if (a == -b) return ret_t{0_r};
+    // (a == −b needs no test: equal denominators, opposite signs → num == 0 below.)
     if (a.Numerator == 0) return ret_t{b};
     if (b.Numerator == 0) return ret_t{a};
 
