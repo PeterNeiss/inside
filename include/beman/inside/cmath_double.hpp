@@ -176,6 +176,23 @@ namespace beman::inside::math::dbl::detail
   }
   inline BEMAN_INSIDE_FP_FN double fp_sinh(double x) { double e = fp_exp(x); return (e - 1.0 / e) * 0.5; }
   inline BEMAN_INSIDE_FP_FN double fp_cosh(double x) { double e = fp_exp(x); return (e + 1.0 / e) * 0.5; }
+  // Inverse hyperbolics from fp_log / fp_sqrt, on |x| (odd functions) so every
+  // log argument is ≥ 1; |x| > 1 and acosh use ln a + ln(1 + √(1 ∓ 1/a²)).
+  inline BEMAN_INSIDE_FP_FN double fp_asinh(double x)
+  {
+    const double a = x < 0 ? -x : x;
+    const double m = a <= 1.0 ? fp_log(a + fp_sqrt(a * a + 1.0))
+                            : fp_log(a) + fp_log(1.0 + fp_sqrt(1.0 + 1.0 / (a * a)));
+    return x < 0 ? -m : m;
+  }
+  inline BEMAN_INSIDE_FP_FN double fp_acosh(double x)
+  { return fp_log(x) + fp_log(1.0 + fp_sqrt(1.0 - 1.0 / (x * x))); }
+  inline BEMAN_INSIDE_FP_FN double fp_atanh(double x)
+  {
+    const double a = x < 0 ? -x : x;
+    const double m = 0.5 * fp_log((1.0 + a) / (1.0 - a));
+    return x < 0 ? -m : m;
+  }
   inline BEMAN_INSIDE_FP_FN double fp_tanh(double x)
   {
     double e = fp_exp(x + x);            // e^{2x}
@@ -262,6 +279,12 @@ namespace beman::inside::math::dbl::detail
   [[nodiscard]] BEMAN_INSIDE_FP_FN Out cosh_core(In x) { return store<Out>(detail::fp_cosh(static_cast<double>(x))); }
   template <typename Out, typename In>
   [[nodiscard]] BEMAN_INSIDE_FP_FN Out tanh_core(In x) { return store<Out>(detail::fp_tanh(static_cast<double>(x))); }
+  template <typename Out, typename In>
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out asinh_core(In x) { return store<Out>(detail::fp_asinh(static_cast<double>(x))); }
+  template <typename Out, typename In>
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out acosh_core(In x) { return store<Out>(detail::fp_acosh(static_cast<double>(x))); }
+  template <typename Out, typename In>
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out atanh_core(In x) { return store<Out>(detail::fp_atanh(static_cast<double>(x))); }
   template <typename Out, typename In>
   [[nodiscard]] BEMAN_INSIDE_FP_FN Out atan_core(In x) { return store<Out>(detail::fp_atan(static_cast<double>(x))); }
   template <typename Out, typename In>

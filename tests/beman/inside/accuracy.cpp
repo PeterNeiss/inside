@@ -98,6 +98,7 @@ namespace
   using unit_grid  = inside<{{-1, 1},       per<16384>}, round_nearest | f64>;
   using sqrt_grid  = inside<{{0, 16},       per<16384>}, round_nearest | f64>;
   using log_grid   = inside<{{1, 1000},     per<16384>}, round_nearest | f64>;
+  using atanh_grid = inside<{{-0.99951171875, 0.99951171875}, per<16384>}, round_nearest | f64>;
 }
 
 int main(int argc, char** argv)
@@ -143,6 +144,9 @@ int main(int argc, char** argv)
   BEMAN_INSIDE_ACCURACY(sinh,  angle_grid, "[-8, 8]",      sinhl(v))
   BEMAN_INSIDE_ACCURACY(cosh,  angle_grid, "[-8, 8]",      coshl(v))
   BEMAN_INSIDE_ACCURACY(tanh,  angle_grid, "[-8, 8]",      tanhl(v))
+  BEMAN_INSIDE_ACCURACY(asinh, angle_grid, "[-8, 8]",      asinhl(v))
+  BEMAN_INSIDE_ACCURACY(acosh, log_grid,   "[1, 1000]",    acoshl(v))
+  BEMAN_INSIDE_ACCURACY(atanh, atanh_grid, "(-1, 1)",      atanhl(v))
   BEMAN_INSIDE_ACCURACY(exp,   angle_grid, "[-8, 8]",      expl(v))
   BEMAN_INSIDE_ACCURACY(exp2,  angle_grid, "[-8, 8]",      exp2l(v))
   BEMAN_INSIDE_ACCURACY(log,   log_grid,   "[1, 1000]",    logl(v))

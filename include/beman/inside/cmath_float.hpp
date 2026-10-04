@@ -184,6 +184,23 @@ namespace beman::inside::math::flt::detail
   }
   inline BEMAN_INSIDE_FP_FN float fp_sinh(float x) { float e = fp_exp(x); return (e - 1.0f / e) * 0.5f; }
   inline BEMAN_INSIDE_FP_FN float fp_cosh(float x) { float e = fp_exp(x); return (e + 1.0f / e) * 0.5f; }
+  // Inverse hyperbolics from fp_log / fp_sqrt, on |x| (odd functions) so every
+  // log argument is ≥ 1; |x| > 1 and acosh use ln a + ln(1 + √(1 ∓ 1/a²)).
+  inline BEMAN_INSIDE_FP_FN float fp_asinh(float x)
+  {
+    const float a = x < 0 ? -x : x;
+    const float m = a <= 1.0f ? fp_log(a + fp_sqrt(a * a + 1.0f))
+                            : fp_log(a) + fp_log(1.0f + fp_sqrt(1.0f + 1.0f / (a * a)));
+    return x < 0 ? -m : m;
+  }
+  inline BEMAN_INSIDE_FP_FN float fp_acosh(float x)
+  { return fp_log(x) + fp_log(1.0f + fp_sqrt(1.0f - 1.0f / (x * x))); }
+  inline BEMAN_INSIDE_FP_FN float fp_atanh(float x)
+  {
+    const float a = x < 0 ? -x : x;
+    const float m = 0.5f * fp_log((1.0f + a) / (1.0f - a));
+    return x < 0 ? -m : m;
+  }
   inline BEMAN_INSIDE_FP_FN float fp_tanh(float x)
   {
     float e = fp_exp(x + x);             // e^{2x}
@@ -271,6 +288,12 @@ namespace beman::inside::math::flt::detail
   [[nodiscard]] BEMAN_INSIDE_FP_FN Out cosh_core(In x) { return store<Out>(detail::fp_cosh(to_float(x))); }
   template <typename Out, typename In>
   [[nodiscard]] BEMAN_INSIDE_FP_FN Out tanh_core(In x) { return store<Out>(detail::fp_tanh(to_float(x))); }
+  template <typename Out, typename In>
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out asinh_core(In x) { return store<Out>(detail::fp_asinh(to_float(x))); }
+  template <typename Out, typename In>
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out acosh_core(In x) { return store<Out>(detail::fp_acosh(to_float(x))); }
+  template <typename Out, typename In>
+  [[nodiscard]] BEMAN_INSIDE_FP_FN Out atanh_core(In x) { return store<Out>(detail::fp_atanh(to_float(x))); }
   template <typename Out, typename In>
   [[nodiscard]] BEMAN_INSIDE_FP_FN Out atan_core(In x) { return store<Out>(detail::fp_atan(to_float(x))); }
   template <typename Out, typename In>

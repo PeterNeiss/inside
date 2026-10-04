@@ -144,6 +144,17 @@ namespace beman::inside::math
     constexpr void domain_tan() noexcept
     { static_assert(lower_of<In> >= -(imax{1} << 20) && upper_of<In> <= (imax{1} << 20), "beman::inside::math::tan: input magnitudes must be \u2264 2^20 rad"); }
     template <insidable In>
+    constexpr void domain_asinh() noexcept
+    { static_assert(lower_of<In> >= -(imax{1} << 20) && upper_of<In> <= (imax{1} << 20), "beman::inside::math::asinh: input magnitudes must be \u2264 2^20 for the working-scale envelope"); }
+    template <insidable In>
+    constexpr void domain_acosh() noexcept
+    { static_assert(lower_of<In> >= 1 && upper_of<In> <= (imax{1} << 20), "beman::inside::math::acosh: input must be in [1, 2^20]"); }
+    // atanh(±1) is infinite; the 2^-30 margin keeps (1+|x|)/(1−|x|) inside the
+    // working scale.
+    template <insidable In>
+    constexpr void domain_atanh() noexcept
+    { static_assert(lower_of<In> >= -1 + rational{1, imax{1} << 30} && upper_of<In> <= 1 - rational{1, imax{1} << 30}, "beman::inside::math::atanh: input must be in (-1, 1), at least 2^-30 from \u00b11"); }
+    template <insidable In>
     constexpr void domain_tanh() noexcept
     { static_assert(lower_of<In> >= -10 && upper_of<In> <= 10, "beman::inside::math::tanh: input must be in [-10, 10]"); }
     template <insidable InX, insidable InY>
@@ -1752,6 +1763,60 @@ namespace beman::inside::math
     constexpr rational log10_endpoint(rational v) noexcept
     { return fixed_to_rational(fmul(log_to_fixed<W>(v), inv_ln10_w<W>, W), W); }
 
+    // --- inverse hyperbolic (from ln via the atanh-vectoring core) ----------
+    // All three are odd or one-sided, so they work on |v| and every log argument
+    // is ≥ 1. asinh for |v| > 1 and acosh use ln a + ln(1 + √(1 ∓ 1/a²)): the
+    // radicand stays in [0, 2] at scale W instead of squaring a (|a| ≤ 2^20).
+    // Outside the domain they return a finite placeholder: the auto output type
+    // is formed before the domain static_assert runs, which then reports.
+    template <int W = kRefBits>
+    constexpr rational asinh_endpoint(rational v) noexcept
+    {
+      if (v == rational{0}) return rational{0};
+      const rational a = abs(v);
+      if (a > rational{imax{1} << 20}) return v;                       // outside the domain
+      constexpr imax one = imax{1} << W;
+      imax r_w;
+      if (a <= rational{1})
+      {
+        const imax a_w = to_fixed(a, W);
+        const imax s_w = sqrt_fixed<W>(one + fmul(a_w, a_w, W));       // √(a²+1) ∈ [1, √2]
+        r_w = log_to_fixed<W>(fixed_to_rational(a_w + s_w, W));
+      }
+      else
+      {
+        const imax i_w = to_fixed(rational{rational{1} / a}, W);       // 1/a ∈ (0, 1)
+        const imax t_w = sqrt_fixed<W>(one + fmul(i_w, i_w, W));
+        r_w = log_to_fixed<W>(a) + log_to_fixed<W>(fixed_to_rational(one + t_w, W));
+      }
+      const rational mag = fixed_to_rational(r_w, W);
+      return (v < rational{0}) ? -mag : mag;
+    }
+
+    // acosh(v), v ≥ 1.
+    template <int W = kRefBits>
+    constexpr rational acosh_endpoint(rational v) noexcept
+    {
+      if (v <= rational{1} || v > rational{imax{1} << 20}) return rational{0};   // 1, or outside
+      constexpr imax one = imax{1} << W;
+      const imax i_w = to_fixed(rational{rational{1} / v}, W);          // 1/v ∈ (0, 1)
+      const imax t_w = sqrt_fixed<W>(one - fmul(i_w, i_w, W));
+      return fixed_to_rational(log_to_fixed<W>(v) + log_to_fixed<W>(fixed_to_rational(one + t_w, W)), W);
+    }
+
+    // atanh(v) = ½·ln((1+|v|)/(1−|v|)), odd-extended. The ratio is formed exactly
+    // as a rational: a log of a tiny 1−|v| at scale W would lose its precision.
+    template <int W = kRefBits>
+    constexpr rational atanh_endpoint(rational v) noexcept
+    {
+      if (v == rational{0}) return rational{0};
+      const rational a = abs(v);
+      if (a > rational{1} - rational{1, imax{1} << 30}) return v;     // outside the domain
+      const rational q = rational{(rational{1} + a) / (rational{1} - a)};
+      const rational mag = fixed_to_rational(log_to_fixed<W>(q) / 2, W);
+      return (v < rational{0}) ? -mag : mag;
+    }
+
     // cbrt(v) = sign(v)·e^(ln|v|/3); cbrt(0) = 0.
     template <int W = kRefBits>
     constexpr rational cbrt_endpoint(rational v) noexcept
@@ -1833,6 +1898,14 @@ namespace beman::inside::math
 
     template <insidable In>
     using tanh_auto_t = outward_t<In, tanh_endpoint(lower_of<In>), tanh_endpoint(upper_of<In>)>;
+
+    // asinh / acosh / atanh are increasing: the output spans the endpoint images.
+    template <insidable In>
+    using asinh_auto_t = outward_t<In, asinh_endpoint(lower_of<In>), asinh_endpoint(upper_of<In>)>;
+    template <insidable In>
+    using acosh_auto_t = outward_t<In, acosh_endpoint(lower_of<In>), acosh_endpoint(upper_of<In>)>;
+    template <insidable In>
+    using atanh_auto_t = outward_t<In, atanh_endpoint(lower_of<In>), atanh_endpoint(upper_of<In>)>;
 
     template <insidable In>
     using log10_auto_t = outward_t<In, log10_endpoint(lower_of<In>), log10_endpoint(upper_of<In>)>;
@@ -1918,6 +1991,27 @@ namespace beman::inside::math
   {
     detail::domain_sinh<In>();
     return detail::store_grid<Out>(detail::sinh_endpoint<detail::endpoint_bits<Out>()>(rational{x}));
+  }
+
+  template <insidable Out, insidable In>
+  [[nodiscard]] constexpr Out asinh_into(In x)
+  {
+    detail::domain_asinh<In>();
+    return detail::store_grid<Out>(detail::asinh_endpoint<detail::endpoint_bits<Out>()>(rational{x}));
+  }
+
+  template <insidable Out, insidable In>
+  [[nodiscard]] constexpr Out acosh_into(In x)
+  {
+    detail::domain_acosh<In>();
+    return detail::store_grid<Out>(detail::acosh_endpoint<detail::endpoint_bits<Out>()>(rational{x}));
+  }
+
+  template <insidable Out, insidable In>
+  [[nodiscard]] constexpr Out atanh_into(In x)
+  {
+    detail::domain_atanh<In>();
+    return detail::store_grid<Out>(detail::atanh_endpoint<detail::endpoint_bits<Out>()>(rational{x}));
   }
   } // namespace cordic
 
@@ -2099,6 +2193,18 @@ namespace beman::inside::math
     { static_assert(detail::require_snap<In>()); return tanh_into<detail::tanh_auto_t<In>>(x); }
 
     template <insidable In>
+    [[nodiscard]] constexpr auto asinh(In x)
+    { static_assert(detail::require_snap<In>()); return asinh_into<detail::asinh_auto_t<In>>(x); }
+
+    template <insidable In>
+    [[nodiscard]] constexpr auto acosh(In x)
+    { static_assert(detail::require_snap<In>()); return acosh_into<detail::acosh_auto_t<In>>(x); }
+
+    template <insidable In>
+    [[nodiscard]] constexpr auto atanh(In x)
+    { static_assert(detail::require_snap<In>()); return atanh_into<detail::atanh_auto_t<In>>(x); }
+
+    template <insidable In>
     [[nodiscard]] constexpr auto log10(In x)
     {
       static_assert(detail::require_snap<In>());
@@ -2152,6 +2258,7 @@ namespace beman::inside::math
     BEMAN_INSIDE_FP_UNARY(cos)   BEMAN_INSIDE_FP_UNARY(atan)  BEMAN_INSIDE_FP_UNARY(asin) \
     BEMAN_INSIDE_FP_UNARY(acos)  BEMAN_INSIDE_FP_UNARY(sinh)  BEMAN_INSIDE_FP_UNARY(cosh) \
     BEMAN_INSIDE_FP_UNARY(tanh)  BEMAN_INSIDE_FP_UNARY(cbrt)                              \
+    BEMAN_INSIDE_FP_UNARY(asinh) BEMAN_INSIDE_FP_UNARY(acosh) BEMAN_INSIDE_FP_UNARY(atanh) \
                                                                                           \
     template <insidable Out, insidable In> requires (lower_of<In> == rational{0})         \
     [[nodiscard]] BEMAN_INSIDE_FP_FN Out sqrt_into(In x) { return detail::sqrt_core<Out>(x); }   \
@@ -2287,6 +2394,9 @@ namespace beman::inside::math
   using default_engine::sinh_into;
   using default_engine::cosh_into;
   using default_engine::tanh_into;
+  using default_engine::asinh_into;
+  using default_engine::acosh_into;
+  using default_engine::atanh_into;
   using default_engine::log10_into;
   using default_engine::cbrt_into;
   using default_engine::hypot_into;
@@ -2306,6 +2416,9 @@ namespace beman::inside::math
   using default_engine::sinh;
   using default_engine::cosh;
   using default_engine::tanh;
+  using default_engine::asinh;
+  using default_engine::acosh;
+  using default_engine::atanh;
   using default_engine::log10;
   using default_engine::cbrt;
   using default_engine::hypot;

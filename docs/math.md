@@ -181,6 +181,9 @@ other representation flags.
 | Function | Domain | Output | Errors | Notes |
 |---|---|---|---|---|
 | `sinh(x)` / `cosh(x)` / `tanh(x)` | `[-10, 10]` | monotone (cosh: even, min 1) | — | from `e^x` via the exp core |
+| `asinh(x)` | `\|x\| ≤ 2^20` | monotone | — | `sign·(ln\|x\| + ln(1 + √(1 + 1/x²)))` for \|x\| > 1 — no x² overflow |
+| `acosh(x)` | `[1, 2^20]` | `[0, …]` | — | `ln x + ln(1 + √(1 − 1/x²))` |
+| `atanh(x)` | `(-1, 1)`, at least 2^-30 from ±1 | monotone | — | `½·ln((1+\|x\|)/(1−\|x\|))` with the ratio formed exactly, so precision holds next to the poles |
 
 ## Exponential & logarithmic
 
