@@ -58,3 +58,12 @@ TEST(TryMakeTest, fp_storage_reports_like_the_constructor)
   EXPECT_EQ(F::try_make(1.1)->raw(), 1.0);
 }
 #endif
+
+// error values work in constant evaluation (error-code mode records, no abort)
+TEST(TryMakeTest, errors_are_values_at_compile_time)
+{
+  using pct = inside<{0, 100}>;
+  static_assert(pct::try_make(150).error() == errc::overflow);
+  static_assert(inside<{{0, 10}, 2}>::try_make(3).error() == errc::rounding_error);
+  static_assert(pct::try_make(42).has_value());
+}

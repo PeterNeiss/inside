@@ -165,18 +165,19 @@ TEST(CmathDoubleTest, dbl_circle_m_degree_angle_uses_the_double_engine)
   static_assert(std::is_same_v<math::amp<65536>::raw_type, double>, "amp must be double-backed in the default build");
 
   math::circle<360> deg = 47.0;
-  math::amp<65536> y, c;
-  math::sin(deg, y);
-  math::cos(deg, c);
+  const auto y = math::sin_into<math::amp<65536>>(deg);
+  const auto c = math::cos_into<math::amp<65536>>(deg);
   ASSERT_EQ(double(y), 0x1.7674p-1);   // sin(47°) snapped to 1/65536 (~0.73135)
   ASSERT_EQ(double(c), 0x1.5d2ep-1);   // cos(47°) snapped to 1/65536 (~0.68201)
 
   // exact at cardinal degrees
   math::circle<360> d0 = 0.0, d180 = 180.0;
-  math::amp<65536> s0, s180;
-  math::sin(d0, s0);  math::sin(d180, s180);
-  ASSERT_EQ(double(s0), 0.0);
-  ASSERT_EQ(double(s180), 0.0);   // sin(180°) is exactly 0
+  ASSERT_EQ(double(math::sin_into<math::amp<65536>>(d0)), 0.0);
+  ASSERT_EQ(double(math::sin_into<math::amp<65536>>(d180)), 0.0);   // sin(180°) is exactly 0
+
+  // The auto form picks amp at the angle's resolution, rounded up to a power of
+  // two (an f64 grid is dyadic): circle<360> → amp<512>.
+  static_assert(std::is_same_v<decltype(math::sin(deg)), math::amp<512>>);
 }
 
 // The algebraic tier (abs/floor/ceil/round/trunc/fmod) is exercised at compile

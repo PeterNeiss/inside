@@ -60,20 +60,23 @@ namespace beman::inside
     }
 
     // Cheap default report: no message construction. error_ref mode records the
-    // code (sticky: keeps the first error); throw mode funnels through the
-    // installed handler via an outlined cold helper. The constant-evaluation
-    // guard names a fixed-string diagnostic for a clearer compile-time message
-    // than "non-constexpr function called".
+    // code (sticky: keeps the first error) — also during constant evaluation, so
+    // try_make / from_chars / tan_into return error values in constexpr code.
+    // Throw mode funnels through the installed handler via an outlined cold
+    // helper; at compile time it names a fixed-string diagnostic instead of
+    // "non-constexpr function called".
     constexpr void report(errc code)
     {
-      if (std::is_constant_evaluated())
-        detail::constexpr_error<
-          "inside: value out of range during constant evaluation "
-          "(checked policy hit; choose clamp/wrap or widen the interval)">();
       if constexpr (std::is_same_v<E, detail::error_ref>)
         E::Code = E::Code != errc{} ? E::Code : code;
       else
+      {
+        if (std::is_constant_evaluated())
+          detail::constexpr_error<
+            "inside: value out of range during constant evaluation "
+            "(checked policy hit; choose clamp/wrap or widen the interval)">();
         detail::raise(code);
+      }
     }
   };
 

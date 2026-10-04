@@ -1593,67 +1593,100 @@ namespace beman::inside::math
     }
   } // namespace detail
 
-  // sin(angle) → out, on out's amplitude grid. angle is a circle<M>. Reference
-  // output (not a return) lets Out be deduced from the caller's object and reuses
-  // its assignment policy for the final rounding.
-  template <insidable In, insidable Out>
-  BEMAN_INSIDE_MATH_FN void sin(In angle, Out& out)
+  namespace detail
+  {
+    // A degree circle: one full turn [0, 360) on a notched grid with wrap. Circle
+    // angles select the slot-based overloads below (they subsume the radians
+    // ones); valid_circle then reports what else a circle needs (f64, M % 4).
+    template <class In>
+    concept circle_angle =
+         insidable<In>
+      && notch_of<In> != 0
+      && lower_of<In> == 0
+      && (upper_of<In> + notch_of<In>).value() == rational{360}
+      && has_flag(policy_of<In>, wrap);
+
+    // Auto output for circle sin / cos: amplitude [-1, 1] at the angle's
+    // resolution, rounded up to a power of two (an f64 grid must be dyadic).
+    template <insidable In>
+    using circle_amp_t = amp<std::bit_ceil(static_cast<std::uint64_t>(circle_slots<In>))>;
+
+    // Auto output for circle tan: the radians tan range, same resolution.
+    template <insidable In>
+    using circle_tan_t = inside<{{rational{-1024}, rational{1024}},
+                                 per<std::bit_ceil(static_cast<std::uint64_t>(circle_slots<In>))>}, f64>;
+  }
+
+  // sin_into<Out>(angle) — angle is a circle<M> (degrees); the result is rounded
+  // onto Out's grid by Out's policy. The integer engine reads a first-quadrant
+  // table built at compile time; the FP engines evaluate on the angle in radians.
+  template <insidable Out, insidable In> requires detail::circle_angle<In>
+  [[nodiscard]] BEMAN_INSIDE_MATH_FN Out sin_into(In angle)
   {
     static_assert(detail::valid_circle<In>());
 #if defined(BEMAN_INSIDE_MATH_NO_FP)
     constexpr imax M = detail::circle_slots<In>;
     constexpr int  W = detail::working_bits<Out>();
-    out = detail::sin_slot<M, W>(beman::inside::detail::raw_imax(angle));
+    return Out{detail::sin_slot<M, W>(beman::inside::detail::raw_imax(angle))};
 #elif defined(BEMAN_INSIDE_MATH_FLOAT)
-    out = flt::detail::fp_sin(flt::detail::to_float(angle) * (flt::detail::kPi / 180.0f));
+    return Out{flt::detail::fp_sin(flt::detail::to_float(angle) * (flt::detail::kPi / 180.0f))};
 #else
-    out = dbl::detail::fp_sin(static_cast<double>(angle) * (dbl::detail::kPi / 180.0));
+    return Out{dbl::detail::fp_sin(static_cast<double>(angle) * (dbl::detail::kPi / 180.0))};
 #endif
   }
 
-  // cos(angle) → out. cos(x) = sin(x + ¼ turn): shift the slot by M/4.
-  template <insidable In, insidable Out>
-  BEMAN_INSIDE_MATH_FN void cos(In angle, Out& out)
+  // cos_into<Out>(angle). cos(x) = sin(x + ¼ turn): shift the slot by M/4.
+  template <insidable Out, insidable In> requires detail::circle_angle<In>
+  [[nodiscard]] BEMAN_INSIDE_MATH_FN Out cos_into(In angle)
   {
     static_assert(detail::valid_circle<In>());
 #if defined(BEMAN_INSIDE_MATH_NO_FP)
     constexpr imax M = detail::circle_slots<In>;
     constexpr int  W = detail::working_bits<Out>();
-    out = detail::sin_slot<M, W>(beman::inside::detail::raw_imax(angle) + M / 4);
+    return Out{detail::sin_slot<M, W>(beman::inside::detail::raw_imax(angle) + M / 4)};
 #elif defined(BEMAN_INSIDE_MATH_FLOAT)
-    out = flt::detail::fp_cos(flt::detail::to_float(angle) * (flt::detail::kPi / 180.0f));
+    return Out{flt::detail::fp_cos(flt::detail::to_float(angle) * (flt::detail::kPi / 180.0f))};
 #else
-    out = dbl::detail::fp_cos(static_cast<double>(angle) * (dbl::detail::kPi / 180.0));
+    return Out{dbl::detail::fp_cos(static_cast<double>(angle) * (dbl::detail::kPi / 180.0))};
 #endif
   }
 
-  // tan(angle) → out = sin/cos. Returns false (and leaves out untouched) when
-  // the angle lands exactly on a pole (cos == 0); overflow of the amplitude
-  // grid is handled by out's own policy (e.g. clamp).
-  template <insidable In, insidable Out>
-  [[nodiscard]] BEMAN_INSIDE_MATH_FN bool tan(In angle, Out& out)
+  // tan_into<Out>(angle) → expected<Out, errc>, like the radians tan:
+  // division_by_zero at an exact pole (90° / 270° — detected by the integer
+  // engine; the FP engines see the radians value, see math.md), overflow when
+  // the value leaves Out (a clamp Out saturates instead).
+  template <insidable Out, insidable In> requires detail::circle_angle<In>
+  [[nodiscard]] BEMAN_INSIDE_MATH_FN std::expected<Out, errc> tan_into(In angle)
   {
     static_assert(detail::valid_circle<In>());
 #if defined(BEMAN_INSIDE_MATH_NO_FP)
     constexpr imax M = detail::circle_slots<In>;
     constexpr int  W = detail::working_bits<Out>();
-    imax i = beman::inside::detail::raw_imax(angle);
-    rational c = detail::sin_slot<M, W>(i + M / 4);
-    if (c == 0) return false;                                  // pole
-    out = (detail::sin_slot<M, W>(i) / c).value();             // sin / cos
-    return true;
+    const imax i = beman::inside::detail::raw_imax(angle);
+    const rational c = detail::sin_slot<M, W>(i + M / 4);
+    if (c == 0) return std::unexpected{errc::division_by_zero};          // pole
+    return Out::try_make((detail::sin_slot<M, W>(i) / c).value());        // sin / cos
 #elif defined(BEMAN_INSIDE_MATH_FLOAT)
     float t;
-    if (!flt::detail::fp_tan(flt::detail::to_float(angle) * (flt::detail::kPi / 180.0f), t)) return false;   // pole
-    out = t;
-    return true;
+    if (!flt::detail::fp_tan(flt::detail::to_float(angle) * (flt::detail::kPi / 180.0f), t))
+      return std::unexpected{errc::division_by_zero};
+    return Out::try_make(t);
 #else
     double t;
-    if (!dbl::detail::fp_tan(static_cast<double>(angle) * (dbl::detail::kPi / 180.0), t)) return false;   // pole
-    out = t;
-    return true;
+    if (!dbl::detail::fp_tan(static_cast<double>(angle) * (dbl::detail::kPi / 180.0), t))
+      return std::unexpected{errc::division_by_zero};
+    return Out::try_make(t);
 #endif
   }
+
+  template <insidable In> requires detail::circle_angle<In>
+  [[nodiscard]] BEMAN_INSIDE_MATH_FN auto sin(In angle) { return sin_into<detail::circle_amp_t<In>>(angle); }
+
+  template <insidable In> requires detail::circle_angle<In>
+  [[nodiscard]] BEMAN_INSIDE_MATH_FN auto cos(In angle) { return cos_into<detail::circle_amp_t<In>>(angle); }
+
+  template <insidable In> requires detail::circle_angle<In>
+  [[nodiscard]] BEMAN_INSIDE_MATH_FN auto tan(In angle) { return tan_into<detail::circle_tan_t<In>>(angle); }
 
   //===========================================================================
   // Extended transcendentals — inverse trig, hyperbolic, log10, pow, cbrt,

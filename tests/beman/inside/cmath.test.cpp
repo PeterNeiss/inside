@@ -68,15 +68,14 @@ namespace
   }
 
   // --- grid-native circle<M> degree angle + amp<K> amplitude ---------------
-  // The public reference-output path: `math::sin(circle<M>, amp<K>&)`. amp<K>
+  // The public explicit-output path: `math::sin_into<amp<K>>(circle<M>)`. amp<K>
   // stores raw = (value + 1)·K, so `raw - K` is the signed amplitude in units
   // of 1/K (e.g. K = 16384 → Q.14, directly comparable to sin_q14 above).
   template <std::uint64_t M, std::uint64_t K = 16384>
   constexpr int circ_sin_qk(int deg)
   {
     math::circle<M> a = deg;
-    math::amp<K>    y;
-    math::sin(a, y);
+    const auto y = math::sin_into<math::amp<K>>(a);
     return static_cast<int>(y.raw()) - static_cast<int>(K);
   }
 
@@ -84,8 +83,7 @@ namespace
   constexpr int circ_cos_qk(int deg)
   {
     math::circle<M> a = deg;
-    math::amp<K>    y;
-    math::cos(a, y);
+    const auto y = math::cos_into<math::amp<K>>(a);
     return static_cast<int>(y.raw()) - static_cast<int>(K);
   }
 }
@@ -199,7 +197,7 @@ TEST(CmathTest, beman_inside_math_sin_circle_drift_free_wrap)
   static_assert([]{
     math::circle<360> b = 30;
     for (int k = 0; k < 1000; ++k) b = b.as<imax>() + 360;
-    math::amp<16384> y; math::sin(b, y);
+    const auto y = math::sin_into<math::amp<16384>>(b);
     return static_cast<int>(y.raw()) - 16384;
   }() == 8192);
 }
@@ -208,16 +206,23 @@ TEST(CmathTest, beman_inside_math_sin_circle_drift_free_wrap)
 TEST(CmathTest, beman_inside_math_tan_circle_value_and_pole)
 {
   static_assert([]{
-    math::circle<360> a = 45; math::amp<16384> y;
-    bool ok = math::tan(a, y);
-    return ok && (static_cast<int>(y.raw()) - 16384) == 16384;   // tan(45°) = 1
+    math::circle<360> a = 45;
+    const auto t = math::tan_into<math::amp<16384>>(a);
+    return t.has_value() && (static_cast<int>(t->raw()) - 16384) == 16384;   // tan(45°) = 1
   }());
 
-  // cos(90°) == 0 → pole reported, out left untouched.
+  // cos(90°) == 0 → the pole is reported as division_by_zero.
   static_assert([]{
-    math::circle<360> a = 90; math::amp<16384> y;
-    return math::tan(a, y);
-  }() == false);
+    math::circle<360> a = 90;
+    const auto t = math::tan_into<math::amp<16384>>(a);
+    return !t.has_value() && t.error() == errc::division_by_zero;
+  }());
+
+  // tan past Out's range is an error value, like the radians tan.
+  static_assert([]{
+    math::circle<360> a = 60;                                      // tan(60°) ≈ 1.73
+    return math::tan_into<math::amp<16384>>(a).error() == errc::overflow;
+  }());
 }
 
 //---------------------------------------------------------------------------

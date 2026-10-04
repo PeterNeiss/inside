@@ -211,21 +211,25 @@ using angle_t = math::circle<4096>;   // f64 | wrap, notch 360/4096 degrees
 using amp_t   = math::amp<32768>;     // [-1, 1], notch 1/32768, f64
 
 angle_t phase{0};
-amp_t   s, c, t;
-math::sin(phase, s);                  // result written into s, on s's grid
-math::cos(phase, c);
-if (!math::tan(phase, t)) { /* pole: t unchanged */ }
-phase += angle_t{90};                 // a quarter turn, exactly; wraps at 360
+auto s = math::sin(phase);                   // amp<4096>: the angle's resolution
+auto c = math::cos_into<amp_t>(phase);       // explicit output grid
+auto t = math::tan_into<amp_t>(phase);       // expected<amp_t, errc>
+phase += angle_t{90};                        // a quarter turn, exactly; wraps at 360
 ```
 
-The output is a reference parameter, so its type (and its policy, which does
-the final rounding) comes from the caller's object; `tan` returns `false` at a
-pole. Only the integer engine detects the exact 90° / 270° poles: the FP
-engines convert the angle to radians first, so there `tan` returns `true` with
-a large value, which `out`'s policy then clamps or reports. `M` must be divisible by 4 (a power of two is fastest), and a custom angle
-type must have `Lower == 0` and carry `wrap | f64`. Under the integer engine the
-call is a lookup into a first-quadrant table built at compile time; the FP
-engines evaluate their sine/cosine on the angle converted to radians.
+The same names as the radians functions take a circle angle and dispatch on its
+shape (`Lower` 0, `Upper + Notch == 360`, `wrap`): `sin` / `cos` / `tan` and their
+`_into<Out>` forms. The auto output is `amp` at the angle's resolution, rounded up
+to a power of two (`circle<360>` → `amp<512>`; an `f64` grid must be dyadic); `tan`'s
+auto output is the radians `tan` range. Like the radians `tan`, `tan` returns
+`expected`: `division_by_zero` at a pole, `overflow` past `Out` (a `clamp` `Out`
+saturates). Only the integer engine detects the exact 90° / 270° poles: the FP
+engines evaluate on the angle converted to radians, where `tan(90°)` is a large
+finite value (then `overflow` for any amplitude grid). `M` must be divisible by 4
+(a power of two is fastest), and a custom angle type must carry `wrap | f64`.
+Under the integer engine the call is a lookup into a first-quadrant table built
+at compile time. The engine namespaces (`cordic::`, `dbl::`, `flt::`) take radians
+only.
 
 ## Using `expected` results
 

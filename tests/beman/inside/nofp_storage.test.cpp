@@ -22,9 +22,8 @@ TEST(NoFpStorageTest, f64_flag_is_integer_backed)
 TEST(NoFpStorageTest, circle_trig_reads_the_angle_by_value)
 {
   math::circle<1024> a{90}, b{30};
-  math::amp<14> s, t;
-  math::sin(a, s);
-  math::sin(b, t);
+  const auto s = math::sin(a);                               // auto: amp<1024>
+  const auto t = math::sin_into<math::amp<14>>(b);           // 30° snaps to slot 85 (29.88°)
   EXPECT_EQ(rational{s}, rational{1});
-  EXPECT_EQ(rational{t}, (rational{1, 2}));
+  EXPECT_EQ(rational{t}, (rational{1, 2}));                  // on the 1/14 amplitude grid
 }

@@ -93,4 +93,6 @@ TEST(FromCharsTest, from_chars_is_constexpr)
   constexpr const char text[] = "0.75";
   constexpr auto r = from_chars<inside<{{0, 1}, per<4>}>>(text, text + 4);
   static_assert(r.has_value() && rational{*r} == rational{3, 4});
+  constexpr const char bad[] = "1.5";
+  static_assert(from_chars<inside<{{0, 1}, per<4>}>>(bad, bad + 3).error() == errc::overflow);
 }
