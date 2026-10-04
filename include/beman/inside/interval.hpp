@@ -7,6 +7,7 @@
 
 #include <beman/inside/lift.hpp>
 #include <beman/inside/detail/rational.hpp>
+#include <beman/inside/detail/grid_rational.hpp>
 
 #include <initializer_list>
 
@@ -18,6 +19,7 @@ namespace beman::inside
   // at compile time; division returns errc::division_by_zero when the divisor straddles zero
   // (grid::operator/ re-runs on the two zero-free halves and unions them).
   //---------------------------------------------------------------------------
+  inline namespace BEMAN_INSIDE_GRID_ABI {
   struct interval
   {
     detail::rational Lower;
@@ -52,6 +54,7 @@ namespace beman::inside
     [[nodiscard]] constexpr std::expected<detail::rational, errc> operator/(const detail::rational& notch) const
     { return (Upper - Lower) / notch; }
   };
+  }
 
   // Containment / disjointness — free functions over the public endpoints
   // (siblings of the binary interval operators below).

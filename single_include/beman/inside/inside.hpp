@@ -1783,6 +1783,49 @@ namespace beman::inside
 //---------------------------------------------------------------------------
 
 
+// ======================================================================
+//  beman/inside/detail/grid_rational.hpp
+// ======================================================================
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+
+
+//---------------------------------------------------------------------------
+// grid_rational — the number type of a grid's limits and notch (the NTTP
+// substrate of `interval` and `grid`).
+//
+// BEMAN_INSIDE_BIG_GRIDS selects it. Under C++26 static reflection
+// (std::define_static_array) a grid number has no size limit: its limbs are
+// interned in static storage, so equal values stay the same template argument.
+// Without reflection (C++23, older compilers) it is the 64-bit runtime
+// `rational`, and grids keep today's limits. Define the macro to 0 to force the
+// 64-bit grids on a C++26 compiler.
+//
+// The two modes give `grid` and `interval` different layouts, so each mode
+// lives in its own inline namespace: linking a C++23 TU against a C++26 one is
+// a link error, not a silent ODR violation.
+//---------------------------------------------------------------------------
+#if !defined(BEMAN_INSIDE_BIG_GRIDS)
+#  if defined(__cpp_impl_reflection) && __has_include(<meta>)
+#    define BEMAN_INSIDE_BIG_GRIDS 1
+#  else
+#    define BEMAN_INSIDE_BIG_GRIDS 0
+#  endif
+#endif
+
+#if BEMAN_INSIDE_BIG_GRIDS
+#  define BEMAN_INSIDE_GRID_ABI big_grids_v1
+#else
+#  define BEMAN_INSIDE_GRID_ABI small_grids_v1
+#endif
+
+namespace beman::inside::detail
+{
+  // Phase 0: both modes still use the 64-bit rational; big_rational follows.
+  using grid_rational = rational;
+}
+
+
 
 namespace beman::inside
 {
@@ -1792,6 +1835,7 @@ namespace beman::inside
   // at compile time; division returns errc::division_by_zero when the divisor straddles zero
   // (grid::operator/ re-runs on the two zero-free halves and unions them).
   //---------------------------------------------------------------------------
+  inline namespace BEMAN_INSIDE_GRID_ABI {
   struct interval
   {
     detail::rational Lower;
@@ -1826,6 +1870,7 @@ namespace beman::inside
     [[nodiscard]] constexpr std::expected<detail::rational, errc> operator/(const detail::rational& notch) const
     { return (Upper - Lower) / notch; }
   };
+  }
 
   // Containment / disjointness — free functions over the public endpoints
   // (siblings of the binary interval operators below).
@@ -2206,6 +2251,7 @@ namespace beman::inside
   // compile-time result-grid inference: every inside arithmetic operator computes
   // its result grid here, so the result interval contains every reachable value.
   //---------------------------------------------------------------------------
+  inline namespace BEMAN_INSIDE_GRID_ABI {
   struct grid
   {
     interval Interval;
@@ -2351,6 +2397,7 @@ namespace beman::inside
     // decode depends on the storage KIND, not the raw type's signedness — a
     // `direct`-policy inside has an unsigned raw that IS the value.)
   };
+  }
 
   namespace detail
   {

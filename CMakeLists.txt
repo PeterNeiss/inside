@@ -112,6 +112,26 @@ if(BEMAN_INSIDE_STRICT_SFINAE)
         INTERFACE BEMAN_INSIDE_STRICT_SFINAE
     )
 endif()
+# Big grids: under C++26 with static reflection (std::define_static_array) a
+# grid's limits and notch have no size limit. GCC 16 gates reflection behind
+# -freflection, so add it to the interface when the standard is 26 or later
+# and the compiler takes the flag. The headers detect the feature themselves
+# (BEMAN_INSIDE_BIG_GRIDS); without it grids keep their 64-bit limits.
+option(
+    BEMAN_INSIDE_REFLECTION
+    "Add -freflection under C++26 when the compiler accepts it (enables big grids). Default: ON. Values: { ON, OFF }."
+    ON
+)
+if(BEMAN_INSIDE_REFLECTION AND CMAKE_CXX_STANDARD GREATER_EQUAL 26)
+    include(CheckCXXCompilerFlag)
+    check_cxx_compiler_flag(-freflection BEMAN_INSIDE_HAS_FREFLECTION)
+    if(BEMAN_INSIDE_HAS_FREFLECTION)
+        target_compile_options(
+            beman.inside
+            INTERFACE $<$<COMPILE_LANG_AND_ID:CXX,GNU>:-freflection>
+        )
+    endif()
+endif()
 if(BEMAN_INSIDE_FMA AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$")
     target_compile_options(
         beman.inside

@@ -114,6 +114,42 @@
         "lhs": "${hostSystemName}",
         "rhs": "Darwin"
       }
+    },
+    {
+      "name": "gcc16-debug",
+      "displayName": "GCC 16 C++26 Debug Build (reflection: big grids)",
+      "inherits": [
+        "_root-config",
+        "_debug-base"
+      ],
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "g++-16",
+        "CMAKE_C_COMPILER": "gcc-16",
+        "CMAKE_CXX_STANDARD": "26"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    },
+    {
+      "name": "gcc16-release",
+      "displayName": "GCC 16 C++26 Release Build (reflection: big grids)",
+      "inherits": [
+        "_root-config",
+        "_release-base"
+      ],
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "g++-16",
+        "CMAKE_C_COMPILER": "gcc-16",
+        "CMAKE_CXX_STANDARD": "26"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
     }
   ],
   "buildPresets": [
@@ -167,6 +203,20 @@
       "inherits": [
         "_root-build"
       ]
+    },
+    {
+      "name": "gcc16-debug",
+      "configurePreset": "gcc16-debug",
+      "inherits": [
+        "_root-build"
+      ]
+    },
+    {
+      "name": "gcc16-release",
+      "configurePreset": "gcc16-release",
+      "inherits": [
+        "_root-build"
+      ]
     }
   ],
   "testPresets": [
@@ -210,6 +260,16 @@
       "name": "appleclang-release",
       "inherits": "_test_base",
       "configurePreset": "appleclang-release"
+    },
+    {
+      "name": "gcc16-debug",
+      "inherits": "_test_base",
+      "configurePreset": "gcc16-debug"
+    },
+    {
+      "name": "gcc16-release",
+      "inherits": "_test_base",
+      "configurePreset": "gcc16-release"
     }
   ],
   "workflowPresets": [
@@ -312,6 +372,40 @@
         {
           "type": "test",
           "name": "appleclang-release"
+        }
+      ]
+    },
+    {
+      "name": "gcc16-debug",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "gcc16-debug"
+        },
+        {
+          "type": "build",
+          "name": "gcc16-debug"
+        },
+        {
+          "type": "test",
+          "name": "gcc16-debug"
+        }
+      ]
+    },
+    {
+      "name": "gcc16-release",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "gcc16-release"
+        },
+        {
+          "type": "build",
+          "name": "gcc16-release"
+        },
+        {
+          "type": "test",
+          "name": "gcc16-release"
         }
       ]
     }

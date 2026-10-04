@@ -8,6 +8,7 @@
 #include <beman/inside/lift.hpp>
 #include <beman/inside/detail/rational.hpp>
 #include <beman/inside/interval.hpp>
+#include <beman/inside/detail/grid_rational.hpp>
 #include <beman/inside/policy_flag.hpp>
 
 #include <expected>   // std::expected, std::unexpected
@@ -24,6 +25,7 @@ namespace beman::inside
   // compile-time result-grid inference: every inside arithmetic operator computes
   // its result grid here, so the result interval contains every reachable value.
   //---------------------------------------------------------------------------
+  inline namespace BEMAN_INSIDE_GRID_ABI {
   struct grid
   {
     interval Interval;
@@ -169,6 +171,7 @@ namespace beman::inside
     // decode depends on the storage KIND, not the raw type's signedness — a
     // `direct`-policy inside has an unsigned raw that IS the value.)
   };
+  }
 
   namespace detail
   {

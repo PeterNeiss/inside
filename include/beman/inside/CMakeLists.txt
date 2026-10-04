@@ -15,6 +15,7 @@ target_sources(
                 detail/assignment.hpp
                 detail/debug.hpp
                 detail/division.hpp
+                detail/grid_rational.hpp
                 detail/multiplication.hpp
                 detail/overflow.hpp
                 detail/rational.hpp
