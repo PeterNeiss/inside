@@ -91,7 +91,7 @@ namespace
   // engines' intended pairing: results snap through the fp store path. All
   // engines run the identical grids, so notch-unit errors compare 1:1.
   // (Integer-index snap grids also work — full-mantissa results store via the
-  // 128-bit rounded path — but `f64` keeps the published table's store
+  // exact wide path — but `f64` keeps the published table's store
   // semantics uniform across engines.)
   using angle_grid = inside<{{-8, 8},        per<16384>}, round_nearest | f64>;
   using tan_grid   = inside<{{-1.5, 1.5},   per<16384>}, round_nearest | f64>;

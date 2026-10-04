@@ -198,7 +198,7 @@ TEST(StorageBugsTest, fp_derived_rational_store_on_a_wide_snap_grid_uses_the_exa
   }
 
   {
-    SCOPED_TRACE("positive value: exact offset needs > 64 bits → 128-bit rounded store");
+    SCOPED_TRACE("positive value: exact offset needs > 64 bits → exact wide store");
     wide slot{};
     slot = rational{umax{9006646171630191}, imax{18014398509481984}};   // ≈ +0.4999693
     // (1024 + v)·16384 = 16785407.49692… → round_nearest → slot 16785407
@@ -208,8 +208,8 @@ TEST(StorageBugsTest, fp_derived_rational_store_on_a_wide_snap_grid_uses_the_exa
 
   // (No constexpr section: at constant evaluation the transient rational
   // overflow surfaces as the intentional constexpr_error build diagnostic
-  // before the wide fallback can engage — the 128-bit path is runtime-only
-  // in practice, though itself constexpr-capable.)
+  // before the wide fallback can engage — the wide path is runtime-only in
+  // practice, though itself constexpr-capable.)
 
   {
     SCOPED_TRACE("strict policy off-notch in the wide regime → rounding_error");

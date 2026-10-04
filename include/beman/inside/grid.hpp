@@ -477,6 +477,40 @@ namespace beman::inside
   [[nodiscard]] constexpr std::expected<grid, errc> operator/(const grid&, const grid&);
 
   //---------------------------------------------------------------------------
+  // grid_sum_fits / grid_product_fits — whether a + b / a × b has a result
+  // grid. With 64-bit grid numbers a limit or notch can leave the rational
+  // range; these test it with the quiet try_ ops, so an arithmetic operator
+  // can static_assert with its own message before the result grid's loud
+  // rational error. Big grid numbers (C++26) always fit.
+  //---------------------------------------------------------------------------
+  namespace detail
+  {
+    constexpr bool grid_sum_fits([[maybe_unused]] grid const& a, [[maybe_unused]] grid const& b) noexcept
+    {
+#if BEMAN_INSIDE_BIG_GRIDS
+      return true;
+#else
+      return try_add(a.Interval.Lower, b.Interval.Lower) && try_add(a.Interval.Upper, b.Interval.Upper)
+          && gcd(a.Notch, b.Notch);
+#endif
+    }
+
+    constexpr bool grid_product_fits([[maybe_unused]] grid const& a, [[maybe_unused]] grid const& b) noexcept
+    {
+#if BEMAN_INSIDE_BIG_GRIDS
+      return true;
+#else
+      const bool ap = a.Interval.Lower == a.Interval.Upper, bp = b.Interval.Lower == b.Interval.Upper;
+      const rational an = (ap && !bp) ? abs(a.Interval.Lower) : a.Notch;
+      const rational bn = (bp && !ap) ? abs(b.Interval.Lower) : b.Notch;
+      return try_mul(a.Interval.Lower, b.Interval.Lower) && try_mul(a.Interval.Lower, b.Interval.Upper)
+          && try_mul(a.Interval.Upper, b.Interval.Lower) && try_mul(a.Interval.Upper, b.Interval.Upper)
+          && try_mul(an, bn);
+#endif
+    }
+  }
+
+  //---------------------------------------------------------------------------
   // operator+
   //---------------------------------------------------------------------------
   [[nodiscard]] inline constexpr std::expected<grid, errc> operator+(const grid& lhs, const grid& rhs)

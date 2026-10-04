@@ -185,7 +185,11 @@ namespace beman::inside
     {
       // |value| ≥ 2^64 has no 64-bit numerator: fail rather than wrap the shift.
       if (exp2 > 64 - std::bit_width(significand))
+      {
+        if consteval
+        { constexpr_error<"double of magnitude 2^64 or more: no 64-bit rational (a grid limit needs C++26 big grids)">(); }
         raise(errc::overflow, "beman::inside::detail::abs_fraction: |double| >= 2^64");
+      }
       return {significand << exp2, 1};
     }
 

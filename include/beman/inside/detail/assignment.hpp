@@ -352,7 +352,7 @@ namespace beman::inside::detail
           lhs = L::from_raw(q_format_encode<L>(static_cast<imax>(rhs)));
         else // index storage on a notch 1/K grid: the offset is an exact integer
         {
-          rational raw = ((rhs - interval_of<L>.Lower)/detail::notch64<L>).value();
+          rational raw = ((rhs - detail::lower64<L>)/detail::notch64<L>).value();
           lhs = L::from_raw(raw_cast<L>(raw.Numerator));
         }
       }

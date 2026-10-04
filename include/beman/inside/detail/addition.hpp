@@ -23,10 +23,13 @@ namespace beman::inside::detail
   template <insidable L, insidable R = L>
   struct addition
   {
-    static_assert((grid_of<L> + grid_of<R>).has_value(),
-      "addition: result grid's notch/interval exceeds the representable rational "
-      "range — coarsen the operand grids");
-    static constexpr grid result_grid = (grid_of<L> + grid_of<R>).value();
+    static_assert(grid_sum_fits(grid_of<L>, grid_of<R>),
+      "addition: the result grid exceeds the 64-bit grid numbers — coarsen the "
+      "operand grids, or build with C++26 big grids");
+    // (Falls back to L's grid when the assertion failed, so the build stops at
+    // that message instead of the rational overflow behind it.)
+    static constexpr grid result_grid =
+        grid_sum_fits(grid_of<L>, grid_of<R>) ? (grid_of<L> + grid_of<R>).value() : grid_of<L>;
     // fp / representation propagation — shared rule in detail/rep.hpp.
     using rep_t = fp_rep<L, R, result_grid>;
     using result = inside<result_grid, rep_t::result_policy>;

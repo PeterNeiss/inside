@@ -63,6 +63,20 @@ TEST(BigRationalTest, runtime_small_values)
   EXPECT_TRUE(static_cast<rational>(big_rational{a}) == rational{7});
 }
 
+TEST(BigRationalTest, runtime_comparison_of_small_values_forms_no_big_value)
+{
+  // (2^64 − 1)/4 against 1/3: the cross products need 128 bits. A runtime
+  // comparison must not try to form them as big values (which only exist at
+  // compile time) — a store's range check runs exactly this.
+  volatile umax top = ~umax{0};
+  const big_rational a{rational{static_cast<umax>(top), 4}};
+  const big_rational b{rational{1, 3}};
+  EXPECT_TRUE(b < a);
+  EXPECT_TRUE(-a < b);
+  EXPECT_FALSE(a < a);
+  EXPECT_TRUE(a > 5);
+}
+
 TEST(BigRationalTest, runtime_overflow_is_reported)
 {
   volatile umax big = ~umax{0};

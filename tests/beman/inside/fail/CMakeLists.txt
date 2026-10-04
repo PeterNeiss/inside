@@ -3,7 +3,9 @@
 #---------------------------------------------------------------------------
 # Compile-fail diagnostics suite — each *.cpp here is deliberately ill-formed
 # and must FAIL to compile with the message named on its first line
-# (`// EXPECT: <substring>`; keep it free of regex metacharacters). The test
+# (`// EXPECT: <substring>`; keep it free of regex metacharacters; an optional
+# second line `// REQUIRES: 64-bit-grids` limits it to builds without C++26 big
+# grids). The test
 # invokes the build for the object target; PASS_REGULAR_EXPRESSION passes the
 # test only when the build output contains the expected diagnostic — a TU that
 # wrongly compiles produces no diagnostic and fails the test. RUN_SERIAL keeps
@@ -18,7 +20,18 @@ foreach(src ${BEMAN_INSIDE_FAIL_SOURCES})
         continue()
     endif()
 
-    file(STRINGS ${src} first_line LIMIT_COUNT 1)
+    file(STRINGS ${src} head_lines LIMIT_COUNT 2)
+    list(GET head_lines 0 first_line)
+    # `// REQUIRES: 64-bit-grids` on the second line: the case is only
+    # ill-formed with 64-bit grid numbers, so skip it in a C++26 reflection
+    # build (big grids compile it).
+    list(LENGTH head_lines head_count)
+    if(head_count GREATER 1)
+        list(GET head_lines 1 second_line)
+        if(second_line MATCHES "^// REQUIRES: 64-bit-grids" AND BEMAN_INSIDE_HAS_FREFLECTION)
+            continue()
+        endif()
+    endif()
     string(REGEX REPLACE "^// EXPECT: *" "" expected_message "${first_line}")
     if(NOT first_line MATCHES "^// EXPECT: ")
         message(

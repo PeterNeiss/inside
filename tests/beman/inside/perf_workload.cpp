@@ -10,7 +10,7 @@
 // One workload per baseline key, selected by argv[1] (default
 // "integer_qformat", the original combined add workload):
 //   integer_qformat   — integer + Q-format same-grid add and raw round-trip
-//   integer_mul       — four-quadrant integer multiply
+//   integer_mul       — signed integer multiply (value-index path)
 //   qformat_div       — native Q-format divide (zero-free divisor grid)
 //   cross_grid_assign — integer-mapping cross-grid store
 //   checked_add       — add + checked narrowing assignment (runtime range branch)
@@ -83,7 +83,7 @@ namespace
       const long b = static_cast<long>((x >> 11) % 2000) - 1000;
       M ma = M::from_raw(static_cast<M::raw_type>(a));
       M mb = M::from_raw(static_cast<M::raw_type>(b));
-      acc += static_cast<long>((ma * mb).raw());        // four-quadrant fast path
+      acc += static_cast<long>((ma * mb).raw());        // value-index fast path
     }
     return acc;
   }

@@ -273,6 +273,60 @@ TEST(WideGridTest, clamp_and_wrap_actions)
   EXPECT_TRUE(w == (rational{2} - (rational{3} * tick).value()).value());
 }
 
+// Limb boundaries, where the removed 128-bit helpers kept their edge cases:
+// slot counts 2^64 − 1 (the last uint64 index) and 2^64 (the first two-limb
+// one), a 128-bit count, and arithmetic that crosses from one to the other.
+TEST(WideGridTest, limb_edges)
+{
+  constexpr umax kUM = ~umax{0};
+  const rational q1{1, 4};                                     // one notch
+  using top64  = inside<{{rational{0}, rational{kUM, 4}}, per<4>}>;          // 2^64 − 1 slots
+  using over64 = inside<{{rational{0}, rational{umax{1} << 62}}, per<4>}>;   // 2^64 slots
+  static_assert(std::is_same_v<top64::raw_type, std::uint64_t>);
+  static_assert(std::is_same_v<over64::raw_type, detail::wide_uint<2>>);
+  static_assert(grid_of<over64>.slot_bits() == 65);
+
+  // The top slot of each round-trips.
+  top64 t = rational{kUM, 4};
+  EXPECT_EQ(t.raw(), kUM);
+  over64 o = rational{umax{1} << 62};
+  EXPECT_TRUE(o.raw() == (detail::wide_uint<2>{1} << 64));
+  EXPECT_TRUE((-t == -rational{kUM, 4}));
+  EXPECT_TRUE(-o == -rational{umax{1} << 62});
+
+  // += across the 64-bit index boundary, by a point delta and by a raw.
+  over64 c = rational{kUM, 4};                                 // index 2^64 − 1
+  c += just<frac<1, 4>>;                                       // index 2^64
+  EXPECT_TRUE(c.raw() == (detail::wide_uint<2>{1} << 64));
+  EXPECT_THROW((c += just<frac<1, 4>>), inside_error);         // past the top
+  inside<{{rational{0}, rational{umax{1} << 62}}, per<4>}, wrap> w = rational{umax{1} << 62};
+  w += just<frac<1, 4>>;                                       // wraps to 0
+  EXPECT_TRUE(w == 0);
+
+  // Sums and differences across the boundary, both ends.
+  auto s = o + inside<{{0, 1}, per<4>}>{1};                    // 2^64 + 4 slots
+  static_assert(detail::wide_raw<decltype(s)>);
+  EXPECT_TRUE((s == rational{(umax{1} << 62) + 1}));
+#if BEMAN_INSIDE_BIG_GRIDS
+  // (2^64 − 1)/4 + (2^64 − 1)/4 passes the 64-bit grid numbers.
+  auto tt = t + t;                                             // 2^65 − 1 slots
+  EXPECT_TRUE((tt == rational{kUM, 2}));
+#endif
+  auto d = top64{0} - t;
+  EXPECT_TRUE((d == -rational{kUM, 4}));
+  EXPECT_TRUE(t - top64{q1} == (rational{kUM, 4} - q1).value());
+
+  // A 128-bit slot count: {−(2^64 − 1), 2^64 − 1} in steps of 1/(2^63 − 1).
+  using full = inside<{{rational{kUM, imax{-1}}, rational{kUM}}, per<(umax{1} << 63) - 1>}>;
+  static_assert(std::is_same_v<full::raw_type, detail::wide_uint<2>>);
+  static_assert(grid_of<full>.slot_bits() == 128);
+  full lo = rational{kUM, imax{-1}}, hi = rational{kUM};
+  EXPECT_TRUE(lo.raw() == detail::wide_uint<2>{0});
+  constexpr auto full_top = static_cast<detail::wide_uint<2>>(grid_of<full>.slot_count());
+  EXPECT_TRUE(hi.raw() == full_top);
+  EXPECT_TRUE(-lo == hi && lo < hi);
+}
+
 // The wide paths are constexpr.
 namespace
 {

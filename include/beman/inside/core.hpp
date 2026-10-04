@@ -524,9 +524,8 @@ namespace beman::inside
     //   raw_add_ok<R>    — rhs raw adds directly (direct storage, or both
     //                      offset-encoded at Lower 0).
     //   raw_sub_ok<R>    — rhs raw subtracts with a constant bias.
-    // When every raw and every new raw fits imax the add runs in imax
-    // (store_raw); otherwise — a grid reaching past int64, or a sum that could
-    // overflow — it runs exactly in 128 bits (store_raw_wide).
+    // The add runs in raw_work_t, sized from the raw and delta ranges: imax for
+    // every grid within int64, a wide_int beyond — never overflowing.
     template <insidable R>
     static constexpr bool point_delta_ok =
         !detail::rational_raw<inside> && !detail::fp_raw<inside> && detail::notch64<inside> != 0

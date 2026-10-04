@@ -43,7 +43,7 @@ extern "C" void ins_perf_add_loop(const long* __restrict a,
                               + I::from_raw(static_cast<I::raw_type>(b[i]))).raw());
 }
 
-// Multiply fast path: the four-quadrant integer multiply must likewise stay
+// Multiply fast path: the value-index integer multiply must likewise stay
 // call-free (no fallback into the rational branch).
 using M = inside<{-1000, 1000}>;
 

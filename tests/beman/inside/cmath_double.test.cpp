@@ -280,7 +280,7 @@ TEST(CmathDoubleTest, dbl_transcendental_tier_on_f64_bounds_matches_std)
 // integer-index snap grids (not just `f64` ones). tan's auto output grid
 // has |Lower| ~ 1024, so a full-mantissa double result once overflowed the
 // exact 64-bit (rhs - Lower)/Notch store and terminated through the noexcept
-// engine; the 128-bit rounded store now lands the correctly rounded slot.
+// engine; the exact wide store now lands the correctly rounded slot.
 //---------------------------------------------------------------------------
 // dbl engine stores full-mantissa results onto integer-index snap grids
 TEST(CmathDoubleTest, dbl_engine_stores_full_mantissa_results_onto_integer_index_snap_grids)

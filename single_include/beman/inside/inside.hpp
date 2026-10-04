@@ -520,7 +520,11 @@ namespace beman::inside
     {
       // |value| ≥ 2^64 has no 64-bit numerator: fail rather than wrap the shift.
       if (exp2 > 64 - std::bit_width(significand))
+      {
+        if consteval
+        { constexpr_error<"double of magnitude 2^64 or more: no 64-bit rational (a grid limit needs C++26 big grids)">(); }
         raise(errc::overflow, "beman::inside::detail::abs_fraction: |double| >= 2^64");
+      }
       return {significand << exp2, 1};
     }
 
@@ -2573,7 +2577,19 @@ namespace beman::inside::detail
     }
 
     friend constexpr std::strong_ordering operator<=>(big_rational const& a, big_rational const& b)
-    { return a.Num * b.Den <=> b.Num * a.Den; }
+    {
+      // One-limb parts compare by a 128-bit cross product, forming no big
+      // value: runtime comparisons (a store's range check) stay allocation-
+      // and error-free.
+      if (a.Num.fits_limb() && a.Den.fits_limb() && b.Num.fits_limb() && b.Den.fits_limb())
+      {
+        if (a.Num.negative() != b.Num.negative())
+          return a.Num.negative() ? std::strong_ordering::less : std::strong_ordering::greater;
+        const std::strong_ordering m = limb::mul_compare(a.Num.Small, b.Den.Small, b.Num.Small, a.Den.Small);
+        return a.Num.negative() ? 0 <=> m : m;
+      }
+      return a.Num * b.Den <=> b.Num * a.Den;
+    }
 
     friend constexpr big_rational operator-(big_rational a) { a.Num = -a.Num; return a; }
     friend constexpr big_rational operator+(big_rational const& a, big_rational const& b)
@@ -2592,7 +2608,7 @@ namespace beman::inside::detail
     template <std::integral T>
     friend constexpr bool operator==(big_rational const& a, T b) { return a.Den == big_int{1} && a.Num == big_int{b}; }
     template <std::integral T>
-    friend constexpr std::strong_ordering operator<=>(big_rational const& a, T b) { return a.Num <=> big_int{b} * a.Den; }
+    friend constexpr std::strong_ordering operator<=>(big_rational const& a, T b) { return a <=> big_rational{b}; }
 
     // The nearest double, by way of the top 64 bits of each part.
     constexpr explicit operator double() const
@@ -3661,6 +3677,40 @@ namespace beman::inside
   [[nodiscard]] constexpr std::expected<grid, errc> operator-(const grid&, const grid&);
   [[nodiscard]] constexpr std::expected<grid, errc> operator*(const grid&, const grid&);
   [[nodiscard]] constexpr std::expected<grid, errc> operator/(const grid&, const grid&);
+
+  //---------------------------------------------------------------------------
+  // grid_sum_fits / grid_product_fits — whether a + b / a × b has a result
+  // grid. With 64-bit grid numbers a limit or notch can leave the rational
+  // range; these test it with the quiet try_ ops, so an arithmetic operator
+  // can static_assert with its own message before the result grid's loud
+  // rational error. Big grid numbers (C++26) always fit.
+  //---------------------------------------------------------------------------
+  namespace detail
+  {
+    constexpr bool grid_sum_fits([[maybe_unused]] grid const& a, [[maybe_unused]] grid const& b) noexcept
+    {
+#if BEMAN_INSIDE_BIG_GRIDS
+      return true;
+#else
+      return try_add(a.Interval.Lower, b.Interval.Lower) && try_add(a.Interval.Upper, b.Interval.Upper)
+          && gcd(a.Notch, b.Notch);
+#endif
+    }
+
+    constexpr bool grid_product_fits([[maybe_unused]] grid const& a, [[maybe_unused]] grid const& b) noexcept
+    {
+#if BEMAN_INSIDE_BIG_GRIDS
+      return true;
+#else
+      const bool ap = a.Interval.Lower == a.Interval.Upper, bp = b.Interval.Lower == b.Interval.Upper;
+      const rational an = (ap && !bp) ? abs(a.Interval.Lower) : a.Notch;
+      const rational bn = (bp && !ap) ? abs(b.Interval.Lower) : b.Notch;
+      return try_mul(a.Interval.Lower, b.Interval.Lower) && try_mul(a.Interval.Lower, b.Interval.Upper)
+          && try_mul(a.Interval.Upper, b.Interval.Lower) && try_mul(a.Interval.Upper, b.Interval.Upper)
+          && try_mul(an, bn);
+#endif
+    }
+  }
 
   //---------------------------------------------------------------------------
   // operator+
@@ -5266,7 +5316,7 @@ namespace beman::inside::detail
           lhs = L::from_raw(q_format_encode<L>(static_cast<imax>(rhs)));
         else // index storage on a notch 1/K grid: the offset is an exact integer
         {
-          rational raw = ((rhs - interval_of<L>.Lower)/detail::notch64<L>).value();
+          rational raw = ((rhs - detail::lower64<L>)/detail::notch64<L>).value();
           lhs = L::from_raw(raw_cast<L>(raw.Numerator));
         }
       }
@@ -6499,10 +6549,13 @@ namespace beman::inside::detail
   template <insidable L, insidable R = L>
   struct addition
   {
-    static_assert((grid_of<L> + grid_of<R>).has_value(),
-      "addition: result grid's notch/interval exceeds the representable rational "
-      "range — coarsen the operand grids");
-    static constexpr grid result_grid = (grid_of<L> + grid_of<R>).value();
+    static_assert(grid_sum_fits(grid_of<L>, grid_of<R>),
+      "addition: the result grid exceeds the 64-bit grid numbers — coarsen the "
+      "operand grids, or build with C++26 big grids");
+    // (Falls back to L's grid when the assertion failed, so the build stops at
+    // that message instead of the rational overflow behind it.)
+    static constexpr grid result_grid =
+        grid_sum_fits(grid_of<L>, grid_of<R>) ? (grid_of<L> + grid_of<R>).value() : grid_of<L>;
     // fp / representation propagation — shared rule in detail/rep.hpp.
     using rep_t = fp_rep<L, R, result_grid>;
     using result = inside<result_grid, rep_t::result_policy>;
@@ -6584,21 +6637,23 @@ namespace beman::inside::detail
 
 
 //---------------------------------------------------------------------------
-// multiplication — `mul(L, R, policy, action) -> inside<grid_of<L> * grid_of<R>>`. The
-// integer hot path branches on which corner of the four-quadrant product hits
-// `lower_of<result>`, doing the arithmetic as `umax * umax` (no signed overflow)
-// plus integer offset corrections. Rational-result and all-integer-aligned
-// cases come first.
+// multiplication — `mul(L, R, policy, action) -> inside<grid_of<L> * grid_of<R>>`.
+// Integer raws multiply their value indices (wide_value.hpp), in imax when the
+// grids' bounds allow, else by wrapping arithmetic as wide as the result raw.
+// fp results, point scaling and rational results have their own branches.
 //---------------------------------------------------------------------------
 namespace beman::inside::detail
 {
   template <insidable L, insidable R = L>
   struct multiplication
   {
-    static_assert((grid_of<L> * grid_of<R>).has_value(),
-      "multiplication: result grid's notch/interval exceeds the representable "
-      "rational range — coarsen the operand grids");
-    static constexpr grid result_grid = (grid_of<L> * grid_of<R>).value();
+    static_assert(grid_product_fits(grid_of<L>, grid_of<R>),
+      "multiplication: the result grid exceeds the 64-bit grid numbers — coarsen "
+      "the operand grids, or build with C++26 big grids");
+    // (Falls back to L's grid when the assertion failed, so the build stops at
+    // that message instead of the rational overflow behind it.)
+    static constexpr grid result_grid =
+        grid_product_fits(grid_of<L>, grid_of<R>) ? (grid_of<L> * grid_of<R>).value() : grid_of<L>;
     // fp / representation propagation — shared rule in detail/rep.hpp. The product
     // grid (notch = N_L·N_R) is finer, so demotion/dropping is the common case.
     using rep_t = fp_rep<L, R, result_grid>;
@@ -7648,9 +7703,8 @@ namespace beman::inside
     //   raw_add_ok<R>    — rhs raw adds directly (direct storage, or both
     //                      offset-encoded at Lower 0).
     //   raw_sub_ok<R>    — rhs raw subtracts with a constant bias.
-    // When every raw and every new raw fits imax the add runs in imax
-    // (store_raw); otherwise — a grid reaching past int64, or a sum that could
-    // overflow — it runs exactly in 128 bits (store_raw_wide).
+    // The add runs in raw_work_t, sized from the raw and delta ranges: imax for
+    // every grid within int64, a wide_int beyond — never overflowing.
     template <insidable R>
     static constexpr bool point_delta_ok =
         !detail::rational_raw<inside> && !detail::fp_raw<inside> && detail::notch64<inside> != 0

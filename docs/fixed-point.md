@@ -76,8 +76,8 @@ in hot loops.
 ## Which grids are fast
 
 1. **Integer-aligned grids (notch 1)** — `inside<{0,N}>`, `inside<{a,b}>`. `+ − × ÷`
-   run on the raw integer at native parity (multiplication takes a four-quadrant
-   `umax·umax` integer path; division with `snap` is a native `a/b`). Byte-
+   run on the raw integer at native parity (multiplication multiplies the value
+   indices, one `imul`; division with `snap` is a native `a/b`). Byte-
    wide unchecked loops vectorize at native lane count.
 2. **Q-format grids (notch `1/N`, Lower 0)** — a power-of-two `N` makes scaling a
    shift. Division of two same-notch Q-format operands takes the fast path

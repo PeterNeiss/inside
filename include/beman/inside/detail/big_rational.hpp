@@ -388,7 +388,19 @@ namespace beman::inside::detail
     }
 
     friend constexpr std::strong_ordering operator<=>(big_rational const& a, big_rational const& b)
-    { return a.Num * b.Den <=> b.Num * a.Den; }
+    {
+      // One-limb parts compare by a 128-bit cross product, forming no big
+      // value: runtime comparisons (a store's range check) stay allocation-
+      // and error-free.
+      if (a.Num.fits_limb() && a.Den.fits_limb() && b.Num.fits_limb() && b.Den.fits_limb())
+      {
+        if (a.Num.negative() != b.Num.negative())
+          return a.Num.negative() ? std::strong_ordering::less : std::strong_ordering::greater;
+        const std::strong_ordering m = limb::mul_compare(a.Num.Small, b.Den.Small, b.Num.Small, a.Den.Small);
+        return a.Num.negative() ? 0 <=> m : m;
+      }
+      return a.Num * b.Den <=> b.Num * a.Den;
+    }
 
     friend constexpr big_rational operator-(big_rational a) { a.Num = -a.Num; return a; }
     friend constexpr big_rational operator+(big_rational const& a, big_rational const& b)
@@ -407,7 +419,7 @@ namespace beman::inside::detail
     template <std::integral T>
     friend constexpr bool operator==(big_rational const& a, T b) { return a.Den == big_int{1} && a.Num == big_int{b}; }
     template <std::integral T>
-    friend constexpr std::strong_ordering operator<=>(big_rational const& a, T b) { return a.Num <=> big_int{b} * a.Den; }
+    friend constexpr std::strong_ordering operator<=>(big_rational const& a, T b) { return a <=> big_rational{b}; }
 
     // The nearest double, by way of the top 64 bits of each part.
     constexpr explicit operator double() const
