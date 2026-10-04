@@ -89,7 +89,8 @@ operand policies, and the widest representation present wins:
        │ no
   deduced (storage_min_t<G>):
         Notch == 0                  ───▶  rational raw   (continuous grid)
-        index count > umax          ───▶  rational raw   (too fine for any integer index)
+        index count > umax          ───▶  wide_int raw   (index in 64-bit limbs; exact
+                                                          wide paths, detail/wide_value.hpp)
         Notch == 1 AND (Lower == 0
           or signed raw)            ───▶  integer raw    (raw IS the value)
         otherwise                   ───▶  unsigned raw   (raw = 0-based notch index)
@@ -335,7 +336,7 @@ is what keeps the core free of `<string>`/`<ostream>`/`<format>`/`<cmath>`:
 | `beman/inside/numeric_limits.hpp` | `std::numeric_limits<inside>` and `std::hash<inside>` specialisations (opt-in; `std::common_type` is in arithmetic.hpp, always on) |
 | `beman/inside/io.hpp`          | **All** string/stream/`std::format` support — `to_string`, `to_string_debug`, `operator<<`, `operator>>`, `from_chars(std::string_view)`, `std::formatter`, `type_name`. Opt-in and the *only* place `<string>`/`<ostream>`/`<format>` enter; gated by `BEMAN_INSIDE_NO_STRING` in the single header (see [freestanding.md](freestanding.md)) |
 | `beman/inside/random.hpp`      | `uniform<B>(rng)` — uniform sampling over a grid's slots; opt-in (`<random>`), dropped from the single header when freestanding or FP-free |
-| `beman/inside/formats.hpp`     | Curated hardware aliases (`byte`…`sqword`, `unorm8`…, `q4_4` / `q8_8` / `q16_16`) and `counter` / `ring_counter`; opt-in |
+| `beman/inside/formats.hpp`     | Curated hardware aliases (`byte`…`qword`, `sbyte`…`sqword`, `unorm8`…, `q4_4` / `q8_8` / `q16_16`) and `counter` / `ring_counter`; opt-in |
 | `beman/inside/lift.hpp`        | `detail::lift` — the internal combinator behind the expected-lift operators |
 
 The whole tree is also amalgamated into `single_include/beman/inside/inside.hpp` by a

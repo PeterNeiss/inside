@@ -21,20 +21,37 @@ namespace beman::inside
   {
     static_assert(notch_of<B> != 0 || lower_of<B> == upper_of<B>,
                   "uniform<B>: a continuous grid (notch 0) has no slots to choose from");
-    static_assert(grid_of<B>.max_index_representable(),
-                  "uniform<B>: the grid has more slots than a 64-bit index");
-    std::uniform_int_distribution<umax> pick(0, detail::max_index_v<B>);
-    const umax k = pick(g);
-    if constexpr (detail::fp_raw<B> || detail::rational_raw<B>)
+    if constexpr (detail::wide_raw<B>)
     {
-      const detail::rational v = (lower_of<B> + (detail::rational{k} * notch_of<B>).value()).value();
-      if constexpr (detail::fp_raw<B>)
-        return B::from_raw(static_cast<detail::raw_t<B>>(static_cast<double>(v)));   // exact: fp-exact grid
-      else
-        return B::from_raw(v);
+      // More than 2^64 slots: draw limbs uniformly, masked to the slot count's
+      // bit width, and reject draws past the count (accepts > 1/2 of draws).
+      using W = detail::raw_t<B>;
+      const W count{grid_of<B>.slot_count()};
+      constexpr int top_bits = grid_of<B>.slot_bits() - 64 * (static_cast<int>(sizeof(W) / 8) - 1);
+      std::uniform_int_distribution<umax> limb;
+      for (;;)
+      {
+        W k;
+        for (auto& w : k.Word) w = limb(g);
+        if constexpr (top_bits < 64) k.Word[sizeof(W) / 8 - 1] &= (umax{1} << top_bits) - 1;
+        if (!(k > count)) return B::from_raw(k);
+      }
     }
     else
-      return B::from_raw(detail::raw_from_offset<B>(k));   // index or value storage
+    {
+      std::uniform_int_distribution<umax> pick(0, detail::max_index_v<B>);
+      const umax k = pick(g);
+      if constexpr (detail::fp_raw<B> || detail::rational_raw<B>)
+      {
+        const detail::rational v = (lower_of<B> + (detail::rational{k} * notch_of<B>).value()).value();
+        if constexpr (detail::fp_raw<B>)
+          return B::from_raw(static_cast<detail::raw_t<B>>(static_cast<double>(v)));   // exact: fp-exact grid
+        else
+          return B::from_raw(v);
+      }
+      else
+        return B::from_raw(detail::raw_from_offset<B>(k));   // index or value storage
+    }
   }
 } // namespace beman::inside
 

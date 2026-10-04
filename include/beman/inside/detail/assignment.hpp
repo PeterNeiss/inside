@@ -6,6 +6,7 @@
 #define BEMAN_INSIDE_DETAIL_ASSIGNMENT_HPP
 
 #include <beman/inside/generic.hpp>
+#include <beman/inside/detail/wide_value.hpp>
 #include <beman/inside/grid.hpp>
 
 namespace beman::inside::detail
@@ -111,6 +112,56 @@ namespace beman::inside::detail
   //---------------------------------------------------------------------------
   template <typename L, typename R>
   struct assignment;
+
+  //---------------------------------------------------------------------------
+  // assign_exact — store an exact value into L. The path for a wide raw (more
+  // than 2^64 slots) on either side of an assignment, where neither imax nor
+  // the 64-bit rational holds every value. Rounds first, then range-checks,
+  // like the builtin paths; out of range runs the usual policy cascade.
+  //---------------------------------------------------------------------------
+  template <insidable L, typename P, typename A>
+  constexpr L& assign_exact(L& lhs, exact_frac const& v, P&& policy, A&& action)
+  {
+    static_assert(!clamp_action<plain_t<A>> && !wrap_action<plain_t<A>>,
+      "on_clamp / on_wrap actions are not supported yet for insides with more than 2^64 slots");
+    auto fail = [&](errc code) {
+      if constexpr (error_action<plain_t<A>>) action.Fn(lhs, code, errc_message(code));
+      else                                    policy.report(code);
+    };
+    if constexpr (rational_raw<L> || fp_raw<L>)
+    {
+      // L holds 64-bit values: narrow through the rational (a value that does
+      // not fit lies outside every such grid).
+      const auto r = try_rational(v);
+      if (!r) [[unlikely]] { fail(errc::overflow); return lhs; }
+      return assignment<L, rational>::assign(lhs, *r, policy, std::forward<A>(action));
+    }
+    else
+    {
+      // (Plain variables, not a structured binding: Clang rejects a binding
+      // captured by the lambdas below in constant evaluation.)
+      const exact_index_result slot = exact_index<L, rounding_for<L, plain_t<P>>>(v);
+      const exact_int index = slot.Index;
+      if (!slot.Exact && !has_policy<L, P, snap> && policy.round_check()) [[unlikely]]
+      { fail(errc::rounding_error); return lhs; }
+      const exact_int count{grid_of<L>.slot_count()};
+      if (index.negative() || index > count) [[unlikely]]
+      {
+        if (dispatch_out_of_range<true>(lhs, policy, action,
+              [&]{ lhs = L::from_raw(raw_of_index<L>(index.negative() ? exact_int{0} : count)); },
+              [&]{
+                const exact_int range = count + exact_int{1};
+                exact_int w = index % range;
+                if (w.negative()) w += range;
+                lhs = L::from_raw(raw_of_index<L>(w));
+              },
+              [&]{ return 0; }))
+          return lhs;
+      }
+      lhs = L::from_raw(raw_of_index<L>(index));
+      return lhs;
+    }
+  }
 
   //---------------------------------------------------------------------------
   // assign(insidable, integral)
@@ -249,7 +300,9 @@ namespace beman::inside::detail
                       || not excludes(interval_of<L>, interval_of<R>),
           "rhs type's range lies entirely outside lhs interval and the policy cannot bring it into range");
 
-        if constexpr (!integers_on_grid)
+        if constexpr (wide_raw<L>)
+          return assign_exact(lhs, exact_of(rhs), policy, std::forward<A>(action));
+        else if constexpr (!integers_on_grid)
           return assignment<L, rational>::assign(lhs, rational{rhs}, policy, std::forward<A>(action));
         else
         {
@@ -689,6 +742,39 @@ namespace beman::inside::detail
       template<typename P, typename A = no_action>
       static constexpr L& assign(L& lhs, R const& rhs, P&& policy, A&& action = {})
       {
+        if constexpr (wide_raw<L>)
+        {
+          // NaN / ±inf first, as below; a finite |rhs| ≥ 2^64 lies outside
+          // every grid, so any value past ±2^64 stands in for it.
+          if constexpr (std::floating_point<R>)
+            if (!(rhs - rhs == 0) || huge(rhs)) [[unlikely]]
+            {
+              if (rhs != rhs)
+              {
+                if constexpr (error_action<plain_t<A>>) action.Fn(lhs, errc::not_finite, errc_message(errc::not_finite));
+                else policy.report(errc::not_finite);
+                return lhs;
+              }
+              if (!(rhs - rhs == 0) && !has_policy<L, P, clamp>)
+              {
+                if constexpr (error_action<plain_t<A>>) action.Fn(lhs, errc::not_finite, errc_message(errc::not_finite));
+                else policy.report(errc::not_finite);
+                return lhs;
+              }
+              const exact_int past = exact_int{1} << 65;
+              return assign_exact(lhs, exact_frac{rhs < 0 ? -past : past, exact_int{1}},
+                                  policy, std::forward<A>(action));
+            }
+          return assign_exact(lhs, exact_of(rational{rhs}), policy, std::forward<A>(action));
+        }
+        else
+          return assign_builtin(lhs, rhs, policy, std::forward<A>(action));
+      }
+
+    private:
+      template<typename P, typename A>
+      static constexpr L& assign_builtin(L& lhs, R const& rhs, P&& policy, A&& action)
+      {
         // NaN / ±inf: no rational value to round or range-check. clamp saturates
         // an infinity; everything else reports not_finite through the policy.
         if constexpr (std::floating_point<R>)
@@ -1022,6 +1108,24 @@ namespace beman::inside::detail
     public:
       template<typename P, typename A = no_action>
       static constexpr L& assign(L& lhs, R const& rhs, P&& policy, A&& action = {})
+      {
+        // A wide raw on either side: the exact wide path.
+        if constexpr (wide_raw<L> || wide_raw<R>)
+        {
+          static_assert(has_policy<L, P, wrap> || has_policy<L, P, clamp>
+                        || not excludes(interval_of<L>, interval_of<R>),
+            "rhs interval lies entirely outside lhs interval and the policy cannot bring it into range");
+          static_assert(notches_compatible<L, R> || has_policy<L, P, snap>,
+            "incompatible notches: use with_snap() or policy<snap>() to allow rounding");
+          return assign_exact(lhs, exact_of(rhs), policy, std::forward<A>(action));
+        }
+        else
+          return assign_builtin(lhs, rhs, policy, std::forward<A>(action));
+      }
+
+    private:
+      template<typename P, typename A>
+      static constexpr L& assign_builtin(L& lhs, R const& rhs, P&& policy, A&& action)
       {
         // wrap/clamp bring any value into range, so a disjoint rhs interval is fine
         // for them (matches the integral-rhs path); only strict policies reject it.

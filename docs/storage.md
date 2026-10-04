@@ -18,6 +18,23 @@ using big  = inside<{0, 100'000}>;      // Raw: uint32_t (100 001 values)
 using step = inside<{{0, 5}, 0.5}>;     // Raw: uint8_t  (10 steps)
 ```
 
+**Wide integer storage** — a grid with more than 2⁶⁴ slots stores its index
+in a library `wide_int` of as many 64-bit limbs as the slot count needs, so
+the value stays exact and arithmetic on it stays total (no `expected`):
+
+```cpp
+using fine = inside<{{0, 1ull << 34}, per<(1ull << 32)>}>;
+                                        // Raw: 2-limb wide_int (2⁶⁶ + 1 slots)
+fine a = 1.5;
+auto s = a + a;                         // exact; a 2-limb index again
+```
+
+Such an inside compares, adds, subtracts, multiplies, negates, assigns (under
+every policy), prints, hashes and samples exactly. Its values can outgrow the
+64-bit exact fraction, so it has no implicit conversion to it — compare it,
+or read it with `to<T>()`. Division, `%`, and `from_chars` text past the
+64-bit fraction are not supported on it yet.
+
 When `Lower == 0` and `Notch == 1`, `Raw` equals the value directly — no
 offset arithmetic.
 
@@ -112,7 +129,7 @@ their own width). See [`examples/storage_flags.cpp`](../examples/storage_flags.c
 for value/index storage and the compile-time fit check. `f64` is selected only
 when the grid is **double-exact** (every value fits `double`'s 53-bit significand);
 otherwise it is dropped and deduction proceeds — and a result grid finer than the
-`uint64` index space deduces `rational`, keeping the result exact.
+`uint64` index space deduces a wide integer index, keeping the result exact.
 
 > **Full range and SIMD width.** The smallest-type selection uses each raw
 > type's full range: `inside<{0, 255}>` is a **uint8** and `inside<{-128, 127}>`
@@ -136,7 +153,7 @@ storage *flags*, so the native-width types use width words instead.)
 
 | Type | Range / notch | Storage |
 |---|---|---|
-| `byte` `word` `dword` | `[0, 255]` … `[0, 2³²−1]` | uint8 / uint16 / uint32 |
+| `byte` `word` `dword` `qword` | `[0, 255]` … `[0, 2⁶⁴−1]` | uint8 / uint16 / uint32 / uint64 |
 | `sbyte` `sword` `sdword` | `[−128, 127]` … `[−2³¹, 2³¹−1]` | int8 / int16 / int32 |
 | `sqword` | `[−(2⁶³−1), 2⁶³−1]` | int64 |
 | `unorm8` `unorm16` `unorm32` | `[0,1]`, notch 1/255, 1/65535, 1/(2³²−1) | uint8 / uint16 / uint32 |
@@ -147,9 +164,9 @@ uses notch 1/255 (reaching 1.0 exactly). `sqword` stays symmetric because the
 internal value path is `imax` and −2⁶³ has no negation in int64. Q-formats keep
 their full natural range and power-of-two notches.
 
-An unsigned `qword` is intentionally absent: the library's internal value path is
-`imax` (`int64`), so unsigned values above 2⁶³−1 can't round-trip — use `sqword`
-or a hand-rolled grid.
+`qword` reaches past int64, so it has no implicit `operator imax`: read it with
+`to<std::uint64_t>()`. A difference of two qwords spans 2⁶⁵ values and gets a
+wide integer index; a sum's upper bound passes the 64-bit grid numbers.
 
 **Performance.** Multiplication is unaffected by the (non-power-of-two) UNORM
 notches — it operates on raw notch indices, with the denominator folded into

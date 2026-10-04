@@ -140,9 +140,15 @@ namespace beman::inside
     template <insidable B>
     inline constexpr bool point_raw = std::is_same_v<raw_t<B>, point_slot>;
 
+    // wide_raw — an index raw wider than any builtin integer (more than 2^64
+    // slots). Its values need the exact wide paths (detail/wide_value.hpp): a
+    // 64-bit rational or imax cannot hold them.
+    template <insidable B>
+    inline constexpr bool wide_raw = is_wide_int_v<raw_t<B>>;
+
     template <insidable B>
     inline constexpr bool value_raw =
-         !fp_raw<B> && !rational_raw<B> && !point_raw<B>
+         !fp_raw<B> && !rational_raw<B> && !point_raw<B> && !wide_raw<B>
       && ((policy_of<B> & direct) == direct
           // A pinned width flag without `indexed` is value storage (raw == value)
           // regardless of Lower's sign — storage_pick checked the range fits.
@@ -168,11 +174,16 @@ namespace beman::inside
     // public operator double() is gated on a rounding flag; this is always
     // available). Everything but index storage holds the value verbatim; an
     // index decodes through the grid.
+    struct exact_frac;
+    template <insidable B> constexpr exact_frac exact_of(B const& b);
+
     template <insidable B>
     [[nodiscard]] constexpr double as_double(B const& b) noexcept
     {
       if constexpr (point_raw<B>)
         return static_cast<double>(lower_of<B>);
+      else if constexpr (wide_raw<B>)
+        return static_cast<double>(exact_of(b));
       else if constexpr (!index_raw<B>)
         return static_cast<double>(b.raw());
       else
@@ -207,7 +218,7 @@ namespace beman::inside
     // the exact rational / umax paths instead.
     template <insidable B>
     inline constexpr bool values_fit_imax =
-         fits_imax(interval_of<B>)
+         !wide_raw<B> && fits_imax(interval_of<B>)
       && (!index_raw<B> || max_index_v<B> <= static_cast<umax>(std::numeric_limits<imax>::max()));
 
     //-------------------------------------------------------------------------
@@ -303,7 +314,11 @@ namespace beman::inside
     // grids where raw is an index rather than a value — naming separates the
     // two intents that today both spell `static_cast<imax>`.
     template <insidable B>
-    constexpr imax raw_imax(B b) noexcept { return static_cast<imax>(b.raw()); }
+    constexpr imax raw_imax(B b) noexcept
+    {
+      static_assert(!wide_raw<B>, "raw_imax: a wide raw does not fit imax — use the exact wide path");
+      return static_cast<imax>(b.raw());
+    }
 
     //-------------------------------------------------------------------------
     // Q-format integer fast path: for grids with integer Lower, unit-numerator

@@ -122,6 +122,8 @@ namespace beman::inside::detail
   template <insidable L, insidable R = L, policy_flag F = none>
   struct division
   {
+    static_assert(!wide_raw<L> && !wide_raw<R>,
+      "division: an operand with more than 2^64 slots is not supported yet");
     // Native integer division, two flavours gated on `snap`:
     //   native_div_integer — both operands integer-aligned; formula `a / b`.
     //   native_div_qformat — both same Q-format (Notch = 1/N, Lower = 0); formula
@@ -273,6 +275,8 @@ namespace beman::inside::detail
   template <insidable L, insidable R, policy_flag F = none>
   struct modulo
   {
+    static_assert(!wide_raw<L> && !wide_raw<R>,
+      "modulo: an operand with more than 2^64 slots is not supported yet");
     static constexpr bool native_mod = integer_native_ops<L, R, F>;
 
     // Hard requirement, not a fallback: `a mod b` is only defined for integer

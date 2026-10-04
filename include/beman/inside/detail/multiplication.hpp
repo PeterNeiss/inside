@@ -7,6 +7,7 @@
 
 #include <beman/inside/detail/rep.hpp>
 #include <beman/inside/generic.hpp>
+#include <beman/inside/detail/wide_value.hpp>
 #include <beman/inside/grid.hpp>
 #include <beman/inside/policy.hpp>
 
@@ -55,7 +56,8 @@ namespace beman::inside::detail
     static constexpr bool point_scale =
         lower_of<Point> == upper_of<Point> && lower_of<Point> != 0
         && !rational_raw<X> && !fp_raw<X> && notch_of<X> != 0
-        && !rational_raw<result> && !fp_raw<result>;
+        && !rational_raw<result> && !fp_raw<result>
+        && !wide_raw<X> && !wide_raw<result>;
 
     template <bool Negate, insidable X>
     static constexpr result scale_by_point(X const& x)
@@ -76,6 +78,14 @@ namespace beman::inside::detail
       // multiples, the product index |ia·ib| stays under the double_exact 2^53
       // gate, so the double multiply is exact and on the result lattice.
       return result::from_raw(raw_cast<result>(as_double(lhs) * as_double(rhs)));
+    }
+    else if constexpr (wide_raw<L> || wide_raw<R> || wide_raw<result>)
+    {
+      // More than 2^64 slots on some side: multiply the exact values; the
+      // product is a result-grid point by construction.
+      static_assert(!rational_raw<result>,
+        "multiplication: a wide-index operand with a continuous result is not supported yet");
+      return exact_result<result>(exact_of(lhs) * exact_of(rhs));
     }
     else if constexpr (point_scale<R, L>)
       return scale_by_point<(lower_of<R> < 0)>(lhs);

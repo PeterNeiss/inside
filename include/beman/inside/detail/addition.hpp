@@ -7,6 +7,7 @@
 
 #include <beman/inside/detail/rep.hpp>
 #include <beman/inside/generic.hpp>
+#include <beman/inside/detail/wide_value.hpp>
 #include <beman/inside/grid.hpp>
 #include <beman/inside/policy.hpp>
 
@@ -52,6 +53,7 @@ namespace beman::inside::detail
     // (each operand contribution ≤ its own span/N ≤ the result slot count).
     static constexpr bool mixed_offset_ok = []{
       if constexpr (rational_raw<L> || rational_raw<R> || rational_raw<result>
+                    || wide_raw<L> || wide_raw<R> || wide_raw<result>
                     || fp_raw<L> || fp_raw<R>          // double raws: no integer offset
                     || fp_raw<result> || !index_raw<result>
                     || !values_fit_imax<L> || !values_fit_imax<R>
@@ -105,6 +107,14 @@ namespace beman::inside::detail
       // the double add is exact. (Division still snaps — a quotient is not a
       // grid point.)
       res = result::from_raw(raw_cast<result>(as_double(lhs) + as_double(rhs)));
+    }
+    else if constexpr (wide_raw<L> || wide_raw<R> || wide_raw<result>)
+    {
+      // More than 2^64 slots on some side: add the exact values; the sum is a
+      // result-grid point by construction.
+      static_assert(!rational_raw<result>,
+        "addition: a wide-index operand with a continuous result is not supported yet");
+      res = exact_result<result>(exact_of(lhs) + exact_of(rhs));
     }
     else if constexpr (rational_raw<result>)
     {

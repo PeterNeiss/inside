@@ -10,6 +10,7 @@
 #define BEMAN_INSIDE_CORE_HPP
 
 #include <beman/inside/generic.hpp>
+#include <beman/inside/detail/wide_value.hpp>
 #include <beman/inside/lift.hpp>
 #include <beman/inside/policy.hpp>
 #include <beman/inside/detail/addition.hpp>
@@ -304,7 +305,10 @@ namespace beman::inside
                     | round_half_even | snap)) != 0)
     { return detail::as_double(*this); }
 
+    // Unavailable on a wide-index grid: its values outgrow the 64-bit rational
+    // (compare it, or read it with to<T>()).
     constexpr operator detail::rational() const
+      requires (!detail::is_wide_int_v<raw_type>)
     {
       if constexpr (G.Interval.Lower == G.Interval.Upper)
         return G.Interval.Lower;
@@ -331,6 +335,15 @@ namespace beman::inside
       constexpr bool check_hi = upper_of<inside> > detail::rational{lim::max()};
       if constexpr (!check_lo && !check_hi && detail::values_fit_imax<inside>)
         return static_cast<T>(detail::to_value(*this));
+      else if constexpr (detail::wide_raw<inside>)
+      {
+        const detail::exact_frac v = detail::exact_of(*this);
+        if (check_lo && v < detail::exact_of(lim::min()))
+          return std::unexpected{std::unsigned_integral<T> ? errc::domain_error : errc::overflow};
+        if (check_hi && v > detail::exact_of(lim::max()))
+          return std::unexpected{errc::overflow};
+        return static_cast<T>(trunc(v));
+      }
       else
       {
         const auto r = detail::as_rational(*this);
@@ -410,6 +423,10 @@ namespace beman::inside
         neg = negative::from_raw(-Raw);
       else if constexpr (detail::rational_raw<inside>)
         neg = negative::from_raw(-(Raw));
+      else if constexpr (detail::wide_raw<inside> || detail::wide_raw<negative>)
+        // Count the slot from the opposite end: same slot count, both index raws.
+        neg = negative::from_raw(detail::raw_of_index<negative>(
+            detail::exact_int{G.slot_count()} - detail::exact_int{Raw}));
       else if constexpr (!detail::values_fit_imax<inside> || !detail::values_fit_imax<negative>)
       {
         // A grid reaching past int64 (its negation then reaches below it): count
@@ -906,6 +923,9 @@ namespace beman::inside
       // same grid and encoding: Raw is monotonically ordered and comparable
       if constexpr (grid_of<L> == grid_of<R> && same_encoding<L, R>)
         return cmp(lhs.raw(), rhs.raw());
+      // a wide-index operand: exact wide fractions
+      else if constexpr (wide_raw<L> || wide_raw<R>)
+        return cmp(exact_of(lhs), exact_of(rhs));
       // an fp-backed operand: compare in double when both sides' values are
       // exact in double (raw_imax would truncate the fp raw); otherwise the
       // rational fallback below keeps the comparison exact.
@@ -978,7 +998,15 @@ namespace beman::inside
     {
       constexpr bool imax_scalar = std::signed_integral<A> || (std::unsigned_integral<A> && sizeof(A) < sizeof(imax));
       constexpr bool double_exact_values = lower_of<B> >= rational{-(imax{1} << 53)} && upper_of<B> <= rational{imax{1} << 53};
-      if constexpr (value_raw<B> && values_fit_imax<B> && imax_scalar)
+      if constexpr (wide_raw<B>)
+      {
+        // Every grid number lies strictly inside ±2^64; so does a wide grid.
+        if constexpr (std::floating_point<A>)
+          if (rhs == rhs && !(rhs < 0x1p64 && rhs > -0x1p64))
+            return cmp(exact_of(0), exact_of(rhs < 0 ? -1 : 1));
+        return cmp(exact_of(lhs), exact_of(as_rational(rhs)));
+      }
+      else if constexpr (value_raw<B> && values_fit_imax<B> && imax_scalar)
         return cmp(raw_imax(lhs), static_cast<imax>(rhs));
       else if constexpr (value_raw<B> && values_fit_imax<B> && std::floating_point<A> && double_exact_values)
         return cmp(static_cast<double>(raw_imax(lhs)), static_cast<double>(rhs));

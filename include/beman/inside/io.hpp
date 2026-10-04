@@ -163,6 +163,9 @@ namespace beman::inside
       if constexpr (std::is_same_v<T, std::int64_t>)  return "int64_t";
       if constexpr (std::is_same_v<T, rational>) return "rational";
       if constexpr (std::is_same_v<T, point_slot>) return "point";
+      if constexpr (std::is_same_v<T, wide_uint<2>>) return "wide_uint<2>";
+      if constexpr (std::is_same_v<T, wide_uint<3>>) return "wide_uint<3>";
+      if constexpr (is_wide_int_v<T>) return "wide_int";
       return "unknown";
     }
   } // namespace detail
@@ -172,19 +175,58 @@ namespace beman::inside
   // The debug form also prints the raw value, raw type, and grid — useful when
   // inspecting failing tests or storage choices.
   //-------------------------------------------------------------------------
+  namespace detail
+  {
+    // Decimal digits of a wide integer: 19 digits per division by 10^19.
+    template <std::size_t N, bool S>
+    std::string wide_to_decimal(wide_int<N, S> v)
+    {
+      const bool neg = v.negative();
+      wide_int<N, false> u(neg ? -v : v);
+      const wide_int<N, false> chunk{10'000'000'000'000'000'000ull};
+      std::string out;
+      do
+      {
+        const auto [q, r] = wide_int<N, false>::divmod(u, chunk);
+        std::string part = std::to_string(static_cast<umax>(r));
+        if (!q.is_zero()) part.insert(0, 19 - part.size(), '0');
+        out.insert(0, part);
+        u = q;
+      } while (!u.is_zero());
+      return neg ? "-" + out : out;
+    }
+
+    // A wide-index value: the usual rational form when it fits, else the
+    // reduced fraction num/den in decimal.
+    inline std::string exact_to_string(exact_frac f)
+    {
+      if (const auto r = try_rational(f)) return beman::inside::to_string(*r);
+      exact_int x = f.Num.negative() ? -f.Num : f.Num, y = f.Den;
+      while (!y.is_zero()) { const exact_int t = x % y; x = y; y = t; }
+      const exact_int num = f.Num / x, den = f.Den / x;
+      return den == exact_int{1} ? wide_to_decimal(num) : wide_to_decimal(num) + "/" + wide_to_decimal(den);
+    }
+  }
+
+  template <std::size_t N, bool S>
+  [[nodiscard]] inline std::string to_string(detail::wide_int<N, S> v) { return detail::wide_to_decimal(v); }
+
   template <insidable B>
   [[nodiscard]] inline std::string to_string(B b)
-  { return beman::inside::to_string(detail::as_rational(b)); }
+  {
+    if constexpr (detail::wide_raw<B>) return detail::exact_to_string(detail::exact_of(b));
+    else                               return beman::inside::to_string(detail::as_rational(b));
+  }
 
   template <insidable B>
   [[nodiscard]] inline std::string to_string_debug(B b)
   {
     std::string str;
-    str += beman::inside::to_string(detail::as_rational(b));
+    str += beman::inside::to_string(b);
     str += " {";
     str += beman::inside::to_string(+b.raw());
     str += "[" + std::string(detail::type_name<detail::raw_t<B>>());
-    str += " Max:" + beman::inside::to_string(+detail::max_index_v<B>) + "] ";
+    str += " Max:" + beman::inside::to_string(grid_of<B>.slot_count()) + "] ";
     str += beman::inside::to_string(grid_of<B>);
     str += "}";
     return str;
@@ -274,8 +316,7 @@ struct std::formatter<beman::inside::inside<G, P>>
     if constexpr (integer_path)
       return this->Numeric.format(beman::inside::detail::to_value(b), ctx);
     else if (this->HasSpec)
-      return this->Numeric.format(
-          static_cast<double>(beman::inside::detail::rational{b}), ctx);
+      return this->Numeric.format(beman::inside::detail::as_double(b), ctx);
     else
       return std::format_to(ctx.out(), "{}", beman::inside::to_string(b));
   }

@@ -86,6 +86,14 @@ struct std::hash<beman::inside::inside<G, P>>
       auto h2 = std::hash<beman::inside::imax>{}(b.raw().Denominator);
       return h1 ^ (h2 + 0x9e3779b97f4a7c15ULL + (h1 << 6) + (h1 >> 2));
     }
+    else if constexpr (beman::inside::detail::wide_raw<B>)
+    {
+      // Same combine over the limbs of a wide index.
+      std::size_t h = 0;
+      for (auto w : b.raw().Word)
+        h ^= std::hash<beman::inside::umax>{}(w) + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2);
+      return h;
+    }
     else
       return std::hash<beman::inside::detail::raw_t<B>>{}(b.raw());
   }

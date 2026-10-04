@@ -10,11 +10,28 @@
 #include <beman/inside/interval.hpp>
 #include <beman/inside/detail/grid_rational.hpp>
 #include <beman/inside/policy_flag.hpp>
+#include <beman/inside/detail/int_for_bits.hpp>
 
 #include <expected>   // std::expected, std::unexpected
 
 #include <bit>
 #include <concepts>              // std::convertible_to (grid corner ctors)
+
+namespace beman::inside::detail
+{
+  // Wide enough for every exact grid computation on 64-bit grid numbers: a
+  // product of three 64-bit magnitudes plus a sign.
+  using grid_wide = wide_sint<4>;
+
+  // A grid number's signed numerator and positive denominator, widened.
+  constexpr grid_wide wide_numerator(rational const& r) noexcept
+  {
+    const grid_wide n{r.Numerator};
+    return r.Denominator < 0 ? -n : n;
+  }
+  constexpr grid_wide wide_denominator(rational const& r) noexcept
+  { return grid_wide{abs_den(r.Denominator)}; }
+}
 
 namespace beman::inside
 {
@@ -142,6 +159,24 @@ namespace beman::inside
       return !mul_overflow(p / r, s / q, &out);
     }
 
+    // Exact slot count (Upper − Lower)/Notch, however large: with Upper = a/b,
+    // Lower = c/d and Notch = e/f it is (a·d − c·b)·f / (b·d·e), exact on a
+    // valid grid. 0 for a continuous grid.
+    [[nodiscard]] constexpr detail::grid_wide slot_count() const noexcept
+    {
+      using detail::wide_numerator, detail::wide_denominator;
+      if (Notch == 0) return detail::grid_wide{0};
+      const auto& U = Interval.Upper;
+      const auto& L = Interval.Lower;
+      const detail::grid_wide num =
+          (wide_numerator(U) * wide_denominator(L) - wide_numerator(L) * wide_denominator(U))
+        * wide_denominator(Notch);
+      return num / (wide_denominator(U) * wide_denominator(L) * wide_numerator(Notch));
+    }
+
+    // Bits needed to hold every slot index 0..slot_count().
+    [[nodiscard]] constexpr int slot_bits() const noexcept { return bit_width_of(slot_count()); }
+
     // Index-storage slot count (0 on overflow; the over-flow branch of storage_min
     // is discarded for such grids, which pick rational storage instead).
     [[nodiscard]] constexpr umax max_index() const { umax c = 0; (void)max_index_checked(c); return c; }
@@ -243,16 +278,22 @@ namespace beman::inside
   }
 
   // Smallest raw type holding every reachable index in G. Order: point →
-  // empty point_slot; notch-zero → rational (no integer index space); index count too large for any integer →
-  // rational (store the value's fraction directly, no index); signed-direct fits
-  // Lower < 0 with notch 1; unsigned-offset (max_index slots) otherwise.
+  // empty point_slot; notch-zero → rational (no integer index space); more
+  // than 2^64 slots → a wide_int index; signed-direct fits Lower < 0 with
+  // notch 1; unsigned-offset (max_index slots) otherwise.
   namespace detail
   {
+  // Unsigned index raw for G's slots: a builtin up to 64 bits, else wide.
+  template <grid G>
+  using index_raw_for_t =
+    std::conditional_t<G.max_index_representable(), smallest_uint_for_t<G.max_index()>,
+                       int_for_bits_t<G.slot_bits(), false>>;
+
   template <grid G>
   using storage_min_t =
     std::conditional_t<(G.Interval.Lower == G.Interval.Upper), point_slot,
     std::conditional_t<(G.Notch == 0), detail::rational,
-    std::conditional_t<(!G.max_index_representable()), detail::rational,
+    std::conditional_t<(!G.max_index_representable()), index_raw_for_t<G>,
     std::conditional_t<(G.Interval.Lower < 0 && G.Notch == 1 && fits_imax(G.Interval)),
       smallest_int_for_t<trunc(G.Interval.Lower), trunc(G.Interval.Upper)>,
       smallest_uint_for_t<G.max_index()>>>>>;
@@ -453,7 +494,7 @@ namespace beman::inside
           smallest_uint_for_t<static_cast<umax>(trunc(G.Interval.Upper))>>{};
     }
     else if constexpr ((P & indexed) == indexed && G.Notch != 0)
-      return smallest_uint_for_t<G.max_index()>{};
+      return index_raw_for_t<G>{};
     else
       return storage_min_t<G>{};
   }

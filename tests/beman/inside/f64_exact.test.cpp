@@ -322,22 +322,21 @@ TEST(F64ExactTest, f64_division_by_zero_is_reported_not_stored_as_inf)
 }
 
 //---------------------------------------------------------------------------
-// An over-fine f64 product (grid index count > umax) deduces rational storage
-// — exact, no cryptic compile error — and an unrepresentable product reports
-// overflow rather than silently wrapping.
+// An over-fine f64 product (grid slot count > 2^64) deduces a wide integer
+// index — exact, total (no expected), no cryptic compile error.
 //---------------------------------------------------------------------------
-// over-fine f64 product deduces rational, stays exact
-TEST(F64ExactTest, over_fine_f64_product_deduces_rational_stays_exact)
+TEST(F64ExactTest, over_fine_f64_product_deduces_wide_index_stays_exact)
 {
   using A = inside<{{0, (1u << 17)}, per<(1u << 16)>}, f64>;   // N up to 2^33 < 2^53
   static_assert(std::is_same_v<A::raw_type, double>);
 
-  // product grid {0, 2^34} notch 2^-32 → 2^66 slots > umax → rational storage,
-  // overflow-checked (return widens to expected). 2^17 * 2^17 = 2^34 is exact.
+  // product grid {0, 2^34} notch 2^-32 → 2^66 slots → a 67-bit index in a
+  // two-limb wide_int. 2^17 * 2^17 = 2^34 is exact.
   A a = static_cast<double>(1u << 17);
   auto p = a * a;
-  ASSERT_TRUE(p.has_value());
-  ASSERT_TRUE(static_cast<rational>(*p) == rational{umax{1} << 34});
+  static_assert(std::is_same_v<decltype(p)::raw_type, detail::wide_uint<2>>);
+  ASSERT_TRUE(p == (umax{1} << 34));
+  ASSERT_TRUE(p.to<double>().value() == 0x1p34);
 }
 
 //---------------------------------------------------------------------------

@@ -64,7 +64,9 @@ namespace
         const WU wa{a}, wb{b};
         ASSERT_EQ(static_cast<U>(wa + wb), static_cast<U>(a + b)) << a << " + " << b;
         ASSERT_EQ(static_cast<U>(wa - wb), static_cast<U>(a - b)) << a << " - " << b;
-        ASSERT_EQ(static_cast<U>(wa * wb), static_cast<U>(a * b)) << a << " * " << b;
+        // (Promote through uint64 first: uint16 * uint16 is an int product.)
+        const U ab = static_cast<U>(static_cast<std::uint64_t>(a) * b);
+        ASSERT_EQ(static_cast<U>(wa * wb), ab) << a << " * " << b;
         ASSERT_EQ(wa < wb, a < b);
         ASSERT_EQ(wa == wb, a == b);
         if (b != 0)
@@ -75,7 +77,7 @@ namespace
         const S sa = static_cast<S>(a), sb = static_cast<S>(b);
         const WS xa{sa}, xb{sb};
         ASSERT_EQ(xa < xb, sa < sb) << sa << " < " << sb;
-        ASSERT_EQ(static_cast<S>(xa * xb), static_cast<S>(static_cast<U>(a * b)));
+        ASSERT_EQ(static_cast<S>(xa * xb), static_cast<S>(ab));
         // Builtin S / S overflows for min / −1; wide_int wraps.
         if (sb != 0 && !(sa == std::numeric_limits<S>::min() && sb == -1))
         {
@@ -86,7 +88,7 @@ namespace
     for (U a : vals)
       for (int s = 0; s < B; ++s)
       {
-        ASSERT_EQ(static_cast<U>(WU{a} << s), static_cast<U>(a << s));
+        ASSERT_EQ(static_cast<U>(WU{a} << s), static_cast<U>(static_cast<std::uint64_t>(a) << s));
         ASSERT_EQ(static_cast<U>(WU{a} >> s), static_cast<U>(a >> s));
         const S sa = static_cast<S>(a);
         ASSERT_EQ(static_cast<S>(WS{sa} >> s), static_cast<S>(sa >> s));   // arithmetic

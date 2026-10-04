@@ -13,7 +13,7 @@
 //
 // The bare `u8`/`i16`/… names are storage-policy flags (policy_flag.hpp); the
 // native-width *types* below use width words instead: `byte`/`word`/`dword`
-// (unsigned 8/16/32) and `sbyte`/`sword`/`sdword`/`sqword` (signed 8/16/32/64).
+// (unsigned 8/16/32/64: `qword`) and `sbyte`/`sword`/`sdword`/`sqword` (signed 8/16/32/64).
 //
 // Each alias uses the full range of its native storage type: `byte` is
 // [0, 255] in a uint8. Q-format types keep power-of-two notches.
@@ -30,10 +30,11 @@ namespace beman::inside
   using byte  = inside<{0, 255}>;                         // uint8
   using word  = inside<{0, 65535}>;                       // uint16
   using dword = inside<{0, 4294967295}>;                  // uint32
-  // qword (unsigned 64) is intentionally absent: the library's internal value
-  // path is `imax` (int64) — `to_value` returns `imax` — so unsigned values above
-  // 2^63-1 cannot round-trip through arithmetic/compare. Use `sqword` or a
-  // hand-rolled grid if you need 64-bit storage.
+  // qword reaches past int64, so it has no implicit `operator imax`; read it
+  // with `to<std::uint64_t>()`. A difference of qwords spans 2^65 values and
+  // gets a wide-integer index; a sum's upper bound passes the 64-bit grid
+  // numbers, so it needs C++26 big grids.
+  using qword = inside<{0, 18446744073709551615u}>;       // uint64
 
   using sbyte  = inside<{-128, 127}>;                      // int8
   using sword  = inside<{-32768, 32767}>;                  // int16

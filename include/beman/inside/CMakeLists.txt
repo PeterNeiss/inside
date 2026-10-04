@@ -16,7 +16,9 @@ target_sources(
                 detail/debug.hpp
                 detail/division.hpp
                 detail/grid_rational.hpp
+                detail/int_for_bits.hpp
                 detail/wide_int.hpp
+                detail/wide_value.hpp
                 detail/multiplication.hpp
                 detail/overflow.hpp
                 detail/rational.hpp
