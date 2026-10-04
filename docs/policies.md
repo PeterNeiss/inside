@@ -228,15 +228,12 @@ acc.with(
 ## Error code mode
 
 Instead of throwing, errors can be reported via `beman::inside::errc` (the library has no
-`std::error_code` / `<system_error>` dependency). This works with construction,
-direct assignment, and per-operation policies:
+`std::error_code` / `<system_error>` dependency). Construction that can fail is
+`try_make` (see [Non-throwing construction](#non-throwing-construction)); assignment and
+free arithmetic take an `errc&`:
 
 ```cpp
 beman::inside::errc ec{};   // value-initialised: errc{} == 0 means "no error"
-
-// Construction with error code
-inside<{0, 100}> x(150, ec);
-// ec is set to errc::overflow; on error x's value is ill-defined — check ec before reading x
 
 // Per-operation with error code
 inside<{0, 100}> y{50};

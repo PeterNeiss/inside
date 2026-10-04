@@ -274,9 +274,7 @@ TEST(GridTest, derived_notch_of_fraction_pairs)
   static_assert(std::is_same_v<eightieths::raw_type, std::uint8_t>);
   EXPECT_EQ(rational{eightieths{0.5}}, (rational{1, 2}));         // 40/80
   EXPECT_EQ((rational{eightieths{frac<13, 16>}}), (rational{13, 16}));
-  errc ec{};
-  eightieths off(frac<1, 3>, ec);                                 // 1/3 is not k/80
-  EXPECT_EQ(ec, errc::rounding_error);
+  EXPECT_EQ(eightieths::try_make(frac<1, 3>).error(), errc::rounding_error);   // 1/3 is not k/80
 
   using signed_63 = inside<{frac<-5, 7>, frac<4, 9>}, round_nearest>;
   EXPECT_EQ((rational{signed_63{frac<-5, 7>}}), (rational{-5, 7}));

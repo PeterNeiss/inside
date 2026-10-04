@@ -206,14 +206,17 @@ namespace beman::inside
     constexpr inside(A value, Pol&& pol)
     { store_value(value, pol); }
 
-    // Error-code construction: `inside x(value, ec)`. Needs its own overload (a raw
-    // error_code would bind the Pol&& template above). On a reported (out-of-range)
-    // error, ec is set and the inside's value is ill-defined — do not read it without
-    // checking ec first.
+    // No error-code constructor: construction that can fail is `try_make(value)`,
+    // which returns expected<inside, errc>. This overload only turns
+    // `inside x(value, ec)` into a readable error (an errc& would otherwise bind
+    // the Pol&& constructor above).
     template <numeric A>
-      requires inside_assignable<inside, A, P>
-    constexpr inside(A value, errc& ec)
-    { store_value(value, make_policy<P>(ec)); }
+    constexpr inside(A, errc&)
+    {
+      static_assert(detail::dependent_false<A>,
+          "inside(value, errc&) was removed: use `auto r = B::try_make(value);` "
+          "(expected<B, errc>), or `b.policy(ec) = value` to assign with an error code");
+    }
 
     // expected<A> sink — unwrap once at the construction boundary so callers can
     // chain checked arithmetic without per-step `.value()`. Throws
@@ -689,7 +692,7 @@ namespace beman::inside
     {
       errc ec{};
       inside result;
-      detail::assignment<inside, A>::assign(result, value, make_policy<P>(ec));
+      result.store_value(value, make_policy<P>(ec));   // the constructors' store
       if (ec != errc{}) return std::unexpected{ec};
       return result;
     }

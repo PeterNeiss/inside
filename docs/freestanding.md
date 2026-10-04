@@ -83,13 +83,15 @@ error handler and the error-code channel instead.
 
 ## Error reporting without exceptions
 
-Besides the handler, errors can be captured in a `beman::inside::errc` out-parameter — the
-throw-free reporting channel, with **no `std::error_code` / `<system_error>`**:
+Besides the handler, errors come back as values — the throw-free reporting
+channel, with **no `std::error_code` / `<system_error>`**: construction through
+`try_make` (an `expected<inside, errc>`), assignment and free arithmetic through a
+`beman::inside::errc` out-parameter:
 
 ```cpp
-beman::inside::errc ec{};                    // value-init: errc{} == 0 means "no error"
+auto x = beman::inside::inside<{0, 100}>::try_make(150);   // construction: !x, x.error()
 
-beman::inside::inside<{0, 100}> x(150, ec);   // construction
+beman::inside::errc ec{};                    // value-init: errc{} == 0 means "no error"
 y.policy(ec) = 200;                // per-operation
 auto s = add(y, y, ec);            // free arithmetic
 

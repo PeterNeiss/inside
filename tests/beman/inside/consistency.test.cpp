@@ -69,9 +69,7 @@ TEST(ConsistencyTest, integer_source_off_notch_rounds_like_rational_source)
   EXPECT_EQ(rational{N2{-0} }, q(0));
 
   using Strict = inside<{{0, 10}, 2}>;                    // checked, no rounding mode
-  errc ec{};
-  Strict s(3, ec);
-  EXPECT_EQ(ec, errc::rounding_error);
+  EXPECT_EQ(Strict::try_make(3).error(), errc::rounding_error);
   EXPECT_THROW((void)Strict{3}, inside_error);
 
   using Ex = inside<{{0, 10}, 2}, exact | round_nearest>; // rational storage snaps too
@@ -287,9 +285,7 @@ TEST(ConsistencyTest, non_finite_input_goes_through_the_policy)
   const double nan = std::numeric_limits<double>::quiet_NaN();
   const double inf = std::numeric_limits<double>::infinity();
   using X = inside<{0, 10}, round_nearest | checked>;
-  errc ec{};
-  X x(nan, ec);
-  EXPECT_EQ(ec, errc::not_finite);
+  EXPECT_EQ(X::try_make(nan).error(), errc::not_finite);
   auto t = X::try_make(inf);
   ASSERT_FALSE(t.has_value());
   EXPECT_EQ(t.error(), errc::not_finite);
@@ -300,9 +296,7 @@ TEST(ConsistencyTest, non_finite_input_goes_through_the_policy)
   EXPECT_EQ(rational{C{-inf}}, q(0));
 #ifndef BEMAN_INSIDE_MATH_CORDIC
   using F = inside<{{0, 10}, per<2>}, f64>;
-  errc fe{};
-  F f(nan, fe);
-  EXPECT_EQ(fe, errc::not_finite);
+  EXPECT_EQ(F::try_make(nan).error(), errc::not_finite);
   using FC = inside<{{0, 10}, per<2>}, f64 | clamp>;
   EXPECT_EQ(FC{inf}.raw(), 10.0);
 #endif
@@ -402,21 +396,15 @@ TEST(ConsistencyTest, rounding_runs_before_the_range_check)
   EXPECT_EQ(rational{bin{q(191, 20)}}, q(9));                        // rational source
   using ms = inside<{{0, 100}, per<10>}, round_nearest>;
   EXPECT_EQ(rational{bin{ms{95.5} / just<10>}}, q(9));               // inside source
-  errc ec{};
-  bin over(10.0, ec);                                                // floors to 10: outside
-  EXPECT_EQ(ec, errc::overflow);
+  EXPECT_EQ(bin::try_make(10.0).error(), errc::overflow);            // floors to 10: outside
 
   using db = inside<{{-24, 12}, per<2>}, round_nearest>;
   EXPECT_EQ(rational{db{-24.1}}, q(-24));
-  ec = {};
-  db far(-24.3, ec);                                                 // rounds to -24.5
-  EXPECT_EQ(ec, errc::overflow);
+  EXPECT_EQ(db::try_make(-24.3).error(), errc::overflow);            // rounds to -24.5
 
-  // Without a rounding mode nothing rounds: out of range is a domain error.
+  // Without a rounding mode nothing rounds: out of range is an overflow.
   using strict = inside<{0, 9}>;
-  ec = {};
-  strict s(9.5, ec);
-  EXPECT_EQ(ec, errc::overflow);
+  EXPECT_EQ(strict::try_make(9.5).error(), errc::overflow);
 
   // A clamp policy sees no overshoot when rounding lands inside.
   using cl = inside<{0, 9}, clamp | round_floor>;
@@ -432,9 +420,7 @@ TEST(ConsistencyTest, fp_storage_rounds_before_the_range_check)
 {
   using F = inside<{{0, 1}, per<4>}, f64>;                      // round_nearest
   EXPECT_EQ(F{1.1}.raw(), 1.0);
-  errc ec{};
-  F f(1.2, ec);                                                      // rounds to 1.25
-  EXPECT_EQ(ec, errc::overflow);
+  EXPECT_EQ(F::try_make(1.2).error(), errc::overflow);               // rounds to 1.25
   using Ff = inside<{{0, 1}, per<4>}, f64 | round_floor>;
   EXPECT_EQ(Ff{1.2}.raw(), 1.0);                                     // floors in range
 }

@@ -312,9 +312,7 @@ TEST(CoverageCornersTest, inside_to_f64_conversion_snaps_onto_the_double_grid)
 TEST(CoverageCornersTest, clamp_policy_truncates_an_in_range_off_notch_fractional_assignment)
 {
   using strict = inside<{{0, 10}, per<2>}, clamp>;
-  errc ec{};
-  strict s(0.3, ec);
-  ASSERT_EQ(ec, errc::rounding_error);
+  ASSERT_EQ(strict::try_make(0.3).error(), errc::rounding_error);
 
   using b = inside<{{0, 10}, per<2>}, clamp | snap>;   // notch 1/2
   b x{0};

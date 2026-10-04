@@ -30,8 +30,8 @@ int main()
 
   // error-code channel reports without throwing
   beman::inside::errc ec{};
-  beman::inside::inside<{0, 100}> x(150, ec);
-  (void)x;
+  beman::inside::inside<{0, 100}> x{0};
+  x.policy(ec) = 150;
 
   // a checked arithmetic op that stays in range
   beman::inside::inside<{0, 100}, beman::inside::checked> s{40};

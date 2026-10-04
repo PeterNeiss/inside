@@ -254,13 +254,11 @@ TEST(StorageBugsTest, one_shot_policy_applies_to_f64_target)
   EXPECT_EQ(r.raw(), 4.0);
 }
 
-TEST(StorageBugsTest, error_code_ctor_reports_on_checked_f64_target)
+TEST(StorageBugsTest, try_make_reports_on_checked_f64_target)
 {
   using namespace beman::inside;
   using Checked = inside<{{0, 4}, per<4>}, f64 | checked>;
-  errc ec{};
-  Checked c(RealWide::from_raw(7.5), ec);
-  EXPECT_EQ(ec, errc::overflow);
+  EXPECT_EQ(Checked::try_make(RealWide::from_raw(7.5)).error(), errc::overflow);
 }
 #endif
 
