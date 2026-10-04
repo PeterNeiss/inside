@@ -9,6 +9,7 @@
 #include <beman/inside/lift.hpp>            // lift, is_expected_v, unwrap_t
 #include <beman/inside/detail/overflow.hpp> // add/sub/mul_overflow
 #include <beman/inside/detail/debug.hpp>    // errc, detail::raise, detail::constexpr_error
+#include <beman/inside/detail/wide_int.hpp> // limb::mul / limb::div kernels
 
 #include <expected>   // std::expected, std::unexpected
 
@@ -22,22 +23,12 @@ namespace beman::inside::detail
 {
   [[nodiscard]] constexpr umax abs_den(imax d) noexcept { return (d >= 0) ? static_cast<umax>(d) : umax{0} - static_cast<umax>(d); }
 
-  // 64×64 → 128-bit unsigned product, as {hi, lo}. Native where the target has
-  // unsigned __int128; else a schoolbook 32-bit split (32-bit targets) — the
-  // same construction trusted in cmath.hpp's fmul, so both are bit-exact.
+  // 64×64 → 128-bit unsigned product, as {hi, lo} (the shared limb kernel).
   struct u128 { umax Hi; umax Lo; };
   constexpr u128 umul(umax a, umax b)
   {
-#if defined(__SIZEOF_INT128__)
-    const unsigned __int128 p = static_cast<unsigned __int128>(a) * b;
-    return {static_cast<umax>(p >> 64), static_cast<umax>(p)};
-#endif
-    umax al = a & 0xffffffffu, ah = a >> 32;
-    umax bl = b & 0xffffffffu, bh = b >> 32;
-    umax ll = al * bl, lh = al * bh, hl = ah * bl, hh = ah * bh;
-    umax mid = (ll >> 32) + (lh & 0xffffffffu) + (hl & 0xffffffffu);
-    return { hh + (lh >> 32) + (hl >> 32) + (mid >> 32),
-             (ll & 0xffffffffu) | (mid << 32) };
+    const limb::pair<umax> p = limb::mul(a, b);
+    return {p.Hi, p.Lo};
   }
   constexpr std::strong_ordering cmp128(u128 a, u128 b)
   { return (a.Hi != b.Hi) ? (a.Hi <=> b.Hi) : (a.Lo <=> b.Lo); }
@@ -101,32 +92,14 @@ namespace beman::inside::detail
     return {u128{hi_sum, low.Lo}, high.Hi != 0 || hi_sum < low.Hi};
   }
 
-  // Quotient/remainder of a 128-bit dividend by a 64-bit divisor. Requires
-  // 1 <= d <= imax_max (the rational-denominator domain) so the portable
-  // partial remainder can never overflow when shifted.
+  // Quotient/remainder of a 128-bit dividend by a 64-bit divisor d >= 1:
+  // two limb divisions, high limb first.
   struct divmod128_result { u128 Quotient; umax Remainder; };
   constexpr divmod128_result divmod128(u128 n, umax d)
   {
-#if defined(__SIZEOF_INT128__)
-    using u128n = unsigned __int128;
-    const u128n wide = (static_cast<u128n>(n.Hi) << 64) | n.Lo;
-    const u128n q = wide / d;
-    return {u128{static_cast<umax>(q >> 64), static_cast<umax>(q)},
-            static_cast<umax>(wide % d)};
-#else
-    // Portable (no __int128, 32-bit targets): restoring shift-subtract divide — the same construction
-    // as cmath.hpp's to_fixed fallback.
-    u128 q{0, 0};
-    umax r = 0;
-    for (int i = 127; i >= 0; --i)
-    {
-      r = (r << 1) | ((i >= 64 ? (n.Hi >> (i - 64)) : (n.Lo >> i)) & 1u);
-      q.Hi = (q.Hi << 1) | (q.Lo >> 63);
-      q.Lo <<= 1;
-      if (r >= d) { r -= d; q.Lo |= 1; }
-    }
-    return {q, r};
-#endif
+    const limb::pair<umax> hi = limb::div(umax{0}, n.Hi, d);
+    const limb::pair<umax> lo = limb::div(hi.Lo, n.Lo, d);
+    return {u128{hi.Hi, lo.Hi}, lo.Lo};
   }
 
   //---------------------------------------------------------------------------
@@ -1042,17 +1015,9 @@ namespace beman::inside::detail
     // Cross-multiply in 128-bit: |numerator| and |denominator| are each ≤ 2^64−1,
     // so the products fit exactly in 128 bits — the comparison can never overflow,
     // so no trap is needed.
-#if defined(__SIZEOF_INT128__)
-    using u128n = unsigned __int128;
-    u128n A = static_cast<u128n>(lhs.Numerator) * rhs_ad;
-    u128n B = static_cast<u128n>(rhs.Numerator) * lhs_ad;
-    return lhs_neg ? (B <=> A) : (A <=> B);
-#else
-    // Portable path (no __int128): form each product as {hi, lo} and compare lexically.
     const u128 A = umul(lhs.Numerator, rhs_ad);
     const u128 B = umul(rhs.Numerator, lhs_ad);
     return lhs_neg ? cmp128(B, A) : cmp128(A, B);
-#endif
   }
 
   template <typename T>

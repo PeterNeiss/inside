@@ -306,27 +306,15 @@ namespace beman::inside::math
     //=========================================================================
 
     // (a·b) >> W via the full 128-bit product, magnitude-truncating (toward zero).
-    // The two paths below are bit-for-bit equal by construction.
     constexpr imax fmul(imax a, imax b, int W) noexcept
     {
       bool neg = (a < 0) ^ (b < 0);
       umax ua = (a < 0) ? umax{0} - static_cast<umax>(a) : static_cast<umax>(a);
       umax ub = (b < 0) ? umax{0} - static_cast<umax>(b) : static_cast<umax>(b);
-#if defined(__SIZEOF_INT128__)
-      // gcc/clang: native 128-bit, constexpr-friendly.
-      umax r = static_cast<umax>((static_cast<unsigned __int128>(ua) * ub) >> W);
-#else
-      // portable (no __int128): 32-bit split → 128-bit (hi:lo) → shift.
-      umax al = ua & 0xffffffffu, ah = ua >> 32;
-      umax bl = ub & 0xffffffffu, bh = ub >> 32;
-      umax ll = al * bl, lh = al * bh, hl = ah * bl, hh = ah * bh;
-      umax mid = (ll >> 32) + (lh & 0xffffffffu) + (hl & 0xffffffffu);
-      umax lo  = (ll & 0xffffffffu) | (mid << 32);
-      umax hi  = hh + (lh >> 32) + (hl >> 32) + (mid >> 32);
-      umax r   = (W == 0) ? lo
-               : (W < 64) ? ((lo >> W) | (hi << (64 - W)))
-               :            (hi >> (W - 64));
-#endif
+      const u128 p = umul(ua, ub);
+      const umax r = (W == 0) ? p.Lo
+                   : (W < 64) ? ((p.Lo >> W) | (p.Hi << (64 - W)))
+                   :            (p.Hi >> (W - 64));
       return neg ? -static_cast<imax>(r) : static_cast<imax>(r);
     }
 
@@ -350,26 +338,13 @@ namespace beman::inside::math
       // n·2^W + d/2 below 2^64: one 64-bit divide (d < 2^63).
       if (n < (umax{1} << (63 - W)))
         return sign(((n << W) + d / 2) / d);
-#if defined(__SIZEOF_INT128__)
-      using u128 = unsigned __int128;
-      const u128 t = (u128{n} << W) + d / 2;
-      const umax q = static_cast<umax>(t / d);
-#else
-      // portable: 128-bit (hi:lo) dividend, restoring shift-subtract divide.
-      // d < 2^63 (imax denominator), so the partial remainder fits umax.
+      // 128-bit (hi:lo) dividend n·2^W + d/2; the quotient fits umax.
+      const umax half = d / 2;
       umax hi = (W == 0) ? 0 : (n >> (64 - W));
       umax lo = n << W;
-      const umax half = d / 2;
       lo += half;
       hi += (lo < half);
-      umax q = 0, r = 0;
-      for (int i = 127; i >= 0; --i)
-      {
-        r = (r << 1) | ((i >= 64 ? (hi >> (i - 64)) : (lo >> i)) & 1u);
-        q <<= 1;
-        if (r >= d) { r -= d; q |= 1; }
-      }
-#endif
+      const umax q = divmod128(u128{hi, lo}, d).Quotient.Lo;
       return sign(q);
     }
     constexpr rational fixed_to_rational(imax x, int W) noexcept
