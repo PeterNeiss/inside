@@ -4098,6 +4098,82 @@ namespace beman::inside::detail
       return static_cast<raw_t<L>>(index + exact_int{slot_base<L>});
   }
 
+  //---------------------------------------------------------------------------
+  // Wrapping value-index arithmetic — the integer path of + and ×.
+  //
+  // wrap_work_t<Result> is unsigned and as wide as Result's raw (at least 64
+  // bits). + − × wrap modulo 2^bits, so any expression whose true value is a
+  // Result raw comes out exact, however far its intermediates wrapped. Each
+  // operand enters as its value index J = value/Notch (an index raw plus
+  // Lower/Notch, a value raw as is — value storage has notch 1).
+  //---------------------------------------------------------------------------
+  template <insidable Result>
+  using wrap_work_t = std::conditional_t<wide_raw<Result>, raw_t<Result>, umax>;
+
+  // An operand's value-index range in `Unit`s: Lower/Unit .. Upper/Unit.
+  template <insidable X, rational Unit>
+  inline constexpr grid_wide units_lo = exact_quotient(lower_of<X>, Unit);
+  template <insidable X, rational Unit>
+  inline constexpr grid_wide units_hi = exact_quotient(upper_of<X>, Unit);
+
+  // The work type of an integer + or ×: signed imax when every value index
+  // involved (each operand in its unit, the result in its notch, and the
+  // result's slot offsets) provably fits — then nothing wraps, and the
+  // compiler keeps the value ranges, as the builtin paths always did — else
+  // the wrapping type.
+  template <insidable Result, insidable L, rational UL, insidable R, rational UR>
+  using index_work_t = std::conditional_t<
+      signed_value_bits_of({units_lo<L, UL>, units_hi<L, UL>, units_lo<R, UR>, units_hi<R, UR>,
+                            units_lo<Result, notch_of<Result>>, units_hi<Result, notch_of<Result>>,
+                            grid_of<Result>.slot_count()}) <= 63,
+      imax, wrap_work_t<Result>>;
+
+  // Integer raws: neither fp nor rational (a point's empty raw counts).
+  template <insidable B>
+  inline constexpr bool integer_raw = !fp_raw<B> && !rational_raw<B>;
+
+  // a / b for grid numbers, known at compile time to be an integer.
+  constexpr grid_wide exact_quotient(rational const& a, rational const& b) noexcept
+  { return wide_numerator(a) * wide_denominator(b) / (wide_denominator(a) * wide_numerator(b)); }
+
+  template <typename W, insidable X>
+  constexpr W value_index(X const& x) noexcept
+  {
+    if constexpr (index_raw<X>)
+      return static_cast<W>(slot_base<X>) + static_cast<W>(x.raw());
+    else
+      return static_cast<W>(x.raw());
+  }
+
+  // x's value in units of the notch `unit` (an integer: the unit divides
+  // x's notch, or x's value for a point).
+  template <typename W, rational Unit, insidable X>
+  constexpr W value_in_units(X const& x) noexcept
+  {
+    // A point (Lower == Upper) holds its value in the type — even under a
+    // width flag, whose raw stores it again.
+    if constexpr (lower_of<X> == upper_of<X>)
+      return static_cast<W>(exact_quotient(lower_of<X>, Unit));
+    else
+    {
+      constexpr grid_wide scale = exact_quotient(notch_of<X>, Unit);
+      if constexpr (scale == grid_wide{1}) return value_index<W>(x);
+      else                                 return value_index<W>(x) * static_cast<W>(scale);
+    }
+  }
+
+  // The Result whose value index is j (taken modulo 2^bits).
+  template <insidable Result, typename W>
+  constexpr Result from_value_index(W const& j) noexcept
+  {
+    if constexpr (point_raw<Result>)
+      return Result::from_raw(raw_t<Result>{});
+    else if constexpr (index_raw<Result>)
+      return Result::from_raw(static_cast<raw_t<Result>>(j - static_cast<W>(slot_base<Result>)));
+    else
+      return Result::from_raw(static_cast<raw_t<Result>>(j));
+  }
+
   // Exact result of grid arithmetic: the value is on the result lattice and
   // inside its interval by construction, so it maps straight to a raw.
   template <insidable Result>
@@ -5697,57 +5773,6 @@ namespace beman::inside::detail
     using return_t = std::conditional_t<overflow_action<plain_t<A>> || !needs_overflow_check<F>,
                                         result, std::expected<result, errc>>;
 
-    // Mixed integer-aligned / notch-offset fast path: with a unit-numerator
-    // result notch 1/d, both operand offsets in result-notch units are exact
-    // integer math — (to_value − Lower)·d for the integer-aligned operand,
-    // raw·widen for the notch-offset one (offsets compose because
-    // lower_of<result> = lower_of<L> + lower_of<R>). Gated on an index-raw result and
-    // the result slot count fitting imax so no intermediate can overflow
-    // (each operand contribution ≤ its own span/N ≤ the result slot count).
-    static constexpr bool mixed_offset_ok = []{
-      if constexpr (rational_raw<L> || rational_raw<R> || rational_raw<result>
-                    || wide_raw<L> || wide_raw<R> || wide_raw<result>
-                    || fp_raw<L> || fp_raw<R>          // double raws: no integer offset
-                    || fp_raw<result> || !index_raw<result>
-                    || !values_fit_imax<L> || !values_fit_imax<R>
-                    || (is_integer_aligned<L> && is_integer_aligned<R>)
-                    || (index_raw<L> && index_raw<R>)
-                    || notch_of<result> == 0 || notch_of<result>.Numerator != 1)
-        return false;
-      else
-      {
-        constexpr auto span = upper_of<result> - lower_of<result>;
-        if (!span.has_value())
-          return false;
-        const auto slots = *span / notch_of<result>;
-        return slots.has_value()
-            && (*slots).Numerator
-                 <= static_cast<umax>(std::numeric_limits<imax>::max());
-      }
-    }();
-
-    // One operand's offset in result-notch units (see mixed_offset_ok).
-    template <insidable X>
-    static constexpr imax mixed_offset_units(X const& x, imax widen)
-    {
-      if constexpr (is_integer_aligned<X>)
-      {
-        constexpr imax den = static_cast<imax>(abs_den(notch_of<result>.Denominator));
-        return (to_value(x) - lower_imax<X>) * den;
-      }
-      else
-        return raw_imax(x) * widen;
-    }
-
-    // Result notch is gcd(NL, NR); scale each raw up to it before adding —
-    // lhs_widen = NL/Nresult, rhs_widen = NR/Nresult (exact, Nresult divides both).
-    // A continuous result (notch_of<result> == 0) has no widen (it takes the
-    // rational path), so 1 stands in.
-    static constexpr imax lhs_widen = (notch_of<result> == 0) ? imax{1}
-        : (notch_of<L> / notch_of<result>).value_or(rational{1}).Numerator;
-    static constexpr imax rhs_widen = (notch_of<result> == 0) ? imax{1}
-        : (notch_of<R> / notch_of<result>).value_or(rational{1}).Numerator;
-
     template <policy_flag F = none, typename E = empty_ref, typename A = no_action>
     static constexpr auto add(L lhs, R rhs, policy<F, E> policy = {}, A&& action = {}) -> return_t<F, A>
   {
@@ -5761,16 +5786,10 @@ namespace beman::inside::detail
       // grid point.)
       res = result::from_raw(raw_cast<result>(as_double(lhs) + as_double(rhs)));
     }
-    else if constexpr (wide_raw<L> || wide_raw<R> || wide_raw<result>)
-    {
-      // More than 2^64 slots on some side: add the exact values; the sum is a
-      // result-grid point by construction.
-      static_assert(!rational_raw<result>,
-        "addition: a wide-index operand with a continuous result is not supported yet");
-      res = exact_result<result>(exact_of(lhs) + exact_of(rhs));
-    }
     else if constexpr (rational_raw<result>)
     {
+      static_assert(!wide_raw<L> && !wide_raw<R>,
+        "addition: a wide-index operand with a continuous result is not supported yet");
       if constexpr (needs_overflow_check<F>)
       {
         auto sum = rational::add(lhs,rhs);
@@ -5782,42 +5801,27 @@ namespace beman::inside::detail
       else
         res = result::from_raw(rational::add_unchecked(lhs, rhs));
     }
-    else if constexpr (mixed_offset_ok)
+    else if constexpr (point_raw<result>)
+      res = result::from_raw(raw_t<result>{});        // point + point: a point
+    else if constexpr (integer_raw<L> && integer_raw<R>)
     {
-      // Mixed integer-aligned / notch-offset operands, pure integer offsets
-      // (see mixed_offset_ok above).
-      res = result::from_raw(raw_cast<result>(mixed_offset_units(lhs, lhs_widen)
-                                            + mixed_offset_units(rhs, rhs_widen)));
+      // Integer raws: add the value indices in result-notch units (the result
+      // notch is gcd(N_L, N_R), so it divides both), in imax or by wrapping
+      // arithmetic (wide_value.hpp). Exact for every grid, at any width.
+      using W = index_work_t<result, L, notch_of<result>, R, notch_of<result>>;
+      res = from_value_index<result>(value_in_units<W, notch_of<result>>(lhs)
+                                   + value_in_units<W, notch_of<result>>(rhs));
     }
-    else if constexpr (rational_raw<L> || rational_raw<R>
-                       || !((is_integer_aligned<L> && is_integer_aligned<R>
-                             && values_fit_imax<L> && values_fit_imax<R> && values_fit_imax<result>)
-                            || (index_raw<L> && index_raw<R>)))
+    else if constexpr (wide_raw<result>)
+      // An fp or rational operand into a result with more than 2^64 slots.
+      res = exact_result<result>(exact_of(lhs) + exact_of(rhs));
+    else
     {
-      // Rational store: a rational-raw operand, or a mix the integer fast
-      // paths can't express exactly (non-unit result notch numerator, or a
-      // slot count past imax). Compute the exact rational sum and convert to
-      // result's raw via raw_from_offset.
+      // An fp or rational operand into an integer result: the exact rational
+      // sum, converted to the result's raw.
       auto sum = rational::add_unchecked(lhs,rhs);
       res = result::from_raw(raw_from_offset<result>(
           ((sum - lower_of<result>) / notch_of<result>).value().Numerator));
-    }
-    else if constexpr (is_integer_aligned<L> && is_integer_aligned<R>
-                       && values_fit_imax<L> && values_fit_imax<R> && values_fit_imax<result>)
-    {
-      // Both operands are integer-valued (Notch and Lower integers), so the
-      // value-space add is exact.
-      from_value(res, to_value(lhs) + to_value(rhs));
-    }
-    else
-    {
-      // Both notch-offset: scale each raw to the result notch and add in offset
-      // space (offsets compose because result Lower = lower_of<L> + lower_of<R>).
-      // In umax: the offsets compose exactly mod 2^64 and the result offset
-      // fits the result's (≤ 64-bit) index space.
-      res = result::from_raw(raw_cast<result>(
-          static_cast<umax>(lhs.raw()) * static_cast<umax>(lhs_widen)
-        + static_cast<umax>(rhs.raw()) * static_cast<umax>(rhs_widen)));
     }
     return res;
   }
@@ -5880,6 +5884,11 @@ namespace beman::inside::detail
         && !rational_raw<result> && !fp_raw<result>
         && !wide_raw<X> && !wide_raw<result>;
 
+    // An operand's unit in the product grid (grid operator*): its notch, or
+    // |c| for a point c.
+    template <insidable X>
+    static constexpr rational unit_of = (lower_of<X> == upper_of<X>) ? abs(lower_of<X>) : notch_of<X>;
+
     template <bool Negate, insidable X>
     static constexpr result scale_by_point(X const& x)
     {
@@ -5900,20 +5909,14 @@ namespace beman::inside::detail
       // gate, so the double multiply is exact and on the result lattice.
       return result::from_raw(raw_cast<result>(as_double(lhs) * as_double(rhs)));
     }
-    else if constexpr (wide_raw<L> || wide_raw<R> || wide_raw<result>)
-    {
-      // More than 2^64 slots on some side: multiply the exact values; the
-      // product is a result-grid point by construction.
-      static_assert(!rational_raw<result>,
-        "multiplication: a wide-index operand with a continuous result is not supported yet");
-      return exact_result<result>(exact_of(lhs) * exact_of(rhs));
-    }
     else if constexpr (point_scale<R, L>)
       return scale_by_point<(lower_of<R> < 0)>(lhs);
     else if constexpr (point_scale<L, R>)
       return scale_by_point<(lower_of<L> < 0)>(rhs);
     else if constexpr (rational_raw<result>)
     {
+      static_assert(!wide_raw<L> && !wide_raw<R>,
+        "multiplication: a wide-index operand with a continuous result is not supported yet");
       if constexpr (needs_overflow_check<policy_flags_of<plain_t<P>>>)
       {
         auto prod = as_rational(lhs) * as_rational(rhs);
@@ -5926,76 +5929,32 @@ namespace beman::inside::detail
         return result::from_raw(raw_cast<result>(rational::mul_unchecked(
             as_rational(lhs), as_rational(rhs))));
     }
-    else if constexpr (is_integer_aligned<L> && is_integer_aligned<R> && is_integer_aligned<result>
-                       && values_fit_imax<L> && values_fit_imax<R> && values_fit_imax<result>)
+    else if constexpr (point_raw<result>)
+      return result::from_raw(raw_t<result>{});     // a product with 0: the point 0
+    else if constexpr (integer_raw<L> && integer_raw<R>)
     {
-      result res;
-      from_value(res, to_value(lhs) * to_value(rhs));
-      return res;
+      // Integer raws: multiply the operands' values in their own units, in
+      // imax or by wrapping arithmetic (wide_value.hpp). The product notch is the product
+      // of those units (a notch, or |c| for a point c), so the product of the
+      // unit counts is the result's value index — exact for every grid and
+      // sign, at any width.
+      using W = index_work_t<result, L, unit_of<L>, R, unit_of<R>>;
+      static_assert(exact_quotient((unit_of<L> * unit_of<R>).value(), notch_of<result>) == grid_wide{1},
+        "multiplication: the product notch is the product of the operand units");
+      return from_value_index<result>(value_in_units<W, unit_of<L>>(lhs)
+                                    * value_in_units<W, unit_of<R>>(rhs));
     }
-    else if constexpr (fp_raw<L> || fp_raw<R> || rational_raw<L> || rational_raw<R>)
+    else if constexpr (wide_raw<result>)
+      // An fp or rational operand into a result with more than 2^64 slots.
+      return exact_result<result>(exact_of(lhs) * exact_of(rhs));
+    else
     {
-      // An operand whose raw is a double/rational can't feed the integer
-      // four-quadrant formula below (it reads the raw as an integer offset).
-      // Combine exactly as rationals and convert to the result's storage —
-      // mirrors addition's rational-mixed branch. Reached when `f64` was
-      // dropped from the result (grid not double-exact) but operands stay f64.
+      // An fp or rational operand into an integer result (reached when `f64`
+      // was dropped from a result grid that is not double-exact): the exact
+      // rational product, converted to the result's raw.
       auto prod = rational::mul_unchecked(as_rational(lhs), as_rational(rhs));
       return result::from_raw(raw_from_offset<result>(
           ((prod - lower_of<result>) / notch_of<result>).value().Numerator));
-    }
-    else
-    {
-      // Result writes go through raw_from_offset so direct-storage results
-      // get lower_of<result> added back to recover the value.
-      auto to_result = [](auto raw_offset)
-      { return result::from_raw(raw_from_offset<result>(static_cast<umax>(raw_offset))); };
-
-      // Normalize lhs.raw() / rhs.raw() to *offsets* regardless of L's / R's
-      // storage shape. The formulas below all assume offset arithmetic.
-      umax lhs_offset = !index_raw<L>
-          ? static_cast<umax>(lhs.raw()) - static_cast<umax>(raw_lo<L>)
-          : static_cast<umax>(lhs.raw());
-      umax rhs_offset = !index_raw<R>
-          ? static_cast<umax>(rhs.raw()) - static_cast<umax>(raw_lo<R>)
-          : static_cast<umax>(rhs.raw());
-
-      // Absolute notch index of each operand endpoint (Lower/Notch, Upper/Notch).
-      constexpr umax idxLoL = (lower_of<L>/notch_of<L>).value_or(rational{0}).Numerator;
-      constexpr umax idxLoR = (lower_of<R>/notch_of<R>).value_or(rational{0}).Numerator;
-      constexpr umax idxHiL = (upper_of<L>/notch_of<L>).value_or(rational{0}).Numerator;
-
-      // Integral promotion would make `raw * raw` an `int * int` (UB above
-      // INT_MAX), so cast to umax to multiply in 64-bit unsigned space. The four
-      // branches cover the sign quadrants: lower_of<result> is one of the four
-      // corner products; sign-flipped helpers (negative_t<L>/<R>) reduce each to
-      // the all-positive formula. The static_assert guards the case analysis.
-      if constexpr (lower_of<result> == (lower_of<L> * lower_of<R>).value())
-      {
-        return to_result(lhs_offset * rhs_offset
-                         + lhs_offset * idxLoR
-                         + rhs_offset * idxLoL);
-      }
-
-      if constexpr (lower_of<result> == (upper_of<L> * upper_of<R>).value())
-      { return multiplication<negative_t<L>, negative_t<R>>::mul(-lhs, -rhs, std::forward<P>(policy)); }
-
-      if constexpr (lower_of<result> == (upper_of<L> * lower_of<R>).value())
-      {
-        umax negLhs = max_index_v<L> - lhs_offset;
-        return to_result(negLhs * idxLoR
-                         + rhs_offset * idxHiL
-                         - negLhs * rhs_offset);
-      }
-
-      if constexpr (lower_of<result> == (lower_of<L> * upper_of<R>).value())
-      { return -multiplication<L, negative_t<R>>::mul(lhs, -rhs, std::forward<P>(policy)); }
-
-      static_assert(lower_of<result> == (lower_of<L> * lower_of<R>).value()
-                 || lower_of<result> == (upper_of<L> * upper_of<R>).value()
-                 || lower_of<result> == (upper_of<L> * lower_of<R>).value()
-                 || lower_of<result> == (lower_of<L> * upper_of<R>).value(),
-                 "multiplication: internal logic error");
     }
   }
   };

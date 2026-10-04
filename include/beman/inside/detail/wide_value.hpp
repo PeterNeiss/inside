@@ -129,6 +129,82 @@ namespace beman::inside::detail
       return static_cast<raw_t<L>>(index + exact_int{slot_base<L>});
   }
 
+  //---------------------------------------------------------------------------
+  // Wrapping value-index arithmetic — the integer path of + and ×.
+  //
+  // wrap_work_t<Result> is unsigned and as wide as Result's raw (at least 64
+  // bits). + − × wrap modulo 2^bits, so any expression whose true value is a
+  // Result raw comes out exact, however far its intermediates wrapped. Each
+  // operand enters as its value index J = value/Notch (an index raw plus
+  // Lower/Notch, a value raw as is — value storage has notch 1).
+  //---------------------------------------------------------------------------
+  template <insidable Result>
+  using wrap_work_t = std::conditional_t<wide_raw<Result>, raw_t<Result>, umax>;
+
+  // An operand's value-index range in `Unit`s: Lower/Unit .. Upper/Unit.
+  template <insidable X, rational Unit>
+  inline constexpr grid_wide units_lo = exact_quotient(lower_of<X>, Unit);
+  template <insidable X, rational Unit>
+  inline constexpr grid_wide units_hi = exact_quotient(upper_of<X>, Unit);
+
+  // The work type of an integer + or ×: signed imax when every value index
+  // involved (each operand in its unit, the result in its notch, and the
+  // result's slot offsets) provably fits — then nothing wraps, and the
+  // compiler keeps the value ranges, as the builtin paths always did — else
+  // the wrapping type.
+  template <insidable Result, insidable L, rational UL, insidable R, rational UR>
+  using index_work_t = std::conditional_t<
+      signed_value_bits_of({units_lo<L, UL>, units_hi<L, UL>, units_lo<R, UR>, units_hi<R, UR>,
+                            units_lo<Result, notch_of<Result>>, units_hi<Result, notch_of<Result>>,
+                            grid_of<Result>.slot_count()}) <= 63,
+      imax, wrap_work_t<Result>>;
+
+  // Integer raws: neither fp nor rational (a point's empty raw counts).
+  template <insidable B>
+  inline constexpr bool integer_raw = !fp_raw<B> && !rational_raw<B>;
+
+  // a / b for grid numbers, known at compile time to be an integer.
+  constexpr grid_wide exact_quotient(rational const& a, rational const& b) noexcept
+  { return wide_numerator(a) * wide_denominator(b) / (wide_denominator(a) * wide_numerator(b)); }
+
+  template <typename W, insidable X>
+  constexpr W value_index(X const& x) noexcept
+  {
+    if constexpr (index_raw<X>)
+      return static_cast<W>(slot_base<X>) + static_cast<W>(x.raw());
+    else
+      return static_cast<W>(x.raw());
+  }
+
+  // x's value in units of the notch `unit` (an integer: the unit divides
+  // x's notch, or x's value for a point).
+  template <typename W, rational Unit, insidable X>
+  constexpr W value_in_units(X const& x) noexcept
+  {
+    // A point (Lower == Upper) holds its value in the type — even under a
+    // width flag, whose raw stores it again.
+    if constexpr (lower_of<X> == upper_of<X>)
+      return static_cast<W>(exact_quotient(lower_of<X>, Unit));
+    else
+    {
+      constexpr grid_wide scale = exact_quotient(notch_of<X>, Unit);
+      if constexpr (scale == grid_wide{1}) return value_index<W>(x);
+      else                                 return value_index<W>(x) * static_cast<W>(scale);
+    }
+  }
+
+  // The Result whose value index is j (taken modulo 2^bits).
+  template <insidable Result, typename W>
+  constexpr Result from_value_index(W const& j) noexcept
+  {
+    if constexpr (point_raw<Result>)
+      return Result::from_raw(raw_t<Result>{});
+    else if constexpr (index_raw<Result>)
+      return Result::from_raw(static_cast<raw_t<Result>>(j - static_cast<W>(slot_base<Result>)));
+    else
+      return Result::from_raw(static_cast<raw_t<Result>>(j));
+  }
+
   // Exact result of grid arithmetic: the value is on the result lattice and
   // inside its interval by construction, so it maps straight to a raw.
   template <insidable Result>

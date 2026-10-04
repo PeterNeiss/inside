@@ -147,27 +147,25 @@ TEST(CrossGridTest, regression_fractional_plus_integer_direct_keeps_the_fraction
 }
 
 //---------------------------------------------------------------------------
-// 2026-07 Tier-3 fast paths: pin that the integer folds stay engaged for the
-// shapes they were built for — and stay OUT of the fp-raw shapes (a double
-// raw has no integer offset; f64_exact.test.cpp caught exactly that during
-// development).
+// Integer-raw sums of mixed grids stay on integer storage (the wrapping
+// value-index path), and fp-backed operands stay off it (a double raw has no
+// integer index; f64_exact.test.cpp caught exactly that during development).
 //---------------------------------------------------------------------------
-// tier-3 integer fast paths stay engaged (and fp stays excluded)
-TEST(CrossGridTest, tier_3_integer_fast_paths_stay_engaged_and_fp_stays_excluded)
+TEST(CrossGridTest, integer_paths_stay_engaged_and_fp_stays_excluded)
 {
   using whole    = inside<{0, 100}>;
   using quarters = inside<{{0, 1}, per<4>}>;
-  static_assert(detail::addition<whole, quarters>::mixed_offset_ok);
+  static_assert(!detail::rational_raw<decltype(whole{} + quarters{})>);
+  static_assert(whole{3} + quarters{0.75} == 3.75);
 
   using tenths       = inside<{{0, 100}, per<10>}>;
   using quarter_grid = inside<{{0, 100}, per<4>}, round_nearest>;
   static_assert(detail::assignment<quarter_grid, tenths>::affine_map.Ok);
 
-  // fp-backed operands must not take the integer offset path.
+  // fp-backed operands: the sum is exact either way.
   using coarse_real = inside<{{0, (umax{1} << 40)}, per<2>}, f64>;
   using fine_real   = inside<{{0, 1}, per<(1u << 20)>}, f64>;
-  if constexpr (detail::fp_raw<coarse_real>)
-    static_assert(!(detail::addition<coarse_real, fine_real>::mixed_offset_ok));
+  EXPECT_TRUE(coarse_real{1.5} + fine_real{0.25} == 1.75);
 
   // value check across a negative Lower, at compile time (constexpr path).
   using signed_whole = inside<{-50, 50}>;
