@@ -41,8 +41,23 @@ using fstep = inside<{{-5, 5}, 0.5}>;    // Raw: uint8_t (20 steps, offset encod
 
 **Exact-fraction storage** — when `Notch == 0`, `Raw` becomes the internal
 exact-fraction representation (`beman::inside::detail::rational`). This happens for grids
-with `Notch == 0`, division results, and single-value grids. You never name
-that type; you read the value back out with `numerator()` / `denominator()`.
+with `Notch == 0` and exact division results. You never name that type; you
+read the value back out with `numerator()` / `denominator()`.
+
+**No storage for a point** — a single-value grid (`Lower == Upper`: `just<…>`,
+`5_ins`, `zero`, `one`, `math::pi`) holds its value in the type, so its raw is
+empty: `sizeof(5_ins) == 1` (the C++ minimum for a complete object), and a
+point stored as a `[[no_unique_address]]` member of your own struct takes no
+space at all. An integer-valued point counts as integer storage, so it takes
+the native integer paths (`a % 5_ins`, `a / 5_ins` under `snap`).
+
+```cpp
+struct voice {
+  [[no_unique_address]] decltype(just<440>) pitch;   // 0 bytes
+  std::uint32_t frames;
+};
+static_assert(sizeof(voice) == 4);
+```
 
 ```cpp
 using ratio = inside<{{-10, 10}, 0}>;    // Raw: exact-fraction representation

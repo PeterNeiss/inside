@@ -451,3 +451,30 @@ TEST(ConsistencyTest, predicates_round_before_the_range_check)
   EXPECT_TRUE(conversion_overflows<strict>(9.5));
   EXPECT_FALSE(conversion_rounds<strict>(9.5));
 }
+
+// A point inside's value is its type: its raw is empty (1 byte standalone, 0 as
+// a [[no_unique_address]] member), and an integer point is integer-stored, so
+// `%` and snap `/` with a literal take the native integer paths.
+namespace { struct with_point { [[no_unique_address]] decltype(just<440>) Pitch; std::uint32_t Frames; }; }
+
+TEST(ConsistencyTest, point_insides_store_nothing)
+{
+  static_assert(sizeof(5_ins) == 1);
+  static_assert(sizeof(with_point) == sizeof(std::uint32_t));
+  static_assert(std::is_same_v<decltype(5_ins)::raw_type, point_slot>);
+  static_assert(std::is_same_v<decltype(just<frac<1, 3>>)::raw_type, point_slot>);
+  static_assert(inside_assignable<inside<{{0, 9}, 3}>, decltype(3_ins)>);
+  static_assert(!inside_assignable<inside<{{0, 9}, 3}>, decltype(1_ins)>);
+
+  using val = inside<{0, 100}, snap>;
+  auto r = val{17} % 5_ins;                       // divisor excludes 0: plain
+  static_assert(!is_expected_v<decltype(r)>);
+  static_assert(grid_of<decltype(r)> == grid{0, 4});
+  EXPECT_EQ(rational{r}, q(2));
+  auto d = val{17} / 5_ins;
+  static_assert(!is_expected_v<decltype(d)>);
+  EXPECT_EQ(rational{d}, q(3));
+  EXPECT_EQ(rational{-5_ins}, q(-5));
+  EXPECT_EQ((rational{just<frac<1, 3>>}), q(1, 3));
+  EXPECT_EQ((rational{val{17} * just<frac<1, 2>>}), q(17, 2));
+}

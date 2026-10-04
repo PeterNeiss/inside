@@ -136,9 +136,13 @@ namespace beman::inside
     template <insidable B>
     inline constexpr bool rational_raw = std::is_same_v<raw_t<B>, rational>;
 
+    // point_raw — a point grid's empty raw (point_slot): index storage at slot 0.
+    template <insidable B>
+    inline constexpr bool point_raw = std::is_same_v<raw_t<B>, point_slot>;
+
     template <insidable B>
     inline constexpr bool value_raw =
-         !fp_raw<B> && !rational_raw<B>
+         !fp_raw<B> && !rational_raw<B> && !point_raw<B>
       && ((policy_of<B> & direct) == direct
           // A pinned width flag without `indexed` is value storage (raw == value)
           // regardless of Lower's sign — storage_pick checked the range fits.
@@ -159,7 +163,9 @@ namespace beman::inside
     template <insidable B>
     [[nodiscard]] constexpr double as_double(B const& b) noexcept
     {
-      if constexpr (!index_raw<B>)
+      if constexpr (point_raw<B>)
+        return static_cast<double>(lower_of<B>);
+      else if constexpr (!index_raw<B>)
         return static_cast<double>(b.raw());
       else
         return static_cast<double>((*(b.raw() * notch_of<B>) + lower_of<B>).value());
@@ -591,12 +597,22 @@ namespace beman::inside
     // Forward decl — defined in assignment.hpp
     template <typename L, typename R> struct assignment;
 
-    // A single-point source (Lower == Upper) carries one value, so the only
-    // question is whether it lands on L's grid — admitting e.g. `3_ins` into
-    // `{{0,9},3}` while rejecting `1_ins` and out-of-range points.
+    // A single-point source (Lower == Upper) carries one value, so its notch
+    // question is only whether that value lies on L's lattice — admitting
+    // `3_ins` into `{{0,9},3}` while rejecting `1_ins`. (Range is the interval
+    // check's job, so clamp/wrap still take an out-of-range point.) The raw
+    // Factor says nothing here: a point's notch is 0.
     template <typename L, typename R>
-    inline constexpr bool point_exactly_assignable =
-      (lower_of<R> == upper_of<R>) && grid_of<L>.representable(lower_of<R>);
+    inline constexpr bool point_on_lattice =
+      notch_of<L> == 0
+      || abs_den(((lower_of<R> - lower_of<L>).value() / notch_of<L>).value().Denominator) == 1;
+
+    // The notch half of inside_assignable for an insidable R.
+    template <typename L, typename R>
+    inline constexpr bool notches_compatible = [] {
+      if constexpr (lower_of<R> == upper_of<R>) return point_on_lattice<L, R>;
+      else return abs_den(assignment<L, R>::Factor.Denominator) == 1;
+    }();
 
     // Tail of the policy cascade: checked reports.
     // Returns true if a policy handled the failure (caller should return).
@@ -626,9 +642,7 @@ namespace beman::inside
 
     template <typename L, typename R, policy_flag P>
     concept assign_notch_ok =
-      !insidable<R> || abs_den(assignment<L, R>::Factor.Denominator) == 1
-      || ((policy_of<L> | P) & snap) != 0
-      || point_exactly_assignable<L, R>;
+      !insidable<R> || ((policy_of<L> | P) & snap) != 0 || notches_compatible<L, R>;
   } // namespace detail
 
   // Compile-time prerequisites for L = R, gating three failure modes at the call

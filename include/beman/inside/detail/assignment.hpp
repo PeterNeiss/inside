@@ -655,6 +655,8 @@ namespace beman::inside::detail
           return rational{0};
         else if constexpr (rational_raw<R>)
           return (rational{1}/notch_of<L>).value();
+        else if constexpr (point_raw<R>)
+          return rational{0};          // raw is always 0: the mapping is Offset alone
         else
           return (notch_of<R>/notch_of<L>).value();
       }
@@ -883,8 +885,7 @@ namespace beman::inside::detail
         static_assert(has_policy<L, P, wrap> || has_policy<L, P, clamp>
                       || not excludes(interval_of<L>, interval_of<R>),
           "rhs interval lies entirely outside lhs interval and the policy cannot bring it into range");
-        static_assert(abs_den(Factor.Denominator) == 1 || has_policy<L, P, snap>
-                      || point_exactly_assignable<L, R>,
+        static_assert(notches_compatible<L, R> || has_policy<L, P, snap>,
           "incompatible notches: use with_snap() or policy<snap>() to allow rounding");
 
         // A `f64` source holds its value as a double raw, which the raw-mapping

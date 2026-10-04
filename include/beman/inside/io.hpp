@@ -161,6 +161,7 @@ namespace beman::inside
       if constexpr (std::is_same_v<T, std::int32_t>)  return "int32_t";
       if constexpr (std::is_same_v<T, std::int64_t>)  return "int64_t";
       if constexpr (std::is_same_v<T, rational>) return "rational";
+      if constexpr (std::is_same_v<T, point_slot>) return "point";
       return "unknown";
     }
   } // namespace detail

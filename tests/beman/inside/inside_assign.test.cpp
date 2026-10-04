@@ -275,7 +275,7 @@ TEST(InsideAssignTest, type_alias_smoke_checks)
   using test5_t = inside<{1_r}>;
   static_assert(std::is_same_v<test0_t::raw_type, std::uint8_t>);
   static_assert(std::is_same_v<test4_t::raw_type, std::uint64_t>);
-  static_assert(std::is_same_v<test5_t::raw_type, rational>);
+  static_assert(std::is_same_v<test5_t::raw_type, detail::point_slot>);   // a point stores nothing
 }
 
 // integer rhs into non-integer-interval inside

@@ -332,11 +332,12 @@ and a plain inside when R's grid excludes zero:
 ```cpp
 using pos = inside<{1, 10}, snap>;
 auto r2 = a % pos{5};   // inside<{0, 9}>, value 2 — no expected
+auto r3 = a % 5_ins;    // inside<{0, 4}>, value 2 — a literal divisor, no expected
 ```
 
-Both operands need integer storage. A point literal such as `5_ins` stores
-its value as a `rational`, so `a % 5_ins` is ill-formed; give the divisor a
-range (`pos{5}`).
+An integer literal is an integer-valued point, so `a % 5_ins` and, under
+`snap`, `a / 5_ins` take the native integer paths. A non-integer point
+(`0.5_ins`) is rejected by `%` like any non-integer grid.
 
 ## Bulk reduction: `beman::inside::sum<Target>(range)`
 
@@ -370,13 +371,12 @@ same lane count as native `uint8_t`:
 
 ```cpp
 using pct = inside<{0, 100}, clamp | snap>;
-using d10 = inside<{1, 10}>;
 pct x{50};
 x += 30_ins;        // x == 80
 x -= 10_ins;        // x == 70
 x *= 2_ins;         // x == 100 (clamped)
 x /= 3_ins;         // x == 33  (snap truncates 100/3)
-x %= d10{10};       // x == 3   (% needs snap and an integer-stored divisor)
+x %= 10_ins;        // x == 3   (% needs snap)
 
 ++x;                // x == 4
 x--;                // x == 3

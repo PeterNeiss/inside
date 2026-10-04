@@ -2120,19 +2120,40 @@ namespace beman::inside
   }
   }
 
-  // Smallest raw type holding every reachable index in G. Order: notch-zero →
-  // rational (no integer index space); index count too large for any integer →
+  // Raw of a point grid (Lower == Upper): its value lives in the type, so the
+  // raw is empty. It acts as index slot 0 — constructible from any index,
+  // converting to integer 0 — so the index-storage decode (Lower + raw·Notch)
+  // yields the point's value without special cases. Declared
+  // [[no_unique_address]] in inside, a point member of another struct (also
+  // marked [[no_unique_address]]) takes no space.
+  namespace detail
+  {
+  struct point_slot
+  {
+    constexpr point_slot() = default;
+    template <typename T> requires std::is_arithmetic_v<T>
+    constexpr point_slot(T) noexcept {}                     // any index: the only slot
+    constexpr point_slot(rational const&) noexcept {}       // any value: the type holds it
+    constexpr operator imax() const noexcept { return 0; }   // reads as index 0
+    constexpr bool operator==(point_slot const&) const = default;
+    constexpr auto operator<=>(point_slot const&) const = default;
+  };
+  }
+
+  // Smallest raw type holding every reachable index in G. Order: point →
+  // empty point_slot; notch-zero → rational (no integer index space); index count too large for any integer →
   // rational (store the value's fraction directly, no index); signed-direct fits
   // Lower < 0 with notch 1; unsigned-offset (max_index slots) otherwise.
   namespace detail
   {
   template <grid G>
   using storage_min_t =
+    std::conditional_t<(G.Interval.Lower == G.Interval.Upper), point_slot,
     std::conditional_t<(G.Notch == 0), detail::rational,
     std::conditional_t<(!G.max_index_representable()), detail::rational,
     std::conditional_t<(G.Interval.Lower < 0 && G.Notch == 1),
       smallest_int_for_t<trunc(G.Interval.Lower), trunc(G.Interval.Upper)>,
-      smallest_uint_for_t<G.max_index()>>>>;
+      smallest_uint_for_t<G.max_index()>>>>>;
 
   // Dyadic grid: power-of-2 notch denominator and Lower denominator, so every
   // on-grid value is exactly representable in IEEE-754 `double`. Precondition
@@ -2262,7 +2283,11 @@ namespace beman::inside
   template <grid G, policy_flag P>
   constexpr auto storage_pick()
   {
-    if constexpr (has_flag(P, exact))
+    // A point's value is its type: empty raw whatever the representation flag,
+    // unless a width flag pins a wire layout.
+    if constexpr (G.Interval.Lower == G.Interval.Upper && !has_width_flag(P))
+      return point_slot{};
+    else if constexpr (has_flag(P, exact))
       return detail::rational{};
 #ifndef BEMAN_INSIDE_MATH_NO_FP
     else if constexpr (has_flag(P, f64)
@@ -2560,9 +2585,13 @@ namespace beman::inside
     template <insidable B>
     inline constexpr bool rational_raw = std::is_same_v<raw_t<B>, rational>;
 
+    // point_raw — a point grid's empty raw (point_slot): index storage at slot 0.
+    template <insidable B>
+    inline constexpr bool point_raw = std::is_same_v<raw_t<B>, point_slot>;
+
     template <insidable B>
     inline constexpr bool value_raw =
-         !fp_raw<B> && !rational_raw<B>
+         !fp_raw<B> && !rational_raw<B> && !point_raw<B>
       && ((policy_of<B> & direct) == direct
           // A pinned width flag without `indexed` is value storage (raw == value)
           // regardless of Lower's sign — storage_pick checked the range fits.
@@ -2583,7 +2612,9 @@ namespace beman::inside
     template <insidable B>
     [[nodiscard]] constexpr double as_double(B const& b) noexcept
     {
-      if constexpr (!index_raw<B>)
+      if constexpr (point_raw<B>)
+        return static_cast<double>(lower_of<B>);
+      else if constexpr (!index_raw<B>)
         return static_cast<double>(b.raw());
       else
         return static_cast<double>((*(b.raw() * notch_of<B>) + lower_of<B>).value());
@@ -3015,12 +3046,22 @@ namespace beman::inside
     // Forward decl — defined in assignment.hpp
     template <typename L, typename R> struct assignment;
 
-    // A single-point source (Lower == Upper) carries one value, so the only
-    // question is whether it lands on L's grid — admitting e.g. `3_ins` into
-    // `{{0,9},3}` while rejecting `1_ins` and out-of-range points.
+    // A single-point source (Lower == Upper) carries one value, so its notch
+    // question is only whether that value lies on L's lattice — admitting
+    // `3_ins` into `{{0,9},3}` while rejecting `1_ins`. (Range is the interval
+    // check's job, so clamp/wrap still take an out-of-range point.) The raw
+    // Factor says nothing here: a point's notch is 0.
     template <typename L, typename R>
-    inline constexpr bool point_exactly_assignable =
-      (lower_of<R> == upper_of<R>) && grid_of<L>.representable(lower_of<R>);
+    inline constexpr bool point_on_lattice =
+      notch_of<L> == 0
+      || abs_den(((lower_of<R> - lower_of<L>).value() / notch_of<L>).value().Denominator) == 1;
+
+    // The notch half of inside_assignable for an insidable R.
+    template <typename L, typename R>
+    inline constexpr bool notches_compatible = [] {
+      if constexpr (lower_of<R> == upper_of<R>) return point_on_lattice<L, R>;
+      else return abs_den(assignment<L, R>::Factor.Denominator) == 1;
+    }();
 
     // Tail of the policy cascade: checked reports.
     // Returns true if a policy handled the failure (caller should return).
@@ -3050,9 +3091,7 @@ namespace beman::inside
 
     template <typename L, typename R, policy_flag P>
     concept assign_notch_ok =
-      !insidable<R> || abs_den(assignment<L, R>::Factor.Denominator) == 1
-      || ((policy_of<L> | P) & snap) != 0
-      || point_exactly_assignable<L, R>;
+      !insidable<R> || ((policy_of<L> | P) & snap) != 0 || notches_compatible<L, R>;
   } // namespace detail
 
   // Compile-time prerequisites for L = R, gating three failure modes at the call
@@ -3762,6 +3801,8 @@ namespace beman::inside::detail
           return rational{0};
         else if constexpr (rational_raw<R>)
           return (rational{1}/notch_of<L>).value();
+        else if constexpr (point_raw<R>)
+          return rational{0};          // raw is always 0: the mapping is Offset alone
         else
           return (notch_of<R>/notch_of<L>).value();
       }
@@ -3990,8 +4031,7 @@ namespace beman::inside::detail
         static_assert(has_policy<L, P, wrap> || has_policy<L, P, clamp>
                       || not excludes(interval_of<L>, interval_of<R>),
           "rhs interval lies entirely outside lhs interval and the policy cannot bring it into range");
-        static_assert(abs_den(Factor.Denominator) == 1 || has_policy<L, P, snap>
-                      || point_exactly_assignable<L, R>,
+        static_assert(notches_compatible<L, R> || has_policy<L, P, snap>,
           "incompatible notches: use with_snap() or policy<snap>() to allow rounding");
 
         // A `f64` source holds its value as a double raw, which the raw-mapping
@@ -5225,7 +5265,7 @@ namespace beman::inside
     using raw_type = detail::storage_for_t<G, P>;
 
     private:
-    raw_type Raw;
+    [[no_unique_address]] raw_type Raw;   // empty for a point grid
 
     public:
     // raw() — access escape hatch, symmetric with `from_raw`. Read overload
@@ -5440,17 +5480,15 @@ namespace beman::inside
     {
       if constexpr (G.Interval.Lower == G.Interval.Upper)
         return G.Interval.Lower;
-
-      if constexpr (!detail::index_raw<inside>)
+      else if constexpr (!detail::index_raw<inside>)
         return Raw;
-
       // Q-format-with-integer-Lower fast path skips the generic path's three
       // rational ops. Falls through to the rational path when the raw is too wide
       // to widen safely (e.g. uint64 from a Q16.16 × Q16.16 result type).
-      if constexpr (detail::has_qformat_fast_path<inside>)
+      else if constexpr (detail::has_qformat_fast_path<inside>)
         return detail::q_format_decode(*this);
-
-      return (*(Raw * G.Notch) + G.Interval.Lower).value();
+      else
+        return (*(Raw * G.Notch) + G.Interval.Lower).value();
     }
 
     // to<T>() — typed-error scalar extraction (mirrors rational::to<T>, extended
@@ -5534,7 +5572,9 @@ namespace beman::inside
     [[nodiscard]] constexpr negative operator-() const
     {
       negative neg;
-      if constexpr (detail::fp_raw<inside>)
+      if constexpr (detail::point_raw<inside>)
+        neg = negative::from_raw({});                  // −point is a point: no raw
+      else if constexpr (detail::fp_raw<inside>)
         neg = negative::from_raw(-Raw);
       else if constexpr (detail::rational_raw<inside>)
         neg = negative::from_raw(-(Raw));
@@ -9754,6 +9794,7 @@ namespace beman::inside
       if constexpr (std::is_same_v<T, std::int32_t>)  return "int32_t";
       if constexpr (std::is_same_v<T, std::int64_t>)  return "int64_t";
       if constexpr (std::is_same_v<T, rational>) return "rational";
+      if constexpr (std::is_same_v<T, point_slot>) return "point";
       return "unknown";
     }
   } // namespace detail

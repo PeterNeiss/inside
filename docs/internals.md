@@ -58,6 +58,8 @@ default. `storage_pick<G, P>` (`include/beman/inside/grid.hpp`) resolves the fla
 operand policies, and the widest representation present wins:
 
 ```text
+  Lower == Upper (point), no width flag ▶  empty raw      (value lives in the type; reads as
+       │ no                                               index 0, so value = Lower)
   exact in P ──────────────────────────▶  rational raw   (raw IS the value, exact fraction)
        │ no
   f64 in P AND double_exact grid ──────▶  double raw     (raw IS the value; default engine
@@ -93,7 +95,7 @@ also consults the policy, mirroring `storage_pick` exactly):
 | `rational_raw<B>` | raw IS the value, as an exact fraction |
 | `fp_raw<B>`       | raw IS the value, as an IEEE-754 `double` or `float` (`f64_raw` / `f32_raw`) |
 | `value_raw<B>`    | raw IS the value, as a plain integer |
-| `index_raw<B>`    | raw is a 0-based notch index; value = Lower + raw·Notch |
+| `index_raw<B>`    | raw is a 0-based notch index; value = Lower + raw·Notch. Includes `point_raw<B>`: a point's empty `point_slot` raw, which reads as index 0 |
 
 The common query `!index_raw<B>` means "raw is the value" (any of the first
 three). Note the decode direction must dispatch on the **encoding, not the

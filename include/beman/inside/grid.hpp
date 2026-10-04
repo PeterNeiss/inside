@@ -159,19 +159,40 @@ namespace beman::inside
   }
   }
 
-  // Smallest raw type holding every reachable index in G. Order: notch-zero →
-  // rational (no integer index space); index count too large for any integer →
+  // Raw of a point grid (Lower == Upper): its value lives in the type, so the
+  // raw is empty. It acts as index slot 0 — constructible from any index,
+  // converting to integer 0 — so the index-storage decode (Lower + raw·Notch)
+  // yields the point's value without special cases. Declared
+  // [[no_unique_address]] in inside, a point member of another struct (also
+  // marked [[no_unique_address]]) takes no space.
+  namespace detail
+  {
+  struct point_slot
+  {
+    constexpr point_slot() = default;
+    template <typename T> requires std::is_arithmetic_v<T>
+    constexpr point_slot(T) noexcept {}                     // any index: the only slot
+    constexpr point_slot(rational const&) noexcept {}       // any value: the type holds it
+    constexpr operator imax() const noexcept { return 0; }   // reads as index 0
+    constexpr bool operator==(point_slot const&) const = default;
+    constexpr auto operator<=>(point_slot const&) const = default;
+  };
+  }
+
+  // Smallest raw type holding every reachable index in G. Order: point →
+  // empty point_slot; notch-zero → rational (no integer index space); index count too large for any integer →
   // rational (store the value's fraction directly, no index); signed-direct fits
   // Lower < 0 with notch 1; unsigned-offset (max_index slots) otherwise.
   namespace detail
   {
   template <grid G>
   using storage_min_t =
+    std::conditional_t<(G.Interval.Lower == G.Interval.Upper), point_slot,
     std::conditional_t<(G.Notch == 0), detail::rational,
     std::conditional_t<(!G.max_index_representable()), detail::rational,
     std::conditional_t<(G.Interval.Lower < 0 && G.Notch == 1),
       smallest_int_for_t<trunc(G.Interval.Lower), trunc(G.Interval.Upper)>,
-      smallest_uint_for_t<G.max_index()>>>>;
+      smallest_uint_for_t<G.max_index()>>>>>;
 
   // Dyadic grid: power-of-2 notch denominator and Lower denominator, so every
   // on-grid value is exactly representable in IEEE-754 `double`. Precondition
@@ -301,7 +322,11 @@ namespace beman::inside
   template <grid G, policy_flag P>
   constexpr auto storage_pick()
   {
-    if constexpr (has_flag(P, exact))
+    // A point's value is its type: empty raw whatever the representation flag,
+    // unless a width flag pins a wire layout.
+    if constexpr (G.Interval.Lower == G.Interval.Upper && !has_width_flag(P))
+      return point_slot{};
+    else if constexpr (has_flag(P, exact))
       return detail::rational{};
 #ifndef BEMAN_INSIDE_MATH_NO_FP
     else if constexpr (has_flag(P, f64)

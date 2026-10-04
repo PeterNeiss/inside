@@ -90,7 +90,7 @@ namespace beman::inside
     using raw_type = detail::storage_for_t<G, P>;
 
     private:
-    raw_type Raw;
+    [[no_unique_address]] raw_type Raw;   // empty for a point grid
 
     public:
     // raw() — access escape hatch, symmetric with `from_raw`. Read overload
@@ -305,17 +305,15 @@ namespace beman::inside
     {
       if constexpr (G.Interval.Lower == G.Interval.Upper)
         return G.Interval.Lower;
-
-      if constexpr (!detail::index_raw<inside>)
+      else if constexpr (!detail::index_raw<inside>)
         return Raw;
-
       // Q-format-with-integer-Lower fast path skips the generic path's three
       // rational ops. Falls through to the rational path when the raw is too wide
       // to widen safely (e.g. uint64 from a Q16.16 × Q16.16 result type).
-      if constexpr (detail::has_qformat_fast_path<inside>)
+      else if constexpr (detail::has_qformat_fast_path<inside>)
         return detail::q_format_decode(*this);
-
-      return (*(Raw * G.Notch) + G.Interval.Lower).value();
+      else
+        return (*(Raw * G.Notch) + G.Interval.Lower).value();
     }
 
     // to<T>() — typed-error scalar extraction (mirrors rational::to<T>, extended
@@ -399,7 +397,9 @@ namespace beman::inside
     [[nodiscard]] constexpr negative operator-() const
     {
       negative neg;
-      if constexpr (detail::fp_raw<inside>)
+      if constexpr (detail::point_raw<inside>)
+        neg = negative::from_raw({});                  // −point is a point: no raw
+      else if constexpr (detail::fp_raw<inside>)
         neg = negative::from_raw(-Raw);
       else if constexpr (detail::rational_raw<inside>)
         neg = negative::from_raw(-(Raw));
