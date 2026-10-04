@@ -200,6 +200,35 @@ other representation flags.
 `math::pi` and `math::two_pi` are point insides (`just<…>`), so they compose
 directly in inside-space: `angle * math::two_pi`.
 
+## Angles over many turns
+
+No rational notch divides 2π, so how an angle survives many revolutions depends
+on how it is carried:
+
+- **Don't `wrap` a radians angle.** `wrap` folds modulo the grid's period,
+  `span + notch`, which is never exactly 2π. `inside<{{0, 6.28125}, per<64>}, wrap>`
+  folds every 6.296875 rad, about 0.014 rad more than a turn, so each revolution
+  shifts the angle; after a few hundred turns it no longer relates to the true
+  angle.
+- **Unwrapped radians are exact.** Accumulated on its grid (`x += step`), the angle
+  stays an exact grid value, and `sin`/`cos`/`tan` reduce any argument internally,
+  so the result carries only the output grid's rounding — no drift, however many
+  turns. The limits are the grid's range and the shared domain `|x| ≤ 2^20` rad
+  (about 166,000 turns).
+- **Wrapping phase: carry it in turns.** A phase in turns has the exact period 1,
+  so it wraps without drift. Convert at the call; the conversion error is the
+  snap onto the angle grid plus `math::two_pi`'s own error (it is the rational
+  convergent 2·1068966896/340262731, |error| ≈ 6·10⁻¹⁸), and it never accumulates:
+
+```cpp
+using turn_t  = inside<{{0, 1 - 1.0 / 4096}, per<4096>}, wrap | round_nearest>;
+using angle_t = inside<{{0, 8}, per<16384>}, round_nearest | f64>;
+
+turn_t phase{0};
+phase += turn_t{0.25};                                   // a quarter turn, exactly
+auto s = math::sin_into<math::amp<16384>>(angle_t{phase * math::two_pi});
+```
+
 ## Using `expected` results
 
 ```cpp
