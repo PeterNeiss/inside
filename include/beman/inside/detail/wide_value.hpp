@@ -42,6 +42,12 @@ namespace beman::inside::detail
     { return {a.Num * b.Den + b.Num * a.Den, a.Den * b.Den}; }
     friend constexpr exact_frac operator*(exact_frac const& a, exact_frac const& b) noexcept
     { return {a.Num * b.Num, a.Den * b.Den}; }
+    // Pre: b != 0.
+    friend constexpr exact_frac operator/(exact_frac const& a, exact_frac const& b) noexcept
+    {
+      const exact_frac q{a.Num * b.Den, a.Den * b.Num};
+      return q.Den.negative() ? exact_frac{-q.Num, -q.Den} : q;
+    }
 
     constexpr explicit operator double() const noexcept
     { return static_cast<double>(Num) / static_cast<double>(Den); }
@@ -92,6 +98,78 @@ namespace beman::inside::detail
     return rational{static_cast<umax>(a), neg ? -den : den};
   }
 
+  // Text → exact value, for wide grids whose values outgrow the 64-bit
+  // rational parse (from_chars falls back here on errc::overflow). Accepts
+  // [+-]digits[.digits][e[+-]digits] and two of those joined by '/'.
+  // Anything the 512-bit exact_int cannot hold reports overflow.
+  constexpr std::expected<exact_frac, errc> parse_exact(const char* first, const char* last) noexcept
+  {
+    constexpr exact_int ten{10};
+    constexpr exact_int limit = std::numeric_limits<exact_int>::max() / exact_int{100};
+    auto one = [&](const char* f, const char* l) -> std::expected<exact_frac, errc> {
+      bool neg = false;
+      if (f != l && (*f == '+' || *f == '-')) { neg = (*f == '-'); ++f; }
+      exact_int num{0}, den{1};
+      bool digits = false, point = false;
+      for (; f != l && ((*f >= '0' && *f <= '9') || (*f == '.' && !point)); ++f)
+      {
+        if (*f == '.') { point = true; continue; }
+        if (num > limit || den > limit) return std::unexpected{errc::overflow};
+        num = num * ten + exact_int{*f - '0'};
+        if (point) den = den * ten;
+        digits = true;
+      }
+      if (!digits) return std::unexpected{errc::invalid_format};
+      if (f != l && (*f == 'e' || *f == 'E'))
+      {
+        ++f;
+        bool eneg = false;
+        if (f != l && (*f == '+' || *f == '-')) { eneg = (*f == '-'); ++f; }
+        if (f == l) return std::unexpected{errc::invalid_format};
+        int e = 0;
+        for (; f != l && *f >= '0' && *f <= '9'; ++f)
+          if ((e = e * 10 + (*f - '0')) > 150) return std::unexpected{errc::overflow};
+        for (; e > 0; --e)
+        {
+          exact_int& t = eneg ? den : num;
+          if (t > limit) return std::unexpected{errc::overflow};
+          t = t * ten;
+        }
+      }
+      if (f != l) return std::unexpected{errc::invalid_format};
+      return exact_frac{neg ? -num : num, den};
+    };
+    const char* slash = first;
+    while (slash != last && *slash != '/') ++slash;
+    auto v = one(first, slash);
+    if (v && slash != last)
+    {
+      const auto d = one(slash + 1, last);
+      if (!d) return d;
+      if (d->Num.is_zero()) return std::unexpected{errc::division_by_zero};
+      v = *v / *d;
+    }
+    return v;
+  }
+
+  // n / d (d != 0) rounded to an integer by M; the sign rules of div_rounded.
+  template <round_mode M>
+  constexpr exact_int rounded_div(exact_int const& n, exact_int const& d) noexcept
+  {
+    auto [q, r] = exact_int::divmod(n, d);                                 // toward zero
+    if (r.is_zero()) return q;
+    const bool neg = n.negative() != d.negative();
+    const exact_int ar = r.negative() ? -r : r, ad = d.negative() ? -d : d;
+    const exact_int away = neg ? q - exact_int{1} : q + exact_int{1};
+    const exact_int r2 = ar * exact_int{2};
+    if constexpr (M == round_mode::floor)          { if (neg) q = away; }
+    else if constexpr (M == round_mode::ceil)      { if (!neg) q = away; }
+    else if constexpr (M == round_mode::nearest)   { if (r2 >= ad) q = away; }
+    else if constexpr (M == round_mode::half_even)
+    { if (r2 > ad || (r2 == ad && (q.Word[0] & 1u) != 0)) q = away; }
+    return q;
+  }
+
   // The value index of f on L's lattice (f / Notch) rounded by M, minus the
   // slot base: L's slot offset. Exact is false when f lies between notches.
   struct exact_index_result { exact_int Index; bool Exact; };
@@ -101,20 +179,8 @@ namespace beman::inside::detail
   {
     const exact_int n = f.Num * exact_int{wide_denominator(notch_of<L>)};
     const exact_int d = f.Den * exact_int{wide_numerator(notch_of<L>)};   // > 0
-    auto [q, r] = exact_int::divmod(n, d);                                 // toward zero
-    const bool exact = r.is_zero();
-    if (!exact)
-    {
-      const bool neg = n.negative();
-      const exact_int away = neg ? q - exact_int{1} : q + exact_int{1};
-      const exact_int r2 = (neg ? -r : r) * exact_int{2};
-      if constexpr (M == round_mode::floor)          { if (neg) q = away; }
-      else if constexpr (M == round_mode::ceil)      { if (!neg) q = away; }
-      else if constexpr (M == round_mode::nearest)   { if (r2 >= d) q = away; }
-      else if constexpr (M == round_mode::half_even)
-      { if (r2 > d || (r2 == d && (q.Word[0] & 1u) != 0)) q = away; }
-    }
-    return {q - exact_int{slot_base<L>}, exact};
+    const bool exact = (n % d).is_zero();
+    return {rounded_div<M>(n, d) - exact_int{slot_base<L>}, exact};
   }
 
   // The raw of slot offset `index` (0 .. slot count) in L's encoding.

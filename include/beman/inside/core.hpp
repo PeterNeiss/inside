@@ -423,26 +423,18 @@ namespace beman::inside
         neg = negative::from_raw(-Raw);
       else if constexpr (detail::rational_raw<inside>)
         neg = negative::from_raw(-(Raw));
-      else if constexpr (detail::wide_raw<inside> || detail::wide_raw<negative>)
-        // Count the slot from the opposite end: same slot count, both index raws.
-        neg = negative::from_raw(detail::raw_of_index<negative>(
-            detail::exact_int{G.slot_count()} - detail::exact_int{Raw}));
-      else if constexpr (!detail::values_fit_imax<inside> || !detail::values_fit_imax<negative>)
-      {
-        // A grid reaching past int64 (its negation then reaches below it): count
-        // the offset from the opposite end, in umax — exact for any integer raw.
-        const umax raw_u = std::is_signed_v<raw_type> ? static_cast<umax>(static_cast<imax>(Raw))
-                                                      : static_cast<umax>(Raw);
-        const umax off = raw_u - static_cast<umax>(detail::raw_lo<inside>);
-        neg = negative::from_raw(detail::raw_from_offset<negative>(detail::max_index_v<inside> - off));
-      }
-      else if constexpr (!detail::index_raw<inside> || !detail::index_raw<negative>)
-        detail::from_value(neg, -detail::to_value(*this));
       else
-        // Unsigned-offset fast path: with `value = Raw*Notch + Lower`, negating
-        // is `max_index_v - Raw` (index from the opposite end) — no rational ops.
-        // Unreachable for direct storage, so `Raw` here is guaranteed an offset.
-        neg = negative::from_raw(detail::raw_cast<negative>(detail::max_index_v<inside> - Raw));
+      {
+        // Integer raws: the negated value index is −J (wide_value.hpp), in imax
+        // when the bounds allow, else by wrapping. Index storage on both sides
+        // counts the slot from the opposite end instead.
+        using W = detail::index_work_t<negative, inside, G.Notch, inside, G.Notch>;
+        if constexpr (detail::index_raw<inside> && detail::index_raw<negative>)
+          neg = negative::from_raw(static_cast<detail::raw_t<negative>>(
+              static_cast<W>(G.slot_count()) - static_cast<W>(Raw)));
+        else
+          neg = detail::from_value_index<negative>(W{0} - detail::value_index<W>(*this));
+      }
       return neg;
     }
 
@@ -818,6 +810,18 @@ namespace beman::inside
   [[nodiscard]] constexpr std::expected<B, errc> from_chars(const char* first, const char* last)
   {
     const auto v = detail::parse_text(first, last);
+    if constexpr (detail::wide_raw<B>)
+      if (!v && v.error() == errc::overflow)
+      {
+        // A value past the 64-bit rational: parse it exactly instead.
+        const auto w = detail::parse_exact(first, last);
+        if (!w) return std::unexpected{w.error()};
+        errc ec{};
+        B b;
+        detail::assign_exact<detail::rational>(b, *w, make_policy<policy_of<B>>(ec), no_action{});
+        if (ec != errc{}) return std::unexpected{ec};
+        return b;
+      }
     if (!v) return std::unexpected{v.error()};
     return B::try_make(*v);
   }

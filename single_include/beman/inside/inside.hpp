@@ -3410,9 +3410,6 @@ namespace beman::inside
         return static_cast<double>((*(b.raw() * notch_of<B>) + lower_of<B>).value());
     }
 
-    template <insidable B>
-    using negative_t = inside<-grid_of<B>, policy_of<B>>;
-
     // True when R's interval cannot contain zero — so `a / b` can return a plain
     // `inside` instead of `expected<inside, errc>` (see detail/division.hpp). A point
     // grid at 0 is *not* excluded.
@@ -3604,10 +3601,6 @@ namespace beman::inside
       }
     }
 
-    // x mod m into [0, m) for m > 0 — one division (vs `((x % m) + m) % m`).
-    [[nodiscard]] constexpr imax euclid_mod(imax x, imax m) noexcept
-    { const imax r = x % m; return r < 0 ? r + m : r; }
-
     //-------------------------------------------------------------------------
     // raw_lo / raw_hi / raw_from_offset — map interval endpoints to raw space. For
     // notch-offset storage the raw is a 0-based index (raw_lo == 0); for direct
@@ -3792,8 +3785,7 @@ namespace beman::inside
 
     // Rounds the split offset quotient q + r/den (r < den ≤ imax_max) per L's
     // rounding policy — q/r form so no expression can overflow umax
-    // (num + den/2 could, for num near umax). Shared by round_quotient's
-    // offset rule and the 128-bit wide store (assignment.hpp).
+    // (num + den/2 could, for num near umax). round_quotient's offset rule.
     template <insidable L, typename P>
     [[nodiscard]] constexpr umax round_offset(umax q, umax r, umax den) noexcept
     {
@@ -4011,6 +4003,12 @@ namespace beman::inside::detail
     { return {a.Num * b.Den + b.Num * a.Den, a.Den * b.Den}; }
     friend constexpr exact_frac operator*(exact_frac const& a, exact_frac const& b) noexcept
     { return {a.Num * b.Num, a.Den * b.Den}; }
+    // Pre: b != 0.
+    friend constexpr exact_frac operator/(exact_frac const& a, exact_frac const& b) noexcept
+    {
+      const exact_frac q{a.Num * b.Den, a.Den * b.Num};
+      return q.Den.negative() ? exact_frac{-q.Num, -q.Den} : q;
+    }
 
     constexpr explicit operator double() const noexcept
     { return static_cast<double>(Num) / static_cast<double>(Den); }
@@ -4061,6 +4059,78 @@ namespace beman::inside::detail
     return rational{static_cast<umax>(a), neg ? -den : den};
   }
 
+  // Text → exact value, for wide grids whose values outgrow the 64-bit
+  // rational parse (from_chars falls back here on errc::overflow). Accepts
+  // [+-]digits[.digits][e[+-]digits] and two of those joined by '/'.
+  // Anything the 512-bit exact_int cannot hold reports overflow.
+  constexpr std::expected<exact_frac, errc> parse_exact(const char* first, const char* last) noexcept
+  {
+    constexpr exact_int ten{10};
+    constexpr exact_int limit = std::numeric_limits<exact_int>::max() / exact_int{100};
+    auto one = [&](const char* f, const char* l) -> std::expected<exact_frac, errc> {
+      bool neg = false;
+      if (f != l && (*f == '+' || *f == '-')) { neg = (*f == '-'); ++f; }
+      exact_int num{0}, den{1};
+      bool digits = false, point = false;
+      for (; f != l && ((*f >= '0' && *f <= '9') || (*f == '.' && !point)); ++f)
+      {
+        if (*f == '.') { point = true; continue; }
+        if (num > limit || den > limit) return std::unexpected{errc::overflow};
+        num = num * ten + exact_int{*f - '0'};
+        if (point) den = den * ten;
+        digits = true;
+      }
+      if (!digits) return std::unexpected{errc::invalid_format};
+      if (f != l && (*f == 'e' || *f == 'E'))
+      {
+        ++f;
+        bool eneg = false;
+        if (f != l && (*f == '+' || *f == '-')) { eneg = (*f == '-'); ++f; }
+        if (f == l) return std::unexpected{errc::invalid_format};
+        int e = 0;
+        for (; f != l && *f >= '0' && *f <= '9'; ++f)
+          if ((e = e * 10 + (*f - '0')) > 150) return std::unexpected{errc::overflow};
+        for (; e > 0; --e)
+        {
+          exact_int& t = eneg ? den : num;
+          if (t > limit) return std::unexpected{errc::overflow};
+          t = t * ten;
+        }
+      }
+      if (f != l) return std::unexpected{errc::invalid_format};
+      return exact_frac{neg ? -num : num, den};
+    };
+    const char* slash = first;
+    while (slash != last && *slash != '/') ++slash;
+    auto v = one(first, slash);
+    if (v && slash != last)
+    {
+      const auto d = one(slash + 1, last);
+      if (!d) return d;
+      if (d->Num.is_zero()) return std::unexpected{errc::division_by_zero};
+      v = *v / *d;
+    }
+    return v;
+  }
+
+  // n / d (d != 0) rounded to an integer by M; the sign rules of div_rounded.
+  template <round_mode M>
+  constexpr exact_int rounded_div(exact_int const& n, exact_int const& d) noexcept
+  {
+    auto [q, r] = exact_int::divmod(n, d);                                 // toward zero
+    if (r.is_zero()) return q;
+    const bool neg = n.negative() != d.negative();
+    const exact_int ar = r.negative() ? -r : r, ad = d.negative() ? -d : d;
+    const exact_int away = neg ? q - exact_int{1} : q + exact_int{1};
+    const exact_int r2 = ar * exact_int{2};
+    if constexpr (M == round_mode::floor)          { if (neg) q = away; }
+    else if constexpr (M == round_mode::ceil)      { if (!neg) q = away; }
+    else if constexpr (M == round_mode::nearest)   { if (r2 >= ad) q = away; }
+    else if constexpr (M == round_mode::half_even)
+    { if (r2 > ad || (r2 == ad && (q.Word[0] & 1u) != 0)) q = away; }
+    return q;
+  }
+
   // The value index of f on L's lattice (f / Notch) rounded by M, minus the
   // slot base: L's slot offset. Exact is false when f lies between notches.
   struct exact_index_result { exact_int Index; bool Exact; };
@@ -4070,20 +4140,8 @@ namespace beman::inside::detail
   {
     const exact_int n = f.Num * exact_int{wide_denominator(notch_of<L>)};
     const exact_int d = f.Den * exact_int{wide_numerator(notch_of<L>)};   // > 0
-    auto [q, r] = exact_int::divmod(n, d);                                 // toward zero
-    const bool exact = r.is_zero();
-    if (!exact)
-    {
-      const bool neg = n.negative();
-      const exact_int away = neg ? q - exact_int{1} : q + exact_int{1};
-      const exact_int r2 = (neg ? -r : r) * exact_int{2};
-      if constexpr (M == round_mode::floor)          { if (neg) q = away; }
-      else if constexpr (M == round_mode::ceil)      { if (!neg) q = away; }
-      else if constexpr (M == round_mode::nearest)   { if (r2 >= d) q = away; }
-      else if constexpr (M == round_mode::half_even)
-      { if (r2 > d || (r2 == d && (q.Word[0] & 1u) != 0)) q = away; }
-    }
-    return {q - exact_int{slot_base<L>}, exact};
+    const bool exact = (n % d).is_zero();
+    return {rounded_div<M>(n, d) - exact_int{slot_base<L>}, exact};
   }
 
   // The raw of slot offset `index` (0 .. slot count) in L's encoding.
@@ -4251,9 +4309,8 @@ namespace beman::inside::detail
 
   //---------------------------------------------------------------------------
   // The on_wrap carry is always an inside whose grid holds every carry the
-  // source kind can produce: an inside source uses its own range
-  // (assignment<L, insidable>::wrap_excess_grid), an integral source its type's
-  // limits, a fractional (double / rational) source the whole imax range. So
+  // source kind can produce: an inside source uses its own range, an
+  // integral source its type's limits, a fractional (double / rational) source the whole imax range. So
   // `minutes += carry` compiles for every source, and a callback taking `imax`
   // still binds through the implicit operator imax(). A bound whose exact
   // computation leaves imax falls back to that side of the imax range.
@@ -4268,8 +4325,17 @@ namespace beman::inside::detail
     constexpr auto span_r = try_sub(upper_of<L>, lower_of<L>);
     if constexpr (!span_r || !try_add(*span_r, notch_of<L>))
       return grid{kMin, kMax};
-    else if constexpr (std::integral<R>)
+    else if constexpr (std::integral<R> || insidable<R>)
     {
+      // An integral source spans its type's limits, an inside its interval.
+      constexpr rational src_lo = [] {
+        if constexpr (insidable<R>) return lower_of<R>;
+        else                        return rational{std::numeric_limits<R>::min()};
+      }();
+      constexpr rational src_hi = [] {
+        if constexpr (insidable<R>) return upper_of<R>;
+        else                        return rational{std::numeric_limits<R>::max()};
+      }();
       const rational range = *try_add(*span_r, notch_of<L>);
       auto carry_of = [&](rational v, imax fallback) -> imax
       {
@@ -4279,8 +4345,7 @@ namespace beman::inside::detail
         if (!q || *q < rational{kMin} || *q > rational{kMax}) return fallback;
         return floor(*q);
       };
-      return grid{carry_of(rational{std::numeric_limits<R>::min()}, kMin),
-                  carry_of(rational{std::numeric_limits<R>::max()}, kMax)};
+      return grid{carry_of(src_lo, kMin), carry_of(src_hi, kMax)};
     }
     else
       return grid{kMin, kMax};
@@ -4379,11 +4444,11 @@ namespace beman::inside::detail
   // the 64-bit rational holds every value. Rounds first, then range-checks,
   // like the builtin paths; out of range runs the usual policy cascade.
   //---------------------------------------------------------------------------
-  template <insidable L, typename P, typename A>
+  // R is the source type: an on_clamp action gets the overshoot and an
+  // on_wrap action the carry in the same shape as on the builtin paths.
+  template <typename R, insidable L, typename P, typename A>
   constexpr L& assign_exact(L& lhs, exact_frac const& v, P&& policy, A&& action)
   {
-    static_assert(!clamp_action<plain_t<A>> && !wrap_action<plain_t<A>>,
-      "on_clamp / on_wrap actions are not supported yet for insides with more than 2^64 slots");
     auto fail = [&](errc code) {
       if constexpr (error_action<plain_t<A>>) action.Fn(lhs, code, errc_message(code));
       else                                    policy.report(code);
@@ -4394,6 +4459,9 @@ namespace beman::inside::detail
       // not fit lies outside every such grid).
       const auto r = try_rational(v);
       if (!r) [[unlikely]] { fail(errc::overflow); return lhs; }
+      if constexpr (clamp_action<plain_t<A>> || wrap_action<plain_t<A>>)
+        static_assert(dependent_false<A>,
+          "on_clamp / on_wrap: a source past the 64-bit rational into a rational or fp inside is not supported");
       return assignment<L, rational>::assign(lhs, *r, policy, std::forward<A>(action));
     }
     else
@@ -4407,13 +4475,36 @@ namespace beman::inside::detail
       const exact_int count{grid_of<L>.slot_count()};
       if (index.negative() || index > count) [[unlikely]]
       {
+        auto saturate = [](exact_int const& d) -> imax {
+          constexpr imax kMin = std::numeric_limits<imax>::min(), kMax = std::numeric_limits<imax>::max();
+          return d < exact_int{kMin} ? kMin : exact_int{kMax} < d ? kMax : static_cast<imax>(d);
+        };
         if (dispatch_out_of_range<true>(lhs, policy, action,
-              [&]{ lhs = L::from_raw(raw_of_index<L>(index.negative() ? exact_int{0} : count)); },
+              [&]{
+                const bool low = index.negative();
+                lhs = L::from_raw(raw_of_index<L>(low ? exact_int{0} : count));
+                if constexpr (clamp_action<plain_t<A>>)
+                {
+                  // The overshoot rhs − bound, shaped like the builtin paths'.
+                  const exact_frac over = v + exact_frac{exact_int{-1}, exact_int{1}}
+                                        * exact_of(low ? lower_of<L> : upper_of<L>);
+                  if constexpr (insidable<R>)
+                    action.Fn(lhs, exact_result<beman::inside::inside<(grid_of<R> - grid_of<L>).value()>>(over));
+                  else if constexpr (std::integral<R>)
+                    action.Fn(lhs, saturate(trunc(over)));
+                  else if constexpr (std::floating_point<R>)
+                    action.Fn(lhs, static_cast<R>(static_cast<double>(over)));
+                  else
+                    action.Fn(lhs, try_rational(over).value_or(rational{0}));
+                }
+              },
               [&]{
                 const exact_int range = count + exact_int{1};
-                exact_int w = index % range;
-                if (w.negative()) w += range;
+                auto [q, w] = exact_int::divmod(index, range);
+                if (w.negative()) { w += range; q -= exact_int{1}; }
                 lhs = L::from_raw(raw_of_index<L>(w));
+                if constexpr (wrap_action<plain_t<A>>)
+                  action.Fn(lhs, make_wrap_carry<L, R>(saturate(q)));
               },
               [&]{ return 0; }))
           return lhs;
@@ -4525,7 +4616,7 @@ namespace beman::inside::detail
           "rhs type's range lies entirely outside lhs interval and the policy cannot bring it into range");
 
         if constexpr (wide_raw<L>)
-          return assign_exact(lhs, exact_of(rhs), policy, std::forward<A>(action));
+          return assign_exact<R>(lhs, exact_of(rhs), policy, std::forward<A>(action));
         else if constexpr (!integers_on_grid)
           return assignment<L, rational>::assign(lhs, rational{rhs}, policy, std::forward<A>(action));
         else
@@ -4887,10 +4978,10 @@ namespace beman::inside::detail
                 return lhs;
               }
               const exact_int past = exact_int{1} << 65;
-              return assign_exact(lhs, exact_frac{rhs < 0 ? -past : past, exact_int{1}},
+              return assign_exact<R>(lhs, exact_frac{rhs < 0 ? -past : past, exact_int{1}},
                                   policy, std::forward<A>(action));
             }
-          return assign_exact(lhs, exact_of(rational{rhs}), policy, std::forward<A>(action));
+          return assign_exact<R>(lhs, exact_of(rational{rhs}), policy, std::forward<A>(action));
         }
         else
           return assign_builtin(lhs, rhs, policy, std::forward<A>(action));
@@ -5074,32 +5165,6 @@ namespace beman::inside::detail
       }
 
     private:
-      // Grid of the wrap "excess"/carry handed to an on_wrap action:
-      // floor((value − Lower) / range) for value ∈ R's interval (range = span + notch).
-      // Both operands are insides, so — like the clamp overshoot — the carry has a
-      // known range and is delivered as an inside, not a raw imax.
-      static constexpr grid wrap_excess_grid()
-      {
-        constexpr imax kMin = std::numeric_limits<imax>::min();
-        constexpr imax kMax = std::numeric_limits<imax>::max();
-        constexpr auto span = try_sub(upper_of<L>, lower_of<L>);
-        if constexpr (!span || !try_add(*span, notch_of<L>))
-          return grid{kMin, kMax};                     // range ≥ 2^64: |carry| ≤ 1
-        else
-        {
-          constexpr rational range = *try_add(*span, notch_of<L>);
-          // A carry bound past the rational range falls back to that side of imax.
-          auto carry = [&](rational v, imax fallback) -> imax {
-            const auto off = try_sub(v, lower_of<L>);
-            if (!off) return fallback;
-            const auto q = try_div(*off, range);
-            if (!q || *q < rational{kMin} || *q > rational{kMax}) return fallback;
-            return floor(*q);
-          };
-          return grid{carry(lower_of<R>, kMin), carry(upper_of<R>, kMax)};
-        }
-      }
-
       template<typename A>
       static constexpr void apply_clamp(L& lhs, R const& rhs, A&& action)
       {
@@ -5140,7 +5205,7 @@ namespace beman::inside::detail
           const auto [excess, w] = fold::fold(static_cast<W>(integer_wide(as_rational(rhs))));
           lhs = L::from_raw(fold::raw_at(w));
           if constexpr (wrap_action<plain_t<A>>)
-            action.Fn(lhs, beman::inside::inside<wrap_excess_grid()>{excess});   // carry as an inside
+            action.Fn(lhs, make_wrap_carry<L, R>(excess));   // carry as an inside
         }
         else if constexpr (wrap_action<plain_t<A>>)
         {
@@ -5149,7 +5214,7 @@ namespace beman::inside::detail
           // handing it to the user action.
           assignment<L, rational>::apply_wrap(lhs, as_rational(rhs), policy,
             beman::inside::on_wrap([&](auto& self, imax q){
-              action.Fn(self, beman::inside::inside<wrap_excess_grid()>{q});
+              action.Fn(self, make_wrap_carry<L, R>(q));
             }));
         }
         else
@@ -5235,7 +5300,7 @@ namespace beman::inside::detail
             "rhs interval lies entirely outside lhs interval and the policy cannot bring it into range");
           static_assert(notches_compatible<L, R> || has_policy<L, P, snap>,
             "incompatible notches: use with_snap() or policy<snap>() to allow rounding");
-          return assign_exact(lhs, exact_of(rhs), policy, std::forward<A>(action));
+          return assign_exact<R>(lhs, exact_of(rhs), policy, std::forward<A>(action));
         }
         else
           return assign_builtin(lhs, rhs, policy, std::forward<A>(action));
@@ -5980,11 +6045,15 @@ namespace beman::inside::detail
   // Both operands are plain integer grids and the caller accepted integer
   // truncation (snap) — the prerequisite for native integer div / mod.
   template <insidable L, insidable R, policy_flag F>
-  inline constexpr bool integer_native_ops =
+  inline constexpr bool integer_ops =
       ((F | policy_of<L> | policy_of<R>) & snap)
       && !rational_raw<L> && !rational_raw<R>
-      && is_integer_aligned<L> && is_integer_aligned<R>
-      && values_fit_imax<L> && values_fit_imax<R>;     // to_value is exact
+      && is_integer_aligned<L> && is_integer_aligned<R>;
+
+  // ...and every value fits imax, so the builtin integer division applies.
+  template <insidable L, insidable R, policy_flag F>
+  inline constexpr bool integer_native_ops =
+      integer_ops<L, R, F> && values_fit_imax<L> && values_fit_imax<R>;
 
   //---------------------------------------------------------------------------
   // Rounding mode for the native div & mod paths (fire when `snap` is set).
@@ -6080,8 +6149,6 @@ namespace beman::inside::detail
   template <insidable L, insidable R = L, policy_flag F = none>
   struct division
   {
-    static_assert(!wide_raw<L> && !wide_raw<R>,
-      "division: an operand with more than 2^64 slots is not supported yet");
     // Native integer division, two flavours gated on `snap`:
     //   native_div_integer — both operands integer-aligned; formula `a / b`.
     //   native_div_qformat — both same Q-format (Notch = 1/N, Lower = 0); formula
@@ -6094,6 +6161,7 @@ namespace beman::inside::detail
         && is_qformat<L> && is_qformat<R>
         && notch_of<L> == notch_of<R>
         // raw·N must fit umax (the scaled dividend below)
+        && !wide_raw<L> && !wide_raw<R>
         && max_index_v<L> <= ~umax{0} / abs_den(notch_of<L>.Denominator);
 
     static constexpr bool native_div = native_div_integer || native_div_qformat;
@@ -6134,8 +6202,11 @@ namespace beman::inside::detail
     // For a nonzero divisor the op fails only on the checked rational path
     // (overflow). So when the divisor excludes zero AND this is false, `div`
     // returns a plain `result` rather than expected<result, errc>.
+    // A wide-index operand's quotient may outgrow the 64-bit rational
+    // whatever the policy, so that path always reports.
     static constexpr bool may_overflow_nonzero =
-        !native_div && !fp_raw<result> && (needs_overflow_check<F> != 0);
+        !native_div && !fp_raw<result>
+        && (needs_overflow_check<F> != 0 || wide_raw<L> || wide_raw<R>);
 
     // Real division can still fail on a zero divisor, so it uses the same
     // return-type rule as the rest: plain `result` when the op cannot fail
@@ -6210,6 +6281,16 @@ namespace beman::inside::detail
       from_value(res, imax{div_rounded(static_cast<T>(to_value(lhs)), rhs_val, rmode)});
       return res;
     }
+    else if constexpr (wide_raw<L> || wide_raw<R>)
+    {
+      // A wide-index operand: the exact quotient, narrowed to the rational raw.
+      const exact_frac d = exact_of(rhs);
+      if constexpr (!zero_unchecked)
+        if (d.Num.is_zero()) return fail(errc::division_by_zero, "division by zero in div");
+      const auto q = try_rational(exact_of(lhs) / d);
+      if (!q) [[unlikely]] return fail(errc::overflow, "rational overflow in div");
+      return result::from_raw(*q);
+    }
     else if constexpr (needs_overflow_check<G>)
     {
       rational rhs_r = rhs;
@@ -6233,16 +6314,15 @@ namespace beman::inside::detail
   template <insidable L, insidable R, policy_flag F = none>
   struct modulo
   {
-    static_assert(!wide_raw<L> && !wide_raw<R>,
-      "modulo: an operand with more than 2^64 slots is not supported yet");
-    static constexpr bool native_mod = integer_native_ops<L, R, F>;
-
     // Hard requirement, not a fallback: `a mod b` is only defined for integer
     // operands, so the grid must be integer-aligned with `snap` set.
-    static_assert(native_mod, "modulo requires integer-valued grids and snap");
+    static_assert(integer_ops<L, R, F>, "modulo requires integer-valued grids and snap");
 
-    static constexpr imax max_rem =
-        (abs_den(lower_imax<R>) > abs_den(upper_imax<R>) ? abs_den(lower_imax<R>) : abs_den(upper_imax<R>)) - 1;
+    // Builtin division when every value fits imax; else exact wide integers.
+    static constexpr bool native_mod = integer_native_ops<L, R, F>;
+
+    static constexpr rational max_rem =
+        ((abs(lower_of<R>) > abs(upper_of<R>) ? abs(lower_of<R>) : abs(upper_of<R>)) - rational{1}).value();
 
     // Remainder consistent with the rounded quotient: r = a − round(a/b)·b. Under
     // truncation it takes the dividend's sign (non-negative for a non-negative
@@ -6252,8 +6332,8 @@ namespace beman::inside::detail
         div_round_mode(F | policy_of<L> | policy_of<R>);
 
     static constexpr grid result_grid =
-        (rmode == round_mode::trunc && lower_imax<L> >= 0)
-        ? grid{imax{0}, max_rem}
+        (rmode == round_mode::trunc && lower_of<L> >= 0)
+        ? grid{rational{0}, max_rem}
         : grid{-max_rem, max_rem};
 
     using result = inside<result_grid>;
@@ -6274,22 +6354,38 @@ namespace beman::inside::detail
   template<policy_flag G, typename E, typename A>
   constexpr auto modulo<L,R,F>::mod(L lhs, R rhs, policy<G, E> policy, A&& action) -> return_t<A>
   {
-    using T = native_div_t<L, R>;
-    const T rhs_val = static_cast<T>(to_value(rhs));
-    // Zero check elided when R's grid excludes zero (return_t is plain
-    // `result`) or `ignore_zero` is set (zero divisor is then UB, matching `%= 0`).
-    constexpr bool zero_unchecked = divisor_excludes_zero<R>
-        || (((G | F | policy_of<L> | policy_of<R>) & ignore_zero) != 0);
-    if constexpr (!zero_unchecked)
-      if (rhs_val == 0)
-        return report_or_unexpected<result>(action, policy, errc::division_by_zero,
-                                            "division by zero in mod");
-    result res;
-    // Remainder consistent with the rounded quotient (trunc → C++ `%`).
-    const T lhs_val = static_cast<T>(to_value(lhs));
-    // The product stays in imax: q·b can exceed |a| + |b| ≥ 2^31 in T.
-    from_value(res, lhs_val - imax{div_rounded(lhs_val, rhs_val, rmode)} * rhs_val);
-    return res;
+    if constexpr (!native_mod)
+    {
+      // Integer values past imax: r = a − round(a/b)·b in exact wide integers.
+      constexpr bool zero_unchecked = divisor_excludes_zero<R>
+          || (((G | F | policy_of<L> | policy_of<R>) & ignore_zero) != 0);
+      const exact_int b = trunc(exact_of(rhs));
+      if constexpr (!zero_unchecked)
+        if (b.is_zero())
+          return report_or_unexpected<result>(action, policy, errc::division_by_zero,
+                                              "division by zero in mod");
+      const exact_int a = trunc(exact_of(lhs));
+      return exact_result<result>(exact_frac{a - rounded_div<rmode>(a, b) * b, exact_int{1}});
+    }
+    else
+    {
+      using T = native_div_t<L, R>;
+      const T rhs_val = static_cast<T>(to_value(rhs));
+      // Zero check elided when R's grid excludes zero (return_t is plain
+      // `result`) or `ignore_zero` is set (zero divisor is then UB, matching `%= 0`).
+      constexpr bool zero_unchecked = divisor_excludes_zero<R>
+          || (((G | F | policy_of<L> | policy_of<R>) & ignore_zero) != 0);
+      if constexpr (!zero_unchecked)
+        if (rhs_val == 0)
+          return report_or_unexpected<result>(action, policy, errc::division_by_zero,
+                                              "division by zero in mod");
+      result res;
+      // Remainder consistent with the rounded quotient (trunc → C++ `%`).
+      const T lhs_val = static_cast<T>(to_value(lhs));
+      // The product stays in imax: q·b can exceed |a| + |b| ≥ 2^31 in T.
+      from_value(res, lhs_val - imax{div_rounded(lhs_val, rhs_val, rmode)} * rhs_val);
+      return res;
+    }
   }
 } // namespace beman::inside::detail
 
@@ -6758,26 +6854,18 @@ namespace beman::inside
         neg = negative::from_raw(-Raw);
       else if constexpr (detail::rational_raw<inside>)
         neg = negative::from_raw(-(Raw));
-      else if constexpr (detail::wide_raw<inside> || detail::wide_raw<negative>)
-        // Count the slot from the opposite end: same slot count, both index raws.
-        neg = negative::from_raw(detail::raw_of_index<negative>(
-            detail::exact_int{G.slot_count()} - detail::exact_int{Raw}));
-      else if constexpr (!detail::values_fit_imax<inside> || !detail::values_fit_imax<negative>)
-      {
-        // A grid reaching past int64 (its negation then reaches below it): count
-        // the offset from the opposite end, in umax — exact for any integer raw.
-        const umax raw_u = std::is_signed_v<raw_type> ? static_cast<umax>(static_cast<imax>(Raw))
-                                                      : static_cast<umax>(Raw);
-        const umax off = raw_u - static_cast<umax>(detail::raw_lo<inside>);
-        neg = negative::from_raw(detail::raw_from_offset<negative>(detail::max_index_v<inside> - off));
-      }
-      else if constexpr (!detail::index_raw<inside> || !detail::index_raw<negative>)
-        detail::from_value(neg, -detail::to_value(*this));
       else
-        // Unsigned-offset fast path: with `value = Raw*Notch + Lower`, negating
-        // is `max_index_v - Raw` (index from the opposite end) — no rational ops.
-        // Unreachable for direct storage, so `Raw` here is guaranteed an offset.
-        neg = negative::from_raw(detail::raw_cast<negative>(detail::max_index_v<inside> - Raw));
+      {
+        // Integer raws: the negated value index is −J (wide_value.hpp), in imax
+        // when the bounds allow, else by wrapping. Index storage on both sides
+        // counts the slot from the opposite end instead.
+        using W = detail::index_work_t<negative, inside, G.Notch, inside, G.Notch>;
+        if constexpr (detail::index_raw<inside> && detail::index_raw<negative>)
+          neg = negative::from_raw(static_cast<detail::raw_t<negative>>(
+              static_cast<W>(G.slot_count()) - static_cast<W>(Raw)));
+        else
+          neg = detail::from_value_index<negative>(W{0} - detail::value_index<W>(*this));
+      }
       return neg;
     }
 
@@ -7153,6 +7241,18 @@ namespace beman::inside
   [[nodiscard]] constexpr std::expected<B, errc> from_chars(const char* first, const char* last)
   {
     const auto v = detail::parse_text(first, last);
+    if constexpr (detail::wide_raw<B>)
+      if (!v && v.error() == errc::overflow)
+      {
+        // A value past the 64-bit rational: parse it exactly instead.
+        const auto w = detail::parse_exact(first, last);
+        if (!w) return std::unexpected{w.error()};
+        errc ec{};
+        B b;
+        detail::assign_exact<detail::rational>(b, *w, make_policy<policy_of<B>>(ec), no_action{});
+        if (ec != errc{}) return std::unexpected{ec};
+        return b;
+      }
     if (!v) return std::unexpected{v.error()};
     return B::try_make(*v);
   }

@@ -182,6 +182,19 @@ TEST(WideGridTest, to_string)
   EXPECT_NE(to_string_debug(odd).find("wide_uint<2>"), std::string::npos);
 }
 
+TEST(WideGridTest, from_chars)
+{
+  EXPECT_TRUE(from_chars<fine>("1.5").value() == 1.5);
+  // 2^33 + 2^-32 needs a 66-bit numerator: the exact fallback parses it.
+  const fine odd = fine::from_raw((detail::wide_uint<2>{1} << 65) + detail::wide_uint<2>{1});
+  EXPECT_TRUE(from_chars<fine>("36893488147419103233/4294967296").value() == odd);
+  EXPECT_TRUE(from_chars<fine>("8589934592.00000000023283064365386962890625").value() == odd);
+  EXPECT_EQ(from_chars<fine>("1e40").error(), errc::overflow);         // out of range
+  EXPECT_EQ(from_chars<fine>("12x").error(), errc::invalid_format);
+  // Round trip through to_string.
+  EXPECT_TRUE(from_chars<fine>(to_string(odd)).value() == odd);
+}
+
 TEST(WideGridTest, hashing)
 {
   std::unordered_set<fine> set{fine{1}, fine{1.5}, fine{1}};
@@ -200,6 +213,64 @@ TEST(WideGridTest, uniform_sampling)
     above_2_33 = above_2_33 || v > (umax{1} << 33);
   }
   EXPECT_TRUE(above_2_33);
+}
+
+TEST(WideGridTest, division)
+{
+  // (fine / fine has a quotient interval past 2^64: it needs C++26 big grids.)
+  using divisor = inside<{{1, 4}, per<4>}>;
+  fine a = 3;
+  auto q = a / divisor{1.5};                            // exact; may report overflow
+  ASSERT_TRUE(q.has_value());
+  EXPECT_TRUE(*q == 2);
+  // (2^33 + 2^-32) / 1 has no 64-bit rational form: reported, not wrapped.
+  const fine odd = fine::from_raw((detail::wide_uint<2>{1} << 65) + detail::wide_uint<2>{1});
+  EXPECT_EQ((odd / divisor{1}).error(), errc::overflow);
+  // narrow ÷ wide, including a zero divisor.
+  auto r = inside<{0, 10}>{3} / fine{0.5};
+  ASSERT_TRUE(r.has_value());
+  EXPECT_TRUE(*r == 6);
+  EXPECT_EQ((inside<{0, 10}>{3} / fine{0}).error(), errc::division_by_zero);
+}
+
+TEST(WideGridTest, modulo)
+{
+  // qword differences span 2^65 values: integers past imax.
+  constexpr umax kUM = ~umax{0};
+  auto d = qword{kUM} - qword{0};
+  static_assert(detail::wide_raw<decltype(d)>);
+  auto m = mod(d, inside<{1, 1000}>{7}, policy<snap>{});
+  EXPECT_TRUE(m == (kUM % 7));
+  auto n = mod(-d, inside<{1, 1000}>{7}, policy<snap>{});     // takes the dividend's sign
+  EXPECT_TRUE(n == -static_cast<imax>(kUM % 7));
+  // qword itself (a uint64 value raw past imax) now has a modulo too.
+  EXPECT_TRUE((mod(qword{kUM}, inside<{1, 1000}>{10}, policy<snap>{}) == 5));
+}
+
+TEST(WideGridTest, clamp_and_wrap_actions)
+{
+  // on_clamp: the overshoot is shaped like the builtin paths' (imax for an
+  // integral source, an inside for an inside source).
+  fine c = 0;
+  imax over = 0;
+  c.on_clamp([&](auto&, imax o) { over = o; }) = p34 + 5;
+  EXPECT_TRUE(c == p34);
+  EXPECT_EQ(over, 5);
+  rational frac_over{0};
+  c.on_clamp([&](auto&, rational o) { frac_over = o; }) = rational{-1, 2};
+  EXPECT_TRUE(c == 0);
+  EXPECT_TRUE((frac_over == rational{-1, 2}));
+  bool got_inside = false;
+  c.on_clamp([&](auto&, auto o) { got_inside = insidable<decltype(o)> && o == 6; }) = inside<{0, umax{1} << 40}>{p34 + 6};
+  EXPECT_TRUE(got_inside);
+
+  // on_wrap: the carry is the number of full turns.
+  fine w = 0;
+  imax carry = 0;
+  // One turn is 2^34 + 2^-32, so 3·2^34 + 2 = 3 turns + (2 − 3·2^-32).
+  w.on_wrap([&](auto&, auto q) { carry = q; }) = 3 * p34 + 2;
+  EXPECT_EQ(carry, 3);
+  EXPECT_TRUE(w == (rational{2} - (rational{3} * tick).value()).value());
 }
 
 // The wide paths are constexpr.

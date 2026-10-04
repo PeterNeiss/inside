@@ -192,9 +192,6 @@ namespace beman::inside
         return static_cast<double>((*(b.raw() * notch_of<B>) + lower_of<B>).value());
     }
 
-    template <insidable B>
-    using negative_t = inside<-grid_of<B>, policy_of<B>>;
-
     // True when R's interval cannot contain zero — so `a / b` can return a plain
     // `inside` instead of `expected<inside, errc>` (see detail/division.hpp). A point
     // grid at 0 is *not* excluded.
@@ -386,10 +383,6 @@ namespace beman::inside
       }
     }
 
-    // x mod m into [0, m) for m > 0 — one division (vs `((x % m) + m) % m`).
-    [[nodiscard]] constexpr imax euclid_mod(imax x, imax m) noexcept
-    { const imax r = x % m; return r < 0 ? r + m : r; }
-
     //-------------------------------------------------------------------------
     // raw_lo / raw_hi / raw_from_offset — map interval endpoints to raw space. For
     // notch-offset storage the raw is a 0-based index (raw_lo == 0); for direct
@@ -574,8 +567,7 @@ namespace beman::inside
 
     // Rounds the split offset quotient q + r/den (r < den ≤ imax_max) per L's
     // rounding policy — q/r form so no expression can overflow umax
-    // (num + den/2 could, for num near umax). Shared by round_quotient's
-    // offset rule and the 128-bit wide store (assignment.hpp).
+    // (num + den/2 could, for num near umax). round_quotient's offset rule.
     template <insidable L, typename P>
     [[nodiscard]] constexpr umax round_offset(umax q, umax r, umax den) noexcept
     {

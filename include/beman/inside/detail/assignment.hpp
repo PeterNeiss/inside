@@ -64,9 +64,8 @@ namespace beman::inside::detail
 
   //---------------------------------------------------------------------------
   // The on_wrap carry is always an inside whose grid holds every carry the
-  // source kind can produce: an inside source uses its own range
-  // (assignment<L, insidable>::wrap_excess_grid), an integral source its type's
-  // limits, a fractional (double / rational) source the whole imax range. So
+  // source kind can produce: an inside source uses its own range, an
+  // integral source its type's limits, a fractional (double / rational) source the whole imax range. So
   // `minutes += carry` compiles for every source, and a callback taking `imax`
   // still binds through the implicit operator imax(). A bound whose exact
   // computation leaves imax falls back to that side of the imax range.
@@ -81,8 +80,17 @@ namespace beman::inside::detail
     constexpr auto span_r = try_sub(upper_of<L>, lower_of<L>);
     if constexpr (!span_r || !try_add(*span_r, notch_of<L>))
       return grid{kMin, kMax};
-    else if constexpr (std::integral<R>)
+    else if constexpr (std::integral<R> || insidable<R>)
     {
+      // An integral source spans its type's limits, an inside its interval.
+      constexpr rational src_lo = [] {
+        if constexpr (insidable<R>) return lower_of<R>;
+        else                        return rational{std::numeric_limits<R>::min()};
+      }();
+      constexpr rational src_hi = [] {
+        if constexpr (insidable<R>) return upper_of<R>;
+        else                        return rational{std::numeric_limits<R>::max()};
+      }();
       const rational range = *try_add(*span_r, notch_of<L>);
       auto carry_of = [&](rational v, imax fallback) -> imax
       {
@@ -92,8 +100,7 @@ namespace beman::inside::detail
         if (!q || *q < rational{kMin} || *q > rational{kMax}) return fallback;
         return floor(*q);
       };
-      return grid{carry_of(rational{std::numeric_limits<R>::min()}, kMin),
-                  carry_of(rational{std::numeric_limits<R>::max()}, kMax)};
+      return grid{carry_of(src_lo, kMin), carry_of(src_hi, kMax)};
     }
     else
       return grid{kMin, kMax};
@@ -192,11 +199,11 @@ namespace beman::inside::detail
   // the 64-bit rational holds every value. Rounds first, then range-checks,
   // like the builtin paths; out of range runs the usual policy cascade.
   //---------------------------------------------------------------------------
-  template <insidable L, typename P, typename A>
+  // R is the source type: an on_clamp action gets the overshoot and an
+  // on_wrap action the carry in the same shape as on the builtin paths.
+  template <typename R, insidable L, typename P, typename A>
   constexpr L& assign_exact(L& lhs, exact_frac const& v, P&& policy, A&& action)
   {
-    static_assert(!clamp_action<plain_t<A>> && !wrap_action<plain_t<A>>,
-      "on_clamp / on_wrap actions are not supported yet for insides with more than 2^64 slots");
     auto fail = [&](errc code) {
       if constexpr (error_action<plain_t<A>>) action.Fn(lhs, code, errc_message(code));
       else                                    policy.report(code);
@@ -207,6 +214,9 @@ namespace beman::inside::detail
       // not fit lies outside every such grid).
       const auto r = try_rational(v);
       if (!r) [[unlikely]] { fail(errc::overflow); return lhs; }
+      if constexpr (clamp_action<plain_t<A>> || wrap_action<plain_t<A>>)
+        static_assert(dependent_false<A>,
+          "on_clamp / on_wrap: a source past the 64-bit rational into a rational or fp inside is not supported");
       return assignment<L, rational>::assign(lhs, *r, policy, std::forward<A>(action));
     }
     else
@@ -220,13 +230,36 @@ namespace beman::inside::detail
       const exact_int count{grid_of<L>.slot_count()};
       if (index.negative() || index > count) [[unlikely]]
       {
+        auto saturate = [](exact_int const& d) -> imax {
+          constexpr imax kMin = std::numeric_limits<imax>::min(), kMax = std::numeric_limits<imax>::max();
+          return d < exact_int{kMin} ? kMin : exact_int{kMax} < d ? kMax : static_cast<imax>(d);
+        };
         if (dispatch_out_of_range<true>(lhs, policy, action,
-              [&]{ lhs = L::from_raw(raw_of_index<L>(index.negative() ? exact_int{0} : count)); },
+              [&]{
+                const bool low = index.negative();
+                lhs = L::from_raw(raw_of_index<L>(low ? exact_int{0} : count));
+                if constexpr (clamp_action<plain_t<A>>)
+                {
+                  // The overshoot rhs − bound, shaped like the builtin paths'.
+                  const exact_frac over = v + exact_frac{exact_int{-1}, exact_int{1}}
+                                        * exact_of(low ? lower_of<L> : upper_of<L>);
+                  if constexpr (insidable<R>)
+                    action.Fn(lhs, exact_result<beman::inside::inside<(grid_of<R> - grid_of<L>).value()>>(over));
+                  else if constexpr (std::integral<R>)
+                    action.Fn(lhs, saturate(trunc(over)));
+                  else if constexpr (std::floating_point<R>)
+                    action.Fn(lhs, static_cast<R>(static_cast<double>(over)));
+                  else
+                    action.Fn(lhs, try_rational(over).value_or(rational{0}));
+                }
+              },
               [&]{
                 const exact_int range = count + exact_int{1};
-                exact_int w = index % range;
-                if (w.negative()) w += range;
+                auto [q, w] = exact_int::divmod(index, range);
+                if (w.negative()) { w += range; q -= exact_int{1}; }
                 lhs = L::from_raw(raw_of_index<L>(w));
+                if constexpr (wrap_action<plain_t<A>>)
+                  action.Fn(lhs, make_wrap_carry<L, R>(saturate(q)));
               },
               [&]{ return 0; }))
           return lhs;
@@ -338,7 +371,7 @@ namespace beman::inside::detail
           "rhs type's range lies entirely outside lhs interval and the policy cannot bring it into range");
 
         if constexpr (wide_raw<L>)
-          return assign_exact(lhs, exact_of(rhs), policy, std::forward<A>(action));
+          return assign_exact<R>(lhs, exact_of(rhs), policy, std::forward<A>(action));
         else if constexpr (!integers_on_grid)
           return assignment<L, rational>::assign(lhs, rational{rhs}, policy, std::forward<A>(action));
         else
@@ -700,10 +733,10 @@ namespace beman::inside::detail
                 return lhs;
               }
               const exact_int past = exact_int{1} << 65;
-              return assign_exact(lhs, exact_frac{rhs < 0 ? -past : past, exact_int{1}},
+              return assign_exact<R>(lhs, exact_frac{rhs < 0 ? -past : past, exact_int{1}},
                                   policy, std::forward<A>(action));
             }
-          return assign_exact(lhs, exact_of(rational{rhs}), policy, std::forward<A>(action));
+          return assign_exact<R>(lhs, exact_of(rational{rhs}), policy, std::forward<A>(action));
         }
         else
           return assign_builtin(lhs, rhs, policy, std::forward<A>(action));
@@ -887,32 +920,6 @@ namespace beman::inside::detail
       }
 
     private:
-      // Grid of the wrap "excess"/carry handed to an on_wrap action:
-      // floor((value − Lower) / range) for value ∈ R's interval (range = span + notch).
-      // Both operands are insides, so — like the clamp overshoot — the carry has a
-      // known range and is delivered as an inside, not a raw imax.
-      static constexpr grid wrap_excess_grid()
-      {
-        constexpr imax kMin = std::numeric_limits<imax>::min();
-        constexpr imax kMax = std::numeric_limits<imax>::max();
-        constexpr auto span = try_sub(upper_of<L>, lower_of<L>);
-        if constexpr (!span || !try_add(*span, notch_of<L>))
-          return grid{kMin, kMax};                     // range ≥ 2^64: |carry| ≤ 1
-        else
-        {
-          constexpr rational range = *try_add(*span, notch_of<L>);
-          // A carry bound past the rational range falls back to that side of imax.
-          auto carry = [&](rational v, imax fallback) -> imax {
-            const auto off = try_sub(v, lower_of<L>);
-            if (!off) return fallback;
-            const auto q = try_div(*off, range);
-            if (!q || *q < rational{kMin} || *q > rational{kMax}) return fallback;
-            return floor(*q);
-          };
-          return grid{carry(lower_of<R>, kMin), carry(upper_of<R>, kMax)};
-        }
-      }
-
       template<typename A>
       static constexpr void apply_clamp(L& lhs, R const& rhs, A&& action)
       {
@@ -953,7 +960,7 @@ namespace beman::inside::detail
           const auto [excess, w] = fold::fold(static_cast<W>(integer_wide(as_rational(rhs))));
           lhs = L::from_raw(fold::raw_at(w));
           if constexpr (wrap_action<plain_t<A>>)
-            action.Fn(lhs, beman::inside::inside<wrap_excess_grid()>{excess});   // carry as an inside
+            action.Fn(lhs, make_wrap_carry<L, R>(excess));   // carry as an inside
         }
         else if constexpr (wrap_action<plain_t<A>>)
         {
@@ -962,7 +969,7 @@ namespace beman::inside::detail
           // handing it to the user action.
           assignment<L, rational>::apply_wrap(lhs, as_rational(rhs), policy,
             beman::inside::on_wrap([&](auto& self, imax q){
-              action.Fn(self, beman::inside::inside<wrap_excess_grid()>{q});
+              action.Fn(self, make_wrap_carry<L, R>(q));
             }));
         }
         else
@@ -1048,7 +1055,7 @@ namespace beman::inside::detail
             "rhs interval lies entirely outside lhs interval and the policy cannot bring it into range");
           static_assert(notches_compatible<L, R> || has_policy<L, P, snap>,
             "incompatible notches: use with_snap() or policy<snap>() to allow rounding");
-          return assign_exact(lhs, exact_of(rhs), policy, std::forward<A>(action));
+          return assign_exact<R>(lhs, exact_of(rhs), policy, std::forward<A>(action));
         }
         else
           return assign_builtin(lhs, rhs, policy, std::forward<A>(action));

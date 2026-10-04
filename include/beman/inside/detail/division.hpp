@@ -7,6 +7,7 @@
 
 #include <beman/inside/detail/rep.hpp>
 #include <beman/inside/generic.hpp>
+#include <beman/inside/detail/wide_value.hpp>
 #include <beman/inside/grid.hpp>
 #include <beman/inside/policy.hpp>
 
@@ -22,11 +23,15 @@ namespace beman::inside::detail
   // Both operands are plain integer grids and the caller accepted integer
   // truncation (snap) — the prerequisite for native integer div / mod.
   template <insidable L, insidable R, policy_flag F>
-  inline constexpr bool integer_native_ops =
+  inline constexpr bool integer_ops =
       ((F | policy_of<L> | policy_of<R>) & snap)
       && !rational_raw<L> && !rational_raw<R>
-      && is_integer_aligned<L> && is_integer_aligned<R>
-      && values_fit_imax<L> && values_fit_imax<R>;     // to_value is exact
+      && is_integer_aligned<L> && is_integer_aligned<R>;
+
+  // ...and every value fits imax, so the builtin integer division applies.
+  template <insidable L, insidable R, policy_flag F>
+  inline constexpr bool integer_native_ops =
+      integer_ops<L, R, F> && values_fit_imax<L> && values_fit_imax<R>;
 
   //---------------------------------------------------------------------------
   // Rounding mode for the native div & mod paths (fire when `snap` is set).
@@ -122,8 +127,6 @@ namespace beman::inside::detail
   template <insidable L, insidable R = L, policy_flag F = none>
   struct division
   {
-    static_assert(!wide_raw<L> && !wide_raw<R>,
-      "division: an operand with more than 2^64 slots is not supported yet");
     // Native integer division, two flavours gated on `snap`:
     //   native_div_integer — both operands integer-aligned; formula `a / b`.
     //   native_div_qformat — both same Q-format (Notch = 1/N, Lower = 0); formula
@@ -136,6 +139,7 @@ namespace beman::inside::detail
         && is_qformat<L> && is_qformat<R>
         && notch_of<L> == notch_of<R>
         // raw·N must fit umax (the scaled dividend below)
+        && !wide_raw<L> && !wide_raw<R>
         && max_index_v<L> <= ~umax{0} / abs_den(notch_of<L>.Denominator);
 
     static constexpr bool native_div = native_div_integer || native_div_qformat;
@@ -176,8 +180,11 @@ namespace beman::inside::detail
     // For a nonzero divisor the op fails only on the checked rational path
     // (overflow). So when the divisor excludes zero AND this is false, `div`
     // returns a plain `result` rather than expected<result, errc>.
+    // A wide-index operand's quotient may outgrow the 64-bit rational
+    // whatever the policy, so that path always reports.
     static constexpr bool may_overflow_nonzero =
-        !native_div && !fp_raw<result> && (needs_overflow_check<F> != 0);
+        !native_div && !fp_raw<result>
+        && (needs_overflow_check<F> != 0 || wide_raw<L> || wide_raw<R>);
 
     // Real division can still fail on a zero divisor, so it uses the same
     // return-type rule as the rest: plain `result` when the op cannot fail
@@ -252,6 +259,16 @@ namespace beman::inside::detail
       from_value(res, imax{div_rounded(static_cast<T>(to_value(lhs)), rhs_val, rmode)});
       return res;
     }
+    else if constexpr (wide_raw<L> || wide_raw<R>)
+    {
+      // A wide-index operand: the exact quotient, narrowed to the rational raw.
+      const exact_frac d = exact_of(rhs);
+      if constexpr (!zero_unchecked)
+        if (d.Num.is_zero()) return fail(errc::division_by_zero, "division by zero in div");
+      const auto q = try_rational(exact_of(lhs) / d);
+      if (!q) [[unlikely]] return fail(errc::overflow, "rational overflow in div");
+      return result::from_raw(*q);
+    }
     else if constexpr (needs_overflow_check<G>)
     {
       rational rhs_r = rhs;
@@ -275,16 +292,15 @@ namespace beman::inside::detail
   template <insidable L, insidable R, policy_flag F = none>
   struct modulo
   {
-    static_assert(!wide_raw<L> && !wide_raw<R>,
-      "modulo: an operand with more than 2^64 slots is not supported yet");
-    static constexpr bool native_mod = integer_native_ops<L, R, F>;
-
     // Hard requirement, not a fallback: `a mod b` is only defined for integer
     // operands, so the grid must be integer-aligned with `snap` set.
-    static_assert(native_mod, "modulo requires integer-valued grids and snap");
+    static_assert(integer_ops<L, R, F>, "modulo requires integer-valued grids and snap");
 
-    static constexpr imax max_rem =
-        (abs_den(lower_imax<R>) > abs_den(upper_imax<R>) ? abs_den(lower_imax<R>) : abs_den(upper_imax<R>)) - 1;
+    // Builtin division when every value fits imax; else exact wide integers.
+    static constexpr bool native_mod = integer_native_ops<L, R, F>;
+
+    static constexpr rational max_rem =
+        ((abs(lower_of<R>) > abs(upper_of<R>) ? abs(lower_of<R>) : abs(upper_of<R>)) - rational{1}).value();
 
     // Remainder consistent with the rounded quotient: r = a − round(a/b)·b. Under
     // truncation it takes the dividend's sign (non-negative for a non-negative
@@ -294,8 +310,8 @@ namespace beman::inside::detail
         div_round_mode(F | policy_of<L> | policy_of<R>);
 
     static constexpr grid result_grid =
-        (rmode == round_mode::trunc && lower_imax<L> >= 0)
-        ? grid{imax{0}, max_rem}
+        (rmode == round_mode::trunc && lower_of<L> >= 0)
+        ? grid{rational{0}, max_rem}
         : grid{-max_rem, max_rem};
 
     using result = inside<result_grid>;
@@ -316,22 +332,38 @@ namespace beman::inside::detail
   template<policy_flag G, typename E, typename A>
   constexpr auto modulo<L,R,F>::mod(L lhs, R rhs, policy<G, E> policy, A&& action) -> return_t<A>
   {
-    using T = native_div_t<L, R>;
-    const T rhs_val = static_cast<T>(to_value(rhs));
-    // Zero check elided when R's grid excludes zero (return_t is plain
-    // `result`) or `ignore_zero` is set (zero divisor is then UB, matching `%= 0`).
-    constexpr bool zero_unchecked = divisor_excludes_zero<R>
-        || (((G | F | policy_of<L> | policy_of<R>) & ignore_zero) != 0);
-    if constexpr (!zero_unchecked)
-      if (rhs_val == 0)
-        return report_or_unexpected<result>(action, policy, errc::division_by_zero,
-                                            "division by zero in mod");
-    result res;
-    // Remainder consistent with the rounded quotient (trunc → C++ `%`).
-    const T lhs_val = static_cast<T>(to_value(lhs));
-    // The product stays in imax: q·b can exceed |a| + |b| ≥ 2^31 in T.
-    from_value(res, lhs_val - imax{div_rounded(lhs_val, rhs_val, rmode)} * rhs_val);
-    return res;
+    if constexpr (!native_mod)
+    {
+      // Integer values past imax: r = a − round(a/b)·b in exact wide integers.
+      constexpr bool zero_unchecked = divisor_excludes_zero<R>
+          || (((G | F | policy_of<L> | policy_of<R>) & ignore_zero) != 0);
+      const exact_int b = trunc(exact_of(rhs));
+      if constexpr (!zero_unchecked)
+        if (b.is_zero())
+          return report_or_unexpected<result>(action, policy, errc::division_by_zero,
+                                              "division by zero in mod");
+      const exact_int a = trunc(exact_of(lhs));
+      return exact_result<result>(exact_frac{a - rounded_div<rmode>(a, b) * b, exact_int{1}});
+    }
+    else
+    {
+      using T = native_div_t<L, R>;
+      const T rhs_val = static_cast<T>(to_value(rhs));
+      // Zero check elided when R's grid excludes zero (return_t is plain
+      // `result`) or `ignore_zero` is set (zero divisor is then UB, matching `%= 0`).
+      constexpr bool zero_unchecked = divisor_excludes_zero<R>
+          || (((G | F | policy_of<L> | policy_of<R>) & ignore_zero) != 0);
+      if constexpr (!zero_unchecked)
+        if (rhs_val == 0)
+          return report_or_unexpected<result>(action, policy, errc::division_by_zero,
+                                              "division by zero in mod");
+      result res;
+      // Remainder consistent with the rounded quotient (trunc → C++ `%`).
+      const T lhs_val = static_cast<T>(to_value(lhs));
+      // The product stays in imax: q·b can exceed |a| + |b| ≥ 2^31 in T.
+      from_value(res, lhs_val - imax{div_rounded(lhs_val, rhs_val, rmode)} * rhs_val);
+      return res;
+    }
   }
 } // namespace beman::inside::detail
 

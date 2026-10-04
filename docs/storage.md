@@ -29,11 +29,13 @@ fine a = 1.5;
 auto s = a + a;                         // exact; a 2-limb index again
 ```
 
-Such an inside compares, adds, subtracts, multiplies, negates, assigns (under
-every policy), prints, hashes and samples exactly. Its values can outgrow the
-64-bit exact fraction, so it has no implicit conversion to it — compare it,
-or read it with `to<T>()`. Division, `%`, and `from_chars` text past the
-64-bit fraction are not supported on it yet.
+Such an inside compares, adds, subtracts, multiplies, negates, takes `%`,
+assigns (under every policy and `on_clamp` / `on_wrap` action), prints,
+parses, hashes and samples exactly. Its values can outgrow the 64-bit exact
+fraction, so it has no implicit conversion to it — compare it, or read it
+with `to<T>()`. A quotient `a / b` is an exact fraction and reports
+`errc::overflow` when it does not fit one. `from_chars` reads values past the
+64-bit fraction in decimal (`digits[.digits][e±n]`, or `n/d`).
 
 When `Lower == 0` and `Notch == 1`, `Raw` equals the value directly — no
 offset arithmetic.
