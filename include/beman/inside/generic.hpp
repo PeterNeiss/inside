@@ -156,6 +156,14 @@ namespace beman::inside
     inline constexpr bool index_raw =
          !fp_raw<B> && !rational_raw<B> && !value_raw<B>;
 
+    // Same raw type AND same encoding (value vs index): only then does one
+    // inside's raw mean the same as another's on the same grid. A grid alone
+    // does not fix the encoding — `indexed` / `direct` / `f64` / a width flag
+    // pick it per policy.
+    template <insidable L, insidable R>
+    inline constexpr bool same_encoding =
+         std::is_same_v<raw_t<L>, raw_t<R>> && index_raw<L> == index_raw<R>;
+
     // Ungated double view of any inside, for the `f64` arithmetic arms (the
     // public operator double() is gated on a rounding flag; this is always
     // available). Everything but index storage holds the value verbatim; an

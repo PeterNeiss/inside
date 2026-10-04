@@ -779,8 +779,8 @@ namespace beman::inside
     template <insidable L, insidable R, class Cmp>
     constexpr auto compare(L const& lhs, R const& rhs, Cmp cmp)
     {
-      // same grid: Raw is monotonically ordered regardless of storage kind
-      if constexpr (grid_of<L> == grid_of<R>)
+      // same grid and encoding: Raw is monotonically ordered and comparable
+      if constexpr (grid_of<L> == grid_of<R> && same_encoding<L, R>)
         return cmp(lhs.raw(), rhs.raw());
       // an fp-backed operand: compare in double when both sides' values are
       // exact in double (raw_imax would truncate the fp raw); otherwise the
@@ -862,7 +862,14 @@ namespace beman::inside
         return cmp((index_cmp_bias<B> + raw_imax(lhs)) * static_cast<imax>(notch_of<B>.Numerator),
                    static_cast<imax>(rhs) * notch_of<B>.Denominator);
       else
+      {
+        // |rhs| ≥ 2^64 (or infinite) has no rational form, and every grid value
+        // lies strictly inside ±2^64: the sign of rhs decides.
+        if constexpr (std::floating_point<A>)
+          if (rhs == rhs && !(rhs < 0x1p64 && rhs > -0x1p64))
+            return cmp(rational{0}, rational{rhs < 0 ? -1 : 1});
         return cmp(as_rational(lhs), rational{rhs});
+      }
     }
   }
 

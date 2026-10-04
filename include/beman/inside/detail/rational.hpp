@@ -398,7 +398,10 @@ namespace beman::inside::detail
   constexpr std::expected<T, errc> rational::to() const
   {
     if (Denominator < 0) return std::unexpected{errc::domain_error};
-    return static_cast<T>(Numerator / abs_den(Denominator));
+    const umax q = Numerator / abs_den(Denominator);
+    if (q > static_cast<umax>(std::numeric_limits<T>::max()))
+      return std::unexpected{errc::overflow};
+    return static_cast<T>(q);
   }
 
   //---------------------------------------------------------------------------
@@ -466,6 +469,7 @@ namespace beman::inside::detail
       bool has_e_exp = false;  // 10^exp (decimal scientific)
       bool in_exp = false;
       bool exp_seen_digit = false;
+      int frac_zeros = 0;      // deferred fractional zeros (see the digit loop)
 
       for (; i < N; ++i)
       {
@@ -512,12 +516,21 @@ namespace beman::inside::detail
 
         const int d = parse_digit(c, base);
         if (d < 0) return fail(parse_fail::invalid_digit);
+        seen_digit = true;
 
         const umax base_u = static_cast<umax>(base);
+        // A fractional zero only matters if a non-zero digit follows: defer it,
+        // so trailing zeros ("1.000…0") cannot overflow num / den.
+        if (in_frac && d == 0) { ++frac_zeros; continue; }
+        for (; frac_zeros > 0; --frac_zeros, ++frac_len)
+        {
+          if (num > (~umax{0}) / base_u)
+            return fail(parse_fail::numerator_overflow);
+          num *= base_u;
+        }
         if (num > (~umax{0} - static_cast<umax>(d)) / base_u)
           return fail(parse_fail::numerator_overflow);
         num = num * base_u + static_cast<umax>(d);
-        seen_digit = true;
         if (in_frac) ++frac_len;
       }
       if (!seen_digit) return fail(parse_fail::empty);
@@ -540,6 +553,10 @@ namespace beman::inside::detail
         if (shift >= 64) return fail(parse_fail::hex_fraction_too_long);
         den <<= shift;
       }
+
+      // Zero stays zero whatever the exponent: skip the scaling (which could
+      // only overflow).
+      if (num == 0) return parsed_number{rational{umax{0}}, parse_fail::none};
 
       // Apply binary exponent (hex floats, `p`).
       if (has_p_exp)

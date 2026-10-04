@@ -516,7 +516,12 @@ namespace beman::inside
 
     // value == significand * 2^exp2. Re-express as num/den with den = 2^k.
     if (exp2 >= 0)                           // integer-valued: scale up, den = 1
+    {
+      // |value| ≥ 2^64 has no 64-bit numerator: fail rather than wrap the shift.
+      if (exp2 > 64 - std::bit_width(significand))
+        raise(errc::overflow, "beman::inside::detail::abs_fraction: |double| >= 2^64");
       return {significand << exp2, 1};
+    }
 
     // exp2 < 0 → den = 2^(-exp2), capped at 2^62 (den is stored signed). Beyond
     // the cap the value is too small to keep: drop the significand's low bits
@@ -965,7 +970,10 @@ namespace beman::inside::detail
   constexpr std::expected<T, errc> rational::to() const
   {
     if (Denominator < 0) return std::unexpected{errc::domain_error};
-    return static_cast<T>(Numerator / abs_den(Denominator));
+    const umax q = Numerator / abs_den(Denominator);
+    if (q > static_cast<umax>(std::numeric_limits<T>::max()))
+      return std::unexpected{errc::overflow};
+    return static_cast<T>(q);
   }
 
   //---------------------------------------------------------------------------
@@ -1033,6 +1041,7 @@ namespace beman::inside::detail
       bool has_e_exp = false;  // 10^exp (decimal scientific)
       bool in_exp = false;
       bool exp_seen_digit = false;
+      int frac_zeros = 0;      // deferred fractional zeros (see the digit loop)
 
       for (; i < N; ++i)
       {
@@ -1079,12 +1088,21 @@ namespace beman::inside::detail
 
         const int d = parse_digit(c, base);
         if (d < 0) return fail(parse_fail::invalid_digit);
+        seen_digit = true;
 
         const umax base_u = static_cast<umax>(base);
+        // A fractional zero only matters if a non-zero digit follows: defer it,
+        // so trailing zeros ("1.000…0") cannot overflow num / den.
+        if (in_frac && d == 0) { ++frac_zeros; continue; }
+        for (; frac_zeros > 0; --frac_zeros, ++frac_len)
+        {
+          if (num > (~umax{0}) / base_u)
+            return fail(parse_fail::numerator_overflow);
+          num *= base_u;
+        }
         if (num > (~umax{0} - static_cast<umax>(d)) / base_u)
           return fail(parse_fail::numerator_overflow);
         num = num * base_u + static_cast<umax>(d);
-        seen_digit = true;
         if (in_frac) ++frac_len;
       }
       if (!seen_digit) return fail(parse_fail::empty);
@@ -1107,6 +1125,10 @@ namespace beman::inside::detail
         if (shift >= 64) return fail(parse_fail::hex_fraction_too_long);
         den <<= shift;
       }
+
+      // Zero stays zero whatever the exponent: skip the scaling (which could
+      // only overflow).
+      if (num == 0) return parsed_number{rational{umax{0}}, parse_fail::none};
 
       // Apply binary exponent (hex floats, `p`).
       if (has_p_exp)
@@ -2493,7 +2515,10 @@ namespace beman::inside
         "storage: pick a single fixed-width flag (e.g. `u16`), not several");
       using R = raw_type_of_t<P>;
       constexpr bool idx = (P & indexed) == indexed;
-      static_assert(idx ? (G.Notch != 0) : (G.Notch == 1),
+      // A point (notch 0) has one value: value storage holds it, index storage
+      // holds slot 0 — the notch requirement does not apply.
+      static_assert(G.Interval.Lower == G.Interval.Upper
+                    || (idx ? (G.Notch != 0) : (G.Notch == 1)),
         "fixed-width storage: value storage needs Notch == 1 — add `indexed` to "
         "store a notched grid's 0-based index instead");
       static_assert(storage_fits<G, R, idx>(),
@@ -2766,6 +2791,14 @@ namespace beman::inside
     template <insidable B>
     inline constexpr bool index_raw =
          !fp_raw<B> && !rational_raw<B> && !value_raw<B>;
+
+    // Same raw type AND same encoding (value vs index): only then does one
+    // inside's raw mean the same as another's on the same grid. A grid alone
+    // does not fix the encoding — `indexed` / `direct` / `f64` / a width flag
+    // pick it per policy.
+    template <insidable L, insidable R>
+    inline constexpr bool same_encoding =
+         std::is_same_v<raw_t<L>, raw_t<R>> && index_raw<L> == index_raw<R>;
 
     // Ungated double view of any inside, for the `f64` arithmetic arms (the
     // public operator double() is gated on a rounding flag; this is always
@@ -3422,46 +3455,112 @@ namespace beman::inside::detail
   struct assignment<L,R>
   {
     private:
+      // A 64-bit unsigned source can exceed imax: `static_cast<imax>(rhs)` would
+      // turn 2^64−1 into −1. Compare such a source in umax instead; every
+      // narrower or signed source is exact in imax and keeps the plain cast.
+      static constexpr bool wide_unsigned =
+          std::is_unsigned_v<R> && sizeof(R) >= sizeof(imax);
+
+      static constexpr bool below(R rhs, imax lower) noexcept
+      {
+        if constexpr (wide_unsigned)
+          return lower > 0 && static_cast<umax>(rhs) < static_cast<umax>(lower);
+        else
+          return static_cast<imax>(rhs) < lower;
+      }
+
+      static constexpr bool above(R rhs, imax upper) noexcept
+      {
+        if constexpr (wide_unsigned)
+          return upper < 0 || static_cast<umax>(rhs) > static_cast<umax>(upper);
+        else
+          return static_cast<imax>(rhs) > upper;
+      }
+
+      // rhs − clamped for the on_clamp callback, saturated to imax (the exact
+      // difference of two 64-bit values can need 65 bits).
+      static constexpr imax overshoot_of(R rhs, imax clamped) noexcept
+      {
+        constexpr imax kMin = std::numeric_limits<imax>::min();
+        constexpr imax kMax = std::numeric_limits<imax>::max();
+        if constexpr (wide_unsigned)
+        {
+          const umax u = static_cast<umax>(rhs);
+          if (clamped >= 0 && u < static_cast<umax>(clamped))
+            return -static_cast<imax>(static_cast<umax>(clamped) - u);   // < clamped ≤ imax
+          umax d;
+          if (clamped >= 0)
+            d = u - static_cast<umax>(clamped);
+          else if (add_overflow(u, safe_abs(clamped), &d))
+            return kMax;
+          return d > static_cast<umax>(kMax) ? kMax : static_cast<imax>(d);
+        }
+        else
+        {
+          imax d;
+          if (sub_overflow(static_cast<imax>(rhs), clamped, &d))
+            return clamped > 0 ? kMin : kMax;
+          return d;
+        }
+      }
+
       template<typename A>
       static constexpr void apply_clamp(L& lhs, R rhs, imax lower, imax upper, A&& action)
       {
         // Pre: rhs is out of [lower, upper] (only called from handle_out_of_range),
         // so the two-way pick is the full clamp.
-        imax clamped = static_cast<imax>(rhs) < lower ? lower : upper;
-        imax overshoot = static_cast<imax>(rhs) - clamped;
+        const imax clamped = below(rhs, lower) ? lower : upper;
         from_value(lhs, clamped);
         if constexpr (clamp_action<plain_t<A>>)
-          action.Fn(lhs, overshoot);
+          action.Fn(lhs, overshoot_of(rhs, clamped));
       }
 
       template<typename A>
       static constexpr void apply_wrap(L& lhs, R rhs, imax lower, imax upper, A&& action)
       {
         // Overflow-safe modular wrap: `upper-lower+1` and `rhs-lower` can exceed imax,
-        // so the reduction runs in umax (both fit umax for any valid grid; the result
-        // lands back in [lower, upper] ⊂ imax).
+        // so the reduction runs in umax (the result lands back in [lower, upper] ⊂ imax).
+        // The carry saturates at imax, like the carry grid (wrap_carry_grid).
+        constexpr umax kMaxU = static_cast<umax>(std::numeric_limits<imax>::max());
+        auto sat = [](umax q) { return q > kMaxU ? std::numeric_limits<imax>::max() : static_cast<imax>(q); };
         const umax urange = static_cast<umax>(upper) - static_cast<umax>(lower) + 1u;
-        const imax ri = static_cast<imax>(rhs);
+        const umax u = static_cast<umax>(rhs);       // rhs mod 2^64 (exact for unsigned)
         if (urange == 0)                              // span == 2^64−1: wrap is identity
         {
-          from_value(lhs, ri);
-          if constexpr (wrap_action<plain_t<A>>) action.Fn(lhs, make_wrap_carry<L, R>(0));
+          from_value(lhs, static_cast<imax>(u));
+          if constexpr (wrap_action<plain_t<A>>)
+            action.Fn(lhs, make_wrap_carry<L, R>(wide_unsigned && u > kMaxU ? 1 : 0));
           return;
         }
         umax w;
         imax excess;
-        if (ri >= lower)
+        if (!below(rhs, lower))
         {
-          const umax dist = static_cast<umax>(ri) - static_cast<umax>(lower);  // true, ≥ 0
-          w = dist % urange;
-          excess = static_cast<imax>(dist / urange);
+          if (wide_unsigned && lower < 0)
+          {
+            // dist = u + |lower| may need 65 bits: reduce each term, then add
+            // the residues without overflow.
+            const umax a = u % urange, b = safe_abs(lower) % urange;
+            const bool carry = a >= urange - b;
+            w = carry ? a - (urange - b) : a + b;
+            umax q = u / urange;
+            if (add_overflow(q, safe_abs(lower) / urange, &q) || add_overflow(q, umax{carry}, &q))
+              q = ~umax{0};
+            excess = sat(q);
+          }
+          else
+          {
+            const umax dist = u - static_cast<umax>(lower);   // true, ≥ 0
+            w = dist % urange;
+            excess = sat(dist / urange);
+          }
         }
         else
         {
-          const umax dist = static_cast<umax>(lower) - static_cast<umax>(ri);  // true, > 0
+          const umax dist = static_cast<umax>(lower) - u;     // true, > 0
           const umax m = dist % urange;
           w = (m == 0) ? 0u : (urange - m);
-          excess = -static_cast<imax>((dist + urange - 1u) / urange);          // −ceil(dist/range)
+          excess = -sat(dist / urange + (m != 0));            // −ceil(dist/range)
         }
         from_value(lhs, static_cast<imax>(static_cast<umax>(lower) + w));
         if constexpr (wrap_action<plain_t<A>>)
@@ -3503,7 +3602,10 @@ namespace beman::inside::detail
       template<typename P, typename A = no_action>
       static constexpr L& assign(L& lhs, R const& rhs, P&& policy, A&& action = {})
       {
-        static_assert(not excludes(interval_of<L>, interval_of<R>));
+        // wrap/clamp bring any value into range (matches assign_intervals_ok).
+        static_assert(has_policy<L, P, wrap> || has_policy<L, P, clamp>
+                      || not excludes(interval_of<L>, interval_of<R>),
+          "rhs type's range lies entirely outside lhs interval and the policy cannot bring it into range");
 
         if constexpr (!integers_on_grid)
           return assignment<L, rational>::assign(lhs, rational{rhs}, policy, std::forward<A>(action));
@@ -3523,7 +3625,7 @@ namespace beman::inside::detail
               {
                 constexpr imax lower = lower_imax<L>;
                 constexpr imax upper = upper_imax<L>;
-                if (static_cast<imax>(rhs) < lower || static_cast<imax>(rhs) > upper) [[unlikely]]
+                if (below(rhs, lower) || above(rhs, upper)) [[unlikely]]
                 {
                   // The integer clamp/wrap formulas need consecutive integers to be
                   // adjacent grid points (notch 1); a finer notch wraps modulo
@@ -3559,10 +3661,24 @@ namespace beman::inside::detail
   struct assignment<L,R>
   {
     private:
+      // A floating source with |rhs| ≥ 2^64 lies outside every grid and has no
+      // rational form (rational(double) would fail): decide such values by sign.
+      static constexpr bool huge(R const& rhs) noexcept
+      {
+        if constexpr (std::floating_point<R>)
+          return !(rhs < 0x1p64 && rhs > -0x1p64);
+        else
+          return false;
+      }
+
+      static constexpr bool below_lower(R const& rhs)
+      { return huge(rhs) ? rhs < 0 : rhs < lower_of<L>; }
+
       template<typename P, typename A>
       static constexpr void apply_clamp(L& lhs, R rhs, P&&, A&& action)
       {
-        R clamped = (rhs < lower_of<L>) ? static_cast<R>(lower_of<L>) : static_cast<R>(upper_of<L>);
+        const bool low = below_lower(rhs);
+        R clamped = low ? static_cast<R>(lower_of<L>) : static_cast<R>(upper_of<L>);
         R overshoot;
         if constexpr (std::same_as<R, rational>)
           overshoot = (rhs - clamped).value_or(rational{0});
@@ -3574,13 +3690,13 @@ namespace beman::inside::detail
         // the exact constant (a double round-trip would lose non-dyadic endpoints);
         // raw_from_offset<L> adds Lower back for direct-encoded storage.
         if constexpr (fp_raw<L>)
-          lhs = L::from_raw((rhs < lower_of<L>) ? static_cast<double>(lower_of<L>)
-                                             : static_cast<double>(upper_of<L>));
+          lhs = L::from_raw(low ? static_cast<double>(lower_of<L>)
+                                : static_cast<double>(upper_of<L>));
         else if constexpr (rational_raw<L>)
-          lhs = L::from_raw((rhs < lower_of<L>) ? lower_of<L> : upper_of<L>);
+          lhs = L::from_raw(low ? lower_of<L> : upper_of<L>);
         else
           lhs = L::from_raw(raw_from_offset<L>(
-              (rhs < lower_of<L>) ? umax{0} : max_index_v<L>));
+              low ? umax{0} : max_index_v<L>));
 
         if constexpr (clamp_action<plain_t<A>>)
           action.Fn(lhs, overshoot);
@@ -3601,6 +3717,14 @@ namespace beman::inside::detail
         // Round onto the lattice first (by the policy, like every other store),
         // then fold: an on-lattice value folds onto a grid point, so rounding
         // can never carry it past Upper.
+        // The fold's quotient q is an imax: a floating source of 2^63 or more
+        // cannot be wrapped with a deliverable carry (nor converted exactly).
+        if constexpr (std::floating_point<R>)
+          if (!(rhs < 0x1p63 && rhs > -0x1p63)) [[unlikely]]
+          {
+            policy.report(errc::overflow);
+            return;
+          }
         rational rhs_r{rhs};
         if constexpr (has_policy<L, P, snap>)
           rhs_r = round_to_lattice<L, P>(rhs_r);
@@ -3862,6 +3986,8 @@ namespace beman::inside::detail
 
       static constexpr bool out_of_interval(R const& rhs)
       {
+        if (huge(rhs))
+          return true;
         if constexpr (double_bounds_exact)
         {
           constexpr double lo = static_cast<double>(lower_of<L>);
@@ -3914,8 +4040,9 @@ namespace beman::inside::detail
         {
           // Round first: a value just outside may round onto an endpoint.
           if constexpr (rounds_before_range_check<L, plain_t<P>>)
-            if (const auto rr = raw_if_rounds_inside<L, plain_t<P>>(rational{rhs}); rr.Ok)
-            { lhs = L::from_raw(rr.Raw); return lhs; }
+            if (!huge(rhs))
+              if (const auto rr = raw_if_rounds_inside<L, plain_t<P>>(rational{rhs}); rr.Ok)
+              { lhs = L::from_raw(rr.Raw); return lhs; }
           // Fractional path has no wrap *action* branch (Wrappable = false).
           if (dispatch_out_of_range<false>(lhs, policy, action,
                 [&]{ apply_clamp(lhs, rhs, policy, action); },
@@ -4152,7 +4279,7 @@ namespace beman::inside::detail
         else if constexpr (is_integer_mapping)
         {
           // exact: Factor and Offset have integer denominators, no rounding ambiguity
-          if constexpr (Offset == 0 && Factor == 1)
+          if constexpr (Offset == 0 && Factor == 1 && same_encoding<L, R>)
             lhs = L::from_raw(raw_cast<L>(rhs.raw()));
           else
             lhs = L::from_raw(raw_cast<L>(map_raw(rhs.raw())));
@@ -4557,13 +4684,32 @@ namespace beman::inside
     constexpr B& operator*=(C const& rhs)
     { return finalise_arith(mul(Ref, rhs, Policy), "policy_ref::operator*= overflow"); }
 
+    // A zero divisor is reported (on_error / ignore_zero) and leaves Ref
+    // unchanged, like inside::operator/=: div/mod under ignore_zero skip their
+    // own check, so dividing here would be a division by zero.
     template <insidable C>
     constexpr B& operator/=(C const& rhs)
-    { return finalise_arith(div(Ref, rhs, Policy), "policy_ref::operator/= division/overflow"); }
+    {
+      if (rhs == 0)
+      {
+        if constexpr (!has_flag(policy_of<C>, ignore_zero))   // either operand silences it
+          report_zero(errc::division_by_zero, "policy_ref::operator/= division by zero");
+        return Ref;
+      }
+      return finalise_arith(div(Ref, rhs, Policy), "policy_ref::operator/= division/overflow");
+    }
 
     template <insidable C>
     constexpr B& operator%=(C const& rhs)
-    { return finalise_arith(mod(Ref, rhs, Policy), "policy_ref::operator%= division/overflow"); }
+    {
+      if (rhs == 0)
+      {
+        if constexpr (!has_flag(policy_of<C>, ignore_zero))   // either operand silences it
+          report_zero(errc::division_by_zero, "policy_ref::operator%= division by zero");
+        return Ref;
+      }
+      return finalise_arith(mod(Ref, rhs, Policy), "policy_ref::operator%= division/overflow");
+    }
 
     //-------------------------------------------------------------------------
     // rational RHS overloads — the only non-inside operand a compound assign
@@ -5323,6 +5469,8 @@ namespace beman::inside
   {
     if constexpr (std::floating_point<A>)
       if (!(value - value == 0)) return true;   // NaN / ±inf fit no grid (and must not raise here)
+    if constexpr (std::floating_point<A>)
+      if (!(value < 0x1p64 && value > -0x1p64)) return true;   // beyond every grid, no rational form
     const detail::rational r = detail::as_rational(value);
     if (includes(interval_of<B>, r))
       return false;
@@ -5339,6 +5487,8 @@ namespace beman::inside
       return false;                       // continuous grid: no notch to miss
     if constexpr (std::floating_point<A>)
       if (!(value - value == 0)) return false;   // non-finite — overflow, not truncation
+    if constexpr (std::floating_point<A>)
+      if (!(value < 0x1p64 && value > -0x1p64)) return false;   // overflow, not truncation
     detail::rational r = detail::as_rational(value);
     if (not includes(interval_of<B>, r))
     {
@@ -6119,8 +6269,8 @@ namespace beman::inside
     template <insidable L, insidable R, class Cmp>
     constexpr auto compare(L const& lhs, R const& rhs, Cmp cmp)
     {
-      // same grid: Raw is monotonically ordered regardless of storage kind
-      if constexpr (grid_of<L> == grid_of<R>)
+      // same grid and encoding: Raw is monotonically ordered and comparable
+      if constexpr (grid_of<L> == grid_of<R> && same_encoding<L, R>)
         return cmp(lhs.raw(), rhs.raw());
       // an fp-backed operand: compare in double when both sides' values are
       // exact in double (raw_imax would truncate the fp raw); otherwise the
@@ -6202,7 +6352,14 @@ namespace beman::inside
         return cmp((index_cmp_bias<B> + raw_imax(lhs)) * static_cast<imax>(notch_of<B>.Numerator),
                    static_cast<imax>(rhs) * notch_of<B>.Denominator);
       else
+      {
+        // |rhs| ≥ 2^64 (or infinite) has no rational form, and every grid value
+        // lies strictly inside ±2^64: the sign of rhs decides.
+        if constexpr (std::floating_point<A>)
+          if (rhs == rhs && !(rhs < 0x1p64 && rhs > -0x1p64))
+            return cmp(rational{0}, rational{rhs < 0 ? -1 : 1});
         return cmp(as_rational(lhs), rational{rhs});
+      }
     }
   }
 

@@ -339,13 +339,32 @@ namespace beman::inside
     constexpr B& operator*=(C const& rhs)
     { return finalise_arith(mul(Ref, rhs, Policy), "policy_ref::operator*= overflow"); }
 
+    // A zero divisor is reported (on_error / ignore_zero) and leaves Ref
+    // unchanged, like inside::operator/=: div/mod under ignore_zero skip their
+    // own check, so dividing here would be a division by zero.
     template <insidable C>
     constexpr B& operator/=(C const& rhs)
-    { return finalise_arith(div(Ref, rhs, Policy), "policy_ref::operator/= division/overflow"); }
+    {
+      if (rhs == 0)
+      {
+        if constexpr (!has_flag(policy_of<C>, ignore_zero))   // either operand silences it
+          report_zero(errc::division_by_zero, "policy_ref::operator/= division by zero");
+        return Ref;
+      }
+      return finalise_arith(div(Ref, rhs, Policy), "policy_ref::operator/= division/overflow");
+    }
 
     template <insidable C>
     constexpr B& operator%=(C const& rhs)
-    { return finalise_arith(mod(Ref, rhs, Policy), "policy_ref::operator%= division/overflow"); }
+    {
+      if (rhs == 0)
+      {
+        if constexpr (!has_flag(policy_of<C>, ignore_zero))   // either operand silences it
+          report_zero(errc::division_by_zero, "policy_ref::operator%= division by zero");
+        return Ref;
+      }
+      return finalise_arith(mod(Ref, rhs, Policy), "policy_ref::operator%= division/overflow");
+    }
 
     //-------------------------------------------------------------------------
     // rational RHS overloads — the only non-inside operand a compound assign

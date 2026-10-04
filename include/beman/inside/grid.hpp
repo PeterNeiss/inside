@@ -407,7 +407,10 @@ namespace beman::inside
         "storage: pick a single fixed-width flag (e.g. `u16`), not several");
       using R = raw_type_of_t<P>;
       constexpr bool idx = (P & indexed) == indexed;
-      static_assert(idx ? (G.Notch != 0) : (G.Notch == 1),
+      // A point (notch 0) has one value: value storage holds it, index storage
+      // holds slot 0 — the notch requirement does not apply.
+      static_assert(G.Interval.Lower == G.Interval.Upper
+                    || (idx ? (G.Notch != 0) : (G.Notch == 1)),
         "fixed-width storage: value storage needs Notch == 1 — add `indexed` to "
         "store a notched grid's 0-based index instead");
       static_assert(storage_fits<G, R, idx>(),

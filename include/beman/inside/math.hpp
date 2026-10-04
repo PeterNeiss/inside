@@ -182,7 +182,12 @@ namespace beman::inside
 
     // value == significand * 2^exp2. Re-express as num/den with den = 2^k.
     if (exp2 >= 0)                           // integer-valued: scale up, den = 1
+    {
+      // |value| ≥ 2^64 has no 64-bit numerator: fail rather than wrap the shift.
+      if (exp2 > 64 - std::bit_width(significand))
+        raise(errc::overflow, "beman::inside::detail::abs_fraction: |double| >= 2^64");
       return {significand << exp2, 1};
+    }
 
     // exp2 < 0 → den = 2^(-exp2), capped at 2^62 (den is stored signed). Beyond
     // the cap the value is too small to keep: drop the significand's low bits

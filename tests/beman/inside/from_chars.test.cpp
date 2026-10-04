@@ -96,3 +96,19 @@ TEST(FromCharsTest, from_chars_is_constexpr)
   constexpr const char bad[] = "1.5";
   static_assert(from_chars<inside<{{0, 1}, per<4>}>>(bad, bad + 3).error() == errc::overflow);
 }
+
+// Fractional trailing zeros and the exponent of zero carry no value: they must
+// not overflow the 64-bit numerator / denominator.
+TEST(FromCharsTest, trailing_zeros_and_zero_exponent)
+{
+  using B = inside<{{0, 10}, per<100>}>;
+  EXPECT_EQ(value_of<B>("1.000000000000000000000"), 1);
+  EXPECT_EQ(value_of<B>("1.0500000000000000000000000"), (rational{105, 100}));
+  EXPECT_EQ(value_of<B>("0.000000000000000000000000"), 0);
+  EXPECT_EQ(value_of<B>("0e-30"), 0);
+  EXPECT_EQ(value_of<B>("0x0p99"), 0);
+  EXPECT_EQ(value_of<B>("0x1.80000000000000000p1"), 3);
+  EXPECT_EQ(value_of<B>("2.50e0"), (rational{5, 2}));
+  EXPECT_EQ(error_of<B>("1.00000000000000000000001"), errc::overflow);
+  static_assert(1.250000000000000000000_r == rational{5, 4});
+}

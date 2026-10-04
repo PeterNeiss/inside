@@ -23,6 +23,8 @@ namespace beman::inside
   {
     if constexpr (std::floating_point<A>)
       if (!(value - value == 0)) return true;   // NaN / ±inf fit no grid (and must not raise here)
+    if constexpr (std::floating_point<A>)
+      if (!(value < 0x1p64 && value > -0x1p64)) return true;   // beyond every grid, no rational form
     const detail::rational r = detail::as_rational(value);
     if (includes(interval_of<B>, r))
       return false;
@@ -39,6 +41,8 @@ namespace beman::inside
       return false;                       // continuous grid: no notch to miss
     if constexpr (std::floating_point<A>)
       if (!(value - value == 0)) return false;   // non-finite — overflow, not truncation
+    if constexpr (std::floating_point<A>)
+      if (!(value < 0x1p64 && value > -0x1p64)) return false;   // overflow, not truncation
     detail::rational r = detail::as_rational(value);
     if (not includes(interval_of<B>, r))
     {

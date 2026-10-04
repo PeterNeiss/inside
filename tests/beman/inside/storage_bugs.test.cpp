@@ -10,6 +10,9 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <cstdint>
+#include <limits>
+#include <utility>
 
 using namespace beman::inside;
 using namespace beman::inside::detail;
@@ -307,4 +310,184 @@ TEST(StorageBugsTest, predicates_handle_non_finite_input)
   EXPECT_TRUE(conversion_is_lossy<B>(inf));
   EXPECT_FALSE(conversion_is_lossy<B>(3.0));
   EXPECT_TRUE(conversion_rounds<B>(3.5));
+}
+
+//---------------------------------------------------------------------------
+// 2026-10 defect pass. A grid does not fix the raw encoding: `indexed`,
+// `direct`, `f64` and the width flags pick it per policy, so two insides on
+// the same grid may store the same value differently.
+//---------------------------------------------------------------------------
+TEST(StorageBugsTest, same_grid_different_encoding_compares_by_value)
+{
+  using A = inside<{{10, 20}, 1}, indexed>;
+  using B = inside<{{10, 20}, 1}, direct>;
+  static_assert(A{15} == B{15});
+  static_assert(A{12} < B{15});
+
+  using G1 = inside<{{-5, 5}, 1}, indexed>;
+  using G2 = inside<{{-5, 5}, 1}>;                   // deduced: direct int8
+  static_assert(G1{2} == G2{2});
+  static_assert(G1{-3} < G2{2});
+  static_assert(!(G1{2} != G2{2}));
+
+#ifndef BEMAN_INSIDE_MATH_NO_FP
+  using C = inside<{{0, 1}, per<4>}, f64>;
+  using D = inside<{{0, 1}, per<4>}>;                // deduced: index uint8
+  static_assert(C{rational{1, 2}} == D{rational{1, 2}});
+  static_assert(C{rational{1, 4}} < D{rational{1, 2}});
+#endif
+
+  G1 a{-4};
+  G2 b{3};
+  EXPECT_LT(a, b);
+  EXPECT_NE(a, b);
+}
+
+TEST(StorageBugsTest, same_grid_different_encoding_assigns_by_value)
+{
+  using G1 = inside<{{-5, 5}, 1}, indexed>;
+  using G2 = inside<{{-5, 5}, 1}>;
+  static_assert(G1{G2{2}}.as<int>() == 2);
+  static_assert(G2{G1{2}}.as<int>() == 2);
+
+  using H1 = inside<{{10, 20}, 1}, direct>;
+  using H2 = inside<{{10, 20}, 1}>;
+  static_assert(H2{H1{15}}.as<int>() == 15);
+  static_assert(H1{H2{15}}.as<int>() == 15);
+
+  static_assert(unchecked_cast<G1>(G2{2}).as<int>() == 2);
+
+  G1 x{0};
+  x = G2{-5};
+  EXPECT_EQ(x.as<int>(), -5);
+  EXPECT_EQ(x.raw(), 0u);
+}
+
+//---------------------------------------------------------------------------
+// A 64-bit unsigned source above INT64_MAX must not be read as negative.
+//---------------------------------------------------------------------------
+TEST(StorageBugsTest, uint64_source_above_int64_max)
+{
+  static constexpr unsigned long long big = ~0ull;
+
+  constexpr auto checked = [] {
+    errc ec{};
+    inside<{{-10, 10}, 1}> x{3};
+    x.policy(ec) = big;
+    return std::pair{x.as<int>(), ec};
+  }();
+  static_assert(checked.first == 3 && checked.second == errc::overflow);
+
+  static_assert(clamp_cast<inside<{{0, 10}, 1}>>(1ull << 63).as<int>() == 10);
+  static_assert(clamp_cast<inside<{{-10, 10}, 1}>>(big).as<int>() == 10);
+
+  // (2^64 − 1 − Lower) mod 21 + Lower
+  static_assert(wrap_cast<inside<{{-10, 10}, 1}>>(big).as<long>()
+                == static_cast<long>((big % 21 + 10) % 21) - 10);
+  static_assert(wrap_cast<inside<{{5, 9}, 1}>>(big).as<long>()
+                == static_cast<long>((big - 5) % 5) + 5);
+  static_assert(wrap_cast<inside<{{5, 9}, 1}>>(-7).as<int>() == 8);
+
+  // The on_clamp overshoot saturates instead of overflowing.
+  inside<{{-10, 10}, 1}> c{0};
+  imax overshoot = 0;
+  c.on_clamp([&](auto&, imax o) { overshoot = o; }) = big;
+  EXPECT_EQ(c.as<int>(), 10);
+  EXPECT_EQ(overshoot, std::numeric_limits<imax>::max());
+  c.on_clamp([&](auto&, imax o) { overshoot = o; }) = std::numeric_limits<imax>::max();
+  EXPECT_EQ(overshoot, std::numeric_limits<imax>::max() - 10);
+}
+
+//---------------------------------------------------------------------------
+// A double of magnitude 2^64 or more has no 64-bit rational form; it used to
+// convert to a wrapped value (2^64 → 0) and be stored silently.
+//---------------------------------------------------------------------------
+TEST(StorageBugsTest, huge_double_source)
+{
+  constexpr auto rounded = [](double v) {
+    errc ec{};
+    inside<{{0, 100}, 1}, round_nearest> x{5};
+    x.policy(ec) = v;
+    return std::pair{x.as<int>(), ec};
+  };
+  static_assert(rounded(0x1p64).first == 5 && rounded(0x1p64).second == errc::overflow);
+  static_assert(rounded(1e300).second == errc::overflow);
+  static_assert(rounded(-1e300).second == errc::overflow);
+
+  constexpr auto wrapped = [](double v) {
+    errc ec{};
+    inside<{{0, 9}, 1}, wrap> x{5};
+    x.policy(ec) = v;
+    return std::pair{x.as<long>(), ec};
+  };
+  static_assert(wrapped(0x1p64).second == errc::overflow);
+  static_assert(wrapped(0x1p62).first == static_cast<long>((1ull << 62) % 10));
+
+  using third = inside<{{0, rational{1, 3}}, rational{1, 3}}, clamp>;
+  static_assert(rational{third{1e300}} == rational{1, 3});
+  static_assert(rational{third{-1e300}} == 0);
+
+  constexpr inside<{{0, 10}, per<4>}> x{1};
+  static_assert(x < 0x1p64 && x > -0x1p64 && x < 1e300 && !(x == 1e300));
+  static_assert(conversion_overflows<inside<{0, 10}>>(0x1p64));
+  static_assert(!conversion_rounds<inside<{0, 10}>>(0x1p64));
+
+  EXPECT_THROW((void)rational{0x1p64}, inside_error);
+  EXPECT_EQ(rational{0x1p63}, rational{1ull << 63});
+}
+
+//---------------------------------------------------------------------------
+// clamp / wrap take an integral source whose whole type range misses the grid.
+//---------------------------------------------------------------------------
+TEST(StorageBugsTest, clamp_wrap_from_disjoint_integral_type)
+{
+  static_assert(inside<{{1000, 2000}, 1}, clamp>{std::uint8_t{5}}.as<int>() == 1000);
+  static_assert(inside<{{1000, 1009}, 1}, wrap>{std::uint8_t{5}}.as<int>() == 1005);
+  static_assert(clamp_cast<inside<{1000, 2000}>>(std::uint8_t{5}).as<int>() == 1000);
+}
+
+//---------------------------------------------------------------------------
+// A fixed-width flag pins a point's wire layout (value storage).
+//---------------------------------------------------------------------------
+TEST(StorageBugsTest, width_flag_on_point_grid)
+{
+  using P5 = inside<grid{5}, u8>;
+  static_assert(sizeof(P5) == 1);
+  static_assert(P5{5}.raw() == 5 && P5{5} == 5);
+  using M7 = inside<grid{-7}, i16>;
+  static_assert(M7{-7}.raw() == -7 && M7{-7} == -7);
+  static_assert(P5{5} + inside<{0, 10}>{3} == 8);
+
+  inside<{0, 10}> t{3};
+  t += P5{5};
+  EXPECT_EQ(t, 8);
+}
+
+// rational::to<T> checks that the quotient fits T.
+TEST(StorageBugsTest, rational_to_checks_width)
+{
+  static_assert(rational{300}.to<std::uint8_t>().error() == errc::overflow);
+  static_assert(rational{255}.to<std::uint8_t>().value() == 255);
+  static_assert(rational{-1}.to<std::uint8_t>().error() == errc::domain_error);
+}
+
+// A policy_ref compound /= or %= with a zero divisor reports (or, under
+// ignore_zero, no-ops) like the member operator, and never divides by zero.
+TEST(StorageBugsTest, policy_ref_zero_divisor_does_not_divide)
+{
+  using X = inside<{0, 10}, checked | snap>;
+  using Z = inside<{0, 10}, checked | snap | ignore_zero>;
+  X b{6};
+  b.policy<ignore_zero>() /= X{0};
+  b.policy<ignore_zero>() %= X{0};
+  b.policy() /= Z{0};
+  EXPECT_EQ(b, 6);
+  EXPECT_THROW(b.policy() /= X{0}, inside_error);
+  EXPECT_THROW(b.policy() %= X{0}, inside_error);
+  errc ec{};
+  b.policy(ec) %= X{0};
+  EXPECT_EQ(ec, errc::division_by_zero);
+  EXPECT_EQ(b, 6);
+  b.policy() /= X{3};
+  EXPECT_EQ(b, 2);
 }
