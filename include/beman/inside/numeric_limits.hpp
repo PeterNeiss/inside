@@ -9,20 +9,13 @@
 
 #include <limits>
 #include <functional>
-#include <type_traits>   // std::common_type
 
 //---------------------------------------------------------------------------
-// numeric_limits / hash / common_type — std:: specialisations for inside<G, P>.
+// numeric_limits / hash — std:: specialisations for inside<G, P>.
 // numeric_limits reports the *grid* bounds (Lower/Upper), not the raw type's
 // limits. std::hash hashes the Raw member (rational raw: Numerator+Denominator,
-// boost-style combine). std::common_type is the grid hull (see beman::inside::common_inside
-// in arithmetic.hpp) so mixed-grid bounds interoperate with generic code.
+// boost-style combine). (std::common_type lives in arithmetic.hpp, always on.)
 //---------------------------------------------------------------------------
-
-template <beman::inside::grid G1, beman::inside::policy_flag P1, beman::inside::grid G2, beman::inside::policy_flag P2>
-struct std::common_type<beman::inside::inside<G1, P1>, beman::inside::inside<G2, P2>>
-  : beman::inside::detail::common_inside<beman::inside::inside<G1, P1>, beman::inside::inside<G2, P2>> {};
-
 
 template <beman::inside::grid G, beman::inside::policy_flag P>
 struct std::numeric_limits<beman::inside::inside<G, P>>

@@ -265,8 +265,7 @@ auto x    = 10_ins + my_inside;    // grid widens via just<N> + inside
 code that calls them unqualified. `min` / `max` on two values of the same type
 return that type. On two different grids they return `common_inside_t<L, R>`:
 the interval hull with the gcd notch, which holds every value of both exactly
-(the same type `std::common_type_t<L, R>` names, with
-`<beman/inside/numeric_limits.hpp>` included). `midpoint` takes mixed grids
+(the same type `std::common_type_t<L, R>` names). `midpoint` takes mixed grids
 too.
 `midpoint` returns the **exact** average on a refined grid — the true midpoint
 of two grid points need not land on the grid, so unlike `std::midpoint` on
