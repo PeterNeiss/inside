@@ -118,7 +118,7 @@ TEST(FormatTest, std_format_numeric_specs_representation_flags)
   // `exact` on a notched grid: empty spec keeps the exact fraction; a
   // numeric spec routes through std::formatter<double> like any fractional
   // grid.
-  using ex = inside<{{0, 1}, notch<1, 3>}, exact>;
+  using ex = inside<{{0, 1}, per<3>}, exact>;
   ex e{rational{2u, 3}};
   ASSERT_EQ((std::format("{}", e)), "2/3");
   ASSERT_EQ((std::format("{:.3f}", e)), (std::format("{:.3f}", static_cast<double>(rational{e}))));

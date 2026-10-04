@@ -93,11 +93,11 @@ namespace
   // (Integer-index snap grids also work — full-mantissa results store via the
   // 128-bit rounded path — but `f64` keeps the published table's store
   // semantics uniform across engines.)
-  using angle_grid = inside<{{-8, 8},        notch<1, 16384>}, round_nearest | f64>;
-  using tan_grid   = inside<{{-1.5, 1.5},   notch<1, 16384>}, round_nearest | f64>;
-  using unit_grid  = inside<{{-1, 1},       notch<1, 16384>}, round_nearest | f64>;
-  using sqrt_grid  = inside<{{0, 16},       notch<1, 16384>}, round_nearest | f64>;
-  using log_grid   = inside<{{1, 1000},     notch<1, 16384>}, round_nearest | f64>;
+  using angle_grid = inside<{{-8, 8},        per<16384>}, round_nearest | f64>;
+  using tan_grid   = inside<{{-1.5, 1.5},   per<16384>}, round_nearest | f64>;
+  using unit_grid  = inside<{{-1, 1},       per<16384>}, round_nearest | f64>;
+  using sqrt_grid  = inside<{{0, 16},       per<16384>}, round_nearest | f64>;
+  using log_grid   = inside<{{1, 1000},     per<16384>}, round_nearest | f64>;
 }
 
 int main(int argc, char** argv)

@@ -55,7 +55,7 @@ auto sum = x + y;          // inside<{0, 200}> — no overflow possible
 auto z = x + 1_ins;        // scalars need a grid: 1_ins, not 1
 
 // Fractional grid: −1 .. 1 in 1/16 384 steps (Q1.14 audio sample).
-using sample = inside<{{-1, 1}, notch<1, 16384>}, round_nearest>;
+using sample = inside<{{-1, 1}, per<16384>}, round_nearest>;
 sample s = 0.5;            // dyadic literal — exact
 s.numerator();             // 1   (denominator() == 2): exact read-out
 

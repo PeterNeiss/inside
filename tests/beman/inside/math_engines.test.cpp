@@ -17,9 +17,9 @@ namespace
 {
   // A double-backed f64 grid (works under both engines: `f64` ⊃ snap; under
   // BEMAN_INSIDE_MATH_CORDIC it is an ordinary round_nearest integer-backed inside).
-  using Ang = inside<{{-8, 8}, notch<1, 16384>}, round_nearest | f64>;
-  using Pos = inside<{{1, 1000}, notch<1, 16384>}, round_nearest | f64>;
-  using Sq  = inside<{{0, 16}, notch<1, 16384>}, round_nearest | f64>;   // sqrt needs Lower 0
+  using Ang = inside<{{-8, 8}, per<16384>}, round_nearest | f64>;
+  using Pos = inside<{{1, 1000}, per<16384>}, round_nearest | f64>;
+  using Sq  = inside<{{0, 16}, per<16384>}, round_nearest | f64>;   // sqrt needs Lower 0
 }
 
 // cordic engine is always callable and exact on special values
@@ -113,7 +113,7 @@ TEST(MathEnginesTest, all_three_engines_coexist_in_one_binary_and_meet_at_exact_
   ASSERT_EQ(rational{math::flt::sqrt(Sq{4})}, rational{math::dbl::sqrt(Sq{4})});
   ASSERT_EQ(rational{math::flt::cos(Ang{0})}, rational{math::cordic::cos(Ang{0})});
   // A pole errors through the expected channel under the float engine too.
-  using TanAng = inside<{{-2, 2}, notch<1, 4096>}, round_nearest | f64>;
+  using TanAng = inside<{{-2, 2}, per<4096>}, round_nearest | f64>;
   auto tf = math::flt::tan(TanAng{0});
   ASSERT_TRUE(tf.has_value());
   ASSERT_EQ(rational{*tf}, 0);
@@ -128,7 +128,7 @@ TEST(MathEnginesTest, both_engines_coexist_in_one_binary_and_meet_at_exact_point
   ASSERT_EQ(rational{math::cordic::cos(Ang{0})}, rational{math::dbl::cos(Ang{0})});
 
   // A pole still errors through the expected channel under both engines.
-  using TanAng = inside<{{-2, 2}, notch<1, 4096>}, round_nearest | f64>;
+  using TanAng = inside<{{-2, 2}, per<4096>}, round_nearest | f64>;
   auto tc = math::cordic::tan(TanAng{0});
   auto td = math::dbl::tan(TanAng{0});
   ASSERT_TRUE(tc.has_value());

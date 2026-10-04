@@ -20,17 +20,17 @@ using namespace beman::inside;
 int main()
 {
   // Signed fractional grid: 32769 steps in [-1, 1] -> uint16 storage
-  using sample = inside<{{-1, 1}, notch<1, 16384>}, round_nearest>;
+  using sample = inside<{{-1, 1}, per<16384>}, round_nearest>;
   static_assert(sizeof(sample) == 2);
 
   // Two sine waves; combined peaks exceed unity to exercise clamping.
   // wave_b is phase-shifted by -π/6 (= 30° behind wave_a).
   constexpr std::size_t N = 8;
 
-  using time_t    = inside<{{ 0,  1}, notch<1,     N>}, round_nearest>;
-  using offset_t  = inside<{{-2,  2}, notch<1, 16384>}, round_nearest>;
-  using angle_t   = inside<{{-4, 10}, notch<1, 16384>}, round_nearest | f64>;
-  using gainfac_t = inside<{{ 0,  1}, notch<1,  1024>}, round_nearest>;
+  using time_t    = inside<{{ 0,  1}, per<N>}, round_nearest>;
+  using offset_t  = inside<{{-2,  2}, per<16384>}, round_nearest>;
+  using angle_t   = inside<{{-4, 10}, per<16384>}, round_nearest | f64>;
+  using gainfac_t = inside<{{ 0,  1}, per<1024>}, round_nearest>;
 
   constexpr offset_t  off_a{0};
   constexpr offset_t  off_b{-math::pi / just<6>};
@@ -61,7 +61,7 @@ int main()
 
   // Peak detection over the buffer (max magnitude). `math::abs` keeps us in
   // the inside world; the result is signed-stripped via |x| <= max.
-  using abs_t = inside<{{0, 1}, notch<1, 16384>}, round_nearest>;
+  using abs_t = inside<{{0, 1}, per<16384>}, round_nearest>;
   abs_t peak{0};
   for (auto s : wave_a)
   {

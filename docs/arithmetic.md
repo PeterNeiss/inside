@@ -81,7 +81,7 @@ using fast = inside<{0, 100}, snap>;
 auto q     = fast{7} / fast{3};                // expected<inside<{0, 100}>> integer raw, value 2
 
 // Q-format same-notch (path A).
-using fp = inside<{{0, 255}, notch<1, 256>}, unsafe>;   // Q8.8; unsafe implies snap
+using fp = inside<{{0, 255}, per<256>}, unsafe>;   // Q8.8; unsafe implies snap
 auto qfp = div(fp{200}, fp{3}, snapped);     // Q8.8 raw 17066 ≈ 66.6641
 ```
 
@@ -159,8 +159,8 @@ characteristics described in [storage.md](storage.md).
 The Q-format fast path keeps the *notch* but expands the *interval*:
 
 ```cpp
-using fp = inside<{{0, 255}, notch<1, 256>}, unsafe>;   // Q8.8
-auto q = fp{1} / fp{1};   // expected<inside<{{0, 65280}, notch<1, 256>}>>, value 1
+using fp = inside<{{0, 255}, per<256>}, unsafe>;   // Q8.8
+auto q = fp{1} / fp{1};   // expected<inside<{{0, 65280}, per<256>}>>, value 1
 ```
 
 The result's upper bound is `upper_of<L> / notch_of<R> = 255 / (1/256) = 65 280`,
@@ -194,7 +194,7 @@ type-safe result and is **ill-formed by design**. Writing `b + 1` or
 grid.
 
 ```cpp
-using money = inside<{{0, 1'000'000}, notch<1, 100>}, round_nearest>;
+using money = inside<{{0, 1'000'000}, per<100>}, round_nearest>;
 money sub{45.07};
 
 auto a = sub + 1;        // ❌ ill-formed: a raw int has no grid
@@ -392,7 +392,7 @@ zero check used by `inside / inside`; see
 [Division § When the result is `std::expected`](#when-the-result-is-stdexpected-and-when-it-isnt).
 
 ```cpp
-using rn = inside<{{0, 100}, notch<1, 100>}, round_nearest>;
+using rn = inside<{{0, 100}, per<100>}, round_nearest>;
 rn a{0.5};
 a += just<frac<1, 4>>;  // 0.75 — exact inside-space accumulation, snaps to 1/100
 a *= 0.5_ins;           // 0.375, rounded to 0.38 on assign

@@ -49,7 +49,7 @@ TEST(CompoundAssignTest, compound_and_by_a_zero_inside_report_by_default)
 TEST(CompoundAssignTest, compound_assignment_rational_rhs)
 {
   // round_nearest required so the inside's rational assignment path is available.
-  using rn = inside<{{0, 100}, notch<1, 100>}, round_nearest>;
+  using rn = inside<{{0, 100}, per<100>}, round_nearest>;
 
   rn a{0.5_r};
   a += 0.25_r;                       // 0.50 + 0.25 = 0.75
@@ -68,7 +68,7 @@ TEST(CompoundAssignTest, compound_assignment_rational_rhs)
 // compound assignment: fractional RHS via rational
 TEST(CompoundAssignTest, compound_assignment_fractional_rhs_via_rational)
 {
-  using rn = inside<{{-100, 100}, notch<1, 16>}, round_nearest>;
+  using rn = inside<{{-100, 100}, per<16>}, round_nearest>;
 
   rn a{1.0};                         // construction from a double is unchanged
   a += 2.5_r;
@@ -87,7 +87,7 @@ TEST(CompoundAssignTest, compound_assignment_fractional_rhs_via_rational)
 // compound /= 0_r (rational zero) reports error
 TEST(CompoundAssignTest, compound_0_r_rational_zero_reports_error)
 {
-  using rn = inside<{{0, 100}, notch<1, 100>}, round_nearest>;
+  using rn = inside<{{0, 100}, per<100>}, round_nearest>;
   rn a{0.5_r};
   ASSERT_THROW((void)(([&]{ a /= 0_r; }())), beman::inside::inside_error);
 }
@@ -118,7 +118,7 @@ TEST(CompoundAssignTest, increment_decrement)
 TEST(CompoundAssignTest, compound_raw_fast_path_agrees_with_binary_subtraction)
 {
   // Q8.8 — index storage both sides, bias 0.
-  using q88 = inside<{{0, 255}, notch<1, 256>}, snap>;
+  using q88 = inside<{{0, 255}, per<256>}, snap>;
   for (int whole : {0, 1, 100, 255})
     for (int sub : {0, 1, 55, 100})
     {
@@ -134,7 +134,7 @@ TEST(CompoundAssignTest, compound_raw_fast_path_agrees_with_binary_subtraction)
   ASSERT_EQ(rational{frac_lhs}, rational{1});
 
   // offset index grid (negative Lower): bias = Lower/Notch = -8.
-  using off = inside<{{-2, 2}, notch<1, 4>}, snap>;
+  using off = inside<{{-2, 2}, per<4>}, snap>;
   off offset_lhs{rational{3, 4}};
   offset_lhs -= off{rational{-1, 2}};      // 3/4 − (−1/2) = 5/4
   ASSERT_EQ(rational{offset_lhs}, (rational{5, 4}));
@@ -155,17 +155,17 @@ TEST(CompoundAssignTest, compound_raw_fast_path_agrees_with_binary_subtraction)
 // compound -=: policy tail at the raw edges
 TEST(CompoundAssignTest, compound_policy_tail_at_the_raw_edges)
 {
-  using q_clamp = inside<{{0, 255}, notch<1, 256>}, clamp | snap>;
+  using q_clamp = inside<{{0, 255}, per<256>}, clamp | snap>;
   q_clamp clamped{1};
   clamped -= q_clamp{100};                 // 1 − 100 < 0 -> clamps to Lower
   ASSERT_EQ(rational{clamped}, rational{0});
 
-  using q_wrap = inside<{{0, 3}, notch<1, 4>}, wrap | snap>;
+  using q_wrap = inside<{{0, 3}, per<4>}, wrap | snap>;
   q_wrap wrapped{0};
   wrapped -= q_wrap{rational{1, 4}};       // 0 − 1/4 wraps to Upper − ... = 3
   ASSERT_EQ(rational{wrapped}, rational{3});
 
-  using q_checked = inside<{{0, 255}, notch<1, 256>}, checked>;
+  using q_checked = inside<{{0, 255}, per<256>}, checked>;
   q_checked reported{1};
   ASSERT_THROW((void)(([&]{ reported -= q_checked{100}; }())), beman::inside::inside_error);
 
@@ -179,20 +179,20 @@ TEST(CompoundAssignTest, compound_policy_tail_at_the_raw_edges)
 TEST(CompoundAssignTest, compound_non_fast_storages_still_route_through_plus_rhs)
 {
   // rational raw falls back and stays exact
-  using ex = inside<{{0, 4}, notch<1, 3>}, exact | round_nearest>;
+  using ex = inside<{{0, 4}, per<3>}, exact | round_nearest>;
   ex exact_lhs{rational{7, 3}};
   exact_lhs -= ex{rational{2, 3}};
   ASSERT_EQ(rational{exact_lhs}, (rational{5, 3}));
 
   // f64-backed falls back (fp raws are excluded from the raw fast path)
-  using rl = inside<{{-4, 4}, notch<1, 256>}, f64 | round_nearest>;
+  using rl = inside<{{-4, 4}, per<256>}, f64 | round_nearest>;
   rl f64_lhs{rational{3, 2}};
   f64_lhs -= rl{rational{1, 4}};
   ASSERT_EQ(rational{f64_lhs}, (rational{5, 4}));
 
   // cross-notch operands take the binary route
-  using tenths   = inside<{{0, 10}, notch<1, 10>}, round_nearest>;
-  using quarters = inside<{{0, 10}, notch<1, 4>}, round_nearest>;
+  using tenths   = inside<{{0, 10}, per<10>}, round_nearest>;
+  using quarters = inside<{{0, 10}, per<4>}, round_nearest>;
   tenths cross{rational{5, 2}};            // 2.5 on the 1/10 grid
   cross -= quarters{rational{1, 2}};       // 2.0 — exact on both grids
   ASSERT_EQ(rational{cross}, rational{2});

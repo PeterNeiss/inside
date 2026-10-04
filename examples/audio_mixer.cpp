@@ -21,20 +21,20 @@
 using namespace beman::inside;
 
 // Q1.14 signed samples in [-1, 1].
-using sample_t = inside<{{-1, 1}, notch<1, 16384>}, round_nearest | clamp>;
+using sample_t = inside<{{-1, 1}, per<16384>}, round_nearest | clamp>;
 static_assert(sizeof(sample_t) == 2);
 
 // dB gain bounded to [-24, 12] dB with 0.5 dB step — fits in a uint8.
-using db_t = inside<{{-24, 12}, notch<1, 2>}, round_nearest>;
+using db_t = inside<{{-24, 12}, per<2>}, round_nearest>;
 
 // Linear gain on a notch grid wide enough to cover 10^(dB/20) for dB∈[-24,12]
 // (i.e. ~[0.063, 3.98]) with 1/65536 resolution — well below per-step audible.
-using gain_t = inside<{{0, 4}, notch<1, 65536>}, round_nearest>;
+using gain_t = inside<{{0, 4}, per<65536>}, round_nearest>;
 
 // dB/20 intermediate: dB ∈ [-24, 12] → [-1.2, 0.6]. `f64` (the math operand
 // feeding pow_base<10>) requires a dyadic grid, so use a power-of-two notch and
 // integer endpoints (the 1/40 step is snapped onto 1/65536, far below audible).
-using db_div20_t = inside<{{-2, 1}, notch<1, 65536>}, round_nearest | f64>;
+using db_div20_t = inside<{{-2, 1}, per<65536>}, round_nearest | f64>;
 
 // Decibels → linear amplitude via 10^(dB/20). The library's pow_base<10>
 // derives log2(10) at compile time from its own log2 implementation, so the
@@ -64,10 +64,10 @@ int main()
   // through the existing inside × inside operator.
   constexpr std::size_t N = 16;
 
-  using time_t    = inside<{{ 0,  1}, notch<1,     N>}, round_nearest>;
-  using offset_t  = inside<{{-2,  2}, notch<1, 16384>}, round_nearest>;
-  using angle_t   = inside<{{-4, 10}, notch<1, 16384>}, round_nearest | f64>;
-  using gainfac_t = inside<{{ 0,  1}, notch<1,  1024>}, round_nearest>;
+  using time_t    = inside<{{ 0,  1}, per<N>}, round_nearest>;
+  using offset_t  = inside<{{-2,  2}, per<16384>}, round_nearest>;
+  using angle_t   = inside<{{-4, 10}, per<16384>}, round_nearest | f64>;
+  using gainfac_t = inside<{{ 0,  1}, per<1024>}, round_nearest>;
 
   constexpr offset_t offsets[4] =
   {
@@ -136,7 +136,7 @@ int main()
 
   // Standalone: clamp_cast pushes a wider-grid inside into sample_t.
   // Common idiom inside std::transform over a sum bus.
-  using mixbus_t = inside<{{-4, 4}, notch<1, 16384>}, round_nearest>;
+  using mixbus_t = inside<{{-4, 4}, per<16384>}, round_nearest>;
   mixbus_t hot;
   hot.with_clamp() = 2.5;
   std::cout << "\nclamp_cast<sample_t>(mixbus 2.5) = "

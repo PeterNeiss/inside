@@ -199,7 +199,7 @@ TEST(RangeTest, inside_range_strided_visits_every_step_th_value)
   ASSERT_TRUE(collect(5) == std::vector<imax>{0});
 
   // Fractional grid strides over notch values too.
-  using frac_grid = inside_range<{{0, 1}, notch<1, 4>}>;  // 0,.25,.5,.75,1
+  using frac_grid = inside_range<{{0, 1}, per<4>}>;  // 0,.25,.5,.75,1
   frac_grid f;
   std::vector<rational> fseen;
   for (auto v : f.strided(2)) fseen.push_back(rational{v});
@@ -236,12 +236,12 @@ TEST(RangeTest, inside_range_decode_agrees_with_lower_plus_i_notch_on_every_stor
 {
   require_decodes_analytically<inside_range<{0, 999}>>();                    // value raw
   require_decodes_analytically<inside_range<{-500, 500}>>();                 // value raw, signed
-  require_decodes_analytically<inside_range<{{0, 4}, notch<1, 256>}>>();     // index raw
-  require_decodes_analytically<inside_range<{{-2, 2}, notch<1, 4>}>>();      // index raw, offset Lower
+  require_decodes_analytically<inside_range<{{0, 4}, per<256>}>>();     // index raw
+  require_decodes_analytically<inside_range<{{-2, 2}, per<4>}>>();      // index raw, offset Lower
   require_decodes_analytically<inside_range<{0, 255}>>();                    // full-width uint8 raw
-  require_decodes_analytically<inside_range<{{0, 2}, notch<1, 3>}, exact>>();          // rational raw fallback
+  require_decodes_analytically<inside_range<{{0, 2}, per<3>}, exact>>();          // rational raw fallback
 #ifndef BEMAN_INSIDE_MATH_CORDIC   // under BEMAN_INSIDE_MATH_CORDIC the f64 storage arm is elided
-  require_decodes_analytically<inside_range<{{0, 4}, notch<1, 256>}, f64 | round_nearest>>(); // fp raw fallback
+  require_decodes_analytically<inside_range<{{0, 4}, per<256>}, f64 | round_nearest>>(); // fp raw fallback
 #endif
 }
 
@@ -255,8 +255,8 @@ TEST(RangeTest, inside_range_start_ctor_inverts_the_decode_on_every_storage_kind
     ASSERT_EQ(as_rational(*r.begin()), as_rational(start));
   };
   first_equals_start(inside_range<{0, 999}>{}, 500);
-  first_equals_start(inside_range<{{0, 4}, notch<1, 256>}>{}, 2);
-  first_equals_start(inside_range<{{0, 2}, notch<1, 3>}, exact>{}, 1);
+  first_equals_start(inside_range<{{0, 4}, per<256>}>{}, 2);
+  first_equals_start(inside_range<{{0, 2}, per<3>}, exact>{}, 1);
 }
 
 // inside_range: a grid filling its raw type visits every value once
@@ -279,11 +279,11 @@ TEST(RangeTest, inside_range_fast_decode_arms_engage_dispatch_pins)
   // The operator* fast arms are gated on the storage kind; these pins fail if
   // a storage-selection change silently reroutes a type to another arm.
   static_assert(value_raw<inside_range<{0, 999}>::value_type>);
-  static_assert(index_raw<inside_range<{{0, 4}, notch<1, 256>}>::value_type>);
-  static_assert(index_raw<inside_range<{{-2, 2}, notch<1, 4>}>::value_type>);
-  static_assert(rational_raw<inside_range<{{0, 2}, notch<1, 3>}, exact>::value_type>);
+  static_assert(index_raw<inside_range<{{0, 4}, per<256>}>::value_type>);
+  static_assert(index_raw<inside_range<{{-2, 2}, per<4>}>::value_type>);
+  static_assert(rational_raw<inside_range<{{0, 2}, per<3>}, exact>::value_type>);
 #ifndef BEMAN_INSIDE_MATH_CORDIC   // under BEMAN_INSIDE_MATH_CORDIC the f64 storage arm is elided
-  static_assert(fp_raw<inside_range<{{0, 4}, notch<1, 256>}, f64 | round_nearest>::value_type>);
+  static_assert(fp_raw<inside_range<{{0, 4}, per<256>}, f64 | round_nearest>::value_type>);
 #endif
 }
 

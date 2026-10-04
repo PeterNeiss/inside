@@ -454,7 +454,7 @@ static void bench_signed()
   // mixed integer-grid + quarter-notch-grid add (Tier-3 fast path): the
   // native pairing is the same math on a hand-scaled 1/4 fixed-point lattice.
   using whole    = inside<{0, 100}, unsafe>;
-  using quarters = inside<{{0, 1}, notch<1, 4>}, unsafe>;
+  using quarters = inside<{{0, 1}, per<4>}, unsafe>;
   auto mixed = group("add (mixed integer + 1/4-notch grids)");
   mixed.run("native int<<2 + q2", [&] {
     ++i;
@@ -605,7 +605,7 @@ static void bench_fixed_point()
   finish(acc);
 
   // signed Q1.14 audio grid
-  using q14 = inside<{{-1, 1}, notch<1, 16384>}, unsafe>;
+  using q14 = inside<{{-1, 1}, per<16384>}, unsafe>;
   static_assert(sizeof(q14) == 2);
   auto q14g = group("Q1.14 signed add");
   q14g.run("native int", [&] {
@@ -622,7 +622,7 @@ static void bench_fixed_point()
   finish(q14g);
 
   // Q16.16
-  using q16 = inside<{{0, 65535}, notch<1, 65536>}, unsafe>;
+  using q16 = inside<{{0, 65535}, per<65536>}, unsafe>;
   static_assert(sizeof(q16) == 4);
   auto q16g = group("Q16.16 add");
   q16g.run("native int64", [&] {
@@ -682,8 +682,8 @@ static void bench_store_convert()
 
   // cross-grid assignment
   using narrow  = inside<{0, 100}, unsafe>;
-  using tenths  = inside<{{0, 100}, notch<1, 10>}, unsafe>;
-  using quarters= inside<{{0, 100}, notch<1, 4>}, round_nearest>;
+  using tenths  = inside<{{0, 100}, per<10>}, unsafe>;
+  using quarters= inside<{{0, 100}, per<4>}, round_nearest>;
   auto cga = group("cross-grid assign");
   cga.run("same-grid copy", [&] {
     ++i;
@@ -706,8 +706,8 @@ static void bench_store_convert()
   finish(cga);
 
   // comparison
-  using q14a = inside<{{-8, 8},  notch<1, 16384>}, unsafe>;
-  using q14b = inside<{{-4, 12}, notch<1, 16384>}, unsafe>;
+  using q14a = inside<{{-8, 8},  per<16384>}, unsafe>;
+  using q14b = inside<{{-4, 12}, per<16384>}, unsafe>;
   std::vector<std::int16_t> ni(kMask + 1);
   std::vector<s9k> bi(kMask + 1);
   std::vector<q14a> ia(kMask + 1);
@@ -803,7 +803,7 @@ static void bench_store_convert()
   finish(wrp);
 
   // conversions OUT of inside — the API-boundary direction (stores are above).
-  using dyadic_real = inside<{{-8, 8}, notch<1, 16384>}, round_nearest | f64>;
+  using dyadic_real = inside<{{-8, 8}, per<16384>}, round_nearest | f64>;
   std::vector<dyadic_real> rv(kMask + 1);
   std::vector<u200> uv(kMask + 1);
   for (std::size_t j = 0; j <= kMask; ++j)
@@ -883,7 +883,7 @@ static void bench_helpers()
 
   // mixed grids: both operands convert into the hull type ([0,100] 1/10 grid).
   using narrow = inside<{0, 100}, unsafe>;
-  using tenths = inside<{{0, 100}, notch<1, 10>}, unsafe>;
+  using tenths = inside<{{0, 100}, per<10>}, unsafe>;
   static const scalar_inputs pin{0, 100, 0, 100};
   std::vector<tenths> tv(kMask + 1);
   for (std::size_t j = 0; j <= kMask; ++j)
@@ -916,7 +916,7 @@ static void bench_helpers()
 
   // lerp on Q8.8 endpoints with a [0,1] 1/256 parameter.
   using fp88 = inside<{{0, 255}, 1.0 / 256}, unsafe>;
-  using t256 = inside<{{0, 1}, notch<1, 256>}, unsafe>;
+  using t256 = inside<{{0, 1}, per<256>}, unsafe>;
   auto lp = group("lerp (Q8.8, t in [0,1])");
   lp.run("native a + (((b-a)*t)>>8)", [&] {
     ++i;
@@ -983,7 +983,7 @@ static void bench_helpers()
 //---------------------------------------------------------------------------
 static void bench_fp_backed()
 {
-  using dyadic_real = inside<{{-8, 8}, notch<1, 16384>}, round_nearest | f64>;
+  using dyadic_real = inside<{{-8, 8}, per<16384>}, round_nearest | f64>;
   std::vector<dyadic_real> va(kMask + 1), vb(kMask + 1);
   std::vector<double> da(kMask + 1), db(kMask + 1);
   for (std::size_t j = 0; j <= kMask; ++j)
@@ -1050,7 +1050,7 @@ namespace
 
 static void bench_rational()
 {
-  using exact_grid = inside<{{-8, 8}, notch<1, 1024>}, exact>;
+  using exact_grid = inside<{{-8, 8}, per<1024>}, exact>;
   std::vector<exact_grid> ea(kMask + 1), eb(kMask + 1), ep(kMask + 1);
   std::vector<rational> qa(kMask + 1), qb(kMask + 1);
   std::vector<fraction64> fa(kMask + 1), fb(kMask + 1), fp_(kMask + 1);
@@ -1179,7 +1179,7 @@ static void bench_rational()
 static void bench_range()
 {
   using int_range  = inside_range<{0, 999}, unsafe>;
-  using frac_range = inside_range<{{0, 4}, notch<1, 256>}, unsafe>;  // 1025 slots
+  using frac_range = inside_range<{{0, 4}, per<256>}, unsafe>;  // 1025 slots
 
   std::vector<std::int16_t> out_n(1000);
   std::vector<std::int16_t> out_b(1000);
@@ -1221,21 +1221,21 @@ static void bench_range()
 //---------------------------------------------------------------------------
 static void bench_cmath()
 {
-  using algeb_t   = inside<{{-8, 8}, notch<1, 16384>}, round_nearest | f64>;
-  using sqrt_in_t = inside<{{0, 4}, notch<1, 65536>}, round_nearest | f64>;
-  using exp2_in_t = inside<{{-4, 4}, notch<1, 16384>}, round_nearest | f64>;
-  using log2_in_t = inside<{{0x1p-8_r, 256}, notch<1, 16384>}, round_nearest | f64>;
-  using exp_in_t  = inside<{{-10, 10}, notch<1, 16384>}, round_nearest | f64>;
-  using log_in_t  = inside<{{0x1p-8_r, 256}, notch<1, 256>}, round_nearest | f64>;
-  using pow_in_t  = inside<{{-9, 9}, notch<1, 16384>}, round_nearest | f64>;
-  using angle_t   = inside<{{-8, 8}, notch<1, 16384>}, round_nearest | f64>;
-  using angle_f32_t = inside<{{-8, 8}, notch<1, 16384>}, round_nearest | f32>;
-  using tan_in_t  = inside<{{-0.75_r, 0.75_r}, notch<1, 16384>}, round_nearest | f64>;
-  using atan2_in_t= inside<{{-1, 1}, notch<1, 16384>}, round_nearest | f64>;
-  using fmod_x_t  = inside<{{-8, 8}, notch<1, 16384>}, round_nearest>;
-  using fmod_y_t  = inside<{{0.25_r, 4}, notch<1, 16384>}, round_nearest>;
-  using pow_b_t   = inside<{{1, 16}, notch<1, 65536>}, round_nearest | f64>;
-  using pow_e_t   = inside<{{-2, 2}, notch<1, 16384>}, round_nearest | f64>;
+  using algeb_t   = inside<{{-8, 8}, per<16384>}, round_nearest | f64>;
+  using sqrt_in_t = inside<{{0, 4}, per<65536>}, round_nearest | f64>;
+  using exp2_in_t = inside<{{-4, 4}, per<16384>}, round_nearest | f64>;
+  using log2_in_t = inside<{{0x1p-8_r, 256}, per<16384>}, round_nearest | f64>;
+  using exp_in_t  = inside<{{-10, 10}, per<16384>}, round_nearest | f64>;
+  using log_in_t  = inside<{{0x1p-8_r, 256}, per<256>}, round_nearest | f64>;
+  using pow_in_t  = inside<{{-9, 9}, per<16384>}, round_nearest | f64>;
+  using angle_t   = inside<{{-8, 8}, per<16384>}, round_nearest | f64>;
+  using angle_f32_t = inside<{{-8, 8}, per<16384>}, round_nearest | f32>;
+  using tan_in_t  = inside<{{-0.75_r, 0.75_r}, per<16384>}, round_nearest | f64>;
+  using atan2_in_t= inside<{{-1, 1}, per<16384>}, round_nearest | f64>;
+  using fmod_x_t  = inside<{{-8, 8}, per<16384>}, round_nearest>;
+  using fmod_y_t  = inside<{{0.25_r, 4}, per<16384>}, round_nearest>;
+  using pow_b_t   = inside<{{1, 16}, per<65536>}, round_nearest | f64>;
+  using pow_e_t   = inside<{{-2, 2}, per<16384>}, round_nearest | f64>;
 
   constexpr std::size_t M = 4096;
   std::vector<algeb_t>    v_alg, v_alg2; std::vector<sqrt_in_t> v_sqrt;

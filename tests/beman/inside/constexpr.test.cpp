@@ -447,7 +447,7 @@ TEST(ConstexprTest, constexpr_inside_range_on_fractional_notch_grid)
   // Sum: -1 + -0.5 + 0 + 0.5 + 1 = 0 (so we count instead).
   constexpr int count = [] {
     int n = 0;
-    for (auto v : inside_range<{{-1, 1}, notch<1, 2>}>{}) { (void)v; ++n; }
+    for (auto v : inside_range<{{-1, 1}, per<2>}>{}) { (void)v; ++n; }
     return n;
   }();
   static_assert(count == 5);
@@ -455,7 +455,7 @@ TEST(ConstexprTest, constexpr_inside_range_on_fractional_notch_grid)
   // Sum the doubled values (-1 + -0.5 + 0 + 0.5 + 1) * 2 = 0
   constexpr imax twice_sum = [] {
     imax s = 0;
-    for (auto v : inside_range<{{-1, 1}, notch<1, 2>}>{})
+    for (auto v : inside_range<{{-1, 1}, per<2>}>{})
       s += static_cast<imax>(2 * v.to<double>().value());
     return s;
   }();

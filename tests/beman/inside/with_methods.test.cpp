@@ -201,7 +201,7 @@ TEST(WithMethodsTest, with_snap_mode_selects_the_rounding_mode)
 // value-owning policy_buffer (moves the product in), so this is safe — the buffer
 // outlives the `num*num` temporary. Defined at namespace scope so the temporary is
 // truly gone by the time the caller reads the result.
-namespace { using small_t = beman::inside::inside<{{0, 10}, notch<1, 10>}, clamp>;
+namespace { using small_t = beman::inside::inside<{{0, 10}, per<10>}, clamp>;
             auto square(small_t n) { return (n * n).with_snap(); } }
 
 //---------------------------------------------------------------------------

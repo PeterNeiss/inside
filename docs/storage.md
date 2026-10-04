@@ -79,14 +79,14 @@ The rules above are the **default deduction**. Several policy flags override it
 (see [policies.md](policies.md#representation-flags) for the full table):
 
 ```cpp
-using gain   = inside<{{0, 4}, notch<1, 65536>}, round_nearest | f64>;
+using gain   = inside<{{0, 4}, per<65536>}, round_nearest | f64>;
                                        // Raw: double (math operand, double-exact grid)
-using ratio  = inside<{{0, 1}, notch<1, 3>}, exact>;
+using ratio  = inside<{{0, 1}, per<3>}, exact>;
                                        // Raw: exact fraction on a NOTCHED grid
 using regval = inside<{5, 100}, direct>; // Raw: uint8_t, raw() == value (5..100)
 using slot   = inside<{-5, 5}, indexed>; // Raw: uint8_t, raw() == index (0..10)
 using wide   = inside<{0, 100}, u16>;    // Raw: uint16_t (pinned width, raw() == value)
-using sidx   = inside<{0, 4, notch<1,16>}, u32 | indexed>; // Raw: uint32_t index
+using sidx   = inside<{0, 4, per<16>}, u32 | indexed>; // Raw: uint32_t index
 ```
 
 `f64`/`f32` are the math-operand flags ([math.md](math.md)); `exact` lifts the
@@ -232,7 +232,7 @@ and otherwise stand in for `0` / `1` in comparison and arithmetic:
 
 ```cpp
 inside<{0, 200}>          a = zero;     // ok — stored as 0, no runtime check
-inside<{{0, 1}, notch<1, 256>}> q = one; // ok — exact (raw 256)
+inside<{{0, 1}, per<256>}> q = one; // ok — exact (raw 256)
 inside<{5, 10}>           b = zero;     // ✗ compile error: 0 is not on this grid
 
 if (a == zero) { ... }                 // comparison

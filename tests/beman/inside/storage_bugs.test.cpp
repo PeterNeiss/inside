@@ -133,7 +133,7 @@ TEST(StorageBugsTest, bug_d_gcd_lcm_overflow_propagates_to_grid_operator_plus)
 // Bug E: f64 * stays exact (drops f64 when product exceeds 2^53)
 TEST(StorageBugsTest, bug_e_f64_stays_exact_drops_f64_when_product_exceeds_2_53)
 {
-  using U = inside<{{0, 4}, notch<1, (1u << 26)>}, f64>;   // exact operand (f=26)
+  using U = inside<{{0, 4}, per<(1u << 26)>}, f64>;   // exact operand (f=26)
   static_assert(std::is_same_v<U::raw_type, double>);
 
   const U a = 4.0 - std::ldexp(1.0, -26);                  // index 2^28-1, exact
@@ -155,8 +155,8 @@ TEST(StorageBugsTest, bug_e_f64_stays_exact_drops_f64_when_product_exceeds_2_53)
 // Bug F: f64 div-by-zero is reported, not a silent inf
 TEST(StorageBugsTest, bug_f_f64_div_by_zero_is_reported_not_a_silent_inf)
 {
-  using N  = inside<{{1, 4}, notch<1, 1024>}, f64>;
-  using Dz = inside<{{0, 4}, notch<1, 1024>}, f64>;   // divisor grid spans zero
+  using N  = inside<{{1, 4}, per<1024>}, f64>;
+  using Dz = inside<{{0, 4}, per<1024>}, f64>;   // divisor grid spans zero
 
   auto q = N{3.0} / Dz{0.0};
   ASSERT_FALSE(q.has_value());                       // an error — not inf
@@ -181,7 +181,7 @@ TEST(StorageBugsTest, bug_f_f64_div_by_zero_is_reported_not_a_silent_inf)
 // fp-derived rational store on a wide snap grid uses the 128-bit path
 TEST(StorageBugsTest, fp_derived_rational_store_on_a_wide_snap_grid_uses_the_128_bit_path)
 {
-  using wide = inside<{{-1024, 1024}, notch<1, 16384>}, round_nearest>;
+  using wide = inside<{{-1024, 1024}, per<16384>}, round_nearest>;
 
   {
     SCOPED_TRACE("negative value: offset fits after the 128-bit add rescue");
@@ -207,7 +207,7 @@ TEST(StorageBugsTest, fp_derived_rational_store_on_a_wide_snap_grid_uses_the_128
 
   {
     SCOPED_TRACE("strict policy off-notch in the wide regime → rounding_error");
-    using strict = inside<{{-1024, 1024}, notch<1, 16384>}>;   // checked, no round flag
+    using strict = inside<{{-1024, 1024}, per<16384>}>;   // checked, no round flag
     strict slot{};
     try
     {
@@ -225,8 +225,8 @@ TEST(StorageBugsTest, fp_derived_rational_store_on_a_wide_snap_grid_uses_the_128
 //---------------------------------------------------------------------------
 namespace
 {
-  using RealSmall = beman::inside::inside<{{0, 4}, beman::inside::notch<1, 4>}, beman::inside::f64>;
-  using RealWide  = beman::inside::inside<{{-8, 8}, beman::inside::notch<1, 4>}, beman::inside::f64>;
+  using RealSmall = beman::inside::inside<{{0, 4}, beman::inside::per<4>}, beman::inside::f64>;
+  using RealWide  = beman::inside::inside<{{-8, 8}, beman::inside::per<4>}, beman::inside::f64>;
   using Int10     = beman::inside::inside<{0, 10}>;
 }
 
@@ -257,7 +257,7 @@ TEST(StorageBugsTest, one_shot_policy_applies_to_f64_target)
 TEST(StorageBugsTest, error_code_ctor_reports_on_checked_f64_target)
 {
   using namespace beman::inside;
-  using Checked = inside<{{0, 4}, notch<1, 4>}, f64 | checked>;
+  using Checked = inside<{{0, 4}, per<4>}, f64 | checked>;
   errc ec{};
   Checked c(RealWide::from_raw(7.5), ec);
   EXPECT_EQ(ec, errc::domain_error);
@@ -285,7 +285,7 @@ TEST(StorageBugsTest, scalar_comparison_does_not_truncate_the_scalar)
 TEST(StorageBugsTest, increment_on_f64_storage)
 {
   using namespace beman::inside;
-  using rl = inside<{{-4, 4}, notch<1, 256>}, f64 | round_nearest>;
+  using rl = inside<{{-4, 4}, per<256>}, f64 | round_nearest>;
   rl x{rational{3, 2}};
   ++x;
   EXPECT_EQ(x.raw(), 2.5);

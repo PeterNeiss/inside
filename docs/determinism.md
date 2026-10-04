@@ -151,7 +151,7 @@ unbounded-cost table-maker's dilemma, so the library does not promise it.
 *Example.* Suppose a true result sits only `0.0008` of a notch above the midpoint
 between two grid points. An engine whose sub-notch error is `+0.001` rounds up, one
 whose error is `−0.001` rounds down. Both are within the grid's resolution of the
-true value; they simply disagree by one notch. (`sinh(4)` on a `notch<1, 4096>`
+true value; they simply disagree by one notch. (`sinh(4)` on a `per<4096>`
 grid, `111779.502…`, was such a case until the CORDIC engine's precision change
 below; both engines now give `111780/4096`.)
 
@@ -183,7 +183,7 @@ stored results, golden files and replay logs stay valid after an upgrade.
 
 | Change | Engine | Functions | Effect on values |
 |---|---|---|---|
-| 2026-10 (branch `perf-readability`) | CORDIC | asin, acos, sinh, cosh, tanh, log10, cbrt, hypot, sqrt | Runtime evaluation at the output grid's precision (+4 guard bits), one-exponential sinh/cosh, table-seeded sqrt. Last-bit differences in the working value; on the pinned and accuracy grids one snapped value moved (`sinh(4)` on `notch<1, 4096>`: 111779 → 111780 /4096, now correctly rounded). Accuracy unchanged within ±0.01 notch ([accuracy.md](accuracy.md)). |
+| 2026-10 (branch `perf-readability`) | CORDIC | asin, acos, sinh, cosh, tanh, log10, cbrt, hypot, sqrt | Runtime evaluation at the output grid's precision (+4 guard bits), one-exponential sinh/cosh, table-seeded sqrt. Last-bit differences in the working value; on the pinned and accuracy grids one snapped value moved (`sinh(4)` on `per<4096>`: 111779 → 111780 /4096, now correctly rounded). Accuracy unchanged within ±0.01 notch ([accuracy.md](accuracy.md)). |
 | 2026-10 (same) | CORDIC, dbl, flt | tan (all), cos (dbl) | One shared range reduction / one CORDIC rotation. No pinned or accuracy-grid value moved. |
 | 2026-10 (same), 8421ac5 | all (storage, not engines) | f64/f32 stores, math `store_grid` | One rounding rule: ties half away from zero, and an explicit mode is honoured on fp storage. Before, fp storage and the `store_grid` fast path rounded ties half toward +∞ (f64 −0.75 on notch ½ gave −0.5; integer storage gave −1), and `f64 \| round_floor` rounded to nearest. Negative ties and fp targets with a directional mode change value. |
 | 2026-10 (same), 50144ea / 09aa483 | — | assignment, `wrap` | An off-notch integer source rounds by the policy (`{0,10}` notch 2 from 3 under `round_nearest`: 2 → 4); wrap folds modulo span + notch (`wrap_cast` of 12 onto `{0,10}` notch ½: 1 → 1.5); wrap rounds onto the lattice before folding (`{0,8}, wrap \| round_nearest` from 8.5: an out-of-grid 9 → 0). |

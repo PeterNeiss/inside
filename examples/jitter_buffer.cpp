@@ -26,7 +26,7 @@ using slot_id_t = inside<{0, 15}>;
 using packet_id_t = inside<{0, 63}>;
 
 // Timestamp in 1/8 ms — fixed-point precision tied to the audio frame.
-using ts_t = inside<{{0, 8000}, notch<1, 8>}, round_nearest>;
+using ts_t = inside<{{0, 8000}, per<8>}, round_nearest>;
 
 int main()
 {

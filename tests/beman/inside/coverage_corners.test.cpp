@@ -274,7 +274,7 @@ TEST(CoverageCornersTest, on_overflow_compound_subtract_that_does_not_overflow)
 // f64 store out of range: checked policy
 TEST(CoverageCornersTest, f64_store_out_of_range_checked_policy)
 {
-  using rbc = inside<{{-1, 1}, notch<1, 1024>}, f64 | checked>;
+  using rbc = inside<{{-1, 1}, per<1024>}, f64 | checked>;
   ASSERT_THROW((void)((rbc{5.0})), beman::inside::inside_error);   // out of range -> report (throws)
 }
 #endif // !BEMAN_INSIDE_MATH_CORDIC
@@ -288,7 +288,7 @@ TEST(CoverageCornersTest, f64_store_out_of_range_checked_policy)
 TEST(CoverageCornersTest, inside_to_f64_conversion_snaps_onto_the_double_grid)
 {
   using src_t = inside<{-2, 2}>;                          // integer-backed source
-  using rb    = inside<{{-2, 2}, notch<1, 1024>}, f64>;  // double-backed target
+  using rb    = inside<{{-2, 2}, per<1024>}, f64>;  // double-backed target
 
   src_t src{1};
   rb dst = src;                                          // insidable -> f64 store
@@ -311,12 +311,12 @@ TEST(CoverageCornersTest, inside_to_f64_conversion_snaps_onto_the_double_grid)
 // alone handles only the range, so the off-notch value is a rounding error.
 TEST(CoverageCornersTest, clamp_policy_truncates_an_in_range_off_notch_fractional_assignment)
 {
-  using strict = inside<{{0, 10}, notch<1, 2>}, clamp>;
+  using strict = inside<{{0, 10}, per<2>}, clamp>;
   errc ec{};
   strict s(0.3, ec);
   ASSERT_EQ(ec, errc::rounding_error);
 
-  using b = inside<{{0, 10}, notch<1, 2>}, clamp | snap>;   // notch 1/2
+  using b = inside<{{0, 10}, per<2>}, clamp | snap>;   // notch 1/2
   b x{0};
   x = 0.3;                          // in range, off the 1/2 grid → truncates to 0
   ASSERT_EQ(x, 0);
@@ -334,9 +334,9 @@ TEST(CoverageCornersTest, clamp_policy_truncates_an_in_range_off_notch_fractiona
 // math::fmod integer fast path (raw_from_offset imax)
 TEST(CoverageCornersTest, math_fmod_integer_fast_path_raw_from_offset_imax)
 {
-  using in_t  = inside<{{-8, 8}, notch<1, 16384>}, round_nearest>;  // integer-backed
-  using div_t = inside<{{ 1, 8}, notch<1, 16384>}, round_nearest>;  // excludes zero
-  using out_t = inside<{{-8, 8}, notch<1, 16384>}, round_nearest>;
+  using in_t  = inside<{{-8, 8}, per<16384>}, round_nearest>;  // integer-backed
+  using div_t = inside<{{ 1, 8}, per<16384>}, round_nearest>;  // excludes zero
+  using out_t = inside<{{-8, 8}, per<16384>}, round_nearest>;
 
   ASSERT_TRUE((static_cast<rational>(math::fmod<out_t>(in_t{7_r},  div_t{3_r})) == 1));
   ASSERT_TRUE((static_cast<rational>(math::fmod<out_t>(in_t{-7_r}, div_t{3_r})) == -1));  // signed offset
@@ -351,7 +351,7 @@ TEST(CoverageCornersTest, math_fmod_integer_fast_path_raw_from_offset_imax)
 // unsafe f64 store out of range falls through (no report)
 TEST(CoverageCornersTest, unsafe_f64_store_out_of_range_falls_through_no_report)
 {
-  using rb = inside<{{-1, 1}, notch<1, 1024>}, f64 | unsafe>;
+  using rb = inside<{{-1, 1}, per<1024>}, f64 | unsafe>;
   rb x = 5.0;                       // out of range, unsafe: stored as-is, no throw
   ASSERT_EQ(double(x), 5.0);
 }
@@ -368,8 +368,8 @@ TEST(CoverageCornersTest, cross_grid_conversion_of_a_negative_off_notch_value)
   // notch 1/2 source -> notch 1/3 target: Factor = 3/2 (non-integer mapping),
   // so the rational store path runs; the negative value drives the
   // negative-denominator branch.
-  using src_t = inside<{{-4, 4}, notch<1, 2>}>;
-  using dst_t = inside<{{-4, 4}, notch<1, 3>}, snap>;
+  using src_t = inside<{{-4, 4}, per<2>}>;
+  using dst_t = inside<{{-4, 4}, per<3>}, snap>;
 
   src_t s{-1.5};
   dst_t d = s;

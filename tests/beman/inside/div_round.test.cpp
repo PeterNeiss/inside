@@ -94,17 +94,17 @@ TEST(DivRoundTest, modulo_remainder_stays_consistent_with_the_rounded_quotient)
 // Q-format division honours the rounding mode
 TEST(DivRoundTest, q_format_division_honours_the_rounding_mode)
 {
-  using Qn = inside<{{0, 255}, notch<1, 256>}, round_nearest>;
-  using Qt = inside<{{0, 255}, notch<1, 256>}, snap>;
+  using Qn = inside<{{0, 255}, per<256>}, round_nearest>;
+  using Qt = inside<{{0, 255}, per<256>}, snap>;
   // 200/3 = 66.6667 → on the 1/256 grid: nearest = 17067/256, truncate = 17066/256.
   ASSERT_TRUE((static_cast<rational>(*(Qn{200.0} / Qn{3.0})) == rational{17067u, 256}));
   ASSERT_TRUE((static_cast<rational>(*(Qt{200.0} / Qt{3.0})) == rational{17066u, 256}));
 
   // floor / ceil / half_even also honoured (round_uquotient — Lower == 0, so the
   // quotient is non-negative; these arms were previously untested).
-  using Qf = inside<{{0, 255}, notch<1, 256>}, round_floor>;
-  using Qc = inside<{{0, 255}, notch<1, 256>}, round_ceil>;
-  using Qe = inside<{{0, 255}, notch<1, 256>}, round_half_even>;
+  using Qf = inside<{{0, 255}, per<256>}, round_floor>;
+  using Qc = inside<{{0, 255}, per<256>}, round_ceil>;
+  using Qe = inside<{{0, 255}, per<256>}, round_half_even>;
   ASSERT_TRUE((static_cast<rational>(*(Qf{200.0} / Qf{3.0})) == rational{17066u, 256}));  // floor
   ASSERT_TRUE((static_cast<rational>(*(Qc{200.0} / Qc{3.0})) == rational{17067u, 256}));  // ceil
   // exact ties on the 1/256 grid: 1.5/256 → 2 (even), 2.5/256 → 2 (even).

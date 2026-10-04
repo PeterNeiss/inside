@@ -80,7 +80,7 @@ TEST(PolicyActionsTest, try_make_on_fixed_point_grids)
 
   {
     SCOPED_TRACE("signed Q1.14 (notch 1/16384) — uint16 storage");
-    using sample = inside<{{-1, 1}, notch<1, 16384>}, checked | round_nearest>;
+    using sample = inside<{{-1, 1}, per<16384>}, checked | round_nearest>;
     static_assert(sizeof(sample) == 2);
 
     auto s = sample::try_make(0.5);
@@ -97,7 +97,7 @@ TEST(PolicyActionsTest, try_make_on_fixed_point_grids)
 
   {
     SCOPED_TRACE("Q16.16 (notch 1/65536) — uint32 storage");
-    using fp = inside<{{0, 65535}, notch<1, 65536>}>;
+    using fp = inside<{{0, 65535}, per<65536>}>;
     static_assert(sizeof(fp) == 4);
 
     auto v = fp::try_make(1000.125);
@@ -141,9 +141,9 @@ TEST(PolicyActionsTest, on_wrap_carry_is_an_inside_for_an_inside_rhs)
 
   // Fractional grid (notch 1/2) exercises the rational wrap path; the carry is
   // still an inside (range = 3 + 0.5 = 3.5).
-  using pos = inside<{{0, 3}, notch<1, 2>}, wrap>;
+  using pos = inside<{{0, 3}, per<2>}, wrap>;
   pos p{2.5};
-  inside<{{0, 2}, notch<1, 2>}> fadd{1.5};
+  inside<{{0, 2}, per<2>}> fadd{1.5};
   imax fcarry = -99;
   p.on_wrap([&](auto&, auto carry){ fcarry = carry + just<0>; }) += fadd;
   ASSERT_TRUE((p == frac<1, 2>));                // 2.5 + 1.5 = 4.0 -> 4.0 - 3.5 = 0.5

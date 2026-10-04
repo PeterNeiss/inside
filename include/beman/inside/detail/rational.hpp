@@ -1011,11 +1011,16 @@ namespace beman::inside
 {
   // `rational` is internal, but the grid-building helpers are public — they
   // never name the type:
+  //   per<D>       the step 1/D (the common case);
   //   notch<N, D>  a positive step N/D;
   //   frac<N, D>   any exact ratio (signed numerator), e.g. frac<-6, 5> for -1.2;
   //   _r literal   an exact decimal / hex value, e.g. 0.1_r is exactly 1/10.
   template <umax N, umax D = 1>
   inline constexpr detail::rational notch = detail::make_notch<N, D>();
+
+  // per<D> — one part per D: the step 1/D, the common notch (per<256> is Q·8).
+  template <umax D>
+  inline constexpr detail::rational per = detail::make_notch<1, D>();
 
   template <imax N, umax D = 1>
   inline constexpr detail::rational frac = detail::make_frac<N, D>();

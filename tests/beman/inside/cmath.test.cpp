@@ -22,7 +22,7 @@ using namespace beman::inside::detail;
 namespace
 {
   // Q.14 signed amplitude in [-1, 1]; same shape as audio_mixer's sample_t.
-  using sample_t = inside<{{-1, 1}, notch<1, 16384>}, round_nearest | clamp | f64>;
+  using sample_t = inside<{{-1, 1}, per<16384>}, round_nearest | clamp | f64>;
 
   // Helper: build a Q.16 turn-phase from a raw uint16 slot index.
   // `turns_t<N>` lives in `math::detail::` — the public sin/cos accept
@@ -308,8 +308,8 @@ TEST(CmathTest, DISABLED_beman_inside_math_cos_probe_informational)
 //---------------------------------------------------------------------------
 namespace
 {
-  using sqrt_in_t  = inside<{{0, 4}, notch<1, 65536>}, round_nearest | f64>;
-  using sqrt_out_t = inside<{{0, 2}, notch<1, 16384>}, round_nearest | f64>;
+  using sqrt_in_t  = inside<{{0, 4}, per<65536>}, round_nearest | f64>;
+  using sqrt_out_t = inside<{{0, 2}, per<16384>}, round_nearest | f64>;
 
   constexpr sqrt_in_t sqrt_input(unsigned raw_q16)
   {
@@ -360,7 +360,7 @@ TEST(CmathTest, DISABLED_beman_inside_math_sqrt_probe_informational)
 // beman::inside::math::sqrt: mixed-sign input returns expected
 TEST(CmathTest, beman_inside_math_sqrt_mixed_sign_input_returns_expected)
 {
-  using signed_in = inside<{{-1, 1}, notch<1, 65536>}, round_nearest | f64>;
+  using signed_in = inside<{{-1, 1}, per<65536>}, round_nearest | f64>;
 
   // Non-negative runtime value → value with the usual Q.30 result.
   signed_in pos{0.25_r};
@@ -382,7 +382,7 @@ TEST(CmathTest, beman_inside_math_sqrt_mixed_sign_input_returns_expected)
 
   // The non-negative overload (Lower == 0) returns inside directly; the
   // mixed-sign overload returns expected. Disjoint by `requires`.
-  using nonneg_in = inside<{{0, 1}, notch<1, 65536>}, round_nearest | f64>;
+  using nonneg_in = inside<{{0, 1}, per<65536>}, round_nearest | f64>;
   nonneg_in v{0.25_r};
   static_assert(!(is_expected_v<decltype(math::sqrt(v))>));
   ASSERT_EQ(math::sqrt(v), 0.5_r);
@@ -445,8 +445,8 @@ TEST(CmathTest, beman_inside_math_sqrt_inside_typed_equality_decimal_display)
 //---------------------------------------------------------------------------
 namespace
 {
-  using exp2_in_t  = inside<{{-4, 4}, notch<1, 16384>}, round_nearest | f64>;
-  using exp2_out_t = inside<{{0, 16}, notch<1, 16384>}, round_nearest | f64>;
+  using exp2_in_t  = inside<{{-4, 4}, per<16384>}, round_nearest | f64>;
+  using exp2_out_t = inside<{{0, 16}, per<16384>}, round_nearest | f64>;
 
   constexpr exp2_in_t exp2_input(int raw_offset)
   {
@@ -516,8 +516,8 @@ TEST(CmathTest, DISABLED_beman_inside_math_exp2_probe_informational)
 //---------------------------------------------------------------------------
 namespace
 {
-  using log2_in_t  = inside<{{0x1p-8_r, 256}, notch<1, 16384>}, round_nearest | f64>;
-  using log2_out_t = inside<{{-8, 8}, notch<1, 16384>}, round_nearest | f64>;
+  using log2_in_t  = inside<{{0x1p-8_r, 256}, per<16384>}, round_nearest | f64>;
+  using log2_out_t = inside<{{-8, 8}, per<16384>}, round_nearest | f64>;
 
   constexpr log2_in_t log2_from(rational r) { return log2_in_t{r}; }
 
@@ -600,12 +600,12 @@ TEST(CmathTest, DISABLED_beman_inside_math_log2_probe_informational)
 //---------------------------------------------------------------------------
 namespace
 {
-  using exp_in_t   = inside<{{-10, 10}, notch<1, 16384>}, round_nearest | f64>;
-  using exp_out_t  = inside<{{0, 32768}, notch<1, 256>}, round_nearest | f64>;
-  using log_in_t   = inside<{{0x1p-8_r, 256}, notch<1, 256>}, round_nearest | f64>;
-  using log_out_t  = inside<{{-8, 8}, notch<1, 16384>}, round_nearest | f64>;
-  using pow10_in_t = inside<{{-9, 9}, notch<1, 16384>}, round_nearest | f64>;
-  using pow10_out_t = inside<{{0, 65536}, notch<1, 256>}, round_nearest | f64>;
+  using exp_in_t   = inside<{{-10, 10}, per<16384>}, round_nearest | f64>;
+  using exp_out_t  = inside<{{0, 32768}, per<256>}, round_nearest | f64>;
+  using log_in_t   = inside<{{0x1p-8_r, 256}, per<256>}, round_nearest | f64>;
+  using log_out_t  = inside<{{-8, 8}, per<16384>}, round_nearest | f64>;
+  using pow10_in_t = inside<{{-9, 9}, per<16384>}, round_nearest | f64>;
+  using pow10_out_t = inside<{{0, 65536}, per<256>}, round_nearest | f64>;
 }
 
 // beman::inside::math::exp: integer points
@@ -688,11 +688,11 @@ TEST(CmathTest, DISABLED_beman_inside_math_exp_log_pow_base_decimal_probe)
 //---------------------------------------------------------------------------
 namespace
 {
-  using atan2_in_t  = inside<{{-1, 1}, notch<1, 16384>}, round_nearest | f64>;
+  using atan2_in_t  = inside<{{-1, 1}, per<16384>}, round_nearest | f64>;
   // [-4, 4] is the smallest integer interval containing [-π, π] that divides
   // evenly by the notch (π is irrational, so the exact endpoints can't be a
   // grid inside against a rational notch).
-  using atan2_out_t = inside<{{-4, 4}, notch<1, 16384>}, round_nearest | f64>;
+  using atan2_out_t = inside<{{-4, 4}, per<16384>}, round_nearest | f64>;
 
   constexpr rational atan2_rad(rational y, rational x)
   { return rational{atan2_out_t{math::atan2(atan2_in_t{y}, atan2_in_t{x})}}; }
@@ -746,7 +746,7 @@ TEST(CmathTest, beman_inside_math_atan2_sin_cos_round_trip)
   // Angle inside uses round integer endpoints that divide evenly by the
   // notch (the grid validator requires `(Upper - Lower) / Notch` be
   // integer). ±8 rad comfortably covers ±2π for sweep tests.
-  using angle_t = inside<{{-8, 8}, notch<1, 16384>}, round_nearest | f64>;
+  using angle_t = inside<{{-8, 8}, per<16384>}, round_nearest | f64>;
   const rational kTwoPiRat = math::detail::kTwoPiRat;
   for (unsigned i = 0; i < 16; ++i) {
     unsigned phase_raw = i * 1024;  // 0..15/16 turn in Q.14 raw
@@ -812,7 +812,7 @@ namespace
   // Output covers [-10, 10]: tan in this range corresponds to phases within
   // ~5.7° of the equator (well inside any quadrant). Narrower outputs would
   // trip the overflow branch at fewer "near-pole" inputs.
-  using tan_out_t = inside<{{-10, 10}, notch<1, 1024>}, round_nearest | f64>;
+  using tan_out_t = inside<{{-10, 10}, per<1024>}, round_nearest | f64>;
 
   constexpr math::detail::turns_t<16> tan_phase_from(unsigned raw)
   {
@@ -902,8 +902,8 @@ TEST(CmathTest, DISABLED_beman_inside_math_tan_probe_informational)
 //---------------------------------------------------------------------------
 namespace
 {
-  using algeb_in_t  = inside<{{-8, 8}, notch<1, 16384>}, round_nearest | f64>;
-  using algeb_abs_t = inside<{{0, 8}, notch<1, 16384>}, round_nearest | f64>;
+  using algeb_in_t  = inside<{{-8, 8}, per<16384>}, round_nearest | f64>;
+  using algeb_abs_t = inside<{{0, 8}, per<16384>}, round_nearest | f64>;
   using algeb_int_t = inside<{{-8, 8}, notch<1>}, round_nearest | f64>;
 }
 
@@ -1013,7 +1013,7 @@ TEST(CmathTest, beman_inside_math_abs_auto_deduced_output)
   using deduced = decltype(math::abs(algeb_in_t{0}));
   static_assert(lower_of<deduced> == 0);
   static_assert(upper_of<deduced> == 8);
-  static_assert(notch_of<deduced> == beman::inside::notch<1, 16384>);
+  static_assert(notch_of<deduced> == beman::inside::per<16384>);
 }
 
 // beman::inside::math::floor / ceil / round / trunc: auto-deduced output
@@ -1077,7 +1077,7 @@ TEST(CmathTest, beman_inside_math_sqrt_auto_deduced_output)
   using deduced = decltype(math::sqrt(sqrt_in_t{0}));
   static_assert(lower_of<deduced> == 0);
   static_assert(upper_of<deduced> == 2);
-  static_assert(notch_of<deduced> == beman::inside::notch<1, 65536>);
+  static_assert(notch_of<deduced> == beman::inside::per<65536>);
 
   // Spot checks: integer perfect squares land exactly on the grid.
   ASSERT_EQ(rational{math::sqrt(sqrt_input(65536))}, 1); // √1 = 1
@@ -1149,11 +1149,11 @@ TEST(CmathTest, beman_inside_math_sin_cos_auto_deduced_output)
   // Angle inside uses round integer endpoints that divide evenly by the
   // notch (the grid validator requires `(Upper - Lower) / Notch` be
   // integer). ±8 rad comfortably covers ±2π for sweep tests.
-  using angle_t = inside<{{-8, 8}, notch<1, 16384>}, round_nearest | f64>;
+  using angle_t = inside<{{-8, 8}, per<16384>}, round_nearest | f64>;
   using deduced = decltype(math::sin(angle_t{0}));
   static_assert(lower_of<deduced> == -1);
   static_assert(upper_of<deduced> == rational{ 1});
-  static_assert(notch_of<deduced> == beman::inside::notch<1, 16384>);
+  static_assert(notch_of<deduced> == beman::inside::per<16384>);
 
   // Spot checks at exact radian angles. `math::pi` / `math::two_pi`
   // come from the public constants in `beman/inside/cmath.hpp`. `div_unchecked`
@@ -1178,8 +1178,8 @@ TEST(CmathTest, beman_inside_math_sin_cos_auto_deduced_output)
 // beman::inside::math::sin: radians identity points
 TEST(CmathTest, beman_inside_math_sin_radians_identity_points)
 {
-  using angle_t = inside<{{-8, 8}, notch<1, 16384>}, round_nearest | f64>;
-  using amp_t   = inside<{{-1, 1}, notch<1, 16384>}, round_nearest | f64>;
+  using angle_t = inside<{{-8, 8}, per<16384>}, round_nearest | f64>;
+  using amp_t   = inside<{{-1, 1}, per<16384>}, round_nearest | f64>;
 
   constexpr rational half_pi = rational::div_unchecked(math::pi, 2_r);
 
@@ -1203,8 +1203,8 @@ TEST(CmathTest, beman_inside_math_sin_radians_identity_points)
 // beman::inside::math::cos: radians identity points
 TEST(CmathTest, beman_inside_math_cos_radians_identity_points)
 {
-  using angle_t = inside<{{-8, 8}, notch<1, 16384>}, round_nearest | f64>;
-  using amp_t   = inside<{{-1, 1}, notch<1, 16384>}, round_nearest | f64>;
+  using angle_t = inside<{{-8, 8}, per<16384>}, round_nearest | f64>;
+  using amp_t   = inside<{{-1, 1}, per<16384>}, round_nearest | f64>;
 
   constexpr rational half_pi = rational::div_unchecked(math::pi, 2_r);
 
@@ -1221,8 +1221,8 @@ TEST(CmathTest, beman_inside_math_cos_radians_identity_points)
 // beman::inside::math::tan: radians identity points
 TEST(CmathTest, beman_inside_math_tan_radians_identity_points)
 {
-  using angle_t = inside<{{-8, 8}, notch<1, 16384>}, round_nearest | f64>;
-  using out_t   = inside<{{-10, 10}, notch<1, 1024>}, round_nearest | f64>;
+  using angle_t = inside<{{-8, 8}, per<16384>}, round_nearest | f64>;
+  using out_t   = inside<{{-10, 10}, per<1024>}, round_nearest | f64>;
 
   constexpr rational pi_over_4 = rational::div_unchecked(math::pi, 4_r);
 
@@ -1247,7 +1247,7 @@ TEST(CmathTest, beman_inside_math_atan2_auto_deduced_output)
   // Output covers [-π, π] in radians, rounded outward to the inherited notch.
   static_assert(lower_of<deduced> <= -kPi);
   static_assert(upper_of<deduced> >=  kPi);
-  static_assert(notch_of<deduced> == beman::inside::notch<1, 16384>);
+  static_assert(notch_of<deduced> == beman::inside::per<16384>);
 
   // Axis cases match the explicit form's behavior (radians).
   ASSERT_TRUE((near_rad(rational{math::atan2(atan2_in_t{0},  atan2_in_t{ 1})}, rational{0})));
@@ -1267,7 +1267,7 @@ TEST(CmathTest, beman_inside_math_full_auto_form_chain)
   // Angle inside uses round integer endpoints that divide evenly by the
   // notch (the grid validator requires `(Upper - Lower) / Notch` be
   // integer). ±8 rad comfortably covers ±2π for sweep tests.
-  using angle_t = inside<{{-8, 8}, notch<1, 16384>}, round_nearest | f64>;
+  using angle_t = inside<{{-8, 8}, per<16384>}, round_nearest | f64>;
   constexpr rational pi_over_4 = rational::div_unchecked(math::pi, 4_r);
   angle_t p{pi_over_4};              // π/4 → expect sin = cos = √2/2
 
@@ -1282,7 +1282,7 @@ TEST(CmathTest, beman_inside_math_full_auto_form_chain)
 // beman::inside::math reductions on an inside
 TEST(CmathTest, beman_inside_math_reductions_on_an_inside)
 {
-  using fxd = inside<{{-3.5_r, 3.5_r}, notch<1, 4>}>;
+  using fxd = inside<{{-3.5_r, 3.5_r}, per<4>}>;
   fxd x{-1.75_r};
   fxd y{2.25_r};
 
@@ -1331,10 +1331,10 @@ TEST(CmathTest, DISABLED_beman_inside_math_decimal_probe_at_the_inside_level)
 //---------------------------------------------------------------------------
 namespace
 {
-  using inv_in2_t = inside<{{-1, 1}, notch<1, 1048576>}, round_nearest | f64>;
-  using hyp_in_t  = inside<{{-10, 10}, notch<1, 65536>}, round_nearest | f64>;  // sinh/cosh/tanh envelope
-  using cbrt_in_t = inside<{{-16, 16}, notch<1, 65536>}, round_nearest | f64>;  // cbrt (wider envelope)
-  using pos_in2_t = inside<{{1, 1024}, notch<1, 65536>}, round_nearest | f64>;
+  using inv_in2_t = inside<{{-1, 1}, per<1048576>}, round_nearest | f64>;
+  using hyp_in_t  = inside<{{-10, 10}, per<65536>}, round_nearest | f64>;  // sinh/cosh/tanh envelope
+  using cbrt_in_t = inside<{{-16, 16}, per<65536>}, round_nearest | f64>;  // cbrt (wider envelope)
+  using pos_in2_t = inside<{{1, 1024}, per<65536>}, round_nearest | f64>;
 
   // True references from the library's own π.
   constexpr rational kPi_x     = math::detail::kPiRat;
@@ -1405,7 +1405,7 @@ TEST(CmathTest, beman_inside_math_cbrt_exact_and_signed)
 // beman::inside::math::hypot: Pythagorean
 TEST(CmathTest, beman_inside_math_hypot_pythagorean)
 {
-  using h_t = inside<{{-16, 16}, notch<1, 65536>}, round_nearest | f64>;
+  using h_t = inside<{{-16, 16}, per<65536>}, round_nearest | f64>;
   ASSERT_TRUE((approx(rational{math::hypot(h_t{3}, h_t{4})},  rational{5})));
   ASSERT_TRUE((approx(rational{math::hypot(h_t{5}, h_t{12})}, rational{13})));
   ASSERT_TRUE((approx(rational{math::hypot(h_t{0}, h_t{0})},  rational{0})));
@@ -1415,8 +1415,8 @@ TEST(CmathTest, beman_inside_math_hypot_pythagorean)
 // beman::inside::math::pow: base^exp with expected
 TEST(CmathTest, beman_inside_math_pow_base_exp_with_expected)
 {
-  using b_t = inside<{{1, 16}, notch<1, 65536>}, round_nearest | f64>;
-  using e_t = inside<{{-8, 16}, notch<1, 65536>}, round_nearest | f64>;
+  using b_t = inside<{{1, 16}, per<65536>}, round_nearest | f64>;
+  using e_t = inside<{{-8, 16}, per<65536>}, round_nearest | f64>;
   auto p1 = math::pow(b_t{2}, e_t{10});      // 1024
   ASSERT_TRUE(p1.has_value());
   ASSERT_TRUE((approx(rational{*p1}, rational{1024})));

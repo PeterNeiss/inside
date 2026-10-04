@@ -25,8 +25,8 @@ namespace { rational q(imax n, imax d = 1) { return rational{n, d}; } }
 //---------------------------------------------------------------------------
 TEST(ConsistencyTest, f64_storage_rounds_like_integer_storage)
 {
-  using F = inside<{{-4, 4}, notch<1, 2>}, f64>;               // round_nearest
-  using I = inside<{{-4, 4}, notch<1, 2>}, round_nearest>;
+  using F = inside<{{-4, 4}, per<2>}, f64>;               // round_nearest
+  using I = inside<{{-4, 4}, per<2>}, round_nearest>;
   for (rational v : {q(-3, 4), q(-1, 4), q(1, 4), q(3, 4), q(-5, 4), q(5, 4)})
     EXPECT_EQ(rational{F{v}}, rational{I{v}}) << "v = " << static_cast<double>(v);
   EXPECT_EQ(F{q(-1, 4)}.raw(), -0.5);                   // half away from zero
@@ -34,9 +34,9 @@ TEST(ConsistencyTest, f64_storage_rounds_like_integer_storage)
 
 TEST(ConsistencyTest, f64_storage_honours_rounding_mode)
 {
-  using Fl = inside<{{-4, 4}, notch<1, 2>}, f64 | round_floor>;
-  using Ce = inside<{{-4, 4}, notch<1, 2>}, f64 | round_ceil>;
-  using He = inside<{{-4, 4}, notch<1, 2>}, f64 | round_half_even>;
+  using Fl = inside<{{-4, 4}, per<2>}, f64 | round_floor>;
+  using Ce = inside<{{-4, 4}, per<2>}, f64 | round_ceil>;
+  using He = inside<{{-4, 4}, per<2>}, f64 | round_half_even>;
   EXPECT_EQ(Fl{q(2, 5)}.raw(), 0.0);
   EXPECT_EQ(Fl{q(-1, 10)}.raw(), -0.5);
   EXPECT_EQ(Ce{q(1, 10)}.raw(), 0.5);
@@ -95,7 +95,7 @@ TEST(ConsistencyTest, f64_target_from_integer_snaps_on_every_path)
 //---------------------------------------------------------------------------
 TEST(ConsistencyTest, integer_wrap_uses_span_plus_notch)
 {
-  using H = inside<{{0, 10}, notch<1, 2>}>;               // span 10, notch 1/2 → modulus 10.5
+  using H = inside<{{0, 10}, per<2>}>;               // span 10, notch 1/2 → modulus 10.5
   EXPECT_EQ(rational{wrap_cast<H>(12)}, rational{wrap_cast<H>(q(12))});
   EXPECT_EQ(rational{wrap_cast<H>(12)}, q(3, 2));
   using N2 = inside<{{0, 10}, 2}, wrap>;                  // modulus 12
@@ -130,7 +130,7 @@ TEST(ConsistencyTest, wrap_then_round_stays_on_the_grid)
 TEST(ConsistencyTest, inside_source_wrap_rounds_first)
 {
   using L = inside<{0, 10}, wrap | round_nearest>;
-  using R = inside<{{0, 20}, notch<1, 2>}>;
+  using R = inside<{{0, 20}, per<2>}>;
   L a{0};
   a = R{q(25, 2)};
   EXPECT_EQ(rational{a}, rational{L{q(25, 2)}});
@@ -145,7 +145,7 @@ TEST(ConsistencyTest, unchecked_cast_respects_storage_flags)
   using W = inside<{5, 100}, u16>;
   EXPECT_EQ(rational{unchecked_cast<W>(7)}, q(7));
 #ifndef BEMAN_INSIDE_MATH_CORDIC
-  using F = inside<{{0, 4}, notch<1, 2>}, f64>;
+  using F = inside<{{0, 4}, per<2>}, f64>;
   EXPECT_EQ(unchecked_cast<F>(1.5).raw(), 1.5);
 #endif
 }
@@ -155,7 +155,7 @@ TEST(ConsistencyTest, unchecked_cast_respects_storage_flags)
 TEST(ConsistencyTest, result_drops_invalid_direct_and_indexed)
 {
   using D  = inside<{0, 10}, direct>;
-  using H  = inside<{{0, 1}, notch<1, 2>}>;
+  using H  = inside<{{0, 1}, per<2>}>;
   using IX = inside<{1, 10}, indexed>;
   EXPECT_EQ(rational{D{3} * H{q(1, 2)}}, q(3, 2));
   auto dd = D{6} / D{3};
@@ -176,7 +176,7 @@ TEST(ConsistencyTest, math_output_drops_width_flags)
 // compares exactly, not after rounding the other side to double.
 TEST(ConsistencyTest, fp_vs_exact_comparison_is_exact)
 {
-  using F = inside<{{0, 2}, notch<1, 2>}, f64>;
+  using F = inside<{{0, 2}, per<2>}, f64>;
   using C = inside<{{0, 2}, rational{0}}>;               // continuous, rational raw
   const C c{(q(1) + q(1, imax{1} << 53)).value()};       // 1 + 2^-53: rounds to 1.0
   const F one{1};
@@ -193,7 +193,7 @@ TEST(ConsistencyTest, fmod_output_grid_is_exact_and_large_enough)
   using X  = inside<{-10, 10}, round_nearest>;
   using Yn = inside<{-10, -1}, round_nearest>;             // negative divisor
   EXPECT_EQ(rational{math::fmod(X{7}, Yn{-8})}, q(7));
-  using Yh = inside<{{1, 4}, notch<1, 2>}, round_nearest>;
+  using Yh = inside<{{1, 4}, per<2>}, round_nearest>;
   EXPECT_EQ(rational{math::fmod(X{-3}, Yh{q(5, 2)})}, q(-1, 2));   // exact, sign of x
   EXPECT_EQ(rational{math::fmod(X{3}, Yh{q(5, 2)})}, q(1, 2));
   using X2 = inside<{{0, 10}, 2}, round_nearest>;            // notch 2 vs divisor notch 1
@@ -299,11 +299,11 @@ TEST(ConsistencyTest, non_finite_input_goes_through_the_policy)
   EXPECT_EQ(rational{C{inf}}, q(10));
   EXPECT_EQ(rational{C{-inf}}, q(0));
 #ifndef BEMAN_INSIDE_MATH_CORDIC
-  using F = inside<{{0, 10}, notch<1, 2>}, f64>;
+  using F = inside<{{0, 10}, per<2>}, f64>;
   errc fe{};
   F f(nan, fe);
   EXPECT_EQ(fe, errc::not_finite);
-  using FC = inside<{{0, 10}, notch<1, 2>}, f64 | clamp>;
+  using FC = inside<{{0, 10}, per<2>}, f64 | clamp>;
   EXPECT_EQ(FC{inf}.raw(), 10.0);
 #endif
 }
@@ -335,7 +335,7 @@ TEST(ConsistencyTest, pow_envelope_agrees_across_engines)
 // conversion_rounds sees the notch of an `exact` (rational-raw) grid.
 TEST(ConsistencyTest, trunc_predicate_on_exact_notched_grid)
 {
-  using E = inside<{{0, 1}, notch<1, 3>}, exact>;
+  using E = inside<{{0, 1}, per<3>}, exact>;
   EXPECT_TRUE(conversion_rounds<E>(0.5));
   EXPECT_FALSE(conversion_rounds<E>(q(1, 3)));
 }
@@ -349,7 +349,7 @@ TEST(ConsistencyTest, numeric_limits_round_style_and_is_integer)
   static_assert(std::numeric_limits<inside<{0, 10}, round_nearest>>::round_style == std::round_to_nearest);
   static_assert(std::numeric_limits<inside<{0, 10}, snap>>::round_style == std::round_toward_zero);
   static_assert(std::numeric_limits<inside<{{0, 10}, 2}>>::is_integer);
-  static_assert(!std::numeric_limits<inside<{{0, 10}, notch<1, 2>}>>::is_integer);
+  static_assert(!std::numeric_limits<inside<{{0, 10}, per<2>}>>::is_integer);
   SUCCEED();
 }
 
@@ -358,8 +358,8 @@ TEST(ConsistencyTest, numeric_limits_round_style_and_is_integer)
 //---------------------------------------------------------------------------
 TEST(ConsistencyTest, two_input_math_is_symmetric_in_its_types)
 {
-  using A = inside<{{-1, 1}, notch<1, 16>}, round_nearest>;
-  using B = inside<{{-2, 2}, notch<1, 64>}, round_nearest>;
+  using A = inside<{{-1, 1}, per<16>}, round_nearest>;
+  using B = inside<{{-2, 2}, per<64>}, round_nearest>;
   auto t = math::atan2(A{q(1, 2)}, B{q(1, 2)});            // mixed input types
   EXPECT_EQ(rational{t}, rational{math::atan2(B{q(1, 2)}, B{q(1, 2)})});
   static_assert(std::same_as<decltype(math::hypot(A{0}, B{0})), decltype(math::hypot(B{0}, A{0}))>);
@@ -377,7 +377,7 @@ TEST(ConsistencyTest, compound_ops_accept_expected_rhs)
 
 TEST(ConsistencyTest, casts_take_inside_sources)
 {
-  using Src = inside<{{0, 20}, notch<1, 2>}>;
+  using Src = inside<{{0, 20}, per<2>}>;
   using Dst = inside<{0, 10}>;
   EXPECT_EQ(rational{checked_cast<Dst>(Src{q(4)})}, q(4));
   EXPECT_THROW((void)checked_cast<Dst>(Src{q(9, 2)}), inside_error);     // off notch
@@ -389,7 +389,7 @@ TEST(ConsistencyTest, casts_take_inside_sources)
 TEST(ConsistencyTest, midpoint_across_grids)
 {
   using A = inside<{0, 10}>;
-  using B = inside<{{0, 10}, notch<1, 2>}>;
+  using B = inside<{{0, 10}, per<2>}>;
   EXPECT_EQ(rational{midpoint(A{3}, B{q(4)})}, q(7, 2));
 }
 
@@ -400,13 +400,13 @@ TEST(ConsistencyTest, rounding_runs_before_the_range_check)
   using bin = inside<{0, 9}, round_floor>;
   EXPECT_EQ(rational{bin{9.55}}, q(9));                              // double source
   EXPECT_EQ(rational{bin{q(191, 20)}}, q(9));                        // rational source
-  using ms = inside<{{0, 100}, notch<1, 10>}, round_nearest>;
+  using ms = inside<{{0, 100}, per<10>}, round_nearest>;
   EXPECT_EQ(rational{bin{ms{95.5} / just<10>}}, q(9));               // inside source
   errc ec{};
   bin over(10.0, ec);                                                // floors to 10: outside
   EXPECT_EQ(ec, errc::domain_error);
 
-  using db = inside<{{-24, 12}, notch<1, 2>}, round_nearest>;
+  using db = inside<{{-24, 12}, per<2>}, round_nearest>;
   EXPECT_EQ(rational{db{-24.1}}, q(-24));
   ec = {};
   db far(-24.3, ec);                                                 // rounds to -24.5
@@ -430,12 +430,12 @@ TEST(ConsistencyTest, rounding_runs_before_the_range_check)
 #ifndef BEMAN_INSIDE_MATH_NO_FP
 TEST(ConsistencyTest, fp_storage_rounds_before_the_range_check)
 {
-  using F = inside<{{0, 1}, notch<1, 4>}, f64>;                      // round_nearest
+  using F = inside<{{0, 1}, per<4>}, f64>;                      // round_nearest
   EXPECT_EQ(F{1.1}.raw(), 1.0);
   errc ec{};
   F f(1.2, ec);                                                      // rounds to 1.25
   EXPECT_EQ(ec, errc::domain_error);
-  using Ff = inside<{{0, 1}, notch<1, 4>}, f64 | round_floor>;
+  using Ff = inside<{{0, 1}, per<4>}, f64 | round_floor>;
   EXPECT_EQ(Ff{1.2}.raw(), 1.0);                                     // floors in range
 }
 #endif

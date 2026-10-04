@@ -8,8 +8,8 @@ using namespace beman::inside;
 
 int main()
 {
-  inside<{{0, 8}, notch<1, 2>}> halves{2.5_ins};
-  inside<{{1, 4}, notch<1, 2>}> divisor{1.5_ins};
+  inside<{{0, 8}, per<2>}> halves{2.5_ins};
+  inside<{{1, 4}, per<2>}> divisor{1.5_ins};
   auto rem = halves % divisor;   // ill-formed: fractional grids
   (void)rem;
 }

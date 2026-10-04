@@ -18,7 +18,7 @@ using beman::inside::detail::rational;
 namespace
 {
   // Mixed-sign sqrt: deterministic expected results under both engines.
-  using sq_in  = inside<{{-4, 4}, notch<1, 256>}, round_nearest | f64>;
+  using sq_in  = inside<{{-4, 4}, per<256>}, round_nearest | f64>;
   using num_t  = inside<{0, 100}>;
   using den_t  = inside<{-5, 5}>;     // spans zero → division returns expected
 

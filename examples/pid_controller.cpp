@@ -17,13 +17,13 @@
 using namespace beman::inside;
 
 // Sensor error in [-10, 10] with 1/16 resolution.
-using err_t = inside<{{-10, 10}, notch<1, 16>}, round_nearest | clamp>;
+using err_t = inside<{{-10, 10}, per<16>}, round_nearest | clamp>;
 
 // Integrator accumulates errors; clamp-saturating to prevent wind-up.
-using integ_t = inside<{{-200, 200}, notch<1, 16>}, round_nearest | clamp>;
+using integ_t = inside<{{-200, 200}, per<16>}, round_nearest | clamp>;
 
 // Gain coefficients: [0, 4] with 1/256 step.
-using gain_t = inside<{{0, 4}, notch<1, 256>}, round_nearest>;
+using gain_t = inside<{{0, 4}, per<256>}, round_nearest>;
 
 // Actuator command in [-100, 100] integer steps. `clamp | round_nearest`
 // lets `output_t{raw}` saturate AND round the wider rational/inside input

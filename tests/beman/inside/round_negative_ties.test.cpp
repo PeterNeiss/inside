@@ -60,7 +60,7 @@ TEST(RoundNegativeTiesTest, round_half_even_assignment_ties_to_even_value_regard
 // bare snap assignment truncates toward zero on negatives
 TEST(RoundNegativeTiesTest, bare_snap_assignment_truncates_toward_zero_on_negatives)
 {
-  using S = inside<{{-100, 100}, notch<1, 4>}, snap>;
+  using S = inside<{{-100, 100}, per<4>}, snap>;
   // 1/8-off values truncate toward zero (not toward -inf).
   ASSERT_TRUE((static_cast<rational>(S(rational{ 7, 8})) == rational{ 3, 4}));  //  0.875 ->  0.75
   ASSERT_TRUE((static_cast<rational>(S(rational{-7, 8})) == rational{-3, 4}));  // -0.875 -> -0.75 (was -1)
@@ -85,7 +85,7 @@ TEST(RoundNegativeTiesTest, round_floor_round_ceil_assignment_stay_direction_cor
 // cross-grid conversion rounds every mode in value space
 TEST(RoundNegativeTiesTest, cross_grid_conversion_rounds_every_mode_in_value_space)
 {
-  using Src = inside<{{-10, 10}, notch<1, 2>}>;        // half-steps, spans negatives
+  using Src = inside<{{-10, 10}, per<2>}>;        // half-steps, spans negatives
   using Dn  = inside<{-10, 10}, round_nearest>;
   using Df  = inside<{-10, 10}, round_floor>;
   using Dc  = inside<{-10, 10}, round_ceil>;

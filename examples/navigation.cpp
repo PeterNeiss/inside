@@ -26,7 +26,7 @@ int main()
   // notch is the standard math-operand shape; the fine notch also sharpens the
   // deduced bearing grid (atan2's output inherits the input notch). Magnitudes
   // stay well under the 2^20 working-scale envelope hypot/atan2 require.
-  using pos_t = inside<{{-1024, 1024}, notch<1, 256>}, round_nearest | f64>;
+  using pos_t = inside<{{-1024, 1024}, per<256>}, round_nearest | f64>;
 
   struct target { pos_t east; pos_t north; const char* label; };
   const target targets[] = {
@@ -51,7 +51,7 @@ int main()
   // asin / acos recover an angle from a normalized ratio in [-1, 1] — e.g. an
   // elevation whose sine (height / slant-range) is known. Inputs are `f64`
   // bounds clamped to the [-1, 1] domain the functions require.
-  using ratio_t = inside<{{-1, 1}, notch<1, 4096>}, round_nearest | f64>;
+  using ratio_t = inside<{{-1, 1}, per<4096>}, round_nearest | f64>;
   std::cout << "\nInverse trig (radians):\n";
   std::cout << "  r        asin(r)        acos(r)\n";
   for (ratio_t r : { ratio_t{-1}, ratio_t{-0.5}, ratio_t{0}, ratio_t{0.5}, ratio_t{1} })

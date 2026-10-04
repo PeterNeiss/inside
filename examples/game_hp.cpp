@@ -22,7 +22,7 @@ using namespace beman::inside;
 using hp_t  = inside<{0, 100}, clamp>;
 
 // Damage multipliers in [0, 4] with 1/16 step (Q2.4-ish).
-using mult_t = inside<{{0, 4}, notch<1, 16>}, round_nearest>;
+using mult_t = inside<{{0, 4}, per<16>}, round_nearest>;
 
 // Base damage in [0, 50] integer.
 using damage_t = inside<{0, 50}>;

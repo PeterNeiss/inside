@@ -76,8 +76,8 @@ Besides the *behavior* flags above, these flags select the **representation**
 | `indexed` | raw == 0-based notch index | `Notch != 0` | e.g. `inside<{-5, 5}, indexed>` stores 0..10 unsigned — dense layout for serialization |
 
 ```cpp
-using gain   = inside<{{0, 4}, notch<1, 65536>}, round_nearest | f64>;  // math operand
-using ratio  = inside<{{0, 1}, notch<1, 3>},     exact>;                 // thirds, exactly
+using gain   = inside<{{0, 4}, per<65536>}, round_nearest | f64>;  // math operand
+using ratio  = inside<{{0, 1}, per<3>},     exact>;                 // thirds, exactly
 using regval = inside<{5, 100}, direct>;       // raw() == value, interop-friendly
 using slot   = inside<{-5, 5},  indexed>;      // raw() == 0..10, dense unsigned
 using wire   = inside<{0, 100}, u16>;          // pin uint16_t, raw() == value
@@ -196,7 +196,7 @@ auto q = div(d, z, on_overflow([&](auto& res, errc c) {
 assignment: give it a grid with `_ins`, `just<…>`, or an inside over its range.
 
 ```cpp
-using pos = inside<{{0, 64}, notch<1, 16>}, wrap | round_nearest>;
+using pos = inside<{{0, 64}, per<16>}, wrap | round_nearest>;
 pos p{0};
 int wrap_count = 0;
 

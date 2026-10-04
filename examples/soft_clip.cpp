@@ -22,7 +22,7 @@ int main()
 {
   // tanh soft-clip: drive in [-4, 4] maps smoothly into (-1, 1). Compare a hard
   // clip (clamp to [-1, 1]) against tanh's gentle knee.
-  using drive_t = inside<{{-4, 4}, notch<1, 1024>}, round_nearest | f64>;
+  using drive_t = inside<{{-4, 4}, per<1024>}, round_nearest | f64>;
   std::cout << "tanh soft-clip vs hard clip:\n";
   std::cout << "  x        tanh(x)        hard-clip\n";
   for (drive_t x : { drive_t{-3}, drive_t{-1}, drive_t{-0.5}, drive_t{0},
@@ -34,7 +34,7 @@ int main()
   }
 
   // sinh / cosh and the identity cosh^2 - sinh^2 = 1 (within Q-format ULPs).
-  using arg_t = inside<{{-3, 3}, notch<1, 1024>}, round_nearest | f64>;
+  using arg_t = inside<{{-3, 3}, per<1024>}, round_nearest | f64>;
   std::cout << "\nsinh / cosh and cosh^2 - sinh^2 (= 1):\n";
   std::cout << "  x        sinh(x)        cosh(x)        cosh^2 - sinh^2\n";
   for (arg_t x : { arg_t{-2}, arg_t{-1}, arg_t{0}, arg_t{1}, arg_t{2} })
@@ -47,13 +47,13 @@ int main()
   }
 
   // log2: octave distance log2(f / f_ref). Ratio is a positive f64 inside.
-  using ratio_t = inside<{{0x1p-4, 16}, notch<1, 1024>}, round_nearest | f64>;
+  using ratio_t = inside<{{0x1p-4, 16}, per<1024>}, round_nearest | f64>;
   std::cout << "\nlog2(ratio) — octaves above/below reference:\n";
   for (ratio_t r : { ratio_t{0.5}, ratio_t{1}, ratio_t{2}, ratio_t{4}, ratio_t{8} })
     std::cout << "  log2(" << r << ") = " << math::log2(r) << "\n";
 
   // cbrt: cube-root perceptual curve.
-  using vol_t = inside<{{0, 64}, notch<1, 256>}, round_nearest | f64>;
+  using vol_t = inside<{{0, 64}, per<256>}, round_nearest | f64>;
   std::cout << "\ncbrt (cube root):\n";
   for (vol_t v : { vol_t{1}, vol_t{8}, vol_t{27}, vol_t{64} })
     std::cout << "  cbrt(" << v << ") = " << math::cbrt(v) << "\n";

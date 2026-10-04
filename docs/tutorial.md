@@ -14,7 +14,7 @@ type *is* the contract; the runtime value can never leave it.
 
 ```cpp
 using pct = inside<{0, 100}>;                         // integers 0..100
-using sample = inside<{{-1, 1}, notch<1, 16384>}>;    // -1..1 in 1/16384 steps
+using sample = inside<{{-1, 1}, per<16384>}>;    // -1..1 in 1/16384 steps
 ```
 
 A grid is `{ {Lower, Upper}, Notch }`. Three exact fractions, one invariant:
@@ -62,7 +62,7 @@ See [policies.md](policies.md).
 ## How a value flows
 
 ```cpp
-using mix = inside<{{-4, 4}, notch<1, 16384>}, round_nearest | clamp>;
+using mix = inside<{{-4, 4}, per<16384>}, round_nearest | clamp>;
 sample a = read_input();          // 1. enter the bounded world once
 auto    m = a * gain + offset;    // 2. widen through arithmetic (no overflow)
 mix     out{m};                   // 3. narrow back via a policy at the sink

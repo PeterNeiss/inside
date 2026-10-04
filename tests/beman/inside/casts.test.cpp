@@ -258,7 +258,7 @@ TEST(CastsTest, clamp_floor_clamp_ceil_clamp_round_compose_clamp_plus_round)
 // clamp_floor / clamp_ceil / clamp_round accept an inside source
 TEST(CastsTest, clamp_floor_clamp_ceil_clamp_round_accept_an_inside_source)
 {
-  using small = inside<{{0, 10}, notch<1, 10>}, clamp>;   // 1/10 grid
+  using small = inside<{{0, 10}, per<10>}, clamp>;   // 1/10 grid
   small a  = 2.5;                                          // exact on the 1/10 grid
   auto  sq = a * a;                                        // exact 6.25 on the 1/100 grid
 

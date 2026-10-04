@@ -22,18 +22,18 @@ inline constexpr bool has_common_inside = requires { typename common_inside_t<Lh
 TEST(CommonTypeTest, hull_is_the_interval_hull_with_the_notch_gcd)
 {
   constexpr grid percent{0, 100};                          // notch 1
-  constexpr grid halves{interval{-50, 50}, notch<1, 2>};
+  constexpr grid halves{interval{-50, 50}, per<2>};
 
   constexpr auto hulled = hull(percent, halves);
   static_assert(hulled.has_value());
   static_assert(hulled->Interval.Lower == detail::rational{-50});
   static_assert(hulled->Interval.Upper == detail::rational{100});
-  static_assert(hulled->Notch == (notch<1, 2>));
+  static_assert(hulled->Notch == (per<2>));
 
   // Coprime denominators combine to the lcm.
-  constexpr grid half_steps{interval{0, 1}, notch<1, 2>};
-  constexpr grid third_steps{interval{0, 1}, notch<1, 3>};
-  static_assert(hull(half_steps, third_steps)->Notch == (notch<1, 6>));
+  constexpr grid half_steps{interval{0, 1}, per<2>};
+  constexpr grid third_steps{interval{0, 1}, per<3>};
+  static_assert(hull(half_steps, third_steps)->Notch == (per<6>));
 
   // hull(G, G) == G.
   static_assert(hull(percent, percent)->Interval.Lower == percent.Interval.Lower);
@@ -50,7 +50,7 @@ TEST(CommonTypeTest, hull_is_the_interval_hull_with_the_notch_gcd)
 TEST(CommonTypeTest, hull_result_is_a_valid_grid_by_construction)
 {
   // Anchored lattices: both Lowers are notch multiples, so the hull is too.
-  constexpr grid quarter_steps{interval{-8, 8}, notch<1, 4>};
+  constexpr grid quarter_steps{interval{-8, 8}, per<4>};
   constexpr grid unit_steps{interval{-3, 7}, detail::rational{1}};
   constexpr auto hulled = hull(quarter_steps, unit_steps);
   static_assert(hulled.has_value());
@@ -74,12 +74,12 @@ TEST(CommonTypeTest, common_type_of_an_inside_with_itself_is_the_inside_policy_i
 TEST(CommonTypeTest, common_type_of_mixed_grids_is_the_hull_type)
 {
   using percent = inside<{0, 100}>;                    // notch 1
-  using halves  = inside<{{-50, 50}, notch<1, 2>}>;
+  using halves  = inside<{{-50, 50}, per<2>}>;
   using common  = std::common_type_t<percent, halves>;
 
   static_assert(lower_of<common> == detail::rational{-50});
   static_assert(upper_of<common> == detail::rational{100});
-  static_assert(notch_of<common> == (notch<1, 2>));
+  static_assert(notch_of<common> == (per<2>));
   static_assert(std::same_as<common, common_inside_t<percent, halves>>);
   static_assert(std::same_as<common, std::common_type_t<halves, percent>>);
 
@@ -94,8 +94,8 @@ TEST(CommonTypeTest, common_type_of_mixed_grids_is_the_hull_type)
 TEST(CommonTypeTest, common_type_sfinaes_away_when_the_hull_notch_is_unrepresentable)
 {
   // Coprime ~2^32 denominators: the notch gcd's lcm denominator exceeds imax.
-  using prime_notch_a = inside<{{0, 1}, notch<1, 4294967291>}>;
-  using prime_notch_b = inside<{{0, 1}, notch<1, 4294967311>}>;
+  using prime_notch_a = inside<{{0, 1}, per<4294967291>}>;
+  using prime_notch_b = inside<{{0, 1}, per<4294967311>}>;
   static_assert(!has_common_type<prime_notch_a, prime_notch_b>);
   static_assert(!has_common_inside<prime_notch_a, prime_notch_b>);
 }
@@ -107,7 +107,7 @@ TEST(CommonTypeTest, common_type_sfinaes_away_when_the_hull_notch_is_unrepresent
 TEST(CommonTypeTest, mixed_grid_min_max_return_the_hull_type)
 {
   using percent = inside<{0, 100}>;
-  using halves  = inside<{{-50, 50}, notch<1, 2>}>;
+  using halves  = inside<{{-50, 50}, per<2>}>;
   using common  = common_inside_t<percent, halves>;
 
   constexpr percent three{3};

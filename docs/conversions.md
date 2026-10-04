@@ -36,7 +36,7 @@ vec[b] = 0;                // no .as<>() — imax, then imax → size_t
 
 double e = double(b);      // explicit (rounding-gated operator double())
 
-using gain = inside<{{0, 4}, notch<1, 65536>}, round_nearest | f64>;
+using gain = inside<{{0, 4}, per<65536>}, round_nearest | f64>;
 double d = gain{0.5};      // implicit — an f64 inside's value is exact in double (double-exact grid)
 ```
 
@@ -89,7 +89,7 @@ accessors. The numerator carries the sign; the denominator is positive; an
 integer-notch inside reports a denominator of 1.
 
 ```cpp
-inside<{{-4, 4}, notch<1, 16>}, round_nearest> g{0.1875};
+inside<{{-4, 4}, per<16>}, round_nearest> g{0.1875};
 g.numerator();     //  3
 g.denominator();   // 16        →  exactly 3/16
 
@@ -147,7 +147,7 @@ The source may also be an **inside** on a finer or incompatible grid — the one
 rounding relaxes the notch check, so a fine value rounds onto the target:
 
 ```cpp
-using small = inside<{{0, 10}, notch<1, 10>}, clamp>;
+using small = inside<{{0, 10}, per<10>}, clamp>;
 small a = 2.5;
 clamp_round<small>(a * a);  // 6.3  (6.25 rounded onto the 1/10 grid, then clamped)
 ```
@@ -206,7 +206,7 @@ names the internal representation.
 | `_ins` literal (`1_ins`, `0.5_ins`, `0xff_ins`) | An inside operand for arithmetic and compound assignment — `a + 1_ins`, `a * 2_ins`, `b += 1_ins`, `b > 0.5_ins`. Gives a scalar a grid so it joins inside arithmetic; the result stays an inside. The parse is exact (no double round-trip). |
 | `just<V>` | A compile-time point-inside from any structural NTTP value — `just<2>`, `just<math::pi>`. Same role as `_ins` for non-literal constants. |
 | `zero` / `one` | Built-in point insides for 0 / 1. Assign into any grid that can exactly represent the value (compile-time checked — out of range or off-notch is an error); also stand in for the value in comparison/arithmetic — `b == zero`, `b + one`. |
-| `notch<N, D>` | The grid **step** in an `inside<{...}>` spec — `notch<1, 16384>`. |
+| `notch<N, D>` | The grid **step** in an `inside<{...}>` spec — `per<16384>`. |
 | `frac<N, D>` | An exact **non-dyadic** grid endpoint that no floating literal can spell — `frac<-6, 5>` for −1.2, `frac<3, 5>` for 0.6. Signed numerator. |
 
 Examples:
@@ -219,7 +219,7 @@ auto y = x + 1_ins;                 // inside + inside, stays bounded
 if (x > 50) { ... }              // bare scalar compare is fine (exact, also for 50.5)
 
 // Exact non-dyadic grid endpoints — frac<N,D> (1.2 and 0.6 are not dyadic):
-using db_div20 = inside<{{frac<-6, 5>, frac<3, 5>}, notch<1, 40>}, round_nearest>;
+using db_div20 = inside<{{frac<-6, 5>, frac<3, 5>}, per<40>}, round_nearest>;
 
 // A runtime fraction n/16 without leaving inside-space: divide by a grid'd 16.
 vel_t v{ inside<{-12, 12}>{n} / just<16> };
@@ -262,7 +262,7 @@ std::println("HP = {}",       hp);       // 42
 std::println("HP = {:>5}",    hp);       //    42
 std::println("HP = {:#04x}",  hp);       // 0x2a
 
-inside<{{0, 1}, notch<1, 16>}, round_nearest> g{0.625};
+inside<{{0, 1}, per<16>}, round_nearest> g{0.625};
 std::println("gain = {}",    g);          // 0.625 (exact)
 std::println("gain = {:.3f}", g);          // 0.625
 ```

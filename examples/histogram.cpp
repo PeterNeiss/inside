@@ -20,7 +20,7 @@
 using namespace beman::inside;
 
 // Latency samples in [0, 100] ms with 0.1 ms resolution.
-using latency_t = inside<{{0, 100}, notch<1, 10>}, round_nearest>;
+using latency_t = inside<{{0, 100}, per<10>}, round_nearest>;
 
 // 10 bins: 0-9.9, 10-19.9, ..., 90-100 ms.
 using bin_id_t  = counter<9>;                   // saturating per-bin count (caps at bar height 9)

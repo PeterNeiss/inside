@@ -8,7 +8,7 @@
 
 int main()
 {
-  using wide = beman::inside::inside<{{-(1 << 24), 1 << 24}, beman::inside::notch<1, 16>},
+  using wide = beman::inside::inside<{{-(1 << 24), 1 << 24}, beman::inside::per<16>},
                                      beman::inside::round_nearest>;
   auto s = beman::inside::math::sin(wide{1});
   (void)s;

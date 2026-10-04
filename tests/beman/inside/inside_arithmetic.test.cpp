@@ -41,9 +41,9 @@ TEST(InsideArithmeticTest, inside_add_mixed_notch_with_offset_storage)
   // sum was only correct when the lhs offset happened to be 0 or notches were
   // equal. These exercise different notches AND a non-zero (and negative-Lower)
   // offset, which is where the bug surfaced.
-  using fine   = inside<{{-4, 4}, notch<1, 16>},  round_nearest>;
-  using coarse = inside<{{-8, 8}, notch<1, 256>}, round_nearest>;
-  using offset = inside<{{0, 4},  notch<1, 16>},  round_nearest>;
+  using fine   = inside<{{-4, 4}, per<16>},  round_nearest>;
+  using coarse = inside<{{-8, 8}, per<256>}, round_nearest>;
+  using offset = inside<{{0, 4},  per<16>},  round_nearest>;
 
   ASSERT_EQ((fine{0}   + coarse{2}), 2);    // was -1.75
   ASSERT_EQ((offset{1} + coarse{2}), 3);    // was 2.0625
@@ -383,7 +383,7 @@ TEST(InsideArithmeticTest, scalars_need_a_grid_to_join_inside_arithmetic)
 // exact scalar math stays in inside-space
 TEST(InsideArithmeticTest, exact_scalar_math_stays_in_inside_space)
 {
-  using rn = inside<{{-100, 100}, notch<1, 16>}, round_nearest>;
+  using rn = inside<{{-100, 100}, per<16>}, round_nearest>;
   rn a{0.5_r};                              // 0.5
 
   // The old mixed-mode `inside op rational` overloads are gone: a scalar joins
@@ -421,13 +421,13 @@ TEST(InsideArithmeticTest, beman_inside_sum_bulk_reduction_with_one_deferred_che
   ASSERT_TRUE(beman::inside::sum<clamped>(v) == 100);
 
   // Q-format elements (index raw): exact fractional accumulation.
-  using q = inside<{{0, 4}, notch<1, 256>}, round_nearest>;
+  using q = inside<{{0, 4}, per<256>}, round_nearest>;
   std::vector<q> qs(3, q{rational{1, 256}});
-  using qsum = inside<{{0, 16}, notch<1, 256>}, round_nearest>;
+  using qsum = inside<{{0, 16}, per<256>}, round_nearest>;
   ASSERT_EQ(rational{beman::inside::sum<qsum>(qs)}, (rational{3, 256}));
 
   // f64 storage falls to the exact rational fold — same result.
-  using r = inside<{{0, 4}, notch<1, 256>}, round_nearest | f64>;
+  using r = inside<{{0, 4}, per<256>}, round_nearest | f64>;
   std::vector<r> rs(3, r{rational{1, 256}});
   ASSERT_EQ(rational{beman::inside::sum<qsum>(rs)}, (rational{3, 256}));
 }
@@ -486,7 +486,7 @@ TEST(InsideArithmeticTest, inside_space_geometry_helpers_dot_cross_lerp)
 
   // lerp(a, b, t) = a + (b - a) * t, with t a [0, 1] fixed-point inside.
   using val = inside<{0, 10}>;
-  using t_t = inside<{{0, 1}, notch<1, 4>}, round_nearest>;
+  using t_t = inside<{{0, 1}, per<4>}, round_nearest>;
   static_assert(lerp(val{2}, val{8}, t_t{0})   == 2);   // t = 0 -> a
   static_assert(lerp(val{2}, val{8}, t_t{1})   == 8);   // t = 1 -> b
   static_assert(lerp(val{2}, val{8}, t_t{0.5}) == 5);   // midpoint (exact)

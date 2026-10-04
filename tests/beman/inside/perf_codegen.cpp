@@ -57,7 +57,7 @@ extern "C" long ins_perf_mul_fast(long a, long b)
 // f64-backed fast arm: add on a dyadic `f64` grid must lower to a bare
 // double add (one addsd) — the fp arm skips snap_double because the result
 // grid is double-exact by construction.
-using D = inside<{{-8, 8}, notch<1, 16384>}, round_nearest | f64>;
+using D = inside<{{-8, 8}, per<16384>}, round_nearest | f64>;
 
 extern "C" double ins_perf_fp_add(D a, D b)
 {
@@ -68,7 +68,7 @@ extern "C" double ins_perf_fp_add(D a, D b)
 // must subtract raws directly (index-raw Q8.8 here — the case that would
 // otherwise fall into the full binary-add + cross-grid-assign engine via
 // `+= (-rhs)`).
-using Q = inside<{{0, 255}, notch<1, 256>}, snap>;
+using Q = inside<{{0, 255}, per<256>}, snap>;
 
 extern "C" long ins_perf_sub_compound(long a, long b)
 {
@@ -86,7 +86,7 @@ extern "C" long ins_perf_range_sum()
   long sum = 0;
   for (auto whole : inside_range<{0, 999}>{})
     sum += static_cast<long>(whole.raw());
-  for (auto fract : inside_range<{{0, 4}, notch<1, 256>}>{})
+  for (auto fract : inside_range<{{0, 4}, per<256>}>{})
     sum += static_cast<long>(fract.raw());
   return sum;
 }

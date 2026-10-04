@@ -18,9 +18,9 @@ using namespace beman::inside;
 
 // Three sensors covering overlapping but distinct ranges.
 // Each has a different precision matched to its hardware.
-using outdoor_t = inside<{{-40, 60},  notch<1, 2>},   round_nearest>;  // 0.5  °C
-using indoor_t  = inside<{{0,   50},  notch<1, 10>},  round_nearest>;  // 0.1  °C
-using ground_t  = inside<{{-10, 30},  notch<1, 4>},   round_nearest>;  // 0.25 °C
+using outdoor_t = inside<{{-40, 60},  per<2>},   round_nearest>;  // 0.5  °C
+using indoor_t  = inside<{{0,   50},  per<10>},  round_nearest>;  // 0.1  °C
+using ground_t  = inside<{{-10, 30},  per<4>},   round_nearest>;  // 0.25 °C
 
 // Output: a coarse fused grid, integer °C. `clamp | round_nearest` lets
 // `fused_t{raw_fused}` saturate AND round the rational raw quotient in
@@ -34,7 +34,7 @@ int main()
   double raw[] = { 22.5,  21.7,  -50.0,  22.0,  23.25 };
 
   // Weights per sensor, in 1/8 step — could be tuned by confidence.
-  using weight_t = inside<{{0, 1}, notch<1, 8>}, round_nearest>;
+  using weight_t = inside<{{0, 1}, per<8>}, round_nearest>;
   weight_t w_outdoor{0.5};
   weight_t w_indoor {0.375};
   weight_t w_ground{0.125};
@@ -45,8 +45,8 @@ int main()
   // rational. The 1/160 accumulator notch holds every sensor·weight product
   // (outdoor 1/16, indoor 1/80, ground 1/32) exactly, so the running sum stays
   // lossless; the weight accumulator keeps the weights' 1/8 notch.
-  using acc_t  = inside<{{-200, 200}, notch<1, 160>}, round_nearest>;
-  using wsum_t = inside<{{0, 8}, notch<1, 8>}, round_nearest>;
+  using acc_t  = inside<{{-200, 200}, per<160>}, round_nearest>;
+  using wsum_t = inside<{{0, 8}, per<8>}, round_nearest>;
   acc_t  weighted_sum{0};
   wsum_t weight_sum{0};
 

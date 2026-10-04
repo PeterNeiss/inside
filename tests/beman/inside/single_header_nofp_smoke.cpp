@@ -29,7 +29,7 @@ int main()
 
   // Transcendentals via the integer/CORDIC engine on a snap grid. These are
   // constexpr under BEMAN_INSIDE_MATH_NO_FP, so evaluate at compile time too.
-  using Ang = inside<{{-8, 8}, notch<1, 16384>}, round_nearest>;
+  using Ang = inside<{{-8, 8}, per<16384>}, round_nearest>;
   constexpr auto s0 = math::sin(Ang{0});
   constexpr auto c0 = math::cos(Ang{0});
   static_assert(detail::rational{s0} == 0);

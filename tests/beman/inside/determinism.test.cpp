@@ -35,8 +35,8 @@ using namespace beman::inside::detail;
 // determinism: asin / acos across grids and domain corners
 TEST(DeterminismTest, determinism_asin_acos_across_grids_and_domain_corners)
 {
-  using A1 = inside<{{-1, 1}, notch<1, 65536>}, round_nearest | f64>;
-  using A2 = inside<{{-1, 1}, notch<1, 4096>},  round_nearest | f64>;
+  using A1 = inside<{{-1, 1}, per<65536>}, round_nearest | f64>;
+  using A2 = inside<{{-1, 1}, per<4096>},  round_nearest | f64>;
 
   EXACT(math::asin(A1{-1}),            3217, -2048);   // -pi/2
   EXACT(math::acos(A1{-1}),          205887, 65536);   //  pi
@@ -67,8 +67,8 @@ TEST(DeterminismTest, determinism_asin_acos_across_grids_and_domain_corners)
 // determinism: sinh / cosh / tanh across grids and corners
 TEST(DeterminismTest, determinism_sinh_cosh_tanh_across_grids_and_corners)
 {
-  using H1 = inside<{{-10, 10}, notch<1, 65536>}, round_nearest | f64>;
-  using H2 = inside<{{-4, 4},   notch<1, 4096>},  round_nearest | f64>;
+  using H1 = inside<{{-10, 10}, per<65536>}, round_nearest | f64>;
+  using H2 = inside<{{-4, 4},   per<4096>},  round_nearest | f64>;
 
   EXACT(math::sinh(H1{0}), 0, 1);  EXACT(math::cosh(H1{0}), 1, 1);  EXACT(math::tanh(H1{0}), 0, 1);
   EXACT(math::sinh(H1{1}),  38509,  32768);
@@ -100,8 +100,8 @@ TEST(DeterminismTest, determinism_sinh_cosh_tanh_across_grids_and_corners)
 // determinism: log10 across grids and corners
 TEST(DeterminismTest, determinism_log10_across_grids_and_corners)
 {
-  using L1 = inside<{{1, 1024}, notch<1, 65536>}, round_nearest | f64>;
-  using L2 = inside<{{1, 256},  notch<1, 4096>},  round_nearest | f64>;
+  using L1 = inside<{{1, 1024}, per<65536>}, round_nearest | f64>;
+  using L2 = inside<{{1, 256},  per<4096>},  round_nearest | f64>;
 
   EXACT(math::log10(L1{1}),    0, 1);   // log10(1)   = 0
   EXACT(math::log10(L2{1}),    0, 1);
@@ -117,8 +117,8 @@ TEST(DeterminismTest, determinism_log10_across_grids_and_corners)
 // determinism: hypot across grids and corners
 TEST(DeterminismTest, determinism_hypot_across_grids_and_corners)
 {
-  using P1 = inside<{{-16, 16}, notch<1, 65536>}, round_nearest | f64>;
-  using P2 = inside<{{-4, 4},   notch<1, 4096>},  round_nearest | f64>;
+  using P1 = inside<{{-16, 16}, per<65536>}, round_nearest | f64>;
+  using P2 = inside<{{-4, 4},   per<4096>},  round_nearest | f64>;
 
   EXACT(math::hypot(P1{0},   P1{0}),   0, 1);   // origin
   EXACT(math::hypot(P1{3},   P1{4}),   5, 1);   // 3-4-5
@@ -133,10 +133,10 @@ TEST(DeterminismTest, determinism_hypot_across_grids_and_corners)
 // determinism: pow across grids and corners
 TEST(DeterminismTest, determinism_pow_across_grids_and_corners)
 {
-  using PB1 = inside<{{1, 16}, notch<1, 65536>}, round_nearest | f64>;
-  using PE1 = inside<{{-4, 8}, notch<1, 65536>}, round_nearest | f64>;
-  using PB2 = inside<{{1, 4},  notch<1, 4096>},  round_nearest | f64>;
-  using PE2 = inside<{{0, 4},  notch<1, 4096>},  round_nearest | f64>;
+  using PB1 = inside<{{1, 16}, per<65536>}, round_nearest | f64>;
+  using PE1 = inside<{{-4, 8}, per<65536>}, round_nearest | f64>;
+  using PB2 = inside<{{1, 4},  per<4096>},  round_nearest | f64>;
+  using PE2 = inside<{{0, 4},  per<4096>},  round_nearest | f64>;
 
   EXACT_OK(math::pow(PB1{2}, PE1{0}),  1, 1);   // b^0 = 1
   EXACT_OK(math::pow(PB1{2}, PE1{1}),  2, 1);   // b^1 = b
@@ -150,9 +150,9 @@ TEST(DeterminismTest, determinism_pow_across_grids_and_corners)
 // determinism: sqrt across grids, corners, and the error path
 TEST(DeterminismTest, determinism_sqrt_across_grids_corners_and_the_error_path)
 {
-  using S1   = inside<{{0, 4},   notch<1, 65536>}, round_nearest | f64>;
-  using S2   = inside<{{0, 256}, notch<1, 256>},   round_nearest | f64>;
-  using Smix = inside<{{-4, 9},  notch<1, 65536>}, round_nearest | f64>;
+  using S1   = inside<{{0, 4},   per<65536>}, round_nearest | f64>;
+  using S2   = inside<{{0, 256}, per<256>},   round_nearest | f64>;
+  using Smix = inside<{{-4, 9},  per<65536>}, round_nearest | f64>;
 
   EXACT(math::sqrt(S1{0}), 0, 1);
   EXACT(math::sqrt(S1{1}), 1, 1);
@@ -166,8 +166,8 @@ TEST(DeterminismTest, determinism_sqrt_across_grids_corners_and_the_error_path)
 // determinism: cbrt across grids and corners
 TEST(DeterminismTest, determinism_cbrt_across_grids_and_corners)
 {
-  using C1 = inside<{{-16, 16}, notch<1, 65536>}, round_nearest | f64>;
-  using C2 = inside<{{-8, 8},   notch<1, 1024>},  round_nearest | f64>;
+  using C1 = inside<{{-16, 16}, per<65536>}, round_nearest | f64>;
+  using C2 = inside<{{-8, 8},   per<1024>},  round_nearest | f64>;
 
   EXACT(math::cbrt(C1{0}),  0,  1);  EXACT(math::cbrt(C2{0}),  0,  1);
   EXACT(math::cbrt(C1{1}),  1,  1);  EXACT(math::cbrt(C2{1}),  1,  1);
@@ -179,8 +179,8 @@ TEST(DeterminismTest, determinism_cbrt_across_grids_and_corners)
 // determinism: atan / atan2 corners across quadrants and axes
 TEST(DeterminismTest, determinism_atan_atan2_corners_across_quadrants_and_axes)
 {
-  using AT1 = inside<{{-16, 16}, notch<1, 16384>}, round_nearest | f64>;
-  using AT2 = inside<{{-1, 1},   notch<1, 65536>}, round_nearest | f64>;
+  using AT1 = inside<{{-16, 16}, per<16384>}, round_nearest | f64>;
+  using AT2 = inside<{{-1, 1},   per<65536>}, round_nearest | f64>;
 
   EXACT(math::atan(AT1{0}),     0,     1);
   EXACT(math::atan(AT1{1}),  3217,  4096);   //  pi/4
@@ -200,7 +200,7 @@ TEST(DeterminismTest, determinism_atan_atan2_corners_across_quadrants_and_axes)
 // determinism: sin / cos / tan radian corners
 TEST(DeterminismTest, determinism_sin_cos_tan_radian_corners)
 {
-  using RAD = inside<{{-8, 8}, notch<1, 16384>}, round_nearest | f64>;
+  using RAD = inside<{{-8, 8}, per<16384>}, round_nearest | f64>;
 
   EXACT(math::sin(RAD{0}), 0, 1);
   EXACT(math::cos(RAD{0}), 1, 1);

@@ -9,7 +9,7 @@ at native speed.
 
 An `inside`'s type is a **grid** `{interval, notch}`:
 
-- **notch** = the resolution (the value of 1 LSB). `notch<1, 2^N>` is a fraction
+- **notch** = the resolution (the value of 1 LSB). `per<2^N>` is a fraction
   `1/2^N` — i.e. **N fractional bits**.
 - **interval** = `[Lower, Upper]`, the representable range.
 - A value is `Lower + index · notch`; with the `direct` policy the raw storage
@@ -19,7 +19,7 @@ So a Q8.8 unsigned register — 8 integer bits, 8 fractional bits, range `[0, 25
 step `1/256` — is:
 
 ```cpp
-using q8_8 = inside<{{0, 255}, notch<1, 256>}, round_nearest>;  // == beman::inside::q8_8
+using q8_8 = inside<{{0, 255}, per<256>}, round_nearest>;  // == beman::inside::q8_8
 ```
 
 `#include <beman/inside/formats.hpp>` for the curated aliases: `q4_4`, `q8_8`, `q16_16`

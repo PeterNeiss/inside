@@ -49,7 +49,7 @@ For the full reproducibility story across the whole library (not just
 using namespace beman::inside;
 
 // Math operands here carry the `f64` storage flag (optional — see below).
-using angle = inside<{{-8, 8}, notch<1, 16384>}, round_nearest | f64>;
+using angle = inside<{{-8, 8}, per<16384>}, round_nearest | f64>;
 auto s = math::sin(angle{1});       // amplitude inside in [-1, 1]
 auto h = math::hypot(s, s);         // √(s²+s²), output grid auto-deduced
 ```
@@ -61,7 +61,7 @@ grid**, so every transcendental operand must carry a policy that **permits
 rounding** — i.e. the **`snap`** bit (`snap`, any `round_*` mode, or `f64`,
 which implies `round_nearest`). Omitting it is a compile error. This is the only
 hard requirement: `math::sin` etc. work on **any snap-capable grid**, including
-plain integer grids and non-dyadic ones (e.g. a `notch<1,100>` money grid) —
+plain integer grids and non-dyadic ones (e.g. a `per<100>` money grid) —
 the value is computed by the engine and snapped to the grid via exact rational
 rounding.
 
@@ -289,7 +289,7 @@ output grids, and domain `static_assert`s** as the unqualified one — only the
 compute backend differs. This lets one program pick per call site:
 
 ```cpp
-using A = inside<{{-8, 8}, notch<1, 16384>}, round_nearest | f64>;
+using A = inside<{{-8, 8}, per<16384>}, round_nearest | f64>;
 
 auto a = math::cordic::sin(A{1});   // bit-exact across every target — replay/sim
 auto b = math::dbl::sin(A{1});      // ~14× faster with -mfma — hot paths

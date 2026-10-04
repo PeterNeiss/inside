@@ -59,7 +59,7 @@ int main()
   // lerp(a, b, t) = a + (b - a) * t. `t` is a [0, 1] fixed-point inside, so the
   // interpolation never leaves inside-space; dyadic t values are exact.
   using axis = inside<{0, 100}>;
-  using t_t  = inside<{{0, 1}, notch<1, 16>}, round_nearest>;
+  using t_t  = inside<{{0, 1}, per<16>}, round_nearest>;
   axis x0{20}, x1{80};
   std::cout << "\nlerp x from " << x0 << " to " << x1 << ":\n";
   for (t_t t : { t_t{0}, t_t{0.25}, t_t{0.5}, t_t{0.75}, t_t{1} })

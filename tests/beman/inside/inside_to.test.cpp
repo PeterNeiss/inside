@@ -40,14 +40,14 @@ TEST(InsideToTest, inside_to_unsigned_t)
 
   {
     SCOPED_TRACE("fractional notch truncates silently (matches rational::to)");
-    using B = inside<{{0, 1}, notch<1, 2>}>;
+    using B = inside<{{0, 1}, per<2>}>;
     ASSERT_TRUE(B{0.5}.to<std::uint8_t>().value() == 0);   // 0.5 -> 0
     ASSERT_TRUE(B{1}.to<std::uint8_t>().value() == 1);
   }
 
   {
     SCOPED_TRACE("Q-format fast path");
-    using B = inside<{{0, 255}, notch<1, 256>}, round_nearest>;
+    using B = inside<{{0, 255}, per<256>}, round_nearest>;
     ASSERT_TRUE(B{42.5}.to<std::uint8_t>().value() == 42);
   }
 }
@@ -84,7 +84,7 @@ TEST(InsideToTest, inside_to_floating_t)
 {
   {
     SCOPED_TRACE("ordinary value");
-    using B = inside<{{0, 1}, notch<1, 2>}>;
+    using B = inside<{{0, 1}, per<2>}>;
     ASSERT_TRUE(B{0.5}.to<double>().value() == 0.5);
   }
 
@@ -106,7 +106,7 @@ TEST(InsideToTest, inside_to_rational_conversion)
 
   {
     SCOPED_TRACE("fractional grid is preserved exactly");
-    using B = inside<{{0, 1}, notch<1, 2>}>;
+    using B = inside<{{0, 1}, per<2>}>;
     ASSERT_TRUE(static_cast<rational>(B{0.5}) == 0.5_r);
   }
 }
@@ -162,10 +162,10 @@ TEST(InsideToTest, operator_size_t_for_index_shaped_bounds)
 // operator double is gated on rounding policy
 TEST(InsideToTest, operator_double_is_gated_on_rounding_policy)
 {
-  using B_round   = inside<{{0, 1}, notch<1, 2>}, round_nearest>;
-  using B_ignore  = inside<{{0, 1}, notch<1, 2>}, snap>;
-  using B_strict  = inside<{{0, 1}, notch<1, 2>}, checked>;
-  using B_floor   = inside<{{0, 1}, notch<1, 2>}, round_floor>;
+  using B_round   = inside<{{0, 1}, per<2>}, round_nearest>;
+  using B_ignore  = inside<{{0, 1}, per<2>}, snap>;
+  using B_strict  = inside<{{0, 1}, per<2>}, checked>;
+  using B_floor   = inside<{{0, 1}, per<2>}, round_floor>;
 
   // operator double() is explicit, so use is_constructible_v to detect it.
   static_assert(std::is_constructible_v<double, B_round>);
@@ -181,7 +181,7 @@ TEST(InsideToTest, operator_double_is_gated_on_rounding_policy)
 TEST(InsideToTest, as_t_is_a_non_expected_shortcut_for_to_t_value)
 {
   using narrow = inside<{0, 100}>;
-  using frac   = inside<{{0, 100}, notch<1, 10>}, round_nearest>;
+  using frac   = inside<{{0, 100}, per<10>}, round_nearest>;
 
   // Matches the integer-extraction value path.
   ASSERT_TRUE(narrow{42}.as<imax>()        == 42);

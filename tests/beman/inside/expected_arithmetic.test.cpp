@@ -114,7 +114,7 @@ TEST(ExpectedArithmeticTest, rational_overflow_reports_overflow)
 // inside construction from expected<rational> - sink unwrap
 TEST(ExpectedArithmeticTest, inside_construction_from_expected_rational_sink_unwrap)
 {
-  using b_t = inside<{{0, 1}, notch<1, 16>}, round_nearest>;
+  using b_t = inside<{{0, 1}, per<16>}, round_nearest>;
 
   b_t v{good(0.5_r)};
   ASSERT_EQ(rational{v}, 0.5_r);
@@ -125,7 +125,7 @@ TEST(ExpectedArithmeticTest, inside_construction_from_expected_rational_sink_unw
 // inside operator= from expected<rational>
 TEST(ExpectedArithmeticTest, inside_operator_from_expected_rational)
 {
-  using b_t = inside<{{0, 1}, notch<1, 16>}, round_nearest>;
+  using b_t = inside<{{0, 1}, per<16>}, round_nearest>;
 
   b_t v{0};
   v = good(0.25_r);
@@ -137,7 +137,7 @@ TEST(ExpectedArithmeticTest, inside_operator_from_expected_rational)
 // expected<inside> + rational propagates the error
 TEST(ExpectedArithmeticTest, expected_inside_plus_rational_propagates_error)
 {
-  using b_t = inside<{{0, 1}, notch<1, 16>}, round_nearest>;
+  using b_t = inside<{{0, 1}, per<16>}, round_nearest>;
   auto some = []() -> std::expected<b_t, errc> { return b_t{0.5_r}; };
   auto none = []() -> std::expected<b_t, errc> { return std::unexpected{errc::division_by_zero}; };
 

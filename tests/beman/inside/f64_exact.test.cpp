@@ -107,7 +107,7 @@ namespace
 // f64 * drops bits below the product-binade ULP
 TEST(F64ExactTest, f64_drops_bits_below_the_product_binade_ulp)
 {
-  using U = inside<{{0, 4}, notch<1, (1u << 26)>}, f64>;   // f=26, exact operand
+  using U = inside<{{0, 4}, per<(1u << 26)>}, f64>;   // f=26, exact operand
   static_assert(std::is_same_v<U::raw_type, double>);
 
   const U a = 4.0 - std::ldexp(1.0, -26);
@@ -129,8 +129,8 @@ TEST(F64ExactTest, f64_plus_match_the_exact_rational_oracle__double_exact_small_
 
   {
     SCOPED_TRACE("double-exact: small notches, modest range (must always hold)");
-    using A = inside<{{-8, 8}, notch<1, 65536>}, f64>;
-    using B = inside<{{-8, 8}, notch<1, 256>}, f64>;
+    using A = inside<{{-8, 8}, per<65536>}, f64>;
+    using B = inside<{{-8, 8}, per<256>}, f64>;
     sweep<A, A>(rng, 2000);
     sweep<A, B>(rng, 2000);
   }
@@ -144,8 +144,8 @@ TEST(F64ExactTest, f64_plus_match_the_exact_rational_oracle__mantissa_product_nu
 
   {
     SCOPED_TRACE("mantissa: product numerator crosses 2^53");
-    using A = inside<{{0, 4}, notch<1, (1u << 26)>}, f64>;     // f=26
-    using B = inside<{{0, 4}, notch<1, (1u << 27)>}, f64>;     // f=27 -> f_prod=53
+    using A = inside<{{0, 4}, per<(1u << 26)>}, f64>;     // f=26
+    using B = inside<{{0, 4}, per<(1u << 27)>}, f64>;     // f=27 -> f_prod=53
     sweep<A, A>(rng, 2000);
     sweep<A, B>(rng, 2000);
   }
@@ -161,8 +161,8 @@ TEST(F64ExactTest, f64_plus_match_the_exact_rational_oracle__exponent_coarsening
     SCOPED_TRACE("exponent-coarsening: fine value combined with a large one");
     // A lives in a high binade (ULP ~2^-12); B carries bits down to 2^-20.
     // A+B / A*B must keep B's sub-ULP bits, but the double op drops them.
-    using A = inside<{{0, (umax{1} << 40)}, notch<1, 2>}, f64>;   // large, coarse
-    using B = inside<{{0, 1}, notch<1, (1u << 20)>}, f64>;        // small, fine
+    using A = inside<{{0, (umax{1} << 40)}, per<2>}, f64>;   // large, coarse
+    using B = inside<{{0, 1}, per<(1u << 20)>}, f64>;        // small, fine
     sweep<A, B>(rng, 2000);
   }
 
@@ -175,12 +175,12 @@ TEST(F64ExactTest, f64_plus_match_the_exact_rational_oracle__signed_grids_cross_
 
   {
     SCOPED_TRACE("signed grids cross zero (all four multiply quadrants)");
-    using A = inside<{{-8, 8}, notch<1, 1024>}, f64>;
-    using B = inside<{{-4, 12}, notch<1, 4096>}, f64>;            // asymmetric, crosses 0
+    using A = inside<{{-8, 8}, per<1024>}, f64>;
+    using B = inside<{{-4, 12}, per<4096>}, f64>;            // asymmetric, crosses 0
     sweep<A, A>(rng, 3000);
     sweep<A, B>(rng, 3000);
     // inexact signed product: drops f64, must stay exact through the quadrants
-    using C = inside<{{-4, 4}, notch<1, (1u << 27)>}, f64>;
+    using C = inside<{{-4, 4}, per<(1u << 27)>}, f64>;
     sweep<C, C>(rng, 3000);
   }
 
@@ -193,10 +193,10 @@ TEST(F64ExactTest, f64_plus_match_the_exact_rational_oracle__mixed_f64_operand_w
 
   {
     SCOPED_TRACE("mixed: f64 operand with a non-f64 one");
-    using Re  = inside<{{-8, 8}, notch<1, 1024>}, f64>;
+    using Re  = inside<{{-8, 8}, per<1024>}, f64>;
     using Int = inside<{-5, 5}>;                       // integer-direct storage
-    using Fr  = inside<{{-8, 8}, notch<1, 4>}>;        // fractional notch-offset storage
-    using Ex  = inside<{{-8, 8}, notch<1, 1024>}, exact>;   // rational storage
+    using Fr  = inside<{{-8, 8}, per<4>}>;        // fractional notch-offset storage
+    using Ex  = inside<{{-8, 8}, per<1024>}, exact>;   // rational storage
     sweep<Re, Int>(rng, 3000);
     sweep<Int, Re>(rng, 3000);
     sweep<Re, Fr>(rng, 3000);
@@ -227,7 +227,7 @@ namespace
 // f64 assignment snaps to nearest grid, ties away from zero
 TEST(F64ExactTest, f64_assignment_snaps_to_nearest_grid_ties_away_from_zero)
 {
-  using R = inside<{{-4, 4}, notch<1, 256>}, f64>;    // double-exact, crosses zero
+  using R = inside<{{-4, 4}, per<256>}, f64>;    // double-exact, crosses zero
   const double nd = static_cast<double>(notch_of<R>);
 
   // exact half-way ties on both sides of zero
@@ -256,7 +256,7 @@ TEST(F64ExactTest, f64_assignment_snaps_to_nearest_grid_ties_away_from_zero)
 // chained f64 arithmetic stays exact vs the rational oracle
 TEST(F64ExactTest, chained_f64_arithmetic_stays_exact_vs_the_rational_oracle)
 {
-  using A = inside<{{-4, 4}, notch<1, 4096>}, f64>;
+  using A = inside<{{-4, 4}, per<4096>}, f64>;
   std::mt19937_64 rng(static_cast<unsigned>(::testing::UnitTest::GetInstance()->random_seed()) ^ 0x243F6A8885A308D3ull);
 
   auto val = [&](){
@@ -285,7 +285,7 @@ TEST(F64ExactTest, chained_f64_arithmetic_stays_exact_vs_the_rational_oracle)
 // f64 raw stays clean
 TEST(F64ExactTest, f64_raw_stays_clean)
 {
-  using R = inside<{{-4, 4}, notch<1, 1024>}, f64>;
+  using R = inside<{{-4, 4}, per<1024>}, f64>;
   static_assert(std::is_same_v<R::raw_type, double>);
 
   R v = 1.5;
@@ -300,8 +300,8 @@ TEST(F64ExactTest, f64_raw_stays_clean)
 // f64 division by zero is reported, not stored as inf
 TEST(F64ExactTest, f64_division_by_zero_is_reported_not_stored_as_inf)
 {
-  using N  = inside<{{1, 4}, notch<1, 1024>}, f64>;
-  using Dz = inside<{{0, 4}, notch<1, 1024>}, f64>;   // divisor grid spans zero
+  using N  = inside<{{1, 4}, per<1024>}, f64>;
+  using Dz = inside<{{0, 4}, per<1024>}, f64>;   // divisor grid spans zero
 
   // divisor can be zero -> return widens to expected; zero divisor -> error
   auto q = N{3.0} / Dz{0.0};
@@ -329,7 +329,7 @@ TEST(F64ExactTest, f64_division_by_zero_is_reported_not_stored_as_inf)
 // over-fine f64 product deduces rational, stays exact
 TEST(F64ExactTest, over_fine_f64_product_deduces_rational_stays_exact)
 {
-  using A = inside<{{0, (1u << 17)}, notch<1, (1u << 16)>}, f64>;   // N up to 2^33 < 2^53
+  using A = inside<{{0, (1u << 17)}, per<(1u << 16)>}, f64>;   // N up to 2^33 < 2^53
   static_assert(std::is_same_v<A::raw_type, double>);
 
   // product grid {0, 2^34} notch 2^-32 → 2^66 slots > umax → rational storage,
@@ -349,7 +349,7 @@ TEST(F64ExactTest, over_fine_f64_product_deduces_rational_stays_exact)
 // f64 storage rejects non-finite assignment
 TEST(F64ExactTest, f64_storage_rejects_non_finite_assignment)
 {
-  using R = inside<{{-8, 8}, notch<1, 65536>}, f64>;
+  using R = inside<{{-8, 8}, per<65536>}, f64>;
   static_assert(std::is_same_v<R::raw_type, double>);
 
   auto threw_not_finite = [](auto&& fn) {

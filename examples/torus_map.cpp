@@ -16,11 +16,11 @@
 using namespace beman::inside;
 
 // Position grid: 0..63 inclusive in 1/16-pixel steps. wrap-on-edge.
-using pos_t = inside<{{0, 64}, notch<1, 16>}, wrap | round_nearest>;
+using pos_t = inside<{{0, 64}, per<16>}, wrap | round_nearest>;
 
 // A signed per-tick movement delta, same 1/16 notch family as pos_t. A runtime
 // step has a range — name it — so `x += d` stays inside += inside.
-using pos_delta_t = inside<{{-64, 64}, notch<1, 16>}, round_nearest>;
+using pos_delta_t = inside<{{-64, 64}, per<16>}, round_nearest>;
 
 // Integer cell coords for the viewport iterator (a separate grid because
 // inside_range needs notch 1 with integer Lower).

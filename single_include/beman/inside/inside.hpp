@@ -1571,11 +1571,16 @@ namespace beman::inside
 {
   // `rational` is internal, but the grid-building helpers are public — they
   // never name the type:
+  //   per<D>       the step 1/D (the common case);
   //   notch<N, D>  a positive step N/D;
   //   frac<N, D>   any exact ratio (signed numerator), e.g. frac<-6, 5> for -1.2;
   //   _r literal   an exact decimal / hex value, e.g. 0.1_r is exactly 1/10.
   template <umax N, umax D = 1>
   inline constexpr detail::rational notch = detail::make_notch<N, D>();
+
+  // per<D> — one part per D: the step 1/D, the common notch (per<256> is Q·8).
+  template <umax D>
+  inline constexpr detail::rational per = detail::make_notch<1, D>();
 
   template <imax N, umax D = 1>
   inline constexpr detail::rational frac = detail::make_frac<N, D>();
@@ -7533,7 +7538,7 @@ namespace beman::inside::math
     // callers don't construct it directly (see examples/oscillator.cpp).
     template <int N>
     using turns_t = inside<{0, rational{(imax{1} << N) - 1, imax{1} << N},
-                           notch<1, (imax{1} << N)>}>;
+                           per<(imax{1} << N)>}>;
 
 
     // log2(d) for a power-of-2 imax d. Constexpr loop; cheap at compile time.
@@ -8828,7 +8833,7 @@ namespace beman::inside::math
   // are chosen independently.
   template <std::uint64_t K>
   using amp = inside<{{rational{-1}, rational{1}},
-                     notch<1, static_cast<imax>(K)>}, f64>;
+                     per<K>}, f64>;
 
   namespace detail
   {
@@ -9667,17 +9672,17 @@ namespace beman::inside
   // The notch denominator is the type max, so the index 0..max fills the native
   // width; both endpoints (0 and 1) are exactly representable.
   //-------------------------------------------------------------------------
-  using unorm8  = inside<{{0, 1}, notch<1, 255>},        round_nearest>; // uint8
-  using unorm16 = inside<{{0, 1}, notch<1, 65535>},      round_nearest>; // uint16
-  using unorm32 = inside<{{0, 1}, notch<1, 4294967295>}, round_nearest>; // uint32
+  using unorm8  = inside<{{0, 1}, per<255>},        round_nearest>; // uint8
+  using unorm16 = inside<{{0, 1}, per<65535>},      round_nearest>; // uint16
+  using unorm32 = inside<{{0, 1}, per<4294967295>}, round_nearest>; // uint32
 
   //-------------------------------------------------------------------------
   // Q-format fixed-point — unsigned integer.fraction, power-of-two notch,
   // full natural range. `round_nearest`.
   //-------------------------------------------------------------------------
-  using q4_4   = inside<{{0, 15},    notch<1, 16>},    round_nearest>; // uint8
-  using q8_8   = inside<{{0, 255},   notch<1, 256>},   round_nearest>; // uint16
-  using q16_16 = inside<{{0, 65535}, notch<1, 65536>}, round_nearest>; // uint32
+  using q4_4   = inside<{{0, 15},    per<16>},    round_nearest>; // uint8
+  using q8_8   = inside<{{0, 255},   per<256>},   round_nearest>; // uint16
+  using q16_16 = inside<{{0, 65535}, per<65536>}, round_nearest>; // uint32
 
   //-------------------------------------------------------------------------
   // Counters — a counter is an inside over [0, Max] whose overflow policy says

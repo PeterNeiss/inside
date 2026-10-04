@@ -187,7 +187,7 @@ namespace beman::inside::math
     // callers don't construct it directly (see examples/oscillator.cpp).
     template <int N>
     using turns_t = inside<{0, rational{(imax{1} << N) - 1, imax{1} << N},
-                           notch<1, (imax{1} << N)>}>;
+                           per<(imax{1} << N)>}>;
 
 
     // log2(d) for a power-of-2 imax d. Constexpr loop; cheap at compile time.
@@ -1482,7 +1482,7 @@ namespace beman::inside::math
   // are chosen independently.
   template <std::uint64_t K>
   using amp = inside<{{rational{-1}, rational{1}},
-                     notch<1, static_cast<imax>(K)>}, f64>;
+                     per<K>}, f64>;
 
   namespace detail
   {

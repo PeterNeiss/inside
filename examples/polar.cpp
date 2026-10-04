@@ -20,10 +20,10 @@ using namespace beman::inside;
 int main()
 {
   // Cartesian coordinate inside: [-1, 1] with Q.14 resolution.
-  using coord_t = inside<{{-1, 1}, notch<1, 16384>}, round_nearest | f64>;
+  using coord_t = inside<{{-1, 1}, per<16384>}, round_nearest | f64>;
   // Magnitude is non-negative; max possible |v| from (±1, ±1) is √2 ≈ 1.4142.
   // We accept inputs in [-1, 1], so mag_sq ∈ [0, 2], mag ∈ [0, √2].
-  using magsq_t = inside<{{0, 2}, notch<1, 16384>}, round_nearest | f64>;
+  using magsq_t = inside<{{0, 2}, per<16384>}, round_nearest | f64>;
 
   struct point { coord_t x; coord_t y; const char* label; };
   const point points[] = {
@@ -62,7 +62,7 @@ int main()
   std::cout << "  original           recovered (mag·cos θ, mag·sin θ)\n";
   // atan2 already returns radians ∈ [-π, π]; feed it straight into sin/cos.
   // ±4 rad comfortably brackets ±π.
-  using angle_t = inside<{{-4, 4}, notch<1, 16384>}, round_nearest | f64>;
+  using angle_t = inside<{{-4, 4}, per<16384>}, round_nearest | f64>;
   for (auto& p : points) {
     coord_t x{p.x}, y{p.y};
     auto x2 = p.x * p.x;

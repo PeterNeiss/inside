@@ -38,7 +38,7 @@ using namespace beman::inside;
 namespace
 {
   using I = inside<{-1000000, 1000000}>;                 // integer fast path
-  using Q = inside<{{-1000, 1000}, notch<1, 16>}>;       // Q-format (fixed-point) fast path
+  using Q = inside<{{-1000, 1000}, per<16>}>;       // Q-format (fixed-point) fast path
 
   volatile std::int64_t g_sink = 0;                     // defeat dead-code elimination
 
@@ -92,7 +92,7 @@ namespace
     // (is_qformat), so the divisor grid necessarily spans zero and div returns
     // an expected — divisor raws stay >= 16, so it always has a value and the
     // measured work is the native `(a << log2 N) / b` path plus its zero test.
-    using Qn = inside<{{0, 1000}, notch<1, 16>}>;
+    using Qn = inside<{{0, 1000}, per<16>}>;
     std::int64_t acc = 0, x = 1;
     for (long i = 0; i < iters; ++i)
     {

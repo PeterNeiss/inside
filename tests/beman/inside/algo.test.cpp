@@ -153,7 +153,7 @@ TEST(AlgoTest, beman_inside_min_max_midpoint_over_bounds)
   ASSERT_EQ((min(a, b)), 30);
 
   // Fractional grid.
-  using s = inside<{{-1, 1}, notch<1, 16384>}, round_nearest>;
+  using s = inside<{{-1, 1}, per<16384>}, round_nearest>;
   s x{rational{1, 4}}, y{rational{3, 4}};
   ASSERT_EQ((rational{beman::inside::midpoint(x, y)}), (rational{1, 2}));
   ASSERT_EQ((beman::inside::max(x, y)), (rational{3, 4}));

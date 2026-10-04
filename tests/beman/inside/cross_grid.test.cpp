@@ -89,8 +89,8 @@ namespace
 // cross-grid compare/arith: differing notches (1/2 vs 1/4)
 TEST(CrossGridTest, cross_grid_compare_arith_differing_notches_1_2_vs_1_4)
 {
-  using A = inside<{{-8, 8}, notch<1, 2>}>;
-  using B = inside<{{-8, 8}, notch<1, 4>}>;
+  using A = inside<{{-8, 8}, per<2>}>;
+  using B = inside<{{-8, 8}, per<4>}>;
   check_cross<A, B>(sweep(-8, 8, 0.5), sweep(-8, 8, 0.25));
 }
 
@@ -105,7 +105,7 @@ TEST(CrossGridTest, cross_grid_compare_arith_integer_vs_half_notch_different_off
 // cross-grid compare/arith: quarter-notch vs unit signed
 TEST(CrossGridTest, cross_grid_compare_arith_quarter_notch_vs_unit_signed)
 {
-  using A = inside<{{-8, 8}, notch<1, 4>}>;
+  using A = inside<{{-8, 8}, per<4>}>;
   using B = inside<{-3, 7}>;
   check_cross<A, B>(sweep(-8, 8, 0.25), sweep(-3, 7, 1.0));
 }
@@ -113,8 +113,8 @@ TEST(CrossGridTest, cross_grid_compare_arith_quarter_notch_vs_unit_signed)
 // cross-grid compare/arith: Q8.8 vs Q1.14 (power-of-two notches)
 TEST(CrossGridTest, cross_grid_compare_arith_q8_8_vs_q1_14_power_of_two_notches)
 {
-  using A = inside<{{0, 255}, notch<1, 256>}>;
-  using B = inside<{{-1, 1}, notch<1, 16384>}>;
+  using A = inside<{{0, 255}, per<256>}>;
+  using B = inside<{{-1, 1}, per<16384>}>;
   // Values chosen on both grids' common refinement (1/256) so the oracle stays exact.
   check_cross<A, B>(sweep(0, 4, 1.0 / 256 * 37), sweep(-1, 1, 1.0 / 256 * 5));
 }
@@ -135,7 +135,7 @@ TEST(CrossGridTest, cross_grid_compare_arith_asymmetric_offsets_same_notch)
 // regression: fractional + integer-direct keeps the fraction
 TEST(CrossGridTest, regression_fractional_plus_integer_direct_keeps_the_fraction)
 {
-  using Frac = inside<{{-8, 8}, notch<1, 4>}>;   // fractional, notch-offset storage
+  using Frac = inside<{{-8, 8}, per<4>}>;   // fractional, notch-offset storage
   using Int  = inside<{-3, 7}>;                    // integer, direct storage
 
   ASSERT_TRUE((static_cast<rational>(Frac{-7.75} + Int{-3}) == rational{43, -4}));  // -10.75
@@ -156,22 +156,22 @@ TEST(CrossGridTest, regression_fractional_plus_integer_direct_keeps_the_fraction
 TEST(CrossGridTest, tier_3_integer_fast_paths_stay_engaged_and_fp_stays_excluded)
 {
   using whole    = inside<{0, 100}>;
-  using quarters = inside<{{0, 1}, notch<1, 4>}>;
+  using quarters = inside<{{0, 1}, per<4>}>;
   static_assert(detail::addition<whole, quarters>::mixed_offset_ok);
 
-  using tenths       = inside<{{0, 100}, notch<1, 10>}>;
-  using quarter_grid = inside<{{0, 100}, notch<1, 4>}, round_nearest>;
+  using tenths       = inside<{{0, 100}, per<10>}>;
+  using quarter_grid = inside<{{0, 100}, per<4>}, round_nearest>;
   static_assert(detail::assignment<quarter_grid, tenths>::affine_map.Ok);
 
   // fp-backed operands must not take the integer offset path.
-  using coarse_real = inside<{{0, (umax{1} << 40)}, notch<1, 2>}, f64>;
-  using fine_real   = inside<{{0, 1}, notch<1, (1u << 20)>}, f64>;
+  using coarse_real = inside<{{0, (umax{1} << 40)}, per<2>}, f64>;
+  using fine_real   = inside<{{0, 1}, per<(1u << 20)>}, f64>;
   if constexpr (detail::fp_raw<coarse_real>)
     static_assert(!(detail::addition<coarse_real, fine_real>::mixed_offset_ok));
 
   // value check across a negative Lower, at compile time (constexpr path).
   using signed_whole = inside<{-50, 50}>;
-  using eighths      = inside<{{-2, 2}, notch<1, 8>}>;
+  using eighths      = inside<{{-2, 2}, per<8>}>;
   static_assert(rational{signed_whole{-7} + eighths{-0.625_ins}}
                  == rational{umax{61}, imax{-8}});
 }
@@ -184,14 +184,14 @@ TEST(CrossGridTest, regression_cross_grid_assign_onto_rational_storage_keeps_the
   // (7/3 -> 2/1) and a rational-raw source had the grid transform applied to
   // a raw that already was the value (5/3 -> corrupted). Both must store the
   // exact source value.
-  using exact_t = inside<{{0, 4}, notch<1, 3>}, exact | round_nearest>;
+  using exact_t = inside<{{0, 4}, per<3>}, exact | round_nearest>;
 
-  using index_src = inside<{{0, 4}, notch<1, 3>}, round_nearest>;
+  using index_src = inside<{{0, 4}, per<3>}, round_nearest>;
   exact_t from_index;
   from_index = index_src{rational{7, 3}};
   ASSERT_EQ(from_index.raw(), (rational{7, 3}));
 
-  using exact_wide = inside<{{-4, 4}, notch<1, 3>}, exact | round_nearest>;
+  using exact_wide = inside<{{-4, 4}, per<3>}, exact | round_nearest>;
   exact_t from_exact;
   from_exact = exact_wide{rational{5, 3}};
   ASSERT_EQ(from_exact.raw(), (rational{5, 3}));
@@ -201,8 +201,8 @@ TEST(CrossGridTest, regression_cross_grid_assign_onto_rational_storage_keeps_the
   from_value_raw = value_src{3};
   ASSERT_EQ(from_value_raw.raw(), rational{3});
 
-  using f64_src = inside<{{0, 4}, notch<1, 256>}, f64 | round_nearest>;
-  using exact_dyadic = inside<{{0, 4}, notch<1, 256>}, exact | round_nearest>;
+  using f64_src = inside<{{0, 4}, per<256>}, f64 | round_nearest>;
+  using exact_dyadic = inside<{{0, 4}, per<256>}, exact | round_nearest>;
   exact_dyadic from_f64;
   from_f64 = f64_src{rational{513, 256}};
   ASSERT_EQ(from_f64.raw(), (rational{513, 256}));
@@ -220,7 +220,7 @@ TEST(CrossGridTest, scalar_comparison_integer_arm_agrees_with_the_rational_decod
   // Q-format (index raw) vs integral scalar takes the cross-multiplied
   // integer arm; every verdict must match the exact rational comparison,
   // including at A's numeric_limits extremes.
-  using q88 = inside<{{0, 255}, notch<1, 256>}, round_nearest>;
+  using q88 = inside<{{0, 255}, per<256>}, round_nearest>;
   static_assert(scalar_index_cmp_fits<q88, int>);
 
   auto agree = [](auto probe, auto scalar) {
@@ -241,7 +241,7 @@ TEST(CrossGridTest, scalar_comparison_integer_arm_agrees_with_the_rational_decod
   }
 
   // offset index grid (negative Lower -> nonzero bias)
-  using offset_q = inside<{{-8, 8}, notch<1, 16384>}, round_nearest>;
+  using offset_q = inside<{{-8, 8}, per<16384>}, round_nearest>;
   static_assert(scalar_index_cmp_fits<offset_q, int>);
   for (int scalar : {std::numeric_limits<int>::min(), -9, -8, -1, 0, 1, 8,
                      std::numeric_limits<int>::max()})

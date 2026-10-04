@@ -367,8 +367,8 @@ TEST(InsideAssignTest, wrap_on_fractional_notch_grids_insidable_rhs)
   using namespace beman::inside;
   // {0,1} notch 1/4 — integer interval but fractional notch. Wrap period is
   // (Upper - Lower) + Notch = 1.25; slots {0, .25, .5, .75, 1.0}.
-  using dst = inside<{{0, 1}, notch<1, 4>}, wrap | round_nearest>;
-  using src = inside<{{-2, 2}, notch<1, 4>}, round_nearest>;
+  using dst = inside<{{0, 1}, per<4>}, wrap | round_nearest>;
+  using src = inside<{{-2, 2}, per<4>}, round_nearest>;
 
   ASSERT_EQ((rational{dst{src{rational{5, 4}}}}), rational{0});       // 1.25 -> 0
   ASSERT_EQ((rational{dst{src{rational{6, 4}}}}), (rational{1, 4}));    // 1.50 -> 0.25
@@ -377,8 +377,8 @@ TEST(InsideAssignTest, wrap_on_fractional_notch_grids_insidable_rhs)
   ASSERT_EQ((rational{dst{src{rational{-2, 4}}}}), (rational{3, 4}));    // -0.50 -> 0.75
 
   // Non-integer interval, notch 1/2: {1/2, 5/2} period = 2 + 1/2 = 2.5.
-  using dst2 = inside<{{rational{1, 2}, rational{5, 2}}, notch<1, 2>}, wrap | round_nearest>;
-  using src2 = inside<{{-4, 4}, notch<1, 2>}, round_nearest>;
+  using dst2 = inside<{{rational{1, 2}, rational{5, 2}}, per<2>}, wrap | round_nearest>;
+  using src2 = inside<{{-4, 4}, per<2>}, round_nearest>;
   ASSERT_EQ(rational{dst2{src2{rational{3}}}}, (rational{1, 2}));      // 3.0 -> 0.5
 
   // Unit-integer grid still uses the fast path and wraps as before.

@@ -157,6 +157,8 @@ TEST(GridTest, grid_validate)
 // keeping every integer and both limits on the lattice.
 TEST(GridTest, two_limit_ctor_derives_the_notch)
 {
+  static_assert(per<16> == notch<1, 16>);                          // per<D> is the step 1/D
+  static_assert(frac<-6, 5> == rational{-6, 5});
   static_assert(grid{0, 100}.Notch == 1);                          // integers: unchanged
   static_assert(grid{-40, 85}.Notch == 1);
   static_assert(grid{0.0, 1.0}.Notch == 1);
