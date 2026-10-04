@@ -13,6 +13,7 @@ target_sources(
                 core.hpp
                 detail/addition.hpp
                 detail/assignment.hpp
+                detail/big_rational.hpp
                 detail/debug.hpp
                 detail/division.hpp
                 detail/grid_rational.hpp

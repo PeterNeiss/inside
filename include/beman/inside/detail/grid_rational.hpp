@@ -30,6 +30,8 @@
 #  endif
 #endif
 
+#include <beman/inside/detail/big_rational.hpp>   // empty without big grids
+
 #if BEMAN_INSIDE_BIG_GRIDS
 #  define BEMAN_INSIDE_GRID_ABI big_grids_v1
 #else
