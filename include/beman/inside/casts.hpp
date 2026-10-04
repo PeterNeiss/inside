@@ -30,21 +30,24 @@ namespace beman::inside
   // clamp_floor / clamp_ceil / clamp_round — compose `clamp` with a rounding
   // mode: the canonical "double in, bounded integer out, never throw" pipeline.
   //---------------------------------------------------------------------------
+  namespace detail
+  {
   template <insidable B, policy_flag RoundMode, numeric N>
   [[nodiscard]] constexpr B clamp_with_rounding(N value)
   { return B{value, make_policy<clamp | RoundMode>()}; }
+  }
 
   template <insidable B, numeric N>
   [[nodiscard]] constexpr B clamp_floor(N value)
-  { return clamp_with_rounding<B, round_floor>(value); }
+  { return detail::clamp_with_rounding<B, round_floor>(value); }
 
   template <insidable B, numeric N>
   [[nodiscard]] constexpr B clamp_ceil(N value)
-  { return clamp_with_rounding<B, round_ceil>(value); }
+  { return detail::clamp_with_rounding<B, round_ceil>(value); }
 
   template <insidable B, numeric N>
   [[nodiscard]] constexpr B clamp_round(N value)
-  { return clamp_with_rounding<B, round_nearest>(value); }
+  { return detail::clamp_with_rounding<B, round_nearest>(value); }
 
   // `checked_cast` — throws (via the installed handler) when the value would not
   // fit exactly: errc::overflow out of the interval (as to<T> and the predicate

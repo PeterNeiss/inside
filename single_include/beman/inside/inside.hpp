@@ -296,10 +296,13 @@ namespace beman::inside
   }
 
   //---------------------------------------------------------------------------
-  // lift(op, args...) — call op on the unwrapped args → expected<result, errc>;
-  // the first erroneous arg (left to right) short-circuits with its error. An op
-  // already returning expected<R, errc> passes through.
+  // detail::lift(op, args...) — call op on the unwrapped args → expected<result,
+  // errc>; the first erroneous arg (left to right) short-circuits with its error.
+  // An op already returning expected<R, errc> passes through. Internal: it backs
+  // the expected-lift operators; user code chains through those.
   //---------------------------------------------------------------------------
+  namespace detail
+  {
   template <class Op, class... Args>
   [[nodiscard]] constexpr auto lift(Op op, Args&&... args)
   {
@@ -316,6 +319,7 @@ namespace beman::inside
     else
       return Ret{op(detail::lift_unwrap(std::forward<Args>(args))...)};
   }
+  } // namespace detail
 
 } // namespace beman::inside
 
@@ -1679,7 +1683,7 @@ namespace beman::inside
   //---------------------------------------------------------------------------
   [[nodiscard]] inline constexpr std::expected<interval, errc> operator+(const interval& lhs, const interval& rhs)
   {
-    return lift(
+    return detail::lift(
       [](detail::rational l, detail::rational u){ return interval{l, u}; },
       lhs.Lower + rhs.Lower, lhs.Upper + rhs.Upper);
   }
@@ -1697,7 +1701,7 @@ namespace beman::inside
   //---------------------------------------------------------------------------
   [[nodiscard]] inline constexpr std::expected<interval, errc> operator*(const interval& lhs, const interval& rhs)
   {
-    return lift(detail::corner_hull,
+    return detail::lift(detail::corner_hull,
       lhs.Lower * rhs.Lower, lhs.Lower * rhs.Upper,
       lhs.Upper * rhs.Lower, lhs.Upper * rhs.Upper);
   }
@@ -1710,7 +1714,7 @@ namespace beman::inside
     if (includes(rhs, 0))
       return std::unexpected{errc::division_by_zero};
 
-    return lift(detail::corner_hull,
+    return detail::lift(detail::corner_hull,
       lhs.Lower / rhs.Lower, lhs.Lower / rhs.Upper,
       lhs.Upper / rhs.Lower, lhs.Upper / rhs.Upper);
   }
@@ -2430,7 +2434,7 @@ namespace beman::inside
   {
     // gcd returns expected — lift it so a notch-denominator overflow produces
     // errc::overflow rather than a silently wrapped result grid.
-    return lift(
+    return detail::lift(
       [](interval i, detail::rational n){ return grid{i, n}; },
       lhs.Interval + rhs.Interval, detail::gcd(lhs.Notch, rhs.Notch));
   }
@@ -2455,7 +2459,7 @@ namespace beman::inside
     const bool rp = rhs.Interval.Lower == rhs.Interval.Upper;
     const detail::rational ln = (lp && !rp) ? detail::abs(lhs.Interval.Lower) : lhs.Notch;
     const detail::rational rn = (rp && !lp) ? detail::abs(rhs.Interval.Lower) : rhs.Notch;
-    return lift(
+    return detail::lift(
       [](interval i, detail::rational n){ return grid{i, n}; },
       lhs.Interval * rhs.Interval, ln * rn);
   }
@@ -2482,7 +2486,7 @@ namespace beman::inside
 
     if (has_pos && has_neg)
     {
-      return lift(
+      return detail::lift(
         [](interval pos, interval neg){
           return grid{interval{neg.Lower < pos.Lower ? neg.Lower : pos.Lower,
                                neg.Upper < pos.Upper ? pos.Upper : neg.Upper}, detail::rational{0}};
@@ -2492,12 +2496,12 @@ namespace beman::inside
     }
     else if (has_pos)
     {
-      return lift([](interval i){ return grid{i, detail::rational{0}}; },
+      return detail::lift([](interval i){ return grid{i, detail::rational{0}}; },
                   lhs.Interval / interval{step, rhs.Interval.Upper});
     }
     else
     {
-      return lift([](interval i){ return grid{i, detail::rational{0}}; },
+      return detail::lift([](interval i){ return grid{i, detail::rational{0}}; },
                   lhs.Interval / interval{rhs.Interval.Lower, -step});
     }
   }
@@ -2518,7 +2522,7 @@ namespace beman::inside
                       lhs.Interval.Upper < rhs.Interval.Upper ? rhs.Interval.Upper : lhs.Interval.Upper};
     if (lhs.Notch == 0 || rhs.Notch == 0)
       return grid{iv, detail::rational{0}};
-    return lift([iv](detail::rational g){ return grid{iv, g}; },
+    return detail::lift([iv](detail::rational g){ return grid{iv, g}; },
                 detail::gcd(lhs.Notch, rhs.Notch));
   }
 } // namespace beman::inside
@@ -6158,21 +6162,24 @@ namespace beman::inside
   // clamp_floor / clamp_ceil / clamp_round — compose `clamp` with a rounding
   // mode: the canonical "double in, bounded integer out, never throw" pipeline.
   //---------------------------------------------------------------------------
+  namespace detail
+  {
   template <insidable B, policy_flag RoundMode, numeric N>
   [[nodiscard]] constexpr B clamp_with_rounding(N value)
   { return B{value, make_policy<clamp | RoundMode>()}; }
+  }
 
   template <insidable B, numeric N>
   [[nodiscard]] constexpr B clamp_floor(N value)
-  { return clamp_with_rounding<B, round_floor>(value); }
+  { return detail::clamp_with_rounding<B, round_floor>(value); }
 
   template <insidable B, numeric N>
   [[nodiscard]] constexpr B clamp_ceil(N value)
-  { return clamp_with_rounding<B, round_ceil>(value); }
+  { return detail::clamp_with_rounding<B, round_ceil>(value); }
 
   template <insidable B, numeric N>
   [[nodiscard]] constexpr B clamp_round(N value)
-  { return clamp_with_rounding<B, round_nearest>(value); }
+  { return detail::clamp_with_rounding<B, round_nearest>(value); }
 
   // `checked_cast` — throws (via the installed handler) when the value would not
   // fit exactly: errc::overflow out of the interval (as to<T> and the predicate
@@ -6350,28 +6357,6 @@ namespace beman::inside
   [[nodiscard]] constexpr auto mul_all(First const& first, Rest const&... rest)
   { return (first * ... * rest); }
 
-  // add_all_into<Target> / mul_all_into<Target> — fold, then collapse the widened
-  // intermediate into Target via clamp_cast (widen for exactness, then clip).
-  template <insidable Target, insidable First, insidable... Rest>
-  [[nodiscard]] constexpr Target add_all_into(First const& first, Rest const&... rest)
-  {
-    auto sum = (first + ... + rest);
-    if constexpr (requires { typename decltype(sum)::value_type; })
-      return clamp_cast<Target>(sum.value());
-    else
-      return clamp_cast<Target>(sum);
-  }
-
-  template <insidable Target, insidable First, insidable... Rest>
-  [[nodiscard]] constexpr Target mul_all_into(First const& first, Rest const&... rest)
-  {
-    auto prod = (first * ... * rest);
-    if constexpr (requires { typename decltype(prod)::value_type; })
-      return clamp_cast<Target>(prod.value());
-    else
-      return clamp_cast<Target>(prod);
-  }
-
   //---------------------------------------------------------------------------
   // sum<Target> — bulk reduction with ONE deferred range check. Per-element
   // `target += b` re-validates every step (blocks vectorization); this
@@ -6538,7 +6523,7 @@ namespace beman::inside
     requires detail::expected_operands<L, R>                                         \
           && requires(detail::unwrap_t<L> l, detail::unwrap_t<R> r) { l op r; }      \
   [[nodiscard]] constexpr auto operator op(L const& lhs, R const& rhs)               \
-  { return lift([](auto const& l, auto const& r) { return l op r; }, lhs, rhs); }
+  { return detail::lift([](auto const& l, auto const& r) { return l op r; }, lhs, rhs); }
 
   BEMAN_INSIDE_LIFT_OP(+)
   BEMAN_INSIDE_LIFT_OP(-)

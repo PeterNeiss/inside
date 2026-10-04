@@ -339,21 +339,21 @@ TEST(ConstexprTest, constexpr_wrap_cast_wraps_modulo_the_grid)
   static_assert(wrap_cast<angle>(180) == 180);
 }
 
-// constexpr: add_all_into / mul_all_into clip to target grid
-TEST(ConstexprTest, constexpr_add_all_into_mul_all_into_clip_to_target_grid)
+// constexpr: a fold clipped into a target grid with clamp_cast
+TEST(ConstexprTest, constexpr_fold_clipped_to_target_grid)
 {
   using bus = inside<{-100, 100}, clamp>;
   using ch  = inside<{-50, 50}>;
   constexpr ch a{30}, b{40}, c{45};
 
-  // Naive widened sum would be 115; add_all_into clips to bus's interval.
-  static_assert(add_all_into<bus>(a, b, c) == 100);
-  static_assert(add_all_into<bus>(ch{10}, ch{-5}, ch{3}) == 8);
+  // The widened sum is 115; clamp_cast clips it to bus's interval.
+  static_assert(clamp_cast<bus>(add_all(a, b, c)) == 100);
+  static_assert(clamp_cast<bus>(add_all(ch{10}, ch{-5}, ch{3})) == 8);
 
   using small = inside<{0, 50}, clamp>;
   using v = inside<{0, 10}>;
-  static_assert(mul_all_into<small>(v{4}, v{5}) == 20);
-  static_assert(mul_all_into<small>(v{6}, v{10}) == 50);  // 60 clamped
+  static_assert(clamp_cast<small>(mul_all(v{4}, v{5})) == 20);
+  static_assert(clamp_cast<small>(mul_all(v{6}, v{10})) == 50);  // 60 clamped
 }
 
 // constexpr: clamp_floor / clamp_ceil / clamp_round

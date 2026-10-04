@@ -409,12 +409,11 @@ auto sum  = add_all(a, b, c);   // inside<{0, 300}>, value 60
 auto prod = mul_all(a, b);      // inside<{0, 10000}>, value 200
 ```
 
-`add_all_into<Target>` / `mul_all_into<Target>` fold the same way, then
-collapse the widened result into `Target` with `clamp_cast` (an `expected`
-intermediate is unwrapped first):
+To collapse the widened result into a narrower type, apply a cast or let the
+target's policy do it:
 
 ```cpp
-auto capped = add_all_into<v>(a, b, c, v{90});   // v, value 100 (150 clamped)
+auto capped = clamp_cast<v>(add_all(a, b, c, v{90}));   // v, value 100 (150 clamped)
 ```
 
 ## When `std::expected` is returned

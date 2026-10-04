@@ -61,10 +61,13 @@ namespace beman::inside
   }
 
   //---------------------------------------------------------------------------
-  // lift(op, args...) — call op on the unwrapped args → expected<result, errc>;
-  // the first erroneous arg (left to right) short-circuits with its error. An op
-  // already returning expected<R, errc> passes through.
+  // detail::lift(op, args...) — call op on the unwrapped args → expected<result,
+  // errc>; the first erroneous arg (left to right) short-circuits with its error.
+  // An op already returning expected<R, errc> passes through. Internal: it backs
+  // the expected-lift operators; user code chains through those.
   //---------------------------------------------------------------------------
+  namespace detail
+  {
   template <class Op, class... Args>
   [[nodiscard]] constexpr auto lift(Op op, Args&&... args)
   {
@@ -81,6 +84,7 @@ namespace beman::inside
     else
       return Ret{op(detail::lift_unwrap(std::forward<Args>(args))...)};
   }
+  } // namespace detail
 
 } // namespace beman::inside
 

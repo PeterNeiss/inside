@@ -151,28 +151,6 @@ namespace beman::inside
   [[nodiscard]] constexpr auto mul_all(First const& first, Rest const&... rest)
   { return (first * ... * rest); }
 
-  // add_all_into<Target> / mul_all_into<Target> — fold, then collapse the widened
-  // intermediate into Target via clamp_cast (widen for exactness, then clip).
-  template <insidable Target, insidable First, insidable... Rest>
-  [[nodiscard]] constexpr Target add_all_into(First const& first, Rest const&... rest)
-  {
-    auto sum = (first + ... + rest);
-    if constexpr (requires { typename decltype(sum)::value_type; })
-      return clamp_cast<Target>(sum.value());
-    else
-      return clamp_cast<Target>(sum);
-  }
-
-  template <insidable Target, insidable First, insidable... Rest>
-  [[nodiscard]] constexpr Target mul_all_into(First const& first, Rest const&... rest)
-  {
-    auto prod = (first * ... * rest);
-    if constexpr (requires { typename decltype(prod)::value_type; })
-      return clamp_cast<Target>(prod.value());
-    else
-      return clamp_cast<Target>(prod);
-  }
-
   //---------------------------------------------------------------------------
   // sum<Target> — bulk reduction with ONE deferred range check. Per-element
   // `target += b` re-validates every step (blocks vectorization); this
@@ -339,7 +317,7 @@ namespace beman::inside
     requires detail::expected_operands<L, R>                                         \
           && requires(detail::unwrap_t<L> l, detail::unwrap_t<R> r) { l op r; }      \
   [[nodiscard]] constexpr auto operator op(L const& lhs, R const& rhs)               \
-  { return lift([](auto const& l, auto const& r) { return l op r; }, lhs, rhs); }
+  { return detail::lift([](auto const& l, auto const& r) { return l op r; }, lhs, rhs); }
 
   BEMAN_INSIDE_LIFT_OP(+)
   BEMAN_INSIDE_LIFT_OP(-)

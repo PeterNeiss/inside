@@ -92,7 +92,7 @@ namespace beman::inside
   //---------------------------------------------------------------------------
   [[nodiscard]] inline constexpr std::expected<interval, errc> operator+(const interval& lhs, const interval& rhs)
   {
-    return lift(
+    return detail::lift(
       [](detail::rational l, detail::rational u){ return interval{l, u}; },
       lhs.Lower + rhs.Lower, lhs.Upper + rhs.Upper);
   }
@@ -110,7 +110,7 @@ namespace beman::inside
   //---------------------------------------------------------------------------
   [[nodiscard]] inline constexpr std::expected<interval, errc> operator*(const interval& lhs, const interval& rhs)
   {
-    return lift(detail::corner_hull,
+    return detail::lift(detail::corner_hull,
       lhs.Lower * rhs.Lower, lhs.Lower * rhs.Upper,
       lhs.Upper * rhs.Lower, lhs.Upper * rhs.Upper);
   }
@@ -123,7 +123,7 @@ namespace beman::inside
     if (includes(rhs, 0))
       return std::unexpected{errc::division_by_zero};
 
-    return lift(detail::corner_hull,
+    return detail::lift(detail::corner_hull,
       lhs.Lower / rhs.Lower, lhs.Lower / rhs.Upper,
       lhs.Upper / rhs.Lower, lhs.Upper / rhs.Upper);
   }

@@ -142,12 +142,12 @@ int main()
   std::cout << "\nclamp_cast<sample_t>(mixbus 2.5) = "
             << clamp_cast<sample_t>(hot) << "\n";
 
-  // `add_all_into<Target>` folds N inputs and clips back into Target —
-  // the audio-mix pipeline in one expression.
+  // `add_all` folds N inputs exactly (the grid widens); `clamp_cast` clips the
+  // sum back into the bus — the audio-mix pipeline in one expression.
   using bus_t = inside<{-3, 3}, clamp>;
   using ch_t  = inside<{-1, 1}>;
-  std::cout << "add_all_into<bus_t>(1,-1,1,1) = "
-            << add_all_into<bus_t>(ch_t{1}, ch_t{-1}, ch_t{1}, ch_t{1}) << "\n";
+  std::cout << "clamp_cast<bus_t>(add_all(1,-1,1,1)) = "
+            << clamp_cast<bus_t>(add_all(ch_t{1}, ch_t{-1}, ch_t{1}, ch_t{1})) << "\n";
 
   return 0;
 }

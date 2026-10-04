@@ -441,7 +441,7 @@ namespace beman::inside
   {
     // gcd returns expected — lift it so a notch-denominator overflow produces
     // errc::overflow rather than a silently wrapped result grid.
-    return lift(
+    return detail::lift(
       [](interval i, detail::rational n){ return grid{i, n}; },
       lhs.Interval + rhs.Interval, detail::gcd(lhs.Notch, rhs.Notch));
   }
@@ -466,7 +466,7 @@ namespace beman::inside
     const bool rp = rhs.Interval.Lower == rhs.Interval.Upper;
     const detail::rational ln = (lp && !rp) ? detail::abs(lhs.Interval.Lower) : lhs.Notch;
     const detail::rational rn = (rp && !lp) ? detail::abs(rhs.Interval.Lower) : rhs.Notch;
-    return lift(
+    return detail::lift(
       [](interval i, detail::rational n){ return grid{i, n}; },
       lhs.Interval * rhs.Interval, ln * rn);
   }
@@ -493,7 +493,7 @@ namespace beman::inside
 
     if (has_pos && has_neg)
     {
-      return lift(
+      return detail::lift(
         [](interval pos, interval neg){
           return grid{interval{neg.Lower < pos.Lower ? neg.Lower : pos.Lower,
                                neg.Upper < pos.Upper ? pos.Upper : neg.Upper}, detail::rational{0}};
@@ -503,12 +503,12 @@ namespace beman::inside
     }
     else if (has_pos)
     {
-      return lift([](interval i){ return grid{i, detail::rational{0}}; },
+      return detail::lift([](interval i){ return grid{i, detail::rational{0}}; },
                   lhs.Interval / interval{step, rhs.Interval.Upper});
     }
     else
     {
-      return lift([](interval i){ return grid{i, detail::rational{0}}; },
+      return detail::lift([](interval i){ return grid{i, detail::rational{0}}; },
                   lhs.Interval / interval{rhs.Interval.Lower, -step});
     }
   }
@@ -529,7 +529,7 @@ namespace beman::inside
                       lhs.Interval.Upper < rhs.Interval.Upper ? rhs.Interval.Upper : lhs.Interval.Upper};
     if (lhs.Notch == 0 || rhs.Notch == 0)
       return grid{iv, detail::rational{0}};
-    return lift([iv](detail::rational g){ return grid{iv, g}; },
+    return detail::lift([iv](detail::rational g){ return grid{iv, g}; },
                 detail::gcd(lhs.Notch, rhs.Notch));
   }
 } // namespace beman::inside

@@ -7,6 +7,7 @@
 #include <type_traits>
 
 using namespace beman::inside;
+using beman::inside::detail::lift;
 
 namespace
 {
