@@ -196,7 +196,7 @@ under `-fno-exceptions`. There is no `<system_error>` dependency.
 
 The flag bits live in `policy_flag` (`include/beman/inside/policy_flag.hpp`):
 `clamp`, `wrap`, `checked`, `unsafe`, `snap`,
-`ignore_domain`, `ignore_zero`, `round_floor`, `round_ceil`,
+`ignore_range`, `ignore_zero`, `round_floor`, `round_ceil`,
 `round_nearest`, `round_half_even`, plus the representation flags.
 `is_checked(P)` decides whether step 4 runs: true unless `P` carries `unsafe`
 (an explicit `checked` overrides that), so every spelled policy is checked by
@@ -293,8 +293,8 @@ Per-operation audit:
 | `math::sqrt` (mixed-sign) | `expected` | `domain_error` (negative value) |
 | `to<T>()` | `expected` | `overflow` (out of range), `domain_error` (negative→unsigned) |
 | `as<T>()` | `T` | `to<T>().value()` — throws on error (caller vouches for the range) |
-| `try_make` | `expected` | `errc`: out of range / off-notch |
-| construction / assignment | policy cascade | per the inside's policy |
+| `try_make` | `expected` | `overflow` (out of range), `rounding_error` (off-notch) |
+| construction / assignment | policy cascade | per the inside's policy; reported codes `overflow` / `rounding_error` / `not_finite` |
 | `beman::inside::sum<Target>` | `Target` | Target's policy, applied once to the total |
 
 Chaining (`lift.hpp` / `arithmetic.hpp`): the expected-lift operators keep

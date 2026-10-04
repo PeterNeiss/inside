@@ -37,21 +37,21 @@ namespace
   };
 }
 
-// default handler throws inside_error carrying the code / domain_error on out-of-range assignment
-TEST(ErrorHandlerTest, default_handler_throws_inside_error_carrying_the_code__domain_error_on_out_of_range_assignment)
+// default handler throws inside_error carrying the code / overflow on out-of-range assignment
+TEST(ErrorHandlerTest, default_handler_throws_inside_error_carrying_the_code__overflow_on_out_of_range_assignment)
 {
   using c100 = inside<{0, 100}, checked>;
 
   {
-    SCOPED_TRACE("domain_error on out-of-range assignment");
+    SCOPED_TRACE("overflow on out-of-range assignment");
     try { c100 x{200}; (void)x; FAIL() << "expected throw"; }
-    catch (inside_error const& e) { ASSERT_EQ(e.Code, errc::domain_error); }
+    catch (inside_error const& e) { ASSERT_EQ(e.Code, errc::overflow); }
   }
 
   // what() defaults to the static category message.
   try { c100 x{200}; (void)x; }
   catch (inside_error const& e)
-  { ASSERT_EQ(std::string_view{e.what()}, errc_message(errc::domain_error)); }
+  { ASSERT_EQ(std::string_view{e.what()}, errc_message(errc::overflow)); }
 }
 
 // default handler throws inside_error carrying the code / rounding_error on off-notch checked cast
@@ -69,7 +69,7 @@ TEST(ErrorHandlerTest, default_handler_throws_inside_error_carrying_the_code__ro
   // what() defaults to the static category message.
   try { c100 x{200}; (void)x; }
   catch (inside_error const& e)
-  { ASSERT_EQ(std::string_view{e.what()}, errc_message(errc::domain_error)); }
+  { ASSERT_EQ(std::string_view{e.what()}, errc_message(errc::overflow)); }
 }
 
 // default handler throws inside_error carrying the code / not_finite on non-finite f64 input
@@ -87,7 +87,7 @@ TEST(ErrorHandlerTest, default_handler_throws_inside_error_carrying_the_code__no
   // what() defaults to the static category message.
   try { c100 x{200}; (void)x; }
   catch (inside_error const& e)
-  { ASSERT_EQ(std::string_view{e.what()}, errc_message(errc::domain_error)); }
+  { ASSERT_EQ(std::string_view{e.what()}, errc_message(errc::overflow)); }
 }
 
 // set_error_handler redirects failures and is restorable
@@ -102,8 +102,8 @@ TEST(ErrorHandlerTest, set_error_handler_redirects_failures_and_is_restorable)
 
     g_seen = errc{};
     try { c100 x{200}; (void)x; }
-    catch (handler_fired const& f) { ASSERT_EQ(f.code, errc::domain_error); }
-    ASSERT_EQ(g_seen, errc::domain_error);
+    catch (handler_fired const& f) { ASSERT_EQ(f.code, errc::overflow); }
+    ASSERT_EQ(g_seen, errc::overflow);
   }
   // Default restored after the guard.
   ASSERT_EQ(get_error_handler(), before);

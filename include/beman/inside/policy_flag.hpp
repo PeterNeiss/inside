@@ -35,7 +35,7 @@ namespace beman::inside
   // Binary operations OR the flags of both operands.
   inline constexpr policy_flag none         {0ull};
   inline constexpr policy_flag ignore_zero  {1ull << 1};
-  inline constexpr policy_flag ignore_domain{1ull << 2};
+  inline constexpr policy_flag ignore_range{1ull << 2};
   // `snap` — an off-notch value is rounded to fit the grid instead of
   // rejected; on its own truncate-toward-zero. Without it, an off-notch value is
   // a compile/runtime error and div/mod fall through to exact-rational results.
@@ -50,7 +50,7 @@ namespace beman::inside
 
   // runtime checking — on unless the policy carries `unsafe` (see is_checked).
   // Spelling `checked` re-enables the checks alongside `unsafe`.
-  inline constexpr policy_flag checked{1ull << 34}; // runtime domain/overflow checks
+  inline constexpr policy_flag checked{1ull << 34}; // runtime range/notch/overflow checks
 
   // unary — mutually exclusive
   inline constexpr policy_flag clamp   {1ull << 32}; // saturate to boundary
@@ -118,7 +118,7 @@ namespace beman::inside
   // check). Includes `snap` so notch-incompatible assigns compile.
   namespace detail { inline constexpr policy_flag unsafe_marker{1ull << 36}; }
   inline constexpr policy_flag unsafe
-    {detail::unsafe_marker | ignore_domain | snap | ignore_zero};
+    {detail::unsafe_marker | ignore_range | snap | ignore_zero};
 
   //---------------------------------------------------------------------------
   // Flag-set membership predicates. `has_flag(set, flag)` is true iff EVERY bit

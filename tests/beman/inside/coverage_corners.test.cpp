@@ -244,7 +244,7 @@ TEST(CoverageCornersTest, on_error_fires_for_an_out_of_range_double_assignment)
   c100 e{50};
   bool fired = false;
   e.on_error([&](auto& self, errc code, std::string_view msg) {
-    fired = (code == errc::domain_error) && !msg.empty();
+    fired = (code == errc::overflow) && !msg.empty();
     self = 0;
   }) = 200.5;                      // fractional, out of [0,100]
   ASSERT_TRUE(fired);
@@ -269,7 +269,7 @@ TEST(CoverageCornersTest, on_overflow_compound_subtract_that_does_not_overflow)
 #ifndef BEMAN_INSIDE_MATH_CORDIC
 //---------------------------------------------------------------------------
 // inside.hpp:161-163 — store_real out-of-range with a reporting policy
-// (the clamp/wrap arms are covered elsewhere; the domain_fail arm was not).
+// (the clamp/wrap arms are covered elsewhere; the range_fail arm was not).
 //---------------------------------------------------------------------------
 // f64 store out of range: checked policy
 TEST(CoverageCornersTest, f64_store_out_of_range_checked_policy)
@@ -345,8 +345,8 @@ TEST(CoverageCornersTest, math_fmod_integer_fast_path_raw_from_offset_imax)
 
 #ifndef BEMAN_INSIDE_MATH_CORDIC
 //---------------------------------------------------------------------------
-// generic.hpp:469 — domain_fail returns false for an unchecked policy
-// (domain_check()==false): the value is stored as-is.
+// generic.hpp:469 — range_fail returns false for an unchecked policy
+// (range_check()==false): the value is stored as-is.
 //---------------------------------------------------------------------------
 // unsafe f64 store out of range falls through (no report)
 TEST(CoverageCornersTest, unsafe_f64_store_out_of_range_falls_through_no_report)

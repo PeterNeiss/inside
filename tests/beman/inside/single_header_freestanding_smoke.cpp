@@ -43,5 +43,5 @@ int main()
               static_cast<int>(beman::inside::detail::to_value(s)),
               static_cast<int>(ec));
 
-  return (ec != beman::inside::errc{}) ? 0 : 1;   // ec must have been set (domain_error)
+  return (ec != beman::inside::errc{}) ? 0 : 1;   // ec must have been set (overflow)
 }

@@ -116,9 +116,10 @@ namespace beman::inside
   //---------------------------------------------------------------------------
   enum class errc
   {
-    domain_error = 1,   // value outside interval
+    domain_error = 1,   // argument outside a function's mathematical domain
     division_by_zero,   // divisor is zero
-    overflow,           // result or target range exceeded (incl. rational overflow)
+    overflow,           // value does not fit its destination's range (an inside's
+                        // interval, a native type, a rational's 64-bit fields)
     rounding_error,     // notch incompatibility
     not_finite,         // non-finite double input (NaN/Inf)
   };
@@ -130,9 +131,9 @@ namespace beman::inside
   {
     switch (e)
     {
-      case errc::domain_error:     return "value outside interval";
+      case errc::domain_error:     return "argument outside the function's domain";
       case errc::division_by_zero: return "division by zero";
-      case errc::overflow:         return "arithmetic overflow";
+      case errc::overflow:         return "value does not fit its range";
       case errc::rounding_error:   return "notch incompatibility";
       case errc::not_finite:       return "non-finite floating-point value";
     }
@@ -1767,7 +1768,7 @@ namespace beman::inside
   // Binary operations OR the flags of both operands.
   inline constexpr policy_flag none         {0ull};
   inline constexpr policy_flag ignore_zero  {1ull << 1};
-  inline constexpr policy_flag ignore_domain{1ull << 2};
+  inline constexpr policy_flag ignore_range{1ull << 2};
   // `snap` — an off-notch value is rounded to fit the grid instead of
   // rejected; on its own truncate-toward-zero. Without it, an off-notch value is
   // a compile/runtime error and div/mod fall through to exact-rational results.
@@ -1782,7 +1783,7 @@ namespace beman::inside
 
   // runtime checking — on unless the policy carries `unsafe` (see is_checked).
   // Spelling `checked` re-enables the checks alongside `unsafe`.
-  inline constexpr policy_flag checked{1ull << 34}; // runtime domain/overflow checks
+  inline constexpr policy_flag checked{1ull << 34}; // runtime range/notch/overflow checks
 
   // unary — mutually exclusive
   inline constexpr policy_flag clamp   {1ull << 32}; // saturate to boundary
@@ -1850,7 +1851,7 @@ namespace beman::inside
   // check). Includes `snap` so notch-incompatible assigns compile.
   namespace detail { inline constexpr policy_flag unsafe_marker{1ull << 36}; }
   inline constexpr policy_flag unsafe
-    {detail::unsafe_marker | ignore_domain | snap | ignore_zero};
+    {detail::unsafe_marker | ignore_range | snap | ignore_zero};
 
   //---------------------------------------------------------------------------
   // Flag-set membership predicates. `has_flag(set, flag)` is true iff EVERY bit
@@ -3131,11 +3132,11 @@ namespace beman::inside
     // Returns true if a policy handled the failure (caller should return).
     // Cheap default — reports through the static category message (no string).
     template <insidable B, typename P>
-    constexpr bool domain_fail([[maybe_unused]] B& b, P&& policy)
+    constexpr bool range_fail([[maybe_unused]] B& b, P&& policy)
     {
-      if (policy.domain_check())
+      if (policy.range_check())
       {
-        policy.report(errc::domain_error);
+        policy.report(errc::overflow);
         return true;
       }
       return false;
@@ -3227,13 +3228,13 @@ namespace beman::inside::detail
   // `apply_clamp` / `apply_wrap` (policy). The insidable path also exposes
   // `is_integer_mapping` / `map_raw` — a pure-integer formula in the hot path.
   //---------------------------------------------------------------------------
-  // needs_runtime_domain_check<L, P, A>: true iff any out-of-range handler would
+  // needs_runtime_range_check<L, P, A>: true iff any out-of-range handler would
   // fire (an action, a clamp/wrap bit, or default-throw under checked).
   // When false (typically `unsafe`, no action) the runtime range branch in
   // `assign` is dead code and skipped, letting the autovectorizer kick in.
   //---------------------------------------------------------------------------
   template <insidable L, typename P, typename A>
-  inline constexpr bool needs_runtime_domain_check =
+  inline constexpr bool needs_runtime_range_check =
          clamp_action   <plain_t<A>>
       || wrap_action    <plain_t<A>>
       || error_action   <plain_t<A>>
@@ -3241,10 +3242,10 @@ namespace beman::inside::detail
       || has_policy<L, P, wrap>
       || ((plain_t<P>::test(checked)
            || is_checked(policy_of<L> | (plain_t<P>::test(detail::unsafe_marker) ? detail::unsafe_marker : none)))
-          && !has_policy<L, P, ignore_domain>);
+          && !has_policy<L, P, ignore_range>);
 
   // Shared out-of-range policy cascade. Order: clamp/wrap/error *actions*, then
-  // clamp/wrap *policy* bits, then `domain_fail`. The three caller-supplied
+  // clamp/wrap *policy* bits, then `range_fail`. The three caller-supplied
   // callables cover how clamp/wrap store and the error-message rhs view. `Wrappable` is false on the fractional
   // path (no wrap *action* branch). Returns true when a handler resolved the write.
   template <bool Wrappable, insidable L, typename P, typename A,
@@ -3260,7 +3261,7 @@ namespace beman::inside::detail
     { do_wrap(); return true; }
     else if constexpr (error_action<PA>)
     {
-      action.Fn(lhs, errc::domain_error, errc_message(errc::domain_error));
+      action.Fn(lhs, errc::overflow, errc_message(errc::overflow));
       return true;
     }
     else if constexpr (has_policy<L, P, clamp>)
@@ -3268,7 +3269,7 @@ namespace beman::inside::detail
     else if constexpr (has_policy<L, P, wrap>)
     { do_wrap(); return true; }
     else
-      return domain_fail(lhs, policy);
+      return range_fail(lhs, policy);
   }
 
   //---------------------------------------------------------------------------
@@ -3421,7 +3422,7 @@ namespace beman::inside::detail
             {
               // Skip the runtime range branch entirely when every handler would
               // be dead anyway — the dead branch otherwise inhibits autovec.
-              if constexpr (needs_runtime_domain_check<L, plain_t<P>, plain_t<A>>)
+              if constexpr (needs_runtime_range_check<L, plain_t<P>, plain_t<A>>)
               {
                 constexpr imax lower = lower_imax<L>;
                 constexpr imax upper = upper_imax<L>;
@@ -4104,7 +4105,7 @@ namespace beman::inside::detail
           return assignment<L, double>::assign(lhs, as_double(rhs), policy, std::forward<A>(action));
         else if constexpr (not includes(interval_of<L>, interval_of<R>))
         {
-          if constexpr (needs_runtime_domain_check<L, plain_t<P>, plain_t<A>>)
+          if constexpr (needs_runtime_range_check<L, plain_t<P>, plain_t<A>>)
           {
             if constexpr (is_integer_mapping)
             {
@@ -4167,10 +4168,10 @@ namespace beman::inside
     static constexpr bool test(policy_flag w)
     { return has_flag(W, w); }
 
-    static constexpr bool domain_check()
+    static constexpr bool range_check()
     {
       if (std::is_constant_evaluated()) return true;
-      return is_checked(W) && not test(ignore_domain);
+      return is_checked(W) && not test(ignore_range);
     }
 
     static constexpr bool round_check()
@@ -5408,7 +5409,7 @@ namespace beman::inside
           }
           v -= kd * range;
         }
-        else if (detail::domain_fail(*this, pol))
+        else if (detail::range_fail(*this, pol))
           return;            // reported (error_code mode)
         // no handler (unchecked policy): fall through and store snapped as-is
       }
@@ -5763,7 +5764,7 @@ namespace beman::inside
     {
       constexpr imax lo = detail::raw_lo<inside>, hi = detail::raw_hi<inside>;
       if constexpr (has_any_flag(P, clamp | wrap)
-                    || (is_checked(P) && !has_flag(P, ignore_domain)))
+                    || (is_checked(P) && !has_flag(P, ignore_range)))
         if (new_raw < lo || new_raw > hi)
         {
           if constexpr (P & clamp)
@@ -5772,7 +5773,7 @@ namespace beman::inside
             new_raw = detail::euclid_mod(new_raw - lo, hi - lo + 1) + lo;
           else
           {
-            make_policy<P>().report(errc::domain_error);
+            make_policy<P>().report(errc::overflow);
             return *this;
           }
         }

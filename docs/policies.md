@@ -5,7 +5,7 @@ out-of-range assignment, on rounding mismatch, and on the various opt-in
 runtime checks. Policies are **flag bits**; combine them with bitwise `|`.
 
 ```cpp
-// Default: checked — runtime domain validation (throws beman::inside::inside_error)
+// Default: checked — runtime range validation (throws beman::inside::inside_error)
 using safe = inside<{0, 100}>;
 safe x = 150;      // throws beman::inside::inside_error at runtime
 
@@ -25,7 +25,7 @@ angle b = -10;     // b == 350
 
 // try_make: out-of-range is a value you test, not a throw
 using index = inside<{0, 9}>;
-auto i = index::try_make(10);  // !i, i.error() == errc::domain_error
+auto i = index::try_make(10);  // !i, i.error() == errc::overflow
 ```
 
 Every policy runs the runtime checks unless it carries `unsafe`:
@@ -47,7 +47,7 @@ true). A policy without a rounding mode rounds nothing, so 9.5 into
 
 | Flag | Effect |
 |---|---|
-| `checked` | runtime domain / round / overflow checks — on for every policy without `unsafe`; spelled explicitly only to override `unsafe` |
+| `checked` | runtime range / notch / overflow checks — on for every policy without `unsafe`; spelled explicitly only to override `unsafe` |
 | `unsafe` | opt out of all runtime checks |
 | `clamp` | saturate to boundary on out-of-range (mutually exclusive with `wrap`) |
 | `wrap` | modular arithmetic on out-of-range |
@@ -57,7 +57,7 @@ true). A policy without a rounding mode rounds nothing, so 9.5 into
 | `round_ceil` | round toward +∞ (implies `snap`) |
 | `round_half_even` | banker's rounding — half to even (implies `snap`) |
 | `ignore_zero` | skip the divide-by-zero check — `a / 0` / `a % 0` is UB (binary `div`/`mod`); compound `/= 0` / `%= 0` no-op |
-| `ignore_domain` | suppress the runtime domain check |
+| `ignore_range` | suppress the runtime range check |
 | `f64` / `f32` / `exact` / `direct` / `indexed` / `i8`…`u64` | **representation flags** — select how the raw value is stored; see the next section |
 
 ## Representation flags
@@ -137,7 +137,7 @@ stored value) plus an event-specific payload.
 |---|---|---|---|
 | `on_clamp(λ)`    | assignment | a narrowed value leaves the grid and `clamp` saturates it | `λ(inside&, overshoot)` |
 | `on_wrap(λ)`     | assignment | a narrowed value leaves the grid and `wrap` folds it (carry) | `λ(inside&, carry)` — the carry is an inside |
-| `on_error(λ)`    | assignment | a domain / rounding error under `checked` (replaces the throw) | `λ(inside&, errc, const char* msg)` |
+| `on_error(λ)`    | assignment | an out-of-range (`overflow`) or off-notch (`rounding_error`) value under `checked` (replaces the throw) | `λ(inside&, errc, const char* msg)` |
 | `on_overflow(λ)` | binary arithmetic | a fractional or imax result overflows, or `div`/`mod` divides by zero | `λ(inside&, errc)` |
 
 The first three fire on the **assignment** path — narrowing a value *into* a
@@ -236,12 +236,12 @@ beman::inside::errc ec{};   // value-initialised: errc{} == 0 means "no error"
 
 // Construction with error code
 inside<{0, 100}> x(150, ec);
-// ec is set to errc::domain_error; on error x's value is ill-defined — check ec before reading x
+// ec is set to errc::overflow; on error x's value is ill-defined — check ec before reading x
 
 // Per-operation with error code
 inside<{0, 100}> y{50};
 y.policy(ec) = 200;
-// ec is set to errc::domain_error, y remains 50 (a failed assignment leaves the prior value intact)
+// ec is set to errc::overflow, y remains 50 (a failed assignment leaves the prior value intact)
 
 // Free arithmetic with error code
 auto sum = add(y, y, ec);
@@ -251,12 +251,19 @@ auto sum = add(y, y, ec);
 inside<{{0, 10}, 2}> coarse{0};
 inside<{{0, 10}, 1}> fine{3};
 coarse.policy<snap>(ec) = fine;
-// snap suppresses the rounding error, ec captures domain errors only
+// snap suppresses the rounding error, ec captures range errors only
 ```
 
 The error code is only set on the first error (subsequent errors don't
-overwrite it). Domain violations produce `errc::domain_error`, rounding
-violations produce `errc::rounding_error`.
+overwrite it). A value outside the interval produces `errc::overflow`, an
+off-notch value `errc::rounding_error`.
+
+**One condition, one code.** `errc::overflow` always means "the value does not
+fit its destination's range" — an inside's interval (assignment, construction,
+`try_make`, casts, a math result past `Out`), a native type (`to<T>()`), or a
+rational's 64-bit fields. `errc::domain_error` means "the argument is outside the
+function's mathematical domain": `sqrt` of a negative, `pow` with a base ≤ 0, a
+negative value into an unsigned `to<T>()`, invalid `grid::try_make` parameters.
 
 ## Replacing the throw handler (freestanding / bare-metal)
 
@@ -289,7 +296,7 @@ in the single-header build) — lets the core run with no `<string>`,
 
 ```cpp
 auto maybe = inside<{0, 100}>::try_make(150);
-if (!maybe) { /* maybe.error() == errc::domain_error */ }
+if (!maybe) { /* maybe.error() == errc::overflow */ }
 ```
 
 For types with a `clamp` or `wrap` policy, `try_make` applies the policy

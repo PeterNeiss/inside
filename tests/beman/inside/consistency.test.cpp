@@ -236,10 +236,10 @@ TEST(ConsistencyTest, compound_ops_report_errors_through_the_policy)
   EXPECT_THROW(e *= E{q(1, big - 2)}, inside_error);
 }
 
-// The raw += fast path honours ignore_domain like plain assignment does.
+// The raw += fast path honours ignore_range like plain assignment does.
 TEST(ConsistencyTest, compound_fast_path_honours_ignore_domain)
 {
-  using X = inside<{0, 10}, checked | ignore_domain>;
+  using X = inside<{0, 10}, checked | ignore_range>;
   X x{10};
   EXPECT_NO_THROW(x += 1_ins);
   X y{10};
@@ -404,19 +404,19 @@ TEST(ConsistencyTest, rounding_runs_before_the_range_check)
   EXPECT_EQ(rational{bin{ms{95.5} / just<10>}}, q(9));               // inside source
   errc ec{};
   bin over(10.0, ec);                                                // floors to 10: outside
-  EXPECT_EQ(ec, errc::domain_error);
+  EXPECT_EQ(ec, errc::overflow);
 
   using db = inside<{{-24, 12}, per<2>}, round_nearest>;
   EXPECT_EQ(rational{db{-24.1}}, q(-24));
   ec = {};
   db far(-24.3, ec);                                                 // rounds to -24.5
-  EXPECT_EQ(ec, errc::domain_error);
+  EXPECT_EQ(ec, errc::overflow);
 
   // Without a rounding mode nothing rounds: out of range is a domain error.
   using strict = inside<{0, 9}>;
   ec = {};
   strict s(9.5, ec);
-  EXPECT_EQ(ec, errc::domain_error);
+  EXPECT_EQ(ec, errc::overflow);
 
   // A clamp policy sees no overshoot when rounding lands inside.
   using cl = inside<{0, 9}, clamp | round_floor>;
@@ -434,7 +434,7 @@ TEST(ConsistencyTest, fp_storage_rounds_before_the_range_check)
   EXPECT_EQ(F{1.1}.raw(), 1.0);
   errc ec{};
   F f(1.2, ec);                                                      // rounds to 1.25
-  EXPECT_EQ(ec, errc::domain_error);
+  EXPECT_EQ(ec, errc::overflow);
   using Ff = inside<{{0, 1}, per<4>}, f64 | round_floor>;
   EXPECT_EQ(Ff{1.2}.raw(), 1.0);                                     // floors in range
 }

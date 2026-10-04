@@ -639,7 +639,7 @@ void prop_compound_inside_overshoot(fuzz_state& s, long iters)
   // Targets inside.hpp:228-9 — the fast-path += else branch where the result
   // overshoots and the policy lacks clamp/wrap. The catalogue's
   // grids already use the default `checked` policy, so the report path throws
-  // domain_error. Pick start values where adding `delta` lands outside the
+  // overflow. Pick start values where adding `delta` lands outside the
   // grid; skip those that would still fit.
   if constexpr (is_integer_aligned<B> && !rational_raw<B>)
   {
@@ -657,7 +657,7 @@ void prop_compound_inside_overshoot(fuzz_state& s, long iters)
       imax sum = start + hi;
       bool overshoots = (sum < lo || sum > hi);
       if (!overshoots) continue;
-      FUZZ_REQUIRE(s, throws_with(errc::domain_error, [&]{
+      FUZZ_REQUIRE(s, throws_with(errc::overflow, [&]{
         B b{start};
         B delta{hi};
         b += delta;

@@ -169,7 +169,7 @@ namespace beman::inside
           }
           v -= kd * range;
         }
-        else if (detail::domain_fail(*this, pol))
+        else if (detail::range_fail(*this, pol))
           return;            // reported (error_code mode)
         // no handler (unchecked policy): fall through and store snapped as-is
       }
@@ -524,7 +524,7 @@ namespace beman::inside
     {
       constexpr imax lo = detail::raw_lo<inside>, hi = detail::raw_hi<inside>;
       if constexpr (has_any_flag(P, clamp | wrap)
-                    || (is_checked(P) && !has_flag(P, ignore_domain)))
+                    || (is_checked(P) && !has_flag(P, ignore_range)))
         if (new_raw < lo || new_raw > hi)
         {
           if constexpr (P & clamp)
@@ -533,7 +533,7 @@ namespace beman::inside
             new_raw = detail::euclid_mod(new_raw - lo, hi - lo + 1) + lo;
           else
           {
-            make_policy<P>().report(errc::domain_error);
+            make_policy<P>().report(errc::overflow);
             return *this;
           }
         }

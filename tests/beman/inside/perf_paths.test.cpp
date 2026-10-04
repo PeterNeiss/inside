@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Regression coverage for the perf-driven changes:
-//   - Case 1: `needs_runtime_domain_check` gates the runtime range branch
+//   - Case 1: `needs_runtime_range_check` gates the runtime range branch
 //             in assignment::assign. Verify behaviour is preserved under
 //             every policy and action that should still trigger it.
 //   - Case 3: native_div_qformat fast path + Q-format operator rational()

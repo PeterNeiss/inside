@@ -618,11 +618,11 @@ namespace beman::inside
     // Returns true if a policy handled the failure (caller should return).
     // Cheap default — reports through the static category message (no string).
     template <insidable B, typename P>
-    constexpr bool domain_fail([[maybe_unused]] B& b, P&& policy)
+    constexpr bool range_fail([[maybe_unused]] B& b, P&& policy)
     {
-      if (policy.domain_check())
+      if (policy.range_check())
       {
-        policy.report(errc::domain_error);
+        policy.report(errc::overflow);
         return true;
       }
       return false;

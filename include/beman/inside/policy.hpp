@@ -47,10 +47,10 @@ namespace beman::inside
     static constexpr bool test(policy_flag w)
     { return has_flag(W, w); }
 
-    static constexpr bool domain_check()
+    static constexpr bool range_check()
     {
       if (std::is_constant_evaluated()) return true;
-      return is_checked(W) && not test(ignore_domain);
+      return is_checked(W) && not test(ignore_range);
     }
 
     static constexpr bool round_check()

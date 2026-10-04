@@ -20,7 +20,7 @@ inside<grid{interval{rational{3,1}, rational{3,1}}, rational{0,1}}, 17179869184>
 | bit value | decimal | flag |
 |---|---|---|
 | `1<<1` | 2 | `ignore_zero` |
-| `1<<2` | 4 | `ignore_domain` |
+| `1<<2` | 4 | `ignore_range` |
 | `1<<4` | 16 | `snap` |
 | `1<<5` | 32 | `round_nearest` (+ snap) |
 | `1<<6` | 64 | `round_floor` (+ snap) |
@@ -30,7 +30,7 @@ inside<grid{interval{rational{3,1}, rational{3,1}}, rational{0,1}}, 17179869184>
 | `1<<33` | 8589934592 | `wrap` |
 | `1<<34` | 17179869184 | `checked` (the default `P`; overrides `unsafe`) |
 | `1<<35` | 34359738368 | (unused; was `sentinel`) |
-| `1<<36` | 68719476736 | `unsafe` marker (+ ignore_domain, snap, ignore_zero); the only bit that turns runtime checks off |
+| `1<<36` | 68719476736 | `unsafe` marker (+ ignore_range, snap, ignore_zero); the only bit that turns runtime checks off |
 | `1<<37` | … | `f64` (+ round_nearest) |
 | `1<<38` | … | `exact` |
 | `1<<39` | … | `direct` |

@@ -55,9 +55,10 @@ namespace beman::inside
   //---------------------------------------------------------------------------
   enum class errc
   {
-    domain_error = 1,   // value outside interval
+    domain_error = 1,   // argument outside a function's mathematical domain
     division_by_zero,   // divisor is zero
-    overflow,           // result or target range exceeded (incl. rational overflow)
+    overflow,           // value does not fit its destination's range (an inside's
+                        // interval, a native type, a rational's 64-bit fields)
     rounding_error,     // notch incompatibility
     not_finite,         // non-finite double input (NaN/Inf)
   };
@@ -69,9 +70,9 @@ namespace beman::inside
   {
     switch (e)
     {
-      case errc::domain_error:     return "value outside interval";
+      case errc::domain_error:     return "argument outside the function's domain";
       case errc::division_by_zero: return "division by zero";
-      case errc::overflow:         return "arithmetic overflow";
+      case errc::overflow:         return "value does not fit its range";
       case errc::rounding_error:   return "notch incompatibility";
       case errc::not_finite:       return "non-finite floating-point value";
     }

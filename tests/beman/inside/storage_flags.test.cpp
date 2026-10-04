@@ -281,14 +281,14 @@ TEST(StorageFlagsTest, representation_flags_compose_with_behavior_policies)
   using EW = inside<{{0, 10}, per<4>}, exact | wrap | round_nearest>;
   ASSERT_EQ((rational{EW{rational{45, 4}}}), 1);
 
-  // direct + try_make: out-of-range yields errc::domain_error.
+  // direct + try_make: out-of-range yields errc::overflow.
   using DS = inside<{5, 100}, direct | checked>;
   auto ok   = DS::try_make(42);
   auto fail = DS::try_make(200);
   ASSERT_TRUE(ok.has_value());
   ASSERT_EQ(*ok, 42);
   ASSERT_TRUE(!fail.has_value());
-  ASSERT_EQ(fail.error(), errc::domain_error);
+  ASSERT_EQ(fail.error(), errc::overflow);
 }
 
 // representation flags print the value, not the raw
@@ -320,7 +320,7 @@ TEST(StorageFlagsTest, f64_storage_runs_the_full_out_of_range_policy_cascade)
   ASSERT_THROW((void)(RK{9.5}), beman::inside::inside_error);
   ASSERT_TRUE(static_cast<double>(rational{RK{2.5}}) == 2.5);
 
-  // try_make: out-of-range yields errc::domain_error.
+  // try_make: out-of-range yields errc::overflow.
   ASSERT_TRUE(RK::try_make(2.0).has_value());
   ASSERT_TRUE(!RK::try_make(9.5).has_value());
 
@@ -342,7 +342,7 @@ TEST(StorageFlagsTest, non_finite_doubles_are_rejected_both_engines)
   ASSERT_THROW((void)(R{-inf}), beman::inside::inside_error);
 
   // Non-finite input is reported as errc::not_finite (distinct from the
-  // domain_error used for finite-but-out-of-interval values), both engines.
+  // overflow used for finite-but-out-of-interval values), both engines.
   try { R{nan}; FAIL() << "expected throw"; }
   catch (const beman::inside::inside_error& e)
   { ASSERT_EQ(e.Code, errc::not_finite); }

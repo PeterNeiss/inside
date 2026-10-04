@@ -17,13 +17,13 @@ namespace beman::inside::detail
   // `apply_clamp` / `apply_wrap` (policy). The insidable path also exposes
   // `is_integer_mapping` / `map_raw` — a pure-integer formula in the hot path.
   //---------------------------------------------------------------------------
-  // needs_runtime_domain_check<L, P, A>: true iff any out-of-range handler would
+  // needs_runtime_range_check<L, P, A>: true iff any out-of-range handler would
   // fire (an action, a clamp/wrap bit, or default-throw under checked).
   // When false (typically `unsafe`, no action) the runtime range branch in
   // `assign` is dead code and skipped, letting the autovectorizer kick in.
   //---------------------------------------------------------------------------
   template <insidable L, typename P, typename A>
-  inline constexpr bool needs_runtime_domain_check =
+  inline constexpr bool needs_runtime_range_check =
          clamp_action   <plain_t<A>>
       || wrap_action    <plain_t<A>>
       || error_action   <plain_t<A>>
@@ -31,10 +31,10 @@ namespace beman::inside::detail
       || has_policy<L, P, wrap>
       || ((plain_t<P>::test(checked)
            || is_checked(policy_of<L> | (plain_t<P>::test(detail::unsafe_marker) ? detail::unsafe_marker : none)))
-          && !has_policy<L, P, ignore_domain>);
+          && !has_policy<L, P, ignore_range>);
 
   // Shared out-of-range policy cascade. Order: clamp/wrap/error *actions*, then
-  // clamp/wrap *policy* bits, then `domain_fail`. The three caller-supplied
+  // clamp/wrap *policy* bits, then `range_fail`. The three caller-supplied
   // callables cover how clamp/wrap store and the error-message rhs view. `Wrappable` is false on the fractional
   // path (no wrap *action* branch). Returns true when a handler resolved the write.
   template <bool Wrappable, insidable L, typename P, typename A,
@@ -50,7 +50,7 @@ namespace beman::inside::detail
     { do_wrap(); return true; }
     else if constexpr (error_action<PA>)
     {
-      action.Fn(lhs, errc::domain_error, errc_message(errc::domain_error));
+      action.Fn(lhs, errc::overflow, errc_message(errc::overflow));
       return true;
     }
     else if constexpr (has_policy<L, P, clamp>)
@@ -58,7 +58,7 @@ namespace beman::inside::detail
     else if constexpr (has_policy<L, P, wrap>)
     { do_wrap(); return true; }
     else
-      return domain_fail(lhs, policy);
+      return range_fail(lhs, policy);
   }
 
   //---------------------------------------------------------------------------
@@ -211,7 +211,7 @@ namespace beman::inside::detail
             {
               // Skip the runtime range branch entirely when every handler would
               // be dead anyway — the dead branch otherwise inhibits autovec.
-              if constexpr (needs_runtime_domain_check<L, plain_t<P>, plain_t<A>>)
+              if constexpr (needs_runtime_range_check<L, plain_t<P>, plain_t<A>>)
               {
                 constexpr imax lower = lower_imax<L>;
                 constexpr imax upper = upper_imax<L>;
@@ -894,7 +894,7 @@ namespace beman::inside::detail
           return assignment<L, double>::assign(lhs, as_double(rhs), policy, std::forward<A>(action));
         else if constexpr (not includes(interval_of<L>, interval_of<R>))
         {
-          if constexpr (needs_runtime_domain_check<L, plain_t<P>, plain_t<A>>)
+          if constexpr (needs_runtime_range_check<L, plain_t<P>, plain_t<A>>)
           {
             if constexpr (is_integer_mapping)
             {

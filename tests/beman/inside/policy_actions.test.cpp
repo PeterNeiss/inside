@@ -52,10 +52,10 @@ TEST(PolicyActionsTest, try_make_on_fixed_point_grids)
     ASSERT_TRUE(ok.has_value());
     ASSERT_TRUE(ok->to<double>().value() == 42.5);
 
-    // out-of-range produces errc::domain_error
+    // out-of-range produces errc::overflow
     auto high = fp::try_make(300.0);
     ASSERT_FALSE(high.has_value());
-    ASSERT_EQ(high.error(), errc::domain_error);
+    ASSERT_EQ(high.error(), errc::overflow);
 
     auto low = fp::try_make(-0.5);
     ASSERT_FALSE(low.has_value());
@@ -186,7 +186,7 @@ TEST(PolicyActionsTest, on_error_action_receives_code_and_message)
   c100 e{50};
   bool fired = false;
   e.on_error([&](auto& self, errc code, std::string_view msg){
-    fired = (code == errc::domain_error) && !msg.empty();
+    fired = (code == errc::overflow) && !msg.empty();
     self = 0;
   }) = 200;
   ASSERT_TRUE(fired);

@@ -341,7 +341,7 @@ TEST(InsideAssignTest, checked_inside_to_inside_out_of_range_throws)
   ASSERT_THROW((void)(dst{s}), beman::inside::inside_error);
 }
 
-// non-integer-mapping inside-to-inside clamp / domain_fail
+// non-integer-mapping inside-to-inside clamp / range_fail
 TEST(InsideAssignTest, non_integer_mapping_inside_to_inside_clamp_domain_fail)
 {
   // Source has notch 1 to a destination with notch 1/3 — Factor=3, integer.

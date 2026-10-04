@@ -66,7 +66,7 @@ TEST(StorageBugsTest, bug_b_signed_direct_multiplication_third_quadrant)
 // `assign(insidable, f64 R)` checks for `has_policy<L, P, clamp>` but not
 // for `has_policy<L, P, wrap>`. An `inside<{...}, wrap>` constructed from a
 // double silently stores the unwrapped value (which may be out of range)
-// because it falls through `domain_fail` without `checked` set.
+// because it falls through `range_fail` without `checked` set.
 //
 // Runtime-only: wrap policy is bypassed in constant evaluation (the
 // `is_constant_evaluated()` throw in assignment::assign fires before the
@@ -260,7 +260,7 @@ TEST(StorageBugsTest, error_code_ctor_reports_on_checked_f64_target)
   using Checked = inside<{{0, 4}, per<4>}, f64 | checked>;
   errc ec{};
   Checked c(RealWide::from_raw(7.5), ec);
-  EXPECT_EQ(ec, errc::domain_error);
+  EXPECT_EQ(ec, errc::overflow);
 }
 #endif
 
