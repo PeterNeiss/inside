@@ -13,15 +13,20 @@ type *is* the contract; the runtime value can never leave it.
 ## Idea 1 — the grid
 
 ```cpp
-using pct = inside<{0, 100}>;                         // integers 0..100
-using sample = inside<{{-1, 1}, per<16384>}>;    // -1..1 in 1/16384 steps
+using pct    = inside<{0, 100}>;                  // integers 0..100
+using halves = inside<{0.5, 10}>;                 // 0.5..10 in 1/2 steps (derived)
+using sample = inside<{{-1, 1}, per<16384>}>;     // -1..1 in 1/16384 steps
 ```
 
 A grid is `{ {Lower, Upper}, Notch }`. Three exact fractions, one invariant:
 `(Upper − Lower) / Notch` is a whole number — there is an integer count of
-notches across the interval. You write the fractions with integer/dyadic
-literals, `notch<N, D>`, and `frac<N, D>`; the underlying exact-fraction type
-is internal and you never name it.
+notches across the interval. Written with two limits, `{Lower, Upper}`, the
+notch is derived: the coarsest step `1/k` that keeps every integer and both
+limits on the grid — 1 for integer limits, 1/2 for `{0.5, 10}`, 1/80 for
+`{frac<3, 10>, frac<13, 16>}`. You write the fractions with integer/dyadic
+literals, `per<D>` (the step 1/D), `notch<N, D>`, `frac<N, D>` and the exact
+`_r` literal (`0.1_r` is exactly 1/10); the underlying exact-fraction type is
+internal and you never name it.
 
 Because the grid is part of the *type*, two differently-shaped insides are
 different types — the compiler tracks range and precision for you.

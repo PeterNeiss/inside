@@ -27,6 +27,17 @@ enforced at type-instantiation time by `grid::validate` (`grid::validate` in `in
 - **`Notch == 0` is legal** and means "any rational in the interval". The
   storage shape changes accordingly (see §2).
 - **`Lower/Notch` and `Upper/Notch` resolve to integer rationals** when `Notch != 0`.
+- **`Notch ≥ 0`** — decoding is `Lower + raw·Notch`, so a negative notch would
+  count downward (`notch<N, D>` / `per<D>` are positive by construction).
+
+**Two-limit grids.** `grid{lo, hi}` derives `Notch = gcd(1, Lower, Upper)`
+(rational gcd: gcd of numerators over lcm of denominators) — the coarsest step
+`1/k` keeping every integer and both limits on the lattice. Integer limits give
+1, so every grid that once took the fixed notch 1 is unchanged. A combined
+denominator past `imax` falls back to `Notch = 0`. A floating-point limit is its
+exact binary value, so a double that needs a notch finer than 1/1024 (0.1 is
+3602879701896397/2^55) is rejected at compile time in favour of `0.1_r` or an
+explicit notch; rational, `frac`, `_r` and inside limits are taken exactly.
 
 `grid::try_make(interval, notch)` checks the same invariants at runtime and
 returns `std::expected<grid, errc>` — `domain_error` for `Lower > Upper`,

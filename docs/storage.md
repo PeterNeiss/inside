@@ -21,6 +21,11 @@ using step = inside<{{0, 5}, 0.5}>;     // Raw: uint8_t  (10 steps)
 When `Lower == 0` and `Notch == 1`, `Raw` equals the value directly — no
 offset arithmetic.
 
+A grid written with two limits derives its notch (the coarsest `1/k` keeping
+integers and both limits on the grid), and storage follows from that:
+`inside<{0.5, 10}>` has notch 1/2 and 20 values in a `uint8_t`;
+`inside<{frac<3, 10>, frac<13, 16>}>` has notch 1/80 and 42 values.
+
 **Signed integer storage** — when `Lower < 0` and `Notch == 1`, `Raw` is the
 smallest `int8_t`…`int64_t` that fits the interval. `Raw` stores the value
 directly (`Raw == value`) with no offset, matching native `int` performance
