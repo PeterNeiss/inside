@@ -904,7 +904,7 @@ namespace
 {
   using algeb_in_t  = inside<{{-8, 8}, per<16384>}, round_nearest | f64>;
   using algeb_abs_t = inside<{{0, 8}, per<16384>}, round_nearest | f64>;
-  using algeb_int_t = inside<{{-8, 8}, notch<1>}, round_nearest | f64>;
+  using algeb_int_t = inside<{{-8, 8}, 1}, round_nearest | f64>;
 }
 
 // beman::inside::math::abs
@@ -1019,11 +1019,11 @@ TEST(CmathTest, beman_inside_math_abs_auto_deduced_output)
 // beman::inside::math::floor / ceil / round / trunc: auto-deduced output
 TEST(CmathTest, beman_inside_math_floor_ceil_round_trunc_auto_deduced_output)
 {
-  // floor: [-8, 8] input → [-8, 8] integer output, notch<1>.
+  // floor: [-8, 8] input → [-8, 8] integer output, notch 1.
   constexpr auto f_pos = math::floor(algeb_in_t{1.7_r});
   static_assert(f_pos == 1);
   using floor_deduced = decltype(math::floor(algeb_in_t{0}));
-  static_assert(notch_of<floor_deduced> == beman::inside::notch<1>);
+  static_assert(notch_of<floor_deduced> == 1);
 
   // ceil
   constexpr auto c_neg = math::ceil(algeb_in_t{-1.3_r});

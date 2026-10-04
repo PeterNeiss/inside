@@ -190,7 +190,7 @@ TEST(CmathDoubleTest, dbl_circle_m_degree_angle_uses_the_double_engine)
 TEST(CmathDoubleTest, dbl_algebraic_tier_on_f64_bounds_matches_std)
 {
   using in_t  = inside<{{-8, 8}, per<16384>}, round_nearest | f64>;
-  using int_t = inside<{{-8, 8}, notch<1>},        round_nearest | f64>;
+  using int_t = inside<{{-8, 8}, 1},        round_nearest | f64>;
   using abs_t = inside<{{0, 8},  per<16384>}, round_nearest | f64>;
 
   {

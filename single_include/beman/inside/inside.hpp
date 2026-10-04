@@ -1124,9 +1124,9 @@ namespace beman::inside::detail
   template<char... Chars>
   constexpr rational operator ""_r() { return parse_ins_literal<Chars...>(); }
 
-  // notch<N, D> is defined publicly in `namespace beman::inside` (see the re-export block
-  // at the end of this header) so consumers spell it without naming the
-  // internal representation type.
+  // per<D> and frac<N, D> are defined publicly in `namespace beman::inside` (see the
+  // re-export block at the end of this header) so consumers spell grid values
+  // without naming the internal representation type.
 
   //---------------------------------------------------------------------------
   // add_impl / mul_impl / div_impl — shared bodies (Checked toggles overflow)
@@ -1550,12 +1550,12 @@ namespace beman::inside::detail
   // Checked builders for the public helpers below: a static_assert here fires at
   // the user's spelling. Denominators are unsigned, so a sign can only sit in
   // frac's numerator.
-  template <umax N, umax D>
-  consteval rational make_notch()
+  template <umax D>
+  consteval rational make_per()
   {
-    static_assert(N >= 1 && D >= 1, "notch<N, D> is a positive step; a continuous grid is spelled 0");
-    static_assert(D <= static_cast<umax>(std::numeric_limits<imax>::max()), "notch<N, D>: denominator too large");
-    return rational{N, D};
+    static_assert(D >= 1, "per<D> is the positive step 1/D; a continuous grid is spelled 0");
+    static_assert(D <= static_cast<umax>(std::numeric_limits<imax>::max()), "per<D>: denominator too large");
+    return rational{umax{1}, D};
   }
 
   template <imax N, umax D>
@@ -1571,16 +1571,14 @@ namespace beman::inside
 {
   // `rational` is internal, but the grid-building helpers are public — they
   // never name the type:
-  //   per<D>       the step 1/D (the common case);
-  //   notch<N, D>  a positive step N/D;
-  //   frac<N, D>   any exact ratio (signed numerator), e.g. frac<-6, 5> for -1.2;
+  //   per<D>       the step 1/D — the common notch (per<256> is Q·8);
+  //   frac<N, D>   any exact ratio (signed numerator): a limit like frac<-6, 5>
+  //                for -1.2, or another step like frac<360, 4096>;
   //   _r literal   an exact decimal / hex value, e.g. 0.1_r is exactly 1/10.
-  template <umax N, umax D = 1>
-  inline constexpr detail::rational notch = detail::make_notch<N, D>();
-
-  // per<D> — one part per D: the step 1/D, the common notch (per<256> is Q·8).
+  // Integer steps are plain integers ({{0, 100}, 5}); grid::validate rejects a
+  // negative notch however it is spelled.
   template <umax D>
-  inline constexpr detail::rational per = detail::make_notch<1, D>();
+  inline constexpr detail::rational per = detail::make_per<D>();
 
   template <imax N, umax D = 1>
   inline constexpr detail::rational frac = detail::make_frac<N, D>();
@@ -8387,22 +8385,22 @@ namespace beman::inside::math
     template <insidable In>
     using floor_auto_t = inside<{{rational{floor(lower_of<In>)},
                                   rational{floor(upper_of<In>)}},
-                                 notch<1>}, out_policy<In>>;
+                                 1}, out_policy<In>>;
 
     template <insidable In>
     using ceil_auto_t = inside<{{rational{ceil(lower_of<In>)},
                                  rational{ceil(upper_of<In>)}},
-                                notch<1>}, out_policy<In>>;
+                                1}, out_policy<In>>;
 
     template <insidable In>
     using round_auto_t = inside<{{rational{round(lower_of<In>)},
                                   rational{round(upper_of<In>)}},
-                                 notch<1>}, out_policy<In>>;
+                                 1}, out_policy<In>>;
 
     template <insidable In>
     using trunc_auto_t = inside<{{rational{trunc(lower_of<In>)},
                                   rational{trunc(upper_of<In>)}},
-                                 notch<1>}, out_policy<In>>;
+                                 1}, out_policy<In>>;
 
     // Double-backed fast path for the algebraic tier. |x| and the integer
     // roundings of a grid value are exact in double (|x| < 2^53 on a
@@ -8585,7 +8583,7 @@ namespace beman::inside::math
   //
   // Each `fn_into<Out>(x)` has an auto form `fn(x)` that derives `Out` from `In`
   // and delegates to it. Notch policy: abs/fmod inherit `notch_of<In>`; floor/ceil/round/trunc
-  // deduce `notch<1>` since their outputs are integer-valued.
+  // deduce notch 1 since their outputs are integer-valued.
   //---------------------------------------------------------------------------
 
   //---------------------------------------------------------------------------
@@ -8826,7 +8824,7 @@ namespace beman::inside::math
   using circle = inside<{{rational{0},
                          rational{std::uint64_t{360} * (M - 1),
                                                static_cast<imax>(M)}},
-                        notch<360, static_cast<imax>(M)>}, f64 | wrap>;
+                        frac<360, M>}, f64 | wrap>;
 
   // Amplitude output grid: [-1, 1] at 1/K resolution. The natural target for
   // `sin(circle<M>, amp<K>&)` — angle precision (M) and amplitude precision (K)

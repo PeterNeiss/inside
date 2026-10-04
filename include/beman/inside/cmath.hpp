@@ -1036,22 +1036,22 @@ namespace beman::inside::math
     template <insidable In>
     using floor_auto_t = inside<{{rational{floor(lower_of<In>)},
                                   rational{floor(upper_of<In>)}},
-                                 notch<1>}, out_policy<In>>;
+                                 1}, out_policy<In>>;
 
     template <insidable In>
     using ceil_auto_t = inside<{{rational{ceil(lower_of<In>)},
                                  rational{ceil(upper_of<In>)}},
-                                notch<1>}, out_policy<In>>;
+                                1}, out_policy<In>>;
 
     template <insidable In>
     using round_auto_t = inside<{{rational{round(lower_of<In>)},
                                   rational{round(upper_of<In>)}},
-                                 notch<1>}, out_policy<In>>;
+                                 1}, out_policy<In>>;
 
     template <insidable In>
     using trunc_auto_t = inside<{{rational{trunc(lower_of<In>)},
                                   rational{trunc(upper_of<In>)}},
-                                 notch<1>}, out_policy<In>>;
+                                 1}, out_policy<In>>;
 
     // Double-backed fast path for the algebraic tier. |x| and the integer
     // roundings of a grid value are exact in double (|x| < 2^53 on a
@@ -1234,7 +1234,7 @@ namespace beman::inside::math
   //
   // Each `fn_into<Out>(x)` has an auto form `fn(x)` that derives `Out` from `In`
   // and delegates to it. Notch policy: abs/fmod inherit `notch_of<In>`; floor/ceil/round/trunc
-  // deduce `notch<1>` since their outputs are integer-valued.
+  // deduce notch 1 since their outputs are integer-valued.
   //---------------------------------------------------------------------------
 
   //---------------------------------------------------------------------------
@@ -1475,7 +1475,7 @@ namespace beman::inside::math
   using circle = inside<{{rational{0},
                          rational{std::uint64_t{360} * (M - 1),
                                                static_cast<imax>(M)}},
-                        notch<360, static_cast<imax>(M)>}, f64 | wrap>;
+                        frac<360, M>}, f64 | wrap>;
 
   // Amplitude output grid: [-1, 1] at 1/K resolution. The natural target for
   // `sin(circle<M>, amp<K>&)` — angle precision (M) and amplitude precision (K)

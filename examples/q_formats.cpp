@@ -21,7 +21,7 @@ int main()
 
   // Custom formats are spelled by hand. A plain decimal (`1.0/128`, `0.5`)
   // reads well for coarse exact fractions; for fine notches prefer
-  // `notch<N, D>` (exact rational), since the equivalent double loses precision.
+  // `per<D>` / `frac<N, D>` (exact), since the equivalent double loses precision.
 
   // Q1.7: 1 integer bit, 7 fraction bits   -> 128 steps in [0, 1+127/128]
   using q1_7 = inside<{{0, 1}, 1.0/128}>;

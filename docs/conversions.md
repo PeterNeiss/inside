@@ -206,7 +206,7 @@ names the internal representation.
 | `_ins` literal (`1_ins`, `0.5_ins`, `0xff_ins`) | An inside operand for arithmetic and compound assignment — `a + 1_ins`, `a * 2_ins`, `b += 1_ins`, `b > 0.5_ins`. Gives a scalar a grid so it joins inside arithmetic; the result stays an inside. The parse is exact (no double round-trip). |
 | `just<V>` | A compile-time point-inside from any structural NTTP value — `just<2>`, `just<math::pi>`. Same role as `_ins` for non-literal constants. |
 | `zero` / `one` | Built-in point insides for 0 / 1. Assign into any grid that can exactly represent the value (compile-time checked — out of range or off-notch is an error); also stand in for the value in comparison/arithmetic — `b == zero`, `b + one`. |
-| `per<D>` / `notch<N, D>` | The grid **step**: `per<16384>` is 1/16384, `notch<360, 4096>` is 360/4096. Always positive (`notch<0>` is an error; a continuous grid is spelled `0`). Optional with two limits: `{0.5, 10}` derives the step 1/2. |
+| `per<D>` | The grid **step** 1/D: `per<16384>`. Other steps are `frac<N, D>` (`frac<360, 4096>`) or a plain integer (`{{0, 100}, 5}`). A step is always positive (`per<0>` and negative steps are errors; a continuous grid is spelled `0`). Optional with two limits: `{0.5, 10}` derives the step 1/2. |
 | `frac<N, D>` | An exact **ratio** no literal can spell — `frac<1, 3>`, `frac<-6, 5>` for −1.2. Signed numerator, positive denominator. |
 | `_r` literal (`0.1_r`, `1.25_r`, `0x1p-12_r`) | An exact **decimal or hex** value: `0.1_r` is exactly 1/10, unlike the double `0.1`. Use it for grid limits that are decimal fractions (`{0.1_r, 1}`), where a plain `0.1` is rejected. |
 

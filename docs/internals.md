@@ -8,7 +8,7 @@ performance.
 > The exact-fraction representation type is `beman::inside::detail::rational` — an
 > **internal** type. It is the grid's NTTP substrate and the raw storage for
 > non-dyadic grids, so it appears throughout these internals, but it is not on
-> the public surface: consumers spell grids with literals / `notch<N,D>` /
+> the public surface: consumers spell grids with literals / `per<D>` /
 > `frac<N,D>`, read exact values out with `numerator()` / `denominator()`, and
 > never name the type. The bare word "rational" below always means
 > `beman::inside::detail::rational`.
@@ -28,7 +28,8 @@ enforced at type-instantiation time by `grid::validate` (`grid::validate` in `in
   storage shape changes accordingly (see §2).
 - **`Lower/Notch` and `Upper/Notch` resolve to integer rationals** when `Notch != 0`.
 - **`Notch ≥ 0`** — decoding is `Lower + raw·Notch`, so a negative notch would
-  count downward (`notch<N, D>` / `per<D>` are positive by construction).
+  count downward (`per<D>` is positive by construction; any other spelling
+  of a negative notch is rejected here).
 
 **Two-limit grids.** `grid{lo, hi}` derives `Notch = gcd(1, Lower, Upper)`
 (rational gcd: gcd of numerators over lcm of denominators) — the coarsest step

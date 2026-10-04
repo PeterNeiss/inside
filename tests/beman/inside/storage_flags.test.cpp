@@ -311,7 +311,7 @@ TEST(StorageFlagsTest, f64_storage_runs_the_full_out_of_range_policy_cascade)
 
   // wrap: fold into [Lower, Lower + span + notch) — same convention as the
   // fractional path. Span 0..359 with notch 1 wraps 370 → 10, -10 → 350.
-  using RW = inside<{{0, 359}, notch<1>}, f64 | wrap>;
+  using RW = inside<{{0, 359}, 1}, f64 | wrap>;
   ASSERT_TRUE(static_cast<double>(rational{RW{370.0}}) == 10.0);
   ASSERT_TRUE(static_cast<double>(rational{RW{-10.0}}) == 350.0);
 
@@ -411,7 +411,7 @@ TEST(StorageFlagsTest, per_operation_policies_work_on_f64_backed_bounds)
   ASSERT_TRUE(static_cast<double>(rational{e}) == 4.0);
 
   // wrap override on a f64-backed grid.
-  using W = inside<{{0, 359}, notch<1>}, round_nearest | f64>;
+  using W = inside<{{0, 359}, 1}, round_nearest | f64>;
   W w{0.0};
   w.with_wrap() = 370.0;
   ASSERT_TRUE(static_cast<double>(rational{w}) == 10.0);
