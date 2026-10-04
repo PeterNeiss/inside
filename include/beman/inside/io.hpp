@@ -143,7 +143,7 @@ namespace beman::inside
     requires (detail::fp_raw<B> || detail::rational_raw<B>)
   [[nodiscard]] inline std::string to_string(B b)
   {
-    if constexpr (detail::fp_raw<B> && notch_of<B> == beman::inside::detail::rational{0})
+    if constexpr (detail::fp_raw<B> && detail::notch64<B> == beman::inside::detail::rational{0})
       return std::to_string(detail::as_double(b));
     else
       return to_string(beman::inside::detail::as_rational(b));
@@ -203,13 +203,15 @@ namespace beman::inside
 
     // A wide-index value: the usual rational form when it fits, else the
     // reduced fraction num/den in decimal.
-    inline std::string exact_to_string(exact_frac f)
+    template <std::size_t K>
+    std::string exact_to_string(exact_frac<K> f)
     {
+      using I = wide_sint<K>;
       if (const auto r = try_rational(f)) return beman::inside::to_string(*r);
-      exact_int x = f.Num.negative() ? -f.Num : f.Num, y = f.Den;
-      while (!y.is_zero()) { const exact_int t = x % y; x = y; y = t; }
-      const exact_int num = f.Num / x, den = f.Den / x;
-      return den == exact_int{1} ? wide_to_decimal(num) : wide_to_decimal(num) + "/" + wide_to_decimal(den);
+      I x = f.Num.negative() ? -f.Num : f.Num, y = f.Den;
+      while (!y.is_zero()) { const I t = x % y; x = y; y = t; }
+      const I num = f.Num / x, den = f.Den / x;
+      return den == I{1} ? wide_to_decimal(num) : wide_to_decimal(num) + "/" + wide_to_decimal(den);
     }
   }
 
@@ -253,7 +255,7 @@ namespace beman::inside
   template <insidable B>
   [[nodiscard]] inline std::string to_string(B b)
   {
-    if constexpr (detail::wide_raw<B>) return detail::exact_to_string(detail::exact_of(b));
+    if constexpr (detail::exact_valued<B>) return detail::exact_to_string(detail::exact_of(b));
     else                               return beman::inside::to_string(detail::as_rational(b));
   }
 

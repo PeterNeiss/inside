@@ -47,6 +47,7 @@
 //   wide_numerator(r) /    a grid number's signed numerator and positive
 //   wide_denominator(r)    denominator as grid_wide (also for a rational)
 //   grid_divides_evenly    a / n is an integer (true for n == 0)
+//   grid_same_lattice      (a − b) / n is an integer (true for n == 0)
 //   grid_gcd               gcd of two fractions; may fail only with 64-bit
 //                          grid numbers (returns expected there)
 //   fits_rational(r) /     whether, and as which, 64-bit rational a grid
@@ -71,6 +72,10 @@ namespace beman::inside::detail
   constexpr bool grid_divides_evenly(big_rational const& a, big_rational const& n)
   { return n == 0 || (a / n).is_integer(); }
 
+  // (a − b) / n is an integer (true for n == 0): b and a share n's lattice.
+  constexpr bool grid_same_lattice(big_rational const& a, big_rational const& b, big_rational const& n)
+  { return grid_divides_evenly(a - b, n); }
+
   // The 64-bit rational of a grid number, for 64-bit-only paths.
   constexpr bool fits_rational(big_rational const& r) { return r.fits_rational(); }
   constexpr rational to_rational(big_rational const& r) { return r; }
@@ -89,6 +94,15 @@ namespace beman::inside::detail
   { return grid_wide{abs_den(r.Denominator)}; }
 
   constexpr bool grid_divides_evenly(rational const& a, rational const& n) { return divides_evenly(a, n); }
+
+  // (A difference past the rational range has no lattice offset to test:
+  // compare both ends' residues instead.)
+  constexpr bool grid_same_lattice(rational const& a, rational const& b, rational const& n)
+  {
+    if (n == 0) return true;
+    if (const auto d = try_sub(a, b)) return divides_evenly(*d, n);
+    return divides_evenly(a, n) && divides_evenly(b, n);
+  }
 
   constexpr bool fits_rational(rational const&) { return true; }
   constexpr rational to_rational(rational const& r) { return r; }

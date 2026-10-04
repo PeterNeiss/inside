@@ -134,13 +134,18 @@ namespace beman::inside::detail
     // Otherwise the exact-rational path returns inside<rational>.
     static constexpr bool native_div_integer = integer_native_ops<L, R, F>;
 
-    static constexpr bool native_div_qformat =
-        ((F | policy_of<L> | policy_of<R>) & snap)
-        && is_qformat<L> && is_qformat<R>
-        && notch_of<L> == notch_of<R>
-        // raw·N must fit umax (the scaled dividend below)
-        && !wide_raw<L> && !wide_raw<R>
-        && max_index_v<L> <= ~umax{0} / abs_den(notch_of<L>.Denominator);
+    // (if constexpr: naming a 64-bit view instantiates it, even where && would
+    // skip it — so an exact-valued operand returns before any is named.)
+    static constexpr bool native_div_qformat = [] {
+      if constexpr (exact_valued<L> || exact_valued<R>)
+        return false;
+      else
+        return ((F | policy_of<L> | policy_of<R>) & snap)
+            && is_qformat<L> && is_qformat<R>
+            && notch_of<L> == notch_of<R>
+            // raw·N must fit umax (the scaled dividend below)
+            && max_index_v<L> <= ~umax{0} / abs_den(detail::notch64<L>.Denominator);
+    }();
 
     static constexpr bool native_div = native_div_integer || native_div_qformat;
 
@@ -153,19 +158,23 @@ namespace beman::inside::detail
     static_assert(native_div_qformat || (grid_of<L> / grid_of<R>).has_value(),
       "division: result grid not representable (notch/interval exceeds the "
       "representable rational range) — coarsen the operand grids");
-    static_assert(!native_div_qformat || (upper_of<L> / notch_of<R>).has_value(),
-      "division: Q-format result grid not representable — coarsen the operand grids");
+    static_assert([] {
+        if constexpr (native_div_qformat) return (detail::upper64<L> / detail::notch64<R>).has_value();
+        else return true;
+      }(), "division: Q-format result grid not representable — coarsen the operand grids");
 
     // Native-integer endpoints rounded with the same mode as the runtime
     // quotient, so e.g. round_ceil can't escape the grid. (The Q-format extreme
     // is always exact, so its grid is unchanged.)
-    static constexpr grid result_grid =
-        native_div_integer
-            ? grid{round_rat_lo((*(grid_of<L> / grid_of<R>)).Interval.Lower, rmode),
-                   round_rat_hi((*(grid_of<L> / grid_of<R>)).Interval.Upper, rmode)}
-      : native_div_qformat
-            ? grid{interval{rational{0}, (upper_of<L> / notch_of<R>).value()}, notch_of<L>}
-            : *(grid_of<L> / grid_of<R>);
+    static constexpr grid result_grid = [] {
+      if constexpr (native_div_integer)
+        return grid{round_rat_lo(to_rational((*(grid_of<L> / grid_of<R>)).Interval.Lower), rmode),
+                    round_rat_hi(to_rational((*(grid_of<L> / grid_of<R>)).Interval.Upper), rmode)};
+      else if constexpr (native_div_qformat)
+        return grid{interval{rational{0}, (detail::upper64<L> / detail::notch64<R>).value()}, detail::notch64<L>};
+      else
+        return *(grid_of<L> / grid_of<R>);
+    }();
 
     // fp / representation propagation — shared rule in detail/rep.hpp.
     // AllowContinuous: a continuous quotient (Notch 0) keeps fp verbatim.
@@ -184,7 +193,7 @@ namespace beman::inside::detail
     // whatever the policy, so that path always reports.
     static constexpr bool may_overflow_nonzero =
         !native_div && !fp_raw<result>
-        && (needs_overflow_check<F> != 0 || wide_raw<L> || wide_raw<R>);
+        && (needs_overflow_check<F> != 0 || exact_valued<L> || exact_valued<R>);
 
     // Real division can still fail on a zero divisor, so it uses the same
     // return-type rule as the rest: plain `result` when the op cannot fail
@@ -238,11 +247,11 @@ namespace beman::inside::detail
     }
     else if constexpr (native_div_qformat)
     {
-      // rhs.Raw == 0 iff rhs.value == 0 (lower_of<R> == 0). Formula folds to
+      // rhs.Raw == 0 iff rhs.value == 0 (detail::lower64<R> == 0). Formula folds to
       // `(a << log2 N)/b` for power-of-two N — the native Q-format idiom.
       if constexpr (!zero_unchecked)
         if (rhs.raw() == 0) return fail(errc::division_by_zero, "division by zero in div");
-      constexpr umax N = abs_den(notch_of<L>.Denominator);
+      constexpr umax N = abs_den(detail::notch64<L>.Denominator);
       // 32-bit divide when the scaled dividend fits (Q8.8, Q16.15, ...).
       using U = std::conditional_t<(max_index_v<L> <= std::numeric_limits<std::uint32_t>::max() / N),
                                    std::uint32_t, umax>;
@@ -259,10 +268,10 @@ namespace beman::inside::detail
       from_value(res, imax{div_rounded(static_cast<T>(to_value(lhs)), rhs_val, rmode)});
       return res;
     }
-    else if constexpr (wide_raw<L> || wide_raw<R>)
+    else if constexpr (exact_valued<L> || exact_valued<R>)
     {
       // A wide-index operand: the exact quotient, narrowed to the rational raw.
-      const exact_frac d = exact_of(rhs);
+      const auto d = exact_of(rhs);
       if constexpr (!zero_unchecked)
         if (d.Num.is_zero()) return fail(errc::division_by_zero, "division by zero in div");
       const auto q = try_rational(exact_of(lhs) / d);
@@ -299,8 +308,8 @@ namespace beman::inside::detail
     // Builtin division when every value fits imax; else exact wide integers.
     static constexpr bool native_mod = integer_native_ops<L, R, F>;
 
-    static constexpr rational max_rem =
-        ((abs(lower_of<R>) > abs(upper_of<R>) ? abs(lower_of<R>) : abs(upper_of<R>)) - rational{1}).value();
+    static constexpr grid_rational max_rem =
+        lift_unwrap((abs(lower_of<R>) > abs(upper_of<R>) ? abs(lower_of<R>) : abs(upper_of<R>)) - grid_rational{1});
 
     // Remainder consistent with the rounded quotient: r = a − round(a/b)·b. Under
     // truncation it takes the dividend's sign (non-negative for a non-negative
@@ -311,7 +320,7 @@ namespace beman::inside::detail
 
     static constexpr grid result_grid =
         (rmode == round_mode::trunc && lower_of<L> >= 0)
-        ? grid{rational{0}, max_rem}
+        ? grid{grid_rational{0}, max_rem}
         : grid{-max_rem, max_rem};
 
     using result = inside<result_grid>;
@@ -337,13 +346,14 @@ namespace beman::inside::detail
       // Integer values past imax: r = a − round(a/b)·b in exact wide integers.
       constexpr bool zero_unchecked = divisor_excludes_zero<R>
           || (((G | F | policy_of<L> | policy_of<R>) & ignore_zero) != 0);
-      const exact_int b = trunc(exact_of(rhs));
+      using I = wide_sint<exact_limbs<L, R, result>>;
+      const I b{trunc(exact_of(rhs))};
       if constexpr (!zero_unchecked)
         if (b.is_zero())
           return report_or_unexpected<result>(action, policy, errc::division_by_zero,
                                               "division by zero in mod");
-      const exact_int a = trunc(exact_of(lhs));
-      return exact_result<result>(exact_frac{a - rounded_div<rmode>(a, b) * b, exact_int{1}});
+      const I a{trunc(exact_of(lhs))};
+      return exact_result<result>(exact_frac<exact_limbs<L, R, result>>{a - rounded_div<rmode>(a, b) * b, I{1}});
     }
     else
     {

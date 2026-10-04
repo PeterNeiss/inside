@@ -308,7 +308,7 @@ namespace beman::inside
     // Unavailable on a wide-index grid: its values outgrow the 64-bit rational
     // (compare it, or read it with to<T>()).
     constexpr operator detail::rational() const
-      requires (!detail::is_wide_int_v<raw_type>)
+      requires (!detail::exact_valued<inside>)
     {
       if constexpr (G.Interval.Lower == G.Interval.Upper)
         return G.Interval.Lower;
@@ -320,7 +320,7 @@ namespace beman::inside
       else if constexpr (detail::has_qformat_fast_path<inside>)
         return detail::q_format_decode(*this);
       else
-        return (*(Raw * notch_of<inside>) + lower_of<inside>).value();
+        return (*(Raw * detail::notch64<inside>) + detail::lower64<inside>).value();
     }
 
     // to<T>() — typed-error scalar extraction (mirrors rational::to<T>, extended
@@ -335,9 +335,9 @@ namespace beman::inside
       constexpr bool check_hi = upper_of<inside> > detail::rational{lim::max()};
       if constexpr (!check_lo && !check_hi && detail::values_fit_imax<inside>)
         return static_cast<T>(detail::to_value(*this));
-      else if constexpr (detail::wide_raw<inside>)
+      else if constexpr (detail::exact_valued<inside>)
       {
-        const detail::exact_frac v = detail::exact_of(*this);
+        const auto v = detail::exact_of(*this);
         if (check_lo && v < detail::exact_of(lim::min()))
           return std::unexpected{std::unsigned_integral<T> ? errc::domain_error : errc::overflow};
         if (check_hi && v > detail::exact_of(lim::max()))
@@ -391,9 +391,9 @@ namespace beman::inside
       if constexpr (detail::index_raw<inside> && detail::is_integer_aligned<inside>)
         return {detail::to_value(*this), 1};
       else if constexpr (detail::index_raw<inside> && detail::has_qformat_fast_path<inside>
-                         && std::has_single_bit(detail::abs_den(notch_of<inside>.Denominator)))
+                         && std::has_single_bit(detail::abs_den(detail::notch64<inside>.Denominator)))
       {
-        constexpr imax nd = detail::abs_den(notch_of<inside>.Denominator);
+        constexpr imax nd = detail::abs_den(detail::notch64<inside>.Denominator);
         constexpr int  k  = std::countr_zero(static_cast<umax>(nd));
         const imax num = detail::raw_imax(*this) + detail::lower_imax<inside> * nd;
         const int  tz  = std::countr_zero(static_cast<umax>(num));   // num == 0: 64
@@ -529,32 +529,32 @@ namespace beman::inside
     // overflow — it runs exactly in 128 bits (store_raw_wide).
     template <insidable R>
     static constexpr bool point_delta_ok =
-        !detail::rational_raw<inside> && !detail::fp_raw<inside> && notch_of<inside> != 0
-        && lower_of<R> == upper_of<R>
-        && (lower_of<R> / notch_of<inside>).has_value()
-        && detail::abs_den((*(lower_of<R> / notch_of<inside>)).Denominator) == 1;
+        !detail::rational_raw<inside> && !detail::fp_raw<inside> && detail::notch64<inside> != 0
+        && detail::lower64<R> == detail::upper64<R>
+        && (detail::lower64<R> / detail::notch64<inside>).has_value()
+        && detail::abs_den((*(detail::lower64<R> / detail::notch64<inside>)).Denominator) == 1;
 
     template <insidable R>
     static constexpr bool raw_add_ok =
         !detail::rational_raw<inside> && !detail::rational_raw<R>
         && !detail::fp_raw<inside> && !detail::fp_raw<R>
-        && notch_of<inside> == notch_of<R>
-        && (!detail::index_raw<R> || (lower_of<inside> == 0 && lower_of<R> == 0));
+        && detail::notch64<inside> == detail::notch64<R>
+        && (!detail::index_raw<R> || (detail::lower64<inside> == 0 && detail::lower64<R> == 0));
 
     template <insidable R>
     static constexpr bool raw_sub_ok =
         !detail::rational_raw<inside> && !detail::rational_raw<R>
         && !detail::fp_raw<inside> && !detail::fp_raw<R>
-        && notch_of<inside> != 0 && notch_of<inside> == notch_of<R>
+        && detail::notch64<inside> != 0 && detail::notch64<inside> == detail::notch64<R>
         && (!detail::index_raw<R>
-            || ((lower_of<R> / notch_of<inside>).has_value()
-                && detail::abs_den((*(lower_of<R> / notch_of<inside>)).Denominator) == 1));
+            || ((detail::lower64<R> / detail::notch64<inside>).has_value()
+                && detail::abs_den((*(detail::lower64<R> / detail::notch64<inside>)).Denominator) == 1));
 
     // The rhs raw's exact range, as a delta: +raw for +=, −raw − bias for -=
-    // (the bias is lower_of<R>/Notch for an index-raw rhs, else 0).
+    // (the bias is detail::lower64<R>/Notch for an index-raw rhs, else 0).
     template <insidable R>
     static constexpr detail::grid_wide point_delta = [] {
-      const auto q = *(lower_of<R> / notch_of<inside>);
+      const auto q = *(detail::lower64<R> / detail::notch64<inside>);
       return detail::wide_numerator(q);
     }();
     template <insidable R>
@@ -685,7 +685,7 @@ namespace beman::inside
     {
       // Raw-space fast path, the subtraction mirror of +='s: with equal
       // notches, raw(v_l − v_r) = raw_l − raw_r − bias, where the bias is
-      // lower_of<R>/Notch for an index-raw rhs (its raw is Lower-relative) and 0
+      // detail::lower64<R>/Notch for an index-raw rhs (its raw is Lower-relative) and 0
       // for a value-raw rhs. Delegating to `+= (-rhs)` instead shifts R's
       // Lower by negation and defeats +='s raw path for index-backed grids.
       if constexpr (raw_sub_ok<R>)
@@ -812,11 +812,11 @@ namespace beman::inside
   [[nodiscard]] constexpr std::expected<B, errc> from_chars(const char* first, const char* last)
   {
     const auto v = detail::parse_text(first, last);
-    if constexpr (detail::wide_raw<B>)
+    if constexpr (detail::exact_valued<B>)
       if (!v && v.error() == errc::overflow)
       {
         // A value past the 64-bit rational: parse it exactly instead.
-        const auto w = detail::parse_exact(first, last);
+        const auto w = detail::parse_exact<detail::exact_limbs<B>>(first, last);
         if (!w) return std::unexpected{w.error()};
         errc ec{};
         B b;
@@ -839,12 +839,12 @@ namespace beman::inside
     // `bias + raw` without a rational decode.
     template <insidable B>
     inline constexpr bool index_cmp_fits = []{
-      if constexpr (rational_raw<B> || fp_raw<B> || notch_of<B> == 0 || !values_fit_imax<B>)
+      if constexpr (rational_raw<B> || fp_raw<B> || detail::notch64<B> == 0 || !values_fit_imax<B>)
         return false;
       else
       {
-        constexpr auto lo = lower_of<B> / notch_of<B>;
-        constexpr auto hi = upper_of<B> / notch_of<B>;
+        constexpr auto lo = detail::lower64<B> / detail::notch64<B>;
+        constexpr auto hi = detail::upper64<B> / detail::notch64<B>;
         constexpr umax cap = static_cast<umax>(std::numeric_limits<imax>::max());
         return lo.has_value() && hi.has_value()
             && (*lo).Numerator <= cap && (*hi).Numerator <= cap;
@@ -857,7 +857,7 @@ namespace beman::inside
     inline constexpr imax index_cmp_bias = []{
       if constexpr (index_raw<B>)
       {
-        constexpr auto lo = *(lower_of<B> / notch_of<B>);
+        constexpr auto lo = *(detail::lower64<B> / detail::notch64<B>);
         return signed_numerator(lo);
       }
       else
@@ -883,7 +883,7 @@ namespace beman::inside
       if constexpr (grid_of<L> == grid_of<R> && same_encoding<L, R>)
         return cmp(lhs.raw(), rhs.raw());
       // a wide-index operand: exact wide fractions
-      else if constexpr (wide_raw<L> || wide_raw<R>)
+      else if constexpr (exact_valued<L> || exact_valued<R>)
         return cmp(exact_of(lhs), exact_of(rhs));
       // an fp-backed operand: compare in double when both sides' values are
       // exact in double (raw_imax would truncate the fp raw); otherwise the
@@ -896,7 +896,7 @@ namespace beman::inside
       // same nonzero notch, integer-backed: compare signed value indices
       // (compile-time bias + raw) — e.g. two same-Q-format fixed-point types
       // with different intervals, without the rational decode.
-      else if constexpr (notch_of<L> == notch_of<R> && index_cmp_fits<L> && index_cmp_fits<R>)
+      else if constexpr (detail::notch64<L> == detail::notch64<R> && index_cmp_fits<L> && index_cmp_fits<R>)
         return cmp(index_cmp_bias<L> + raw_imax(lhs), index_cmp_bias<R> + raw_imax(rhs));
       else
         return cmp(as_rational(lhs), as_rational(rhs));
@@ -923,11 +923,11 @@ namespace beman::inside
       else
       {
         constexpr umax cap = static_cast<umax>(std::numeric_limits<imax>::max());
-        constexpr umax notch_num = notch_of<B>.Numerator;
-        constexpr umax notch_den = static_cast<umax>(notch_of<B>.Denominator); // Notch > 0
+        constexpr umax notch_num = detail::notch64<B>.Numerator;
+        constexpr umax notch_den = static_cast<umax>(detail::notch64<B>.Denominator); // Notch > 0
         constexpr umax index_mag = []{
-          constexpr auto lo = *(lower_of<B> / notch_of<B>);
-          constexpr auto hi = *(upper_of<B> / notch_of<B>);
+          constexpr auto lo = *(detail::lower64<B> / detail::notch64<B>);
+          constexpr auto hi = *(detail::upper64<B> / detail::notch64<B>);
           return lo.Numerator > hi.Numerator ? lo.Numerator : hi.Numerator;
         }();
         constexpr umax scalar_mag = []{
@@ -957,7 +957,7 @@ namespace beman::inside
     {
       constexpr bool imax_scalar = std::signed_integral<A> || (std::unsigned_integral<A> && sizeof(A) < sizeof(imax));
       constexpr bool double_exact_values = lower_of<B> >= rational{-(imax{1} << 53)} && upper_of<B> <= rational{imax{1} << 53};
-      if constexpr (wide_raw<B>)
+      if constexpr (exact_valued<B>)
       {
         // Every grid number lies strictly inside ±2^64; so does a wide grid.
         if constexpr (std::floating_point<A>)
@@ -970,8 +970,8 @@ namespace beman::inside
       else if constexpr (value_raw<B> && values_fit_imax<B> && std::floating_point<A> && double_exact_values)
         return cmp(static_cast<double>(raw_imax(lhs)), static_cast<double>(rhs));
       else if constexpr (scalar_index_cmp_fits<B, A>)
-        return cmp((index_cmp_bias<B> + raw_imax(lhs)) * static_cast<imax>(notch_of<B>.Numerator),
-                   static_cast<imax>(rhs) * notch_of<B>.Denominator);
+        return cmp((index_cmp_bias<B> + raw_imax(lhs)) * static_cast<imax>(detail::notch64<B>.Numerator),
+                   static_cast<imax>(rhs) * detail::notch64<B>.Denominator);
       else
       {
         // |rhs| ≥ 2^64 (or infinite) has no rational form, and every grid value

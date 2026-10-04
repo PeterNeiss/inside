@@ -271,13 +271,20 @@ namespace beman::inside
     std::conditional_t<G.max_index_representable(), smallest_uint_for_t<G.max_index()>,
                        int_for_bits_t<G.slot_bits(), false>>;
 
+  // Signed value raw of a notch-1 grid within int64 (named only when chosen:
+  // its limits are truncated to 64 bits).
+  template <grid G, bool = (G.Interval.Lower < 0 && G.Notch == 1 && fits_imax(G.Interval))>
+  struct signed_direct_raw { using type = void; };
+  template <grid G>
+  struct signed_direct_raw<G, true> { using type = smallest_int_for_t<trunc(G.Interval.Lower), trunc(G.Interval.Upper)>; };
+
   template <grid G>
   using storage_min_t =
     std::conditional_t<(G.Interval.Lower == G.Interval.Upper), point_slot,
     std::conditional_t<(G.Notch == 0), detail::rational,
     std::conditional_t<(!G.max_index_representable()), index_raw_for_t<G>,
     std::conditional_t<(G.Interval.Lower < 0 && G.Notch == 1 && fits_imax(G.Interval)),
-      smallest_int_for_t<trunc(G.Interval.Lower), trunc(G.Interval.Upper)>,
+      typename signed_direct_raw<G>::type,
       smallest_uint_for_t<G.max_index()>>>>>;
 
   // Dyadic grid: power-of-2 notch denominator and Lower denominator, so every

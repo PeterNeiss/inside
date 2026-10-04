@@ -57,12 +57,12 @@ namespace beman::inside::detail
         lower_of<Point> == upper_of<Point> && lower_of<Point> != 0
         && !rational_raw<X> && !fp_raw<X> && notch_of<X> != 0
         && !rational_raw<result> && !fp_raw<result>
-        && !wide_raw<X> && !wide_raw<result>;
+        && !exact_valued<X> && !exact_valued<result>;
 
     // An operand's unit in the product grid (grid operator*): its notch, or
     // |c| for a point c.
     template <insidable X>
-    static constexpr rational unit_of = (lower_of<X> == upper_of<X>) ? abs(lower_of<X>) : notch_of<X>;
+    static constexpr grid_rational unit_of = (lower_of<X> == upper_of<X>) ? abs(lower_of<X>) : notch_of<X>;
 
     template <bool Negate, insidable X>
     static constexpr result scale_by_point(X const& x)
@@ -90,7 +90,7 @@ namespace beman::inside::detail
       return scale_by_point<(lower_of<L> < 0)>(rhs);
     else if constexpr (rational_raw<result>)
     {
-      static_assert(!wide_raw<L> && !wide_raw<R>,
+      static_assert(!exact_valued<L> && !exact_valued<R>,
         "multiplication: a wide-index operand with a continuous result is not supported yet");
       if constexpr (needs_overflow_check<policy_flags_of<plain_t<P>>>)
       {
@@ -114,12 +114,13 @@ namespace beman::inside::detail
       // unit counts is the result's value index — exact for every grid and
       // sign, at any width.
       using W = index_work_t<result, L, unit_of<L>, R, unit_of<R>>;
-      static_assert(exact_quotient((unit_of<L> * unit_of<R>).value(), notch_of<result>) == grid_wide{1},
+      static_assert(wide_numerator(unit_of<L>) * wide_numerator(unit_of<R>) * wide_denominator(notch_of<result>)
+                    == wide_denominator(unit_of<L>) * wide_denominator(unit_of<R>) * wide_numerator(notch_of<result>),
         "multiplication: the product notch is the product of the operand units");
       return from_value_index<result>(value_in_units<W, unit_of<L>>(lhs)
                                     * value_in_units<W, unit_of<R>>(rhs));
     }
-    else if constexpr (wide_raw<result>)
+    else if constexpr (exact_valued<result>)
       // An fp or rational operand into a result with more than 2^64 slots.
       return exact_result<result>(exact_of(lhs) * exact_of(rhs));
     else
@@ -129,7 +130,7 @@ namespace beman::inside::detail
       // rational product, converted to the result's raw.
       auto prod = rational::mul_unchecked(as_rational(lhs), as_rational(rhs));
       return result::from_raw(raw_from_offset<result>(
-          ((prod - lower_of<result>) / notch_of<result>).value().Numerator));
+          ((prod - detail::lower64<result>) / detail::notch64<result>).value().Numerator));
     }
   }
   };

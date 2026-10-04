@@ -37,7 +37,7 @@ namespace beman::inside
   template <insidable B, numeric A>
   [[nodiscard]] constexpr bool conversion_rounds(A value) noexcept
   {
-    if constexpr (notch_of<B> == 0)
+    if constexpr (::beman::inside::detail::notch64<B> == 0)
       return false;                       // continuous grid: no notch to miss
     if constexpr (std::floating_point<A>)
       if (!(value - value == 0)) return false;   // non-finite — overflow, not truncation
@@ -52,7 +52,7 @@ namespace beman::inside
       return detail::rounds_into_range<B, policy<>>(r, rounded);
     }
     // In-range: truncation occurs iff (value - Lower) / Notch is non-integer.
-    auto offset = (r - lower_of<B>) / notch_of<B>;
+    auto offset = (r - ::beman::inside::detail::lower64<B>) / ::beman::inside::detail::notch64<B>;
     return !offset.has_value() || detail::abs_den(offset->Denominator) != 1;
   }
 

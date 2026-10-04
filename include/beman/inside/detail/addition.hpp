@@ -59,7 +59,7 @@ namespace beman::inside::detail
     }
     else if constexpr (rational_raw<result>)
     {
-      static_assert(!wide_raw<L> && !wide_raw<R>,
+      static_assert(!exact_valued<L> && !exact_valued<R>,
         "addition: a wide-index operand with a continuous result is not supported yet");
       if constexpr (needs_overflow_check<F>)
       {
@@ -83,7 +83,7 @@ namespace beman::inside::detail
       res = from_value_index<result>(value_in_units<W, notch_of<result>>(lhs)
                                    + value_in_units<W, notch_of<result>>(rhs));
     }
-    else if constexpr (wide_raw<result>)
+    else if constexpr (exact_valued<result>)
       // An fp or rational operand into a result with more than 2^64 slots.
       res = exact_result<result>(exact_of(lhs) + exact_of(rhs));
     else
@@ -92,7 +92,7 @@ namespace beman::inside::detail
       // sum, converted to the result's raw.
       auto sum = rational::add_unchecked(lhs,rhs);
       res = result::from_raw(raw_from_offset<result>(
-          ((sum - lower_of<result>) / notch_of<result>).value().Numerator));
+          ((sum - detail::lower64<result>) / detail::notch64<result>).value().Numerator));
     }
     return res;
   }

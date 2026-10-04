@@ -14,7 +14,7 @@
 
 //---------------------------------------------------------------------------
 // generic — type-level traits and predicates used everywhere else. Public
-// grid/policy introspection (`grid_of<B>`, `policy_of<B>`, `Lower/Upper/notch_of<B>`,
+// grid/policy introspection (`grid_of<B>`, `policy_of<B>`, `Lower/Upper/detail::notch64<B>`,
 // `interval_of<B>`) plus the `insidable`/`numeric`/`inside_assignable` concepts; the
 // storage-shape predicates and raw/value converters are internal (`beman::inside::detail`).
 //---------------------------------------------------------------------------
@@ -59,9 +59,19 @@ namespace beman::inside
   inline constexpr interval interval_of<I> =
       {std::numeric_limits<I>::lowest(), std::numeric_limits<I>::max()};
 
-  template <insidable B> inline constexpr detail::rational lower_of = grid_of<B>.Interval.Lower;
-  template <insidable B> inline constexpr detail::rational upper_of = grid_of<B>.Interval.Upper;
-  template <insidable B> inline constexpr detail::rational notch_of = grid_of<B>.Notch;
+  template <insidable B> inline constexpr detail::grid_rational lower_of = grid_of<B>.Interval.Lower;
+  template <insidable B> inline constexpr detail::grid_rational upper_of = grid_of<B>.Interval.Upper;
+  template <insidable B> inline constexpr detail::grid_rational notch_of = grid_of<B>.Notch;
+
+  namespace detail
+  {
+    // The same as 64-bit rationals, for the paths that work in 64 bits (the
+    // integer fast paths, the math engines). A grid number past 64 bits fails
+    // the build here, never truncates. Under C++23 they equal lower_of & co.
+    template <insidable B> inline constexpr rational lower64 = to_rational(grid_of<B>.Interval.Lower);
+    template <insidable B> inline constexpr rational upper64 = to_rational(grid_of<B>.Interval.Upper);
+    template <insidable B> inline constexpr rational notch64 = to_rational(grid_of<B>.Notch);
+  }
 
   template <typename N>
   concept numeric = insidable<N> or detail::arithmetic<N>;
@@ -148,6 +158,19 @@ namespace beman::inside
     template <insidable B>
     inline constexpr bool wide_raw = is_wide_int_v<raw_t<B>>;
 
+    // big_valued — a grid number (a limit or the notch) past 64 bits. Never
+    // under C++23.
+    template <insidable B>
+    inline constexpr bool big_valued =
+         !fits_rational(grid_of<B>.Interval.Lower) || !fits_rational(grid_of<B>.Interval.Upper)
+      || !fits_rational(grid_of<B>.Notch);
+
+    // exact_valued — values the 64-bit paths cannot hold (a wide raw, or big
+    // grid numbers even with few slots): they take the exact paths of
+    // detail/wide_value.hpp.
+    template <insidable B>
+    inline constexpr bool exact_valued = wide_raw<B> || big_valued<B>;
+
     template <insidable B>
     inline constexpr bool value_raw =
          !fp_raw<B> && !rational_raw<B> && !point_raw<B> && !wide_raw<B>
@@ -176,35 +199,34 @@ namespace beman::inside
     // public operator double() is gated on a rounding flag; this is always
     // available). Everything but index storage holds the value verbatim; an
     // index decodes through the grid.
-    struct exact_frac;
-    template <insidable B> constexpr exact_frac exact_of(B const& b);
+    template <insidable B> constexpr auto exact_of(B const& b);   // wide_value.hpp
 
     template <insidable B>
     [[nodiscard]] constexpr double as_double(B const& b) noexcept
     {
       if constexpr (point_raw<B>)
-        return static_cast<double>(lower_of<B>);
-      else if constexpr (wide_raw<B>)
+        return static_cast<double>(detail::lower64<B>);
+      else if constexpr (exact_valued<B>)
         return static_cast<double>(exact_of(b));
       else if constexpr (!index_raw<B>)
         return static_cast<double>(b.raw());
       else
-        return static_cast<double>((*(b.raw() * notch_of<B>) + lower_of<B>).value());
+        return static_cast<double>((*(b.raw() * detail::notch64<B>) + detail::lower64<B>).value());
     }
 
     // True when R's interval cannot contain zero — so `a / b` can return a plain
     // `inside` instead of `expected<inside, errc>` (see detail/division.hpp). A point
     // grid at 0 is *not* excluded.
     template <insidable R>
-    inline constexpr bool divisor_excludes_zero = (lower_of<R> > 0) || (upper_of<R> < 0);
+    inline constexpr bool divisor_excludes_zero = (detail::lower64<R> > 0) || (detail::upper64<R> < 0);
 
     // Storage-agnostic int truncation of interval endpoints — intent-revealing
-    // `static_cast<imax>(lower_of<B>)`. Used by from_value, raw_lo, the fast paths.
+    // `static_cast<imax>(detail::lower64<B>)`. Used by from_value, raw_lo, the fast paths.
     template <insidable B>
-    inline constexpr imax lower_imax = trunc(lower_of<B>);
+    inline constexpr imax lower_imax = trunc(detail::lower64<B>);
 
     template <insidable B>
-    inline constexpr imax upper_imax = trunc(upper_of<B>);
+    inline constexpr imax upper_imax = trunc(detail::upper64<B>);
 
     // Slot count via grid::max_index (overflow-safe: 0 when it doesn't fit umax,
     // for grids that store as rational and never use the index).
@@ -217,7 +239,7 @@ namespace beman::inside
     // the exact rational / umax paths instead.
     template <insidable B>
     inline constexpr bool values_fit_imax =
-         !wide_raw<B> && fits_imax(interval_of<B>)
+         !exact_valued<B> && fits_imax(interval_of<B>)
       && (!index_raw<B> || max_index_v<B> <= static_cast<umax>(std::numeric_limits<imax>::max()));
 
     //-------------------------------------------------------------------------
@@ -330,8 +352,8 @@ namespace beman::inside
     //-------------------------------------------------------------------------
     template <insidable B>
     inline constexpr bool has_qformat_fast_path =
-        abs_den(lower_of<B>.Denominator) == 1
-        && notch_of<B>.Numerator == 1
+        abs_den(detail::lower64<B>.Denominator) == 1
+        && detail::notch64<B>.Numerator == 1
         && !rational_raw<B>
         && values_fit_imax<B>;          // Lower·nd and the raw both in imax
 
@@ -339,7 +361,7 @@ namespace beman::inside
     template <insidable B>
     constexpr raw_t<B> q_format_encode(imax value) noexcept
     {
-      constexpr imax nd = abs_den(notch_of<B>.Denominator);
+      constexpr imax nd = abs_den(detail::notch64<B>.Denominator);
       return raw_cast<B>((value - lower_imax<B>) * nd);
     }
 
@@ -347,7 +369,7 @@ namespace beman::inside
     template <insidable B>
     constexpr rational q_format_decode(B b) noexcept
     {
-      constexpr imax nd = abs_den(notch_of<B>.Denominator);
+      constexpr imax nd = abs_den(detail::notch64<B>.Denominator);
       return rational{raw_imax(b) + lower_imax<B> * nd, nd};
     }
 
@@ -360,11 +382,11 @@ namespace beman::inside
     {
       if constexpr (!index_raw<B>)
         return raw_imax(b);
-      else if constexpr (abs_den(notch_of<B>.Denominator) == 1 && abs_den(lower_of<B>.Denominator) == 1)
-        return lower_imax<B> + raw_imax(b) * static_cast<imax>(notch_of<B>.Numerator);
+      else if constexpr (abs_den(detail::notch64<B>.Denominator) == 1 && abs_den(detail::lower64<B>.Denominator) == 1)
+        return lower_imax<B> + raw_imax(b) * static_cast<imax>(detail::notch64<B>.Numerator);
       else if constexpr (has_qformat_fast_path<B>)
       {
-        constexpr imax nd = abs_den(notch_of<B>.Denominator);
+        constexpr imax nd = abs_den(detail::notch64<B>.Denominator);
         return (raw_imax(b) + lower_imax<B> * nd) / nd;   // q_format_decode, truncated
       }
       else // index storage, generic rational path
@@ -376,13 +398,13 @@ namespace beman::inside
     {
       if constexpr (!index_raw<B>)
         b = B::from_raw(raw_cast<B>(val));
-      else if constexpr (abs_den(notch_of<B>.Denominator) == 1 && abs_den(lower_of<B>.Denominator) == 1)
-        b = B::from_raw(raw_cast<B>((val - lower_imax<B>) / static_cast<imax>(notch_of<B>.Numerator)));
+      else if constexpr (abs_den(detail::notch64<B>.Denominator) == 1 && abs_den(detail::lower64<B>.Denominator) == 1)
+        b = B::from_raw(raw_cast<B>((val - lower_imax<B>) / static_cast<imax>(detail::notch64<B>.Numerator)));
       else if constexpr (has_qformat_fast_path<B>)
         b = B::from_raw(q_format_encode<B>(val));
       else // index storage, generic rational path
       {
-        auto offset = (rational{val} - lower_of<B>) / notch_of<B>;
+        auto offset = (rational{val} - detail::lower64<B>) / detail::notch64<B>;
         b = B::from_raw(raw_cast<B>(offset.value().Numerator));
       }
     }
@@ -402,9 +424,9 @@ namespace beman::inside
     // The exact raw range: 0 .. slot count for index storage, Lower .. Upper
     // for value storage (integers there). Sizes the work types below.
     template <insidable B>
-    inline constexpr grid_wide raw_lo_exact = index_raw<B> ? grid_wide{0} : wide_numerator(lower_of<B>);
+    inline constexpr grid_wide raw_lo_exact = index_raw<B> ? grid_wide{0} : wide_numerator(detail::lower64<B>);
     template <insidable B>
-    inline constexpr grid_wide raw_hi_exact = index_raw<B> ? grid_of<B>.slot_count() : wide_numerator(upper_of<B>);
+    inline constexpr grid_wide raw_hi_exact = index_raw<B> ? grid_of<B>.slot_count() : wide_numerator(detail::upper64<B>);
 
     // Value bits a signed integer needs to hold every value in [lo, hi].
     constexpr int signed_value_bits(grid_wide const& lo, grid_wide const& hi) noexcept
@@ -457,11 +479,11 @@ namespace beman::inside
     //-------------------------------------------------------------------------
     template <insidable B>
     inline constexpr bool is_integer_interval =
-        abs_den(lower_of<B>.Denominator) == 1 && abs_den(upper_of<B>.Denominator) == 1;
+        abs_den(detail::lower64<B>.Denominator) == 1 && abs_den(detail::upper64<B>.Denominator) == 1;
 
     template <insidable B>
     inline constexpr bool is_integer_aligned =
-        abs_den(notch_of<B>.Denominator) == 1 && abs_den(lower_of<B>.Denominator) == 1;
+        abs_den(detail::notch64<B>.Denominator) == 1 && abs_den(detail::lower64<B>.Denominator) == 1;
 
     // Q-format: the canonical fixed-point shape (Q8.8, Q16.16, ...). Notch has
     // unit numerator with integer denominator > 1, Lower is an integer at 0.
@@ -471,10 +493,10 @@ namespace beman::inside
     template <insidable B>
     inline constexpr bool is_qformat =
            !rational_raw<B>
-        && notch_of<B>.Numerator == 1
-        && abs_den(notch_of<B>.Denominator) > 1
-        && abs_den(lower_of<B>.Denominator) == 1
-        && lower_of<B> == 0;
+        && detail::notch64<B>.Numerator == 1
+        && abs_den(detail::notch64<B>.Denominator) > 1
+        && abs_den(detail::lower64<B>.Denominator) == 1
+        && detail::lower64<B> == 0;
 
     // Policy test: checks both type-level and per-operation policy.
     // Composite flags (e.g. round_nearest = bit5 | snap) require all
@@ -498,11 +520,11 @@ namespace beman::inside
     template <insidable L, typename P>
     [[nodiscard]] constexpr rational round_to_lattice(rational v)
     {
-      if constexpr (notch_of<L> == 0)
+      if constexpr (detail::notch64<L> == 0)
         return v;
       else
       {
-        const rational qv = (v / notch_of<L>).value();
+        const rational qv = (v / detail::notch64<L>).value();
         constexpr round_mode m = rounding_for<L, P>;
         imax k;
         if constexpr (m == round_mode::nearest)    k = round(qv);
@@ -516,7 +538,7 @@ namespace beman::inside
           k = frac > half ? f + 1 : frac < half ? f : ((f & 1) ? f + 1 : f);
         }
         else                                       k = trunc(qv);
-        return (rational{k} * notch_of<L>).value();
+        return (rational{k} * detail::notch64<L>).value();
       }
     }
 
@@ -528,7 +550,7 @@ namespace beman::inside
     // also keeps round_to_lattice's division bounded for huge sources.
     template <insidable L, typename P>
     inline constexpr bool rounds_before_range_check =
-        notch_of<L> != 0 && has_policy<L, P, snap>;
+        detail::notch64<L> != 0 && has_policy<L, P, snap>;
 
     template <insidable L, typename P>
     [[nodiscard]] constexpr bool rounds_into_range(rational v, rational& out)
@@ -537,8 +559,8 @@ namespace beman::inside
         return false;
       else
       {
-        constexpr rational lo = (lower_of<L> - notch_of<L>).value_or(lower_of<L>);
-        constexpr rational hi = (upper_of<L> + notch_of<L>).value_or(upper_of<L>);
+        constexpr rational lo = (detail::lower64<L> - detail::notch64<L>).value_or(detail::lower64<L>);
+        constexpr rational hi = (detail::upper64<L> + detail::notch64<L>).value_or(detail::upper64<L>);
         if (v <= lo || v >= hi)
           return false;
         out = round_to_lattice<L, P>(v);
@@ -566,7 +588,7 @@ namespace beman::inside
       else if constexpr (rational_raw<L>)
         return {r, true};
       else
-        return {raw_from_offset<L>(((r - lower_of<L>).value() / notch_of<L>).value().Numerator), true};
+        return {raw_from_offset<L>(((r - detail::lower64<L>).value() / detail::notch64<L>).value().Numerator), true};
     }
 
     // Rounds the split offset quotient q + r/den (r < den ≤ imax_max) per L's
@@ -601,9 +623,9 @@ namespace beman::inside
     [[nodiscard]] constexpr umax round_quotient(umax num, umax den) noexcept
     {
       constexpr rational zl =
-          (notch_of<L> == rational{0})
+          (detail::notch64<L> == rational{0})
             ? rational{0}
-            : (lower_of<L> / notch_of<L>).value_or(rational{0});
+            : (detail::lower64<L> / detail::notch64<L>).value_or(rational{0});
       constexpr bool vidx = (zl.Denominator == 1 || zl.Denominator == -1);
       constexpr imax m = vidx
           ? signed_numerator(zl)
@@ -663,14 +685,18 @@ namespace beman::inside
     // check's job, so clamp/wrap still take an out-of-range point.) The raw
     // Factor says nothing here: a point's notch is 0.
     template <typename L, typename R>
-    inline constexpr bool point_on_lattice =
-      notch_of<L> == 0
-      || abs_den(((lower_of<R> - lower_of<L>).value() / notch_of<L>).value().Denominator) == 1;
+    inline constexpr bool point_on_lattice = grid_same_lattice(lower_of<R>, lower_of<L>, notch_of<L>);
 
     // The notch half of inside_assignable for an insidable R.
     template <typename L, typename R>
     inline constexpr bool notches_compatible = [] {
       if constexpr (lower_of<R> == upper_of<R>) return point_on_lattice<L, R>;
+      else if constexpr (exact_valued<L> || exact_valued<R>)
+        // Every R value on L's lattice: R's notch a multiple of L's, and R's
+        // lattice anchored on L's.
+        return notch_of<L> == 0
+            || (grid_divides_evenly(notch_of<R>, notch_of<L>)
+                && grid_same_lattice(lower_of<R>, lower_of<L>, notch_of<L>));
       else return abs_den(assignment<L, R>::Factor.Denominator) == 1;
     }();
 

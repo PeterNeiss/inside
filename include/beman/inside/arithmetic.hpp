@@ -177,8 +177,8 @@ namespace beman::inside
         rational part = [&]
         {
           if constexpr (detail::index_raw<B>)
-            return ((rational{acc} * notch_of<B>).value()
-                    + (rational{cnt} * lower_of<B>).value()).value();
+            return ((rational{acc} * ::beman::inside::detail::notch64<B>).value()
+                    + (rational{cnt} * ::beman::inside::detail::lower64<B>).value()).value();
           else
             return rational{acc};
         }();
