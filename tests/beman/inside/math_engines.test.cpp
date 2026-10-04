@@ -88,7 +88,7 @@ TEST(MathEnginesTest, float_engine_is_callable_side_by_side_and_agrees_on_specia
 // Golden pins for the float engine: the EXACT grid-snapped rational the binary32
 // engine must produce, bit-for-bit, on every IEEE-754 binary32 platform. These
 // are a THIRD value set (float ≠ double ≠ cordic); regenerate only on a
-// deliberate engine change. Grid: notch 1/16384 real (Ang/Pos/Sq above).
+// deliberate engine change. Grid: notch 1/16384 f64 (Ang/Pos/Sq above).
 #define EXACT_FLT(expr, N, D) ASSERT_EQ(rational{(expr)}, (rational{N, D}))
 
 // float engine golden pins are bit-exact (determinism)

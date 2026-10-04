@@ -54,7 +54,7 @@ same bits, period.
 
 ## The `f64` (double-backed) path
 
-An `f64` inside (`real` is the deprecated spelling) holds its value as an
+An `f64` inside holds its value as an
 IEEE-754 `double`. It is only ever selected on a **`double_exact`** grid —
 dyadic *and* every on-grid value within the 53-bit significand (see
 [math.md](math.md#the-snap-requirement-and-f64-as-a-fast-storage-option) and
@@ -63,9 +63,10 @@ applies to `f32` with binary32's 24-bit significand. Consequences for
 determinism:
 
 - On-grid values are *exactly* representable, so storing/loading is lossless.
-- `grid::snap_double` (`include/beman/inside/grid.hpp`) rounds half-away-from-zero,
-  stays `constexpr` and `<cmath>`-free, and narrows to `imax` only when provably
-  safe — the same rounding rule as the integer engine.
+- `detail::snap_double` (`include/beman/inside/grid.hpp`) rounds by the policy's
+  mode (ties of `round_nearest` half away from zero), stays `constexpr` and
+  `<cmath>`-free, and narrows to `imax` only when provably safe — the same
+  rounding rule as integer and rational storage.
 - On-grid `+ − ×` whose exact result still fits the result grid are computed
   exactly; an operation whose result `double` *cannot* represent **drops the
   `f64` flag** and stores the result in exact (rational/integer) storage, so
@@ -184,6 +185,10 @@ stored results, golden files and replay logs stay valid after an upgrade.
 |---|---|---|---|
 | 2026-10 (branch `perf-readability`) | CORDIC | asin, acos, sinh, cosh, tanh, log10, cbrt, hypot, sqrt | Runtime evaluation at the output grid's precision (+4 guard bits), one-exponential sinh/cosh, table-seeded sqrt. Last-bit differences in the working value; on the pinned and accuracy grids one snapped value moved (`sinh(4)` on `notch<1, 4096>`: 111779 → 111780 /4096, now correctly rounded). Accuracy unchanged within ±0.01 notch ([accuracy.md](accuracy.md)). |
 | 2026-10 (same) | CORDIC, dbl, flt | tan (all), cos (dbl) | One shared range reduction / one CORDIC rotation. No pinned or accuracy-grid value moved. |
+| 2026-10 (same), 8421ac5 | all (storage, not engines) | f64/f32 stores, math `store_grid` | One rounding rule: ties half away from zero, and an explicit mode is honoured on fp storage. Before, fp storage and the `store_grid` fast path rounded ties half toward +∞ (f64 −0.75 on notch ½ gave −0.5; integer storage gave −1), and `f64 \| round_floor` rounded to nearest. Negative ties and fp targets with a directional mode change value. |
+| 2026-10 (same), 50144ea / 09aa483 | — | assignment, `wrap` | An off-notch integer source rounds by the policy (`{0,10}` notch 2 from 3 under `round_nearest`: 2 → 4); wrap folds modulo span + notch (`wrap_cast` of 12 onto `{0,10}` notch ½: 1 → 1.5); wrap rounds onto the lattice before folding (`{0,8}, wrap \| round_nearest` from 8.5: an out-of-grid 9 → 0). |
+| 2026-10 (same), 7811134 / ca8ce56 | all | fmod, atan2, hypot | Output **grids** changed: `fmod` is bounded by min(max\|x\|, max\|y\|) on the gcd notch, `atan2` / `hypot` use the gcd notch of both inputs. Results on a different notch can snap differently; same-notch inputs keep their values. |
+| 2026-10 (same), 02b272a | — | every store | Not a value change: every policy without `unsafe` is runtime-checked, so stores that used to keep an out-of-range value silently (`round_nearest`, `f64`, `indexed` types) now report it. |
 
 ## Compile-time determinism
 

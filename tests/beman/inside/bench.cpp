@@ -978,7 +978,7 @@ static void bench_helpers()
 }
 
 //---------------------------------------------------------------------------
-// f64-backed (real) arithmetic — one double op behind the fp fast arm;
+// f64-backed (f64) arithmetic — one double op behind the fp fast arm;
 // parity with native double is the expectation being pinned.
 //---------------------------------------------------------------------------
 static void bench_fp_backed()

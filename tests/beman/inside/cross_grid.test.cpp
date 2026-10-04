@@ -149,7 +149,7 @@ TEST(CrossGridTest, regression_fractional_plus_integer_direct_keeps_the_fraction
 //---------------------------------------------------------------------------
 // 2026-07 Tier-3 fast paths: pin that the integer folds stay engaged for the
 // shapes they were built for — and stay OUT of the fp-raw shapes (a double
-// raw has no integer offset; test_real_exact caught exactly that during
+// raw has no integer offset; f64_exact.test.cpp caught exactly that during
 // development).
 //---------------------------------------------------------------------------
 // tier-3 integer fast paths stay engaged (and fp stays excluded)
@@ -201,11 +201,11 @@ TEST(CrossGridTest, regression_cross_grid_assign_onto_rational_storage_keeps_the
   from_value_raw = value_src{3};
   ASSERT_EQ(from_value_raw.raw(), rational{3});
 
-  using real_src = inside<{{0, 4}, notch<1, 256>}, f64 | round_nearest>;
+  using f64_src = inside<{{0, 4}, notch<1, 256>}, f64 | round_nearest>;
   using exact_dyadic = inside<{{0, 4}, notch<1, 256>}, exact | round_nearest>;
-  exact_dyadic from_real;
-  from_real = real_src{rational{513, 256}};
-  ASSERT_EQ(from_real.raw(), (rational{513, 256}));
+  exact_dyadic from_f64;
+  from_f64 = f64_src{rational{513, 256}};
+  ASSERT_EQ(from_f64.raw(), (rational{513, 256}));
 
   // rounding still happens when the source is off the target grid
   using exact_coarse = inside<{{0, 4}, 1}, exact | round_nearest>;

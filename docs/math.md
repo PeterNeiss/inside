@@ -215,7 +215,9 @@ phase += angle_t{90};                 // a quarter turn, exactly; wraps at 360
 
 The output is a reference parameter, so its type (and its policy, which does
 the final rounding) comes from the caller's object; `tan` returns `false` at a
-pole. `M` must be divisible by 4 (a power of two is fastest), and a custom angle
+pole. Only the integer engine detects the exact 90° / 270° poles: the FP
+engines convert the angle to radians first, so there `tan` returns `true` with
+a large value, which `out`'s policy then clamps or reports. `M` must be divisible by 4 (a power of two is fastest), and a custom angle
 type must have `Lower == 0` and carry `wrap | f64`. Under the integer engine the
 call is a lookup into a first-quadrant table built at compile time; the FP
 engines evaluate their sine/cosine on the angle converted to radians.

@@ -25,14 +25,15 @@ using q8_8 = inside<{{0, 255}, notch<1, 256>}, round_nearest>;  // == beman::ins
 `#include <beman/inside/formats.hpp>` for the curated aliases: `q4_4`, `q8_8`, `q16_16`
 (uint8/16/32), `byte`…`sqword`, and `unorm8/16/32` (`[0,1]` at N-bit resolution).
 
-The traits that classify these grids (in `include/beman/inside/generic.hpp`):
+The internal traits that classify these grids (`beman::inside::detail`, in
+`include/beman/inside/generic.hpp`):
 
 ```cpp
 // notch and Lower are whole numbers (denominator 1)
 template <insidable B> inline constexpr bool is_integer_aligned =
     abs_den(notch_of<B>.Denominator) == 1 && abs_den(lower_of<B>.Denominator) == 1;
 
-// Qm.N: unit-numerator power-of-two notch (1/2^N), Lower == 0
+// Q-format: unit-numerator notch 1/N (N ≥ 2, not necessarily a power of two), Lower == 0
 template <insidable B> inline constexpr bool is_qformat =
        !rational_raw<B> && notch_of<B>.Numerator == 1
     && abs_den(notch_of<B>.Denominator) > 1
@@ -78,16 +79,17 @@ in hot loops.
    run on the raw integer at native parity (multiplication takes a four-quadrant
    `umax·umax` integer path; division with `snap` is a native `a/b`). Byte-
    wide unchecked loops vectorize at native lane count.
-2. **Q-format grids (notch `1/2^N`, Lower 0)** — power-of-two notch means scaling
-   is a shift. Division of two same-notch Q-format operands takes the fast path
-   `(a << log2 N) / b` (`has_qformat_fast_path` / `q_format_encode` in
+2. **Q-format grids (notch `1/N`, Lower 0)** — a power-of-two `N` makes scaling a
+   shift. Division of two same-notch Q-format operands takes the fast path
+   `(a · N) / b` (`(a << log2 N) / b` for power-of-two `N`) (`has_qformat_fast_path` / `q_format_encode` in
    `generic.hpp`; the Q-format divide in `detail/division.hpp`). Construction is
    ~native (Q8.8 / Q16.16 measure at ~0.97×).
 3. **`f64` dyadic, `double_exact` grids** — the right choice for transcendental
    math: the raw *is* the `double`, so feeding `beman::inside::math` is free marshalling.
 4. **Avoid in hot loops:** non-power-of-two notches and continuous (Notch 0) grids
    fall to rational storage (gcd/lcm every op). For bulk reductions use
-   `beman::inside::sum` / `mul_all`, which defer the check and keep vectorization.
+   `beman::inside::sum<Target>`, which checks the total once and keeps
+   vectorization (`add_all` / `mul_all` are plain pairwise folds).
 
 ### SIMD widths
 
@@ -109,12 +111,13 @@ of autovectorisation — use `unsafe` inside proven-safe inner loops, or
 ## Choosing your grid
 
 - **Hot integer/fixed-point math:** integer-aligned or Q-format grids; `unsafe`
-  or `snap` in the inner loop, convert back to `checked` after.
+  in the proven-safe inner loop, then assign the result into a checked type.
 - **Transcendentals:** `f64` on a dyadic `double_exact` grid (see
   [math.md](math.md)).
 - **No rounding allowed:** `exact` — accept the rational cost.
-- **SIMD byte/halfword loops:** keep the range one below the type max (use the
-  `formats.hpp` aliases) so the raw stays at native width.
+- **SIMD byte/halfword loops:** keep the range within the native type (the
+  `formats.hpp` aliases use the full range, e.g. `byte` is `[0, 255]`) so the raw
+  stays at native width.
 
 ## Where to go next
 

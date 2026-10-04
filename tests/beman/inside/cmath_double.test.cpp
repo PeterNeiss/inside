@@ -72,8 +72,8 @@ TEST(CmathDoubleTest, dbl_accuracy_within_a_few_ulp_of_std)
   ASSERT_TRUE(ma < 1e-14);
 }
 
-// dbl: end-to-end on real (double-backed) bounds
-TEST(CmathDoubleTest, dbl_end_to_end_on_real_double_backed_bounds)
+// dbl: end-to-end on f64 (double-backed) bounds
+TEST(CmathDoubleTest, dbl_end_to_end_on_f64_double_backed_bounds)
 {
   using ang = inside<{{-8, 8}, notch<1, 65536>}, f64>;
   using amp = inside<{{-1, 1}, notch<1, 65536>}, f64>;
@@ -99,7 +99,7 @@ TEST(CmathDoubleTest, dbl_end_to_end_on_real_double_backed_bounds)
 }
 
 // dbl: f64-storage arithmetic composes (double, grid-typed)
-TEST(CmathDoubleTest, dbl_real_storage_arithmetic_composes_double_grid_typed)
+TEST(CmathDoubleTest, dbl_f64_storage_arithmetic_composes_double_grid_typed)
 {
   using amp = inside<{{-1, 1}, notch<1, 65536>}, f64>;
   using gn  = inside<{{0, 4},  notch<1, 65536>}, f64>;
@@ -108,9 +108,9 @@ TEST(CmathDoubleTest, dbl_real_storage_arithmetic_composes_double_grid_typed)
   ang ph = 0.6; gn gain = 2.5;
   amp s = math::dbl::sin_into<amp>(ph);
 
-  auto y = gain * s;            // real * real
-  auto w = y + s;              // real + real
-  auto d = s - amp{0.1};       // real − real (negate + add)
+  auto y = gain * s;            // f64 * f64
+  auto w = y + s;              // f64 + f64
+  auto d = s - amp{0.1};       // f64 − f64 (negate + add)
 
   // results stay double-backed (the `f64` policy propagates through arithmetic)
   static_assert(std::is_same_v<decltype(y)::raw_type, double>);
@@ -187,7 +187,7 @@ TEST(CmathDoubleTest, dbl_circle_m_degree_angle_uses_the_double_engine)
 // (e.g. fmod(7,3) came out 147448 instead of 1). This pins the double-engine
 // algebraic tier on `f64` bounds against std::.
 // dbl: algebraic tier on f64 bounds matches std::
-TEST(CmathDoubleTest, dbl_algebraic_tier_on_real_bounds_matches_std)
+TEST(CmathDoubleTest, dbl_algebraic_tier_on_f64_bounds_matches_std)
 {
   using in_t  = inside<{{-8, 8}, notch<1, 16384>}, round_nearest | f64>;
   using int_t = inside<{{-8, 8}, notch<1>},        round_nearest | f64>;
@@ -224,7 +224,7 @@ TEST(CmathDoubleTest, dbl_algebraic_tier_on_real_bounds_matches_std)
 // in test_cmath.cpp. These cross-check the double engine against std:: to ~a
 // notch, the same oracle a cross-engine diff would use.
 // dbl: transcendental tier on f64 bounds matches std::
-TEST(CmathDoubleTest, dbl_transcendental_tier_on_real_bounds_matches_std)
+TEST(CmathDoubleTest, dbl_transcendental_tier_on_f64_bounds_matches_std)
 {
   constexpr double tol = 4.0 / 16384;   // a few notches
 

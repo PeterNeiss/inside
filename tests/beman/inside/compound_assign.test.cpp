@@ -186,9 +186,9 @@ TEST(CompoundAssignTest, compound_non_fast_storages_still_route_through_plus_rhs
 
   // f64-backed falls back (fp raws are excluded from the raw fast path)
   using rl = inside<{{-4, 4}, notch<1, 256>}, f64 | round_nearest>;
-  rl real_lhs{rational{3, 2}};
-  real_lhs -= rl{rational{1, 4}};
-  ASSERT_EQ(rational{real_lhs}, (rational{5, 4}));
+  rl f64_lhs{rational{3, 2}};
+  f64_lhs -= rl{rational{1, 4}};
+  ASSERT_EQ(rational{f64_lhs}, (rational{5, 4}));
 
   // cross-notch operands take the binary route
   using tenths   = inside<{{0, 10}, notch<1, 10>}, round_nearest>;

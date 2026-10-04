@@ -7,7 +7,7 @@ for the *why* behind the design see [internals.md](internals.md).
 ## The one-sentence model
 
 An `inside` is **a number that carries its own grid** — a lower bound, an upper
-inside, and a step size — all as exact fractions, checked at compile time. The
+bound, and a step size — all as exact fractions, checked at compile time. The
 type *is* the contract; the runtime value can never leave it.
 
 ## Idea 1 — the grid
@@ -23,7 +23,7 @@ notches across the interval. You write the fractions with integer/dyadic
 literals, `notch<N, D>`, and `frac<N, D>`; the underlying exact-fraction type
 is internal and you never name it.
 
-Because the grid is part of the *type*, two differently-shaped bounds are
+Because the grid is part of the *type*, two differently-shaped insides are
 different types — the compiler tracks range and precision for you.
 
 ## Idea 2 — arithmetic widens, it never overflows
@@ -52,7 +52,7 @@ fit, and a *policy* decides what happens:
 ```cpp
 inside<{0, 100}, clamp> p = 150;     // p == 100  (saturate)
 inside<{0, 359}, wrap>  deg = 370;   // deg == 10 (modular)
-inside<{0, 100}>        q = 150;     // throws (default: checked)
+inside<{0, 100}>        q = 150;     // throws (checked: every policy without `unsafe`)
 ```
 
 Policies: `clamp`, `wrap`, the `round_*` family, plus per-operation
@@ -84,9 +84,9 @@ explicit precisely because it drops the guarantee.
 
 See [conversions.md](conversions.md).
 
-## Math on bounds
+## Math on insides
 
-`beman::inside::math` is a `<cmath>`-shaped, reproducible function set over bounds —
+`beman::inside::math` is a `<cmath>`-shaped, reproducible function set over insides —
 `sin`/`cos`/`sqrt`/`exp`/`log`/`atan2`/… Math operands typically carry the
 `f64` storage flag (`inside<G, round_nearest | f64>`); one API runs on any of
 three engines — a fast IEEE-754 `double` engine (`dbl`, the default), a

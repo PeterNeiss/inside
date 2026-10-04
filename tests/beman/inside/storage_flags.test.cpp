@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Representation policy flags — `exact` / `direct` / `indexed` force a raw
 // representation the way `f64` does; without one the grid deduces it.
-// Selection resolves widest-wins (exact > real > direct > indexed > deduced),
+// Selection resolves widest-wins (exact > f64 > direct > indexed > deduced),
 // matching the OR-propagation of policies through arithmetic.
 //
 // (The grid-shape gates — `direct` needs Notch == 1, `indexed` needs a notch —
@@ -172,7 +172,7 @@ TEST(StorageFlagsTest, a_width_flag_with_indexed_pins_the_raw_type_for_index_sto
 // representation flags resolve widest-wins
 TEST(StorageFlagsTest, representation_flags_resolve_widest_wins)
 {
-  // exact beats real: a mixed math chain falls back to exact fractions.
+  // exact beats f64: a mixed math chain falls back to exact fractions.
   using Ex = inside<{{0, 4}, notch<1, 256>}, exact | round_nearest>;
   using Re = inside<{{0, 4}, notch<1, 256>}, round_nearest | f64>;
   using Sum = decltype(Ex{} + Re{});
@@ -184,7 +184,7 @@ TEST(StorageFlagsTest, representation_flags_resolve_widest_wins)
   using Both = inside<{{0, 4}, notch<1, 256>}, exact | f64>;
   static_assert(detail::rational_raw<Both>);
 
-  // real beats direct on a dyadic unit grid (default engine only — under
+  // f64 beats direct on a dyadic unit grid (default engine only — under
   // BEMAN_INSIDE_MATH_CORDIC the f64 arm is elided and direct wins).
   using RD = inside<{0, 4}, f64 | direct>;
 #ifndef BEMAN_INSIDE_MATH_CORDIC
@@ -254,20 +254,16 @@ TEST(StorageFlagsTest, math_output_lands_in_f32_storage_flt_engine_pairs_with_f3
 }
 #endif // !BEMAN_INSIDE_MATH_CORDIC
 
-// f64 is the canonical double-backed flag; real is its alias
-TEST(StorageFlagsTest, f64_is_the_canonical_double_backed_flag_real_is_its_alias)
+// f64 is the double-backed flag and carries round_nearest
+TEST(StorageFlagsTest, f64_is_the_double_backed_flag)
 {
-  // `f64` was renamed `f64`; the alias is bit-identical, so old code compiles.
-  static_assert(beman::inside::f64 == beman::inside::f64);
-  static_assert(has_flag(beman::inside::f64, round_nearest));   // still carries snap/round
+  static_assert(has_flag(beman::inside::f64, round_nearest));   // carries snap/round
 
 #ifndef BEMAN_INSIDE_MATH_CORDIC
-  // f64 selects binary64-backed storage exactly as `f64` did (storage is
-  // independent of the compute engine — true in the double AND float builds).
+  // f64 selects binary64-backed storage (storage is independent of the
+  // compute engine — true in the double AND float builds).
   using F = inside<{{0, 4}, notch<1, 256>}, round_nearest | f64>;
-  using R = inside<{{0, 4}, notch<1, 256>}, round_nearest | f64>;
   static_assert(std::is_same_v<F::raw_type, double>);
-  static_assert(std::is_same_v<F::raw_type, R::raw_type>);
   static_assert(detail::f64_raw<F>);
 #endif
 }
@@ -306,7 +302,7 @@ TEST(StorageFlagsTest, representation_flags_print_the_value_not_the_raw)
 }
 
 // f64 storage runs the full out-of-range policy cascade
-TEST(StorageFlagsTest, real_storage_runs_the_full_out_of_range_policy_cascade)
+TEST(StorageFlagsTest, f64_storage_runs_the_full_out_of_range_policy_cascade)
 {
   // clamp: saturate to the (grid-point) endpoint.
   using RC = inside<{{0, 4}, notch<1, 256>}, f64 | clamp>;
@@ -328,7 +324,7 @@ TEST(StorageFlagsTest, real_storage_runs_the_full_out_of_range_policy_cascade)
   ASSERT_TRUE(RK::try_make(2.0).has_value());
   ASSERT_TRUE(!RK::try_make(9.5).has_value());
 
-  // unchecked (bare real): stores as-is — unchanged legacy behavior.
+  // bare f64: checked like every policy without `unsafe`; in range, stores the value.
   using RU = inside<{{0, 4}, notch<1, 256>}, f64>;
   ASSERT_TRUE(static_cast<double>(rational{RU{2.5}}) == 2.5);
 }
@@ -379,8 +375,8 @@ TEST(StorageFlagsTest, atan_atan2_accept_magnitudes_beyond_1)
 // route through the assignment engine, which previously had no f64_raw arm
 // and wrote integer offsets into the double raw (e.g. with_clamp stored the
 // notch COUNT instead of the endpoint).
-// per-operation policies work on real-backed bounds
-TEST(StorageFlagsTest, per_operation_policies_work_on_real_backed_bounds)
+// per-operation policies work on f64-backed bounds
+TEST(StorageFlagsTest, per_operation_policies_work_on_f64_backed_bounds)
 {
   using R = inside<{{1, 4}, notch<1, 256>}, round_nearest | f64>;  // Lower != 0
 

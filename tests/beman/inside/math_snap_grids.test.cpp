@@ -13,9 +13,9 @@ using namespace beman::inside;
 using namespace beman::inside::detail;
 
 // snap-gated transcendentals on non-f64 grids (integer & 1/100)
-TEST(MathSnapGridsTest, snap_gated_transcendentals_on_non_real_grids_integer_1_100)
+TEST(MathSnapGridsTest, snap_gated_transcendentals_on_non_f64_grids_integer_1_100)
 {
-  // round_nearest implies snap but NOT real → these are integer/index-stored,
+  // round_nearest implies snap but NOT f64 → these are integer/index-stored,
   // not double-backed. Pre-Phase-1 these were a hard `require_real` compile error.
   using Ang = inside<{{-8, 8}, notch<1, 16384>}, round_nearest>;     // integer-index storage
   ASSERT_EQ(rational{math::sin(Ang{0})}, 0);

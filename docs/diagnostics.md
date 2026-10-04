@@ -28,18 +28,19 @@ inside<grid{interval{rational{3,1}, rational{3,1}}, rational{0,1}}, 17179869184>
 | `1<<8` | 256 | `round_half_even` (+ snap) |
 | `1<<32` | 4294967296 | `clamp` |
 | `1<<33` | 8589934592 | `wrap` |
-| `1<<34` | 17179869184 | `checked` (the default `P`) |
+| `1<<34` | 17179869184 | `checked` (the default `P`; overrides `unsafe`) |
 | `1<<35` | 34359738368 | (unused; was `sentinel`) |
-| `1<<36` | … | `unsafe` (+ ignore_domain, snap, ignore_zero) |
-| `1<<37` | … | `f64` (+ round_nearest; `real` is the deprecated alias) |
+| `1<<36` | 68719476736 | `unsafe` marker (+ ignore_domain, snap, ignore_zero); the only bit that turns runtime checks off |
+| `1<<37` | … | `f64` (+ round_nearest) |
 | `1<<38` | … | `exact` |
 | `1<<39` | … | `direct` |
 | `1<<40` | … | `indexed` |
 | `1<<41` | … | `f32` (+ round_nearest) |
 | `1<<42`…`1<<49` | … | width flags `i8 u8 i16 u16 i32 u32 i64 u64` |
 
-So `17179869184` is simply `checked`, the default policy every `inside` carries unless you
-choose another. (Full table: `include/beman/inside/policy_flag.hpp`.)
+So `17179869184` is simply `checked`, the default policy of `inside<G>`. Every
+other policy without the `unsafe` bit is checked too. (Full table:
+`include/beman/inside/policy_flag.hpp`.)
 
 ## The common surprise: it's the interval, not the notch
 

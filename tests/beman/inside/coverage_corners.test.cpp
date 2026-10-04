@@ -271,8 +271,8 @@ TEST(CoverageCornersTest, on_overflow_compound_subtract_that_does_not_overflow)
 // inside.hpp:161-163 — store_real out-of-range with a reporting policy
 // (the clamp/wrap arms are covered elsewhere; the domain_fail arm was not).
 //---------------------------------------------------------------------------
-// real store out of range: checked policy
-TEST(CoverageCornersTest, real_store_out_of_range_checked_policy)
+// f64 store out of range: checked policy
+TEST(CoverageCornersTest, f64_store_out_of_range_checked_policy)
 {
   using rbc = inside<{{-1, 1}, notch<1, 1024>}, f64 | checked>;
   ASSERT_THROW((void)((rbc{5.0})), beman::inside::inside_error);   // out of range -> report (throws)
@@ -284,14 +284,14 @@ TEST(CoverageCornersTest, real_store_out_of_range_checked_policy)
 // target decodes the source and snaps to the dyadic grid.
 //---------------------------------------------------------------------------
 #ifndef BEMAN_INSIDE_MATH_CORDIC
-// inside -> real conversion snaps onto the double grid
-TEST(CoverageCornersTest, inside_to_real_conversion_snaps_onto_the_double_grid)
+// inside -> f64 conversion snaps onto the double grid
+TEST(CoverageCornersTest, inside_to_f64_conversion_snaps_onto_the_double_grid)
 {
   using src_t = inside<{-2, 2}>;                          // integer-backed source
   using rb    = inside<{{-2, 2}, notch<1, 1024>}, f64>;  // double-backed target
 
   src_t src{1};
-  rb dst = src;                                          // insidable -> real store
+  rb dst = src;                                          // insidable -> f64 store
   ASSERT_EQ(double(dst), 1.0);
 
   src_t neg{-2};
@@ -328,7 +328,7 @@ TEST(CoverageCornersTest, clamp_policy_truncates_an_in_range_off_notch_fractiona
 //---------------------------------------------------------------------------
 // generic.hpp:355-361 — raw_from_offset(imax) overload, reached from the
 // integer fast path of math::fmod (cmath.hpp:1012, fmod_int_fast) with a
-// signed offset. Needs non-real, non-rational integer grids and a divisor
+// signed offset. Needs non-f64, non-rational integer grids and a divisor
 // that excludes zero. math::fmod was otherwise only static_assert-tested.
 //---------------------------------------------------------------------------
 // math::fmod integer fast path (raw_from_offset imax)
@@ -348,8 +348,8 @@ TEST(CoverageCornersTest, math_fmod_integer_fast_path_raw_from_offset_imax)
 // generic.hpp:469 — domain_fail returns false for an unchecked policy
 // (domain_check()==false): the value is stored as-is.
 //---------------------------------------------------------------------------
-// unsafe real store out of range falls through (no report)
-TEST(CoverageCornersTest, unsafe_real_store_out_of_range_falls_through_no_report)
+// unsafe f64 store out of range falls through (no report)
+TEST(CoverageCornersTest, unsafe_f64_store_out_of_range_falls_through_no_report)
 {
   using rb = inside<{{-1, 1}, notch<1, 1024>}, f64 | unsafe>;
   rb x = 5.0;                       // out of range, unsafe: stored as-is, no throw

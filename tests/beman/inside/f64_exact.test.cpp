@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// real (double-backed) arithmetic vs. the exact rational oracle.
+// f64 (double-backed) arithmetic vs. the exact rational oracle.
 //
 // Premise of the `f64` policy: on a dyadic grid every on-grid value is exact in
 // IEEE-754 double, so `f64` arithmetic must equal the exact grid arithmetic.
@@ -104,8 +104,8 @@ namespace
 // 2^28-1 < 2^53); the product 16 - 2^-23 + 2^-52 rounds off the 2^-52 term
 // because |product| ~ 16 has ULP 2^-49. The exact path keeps it.
 //---------------------------------------------------------------------------
-// real * drops bits below the product-binade ULP
-TEST(RealExactTest, real_drops_bits_below_the_product_binade_ulp)
+// f64 * drops bits below the product-binade ULP
+TEST(F64ExactTest, f64_drops_bits_below_the_product_binade_ulp)
 {
   using U = inside<{{0, 4}, notch<1, (1u << 26)>}, f64>;   // f=26, exact operand
   static_assert(std::is_same_v<U::raw_type, double>);
@@ -122,8 +122,8 @@ TEST(RealExactTest, real_drops_bits_below_the_product_binade_ulp)
 // Fuzz sweep across dyadic f64 grids spanning double-exact and
 // double-inexact cases (the latter via product numerators crossing 2^53).
 //---------------------------------------------------------------------------
-// real +,-,* match the exact rational oracle / double-exact: small notches, modest range (must always hold)
-TEST(RealExactTest, real_plus_match_the_exact_rational_oracle__double_exact_small_notches_modest_range_must_always_hold)
+// f64 +,-,* match the exact rational oracle / double-exact: small notches, modest range (must always hold)
+TEST(F64ExactTest, f64_plus_match_the_exact_rational_oracle__double_exact_small_notches_modest_range_must_always_hold)
 {
   std::mt19937_64 rng(static_cast<unsigned>(::testing::UnitTest::GetInstance()->random_seed()) ^ 0x9E3779B97F4A7C15ull);
 
@@ -137,8 +137,8 @@ TEST(RealExactTest, real_plus_match_the_exact_rational_oracle__double_exact_smal
 
 }
 
-// real +,-,* match the exact rational oracle / mantissa: product numerator crosses 2^53
-TEST(RealExactTest, real_plus_match_the_exact_rational_oracle__mantissa_product_numerator_crosses_2_53)
+// f64 +,-,* match the exact rational oracle / mantissa: product numerator crosses 2^53
+TEST(F64ExactTest, f64_plus_match_the_exact_rational_oracle__mantissa_product_numerator_crosses_2_53)
 {
   std::mt19937_64 rng(static_cast<unsigned>(::testing::UnitTest::GetInstance()->random_seed()) ^ 0x9E3779B97F4A7C15ull);
 
@@ -152,8 +152,8 @@ TEST(RealExactTest, real_plus_match_the_exact_rational_oracle__mantissa_product_
 
 }
 
-// real +,-,* match the exact rational oracle / exponent-coarsening: fine value combined with a large one
-TEST(RealExactTest, real_plus_match_the_exact_rational_oracle__exponent_coarsening_fine_value_combined_with_a_large_one)
+// f64 +,-,* match the exact rational oracle / exponent-coarsening: fine value combined with a large one
+TEST(F64ExactTest, f64_plus_match_the_exact_rational_oracle__exponent_coarsening_fine_value_combined_with_a_large_one)
 {
   std::mt19937_64 rng(static_cast<unsigned>(::testing::UnitTest::GetInstance()->random_seed()) ^ 0x9E3779B97F4A7C15ull);
 
@@ -168,8 +168,8 @@ TEST(RealExactTest, real_plus_match_the_exact_rational_oracle__exponent_coarseni
 
 }
 
-// real +,-,* match the exact rational oracle / signed grids cross zero (all four multiply quadrants)
-TEST(RealExactTest, real_plus_match_the_exact_rational_oracle__signed_grids_cross_zero_all_four_multiply_quadrants)
+// f64 +,-,* match the exact rational oracle / signed grids cross zero (all four multiply quadrants)
+TEST(F64ExactTest, f64_plus_match_the_exact_rational_oracle__signed_grids_cross_zero_all_four_multiply_quadrants)
 {
   std::mt19937_64 rng(static_cast<unsigned>(::testing::UnitTest::GetInstance()->random_seed()) ^ 0x9E3779B97F4A7C15ull);
 
@@ -179,15 +179,15 @@ TEST(RealExactTest, real_plus_match_the_exact_rational_oracle__signed_grids_cros
     using B = inside<{{-4, 12}, notch<1, 4096>}, f64>;            // asymmetric, crosses 0
     sweep<A, A>(rng, 3000);
     sweep<A, B>(rng, 3000);
-    // inexact signed product: drops real, must stay exact through the quadrants
+    // inexact signed product: drops f64, must stay exact through the quadrants
     using C = inside<{{-4, 4}, notch<1, (1u << 27)>}, f64>;
     sweep<C, C>(rng, 3000);
   }
 
 }
 
-// real +,-,* match the exact rational oracle / mixed: f64 operand with a non-real one
-TEST(RealExactTest, real_plus_match_the_exact_rational_oracle__mixed_real_operand_with_a_non_real_one)
+// f64 +,-,* match the exact rational oracle / mixed: f64 operand with a non-f64 one
+TEST(F64ExactTest, f64_plus_match_the_exact_rational_oracle__mixed_f64_operand_with_a_non_f64_one)
 {
   std::mt19937_64 rng(static_cast<unsigned>(::testing::UnitTest::GetInstance()->random_seed()) ^ 0x9E3779B97F4A7C15ull);
 
@@ -224,8 +224,8 @@ namespace
 // snap_double rounding: half away from zero, no predecessor-of-0.5 error, on
 // both signs. Exercises exact ties (k+0.5 notches) and random off-grid inputs.
 //---------------------------------------------------------------------------
-// real assignment snaps to nearest grid, ties away from zero
-TEST(RealExactTest, real_assignment_snaps_to_nearest_grid_ties_away_from_zero)
+// f64 assignment snaps to nearest grid, ties away from zero
+TEST(F64ExactTest, f64_assignment_snaps_to_nearest_grid_ties_away_from_zero)
 {
   using R = inside<{{-4, 4}, notch<1, 256>}, f64>;    // double-exact, crosses zero
   const double nd = static_cast<double>(notch_of<R>);
@@ -249,12 +249,12 @@ TEST(RealExactTest, real_assignment_snaps_to_nearest_grid_ties_away_from_zero)
 }
 
 //---------------------------------------------------------------------------
-// Composition: chained real arithmetic must equal the exact rational result
+// Composition: chained f64 arithmetic must equal the exact rational result
 // (catches divergence/storage faults that only appear after a f64 result is
 // fed back into another op, possibly after `f64` was dropped).
 //---------------------------------------------------------------------------
-// chained real arithmetic stays exact vs the rational oracle
-TEST(RealExactTest, chained_real_arithmetic_stays_exact_vs_the_rational_oracle)
+// chained f64 arithmetic stays exact vs the rational oracle
+TEST(F64ExactTest, chained_f64_arithmetic_stays_exact_vs_the_rational_oracle)
 {
   using A = inside<{{-4, 4}, notch<1, 4096>}, f64>;
   std::mt19937_64 rng(static_cast<unsigned>(::testing::UnitTest::GetInstance()->random_seed()) ^ 0x243F6A8885A308D3ull);
@@ -283,7 +283,7 @@ TEST(RealExactTest, chained_real_arithmetic_stays_exact_vs_the_rational_oracle)
 // A f64 inside's raw is never a NaN/inf/subnormal.
 //---------------------------------------------------------------------------
 // f64 raw stays clean
-TEST(RealExactTest, real_raw_stays_clean)
+TEST(F64ExactTest, f64_raw_stays_clean)
 {
   using R = inside<{{-4, 4}, notch<1, 1024>}, f64>;
   static_assert(std::is_same_v<R::raw_type, double>);
@@ -298,7 +298,7 @@ TEST(RealExactTest, real_raw_stays_clean)
 // expected<result, errc> exactly when the divisor grid can be zero.
 //---------------------------------------------------------------------------
 // f64 division by zero is reported, not stored as inf
-TEST(RealExactTest, real_division_by_zero_is_reported_not_stored_as_inf)
+TEST(F64ExactTest, f64_division_by_zero_is_reported_not_stored_as_inf)
 {
   using N  = inside<{{1, 4}, notch<1, 1024>}, f64>;
   using Dz = inside<{{0, 4}, notch<1, 1024>}, f64>;   // divisor grid spans zero
@@ -322,12 +322,12 @@ TEST(RealExactTest, real_division_by_zero_is_reported_not_stored_as_inf)
 }
 
 //---------------------------------------------------------------------------
-// An over-fine real product (grid index count > umax) deduces rational storage
+// An over-fine f64 product (grid index count > umax) deduces rational storage
 // — exact, no cryptic compile error — and an unrepresentable product reports
 // overflow rather than silently wrapping.
 //---------------------------------------------------------------------------
-// over-fine real product deduces rational, stays exact
-TEST(RealExactTest, over_fine_real_product_deduces_rational_stays_exact)
+// over-fine f64 product deduces rational, stays exact
+TEST(F64ExactTest, over_fine_f64_product_deduces_rational_stays_exact)
 {
   using A = inside<{{0, (1u << 17)}, notch<1, (1u << 16)>}, f64>;   // N up to 2^33 < 2^53
   static_assert(std::is_same_v<A::raw_type, double>);
@@ -341,13 +341,13 @@ TEST(RealExactTest, over_fine_real_product_deduces_rational_stays_exact)
 }
 
 //---------------------------------------------------------------------------
-// A real (double-backed) target rejects non-finite assignments: NaN/inf can
+// A f64 (double-backed) target rejects non-finite assignments: NaN/inf can
 // never be an on-grid value, so the store guard reports errc::not_finite rather
 // than poisoning the raw double. Exercises the non-finite branch in
 // store_checked for fp_raw storage.
 //---------------------------------------------------------------------------
 // f64 storage rejects non-finite assignment
-TEST(RealExactTest, real_storage_rejects_non_finite_assignment)
+TEST(F64ExactTest, f64_storage_rejects_non_finite_assignment)
 {
   using R = inside<{{-8, 8}, notch<1, 65536>}, f64>;
   static_assert(std::is_same_v<R::raw_type, double>);
