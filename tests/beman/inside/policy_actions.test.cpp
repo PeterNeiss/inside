@@ -341,3 +341,35 @@ TEST(PolicyActionsTest, policy_ec_catches_rounding_error_on_float_assignment)
   c.policy(ec) = 3.0;
   ASSERT_EQ(ec, errc::rounding_error);
 }
+
+// The on_wrap carry is an inside for every source kind, so it adds straight
+// into another inside; an `imax` callback parameter still binds.
+TEST(PolicyActionsTest, on_wrap_carry_is_an_inside_for_every_source)
+{
+  using sec = inside<{0, 59}, wrap>;
+  using min = inside<{0, 59}>;
+  auto run = [](auto src) {
+    sec seconds{0};
+    min minutes{0};
+    seconds.on_wrap([&](auto&, auto carry) {
+      static_assert(insidable<decltype(carry)>);
+      minutes += carry;
+    }) = src;
+    EXPECT_EQ(seconds, 5);
+    EXPECT_EQ(minutes, 2);
+  };
+  run(125);
+  run(std::uint8_t{125});
+  run(125.0);
+  run(125_ins);
+
+  // An integer source's carry grid comes from its type's limits.
+  sec s{0};
+  s.on_wrap([](auto&, auto carry) {
+    static_assert(grid_of<decltype(carry)> == grid{-3, 2});   // signed char into {0, 59}
+  }) = static_cast<signed char>(5);
+
+  imax c = 0;
+  s.on_wrap([&](auto&, imax k) { c = k; }) = 130;
+  EXPECT_EQ(c, 2);
+}

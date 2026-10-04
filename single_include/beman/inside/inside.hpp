@@ -3169,6 +3169,46 @@ namespace beman::inside::detail
   }
 
   //---------------------------------------------------------------------------
+  // The on_wrap carry is always an inside whose grid holds every carry the
+  // source kind can produce: an inside source uses its own range
+  // (assignment<L, insidable>::wrap_excess_grid), an integral source its type's
+  // limits, a fractional (double / rational) source the whole imax range. So
+  // `minutes += carry` compiles for every source, and a callback taking `imax`
+  // still binds through the implicit operator imax(). A bound whose exact
+  // computation leaves imax falls back to that side of the imax range.
+  //---------------------------------------------------------------------------
+  template <insidable L, typename R>
+  constexpr grid wrap_carry_grid()
+  {
+    constexpr imax kMin = std::numeric_limits<imax>::min();
+    constexpr imax kMax = std::numeric_limits<imax>::max();
+    if constexpr (std::integral<R>)
+    {
+      const rational range = ((upper_of<L> - lower_of<L>).value() + notch_of<L>).value();
+      auto carry_of = [&](rational v, imax fallback) -> imax
+      {
+        const auto off = v - lower_of<L>;
+        if (!off) return fallback;
+        const auto q = *off / range;
+        if (!q || *q < rational{kMin} || *q > rational{kMax}) return fallback;
+        return floor(*q);
+      };
+      return grid{carry_of(rational{std::numeric_limits<R>::min()}, kMin),
+                  carry_of(rational{std::numeric_limits<R>::max()}, kMax)};
+    }
+    else
+      return grid{kMin, kMax};
+  }
+
+  template <insidable L, typename R>
+  constexpr auto make_wrap_carry(imax q)
+  {
+    beman::inside::inside<wrap_carry_grid<L, R>()> carry;
+    from_value(carry, q);                // in the carry grid by construction
+    return carry;
+  }
+
+  //---------------------------------------------------------------------------
   // assignment
   //---------------------------------------------------------------------------
   template <typename L, typename R>
@@ -3204,7 +3244,7 @@ namespace beman::inside::detail
         if (urange == 0)                              // span == 2^64−1: wrap is identity
         {
           from_value(lhs, ri);
-          if constexpr (wrap_action<plain_t<A>>) action.Fn(lhs, imax{0});
+          if constexpr (wrap_action<plain_t<A>>) action.Fn(lhs, make_wrap_carry<L, R>(0));
           return;
         }
         umax w;
@@ -3224,7 +3264,7 @@ namespace beman::inside::detail
         }
         from_value(lhs, static_cast<imax>(static_cast<umax>(lower) + w));
         if constexpr (wrap_action<plain_t<A>>)
-          action.Fn(lhs, excess);
+          action.Fn(lhs, make_wrap_carry<L, R>(excess));
       }
 
       template<typename P, typename A>
@@ -3375,7 +3415,7 @@ namespace beman::inside::detail
         assignment<L, rational>::store_checked(lhs, wrapped, policy, action);
 
         if constexpr (wrap_action<plain_t<A>>)
-          action.Fn(lhs, q);
+          action.Fn(lhs, make_wrap_carry<L, R>(q));
       }
 
       // 128-bit rounded store — the offset slot of an in-range rhs computed

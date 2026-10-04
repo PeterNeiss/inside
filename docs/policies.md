@@ -136,7 +136,7 @@ stored value) plus an event-specific payload.
 | Method | Path | Fires when | Callback signature |
 |---|---|---|---|
 | `on_clamp(λ)`    | assignment | a narrowed value leaves the grid and `clamp` saturates it | `λ(inside&, overshoot)` |
-| `on_wrap(λ)`     | assignment | a narrowed value leaves the grid and `wrap` folds it (carry) | `λ(inside&, carry)` — an inside, or `imax` for a raw-scalar source |
+| `on_wrap(λ)`     | assignment | a narrowed value leaves the grid and `wrap` folds it (carry) | `λ(inside&, carry)` — the carry is an inside |
 | `on_error(λ)`    | assignment | a domain / rounding error under `checked` (replaces the throw) | `λ(inside&, errc, const char* msg)` |
 | `on_overflow(λ)` | binary arithmetic | a fractional or imax result overflows, or `div`/`mod` divides by zero | `λ(inside&, errc)` |
 
@@ -167,13 +167,17 @@ min minutes{0};
 seconds.on_wrap([&](auto& self, auto carry) {
     (void)self;
     minutes += carry;
-}) = 125_ins;
+}) = 125;
 // seconds == 5, minutes == 2
 ```
 
-The carry is an inside (with a grid covering every possible carry) when the
-assigned value is an inside, as here. A raw integer source, `= 125`, passes it
-as an `imax`, which then needs a grid before it can be added to an inside.
+The carry is always an inside, so it adds straight into another inside. Its
+grid holds every carry the source can produce: an inside source's own range
+(`125_ins` gives `[2, 2]`), an integer source's type limits (`int` into
+`{0, 59}` gives about ±35.8 million), and the whole `imax` range for a `double`
+or exact-fraction source. The `+=` then narrows through `minutes`' own policy.
+A callback that takes `imax` instead of `auto` still works through the
+implicit `operator imax()`.
 
 The free arithmetic functions accept the same factories — useful for catching
 divide-by-zero or arithmetic overflow without throwing:
