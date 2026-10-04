@@ -102,6 +102,11 @@ namespace beman::inside
     return str;
   }
 
+#if BEMAN_INSIDE_BIG_GRIDS
+  // A grid number: the rational form when it fits 64 bits, else num/den.
+  [[nodiscard]] inline std::string to_string(detail::big_rational const& r);
+#endif
+
   [[nodiscard]] inline std::string to_string(interval ival)
   {
     std::string str{"["};
@@ -211,6 +216,40 @@ namespace beman::inside
   template <std::size_t N, bool S>
   [[nodiscard]] inline std::string to_string(detail::wide_int<N, S> v) { return detail::wide_to_decimal(v); }
 
+#if BEMAN_INSIDE_BIG_GRIDS
+  // A grid number of any size, in decimal (reads the interned limbs; no new
+  // big values are formed at runtime).
+  [[nodiscard]] inline std::string to_string(detail::big_int const& v)
+  {
+    detail::big::mag m = v.magnitude();
+    std::string out;
+    do
+    {
+      umax rem = 0;                                     // m /= 10^19, rem = m % 10^19
+      for (std::size_t i = m.size(); i-- > 0;)
+      {
+        const auto d = detail::limb::div(rem, m[i], umax{10'000'000'000'000'000'000ull});
+        m[i] = d.Hi;
+        rem = d.Lo;
+      }
+      detail::big::trim(m);
+      std::string part = std::to_string(rem);
+      if (!m.empty()) part.insert(0, 19 - part.size(), '0');
+      out.insert(0, part);
+    } while (!m.empty());
+    return v.negative() ? "-" + out : out;
+  }
+#endif
+
+#if BEMAN_INSIDE_BIG_GRIDS
+  [[nodiscard]] inline std::string to_string(detail::big_rational const& r)
+  {
+    if (r.fits_rational()) return beman::inside::to_string(static_cast<detail::rational>(r));
+    const std::string num = beman::inside::to_string(r.Num);
+    return r.is_integer() ? num : num + "/" + beman::inside::to_string(r.Den);
+  }
+#endif
+
   template <insidable B>
   [[nodiscard]] inline std::string to_string(B b)
   {
@@ -226,7 +265,8 @@ namespace beman::inside
     str += " {";
     str += beman::inside::to_string(+b.raw());
     str += "[" + std::string(detail::type_name<detail::raw_t<B>>());
-    str += " Max:" + beman::inside::to_string(grid_of<B>.slot_count()) + "] ";
+    constexpr auto slots = grid_of<B>.slot_count();
+    str += " Max:" + beman::inside::to_string(slots) + "] ";
     str += beman::inside::to_string(grid_of<B>);
     str += "}";
     return str;

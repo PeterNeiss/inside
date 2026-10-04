@@ -53,9 +53,9 @@ struct std::numeric_limits<beman::inside::inside<G, P>>
   static constexpr int digits   = std::numeric_limits<beman::inside::detail::raw_t<B>>::digits;
   static constexpr int digits10 = std::numeric_limits<beman::inside::detail::raw_t<B>>::digits10;
 
-  static constexpr B min()    noexcept { return B{G.Interval.Lower}; }
-  static constexpr B max()    noexcept { return B{G.Interval.Upper}; }
-  static constexpr B lowest() noexcept { return B{G.Interval.Lower}; }
+  static constexpr B min()    noexcept { return B{beman::inside::lower_of<B>}; }
+  static constexpr B max()    noexcept { return B{beman::inside::upper_of<B>}; }
+  static constexpr B lowest() noexcept { return B{beman::inside::lower_of<B>}; }
   // Exact types have no rounding noise — epsilon and round_error are 0 when
   // 0 is on the grid (it always is when 0 ∈ interval, since the grid is
   // validated such that Lower is an integer multiple of Notch). When 0 is
@@ -67,7 +67,7 @@ struct std::numeric_limits<beman::inside::inside<G, P>>
                && beman::inside::detail::rational{0} <= G.Interval.Upper)
       return B{beman::inside::detail::rational{0}};
     else
-      return B{G.Interval.Lower};
+      return B{beman::inside::lower_of<B>};
   }
   static constexpr B round_error() noexcept { return epsilon(); }
 };

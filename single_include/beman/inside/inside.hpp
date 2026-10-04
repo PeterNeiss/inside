@@ -2450,10 +2450,29 @@ namespace beman::inside::detail
     friend constexpr big_int operator/(big_int const& a, big_int const& b);
     friend constexpr big_int operator%(big_int const& a, big_int const& b);
 
-    friend constexpr big_int abs(big_int a) { a.Negative = false; return a; }
+
+    // a · 2^k (k ≥ 0).
+    friend constexpr big_int operator<<(big_int const& a, int k)
+    {
+      if (!a.Limbs && k < 64 && (k == 0 || (a.Small >> (64 - k)) == 0))
+      { big_int r = a; r.Small = a.Small << k; return r; }
+      big::mag m = a.magnitude();
+      const std::size_t words = static_cast<std::size_t>(k / 64);
+      const int bits = k % 64;
+      big::mag r(m.size() + words + 1, 0);
+      for (std::size_t i = 0; i < m.size(); ++i)
+      {
+        r[i + words] |= m[i] << bits;
+        if (bits != 0) r[i + words + 1] |= m[i] >> (64 - bits);
+      }
+      return from_mag(std::move(r), a.Negative);
+    }
   };
 
   struct big_int::divmod_result { big_int Quotient; big_int Remainder; };
+
+  // (Free functions, not hidden friends: callers spell detail::abs / gcd.)
+  constexpr big_int abs(big_int a) { a.Negative = false; return a; }
 
   constexpr auto big_int::divmod(big_int const& a, big_int const& b) -> divmod_result
   {
@@ -2566,16 +2585,40 @@ namespace beman::inside::detail
     friend constexpr big_rational operator/(big_rational const& a, big_rational const& b)
     { return {a.Num * b.Den, a.Den * b.Num}; }
 
-    friend constexpr big_rational abs(big_rational a) { a.Num = abs(a.Num); return a; }
-
-    // gcd of two fractions: gcd of numerators over lcm of denominators.
-    friend constexpr big_rational gcd(big_rational const& a, big_rational const& b)
-    {
-      const big_int dg = gcd(a.Den, b.Den);
-      return {gcd(a.Num, b.Num), a.Den / dg * b.Den};
-    }
 
     [[nodiscard]] constexpr bool is_integer() const noexcept { return Den == big_int{1}; }
+
+    // With an integer: exact, and unambiguous (an int converts to both).
+    template <std::integral T>
+    friend constexpr bool operator==(big_rational const& a, T b) { return a.Den == big_int{1} && a.Num == big_int{b}; }
+    template <std::integral T>
+    friend constexpr std::strong_ordering operator<=>(big_rational const& a, T b) { return a.Num <=> big_int{b} * a.Den; }
+
+    // The nearest double, by way of the top 64 bits of each part.
+    constexpr explicit operator double() const
+    {
+      auto to_double = [](big_int const& v) {
+        const big::mag m = v.magnitude();
+        const int bw = big::bit_width(m);
+        double d;
+        if (bw <= 64) d = static_cast<double>(m.empty() ? umax{0} : m[0]);
+        else
+        {
+          // top 64 bits plus a sticky bit for everything below
+          const int sh = bw - 64;
+          const std::size_t w = static_cast<std::size_t>(sh / 64);
+          const int b = sh % 64;
+          umax top = m[w] >> b;
+          if (b != 0 && w + 1 < m.size()) top |= m[w + 1] << (64 - b);
+          bool sticky = b != 0 && (m[w] << (64 - b)) != 0;
+          for (std::size_t i = 0; i < w && !sticky; ++i) sticky = m[i] != 0;
+          d = ldexp(static_cast<double>(top | (sticky ? 1u : 0u)), sh);
+        }
+        return v.negative() ? -d : d;
+      };
+      return to_double(Num) / to_double(Den);
+    }
+    constexpr explicit operator float() const { return static_cast<float>(static_cast<double>(*this)); }
 
     // Mixed with the 64-bit rational: each converts to the other, so these
     // exact overloads keep the operators unambiguous.
@@ -2590,6 +2633,14 @@ namespace beman::inside::detail
     friend constexpr big_rational operator/(big_rational const& a, rational const& b) { return a / big_rational{b}; }
     friend constexpr big_rational operator/(rational const& a, big_rational const& b) { return big_rational{a} / b; }
   };
+  constexpr big_rational abs(big_rational a) { a.Num = abs(a.Num); return a; }
+
+  // gcd of two fractions: gcd of numerators over lcm of denominators.
+  constexpr big_rational gcd(big_rational const& a, big_rational const& b)
+  {
+    const big_int dg = gcd(a.Den, b.Den);
+    return {gcd(a.Num, b.Num), a.Den / dg * b.Den};
+  }
 } // namespace beman::inside::detail
 
 #endif // BEMAN_INSIDE_BIG_GRIDS
@@ -2600,10 +2651,61 @@ namespace beman::inside::detail
 #  define BEMAN_INSIDE_GRID_ABI small_grids_v1
 #endif
 
+//---------------------------------------------------------------------------
+// The grid-number vocabulary, the same in both modes:
+//   grid_rational          the type of a grid's limits and notch
+//   grid_wide              exact integers for grid computations (slot counts,
+//                          value indices): wide enough for every grid
+//   wide_numerator(r) /    a grid number's signed numerator and positive
+//   wide_denominator(r)    denominator as grid_wide (also for a rational)
+//   grid_divides_evenly    a / n is an integer (true for n == 0)
+//   grid_gcd               gcd of two fractions; may fail only with 64-bit
+//                          grid numbers (returns expected there)
+//   fits_rational(r) /     whether, and as which, 64-bit rational a grid
+//   to_rational(r)         number serves the 64-bit-only paths
+//---------------------------------------------------------------------------
 namespace beman::inside::detail
 {
-  // Phase 0: both modes still use the 64-bit rational; big_rational follows.
+#if BEMAN_INSIDE_BIG_GRIDS
+  using grid_rational = big_rational;
+  using grid_wide     = big_int;
+
+  constexpr grid_wide wide_numerator(big_rational const& r) { return r.Num; }
+  constexpr grid_wide wide_denominator(big_rational const& r) { return r.Den; }
+  constexpr grid_wide wide_numerator(rational const& r)
+  {
+    const grid_wide n{r.Numerator};
+    return r.Denominator < 0 ? -n : n;
+  }
+  constexpr grid_wide wide_denominator(rational const& r) { return grid_wide{abs_den(r.Denominator)}; }
+
+  // (Convention, as divides_evenly: everything divides 0 evenly.)
+  constexpr bool grid_divides_evenly(big_rational const& a, big_rational const& n)
+  { return n == 0 || (a / n).is_integer(); }
+
+  // The 64-bit rational of a grid number, for 64-bit-only paths.
+  constexpr bool fits_rational(big_rational const& r) { return r.fits_rational(); }
+  constexpr rational to_rational(big_rational const& r) { return r; }
+  constexpr big_rational grid_gcd(big_rational const& a, big_rational const& b) { return gcd(a, b); }
+#else
   using grid_rational = rational;
+  // A product of three 64-bit magnitudes plus a sign.
+  using grid_wide     = wide_sint<4>;
+
+  constexpr grid_wide wide_numerator(rational const& r) noexcept
+  {
+    const grid_wide n{r.Numerator};
+    return r.Denominator < 0 ? -n : n;
+  }
+  constexpr grid_wide wide_denominator(rational const& r) noexcept
+  { return grid_wide{abs_den(r.Denominator)}; }
+
+  constexpr bool grid_divides_evenly(rational const& a, rational const& n) { return divides_evenly(a, n); }
+
+  constexpr bool fits_rational(rational const&) { return true; }
+  constexpr rational to_rational(rational const& r) { return r; }
+  constexpr std::expected<rational, errc> grid_gcd(rational const& a, rational const& b) { return gcd(a, b); }
+#endif
 }
 
 
@@ -2619,12 +2721,12 @@ namespace beman::inside
   inline namespace BEMAN_INSIDE_GRID_ABI {
   struct interval
   {
-    detail::rational Lower;
-    detail::rational Upper;
+    detail::grid_rational Lower;
+    detail::grid_rational Upper;
 
     interval() = default;
 
-    constexpr interval(detail::rational lower, detail::rational upper)
+    constexpr interval(detail::grid_rational lower, detail::grid_rational upper)
      :Lower{lower}, Upper{upper} { }
     constexpr interval(detail::arithmetic auto lower, detail::arithmetic auto upper)
      :Lower{lower}, Upper{upper} { }
@@ -2639,17 +2741,30 @@ namespace beman::inside
     [[nodiscard]] constexpr bool operator==(const interval& rhs) const = default;
     [[nodiscard]] constexpr interval operator-() const { return interval{-Upper, -Lower}; }
 
-    // A span past the 64-bit rational range (an interval reaching past int64 on
-    // both sides) is tested endpoint by endpoint: equal residues mod notch.
-    [[nodiscard]] constexpr bool divides_evenly(const detail::rational& notch) const
+    // With 64-bit grid numbers a span past the rational range (an interval
+    // reaching past int64 on both sides) is tested endpoint by endpoint:
+    // equal residues mod notch.
+    [[nodiscard]] constexpr bool divides_evenly(const detail::grid_rational& notch) const
     {
+#if BEMAN_INSIDE_BIG_GRIDS
+      return detail::grid_divides_evenly(Upper - Lower, notch);
+#else
       if (const auto span = detail::try_sub(Upper, Lower))
         return detail::divides_evenly(*span, notch);
       return detail::divides_evenly(Lower, notch) && detail::divides_evenly(Upper, notch);
+#endif
     }
 
-    [[nodiscard]] constexpr std::expected<detail::rational, errc> operator/(const detail::rational& notch) const
-    { return (Upper - Lower) / notch; }
+    // The span in units of `notch` (the slot count of a grid).
+    [[nodiscard]] constexpr std::expected<detail::grid_rational, errc> operator/(const detail::grid_rational& notch) const
+    {
+#if BEMAN_INSIDE_BIG_GRIDS
+      if (notch == 0) return std::unexpected{errc::division_by_zero};
+      return (Upper - Lower) / notch;
+#else
+      return (Upper - Lower) / notch;
+#endif
+    }
   };
   }
 
@@ -2661,8 +2776,13 @@ namespace beman::inside
   [[nodiscard]] constexpr bool includes(interval const& iv, detail::rational const& r) noexcept
   { return iv.Lower <= r && r <= iv.Upper; }
 
+#if BEMAN_INSIDE_BIG_GRIDS
+  [[nodiscard]] constexpr bool includes(interval const& iv, detail::grid_rational const& r) noexcept
+  { return iv.Lower <= r && r <= iv.Upper; }
+#endif
+
   [[nodiscard]] constexpr bool includes(interval const& iv, detail::arithmetic auto a) noexcept
-  { return includes(iv, detail::rational{a}); }
+  { return includes(iv, detail::grid_rational{a}); }
 
   // `excludes` means *strictly disjoint* — the intervals share no value.
   // `!includes()` is weaker: it only rules out total containment, so two
@@ -2679,10 +2799,10 @@ namespace beman::inside
   // interval product or quotient (interval arithmetic's four-corner rule).
   namespace detail
   {
-    [[nodiscard]] constexpr interval corner_hull(rational a, rational b, rational c, rational d) noexcept
+    [[nodiscard]] constexpr interval corner_hull(grid_rational a, grid_rational b, grid_rational c, grid_rational d) noexcept
     {
-      const rational lo1 = a < b ? a : b, hi1 = a < b ? b : a;
-      const rational lo2 = c < d ? c : d, hi2 = c < d ? d : c;
+      const grid_rational lo1 = a < b ? a : b, hi1 = a < b ? b : a;
+      const grid_rational lo2 = c < d ? c : d, hi2 = c < d ? d : c;
       return interval{lo1 < lo2 ? lo1 : lo2, hi1 < hi2 ? hi2 : hi1};
     }
   }
@@ -2699,7 +2819,7 @@ namespace beman::inside
   [[nodiscard]] inline constexpr std::expected<interval, errc> operator+(const interval& lhs, const interval& rhs)
   {
     return detail::lift(
-      [](detail::rational l, detail::rational u){ return interval{l, u}; },
+      [](detail::grid_rational l, detail::grid_rational u){ return interval{l, u}; },
       lhs.Lower + rhs.Lower, lhs.Upper + rhs.Upper);
   }
 
@@ -3069,22 +3189,6 @@ namespace beman::inside::detail
 
 
 
-namespace beman::inside::detail
-{
-  // Wide enough for every exact grid computation on 64-bit grid numbers: a
-  // product of three 64-bit magnitudes plus a sign.
-  using grid_wide = wide_sint<4>;
-
-  // A grid number's signed numerator and positive denominator, widened.
-  constexpr grid_wide wide_numerator(rational const& r) noexcept
-  {
-    const grid_wide n{r.Numerator};
-    return r.Denominator < 0 ? -n : n;
-  }
-  constexpr grid_wide wide_denominator(rational const& r) noexcept
-  { return grid_wide{abs_den(r.Denominator)}; }
-}
-
 namespace beman::inside
 {
   //---------------------------------------------------------------------------
@@ -3094,11 +3198,17 @@ namespace beman::inside
   // compile-time result-grid inference: every inside arithmetic operator computes
   // its result grid here, so the result interval contains every reachable value.
   //---------------------------------------------------------------------------
+  // A grid corner: a number (int / float / rational / grid number), or
+  // anything that converts to the 64-bit rational, such as an inside.
+  template <typename T>
+  concept grid_number_like =
+      std::convertible_to<T, detail::grid_rational> || std::convertible_to<T, detail::rational>;
+
   inline namespace BEMAN_INSIDE_GRID_ABI {
   struct grid
   {
     interval Interval;
-    detail::rational Notch;
+    detail::grid_rational Notch;
 
     grid() = default;
     // Corner ctors accept any type convertible to `rational` — int/float/rational and
@@ -3107,31 +3217,37 @@ namespace beman::inside
     // braced `{lo, hi}` can't deduce to a template parameter, so the `grid{{lo,hi}, notch}`
     // spelling unambiguously picks `grid(interval, rational)` below. The conversion is
     // resolved at the call site, so grid.hpp needs no dependency on `inside`.
-    constexpr grid(std::convertible_to<detail::rational> auto lower,
-                   std::convertible_to<detail::rational> auto upper,
-                   std::convertible_to<detail::rational> auto notch)
-      :grid{interval{lower, upper}, notch} { }
+    constexpr grid(grid_number_like auto lower, grid_number_like auto upper, grid_number_like auto notch)
+      :grid{interval{to_number(lower), to_number(upper)}, to_number(notch)} { }
     // Two limits: the notch is derived — gcd(1, Lower, Upper), the coarsest
     // step 1/k that keeps every integer and both limits on the lattice. Integer
     // limits give 1; {0.5, 10} gives 1/2; {frac<-6,5>, frac<3,5>} gives 1/5.
-    constexpr grid(std::convertible_to<detail::rational> auto lower,
-                   std::convertible_to<detail::rational> auto upper)
-      :grid{interval{lower, upper}, derive_notch(lower, upper)} { }
-    constexpr grid(std::convertible_to<detail::rational> auto lower)
-      :grid{interval{lower, lower}, detail::rational{0}} { }
-    constexpr grid(interval val, detail::rational notch):Interval{val}, Notch{notch} { }
+    constexpr grid(grid_number_like auto lower, grid_number_like auto upper)
+      :grid{interval{to_number(lower), to_number(upper)}, derive_notch(lower, upper)} { }
+    constexpr grid(grid_number_like auto lower)
+      :grid{interval{to_number(lower), to_number(lower)}, detail::grid_rational{0}} { }
+    constexpr grid(interval val, detail::grid_rational notch):Interval{val}, Notch{notch} { }
 
   private:
-    // A combined denominator past imax has no rational notch: fall back to a
-    // continuous grid (notch 0), which is always valid.
-    static constexpr detail::rational derive_notch(auto lower, auto upper)
+    template <typename T>
+    static constexpr detail::grid_rational to_number(T const& v)
+    {
+      if constexpr (std::convertible_to<T, detail::grid_rational>) return detail::grid_rational{v};
+      else                                                          return detail::grid_rational{detail::rational{v}};
+    }
+
+    // With 64-bit grid numbers a combined denominator past imax has no
+    // rational notch: fall back to a continuous grid (notch 0), always valid.
+    static constexpr detail::grid_rational derive_notch(auto lower, auto upper)
     {
       check_short_binary(lower);
       check_short_binary(upper);
-      const detail::rational lo{lower}, hi{upper};
-      return detail::gcd(detail::rational{1}, lo)
-          .and_then([&](detail::rational g) { return detail::gcd(g, hi); })
-          .value_or(detail::rational{0});
+      const detail::grid_rational lo = to_number(lower), hi = to_number(upper);
+      return detail::lift([](detail::grid_rational const& a, detail::grid_rational const& b) { return detail::grid_gcd(a, b); },
+                          detail::lift([](detail::grid_rational const& a, detail::grid_rational const& b) { return detail::grid_gcd(a, b); },
+                                       detail::grid_rational{1}, lo),
+                          hi)
+          .value_or(detail::grid_rational{0});
     }
 
     // A floating-point limit is taken as its exact binary value, so 0.1 would
@@ -3141,7 +3257,7 @@ namespace beman::inside
     static constexpr void check_short_binary([[maybe_unused]] T v)
     {
       if constexpr (std::floating_point<T>)
-        if (std::is_constant_evaluated() && detail::abs_den(detail::rational{v}.Denominator) > 1024)
+        if (std::is_constant_evaluated() && detail::grid_wide{1024} < detail::wide_denominator(detail::grid_rational{v}))
           detail::constexpr_error<
             // Clang prints only the first ~34 characters: lead with the fix.
             "float limit: use _r literal (0.1_r) or give a notch {{lo, hi}, per<D>}; "
@@ -3161,7 +3277,7 @@ namespace beman::inside
       // Lower must sit on the notch lattice. divides_evenly avoids forming the
       // (possibly umax-overflowing) Lower/Notch quotient, so a grid finer than
       // uint64 index space is still valid (it stores as rational).
-      static_assert(G.Notch == 0 || detail::divides_evenly(G.Interval.Lower, G.Notch));
+      static_assert(G.Notch == 0 || detail::grid_divides_evenly(G.Interval.Lower, G.Notch));
 
       return true;
     }
@@ -3170,7 +3286,7 @@ namespace beman::inside
     // error instead of failing a static_assert — for grids built from runtime
     // config. A value, so it can't be an inside<G,P> template argument.
     [[nodiscard]] static constexpr std::expected<grid, errc>
-    try_make(interval iv, detail::rational notch)
+    try_make(interval iv, detail::grid_rational notch)
     {
       if (iv.Lower > iv.Upper)
         return std::unexpected{errc::domain_error};
@@ -3178,7 +3294,7 @@ namespace beman::inside
         return std::unexpected{errc::domain_error};
       if (!iv.divides_evenly(notch))
         return std::unexpected{errc::rounding_error};
-      if (notch != 0 && !detail::divides_evenly(iv.Lower, notch))
+      if (notch != 0 && !detail::grid_divides_evenly(iv.Lower, notch))
         return std::unexpected{errc::rounding_error};
       return grid{iv, notch};
     }
@@ -3222,14 +3338,18 @@ namespace beman::inside
     // True when `v` is an *exact* slot: in the interval AND on a notch (notch-0
     // grids store verbatim, so any in-range value qualifies). Used to admit a
     // single representable value (e.g. `0_ins`) regardless of whole-range mapping.
-    [[nodiscard]] constexpr bool representable(detail::rational v) const noexcept
+    [[nodiscard]] constexpr bool representable(detail::grid_rational v) const noexcept
     {
       if (!includes(Interval, v)) return false;
       if (Notch == 0) return true;
+#if BEMAN_INSIDE_BIG_GRIDS
+      return detail::grid_divides_evenly(v - Interval.Lower, Notch);
+#else
       auto diff = v - Interval.Lower;            // expected<rational, errc>
       if (!diff) return false;
       auto off = diff.value() / Notch;           // expected<rational, errc>
       return off.has_value() && detail::abs_den(off->Denominator) == 1;
+#endif
     }
 
     // operator== be default for structural type
@@ -3335,75 +3455,54 @@ namespace beman::inside
   // Dyadic grid: power-of-2 notch denominator and Lower denominator, so every
   // on-grid value is exactly representable in IEEE-754 `double`. Precondition
   // for double-backed (`f64`) storage.
+  // A positive power of two, and its log2 (exact at any width).
+  constexpr bool is_pow2(grid_wide const& v) noexcept
+  { return grid_wide{0} < v && v == (grid_wide{1} << (bit_width_of(v) - 1)); }
+
   template <grid G>
   inline constexpr bool dyadic_grid =
-       G.Notch.Numerator != 0
-    && std::has_single_bit(detail::abs_den(G.Notch.Denominator))
-    && std::has_single_bit(detail::abs_den(G.Interval.Lower.Denominator));
+       G.Notch != 0
+    && is_pow2(wide_denominator(G.Notch))
+    && is_pow2(wide_denominator(G.Interval.Lower));
 
-  // log2 of a power-of-two magnitude (>= 1); 0 for 1.
-  constexpr int log2_pow2_mag(umax d) noexcept { return std::countr_zero(d); }
-
-  // |r · 2^f| as an integer. On a dyadic grid every endpoint's denominator is a
-  // power of two dividing 2^f, so r·2^f is integral. Writes |N| and returns true
-  // when it fits in umax; returns false on overflow (which already means ≥ 2^53).
-  constexpr bool scaled_numerator(const rational& r, int f, umax& out) noexcept
+  // Bits of |r · 2^f| — an integer on a dyadic grid, where r's denominator is
+  // a power of two dividing 2^f (0 for r == 0).
+  constexpr int scaled_numerator_bits(grid_rational const& r, int f) noexcept
   {
-    if (r.Numerator == 0) { out = 0; return true; }
-    const int sh = f - log2_pow2_mag(abs_den(r.Denominator));   // 0 <= sh <= f
-    if (sh >= 64) return false;
-    if (r.Numerator > (~umax{0} >> sh)) return false;           // Numerator << sh overflows
-    out = r.Numerator << sh;
-    return true;
+    const grid_wide n = wide_numerator(r);
+    if (n == grid_wide{0}) return 0;
+    return bit_width_of(n.negative() ? -n : n) + f - (bit_width_of(wide_denominator(r)) - 1);
   }
 
-  // `double`-exactness of a dyadic grid: the IEEE-754 double path equals the
-  // exact grid arithmetic iff, at the coarsest-magnitude end, the value's ULP is
-  // no coarser than the notch. Writing v = N·2^(−f) with f = log2(den(Notch)),
-  // that is |N| < 2^53 (53-bit significand) AND f ≤ 1022 (notch ≥ smallest
-  // normal, so no on-grid value is subnormal). The 2^1024 overflow ceiling is
-  // unreachable once |N| < 2^53. Necessary precondition for `f64` storage.
-  template <grid G>
-  constexpr bool compute_double_exact() noexcept
+  // `fp`-exactness of a dyadic grid: the IEEE-754 path equals the exact grid
+  // arithmetic iff, at the coarsest-magnitude end, the value's ULP is no
+  // coarser than the notch. Writing v = N·2^(−f) with f = log2(den(Notch)),
+  // that is |N| < 2^Digits (the significand) AND f ≤ MaxF (notch ≥ the
+  // smallest normal, so no on-grid value is subnormal). The overflow ceiling
+  // is unreachable once |N| < 2^Digits.
+  template <grid G, int Digits, int MaxF>
+  constexpr bool compute_fp_exact() noexcept
   {
     if constexpr (!dyadic_grid<G>) return false;
     else
     {
-      constexpr int f = log2_pow2_mag(abs_den(G.Notch.Denominator));
-      if (f > 1022) return false;
-      umax nlo = 0, nhi = 0;
-      if (!scaled_numerator(G.Interval.Lower, f, nlo)) return false;
-      if (!scaled_numerator(G.Interval.Upper, f, nhi)) return false;
-      constexpr umax lim = umax{1} << 53;
-      return nlo < lim && nhi < lim;
+      constexpr int f = bit_width_of(wide_denominator(G.Notch)) - 1;
+      return f <= MaxF
+          && scaled_numerator_bits(G.Interval.Lower, f) <= Digits
+          && scaled_numerator_bits(G.Interval.Upper, f) <= Digits;
     }
   }
 
+  // double: 53-bit significand, notch at least 2^-1022. Necessary
+  // precondition for `f64` storage.
   template <grid G>
-  inline constexpr bool double_exact = compute_double_exact<G>();
+  inline constexpr bool double_exact = compute_fp_exact<G, 53, 1022>();
 
-  // `float`-exactness: the binary32 analogue of double_exact. Every on-grid value
-  // v = N·2^(−f) must fit float's 24-bit significand (|N| < 2^24) with f ≤ 126
-  // (notch ≥ float's smallest normal, so no on-grid value is subnormal).
-  // Necessary precondition for `f32` (binary32-backed) storage.
+  // float: 24-bit significand, notch at least 2^-126. Necessary precondition
+  // for `f32` (binary32-backed) storage.
   template <grid G>
-  constexpr bool compute_float_exact() noexcept
-  {
-    if constexpr (!dyadic_grid<G>) return false;
-    else
-    {
-      constexpr int f = log2_pow2_mag(abs_den(G.Notch.Denominator));
-      if (f > 126) return false;
-      umax nlo = 0, nhi = 0;
-      if (!scaled_numerator(G.Interval.Lower, f, nlo)) return false;
-      if (!scaled_numerator(G.Interval.Upper, f, nhi)) return false;
-      constexpr umax lim = umax{1} << 24;
-      return nlo < lim && nhi < lim;
-    }
-  }
+  inline constexpr bool float_exact = compute_fp_exact<G, 24, 126>();
 
-  template <grid G>
-  inline constexpr bool float_exact = compute_float_exact<G>();
 
   // Fixed-width raw storage (policy_flag.hpp i8..u64) — pin the exact backing
   // type instead of letting storage_min pick the smallest fit.
@@ -3550,8 +3649,8 @@ namespace beman::inside
     // gcd returns expected — lift it so a notch-denominator overflow produces
     // errc::overflow rather than a silently wrapped result grid.
     return detail::lift(
-      [](interval i, detail::rational n){ return grid{i, n}; },
-      lhs.Interval + rhs.Interval, detail::gcd(lhs.Notch, rhs.Notch));
+      [](interval i, detail::grid_rational n){ return grid{i, n}; },
+      lhs.Interval + rhs.Interval, detail::grid_gcd(lhs.Notch, rhs.Notch));
   }
 
   //---------------------------------------------------------------------------
@@ -3572,10 +3671,10 @@ namespace beman::inside
     // continuous (rational-backed).
     const bool lp = lhs.Interval.Lower == lhs.Interval.Upper;
     const bool rp = rhs.Interval.Lower == rhs.Interval.Upper;
-    const detail::rational ln = (lp && !rp) ? detail::abs(lhs.Interval.Lower) : lhs.Notch;
-    const detail::rational rn = (rp && !lp) ? detail::abs(rhs.Interval.Lower) : rhs.Notch;
+    const detail::grid_rational ln = (lp && !rp) ? detail::abs(lhs.Interval.Lower) : lhs.Notch;
+    const detail::grid_rational rn = (rp && !lp) ? detail::abs(rhs.Interval.Lower) : rhs.Notch;
     return detail::lift(
-      [](interval i, detail::rational n){ return grid{i, n}; },
+      [](interval i, detail::grid_rational n){ return grid{i, n}; },
       lhs.Interval * rhs.Interval, ln * rn);
   }
 
@@ -3586,7 +3685,7 @@ namespace beman::inside
   {
     auto d = lhs.Interval / rhs.Interval;
     if (d.has_value())
-      return grid{*d, detail::rational{0}};
+      return grid{*d, detail::grid_rational{0}};
 
     // Divisor interval includes zero — exclude zero for result interval.
     if (rhs.Interval.Lower == 0 && rhs.Interval.Upper == 0)
@@ -3595,7 +3694,7 @@ namespace beman::inside
     // `step` = smallest non-zero divisor magnitude; splits the divisor interval
     // into positive [step, Upper] and negative [Lower, -step] (skipping zero).
     // Both sides present → the result is their union.
-    detail::rational step = (rhs.Notch != 0) ? detail::abs(rhs.Notch) : detail::rational{1};
+    detail::grid_rational step = (rhs.Notch != 0) ? detail::abs(rhs.Notch) : detail::grid_rational{1};
     bool has_pos = 0 < rhs.Interval.Upper;
     bool has_neg = 0 > rhs.Interval.Lower;
 
@@ -3604,19 +3703,19 @@ namespace beman::inside
       return detail::lift(
         [](interval pos, interval neg){
           return grid{interval{neg.Lower < pos.Lower ? neg.Lower : pos.Lower,
-                               neg.Upper < pos.Upper ? pos.Upper : neg.Upper}, detail::rational{0}};
+                               neg.Upper < pos.Upper ? pos.Upper : neg.Upper}, detail::grid_rational{0}};
         },
         lhs.Interval / interval{step, rhs.Interval.Upper},
         lhs.Interval / interval{rhs.Interval.Lower, -step});
     }
     else if (has_pos)
     {
-      return detail::lift([](interval i){ return grid{i, detail::rational{0}}; },
+      return detail::lift([](interval i){ return grid{i, detail::grid_rational{0}}; },
                   lhs.Interval / interval{step, rhs.Interval.Upper});
     }
     else
     {
-      return detail::lift([](interval i){ return grid{i, detail::rational{0}}; },
+      return detail::lift([](interval i){ return grid{i, detail::grid_rational{0}}; },
                   lhs.Interval / interval{rhs.Interval.Lower, -step});
     }
   }
@@ -3636,9 +3735,9 @@ namespace beman::inside
     const interval iv{lhs.Interval.Lower < rhs.Interval.Lower ? lhs.Interval.Lower : rhs.Interval.Lower,
                       lhs.Interval.Upper < rhs.Interval.Upper ? rhs.Interval.Upper : lhs.Interval.Upper};
     if (lhs.Notch == 0 || rhs.Notch == 0)
-      return grid{iv, detail::rational{0}};
-    return detail::lift([iv](detail::rational g){ return grid{iv, g}; },
-                detail::gcd(lhs.Notch, rhs.Notch));
+      return grid{iv, detail::grid_rational{0}};
+    return detail::lift([iv](detail::grid_rational g){ return grid{iv, g}; },
+                detail::grid_gcd(lhs.Notch, rhs.Notch));
   }
 } // namespace beman::inside
 
@@ -3867,20 +3966,24 @@ namespace beman::inside
     //-------------------------------------------------------------------------
     constexpr bool grid_value_bounds(grid g, umax& max_num, umax& max_den) noexcept
     {
-      if (g.Notch.Numerator == 0 && !(g.Interval.Lower == g.Interval.Upper))
+      if (g.Notch == 0 && !(g.Interval.Lower == g.Interval.Upper))
         return false;                          // continuous: dens unbounded
+      if (!fits_rational(g.Interval.Lower) || !fits_rational(g.Interval.Upper) || !fits_rational(g.Notch))
+        return false;                          // past 64-bit grid numbers: nothing provable here
+      const rational lower = to_rational(g.Interval.Lower), upper = to_rational(g.Interval.Upper);
+      const rational notch = to_rational(g.Notch);
 
-      umax d_lo = abs_den(g.Interval.Lower.Denominator);
-      umax d_hi = abs_den(g.Interval.Upper.Denominator);
-      umax d_no = (g.Notch.Numerator == 0) ? umax{1} : abs_den(g.Notch.Denominator);
+      umax d_lo = abs_den(lower.Denominator);
+      umax d_hi = abs_den(upper.Denominator);
+      umax d_no = (notch.Numerator == 0) ? umax{1} : abs_den(notch.Denominator);
 
       umax d_common;
       if (mul_overflow(d_lo, d_hi, &d_common)) return false;
       if (mul_overflow(d_common, d_no, &d_common)) return false;
 
       umax lo_scaled, hi_scaled;
-      if (mul_overflow(g.Interval.Lower.Numerator, d_common / d_lo, &lo_scaled)) return false;
-      if (mul_overflow(g.Interval.Upper.Numerator, d_common / d_hi, &hi_scaled)) return false;
+      if (mul_overflow(lower.Numerator, d_common / d_lo, &lo_scaled)) return false;
+      if (mul_overflow(upper.Numerator, d_common / d_hi, &hi_scaled)) return false;
 
       max_num = lo_scaled > hi_scaled ? lo_scaled : hi_scaled;
       max_den = d_common;
@@ -3923,7 +4026,7 @@ namespace beman::inside
     // so values map 1:1 to integers. Gates the implicit imax/size_t conversions.
     template <grid G>
     inline constexpr bool notch_is_unit_integer =
-      abs_den(G.Notch.Denominator) == 1 && G.Notch.Numerator != 0;
+      wide_denominator(G.Notch) == grid_wide{1} && G.Notch != 0;
 
     // ONLY type conversion, NO value representation conversion calculation
     template <insidable B>
@@ -4625,7 +4728,10 @@ namespace beman::inside::detail
     // A point (Lower == Upper) holds its value in the type — even under a
     // width flag, whose raw stores it again.
     if constexpr (lower_of<X> == upper_of<X>)
-      return static_cast<W>(exact_quotient(lower_of<X>, Unit));
+    {
+      constexpr grid_wide q = exact_quotient(lower_of<X>, Unit);
+      return static_cast<W>(q);
+    }
     else
     {
       constexpr grid_wide scale = exact_quotient(notch_of<X>, Unit);
@@ -4886,7 +4992,7 @@ namespace beman::inside::detail
       const exact_int index = slot.Index;
       if (!slot.Exact && !has_policy<L, P, snap> && policy.round_check()) [[unlikely]]
       { fail(errc::rounding_error); return lhs; }
-      const exact_int count{grid_of<L>.slot_count()};
+      constexpr exact_int count = static_cast<exact_int>(grid_of<L>.slot_count());
       if (index.negative() || index > count) [[unlikely]]
       {
         auto saturate = [](exact_int const& d) -> imax {
@@ -7177,7 +7283,7 @@ namespace beman::inside
       else if constexpr (detail::has_qformat_fast_path<inside>)
         return detail::q_format_decode(*this);
       else
-        return (*(Raw * G.Notch) + G.Interval.Lower).value();
+        return (*(Raw * notch_of<inside>) + lower_of<inside>).value();
     }
 
     // to<T>() — typed-error scalar extraction (mirrors rational::to<T>, extended
@@ -7248,9 +7354,9 @@ namespace beman::inside
       if constexpr (detail::index_raw<inside> && detail::is_integer_aligned<inside>)
         return {detail::to_value(*this), 1};
       else if constexpr (detail::index_raw<inside> && detail::has_qformat_fast_path<inside>
-                         && std::has_single_bit(detail::abs_den(G.Notch.Denominator)))
+                         && std::has_single_bit(detail::abs_den(notch_of<inside>.Denominator)))
       {
-        constexpr imax nd = detail::abs_den(G.Notch.Denominator);
+        constexpr imax nd = detail::abs_den(notch_of<inside>.Denominator);
         constexpr int  k  = std::countr_zero(static_cast<umax>(nd));
         const imax num = detail::raw_imax(*this) + detail::lower_imax<inside> * nd;
         const int  tz  = std::countr_zero(static_cast<umax>(num));   // num == 0: 64
@@ -7287,8 +7393,10 @@ namespace beman::inside
         // counts the slot from the opposite end instead.
         using W = detail::index_work_t<negative, inside, G.Notch, inside, G.Notch>;
         if constexpr (detail::index_raw<inside> && detail::index_raw<negative>)
-          neg = negative::from_raw(static_cast<detail::raw_t<negative>>(
-              static_cast<W>(G.slot_count()) - static_cast<W>(Raw)));
+        {
+          constexpr W count = static_cast<W>(G.slot_count());
+          neg = negative::from_raw(static_cast<detail::raw_t<negative>>(count - static_cast<W>(Raw)));
+        }
         else
           neg = detail::from_value_index<negative>(W{0} - detail::value_index<W>(*this));
       }
@@ -8458,8 +8566,8 @@ namespace beman::inside
         }
         else
         {
-          detail::rational val = (G.Interval.Lower
-                          + (detail::rational{slot()} * G.Notch).value()).value();
+          detail::rational val = (detail::to_rational(G.Interval.Lower)
+                          + (detail::rational{slot()} * detail::to_rational(G.Notch)).value()).value();
           return value_type{val};
         }
       }
@@ -8507,8 +8615,8 @@ namespace beman::inside
       {
         // The result has integer denominator (start is on the grid) so the
         // numerator is the index directly.
-        auto offset = ((detail::as_rational(start) - G.Interval.Lower)
-                       / G.Notch).value();
+        auto offset = ((detail::as_rational(start) - detail::to_rational(G.Interval.Lower))
+                       / detail::to_rational(G.Notch)).value();
         StartIndex = offset.Numerator;
       }
     }
@@ -11639,6 +11747,11 @@ namespace beman::inside
     return str;
   }
 
+#if BEMAN_INSIDE_BIG_GRIDS
+  // A grid number: the rational form when it fits 64 bits, else num/den.
+  [[nodiscard]] inline std::string to_string(detail::big_rational const& r);
+#endif
+
   [[nodiscard]] inline std::string to_string(interval ival)
   {
     std::string str{"["};
@@ -11748,6 +11861,40 @@ namespace beman::inside
   template <std::size_t N, bool S>
   [[nodiscard]] inline std::string to_string(detail::wide_int<N, S> v) { return detail::wide_to_decimal(v); }
 
+#if BEMAN_INSIDE_BIG_GRIDS
+  // A grid number of any size, in decimal (reads the interned limbs; no new
+  // big values are formed at runtime).
+  [[nodiscard]] inline std::string to_string(detail::big_int const& v)
+  {
+    detail::big::mag m = v.magnitude();
+    std::string out;
+    do
+    {
+      umax rem = 0;                                     // m /= 10^19, rem = m % 10^19
+      for (std::size_t i = m.size(); i-- > 0;)
+      {
+        const auto d = detail::limb::div(rem, m[i], umax{10'000'000'000'000'000'000ull});
+        m[i] = d.Hi;
+        rem = d.Lo;
+      }
+      detail::big::trim(m);
+      std::string part = std::to_string(rem);
+      if (!m.empty()) part.insert(0, 19 - part.size(), '0');
+      out.insert(0, part);
+    } while (!m.empty());
+    return v.negative() ? "-" + out : out;
+  }
+#endif
+
+#if BEMAN_INSIDE_BIG_GRIDS
+  [[nodiscard]] inline std::string to_string(detail::big_rational const& r)
+  {
+    if (r.fits_rational()) return beman::inside::to_string(static_cast<detail::rational>(r));
+    const std::string num = beman::inside::to_string(r.Num);
+    return r.is_integer() ? num : num + "/" + beman::inside::to_string(r.Den);
+  }
+#endif
+
   template <insidable B>
   [[nodiscard]] inline std::string to_string(B b)
   {
@@ -11763,7 +11910,8 @@ namespace beman::inside
     str += " {";
     str += beman::inside::to_string(+b.raw());
     str += "[" + std::string(detail::type_name<detail::raw_t<B>>());
-    str += " Max:" + beman::inside::to_string(grid_of<B>.slot_count()) + "] ";
+    constexpr auto slots = grid_of<B>.slot_count();
+    str += " Max:" + beman::inside::to_string(slots) + "] ";
     str += beman::inside::to_string(grid_of<B>);
     str += "}";
     return str;
@@ -11928,9 +12076,9 @@ struct std::numeric_limits<beman::inside::inside<G, P>>
   static constexpr int digits   = std::numeric_limits<beman::inside::detail::raw_t<B>>::digits;
   static constexpr int digits10 = std::numeric_limits<beman::inside::detail::raw_t<B>>::digits10;
 
-  static constexpr B min()    noexcept { return B{G.Interval.Lower}; }
-  static constexpr B max()    noexcept { return B{G.Interval.Upper}; }
-  static constexpr B lowest() noexcept { return B{G.Interval.Lower}; }
+  static constexpr B min()    noexcept { return B{beman::inside::lower_of<B>}; }
+  static constexpr B max()    noexcept { return B{beman::inside::upper_of<B>}; }
+  static constexpr B lowest() noexcept { return B{beman::inside::lower_of<B>}; }
   // Exact types have no rounding noise — epsilon and round_error are 0 when
   // 0 is on the grid (it always is when 0 ∈ interval, since the grid is
   // validated such that Lower is an integer multiple of Notch). When 0 is
@@ -11942,7 +12090,7 @@ struct std::numeric_limits<beman::inside::inside<G, P>>
                && beman::inside::detail::rational{0} <= G.Interval.Upper)
       return B{beman::inside::detail::rational{0}};
     else
-      return B{G.Interval.Lower};
+      return B{beman::inside::lower_of<B>};
   }
   static constexpr B round_error() noexcept { return epsilon(); }
 };
@@ -12003,7 +12151,7 @@ namespace beman::inside
       // More than 2^64 slots: draw limbs uniformly, masked to the slot count's
       // bit width, and reject draws past the count (accepts > 1/2 of draws).
       using W = detail::raw_t<B>;
-      const W count{grid_of<B>.slot_count()};
+      constexpr W count = static_cast<W>(grid_of<B>.slot_count());
       constexpr int top_bits = grid_of<B>.slot_bits() - 64 * (static_cast<int>(sizeof(W) / 8) - 1);
       std::uniform_int_distribution<umax> limb;
       for (;;)

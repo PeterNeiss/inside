@@ -6,6 +6,7 @@
 #define BEMAN_INSIDE_DETAIL_GRID_RATIONAL_HPP
 
 #include <beman/inside/detail/rational.hpp>
+#include <beman/inside/detail/wide_int.hpp>
 
 //---------------------------------------------------------------------------
 // grid_rational — the number type of a grid's limits and notch (the NTTP
@@ -38,10 +39,61 @@
 #  define BEMAN_INSIDE_GRID_ABI small_grids_v1
 #endif
 
+//---------------------------------------------------------------------------
+// The grid-number vocabulary, the same in both modes:
+//   grid_rational          the type of a grid's limits and notch
+//   grid_wide              exact integers for grid computations (slot counts,
+//                          value indices): wide enough for every grid
+//   wide_numerator(r) /    a grid number's signed numerator and positive
+//   wide_denominator(r)    denominator as grid_wide (also for a rational)
+//   grid_divides_evenly    a / n is an integer (true for n == 0)
+//   grid_gcd               gcd of two fractions; may fail only with 64-bit
+//                          grid numbers (returns expected there)
+//   fits_rational(r) /     whether, and as which, 64-bit rational a grid
+//   to_rational(r)         number serves the 64-bit-only paths
+//---------------------------------------------------------------------------
 namespace beman::inside::detail
 {
-  // Phase 0: both modes still use the 64-bit rational; big_rational follows.
+#if BEMAN_INSIDE_BIG_GRIDS
+  using grid_rational = big_rational;
+  using grid_wide     = big_int;
+
+  constexpr grid_wide wide_numerator(big_rational const& r) { return r.Num; }
+  constexpr grid_wide wide_denominator(big_rational const& r) { return r.Den; }
+  constexpr grid_wide wide_numerator(rational const& r)
+  {
+    const grid_wide n{r.Numerator};
+    return r.Denominator < 0 ? -n : n;
+  }
+  constexpr grid_wide wide_denominator(rational const& r) { return grid_wide{abs_den(r.Denominator)}; }
+
+  // (Convention, as divides_evenly: everything divides 0 evenly.)
+  constexpr bool grid_divides_evenly(big_rational const& a, big_rational const& n)
+  { return n == 0 || (a / n).is_integer(); }
+
+  // The 64-bit rational of a grid number, for 64-bit-only paths.
+  constexpr bool fits_rational(big_rational const& r) { return r.fits_rational(); }
+  constexpr rational to_rational(big_rational const& r) { return r; }
+  constexpr big_rational grid_gcd(big_rational const& a, big_rational const& b) { return gcd(a, b); }
+#else
   using grid_rational = rational;
+  // A product of three 64-bit magnitudes plus a sign.
+  using grid_wide     = wide_sint<4>;
+
+  constexpr grid_wide wide_numerator(rational const& r) noexcept
+  {
+    const grid_wide n{r.Numerator};
+    return r.Denominator < 0 ? -n : n;
+  }
+  constexpr grid_wide wide_denominator(rational const& r) noexcept
+  { return grid_wide{abs_den(r.Denominator)}; }
+
+  constexpr bool grid_divides_evenly(rational const& a, rational const& n) { return divides_evenly(a, n); }
+
+  constexpr bool fits_rational(rational const&) { return true; }
+  constexpr rational to_rational(rational const& r) { return r; }
+  constexpr std::expected<rational, errc> grid_gcd(rational const& a, rational const& b) { return gcd(a, b); }
+#endif
 }
 
 #endif

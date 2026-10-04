@@ -22,12 +22,12 @@ namespace beman::inside
   inline namespace BEMAN_INSIDE_GRID_ABI {
   struct interval
   {
-    detail::rational Lower;
-    detail::rational Upper;
+    detail::grid_rational Lower;
+    detail::grid_rational Upper;
 
     interval() = default;
 
-    constexpr interval(detail::rational lower, detail::rational upper)
+    constexpr interval(detail::grid_rational lower, detail::grid_rational upper)
      :Lower{lower}, Upper{upper} { }
     constexpr interval(detail::arithmetic auto lower, detail::arithmetic auto upper)
      :Lower{lower}, Upper{upper} { }
@@ -42,17 +42,30 @@ namespace beman::inside
     [[nodiscard]] constexpr bool operator==(const interval& rhs) const = default;
     [[nodiscard]] constexpr interval operator-() const { return interval{-Upper, -Lower}; }
 
-    // A span past the 64-bit rational range (an interval reaching past int64 on
-    // both sides) is tested endpoint by endpoint: equal residues mod notch.
-    [[nodiscard]] constexpr bool divides_evenly(const detail::rational& notch) const
+    // With 64-bit grid numbers a span past the rational range (an interval
+    // reaching past int64 on both sides) is tested endpoint by endpoint:
+    // equal residues mod notch.
+    [[nodiscard]] constexpr bool divides_evenly(const detail::grid_rational& notch) const
     {
+#if BEMAN_INSIDE_BIG_GRIDS
+      return detail::grid_divides_evenly(Upper - Lower, notch);
+#else
       if (const auto span = detail::try_sub(Upper, Lower))
         return detail::divides_evenly(*span, notch);
       return detail::divides_evenly(Lower, notch) && detail::divides_evenly(Upper, notch);
+#endif
     }
 
-    [[nodiscard]] constexpr std::expected<detail::rational, errc> operator/(const detail::rational& notch) const
-    { return (Upper - Lower) / notch; }
+    // The span in units of `notch` (the slot count of a grid).
+    [[nodiscard]] constexpr std::expected<detail::grid_rational, errc> operator/(const detail::grid_rational& notch) const
+    {
+#if BEMAN_INSIDE_BIG_GRIDS
+      if (notch == 0) return std::unexpected{errc::division_by_zero};
+      return (Upper - Lower) / notch;
+#else
+      return (Upper - Lower) / notch;
+#endif
+    }
   };
   }
 
@@ -64,8 +77,13 @@ namespace beman::inside
   [[nodiscard]] constexpr bool includes(interval const& iv, detail::rational const& r) noexcept
   { return iv.Lower <= r && r <= iv.Upper; }
 
+#if BEMAN_INSIDE_BIG_GRIDS
+  [[nodiscard]] constexpr bool includes(interval const& iv, detail::grid_rational const& r) noexcept
+  { return iv.Lower <= r && r <= iv.Upper; }
+#endif
+
   [[nodiscard]] constexpr bool includes(interval const& iv, detail::arithmetic auto a) noexcept
-  { return includes(iv, detail::rational{a}); }
+  { return includes(iv, detail::grid_rational{a}); }
 
   // `excludes` means *strictly disjoint* — the intervals share no value.
   // `!includes()` is weaker: it only rules out total containment, so two
@@ -82,10 +100,10 @@ namespace beman::inside
   // interval product or quotient (interval arithmetic's four-corner rule).
   namespace detail
   {
-    [[nodiscard]] constexpr interval corner_hull(rational a, rational b, rational c, rational d) noexcept
+    [[nodiscard]] constexpr interval corner_hull(grid_rational a, grid_rational b, grid_rational c, grid_rational d) noexcept
     {
-      const rational lo1 = a < b ? a : b, hi1 = a < b ? b : a;
-      const rational lo2 = c < d ? c : d, hi2 = c < d ? d : c;
+      const grid_rational lo1 = a < b ? a : b, hi1 = a < b ? b : a;
+      const grid_rational lo2 = c < d ? c : d, hi2 = c < d ? d : c;
       return interval{lo1 < lo2 ? lo1 : lo2, hi1 < hi2 ? hi2 : hi1};
     }
   }
@@ -102,7 +120,7 @@ namespace beman::inside
   [[nodiscard]] inline constexpr std::expected<interval, errc> operator+(const interval& lhs, const interval& rhs)
   {
     return detail::lift(
-      [](detail::rational l, detail::rational u){ return interval{l, u}; },
+      [](detail::grid_rational l, detail::grid_rational u){ return interval{l, u}; },
       lhs.Lower + rhs.Lower, lhs.Upper + rhs.Upper);
   }
 

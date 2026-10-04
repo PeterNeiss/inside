@@ -235,20 +235,24 @@ namespace beman::inside
     //-------------------------------------------------------------------------
     constexpr bool grid_value_bounds(grid g, umax& max_num, umax& max_den) noexcept
     {
-      if (g.Notch.Numerator == 0 && !(g.Interval.Lower == g.Interval.Upper))
+      if (g.Notch == 0 && !(g.Interval.Lower == g.Interval.Upper))
         return false;                          // continuous: dens unbounded
+      if (!fits_rational(g.Interval.Lower) || !fits_rational(g.Interval.Upper) || !fits_rational(g.Notch))
+        return false;                          // past 64-bit grid numbers: nothing provable here
+      const rational lower = to_rational(g.Interval.Lower), upper = to_rational(g.Interval.Upper);
+      const rational notch = to_rational(g.Notch);
 
-      umax d_lo = abs_den(g.Interval.Lower.Denominator);
-      umax d_hi = abs_den(g.Interval.Upper.Denominator);
-      umax d_no = (g.Notch.Numerator == 0) ? umax{1} : abs_den(g.Notch.Denominator);
+      umax d_lo = abs_den(lower.Denominator);
+      umax d_hi = abs_den(upper.Denominator);
+      umax d_no = (notch.Numerator == 0) ? umax{1} : abs_den(notch.Denominator);
 
       umax d_common;
       if (mul_overflow(d_lo, d_hi, &d_common)) return false;
       if (mul_overflow(d_common, d_no, &d_common)) return false;
 
       umax lo_scaled, hi_scaled;
-      if (mul_overflow(g.Interval.Lower.Numerator, d_common / d_lo, &lo_scaled)) return false;
-      if (mul_overflow(g.Interval.Upper.Numerator, d_common / d_hi, &hi_scaled)) return false;
+      if (mul_overflow(lower.Numerator, d_common / d_lo, &lo_scaled)) return false;
+      if (mul_overflow(upper.Numerator, d_common / d_hi, &hi_scaled)) return false;
 
       max_num = lo_scaled > hi_scaled ? lo_scaled : hi_scaled;
       max_den = d_common;
@@ -291,7 +295,7 @@ namespace beman::inside
     // so values map 1:1 to integers. Gates the implicit imax/size_t conversions.
     template <grid G>
     inline constexpr bool notch_is_unit_integer =
-      abs_den(G.Notch.Denominator) == 1 && G.Notch.Numerator != 0;
+      wide_denominator(G.Notch) == grid_wide{1} && G.Notch != 0;
 
     // ONLY type conversion, NO value representation conversion calculation
     template <insidable B>

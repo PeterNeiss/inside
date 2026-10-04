@@ -26,7 +26,7 @@ namespace beman::inside
       // More than 2^64 slots: draw limbs uniformly, masked to the slot count's
       // bit width, and reject draws past the count (accepts > 1/2 of draws).
       using W = detail::raw_t<B>;
-      const W count{grid_of<B>.slot_count()};
+      constexpr W count = static_cast<W>(grid_of<B>.slot_count());
       constexpr int top_bits = grid_of<B>.slot_bits() - 64 * (static_cast<int>(sizeof(W) / 8) - 1);
       std::uniform_int_distribution<umax> limb;
       for (;;)

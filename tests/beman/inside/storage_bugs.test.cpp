@@ -115,8 +115,13 @@ TEST(StorageBugsTest, bug_d_gcd_lcm_overflow_propagates_to_grid_operator_plus)
   constexpr grid g1{interval{0_r, 1_r}, big};
   constexpr grid g2{interval{0_r, 1_r}, third};
 
+#if BEMAN_INSIDE_BIG_GRIDS
+  // Big grid numbers: the notch gcd 1/(3·2^62) is exact.
+  static_assert((g1 + g2)->Notch == detail::grid_rational{detail::big_int{1}, detail::big_int{3} * detail::big_int{imax{1} << 62}});
+#else
   static_assert(!((g1 + g2).has_value()));
   static_assert((g1 + g2).error() == errc::overflow);
+#endif
 }
 
 #ifndef BEMAN_INSIDE_MATH_CORDIC

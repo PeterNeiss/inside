@@ -320,7 +320,7 @@ namespace beman::inside
       else if constexpr (detail::has_qformat_fast_path<inside>)
         return detail::q_format_decode(*this);
       else
-        return (*(Raw * G.Notch) + G.Interval.Lower).value();
+        return (*(Raw * notch_of<inside>) + lower_of<inside>).value();
     }
 
     // to<T>() — typed-error scalar extraction (mirrors rational::to<T>, extended
@@ -391,9 +391,9 @@ namespace beman::inside
       if constexpr (detail::index_raw<inside> && detail::is_integer_aligned<inside>)
         return {detail::to_value(*this), 1};
       else if constexpr (detail::index_raw<inside> && detail::has_qformat_fast_path<inside>
-                         && std::has_single_bit(detail::abs_den(G.Notch.Denominator)))
+                         && std::has_single_bit(detail::abs_den(notch_of<inside>.Denominator)))
       {
-        constexpr imax nd = detail::abs_den(G.Notch.Denominator);
+        constexpr imax nd = detail::abs_den(notch_of<inside>.Denominator);
         constexpr int  k  = std::countr_zero(static_cast<umax>(nd));
         const imax num = detail::raw_imax(*this) + detail::lower_imax<inside> * nd;
         const int  tz  = std::countr_zero(static_cast<umax>(num));   // num == 0: 64
@@ -430,8 +430,10 @@ namespace beman::inside
         // counts the slot from the opposite end instead.
         using W = detail::index_work_t<negative, inside, G.Notch, inside, G.Notch>;
         if constexpr (detail::index_raw<inside> && detail::index_raw<negative>)
-          neg = negative::from_raw(static_cast<detail::raw_t<negative>>(
-              static_cast<W>(G.slot_count()) - static_cast<W>(Raw)));
+        {
+          constexpr W count = static_cast<W>(G.slot_count());
+          neg = negative::from_raw(static_cast<detail::raw_t<negative>>(count - static_cast<W>(Raw)));
+        }
         else
           neg = detail::from_value_index<negative>(W{0} - detail::value_index<W>(*this));
       }

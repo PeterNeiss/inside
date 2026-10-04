@@ -265,10 +265,29 @@ namespace beman::inside::detail
     friend constexpr big_int operator/(big_int const& a, big_int const& b);
     friend constexpr big_int operator%(big_int const& a, big_int const& b);
 
-    friend constexpr big_int abs(big_int a) { a.Negative = false; return a; }
+
+    // a · 2^k (k ≥ 0).
+    friend constexpr big_int operator<<(big_int const& a, int k)
+    {
+      if (!a.Limbs && k < 64 && (k == 0 || (a.Small >> (64 - k)) == 0))
+      { big_int r = a; r.Small = a.Small << k; return r; }
+      big::mag m = a.magnitude();
+      const std::size_t words = static_cast<std::size_t>(k / 64);
+      const int bits = k % 64;
+      big::mag r(m.size() + words + 1, 0);
+      for (std::size_t i = 0; i < m.size(); ++i)
+      {
+        r[i + words] |= m[i] << bits;
+        if (bits != 0) r[i + words + 1] |= m[i] >> (64 - bits);
+      }
+      return from_mag(std::move(r), a.Negative);
+    }
   };
 
   struct big_int::divmod_result { big_int Quotient; big_int Remainder; };
+
+  // (Free functions, not hidden friends: callers spell detail::abs / gcd.)
+  constexpr big_int abs(big_int a) { a.Negative = false; return a; }
 
   constexpr auto big_int::divmod(big_int const& a, big_int const& b) -> divmod_result
   {
@@ -381,16 +400,40 @@ namespace beman::inside::detail
     friend constexpr big_rational operator/(big_rational const& a, big_rational const& b)
     { return {a.Num * b.Den, a.Den * b.Num}; }
 
-    friend constexpr big_rational abs(big_rational a) { a.Num = abs(a.Num); return a; }
-
-    // gcd of two fractions: gcd of numerators over lcm of denominators.
-    friend constexpr big_rational gcd(big_rational const& a, big_rational const& b)
-    {
-      const big_int dg = gcd(a.Den, b.Den);
-      return {gcd(a.Num, b.Num), a.Den / dg * b.Den};
-    }
 
     [[nodiscard]] constexpr bool is_integer() const noexcept { return Den == big_int{1}; }
+
+    // With an integer: exact, and unambiguous (an int converts to both).
+    template <std::integral T>
+    friend constexpr bool operator==(big_rational const& a, T b) { return a.Den == big_int{1} && a.Num == big_int{b}; }
+    template <std::integral T>
+    friend constexpr std::strong_ordering operator<=>(big_rational const& a, T b) { return a.Num <=> big_int{b} * a.Den; }
+
+    // The nearest double, by way of the top 64 bits of each part.
+    constexpr explicit operator double() const
+    {
+      auto to_double = [](big_int const& v) {
+        const big::mag m = v.magnitude();
+        const int bw = big::bit_width(m);
+        double d;
+        if (bw <= 64) d = static_cast<double>(m.empty() ? umax{0} : m[0]);
+        else
+        {
+          // top 64 bits plus a sticky bit for everything below
+          const int sh = bw - 64;
+          const std::size_t w = static_cast<std::size_t>(sh / 64);
+          const int b = sh % 64;
+          umax top = m[w] >> b;
+          if (b != 0 && w + 1 < m.size()) top |= m[w + 1] << (64 - b);
+          bool sticky = b != 0 && (m[w] << (64 - b)) != 0;
+          for (std::size_t i = 0; i < w && !sticky; ++i) sticky = m[i] != 0;
+          d = ldexp(static_cast<double>(top | (sticky ? 1u : 0u)), sh);
+        }
+        return v.negative() ? -d : d;
+      };
+      return to_double(Num) / to_double(Den);
+    }
+    constexpr explicit operator float() const { return static_cast<float>(static_cast<double>(*this)); }
 
     // Mixed with the 64-bit rational: each converts to the other, so these
     // exact overloads keep the operators unambiguous.
@@ -405,6 +448,14 @@ namespace beman::inside::detail
     friend constexpr big_rational operator/(big_rational const& a, rational const& b) { return a / big_rational{b}; }
     friend constexpr big_rational operator/(rational const& a, big_rational const& b) { return big_rational{a} / b; }
   };
+  constexpr big_rational abs(big_rational a) { a.Num = abs(a.Num); return a; }
+
+  // gcd of two fractions: gcd of numerators over lcm of denominators.
+  constexpr big_rational gcd(big_rational const& a, big_rational const& b)
+  {
+    const big_int dg = gcd(a.Den, b.Den);
+    return {gcd(a.Num, b.Num), a.Den / dg * b.Den};
+  }
 } // namespace beman::inside::detail
 
 #endif // BEMAN_INSIDE_BIG_GRIDS

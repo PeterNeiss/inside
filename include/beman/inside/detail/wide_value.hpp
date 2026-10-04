@@ -250,7 +250,10 @@ namespace beman::inside::detail
     // A point (Lower == Upper) holds its value in the type — even under a
     // width flag, whose raw stores it again.
     if constexpr (lower_of<X> == upper_of<X>)
-      return static_cast<W>(exact_quotient(lower_of<X>, Unit));
+    {
+      constexpr grid_wide q = exact_quotient(lower_of<X>, Unit);
+      return static_cast<W>(q);
+    }
     else
     {
       constexpr grid_wide scale = exact_quotient(notch_of<X>, Unit);

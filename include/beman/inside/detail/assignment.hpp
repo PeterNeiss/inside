@@ -227,7 +227,7 @@ namespace beman::inside::detail
       const exact_int index = slot.Index;
       if (!slot.Exact && !has_policy<L, P, snap> && policy.round_check()) [[unlikely]]
       { fail(errc::rounding_error); return lhs; }
-      const exact_int count{grid_of<L>.slot_count()};
+      constexpr exact_int count = static_cast<exact_int>(grid_of<L>.slot_count());
       if (index.negative() || index > count) [[unlikely]]
       {
         auto saturate = [](exact_int const& d) -> imax {

@@ -168,7 +168,14 @@ TEST(GridTest, two_limit_ctor_derives_the_notch)
   static_assert(grid{0.1_r, 1}.Notch == rational{1, 10});
   static_assert(grid{0, 0x1p-10}.Notch == rational{1, 1024});      // at the double bound
   static_assert(grid{0, 0x1p-11_r}.Notch == rational{1, 2048});    // exact spelling: no bound
+#if BEMAN_INSIDE_BIG_GRIDS
+  // Big grid numbers: the exact notch 1/(2^62·(2^62−1)), past 64 bits.
+  static_assert(grid{frac<1, (1ll << 62)>, frac<1, (1ll << 62) - 1>}.Notch
+                == detail::grid_rational{detail::big_int{1},
+                                         detail::big_int{1ll << 62} * detail::big_int{(1ll << 62) - 1}});
+#else
   static_assert(grid{frac<1, (1ll << 62)>, frac<1, (1ll << 62) - 1>}.Notch == 0);   // no rational notch
+#endif
   static_assert(grid::validate<grid{frac<-6, 5>, frac<3, 5>}>());
 
   using half = inside<{0.5, 10}>;
@@ -207,8 +214,8 @@ namespace
   template <grid G>
   constexpr bool slot_count_matches()
   {
-    const rational span = (G.Interval.Upper - G.Interval.Lower).value();
-    return rational{G.max_index()} == (span / G.Notch).value();
+    const rational span = (detail::to_rational(G.Interval.Upper) - detail::to_rational(G.Interval.Lower)).value();
+    return rational{G.max_index()} == (span / detail::to_rational(G.Notch)).value();
   }
 }
 

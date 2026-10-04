@@ -137,8 +137,8 @@ namespace beman::inside
         }
         else
         {
-          detail::rational val = (G.Interval.Lower
-                          + (detail::rational{slot()} * G.Notch).value()).value();
+          detail::rational val = (detail::to_rational(G.Interval.Lower)
+                          + (detail::rational{slot()} * detail::to_rational(G.Notch)).value()).value();
           return value_type{val};
         }
       }
@@ -186,8 +186,8 @@ namespace beman::inside
       {
         // The result has integer denominator (start is on the grid) so the
         // numerator is the index directly.
-        auto offset = ((detail::as_rational(start) - G.Interval.Lower)
-                       / G.Notch).value();
+        auto offset = ((detail::as_rational(start) - detail::to_rational(G.Interval.Lower))
+                       / detail::to_rational(G.Notch)).value();
         StartIndex = offset.Numerator;
       }
     }
