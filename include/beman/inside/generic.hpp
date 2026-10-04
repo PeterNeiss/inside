@@ -10,6 +10,8 @@
 #include <beman/inside/grid.hpp>
 #include <beman/inside/policy_flag.hpp>
 
+#include <initializer_list>
+
 //---------------------------------------------------------------------------
 // generic — type-level traits and predicates used everywhere else. Public
 // grid/policy introspection (`grid_of<B>`, `policy_of<B>`, `Lower/Upper/notch_of<B>`,
@@ -399,6 +401,35 @@ namespace beman::inside
 
     template <insidable B>
     inline constexpr imax raw_hi = !index_raw<B> ? upper_imax<B> : static_cast<imax>(max_index_v<B>);
+
+    // The exact raw range: 0 .. slot count for index storage, Lower .. Upper
+    // for value storage (integers there). Sizes the work types below.
+    template <insidable B>
+    inline constexpr grid_wide raw_lo_exact = index_raw<B> ? grid_wide{0} : wide_numerator(lower_of<B>);
+    template <insidable B>
+    inline constexpr grid_wide raw_hi_exact = index_raw<B> ? grid_of<B>.slot_count() : wide_numerator(upper_of<B>);
+
+    // Value bits a signed integer needs to hold every value in [lo, hi].
+    constexpr int signed_value_bits(grid_wide const& lo, grid_wide const& hi) noexcept
+    {
+      auto mag = [](grid_wide const& v) { return bit_width_of(v.negative() ? -(v + grid_wide{1}) : v); };
+      const int a = mag(lo), b = mag(hi);
+      return a > b ? a : b;
+    }
+
+    // Value bits for every value in a list (their min .. max).
+    constexpr int signed_value_bits_of(std::initializer_list<grid_wide> vals) noexcept
+    {
+      grid_wide mn = *vals.begin(), mx = *vals.begin();
+      for (const grid_wide& v : vals) { if (v < mn) mn = v; if (mx < v) mx = v; }
+      return signed_value_bits(mn, mx);
+    }
+
+    // Signed work type for an exact intermediate of Bits value bits: imax for
+    // everything within int64 (the builtin fast paths keep their codegen),
+    // a wide_int beyond.
+    template <int Bits>
+    using work_int_t = int_for_bits_t<(Bits < 63 ? 63 : Bits), true>;
 
     template <insidable L>
     constexpr raw_t<L> raw_from_offset(umax offset) noexcept

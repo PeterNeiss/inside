@@ -108,6 +108,79 @@ namespace beman::inside::detail
   }
 
   //---------------------------------------------------------------------------
+  // unit_fold — clamp/wrap of an integer value v in [SrcLo, SrcHi] onto a
+  // unit-notch integer grid L, exactly. v − Lower and the range
+  // Upper − Lower + 1 may need 65 bits (a grid can span 2^64 values), so the
+  // arithmetic runs in a work type sized from all of them: imax when that
+  // suffices, else a wide_int.
+  //---------------------------------------------------------------------------
+  template <insidable L, grid_wide SrcLo, grid_wide SrcHi>
+  struct unit_fold
+  {
+    static constexpr grid_wide lo = wide_numerator(lower_of<L>);
+    static constexpr grid_wide hi = wide_numerator(upper_of<L>);
+    using W = work_int_t<signed_value_bits_of(
+        {SrcLo, SrcHi, lo, hi, SrcLo - hi, SrcHi - lo, hi - lo + grid_wide{1}})>;
+
+    static constexpr W lower = static_cast<W>(lo);
+    static constexpr W upper = static_cast<W>(hi);
+    static constexpr W span  = static_cast<W>(hi - lo);
+
+    // d saturated to imax (a clamp overshoot or a wrap carry).
+    static constexpr imax saturate(W const& d) noexcept
+    {
+      constexpr W kMin = static_cast<W>(std::numeric_limits<imax>::min());
+      constexpr W kMax = static_cast<W>(std::numeric_limits<imax>::max());
+      return static_cast<imax>(d < kMin ? kMin : kMax < d ? kMax : d);
+    }
+
+    // The raw of Lower + offset (0 ≤ offset ≤ span) in L's encoding.
+    static constexpr raw_t<L> raw_at(W const& offset) noexcept
+    {
+      if constexpr (point_raw<L>)
+        return raw_t<L>{};                              // a point has one slot
+      else if constexpr (index_raw<L>)
+        return static_cast<raw_t<L>>(offset);
+      else if constexpr (rational_raw<L> || fp_raw<L>)
+      {
+        const W v = lower + offset;                     // |v| < 2^64: a grid value
+        const rational r = v < W{0} ? -rational{static_cast<umax>(-v)} : rational{static_cast<umax>(v)};
+        if constexpr (rational_raw<L>) return r;
+        else                           return static_cast<raw_t<L>>(static_cast<double>(r));
+      }
+      else
+        return static_cast<raw_t<L>>(lower + offset);
+    }
+
+    // v = Lower + carry·(span + 1) + offset with 0 ≤ offset ≤ span.
+    struct folded { imax Carry; W Offset; };
+    static constexpr folded fold(W const& v) noexcept
+    {
+      constexpr W range = span + W{1};
+      const W t = v - lower;
+      W q = t / range, w = t % range;
+      if (w < W{0}) { w += range; q -= W{1}; }
+      return {saturate(q), w};
+    }
+  };
+
+  // The integer range of a source: its type's limits, or ±2^64 (every
+  // integer a 64-bit rational or a grid value can be).
+  template <typename R>
+  inline constexpr grid_wide source_lo = [] {
+    if constexpr (std::integral<R>) return grid_wide{std::numeric_limits<R>::min()};
+    else                            return -(grid_wide{1} << 64);
+  }();
+  template <typename R>
+  inline constexpr grid_wide source_hi = [] {
+    if constexpr (std::integral<R>) return grid_wide{std::numeric_limits<R>::max()};
+    else                            return grid_wide{1} << 64;
+  }();
+
+  // An integer-valued rational (|v| < 2^64) as a grid_wide.
+  constexpr grid_wide integer_wide(rational const& v) noexcept { return wide_numerator(v); }
+
+  //---------------------------------------------------------------------------
   // assignment
   //---------------------------------------------------------------------------
   template <typename L, typename R>
@@ -176,18 +249,14 @@ namespace beman::inside::detail
       static constexpr bool wide_unsigned =
           std::is_unsigned_v<R> && sizeof(R) >= sizeof(imax);
 
-      // The interval endpoints exactly (an integer interval may reach past
-      // int64 on either side, e.g. {0, 2^64−1}), and the source as the same type.
-      static constexpr s128 source(R rhs) noexcept
-      {
-        if constexpr (std::is_signed_v<R>) return s128_of(static_cast<imax>(rhs));
-        else                               return s128_of(static_cast<umax>(rhs));
-      }
-      static constexpr bool s128_less(s128 a, s128 b) noexcept
-      { return a.Hi != b.Hi ? a.Hi < b.Hi : a.Lo < b.Lo; }
+      // Exact integer arithmetic for the bounds and the cold clamp/wrap paths:
+      // an integer interval may reach past int64 on either side (e.g.
+      // {0, 2^64−1}), and rhs − Lower may need 65 bits.
+      using fold = unit_fold<L, source_lo<R>, source_hi<R>>;
+      using W = typename fold::W;
 
       // Hot-path range test. Bounds within imax compare as plain integers;
-      // bounds past int64 compare exactly as 128-bit values.
+      // bounds past int64 compare exactly in the fold's work type.
       static constexpr bool out_of_range(R rhs) noexcept
       {
         if constexpr (fits_imax(interval_of<L>))
@@ -201,38 +270,9 @@ namespace beman::inside::detail
         }
         else
         {
-          constexpr s128 lo = s128_of_integer(lower_of<L>), hi = s128_of_integer(upper_of<L>);
-          const s128 v = source(rhs);
-          return s128_less(v, lo) || s128_less(hi, v);
+          const W v = static_cast<W>(rhs);
+          return v < fold::lower || fold::upper < v;
         }
-      }
-
-      // The raw of Lower + w (w = 0 / span is a clamp target). Index storage
-      // counts from 0; integer value storage holds Lower's bits plus w; rational
-      // and fp storage hold the value itself.
-      static constexpr raw_t<L> raw_at_offset(umax w)
-      {
-        if constexpr (index_raw<L>)
-          return raw_cast<L>(w);
-        else if constexpr (rational_raw<L> || fp_raw<L>)
-        {
-          const s128 v = s128_add(s128_of_integer(lower_of<L>), s128_of(w));
-          const rational r = v.Hi < 0 ? -rational{s128_neg(v).Lo} : rational{v.Lo};
-          if constexpr (rational_raw<L>) return r;
-          else                           return static_cast<raw_t<L>>(static_cast<double>(r));
-        }
-        else
-          return raw_cast<L>(s128_of_integer(lower_of<L>).Lo + w);
-      }
-      static constexpr umax span_u = s128_sub(s128_of_integer(upper_of<L>), s128_of_integer(lower_of<L>)).Lo;
-
-      // rhs − bound, saturated to imax (the exact difference can need 65 bits).
-      static constexpr imax saturate(s128 d) noexcept
-      {
-        constexpr imax kMin = std::numeric_limits<imax>::min();
-        constexpr imax kMax = std::numeric_limits<imax>::max();
-        if (d.Hi < 0) return (d.Hi < -1 || d.Lo < (umax{1} << 63)) ? kMin : static_cast<imax>(d.Lo);
-        return (d.Hi > 0 || d.Lo > static_cast<umax>(kMax)) ? kMax : static_cast<imax>(d.Lo);
       }
 
       template<typename A>
@@ -240,23 +280,20 @@ namespace beman::inside::detail
       {
         // Pre: rhs is out of [Lower, Upper] (only called from handle_out_of_range),
         // so the two-way pick is the full clamp.
-        constexpr s128 lo = s128_of_integer(lower_of<L>), hi = s128_of_integer(upper_of<L>);
-        const s128 v = source(rhs);
-        const bool low = s128_less(v, lo);
-        lhs = L::from_raw(raw_at_offset(low ? umax{0} : span_u));
+        const W v = static_cast<W>(rhs);
+        const bool low = v < fold::lower;
+        lhs = L::from_raw(fold::raw_at(low ? W{0} : fold::span));
         if constexpr (clamp_action<plain_t<A>>)
-          action.Fn(lhs, saturate(s128_sub(v, low ? lo : hi)));
+          action.Fn(lhs, fold::saturate(v - (low ? fold::lower : fold::upper)));
       }
 
       template<typename A>
       static constexpr void apply_wrap(L& lhs, R rhs, A&& action)
       {
-        // Modular wrap on the exact offset rhs − Lower (65 bits) into a range of
-        // span + 1 slots (2^64 for a full 64-bit span). The carry floor(offset /
-        // range) saturates at imax, like the carry grid (wrap_carry_grid).
-        constexpr s128 lo = s128_of_integer(lower_of<L>);
-        const auto [carry, w] = s128_floor_divmod(s128_sub(source(rhs), lo), span_u + 1u);
-        lhs = L::from_raw(raw_at_offset(w));
+        // Modular wrap on the exact offset rhs − Lower into span + 1 slots. The
+        // carry saturates at imax, like the carry grid (wrap_carry_grid).
+        const auto [carry, w] = fold::fold(static_cast<W>(rhs));
+        lhs = L::from_raw(fold::raw_at(w));
         if constexpr (wrap_action<plain_t<A>>)
           action.Fn(lhs, make_wrap_carry<L, R>(carry));
       }
@@ -425,14 +462,14 @@ namespace beman::inside::detail
         rational wrapped;
         if (abs_den(rhs_r.Denominator) == 1 && notch_of<L> == 1 && abs_den(lower_of<L>.Denominator) == 1)
         {
-          // Integer value on a unit lattice: fold exactly in 128 bits (the grid
-          // may span 2^64 values, past the rational range).
-          constexpr s128 lo = s128_of_integer(lower_of<L>);
-          constexpr umax range = s128_sub(s128_of_integer(upper_of<L>), lo).Lo + 1u;   // 0 ⇒ 2^64
-          const auto [qq, w] = s128_floor_divmod(s128_sub(s128_of_integer(rhs_r), lo), range);
-          const s128 v = s128_add(lo, s128_of(w));
+          // Integer value on a unit lattice: fold exactly (the grid may span
+          // 2^64 values, past the rational range).
+          using fold = unit_fold<L, source_lo<rational>, source_hi<rational>>;
+          using W = typename fold::W;
+          const auto [qq, w] = fold::fold(static_cast<W>(integer_wide(rhs_r)));
+          const W v = fold::lower + w;
           q = qq;
-          wrapped = v.Hi < 0 ? -rational{s128_neg(v).Lo} : rational{v.Lo};
+          wrapped = v < W{0} ? -rational{static_cast<umax>(-v)} : rational{static_cast<umax>(v)};
         }
         else
         {
@@ -462,92 +499,6 @@ namespace beman::inside::detail
 
         if constexpr (wrap_action<plain_t<A>>)
           action.Fn(lhs, make_wrap_carry<L, R>(q));
-      }
-
-      // 128-bit rounded store — the offset slot of an in-range rhs computed
-      // directly in wide arithmetic when the exact 64-bit rational formation
-      // of (rhs − Lower)/Notch overflows (full-mantissa fp-derived sources on
-      // grids with large |Lower|):
-      //     slot + remainder/divisor = (rhs − Lower)·d_n / (a_dr·a_dl·n_n)
-      // The compile-time divisor factors are gcd-reduced first, so the only
-      // wide operations are one 128×64 multiply and one 128÷64 divide.
-      // ok == false when the reduced divisor or dividend exceeds the 128-bit
-      // envelope (or rhs is out of range — callers check range first).
-      struct wide_quotient { umax Slot; umax Remainder; umax Divisor; bool Ok; };
-
-      static constexpr wide_quotient wide_offset_quotient(rational const& rv)
-      {
-        if constexpr (notch_of<L> == 0)
-          return {};                       // continuous grids never index slots
-        else
-        {
-          constexpr umax n_l     = lower_of<L>.Numerator;
-          constexpr umax a_dl    = abs_den(lower_of<L>.Denominator);
-          constexpr bool low_neg = lower_of<L>.Denominator < 0;
-          constexpr umax n_n     = notch_of<L>.Numerator;   // Notch > 0: d_n > 0
-          constexpr umax d_n     = static_cast<umax>(notch_of<L>.Denominator);
-
-          // Compile-time divisor part; a grid whose a_dl·n_n cannot fit umax
-          // is beyond the wide envelope entirely.
-          constexpr umax den_ct = []{
-            umax p;
-            return mul_overflow(a_dl, n_n, &p) ? umax{0} : p;
-          }();
-          if constexpr (den_ct == 0)
-            return {};
-          else
-          {
-            constexpr umax g1   = std::gcd(d_n, den_ct);
-            constexpr umax d_n1 = d_n / g1;
-            constexpr umax den1 = den_ct / g1;
-
-            const umax a_dr    = abs_den(rv.Denominator);
-            const bool rhs_neg = rv.Denominator < 0;
-
-            // Offset numerator over the common denominator a_dr·a_dl:
-            //   s_r·n_r·a_dl − s_l·n_l·a_dr  (≥ 0 for in-range rhs).
-            // Each product is < 2^127 (numerator < 2^64, denominator ≤ imax),
-            // so the same-sign sum below cannot carry out of 128 bits.
-            const u128 val = umul(rv.Numerator, a_dl);
-            const u128 low = umul(n_l, a_dr);
-            u128 offset;
-            if (!rhs_neg && low_neg)
-              offset = u128{val.Hi + low.Hi + (val.Lo + low.Lo < val.Lo ? 1u : 0u),
-                            val.Lo + low.Lo};
-            else if (!rhs_neg && !low_neg)
-            {
-              if (cmp128(val, low) < 0) return {};         // rhs < Lower
-              offset = u128{val.Hi - low.Hi - (val.Lo < low.Lo ? 1u : 0u),
-                            val.Lo - low.Lo};
-            }
-            else if (rhs_neg && low_neg)
-            {
-              if (cmp128(low, val) < 0) return {};         // rhs < Lower
-              offset = u128{low.Hi - val.Hi - (low.Lo < val.Lo ? 1u : 0u),
-                            low.Lo - val.Lo};
-            }
-            else
-              return {};                                   // rhs < 0 ≤ Lower
-
-            const umax g2    = std::gcd(d_n1, a_dr);
-            const umax d_n2  = d_n1 / g2;
-            const umax a_dr1 = a_dr / g2;
-
-            umax divisor;
-            if (mul_overflow(a_dr1, den1, &divisor)
-                || divisor > static_cast<umax>(std::numeric_limits<imax>::max()))
-              return {};
-
-            const mul128_result dividend = mul128(offset, d_n2);
-            if (dividend.Overflowed)
-              return {};
-
-            const divmod128_result qr = divmod128(dividend.Value, divisor);
-            if (qr.Quotient.Hi != 0)
-              return {};                    // slot beyond any 64-bit index space
-            return {qr.Quotient.Lo, qr.Remainder, divisor, true};
-          }
-        }
       }
 
       template<typename P, typename A = no_action>
@@ -638,35 +589,22 @@ namespace beman::inside::detail
           }
 
           // The exact quotient can overflow the 64-bit rational range (huge
-          // source denominator × fine notch). Recompute the slot directly in
-          // 128-bit (wide_offset_quotient above); only a result beyond even
-          // that envelope reports errc::overflow — never an unchecked expected deref,
-          // which would escape noexcept callers (the math engines) as
-          // terminate. Rounding here is the offset rule (round_offset), the
-          // same semantics round_quotient falls back to past 64 bits.
+          // source denominator × fine notch): take the slot from the exact wide
+          // index instead (rhs is in range, so it fits L's raw). Rounding is
+          // the value-space rule, as everywhere else.
           const auto quotient = (rhs - lower_of<L>)/notch_of<L>;
           if (!quotient.has_value()) [[unlikely]]
           {
-            const wide_quotient wide = wide_offset_quotient(rational{rhs});
-            if (!wide.Ok)
-            {
-              if constexpr (error_action<plain_t<A>>)
-              { action.Fn(lhs, errc::overflow, errc_message(errc::overflow)); return false; }
-              policy.report(errc::overflow);
-              return false;
-            }
-            if (wide.Remainder == 0)
-            { store_slot(wide.Slot); return true; }
-            if constexpr (has_round_flag)
-            { store_slot(round_offset<L, P>(wide.Slot, wide.Remainder, wide.Divisor)); return true; }
-            if (policy.round_check()) [[unlikely]]
-            {
-              if constexpr (error_action<plain_t<A>>)
-              { action.Fn(lhs, errc::rounding_error, errc_message(errc::rounding_error)); return false; }
-              policy.report(errc::rounding_error);
-              return false;
-            }
-            store_slot(round_offset<L, P>(wide.Slot, wide.Remainder, wide.Divisor));
+            const exact_index_result slot = exact_index<L, rounding_for<L, P>>(exact_of(rational{rhs}));
+            if constexpr (!has_round_flag)
+              if (!slot.Exact && policy.round_check()) [[unlikely]]
+              {
+                if constexpr (error_action<plain_t<A>>)
+                { action.Fn(lhs, errc::rounding_error, errc_message(errc::rounding_error)); return false; }
+                policy.report(errc::rounding_error);
+                return false;
+              }
+            store_slot(static_cast<umax>(slot.Index));    // in range: fits 64 bits
             return true;
           }
           rational raw = *quotient;
@@ -1008,19 +946,12 @@ namespace beman::inside::detail
         if constexpr (is_integer_interval<L> && abs_den(notch_of<L>.Denominator) == 1
                       && notch_of<L>.Numerator == 1 && !fp_raw<R> && is_integer_aligned<R>)
         {
-          // Unit-integer fast path: modular wrap on the integer value, exact in
-          // 128 bits (either grid may reach past int64; the span can be 2^64−1).
-          constexpr s128 lower = s128_of_integer(lower_of<L>);
-          constexpr umax range = s128_sub(s128_of_integer(upper_of<L>), lower).Lo + 1u;   // 0 ⇒ 2^64
-          const auto [excess, w] = s128_floor_divmod(s128_sub(s128_of_integer(as_rational(rhs)), lower), range);
-          if constexpr (index_raw<L>)
-            lhs = L::from_raw(raw_cast<L>(w));
-          else if constexpr (rational_raw<L>)
-            lhs = L::from_raw((lower_of<L> + rational{w}).value());
-          else if constexpr (fp_raw<L>)
-            lhs = L::from_raw(static_cast<raw_t<L>>(static_cast<double>((lower_of<L> + rational{w}).value())));
-          else
-            lhs = L::from_raw(raw_cast<L>(lower.Lo + w));
+          // Unit-integer fast path: modular wrap on the integer value, exact
+          // (either grid may reach past int64; the span can be 2^64−1).
+          using fold = unit_fold<L, wide_numerator(lower_of<R>), wide_numerator(upper_of<R>)>;
+          using W = typename fold::W;
+          const auto [excess, w] = fold::fold(static_cast<W>(integer_wide(as_rational(rhs))));
+          lhs = L::from_raw(fold::raw_at(w));
           if constexpr (wrap_action<plain_t<A>>)
             action.Fn(lhs, beman::inside::inside<wrap_excess_grid()>{excess});   // carry as an inside
         }

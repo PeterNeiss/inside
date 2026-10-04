@@ -178,11 +178,9 @@ TEST(StorageBugsTest, bug_f_f64_div_by_zero_is_reported_not_a_silent_inf)
 // double source (den 2^54) that once dereferenced an empty result (terminate
 // through the noexcept math engines). Now: offsets that fit 64 bits go
 // through the rescued rational path, and offsets beyond it go through the
-// 128-bit rounded store (wide_offset_quotient) — both land on the correctly
-// rounded slot.
+// exact wide index (exact_index) — both land on the correctly rounded slot.
 //---------------------------------------------------------------------------
-// fp-derived rational store on a wide snap grid uses the 128-bit path
-TEST(StorageBugsTest, fp_derived_rational_store_on_a_wide_snap_grid_uses_the_128_bit_path)
+TEST(StorageBugsTest, fp_derived_rational_store_on_a_wide_snap_grid_uses_the_exact_wide_path)
 {
   using wide = inside<{{-1024, 1024}, per<16384>}, round_nearest>;
 

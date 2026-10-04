@@ -311,7 +311,7 @@ namespace beman::inside::math
       bool neg = (a < 0) ^ (b < 0);
       umax ua = (a < 0) ? umax{0} - static_cast<umax>(a) : static_cast<umax>(a);
       umax ub = (b < 0) ? umax{0} - static_cast<umax>(b) : static_cast<umax>(b);
-      const u128 p = umul(ua, ub);
+      const limb::pair<umax> p = limb::mul(ua, ub);
       const umax r = (W == 0) ? p.Lo
                    : (W < 64) ? ((p.Lo >> W) | (p.Hi << (64 - W)))
                    :            (p.Hi >> (W - 64));
@@ -344,7 +344,7 @@ namespace beman::inside::math
       umax lo = n << W;
       lo += half;
       hi += (lo < half);
-      const umax q = divmod128(u128{hi, lo}, d).Quotient.Lo;
+      const umax q = limb::div(limb::div(umax{0}, hi, d).Lo, lo, d).Hi;
       return sign(q);
     }
     constexpr rational fixed_to_rational(imax x, int W) noexcept

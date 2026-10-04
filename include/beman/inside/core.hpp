@@ -556,44 +556,37 @@ namespace beman::inside
             || ((lower_of<R> / notch_of<inside>).has_value()
                 && detail::abs_den((*(lower_of<R> / notch_of<inside>)).Denominator) == 1));
 
-    // The new raw lies in [raw_lo + dlo, raw_hi + dhi]; true when all of it,
-    // and this grid's raws, fit imax.
-    static constexpr bool raw_sum_fits(detail::s128 dlo, detail::s128 dhi)
-    {
-      if (!detail::values_fit_imax<inside>) return false;
-      constexpr imax kMin = std::numeric_limits<imax>::min();
-      constexpr imax kMax = std::numeric_limits<imax>::max();
-      auto fits = [](detail::s128 v) {
-        return v.Hi < 0 ? (v.Hi == -1 && v.Lo >= static_cast<umax>(kMin))
-                        : (v.Hi == 0 && v.Lo <= static_cast<umax>(kMax));
-      };
-      return fits(dlo) && fits(dhi)
-          && fits(detail::s128_add(detail::s128_of(detail::raw_lo<inside>), dlo))
-          && fits(detail::s128_add(detail::s128_of(detail::raw_hi<inside>), dhi));
-    }
-
-    // The rhs raw's exact range (its raws are 0..max_index or Lower..Upper).
+    // The rhs raw's exact range, as a delta: +raw for +=, −raw − bias for -=
+    // (the bias is lower_of<R>/Notch for an index-raw rhs, else 0).
     template <insidable R>
-    static constexpr detail::s128 raw_min_of = detail::index_raw<R>
-        ? detail::s128_of(umax{0}) : detail::s128_of_integer(lower_of<R>);
-    template <insidable R>
-    static constexpr detail::s128 raw_max_of = detail::index_raw<R>
-        ? detail::s128_of(detail::max_index_v<R>) : detail::s128_of_integer(upper_of<R>);
-
-    template <insidable R>
-    static constexpr detail::s128 raw_s128(R const& r) noexcept
-    {
-      if constexpr (std::is_signed_v<detail::raw_t<R>>) return detail::s128_of(static_cast<imax>(r.raw()));
-      else                                              return detail::s128_of(static_cast<umax>(r.raw()));
-    }
-
-    template <insidable R>
-    static constexpr detail::s128 point_delta = detail::s128_of_integer(*(lower_of<R> / notch_of<inside>));
-    template <insidable R>
-    static constexpr detail::s128 sub_bias = [] {
-      if constexpr (detail::index_raw<R>) return detail::s128_of_integer(*(lower_of<R> / notch_of<inside>));
-      else                                return detail::s128_of(imax{0});
+    static constexpr detail::grid_wide point_delta = [] {
+      const auto q = *(lower_of<R> / notch_of<inside>);
+      return detail::wide_numerator(q);
     }();
+    template <insidable R>
+    static constexpr detail::grid_wide sub_bias = [] {
+      if constexpr (detail::index_raw<R>) return point_delta<R>;
+      else                                return detail::grid_wide{0};
+    }();
+
+    // Work type of a raw-space add whose delta lies in [Dlo, Dhi]: it holds
+    // every raw of this grid, the delta, the new raw (in [raw_lo + Dlo,
+    // raw_hi + Dhi]) and the wrap range raw_hi − raw_lo + 1, so the add cannot
+    // overflow. imax for every grid within int64.
+    // (A variable template, not a function: Clang would instantiate a plain
+    // member function's body while the class is still incomplete.)
+    template <detail::grid_wide Dlo, detail::grid_wide Dhi>
+    static constexpr int raw_work_bits = [] {
+      using W = detail::grid_wide;
+      constexpr W lo = detail::raw_lo_exact<inside>, hi = detail::raw_hi_exact<inside>;
+      return detail::signed_value_bits_of({lo, hi, Dlo, Dhi, lo + Dlo, hi + Dhi, hi - lo + W{1}});
+    }();
+    template <detail::grid_wide Dlo, detail::grid_wide Dhi>
+    using raw_work_t = detail::work_int_t<raw_work_bits<Dlo, Dhi>>;
+
+    // The rhs raw's exact range (0 .. slot count, or Lower .. Upper).
+    template <insidable R> static constexpr detail::grid_wide raw_min_of = detail::raw_lo_exact<R>;
+    template <insidable R> static constexpr detail::grid_wide raw_max_of = detail::raw_hi_exact<R>;
     public:
 
     template <insidable R>
@@ -605,33 +598,30 @@ namespace beman::inside
       // offset and direct storage alike), so this compiles to one integer add.
       if constexpr (point_delta_ok<R>)
       {
-        if constexpr (raw_sum_fits(point_delta<R>, point_delta<R>))
-        {
-          constexpr imax delta = static_cast<imax>(point_delta<R>.Lo);
-          return store_raw(detail::raw_imax(*this) + delta);
-        }
-        else
-          return store_raw_wide(point_delta<R>);
+        using W = raw_work_t<point_delta<R>, point_delta<R>>;
+        constexpr W delta = static_cast<W>(point_delta<R>);
+        return store_raw<W>(static_cast<W>(Raw) + delta);
       }
       // Fast path: raw-level integer addition, safe when raw_a + raw_b is the raw
       // of value_a + value_b — direct storage, or offset encoding with Lower==0 both.
       else if constexpr (raw_add_ok<R>)
       {
-        if constexpr (detail::values_fit_imax<R> && raw_sum_fits(raw_min_of<R>, raw_max_of<R>))
-          return store_raw(detail::raw_imax(*this) + detail::raw_imax(rhs));
-        else
-          return store_raw_wide(raw_s128(rhs));
+        using W = raw_work_t<raw_min_of<R>, raw_max_of<R>>;
+        return store_raw<W>(static_cast<W>(Raw) + static_cast<W>(rhs.raw()));
       }
       else
         return assign_op_result(*this + rhs);
     }
 
     private:
-    // Store a raw computed by the raw-space fast paths of += and -=. Under
-    // clamp/wrap/checked an out-of-range raw is clamped, wrapped or reported.
-    constexpr inside& store_raw(imax new_raw)
+    // Store a raw computed by the raw-space fast paths of += and -=, in their
+    // work type W. Under clamp/wrap/checked an out-of-range raw is clamped,
+    // wrapped or reported.
+    template <typename W>
+    constexpr inside& store_raw(W new_raw)
     {
-      constexpr imax lo = detail::raw_lo<inside>, hi = detail::raw_hi<inside>;
+      constexpr W lo = static_cast<W>(detail::raw_lo_exact<inside>);
+      constexpr W hi = static_cast<W>(detail::raw_hi_exact<inside>);
       if constexpr (has_any_flag(P, clamp | wrap)
                     || (is_checked(P) && !has_flag(P, ignore_range)))
         if (new_raw < lo || new_raw > hi)
@@ -640,13 +630,10 @@ namespace beman::inside
             new_raw = new_raw < lo ? lo : hi;
           else if constexpr (P & wrap)
           {
-            // range = hi − lo + 1 in umax (the raws fit imax; their span may not)
-            const umax range = static_cast<umax>(hi) - static_cast<umax>(lo) + 1u;
-            const umax w = new_raw >= lo
-                ? (static_cast<umax>(new_raw) - static_cast<umax>(lo)) % range
-                : [&] { const umax m = (static_cast<umax>(lo) - static_cast<umax>(new_raw)) % range;
-                        return m == 0 ? umax{0} : range - m; }();
-            new_raw = static_cast<imax>(static_cast<umax>(lo) + w);
+            constexpr W range = hi - lo + W{1};
+            W w = (new_raw - lo) % range;
+            if (w < W{0}) w += range;
+            new_raw = lo + w;
           }
           else
           {
@@ -654,35 +641,7 @@ namespace beman::inside
             return *this;
           }
         }
-      Raw = detail::raw_cast<inside>(new_raw);
-      return *this;
-    }
-
-    // The exact form of store_raw: the raw's offset from raw_lo plus the delta
-    // in 128 bits, so neither a grid reaching past int64 nor a sum past imax
-    // can overflow. Raws are handled as their 64-bit patterns.
-    constexpr inside& store_raw_wide(detail::s128 delta)
-    {
-      constexpr umax lo   = static_cast<umax>(detail::raw_lo<inside>);
-      constexpr umax span = static_cast<umax>(detail::raw_hi<inside>) - lo;
-      const umax raw_u = std::is_signed_v<raw_type> ? static_cast<umax>(static_cast<imax>(Raw))
-                                                    : static_cast<umax>(Raw);
-      detail::s128 t = detail::s128_add(detail::s128_of(raw_u - lo), delta);
-      if constexpr (has_any_flag(P, clamp | wrap)
-                    || (is_checked(P) && !has_flag(P, ignore_range)))
-        if (detail::s128_negative(t) || detail::s128_above(t, span))
-        {
-          if constexpr (P & clamp)
-            t = detail::s128_of(detail::s128_negative(t) ? umax{0} : span);
-          else if constexpr (P & wrap)
-            t = detail::s128_of(detail::s128_floor_divmod(t, span + 1u).Remainder);
-          else
-          {
-            make_policy<P>().report(errc::overflow);
-            return *this;
-          }
-        }
-      Raw = detail::raw_cast<inside>(lo + t.Lo);
+      Raw = static_cast<raw_type>(new_raw);
       return *this;
     }
     public:
@@ -737,15 +696,9 @@ namespace beman::inside
       // Lower by negation and defeats +='s raw path for index-backed grids.
       if constexpr (raw_sub_ok<R>)
       {
-        if constexpr (detail::values_fit_imax<R>
-                      && raw_sum_fits(detail::s128_sub(detail::s128_neg(raw_max_of<R>), sub_bias<R>),
-                                      detail::s128_sub(detail::s128_neg(raw_min_of<R>), sub_bias<R>)))
-        {
-          constexpr imax bias = static_cast<imax>(sub_bias<R>.Lo);
-          return store_raw(detail::raw_imax(*this) - detail::raw_imax(rhs) - bias);
-        }
-        else
-          return store_raw_wide(detail::s128_sub(detail::s128_neg(raw_s128(rhs)), sub_bias<R>));
+        using W = raw_work_t<-raw_max_of<R> - sub_bias<R>, -raw_min_of<R> - sub_bias<R>>;
+        constexpr W bias = static_cast<W>(sub_bias<R>);
+        return store_raw<W>(static_cast<W>(Raw) - static_cast<W>(rhs.raw()) - bias);
       }
       else
         return *this += (-rhs);

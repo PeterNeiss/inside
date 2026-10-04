@@ -9,7 +9,7 @@
 #include <beman/inside/lift.hpp>            // lift, is_expected_v, unwrap_t
 #include <beman/inside/detail/overflow.hpp> // add/sub/mul_overflow
 #include <beman/inside/detail/debug.hpp>    // errc, detail::raise, detail::constexpr_error
-#include <beman/inside/detail/wide_int.hpp> // limb::mul / limb::div kernels
+#include <beman/inside/detail/wide_int.hpp> // wide_uint<2> for exact cross products
 
 #include <expected>   // std::expected, std::unexpected
 
@@ -22,85 +22,6 @@
 namespace beman::inside::detail
 {
   [[nodiscard]] constexpr umax abs_den(imax d) noexcept { return (d >= 0) ? static_cast<umax>(d) : umax{0} - static_cast<umax>(d); }
-
-  // 64×64 → 128-bit unsigned product, as {hi, lo} (the shared limb kernel).
-  struct u128 { umax Hi; umax Lo; };
-  constexpr u128 umul(umax a, umax b)
-  {
-    const limb::pair<umax> p = limb::mul(a, b);
-    return {p.Hi, p.Lo};
-  }
-  constexpr std::strong_ordering cmp128(u128 a, u128 b)
-  { return (a.Hi != b.Hi) ? (a.Hi <=> b.Hi) : (a.Lo <=> b.Lo); }
-
-  // Signed two's-complement 128-bit value {Hi, Lo} — just enough to hold an
-  // offset or a sum of two 64-bit integers of either signedness exactly (the
-  // grids reaching past int64 need 65 bits). Portable: no __int128.
-  struct s128 { imax Hi; umax Lo; };
-  constexpr s128 s128_of(imax v) noexcept { return {v < 0 ? imax{-1} : imax{0}, static_cast<umax>(v)}; }
-  constexpr s128 s128_of(umax v) noexcept { return {0, v}; }
-  constexpr s128 s128_add(s128 a, s128 b) noexcept
-  {
-    const umax lo = a.Lo + b.Lo;
-    return {a.Hi + b.Hi + (lo < a.Lo ? 1 : 0), lo};
-  }
-  constexpr s128 s128_neg(s128 a) noexcept
-  {
-    const umax lo = ~a.Lo + 1u;
-    return {~a.Hi + (lo == 0 ? 1 : 0), lo};
-  }
-  constexpr s128 s128_sub(s128 a, s128 b) noexcept { return s128_add(a, s128_neg(b)); }
-  constexpr bool s128_negative(s128 a) noexcept { return a.Hi < 0; }
-  // a > b for a non-negative a and an unsigned b.
-  constexpr bool s128_above(s128 a, umax b) noexcept { return a.Hi > 0 || (a.Hi == 0 && a.Lo > b); }
-
-  // floor(t / R) and t mod R (in [0, R)) for |t| < 2^66 (|Hi| ≤ 2); R == 0
-  // stands for 2^64. The quotient saturates to imax.
-  struct s128_divmod_result { imax Quotient; umax Remainder; };
-  constexpr s128_divmod_result s128_floor_divmod(s128 t, umax r) noexcept
-  {
-    constexpr imax kMin = std::numeric_limits<imax>::min();
-    constexpr imax kMax = std::numeric_limits<imax>::max();
-    auto sat = [](s128 q) -> imax {
-      if (q.Hi < 0) return (q.Hi < -1 || q.Lo < (umax{1} << 63)) ? kMin : static_cast<imax>(q.Lo);
-      return (q.Hi > 0 || q.Lo > static_cast<umax>(kMax)) ? kMax : static_cast<imax>(q.Lo);
-    };
-    if (r == 0)                                     // R = 2^64
-      return {sat(s128_of(t.Hi)), t.Lo};
-    if (r == 1)                                     // 2^64 / R does not fit umax
-      return {sat(t), 0};
-    // t = Hi·2^64 + Lo with Lo = ql·R + a and 2^64 = qc·R + c, so
-    // t = (Hi·qc + ql)·R + (Hi·c + a): fold the small second term into [0, R).
-    const umax ql = t.Lo / r, a = t.Lo % r;
-    const umax c  = (umax{0} - r) % r;              // 2^64 mod R
-    const umax qc = (umax{0} - r) / r + 1u;         // floor(2^64 / R)
-    s128 q = s128_of(ql), m = s128_of(a);
-    for (imax k = t.Hi; k > 0; --k) { q = s128_add(q, s128_of(qc)); m = s128_add(m, s128_of(c)); }
-    for (imax k = t.Hi; k < 0; ++k) { q = s128_sub(q, s128_of(qc)); m = s128_sub(m, s128_of(c)); }
-    while (s128_negative(m))   { m = s128_add(m, s128_of(r)); q = s128_sub(q, s128_of(umax{1})); }
-    while (s128_above(m, r - 1)) { m = s128_sub(m, s128_of(r)); q = s128_add(q, s128_of(umax{1})); }
-    return {sat(q), m.Lo};
-  }
-
-  // 128×64 product with an overflow flag (result beyond 128 bits).
-  struct mul128_result { u128 Value; bool Overflowed; };
-  constexpr mul128_result mul128(u128 a, umax b)
-  {
-    const u128 low  = umul(a.Lo, b);
-    const u128 high = umul(a.Hi, b);
-    const umax hi_sum = high.Lo + low.Hi;
-    return {u128{hi_sum, low.Lo}, high.Hi != 0 || hi_sum < low.Hi};
-  }
-
-  // Quotient/remainder of a 128-bit dividend by a 64-bit divisor d >= 1:
-  // two limb divisions, high limb first.
-  struct divmod128_result { u128 Quotient; umax Remainder; };
-  constexpr divmod128_result divmod128(u128 n, umax d)
-  {
-    const limb::pair<umax> hi = limb::div(umax{0}, n.Hi, d);
-    const limb::pair<umax> lo = limb::div(hi.Lo, n.Lo, d);
-    return {u128{hi.Hi, lo.Hi}, lo.Lo};
-  }
 
   //---------------------------------------------------------------------------
   // trim
@@ -319,10 +240,6 @@ namespace beman::inside::detail
     const imax n = static_cast<imax>(v.Numerator);
     return (v.Denominator < 0) ? -n : n;
   }
-
-  // An integer rational (|v| < 2^64) exactly as a 128-bit value.
-  [[nodiscard]] constexpr s128 s128_of_integer(rational v) noexcept
-  { return v.Denominator < 0 ? s128_neg(s128_of(v.Numerator)) : s128_of(v.Numerator); }
 
   [[nodiscard]] constexpr imax trunc(rational v)
   {
@@ -777,17 +694,15 @@ namespace beman::inside::detail
         // exactly this). Retry the difference in 128-bit before giving up.
         if (a_neg != b_neg)
         {
-          const u128 A128 = umul(a.Numerator, b_ad_r);
-          const u128 B128 = umul(b.Numerator, a_ad_r);
-          const bool a_bigger = cmp128(A128, B128) > 0;
-          const u128 big   = a_bigger ? A128 : B128;
-          const u128 small = a_bigger ? B128 : A128;
-          const u128 diff{big.Hi - small.Hi - (big.Lo < small.Lo ? 1u : 0u),
-                          big.Lo - small.Lo};
-          if (diff.Hi == 0)
+          using u2 = wide_uint<2>;
+          const u2 A2 = u2{a.Numerator} * u2{b_ad_r};
+          const u2 B2 = u2{b.Numerator} * u2{a_ad_r};
+          const bool a_bigger = A2 > B2;
+          const u2 diff = a_bigger ? A2 - B2 : B2 - A2;
+          if (diff.Word[1] == 0)
           {
             rational r;
-            r.Numerator   = diff.Lo;
+            r.Numerator   = diff.Word[0];
             r.Denominator = (a_neg ? a_bigger : !a_bigger) ? -denominator
                                                            :  denominator;
             trim(r.Numerator, r.Denominator);
@@ -1015,9 +930,10 @@ namespace beman::inside::detail
     // Cross-multiply in 128-bit: |numerator| and |denominator| are each ≤ 2^64−1,
     // so the products fit exactly in 128 bits — the comparison can never overflow,
     // so no trap is needed.
-    const u128 A = umul(lhs.Numerator, rhs_ad);
-    const u128 B = umul(rhs.Numerator, lhs_ad);
-    return lhs_neg ? cmp128(B, A) : cmp128(A, B);
+    using u2 = wide_uint<2>;
+    const u2 A = u2{lhs.Numerator} * u2{rhs_ad};
+    const u2 B = u2{rhs.Numerator} * u2{lhs_ad};
+    return lhs_neg ? (B <=> A) : (A <=> B);
   }
 
   template <typename T>

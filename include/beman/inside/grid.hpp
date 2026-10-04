@@ -131,34 +131,6 @@ namespace beman::inside
       return grid{iv, notch};
     }
 
-    // Notch-slot count = (Upper-Lower)/Notch, computed WITHOUT the rational
-    // division (which throws at constant-eval on overflow). A valid grid is
-    // notch-aligned, so with span = p/q and Notch = r/s the count is exactly
-    // (p/r)·(s/q); mul_overflow flags when it exceeds umax. Returns false (and
-    // count is meaningless) on overflow — such a grid stores as rational, never
-    // an index, so the count is never used.
-    [[nodiscard]] constexpr bool max_index_checked(umax& out) const
-    {
-      if (Notch == 0) { out = 0; return true; }
-      const auto span_e = detail::try_sub(Interval.Upper, Interval.Lower);
-      if (!span_e)
-      {
-        // Span past 2^64: count = Upper/Notch − Lower/Notch (both integers on a
-        // valid grid), exactly in 128 bits.
-        const auto qh = detail::try_div(Interval.Upper, Notch), ql = detail::try_div(Interval.Lower, Notch);
-        if (!qh || !ql || detail::abs_den(qh->Denominator) != 1 || detail::abs_den(ql->Denominator) != 1)
-        { out = 0; return false; }
-        const detail::s128 c = detail::s128_sub(detail::s128_of_integer(*qh), detail::s128_of_integer(*ql));
-        out = c.Lo;
-        return c.Hi == 0;
-      }
-      const detail::rational span = *span_e;
-      const umax p = span.Numerator,  q = detail::abs_den(span.Denominator);
-      const umax r = Notch.Numerator, s = detail::abs_den(Notch.Denominator);
-      if (r == 0 || p % r != 0 || s % q != 0) { out = 0; return false; }
-      return !mul_overflow(p / r, s / q, &out);
-    }
-
     // Exact slot count (Upper − Lower)/Notch, however large: with Upper = a/b,
     // Lower = c/d and Notch = e/f it is (a·d − c·b)·f / (b·d·e), exact on a
     // valid grid. 0 for a continuous grid.
@@ -176,6 +148,16 @@ namespace beman::inside
 
     // Bits needed to hold every slot index 0..slot_count().
     [[nodiscard]] constexpr int slot_bits() const noexcept { return bit_width_of(slot_count()); }
+
+    // The slot count as a umax; false (out = 0) when it needs more than 64
+    // bits — such a grid stores a wide_int index.
+    [[nodiscard]] constexpr bool max_index_checked(umax& out) const
+    {
+      const detail::grid_wide c = slot_count();
+      const bool fits = !(detail::grid_wide{std::numeric_limits<umax>::max()} < c);
+      out = fits ? static_cast<umax>(c) : umax{0};
+      return fits;
+    }
 
     // Index-storage slot count (0 on overflow; the over-flow branch of storage_min
     // is discarded for such grids, which pick rational storage instead).
