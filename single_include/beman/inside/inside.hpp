@@ -4788,10 +4788,16 @@ namespace beman::inside::detail
       }
 
       // Cold and out of line: the exact wide slot for a quotient past the
-      // 64-bit rational (kept off the hot store path).
+      // 64-bit rational, kept off the hot store path. It returns 16 bytes, not
+      // the 72-byte exact_index_result: GCC charges the copy of a large return
+      // value against inlining the whole store (+17% instructions measured).
+      struct wide_slot_result { umax Slot; bool Exact; };
       template <typename P>
-      [[gnu::cold, gnu::noinline]] static constexpr exact_index_result wide_slot(rational const& v)
-      { return exact_index<L, rounding_for<L, P>>(exact_of(v)); }
+      [[gnu::cold, gnu::noinline]] static constexpr wide_slot_result wide_slot(rational const& v)
+      {
+        const exact_index_result r = exact_index<L, rounding_for<L, P>>(exact_of(v));
+        return {static_cast<umax>(r.Index), r.Exact};   // in range: fits 64 bits
+      }
 
       template<typename P, typename A = no_action>
       static constexpr bool store_checked(L& lhs, R rhs, P&& policy, A&& action = {})
@@ -4887,7 +4893,7 @@ namespace beman::inside::detail
           const auto quotient = (rhs - lower_of<L>)/notch_of<L>;
           if (!quotient.has_value()) [[unlikely]]
           {
-            const exact_index_result slot = wide_slot<P>(rational{rhs});
+            const wide_slot_result slot = wide_slot<P>(rational{rhs});
             if constexpr (!has_round_flag)
               if (!slot.Exact && policy.round_check()) [[unlikely]]
               {
@@ -4896,7 +4902,7 @@ namespace beman::inside::detail
                 policy.report(errc::rounding_error);
                 return false;
               }
-            store_slot(static_cast<umax>(slot.Index));    // in range: fits 64 bits
+            store_slot(slot.Slot);
             return true;
           }
           rational raw = *quotient;

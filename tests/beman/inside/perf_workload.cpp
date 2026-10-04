@@ -14,6 +14,8 @@
 //   qformat_div       — native Q-format divide (zero-free divisor grid)
 //   cross_grid_assign — integer-mapping cross-grid store
 //   checked_add       — add + checked narrowing assignment (runtime range branch)
+//   rational_store    — exact fraction stored into a Q-format grid (rounding)
+//   rational_compare  — exact fraction ordering (128-bit cross products)
 //
 // The work is intentionally small and scaled by BEMAN_INSIDE_PERF_SCALE so cachegrind
 // (~20-50x slowdown) stays well inside the CI time budget. Bump the scale for a
@@ -141,6 +143,41 @@ namespace
     }
     return acc;
   }
+
+  std::int64_t run_rational_store()
+  {
+    using R = detail::rational;
+    using Q8 = inside<{{0, 255}, per<256>}, round_nearest>;
+    std::int64_t acc = 0, x = 1;
+    Q8 q = 0;
+    for (long i = 0; i < iters; ++i)
+    {
+      lcg(x);
+      const auto ux = static_cast<unsigned long long>(x);
+      // a fraction in [0, 255) whose denominator is not a power of two, so
+      // the store rounds through the general fraction path
+      const R v{static_cast<umax>((ux >> 33) % 76500), static_cast<imax>(300 + (ux >> 60))};
+      q = v;
+      acc += static_cast<long>(q.raw());
+    }
+    return acc;
+  }
+
+  std::int64_t run_rational_compare()
+  {
+    using R = detail::rational;
+    std::int64_t acc = 0, x = 1;
+    for (long i = 0; i < iters; ++i)
+    {
+      lcg(x);
+      const auto ux = static_cast<unsigned long long>(x);
+      // large numerators and denominators: the cross products need 128 bits
+      const R a{(ux >> 3) | 1u, static_cast<imax>((ux >> 20) | 1u)};
+      const R b{(ux >> 5) | 1u, static_cast<imax>((ux >> 22) | 1u)};
+      acc += (a < b) ? 1 : 0;
+    }
+    return acc;
+  }
 }
 
 int main(int argc, char** argv)
@@ -153,6 +190,8 @@ int main(int argc, char** argv)
   else if (std::strcmp(key, "qformat_div")       == 0) acc = run_qformat_div();
   else if (std::strcmp(key, "cross_grid_assign") == 0) acc = run_cross_grid_assign();
   else if (std::strcmp(key, "checked_add")       == 0) acc = run_checked_add();
+  else if (std::strcmp(key, "rational_store")    == 0) acc = run_rational_store();
+  else if (std::strcmp(key, "rational_compare")  == 0) acc = run_rational_compare();
   else { std::fprintf(stderr, "unknown workload key: %s\n", key); return 2; }
 
   g_sink = acc;

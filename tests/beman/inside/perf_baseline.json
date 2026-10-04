@@ -1,7 +1,9 @@
 {
-  "checked_add": 4396258,
-  "cross_grid_assign": 3996218,
-  "integer_mul": 5396203,
-  "integer_qformat": 9793323,
-  "qformat_div": 6796177
+  "checked_add": 6144460,
+  "cross_grid_assign": 5344416,
+  "integer_mul": 7144404,
+  "integer_qformat": 11544397,
+  "qformat_div": 8944350,
+  "rational_compare": 164884664,
+  "rational_store": 43956099
 }
