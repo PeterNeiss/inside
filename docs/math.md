@@ -56,11 +56,6 @@ auto h = math::hypot(s, s);         // √(s²+s²), output grid auto-deduced
 
 ## The `snap` requirement (and `f64` as a fast storage option)
 
-> **Naming:** the double-backed storage flag is now spelled **`f64`**; **`real`
-> is a deprecated alias** kept for one release. The two are bit-identical, so the
-> examples below (and existing code) compile under either spelling. New code
-> should prefer `f64`.
-
 A transcendental result is irrational and must be **rounded onto the operand's
 grid**, so every transcendental operand must carry a policy that **permits
 rounding** — i.e. the **`snap`** bit (`snap`, any `round_*` mode, or `f64`,
@@ -111,7 +106,11 @@ other representation flags.
   the interval is the function's true range over the input, rounded *outward*
   to the input's notch; the notch and policy are inherited (with
   `round_nearest` added, since transcendental results carry sub-notch drift).
-  Spell `f<Out>(x)` to pick the output grid yourself.
+- **Explicit output: `fn_into<Out>(x)`.** Every function has an `_into` form
+  that takes the output type instead of deducing it — `math::sin_into<amp_t>(a)`,
+  `math::pow_into<Out>(b, e)`, `math::pow_base_into<Out, 10>(x)` — in every
+  engine namespace. `Out`'s own policy then does the final rounding, and a
+  `clamp` on `Out` saturates instead of erroring.
 - **Error model.** A domain limit that is knowable from the *type* is a
   `static_assert` (compile error). A failure that depends on the *runtime
   value* is reported through `std::expected<Out, errc>`. Total functions
@@ -152,15 +151,15 @@ other representation flags.
 |---|---|---|---|---|
 | `abs(x)` | all | `[0, max\|·\|]` | — | exact |
 | `floor(x)` / `ceil(x)` / `round(x)` / `trunc(x)` | all | integer notch | — | exact; `round` is half-away-from-zero |
-| `fmod(x, y)` | `y` must not span 0 | sign of `x` | — | truncated-division convention, exact. Integer-backed operands on commensurable notches take a single-integer-remainder fast path (faster than `std::fmod`). |
+| `fmod(x, y)` | all | sign of `x` | `expected` (`division_by_zero`) when `y`'s grid holds 0; plain inside otherwise | truncated-division convention, exact. Integer-backed operands on commensurable notches take a single-integer-remainder fast path (faster than `std::fmod`). |
 | `pown<E>(x)` | all, `E ≥ 0` compile-time | corner-widened per multiply | `expected` per the checked-exact rules | repeated squaring in inside-space — exact, negative bases fine, no `f64` needed |
 
 ## Roots
 
 | Function | Domain | Output | Errors | Notes |
 |---|---|---|---|---|
-| `sqrt(x)` (`Lower == 0`) | `[0, 4]`, notch `1/2^K`, `K ≤ 30` | `[0, ≈√Upper]` | — | correctly-rounded core, grid-snapped |
-| `sqrt(x)` (`Lower < 0`) | `max\|·\| ≤ 4`, notch `1/2^K` | — | `expected`; `domain_error` if value < 0 | mixed-sign overload |
+| `sqrt(x)` (`Lower == 0`) | any non-negative grid (any notch) | `[0, ≈√Upper]` | — | correctly-rounded core, grid-snapped |
+| `sqrt(x)` (`Lower < 0`) | any grid crossing 0 | `[0, ≈√Upper]` | `expected`; `domain_error` if value < 0 | mixed-sign overload |
 | `cbrt(x)` | `\|x\| ≤ 2^20` | monotone range | — | `sign(x)·2^(log2\|x\|/3)` |
 | `hypot(x, y)` | `\|x\|,\|y\| ≤ 2^20` | `[0, √(maxX²+maxY²)]` | — | no internal overflow inside the domain |
 
@@ -168,7 +167,7 @@ other representation flags.
 
 | Function | Domain | Output | Errors | Notes |
 |---|---|---|---|---|
-| `sin(x)` / `cos(x)` | `\|x\| ≤ 2^20` rad | `[-1, 1]` | — | grids beyond ±1024 rad use a two-term 1/2π reduction (fixed engine) |
+| `sin(x)` / `cos(x)` | `\|x\| ≤ 2^20` rad | `[-1, 1]` | — | grids beyond ±1024 rad use a two-term 1/2π reduction (integer engine) |
 | `tan(x)` | `\|x\| ≤ 2^20` rad | `[-1024, 1024]` | `expected`; `division_by_zero` at a pole, `overflow` past `Out` (saturates instead when `Out` carries `clamp`) | one range reduction (FP engines) / one CORDIC rotation (integer engine) for both sin and cos, then their ratio; poles are exact |
 | `atan(x)` | `\|x\| ≤ 2^20` | `(-π/2, π/2)` | — | reciprocal reduction for \|x\| > 1 |
 | `asin(x)` | `[-1, 1]` | `[-π/2, π/2]` | — | `atan2(x, √(1-x²))` |
@@ -188,12 +187,38 @@ other representation flags.
 | `exp(x)` / `exp2(x)` | `exp`: `[-20, 20]`, `exp2`: `[-30, 30]` | `≥ 0` | — | `exp = exp2(x·log2 e)` |
 | `log(x)` / `log2(x)` / `log10(x)` | `x > 0` | monotone | — | |
 | `pow_base<B>(x)` | integer `B ≥ 2` | `≥ 0` | — | `exp2(x·log2 B)`, `B` compile-time |
-| `pow(base, exp)` | `lower_of<base> > 0` | corner-deduced | `expected`; `overflow` if `exp·log2 base` leaves `[-30,30]` or result leaves `Out` | runtime base |
+| `pow(base, exp)` | auto form: `lower_of<base> > 0` | corner-deduced | `expected`; `overflow` if `exp·log2 base` leaves `[-30,30]` or the result leaves `Out` (a `clamp` `Out` saturates); `pow_into` with a base grid reaching ≤ 0 also reports `domain_error` for a base ≤ 0 | runtime base |
 
 ## Constants
 
-`math::pi` and `math::two_pi` are point-bounds (`just<…>`), so they compose
+`math::pi` and `math::two_pi` are point insides (`just<…>`), so they compose
 directly in inside-space: `angle * math::two_pi`.
+
+## Periodic trig on a degree circle: `circle<M>` / `amp<K>`
+
+Radians have no rational period, so a radians angle with `wrap` drifts. A
+`circle<M>` is one revolution split into `M` equal slots, valued in degrees
+(period 360), so `wrap` is exact; its raw is the slot index `0..M-1`. `amp<K>`
+is the matching amplitude grid, `[-1, 1]` at resolution `1/K`:
+
+```cpp
+using angle_t = math::circle<4096>;   // f64 | wrap, notch 360/4096 degrees
+using amp_t   = math::amp<32768>;     // [-1, 1], notch 1/32768, f64
+
+angle_t phase{0};
+amp_t   s, c, t;
+math::sin(phase, s);                  // result written into s, on s's grid
+math::cos(phase, c);
+if (!math::tan(phase, t)) { /* pole: t unchanged */ }
+phase += angle_t{90};                 // a quarter turn, exactly; wraps at 360
+```
+
+The output is a reference parameter, so its type (and its policy, which does
+the final rounding) comes from the caller's object; `tan` returns `false` at a
+pole. `M` must be divisible by 4 (a power of two is fastest), and a custom angle
+type must have `Lower == 0` and carry `wrap | f64`. Under the integer engine the
+call is a lookup into a first-quadrant table built at compile time; the FP
+engines evaluate their sine/cosine on the angle converted to radians.
 
 ## Using `expected` results
 
@@ -227,8 +252,8 @@ vocabulary.
 ## Selecting the integer engine
 
 ```bash
-cmake --preset gcc-release -DCMAKE_CXX_STANDARD=20 -DBEMAN_INSIDE_MATH_CORDIC=ON
-cmake --build build-fixed
+cmake --preset gcc-release -B build/gcc-cordic -DBEMAN_INSIDE_MATH_CORDIC=ON
+cmake --build build/gcc-cordic
 ```
 
 Use it when you need bit-identical results across heterogeneous targets

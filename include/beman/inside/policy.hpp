@@ -164,7 +164,7 @@ namespace beman::inside
   //---------------------------------------------------------------------------
   // policy_ref — variadic in actions (stores std::tuple<As...>). policy_ref
   // pre-picks the matching action per call path, so assignment/arithmetic keep
-  // their single-A signatures. Payoff: the imax-probe and narrowing stages of a
+  // their single-A signatures. Payoff: the arithmetic and narrowing stages of a
   // compound op can each fire a different action (e.g. on_overflow + on_clamp).
   //---------------------------------------------------------------------------
   namespace detail

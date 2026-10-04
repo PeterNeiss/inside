@@ -159,7 +159,7 @@ TEST(MiscTest, errc_message_stringifies_every_errc)
 {
   ASSERT_EQ(std::string_view{errc_message(errc::domain_error)}, "value outside interval");
   ASSERT_EQ(std::string_view{errc_message(errc::division_by_zero)}, "division by zero");
-  ASSERT_EQ(std::string_view{errc_message(errc::overflow)}, "rational arithmetic overflow");
+  ASSERT_EQ(std::string_view{errc_message(errc::overflow)}, "arithmetic overflow");
   ASSERT_EQ(std::string_view{errc_message(errc::rounding_error)}, "notch incompatibility");
   ASSERT_EQ(std::string_view{errc_message(static_cast<errc>(999))}, "unknown inside error");
 }

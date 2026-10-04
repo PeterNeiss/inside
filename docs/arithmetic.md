@@ -71,13 +71,14 @@ val a{7}, b{3};
 // Exact rational result (path C — the default).
 auto exact = a / b;                            // inside<{rational}>, value 7/3
 
-// Per-call integer truncation (path B).
-auto quot  = div(a, b, snapped);             // inside<{0, 33}> integer raw, value 2
+// Per-call integer truncation (path B). The divisor's range includes 1, so the
+// quotient's range is 0..100; the divisor's range includes 0, so it is expected.
+auto quot  = div(a, b, snapped);             // expected<inside<{0, 100}>> integer raw, value 2
 
 // Type-level integer truncation (path B again — gating is on policy,
 // not on the operator's call site).
 using fast = inside<{0, 100}, snap>;
-auto q     = fast{7} / fast{3};                // inside<{0, 33}> integer raw, value 2
+auto q     = fast{7} / fast{3};                // expected<inside<{0, 100}>> integer raw, value 2
 
 // Q-format same-notch (path A).
 using fp = inside<{{0, 255}, notch<1, 256>}, unsafe>;   // Q8.8; unsafe implies snap
@@ -146,7 +147,7 @@ auto q2 = div(val{7}, val{3}, snapped);  // -> 2
 
 // 3. Same as (2) using the operation's named policy alias.
 //    `snapped = make_policy<snap>()`; siblings include
-//    `rounded_nearest`, `clamped`, `wrapped` — see `beman/inside/policy.hpp`.
+//    `rounded_*`, `clamped`, `wrapped` — see policies.md#named-policies.
 ```
 
 Without any of these, `operator/` always takes path C and returns a
@@ -159,7 +160,7 @@ The Q-format fast path keeps the *notch* but expands the *interval*:
 
 ```cpp
 using fp = inside<{{0, 255}, notch<1, 256>}, unsafe>;   // Q8.8
-auto q = fp{1} / fp{1};   // type: inside<{{0, 65280}, notch<1, 256>}>, value 1
+auto q = fp{1} / fp{1};   // expected<inside<{{0, 65280}, notch<1, 256>}>>, value 1
 ```
 
 The result's upper bound is `upper_of<L> / notch_of<R> = 255 / (1/256) = 65 280`,
@@ -251,7 +252,7 @@ inside-space.
 
 ## Rounding
 
-Assigning between bounds with incompatible notches is a compile-time error:
+Assigning between insides with incompatible notches is a compile-time error:
 
 ```cpp
 using coarse = inside<{{0, 10}, 2}>;   // notch 2: values 0, 2, 4, 6, 8, 10
@@ -318,14 +319,24 @@ val a{17}, b{5};
 auto r = a % b;  // std::expected<inside<{0, 99}>, errc>, value 2
 ```
 
-The result interval is `[0, max_rem]` for non-negative L, or
-`[-max_rem, max_rem]` if `lower_of<L> < 0`, where
-`max_rem = max(|lower_of<R>|, |upper_of<R>|) - 1` — the largest remainder
-magnitude any divisor in R's range could produce.
+The result interval is `[0, max_rem]` when the rounding mode is plain
+truncation (`snap`) and `lower_of<L> >= 0`, and `[-max_rem, max_rem]`
+otherwise (a negative dividend, or a directional rounding mode, which can flip
+the remainder's sign). Here `max_rem = max(|lower_of<R>|, |upper_of<R>|) - 1`
+is the largest remainder magnitude any divisor in R's range could produce.
 
-Like division, modulo returns `std::expected` (division by zero yields
-`errc::division_by_zero`). Unlike division, modulo has no overflow case — the result's
-range is fixed by R's grid and can't exceed it.
+Modulo never overflows, so its only failure is a zero divisor. Like division,
+it returns `std::expected` (`errc::division_by_zero`) when R's grid holds zero,
+and a plain inside when R's grid excludes zero:
+
+```cpp
+using pos = inside<{1, 10}, snap>;
+auto r2 = a % pos{5};   // inside<{0, 9}>, value 2 — no expected
+```
+
+Both operands need integer storage. A point literal such as `5_ins` stores
+its value as a `rational`, so `a % 5_ins` is ill-formed; give the divisor a
+range (`pos{5}`).
 
 ## Bulk reduction: `beman::inside::sum<Target>(range)`
 
@@ -348,32 +359,31 @@ auto clipped = beman::inside::sum<bus>(v);           // clamps the TOTAL once
 
 ## Compound assignment
 
-Compound assignment works with integer / floating-point scalars and with
-other bounds on compatible grids. Under an unchecked policy (no
-`checked`/`clamp`/`wrap`) with value storage, `+=`/`-=`/`*=`
-operate directly at the raw type's width — a loop of byte-wide `b += 1`
-vectorizes at the same lane count as native `uint8_t`:
+Compound assignment takes another inside (or an `expected<inside>`, or a
+`rational`); the result is computed as by the binary operator, then narrowed
+back into the left-hand type through its policy. A raw `int` / `double` is
+ill-formed, as for the binary operators: give it a grid with `_ins`,
+`just<…>`, or an inside over its range. Under an unchecked policy (no
+`checked`/`clamp`/`wrap`) with value storage, `+=`/`-=`/`*=` operate directly
+at the raw type's width — a loop of byte-wide `b += 1_ins` vectorizes at the
+same lane count as native `uint8_t`:
 
 ```cpp
-using pct = inside<{0, 100}, clamp>;
+using pct = inside<{0, 100}, clamp | snap>;
+using d10 = inside<{1, 10}>;
 pct x{50};
-x += 30;            // x == 80
-x -= 10;            // x == 70
-x *= 2;             // x == 100 (clamped)
-x /= 3;             // x == 33
-x %= 10;            // x == 3
+x += 30_ins;        // x == 80
+x -= 10_ins;        // x == 70
+x *= 2_ins;         // x == 100 (clamped)
+x /= 3_ins;         // x == 33  (snap truncates 100/3)
+x %= d10{10};       // x == 3   (% needs snap and an integer-stored divisor)
 
 ++x;                // x == 4
 x--;                // x == 3
 ```
 
-Unlike binary `inside op scalar` (which is ill-formed — a bare scalar has no
-grid), compound assignment **does** accept a bare scalar: it mutates in place
-rather than manufacturing a new value/type, so it never leaves the bounded
-world. The overload dispatches per RHS kind:
-- **integral** — integer-fast path with overflow detection.
-- **floating-point** — route through `double`, then snap via the inside's policy.
-- **another inside** — widen, then narrow back through the policy.
+An `expected` right-hand side (`x += a / b`) is unwrapped once; an error in it
+is reported through the left-hand type's policy.
 
 `x /= 0` triggers the inside's divide-by-zero handling (throws, sets the
 error code, or is silent under `ignore_zero` — see
@@ -385,18 +395,26 @@ zero check used by `inside / inside`; see
 using rn = inside<{{0, 100}, notch<1, 100>}, round_nearest>;
 rn a{0.5};
 a += just<frac<1, 4>>;  // 0.75 — exact inside-space accumulation, snaps to 1/100
-a *= 0.5;               // 0.375 — double path, snap on assign
+a *= 0.5_ins;           // 0.375, rounded to 0.38 on assign
 ```
 
 ## Variadic folds
 
-`add_all` and `mul_all` are variadic equivalents of `+` and `*` over bounds:
+`add_all` and `mul_all` are variadic equivalents of `+` and `*` over insides:
 
 ```cpp
 using v = inside<{0, 100}>;
 v a{10}, b{20}, c{30};
 auto sum  = add_all(a, b, c);   // inside<{0, 300}>, value 60
 auto prod = mul_all(a, b);      // inside<{0, 10000}>, value 200
+```
+
+`add_all_into<Target>` / `mul_all_into<Target>` fold the same way, then
+collapse the widened result into `Target` with `clamp_cast` (an `expected`
+intermediate is unwrapped first):
+
+```cpp
+auto capped = add_all_into<v>(a, b, c, v{90});   // v, value 100 (150 clamped)
 ```
 
 ## When `std::expected` is returned

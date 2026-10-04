@@ -1,6 +1,6 @@
 # Storage, iteration & standard-library integration
 
-Each `inside` stores a single `Raw` member. The storage type is selected
+Each `inside` stores a single private `Raw` member. The storage type is selected
 automatically per grid; this page summarises the user-visible rules and
 shows how `inside` integrates with the standard containers and algorithms.
 For the full decision tree see [internals.md](internals.md); for which grids are
@@ -74,8 +74,7 @@ using wide   = inside<{0, 100}, u16>;    // Raw: uint16_t (pinned width, raw() =
 using sidx   = inside<{0, 4, notch<1,16>}, u32 | indexed>; // Raw: uint32_t index
 ```
 
-`f64`/`f32` are the math-operand flags ([math.md](math.md); `real` is the
-deprecated spelling of `f64`); `exact` lifts the
+`f64`/`f32` are the math-operand flags ([math.md](math.md)); `exact` lifts the
 notch-count limit and removes `double` entirely; `direct` makes the raw equal
 the wire/debugger value for interop; `indexed` gives signed grids a dense
 unsigned layout for serialization.
@@ -140,19 +139,35 @@ direct storage (native-speed). Behavior is composable: these default to
 `checked`; for register-style `wrap`/`clamp` declare your own variant, e.g.
 `inside<{0,255}, wrap>`.
 
+### Counters
+
+`formats.hpp` also names the two counter shapes, where the policy says what
+`++` does at the ceiling:
+
+| Type | Definition | At the ceiling |
+|---|---|---|
+| `counter<Max>` | `inside<{0, Max}, clamp>` | `++` stays at `Max`, `--` stays at 0 (a saturating tally) |
+| `ring_counter<Max>` | `inside<{0, Max}, wrap>` | `++` wraps `Max` → 0 (sequence numbers, epochs) |
+
+```cpp
+beman::inside::ring_counter<255> seq{255};
+++seq;                                  // seq == 0
+```
+
 ## Raw storage access
 
-`inside::Raw` is a public data member, but most code should not touch it
-directly. The supported access patterns are:
+`Raw` is private. The supported access patterns are:
 
+- **`b.raw()`** — a const reference to the storage-layout raw value, under
+  every policy (read-only C interop: `&std::as_const(b).raw()`).
 - **`B::from_raw(raw)`** — static factory constructing an inside directly from a
   storage-layout raw value, with no validation (same trust contract as
   `unsafe`). The supported entry point for raw-level construction in tests,
   fast paths, and same-grid raw transfer.
-- **Direct `b.Raw = ...` writes** are only well-defined under `unsafe`
-  policy (which opts out of all runtime checks); prefer `B::from_raw(raw)` for
-  trusted raw construction. Outside `unsafe`, the library assumes `Raw` always
-  encodes a valid grid value.
+- **Writes through `b.raw()`** — the mutable overload exists only under the
+  `unsafe` policy (which opts out of all runtime checks); elsewhere it is a
+  compile error, because the library assumes the raw always encodes a valid
+  grid value. Prefer `B::from_raw(raw)` for trusted raw construction.
 
 ## Iteration: `inside_range`
 
@@ -168,7 +183,7 @@ for (auto i : inside_range<{0, 9}>{5})
   std::cout << i;  // 5 6 7 8 9 0 1 2 3 4
 ```
 
-The yielded values are bounds, not raw integers, so they slot directly into
+The yielded values are insides, not raw integers, so they slot directly into
 `vec[i]` via the implicit `operator imax()` (the standard imax → size_t
 conversion does the rest — see
 [conversions.md](conversions.md#implicit-operator-conversions-on-inside)):
@@ -195,7 +210,7 @@ ship those views yet.
 
 ## Compile-time constants
 
-`beman::inside::zero` and `beman::inside::one` are built-in point-bounds for the two values you reach
+`beman::inside::zero` and `beman::inside::one` are built-in point insides for the two values you reach
 for most. They **assign into any grid that can exactly represent the value**
 (verified at compile time — out of range, or off a notch, is a compile error)
 and otherwise stand in for `0` / `1` in comparison and arithmetic:
@@ -226,8 +241,13 @@ auto x    = 10_ins + my_inside;    // grid widens via just<N> + inside
 ## `std`-vocabulary helpers
 
 `beman/inside/arithmetic.hpp` provides ADL-found `beman::inside::min`, `beman::inside::max`, and
-`beman::inside::midpoint` (alongside `lerp` / `dot` / `cross`) so bounds drop into generic
-code that calls them unqualified. `min` / `max` return the same inside type;
+`beman::inside::midpoint` (alongside `lerp` / `dot` / `cross`) so insides drop into generic
+code that calls them unqualified. `min` / `max` on two values of the same type
+return that type. On two different grids they return `common_inside_t<L, R>`:
+the interval hull with the gcd notch, which holds every value of both exactly
+(the same type `std::common_type_t<L, R>` names, with
+`<beman/inside/numeric_limits.hpp>` included). `midpoint` takes mixed grids
+too.
 `midpoint` returns the **exact** average on a refined grid — the true midpoint
 of two grid points need not land on the grid, so unlike `std::midpoint` on
 integers it neither rounds nor overflows. The refined grid has half the notch

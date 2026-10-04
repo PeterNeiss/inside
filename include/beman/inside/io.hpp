@@ -204,9 +204,8 @@ namespace beman::inside
 } // namespace beman::inside
 
 //---------------------------------------------------------------------------
-// std::format integration is gated on a working <format> (libstdc++ ships it
-// from GCC 13; GCC 12 / C++20 builds compile this as a no-op and rely on
-// to_string()/operator<< instead).
+// std::format integration is gated on a working <format>; without it this
+// compiles as a no-op and to_string()/operator<< remain.
 //---------------------------------------------------------------------------
 #ifdef __cpp_lib_format
 

@@ -467,8 +467,8 @@ namespace beman::inside
 
     // Multi-action entry point: combine N tagged actions into one policy_ref.
     // policy_ref rejects mutually exclusive combinations at compile time. E.g.
-    // `b.with(on_overflow(λ1), on_clamp(λ2)) += rhs` — overflow probe fires λ1,
-    // post-probe narrowing fires λ2.
+    // `b.with(on_overflow(λ1), on_clamp(λ2)) += rhs` — the arithmetic fires λ1,
+    // the narrowing back into b fires λ2.
     template <typename... Actions>
     [[nodiscard]] constexpr auto with(Actions&&... actions)
     {

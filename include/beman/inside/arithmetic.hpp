@@ -353,7 +353,8 @@ namespace beman::inside
   // `inside op rawscalar` has no type-safe result; rather than silently escape
   // into rational/double, these guidance overloads make it ill-formed with a fix
   // (give the literal a grid: `1_ins` / `just<1>`, or an inside over its range).
-  // Comparisons and compound assignment with raw scalars are unaffected.
+  // Compound assignment with a raw scalar is rejected the same way; comparisons
+  // with raw scalars are unaffected.
   //
   // Concrete (non-auto) return type on purpose: keeps these SFINAE-transparent,
   // so `requires { b + 1; }` stays well-formed and the static_assert fires only

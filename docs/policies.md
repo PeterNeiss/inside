@@ -48,7 +48,7 @@ is proven elsewhere. `clamp` and `wrap` are mutually exclusive
 | `round_half_even` | banker's rounding — half to even (implies `snap`) |
 | `ignore_zero` | skip the divide-by-zero check — `a / 0` / `a % 0` is UB (binary `div`/`mod`); compound `/= 0` / `%= 0` no-op |
 | `ignore_domain` | suppress the runtime domain check |
-| `f64` / `f32` / `exact` / `direct` / `indexed` / `i8`…`u64` | **representation flags** — select how the raw value is stored; see the next section (`real` is a deprecated alias of `f64`) |
+| `f64` / `f32` / `exact` / `direct` / `indexed` / `i8`…`u64` | **representation flags** — select how the raw value is stored; see the next section |
 
 ## Representation flags
 
@@ -58,7 +58,7 @@ Besides the *behavior* flags above, these flags select the **representation**
 
 | Flag | Forces | Grid requirement | Notes |
 |---|---|---|---|
-| `f64` | IEEE-754 `double` raw (the value itself, snapped to the grid) | dyadic **and** double-exact (every value fits `double`'s 53-bit significand) | bundles `round_nearest`; the fast math-storage flag. Arithmetic drops `f64` to an exact representation when a result grid is too fine for `double`. Under `BEMAN_INSIDE_MATH_CORDIC` it falls back to integer storage. **`real` is a deprecated alias of `f64`.** |
+| `f64` | IEEE-754 `double` raw (the value itself, snapped to the grid) | dyadic **and** double-exact (every value fits `double`'s 53-bit significand) | bundles `round_nearest`; the fast math-storage flag. Arithmetic drops `f64` to an exact representation when a result grid is too fine for `double`. Under `BEMAN_INSIDE_MATH_CORDIC` it falls back to integer storage. |
 | `f32` | IEEE-754 `float` raw (the value itself, snapped to the grid) | dyadic **and** float-exact (every value fits `float`'s 24-bit significand) | the binary32 sibling of `f64`, for single-precision FPUs and the `flt` engine. Arithmetic **demotes `f32`→`f64`** when a result grid outgrows `float` (then drops to exact when it outgrows `double`). Under `BEMAN_INSIDE_MATH_CORDIC` it falls back to integer storage. |
 | `exact` | exact-fraction raw on **any** grid | none | no notch-count limit, no `double` anywhere; arithmetic is exact — on notched grids overflow is usually provably impossible and `+ − ×` return plain bounds (no `std::expected`) |
 | `i8 u8 i16 u16 i32 u32 i64 u64` | the named fixed-width integer raw | value storage needs `Notch == 1` and the value range to fit (add `indexed` for a notched grid) | **pins the exact backing type** (e.g. a `uint16_t` where deduction would pick `uint8_t`) for a fixed wire layout. Bare = value storage (`raw() == value`, like `direct`); `+ indexed` = 0-based index storage. **No silent widening** — a type too small for the grid is a compile error. One width flag at a time; dropped on arithmetic results. |
@@ -101,6 +101,21 @@ g.with_snap<round_ceil>()            = 3.0;  // g == 4
 g.with_snap<round_half_even>() = 5.0;  // g == 4 (tie → even)
 ```
 
+## Named policies
+
+The free arithmetic functions take a policy object as an optional argument.
+Each named policy is spelled after the flag it carries:
+
+| Name | Flag |
+|---|---|
+| `snapped` | `snap` (truncate toward zero) |
+| `rounded_nearest` / `rounded_floor` / `rounded_ceil` / `rounded_half_even` | `round_nearest` / `round_floor` / `round_ceil` / `round_half_even` |
+| `clamped` / `wrapped` | `clamp` / `wrap` |
+
+```cpp
+auto q = div(a, b, rounded_floor);   // == div(a, b, make_policy<round_floor>())
+```
+
 ## Callbacks: `on_wrap` / `on_clamp` / `on_overflow` / `on_error`
 
 Each policy event can fire a zero-overhead callback. Unused handlers are
@@ -111,8 +126,8 @@ stored value) plus an event-specific payload.
 | Method | Path | Fires when | Callback signature |
 |---|---|---|---|
 | `on_clamp(λ)`    | assignment | a narrowed value leaves the grid and `clamp` saturates it | `λ(inside&, overshoot)` |
-| `on_wrap(λ)`     | assignment | a narrowed value leaves the grid and `wrap` folds it (carry) | `λ(inside&, carry)` |
-| `on_error(λ)`    | assignment | a domain / rounding error under `checked` (replaces the throw) | `λ(inside&, errc, std::string_view msg)` |
+| `on_wrap(λ)`     | assignment | a narrowed value leaves the grid and `wrap` folds it (carry) | `λ(inside&, carry)` — an inside, or `imax` for a raw-scalar source |
+| `on_error(λ)`    | assignment | a domain / rounding error under `checked` (replaces the throw) | `λ(inside&, errc, const char* msg)` |
 | `on_overflow(λ)` | binary arithmetic | a fractional or imax result overflows, or `div`/`mod` divides by zero | `λ(inside&, errc)` |
 
 The first three fire on the **assignment** path — narrowing a value *into* a
@@ -126,7 +141,8 @@ divisor).
 operation with the callback wired in. Calling `on_*` automatically OR-merges
 the policy bit it implies (e.g. `on_clamp` adds `clamp`). A pack may carry
 handlers for *both* paths — e.g. `with(on_overflow(…), on_clamp(…))` on a
-compound `+=`, whose imax probe can overflow *and* whose narrowing can clamp —
+compound `+=`, whose widened arithmetic can overflow *and* whose narrowing back
+into the target can clamp —
 and each handler fires only on its own path; handlers that a given operation
 never reaches are accepted but simply not invoked.
 
@@ -141,9 +157,13 @@ min minutes{0};
 seconds.on_wrap([&](auto& self, auto carry) {
     (void)self;
     minutes += carry;
-}) = 125;
+}) = 125_ins;
 // seconds == 5, minutes == 2
 ```
+
+The carry is an inside (with a grid covering every possible carry) when the
+assigned value is an inside, as here. A raw integer source, `= 125`, passes it
+as an `imax`, which then needs a grid before it can be added to an inside.
 
 The free arithmetic functions accept the same factories — useful for catching
 divide-by-zero or arithmetic overflow without throwing:
@@ -155,23 +175,24 @@ auto q = div(d, z, on_overflow([&](auto& res, errc c) {
 }));
 ```
 
-### `policy_ref` compound assignment with a floating-point or inside RHS
+### `policy_ref` compound assignment
 
-`x.on_wrap(...) += rhs` (and `-=`, `*=`, `/=`) accept a `float` / `double` RHS
-or another inside. So a runtime `double` delta flows straight through the
-wrap callback without an intermediate cast:
+`x.on_wrap(...) += rhs` (and `-=`, `*=`, `/=`, `%=`) accept another inside or a
+`rational`. A raw `int` / `double` is ill-formed, as for plain compound
+assignment: give it a grid with `_ins`, `just<…>`, or an inside over its range.
 
 ```cpp
 using pos = inside<{{0, 64}, notch<1, 16>}, wrap | round_nearest>;
 pos p{0};
 int wrap_count = 0;
 
-p.on_wrap([&](auto&, auto) { ++wrap_count; }) += 65.5;
-// p == 1.5, wrap_count == 1
+p.on_wrap([&](auto&, auto) { ++wrap_count; }) += 65.5_ins;
+// p == 1.4375 (65.5 − 1025/16: the wrap period is span + notch), wrap_count == 1
 ```
 
 See [examples/torus_map.cpp](../examples/torus_map.cpp) for a full sprite
-position demo using this pattern on both axes.
+position demo using this pattern on both axes, with a runtime delta typed as
+a ranged inside.
 
 ### Combining actions: `with(...)`
 
@@ -182,11 +203,12 @@ rejected at compile time by `static_assert`.
 ```cpp
 using c100 = inside<{0, 100}>;
 c100 acc{50};
+inside<{0, 1000}> big_value{900};
 
 acc.with(
-    on_overflow([&](auto& self, errc) { self = 0; /* imax saturated */ }),
-    on_clamp   ([&](auto&, auto over)  { log_overshoot(over);          })
-) += big_value;
+    on_overflow([&](auto& self, errc) { self = 0; /* arithmetic overflowed */ }),
+    on_clamp   ([&](auto&, auto over)  { log_overshoot(over);              })
+) += big_value;                         // acc == 100, overshoot 850
 ```
 
 ## Error code mode
@@ -231,7 +253,7 @@ through `beman::inside::detail::raise`, which calls the installed handler:
 using beman::inside::errc;
 using beman::inside::error_handler_t;
 
-// Default handler throws beman::inside::inside_error (which carries `errc code`). When the
+// Default handler throws beman::inside::inside_error (which carries `errc Code`). When the
 // program is compiled with exceptions disabled the default instead traps.
 // Install your own to redirect failures (log, reset, longjmp, …):
 error_handler_t prev = beman::inside::set_error_handler(

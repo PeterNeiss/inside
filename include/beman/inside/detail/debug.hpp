@@ -57,7 +57,7 @@ namespace beman::inside
   {
     domain_error = 1,   // value outside interval
     division_by_zero,   // divisor is zero
-    overflow,           // rational arithmetic overflow
+    overflow,           // result or target range exceeded (incl. rational overflow)
     rounding_error,     // notch incompatibility
     not_finite,         // non-finite double input (NaN/Inf)
   };
@@ -71,7 +71,7 @@ namespace beman::inside
     {
       case errc::domain_error:     return "value outside interval";
       case errc::division_by_zero: return "division by zero";
-      case errc::overflow:         return "rational arithmetic overflow";
+      case errc::overflow:         return "arithmetic overflow";
       case errc::rounding_error:   return "notch incompatibility";
       case errc::not_finite:       return "non-finite floating-point value";
     }

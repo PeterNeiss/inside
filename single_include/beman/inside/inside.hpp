@@ -118,7 +118,7 @@ namespace beman::inside
   {
     domain_error = 1,   // value outside interval
     division_by_zero,   // divisor is zero
-    overflow,           // rational arithmetic overflow
+    overflow,           // result or target range exceeded (incl. rational overflow)
     rounding_error,     // notch incompatibility
     not_finite,         // non-finite double input (NaN/Inf)
   };
@@ -132,7 +132,7 @@ namespace beman::inside
     {
       case errc::domain_error:     return "value outside interval";
       case errc::division_by_zero: return "division by zero";
-      case errc::overflow:         return "rational arithmetic overflow";
+      case errc::overflow:         return "arithmetic overflow";
       case errc::rounding_error:   return "notch incompatibility";
       case errc::not_finite:       return "non-finite floating-point value";
     }
@@ -4022,7 +4022,7 @@ namespace beman::inside
   //---------------------------------------------------------------------------
   // policy_ref — variadic in actions (stores std::tuple<As...>). policy_ref
   // pre-picks the matching action per call path, so assignment/arithmetic keep
-  // their single-A signatures. Payoff: the imax-probe and narrowing stages of a
+  // their single-A signatures. Payoff: the arithmetic and narrowing stages of a
   // compound op can each fire a different action (e.g. on_overflow + on_clamp).
   //---------------------------------------------------------------------------
   namespace detail
@@ -5429,8 +5429,8 @@ namespace beman::inside
 
     // Multi-action entry point: combine N tagged actions into one policy_ref.
     // policy_ref rejects mutually exclusive combinations at compile time. E.g.
-    // `b.with(on_overflow(λ1), on_clamp(λ2)) += rhs` — overflow probe fires λ1,
-    // post-probe narrowing fires λ2.
+    // `b.with(on_overflow(λ1), on_clamp(λ2)) += rhs` — the arithmetic fires λ1,
+    // the narrowing back into b fires λ2.
     template <typename... Actions>
     [[nodiscard]] constexpr auto with(Actions&&... actions)
     {
@@ -6263,7 +6263,8 @@ namespace beman::inside
   // `inside op rawscalar` has no type-safe result; rather than silently escape
   // into rational/double, these guidance overloads make it ill-formed with a fix
   // (give the literal a grid: `1_ins` / `just<1>`, or an inside over its range).
-  // Comparisons and compound assignment with raw scalars are unaffected.
+  // Compound assignment with a raw scalar is rejected the same way; comparisons
+  // with raw scalars are unaffected.
   //
   // Concrete (non-auto) return type on purpose: keeps these SFINAE-transparent,
   // so `requires { b + 1; }` stays well-formed and the static_assert fires only
@@ -9613,9 +9614,8 @@ namespace beman::inside
 } // namespace beman::inside
 
 //---------------------------------------------------------------------------
-// std::format integration is gated on a working <format> (libstdc++ ships it
-// from GCC 13; GCC 12 / C++20 builds compile this as a no-op and rely on
-// to_string()/operator<< instead).
+// std::format integration is gated on a working <format>; without it this
+// compiles as a no-op and to_string()/operator<< remain.
 //---------------------------------------------------------------------------
 #ifdef __cpp_lib_format
 

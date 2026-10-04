@@ -3,7 +3,7 @@
 This page covers the conversion surface between `inside` and scalar
 arithmetic types — the exact integer-pair read-out, the named casts, the
 conversion predicates, the implicit conversion operators, and the idioms for
-writing literal values into bounds.
+writing literal values into insides.
 
 > **Note.** The exact fractional representation type is an internal
 > implementation detail (`beman::inside::detail::rational`) and is **not** part of the
@@ -17,7 +17,7 @@ writing literal values into bounds.
 | Conversion | When it applies | Purpose |
 |---|---|---|
 | `operator imax()` (implicit) | integer-notch grid (notch denom = 1) with Lower ≥ imax_min and Upper ≤ imax_max | drop-in for integer contexts: accumulators, comparisons, and indexing (`vec[b]` converts imax → size_t) |
-| `operator double()` (**implicit** for `f64`-policy bounds, explicit otherwise) | `f64`: always (the double-exact grid makes every value exact in `double`). Others: grid carries a rounding policy (`round_*` or `snap`) | floating-point arithmetic / printf |
+| `operator double()` (**implicit** for an `f64`-policy inside, explicit otherwise) | `f64`: always (the double-exact grid makes every value exact in `double`). Others: grid carries a rounding policy (`round_*` or `snap`) | floating-point arithmetic / printf |
 
 `operator imax()` is deliberately the **only** implicit integer conversion —
 a second one (e.g. `size_t`) would make built-in mixed arithmetic like
@@ -28,7 +28,7 @@ sites will surface that conversion as a warning.
 ```cpp
 inside<{0, 100}> b{42};
 if (b == 42) { ... }      // arithmetic compare, no conversion needed
-if (b < 50)  { ... }      // works on bounds and scalars
+if (b < 50)  { ... }      // works on insides and scalars
 
 imax v = b;                // implicit (integer-shape grid)
 std::vector<int> vec(101);
@@ -38,7 +38,6 @@ double e = double(b);      // explicit (rounding-gated operator double())
 
 using gain = inside<{{0, 4}, notch<1, 65536>}, round_nearest | f64>;
 double d = gain{0.5};      // implicit — an f64 inside's value is exact in double (double-exact grid)
-                           // (`real` is the deprecated spelling of `f64`)
 ```
 
 For wide grids (Upper > imax_max) the implicit operators are SFINAE-disabled
@@ -80,7 +79,7 @@ imax oracle(B a, B b) { return as<imax>(a) % as<imax>(b); }
 > **Floating-point gate.** `as<double>()` (member and free) shares
 > `operator double()`'s policy gate: a strict inside — one without a rounding
 > flag — rejects both at compile time. `to<double>()` stays ungated; it is
-> the explicit opt-in for strict bounds.
+> the explicit opt-in for a strict inside.
 
 ## Exact read-out: `numerator()` / `denominator()`
 
@@ -113,7 +112,7 @@ call site — particularly useful inside `std::transform` lambdas.
 |---|---|
 | `clamp_cast<B>(v)`     | clamp to `[Lower, Upper]`, never throw |
 | `wrap_cast<B>(v)`      | modular reduction into the target interval |
-| `checked_cast<B>(v)`   | throw `beman::inside::inside_error` on overflow or off-notch |
+| `checked_cast<B>(v)`   | report through the checked policy (by default, throw `beman::inside::inside_error`): `errc::overflow` when out of range, `errc::rounding_error` when off-notch |
 | `unchecked_cast<B>(v)` | trust the caller — UB if out of range |
 | `clamp_floor<B>(v)`    | clamp + round toward −∞ |
 | `clamp_ceil<B>(v)`     | clamp + round toward +∞ |
@@ -128,8 +127,8 @@ checked_cast  <pct>(42);    // 42   (throws on out-of-range or off-notch)
 unchecked_cast<pct>(42);    // 42   (skips runtime checks)
 ```
 
-The cast's policy applies to every target and source shape: a `real`
-(double-backed) target is clamped or wrapped like any other, and a `real`
+The cast's policy applies to every target and source shape: an `f64`
+(double-backed) target is clamped or wrapped like any other, and an `f64`
 source is read by value (`clamp_round<pct>(r)` with `r == 2.5` gives 3). The
 same holds for the fluent forms — `b.with_clamp() = r`, `(r * k).with_snap()`.
 
@@ -184,9 +183,9 @@ boundary-policy form.
 Inspect a value *before* attempting an unsafe construction:
 
 ```cpp
-conversion_overflows<pct>(150);    // true  — out of [0, 100]
-conversion_rounds<pct>(3.5);    // true  — doesn't land on notch 1
-conversion_is_lossy     <pct>(150);    // true  — overflow OR truncation
+conversion_overflows<pct>(150);   // true  — out of [0, 100]
+conversion_rounds   <pct>(3.5);   // true  — doesn't land on notch 1
+conversion_is_lossy <pct>(150);   // true  — overflow OR rounding
 ```
 
 All three are pure inspection — none performs the conversion or has
@@ -196,17 +195,17 @@ continuous grid (notch 0) never truncates. See
 [examples/histogram.cpp](../examples/histogram.cpp) for these as outlier
 filters around a sample-collection loop.
 
-## Idiom: writing literal values into bounds
+## Idiom: writing literal values into insides
 
 Pick the shape that matches the context. All stay in inside-space — none
 names the internal representation.
 
 | Shape | When to use |
 |---|---|
-| Bare literal (`0`, `0.5`, `100`) | Constructing an inside (`pct{42}`, `gain{0.5}`), comparisons (`b == 5`, `b < 50`), or compound assignment (`b += 1`). Dyadic decimals (`0.5`, `0.25`, `0x1p-8`) are binary-exact and fine as grid endpoints. |
-| `_ins` literal (`0`, `0.5_ins`, `0xff_b`) | A *inside* operand for arithmetic — `a + 1_ins`, `a * 2_ins`, `b > 0.5_ins`. Gives a scalar a grid so it joins inside arithmetic; the result stays an inside. The parse is exact (no double round-trip). |
+| Bare literal (`0`, `0.5`, `100`) | Constructing or assigning an inside (`pct{42}`, `gain{0.5}`, `b = 7`) and comparisons (`b == 5`, `b < 50`). Not arithmetic or compound assignment — `b + 1` and `b += 1` are ill-formed. Dyadic decimals (`0.5`, `0.25`, `0x1p-8`) are binary-exact and fine as grid endpoints. |
+| `_ins` literal (`1_ins`, `0.5_ins`, `0xff_ins`) | An inside operand for arithmetic and compound assignment — `a + 1_ins`, `a * 2_ins`, `b += 1_ins`, `b > 0.5_ins`. Gives a scalar a grid so it joins inside arithmetic; the result stays an inside. The parse is exact (no double round-trip). |
 | `just<V>` | A compile-time point-inside from any structural NTTP value — `just<2>`, `just<math::pi>`. Same role as `_ins` for non-literal constants. |
-| `zero` / `one` | Built-in point-bounds for 0 / 1. Assign into any grid that can exactly represent the value (compile-time checked — out of range or off-notch is an error); also stand in for the value in comparison/arithmetic — `b == zero`, `b + one`. |
+| `zero` / `one` | Built-in point insides for 0 / 1. Assign into any grid that can exactly represent the value (compile-time checked — out of range or off-notch is an error); also stand in for the value in comparison/arithmetic — `b == zero`, `b + one`. |
 | `notch<N, D>` | The grid **step** in an `inside<{...}>` spec — `notch<1, 16384>`. |
 | `frac<N, D>` | An exact **non-dyadic** grid endpoint that no floating literal can spell — `frac<-6, 5>` for −1.2, `frac<3, 5>` for 0.6. Signed numerator. |
 
@@ -230,16 +229,16 @@ Dyadic decimals are exact as plain literals: `0.5` is exactly 1/2, `0x1p-8`
 is exactly 1/256. Reach for `frac<N, D>` only when the value is *not* a
 binary fraction (e.g. 1/3, 8/100, −6/5).
 
-## Comparing bounds
+## Comparing insides
 
-`inside` compares directly with arithmetic types and other bounds — no
+`inside` compares directly with arithmetic types and other insides — no
 `static_cast` needed:
 
 ```cpp
 inside<{0, 100}> a{42}, b{58};
-REQUIRE(a == 42);
-REQUIRE(a < 50);
-REQUIRE(a + b == 100);
+a == 42;          // true
+a < 50;           // true
+a + b == 100;     // true
 ```
 
 Mixed-type comparisons (`inside<G1> < inside<G2>`) compute on a common
@@ -248,8 +247,9 @@ representation chosen at compile time — no implicit narrowing.
 ## `std::print` / `std::format` integration
 
 `beman/inside/io.hpp` ships a `std::formatter` specialization for
-`inside<G, P>`. Empty `{}` matches `operator<<` (exact value — a whole number
-or an `N/D` fraction); non-empty specs route by storage shape — integer grids
+`inside<G, P>`. Empty `{}` matches `operator<<` (the exact value — a whole
+number, a terminating decimal such as `0.625`, or a mixed number such as
+`2 1/3`); non-empty specs route by storage shape — integer grids
 go through `std::formatter<imax>` (`{:>4}`, `{:#x}`, `{:b}`, …), fractional
 grids through `std::formatter<double>` (`{:.2f}`, `{:e}`).
 
@@ -263,7 +263,7 @@ std::println("HP = {:>5}",    hp);       //    42
 std::println("HP = {:#04x}",  hp);       // 0x2a
 
 inside<{{0, 1}, notch<1, 16>}, round_nearest> g{0.625};
-std::println("gain = {}",    g);          // 5/8
+std::println("gain = {}",    g);          // 0.625 (exact)
 std::println("gain = {:.3f}", g);          // 0.625
 ```
 
