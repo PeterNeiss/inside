@@ -228,6 +228,21 @@ for (auto [idx, v] : r.indexed())    { ... }    // (0,0) (1,1) …  position + v
 / `std::views::enumerate`, so they also work with standard libraries that do not
 ship those views yet.
 
+## Random sampling: `uniform<B>(rng)`
+
+`#include <beman/inside/random.hpp>` (opt-in: it pulls `<random>`) for
+`uniform<B>(rng)`, which draws a `B` uniformly from the grid's slots — `Lower`,
+`Lower + Notch`, …, `Upper` — for any storage and any standard random engine:
+
+```cpp
+std::mt19937 rng{42};
+auto die  = uniform<inside<{1, 6}>>(rng);                   // 1..6
+auto gain = uniform<inside<{{0, 1}, per<256>}>>(rng);       // one of 257 slots in [0, 1]
+```
+
+A continuous grid (notch 0) has no slots and is a compile error. The single header
+drops this part in freestanding and `BEMAN_INSIDE_MATH_NO_FP` builds.
+
 ## Compile-time constants
 
 `beman::inside::zero` and `beman::inside::one` are built-in point insides for the two values you reach

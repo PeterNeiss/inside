@@ -187,13 +187,25 @@ list(INSERT roots 0 "beman/inside/inside.hpp")
 # heavy system includes) by defining the macro. Processed like any root, but its
 # depth-0 system includes are kept inline (see AMALG_INLINE_SYS) so they sit
 # inside the guard.
+# beman/inside/random.hpp needs <random> — hosted-only, and it pulls <cmath> — so
+# it sits inside a guard the same way: a freestanding or FP-free
+# (BEMAN_INSIDE_MATH_NO_FP, resolved earlier in the header) build drops it.
 foreach(r IN LISTS roots)
+  set(_guard_open "")
+  set(_guard_close "")
   if(r STREQUAL "beman/inside/io.hpp")
-    file(APPEND "${BODY_FILE}" "${NL}#ifndef BEMAN_INSIDE_NO_STRING${NL}")
+    set(_guard_open "#ifndef BEMAN_INSIDE_NO_STRING")
+    set(_guard_close "#endif // BEMAN_INSIDE_NO_STRING")
+  elseif(r STREQUAL "beman/inside/random.hpp")
+    set(_guard_open "#if __STDC_HOSTED__ && !defined(BEMAN_INSIDE_MATH_NO_FP)")
+    set(_guard_close "#endif // __STDC_HOSTED__ && !BEMAN_INSIDE_MATH_NO_FP")
+  endif()
+  if(_guard_open)
+    file(APPEND "${BODY_FILE}" "${NL}${_guard_open}${NL}")
     set_property(GLOBAL PROPERTY AMALG_INLINE_SYS TRUE)
     amalg_process("${r}")
     set_property(GLOBAL PROPERTY AMALG_INLINE_SYS FALSE)
-    file(APPEND "${BODY_FILE}" "${NL}#endif // BEMAN_INSIDE_NO_STRING${NL}")
+    file(APPEND "${BODY_FILE}" "${NL}${_guard_close}${NL}")
   else()
     amalg_process("${r}")
   endif()

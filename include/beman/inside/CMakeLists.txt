@@ -31,5 +31,6 @@ target_sources(
                 policy_flag.hpp
                 policy.hpp
                 predicates.hpp
+                random.hpp
                 range.hpp
 )

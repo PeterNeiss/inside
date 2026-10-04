@@ -151,6 +151,8 @@ other representation flags.
 |---|---|---|---|---|
 | `abs(x)` | all | `[0, max\|·\|]` | — | exact |
 | `floor(x)` / `ceil(x)` / `round(x)` / `trunc(x)` | all | integer notch | — | exact; `round` is half-away-from-zero |
+| `sign(x)` | all | `{sign(Lower), sign(Upper)}`, notch 1 | — | −1 / 0 / 1 by exact comparison (no decode) |
+| `copysign(mag, sgn)` | all | `±\|mag\|` for the signs `sgn` can take, `mag`'s notch | — | `sgn == 0` counts as positive |
 | `fmod(x, y)` | all | sign of `x` | `expected` (`division_by_zero`) when `y`'s grid holds 0; plain inside otherwise | truncated-division convention, exact. Integer-backed operands on commensurable notches take a single-integer-remainder fast path (faster than `std::fmod`). |
 | `pown<E>(x)` | all, `E ≥ 0` compile-time | corner-widened per multiply | `expected` per the checked-exact rules | repeated squaring in inside-space — exact, negative bases fine, no `f64` needed |
 

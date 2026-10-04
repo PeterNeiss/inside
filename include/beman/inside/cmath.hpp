@@ -1033,6 +1033,25 @@ namespace beman::inside::math
     using abs_auto_t = inside<{{rational{0}, abs_auto_upper<In>},
                               notch_of<In>}, out_policy<In>>;
 
+    // sign(x) ∈ {sign(Lower) … sign(Upper)}, integer notch.
+    template <insidable In>
+    using sign_auto_t = inside<{rational{sign(lower_of<In>)}, rational{sign(upper_of<In>)}},
+                               out_policy<In>>;
+
+    // copysign(mag, sgn): |mag| with sgn's possible signs. |mag| ranges over
+    // [m_lo, m_hi] (m_lo = 0 when mag's interval spans 0); a valid grid's Lower is
+    // a multiple of its notch, so ±|mag| stays on mag's lattice.
+    template <insidable Mag>
+    inline constexpr rational abs_auto_lower =
+      (lower_of<Mag> <= 0 && upper_of<Mag> >= 0) ? rational{0}
+      : (abs(lower_of<Mag>) < abs(upper_of<Mag>)) ? abs(lower_of<Mag>) : abs(upper_of<Mag>);
+
+    template <insidable Mag, insidable Sgn>
+    using copysign_auto_t = inside<{{
+        lower_of<Sgn> < 0 ? -abs_auto_upper<Mag> : abs_auto_lower<Mag>,
+        upper_of<Sgn> >= 0 ? abs_auto_upper<Mag> : -abs_auto_lower<Mag>},
+        notch_of<Mag>}, out_policy<Mag>>;
+
     template <insidable In>
     using floor_auto_t = inside<{{rational{floor(lower_of<In>)},
                                   rational{floor(upper_of<In>)}},
@@ -1091,6 +1110,19 @@ namespace beman::inside::math
       return detail::fp_direct_store<Out>(x, [](double v) { return v < 0 ? -v : v; });
     else
       return detail::store_grid<Out>(beman::inside::detail::abs(rational{x}));
+  }
+
+  // sign(x) ∈ {−1, 0, 1}, by exact comparison (no decode).
+  template <insidable Out, insidable In>
+  [[nodiscard]] constexpr Out sign_into(In x)
+  { return Out{imax{(x > 0) - (x < 0)}}; }
+
+  // copysign(mag, sgn) — |mag| with the sign of sgn; sgn == 0 counts as positive.
+  template <insidable Out, insidable Mag, insidable Sgn>
+  [[nodiscard]] constexpr Out copysign_into(Mag mag, Sgn sgn)
+  {
+    const rational a = beman::inside::detail::abs(rational{mag});
+    return detail::store_grid<Out>(sgn < 0 ? -a : a);
   }
 
   // ⌊x⌋ — largest integer ≤ x.
@@ -1258,6 +1290,13 @@ namespace beman::inside::math
 
   template <insidable In>
   [[nodiscard]] constexpr auto abs(In x) { return abs_into<detail::abs_auto_t<In>>(x); }
+
+  template <insidable In>
+  [[nodiscard]] constexpr auto sign(In x) { return sign_into<detail::sign_auto_t<In>>(x); }
+
+  template <insidable Mag, insidable Sgn>
+  [[nodiscard]] constexpr auto copysign(Mag mag, Sgn sgn)
+  { return copysign_into<detail::copysign_auto_t<Mag, Sgn>>(mag, sgn); }
 
   template <insidable In>
   [[nodiscard]] constexpr auto floor(In x) { return floor_into<detail::floor_auto_t<In>>(x); }
