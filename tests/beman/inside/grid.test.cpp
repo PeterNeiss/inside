@@ -152,3 +152,132 @@ TEST(GridTest, grid_validate)
   static_assert(grid::validate<grid{0_r}>());                   // point grid, notch=0
 }
 
+
+// grid{lo, hi} derives the notch as gcd(1, Lower, Upper): the coarsest step 1/k
+// keeping every integer and both limits on the lattice.
+TEST(GridTest, two_limit_ctor_derives_the_notch)
+{
+  static_assert(grid{0, 100}.Notch == 1);                          // integers: unchanged
+  static_assert(grid{-40, 85}.Notch == 1);
+  static_assert(grid{0.0, 1.0}.Notch == 1);
+  static_assert(grid{0.5, 10}.Notch == rational{1, 2});
+  static_assert(grid{-2.5, 0.75}.Notch == rational{1, 4});
+  static_assert(grid{frac<-6, 5>, frac<3, 5>}.Notch == rational{1, 5});
+  static_assert(grid{0.1_r, 1}.Notch == rational{1, 10});
+  static_assert(grid{0, 0x1p-10}.Notch == rational{1, 1024});      // at the double bound
+  static_assert(grid{0, 0x1p-11_r}.Notch == rational{1, 2048});    // exact spelling: no bound
+  static_assert(grid{frac<1, (1ll << 62)>, frac<1, (1ll << 62) - 1>}.Notch == 0);   // no rational notch
+  static_assert(grid::validate<grid{frac<-6, 5>, frac<3, 5>}>());
+
+  using half = inside<{0.5, 10}>;
+  static_assert(std::is_same_v<half::raw_type, std::uint8_t>);
+  static_assert(max_index_v<half> == 19);
+  EXPECT_EQ(rational{half{2.5}}, (rational{5, 2}));
+}
+
+namespace
+{
+  // The derived notch 1/k must keep 1, Lower and Upper on the lattice, and be the
+  // coarsest such step. A coarser 1/m (m a proper divisor of k) works only if
+  // 1/(k/p) works for some prime p | k, so checking those suffices.
+  template <grid G>
+  constexpr bool derived_notch_is_coarsest()
+  {
+    const rational n = G.Notch;
+    if (n.Numerator != 1) return false;                       // always 1/k
+    auto on = [](rational v, rational step) { return divides_evenly(v, step); };
+    if (!on(1, n) || !on(G.Interval.Lower, n) || !on(G.Interval.Upper, n))
+      return false;
+    const umax k = abs_den(n.Denominator);
+    umax rest = k;
+    for (umax p = 2; p * p <= rest || rest > 1; ++p)
+    {
+      if (p * p > rest) p = rest;                             // rest is prime
+      if (rest % p != 0) continue;
+      while (rest % p == 0) rest /= p;
+      const rational coarser{umax{1}, static_cast<imax>(k / p)};
+      if (on(G.Interval.Lower, coarser) && on(G.Interval.Upper, coarser))
+        return false;                                         // a coarser step works
+    }
+    return true;
+  }
+
+  template <grid G>
+  constexpr bool slot_count_matches()
+  {
+    const rational span = (G.Interval.Upper - G.Interval.Lower).value();
+    return rational{G.max_index()} == (span / G.Notch).value();
+  }
+}
+
+// grid{lo, hi} with fractional limits: the notch is 1/lcm of the limits'
+// denominators (after reduction), the grid validates, and inside works on it.
+TEST(GridTest, derived_notch_of_fraction_pairs)
+{
+  // {13/16, 3/10} in valid order: lcm(16, 10) = 80 → slots 24/80 .. 65/80.
+  constexpr grid a{frac<3, 10>, frac<13, 16>};
+  static_assert(a.Notch == rational{1, 80});
+  static_assert(a.max_index() == 41);
+  static_assert(grid::validate<a>() && derived_notch_is_coarsest<a>() && slot_count_matches<a>());
+
+  // Reversed order is not an interval: the notch still derives, the grid is invalid.
+  static_assert(grid{frac<13, 16>, frac<3, 10>}.Notch == rational{1, 80});
+  static_assert(!grid::try_make(interval{frac<13, 16>, frac<3, 10>}, rational{1, 80}).has_value());
+
+  // Shared factors reduce first: 6/8 is 3/4, 10/12 is 5/6 → lcm(4, 6) = 12.
+  constexpr grid b{frac<6, 8>, frac<10, 12>};
+  static_assert(b.Notch == rational{1, 12});
+  static_assert(derived_notch_is_coarsest<b>() && slot_count_matches<b>());
+
+  // Mixed signs, coprime denominators: lcm(7, 9) = 63.
+  constexpr grid c{frac<-5, 7>, frac<4, 9>};
+  static_assert(c.Notch == rational{1, 63});
+  static_assert(c.max_index() == 73);                             // (4/9 + 5/7)·63 = 28 + 45
+  static_assert(grid::validate<c>() && derived_notch_is_coarsest<c>() && slot_count_matches<c>());
+
+  // Both negative.
+  constexpr grid d{frac<-13, 16>, frac<-3, 10>};
+  static_assert(d.Notch == rational{1, 80});
+  static_assert(derived_notch_is_coarsest<d>() && slot_count_matches<d>());
+
+  // Integer and fraction: the integer contributes nothing finer.
+  constexpr grid e{-3, frac<7, 3>};
+  static_assert(e.Notch == rational{1, 3});
+  static_assert(e.max_index() == 16);
+  static_assert(derived_notch_is_coarsest<e>() && slot_count_matches<e>());
+
+  // One denominator divides the other: lcm(4, 12) = 12.
+  constexpr grid f{frac<1, 4>, frac<11, 12>};
+  static_assert(f.Notch == rational{1, 12});
+  static_assert(derived_notch_is_coarsest<f>() && slot_count_matches<f>());
+
+  // A whole number written as a fraction stays an integer grid.
+  constexpr grid g{frac<6, 3>, frac<20, 4>};
+  static_assert(g.Notch == 1);
+  static_assert(g.Interval.Lower == 2 && g.Interval.Upper == 5);
+
+  // Equal limits: a point; the two-limit form still derives a valid notch.
+  constexpr grid h{frac<3, 10>, frac<3, 10>};
+  static_assert(h.Notch == rational{1, 10});
+  static_assert(grid::validate<h>() && h.max_index() == 0);
+
+  // Large coprime denominators that still fit: lcm(1009, 1013) = 1022117.
+  constexpr grid i{frac<1, 1013>, frac<1, 1009>};
+  static_assert(i.Notch == rational{1, 1022117});
+  static_assert(i.max_index() == 4);                              // 1013 − 1009
+  static_assert(grid::validate<i>() && derived_notch_is_coarsest<i>() && slot_count_matches<i>());
+
+  // inside on derived fractional grids: storage, exact values, assignment.
+  using eightieths = inside<{frac<3, 10>, frac<13, 16>}>;
+  static_assert(std::is_same_v<eightieths::raw_type, std::uint8_t>);
+  EXPECT_EQ(rational{eightieths{0.5}}, (rational{1, 2}));         // 40/80
+  EXPECT_EQ((rational{eightieths{frac<13, 16>}}), (rational{13, 16}));
+  errc ec{};
+  eightieths off(frac<1, 3>, ec);                                 // 1/3 is not k/80
+  EXPECT_EQ(ec, errc::rounding_error);
+
+  using signed_63 = inside<{frac<-5, 7>, frac<4, 9>}, round_nearest>;
+  EXPECT_EQ((rational{signed_63{frac<-5, 7>}}), (rational{-5, 7}));
+  EXPECT_EQ(rational{signed_63{0.0}}, rational{0});
+  EXPECT_EQ((rational{signed_63{frac<1, 4>}}), (rational{16, 63}));   // 1/4 = 15.75/63 → nearest 16/63
+}

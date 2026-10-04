@@ -1019,6 +1019,8 @@ namespace beman::inside
 
   template <imax N, umax D = 1>
   inline constexpr detail::rational frac = detail::make_frac<N, D>();
+
+  using detail::operator""_r;
 } // namespace beman::inside
 
 #endif // BEMAN_INSIDE_DETAIL_RATIONAL_HPP

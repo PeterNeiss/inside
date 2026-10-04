@@ -1579,6 +1579,8 @@ namespace beman::inside
 
   template <imax N, umax D = 1>
   inline constexpr detail::rational frac = detail::make_frac<N, D>();
+
+  using detail::operator""_r;
 } // namespace beman::inside
 
 
@@ -2023,12 +2025,45 @@ namespace beman::inside
                    std::convertible_to<detail::rational> auto upper,
                    std::convertible_to<detail::rational> auto notch)
       :grid{interval{lower, upper}, notch} { }
+    // Two limits: the notch is derived — gcd(1, Lower, Upper), the coarsest
+    // step 1/k that keeps every integer and both limits on the lattice. Integer
+    // limits give 1; {0.5, 10} gives 1/2; {frac<-6,5>, frac<3,5>} gives 1/5.
     constexpr grid(std::convertible_to<detail::rational> auto lower,
                    std::convertible_to<detail::rational> auto upper)
-      :grid{interval{lower, upper}, detail::rational{1}} { }
+      :grid{interval{lower, upper}, derive_notch(lower, upper)} { }
     constexpr grid(std::convertible_to<detail::rational> auto lower)
       :grid{interval{lower, lower}, detail::rational{0}} { }
     constexpr grid(interval val, detail::rational notch):Interval{val}, Notch{notch} { }
+
+  private:
+    // A combined denominator past imax has no rational notch: fall back to a
+    // continuous grid (notch 0), which is always valid.
+    static constexpr detail::rational derive_notch(auto lower, auto upper)
+    {
+      check_short_binary(lower);
+      check_short_binary(upper);
+      const detail::rational lo{lower}, hi{upper};
+      return detail::gcd(detail::rational{1}, lo)
+          .and_then([&](detail::rational g) { return detail::gcd(g, hi); })
+          .value_or(detail::rational{0});
+    }
+
+    // A floating-point limit is taken as its exact binary value, so 0.1 would
+    // derive a 2^-55 notch. Past 1/1024 the literal almost surely meant a
+    // decimal: reject it at compile time and point to the exact spellings.
+    template <typename T>
+    static constexpr void check_short_binary([[maybe_unused]] T v)
+    {
+      if constexpr (std::floating_point<T>)
+        if (std::is_constant_evaluated() && detail::abs_den(detail::rational{v}.Denominator) > 1024)
+          detail::constexpr_error<
+            // Clang prints only the first ~34 characters: lead with the fix.
+            "float limit: use _r literal (0.1_r) or give a notch {{lo, hi}, per<D>}; "
+            "grid{lo, hi} derives a notch from a floating-point limit only down to "
+            "1/1024 (0.1 is not 1/10 in binary)">();
+    }
+
+  public:
 
     template <auto G>
     static constexpr bool validate()
