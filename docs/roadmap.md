@@ -24,26 +24,27 @@ macro, and to nothing otherwise — so the upgrade is automatic, no source chang
 > softfloat emulation that would enable it *today* was considered and rejected as not
 > worth the weight — the library waits for the standard instead.
 
-### "Every rational" grids — unbounded `bigratio` NTTP via static promotion
-An `inside`'s grid is a non-type template parameter built from `rational { umax Numerator;
-imax Denominator; }` — two 64-bit integers. That fixed width is the ceiling on how fine
-or how large a grid can be: a combined denominator past `imax::max()` falls back to exact
-storage or errors.
+### "Every rational" grids — unbounded grid numbers via static promotion — **done**
+Under C++23 an `inside`'s grid is built from `rational { umax Numerator; imax
+Denominator; }` — two 64-bit integers, which cap how fine or how large a grid can be.
 
 C++26 reflection plus `std::define_static_array` ([P3491]) **promotes** a
-constexpr-computed limb array to *static* storage and yields a pointer that is a legal
-constant-expression result. A structural type holding such pointers + lengths can then be
-an NTTP with per-value length and no fixed capacity in the type — effectively *any*
-rational as a grid parameter.
+constexpr-computed limb array to static storage and yields a pointer that is a legal
+constant-expression result. `detail::big_rational` (`detail/big_rational.hpp`) holds
+such limbs, so under C++26 a grid's limits and notch have no size limit (see
+[storage.md](storage.md#grids-past-64-bits-c26) and [internals.md](internals.md) §2a).
 
-> Contingent on two things before it can be relied on: a toolchain shipping the facility
-> for this project, and confirming the **NTTP pointer-interning guarantee** (two grids of
-> equal value must intern to the *same* pointer, or they'd become distinct template
-> arguments and break by-value grid identity). Feasibility-analysed only; not started.
+The two contingencies are settled on GCC 16 (`-freflection`): the facility ships, and
+equal arrays intern to the same object — so with one canonical form per value
+(reduced, no leading zero limbs, inline when it fits one limb) equal grids are the
+same template argument. The headers detect reflection through
+`__cpp_impl_reflection` and `<meta>` (that GCC snapshot does not define
+`__cpp_lib_define_static_array`).
 
-A legal-**today** partial step exists independently: fixed-capacity inline limb arrays
-(e.g. 128/256-bit `rational`) raise the practical ceiling without any language change —
-tracked separately from this standards-gated path.
+Still open: literal spellings past 64 bits (`per<D>` and `frac<N, D>` take 64-bit
+integers; the `_r` / `_ins` parsers produce 64-bit rationals), and the math engines,
+which stay 64-bit. Today big grids are spelled with exact double limits (`0x1p100`)
+or built by grid arithmetic.
 
 ### Rich, formatted `static_assert` messages
 Compile-time diagnostics currently use static text. Embedding the offending value /
@@ -91,18 +92,14 @@ For completeness — these came up alongside the above but are *not* blocked by 
   `inside` over a set of grids) rather than collapsing to the hull. Large surface
   (every operator/predicate would need a union story), so this stays a design
   sketch until a concrete use case demands it.
-- **128-bit rounded store** — **done.** The cold assignment path forms
+- **Wide rounded store** — **done.** The cold assignment path forms
   `(rhs − Lower)/Notch` as an exact 64-bit rational before rounding; a full-mantissa
-  `double`-derived source (denominator 2^52+) on a grid with large `|Lower|` can need
-  65+ bits *before* the round even though the rounded slot index is tiny. When that
-  exact formation overflows, `wide_offset_quotient` (assignment.hpp) now computes the
-  slot directly — compile-time divisor factors gcd-reduced first, then one 128×64
-  multiply and one 128÷64 divide (`mul128`/`divmod128` in rational.hpp, native
-  `__int128` or portable shift-subtract). Rounding in that regime is the offset rule
-  (`round_offset`), the same fallback `round_quotient` uses past 64 bits. Only
-  results beyond even the 128-bit envelope report `errc::overflow`. One caveat: at
-  *constant evaluation* the transient rational overflow still surfaces as the
-  intentional `constexpr_error` diagnostic before the fallback can engage.
+  `double`-derived source on a grid with large `|Lower|` can need more than 64 bits
+  *before* the round even though the rounded slot index is tiny. When that exact
+  formation overflows, the store takes the slot from the exact wide index
+  (`exact_index`, `detail/wide_value.hpp`), sized from the grid, with the same
+  value-space rounding as every other store. (This replaced a 128-bit envelope that
+  reported `errc::overflow` past it.)
 - **Modules / compile-time-footprint work** — parked for later; modules is C++20, not a
   blocker.
 

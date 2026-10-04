@@ -6,8 +6,9 @@ arithmetic operator, debug a storage-shape edge case, or reason about
 performance.
 
 > The exact-fraction representation type is `beman::inside::detail::rational` — an
-> **internal** type. It is the grid's NTTP substrate and the raw storage for
-> non-dyadic grids, so it appears throughout these internals, but it is not on
+> **internal** type. It is the raw storage for continuous grids and (under C++23)
+> the grid's NTTP substrate — under C++26 grids use `detail::big_rational`, see
+> §2a — so it appears throughout these internals, but it is not on
 > the public surface: consumers spell grids with literals / `per<D>` /
 > `frac<N,D>`, read exact values out with `numerator()` / `denominator()`, and
 > never name the type. The bare word "rational" below always means
@@ -34,8 +35,9 @@ enforced at type-instantiation time by `grid::validate` (`grid::validate` in `in
 **Two-limit grids.** `grid{lo, hi}` derives `Notch = gcd(1, Lower, Upper)`
 (rational gcd: gcd of numerators over lcm of denominators) — the coarsest step
 `1/k` keeping every integer and both limits on the lattice. Integer limits give
-1, so every grid that once took the fixed notch 1 is unchanged. A combined
-denominator past `imax` falls back to `Notch = 0`. A floating-point limit is its
+1, so every grid that once took the fixed notch 1 is unchanged. With 64-bit
+grid numbers a combined denominator past `imax` falls back to `Notch = 0`;
+under C++26 the exact gcd is kept (§2a). A floating-point limit is its
 exact binary value, so a double that needs a notch finer than 1/1024 (0.1 is
 3602879701896397/2^55) is rejected at compile time in favour of `0.1_r` or an
 explicit notch; rational, `frac`, `_r` and inside limits are taken exactly.
@@ -124,6 +126,55 @@ storage encoding), gating arithmetic fast paths:
   Under the divides-evenly invariant this implies `is_integer_interval`,
   but the converse is not true. Both predicates exist because they gate
   different fast paths.
+
+---
+
+## 2a. Grid numbers, wide raws and the exact paths
+
+**Grid numbers.** `detail/grid_rational.hpp` names one vocabulary for both
+language modes: `grid_rational` (the type of a grid's limits and notch, and of
+`lower_of` / `upper_of` / `notch_of`), `grid_wide` (exact integers for slot
+counts and value indices), `wide_numerator` / `wide_denominator`,
+`grid_divides_evenly`, `grid_same_lattice`, `grid_gcd` and `to_rational`.
+Under C++23 these are the 64-bit `rational` and a 4-limb `wide_int`. Under
+C++26 with static reflection (`BEMAN_INSIDE_BIG_GRIDS`) they are `big_rational`
+and `big_int` (`detail/big_rational.hpp`): canonical values whose magnitude
+past one limb is interned with `std::define_static_array`, so equal values are
+equal template arguments. Interning is consteval: a big value exists only at
+compile time, and runtime code reads big grid numbers through constants.
+
+The integer fast paths and the math engines work in 64 bits. They read
+`detail::lower64` / `upper64` / `notch64`, which fail the build for a grid
+number past 64 bits instead of truncating. Naming such a view instantiates it
+even in a short-circuited `&&`, so predicates every inside instantiates
+compare grid numbers, or hide the view behind `if constexpr`.
+
+**Wide raws and exact-valued insides.** `int_for_bits_t<Bits, Signed>`
+(`detail/int_for_bits.hpp`) is the one width rule: a builtin integer up to 64
+bits, else a `wide_int` (`detail/wide_int.hpp`, Knuth-D division, the only
+`__int128` site). A grid with more than 2⁶⁴ slots gets a `wide_int` index
+(`wide_raw<B>`); a grid number past 64 bits makes `big_valued<B>`. Either makes
+`exact_valued<B>`, which routes every operation to the exact paths of
+`detail/wide_value.hpp`.
+
+**Value indices.** On a valid grid `m = Lower/Notch` is an integer
+(`slot_base<B>`), so every value is `(m + raw)·Notch`, exactly. The exact paths
+carry values as `exact_frac<K>` (an unreduced fraction of `K`-limb integers);
+`exact_limbs<Bs...>` sizes `K` from the grids involved — three times the
+widest value, since the worst case is a product of two values over a third
+notch — and binary operations widen to the wider operand. A store divides by
+the target notch and rounds by the policy's mode (`exact_index`), then runs the
+usual out-of-range cascade (`assign_exact`).
+
+**Integer `+` and `×`.** Both run on value indices for every integer-raw
+grid: `J_L·(N_L/N) + J_R·(N_R/N)` and `J_L·J_R` (in each operand's unit from
+the product grid). The work type is `imax` when compile-time bounds prove no
+value index can overflow — the compiler then keeps the value ranges, as the old
+builtin paths did — else an unsigned type as wide as the result raw, whose
+wrapping ring arithmetic still yields the exact raw (`index_work_t`). Compound
+`+=` / `-=` size one signed work type from the raw and delta ranges
+(`raw_work_t`), and clamp/wrap onto unit grids use `unit_fold`, sized the same
+way; both are `imax` for every grid within int64.
 
 ---
 
@@ -332,6 +383,11 @@ is what keeps the core free of `<string>`/`<ostream>`/`<format>`/`<cmath>`:
 | `beman/inside/detail/addition.hpp`, `multiplication.hpp`, `division.hpp` | `beman::inside::detail::addition<L, R>`, `multiplication<L, R>`, `division<L, R, F>`, `modulo<L, R, F>` — implementation detail, included via `inside.hpp` |
 | `beman/inside/detail/overflow.hpp`, `debug.hpp` | `add_overflow` / `sub_overflow` / `mul_overflow` (the GCC/Clang `__builtin_*_overflow`); `errc`, the replaceable `error_handler` + `detail::raise` funnel — implementation detail |
 | `beman/inside/detail/rational.hpp`    | `rational` and its checked / unchecked arithmetic |
+| `beman/inside/detail/grid_rational.hpp` | The grid-number vocabulary and the `BEMAN_INSIDE_BIG_GRIDS` switch (§2a) |
+| `beman/inside/detail/big_rational.hpp` | `big_int` / `big_rational`, interned grid numbers of any size (C++26 only) |
+| `beman/inside/detail/wide_int.hpp`    | `wide_int<N, Signed>` and the limb kernels (the only `__int128` site) |
+| `beman/inside/detail/int_for_bits.hpp` | `int_for_bits_t`, the `raw_integer` concept |
+| `beman/inside/detail/wide_value.hpp`  | Exact values of exact-valued insides, `exact_frac<K>`, the wrapping value-index arithmetic of `+` / `×` |
 | `beman/inside/grid.hpp`        | `grid`, `storage_min`, grid operators |
 | `beman/inside/numeric_limits.hpp` | `std::numeric_limits<inside>` and `std::hash<inside>` specialisations (opt-in; `std::common_type` is in arithmetic.hpp, always on) |
 | `beman/inside/io.hpp`          | **All** string/stream/`std::format` support — `to_string`, `to_string_debug`, `operator<<`, `operator>>`, `from_chars(std::string_view)`, `std::formatter`, `type_name`. Opt-in and the *only* place `<string>`/`<ostream>`/`<format>` enter; gated by `BEMAN_INSIDE_NO_STRING` in the single header (see [freestanding.md](freestanding.md)) |

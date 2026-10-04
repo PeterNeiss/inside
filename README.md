@@ -23,7 +23,10 @@ follows the layout and tooling of [The Beman Standard](https://github.com/bemanp
   results such as division come back as `std::expected<inside, errc>`.
 - **It's fixed-point, done by the compiler.** Think Qm.n with the scale and
   range checked for you; the optimal raw storage (uint8…int64, double, exact
-  fraction) is picked automatically.
+  fraction, or a multi-limb integer past 2⁶⁴ steps) is picked automatically.
+- **Any size of grid.** Under C++26 with static reflection a grid's limits and
+  notch have no size limit (`inside<{0, 0x1p100}>`); see
+  [docs/storage.md](docs/storage.md#grids-past-64-bits-c26).
 - **Reproducible math.** `sin`/`cos`/`sqrt`/`exp`/… give bit-identical results
   across platforms — three engines, including an FPU-free `constexpr` CORDIC
   engine for bare metal.
@@ -111,7 +114,9 @@ ideal for Compiler Explorer. See [docs/single-header.md](docs/single-header.md).
 This project requires at least the following to build:
 
 * A C++ compiler and standard library that conform to C++23 (the library needs
-  `<expected>`)
+  `<expected>`). Grid limits and notches past 64 bits additionally need C++26
+  static reflection — GCC 16 with `-freflection` (the `gcc16-*` presets);
+  everything else works the same under C++23.
 * CMake 3.30 or later
 * (Test Only) GoogleTest
 
@@ -130,6 +135,7 @@ Library options:
 | `BEMAN_INSIDE_STRICT_SFINAE` | `OFF` | Drop the assignment diagnostic overloads so `is_constructible` stays honest |
 | `BEMAN_INSIDE_FMA` | `ON` | Add `-mfma` on x86-64 GCC/Clang so the math engines' `std::fma` is one instruction (see below) |
 | `BEMAN_INSIDE_BUILD_TOOLS` | `OFF` | Build the benchmarks, property fuzzer, accuracy sweep and perf workload |
+| `BEMAN_INSIDE_REFLECTION` | `ON` | Under C++26, add `-freflection` when the compiler accepts it, enabling grid numbers past 64 bits |
 
 Math-engine selection and bare-metal builds are covered in
 [docs/freestanding.md](docs/freestanding.md) and [docs/math.md](docs/math.md).

@@ -37,6 +37,49 @@ with `to<T>()`. A quotient `a / b` is an exact fraction and reports
 `errc::overflow` when it does not fit one. `from_chars` reads values past the
 64-bit fraction in decimal (`digits[.digits][e±n]`, or `n/d`).
 
+### Grids past 64 bits (C++26)
+
+Under C++23 a grid's limits and notch are 64-bit fractions: a limit past
+2⁶⁴, or a notch finer than about 2⁻⁶³, does not compile. Under C++26 with
+static reflection they have **no size limit**: the library interns large grid
+numbers in static storage (`std::define_static_array`), so equal grids stay the
+same type however they were spelled.
+
+```cpp
+using huge = inside<{0, 0x1p100}>;        // {0, 2¹⁰⁰}: a 101-bit index
+using fine = inside<{{0, 1}, 0x1p-80}>;    // a 2⁻⁸⁰ notch: 2⁸⁰ + 1 slots
+using sq   = inside<(grid_of<huge> * grid_of<huge>).value()>;   // {0, 2²⁰⁰}
+
+huge h = 1e30;          // 1000000000000000019884624838656: a double is exact
+auto p = h * h;         // the result grid reaches 2²⁰⁰; exact, no expected
+auto q = qword{~0ull} + qword{~0ull};     // 2⁶⁵ − 2 needs a big upper bound
+```
+
+A floating-point limit or notch is taken as its exact binary value, so powers
+of two and large doubles spell big grids directly; grid arithmetic builds the
+rest. (`per<D>`, `frac<N, D>` and the `_r` / `_ins` literals still take 64-bit
+numbers.)
+
+Such an inside supports everything a wide-index inside does (above) — values
+past 64 bits may even sit on a grid with few slots, like
+`{2¹⁰⁰, 2¹⁰⁰ + 10}` in a `uint8_t`. The math functions (`sin`, `sqrt`, …)
+work in 64 bits and reject a big grid at compile time. The big grid numbers
+themselves (limits and notch) exist only at compile time; runtime arithmetic
+on such an inside uses fixed-width integers sized from them.
+
+Requirements and switches:
+
+- C++26 with static reflection: GCC 16 with `-freflection`. The CMake option
+  `BEMAN_INSIDE_REFLECTION` (default `ON`) adds the flag under C++26; the
+  `gcc16-debug` / `gcc16-release` presets build that way.
+- The headers detect reflection (`BEMAN_INSIDE_BIG_GRIDS`); define it to `0`
+  to keep 64-bit grids on a C++26 compiler.
+- The two modes give `grid` a different layout, so they live in different
+  inline namespaces: mixing C++23 and C++26 translation units that pass
+  insides between them fails at link time instead of misbehaving.
+- Big grids cost compile time (about 4–10% in the test suite); small grids
+  compile and run exactly as under C++23.
+
 When `Lower == 0` and `Notch == 1`, `Raw` equals the value directly — no
 offset arithmetic.
 
@@ -168,7 +211,8 @@ their full natural range and power-of-two notches.
 
 `qword` reaches past int64, so it has no implicit `operator imax`: read it with
 `to<std::uint64_t>()`. A difference of two qwords spans 2⁶⁵ values and gets a
-wide integer index; a sum's upper bound passes the 64-bit grid numbers.
+wide integer index; a sum's upper bound passes the 64-bit grid numbers, so it
+needs [C++26 big grids](#grids-past-64-bits-c26).
 
 **Performance.** Multiplication is unaffected by the (non-power-of-two) UNORM
 notches — it operates on raw notch indices, with the denominator folded into
