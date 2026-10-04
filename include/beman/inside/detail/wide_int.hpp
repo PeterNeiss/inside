@@ -87,6 +87,17 @@ namespace beman::inside::detail
       }
     }
 
+    // a·b <=> c·d, exactly (the native 128-bit compare where available).
+    constexpr std::strong_ordering mul_compare(umax a, umax b, umax c, umax d) noexcept
+    {
+#if defined(__SIZEOF_INT128__)
+      return static_cast<unsigned __int128>(a) * b <=> static_cast<unsigned __int128>(c) * d;
+#else
+      const pair<umax> x = mul(a, b), y = mul(c, d);
+      return x.Hi != y.Hi ? x.Hi <=> y.Hi : x.Lo <=> y.Lo;
+#endif
+    }
+
     // {hi, lo} / d and the remainder. Requires hi < d, so the quotient fits L.
     template <std::unsigned_integral L>
     constexpr pair<L> div(L hi, L lo, L d) noexcept   // {quotient, remainder}

@@ -534,6 +534,12 @@ namespace beman::inside::detail
           action.Fn(lhs, make_wrap_carry<L, R>(q));
       }
 
+      // Cold and out of line: the exact wide slot for a quotient past the
+      // 64-bit rational (kept off the hot store path).
+      template <typename P>
+      [[gnu::cold, gnu::noinline]] static constexpr exact_index_result wide_slot(rational const& v)
+      { return exact_index<L, rounding_for<L, P>>(exact_of(v)); }
+
       template<typename P, typename A = no_action>
       static constexpr bool store_checked(L& lhs, R rhs, P&& policy, A&& action = {})
       {
@@ -628,7 +634,7 @@ namespace beman::inside::detail
           const auto quotient = (rhs - lower_of<L>)/notch_of<L>;
           if (!quotient.has_value()) [[unlikely]]
           {
-            const exact_index_result slot = exact_index<L, rounding_for<L, P>>(exact_of(rational{rhs}));
+            const exact_index_result slot = wide_slot<P>(rational{rhs});
             if constexpr (!has_round_flag)
               if (!slot.Exact && policy.round_check()) [[unlikely]]
               {

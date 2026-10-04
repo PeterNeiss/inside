@@ -667,6 +667,17 @@ namespace beman::inside::detail
       }
     }
 
+    // a·b <=> c·d, exactly (the native 128-bit compare where available).
+    constexpr std::strong_ordering mul_compare(umax a, umax b, umax c, umax d) noexcept
+    {
+#if defined(__SIZEOF_INT128__)
+      return static_cast<unsigned __int128>(a) * b <=> static_cast<unsigned __int128>(c) * d;
+#else
+      const pair<umax> x = mul(a, b), y = mul(c, d);
+      return x.Hi != y.Hi ? x.Hi <=> y.Hi : x.Lo <=> y.Lo;
+#endif
+    }
+
     // {hi, lo} / d and the remainder. Requires hi < d, so the quotient fits L.
     template <std::unsigned_integral L>
     constexpr pair<L> div(L hi, L lo, L d) noexcept   // {quotient, remainder}
@@ -1752,15 +1763,14 @@ namespace beman::inside::detail
         // exactly this). Retry the difference in 128-bit before giving up.
         if (a_neg != b_neg)
         {
-          using u2 = wide_uint<2>;
-          const u2 A2 = u2{a.Numerator} * u2{b_ad_r};
-          const u2 B2 = u2{b.Numerator} * u2{a_ad_r};
-          const bool a_bigger = A2 > B2;
-          const u2 diff = a_bigger ? A2 - B2 : B2 - A2;
-          if (diff.Word[1] == 0)
+          const limb::pair<umax> A2 = limb::mul(a.Numerator, b_ad_r);
+          const limb::pair<umax> B2 = limb::mul(b.Numerator, a_ad_r);
+          const bool a_bigger = A2.Hi != B2.Hi ? A2.Hi > B2.Hi : A2.Lo > B2.Lo;
+          const limb::pair<umax> big = a_bigger ? A2 : B2, small = a_bigger ? B2 : A2;
+          if (big.Hi - small.Hi - (big.Lo < small.Lo ? 1u : 0u) == 0)
           {
             rational r;
-            r.Numerator   = diff.Word[0];
+            r.Numerator   = big.Lo - small.Lo;
             r.Denominator = (a_neg ? a_bigger : !a_bigger) ? -denominator
                                                            :  denominator;
             trim(r.Numerator, r.Denominator);
@@ -1988,10 +1998,8 @@ namespace beman::inside::detail
     // Cross-multiply in 128-bit: |numerator| and |denominator| are each ≤ 2^64−1,
     // so the products fit exactly in 128 bits — the comparison can never overflow,
     // so no trap is needed.
-    using u2 = wide_uint<2>;
-    const u2 A = u2{lhs.Numerator} * u2{rhs_ad};
-    const u2 B = u2{rhs.Numerator} * u2{lhs_ad};
-    return lhs_neg ? (B <=> A) : (A <=> B);
+    return lhs_neg ? limb::mul_compare(rhs.Numerator, lhs_ad, lhs.Numerator, rhs_ad)
+                   : limb::mul_compare(lhs.Numerator, rhs_ad, rhs.Numerator, lhs_ad);
   }
 
   template <typename T>
@@ -4779,6 +4787,12 @@ namespace beman::inside::detail
           action.Fn(lhs, make_wrap_carry<L, R>(q));
       }
 
+      // Cold and out of line: the exact wide slot for a quotient past the
+      // 64-bit rational (kept off the hot store path).
+      template <typename P>
+      [[gnu::cold, gnu::noinline]] static constexpr exact_index_result wide_slot(rational const& v)
+      { return exact_index<L, rounding_for<L, P>>(exact_of(v)); }
+
       template<typename P, typename A = no_action>
       static constexpr bool store_checked(L& lhs, R rhs, P&& policy, A&& action = {})
       {
@@ -4873,7 +4887,7 @@ namespace beman::inside::detail
           const auto quotient = (rhs - lower_of<L>)/notch_of<L>;
           if (!quotient.has_value()) [[unlikely]]
           {
-            const exact_index_result slot = exact_index<L, rounding_for<L, P>>(exact_of(rational{rhs}));
+            const exact_index_result slot = wide_slot<P>(rational{rhs});
             if constexpr (!has_round_flag)
               if (!slot.Exact && policy.round_check()) [[unlikely]]
               {

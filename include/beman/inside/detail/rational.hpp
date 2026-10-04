@@ -9,7 +9,7 @@
 #include <beman/inside/lift.hpp>            // lift, is_expected_v, unwrap_t
 #include <beman/inside/detail/overflow.hpp> // add/sub/mul_overflow
 #include <beman/inside/detail/debug.hpp>    // errc, detail::raise, detail::constexpr_error
-#include <beman/inside/detail/wide_int.hpp> // wide_uint<2> for exact cross products
+#include <beman/inside/detail/wide_int.hpp> // limb kernels for exact 128-bit cross products
 
 #include <expected>   // std::expected, std::unexpected
 
@@ -694,15 +694,14 @@ namespace beman::inside::detail
         // exactly this). Retry the difference in 128-bit before giving up.
         if (a_neg != b_neg)
         {
-          using u2 = wide_uint<2>;
-          const u2 A2 = u2{a.Numerator} * u2{b_ad_r};
-          const u2 B2 = u2{b.Numerator} * u2{a_ad_r};
-          const bool a_bigger = A2 > B2;
-          const u2 diff = a_bigger ? A2 - B2 : B2 - A2;
-          if (diff.Word[1] == 0)
+          const limb::pair<umax> A2 = limb::mul(a.Numerator, b_ad_r);
+          const limb::pair<umax> B2 = limb::mul(b.Numerator, a_ad_r);
+          const bool a_bigger = A2.Hi != B2.Hi ? A2.Hi > B2.Hi : A2.Lo > B2.Lo;
+          const limb::pair<umax> big = a_bigger ? A2 : B2, small = a_bigger ? B2 : A2;
+          if (big.Hi - small.Hi - (big.Lo < small.Lo ? 1u : 0u) == 0)
           {
             rational r;
-            r.Numerator   = diff.Word[0];
+            r.Numerator   = big.Lo - small.Lo;
             r.Denominator = (a_neg ? a_bigger : !a_bigger) ? -denominator
                                                            :  denominator;
             trim(r.Numerator, r.Denominator);
@@ -930,10 +929,8 @@ namespace beman::inside::detail
     // Cross-multiply in 128-bit: |numerator| and |denominator| are each ≤ 2^64−1,
     // so the products fit exactly in 128 bits — the comparison can never overflow,
     // so no trap is needed.
-    using u2 = wide_uint<2>;
-    const u2 A = u2{lhs.Numerator} * u2{rhs_ad};
-    const u2 B = u2{rhs.Numerator} * u2{lhs_ad};
-    return lhs_neg ? (B <=> A) : (A <=> B);
+    return lhs_neg ? limb::mul_compare(rhs.Numerator, lhs_ad, lhs.Numerator, rhs_ad)
+                   : limb::mul_compare(lhs.Numerator, rhs_ad, rhs.Numerator, lhs_ad);
   }
 
   template <typename T>
