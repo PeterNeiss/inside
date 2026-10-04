@@ -121,7 +121,19 @@ namespace beman::inside
     [[nodiscard]] constexpr bool max_index_checked(umax& out) const
     {
       if (Notch == 0) { out = 0; return true; }
-      const detail::rational span = (Interval.Upper - Interval.Lower).value();
+      const auto span_e = detail::try_sub(Interval.Upper, Interval.Lower);
+      if (!span_e)
+      {
+        // Span past 2^64: count = Upper/Notch − Lower/Notch (both integers on a
+        // valid grid), exactly in 128 bits.
+        const auto qh = detail::try_div(Interval.Upper, Notch), ql = detail::try_div(Interval.Lower, Notch);
+        if (!qh || !ql || detail::abs_den(qh->Denominator) != 1 || detail::abs_den(ql->Denominator) != 1)
+        { out = 0; return false; }
+        const detail::s128 c = detail::s128_sub(detail::s128_of_integer(*qh), detail::s128_of_integer(*ql));
+        out = c.Lo;
+        return c.Hi == 0;
+      }
+      const detail::rational span = *span_e;
       const umax p = span.Numerator,  q = detail::abs_den(span.Denominator);
       const umax r = Notch.Numerator, s = detail::abs_den(Notch.Denominator);
       if (r == 0 || p % r != 0 || s % q != 0) { out = 0; return false; }
@@ -216,6 +228,17 @@ namespace beman::inside
   };
   }
 
+  // Both endpoints lie in imax — the signed-direct candidates (and every
+  // `trunc(endpoint)` constant) are only meaningful then.
+  namespace detail
+  {
+  constexpr bool fits_imax(interval const& iv) noexcept
+  {
+    return iv.Lower >= rational{std::numeric_limits<imax>::min()}
+        && iv.Upper <= rational{std::numeric_limits<imax>::max()};
+  }
+  }
+
   // Smallest raw type holding every reachable index in G. Order: point →
   // empty point_slot; notch-zero → rational (no integer index space); index count too large for any integer →
   // rational (store the value's fraction directly, no index); signed-direct fits
@@ -227,7 +250,7 @@ namespace beman::inside
     std::conditional_t<(G.Interval.Lower == G.Interval.Upper), point_slot,
     std::conditional_t<(G.Notch == 0), detail::rational,
     std::conditional_t<(!G.max_index_representable()), detail::rational,
-    std::conditional_t<(G.Interval.Lower < 0 && G.Notch == 1),
+    std::conditional_t<(G.Interval.Lower < 0 && G.Notch == 1 && fits_imax(G.Interval)),
       smallest_int_for_t<trunc(G.Interval.Lower), trunc(G.Interval.Upper)>,
       smallest_uint_for_t<G.max_index()>>>>>;
 
@@ -419,9 +442,13 @@ namespace beman::inside
       return R{};
     }
     else if constexpr ((P & direct) == direct && G.Notch == 1)
+    {
+      static_assert(G.Interval.Lower >= 0 || fits_imax(G.Interval),
+        "direct storage: a negative grid must fit int64 — drop `direct` (index storage) or use `exact`");
       return std::conditional_t<(G.Interval.Lower < 0),
           smallest_int_for_t<trunc(G.Interval.Lower), trunc(G.Interval.Upper)>,
           smallest_uint_for_t<static_cast<umax>(trunc(G.Interval.Upper))>>{};
+    }
     else if constexpr ((P & indexed) == indexed && G.Notch != 0)
       return smallest_uint_for_t<G.max_index()>{};
     else

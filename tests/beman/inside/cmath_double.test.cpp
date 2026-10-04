@@ -296,4 +296,20 @@ TEST(CmathDoubleTest, dbl_engine_stores_full_mantissa_results_onto_integer_index
   }
 }
 
+// pow_base keeps pow's 2^±30 envelope (dbl and flt engines): a clamp Out
+// saturates, anything else reports overflow. The engines used to convert the
+// result through rational{double}, which threw past 2^64 regardless of policy.
+TEST(CmathDoubleTest, pow_base_envelope_and_policy)
+{
+  using In   = inside<{0, 100}, round_nearest>;
+  using OutC = inside<{0, 100}, clamp | round_nearest>;
+  using OutE = inside<{0, 100}, round_nearest>;
+  EXPECT_EQ((math::dbl::pow_base_into<OutC, 10>(In{50})), 100);
+  EXPECT_EQ((math::dbl::pow_base_into<OutC, 10>(In{2})), 100);
+  EXPECT_EQ((math::dbl::pow_base_into<OutC, 10>(In{1})), 10);
+  EXPECT_EQ((math::flt::pow_base_into<OutC, 10>(In{50})), 100);
+  EXPECT_THROW(((void)math::dbl::pow_base_into<OutE, 10>(In{50})), inside_error);
+  EXPECT_EQ(math::dbl::pow_base<10>(inside<{-3, 3}, round_nearest>{3}), 1000);
+}
+
 #endif // !BEMAN_INSIDE_MATH_CORDIC

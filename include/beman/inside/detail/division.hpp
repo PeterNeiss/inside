@@ -25,7 +25,8 @@ namespace beman::inside::detail
   inline constexpr bool integer_native_ops =
       ((F | policy_of<L> | policy_of<R>) & snap)
       && !rational_raw<L> && !rational_raw<R>
-      && is_integer_aligned<L> && is_integer_aligned<R>;
+      && is_integer_aligned<L> && is_integer_aligned<R>
+      && values_fit_imax<L> && values_fit_imax<R>;     // to_value is exact
 
   //---------------------------------------------------------------------------
   // Rounding mode for the native div & mod paths (fire when `snap` is set).
@@ -131,7 +132,9 @@ namespace beman::inside::detail
     static constexpr bool native_div_qformat =
         ((F | policy_of<L> | policy_of<R>) & snap)
         && is_qformat<L> && is_qformat<R>
-        && notch_of<L> == notch_of<R>;
+        && notch_of<L> == notch_of<R>
+        // raw·N must fit umax (the scaled dividend below)
+        && max_index_v<L> <= ~umax{0} / abs_den(notch_of<L>.Denominator);
 
     static constexpr bool native_div = native_div_integer || native_div_qformat;
 

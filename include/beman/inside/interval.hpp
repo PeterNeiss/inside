@@ -40,8 +40,14 @@ namespace beman::inside
     [[nodiscard]] constexpr bool operator==(const interval& rhs) const = default;
     [[nodiscard]] constexpr interval operator-() const { return interval{-Upper, -Lower}; }
 
+    // A span past the 64-bit rational range (an interval reaching past int64 on
+    // both sides) is tested endpoint by endpoint: equal residues mod notch.
     [[nodiscard]] constexpr bool divides_evenly(const detail::rational& notch) const
-    { return detail::divides_evenly((Upper - Lower).value(), notch); }
+    {
+      if (const auto span = detail::try_sub(Upper, Lower))
+        return detail::divides_evenly(*span, notch);
+      return detail::divides_evenly(Lower, notch) && detail::divides_evenly(Upper, notch);
+    }
 
     [[nodiscard]] constexpr std::expected<detail::rational, errc> operator/(const detail::rational& notch) const
     { return (Upper - Lower) / notch; }

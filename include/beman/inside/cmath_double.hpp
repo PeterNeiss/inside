@@ -248,11 +248,12 @@ namespace beman::inside::math::dbl::detail
   template <typename Out>
   [[nodiscard]] BEMAN_INSIDE_FP_FN Out store(double d)
   {
-    // An fp-backed Out (f64 or f32) stores the value directly via its raw (an f32
-    // Out narrows double→float, lossless on its float-exact grid); a non-fp snap
-    // grid assigns through the rational path, snapping via Out's round policy.
-    if constexpr (beman::inside::detail::fp_raw<Out>) return Out{d};
-    else { Out o{}; o = beman::inside::detail::rational{d}; return o; }
+    // The double assignment applies Out's whole policy: it rounds onto the
+    // grid, clamps / wraps / reports an out-of-range or non-finite result. (A
+    // rational conversion first would fail outside that policy for a result
+    // of 2^64 or more, or a non-finite one.) An fp-backed Out (f64 or f32)
+    // stores the value as its raw — lossless on its fp-exact grid.
+    return Out{d};
   }
 
   template <typename Out, typename In>

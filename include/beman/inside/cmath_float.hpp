@@ -248,8 +248,9 @@ namespace beman::inside::math::flt::detail
   template <typename Out>
   [[nodiscard]] BEMAN_INSIDE_FP_FN Out store(float f)
   {
-    if constexpr (beman::inside::detail::fp_raw<Out>) return Out{static_cast<double>(f)};
-    else { Out o{}; o = beman::inside::detail::rational{static_cast<double>(f)}; return o; }
+    // Through the double assignment, like the double engine's store: Out's
+    // policy handles rounding, range and non-finite results.
+    return Out{static_cast<double>(f)};
   }
 
   // Read an input inside as `float`. An f32-backed operand IS a binary32 raw, so

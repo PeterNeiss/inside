@@ -1334,3 +1334,21 @@ TEST(CmathTest, beman_inside_math_pow_base_exp_with_expected)
 }
 
 #endif // BEMAN_INSIDE_MATH_CORDIC
+
+// pow_base keeps the 2^±30 envelope of pow in every engine: a clamp Out
+// saturates, anything else reports overflow (it used to store a wrapped value
+// or shift past 64 bits), and the auto form names its domain.
+TEST(CmathTest, beman_inside_math_pow_base_envelope)
+{
+  using In   = inside<{0, 100}, round_nearest>;
+  using OutC = inside<{0, 100}, clamp | round_nearest>;
+  using OutE = inside<{0, 100}, round_nearest>;
+  EXPECT_EQ((math::pow_base_into<OutC, 10>(In{50})), 100);
+  EXPECT_EQ((math::pow_base_into<OutC, 10>(In{2})), 100);
+  EXPECT_EQ((math::pow_base_into<OutC, 10>(In{1})), 10);
+  EXPECT_THROW(((void)math::pow_base_into<OutE, 10>(In{50})), inside_error);
+  static_assert(math::cordic::pow_base_into<OutC, 10>(In{50}) == 100);
+  static_assert(math::detail::pow_base_domain_ok<10, inside<{-9, 9}, round_nearest>>);
+  static_assert(!math::detail::pow_base_domain_ok<10, In>);
+  static_assert(!math::detail::pow_base_domain_ok<2, inside<{-31, 0}, round_nearest>>);
+}

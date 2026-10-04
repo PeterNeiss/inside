@@ -63,7 +63,7 @@ namespace beman::inside::detail
       static_assert(max_index_v<result> == max_index_v<X>);
       umax off;
       if constexpr (index_raw<X>) off = static_cast<umax>(x.raw());
-      else                        off = static_cast<umax>(raw_imax(x) - raw_lo<X>);
+      else                        off = static_cast<umax>(x.raw()) - static_cast<umax>(raw_lo<X>);
       return result::from_raw(raw_from_offset<result>(Negate ? max_index_v<X> - off : off));
     }
 
@@ -95,7 +95,8 @@ namespace beman::inside::detail
         return result::from_raw(raw_cast<result>(rational::mul_unchecked(
             as_rational(lhs), as_rational(rhs))));
     }
-    else if constexpr (is_integer_aligned<L> && is_integer_aligned<R> && is_integer_aligned<result>)
+    else if constexpr (is_integer_aligned<L> && is_integer_aligned<R> && is_integer_aligned<result>
+                       && values_fit_imax<L> && values_fit_imax<R> && values_fit_imax<result>)
     {
       result res;
       from_value(res, to_value(lhs) * to_value(rhs));
@@ -122,10 +123,10 @@ namespace beman::inside::detail
       // Normalize lhs.raw() / rhs.raw() to *offsets* regardless of L's / R's
       // storage shape. The formulas below all assume offset arithmetic.
       umax lhs_offset = !index_raw<L>
-          ? static_cast<umax>(raw_imax(lhs) - raw_lo<L>)
+          ? static_cast<umax>(lhs.raw()) - static_cast<umax>(raw_lo<L>)
           : static_cast<umax>(lhs.raw());
       umax rhs_offset = !index_raw<R>
-          ? static_cast<umax>(raw_imax(rhs) - raw_lo<R>)
+          ? static_cast<umax>(rhs.raw()) - static_cast<umax>(raw_lo<R>)
           : static_cast<umax>(rhs.raw());
 
       // Absolute notch index of each operand endpoint (Lower/Notch, Upper/Notch).

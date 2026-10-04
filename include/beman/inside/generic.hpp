@@ -201,6 +201,15 @@ namespace beman::inside
     template <insidable B>
     inline constexpr umax max_index_v = grid_of<B>.max_index();
 
+    // Every value — and, for index storage, every slot — fits imax. Gates the
+    // integer fast paths that work in imax (raw_imax / to_value / raw_lo /
+    // raw_hi); a grid reaching past int64 (e.g. {0, 2^64−1} in a uint64) takes
+    // the exact rational / umax paths instead.
+    template <insidable B>
+    inline constexpr bool values_fit_imax =
+         fits_imax(interval_of<B>)
+      && (!index_raw<B> || max_index_v<B> <= static_cast<umax>(std::numeric_limits<imax>::max()));
+
     //-------------------------------------------------------------------------
     // grid_value_bounds / rational_mul_is_safe / rational_add_is_safe
     //
@@ -306,8 +315,7 @@ namespace beman::inside
         abs_den(lower_of<B>.Denominator) == 1
         && notch_of<B>.Numerator == 1
         && !rational_raw<B>
-        && (std::signed_integral<raw_t<B>>
-            || max_index_v<B> <= static_cast<umax>(std::numeric_limits<imax>::max()));
+        && values_fit_imax<B>;          // Lower·nd and the raw both in imax
 
     // value → raw, integer math only. Pre: has_qformat_fast_path<B>.
     template <insidable B>
@@ -380,8 +388,10 @@ namespace beman::inside
     template <insidable L>
     constexpr raw_t<L> raw_from_offset(umax offset) noexcept
     {
+      // Add in umax: the bits are the same, but a value raw of a grid
+      // reaching past int64 (offset + Lower ≥ 2^63) must not overflow imax.
       if constexpr (!index_raw<L>)
-        return raw_cast<L>(static_cast<imax>(offset) + raw_lo<L>);
+        return raw_cast<L>(offset + static_cast<umax>(raw_lo<L>));
       else
         return raw_cast<L>(offset);
     }
@@ -390,7 +400,7 @@ namespace beman::inside
     constexpr raw_t<L> raw_from_offset(imax offset) noexcept
     {
       if constexpr (!index_raw<L>)
-        return raw_cast<L>(offset + raw_lo<L>);
+        return raw_cast<L>(static_cast<umax>(offset) + static_cast<umax>(raw_lo<L>));
       else
         return raw_cast<L>(static_cast<umax>(offset));
     }

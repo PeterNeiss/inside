@@ -54,6 +54,7 @@ namespace beman::inside::detail
       if constexpr (rational_raw<L> || rational_raw<R> || rational_raw<result>
                     || fp_raw<L> || fp_raw<R>          // double raws: no integer offset
                     || fp_raw<result> || !index_raw<result>
+                    || !values_fit_imax<L> || !values_fit_imax<R>
                     || (is_integer_aligned<L> && is_integer_aligned<R>)
                     || (index_raw<L> && index_raw<R>)
                     || notch_of<result> == 0 || notch_of<result>.Numerator != 1)
@@ -126,7 +127,8 @@ namespace beman::inside::detail
                                             + mixed_offset_units(rhs, rhs_widen)));
     }
     else if constexpr (rational_raw<L> || rational_raw<R>
-                       || !((is_integer_aligned<L> && is_integer_aligned<R>)
+                       || !((is_integer_aligned<L> && is_integer_aligned<R>
+                             && values_fit_imax<L> && values_fit_imax<R> && values_fit_imax<result>)
                             || (index_raw<L> && index_raw<R>)))
     {
       // Rational store: a rational-raw operand, or a mix the integer fast
@@ -137,7 +139,8 @@ namespace beman::inside::detail
       res = result::from_raw(raw_from_offset<result>(
           ((sum - lower_of<result>) / notch_of<result>).value().Numerator));
     }
-    else if constexpr (is_integer_aligned<L> && is_integer_aligned<R>)
+    else if constexpr (is_integer_aligned<L> && is_integer_aligned<R>
+                       && values_fit_imax<L> && values_fit_imax<R> && values_fit_imax<result>)
     {
       // Both operands are integer-valued (Notch and Lower integers), so the
       // value-space add is exact.
@@ -147,7 +150,11 @@ namespace beman::inside::detail
     {
       // Both notch-offset: scale each raw to the result notch and add in offset
       // space (offsets compose because result Lower = lower_of<L> + lower_of<R>).
-      res = result::from_raw(raw_cast<result>(raw_imax(lhs) * lhs_widen + raw_imax(rhs) * rhs_widen));
+      // In umax: the offsets compose exactly mod 2^64 and the result offset
+      // fits the result's (≤ 64-bit) index space.
+      res = result::from_raw(raw_cast<result>(
+          static_cast<umax>(lhs.raw()) * static_cast<umax>(lhs_widen)
+        + static_cast<umax>(rhs.raw()) * static_cast<umax>(rhs_widen)));
     }
     return res;
   }

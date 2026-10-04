@@ -491,3 +491,103 @@ TEST(StorageBugsTest, policy_ref_zero_divisor_does_not_divide)
   b.policy() /= X{3};
   EXPECT_EQ(b, 2);
 }
+
+//---------------------------------------------------------------------------
+// 2026-10 defect pass, round 2: integer grids reaching past int64. {0, 2^64−1}
+// stores in a uint64 (value raw); its negation, {−(2^64−1), 0}, in a uint64
+// index. Every imax fast path must step aside for them.
+//---------------------------------------------------------------------------
+namespace
+{
+  constexpr umax kUM = std::numeric_limits<umax>::max();
+  constexpr imax kIMin = std::numeric_limits<imax>::min();
+  constexpr imax kIMax = std::numeric_limits<imax>::max();
+  using U64  = inside<{{0, rational{kUM}}, 1}>;
+  using U64W = inside<{{0, rational{kUM}}, 1}, wrap>;
+  using I64  = inside<{{kIMin, kIMax}, 1}>;
+  using I64W = inside<{{kIMin, kIMax}, 1}, wrap>;
+  using I64C = inside<{{kIMin, kIMax}, 1}, clamp>;
+  using Small = inside<{0, 10}>;
+}
+
+TEST(StorageBugsTest, grid_past_int64_constructs_compares_and_converts)
+{
+  static_assert(U64{5} == 5 && U64{5} < 6 && U64{5} > 4);              // signed source
+  static_assert(U64{kUM} > 5 && U64{kUM} == kUM && U64{kUM} > Small{3});
+  static_assert(U64{1ull << 63} < U64{kUM});
+  static_assert(U64{Small{7}} == 7);
+  static_assert(U64{kUM}.to<unsigned long long>().value() == kUM);
+  static_assert(U64{3}.to<int>().value() == 3);
+  static_assert(U64{kUM}.to<long long>().error() == errc::overflow);
+  static_assert(clamp_cast<Small>(U64{kUM}) == 10);
+
+  constexpr auto narrowed = [] {
+    errc ec{};
+    Small s{1};
+    s.policy(ec) = U64{kUM};
+    return std::pair{s == 1, ec};
+  }();
+  static_assert(narrowed.first && narrowed.second == errc::overflow);
+
+  U64 big{kUM};
+  EXPECT_GT(big, Small{10});
+  EXPECT_EQ(big, kUM);
+}
+
+TEST(StorageBugsTest, grid_past_int64_increments_and_negates)
+{
+  constexpr auto inc = [] { U64 w{kUM - 1}; ++w; return w == kUM; }();
+  static_assert(inc);
+  constexpr auto wrap_up   = [] { U64W w{kUM}; ++w; return w == 0; }();
+  constexpr auto wrap_down = [] { U64W w{0}; --w; return w == kUM; }();
+  constexpr auto wrap_sub  = [] { U64W w{kUM}; w -= Small{10}; return w == kUM - 10; }();
+  constexpr auto wrap_neg  = [] { U64W w{5}; w = inside<{-20, 20}>{-1}; return w == kUM; }();
+  static_assert(wrap_up && wrap_down && wrap_sub && wrap_neg);
+
+  using N = U64::negative;                          // {−(2^64−1), 0}
+  static_assert(sizeof(N::raw_type) == 8);          // was int8: trunc(Lower) wrapped
+  static_assert(-U64{5} == -5 && -U64{kUM} == -rational{kUM});
+  static_assert(-(-U64{kUM}) == U64{kUM});
+
+  static_assert(U64{kUM} - U64{kUM - 3} == 3);      // result grid spans 2^65
+  static_assert(U64{kUM} * just<1> == kUM);
+
+  U64 x{kUM};
+  EXPECT_THROW(++x, inside_error);
+  EXPECT_EQ(x, kUM);
+}
+
+// += / -= / ++ on the full int64 range: the raw add must not overflow imax.
+TEST(StorageBugsTest, full_int64_grid_compound_ops)
+{
+  constexpr auto a = [] { I64W x{kIMax}; ++x; return x.raw(); }();
+  constexpr auto b = [] { I64W x{kIMin}; --x; return x.raw(); }();
+  constexpr auto c = [] { I64C x{kIMax}; ++x; return x.raw(); }();
+  constexpr auto d = [] { I64W x{kIMax}; x += I64{5}; return x.raw(); }();
+  constexpr auto e = [] { I64W x{kIMin}; x -= I64{1}; return x.raw(); }();
+  static_assert(a == kIMin && b == kIMax && c == kIMax && d == kIMin + 4 && e == kIMax);
+  static_assert(I64W{kUM} == -1);
+
+  I64 y{kIMax};
+  EXPECT_THROW(++y, inside_error);
+  EXPECT_EQ(y, kIMax);
+}
+
+// A value-raw source with Lower ≠ 0 mapped onto a coarser notch: the affine
+// map read the raw (the value) as a 0-based offset.
+TEST(StorageBugsTest, value_raw_source_affine_mapping)
+{
+  using R = inside<{-5, 5}>;                       // int8 value raw
+  using L = inside<{{-6, 6}, 3}, round_nearest>;
+  static_assert(detail::value_raw<R>);
+  static_assert(rational{L{R{-5}}} == -6);
+  static_assert(rational{L{R{-4}}} == -3);
+  static_assert(rational{L{R{4}}} == 3);
+  static_assert(rational{L{R{5}}} == 6);
+  using LX = inside<{{-6, 6}, 3}, round_nearest | exact>;
+  static_assert(rational{LX{R{-5}}} == -6);
+
+  L l{0};
+  l = R{-2};
+  EXPECT_EQ(rational{l}, -3);
+}

@@ -42,6 +42,55 @@ namespace beman::inside::detail
   constexpr std::strong_ordering cmp128(u128 a, u128 b)
   { return (a.Hi != b.Hi) ? (a.Hi <=> b.Hi) : (a.Lo <=> b.Lo); }
 
+  // Signed two's-complement 128-bit value {Hi, Lo} — just enough to hold an
+  // offset or a sum of two 64-bit integers of either signedness exactly (the
+  // grids reaching past int64 need 65 bits). Portable: no __int128.
+  struct s128 { imax Hi; umax Lo; };
+  constexpr s128 s128_of(imax v) noexcept { return {v < 0 ? imax{-1} : imax{0}, static_cast<umax>(v)}; }
+  constexpr s128 s128_of(umax v) noexcept { return {0, v}; }
+  constexpr s128 s128_add(s128 a, s128 b) noexcept
+  {
+    const umax lo = a.Lo + b.Lo;
+    return {a.Hi + b.Hi + (lo < a.Lo ? 1 : 0), lo};
+  }
+  constexpr s128 s128_neg(s128 a) noexcept
+  {
+    const umax lo = ~a.Lo + 1u;
+    return {~a.Hi + (lo == 0 ? 1 : 0), lo};
+  }
+  constexpr s128 s128_sub(s128 a, s128 b) noexcept { return s128_add(a, s128_neg(b)); }
+  constexpr bool s128_negative(s128 a) noexcept { return a.Hi < 0; }
+  // a > b for a non-negative a and an unsigned b.
+  constexpr bool s128_above(s128 a, umax b) noexcept { return a.Hi > 0 || (a.Hi == 0 && a.Lo > b); }
+
+  // floor(t / R) and t mod R (in [0, R)) for |t| < 2^66 (|Hi| ≤ 2); R == 0
+  // stands for 2^64. The quotient saturates to imax.
+  struct s128_divmod_result { imax Quotient; umax Remainder; };
+  constexpr s128_divmod_result s128_floor_divmod(s128 t, umax r) noexcept
+  {
+    constexpr imax kMin = std::numeric_limits<imax>::min();
+    constexpr imax kMax = std::numeric_limits<imax>::max();
+    auto sat = [](s128 q) -> imax {
+      if (q.Hi < 0) return (q.Hi < -1 || q.Lo < (umax{1} << 63)) ? kMin : static_cast<imax>(q.Lo);
+      return (q.Hi > 0 || q.Lo > static_cast<umax>(kMax)) ? kMax : static_cast<imax>(q.Lo);
+    };
+    if (r == 0)                                     // R = 2^64
+      return {sat(s128_of(t.Hi)), t.Lo};
+    if (r == 1)                                     // 2^64 / R does not fit umax
+      return {sat(t), 0};
+    // t = Hi·2^64 + Lo with Lo = ql·R + a and 2^64 = qc·R + c, so
+    // t = (Hi·qc + ql)·R + (Hi·c + a): fold the small second term into [0, R).
+    const umax ql = t.Lo / r, a = t.Lo % r;
+    const umax c  = (umax{0} - r) % r;              // 2^64 mod R
+    const umax qc = (umax{0} - r) / r + 1u;         // floor(2^64 / R)
+    s128 q = s128_of(ql), m = s128_of(a);
+    for (imax k = t.Hi; k > 0; --k) { q = s128_add(q, s128_of(qc)); m = s128_add(m, s128_of(c)); }
+    for (imax k = t.Hi; k < 0; ++k) { q = s128_sub(q, s128_of(qc)); m = s128_sub(m, s128_of(c)); }
+    while (s128_negative(m))   { m = s128_add(m, s128_of(r)); q = s128_sub(q, s128_of(umax{1})); }
+    while (s128_above(m, r - 1)) { m = s128_sub(m, s128_of(r)); q = s128_add(q, s128_of(umax{1})); }
+    return {sat(q), m.Lo};
+  }
+
   // 128×64 product with an overflow flag (result beyond 128 bits).
   struct mul128_result { u128 Value; bool Overflowed; };
   constexpr mul128_result mul128(u128 a, umax b)
@@ -216,10 +265,10 @@ namespace beman::inside::detail
     // reporting overflow / division_by_zero (a compile error at compile time,
     // std::unexpected at runtime); Checked=false
     // silently overflows — the caller must guarantee its absence.
-    template <bool Checked> static constexpr auto add_impl(rational const&, rational const&);
-    template <bool Checked> static constexpr auto mul_impl(rational const&, rational const&);
-    template <bool Checked> static constexpr auto div_impl(rational const&, rational const&);
-    template <bool Checked> static constexpr auto inv_impl(rational const&);
+    template <bool Checked, bool Loud = true> static constexpr auto add_impl(rational const&, rational const&);
+    template <bool Checked, bool Loud = true> static constexpr auto mul_impl(rational const&, rational const&);
+    template <bool Checked, bool Loud = true> static constexpr auto div_impl(rational const&, rational const&);
+    template <bool Checked, bool Loud = true> static constexpr auto inv_impl(rational const&);
 
   private:
     // Domain check + canonical-zero + gcd reduction; used by the integral ctors.
@@ -281,10 +330,13 @@ namespace beman::inside::detail
 
   // A checked op failed: during constant evaluation that is a compile error
   // naming the cause; at runtime it is an error value.
-  template <fixed_string Msg>
+  // Loud == false is the quiet form behind try_add & co.: an error value even
+  // during constant evaluation, for code that must test whether an op fits.
+  template <fixed_string Msg, bool Loud = true>
   constexpr std::unexpected<errc> fail(errc code)
   {
-    if consteval { constexpr_error<Msg>(); }
+    if constexpr (Loud)
+      if consteval { constexpr_error<Msg>(); }
     return std::unexpected{code};
   }
 
@@ -294,6 +346,10 @@ namespace beman::inside::detail
     const imax n = static_cast<imax>(v.Numerator);
     return (v.Denominator < 0) ? -n : n;
   }
+
+  // An integer rational (|v| < 2^64) exactly as a 128-bit value.
+  [[nodiscard]] constexpr s128 s128_of_integer(rational v) noexcept
+  { return v.Denominator < 0 ? s128_neg(s128_of(v.Numerator)) : s128_of(v.Numerator); }
 
   [[nodiscard]] constexpr imax trunc(rational v)
   {
@@ -679,7 +735,7 @@ namespace beman::inside::detail
   //---------------------------------------------------------------------------
   // add_impl / mul_impl / div_impl — shared bodies (Checked toggles overflow)
   //---------------------------------------------------------------------------
-  template <bool Checked>
+  template <bool Checked, bool Loud>
   inline constexpr auto rational::add_impl(rational const& a, rational const& b)
   {
     using ret_t = std::conditional_t<Checked, std::expected<rational, errc>, rational>;
@@ -701,7 +757,7 @@ namespace beman::inside::detail
         if constexpr (Checked)
         {
           if (add_overflow(a.Numerator, b.Numerator, &numerator))
-          { return ret_t{fail<"rational +: numerator overflow (same denominator)">(errc::overflow)}; }
+          { return ret_t{fail<"rational +: numerator overflow (same denominator)", Loud>(errc::overflow)}; }
         }
         else
           numerator = a.Numerator + b.Numerator;
@@ -738,7 +794,7 @@ namespace beman::inside::detail
     {
       if (mul_overflow(a_ad, b_ad_r, &denominator)    ||   // = lcm(a_ad, b_ad)
           denominator > static_cast<umax>(std::numeric_limits<imax>::max()))
-      { return ret_t{fail<"rational +: denominator overflow">(errc::overflow)}; }
+      { return ret_t{fail<"rational +: denominator overflow", Loud>(errc::overflow)}; }
       if (mul_overflow(a.Numerator, b_ad_r, &A) ||
           mul_overflow(b.Numerator, a_ad_r, &B))
       {
@@ -765,7 +821,7 @@ namespace beman::inside::detail
             return ret_t{r};
           }
         }
-        return ret_t{fail<"rational +: cross-multiplication overflow">(errc::overflow)};
+        return ret_t{fail<"rational +: cross-multiplication overflow", Loud>(errc::overflow)};
       }
     }
     else
@@ -781,7 +837,7 @@ namespace beman::inside::detail
       if constexpr (Checked)
       {
         if (add_overflow(A, B, &numerator))
-        { return ret_t{fail<"rational +: numerator sum overflow">(errc::overflow)}; }
+        { return ret_t{fail<"rational +: numerator sum overflow", Loud>(errc::overflow)}; }
       }
       else
         numerator = A + B;
@@ -809,7 +865,7 @@ namespace beman::inside::detail
     return ret_t{r};
   }
 
-  template <bool Checked>
+  template <bool Checked, bool Loud>
   inline constexpr auto rational::mul_impl(rational const& a_in, rational const& b_in)
   {
     using ret_t = std::conditional_t<Checked, std::expected<rational, errc>, rational>;
@@ -827,7 +883,7 @@ namespace beman::inside::detail
       if constexpr (Checked)
       {
         if (mul_overflow(a.Numerator, b.Numerator, &numerator))
-        { return ret_t{fail<"rational *: numerator overflow">(errc::overflow)}; }
+        { return ret_t{fail<"rational *: numerator overflow", Loud>(errc::overflow)}; }
       }
       else
         numerator = a.Numerator * b.Numerator;
@@ -845,7 +901,7 @@ namespace beman::inside::detail
       if (mul_overflow(a.Numerator, b.Numerator, &numerator) ||
           mul_overflow(a_ad, b_ad, &denominator)             ||
           denominator > static_cast<umax>(std::numeric_limits<imax>::max()))
-      { return ret_t{fail<"rational *: numerator or denominator overflow">(errc::overflow)}; }
+      { return ret_t{fail<"rational *: numerator or denominator overflow", Loud>(errc::overflow)}; }
     }
     else
     {
@@ -864,7 +920,7 @@ namespace beman::inside::detail
   // a is already trimmed (Numerator and |Denominator| coprime), so the swapped
   // pair is also trimmed. Sign lives in the denominator and 1/(-x) has the same
   // sign as -x, so the sign bit moves with the (now) denominator unchanged.
-  template <bool Checked>
+  template <bool Checked, bool Loud>
   inline constexpr auto rational::inv_impl(rational const& a)
   {
     using ret_t = std::conditional_t<Checked, std::expected<rational, errc>, rational>;
@@ -874,9 +930,9 @@ namespace beman::inside::detail
       // a.Numerator goes into the result's Denominator slot, so it must fit in
       // imax (else the umax→imax conversion wraps and a later -Denominator is UB).
       if (a.Numerator == 0)
-      { return ret_t{fail<"rational inv: division by zero">(errc::division_by_zero)}; }
+      { return ret_t{fail<"rational inv: division by zero", Loud>(errc::division_by_zero)}; }
       if (a.Numerator > static_cast<umax>(std::numeric_limits<imax>::max()))
-      { return ret_t{fail<"rational inv: numerator out of denominator range">(errc::overflow)}; }
+      { return ret_t{fail<"rational inv: numerator out of denominator range", Loud>(errc::overflow)}; }
     }
 
     return ret_t{make_raw(abs_den(a.Denominator), signed_numerator(a))};
@@ -885,16 +941,16 @@ namespace beman::inside::detail
   // div(a, b) = a * inv(b). The checked path goes through inv_impl<true> so
   // the b.Numerator-fits-in-imax check (added there) propagates here too;
   // the unchecked path skips it (caller's contract).
-  template <bool Checked>
+  template <bool Checked, bool Loud>
   inline constexpr auto rational::div_impl(rational const& a, rational const& b)
   {
     using ret_t = std::conditional_t<Checked, std::expected<rational, errc>, rational>;
 
     if constexpr (Checked)
     {
-      auto inv_b = inv_impl<true>(b);
+      auto inv_b = inv_impl<true, Loud>(b);
       if (!inv_b.has_value()) return ret_t{std::unexpected{inv_b.error()}};
-      return mul_impl<true>(a, *inv_b);
+      return mul_impl<true, Loud>(a, *inv_b);
     }
     else
       return mul_impl<false>(a, inv_impl<false>(b));
@@ -1046,6 +1102,18 @@ namespace beman::inside::detail
 
   [[nodiscard]] inline constexpr std::expected<rational, errc> operator/(rational const& lhs, rational const& rhs)
   { return rational::div_impl<true>(lhs, rhs); }
+
+  // Quiet checked ops: like the operators, but an overflow is an error value
+  // even in constant evaluation (the operators make it a compile error there).
+  // For compile-time code that asks whether a result fits.
+  [[nodiscard]] inline constexpr std::expected<rational, errc> try_add(rational const& a, rational const& b)
+  { return rational::add_impl<true, false>(a, b); }
+  [[nodiscard]] inline constexpr std::expected<rational, errc> try_sub(rational const& a, rational const& b)
+  { return rational::add_impl<true, false>(a, -b); }
+  [[nodiscard]] inline constexpr std::expected<rational, errc> try_mul(rational const& a, rational const& b)
+  { return rational::mul_impl<true, false>(a, b); }
+  [[nodiscard]] inline constexpr std::expected<rational, errc> try_div(rational const& a, rational const& b)
+  { return rational::div_impl<true, false>(a, b); }
 
   [[nodiscard]] inline constexpr std::expected<rational, errc> operator-(std::expected<rational, errc> const& v)
   { return lift([](rational r){ return -r; }, v); }

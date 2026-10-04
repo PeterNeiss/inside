@@ -162,6 +162,43 @@ namespace beman::inside::math
     { static_assert(lower_of<InX> >= -(imax{1} << 20) && upper_of<InX> <= (imax{1} << 20)
                && lower_of<InY> >= -(imax{1} << 20) && upper_of<InY> <= (imax{1} << 20), "beman::inside::math::hypot: input magnitudes must be ≤ 2^20 for the working-scale envelope"); }
 
+    // pow_base<Base>(x) stays inside the 2^±30 envelope pow uses (the CORDIC
+    // working scale): Base^x ≤ 2^30 for x up to Upper and ≥ 2^-30 down to
+    // Lower. Checked with integer powers at the rounded-out exponents.
+    consteval bool pow_within_2_30(imax base, rational x) noexcept
+    {
+      if (x <= 0) return true;
+      const imax e = ceil(x);
+      umax p = 1;
+      for (imax k = 0; k < e; ++k)
+      {
+        if (p > (umax{1} << 30) / static_cast<umax>(base)) return false;
+        p *= static_cast<umax>(base);
+      }
+      return true;
+    }
+    template <imax Base, insidable In>
+    inline constexpr bool pow_base_domain_ok =
+        Base >= 2 && pow_within_2_30(Base, upper_of<In>) && pow_within_2_30(Base, -lower_of<In>);
+
+    template <imax Base, insidable In>
+    constexpr void domain_pow_base() noexcept
+    { static_assert(pow_base_domain_ok<Base, In>, "beman::inside::math::pow_base: Base must be ≥ 2 and Base^x must stay within [2^-30, 2^30] over the input interval"); }
+
+    // pow_base_into<Out> outside the 2^±30 envelope: a clamp Out saturates,
+    // anything else reports errc::overflow through Out's policy (pow_into's rule).
+    template <insidable Out>
+    constexpr Out pow_envelope_fail(bool high)
+    {
+      if constexpr (has_flag(policy_of<Out>, clamp))
+        return Out{high ? upper_of<Out> : lower_of<Out>};
+      else
+      {
+        make_policy<policy_of<Out>>().report(errc::overflow);
+        return Out{lower_of<Out>};       // reached only if the handler returns
+      }
+    }
+
     // Out's interval endpoints as F (via double, like the runtime value), folded
     // at compile time for the FP engines' range checks.
     template <typename F, insidable Out>
@@ -977,6 +1014,10 @@ namespace beman::inside::math
     constexpr int W = detail::working_bits<Out>();
     constexpr imax lb_w = detail::log2_to_fixed<W>(rational{Base});   // log2(Base)·2^W
     imax sc_w = detail::fmul(detail::to_fixed(rational{x}, W), lb_w, W);
+    // x·log2(Base) beyond ±30: past the envelope exp2_from_fixed can scale.
+    constexpr imax env = imax{30} << W;
+    if (sc_w > env || sc_w < -env) [[unlikely]]
+      return detail::pow_envelope_fail<Out>(sc_w > 0);
     return detail::store_grid<Out>(detail::exp2_from_fixed<W>(sc_w));
   }
   } // namespace cordic
@@ -2010,7 +2051,12 @@ namespace beman::inside::math
 
     template <imax Base, insidable In>
     [[nodiscard]] constexpr auto pow_base(In x)
-    { static_assert(detail::require_snap<In>()); return pow_base_into<detail::pow_base_auto_t<Base, In>, Base>(x); }
+    {
+      static_assert(detail::require_snap<In>());
+      detail::domain_pow_base<Base, In>();
+      if constexpr (detail::pow_base_domain_ok<Base, In>)   // no deduction outside the domain
+        return pow_base_into<detail::pow_base_auto_t<Base, In>, Base>(x);
+    }
 
     template <insidable In>
     [[nodiscard]] constexpr auto sin(In angle)
@@ -2156,10 +2202,21 @@ namespace beman::inside::math
                                                                                           \
     template <insidable Out, imax Base, insidable In>                                     \
     [[nodiscard]] BEMAN_INSIDE_FP_FN Out pow_base_into(In x)                             \
-    { return detail::store<Out>(detail::fp_pow(static_cast<fp_t>(Base), to_fp(x))); }              \
+    {                                                                                     \
+      static_assert(Base >= 2, "beman::inside::math::pow_base: Base must be ≥ 2");        \
+      const fp_t r = detail::fp_pow(static_cast<fp_t>(Base), to_fp(x));                   \
+      if (!(r <= static_cast<fp_t>(0x1p30) && r >= static_cast<fp_t>(0x1p-30)))           \
+        return mdetail::pow_envelope_fail<Out>(r > fp_t{1});  /* the 2^±30 envelope */    \
+      return detail::store<Out>(r);                                                       \
+    }                                                                                     \
     template <imax Base, insidable In>                                                    \
     [[nodiscard]] BEMAN_INSIDE_FP_FN auto pow_base(In x)                                 \
-    { static_assert(mdetail::require_snap<In>()); return pow_base_into<mdetail::pow_base_auto_t<Base, In>, Base>(x); } \
+    {                                                                                     \
+      static_assert(mdetail::require_snap<In>());                                         \
+      mdetail::domain_pow_base<Base, In>();                                               \
+      if constexpr (mdetail::pow_base_domain_ok<Base, In>)                                \
+        return pow_base_into<mdetail::pow_base_auto_t<Base, In>, Base>(x);                \
+    }                                                                                     \
                                                                                           \
     template <insidable Out, insidable InY, insidable InX>                                \
     [[nodiscard]] BEMAN_INSIDE_FP_FN Out atan2_into(InY y, InX x)                        \
