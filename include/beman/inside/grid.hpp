@@ -51,6 +51,8 @@ namespace beman::inside
     static constexpr bool validate()
     {
       interval::validate<G.Interval>();
+      // Decoding is Lower + raw·Notch: a negative notch would count downward.
+      static_assert(G.Notch >= 0, "grid: the notch must be non-negative");
       static_assert(G.Interval.divides_evenly(G.Notch));
       // Lower must sit on the notch lattice. divides_evenly avoids forming the
       // (possibly umax-overflowing) Lower/Notch quotient, so a grid finer than
@@ -67,6 +69,8 @@ namespace beman::inside
     try_make(interval iv, detail::rational notch)
     {
       if (iv.Lower > iv.Upper)
+        return std::unexpected{errc::domain_error};
+      if (notch < 0)
         return std::unexpected{errc::domain_error};
       if (!iv.divides_evenly(notch))
         return std::unexpected{errc::rounding_error};

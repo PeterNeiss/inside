@@ -985,18 +985,40 @@ namespace beman::inside::detail
 
 } // namespace beman::inside::detail
 
+namespace beman::inside::detail
+{
+  // Checked builders for the public helpers below: a static_assert here fires at
+  // the user's spelling. Denominators are unsigned, so a sign can only sit in
+  // frac's numerator.
+  template <umax N, umax D>
+  consteval rational make_notch()
+  {
+    static_assert(N >= 1 && D >= 1, "notch<N, D> is a positive step; a continuous grid is spelled 0");
+    static_assert(D <= static_cast<umax>(std::numeric_limits<imax>::max()), "notch<N, D>: denominator too large");
+    return rational{N, D};
+  }
+
+  template <imax N, umax D>
+  consteval rational make_frac()
+  {
+    static_assert(D >= 1, "frac<N, D>: the denominator must be at least 1");
+    static_assert(D <= static_cast<umax>(std::numeric_limits<imax>::max()), "frac<N, D>: denominator too large");
+    return rational{N, static_cast<imax>(D)};
+  }
+}
+
 namespace beman::inside
 {
-  // `rational` is internal, but the grid-building `notch<N,D>` / `frac<N,D>`
-  // literals are public — they never expose the type.
-  template <umax N, imax D = 1>
-  inline constexpr detail::rational notch = detail::rational{N, D};
+  // `rational` is internal, but the grid-building helpers are public — they
+  // never name the type:
+  //   notch<N, D>  a positive step N/D;
+  //   frac<N, D>   any exact ratio (signed numerator), e.g. frac<-6, 5> for -1.2;
+  //   _r literal   an exact decimal / hex value, e.g. 0.1_r is exactly 1/10.
+  template <umax N, umax D = 1>
+  inline constexpr detail::rational notch = detail::make_notch<N, D>();
 
-  // frac<N, D> — exact fractional grid value (signed numerator), companion to
-  // notch<N,D> for non-dyadic endpoints not writable as a float literal
-  // (e.g. `frac<-6, 5>` for -1.2).
-  template <imax N, imax D = 1>
-  inline constexpr detail::rational frac = detail::rational{N, D};
+  template <imax N, umax D = 1>
+  inline constexpr detail::rational frac = detail::make_frac<N, D>();
 } // namespace beman::inside
 
 #endif // BEMAN_INSIDE_DETAIL_RATIONAL_HPP

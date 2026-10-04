@@ -62,3 +62,11 @@ TEST(GridTryMakeTest, grid_try_make_rejects_malformed_grids_with_typed_errors)
     ASSERT_EQ(g.error(), errc::rounding_error);
   }
 }
+
+// grid::try_make rejects a negative notch (decoding would count downward)
+TEST(GridTryMakeTest, grid_try_make_rejects_a_negative_notch)
+{
+  auto g = grid::try_make(interval{0, 10}, rational{-2});
+  ASSERT_FALSE(g.has_value());
+  EXPECT_EQ(g.error(), errc::domain_error);
+}
