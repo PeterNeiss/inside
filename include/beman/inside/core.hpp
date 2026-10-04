@@ -713,6 +713,22 @@ namespace beman::inside
   { return b.template as<T>(); }
 
   //---------------------------------------------------------------------------
+  // from_chars<B>(first, last) — text → B, exactly (no double round-trip). The
+  // whole range must be one number: an optional sign, then the literal grammar
+  // (1'000, 1.25, 1.5e2, 0xff, 0b1010, 0x1.8p3) or a fraction N/D. Malformed text
+  // is errc::invalid_format; the value then goes through B::try_make, so B's
+  // policy rounds, clamps or wraps it and reports overflow / rounding_error.
+  // (io.hpp adds a std::string_view overload and operator>>.)
+  //---------------------------------------------------------------------------
+  template <insidable B>
+  [[nodiscard]] constexpr std::expected<B, errc> from_chars(const char* first, const char* last)
+  {
+    const auto v = detail::parse_text(first, last);
+    if (!v) return std::unexpected{v.error()};
+    return B::try_make(*v);
+  }
+
+  //---------------------------------------------------------------------------
   // comparison
   //---------------------------------------------------------------------------
   namespace detail

@@ -161,5 +161,7 @@ TEST(MiscTest, errc_message_stringifies_every_errc)
   ASSERT_EQ(std::string_view{errc_message(errc::division_by_zero)}, "division by zero");
   ASSERT_EQ(std::string_view{errc_message(errc::overflow)}, "value does not fit its range");
   ASSERT_EQ(std::string_view{errc_message(errc::rounding_error)}, "notch incompatibility");
+  ASSERT_EQ(std::string_view{errc_message(errc::not_finite)}, "non-finite floating-point value");
+  ASSERT_EQ(std::string_view{errc_message(errc::invalid_format)}, "malformed number");
   ASSERT_EQ(std::string_view{errc_message(static_cast<errc>(999))}, "unknown inside error");
 }

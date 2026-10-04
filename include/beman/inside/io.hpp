@@ -22,6 +22,7 @@
 
 #include <string>
 #include <string_view>
+#include <istream>
 #include <ostream>
 #include <version>          // __cpp_lib_format feature-test macro
 
@@ -199,6 +200,23 @@ namespace beman::inside
   inline std::ostream& operator<<(std::ostream& stream, B b)
   {
     stream << beman::inside::to_string(b);
+    return stream;
+  }
+
+  // from_chars<B>(text) — the std::string_view form of from_chars<B>(first, last).
+  template <insidable B>
+  [[nodiscard]] constexpr std::expected<B, errc> from_chars(std::string_view text)
+  { return from_chars<B>(text.data(), text.data() + text.size()); }
+
+  // Reads one whitespace-delimited token and parses it with from_chars<B>. On an
+  // error the stream's failbit is set and `b` is left unchanged.
+  template <insidable B>
+  inline std::istream& operator>>(std::istream& stream, B& b)
+  {
+    std::string token;
+    if (!(stream >> token)) return stream;
+    if (const auto r = from_chars<B>(token); r) b = *r;
+    else stream.setstate(std::ios_base::failbit);
     return stream;
   }
 

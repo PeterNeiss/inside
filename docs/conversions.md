@@ -233,6 +233,29 @@ ratio with no finite decimal (1/3). The two-limit form `{lo, hi}` derives its
 notch from a plain floating-point limit only down to 1/1024, so
 `inside<{0.1, 1}>` is a compile error that points to `0.1_r`.
 
+## Reading text: `from_chars<B>` and `operator>>`
+
+`from_chars<B>(text)` parses a number exactly — no `double` round-trip — and
+returns `std::expected<B, errc>`. The text is one number: an optional sign, then
+the literal grammar (`1'000`, `1.25`, `1.5e2`, `0xff`, `0b1010`, `0x1.8p3`) or a
+fraction `N/D` (the form `to_string` prints for a value with no finite decimal).
+The value then goes through `B::try_make`, so `B`'s policy applies:
+
+```cpp
+using pct = inside<{0, 100}>;
+from_chars<pct>("42");      // 42
+from_chars<pct>("0.1");     // errc::rounding_error — 1/10 is not on the integer grid
+from_chars<pct>("150");     // errc::overflow
+from_chars<pct>("4x");      // errc::invalid_format
+from_chars<inside<{{0, 1}, per<10>}>>("0.1");   // exactly 1/10
+
+inside<{0, 100}> a{0};
+std::cin >> a;              // io.hpp: one token; failbit on error, a unchanged
+```
+
+The core header takes a pointer pair, `from_chars<B>(first, last)`, and is
+`constexpr`; `io.hpp` adds the `std::string_view` overload and `operator>>`.
+
 ## Comparing insides
 
 `inside` compares directly with arithmetic types and other insides — no

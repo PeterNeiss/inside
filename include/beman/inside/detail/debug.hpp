@@ -61,6 +61,7 @@ namespace beman::inside
                         // interval, a native type, a rational's 64-bit fields)
     rounding_error,     // notch incompatibility
     not_finite,         // non-finite double input (NaN/Inf)
+    invalid_format,     // text that is not a number (from_chars, operator>>)
   };
 
   // Static, allocation-free message per code. The single source of truth for
@@ -75,6 +76,7 @@ namespace beman::inside
       case errc::overflow:         return "value does not fit its range";
       case errc::rounding_error:   return "notch incompatibility";
       case errc::not_finite:       return "non-finite floating-point value";
+      case errc::invalid_format:   return "malformed number";
     }
     return "unknown inside error";
   }

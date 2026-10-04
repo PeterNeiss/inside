@@ -122,6 +122,7 @@ namespace beman::inside
                         // interval, a native type, a rational's 64-bit fields)
     rounding_error,     // notch incompatibility
     not_finite,         // non-finite double input (NaN/Inf)
+    invalid_format,     // text that is not a number (from_chars, operator>>)
   };
 
   // Static, allocation-free message per code. The single source of truth for
@@ -136,6 +137,7 @@ namespace beman::inside
       case errc::overflow:         return "value does not fit its range";
       case errc::rounding_error:   return "notch incompatibility";
       case errc::not_finite:       return "non-finite floating-point value";
+      case errc::invalid_format:   return "malformed number";
     }
     return "unknown inside error";
   }
@@ -976,9 +978,10 @@ namespace beman::inside::detail
   //   binary integer:    0b1010
   //   hex float (Q-fmt): 0x1p15, 0x1p-15, 0x1.8p3
   // Exact (no double round-trip). A malformed or overflowing literal fails
-  // constant evaluation via `constexpr_error<Msg>()`.
+  // constant evaluation via `constexpr_error<Msg>()`; parse_text (below) is the
+  // runtime form behind from_chars.
   //---------------------------------------------------------------------------
-    consteval int parse_digit(char c, int base)
+    constexpr int parse_digit(char c, int base)
     {
       if (c >= '0' && c <= '9')
       {
@@ -993,24 +996,37 @@ namespace beman::inside::detail
       return -1;
     }
 
-    template<char... Chars>
-    consteval rational parse_ins_literal()
+    // Failure kinds of the number parser. The literals turn each into a named
+    // compile-time diagnostic; runtime parsing maps them onto errc.
+    enum class parse_fail : unsigned char
     {
-      constexpr char src[] = { Chars..., '\0' };
-      constexpr std::size_t N = sizeof...(Chars);
+      none, empty, invalid_exponent, multiple_dots, dot_in_binary, invalid_digit,
+      numerator_overflow, denominator_overflow, hex_fraction_too_long,
+      p_exponent_too_large, p_exponent_denominator_overflow,
+      e_exponent_numerator_overflow, e_exponent_denominator_overflow,
+    };
+
+    struct parsed_number { rational Value; parse_fail Fail; };
+
+    // Unsigned number in [first, last): the grammar of the _ins / _r literals.
+    constexpr parsed_number parse_number(const char* first, const char* last)
+    {
+      const std::size_t N = static_cast<std::size_t>(last - first);
+      auto fail = [](parse_fail f) { return parsed_number{rational{}, f}; };
 
       // Detect radix prefix.
       int base = 10;
       std::size_t i = 0;
-      if (N >= 2 && src[0] == '0')
+      if (N >= 2 && first[0] == '0')
       {
-        if (src[1] == 'x' || src[1] == 'X') { base = 16; i = 2; }
-        else if (src[1] == 'b' || src[1] == 'B') { base = 2; i = 2; }
+        if (first[1] == 'x' || first[1] == 'X') { base = 16; i = 2; }
+        else if (first[1] == 'b' || first[1] == 'B') { base = 2; i = 2; }
       }
 
       umax num = 0;
       int frac_len = 0;
       bool in_frac = false;
+      bool seen_digit = false;
       int exp = 0;
       bool exp_neg = false;
       bool has_p_exp = false;  // 2^exp (hex floats)
@@ -1020,7 +1036,7 @@ namespace beman::inside::detail
 
       for (; i < N; ++i)
       {
-        char c = src[i];
+        const char c = first[i];
         if (c == '\'') continue;
 
         if (in_exp)
@@ -1032,17 +1048,17 @@ namespace beman::inside::detail
           }
           if (c >= '0' && c <= '9')
           {
-            exp = exp * 10 + (c - '0');
+            if (exp < 100000) exp = exp * 10 + (c - '0');   // past 10^5 it overflows anyway
             exp_seen_digit = true;
             continue;
           }
-          constexpr_error<"_ins/_r literal: invalid char in exponent">();
+          return fail(parse_fail::invalid_exponent);
         }
 
         if (c == '.')
         {
-          if (in_frac) constexpr_error<"_ins/_r literal: multiple '.'">();
-          if (base == 2) constexpr_error<"_ins/_r literal: '.' not allowed in binary">();
+          if (in_frac) return fail(parse_fail::multiple_dots);
+          if (base == 2) return fail(parse_fail::dot_in_binary);
           in_frac = true;
           continue;
         }
@@ -1061,15 +1077,18 @@ namespace beman::inside::detail
           continue;
         }
 
-        int d = parse_digit(c, base);
-        if (d < 0) constexpr_error<"_ins/_r literal: invalid digit for radix">();
+        const int d = parse_digit(c, base);
+        if (d < 0) return fail(parse_fail::invalid_digit);
 
-        umax base_u = base;
-        if (num > (~umax{0} - d) / base_u)
-          constexpr_error<"_ins/_r literal: numerator overflow">();
-        num = num * base_u + d;
+        const umax base_u = static_cast<umax>(base);
+        if (num > (~umax{0} - static_cast<umax>(d)) / base_u)
+          return fail(parse_fail::numerator_overflow);
+        num = num * base_u + static_cast<umax>(d);
+        seen_digit = true;
         if (in_frac) ++frac_len;
       }
+      if (!seen_digit) return fail(parse_fail::empty);
+      if (in_exp && !exp_seen_digit) return fail(parse_fail::invalid_exponent);
 
       // Build denominator from fractional part.
       // For decimal: den = 10^frac_len. For hex: den = 2^(4*frac_len).
@@ -1078,27 +1097,29 @@ namespace beman::inside::detail
       {
         for (int k = 0; k < frac_len; ++k)
         {
-          if (den > (~umax{0}) / 10u)
-            constexpr_error<"_ins/_r literal: denominator overflow">();
+          if (den > (~umax{0}) / 10u) return fail(parse_fail::denominator_overflow);
           den *= 10u;
         }
       }
       else if (base == 16)
       {
-        int shift = 4 * frac_len;
-        if (shift >= 64) constexpr_error<"_ins/_r literal: hex fraction too long">();
+        const int shift = 4 * frac_len;
+        if (shift >= 64) return fail(parse_fail::hex_fraction_too_long);
         den <<= shift;
       }
 
       // Apply binary exponent (hex floats, `p`).
       if (has_p_exp)
       {
-        if (exp >= 63) constexpr_error<"_ins/_r literal: p exponent too large">();
-        if (!exp_neg) num <<= exp;
+        if (exp >= 63) return fail(parse_fail::p_exponent_too_large);
+        if (!exp_neg)
+        {
+          if (num > (~umax{0}) >> exp) return fail(parse_fail::numerator_overflow);
+          num <<= exp;
+        }
         else
         {
-          if (den > (~umax{0}) >> exp)
-            constexpr_error<"_ins/_r literal: p exponent denominator overflow">();
+          if (den > (~umax{0}) >> exp) return fail(parse_fail::p_exponent_denominator_overflow);
           den <<= exp;
         }
       }
@@ -1110,20 +1131,92 @@ namespace beman::inside::detail
         {
           if (!exp_neg)
           {
-            if (num > (~umax{0}) / 10u)
-              constexpr_error<"_ins/_r literal: e exponent numerator overflow">();
+            if (num > (~umax{0}) / 10u) return fail(parse_fail::e_exponent_numerator_overflow);
             num *= 10u;
           }
           else
           {
-            if (den > (~umax{0}) / 10u)
-              constexpr_error<"_ins/_r literal: e exponent denominator overflow">();
+            if (den > (~umax{0}) / 10u) return fail(parse_fail::e_exponent_denominator_overflow);
             den *= 10u;
           }
         }
       }
 
-      return rational{num, den};
+      if (den > static_cast<umax>(std::numeric_limits<imax>::max()))
+        return fail(parse_fail::denominator_overflow);
+      return parsed_number{rational{num, den}, parse_fail::none};
+    }
+
+    template<char... Chars>
+    consteval rational parse_ins_literal()
+    {
+      constexpr char src[] = { Chars..., '\0' };
+      constexpr parsed_number r = parse_number(src, src + sizeof...(Chars));
+      if constexpr (r.Fail == parse_fail::invalid_exponent)
+        constexpr_error<"_ins/_r literal: invalid char in exponent">();
+      else if constexpr (r.Fail == parse_fail::multiple_dots)
+        constexpr_error<"_ins/_r literal: multiple '.'">();
+      else if constexpr (r.Fail == parse_fail::dot_in_binary)
+        constexpr_error<"_ins/_r literal: '.' not allowed in binary">();
+      else if constexpr (r.Fail == parse_fail::invalid_digit || r.Fail == parse_fail::empty)
+        constexpr_error<"_ins/_r literal: invalid digit for radix">();
+      else if constexpr (r.Fail == parse_fail::numerator_overflow)
+        constexpr_error<"_ins/_r literal: numerator overflow">();
+      else if constexpr (r.Fail == parse_fail::denominator_overflow)
+        constexpr_error<"_ins/_r literal: denominator overflow">();
+      else if constexpr (r.Fail == parse_fail::hex_fraction_too_long)
+        constexpr_error<"_ins/_r literal: hex fraction too long">();
+      else if constexpr (r.Fail == parse_fail::p_exponent_too_large)
+        constexpr_error<"_ins/_r literal: p exponent too large">();
+      else if constexpr (r.Fail == parse_fail::p_exponent_denominator_overflow)
+        constexpr_error<"_ins/_r literal: p exponent denominator overflow">();
+      else if constexpr (r.Fail == parse_fail::e_exponent_numerator_overflow)
+        constexpr_error<"_ins/_r literal: e exponent numerator overflow">();
+      else if constexpr (r.Fail == parse_fail::e_exponent_denominator_overflow)
+        constexpr_error<"_ins/_r literal: e exponent denominator overflow">();
+      return r.Value;
+    }
+
+    // Runtime text → exact value: an optional sign, then a number in the literal
+    // grammar, or a fraction `N/D` of two such numbers (the form to_string prints
+    // for a non-terminating value). Malformed text is errc::invalid_format; a value
+    // past the 64-bit fields is errc::overflow; `N/0` is errc::division_by_zero.
+    constexpr std::expected<rational, errc> parse_text(const char* first, const char* last)
+    {
+      bool neg = false;
+      if (first != last && (*first == '+' || *first == '-')) { neg = (*first == '-'); ++first; }
+      const char* slash = first;
+      while (slash != last && *slash != '/') ++slash;
+
+      auto one = [](const char* f, const char* l) -> std::expected<rational, errc>
+      {
+        const parsed_number r = parse_number(f, l);
+        switch (r.Fail)
+        {
+          case parse_fail::none: return r.Value;
+          case parse_fail::numerator_overflow:
+          case parse_fail::denominator_overflow:
+          case parse_fail::hex_fraction_too_long:
+          case parse_fail::p_exponent_too_large:
+          case parse_fail::p_exponent_denominator_overflow:
+          case parse_fail::e_exponent_numerator_overflow:
+          case parse_fail::e_exponent_denominator_overflow:
+            return std::unexpected{errc::overflow};
+          default:
+            return std::unexpected{errc::invalid_format};
+        }
+      };
+
+      std::expected<rational, errc> v = one(first, slash);
+      if (v && slash != last)
+      {
+        const auto d = one(slash + 1, last);
+        if (!d) return d;
+        if (d->Numerator == 0) return std::unexpected{errc::division_by_zero};
+        v = *v / *d;
+      }
+      if (v && neg) v = -*v;
+      return v;
     }
 
   template<char... Chars>
@@ -5957,6 +6050,22 @@ namespace beman::inside
   { return b.template as<T>(); }
 
   //---------------------------------------------------------------------------
+  // from_chars<B>(first, last) — text → B, exactly (no double round-trip). The
+  // whole range must be one number: an optional sign, then the literal grammar
+  // (1'000, 1.25, 1.5e2, 0xff, 0b1010, 0x1.8p3) or a fraction N/D. Malformed text
+  // is errc::invalid_format; the value then goes through B::try_make, so B's
+  // policy rounds, clamps or wraps it and reports overflow / rounding_error.
+  // (io.hpp adds a std::string_view overload and operator>>.)
+  //---------------------------------------------------------------------------
+  template <insidable B>
+  [[nodiscard]] constexpr std::expected<B, errc> from_chars(const char* first, const char* last)
+  {
+    const auto v = detail::parse_text(first, last);
+    if (!v) return std::unexpected{v.error()};
+    return B::try_make(*v);
+  }
+
+  //---------------------------------------------------------------------------
   // comparison
   //---------------------------------------------------------------------------
   namespace detail
@@ -9757,6 +9866,7 @@ namespace beman::inside
 
 #include <string>
 #include <string_view>
+#include <istream>
 #include <ostream>
 #include <version>
 
@@ -9934,6 +10044,23 @@ namespace beman::inside
   inline std::ostream& operator<<(std::ostream& stream, B b)
   {
     stream << beman::inside::to_string(b);
+    return stream;
+  }
+
+  // from_chars<B>(text) — the std::string_view form of from_chars<B>(first, last).
+  template <insidable B>
+  [[nodiscard]] constexpr std::expected<B, errc> from_chars(std::string_view text)
+  { return from_chars<B>(text.data(), text.data() + text.size()); }
+
+  // Reads one whitespace-delimited token and parses it with from_chars<B>. On an
+  // error the stream's failbit is set and `b` is left unchanged.
+  template <insidable B>
+  inline std::istream& operator>>(std::istream& stream, B& b)
+  {
+    std::string token;
+    if (!(stream >> token)) return stream;
+    if (const auto r = from_chars<B>(token); r) b = *r;
+    else stream.setstate(std::ios_base::failbit);
     return stream;
   }
 
