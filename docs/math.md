@@ -98,9 +98,10 @@ other representation flags.
 
 ## Conventions
 
-- **Angles are radians**, everywhere — `sin`/`cos`/`tan` take radians;
-  `asin`/`acos`/`atan`/`atan2` return radians. (There is no turns-valued
-  public API.)
+- **Angles are radians**, everywhere, exactly as in `<cmath>` — `sin`/`cos`/`tan`
+  take radians; `asin`/`acos`/`atan`/`atan2` return radians. There are no degree
+  or turns-valued overloads. `math::amp<K>` (`[-1, 1]` at resolution `1/K`, `K` a
+  power of two) is a ready-made output grid: `math::sin_into<math::amp<32768>>(x)`.
 - **Output grids are auto-deduced.** Calling `f(x)` with no explicit template
   argument deduces the result `inside` from the input's interval and notch:
   the interval is the function's true range over the input, rounded *outward*
@@ -198,38 +199,6 @@ other representation flags.
 
 `math::pi` and `math::two_pi` are point insides (`just<…>`), so they compose
 directly in inside-space: `angle * math::two_pi`.
-
-## Periodic trig on a degree circle: `circle<M>` / `amp<K>`
-
-Radians have no rational period, so a radians angle with `wrap` drifts. A
-`circle<M>` is one revolution split into `M` equal slots, valued in degrees
-(period 360), so `wrap` is exact; its raw is the slot index `0..M-1`. `amp<K>`
-is the matching amplitude grid, `[-1, 1]` at resolution `1/K`:
-
-```cpp
-using angle_t = math::circle<4096>;   // f64 | wrap, notch 360/4096 degrees
-using amp_t   = math::amp<32768>;     // [-1, 1], notch 1/32768, f64
-
-angle_t phase{0};
-auto s = math::sin(phase);                   // amp<4096>: the angle's resolution
-auto c = math::cos_into<amp_t>(phase);       // explicit output grid
-auto t = math::tan_into<amp_t>(phase);       // expected<amp_t, errc>
-phase += angle_t{90};                        // a quarter turn, exactly; wraps at 360
-```
-
-The same names as the radians functions take a circle angle and dispatch on its
-shape (`Lower` 0, `Upper + Notch == 360`, `wrap`): `sin` / `cos` / `tan` and their
-`_into<Out>` forms. The auto output is `amp` at the angle's resolution, rounded up
-to a power of two (`circle<360>` → `amp<512>`; an `f64` grid must be dyadic); `tan`'s
-auto output is the radians `tan` range. Like the radians `tan`, `tan` returns
-`expected`: `division_by_zero` at a pole, `overflow` past `Out` (a `clamp` `Out`
-saturates). Only the integer engine detects the exact 90° / 270° poles: the FP
-engines evaluate on the angle converted to radians, where `tan(90°)` is a large
-finite value (then `overflow` for any amplitude grid). `M` must be divisible by 4
-(a power of two is fastest), and a custom angle type must carry `wrap | f64`.
-Under the integer engine the call is a lookup into a first-quadrant table built
-at compile time. The engine namespaces (`cordic::`, `dbl::`, `flt::`) take radians
-only.
 
 ## Using `expected` results
 

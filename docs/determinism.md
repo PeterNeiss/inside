@@ -191,6 +191,8 @@ stored results, golden files and replay logs stay valid after an upgrade.
 | 2026-10 (same), 02b272a | — | every store | Not a value change: every policy without `unsafe` is runtime-checked, so stores that used to keep an out-of-range value silently (`round_nearest`, `f64`, `indexed` types) now report it. |
 | 2026-10 (same) | — | every store, conversion predicates | A rounding policy rounds before the range check: a value less than one notch outside that rounds onto an endpoint is stored (`{0, 9}, round_floor` from 9.55: domain_error → 9). Values that rounded inside the grid before are unchanged. |
 | 2026-10 (same) | — | error codes | Not a value change: an out-of-range value reports `errc::overflow` everywhere (assignment, construction, `try_make`, `on_error` payloads used to say `domain_error`); `domain_error` now means only an argument outside a function's mathematical domain. The flag `ignore_domain` is renamed `ignore_range`. |
+| 2026-10 (same) | — | trig API | Not a value change: the degree-circle trig (`circle<M>`, `sin(circle)` in degrees) is removed; every trig function takes radians, as in `<cmath>`. `amp<K>` stays as an output grid. |
+
 
 ## Compile-time determinism
 

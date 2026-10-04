@@ -19,11 +19,9 @@ TEST(NoFpStorageTest, f64_flag_is_integer_backed)
   EXPECT_EQ(rational{f}, (rational{3, 4}));
 }
 
-TEST(NoFpStorageTest, circle_trig_reads_the_angle_by_value)
+TEST(NoFpStorageTest, amp_output_reads_the_angle_by_value)
 {
-  math::circle<1024> a{90}, b{30};
-  const auto s = math::sin(a);                               // auto: amp<1024>
-  const auto t = math::sin_into<math::amp<14>>(b);           // 30° snaps to slot 85 (29.88°)
-  EXPECT_EQ(rational{s}, rational{1});
-  EXPECT_EQ(rational{t}, (rational{1, 2}));                  // on the 1/14 amplitude grid
+  using ang = inside<{{-4, 4}, per<1024>}, round_nearest | f64>;   // integer-backed under NO_FP
+  EXPECT_EQ(rational{math::sin_into<math::amp<14>>(ang{0.5})}, (rational{1, 2}));   // sin 0.5 ≈ 0.479 → 7/14
+  EXPECT_EQ(rational{math::sin_into<math::amp<14>>(ang{0})}, rational{0});
 }

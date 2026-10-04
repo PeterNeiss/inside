@@ -158,26 +158,17 @@ TEST(CmathDoubleTest, dbl_mixed_sign_sqrt_returns_expected_on_the_double_engine)
   ASSERT_EQ(rn.error(), errc::domain_error);
 }
 
-// dbl: circle<M> degree angle uses the double engine
-TEST(CmathDoubleTest, dbl_circle_m_degree_angle_uses_the_double_engine)
+// dbl: an amp<K> output grid is double-backed and evaluated by the double engine
+TEST(CmathDoubleTest, dbl_amp_output_uses_the_double_engine)
 {
-  static_assert(std::is_same_v<math::circle<360>::raw_type, double>, "circle must be double-backed in the default build");
   static_assert(std::is_same_v<math::amp<65536>::raw_type, double>, "amp must be double-backed in the default build");
 
-  math::circle<360> deg = 47.0;
-  const auto y = math::sin_into<math::amp<65536>>(deg);
-  const auto c = math::cos_into<math::amp<65536>>(deg);
-  ASSERT_EQ(double(y), 0x1.7674p-1);   // sin(47°) snapped to 1/65536 (~0.73135)
-  ASSERT_EQ(double(c), 0x1.5d2ep-1);   // cos(47°) snapped to 1/65536 (~0.68201)
-
-  // exact at cardinal degrees
-  math::circle<360> d0 = 0.0, d180 = 180.0;
-  ASSERT_EQ(double(math::sin_into<math::amp<65536>>(d0)), 0.0);
-  ASSERT_EQ(double(math::sin_into<math::amp<65536>>(d180)), 0.0);   // sin(180°) is exactly 0
-
-  // The auto form picks amp at the angle's resolution, rounded up to a power of
-  // two (an f64 grid is dyadic): circle<360> → amp<512>.
-  static_assert(std::is_same_v<decltype(math::sin(deg)), math::amp<512>>);
+  using ang = inside<{{-8, 8}, per<16384>}, round_nearest | f64>;
+  const auto y = math::sin_into<math::amp<65536>>(ang{1});
+  const auto c = math::cos_into<math::amp<65536>>(ang{1});
+  EXPECT_NEAR(double(y), std::sin(1.0), 0.5 / 65536);
+  EXPECT_NEAR(double(c), std::cos(1.0), 0.5 / 65536);
+  ASSERT_EQ(double(math::sin_into<math::amp<65536>>(ang{0})), 0.0);   // exactly 0
 }
 
 // The algebraic tier (abs/floor/ceil/round/trunc/fmod) is exercised at compile
