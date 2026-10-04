@@ -513,7 +513,7 @@ namespace beman::inside
     {
       constexpr imax lo = detail::raw_lo<inside>, hi = detail::raw_hi<inside>;
       if constexpr (has_any_flag(P, clamp | wrap)
-                    || (has_flag(P, checked) && !has_flag(P, ignore_domain)))
+                    || (is_checked(P) && !has_flag(P, ignore_domain)))
         if (new_raw < lo || new_raw > hi)
         {
           if constexpr (P & clamp)

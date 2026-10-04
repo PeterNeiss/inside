@@ -29,7 +29,9 @@ namespace beman::inside::detail
       || error_action   <plain_t<A>>
       || has_policy<L, P, clamp>
       || has_policy<L, P, wrap>
-      || (has_policy<L, P, checked> && !has_policy<L, P, ignore_domain>);
+      || ((plain_t<P>::test(checked)
+           || is_checked(policy_of<L> | (plain_t<P>::test(detail::unsafe_marker) ? detail::unsafe_marker : none)))
+          && !has_policy<L, P, ignore_domain>);
 
   // Shared out-of-range policy cascade. Order: clamp/wrap/error *actions*, then
   // clamp/wrap *policy* bits, then `domain_fail`. The three caller-supplied
@@ -494,6 +496,54 @@ namespace beman::inside::detail
         }
       }
 
+    private:
+      // Range test for the source value. A floating source compares in double when
+      // both endpoints are exact doubles (then the comparison is exact), instead of
+      // converting the value to a rational first.
+      static constexpr bool double_bounds_exact =
+          std::floating_point<R>
+          && rational{static_cast<double>(lower_of<L>)} == lower_of<L>
+          && rational{static_cast<double>(upper_of<L>)} == upper_of<L>;
+
+      // A rational source on integer endpoints compares by multiplying the
+      // endpoint by the denominator (n/d ≤ m ⇔ n ≤ m·d; an overflowing m·d
+      // exceeds any n) — exact, and no division.
+      static constexpr bool integer_bounds =
+          std::same_as<R, rational>
+          && abs_den(lower_of<L>.Denominator) == 1 && abs_den(upper_of<L>.Denominator) == 1;
+
+      static constexpr bool out_of_interval(R const& rhs)
+      {
+        if constexpr (double_bounds_exact)
+        {
+          constexpr double lo = static_cast<double>(lower_of<L>);
+          constexpr double hi = static_cast<double>(upper_of<L>);
+          return rhs < lo || rhs > hi;
+        }
+        else if constexpr (integer_bounds)
+        {
+          constexpr imax lo = signed_numerator(lower_of<L>);
+          constexpr imax hi = signed_numerator(upper_of<L>);
+          const umax n = rhs.Numerator, d = abs_den(rhs.Denominator);
+          auto le = [&](umax m) { umax p; return mul_overflow(m, d, &p) || n <= p; };
+          auto ge = [&](umax m) { umax p; return !mul_overflow(m, d, &p) && n >= p; };
+          if (rhs.Denominator < 0 && n != 0)            // value −n/d < 0
+          {
+            bool in_lo, in_hi;
+            if constexpr (lo >= 0) in_lo = false; else in_lo = le(safe_abs(lo));
+            if constexpr (hi >= 0) in_hi = true;  else in_hi = ge(safe_abs(hi));
+            return !(in_lo && in_hi);
+          }
+          bool in_lo, in_hi;                            // value n/d ≥ 0
+          if constexpr (lo <= 0) in_lo = true;  else in_lo = ge(static_cast<umax>(lo));
+          if constexpr (hi < 0)  in_hi = false; else in_hi = le(static_cast<umax>(hi));
+          return !(in_lo && in_hi);
+        }
+        else
+          return not includes(interval_of<L>, rhs);
+      }
+
+    public:
       template<typename P, typename A = no_action>
       static constexpr L& assign(L& lhs, R const& rhs, P&& policy, A&& action = {})
       {
@@ -512,7 +562,7 @@ namespace beman::inside::detail
             return lhs;
           }
 
-        if (not includes(interval_of<L>, rhs)) [[unlikely]]
+        if (out_of_interval(rhs)) [[unlikely]]
         {
           // Fractional path has no wrap *action* branch (Wrappable = false).
           if (dispatch_out_of_range<false>(lhs, policy, action,

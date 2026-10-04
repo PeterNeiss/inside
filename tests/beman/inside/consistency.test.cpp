@@ -160,7 +160,7 @@ TEST(ConsistencyTest, result_drops_invalid_direct_and_indexed)
   auto dd = D{6} / D{3};
   EXPECT_EQ(rational{*dd}, q(2));
   auto ii = IX{6} / IX{3};
-  EXPECT_EQ(rational{ii}, q(2));
+  EXPECT_EQ(rational{*ii}, q(2));   // indexed is checked: exact path may overflow
 }
 
 // Math auto-output types do not inherit fixed-width storage flags.

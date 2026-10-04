@@ -1253,12 +1253,12 @@ static void bench_cmath()
     imax k = static_cast<imax>((j * 16) & 0xFFFF);
     rational q  = rational{k, 16384};
     rational qs = rational{k - 32768, 16384};
-    rational rl2{(k % 65535) + 1, 16384};
+    rational rl2{(k % 65472) + 64, 16384};              // [1/256, 4): log2's grid starts at 1/256
     rational rl {(k % 65535) + 1, 256};
     rational rt {(k % 24576) - 12288, 16384};
     rational ry {(k % 32768) - 16384, 16384};
     rational rx {((k + 1) % 32768) - 16384, 16384};
-    rational rfy{(k % 60) + 4, 16384};
+    rational rfy{(k % 60) + 4, 16};                     // [0.25, 4): fmod_y_t's grid
     v_alg.push_back(algeb_t{qs});    v_alg2.push_back(algeb_t{q});
     v_sqrt.push_back(sqrt_in_t{q});
     v_exp2.push_back(exp2_in_t{qs}); v_log2.push_back(log2_in_t{rl2});

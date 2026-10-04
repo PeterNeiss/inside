@@ -258,7 +258,7 @@ TEST(CmathDoubleTest, dbl_transcendental_tier_on_real_bounds_matches_std)
   {
     SCOPED_TRACE("asin / acos / atan on their domains");
     using u = inside<{{-1, 1}, notch<1, 16384>}, round_nearest | f64>;
-    using o = inside<{{-2, 2}, notch<1, 16384>}, round_nearest | f64>;
+    using o = inside<{{-4, 4}, notch<1, 16384>}, round_nearest | f64>;   // acos(-0.9) ≈ 2.69
     for (double x : {-0.9, -0.5, 0.0, 0.25, 0.5, 0.9})
     {
       ASSERT_TRUE(std::fabs(double(o{math::asin(u{x})}) - std::asin(x)) < tol);

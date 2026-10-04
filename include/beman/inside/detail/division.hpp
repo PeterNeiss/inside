@@ -165,7 +165,8 @@ namespace beman::inside::detail
 
     template <policy_flag G = F>
     static constexpr bool needs_overflow_check =
-        has_any_flag(G | F | policy_of<L> | policy_of<R>, checked | exact);
+        has_any_flag(G | F, checked) || is_checked(policy_of<L>) || is_checked(policy_of<R>)
+        || has_any_flag(G | F | policy_of<L> | policy_of<R>, exact);
 
     // For a nonzero divisor the op fails only on the checked rational path
     // (overflow). So when the divisor excludes zero AND this is false, `div`

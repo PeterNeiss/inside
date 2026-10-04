@@ -307,10 +307,16 @@ TEST(CoverageCornersTest, inside_to_real_conversion_snaps_onto_the_double_grid)
 // `clamp` policy (not checked, not snap) takes the :476 else-branch
 // and truncates an in-range off-notch value silently.
 //---------------------------------------------------------------------------
-// clamp policy truncates an in-range off-notch fractional assignment
+// clamp | snap truncates an in-range off-notch fractional assignment; clamp
+// alone handles only the range, so the off-notch value is a rounding error.
 TEST(CoverageCornersTest, clamp_policy_truncates_an_in_range_off_notch_fractional_assignment)
 {
-  using b = inside<{{0, 10}, notch<1, 2>}, clamp>;          // notch 1/2
+  using strict = inside<{{0, 10}, notch<1, 2>}, clamp>;
+  errc ec{};
+  strict s(0.3, ec);
+  ASSERT_EQ(ec, errc::rounding_error);
+
+  using b = inside<{{0, 10}, notch<1, 2>}, clamp | snap>;   // notch 1/2
   b x{0};
   x = 0.3;                          // in range, off the 1/2 grid → truncates to 0
   ASSERT_EQ(x, 0);

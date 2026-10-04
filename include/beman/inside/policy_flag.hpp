@@ -48,8 +48,9 @@ namespace beman::inside
   inline constexpr policy_flag round_ceil      {(1ull << 7) | snap};
   inline constexpr policy_flag round_half_even {(1ull << 8) | snap};
 
-  // runtime checking — opt-in
-  inline constexpr policy_flag checked{1ull << 34}; // enable runtime domain/overflow checks
+  // runtime checking — on unless the policy carries `unsafe` (see is_checked).
+  // Spelling `checked` re-enables the checks alongside `unsafe`.
+  inline constexpr policy_flag checked{1ull << 34}; // runtime domain/overflow checks
 
   // unary — mutually exclusive
   inline constexpr policy_flag clamp   {1ull << 32}; // saturate to boundary
@@ -115,8 +116,9 @@ namespace beman::inside
   // opt-out of `checked`: no domain/round/overflow/div-by-zero checks (reading
   // out-of-range or dividing by zero is UB; `/= 0` no-ops, `a / 0` skips the
   // check). Includes `snap` so notch-incompatible assigns compile.
+  namespace detail { inline constexpr policy_flag unsafe_marker{1ull << 36}; }
   inline constexpr policy_flag unsafe
-    {(1ull << 36) | ignore_domain | snap | ignore_zero};
+    {detail::unsafe_marker | ignore_domain | snap | ignore_zero};
 
   //---------------------------------------------------------------------------
   // Flag-set membership predicates. `has_flag(set, flag)` is true iff EVERY bit
@@ -130,6 +132,12 @@ namespace beman::inside
 
   [[nodiscard]] constexpr bool has_any_flag(policy_flag set, policy_flag flags) noexcept
   { return (set & flags) != none; }
+
+  // Runtime checks run unless the policy opts out with `unsafe`; an explicit
+  // `checked` wins over `unsafe`. So `inside<G, round_nearest>` and
+  // `inside<G, f64>` are checked, exactly like the default `inside<G>`.
+  [[nodiscard]] constexpr bool is_checked(policy_flag set) noexcept
+  { return has_flag(set, checked) || !has_flag(set, detail::unsafe_marker); }
 
   namespace detail
   {

@@ -1753,8 +1753,9 @@ namespace beman::inside
   inline constexpr policy_flag round_ceil      {(1ull << 7) | snap};
   inline constexpr policy_flag round_half_even {(1ull << 8) | snap};
 
-  // runtime checking — opt-in
-  inline constexpr policy_flag checked{1ull << 34}; // enable runtime domain/overflow checks
+  // runtime checking — on unless the policy carries `unsafe` (see is_checked).
+  // Spelling `checked` re-enables the checks alongside `unsafe`.
+  inline constexpr policy_flag checked{1ull << 34}; // runtime domain/overflow checks
 
   // unary — mutually exclusive
   inline constexpr policy_flag clamp   {1ull << 32}; // saturate to boundary
@@ -1820,8 +1821,9 @@ namespace beman::inside
   // opt-out of `checked`: no domain/round/overflow/div-by-zero checks (reading
   // out-of-range or dividing by zero is UB; `/= 0` no-ops, `a / 0` skips the
   // check). Includes `snap` so notch-incompatible assigns compile.
+  namespace detail { inline constexpr policy_flag unsafe_marker{1ull << 36}; }
   inline constexpr policy_flag unsafe
-    {(1ull << 36) | ignore_domain | snap | ignore_zero};
+    {detail::unsafe_marker | ignore_domain | snap | ignore_zero};
 
   //---------------------------------------------------------------------------
   // Flag-set membership predicates. `has_flag(set, flag)` is true iff EVERY bit
@@ -1835,6 +1837,12 @@ namespace beman::inside
 
   [[nodiscard]] constexpr bool has_any_flag(policy_flag set, policy_flag flags) noexcept
   { return (set & flags) != none; }
+
+  // Runtime checks run unless the policy opts out with `unsafe`; an explicit
+  // `checked` wins over `unsafe`. So `inside<G, round_nearest>` and
+  // `inside<G, f64>` are checked, exactly like the default `inside<G>`.
+  [[nodiscard]] constexpr bool is_checked(policy_flag set) noexcept
+  { return has_flag(set, checked) || !has_flag(set, detail::unsafe_marker); }
 
   namespace detail
   {
@@ -3079,7 +3087,9 @@ namespace beman::inside::detail
       || error_action   <plain_t<A>>
       || has_policy<L, P, clamp>
       || has_policy<L, P, wrap>
-      || (has_policy<L, P, checked> && !has_policy<L, P, ignore_domain>);
+      || ((plain_t<P>::test(checked)
+           || is_checked(policy_of<L> | (plain_t<P>::test(detail::unsafe_marker) ? detail::unsafe_marker : none)))
+          && !has_policy<L, P, ignore_domain>);
 
   // Shared out-of-range policy cascade. Order: clamp/wrap/error *actions*, then
   // clamp/wrap *policy* bits, then `domain_fail`. The three caller-supplied
@@ -3544,6 +3554,54 @@ namespace beman::inside::detail
         }
       }
 
+    private:
+      // Range test for the source value. A floating source compares in double when
+      // both endpoints are exact doubles (then the comparison is exact), instead of
+      // converting the value to a rational first.
+      static constexpr bool double_bounds_exact =
+          std::floating_point<R>
+          && rational{static_cast<double>(lower_of<L>)} == lower_of<L>
+          && rational{static_cast<double>(upper_of<L>)} == upper_of<L>;
+
+      // A rational source on integer endpoints compares by multiplying the
+      // endpoint by the denominator (n/d ≤ m ⇔ n ≤ m·d; an overflowing m·d
+      // exceeds any n) — exact, and no division.
+      static constexpr bool integer_bounds =
+          std::same_as<R, rational>
+          && abs_den(lower_of<L>.Denominator) == 1 && abs_den(upper_of<L>.Denominator) == 1;
+
+      static constexpr bool out_of_interval(R const& rhs)
+      {
+        if constexpr (double_bounds_exact)
+        {
+          constexpr double lo = static_cast<double>(lower_of<L>);
+          constexpr double hi = static_cast<double>(upper_of<L>);
+          return rhs < lo || rhs > hi;
+        }
+        else if constexpr (integer_bounds)
+        {
+          constexpr imax lo = signed_numerator(lower_of<L>);
+          constexpr imax hi = signed_numerator(upper_of<L>);
+          const umax n = rhs.Numerator, d = abs_den(rhs.Denominator);
+          auto le = [&](umax m) { umax p; return mul_overflow(m, d, &p) || n <= p; };
+          auto ge = [&](umax m) { umax p; return !mul_overflow(m, d, &p) && n >= p; };
+          if (rhs.Denominator < 0 && n != 0)            // value −n/d < 0
+          {
+            bool in_lo, in_hi;
+            if constexpr (lo >= 0) in_lo = false; else in_lo = le(safe_abs(lo));
+            if constexpr (hi >= 0) in_hi = true;  else in_hi = ge(safe_abs(hi));
+            return !(in_lo && in_hi);
+          }
+          bool in_lo, in_hi;                            // value n/d ≥ 0
+          if constexpr (lo <= 0) in_lo = true;  else in_lo = ge(static_cast<umax>(lo));
+          if constexpr (hi < 0)  in_hi = false; else in_hi = le(static_cast<umax>(hi));
+          return !(in_lo && in_hi);
+        }
+        else
+          return not includes(interval_of<L>, rhs);
+      }
+
+    public:
       template<typename P, typename A = no_action>
       static constexpr L& assign(L& lhs, R const& rhs, P&& policy, A&& action = {})
       {
@@ -3562,7 +3620,7 @@ namespace beman::inside::detail
             return lhs;
           }
 
-        if (not includes(interval_of<L>, rhs)) [[unlikely]]
+        if (out_of_interval(rhs)) [[unlikely]]
         {
           // Fractional path has no wrap *action* branch (Wrappable = false).
           if (dispatch_out_of_range<false>(lhs, policy, action,
@@ -3908,13 +3966,13 @@ namespace beman::inside
     static constexpr bool domain_check()
     {
       if (std::is_constant_evaluated()) return true;
-      return test(checked) && not test(ignore_domain);
+      return is_checked(W) && not test(ignore_domain);
     }
 
     static constexpr bool round_check()
     {
       if (std::is_constant_evaluated()) return true;
-      return test(checked) && not test(snap);
+      return is_checked(W) && not test(snap);
     }
 
     // Cheap default report: no message construction. error_ref mode records the
@@ -4292,11 +4350,12 @@ namespace beman::inside::detail
     static constexpr policy_flag rep =
         carried
         | (keep_f64 ? f64 : none) | (keep_f32 ? f32 : none);
-    // The result inside's policy: the propagated representation plus the
-    // operands' `checked` (a representation flag must not switch checking off),
-    // or plain checked.
+    // The result inside's policy: the propagated representation, checked when
+    // either operand is (a plain result is always checked); a representation
+    // carried from two `unsafe` operands stays unchecked.
     static constexpr policy_flag result_policy =
-        rep != none ? rep | ((policy_of<Lhs> | policy_of<Rhs>) & checked) : checked;
+        rep | ((rep == none || is_checked(policy_of<Lhs>) || is_checked(policy_of<Rhs>))
+               ? checked : detail::unsafe_marker);
   };
 }
 
@@ -4323,7 +4382,8 @@ namespace beman::inside::detail
     template <policy_flag F>
     static constexpr bool needs_overflow_check =
         rational_raw<result>
-        && has_any_flag(F | policy_of<L> | policy_of<R>, checked | exact)
+        && (has_any_flag(F, checked) || is_checked(policy_of<L>) || is_checked(policy_of<R>)
+            || has_any_flag(F | policy_of<L> | policy_of<R>, exact))
         && !rational_add_is_safe(grid_of<L>, grid_of<R>);
 
     // Plain result when an overflow action takes the failure or no check is
@@ -4479,7 +4539,8 @@ namespace beman::inside::detail
     template <policy_flag F>
     static constexpr bool needs_overflow_check =
         rational_raw<result>
-        && (has_any_flag(F | policy_of<L> | policy_of<R>, checked | exact) || dropped_fp)
+        && (has_any_flag(F, checked) || is_checked(policy_of<L>) || is_checked(policy_of<R>)
+            || has_any_flag(F | policy_of<L> | policy_of<R>, exact) || dropped_fp)
         && !rational_mul_is_safe(grid_of<L>, grid_of<R>);
 
     // Plain result when an overflow action takes the failure or no check is
@@ -4772,7 +4833,8 @@ namespace beman::inside::detail
 
     template <policy_flag G = F>
     static constexpr bool needs_overflow_check =
-        has_any_flag(G | F | policy_of<L> | policy_of<R>, checked | exact);
+        has_any_flag(G | F, checked) || is_checked(policy_of<L>) || is_checked(policy_of<R>)
+        || has_any_flag(G | F | policy_of<L> | policy_of<R>, exact);
 
     // For a nonzero divisor the op fails only on the checked rational path
     // (overflow). So when the divisor excludes zero AND this is false, `div`
@@ -5475,7 +5537,7 @@ namespace beman::inside
     {
       constexpr imax lo = detail::raw_lo<inside>, hi = detail::raw_hi<inside>;
       if constexpr (has_any_flag(P, clamp | wrap)
-                    || (has_flag(P, checked) && !has_flag(P, ignore_domain)))
+                    || (is_checked(P) && !has_flag(P, ignore_domain)))
         if (new_raw < lo || new_raw > hi)
         {
           if constexpr (P & clamp)
@@ -9724,7 +9786,7 @@ struct std::numeric_limits<beman::inside::inside<G, P>>
   static constexpr bool has_infinity   = false;
   static constexpr bool has_quiet_NaN  = false;
   static constexpr bool has_signaling_NaN = false;
-  static constexpr bool traps          = (P & beman::inside::checked) != 0;
+  static constexpr bool traps          = beman::inside::is_checked(P);
   static constexpr bool is_iec559      = false;
   static constexpr int  radix          = 2;
   // The mode stores round by (rounding_of, the one precedence every path uses).

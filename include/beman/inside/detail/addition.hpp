@@ -33,7 +33,8 @@ namespace beman::inside::detail
     template <policy_flag F>
     static constexpr bool needs_overflow_check =
         rational_raw<result>
-        && has_any_flag(F | policy_of<L> | policy_of<R>, checked | exact)
+        && (has_any_flag(F, checked) || is_checked(policy_of<L>) || is_checked(policy_of<R>)
+            || has_any_flag(F | policy_of<L> | policy_of<R>, exact))
         && !rational_add_is_safe(grid_of<L>, grid_of<R>);
 
     // Plain result when an overflow action takes the failure or no check is

@@ -679,7 +679,7 @@ void prop_non_notch_assign(fuzz_state& s, long iters)
     // notch-aligned assignment to B must throw rounding_error.
     using BIR = inside<grid_of<B>, snap>;       // silent floor
     using BRN = inside<grid_of<B>, round_nearest>;      // nearest
-    using BNONE = inside<grid_of<B>, none>;             // truly-unchecked → line 299
+    using BNONE = inside<grid_of<B>, unsafe>;           // unchecked (unsafe carries snap)
     rational notch = notch_of<B>;
     rational lo    = lower_of<B>;
     rational hi    = upper_of<B>;
@@ -732,7 +732,8 @@ void prop_non_notch_assign(fuzz_state& s, long iters)
           FUZZ_REQUIRE(s, got == away_zero);
         }));
 
-      // Truly-unchecked policy (none): silent truncate toward zero (assignment.hpp).
+      // Unchecked policy (unsafe): silent truncate toward zero (assignment.hpp).
+      // (`none` is checked like every policy without `unsafe`.)
       if (tz_in)
         FUZZ_REQUIRE(s, !throws_with(errc::rounding_error, [&]{
           BNONE b; b = mid;

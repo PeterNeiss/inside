@@ -24,7 +24,7 @@ using latency_t = inside<{{0, 100}, notch<1, 10>}, round_nearest>;
 
 // 10 bins: 0-9.9, 10-19.9, ..., 90-100 ms.
 using bin_id_t  = counter<9>;                   // saturating per-bin count (caps at bar height 9)
-using bin_idx_t = inside<{0, 9}, round_floor>;   // computed bin index (floor on assignment)
+using bin_idx_t = inside<{0, 9}, clamp | round_floor>;   // bin index: floor; 100 ms → last bin
 
 int main()
 {
@@ -53,7 +53,8 @@ int main()
 
     latency_t lat{s};
     // bin index = floor(lat / 10 ms). `bin_idx_t` has `round_floor`, so
-    // constructing it from a rational quotient snaps onto the integer grid.
+    // constructing it from a rational quotient snaps onto the integer grid;
+    // `clamp` folds the quotient's top edge (9.55, or 10 for 100 ms) into bin 9.
     bin_idx_t bin{lat / just<10>};
     // `counter` saturates on `++`, so the bar caps at 9 — no manual guard.
     ++bins[bin];

@@ -50,13 +50,13 @@ namespace beman::inside
     static constexpr bool domain_check()
     {
       if (std::is_constant_evaluated()) return true;
-      return test(checked) && not test(ignore_domain);
+      return is_checked(W) && not test(ignore_domain);
     }
 
     static constexpr bool round_check()
     {
       if (std::is_constant_evaluated()) return true;
-      return test(checked) && not test(snap);
+      return is_checked(W) && not test(snap);
     }
 
     // Cheap default report: no message construction. error_ref mode records the

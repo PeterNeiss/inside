@@ -28,16 +28,24 @@ using index = inside<{0, 9}>;
 auto i = index::try_make(10);  // !i, i.error() == errc::domain_error
 ```
 
-The default `checked` enables runtime domain checks and throws on violations.
-Use `unsafe` to drop runtime checks for maximum performance when correctness
-is proven elsewhere. `clamp` and `wrap` are mutually exclusive
-(enforced by `static_assert`).
+Every policy runs the runtime checks unless it carries `unsafe`:
+`inside<G>`, `inside<G, round_nearest>` and `inside<G, f64>` all report an
+out-of-range or off-notch value (by default, by throwing). `clamp` / `wrap`
+handle the range instead, and `snap` / `round_*` handle the notch. Use `unsafe`
+to drop runtime checks for maximum performance when correctness is proven
+elsewhere; spelling `checked` next to `unsafe` turns them back on. `clamp` and
+`wrap` are mutually exclusive (enforced by `static_assert`).
+
+The range check sees the value **before** rounding. With
+`inside<{0, 9}, round_floor>`, assigning 9.5 is out of range even though it
+would floor to 9; add `clamp` when edge values should fold in
+(`clamp | round_floor`).
 
 ## Policy flags
 
 | Flag | Effect |
 |---|---|
-| `checked` | runtime domain / round / overflow checks (**default**) |
+| `checked` | runtime domain / round / overflow checks — on for every policy without `unsafe`; spelled explicitly only to override `unsafe` |
 | `unsafe` | opt out of all runtime checks |
 | `clamp` | saturate to boundary on out-of-range (mutually exclusive with `wrap`) |
 | `wrap` | modular arithmetic on out-of-range |
