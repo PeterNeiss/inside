@@ -189,6 +189,7 @@ stored results, golden files and replay logs stay valid after an upgrade.
 | 2026-10 (same), 50144ea / 09aa483 | — | assignment, `wrap` | An off-notch integer source rounds by the policy (`{0,10}` notch 2 from 3 under `round_nearest`: 2 → 4); wrap folds modulo span + notch (`wrap_cast` of 12 onto `{0,10}` notch ½: 1 → 1.5); wrap rounds onto the lattice before folding (`{0,8}, wrap \| round_nearest` from 8.5: an out-of-grid 9 → 0). |
 | 2026-10 (same), 7811134 / ca8ce56 | all | fmod, atan2, hypot | Output **grids** changed: `fmod` is bounded by min(max\|x\|, max\|y\|) on the gcd notch, `atan2` / `hypot` use the gcd notch of both inputs. Results on a different notch can snap differently; same-notch inputs keep their values. |
 | 2026-10 (same), 02b272a | — | every store | Not a value change: every policy without `unsafe` is runtime-checked, so stores that used to keep an out-of-range value silently (`round_nearest`, `f64`, `indexed` types) now report it. |
+| 2026-10 (same) | — | every store, conversion predicates | A rounding policy rounds before the range check: a value less than one notch outside that rounds onto an endpoint is stored (`{0, 9}, round_floor` from 9.55: domain_error → 9). Values that rounded inside the grid before are unchanged. |
 
 ## Compile-time determinism
 

@@ -36,10 +36,12 @@ to drop runtime checks for maximum performance when correctness is proven
 elsewhere; spelling `checked` next to `unsafe` turns them back on. `clamp` and
 `wrap` are mutually exclusive (enforced by `static_assert`).
 
-The range check sees the value **before** rounding. With
-`inside<{0, 9}, round_floor>`, assigning 9.5 is out of range even though it
-would floor to 9; add `clamp` when edge values should fold in
-(`clamp | round_floor`).
+A rounding policy rounds **before** the range check: with
+`inside<{0, 9}, round_floor>`, assigning 9.5 stores 9, while 10.0 is out of
+range. The conversion predicates follow the same order
+(`conversion_overflows<B>(9.5)` is false for that type, `conversion_rounds` is
+true). A policy without a rounding mode rounds nothing, so 9.5 into
+`inside<{0, 9}>` is out of range.
 
 ## Policy flags
 

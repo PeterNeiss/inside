@@ -364,19 +364,18 @@ namespace beman::inside::math
           // K·num + half must fit imax (a wide-denominator r, e.g. hypot's
           // 2^46, would wrap K·num and silently store `value mod 2^k`).
           constexpr imax lim = std::numeric_limits<imax>::max() / 2 / K;
-          // Range-check the exact value first, like assignment: x = value·K·2^D
-          // must lie in [m, m + max index]·2^D (floor / ceil via arithmetic shifts).
-          if (-lim <= num && num <= lim
-              && ((K * num) >> D) >= m
-              && -((-(K * num)) >> D) <= m + static_cast<imax>(max_index_v<Out>))
+          if (-lim <= num && num <= lim)
           {
             // value index round(value·K), ties half away from zero like the
             // assignment path: round the magnitude, then restore the sign.
             const imax half = (D > 0) ? (imax{1} << (D - 1)) : 0;
             const imax x    = K * num;
             const imax idx  = x >= 0 ? (x + half) >> D : -((-x + half) >> D);
+            // Round, then range-check, like assignment: the rounded index must
+            // be a slot; anything else goes to the policy cascade below.
             const imax off  = idx - m;
-            return Out::from_raw(raw_from_offset<Out>(static_cast<umax>(off)));
+            if (off >= 0 && off <= static_cast<imax>(max_index_v<Out>))
+              return Out::from_raw(raw_from_offset<Out>(static_cast<umax>(off)));
           }
         }
       }

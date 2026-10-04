@@ -71,9 +71,9 @@ static BEMAN_INSIDE_MATH_FN db_t linear_to_db(gain_t amp)
   // 20/ln(10) as an exact point-inside (no rational on the surface).
   constexpr auto k20_over_ln10 = just<frac<86858896, 10000000>>;
   auto log_amp = math::log(amp);
-  // The round trip can land a hair outside [-24, 12] (e.g. -24.0001): clamp,
-  // then snap to the 0.5 dB grid.
-  return clamp_round<db_t>(k20_over_ln10 * log_amp);
+  // The round trip can land a hair outside [-24, 12] (e.g. -24.0001);
+  // db_t rounds onto its 0.5 dB grid before it range-checks, so that is -24.
+  return db_t{k20_over_ln10 * log_amp};
 }
 
 int main()

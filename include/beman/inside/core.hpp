@@ -133,6 +133,17 @@ namespace beman::inside
       }
       if (v < lo || v > hi)
       {
+        // Round, then range-check (as assignment does): a value less than one
+        // notch outside may snap onto an endpoint.
+        if constexpr (G.Notch != 0 && has_flag(F, snap))
+        {
+          constexpr double nd = static_cast<double>(G.Notch);
+          if (v > lo - nd && v < hi + nd)
+          {
+            const double s = detail::snap_double<G, detail::rounding_of(F), true>(v);
+            if (s >= lo && s <= hi) { Raw = static_cast<raw_type>(s); return; }
+          }
+        }
         if constexpr (has_flag(F, clamp))
           v = v < lo ? lo : hi;
         else if constexpr (has_flag(F, wrap))

@@ -7,6 +7,7 @@
 
 #include <beman/inside/generic.hpp>
 #include <beman/inside/grid.hpp>
+#include <beman/inside/policy.hpp>
 
 //---------------------------------------------------------------------------
 // predicates — pure inspection (no conversion, no state change) to branch
@@ -22,7 +23,13 @@ namespace beman::inside
   {
     if constexpr (std::floating_point<A>)
       if (!(value - value == 0)) return true;   // NaN / ±inf fit no grid (and must not raise here)
-    return not includes(interval_of<B>, detail::as_rational(value));
+    const detail::rational r = detail::as_rational(value);
+    if (includes(interval_of<B>, r))
+      return false;
+    // B's policy rounds before it range-checks: a value that rounds onto the
+    // grid does not overflow.
+    detail::rational rounded;
+    return !detail::rounds_into_range<B, policy<>>(r, rounded);
   }
 
   template <insidable B, numeric A>
@@ -34,7 +41,12 @@ namespace beman::inside
       if (!(value - value == 0)) return false;   // non-finite — overflow, not truncation
     detail::rational r = detail::as_rational(value);
     if (not includes(interval_of<B>, r))
-      return false;                       // out-of-range — overflow, not truncation
+    {
+      // Out of range: a rounding policy that brings it onto the grid rounds;
+      // anything else is overflow, not rounding.
+      detail::rational rounded;
+      return detail::rounds_into_range<B, policy<>>(r, rounded);
+    }
     // In-range: truncation occurs iff (value - Lower) / Notch is non-integer.
     auto offset = (r - lower_of<B>) / notch_of<B>;
     return !offset.has_value() || detail::abs_den(offset->Denominator) != 1;

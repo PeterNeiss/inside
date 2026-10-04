@@ -564,6 +564,10 @@ namespace beman::inside::detail
 
         if (out_of_interval(rhs)) [[unlikely]]
         {
+          // Round first: a value just outside may round onto an endpoint.
+          if constexpr (rounds_before_range_check<L, plain_t<P>>)
+            if (const auto rr = raw_if_rounds_inside<L, plain_t<P>>(rational{rhs}); rr.Ok)
+            { lhs = L::from_raw(rr.Raw); return lhs; }
           // Fractional path has no wrap *action* branch (Wrappable = false).
           if (dispatch_out_of_range<false>(lhs, policy, action,
                 [&]{ apply_clamp(lhs, rhs, policy, action); },
@@ -856,8 +860,15 @@ namespace beman::inside::detail
               if (imax mapped = map_raw(rhs.raw()); mapped < raw_lo<L> || mapped > raw_hi<L>)
                 if (try_clamp_or_fail(lhs, rhs, policy, action)) return lhs;
             }
-            else if (not includes(interval_of<L>, as_rational(rhs)))
+            else if (const rational v = as_rational(rhs); not includes(interval_of<L>, v))
+            {
+              // Round first: a value just outside may round onto an endpoint.
+              // (The integer mapping above lands on the lattice: nothing to round.)
+              if constexpr (rounds_before_range_check<L, plain_t<P>>)
+                if (const auto rr = raw_if_rounds_inside<L, plain_t<P>>(v); rr.Ok)
+                { lhs = L::from_raw(rr.Raw); return lhs; }
               if (try_clamp_or_fail(lhs, rhs, policy, action)) return lhs;
+            }
           }
         }
 

@@ -2877,6 +2877,55 @@ namespace beman::inside
       }
     }
 
+    // Round, then range-check. Lower and Upper are lattice points, so rounding
+    // an in-range value keeps it in range; only an out-of-range value can change
+    // outcome. When the policy may round (snap), rounds_into_range rounds such a
+    // value and reports whether it lands inside the interval (`out` = the
+    // rounded value). Only values within one notch of the interval can, which
+    // also keeps round_to_lattice's division bounded for huge sources.
+    template <insidable L, typename P>
+    inline constexpr bool rounds_before_range_check =
+        notch_of<L> != 0 && has_policy<L, P, snap>;
+
+    template <insidable L, typename P>
+    [[nodiscard]] constexpr bool rounds_into_range(rational v, rational& out)
+    {
+      if constexpr (!rounds_before_range_check<L, P>)
+        return false;
+      else
+      {
+        constexpr rational lo = (lower_of<L> - notch_of<L>).value_or(lower_of<L>);
+        constexpr rational hi = (upper_of<L> + notch_of<L>).value_or(upper_of<L>);
+        if (v <= lo || v >= hi)
+          return false;
+        out = round_to_lattice<L, P>(v);
+        return includes(interval_of<L>, out);
+      }
+    }
+
+    // Store-side form for the assignment paths: when v rounds inside, the raw of
+    // the rounded lattice point (an exact in-range point: an index, rational or
+    // double raw, no further rounding). Cold and out of line, and it returns the
+    // raw in registers instead of writing through the caller's inside:
+    //   - a second call site of the large store functions stops GCC inlining
+    //     them into the hot path (~40 instructions per in-range store);
+    //   - an escaping `lhs` address turns on the stack protector there (~3).
+    template <insidable L> struct rounded_raw { raw_t<L> Raw; bool Ok; };
+
+    template <insidable L, typename P>
+    [[gnu::cold, gnu::noinline]] constexpr rounded_raw<L> raw_if_rounds_inside(rational v)
+    {
+      rational r;
+      if (!rounds_into_range<L, P>(v, r))
+        return {raw_t<L>{}, false};
+      if constexpr (fp_raw<L>)
+        return {static_cast<raw_t<L>>(static_cast<double>(r)), true};   // exact: fp-exact grid
+      else if constexpr (rational_raw<L>)
+        return {r, true};
+      else
+        return {raw_from_offset<L>(((r - lower_of<L>).value() / notch_of<L>).value().Numerator), true};
+    }
+
     // Rounds the split offset quotient q + r/den (r < den ≤ imax_max) per L's
     // rounding policy — q/r form so no expression can overflow umax
     // (num + den/2 could, for num near umax). Shared by round_quotient's
@@ -3622,6 +3671,10 @@ namespace beman::inside::detail
 
         if (out_of_interval(rhs)) [[unlikely]]
         {
+          // Round first: a value just outside may round onto an endpoint.
+          if constexpr (rounds_before_range_check<L, plain_t<P>>)
+            if (const auto rr = raw_if_rounds_inside<L, plain_t<P>>(rational{rhs}); rr.Ok)
+            { lhs = L::from_raw(rr.Raw); return lhs; }
           // Fractional path has no wrap *action* branch (Wrappable = false).
           if (dispatch_out_of_range<false>(lhs, policy, action,
                 [&]{ apply_clamp(lhs, rhs, policy, action); },
@@ -3914,8 +3967,15 @@ namespace beman::inside::detail
               if (imax mapped = map_raw(rhs.raw()); mapped < raw_lo<L> || mapped > raw_hi<L>)
                 if (try_clamp_or_fail(lhs, rhs, policy, action)) return lhs;
             }
-            else if (not includes(interval_of<L>, as_rational(rhs)))
+            else if (const rational v = as_rational(rhs); not includes(interval_of<L>, v))
+            {
+              // Round first: a value just outside may round onto an endpoint.
+              // (The integer mapping above lands on the lattice: nothing to round.)
+              if constexpr (rounds_before_range_check<L, plain_t<P>>)
+                if (const auto rr = raw_if_rounds_inside<L, plain_t<P>>(v); rr.Ok)
+                { lhs = L::from_raw(rr.Raw); return lhs; }
               if (try_clamp_or_fail(lhs, rhs, policy, action)) return lhs;
+            }
           }
         }
 
@@ -5018,7 +5078,13 @@ namespace beman::inside
   {
     if constexpr (std::floating_point<A>)
       if (!(value - value == 0)) return true;   // NaN / ±inf fit no grid (and must not raise here)
-    return not includes(interval_of<B>, detail::as_rational(value));
+    const detail::rational r = detail::as_rational(value);
+    if (includes(interval_of<B>, r))
+      return false;
+    // B's policy rounds before it range-checks: a value that rounds onto the
+    // grid does not overflow.
+    detail::rational rounded;
+    return !detail::rounds_into_range<B, policy<>>(r, rounded);
   }
 
   template <insidable B, numeric A>
@@ -5030,7 +5096,12 @@ namespace beman::inside
       if (!(value - value == 0)) return false;   // non-finite — overflow, not truncation
     detail::rational r = detail::as_rational(value);
     if (not includes(interval_of<B>, r))
-      return false;                       // out-of-range — overflow, not truncation
+    {
+      // Out of range: a rounding policy that brings it onto the grid rounds;
+      // anything else is overflow, not rounding.
+      detail::rational rounded;
+      return detail::rounds_into_range<B, policy<>>(r, rounded);
+    }
     // In-range: truncation occurs iff (value - Lower) / Notch is non-integer.
     auto offset = (r - lower_of<B>) / notch_of<B>;
     return !offset.has_value() || detail::abs_den(offset->Denominator) != 1;
@@ -5157,6 +5228,17 @@ namespace beman::inside
       }
       if (v < lo || v > hi)
       {
+        // Round, then range-check (as assignment does): a value less than one
+        // notch outside may snap onto an endpoint.
+        if constexpr (G.Notch != 0 && has_flag(F, snap))
+        {
+          constexpr double nd = static_cast<double>(G.Notch);
+          if (v > lo - nd && v < hi + nd)
+          {
+            const double s = detail::snap_double<G, detail::rounding_of(F), true>(v);
+            if (s >= lo && s <= hi) { Raw = static_cast<raw_type>(s); return; }
+          }
+        }
         if constexpr (has_flag(F, clamp))
           v = v < lo ? lo : hi;
         else if constexpr (has_flag(F, wrap))
@@ -7487,19 +7569,18 @@ namespace beman::inside::math
           // K·num + half must fit imax (a wide-denominator r, e.g. hypot's
           // 2^46, would wrap K·num and silently store `value mod 2^k`).
           constexpr imax lim = std::numeric_limits<imax>::max() / 2 / K;
-          // Range-check the exact value first, like assignment: x = value·K·2^D
-          // must lie in [m, m + max index]·2^D (floor / ceil via arithmetic shifts).
-          if (-lim <= num && num <= lim
-              && ((K * num) >> D) >= m
-              && -((-(K * num)) >> D) <= m + static_cast<imax>(max_index_v<Out>))
+          if (-lim <= num && num <= lim)
           {
             // value index round(value·K), ties half away from zero like the
             // assignment path: round the magnitude, then restore the sign.
             const imax half = (D > 0) ? (imax{1} << (D - 1)) : 0;
             const imax x    = K * num;
             const imax idx  = x >= 0 ? (x + half) >> D : -((-x + half) >> D);
+            // Round, then range-check, like assignment: the rounded index must
+            // be a slot; anything else goes to the policy cascade below.
             const imax off  = idx - m;
-            return Out::from_raw(raw_from_offset<Out>(static_cast<umax>(off)));
+            if (off >= 0 && off <= static_cast<imax>(max_index_v<Out>))
+              return Out::from_raw(raw_from_offset<Out>(static_cast<umax>(off)));
           }
         }
       }

@@ -7,6 +7,7 @@
 #include <beman/inside/cmath.hpp>
 #include <beman/inside/detail/rational.hpp>
 #include <beman/inside/numeric_limits.hpp>
+#include <beman/inside/predicates.hpp>
 
 #include <gtest/gtest.h>
 
@@ -263,17 +264,20 @@ TEST(ConsistencyTest, zero_divisor_handling_agrees)
   EXPECT_NO_THROW(b.policy<ignore_zero>() /= X{0});
 }
 
-// The math store fast path range-checks the exact value before rounding, like
-// assignment: 8.25 into [0, 8] is out of range, not 8.
-TEST(ConsistencyTest, math_store_checks_range_before_rounding)
+// The math store fast path rounds, then range-checks, exactly like assignment:
+// 8.25 into [0, 8] rounds to 8; 8.5 rounds to 9 and is out of range.
+TEST(ConsistencyTest, math_store_rounds_before_the_range_check)
 {
   using O = inside<{0, 8}, checked | round_nearest>;
-  EXPECT_THROW((void)O{q(33, 4)}, inside_error);
-  EXPECT_THROW((void)math::detail::store_grid<O>(q(33, 4)), inside_error);
-  EXPECT_THROW((void)math::detail::store_grid<O>(q(-1, 4)), inside_error);
+  EXPECT_EQ(rational{O{q(33, 4)}}, q(8));
+  EXPECT_EQ(rational{math::detail::store_grid<O>(q(33, 4))}, q(8));
+  EXPECT_EQ(rational{math::detail::store_grid<O>(q(-1, 4))}, q(0));
+  EXPECT_THROW((void)O{q(17, 2)}, inside_error);
+  EXPECT_THROW((void)math::detail::store_grid<O>(q(17, 2)), inside_error);
+  EXPECT_THROW((void)math::detail::store_grid<O>(q(-1, 2)), inside_error);
   EXPECT_EQ(rational{math::detail::store_grid<O>(q(31, 4))}, q(8));
   using C = inside<{0, 8}, clamp | round_nearest>;
-  EXPECT_EQ(rational{math::detail::store_grid<C>(q(33, 4))}, q(8));
+  EXPECT_EQ(rational{math::detail::store_grid<C>(q(17, 2))}, q(8));
 }
 
 // NaN / ±inf go through the policy like any other bad value: the error-code
@@ -387,4 +391,63 @@ TEST(ConsistencyTest, midpoint_across_grids)
   using A = inside<{0, 10}>;
   using B = inside<{{0, 10}, notch<1, 2>}>;
   EXPECT_EQ(rational{midpoint(A{3}, B{q(4)})}, q(7, 2));
+}
+
+// Round, then range-check: a value just outside the interval that the policy
+// rounds onto an endpoint is stored; one that rounds outside still reports.
+TEST(ConsistencyTest, rounding_runs_before_the_range_check)
+{
+  using bin = inside<{0, 9}, round_floor>;
+  EXPECT_EQ(rational{bin{9.55}}, q(9));                              // double source
+  EXPECT_EQ(rational{bin{q(191, 20)}}, q(9));                        // rational source
+  using ms = inside<{{0, 100}, notch<1, 10>}, round_nearest>;
+  EXPECT_EQ(rational{bin{ms{95.5} / just<10>}}, q(9));               // inside source
+  errc ec{};
+  bin over(10.0, ec);                                                // floors to 10: outside
+  EXPECT_EQ(ec, errc::domain_error);
+
+  using db = inside<{{-24, 12}, notch<1, 2>}, round_nearest>;
+  EXPECT_EQ(rational{db{-24.1}}, q(-24));
+  ec = {};
+  db far(-24.3, ec);                                                 // rounds to -24.5
+  EXPECT_EQ(ec, errc::domain_error);
+
+  // Without a rounding mode nothing rounds: out of range is a domain error.
+  using strict = inside<{0, 9}>;
+  ec = {};
+  strict s(9.5, ec);
+  EXPECT_EQ(ec, errc::domain_error);
+
+  // A clamp policy sees no overshoot when rounding lands inside.
+  using cl = inside<{0, 9}, clamp | round_floor>;
+  cl c{0};
+  int fired = 0;
+  c.on_clamp([&](auto&, auto) { ++fired; }) = 9.5;
+  EXPECT_EQ(rational{c}, q(9));
+  EXPECT_EQ(fired, 0);
+}
+
+#ifndef BEMAN_INSIDE_MATH_NO_FP
+TEST(ConsistencyTest, fp_storage_rounds_before_the_range_check)
+{
+  using F = inside<{{0, 1}, notch<1, 4>}, f64>;                      // round_nearest
+  EXPECT_EQ(F{1.1}.raw(), 1.0);
+  errc ec{};
+  F f(1.2, ec);                                                      // rounds to 1.25
+  EXPECT_EQ(ec, errc::domain_error);
+  using Ff = inside<{{0, 1}, notch<1, 4>}, f64 | round_floor>;
+  EXPECT_EQ(Ff{1.2}.raw(), 1.0);                                     // floors in range
+}
+#endif
+
+TEST(ConsistencyTest, predicates_round_before_the_range_check)
+{
+  using bin = inside<{0, 9}, round_floor>;
+  EXPECT_FALSE(conversion_overflows<bin>(9.5));
+  EXPECT_TRUE(conversion_rounds<bin>(9.5));
+  EXPECT_TRUE(conversion_overflows<bin>(10.0));
+  EXPECT_FALSE(conversion_rounds<bin>(10.0));
+  using strict = inside<{0, 9}>;
+  EXPECT_TRUE(conversion_overflows<strict>(9.5));
+  EXPECT_FALSE(conversion_rounds<strict>(9.5));
 }

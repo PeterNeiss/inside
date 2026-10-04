@@ -53,8 +53,9 @@ int main()
 
     latency_t lat{s};
     // bin index = floor(lat / 10 ms). `bin_idx_t` has `round_floor`, so
-    // constructing it from a rational quotient snaps onto the integer grid;
-    // `clamp` folds the quotient's top edge (9.55, or 10 for 100 ms) into bin 9.
+    // constructing it from a rational quotient snaps onto the integer grid
+    // (9.55 floors to 9 before the range check); `clamp` folds 100 ms, whose
+    // quotient 10 floors to 10, into the last bin.
     bin_idx_t bin{lat / just<10>};
     // `counter` saturates on `++`, so the bar caps at 9 — no manual guard.
     ++bins[bin];
