@@ -379,7 +379,7 @@ namespace beman::inside::math::detail::dd
   template <dd_type D>
   inline D log(D x) noexcept
   {
-    const double y0 = fpk::fp_log(x.Hi);
+    const double y0 = fpk::seed_log(x.Hi);
     const D u = add(mul(x, exp(D{-y0, 0})), -1.0);
     return add(u, y0);
   }
@@ -482,7 +482,7 @@ namespace beman::inside::math::detail::dd
   inline D cbrt(D x) noexcept
   {
     if (x.Hi == 0) return D{0, 0};
-    const double y = fpk::fp_cbrt(x.Hi);
+    const double y = fpk::seed_cbrt(x.Hi);
     const D e = sub(mul(two_prod(y, y), y), x);          // y³ − x
     return fast_two_sum(y, -e.Hi / (3 * y * y));
   }

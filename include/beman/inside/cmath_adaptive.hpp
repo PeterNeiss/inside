@@ -794,17 +794,16 @@ namespace beman::inside::math::detail::ax
   }();
 
   //---------------------------------------------------------------------------
-  // The double tier. Where an FPU is present, the double engine's kernels
-  // (detail/math_fp.hpp) give the value first, with an error bound computed per
-  // call: the kernel's evaluation error — 2^-40 of the result plus
-  // 2^-44·max(1, |x|), a wide margin over their measured error of about one
-  // ulp (2^-52) inside the argument ranges below; tan, pow and acosh add their
-  // condition numbers — plus, for an input that is not a double exactly, its
-  // rounding (2^-50 of |x|, covering the conversion's roundings) times the
-  // function's slope. When the bound places the result in one slot, that slot
-  // is the correctly rounded result; otherwise the integer path decides, so a
-  // result never depends on which path ran. Runtime only, for outputs of up to
-  // 36 bits.
+  // The double tier. Where an FPU is present, the double kernels
+  // (detail/math_fp.hpp) give the value first, with an error bound computed
+  // per call: the kernel's own proved bound, plus, for an input that is not
+  // a double exactly, its rounding (2^-50 of |x|, covering the conversion's
+  // roundings) times the function's slope. Each kernel is sized to Out: its
+  // polynomials get the fewest terms whose truncation stays 10 bits below
+  // Out's notch. When the bound places the result in one slot, that slot is
+  // the correctly rounded result; otherwise the dd tier or the integer path
+  // decides, so a result never depends on which path ran. Runtime only, for
+  // outputs up to the kernel's limit (fp_limit).
   //---------------------------------------------------------------------------
 #ifndef BEMAN_INSIDE_MATH_NO_FP
   inline constexpr bool fp_tier_available = true;
@@ -825,12 +824,38 @@ namespace beman::inside::math::detail::ax
     }
   }();
 
-  template <insidable Out>
-  inline constexpr bool fp_output = slotted<Out> && !exact_valued<Out> && out_bits<Out> + mag_bits<Out> <= 36;
+  // Outputs the double tier decides nearly always (up to 2^-14 of results go
+  // further): below them no other fast tier runs.
+  inline constexpr int kFpOnlyBits = 36;
 
-  // Inputs the tier reads as doubles: anything within the 64-bit rationals.
-  template <insidable Out, insidable... Ins>
-  inline constexpr bool fp_tier = fp_tier_available && fp_output<Out> && (!exact_valued<Ins> && ...);
+  // Bits of Out's value indices: every |index| < 2^index_bits.
+  template <insidable Out>
+  inline constexpr int index_bits = [] {
+    if constexpr (!slotted<Out> || exact_valued<Out>) return 1024;
+    else
+    {
+      const grid_wide lo = slot_base<Out>, hi = slot_base<Out> + grid_of<Out>.slot_count();
+      const grid_wide m = (-lo < hi) ? hi : -lo;
+      return bit_width_of(m);
+    }
+  }();
+
+  // Bits of Out a kernel must resolve when its values stay below 2^Mag:
+  // |v|/notch < 2^fp_bits, from Out's indices or the function's magnitude
+  // over the notch (≥ 2^-(out_bits − 1)). A relative error of 2^-fp_bits is
+  // within one notch.
+  template <insidable Out, int Mag>
+  inline constexpr int fp_bits = index_bits<Out> < Mag + out_bits<Out> - 1 ? index_bits<Out> : Mag + out_bits<Out> - 1;
+
+  // Value indices of Out within ±2^52, so its slot bounds are doubles exactly.
+  template <insidable Out>
+  inline constexpr bool fp_output = slotted<Out> && !exact_valued<Out> && index_bits<Out> <= 52;
+
+  // The tier for kernel K: Out within its limit. Inputs the tier reads as
+  // doubles: anything within the 64-bit rationals.
+  template <insidable Out, typename K, insidable... Ins>
+  inline constexpr bool fp_tier = fp_tier_available && fp_output<Out> && fp_bits<Out, K::Mag> <= K::Limit
+                               && (!exact_valued<Ins> && ...);
 
   // A grid's notch p/q as doubles (both below 2^63, so within 2^-53 of p and
   // q), and whether it is a power of two, so that scaling by it is exact.
@@ -920,12 +945,6 @@ namespace beman::inside::math::detail::ax
   template <insidable In>
   inline constexpr double in_max = static_cast<double>(max_abs_int<In>);
 
-  inline constexpr double kEvalRel = 0x1p-40, kEvalAbs = 0x1p-44;
-
-  // Evaluation bound of the plain kernels.
-  constexpr double eval_bound(double x, double v) noexcept
-  { return kEvalRel * fabs_d(v) + kEvalAbs * (fabs_d(x) > 1 ? fabs_d(x) : 1.0); }
-
 #ifndef BEMAN_INSIDE_MATH_NO_FP
   namespace fpk = ::beman::inside::math::detail::fp;
 
@@ -951,7 +970,7 @@ namespace beman::inside::math::detail::ax
   // are doubles exactly.
   template <insidable Out>
   inline constexpr bool dd_output = [] {
-    if constexpr (!slotted<Out> || exact_valued<Out> || fp_output<Out>) return false;
+    if constexpr (!slotted<Out> || exact_valued<Out> || out_bits<Out> + mag_bits<Out> <= kFpOnlyBits) return false;
     else
     {
       if (!(notch_p<Out> < two53 && notch_q<Out> < two53)) return false;
@@ -1051,58 +1070,114 @@ namespace beman::inside::math::detail::ax
 
 
 
-  // One kernel per function: its value, its evaluation bound, and its slope
+  // The kernels' bounds hold for IEEE arithmetic in the default rounding
+  // mode, with or without FMA contraction; fp_decide gets them with a 1.5
+  // margin for the roundings of the bound arithmetic. A build that lets the
+  // compiler reassociate (-ffast-math) is outside the proofs: there the
+  // margin grows by 2^4, which every audit passes with room to spare.
+#if defined(__ASSOCIATIVE_MATH__) || defined(__FAST_MATH__)
+  inline constexpr int kFpSlackBits = 4;
+#else
+  inline constexpr int kFpSlackBits = 0;
+#endif
+  inline constexpr double kFpMargin = 1.5 * (1 << kFpSlackBits);
+
+  // The bits a kernel's full-size bound resolves: 2^-n ≤ e < 2^-(n−1) gives
+  // n − 4 (less the slack), where the bound spans at most 1/8 of a notch (fp_decide's 1.5
+  // margin included) at Out's largest values, so 3 of 4 results decide
+  // there and nearly all of the smaller ones.
+  consteval int fp_limit(double e)
+  {
+    int n = 0;
+    while (e < 1) { e *= 2; ++n; }
+    return n - 4 - kFpSlackBits;
+  }
+
+  // The kernel's target for Out: 10 bits past fp_bits, so the truncation
+  // moves at most 2^-9 of a notch.
+  template <insidable Out, typename K>
+  inline constexpr int fp_target = fp_bits<Out, K::Mag> + 10 < fpk::kFullBits ? fp_bits<Out, K::Mag> + 10 : fpk::kFullBits;
+
+  // One kernel per function: its value and proved bound at a target T, the
+  // bits of its values (Mag, 1024 for unbounded), its limit, and its slope
   // |f′(x)| (for the input's rounding).
+  inline constexpr int kUnbounded = 1024;
   struct fp_plain
   {
-    static double eval(double x, double v) { return eval_bound(x, v); }
     static double dd_eval(double x, double v) { return dd_eval_bound(x, v); }
   };
-#  define BEMAN_INSIDE_AX_KERNEL(fn, slope_expr)                                        \
+#  define BEMAN_INSIDE_AX_KERNEL(fn, kernel, call, mag, limit, slope_expr)              \
   struct fp_##fn : fp_plain                                                             \
   {                                                                                     \
-    static double value(double x) { return fpk::fp_##fn(x); }                           \
+    static constexpr int Mag = mag;                                                     \
+    static constexpr int Limit = limit;                                                 \
+    template <int T> static double value(double x, double& bound) { return fpk::kernel<T>::call(x, bound); } \
     template <typename D> static D dd_value(D x) { return ddk::fn(x); }                 \
     static double slope([[maybe_unused]] double x, [[maybe_unused]] double v) { return slope_expr; } \
   };
-  BEMAN_INSIDE_AX_KERNEL(sin,   1.0)
-  BEMAN_INSIDE_AX_KERNEL(cos,   1.0)
-  BEMAN_INSIDE_AX_KERNEL(exp,   fabs_d(v))
-  BEMAN_INSIDE_AX_KERNEL(exp2,  fabs_d(v))
-  BEMAN_INSIDE_AX_KERNEL(sinh,  fabs_d(v) + 1)
-  BEMAN_INSIDE_AX_KERNEL(cosh,  fabs_d(v) + 1)
-  BEMAN_INSIDE_AX_KERNEL(tanh,  1.0)
-  BEMAN_INSIDE_AX_KERNEL(atan,  1.0)
-  BEMAN_INSIDE_AX_KERNEL(asinh, 1.0)
-  BEMAN_INSIDE_AX_KERNEL(cbrt,  x == 0 ? 0.0 : fabs_d(v / x))
-  BEMAN_INSIDE_AX_KERNEL(sqrt,  x == 0 ? 0.0 : fabs_d(v / x))
-  BEMAN_INSIDE_AX_KERNEL(log,   1.0 / fabs_d(x))
-  BEMAN_INSIDE_AX_KERNEL(log2,  1.5 / fabs_d(x))
-  BEMAN_INSIDE_AX_KERNEL(log10, 1.0 / fabs_d(x))
-  BEMAN_INSIDE_AX_KERNEL(asin,  1.0 / fpk::fp_sqrt((1.0 - x) * (1.0 + x)))
-  BEMAN_INSIDE_AX_KERNEL(acos,  1.0 / fpk::fp_sqrt((1.0 - x) * (1.0 + x)))
-  BEMAN_INSIDE_AX_KERNEL(atanh, 1.0 / ((1.0 - x) * (1.0 + x)))
+  using fp_full_trig = fpk::trig_k<fpk::kFullBits>;
+  using fp_full_exp = fpk::exp_k<fpk::kFullBits>;
+  using fp_full_log = fpk::log_k<fpk::kFullBits>;
+  using fp_full_atan = fpk::atan_k<fpk::kFullBits>;
+  BEMAN_INSIDE_AX_KERNEL(sin,   trig_k, sin,   1, fp_limit(fp_full_trig::Rel), 1.0)
+  BEMAN_INSIDE_AX_KERNEL(cos,   trig_k, cos,   1, fp_limit(fp_full_trig::Rel), 1.0)
+  BEMAN_INSIDE_AX_KERNEL(exp,   exp_k,  exp,   kUnbounded, fp_limit(fp_full_exp::Rel), fabs_d(v))
+  BEMAN_INSIDE_AX_KERNEL(exp2,  exp_k,  exp2,  kUnbounded, fp_limit(fp_full_exp::Rel2), fabs_d(v))
+  BEMAN_INSIDE_AX_KERNEL(sinh,  exp_k,  sinh,  kUnbounded, fp_limit(fp_full_exp::SinhRel + fp_full_exp::SinhAbs), fabs_d(v) + 1)
+  BEMAN_INSIDE_AX_KERNEL(cosh,  exp_k,  cosh,  kUnbounded, fp_limit(fp_full_exp::CoshRel), fabs_d(v) + 1)
+  BEMAN_INSIDE_AX_KERNEL(tanh,  exp_k,  tanh,  1, fp_limit(fp_full_exp::TanhRel + fp_full_exp::TanhAbs), 1.0)
+  BEMAN_INSIDE_AX_KERNEL(atan,  atan_k, atan,  1, fp_limit(fp_full_atan::Rel + fp_full_atan::Abs), 1.0)
+  BEMAN_INSIDE_AX_KERNEL(asin,  atan_k, asin,  1, fp_limit(fp_full_atan::AsinRel + fp_full_atan::AsinAbs), 1.0 / fpk::fp_sqrt((1.0 - x) * (1.0 + x)))
+  BEMAN_INSIDE_AX_KERNEL(acos,  atan_k, acos,  2, fp_limit(4 * fp_full_atan::AcosRel + fp_full_atan::AcosAbs), 1.0 / fpk::fp_sqrt((1.0 - x) * (1.0 + x)))
+  BEMAN_INSIDE_AX_KERNEL(log,   log_k,  log,   kUnbounded, fp_limit(fp_full_log::Rel), 1.0 / fabs_d(x))
+  BEMAN_INSIDE_AX_KERNEL(log2,  log_k,  log2,  kUnbounded, fp_limit(fp_full_log::Rel2), 1.5 / fabs_d(x))
+  BEMAN_INSIDE_AX_KERNEL(log10, log_k,  log10, kUnbounded, fp_limit(fp_full_log::Rel10), 1.0 / fabs_d(x))
+  BEMAN_INSIDE_AX_KERNEL(asinh, log_k,  asinh, kUnbounded, fp_limit(fp_full_log::AhRel + fp_full_log::AsinhAbs), 1.0)
+  BEMAN_INSIDE_AX_KERNEL(atanh, log_k,  atanh, kUnbounded, fp_limit(fp_full_log::Rel + fp_full_log::AtanhAbs), 1.0 / ((1.0 - x) * (1.0 + x)))
+  // cbrt = e^(ln|x|/3): the log's error grows with |ln|x||, up to 2^4.
+  BEMAN_INSIDE_AX_KERNEL(cbrt,  pow_k,  cbrt,  kUnbounded, fp_limit(fp_full_exp::Rel + 16 * fpk::pow_k<fpk::kFullBits>::YRel), x == 0 ? 0.0 : fabs_d(v / x))
 #  undef BEMAN_INSIDE_AX_KERNEL
 
-  // acosh near 1 loses the bits of 1 − 1/x²: its error grows as 1/√(1 − 1/x²).
+  // acosh near 1 adds 2^-52/√(1 − 1/x²): its limit holds from x = 1.1 on,
+  // and its dd bound grows the same way.
   struct fp_acosh
   {
-    static double value(double x) { return fpk::fp_acosh(x); }
+    static constexpr int Mag = kUnbounded;
+    static constexpr int Limit = fp_limit(fp_full_log::AhRel + 8 * fpk::kU);
+    template <int T> static double value(double x, double& bound) { return fpk::log_k<T>::acosh(x, bound); }
     template <typename D> static D dd_value(D x) { return ddk::acosh(x); }
-    static double eval(double x, double v) { return kEvalAbs / fpk::fp_sqrt(1.0 - 1.0 / (x * x)) + eval_bound(x, v); }
     static double dd_eval(double x, double v) { return kDDAbs / fpk::fp_sqrt(1.0 - 1.0 / (x * x)) + dd_eval_bound(x, v); }
     static double slope(double x, double) { return 1.0 / fpk::fp_sqrt((x - 1.0) * (x + 1.0)); }
   };
+
+  // sqrt: correctly rounded.
+  struct fp_sqrt : fp_plain
+  {
+    static constexpr int Mag = kUnbounded;
+    static constexpr int Limit = fp_limit(fpk::kSqrtRel);
+    template <int T> static double value(double x, double& bound) { const double v = fpk::fp_sqrt(x); bound = fpk::kSqrtRel * v; return v; }
+    template <typename D> static D dd_value(D x) { return ddk::sqrt(x); }
+    static double slope(double x, double v) { return x == 0 ? 0.0 : fabs_d(v / x); }
+  };
+
+  // The kernels of the two-input functions and of tan, pow and Base^x: their
+  // bits and limits.
+  struct fp_tan  { static constexpr int Mag = kUnbounded; static constexpr int Limit = fp_limit(fp_full_trig::TanRel); };
+  struct fp_atan2 { static constexpr int Mag = 2; static constexpr int Limit = fp_limit(4 * fp_full_atan::Atan2Rel + fp_full_atan::Atan2Abs); };
+  struct fp_hypot { static constexpr int Mag = kUnbounded; static constexpr int Limit = fp_limit(fpk::kHypotRel); };
+  // pow's bound grows with |e·ln b|: the limit holds up to 2^4.
+  struct fp_pow  { static constexpr int Mag = kUnbounded; static constexpr int Limit = fp_limit(fp_full_exp::Rel + 16 * fpk::pow_k<fpk::kFullBits>::YRel); };
+  struct fp_pow_base { static constexpr int Mag = kUnbounded; static constexpr int Limit = fp_limit(fp_full_exp::RelLo); };
 
   // The tier's attempt for a one-input kernel K at input x (as read from In).
   template <insidable Out, typename K, insidable In>
   inline bool fp_attempt(In const& in, Out& out)
   {
     const double x = input_double(in);
-    const double v = K::value(x);
-    double bound = K::eval(x, v);
+    double bound;
+    const double v = K::template value<fp_target<Out, K>>(x, bound);
     if constexpr (!fp_exact_input<In>) bound += input_rel<In> * fabs_d(x) * K::slope(x, v);
-    return fp_decide(v, bound * 1.5, out);
+    return fp_decide(v, bound * kFpMargin, out);
   }
 
   // atan2: each input's rounding moves the angle by at most its relative
@@ -1111,9 +1186,10 @@ namespace beman::inside::math::detail::ax
   inline bool fp_attempt_atan2(InY const& yi, InX const& xi, Out& out)
   {
     const double y = input_double(yi), x = input_double(xi);
-    const double v = fpk::fp_atan2(y, x);
-    const double bound = eval_bound(1.0, v) + input_rel<InY> + input_rel<InX>;
-    return fp_decide(v, bound * 1.5, out);
+    double bound;
+    const double v = fpk::atan_k<fp_target<Out, fp_atan2>>::atan2(y, x, bound);
+    bound += input_rel<InY> + input_rel<InX>;
+    return fp_decide(v, bound * kFpMargin, out);
   }
 
   template <insidable Out, insidable InX, insidable InY>
@@ -1121,45 +1197,50 @@ namespace beman::inside::math::detail::ax
   {
     const double x = input_double(xi), y = input_double(yi);
     const double v = fpk::fp_hypot(x, y);
-    const double bound = eval_bound(fabs_d(x) > fabs_d(y) ? fabs_d(x) : fabs_d(y), v)
-                       + input_rel<InX> * fabs_d(x) + input_rel<InY> * fabs_d(y);
-    return fp_decide(v, bound * 1.5, out);
+    const double bound = fpk::kHypotRel * v + fpk::kTiny + input_rel<InX> * fabs_d(x) + input_rel<InY> * fabs_d(y);
+    return fp_decide(v, bound * kFpMargin, out);
   }
 
-  // tan: the reduction's error grows by sec² = 1 + t².
+  // tan: the input's rounding grows by sec² = 1 + t².
   template <insidable Out, insidable In>
   inline bool fp_attempt_tan(In const& in, Out& out)
   {
     const double x = input_double(in);
-    double t = 0;
-    if (!fpk::fp_tan(x, t)) return false;
-    const double sec2 = 1 + t * t, mx = fabs_d(x) > 1 ? fabs_d(x) : 1.0;
-    const double bound = kEvalRel * sec2 * mx + kEvalAbs * mx + input_rel<In> * fabs_d(x) * sec2;
-    return fp_decide(t, bound * 1.5, out);
+    double t = 0, bound;
+    if (!fpk::trig_k<fp_target<Out, fp_tan>>::tan(x, t, bound)) return false;
+    if constexpr (!fp_exact_input<In>) bound += input_rel<In> * fabs_d(x) * (1 + t * t);
+    return fp_decide(t, bound * kFpMargin, out);
   }
 
-  // pow = e^(e·ln b): the relative error grows with |e·ln b|; the inputs'
-  // roundings move it by |e|·rel(b) and |e·ln b|·rel(e).
+  // pow = e^(e·ln b): the inputs' roundings move it by |e|·rel(b) and
+  // |e·ln b|·rel(e), relatively.
   template <insidable Out, insidable InB, insidable InE>
   inline bool fp_attempt_pow(InB const& bi, InE const& ei, Out& out)
   {
     const double b = input_double(bi), e = input_double(ei);
     if (!(b > 0)) return false;                           // the integer path reports the domain
-    const double v = fpk::fp_pow(b, e);
-    const double L = fabs_d(e * fpk::fp_log(b));
-    const double bound = fabs_d(v) * (kEvalRel * (1 + L) + input_rel<InB> * fabs_d(e) + input_rel<InE> * L) + kEvalAbs;
-    return fp_decide(v, bound * 1.5, out);
+    double v, bound, y;
+    if (!fpk::pow_k<fp_target<Out, fp_pow>>::pow(b, e, v, bound, y)) return false;
+    bound += v * (input_rel<InB> * fabs_d(e) + input_rel<InE> * fabs_d(y));
+    return fp_decide(v, bound * kFpMargin, out);
   }
 
-  // Base^x: pow with an exact integer base.
+  // ln Base at compile time, from the integer log, as a double-double.
+  template <imax Base>
+  inline constexpr ddk::dd ln_base = [] {
+    const ddk::fixed a = ddk::fixed{Base} << ddk::kS;
+    return ddk::of_fixed(log_fixed<ddk::kS>(a, 0).Value, ddk::kS);
+  }();
+
+  // Base^x = e^(x·ln Base).
   template <insidable Out, imax Base, insidable In>
   inline bool fp_attempt_pow_base(In const& xi, Out& out)
   {
     const double x = input_double(xi);
-    const double v = fpk::fp_pow(static_cast<double>(Base), x);
-    const double L = fabs_d(x * fpk::fp_log(static_cast<double>(Base)));
-    const double bound = fabs_d(v) * (kEvalRel * (1 + L) + input_rel<In> * L) + kEvalAbs;
-    return fp_decide(v, bound * 1.5, out);
+    double bound, y;
+    const double v = fpk::pow_k<fp_target<Out, fp_pow_base>>::pow_ln(x, ln_base<Base>.Hi, ln_base<Base>.Lo, bound, y);
+    if constexpr (!fp_exact_input<In>) bound += v * input_rel<In> * fabs_d(y);
+    return fp_decide(v, bound * kFpMargin, out);
   }
   template <insidable Out, typename K, insidable In>
   inline bool dd_attempt(In const& in, Out& out)
@@ -1214,13 +1295,6 @@ namespace beman::inside::math::detail::ax
     return dd_decide(v, bound * 1.5, out);
   }
 
-  // ln Base at compile time, from the integer log.
-  template <imax Base>
-  inline constexpr ddk::dd ln_base = [] {
-    const ddk::fixed a = ddk::fixed{Base} << ddk::kS;
-    return ddk::of_fixed(log_fixed<ddk::kS>(a, 0).Value, ddk::kS);
-  }();
-
   template <insidable Out, imax Base, insidable In>
   inline bool dd_attempt_pow_base(In const& xi, Out& out)
   {
@@ -1237,9 +1311,6 @@ namespace beman::inside::math::detail::ax
   inline constexpr bool dd_tier = false;
 #endif
 
-  // Either fast tier ran before the integer path.
-  template <insidable Out, insidable... Ins>
-  inline constexpr bool fast_tier = fp_tier<Out, Ins...> || dd_tier<Out, Ins...>;
 } // namespace beman::inside::math::detail::ax
 
 namespace beman::inside::math::adaptive
@@ -1248,31 +1319,58 @@ namespace beman::inside::math::adaptive
   using ::beman::inside::detail::exact_valued;
   using ::beman::inside::detail::grid_rational;
 
-  // The double and dd tiers' attempts, inside an _into form (nothing without
-  // an FPU).
-#ifndef BEMAN_INSIDE_MATH_NO_FP
-#  define BEMAN_INSIDE_AX_FP(Out, In, fn, x, ok)                                        \
-    if constexpr (ax::fp_tier<Out, In> && (ok))                                         \
-      if !consteval                                                                     \
-      {                                                                                 \
-        if (Out r; ax::fp_attempt<Out, ax::fp_##fn>(x, r)) return r;                    \
-      }                                                                                 \
-    if constexpr (ax::dd_tier<Out, In> && (ok))                                         \
-      if !consteval                                                                     \
-      {                                                                                 \
-        if (Out r; ax::dd_attempt<Out, ax::fp_##fn>(x, r)) return r;                    \
-      }
-#else
-#  define BEMAN_INSIDE_AX_FP(Out, In, fn, x, ok)
-#endif
-
-  // The integer path after a fast tier: rarely taken, so out of line,
-  // which keeps its frame off the tier's fast path.
+  // What follows a fast tier: rarely taken, so out of line, which keeps its
+  // frame off the tier's fast path.
   template <typename F>
   [[gnu::cold, gnu::noinline]] constexpr auto cold_call(F const& f) { return f(); }
 
-#define BEMAN_INSIDE_AX_REST(fp_ran, ...)                                               \
-    if constexpr (fp_ran) { return cold_call([&] { return __VA_ARGS__; }); } else { return __VA_ARGS__; }
+  // The tiers in order at runtime: the double kernel (when FP), the dd
+  // kernel (when DD), the integer path. Each fast tier stores a decided
+  // result and returns true; whatever runs after the first one is cold.
+  // Constant evaluation takes the integer path.
+  template <insidable Out, bool FP, bool DD, typename F, typename D, typename I>
+  [[gnu::always_inline]] constexpr auto tiers([[maybe_unused]] F const& fp, [[maybe_unused]] D const& dd, I const& integer)
+      -> decltype(integer())
+  {
+    if constexpr (FP || DD)
+      if !consteval
+      {
+        if constexpr (FP)
+        {
+          if (Out r; fp(r)) return r;
+          return cold_call([&]() -> decltype(integer()) {
+            if constexpr (DD)
+              if (Out r; dd(r)) return r;
+            return integer();
+          });
+        }
+        else
+        {
+          if (Out r; dd(r)) return r;
+          return cold_call(integer);
+        }
+      }
+    return integer();
+  }
+
+  // An _into form's body after the table: the tiers, with the double and
+  // dd attempts as expressions in r (nothing of them without an FPU). FP and
+  // DD in parentheses.
+#ifndef BEMAN_INSIDE_MATH_NO_FP
+#  define BEMAN_INSIDE_AX_TIERS(Out, FP, DD, fp_call, dd_call, ...)                     \
+    return ::beman::inside::math::adaptive::tiers<Out, FP, DD>(                         \
+        [&]([[maybe_unused]] Out& r) { if constexpr (FP) return fp_call; else return false; }, \
+        [&]([[maybe_unused]] Out& r) { if constexpr (DD) return dd_call; else return false; }, \
+        [&] { return __VA_ARGS__; });
+#else
+#  define BEMAN_INSIDE_AX_TIERS(Out, FP, DD, fp_call, dd_call, ...) return __VA_ARGS__;
+#endif
+
+  // The tiers of a one-input kernel fn, where ok holds.
+#define BEMAN_INSIDE_AX_KERNEL_TIERS(Out, In, fn, x, ok, ...)                           \
+    BEMAN_INSIDE_AX_TIERS(Out, (ax::fp_tier<Out, ax::fp_##fn, In> && (ok)), (ax::dd_tier<Out, In> && (ok)), \
+                          (ax::fp_attempt<Out, ax::fp_##fn>(x, r)), (ax::dd_attempt<Out, ax::fp_##fn>(x, r)), \
+                          __VA_ARGS__)
 
   // The table tier's lookup, inside an _into form: In has few slots and every
   // result lies in Out's range.
@@ -1302,8 +1400,7 @@ namespace beman::inside::math::adaptive
     require_rounding<Out>();                                                            \
     using core = __VA_ARGS__;                                                           \
     BEMAN_INSIDE_AX_TABLE(Out, In, x)                                                   \
-    BEMAN_INSIDE_AX_FP(Out, In, fn, x, (fp_ok))                                         \
-    BEMAN_INSIDE_AX_REST((ax::fast_tier<Out, In> && (fp_ok)),                             \
+    BEMAN_INSIDE_AX_KERNEL_TIERS(Out, In, fn, x, (fp_ok),                               \
                          ax::evaluate<Out, ax::start_bits<Out>>(core{ax::exact_input(x)})) \
   }
 
@@ -1328,8 +1425,7 @@ namespace beman::inside::math::adaptive
     require_rounding<Out>();                                                            \
     using core = __VA_ARGS__;                                                           \
     BEMAN_INSIDE_AX_TABLE(Out, In, x)                                                   \
-    BEMAN_INSIDE_AX_FP(Out, In, fn, x, (fp_ok))                                         \
-    BEMAN_INSIDE_AX_REST((ax::fast_tier<Out, In> && (fp_ok)),                             \
+    BEMAN_INSIDE_AX_KERNEL_TIERS(Out, In, fn, x, (fp_ok),                               \
                          ax::evaluate<Out, ax::start_bits<Out>>(core{ax::exact_input(x)})) \
   }
 
@@ -1348,8 +1444,7 @@ namespace beman::inside::math::adaptive
   [[nodiscard]] constexpr Out sqrt_into(In x)
   {
     require_rounding<Out>();
-    BEMAN_INSIDE_AX_FP(Out, In, sqrt, x, true)
-    BEMAN_INSIDE_AX_REST((ax::fast_tier<Out, In>),
+    BEMAN_INSIDE_AX_KERNEL_TIERS(Out, In, sqrt, x, true,
         ax::evaluate<Out, ax::start_bits<Out>>(ax::sqrt_core<ax::input_limbs<In>, ax::input_bits<In>>{ax::exact_input(x)}))
   }
 
@@ -1369,20 +1464,10 @@ namespace beman::inside::math::adaptive
   [[nodiscard]] constexpr std::expected<Out, errc> tan_into(In x)
   {
     require_rounding<Out>();
-#ifndef BEMAN_INSIDE_MATH_NO_FP
-    if constexpr (ax::fp_tier<Out, In> && ax::in_max<In> <= 0x1p20)
-      if !consteval
-      {
-        if (Out r; ax::fp_attempt_tan<Out>(x, r)) return r;
-      }
-    if constexpr (ax::dd_tier<Out, In> && ax::in_max<In> <= 0x1p20)
-      if !consteval
-      {
-        if (Out r; ax::dd_attempt_tan<Out>(x, r)) return r;
-      }
-#endif
     using core = ax::trig_core<ax::input_limbs<In>, ax::in_mag<In>, ax::trig::tan, ax::out_kmax<Out>>;
-    BEMAN_INSIDE_AX_REST((ax::fast_tier<Out, In> && ax::in_max<In> <= 0x1p20),
+    BEMAN_INSIDE_AX_TIERS(Out, (ax::fp_tier<Out, ax::fp_tan, In> && ax::in_max<In> <= 0x1p20),
+                          (ax::dd_tier<Out, In> && ax::in_max<In> <= 0x1p20),
+                          (ax::fp_attempt_tan<Out>(x, r)), (ax::dd_attempt_tan<Out>(x, r)),
                          ax::evaluate_checked<Out, ax::start_bits<Out>>(core{ax::exact_input(x)}))
   }
 
@@ -1390,21 +1475,11 @@ namespace beman::inside::math::adaptive
   [[nodiscard]] constexpr Out atan2_into(InY y, InX x)
   {
     require_rounding<Out>();
-#ifndef BEMAN_INSIDE_MATH_NO_FP
-    if constexpr (ax::fp_tier<Out, InY, InX> && ax::in_max<InY> <= 0x1p500 && ax::in_max<InX> <= 0x1p500)
-      if !consteval
-      {
-        if (Out r; ax::fp_attempt_atan2<Out>(y, x, r)) return r;
-      }
-    if constexpr (ax::dd_tier<Out, InY, InX>)
-      if !consteval
-      {
-        if (Out r; ax::dd_attempt_atan2<Out>(y, x, r)) return r;
-      }
-#endif
     constexpr std::size_t E = ax::input_limbs<InY> > ax::input_limbs<InX> ? ax::input_limbs<InY> : ax::input_limbs<InX>;
     using F = ::beman::inside::detail::exact_frac<E>;
-    BEMAN_INSIDE_AX_REST((ax::fast_tier<Out, InY, InX> && ax::in_max<InY> <= 0x1p500 && ax::in_max<InX> <= 0x1p500),
+    BEMAN_INSIDE_AX_TIERS(Out, (ax::fp_tier<Out, ax::fp_atan2, InY, InX> && ax::in_max<InY> <= 0x1p500 && ax::in_max<InX> <= 0x1p500),
+                          (ax::dd_tier<Out, InY, InX>),
+                          (ax::fp_attempt_atan2<Out>(y, x, r)), (ax::dd_attempt_atan2<Out>(y, x, r)),
                          ax::evaluate<Out, ax::start_bits<Out>>(ax::atan2_core<E>{F{ax::exact_input(y)}, F{ax::exact_input(x)}}))
   }
 
@@ -1412,22 +1487,12 @@ namespace beman::inside::math::adaptive
   [[nodiscard]] constexpr Out hypot_into(InX x, InY y)
   {
     require_rounding<Out>();
-#ifndef BEMAN_INSIDE_MATH_NO_FP
-    if constexpr (ax::fp_tier<Out, InX, InY> && ax::in_max<InX> <= 0x1p500 && ax::in_max<InY> <= 0x1p500)
-      if !consteval
-      {
-        if (Out r; ax::fp_attempt_hypot<Out>(x, y, r)) return r;
-      }
-    if constexpr (ax::dd_tier<Out, InX, InY>)
-      if !consteval
-      {
-        if (Out r; ax::dd_attempt_hypot<Out>(x, y, r)) return r;
-      }
-#endif
     constexpr int Bits = ax::hypot_bits<InX, InY>;
     constexpr std::size_t E = ::beman::inside::detail::limbs_for_bits(Bits);
     using F = ::beman::inside::detail::exact_frac<E>;
-    BEMAN_INSIDE_AX_REST((ax::fast_tier<Out, InX, InY> && ax::in_max<InX> <= 0x1p500 && ax::in_max<InY> <= 0x1p500),
+    BEMAN_INSIDE_AX_TIERS(Out, (ax::fp_tier<Out, ax::fp_hypot, InX, InY> && ax::in_max<InX> <= 0x1p500 && ax::in_max<InY> <= 0x1p500),
+                          (ax::dd_tier<Out, InX, InY>),
+                          (ax::fp_attempt_hypot<Out>(x, y, r)), (ax::dd_attempt_hypot<Out>(x, y, r)),
                          ax::evaluate<Out, ax::start_bits<Out>>(ax::sqrt_core<E, Bits>{F{ax::exact_input(x)} * F{ax::exact_input(x)}
                                                                                      + F{ax::exact_input(y)} * F{ax::exact_input(y)}}))
   }
@@ -1438,25 +1503,15 @@ namespace beman::inside::math::adaptive
   [[nodiscard]] constexpr std::expected<Out, errc> pow_into(InB base, InE exp)
   {
     require_rounding<Out>();
-#ifndef BEMAN_INSIDE_MATH_NO_FP
-    if constexpr (ax::fp_tier<Out, InB, InE>)
-      if !consteval
-      {
-        if (Out r; ax::fp_attempt_pow<Out>(base, exp, r)) return r;
-      }
-    if constexpr (ax::dd_tier<Out, InB, InE>)
-      if !consteval
-      {
-        if (Out r; ax::dd_attempt_pow<Out>(base, exp, r)) return r;
-      }
-#endif
     const auto integer = [&]() -> std::expected<Out, errc> {
       const auto b = ax::exact_input(base);
       if (b.Num.negative() || b.Num.is_zero()) return std::unexpected(errc::domain_error);
       using core = ax::pow_core<ax::input_limbs<InB>, ax::input_limbs<InE>, ax::in_mag<InE>, ax::out_kmax<Out>, ax::input_bits<InB>, ax::input_bits<InE>>;
       return ax::evaluate_checked<Out, ax::start_bits<Out>>(core{b, ax::exact_input(exp)});
     };
-    BEMAN_INSIDE_AX_REST((ax::fast_tier<Out, InB, InE>), integer())
+    BEMAN_INSIDE_AX_TIERS(Out, (ax::fp_tier<Out, ax::fp_pow, InB, InE>), (ax::dd_tier<Out, InB, InE>),
+                          (ax::fp_attempt_pow<Out>(base, exp, r)), (ax::dd_attempt_pow<Out>(base, exp, r)),
+                          integer())
   }
 
   // Base^x for a compile-time integer Base ≥ 2.
@@ -1465,20 +1520,10 @@ namespace beman::inside::math::adaptive
   {
     static_assert(Base >= 2, "beman::inside::math::pow_base: Base must be at least 2");
     require_rounding<Out>();
-#ifndef BEMAN_INSIDE_MATH_NO_FP
-    if constexpr (ax::fp_tier<Out, In> && ax::in_max<In> <= 1000)
-      if !consteval
-      {
-        if (Out r; ax::fp_attempt_pow_base<Out, Base>(x, r)) return r;
-      }
-    if constexpr (ax::dd_tier<Out, In> && ax::in_max<In> <= 700)
-      if !consteval
-      {
-        if (Out r; ax::dd_attempt_pow_base<Out, Base>(x, r)) return r;
-      }
-#endif
     using core = ax::pow_core<2, ax::input_limbs<In>, ax::in_mag<In>, ax::out_kmax<Out>, 66, ax::input_bits<In>, Base>;
-    BEMAN_INSIDE_AX_REST((ax::fast_tier<Out, In> && ax::in_max<In> <= 1000),
+    BEMAN_INSIDE_AX_TIERS(Out, (ax::fp_tier<Out, ax::fp_pow_base, In> && ax::in_max<In> <= 1000),
+                          (ax::dd_tier<Out, In> && ax::in_max<In> <= 700),
+                          (ax::fp_attempt_pow_base<Out, Base>(x, r)), (ax::dd_attempt_pow_base<Out, Base>(x, r)),
                          ax::evaluate<Out, ax::start_bits<Out>>(core{ax::exact_int<2>(Base), ax::exact_input(x)}))
   }
 
@@ -1669,8 +1714,8 @@ namespace beman::inside::math::adaptive
   }
 } // namespace beman::inside::math::adaptive
 
-#undef BEMAN_INSIDE_AX_FP
-#undef BEMAN_INSIDE_AX_REST
+#undef BEMAN_INSIDE_AX_TIERS
+#undef BEMAN_INSIDE_AX_KERNEL_TIERS
 #undef BEMAN_INSIDE_AX_TABLE
 
 #endif // BEMAN_INSIDE_CMATH_ADAPTIVE_HPP

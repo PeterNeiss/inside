@@ -519,7 +519,10 @@ TEST(MathAdaptiveTest, double_tier_agrees_on_decimal_inputs_and_checked_forms)
   using unid = inside<{{-1, 1}, rational{1, 1000}}, round_nearest>;
   using ge1d = inside<{{1, 8}, rational{1, 1000}}, round_nearest>;
   using tanout = inside<{{-1024, 1024}, rational{1, 1 << 20}}, round_nearest>;
-  static_assert(!ax::fp_exact_input<symd> && (ax::fp_tier<out20, symd> || !ax::fp_tier_available));
+  static_assert(!ax::fp_exact_input<symd>);
+#ifndef BEMAN_INSIDE_MATH_NO_FP
+  static_assert(ax::fp_tier<out20, ax::fp_sin, symd>);
+#endif
   EXPECT_EQ((tier_mismatches<out20, symd, ax::trig_core<ax::input_limbs<symd>, ax::in_mag<symd>, ax::trig::sin, 1>>([](symd x) { return am::sin_into<out20>(x); })), 0);
   EXPECT_EQ((tier_mismatches<outdec, symd, ax::exp_core<ax::input_limbs<symd>, ax::in_mag<symd>, ax::out_kmax<outdec>>>([](symd x) { return am::exp_into<outdec>(x); })), 0);
   EXPECT_EQ((tier_mismatches<out20, symd, ax::cbrt_core<ax::input_limbs<symd>>>([](symd x) { return am::cbrt_into<out20>(x); })), 0);
@@ -589,6 +592,14 @@ TEST(MathAdaptiveTest, dd_tier_agrees_with_the_integer_path)
 {
   static_assert(!ax::fp_tier_available || !ax::dd_sums_exact || (ax::dd_tier<out52, sym4> && ax::dd_tier<outdec15, symm4> && ax::dd_tier<f64out44, sym4>));
   static_assert(!ax::dd_tier<out20, sym4>);                                    // the double tier's
+#ifndef BEMAN_INSIDE_MATH_NO_FP
+  // Below their limits the double kernels run first and the dd tier takes
+  // what they leave; above, the dd tier alone.
+  static_assert(ax::fp_tier<out44f, ax::fp_cos, sym4> && ax::fp_tier<out40, ax::fp_exp, sym4>
+                && ax::fp_tier<out40, ax::fp_log, pos64> && ax::fp_tier<out40, ax::fp_sin, sym4>);
+  static_assert(!ax::fp_tier<out48c, ax::fp_exp2, sym4> && !ax::fp_tier<out52, ax::fp_atan, sym4>
+                && !ax::fp_tier<out44f, ax::fp_log2, pos64> && !ax::fp_tier<out40, ax::fp_tan, tan_in>);
+#endif
   DD_CHECK(sin,   out52,   sym4,  ax::trig_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::trig::sin, 1>);
   DD_CHECK(cos,   out44f,  sym4,  ax::trig_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::trig::cos, 1>);
   DD_CHECK(exp,   out40,   sym4,  ax::exp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::out_kmax<out40>>);
@@ -613,6 +624,21 @@ TEST(MathAdaptiveTest, dd_tier_agrees_with_the_integer_path)
   DD_CHECK(atanh, out52,   open1, ax::ahyp_core<ax::input_limbs<open1>, ax::in_mag<open1>, ax::ahyp::atanh>);
   DD_CHECK(acosh, out52,   ge1,   ax::ahyp_core<ax::input_limbs<ge1>, ax::in_mag<ge1>, ax::ahyp::acosh>);
   DD_CHECK(sin,   f64out44, sym4, ax::trig_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::trig::sin, 1>);
+  // 2^-40 outputs: the double kernels near their limits, the dd tier after.
+  DD_CHECK(sin,   out40,   sym4,  ax::trig_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::trig::sin, 1>);
+  DD_CHECK(exp2,  out40,   sym4,  ax::exp2_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::out_kmax<out40>>);
+  DD_CHECK(sinh,  out40,   sym4,  ax::hyp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::hyp::sinh, ax::out_kmax<out40>>);
+  DD_CHECK(cosh,  out40,   sym4,  ax::hyp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::hyp::cosh, ax::out_kmax<out40>>);
+  DD_CHECK(tanh,  out40,   sym4,  ax::hyp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::hyp::tanh, 1>);
+  DD_CHECK(atan,  out40,   symm4, ax::atan_core<ax::input_limbs<symm4>>);
+  DD_CHECK(asinh, out40,   sym4,  ax::ahyp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::ahyp::asinh>);
+  DD_CHECK(log,   out40,   pos64, ax::log_core<ax::input_limbs<pos64>>);
+  DD_CHECK(log10, out40,   posm8, ax::logb_core<ax::input_limbs<posm8>, 10>);
+  DD_CHECK(sqrt,  out40,   posm8, ax::sqrt_core<ax::input_limbs<posm8>>);
+  DD_CHECK(asin,  out40,   unit,  ax::asin_core<ax::input_limbs<unit>>);
+  DD_CHECK(atanh, out40,   open1, ax::ahyp_core<ax::input_limbs<open1>, ax::in_mag<open1>, ax::ahyp::atanh>);
+  DD_CHECK(acosh, out40,   ge1,   ax::ahyp_core<ax::input_limbs<ge1>, ax::in_mag<ge1>, ax::ahyp::acosh>);
+  EXPECT_EQ((tier_mismatches<out40, tan_in, ax::trig_core<ax::input_limbs<tan_in>, ax::in_mag<tan_in>, ax::trig::tan, ax::out_kmax<out40>>>([](tan_in x) { return *am::tan_into<out40>(x); })), 0);
   DD_CHECK(exp,   f64out44, symm4, ax::exp_core<ax::input_limbs<symm4>, ax::in_mag<symm4>, ax::out_kmax<f64out44>>);
   using tanout = inside<{{-1024, 1024}, rational{1, umax{1} << 52}}, round_nearest>;
   EXPECT_EQ((tier_mismatches<tanout, tan_in, ax::trig_core<ax::input_limbs<tan_in>, ax::in_mag<tan_in>, ax::trig::tan, ax::out_kmax<tanout>>>([](tan_in x) { return *am::tan_into<tanout>(x); })), 0);
@@ -711,6 +737,71 @@ TEST(MathAdaptiveTest, dd_kernels_stay_far_inside_their_bound)
   DD_ACCURACY(acosh, ge1,   ax::ahyp_core<ax::input_limbs<ge1>, ax::in_mag<ge1>, ax::ahyp::acosh>);
 }
 #undef DD_ACCURACY
+#endif
+
+#ifndef BEMAN_INSIDE_MATH_NO_FP
+// The double kernels against the integer path at 150 bits: every error is
+// within the kernel's proved bound, at every size, and the coarse sizes
+// take fewer terms.
+namespace
+{
+  namespace fpk = beman::inside::math::detail::fp;
+
+  template <insidable In, typename Core, typename F>
+  double fp_worst_ratio(F kernel)
+  {
+    const long long count = static_cast<long long>(grid_of<In>.slot_count());
+    double worst = 0;
+    for (long long i = 0; i <= count; ++i)
+    {
+      const In x = In::from_raw(detail::raw_from_offset<In>(static_cast<umax>(i)));
+      const auto a = Core{ax::exact_input(x)}.template run<150>();
+      const ddk::dd ref = ddk::of_fixed(a.Value, a.Scale);
+      double bound = 0;
+      const double v = kernel(static_cast<double>(x), bound);
+      const double err = std::fabs(ddk::sub(ddk::dd{v, 0}, ref).Hi);
+      if (err > 0) worst = std::max(worst, err / bound);
+    }
+    return worst;
+  }
+}
+
+#define FP_BOUND(K, call, In, ...)                                                      \
+  EXPECT_LE((fp_worst_ratio<In, __VA_ARGS__>([](double x, double& b) { return fpk::K<20>::call(x, b); })), 1.0) << #call " 20"; \
+  EXPECT_LE((fp_worst_ratio<In, __VA_ARGS__>([](double x, double& b) { return fpk::K<36>::call(x, b); })), 1.0) << #call " 36"; \
+  EXPECT_LE((fp_worst_ratio<In, __VA_ARGS__>([](double x, double& b) { return fpk::K<fpk::kFullBits>::call(x, b); })), 1.0) << #call " full"
+
+TEST(MathAdaptiveTest, double_kernels_stay_within_their_proved_bounds)
+{
+  using big = inside<{{-600, 600}, rational{1, 8}}, round_nearest>;
+  using turns = inside<{{-1'000'000, 1'000'000}, rational{64, 1}}, round_nearest>;
+  FP_BOUND(trig_k, sin,   sym4,  ax::trig_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::trig::sin, 1>);
+  FP_BOUND(trig_k, cos,   sym4,  ax::trig_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::trig::cos, 1>);
+  FP_BOUND(trig_k, sin,   turns, ax::trig_core<ax::input_limbs<turns>, ax::in_mag<turns>, ax::trig::sin, 1>);
+  FP_BOUND(exp_k,  exp,   sym4,  ax::exp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, 8>);
+  FP_BOUND(exp_k,  exp,   big,   ax::exp_core<ax::input_limbs<big>, ax::in_mag<big>, 1000>);
+  FP_BOUND(exp_k,  exp2,  sym4,  ax::exp2_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, 8>);
+  FP_BOUND(exp_k,  sinh,  sym4,  ax::hyp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::hyp::sinh, 8>);
+  FP_BOUND(exp_k,  cosh,  sym4,  ax::hyp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::hyp::cosh, 8>);
+  FP_BOUND(exp_k,  tanh,  sym4,  ax::hyp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::hyp::tanh, 1>);
+  FP_BOUND(atan_k, atan,  sym4,  ax::atan_core<ax::input_limbs<sym4>>);
+  FP_BOUND(atan_k, asin,  unit,  ax::asin_core<ax::input_limbs<unit>>);
+  FP_BOUND(atan_k, acos,  unit,  ax::acos_core<ax::input_limbs<unit>>);
+  FP_BOUND(log_k,  log,   pos64, ax::log_core<ax::input_limbs<pos64>>);
+  FP_BOUND(log_k,  log2,  pos64, ax::logb_core<ax::input_limbs<pos64>, 2>);
+  FP_BOUND(log_k,  log10, pos64, ax::logb_core<ax::input_limbs<pos64>, 10>);
+  FP_BOUND(log_k,  asinh, sym4,  ax::ahyp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::ahyp::asinh>);
+  FP_BOUND(log_k,  acosh, ge1,   ax::ahyp_core<ax::input_limbs<ge1>, ax::in_mag<ge1>, ax::ahyp::acosh>);
+  FP_BOUND(log_k,  atanh, open1, ax::ahyp_core<ax::input_limbs<open1>, ax::in_mag<open1>, ax::ahyp::atanh>);
+  FP_BOUND(pow_k,  cbrt,  sym4,  ax::cbrt_core<ax::input_limbs<sym4>>);
+
+  // Coarse outputs get smaller kernels.
+  static_assert(fpk::trig_k<ax::fp_target<out8, ax::fp_sin>>::NS < fpk::trig_k<fpk::kFullBits>::NS);
+  static_assert(fpk::exp_k<ax::fp_target<outdec, ax::fp_exp>>::N < fpk::exp_k<fpk::kFullBits>::N);
+  static_assert(fpk::log_k<ax::fp_target<out20, ax::fp_log>>::N < fpk::log_k<fpk::kFullBits>::N);
+  static_assert(fpk::atan_k<ax::fp_target<out20, ax::fp_atan>>::N < fpk::atan_k<fpk::kFullBits>::N);
+}
+#undef FP_BOUND
 #endif
 
 // Results depend only on values, never on storage: every input storage

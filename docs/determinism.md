@@ -82,11 +82,12 @@ computed:
   compile time from exact integer series, no `<cmath>`, no tables made at
   runtime, no external code generators. Bit-identical by construction.
 - **Double tier** (when an FPU is present): the library's own double kernels —
-  fixed polynomials with explicit `std::fma`, never the platform `libm` — give
-  the value with an error bound about 2^12 times wider than their measured
-  error. When the bound places the result in one slot, that slot is the
-  correctly rounded one; otherwise the integer path decides. So the tier only
-  ever returns what the integer path would.
+  polynomials with explicit `std::fma` sized to the output, never the platform
+  `libm` — give the value with an error bound proved at compile time from the
+  kernel's coefficients, argument range and every rounding. When the bound
+  places the result in one slot, that slot is the correctly rounded one;
+  otherwise the dd tier or the integer path decides. So the tier only ever
+  returns what the integer path would.
 - **dd tier** (when an FPU is present, for outputs of more than 36 bits whose
   value indices stay within ±2^62): the same scheme with double-double
   kernels (about 106 bits), their tables and coefficients computed at compile
@@ -95,13 +96,17 @@ computed:
 - **Tables** (small inputs): the integer path's own results, computed at
   compile time.
 
-The double tier's bound assumes IEEE-754 binary64 arithmetic. Its margin is
-wide enough that FMA contraction or reassociation do not break it. The dd
-tier's error-free sums need additions in program order: a build that defines
+The double tier's bounds assume IEEE-754 binary64 arithmetic in the default
+rounding mode (round to nearest; a mode set with `fesetround` is outside the
+guarantee). They hold with or without FMA contraction: every multiply-add in
+the kernels is an explicit `std::fma`, and the bound arithmetic has a margin
+of 1.5. Reassociation is outside the proofs; a build that defines
+`__ASSOCIATIVE_MATH__` or `__FAST_MATH__` widens the bounds 2^4, which every
+audit passes. The dd tier's error-free sums need additions in program order: a build that defines
 `__ASSOCIATIVE_MATH__` or `__FAST_MATH__` (GCC's `-fassociative-math`, either
 compiler's `-ffast-math`) leaves the dd tier out, and Clang's
-`-fassociative-math` on its own, which defines neither, is outside the
-guarantee. FMA contraction, which GCC applies across statements by default, is
+`-fassociative-math` on its own, which defines neither, is outside both
+tiers' guarantee. FMA contraction, which GCC applies across statements by default, is
 fenced off inside those sums (`__builtin_assoc_barrier`). A build whose
 doubles are not IEEE (x87 80-bit evaluation, flush-to-zero in the kernels'
 range, `-ffast-math` reciprocal approximations) is outside both tiers'

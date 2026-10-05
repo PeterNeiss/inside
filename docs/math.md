@@ -44,16 +44,26 @@ grid point:
 | Path | When | Cost |
 |---|---|---|
 | **Table** | the input has at most `BEMAN_INSIDE_MATH_TABLE_SLOTS` slots (default 256) and every result lies in the output's range | one load; the table is computed at compile time |
-| **Double tier** | an FPU is present (not `BEMAN_INSIDE_MATH_NO_FP`) and the output needs at most 36 bits | the library's own double kernels, plus an error bound; decided results are stored as raws |
-| **dd tier** | an FPU is present, the output needs more than 36 bits, and its value indices stay within ±2^62 | double-double kernels (about 106 bits) from compile-time tables, plus an error bound |
+| **Double tier** | an FPU is present (not `BEMAN_INSIDE_MATH_NO_FP`), the output's value indices stay within ±2^52, and it needs no more bits than the kernel's limit (42–49, by function) | the library's own double kernels, sized to the output, plus a proved error bound; decided results are stored as raws |
+| **dd tier** | an FPU is present, the output needs more than 36 bits, and its value indices stay within ±2^62; where the double tier also applies, it runs second | double-double kernels (about 106 bits) from compile-time tables, plus an error bound |
 | **Integer path** | always available; the only path at compile time and without an FPU | Taylor polynomials with compile-time coefficient tables in wide fixed point |
 
-The double tier bounds the kernels' error generously — 2^-40 of the result plus
-2^-44·max(1, |x|), with tan, pow and acosh adding their condition numbers and an
-input that is not a double exactly adding its rounding times the function's
-slope — against a measured error of about one ulp. Whenever the bound does not
-place the result in a single slot, the integer path decides. A test checks that
-the tiers agree slot for slot.
+The double tier's kernels are Taylor polynomials sized to the output: each
+gets the fewest terms whose truncation stays 10 bits below the output's notch.
+`sin` onto a 2^-20 grid evaluates 6 terms where the full kernel has 9; `exp`
+onto 10^-6 evaluates 10 of 15. Every kernel carries a bound proved at compile
+time from its own coefficients and argument range: the first omitted term, the
+rounding of each Horner step, the coefficients' and constants' roundings, and
+the range reduction's. The full kernels prove about 2^-51 of the result
+(`log` 2^-50.4). The bounds are tight: measured against `__float128`, the
+kernels' worst errors reach up to 0.99 of them. An input that is not a double
+exactly adds its rounding times the function's slope. A kernel takes outputs
+up to the bits where its full-size bound still decides about 3 results in 4
+at the output's largest values: 48 for `sin`, `cos` and `exp`, 47 for `log`
+and `atan`, 42 for `pow` and `cbrt`, whose bounds grow with |ln x|. Whenever
+the bound does not place the result in a single slot, the dd tier or the
+integer path decides. Tests check every kernel against its bound and that the
+tiers agree slot for slot.
 
 The dd tier works the same way with values carried as a sum of two doubles. Its
 kernels use table-driven reductions (2^(i/64)·2^(j/4096) for exp, sin(jπ/128),
@@ -217,12 +227,15 @@ on grids finer than about 2^-36 it missed notches routinely.
 
 | Inputs → outputs | New / old time |
 |---|---|
-| `f64` grids on both sides, notch 2^-14 (`bench.cpp`, the old engine's best case: its store was the raw double) | 0.86–1.12× (`sin` 4.8 → 4.3 ns, `exp` 7.3 → 7.0 ns, `sqrt` 1.9 → 2.1 ns, `hypot` 2.2 → 2.5 ns) |
-| integer-backed outputs, notch 2^-20, dyadic or decimal inputs | 0.03–0.20× (faster: the old engine's double → grid store was the slow part) |
+| `f64` grids on both sides, notch 2^-14 (the old engine's best case: its store was the raw double) | 0.67–1.06×, geometric mean 0.84 (`sin` 9.3 → 8.2 ns, `exp` 13.3 → 11.0 ns) |
+| integer-backed outputs, notch 2^-20, dyadic or decimal inputs | 0.05–0.18× (faster: the old engine's double → grid store was the slow part) |
 | decimal outputs (notch 10^-6) | 0.02–0.07× (faster) |
-| outputs past the double tier (the dd tier): 2^-40 | 0.16–0.66× (`exp` 119 → 29 ns, `sin` 125 → 55 ns; acos the slowest) |
-| 2^-52, value indices up to 2^62 | 0.20–0.72× |
-| `pow_base<10>` onto a 44-bit output (10^9 on a 2^-14 grid) | 1.5× (15.7 → 23.7 ns): the worst case |
+| integer-backed outputs, notch 2^-40 (the double tier near its limit, else the dd tier) | 0.05–1.09× (`sin` 113 → 5.9 ns, `log` 115 → 8.1 ns, `exp` 59 → 10.0 ns; `acosh`, still in the dd tier, the slowest) |
+| 2^-52, value indices up to 2^62 (the dd tier) | 0.20–0.72× |
+| `pow_base<10>` onto a 44-bit output (10^9 on a 2^-14 grid) | 0.47× (31.0 → 14.5 ns) |
+
+These were measured together on one core at a reduced clock, so the absolute
+times are about twice those in [performance.md](performance.md).
 
 Against all three engines this library shipped before (`dbl`, `flt` and the
 integer `cordic`, built from commit 0f68ee8): all 22 functions they had, each
@@ -232,16 +245,16 @@ cannot resolve a 2^-40 grid at all.
 
 | Output | vs `dbl` | vs `flt` | vs `cordic` |
 |---|---|---|---|
-| `f64`, notch 2^-14 | 0.92 (0.68–1.07) | 0.95 (0.83–1.06) | 0.10 (0.05–0.17) |
-| `f32`, notch 2^-8 | 0.93 (0.77–1.02) | 1.04 (0.89–1.20) | 0.13 (0.06–0.21) |
-| integer index, notch 2^-20 | 0.09 (0.05–0.19) | 0.17 (0.05–0.25) | 0.07 (0.03–0.10) |
-| decimal, notch 10^-6 | 0.04 (0.02–0.08) | 0.14 (0.05–0.21) | 0.07 (0.03–0.12) |
-| integer index, notch 2^-40 | 0.51 (0.19–1.09) | 0.59 (0.19–1.20) | 0.31 (0.09–0.47) |
-| `exact` (rational), notch 10^-6 | 0.48 (0.39–0.72) | 0.73 (0.62–0.97) | 0.54 (0.35–0.75) |
+| `f64`, notch 2^-14 | 0.84 (0.67–1.06) | 0.87 (0.75–1.02) | 0.09 (0.05–0.15) |
+| `f32`, notch 2^-8 | 0.83 (0.69–1.02) | 0.93 (0.80–1.08) | 0.11 (0.06–0.19) |
+| integer index, notch 2^-20 | 0.09 (0.05–0.18) | 0.16 (0.05–0.24) | 0.06 (0.02–0.10) |
+| decimal, notch 10^-6 | 0.04 (0.02–0.07) | 0.13 (0.04–0.21) | 0.06 (0.02–0.11) |
+| integer index, notch 2^-40 | 0.15 (0.05–1.09) | 0.18 (0.05–1.20) | 0.09 (0.02–0.46) |
+| `exact` (rational), notch 10^-6 | 0.47 (0.38–0.70) | 0.71 (0.60–0.94) | 0.53 (0.35–0.75) |
 
-The rows slower than an old engine are within 20%: `f32` grids against `flt`'s
-float polynomials, and acosh, hypot and the inverse trig functions on `f32` and
-`f64` grids.
+The rows slower than an old engine are within 20%: `acosh` onto 2^-40, which
+stays in the dd tier, `hypot` on `f64` and `f32` grids, and a few `f32` rows
+against `flt`'s float polynomials.
 
 Inputs of up to 256 slots use the table path and cost one load. Each table adds
 about 0.13 s of compile time on GCC; `BEMAN_INSIDE_MATH_TABLE_SLOTS=0` turns
@@ -257,7 +270,9 @@ measured on x86-64 with `-mfma`.
 
 | Choice | What it guards against | What it costs |
 |---|---|---|
-| Error bounds far wider than the kernels' measured error: 2^-40 + 2^-44·max(1, \|x\|) for the double tier (measured about 2^-52), 2^-88 + 2^-92·max(1, \|x\|) for the dd tier (measured at worst 2^-96), times 1.5 | a kernel error the measurements missed (an input, a compiler, a platform) turning into a wrong slot | the double tier stops at 36-bit outputs; 37–46-bit outputs take the dd tier. `pow_base<10>` onto a 44-bit grid is 23.7 ns against the old engine's 15.7 |
+| The double tier's bounds proved, not measured: every rounding of every step counted at its worst, times 1.5 | a kernel error the measurements missed (an input, a compiler, a platform) turning into a wrong slot | the proofs are worst cases, about 2–4 times the error measured, so outputs near a kernel's limit fall back to the dd tier for up to 13% of inputs |
+| The dd tier's bound far wider than its kernels' measured error: 2^-88 + 2^-92·max(1, \|x\|) (measured at worst 2^-96), times 1.5 | the same, for kernels whose bounds are not proved | outputs past the double tier's limits take the dd tier, 2–9 times slower than the double tier |
+| The double tier's bounds assume the default rounding mode; with `-ffast-math` or `-fassociative-math`, which the proofs do not cover, they are widened 2^4 and the kernels' limits lowered by 4 bits | reassociation adding roundings the proofs did not count | in those builds, outputs past 38–45 bits leave the double tier |
 | Strict decision tests: a value within the bound of a slot boundary, exact ties and exact grid points under directed rounding go to the integer path | a rounding the double arithmetic cannot settle | the integer path's time for those inputs; rare for irrational results, every time for exact ones such as `sqrt` of a perfect square under `round_floor` |
 | `nearbyint` to round the value index, not adding and subtracting 1.5·2^52 | `-ffast-math` folding the add-subtract away; the tests then pass a non-integer and return a wrong slot | 0.1–0.4 ns per call (`sqrt` 1.65 → 2.05 ns, `hypot` 2.22 → 2.49 ns on `f64` grids) |
 | Range checked in double before the index becomes an integer; no finite checks, since NaN and infinities fail every comparison | a huge or non-finite kernel value converted to an integer (undefined behaviour) | none measured |
@@ -265,7 +280,7 @@ measured on x86-64 with `-mfma`.
 | Error-free sums fenced against FMA contraction (`__builtin_assoc_barrier`), the error-free product's rounded part computed as `fma(a, b, +0)` | GCC's default `-ffp-contract=fast` fusing a rounded product into a later sum, which made the dd tier 1–2 notches wrong at `-O2` | about 2% more instructions in the dd tier, no measurable time |
 | The dd tier left out when the compiler may reassociate (`__ASSOCIATIVE_MATH__`, `__FAST_MATH__`) | reassociation cancelling the error-free sums | such builds compute 37–62-bit outputs on the integer path, several times slower |
 | The dd tier only for value indices up to 2^62 | index arithmetic overflowing 64 bits | finer or wider outputs take the integer path |
-| The dd kernels carry about 100 bits even when the output needs 40 | an undersized kernel for some output; one kernel per function, tested once | a kernel sized to the output could be cheaper for 37–50-bit outputs |
+| The dd kernels carry about 100 bits even when the output needs 50 | an undersized kernel for some output; one kernel per function, tested once | a kernel sized to the output could be cheaper for 49–80-bit outputs |
 | Rational outputs store the reduced fraction j·p/q (one gcd); f32/f64 outputs store j·notch, exact on their dyadic grids | a stored value off the grid, or not in canonical form | about 60 ns per rational result |
 | Every constant and table computed at compile time from the integer path's own series, never written out as literals | a constant that drifts from the series it should equal | compile time only: about 0.1–0.3 s in a translation unit that uses the dd tier, nothing in one that does not |
 
@@ -274,11 +289,10 @@ equals the integer path's, and the integer path is the only path at compile
 time and without an FPU. A build cannot change a value; it can only change how
 fast the value comes.
 
-The remaining gaps to the old engines (`f32` grids against `flt`, acosh,
-hypot, `pow_base<10>` at 44 bits) are speed that can still be won without
-giving any of this up: kernels sized to the output, with error bounds proven
-rather than measured, would let the double tier decide finer outputs and use
-shorter polynomials on coarse ones.
+The remaining gaps to the old engines (`acosh` onto 2^-40, `hypot` and some
+`f32` grids) are speed that can still be won without giving any of this up:
+tighter proofs for `acosh`, `asinh`, `sinh`, `cbrt` and `pow`, whose bounds
+grow with the input, would let them take finer outputs in the double tier.
 
 ## Compiling without floating point (`BEMAN_INSIDE_MATH_NO_FP`)
 
