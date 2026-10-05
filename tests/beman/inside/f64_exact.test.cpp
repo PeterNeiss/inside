@@ -24,7 +24,7 @@
 
 // `f64` (double-backed) storage is elided under the fixed-point engine, so this
 // whole file is double-engine only (it asserts raw_type == double).
-#ifndef BEMAN_INSIDE_MATH_CORDIC
+#ifndef BEMAN_INSIDE_MATH_NO_FP
 
 using namespace beman::inside;
 using namespace beman::inside::detail;
@@ -361,4 +361,4 @@ TEST(F64ExactTest, f64_storage_rejects_non_finite_assignment)
   ASSERT_TRUE(threw_not_finite([]{ R x = -std::numeric_limits<double>::infinity(); (void)x; }));
 }
 
-#endif // !BEMAN_INSIDE_MATH_CORDIC
+#endif // !BEMAN_INSIDE_MATH_NO_FP

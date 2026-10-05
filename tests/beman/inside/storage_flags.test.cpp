@@ -185,9 +185,9 @@ TEST(StorageFlagsTest, representation_flags_resolve_widest_wins)
   static_assert(detail::rational_raw<Both>);
 
   // f64 beats direct on a dyadic unit grid (default engine only — under
-  // BEMAN_INSIDE_MATH_CORDIC the f64 arm is elided and direct wins).
+  // BEMAN_INSIDE_MATH_NO_FP the f64 arm is elided and direct wins).
   using RD = inside<{0, 4}, f64 | direct>;
-#ifndef BEMAN_INSIDE_MATH_CORDIC
+#ifndef BEMAN_INSIDE_MATH_NO_FP
   static_assert(detail::f64_raw<RD>);
 #else
   static_assert(detail::value_raw<RD>);
@@ -199,7 +199,7 @@ TEST(StorageFlagsTest, representation_flags_resolve_widest_wins)
   ASSERT_EQ(DI{42}.raw(), 42);
 }
 
-#ifndef BEMAN_INSIDE_MATH_CORDIC
+#ifndef BEMAN_INSIDE_MATH_NO_FP
 // f32 selects binary32-backed storage; arithmetic demotes when too fine
 TEST(StorageFlagsTest, f32_selects_binary32_backed_storage_arithmetic_demotes_when_too_fine)
 {
@@ -231,14 +231,14 @@ TEST(StorageFlagsTest, f32_selects_binary32_backed_storage_arithmetic_demotes_wh
   static_assert(detail::rational_raw<decltype(E{} + F{})>);
 }
 
-// math output lands in f32 storage (flt engine pairs with f32)
-TEST(StorageFlagsTest, math_output_lands_in_f32_storage_flt_engine_pairs_with_f32)
+// math output lands in f32 storage
+TEST(StorageFlagsTest, math_output_lands_in_f32_storage)
 {
   using Ang = inside<{{-8, 8}, per<256>}, round_nearest | f32>;
   using Sq  = inside<{{0, 16}, per<256>}, round_nearest | f32>;
-  // The float engine stores its result straight into the f32 raw (no rational).
-  auto s = math::flt::sin(Ang{0});
-  auto r = math::flt::sqrt(Sq{4});
+  // A deduced output keeps the input's f32 storage.
+  auto s = math::sin(Ang{0});
+  auto r = math::sqrt(Sq{4});
   static_assert(detail::f32_raw<decltype(s)>);
   static_assert(detail::f32_raw<decltype(r)>);
   ASSERT_EQ(rational{s}, 0);
@@ -248,18 +248,18 @@ TEST(StorageFlagsTest, math_output_lands_in_f32_storage_flt_engine_pairs_with_f3
   // e^20 ≈ 4.85e8 > 2^24, still < 2^53) widens its OUTPUT to f64 storage rather
   // than hard-erroring — the deduced output never static_asserts on f32 overflow.
   using Big = inside<{{0, 20}, per<256>}, round_nearest | f32>;
-  auto e = math::flt::exp(Big{2});
+  auto e = math::exp(Big{2});
   static_assert(detail::f64_raw<decltype(e)>);   // demoted f32 → f64
   ASSERT_TRUE(rational{e} > rational{7});             // ≈ 7.39
 }
-#endif // !BEMAN_INSIDE_MATH_CORDIC
+#endif // !BEMAN_INSIDE_MATH_NO_FP
 
 // f64 is the double-backed flag and carries round_nearest
 TEST(StorageFlagsTest, f64_is_the_double_backed_flag)
 {
   static_assert(has_flag(beman::inside::f64, round_nearest));   // carries snap/round
 
-#ifndef BEMAN_INSIDE_MATH_CORDIC
+#ifndef BEMAN_INSIDE_MATH_NO_FP
   // f64 selects binary64-backed storage (storage is independent of the
   // compute engine — true in the double AND float builds).
   using F = inside<{{0, 4}, per<256>}, round_nearest | f64>;
@@ -493,19 +493,17 @@ TEST(StorageFlagsTest, pown_e_exact_compile_time_integer_powers_on_any_inside)
 TEST(StorageFlagsTest, tan_saturates_instead_of_erroring_when_out_carries_clamp)
 {
   // Explicit-Out spelling is the impl form (`tan<T>(x)` would bind T as the
-  // INPUT of the auto form). cordic::tan_into is compiled in both
-  // engine builds (it is the compile-time grid oracle), so one path tests
-  // both configs.
+  // INPUT of the auto form).
   using in_t  = inside<{{-2, 2}, per<16384>}, round_nearest | f64>;
   using sat_t = inside<{{-1, 1}, per<16384>}, round_nearest | f64 | clamp>;
   using err_t = inside<{{-1, 1}, per<16384>}, round_nearest | f64>;
 
   // tan(1.2) ≈ 2.57 — beyond [-1, 1].
-  auto sat = math::cordic::tan_into<sat_t>(in_t{1.2});
+  auto sat = math::tan_into<sat_t>(in_t{1.2});
   ASSERT_TRUE(sat.has_value());
   ASSERT_TRUE(static_cast<double>(rational{*sat}) == 1.0);   // clamped to Upper
 
-  auto err = math::cordic::tan_into<err_t>(in_t{1.2});
+  auto err = math::tan_into<err_t>(in_t{1.2});
   ASSERT_TRUE(!err.has_value());
   ASSERT_EQ(err.error(), errc::overflow);
 }

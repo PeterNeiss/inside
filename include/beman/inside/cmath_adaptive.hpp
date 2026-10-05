@@ -6,7 +6,7 @@
 #define BEMAN_INSIDE_CMATH_ADAPTIVE_HPP
 
 #include <beman/inside/detail/math_adaptive.hpp>
-#include <beman/inside/cmath_double.hpp>   // the double tier's kernels
+#include <beman/inside/detail/math_fp.hpp>   // the double tier's kernels
 
 #include <cstddef>
 #include <expected>
@@ -740,7 +740,7 @@ namespace beman::inside::math::detail::ax
   template <insidable In>
   inline constexpr int exp_kmax = [] {
     static_assert(max_abs_int<In> <= 4096,
-        "beman::inside::math::adaptive: the deduced output of exp, exp2, sinh and cosh needs |x| <= 4096 - "
+        "beman::inside::math: the deduced output of exp, exp2, sinh and cosh needs |x| <= 4096 - "
         "name an output grid with fn_into<Out> instead");
     return static_cast<int>(max_abs_int<In> * 3 / 2) + 2;
   }();
@@ -757,7 +757,7 @@ namespace beman::inside::math::detail::ax
   template <insidable InB, insidable InE>
   inline constexpr int pow_kmax = [] {
     static_assert(max_abs_int<InE> * log2_span<InB> <= 1 << 16,
-        "beman::inside::math::adaptive::pow: the deduced output would pass 2^65536 - name an output grid "
+        "beman::inside::math::pow: the deduced output would pass 2^65536 - name an output grid "
         "with pow_into<Out> instead");
     return static_cast<int>(max_abs_int<InE>) * log2_span<InB> + 2;
   }();
@@ -775,7 +775,7 @@ namespace beman::inside::math::detail::ax
 
   //---------------------------------------------------------------------------
   // The double tier. Where an FPU is present, the double engine's kernels
-  // (cmath_double.hpp) give the value first, with an error bound computed per
+  // (detail/math_fp.hpp) give the value first, with an error bound computed per
   // call: the kernel's evaluation error — 2^-40 of the result plus
   // 2^-44·max(1, |x|), a wide margin over their measured error of about one
   // ulp (2^-52) inside the argument ranges below; tan, pow and acosh add their
@@ -865,7 +865,7 @@ namespace beman::inside::math::detail::ax
   { return kEvalRel * fabs_d(v) + kEvalAbs * (fabs_d(x) > 1 ? fabs_d(x) : 1.0); }
 
 #ifndef BEMAN_INSIDE_MATH_NO_FP
-  namespace fpk = ::beman::inside::math::dbl::detail;
+  namespace fpk = ::beman::inside::math::detail::fp;
 
   // One kernel per function: its value, its evaluation bound, and its slope
   // |f′(x)| (for the input's rounding).
@@ -997,8 +997,8 @@ namespace beman::inside::math::adaptive
   consteval void require_rounding() noexcept
   {
     static_assert(has_flag(policy_of<Out>, snap) || !ax::slotted<Out>,
-        "beman::inside::math::adaptive: the result is rounded onto Out's grid - declare Out "
-        "with a rounding mode (round_nearest, round_floor, ...)");
+        "beman::inside::math: the result is rounded onto Out's grid - Out must permit rounding "
+        "(declare it with round_nearest, round_floor, ...)");
   }
 
 #define BEMAN_INSIDE_AX_UNARY(fn, fp_ok, ...)                                           \
@@ -1029,7 +1029,7 @@ namespace beman::inside::math::adaptive
   template <insidable Out, insidable In>                                                \
   [[nodiscard]] constexpr Out fn##_into(In x)                                           \
   {                                                                                     \
-    static_assert(cond, "beman::inside::math::adaptive::" #fn ": " msg);              \
+    static_assert(cond, "beman::inside::math::" #fn ": " msg);              \
     require_rounding<Out>();                                                            \
     using core = __VA_ARGS__;                                                           \
     BEMAN_INSIDE_AX_TABLE(Out, In, x)                                                   \
@@ -1150,7 +1150,7 @@ namespace beman::inside::math::adaptive
   template <insidable Out, imax Base, insidable In>
   [[nodiscard]] constexpr Out pow_base_into(In x)
   {
-    static_assert(Base >= 2, "beman::inside::math::adaptive::pow_base: Base must be at least 2");
+    static_assert(Base >= 2, "beman::inside::math::pow_base: Base must be at least 2");
     require_rounding<Out>();
     using core = ax::pow_core<2, ax::input_limbs<In>, ax::in_mag<In>, ax::out_kmax<Out>, 66, ax::input_bits<In>>;
     return ax::evaluate<Out, ax::start_bits<Out>>(core{ax::exact_int<2>(Base), ax::exact_input(x)});
@@ -1166,10 +1166,10 @@ namespace beman::inside::math::adaptive
   consteval bool deducible() noexcept
   {
     static_assert(has_flag(policy_of<In>, snap),
-        "beman::inside::math::adaptive: a transcendental result is rounded onto the input's grid - "
-        "declare the input with a rounding mode (round_nearest, round_floor, ...)");
+        "beman::inside::math: a deduced result is rounded onto the input's grid - its operand "
+        "must permit rounding (declare it with round_nearest, round_floor, ...)");
     static_assert(notch_of<In> != 0,
-        "beman::inside::math::adaptive: a deduced output takes the input's notch - the input needs one");
+        "beman::inside::math: a deduced output takes the input's notch - the input needs one");
     return true;
   }
 
@@ -1316,7 +1316,7 @@ namespace beman::inside::math::adaptive
   [[nodiscard]] constexpr auto pow_base(In x)
   {
     static_assert(deducible<In>());
-    static_assert(Base >= 2, "beman::inside::math::adaptive::pow_base: Base must be at least 2");
+    static_assert(Base >= 2, "beman::inside::math::pow_base: Base must be at least 2");
     return pow_base_into<auto_t::pow_base_t<Base, In>, Base>(x);
   }
 

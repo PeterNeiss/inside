@@ -10,14 +10,14 @@
 #include <utility>
 
 // BEMAN_INSIDE_MATH_NO_FP — no hardware floating point anywhere: the f64/f32
-// storage flags fall back to deduced integer storage, and the double/float math
-// engines compile out (the integer/CORDIC engine carries every transcendental).
-// Resolved here, in a header every other one includes, so storage selection and
-// the math headers always agree. Define it to force the FP-free build; it is
-// auto-enabled on freestanding targets (__STDC_HOSTED__ == 0) and by
-// BEMAN_INSIDE_MATH_CORDIC. Public API and grid deduction are unchanged.
+// storage flags fall back to deduced integer storage, and the math engine's
+// double tier compiles out (its integer path computes every result; results
+// do not change). Resolved here, in a header every other one includes, so
+// storage selection and the math headers always agree. Define it to force the
+// FP-free build; it is auto-enabled on freestanding targets
+// (__STDC_HOSTED__ == 0). Public API and grid deduction are unchanged.
 #if !defined(BEMAN_INSIDE_MATH_NO_FP)
-#  if defined(BEMAN_INSIDE_MATH_CORDIC) || (defined(__STDC_HOSTED__) && __STDC_HOSTED__ == 0)
+#  if defined(__STDC_HOSTED__) && __STDC_HOSTED__ == 0
 #    define BEMAN_INSIDE_MATH_NO_FP
 #  endif
 #endif
@@ -63,17 +63,17 @@ namespace beman::inside
   // ({width} = the fixed-width integer flags i8..u64 declared below; they pin the
   // exact backing type rather than letting deduction pick the smallest fit.)
   //
-  // `f64` — math operand, binary64-backed storage under the default engine (value
-  // held as IEEE-754 double, notch nominal); an ordinary round_nearest integer
-  // inside under BEMAN_INSIDE_MATH_CORDIC. Power-of-2 notch + dyadic Lower required so
+  // `f64` — binary64-backed storage (value held as IEEE-754 double, notch
+  // nominal); an ordinary round_nearest integer inside under
+  // BEMAN_INSIDE_MATH_NO_FP. Power-of-2 notch + dyadic Lower required so
   // on-grid values are exact in double (see `double_exact`).
   inline constexpr policy_flag f64{(1ull << 37) | round_nearest};
 
   // `f32` — binary32-backed storage (raw held as IEEE-754 float, notch nominal);
-  // the single-precision sibling of `f64`, for float-only FPUs (Cortex-M4F) and
-  // the `flt` engine. Power-of-2 notch + dyadic Lower required AND every on-grid
-  // value must fit float's 24-bit significand (see `float_exact`). Like `f64` it
-  // is an ordinary round_nearest integer inside under BEMAN_INSIDE_MATH_CORDIC.
+  // the single-precision sibling of `f64`, for float-only FPUs (Cortex-M4F).
+  // Power-of-2 notch + dyadic Lower required AND every on-grid value must fit
+  // float's 24-bit significand (see `float_exact`). Like `f64` it is an
+  // ordinary round_nearest integer inside under BEMAN_INSIDE_MATH_NO_FP.
   inline constexpr policy_flag f32{(1ull << 41) | round_nearest};
 
 

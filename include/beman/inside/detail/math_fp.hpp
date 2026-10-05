@@ -1,0 +1,235 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//---------------------------------------------------------------------------
+// Copyright (C) 2026 Peter Neiss
+//---------------------------------------------------------------------------
+// The double kernels of the math engine's double tier (cmath_adaptive.hpp):
+// a small libm in `double` — fixed polynomials in Horner form with explicit
+// std::fma, Cody-Waite range reduction, and only std::fma / sqrt / nearbyint
+// from <cmath>. Their results are within about one ulp; the tier bounds them
+// generously and lets the integer path decide whenever the bound does not.
+//---------------------------------------------------------------------------
+#ifndef BEMAN_INSIDE_DETAIL_MATH_FP_HPP
+#define BEMAN_INSIDE_DETAIL_MATH_FP_HPP
+
+#include <beman/inside/math.hpp>   // beman::inside::detail::ldexp (constexpr, reproducible)
+#include <beman/inside/inside.hpp>  // complete inside/rational + has_flag/policy_of/f64 (store<>)
+
+// BEMAN_INSIDE_MATH_NO_FP is resolved in policy_flag.hpp (included via inside.hpp).
+
+#ifndef BEMAN_INSIDE_MATH_NO_FP   // ===== FP engine present (needs <cmath> + an FPU) =====
+
+#include <cmath>            // std::fma, std::sqrt, std::nearbyint ONLY
+
+
+namespace beman::inside::math::detail::fp
+{
+  using std::fma;
+
+  // c0·z^n + c1·z^(n-1) + … + cn as an fma chain from the highest coefficient
+  // down (Horner) — the same operation order as writing the chain out by hand.
+  template <std::floating_point T, typename... C>
+  [[gnu::always_inline]] inline T horner(T z, T c0, C... cs)
+  {
+    T p = c0;
+    ((p = fma(p, z, static_cast<T>(cs))), ...);
+    return p;
+  }
+
+  inline constexpr double kHalfPiHi = 0x1.921fb54442d18p+0;   // π/2  high
+  inline constexpr double kHalfPiLo = 0x1.1a62633145c07p-54;  // π/2  low
+  inline constexpr double kTwoOverPi = 0x1.45f306dc9c883p-1;  // 2/π
+  inline constexpr double kLn2Hi    = 0x1.62e42fee00000p-1;   // ln2  high
+  inline constexpr double kLn2Lo    = 0x1.a39ef35793c76p-33;  // ln2  low
+  inline constexpr double kLog2e    = 0x1.71547652b82fep+0;   // 1/ln2
+
+  // sin(r), r ∈ [−π/4, π/4]: r·P(r²), P = Σ (−1)ᵏ zᵏ/(2k+1)! to z⁷ (r¹⁵).
+  inline double sin_poly(double r)
+  {
+    double z = r * r;
+    double p = horner(z,
+                      -1.0 / 1307674368000.0, 1.0 / 6227020800.0, -1.0 / 39916800.0, 1.0 / 362880.0,
+                      -1.0 / 5040.0, 1.0 / 120.0, -1.0 / 6.0, 1.0);
+    return r * p;
+  }
+
+  // cos(r), r ∈ [−π/4, π/4]: Q(r²), Q = Σ (−1)ᵏ zᵏ/(2k)! to z⁸ (r¹⁶).
+  inline double cos_poly(double r)
+  {
+    double z = r * r;
+    return horner(z,
+                  1.0 / 20922789888000.0, -1.0 / 87178291200.0, 1.0 / 479001600.0, -1.0 / 3628800.0,
+                  1.0 / 40320.0, -1.0 / 720.0, 1.0 / 24.0, -1.0 / 2.0,
+                  1.0);
+  }
+
+  // e^r, r ∈ [−ln2/2, ln2/2]: Σ rᵏ/k! to r¹².
+  inline double exp_poly(double r)
+  {
+    return horner(r,
+                  1.0 / 479001600.0, 1.0 / 39916800.0, 1.0 / 3628800.0, 1.0 / 362880.0,
+                  1.0 / 40320.0, 1.0 / 5040.0, 1.0 / 720.0, 1.0 / 120.0,
+                  1.0 / 24.0, 1.0 / 6.0, 1.0 / 2.0, 1.0,
+                  1.0);
+  }
+
+  // Shared quadrant reduction: x → (r ∈ [−π/4,π/4], q = quadrant mod 4).
+  inline double reduce_quadrant(double x, long& q)
+  {
+    double k = std::nearbyint(x * kTwoOverPi);
+    double r = fma(-k, kHalfPiHi, x);
+    r = fma(-k, kHalfPiLo, r);
+    q = static_cast<long>(k) & 3;
+    return r;
+  }
+
+  inline double fp_sin(double x)
+  {
+    long q; double r = reduce_quadrant(x, q);
+    switch (q) {
+      case 0:  return sin_poly(r);
+      case 1:  return cos_poly(r);
+      case 2:  return -sin_poly(r);
+      default: return -cos_poly(r);
+    }
+  }
+
+  inline double fp_cos(double x)
+  {
+    long q; double r = reduce_quadrant(x, q);
+    switch (q) {
+      case 0:  return cos_poly(r);
+      case 1:  return -sin_poly(r);
+      case 2:  return -cos_poly(r);
+      default: return sin_poly(r);
+    }
+  }
+
+  // tan from one reduction: s/c in even quadrants, −c/s in odd ones. False on
+  // a pole (odd quadrant with s == 0).
+  inline bool fp_tan(double x, double& t)
+  {
+    long q; double r = reduce_quadrant(x, q);
+    const double s = sin_poly(r), c = cos_poly(r);
+    if (q & 1)
+    {
+      if (s == 0.0) return false;
+      t = -c / s;
+    }
+    else
+      t = s / c;
+    return true;
+  }
+
+  // e^x = 2^k · e^r, x = k·ln2 + r, r ∈ [−ln2/2, ln2/2].
+  inline double fp_exp(double x)
+  {
+    double k = std::nearbyint(x * kLog2e);
+    double r = fma(-k, kLn2Hi, x);
+    r = fma(-k, kLn2Lo, r);
+    return beman::inside::detail::ldexp(exp_poly(r), static_cast<int>(k));
+  }
+
+  inline double fp_sqrt(double x) { return std::sqrt(x); }   // correctly rounded
+
+  inline constexpr double kSqrtHalf = 0x1.6a09e667f3bcdp-1; // √½
+
+  // ln(x): frexp to m∈[½,1), rebalance to [√½,√2); ln(x) = e·ln2 + 2·atanh(f),
+  // f = (m−1)/(m+1) ∈ [−0.18,0.18] (atanh series converges fast). Pre: x > 0.
+  inline double fp_log(double x)
+  {
+    int e;
+    double m = beman::inside::detail::frexp(x, &e);
+    if (m < kSqrtHalf) { m += m; --e; }
+    double f  = (m - 1.0) / (m + 1.0);
+    double f2 = f * f;
+    double p = horner(f2,
+                      1.0 / 17.0, 1.0 / 15.0, 1.0 / 13.0, 1.0 / 11.0,
+                      1.0 / 9.0, 1.0 / 7.0, 1.0 / 5.0, 1.0 / 3.0,
+                      1.0);
+    double logm = 2.0 * f * p;
+    double r = fma(static_cast<double>(e), kLn2Hi, logm);
+    return fma(static_cast<double>(e), kLn2Lo, r);
+  }
+
+  inline constexpr double kLn2Full  = 0x1.62e42fefa39efp-1;  // ln2
+  inline constexpr double kLog10e   = 0x1.bcb7b1526e50ep-2;  // 1/ln10
+
+  // Compositions on the validated primitives.
+  inline double fp_exp2(double x)  { return fp_exp(x * kLn2Full); }
+  inline double fp_log2(double x)  { return fp_log(x) * kLog2e; }
+  inline double fp_log10(double x) { return fp_log(x) * kLog10e; }
+  inline double fp_pow(double b, double e) { return fp_exp(e * fp_log(b)); }
+  inline double fp_cbrt(double x)
+  {
+    if (x == 0.0) return 0.0;
+    double m = fp_exp(fp_log(x < 0 ? -x : x) * (1.0 / 3.0));
+    return x < 0 ? -m : m;
+  }
+  inline double fp_sinh(double x) { double e = fp_exp(x); return (e - 1.0 / e) * 0.5; }
+  inline double fp_cosh(double x) { double e = fp_exp(x); return (e + 1.0 / e) * 0.5; }
+  // Inverse hyperbolics from fp_log / fp_sqrt, on |x| (odd functions) so every
+  // log argument is ≥ 1; |x| > 1 and acosh use ln a + ln(1 + √(1 ∓ 1/a²)).
+  inline double fp_asinh(double x)
+  {
+    const double a = x < 0 ? -x : x;
+    const double m = a <= 1.0 ? fp_log(a + fp_sqrt(a * a + 1.0))
+                            : fp_log(a) + fp_log(1.0 + fp_sqrt(1.0 + 1.0 / (a * a)));
+    return x < 0 ? -m : m;
+  }
+  inline double fp_acosh(double x)
+  { return fp_log(x) + fp_log(1.0 + fp_sqrt(1.0 - 1.0 / (x * x))); }
+  inline double fp_atanh(double x)
+  {
+    const double a = x < 0 ? -x : x;
+    const double m = 0.5 * fp_log((1.0 + a) / (1.0 - a));
+    return x < 0 ? -m : m;
+  }
+  inline double fp_tanh(double x)
+  {
+    double e = fp_exp(x + x);            // e^{2x}
+    return (e - 1.0) / (e + 1.0);
+  }
+  // √(x²+y²). The public domain caps |x|,|y| ≤ 2^20, so x²+y² ≤ 2^41 — no
+  // overflow, no scaling needed; the correctly-rounded √ keeps it accurate.
+  inline double fp_hypot(double x, double y) { return fp_sqrt(x * x + y * y); }
+
+  inline constexpr double kPi      = 0x1.921fb54442d18p+1;   // π
+  inline constexpr double kPiHalf  = 0x1.921fb54442d18p+0;   // π/2
+  inline constexpr double kPiSixth = 0x1.0c152382d7366p-1;   // π/6
+  inline constexpr double kInvSqrt3 = 0x1.279a74590331cp-1;  // 1/√3 = tan(π/6)
+  inline constexpr double kTanPi12 = 0x1.126145e9ecd56p-2;   // tan(π/12) ≈ 0.2679
+
+  // atan(x). Reduce |x|>1 via reciprocal (π/2 − atan(1/x)); then |a|>tan(π/12)
+  // via the π/6 addition formula → |t| ≤ tan(π/12); atan(t) = t·P(t²) Taylor.
+  inline double fp_atan(double x)
+  {
+    bool neg = x < 0; double a = neg ? -x : x;
+    bool inv = a > 1.0; if (inv) a = 1.0 / a;
+    double off = 0.0;
+    if (a > kTanPi12) { a = (a - kInvSqrt3) / fma(a, kInvSqrt3, 1.0); off = kPiSixth; }
+    double z = a * a;
+    double p = horner(z,
+                      -1.0 / 23.0, 1.0 / 21.0, -1.0 / 19.0, 1.0 / 17.0,
+                      -1.0 / 15.0, 1.0 / 13.0, -1.0 / 11.0, 1.0 / 9.0,
+                      -1.0 / 7.0, 1.0 / 5.0, -1.0 / 3.0, 1.0);
+    double r = off + a * p;
+    if (inv) r = kPiHalf - r;
+    return neg ? -r : r;
+  }
+
+  inline double fp_atan2(double y, double x)
+  {
+    if (x > 0.0) return fp_atan(y / x);
+    if (x < 0.0) return fp_atan(y / x) + (y >= 0.0 ? kPi : -kPi);
+    if (y > 0.0) return kPiHalf;
+    if (y < 0.0) return -kPiHalf;
+    return 0.0;
+  }
+
+  inline double fp_asin(double x) { return fp_atan(x / fp_sqrt((1.0 - x) * (1.0 + x))); }
+  inline double fp_acos(double x) { return kPiHalf - fp_asin(x); }
+} // namespace beman::inside::math::detail::fp
+
+#endif // !BEMAN_INSIDE_MATH_NO_FP
+
+#endif // BEMAN_INSIDE_DETAIL_MATH_FP_HPP

@@ -1323,16 +1323,16 @@ static void bench_cmath()
                                  (*beman::inside::math::pow(v_powb[i & J], v_powe[i & J])).raw())
 #undef BEMAN_INSIDE_CMATH_GROUP
 
-#ifndef BEMAN_INSIDE_MATH_CORDIC
+#ifndef BEMAN_INSIDE_MATH_NO_FP
   {
-    auto bench = group("math: sin (binary32 / float engine)", 50'000);
+    auto bench = group("math: sin (f32 storage)", 50'000);
     bench.run("std sinf", [&] {
       ++i;
       doNotOptimizeAway(std::sin(static_cast<float>(d_qs[i & J])));
     });
-    bench.run("beman::inside::math::flt::sin (f32 inside)", [&] {
+    bench.run("beman::inside::math::sin (f32 inside)", [&] {
       ++i;
-      doNotOptimizeAway(beman::inside::math::flt::sin(v_angf[i & J]).raw());
+      doNotOptimizeAway(beman::inside::math::sin(v_angf[i & J]).raw());
     });
     finish(bench);
   }

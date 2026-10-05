@@ -18,7 +18,7 @@ using namespace beman::inside::detail;
 
 namespace { rational q(imax n, imax d = 1) { return rational{n, d}; } }
 
-#ifndef BEMAN_INSIDE_MATH_CORDIC   // f64 storage is compiled out under the integer engine
+#ifndef BEMAN_INSIDE_MATH_NO_FP   // f64 storage is compiled out under the integer engine
 
 //---------------------------------------------------------------------------
 // One tie rule (half away from zero) and honoured rounding modes on f64 storage.
@@ -46,13 +46,14 @@ TEST(ConsistencyTest, f64_storage_honours_rounding_mode)
 
 #endif
 
-// The math store fast path rounds ties like the assignment path.
-TEST(ConsistencyTest, math_store_grid_tie_rule)
+// A math result exactly on a tie rounds like the assignment path.
+TEST(ConsistencyTest, math_tie_rule_matches_assignment)
 {
   using O = inside<{-10, 10}, round_nearest>;
-  EXPECT_EQ(rational{math::detail::store_grid<O>(q(-1, 2))}, rational{O{q(-1, 2)}});
-  EXPECT_EQ(rational{math::detail::store_grid<O>(q(-1, 2))}, q(-1));
-  EXPECT_EQ(rational{math::detail::store_grid<O>(q(1, 2))}, q(1));
+  using In = inside<{{-1, 1}, per<64>}, round_nearest>;
+  EXPECT_EQ(rational{math::sqrt_into<O>(In{q(1, 4)}).value()}, rational{O{q(1, 2)}});   // √(1/4) = 1/2 → 1
+  EXPECT_EQ(rational{math::cbrt_into<O>(In{q(-1, 8)})}, rational{O{q(-1, 2)}});         // ∛(−1/8) = −1/2 → −1
+  EXPECT_EQ(rational{math::cbrt_into<O>(In{q(-1, 8)})}, q(-1));
 }
 
 //---------------------------------------------------------------------------
@@ -76,7 +77,7 @@ TEST(ConsistencyTest, integer_source_off_notch_rounds_like_rational_source)
   EXPECT_EQ(rational{Ex{3}}, q(4));
 }
 
-#ifndef BEMAN_INSIDE_MATH_CORDIC
+#ifndef BEMAN_INSIDE_MATH_NO_FP
 TEST(ConsistencyTest, f64_target_from_integer_snaps_on_every_path)
 {
   using F = inside<{{0, 10}, 2}, f64>;
@@ -115,7 +116,7 @@ TEST(ConsistencyTest, wrap_then_round_stays_on_the_grid)
   EXPECT_EQ(rational{W{q(-3, 10)}}, q(0));               // -0.3 → 0
   EXPECT_EQ(rational{W{q(-7, 10)}}, q(8));               // -0.7 → -1 ≡ 8
   EXPECT_EQ(rational{W{q(39, 4)}}, q(1));                // 9.75 → 10 ≡ 1
-#ifndef BEMAN_INSIDE_MATH_CORDIC
+#ifndef BEMAN_INSIDE_MATH_NO_FP
   using F = inside<{{0, 8}, 1}, f64 | wrap>;
   EXPECT_EQ(F{8.5}.raw(), 0.0);
   EXPECT_EQ(F{-0.3}.raw(), 0.0);
@@ -142,7 +143,7 @@ TEST(ConsistencyTest, unchecked_cast_respects_storage_flags)
   EXPECT_EQ(rational{unchecked_cast<D>(7)}, q(7));
   using W = inside<{5, 100}, u16>;
   EXPECT_EQ(rational{unchecked_cast<W>(7)}, q(7));
-#ifndef BEMAN_INSIDE_MATH_CORDIC
+#ifndef BEMAN_INSIDE_MATH_NO_FP
   using F = inside<{{0, 4}, per<2>}, f64>;
   EXPECT_EQ(unchecked_cast<F>(1.5).raw(), 1.5);
 #endif
@@ -169,7 +170,7 @@ TEST(ConsistencyTest, math_output_drops_width_flags)
   EXPECT_EQ(rational{math::abs(B8{-128})}, q(128));
 }
 
-#ifndef BEMAN_INSIDE_MATH_CORDIC
+#ifndef BEMAN_INSIDE_MATH_NO_FP
 // An f64 inside compared with an inside whose values are not exact in double
 // compares exactly, not after rounding the other side to double.
 TEST(ConsistencyTest, fp_vs_exact_comparison_is_exact)
@@ -262,20 +263,13 @@ TEST(ConsistencyTest, zero_divisor_handling_agrees)
   EXPECT_NO_THROW(b.policy<ignore_zero>() /= X{0});
 }
 
-// The math store fast path rounds, then range-checks, exactly like assignment:
-// 8.25 into [0, 8] rounds to 8; 8.5 rounds to 9 and is out of range.
-TEST(ConsistencyTest, math_store_rounds_before_the_range_check)
+// Assignment rounds, then range-checks: 8.25 into [0, 8] rounds to 8; 8.5
+// rounds to 9 and is out of range.
+TEST(ConsistencyTest, store_rounds_before_the_range_check)
 {
   using O = inside<{0, 8}, checked | round_nearest>;
   EXPECT_EQ(rational{O{q(33, 4)}}, q(8));
-  EXPECT_EQ(rational{math::detail::store_grid<O>(q(33, 4))}, q(8));
-  EXPECT_EQ(rational{math::detail::store_grid<O>(q(-1, 4))}, q(0));
   EXPECT_THROW((void)O{q(17, 2)}, inside_error);
-  EXPECT_THROW((void)math::detail::store_grid<O>(q(17, 2)), inside_error);
-  EXPECT_THROW((void)math::detail::store_grid<O>(q(-1, 2)), inside_error);
-  EXPECT_EQ(rational{math::detail::store_grid<O>(q(31, 4))}, q(8));
-  using C = inside<{0, 8}, clamp | round_nearest>;
-  EXPECT_EQ(rational{math::detail::store_grid<C>(q(17, 2))}, q(8));
 }
 
 // NaN / ±inf go through the policy like any other bad value: the error-code
@@ -294,7 +288,7 @@ TEST(ConsistencyTest, non_finite_input_goes_through_the_policy)
   using C = inside<{0, 10}, round_nearest | clamp>;
   EXPECT_EQ(rational{C{inf}}, q(10));
   EXPECT_EQ(rational{C{-inf}}, q(0));
-#ifndef BEMAN_INSIDE_MATH_CORDIC
+#ifndef BEMAN_INSIDE_MATH_NO_FP
   using F = inside<{{0, 10}, per<2>}, f64>;
   EXPECT_EQ(F::try_make(nan).error(), errc::not_finite);
   using FC = inside<{{0, 10}, per<2>}, f64 | clamp>;
@@ -302,28 +296,17 @@ TEST(ConsistencyTest, non_finite_input_goes_through_the_policy)
 #endif
 }
 
-// pow: every engine reports the 2^±30 envelope, and saturates under clamp.
-TEST(ConsistencyTest, pow_envelope_agrees_across_engines)
+// pow: a result past Out reports overflow, and saturates under clamp.
+TEST(ConsistencyTest, pow_past_the_output_range)
 {
-  using B = inside<{1, 4}, round_nearest | clamp>;
-  using E = inside<{0, 20}, round_nearest | clamp>;
-  const auto c = math::cordic::pow(B{4}, E{20});
-  ASSERT_TRUE(c.has_value());
-#ifndef BEMAN_INSIDE_MATH_NO_FP
-  const auto d = math::dbl::pow(B{4}, E{20});
-  const auto f = math::flt::pow(B{4}, E{20});
-  ASSERT_TRUE(d.has_value());
-  ASSERT_TRUE(f.has_value());
-  EXPECT_EQ(rational{*c}, rational{*d});
-  EXPECT_EQ(rational{*c}, rational{*f});
-#endif
-  using Bc = inside<{1, 4}, round_nearest>;
-  using Ec = inside<{0, 20}, round_nearest>;
-  EXPECT_EQ(math::cordic::pow(Bc{4}, Ec{20}).error(), errc::overflow);
-#ifndef BEMAN_INSIDE_MATH_NO_FP
-  EXPECT_EQ(math::dbl::pow(Bc{4}, Ec{20}).error(), errc::overflow);
-  EXPECT_EQ(math::flt::pow(Bc{4}, Ec{20}).error(), errc::overflow);
-#endif
+  using B = inside<{1, 4}, round_nearest>;
+  using E = inside<{0, 20}, round_nearest>;
+  using small = inside<{0, 1000}, round_nearest>;
+  using small_clamp = inside<{0, 1000}, round_nearest | clamp>;
+  EXPECT_EQ(math::pow_into<small>(B{4}, E{20}).error(), errc::overflow);   // 2^40
+  EXPECT_EQ(rational{*math::pow_into<small_clamp>(B{4}, E{20})}, q(1000));
+  // The deduced output covers every corner: 4^20 fits it.
+  EXPECT_EQ(rational{*math::pow(B{4}, E{20})}, q(1) * (umax{1} << 40));
 }
 
 // conversion_rounds sees the notch of an `exact` (rational-raw) grid.

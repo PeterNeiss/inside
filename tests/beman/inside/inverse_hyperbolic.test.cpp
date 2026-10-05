@@ -24,9 +24,9 @@ namespace
 
 TEST(InverseHyperbolicTest, anchors_are_exact_and_constexpr_on_the_integer_engine)
 {
-  static_assert(rational{math::cordic::asinh(A{0})} == 0);
-  static_assert(rational{math::cordic::acosh(C{1})} == 0);
-  static_assert(rational{math::cordic::atanh(T{0})} == 0);
+  static_assert(rational{math::asinh(A{0})} == 0);
+  static_assert(rational{math::acosh(C{1})} == 0);
+  static_assert(rational{math::atanh(T{0})} == 0);
   EXPECT_EQ(rational{math::asinh(A{0})}, 0);
   EXPECT_EQ(rational{math::acosh(C{1})}, 0);
   EXPECT_EQ(rational{math::atanh(T{0})}, 0);
@@ -45,27 +45,15 @@ TEST(InverseHyperbolicTest, every_engine_matches_cmath_within_one_notch)
 {
   for (double x = -64; x <= 64; x += 0.5)
   {
-    EXPECT_NEAR(value(math::cordic::asinh(A{x})), std::asinh(x), kNotch) << x;
-#ifndef BEMAN_INSIDE_MATH_NO_FP
-    EXPECT_NEAR(value(math::dbl::asinh(A{x})), std::asinh(x), kNotch) << x;
-    EXPECT_NEAR(value(math::flt::asinh(A{x})), std::asinh(x), kNotch) << x;
-#endif
+    EXPECT_NEAR(value(math::asinh(A{x})), std::asinh(x), kNotch) << x;
   }
   for (double x = 1; x <= 64; x += 0.25)
   {
-    EXPECT_NEAR(value(math::cordic::acosh(C{x})), std::acosh(x), kNotch) << x;
-#ifndef BEMAN_INSIDE_MATH_NO_FP
-    EXPECT_NEAR(value(math::dbl::acosh(C{x})), std::acosh(x), kNotch) << x;
-    EXPECT_NEAR(value(math::flt::acosh(C{x})), std::acosh(x), kNotch) << x;
-#endif
+    EXPECT_NEAR(value(math::acosh(C{x})), std::acosh(x), kNotch) << x;
   }
   for (double x = -0.9990234375; x <= 0.9990234375; x += 0.0625)
   {
-    EXPECT_NEAR(value(math::cordic::atanh(T{x})), std::atanh(x), kNotch) << x;
-#ifndef BEMAN_INSIDE_MATH_NO_FP
-    EXPECT_NEAR(value(math::dbl::atanh(T{x})), std::atanh(x), kNotch) << x;
-    EXPECT_NEAR(value(math::flt::atanh(T{x})), std::atanh(x), kNotch) << x;
-#endif
+    EXPECT_NEAR(value(math::atanh(T{x})), std::atanh(x), kNotch) << x;
   }
   // Near the poles of atanh the ratio form keeps full precision.
   EXPECT_NEAR(value(math::atanh(T{0.9990234375})), std::atanh(0.9990234375), kNotch);

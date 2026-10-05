@@ -9,7 +9,7 @@
 
 #include <beman/inside/inside.hpp>
 #include <beman/inside/cmath.hpp>
-#include <beman/inside/cmath_double.hpp>
+#include <beman/inside/cmath.hpp>
 #include <beman/inside/casts.hpp>
 #include <beman/inside/predicates.hpp>
 #include <beman/inside/io.hpp>
@@ -52,12 +52,12 @@ TEST(CoverageCornersTest, will_conversion_trunc_is_false_for_out_of_range_values
   ASSERT_TRUE(conversion_rounds<coarse>(3));
 }
 
-#ifndef BEMAN_INSIDE_MATH_CORDIC
-namespace d = beman::inside::math::dbl::detail;
+#ifndef BEMAN_INSIDE_MATH_NO_FP
+namespace d = beman::inside::math::detail::fp;
 
 //---------------------------------------------------------------------------
-// cmath_double.hpp:162-163 — fp_cbrt negative branch
-// cmath_double.hpp:205-207 — fp_atan2 on the axes (x == 0)
+// detail/math_fp.hpp — fp_cbrt negative branch
+// detail/math_fp.hpp — fp_atan2 on the axes (x == 0)
 //---------------------------------------------------------------------------
 // dbl: cbrt of negatives and atan2 on the axes
 TEST(CoverageCornersTest, dbl_cbrt_of_negatives_and_atan2_on_the_axes)
@@ -76,7 +76,7 @@ TEST(CoverageCornersTest, dbl_cbrt_of_negatives_and_atan2_on_the_axes)
   ASSERT_EQ((d::fp_atan2(1.0, -1.0)), 0x1.2d97c7f3321d2p+1);  //  3pi/4
   ASSERT_EQ((d::fp_atan2(-1.0, -1.0)), -0x1.2d97c7f3321d2p+1);  // -3pi/4
 }
-#endif // !BEMAN_INSIDE_MATH_CORDIC
+#endif // !BEMAN_INSIDE_MATH_NO_FP
 
 //---------------------------------------------------------------------------
 // lift.hpp:116 — binary expected-lift short-circuits on a RIGHT-side error
@@ -266,7 +266,7 @@ TEST(CoverageCornersTest, on_overflow_compound_subtract_that_does_not_overflow)
   ASSERT_EQ(acc, 40);
 }
 
-#ifndef BEMAN_INSIDE_MATH_CORDIC
+#ifndef BEMAN_INSIDE_MATH_NO_FP
 //---------------------------------------------------------------------------
 // inside.hpp:161-163 — store_real out-of-range with a reporting policy
 // (the clamp/wrap arms are covered elsewhere; the range_fail arm was not).
@@ -277,13 +277,13 @@ TEST(CoverageCornersTest, f64_store_out_of_range_checked_policy)
   using rbc = inside<{{-1, 1}, per<1024>}, f64 | checked>;
   ASSERT_THROW((void)((rbc{5.0})), beman::inside::inside_error);   // out of range -> report (throws)
 }
-#endif // !BEMAN_INSIDE_MATH_CORDIC
+#endif // !BEMAN_INSIDE_MATH_NO_FP
 
 //---------------------------------------------------------------------------
 // assignment.hpp:609-613 — inside -> inside store into a `f64` (double-backed)
 // target decodes the source and snaps to the dyadic grid.
 //---------------------------------------------------------------------------
-#ifndef BEMAN_INSIDE_MATH_CORDIC
+#ifndef BEMAN_INSIDE_MATH_NO_FP
 // inside -> f64 conversion snaps onto the double grid
 TEST(CoverageCornersTest, inside_to_f64_conversion_snaps_onto_the_double_grid)
 {
@@ -298,7 +298,7 @@ TEST(CoverageCornersTest, inside_to_f64_conversion_snaps_onto_the_double_grid)
   rb dn = neg;
   ASSERT_EQ(double(dn), -2.0);
 }
-#endif // !BEMAN_INSIDE_MATH_CORDIC
+#endif // !BEMAN_INSIDE_MATH_NO_FP
 
 //---------------------------------------------------------------------------
 // assignment.hpp:475-476 — off-notch fractional store on a policy with no
@@ -341,7 +341,7 @@ TEST(CoverageCornersTest, math_fmod_integer_fast_path_raw_from_offset_imax)
   ASSERT_TRUE((static_cast<rational>(math::fmod<out_t>(in_t{5.5_r}, div_t{2_r})) == rational{3u, 2}));
 }
 
-#ifndef BEMAN_INSIDE_MATH_CORDIC
+#ifndef BEMAN_INSIDE_MATH_NO_FP
 //---------------------------------------------------------------------------
 // generic.hpp:469 — range_fail returns false for an unchecked policy
 // (range_check()==false): the value is stored as-is.
@@ -353,7 +353,7 @@ TEST(CoverageCornersTest, unsafe_f64_store_out_of_range_falls_through_no_report)
   rb x = 5.0;                       // out of range, unsafe: stored as-is, no throw
   ASSERT_EQ(double(x), 5.0);
 }
-#endif // !BEMAN_INSIDE_MATH_CORDIC
+#endif // !BEMAN_INSIDE_MATH_NO_FP
 
 //---------------------------------------------------------------------------
 // assignment.hpp:631-634 + generic.hpp:355-361 — inside -> inside store on the

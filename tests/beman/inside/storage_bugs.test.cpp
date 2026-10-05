@@ -124,7 +124,7 @@ TEST(StorageBugsTest, bug_d_gcd_lcm_overflow_propagates_to_grid_operator_plus)
 #endif
 }
 
-#ifndef BEMAN_INSIDE_MATH_CORDIC
+#ifndef BEMAN_INSIDE_MATH_NO_FP
 //---------------------------------------------------------------------------
 // Bug E — grid.hpp double_exact / arithmetic.
 //
@@ -175,7 +175,7 @@ TEST(StorageBugsTest, bug_f_f64_div_by_zero_is_reported_not_a_silent_inf)
   ASSERT_FALSE(z.has_value());
   ASSERT_EQ(z.error(), errc::division_by_zero);
 }
-#endif // !BEMAN_INSIDE_MATH_CORDIC
+#endif // !BEMAN_INSIDE_MATH_NO_FP
 
 //---------------------------------------------------------------------------
 // 2026-07: fp-derived rational store on a snap grid with |Lower| ≫ 1. The
@@ -224,7 +224,7 @@ TEST(StorageBugsTest, fp_derived_rational_store_on_a_wide_snap_grid_uses_the_exa
   }
 }
 
-#ifndef BEMAN_INSIDE_MATH_CORDIC   // `f64` storage is compiled out under the integer engine
+#ifndef BEMAN_INSIDE_MATH_NO_FP   // `f64` storage is compiled out under the integer engine
 //---------------------------------------------------------------------------
 // A `f64` (double-raw) source through every store path, and one-shot
 // policies on a `f64` target. The raw is the value, not a notch index.
@@ -284,7 +284,7 @@ TEST(StorageBugsTest, scalar_comparison_does_not_truncate_the_scalar)
   EXPECT_TRUE(one < std::numeric_limits<std::uint64_t>::max());
 }
 
-#ifndef BEMAN_INSIDE_MATH_CORDIC
+#ifndef BEMAN_INSIDE_MATH_NO_FP
 // ++ / += point on `f64` storage adds the value, not a notch count to the raw.
 TEST(StorageBugsTest, increment_on_f64_storage)
 {

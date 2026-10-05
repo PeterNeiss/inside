@@ -367,7 +367,14 @@ namespace beman::inside::detail
     }
 
     // ---- comparison --------------------------------------------------------
-    friend constexpr bool operator==(wide_int const&, wide_int const&) noexcept = default;
+    // Written out: GCC 15/16 miscompare a defaulted == over an array member in
+    // constant evaluation (`a == x && b == y` can come out true with b != y).
+    friend constexpr bool operator==(wide_int const& a, wide_int const& b) noexcept
+    {
+      for (std::size_t i = 0; i < N; ++i)
+        if (a.Word[i] != b.Word[i]) return false;
+      return true;
+    }
     friend constexpr std::strong_ordering operator<=>(wide_int const& a, wide_int const& b) noexcept
     {
       if (a.negative() != b.negative())

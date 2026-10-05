@@ -384,8 +384,8 @@ namespace beman::inside
   // Storage for an inside<G, P>: representation flags pick the raw type, widest-wins
   // (exact > f64 > f32 > {width} > direct > indexed > deduced).
   //   exact   → rational raw on any grid.
-  //   f64     → double-backed under the default engine, on a dyadic or notch-0
-  //             grid; elided under BEMAN_INSIDE_MATH_CORDIC (falls through to deduced).
+  //   f64     → double-backed on a dyadic or notch-0 grid; elided under
+  //             BEMAN_INSIDE_MATH_NO_FP (falls through to deduced).
   //   f32     → float-backed when float holds the grid, else widened to double.
   //   {width} → the pinned i8..u64 type, value or (with `indexed`) index storage.
   //   direct  → raw == value, plain integer (Notch == 1).

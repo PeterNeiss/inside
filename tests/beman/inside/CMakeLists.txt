@@ -7,11 +7,6 @@ include(GoogleTest)
 # Unit tests: one executable per <name>.test.cpp
 #---------------------------------------------------------------------------
 file(GLOB BEMAN_INSIDE_TEST_SOURCES CONFIGURE_DEPENDS *.test.cpp)
-# cmath.test.cpp covers the integer/CORDIC engine only (the whole TU is under
-# #ifdef BEMAN_INSIDE_MATH_CORDIC); built alone it would hold zero tests.
-if(NOT BEMAN_INSIDE_MATH_CORDIC)
-    list(FILTER BEMAN_INSIDE_TEST_SOURCES EXCLUDE REGEX "/cmath\\.test\\.cpp$")
-endif()
 foreach(test_src ${BEMAN_INSIDE_TEST_SOURCES})
     get_filename_component(test_name ${test_src} NAME)
     string(REGEX REPLACE "\\.test\\.cpp$" "" test_name "${test_name}")
@@ -109,8 +104,8 @@ foreach(
     beman.inside.tests.single_header_smoke
     beman.inside.tests.single_header_freestanding_smoke
 )
-    if(BEMAN_INSIDE_MATH_CORDIC)
-        target_compile_definitions(${smoke} PRIVATE BEMAN_INSIDE_MATH_CORDIC)
+    if(BEMAN_INSIDE_MATH_NO_FP)
+        target_compile_definitions(${smoke} PRIVATE BEMAN_INSIDE_MATH_NO_FP)
     endif()
     add_test(NAME ${smoke} COMMAND ${smoke})
 endforeach()
@@ -118,7 +113,7 @@ endforeach()
 # FP-free smoke: compiles the single header with BEMAN_INSIDE_MATH_NO_FP and a
 # poison <cmath> shim placed FIRST on the include path, so the build hard-errors
 # if any <cmath> is pulled in. Proves the single header honors the FP-free guard
-# (only the integer/CORDIC engine remains). GNU/Clang only — the proof relies on
+# (the math engine runs on its integer path). GNU/Clang only — the proof relies on
 # -I ordering for angle-bracket includes; bare-metal toolchains are GCC/Clang.
 # Compile-only (an object library), as before.
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
@@ -208,22 +203,19 @@ if(BEMAN_INSIDE_BUILD_TOOLS)
         PRIVATE beman::inside beman.inside.warnings
     )
 
-    # Accuracy characterization: sweeps every math engine against a long-double
-    # <cmath> reference and emits a markdown error table. Needs the dbl/flt
-    # engines, which BEMAN_INSIDE_MATH_CORDIC compiles out.
-    if(NOT BEMAN_INSIDE_MATH_CORDIC)
-        add_executable(beman.inside.accuracy accuracy.cpp)
-        target_link_libraries(
-            beman.inside.accuracy
-            PRIVATE beman::inside beman.inside.warnings
-        )
-        add_custom_target(
-            beman.inside.accuracy_report
-            COMMAND
-                beman.inside.accuracy ${PROJECT_SOURCE_DIR}/docs/accuracy.md
-            COMMENT "Regenerating docs/accuracy.md"
-        )
-    endif()
+    # Accuracy characterization: sweeps the math engine against a long-double
+    # <cmath> reference and emits a markdown error table.
+    add_executable(beman.inside.accuracy accuracy.cpp)
+    target_link_libraries(
+        beman.inside.accuracy
+        PRIVATE beman::inside beman.inside.warnings
+    )
+    add_custom_target(
+        beman.inside.accuracy_report
+        COMMAND
+            beman.inside.accuracy ${PROJECT_SOURCE_DIR}/docs/accuracy.md
+        COMMENT "Regenerating docs/accuracy.md"
+    )
 
     # Cachegrind instruction-count workload, driven by check_perf.py.
     add_executable(beman.inside.perf_workload perf_workload.cpp)

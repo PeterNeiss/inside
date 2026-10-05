@@ -429,10 +429,14 @@ namespace beman::inside::math::detail::ax
   constexpr Out store(wide_sint<K> const& index, P&& policy)
   {
     using I = wide_sint<K>;
-    constexpr I count = static_cast<I>(grid_of<Out>.slot_count());
-    if (!index.negative() && !(count < index)) [[likely]]
-      return Out::from_raw(raw_of_index<Out>(index));
-    // The grid point (index + Lower/Notch)·Notch, exact.
+    if constexpr (integer_raw<Out>)
+    {
+      constexpr I count = static_cast<I>(grid_of<Out>.slot_count());
+      if (!index.negative() && !(count < index)) [[likely]]
+        return Out::from_raw(raw_of_index<Out>(index));
+    }
+    // The grid point (index + Lower/Notch)·Notch, exact: stored through Out's
+    // assignment (a floating-point or rational raw holds it exactly).
     constexpr std::size_t KK = exact_max<K, exact_limbs<Out>>;
     using J = wide_sint<KK>;
     const exact_frac<KK> v{(J{index} + static_cast<J>(slot_base<Out>)) * static_cast<J>(wide_numerator(notch_of<Out>)),
@@ -451,8 +455,11 @@ namespace beman::inside::math::detail::ax
   template <insidable Out, std::size_t K, typename P>
   constexpr Out store_exact(exact_frac<K> const& v, P&& policy)
   {
+    // At least the exact paths' minimum width (try_rational's 64-bit bounds
+    // need it).
+    const exact_frac<exact_max<K, exact_min_limbs>> w{v};
     Out out{};
-    assign_exact<rational>(out, v, policy, no_action{});
+    assign_exact<rational>(out, w, policy, no_action{});
     return out;
   }
 
@@ -466,10 +473,10 @@ namespace beman::inside::math::detail::ax
                         : exact_frac<KK + 8>{I{a.Value} << (-a.Scale), I{1}};
   }
 
-  // Outputs `decide` serves: an integer raw on a grid with slots. Others (a
-  // rational or floating-point raw) take the value at the start precision.
+  // Outputs `decide` serves: a grid with slots (any storage). A continuous
+  // grid takes the value at the start precision.
   template <insidable Out>
-  inline constexpr bool slotted = integer_raw<Out> && notch_of<Out> != 0;
+  inline constexpr bool slotted = notch_of<Out> != 0;
 
   //---------------------------------------------------------------------------
   // evaluate — the Ziv driver. Core is a callable object with a member
@@ -565,7 +572,7 @@ namespace beman::inside::math::detail::ax
       && grid_of<In>.slot_count() < grid_wide{BEMAN_INSIDE_MATH_TABLE_SLOTS};
 
   template <insidable Out>
-  inline constexpr bool table_output = slotted<Out> && !exact_valued<Out>;
+  inline constexpr bool table_output = integer_raw<Out> && slotted<Out> && !exact_valued<Out>;
 
   // The slot offset of an input value (0 … slot count).
   template <insidable In>

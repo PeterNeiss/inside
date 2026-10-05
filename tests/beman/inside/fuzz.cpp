@@ -1462,52 +1462,39 @@ void run_props(fuzz_state& s, long iters, const char* name)
   guarded(s, [&]{ prop_range<B>(s, iters); });
 }
 
-#ifndef BEMAN_INSIDE_MATH_NO_FP
 //---------------------------------------------------------------------------
-// Cross-engine differential oracle.
-//
-// The three transcendental engines (cordic / dbl / flt) are independent
-// approximations. determinism.md and the cmath.hpp engine note guarantee they
-// land within ~one output notch of each other on a shared snap grid (the
-// table-maker's dilemma is the only divergence). Nothing enforced that inside —
-// the engine tests only pinned exact special values. This sweep turns the
-// guarantee into a property: on one grid, cordic must agree with both dbl and
-// flt. Restricted to O(1)-output functions (sin/cos/tanh/atan, sqrt on [0,4])
-// so the binary32 `flt` engine's coarser precision still falls inside the notch
-// budget. Only meaningful when the FP engines exist (BEMAN_INSIDE_MATH_CORDIC implies
-// BEMAN_INSIDE_MATH_NO_FP, leaving only cordic — nothing to compare).
+// Tier agreement. The math engine gives the same correctly rounded slot
+// whichever path computes it — the double kernels, a table, or the integer
+// path. The property: on random inputs, the public function and the integer
+// cores run through the driver agree raw for raw.
 //---------------------------------------------------------------------------
-void prop_cross_engine(fuzz_state& s, long iters)
+void prop_math_tiers(fuzz_state& s, long iters)
 {
-  using A = inside<{{-8, 8}, per<16384>}, round_nearest | f64>;   // angle / general
-  using P = inside<{{0, 4},  per<16384>}, round_nearest | f64>;   // sqrt domain
+  namespace ax = beman::inside::math::detail::ax;
+  using A = inside<{{-8, 8}, per<16384>}, round_nearest>;     // angle / general
+  using P = inside<{{0, 4},  per<16384>}, round_nearest>;     // sqrt domain
+  using O = inside<{{-8, 8}, per<1048576>}, round_nearest>;
   s.current_grid = "cmath";
-  s.current_prop = "cross_engine";
-  // 8 output notches: comfortably catches a divergent/wrong engine while
-  // absorbing legitimate ±1-notch tie disagreement and binary32 rounding.
-  const rational tol{8, 16384};
-  auto agree = [&](rational x, rational y) { return approx_le(x, y, tol); };
+  s.current_prop = "math_tiers";
+  constexpr std::size_t E = ax::input_limbs<A>;
+  constexpr int Mag = ax::in_mag<A>;
+  auto integer = [](auto core) { return ax::evaluate<O, ax::start_bits<O>>(core).raw(); };
 
   for (long i = 0; i < iters; ++i)
   {
     s.iter = i;
-    A a = A::from_raw(random_in_range_raw<A>(s.rng));
+    const A a = A::from_raw(random_in_range_raw<A>(s.rng));
+    const auto x = ax::exact_input(a);
+    FUZZ_REQUIRE(s, math::sin_into<O>(a).raw()  == integer(ax::trig_core<E, Mag, ax::trig::sin, 1>{x}));
+    FUZZ_REQUIRE(s, math::cos_into<O>(a).raw()  == integer(ax::trig_core<E, Mag, ax::trig::cos, 1>{x}));
+    FUZZ_REQUIRE(s, math::tanh_into<O>(a).raw() == integer(ax::hyp_core<E, Mag, ax::hyp::tanh, 1>{x}));
+    FUZZ_REQUIRE(s, math::atan_into<O>(a).raw() == integer(ax::atan_core<E>{x}));
 
-    FUZZ_REQUIRE(s, agree(rational{math::cordic::sin(a)},  rational{math::dbl::sin(a)}));
-    FUZZ_REQUIRE(s, agree(rational{math::cordic::sin(a)},  rational{math::flt::sin(a)}));
-    FUZZ_REQUIRE(s, agree(rational{math::cordic::cos(a)},  rational{math::dbl::cos(a)}));
-    FUZZ_REQUIRE(s, agree(rational{math::cordic::cos(a)},  rational{math::flt::cos(a)}));
-    FUZZ_REQUIRE(s, agree(rational{math::cordic::tanh(a)}, rational{math::dbl::tanh(a)}));
-    FUZZ_REQUIRE(s, agree(rational{math::cordic::tanh(a)}, rational{math::flt::tanh(a)}));
-    FUZZ_REQUIRE(s, agree(rational{math::cordic::atan(a)}, rational{math::dbl::atan(a)}));
-    FUZZ_REQUIRE(s, agree(rational{math::cordic::atan(a)}, rational{math::flt::atan(a)}));
-
-    P p = P::from_raw(random_in_range_raw<P>(s.rng));
-    FUZZ_REQUIRE(s, agree(rational{math::cordic::sqrt(p)}, rational{math::dbl::sqrt(p)}));
-    FUZZ_REQUIRE(s, agree(rational{math::cordic::sqrt(p)}, rational{math::flt::sqrt(p)}));
+    const P p = P::from_raw(random_in_range_raw<P>(s.rng));
+    FUZZ_REQUIRE(s, math::sqrt_into<O>(p).raw()
+                    == integer(ax::sqrt_core<ax::input_limbs<P>>{ax::exact_input(p)}));
   }
 }
-#endif // !BEMAN_INSIDE_MATH_NO_FP
 
 //---------------------------------------------------------------------------
 // main
@@ -1571,8 +1558,8 @@ int main(int argc, char** argv)
   guarded(s, [&]{ prop_atan2(s, iters); });
   guarded(s, [&]{ prop_extended_math(s, iters); });
   guarded(s, [&]{ prop_wrap_fractional(s, iters); });
+  guarded(s, [&]{ prop_math_tiers(s, iters); });
 #ifndef BEMAN_INSIDE_MATH_NO_FP
-  guarded(s, [&]{ prop_cross_engine(s, iters); });
 #endif
 
   // Cross-grid arithmetic: mix grids of different lower/upper but same notch.

@@ -259,3 +259,14 @@ namespace
   template <U2 V> struct nttp { static constexpr U2 value = V; };
   static_assert(nttp<big>::value == big);                   // structural
 }
+
+// GCC 15/16 miscompare a defaulted == over an array member in constant
+// evaluation: `a == x && b == y` came out true with b != y (seen as √(1/2)
+// "exact" in the math engine's compile-time path). wide_int writes == out.
+TEST(WideIntTest, equality_in_constant_evaluation)
+{
+  using W = beman::inside::detail::wide_sint<3>;
+  static_assert(![] { const W n{1}, d{1}; return n == W{1} && d == W{2}; }());
+  static_assert([] { const W n{1}, d{2}; return n == W{1} && d == W{2}; }());
+  SUCCEED();
+}

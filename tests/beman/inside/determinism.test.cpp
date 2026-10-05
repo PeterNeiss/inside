@@ -27,10 +27,7 @@ using namespace beman::inside::detail;
 #define EXACT_ERR(expr)       do { auto _r = (expr); ASSERT_FALSE(_r.has_value()); \
                                    ASSERT_EQ(_r.error(), errc::domain_error); } while (0)
 
-// These pins are the DEFAULT engine's values (double / CORDIC, which agree here). The float engine is a third value set, so under
-// BEMAN_INSIDE_MATH_FLOAT the unqualified math::fn produces different snapped values — its
-// determinism is pinned separately in test_math_engines.cpp.
-#ifndef BEMAN_INSIDE_MATH_FLOAT
+// These pins are the correctly rounded values: the same in every build.
 
 // determinism: asin / acos across grids and domain corners
 TEST(DeterminismTest, determinism_asin_acos_across_grids_and_domain_corners)
@@ -210,4 +207,3 @@ TEST(DeterminismTest, determinism_sin_cos_tan_radian_corners)
   EXACT_OK(math::tan(RAD{1}),  25517, 16384);  // ~1.5574
 }
 
-#endif // !BEMAN_INSIDE_MATH_FLOAT
