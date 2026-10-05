@@ -404,3 +404,77 @@ TEST(MathAdaptiveTest, deduced_outputs)
   EXPECT_EQ(*am::pow(base{2}, expo{2}), P{4});
   EXPECT_EQ((am::pow_base<10>(expo{1})), (am::pow_base_into<decltype(am::pow_base<10>(expo{1})), 10>(expo{1})));
 }
+
+//---------------------------------------------------------------------------
+// The double tier agrees with the integer path on every input slot: the
+// _into forms (which try the double kernels first where an FPU is present)
+// against the integer cores run through the driver directly.
+//---------------------------------------------------------------------------
+namespace
+{
+  template <typename Out, typename In, typename Core, typename Fn>
+  int tier_mismatches(Fn fn)
+  {
+    int bad = 0;
+    const auto count = static_cast<long long>(grid_of<In>.slot_count());
+    for (long long i = 0; i <= count; ++i)
+    {
+      const In x = In::from_raw(detail::raw_from_offset<In>(static_cast<umax>(i)));
+      const Out integer = ax::evaluate<Out, ax::start_bits<Out>>(Core{ax::exact_input(x)});
+      if (!(fn(x).raw() == integer.raw()) && bad++ < 3)
+        ADD_FAILURE() << "x = " << static_cast<double>(x);
+    }
+    return bad;
+  }
+
+  using out8   = inside<{{-64, 64}, rational{1, 8}}, round_nearest>;
+  using out8f  = inside<{{-64, 64}, rational{1, 8}}, round_floor>;
+  using out16c = inside<{{-64, 64}, rational{1, 1 << 16}}, round_ceil>;
+}
+
+#define TIER_CHECK(fn, Out, In, ...) \
+  EXPECT_EQ((tier_mismatches<Out, In, __VA_ARGS__>([](In x) { return am::fn##_into<Out>(x); })), 0) << #fn " " #Out
+
+TEST(MathAdaptiveTest, double_tier_agrees_with_the_integer_path)
+{
+  TIER_CHECK(sin,   out20,  sym4, ax::trig_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::trig::sin, 1>);
+  TIER_CHECK(sin,   out8f,  sym4, ax::trig_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::trig::sin, 1>);
+  TIER_CHECK(cos,   outdec, sym4, ax::trig_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::trig::cos, 1>);
+  TIER_CHECK(cos,   out16c, sym4, ax::trig_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::trig::cos, 1>);
+  TIER_CHECK(exp,   out20,  sym4, ax::exp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::out_kmax<out20>>);
+  TIER_CHECK(exp,   out8,   sym4, ax::exp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::out_kmax<out8>>);
+  TIER_CHECK(exp2,  out16c, sym4, ax::exp2_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::out_kmax<out16c>>);
+  TIER_CHECK(sinh,  out20,  sym4, ax::hyp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::hyp::sinh, ax::out_kmax<out20>>);
+  TIER_CHECK(cosh,  out8f,  sym4, ax::hyp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::hyp::cosh, ax::out_kmax<out8f>>);
+  TIER_CHECK(tanh,  outdec, sym4, ax::hyp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::hyp::tanh, 1>);
+  TIER_CHECK(atan,  out20,  sym4, ax::atan_core<ax::input_limbs<sym4>>);
+  TIER_CHECK(asinh, out16c, sym4, ax::ahyp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::ahyp::asinh>);
+  TIER_CHECK(cbrt,  out20,  sym4, ax::cbrt_core<ax::input_limbs<sym4>>);
+  TIER_CHECK(log,   out20,  pos64, ax::log_core<ax::input_limbs<pos64>>);
+  TIER_CHECK(log2,  out8f,  pos64, ax::logb_core<ax::input_limbs<pos64>, 2>);
+  TIER_CHECK(log10, outdec, pos64, ax::logb_core<ax::input_limbs<pos64>, 10>);
+  TIER_CHECK(sqrt,  out16c, pos64, ax::sqrt_core<ax::input_limbs<pos64>>);
+  TIER_CHECK(sqrt,  out8,   pos64, ax::sqrt_core<ax::input_limbs<pos64>>);
+  TIER_CHECK(asin,  out20,  unit, ax::asin_core<ax::input_limbs<unit>>);
+  TIER_CHECK(acos,  out16c, unit, ax::acos_core<ax::input_limbs<unit>>);
+  TIER_CHECK(atanh, out20,  open1, ax::ahyp_core<ax::input_limbs<open1>, ax::in_mag<open1>, ax::ahyp::atanh>);
+}
+#undef TIER_CHECK
+
+TEST(MathAdaptiveTest, tables_agree_with_the_integer_path)
+{
+  // 256 slots: within the default table size.
+  using s8 = inside<{{rational{-128, 64}, rational{127, 64}}, rational{1, 64}}, round_nearest>;
+  using p8 = inside<{{rational{1, 64}, 4}, rational{1, 64}}, round_nearest>;
+  static_assert(ax::table_input<s8> && ax::table_output<out20>);
+  EXPECT_EQ((tier_mismatches<out20, s8, ax::trig_core<ax::input_limbs<s8>, ax::in_mag<s8>, ax::trig::sin, 1>>([](s8 x) { return am::sin_into<out20>(x); })), 0);
+  EXPECT_EQ((tier_mismatches<out40, s8, ax::exp_core<ax::input_limbs<s8>, ax::in_mag<s8>, ax::out_kmax<out40>>>([](s8 x) { return am::exp_into<out40>(x); })), 0);
+  EXPECT_EQ((tier_mismatches<outdec, p8, ax::log_core<ax::input_limbs<p8>>>([](p8 x) { return am::log_into<outdec>(x); })), 0);
+  // Results past Out's range keep the computed path, and its policy.
+  using small_clamp = inside<{{0, 4}, rational{1, 64}}, round_nearest | clamp>;
+  using table = ax::result_table<small_clamp, s8, ax::start_bits<small_clamp>,
+      [](s8 v) { return ax::exp_core<ax::input_limbs<s8>, ax::in_mag<s8>, ax::out_kmax<small_clamp>>{ax::exact_input(v)}; }>;
+  static_assert(!table::Table.Valid);                       // e^2 > 4
+  EXPECT_EQ(am::exp_into<small_clamp>(s8{1.984375}), small_clamp{4});
+  EXPECT_EQ(am::exp_into<small_clamp>(s8{1}), (small_clamp{rational{174, 64}}));   // e·64 = 173.97…
+}

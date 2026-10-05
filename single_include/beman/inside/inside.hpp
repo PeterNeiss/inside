@@ -9676,6 +9676,40 @@ namespace beman::inside::math::detail::ax
   //---------------------------------------------------------------------------
   // Exact values into fixed point.
   //---------------------------------------------------------------------------
+  // n / d for a one-limb d: the quotient and the remainder.
+  template <std::size_t K>
+  struct small_divmod { wide_uint<K> Quotient; umax Remainder; };
+
+  template <std::size_t K>
+  constexpr small_divmod<K> divmod_small(wide_uint<K> const& n, umax d) noexcept
+  {
+    small_divmod<K> r{wide_uint<K>{0}, 0};
+    for (std::size_t i = K; i-- > 0;)
+    {
+      const limb::pair<umax> qr = limb::div(r.Remainder, n.Word[i], d);
+      r.Quotient.Word[i] = qr.Hi;
+      r.Remainder = qr.Lo;
+    }
+    return r;
+  }
+
+  // n/d (d > 0) rounded to nearest, half away from zero; one-limb divisions
+  // when d fits a limb.
+  template <std::size_t K>
+  constexpr wide_sint<K> nearest_div(wide_sint<K> const& n, wide_sint<K> const& d) noexcept
+  {
+    if (bit_width_of(d) <= 64)
+    {
+      const umax dd = d.Word[0];
+      const bool neg = n.negative();
+      const auto [q, r] = divmod_small(wide_uint<K>{neg ? -n : n}, dd);
+      wide_sint<K> m{q};
+      if (r >= dd - r) m += wide_sint<K>{1};            // 2r ≥ d
+      return neg ? -m : m;
+    }
+    return rounded_div<round_mode::nearest>(n, d);
+  }
+
   // x·2^W rounded to the nearest integer (half away from zero): within ½ unit.
   template <int W, std::size_t K, std::size_t E>
   constexpr wide_sint<K> to_q(exact_frac<E> const& x) noexcept
@@ -9684,7 +9718,7 @@ namespace beman::inside::math::detail::ax
     using I = wide_sint<exact_max<E, K> + limbs_for_bits(shift) + 1>;
     I n{x.Num}, d{x.Den};
     if constexpr (W >= 0) n = n << W; else d = d << shift;
-    return static_cast<wide_sint<K>>(rounded_div<round_mode::nearest>(n, d));
+    return static_cast<wide_sint<K>>(nearest_div(n, d));
   }
 
   // ⌊log2 |x|⌋ for x != 0.
@@ -9772,23 +9806,6 @@ namespace beman::inside::math::detail::ax
     }
   }();
 
-  // n / d for a one-limb d: the quotient and the remainder.
-  template <std::size_t K>
-  struct small_divmod { wide_uint<K> Quotient; umax Remainder; };
-
-  template <std::size_t K>
-  constexpr small_divmod<K> divmod_small(wide_uint<K> const& n, umax d) noexcept
-  {
-    small_divmod<K> r{wide_uint<K>{0}, 0};
-    for (std::size_t i = K; i-- > 0;)
-    {
-      const limb::pair<umax> qr = limb::div(r.Remainder, n.Word[i], d);
-      r.Quotient.Word[i] = qr.Hi;
-      r.Remainder = qr.Lo;
-    }
-    return r;
-  }
-
   template <std::size_t K>
   constexpr wide_sint<K> div_small(wide_sint<K> const& v, umax d) noexcept
   {
@@ -9800,7 +9817,98 @@ namespace beman::inside::math::detail::ax
   // Out's slot offset of y·2^-S (S ≥ 1) rounded by M, as value-index rounding
   // (the sign rules of rounded_div).
   template <insidable Out, round_mode M, std::size_t K>
+  constexpr wide_sint<K + 2> fast_index_wide(wide_sint<K> const& y, int S) noexcept;
+
+  // The rounding step of fast_index: the magnitude's quotient b by p, its
+  // remainder r, and how the shifted-out part R compares with half a unit
+  // (−1 below, 0 equal, 1 above; R == 0 known separately).
+  template <round_mode M>
+  constexpr bool round_up(bool neg, umax b0, umax r, umax p, bool low_zero, int low_vs_half) noexcept
+  {
+    const bool inexact = r != 0 || !low_zero;
+    if constexpr (M == round_mode::floor)     return neg && inexact;
+    else if constexpr (M == round_mode::ceil) return !neg && inexact;
+    else if constexpr (M == round_mode::nearest || M == round_mode::half_even)
+    {
+      const umax d = p - r;
+      int cmp;
+      if (r > d)          cmp = 1;
+      else if (r == d)    cmp = low_zero ? 0 : 1;
+      else if (r + 1 < d) cmp = -1;
+      else                cmp = low_vs_half;
+      if constexpr (M == round_mode::nearest) return cmp >= 0;
+      else return cmp > 0 || (cmp == 0 && (b0 & 1u) != 0);
+    }
+    else return false;
+  }
+
+  template <insidable Out, round_mode M, std::size_t K>
   constexpr wide_sint<K + 2> fast_index(wide_sint<K> const& y, int S) noexcept
+  {
+    if constexpr (K == 1)
+    {
+      // One limb: |y|·q in two limbs, the shift and the division by p on
+      // limbs directly.
+      using J = wide_sint<3>;
+      constexpr umax p = static_cast<umax>(wide_numerator(notch_of<Out>));
+      constexpr umax q = static_cast<umax>(wide_denominator(notch_of<Out>));
+      constexpr umax top = umax{1} << 63;
+      const bool neg = y.negative();
+      const umax mag = neg ? umax{0} - y.Word[0] : y.Word[0];
+      const limb::pair<umax> a = limb::mul(mag, q);
+      umax h1 = 0, h0 = 0;
+      bool low_zero;
+      int vs_half;
+      auto cmp = [](umax x, umax h) { return x < h ? -1 : x == h ? 0 : 1; };
+      if (S < 64)
+      {
+        const umax mask = (umax{1} << S) - 1, low = a.Lo & mask;
+        h0 = (a.Lo >> S) | (a.Hi << (64 - S));
+        h1 = a.Hi >> S;
+        low_zero = low == 0;
+        vs_half = cmp(low, umax{1} << (S - 1));
+      }
+      else if (S == 64)
+      {
+        h0 = a.Hi;
+        low_zero = a.Lo == 0;
+        vs_half = cmp(a.Lo, top);
+      }
+      else if (S < 128)
+      {
+        const umax mask = (umax{1} << (S - 64)) - 1, lh = a.Hi & mask, hh = umax{1} << (S - 65);
+        h0 = a.Hi >> (S - 64);
+        low_zero = lh == 0 && a.Lo == 0;
+        vs_half = lh != hh ? cmp(lh, hh) : (a.Lo == 0 ? 0 : 1);
+      }
+      else
+      {
+        low_zero = a.Hi == 0 && a.Lo == 0;
+        vs_half = S > 128 ? -1 : (a.Hi != top ? cmp(a.Hi, top) : (a.Lo == 0 ? 0 : 1));
+      }
+      umax b1 = h1, b0 = h0, r = 0;
+      if constexpr (p != 1)
+      {
+        b1 = h1 / p;
+        const limb::pair<umax> d = limb::div(h1 % p, h0, p);
+        b0 = d.Hi;
+        r = d.Lo;
+      }
+      J m{0};
+      m.Word[0] = b0;
+      m.Word[1] = b1;
+      if (round_up<M>(neg, b0, r, p, low_zero, vs_half)) m += J{1};
+      constexpr J base = static_cast<J>(slot_base<Out>);
+      return (neg ? -m : m) - base;
+    }
+    else
+    {
+      return fast_index_wide<Out, M>(y, S);
+    }
+  }
+
+  template <insidable Out, round_mode M, std::size_t K>
+  constexpr wide_sint<K + 2> fast_index_wide(wide_sint<K> const& y, int S) noexcept
   {
     using U = wide_uint<K + 2>;
     using J = wide_sint<K + 2>;
@@ -9820,7 +9928,8 @@ namespace beman::inside::math::detail::ax
     a.Word[K] = carry;
     const U hi = a >> S;
     const U low = a - (hi << S);                          // R, in [0, 2^S)
-    const auto [b, r] = divmod_small(hi, p);
+    // A unit numerator (1/q notches) needs no division.
+    const auto [b, r] = p == 1 ? small_divmod<K + 2>{hi, 0} : divmod_small(hi, p);
     // Fraction of the magnitude past b: (r·2^S + R)/(p·2^S).
     const bool inexact = r != 0 || !low.is_zero();
     bool up = false;
@@ -9960,8 +10069,10 @@ namespace beman::inside::math::detail::ax
     }
   }
 
-  // The precision cap for a start precision W0.
-  constexpr int precision_cap(int W0) noexcept { return 8 * W0 > 1024 ? 8 * W0 : 1024; }
+  // The precision cap for a start precision W0: two doublings. A result still
+  // undecided at 4·W0 lies within 2^-4W0 of a rounding boundary — for an
+  // irrational value that is the rare case the cap gives up on (nearest slot).
+  constexpr int precision_cap(int W0) noexcept { return 4 * W0; }
 
   template <insidable Out, int W0, typename Core, typename P>
   constexpr Out evaluate(Core const& core, P&& policy)
@@ -9971,6 +10082,80 @@ namespace beman::inside::math::detail::ax
         return store_exact<Out>(*e, policy);
     return evaluate_from<Out, W0, precision_cap(W0)>(core, policy);
   }
+
+  //---------------------------------------------------------------------------
+  // The table tier: for an input with few slots, every result is computed at
+  // compile time (the same driver, so the same correctly rounded slots) and a
+  // call is one load. Only when every result lands inside Out's range — a
+  // result the policy would clamp, wrap or report keeps the computed path.
+  // BEMAN_INSIDE_MATH_TABLE_SLOTS sets the largest input (0 turns tables off).
+  //---------------------------------------------------------------------------
+#ifndef BEMAN_INSIDE_MATH_TABLE_SLOTS
+#  define BEMAN_INSIDE_MATH_TABLE_SLOTS 256
+#endif
+
+  // Out's slot offset for core's result (escalating as evaluate does), or
+  // −1 when it falls outside Out's range.
+  template <insidable Out, int W, int Cap, typename Core>
+  constexpr imax slot_from(Core const& core)
+  {
+    const auto a = core.template run<W>();
+    const auto d = decide<Out>(a);
+    auto in_range = [](auto const& i) -> imax {
+      using I = std::remove_cvref_t<decltype(i)>;
+      constexpr I count = static_cast<I>(grid_of<Out>.slot_count());
+      return (i.negative() || count < i) ? imax{-1} : static_cast<imax>(i);
+    };
+    if constexpr (2 * W <= Cap)
+      if (!d.Decided) return slot_from<Out, 2 * W, Cap>(core);
+    return in_range(d.Decided ? d.Index : nearest_index<Out>(a));
+  }
+
+  template <insidable Out, int W0, typename Core>
+  constexpr imax slot_of(Core const& core)
+  {
+    if constexpr (requires { core.exact(); })
+      if (const auto e = core.exact())
+      {
+        const auto i = exact_index<Out, out_rounding<Out>>(*e).Index;
+        using I = std::remove_cvref_t<decltype(i)>;
+        constexpr I count = static_cast<I>(grid_of<Out>.slot_count());
+        return (i.negative() || count < i) ? imax{-1} : static_cast<imax>(i);
+      }
+    return slot_from<Out, W0, precision_cap(W0)>(core);
+  }
+
+  template <insidable In>
+  inline constexpr bool table_input = !exact_valued<In> && notch_of<In> != 0
+      && grid_of<In>.slot_count() < grid_wide{BEMAN_INSIDE_MATH_TABLE_SLOTS};
+
+  template <insidable Out>
+  inline constexpr bool table_output = slotted<Out> && !exact_valued<Out>;
+
+  // The slot offset of an input value (0 … slot count).
+  template <insidable In>
+  constexpr std::size_t offset_of(In const& x) noexcept
+  { return static_cast<std::size_t>(value_index<imax>(x) - static_cast<imax>(slot_base<In>)); }
+
+  // Out's slot for In's slot I, or −1 past Out's range: one constant
+  // expression per entry, so each has the compiler's whole evaluation budget.
+  template <insidable Out, insidable In, int W0, auto MakeCore, std::size_t I>
+  inline constexpr imax table_slot =
+      slot_of<Out, W0>(MakeCore(In::from_raw(raw_from_offset<In>(static_cast<umax>(I)))));
+
+  // Out's raws for every In slot; Valid when all lie in Out's range. MakeCore
+  // builds the core from an In value.
+  template <insidable Out, insidable In, int W0, auto MakeCore>
+  struct result_table
+  {
+    static constexpr std::size_t N = static_cast<std::size_t>(static_cast<imax>(grid_of<In>.slot_count())) + 1;
+    struct data { std::array<raw_t<Out>, N> Raw; bool Valid; };
+    static constexpr data Table = []<std::size_t... I>(std::index_sequence<I...>) {
+      constexpr bool valid = ((table_slot<Out, In, W0, MakeCore, I> >= 0) && ...);
+      if constexpr (!valid) return data{{}, false};
+      else return data{{raw_from_offset<Out>(static_cast<umax>(table_slot<Out, In, W0, MakeCore, I>))...}, true};
+    }(std::make_index_sequence<N>{});
+  };
 
   template <insidable Out, int W0, typename Core>
   constexpr Out evaluate(Core const& core)
@@ -10000,14 +10185,13 @@ namespace beman::inside::math::detail::ax
   constexpr wide_sint<K> inverse_series(int n, int sign, int G) noexcept
   {
     using I = wide_sint<K>;
-    const I nn{n}, n2{n * n};
-    I p = (I{1} << G) / nn;                               // 2^G / n^(2k+1)
+    I p = div_small(I{1} << G, static_cast<umax>(n));     // 2^G / n^(2k+1)
     I sum{0};
     for (int k = 0; !p.is_zero(); ++k)
     {
-      const I t = p / I{2 * k + 1};
+      const I t = div_small(p, static_cast<umax>(2 * k + 1));
       sum = (k % 2 != 0 && sign < 0) ? sum - t : sum + t;
-      p = p / n2;
+      p = div_small(p, static_cast<umax>(n) * static_cast<umax>(n));
     }
     return sum;
   }
@@ -10129,14 +10313,16 @@ namespace beman::inside::math::detail::ax
     using I = wide_sint<KI>;
     I n{x.Num}, d{x.Den};
     if (W >= 0) n = n << W; else d = d << (-W);
-    return static_cast<wide_sint<K>>(rounded_div<round_mode::nearest>(n, d));
+    return static_cast<wide_sint<K>>(nearest_div(n, d));
   }
 
   //---------------------------------------------------------------------------
-  // Series kernels on Q.S values. Each returns the value and an error bound in
-  // units 2^-S. Every product and quotient truncates (within 1 unit), and the
-  // carried term errors stay below a few units, so a sum of n terms is within
-  // a small multiple of n.
+  // Polynomial kernels on Q.S values: Taylor polynomials in Horner form with
+  // coefficients rounded to scale S at compile time (no divisions at
+  // runtime). Each returns the value and an error bound in units 2^-S: the
+  // coefficients are within ½ unit, each Horner step truncates once, and the
+  // argument's own error passes through the derivative; the bounds below
+  // round those sums up generously.
   //---------------------------------------------------------------------------
   template <std::size_t K>
   struct fx
@@ -10145,65 +10331,120 @@ namespace beman::inside::math::detail::ax
     umax Error;
   };
 
-  // e^r for |r| ≤ 1/2.
-  template <std::size_t K>
-  constexpr fx<K> exp_series(wide_sint<K> const& r, int S) noexcept
+  // A positive double as mantissa·2^exponent, so a term bound far below the
+  // double range (2^-S for S in the thousands) can still be compared.
+  struct scaled_bound
   {
-    using I = wide_sint<K>;
-    I term = one_q<K>(S), sum = term;
-    umax n = 0;
-    for (int k = 1; !term.is_zero(); ++k, ++n)
+    double Mant = 1;
+    int Exp = 0;
+    constexpr void mul(double f) noexcept
     {
-      term = div_small(mul_q(term, r, S), static_cast<umax>(k));
-      sum += term;
+      Mant *= f;
+      while (Mant < 0.5) { Mant *= 2; --Exp; }
+      while (Mant >= 1)  { Mant /= 2; ++Exp; }
     }
-    return {sum, 4 * n + 2};
+    constexpr bool below(int e) const noexcept { return Exp < e; }   // < 2^e
+  };
+
+  // Terms for Σ_k x^(Step·k + Off)/Den(k) with |x| ≤ R to reach 2^-(S+3):
+  // the first omitted term is below that, and so is the rest (each term is
+  // at most half the one before it).
+  enum class series { exp, sin, cos, atanh };
+
+  template <series Kind, int S>
+  inline constexpr int series_terms = [] {
+    constexpr double R = Kind == series::exp ? 0.36 : Kind == series::atanh ? 0.18 : 0.8;
+    scaled_bound t;
+    int n = 0;
+    for (;; ++n)
+    {
+      // the term of index n + 1 (the first one left out)
+      const int k = n + 1;
+      scaled_bound u;
+      if constexpr (Kind == series::exp)
+        for (int i = 1; i <= k; ++i) u.mul(R / i);
+      else if constexpr (Kind == series::sin)
+        for (int i = 1; i <= 2 * k + 1; ++i) u.mul(R / i);
+      else if constexpr (Kind == series::cos)
+        for (int i = 1; i <= 2 * k; ++i) u.mul(R / i);
+      else
+      {
+        for (int i = 0; i < 2 * k + 1; ++i) u.mul(R);
+        u.mul(1.0 / (2 * k + 1));
+      }
+      if (u.below(-(S + 3))) return n;
+    }
+  }();
+
+  // Coefficients at scale S, within ½ unit: exp 1/k!, sin (−1)^k/(2k+1)!,
+  // cos (−1)^k/(2k)!, atanh 1/(2k+1), atan (−1)^k/(2k+1).
+  template <series Kind, int S, bool Alternate = false>
+  inline constexpr auto series_coef = [] {
+    constexpr int N = series_terms<Kind, S>;
+    constexpr int G = 16;                                // guard bits for the running quotient
+    using I = fixed_t<S + G + 2>;
+    std::array<fixed_t<S + 2>, N + 1> c{};
+    I v = I{1} << (S + G);
+    for (int k = 0; k <= N; ++k)
+    {
+      if constexpr (Kind == series::atanh)
+        v = div_small(I{1} << (S + G), static_cast<umax>(2 * k + 1));
+      else if (k > 0)
+      {
+        const int d = Kind == series::exp ? k : Kind == series::sin ? (2 * k) * (2 * k + 1) : (2 * k - 1) * (2 * k);
+        v = div_small(v, static_cast<umax>(d));
+      }
+      const bool neg = (Kind == series::sin || Kind == series::cos || Alternate) && k % 2 != 0;
+      const auto r = static_cast<fixed_t<S + 2>>(round_shift(v, G));
+      c[static_cast<std::size_t>(k)] = neg ? -r : r;
+    }
+    return c;
+  }();
+
+  // Σ c_k x^k by Horner at scale S.
+  template <series Kind, int S, bool Alternate, std::size_t K>
+  constexpr wide_sint<K> horner(wide_sint<K> const& x) noexcept
+  {
+    constexpr auto& c = series_coef<Kind, S, Alternate>;
+    wide_sint<K> p = static_cast<wide_sint<K>>(c[c.size() - 1]);
+    for (std::size_t k = c.size() - 1; k-- > 0;)
+      p = static_cast<wide_sint<K>>(c[k]) + mul_q(p, x, S);
+    return p;
   }
+
+  // e^r for |r| ≤ 0.36, r within dr units.
+  template <int S, std::size_t K>
+  constexpr fx<K> exp_series(wide_sint<K> const& r, umax dr) noexcept
+  { return {horner<series::exp, S, false>(r), 2 * dr + 8}; }
+
+  // sin r and cos r for |r| ≤ 0.8, r within dr units.
+  template <int S, std::size_t K>
+  constexpr fx<K> sin_series(wide_sint<K> const& r, umax dr) noexcept
+  {
+    const wide_sint<K> z = mul_q(r, r, S);
+    return {mul_q(r, horner<series::sin, S, false>(z), S), 3 * dr + 12};
+  }
+  template <int S, std::size_t K>
+  constexpr fx<K> cos_series(wide_sint<K> const& r, umax dr) noexcept
+  { return {horner<series::cos, S, false>(mul_q(r, r, S)), 4 * dr + 12}; }
 
   // log m for m in [0.7, 1.42], m within dm units: 2·atanh(z), z = (m−1)/(m+1),
   // |z| ≤ 0.18.
-  template <std::size_t K>
-  constexpr fx<K> log_series(wide_sint<K> const& m, umax dm, int S) noexcept
+  template <int S, std::size_t K>
+  constexpr fx<K> log_series(wide_sint<K> const& m, umax dm) noexcept
   {
     using I = wide_sint<K>;
     const I one = one_q<K>(S);
     const I z = div_q(m - one, m + one, S);
-    const I z2 = mul_q(z, z, S);
-    I p = z, sum{0};
-    umax n = 0;
-    for (int k = 0; !p.is_zero(); ++k, ++n)
-    {
-      sum += div_small(p, static_cast<umax>(2 * k + 1));
-      p = mul_q(p, z2, S);
-    }
-    return {sum << 1, 2 * (3 * n + 4) + 3 * dm};
+    const I p = horner<series::atanh, S, false>(mul_q(z, z, S));
+    return {mul_q(z, p, S) << 1, 3 * dm + 12};
   }
 
-  // sin r and cos r for |r| ≤ 0.8, r within dr units.
-  template <std::size_t K>
-  struct sincos_fx { fx<K> Sin; fx<K> Cos; };
-
-  template <std::size_t K>
-  constexpr sincos_fx<K> sincos_series(wide_sint<K> const& r, umax dr, int S) noexcept
-  {
-    using I = wide_sint<K>;
-    const I r2 = mul_q(r, r, S);
-    I t = r, s = r;
-    umax ns = 0;
-    for (int k = 1; !t.is_zero(); ++k, ++ns)
-    {
-      t = -div_small(mul_q(t, r2, S), static_cast<umax>((2 * k) * (2 * k + 1)));
-      s += t;
-    }
-    I u = one_q<K>(S), c = u;
-    umax nc = 0;
-    for (int k = 1; !u.is_zero(); ++k, ++nc)
-    {
-      u = -div_small(mul_q(u, r2, S), static_cast<umax>((2 * k - 1) * (2 * k)));
-      c += u;
-    }
-    return {{s, 3 * ns + 3 + dr}, {c, 3 * nc + 3 + dr}};
-  }
+  // atan u for |u| ≤ 1/16 (the atanh table, sized for 0.18, with
+  // alternating signs), u within du units.
+  template <int S, std::size_t K>
+  constexpr fx<K> atan_series(wide_sint<K> const& u, umax du) noexcept
+  { return {mul_q(u, horner<series::atanh, S, true>(mul_q(u, u, S)), S), du + 6}; }
 
   // √a for a ≥ 0 at scale S: ⌊√(a·2^S)⌋, within da/2 + 1 units (a ≥ 1/4).
   template <std::size_t K>
@@ -10213,55 +10454,90 @@ namespace beman::inside::math::detail::ax
     return static_cast<wide_sint<K>>(isqrt(D{a} << S));
   }
 
-  // atan t for |t| ≤ 1, t within dt units. Two half-angle steps
-  // t ← t/(1 + √(1+t²)) bring |t| below 0.2 (each halves an input error and
-  // adds at most 3 units); the series result is then multiplied by 4.
-  template <std::size_t K>
-  constexpr fx<K> atan_fixed(wide_sint<K> t, umax dt, int S) noexcept
+  // atan(j/8) for j = 0 … 8 at scale S, within 1 unit: two half-angle steps
+  // t ← t/(1 + √(1+t²)) bring j/8 below 1/4, then the series with no table.
+  template <int S>
+  inline constexpr auto atan_eighths = [] {
+    constexpr int T = S + 16;
+    using I = fixed_t<T + 8>;
+    constexpr std::size_t K = limbs_of<I>;
+    std::array<fixed_t<S + 2>, 9> a{};
+    const I one = one_q<K>(T);
+    for (int j = 0; j <= 8; ++j)
+    {
+      I t = (I{j} << T) / I{8};
+      for (int i = 0; i < 3; ++i) t = div_q(t, one + sqrt_q(one + mul_q(t, t, T), T), T);
+      // |t| ≤ tan(π/32) < 0.1; a plain alternating series.
+      const I t2 = mul_q(t, t, T);
+      I p = t, sum{0};
+      for (int k = 0; !p.is_zero(); ++k)
+      {
+        const I term = div_small(p, static_cast<umax>(2 * k + 1));
+        sum = (k % 2 == 0) ? sum + term : sum - term;
+        p = mul_q(p, t2, T);
+      }
+      a[static_cast<std::size_t>(j)] = static_cast<fixed_t<S + 2>>(round_shift(sum << 3, T - S));
+    }
+    return a;
+  }();
+
+  // atan t for |t| ≤ 1, t within dt units: c = j/8 nearest t, then
+  // atan t = atan c + atan((t − c)/(1 + t·c)) with |(t − c)/(1 + t·c)| ≤ 1/16.
+  template <int S, std::size_t K>
+  constexpr fx<K> atan_fixed(wide_sint<K> const& t, umax dt) noexcept
   {
     using I = wide_sint<K>;
     const I one = one_q<K>(S);
-    for (int i = 0; i < 2; ++i)
-      t = div_q(t, one + sqrt_q(one + mul_q(t, t, S), S), S);
-    const I t2 = mul_q(t, t, S);
-    I p = t, sum{0};
-    umax n = 0;
-    for (int k = 0; !p.is_zero(); ++k, ++n)
-    {
-      const I term = div_small(p, static_cast<umax>(2 * k + 1));
-      sum = (k % 2 == 0) ? sum + term : sum - term;
-      p = mul_q(p, t2, S);
-    }
-    return {sum << 2, 4 * (3 * n + 8) + dt};
+    const I j = round_shift(t, S - 3);                   // round(8t), in [−8, 8]
+    const int jj = static_cast<int>(static_cast<imax>(j));
+    const I c = j << (S - 3);                            // exact
+    const I u = div_q(t - c, one + mul_q(t, c, S), S);   // within dt + 2
+    const fx<K> a = atan_series<S>(u, dt + 2);
+    const I base = static_cast<I>(atan_eighths<S>[static_cast<std::size_t>(jj < 0 ? -jj : jj)]);
+    return {(jj < 0 ? -base : base) + a.Value, a.Error + 1};
   }
 
-  // log a for a ≥ 1 at scale S, a within da units: a = m·2^b with m in
-  // [0.7, 1.42], log a = log m + b·ln 2. LN2 is ln 2 at scale S.
-  template <std::size_t K>
-  constexpr fx<K> log_fixed(wide_sint<K> const& a, umax da, int S, wide_sint<K> const& ln2) noexcept
+  // log a for a > 0 at scale S, a within da units: a = m·2^b with m in
+  // [0.7, 1.42], log a = log m + b·ln 2.
+  template <int S, std::size_t K>
+  constexpr fx<K> log_fixed(wide_sint<K> const& a, umax da) noexcept
   {
     using I = wide_sint<K>;
     int b = bit_width_of(a) - 1 - S;                     // 2^b ≤ a/2^S < 2^(b+1)
     I m = b >= 0 ? a >> b : a << (-b);
     if (mul_q(m, m, S) > (one_q<K>(S) << 1)) { ++b; m = b >= 0 ? a >> b : a << (-b); }
     const umax dm = (b >= 0 ? (da >> b) : (da << (-b))) + 1;
-    const fx<K> l = log_series(m, dm, S);
-    return {l.Value + I{b} * ln2, l.Error + static_cast<umax>(b < 0 ? -b : b) + 1};
+    const fx<K> l = log_series<S>(m, dm);
+    return {l.Value + I{b} * static_cast<I>(ln2_q<S>), l.Error + static_cast<umax>(b < 0 ? -b : b) + 1};
   }
 
+  // 1/ln 2 and 2/π at scale S (within 1 unit), for range reduction by a
+  // product.
+  template <int S>
+  inline constexpr fixed_t<S + 2> log2e_q = [] {
+    using I = fixed_t<2 * S + 24>;
+    return static_cast<fixed_t<S + 2>>((I{1} << (2 * S + 16)) / static_cast<I>(ln2_q<S + 16>));
+  }();
+  template <int S>
+  inline constexpr fixed_t<S + 2> two_over_pi_q = [] {
+    using I = fixed_t<2 * S + 24>;
+    return static_cast<fixed_t<S + 2>>((I{1} << (2 * S + 17)) / static_cast<I>(pi_q<S + 16>));
+  }();
+
   // e^t for t at scale S, within dt units: e^r·2^k for t = k·ln 2 + r, as an
-  // approx at scale S − k. LN2 is ln 2 at scale S. Past KMax the value lies
-  // above 2^(KMax + 1): returned as exactly 2^(KMax + 2), which every output
-  // with magnitude below 2^KMax places past its Upper. Below 2^-(S+1) it is
-  // returned as the interval [0, 2^-(S+1)].
-  template <std::size_t K>
-  constexpr approx<K> exp_fixed(wide_sint<K> const& t, umax dt, int S, wide_sint<K> const& ln2, int KMax) noexcept
+  // approx at scale S − k. k comes from t·(1/ln 2), so |r| ≤ ln 2/2 plus a
+  // hair (the series covers 0.36). Past KMax the value lies above 2^(KMax+1):
+  // returned as exactly 2^(KMax + 2), which every output with magnitude below
+  // 2^KMax places past its Upper. Below 2^-(S+1) it is returned as the
+  // interval [0, 2^-(S+1)].
+  template <int S, std::size_t K>
+  constexpr approx<K> exp_fixed(wide_sint<K> const& t, umax dt, int KMax) noexcept
   {
     using I = wide_sint<K>;
-    const I k = rounded_div<round_mode::nearest>(t, ln2);
+    const I k = round_shift(mul_q(t, static_cast<I>(log2e_q<S>), S), S);
     if (I{KMax} < k) return {I{1}, -(KMax + 2), 0};
     if (k < I{-(S + 2)}) return {I{1}, S + 2, 1};
-    const fx<K> e = exp_series(t - k * ln2, S);
+    const fx<K> e = exp_series<S>(t - k * static_cast<I>(ln2_q<S>), 0);
     const int kk = static_cast<int>(static_cast<imax>(k));
     const umax ak = static_cast<umax>(kk < 0 ? -kk : kk);
     return {e.Value, S - kk, e.Error + 2 * (dt + ak + 1)};
@@ -10372,7 +10648,7 @@ namespace beman::inside::math::detail::ax
     int e = floor_log2(x);
     I m = to_q_at<K, KI>(x, S - e);
     if (mul_q(m, m, S) > (one_q<K>(S) << 1)) { ++e; m = to_q_at<K, KI>(x, S - e); }
-    const fx<K> l = log_series(m, 1, S);
+    const fx<K> l = log_series<S>(m, 1);
     const I ln2 = static_cast<I>(ln2_q<S>);
     return {l.Value + I{e} * ln2, l.Error + static_cast<umax>(e < 0 ? -e : e) + 1};
   }
@@ -10396,7 +10672,7 @@ namespace beman::inside::math::detail::ax
     const F c = exact_one<2 * E + 1>() + exact_frac<2 * E + 1>{-(xx.Num * xx.Num), xx.Den * xx.Den};
     const I s = sqrt_exact_q<S, K>(c);                  // ≥ 0.866, within 1
     const I t = div_q(to_q<S, K>(x), s, S);             // |t| ≤ 0.58, within 3
-    return atan_fixed(t, 3, S);
+    return atan_fixed<S>(t, 3);
   }
 
   // asin √y for 0 ≤ y ≤ 1/4 (exact): u = √y within 1, then atan(u/√(1−u²)).
@@ -10408,7 +10684,7 @@ namespace beman::inside::math::detail::ax
     const I u = sqrt_exact_q<S, K>(y);
     const I c = sqrt_q(one - mul_q(u, u, S), S);         // within 3
     const I t = div_q(u, c, S);                          // within 5
-    return atan_fixed(t, 5, S);
+    return atan_fixed<S>(t, 5);
   }
 
   //---------------------------------------------------------------------------
@@ -10433,7 +10709,7 @@ namespace beman::inside::math::detail::ax
       constexpr int S = W + 8 + KMax;
       using I = fixed_t<S + Mag + 8>;
       constexpr std::size_t K = limbs_of<I>;
-      return exp_fixed(to_q<S, K>(X), 1, S, static_cast<I>(ln2_q<S>), KMax);
+      return exp_fixed<S>(to_q<S, K>(X), 1, KMax);
     }
   };
 
@@ -10458,8 +10734,8 @@ namespace beman::inside::math::detail::ax
       const I ln2 = static_cast<I>(ln2_q<S>);
       I r = mul_q(to_q<S, K>(f), ln2, S);                // within 2
       if (r > (ln2 >> 1)) { r -= ln2; ++kk; }
-      const fx<K> e = exp_series(r, S);
-      return approx<K>{e.Value, S - kk, e.Error + 6};
+      const fx<K> e = exp_series<S>(r, 3);
+      return approx<K>{e.Value, S - kk, e.Error};
     }
   };
 
@@ -10589,22 +10865,23 @@ namespace beman::inside::math::detail::ax
     {
       constexpr int S = W + 10 + (Fn == trig::tan ? KMax + 4 : 0);
       constexpr int T = S + Mag + 4;                     // reduce with Mag more bits
-      using I = fixed_t<(Fn == trig::tan ? 2 * S : S) + 8>;
+      using I = fixed_t<(Fn == trig::tan ? 2 * S + 8 : S + 2)>;   // |sin|, |cos| ≤ 1
       using R = fixed_t<T + Mag + 8>;
       constexpr std::size_t K = limbs_of<I>;
       const R xq = to_q<T, limbs_of<R>>(X);
       const R hp = static_cast<R>(pi_q<T - 1>);          // π/2 within 1
-      const R k = rounded_div<round_mode::nearest>(xq, hp);
-      const I r = static_cast<I>(round_shift(xq - k * hp, T - S));   // within 2
-      const auto sc = sincos_series(r, 2, S);
+      const R k = round_shift(mul_q(xq, static_cast<R>(two_over_pi_q<T>), T), T);   // round(x·2/π)
+      const I r = static_cast<I>(round_shift(xq - k * hp, T - S));   // |r| ≤ π/4 + a hair, within 2
       const unsigned q = static_cast<unsigned>(k.Word[0] & 3u);
       // sin x and cos x by quadrant: (s, c), (c, −s), (−s, −c), (−c, s).
-      const fx<K> sn = (q == 0) ? sc.Sin : (q == 1) ? sc.Cos : (q == 2) ? fx<K>{-sc.Sin.Value, sc.Sin.Error} : fx<K>{-sc.Cos.Value, sc.Cos.Error};
-      const fx<K> cs = (q == 0) ? sc.Cos : (q == 1) ? fx<K>{-sc.Sin.Value, sc.Sin.Error} : (q == 2) ? fx<K>{-sc.Cos.Value, sc.Cos.Error} : sc.Sin;
-      if constexpr (Fn == trig::sin) return approx<K>{sn.Value, S, sn.Error};
-      else if constexpr (Fn == trig::cos) return approx<K>{cs.Value, S, cs.Error};
+      auto neg = [](fx<K> f) { return fx<K>{-f.Value, f.Error}; };
+      auto sin_x = [&] { return (q == 0) ? sin_series<S>(r, 2) : (q == 1) ? cos_series<S>(r, 2) : (q == 2) ? neg(sin_series<S>(r, 2)) : neg(cos_series<S>(r, 2)); };
+      auto cos_x = [&] { return (q == 0) ? cos_series<S>(r, 2) : (q == 1) ? neg(sin_series<S>(r, 2)) : (q == 2) ? neg(cos_series<S>(r, 2)) : sin_series<S>(r, 2); };
+      if constexpr (Fn == trig::sin) { const fx<K> sn = sin_x(); return approx<K>{sn.Value, S, sn.Error}; }
+      else if constexpr (Fn == trig::cos) { const fx<K> cs = cos_x(); return approx<K>{cs.Value, S, cs.Error}; }
       else
       {
+        const fx<K> sn = sin_x(), cs = cos_x();
         // tan = sin/cos. Error: (δs + |t|·δc)/|c| + 1 units.
         const I ac = cs.Value.negative() ? -cs.Value : cs.Value;
         const I as = sn.Value.negative() ? -sn.Value : sn.Value;
@@ -10629,8 +10906,8 @@ namespace beman::inside::math::detail::ax
   {
     using I = wide_sint<K>;
     if (!(exact_one<E>() < abs(x)))
-      return atan_fixed(to_q<S, K>(x), 1, S);
-    const fx<K> a = atan_fixed(to_q<S, K>(inverse(x)), 1, S);
+      return atan_fixed<S>(to_q<S, K>(x), 1);
+    const fx<K> a = atan_fixed<S>(to_q<S, K>(inverse(x)), 1);
     const I hp = static_cast<I>(pi_q<S - 1>);
     return {(x.Num.negative() ? -hp : hp) - a.Value, a.Error + 1};
   }
@@ -10645,7 +10922,7 @@ namespace beman::inside::math::detail::ax
     constexpr auto run() const
     {
       constexpr int S = W + 10;
-      using I = fixed_t<S + 8>;
+      using I = fixed_t<S + 3>;                          // |atan| < 2, 1 + t·c ≤ 2
       constexpr std::size_t K = limbs_of<I>;
       const fx<K> a = atan_exact<S, K>(X);
       return approx<K>{a.Value, S, a.Error};
@@ -10764,24 +11041,23 @@ namespace beman::inside::math::detail::ax
       constexpr int S = A + KM + 4;
       using I = fixed_t<S + Mag + 8>;
       constexpr std::size_t K = limbs_of<I>;
-      const I ln2 = static_cast<I>(ln2_q<S>);
       const bool neg = X.Num.negative();
       const I ax = to_q<S, K>(abs(X));                   // within ½
       if constexpr (Fn == hyp::tanh)
       {
         // tanh |x| = (1 − g)/(1 + g), g = e^(−2|x|) ≤ 1.
-        const fx<K> g = rescale(exp_fixed(-(ax << 1), 1, S, ln2, KM), A);
+        const fx<K> g = rescale(exp_fixed<S>(-(ax << 1), 1, KM), A);
         const I one = one_q<K>(A);
         const I t = div_q(one - g.Value, one + g.Value, A);
         return approx<K>{neg ? -t : t, A, 2 * g.Error + 2};
       }
       else
       {
-        const approx<K> p = exp_fixed(ax, 1, S, ln2, KM);
+        const approx<K> p = exp_fixed<S>(ax, 1, KM);
         if (p.Scale < 0 && p.Error == 0)                  // e^|x| past 2^KM: past Out
           return approx<K>{(Fn == hyp::sinh && neg) ? I{-1} : I{1}, -(KMax + 2), 0};
         const fx<K> P = rescale(p, A);
-        const fx<K> M = rescale(exp_fixed(-ax, 1, S, ln2, KM), A);
+        const fx<K> M = rescale(exp_fixed<S>(-ax, 1, KM), A);
         if constexpr (Fn == hyp::cosh)
           return approx<K>{(P.Value + M.Value) >> 1, A, (P.Error + M.Error) / 2 + 1};
         else
@@ -10825,7 +11101,7 @@ namespace beman::inside::math::detail::ax
       {
         const F r = Fn == ahyp::asinh ? a * a + one : (a + F{-one}) * (a + one);
         const I v = to_q<S, K>(a) + sqrt_exact_q<S, K>(r);   // ≥ 1, within 2
-        const fx<K> l = log_fixed(v, 2, S, static_cast<I>(ln2_q<S>));
+        const fx<K> l = log_fixed<S>(v, 2);
         return approx<K>{(Fn == ahyp::asinh && neg) ? -l.Value : l.Value, S, l.Error};
       }
     }
@@ -10870,7 +11146,7 @@ namespace beman::inside::math::detail::ax
       const fx<K> l = log_exact<SL, K>(B);
       const I t = round_shift(mul_q(l.Value, static_cast<I>(Exp.Num), 0) / static_cast<I>(Exp.Den), SL - S);
       const umax dt = (l.Error >> (SL - S - MagE)) + 2;
-      return exp_fixed(t, dt, S, static_cast<I>(ln2_q<S>), KMax);
+      return exp_fixed<S>(t, dt, KMax);
     }
   };
 
@@ -11003,6 +11279,79 @@ namespace beman::inside::math::detail::ax
     else return *grid_gcd(notch_of<A>, notch_of<B>);
 #endif
   }();
+
+  //---------------------------------------------------------------------------
+  // The double tier. Where an FPU is present, the double engine's kernels
+  // (cmath_double.hpp) give the value first: within 2^-40 of the result,
+  // relatively, plus 2^-44·max(1, |x|) absolutely. That bound has a wide
+  // margin over the kernels' measured error (about one ulp, 2^-52, inside
+  // the argument ranges below). When the bound places the result in one slot,
+  // that slot is the correctly rounded result; otherwise the integer path
+  // decides, so a result never depends on which path ran. Used at runtime
+  // only, for inputs whose every value is a double exactly and outputs of up
+  // to 36 bits.
+  //---------------------------------------------------------------------------
+#ifndef BEMAN_INSIDE_MATH_NO_FP
+  inline constexpr bool fp_tier_available = true;
+#else
+  inline constexpr bool fp_tier_available = false;
+#endif
+
+  // Every value of In is a double: a dyadic notch, and values of at most 53
+  // significant bits.
+  template <insidable In>
+  inline constexpr bool fp_exact_input = [] {
+    if constexpr (exact_valued<In> || notch_of<In> == 0) return false;
+    else
+    {
+      const grid_wide q = wide_denominator(notch_of<In>), p = wide_numerator(notch_of<In>);
+      const bool dyadic = (grid_wide{1} << (grid_bits(q) - 1)) == q;
+      return dyadic && grid_magnitude_bits<In> + grid_bits(q) + grid_bits(p) <= 53;
+    }
+  }();
+
+  template <insidable Out>
+  inline constexpr bool fp_output = slotted<Out> && !exact_valued<Out> && out_bits<Out> + mag_bits<Out> <= 36;
+
+  template <insidable Out, insidable... Ins>
+  inline constexpr bool fp_tier = fp_tier_available && fp_output<Out> && (fp_exact_input<Ins> && ...);
+
+  // An input's value as a double, exactly (fp_exact_input): its value index
+  // times the dyadic notch.
+  template <insidable In>
+  inline constexpr double notch_double =
+      static_cast<double>(static_cast<imax>(wide_numerator(notch_of<In>)))
+    / static_cast<double>(static_cast<imax>(wide_denominator(notch_of<In>)));
+
+  template <insidable In>
+  constexpr double exact_double(In const& x) noexcept
+  {
+    if constexpr (fp_raw<In> || point_raw<In>) return static_cast<double>(x);
+    else return static_cast<double>(value_index<imax>(x)) * notch_double<In>;
+  }
+
+  // The tier's answer for a kernel value v at an argument of magnitude xmag:
+  // the slot, when the bound decides it.
+  template <insidable Out>
+  inline std::optional<Out> fp_decide(double v, double xmag)
+  {
+    if (!(v - v == 0)) return std::nullopt;               // inf or NaN
+    int e = 0;
+    const double m = ::beman::inside::detail::frexp(v, &e);   // v = m·2^e, |m| in [0.5, 1)
+    const imax y = static_cast<imax>(::beman::inside::detail::ldexp(m, 53));
+    const int scale = 53 - e;
+    const double abs_units = ::beman::inside::detail::ldexp(xmag > 1 ? xmag : 1.0, scale - 44);
+    if (!(abs_units < 0x1p62)) return std::nullopt;
+    const umax rel_units = (static_cast<umax>(y < 0 ? -y : y) >> 40) + 1;
+    const approx<1> a{wide_sint<1>{y}, scale, rel_units + static_cast<umax>(abs_units) + 1};
+    const auto d = decide<Out>(a);
+    if (!d.Decided) return std::nullopt;
+    return store<Out>(d.Index);
+  }
+
+  // The kernels' safe argument ranges (compile-time, from In's grid).
+  template <insidable In>
+  inline constexpr double in_max = static_cast<double>(max_abs_int<In>);
 } // namespace beman::inside::math::detail::ax
 
 namespace beman::inside::math::adaptive
@@ -11010,6 +11359,30 @@ namespace beman::inside::math::adaptive
   namespace ax = ::beman::inside::math::detail::ax;
   using ::beman::inside::detail::exact_valued;
   using ::beman::inside::detail::grid_rational;
+
+  // The double tier's attempt, inside an _into form (nothing without an FPU).
+#ifndef BEMAN_INSIDE_MATH_NO_FP
+#  define BEMAN_INSIDE_AX_FP(Out, call, xmag, ok)                                       \
+    if constexpr (ok)                                                                   \
+      if !consteval                                                                     \
+      {                                                                                 \
+        namespace fpk = ::beman::inside::math::dbl::detail;                            \
+        if (const auto r = ax::fp_decide<Out>(call, xmag)) return *r;                   \
+      }
+#else
+#  define BEMAN_INSIDE_AX_FP(Out, call, xmag, ok)
+#endif
+
+  // The table tier's lookup, inside an _into form: In has few slots and every
+  // result lies in Out's range.
+#define BEMAN_INSIDE_AX_TABLE(Out, In, x)                                               \
+    if constexpr (ax::table_input<In> && ax::table_output<Out>)                         \
+    {                                                                                   \
+      using table = ax::result_table<Out, In, ax::start_bits<Out>,                      \
+                                     [](In v) { return core{ax::exact_input(v)}; }>;    \
+      if constexpr (table::Table.Valid)                                                 \
+        return Out::from_raw(table::Table.Raw[ax::offset_of(x)]);                       \
+    }
 
   // Every transcendental rounds onto the output grid: Out's policy needs a
   // rounding mode, like any assignment that may round.
@@ -11021,45 +11394,51 @@ namespace beman::inside::math::adaptive
         "with a rounding mode (round_nearest, round_floor, ...)");
   }
 
-#define BEMAN_INSIDE_AX_UNARY(fn, ...)                                                  \
+#define BEMAN_INSIDE_AX_UNARY(fn, fp_ok, ...)                                           \
   template <insidable Out, insidable In>                                                \
   [[nodiscard]] constexpr Out fn##_into(In x)                                           \
   {                                                                                     \
     require_rounding<Out>();                                                            \
     using core = __VA_ARGS__;                                                           \
+    BEMAN_INSIDE_AX_TABLE(Out, In, x)                                                   \
+    BEMAN_INSIDE_AX_FP(Out, fpk::fp_##fn(ax::exact_double(x)),                       \
+                       ax::in_max<In>, (ax::fp_tier<Out, In> && (fp_ok)))               \
     return ax::evaluate<Out, ax::start_bits<Out>>(core{ax::exact_input(x)});            \
   }
 
-  BEMAN_INSIDE_AX_UNARY(exp, ax::exp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::out_kmax<Out>>)
-  BEMAN_INSIDE_AX_UNARY(exp2, ax::exp2_core<ax::input_limbs<In>, ax::in_mag<In>, ax::out_kmax<Out>>)
-  BEMAN_INSIDE_AX_UNARY(sin, ax::trig_core<ax::input_limbs<In>, ax::in_mag<In>, ax::trig::sin, 1>)
-  BEMAN_INSIDE_AX_UNARY(cos, ax::trig_core<ax::input_limbs<In>, ax::in_mag<In>, ax::trig::cos, 1>)
-  BEMAN_INSIDE_AX_UNARY(atan, ax::atan_core<ax::input_limbs<In>>)
-  BEMAN_INSIDE_AX_UNARY(sinh, ax::hyp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::hyp::sinh, ax::out_kmax<Out>>)
-  BEMAN_INSIDE_AX_UNARY(cosh, ax::hyp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::hyp::cosh, ax::out_kmax<Out>>)
-  BEMAN_INSIDE_AX_UNARY(tanh, ax::hyp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::hyp::tanh, 1>)
-  BEMAN_INSIDE_AX_UNARY(asinh, ax::ahyp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::ahyp::asinh>)
-  BEMAN_INSIDE_AX_UNARY(cbrt, ax::cbrt_core<ax::input_limbs<In>>)
+  BEMAN_INSIDE_AX_UNARY(exp,   ax::in_max<In> <= 700,     ax::exp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::out_kmax<Out>>)
+  BEMAN_INSIDE_AX_UNARY(exp2,  ax::in_max<In> <= 1000,    ax::exp2_core<ax::input_limbs<In>, ax::in_mag<In>, ax::out_kmax<Out>>)
+  BEMAN_INSIDE_AX_UNARY(sin,   ax::in_max<In> <= 0x1p20,  ax::trig_core<ax::input_limbs<In>, ax::in_mag<In>, ax::trig::sin, 1>)
+  BEMAN_INSIDE_AX_UNARY(cos,   ax::in_max<In> <= 0x1p20,  ax::trig_core<ax::input_limbs<In>, ax::in_mag<In>, ax::trig::cos, 1>)
+  BEMAN_INSIDE_AX_UNARY(atan,  true,                      ax::atan_core<ax::input_limbs<In>>)
+  BEMAN_INSIDE_AX_UNARY(sinh,  ax::in_max<In> <= 700,     ax::hyp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::hyp::sinh, ax::out_kmax<Out>>)
+  BEMAN_INSIDE_AX_UNARY(cosh,  ax::in_max<In> <= 700,     ax::hyp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::hyp::cosh, ax::out_kmax<Out>>)
+  BEMAN_INSIDE_AX_UNARY(tanh,  ax::in_max<In> <= 300,     ax::hyp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::hyp::tanh, 1>)
+  BEMAN_INSIDE_AX_UNARY(asinh, ax::in_max<In> <= 0x1p500, ax::ahyp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::ahyp::asinh>)
+  BEMAN_INSIDE_AX_UNARY(cbrt,  true,                      ax::cbrt_core<ax::input_limbs<In>>)
 #undef BEMAN_INSIDE_AX_UNARY
 
   // Functions with a mathematical domain: checked on In's grid.
-#define BEMAN_INSIDE_AX_DOMAIN(fn, cond, msg, ...)                                      \
+#define BEMAN_INSIDE_AX_DOMAIN(fn, cond, msg, fp_ok, ...)                               \
   template <insidable Out, insidable In>                                                \
   [[nodiscard]] constexpr Out fn##_into(In x)                                           \
   {                                                                                     \
     static_assert(cond, "beman::inside::math::adaptive::" #fn ": " msg);              \
     require_rounding<Out>();                                                            \
     using core = __VA_ARGS__;                                                           \
+    BEMAN_INSIDE_AX_TABLE(Out, In, x)                                                   \
+    BEMAN_INSIDE_AX_FP(Out, fpk::fp_##fn(ax::exact_double(x)),                       \
+                       ax::in_max<In>, (ax::fp_tier<Out, In> && (fp_ok)))               \
     return ax::evaluate<Out, ax::start_bits<Out>>(core{ax::exact_input(x)});            \
   }
 
-  BEMAN_INSIDE_AX_DOMAIN(log, (lower_of<In> > 0), "input must be strictly positive", ax::log_core<ax::input_limbs<In>>)
-  BEMAN_INSIDE_AX_DOMAIN(log2, (lower_of<In> > 0), "input must be strictly positive", ax::logb_core<ax::input_limbs<In>, 2>)
-  BEMAN_INSIDE_AX_DOMAIN(log10, (lower_of<In> > 0), "input must be strictly positive", ax::logb_core<ax::input_limbs<In>, 10>)
-  BEMAN_INSIDE_AX_DOMAIN(asin, (lower_of<In> >= -1 && upper_of<In> <= 1), "input must be in [-1, 1]", ax::asin_core<ax::input_limbs<In>>)
-  BEMAN_INSIDE_AX_DOMAIN(acos, (lower_of<In> >= -1 && upper_of<In> <= 1), "input must be in [-1, 1]", ax::acos_core<ax::input_limbs<In>>)
-  BEMAN_INSIDE_AX_DOMAIN(acosh, (lower_of<In> >= 1), "input must be at least 1", ax::ahyp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::ahyp::acosh>)
-  BEMAN_INSIDE_AX_DOMAIN(atanh, (lower_of<In> > -1 && upper_of<In> < 1), "input must be in (-1, 1)", ax::ahyp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::ahyp::atanh>)
+  BEMAN_INSIDE_AX_DOMAIN(log, (lower_of<In> > 0), "input must be strictly positive", true, ax::log_core<ax::input_limbs<In>>)
+  BEMAN_INSIDE_AX_DOMAIN(log2, (lower_of<In> > 0), "input must be strictly positive", true, ax::logb_core<ax::input_limbs<In>, 2>)
+  BEMAN_INSIDE_AX_DOMAIN(log10, (lower_of<In> > 0), "input must be strictly positive", true, ax::logb_core<ax::input_limbs<In>, 10>)
+  BEMAN_INSIDE_AX_DOMAIN(asin, (lower_of<In> >= -1 && upper_of<In> <= 1), "input must be in [-1, 1]", true, ax::asin_core<ax::input_limbs<In>>)
+  BEMAN_INSIDE_AX_DOMAIN(acos, (lower_of<In> >= -1 && upper_of<In> <= 1), "input must be in [-1, 1]", true, ax::acos_core<ax::input_limbs<In>>)
+  BEMAN_INSIDE_AX_DOMAIN(acosh, (lower_of<In> >= 1), "input must be at least 1", false, ax::ahyp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::ahyp::acosh>)
+  BEMAN_INSIDE_AX_DOMAIN(atanh, (lower_of<In> > -1 && upper_of<In> < 1), "input must be in (-1, 1)", true, ax::ahyp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::ahyp::atanh>)
 #undef BEMAN_INSIDE_AX_DOMAIN
 
   // sqrt of a non-negative input.
@@ -11068,6 +11447,7 @@ namespace beman::inside::math::adaptive
   [[nodiscard]] constexpr Out sqrt_into(In x)
   {
     require_rounding<Out>();
+    BEMAN_INSIDE_AX_FP(Out, fpk::fp_sqrt(ax::exact_double(x)), 1.0, (ax::fp_tier<Out, In>))
     return ax::evaluate<Out, ax::start_bits<Out>>(ax::sqrt_core<ax::input_limbs<In>>{ax::exact_input(x)});
   }
 
@@ -11095,6 +11475,7 @@ namespace beman::inside::math::adaptive
   [[nodiscard]] constexpr Out atan2_into(InY y, InX x)
   {
     require_rounding<Out>();
+    BEMAN_INSIDE_AX_FP(Out, fpk::fp_atan2(ax::exact_double(y), ax::exact_double(x)), 1.0, (ax::fp_tier<Out, InY, InX>))
     constexpr std::size_t E = ax::input_limbs<InY> > ax::input_limbs<InX> ? ax::input_limbs<InY> : ax::input_limbs<InX>;
     using F = ::beman::inside::detail::exact_frac<E>;
     return ax::evaluate<Out, ax::start_bits<Out>>(ax::atan2_core<E>{F{ax::exact_input(y)}, F{ax::exact_input(x)}});
@@ -11104,6 +11485,8 @@ namespace beman::inside::math::adaptive
   [[nodiscard]] constexpr Out hypot_into(InX x, InY y)
   {
     require_rounding<Out>();
+    BEMAN_INSIDE_AX_FP(Out, fpk::fp_hypot(ax::exact_double(x), ax::exact_double(y)), 1.0,
+                       (ax::fp_tier<Out, InX, InY> && ax::in_max<InX> <= 0x1p500 && ax::in_max<InY> <= 0x1p500))
     constexpr std::size_t E = 2 * (ax::input_limbs<InX> > ax::input_limbs<InY> ? ax::input_limbs<InX> : ax::input_limbs<InY>) + 1;
     using F = ::beman::inside::detail::exact_frac<E>;
     const F a{ax::exact_input(x)}, b{ax::exact_input(y)};
@@ -11318,6 +11701,9 @@ namespace beman::inside::math::adaptive
     return pow_into<auto_t::pow<InB, InE>>(base, exp);
   }
 } // namespace beman::inside::math::adaptive
+
+#undef BEMAN_INSIDE_AX_FP
+#undef BEMAN_INSIDE_AX_TABLE
 
 
 
