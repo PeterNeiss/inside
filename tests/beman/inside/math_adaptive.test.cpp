@@ -182,13 +182,13 @@ namespace
       {
         const ld frac = k - std::floor(k);
         if (frac * n < tol || (1 - frac) * n < tol) continue;   // too close to a grid point
-        if (!(got <= want && want < got + n)) { if (bad++ < 5) ADD_FAILURE() << "x=" << (double)xv << " got " << (double)got << " want floor of " << (double)want; }
+        if (!(got <= want && want < got + n)) { if (bad++ < 5) ADD_FAILURE() << "x=" << static_cast<double>(xv) << " got " << static_cast<double>(got) << " want floor of " << static_cast<double>(want); }
       }
       else
       {
         const ld frac = k - std::floor(k);
         if (std::fabs(frac - 0.5L) * n < tol) continue;          // too close to a tie
-        if (!(std::fabs(got - want) <= n / 2)) { if (bad++ < 5) ADD_FAILURE() << "x=" << (double)xv << " got " << (double)got << " want " << (double)want; }
+        if (!(std::fabs(got - want) <= n / 2)) { if (bad++ < 5) ADD_FAILURE() << "x=" << static_cast<double>(xv) << " got " << static_cast<double>(got) << " want " << static_cast<double>(want); }
       }
     }
     return bad;
@@ -477,4 +477,52 @@ TEST(MathAdaptiveTest, tables_agree_with_the_integer_path)
   static_assert(!table::Table.Valid);                       // e^2 > 4
   EXPECT_EQ(am::exp_into<small_clamp>(s8{1.984375}), small_clamp{4});
   EXPECT_EQ(am::exp_into<small_clamp>(s8{1}), (small_clamp{rational{174, 64}}));   // e·64 = 173.97…
+}
+
+TEST(MathAdaptiveTest, double_tier_agrees_on_decimal_inputs_and_checked_forms)
+{
+  // Inputs that are not doubles exactly (steps of 1/1000): the tier adds the
+  // conversion's rounding to its bound.
+  using symd = inside<{{-4, 4}, rational{1, 1000}}, round_nearest>;
+  using posd = inside<{{rational{1, 1000}, 8}, rational{1, 1000}}, round_nearest>;
+  using unid = inside<{{-1, 1}, rational{1, 1000}}, round_nearest>;
+  using ge1d = inside<{{1, 8}, rational{1, 1000}}, round_nearest>;
+  using tanout = inside<{{-1024, 1024}, rational{1, 1 << 20}}, round_nearest>;
+  static_assert(!ax::fp_exact_input<symd> && (ax::fp_tier<out20, symd> || !ax::fp_tier_available));
+  EXPECT_EQ((tier_mismatches<out20, symd, ax::trig_core<ax::input_limbs<symd>, ax::in_mag<symd>, ax::trig::sin, 1>>([](symd x) { return am::sin_into<out20>(x); })), 0);
+  EXPECT_EQ((tier_mismatches<outdec, symd, ax::exp_core<ax::input_limbs<symd>, ax::in_mag<symd>, ax::out_kmax<outdec>>>([](symd x) { return am::exp_into<outdec>(x); })), 0);
+  EXPECT_EQ((tier_mismatches<out20, symd, ax::cbrt_core<ax::input_limbs<symd>>>([](symd x) { return am::cbrt_into<out20>(x); })), 0);
+  EXPECT_EQ((tier_mismatches<out16c, posd, ax::log_core<ax::input_limbs<posd>>>([](posd x) { return am::log_into<out16c>(x); })), 0);
+  EXPECT_EQ((tier_mismatches<out20, unid, ax::asin_core<ax::input_limbs<unid>>>([](unid x) { return am::asin_into<out20>(x); })), 0);
+  EXPECT_EQ((tier_mismatches<out20, ge1d, ax::ahyp_core<ax::input_limbs<ge1d>, ax::in_mag<ge1d>, ax::ahyp::acosh>>([](ge1d x) { return am::acosh_into<out20>(x); })), 0);
+  EXPECT_EQ((tier_mismatches<out8f, ge1, ax::ahyp_core<ax::input_limbs<ge1>, ax::in_mag<ge1>, ax::ahyp::acosh>>([](ge1 x) { return am::acosh_into<out8f>(x); })), 0);
+  EXPECT_EQ((tier_mismatches<tanout, tan_in, ax::trig_core<ax::input_limbs<tan_in>, ax::in_mag<tan_in>, ax::trig::tan, ax::out_kmax<tanout>>>([](tan_in x) { return *am::tan_into<tanout>(x); })), 0);
+
+  // Two inputs: atan2, hypot and pow against their cores on a grid of pairs.
+  using base = inside<{{rational{1, 16}, 8}, rational{1, 16}}, round_nearest>;
+  using expo = inside<{{-3, 3}, rational{1, 100}}, round_nearest>;
+  int bad = 0;
+  for (int i = -40; i <= 40; i += 3)
+    for (int j = -40; j <= 40; j += 3)
+    {
+      const symd y{i / 10.0}, x{j / 10.0};
+      const auto a = am::atan2_into<out20>(y, x);
+      const auto a2 = ax::evaluate<out20, ax::start_bits<out20>>(ax::atan2_core<ax::input_limbs<symd>>{ax::exact_input(y), ax::exact_input(x)});
+      if (a.raw() != a2.raw()) ++bad;
+      using F = detail::exact_frac<2 * ax::input_limbs<symd> + 1>;
+      const F fx{ax::exact_input(x)}, fy{ax::exact_input(y)};
+      const auto h2 = ax::evaluate<out20, ax::start_bits<out20>>(ax::sqrt_core<2 * ax::input_limbs<symd> + 1>{fx * fx + fy * fy});
+      if (am::hypot_into<out20>(x, y).raw() != h2.raw()) ++bad;
+    }
+  for (int i = 1; i <= 128; i += 5)
+    for (int j = -300; j <= 300; j += 13)
+    {
+      const base b{i / 16.0};
+      const expo e{rational{j, 100}};
+      const auto r = am::pow_into<tanout>(b, e);
+      using core = ax::pow_core<ax::input_limbs<base>, ax::input_limbs<expo>, ax::in_mag<expo>, ax::out_kmax<tanout>>;
+      const auto r2 = ax::evaluate_checked<tanout, ax::start_bits<tanout>>(core{ax::exact_input(b), ax::exact_input(e)});
+      if (r.has_value() != r2.has_value() || (r && r->raw() != r2->raw())) ++bad;
+    }
+  EXPECT_EQ(bad, 0);
 }
