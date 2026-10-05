@@ -248,6 +248,38 @@ about 0.13 s of compile time on GCC; `BEMAN_INSIDE_MATH_TABLE_SLOTS=0` turns
 tables off. The tables in [performance.md](performance.md) are the current
 `bench.cpp` numbers.
 
+## Where correctness comes first
+
+The fast tiers exist only to return the integer path's answer sooner. Wherever
+a faster choice could, under some build, input or storage, return a different
+grid point, the engine takes the slower one. Each choice below gives up speed
+measured on x86-64 with `-mfma`.
+
+| Choice | What it guards against | What it costs |
+|---|---|---|
+| Error bounds far wider than the kernels' measured error: 2^-40 + 2^-44·max(1, \|x\|) for the double tier (measured about 2^-52), 2^-88 + 2^-92·max(1, \|x\|) for the dd tier (measured at worst 2^-96), times 1.5 | a kernel error the measurements missed (an input, a compiler, a platform) turning into a wrong slot | the double tier stops at 36-bit outputs; 37–46-bit outputs take the dd tier. `pow_base<10>` onto a 44-bit grid is 23.7 ns against the old engine's 15.7 |
+| Strict decision tests: a value within the bound of a slot boundary, exact ties and exact grid points under directed rounding go to the integer path | a rounding the double arithmetic cannot settle | the integer path's time for those inputs; rare for irrational results, every time for exact ones such as `sqrt` of a perfect square under `round_floor` |
+| `nearbyint` to round the value index, not adding and subtracting 1.5·2^52 | `-ffast-math` folding the add-subtract away; the tests then pass a non-integer and return a wrong slot | 0.1–0.4 ns per call (`sqrt` 1.65 → 2.05 ns, `hypot` 2.22 → 2.49 ns on `f64` grids) |
+| Range checked in double before the index becomes an integer; no finite checks, since NaN and infinities fail every comparison | a huge or non-finite kernel value converted to an integer (undefined behaviour) | none measured |
+| Inputs that are not doubles exactly (decimal notches, rational storage) add their conversion error times the function's slope to the bound | a decimal input's rounding moving a result across a boundary | slightly more fallbacks for those inputs |
+| Error-free sums fenced against FMA contraction (`__builtin_assoc_barrier`), the error-free product's rounded part computed as `fma(a, b, +0)` | GCC's default `-ffp-contract=fast` fusing a rounded product into a later sum, which made the dd tier 1–2 notches wrong at `-O2` | about 2% more instructions in the dd tier, no measurable time |
+| The dd tier left out when the compiler may reassociate (`__ASSOCIATIVE_MATH__`, `__FAST_MATH__`) | reassociation cancelling the error-free sums | such builds compute 37–62-bit outputs on the integer path, several times slower |
+| The dd tier only for value indices up to 2^62 | index arithmetic overflowing 64 bits | finer or wider outputs take the integer path |
+| The dd kernels carry about 100 bits even when the output needs 40 | an undersized kernel for some output; one kernel per function, tested once | a kernel sized to the output could be cheaper for 37–50-bit outputs |
+| Rational outputs store the reduced fraction j·p/q (one gcd); f32/f64 outputs store j·notch, exact on their dyadic grids | a stored value off the grid, or not in canonical form | about 60 ns per rational result |
+| Every constant and table computed at compile time from the integer path's own series, never written out as literals | a constant that drifts from the series it should equal | compile time only: about 0.1–0.3 s in a translation unit that uses the dd tier, nothing in one that does not |
+
+What the tiers never trade away: they return a result only when it provably
+equals the integer path's, and the integer path is the only path at compile
+time and without an FPU. A build cannot change a value; it can only change how
+fast the value comes.
+
+The remaining gaps to the old engines (`f32` grids against `flt`, acosh,
+hypot, `pow_base<10>` at 44 bits) are speed that can still be won without
+giving any of this up: kernels sized to the output, with error bounds proven
+rather than measured, would let the double tier decide finer outputs and use
+shorter polynomials on coarse ones.
+
 ## Compiling without floating point (`BEMAN_INSIDE_MATH_NO_FP`)
 
 On a target with no hardware FPU and no `<cmath>`, define

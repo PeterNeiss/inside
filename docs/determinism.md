@@ -102,11 +102,13 @@ tier's error-free sums need additions in program order: a build that defines
 compiler's `-ffast-math`) leaves the dd tier out, and Clang's
 `-fassociative-math` on its own, which defines neither, is outside the
 guarantee. FMA contraction, which GCC applies across statements by default, is
-fenced off inside those sums (`__builtin_assoc_barrier`). A build whose doubles are not IEEE (x87 80-bit evaluation,
-flush-to-zero in the kernels' range, `-ffast-math` reciprocal approximations)
-is outside both tiers' guarantee. Building with `BEMAN_INSIDE_MATH_NO_FP`
-removes both tiers — results stay the same, and then no FPU behaviour is
-involved at all.
+fenced off inside those sums (`__builtin_assoc_barrier`). A build whose
+doubles are not IEEE (x87 80-bit evaluation, flush-to-zero in the kernels'
+range, `-ffast-math` reciprocal approximations) is outside both tiers'
+guarantee. Building with `BEMAN_INSIDE_MATH_NO_FP` removes both tiers —
+results stay the same, and then no FPU behaviour is involved at all.
+[math.md](math.md#where-correctness-comes-first) lists each place where the
+engine chose correctness over speed, and what it costs.
 
 A rounding boundary can hold a transcendental value only at exact rational
 inputs (`exp(0)`, `sqrt(9/4)`, …), which the engine stores exactly. For every
