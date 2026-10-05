@@ -42,8 +42,30 @@ namespace beman::inside::math::detail::dd
   // Error-free transformations and the arithmetic on them (QD-library style).
   // Products use std::fma at runtime and Dekker's split at compile time.
   //---------------------------------------------------------------------------
+  // An operand of an error-free sum, fenced off from FMA contraction: under
+  // -ffp-contract=fast (GCC's default) an operand that is a product, such as
+  // a quotient digit a·(1/b), may be fused into the sum, which then adds the
+  // exact product while the error term subtracts the rounded one. The fence
+  // costs nothing at runtime. (Clang contracts only within one expression.)
+  constexpr double fenced(double x) noexcept
+  {
+#if defined(__has_builtin)
+#  if __has_builtin(__builtin_assoc_barrier)
+    return __builtin_assoc_barrier(x);
+#  elif __has_builtin(__arithmetic_fence)
+    return __arithmetic_fence(x);
+#  else
+    return x;
+#  endif
+#else
+    return x;
+#endif
+  }
+
   constexpr dd two_sum(double a, double b) noexcept
   {
+    a = fenced(a);
+    b = fenced(b);
     const double s = a + b, bb = s - a;
     return {s, (a - (s - bb)) + (b - bb)};
   }
@@ -51,6 +73,8 @@ namespace beman::inside::math::detail::dd
   // |a| ≥ |b| (or a == 0).
   constexpr dd fast_two_sum(double a, double b) noexcept
   {
+    a = fenced(a);
+    b = fenced(b);
     const double s = a + b;
     return {s, b - (s - a)};
   }
@@ -62,16 +86,33 @@ namespace beman::inside::math::detail::dd
     return {hi, a - hi};
   }
 
+  // The product rounded once, as a value the compiler cannot fuse further:
+  // under -ffp-contract=fast (GCC's default) a plain a·b feeding a later
+  // subtraction may become one fma, which subtracts the exact product where
+  // the error-free split expects the rounded one (the error then counts
+  // twice). fma(a, b, +0) is the same rounded product (+0 keeps it from
+  // folding back to a·b) and costs one instruction with hardware FMA; without
+  // it nothing contracts.
+  inline double rounded_product(double a, double b) noexcept
+  {
+#if defined(__FMA__) || defined(__ARM_FEATURE_FMA)
+    return std::fma(a, b, 0.0);
+#else
+    return a * b;
+#endif
+  }
+
   constexpr dd two_prod(double a, double b) noexcept
   {
-    const double p = a * b;
     if consteval
     {
+      const double p = a * b;
       const dd x = split(a), y = split(b);
       return {p, ((x.Hi * y.Hi - p) + x.Hi * y.Lo + x.Lo * y.Hi) + x.Lo * y.Lo};
     }
     else
     {
+      const double p = rounded_product(a, b);
       return {p, std::fma(a, b, -p)};
     }
   }

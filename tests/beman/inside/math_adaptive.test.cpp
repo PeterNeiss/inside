@@ -152,6 +152,7 @@ TEST(MathAdaptiveTest, evaluate_escalates_until_decided)
 
 #include <cmath>
 #include <functional>
+#include <vector>
 
 namespace
 {
@@ -711,3 +712,120 @@ TEST(MathAdaptiveTest, dd_kernels_stay_far_inside_their_bound)
 }
 #undef DD_ACCURACY
 #endif
+
+// Results depend only on values, never on storage: every input storage
+// (index, f64, f32, exact rational, direct value) and every output storage
+// (index, f64, exact rational) gives the same grid point, through the table,
+// double, dd and integer paths alike.
+namespace
+{
+  template <class Out, class In, class F>
+  std::vector<rational> results_of(F f)
+  {
+    std::vector<rational> r;
+    const long long n = static_cast<long long>(grid_of<In>.slot_count());
+    const long long step = n > 400 ? n / 400 : 1;
+    for (long long k = 0; k <= n; k += step)
+      r.push_back(static_cast<rational>(f(In{detail::lower64<In> + rational{k} * detail::notch64<In>})));
+    return r;
+  }
+
+  template <class A, class B>
+  int count_diff(A const& a, B const& b)
+  {
+    int bad = 0;
+    for (std::size_t i = 0; i < a.size(); ++i)
+      if (!(a[i] == b[i])) ++bad;
+    return a.size() == b.size() ? bad : -1;
+  }
+}
+
+#define STORAGE_IN(fn, Out, Lo, Hi, Notch, Notch2)                                                      \
+  {                                                                                                     \
+    using Ii = inside<{{Lo, Hi}, Notch}, round_nearest>;                                                \
+    using If = inside<{{Lo, Hi}, Notch2}, round_nearest | f64>;                                         \
+    using Is = inside<{{Lo, Hi}, Notch2}, round_nearest | f32>;                                         \
+    using Ix = inside<{{Lo, Hi}, Notch}, round_nearest | exact>;                                        \
+    using Iy = inside<{{Lo, Hi}, Notch2}, round_nearest>;                                               \
+    const auto base = results_of<Out, Ii>([](Ii x) { return am::fn##_into<Out>(x); });                  \
+    const auto dy   = results_of<Out, Iy>([](Iy x) { return am::fn##_into<Out>(x); });                  \
+    EXPECT_EQ(count_diff(base, results_of<Out, Ix>([](Ix x) { return am::fn##_into<Out>(x); })), 0) << #fn " exact in " #Out; \
+    EXPECT_EQ(count_diff(dy, results_of<Out, If>([](If x) { return am::fn##_into<Out>(x); })), 0) << #fn " f64 in " #Out; \
+    EXPECT_EQ(count_diff(dy, results_of<Out, Is>([](Is x) { return am::fn##_into<Out>(x); })), 0) << #fn " f32 in " #Out; \
+  }
+
+TEST(MathAdaptiveTest, results_do_not_depend_on_input_storage)
+{
+  using o20  = inside<{{-64, 64}, rational{1, 1 << 20}}, round_nearest>;
+  using o52  = inside<{{-1024, 1024}, rational{1, umax{1} << 52}}, round_nearest>;
+  using o6   = inside<{{-64, 64}, rational{1, 1'000'000}}, round_floor>;
+  constexpr rational m3{-3, 2}, p3{3, 2}, eighth{1, 8};
+  constexpr rational n100{1, 100}, n64{1, 64}, n1000{1, 1000}, n1024{1, 1024};
+  // Table-sized inputs (at most 256 slots) and larger ones.
+  STORAGE_IN(sin,  o20, 0, 2, n100, n64)
+  STORAGE_IN(exp,  o6,  0, 2, n100, n64)
+  STORAGE_IN(sin,  o20, -4, 4, n1000, n1024)
+  STORAGE_IN(sin,  o52, -4, 4, n1000, n1024)
+  STORAGE_IN(atan, o52, -4, 4, n1000, n1024)
+  STORAGE_IN(log,  o52, eighth, 8, n1000, n1024)
+  STORAGE_IN(cbrt, o6,  -4, 4, n1000, n1024)
+  STORAGE_IN(tanh, o20, m3, p3, n1000, n1024)
+  // Direct value storage against index storage.
+  using dv = inside<{-1000, 1000}, round_nearest | direct>;
+  using di = inside<{{-1000, 1000}, 1}, round_nearest | indexed>;
+  EXPECT_EQ(count_diff(results_of<o52, di>([](di x) { return am::atan_into<o52>(x); }),
+                       results_of<o52, dv>([](dv x) { return am::atan_into<o52>(x); })), 0);
+}
+#undef STORAGE_IN
+
+TEST(MathAdaptiveTest, results_do_not_depend_on_output_storage)
+{
+  using sym = inside<{{-4, 4}, rational{1, 1000}}, round_nearest>;
+  using pos = inside<{{rational{1, 8}, 8}, rational{1, 1000}}, round_nearest>;
+  // A decimal notch (index and exact storage) and dyadic ones (index, f64,
+  // exact), on both sides of the double tier's 36 bits.
+  using d6i = inside<{{-1024, 1024}, rational{1, 1'000'000}}, round_nearest>;
+  using d6x = inside<{{-1024, 1024}, rational{1, 1'000'000}}, round_nearest | exact>;
+  using b14i = inside<{{-1024, 1024}, rational{1, 16384}}, round_ceil>;
+  using b14f = inside<{{-1024, 1024}, rational{1, 16384}}, round_ceil | f64>;
+  using b14x = inside<{{-1024, 1024}, rational{1, 16384}}, round_ceil | exact>;
+  using b40i = inside<{{-1024, 1024}, rational{1, umax{1} << 40}}, round_floor>;
+  using b40x = inside<{{-1024, 1024}, rational{1, umax{1} << 40}}, round_floor | exact>;
+#define SAME_OUT(fn, In, A, B) \
+  EXPECT_EQ(count_diff(results_of<A, In>([](In x) { return am::fn##_into<A>(x); }), results_of<B, In>([](In x) { return am::fn##_into<B>(x); })), 0) << #fn " " #A " vs " #B;
+  SAME_OUT(sin, sym, d6i, d6x) SAME_OUT(exp, sym, d6i, d6x) SAME_OUT(log, pos, d6i, d6x) SAME_OUT(atan, sym, d6i, d6x)
+  SAME_OUT(sin, sym, b14i, b14f) SAME_OUT(sin, sym, b14i, b14x) SAME_OUT(cbrt, sym, b14i, b14x) SAME_OUT(sqrt, pos, b14i, b14f)
+  SAME_OUT(sin, sym, b40i, b40x) SAME_OUT(exp, sym, b40i, b40x) SAME_OUT(asinh, sym, b40i, b40x) SAME_OUT(log10, pos, b40i, b40x)
+#undef SAME_OUT
+  int bad = 0;
+  for (int i = -40; i <= 40; i += 7)
+    for (int j = -40; j <= 40; j += 7)
+    {
+      const sym y{rational{i, 10}}, x{rational{j, 10}};
+      if (!(static_cast<rational>(am::atan2_into<d6i>(y, x)) == static_cast<rational>(am::atan2_into<d6x>(y, x)))) ++bad;
+      if (!(static_cast<rational>(am::hypot_into<b40i>(x, y)) == static_cast<rational>(am::hypot_into<b40x>(x, y)))) ++bad;
+    }
+  EXPECT_EQ(bad, 0);
+}
+
+// hypot's integer path holds x² + y² over two different denominators (an
+// undersized fraction went wrong past about 2^-46).
+TEST(MathAdaptiveTest, hypot_on_mixed_grids_at_fine_outputs)
+{
+  using xd = inside<{{-4, 4}, rational{1, 512}}, round_nearest>;
+  using ym = inside<{{-4, 4}, rational{1, 1000}}, round_nearest>;
+  using o48 = inside<{{-1024, 1024}, rational{1, umax{1} << 48}}, round_nearest>;
+  int bad = 0;
+  for (int i = 0; i <= 4096; i += 97)
+    for (int j = 0; j <= 8000; j += 211)
+    {
+      const xd x{rational{i - 2048, 512}};
+      const ym y{rational{j - 4000, 1000}};
+      const ld xv = static_cast<ld>(i - 2048) / 512, yv = static_cast<ld>(j - 4000) / 1000;
+      const ld h = std::sqrt(xv * xv + yv * yv);
+      const ld got = static_cast<ld>(static_cast<rational>(am::hypot_into<o48>(x, y)).Numerator)
+                   / static_cast<ld>(static_cast<rational>(am::hypot_into<o48>(x, y)).Denominator);
+      if (std::fabs(got - h) > 0x1p-49L + 0x1p-60L * h) ++bad;
+    }
+  EXPECT_EQ(bad, 0);
+}

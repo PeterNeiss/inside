@@ -101,7 +101,8 @@ tier's error-free sums need additions in program order: a build that defines
 `__ASSOCIATIVE_MATH__` or `__FAST_MATH__` (GCC's `-fassociative-math`, either
 compiler's `-ffast-math`) leaves the dd tier out, and Clang's
 `-fassociative-math` on its own, which defines neither, is outside the
-guarantee. A build whose doubles are not IEEE (x87 80-bit evaluation,
+guarantee. FMA contraction, which GCC applies across statements by default, is
+fenced off inside those sums (`__builtin_assoc_barrier`). A build whose doubles are not IEEE (x87 80-bit evaluation,
 flush-to-zero in the kernels' range, `-ffast-math` reciprocal approximations)
 is outside both tiers' guarantee. Building with `BEMAN_INSIDE_MATH_NO_FP`
 removes both tiers — results stay the same, and then no FPU behaviour is

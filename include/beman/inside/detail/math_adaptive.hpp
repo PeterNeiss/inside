@@ -448,6 +448,21 @@ namespace beman::inside::math::detail::ax
         return Out::from_raw(static_cast<raw_t<Out>>(static_cast<double>(j) * notch));
       }
     }
+    else if constexpr (rational_raw<Out> && notch_fits64<Out>)
+    {
+      // A rational raw holds the grid point j·p/q itself: built directly
+      // (the constructor reduces it) when j·p fits 64 bits.
+      constexpr I count = static_cast<I>(grid_of<Out>.slot_count());
+      constexpr imax p = static_cast<imax>(wide_numerator(notch_of<Out>));
+      constexpr imax q = static_cast<imax>(wide_denominator(notch_of<Out>));
+      if (!index.negative() && !(count < index) && bit_width_of(index) < 63) [[likely]]
+      {
+        imax j = 0, num = 0;
+        if (!__builtin_add_overflow(static_cast<imax>(index), static_cast<imax>(slot_base<Out>), &j)
+            && !__builtin_mul_overflow(j, p, &num))
+          return Out::from_raw(rational{num, q});
+      }
+    }
     // The grid point (index + Lower/Notch)·Notch, exact: stored through Out's
     // assignment (a floating-point or rational raw holds it exactly).
     constexpr std::size_t KK = exact_max<K, exact_limbs<Out>>;
@@ -590,13 +605,46 @@ namespace beman::inside::math::detail::ax
   // The slot offset of an input value (0 … slot count).
   template <insidable In>
   constexpr std::size_t offset_of(In const& x) noexcept
-  { return static_cast<std::size_t>(value_index<imax>(x) - static_cast<imax>(slot_base<In>)); }
+  {
+    if constexpr (rational_raw<In>)
+    {
+      // A rational raw holds the value r, a multiple of the notch n: its den
+      // divides n's, so r/n = num(r)·(den(n)/den(r))/num(n) exactly.
+      const rational r = x.raw();
+      constexpr rational n = to_rational(notch_of<In>);
+      const imax rd = r.Denominator < 0 ? -r.Denominator : r.Denominator;
+      const __int128 rn = r.Denominator < 0 ? -static_cast<__int128>(r.Numerator) : static_cast<__int128>(r.Numerator);
+      const __int128 j = rn * (n.Denominator / rd) / static_cast<__int128>(n.Numerator);
+      return static_cast<std::size_t>(static_cast<imax>(j) - static_cast<imax>(slot_base<In>));
+    }
+    else if constexpr (fp_raw<In>)
+    {
+      // A floating-point raw holds the value on a dyadic grid: (value −
+      // Lower)·2^k is exact.
+      constexpr double lower = static_cast<double>(to_rational(lower_of<In>));
+      constexpr double inv = static_cast<double>(to_rational(grid_rational{1} / notch_of<In>));
+      return static_cast<std::size_t>((static_cast<double>(x.raw()) - lower) * inv);
+    }
+    else return static_cast<std::size_t>(value_index<imax>(x) - static_cast<imax>(slot_base<In>));
+  }
+
+  // In's value at slot I (rational and floating-point raws hold the value).
+  template <insidable In>
+  constexpr In slot_input(std::size_t i) noexcept
+  {
+    if constexpr (rational_raw<In>)
+      return In::from_raw(to_rational(lower_of<In>) + rational{static_cast<imax>(i)} * to_rational(notch_of<In>));
+    else if constexpr (fp_raw<In>)                        // the value, exact on the dyadic grid
+      return In::from_raw(static_cast<raw_t<In>>(static_cast<double>(to_rational(lower_of<In>))
+                                                 + static_cast<double>(i) * static_cast<double>(to_rational(notch_of<In>))));
+    else return In::from_raw(raw_from_offset<In>(static_cast<umax>(i)));
+  }
 
   // Out's slot for In's slot I, or −1 past Out's range: one constant
   // expression per entry, so each has the compiler's whole evaluation budget.
   template <insidable Out, insidable In, int W0, auto MakeCore, std::size_t I>
   inline constexpr imax table_slot =
-      slot_of<Out, W0>(MakeCore(In::from_raw(raw_from_offset<In>(static_cast<umax>(I)))));
+      slot_of<Out, W0>(MakeCore(slot_input<In>(I)));
 
   // Out's raws for every In slot; Valid when all lie in Out's range. MakeCore
   // builds the core from an In value.

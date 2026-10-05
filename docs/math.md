@@ -224,6 +224,25 @@ on grids finer than about 2^-36 it missed notches routinely.
 | 2^-52, value indices up to 2^62 | 0.20–0.72× |
 | `pow_base<10>` onto a 44-bit output (10^9 on a 2^-14 grid) | 1.5× (15.7 → 23.7 ns): the worst case |
 
+Against all three engines this library shipped before (`dbl`, `flt` and the
+integer `cordic`, built from commit 0f68ee8): all 22 functions they had, each
+from an input of the same storage onto the output named, geometric mean of
+new / old time (range in parentheses). None of the three rounded correctly; `flt`
+cannot resolve a 2^-40 grid at all.
+
+| Output | vs `dbl` | vs `flt` | vs `cordic` |
+|---|---|---|---|
+| `f64`, notch 2^-14 | 0.92 (0.68–1.07) | 0.95 (0.83–1.06) | 0.10 (0.05–0.17) |
+| `f32`, notch 2^-8 | 0.93 (0.77–1.02) | 1.04 (0.89–1.20) | 0.13 (0.06–0.21) |
+| integer index, notch 2^-20 | 0.09 (0.05–0.19) | 0.17 (0.05–0.25) | 0.07 (0.03–0.10) |
+| decimal, notch 10^-6 | 0.04 (0.02–0.08) | 0.14 (0.05–0.21) | 0.07 (0.03–0.12) |
+| integer index, notch 2^-40 | 0.51 (0.19–1.09) | 0.59 (0.19–1.20) | 0.31 (0.09–0.47) |
+| `exact` (rational), notch 10^-6 | 0.48 (0.39–0.72) | 0.73 (0.62–0.97) | 0.54 (0.35–0.75) |
+
+The rows slower than an old engine are within 20%: `f32` grids against `flt`'s
+float polynomials, and acosh, hypot and the inverse trig functions on `f32` and
+`f64` grids.
+
 Inputs of up to 256 slots use the table path and cost one load. Each table adds
 about 0.13 s of compile time on GCC; `BEMAN_INSIDE_MATH_TABLE_SLOTS=0` turns
 tables off. The tables in [performance.md](performance.md) are the current

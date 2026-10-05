@@ -777,6 +777,11 @@ namespace beman::inside::math::detail::ax
     return static_cast<int>(max_abs_int<InE>) * log2_span<InB> + 2;
   }();
 
+  // Bits of x² + y² as one fraction: each square doubles its input's bits,
+  // and the sum over two denominators adds them.
+  template <insidable InX, insidable InY>
+  inline constexpr int hypot_bits = 2 * (input_bits<InX> + input_bits<InY>) + 2;
+
   // gcd of two notches (0 when either is 0), for two-input outputs.
   template <insidable A, insidable B>
   inline constexpr grid_rational gcd_notch = [] {
@@ -811,7 +816,7 @@ namespace beman::inside::math::detail::ax
   // significant bits.
   template <insidable In>
   inline constexpr bool fp_exact_input = [] {
-    if constexpr (exact_valued<In> || notch_of<In> == 0) return false;
+    if constexpr (exact_valued<In> || rational_raw<In> || notch_of<In> == 0) return false;
     else
     {
       const grid_wide q = wide_denominator(notch_of<In>), p = wide_numerator(notch_of<In>);
@@ -841,7 +846,7 @@ namespace beman::inside::math::detail::ax
 
   // Value indices of In below 2^53: exact as doubles.
   template <insidable In>
-  inline constexpr bool small_index = !exact_valued<In> && notch_of<In> != 0
+  inline constexpr bool small_index = !exact_valued<In> && !rational_raw<In> && notch_of<In> != 0
       && grid_magnitude_bits<In> + grid_bits(wide_denominator(notch_of<In>)) - grid_bits(wide_numerator(notch_of<In>)) + 1 <= 53;
 
   // An input's value as a double: exactly (its value index times the dyadic
@@ -851,7 +856,7 @@ namespace beman::inside::math::detail::ax
   template <insidable In>
   constexpr double input_double(In const& x) noexcept
   {
-    if constexpr (fp_raw<In> || point_raw<In>) return static_cast<double>(x);
+    if constexpr (fp_raw<In> || point_raw<In> || rational_raw<In>) return static_cast<double>(x);
     else if constexpr (fp_exact_input<In>) return static_cast<double>(value_index<imax>(x)) * (notch_p<In> / notch_q<In>);
     else if constexpr (small_index<In>) return static_cast<double>(value_index<imax>(x)) * notch_p<In> / notch_q<In>;
     else return static_cast<double>(x);
@@ -904,6 +909,8 @@ namespace beman::inside::math::detail::ax
     if (!(j >= lo && j <= hi)) return false;
     if constexpr (integer_raw<Out>)
       out = Out::from_raw(raw_from_offset<Out>(static_cast<umax>(static_cast<imax>(j - lo))));
+    else if constexpr (rational_raw<Out>)                 // the grid point as a fraction
+      out = store<Out>(wide_sint<2>{static_cast<umax>(static_cast<imax>(j - lo))});
     else                                                  // fp raw: the grid point, exact
       out = Out::from_raw(static_cast<raw_t<Out>>(j * (notch_p<Out> / notch_q<Out>)));
     return true;
@@ -954,10 +961,12 @@ namespace beman::inside::math::detail::ax
     }
   }();
 
-  // Inputs the tier reads exactly (doubles) or within 2^-100 (index·p/q).
+  // Inputs the tier reads exactly (doubles) or within 2^-100 (index·p/q, or
+  // a rational raw's numerator over its denominator).
   template <insidable In>
   inline constexpr bool dd_input = !exact_valued<In> && !point_raw<In>
-      && (fp_raw<In> || fp_exact_input<In> || (small_index<In> && notch_p<In> < two53 && notch_q<In> < two53));
+      && (fp_raw<In> || fp_exact_input<In> || rational_raw<In>
+          || (small_index<In> && notch_p<In> < two53 && notch_q<In> < two53));
 
   // The error-free sums need the additions in program order: a build that
   // lets the compiler reassociate (-fassociative-math, part of -ffast-math)
@@ -979,6 +988,16 @@ namespace beman::inside::math::detail::ax
   {
     if constexpr (fp_raw<In>) return {static_cast<double>(x), 0};
     else if constexpr (fp_exact_input<In>) return {input_double(x), 0};
+    else if constexpr (rational_raw<In>)
+    {
+      const rational r = x.raw();                         // ±Numerator/|Denominator|
+      auto exact = [](umax n) {                           // two 32-bit halves, each a double exactly
+        return ddk::fast_two_sum(static_cast<double>(n & ~umax{0xFFFFFFFF}), static_cast<double>(n & umax{0xFFFFFFFF}));
+      };
+      const imax d = r.Denominator;
+      const ddk::dd q = ddk::div(exact(r.Numerator), exact(static_cast<umax>(d < 0 ? -d : d)));
+      return d < 0 ? ddk::neg(q) : q;
+    }
     else
     {
       const ddk::dd n = ddk::two_prod(static_cast<double>(value_index<imax>(x)), notch_p<In>);
@@ -1023,6 +1042,8 @@ namespace beman::inside::math::detail::ax
     if (j < first || j > last) return false;
     if constexpr (integer_raw<Out>)
       out = Out::from_raw(raw_from_offset<Out>(static_cast<umax>(j) - static_cast<umax>(first)));
+    else if constexpr (rational_raw<Out>)                 // the grid point as a fraction
+      out = store<Out>(wide_sint<2>{static_cast<umax>(j) - static_cast<umax>(first)});
     else                                                  // fp raw: the grid point, exact
       out = Out::from_raw(static_cast<raw_t<Out>>(static_cast<double>(j) * (notch_p<Out> / notch_q<Out>)));
     return true;
@@ -1403,9 +1424,9 @@ namespace beman::inside::math::adaptive
         if (Out r; ax::dd_attempt_hypot<Out>(x, y, r)) return r;
       }
 #endif
-    constexpr std::size_t E = 2 * (ax::input_limbs<InX> > ax::input_limbs<InY> ? ax::input_limbs<InX> : ax::input_limbs<InY>) + 1;
+    constexpr int Bits = ax::hypot_bits<InX, InY>;
+    constexpr std::size_t E = ::beman::inside::detail::limbs_for_bits(Bits);
     using F = ::beman::inside::detail::exact_frac<E>;
-    constexpr int Bits = 2 * (ax::input_bits<InX> > ax::input_bits<InY> ? ax::input_bits<InX> : ax::input_bits<InY>) + 2;
     BEMAN_INSIDE_AX_REST((ax::fast_tier<Out, InX, InY> && ax::in_max<InX> <= 0x1p500 && ax::in_max<InY> <= 0x1p500),
                          ax::evaluate<Out, ax::start_bits<Out>>(ax::sqrt_core<E, Bits>{F{ax::exact_input(x)} * F{ax::exact_input(x)}
                                                                                      + F{ax::exact_input(y)} * F{ax::exact_input(y)}}))
@@ -1540,13 +1561,13 @@ namespace beman::inside::math::adaptive
 
     // hypot: [0, hypot of the largest magnitudes] on the gcd notch.
     template <insidable InX, insidable InY>
-    inline constexpr std::size_t hypot_limbs = 2 * (ax::input_limbs<InX> > ax::input_limbs<InY> ? ax::input_limbs<InX> : ax::input_limbs<InY>) + 1;
+    inline constexpr std::size_t hypot_limbs = ::beman::inside::detail::limbs_for_bits(ax::hypot_bits<InX, InY>);
     template <insidable InX, insidable InY>
     inline constexpr grid_rational hypot_hi = [] {
       using F = ::beman::inside::detail::exact_frac<hypot_limbs<InX, InY>>;
       const F a = ::beman::inside::detail::exact_of_grid<hypot_limbs<InX, InY>>(max_abs<InX>);
       const F b = ::beman::inside::detail::exact_of_grid<hypot_limbs<InX, InY>>(max_abs<InY>);
-      return ax::lattice_bound<ax::gcd_notch<InX, InY>, true>(ax::sqrt_core<hypot_limbs<InX, InY>>{a * a + b * b});
+      return ax::lattice_bound<ax::gcd_notch<InX, InY>, true>(ax::sqrt_core<hypot_limbs<InX, InY>, ax::hypot_bits<InX, InY>>{a * a + b * b});
     }();
     template <insidable InX, insidable InY>
     using hypot = inside<{{0, hypot_hi<InX, InY>}, ax::gcd_notch<InX, InY>}, ax::auto_policy<InX>>;
