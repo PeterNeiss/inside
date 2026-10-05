@@ -43,7 +43,7 @@ grid point:
 
 | Path | When | Cost |
 |---|---|---|
-| **Table** | the input has at most `BEMAN_INSIDE_MATH_TABLE_SLOTS` slots (default 256) and every result lies in the output's range | one load; the table is computed at compile time |
+| **Table** | the input has at most `BEMAN_INSIDE_MATH_TABLE_SLOTS` slots (default 256), the output stores an integer, `f64` or `f32` raw, and every result lies in the output's range | one load; the table is computed at compile time |
 | **Double tier** | an FPU is present (not `BEMAN_INSIDE_MATH_NO_FP`), the output's value indices stay within ±2^52, and it needs no more bits than the kernel's limit (42–49, by function) | the library's own double kernels, sized to the output, plus a proved error bound; decided results are stored as raws |
 | **dd tier** | an FPU is present, the output needs more than 36 bits, and its value indices stay within ±2^62; where the double tier also applies, it runs second | double-double kernels (about 106 bits) from compile-time tables, plus an error bound |
 | **Integer path** | always available; the only path at compile time and without an FPU | Taylor polynomials with compile-time coefficient tables in wide fixed point |
@@ -256,7 +256,9 @@ The rows slower than an old engine are within 20%: `acosh` onto 2^-40, which
 stays in the dd tier, `hypot` on `f64` and `f32` grids, and a few `f32` rows
 against `flt`'s float polynomials.
 
-Inputs of up to 256 slots use the table path and cost one load. Each table adds
+Inputs of up to 256 slots use the table path and cost one load, onto integer
+and floating-point outputs alike (`sin` of a 129-slot input onto an `f64`
+grid: 6.8 → 2.2 ns, `cbrt` 14.9 → 2.2 ns). Each table adds
 about 0.13 s of compile time on GCC; `BEMAN_INSIDE_MATH_TABLE_SLOTS=0` turns
 tables off. The tables in [performance.md](performance.md) are the current
 `bench.cpp` numbers.

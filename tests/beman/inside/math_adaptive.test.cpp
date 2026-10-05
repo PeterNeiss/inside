@@ -501,6 +501,15 @@ TEST(MathAdaptiveTest, tables_agree_with_the_integer_path)
   EXPECT_EQ((tier_mismatches<out20, s8, ax::trig_core<ax::input_limbs<s8>, ax::in_mag<s8>, ax::trig::sin, 1>>([](s8 x) { return am::sin_into<out20>(x); })), 0);
   EXPECT_EQ((tier_mismatches<out40, s8, ax::exp_core<ax::input_limbs<s8>, ax::in_mag<s8>, ax::out_kmax<out40>>>([](s8 x) { return am::exp_into<out40>(x); })), 0);
   EXPECT_EQ((tier_mismatches<outdec, p8, ax::log_core<ax::input_limbs<p8>>>([](p8 x) { return am::log_into<outdec>(x); })), 0);
+  // Floating-point outputs: the table holds the grid point as a double or float.
+  using f64t = inside<{{-64, 64}, per<16384>}, round_nearest | f64>;
+  using f32t = inside<{{-64, 64}, per<256>}, round_floor | f32>;
+  static_assert(ax::table_output<f64t> && ax::table_output<f32t>);
+  static_assert(ax::result_table<f64t, s8, ax::start_bits<f64t>,
+      [](s8 v) { return ax::trig_core<ax::input_limbs<s8>, ax::in_mag<s8>, ax::trig::sin, 1>{ax::exact_input(v)}; }>::Table.Valid);
+  EXPECT_EQ((tier_mismatches<f64t, s8, ax::trig_core<ax::input_limbs<s8>, ax::in_mag<s8>, ax::trig::sin, 1>>([](s8 x) { return am::sin_into<f64t>(x); })), 0);
+  EXPECT_EQ((tier_mismatches<f32t, s8, ax::exp_core<ax::input_limbs<s8>, ax::in_mag<s8>, ax::out_kmax<f32t>>>([](s8 x) { return am::exp_into<f32t>(x); })), 0);
+  EXPECT_EQ((tier_mismatches<f64t, p8, ax::log_core<ax::input_limbs<p8>>>([](p8 x) { return am::log_into<f64t>(x); })), 0);
   // Results past Out's range keep the computed path, and its policy.
   using small_clamp = inside<{{0, 4}, rational{1, 64}}, round_nearest | clamp>;
   using table = ax::result_table<small_clamp, s8, ax::start_bits<small_clamp>,

@@ -9544,8 +9544,10 @@ namespace beman::inside::math::detail::ax
   inline constexpr bool table_input = !exact_valued<In> && notch_of<In> != 0
       && grid_of<In>.slot_count() < grid_wide{BEMAN_INSIDE_MATH_TABLE_SLOTS};
 
+  // Outputs whose raw a table can hold: an integer index or value, or a
+  // floating-point raw (the grid point as a double or float).
   template <insidable Out>
-  inline constexpr bool table_output = integer_raw<Out> && slotted<Out> && !exact_valued<Out>;
+  inline constexpr bool table_output = (integer_raw<Out> || fp_raw<Out>) && slotted<Out> && !exact_valued<Out>;
 
   // The slot offset of an input value (0 … slot count).
   template <insidable In>
@@ -9591,6 +9593,14 @@ namespace beman::inside::math::detail::ax
   inline constexpr imax table_slot =
       slot_of<Out, W0>(MakeCore(slot_input<In>(I)));
 
+  // Out's raw for slot offset I, as store gives it to every other tier.
+  template <insidable Out>
+  constexpr raw_t<Out> table_raw(imax i) noexcept
+  {
+    if constexpr (integer_raw<Out>) return raw_from_offset<Out>(static_cast<umax>(i));
+    else return store<Out>(wide_sint<2>{static_cast<umax>(i)}).raw();
+  }
+
   // Out's raws for every In slot; Valid when all lie in Out's range. MakeCore
   // builds the core from an In value.
   template <insidable Out, insidable In, int W0, auto MakeCore>
@@ -9601,7 +9611,7 @@ namespace beman::inside::math::detail::ax
     static constexpr data Table = []<std::size_t... I>(std::index_sequence<I...>) {
       constexpr bool valid = ((table_slot<Out, In, W0, MakeCore, I> >= 0) && ...);
       if constexpr (!valid) return data{{}, false};
-      else return data{{raw_from_offset<Out>(static_cast<umax>(table_slot<Out, In, W0, MakeCore, I>))...}, true};
+      else return data{{table_raw<Out>(table_slot<Out, In, W0, MakeCore, I>)...}, true};
     }(std::make_index_sequence<N>{});
   };
 
