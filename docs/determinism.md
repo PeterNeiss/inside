@@ -87,15 +87,25 @@ computed:
   error. When the bound places the result in one slot, that slot is the
   correctly rounded one; otherwise the integer path decides. So the tier only
   ever returns what the integer path would.
+- **dd tier** (when an FPU is present, for outputs of more than 36 bits whose
+  value indices stay within ±2^62): the same scheme with double-double
+  kernels (about 106 bits), their tables and coefficients computed at compile
+  time from the integer path's series, and a bound of 2^-88 of the result plus
+  2^-92·max(1, |x|).
 - **Tables** (small inputs): the integer path's own results, computed at
   compile time.
 
 The double tier's bound assumes IEEE-754 binary64 arithmetic. Its margin is
-wide enough that FMA contraction or reassociation do not break it, but a build
-whose doubles are not IEEE (x87 80-bit evaluation, flush-to-zero in the
-kernels' range, `-ffast-math` reciprocal approximations) is outside it. Building
-with `BEMAN_INSIDE_MATH_NO_FP` removes the tier — results stay the same, and then
-no FPU behaviour is involved at all.
+wide enough that FMA contraction or reassociation do not break it. The dd
+tier's error-free sums need additions in program order: a build that defines
+`__ASSOCIATIVE_MATH__` or `__FAST_MATH__` (GCC's `-fassociative-math`, either
+compiler's `-ffast-math`) leaves the dd tier out, and Clang's
+`-fassociative-math` on its own, which defines neither, is outside the
+guarantee. A build whose doubles are not IEEE (x87 80-bit evaluation,
+flush-to-zero in the kernels' range, `-ffast-math` reciprocal approximations)
+is outside both tiers' guarantee. Building with `BEMAN_INSIDE_MATH_NO_FP`
+removes both tiers — results stay the same, and then no FPU behaviour is
+involved at all.
 
 A rounding boundary can hold a transcendental value only at exact rational
 inputs (`exp(0)`, `sqrt(9/4)`, …), which the engine stores exactly. For every

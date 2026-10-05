@@ -10228,6 +10228,486 @@ namespace beman::inside::math::detail::fp
 #endif // !BEMAN_INSIDE_MATH_NO_FP
 
 
+// ======================================================================
+//  beman/inside/detail/math_dd.hpp
+// ======================================================================
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+// The double-double kernels of the math engine's dd tier (cmath_adaptive.hpp):
+// values as an unevaluated sum Hi + Lo of two doubles (about 106 bits), with
+// error-free sums and products (std::fma), for outputs finer than the double
+// tier decides. Every constant — ln 2, π, the 2^(j/64), 2^(j/4096) and sin(jπ/128)
+// tables, the Taylor coefficients — comes at compile time from the integer
+// path's exact series (detail/math_adaptive.hpp), never from a generator.
+// Results are within about 2^-100 relative; the tier bounds them generously
+// and lets the integer path decide whenever the bound does not.
+//---------------------------------------------------------------------------
+
+
+#ifndef BEMAN_INSIDE_MATH_NO_FP
+
+#include <array>
+#include <bit>
+#include <cmath>            // std::fma
+#include <concepts>
+#include <cstdint>
+#include <utility>
+
+namespace beman::inside::math::detail::dd
+{
+  using namespace ::beman::inside::detail;
+  namespace ax = ::beman::inside::math::detail::ax;
+  namespace fpk = ::beman::inside::math::detail::fp;
+
+  struct dd
+  {
+    double Hi;
+    double Lo;
+  };
+
+  //---------------------------------------------------------------------------
+  // Error-free transformations and the arithmetic on them (QD-library style).
+  // Products use std::fma at runtime and Dekker's split at compile time.
+  //---------------------------------------------------------------------------
+  constexpr dd two_sum(double a, double b) noexcept
+  {
+    const double s = a + b, bb = s - a;
+    return {s, (a - (s - bb)) + (b - bb)};
+  }
+
+  // |a| ≥ |b| (or a == 0).
+  constexpr dd fast_two_sum(double a, double b) noexcept
+  {
+    const double s = a + b;
+    return {s, b - (s - a)};
+  }
+
+  constexpr dd split(double a) noexcept
+  {
+    const double c = 134217729.0 * a;                     // 2^27 + 1
+    const double hi = c - (c - a);
+    return {hi, a - hi};
+  }
+
+  constexpr dd two_prod(double a, double b) noexcept
+  {
+    const double p = a * b;
+    if consteval
+    {
+      const dd x = split(a), y = split(b);
+      return {p, ((x.Hi * y.Hi - p) + x.Hi * y.Lo + x.Lo * y.Hi) + x.Lo * y.Lo};
+    }
+    else
+    {
+      return {p, std::fma(a, b, -p)};
+    }
+  }
+
+  constexpr dd neg(dd a) noexcept { return {-a.Hi, -a.Lo}; }
+
+  constexpr dd add(dd a, dd b) noexcept
+  {
+    dd s = two_sum(a.Hi, b.Hi);
+    const dd t = two_sum(a.Lo, b.Lo);
+    s = fast_two_sum(s.Hi, s.Lo + t.Hi);
+    return fast_two_sum(s.Hi, s.Lo + t.Lo);
+  }
+
+  constexpr dd add(dd a, double b) noexcept
+  {
+    const dd s = two_sum(a.Hi, b);
+    return fast_two_sum(s.Hi, s.Lo + a.Lo);
+  }
+
+  constexpr dd sub(dd a, dd b) noexcept { return add(a, neg(b)); }
+
+  // a + b for |b| ≤ |a| (or a == 0), as in a Horner step: no cancellation, so
+  // the high parts need only fast_two_sum.
+  constexpr dd add_dominant(dd a, dd b) noexcept
+  {
+    const dd s = fast_two_sum(a.Hi, b.Hi);
+    return fast_two_sum(s.Hi, s.Lo + (a.Lo + b.Lo));
+  }
+
+  constexpr dd add_dominant(dd a, double b) noexcept
+  {
+    const dd s = fast_two_sum(a.Hi, b);
+    return fast_two_sum(s.Hi, s.Lo + a.Lo);
+  }
+
+  constexpr dd mul(dd a, dd b) noexcept
+  {
+    const dd p = two_prod(a.Hi, b.Hi);
+    return fast_two_sum(p.Hi, p.Lo + (a.Hi * b.Lo + a.Lo * b.Hi));
+  }
+
+  constexpr dd mul(dd a, double b) noexcept
+  {
+    const dd p = two_prod(a.Hi, b);
+    return fast_two_sum(p.Hi, p.Lo + a.Lo * b);
+  }
+
+  constexpr dd sqr(dd a) noexcept
+  {
+    const dd p = two_prod(a.Hi, a.Hi);
+    return fast_two_sum(p.Hi, p.Lo + 2 * a.Hi * a.Lo);
+  }
+
+  // a/b: two quotient digits from one reciprocal; the remainder
+  // a − q1·b cancels its high part exactly (Sterbenz).
+  constexpr dd div(dd a, dd b) noexcept
+  {
+    const double inv = 1 / b.Hi;
+    const double q1 = a.Hi * inv;
+    const dd p = two_prod(q1, b.Hi);
+    const double r = ((a.Hi - p.Hi) - p.Lo) + (a.Lo - q1 * b.Lo);
+    return fast_two_sum(q1, r * inv);
+  }
+
+  constexpr dd ldexp(dd a, int e) noexcept
+  { return {::beman::inside::detail::ldexp(a.Hi, e), ::beman::inside::detail::ldexp(a.Lo, e)}; }
+
+  //---------------------------------------------------------------------------
+  // Constants from the integer path's fixed-point values Y·2^-S.
+  //---------------------------------------------------------------------------
+  template <std::size_t K>
+  constexpr dd of_fixed(wide_sint<K> y, int S) noexcept
+  {
+    const bool negative = y.negative();
+    if (negative) y = -y;
+    if (y.is_zero()) return {0, 0};
+    const int n = bit_width_of(y);
+    if (n <= 53) return {::beman::inside::detail::ldexp(static_cast<double>(static_cast<umax>(y)), -S), 0};
+    const int sh = n - 53;
+    const wide_sint<K> top = y >> sh;
+    const wide_sint<K> rest = y - (top << sh);
+    const double hi = ::beman::inside::detail::ldexp(static_cast<double>(static_cast<umax>(top)), sh - S);
+    const double lo = sh > 53
+        ? ::beman::inside::detail::ldexp(static_cast<double>(static_cast<umax>(rest >> (sh - 53))), sh - 53 - S)
+        : ::beman::inside::detail::ldexp(static_cast<double>(static_cast<umax>(rest)), -S);
+    const dd r = fast_two_sum(hi, lo);
+    return negative ? neg(r) : r;
+  }
+
+  inline constexpr int kS = 136;                          // the scale constants are read at
+  using fixed = ax::fixed_t<2 * kS + 16>;
+
+  template <std::size_t K>
+  constexpr dd of_fixed_any(wide_sint<K> const& y, int S) noexcept { return of_fixed(static_cast<fixed>(y), S); }
+
+  // c·2^-S cut into N parts of B bits each (the last one of 53), so that
+  // k·part is exact for |k| < 2^(53−B): Cody–Waite reduction constants.
+  template <std::size_t N>
+  constexpr std::array<double, N> parts(fixed y, int S, int B) noexcept
+  {
+    std::array<double, N> r{};
+    int n = bit_width_of(y);                              // the bits still to place
+    for (std::size_t i = 0; i < N && !y.is_zero(); ++i)
+    {
+      const int bits = i + 1 < N ? B : 53;
+      const int sh = n > bits ? n - bits : 0;
+      const fixed top = y >> sh;
+      r[i] = ::beman::inside::detail::ldexp(static_cast<double>(static_cast<umax>(top)), sh - S);
+      y = y - (top << sh);
+      n = sh;
+    }
+    return r;
+  }
+
+  // 1/n! and 1/n at full dd precision.
+  template <int S>
+  constexpr dd inv_fact(int n) noexcept
+  {
+    fixed f{1};
+    for (int i = 2; i <= n; ++i) f = f * fixed{i};
+    return of_fixed((fixed{1} << (2 * S)) / f, 2 * S);
+  }
+  template <int S>
+  constexpr dd inv_int(int n) noexcept { return of_fixed((fixed{1} << (2 * S)) / fixed{n}, 2 * S); }
+
+  // 2^(j/2^shift), j = 0 … 63: the root 2^(1/2^shift) from the integer exp,
+  // then its powers at scale S (a unit lost per step).
+  template <int S>
+  constexpr std::array<dd, 64> exp2_table(int shift) noexcept
+  {
+    const auto a = ax::exp_fixed<S>(static_cast<fixed>(ax::ln2_q<S>) >> shift, 1, 4);
+    const fixed root = a.Scale == S ? a.Value : a.Value << (S - a.Scale);
+    std::array<dd, 64> t{};
+    fixed p = fixed{1} << S;
+    for (std::size_t j = 0; j < 64; ++j)
+    {
+      t[j] = of_fixed(p, S);
+      p = (p * root) >> S;
+    }
+    return t;
+  }
+
+  // sin(jπ/128), j = 0 … 255: cos and sin of π/128 by five half-angle square
+  // roots from cos π/4, then j rotations at scale kS (a unit lost per step).
+  template <int S>
+  constexpr std::array<dd, 256> sin_table() noexcept
+  {
+    const fixed one = fixed{1} << S;
+    auto root = [](fixed v) { return ax::isqrt(v << S); };        // √(v·2^-S) at scale S
+    fixed c = root(one >> 1);                                        // cos π/4
+    for (int i = 0; i < 4; ++i) c = root((one + c) >> 1);          // cos π/64
+    const fixed s1 = root((one - c) >> 1), c1 = root((one + c) >> 1);   // π/128
+    std::array<dd, 256> t{};
+    fixed sj{0}, cj = one;
+    for (int j = 0; j <= 64; ++j)
+    {
+      const dd v = of_fixed(sj, S);
+      t[static_cast<std::size_t>(j)] = v;
+      t[static_cast<std::size_t>(128 - j)] = v;
+      t[static_cast<std::size_t>(128 + j)] = neg(v);
+      if (j > 0) t[static_cast<std::size_t>(256 - j)] = neg(v);
+      const fixed sn = (sj * c1 + cj * s1) >> S;
+      cj = (cj * c1 - sj * s1) >> S;
+      sj = sn;
+    }
+    t[64] = dd{1, 0};
+    t[192] = dd{-1, 0};
+    return t;
+  }
+
+  // atan(j/32), j = 0 … 32, from the integer atan: one constant expression
+  // per entry, so each has the compiler's whole evaluation budget.
+  template <int S, int J>
+  inline constexpr dd atan_entry = of_fixed(ax::atan_fixed<S>(fixed{J} << (S - 5), 0).Value, S);
+
+  template <int S>
+  constexpr std::array<dd, 33> atan_table() noexcept
+  {
+    return []<int... J>(std::integer_sequence<int, J...>) {
+      return std::array<dd, 33>{atan_entry<S, J>...};
+    }(std::make_integer_sequence<int, 33>{});
+  }
+
+  // Every constant and table, as members of a class template: computed on
+  // first use only, so a translation unit that never reaches the dd tier
+  // pays nothing for them (the scale S is a parameter so that GCC cannot
+  // fold the initializers early). D is always dd.
+  template <typename D, int S = kS>
+  struct consts
+  {
+    static constexpr D Ln2    = of_fixed_any(ax::ln2_q<S>, S);
+    static constexpr D Log2e  = of_fixed_any(ax::log2e_q<S>, S);
+    static constexpr D Log10e = of_fixed_any(ax::log10e_q<S>, S);
+    static constexpr D Pi     = of_fixed_any(ax::pi_q<S>, S);
+    static constexpr D HalfPi = ldexp(Pi, -1);
+    // ln 2/4096 in parts of 31 bits (|k| < 2^22: |x| ≤ 700 · 4096/ln 2), and
+    // π/128 in parts of 27 bits (|n| < 2^26: |x| ≤ 2^20 · 128/π).
+    static constexpr std::array<double, 3> Ln2By4096 = parts<3>(static_cast<fixed>(ax::ln2_q<S>), S + 12, 31);
+    static constexpr std::array<double, 4> PiBy128   = parts<4>(static_cast<fixed>(ax::pi_q<S>), S + 7, 27);
+    static constexpr std::array<D, 64> Exp2By64   = exp2_table<S>(6);
+    static constexpr std::array<D, 64> Exp2By4096 = exp2_table<S>(12);
+    static constexpr std::array<D, 256> Sin = sin_table<S>();
+    static constexpr std::array<D, 33> Atan = atan_table<S>();
+    static constexpr D F2 = inv_fact<S>(2), F3 = inv_fact<S>(3), F4 = inv_fact<S>(4), F5 = inv_fact<S>(5);
+    static constexpr D F6 = inv_fact<S>(6), F7 = inv_fact<S>(7);
+    static constexpr D I3 = inv_int<S>(3), I5 = inv_int<S>(5), I7 = inv_int<S>(7);
+  };
+
+  inline constexpr double kInvLn2By4096 = 4096 * fpk::kLog2e;
+  inline constexpr double kInvPiBy128 = 128 / 0x1.921fb54442d18p+1;
+
+  // a·2^m for |m| ≤ 1022 (a power-of-two factor, exact unless the result is
+  // subnormal).
+  inline dd scale(dd a, long m) noexcept
+  {
+    const double f = std::bit_cast<double>(static_cast<std::uint64_t>(m + 1023) << 52);
+    return {a.Hi * f, a.Lo * f};
+  }
+
+  // x − k·(c0 + c1 + c2 + c3), the parts from parts<>: x.Hi − k·c0 is exact
+  // (k·c0 fits 53 bits and lies within a factor 2 of x.Hi), k·c1 and k·c2
+  // are exact and summed beside it, and k·c3 is far below the result's
+  // last bit — so the chain is two sums long.
+  inline dd reduce(dd x, double k, double c0, double c1, double c2, double c3) noexcept
+  {
+    const double a = std::fma(-k, c0, x.Hi);
+    const dd w = fast_two_sum(k * c1, k * c2);
+    const dd d = two_sum(a, -w.Hi);
+    return fast_two_sum(d.Hi, d.Lo + ((x.Lo - w.Lo) - k * c3));
+  }
+
+  //---------------------------------------------------------------------------
+  // Kernels. Each is within about 2^-96 of its value (relative, plus an
+  // absolute 2^-99 where a subtraction cancels; dd_kernels_stay_far_inside_
+  // their_bound in math_adaptive.test.cpp checks it). Horner steps add a
+  // small product to a larger coefficient, so they use add_dominant. They are
+  // templates on D = dd only so that consts<D> is instantiated on first use.
+  //---------------------------------------------------------------------------
+  template <typename D>
+  concept dd_type = std::same_as<D, dd>;
+
+  // e^x for |x| ≤ 700: x = k·ln 2/4096 + r, |r| ≤ ln 2/8192, k = 4096m + 64i + j,
+  // e^x = 2^m · 2^(i/64) · 2^(j/4096) · (1 + p(r)). The terms of p from r^4
+  // on are below 2^-53 relative and summed in double.
+  template <dd_type D>
+  inline D exp(D x) noexcept
+  {
+    using C = consts<D>;
+    const double k = __builtin_nearbyint(x.Hi * kInvLn2By4096);
+    const D r = reduce(x, k, C::Ln2By4096[0], C::Ln2By4096[1], C::Ln2By4096[2], 0);
+    const double rh = r.Hi;
+    const double tail = fpk::horner(rh, 1.0 / 5040, 1.0 / 720, 1.0 / 120, 1.0 / 24);
+    D p = add_dominant(C::F3, rh * tail);                  // 1/3! + r/4! + …
+    p = add_dominant(C::F2, mul(r, p));                    // 1/2! + r/3! + …
+    p = add_dominant(r, mul(sqr(r), p));                   // e^r − 1
+    const long ik = static_cast<long>(k);
+    const D t = mul(C::Exp2By64[static_cast<std::size_t>((ik >> 6) & 63)],
+                    C::Exp2By4096[static_cast<std::size_t>(ik & 63)]);
+    return scale(add_dominant(t, mul(t, p)), ik >> 12);
+  }
+
+  // ln x for x > 0: one Newton step on e^y = x from the double log.
+  template <dd_type D>
+  inline D log(D x) noexcept
+  {
+    const double y0 = fpk::fp_log(x.Hi);
+    const D u = add(mul(x, exp(D{-y0, 0})), -1.0);
+    return add(u, y0);
+  }
+
+  struct sincos_t { dd Sin, Cos; };
+
+  // sin and cos for |x| ≤ 2^20: x = n·π/128 + r, |r| ≤ π/256, then
+  // sin(a + r) = sin a + (sin a·(cos r − 1) + cos a·sin r) and the like with
+  // the table. The Taylor terms from r^9 (sin) and r^8 (cos) on are below
+  // 2^-53 relative and summed in double.
+  template <dd_type D>
+  [[gnu::always_inline]] inline sincos_t sincos(D x) noexcept
+  {
+    using C = consts<D>;
+    const double n = __builtin_nearbyint(x.Hi * kInvPiBy128);
+    const D r = reduce(x, n, C::PiBy128[0], C::PiBy128[1], C::PiBy128[2], C::PiBy128[3]);
+    const D z = sqr(r);
+    const double zh = z.Hi;
+    const double st = fpk::horner(zh, 1.0 / 6227020800.0, -1.0 / 39916800.0, 1.0 / 362880.0);
+    const double ct = fpk::horner(zh, 1.0 / 479001600.0, -1.0 / 3628800.0, 1.0 / 40320.0);
+    D s = add_dominant(neg(C::F7), zh * st);              // −1/7! + z/9! − …
+    s = add_dominant(C::F5, mul(z, s));
+    s = add_dominant(neg(C::F3), mul(z, s));
+    const D sr = add_dominant(r, mul(mul(r, z), s));      // sin r
+    D c = add_dominant(neg(C::F6), zh * ct);
+    c = add_dominant(C::F4, mul(z, c));
+    c = add_dominant(neg(C::F2), mul(z, c));
+    const D cm = mul(z, c);                                // cos r − 1
+    const long j = static_cast<long>(n);
+    const D sa = C::Sin[static_cast<std::size_t>(j & 255)];
+    const D ca = C::Sin[static_cast<std::size_t>((j + 64) & 255)];
+    return {add_dominant(sa, add(mul(sa, cm), mul(ca, sr))),
+            add_dominant(ca, sub(mul(ca, cm), mul(sa, sr)))};
+  }
+
+  template <dd_type D> inline D sin(D x) noexcept { return sincos(x).Sin; }
+  template <dd_type D> inline D cos(D x) noexcept { return sincos(x).Cos; }
+
+  // atan a for 0 ≤ a ≤ 1: c = j/32 nearest a, atan a = atan c + atan t with
+  // t = (a − c)/(1 + a·c), |t| ≤ 1/64. The series terms from t^9 on (2^-51
+  // relative at most) are summed in double, within 2^-104.
+  template <dd_type D>
+  inline D atan_unit(D a) noexcept
+  {
+    using C = consts<D>;
+    const double j = __builtin_nearbyint(a.Hi * 32);
+    const double c = j * (1.0 / 32);
+    const D t = div(add(a, -c), add_dominant(D{1, 0}, mul(a, c)));
+    const D z = sqr(t);
+    const double zh = z.Hi;
+    const double tail = fpk::horner(zh, -1.0 / 19, 1.0 / 17, -1.0 / 15, 1.0 / 13, -1.0 / 11, 1.0 / 9);
+    D p = add_dominant(neg(C::I7), zh * tail);            // −1/7 + z/9 − …
+    p = add_dominant(C::I5, mul(z, p));
+    p = add_dominant(neg(C::I3), mul(z, p));
+    const D r = add_dominant(t, mul(mul(t, z), p));        // atan t
+    return add_dominant(C::Atan[static_cast<std::size_t>(j)], r);
+  }
+
+  // atan2(y, x): the ratio of the smaller to the larger magnitude, then the
+  // octant.
+  template <dd_type D>
+  inline D atan2(D y, D x) noexcept
+  {
+    using C = consts<D>;
+    const double ay = y.Hi < 0 ? -y.Hi : y.Hi, ax_ = x.Hi < 0 ? -x.Hi : x.Hi;
+    if (ay == 0 && ax_ == 0) return D{0, 0};
+    if (ay <= ax_)
+    {
+      const D q = div(y, x);
+      const D r = q.Hi < 0 ? neg(atan_unit(neg(q))) : atan_unit(q);
+      if (x.Hi > 0) return r;
+      return y.Hi < 0 ? sub(r, C::Pi) : add(r, C::Pi);
+    }
+    const D q = div(x, y);                                // |q| < 1
+    const D r = q.Hi < 0 ? neg(atan_unit(neg(q))) : atan_unit(q);
+    return y.Hi > 0 ? sub(C::HalfPi, r) : sub(neg(C::HalfPi), r);
+  }
+
+  template <dd_type D>
+  inline D atan(D x) noexcept
+  {
+    const bool negative = x.Hi < 0;
+    const D a = negative ? neg(x) : x;
+    const D r = a.Hi <= 1 ? atan_unit(a) : sub(consts<D>::HalfPi, atan_unit(div(D{1, 0}, a)));
+    return negative ? neg(r) : r;
+  }
+
+  // √x: one Newton step from the correctly rounded double root.
+  template <dd_type D>
+  inline D sqrt(D x) noexcept
+  {
+    if (!(x.Hi > 0)) return D{0, 0};
+    const double y = fpk::fp_sqrt(x.Hi);
+    const D e = sub(x, two_prod(y, y));
+    return fast_two_sum(y, e.Hi / (2 * y));
+  }
+
+  // ∛x: one Newton step from the double root.
+  template <dd_type D>
+  inline D cbrt(D x) noexcept
+  {
+    if (x.Hi == 0) return D{0, 0};
+    const double y = fpk::fp_cbrt(x.Hi);
+    const D e = sub(mul(two_prod(y, y), y), x);          // y³ − x
+    return fast_two_sum(y, -e.Hi / (3 * y * y));
+  }
+
+  template <dd_type D> inline D tan(D x) noexcept { const sincos_t sc = sincos(x); return div(sc.Sin, sc.Cos); }
+
+  template <dd_type D> inline D exp2(D x) noexcept  { return exp(mul(x, consts<D>::Ln2)); }
+  template <dd_type D> inline D log2(D x) noexcept  { return mul(log(x), consts<D>::Log2e); }
+  template <dd_type D> inline D log10(D x) noexcept { return mul(log(x), consts<D>::Log10e); }
+  template <dd_type D> inline D sinh(D x) noexcept  { const D e = exp(x); return ldexp(sub(e, div(D{1, 0}, e)), -1); }
+  template <dd_type D> inline D cosh(D x) noexcept  { const D e = exp(x); return ldexp(add(e, div(D{1, 0}, e)), -1); }
+  template <dd_type D> inline D tanh(D x) noexcept  { const D e = exp(ldexp(x, 1)); return div(add(e, -1.0), add(e, 1.0)); }
+
+  // The inverse hyperbolics on |x|, as in the double tier.
+  template <dd_type D>
+  inline D asinh(D x) noexcept
+  {
+    const bool negative = x.Hi < 0;
+    const D a = negative ? neg(x) : x;
+    const D m = log(add(a, sqrt(add(sqr(a), 1.0))));
+    return negative ? neg(m) : m;
+  }
+  template <dd_type D> inline D acosh(D x) noexcept { return log(add(x, sqrt(mul(add(x, -1.0), add(x, 1.0))))); }
+  template <dd_type D>
+  inline D atanh(D x) noexcept
+  {
+    const bool negative = x.Hi < 0;
+    const D a = negative ? neg(x) : x;
+    const D m = ldexp(log(div(add(a, 1.0), add(neg(a), 1.0))), -1);
+    return negative ? neg(m) : m;
+  }
+  template <dd_type D> inline D asin(D x) noexcept { return atan2(x, sqrt(mul(add(neg(x), 1.0), add(x, 1.0)))); }
+  template <dd_type D> inline D acos(D x) noexcept { return atan2(sqrt(mul(add(neg(x), 1.0), add(x, 1.0))), x); }
+  template <dd_type D> inline D hypot(D x, D y) noexcept { return sqrt(add(sqr(x), sqr(y))); }
+} // namespace beman::inside::math::detail::dd
+
+#endif // !BEMAN_INSIDE_MATH_NO_FP
+
+
 
 //---------------------------------------------------------------------------
 // beman::inside::math::adaptive — the adaptive math engine.
@@ -11138,13 +11618,126 @@ namespace beman::inside::math::detail::ax
 #ifndef BEMAN_INSIDE_MATH_NO_FP
   namespace fpk = ::beman::inside::math::detail::fp;
 
+  //---------------------------------------------------------------------------
+  // The dd tier: outputs past the double tier whose value indices stay below
+  // 2^62. The double-double kernels (detail/math_dd.hpp) are within about
+  // 2^-97 of their values (measured against the integer path at 150 bits:
+  // 2^-97 relative at worst, 2^-99 absolute); the bound is 2^-88 of the
+  // result plus 2^-92·max(1, |x|), the same structure as the double tier's
+  // with a margin of 2^9, and inputs that are not doubles add 2^-100 of |x|
+  // times the slope. Undecided results go to the integer path as before.
+  //---------------------------------------------------------------------------
+  namespace ddk = ::beman::inside::math::detail::dd;
+
+  inline constexpr double kDDRel = 0x1p-88, kDDAbs = 0x1p-92;
+
+  constexpr double dd_eval_bound(double x, double v) noexcept
+  { return kDDRel * fabs_d(v) + kDDAbs * (fabs_d(x) > 1 ? fabs_d(x) : 1.0); }
+
+  inline constexpr double two53 = 0x1p53;
+
+  // Value indices of Out of at most 2^62 in magnitude, and a notch whose p and q
+  // are doubles exactly.
+  template <insidable Out>
+  inline constexpr bool dd_output = [] {
+    if constexpr (!slotted<Out> || exact_valued<Out> || fp_output<Out>) return false;
+    else
+    {
+      if (!(notch_p<Out> < two53 && notch_q<Out> < two53)) return false;
+      const grid_wide lim = grid_wide{1} << 62;
+      const grid_wide lo = slot_base<Out>, hi = slot_base<Out> + grid_of<Out>.slot_count();
+      return !(lo < -lim) && !(lim < hi);
+    }
+  }();
+
+  // Inputs the tier reads exactly (doubles) or within 2^-100 (index·p/q).
+  template <insidable In>
+  inline constexpr bool dd_input = !exact_valued<In> && !point_raw<In>
+      && (fp_raw<In> || fp_exact_input<In> || (small_index<In> && notch_p<In> < two53 && notch_q<In> < two53));
+
+  // The error-free sums need the additions in program order: a build that
+  // lets the compiler reassociate (-fassociative-math, part of -ffast-math)
+  // leaves the tier out.
+#if defined(__ASSOCIATIVE_MATH__) || defined(__FAST_MATH__)
+  inline constexpr bool dd_sums_exact = false;
+#else
+  inline constexpr bool dd_sums_exact = true;
+#endif
+
+  template <insidable Out, insidable... Ins>
+  inline constexpr bool dd_tier = fp_tier_available && dd_sums_exact && dd_output<Out> && (dd_input<Ins> && ...);
+
+  template <insidable In>
+  inline constexpr double dd_input_rel = (fp_raw<In> || fp_exact_input<In>) ? 0.0 : 0x1p-100;
+
+  template <insidable In>
+  inline ddk::dd dd_read(In const& x) noexcept
+  {
+    if constexpr (fp_raw<In>) return {static_cast<double>(x), 0};
+    else if constexpr (fp_exact_input<In>) return {input_double(x), 0};
+    else
+    {
+      const ddk::dd n = ddk::two_prod(static_cast<double>(value_index<imax>(x)), notch_p<In>);
+      return ddk::div(n, ddk::dd{notch_q<In>, 0});
+    }
+  }
+
+  // The slot of a dd value v within an absolute bound: the value index
+  // t = v·q/p as a dd (within 2^-104 of t), split into J1 = nearbyint(t.Hi)
+  // and the rest u = (t.Hi − J1) + t.Lo, which rounds to J2 with remainder d.
+  // The tests on d are fp_decide's, with the bound widened by u's rounding.
+  template <insidable Out>
+  inline bool dd_decide(ddk::dd v, double bound, Out& out) noexcept
+  {
+    constexpr round_mode M = out_rounding<Out>;
+    constexpr ddk::dd s = ddk::div(ddk::dd{notch_q<Out>, 0}, ddk::dd{notch_p<Out>, 0});
+    constexpr imax first = static_cast<imax>(slot_base<Out>);              // |index| ≤ 2^62
+    constexpr imax last = static_cast<imax>(slot_base<Out> + grid_of<Out>.slot_count());
+    constexpr double lo = static_cast<double>(first) - 1024, hi = static_cast<double>(last) + 1024;
+    // Below 2^52, t.Hi's nearest integer is J itself unless t.Lo carries u
+    // past ½, which the tests then reject: one rounding instead of two.
+    constexpr bool narrow = lo > -0x1p52 && hi < 0x1p52;
+    const ddk::dd t = ddk::mul(v, s);
+    const double j1 = nearest_int(t.Hi);
+    if (!(j1 >= lo && j1 <= hi)) return false;            // NaN and infinities too
+    const double u = (t.Hi - j1) + t.Lo;
+    double j2 = narrow ? 0.0 : nearest_int(u);
+    double d = u - j2;
+    const double bt = bound * s.Hi + fabs_d(t.Hi) * 0x1p-100 + (fabs_d(u) + 1) * 0x1p-52;
+    if constexpr (M == round_mode::nearest || M == round_mode::half_even)
+    {
+      if (!(fabs_d(d) < 0.5 - bt)) return false;
+    }
+    else
+    {
+      if (d < 0) { d += 1; j2 -= 1; }                     // j1 + j2 = floor(t)
+      if (!(d > bt && 1 - d > bt)) return false;
+      if constexpr (M == round_mode::ceil) j2 += 1;
+    }
+    imax j = static_cast<imax>(j1) + static_cast<imax>(j2);
+    if constexpr (M == round_mode::trunc) { if (j < 0) j += 1; }
+    if (j < first || j > last) return false;
+    if constexpr (integer_raw<Out>)
+      out = Out::from_raw(raw_from_offset<Out>(static_cast<umax>(j) - static_cast<umax>(first)));
+    else                                                  // fp raw: the grid point, exact
+      out = Out::from_raw(static_cast<raw_t<Out>>(static_cast<double>(j) * (notch_p<Out> / notch_q<Out>)));
+    return true;
+  }
+
+
+
   // One kernel per function: its value, its evaluation bound, and its slope
   // |f′(x)| (for the input's rounding).
-  struct fp_plain { static double eval(double x, double v) { return eval_bound(x, v); } };
+  struct fp_plain
+  {
+    static double eval(double x, double v) { return eval_bound(x, v); }
+    static double dd_eval(double x, double v) { return dd_eval_bound(x, v); }
+  };
 #  define BEMAN_INSIDE_AX_KERNEL(fn, slope_expr)                                        \
   struct fp_##fn : fp_plain                                                             \
   {                                                                                     \
     static double value(double x) { return fpk::fp_##fn(x); }                           \
+    template <typename D> static D dd_value(D x) { return ddk::fn(x); }                 \
     static double slope([[maybe_unused]] double x, [[maybe_unused]] double v) { return slope_expr; } \
   };
   BEMAN_INSIDE_AX_KERNEL(sin,   1.0)
@@ -11170,7 +11763,9 @@ namespace beman::inside::math::detail::ax
   struct fp_acosh
   {
     static double value(double x) { return fpk::fp_acosh(x); }
+    template <typename D> static D dd_value(D x) { return ddk::acosh(x); }
     static double eval(double x, double v) { return kEvalAbs / fpk::fp_sqrt(1.0 - 1.0 / (x * x)) + eval_bound(x, v); }
+    static double dd_eval(double x, double v) { return kDDAbs / fpk::fp_sqrt(1.0 - 1.0 / (x * x)) + dd_eval_bound(x, v); }
     static double slope(double x, double) { return 1.0 / fpk::fp_sqrt((x - 1.0) * (x + 1.0)); }
   };
 
@@ -11241,7 +11836,85 @@ namespace beman::inside::math::detail::ax
     const double bound = fabs_d(v) * (kEvalRel * (1 + L) + input_rel<In> * L) + kEvalAbs;
     return fp_decide(v, bound * 1.5, out);
   }
+  template <insidable Out, typename K, insidable In>
+  inline bool dd_attempt(In const& in, Out& out)
+  {
+    const ddk::dd x = dd_read(in);
+    const ddk::dd v = K::dd_value(x);
+    double bound = K::dd_eval(x.Hi, v.Hi);
+    if constexpr (dd_input_rel<In> != 0) bound += dd_input_rel<In> * fabs_d(x.Hi) * K::slope(x.Hi, v.Hi);
+    return dd_decide(v, bound * 1.5, out);
+  }
+
+  template <insidable Out, insidable InY, insidable InX>
+  inline bool dd_attempt_atan2(InY const& yi, InX const& xi, Out& out)
+  {
+    const ddk::dd y = dd_read(yi), x = dd_read(xi);
+    const ddk::dd v = ddk::atan2(y, x);
+    const double bound = dd_eval_bound(1.0, v.Hi) + dd_input_rel<InY> + dd_input_rel<InX>;
+    return dd_decide(v, bound * 1.5, out);
+  }
+
+  template <insidable Out, insidable InX, insidable InY>
+  inline bool dd_attempt_hypot(InX const& xi, InY const& yi, Out& out)
+  {
+    const ddk::dd x = dd_read(xi), y = dd_read(yi);
+    const ddk::dd v = ddk::hypot(x, y);
+    const double ax = fabs_d(x.Hi), ay = fabs_d(y.Hi);
+    const double bound = dd_eval_bound(ax > ay ? ax : ay, v.Hi) + dd_input_rel<InX> * ax + dd_input_rel<InY> * ay;
+    return dd_decide(v, bound * 1.5, out);
+  }
+
+  template <insidable Out, insidable In>
+  inline bool dd_attempt_tan(In const& in, Out& out)
+  {
+    const ddk::dd x = dd_read(in);
+    const ddk::dd t = ddk::tan(x);
+    const double sec2 = 1 + t.Hi * t.Hi, mx = fabs_d(x.Hi) > 1 ? fabs_d(x.Hi) : 1.0;
+    const double bound = kDDRel * sec2 * mx + kDDAbs * mx + dd_input_rel<In> * fabs_d(x.Hi) * sec2;
+    return dd_decide(t, bound * 1.5, out);
+  }
+
+  // pow = e^(e·ln b), as in the double tier; e·ln b within the exp range.
+  template <insidable Out, insidable InB, insidable InE>
+  inline bool dd_attempt_pow(InB const& bi, InE const& ei, Out& out)
+  {
+    const ddk::dd b = dd_read(bi), e = dd_read(ei);
+    if (!(b.Hi > 0)) return false;
+    const ddk::dd y = ddk::mul(ddk::log(b), e);
+    const double L = fabs_d(y.Hi);
+    if (!(L <= 700)) return false;
+    const ddk::dd v = ddk::exp(y);
+    const double bound = fabs_d(v.Hi) * (kDDRel * (1 + L) + dd_input_rel<InB> * fabs_d(e.Hi) + dd_input_rel<InE> * L) + kDDAbs;
+    return dd_decide(v, bound * 1.5, out);
+  }
+
+  // ln Base at compile time, from the integer log.
+  template <imax Base>
+  inline constexpr ddk::dd ln_base = [] {
+    const ddk::fixed a = ddk::fixed{Base} << ddk::kS;
+    return ddk::of_fixed(log_fixed<ddk::kS>(a, 0).Value, ddk::kS);
+  }();
+
+  template <insidable Out, imax Base, insidable In>
+  inline bool dd_attempt_pow_base(In const& xi, Out& out)
+  {
+    const ddk::dd x = dd_read(xi);
+    const ddk::dd y = ddk::mul(x, ln_base<Base>);
+    const double L = fabs_d(y.Hi);
+    const ddk::dd v = ddk::exp(y);
+    const double bound = fabs_d(v.Hi) * (kDDRel * (1 + L) + dd_input_rel<In> * L) + kDDAbs;
+    return dd_decide(v, bound * 1.5, out);
+  }
+#else
+  inline constexpr bool dd_sums_exact = false;
+  template <insidable Out, insidable... Ins>
+  inline constexpr bool dd_tier = false;
 #endif
+
+  // Either fast tier ran before the integer path.
+  template <insidable Out, insidable... Ins>
+  inline constexpr bool fast_tier = fp_tier<Out, Ins...> || dd_tier<Out, Ins...>;
 } // namespace beman::inside::math::detail::ax
 
 namespace beman::inside::math::adaptive
@@ -11250,19 +11923,25 @@ namespace beman::inside::math::adaptive
   using ::beman::inside::detail::exact_valued;
   using ::beman::inside::detail::grid_rational;
 
-  // The double tier's attempt, inside an _into form (nothing without an FPU).
+  // The double and dd tiers' attempts, inside an _into form (nothing without
+  // an FPU).
 #ifndef BEMAN_INSIDE_MATH_NO_FP
 #  define BEMAN_INSIDE_AX_FP(Out, In, fn, x, ok)                                        \
     if constexpr (ax::fp_tier<Out, In> && (ok))                                         \
       if !consteval                                                                     \
       {                                                                                 \
         if (Out r; ax::fp_attempt<Out, ax::fp_##fn>(x, r)) return r;                    \
+      }                                                                                 \
+    if constexpr (ax::dd_tier<Out, In> && (ok))                                         \
+      if !consteval                                                                     \
+      {                                                                                 \
+        if (Out r; ax::dd_attempt<Out, ax::fp_##fn>(x, r)) return r;                    \
       }
 #else
 #  define BEMAN_INSIDE_AX_FP(Out, In, fn, x, ok)
 #endif
 
-  // The integer path after the double tier: rarely taken, so out of line,
+  // The integer path after a fast tier: rarely taken, so out of line,
   // which keeps its frame off the tier's fast path.
   template <typename F>
   [[gnu::cold, gnu::noinline]] constexpr auto cold_call(F const& f) { return f(); }
@@ -11299,7 +11978,7 @@ namespace beman::inside::math::adaptive
     using core = __VA_ARGS__;                                                           \
     BEMAN_INSIDE_AX_TABLE(Out, In, x)                                                   \
     BEMAN_INSIDE_AX_FP(Out, In, fn, x, (fp_ok))                                         \
-    BEMAN_INSIDE_AX_REST((ax::fp_tier<Out, In> && (fp_ok)),                             \
+    BEMAN_INSIDE_AX_REST((ax::fast_tier<Out, In> && (fp_ok)),                             \
                          ax::evaluate<Out, ax::start_bits<Out>>(core{ax::exact_input(x)})) \
   }
 
@@ -11325,7 +12004,7 @@ namespace beman::inside::math::adaptive
     using core = __VA_ARGS__;                                                           \
     BEMAN_INSIDE_AX_TABLE(Out, In, x)                                                   \
     BEMAN_INSIDE_AX_FP(Out, In, fn, x, (fp_ok))                                         \
-    BEMAN_INSIDE_AX_REST((ax::fp_tier<Out, In> && (fp_ok)),                             \
+    BEMAN_INSIDE_AX_REST((ax::fast_tier<Out, In> && (fp_ok)),                             \
                          ax::evaluate<Out, ax::start_bits<Out>>(core{ax::exact_input(x)})) \
   }
 
@@ -11345,7 +12024,7 @@ namespace beman::inside::math::adaptive
   {
     require_rounding<Out>();
     BEMAN_INSIDE_AX_FP(Out, In, sqrt, x, true)
-    BEMAN_INSIDE_AX_REST((ax::fp_tier<Out, In>),
+    BEMAN_INSIDE_AX_REST((ax::fast_tier<Out, In>),
         ax::evaluate<Out, ax::start_bits<Out>>(ax::sqrt_core<ax::input_limbs<In>, ax::input_bits<In>>{ax::exact_input(x)}))
   }
 
@@ -11371,9 +12050,14 @@ namespace beman::inside::math::adaptive
       {
         if (Out r; ax::fp_attempt_tan<Out>(x, r)) return r;
       }
+    if constexpr (ax::dd_tier<Out, In> && ax::in_max<In> <= 0x1p20)
+      if !consteval
+      {
+        if (Out r; ax::dd_attempt_tan<Out>(x, r)) return r;
+      }
 #endif
     using core = ax::trig_core<ax::input_limbs<In>, ax::in_mag<In>, ax::trig::tan, ax::out_kmax<Out>>;
-    BEMAN_INSIDE_AX_REST((ax::fp_tier<Out, In> && ax::in_max<In> <= 0x1p20),
+    BEMAN_INSIDE_AX_REST((ax::fast_tier<Out, In> && ax::in_max<In> <= 0x1p20),
                          ax::evaluate_checked<Out, ax::start_bits<Out>>(core{ax::exact_input(x)}))
   }
 
@@ -11387,10 +12071,15 @@ namespace beman::inside::math::adaptive
       {
         if (Out r; ax::fp_attempt_atan2<Out>(y, x, r)) return r;
       }
+    if constexpr (ax::dd_tier<Out, InY, InX>)
+      if !consteval
+      {
+        if (Out r; ax::dd_attempt_atan2<Out>(y, x, r)) return r;
+      }
 #endif
     constexpr std::size_t E = ax::input_limbs<InY> > ax::input_limbs<InX> ? ax::input_limbs<InY> : ax::input_limbs<InX>;
     using F = ::beman::inside::detail::exact_frac<E>;
-    BEMAN_INSIDE_AX_REST((ax::fp_tier<Out, InY, InX> && ax::in_max<InY> <= 0x1p500 && ax::in_max<InX> <= 0x1p500),
+    BEMAN_INSIDE_AX_REST((ax::fast_tier<Out, InY, InX> && ax::in_max<InY> <= 0x1p500 && ax::in_max<InX> <= 0x1p500),
                          ax::evaluate<Out, ax::start_bits<Out>>(ax::atan2_core<E>{F{ax::exact_input(y)}, F{ax::exact_input(x)}}))
   }
 
@@ -11404,11 +12093,16 @@ namespace beman::inside::math::adaptive
       {
         if (Out r; ax::fp_attempt_hypot<Out>(x, y, r)) return r;
       }
+    if constexpr (ax::dd_tier<Out, InX, InY>)
+      if !consteval
+      {
+        if (Out r; ax::dd_attempt_hypot<Out>(x, y, r)) return r;
+      }
 #endif
     constexpr std::size_t E = 2 * (ax::input_limbs<InX> > ax::input_limbs<InY> ? ax::input_limbs<InX> : ax::input_limbs<InY>) + 1;
     using F = ::beman::inside::detail::exact_frac<E>;
     constexpr int Bits = 2 * (ax::input_bits<InX> > ax::input_bits<InY> ? ax::input_bits<InX> : ax::input_bits<InY>) + 2;
-    BEMAN_INSIDE_AX_REST((ax::fp_tier<Out, InX, InY> && ax::in_max<InX> <= 0x1p500 && ax::in_max<InY> <= 0x1p500),
+    BEMAN_INSIDE_AX_REST((ax::fast_tier<Out, InX, InY> && ax::in_max<InX> <= 0x1p500 && ax::in_max<InY> <= 0x1p500),
                          ax::evaluate<Out, ax::start_bits<Out>>(ax::sqrt_core<E, Bits>{F{ax::exact_input(x)} * F{ax::exact_input(x)}
                                                                                      + F{ax::exact_input(y)} * F{ax::exact_input(y)}}))
   }
@@ -11425,6 +12119,11 @@ namespace beman::inside::math::adaptive
       {
         if (Out r; ax::fp_attempt_pow<Out>(base, exp, r)) return r;
       }
+    if constexpr (ax::dd_tier<Out, InB, InE>)
+      if !consteval
+      {
+        if (Out r; ax::dd_attempt_pow<Out>(base, exp, r)) return r;
+      }
 #endif
     const auto integer = [&]() -> std::expected<Out, errc> {
       const auto b = ax::exact_input(base);
@@ -11432,7 +12131,7 @@ namespace beman::inside::math::adaptive
       using core = ax::pow_core<ax::input_limbs<InB>, ax::input_limbs<InE>, ax::in_mag<InE>, ax::out_kmax<Out>, ax::input_bits<InB>, ax::input_bits<InE>>;
       return ax::evaluate_checked<Out, ax::start_bits<Out>>(core{b, ax::exact_input(exp)});
     };
-    BEMAN_INSIDE_AX_REST((ax::fp_tier<Out, InB, InE>), integer())
+    BEMAN_INSIDE_AX_REST((ax::fast_tier<Out, InB, InE>), integer())
   }
 
   // Base^x for a compile-time integer Base ≥ 2.
@@ -11447,9 +12146,14 @@ namespace beman::inside::math::adaptive
       {
         if (Out r; ax::fp_attempt_pow_base<Out, Base>(x, r)) return r;
       }
+    if constexpr (ax::dd_tier<Out, In> && ax::in_max<In> <= 700)
+      if !consteval
+      {
+        if (Out r; ax::dd_attempt_pow_base<Out, Base>(x, r)) return r;
+      }
 #endif
     using core = ax::pow_core<2, ax::input_limbs<In>, ax::in_mag<In>, ax::out_kmax<Out>, 66, ax::input_bits<In>, Base>;
-    BEMAN_INSIDE_AX_REST((ax::fp_tier<Out, In> && ax::in_max<In> <= 1000),
+    BEMAN_INSIDE_AX_REST((ax::fast_tier<Out, In> && ax::in_max<In> <= 1000),
                          ax::evaluate<Out, ax::start_bits<Out>>(core{ax::exact_int<2>(Base), ax::exact_input(x)}))
   }
 

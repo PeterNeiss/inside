@@ -38,13 +38,14 @@ Precision follows the **output** grid: the start precision is the bits that
 resolve the output notch plus 8 guard bits. A coarse output is cheap; a fine one
 costs more, with no fixed limit.
 
-Each call takes the first of three paths that applies — all three give the same
+Each call takes the first of four paths that applies — all four give the same
 grid point:
 
 | Path | When | Cost |
 |---|---|---|
 | **Table** | the input has at most `BEMAN_INSIDE_MATH_TABLE_SLOTS` slots (default 256) and every result lies in the output's range | one load; the table is computed at compile time |
 | **Double tier** | an FPU is present (not `BEMAN_INSIDE_MATH_NO_FP`) and the output needs at most 36 bits | the library's own double kernels, plus an error bound; decided results are stored as raws |
+| **dd tier** | an FPU is present, the output needs more than 36 bits, and its value indices stay within ±2^62 | double-double kernels (about 106 bits) from compile-time tables, plus an error bound |
 | **Integer path** | always available; the only path at compile time and without an FPU | Taylor polynomials with compile-time coefficient tables in wide fixed point |
 
 The double tier bounds the kernels' error generously — 2^-40 of the result plus
@@ -53,6 +54,15 @@ input that is not a double exactly adding its rounding times the function's
 slope — against a measured error of about one ulp. Whenever the bound does not
 place the result in a single slot, the integer path decides. A test checks that
 the tiers agree slot for slot.
+
+The dd tier works the same way with values carried as a sum of two doubles. Its
+kernels use table-driven reductions (2^(i/64)·2^(j/4096) for exp, sin(jπ/128),
+atan(j/32)) and Newton steps for log, sqrt and cbrt. Every table and coefficient
+comes at compile time from the integer path's series, computed only in
+translation units that use the tier. Its bound is 2^-88 of the result plus
+2^-92·max(1, |x|), with the same condition-number terms. A test checks that the
+kernels' errors against the integer path at 150 bits stay at least 2^8 below
+this bound; the measured worst is about 2^-96 relative.
 
 ## Conventions
 
@@ -207,12 +217,12 @@ on grids finer than about 2^-36 it missed notches routinely.
 
 | Inputs → outputs | New / old time |
 |---|---|
-| `f64` grids on both sides, notch 2^-14 (`bench.cpp`, the old engine's best case: its store was the raw double) | 0.86–1.12× (`sin` 4.8 → 4.3 ns, `exp` 7.3 → 6.9 ns, `sqrt` 1.9 → 2.1 ns, `hypot` 2.2 → 2.5 ns) |
+| `f64` grids on both sides, notch 2^-14 (`bench.cpp`, the old engine's best case: its store was the raw double) | 0.86–1.12× (`sin` 4.8 → 4.3 ns, `exp` 7.3 → 7.0 ns, `sqrt` 1.9 → 2.1 ns, `hypot` 2.2 → 2.5 ns) |
 | integer-backed outputs, notch 2^-20, dyadic or decimal inputs | 0.03–0.20× (faster: the old engine's double → grid store was the slow part) |
 | decimal outputs (notch 10^-6) | 0.02–0.07× (faster) |
-| outputs past the double tier: 2^-40 | 0.9–3.2× (tan the slowest) |
-| 2^-52 | 1.2–3.8× (acosh the slowest) |
-| `pow_base<10>` onto a 44-bit output (10^9 on a 2^-14 grid) | about 21× (15.7 → 328 ns): the worst case |
+| outputs past the double tier (the dd tier): 2^-40 | 0.16–0.66× (`exp` 119 → 29 ns, `sin` 125 → 55 ns; acos the slowest) |
+| 2^-52, value indices up to 2^62 | 0.20–0.72× |
+| `pow_base<10>` onto a 44-bit output (10^9 on a 2^-14 grid) | 1.5× (15.7 → 23.7 ns): the worst case |
 
 Inputs of up to 256 slots use the table path and cost one load. Each table adds
 about 0.13 s of compile time on GCC; `BEMAN_INSIDE_MATH_TABLE_SLOTS=0` turns

@@ -18,7 +18,8 @@
 //   rational_compare  — exact fraction ordering (128-bit cross products)
 //   math_table        — sin of a 256-slot input (the compile-time table)
 //   math_double       — sin onto a 2^-20 grid (the double tier)
-//   math_integer      — sin onto a 2^-40 grid (the integer path)
+//   math_dd           — sin onto a 2^-40 grid (the dd tier)
+//   math_integer      — exp onto a 2^-57 grid, indices past 2^62 (the integer path)
 //   math_decimal      — exp of a decimal input onto a 10^-6 grid
 //
 // The work is intentionally small and scaled by BEMAN_INSIDE_PERF_SCALE so cachegrind
@@ -206,11 +207,13 @@ namespace
   using dec    = inside<{{-4, 4}, per<1000>}, round_nearest>;
   using out20  = inside<{{-64, 64}, per<(1u << 20)>}, round_nearest>;
   using out40  = inside<{{-64, 64}, per<(std::uint64_t{1} << 40)>}, round_nearest>;
+  using out57  = inside<{{0, 64}, per<(std::uint64_t{1} << 57)>}, round_nearest>;
   using out6   = inside<{{0, 64}, per<1000000>}, round_nearest>;
 
   std::int64_t run_math_table()   { return run_math<angle8>([](angle8 v) { return math::sin_into<out20>(v); }); }
   std::int64_t run_math_double()  { return run_math<angle>([](angle v) { return math::sin_into<out20>(v); }); }
-  std::int64_t run_math_integer() { return run_math<angle>([](angle v) { return math::sin_into<out40>(v); }); }
+  std::int64_t run_math_dd()      { return run_math<angle>([](angle v) { return math::sin_into<out40>(v); }); }
+  std::int64_t run_math_integer() { return run_math<angle>([](angle v) { return math::exp_into<out57>(v); }); }
   std::int64_t run_math_decimal() { return run_math<dec>([](dec v) { return math::exp_into<out6>(v); }); }
 }
 
@@ -228,6 +231,7 @@ int main(int argc, char** argv)
   else if (std::strcmp(key, "rational_compare")  == 0) acc = run_rational_compare();
   else if (std::strcmp(key, "math_table")        == 0) acc = run_math_table();
   else if (std::strcmp(key, "math_double")       == 0) acc = run_math_double();
+  else if (std::strcmp(key, "math_dd")           == 0) acc = run_math_dd();
   else if (std::strcmp(key, "math_integer")      == 0) acc = run_math_integer();
   else if (std::strcmp(key, "math_decimal")      == 0) acc = run_math_decimal();
   else { std::fprintf(stderr, "unknown workload key: %s\n", key); return 2; }

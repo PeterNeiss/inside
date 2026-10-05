@@ -564,3 +564,150 @@ TEST(MathAdaptiveTest, double_tier_agrees_on_decimal_inputs_and_checked_forms)
   }
   EXPECT_EQ(bad, 0);
 }
+
+// The dd tier: outputs past the double tier with value indices up to 2^62.
+// Every result must equal the integer path's, in every rounding mode, for
+// decimal outputs (q up to 10^15) and f64 outputs too.
+namespace
+{
+  using out52   = inside<{{-1024, 1024}, rational{1, umax{1} << 52}}, round_nearest>;   // indices ±2^62
+  using out44f  = inside<{{-64, 64}, rational{1, umax{1} << 44}}, round_floor>;
+  using out48c  = inside<{{-64, 64}, rational{1, umax{1} << 48}}, round_ceil>;
+  using out50t  = inside<{{-64, 64}, rational{1, umax{1} << 50}}, snap>;
+  using out46e  = inside<{{-64, 64}, rational{1, umax{1} << 46}}, round_half_even>;
+  using outdec15 = inside<{{-64, 64}, rational{1, 1'000'000'000'000'000}}, round_nearest>;
+  using f64out44 = inside<{{-64, 64}, rational{1, umax{1} << 44}}, round_nearest | f64>;
+  using symm4 = inside<{{-4, 4}, rational{1, 1000}}, round_nearest>;
+  using posm8 = inside<{{rational{1, 1000}, 8}, rational{1, 1000}}, round_nearest>;
+}
+
+#define DD_CHECK(fn, Out, In, ...) \
+  EXPECT_EQ((tier_mismatches<Out, In, __VA_ARGS__>([](In x) { return am::fn##_into<Out>(x); })), 0) << #fn " " #Out " " #In
+
+TEST(MathAdaptiveTest, dd_tier_agrees_with_the_integer_path)
+{
+  static_assert(!ax::fp_tier_available || !ax::dd_sums_exact || (ax::dd_tier<out52, sym4> && ax::dd_tier<outdec15, symm4> && ax::dd_tier<f64out44, sym4>));
+  static_assert(!ax::dd_tier<out20, sym4>);                                    // the double tier's
+  DD_CHECK(sin,   out52,   sym4,  ax::trig_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::trig::sin, 1>);
+  DD_CHECK(cos,   out44f,  sym4,  ax::trig_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::trig::cos, 1>);
+  DD_CHECK(exp,   out40,   sym4,  ax::exp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::out_kmax<out40>>);
+  DD_CHECK(exp,   out52,   symm4, ax::exp_core<ax::input_limbs<symm4>, ax::in_mag<symm4>, ax::out_kmax<out52>>);
+  DD_CHECK(exp2,  out48c,  sym4,  ax::exp2_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::out_kmax<out48c>>);
+  DD_CHECK(sinh,  out50t,  sym4,  ax::hyp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::hyp::sinh, ax::out_kmax<out50t>>);
+  DD_CHECK(cosh,  out46e,  sym4,  ax::hyp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::hyp::cosh, ax::out_kmax<out46e>>);
+  DD_CHECK(tanh,  outdec15, sym4, ax::hyp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::hyp::tanh, 1>);
+  DD_CHECK(atan,  out52,   sym4,  ax::atan_core<ax::input_limbs<sym4>>);
+  DD_CHECK(atan,  out50t,  symm4, ax::atan_core<ax::input_limbs<symm4>>);
+  DD_CHECK(asinh, out48c,  sym4,  ax::ahyp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::ahyp::asinh>);
+  DD_CHECK(cbrt,  out52,   sym4,  ax::cbrt_core<ax::input_limbs<sym4>>);
+  DD_CHECK(cbrt,  out44f,  symm4, ax::cbrt_core<ax::input_limbs<symm4>>);
+  DD_CHECK(log,   out52,   pos64, ax::log_core<ax::input_limbs<pos64>>);
+  DD_CHECK(log,   out46e,  posm8, ax::log_core<ax::input_limbs<posm8>>);
+  DD_CHECK(log2,  out44f,  pos64, ax::logb_core<ax::input_limbs<pos64>, 2>);
+  DD_CHECK(log10, outdec15, pos64, ax::logb_core<ax::input_limbs<pos64>, 10>);
+  DD_CHECK(sqrt,  out52,   pos64, ax::sqrt_core<ax::input_limbs<pos64>>);
+  DD_CHECK(sqrt,  out48c,  posm8, ax::sqrt_core<ax::input_limbs<posm8>>);
+  DD_CHECK(asin,  out52,   unit,  ax::asin_core<ax::input_limbs<unit>>);
+  DD_CHECK(acos,  out50t,  unit,  ax::acos_core<ax::input_limbs<unit>>);
+  DD_CHECK(atanh, out52,   open1, ax::ahyp_core<ax::input_limbs<open1>, ax::in_mag<open1>, ax::ahyp::atanh>);
+  DD_CHECK(acosh, out52,   ge1,   ax::ahyp_core<ax::input_limbs<ge1>, ax::in_mag<ge1>, ax::ahyp::acosh>);
+  DD_CHECK(sin,   f64out44, sym4, ax::trig_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::trig::sin, 1>);
+  DD_CHECK(exp,   f64out44, symm4, ax::exp_core<ax::input_limbs<symm4>, ax::in_mag<symm4>, ax::out_kmax<f64out44>>);
+  using tanout = inside<{{-1024, 1024}, rational{1, umax{1} << 52}}, round_nearest>;
+  EXPECT_EQ((tier_mismatches<tanout, tan_in, ax::trig_core<ax::input_limbs<tan_in>, ax::in_mag<tan_in>, ax::trig::tan, ax::out_kmax<tanout>>>([](tan_in x) { return *am::tan_into<tanout>(x); })), 0);
+
+  // Two inputs.
+  using base = inside<{{rational{1, 16}, 8}, rational{1, 16}}, round_nearest>;
+  using expo = inside<{{-3, 3}, rational{1, 100}}, round_nearest>;
+  int bad = 0;
+  for (int i = -40; i <= 40; i += 3)
+    for (int j = -40; j <= 40; j += 3)
+    {
+      const symm4 y{rational{i, 10}}, x{rational{j, 10}};
+      const auto a2 = ax::evaluate<out52, ax::start_bits<out52>>(ax::atan2_core<ax::input_limbs<symm4>>{ax::exact_input(y), ax::exact_input(x)});
+      if (am::atan2_into<out52>(y, x).raw() != a2.raw()) ++bad;
+      using F = detail::exact_frac<2 * ax::input_limbs<symm4> + 1>;
+      const F fx{ax::exact_input(x)}, fy{ax::exact_input(y)};
+      const auto h2 = ax::evaluate<out46e, ax::start_bits<out46e>>(ax::sqrt_core<2 * ax::input_limbs<symm4> + 1>{fx * fx + fy * fy});
+      if (am::hypot_into<out46e>(x, y).raw() != h2.raw()) ++bad;
+    }
+  for (int i = 1; i <= 128; i += 5)
+    for (int j = -300; j <= 300; j += 13)
+    {
+      const base b{i / 16.0};
+      const expo e{rational{j, 100}};
+      const auto r = am::pow_into<tanout>(b, e);
+      using core = ax::pow_core<ax::input_limbs<base>, ax::input_limbs<expo>, ax::in_mag<expo>, ax::out_kmax<tanout>>;
+      const auto r2 = ax::evaluate_checked<tanout, ax::start_bits<tanout>>(core{ax::exact_input(b), ax::exact_input(e)});
+      if (r.has_value() != r2.has_value() || (r && r->raw() != r2->raw())) ++bad;
+    }
+  // pow_base<10> onto a 44-bit output, as the deduced pow10 of an f64 grid.
+  using p10out = inside<{{0, 1'000'000'000}, rational{1, 16384}}, round_nearest>;
+  for (int j = -900; j <= 900; ++j)
+  {
+    const auto e = inside<{{-9, 9}, rational{1, 100}}, round_nearest>{rational{j, 100}};
+    using core = ax::pow_core<2, ax::input_limbs<decltype(e)>, ax::in_mag<decltype(e)>, ax::out_kmax<p10out>>;
+    const auto r2 = ax::evaluate<p10out, ax::start_bits<p10out>>(core{ax::exact_int<2>(10), ax::exact_input(e)});
+    if ((am::pow_base_into<p10out, 10>(e)).raw() != r2.raw()) ++bad;
+  }
+  EXPECT_EQ(bad, 0);
+}
+#undef DD_CHECK
+
+#ifndef BEMAN_INSIDE_MATH_NO_FP
+// The dd kernels against the integer path at 150 bits: every error is at
+// least 2^8 below the tier's bound (2^-88 relative plus 2^-92·max(1, |x|)).
+namespace
+{
+  namespace ddk = beman::inside::math::detail::dd;
+
+  template <insidable In, typename Core, typename F>
+  double dd_worst_ratio(F kernel)
+  {
+    const long long count = static_cast<long long>(grid_of<In>.slot_count());
+    double worst = 0;
+    for (long long i = 0; i <= count; ++i)
+    {
+      const In x = In::from_raw(detail::raw_from_offset<In>(static_cast<umax>(i)));
+      const auto a = Core{ax::exact_input(x)}.template run<150>();
+      const ddk::dd ref = ddk::of_fixed(a.Value, a.Scale);
+      const ddk::dd v = kernel(ddk::dd{static_cast<double>(x), 0});
+      const double err = std::fabs(ddk::sub(v, ref).Hi);
+      const double xd = std::fabs(static_cast<double>(x));
+      const double bound = ax::dd_eval_bound(xd, ref.Hi);
+      worst = std::max(worst, err / bound);
+    }
+    return worst;
+  }
+}
+
+#define DD_ACCURACY(fn, In, ...) \
+  EXPECT_LE((dd_worst_ratio<In, __VA_ARGS__>([](ddk::dd x) { return ddk::fn(x); })), 0x1p-8) << #fn
+
+TEST(MathAdaptiveTest, dd_kernels_stay_far_inside_their_bound)
+{
+  using big = inside<{{-600, 600}, rational{1, 8}}, round_nearest>;
+  using turns = inside<{{-1'000'000, 1'000'000}, rational{64, 1}}, round_nearest>;
+  DD_ACCURACY(exp,   sym4,  ax::exp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, 8>);
+  DD_ACCURACY(exp,   big,   ax::exp_core<ax::input_limbs<big>, ax::in_mag<big>, 1000>);
+  DD_ACCURACY(exp2,  sym4,  ax::exp2_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, 8>);
+  DD_ACCURACY(sin,   sym4,  ax::trig_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::trig::sin, 1>);
+  DD_ACCURACY(cos,   sym4,  ax::trig_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::trig::cos, 1>);
+  DD_ACCURACY(sin,   turns, ax::trig_core<ax::input_limbs<turns>, ax::in_mag<turns>, ax::trig::sin, 1>);
+  DD_ACCURACY(atan,  sym4,  ax::atan_core<ax::input_limbs<sym4>>);
+  DD_ACCURACY(sinh,  sym4,  ax::hyp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::hyp::sinh, 8>);
+  DD_ACCURACY(cosh,  sym4,  ax::hyp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::hyp::cosh, 8>);
+  DD_ACCURACY(tanh,  sym4,  ax::hyp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::hyp::tanh, 1>);
+  DD_ACCURACY(asinh, sym4,  ax::ahyp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::ahyp::asinh>);
+  DD_ACCURACY(cbrt,  sym4,  ax::cbrt_core<ax::input_limbs<sym4>>);
+  DD_ACCURACY(log,   pos64, ax::log_core<ax::input_limbs<pos64>>);
+  DD_ACCURACY(log2,  pos64, ax::logb_core<ax::input_limbs<pos64>, 2>);
+  DD_ACCURACY(log10, pos64, ax::logb_core<ax::input_limbs<pos64>, 10>);
+  DD_ACCURACY(sqrt,  pos64, ax::sqrt_core<ax::input_limbs<pos64>>);
+  DD_ACCURACY(asin,  unit,  ax::asin_core<ax::input_limbs<unit>>);
+  DD_ACCURACY(acos,  unit,  ax::acos_core<ax::input_limbs<unit>>);
+  DD_ACCURACY(atanh, open1, ax::ahyp_core<ax::input_limbs<open1>, ax::in_mag<open1>, ax::ahyp::atanh>);
+  DD_ACCURACY(acosh, ge1,   ax::ahyp_core<ax::input_limbs<ge1>, ax::in_mag<ge1>, ax::ahyp::acosh>);
+}
+#undef DD_ACCURACY
+#endif

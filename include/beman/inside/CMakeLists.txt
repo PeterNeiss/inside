@@ -18,6 +18,7 @@ target_sources(
                 detail/grid_rational.hpp
                 detail/int_for_bits.hpp
                 detail/math_adaptive.hpp
+                detail/math_dd.hpp
                 detail/math_fp.hpp
                 detail/wide_int.hpp
                 detail/wide_value.hpp
