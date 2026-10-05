@@ -55,10 +55,17 @@ auto p = h * h;         // the result grid reaches 2²⁰⁰; exact, no expected
 auto q = qword{~0ull} + qword{~0ull};     // 2⁶⁵ − 2 needs a big upper bound
 ```
 
-A floating-point limit or notch is taken as its exact binary value, so powers
-of two and large doubles spell big grids directly; grid arithmetic builds the
-rest. (`per<D>`, `frac<N, D>` and the `_r` / `_ins` literals still take 64-bit
-numbers.)
+The `_g` literal spells a grid number exactly, from decimal digits, a point
+and an `e±n` exponent: `inside<{0, 1267650600228229401496703205376_g}>` is the
+same type as `inside<{0, 0x1p100}>`, and `inside<{{0, 1}, 1e-30_g}>` has an
+exact decimal notch of 10⁻³⁰. A floating-point limit or notch is taken as its
+exact binary value, and grid arithmetic builds the rest. (`per<D>`,
+`frac<N, D>` and the `_r` / `_ins` literals stay 64-bit; under C++23 `_g` is
+64-bit too and rejects larger values at compile time.)
+
+Grid helpers such as `grid_of<B>.slot_count()` form big values; call them in a
+constant expression (`constexpr auto n = grid_of<B>.slot_count();`) — at
+runtime a result past 64 bits reports `errc::overflow`.
 
 Such an inside supports everything a wide-index inside does (above) — values
 past 64 bits may even sit on a grid with few slots, like

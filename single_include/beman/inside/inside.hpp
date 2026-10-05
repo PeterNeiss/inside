@@ -2736,6 +2736,68 @@ namespace beman::inside::detail
   constexpr rational to_rational(rational const& r) { return r; }
   constexpr std::expected<rational, errc> grid_gcd(rational const& a, rational const& b) { return gcd(a, b); }
 #endif
+
+  //---------------------------------------------------------------------------
+  // parse_grid_literal — the _g literal: decimal digits (with ' separators),
+  // an optional point and an optional e±n exponent, taken exactly. With big
+  // grid numbers any size; with 64-bit grid numbers the value must fit a
+  // 64-bit rational.
+  //---------------------------------------------------------------------------
+  template <char... Chars>
+  consteval grid_rational parse_grid_literal()
+  {
+    constexpr char text[] = {Chars...};
+    const grid_wide ten{10};
+    grid_wide num{0}, den{1};
+    std::size_t i = 0;
+    bool point = false, digits = false;
+    for (; i < sizeof(text); ++i)
+    {
+      const char c = text[i];
+      if (c == '\'') continue;
+      if (c == '.' && !point) { point = true; continue; }
+      if (c < '0' || c > '9') break;
+      num = num * ten + grid_wide{c - '0'};
+      if (point) den = den * ten;
+      digits = true;
+    }
+    if (!digits) constexpr_error<"_g literal: expected decimal digits">();
+    if (i < sizeof(text))
+    {
+      if (text[i] != 'e' && text[i] != 'E') constexpr_error<"_g literal: decimal digits, a point and e±n only">();
+      ++i;
+      bool neg = false;
+      if (i < sizeof(text) && (text[i] == '+' || text[i] == '-')) { neg = text[i] == '-'; ++i; }
+      if (i == sizeof(text)) constexpr_error<"_g literal: missing exponent digits">();
+      int e = 0;
+      for (; i < sizeof(text); ++i)
+      {
+        if (text[i] < '0' || text[i] > '9') constexpr_error<"_g literal: decimal digits, a point and e±n only">();
+        e = e * 10 + (text[i] - '0');
+        if (e > 10000) constexpr_error<"_g literal: exponent too large">();
+      }
+      for (; e > 0; --e) (neg ? den : num) = (neg ? den : num) * ten;
+    }
+#if BEMAN_INSIDE_BIG_GRIDS
+    return big_rational{num, den};
+#else
+    grid_wide a = num, b = den;                          // reduce, then it must fit
+    while (!(b == grid_wide{0})) { const grid_wide t = a % b; a = b; b = t; }
+    num = num / a;
+    den = den / a;
+    if (grid_wide{std::numeric_limits<umax>::max()} < num || grid_wide{std::numeric_limits<imax>::max()} < den)
+      constexpr_error<"_g literal: past the 64-bit grid numbers (needs C++26 big grids)">();
+    return rational{static_cast<umax>(num), static_cast<imax>(den)};
+#endif
+  }
+}
+
+namespace beman::inside
+{
+  // A grid number: `inside<{0, 1267650600228229401496703205376_g}>`, or an
+  // exact decimal notch `{{0, 1}, 1e-30_g}`. Any size under C++26 big grids.
+  template <char... Chars>
+  consteval detail::grid_rational operator""_g() { return detail::parse_grid_literal<Chars...>(); }
 }
 
 

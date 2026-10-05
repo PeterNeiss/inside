@@ -41,10 +41,9 @@ same template argument. The headers detect reflection through
 `__cpp_impl_reflection` and `<meta>` (that GCC snapshot does not define
 `__cpp_lib_define_static_array`).
 
-Still open: literal spellings past 64 bits (`per<D>` and `frac<N, D>` take 64-bit
-integers; the `_r` / `_ins` parsers produce 64-bit rationals), and the math engines,
-which stay 64-bit. Today big grids are spelled with exact double limits (`0x1p100`)
-or built by grid arithmetic.
+Big grid numbers are spelled with the `_g` literal (`1e-30_g`, `1267650600228229401496703205376_g`),
+exact double limits (`0x1p100`) or grid arithmetic. Still open: the math engines, which
+stay 64-bit (`per<D>`, `frac<N, D>` and the `_r` / `_ins` literals also stay 64-bit).
 
 ### Rich, formatted `static_assert` messages
 Compile-time diagnostics currently use static text. Embedding the offending value /

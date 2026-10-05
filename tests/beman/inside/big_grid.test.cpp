@@ -106,6 +106,19 @@ TEST(BigGridTest, conversions_and_io)
   EXPECT_EQ(to_string(x), to_string(rational{1, 4}));
 }
 
+TEST(BigGridTest, grid_number_literal)
+{
+  // _g spells grid numbers of any size, exactly — including decimal notches.
+  static_assert(std::is_same_v<inside<{0, 1267650600228229401496703205376_g}>, huge>);
+  using micro30 = inside<{{0, 1}, 1e-30_g}>;                   // a 10^-30 notch
+  static_assert(grid_of<micro30>.slot_bits() == 100);          // 10^30 slots
+  micro30 m = 0.5;
+  EXPECT_TRUE(m == 0.5);
+  static_assert(123'456'789'012'345'678'901'234'567'890_g
+                == grid_rational{big_int{123'456'789'012'345'678ull} * big_int{1'000'000'000'000ull}
+                                 + big_int{901'234'567'890ull}});
+}
+
 // The exact paths are constexpr.
 namespace
 {

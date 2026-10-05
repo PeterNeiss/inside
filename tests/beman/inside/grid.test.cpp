@@ -177,6 +177,9 @@ TEST(GridTest, two_limit_ctor_derives_the_notch)
   static_assert(grid{frac<1, (1ll << 62)>, frac<1, (1ll << 62) - 1>}.Notch == 0);   // no rational notch
 #endif
   static_assert(grid::validate<grid{frac<-6, 5>, frac<3, 5>}>());
+  // _g: grid numbers from decimal literals, exactly (any size with C++26 big grids).
+  static_assert(grid{0, 2.5_g}.Notch == rational{1, 2});
+  static_assert(1'000_g == 1000 && 25e-2_g == rational{1, 4} && 1.5e3_g == 1500);
 
   using half = inside<{0.5, 10}>;
   static_assert(std::is_same_v<half::raw_type, std::uint8_t>);
