@@ -65,7 +65,7 @@ template <insidable B> inline constexpr bool is_qformat =
 | `direct` | the value, as a plain integer (Notch 1) | cheapest — one int | integer ranges, interop (`raw()` == wire value) |
 | deduced / `indexed` | 0-based notch index | one int (+ a shift/offset to read the value) | Q-format, dense serialization |
 | `f64` | the value as IEEE-754 `double` | one double; FPU | math operands (sin/cos/…) |
-| `f32` | the value as IEEE-754 `float` | one float; single-precision FPU is enough | math operands on float-only FPUs (Cortex-M4F), `flt` engine |
+| `f32` | the value as IEEE-754 `float` | one float; single-precision FPU is enough | values on float-only FPUs (Cortex-M4F) |
 | `exact` | exact fraction (`rational`) | **gcd/lcm per op** | when rounding is unacceptable |
 
 Storage is deduced from the grid unless a representation flag overrides it (see

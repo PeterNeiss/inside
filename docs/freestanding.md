@@ -108,22 +108,20 @@ which would need to throw).
 
 The transcendental math API (`beman::inside::math::sin/cos/exp/log/sqrt/pow/atan/…` in
 **`beman/inside/cmath.hpp`**) works on freestanding targets too. Define **`BEMAN_INSIDE_MATH_NO_FP`**
-and the floating-point engines — including their `#include <cmath>` — are compiled out
-**entirely**, leaving the always-present integer/CORDIC engine to serve the full
-`beman::inside::math` API. The public surface, output grids, and types are unchanged; only the
-compute backend differs.
+and the math engine's double tier — including its `#include <cmath>` — is compiled out
+**entirely**; the integer path computes every result. The public surface, output grids,
+types **and values** are unchanged: results are correctly rounded either way.
 
-- **Auto-enabled** when `__STDC_HOSTED__ == 0` (i.e. `-ffreestanding`), and **implied
-  by `BEMAN_INSIDE_MATH_CORDIC`** — selecting the integer engine is itself an FP-free build.
+- **Auto-enabled** when `__STDC_HOSTED__ == 0` (i.e. `-ffreestanding`).
 - Holds for the modular headers **and** the amalgamated
   [single header](single-header.md). A CI smoke (`single_header_nofp_smoke`) compiles
   the single header with a *poison* `<cmath>` shim first on the include path, so the
   build fails if any `<cmath>` sneaks in.
-- All transcendentals are `constexpr` under `BEMAN_INSIDE_MATH_NO_FP`, so they evaluate at
-  compile time as well as runtime.
+- All transcendentals are `constexpr` in every build, so they evaluate at compile time
+  as well as runtime.
 
 See [Compiling without floating point](math.md#compiling-without-floating-point-beman_inside_math_no_fp)
-in the math guide for the full story and the engine trade-offs.
+in the math guide for the full story.
 
 ## Limitations & caveats
 

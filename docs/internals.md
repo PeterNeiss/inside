@@ -76,13 +76,13 @@ operand policies, and the widest representation present wins:
        │ no                                               index 0, so value = Lower)
   exact in P ──────────────────────────▶  rational raw   (raw IS the value, exact fraction)
        │ no
-  f64 in P AND double_exact grid ──────▶  double raw     (raw IS the value; default engine
-       │ no   (elided under BEMAN_INSIDE_MATH_CORDIC)               only — CORDIC engine falls through.
+  f64 in P AND double_exact grid ──────▶  double raw     (raw IS the value; with an FPU
+       │ no   (elided under BEMAN_INSIDE_MATH_NO_FP)                only — NO_FP falls through.
        │                                                  Direct misuse on a too-fine grid is a
        │                                                  static_assert; arithmetic instead DROPS
        │                                                  `f64` when the result isn't double_exact)
   f32 in P AND float_exact grid ───────▶  float raw      (else widened to double when
-       │ no   (elided under BEMAN_INSIDE_MATH_CORDIC)               double_exact; same misuse rule)
+       │ no   (elided under BEMAN_INSIDE_MATH_NO_FP)                double_exact; same misuse rule)
   i8…u64 width flag in P ──────────────▶  that integer   (value storage, or index with
        │ no                                               `indexed`; too small = static_assert)
   direct in P AND Notch == 1 ──────────▶  integer raw    (raw IS the value)
@@ -143,9 +143,10 @@ past one limb is interned with `std::define_static_array`, so equal values are
 equal template arguments. Interning is consteval: a big value exists only at
 compile time, and runtime code reads big grid numbers through constants.
 
-The integer fast paths and the math engines work in 64 bits. They read
-`detail::lower64` / `upper64` / `notch64`, which fail the build for a grid
-number past 64 bits instead of truncating. Naming such a view instantiates it
+The integer fast paths work in 64 bits. They read `detail::lower64` /
+`upper64` / `notch64`, which fail the build for a grid number past 64 bits
+instead of truncating; the math engine and the grid operations read
+`lower_of` / `upper_of` / `notch_of` and exact values, so they take any size. Naming such a view instantiates it
 even in a short-circuited `&&`, so predicates every inside instantiates
 compare grid numbers, or hide the view behind `if constexpr`.
 
@@ -377,9 +378,10 @@ is what keeps the core free of `<string>`/`<ostream>`/`<format>`/`<cmath>`:
 | `beman/inside/range.hpp`       | `inside_range<G, P>` iterator helper |
 | `beman/inside/generic.hpp`     | Public grid/policy introspection (`grid_of` / `policy_of` / `interval_of` / `lower_of` / `upper_of` / `notch_of`) and the `insidable` / `numeric` / `inside_assignable` concepts. Storage/raw/dispatch plumbing (`raw_t`, the `rational_raw` / `fp_raw` / `value_raw` / `index_raw` predicates, `as_double`, `to_value` / `from_value`, `raw_cast` / `raw_imax`, `q_format_encode/decode`, `max_index_v`, `raw_lo` / `raw_hi`, `detail::as_rational`, …) lives in `beman::inside::detail` |
 | `beman/inside/detail/assignment.hpp`  | `beman::inside::detail::assignment<L, R>` specialisations for integral / fractional / insidable rhs (incl. the Q-format integer shortcut for fractional rhs) |
-| `beman/inside/cmath.hpp`       | `beman::inside::math` — the `<cmath>`-shaped public API (trig, inverse trig, hyperbolic, exp/log/pow, sqrt/cbrt/hypot) over insides, re-exported from the build's `default_engine` (`dbl` / `flt` / `cordic`). The integer/CORDIC cores live in `beman::inside::math::detail` here — they also serve as the compile-time output-grid oracle for **every** engine. See [math.md](math.md) |
-| `beman/inside/cmath_double.hpp` | The default **double engine** cores (`fp_sin`, `fp_exp`, … — own `std::fma`-Horner polynomials, Cody-Waite reduction, correctly-rounded `std::sqrt`); compiled out under `BEMAN_INSIDE_MATH_NO_FP` |
-| `beman/inside/cmath_float.hpp` | The **float engine** cores (binary32 siblings of the double cores, own compile-time-derived range-reduction constants); default under `BEMAN_INSIDE_MATH_FLOAT`, compiled out under `BEMAN_INSIDE_MATH_NO_FP` |
+| `beman/inside/cmath.hpp`       | `beman::inside::math` — the `<cmath>`-shaped public API: the constants, the grid operations (abs, sign, copysign, floor, ceil, round, trunc, fmod, pown, `amp<K>`) and the transcendentals of `cmath_adaptive.hpp`. See [math.md](math.md) |
+| `beman/inside/cmath_adaptive.hpp` | The math engine: one core per function (exact inputs, a fixed-point result with an error bound, the exact rational results), the `_into` and deduced forms, the double tier and the table tier |
+| `beman/inside/detail/math_adaptive.hpp` | The engine's foundation: the decision step (`decide`, `fast_index`), the Ziv driver (`evaluate`), the stores, π / ln 2 / ln 10 at any precision, the Horner coefficient tables and the series kernels |
+| `beman/inside/detail/math_fp.hpp` | The double tier's kernels (`fp_sin`, `fp_exp`, … — own `std::fma`-Horner polynomials, Cody-Waite reduction, correctly-rounded `std::sqrt`); compiled out under `BEMAN_INSIDE_MATH_NO_FP` |
 | `beman/inside/detail/addition.hpp`, `multiplication.hpp`, `division.hpp` | `beman::inside::detail::addition<L, R>`, `multiplication<L, R>`, `division<L, R, F>`, `modulo<L, R, F>` — implementation detail, included via `inside.hpp` |
 | `beman/inside/detail/overflow.hpp`, `debug.hpp` | `add_overflow` / `sub_overflow` / `mul_overflow` (the GCC/Clang `__builtin_*_overflow`); `errc`, the replaceable `error_handler` + `detail::raise` funnel — implementation detail |
 | `beman/inside/detail/rational.hpp`    | `rational` and its checked / unchecked arithmetic |

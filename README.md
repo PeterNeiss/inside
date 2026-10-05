@@ -27,9 +27,9 @@ follows the layout and tooling of [The Beman Standard](https://github.com/bemanp
 - **Any size of grid.** Under C++26 with static reflection a grid's limits and
   notch have no size limit (`inside<{0, 0x1p100}>`); see
   [docs/storage.md](docs/storage.md#grids-past-64-bits-c26).
-- **Reproducible math.** `sin`/`cos`/`sqrt`/`exp`/… give bit-identical results
-  across platforms — three engines, including an FPU-free `constexpr` CORDIC
-  engine for bare metal.
+- **Correctly rounded math.** `sin`/`cos`/`sqrt`/`exp`/… return the correctly
+  rounded point of any output grid — bit-identical on every platform, at
+  compile time, and on bare metal without an FPU.
 - **Built for:** audio samples, money, percentages, PID controllers, sensor
   fusion, embedded registers — anywhere a plain `int`/`float` silently
   overflows, wraps, or drifts.
@@ -130,22 +130,21 @@ Library options:
 
 | Option | Default | Effect |
 |--------|---------|--------|
-| `BEMAN_INSIDE_MATH_CORDIC` | `OFF` | Use the integer/CORDIC math engine (FPU-free) instead of the double engine |
-| `BEMAN_INSIDE_MATH_FLOAT` | `OFF` | Make unqualified `beman::inside::math` use the float (binary32) engine |
+| `BEMAN_INSIDE_MATH_NO_FP` | `OFF` | Build without hardware floating point: no `f64`/`f32` storage, no `<cmath>`; math results do not change |
 | `BEMAN_INSIDE_STRICT_SFINAE` | `OFF` | Drop the assignment diagnostic overloads so `is_constructible` stays honest |
-| `BEMAN_INSIDE_FMA` | `ON` | Add `-mfma` on x86-64 GCC/Clang so the math engines' `std::fma` is one instruction (see below) |
+| `BEMAN_INSIDE_FMA` | `ON` | Add `-mfma` on x86-64 GCC/Clang so the math engine's `std::fma` is one instruction (see below) |
 | `BEMAN_INSIDE_BUILD_TOOLS` | `OFF` | Build the benchmarks, property fuzzer, accuracy sweep and perf workload |
 | `BEMAN_INSIDE_REFLECTION` | `ON` | Under C++26, add `-freflection` when the compiler accepts it, enabling grid numbers past 64 bits |
 
-Math-engine selection and bare-metal builds are covered in
+The math engine and bare-metal builds are covered in
 [docs/freestanding.md](docs/freestanding.md) and [docs/math.md](docs/math.md).
 
-**FMA on x86-64.** The double and float math engines use `std::fma` so that
-their results are bit-identical on every platform. Baseline x86-64 has no FMA
+**FMA on x86-64.** The math engine's double tier uses `std::fma` so that its
+kernels are bit-identical on every platform. Baseline x86-64 has no FMA
 instruction, so without `-mfma` each `std::fma` is a software-emulated libm call
-and `math::sin` is about 4× slower (20.8 ns vs 5.1 ns; the results do not
-change). `BEMAN_INSIDE_FMA` (default `ON`) therefore adds `-mfma` to every
-target that links `beman::inside` on x86-64 GCC/Clang. The resulting binary
+and the double tier is several times slower (the results do not change).
+`BEMAN_INSIDE_FMA` (default `ON`) therefore adds `-mfma` to every target
+that links `beman::inside` on x86-64 GCC/Clang. The resulting binary
 needs a CPU with AVX and FMA (Intel Haswell / AMD Piledriver, 2013 or later) and
 stops with `SIGILL` on older ones; configure with `-DBEMAN_INSIDE_FMA=OFF` to
 target those. If you use the single header or the headers without CMake, add

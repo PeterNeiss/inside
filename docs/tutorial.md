@@ -92,11 +92,10 @@ See [conversions.md](conversions.md).
 ## Math on insides
 
 `beman::inside::math` is a `<cmath>`-shaped, reproducible function set over insides —
-`sin`/`cos`/`sqrt`/`exp`/`log`/`atan2`/… Math operands typically carry the
-`f64` storage flag (`inside<G, round_nearest | f64>`); one API runs on any of
-three engines — a fast IEEE-754 `double` engine (`dbl`, the default), a
-binary32 engine for single-precision FPUs (`flt`), and a bit-exact,
-`constexpr`, FPU-free integer engine (`cordic`). Angles are radians;
+`sin`/`cos`/`sqrt`/`exp`/`log`/`atan2`/… Every result is the correctly rounded
+point of its output grid, so it is the same on every platform, at compile time
+and without an FPU. Math operands need a rounding mode
+(`inside<G, round_nearest>`). Angles are radians;
 output grids auto-deduce from the input; runtime-conditional failures (a
 `tan` pole, a negative `sqrt`) surface as `std::expected`.
 See [math.md](math.md).

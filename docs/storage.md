@@ -72,8 +72,8 @@ runtime a result past 64 bits reports `errc::overflow`.
 Such an inside supports everything a wide-index inside does (above) — values
 past 64 bits may even sit on a grid with few slots, like
 `{2¹⁰⁰, 2¹⁰⁰ + 10}` in a `uint8_t`. The math functions (`sin`, `sqrt`, …)
-work in 64 bits: an input with more than 2⁶⁴ slots or big grid numbers is
-rejected at compile time with one message — assign it to a coarser grid first. The big grid numbers
+take and return such insides too, correctly rounded: `log` of a value near
+2³⁰⁰, or `sin` onto a 2⁻¹⁰⁰ grid ([math.md](math.md)). The big grid numbers
 themselves (limits and notch) exist only at compile time; runtime arithmetic
 on such an inside uses fixed-width integers sized from them.
 
@@ -157,7 +157,7 @@ The rules above are the **default deduction**. Several policy flags override it
 
 ```cpp
 using gain   = inside<{{0, 4}, per<65536>}, round_nearest | f64>;
-                                       // Raw: double (math operand, double-exact grid)
+                                       // Raw: double (double-exact grid)
 using ratio  = inside<{{0, 1}, per<3>}, exact>;
                                        // Raw: exact fraction on a NOTCHED grid
 using regval = inside<{5, 100}, direct>; // Raw: uint8_t, raw() == value (5..100)
@@ -166,7 +166,7 @@ using wide   = inside<{0, 100}, u16>;    // Raw: uint16_t (pinned width, raw() =
 using sidx   = inside<{0, 4, per<16>}, u32 | indexed>; // Raw: uint32_t index
 ```
 
-`f64`/`f32` are the math-operand flags ([math.md](math.md)); `exact` lifts the
+`f64`/`f32` hold the value as a float (any math function takes them, [math.md](math.md)); `exact` lifts the
 notch-count limit and removes `double` entirely; `direct` makes the raw equal
 the wire/debugger value for interop; `indexed` gives signed grids a dense
 unsigned layout for serialization.

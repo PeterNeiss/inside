@@ -435,6 +435,19 @@ namespace beman::inside::math::detail::ax
       if (!index.negative() && !(count < index)) [[likely]]
         return Out::from_raw(raw_of_index<Out>(index));
     }
+    else if constexpr (fp_raw<Out> && !exact_valued<Out>)
+    {
+      // A floating-point raw holds the grid point itself: on its double- (or
+      // float-) exact grid, value index × notch is exact in that type.
+      constexpr I count = static_cast<I>(grid_of<Out>.slot_count());
+      if (!index.negative() && !(count < index)) [[likely]]
+      {
+        constexpr double notch = static_cast<double>(static_cast<imax>(wide_numerator(notch_of<Out>)))
+                               / static_cast<double>(static_cast<imax>(wide_denominator(notch_of<Out>)));
+        const imax j = static_cast<imax>(index) + static_cast<imax>(slot_base<Out>);
+        return Out::from_raw(static_cast<raw_t<Out>>(static_cast<double>(j) * notch));
+      }
+    }
     // The grid point (index + Lower/Notch)·Notch, exact: stored through Out's
     // assignment (a floating-point or rational raw holds it exactly).
     constexpr std::size_t KK = exact_max<K, exact_limbs<Out>>;

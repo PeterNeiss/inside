@@ -3,6 +3,10 @@
   "cross_grid_assign": 5344416,
   "integer_mul": 7144404,
   "integer_qformat": 11544397,
+  "math_decimal": 7411591,
+  "math_double": 3020544,
+  "math_integer": 22763060,
+  "math_table": 2034578,
   "qformat_div": 8944350,
   "rational_compare": 164884664,
   "rational_store": 43956099

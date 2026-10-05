@@ -101,7 +101,7 @@ namespace
   using unit_dec  = inside<{{-1, 1},       per<1000>}, round_nearest>;
   using sqrt_dec  = inside<{{0, 16},       per<1000>}, round_nearest>;
   using log_dec   = inside<{{1, 1000},     per<1000>}, round_nearest>;
-  using atanh_dec = inside<{{-0.999, 0.999}, per<1000>}, round_nearest>;
+  using atanh_dec = inside<{{detail::rational{-999, 1000}, detail::rational{999, 1000}}, per<1000>}, round_nearest>;
 
   using fine_out  = inside<{{-4096, 4096}, per<(std::uint64_t{1} << 40)>}, round_nearest>;
 }

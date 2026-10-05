@@ -458,6 +458,13 @@ TEST(MathAdaptiveTest, double_tier_agrees_with_the_integer_path)
   TIER_CHECK(asin,  out20,  unit, ax::asin_core<ax::input_limbs<unit>>);
   TIER_CHECK(acos,  out16c, unit, ax::acos_core<ax::input_limbs<unit>>);
   TIER_CHECK(atanh, out20,  open1, ax::ahyp_core<ax::input_limbs<open1>, ax::in_mag<open1>, ax::ahyp::atanh>);
+  // Floating-point outputs: the slot decided in double arithmetic.
+  using f64out  = inside<{{-64, 64}, per<16384>}, round_nearest | f64>;
+  using f64outf = inside<{{-64, 64}, per<16384>}, round_floor | f64>;
+  TIER_CHECK(sin,   f64out,  sym4,   ax::trig_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::trig::sin, 1>);
+  TIER_CHECK(exp,   f64outf, sym4,   ax::exp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::out_kmax<f64outf>>);
+  TIER_CHECK(atan,  f64out,  sym4,   ax::atan_core<ax::input_limbs<sym4>>);
+  TIER_CHECK(log,   f64outf, pos64,  ax::log_core<ax::input_limbs<pos64>>);
 }
 #undef TIER_CHECK
 
@@ -524,5 +531,13 @@ TEST(MathAdaptiveTest, double_tier_agrees_on_decimal_inputs_and_checked_forms)
       const auto r2 = ax::evaluate_checked<tanout, ax::start_bits<tanout>>(core{ax::exact_input(b), ax::exact_input(e)});
       if (r.has_value() != r2.has_value() || (r && r->raw() != r2->raw())) ++bad;
     }
+  // pow_base<10> over a decimal exponent.
+  for (int j = -300; j <= 300; ++j)
+  {
+    const expo e{rational{j, 100}};
+    using core = ax::pow_core<2, ax::input_limbs<expo>, ax::in_mag<expo>, ax::out_kmax<tanout>>;
+    const auto r2 = ax::evaluate<tanout, ax::start_bits<tanout>>(core{ax::exact_int<2>(10), ax::exact_input(e)});
+    if ((am::pow_base_into<tanout, 10>(e)).raw() != r2.raw()) ++bad;
+  }
   EXPECT_EQ(bad, 0);
 }

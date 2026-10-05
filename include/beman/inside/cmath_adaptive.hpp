@@ -621,7 +621,10 @@ namespace beman::inside::math::detail::ax
     return k.negative() ? inverse(exact_frac<pow_limbs>{n, d}) : exact_frac<pow_limbs>{n, d};
   }
 
-  template <std::size_t EB, std::size_t EE, int MagE, int KMax, int BitsB = frac_bits<EB>, int BitsE = frac_bits<EE>>
+  // ConstBase, when nonzero, is the base known at compile time (pow_base): its
+  // log is then a constant of each precision.
+  template <std::size_t EB, std::size_t EE, int MagE, int KMax, int BitsB = frac_bits<EB>, int BitsE = frac_bits<EE>,
+            imax ConstBase = 0>
   struct pow_core
   {
     exact_frac<EB> B;
@@ -636,8 +639,19 @@ namespace beman::inside::math::detail::ax
       constexpr int SL = S + MagE + std::bit_width(static_cast<unsigned>(BitsB));
       using I = fixed_t<SL + MagE + std::bit_width(static_cast<unsigned>(BitsB)) + BitsE + 8>;
       constexpr std::size_t K = limbs_of<I>;
-      const fx<K> l = log_exact<SL, K, BitsB>(B);
-      const I t = round_shift(mul_q(l.Value, static_cast<I>(Exp.Num), 0) / static_cast<I>(Exp.Den), SL - S);
+      const fx<K> l = [&] {
+        if constexpr (ConstBase != 0)
+        {
+          constexpr fx<K> c = log_exact<SL, K, BitsB>(exact_int<EB>(ConstBase));
+          return c;
+        }
+        else
+          return log_exact<SL, K, BitsB>(B);
+      }();
+      const I prod = mul_q(l.Value, static_cast<I>(Exp.Num), 0);
+      const I q = bit_width_of(Exp.Den) <= 64 ? div_small(prod, static_cast<umax>(Exp.Den))
+                                               : prod / static_cast<I>(Exp.Den);
+      const I t = round_shift(q, SL - S);
       const umax dt = (l.Error >> (SL - S - MagE)) + 2;
       return exp_fixed<S>(t, dt, KMax);
     }
@@ -832,22 +846,56 @@ namespace beman::inside::math::detail::ax
 
   constexpr double fabs_d(double v) noexcept { return v < 0 ? -v : v; }
 
-  // The slot of a kernel value v within an absolute bound, when the bound
-  // decides it; stored through `policy`.
+  // A double's value index rounded by M (|t| < 2^52, so every step is exact).
+  template <round_mode M>
+  constexpr imax round_index(double t) noexcept
+  {
+    if constexpr (M == round_mode::floor || M == round_mode::ceil || M == round_mode::trunc)
+    {
+      imax i = static_cast<imax>(t);                     // toward zero
+      if constexpr (M == round_mode::floor) { if (static_cast<double>(i) > t) --i; }
+      if constexpr (M == round_mode::ceil)  { if (static_cast<double>(i) < t) ++i; }
+      return i;
+    }
+    else
+    {
+      const bool neg = t < 0;
+      const double a = neg ? -t : t;
+      imax i = static_cast<imax>(a);
+      const double f = a - static_cast<double>(i);
+      if constexpr (M == round_mode::nearest) { if (f >= 0.5) ++i; }
+      else { if (f > 0.5 || (f == 0.5 && (i & 1) != 0)) ++i; }
+      return neg ? -i : i;
+    }
+  }
+
+  // The slot of a kernel value v within an absolute bound, decided in double
+  // arithmetic: the value index v·q/p (notch p/q) and its two ends v ± bound,
+  // each widened by its own roundings (relative 2^-50 covers the three
+  // operations). Every index of an fp_output grid is below 2^37, so the
+  // rounding steps are exact. A decided slot inside Out's range is stored as
+  // its raw; anything else returns nothing and the integer path decides.
   template <insidable Out, typename P>
-  inline std::optional<Out> fp_decide(double v, double bound, P&& policy)
+  inline std::optional<Out> fp_decide(double v, double bound, P&&)
   {
     if (!(v - v == 0) || !(bound - bound == 0)) return std::nullopt;   // inf or NaN
-    int e = 0;
-    const double m = ::beman::inside::detail::frexp(v, &e);   // v = m·2^e, |m| in [0.5, 1)
-    const imax y = static_cast<imax>(::beman::inside::detail::ldexp(m, 53));
-    const int scale = 53 - e;
-    const double units = ::beman::inside::detail::ldexp(bound, scale);
-    if (!(units < 0x1p62)) return std::nullopt;
-    const approx<1> a{wide_sint<1>{y}, scale, static_cast<umax>(units) + 2};
-    const auto d = decide<Out>(a);
-    if (!d.Decided) return std::nullopt;
-    return store<Out>(d.Index, policy);
+    constexpr round_mode M = out_rounding<Out>;
+    constexpr double p = static_cast<double>(static_cast<imax>(wide_numerator(notch_of<Out>)));
+    constexpr double q = static_cast<double>(static_cast<imax>(wide_denominator(notch_of<Out>)));
+    constexpr imax base = static_cast<imax>(slot_base<Out>);
+    constexpr imax count = static_cast<imax>(grid_of<Out>.slot_count());
+    const double x = v * q / p;
+    const double ax = x < 0 ? -x : x;
+    double bx = bound * q / p;
+    bx = bx + (ax + bx) * 0x1p-50 + 0x1p-60;
+    const imax jl = round_index<M>(x - bx), jh = round_index<M>(x + bx);
+    if (jl != jh) return std::nullopt;
+    const imax off = jl - base;
+    if (off < 0 || off > count) return std::nullopt;
+    if constexpr (integer_raw<Out>)
+      return Out::from_raw(raw_from_offset<Out>(static_cast<umax>(off)));
+    else                                                  // fp raw: the grid point, exact
+      return Out::from_raw(static_cast<raw_t<Out>>(static_cast<double>(jl) * (p / q)));
   }
 
   template <insidable Out>
@@ -956,6 +1004,17 @@ namespace beman::inside::math::detail::ax
     const double v = fpk::fp_pow(b, e);
     const double L = fabs_d(e * fpk::fp_log(b));
     const double bound = fabs_d(v) * (kEvalRel * (1 + L) + input_rel<InB> * fabs_d(e) + input_rel<InE> * L) + kEvalAbs;
+    return fp_decide<Out>(v, bound * 1.5, policy);
+  }
+
+  // Base^x: pow with an exact integer base.
+  template <insidable Out, imax Base, insidable In, typename P>
+  inline std::optional<Out> fp_attempt_pow_base(In const& xi, P&& policy)
+  {
+    const double x = input_double(xi);
+    const double v = fpk::fp_pow(static_cast<double>(Base), x);
+    const double L = fabs_d(x * fpk::fp_log(static_cast<double>(Base)));
+    const double bound = fabs_d(v) * (kEvalRel * (1 + L) + input_rel<In> * L) + kEvalAbs;
     return fp_decide<Out>(v, bound * 1.5, policy);
   }
 #endif
@@ -1152,7 +1211,14 @@ namespace beman::inside::math::adaptive
   {
     static_assert(Base >= 2, "beman::inside::math::pow_base: Base must be at least 2");
     require_rounding<Out>();
-    using core = ax::pow_core<2, ax::input_limbs<In>, ax::in_mag<In>, ax::out_kmax<Out>, 66, ax::input_bits<In>>;
+#ifndef BEMAN_INSIDE_MATH_NO_FP
+    if constexpr (ax::fp_tier<Out, In> && ax::in_max<In> <= 1000)
+      if !consteval
+      {
+        if (const auto r = ax::fp_attempt_pow_base<Out, Base>(x, make_policy<policy_of<Out>>())) return *r;
+      }
+#endif
+    using core = ax::pow_core<2, ax::input_limbs<In>, ax::in_mag<In>, ax::out_kmax<Out>, 66, ax::input_bits<In>, Base>;
     return ax::evaluate<Out, ax::start_bits<Out>>(core{ax::exact_int<2>(Base), ax::exact_input(x)});
   }
 

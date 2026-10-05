@@ -16,6 +16,10 @@
 //   checked_add       — add + checked narrowing assignment (runtime range branch)
 //   rational_store    — exact fraction stored into a Q-format grid (rounding)
 //   rational_compare  — exact fraction ordering (128-bit cross products)
+//   math_table        — sin of a 256-slot input (the compile-time table)
+//   math_double       — sin onto a 2^-20 grid (the double tier)
+//   math_integer      — sin onto a 2^-40 grid (the integer path)
+//   math_decimal      — exp of a decimal input onto a 10^-6 grid
 //
 // The work is intentionally small and scaled by BEMAN_INSIDE_PERF_SCALE so cachegrind
 // (~20-50x slowdown) stays well inside the CI time budget. Bump the scale for a
@@ -26,6 +30,7 @@
 // instruction count is byte-for-byte reproducible.
 
 #include <beman/inside/inside.hpp>
+#include <beman/inside/cmath.hpp>
 
 #include <cstdint>
 #include <cstdio>
@@ -178,6 +183,35 @@ namespace
     }
     return acc;
   }
+
+  // Math: a fixed sweep over the input grid, one call per step.
+  constexpr long math_iters = 10000L * BEMAN_INSIDE_PERF_SCALE;
+
+  template <typename In, typename F>
+  std::int64_t run_math(F f)
+  {
+    std::int64_t acc = 0, x = 1;
+    const auto slots = static_cast<std::uint64_t>(static_cast<std::int64_t>(grid_of<In>.slot_count())) + 1;
+    for (long i = 0; i < math_iters; ++i)
+    {
+      lcg(x);
+      const In v = In::from_raw(detail::raw_from_offset<In>((static_cast<std::uint64_t>(x) >> 20) % slots));
+      acc += static_cast<std::int64_t>(f(v).raw());
+    }
+    return acc;
+  }
+
+  using angle8 = inside<{{-4, detail::rational{127, 32}}, per<32>}, round_nearest>;   // 256 slots
+  using angle  = inside<{{-4, 4}, per<512>}, round_nearest>;
+  using dec    = inside<{{-4, 4}, per<1000>}, round_nearest>;
+  using out20  = inside<{{-64, 64}, per<(1u << 20)>}, round_nearest>;
+  using out40  = inside<{{-64, 64}, per<(std::uint64_t{1} << 40)>}, round_nearest>;
+  using out6   = inside<{{0, 64}, per<1000000>}, round_nearest>;
+
+  std::int64_t run_math_table()   { return run_math<angle8>([](angle8 v) { return math::sin_into<out20>(v); }); }
+  std::int64_t run_math_double()  { return run_math<angle>([](angle v) { return math::sin_into<out20>(v); }); }
+  std::int64_t run_math_integer() { return run_math<angle>([](angle v) { return math::sin_into<out40>(v); }); }
+  std::int64_t run_math_decimal() { return run_math<dec>([](dec v) { return math::exp_into<out6>(v); }); }
 }
 
 int main(int argc, char** argv)
@@ -192,6 +226,10 @@ int main(int argc, char** argv)
   else if (std::strcmp(key, "checked_add")       == 0) acc = run_checked_add();
   else if (std::strcmp(key, "rational_store")    == 0) acc = run_rational_store();
   else if (std::strcmp(key, "rational_compare")  == 0) acc = run_rational_compare();
+  else if (std::strcmp(key, "math_table")        == 0) acc = run_math_table();
+  else if (std::strcmp(key, "math_double")       == 0) acc = run_math_double();
+  else if (std::strcmp(key, "math_integer")      == 0) acc = run_math_integer();
+  else if (std::strcmp(key, "math_decimal")      == 0) acc = run_math_decimal();
   else { std::fprintf(stderr, "unknown workload key: %s\n", key); return 2; }
 
   g_sink = acc;

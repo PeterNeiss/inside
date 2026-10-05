@@ -11,9 +11,8 @@ as the full tree:
 #include <beman/inside/inside.hpp>   // single_include/ on the include path — nothing else needed
 ```
 
-It is behaviourally identical to the multi-header form; the engine switches
-(`-DBEMAN_INSIDE_MATH_CORDIC`, `-DBEMAN_INSIDE_MATH_FLOAT`) and `BEMAN_INSIDE_MATH_NO_FP`
-apply the same way, as ordinary compiler flags. The string/printing layer
+It is behaviourally identical to the multi-header form; `BEMAN_INSIDE_MATH_NO_FP`
+and `BEMAN_INSIDE_MATH_TABLE_SLOTS` apply the same way, as ordinary compiler flags. The string/printing layer
 is wrapped in a guard — define `BEMAN_INSIDE_NO_STRING` to drop it and its
 `<string>`/`<ostream>`/`<format>` includes wholesale (see
 [freestanding.md](freestanding.md)).

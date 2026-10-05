@@ -8,22 +8,6 @@ which doors the standard still has to open.
 
 ## Adoptable with C++26 (turn on when toolchains ship)
 
-### Constexpr double math engine
-The default (double) `beman::inside::math` engine is runtime-only today; the integer/CORDIC
-engine (`-DBEMAN_INSIDE_MATH_CORDIC`) is already `constexpr`. Constexpr `<cmath>`
-([P1383], feature macro `__cpp_lib_constexpr_cmath`) makes the double engine
-`constexpr` too.
-
-The **gate is already planted**: `BEMAN_INSIDE_MATH_FN` (`beman/inside/cmath.hpp`) and `BEMAN_INSIDE_FP_FN`
-(`beman/inside/cmath_double.hpp`) expand to `constexpr` exactly when a toolchain defines the
-macro, and to nothing otherwise — so the upgrade is automatic, no source change needed.
-
-> Caveat: the engine uses `std::fma`, `std::sqrt`, and `std::nearbyint`. GCC already
-> constant-folds `fma`/`sqrt` but not `nearbyint`. So activation is
-> per-function and per-toolchain, not guaranteed by the standard version alone. A
-> softfloat emulation that would enable it *today* was considered and rejected as not
-> worth the weight — the library waits for the standard instead.
-
 ### "Every rational" grids — unbounded grid numbers via static promotion — **done**
 Under C++23 an `inside`'s grid is built from `rational { umax Numerator; imax
 Denominator; }` — two 64-bit integers, which cap how fine or how large a grid can be.
@@ -42,8 +26,9 @@ same template argument. The headers detect reflection through
 `__cpp_lib_define_static_array`).
 
 Big grid numbers are spelled with the `_g` literal (`1e-30_g`, `1267650600228229401496703205376_g`),
-exact double limits (`0x1p100`) or grid arithmetic. Still open: the math engines, which
-stay 64-bit (`per<D>`, `frac<N, D>` and the `_r` / `_ins` literals also stay 64-bit).
+exact double limits (`0x1p100`) or grid arithmetic. The math functions take and return
+such grids, correctly rounded ([math.md](math.md)). `per<D>`, `frac<N, D>` and the `_r` /
+`_ins` literals stay 64-bit.
 
 ### Rich, formatted `static_assert` messages
 Compile-time diagnostics currently use static text. Embedding the offending value /
@@ -76,10 +61,9 @@ this page that C++26 does **not** unblock.
 For completeness — these came up alongside the above but are *not* blocked by the language:
 
 - **Freestanding `<cmath>` removal** — **done.** `BEMAN_INSIDE_MATH_NO_FP` compiles the
-  floating-point engines — and their `#include <cmath>` — out wholesale (no
-  `__builtin_*` swap needed), leaving the always-present integer/CORDIC engine to
-  serve the full `beman::inside::math` API. Auto-enabled under `-ffreestanding`, implied by
-  `BEMAN_INSIDE_MATH_CORDIC`; a CI smoke compiles the single header against a poison `<cmath>`
+  math engine's double tier — and its `#include <cmath>` — out wholesale, leaving the
+  integer path to compute every result (results do not change). Auto-enabled under
+  `-ffreestanding`; a CI smoke compiles the single header against a poison `<cmath>`
   shim to keep it that way. See [freestanding.md](freestanding.md#math-without-cmath-beman_inside_math_no_fp).
 - **`dyn_inside`** (runtime-valued bounds) — evaluated and **declined** on design grounds
   (no space/time-efficient implementation), not deferred.
