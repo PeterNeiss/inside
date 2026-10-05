@@ -11507,24 +11507,36 @@ namespace beman::inside::math::detail::ax
     }
   };
 
-  // The integer k with x = B^k (B = 2 or 10), if any.
+  // The integer k with x = B^k (B = 2 or 10), if any, without reducing x:
+  // with the factors 2 (and 5) of n and d stripped, n/d = 2^a·5^c·n'/d' is a
+  // power of B exactly when n' = d' and a (= c, for 10) is that power.
   template <std::size_t E>
   constexpr std::optional<imax> exact_log(exact_frac<E> const& x, int B) noexcept
   {
     using I = wide_sint<E>;
-    const exact_frac<E> r = reduced(x);
-    if (r.Num.negative() || r.Num.is_zero()) return std::nullopt;
-    const bool up = r.Den == I{1};
-    if (!up && r.Num != I{1}) return std::nullopt;
-    I v = up ? r.Num : r.Den;
-    imax k = 0;
-    while (v != I{1})
-    {
-      if (!(v % I{B}).is_zero()) return std::nullopt;
-      v = v / I{B};
-      ++k;
-    }
-    return up ? k : -k;
+    if (x.Num.negative() || x.Num.is_zero()) return std::nullopt;
+    I n = x.Num, d = x.Den;
+    auto strip2 = [](I& v) {
+      imax k = 0;
+      while (v.Word[0] == 0) { v = v >> 64; k += 64; }
+      const int z = std::countr_zero(static_cast<umax>(v.Word[0]));
+      v = v >> z;
+      return k + z;
+    };
+    auto strip5 = [](I& v) {
+      imax k = 0;
+      for (;;)
+      {
+        const auto qr = divmod_small(wide_uint<E>{v}, 5);
+        if (qr.Remainder != 0) return k;
+        v = I{qr.Quotient};
+        ++k;
+      }
+    };
+    const imax a = strip2(n) - strip2(d);
+    if (B == 10 && strip5(n) - strip5(d) != a) return std::nullopt;
+    if (!(n == d)) return std::nullopt;
+    return a;
   }
 
   // log2 x and log10 x: log x / ln B. Exact at powers of B.
@@ -11873,12 +11885,13 @@ namespace beman::inside::math::detail::ax
       using I = fixed_t<S + Mag + 8>;
       constexpr std::size_t K = limbs_of<I>;
       using F = exact_frac<2 * E + 1>;
-      const F one = exact_one<2 * E + 1>();
       const bool neg = X.Num.negative();
       const F a = abs(F{X});
       if constexpr (Fn == ahyp::atanh)
       {
-        const fx<K> l = log_exact<S, K, 2 * Bits + 2>((one + a) / (one + F{-a}));
+        // (1 + |x|)/(1 − |x|) = (d + |n|)/(d − |n|), d − |n| > 0.
+        const F q{a.Num + a.Den, a.Den - a.Num};
+        const fx<K> l = log_exact<S, K, 2 * Bits + 2>(q);
         return approx<K>{neg ? -(l.Value >> 1) : (l.Value >> 1), S, l.Error / 2 + 1};
       }
       else
@@ -11898,7 +11911,7 @@ namespace beman::inside::math::detail::ax
         }
         else
         {
-          const F r = (a + F{-one}) * (a + one);
+          const F r{(a.Num - a.Den) * (a.Num + a.Den), a.Den * a.Den};   // x² − 1 = (n − d)(n + d)/d²
           const I v = to_q<S, K>(a) + sqrt_exact_q<S, K, 2 * Bits + 2>(r);   // ≥ 1, within 2
           const fx<K> l = log_fixed<S>(v, 2);
           return approx<K>{l.Value, S, l.Error};
