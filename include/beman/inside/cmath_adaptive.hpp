@@ -27,8 +27,12 @@
 // there is no working-scale envelope. A result past Out's range goes through
 // Out's policy, as any assignment.
 //
-// This is the wide tier: exact integer square and cube roots, and series in
-// wide fixed point for the transcendentals.
+// Each call takes the first tier that applies: a compile-time table for
+// small inputs; the double kernels (detail/math_fp.hpp), then the dd kernels
+// (detail/math_dd.hpp), each returning a result only when its error bound
+// decides the slot; and the integer path here (exact square and cube roots,
+// series in wide fixed point), which decides every result and is the only
+// tier at compile time and without an FPU.
 //---------------------------------------------------------------------------
 namespace beman::inside::math::detail::ax
 {
@@ -950,8 +954,8 @@ namespace beman::inside::math::detail::ax
   namespace fpk = ::beman::inside::math::detail::fp;
 
   //---------------------------------------------------------------------------
-  // The dd tier: outputs past the double tier whose value indices stay below
-  // 2^62. The double-double kernels (detail/math_dd.hpp) are within about
+  // The dd tier: outputs past 36 bits whose value indices stay below 2^62,
+  // after the double tier where both apply. The double-double kernels (detail/math_dd.hpp) are within about
   // 2^-97 of their values (measured against the integer path at 150 bits:
   // 2^-97 relative at worst, 2^-99 absolute); the bound is 2^-88 of the
   // result plus 2^-92·max(1, |x|), the same structure as the double tier's
@@ -1060,16 +1064,12 @@ namespace beman::inside::math::detail::ax
     return true;
   }
 
-
-
-  // The kernels' bounds hold for IEEE arithmetic in the default rounding
-  // mode, with or without FMA contraction; fp_decide gets them with a 1.5
-  // margin for the roundings of the bound arithmetic.
-
-  // The bits a kernel's full-size bound resolves: 2^-n ≤ e < 2^-(n−1) gives
-  // n − 4, where the bound spans at most 1/8 of a notch (the 1.5 margin
-  // included) at Out's largest values, so 3 of 4 results decide there and
-  // nearly all of the smaller ones.
+  // The double kernels' bounds hold for IEEE arithmetic in the default
+  // rounding mode, with or without FMA contraction; fp_decide gets them with
+  // a 1.5 margin for the roundings of the bound arithmetic. The bits a
+  // kernel's full-size bound resolves: 2^-n ≤ e < 2^-(n−1) gives n − 4, where
+  // the bound spans at most 1/8 of a notch at Out's largest values, so 3 of 4
+  // results decide there and nearly all of the smaller ones.
   consteval int fp_limit(double e)
   {
     int n = 0;
@@ -1376,10 +1376,13 @@ namespace beman::inside::math::adaptive
         "(declare it with round_nearest, round_floor, ...)");
   }
 
-#define BEMAN_INSIDE_AX_UNARY(fn, fp_ok, ...)                                           \
+  // One-input functions: the domain (checked on In's grid, `true` for none),
+  // the double kernel's argument range (fp_ok), and the integer core.
+#define BEMAN_INSIDE_AX_UNARY(fn, domain, msg, fp_ok, ...)                              \
   template <insidable Out, insidable In>                                                \
   [[nodiscard]] constexpr Out fn##_into(In x)                                           \
   {                                                                                     \
+    static_assert(domain, "beman::inside::math::" #fn ": " msg);                        \
     require_rounding<Out>();                                                            \
     using core = __VA_ARGS__;                                                           \
     BEMAN_INSIDE_AX_TABLE(Out, In, x)                                                   \
@@ -1387,39 +1390,24 @@ namespace beman::inside::math::adaptive
                          ax::evaluate<Out, ax::start_bits<Out>>(core{ax::exact_input(x)})) \
   }
 
-  BEMAN_INSIDE_AX_UNARY(exp,   ax::in_max<In> <= 700,     ax::exp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::out_kmax<Out>>)
-  BEMAN_INSIDE_AX_UNARY(exp2,  ax::in_max<In> <= 1000,    ax::exp2_core<ax::input_limbs<In>, ax::in_mag<In>, ax::out_kmax<Out>>)
-  BEMAN_INSIDE_AX_UNARY(sin,   ax::in_max<In> <= 0x1p20,  ax::trig_core<ax::input_limbs<In>, ax::in_mag<In>, ax::trig::sin, 1>)
-  BEMAN_INSIDE_AX_UNARY(cos,   ax::in_max<In> <= 0x1p20,  ax::trig_core<ax::input_limbs<In>, ax::in_mag<In>, ax::trig::cos, 1>)
-  BEMAN_INSIDE_AX_UNARY(atan,  true,                      ax::atan_core<ax::input_limbs<In>>)
-  BEMAN_INSIDE_AX_UNARY(sinh,  ax::in_max<In> <= 700,     ax::hyp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::hyp::sinh, ax::out_kmax<Out>>)
-  BEMAN_INSIDE_AX_UNARY(cosh,  ax::in_max<In> <= 700,     ax::hyp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::hyp::cosh, ax::out_kmax<Out>>)
-  BEMAN_INSIDE_AX_UNARY(tanh,  ax::in_max<In> <= 300,     ax::hyp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::hyp::tanh, 1>)
-  BEMAN_INSIDE_AX_UNARY(asinh, ax::in_max<In> <= 0x1p500, ax::ahyp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::ahyp::asinh, ax::input_bits<In>>)
-  BEMAN_INSIDE_AX_UNARY(cbrt,  true,                      ax::cbrt_core<ax::input_limbs<In>, ax::input_bits<In>>)
+  BEMAN_INSIDE_AX_UNARY(exp,   true, "", ax::in_max<In> <= 700,     ax::exp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::out_kmax<Out>>)
+  BEMAN_INSIDE_AX_UNARY(exp2,  true, "", ax::in_max<In> <= 1000,    ax::exp2_core<ax::input_limbs<In>, ax::in_mag<In>, ax::out_kmax<Out>>)
+  BEMAN_INSIDE_AX_UNARY(sin,   true, "", ax::in_max<In> <= 0x1p20,  ax::trig_core<ax::input_limbs<In>, ax::in_mag<In>, ax::trig::sin, 1>)
+  BEMAN_INSIDE_AX_UNARY(cos,   true, "", ax::in_max<In> <= 0x1p20,  ax::trig_core<ax::input_limbs<In>, ax::in_mag<In>, ax::trig::cos, 1>)
+  BEMAN_INSIDE_AX_UNARY(atan,  true, "", true,                      ax::atan_core<ax::input_limbs<In>>)
+  BEMAN_INSIDE_AX_UNARY(sinh,  true, "", ax::in_max<In> <= 700,     ax::hyp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::hyp::sinh, ax::out_kmax<Out>>)
+  BEMAN_INSIDE_AX_UNARY(cosh,  true, "", ax::in_max<In> <= 700,     ax::hyp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::hyp::cosh, ax::out_kmax<Out>>)
+  BEMAN_INSIDE_AX_UNARY(tanh,  true, "", ax::in_max<In> <= 300,     ax::hyp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::hyp::tanh, 1>)
+  BEMAN_INSIDE_AX_UNARY(asinh, true, "", ax::in_max<In> <= 0x1p500, ax::ahyp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::ahyp::asinh, ax::input_bits<In>>)
+  BEMAN_INSIDE_AX_UNARY(cbrt,  true, "", true,                      ax::cbrt_core<ax::input_limbs<In>, ax::input_bits<In>>)
+  BEMAN_INSIDE_AX_UNARY(log,   (lower_of<In> > 0), "input must be strictly positive", true, ax::log_core<ax::input_limbs<In>, ax::input_bits<In>>)
+  BEMAN_INSIDE_AX_UNARY(log2,  (lower_of<In> > 0), "input must be strictly positive", true, ax::logb_core<ax::input_limbs<In>, 2, ax::input_bits<In>>)
+  BEMAN_INSIDE_AX_UNARY(log10, (lower_of<In> > 0), "input must be strictly positive", true, ax::logb_core<ax::input_limbs<In>, 10, ax::input_bits<In>>)
+  BEMAN_INSIDE_AX_UNARY(asin,  (lower_of<In> >= -1 && upper_of<In> <= 1), "input must be in [-1, 1]", true, ax::asin_core<ax::input_limbs<In>, ax::input_bits<In>>)
+  BEMAN_INSIDE_AX_UNARY(acos,  (lower_of<In> >= -1 && upper_of<In> <= 1), "input must be in [-1, 1]", true, ax::acos_core<ax::input_limbs<In>, ax::input_bits<In>>)
+  BEMAN_INSIDE_AX_UNARY(acosh, (lower_of<In> >= 1), "input must be at least 1", ax::in_max<In> <= 0x1p500, ax::ahyp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::ahyp::acosh, ax::input_bits<In>>)
+  BEMAN_INSIDE_AX_UNARY(atanh, (lower_of<In> > -1 && upper_of<In> < 1), "input must be in (-1, 1)", true, ax::ahyp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::ahyp::atanh, ax::input_bits<In>>)
 #undef BEMAN_INSIDE_AX_UNARY
-
-  // Functions with a mathematical domain: checked on In's grid.
-#define BEMAN_INSIDE_AX_DOMAIN(fn, cond, msg, fp_ok, ...)                               \
-  template <insidable Out, insidable In>                                                \
-  [[nodiscard]] constexpr Out fn##_into(In x)                                           \
-  {                                                                                     \
-    static_assert(cond, "beman::inside::math::" #fn ": " msg);              \
-    require_rounding<Out>();                                                            \
-    using core = __VA_ARGS__;                                                           \
-    BEMAN_INSIDE_AX_TABLE(Out, In, x)                                                   \
-    BEMAN_INSIDE_AX_KERNEL_TIERS(Out, In, fn, x, (fp_ok),                               \
-                         ax::evaluate<Out, ax::start_bits<Out>>(core{ax::exact_input(x)})) \
-  }
-
-  BEMAN_INSIDE_AX_DOMAIN(log, (lower_of<In> > 0), "input must be strictly positive", true, ax::log_core<ax::input_limbs<In>, ax::input_bits<In>>)
-  BEMAN_INSIDE_AX_DOMAIN(log2, (lower_of<In> > 0), "input must be strictly positive", true, ax::logb_core<ax::input_limbs<In>, 2, ax::input_bits<In>>)
-  BEMAN_INSIDE_AX_DOMAIN(log10, (lower_of<In> > 0), "input must be strictly positive", true, ax::logb_core<ax::input_limbs<In>, 10, ax::input_bits<In>>)
-  BEMAN_INSIDE_AX_DOMAIN(asin, (lower_of<In> >= -1 && upper_of<In> <= 1), "input must be in [-1, 1]", true, ax::asin_core<ax::input_limbs<In>, ax::input_bits<In>>)
-  BEMAN_INSIDE_AX_DOMAIN(acos, (lower_of<In> >= -1 && upper_of<In> <= 1), "input must be in [-1, 1]", true, ax::acos_core<ax::input_limbs<In>, ax::input_bits<In>>)
-  BEMAN_INSIDE_AX_DOMAIN(acosh, (lower_of<In> >= 1), "input must be at least 1", ax::in_max<In> <= 0x1p500, ax::ahyp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::ahyp::acosh, ax::input_bits<In>>)
-  BEMAN_INSIDE_AX_DOMAIN(atanh, (lower_of<In> > -1 && upper_of<In> < 1), "input must be in (-1, 1)", true, ax::ahyp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::ahyp::atanh, ax::input_bits<In>>)
-#undef BEMAN_INSIDE_AX_DOMAIN
 
   // sqrt of a non-negative input.
   template <insidable Out, insidable In>

@@ -690,7 +690,7 @@ namespace beman::inside::detail
       {
         // Mixed signs: |A − B| can fit umax even when a cross-product alone
         // does not (e.g. 1024 − m/2^54 forms 1024·2^54 == 2^64 before the
-        // subtraction brings it back in range — the dbl-engine store path hit
+        // subtraction brings it back in range — the former double engine's store hit
         // exactly this). Retry the difference in 128-bit before giving up.
         if (a_neg != b_neg)
         {

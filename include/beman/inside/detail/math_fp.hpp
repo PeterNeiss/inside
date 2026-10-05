@@ -632,10 +632,6 @@ namespace beman::inside::math::detail::fp
   inline constexpr double kSqrtRel = up(kU), kHypotRel = up(2 * kU);
   inline double fp_hypot(double x, double y) { return std::sqrt(fma(x, x, y * y)); }
 
-  // The full kernels, about one ulp.
-  inline double fp_cbrt(double x) { double b; return pow_k<kFullBits>::cbrt(x, b); }
-  inline double fp_atan2(double y, double x) { double b; return atan_k<kFullBits>::atan2(y, x, b); }
-
   // Seeds of the dd tier's Newton steps: one step squares a seed's error,
   // so 2^-48 is enough (the dd kernels' test checks the result).
   inline constexpr int kSeedBits = 48;

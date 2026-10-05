@@ -53,11 +53,17 @@ TEST(CoverageCornersTest, will_conversion_trunc_is_false_for_out_of_range_values
 }
 
 #ifndef BEMAN_INSIDE_MATH_NO_FP
-namespace d = beman::inside::math::detail::fp;
+namespace fpk = beman::inside::math::detail::fp;
+namespace d
+{
+  // The full kernels' values.
+  double fp_cbrt(double x) { double b; return fpk::pow_k<fpk::kFullBits>::cbrt(x, b); }
+  double fp_atan2(double y, double x) { double b; return fpk::atan_k<fpk::kFullBits>::atan2(y, x, b); }
+}
 
 //---------------------------------------------------------------------------
-// detail/math_fp.hpp — fp_cbrt negative branch
-// detail/math_fp.hpp — fp_atan2 on the axes (x == 0)
+// detail/math_fp.hpp — cbrt's negative branch
+// detail/math_fp.hpp — atan2 on the axes (x == 0)
 //---------------------------------------------------------------------------
 // dbl: cbrt of negatives and atan2 on the axes
 TEST(CoverageCornersTest, dbl_cbrt_of_negatives_and_atan2_on_the_axes)

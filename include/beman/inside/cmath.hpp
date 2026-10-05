@@ -25,7 +25,8 @@
 // outward).
 //
 // BEMAN_INSIDE_MATH_NO_FP (auto-enabled when freestanding) leaves out the
-// engine's double tier and <cmath>; results do not change.
+// engine's double and dd tiers and <cmath>; results do not change. Builds
+// with -ffast-math are rejected (policy_flag.hpp).
 //---------------------------------------------------------------------------
 namespace beman::inside::math
 {
