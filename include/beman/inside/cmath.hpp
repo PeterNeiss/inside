@@ -8,6 +8,7 @@
 #include <beman/inside/inside.hpp>
 #include <beman/inside/cmath_double.hpp>   // the double (binary64) math engine
 #include <beman/inside/cmath_float.hpp>    // the float  (binary32) math engine
+#include <beman/inside/cmath_adaptive.hpp> // the adaptive engine: correctly rounded on any grid
 
 #include <expected>   // std::expected, std::unexpected
 
@@ -1063,55 +1064,80 @@ namespace beman::inside::math
 
   namespace detail
   {
-    // max(|::beman::inside::detail::lower64<In>|, |::beman::inside::detail::upper64<In>|) as a constexpr rational. Used to size
-    // the auto-deduced abs output.
+    // Grid-number helpers for the algebraic tier's deduced outputs: exact for
+    // grid numbers of any size (C++26), the 64-bit rationals otherwise.
+    constexpr grid_rational grid_abs(grid_rational const& r) { return r < 0 ? -r : r; }
+    constexpr grid_rational grid_sign(grid_rational const& r) { return grid_rational{(r > 0) - (r < 0)}; }
+
+    // r rounded to an integer by M (half away from zero for nearest).
+    template <round_mode M>
+    constexpr grid_rational grid_to_int(grid_rational const& r)
+    {
+      const grid_wide n = wide_numerator(r), d = wide_denominator(r);
+      grid_wide q = n / d;
+      const grid_wide rem = n - q * d;
+      if (!rem.is_zero())
+      {
+        const bool neg = n.negative();
+        const grid_wide arem = neg ? -rem : rem;
+        const grid_wide away = neg ? q - grid_wide{1} : q + grid_wide{1};
+        if constexpr (M == round_mode::floor)        { if (neg) q = away; }
+        else if constexpr (M == round_mode::ceil)    { if (!neg) q = away; }
+        else if constexpr (M == round_mode::nearest) { if (!(arem + arem < d)) q = away; }
+      }
+#if BEMAN_INSIDE_BIG_GRIDS
+      return grid_rational{q};
+#else
+      return rational{static_cast<imax>(q)};
+#endif
+    }
+
+    // max(|Lower|, |Upper|): sizes the abs and copysign outputs.
     template <insidable In>
-    inline constexpr rational abs_auto_upper =
-      (abs(::beman::inside::detail::lower64<In>) > abs(::beman::inside::detail::upper64<In>))
-        ? abs(::beman::inside::detail::lower64<In>) : abs(::beman::inside::detail::upper64<In>);
+    inline constexpr grid_rational abs_auto_upper =
+      grid_abs(lower_of<In>) > grid_abs(upper_of<In>) ? grid_abs(lower_of<In>) : grid_abs(upper_of<In>);
 
     template <insidable In>
-    using abs_auto_t = inside<{{rational{0}, abs_auto_upper<In>},
-                              ::beman::inside::detail::notch64<In>}, out_policy<In>>;
+    using abs_auto_t = inside<{{grid_rational{0}, abs_auto_upper<In>}, notch_of<In>}, out_policy<In>>;
 
     // sign(x) ∈ {sign(Lower) … sign(Upper)}, integer notch.
     template <insidable In>
-    using sign_auto_t = inside<{rational{sign(::beman::inside::detail::lower64<In>)}, rational{sign(::beman::inside::detail::upper64<In>)}},
-                               out_policy<In>>;
+    using sign_auto_t = inside<{grid_sign(lower_of<In>), grid_sign(upper_of<In>)}, out_policy<In>>;
 
     // copysign(mag, sgn): |mag| with sgn's possible signs. |mag| ranges over
     // [m_lo, m_hi] (m_lo = 0 when mag's interval spans 0); a valid grid's Lower is
     // a multiple of its notch, so ±|mag| stays on mag's lattice.
     template <insidable Mag>
-    inline constexpr rational abs_auto_lower =
-      (::beman::inside::detail::lower64<Mag> <= 0 && ::beman::inside::detail::upper64<Mag> >= 0) ? rational{0}
-      : (abs(::beman::inside::detail::lower64<Mag>) < abs(::beman::inside::detail::upper64<Mag>)) ? abs(::beman::inside::detail::lower64<Mag>) : abs(::beman::inside::detail::upper64<Mag>);
+    inline constexpr grid_rational abs_auto_lower =
+      (lower_of<Mag> <= 0 && upper_of<Mag> >= 0) ? grid_rational{0}
+      : (grid_abs(lower_of<Mag>) < grid_abs(upper_of<Mag>)) ? grid_abs(lower_of<Mag>) : grid_abs(upper_of<Mag>);
 
     template <insidable Mag, insidable Sgn>
     using copysign_auto_t = inside<{{
-        ::beman::inside::detail::lower64<Sgn> < 0 ? -abs_auto_upper<Mag> : abs_auto_lower<Mag>,
-        ::beman::inside::detail::upper64<Sgn> >= 0 ? abs_auto_upper<Mag> : -abs_auto_lower<Mag>},
-        ::beman::inside::detail::notch64<Mag>}, out_policy<Mag>>;
+        lower_of<Sgn> < 0 ? -abs_auto_upper<Mag> : abs_auto_lower<Mag>,
+        upper_of<Sgn> >= 0 ? abs_auto_upper<Mag> : -abs_auto_lower<Mag>},
+        notch_of<Mag>}, out_policy<Mag>>;
 
-    template <insidable In>
-    using floor_auto_t = inside<{{rational{floor(::beman::inside::detail::lower64<In>)},
-                                  rational{floor(::beman::inside::detail::upper64<In>)}},
-                                 1}, out_policy<In>>;
+    template <insidable In, round_mode M>
+    using integer_auto_t = inside<{{grid_to_int<M>(lower_of<In>), grid_to_int<M>(upper_of<In>)}, 1}, out_policy<In>>;
 
-    template <insidable In>
-    using ceil_auto_t = inside<{{rational{ceil(::beman::inside::detail::lower64<In>)},
-                                 rational{ceil(::beman::inside::detail::upper64<In>)}},
-                                1}, out_policy<In>>;
+    template <insidable In> using floor_auto_t = integer_auto_t<In, round_mode::floor>;
+    template <insidable In> using ceil_auto_t  = integer_auto_t<In, round_mode::ceil>;
+    template <insidable In> using round_auto_t = integer_auto_t<In, round_mode::nearest>;
+    template <insidable In> using trunc_auto_t = integer_auto_t<In, round_mode::trunc>;
 
-    template <insidable In>
-    using round_auto_t = inside<{{rational{round(::beman::inside::detail::lower64<In>)},
-                                  rational{round(::beman::inside::detail::upper64<In>)}},
-                                 1}, out_policy<In>>;
+    // The exact path: an input or output past the 64-bit rationals (more than
+    // 2^64 slots, or grid numbers past 64 bits) computes on exact values.
+    template <insidable... Bs>
+    inline constexpr bool exact_path = (exact_valued<Bs> || ...);
 
-    template <insidable In>
-    using trunc_auto_t = inside<{{rational{trunc(::beman::inside::detail::lower64<In>)},
-                                  rational{trunc(::beman::inside::detail::upper64<In>)}},
-                                 1}, out_policy<In>>;
+    template <insidable Out, std::size_t E>
+    constexpr Out store_exact(exact_frac<E> const& v)
+    { return ax::store_exact<Out>(v, make_policy<policy_of<Out>>()); }
+
+    template <round_mode M, std::size_t E>
+    constexpr exact_frac<E> exact_to_int(exact_frac<E> const& v) noexcept
+    { return {rounded_div<M>(v.Num, v.Den), wide_sint<E>{1}}; }
 
     // Double-backed fast path for the algebraic tier. |x| and the integer
     // roundings of a grid value are exact in double (|x| < 2^53 on a
@@ -1145,9 +1171,11 @@ namespace beman::inside::math
   template <insidable Out, insidable In>
   [[nodiscard]] constexpr Out abs_into(In x)
   {
-    static_assert(::beman::inside::detail::lower64<Out> <= 0,
+    static_assert(lower_of<Out> <= 0,
                   "beman::inside::math::abs: Out must include 0");
-    if constexpr (detail::fp_direct<Out, detail::abs_auto_t<In>, In>)
+    if constexpr (detail::exact_path<Out, In>)
+      return detail::store_exact<Out>(detail::ax::abs(detail::ax::exact_input(x)));
+    else if constexpr (detail::fp_direct<Out, detail::abs_auto_t<In>, In>)
       return detail::fp_direct_store<Out>(x, [](double v) { return v < 0 ? -v : v; });
     else
       return detail::store_grid<Out>(beman::inside::detail::abs(rational{x}));
@@ -1162,15 +1190,25 @@ namespace beman::inside::math
   template <insidable Out, insidable Mag, insidable Sgn>
   [[nodiscard]] constexpr Out copysign_into(Mag mag, Sgn sgn)
   {
-    const rational a = beman::inside::detail::abs(rational{mag});
-    return detail::store_grid<Out>(sgn < 0 ? -a : a);
+    if constexpr (detail::exact_path<Out, Mag>)
+    {
+      const auto a = detail::ax::abs(detail::ax::exact_input(mag));
+      return detail::store_exact<Out>(sgn < 0 ? -a : a);
+    }
+    else
+    {
+      const rational a = beman::inside::detail::abs(rational{mag});
+      return detail::store_grid<Out>(sgn < 0 ? -a : a);
+    }
   }
 
   // ⌊x⌋ — largest integer ≤ x.
   template <insidable Out, insidable In>
   [[nodiscard]] constexpr Out floor_into(In x)
   {
-    if constexpr (detail::fp_direct<Out, detail::floor_auto_t<In>, In>)
+    if constexpr (detail::exact_path<Out, In>)
+      return detail::store_exact<Out>(detail::exact_to_int<beman::inside::detail::round_mode::floor>(detail::ax::exact_input(x)));
+    else if constexpr (detail::fp_direct<Out, detail::floor_auto_t<In>, In>)
       return detail::fp_direct_store<Out>(x, detail::fp_floor);
     else
       return detail::store_grid<Out>(floor(rational{x}));
@@ -1180,7 +1218,9 @@ namespace beman::inside::math
   template <insidable Out, insidable In>
   [[nodiscard]] constexpr Out ceil_into(In x)
   {
-    if constexpr (detail::fp_direct<Out, detail::ceil_auto_t<In>, In>)
+    if constexpr (detail::exact_path<Out, In>)
+      return detail::store_exact<Out>(detail::exact_to_int<beman::inside::detail::round_mode::ceil>(detail::ax::exact_input(x)));
+    else if constexpr (detail::fp_direct<Out, detail::ceil_auto_t<In>, In>)
       return detail::fp_direct_store<Out>(x, detail::fp_ceil);
     else
       return detail::store_grid<Out>(ceil(rational{x}));
@@ -1191,7 +1231,9 @@ namespace beman::inside::math
   template <insidable Out, insidable In>
   [[nodiscard]] constexpr Out round_into(In x)
   {
-    if constexpr (detail::fp_direct<Out, detail::round_auto_t<In>, In>)
+    if constexpr (detail::exact_path<Out, In>)
+      return detail::store_exact<Out>(detail::exact_to_int<beman::inside::detail::round_mode::nearest>(detail::ax::exact_input(x)));
+    else if constexpr (detail::fp_direct<Out, detail::round_auto_t<In>, In>)
       return detail::fp_direct_store<Out>(x, detail::fp_round);
     else
       return detail::store_grid<Out>(round(rational{x}));
@@ -1202,7 +1244,9 @@ namespace beman::inside::math
   template <insidable Out, insidable In>
   [[nodiscard]] constexpr Out trunc_into(In x)
   {
-    if constexpr (detail::fp_direct<Out, detail::trunc_auto_t<In>, In>)
+    if constexpr (detail::exact_path<Out, In>)
+      return detail::store_exact<Out>(detail::exact_to_int<beman::inside::detail::round_mode::trunc>(detail::ax::exact_input(x)));
+    else if constexpr (detail::fp_direct<Out, detail::trunc_auto_t<In>, In>)
       return detail::fp_direct_store<Out>(x, detail::fp_trunc);
     else
       return detail::store_grid<Out>(trunc(rational{x}));
@@ -1258,7 +1302,17 @@ namespace beman::inside::math
   template <insidable Out, insidable InX, insidable InY>
   [[nodiscard]] constexpr Out fmod_nonzero(InX x, InY y)
   {
-    if constexpr (detail::fmod_int_fast<Out, InX, InY>)
+    if constexpr (detail::exact_path<Out, InX, InY>)
+    {
+      // x − trunc(x/y)·y on exact values.
+      constexpr std::size_t E = 2 * (detail::ax::input_limbs<InX> > detail::ax::input_limbs<InY>
+                                       ? detail::ax::input_limbs<InX> : detail::ax::input_limbs<InY>) + 1;
+      using F = beman::inside::detail::exact_frac<E>;
+      const F a{detail::ax::exact_input(x)}, b{detail::ax::exact_input(y)};
+      const auto q = (a.Num * b.Den) / (a.Den * b.Num);   // truncated
+      return detail::store_exact<Out>(a + F{-(q * b.Num), b.Den});
+    }
+    else if constexpr (detail::fmod_int_fast<Out, InX, InY>)
     {
       // One integer remainder in g-units; bit-identical to the rational path.
       constexpr rational g = *beman::inside::detail::gcd(::beman::inside::detail::notch64<InX>, ::beman::inside::detail::notch64<InY>);
@@ -1520,18 +1574,14 @@ namespace beman::inside::math
 
     // fmod's result: |r| < |y| and |r| ≤ |x|, with the sign of x, on the gcd of
     // both notches (x − k·y lies on that lattice, so the result is exact).
-    template <insidable B>
-    inline constexpr rational max_abs = abs(::beman::inside::detail::lower64<B>) > abs(::beman::inside::detail::upper64<B>) ? abs(::beman::inside::detail::lower64<B>) : abs(::beman::inside::detail::upper64<B>);
+    template <insidable InX, insidable InY>
+    inline constexpr grid_rational fmod_bound =
+        abs_auto_upper<InX> < abs_auto_upper<InY> ? abs_auto_upper<InX> : abs_auto_upper<InY>;
 
     template <insidable InX, insidable InY>
-    inline constexpr rational fmod_bound =
-        max_abs<InX> < max_abs<InY> ? max_abs<InX> : max_abs<InY>;
-
-
-    template <insidable InX, insidable InY>
-    using fmod_auto_t = inside<{{(::beman::inside::detail::lower64<InX> < 0 ? -fmod_bound<InX, InY> : rational{0}),
-                                 (::beman::inside::detail::upper64<InX> > 0 ?  fmod_bound<InX, InY> : rational{0})},
-                                gcd_notch<InX, InY>}, out_policy<InX> | round_nearest>;
+    using fmod_auto_t = inside<{{(lower_of<InX> < 0 ? -fmod_bound<InX, InY> : grid_rational{0}),
+                                 (upper_of<InX> > 0 ?  fmod_bound<InX, InY> : grid_rational{0})},
+                                ax::gcd_notch<InX, InY>}, out_policy<InX> | round_nearest>;
   } // namespace detail
 
   template <insidable InX, insidable InY>

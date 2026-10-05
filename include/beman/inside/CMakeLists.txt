@@ -7,6 +7,7 @@ target_sources(
             FILES
                 arithmetic.hpp
                 casts.hpp
+                cmath_adaptive.hpp
                 cmath_double.hpp
                 cmath_float.hpp
                 cmath.hpp
@@ -18,6 +19,7 @@ target_sources(
                 detail/division.hpp
                 detail/grid_rational.hpp
                 detail/int_for_bits.hpp
+                detail/math_adaptive.hpp
                 detail/wide_int.hpp
                 detail/wide_value.hpp
                 detail/multiplication.hpp

@@ -218,7 +218,7 @@ namespace beman::inside
     // `inside` instead of `expected<inside, errc>` (see detail/division.hpp). A point
     // grid at 0 is *not* excluded.
     template <insidable R>
-    inline constexpr bool divisor_excludes_zero = (detail::lower64<R> > 0) || (detail::upper64<R> < 0);
+    inline constexpr bool divisor_excludes_zero = (lower_of<R> > 0) || (upper_of<R> < 0);
 
     // Storage-agnostic int truncation of interval endpoints — intent-revealing
     // `static_cast<imax>(detail::lower64<B>)`. Used by from_value, raw_lo, the fast paths.

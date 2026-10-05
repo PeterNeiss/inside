@@ -4,6 +4,7 @@
 // 64 bits, conversions and io. Skipped without reflection.
 
 #include <beman/inside/inside.hpp>
+#include <beman/inside/cmath.hpp>
 #include <beman/inside/formats.hpp>
 #include <beman/inside/io.hpp>
 #include <beman/inside/numeric_limits.hpp>
@@ -125,6 +126,29 @@ namespace
   static_assert(huge{7} + huge{5} == 12);
   static_assert(huge{7} * huge{5} == 35);
 }
+TEST(BigGridTest, math_grid_ops)
+{
+  // abs, sign, copysign, floor/ceil/round/trunc and fmod run on exact values.
+  using fine_r = inside<{{-4, 4}, grid_rational{big_int{1}, pow2(80)}}, round_nearest>;
+  using fpos   = inside<{{1, 4}, grid_rational{big_int{1}, pow2(80)}}, round_nearest>;
+  using hsym   = inside<{-g(pow2(100)), g(pow2(100))}>;
+  using hpos   = inside<{1, g(pow2(100))}>;
+  const fine_r x{-2.75};
+  const hsym h{-7};
+  EXPECT_EQ(math::abs(x), 2.75);
+  EXPECT_EQ(math::abs(h), 7);
+  EXPECT_EQ(math::sign(x), -1);
+  EXPECT_EQ(math::copysign(fine_r{1.5}, x), -1.5);
+  EXPECT_EQ(math::floor(x), -3);
+  EXPECT_EQ(math::ceil(x), -2);
+  EXPECT_EQ(math::round(x), -3);
+  EXPECT_EQ(math::trunc(x), -2);
+  EXPECT_EQ(math::fmod(x, fpos{1.5}), -1.25);
+  EXPECT_EQ(math::fmod(h, hpos{3}), -1);
+  static_assert(upper_of<decltype(math::abs(h))> == g(pow2(100)));
+  static_assert(lower_of<decltype(math::floor(x))> == -4);
+}
+
 #else
 TEST(BigGridTest, needs_cxx26_reflection) { GTEST_SKIP() << "C++26 static reflection unavailable"; }
 #endif

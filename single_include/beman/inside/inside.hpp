@@ -25,6 +25,7 @@
 #include <iterator>
 #include <limits>
 #include <numeric>
+#include <optional>
 #include <ranges>
 #include <tuple>
 #include <type_traits>
@@ -4082,7 +4083,7 @@ namespace beman::inside
     // `inside` instead of `expected<inside, errc>` (see detail/division.hpp). A point
     // grid at 0 is *not* excluded.
     template <insidable R>
-    inline constexpr bool divisor_excludes_zero = (detail::lower64<R> > 0) || (detail::upper64<R> < 0);
+    inline constexpr bool divisor_excludes_zero = (lower_of<R> > 0) || (upper_of<R> < 0);
 
     // Storage-agnostic int truncation of interval endpoints — intent-revealing
     // `static_cast<imax>(detail::lower64<B>)`. Used by from_value, raw_lo, the fast paths.
@@ -9539,6 +9540,1786 @@ namespace beman::inside::math::flt::detail
 #endif // !BEMAN_INSIDE_MATH_NO_FP
 
 
+// ======================================================================
+//  beman/inside/cmath_adaptive.hpp
+// ======================================================================
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+
+
+// ======================================================================
+//  beman/inside/detail/math_adaptive.hpp
+// ======================================================================
+//---------------------------------------------------------------------------
+//---------------------------------------------------------------------------
+
+
+
+
+//---------------------------------------------------------------------------
+// The adaptive math engine's foundation: correctly rounded results on any
+// output grid, at a precision chosen from that grid.
+//
+// A core computes f(x) in signed fixed point Q.W (an integer Y standing for
+// Y·2^-W) and says how far off it may be: the true value lies within
+// Error·2^-W of Y (an `approx`). `decide` maps both ends of that interval onto
+// the output grid under the grid's rounding mode. When they land on the same
+// slot, that slot is the correctly rounded result — whichever core, tier or
+// precision produced it. When they straddle a rounding boundary, the driver
+// (`evaluate`) runs the core again at twice the precision (Ziv's strategy).
+//
+// Transcendental results land exactly on a boundary only at a few exact
+// inputs (exp(0), log(1), ...); the cores return those with Error 0, so for
+// every other input the escalation ends. A cap stops it in any case; past the
+// cap the result is the slot nearest Y.
+//
+// Everything here is constexpr and integer-only (wide_int), so a result is the
+// same at compile time, at runtime, with or without an FPU.
+//---------------------------------------------------------------------------
+namespace beman::inside::math::detail::ax
+{
+  using namespace ::beman::inside::detail;
+
+  // Signed fixed point with at least Bits value bits (the word of a Q.W value
+  // whose magnitude stays below 2^(Bits − W)).
+  template <int Bits>
+  using fixed_t = wide_sint<limbs_for_bits(Bits + 1)>;
+
+  template <typename T>
+  inline constexpr std::size_t limbs_of = sizeof(T) / sizeof(umax);
+
+  // The same value in a word of twice the limbs (for products and shifted
+  // dividends).
+  template <std::size_t K>
+  using double_t = wide_sint<2 * K>;
+
+  //---------------------------------------------------------------------------
+  // Q.W arithmetic. Products and quotients truncate toward zero: each is
+  // within one unit 2^-W of the true value, and a series' shrinking terms
+  // reach 0.
+  //---------------------------------------------------------------------------
+  template <std::size_t K>
+  constexpr wide_sint<K> mul_q(wide_sint<K> const& a, wide_sint<K> const& b, int W) noexcept
+  {
+    if constexpr (K == 1)
+    {
+      // One limb: the 128-bit product of the magnitudes, shifted.
+      const bool na = a.negative(), nb = b.negative();
+      const umax ma = na ? umax{0} - a.Word[0] : a.Word[0];
+      const umax mb = nb ? umax{0} - b.Word[0] : b.Word[0];
+      const limb::pair<umax> p = limb::mul(ma, mb);
+      const umax m = W == 0 ? p.Lo : W < 64 ? (p.Lo >> W) | (p.Hi << (64 - W)) : p.Hi >> (W - 64);
+      wide_sint<1> r;
+      r.Word[0] = (na != nb) ? umax{0} - m : m;
+      return r;
+    }
+    else
+    {
+      // Schoolbook on the magnitudes into 2K limbs, then the shift.
+      const bool na = a.negative(), nb = b.negative();
+      const wide_uint<K> ma{na ? -a : a}, mb{nb ? -b : b};
+      umax prod[2 * K]{};
+      for (std::size_t i = 0; i < K; ++i)
+      {
+        umax carry = 0;
+        for (std::size_t j = 0; j < K; ++j)
+        {
+          const limb::pair<umax> t = limb::mul(ma.Word[i], mb.Word[j]);
+          umax c1 = 0, c2 = 0;
+          umax v = limb::add_carry(prod[i + j], t.Lo, c1);
+          v = limb::add_carry(v, carry, c2);
+          prod[i + j] = v;
+          carry = t.Hi + c1 + c2;
+        }
+        prod[i + K] = carry;
+      }
+      const std::size_t ws = static_cast<std::size_t>(W / 64);
+      const int bs = W % 64;
+      wide_uint<K> m;
+      for (std::size_t i = 0; i < K; ++i)
+      {
+        const umax lo = i + ws < 2 * K ? prod[i + ws] : 0;
+        const umax hi = i + ws + 1 < 2 * K ? prod[i + ws + 1] : 0;
+        m.Word[i] = bs == 0 ? lo : (lo >> bs) | (hi << (64 - bs));
+      }
+      const wide_sint<K> r{m};
+      return na != nb ? -r : r;
+    }
+  }
+
+  // v / d for a small positive d, truncating toward zero (series terms).
+  template <std::size_t K>
+  constexpr wide_sint<K> div_small(wide_sint<K> const& v, umax d) noexcept;
+
+  // a / b at scale 2^W. Pre: b != 0.
+  template <std::size_t K>
+  constexpr wide_sint<K> div_q(wide_sint<K> const& a, wide_sint<K> const& b, int W) noexcept
+  {
+    using D = double_t<K>;
+    return static_cast<wide_sint<K>>((D{a} << W) / D{b});
+  }
+
+  // 2^W as a Q.W one.
+  template <std::size_t K>
+  constexpr wide_sint<K> one_q(int W) noexcept { return wide_sint<K>{1} << W; }
+
+  // v rounded to the nearest multiple of 2^-sh (half away from zero), shifted
+  // down by sh: changes the scale from 2^(W+sh) to 2^W within ½ unit.
+  template <std::size_t K>
+  constexpr wide_sint<K> round_shift(wide_sint<K> const& v, int sh) noexcept
+  {
+    if (sh <= 0) return v << (-sh);
+    const wide_sint<K> half = wide_sint<K>{1} << (sh - 1);
+    return v.negative() ? -((-v + half) >> sh) : (v + half) >> sh;
+  }
+
+  //---------------------------------------------------------------------------
+  // Exact values into fixed point.
+  //---------------------------------------------------------------------------
+  // x·2^W rounded to the nearest integer (half away from zero): within ½ unit.
+  template <int W, std::size_t K, std::size_t E>
+  constexpr wide_sint<K> to_q(exact_frac<E> const& x) noexcept
+  {
+    constexpr int shift = W >= 0 ? W : -W;
+    using I = wide_sint<exact_max<E, K> + limbs_for_bits(shift) + 1>;
+    I n{x.Num}, d{x.Den};
+    if constexpr (W >= 0) n = n << W; else d = d << shift;
+    return static_cast<wide_sint<K>>(rounded_div<round_mode::nearest>(n, d));
+  }
+
+  // ⌊log2 |x|⌋ for x != 0.
+  template <std::size_t E>
+  constexpr int floor_log2(exact_frac<E> const& x) noexcept
+  {
+    using I = wide_sint<E>;
+    const I n = x.Num.negative() ? -x.Num : x.Num;
+    const I& d = x.Den;
+    int e = bit_width_of(n) - bit_width_of(d);
+    // n/d ≥ 2^e  ⇔  n ≥ d·2^e (or n·2^-e ≥ d).
+    const bool ge = e >= 0 ? n >= (d << e) : (n << (-e)) >= d;
+    return ge ? e : e - 1;
+  }
+
+  //---------------------------------------------------------------------------
+  // Output precision. out_bits: fractional bits that resolve Out's notch
+  // (2^-out_bits ≤ notch/2). mag_bits: integer bits of Out's largest value.
+  //---------------------------------------------------------------------------
+  template <insidable Out>
+  inline constexpr int out_bits = [] {
+    if constexpr (notch_of<Out> == 0)
+      return 64;
+    else
+    {
+      // notch = p/q: need 2^-b ≤ p/(2q), i.e. b ≥ log2(2q/p).
+      const grid_wide p = wide_numerator(notch_of<Out>), q = wide_denominator(notch_of<Out>);
+      const int b = bit_width_of(q) - bit_width_of(p) + 2;
+      return b > 0 ? b : 0;
+    }
+  }();
+
+  template <insidable Out>
+  inline constexpr int mag_bits = grid_magnitude_bits<Out> > 0 ? grid_magnitude_bits<Out> : 0;
+
+  //---------------------------------------------------------------------------
+  // approx — a core's result: the true value lies in
+  // [(Value − Error)·2^-Scale, (Value + Error)·2^-Scale]. Error 0 means exact.
+  //---------------------------------------------------------------------------
+  template <std::size_t K>
+  struct approx
+  {
+    wide_sint<K> Value;
+    int Scale;
+    umax Error;
+  };
+
+  //---------------------------------------------------------------------------
+  // decide — the slot offset of an approx on Out's grid under Out's rounding
+  // mode, when both ends of its error interval round to the same slot.
+  //---------------------------------------------------------------------------
+  template <insidable Out>
+  inline constexpr round_mode out_rounding = rounding_of(policy_of<Out>);
+
+  // Limbs for the exact value Y/2^W of a K-limb approx, with room for the
+  // product with Out's notch in exact_index.
+  template <insidable Out, std::size_t K>
+  inline constexpr std::size_t decide_limbs = K + 1 + exact_limbs<Out>;
+
+  template <insidable Out, std::size_t K>
+  struct decision
+  {
+    bool Decided;
+    wide_sint<decide_limbs<Out, K>> Index;               // Out's slot offset (may be out of range)
+  };
+
+  template <insidable Out, std::size_t K>
+  constexpr exact_frac<decide_limbs<Out, K>> scaled_value(wide_sint<K> const& y, int W) noexcept
+  {
+    using I = wide_sint<decide_limbs<Out, K>>;
+    if (W < 0) return {I{y} << (-W), I{1}};                // a scale past the units: Y·2^|W|
+    return {I{y}, I{1} << W};
+  }
+
+  // The fast index: a notch p/q with p and q in 64 bits and a scale S ≥ 1.
+  // value/notch = Y·q/(p·2^S): split Y·q = A·2^S + R, then A = B·p + r with
+  // one-limb divisions; the rounding reads r and R exactly (see below).
+  template <insidable Out>
+  inline constexpr bool notch_fits64 = [] {
+    if constexpr (notch_of<Out> == 0) return false;
+    else
+    {
+      const grid_wide p = wide_numerator(notch_of<Out>), q = wide_denominator(notch_of<Out>);
+      return !(grid_wide{std::numeric_limits<umax>::max()} < p) && !(grid_wide{std::numeric_limits<umax>::max()} < q);
+    }
+  }();
+
+  // n / d for a one-limb d: the quotient and the remainder.
+  template <std::size_t K>
+  struct small_divmod { wide_uint<K> Quotient; umax Remainder; };
+
+  template <std::size_t K>
+  constexpr small_divmod<K> divmod_small(wide_uint<K> const& n, umax d) noexcept
+  {
+    small_divmod<K> r{wide_uint<K>{0}, 0};
+    for (std::size_t i = K; i-- > 0;)
+    {
+      const limb::pair<umax> qr = limb::div(r.Remainder, n.Word[i], d);
+      r.Quotient.Word[i] = qr.Hi;
+      r.Remainder = qr.Lo;
+    }
+    return r;
+  }
+
+  template <std::size_t K>
+  constexpr wide_sint<K> div_small(wide_sint<K> const& v, umax d) noexcept
+  {
+    const bool neg = v.negative();
+    const wide_sint<K> q{divmod_small(wide_uint<K>{neg ? -v : v}, d).Quotient};
+    return neg ? -q : q;
+  }
+
+  // Out's slot offset of y·2^-S (S ≥ 1) rounded by M, as value-index rounding
+  // (the sign rules of rounded_div).
+  template <insidable Out, round_mode M, std::size_t K>
+  constexpr wide_sint<K + 2> fast_index(wide_sint<K> const& y, int S) noexcept
+  {
+    using U = wide_uint<K + 2>;
+    using J = wide_sint<K + 2>;
+    constexpr umax p = static_cast<umax>(wide_numerator(notch_of<Out>));
+    constexpr umax q = static_cast<umax>(wide_denominator(notch_of<Out>));
+    const bool neg = y.negative();
+    const wide_uint<K> mag{neg ? -y : y};
+    U a{0};                                               // |y|·q, one limb at a time
+    umax carry = 0;
+    for (std::size_t i = 0; i < K; ++i)
+    {
+      const limb::pair<umax> t = limb::mul(mag.Word[i], q);
+      umax c = 0;
+      a.Word[i] = limb::add_carry(t.Lo, carry, c);
+      carry = t.Hi + c;
+    }
+    a.Word[K] = carry;
+    const U hi = a >> S;
+    const U low = a - (hi << S);                          // R, in [0, 2^S)
+    const auto [b, r] = divmod_small(hi, p);
+    // Fraction of the magnitude past b: (r·2^S + R)/(p·2^S).
+    const bool inexact = r != 0 || !low.is_zero();
+    bool up = false;
+    if constexpr (M == round_mode::floor)     up = neg && inexact;
+    else if constexpr (M == round_mode::ceil) up = !neg && inexact;
+    else if constexpr (M == round_mode::nearest || M == round_mode::half_even)
+    {
+      // Compare 2·(r·2^S + R) with p·2^S, i.e. r with d = p − r (no 2r
+      // overflow): r > d is past half, r < d − 1 below; r == d is a tie when
+      // R = 0, and r == d − 1 leaves the decision to R against 2^(S−1).
+      const U half = U{1} << (S - 1);
+      const umax d = p - r;
+      int cmp;                                            // −1 below half, 0 tie, 1 past
+      if (r > d)          cmp = 1;
+      else if (r == d)    cmp = low.is_zero() ? 0 : 1;
+      else if (r + 1 < d) cmp = -1;
+      else                cmp = (low < half) ? -1 : (low == half) ? 0 : 1;
+      if constexpr (M == round_mode::nearest) up = cmp >= 0;
+      else up = cmp > 0 || (cmp == 0 && (b.Word[0] & 1u) != 0);
+    }
+    J m{b};
+    if (up) m += J{1};
+    return (neg ? -m : m) - static_cast<J>(slot_base<Out>);
+  }
+
+  template <insidable Out, std::size_t K>
+  constexpr decision<Out, K> decide(approx<K> const& a) noexcept
+  {
+    constexpr round_mode M = out_rounding<Out>;
+    using I = wide_sint<decide_limbs<Out, K>>;
+    const wide_sint<K> e{a.Error};
+    auto index = [&](wide_sint<K> const& y) -> I {
+      if constexpr (notch_fits64<Out>)
+        if (a.Scale >= 1) return static_cast<I>(fast_index<Out, M>(y, a.Scale));
+      return static_cast<I>(exact_index<Out, M>(scaled_value<Out>(y, a.Scale)).Index);
+    };
+    if (a.Error == 0) return {true, index(a.Value)};
+    const I lo = index(a.Value - e), hi = index(a.Value + e);
+    // Both ends past the same end of Out's range also decide: the policy
+    // (clamp, or an overflow report) sees the same thing for every value there.
+    constexpr I count = static_cast<I>(grid_of<Out>.slot_count());
+    const bool below = lo.negative() && hi.negative();
+    const bool above = count < lo && count < hi;
+    return {lo == hi || below || above, lo};
+  }
+
+  // The slot nearest the approx's midpoint under Out's rounding (the capped
+  // escalation's answer).
+  template <insidable Out, std::size_t K>
+  constexpr auto nearest_index(approx<K> const& a) noexcept
+  {
+    using I = wide_sint<decide_limbs<Out, K>>;
+    return static_cast<I>(exact_index<Out, out_rounding<Out>>(scaled_value<Out>(a.Value, a.Scale)).Index);
+  }
+
+  //---------------------------------------------------------------------------
+  // store — Out at slot offset `index`. In range it is a raw; out of range the
+  // grid point goes through the policy cascade (clamp, wrap or report), as any
+  // assignment. Policy is Out's, optionally with an errc sink.
+  //---------------------------------------------------------------------------
+  template <insidable Out, std::size_t K, typename P>
+  constexpr Out store(wide_sint<K> const& index, P&& policy)
+  {
+    using I = wide_sint<K>;
+    constexpr I count = static_cast<I>(grid_of<Out>.slot_count());
+    if (!index.negative() && !(count < index)) [[likely]]
+      return Out::from_raw(raw_of_index<Out>(index));
+    // The grid point (index + Lower/Notch)·Notch, exact.
+    constexpr std::size_t KK = exact_max<K, exact_limbs<Out>>;
+    using J = wide_sint<KK>;
+    const exact_frac<KK> v{(J{index} + static_cast<J>(slot_base<Out>)) * static_cast<J>(wide_numerator(notch_of<Out>)),
+                           static_cast<J>(wide_denominator(notch_of<Out>))};
+    Out out{};
+    assign_exact<rational>(out, v, policy, no_action{});
+    return out;
+  }
+
+  template <insidable Out, std::size_t K>
+  constexpr Out store(wide_sint<K> const& index)
+  { return store<Out>(index, make_policy<policy_of<Out>>()); }
+
+  // An exact value through Out's policy (an output without slots, or an exact
+  // result: rounding an exact value by the mode is correct rounding).
+  template <insidable Out, std::size_t K, typename P>
+  constexpr Out store_exact(exact_frac<K> const& v, P&& policy)
+  {
+    Out out{};
+    assign_exact<rational>(out, v, policy, no_action{});
+    return out;
+  }
+
+  // An approx's midpoint as an exact value.
+  template <std::size_t K>
+  constexpr auto midpoint(approx<K> const& a) noexcept
+  {
+    constexpr std::size_t KK = exact_max<K + 1, exact_min_limbs>;
+    using I = wide_sint<KK + 8>;
+    return a.Scale >= 0 ? exact_frac<KK + 8>{I{a.Value}, I{1} << a.Scale}
+                        : exact_frac<KK + 8>{I{a.Value} << (-a.Scale), I{1}};
+  }
+
+  // Outputs `decide` serves: an integer raw on a grid with slots. Others (a
+  // rational or floating-point raw) take the value at the start precision.
+  template <insidable Out>
+  inline constexpr bool slotted = integer_raw<Out> && notch_of<Out> != 0;
+
+  //---------------------------------------------------------------------------
+  // evaluate — the Ziv driver. Core is a callable object with a member
+  // template `run<W>()` returning an approx within about 2^-W, and optionally
+  // `exact()` returning a std::optional exact_frac when the result is an
+  // exact rational (taken as is). It starts at W0 and doubles W while the
+  // result is undecided, up to Cap.
+  //---------------------------------------------------------------------------
+  template <insidable Out, int W, int Cap, typename Core, typename P>
+  constexpr Out evaluate_from(Core const& core, P&& policy)
+  {
+    const auto a = core.template run<W>();
+    if constexpr (!slotted<Out>)
+    {
+      // A 64-bit value: keep the denominator a 64-bit power of two.
+      constexpr int A = 60 - mag_bits<Out> > 1 ? 60 - mag_bits<Out> : 1;
+      if (a.Scale <= A) return store_exact<Out>(midpoint(a), policy);
+      using I = decltype(a.Value);
+      const int sh = a.Scale - A;
+      const I half = I{1} << (sh - 1);
+      const I v = a.Value.negative() ? -((-a.Value + half) >> sh) : (a.Value + half) >> sh;
+      return store_exact<Out>(midpoint(approx<limbs_of<I>>{v, A, 0}), policy);
+    }
+    else
+    {
+      const auto d = decide<Out>(a);
+      if (d.Decided) [[likely]] return store<Out>(d.Index, policy);
+      if constexpr (2 * W > Cap)
+        return store<Out>(nearest_index<Out>(a), policy);
+      else
+        return evaluate_from<Out, 2 * W, Cap>(core, policy);
+    }
+  }
+
+  // The precision cap for a start precision W0.
+  constexpr int precision_cap(int W0) noexcept { return 8 * W0 > 1024 ? 8 * W0 : 1024; }
+
+  template <insidable Out, int W0, typename Core, typename P>
+  constexpr Out evaluate(Core const& core, P&& policy)
+  {
+    if constexpr (requires { core.exact(); })
+      if (const auto e = core.exact())
+        return store_exact<Out>(*e, policy);
+    return evaluate_from<Out, W0, precision_cap(W0)>(core, policy);
+  }
+
+  template <insidable Out, int W0, typename Core>
+  constexpr Out evaluate(Core const& core)
+  { return evaluate<Out, W0>(core, make_policy<policy_of<Out>>()); }
+
+  // The checked form: a result Out's policy reports (out of range without
+  // clamp) comes back as its errc instead.
+  template <insidable Out, int W0, typename Core>
+  constexpr std::expected<Out, errc> evaluate_checked(Core const& core)
+  {
+    errc ec{};
+    const Out out = evaluate<Out, W0>(core, make_policy<policy_of<Out>>(ec));
+    if (ec != errc{}) return std::unexpected{ec};
+    return out;
+  }
+
+  //---------------------------------------------------------------------------
+  // Constants at any precision, computed at compile time with wide integer
+  // series. Each is within 1 unit 2^-W of the true value.
+  //---------------------------------------------------------------------------
+  // Guard bits for a series of about W/2 truncated terms.
+  constexpr int series_guard(int W) noexcept { return std::bit_width(static_cast<unsigned>(W)) + 4; }
+
+  // Σ_k s^k / ((2k+1)·n^(2k+1)) at scale 2^G, with s = +1 (atanh(1/n)) or
+  // −1 (atan(1/n)). Each term truncates once (p) and once (p/(2k+1)).
+  template <std::size_t K>
+  constexpr wide_sint<K> inverse_series(int n, int sign, int G) noexcept
+  {
+    using I = wide_sint<K>;
+    const I nn{n}, n2{n * n};
+    I p = (I{1} << G) / nn;                               // 2^G / n^(2k+1)
+    I sum{0};
+    for (int k = 0; !p.is_zero(); ++k)
+    {
+      const I t = p / I{2 * k + 1};
+      sum = (k % 2 != 0 && sign < 0) ? sum - t : sum + t;
+      p = p / n2;
+    }
+    return sum;
+  }
+
+  // ln 2 = 2·atanh(1/3).
+  template <int W>
+  inline constexpr fixed_t<W + 2> ln2_q = [] {
+    constexpr int G = W + series_guard(W);
+    using I = fixed_t<G + 4>;
+    const I v = I{2} * inverse_series<limbs_of<I>>(3, +1, G);
+    return static_cast<fixed_t<W + 2>>(round_shift(v, G - W));
+  }();
+
+  // π = 16·atan(1/5) − 4·atan(1/239) (Machin).
+  template <int W>
+  inline constexpr fixed_t<W + 3> pi_q = [] {
+    constexpr int G = W + series_guard(W) + 4;
+    using I = fixed_t<G + 6>;
+    const I v = I{16} * inverse_series<limbs_of<I>>(5, -1, G)
+              - I{4} * inverse_series<limbs_of<I>>(239, -1, G);
+    return static_cast<fixed_t<W + 3>>(round_shift(v, G - W));
+  }();
+
+  // ln 10 = 3·ln 2 + ln(5/4) = 6·atanh(1/3) + 2·atanh(1/9).
+  template <int W>
+  inline constexpr fixed_t<W + 4> ln10_q = [] {
+    constexpr int G = W + series_guard(W) + 2;
+    using I = fixed_t<G + 6>;
+    const I v = I{6} * inverse_series<limbs_of<I>>(3, +1, G)
+              + I{2} * inverse_series<limbs_of<I>>(9, +1, G);
+    return static_cast<fixed_t<W + 4>>(round_shift(v, G - W));
+  }();
+
+  //---------------------------------------------------------------------------
+  // Exact integer helpers.
+  //---------------------------------------------------------------------------
+  // ⌊√t⌋ and ⌊∛t⌋ for one limb: Newton from above.
+  constexpr umax isqrt64(umax t) noexcept
+  {
+    if (t < 2) return t;
+    umax x = umax{1} << ((std::bit_width(t) + 1) / 2);
+    for (;;) { const umax y = (x + t / x) >> 1; if (y >= x) return x; x = y; }
+  }
+  constexpr umax icbrt64(umax t) noexcept
+  {
+    if (t < 2) return t;
+    umax x = umax{1} << ((std::bit_width(t) + 2) / 3);
+    for (;;) { const umax y = (2 * x + t / (x * x)) / 3; if (y >= x) return x; x = y; }
+  }
+
+  // ⌊√n⌋ for n ≥ 0: Newton from above, seeded from the top 62 bits (about 31
+  // correct bits, so two or three steps finish).
+  template <std::size_t K>
+  constexpr wide_sint<K> isqrt(wide_sint<K> const& n) noexcept
+  {
+    using I = wide_sint<K>;
+    if (n.is_zero()) return n;
+    const int bw = bit_width_of(n);
+    int sh = bw > 62 ? bw - 62 : 0;
+    sh += sh & 1;                                         // even: √(t·2^sh) = √t·2^(sh/2)
+    const umax t = static_cast<umax>(n >> sh);
+    I x = I{isqrt64(t) + 1} << (sh / 2);                  // ≥ √n
+    for (;;)
+    {
+      const I y = (x + n / x) >> 1;
+      if (!(y < x)) return x;
+      x = y;
+    }
+  }
+
+  // ⌊∛n⌋ for n ≥ 0: Newton from above, seeded from the top 63 bits.
+  template <std::size_t K>
+  constexpr wide_sint<K> icbrt(wide_sint<K> const& n) noexcept
+  {
+    using I = wide_sint<K>;
+    if (n.is_zero()) return n;
+    const int bw = bit_width_of(n);
+    int sh = bw > 63 ? bw - 63 : 0;
+    sh += (3 - sh % 3) % 3;                               // a multiple of 3
+    const umax t = static_cast<umax>(n >> sh);
+    I x = I{icbrt64(t) + 1} << (sh / 3);                  // ≥ ∛n
+    for (;;)
+    {
+      const I y = (I{2} * x + n / (x * x)) / I{3};
+      if (!(y < x)) return x;
+      x = y;
+    }
+  }
+
+  // The fraction in lowest terms.
+  template <std::size_t K>
+  constexpr exact_frac<K> reduced(exact_frac<K> const& f) noexcept
+  {
+    using I = wide_sint<K>;
+    I a = f.Num.negative() ? -f.Num : f.Num, b = f.Den;
+    while (!b.is_zero()) { const I t = a % b; a = b; b = t; }
+    if (a.is_zero() || a == I{1}) return f;
+    return {f.Num / a, f.Den / a};
+  }
+
+  template <std::size_t K>
+  constexpr bool is_zero(exact_frac<K> const& f) noexcept { return f.Num.is_zero(); }
+  template <std::size_t K>
+  constexpr bool is_one(exact_frac<K> const& f) noexcept { return f.Num == f.Den; }
+  template <std::size_t K>
+  constexpr bool is_integer(exact_frac<K> const& f) noexcept { return (f.Num % f.Den).is_zero(); }
+  template <std::size_t K>
+  constexpr exact_frac<K> abs(exact_frac<K> const& f) noexcept { return {f.Num.negative() ? -f.Num : f.Num, f.Den}; }
+  // 1/f for f != 0.
+  template <std::size_t K>
+  constexpr exact_frac<K> inverse(exact_frac<K> const& f) noexcept
+  { return f.Num.negative() ? exact_frac<K>{-f.Den, -f.Num} : exact_frac<K>{f.Den, f.Num}; }
+
+  // x·2^W rounded to the nearest integer, for a W known only at runtime. KI
+  // limbs must hold Num·2^W and Den·2^-W.
+  template <std::size_t K, std::size_t KI, std::size_t E>
+  constexpr wide_sint<K> to_q_at(exact_frac<E> const& x, int W) noexcept
+  {
+    using I = wide_sint<KI>;
+    I n{x.Num}, d{x.Den};
+    if (W >= 0) n = n << W; else d = d << (-W);
+    return static_cast<wide_sint<K>>(rounded_div<round_mode::nearest>(n, d));
+  }
+
+  //---------------------------------------------------------------------------
+  // Series kernels on Q.S values. Each returns the value and an error bound in
+  // units 2^-S. Every product and quotient truncates (within 1 unit), and the
+  // carried term errors stay below a few units, so a sum of n terms is within
+  // a small multiple of n.
+  //---------------------------------------------------------------------------
+  template <std::size_t K>
+  struct fx
+  {
+    wide_sint<K> Value;
+    umax Error;
+  };
+
+  // e^r for |r| ≤ 1/2.
+  template <std::size_t K>
+  constexpr fx<K> exp_series(wide_sint<K> const& r, int S) noexcept
+  {
+    using I = wide_sint<K>;
+    I term = one_q<K>(S), sum = term;
+    umax n = 0;
+    for (int k = 1; !term.is_zero(); ++k, ++n)
+    {
+      term = div_small(mul_q(term, r, S), static_cast<umax>(k));
+      sum += term;
+    }
+    return {sum, 4 * n + 2};
+  }
+
+  // log m for m in [0.7, 1.42], m within dm units: 2·atanh(z), z = (m−1)/(m+1),
+  // |z| ≤ 0.18.
+  template <std::size_t K>
+  constexpr fx<K> log_series(wide_sint<K> const& m, umax dm, int S) noexcept
+  {
+    using I = wide_sint<K>;
+    const I one = one_q<K>(S);
+    const I z = div_q(m - one, m + one, S);
+    const I z2 = mul_q(z, z, S);
+    I p = z, sum{0};
+    umax n = 0;
+    for (int k = 0; !p.is_zero(); ++k, ++n)
+    {
+      sum += div_small(p, static_cast<umax>(2 * k + 1));
+      p = mul_q(p, z2, S);
+    }
+    return {sum << 1, 2 * (3 * n + 4) + 3 * dm};
+  }
+
+  // sin r and cos r for |r| ≤ 0.8, r within dr units.
+  template <std::size_t K>
+  struct sincos_fx { fx<K> Sin; fx<K> Cos; };
+
+  template <std::size_t K>
+  constexpr sincos_fx<K> sincos_series(wide_sint<K> const& r, umax dr, int S) noexcept
+  {
+    using I = wide_sint<K>;
+    const I r2 = mul_q(r, r, S);
+    I t = r, s = r;
+    umax ns = 0;
+    for (int k = 1; !t.is_zero(); ++k, ++ns)
+    {
+      t = -div_small(mul_q(t, r2, S), static_cast<umax>((2 * k) * (2 * k + 1)));
+      s += t;
+    }
+    I u = one_q<K>(S), c = u;
+    umax nc = 0;
+    for (int k = 1; !u.is_zero(); ++k, ++nc)
+    {
+      u = -div_small(mul_q(u, r2, S), static_cast<umax>((2 * k - 1) * (2 * k)));
+      c += u;
+    }
+    return {{s, 3 * ns + 3 + dr}, {c, 3 * nc + 3 + dr}};
+  }
+
+  // √a for a ≥ 0 at scale S: ⌊√(a·2^S)⌋, within da/2 + 1 units (a ≥ 1/4).
+  template <std::size_t K>
+  constexpr wide_sint<K> sqrt_q(wide_sint<K> const& a, int S) noexcept
+  {
+    using D = double_t<K>;
+    return static_cast<wide_sint<K>>(isqrt(D{a} << S));
+  }
+
+  // atan t for |t| ≤ 1, t within dt units. Two half-angle steps
+  // t ← t/(1 + √(1+t²)) bring |t| below 0.2 (each halves an input error and
+  // adds at most 3 units); the series result is then multiplied by 4.
+  template <std::size_t K>
+  constexpr fx<K> atan_fixed(wide_sint<K> t, umax dt, int S) noexcept
+  {
+    using I = wide_sint<K>;
+    const I one = one_q<K>(S);
+    for (int i = 0; i < 2; ++i)
+      t = div_q(t, one + sqrt_q(one + mul_q(t, t, S), S), S);
+    const I t2 = mul_q(t, t, S);
+    I p = t, sum{0};
+    umax n = 0;
+    for (int k = 0; !p.is_zero(); ++k, ++n)
+    {
+      const I term = div_small(p, static_cast<umax>(2 * k + 1));
+      sum = (k % 2 == 0) ? sum + term : sum - term;
+      p = mul_q(p, t2, S);
+    }
+    return {sum << 2, 4 * (3 * n + 8) + dt};
+  }
+
+  // log a for a ≥ 1 at scale S, a within da units: a = m·2^b with m in
+  // [0.7, 1.42], log a = log m + b·ln 2. LN2 is ln 2 at scale S.
+  template <std::size_t K>
+  constexpr fx<K> log_fixed(wide_sint<K> const& a, umax da, int S, wide_sint<K> const& ln2) noexcept
+  {
+    using I = wide_sint<K>;
+    int b = bit_width_of(a) - 1 - S;                     // 2^b ≤ a/2^S < 2^(b+1)
+    I m = b >= 0 ? a >> b : a << (-b);
+    if (mul_q(m, m, S) > (one_q<K>(S) << 1)) { ++b; m = b >= 0 ? a >> b : a << (-b); }
+    const umax dm = (b >= 0 ? (da >> b) : (da << (-b))) + 1;
+    const fx<K> l = log_series(m, dm, S);
+    return {l.Value + I{b} * ln2, l.Error + static_cast<umax>(b < 0 ? -b : b) + 1};
+  }
+
+  // e^t for t at scale S, within dt units: e^r·2^k for t = k·ln 2 + r, as an
+  // approx at scale S − k. LN2 is ln 2 at scale S. Past KMax the value lies
+  // above 2^(KMax + 1): returned as exactly 2^(KMax + 2), which every output
+  // with magnitude below 2^KMax places past its Upper. Below 2^-(S+1) it is
+  // returned as the interval [0, 2^-(S+1)].
+  template <std::size_t K>
+  constexpr approx<K> exp_fixed(wide_sint<K> const& t, umax dt, int S, wide_sint<K> const& ln2, int KMax) noexcept
+  {
+    using I = wide_sint<K>;
+    const I k = rounded_div<round_mode::nearest>(t, ln2);
+    if (I{KMax} < k) return {I{1}, -(KMax + 2), 0};
+    if (k < I{-(S + 2)}) return {I{1}, S + 2, 1};
+    const fx<K> e = exp_series(t - k * ln2, S);
+    const int kk = static_cast<int>(static_cast<imax>(k));
+    const umax ak = static_cast<umax>(kk < 0 ? -kk : kk);
+    return {e.Value, S - kk, e.Error + 2 * (dt + ak + 1)};
+  }
+} // namespace beman::inside::math::detail::ax
+
+
+
+//---------------------------------------------------------------------------
+// beman::inside::math::adaptive — the adaptive math engine.
+//
+// Every result is the correctly rounded value on the output grid, under the
+// output's rounding mode: the engine works at the precision that grid needs
+// (see detail/math_adaptive.hpp for the decision step and the driver). That
+// makes results independent of how they were computed — the same on every
+// platform, at compile time and at runtime, with or without an FPU — and it
+// lifts the 64-bit limits: inputs and outputs may be grids past 64 bits.
+//
+// The domains are the mathematical ones (log needs x > 0, asin |x| ≤ 1, ...);
+// there is no working-scale envelope. A result past Out's range goes through
+// Out's policy, as any assignment.
+//
+// This is the wide tier: exact integer square and cube roots, and series in
+// wide fixed point for the transcendentals.
+//---------------------------------------------------------------------------
+namespace beman::inside::math::detail::ax
+{
+  //---------------------------------------------------------------------------
+  // Inputs as exact values, in as few limbs as their grid needs.
+  //---------------------------------------------------------------------------
+  constexpr int grid_bits(grid_wide const& v)
+  {
+#if BEMAN_INSIDE_BIG_GRIDS
+    return v.bit_width();
+#else
+    return bit_width_of(v.negative() ? -v : v);
+#endif
+  }
+
+  // A value of In is n/d with d dividing the notch's denominator and
+  // |n| < 2^magnitude·d: its bits, plus a sign. A continuous grid takes the
+  // 64-bit rational's.
+  template <insidable In>
+  inline constexpr int input_bits = [] {
+    if constexpr (notch_of<In> == 0) return 130;
+    else return grid_magnitude_bits<In> + grid_bits(wide_denominator(notch_of<In>)) + 2;
+  }();
+
+  template <insidable In>
+  inline constexpr std::size_t input_limbs = limbs_for_bits(input_bits<In>);
+
+  template <insidable In>
+  constexpr exact_frac<input_limbs<In>> exact_input(In const& x)
+  {
+    using I = wide_sint<input_limbs<In>>;
+    if constexpr (exact_valued<In>)
+    {
+      const auto v = exact_of(x);
+      return {static_cast<I>(v.Num), static_cast<I>(v.Den)};
+    }
+    else
+    {
+      const auto v = exact_of<2>(as_rational(x));
+      return {static_cast<I>(v.Num), static_cast<I>(v.Den)};
+    }
+  }
+
+  // |x| < 2^in_mag for every value of In.
+  template <insidable In>
+  inline constexpr int in_mag = grid_magnitude_bits<In> > 1 ? grid_magnitude_bits<In> : 1;
+
+  // Bits of an exact input's numerator or denominator.
+  template <std::size_t E>
+  inline constexpr int frac_bits = 64 * static_cast<int>(E);
+
+  // Result magnitude bound: values of Out lie below 2^out_kmax.
+  template <insidable Out>
+  inline constexpr int out_kmax = mag_bits<Out> + 1;
+
+  // The start precision for Out: its notch's bits plus guard bits.
+  template <insidable Out>
+  inline constexpr int start_bits = out_bits<Out> + 8 > 16 ? out_bits<Out> + 8 : 16;
+
+  template <std::size_t K>
+  constexpr exact_frac<K> exact_one() noexcept { return {wide_sint<K>{1}, wide_sint<K>{1}}; }
+  template <std::size_t K>
+  constexpr exact_frac<K> exact_int(imax v) noexcept { return {wide_sint<K>{v}, wide_sint<K>{1}}; }
+
+  //---------------------------------------------------------------------------
+  // Exact-value helpers at a compile-time scale S.
+  //---------------------------------------------------------------------------
+  // ⌊√f·2^S⌋ for f ≥ 0 (within 1 unit).
+  template <int S, std::size_t K, std::size_t E>
+  constexpr wide_sint<K> sqrt_exact_q(exact_frac<E> const& f) noexcept
+  {
+    using I = wide_sint<2 * E + limbs_for_bits(2 * S) + 1>;
+    const I n = (I{f.Num} * I{f.Den}) << (2 * S);
+    return static_cast<wide_sint<K>>(isqrt(n) / I{f.Den});
+  }
+
+  // log x for x > 0 at scale S: x = m·2^e exactly, m in [0.7, 1.42] rounded to
+  // scale S, log x = log m + e·ln 2.
+  template <int S, std::size_t K, std::size_t E>
+  constexpr fx<K> log_exact(exact_frac<E> const& x) noexcept
+  {
+    using I = wide_sint<K>;
+    constexpr std::size_t KI = E + K + limbs_for_bits(frac_bits<E> + S) + 1;
+    int e = floor_log2(x);
+    I m = to_q_at<K, KI>(x, S - e);
+    if (mul_q(m, m, S) > (one_q<K>(S) << 1)) { ++e; m = to_q_at<K, KI>(x, S - e); }
+    const fx<K> l = log_series(m, 1, S);
+    const I ln2 = static_cast<I>(ln2_q<S>);
+    return {l.Value + I{e} * ln2, l.Error + static_cast<umax>(e < 0 ? -e : e) + 1};
+  }
+
+  // An approx moved to scale A ≤ its own, rounding (error shrinks, plus ½).
+  template <std::size_t K>
+  constexpr fx<K> rescale(approx<K> const& a, int A) noexcept
+  {
+    const int sh = a.Scale - A;
+    if (sh <= 0) return {a.Value << (-sh), a.Error << (-sh)};
+    return {round_shift(a.Value, sh), (a.Error >> sh) + 1};
+  }
+
+  // asin x for |x| ≤ 1/2 (exact): atan(x/√(1−x²)).
+  template <int S, std::size_t K, std::size_t E>
+  constexpr fx<K> asin_small(exact_frac<E> const& x) noexcept
+  {
+    using I = wide_sint<K>;
+    using F = exact_frac<2 * E + 1>;
+    const F xx{x};
+    const F c = exact_one<2 * E + 1>() + exact_frac<2 * E + 1>{-(xx.Num * xx.Num), xx.Den * xx.Den};
+    const I s = sqrt_exact_q<S, K>(c);                  // ≥ 0.866, within 1
+    const I t = div_q(to_q<S, K>(x), s, S);             // |t| ≤ 0.58, within 3
+    return atan_fixed(t, 3, S);
+  }
+
+  // asin √y for 0 ≤ y ≤ 1/4 (exact): u = √y within 1, then atan(u/√(1−u²)).
+  template <int S, std::size_t K, std::size_t E>
+  constexpr fx<K> asin_sqrt(exact_frac<E> const& y) noexcept
+  {
+    using I = wide_sint<K>;
+    const I one = one_q<K>(S);
+    const I u = sqrt_exact_q<S, K>(y);
+    const I c = sqrt_q(one - mul_q(u, u, S), S);         // within 3
+    const I t = div_q(u, c, S);                          // within 5
+    return atan_fixed(t, 5, S);
+  }
+
+  //---------------------------------------------------------------------------
+  // The cores: one per function. Each holds its exact inputs and computes the
+  // result within its error bound at a precision W (run<W>), plus the exact
+  // rational results (exact()), which are the only values a rounding boundary
+  // can hold.
+  //---------------------------------------------------------------------------
+  template <std::size_t E>
+  using maybe_exact = std::optional<exact_frac<E>>;
+
+  // exp x. Exact only at 0.
+  template <std::size_t E, int Mag, int KMax>
+  struct exp_core
+  {
+    exact_frac<E> X;
+    constexpr maybe_exact<E> exact() const
+    { return is_zero(X) ? maybe_exact<E>{exact_one<E>()} : std::nullopt; }
+    template <int W>
+    constexpr auto run() const
+    {
+      constexpr int S = W + 8 + KMax;
+      using I = fixed_t<S + Mag + 8>;
+      constexpr std::size_t K = limbs_of<I>;
+      return exp_fixed(to_q<S, K>(X), 1, S, static_cast<I>(ln2_q<S>), KMax);
+    }
+  };
+
+  // 2^x = 2^k·e^(f·ln 2), x = k + f. Exact at integers.
+  template <std::size_t E, int Mag, int KMax>
+  struct exp2_core
+  {
+    exact_frac<E> X;
+    template <int W>
+    constexpr auto run() const
+    {
+      constexpr int S = W + 8 + KMax;
+      using I = fixed_t<S + 8>;
+      using J = wide_sint<E>;
+      constexpr std::size_t K = limbs_of<I>;
+      const J k = rounded_div<round_mode::floor>(X.Num, X.Den);
+      if (J{KMax} < k)      return approx<K>{I{1}, -(KMax + 2), 0};
+      if (k < J{-(S + 2)})  return approx<K>{I{1}, S + 2, 1};
+      int kk = static_cast<int>(static_cast<imax>(k));
+      const exact_frac<E> f{X.Num - k * X.Den, X.Den};   // in [0, 1)
+      if (is_zero(f)) return approx<K>{I{1}, -kk, 0};
+      const I ln2 = static_cast<I>(ln2_q<S>);
+      I r = mul_q(to_q<S, K>(f), ln2, S);                // within 2
+      if (r > (ln2 >> 1)) { r -= ln2; ++kk; }
+      const fx<K> e = exp_series(r, S);
+      return approx<K>{e.Value, S - kk, e.Error + 6};
+    }
+  };
+
+  // log x, x > 0. Exact at 1.
+  template <std::size_t E>
+  struct log_core
+  {
+    exact_frac<E> X;
+    constexpr maybe_exact<E> exact() const
+    { return is_one(X) ? maybe_exact<E>{exact_frac<E>{wide_sint<E>{0}, wide_sint<E>{1}}} : std::nullopt; }
+    template <int W>
+    constexpr auto run() const
+    {
+      constexpr int S = W + 8 + std::bit_width(static_cast<unsigned>(frac_bits<E>));
+      using I = fixed_t<S + std::bit_width(static_cast<unsigned>(frac_bits<E>)) + 8>;
+      constexpr std::size_t K = limbs_of<I>;
+      const fx<K> l = log_exact<S, K>(X);
+      return approx<K>{l.Value, S, l.Error};
+    }
+  };
+
+  // The integer k with x = B^k (B = 2 or 10), if any.
+  template <std::size_t E>
+  constexpr std::optional<imax> exact_log(exact_frac<E> const& x, int B) noexcept
+  {
+    using I = wide_sint<E>;
+    const exact_frac<E> r = reduced(x);
+    if (r.Num.negative() || r.Num.is_zero()) return std::nullopt;
+    const bool up = r.Den == I{1};
+    if (!up && r.Num != I{1}) return std::nullopt;
+    I v = up ? r.Num : r.Den;
+    imax k = 0;
+    while (v != I{1})
+    {
+      if (!(v % I{B}).is_zero()) return std::nullopt;
+      v = v / I{B};
+      ++k;
+    }
+    return up ? k : -k;
+  }
+
+  // log2 x and log10 x: log x / ln B. Exact at powers of B.
+  template <std::size_t E, int B>
+  struct logb_core
+  {
+    exact_frac<E> X;
+    constexpr maybe_exact<E> exact() const
+    {
+      if (const auto k = exact_log(X, B)) return exact_int<E>(*k);
+      return std::nullopt;
+    }
+    template <int W>
+    constexpr auto run() const
+    {
+      constexpr int S = W + 10 + std::bit_width(static_cast<unsigned>(frac_bits<E>));
+      using I = fixed_t<S + std::bit_width(static_cast<unsigned>(frac_bits<E>)) + 8>;
+      constexpr std::size_t K = limbs_of<I>;
+      const fx<K> l = log_exact<S, K>(X);
+      const I lnb = B == 2 ? static_cast<I>(ln2_q<S>) : static_cast<I>(ln10_q<S>);
+      return approx<K>{div_q(l.Value, lnb, S), S, 2 * l.Error + 2};
+    }
+  };
+
+  // √x, x ≥ 0: ⌊√x·2^P⌋ exactly. Exact when x is a square of a rational.
+  template <std::size_t E>
+  struct sqrt_core
+  {
+    exact_frac<E> X;
+    constexpr maybe_exact<E> exact() const
+    {
+      const exact_frac<E> r = reduced(X);
+      const auto n = isqrt(r.Num), d = isqrt(r.Den);
+      if (n * n == r.Num && d * d == r.Den) return exact_frac<E>{n, d};
+      return std::nullopt;
+    }
+    template <int W>
+    constexpr auto run() const
+    {
+      constexpr int P = W + 2;
+      using I = fixed_t<frac_bits<E> + P + 4>;
+      constexpr std::size_t K = limbs_of<I>;
+      return approx<K>{sqrt_exact_q<P, K>(X), P, 1};
+    }
+  };
+
+  // ∛x: ⌊∛(n·d²·2^(3P))⌋/d exactly. Exact when x is a cube of a rational.
+  template <std::size_t E>
+  struct cbrt_core
+  {
+    exact_frac<E> X;
+    constexpr maybe_exact<E> exact() const
+    {
+      const exact_frac<E> r = reduced(abs(X));
+      const auto n = icbrt(r.Num), d = icbrt(r.Den);
+      if (n * n * n == r.Num && d * d * d == r.Den) return exact_frac<E>{X.Num.negative() ? -n : n, d};
+      return std::nullopt;
+    }
+    template <int W>
+    constexpr auto run() const
+    {
+      constexpr int P = W + 2;
+      using I = fixed_t<frac_bits<E> + P + 4>;
+      constexpr std::size_t K = limbs_of<I>;
+      using J = wide_sint<3 * E + limbs_for_bits(3 * P) + 1>;
+      const exact_frac<E> a = abs(X);
+      const J n = (J{a.Num} * J{a.Den} * J{a.Den}) << (3 * P);
+      const I y = static_cast<I>(icbrt(n) / J{a.Den});
+      return approx<K>{X.Num.negative() ? -y : y, P, 1};
+    }
+  };
+
+  // sin, cos and tan: x = k·π/2 + r, |r| ≤ π/4, then the series and the
+  // quadrant. Exact at 0.
+  enum class trig { sin, cos, tan };
+
+  template <std::size_t E, int Mag, trig Fn, int KMax>
+  struct trig_core
+  {
+    exact_frac<E> X;
+    constexpr maybe_exact<E> exact() const
+    {
+      if (!is_zero(X)) return std::nullopt;
+      return Fn == trig::cos ? exact_one<E>() : exact_frac<E>{wide_sint<E>{0}, wide_sint<E>{1}};
+    }
+    template <int W>
+    constexpr auto run() const
+    {
+      constexpr int S = W + 10 + (Fn == trig::tan ? KMax + 4 : 0);
+      constexpr int T = S + Mag + 4;                     // reduce with Mag more bits
+      using I = fixed_t<(Fn == trig::tan ? 2 * S : S) + 8>;
+      using R = fixed_t<T + Mag + 8>;
+      constexpr std::size_t K = limbs_of<I>;
+      const R xq = to_q<T, limbs_of<R>>(X);
+      const R hp = static_cast<R>(pi_q<T - 1>);          // π/2 within 1
+      const R k = rounded_div<round_mode::nearest>(xq, hp);
+      const I r = static_cast<I>(round_shift(xq - k * hp, T - S));   // within 2
+      const auto sc = sincos_series(r, 2, S);
+      const unsigned q = static_cast<unsigned>(k.Word[0] & 3u);
+      // sin x and cos x by quadrant: (s, c), (c, −s), (−s, −c), (−c, s).
+      const fx<K> sn = (q == 0) ? sc.Sin : (q == 1) ? sc.Cos : (q == 2) ? fx<K>{-sc.Sin.Value, sc.Sin.Error} : fx<K>{-sc.Cos.Value, sc.Cos.Error};
+      const fx<K> cs = (q == 0) ? sc.Cos : (q == 1) ? fx<K>{-sc.Sin.Value, sc.Sin.Error} : (q == 2) ? fx<K>{-sc.Cos.Value, sc.Cos.Error} : sc.Sin;
+      if constexpr (Fn == trig::sin) return approx<K>{sn.Value, S, sn.Error};
+      else if constexpr (Fn == trig::cos) return approx<K>{cs.Value, S, cs.Error};
+      else
+      {
+        // tan = sin/cos. Error: (δs + |t|·δc)/|c| + 1 units.
+        const I ac = cs.Value.negative() ? -cs.Value : cs.Value;
+        const I as = sn.Value.negative() ? -sn.Value : sn.Value;
+        const I ec{cs.Error}, es{sn.Error};
+        if (!(ec < ac)) return approx<K>{I{0}, S, ~umax{0}};        // cos unresolved
+        // |t| ≥ (|s| − δs)/(|c| + δc): past 2^KMax, the result is past Out.
+        const I tlo = div_q(as - es, ac + ec, S);
+        if ((one_q<K>(S) << KMax) < tlo)
+          return approx<K>{(sn.Value.negative() != cs.Value.negative()) ? I{-1} : I{1}, -(KMax + 2), 0};
+        const I t = div_q(sn.Value, cs.Value, S);
+        const I at = t.negative() ? -t : t;
+        const I err = ((es + mul_q(at, ec, S) + I{1}) << S) / (ac - ec) + I{2};
+        const umax e = (I{~umax{0} >> 1} < err) ? ~umax{0} : static_cast<umax>(err);
+        return approx<K>{t, S, e};
+      }
+    }
+  };
+
+  // atan x: |x| ≤ 1 directly, else ±π/2 − atan(1/x). Exact at 0.
+  template <int S, std::size_t K, std::size_t E>
+  constexpr fx<K> atan_exact(exact_frac<E> const& x) noexcept
+  {
+    using I = wide_sint<K>;
+    if (!(exact_one<E>() < abs(x)))
+      return atan_fixed(to_q<S, K>(x), 1, S);
+    const fx<K> a = atan_fixed(to_q<S, K>(inverse(x)), 1, S);
+    const I hp = static_cast<I>(pi_q<S - 1>);
+    return {(x.Num.negative() ? -hp : hp) - a.Value, a.Error + 1};
+  }
+
+  template <std::size_t E>
+  struct atan_core
+  {
+    exact_frac<E> X;
+    constexpr maybe_exact<E> exact() const
+    { return is_zero(X) ? maybe_exact<E>{X} : std::nullopt; }
+    template <int W>
+    constexpr auto run() const
+    {
+      constexpr int S = W + 10;
+      using I = fixed_t<S + 8>;
+      constexpr std::size_t K = limbs_of<I>;
+      const fx<K> a = atan_exact<S, K>(X);
+      return approx<K>{a.Value, S, a.Error};
+    }
+  };
+
+  // atan2(y, x) in [−π, π]; 0 for y = 0, x ≥ 0 (and the (0, 0) convention).
+  template <std::size_t E>
+  struct atan2_core
+  {
+    exact_frac<E> Y, X;
+    constexpr maybe_exact<E> exact() const
+    {
+      if (is_zero(Y) && !X.Num.negative()) return exact_frac<E>{wide_sint<E>{0}, wide_sint<E>{1}};
+      return std::nullopt;
+    }
+    template <int W>
+    constexpr auto run() const
+    {
+      constexpr int S = W + 10;
+      using I = fixed_t<S + 8>;
+      constexpr std::size_t K = limbs_of<I>;
+      using F = exact_frac<2 * E + 1>;
+      const F y{Y}, x{X};
+      const I pi = static_cast<I>(pi_q<S>);
+      if (!(abs(x) < abs(y)))
+      {
+        const fx<K> a = atan_exact<S, K>(y / x);
+        if (!x.Num.negative()) return approx<K>{a.Value, S, a.Error};
+        return approx<K>{a.Value + (y.Num.negative() ? -pi : pi), S, a.Error + 1};
+      }
+      const fx<K> a = atan_exact<S, K>(x / y);
+      const I hp = static_cast<I>(pi_q<S - 1>);
+      return approx<K>{(y.Num.negative() ? -hp : hp) - a.Value, S, a.Error + 1};
+    }
+  };
+
+  // asin x, |x| ≤ 1: small arguments directly; past 1/2, the half-angle form
+  // ±(π/2 − 2·asin √((1−|x|)/2)), which stays accurate up to ±1.
+  template <std::size_t E>
+  struct asin_core
+  {
+    exact_frac<E> X;
+    constexpr maybe_exact<E> exact() const
+    { return is_zero(X) ? maybe_exact<E>{X} : std::nullopt; }
+    template <int W>
+    constexpr auto run() const
+    {
+      constexpr int S = W + 12;
+      using I = fixed_t<S + 8>;
+      constexpr std::size_t K = limbs_of<I>;
+      const exact_frac<E> half{wide_sint<E>{1}, wide_sint<E>{2}};
+      if (!(half < abs(X)))
+      {
+        const fx<K> a = asin_small<S, K>(X);
+        return approx<K>{a.Value, S, a.Error};
+      }
+      using F = exact_frac<E + 1>;
+      const F one = exact_one<E + 1>();
+      const F y = (one + F{-abs(X)}) * F{half};          // (1 − |x|)/2
+      const fx<K> a = asin_sqrt<S, K>(y);
+      const I v = static_cast<I>(pi_q<S - 1>) - (a.Value << 1);
+      return approx<K>{X.Num.negative() ? -v : v, S, 2 * a.Error + 1};
+    }
+  };
+
+  // acos x = π/2 − asin x for |x| ≤ 1/2; 2·asin √((1−x)/2) above;
+  // π − 2·asin √((1+x)/2) below. Exact at 1.
+  template <std::size_t E>
+  struct acos_core
+  {
+    exact_frac<E> X;
+    constexpr maybe_exact<E> exact() const
+    { return is_one(X) ? maybe_exact<E>{exact_frac<E>{wide_sint<E>{0}, wide_sint<E>{1}}} : std::nullopt; }
+    template <int W>
+    constexpr auto run() const
+    {
+      constexpr int S = W + 12;
+      using I = fixed_t<S + 8>;
+      constexpr std::size_t K = limbs_of<I>;
+      const exact_frac<E> half{wide_sint<E>{1}, wide_sint<E>{2}};
+      if (!(half < abs(X)))
+      {
+        const fx<K> a = asin_small<S, K>(X);
+        return approx<K>{static_cast<I>(pi_q<S - 1>) - a.Value, S, a.Error + 1};
+      }
+      using F = exact_frac<E + 1>;
+      const F one = exact_one<E + 1>();
+      const F x{X};
+      const bool neg = X.Num.negative();
+      const F y = (neg ? one + x : one + F{-x}) * F{half};
+      const fx<K> a = asin_sqrt<S, K>(y);
+      if (!neg) return approx<K>{a.Value << 1, S, 2 * a.Error};
+      return approx<K>{static_cast<I>(pi_q<S>) - (a.Value << 1), S, 2 * a.Error + 1};
+    }
+  };
+
+  // sinh, cosh and tanh from e^|x| and e^−|x| at absolute scale A. Exact at 0
+  // (sinh, tanh: 0; cosh: 1).
+  enum class hyp { sinh, cosh, tanh };
+
+  template <std::size_t E, int Mag, hyp Fn, int KMax>
+  struct hyp_core
+  {
+    exact_frac<E> X;
+    constexpr maybe_exact<E> exact() const
+    {
+      if (!is_zero(X)) return std::nullopt;
+      return Fn == hyp::cosh ? exact_one<E>() : X;
+    }
+    template <int W>
+    constexpr auto run() const
+    {
+      constexpr int A = W + 10;
+      constexpr int KM = Fn == hyp::tanh ? 1 : KMax + 1;
+      constexpr int S = A + KM + 4;
+      using I = fixed_t<S + Mag + 8>;
+      constexpr std::size_t K = limbs_of<I>;
+      const I ln2 = static_cast<I>(ln2_q<S>);
+      const bool neg = X.Num.negative();
+      const I ax = to_q<S, K>(abs(X));                   // within ½
+      if constexpr (Fn == hyp::tanh)
+      {
+        // tanh |x| = (1 − g)/(1 + g), g = e^(−2|x|) ≤ 1.
+        const fx<K> g = rescale(exp_fixed(-(ax << 1), 1, S, ln2, KM), A);
+        const I one = one_q<K>(A);
+        const I t = div_q(one - g.Value, one + g.Value, A);
+        return approx<K>{neg ? -t : t, A, 2 * g.Error + 2};
+      }
+      else
+      {
+        const approx<K> p = exp_fixed(ax, 1, S, ln2, KM);
+        if (p.Scale < 0 && p.Error == 0)                  // e^|x| past 2^KM: past Out
+          return approx<K>{(Fn == hyp::sinh && neg) ? I{-1} : I{1}, -(KMax + 2), 0};
+        const fx<K> P = rescale(p, A);
+        const fx<K> M = rescale(exp_fixed(-ax, 1, S, ln2, KM), A);
+        if constexpr (Fn == hyp::cosh)
+          return approx<K>{(P.Value + M.Value) >> 1, A, (P.Error + M.Error) / 2 + 1};
+        else
+        {
+          const I s = (P.Value - M.Value) >> 1;
+          return approx<K>{neg ? -s : s, A, (P.Error + M.Error) / 2 + 1};
+        }
+      }
+    }
+  };
+
+  // asinh x = ±log(|x| + √(x²+1)); acosh x = log(x + √((x−1)(x+1))), x ≥ 1;
+  // atanh x = ±½·log((1+|x|)/(1−|x|)), |x| < 1.
+  enum class ahyp { asinh, acosh, atanh };
+
+  template <std::size_t E, int Mag, ahyp Fn>
+  struct ahyp_core
+  {
+    exact_frac<E> X;
+    constexpr maybe_exact<E> exact() const
+    {
+      if (Fn == ahyp::acosh) return is_one(X) ? maybe_exact<E>{exact_frac<E>{wide_sint<E>{0}, wide_sint<E>{1}}} : std::nullopt;
+      return is_zero(X) ? maybe_exact<E>{X} : std::nullopt;
+    }
+    template <int W>
+    constexpr auto run() const
+    {
+      constexpr int S = W + 12 + std::bit_width(static_cast<unsigned>(frac_bits<E> + Mag));
+      using I = fixed_t<S + Mag + 2 * frac_bits<E> + 8>;
+      constexpr std::size_t K = limbs_of<I>;
+      using F = exact_frac<2 * E + 1>;
+      const F one = exact_one<2 * E + 1>();
+      const bool neg = X.Num.negative();
+      const F a = abs(F{X});
+      if constexpr (Fn == ahyp::atanh)
+      {
+        const fx<K> l = log_exact<S, K>((one + a) / (one + F{-a}));
+        return approx<K>{neg ? -(l.Value >> 1) : (l.Value >> 1), S, l.Error / 2 + 1};
+      }
+      else
+      {
+        const F r = Fn == ahyp::asinh ? a * a + one : (a + F{-one}) * (a + one);
+        const I v = to_q<S, K>(a) + sqrt_exact_q<S, K>(r);   // ≥ 1, within 2
+        const fx<K> l = log_fixed(v, 2, S, static_cast<I>(ln2_q<S>));
+        return approx<K>{(Fn == ahyp::asinh && neg) ? -l.Value : l.Value, S, l.Error};
+      }
+    }
+  };
+
+  // b^e for b > 0: e^(e·log b). Exact for e = 0, b = 1, and integer e when
+  // the power fits PowLimbs.
+  inline constexpr std::size_t pow_limbs = 32;           // exact integer powers up to 2048 bits
+
+  template <std::size_t EB, std::size_t EE>
+  constexpr std::optional<exact_frac<pow_limbs>> exact_pow(exact_frac<EB> const& b, exact_frac<EE> const& e) noexcept
+  {
+    using P = wide_sint<pow_limbs>;
+    if (is_zero(e) || is_one(b)) return exact_frac<pow_limbs>{P{1}, P{1}};
+    if (!is_integer(e)) return std::nullopt;
+    const auto k = e.Num / e.Den;
+    const auto ak = k.negative() ? -k : k;
+    const exact_frac<EB> r = reduced(b);
+    const int bits = bit_width_of(r.Num) + bit_width_of(r.Den);
+    if (bit_width_of(ak) > 12 || static_cast<imax>(ak) * bits > 64 * static_cast<imax>(pow_limbs) - 8)
+      return std::nullopt;
+    P n{1}, d{1};
+    for (imax i = 0; i < static_cast<imax>(ak); ++i) { n = n * P{r.Num}; d = d * P{r.Den}; }
+    return k.negative() ? inverse(exact_frac<pow_limbs>{n, d}) : exact_frac<pow_limbs>{n, d};
+  }
+
+  template <std::size_t EB, std::size_t EE, int MagE, int KMax>
+  struct pow_core
+  {
+    exact_frac<EB> B;
+    exact_frac<EE> Exp;
+    constexpr std::optional<exact_frac<pow_limbs>> exact() const { return exact_pow(B, Exp); }
+    template <int W>
+    constexpr auto run() const
+    {
+      // log b at MagE more bits, so e·log b (|e| < 2^MagE) is within 2 units
+      // at scale S.
+      constexpr int S = W + 12 + KMax;
+      constexpr int SL = S + MagE + std::bit_width(static_cast<unsigned>(frac_bits<EB>));
+      using I = fixed_t<SL + MagE + std::bit_width(static_cast<unsigned>(frac_bits<EB>)) + 2 * frac_bits<EE> + 8>;
+      constexpr std::size_t K = limbs_of<I>;
+      const fx<K> l = log_exact<SL, K>(B);
+      const I t = round_shift(mul_q(l.Value, static_cast<I>(Exp.Num), 0) / static_cast<I>(Exp.Den), SL - S);
+      const umax dt = (l.Error >> (SL - S - MagE)) + 2;
+      return exp_fixed(t, dt, S, static_cast<I>(ln2_q<S>), KMax);
+    }
+  };
+
+  //---------------------------------------------------------------------------
+  // Auto output grids. An endpoint of a deduced output is a core's result at
+  // an endpoint of the input, rounded outward to the input's notch: down for
+  // a lower end, up for an upper end. The rounding runs on the core's error
+  // interval, so the bound always covers the true value; one escalation makes
+  // it tight except within 2^-2W of a lattice point.
+  //---------------------------------------------------------------------------
+  template <grid_rational Notch>
+  inline constexpr std::size_t notch_limbs =
+      limbs_for_bits(grid_bits(wide_numerator(Notch)) + grid_bits(wide_denominator(Notch)) + 2);
+
+  // k·Notch as a grid number.
+  template <grid_rational Notch, std::size_t K>
+  constexpr grid_rational lattice_point(wide_sint<K> const& k)
+  {
+#if BEMAN_INSIDE_BIG_GRIDS
+    return grid_rational{big_int{k}} * Notch;
+#else
+    return static_cast<imax>(k) * Notch;
+#endif
+  }
+
+  // ⌊v/Notch⌋ (Up false) or ⌈v/Notch⌉ (Up true) for v = n/d, d > 0.
+  template <grid_rational Notch, bool Up, std::size_t K>
+  constexpr wide_sint<K + notch_limbs<Notch>> lattice_index(wide_sint<K> const& n, wide_sint<K> const& d)
+  {
+    using J = wide_sint<K + notch_limbs<Notch>>;
+    const J p = static_cast<J>(wide_numerator(Notch)), q = static_cast<J>(wide_denominator(Notch));
+    return rounded_div<Up ? round_mode::ceil : round_mode::floor>(J{n} * q, J{d} * p);
+  }
+
+  template <grid_rational Notch, bool Up, int W, int Cap, typename Core>
+  constexpr grid_rational lattice_bound_from(Core const& core)
+  {
+    const auto a = core.template run<W>();
+    constexpr std::size_t K = limbs_of<decltype(a.Value)> + 1;
+    using I = wide_sint<K>;
+    const I one{1};
+    const I d = a.Scale >= 0 ? one << a.Scale : one;
+    auto at = [&](I const& y) { return lattice_index<Notch, Up>(a.Scale >= 0 ? y : y << (-a.Scale), d); };
+    const I y{a.Value}, e{a.Error};
+    const auto lo = at(y - e), hi = at(y + e);
+    if constexpr (2 * W <= Cap)
+      if (!(lo == hi)) return lattice_bound_from<Notch, Up, 2 * W, Cap>(core);
+    return lattice_point<Notch>(Up ? hi : lo);
+  }
+
+  template <grid_rational Notch, bool Up, typename Core>
+  constexpr grid_rational lattice_bound(Core const& core)
+  {
+    if constexpr (requires { core.exact(); })
+      if (const auto v = core.exact())
+      {
+        return lattice_point<Notch>(lattice_index<Notch, Up>(v->Num, v->Den));
+      }
+    constexpr int W0 = static_cast<int>(64 * notch_limbs<Notch>) + 16;
+    return lattice_bound_from<Notch, Up, W0, 2 * W0>(core);
+  }
+
+  // An In endpoint as an exact input.
+  template <insidable In>
+  constexpr exact_frac<input_limbs<In>> grid_input(grid_rational const& r)
+  { return exact_of_grid<input_limbs<In>>(r); }
+
+  // ⌈|r|⌉ as an int (deduction bounds).
+  constexpr imax ceil_abs(grid_rational const& r)
+  {
+    const grid_wide n = wide_numerator(r), d = wide_denominator(r);
+    const grid_wide a = n.negative() ? -n : n;
+    return static_cast<imax>((a + d - grid_wide{1}) / d);
+  }
+
+  template <insidable In>
+  inline constexpr imax max_abs_int = ceil_abs(lower_of<In>) > ceil_abs(upper_of<In>) ? ceil_abs(lower_of<In>) : ceil_abs(upper_of<In>);
+
+  // Policy of a deduced output: the input's, minus a fixed storage width,
+  // rounding to nearest.
+  template <insidable In>
+  inline constexpr policy_flag auto_policy = (policy_of<In> & ~raw_width_mask) | round_nearest;
+
+  template <insidable In, grid_rational Lo, grid_rational Hi>
+  using auto_grid_t = inside<{{Lo, Hi}, notch_of<In>}, auto_policy<In>>;
+
+  // The bound of Core's result at In's lower or upper end.
+  template <insidable In, typename Core, bool AtUpper, bool Up>
+  inline constexpr grid_rational bound_at =
+      lattice_bound<notch_of<In>, Up>(Core{grid_input<In>(AtUpper ? upper_of<In> : lower_of<In>)});
+
+  template <insidable In, typename Core>
+  using increasing_t = auto_grid_t<In, bound_at<In, Core, false, false>, bound_at<In, Core, true, true>>;
+  template <insidable In, typename Core>
+  using decreasing_t = auto_grid_t<In, bound_at<In, Core, true, false>, bound_at<In, Core, false, true>>;
+
+  // Growth bounds for the deduction: |result| < 2^kmax over In.
+  template <insidable In>
+  inline constexpr int exp_kmax = [] {
+    static_assert(max_abs_int<In> <= 4096,
+        "beman::inside::math::adaptive: the deduced output of exp, exp2, sinh and cosh needs |x| <= 4096 - "
+        "name an output grid with fn_into<Out> instead");
+    return static_cast<int>(max_abs_int<In> * 3 / 2) + 2;
+  }();
+
+  // Bits of the larger of |b| and 1/|b| over In (b > 0), for pow's growth.
+  template <insidable In>
+  inline constexpr int log2_span = [] {
+    const imax hi = ceil_abs(upper_of<In>);
+    const imax inv = ceil_abs(grid_rational{1} / lower_of<In>);
+    const imax m = hi > inv ? hi : inv;
+    return std::bit_width(static_cast<umax>(m)) + 1;
+  }();
+
+  template <insidable InB, insidable InE>
+  inline constexpr int pow_kmax = [] {
+    static_assert(max_abs_int<InE> * log2_span<InB> <= 1 << 16,
+        "beman::inside::math::adaptive::pow: the deduced output would pass 2^65536 - name an output grid "
+        "with pow_into<Out> instead");
+    return static_cast<int>(max_abs_int<InE>) * log2_span<InB> + 2;
+  }();
+
+  // gcd of two notches (0 when either is 0), for two-input outputs.
+  template <insidable A, insidable B>
+  inline constexpr grid_rational gcd_notch = [] {
+    if constexpr (notch_of<A> == 0 || notch_of<B> == 0) return grid_rational{0};
+#if BEMAN_INSIDE_BIG_GRIDS
+    else return grid_gcd(notch_of<A>, notch_of<B>);
+#else
+    else return *grid_gcd(notch_of<A>, notch_of<B>);
+#endif
+  }();
+} // namespace beman::inside::math::detail::ax
+
+namespace beman::inside::math::adaptive
+{
+  namespace ax = ::beman::inside::math::detail::ax;
+  using ::beman::inside::detail::exact_valued;
+  using ::beman::inside::detail::grid_rational;
+
+  // Every transcendental rounds onto the output grid: Out's policy needs a
+  // rounding mode, like any assignment that may round.
+  template <insidable Out>
+  consteval void require_rounding() noexcept
+  {
+    static_assert(has_flag(policy_of<Out>, snap) || !ax::slotted<Out>,
+        "beman::inside::math::adaptive: the result is rounded onto Out's grid - declare Out "
+        "with a rounding mode (round_nearest, round_floor, ...)");
+  }
+
+#define BEMAN_INSIDE_AX_UNARY(fn, ...)                                                  \
+  template <insidable Out, insidable In>                                                \
+  [[nodiscard]] constexpr Out fn##_into(In x)                                           \
+  {                                                                                     \
+    require_rounding<Out>();                                                            \
+    using core = __VA_ARGS__;                                                           \
+    return ax::evaluate<Out, ax::start_bits<Out>>(core{ax::exact_input(x)});            \
+  }
+
+  BEMAN_INSIDE_AX_UNARY(exp, ax::exp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::out_kmax<Out>>)
+  BEMAN_INSIDE_AX_UNARY(exp2, ax::exp2_core<ax::input_limbs<In>, ax::in_mag<In>, ax::out_kmax<Out>>)
+  BEMAN_INSIDE_AX_UNARY(sin, ax::trig_core<ax::input_limbs<In>, ax::in_mag<In>, ax::trig::sin, 1>)
+  BEMAN_INSIDE_AX_UNARY(cos, ax::trig_core<ax::input_limbs<In>, ax::in_mag<In>, ax::trig::cos, 1>)
+  BEMAN_INSIDE_AX_UNARY(atan, ax::atan_core<ax::input_limbs<In>>)
+  BEMAN_INSIDE_AX_UNARY(sinh, ax::hyp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::hyp::sinh, ax::out_kmax<Out>>)
+  BEMAN_INSIDE_AX_UNARY(cosh, ax::hyp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::hyp::cosh, ax::out_kmax<Out>>)
+  BEMAN_INSIDE_AX_UNARY(tanh, ax::hyp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::hyp::tanh, 1>)
+  BEMAN_INSIDE_AX_UNARY(asinh, ax::ahyp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::ahyp::asinh>)
+  BEMAN_INSIDE_AX_UNARY(cbrt, ax::cbrt_core<ax::input_limbs<In>>)
+#undef BEMAN_INSIDE_AX_UNARY
+
+  // Functions with a mathematical domain: checked on In's grid.
+#define BEMAN_INSIDE_AX_DOMAIN(fn, cond, msg, ...)                                      \
+  template <insidable Out, insidable In>                                                \
+  [[nodiscard]] constexpr Out fn##_into(In x)                                           \
+  {                                                                                     \
+    static_assert(cond, "beman::inside::math::adaptive::" #fn ": " msg);              \
+    require_rounding<Out>();                                                            \
+    using core = __VA_ARGS__;                                                           \
+    return ax::evaluate<Out, ax::start_bits<Out>>(core{ax::exact_input(x)});            \
+  }
+
+  BEMAN_INSIDE_AX_DOMAIN(log, (lower_of<In> > 0), "input must be strictly positive", ax::log_core<ax::input_limbs<In>>)
+  BEMAN_INSIDE_AX_DOMAIN(log2, (lower_of<In> > 0), "input must be strictly positive", ax::logb_core<ax::input_limbs<In>, 2>)
+  BEMAN_INSIDE_AX_DOMAIN(log10, (lower_of<In> > 0), "input must be strictly positive", ax::logb_core<ax::input_limbs<In>, 10>)
+  BEMAN_INSIDE_AX_DOMAIN(asin, (lower_of<In> >= -1 && upper_of<In> <= 1), "input must be in [-1, 1]", ax::asin_core<ax::input_limbs<In>>)
+  BEMAN_INSIDE_AX_DOMAIN(acos, (lower_of<In> >= -1 && upper_of<In> <= 1), "input must be in [-1, 1]", ax::acos_core<ax::input_limbs<In>>)
+  BEMAN_INSIDE_AX_DOMAIN(acosh, (lower_of<In> >= 1), "input must be at least 1", ax::ahyp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::ahyp::acosh>)
+  BEMAN_INSIDE_AX_DOMAIN(atanh, (lower_of<In> > -1 && upper_of<In> < 1), "input must be in (-1, 1)", ax::ahyp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::ahyp::atanh>)
+#undef BEMAN_INSIDE_AX_DOMAIN
+
+  // sqrt of a non-negative input.
+  template <insidable Out, insidable In>
+    requires (lower_of<In> >= 0)
+  [[nodiscard]] constexpr Out sqrt_into(In x)
+  {
+    require_rounding<Out>();
+    return ax::evaluate<Out, ax::start_bits<Out>>(ax::sqrt_core<ax::input_limbs<In>>{ax::exact_input(x)});
+  }
+
+  // sqrt of a mixed-sign input: domain_error on a negative value.
+  template <insidable Out, insidable In>
+    requires (lower_of<In> < 0)
+  [[nodiscard]] constexpr std::expected<Out, errc> sqrt_into(In x)
+  {
+    require_rounding<Out>();
+    const auto v = ax::exact_input(x);
+    if (v.Num.negative()) return std::unexpected(errc::domain_error);
+    return ax::evaluate<Out, ax::start_bits<Out>>(ax::sqrt_core<ax::input_limbs<In>>{v});
+  }
+
+  // tan: overflow when the result leaves Out (without clamp).
+  template <insidable Out, insidable In>
+  [[nodiscard]] constexpr std::expected<Out, errc> tan_into(In x)
+  {
+    require_rounding<Out>();
+    using core = ax::trig_core<ax::input_limbs<In>, ax::in_mag<In>, ax::trig::tan, ax::out_kmax<Out>>;
+    return ax::evaluate_checked<Out, ax::start_bits<Out>>(core{ax::exact_input(x)});
+  }
+
+  template <insidable Out, insidable InY, insidable InX>
+  [[nodiscard]] constexpr Out atan2_into(InY y, InX x)
+  {
+    require_rounding<Out>();
+    constexpr std::size_t E = ax::input_limbs<InY> > ax::input_limbs<InX> ? ax::input_limbs<InY> : ax::input_limbs<InX>;
+    using F = ::beman::inside::detail::exact_frac<E>;
+    return ax::evaluate<Out, ax::start_bits<Out>>(ax::atan2_core<E>{F{ax::exact_input(y)}, F{ax::exact_input(x)}});
+  }
+
+  template <insidable Out, insidable InX, insidable InY>
+  [[nodiscard]] constexpr Out hypot_into(InX x, InY y)
+  {
+    require_rounding<Out>();
+    constexpr std::size_t E = 2 * (ax::input_limbs<InX> > ax::input_limbs<InY> ? ax::input_limbs<InX> : ax::input_limbs<InY>) + 1;
+    using F = ::beman::inside::detail::exact_frac<E>;
+    const F a{ax::exact_input(x)}, b{ax::exact_input(y)};
+    return ax::evaluate<Out, ax::start_bits<Out>>(ax::sqrt_core<E>{a * a + b * b});
+  }
+
+  // pow: domain_error for a base ≤ 0; overflow when the result leaves Out
+  // (without clamp).
+  template <insidable Out, insidable InB, insidable InE>
+  [[nodiscard]] constexpr std::expected<Out, errc> pow_into(InB base, InE exp)
+  {
+    require_rounding<Out>();
+    const auto b = ax::exact_input(base);
+    if (b.Num.negative() || b.Num.is_zero()) return std::unexpected(errc::domain_error);
+    using core = ax::pow_core<ax::input_limbs<InB>, ax::input_limbs<InE>, ax::in_mag<InE>, ax::out_kmax<Out>>;
+    return ax::evaluate_checked<Out, ax::start_bits<Out>>(core{b, ax::exact_input(exp)});
+  }
+
+  // Base^x for a compile-time integer Base ≥ 2.
+  template <insidable Out, imax Base, insidable In>
+  [[nodiscard]] constexpr Out pow_base_into(In x)
+  {
+    static_assert(Base >= 2, "beman::inside::math::adaptive::pow_base: Base must be at least 2");
+    require_rounding<Out>();
+    using core = ax::pow_core<2, ax::input_limbs<In>, ax::in_mag<In>, ax::out_kmax<Out>>;
+    return ax::evaluate<Out, ax::start_bits<Out>>(core{ax::exact_int<2>(Base), ax::exact_input(x)});
+  }
+
+  //---------------------------------------------------------------------------
+  // Auto forms: Out deduced from In — the range the function takes over In,
+  // rounded outward to In's notch, with In's notch and policy (rounding to
+  // nearest). sin and cos give [-1, 1], tan [-1024, 1024] (closer to a pole
+  // the expected reports overflow), atan2 [-π, π] on the gcd of both notches.
+  //---------------------------------------------------------------------------
+  template <insidable In>
+  consteval bool deducible() noexcept
+  {
+    static_assert(has_flag(policy_of<In>, snap),
+        "beman::inside::math::adaptive: a transcendental result is rounded onto the input's grid - "
+        "declare the input with a rounding mode (round_nearest, round_floor, ...)");
+    static_assert(notch_of<In> != 0,
+        "beman::inside::math::adaptive: a deduced output takes the input's notch - the input needs one");
+    return true;
+  }
+
+  namespace auto_t
+  {
+    template <insidable In> using exp   = ax::increasing_t<In, ax::exp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::exp_kmax<In>>>;
+    template <insidable In> using exp2  = ax::increasing_t<In, ax::exp2_core<ax::input_limbs<In>, ax::in_mag<In>, ax::exp_kmax<In>>>;
+    template <insidable In> using log   = ax::increasing_t<In, ax::log_core<ax::input_limbs<In>>>;
+    template <insidable In> using log2  = ax::increasing_t<In, ax::logb_core<ax::input_limbs<In>, 2>>;
+    template <insidable In> using log10 = ax::increasing_t<In, ax::logb_core<ax::input_limbs<In>, 10>>;
+    template <insidable In> using sqrt  = ax::increasing_t<In, ax::sqrt_core<ax::input_limbs<In>>>;
+    template <insidable In> using cbrt  = ax::increasing_t<In, ax::cbrt_core<ax::input_limbs<In>>>;
+    template <insidable In> using atan  = ax::increasing_t<In, ax::atan_core<ax::input_limbs<In>>>;
+    template <insidable In> using asin  = ax::increasing_t<In, ax::asin_core<ax::input_limbs<In>>>;
+    template <insidable In> using acos  = ax::decreasing_t<In, ax::acos_core<ax::input_limbs<In>>>;
+    template <insidable In> using sinh  = ax::increasing_t<In, ax::hyp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::hyp::sinh, ax::exp_kmax<In>>>;
+    template <insidable In> using tanh  = ax::increasing_t<In, ax::hyp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::hyp::tanh, 1>>;
+    template <insidable In> using asinh = ax::increasing_t<In, ax::ahyp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::ahyp::asinh>>;
+    template <insidable In> using acosh = ax::increasing_t<In, ax::ahyp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::ahyp::acosh>>;
+    template <insidable In> using atanh = ax::increasing_t<In, ax::ahyp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::ahyp::atanh>>;
+    template <insidable In> using sin   = inside<{{-1, 1}, notch_of<In>}, ax::auto_policy<In>>;
+    template <insidable In> using cos   = sin<In>;
+    template <insidable In> using tan   = inside<{{-1024, 1024}, notch_of<In>}, ax::auto_policy<In>>;
+
+    // cosh is even: its least value is 1 when In spans 0, else at the end
+    // nearer 0.
+    template <insidable In>
+    using cosh_core = ax::hyp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::hyp::cosh, ax::exp_kmax<In>>;
+    template <insidable In>
+    inline constexpr grid_rational cosh_lo =
+        (lower_of<In> <= 0 && upper_of<In> >= 0) ? grid_rational{1}
+      : (lower_of<In> > 0) ? ax::bound_at<In, cosh_core<In>, false, false> : ax::bound_at<In, cosh_core<In>, true, false>;
+    template <insidable In>
+    inline constexpr grid_rational cosh_hi =
+        ax::bound_at<In, cosh_core<In>, false, true> > ax::bound_at<In, cosh_core<In>, true, true>
+      ? ax::bound_at<In, cosh_core<In>, false, true> : ax::bound_at<In, cosh_core<In>, true, true>;
+    template <insidable In> using cosh = ax::auto_grid_t<In, cosh_lo<In>, cosh_hi<In>>;
+
+    // sqrt of a mixed-sign input: [0, √max(|Lower|, |Upper|)].
+    template <insidable In>
+    inline constexpr grid_rational max_abs = (-lower_of<In> > upper_of<In>) ? -lower_of<In> : upper_of<In>;
+    template <insidable In>
+    using sqrt_signed = ax::auto_grid_t<In, grid_rational{0},
+        ax::lattice_bound<notch_of<In>, true>(ax::sqrt_core<ax::input_limbs<In>>{ax::grid_input<In>(max_abs<In>)})>;
+
+    // pow_base: pow_core with the base bound.
+    template <imax Base, std::size_t E, int Mag, int KMax>
+    struct pow_base_core : ax::pow_core<2, E, Mag, KMax>
+    {
+      constexpr pow_base_core(::beman::inside::detail::exact_frac<E> x)
+        : ax::pow_core<2, E, Mag, KMax>{ax::exact_int<2>(Base), x} {}
+    };
+    template <imax Base, insidable In>
+    using pow_base_t = ax::increasing_t<In, pow_base_core<Base, ax::input_limbs<In>, ax::in_mag<In>,
+        static_cast<int>(ax::max_abs_int<In>) * std::bit_width(static_cast<umax>(Base)) + 2>>;
+
+    // atan2: [−π, π] rounded outward on the gcd notch (π = atan2(0, −1)).
+    template <insidable A, insidable B>
+    inline constexpr grid_rational pi_up = ax::lattice_bound<ax::gcd_notch<A, B>, true>(
+        ax::atan2_core<1>{ax::exact_int<1>(0), ax::exact_int<1>(-1)});
+    template <insidable InY, insidable InX>
+    using atan2 = inside<{{-pi_up<InY, InX>, pi_up<InY, InX>}, ax::gcd_notch<InY, InX>}, ax::auto_policy<InY>>;
+
+    // hypot: [0, hypot of the largest magnitudes] on the gcd notch.
+    template <insidable InX, insidable InY>
+    inline constexpr std::size_t hypot_limbs = 2 * (ax::input_limbs<InX> > ax::input_limbs<InY> ? ax::input_limbs<InX> : ax::input_limbs<InY>) + 1;
+    template <insidable InX, insidable InY>
+    inline constexpr grid_rational hypot_hi = [] {
+      using F = ::beman::inside::detail::exact_frac<hypot_limbs<InX, InY>>;
+      const F a = ::beman::inside::detail::exact_of_grid<hypot_limbs<InX, InY>>(max_abs<InX>);
+      const F b = ::beman::inside::detail::exact_of_grid<hypot_limbs<InX, InY>>(max_abs<InY>);
+      return ax::lattice_bound<ax::gcd_notch<InX, InY>, true>(ax::sqrt_core<hypot_limbs<InX, InY>>{a * a + b * b});
+    }();
+    template <insidable InX, insidable InY>
+    using hypot = inside<{{0, hypot_hi<InX, InY>}, ax::gcd_notch<InX, InY>}, ax::auto_policy<InX>>;
+
+    // pow: b^e is monotone in each argument for b > 0, so the extremes are at
+    // the corners of the input rectangle. Notch of the base.
+    template <insidable InB, insidable InE>
+    using pow_core = ax::pow_core<ax::input_limbs<InB>, ax::input_limbs<InE>, ax::in_mag<InE>, ax::pow_kmax<InB, InE>>;
+    template <insidable InB, insidable InE, bool BUp, bool EUp, bool Up>
+    inline constexpr grid_rational pow_corner = ax::lattice_bound<notch_of<InB>, Up>(pow_core<InB, InE>{
+        ax::grid_input<InB>(BUp ? upper_of<InB> : lower_of<InB>), ax::grid_input<InE>(EUp ? upper_of<InE> : lower_of<InE>)});
+    template <insidable InB, insidable InE>
+    inline constexpr grid_rational pow_lo = [] {
+      grid_rational m = pow_corner<InB, InE, false, false, false>;
+      for (const grid_rational& c : {pow_corner<InB, InE, false, true, false>, pow_corner<InB, InE, true, false, false>,
+                                     pow_corner<InB, InE, true, true, false>})
+        if (c < m) m = c;
+      return m;
+    }();
+    template <insidable InB, insidable InE>
+    inline constexpr grid_rational pow_hi = [] {
+      grid_rational m = pow_corner<InB, InE, false, false, true>;
+      for (const grid_rational& c : {pow_corner<InB, InE, false, true, true>, pow_corner<InB, InE, true, false, true>,
+                                     pow_corner<InB, InE, true, true, true>})
+        if (m < c) m = c;
+      return m;
+    }();
+    template <insidable InB, insidable InE>
+    using pow = inside<{{pow_lo<InB, InE>, pow_hi<InB, InE>}, notch_of<InB>}, ax::auto_policy<InB>>;
+  } // namespace auto_t
+
+#define BEMAN_INSIDE_AX_AUTO(fn, cond)                                                  \
+  template <insidable In>                                                               \
+  [[nodiscard]] constexpr auto fn(In x)                                                 \
+  {                                                                                     \
+    static_assert(deducible<In>());                                                     \
+    if constexpr (cond) return fn##_into<auto_t::fn<In>>(x);                            \
+    else return fn##_into<inside<{0, 1}, round_nearest>>(x);   /* the _into domain message */ \
+  }
+
+  BEMAN_INSIDE_AX_AUTO(exp,   true)
+  BEMAN_INSIDE_AX_AUTO(exp2,  true)
+  BEMAN_INSIDE_AX_AUTO(sin,   true)
+  BEMAN_INSIDE_AX_AUTO(cos,   true)
+  BEMAN_INSIDE_AX_AUTO(tan,   true)
+  BEMAN_INSIDE_AX_AUTO(atan,  true)
+  BEMAN_INSIDE_AX_AUTO(sinh,  true)
+  BEMAN_INSIDE_AX_AUTO(cosh,  true)
+  BEMAN_INSIDE_AX_AUTO(tanh,  true)
+  BEMAN_INSIDE_AX_AUTO(asinh, true)
+  BEMAN_INSIDE_AX_AUTO(cbrt,  true)
+  BEMAN_INSIDE_AX_AUTO(log,   (lower_of<In> > 0))
+  BEMAN_INSIDE_AX_AUTO(log2,  (lower_of<In> > 0))
+  BEMAN_INSIDE_AX_AUTO(log10, (lower_of<In> > 0))
+  BEMAN_INSIDE_AX_AUTO(asin,  (lower_of<In> >= -1 && upper_of<In> <= 1))
+  BEMAN_INSIDE_AX_AUTO(acos,  (lower_of<In> >= -1 && upper_of<In> <= 1))
+  BEMAN_INSIDE_AX_AUTO(acosh, (lower_of<In> >= 1))
+  BEMAN_INSIDE_AX_AUTO(atanh, (lower_of<In> > -1 && upper_of<In> < 1))
+#undef BEMAN_INSIDE_AX_AUTO
+
+  template <insidable In>
+    requires (lower_of<In> >= 0)
+  [[nodiscard]] constexpr auto sqrt(In x)
+  { static_assert(deducible<In>()); return sqrt_into<auto_t::sqrt<In>>(x); }
+
+  template <insidable In>
+    requires (lower_of<In> < 0)
+  [[nodiscard]] constexpr auto sqrt(In x)
+  { static_assert(deducible<In>()); return sqrt_into<auto_t::sqrt_signed<In>>(x); }
+
+  template <imax Base, insidable In>
+  [[nodiscard]] constexpr auto pow_base(In x)
+  {
+    static_assert(deducible<In>());
+    static_assert(Base >= 2, "beman::inside::math::adaptive::pow_base: Base must be at least 2");
+    return pow_base_into<auto_t::pow_base_t<Base, In>, Base>(x);
+  }
+
+  template <insidable InY, insidable InX>
+  [[nodiscard]] constexpr auto atan2(InY y, InX x)
+  {
+    static_assert(deducible<InY>() && deducible<InX>());
+    return atan2_into<auto_t::atan2<InY, InX>>(y, x);
+  }
+
+  template <insidable InX, insidable InY>
+  [[nodiscard]] constexpr auto hypot(InX x, InY y)
+  {
+    static_assert(deducible<InX>() && deducible<InY>());
+    return hypot_into<auto_t::hypot<InX, InY>>(x, y);
+  }
+
+  template <insidable InB, insidable InE>
+    requires (lower_of<InB> > 0)
+  [[nodiscard]] constexpr auto pow(InB base, InE exp)
+  {
+    static_assert(deducible<InB>() && deducible<InE>());
+    return pow_into<auto_t::pow<InB, InE>>(base, exp);
+  }
+} // namespace beman::inside::math::adaptive
+
+
 
 
 // BEMAN_INSIDE_MATH_FN: the integer/CORDIC engine (selected by BEMAN_INSIDE_MATH_NO_FP,
@@ -10590,55 +12371,80 @@ namespace beman::inside::math
 
   namespace detail
   {
-    // max(|::beman::inside::detail::lower64<In>|, |::beman::inside::detail::upper64<In>|) as a constexpr rational. Used to size
-    // the auto-deduced abs output.
+    // Grid-number helpers for the algebraic tier's deduced outputs: exact for
+    // grid numbers of any size (C++26), the 64-bit rationals otherwise.
+    constexpr grid_rational grid_abs(grid_rational const& r) { return r < 0 ? -r : r; }
+    constexpr grid_rational grid_sign(grid_rational const& r) { return grid_rational{(r > 0) - (r < 0)}; }
+
+    // r rounded to an integer by M (half away from zero for nearest).
+    template <round_mode M>
+    constexpr grid_rational grid_to_int(grid_rational const& r)
+    {
+      const grid_wide n = wide_numerator(r), d = wide_denominator(r);
+      grid_wide q = n / d;
+      const grid_wide rem = n - q * d;
+      if (!rem.is_zero())
+      {
+        const bool neg = n.negative();
+        const grid_wide arem = neg ? -rem : rem;
+        const grid_wide away = neg ? q - grid_wide{1} : q + grid_wide{1};
+        if constexpr (M == round_mode::floor)        { if (neg) q = away; }
+        else if constexpr (M == round_mode::ceil)    { if (!neg) q = away; }
+        else if constexpr (M == round_mode::nearest) { if (!(arem + arem < d)) q = away; }
+      }
+#if BEMAN_INSIDE_BIG_GRIDS
+      return grid_rational{q};
+#else
+      return rational{static_cast<imax>(q)};
+#endif
+    }
+
+    // max(|Lower|, |Upper|): sizes the abs and copysign outputs.
     template <insidable In>
-    inline constexpr rational abs_auto_upper =
-      (abs(::beman::inside::detail::lower64<In>) > abs(::beman::inside::detail::upper64<In>))
-        ? abs(::beman::inside::detail::lower64<In>) : abs(::beman::inside::detail::upper64<In>);
+    inline constexpr grid_rational abs_auto_upper =
+      grid_abs(lower_of<In>) > grid_abs(upper_of<In>) ? grid_abs(lower_of<In>) : grid_abs(upper_of<In>);
 
     template <insidable In>
-    using abs_auto_t = inside<{{rational{0}, abs_auto_upper<In>},
-                              ::beman::inside::detail::notch64<In>}, out_policy<In>>;
+    using abs_auto_t = inside<{{grid_rational{0}, abs_auto_upper<In>}, notch_of<In>}, out_policy<In>>;
 
     // sign(x) ∈ {sign(Lower) … sign(Upper)}, integer notch.
     template <insidable In>
-    using sign_auto_t = inside<{rational{sign(::beman::inside::detail::lower64<In>)}, rational{sign(::beman::inside::detail::upper64<In>)}},
-                               out_policy<In>>;
+    using sign_auto_t = inside<{grid_sign(lower_of<In>), grid_sign(upper_of<In>)}, out_policy<In>>;
 
     // copysign(mag, sgn): |mag| with sgn's possible signs. |mag| ranges over
     // [m_lo, m_hi] (m_lo = 0 when mag's interval spans 0); a valid grid's Lower is
     // a multiple of its notch, so ±|mag| stays on mag's lattice.
     template <insidable Mag>
-    inline constexpr rational abs_auto_lower =
-      (::beman::inside::detail::lower64<Mag> <= 0 && ::beman::inside::detail::upper64<Mag> >= 0) ? rational{0}
-      : (abs(::beman::inside::detail::lower64<Mag>) < abs(::beman::inside::detail::upper64<Mag>)) ? abs(::beman::inside::detail::lower64<Mag>) : abs(::beman::inside::detail::upper64<Mag>);
+    inline constexpr grid_rational abs_auto_lower =
+      (lower_of<Mag> <= 0 && upper_of<Mag> >= 0) ? grid_rational{0}
+      : (grid_abs(lower_of<Mag>) < grid_abs(upper_of<Mag>)) ? grid_abs(lower_of<Mag>) : grid_abs(upper_of<Mag>);
 
     template <insidable Mag, insidable Sgn>
     using copysign_auto_t = inside<{{
-        ::beman::inside::detail::lower64<Sgn> < 0 ? -abs_auto_upper<Mag> : abs_auto_lower<Mag>,
-        ::beman::inside::detail::upper64<Sgn> >= 0 ? abs_auto_upper<Mag> : -abs_auto_lower<Mag>},
-        ::beman::inside::detail::notch64<Mag>}, out_policy<Mag>>;
+        lower_of<Sgn> < 0 ? -abs_auto_upper<Mag> : abs_auto_lower<Mag>,
+        upper_of<Sgn> >= 0 ? abs_auto_upper<Mag> : -abs_auto_lower<Mag>},
+        notch_of<Mag>}, out_policy<Mag>>;
 
-    template <insidable In>
-    using floor_auto_t = inside<{{rational{floor(::beman::inside::detail::lower64<In>)},
-                                  rational{floor(::beman::inside::detail::upper64<In>)}},
-                                 1}, out_policy<In>>;
+    template <insidable In, round_mode M>
+    using integer_auto_t = inside<{{grid_to_int<M>(lower_of<In>), grid_to_int<M>(upper_of<In>)}, 1}, out_policy<In>>;
 
-    template <insidable In>
-    using ceil_auto_t = inside<{{rational{ceil(::beman::inside::detail::lower64<In>)},
-                                 rational{ceil(::beman::inside::detail::upper64<In>)}},
-                                1}, out_policy<In>>;
+    template <insidable In> using floor_auto_t = integer_auto_t<In, round_mode::floor>;
+    template <insidable In> using ceil_auto_t  = integer_auto_t<In, round_mode::ceil>;
+    template <insidable In> using round_auto_t = integer_auto_t<In, round_mode::nearest>;
+    template <insidable In> using trunc_auto_t = integer_auto_t<In, round_mode::trunc>;
 
-    template <insidable In>
-    using round_auto_t = inside<{{rational{round(::beman::inside::detail::lower64<In>)},
-                                  rational{round(::beman::inside::detail::upper64<In>)}},
-                                 1}, out_policy<In>>;
+    // The exact path: an input or output past the 64-bit rationals (more than
+    // 2^64 slots, or grid numbers past 64 bits) computes on exact values.
+    template <insidable... Bs>
+    inline constexpr bool exact_path = (exact_valued<Bs> || ...);
 
-    template <insidable In>
-    using trunc_auto_t = inside<{{rational{trunc(::beman::inside::detail::lower64<In>)},
-                                  rational{trunc(::beman::inside::detail::upper64<In>)}},
-                                 1}, out_policy<In>>;
+    template <insidable Out, std::size_t E>
+    constexpr Out store_exact(exact_frac<E> const& v)
+    { return ax::store_exact<Out>(v, make_policy<policy_of<Out>>()); }
+
+    template <round_mode M, std::size_t E>
+    constexpr exact_frac<E> exact_to_int(exact_frac<E> const& v) noexcept
+    { return {rounded_div<M>(v.Num, v.Den), wide_sint<E>{1}}; }
 
     // Double-backed fast path for the algebraic tier. |x| and the integer
     // roundings of a grid value are exact in double (|x| < 2^53 on a
@@ -10672,9 +12478,11 @@ namespace beman::inside::math
   template <insidable Out, insidable In>
   [[nodiscard]] constexpr Out abs_into(In x)
   {
-    static_assert(::beman::inside::detail::lower64<Out> <= 0,
+    static_assert(lower_of<Out> <= 0,
                   "beman::inside::math::abs: Out must include 0");
-    if constexpr (detail::fp_direct<Out, detail::abs_auto_t<In>, In>)
+    if constexpr (detail::exact_path<Out, In>)
+      return detail::store_exact<Out>(detail::ax::abs(detail::ax::exact_input(x)));
+    else if constexpr (detail::fp_direct<Out, detail::abs_auto_t<In>, In>)
       return detail::fp_direct_store<Out>(x, [](double v) { return v < 0 ? -v : v; });
     else
       return detail::store_grid<Out>(beman::inside::detail::abs(rational{x}));
@@ -10689,15 +12497,25 @@ namespace beman::inside::math
   template <insidable Out, insidable Mag, insidable Sgn>
   [[nodiscard]] constexpr Out copysign_into(Mag mag, Sgn sgn)
   {
-    const rational a = beman::inside::detail::abs(rational{mag});
-    return detail::store_grid<Out>(sgn < 0 ? -a : a);
+    if constexpr (detail::exact_path<Out, Mag>)
+    {
+      const auto a = detail::ax::abs(detail::ax::exact_input(mag));
+      return detail::store_exact<Out>(sgn < 0 ? -a : a);
+    }
+    else
+    {
+      const rational a = beman::inside::detail::abs(rational{mag});
+      return detail::store_grid<Out>(sgn < 0 ? -a : a);
+    }
   }
 
   // ⌊x⌋ — largest integer ≤ x.
   template <insidable Out, insidable In>
   [[nodiscard]] constexpr Out floor_into(In x)
   {
-    if constexpr (detail::fp_direct<Out, detail::floor_auto_t<In>, In>)
+    if constexpr (detail::exact_path<Out, In>)
+      return detail::store_exact<Out>(detail::exact_to_int<beman::inside::detail::round_mode::floor>(detail::ax::exact_input(x)));
+    else if constexpr (detail::fp_direct<Out, detail::floor_auto_t<In>, In>)
       return detail::fp_direct_store<Out>(x, detail::fp_floor);
     else
       return detail::store_grid<Out>(floor(rational{x}));
@@ -10707,7 +12525,9 @@ namespace beman::inside::math
   template <insidable Out, insidable In>
   [[nodiscard]] constexpr Out ceil_into(In x)
   {
-    if constexpr (detail::fp_direct<Out, detail::ceil_auto_t<In>, In>)
+    if constexpr (detail::exact_path<Out, In>)
+      return detail::store_exact<Out>(detail::exact_to_int<beman::inside::detail::round_mode::ceil>(detail::ax::exact_input(x)));
+    else if constexpr (detail::fp_direct<Out, detail::ceil_auto_t<In>, In>)
       return detail::fp_direct_store<Out>(x, detail::fp_ceil);
     else
       return detail::store_grid<Out>(ceil(rational{x}));
@@ -10718,7 +12538,9 @@ namespace beman::inside::math
   template <insidable Out, insidable In>
   [[nodiscard]] constexpr Out round_into(In x)
   {
-    if constexpr (detail::fp_direct<Out, detail::round_auto_t<In>, In>)
+    if constexpr (detail::exact_path<Out, In>)
+      return detail::store_exact<Out>(detail::exact_to_int<beman::inside::detail::round_mode::nearest>(detail::ax::exact_input(x)));
+    else if constexpr (detail::fp_direct<Out, detail::round_auto_t<In>, In>)
       return detail::fp_direct_store<Out>(x, detail::fp_round);
     else
       return detail::store_grid<Out>(round(rational{x}));
@@ -10729,7 +12551,9 @@ namespace beman::inside::math
   template <insidable Out, insidable In>
   [[nodiscard]] constexpr Out trunc_into(In x)
   {
-    if constexpr (detail::fp_direct<Out, detail::trunc_auto_t<In>, In>)
+    if constexpr (detail::exact_path<Out, In>)
+      return detail::store_exact<Out>(detail::exact_to_int<beman::inside::detail::round_mode::trunc>(detail::ax::exact_input(x)));
+    else if constexpr (detail::fp_direct<Out, detail::trunc_auto_t<In>, In>)
       return detail::fp_direct_store<Out>(x, detail::fp_trunc);
     else
       return detail::store_grid<Out>(trunc(rational{x}));
@@ -10785,7 +12609,17 @@ namespace beman::inside::math
   template <insidable Out, insidable InX, insidable InY>
   [[nodiscard]] constexpr Out fmod_nonzero(InX x, InY y)
   {
-    if constexpr (detail::fmod_int_fast<Out, InX, InY>)
+    if constexpr (detail::exact_path<Out, InX, InY>)
+    {
+      // x − trunc(x/y)·y on exact values.
+      constexpr std::size_t E = 2 * (detail::ax::input_limbs<InX> > detail::ax::input_limbs<InY>
+                                       ? detail::ax::input_limbs<InX> : detail::ax::input_limbs<InY>) + 1;
+      using F = beman::inside::detail::exact_frac<E>;
+      const F a{detail::ax::exact_input(x)}, b{detail::ax::exact_input(y)};
+      const auto q = (a.Num * b.Den) / (a.Den * b.Num);   // truncated
+      return detail::store_exact<Out>(a + F{-(q * b.Num), b.Den});
+    }
+    else if constexpr (detail::fmod_int_fast<Out, InX, InY>)
     {
       // One integer remainder in g-units; bit-identical to the rational path.
       constexpr rational g = *beman::inside::detail::gcd(::beman::inside::detail::notch64<InX>, ::beman::inside::detail::notch64<InY>);
@@ -11047,18 +12881,14 @@ namespace beman::inside::math
 
     // fmod's result: |r| < |y| and |r| ≤ |x|, with the sign of x, on the gcd of
     // both notches (x − k·y lies on that lattice, so the result is exact).
-    template <insidable B>
-    inline constexpr rational max_abs = abs(::beman::inside::detail::lower64<B>) > abs(::beman::inside::detail::upper64<B>) ? abs(::beman::inside::detail::lower64<B>) : abs(::beman::inside::detail::upper64<B>);
+    template <insidable InX, insidable InY>
+    inline constexpr grid_rational fmod_bound =
+        abs_auto_upper<InX> < abs_auto_upper<InY> ? abs_auto_upper<InX> : abs_auto_upper<InY>;
 
     template <insidable InX, insidable InY>
-    inline constexpr rational fmod_bound =
-        max_abs<InX> < max_abs<InY> ? max_abs<InX> : max_abs<InY>;
-
-
-    template <insidable InX, insidable InY>
-    using fmod_auto_t = inside<{{(::beman::inside::detail::lower64<InX> < 0 ? -fmod_bound<InX, InY> : rational{0}),
-                                 (::beman::inside::detail::upper64<InX> > 0 ?  fmod_bound<InX, InY> : rational{0})},
-                                gcd_notch<InX, InY>}, out_policy<InX> | round_nearest>;
+    using fmod_auto_t = inside<{{(lower_of<InX> < 0 ? -fmod_bound<InX, InY> : grid_rational{0}),
+                                 (upper_of<InX> > 0 ?  fmod_bound<InX, InY> : grid_rational{0})},
+                                ax::gcd_notch<InX, InY>}, out_policy<InX> | round_nearest>;
   } // namespace detail
 
   template <insidable InX, insidable InY>
