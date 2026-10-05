@@ -162,7 +162,7 @@ if(
         COMMAND
             ${CMAKE_CURRENT_SOURCE_DIR}/check_codegen.sh ${CMAKE_CXX_COMPILER}
             ${CMAKE_CURRENT_SOURCE_DIR}/perf_codegen.cpp
-            ${PROJECT_SOURCE_DIR}/include ${codegen_std}
+            ${PROJECT_SOURCE_DIR}/include ${codegen_std} "${CMAKE_CXX_FLAGS}"
     )
     set_tests_properties(
         beman.inside.tests.codegen_guard
