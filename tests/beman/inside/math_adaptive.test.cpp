@@ -430,6 +430,9 @@ namespace
   using out8   = inside<{{-64, 64}, rational{1, 8}}, round_nearest>;
   using out8f  = inside<{{-64, 64}, rational{1, 8}}, round_floor>;
   using out16c = inside<{{-64, 64}, rational{1, 1 << 16}}, round_ceil>;
+  using out8t  = inside<{{-64, 64}, rational{1, 8}}, snap>;
+  using out16e = inside<{{-64, 64}, rational{1, 1 << 16}}, round_half_even>;
+  using outdect = inside<{{-64, 64}, rational{1, 1000}}, snap>;
 }
 
 #define TIER_CHECK(fn, Out, In, ...) \
@@ -457,14 +460,34 @@ TEST(MathAdaptiveTest, double_tier_agrees_with_the_integer_path)
   TIER_CHECK(sqrt,  out8,   pos64, ax::sqrt_core<ax::input_limbs<pos64>>);
   TIER_CHECK(asin,  out20,  unit, ax::asin_core<ax::input_limbs<unit>>);
   TIER_CHECK(acos,  out16c, unit, ax::acos_core<ax::input_limbs<unit>>);
+  TIER_CHECK(sin,   out8t,  sym4, ax::trig_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::trig::sin, 1>);
+  TIER_CHECK(sinh,  outdect, sym4, ax::hyp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::hyp::sinh, ax::out_kmax<outdect>>);
+  TIER_CHECK(atan,  out16e, sym4, ax::atan_core<ax::input_limbs<sym4>>);
+  TIER_CHECK(cbrt,  out16e, sym4, ax::cbrt_core<ax::input_limbs<sym4>>);
   TIER_CHECK(atanh, out20,  open1, ax::ahyp_core<ax::input_limbs<open1>, ax::in_mag<open1>, ax::ahyp::atanh>);
   // Floating-point outputs: the slot decided in double arithmetic.
   using f64out  = inside<{{-64, 64}, per<16384>}, round_nearest | f64>;
   using f64outf = inside<{{-64, 64}, per<16384>}, round_floor | f64>;
+  using f64outt = inside<{{-64, 64}, per<16384>}, snap | f64>;
   TIER_CHECK(sin,   f64out,  sym4,   ax::trig_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::trig::sin, 1>);
   TIER_CHECK(exp,   f64outf, sym4,   ax::exp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::out_kmax<f64outf>>);
   TIER_CHECK(atan,  f64out,  sym4,   ax::atan_core<ax::input_limbs<sym4>>);
+  TIER_CHECK(sin,   f64outt, sym4,   ax::trig_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::trig::sin, 1>);
   TIER_CHECK(log,   f64outf, pos64,  ax::log_core<ax::input_limbs<pos64>>);
+
+  // Decimal inputs: the tier reads them as index·p/q, within 2^-51.
+  using symm = inside<{{-4, 4}, rational{1, 1000}}, round_nearest>;
+  using posm = inside<{{rational{1, 1000}, 8}, rational{1, 1000}}, round_nearest>;
+  using unitm = inside<{{-1, 1}, rational{1, 1000}}, round_nearest>;
+  TIER_CHECK(sin,   out20,  symm,  ax::trig_core<ax::input_limbs<symm>, ax::in_mag<symm>, ax::trig::sin, 1>);
+  TIER_CHECK(exp,   outdec, symm,  ax::exp_core<ax::input_limbs<symm>, ax::in_mag<symm>, ax::out_kmax<outdec>>);
+  TIER_CHECK(tanh,  out16c, symm,  ax::hyp_core<ax::input_limbs<symm>, ax::in_mag<symm>, ax::hyp::tanh, 1>);
+  TIER_CHECK(atan,  out8t,  symm,  ax::atan_core<ax::input_limbs<symm>>);
+  TIER_CHECK(cbrt,  out20,  symm,  ax::cbrt_core<ax::input_limbs<symm>>);
+  TIER_CHECK(log,   out20,  posm,  ax::log_core<ax::input_limbs<posm>>);
+  TIER_CHECK(sqrt,  out16e, posm,  ax::sqrt_core<ax::input_limbs<posm>>);
+  TIER_CHECK(asin,  out20,  unitm, ax::asin_core<ax::input_limbs<unitm>>);
+  TIER_CHECK(sin,   f64out, symm,  ax::trig_core<ax::input_limbs<symm>, ax::in_mag<symm>, ax::trig::sin, 1>);
 }
 #undef TIER_CHECK
 

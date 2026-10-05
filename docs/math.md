@@ -207,11 +207,11 @@ on grids finer than about 2^-36 it missed notches routinely.
 
 | Inputs → outputs | New / old time |
 |---|---|
-| `f64` grids on both sides, notch 2^-14 (`bench.cpp`, the old engine's best case: its store was the raw double) | 1.5–3.9× (`sin` 4.8 → 9.9 ns, `exp` 7.3 → 12.5 ns, `sqrt` 1.9 → 6.3 ns) |
-| integer-backed outputs, notch 2^-20 | 0.12–0.59× (faster: the old engine's double → grid store was the slow part) |
-| decimal outputs (notch 10^-6) | 0.06–0.25× (faster) |
-| outputs past the double tier: 2^-40 | 1.1–4.3× (acosh the slowest) |
-| 2^-52 | 1.5–4.7× |
+| `f64` grids on both sides, notch 2^-14 (`bench.cpp`, the old engine's best case: its store was the raw double) | 0.86–1.12× (`sin` 4.8 → 4.3 ns, `exp` 7.3 → 6.9 ns, `sqrt` 1.9 → 2.1 ns, `hypot` 2.2 → 2.5 ns) |
+| integer-backed outputs, notch 2^-20, dyadic or decimal inputs | 0.03–0.20× (faster: the old engine's double → grid store was the slow part) |
+| decimal outputs (notch 10^-6) | 0.02–0.07× (faster) |
+| outputs past the double tier: 2^-40 | 0.9–3.2× (tan the slowest) |
+| 2^-52 | 1.2–3.8× (acosh the slowest) |
 | `pow_base<10>` onto a 44-bit output (10^9 on a 2^-14 grid) | about 21× (15.7 → 328 ns): the worst case |
 
 Inputs of up to 256 slots use the table path and cost one load. Each table adds
