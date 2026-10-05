@@ -748,50 +748,107 @@ namespace beman::inside::math::detail::ax
     umax x = umax{1} << ((std::bit_width(t) + 1) / 2);
     for (;;) { const umax y = (x + t / x) >> 1; if (y >= x) return x; x = y; }
   }
+  // ⌊∛t⌋ digit by digit, no division (Hacker's Delight 11-2): each step
+  // brings down three bits and appends one bit to the root.
   constexpr umax icbrt64(umax t) noexcept
   {
-    if (t < 2) return t;
-    umax x = umax{1} << ((std::bit_width(t) + 2) / 3);
-    for (;;) { const umax y = (2 * x + t / (x * x)) / 3; if (y >= x) return x; x = y; }
+    umax y = 0;
+    for (int s = 63; s >= 0; s -= 3)
+    {
+      y <<= 1;
+      const umax b = 3 * y * (y + 1) + 1;
+      if ((t >> s) >= b) { t -= b << s; y += 1; }
+    }
+    return y;
   }
 
-  // ⌊√n⌋ for n ≥ 0: Newton from above, seeded from the top 62 bits (about 31
-  // correct bits, so two or three steps finish).
+  // ⌊√t⌋ for two limbs: Newton from above on 128-bit words, seeded from the
+  // top 62 bits; each quotient t/x ≤ √t fits one limb.
+  constexpr umax isqrt128(unsigned __int128 t) noexcept
+  {
+    if ((t >> 64) == 0) return isqrt64(static_cast<umax>(t));
+    const int bw = 128 - std::countl_zero(static_cast<umax>(t >> 64));
+    const int sh = (bw - 62 + 1) & ~1;                    // even, leaves 61 or 62 bits
+    unsigned __int128 x = static_cast<unsigned __int128>(isqrt64(static_cast<umax>(t >> sh)) + 1) << (sh / 2);
+    for (;;)
+    {
+      const unsigned __int128 y = (x + t / x) >> 1;
+      if (!(y < x)) return static_cast<umax>(x);
+      x = y;
+    }
+  }
+
+  // ⌊√n⌋ for n ≥ 0. Two limbs or fewer directly; wider, the root of the top
+  // 126 bits (an even shift) seeds Newton from above with about 62 correct
+  // bits, each step doubling them; once they cover the root, squares
+  // correct the last unit (Newton from above never lands below ⌊√n⌋).
   template <std::size_t K>
   constexpr wide_sint<K> isqrt(wide_sint<K> const& n) noexcept
   {
     using I = wide_sint<K>;
     if (n.is_zero()) return n;
     const int bw = bit_width_of(n);
-    int sh = bw > 62 ? bw - 62 : 0;
-    sh += sh & 1;                                         // even: √(t·2^sh) = √t·2^(sh/2)
-    const umax t = static_cast<umax>(n >> sh);
-    I x = I{isqrt64(t) + 1} << (sh / 2);                  // ≥ √n
+    if (bw <= 64) return I{isqrt64(static_cast<umax>(n))};
+    if constexpr (K >= 2)
+    {
+      const int sh = bw > 126 ? (bw - 126 + 1) & ~1 : 0;
+      const I top = n >> sh;
+      const unsigned __int128 t = (static_cast<unsigned __int128>(static_cast<umax>(top.Word[1])) << 64)
+                                | static_cast<umax>(top.Word[0]);
+      const umax r = isqrt128(t);
+      if (sh == 0) return I{r};
+      I x = I{r} + I{1};
+      x = x << (sh / 2);                                  // ≥ √n, within 2^-61 of it
+      for (int bits = 61; bits < bw / 2 + 2; bits *= 2)
+        x = (x + n / x) >> 1;
+      while (n < x * x) x -= I{1};
+      return x;
+    }
+    else return I{isqrt64(static_cast<umax>(n))};
+  }
+
+  // ⌊∛t⌋ for two limbs: Newton from above on 128-bit words, seeded from the
+  // top 63 bits.
+  constexpr umax icbrt128(unsigned __int128 t) noexcept
+  {
+    if ((t >> 64) == 0) return icbrt64(static_cast<umax>(t));
+    const int bw = 128 - std::countl_zero(static_cast<umax>(t >> 64));
+    const int sh = (bw - 63 + 2) / 3 * 3;                 // a multiple of 3, leaves at most 63 bits
+    unsigned __int128 x = static_cast<unsigned __int128>(icbrt64(static_cast<umax>(t >> sh)) + 1) << (sh / 3);
     for (;;)
     {
-      const I y = (x + n / x) >> 1;
-      if (!(y < x)) return x;
+      const unsigned __int128 y = (2 * x + t / (x * x)) / 3;
+      if (!(y < x)) return static_cast<umax>(x);
       x = y;
     }
   }
 
-  // ⌊∛n⌋ for n ≥ 0: Newton from above, seeded from the top 63 bits.
+  // ⌊∛n⌋ for n ≥ 0, as isqrt: two limbs or fewer directly; wider, the root
+  // of the top 126 bits (a shift by a multiple of 3) seeds Newton from above
+  // with about 41 correct bits, and cubes correct the last unit.
   template <std::size_t K>
   constexpr wide_sint<K> icbrt(wide_sint<K> const& n) noexcept
   {
     using I = wide_sint<K>;
     if (n.is_zero()) return n;
     const int bw = bit_width_of(n);
-    int sh = bw > 63 ? bw - 63 : 0;
-    sh += (3 - sh % 3) % 3;                               // a multiple of 3
-    const umax t = static_cast<umax>(n >> sh);
-    I x = I{icbrt64(t) + 1} << (sh / 3);                  // ≥ ∛n
-    for (;;)
+    if (bw <= 64) return I{icbrt64(static_cast<umax>(n))};
+    if constexpr (K >= 2)
     {
-      const I y = (I{2} * x + n / (x * x)) / I{3};
-      if (!(y < x)) return x;
-      x = y;
+      const int sh = bw > 126 ? (bw - 126 + 2) / 3 * 3 : 0;
+      const I top = n >> sh;
+      const unsigned __int128 t = (static_cast<unsigned __int128>(static_cast<umax>(top.Word[1])) << 64)
+                                | static_cast<umax>(top.Word[0]);
+      const umax r = icbrt128(t);
+      if (sh == 0) return I{r};
+      I x = I{r} + I{1};
+      x = x << (sh / 3);                                  // ≥ ∛n, within 2^-40 of it
+      for (int bits = 40; bits < bw / 3 + 2; bits *= 2)
+        x = (I{2} * x + n / (x * x)) / I{3};
+      while (n < x * x * x) x -= I{1};
+      return x;
     }
+    else return I{icbrt64(static_cast<umax>(n))};
   }
 
   // The fraction in lowest terms.

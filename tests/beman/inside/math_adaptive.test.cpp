@@ -407,6 +407,57 @@ TEST(MathAdaptiveTest, deduced_outputs)
 }
 
 //---------------------------------------------------------------------------
+// The exact integer roots: ⌊√n⌋ and ⌊∛n⌋ at every width, around perfect
+// powers and on pseudo-random values of every bit width.
+//---------------------------------------------------------------------------
+namespace
+{
+  template <std::size_t K>
+  int root_failures()
+  {
+    using I = detail::wide_sint<K>;
+    using W = detail::wide_sint<3 * K + 1>;                // holds (r+1)³
+    int bad = 0;
+    auto check = [&](I const& n) {
+      const W wn{n};
+      const W r{ax::isqrt(n)}, c{ax::icbrt(n)};
+      if (wn < r * r || !(wn < (r + W{1}) * (r + W{1}))) ++bad;
+      if (wn < c * c * c || !(wn < (c + W{1}) * (c + W{1}) * (c + W{1}))) ++bad;
+    };
+    umax state = 0x9E3779B97F4A7C15u;
+    auto next = [&] { state = state * 6364136223846793005u + 1442695040888963407u; return state; };
+    for (int bits = 1; bits < 64 * static_cast<int>(K); ++bits)
+      for (int rep = 0; rep < 8; ++rep)
+      {
+        I v{0};
+        for (std::size_t w = 0; w < K; ++w) v.Word[w] = next();
+        v = v >> (64 * static_cast<int>(K) - bits);        // bits ≤ the width, non-negative
+        if (v.negative()) v = -v;
+        check(v);
+        // Around a perfect square and a perfect cube.
+        const I r = ax::isqrt(v), c = ax::icbrt(v);
+        const I sq = r * r, cu = c * c * c;
+        check(sq); check(sq + I{1});
+        if (!sq.is_zero()) check(sq - I{1});
+        check(cu); check(cu + I{1});
+        if (!cu.is_zero()) check(cu - I{1});
+      }
+    return bad;
+  }
+  static_assert(ax::isqrt(detail::wide_sint<4>{1} << 200) == detail::wide_sint<4>{1} << 100);
+  static_assert(ax::isqrt((detail::wide_sint<4>{1} << 200) - detail::wide_sint<4>{1}) == (detail::wide_sint<4>{1} << 100) - detail::wide_sint<4>{1});
+  static_assert(ax::isqrt128(~static_cast<unsigned __int128>(0)) == ~umax{0});
+}
+
+TEST(MathAdaptiveTest, exact_roots_are_floors_at_every_width)
+{
+  EXPECT_EQ(root_failures<1>(), 0);
+  EXPECT_EQ(root_failures<2>(), 0);
+  EXPECT_EQ(root_failures<4>(), 0);
+  EXPECT_EQ(root_failures<8>(), 0);
+}
+
+//---------------------------------------------------------------------------
 // The double tier agrees with the integer path on every input slot: the
 // _into forms (which try the double kernels first where an FPU is present)
 // against the integer cores run through the driver directly.

@@ -695,6 +695,7 @@ namespace beman::inside::detail
       }
       else
       {
+        if (hi == 0) return {static_cast<L>(lo / d), static_cast<L>(lo % d)};   // one machine division
 #if defined(__SIZEOF_INT128__)
         const unsigned __int128 n = (static_cast<unsigned __int128>(hi) << 64) | lo;
         return {static_cast<L>(n / d), static_cast<L>(n % d)};
@@ -9693,50 +9694,107 @@ namespace beman::inside::math::detail::ax
     umax x = umax{1} << ((std::bit_width(t) + 1) / 2);
     for (;;) { const umax y = (x + t / x) >> 1; if (y >= x) return x; x = y; }
   }
+  // ⌊∛t⌋ digit by digit, no division (Hacker's Delight 11-2): each step
+  // brings down three bits and appends one bit to the root.
   constexpr umax icbrt64(umax t) noexcept
   {
-    if (t < 2) return t;
-    umax x = umax{1} << ((std::bit_width(t) + 2) / 3);
-    for (;;) { const umax y = (2 * x + t / (x * x)) / 3; if (y >= x) return x; x = y; }
+    umax y = 0;
+    for (int s = 63; s >= 0; s -= 3)
+    {
+      y <<= 1;
+      const umax b = 3 * y * (y + 1) + 1;
+      if ((t >> s) >= b) { t -= b << s; y += 1; }
+    }
+    return y;
   }
 
-  // ⌊√n⌋ for n ≥ 0: Newton from above, seeded from the top 62 bits (about 31
-  // correct bits, so two or three steps finish).
+  // ⌊√t⌋ for two limbs: Newton from above on 128-bit words, seeded from the
+  // top 62 bits; each quotient t/x ≤ √t fits one limb.
+  constexpr umax isqrt128(unsigned __int128 t) noexcept
+  {
+    if ((t >> 64) == 0) return isqrt64(static_cast<umax>(t));
+    const int bw = 128 - std::countl_zero(static_cast<umax>(t >> 64));
+    const int sh = (bw - 62 + 1) & ~1;                    // even, leaves 61 or 62 bits
+    unsigned __int128 x = static_cast<unsigned __int128>(isqrt64(static_cast<umax>(t >> sh)) + 1) << (sh / 2);
+    for (;;)
+    {
+      const unsigned __int128 y = (x + t / x) >> 1;
+      if (!(y < x)) return static_cast<umax>(x);
+      x = y;
+    }
+  }
+
+  // ⌊√n⌋ for n ≥ 0. Two limbs or fewer directly; wider, the root of the top
+  // 126 bits (an even shift) seeds Newton from above with about 62 correct
+  // bits, each step doubling them; once they cover the root, squares
+  // correct the last unit (Newton from above never lands below ⌊√n⌋).
   template <std::size_t K>
   constexpr wide_sint<K> isqrt(wide_sint<K> const& n) noexcept
   {
     using I = wide_sint<K>;
     if (n.is_zero()) return n;
     const int bw = bit_width_of(n);
-    int sh = bw > 62 ? bw - 62 : 0;
-    sh += sh & 1;                                         // even: √(t·2^sh) = √t·2^(sh/2)
-    const umax t = static_cast<umax>(n >> sh);
-    I x = I{isqrt64(t) + 1} << (sh / 2);                  // ≥ √n
+    if (bw <= 64) return I{isqrt64(static_cast<umax>(n))};
+    if constexpr (K >= 2)
+    {
+      const int sh = bw > 126 ? (bw - 126 + 1) & ~1 : 0;
+      const I top = n >> sh;
+      const unsigned __int128 t = (static_cast<unsigned __int128>(static_cast<umax>(top.Word[1])) << 64)
+                                | static_cast<umax>(top.Word[0]);
+      const umax r = isqrt128(t);
+      if (sh == 0) return I{r};
+      I x = I{r} + I{1};
+      x = x << (sh / 2);                                  // ≥ √n, within 2^-61 of it
+      for (int bits = 61; bits < bw / 2 + 2; bits *= 2)
+        x = (x + n / x) >> 1;
+      while (n < x * x) x -= I{1};
+      return x;
+    }
+    else return I{isqrt64(static_cast<umax>(n))};
+  }
+
+  // ⌊∛t⌋ for two limbs: Newton from above on 128-bit words, seeded from the
+  // top 63 bits.
+  constexpr umax icbrt128(unsigned __int128 t) noexcept
+  {
+    if ((t >> 64) == 0) return icbrt64(static_cast<umax>(t));
+    const int bw = 128 - std::countl_zero(static_cast<umax>(t >> 64));
+    const int sh = (bw - 63 + 2) / 3 * 3;                 // a multiple of 3, leaves at most 63 bits
+    unsigned __int128 x = static_cast<unsigned __int128>(icbrt64(static_cast<umax>(t >> sh)) + 1) << (sh / 3);
     for (;;)
     {
-      const I y = (x + n / x) >> 1;
-      if (!(y < x)) return x;
+      const unsigned __int128 y = (2 * x + t / (x * x)) / 3;
+      if (!(y < x)) return static_cast<umax>(x);
       x = y;
     }
   }
 
-  // ⌊∛n⌋ for n ≥ 0: Newton from above, seeded from the top 63 bits.
+  // ⌊∛n⌋ for n ≥ 0, as isqrt: two limbs or fewer directly; wider, the root
+  // of the top 126 bits (a shift by a multiple of 3) seeds Newton from above
+  // with about 41 correct bits, and cubes correct the last unit.
   template <std::size_t K>
   constexpr wide_sint<K> icbrt(wide_sint<K> const& n) noexcept
   {
     using I = wide_sint<K>;
     if (n.is_zero()) return n;
     const int bw = bit_width_of(n);
-    int sh = bw > 63 ? bw - 63 : 0;
-    sh += (3 - sh % 3) % 3;                               // a multiple of 3
-    const umax t = static_cast<umax>(n >> sh);
-    I x = I{icbrt64(t) + 1} << (sh / 3);                  // ≥ ∛n
-    for (;;)
+    if (bw <= 64) return I{icbrt64(static_cast<umax>(n))};
+    if constexpr (K >= 2)
     {
-      const I y = (I{2} * x + n / (x * x)) / I{3};
-      if (!(y < x)) return x;
-      x = y;
+      const int sh = bw > 126 ? (bw - 126 + 2) / 3 * 3 : 0;
+      const I top = n >> sh;
+      const unsigned __int128 t = (static_cast<unsigned __int128>(static_cast<umax>(top.Word[1])) << 64)
+                                | static_cast<umax>(top.Word[0]);
+      const umax r = icbrt128(t);
+      if (sh == 0) return I{r};
+      I x = I{r} + I{1};
+      x = x << (sh / 3);                                  // ≥ ∛n, within 2^-40 of it
+      for (int bits = 40; bits < bw / 3 + 2; bits *= 2)
+        x = (I{2} * x + n / (x * x)) / I{3};
+      while (n < x * x * x) x -= I{1};
+      return x;
     }
+    else return I{icbrt64(static_cast<umax>(n))};
   }
 
   // The fraction in lowest terms.
@@ -11399,7 +11457,7 @@ namespace beman::inside::math::detail::ax
     constexpr auto run() const
     {
       constexpr int S = W + 8 + KMax;
-      using I = fixed_t<S + Mag + 8>;
+      using I = fixed_t<S + Mag + 2>;                    // |x|·log2(e) < 2^(S+Mag+1)
       constexpr std::size_t K = limbs_of<I>;
       return exp_fixed<S>(to_q<S, K>(X), 1, KMax);
     }
@@ -11492,17 +11550,28 @@ namespace beman::inside::math::detail::ax
     }
   };
 
+  // Residues of squares mod 64, as a bit set: 12 of the 64.
+  inline constexpr umax square_mod64 = [] {
+    umax m = 0;
+    for (umax i = 0; i < 64; ++i) m |= umax{1} << (i * i % 64);
+    return m;
+  }();
+
   // √x, x ≥ 0: ⌊√x·2^P⌋ exactly. Exact when x is a square of a rational.
   template <std::size_t E, int Bits = frac_bits<E>>
   struct sqrt_core
   {
     exact_frac<E> X;
+    // n/d is the square of a rational exactly when n·d is a perfect square,
+    // and then √(n/d) = √(n·d)/d. Most non-squares fail the test mod 64.
     constexpr maybe_exact<E> exact() const
     {
-      const exact_frac<E> r = reduced(X);
-      const auto n = isqrt(r.Num), d = isqrt(r.Den);
-      if (n * n == r.Num && d * d == r.Den) return exact_frac<E>{n, d};
-      return std::nullopt;
+      using J = wide_sint<2 * E>;
+      const J m = J{X.Num} * J{X.Den};
+      if (!((square_mod64 >> (m.Word[0] & 63)) & 1)) return std::nullopt;
+      const J s = isqrt(m);
+      if (!(s * s == m)) return std::nullopt;
+      return exact_frac<E>{static_cast<wide_sint<E>>(s), X.Den};
     }
     template <int W>
     constexpr auto run() const
@@ -11514,17 +11583,29 @@ namespace beman::inside::math::detail::ax
     }
   };
 
+  // Residues of cubes mod 63, as a bit set: 9 of the 63.
+  inline constexpr umax cube_mod63 = [] {
+    umax m = 0;
+    for (umax i = 0; i < 63; ++i) m |= umax{1} << (i * i * i % 63);
+    return m;
+  }();
+
   // ∛x: ⌊∛(n·d²·2^(3P))⌋/d exactly. Exact when x is a cube of a rational.
   template <std::size_t E, int Bits = frac_bits<E>>
   struct cbrt_core
   {
     exact_frac<E> X;
+    // |n|/d is the cube of a rational exactly when |n|·d² is a perfect cube,
+    // and then ∛(|n|/d) = ∛(|n|·d²)/d. Most non-cubes fail the test mod 63.
     constexpr maybe_exact<E> exact() const
     {
-      const exact_frac<E> r = reduced(abs(X));
-      const auto n = icbrt(r.Num), d = icbrt(r.Den);
-      if (n * n * n == r.Num && d * d * d == r.Den) return exact_frac<E>{X.Num.negative() ? -n : n, d};
-      return std::nullopt;
+      using J = wide_sint<3 * E>;
+      const J m = J{abs(X).Num} * J{X.Den} * J{X.Den};
+      if (!((cube_mod63 >> static_cast<umax>(m % J{63})) & 1)) return std::nullopt;
+      const J c = icbrt(m);
+      if (!(c * c * c == m)) return std::nullopt;
+      const wide_sint<E> r = static_cast<wide_sint<E>>(c);
+      return exact_frac<E>{X.Num.negative() ? -r : r, X.Den};
     }
     template <int W>
     constexpr auto run() const
@@ -11558,7 +11639,7 @@ namespace beman::inside::math::detail::ax
     {
       constexpr int S = W + 10 + (Fn == trig::tan ? KMax + 4 : 0);
       constexpr int T = S + Mag + 4;                     // reduce with Mag more bits
-      using I = fixed_t<(Fn == trig::tan ? S + KMax + 8 : S + 2)>;   // |sin|, |cos| ≤ 1; |tan| ≤ 2^(KMax+3)
+      using I = fixed_t<(Fn == trig::tan ? S + KMax + 4 : S + 2)>;   // |sin|, |cos| ≤ 1; |tan| ≤ 2^(KMax+3)
       using R = fixed_t<T + Mag + 8>;
       constexpr std::size_t K = limbs_of<I>;
       const R xq = to_q<T, limbs_of<R>>(X);
@@ -11733,7 +11814,7 @@ namespace beman::inside::math::detail::ax
       constexpr int A = W + 10;
       constexpr int KM = Fn == hyp::tanh ? 1 : KMax + 1;
       constexpr int S = A + KM + 4;
-      using I = fixed_t<S + Mag + 8>;
+      using I = fixed_t<S + Mag + 3>;                    // 2|x|·log2(e) < 2^(S+Mag+2)
       constexpr std::size_t K = limbs_of<I>;
       const bool neg = X.Num.negative();
       const I ax = to_q<S, K>(abs(X));                   // within ½

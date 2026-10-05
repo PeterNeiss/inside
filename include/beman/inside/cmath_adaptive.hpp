@@ -178,7 +178,7 @@ namespace beman::inside::math::detail::ax
     constexpr auto run() const
     {
       constexpr int S = W + 8 + KMax;
-      using I = fixed_t<S + Mag + 8>;
+      using I = fixed_t<S + Mag + 2>;                    // |x|·log2(e) < 2^(S+Mag+1)
       constexpr std::size_t K = limbs_of<I>;
       return exp_fixed<S>(to_q<S, K>(X), 1, KMax);
     }
@@ -271,17 +271,28 @@ namespace beman::inside::math::detail::ax
     }
   };
 
+  // Residues of squares mod 64, as a bit set: 12 of the 64.
+  inline constexpr umax square_mod64 = [] {
+    umax m = 0;
+    for (umax i = 0; i < 64; ++i) m |= umax{1} << (i * i % 64);
+    return m;
+  }();
+
   // √x, x ≥ 0: ⌊√x·2^P⌋ exactly. Exact when x is a square of a rational.
   template <std::size_t E, int Bits = frac_bits<E>>
   struct sqrt_core
   {
     exact_frac<E> X;
+    // n/d is the square of a rational exactly when n·d is a perfect square,
+    // and then √(n/d) = √(n·d)/d. Most non-squares fail the test mod 64.
     constexpr maybe_exact<E> exact() const
     {
-      const exact_frac<E> r = reduced(X);
-      const auto n = isqrt(r.Num), d = isqrt(r.Den);
-      if (n * n == r.Num && d * d == r.Den) return exact_frac<E>{n, d};
-      return std::nullopt;
+      using J = wide_sint<2 * E>;
+      const J m = J{X.Num} * J{X.Den};
+      if (!((square_mod64 >> (m.Word[0] & 63)) & 1)) return std::nullopt;
+      const J s = isqrt(m);
+      if (!(s * s == m)) return std::nullopt;
+      return exact_frac<E>{static_cast<wide_sint<E>>(s), X.Den};
     }
     template <int W>
     constexpr auto run() const
@@ -293,17 +304,29 @@ namespace beman::inside::math::detail::ax
     }
   };
 
+  // Residues of cubes mod 63, as a bit set: 9 of the 63.
+  inline constexpr umax cube_mod63 = [] {
+    umax m = 0;
+    for (umax i = 0; i < 63; ++i) m |= umax{1} << (i * i * i % 63);
+    return m;
+  }();
+
   // ∛x: ⌊∛(n·d²·2^(3P))⌋/d exactly. Exact when x is a cube of a rational.
   template <std::size_t E, int Bits = frac_bits<E>>
   struct cbrt_core
   {
     exact_frac<E> X;
+    // |n|/d is the cube of a rational exactly when |n|·d² is a perfect cube,
+    // and then ∛(|n|/d) = ∛(|n|·d²)/d. Most non-cubes fail the test mod 63.
     constexpr maybe_exact<E> exact() const
     {
-      const exact_frac<E> r = reduced(abs(X));
-      const auto n = icbrt(r.Num), d = icbrt(r.Den);
-      if (n * n * n == r.Num && d * d * d == r.Den) return exact_frac<E>{X.Num.negative() ? -n : n, d};
-      return std::nullopt;
+      using J = wide_sint<3 * E>;
+      const J m = J{abs(X).Num} * J{X.Den} * J{X.Den};
+      if (!((cube_mod63 >> static_cast<umax>(m % J{63})) & 1)) return std::nullopt;
+      const J c = icbrt(m);
+      if (!(c * c * c == m)) return std::nullopt;
+      const wide_sint<E> r = static_cast<wide_sint<E>>(c);
+      return exact_frac<E>{X.Num.negative() ? -r : r, X.Den};
     }
     template <int W>
     constexpr auto run() const
@@ -337,7 +360,7 @@ namespace beman::inside::math::detail::ax
     {
       constexpr int S = W + 10 + (Fn == trig::tan ? KMax + 4 : 0);
       constexpr int T = S + Mag + 4;                     // reduce with Mag more bits
-      using I = fixed_t<(Fn == trig::tan ? S + KMax + 8 : S + 2)>;   // |sin|, |cos| ≤ 1; |tan| ≤ 2^(KMax+3)
+      using I = fixed_t<(Fn == trig::tan ? S + KMax + 4 : S + 2)>;   // |sin|, |cos| ≤ 1; |tan| ≤ 2^(KMax+3)
       using R = fixed_t<T + Mag + 8>;
       constexpr std::size_t K = limbs_of<I>;
       const R xq = to_q<T, limbs_of<R>>(X);
@@ -512,7 +535,7 @@ namespace beman::inside::math::detail::ax
       constexpr int A = W + 10;
       constexpr int KM = Fn == hyp::tanh ? 1 : KMax + 1;
       constexpr int S = A + KM + 4;
-      using I = fixed_t<S + Mag + 8>;
+      using I = fixed_t<S + Mag + 3>;                    // 2|x|·log2(e) < 2^(S+Mag+2)
       constexpr std::size_t K = limbs_of<I>;
       const bool neg = X.Num.negative();
       const I ax = to_q<S, K>(abs(X));                   // within ½

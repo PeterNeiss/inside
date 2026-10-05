@@ -109,6 +109,7 @@ namespace beman::inside::detail
       }
       else
       {
+        if (hi == 0) return {static_cast<L>(lo / d), static_cast<L>(lo % d)};   // one machine division
 #if defined(__SIZEOF_INT128__)
         const unsigned __int128 n = (static_cast<unsigned __int128>(hi) << 64) | lo;
         return {static_cast<L>(n / d), static_cast<L>(n % d)};
