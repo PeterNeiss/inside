@@ -9336,6 +9336,111 @@ namespace beman::inside::math::detail::ax
     return (neg ? -m : m) - base;
   }
 
+  // The one-pass decision, for a notch p/q in 64 bits, a scale S ≥ 1 and an
+  // error e > 0. On the magnitude u = |y|·q (plus half a slot, p·2^(S−1),
+  // for the nearest modes) the slot cells are [j·D, (j+1)·D), D = p·2^S.
+  // When both ends u ∓ e·q lie strictly inside one cell, every value of the
+  // interval rounds to the same slot under every rule, ties included, so
+  // this is the slot fast_index gives at each end: from one product, two
+  // shifts and one short division by p. Otherwise false, and decide asks
+  // fast_index at both ends.
+  template <insidable Out, round_mode M, std::size_t K>
+  constexpr bool decide_fast(wide_sint<K> const& y, umax e, int S, wide_sint<K + 2>& index) noexcept
+  {
+    using J = wide_sint<K + 2>;
+    constexpr std::size_t N = K + 2;
+    constexpr umax p = static_cast<umax>(wide_numerator(notch_of<Out>));
+    constexpr umax q = static_cast<umax>(wide_denominator(notch_of<Out>));
+    constexpr bool nearest = M == round_mode::nearest || M == round_mode::half_even;
+    const bool neg = y.negative();
+    const wide_uint<K> mag{neg ? -y : y};
+    umax u[N]{};
+    {
+      umax carry = 0;
+      for (std::size_t i = 0; i < K; ++i)
+      {
+        const limb::pair<umax> t = limb::mul(mag.Word[i], q);
+        umax c = 0;
+        u[i] = limb::add_carry(t.Lo, carry, c);
+        carry = t.Hi + c;
+      }
+      u[K] = carry;
+    }
+    if constexpr (nearest)                                // + p·2^(S−1)
+    {
+      const std::size_t w = static_cast<std::size_t>((S - 1) / 64);
+      const int b = (S - 1) % 64;
+      if (w >= N) return false;
+      umax carry = 0;
+      u[w] = limb::add_carry(u[w], p << b, carry);
+      if (w + 1 < N) u[w + 1] = limb::add_carry(u[w + 1], b == 0 ? 0 : p >> (64 - b), carry);
+      for (std::size_t i = w + 2; i < N; ++i) u[i] = limb::add_carry(u[i], umax{0}, carry);
+    }
+    // The ends u − E and u + E, E = e·q.
+    const limb::pair<umax> E = limb::mul(e, q);
+    umax lo[N], hi[N];
+    {
+      umax borrow = 0, carry = 0;
+      for (std::size_t i = 0; i < N; ++i)
+      {
+        const umax ei = i == 0 ? E.Lo : i == 1 ? E.Hi : 0;
+        lo[i] = limb::sub_borrow(u[i], ei, borrow);
+        hi[i] = limb::add_carry(u[i], ei, carry);
+      }
+      if (borrow != 0 || carry != 0) return false;        // near 0, or past the words
+    }
+    // Shifted down by S: the cell index times p, plus the offset within.
+    const std::size_t ws = static_cast<std::size_t>(S / 64);
+    const int bs = S % 64;
+    bool low_nonzero = false;                             // lo below 2^S
+    for (std::size_t i = 0; i < ws && i < N; ++i) low_nonzero = low_nonzero || lo[i] != 0;
+    if (ws < N && bs != 0) low_nonzero = low_nonzero || (lo[ws] & ((umax{1} << bs) - 1)) != 0;
+    umax hl[N]{}, hh[N]{};
+    for (std::size_t i = 0; i + ws < N; ++i)
+    {
+      const umax l0 = lo[i + ws], l1 = i + ws + 1 < N ? lo[i + ws + 1] : 0;
+      const umax h0 = hi[i + ws], h1 = i + ws + 1 < N ? hi[i + ws + 1] : 0;
+      hl[i] = bs == 0 ? l0 : (l0 >> bs) | (l1 << (64 - bs));
+      hh[i] = bs == 0 ? h0 : (h0 >> bs) | (h1 << (64 - bs));
+    }
+    // δ = hh − hl, one limb at most.
+    umax delta;
+    {
+      umax borrow = 0, d[N];
+      for (std::size_t i = 0; i < N; ++i) d[i] = limb::sub_borrow(hh[i], hl[i], borrow);
+      for (std::size_t i = 1; i < N; ++i)
+        if (d[i] != 0) return false;
+      delta = d[0];
+    }
+    // B = ⌊hl/p⌋, r = hl mod p: same cell when r + δ < p; strictly inside
+    // when lo is not on the cell's lower edge.
+    umax r = 0;
+    if constexpr (p != 1)
+      for (std::size_t i = N; i-- > 0;)
+      {
+        const limb::pair<umax> d = limb::div(r, hl[i], p);
+        hl[i] = d.Hi;
+        r = d.Lo;
+      }
+    if (!(delta < p - r)) return false;
+    if (r == 0 && !low_nonzero) return false;
+    // Strictly inside: ⌊u/D⌋ = B and ⌈u/D⌉ = B + 1. Rounding the magnitude
+    // up is ceil for a positive value and floor for a negative one. Then
+    // the offset ±B − base, on the limbs.
+    umax up = 0;
+    if constexpr (!nearest && M != round_mode::trunc)
+      up = (M == round_mode::ceil) != neg ? 1 : 0;
+    constexpr J base = static_cast<J>(slot_base<Out>);
+    umax carry = up, sign_borrow = 0, borrow = 0;
+    for (std::size_t i = 0; i < N; ++i)
+    {
+      umax w = limb::add_carry(hl[i], umax{0}, carry);   // B (+1)
+      if (neg) w = limb::sub_borrow(umax{0}, w, sign_borrow);
+      index.Word[i] = limb::sub_borrow(w, static_cast<umax>(base.Word[i]), borrow);
+    }
+    return true;
+  }
+
   template <insidable Out, std::size_t K>
   constexpr decision<Out, K> decide(approx<K> const& a) noexcept
   {
@@ -9355,6 +9460,16 @@ namespace beman::inside::math::detail::ax
     const bool below = lo.negative() && hi.negative();
     const bool above = count < lo && count < hi;
     return {lo == hi || below || above, lo};
+  }
+
+  // decide_fast where it applies: the slot in K + 2 limbs, which store takes
+  // directly (decide's index is sized for exact_index's worst case).
+  template <insidable Out, std::size_t K>
+  constexpr bool quick_slot(approx<K> const& a, wide_sint<K + 2>& index) noexcept
+  {
+    if constexpr (notch_fits64<Out>)
+      return a.Scale >= 1 && a.Error != 0 && decide_fast<Out, out_rounding<Out>>(a.Value, a.Error, a.Scale, index);
+    else return false;
   }
 
   // The slot nearest the approx's midpoint under Out's rounding (the capped
@@ -9476,8 +9591,10 @@ namespace beman::inside::math::detail::ax
     }
     else
     {
+      if (wide_sint<limbs_of<decltype(a.Value)> + 2> j; quick_slot<Out>(a, j)) [[likely]]
+        return store<Out>(j, policy);
       const auto d = decide<Out>(a);
-      if (d.Decided) [[likely]] return store<Out>(d.Index, policy);
+      if (d.Decided) return store<Out>(d.Index, policy);
       if constexpr (2 * W > Cap)
         return store<Out>(nearest_index<Out>(a), policy);
       else
@@ -9516,12 +9633,13 @@ namespace beman::inside::math::detail::ax
   constexpr imax slot_from(Core const& core)
   {
     const auto a = core.template run<W>();
-    const auto d = decide<Out>(a);
     auto in_range = [](auto const& i) -> imax {
       using I = std::remove_cvref_t<decltype(i)>;
       constexpr I count = static_cast<I>(grid_of<Out>.slot_count());
       return (i.negative() || count < i) ? imax{-1} : static_cast<imax>(i);
     };
+    if (wide_sint<limbs_of<decltype(a.Value)> + 2> j; quick_slot<Out>(a, j)) return in_range(j);
+    const auto d = decide<Out>(a);
     if constexpr (2 * W <= Cap)
       if (!d.Decided) return slot_from<Out, 2 * W, Cap>(core);
     return in_range(d.Decided ? d.Index : nearest_index<Out>(a));

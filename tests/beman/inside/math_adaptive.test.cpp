@@ -449,6 +449,60 @@ namespace
   static_assert(ax::isqrt128(~static_cast<unsigned __int128>(0)) == ~umax{0});
 }
 
+// The one-pass decision against fast_index at both ends of the interval,
+// for notches p/q with p > 1 (the short division and the cell test) and
+// every rounding mode: whenever it decides, both ends give its slot.
+namespace
+{
+  template <typename Out, std::size_t K>
+  std::pair<int, int> decide_fast_failures()
+  {
+    constexpr auto M = ax::out_rounding<Out>;
+    int bad = 0, decided = 0;
+    umax state = 0x2545F4914F6CDD1Du;
+    auto next = [&] { state ^= state << 13; state ^= state >> 7; state ^= state << 17; return state; };
+    for (int i = 0; i < 20000; ++i)
+    {
+      detail::wide_sint<K> y{0};
+      for (std::size_t w = 0; w < K; ++w) y.Word[w] = next();
+      y = y >> static_cast<int>(2 + next() % (64 * K - 2));    // every magnitude, both signs; y ± e fits
+      const int S = 1 + static_cast<int>(next() % 140);
+      const umax e = next() >> (next() % 64);
+      if (e == 0) continue;
+      detail::wide_sint<K + 2> j;
+      if (!ax::decide_fast<Out, M>(y, e, S, j)) continue;
+      ++decided;
+      const detail::wide_sint<K> ew{e};
+      const auto lo = ax::fast_index<Out, M>(y - ew, S), hi = ax::fast_index<Out, M>(y + ew, S);
+      if (!(lo == hi) || !(lo == j)) ++bad;
+    }
+    return {bad, decided};
+  }
+  template <policy_flag P>
+  void check_decide_fast()
+  {
+    using A = inside<{{-30, 30}, rational{3, 7}}, P>;
+    using B = inside<{{-100, 100}, rational{5, 2}}, P>;
+    using C = inside<{{-2000, 2000}, rational{1000, 3}}, P>;
+    using D = inside<{{-64, 64}, rational{1, 1 << 20}}, P>;
+    for (auto [bad, decided] : {decide_fast_failures<A, 1>(), decide_fast_failures<A, 2>(), decide_fast_failures<B, 1>(),
+                                decide_fast_failures<C, 2>(), decide_fast_failures<D, 1>(), decide_fast_failures<D, 2>()})
+    {
+      EXPECT_EQ(bad, 0);
+      EXPECT_GT(decided, 1000);
+    }
+  }
+}
+
+TEST(MathAdaptiveTest, one_pass_decision_matches_both_ends)
+{
+  check_decide_fast<round_nearest>();
+  check_decide_fast<round_floor>();
+  check_decide_fast<round_ceil>();
+  check_decide_fast<snap>();
+  check_decide_fast<round_half_even>();
+}
+
 TEST(MathAdaptiveTest, exact_roots_are_floors_at_every_width)
 {
   EXPECT_EQ(root_failures<1>(), 0);
