@@ -2994,6 +2994,17 @@ namespace beman::inside
 #  endif
 #endif
 
+// -ffast-math is not supported. The library's results are exact or correctly
+// rounded, and that rests on IEEE arithmetic as written: f64/f32 storage
+// detects overflow through infinities and NaN, and the math engine's error
+// bounds and error-free sums count every rounding in program order. Fast-math
+// lets the compiler assume no NaN or infinity and reassociate, which can
+// change results silently, so a build that announces it stops here.
+#if defined(__FAST_MATH__) || defined(__ASSOCIATIVE_MATH__) \
+    || (defined(__FINITE_MATH_ONLY__) && __FINITE_MATH_ONLY__)
+#  error "beman::inside does not support -ffast-math, -fassociative-math or -ffinite-math-only: its results rely on IEEE floating point as written"
+#endif
+
 namespace beman::inside
 {
   //---------------------------------------------------------------------------
@@ -12098,9 +12109,10 @@ namespace beman::inside::math::detail::ax
   constexpr double fabs_d(double v) noexcept { return __builtin_fabs(v); }
 
   // An integer near t (the nearest in the default rounding mode); NaN stays
-  // NaN. The tests below only need J to be an integer, so neither the
-  // rounding mode nor reassociation can make them pass wrongly — unlike the
-  // add-and-subtract-2^52 trick, which -ffast-math folds away.
+  // NaN. The tests below only need J to be an integer, so no compiler
+  // rewrite can make them pass wrongly — unlike the add-and-subtract-2^52
+  // trick, which reassociation folds away (and Clang's -fassociative-math
+  // does not announce).
   inline double nearest_int(double t) noexcept { return __builtin_nearbyint(t); }
 
   // The slot of a kernel value v within an absolute bound, decided in double
@@ -12191,17 +12203,8 @@ namespace beman::inside::math::detail::ax
       && (fp_raw<In> || fp_exact_input<In> || rational_raw<In>
           || (small_index<In> && notch_p<In> < two53 && notch_q<In> < two53));
 
-  // The error-free sums need the additions in program order: a build that
-  // lets the compiler reassociate (-fassociative-math, part of -ffast-math)
-  // leaves the tier out.
-#if defined(__ASSOCIATIVE_MATH__) || defined(__FAST_MATH__)
-  inline constexpr bool dd_sums_exact = false;
-#else
-  inline constexpr bool dd_sums_exact = true;
-#endif
-
   template <insidable Out, insidable... Ins>
-  inline constexpr bool dd_tier = fp_tier_available && dd_sums_exact && dd_output<Out> && (dd_input<Ins> && ...);
+  inline constexpr bool dd_tier = fp_tier_available && dd_output<Out> && (dd_input<Ins> && ...);
 
   template <insidable In>
   inline constexpr double dd_input_rel = (fp_raw<In> || fp_exact_input<In>) ? 0.0 : 0x1p-100;
@@ -12276,25 +12279,17 @@ namespace beman::inside::math::detail::ax
 
   // The kernels' bounds hold for IEEE arithmetic in the default rounding
   // mode, with or without FMA contraction; fp_decide gets them with a 1.5
-  // margin for the roundings of the bound arithmetic. A build that lets the
-  // compiler reassociate (-ffast-math) is outside the proofs: there the
-  // margin grows by 2^4, which every audit passes with room to spare.
-#if defined(__ASSOCIATIVE_MATH__) || defined(__FAST_MATH__)
-  inline constexpr int kFpSlackBits = 4;
-#else
-  inline constexpr int kFpSlackBits = 0;
-#endif
-  inline constexpr double kFpMargin = 1.5 * (1 << kFpSlackBits);
+  // margin for the roundings of the bound arithmetic.
 
   // The bits a kernel's full-size bound resolves: 2^-n ≤ e < 2^-(n−1) gives
-  // n − 4 (less the slack), where the bound spans at most 1/8 of a notch (fp_decide's 1.5
-  // margin included) at Out's largest values, so 3 of 4 results decide
-  // there and nearly all of the smaller ones.
+  // n − 4, where the bound spans at most 1/8 of a notch (the 1.5 margin
+  // included) at Out's largest values, so 3 of 4 results decide there and
+  // nearly all of the smaller ones.
   consteval int fp_limit(double e)
   {
     int n = 0;
     while (e < 1) { e *= 2; ++n; }
-    return n - 4 - kFpSlackBits;
+    return n - 4;
   }
 
   // The kernel's target for Out: 10 bits past fp_bits, so the truncation
@@ -12381,7 +12376,7 @@ namespace beman::inside::math::detail::ax
     double bound;
     const double v = K::template value<fp_target<Out, K>>(x, bound);
     if constexpr (!fp_exact_input<In>) bound += input_rel<In> * fabs_d(x) * K::slope(x, v);
-    return fp_decide(v, bound * kFpMargin, out);
+    return fp_decide(v, bound * 1.5, out);
   }
 
   // atan2: each input's rounding moves the angle by at most its relative
@@ -12393,7 +12388,7 @@ namespace beman::inside::math::detail::ax
     double bound;
     const double v = fpk::atan_k<fp_target<Out, fp_atan2>>::atan2(y, x, bound);
     bound += input_rel<InY> + input_rel<InX>;
-    return fp_decide(v, bound * kFpMargin, out);
+    return fp_decide(v, bound * 1.5, out);
   }
 
   template <insidable Out, insidable InX, insidable InY>
@@ -12402,7 +12397,7 @@ namespace beman::inside::math::detail::ax
     const double x = input_double(xi), y = input_double(yi);
     const double v = fpk::fp_hypot(x, y);
     const double bound = fpk::kHypotRel * v + fpk::kTiny + input_rel<InX> * fabs_d(x) + input_rel<InY> * fabs_d(y);
-    return fp_decide(v, bound * kFpMargin, out);
+    return fp_decide(v, bound * 1.5, out);
   }
 
   // tan: the input's rounding grows by sec² = 1 + t².
@@ -12413,7 +12408,7 @@ namespace beman::inside::math::detail::ax
     double t = 0, bound;
     if (!fpk::trig_k<fp_target<Out, fp_tan>>::tan(x, t, bound)) return false;
     if constexpr (!fp_exact_input<In>) bound += input_rel<In> * fabs_d(x) * (1 + t * t);
-    return fp_decide(t, bound * kFpMargin, out);
+    return fp_decide(t, bound * 1.5, out);
   }
 
   // pow = e^(e·ln b): the inputs' roundings move it by |e|·rel(b) and
@@ -12426,7 +12421,7 @@ namespace beman::inside::math::detail::ax
     double v, bound, y;
     if (!fpk::pow_k<fp_target<Out, fp_pow>>::pow(b, e, v, bound, y)) return false;
     bound += v * (input_rel<InB> * fabs_d(e) + input_rel<InE> * fabs_d(y));
-    return fp_decide(v, bound * kFpMargin, out);
+    return fp_decide(v, bound * 1.5, out);
   }
 
   // ln Base at compile time, from the integer log, as a double-double.
@@ -12444,7 +12439,7 @@ namespace beman::inside::math::detail::ax
     double bound, y;
     const double v = fpk::pow_k<fp_target<Out, fp_pow_base>>::pow_ln(x, ln_base<Base>.Hi, ln_base<Base>.Lo, bound, y);
     if constexpr (!fp_exact_input<In>) bound += v * input_rel<In> * fabs_d(y);
-    return fp_decide(v, bound * kFpMargin, out);
+    return fp_decide(v, bound * 1.5, out);
   }
   template <insidable Out, typename K, insidable In>
   inline bool dd_attempt(In const& in, Out& out)
@@ -12510,7 +12505,6 @@ namespace beman::inside::math::detail::ax
     return dd_decide(v, bound * 1.5, out);
   }
 #else
-  inline constexpr bool dd_sums_exact = false;
   template <insidable Out, insidable... Ins>
   inline constexpr bool dd_tier = false;
 #endif

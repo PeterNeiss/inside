@@ -590,7 +590,7 @@ namespace
 
 TEST(MathAdaptiveTest, dd_tier_agrees_with_the_integer_path)
 {
-  static_assert(!ax::fp_tier_available || !ax::dd_sums_exact || (ax::dd_tier<out52, sym4> && ax::dd_tier<outdec15, symm4> && ax::dd_tier<f64out44, sym4>));
+  static_assert(!ax::fp_tier_available || (ax::dd_tier<out52, sym4> && ax::dd_tier<outdec15, symm4> && ax::dd_tier<f64out44, sym4>));
   static_assert(!ax::dd_tier<out20, sym4>);                                    // the double tier's
 #ifndef BEMAN_INSIDE_MATH_NO_FP
   // Below their limits the double kernels run first and the dd tier takes

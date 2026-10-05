@@ -22,6 +22,17 @@
 #  endif
 #endif
 
+// -ffast-math is not supported. The library's results are exact or correctly
+// rounded, and that rests on IEEE arithmetic as written: f64/f32 storage
+// detects overflow through infinities and NaN, and the math engine's error
+// bounds and error-free sums count every rounding in program order. Fast-math
+// lets the compiler assume no NaN or infinity and reassociate, which can
+// change results silently, so a build that announces it stops here.
+#if defined(__FAST_MATH__) || defined(__ASSOCIATIVE_MATH__) \
+    || (defined(__FINITE_MATH_ONLY__) && __FINITE_MATH_ONLY__)
+#  error "beman::inside does not support -ffast-math, -fassociative-math or -ffinite-math-only: its results rely on IEEE floating point as written"
+#endif
+
 namespace beman::inside
 {
   //---------------------------------------------------------------------------

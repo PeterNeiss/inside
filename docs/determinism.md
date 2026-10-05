@@ -16,7 +16,7 @@ die." Reproducibility is the antidote.)
 | Layer | Reproducible? | Condition |
 |---|---|---|
 | Integer & rational storage / `+ − × ÷` | **Always** | none — fixed-width `int64`, exact rational |
-| `f64` / `f32` (float-backed) storage & arithmetic | **Yes** | IEEE-754 binary64/binary32, round-to-nearest, no `-ffast-math` |
+| `f64` / `f32` (float-backed) storage & arithmetic | **Yes** | IEEE-754 binary64/binary32, round-to-nearest (`-ffast-math` is rejected at compile time) |
 | `beman::inside::math` transcendentals | **Always** | none — every result is the correctly rounded grid point, the same at compile time, at runtime, with or without an FPU |
 | Compile-time constants & coefficients | **Always** | `constexpr`, no external codegen |
 
@@ -65,8 +65,10 @@ determinism:
   `f64` math never silently diverges from the exact grid arithmetic.
 
 **Condition.** IEEE-754 correctly-rounded `+ − × ÷` are deterministic given:
-round-to-nearest-even (the default), IEEE-754 binary64, and **no `-ffast-math`**
-(which permits value-changing reassociation). On 32-bit x86, compile for SSE2 —
+round-to-nearest-even (the default), IEEE-754 binary64, and no value-changing
+rewrites. A build with `-ffast-math`, GCC's `-fassociative-math` or
+`-ffinite-math-only` (which define `__FAST_MATH__`, `__ASSOCIATIVE_MATH__` or
+`__FINITE_MATH_ONLY__`) stops with an `#error` at the first include. On 32-bit x86, compile for SSE2 —
 the legacy x87 stack evaluates at 80-bit extended precision and will not match.
 
 ## `beman::inside::math`: correctly rounded, so reproducible
@@ -100,17 +102,14 @@ The double tier's bounds assume IEEE-754 binary64 arithmetic in the default
 rounding mode (round to nearest; a mode set with `fesetround` is outside the
 guarantee). They hold with or without FMA contraction: every multiply-add in
 the kernels is an explicit `std::fma`, and the bound arithmetic has a margin
-of 1.5. Reassociation is outside the proofs; a build that defines
-`__ASSOCIATIVE_MATH__` or `__FAST_MATH__` widens the bounds 2^4, which every
-audit passes. The dd tier's error-free sums need additions in program order: a build that defines
-`__ASSOCIATIVE_MATH__` or `__FAST_MATH__` (GCC's `-fassociative-math`, either
-compiler's `-ffast-math`) leaves the dd tier out, and Clang's
-`-fassociative-math` on its own, which defines neither, is outside both
-tiers' guarantee. FMA contraction, which GCC applies across statements by default, is
-fenced off inside those sums (`__builtin_assoc_barrier`). A build whose
-doubles are not IEEE (x87 80-bit evaluation, flush-to-zero in the kernels'
-range, `-ffast-math` reciprocal approximations) is outside both tiers'
-guarantee. Building with `BEMAN_INSIDE_MATH_NO_FP` removes both tiers —
+of 1.5. The dd tier's error-free sums need additions in program order; FMA
+contraction, which GCC applies across statements by default, is fenced off
+inside them (`__builtin_assoc_barrier`). Reassociation would break both
+tiers, which is why fast-math builds are rejected; Clang's
+`-fassociative-math` on its own announces itself with no macro, so it cannot
+be rejected and is outside the guarantee. A build whose doubles are not IEEE
+(x87 80-bit evaluation, flush-to-zero in the kernels' range) is outside both
+tiers' guarantee too. Building with `BEMAN_INSIDE_MATH_NO_FP` removes both tiers —
 results stay the same, and then no FPU behaviour is involved at all.
 [math.md](math.md#where-correctness-comes-first) lists each place where the
 engine chose correctness over speed, and what it costs.
@@ -163,9 +162,10 @@ compile time equals the runtime one.
 ## Checklist for reproducible builds
 
 - Transcendentals need nothing: they are correctly rounded in every build.
-- For `f64` / `f32` storage and arithmetic: build **without** `-ffast-math` /
-  `-funsafe-math-optimizations`, keep round-to-nearest-even, target IEEE-754
-  binary64 (on 32-bit x86 use SSE2, not x87).
+- For `f64` / `f32` storage and arithmetic: keep round-to-nearest-even and
+  target IEEE-754 binary64 (on 32-bit x86 use SSE2, not x87). `-ffast-math`
+  and the flags that announce themselves are rejected; don't pass Clang's
+  `-fassociative-math` or `-funsafe-math-optimizations`, which do not.
 - FMA contraction is handled internally (explicit `std::fma`), so `-mfma` is safe;
   `BEMAN_INSIDE_FMA` (default `ON`) adds it on x86-64 and the results are identical.
 - Toolchain: GCC 14+ or Clang 18+ in C++23 mode (MSVC is not supported).

@@ -5,7 +5,7 @@
 # and must FAIL to compile with the message named on its first line
 # (`// EXPECT: <substring>`; keep it free of regex metacharacters; an optional
 # second line `// REQUIRES: 64-bit-grids` limits it to builds without C++26 big
-# grids). The test
+# grids, and `// FLAGS: <options>` compiles it with extra options). The test
 # invokes the build for the object target; PASS_REGULAR_EXPRESSION passes the
 # test only when the build output contains the expected diagnostic — a TU that
 # wrongly compiles produces no diagnostic and fails the test. RUN_SERIAL keeps
@@ -43,6 +43,11 @@ foreach(src ${BEMAN_INSIDE_FAIL_SOURCES})
     set(fail_target beman.inside.tests.fail.${case_name})
     add_library(${fail_target} OBJECT EXCLUDE_FROM_ALL ${src})
     target_link_libraries(${fail_target} PRIVATE beman::inside)
+    if(head_count GREATER 1 AND second_line MATCHES "^// FLAGS: ")
+        string(REGEX REPLACE "^// FLAGS: *" "" extra_flags "${second_line}")
+        separate_arguments(extra_flags)
+        target_compile_options(${fail_target} PRIVATE ${extra_flags})
+    endif()
 
     add_test(
         NAME ${fail_target}
