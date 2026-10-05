@@ -327,6 +327,21 @@ TEST(WideGridTest, limb_edges)
   EXPECT_TRUE(-lo == hi && lo < hi);
 }
 
+// Q-format division whose scaled dividend raw·N passes 64 bits (here 95):
+// the native Q-format path runs in a wide work type instead of falling back
+// to an exact fraction, so the result keeps the Q-format notch.
+TEST(WideGridTest, qformat_division_past_64_bits)
+{
+  using q32 = inside<{{0, (1ull << 31)}, per<(1ull << 32)>}, round_nearest>;   // 2^63 slots
+  q32 a = 1000.5, b = 0.25;
+  auto q = (a / b).value();                                         // b's grid includes 0
+  static_assert(notch_of<decltype(q)> == notch_of<q32>);             // Q-format result
+  static_assert(!detail::rational_raw<decltype(q)>);
+  EXPECT_TRUE(q == 4002);
+  auto r = (q32{1} / q32{3}).value();                               // rounds to the nearest 2^-32
+  EXPECT_TRUE((r == rational{1431655765, imax{1} << 32}));
+}
+
 // The wide paths are constexpr.
 namespace
 {

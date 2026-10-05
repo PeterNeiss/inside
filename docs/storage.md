@@ -34,7 +34,9 @@ assigns (under every policy and `on_clamp` / `on_wrap` action), prints,
 parses, hashes and samples exactly. Its values can outgrow the 64-bit exact
 fraction, so it has no implicit conversion to it — compare it, or read it
 with `to<T>()`. A quotient `a / b` is an exact fraction and reports
-`errc::overflow` when it does not fit one. `from_chars` reads values past the
+`errc::overflow` when it does not fit one (a same-notch Q-format quotient
+under `snap` stays on the Q-format grid, computed in a wide work type when
+`raw·N` passes 64 bits). `from_chars` reads values past the
 64-bit fraction in decimal (`digits[.digits][e±n]`, or `n/d`).
 
 ### Grids past 64 bits (C++26)
@@ -70,7 +72,8 @@ runtime a result past 64 bits reports `errc::overflow`.
 Such an inside supports everything a wide-index inside does (above) — values
 past 64 bits may even sit on a grid with few slots, like
 `{2¹⁰⁰, 2¹⁰⁰ + 10}` in a `uint8_t`. The math functions (`sin`, `sqrt`, …)
-work in 64 bits and reject a big grid at compile time. The big grid numbers
+work in 64 bits: an input with more than 2⁶⁴ slots or big grid numbers is
+rejected at compile time with one message — assign it to a coarser grid first. The big grid numbers
 themselves (limits and notch) exist only at compile time; runtime arithmetic
 on such an inside uses fixed-width integers sized from them.
 

@@ -80,7 +80,8 @@ namespace beman::inside::detail
 
   // Round a non-negative quotient num/den (den != 0) per `m`. Used by the
   // Q-format path, whose raws are non-negative (Lower == 0).
-  template <std::unsigned_integral U>
+  // U is a builtin unsigned integer or an unsigned wide_int.
+  template <raw_integer U>
   constexpr U round_uquotient(U num, U den, round_mode m) noexcept
   {
     const U t = num / den, r = num % den;
@@ -142,9 +143,7 @@ namespace beman::inside::detail
       else
         return ((F | policy_of<L> | policy_of<R>) & snap)
             && is_qformat<L> && is_qformat<R>
-            && notch_of<L> == notch_of<R>
-            // raw·N must fit umax (the scaled dividend below)
-            && max_index_v<L> <= ~umax{0} / abs_den(detail::notch64<L>.Denominator);
+            && notch_of<L> == notch_of<R>;
     }();
 
     static constexpr bool native_div = native_div_integer || native_div_qformat;
@@ -252,9 +251,11 @@ namespace beman::inside::detail
       if constexpr (!zero_unchecked)
         if (rhs.raw() == 0) return fail(errc::division_by_zero, "division by zero in div");
       constexpr umax N = abs_den(detail::notch64<L>.Denominator);
-      // 32-bit divide when the scaled dividend fits (Q8.8, Q16.15, ...).
+      // The scaled dividend raw·N in the narrowest type that holds it: a 32-bit
+      // divide where it fits (Q8.8, Q16.15, ...), else 64 bits, else a wide_int.
+      constexpr int dividend_bits = std::bit_width(max_index_v<L>) + std::bit_width(N);
       using U = std::conditional_t<(max_index_v<L> <= std::numeric_limits<std::uint32_t>::max() / N),
-                                   std::uint32_t, umax>;
+                                   std::uint32_t, int_for_bits_t<(dividend_bits < 64 ? 64 : dividend_bits), false>>;
       return result::from_raw(raw_cast<result>(round_uquotient<U>(
           static_cast<U>(static_cast<U>(lhs.raw()) * U{N}), static_cast<U>(rhs.raw()), rmode)));
     }

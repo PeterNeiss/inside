@@ -94,72 +94,85 @@ namespace beman::inside::math
     inline constexpr rational gcd_notch =
         (::beman::inside::detail::notch64<A> == 0 || ::beman::inside::detail::notch64<B> == 0) ? rational{0} : *gcd(::beman::inside::detail::notch64<A>, ::beman::inside::detail::notch64<B>);
 
+    // The math functions work in 64 bits: the engines' cores are 64-bit fixed
+    // point and their output grids derive from 64-bit grid numbers. An input
+    // with more than 2^64 slots, or with grid numbers past 64 bits, fails here
+    // with a readable message instead of a deep 64-bit overflow. Shared by
+    // every engine's auto forms (require_snap) and explicit forms (domain_*).
+    template <insidable In>
+    constexpr void math_input() noexcept
+    {
+      static_assert(!::beman::inside::detail::exact_valued<In>,
+        "beman::inside::math: an input with more than 2^64 slots or grid numbers past 64 bits "
+        "is not supported (the math functions work in 64 bits) - assign it to a coarser grid first");
+    }
+
     // Input-domain checks, one per function, shared by every engine (cordic,
     // dbl, flt) so all three accept exactly the same input grids. The limits are
     // the CORDIC working-scale envelope, which also computes every engine's
     // auto-deduced output grid.
     template <insidable In>
     constexpr void domain_acos() noexcept
-    { static_assert(::beman::inside::detail::lower64<In> >= -1 && ::beman::inside::detail::upper64<In> <= 1, "beman::inside::math::acos: input must be in [-1, 1]"); }
+    { math_input<In>(); static_assert(::beman::inside::detail::lower64<In> >= -1 && ::beman::inside::detail::upper64<In> <= 1, "beman::inside::math::acos: input must be in [-1, 1]"); }
     template <insidable In>
     constexpr void domain_asin() noexcept
-    { static_assert(::beman::inside::detail::lower64<In> >= -1 && ::beman::inside::detail::upper64<In> <= 1, "beman::inside::math::asin: input must be in [-1, 1]"); }
+    { math_input<In>(); static_assert(::beman::inside::detail::lower64<In> >= -1 && ::beman::inside::detail::upper64<In> <= 1, "beman::inside::math::asin: input must be in [-1, 1]"); }
     template <insidable In>
     constexpr void domain_atan() noexcept
-    { static_assert(::beman::inside::detail::lower64<In> >= -(imax{1} << 20) && ::beman::inside::detail::upper64<In> <= (imax{1} << 20), "beman::inside::math::atan: input magnitudes must be \u2264 2^20 for the working-scale envelope"); }
+    { math_input<In>(); static_assert(::beman::inside::detail::lower64<In> >= -(imax{1} << 20) && ::beman::inside::detail::upper64<In> <= (imax{1} << 20), "beman::inside::math::atan: input magnitudes must be \u2264 2^20 for the working-scale envelope"); }
     template <insidable In>
     constexpr void domain_atan2() noexcept
-    { static_assert(::beman::inside::detail::lower64<In> >= -(imax{1} << 20) && ::beman::inside::detail::upper64<In> <= (imax{1} << 20), "beman::inside::math::atan2: input magnitudes must be \u2264 2^20 for the working-scale envelope"); }
+    { math_input<In>(); static_assert(::beman::inside::detail::lower64<In> >= -(imax{1} << 20) && ::beman::inside::detail::upper64<In> <= (imax{1} << 20), "beman::inside::math::atan2: input magnitudes must be \u2264 2^20 for the working-scale envelope"); }
     template <insidable In>
     constexpr void domain_cbrt() noexcept
-    { static_assert(::beman::inside::detail::lower64<In> >= -(imax{1} << 20) && ::beman::inside::detail::upper64<In> <= (imax{1} << 20), "beman::inside::math::cbrt: input magnitude must be ≤ 2^20 for the working-scale envelope"); }
+    { math_input<In>(); static_assert(::beman::inside::detail::lower64<In> >= -(imax{1} << 20) && ::beman::inside::detail::upper64<In> <= (imax{1} << 20), "beman::inside::math::cbrt: input magnitude must be ≤ 2^20 for the working-scale envelope"); }
     template <insidable In>
     constexpr void domain_cos() noexcept
-    { static_assert(::beman::inside::detail::lower64<In> >= -(imax{1} << 20) && ::beman::inside::detail::upper64<In> <= (imax{1} << 20), "beman::inside::math::cos: input magnitudes must be \u2264 2^20 rad"); }
+    { math_input<In>(); static_assert(::beman::inside::detail::lower64<In> >= -(imax{1} << 20) && ::beman::inside::detail::upper64<In> <= (imax{1} << 20), "beman::inside::math::cos: input magnitudes must be \u2264 2^20 rad"); }
     template <insidable In>
     constexpr void domain_cosh() noexcept
-    { static_assert(::beman::inside::detail::lower64<In> >= -10 && ::beman::inside::detail::upper64<In> <= 10, "beman::inside::math::cosh: input must be in [-10, 10]"); }
+    { math_input<In>(); static_assert(::beman::inside::detail::lower64<In> >= -10 && ::beman::inside::detail::upper64<In> <= 10, "beman::inside::math::cosh: input must be in [-10, 10]"); }
     template <insidable In>
     constexpr void domain_exp() noexcept
-    { static_assert(::beman::inside::detail::lower64<In> >= -20 && ::beman::inside::detail::upper64<In> <= 20, "beman::inside::math::exp: input must be in [-20, 20]"); }
+    { math_input<In>(); static_assert(::beman::inside::detail::lower64<In> >= -20 && ::beman::inside::detail::upper64<In> <= 20, "beman::inside::math::exp: input must be in [-20, 20]"); }
     template <insidable In>
     constexpr void domain_exp2() noexcept
-    { static_assert(::beman::inside::detail::lower64<In> >= -30 && ::beman::inside::detail::upper64<In> <= 30, "beman::inside::math::exp2: input must be in [-30, 30]"); }
+    { math_input<In>(); static_assert(::beman::inside::detail::lower64<In> >= -30 && ::beman::inside::detail::upper64<In> <= 30, "beman::inside::math::exp2: input must be in [-30, 30]"); }
     template <insidable In>
     constexpr void domain_log() noexcept
-    { static_assert(::beman::inside::detail::lower64<In> > 0, "beman::inside::math::log: input must be strictly positive"); }
+    { math_input<In>(); static_assert(::beman::inside::detail::lower64<In> > 0, "beman::inside::math::log: input must be strictly positive"); }
     template <insidable In>
     constexpr void domain_log10() noexcept
-    { static_assert(::beman::inside::detail::lower64<In> > 0, "beman::inside::math::log10: input must be strictly positive"); }
+    { math_input<In>(); static_assert(::beman::inside::detail::lower64<In> > 0, "beman::inside::math::log10: input must be strictly positive"); }
     template <insidable In>
     constexpr void domain_log2() noexcept
-    { static_assert(::beman::inside::detail::lower64<In> > 0, "beman::inside::math::log2: input must be strictly positive"); }
+    { math_input<In>(); static_assert(::beman::inside::detail::lower64<In> > 0, "beman::inside::math::log2: input must be strictly positive"); }
     template <insidable In>
     constexpr void domain_sin() noexcept
-    { static_assert(::beman::inside::detail::lower64<In> >= -(imax{1} << 20) && ::beman::inside::detail::upper64<In> <= (imax{1} << 20), "beman::inside::math::sin: input magnitudes must be \u2264 2^20 rad"); }
+    { math_input<In>(); static_assert(::beman::inside::detail::lower64<In> >= -(imax{1} << 20) && ::beman::inside::detail::upper64<In> <= (imax{1} << 20), "beman::inside::math::sin: input magnitudes must be \u2264 2^20 rad"); }
     template <insidable In>
     constexpr void domain_sinh() noexcept
-    { static_assert(::beman::inside::detail::lower64<In> >= -10 && ::beman::inside::detail::upper64<In> <= 10, "beman::inside::math::sinh: input must be in [-10, 10]"); }
+    { math_input<In>(); static_assert(::beman::inside::detail::lower64<In> >= -10 && ::beman::inside::detail::upper64<In> <= 10, "beman::inside::math::sinh: input must be in [-10, 10]"); }
     template <insidable In>
     constexpr void domain_tan() noexcept
-    { static_assert(::beman::inside::detail::lower64<In> >= -(imax{1} << 20) && ::beman::inside::detail::upper64<In> <= (imax{1} << 20), "beman::inside::math::tan: input magnitudes must be \u2264 2^20 rad"); }
+    { math_input<In>(); static_assert(::beman::inside::detail::lower64<In> >= -(imax{1} << 20) && ::beman::inside::detail::upper64<In> <= (imax{1} << 20), "beman::inside::math::tan: input magnitudes must be \u2264 2^20 rad"); }
     template <insidable In>
     constexpr void domain_asinh() noexcept
-    { static_assert(::beman::inside::detail::lower64<In> >= -(imax{1} << 20) && ::beman::inside::detail::upper64<In> <= (imax{1} << 20), "beman::inside::math::asinh: input magnitudes must be \u2264 2^20 for the working-scale envelope"); }
+    { math_input<In>(); static_assert(::beman::inside::detail::lower64<In> >= -(imax{1} << 20) && ::beman::inside::detail::upper64<In> <= (imax{1} << 20), "beman::inside::math::asinh: input magnitudes must be \u2264 2^20 for the working-scale envelope"); }
     template <insidable In>
     constexpr void domain_acosh() noexcept
-    { static_assert(::beman::inside::detail::lower64<In> >= 1 && ::beman::inside::detail::upper64<In> <= (imax{1} << 20), "beman::inside::math::acosh: input must be in [1, 2^20]"); }
+    { math_input<In>(); static_assert(::beman::inside::detail::lower64<In> >= 1 && ::beman::inside::detail::upper64<In> <= (imax{1} << 20), "beman::inside::math::acosh: input must be in [1, 2^20]"); }
     // atanh(±1) is infinite; the 2^-30 margin keeps (1+|x|)/(1−|x|) inside the
     // working scale.
     template <insidable In>
     constexpr void domain_atanh() noexcept
-    { static_assert(::beman::inside::detail::lower64<In> >= -1 + rational{1, imax{1} << 30} && ::beman::inside::detail::upper64<In> <= 1 - rational{1, imax{1} << 30}, "beman::inside::math::atanh: input must be in (-1, 1), at least 2^-30 from \u00b11"); }
+    { math_input<In>(); static_assert(::beman::inside::detail::lower64<In> >= -1 + rational{1, imax{1} << 30} && ::beman::inside::detail::upper64<In> <= 1 - rational{1, imax{1} << 30}, "beman::inside::math::atanh: input must be in (-1, 1), at least 2^-30 from \u00b11"); }
     template <insidable In>
     constexpr void domain_tanh() noexcept
-    { static_assert(::beman::inside::detail::lower64<In> >= -10 && ::beman::inside::detail::upper64<In> <= 10, "beman::inside::math::tanh: input must be in [-10, 10]"); }
+    { math_input<In>(); static_assert(::beman::inside::detail::lower64<In> >= -10 && ::beman::inside::detail::upper64<In> <= 10, "beman::inside::math::tanh: input must be in [-10, 10]"); }
     template <insidable InX, insidable InY>
     constexpr void domain_hypot() noexcept
-    { static_assert(::beman::inside::detail::lower64<InX> >= -(imax{1} << 20) && ::beman::inside::detail::upper64<InX> <= (imax{1} << 20)
+    { math_input<InX>(); math_input<InY>(); static_assert(::beman::inside::detail::lower64<InX> >= -(imax{1} << 20) && ::beman::inside::detail::upper64<InX> <= (imax{1} << 20)
                && ::beman::inside::detail::lower64<InY> >= -(imax{1} << 20) && ::beman::inside::detail::upper64<InY> <= (imax{1} << 20), "beman::inside::math::hypot: input magnitudes must be ≤ 2^20 for the working-scale envelope"); }
 
     // pow_base<Base>(x) stays inside the 2^±30 envelope pow uses (the CORDIC
@@ -183,7 +196,7 @@ namespace beman::inside::math
 
     template <imax Base, insidable In>
     constexpr void domain_pow_base() noexcept
-    { static_assert(pow_base_domain_ok<Base, In>, "beman::inside::math::pow_base: Base must be ≥ 2 and Base^x must stay within [2^-30, 2^30] over the input interval"); }
+    { math_input<In>(); static_assert(pow_base_domain_ok<Base, In>, "beman::inside::math::pow_base: Base must be ≥ 2 and Base^x must stay within [2^-30, 2^30] over the input interval"); }
 
     // pow_base_into<Out> outside the 2^±30 envelope: a clamp Out saturates,
     // anything else reports errc::overflow through Out's policy (pow_into's rule).
@@ -213,6 +226,7 @@ namespace beman::inside::math
     template <insidable In>
     consteval bool require_snap() noexcept
     {
+      math_input<In>();
       static_assert(has_flag(policy_of<In>, snap),
           "beman::inside::math: a transcendental result is rounded onto the grid — its "
           "operand must permit rounding. Declare it with `round_nearest` (or "
