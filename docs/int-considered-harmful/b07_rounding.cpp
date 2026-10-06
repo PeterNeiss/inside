@@ -20,13 +20,10 @@ int main()
 
   std::cout << "native  -7 / 2     = " << (-7 / 2) << "   (toward zero, always)\n";
 
-  constexpr auto floored = make_policy<round_floor>();
-  constexpr auto ceiled  = make_policy<round_ceil>();
-
-  std::cout << "round_to_nearest   = " << div(n, d, round_to_nearest) << "\n";
-  std::cout << "floored            = " << div(n, d, floored) << "\n";
-  std::cout << "ceiled             = " << div(n, d, ceiled)  << "\n";
-  std::cout << "truncated          = " << div(n, d, truncated) << "\n";
+  std::cout << "rounded_nearest    = " << div(n, d, rounded_nearest) << "\n";
+  std::cout << "rounded_floor      = " << div(n, d, rounded_floor) << "\n";
+  std::cout << "rounded_ceil       = " << div(n, d, rounded_ceil)  << "\n";
+  std::cout << "snapped (trunc)    = " << div(n, d, snapped) << "\n";
 
   // And the exact answer, if you want no rounding at all.
   auto exact = n / d;

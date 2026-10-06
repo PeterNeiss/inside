@@ -11,7 +11,7 @@
 
 using namespace beman::inside;
 
-using money   = inside<{{0, 1'000'000}, notch<1, 100>}, round_nearest>;
+using money   = inside<{{0, 1'000'000}, per<100>}, round_nearest>;
 using dollars = inside<{0, 1000}>;   // whole dollars only
 
 int main()

@@ -25,7 +25,7 @@ int main()
   }
   catch (beman::inside::inside_error& e)
   {
-    std::cout << "checked  200 ->    " << errc_message(e.code) << "\n";
+    std::cout << "checked  200 ->    " << errc_message(e.Code) << "\n";
   }
 
   // clamp: saturate at the boundary.

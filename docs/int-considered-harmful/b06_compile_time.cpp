@@ -16,9 +16,9 @@ using angle = inside<{0, 359}, wrap>;
 int main()
 {
   // Range violations are knowable before the program exists.
-  static_assert(will_conversion_overflow<pct>(150));
-  static_assert(will_conversion_overflow<pct>(-1));
-  static_assert(!will_conversion_overflow<pct>(50));
+  static_assert(conversion_overflows<pct>(150));
+  static_assert(conversion_overflows<pct>(-1));
+  static_assert(!conversion_overflows<pct>(50));
 
   // Saturating and wrapping casts are constant-evaluable.
   static_assert(clamp_cast<pct>(150) == 100);

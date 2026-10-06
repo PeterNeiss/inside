@@ -14,18 +14,23 @@ g++ -std=c++23 -O2 h01_overflow_ub.cpp -o h01
 g++ -std=c++23 -O0 h01_overflow_ub.cpp -o h01_O0    # compare the two
 ```
 
-The `b*` (inside), `m_after` and `p01` programs need the library on the include
+The `b*` (inside), `m_after` and `p*` programs need the library on the include
 path:
 
 ```bash
 g++ -std=c++23 -O2 -I ../../include b01_no_overflow.cpp -o b01
 ```
 
-Or against the committed single header, with no other `-I`:
+`b11_no_ceiling.cpp` uses grids past 64 bits, which need C++26 static
+reflection (GCC 16):
 
 ```bash
-g++ -std=c++23 -O2 -I ../../single_include b01_no_overflow.cpp -o b01
+g++-16 -std=c++26 -freflection -O2 -I ../../include b11_no_ceiling.cpp -o b11
 ```
+
+The committed single header (`../../single_include`) holds `io.hpp` and
+`cmath.hpp` as well; to build a program against it, keep only the
+`#include <beman/inside/inside.hpp>` line and use `-I ../../single_include`.
 
 ## Programs that are meant to fail
 
@@ -52,7 +57,13 @@ unchecked native. `p03_check_elision.cpp` shows where `inside`'s compile-time
 range information actually pays: on a chain of operations it emits zero runtime
 checks where the native checked type needs three.
 
-Both print a table; run them a few times, and prefer a quiet machine.
+`p04_math_cost.cpp` measures what correct rounding costs: `beman::inside::math`
+onto the output grid deduced from a 2^-14 input, and onto grids as fine as a
+`double` (2^-40 to 2^-52), against `<cmath>`.
+
+All three print a table; run them a few times pinned to one core
+(`taskset -c 2 ./p02`), and prefer a quiet machine. The paper's figures are
+the mean of three such runs.
 
 ## The codegen exhibit
 

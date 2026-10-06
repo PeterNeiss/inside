@@ -13,9 +13,9 @@
 //
 // Zero, not one: four values in [0,50] sum to [0,200], which is exactly the
 // declared range of `total`, so even the final store is proved safe at compile
-// time. The emitted code is identical to the unchecked native version:
+// time. The emitted code is the unchecked native version's two adds and an lea:
 //
-//     endbr64; add %esi,%edi; add %edx,%edi; add %ecx,%edi; movzbl %dil,%eax; ret
+//     endbr64; add %esi,%edi; add %edx,%edi; lea (%rdi,%rcx,1),%eax; ret
 //
 // Widen `total` to [0,199] and the store check reappears -- the proof is
 // genuinely being done, not skipped.
@@ -131,7 +131,7 @@ int main()
   std::printf("%-24s %8.3f %9.1f%% %8s\n", "native unchecked", raw, 100.0 * raw / raw, "0");
   std::printf("%-24s %8.3f %9.1f%% %8s\n", "native checked",   native, 100.0 * raw / native, "3");
   std::printf("%-24s %8.3f %9.1f%% %8s\n", "inside<checked>",   ins_chain, 100.0 * raw / ins_chain, "0");
-  std::printf("\nbound<checked> vs native checked: %.1f%% "
+  std::printf("\ninside<checked> vs native checked: %.1f%% "
               "(>100%% means inside is faster)\n", 100.0 * native / ins_chain);
   return 0;
 }

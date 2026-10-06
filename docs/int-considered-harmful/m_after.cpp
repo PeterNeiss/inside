@@ -13,7 +13,7 @@
 using namespace beman::inside;
 
 // Dollars in 1-cent steps, up to $10M. The scale is part of the type.
-using money = inside<{{0, 10'000'000}, notch<1, 100>}, round_nearest>;
+using money = inside<{{0, 10'000'000}, per<100>}, round_nearest>;
 
 int main()
 {
@@ -38,7 +38,7 @@ int main()
 
   // The intermediate really is exact: a grid in thirds of a cent stores
   // the same value with nothing rounded away.
-  using third_cent = inside<{{0, 10'000'000}, notch<1, 300>}, round_nearest>;
+  using third_cent = inside<{{0, 10'000'000}, per<300>}, round_nearest>;
   third_cent discount_exact = disc_exact;
 
   std::cout << "\ndiscount on a 1/300 grid       = $" << discount_exact

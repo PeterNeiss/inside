@@ -135,7 +135,7 @@
 \title{\vspace{-1.5cm}\textbf{\code{int} considered harmful}\\[0.4em]
        \large A case against the default integer, and a type that fixes it}
 \author{Peter Neiss}
-\date{26 July 2026}
+\date{26 July 2026 \\ \small revised 6 October 2026}
 
 \begin{document}
 \maketitle
@@ -167,8 +167,9 @@ in the declaration. On performance we find no single answer: against code
 providing the same guarantee, \code{inside} is by turns \emph{faster} (it
 discharges at compile time checks that hand-written code must perform at
 runtime), exactly free (byte-identical machine code), and substantially slower
-(exact rational arithmetic, reproducible transcendentals). We report all three,
-with the programs that produced them.
+(exact rational arithmetic, and transcendentals correctly rounded at the
+full resolution of a \code{double}). We report all three, with the programs
+that produced them.
 \end{abstract}
 
 \vspace{0.5em}
@@ -180,9 +181,12 @@ with the programs that produced them.
 \file{docs/int-considered-harmful/} in the \code{inside} repository. Every
 output block was captured by running the program, not written by hand. All
 measurements come from the repository's generated \file{docs/performance.md} or
-from named commits; none are estimates. Compiler is GCC 15.2.0 on
-\mbox{x86-64} Linux unless stated otherwise. \code{inside} is alpha software and
-its API may change.
+from programs in that directory; none are estimates. Compiler is GCC 15.2.0
+on \mbox{x86-64} Linux unless stated otherwise. \code{inside} is under
+development and not yet ready for production use; its API may change. This
+revision (October 2026) updates every \code{inside} program, output and
+measurement to the current library; the \code{int} and \code{double} exhibits
+reproduce unchanged.
 
 \smallskip
 \noindent\textbf{On AI assistance.} This paper was drafted with
@@ -625,7 +629,7 @@ UBSan:
 
 \begin{lstlisting}[style=term]
 $ g++ -std=c++23 -O2 -fsanitize=undefined h01_overflow_ub.cpp && ./a.out
-h01_overflow_ub.cpp:23:14: runtime error: signed integer overflow:
+h01_overflow_ub.cpp:24:14: runtime error: signed integer overflow:
     2147483647 + 1 cannot be represented in type 'int'
 INT_MAX            = 2147483647
 grows(INT_MAX)     = yes, always
@@ -633,7 +637,7 @@ INT_MAX + 1        = -2147483648
 \end{lstlisting}
 
 \noindent
-UBSan reports line 23 --- the \code{printf} argument. It says nothing about
+UBSan reports line 24 --- the \code{printf} argument. It says nothing about
 \code{grows()}, where the comparison was folded away at translation time. There
 was no overflow left to instrument, because there was no arithmetic left. The
 diagnostic misses the defect that motivated the example.
@@ -680,7 +684,7 @@ around a single template:
 
 \begin{lstlisting}
 template<grid G, policy_flag P>
-struct inside;                        // include/beman/inside/core.hpp:62
+struct inside;                        // include/beman/inside/core.hpp:61
 \end{lstlisting}
 
 \noindent
@@ -689,16 +693,18 @@ inside) and a \emph{notch} --- the step size, held as an exact rational. Every
 value of the type is exactly $\text{Lower} + k \cdot \text{Notch}$ for some
 integer $k$. The \code{policy} says what happens when a value would leave the
 range. Storage is selected automatically: the narrowest of
-\code{uint8}\ldots\code{int64}, \code{float}/\code{double}, or an exact
-fraction, that can represent every point on the grid.
+\code{uint8}\ldots\code{int64} that can number every point on the grid, or an
+exact fraction for a continuous grid. \code{double} or \code{float} storage is
+available on request, for grids whose every point is exact in it, and grids
+too large for 64 bits get wider integers (\S\ref{sec:noceiling}).
 
 \begin{lstlisting}
 using namespace beman::inside;
 
 using pct    = inside<{0, 100}>;                    // integers 0..100
-using money  = inside<{{0, 1'000'000}, notch<1,100>}, round_nearest>;  // cents
+using money  = inside<{{0, 1'000'000}, per<100>}, round_nearest>;  // cents
 using angle  = inside<{0, 359}, wrap>;              // modular
-using sample = inside<{{-1, 1}, notch<1,16384>}, round_nearest>;       // Q1.14
+using sample = inside<{{-1, 1}, per<16384>}, round_nearest>;       // Q1.14
 \end{lstlisting}
 
 \noindent
@@ -752,13 +758,13 @@ terminated the process in \S2.4 is now a value the caller can test.
 
 \subsection{Rounding is stated, not inherited}
 
-\lstinputlisting[firstline=16,lastline=34]{int-considered-harmful/b07_rounding.cpp}
+\lstinputlisting[firstline=15,lastline=31]{int-considered-harmful/b07_rounding.cpp}
 \begin{lstlisting}[style=term]
 native  -7 / 2     = -3   (toward zero, always)
-round_to_nearest   = -4
-floored            = -4
-ceiled             = -3
-truncated          = -3
+rounded_nearest    = -4
+rounded_floor      = -4
+rounded_ceil       = -3
+snapped (trunc)    = -3
 exact              = -3.5
 \end{lstlisting}
 
@@ -767,7 +773,7 @@ Each mode is honoured, including for negative operands, where the distinction
 between truncation and flooring actually bites. The repository pins this with a
 property test asserting $(a/b) \cdot b + a \bmod b = a$ across whole grids for
 every mode, including negative divisors
-(\file{tests/test\_div\_round.cpp:129--152}).
+(\file{tests/beman/inside/div\_round.test.cpp:135}).
 
 \subsection{The edge is a policy you declare}
 
@@ -776,10 +782,10 @@ never from arithmetic. What happens then is part of the declaration:
 
 \lstinputlisting[firstline=18,lastline=46]{int-considered-harmful/b03_policies.cpp}
 \begin{lstlisting}[style=term]
-checked  200 ->    value outside interval
+checked  200 ->    value does not fit its range
 clamp    150 ->    100
 wrap     370 ->    10
-try_make  10 ->    value outside interval
+try_make  10 ->    value does not fit its range
 with_clamp() 150 -> 100
 \end{lstlisting}
 
@@ -788,7 +794,10 @@ The wrapping behaviour that \code{int} gives you unasked and undefined is
 available here as \code{wrap} --- explicitly requested, well-defined, and
 producing $370 \rightarrow 10$ on a $[0,359]$ grid rather than
 $\text{INT\_MAX}+1 \rightarrow \text{INT\_MIN}$. The default is \code{checked},
-which reports rather than storing a value it cannot represent.
+which reports rather than storing a value it cannot represent --- and every
+policy is checked unless it says \code{unsafe}: a rounding policy such as
+\code{round\_nearest} rounds first and then still range-checks the result.
+Turning the check off is a word you have to write.
 
 \subsection{Negation reflects the type}
 
@@ -814,7 +823,7 @@ The units failure of \S2.11 is a failure to record what a number means.
 \code{inside} records the scale in the notch, so a value on a cent grid and a
 value on a dollar grid are different types, and combining them converts:
 
-\lstinputlisting[firstline=15,lastline=33]{int-considered-harmful/b05_units.cpp}
+\lstinputlisting[firstline=14,lastline=33]{int-considered-harmful/b05_units.cpp}
 \begin{lstlisting}[style=term]
 subtotal           = $36.83
 shipping           = $5
@@ -831,19 +840,19 @@ what grid they belong to --- and the diagnostic says so directly:
 
 \begin{lstlisting}[style=term]
 $ g++ -std=c++23 -I ../../include x01_bare_int_rejected.cpp
-   15 |   auto bad = x + 1;      // error: no grid for the literal
-include/beman/inside/arithmetic.hpp:492:27: error: static assertion failed:
-   an inside can only be added to another inside: give the scalar a grid --
-   write `a + 1_ins` (or `a + just<1>` / `a + one`), or `a + inside<{lo,hi}>{n}`
-   for a runtime value with a known range
+   16 |   auto bad = x + 1;      // error: no grid for the literal
+include/beman/inside/arithmetic.hpp:350:27: error: static assertion failed:
+   an inside cannot be combined with a raw scalar: give the scalar a grid --
+   `1_ins`, `just<1>`, `one`, or `inside<{lo,hi}>{n}` for a runtime value with
+   a known range
 \end{lstlisting}
 
 \subsection{Bounded indices}
 
-\lstinputlisting[firstline=14,lastline=34]{int-considered-harmful/b08_index.cpp}
+\lstinputlisting[firstline=14,lastline=35]{int-considered-harmful/b08_index.cpp}
 \begin{lstlisting}[style=term]
 data[7]            = 49
-index 10           = value outside interval   (no out-of-bounds access possible)
+index 10           = value does not fit its range   (no out-of-bounds access possible)
 sum of all slots   = 285
 \end{lstlisting}
 
@@ -851,6 +860,37 @@ sum of all slots   = 285
 The bounds check happens once, at construction, rather than at every access or
 not at all. An index that exists is in range by construction; one that would
 not be simply fails to be created.
+
+\subsection{No 64-bit ceiling}\label{sec:noceiling}
+
+\code{int64} is the last stop for every integer in C++. Under C++23 an
+\code{inside} grid stops there too: its limits and notch are 64-bit fractions.
+Under C++26 with static reflection (GCC~16, \code{-freflection}) they have no
+size limit. The library interns large grid numbers in static storage
+(\code{std::define\_static\_array}), so equal grids stay the same type however
+they were spelled, and the raw storage becomes a fixed-width integer sized
+from the grid:
+
+\lstinputlisting[firstline=18,lastline=32]{int-considered-harmful/b11_no_ceiling.cpp}
+\begin{lstlisting}[style=term]
+$ g++-16 -std=c++26 -freflection -O2 -I ../../include b11_no_ceiling.cpp
+a                  = 1000000000000000019884624838656
+a * a              = 1000000000000000039769249677312000395398304974095154031886336
+sizeof(a), sizeof(a * a) = 16, 32 bytes
+1/3 on a 1e-30 grid = 333333333333333333333333333333/1000000000000000000000000000000
+\end{lstlisting}
+
+\noindent
+(The first line is not a typo: the literal \code{1e30} is a \code{double}, and
+that is its exact value. \code{inside} stores what it is given exactly; an
+exact $10^{30}$ is spelled \code{1e30\_g}.) The product of two values in
+$[0, 2^{100}]$ lives in $[0, 2^{200}]$, so the
+same widening rule that made \S2.1's overflow unreachable applies past any
+machine word; the multiplication returns a plain value and costs 32 bytes, not
+an allocation. The notch of $10^{-30}$ is exact --- no \code{double} and no
+ratio of 64-bit integers can hold it. Compiled as C++23, the same file is
+rejected at compile time with a message naming the C++26 requirement, rather
+than silently truncating the grid.
 
 % ============================================================================
 \section{A worked migration}\label{sec:migration}
@@ -878,7 +918,7 @@ perfectly ordinary integer.
 
 The same calculation in \code{inside}:
 
-\lstinputlisting[firstline=15,lastline=46]{int-considered-harmful/m_after.cpp}
+\lstinputlisting[firstline=15,lastline=47]{int-considered-harmful/m_after.cpp}
 \begin{lstlisting}[style=term]
 subtotal           = $2684354.56
 tax  (8%)          = $214748.36   (exact, no overflow)
@@ -924,7 +964,7 @@ it rejects them at compile time. Because grids are compile-time values and the
 arithmetic is \code{constexpr}, whole categories of defect become build
 failures.
 
-\lstinputlisting[firstline=18,lastline=34]{int-considered-harmful/b06_compile_time.cpp}
+\lstinputlisting[firstline=18,lastline=31]{int-considered-harmful/b06_compile_time.cpp}
 
 \noindent
 Every line above is a \code{static\_assert}. If any were false the file would
@@ -942,9 +982,9 @@ error: call to non-'constexpr' function 'void beman::inside::detail::raise(beman
 \noindent
 The mechanism is worth understanding: the error path is deliberately
 non-\code{constexpr}, so reaching it during constant evaluation is
-automatically a compile error. The library's own test suite
-(\file{tests/test\_constexpr.cpp}) is written almost entirely in
-\code{STATIC\_REQUIRE} on this basis.
+automatically a compile error. The library's own constant-evaluation tests
+(\file{tests/beman/inside/constexpr.test.cpp}) are written on this basis: 158
+\code{static\_assert}s that run inside the compiler.
 
 \subsection{The error vocabulary}
 
@@ -954,14 +994,14 @@ the caller's role.
 
 \begin{center}
 \small
-\begin{tabular}{@{}l l p{6.6cm}@{}}
+\begin{tabular}{@{}l >{\raggedright\arraybackslash}p{4.3cm} >{\raggedright\arraybackslash}p{6.4cm}@{}}
 \toprule
 Shape & Spelling & When \\
 \midrule
 Plain value & \code{a + b} & The type proves the operation cannot fail. \\
-\code{expected<T,errc>} & \code{a / b}, \code{try\_make}, \code{to<T>()}, \code{math::sqrt} & The operation can fail; the caller tests the result and, if it cares, reads the cause. \\
+\code{expected<T,errc>} & \code{a / b}, \code{try\_make}, \code{to<T>()}, \code{math::tan}, \code{math::pow} & The operation can fail at runtime; the caller tests the result and, if it cares, reads the cause. A math argument outside the function's domain for the whole input grid is a compile error instead. \\
 Error code & \code{x.policy(ec) = v} & Hot paths, or bulk operations where the first error should stick. \\
-Throwing & default \code{checked} & Programming errors that should not be handled locally. \\
+Throwing & default (\code{checked}) & Programming errors that should not be handled locally. \\
 Callback & \code{on\_clamp}, \code{on\_wrap} & The event is expected and carries data (a carry, an overshoot). \\
 \bottomrule
 \end{tabular}
@@ -969,11 +1009,12 @@ Callback & \code{on\_clamp}, \code{on\_wrap} & The event is expected and carries
 
 \noindent
 The codes themselves are a small closed enumeration
-(\file{detail/debug.hpp:55}):
+(\file{detail/debug.hpp:56}), one code per condition --- a value that does not
+fit its destination is always \code{overflow}, whichever path found it:
 
 \begin{lstlisting}
 enum class errc { domain_error, division_by_zero, overflow,
-                  rounding_error, not_finite };
+                  rounding_error, not_finite, invalid_format };
 \end{lstlisting}
 
 \noindent
@@ -1022,10 +1063,10 @@ Floating-point storage is still available, but only where it is provably
 lossless: the \code{f64} and \code{f32} flags are permitted only on
 \emph{dyadic} grids --- power-of-two notch and lower bound --- so that every
 grid point is exactly representable in the significand. This is enforced by
-\code{static\_assert}, and a grid too fine for the requested float silently
-falls back to exact rational storage rather than losing precision. The rule
-that decides it is the same $2^{53}$ boundary that \S\ref{sec:double}
-demonstrated.
+\code{static\_assert}: asking for \code{f64} on a grid too fine for a
+\code{double} is a compile error that names the fix (a coarser grid, or exact
+storage), not a quiet loss of precision. The rule that decides it is the same
+$2^{53}$ boundary that \S\ref{sec:double} demonstrated.
 
 \subsection{Reproducibility}
 
@@ -1036,29 +1077,33 @@ platform to round differently.'' Conversion from \code{double} decomposes the
 value from its IEEE-754 bits rather than computing with it, so it needs no FPU
 and no \code{<cmath>}.
 
-For transcendentals, \code{beman::inside::math} ships three engines behind one API, of
-which the integer CORDIC engine is reproducible ``unconditionally $\ldots$ any
-platform, any flags, no FPU.'' Its contract is worth quoting because it is
-unusually specific:
-
-\begin{quote}\small
-Every function below produces bit-identical output $\ldots$ across compiler,
-platform, optimisation level, and FP flags. 1. NO \code{<cmath>}/FPU/intrinsics;
-hot paths are integer-only over int64. 2. NO runtime-derived tables $\ldots$
-3. NO external code generators $\ldots$ 5. Each transcendental ships checked-in
-\code{static\_assert} vectors pinning its bit-exact output.
-\end{quote}
+For transcendentals, \code{beman::inside::math} goes one step further:
+every function returns the \emph{correctly rounded} point of its output grid,
+under the output's rounding mode. A correctly rounded result is a function of
+the input value and the output grid alone, so it cannot depend on how it was
+computed. The repository's determinism document lists the conditions for the
+transcendentals as ``\textbf{Always} --- every result is the correctly rounded
+grid point, the same at compile time, at runtime, with or without an FPU.''
 
 \noindent
-Measured against a long-double reference, the double engine's maximum error is
-exactly 0.5000 notches for essentially every function --- correctly rounded ---
-and the CORDIC engine stays below 0.9 notches (\file{docs/accuracy.md}).
+The engine gets there by computing each result together with a proved error
+bound, at the precision the output grid needs, and escalating (Ziv's
+strategy) whenever the bound does not place the result in a single slot.
+Cheap tiers --- compile-time tables for small input grids, the library's own
+\code{double} and double-\code{double} kernels with bounds proved at compile
+time --- answer most calls; an integer path answers the rest, and is the only
+path at compile time and in builds without an FPU. All of them land on the
+same grid point. Measured against a long-double reference, every function's
+maximum error is 0.5000 notches (\file{docs/accuracy.md}): the correctly
+rounded answer, every time.
 
-One honest caveat, which the library documents itself: the three engines are
-reproducible individually but are \emph{not} value-identical to each other. A
-golden vector captured under one engine is valid for that engine only. This is
-the table-maker's dilemma, not a defect, but it does mean the engine choice is
-part of your reproducibility contract.
+Two consequences are worth stating. First, there is no ``engine choice'' left
+in the reproducibility contract: the earlier library had three engines that
+were each reproducible but not value-identical to one another, and that caveat
+is gone. Second, the guarantee rests on IEEE arithmetic as written, so
+\code{-ffast-math} builds are refused with an \code{\#error} rather than
+allowed to break it silently. The price of correct rounding is paid in time,
+and \S\ref{sec:mathcost} measures it.
 
 % ============================================================================
 \section{Performance}\label{sec:performance}
@@ -1078,18 +1123,18 @@ Regime & When & Measured \\
 \midrule
 \textbf{Negative cost} & A chain of operations whose intermediate ranges the
 compiler can discharge, replacing checks the equivalent hand-written code must
-perform at runtime. &
-22\% faster than native checked (\S\ref{sec:checks}); comparison at 100.2\%
-of native with fewer instructions \\[0.6em]
+perform at runtime; comparisons the grid lets run on raw storage. &
+22\% faster than native checked (\S\ref{sec:checks}); comparison against a
+scalar at 129\% of native \\[0.6em]
 \textbf{Zero cost} & Integer-aligned operands on the same grid, where all the
 range reasoning happens in the type system. &
-Byte-identical disassembly (\S\ref{sec:performance});
-\code{inside<unsafe>} at 99.9\% (\S\ref{sec:fair}) \\[0.6em]
-\textbf{Additional cost} & Exact rational storage, bit-reproducible
-transcendentals, and element-wise checking through generic algorithms. &
-\code{inside<exact>} $\approx$8$\times$ \code{double};
-\code{beman::inside::math} at 9--12\% of \code{std};
-\code{std::accumulate} at 2.9\% \\
+Byte-identical disassembly (\S\ref{sec:codegen});
+\code{inside<unsafe>} at 99.7\% (\S\ref{sec:fair}); add, construct,
+\code{std::accumulate}, sort, transform at 95--101\% \\[0.6em]
+\textbf{Additional cost} & Exact rational storage, element-wise checking,
+and transcendentals correctly rounded at full \code{double} resolution. &
+\code{inside<exact>} $\approx$6.5$\times$ \code{double}; checked loop at
+20\%; math at full \code{double} resolution 8--18$\times$ \code{std} \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -1102,7 +1147,7 @@ check at each boundary and forfeits the advantage. A single headline number ---
 in either direction --- would be a misrepresentation, so this section reports
 all three with the programs that produced them.
 
-\subsection{The fast path is byte-identical to native}
+\subsection{The fast path is byte-identical to native}\label{sec:codegen}
 
 The headline claim is that when both operands are integer-aligned on the same
 grid, the operation lowers to a plain machine instruction. That claim is
@@ -1130,33 +1175,41 @@ still vectorise: both the \code{inside} and the native loop emit packed SIMD
 adds, the \code{inside} version on 16-bit lanes (its storage for $[0,1000]$ is
 narrower than \code{int}) and the native version on 32-bit lanes.
 
-This is not an accident that could regress unnoticed. The repository enforces
-it in CI: \file{tests/check\_codegen.sh} compiles six named kernels at
-\code{-O2}, disassembles them, and \textbf{fails the build if any of them
-contains a \code{call} instruction}. A committed cachegrind baseline
-(\file{tests/perf\_baseline.json}) guards instruction counts separately.
+This is not an accident that could regress unnoticed. The repository's test
+suite enforces it: \file{tests/beman/inside/check\_codegen.sh} compiles seven
+named kernels at \code{-O2}, disassembles them, and \textbf{fails if any of
+them contains a \code{call} instruction} other than the cold error report, and
+if the loop does not vectorise. It runs in CI on every compiler and standard
+library in the matrix. A cachegrind workload
+(\file{tests/beman/inside/perf\_workload.cpp} with \file{check\_perf.py})
+guards instruction counts locally.
 
 \subsection{What it costs, and against what}
 
+\begin{sloppypar}
+\noindent
 The tables below are extracted from the repository's generated benchmark
-report. \textbf{Read the \emph{rel.} column as a fraction of the first row's
+report, \file{docs/performance.md} (GCC 15, \code{-O3}, one run pinned to one
+core). \textbf{Read the \emph{rel.} column as a fraction of the first row's
 throughput}: 100\% is parity with that row, and smaller is slower. Absolute
 nanosecond figures are host-specific; the report itself warns that CPU
 frequency scaling and turbo were active during the run, so the ratios --- not
-the times --- are the signal.
+the times --- are the signal, and sub-nanosecond rows move by 15--20\% from run
+to run. The instruction counts do not.
+\end{sloppypar}
 
 The choice of baseline matters more than any individual number, and it is
 easy to read these tables unfairly in \code{inside}'s favour or against it.
-\textbf{The 100\% row is always plain, unchecked native \code{int}}: a bare
-cast and an add, with no range enforcement of any kind. It is the fastest
-thing in the table because it is not doing the job. It is the code from
+\textbf{The 100\% row is always plain, unchecked native code}: a bare cast and
+an add, with no range enforcement of any kind. It is the fastest thing in the
+table because it is not doing the job. It is the code from
 \S\ref{sec:indictment} --- the code that overflows silently, that lets 300
 become 44, that computes a negative midpoint. Comparing \code{inside} against
 it measures the cost of correctness that the baseline never pays.
 
 The benchmark therefore also carries two \emph{hand-written native} baselines
 that do enforce a range, and these are the honest comparison
-(\file{tests/bench.cpp:65}):
+(\file{tests/beman/inside/bench.cpp:63}):
 
 \begin{itemize}
 \item \code{native clamped} --- the same arithmetic wrapped in
@@ -1188,34 +1241,34 @@ times, with inputs chosen so that no contender ever actually throws.
 \toprule
 Implementation & ns/op & vs.\ unchecked & enforces? & vs.\ safe native \\
 \midrule
-\code{native unchecked}   & 0.441 & 100.0\% & no  & --- \\
-\code{native clamped}     & 0.463 &  95.4\% & yes & 100.0\% \\
-\code{native checked}     & 0.519 &  85.0\% & yes &  89.2\% \\
-\code{inside<checked>}     & 0.530 &  83.3\% & yes & \textbf{87.4\%} \\
-\code{inside<unsafe>}      & 0.442 &  99.9\% & no  & --- \\
+\code{native unchecked}   & 0.436 & 100.0\% & no  & --- \\
+\code{native clamped}     & 0.457 &  95.4\% & yes & 100.0\% \\
+\code{native checked}     & 0.511 &  85.3\% & yes &  89.4\% \\
+\code{inside<checked>}     & 0.525 &  83.1\% & yes & \textbf{87.1\%} \\
+\code{inside<unsafe>}      & 0.438 &  99.7\% & no  & --- \\
 \bottomrule
 \end{tabular}
 \end{center}
 
 \noindent
-\emph{Mean of three runs; GCC 15.2.0, \code{-O2}, x86-64. The final column is
-relative to \code{native clamped}, the fastest native implementation that
-actually enforces the range.}
+\emph{Mean of three runs pinned to one core; GCC 15.2.0, \code{-O2}, x86-64.
+The final column is relative to \code{native clamped}, the fastest native
+implementation that actually enforces the range.}
 
 Read against the correct baseline the result is very different from what the
 unchecked column suggests:
 
 \begin{itemize}
-\item \code{inside<checked>} runs at \textbf{87.4\%} of the fastest safe native
-      code, and at \textbf{97.9\%} of the hand-rolled checked struct --- within
+\item \code{inside<checked>} runs at \textbf{87.1\%} of the fastest safe native
+      code, and at \textbf{97.3\%} of the hand-rolled checked struct --- within
       noise of the code you would have written by hand to get the same
       guarantee.
-\item \code{inside<unsafe>} runs at \textbf{99.9\%} of unchecked native, which
-      is the same conclusion the disassembly in \S\ref{sec:performance}
-      reached by a different route.
+\item \code{inside<unsafe>} runs at \textbf{99.7\%} of unchecked native, which
+      is the same conclusion the disassembly in \S\ref{sec:codegen} reached by
+      a different route.
 \item The cost of the guarantee itself, in plain C++ with no library involved,
       is 5--15\%. That is most of what the \code{inside<checked>} row is paying
-      for. The library's own overhead on top of it is about 2\%.
+      for. The library's own overhead on top of it is about 3\%.
 \end{itemize}
 
 \noindent
@@ -1252,7 +1305,7 @@ Operation & Emitted & Check? \\
 \code{auto c = a + b} (kept wide) & \code{movzbl; movzbl; lea; ret} & \textbf{none} \\
 \code{bchecked c = a + b}         & \code{add; cmp \$0xc8,\%rax; jg ...} & yes \\
 \code{checked\_u8 c = a + b} (native) & \code{add; cmp \$0xc8,\%eax; jg ...} & yes \\
-\code{bchecked b = a} (same grid)  & \code{movzbl; ret} & \textbf{none} \\
+\code{bchecked b = a} (same grid)  & \code{mov; ret} & \textbf{none} \\
 \code{wide w = a} (widening)       & \code{movzbl; ret} & \textbf{none} \\
 \bottomrule
 \end{tabular}
@@ -1279,16 +1332,16 @@ declared as $[0,200]$ (\file{p03\_check\_elision.cpp}):
 \toprule
 Implementation & ns/op & vs.\ unchecked & runtime checks \\
 \midrule
-\code{native unchecked}  & 0.881 & 100.0\% & 0 \\
-\code{native checked}    & 1.085 &  81.2\% & 3 \\
-\code{inside<checked>}    & 0.888 &  \textbf{99.2\%} & \textbf{0} \\
+\code{native unchecked}  & 0.871 & 100.0\% & 0 \\
+\code{native checked}    & 1.065 &  81.8\% & 3 \\
+\code{inside<checked>}    & 0.873 &  \textbf{99.8\%} & \textbf{0} \\
 \bottomrule
 \end{tabular}
 \end{center}
 
 \noindent
 \code{inside<checked>} is \textbf{22\% faster than the native checked type} here,
-and within 1\% of native code that performs no checking at all --- while
+and within 0.3\% of native code that performs no checking at all --- while
 providing the guarantee that the unchecked version does not. Zero checks, not
 one: four values in $[0,50]$ sum to $[0,200]$, which is exactly the declared
 range of the result, so the final store is proved safe too. The whole function
@@ -1298,117 +1351,171 @@ is:
 endbr64
 add    %esi,%edi
 add    %edx,%edi
-add    %ecx,%edi
-movzbl %dil,%eax
+lea    (%rdi,%rcx,1),%eax
 ret
 \end{lstlisting}
 
 \noindent
-That is byte-for-byte the unchecked native chain. The native checked version,
-by contrast, emits three \code{cmp}/\code{jg} pairs, a cold path per throw
-site, and enough register pressure to spill.
+That is the same two adds and an \code{lea} that GCC emits for the unchecked
+native chain. The native checked version, by contrast, emits three
+\code{cmp}/\code{jg} pairs, a cold path per throw site, and enough register
+pressure to spill.
 
 The proof is real rather than skipped: narrow the result type by one, to
-$[0,199]$, and the sum no longer provably fits --- the store check reappears in
-the disassembly immediately. This is the answer to ``why use a library instead
-of writing the checks by hand'': the hand-written checks are the ones that
-cannot be removed, because nothing in \code{int} records what has already been
-established.
+$[0,199]$, and the sum no longer provably fits --- the store check
+(\code{cmp \$0xc7,\%al; ja}) reappears in the disassembly immediately. This is
+the answer to ``why use a library instead of writing the checks by hand'': the
+hand-written checks are the ones that cannot be removed, because nothing in
+\code{int} records what has already been established.
+
+\subsection{The generated tables}
 
 \begin{benchtablec}{construct (u8 [0,200])}
-  100.0\% & 4.71 & 98.00 & no & \texttt{native uint8} \\
-  63.5\% & 7.41 & 162.00 & yes & \texttt{native clamped} \\
-  87.6\% & 5.37 & 124.00 & yes & \texttt{native checked (exceptions)} \\
-  34.3\% & 13.71 & 211.00 & no & \texttt{inside<unsafe>} \\
+  100.0\% & 0.30 & 7.00 & no & \texttt{native uint8} \\
+  72.9\% & 0.41 & 13.00 & yes & \texttt{native clamped} \\
+  71.4\% & 0.42 & 9.00 & yes & \texttt{native checked (exceptions)} \\
+  101.1\% & 0.30 & 7.00 & no & \texttt{inside<unsafe>} \\
 \end{benchtablec}
 
 \begin{benchtablec}{add (u8 [0,200])}
-  100.0\% & 6.52 & 151.00 & no & \texttt{native uint8} \\
-  69.2\% & 9.42 & 216.00 & yes & \texttt{native clamped} \\
-  61.7\% & 10.57 & 234.00 & yes & \texttt{native checked (exceptions)} \\
-  16.5\% & 39.60 & 541.00 & no & \texttt{inside<unsafe>} \\
+  100.0\% & 0.41 & 11.00 & no & \texttt{native uint8} \\
+  50.7\% & 0.81 & 15.00 & yes & \texttt{native clamped} \\
+  79.7\% & 0.51 & 17.00 & yes & \texttt{native checked (exceptions)} \\
+  99.2\% & 0.41 & 10.00 & no & \texttt{inside<unsafe>} \\
 \end{benchtablec}
 
+\noindent
+Construction and addition with the check switched off are native: the same
+instruction count, give or take one. (The first edition of this paper measured
+34\% and 17\% here; the difference is the library, not the benchmark.)
+
 \begin{benchtable}{increment (u32 [0,200000])}
-  100.0\% & 2.34 & 43.00 & \texttt{native ++} \\
-  24.3\% & 9.61 & 135.00 & \texttt{inside ++} \\
+  100.0\% & 0.20 & 4.00 & \texttt{native ++} \\
+  12.0\% & 1.70 & 6.00 & \texttt{inside ++} \\
 \end{benchtable}
 
+\noindent
+Increment is the outlier, and it is worth saying why, because it is not the
+library's arithmetic. Both rows run with the check off, and as plain functions
+on registers the native and \code{inside} increments compile to identical
+code (\code{lea; xor; cmp; cmovae}). In the benchmark the counter lives in a
+static variable across calls, and there GCC chooses a predicted branch for the
+native reset and a conditional move for the \code{inside} one; the conditional
+move keeps the comparison on the loop-carried dependency through memory, and
+the loop runs eight times slower. It is a code-generation choice that a
+microbenchmark exposes, reported here because it is in the table.
+
 \begin{benchtable}{accumulate 1000 (u32 [0,200000], per element)}
-  100.0\% & 0.83 & 24.11 & \texttt{native loop} \\
-  36.4\% & 2.28 & 59.12 & \texttt{inside<unsafe> loop} \\
-  15.9\% & 5.20 & 101.12 & \texttt{inside<checked> loop} \\
-  52.0\% & 1.59 & 34.20 & \texttt{beman::inside::sum<checked> (bulk check)} \\
-  107.8\% & 0.77 & 23.12 & \texttt{std::accumulate native} \\
-  2.9\% & 28.50 & 329.24 & \texttt{std::accumulate inside} \\
+  100.0\% & 0.05 & 1.03 & \texttt{native loop} \\
+  101.1\% & 0.05 & 1.03 & \texttt{inside<unsafe> loop} \\
+  19.9\% & 0.26 & 9.01 & \texttt{inside<checked> loop} \\
+  49.9\% & 0.10 & 2.34 & \texttt{beman::inside::sum<checked> (bulk check)} \\
+  99.9\% & 0.05 & 1.03 & \texttt{std::accumulate native} \\
+  100.0\% & 0.05 & 1.03 & \texttt{std::accumulate inside} \\
 \end{benchtable}
 
 \noindent
 The accumulate table carries the single most actionable result in the report.
-An \code{inside<checked>} element-wise loop runs at 15.9\% of native because it
-range-checks every element. Using \code{beman::inside::sum}, which validates the total
-instead of each addend, moves it to 52.0\% --- a 3.3$\times$ improvement from
-choosing the right API for the job. The final row, \code{std::accumulate} over
-\code{inside} at 2.9\%, is the cost of routing through a generic algorithm that
-cannot use the bulk path.
+An \code{inside<checked>} element-wise loop runs at 19.9\% of native because it
+range-checks every element, which also stops the loop from vectorising. Using
+\code{beman::inside::sum}, which validates the total instead of each addend,
+moves it to 49.9\% --- a 2.5$\times$ improvement from choosing the right API
+for the job. Without the check, a hand loop and \code{std::accumulate} over
+\code{inside} both vectorise exactly like native code.
 
 \begin{benchtable}{comparison ==}
-  100.0\% & 7.01 & 152.00 & \texttt{native int16} \\
-  76.5\% & 9.17 & 186.00 & \texttt{inside same grid} \\
-  100.2\% & 7.00 & 136.00 & \texttt{inside == int scalar (value raw)} \\
-  100.4\% & 6.99 & 139.00 & \texttt{inside Q8.8 == int scalar (index raw)} \\
+  100.0\% & 0.53 & 12.00 & \texttt{native int16} \\
+  98.9\% & 0.53 & 12.00 & \texttt{inside same grid} \\
+  128.6\% & 0.41 & 9.00 & \texttt{inside == int scalar (value raw)} \\
+  128.6\% & 0.41 & 9.00 & \texttt{inside Q8.8 == int scalar (index raw)} \\
 \end{benchtable}
 
 \noindent
-Comparison against a scalar reaches native parity --- and does so with
-\emph{fewer} instructions than the native path (136 and 139 against 152),
-because the grid tells the compiler the comparison can be done on raw storage
-without a conversion.
-
-\begin{benchtable}{f64-backed add (dyadic 1/16384 grid)}
-  100.0\% & 7.13 & 147.00 & \texttt{native double} \\
-  42.5\% & 16.78 & 294.00 & \texttt{inside<f64>} \\
-\end{benchtable}
+Comparison against a scalar beats native, with \emph{fewer} instructions (9
+against 12), because the grid tells the compiler the comparison can be done on
+raw storage without a conversion.
 
 \begin{benchtable}{exact-backed add (rational storage)}
-  100.0\% & 36.37 & 453.96 & \texttt{native fraction} \\
-  505.5\% & 7.19 & 147.00 & \texttt{std double (reference)} \\
-  64.8\% & 56.12 & 800.93 & \texttt{inside<exact>} \\
+  100.0\% & 4.87 & 97.20 & \texttt{native fraction} \\
+  518.5\% & 0.94 & 12.00 & \texttt{std double (reference)} \\
+  79.1\% & 6.16 & 127.98 & \texttt{inside<exact>} \\
 \end{benchtable}
 
 \noindent
-Exact rational arithmetic costs about 35\% against a hand-rolled reduced
-\code{int64} fraction, and roughly 8$\times$ against \code{double} --- which is
-the price of the exactness demonstrated in \S\ref{sec:correctness}, not an
-inefficiency. If you do not need exact thirds, do not ask for them.
-
-\begin{benchtable}{math: sqrt}
-  100.0\% & 4.97 & 108.00 & \texttt{std double} \\
-  10.5\% & 47.15 & 670.00 & \texttt{beman::inside::math inside} \\
-\end{benchtable}
-
-\begin{benchtable}{math: sin}
-  100.0\% & 7.62 & 174.52 & \texttt{std double} \\
-  11.8\% & 64.41 & 845.13 & \texttt{beman::inside::math inside} \\
-\end{benchtable}
-
-\noindent
-The transcendentals are the most expensive thing in the library, running at
-roughly 9--12\% of \code{std}. They buy bit-exact reproducibility across
-platform, optimisation level and FP flags, and in the CORDIC engine's case they
-run with no FPU at all. That is a real trade and it should be made
-deliberately.
+Exact rational arithmetic costs about 25\% against a hand-rolled reduced
+\code{int64} fraction, and roughly 6.5$\times$ against \code{double} --- which
+is the price of the exactness demonstrated in \S\ref{sec:correctness}, not an
+inefficiency. If you do not need exact thirds, do not ask for them: a grid
+with a fixed notch (cents, $2^{-14}$) stores an integer and pays none of this.
 
 \begin{benchtable}{sort 10k (per element)}
-  100.0\% & 281.65 & 3{,}942.63 & \texttt{native int16} \\
-  80.3\% & 350.93 & 4{,}892.36 & \texttt{inside} \\
+  100.0\% & 15.14 & 104.12 & \texttt{native int16} \\
+  95.4\% & 15.87 & 99.27 & \texttt{inside} \\
 \end{benchtable}
 
 \begin{benchtable}{transform v+1 10k (per element)}
-  100.0\% & 1.33 & 38.02 & \texttt{native uint8} \\
-  22.5\% & 5.94 & 102.02 & \texttt{inside u255 (16-bit storage)} \\
-  23.1\% & 5.78 & 102.02 & \texttt{inside u254 (8-bit storage)} \\
+  100.0\% & 0.01 & 0.32 & \texttt{native uint8} \\
+  99.3\% & 0.01 & 0.32 & \texttt{inside u255 (8-bit storage)} \\
 \end{benchtable}
+
+\subsection{What correct rounding costs}\label{sec:mathcost}
+
+\code{beman::inside::math} returns the correctly rounded point of its
+\emph{output} grid, and its cost follows that grid: a coarse output needs few
+bits, a fine one needs many. The generated report measures the functions onto
+the output grid deduced from a $2^{-14}$ input, and there they often keep pace
+with \code{<cmath>}:
+
+\begin{center}
+\small
+\begin{tabular}{@{}l r r r@{}}
+\toprule
+Function (deduced grid) & \code{std} ns & \code{inside} ns & rel. \\
+\midrule
+\code{sin}   & 3.71 & 3.79 &  97.8\% \\
+\code{hypot} & 2.95 & 2.49 & 118.7\% \\
+\code{atan2} & 7.67 & 6.56 & 117.0\% \\
+\code{log}   & 2.61 & 4.30 &  60.5\% \\
+\code{sqrt}  & 1.22 & 1.86 &  66.0\% \\
+\code{exp}   & 2.87 & 6.21 &  46.2\% \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent
+That comparison flatters the library, and should be read with the grid in
+mind: \code{std::sin} computes to a \code{double}'s 53 bits, while the
+\code{inside} rows compute to their deduced output grids --- 15 bits for
+\code{sin} ($[-1,1]$ in steps of $2^{-14}$), 12 for \code{log}, 17 for
+\code{sqrt}, 26 for \code{exp}. The fair question is
+what correct rounding costs at the resolution of a \code{double} itself.
+\file{p04\_math\_cost.cpp} measures both, onto output grids with close to
+$2^{53}$ slots:
+
+\begin{center}
+\small
+\begin{tabular}{@{}l r r r r@{}}
+\toprule
+Function & \code{std} ns & deduced grid ns & \code{double}-fine ns & fine vs.\ \code{std} \\
+\midrule
+\code{sin}  ($2^{-52}$) & 3.40 & 3.50 & 36.1 & 10.6$\times$ \\
+\code{exp}  ($2^{-40}$ on $[0,4096]$) & 2.66 & 5.57 & 21.1 & 7.9$\times$ \\
+\code{log}  ($2^{-48}$) & 2.32 & 3.99 & 41.8 & 18.0$\times$ \\
+\code{sqrt} ($2^{-51}$) & 1.23 & 1.60 & 9.30 & 7.6$\times$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent
+\emph{Mean of three runs pinned to one core; GCC 15.2.0, \code{-O3 -mfma},
+x86-64.}
+
+At full \code{double} resolution, correct rounding costs \textbf{8 to
+18$\times$} \code{std}. That buys results that are correct to the last bit
+and identical on every platform, compiler, optimisation level and FPU or
+none --- properties \code{<cmath>} does not offer. It is a real trade, and it
+should be made deliberately: ask for the output grid you need, not the finest
+one available.
 
 \subsection{Reading these numbers honestly}
 
@@ -1417,42 +1524,45 @@ Five conclusions, stated plainly:
 \begin{enumerate}
 \item \textbf{There is no single cost.} The measurements in this section span
       negative cost (22\% faster than checked native, \S\ref{sec:checks}), zero
-      cost (byte-identical codegen, \S\ref{sec:performance}) and real cost
-      (8$\times$ for exact rationals). Any summary of the form ``\code{inside}
-      costs $N$\%'' is wrong in at least one direction; the honest question is
-      always \emph{which regime does my code sit in}.
+      cost (byte-identical codegen, \S\ref{sec:codegen}) and real cost
+      (6.5$\times$ for exact rationals, up to 18$\times$ for correctly
+      rounded math at full resolution). Any summary of the form
+      ``\code{inside} costs $N$\%'' is wrong in at least one direction; the
+      honest question is always \emph{which regime does my code sit in}.
 \item \textbf{Compare against code that does the same job.} The single largest
       source of misleading numbers here is the unchecked native baseline. It is
       the fastest row in every table because it enforces nothing --- it is the
       code whose failures fill \S\ref{sec:indictment}. Measured against native
       code that actually enforces the range, \code{inside<checked>} runs at
-      87.4\% (\S\ref{sec:fair}), not the 16.5\% that the unchecked column in
-      the imported \code{add} table implies --- and on a chain of operations it
-      is 22\% \emph{faster} than the checked native type
-      (\S\ref{sec:checks}).
-\item \textbf{The fast paths are genuinely free.} Aligned integer arithmetic
-      and scalar comparison compile to the same instructions as \code{int},
-      verified by disassembly and guarded in CI. \code{inside<unsafe>} measured
-      at 99.9\% of unchecked native in \S\ref{sec:fair}, by a different method,
-      which is the same answer.
+      87.1\% (\S\ref{sec:fair}), and on a chain of operations it is 22\%
+      \emph{faster} than the checked native type (\S\ref{sec:checks}).
+\item \textbf{The fast paths are genuinely free.} Aligned integer arithmetic,
+      scalar comparison, sorting and generic algorithms compile to the same
+      instructions as \code{int}, verified by disassembly and guarded by the
+      test suite. \code{inside<unsafe>} measured at 99.7\% of unchecked
+      native in \S\ref{sec:fair}, by a different method, which is the same
+      answer.
 \item \textbf{Some paths genuinely cost, and no baseline choice rescues them.}
-      Exact rational arithmetic is roughly 8$\times$ \code{double};
-      \code{beman::inside::math} transcendentals run at 9--12\% of \code{std}; a
-      \code{std::accumulate} over \code{inside} lands at 2.9\%. These buy
-      exactness and bit-reproducibility respectively, and if you do not need
-      those properties you should not pay for them.
+      Exact rational arithmetic is roughly 6.5$\times$ \code{double}; a
+      loop that checks every element runs at 20\% of native; correctly rounded
+      transcendentals at full \code{double} resolution are 8--18$\times$
+      \code{std}. These buy exactness, a range guarantee and bit-exact
+      reproducibility respectively, and if you do not need those properties
+      you should not pay for them.
 \item \textbf{API choice dominates policy choice.} Moving from a checked
-      element-wise loop to \code{beman::inside::sum} gained more (3.3$\times$) than
-      switching from \code{checked} to \code{unsafe} does. Reach for the bulk
-      operations before reaching for the unsafe policy.
+      element-wise loop to \code{beman::inside::sum} gained 2.5$\times$;
+      choosing a coarser output grid for a transcendental can gain 10$\times$.
+      Reach for the bulk operations and the right grid before reaching for
+      the \code{unsafe} policy.
 \end{enumerate}
 
 \noindent
 The imported tables are a single run on one machine with frequency scaling
-enabled; \S\ref{sec:fair} is a mean of three runs of a program included in the
-companion directory. Both establish orders of magnitude, not precise ratios.
-Anyone making a decision on the margin should re-run \code{perf\_report} and
-\file{p02\_fair\_bench.cpp} on their own hardware.
+enabled; \S\ref{sec:fair}, \S\ref{sec:checks} and \S\ref{sec:mathcost} are
+means of three runs of programs included in the companion directory. All of
+them establish orders of magnitude, not precise ratios. Anyone making a
+decision on the margin should re-run \code{perf\_report} and the \file{p0*}
+programs on their own hardware.
 
 % ============================================================================
 \section{When not to use this}\label{sec:limits}
@@ -1460,11 +1570,13 @@ Anyone making a decision on the margin should re-run \code{perf\_report} and
 Intellectual honesty requires the other side of the ledger.
 
 \begin{itemize}
-\item \textbf{It is alpha software.} The README says so; the public API may
-      change between versions. That is a real adoption risk for long-lived
-      code.
+\item \textbf{It is not yet ready for production.} The README says so (the
+      Beman ``under development'' maturity level); the public API may change
+      between versions. That is a real adoption risk for long-lived code.
 \item \textbf{It requires C++23}, which rules out a good deal of existing
-      work. GCC 13+, Clang 19+ (Clang 18 with libc++), MSVC 19.36+.
+      work: GCC 14+, Clang 19+ (Clang 18 with libc++). MSVC is not supported.
+      Grids past 64 bits need C++26 static reflection, today GCC~16 with
+      \code{-freflection}.
 \item \textbf{Compile times increase.} The arithmetic is a compile-time
       computation over grids; that work has to happen somewhere, and it happens
       in your build.
@@ -1477,6 +1589,11 @@ Intellectual honesty requires the other side of the ledger.
       unreachable, and it means \code{auto} variables in a chain of arithmetic
       acquire progressively wider types. That is correct, and it is not what
       most C++ programmers expect.
+\item \textbf{Correct rounding is not free.} The transcendentals return the
+      correctly rounded grid point, and at the resolution of a \code{double}
+      that costs 8--18$\times$ \code{<cmath>} (\S\ref{sec:mathcost}). Code
+      that needs \code{double} throughput and tolerates \code{double} error
+      should call \code{<cmath>}.
 \item \textbf{Not everything needs it.} A loop counter over a small container
       is not where numeric bugs come from. The cases that justify the
       machinery are the ones where a wrong answer is expensive: money, physical
@@ -1532,20 +1649,24 @@ g++ -std=c++23 -O0 h01_overflow_ub.cpp -o h01_O0    # compare the two
 # the inside programs need the library on the include path
 g++ -std=c++23 -O2 -I ../../include b01_no_overflow.cpp -o b01
 
-# or against the committed single header, with no other -I
-g++ -std=c++23 -O2 -I ../../single_include b01_no_overflow.cpp -o b01
+# b11 needs C++26 static reflection
+g++-16 -std=c++26 -freflection -O2 -I ../../include b11_no_ceiling.cpp -o b11
+
+# the committed single header holds io.hpp and cmath.hpp too: to build
+# against it, include only <beman/inside/inside.hpp> and use
+#   -I ../../single_include
 
 # the two x*.cpp files are expected to FAIL to compile, by design
 g++ -std=c++23 -I ../../include x01_bare_int_rejected.cpp    # error, as intended
 \end{lstlisting}
 
 \noindent
-The library itself builds with CMake 3.24+:
+The library itself builds with CMake 3.30+, through its presets:
 
 \begin{lstlisting}[style=term]
-cmake -B build && cmake --build build
-ctest --test-dir build --output-on-failure
-ctest --test-dir build -L example        # run the 30+ example programs
+cmake --preset gcc-release && cmake --build --preset gcc-release
+ctest --preset gcc-release
+ctest --preset gcc-release -L example    # run the 36 example programs
 \end{lstlisting}
 
 \section{Program index}
@@ -1583,6 +1704,7 @@ File & Demonstrates \\
 \file{b07\_rounding.cpp}          & Every rounding mode honoured \\
 \file{b08\_index.cpp}             & Bounded indices \\
 \file{b10\_negation.cpp}          & Negation reflects the grid \\
+\file{b11\_no\_ceiling.cpp}       & Grids past 64 bits (C++26) \\
 \midrule
 \file{m\_before.cpp} / \file{m\_after.cpp} & The worked migration \\
 \file{x01\_bare\_int\_rejected.cpp} & Bare literal rejected (expected failure) \\
@@ -1590,6 +1712,7 @@ File & Demonstrates \\
 \file{p01\_codegen.cpp}             & Fast path vs.\ native disassembly \\
 \file{p02\_fair\_bench.cpp}         & Like-for-like benchmark vs.\ checked native \\
 \file{p03\_check\_elision.cpp}      & Chain of ops: inside elides checks native cannot \\
+\file{p04\_math\_cost.cpp}          & What correct rounding costs, coarse and fine \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -1612,10 +1735,15 @@ File & Demonstrates \\
       23(1):5--48, 1991.
 \item ISO/IEC 14882, \emph{Programming languages --- C++}, \S7.1 [expr.pre]
       (undefined behaviour on overflow), \S7.4 [conv.integral].
-\item The \code{inside} repository: \file{README.md}, \file{docs/tutorial.md},
-      \file{docs/policies.md}, \file{docs/arithmetic.md},
+\item A.~Ziv, ``Fast evaluation of elementary mathematical functions with
+      correctly rounded last bit,'' \emph{ACM Transactions on Mathematical
+      Software}, 17(3):410--423, 1991.
+\item \begin{sloppypar}The \code{inside} repository,
+      \url{https://github.com/PeterNeiss/inside}: \file{README.md},
+      \file{docs/tutorial.md}, \file{docs/policies.md},
+      \file{docs/arithmetic.md}, \file{docs/storage.md}, \file{docs/math.md},
       \file{docs/determinism.md}, \file{docs/accuracy.md},
-      \file{docs/performance.md}.
+      \file{docs/performance.md}.\end{sloppypar}
 \end{enumerate}
 
 \end{document}
