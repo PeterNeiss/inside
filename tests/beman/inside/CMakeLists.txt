@@ -7,6 +7,13 @@ include(GoogleTest)
 # Unit tests: one executable per <name>.test.cpp
 #---------------------------------------------------------------------------
 file(GLOB BEMAN_INSIDE_TEST_SOURCES CONFIGURE_DEPENDS *.test.cpp)
+# The tools and smoke builds below are *.test.cpp too (Beman file.test_names),
+# but not GTest executables.
+list(
+    FILTER BEMAN_INSIDE_TEST_SOURCES
+    EXCLUDE
+    REGEX "/(accuracy|bench|fuzz|perf_codegen|perf_workload|single_header(_[a-z]+)?_smoke)\\.test\\.cpp$"
+)
 foreach(test_src ${BEMAN_INSIDE_TEST_SOURCES})
     get_filename_component(test_name ${test_src} NAME)
     string(REGEX REPLACE "\\.test\\.cpp$" "" test_name "${test_name}")
@@ -56,7 +63,7 @@ set_tests_properties(
 
 # Self-containment smoke: a TU that sees ONLY single_include/ proves the single
 # header stands alone.
-add_executable(beman.inside.tests.single_header_smoke single_header_smoke.cpp)
+add_executable(beman.inside.tests.single_header_smoke single_header_smoke.test.cpp)
 target_include_directories(
     beman.inside.tests.single_header_smoke
     PRIVATE "${single_include_dir}"
@@ -76,7 +83,7 @@ target_link_libraries(
 # compiles with neither <string> nor the C++ exception ABI on its own surface.
 add_executable(
     beman.inside.tests.single_header_freestanding_smoke
-    single_header_freestanding_smoke.cpp
+    single_header_freestanding_smoke.test.cpp
 )
 target_include_directories(
     beman.inside.tests.single_header_freestanding_smoke
@@ -120,7 +127,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     add_library(
         beman.inside.tests.single_header_nofp_smoke
         OBJECT
-        single_header_nofp_smoke.cpp
+        single_header_nofp_smoke.test.cpp
     )
     # The poison dir must precede single_include AND the system dirs. BEFORE
     # keeps it ahead of single_include; angle-bracket search already places -I
@@ -163,7 +170,7 @@ if(
         NAME beman.inside.tests.codegen_guard
         COMMAND
             ${CMAKE_CURRENT_SOURCE_DIR}/check_codegen.sh ${CMAKE_CXX_COMPILER}
-            ${CMAKE_CURRENT_SOURCE_DIR}/perf_codegen.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/perf_codegen.test.cpp
             ${PROJECT_SOURCE_DIR}/include ${codegen_std} "${CMAKE_CXX_FLAGS}"
     )
     set_tests_properties(
@@ -185,7 +192,7 @@ if(BEMAN_INSIDE_BUILD_TOOLS)
     )
     FetchContent_MakeAvailable(nanobench)
 
-    add_executable(beman.inside.bench bench.cpp)
+    add_executable(beman.inside.bench bench.test.cpp)
     target_link_libraries(
         beman.inside.bench
         PRIVATE beman::inside beman.inside.warnings nanobench
@@ -199,7 +206,7 @@ if(BEMAN_INSIDE_BUILD_TOOLS)
         COMMENT "Regenerating docs/performance.md"
     )
 
-    add_executable(beman.inside.fuzz fuzz.cpp)
+    add_executable(beman.inside.fuzz fuzz.test.cpp)
     target_link_libraries(
         beman.inside.fuzz
         PRIVATE beman::inside beman.inside.warnings
@@ -207,7 +214,7 @@ if(BEMAN_INSIDE_BUILD_TOOLS)
 
     # Accuracy characterization: sweeps the math engine against a long-double
     # <cmath> reference and emits a markdown error table.
-    add_executable(beman.inside.accuracy accuracy.cpp)
+    add_executable(beman.inside.accuracy accuracy.test.cpp)
     target_link_libraries(
         beman.inside.accuracy
         PRIVATE beman::inside beman.inside.warnings
@@ -219,7 +226,7 @@ if(BEMAN_INSIDE_BUILD_TOOLS)
     )
 
     # Cachegrind instruction-count workload, driven by check_perf.py.
-    add_executable(beman.inside.perf_workload perf_workload.cpp)
+    add_executable(beman.inside.perf_workload perf_workload.test.cpp)
     target_link_libraries(
         beman.inside.perf_workload
         PRIVATE beman::inside beman.inside.warnings

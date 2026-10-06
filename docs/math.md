@@ -263,7 +263,7 @@ and floating-point outputs alike (`sin` of a 129-slot input onto an `f64`
 grid: 6.8 → 2.2 ns, `cbrt` 14.9 → 2.2 ns). Each table adds
 about 0.13 s of compile time on GCC; `BEMAN_INSIDE_MATH_TABLE_SLOTS=0` turns
 tables off. The tables in [performance.md](performance.md) are the current
-`bench.cpp` numbers.
+`bench.test.cpp` numbers.
 
 ## Where correctness comes first
 

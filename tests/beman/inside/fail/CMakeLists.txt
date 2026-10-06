@@ -10,9 +10,9 @@
 # test only when the build output contains the expected diagnostic — a TU that
 # wrongly compiles produces no diagnostic and fails the test. RUN_SERIAL keeps
 # concurrent `cmake --build` invocations out of each other's way.
-# control_compiles.cpp is the harness control: valid code that must build.
+# control_compiles.test.cpp is the harness control: valid code that must build.
 #---------------------------------------------------------------------------
-file(GLOB BEMAN_INSIDE_FAIL_SOURCES CONFIGURE_DEPENDS *.cpp)
+file(GLOB BEMAN_INSIDE_FAIL_SOURCES CONFIGURE_DEPENDS *.test.cpp)
 
 foreach(src ${BEMAN_INSIDE_FAIL_SOURCES})
     get_filename_component(case_name ${src} NAME_WE)
@@ -80,7 +80,7 @@ add_library(
     beman.inside.tests.fail.control_compiles
     OBJECT
     EXCLUDE_FROM_ALL
-    control_compiles.cpp
+    control_compiles.test.cpp
 )
 target_link_libraries(
     beman.inside.tests.fail.control_compiles
