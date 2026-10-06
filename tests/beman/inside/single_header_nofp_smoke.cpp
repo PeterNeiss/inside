@@ -3,6 +3,8 @@
 // the no-hardware-floating-point path. Proves two things at compile time:
 //   1. The single header builds with NO <cmath> — a poison <cmath> shim (placed
 //      first on the include path by CMake) hard-errors if anything pulls it in.
+//      BEMAN_INSIDE_NO_STRING leaves out the io region: libc++'s <ostream>
+//      includes <format>, and with it <cmath>, on its own.
 //   2. With the double engine compiled out, the always-present integer/CORDIC
 //      engine still serves the full beman::inside::math transcendental API.
 // Built on demand via the `single_header_nofp_smoke` target (EXCLUDE_FROM_ALL).

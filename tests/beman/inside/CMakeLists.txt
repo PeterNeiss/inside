@@ -138,7 +138,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     )
     target_compile_definitions(
         beman.inside.tests.single_header_nofp_smoke
-        PRIVATE BEMAN_INSIDE_MATH_NO_FP
+        PRIVATE BEMAN_INSIDE_MATH_NO_FP BEMAN_INSIDE_NO_STRING
     )
 endif()
 

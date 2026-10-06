@@ -116,7 +116,9 @@ types **and values** are unchanged: results are correctly rounded either way.
 - Holds for the modular headers **and** the amalgamated
   [single header](single-header.md). A CI smoke (`single_header_nofp_smoke`) compiles
   the single header with a *poison* `<cmath>` shim first on the include path, so the
-  build fails if any `<cmath>` sneaks in.
+  build fails if any `<cmath>` sneaks in. It defines `BEMAN_INSIDE_NO_STRING` too:
+  `io.hpp`'s streams bring `<cmath>` along on libc++, whose `<ostream>` includes
+  `<format>`.
 - All transcendentals are `constexpr` in every build, so they evaluate at compile time
   as well as runtime.
 
