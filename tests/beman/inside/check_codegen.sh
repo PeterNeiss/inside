@@ -4,19 +4,28 @@
 # fast paths did not regress — see that file's header for the rationale.
 #
 # Usage: check_codegen.sh <cxx> <source> <include-dir> <std> [<flags>]
-# <flags> is the build's CMAKE_CXX_FLAGS as one string (e.g. -stdlib=libc++).
+# <flags> is the build's CMAKE_CXX_FLAGS as one string (e.g. -stdlib=libc++);
+# flags that change inlining or add instrumentation (coverage, profiling,
+# sanitizers, -fno-inline, optimization and debug levels) are dropped.
 # Exits non-zero (with the offending disassembly) if either invariant fails.
 set -euo pipefail
 
 CXX="${1:?compiler}"; SRC="${2:?source}"; INC="${3:?include dir}"; STD="${4:-23}"
-read -r -a FLAGS <<< "${5:-}"
+read -r -a ALL <<< "${5:-}"
+FLAGS=()
+for f in "${ALL[@]}"; do
+  case "$f" in
+    --coverage|-fprofile*|-ftest-coverage|-fsanitize*|-fno-sanitize*|-fno-inline*|-fno-default-inline|-O*|-g*) ;;
+    *) FLAGS+=("$f") ;;
+  esac
+done
 
 OBJ="$(mktemp --suffix=.o)"
 trap 'rm -f "$OBJ"' EXIT
 
 # Force -O2 regardless of the project's build type: this guards *optimized*
 # codegen, which is what ships and what a refactor can pessimize.
-"$CXX" "${FLAGS[@]}" -std="c++${STD}" -O2 -I "$INC" -c "$SRC" -o "$OBJ"
+"$CXX" ${FLAGS[@]+"${FLAGS[@]}"} -std="c++${STD}" -O2 -I "$INC" -c "$SRC" -o "$OBJ"
 
 # -r prints each call's relocation (its target symbol) on the next line.
 DIS="$(objdump -drC --no-show-raw-insn "$OBJ")"
