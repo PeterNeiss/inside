@@ -1037,23 +1037,26 @@ TEST(MathAdaptiveTest, results_do_not_depend_on_output_storage)
 }
 
 // hypot's integer path holds x² + y² over two different denominators (an
-// undersized fraction went wrong past about 2^-46).
+// undersized fraction went wrong past about 2^-46). Checked exactly: with
+// x = a/512, y = b/1000 and the result M·2^-48, |M·2^-48 − √(x² + y²)| ≤
+// 2^-49 is (2M − 1)²·5^6 ≤ 2^74·P ≤ (2M + 1)²·5^6, P = a²·10^6 + b²·2^18
+// (a long double reference is only a double on some targets).
 TEST(MathAdaptiveTest, hypot_on_mixed_grids_at_fine_outputs)
 {
   using xd = inside<{{-4, 4}, rational{1, 512}}, round_nearest>;
   using ym = inside<{{-4, 4}, rational{1, 1000}}, round_nearest>;
   using o48 = inside<{{-1024, 1024}, rational{1, umax{1} << 48}}, round_nearest>;
+  using u128 = unsigned __int128;
   int bad = 0;
   for (int i = 0; i <= 4096; i += 97)
     for (int j = 0; j <= 8000; j += 211)
     {
-      const xd x{rational{i - 2048, 512}};
-      const ym y{rational{j - 4000, 1000}};
-      const ld xv = static_cast<ld>(i - 2048) / 512, yv = static_cast<ld>(j - 4000) / 1000;
-      const ld h = std::sqrt(xv * xv + yv * yv);
-      const ld got = static_cast<ld>(static_cast<rational>(am::hypot_into<o48>(x, y)).Numerator)
-                   / static_cast<ld>(static_cast<rational>(am::hypot_into<o48>(x, y)).Denominator);
-      if (std::fabs(got - h) > 0x1p-49L + 0x1p-60L * h) ++bad;
+      const long long a = i - 2048, b = j - 4000;
+      const rational r = static_cast<rational>(am::hypot_into<o48>(xd{rational{a, 512}}, ym{rational{b, 1000}}));
+      const u128 m2 = u128{r.Numerator} * ((umax{1} << 48) / static_cast<umax>(r.Denominator)) * 2;
+      const u128 p74 = u128(static_cast<umax>(a * a * 1'000'000 + b * b * (1 << 18))) << 74;
+      const u128 lo = m2 == 0 ? 0 : (m2 - 1) * (m2 - 1) * 15625, hi = (m2 + 1) * (m2 + 1) * 15625;
+      if (!(lo <= p74 && p74 <= hi)) ++bad;
     }
   EXPECT_EQ(bad, 0);
 }
