@@ -6862,6 +6862,7 @@ namespace beman::inside::detail
 //---------------------------------------------------------------------------
 
 
+
 //---------------------------------------------------------------------------
 // division / modulo. `division::div` returns expected<result, errc> (division by zero
 // is always runtime-possible). Two paths: native (integer-aligned grids +
@@ -6976,6 +6977,45 @@ namespace beman::inside::detail
     }
   }
 
+  // Every value of a 64-bit grid with a nonzero notch (or a point grid) is
+  // n/d with d | Den and |n| ≤ Num: Den = lcm(den(lower), den(notch)) (the
+  // upper limit's denominator divides it too), Num = max(|lower|, |upper|)·Den.
+  // Ok is false when a bound passes 64 bits.
+  struct value_bounds { umax Num, Den; bool Ok; };
+
+  template <insidable B>
+  constexpr value_bounds value_bounds_of() noexcept
+  {
+    const rational lo = lower64<B>, hi = upper64<B>, n = notch64<B>;
+    const umax dl = abs_den(lo.Denominator), dn = n.Numerator == 0 ? umax{1} : abs_den(n.Denominator);
+    umax den, nlo, nhi;
+    if (mul_overflow(dl / std::gcd(dl, dn), dn, &den)) return {0, 0, false};
+    if (mul_overflow(lo.Numerator, den / dl, &nlo)) return {0, 0, false};
+    if (mul_overflow(hi.Numerator, den / abs_den(hi.Denominator), &nhi)) return {0, 0, false};
+    return {nlo > nhi ? nlo : nhi, den, true};
+  }
+
+  // The checked rational quotient (a/b)/(c/d) = (a·d)/(b·c) cannot overflow
+  // for any values of L and R: c, a·d and b·c stay within the rational's
+  // fields (rational::div_impl). Bounded only for 64-bit grids with nonzero
+  // notches and point grids; a continuous or exact-valued operand gives false.
+  template <insidable L, insidable R>
+  constexpr bool quotient_fits_rational() noexcept
+  {
+    if constexpr (exact_valued<L> || exact_valued<R>)
+      return false;
+    else
+    {
+      constexpr auto bounded = []<insidable B>() { return notch64<B>.Numerator != 0 || lower64<B> == upper64<B>; };
+      if (!bounded.template operator()<L>() || !bounded.template operator()<R>()) return false;
+      constexpr value_bounds l = value_bounds_of<L>(), r = value_bounds_of<R>();
+      constexpr umax imax_max = static_cast<umax>(std::numeric_limits<imax>::max());
+      umax ad, bc;
+      return l.Ok && r.Ok && r.Num <= imax_max && !mul_overflow(l.Num, r.Den, &ad)
+          && !mul_overflow(l.Den, r.Num, &bc) && bc <= imax_max;
+    }
+  }
+
   template <insidable L, insidable R = L, policy_flag F = none>
   struct division
   {
@@ -7038,11 +7078,13 @@ namespace beman::inside::detail
 
     // For a nonzero divisor the op fails only on the checked rational path
     // (overflow). So when the divisor excludes zero AND this is false, `div`
-    // returns a plain `result` rather than expected<result, errc>.
+    // returns a plain `result` rather than expected<result, errc>. The
+    // operand grids may prove the quotient fits (quotient_fits_rational).
     // A wide-index operand's quotient may outgrow the 64-bit rational
     // whatever the policy, so that path always reports.
+    static constexpr bool fits_rational = quotient_fits_rational<L, R>();
     static constexpr bool may_overflow_nonzero =
-        !native_div && !fp_raw<result>
+        !native_div && !fp_raw<result> && !fits_rational
         && (needs_overflow_check<F> != 0 || exact_valued<L> || exact_valued<R>);
 
     // Real division can still fail on a zero divisor, so it uses the same
@@ -7130,7 +7172,7 @@ namespace beman::inside::detail
       if (!q) [[unlikely]] return fail(errc::overflow, "rational overflow in div");
       return result::from_raw(*q);
     }
-    else if constexpr (needs_overflow_check<G>)
+    else if constexpr (needs_overflow_check<G> && !fits_rational)
     {
       rational rhs_r = rhs;
       if constexpr (!zero_unchecked)

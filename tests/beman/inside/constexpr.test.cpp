@@ -260,15 +260,15 @@ TEST(ConstexprTest, constexpr_inside_plus_on_fractional_notch_grids)
   static_assert(a * b == rational{15u, 4});
 }
 
-// constexpr: division returns std::expected
-TEST(ConstexprTest, constexpr_division_returns_expected)
+// constexpr: exact division by a zero-free divisor is a plain value
+TEST(ConstexprTest, constexpr_division_returns_exact_value)
 {
   using v = inside<{1, 255}>;
   constexpr v a{102};
   constexpr v b{16};
   constexpr auto q = a / b;
-  static_assert(q.has_value());
-  static_assert(*q == *(51_r / 8));
+  static_assert(!is_expected_v<decltype(q)>);
+  static_assert(q == *(51_r / 8));
 
   // snap selects native integer division — result has integer raw
   using vi = inside<{0, 100}, snap>;

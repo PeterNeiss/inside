@@ -68,20 +68,15 @@ TEST(LiteralsTest, ins_literal_produces_point_inside_just_value)
 // a_b / b_b ~= rational{a,b} - value-equivalent (expected-wrapped)
 TEST(LiteralsTest, a_b_b_b_rational_a_b_value_equivalent_expected_wrapped)
 {
-  // Verification §6 from the plan: `inside / inside` is the *checked* division,
-  // so the result is `std::expected<inside, errc>` even when both operands are
-  // point bounds. The inner inside has grid {a/b, a/b}, value a/b — so value
-  // equality holds, but the type carries an expected wrapper. For a fully
-  // unwrapped point inside, write `just<rational{a, b}>` directly, or use the
-  // `_r` literal forms (`3_r / 4_r` has the same property at the rational layer).
+  // Point bounds: the divisor is a nonzero point and the quotient provably
+  // fits, so `inside / inside` is a plain point inside with grid {a/b, a/b}.
   constexpr auto three_quarters = 3_ins / 4_ins;
   static_assert(three_quarters == rational{3, 4});
-  static_assert(three_quarters.has_value());
+  static_assert(!is_expected_v<decltype(three_quarters)>);
 
-  // The inner inside *is* a point inside with the expected grid.
-  using inner_t = typename decltype(three_quarters)::value_type;
-  static_assert(lower_of<inner_t> == rational{3, 4});
-  static_assert(upper_of<inner_t> == rational{3, 4});
+  using point_t = std::remove_cv_t<decltype(three_quarters)>;
+  static_assert(lower_of<point_t> == rational{3, 4});
+  static_assert(upper_of<point_t> == rational{3, 4});
 }
 
 // _r and _ins agree

@@ -91,9 +91,8 @@ TEST(InsideArithmeticTest, inside_div_rational_vs_integer_paths)
     using r = inside<{1, 255}>;
     constexpr r a{102};
     constexpr r b{16};
-    constexpr auto c = a / b;
-    static_assert(c.has_value());
-    static_assert(*c == *(51_r/8));
+    constexpr auto c = a / b;              // zero-free divisor: a plain value
+    static_assert(c == *(51_r/8));
   }
 
   {
@@ -179,6 +178,25 @@ TEST(InsideArithmeticTest, inside_div_rational_vs_integer_paths)
     static_assert(is_expected_v<decltype(a / s)>);
     ASSERT_TRUE((a / s).has_value());
     ASSERT_EQ(*(a / s), 21);
+  }
+  {
+    SCOPED_TRACE("exact division: a zero-free divisor whose quotient provably fits");
+    using val = inside<{-100, 100}>;
+    using pos = inside<{1, 100}>;
+    constexpr val n{-7};
+    constexpr pos d{2};
+    // The exact quotient's 64-bit rational cannot overflow on these grids, and
+    // the divisor excludes zero: a plain value, nothing to unwrap.
+    static_assert(!is_expected_v<decltype(n / d)>);
+    static_assert(static_cast<rational>(n / d) == rational{-7, 2});
+    // A divisor grid containing zero still reports.
+    static_assert(is_expected_v<decltype(n / val{2})>);
+    // Grids whose values need 2^40 denominators: the quotient may pass 64
+    // bits, so the checked rational path stays.
+    using fine = inside<{{0, 1}, rational{1, umax{1} << 40}}>;
+    using fpos = inside<{{1, 2}, rational{1, umax{1} << 40}}>;
+    static_assert(is_expected_v<decltype(fine{0.5} / fpos{1.5})>);
+    EXPECT_EQ(static_cast<rational>(*(fine{0.5} / fpos{1.5})), (rational{1, 3}));
   }
 }
 

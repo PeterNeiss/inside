@@ -41,7 +41,8 @@ excludes zero (`Lower > 0 || Upper < 0` — the `divisor_excludes_zero` trait) a
 the operation can't otherwise fault; then there is nothing to unwrap.
 Otherwise it returns `std::expected<result, errc>`, because division by zero is a
 runtime possibility (and on the exact-rational path under `checked`, so is
-overflow — which keeps the wrapper even when the divisor is known nonzero).
+overflow of the 64-bit rational — unless the operand grids prove the quotient
+fits, which they do for every integer grid and every literal point).
 The library picks one of **three code paths** at compile time, based on the
 operand grids and whether `snap` is in effect.
 
@@ -104,8 +105,20 @@ auto d = num{42} / pos{3};                   // inside, == 14  (not expected)
 
 The integer / Q-format fast paths (A, B) can only fault on divide-by-zero, so a
 zero-excluding divisor makes them total. The exact-rational path (C) under
-`checked` can also overflow, so it keeps the wrapper even when the divisor is
-known nonzero.
+`checked` can also overflow its 64-bit rational, so it keeps the wrapper unless
+the grids rule that out: every value of a grid is `n/D` with `D` the lcm of the
+lower limit's and the notch's denominators and `|n| ≤ max(|Lower|, |Upper|)·D`,
+and when those bounds keep the quotient's numerator and denominator within 64
+bits for every pair of operands (`detail::quotient_fits_rational`), path C is
+total too — and skips the runtime overflow test:
+
+```cpp
+using val = inside<{-100, 100}>;
+using pos = inside<{1, 100}>;                // excludes zero
+auto e = val{-7} / pos{2};                   // inside (rational raw), == -7/2, not expected
+using fine = inside<{{0, 1}, rational{1, umax{1} << 40}}>;
+auto f = fine{0.5} / inside<{{1, 2}, rational{1, umax{1} << 40}}>{1.5};  // expected: 2^40 denominators may overflow
+```
 
 Otherwise the result is `std::expected<result, errc>`, which has two error
 causes:
