@@ -19,7 +19,7 @@ using score     = inside<{0, 1000}>;
 using altitude  = inside<{-500, 9000}>;
 
 template <typename T>
-void print(std::string_view label, std::vector<T> const& v)
+void show(std::string_view label, std::vector<T> const& v)
 {
   std::cout << label << ": ";
   for (auto const& x : v) std::cout << x << " ";
@@ -33,22 +33,22 @@ int main()
   {
     std::vector<channel> v(8);
     rng::fill(v, channel{128});
-    print("fill", v);
+    show("fill", v);
 
     rng::generate(v, [n = 0]() mutable { return n += 32; });
-    print("generate", v);
+    show("generate", v);
   }
 
   // --- sort ---
   std::cout << "\n--- sort ---\n";
   std::vector<celsius> temps = {21.5, -5.0, 37.0, 0.0, 15.5, -20.0, 42.0, 8.5};
   {
-    print("before", temps);
+    show("before", temps);
     rng::sort(temps);
-    print("sorted", temps);
+    show("sorted", temps);
 
     rng::sort(temps, std::greater<>{});
-    print("descending", temps);
+    show("descending", temps);
   }
 
   // --- min / max ---
@@ -102,8 +102,8 @@ int main()
       d -= 50_ins;
       return d;
     });
-    print("original", src);
-    print("darkened", dst);
+    show("original", src);
+    show("darkened", dst);
   }
 
   // --- reduce ---
@@ -130,12 +130,12 @@ int main()
     std::vector<altitude> positive;
     rng::copy_if(data, std::back_inserter(positive),
                  [](altitude a) { return a > 0; });
-    print("positive", positive);
+    show("positive", positive);
 
     // erase-remove: remove values below sea level
     auto [first, last] = rng::remove_if(data, [](altitude a) { return a < 0; });
     data.erase(first, last);
-    print("above sea level", data);
+    show("above sea level", data);
   }
 
   // --- unique / adjacent_find ---
@@ -148,7 +148,7 @@ int main()
 
     auto [uf, ul] = rng::unique(v);
     v.erase(uf, ul);
-    print("unique", v);
+    show("unique", v);
   }
 
   // --- classic STL (iterator-based) ---
@@ -157,11 +157,11 @@ int main()
     // std::sort with custom comparator
     std::vector<score> v = {500, 100, 800, 300, 700};
     std::sort(v.begin(), v.end());
-    print("sort", v);
+    show("sort", v);
 
     // std::stable_sort descending
     std::stable_sort(v.begin(), v.end(), std::greater<>{});
-    print("stable_sort desc", v);
+    show("stable_sort desc", v);
 
     // std::nth_element — find median
     std::vector<altitude> alt = {3000, -200, 500, 8000, 100, -50, 1500};
@@ -193,7 +193,7 @@ int main()
     std::vector<celsius> deltas(readings.size());
     std::adjacent_difference(readings.begin(), readings.end(), deltas.begin(),
       [](celsius k, celsius l) -> celsius { return celsius{k - l}; });
-    print("adj_diff", deltas);
+    show("adj_diff", deltas);
 
     // std::for_each with side effect
     std::cout << "for_each: ";
@@ -203,12 +203,12 @@ int main()
     // std::reverse
     std::vector<pct> pcts = {10, 30, 50, 70, 90};
     std::reverse(pcts.begin(), pcts.end());
-    print("reverse", pcts);
+    show("reverse", pcts);
 
     // std::rotate
     std::vector<channel> seq = {1, 2, 3, 4, 5};
     std::rotate(seq.begin(), seq.begin() + 2, seq.end());
-    print("rotate", seq);
+    show("rotate", seq);
 
     // std::partition
     std::vector<altitude> mixed = {-100, 500, -30, 2000, 0, -400, 100};
@@ -241,7 +241,7 @@ int main()
     // std::iota (from <numeric>)
     std::vector<channel> iota_v(10);
     std::iota(iota_v.begin(), iota_v.end(), channel{0});
-    print("iota", iota_v);
+    show("iota", iota_v);
   }
 
   // --- inside_range ---
