@@ -67,7 +67,7 @@ tiers agree slot for slot.
 
 The dd tier works the same way with values carried as a sum of two doubles. Its
 kernels use table-driven reductions (2^(i/64)·2^(j/4096) for exp, sin(jπ/128),
-atan(j/32)) and Newton steps for log, sqrt and cbrt. Every table and coefficient
+atan(j/32), ln(j/128) for log) and Newton steps for sqrt and cbrt. Every table and coefficient
 comes at compile time from the integer path's series, computed only in
 translation units that use the tier. Its bound is 2^-88 of the result plus
 2^-92·max(1, |x|), with the same condition-number terms. A test checks that the

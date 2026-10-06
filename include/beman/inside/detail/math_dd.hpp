@@ -297,6 +297,31 @@ namespace beman::inside::math::detail::dd
     }(std::make_integer_sequence<int, 33>{});
   }
 
+  // ln(j/128), j = 96 … 192: sums of ln(i/(i − 1)) = 2·atanh(1/(2i − 1))
+  // outward from j = 128, each a short series at scale S + 16 (a unit lost
+  // per term).
+  template <int S>
+  constexpr std::array<dd, 97> log_table() noexcept
+  {
+    constexpr int W = S + 16;
+    auto step = [](int i) {
+      const fixed d{2 * i - 1}, d2 = d * d;
+      fixed t = (fixed{1} << W) / d, sum{0};
+      for (int k = 1; !t.is_zero(); k += 2)
+      {
+        sum = sum + t / fixed{k};
+        t = t / d2;
+      }
+      return sum + sum;
+    };
+    std::array<dd, 97> r{};
+    fixed acc{0};
+    for (int j = 129; j <= 192; ++j) r[static_cast<std::size_t>(j - 96)] = of_fixed(acc = acc + step(j), W);
+    acc = fixed{0};
+    for (int j = 127; j >= 96; --j) r[static_cast<std::size_t>(j - 96)] = of_fixed(acc = acc - step(j + 1), W);
+    return r;
+  }
+
   // Every constant and table, as members of a class template: computed on
   // first use only, so a translation unit that never reaches the dd tier
   // pays nothing for them (the scale S is a parameter so that GCC cannot
@@ -317,6 +342,7 @@ namespace beman::inside::math::detail::dd
     static constexpr std::array<D, 64> Exp2By4096 = exp2_table<S>(12);
     static constexpr std::array<D, 256> Sin = sin_table<S>();
     static constexpr std::array<D, 33> Atan = atan_table<S>();
+    static constexpr std::array<D, 97> Log = log_table<S>();
     static constexpr D F2 = inv_fact<S>(2), F3 = inv_fact<S>(3), F4 = inv_fact<S>(4), F5 = inv_fact<S>(5);
     static constexpr D F6 = inv_fact<S>(6), F7 = inv_fact<S>(7);
     static constexpr D I3 = inv_int<S>(3), I5 = inv_int<S>(5), I7 = inv_int<S>(7);
@@ -375,13 +401,28 @@ namespace beman::inside::math::detail::dd
     return scale(add_dominant(t, mul(t, p)), ik >> 12);
   }
 
-  // ln x for x > 0: one Newton step on e^y = x from the double log.
+  // ln x for normal x > 0: x = 2^m·f, f in [0.75, 1.5), c = j/128 the
+  // table point nearest f, ln x = m·ln 2 + ln c + 2·atanh s with
+  // s = (f − c)/(f + c), |s| ≤ 1/384. atanh s = s·Σ s^2k/(2k+1); the terms
+  // from s^7 on are below 2^-53 relative and summed in double, those from
+  // s^13 on below 2^-106.
   template <dd_type D>
   inline D log(D x) noexcept
   {
-    const double y0 = fpk::seed_log(x.Hi);
-    const D u = add(mul(x, exp(D{-y0, 0})), -1.0);
-    return add(u, y0);
+    using C = consts<D>;
+    long m = static_cast<long>(std::bit_cast<std::uint64_t>(x.Hi) >> 52) - 1023;
+    D f = scale(x, -m);                                    // [1, 2)
+    if (f.Hi >= 1.5) { f = {f.Hi * 0.5, f.Lo * 0.5}; ++m; }
+    const double j = __builtin_nearbyint(f.Hi * 128);
+    const double c = j * 0x1p-7;
+    const D s = div(two_sum(f.Hi - c, f.Lo), add(f, c));   // f.Hi − c is exact
+    const D z = sqr(s);
+    const double zh = z.Hi;
+    D p = add_dominant(C::I5, zh * fpk::horner(zh, 1.0 / 11, 1.0 / 9, 1.0 / 7));
+    p = add_dominant(C::I3, mul(z, p));                    // 1/3 + z/5 + …
+    p = add_dominant(s, mul(mul(s, z), p));                // atanh s
+    const D t = add(mul(C::Ln2, static_cast<double>(m)), C::Log[static_cast<std::size_t>(j) - 96]);
+    return add(t, D{2 * p.Hi, 2 * p.Lo});
   }
 
   struct sincos_t { dd Sin, Cos; };
