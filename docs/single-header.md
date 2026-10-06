@@ -26,7 +26,7 @@ Where there is no include tree to set up, the single header is the easy way in:
   includes only for single-header libraries — which is exactly what this is):
 
   ```cpp
-  #include <https://raw.githubusercontent.com/NiceAndPeter/inside/main/single_include/beman/inside/inside.hpp>
+  #include <https://raw.githubusercontent.com/PeterNeiss/inside/main/single_include/beman/inside/inside.hpp>
   ```
 
 ## Regenerating it

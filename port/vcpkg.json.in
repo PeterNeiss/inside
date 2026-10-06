@@ -2,7 +2,7 @@
   "name": "beman-inside",
   "version-semver": "@VERSION@",
   "description": "Numbers that cannot go out of range: the range and step size live in the type",
-  "homepage": "https://github.com/NiceAndPeter/inside",
+  "homepage": "https://github.com/PeterNeiss/inside",
   "license": "Apache-2.0 WITH LLVM-exception",
   "dependencies": [
     {

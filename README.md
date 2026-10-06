@@ -6,9 +6,9 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 <!-- markdownlint-disable line-length -->
 [![Library Status](https://raw.githubusercontent.com/bemanproject/beman/refs/heads/main/images/badges/beman_badge-beman_library_under_development.svg)](https://github.com/bemanproject/beman/blob/main/docs/beman_library_maturity_model.md#the-beman-library-maturity-model)
-[![Continuous Integration Tests](https://github.com/NiceAndPeter/inside/actions/workflows/ci_tests.yml/badge.svg)](https://github.com/NiceAndPeter/inside/actions/workflows/ci_tests.yml)
-[![Lint Check (pre-commit)](https://github.com/NiceAndPeter/inside/actions/workflows/pre-commit-check.yml/badge.svg)](https://github.com/NiceAndPeter/inside/actions/workflows/pre-commit-check.yml)
-[![Coverage](https://coveralls.io/repos/github/NiceAndPeter/inside/badge.svg?branch=main)](https://coveralls.io/github/NiceAndPeter/inside?branch=main)
+[![Continuous Integration Tests](https://github.com/PeterNeiss/inside/actions/workflows/ci_tests.yml/badge.svg)](https://github.com/PeterNeiss/inside/actions/workflows/ci_tests.yml)
+[![Lint Check (pre-commit)](https://github.com/PeterNeiss/inside/actions/workflows/pre-commit-check.yml/badge.svg)](https://github.com/PeterNeiss/inside/actions/workflows/pre-commit-check.yml)
+[![Coverage](https://coveralls.io/repos/github/PeterNeiss/inside/badge.svg?branch=main)](https://coveralls.io/github/PeterNeiss/inside?branch=main)
 <!-- markdownlint-restore -->
 
 `beman.inside` is a header-only C++23 library for numbers that

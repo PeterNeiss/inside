@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
-    REPO NiceAndPeter/inside
+    REPO PeterNeiss/inside
     REF "v@VERSION@"
     SHA512 @SHA512@
     HEAD_REF main

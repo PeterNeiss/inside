@@ -166,7 +166,7 @@ endif()
 #
 # It is the drop-in form of the library and the artifact behind the Compiler
 # Explorer raw-URL include:
-#   #include <https://raw.githubusercontent.com/NiceAndPeter/inside/main/single_include/beman/inside/inside.hpp>
+#   #include <https://raw.githubusercontent.com/PeterNeiss/inside/main/single_include/beman/inside/inside.hpp>
 add_custom_target(
     beman.inside.amalgamate
     COMMAND
