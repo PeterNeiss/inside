@@ -29,9 +29,8 @@ int main()
   using idx = inside<{0, 2147483647}>;
   idx lo{2147483644};
   idx hi{2147483646};
-  auto mid = (lo + hi) / just<2>;
-  if (mid)
-    std::cout << "(lo + hi) / 2      = " << *mid << "   (still in range)\n";
+  auto mid = (lo + hi) / just<2>;   // a plain value: 2 is not zero, and it fits
+  std::cout << "(lo + hi) / 2      = " << mid << "   (still in range)\n";
 
   return 0;
 }

@@ -719,7 +719,7 @@ $[20, 510]$ --- wide enough that no representable input can overflow it. There
 is no overflow to be undefined, no check to perform, and nothing for the
 optimiser to exploit.
 
-\lstinputlisting[firstline=13,lastline=34]{int-considered-harmful/b01_no_overflow.cpp}
+\lstinputlisting[firstline=13,lastline=33]{int-considered-harmful/b01_no_overflow.cpp}
 \begin{lstlisting}[style=term]
 a + b              = 236
 a - b              = -204   (no wraparound)
@@ -736,12 +736,14 @@ a signed representation rather than wrapping. And the midpoint computation from
 because \code{lo + hi} was evaluated in a grid wide enough to hold it before
 the division.
 
-\subsection{Division by zero is a value, not a signal}
+\subsection{Division by zero is a value, not a signal}\label{sec:divzero}
 
 Where the divisor's grid can include zero, division returns
-\code{std::expected<inside, errc>}. Where the grid provably excludes zero, it returns a
-plain value with nothing to unwrap --- the check is elided because the type
-proves it unnecessary.
+\code{std::expected<inside, errc>}. Where the grid provably excludes zero
+\emph{and} the exact quotient provably fits its 64-bit rational --- which the
+operand grids decide at compile time, and which holds for every integer grid
+--- it returns a plain value with nothing to unwrap: both checks are elided
+because the types prove them unnecessary.
 
 \lstinputlisting[firstline=14,lastline=36]{int-considered-harmful/b02_divzero.cpp}
 \begin{lstlisting}[style=term]
@@ -754,23 +756,33 @@ div(7, 3, trunc)   = 2
 Note the first line. The default result of division is \emph{exact}: $7/3$ is
 represented as the rational $2\tfrac{1}{3}$, not truncated to $2$. Truncation
 is still available, but you ask for it by name, per call. The failure that
-terminated the process in \S2.4 is now a value the caller can test.
+terminated the process in \S2.4 is now a value the caller can test. (Here the
+divisor's grid $[0,100]$ contains zero, so the quotient arrives as
+\code{std::expected} and the program unwraps it; the next section divides by
+a zero-free grid and gets a plain value.)
 
 \subsection{Rounding is stated, not inherited}
 
-\lstinputlisting[firstline=15,lastline=31]{int-considered-harmful/b07_rounding.cpp}
+Native integer division gives $-7/2 = -3$, toward zero, always
+(\S2.7). In \code{inside} the default is the exact answer, and a rounding is
+something you name:
+
+\lstinputlisting[firstline=16,lastline=30]{int-considered-harmful/b07_rounding.cpp}
 \begin{lstlisting}[style=term]
-native  -7 / 2     = -3   (toward zero, always)
+n / d              = -3.5   (exact)
 rounded_nearest    = -4
 rounded_floor      = -4
 rounded_ceil       = -3
 snapped (trunc)    = -3
-exact              = -3.5
 \end{lstlisting}
 
 \noindent
-Each mode is honoured, including for negative operands, where the distinction
-between truncation and flooring actually bites. The repository pins this with a
+The first line is the same mechanism as \S\ref{sec:divzero}'s $2\tfrac{1}{3}$:
+an exact quotient, printed as a terminating decimal where one exists and as a
+mixed number where it does not. Because \code{pos} excludes zero and the
+quotient fits, it is a plain value. Each named mode is honoured, including for
+negative operands, where the distinction between truncation and flooring
+actually bites. The repository pins this with a
 property test asserting $(a/b) \cdot b + a \bmod b = a$ across whole grids for
 every mode, including negative divisors
 (\file{tests/beman/inside/div\_round.test.cpp:135}).
