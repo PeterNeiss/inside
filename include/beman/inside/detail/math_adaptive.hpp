@@ -1044,7 +1044,6 @@ namespace beman::inside::math::detail::ax
   inline constexpr int series_terms = [] {
     constexpr double R = (Kind == series::exp || Kind == series::sinh || Kind == series::cosh) ? 0.36
                      : Kind == series::atanh ? 0.18 : Kind == series::log1p ? 0.025 : 0.8;
-    scaled_bound t;
     int n = 0;
     for (;; ++n)
     {
