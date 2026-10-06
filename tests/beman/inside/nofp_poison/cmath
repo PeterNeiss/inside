@@ -3,4 +3,11 @@
 // FIRST on the include path, so `#include <cmath>` resolves here. Under
 // BEMAN_INSIDE_MATH_NO_FP the library must pull NO <cmath> — if it (or a minimal TU) does,
 // this hard-errors and the FP-free guarantee is proven broken at compile time.
-#error "<cmath> was included under BEMAN_INSIDE_MATH_NO_FP — the FP-free guard is broken"
+// libc++ before 20 includes <cmath> from <functional> (through
+// <unordered_map>), which the library needs for std::hash; there the check
+// stops at the standard library's own includes.
+#if defined(_LIBCPP_VERSION) && _LIBCPP_VERSION < 200000
+#  include_next <cmath>
+#else
+#  error "<cmath> was included under BEMAN_INSIDE_MATH_NO_FP — the FP-free guard is broken"
+#endif
