@@ -9348,7 +9348,7 @@ namespace beman::inside::math::detail::ax
   constexpr bool decide_fast(wide_sint<K> const& y, umax e, int S, wide_sint<K + 2>& index) noexcept
   {
     using J = wide_sint<K + 2>;
-    constexpr std::size_t N = K + 2;
+    constexpr std::size_t N = K + 1;                      // |y|·q fits K + 1 limbs
     constexpr umax p = static_cast<umax>(wide_numerator(notch_of<Out>));
     constexpr umax q = static_cast<umax>(wide_denominator(notch_of<Out>));
     constexpr bool nearest = M == round_mode::nearest || M == round_mode::half_even;
@@ -9375,6 +9375,7 @@ namespace beman::inside::math::detail::ax
       u[w] = limb::add_carry(u[w], p << b, carry);
       if (w + 1 < N) u[w + 1] = limb::add_carry(u[w + 1], b == 0 ? 0 : p >> (64 - b), carry);
       for (std::size_t i = w + 2; i < N; ++i) u[i] = limb::add_carry(u[i], umax{0}, carry);
+      if (carry != 0) return false;
     }
     // The ends u − E and u + E, E = e·q.
     const limb::pair<umax> E = limb::mul(e, q);
@@ -9387,7 +9388,7 @@ namespace beman::inside::math::detail::ax
         lo[i] = limb::sub_borrow(u[i], ei, borrow);
         hi[i] = limb::add_carry(u[i], ei, carry);
       }
-      if (borrow != 0 || carry != 0) return false;        // near 0, or past the words
+      if (borrow != 0 || carry != 0) return false;        // near 0, or past the limbs
     }
     // Shifted down by S: the cell index times p, plus the offset within.
     const std::size_t ws = static_cast<std::size_t>(S / 64);
@@ -9432,9 +9433,9 @@ namespace beman::inside::math::detail::ax
       up = (M == round_mode::ceil) != neg ? 1 : 0;
     constexpr J base = static_cast<J>(slot_base<Out>);
     umax carry = up, sign_borrow = 0, borrow = 0;
-    for (std::size_t i = 0; i < N; ++i)
+    for (std::size_t i = 0; i < N + 1; ++i)
     {
-      umax w = limb::add_carry(hl[i], umax{0}, carry);   // B (+1)
+      umax w = limb::add_carry(i < N ? hl[i] : umax{0}, umax{0}, carry);   // B (+1)
       if (neg) w = limb::sub_borrow(umax{0}, w, sign_borrow);
       index.Word[i] = limb::sub_borrow(w, static_cast<umax>(base.Word[i]), borrow);
     }
