@@ -684,7 +684,7 @@ around a single template:
 
 \begin{lstlisting}
 template<grid G, policy_flag P>
-struct inside;                        // include/beman/inside/core.hpp:61
+struct inside;                        // include/beman/inside/core.hpp:66
 \end{lstlisting}
 
 \noindent
@@ -785,7 +785,7 @@ negative operands, where the distinction between truncation and flooring
 actually bites. The repository pins this with a
 property test asserting $(a/b) \cdot b + a \bmod b = a$ across whole grids for
 every mode, including negative divisors
-(\file{tests/beman/inside/div\_round.test.cpp:135}).
+(\file{tests/beman/inside/div\_round.test.cpp:147}).
 
 \subsection{The edge is a policy you declare}
 
@@ -853,7 +853,7 @@ what grid they belong to --- and the diagnostic says so directly:
 \begin{lstlisting}[style=term]
 $ g++ -std=c++23 -I ../../include x01_bare_int_rejected.cpp
    16 |   auto bad = x + 1;      // error: no grid for the literal
-include/beman/inside/arithmetic.hpp:350:27: error: static assertion failed:
+include/beman/inside/arithmetic.hpp:345:31: error: static assertion failed:
    an inside cannot be combined with a raw scalar: give the scalar a grid --
    `1_ins`, `just<1>`, `one`, or `inside<{lo,hi}>{n}` for a runtime value with
    a known range
@@ -1021,7 +1021,7 @@ Callback & \code{on\_clamp}, \code{on\_wrap} & The event is expected and carries
 
 \noindent
 The codes themselves are a small closed enumeration
-(\file{detail/debug.hpp:56}), one code per condition --- a value that does not
+(\file{detail/debug.hpp:52}), one code per condition --- a value that does not
 fit its destination is always \code{overflow}, whichever path found it:
 
 \begin{lstlisting}
@@ -1221,7 +1221,7 @@ it measures the cost of correctness that the baseline never pays.
 
 The benchmark therefore also carries two \emph{hand-written native} baselines
 that do enforce a range, and these are the honest comparison
-(\file{tests/beman/inside/bench.test.cpp:63}):
+(\file{tests/beman/inside/bench.test.cpp:59}):
 
 \begin{itemize}
 \item \code{native clamped} --- the same arithmetic wrapped in
