@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# Identifiers codespell mistakes for misspellings: InE (the exponent's input
+# type), nd/Nd/ND (n-th digit names), alo (a's low part); disjointness is a word.
+[codespell]
+ignore-words-list = ine,nd,alo,disjointness

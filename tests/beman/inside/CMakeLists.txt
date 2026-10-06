@@ -128,7 +128,9 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_include_directories(
         beman.inside.tests.single_header_nofp_smoke
         BEFORE
-        PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/nofp_poison" "${single_include_dir}"
+        PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}/nofp_poison"
+            "${single_include_dir}"
     )
     target_compile_features(
         beman.inside.tests.single_header_nofp_smoke
@@ -212,8 +214,7 @@ if(BEMAN_INSIDE_BUILD_TOOLS)
     )
     add_custom_target(
         beman.inside.accuracy_report
-        COMMAND
-            beman.inside.accuracy ${PROJECT_SOURCE_DIR}/docs/accuracy.md
+        COMMAND beman.inside.accuracy ${PROJECT_SOURCE_DIR}/docs/accuracy.md
         COMMENT "Regenerating docs/accuracy.md"
     )
 

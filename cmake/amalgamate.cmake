@@ -31,21 +31,25 @@
 #---------------------------------------------------------------------------
 cmake_minimum_required(VERSION 3.24)
 
-foreach(_req IN ITEMS BEMAN_INSIDE_AMALGAMATE_INCLUDE_DIR BEMAN_INSIDE_AMALGAMATE_OUTPUT)
-  if(NOT DEFINED ${_req})
-    message(FATAL_ERROR "amalgamate: ${_req} is not set")
-  endif()
+foreach(
+    _req
+    IN
+    ITEMS BEMAN_INSIDE_AMALGAMATE_INCLUDE_DIR BEMAN_INSIDE_AMALGAMATE_OUTPUT
+)
+    if(NOT DEFINED ${_req})
+        message(FATAL_ERROR "amalgamate: ${_req} is not set")
+    endif()
 endforeach()
 if(NOT DEFINED BEMAN_INSIDE_AMALGAMATE_VERSION)
-  set(BEMAN_INSIDE_AMALGAMATE_VERSION "unknown")
+    set(BEMAN_INSIDE_AMALGAMATE_VERSION "unknown")
 endif()
 
 get_filename_component(INC "${BEMAN_INSIDE_AMALGAMATE_INCLUDE_DIR}" ABSOLUTE)
 if(NOT IS_DIRECTORY "${INC}")
-  message(FATAL_ERROR "amalgamate: include dir not found: ${INC}")
+    message(FATAL_ERROR "amalgamate: include dir not found: ${INC}")
 endif()
 
-string(ASCII 10 NL)    # newline, for list-free line splitting
+string(ASCII 10 NL) # newline, for list-free line splitting
 
 set(BODY_FILE "${BEMAN_INSIDE_AMALGAMATE_OUTPUT}.body.tmp")
 get_filename_component(_out_dir "${BEMAN_INSIDE_AMALGAMATE_OUTPUT}" DIRECTORY)
@@ -63,110 +67,130 @@ set_property(GLOBAL PROPERTY AMALG_INLINE_SYS FALSE)
 # into BODY_FILE, recursing into its internal includes.
 #---------------------------------------------------------------------------
 function(amalg_process rel)
-  get_filename_component(abs "${INC}/${rel}" ABSOLUTE)
-  if(NOT EXISTS "${abs}")
-    message(FATAL_ERROR "amalgamate: missing header ${abs} (referenced as ${rel})")
-  endif()
-
-  get_property(emitted GLOBAL PROPERTY AMALG_EMITTED)
-  if("${abs}" IN_LIST emitted)
-    return()
-  endif()
-  list(APPEND emitted "${abs}")
-  set_property(GLOBAL PROPERTY AMALG_EMITTED "${emitted}")
-
-  # Read the file. Iterate line-by-line via FIND/SUBSTRING rather than splitting
-  # into a CMake list: list semantics mangle lines containing '[' or a trailing
-  # backslash (line continuation), and drop blank lines.
-  file(READ "${abs}" content)
-  string(REGEX REPLACE "\r" "" content "${content}")
-  if(NOT content MATCHES "${NL}$")
-    string(APPEND content "${NL}")          # ensure a clean final line
-  endif()
-
-  set(buf "${NL}")
-  string(APPEND buf "// ======================================================================${NL}")
-  string(APPEND buf "//  ${rel}${NL}")
-  string(APPEND buf "// ======================================================================${NL}")
-
-  set(depth 0)
-  set(guard_macro "")
-  set(expect_define FALSE)
-
-  while(NOT content STREQUAL "")
-    string(FIND "${content}" "${NL}" _pos)
-    if(_pos EQUAL -1)
-      set(line "${content}")
-      set(content "")
-    else()
-      string(SUBSTRING "${content}" 0 "${_pos}" line)
-      math(EXPR _rest "${_pos}+1")
-      string(SUBSTRING "${content}" "${_rest}" -1 content)
+    get_filename_component(abs "${INC}/${rel}" ABSOLUTE)
+    if(NOT EXISTS "${abs}")
+        message(
+            FATAL_ERROR
+            "amalgamate: missing header ${abs} (referenced as ${rel})"
+        )
     endif()
 
-    # --- file include guard: drop #ifndef BEMAN_INSIDE_<x>_HPP / #define <same>
-    if(guard_macro STREQUAL "" AND
-       line MATCHES "^[ \t]*#[ \t]*ifndef[ \t]+(BEMAN_INSIDE_[A-Za-z0-9_]*_HPP)[ \t]*$")
-      set(guard_macro "${CMAKE_MATCH_1}")
-      set(expect_define TRUE)
-      continue()
+    get_property(emitted GLOBAL PROPERTY AMALG_EMITTED)
+    if("${abs}" IN_LIST emitted)
+        return()
     endif()
-    if(expect_define)
-      set(expect_define FALSE)
-      if(line MATCHES "^[ \t]*#[ \t]*define[ \t]+${guard_macro}[ \t]*$")
-        continue()
-      endif()
-    endif()
-    if(line MATCHES "^[ \t]*#[ \t]*pragma[ \t]+once")
-      continue()
+    list(APPEND emitted "${abs}")
+    set_property(GLOBAL PROPERTY AMALG_EMITTED "${emitted}")
+
+    # Read the file. Iterate line-by-line via FIND/SUBSTRING rather than splitting
+    # into a CMake list: list semantics mangle lines containing '[' or a trailing
+    # backslash (line continuation), and drop blank lines.
+    file(READ "${abs}" content)
+    string(REGEX REPLACE "\r" "" content "${content}")
+    if(NOT content MATCHES "${NL}$")
+        string(APPEND content "${NL}") # ensure a clean final line
     endif()
 
-    # --- per-file copyright / license banner ---------------------------------
-    if(line MATCHES "^//[ \t]*Copyright" OR line MATCHES "^//[ \t]*SPDX-License-Identifier")
-      continue()
-    endif()
+    set(buf "${NL}")
+    string(
+        APPEND buf
+        "// ======================================================================${NL}"
+    )
+    string(APPEND buf "//  ${rel}${NL}")
+    string(
+        APPEND buf
+        "// ======================================================================${NL}"
+    )
 
-    # --- internal include: inline in place -----------------------------------
-    # Flush what we have, then recurse so the child's body lands exactly where
-    # the directive was (preserving any surrounding #ifdef). The directive line
-    # itself is dropped.
-    if(line MATCHES "^[ \t]*#[ \t]*include[ \t]*[<\"]beman/inside/([^\">]+)[>\"]")
-      file(APPEND "${BODY_FILE}" "${buf}")
-      set(buf "")
-      amalg_process("beman/inside/${CMAKE_MATCH_1}")
-      continue()
-    endif()
+    set(depth 0)
+    set(guard_macro "")
+    set(expect_define FALSE)
 
-    # --- conditional nesting depth (ignoring the file's own guard) -----------
-    if(line MATCHES "^[ \t]*#[ \t]*(if|ifdef|ifndef)([ \t]|$)")
-      math(EXPR depth "${depth}+1")
-    elseif(line MATCHES "^[ \t]*#[ \t]*endif")
-      if(depth EQUAL 0)
-        # the outermost #endif is the file's include-guard close -> drop it
-        continue()
-      endif()
-      math(EXPR depth "${depth}-1")
-    endif()
-
-    # --- system include: hoist when unconditional (unless inline-sys) ---------
-    if(line MATCHES "^[ \t]*#[ \t]*include[ \t]*<([^>]+)>")
-      if(depth EQUAL 0)
-        get_property(inline_sys GLOBAL PROPERTY AMALG_INLINE_SYS)
-        if(inline_sys)
-          string(APPEND buf "#include <${CMAKE_MATCH_1}>${NL}")
+    while(NOT content STREQUAL "")
+        string(FIND "${content}" "${NL}" _pos)
+        if(_pos EQUAL -1)
+            set(line "${content}")
+            set(content "")
         else()
-          get_property(sys GLOBAL PROPERTY AMALG_SYS)
-          list(APPEND sys "#include <${CMAKE_MATCH_1}>")
-          set_property(GLOBAL PROPERTY AMALG_SYS "${sys}")
+            string(SUBSTRING "${content}" 0 "${_pos}" line)
+            math(EXPR _rest "${_pos}+1")
+            string(SUBSTRING "${content}" "${_rest}" -1 content)
         endif()
-        continue()
-      endif()
-    endif()
 
-    string(APPEND buf "${line}${NL}")
-  endwhile()
+        # --- file include guard: drop #ifndef BEMAN_INSIDE_<x>_HPP / #define <same>
+        if(
+            guard_macro STREQUAL ""
+            AND line
+                MATCHES
+                "^[ \t]*#[ \t]*ifndef[ \t]+(BEMAN_INSIDE_[A-Za-z0-9_]*_HPP)[ \t]*$"
+        )
+            set(guard_macro "${CMAKE_MATCH_1}")
+            set(expect_define TRUE)
+            continue()
+        endif()
+        if(expect_define)
+            set(expect_define FALSE)
+            if(line MATCHES "^[ \t]*#[ \t]*define[ \t]+${guard_macro}[ \t]*$")
+                continue()
+            endif()
+        endif()
+        if(line MATCHES "^[ \t]*#[ \t]*pragma[ \t]+once")
+            continue()
+        endif()
 
-  file(APPEND "${BODY_FILE}" "${buf}")
+        # --- per-file copyright / license banner ---------------------------------
+        if(
+            line MATCHES "^//[ \t]*Copyright"
+            OR line MATCHES "^//[ \t]*SPDX-License-Identifier"
+        )
+            continue()
+        endif()
+
+        # --- internal include: inline in place -----------------------------------
+        # Flush what we have, then recurse so the child's body lands exactly where
+        # the directive was (preserving any surrounding #ifdef). The directive line
+        # itself is dropped.
+        if(
+            line
+                MATCHES
+                "^[ \t]*#[ \t]*include[ \t]*[<\"]beman/inside/([^\">]+)[>\"]"
+        )
+            file(APPEND "${BODY_FILE}" "${buf}")
+            set(buf "")
+            amalg_process("beman/inside/${CMAKE_MATCH_1}")
+            continue()
+        endif()
+
+        # --- conditional nesting depth (ignoring the file's own guard) -----------
+        if(line MATCHES "^[ \t]*#[ \t]*(if|ifdef|ifndef)([ \t]|$)")
+            math(EXPR depth "${depth}+1")
+        elseif(line MATCHES "^[ \t]*#[ \t]*endif")
+            if(depth EQUAL 0)
+                # the outermost #endif is the file's include-guard close -> drop it
+                continue()
+            endif()
+            math(EXPR depth "${depth}-1")
+        endif()
+
+        # --- system include: hoist when unconditional (unless inline-sys) ---------
+        if(line MATCHES "^[ \t]*#[ \t]*include[ \t]*<([^>]+)>")
+            if(depth EQUAL 0)
+                get_property(inline_sys GLOBAL PROPERTY AMALG_INLINE_SYS)
+                if(inline_sys)
+                    string(APPEND buf "#include <${CMAKE_MATCH_1}>${NL}")
+                else()
+                    get_property(sys GLOBAL PROPERTY AMALG_SYS)
+                    list(APPEND sys "#include <${CMAKE_MATCH_1}>")
+                    set_property(GLOBAL PROPERTY AMALG_SYS "${sys}")
+                endif()
+                continue()
+            endif()
+        endif()
+
+        string(APPEND buf "${line}${NL}")
+    endwhile()
+
+    file(APPEND "${BODY_FILE}" "${buf}")
 endfunction()
 
 #---------------------------------------------------------------------------
@@ -176,8 +200,8 @@ file(GLOB root_abs "${INC}/beman/inside/*.hpp")
 list(SORT root_abs)
 set(roots "")
 foreach(r IN LISTS root_abs)
-  get_filename_component(name "${r}" NAME)
-  list(APPEND roots "beman/inside/${name}")
+    get_filename_component(name "${r}" NAME)
+    list(APPEND roots "beman/inside/${name}")
 endforeach()
 list(REMOVE_ITEM roots "beman/inside/inside.hpp")
 list(INSERT roots 0 "beman/inside/inside.hpp")
@@ -191,24 +215,28 @@ list(INSERT roots 0 "beman/inside/inside.hpp")
 # it sits inside a guard the same way: a freestanding or FP-free
 # (BEMAN_INSIDE_MATH_NO_FP, resolved earlier in the header) build drops it.
 foreach(r IN LISTS roots)
-  set(_guard_open "")
-  set(_guard_close "")
-  if(r STREQUAL "beman/inside/io.hpp")
-    set(_guard_open "#ifndef BEMAN_INSIDE_NO_STRING")
-    set(_guard_close "#endif // BEMAN_INSIDE_NO_STRING")
-  elseif(r STREQUAL "beman/inside/random.hpp")
-    set(_guard_open "#if __STDC_HOSTED__ && !defined(BEMAN_INSIDE_MATH_NO_FP)")
-    set(_guard_close "#endif // __STDC_HOSTED__ && !BEMAN_INSIDE_MATH_NO_FP")
-  endif()
-  if(_guard_open)
-    file(APPEND "${BODY_FILE}" "${NL}${_guard_open}${NL}")
-    set_property(GLOBAL PROPERTY AMALG_INLINE_SYS TRUE)
-    amalg_process("${r}")
-    set_property(GLOBAL PROPERTY AMALG_INLINE_SYS FALSE)
-    file(APPEND "${BODY_FILE}" "${NL}${_guard_close}${NL}")
-  else()
-    amalg_process("${r}")
-  endif()
+    set(_guard_open "")
+    set(_guard_close "")
+    if(r STREQUAL "beman/inside/io.hpp")
+        set(_guard_open "#ifndef BEMAN_INSIDE_NO_STRING")
+        set(_guard_close "#endif // BEMAN_INSIDE_NO_STRING")
+    elseif(r STREQUAL "beman/inside/random.hpp")
+        set(_guard_open
+            "#if __STDC_HOSTED__ && !defined(BEMAN_INSIDE_MATH_NO_FP)"
+        )
+        set(_guard_close
+            "#endif // __STDC_HOSTED__ && !BEMAN_INSIDE_MATH_NO_FP"
+        )
+    endif()
+    if(_guard_open)
+        file(APPEND "${BODY_FILE}" "${NL}${_guard_open}${NL}")
+        set_property(GLOBAL PROPERTY AMALG_INLINE_SYS TRUE)
+        amalg_process("${r}")
+        set_property(GLOBAL PROPERTY AMALG_INLINE_SYS FALSE)
+        file(APPEND "${BODY_FILE}" "${NL}${_guard_close}${NL}")
+    else()
+        amalg_process("${r}")
+    endif()
 endforeach()
 
 #---------------------------------------------------------------------------
@@ -223,7 +251,7 @@ file(READ "${BODY_FILE}" body)
 file(REMOVE "${BODY_FILE}")
 
 set(banner
-"// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+    "// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //---------------------------------------------------------------------------
 // beman.inside ${BEMAN_INSIDE_AMALGAMATE_VERSION} — single-header amalgamation
 //
@@ -238,26 +266,35 @@ set(banner
 #define BEMAN_INSIDE_SINGLE_HEADER_HPP
 
 ${sys_block}
-")
+"
+)
 
-file(WRITE "${BEMAN_INSIDE_AMALGAMATE_OUTPUT}" "${banner}${body}\n#endif // BEMAN_INSIDE_SINGLE_HEADER_HPP\n")
+file(
+    WRITE "${BEMAN_INSIDE_AMALGAMATE_OUTPUT}"
+    "${banner}${body}\n#endif // BEMAN_INSIDE_SINGLE_HEADER_HPP\n"
+)
 
 #---------------------------------------------------------------------------
 # Drift check mode.
 #---------------------------------------------------------------------------
 if(DEFINED BEMAN_INSIDE_AMALGAMATE_COMPARE)
-  execute_process(
-    COMMAND "${CMAKE_COMMAND}" -E compare_files
-            "${BEMAN_INSIDE_AMALGAMATE_OUTPUT}" "${BEMAN_INSIDE_AMALGAMATE_COMPARE}"
-    RESULT_VARIABLE _diff)
-  if(_diff)
-    message(FATAL_ERROR
-      "Single header is out of date:\n"
-      "  ${BEMAN_INSIDE_AMALGAMATE_COMPARE}\n"
-      "differs from a freshly generated amalgamation. Run the 'amalgamate' "
-      "target and commit the result.")
-  endif()
-  message(STATUS "amalgamate: single header is up to date.")
+    execute_process(
+        COMMAND
+            "${CMAKE_COMMAND}" -E compare_files
+            "${BEMAN_INSIDE_AMALGAMATE_OUTPUT}"
+            "${BEMAN_INSIDE_AMALGAMATE_COMPARE}"
+        RESULT_VARIABLE _diff
+    )
+    if(_diff)
+        message(
+            FATAL_ERROR
+            "Single header is out of date:\n"
+            "  ${BEMAN_INSIDE_AMALGAMATE_COMPARE}\n"
+            "differs from a freshly generated amalgamation. Run the 'amalgamate' "
+            "target and commit the result."
+        )
+    endif()
+    message(STATUS "amalgamate: single header is up to date.")
 else()
-  message(STATUS "amalgamate: wrote ${BEMAN_INSIDE_AMALGAMATE_OUTPUT}")
+    message(STATUS "amalgamate: wrote ${BEMAN_INSIDE_AMALGAMATE_OUTPUT}")
 endif()

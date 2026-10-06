@@ -28,7 +28,10 @@ foreach(src ${BEMAN_INSIDE_FAIL_SOURCES})
     list(LENGTH head_lines head_count)
     if(head_count GREATER 1)
         list(GET head_lines 1 second_line)
-        if(second_line MATCHES "^// REQUIRES: 64-bit-grids" AND BEMAN_INSIDE_HAS_FREFLECTION)
+        if(
+            second_line MATCHES "^// REQUIRES: 64-bit-grids"
+            AND BEMAN_INSIDE_HAS_FREFLECTION
+        )
             continue()
         endif()
     endif()
@@ -52,8 +55,8 @@ foreach(src ${BEMAN_INSIDE_FAIL_SOURCES})
     add_test(
         NAME ${fail_target}
         COMMAND
-            ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR} --target
-            ${fail_target} --config $<CONFIG>
+            ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR} --target ${fail_target}
+            --config $<CONFIG>
     )
     if(BEMAN_INSIDE_STRICT_SFINAE)
         # Strict mode drops the diagnostic overloads that carry the named

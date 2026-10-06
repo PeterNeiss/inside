@@ -143,4 +143,3 @@ TEST(IntervalTest, interval_rational_notch)
     static_assert(*r2 == 20);
   }
 }
-

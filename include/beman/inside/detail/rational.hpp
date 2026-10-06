@@ -1081,4 +1081,3 @@ namespace beman::inside
 } // namespace beman::inside
 
 #endif // BEMAN_INSIDE_DETAIL_RATIONAL_HPP
-

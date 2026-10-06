@@ -206,4 +206,3 @@ TEST(DeterminismTest, determinism_sin_cos_tan_radian_corners)
   EXACT_OK(math::tan(RAD{0}),     0,     1);
   EXACT_OK(math::tan(RAD{1}),  25517, 16384);  // ~1.5574
 }
-

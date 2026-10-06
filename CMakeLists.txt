@@ -4,7 +4,8 @@ cmake_minimum_required(VERSION 3.30...4.4)
 
 project(
     beman.inside
-    DESCRIPTION "Numbers that cannot go out of range: the range and step size live in the type"
+    DESCRIPTION
+        "Numbers that cannot go out of range: the range and step size live in the type"
     LANGUAGES CXX
     VERSION 1.0.0
 )
@@ -186,17 +187,17 @@ if(BEMAN_INSIDE_BUILD_TESTS OR BEMAN_INSIDE_BUILD_EXAMPLES)
         beman.inside.warnings
         INTERFACE
             $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:
-                -Wall
-                -Wextra
-                -Wnon-virtual-dtor
-                -Wold-style-cast
-                -Woverloaded-virtual
-                -Wnull-dereference
-                # inside's default constructor is intentionally trivial (Raw left
-                # uninitialised) so the type stays trivial for NTTP / memcpy use.
-                -Wno-uninitialized
-                -Wno-missing-field-initializers
-                -Wformat=2
+            -Wall
+            -Wextra
+            -Wnon-virtual-dtor
+            -Wold-style-cast
+            -Woverloaded-virtual
+            -Wnull-dereference
+            # inside's default constructor is intentionally trivial (Raw left
+            # uninitialised) so the type stays trivial for NTTP / memcpy use.
+            -Wno-uninitialized
+            -Wno-missing-field-initializers
+            -Wformat=2
             >
     )
     # GCC 13.x for x86_64-w64-mingw32 ships a libstdc++.a whose tinfo.o carries

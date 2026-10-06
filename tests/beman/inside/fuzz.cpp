@@ -833,7 +833,7 @@ template <insidable B>
 void prop_compound_add_same_inside(fuzz_state& s, long iters)
 {
   // Targets inside.hpp:243 — the fallback path of operator+=(insidable R)
-  // when the fast path's encoding constraints don't hold (typically frational
+  // when the fast path's encoding constraints don't hold (typically fractional
   // grids whose Lower != 0 on at least one side, or notches that mismatch).
   // For grids whose value ranges allow it, b += b should still produce 2*b
   // (or saturate/throw on overshoot). We restrict to picks that stay in range.
