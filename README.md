@@ -9,11 +9,13 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 [![Continuous Integration Tests](https://github.com/PeterNeiss/inside/actions/workflows/ci_tests.yml/badge.svg)](https://github.com/PeterNeiss/inside/actions/workflows/ci_tests.yml)
 [![Lint Check (pre-commit)](https://github.com/PeterNeiss/inside/actions/workflows/pre-commit-check.yml/badge.svg)](https://github.com/PeterNeiss/inside/actions/workflows/pre-commit-check.yml)
 [![Coverage](https://coveralls.io/repos/github/PeterNeiss/inside/badge.svg?branch=main)](https://coveralls.io/github/PeterNeiss/inside?branch=main)
+![Standard Target](https://github.com/bemanproject/beman/blob/main/images/badges/cpp29.svg)
 <!-- markdownlint-restore -->
 
-`beman.inside` is a header-only C++23 library for numbers that
-**cannot go out of range** — the range and step size live in the *type*. It
-follows the layout and tooling of [The Beman Standard](https://github.com/bemanproject/beman/blob/main/docs/beman_standard.md).
+`beman.inside` is a header-only library for numbers that **cannot go out of
+range** — the range and step size live in the *type*. It needs the C++23
+standard (grids past 64 bits need C++26), and follows the layout and tooling of
+[The Beman Standard](https://github.com/bemanproject/beman/blob/main/docs/beman_standard.md).
 
 - **Arithmetic cannot overflow.** `+ - * /` widen the result type at compile
   time to hold every possible value — no runtime surprises.
