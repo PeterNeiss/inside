@@ -26,32 +26,28 @@ using namespace beman::inside;
 using I = inside<{-1000000, 1000000}>;
 
 // Scalar fast path: must be a bare integer add, no call into any fallback.
-extern "C" long ins_perf_add_fast(long a, long b)
-{
-  I x = I::from_raw(static_cast<I::raw_type>(a));
-  I y = I::from_raw(static_cast<I::raw_type>(b));
-  return static_cast<long>((x + y).raw());
+extern "C" long ins_perf_add_fast(long a, long b) {
+    I x = I::from_raw(static_cast<I::raw_type>(a));
+    I y = I::from_raw(static_cast<I::raw_type>(b));
+    return static_cast<long>((x + y).raw());
 }
 
 // Vectorizable fast path: the same add over arrays must emit packed SIMD.
-extern "C" void ins_perf_add_loop(const long* __restrict a,
-                                  const long* __restrict b,
-                                  long* __restrict out, std::size_t n)
-{
-  for (std::size_t i = 0; i < n; ++i)
-    out[i] = static_cast<long>((I::from_raw(static_cast<I::raw_type>(a[i]))
-                              + I::from_raw(static_cast<I::raw_type>(b[i]))).raw());
+extern "C" void
+ins_perf_add_loop(const long* __restrict a, const long* __restrict b, long* __restrict out, std::size_t n) {
+    for (std::size_t i = 0; i < n; ++i)
+        out[i] = static_cast<long>(
+            (I::from_raw(static_cast<I::raw_type>(a[i])) + I::from_raw(static_cast<I::raw_type>(b[i]))).raw());
 }
 
 // Multiply fast path: the value-index integer multiply must likewise stay
 // call-free (no fallback into the rational branch).
 using M = inside<{-1000, 1000}>;
 
-extern "C" long ins_perf_mul_fast(long a, long b)
-{
-  M x = M::from_raw(static_cast<M::raw_type>(a));
-  M y = M::from_raw(static_cast<M::raw_type>(b));
-  return static_cast<long>((x * y).raw());
+extern "C" long ins_perf_mul_fast(long a, long b) {
+    M x = M::from_raw(static_cast<M::raw_type>(a));
+    M y = M::from_raw(static_cast<M::raw_type>(b));
+    return static_cast<long>((x * y).raw());
 }
 
 // f64-backed fast arm: add on a dyadic `f64` grid must lower to a bare
@@ -59,10 +55,7 @@ extern "C" long ins_perf_mul_fast(long a, long b)
 // grid is double-exact by construction.
 using D = inside<{{-8, 8}, per<16384>}, round_nearest | f64>;
 
-extern "C" double ins_perf_fp_add(D a, D b)
-{
-  return (a + b).raw();
-}
+extern "C" double ins_perf_fp_add(D a, D b) { return (a + b).raw(); }
 
 // Compound subtraction fast path: `-=` on same-notch integer-backed grids
 // must subtract raws directly (index-raw Q8.8 here — the case that would
@@ -70,23 +63,21 @@ extern "C" double ins_perf_fp_add(D a, D b)
 // `+= (-rhs)`).
 using Q = inside<{{0, 255}, per<256>}, snap>;
 
-extern "C" long ins_perf_sub_compound(long a, long b)
-{
-  Q x = Q::from_raw(static_cast<Q::raw_type>(a));
-  x -= Q::from_raw(static_cast<Q::raw_type>(b));
-  return static_cast<long>(x.raw());
+extern "C" long ins_perf_sub_compound(long a, long b) {
+    Q x = Q::from_raw(static_cast<Q::raw_type>(a));
+    x -= Q::from_raw(static_cast<Q::raw_type>(b));
+    return static_cast<long>(x.raw());
 }
 
 // Range decode fast path: iterating a grid must stay call-free integer code —
 // both the value-storage arm (integer grid) and the index-storage arm
 // (fractional grid) of inside_range::iterator::operator*. A call means the
 // decode fell back into the rational/assignment engine.
-extern "C" long ins_perf_range_sum()
-{
-  long sum = 0;
-  for (auto whole : inside_range<{0, 999}>{})
-    sum += static_cast<long>(whole.raw());
-  for (auto fract : inside_range<{{0, 4}, per<256>}>{})
-    sum += static_cast<long>(fract.raw());
-  return sum;
+extern "C" long ins_perf_range_sum() {
+    long sum = 0;
+    for (auto whole : inside_range<{0, 999}>{})
+        sum += static_cast<long>(whole.raw());
+    for (auto fract : inside_range<{{0, 4}, per<256>}>{})
+        sum += static_cast<long>(fract.raw());
+    return sum;
 }

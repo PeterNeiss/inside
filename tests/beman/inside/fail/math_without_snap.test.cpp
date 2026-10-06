@@ -5,9 +5,8 @@
 #include <beman/inside/inside.hpp>
 #include <beman/inside/cmath.hpp>
 
-int main()
-{
-  beman::inside::inside<{0, 3}> plain{1};   // no snap permission
-  auto s = beman::inside::math::sin(plain);
-  (void)s;
+int main() {
+    beman::inside::inside<{0, 3}> plain{1}; // no snap permission
+    auto                          s = beman::inside::math::sin(plain);
+    (void)s;
 }

@@ -5,9 +5,8 @@
 #include <beman/inside/inside.hpp>
 #include <beman/inside/cmath.hpp>
 
-int main()
-{
-  using from_zero = beman::inside::inside<{0, 8}, beman::inside::round_nearest>;
-  auto l = beman::inside::math::log(from_zero{1});
-  (void)l;
+int main() {
+    using from_zero = beman::inside::inside<{0, 8}, beman::inside::round_nearest>;
+    auto l          = beman::inside::math::log(from_zero{1});
+    (void)l;
 }

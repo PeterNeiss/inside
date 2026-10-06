@@ -19,7 +19,7 @@
 using namespace beman::inside;
 
 // Health in [0, 100], clamp-saturating.
-using hp_t  = inside<{0, 100}, clamp>;
+using hp_t = inside<{0, 100}, clamp>;
 
 // Damage multipliers in [0, 4] with 1/16 step (Q2.4-ish).
 using mult_t = inside<{{0, 4}, per<16>}, round_nearest>;
@@ -30,61 +30,59 @@ using damage_t = inside<{0, 50}>;
 // A widened pool that level-scaling can produce — values may exceed hp_t.
 using big_pool_t = inside<{0, 1000}>;
 
-int main()
-{
-  hp_t hp{75};
-  std::cout << "starting HP: " << hp << "\n";
+int main() {
+    hp_t hp{75};
+    std::cout << "starting HP: " << hp << "\n";
 
-  bool downed = false;
+    bool downed = false;
 
-  // Single damage event with three multipliers.
-  damage_t base{10};
-  mult_t crit{2.0};        // 2x on crit
-  mult_t vuln{1.25};       // 1.25x vulnerable target
-  mult_t pen{1.5};         // 1.5x armor penetration
+    // Single damage event with three multipliers.
+    damage_t base{10};
+    mult_t   crit{2.0};  // 2x on crit
+    mult_t   vuln{1.25}; // 1.25x vulnerable target
+    mult_t   pen{1.5};   // 1.5x armor penetration
 
-  // mul_all folds three multipliers into one — grid widens each step.
-  auto chain = mul_all(crit, vuln, pen);
-  // chain has interval [0, 64] notch 1/4096 — convert to a hit damage by
-  // scaling base, then snap to an integer HP deduction. `base * chain` returns
-  // a plain `inside` (the static-overflow check on multiplication elides the
-  // expected wrapper). Assigning it into a `round_nearest` integer grid rounds
-  // it to the nearest whole point of damage — no rational, no cast.
-  using dealt_t = inside<{0, 3200}, round_nearest>;
-  dealt_t dealt{base * chain};   // integer damage, snapped to the round_nearest grid
-  std::cout << "damage chain (2.0 * 1.25 * 1.5) on base 10 = " << dealt << "\n";
+    // mul_all folds three multipliers into one — grid widens each step.
+    auto chain = mul_all(crit, vuln, pen);
+    // chain has interval [0, 64] notch 1/4096 — convert to a hit damage by
+    // scaling base, then snap to an integer HP deduction. `base * chain` returns
+    // a plain `inside` (the static-overflow check on multiplication elides the
+    // expected wrapper). Assigning it into a `round_nearest` integer grid rounds
+    // it to the nearest whole point of damage — no rational, no cast.
+    using dealt_t = inside<{0, 3200}, round_nearest>;
+    dealt_t dealt{base * chain}; // integer damage, snapped to the round_nearest grid
+    std::cout << "damage chain (2.0 * 1.25 * 1.5) on base 10 = " << dealt << "\n";
 
-  hp.on_clamp([&](auto& self, auto overshoot) {
-    if (self == 0) {
-      std::cout << "[downed — overshoot " << overshoot << "]\n";
-      downed = true;
-    } else {
-      std::cout << "[full HP, overshoot " << overshoot << "]\n";
-    }
-  }) -= dealt;
-  std::cout << "HP after hit: " << hp << "\n";
+    hp.on_clamp([&](auto& self, auto overshoot) {
+        if (self == 0) {
+            std::cout << "[downed — overshoot " << overshoot << "]\n";
+            downed = true;
+        } else {
+            std::cout << "[full HP, overshoot " << overshoot << "]\n";
+        }
+    }) -= dealt;
+    std::cout << "HP after hit: " << hp << "\n";
 
-  // Pile on more damage to trigger the downed callback.
-  hp.on_clamp([&](auto& self, auto overshoot) {
-    if (self == 0) {
-      std::cout << "[downed — overshoot " << overshoot << "]\n";
-      downed = true;
-    }
-  }) -= 200_ins;
-  std::cout << "HP after big hit: " << hp << "  (downed=" << std::boolalpha << downed << ")\n";
+    // Pile on more damage to trigger the downed callback.
+    hp.on_clamp([&](auto& self, auto overshoot) {
+        if (self == 0) {
+            std::cout << "[downed — overshoot " << overshoot << "]\n";
+            downed = true;
+        }
+    }) -= 200_ins;
+    std::cout << "HP after big hit: " << hp << "  (downed=" << std::boolalpha << downed << ")\n";
 
-  // Heal via clamp-saturation back to full.
-  hp.on_clamp([&](auto&, auto) { std::cout << "[heal saturated to max HP]\n"; })
-    += 250_ins;
-  std::cout << "HP after heal: " << hp << "\n";
+    // Heal via clamp-saturation back to full.
+    hp.on_clamp([&](auto&, auto) { std::cout << "[heal saturated to max HP]\n"; }) += 250_ins;
+    std::cout << "HP after heal: " << hp << "\n";
 
-  // Level-scaled max-HP buff — could exceed hp_t. Because `hp_t` carries a
-  // `clamp` policy, the implicit inside→inside conversion already clips at the
-  // boundary: no `clamp_cast` needed when the target type already says
-  // what to do with out-of-range values.
-  big_pool_t bonus{180};
-  hp_t capped = bonus;
-  std::cout << "\nlevel bonus 180 -> hp_t (implicit clamp): " << capped << "\n";
+    // Level-scaled max-HP buff — could exceed hp_t. Because `hp_t` carries a
+    // `clamp` policy, the implicit inside→inside conversion already clips at the
+    // boundary: no `clamp_cast` needed when the target type already says
+    // what to do with out-of-range values.
+    big_pool_t bonus{180};
+    hp_t       capped = bonus;
+    std::cout << "\nlevel bonus 180 -> hp_t (implicit clamp): " << capped << "\n";
 
-  return 0;
+    return 0;
 }

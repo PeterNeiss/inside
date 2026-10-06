@@ -6,8 +6,7 @@
 
 using namespace beman::inside;
 
-int main()
-{
-  inside<{{0, 10}, -2}> x{0};
-  (void)x;
+int main() {
+    inside<{{0, 10}, -2}> x{0};
+    (void)x;
 }

@@ -30,61 +30,55 @@ using gain_t = inside<{{0, 4}, per<256>}, round_nearest>;
 // in one step — no explicit `clamp_round<output_t>(...)` cast needed.
 using output_t = inside<{-100, 100}, clamp | round_nearest>;
 
-struct pid
-{
-  gain_t kp{1.5};
-  gain_t ki{0.125};
-  gain_t kd{0.5};
+struct pid {
+    gain_t kp{1.5};
+    gain_t ki{0.125};
+    gain_t kd{0.5};
 
-  integ_t integral{0};
-  err_t   previous{0};
-  counter<1'000'000> windup_events{0};
+    integ_t            integral{0};
+    err_t              previous{0};
+    counter<1'000'000> windup_events{0};
 
-  output_t step(err_t err)
-  {
-    // on_clamp fires when the integrator hits its saturation boundary —
-    // classic wind-up indicator. The callback receives the overshoot so
-    // we could derate the gain adaptively; here we just count events.
-    // `policy_ref::operator+=` now takes a insidable RHS directly — no
-    // need to drop to double for the integrator update.
-    integral.on_clamp([&](auto& self, auto overshoot) {
-      (void)self; (void)overshoot;
-      ++windup_events;
-    }) += err;
+    output_t step(err_t err) {
+        // on_clamp fires when the integrator hits its saturation boundary —
+        // classic wind-up indicator. The callback receives the overshoot so
+        // we could derate the gain adaptively; here we just count events.
+        // `policy_ref::operator+=` now takes a insidable RHS directly — no
+        // need to drop to double for the integrator update.
+        integral.on_clamp([&](auto& self, auto overshoot) {
+            (void)self;
+            (void)overshoot;
+            ++windup_events;
+        }) += err;
 
-    // Three weighted terms — each is an inside on a wider grid than err.
-    auto p_term = kp * err;
-    auto i_term = ki * integral;
-    auto d_term = kd * (err - previous);
-    previous = err;
+        // Three weighted terms — each is an inside on a wider grid than err.
+        auto p_term = kp * err;
+        auto i_term = ki * integral;
+        auto d_term = kd * (err - previous);
+        previous    = err;
 
-    // add_all folds variadically; each pairwise + widens the grid further.
-    auto raw = add_all(p_term, i_term, d_term);
+        // add_all folds variadically; each pairwise + widens the grid further.
+        auto raw = add_all(p_term, i_term, d_term);
 
-    // Cross the API boundary: assignment into `output_t` saturates (clamp)
-    // and snaps to its integer notch (round_nearest) via the type's policy.
-    return output_t{raw};
-  }
+        // Cross the API boundary: assignment into `output_t` saturates (clamp)
+        // and snaps to its integer notch (round_nearest) via the type's policy.
+        return output_t{raw};
+    }
 };
 
-int main()
-{
-  pid loop;
+int main() {
+    pid loop;
 
-  // Disturbance series with a sustained bias to provoke wind-up.
-  double errors[] = { 5.0, 4.5, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0,
-                      2.0, 0.5, -1.0, -2.0 };
+    // Disturbance series with a sustained bias to provoke wind-up.
+    double errors[] = {5.0, 4.5, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 2.0, 0.5, -1.0, -2.0};
 
-  std::cout << "err      integ     cmd\n";
-  for (double e : errors)
-  {
-    err_t err{e};
-    auto cmd = loop.step(err);
-    std::cout << err << "    "
-              << loop.integral << "   "
-              << cmd << "\n";
-  }
-  std::cout << "\nintegrator saturation events: " << loop.windup_events << "\n";
+    std::cout << "err      integ     cmd\n";
+    for (double e : errors) {
+        err_t err{e};
+        auto  cmd = loop.step(err);
+        std::cout << err << "    " << loop.integral << "   " << cmd << "\n";
+    }
+    std::cout << "\nintegrator saturation events: " << loop.windup_events << "\n";
 
-  return 0;
+    return 0;
 }

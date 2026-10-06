@@ -18,67 +18,66 @@ using namespace beman::inside;
 
 // Three sensors covering overlapping but distinct ranges.
 // Each has a different precision matched to its hardware.
-using outdoor_t = inside<{{-40, 60},  per<2>},   round_nearest>;  // 0.5  °C
-using indoor_t  = inside<{{0,   50},  per<10>},  round_nearest>;  // 0.1  °C
-using ground_t  = inside<{{-10, 30},  per<4>},   round_nearest>;  // 0.25 °C
+using outdoor_t = inside<{{-40, 60}, per<2>}, round_nearest>; // 0.5  °C
+using indoor_t  = inside<{{0, 50}, per<10>}, round_nearest>;  // 0.1  °C
+using ground_t  = inside<{{-10, 30}, per<4>}, round_nearest>; // 0.25 °C
 
 // Output: a coarse fused grid, integer °C. `clamp | round_nearest` lets
 // `fused_t{raw_fused}` saturate AND round the rational raw quotient in
 // one step — no explicit `clamp_round<fused_t>(...)` cast needed.
 using fused_t = inside<{-40, 60}, clamp | round_nearest>;
 
-int main()
-{
-  // Three readings — one outdoor reading is a clear outlier (-50, below
-  // grid). conversion_overflows rejects it before construction.
-  double raw[] = { 22.5,  21.7,  -50.0,  22.0,  23.25 };
+int main() {
+    // Three readings — one outdoor reading is a clear outlier (-50, below
+    // grid). conversion_overflows rejects it before construction.
+    double raw[] = {22.5, 21.7, -50.0, 22.0, 23.25};
 
-  // Weights per sensor, in 1/8 step — could be tuned by confidence.
-  using weight_t = inside<{{0, 1}, per<8>}, round_nearest>;
-  weight_t w_outdoor{0.5};
-  weight_t w_indoor {0.375};
-  weight_t w_ground{0.125};
+    // Weights per sensor, in 1/8 step — could be tuned by confidence.
+    using weight_t = inside<{{0, 1}, per<8>}, round_nearest>;
+    weight_t w_outdoor{0.5};
+    weight_t w_indoor{0.375};
+    weight_t w_ground{0.125};
 
-  std::cout << "raw   accepted?   notes\n";
+    std::cout << "raw   accepted?   notes\n";
 
-  // Accumulate the weighted sum and total weight in fixed-point bounds — no
-  // rational. The 1/160 accumulator notch holds every sensor·weight product
-  // (outdoor 1/16, indoor 1/80, ground 1/32) exactly, so the running sum stays
-  // lossless; the weight accumulator keeps the weights' 1/8 notch.
-  using acc_t  = inside<{{-200, 200}, per<160>}, round_nearest>;
-  using wsum_t = inside<{{0, 8}, per<8>}, round_nearest>;
-  acc_t  weighted_sum{0};
-  wsum_t weight_sum{0};
+    // Accumulate the weighted sum and total weight in fixed-point bounds — no
+    // rational. The 1/160 accumulator notch holds every sensor·weight product
+    // (outdoor 1/16, indoor 1/80, ground 1/32) exactly, so the running sum stays
+    // lossless; the weight accumulator keeps the weights' 1/8 notch.
+    using acc_t  = inside<{{-200, 200}, per<160>}, round_nearest>;
+    using wsum_t = inside<{{0, 8}, per<8>}, round_nearest>;
+    acc_t  weighted_sum{0};
+    wsum_t weight_sum{0};
 
-  auto accept = [&]<typename B>(double r, weight_t w, auto tag, auto predicate) {
-    bool ok = predicate(r);
-    std::cout << r << "  " << (ok ? "yes" : "no ") << "  " << tag << "\n";
-    if (!ok) return;
-    B reading{r};
-    weighted_sum = acc_t{weighted_sum + reading * w};   // inside-space, exact
-    weight_sum   = wsum_t{weight_sum + w};
-  };
+    auto accept = [&]<typename B>(double r, weight_t w, auto tag, auto predicate) {
+        bool ok = predicate(r);
+        std::cout << r << "  " << (ok ? "yes" : "no ") << "  " << tag << "\n";
+        if (!ok)
+            return;
+        B reading{r};
+        weighted_sum = acc_t{weighted_sum + reading * w}; // inside-space, exact
+        weight_sum   = wsum_t{weight_sum + w};
+    };
 
-  accept.template operator()<outdoor_t>(raw[0], w_outdoor, "outdoor",
-         [](double v){ return !conversion_overflows<outdoor_t>(v); });
-  accept.template operator()<indoor_t >(raw[1], w_indoor,  "indoor ",
-         [](double v){ return !conversion_overflows<indoor_t>(v); });
-  accept.template operator()<outdoor_t>(raw[2], w_outdoor, "outdoor",
-         [](double v){ return !conversion_overflows<outdoor_t>(v); });
-  accept.template operator()<ground_t >(raw[3], w_ground,  "ground ",
-         [](double v){ return !conversion_overflows<ground_t>(v); });
-  accept.template operator()<indoor_t >(raw[4], w_indoor,  "indoor ",
-         [](double v){ return !conversion_overflows<indoor_t>(v); });
+    accept.template operator()<outdoor_t>(
+        raw[0], w_outdoor, "outdoor", [](double v) { return !conversion_overflows<outdoor_t>(v); });
+    accept.template operator()<indoor_t>(
+        raw[1], w_indoor, "indoor ", [](double v) { return !conversion_overflows<indoor_t>(v); });
+    accept.template operator()<outdoor_t>(
+        raw[2], w_outdoor, "outdoor", [](double v) { return !conversion_overflows<outdoor_t>(v); });
+    accept.template operator()<ground_t>(
+        raw[3], w_ground, "ground ", [](double v) { return !conversion_overflows<ground_t>(v); });
+    accept.template operator()<indoor_t>(
+        raw[4], w_indoor, "indoor ", [](double v) { return !conversion_overflows<indoor_t>(v); });
 
-  // Divide in inside-space: the weight grid includes 0, so `/` yields an
-  // expected<inside, errc>; the fused_t ctor unwraps it and clamp-rounds in one step.
-  fused_t fused{0};
-  if (weight_sum != 0)
-    fused = fused_t{weighted_sum / weight_sum};
+    // Divide in inside-space: the weight grid includes 0, so `/` yields an
+    // expected<inside, errc>; the fused_t ctor unwraps it and clamp-rounds in one step.
+    fused_t fused{0};
+    if (weight_sum != 0)
+        fused = fused_t{weighted_sum / weight_sum};
 
-  std::cout << "\nweighted sum: " << weighted_sum
-            << ",  total weight: " << weight_sum << "\n";
-  std::cout << "fused (clamp+round into fused_t): " << fused << "\n";
+    std::cout << "\nweighted sum: " << weighted_sum << ",  total weight: " << weight_sum << "\n";
+    std::cout << "fused (clamp+round into fused_t): " << fused << "\n";
 
-  return 0;
+    return 0;
 }

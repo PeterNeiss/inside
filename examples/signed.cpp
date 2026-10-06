@@ -10,42 +10,41 @@
 
 using namespace beman::inside;
 
-int main()
-{
-  // Temperature sensor: -40 to +85 degrees, fits in int8_t
-  using temp = inside<{-40, 85}>;
-  static_assert(sizeof(temp) == 1);
+int main() {
+    // Temperature sensor: -40 to +85 degrees, fits in int8_t
+    using temp = inside<{-40, 85}>;
+    static_assert(sizeof(temp) == 1);
 
-  temp room = 22;
-  temp outside = -15;
-  std::cout << "room:    " << room << "\n";
-  std::cout << "outside: " << outside << "\n";
+    temp room    = 22;
+    temp outside = -15;
+    std::cout << "room:    " << room << "\n";
+    std::cout << "outside: " << outside << "\n";
 
-  // Arithmetic on signed bounds
-  auto diff = room - outside;
-  std::cout << "diff:    " << diff << "\n";  // 37
+    // Arithmetic on signed bounds
+    auto diff = room - outside;
+    std::cout << "diff:    " << diff << "\n"; // 37
 
-  // Negation
-  auto neg = -room;
-  std::cout << "-room:   " << neg << "\n";   // -22
+    // Negation
+    auto neg = -room;
+    std::cout << "-room:   " << neg << "\n"; // -22
 
-  // Altitude: -500 to 9000 meters, fits in int16_t
-  using altitude = inside<{-500, 9000}>;
-  static_assert(sizeof(altitude) == 2);
+    // Altitude: -500 to 9000 meters, fits in int16_t
+    using altitude = inside<{-500, 9000}>;
+    static_assert(sizeof(altitude) == 2);
 
-  altitude mountain  = 4500;
-  altitude cave      = -200;
+    altitude mountain = 4500;
+    altitude cave     = -200;
 
-  auto climb = mountain - cave;
-  std::cout << "climb:   " << climb << "\n";  // 4700
+    auto climb = mountain - cave;
+    std::cout << "climb:   " << climb << "\n"; // 4700
 
-  // Signed bounds with clamp
-  using voltage = inside<{-12, 12}, clamp>;
-  voltage v = 15;   // clamped to 12
-  std::cout << "15V clamped: " << v << "\n";
+    // Signed bounds with clamp
+    using voltage = inside<{-12, 12}, clamp>;
+    voltage v     = 15; // clamped to 12
+    std::cout << "15V clamped: " << v << "\n";
 
-  v = -20;          // clamped to -12
-  std::cout << "-20V clamped: " << v << "\n";
+    v = -20; // clamped to -12
+    std::cout << "-20V clamped: " << v << "\n";
 
-  return 0;
+    return 0;
 }

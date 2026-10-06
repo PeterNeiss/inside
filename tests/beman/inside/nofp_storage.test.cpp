@@ -11,17 +11,15 @@
 using namespace beman::inside;
 using namespace beman::inside::detail;
 
-TEST(NoFpStorageTest, f64_flag_is_integer_backed)
-{
-  using F = inside<{{0, 4}, per<4>}, f64>;
-  static_assert(!fp_raw<F>);
-  const F f{rational{3, 4}};
-  EXPECT_EQ(rational{f}, (rational{3, 4}));
+TEST(NoFpStorageTest, f64_flag_is_integer_backed) {
+    using F = inside<{{0, 4}, per<4>}, f64>;
+    static_assert(!fp_raw<F>);
+    const F f{rational{3, 4}};
+    EXPECT_EQ(rational{f}, (rational{3, 4}));
 }
 
-TEST(NoFpStorageTest, amp_output_reads_the_angle_by_value)
-{
-  using ang = inside<{{-4, 4}, per<1024>}, round_nearest | f64>;   // integer-backed under NO_FP
-  EXPECT_EQ(rational{math::sin_into<math::amp<14>>(ang{0.5})}, (rational{1, 2}));   // sin 0.5 ≈ 0.479 → 7/14
-  EXPECT_EQ(rational{math::sin_into<math::amp<14>>(ang{0})}, rational{0});
+TEST(NoFpStorageTest, amp_output_reads_the_angle_by_value) {
+    using ang = inside<{{-4, 4}, per<1024>}, round_nearest | f64>;                  // integer-backed under NO_FP
+    EXPECT_EQ(rational{math::sin_into<math::amp<14>>(ang{0.5})}, (rational{1, 2})); // sin 0.5 ≈ 0.479 → 7/14
+    EXPECT_EQ(rational{math::sin_into<math::amp<14>>(ang{0})}, rational{0});
 }

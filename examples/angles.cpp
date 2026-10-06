@@ -8,24 +8,23 @@
 
 using namespace beman::inside;
 
-int main()
-{
-  using degree = inside<{0, 359}, wrap>;
+int main() {
+    using degree = inside<{0, 359}, wrap>;
 
-  degree heading = 350;
-  std::cout << "heading:  " << heading << "\n";
+    degree heading = 350;
+    std::cout << "heading:  " << heading << "\n";
 
-  // Turn right 30 degrees (wraps past 360)
-  heading += 30_ins;
-  std::cout << "+30:      " << heading << "\n";  // 20
+    // Turn right 30 degrees (wraps past 360)
+    heading += 30_ins;
+    std::cout << "+30:      " << heading << "\n"; // 20
 
-  // Turn left 90 degrees
-  heading += -90_ins;
-  std::cout << "-90:      " << heading << "\n";  // 290
+    // Turn left 90 degrees
+    heading += -90_ins;
+    std::cout << "-90:      " << heading << "\n"; // 290
 
-  // Full rotation
-  heading += 360_ins;
-  std::cout << "+360:     " << heading << "\n";  // 290 (unchanged)
+    // Full rotation
+    heading += 360_ins;
+    std::cout << "+360:     " << heading << "\n"; // 290 (unchanged)
 
-  return 0;
+    return 0;
 }

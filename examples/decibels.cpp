@@ -18,30 +18,30 @@
 // std::println needs io.hpp's std::formatter, which needs <format> (libc++ 18
 // has <print> without __cpp_lib_format).
 #if defined(__cpp_lib_print) && defined(__cpp_lib_format)
-#include <print>
+    #include <print>
 using std::println;
 #else
-// Kept portable to standard libraries without <print>: a minimal stand-in
-// covering the `{}` forms this example uses, rendered through the
-// inside/rational operator<< from print.hpp.
-#include <iostream>
-#include <sstream>
-#include <string_view>
+    // Kept portable to standard libraries without <print>: a minimal stand-in
+    // covering the `{}` forms this example uses, rendered through the
+    // inside/rational operator<< from print.hpp.
+    #include <iostream>
+    #include <sstream>
+    #include <string_view>
 namespace {
 template <class... Ts>
-void println(std::string_view fmt, Ts const&... args)
-{
-  std::ostringstream oss;
-  std::size_t pos = 0;
-  [[maybe_unused]] auto emit = [&](auto const& a) {
-    auto open = fmt.find("{}", pos);
-    if (open == std::string_view::npos) return;
-    oss << fmt.substr(pos, open - pos) << a;
-    pos = open + 2;
-  };
-  (emit(args), ...);
-  oss << fmt.substr(pos) << '\n';
-  std::cout << oss.str();
+void println(std::string_view fmt, const Ts&... args) {
+    std::ostringstream    oss;
+    std::size_t           pos  = 0;
+    [[maybe_unused]] auto emit = [&](const auto& a) {
+        auto open = fmt.find("{}", pos);
+        if (open == std::string_view::npos)
+            return;
+        oss << fmt.substr(pos, open - pos) << a;
+        pos = open + 2;
+    };
+    (emit(args), ...);
+    oss << fmt.substr(pos) << '\n';
+    std::cout << oss.str();
 }
 } // namespace
 #endif
@@ -49,7 +49,7 @@ void println(std::string_view fmt, Ts const&... args)
 using namespace beman::inside;
 
 // dB in [-24, 12] at 0.5 dB resolution — matches a typical mixer fader range.
-using db_t       = inside<{{-24, 12}, per<2>}, round_nearest>;
+using db_t = inside<{{-24, 12}, per<2>}, round_nearest>;
 // dB/20 intermediate. Range chosen to cover [-1.2, 0.6] (the true range for
 // dB ∈ [-24, 12]) but rounded out to integer endpoints so the grid validates
 // against the 1/65536 notch. The fine notch is deliberate — auto-deduced
@@ -57,50 +57,47 @@ using db_t       = inside<{{-24, 12}, per<2>}, round_nearest>;
 // snap the linear output to audible 0.025-wide steps.
 using db_div20_t = inside<{{-2, 1}, per<65536>}, round_nearest | f64>;
 // Linear amplitude. dB ∈ [-24, 12] ⇒ amp ∈ [10^-1.2, 10^0.6] ≈ [0.063, 3.98].
-using gain_t     = inside<{{0x1p-8, 4}, per<65536>}, round_nearest | f64>;
+using gain_t = inside<{{0x1p-8, 4}, per<65536>}, round_nearest | f64>;
 
 // dB → linear: 10^(dB/20).
-static constexpr gain_t db_to_linear(db_t db)
-{
-  db_div20_t exponent{db / just<20>};
-  return gain_t{math::pow_base<10>(exponent)};
+static constexpr gain_t db_to_linear(db_t db) {
+    db_div20_t exponent{db / just<20>};
+    return gain_t{math::pow_base<10>(exponent)};
 }
 
 // linear → dB: 20·log10(amp) = (20/ln(10)) · ln(amp).
 // 20/ln(10) ≈ 8.685889638. As an 8-digit rational source: 86858896/10^7.
-static constexpr db_t linear_to_db(gain_t amp)
-{
-  // 20/ln(10) as an exact point-inside (no rational on the surface).
-  constexpr auto k20_over_ln10 = just<frac<86858896, 10000000>>;
-  auto log_amp = math::log(amp);
-  // The round trip can land a hair outside [-24, 12] (e.g. -24.0001);
-  // db_t rounds onto its 0.5 dB grid before it range-checks, so that is -24.
-  return db_t{k20_over_ln10 * log_amp};
+static constexpr db_t linear_to_db(gain_t amp) {
+    // 20/ln(10) as an exact point-inside (no rational on the surface).
+    constexpr auto k20_over_ln10 = just<frac<86858896, 10000000>>;
+    auto           log_amp       = math::log(amp);
+    // The round trip can land a hair outside [-24, 12] (e.g. -24.0001);
+    // db_t rounds onto its 0.5 dB grid before it range-checks, so that is -24.
+    return db_t{k20_over_ln10 * log_amp};
 }
 
-int main()
-{
-  // `std::println` works on inside / rational because `beman/inside/formatter.hpp`
-  // ships `std::formatter` specializations for both. Empty `{}` keeps the
-  // exact rational rendering — same string `operator<<` would produce.
-  println("dB → linear → dB round-trip:");
-  println("    dB       linear         round-trip dB");
+int main() {
+    // `std::println` works on inside / rational because `beman/inside/formatter.hpp`
+    // ships `std::formatter` specializations for both. Empty `{}` keeps the
+    // exact rational rendering — same string `operator<<` would produce.
+    println("dB → linear → dB round-trip:");
+    println("    dB       linear         round-trip dB");
 
-  // Sweep dB at 3 dB steps over the full range.
-  for (int d = -24; d <= 12; d += 3) {
-    db_t db{d};
-    gain_t lin = db_to_linear(db);
-    db_t db_recovered = linear_to_db(lin);
-    println("    {}       {}         {}", db, lin, db_recovered);
-  }
+    // Sweep dB at 3 dB steps over the full range.
+    for (int d = -24; d <= 12; d += 3) {
+        db_t   db{d};
+        gain_t lin          = db_to_linear(db);
+        db_t   db_recovered = linear_to_db(lin);
+        println("    {}       {}         {}", db, lin, db_recovered);
+    }
 
-  // The canonical "6 dB doubles" / "12 dB quadruples" landmarks.
-  println("\nLandmark conversions (within db_t's [-24, 12] range):");
-  for (int d : {-24, -12, -6, 0, 6, 12}) {
-    db_t db{d};
-    gain_t lin = db_to_linear(db);
-    println("    {} dB  =  {}", db, lin);
-  }
+    // The canonical "6 dB doubles" / "12 dB quadruples" landmarks.
+    println("\nLandmark conversions (within db_t's [-24, 12] range):");
+    for (int d : {-24, -12, -6, 0, 6, 12}) {
+        db_t   db{d};
+        gain_t lin = db_to_linear(db);
+        println("    {} dB  =  {}", db, lin);
+    }
 
-  return 0;
+    return 0;
 }

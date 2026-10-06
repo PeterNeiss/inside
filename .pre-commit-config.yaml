@@ -40,4 +40,4 @@ repos:
     hooks:
       - id: codespell
 
-exclude: '^(infra/|port/|single_include/|docs/int-considered-harmful\.pdf)'
+exclude: '^(infra/|port/|single_include/|docs/int-considered-harmful/|docs/int-considered-harmful\.pdf)'

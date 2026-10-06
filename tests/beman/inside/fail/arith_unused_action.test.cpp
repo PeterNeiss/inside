@@ -4,9 +4,8 @@
 // rejected instead of silently ignored.
 #include <beman/inside/inside.hpp>
 
-int main()
-{
-  using b = beman::inside::inside<{0, 10}>;
-  auto s = beman::inside::add(b{1}, b{2}, beman::inside::on_error([](auto&, auto, auto) {}));
-  (void)s;
+int main() {
+    using b = beman::inside::inside<{0, 10}>;
+    auto s  = beman::inside::add(b{1}, b{2}, beman::inside::on_error([](auto&, auto, auto) {}));
+    (void)s;
 }

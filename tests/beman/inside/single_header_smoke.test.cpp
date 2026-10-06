@@ -7,13 +7,12 @@
 //---------------------------------------------------------------------------
 #include <beman/inside/inside.hpp>
 
-int main()
-{
+int main() {
     using namespace beman::inside;
 
     inside<{0, 100}> a{42};
     inside<{0, 100}> b{8};
-    auto sum = a + b;                          // result grid {0, 200}, unit integer
+    auto             sum = a + b; // result grid {0, 200}, unit integer
 
     return (static_cast<int>(sum) == 50) ? 0 : 1;
 }

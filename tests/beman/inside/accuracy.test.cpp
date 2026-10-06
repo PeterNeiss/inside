@@ -19,150 +19,163 @@
 
 using namespace beman::inside;
 
-namespace
-{
-  // Exact value of an inside (or grid constant) as long double, via rational.
-  long double to_long_double(detail::rational r)
-  {
-    return static_cast<long double>(r.Numerator)
-         / static_cast<long double>(r.Denominator);
-  }
+namespace {
+// Exact value of an inside (or grid constant) as long double, via rational.
+long double to_long_double(detail::rational r) {
+    return static_cast<long double>(r.Numerator) / static_cast<long double>(r.Denominator);
+}
 
-  struct stats
-  {
-    long double max_err  = 0.0L;   // in output notches
+struct stats {
+    long double max_err  = 0.0L; // in output notches
     long double mean_err = 0.0L;
     long        samples  = 0;
-  };
+};
 
-  // Sweeps `engine_fn` over the whole input grid (strided to ~`target_samples`
-  // points) and accumulates the error against `reference_fn` in output-notch
-  // units.
-  template <typename In, typename EngineFn, typename ReferenceFn>
-  stats sweep(EngineFn engine_fn, ReferenceFn reference_fn,
-              long target_samples = 20000)
-  {
-    const long double lo        = to_long_double(lower_of<In>);
-    const long double in_notch  = to_long_double(notch_of<In>);
-    const long double span      = to_long_double(upper_of<In>) - lo;
-    const long        count     = static_cast<long>(span / in_notch);
-    const long        stride    = count > target_samples ? count / target_samples : 1;
+// Sweeps `engine_fn` over the whole input grid (strided to ~`target_samples`
+// points) and accumulates the error against `reference_fn` in output-notch
+// units.
+template <typename In, typename EngineFn, typename ReferenceFn>
+stats sweep(EngineFn engine_fn, ReferenceFn reference_fn, long target_samples = 20000) {
+    const long double lo       = to_long_double(lower_of<In>);
+    const long double in_notch = to_long_double(notch_of<In>);
+    const long double span     = to_long_double(upper_of<In>) - lo;
+    const long        count    = static_cast<long>(span / in_notch);
+    const long        stride   = count > target_samples ? count / target_samples : 1;
 
-    stats s;
+    stats       s;
     long double sum = 0.0L;
-    for (long i = 0; i <= count; i += stride)
-    {
-      const long double value = lo + static_cast<long double>(i) * in_notch;
-      const In x{static_cast<double>(value)};
+    for (long i = 0; i <= count; i += stride) {
+        const long double value = lo + static_cast<long double>(i) * in_notch;
+        const In          x{static_cast<double>(value)};
 
-      // Some ops return expected<inside, errc> (runtime-failable domains);
-      // unwrap and skip the rare out-of-domain sample.
-      const auto outcome = engine_fn(x);
-      constexpr bool failable =
-          requires { outcome.has_value(); *outcome; };
-      if constexpr (failable)
-        if (!outcome.has_value())
-          continue;
-      const auto result = [&]{
-        if constexpr (failable) return *outcome; else return outcome; }();
-      const long double out_notch =
-          to_long_double(notch_of<std::remove_cv_t<decltype(result)>>);
-      const long double err =
-          std::fabs(to_long_double(detail::rational{result}) - reference_fn(value))
-          / (out_notch > 0.0L ? out_notch : 1.0L);
+        // Some ops return expected<inside, errc> (runtime-failable domains);
+        // unwrap and skip the rare out-of-domain sample.
+        const auto     outcome  = engine_fn(x);
+        constexpr bool failable = requires {
+            outcome.has_value();
+            *outcome;
+        };
+        if constexpr (failable)
+            if (!outcome.has_value())
+                continue;
+        const auto result = [&] {
+            if constexpr (failable)
+                return *outcome;
+            else
+                return outcome;
+        }();
+        const long double out_notch = to_long_double(notch_of<std::remove_cv_t<decltype(result)>>);
+        const long double err       = std::fabs(to_long_double(detail::rational{result}) - reference_fn(value)) /
+                                      (out_notch > 0.0L ? out_notch : 1.0L);
 
-      if (err > s.max_err) s.max_err = err;
-      sum += err;
-      ++s.samples;
+        if (err > s.max_err)
+            s.max_err = err;
+        sum += err;
+        ++s.samples;
     }
     s.mean_err = s.samples ? sum / static_cast<long double>(s.samples) : 0.0L;
     return s;
-  }
-
-  void row(std::FILE* out, const char* function, const char* grid,
-           const char* domain, stats s)
-  {
-    std::fprintf(out, "| %-7s | %-13s | %-14s | %10.4Lf | %10.6Lf | %ld |\n",
-                 function, grid, domain, s.max_err, s.mean_err, s.samples);
-  }
-
-  // Input grids, in three kinds: dyadic 2^-14 lattices with `f64` storage
-  // (deduced outputs keep it), the same ranges in steps of 1/1000 (inputs
-  // that are not doubles exactly), and explicit outputs with a 2^-40 notch.
-  using angle_grid = inside<{{-8, 8},        per<16384>}, round_nearest | f64>;
-  using tan_grid   = inside<{{-1.5, 1.5},   per<16384>}, round_nearest | f64>;
-  using unit_grid  = inside<{{-1, 1},       per<16384>}, round_nearest | f64>;
-  using sqrt_grid  = inside<{{0, 16},       per<16384>}, round_nearest | f64>;
-  using log_grid   = inside<{{1, 1000},     per<16384>}, round_nearest | f64>;
-  using atanh_grid = inside<{{-0.99951171875, 0.99951171875}, per<16384>}, round_nearest | f64>;
-
-  using angle_dec = inside<{{-8, 8},        per<1000>}, round_nearest>;
-  using tan_dec   = inside<{{-1.5, 1.5},   per<1000>}, round_nearest>;
-  using unit_dec  = inside<{{-1, 1},       per<1000>}, round_nearest>;
-  using sqrt_dec  = inside<{{0, 16},       per<1000>}, round_nearest>;
-  using log_dec   = inside<{{1, 1000},     per<1000>}, round_nearest>;
-  using atanh_dec = inside<{{detail::rational{-999, 1000}, detail::rational{999, 1000}}, per<1000>}, round_nearest>;
-
-  using fine_out  = inside<{{-4096, 4096}, per<(std::uint64_t{1} << 40)>}, round_nearest>;
 }
 
-int main(int argc, char** argv)
-{
-  std::FILE* out = stdout;
-  if (argc > 1)
-  {
-    out = std::fopen(argv[1], "w");
-    if (!out) { std::perror(argv[1]); return 1; }
-  }
+void row(std::FILE* out, const char* function, const char* grid, const char* domain, stats s) {
+    std::fprintf(out,
+                 "| %-7s | %-13s | %-14s | %10.4Lf | %10.6Lf | %ld |\n",
+                 function,
+                 grid,
+                 domain,
+                 s.max_err,
+                 s.mean_err,
+                 s.samples);
+}
 
-  std::fprintf(out,
-    "# Math accuracy\n\n"
-    "Generated by `beman.inside.accuracy` (tests/beman/inside/accuracy.test.cpp) — do not edit by hand.\n"
-    "Regenerate with `cmake --build <build-dir> --target beman.inside.accuracy_report` (configure with `-DBEMAN_INSIDE_BUILD_TOOLS=ON`).\n\n"
-    "Error is measured against a long-double `<cmath>` reference, in units of\n"
-    "the **output grid notch**: max < 0.5 means every sampled result is the\n"
-    "correctly rounded grid point. The engine rounds correctly by construction\n"
-    "(see [math.md](math.md)); this table checks it on three kinds of grid:\n"
-    "`f64 2^-14` (dyadic inputs with `f64` storage, deduced outputs),\n"
-    "`decimal` (inputs in steps of 1/1000, deduced outputs) and `out 2^-40`\n"
-    "(the f64 inputs into an explicit output with a 2^-40 notch). The\n"
-    "long-double reference carries 64 bits, so on the 2^-40 outputs a result\n"
-    "within about 2^-20 notch of a rounding boundary can read as up to a hair\n"
-    "past 0.5.\n\n"
-    "| fn      | grid          | domain         | max (notch) | mean (notch) | samples |\n"
-    "|---------|---------------|----------------|-------------|--------------|---------|\n");
+// Input grids, in three kinds: dyadic 2^-14 lattices with `f64` storage
+// (deduced outputs keep it), the same ranges in steps of 1/1000 (inputs
+// that are not doubles exactly), and explicit outputs with a 2^-40 notch.
+using angle_grid = inside<{{-8, 8}, per<16384>}, round_nearest | f64>;
+using tan_grid   = inside<{{-1.5, 1.5}, per<16384>}, round_nearest | f64>;
+using unit_grid  = inside<{{-1, 1}, per<16384>}, round_nearest | f64>;
+using sqrt_grid  = inside<{{0, 16}, per<16384>}, round_nearest | f64>;
+using log_grid   = inside<{{1, 1000}, per<16384>}, round_nearest | f64>;
+using atanh_grid = inside<{{-0.99951171875, 0.99951171875}, per<16384>}, round_nearest | f64>;
 
-  // One macro row per (function, grid kind, reference).
-#define BEMAN_INSIDE_ACCURACY(fn, In, Dec, domain, ref)                                 \
-  row(out, #fn, "f64 2^-14", domain,                                                    \
-      sweep<In>([](In x){ return math::fn(x); }, [](long double v){ return ref; }));    \
-  row(out, #fn, "decimal", domain,                                                      \
-      sweep<Dec>([](Dec x){ return math::fn(x); }, [](long double v){ return ref; }));  \
-  row(out, #fn, "out 2^-40", domain,                                                    \
-      sweep<In>([](In x){ return math::fn##_into<fine_out>(x); },                       \
-                [](long double v){ return ref; }));
+using angle_dec = inside<{{-8, 8}, per<1000>}, round_nearest>;
+using tan_dec   = inside<{{-1.5, 1.5}, per<1000>}, round_nearest>;
+using unit_dec  = inside<{{-1, 1}, per<1000>}, round_nearest>;
+using sqrt_dec  = inside<{{0, 16}, per<1000>}, round_nearest>;
+using log_dec   = inside<{{1, 1000}, per<1000>}, round_nearest>;
+using atanh_dec = inside<{{detail::rational{-999, 1000}, detail::rational{999, 1000}}, per<1000>}, round_nearest>;
 
-  BEMAN_INSIDE_ACCURACY(sin,   angle_grid, angle_dec, "[-8, 8]",      sinl(v))
-  BEMAN_INSIDE_ACCURACY(cos,   angle_grid, angle_dec, "[-8, 8]",      cosl(v))
-  BEMAN_INSIDE_ACCURACY(tan,   tan_grid,   tan_dec,   "[-1.5, 1.5]",  tanl(v))
-  BEMAN_INSIDE_ACCURACY(asin,  unit_grid,  unit_dec,  "[-1, 1]",      asinl(v))
-  BEMAN_INSIDE_ACCURACY(acos,  unit_grid,  unit_dec,  "[-1, 1]",      acosl(v))
-  BEMAN_INSIDE_ACCURACY(atan,  angle_grid, angle_dec, "[-8, 8]",      atanl(v))
-  BEMAN_INSIDE_ACCURACY(sinh,  angle_grid, angle_dec, "[-8, 8]",      sinhl(v))
-  BEMAN_INSIDE_ACCURACY(cosh,  angle_grid, angle_dec, "[-8, 8]",      coshl(v))
-  BEMAN_INSIDE_ACCURACY(tanh,  angle_grid, angle_dec, "[-8, 8]",      tanhl(v))
-  BEMAN_INSIDE_ACCURACY(asinh, angle_grid, angle_dec, "[-8, 8]",      asinhl(v))
-  BEMAN_INSIDE_ACCURACY(acosh, log_grid,   log_dec,   "[1, 1000]",    acoshl(v))
-  BEMAN_INSIDE_ACCURACY(atanh, atanh_grid, atanh_dec, "(-1, 1)",      atanhl(v))
-  BEMAN_INSIDE_ACCURACY(exp,   angle_grid, angle_dec, "[-8, 8]",      expl(v))
-  BEMAN_INSIDE_ACCURACY(exp2,  angle_grid, angle_dec, "[-8, 8]",      exp2l(v))
-  BEMAN_INSIDE_ACCURACY(log,   log_grid,   log_dec,   "[1, 1000]",    logl(v))
-  BEMAN_INSIDE_ACCURACY(log2,  log_grid,   log_dec,   "[1, 1000]",    log2l(v))
-  BEMAN_INSIDE_ACCURACY(log10, log_grid,   log_dec,   "[1, 1000]",    log10l(v))
-  BEMAN_INSIDE_ACCURACY(sqrt,  sqrt_grid,  sqrt_dec,  "[0, 16]",      sqrtl(v))
-  BEMAN_INSIDE_ACCURACY(cbrt,  angle_grid, angle_dec, "[-8, 8]",      cbrtl(v))
+using fine_out = inside<{{-4096, 4096}, per<(std::uint64_t{1} << 40)>}, round_nearest>;
+} // namespace
+
+int main(int argc, char** argv) {
+    std::FILE* out = stdout;
+    if (argc > 1) {
+        out = std::fopen(argv[1], "w");
+        if (!out) {
+            std::perror(argv[1]);
+            return 1;
+        }
+    }
+
+    std::fprintf(out,
+                 "# Math accuracy\n\n"
+                 "Generated by `beman.inside.accuracy` (tests/beman/inside/accuracy.test.cpp) — do not edit by hand.\n"
+                 "Regenerate with `cmake --build <build-dir> --target beman.inside.accuracy_report` (configure with "
+                 "`-DBEMAN_INSIDE_BUILD_TOOLS=ON`).\n\n"
+                 "Error is measured against a long-double `<cmath>` reference, in units of\n"
+                 "the **output grid notch**: max < 0.5 means every sampled result is the\n"
+                 "correctly rounded grid point. The engine rounds correctly by construction\n"
+                 "(see [math.md](math.md)); this table checks it on three kinds of grid:\n"
+                 "`f64 2^-14` (dyadic inputs with `f64` storage, deduced outputs),\n"
+                 "`decimal` (inputs in steps of 1/1000, deduced outputs) and `out 2^-40`\n"
+                 "(the f64 inputs into an explicit output with a 2^-40 notch). The\n"
+                 "long-double reference carries 64 bits, so on the 2^-40 outputs a result\n"
+                 "within about 2^-20 notch of a rounding boundary can read as up to a hair\n"
+                 "past 0.5.\n\n"
+                 "| fn      | grid          | domain         | max (notch) | mean (notch) | samples |\n"
+                 "|---------|---------------|----------------|-------------|--------------|---------|\n");
+
+    // One macro row per (function, grid kind, reference).
+#define BEMAN_INSIDE_ACCURACY(fn, In, Dec, domain, ref)                                    \
+    row(out,                                                                               \
+        #fn,                                                                               \
+        "f64 2^-14",                                                                       \
+        domain,                                                                            \
+        sweep<In>([](In x) { return math::fn(x); }, [](long double v) { return ref; }));   \
+    row(out,                                                                               \
+        #fn,                                                                               \
+        "decimal",                                                                         \
+        domain,                                                                            \
+        sweep<Dec>([](Dec x) { return math::fn(x); }, [](long double v) { return ref; })); \
+    row(out,                                                                               \
+        #fn,                                                                               \
+        "out 2^-40",                                                                       \
+        domain,                                                                            \
+        sweep<In>([](In x) { return math::fn##_into<fine_out>(x); }, [](long double v) { return ref; }));
+
+    BEMAN_INSIDE_ACCURACY(sin, angle_grid, angle_dec, "[-8, 8]", sinl(v))
+    BEMAN_INSIDE_ACCURACY(cos, angle_grid, angle_dec, "[-8, 8]", cosl(v))
+    BEMAN_INSIDE_ACCURACY(tan, tan_grid, tan_dec, "[-1.5, 1.5]", tanl(v))
+    BEMAN_INSIDE_ACCURACY(asin, unit_grid, unit_dec, "[-1, 1]", asinl(v))
+    BEMAN_INSIDE_ACCURACY(acos, unit_grid, unit_dec, "[-1, 1]", acosl(v))
+    BEMAN_INSIDE_ACCURACY(atan, angle_grid, angle_dec, "[-8, 8]", atanl(v))
+    BEMAN_INSIDE_ACCURACY(sinh, angle_grid, angle_dec, "[-8, 8]", sinhl(v))
+    BEMAN_INSIDE_ACCURACY(cosh, angle_grid, angle_dec, "[-8, 8]", coshl(v))
+    BEMAN_INSIDE_ACCURACY(tanh, angle_grid, angle_dec, "[-8, 8]", tanhl(v))
+    BEMAN_INSIDE_ACCURACY(asinh, angle_grid, angle_dec, "[-8, 8]", asinhl(v))
+    BEMAN_INSIDE_ACCURACY(acosh, log_grid, log_dec, "[1, 1000]", acoshl(v))
+    BEMAN_INSIDE_ACCURACY(atanh, atanh_grid, atanh_dec, "(-1, 1)", atanhl(v))
+    BEMAN_INSIDE_ACCURACY(exp, angle_grid, angle_dec, "[-8, 8]", expl(v))
+    BEMAN_INSIDE_ACCURACY(exp2, angle_grid, angle_dec, "[-8, 8]", exp2l(v))
+    BEMAN_INSIDE_ACCURACY(log, log_grid, log_dec, "[1, 1000]", logl(v))
+    BEMAN_INSIDE_ACCURACY(log2, log_grid, log_dec, "[1, 1000]", log2l(v))
+    BEMAN_INSIDE_ACCURACY(log10, log_grid, log_dec, "[1, 1000]", log10l(v))
+    BEMAN_INSIDE_ACCURACY(sqrt, sqrt_grid, sqrt_dec, "[0, 16]", sqrtl(v))
+    BEMAN_INSIDE_ACCURACY(cbrt, angle_grid, angle_dec, "[-8, 8]", cbrtl(v))
 #undef BEMAN_INSIDE_ACCURACY
 
-  if (out != stdout) std::fclose(out);
-  return 0;
+    if (out != stdout)
+        std::fclose(out);
+    return 0;
 }

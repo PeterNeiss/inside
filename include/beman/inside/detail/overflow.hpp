@@ -11,19 +11,21 @@
 // __builtin_*_overflow intrinsics. Return true on overflow; *result holds the
 // wrapped value either way. Used by rational::*_impl and every checked path.
 //---------------------------------------------------------------------------
-namespace beman::inside
-{
-  template <std::integral T>
-  [[nodiscard]] constexpr bool add_overflow(T l, T r, T* result) noexcept
-  { return __builtin_add_overflow(l, r, result); }
+namespace beman::inside {
+template <std::integral T>
+[[nodiscard]] constexpr bool add_overflow(T l, T r, T* result) noexcept {
+    return __builtin_add_overflow(l, r, result);
+}
 
-  template <std::integral T>
-  [[nodiscard]] constexpr bool sub_overflow(T l, T r, T* result) noexcept
-  { return __builtin_sub_overflow(l, r, result); }
+template <std::integral T>
+[[nodiscard]] constexpr bool sub_overflow(T l, T r, T* result) noexcept {
+    return __builtin_sub_overflow(l, r, result);
+}
 
-  template <std::integral T>
-  [[nodiscard]] constexpr bool mul_overflow(T l, T r, T* result) noexcept
-  { return __builtin_mul_overflow(l, r, result); }
+template <std::integral T>
+[[nodiscard]] constexpr bool mul_overflow(T l, T r, T* result) noexcept {
+    return __builtin_mul_overflow(l, r, result);
+}
 } // namespace beman::inside
 
 #endif // BEMAN_INSIDE_DETAIL_OVERFLOW_HPP

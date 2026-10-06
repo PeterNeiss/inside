@@ -4,8 +4,7 @@
 // body's mutual-exclusion static_asserts.
 #include <beman/inside/inside.hpp>
 
-int main()
-{
-  beman::inside::inside<{0, 100}, beman::inside::clamp | beman::inside::wrap> contradictory{};
-  (void)contradictory;
+int main() {
+    beman::inside::inside<{0, 100}, beman::inside::clamp | beman::inside::wrap> contradictory{};
+    (void)contradictory;
 }

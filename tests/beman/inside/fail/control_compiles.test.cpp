@@ -5,9 +5,8 @@
 
 using namespace beman::inside;
 
-int main()
-{
-  beman::inside::inside<{0, 100}> percent{50};
-  auto sum = percent + 1_ins;
-  (void)sum;
+int main() {
+    beman::inside::inside<{0, 100}> percent{50};
+    auto                            sum = percent + 1_ins;
+    (void)sum;
 }

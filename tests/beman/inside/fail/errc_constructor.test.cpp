@@ -6,9 +6,8 @@
 
 using namespace beman::inside;
 
-int main()
-{
-  errc ec{};
-  inside<{0, 100}> x(150, ec);
-  (void)x;
+int main() {
+    errc             ec{};
+    inside<{0, 100}> x(150, ec);
+    (void)x;
 }

@@ -7,9 +7,8 @@
 
 using namespace beman::inside;
 
-int main()
-{
-  inside<{{0, 1}, per<2>}> halves{0.5_ins};
-  inside<{{0, 1}, per<3>}> thirds{};
-  thirds = halves;   // ill-formed: 1/2 grid points miss the 1/3 lattice
+int main() {
+    inside<{{0, 1}, per<2>}> halves{0.5_ins};
+    inside<{{0, 1}, per<3>}> thirds{};
+    thirds = halves; // ill-formed: 1/2 grid points miss the 1/3 lattice
 }

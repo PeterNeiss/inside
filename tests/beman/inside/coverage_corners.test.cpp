@@ -28,60 +28,62 @@ using namespace beman::inside::detail;
 // casts.hpp:66 — checked_cast success return (was static_assert only)
 //---------------------------------------------------------------------------
 // checked_cast returns the value on the in-range happy path (runtime)
-TEST(CoverageCornersTest, checked_cast_returns_the_value_on_the_in_range_happy_path_runtime)
-{
-  using pct = inside<{0, 100}>;
-  pct p = checked_cast<pct>(42);          // runtime call, not static_assert
-  ASSERT_EQ(p, 42);
+TEST(CoverageCornersTest, checked_cast_returns_the_value_on_the_in_range_happy_path_runtime) {
+    using pct = inside<{0, 100}>;
+    pct p     = checked_cast<pct>(42); // runtime call, not static_assert
+    ASSERT_EQ(p, 42);
 
-  using coarse = inside<{{0, 10}, 2}>;
-  ASSERT_TRUE(checked_cast<coarse>(4) == coarse{4});   // on-notch, in-range
+    using coarse = inside<{{0, 10}, 2}>;
+    ASSERT_TRUE(checked_cast<coarse>(4) == coarse{4}); // on-notch, in-range
 }
 
 //---------------------------------------------------------------------------
 // predicates.hpp:39 — conversion_rounds returns false out of range
 //---------------------------------------------------------------------------
 // conversion_rounds is false for out-of-range values (runtime)
-TEST(CoverageCornersTest, will_conversion_trunc_is_false_for_out_of_range_values_runtime)
-{
-  using coarse = inside<{{0, 10}, 2}>;
-  // Out of range is overflow, not truncation: the predicate is false.
-  ASSERT_FALSE(conversion_rounds<coarse>(11));
-  ASSERT_FALSE(conversion_rounds<coarse>(-1));
-  // Contrast: off-notch but in range is truncation.
-  ASSERT_TRUE(conversion_rounds<coarse>(3));
+TEST(CoverageCornersTest, will_conversion_trunc_is_false_for_out_of_range_values_runtime) {
+    using coarse = inside<{{0, 10}, 2}>;
+    // Out of range is overflow, not truncation: the predicate is false.
+    ASSERT_FALSE(conversion_rounds<coarse>(11));
+    ASSERT_FALSE(conversion_rounds<coarse>(-1));
+    // Contrast: off-notch but in range is truncation.
+    ASSERT_TRUE(conversion_rounds<coarse>(3));
 }
 
 #ifndef BEMAN_INSIDE_MATH_NO_FP
 namespace fpk = beman::inside::math::detail::fp;
-namespace d
-{
-  // The full kernels' values.
-  double fp_cbrt(double x) { double b; return fpk::pow_k<fpk::kFullBits>::cbrt(x, b); }
-  double fp_atan2(double y, double x) { double b; return fpk::atan_k<fpk::kFullBits>::atan2(y, x, b); }
+namespace d {
+// The full kernels' values.
+double fp_cbrt(double x) {
+    double b;
+    return fpk::pow_k<fpk::kFullBits>::cbrt(x, b);
 }
+double fp_atan2(double y, double x) {
+    double b;
+    return fpk::atan_k<fpk::kFullBits>::atan2(y, x, b);
+}
+} // namespace d
 
 //---------------------------------------------------------------------------
 // detail/math_fp.hpp — cbrt's negative branch
 // detail/math_fp.hpp — atan2 on the axes (x == 0)
 //---------------------------------------------------------------------------
 // dbl: cbrt of negatives and atan2 on the axes
-TEST(CoverageCornersTest, dbl_cbrt_of_negatives_and_atan2_on_the_axes)
-{
-  // cbrt(x<0) = -cbrt(-x). Determinism: exact golden outputs (the engine's own
-  // polynomial is bit-identical across platforms; the full kernel's log as
-  // Hi + Lo lands these cube roots exactly).
-  ASSERT_EQ(d::fp_cbrt(-8.0), -2.0);
-  ASSERT_EQ(d::fp_cbrt(-27.0), -3.0);
-  ASSERT_EQ(d::fp_cbrt(27.0), 3.0);
+TEST(CoverageCornersTest, dbl_cbrt_of_negatives_and_atan2_on_the_axes) {
+    // cbrt(x<0) = -cbrt(-x). Determinism: exact golden outputs (the engine's own
+    // polynomial is bit-identical across platforms; the full kernel's log as
+    // Hi + Lo lands these cube roots exactly).
+    ASSERT_EQ(d::fp_cbrt(-8.0), -2.0);
+    ASSERT_EQ(d::fp_cbrt(-27.0), -3.0);
+    ASSERT_EQ(d::fp_cbrt(27.0), 3.0);
 
-  // atan2 with x == 0: the y>0 / y<0 / y==0 axis cases (exact constants).
-  ASSERT_EQ((d::fp_atan2(1.0, 0.0)), 0x1.921fb54442d18p+0);  // +pi/2
-  ASSERT_EQ((d::fp_atan2(-1.0, 0.0)), -0x1.921fb54442d18p+0);  // -pi/2
-  ASSERT_EQ((d::fp_atan2(0.0, 0.0)), 0.0);                   //  0
-  // and the x<0 reflective branch for good measure
-  ASSERT_EQ((d::fp_atan2(1.0, -1.0)), 0x1.2d97c7f3321d2p+1);  //  3pi/4
-  ASSERT_EQ((d::fp_atan2(-1.0, -1.0)), -0x1.2d97c7f3321d2p+1);  // -3pi/4
+    // atan2 with x == 0: the y>0 / y<0 / y==0 axis cases (exact constants).
+    ASSERT_EQ((d::fp_atan2(1.0, 0.0)), 0x1.921fb54442d18p+0);   // +pi/2
+    ASSERT_EQ((d::fp_atan2(-1.0, 0.0)), -0x1.921fb54442d18p+0); // -pi/2
+    ASSERT_EQ((d::fp_atan2(0.0, 0.0)), 0.0);                    //  0
+    // and the x<0 reflective branch for good measure
+    ASSERT_EQ((d::fp_atan2(1.0, -1.0)), 0x1.2d97c7f3321d2p+1);   //  3pi/4
+    ASSERT_EQ((d::fp_atan2(-1.0, -1.0)), -0x1.2d97c7f3321d2p+1); // -3pi/4
 }
 #endif // !BEMAN_INSIDE_MATH_NO_FP
 
@@ -90,15 +92,14 @@ TEST(CoverageCornersTest, dbl_cbrt_of_negatives_and_atan2_on_the_axes)
 // (the left-error short-circuit at :114 was already covered).
 //---------------------------------------------------------------------------
 // expected-lift propagates a right-hand-side error
-TEST(CoverageCornersTest, expected_lift_propagates_a_right_hand_side_error)
-{
-  using num_t = inside<{0, 100}>;
-  std::expected<num_t, errc> left {num_t{5}};                       // valid
-  std::expected<num_t, errc> right{std::unexpected{errc::overflow}};
+TEST(CoverageCornersTest, expected_lift_propagates_a_right_hand_side_error) {
+    using num_t = inside<{0, 100}>;
+    std::expected<num_t, errc> left{num_t{5}}; // valid
+    std::expected<num_t, errc> right{std::unexpected{errc::overflow}};
 
-  auto both = left + right;          // lhs OK, rhs error -> rhs.error() wins
-  ASSERT_FALSE(both.has_value());
-  ASSERT_EQ(both.error(), errc::overflow);
+    auto both = left + right; // lhs OK, rhs error -> rhs.error() wins
+    ASSERT_FALSE(both.has_value());
+    ASSERT_EQ(both.error(), errc::overflow);
 }
 
 //---------------------------------------------------------------------------
@@ -107,18 +108,17 @@ TEST(CoverageCornersTest, expected_lift_propagates_a_right_hand_side_error)
 //  lhs_neg branch at :863-864, were uncovered.)
 //---------------------------------------------------------------------------
 // rational spaceship cross-multiply, positive and negative
-TEST(CoverageCornersTest, rational_spaceship_cross_multiply_positive_and_negative)
-{
-  using std::strong_ordering;
+TEST(CoverageCornersTest, rational_spaceship_cross_multiply_positive_and_negative) {
+    using std::strong_ordering;
 
-  // Both denominators != 1, no overflow, positive operands.
-  ASSERT_EQ(((rational{1u, 2} <=> rational{1u, 3})), strong_ordering::greater);
-  ASSERT_EQ(((rational{1u, 3} <=> rational{1u, 2})), strong_ordering::less);
-  ASSERT_EQ(((rational{2u, 6} <=> rational{1u, 3})), strong_ordering::equal);
+    // Both denominators != 1, no overflow, positive operands.
+    ASSERT_EQ(((rational{1u, 2} <=> rational{1u, 3})), strong_ordering::greater);
+    ASSERT_EQ(((rational{1u, 3} <=> rational{1u, 2})), strong_ordering::less);
+    ASSERT_EQ(((rational{2u, 6} <=> rational{1u, 3})), strong_ordering::equal);
 
-  // Both negative -> the lhs_neg flip (B <=> A).
-  ASSERT_EQ(((rational{1, -2} <=> rational{1, -3})), strong_ordering::less);     // -1/2 < -1/3
-  ASSERT_EQ(((rational{1, -3} <=> rational{1, -2})), strong_ordering::greater);  // -1/3 > -1/2
+    // Both negative -> the lhs_neg flip (B <=> A).
+    ASSERT_EQ(((rational{1, -2} <=> rational{1, -3})), strong_ordering::less);    // -1/2 < -1/3
+    ASSERT_EQ(((rational{1, -3} <=> rational{1, -2})), strong_ordering::greater); // -1/3 > -1/2
 }
 
 //---------------------------------------------------------------------------
@@ -127,14 +127,13 @@ TEST(CoverageCornersTest, rational_spaceship_cross_multiply_positive_and_negativ
 //  the product exceeds 2^64, not merely imax_max.)
 //---------------------------------------------------------------------------
 // rational gcd: lcm that overflows umax returns overflow
-TEST(CoverageCornersTest, rational_gcd_lcm_that_overflows_umax_returns_overflow)
-{
-  // Two odd, coprime denominators near 2^40; their product ~2^80 overflows umax,
-  // so the cross-multiplication trap (not the imax cap) fires.
-  imax a = (imax{1} << 40) + 1;
-  imax b = (imax{1} << 40) + 3;
-  ASSERT_FALSE((gcd(rational{1u, a}, rational{1u, b}).has_value()));
-  ASSERT_EQ((gcd(rational{1u, a}, rational{1u, b}).error()), errc::overflow);
+TEST(CoverageCornersTest, rational_gcd_lcm_that_overflows_umax_returns_overflow) {
+    // Two odd, coprime denominators near 2^40; their product ~2^80 overflows umax,
+    // so the cross-multiplication trap (not the imax cap) fires.
+    imax a = (imax{1} << 40) + 1;
+    imax b = (imax{1} << 40) + 3;
+    ASSERT_FALSE((gcd(rational{1u, a}, rational{1u, b}).has_value()));
+    ASSERT_EQ((gcd(rational{1u, a}, rational{1u, b}).error()), errc::overflow);
 }
 
 //---------------------------------------------------------------------------
@@ -144,24 +143,22 @@ TEST(CoverageCornersTest, rational_gcd_lcm_that_overflows_umax_returns_overflow)
 // were already covered; this is the third, post-cross-multiply overflow.
 //---------------------------------------------------------------------------
 // rational add: numerator sum overflow on unequal denominators
-TEST(CoverageCornersTest, rational_add_numerator_sum_overflow_on_unequal_denominators)
-{
-  // Denominators 2 and 6 (odd numerators so neither reduces). After cross-
-  // multiply A = num_a*3, B = num_b*1 each fit in umax, but A + B exceeds 2^64.
-  rational a{5999999999999999999u, 2};   // odd numerator -> stays /2
-  rational b{ 999999999999999997u, 6};   // coprime to 6   -> stays /6
-  ASSERT_FALSE((a + b).has_value());
+TEST(CoverageCornersTest, rational_add_numerator_sum_overflow_on_unequal_denominators) {
+    // Denominators 2 and 6 (odd numerators so neither reduces). After cross-
+    // multiply A = num_a*3, B = num_b*1 each fit in umax, but A + B exceeds 2^64.
+    rational a{5999999999999999999u, 2}; // odd numerator -> stays /2
+    rational b{999999999999999997u, 6};  // coprime to 6   -> stays /6
+    ASSERT_FALSE((a + b).has_value());
 }
 
 //---------------------------------------------------------------------------
 // format.hpp:56-58 — decimal fraction needs leading-zero padding.
 //---------------------------------------------------------------------------
 // rational to_string zero-pads short decimal fractions
-TEST(CoverageCornersTest, rational_to_string_zero_pads_short_decimal_fractions)
-{
-  ASSERT_EQ((beman::inside::to_string(rational{1u, 16})), "0.0625");   // frac "625" -> "0625"
-  ASSERT_EQ((beman::inside::to_string(rational{1u, 100})), "0.01");     // frac  "1"  -> "01"
-  ASSERT_EQ((beman::inside::to_string(rational{3u, 16})), "0.1875");
+TEST(CoverageCornersTest, rational_to_string_zero_pads_short_decimal_fractions) {
+    ASSERT_EQ((beman::inside::to_string(rational{1u, 16})), "0.0625"); // frac "625" -> "0625"
+    ASSERT_EQ((beman::inside::to_string(rational{1u, 100})), "0.01");  // frac  "1"  -> "01"
+    ASSERT_EQ((beman::inside::to_string(rational{3u, 16})), "0.1875");
 }
 
 //---------------------------------------------------------------------------
@@ -169,15 +166,16 @@ TEST(CoverageCornersTest, rational_to_string_zero_pads_short_decimal_fractions)
 // round-to-nearest-even ++mantissa at :165-166. Validated against std::ldexp.
 //---------------------------------------------------------------------------
 // ldexp into subnormal range matches std::ldexp (with rounding)
-TEST(CoverageCornersTest, ldexp_into_subnormal_range_matches_std_ldexp_with_rounding)
-{
-  const double mants[] = {1.0, 1.5, 1.9999999999,
-                          0x1.fffffffffffffp0,    // all-ones mantissa: forces round-up
-                          0x1.5555555555555p0,
-                          0x1.0000000000001p0};
-  for (int e = -1080; e <= -1020; ++e)
-    for (double m : mants)
-      ASSERT_EQ((beman::inside::detail::ldexp(m, e)), (std::ldexp(m, e)));
+TEST(CoverageCornersTest, ldexp_into_subnormal_range_matches_std_ldexp_with_rounding) {
+    const double mants[] = {1.0,
+                            1.5,
+                            1.9999999999,
+                            0x1.fffffffffffffp0, // all-ones mantissa: forces round-up
+                            0x1.5555555555555p0,
+                            0x1.0000000000001p0};
+    for (int e = -1080; e <= -1020; ++e)
+        for (double m : mants)
+            ASSERT_EQ((beman::inside::detail::ldexp(m, e)), (std::ldexp(m, e)));
 }
 
 //---------------------------------------------------------------------------
@@ -185,45 +183,43 @@ TEST(CoverageCornersTest, ldexp_into_subnormal_range_matches_std_ldexp_with_roun
 // math.hpp:215-219 — magnitudes below ~2^-62: significand-drop / flush-to-zero
 //---------------------------------------------------------------------------
 // rational from subnormal and very small doubles
-TEST(CoverageCornersTest, rational_from_subnormal_and_very_small_doubles)
-{
-  // Subnormal input: exercises the e==0 branch, then collapses to 0 (drop>=64).
-  ASSERT_EQ(rational{std::numeric_limits<double>::denorm_min()}, 0_r);
+TEST(CoverageCornersTest, rational_from_subnormal_and_very_small_doubles) {
+    // Subnormal input: exercises the e==0 branch, then collapses to 0 (drop>=64).
+    ASSERT_EQ(rational{std::numeric_limits<double>::denorm_min()}, 0_r);
 
-  // Normal but below 2^-62: the significand is shifted down and recovered by
-  // the trailing reduction, yielding the exact dyadic fraction.
-  ASSERT_EQ(rational{0x1p-40}, (rational{1u, imax{1} << 40}));
+    // Normal but below 2^-62: the significand is shifted down and recovered by
+    // the trailing reduction, yielding the exact dyadic fraction.
+    ASSERT_EQ(rational{0x1p-40}, (rational{1u, imax{1} << 40}));
 
-  // Far below the cap: drops to a hard zero.
-  ASSERT_EQ(rational{0x1p-70}, 0_r);
+    // Far below the cap: drops to a hard zero.
+    ASSERT_EQ(rational{0x1p-70}, 0_r);
 }
 
 //---------------------------------------------------------------------------
 // inside.hpp:733-734 — operator/=(integral)   inside.hpp:744-745 — operator%=
 //---------------------------------------------------------------------------
 // compound /= and %= with a snap inside rhs (runtime)
-TEST(CoverageCornersTest, compound_and_with_a_snap_inside_rhs_runtime)
-{
-  // Integer division/modulo now flow through the insidable path; `snap`
-  // gives the same C++ trunc-toward-zero / dividend-signed-remainder semantics
-  // the old raw-int compound assigns had.
-  using sb = inside<{-100, 100}, snap>;
+TEST(CoverageCornersTest, compound_and_with_a_snap_inside_rhs_runtime) {
+    // Integer division/modulo now flow through the insidable path; `snap`
+    // gives the same C++ trunc-toward-zero / dividend-signed-remainder semantics
+    // the old raw-int compound assigns had.
+    using sb = inside<{-100, 100}, snap>;
 
-  sb a{20};
-  a /= sb{3};                      // integer division, truncates toward zero
-  ASSERT_EQ(a, 6);
+    sb a{20};
+    a /= sb{3}; // integer division, truncates toward zero
+    ASSERT_EQ(a, 6);
 
-  sb n{-20};
-  n /= sb{3};
-  ASSERT_EQ(n, -6);
+    sb n{-20};
+    n /= sb{3};
+    ASSERT_EQ(n, -6);
 
-  sb b{20};
-  b %= sb{7};
-  ASSERT_EQ(b, 6);
+    sb b{20};
+    b %= sb{7};
+    ASSERT_EQ(b, 6);
 
-  sb m{-20};
-  m %= sb{7};
-  ASSERT_EQ(m, -6);                // C++ remainder keeps the dividend's sign
+    sb m{-20};
+    m %= sb{7};
+    ASSERT_EQ(m, -6); // C++ remainder keeps the dividend's sign
 }
 
 //---------------------------------------------------------------------------
@@ -231,12 +227,11 @@ TEST(CoverageCornersTest, compound_and_with_a_snap_inside_rhs_runtime)
 // no clamp/wrap handler -> report (throws).
 //---------------------------------------------------------------------------
 // checked += insidable overflow reports (throws)
-TEST(CoverageCornersTest, checked_plus_insidable_overflow_reports_throws)
-{
-  using c100 = inside<{0, 100}, checked>;
-  c100 a{80};
-  c100 b{50};
-  ASSERT_THROW((void)(a += b), beman::inside::inside_error);   // 130 not in [0,100]
+TEST(CoverageCornersTest, checked_plus_insidable_overflow_reports_throws) {
+    using c100 = inside<{0, 100}, checked>;
+    c100 a{80};
+    c100 b{50};
+    ASSERT_THROW((void)(a += b), beman::inside::inside_error); // 130 not in [0,100]
 }
 
 //---------------------------------------------------------------------------
@@ -245,17 +240,16 @@ TEST(CoverageCornersTest, checked_plus_insidable_overflow_reports_throws)
 // this drives the fractional (double) overload.
 //---------------------------------------------------------------------------
 // on_error fires for an out-of-range double assignment
-TEST(CoverageCornersTest, on_error_fires_for_an_out_of_range_double_assignment)
-{
-  using c100 = inside<{0, 100}, checked>;
-  c100 e{50};
-  bool fired = false;
-  e.on_error([&](auto& self, errc code, std::string_view msg) {
-    fired = (code == errc::overflow) && !msg.empty();
-    self = 0;
-  }) = 200.5;                      // fractional, out of [0,100]
-  ASSERT_TRUE(fired);
-  ASSERT_EQ(e, 0);
+TEST(CoverageCornersTest, on_error_fires_for_an_out_of_range_double_assignment) {
+    using c100 = inside<{0, 100}, checked>;
+    c100 e{50};
+    bool fired = false;
+    e.on_error([&](auto& self, errc code, std::string_view msg) {
+        fired = (code == errc::overflow) && !msg.empty();
+        self  = 0;
+    })         = 200.5; // fractional, out of [0,100]
+    ASSERT_TRUE(fired);
+    ASSERT_EQ(e, 0);
 }
 
 //---------------------------------------------------------------------------
@@ -263,14 +257,13 @@ TEST(CoverageCornersTest, on_error_fires_for_an_out_of_range_double_assignment)
 // (existing tests only exercise the overflowing arm).
 //---------------------------------------------------------------------------
 // on_overflow compound subtract that does not overflow
-TEST(CoverageCornersTest, on_overflow_compound_subtract_that_does_not_overflow)
-{
-  using c100 = inside<{0, 100}, checked>;
-  c100 acc{50};
-  bool fired = false;
-  acc.on_overflow([&](auto&, errc) { fired = true; }) -= 10_ins;   // 40, no overflow
-  ASSERT_FALSE(fired);
-  ASSERT_EQ(acc, 40);
+TEST(CoverageCornersTest, on_overflow_compound_subtract_that_does_not_overflow) {
+    using c100 = inside<{0, 100}, checked>;
+    c100 acc{50};
+    bool fired = false;
+    acc.on_overflow([&](auto&, errc) { fired = true; }) -= 10_ins; // 40, no overflow
+    ASSERT_FALSE(fired);
+    ASSERT_EQ(acc, 40);
 }
 
 #ifndef BEMAN_INSIDE_MATH_NO_FP
@@ -279,10 +272,9 @@ TEST(CoverageCornersTest, on_overflow_compound_subtract_that_does_not_overflow)
 // (the clamp/wrap arms are covered elsewhere; the range_fail arm was not).
 //---------------------------------------------------------------------------
 // f64 store out of range: checked policy
-TEST(CoverageCornersTest, f64_store_out_of_range_checked_policy)
-{
-  using rbc = inside<{{-1, 1}, per<1024>}, f64 | checked>;
-  ASSERT_THROW((void)((rbc{5.0})), beman::inside::inside_error);   // out of range -> report (throws)
+TEST(CoverageCornersTest, f64_store_out_of_range_checked_policy) {
+    using rbc = inside<{{-1, 1}, per<1024>}, f64 | checked>;
+    ASSERT_THROW((void)((rbc{5.0})), beman::inside::inside_error); // out of range -> report (throws)
 }
 #endif // !BEMAN_INSIDE_MATH_NO_FP
 
@@ -292,18 +284,17 @@ TEST(CoverageCornersTest, f64_store_out_of_range_checked_policy)
 //---------------------------------------------------------------------------
 #ifndef BEMAN_INSIDE_MATH_NO_FP
 // inside -> f64 conversion snaps onto the double grid
-TEST(CoverageCornersTest, inside_to_f64_conversion_snaps_onto_the_double_grid)
-{
-  using src_t = inside<{-2, 2}>;                          // integer-backed source
-  using rb    = inside<{{-2, 2}, per<1024>}, f64>;  // double-backed target
+TEST(CoverageCornersTest, inside_to_f64_conversion_snaps_onto_the_double_grid) {
+    using src_t = inside<{-2, 2}>;                   // integer-backed source
+    using rb    = inside<{{-2, 2}, per<1024>}, f64>; // double-backed target
 
-  src_t src{1};
-  rb dst = src;                                          // insidable -> f64 store
-  ASSERT_EQ(double(dst), 1.0);
+    src_t src{1};
+    rb    dst = src; // insidable -> f64 store
+    ASSERT_EQ(double(dst), 1.0);
 
-  src_t neg{-2};
-  rb dn = neg;
-  ASSERT_EQ(double(dn), -2.0);
+    src_t neg{-2};
+    rb    dn = neg;
+    ASSERT_EQ(double(dn), -2.0);
 }
 #endif // !BEMAN_INSIDE_MATH_NO_FP
 
@@ -316,18 +307,17 @@ TEST(CoverageCornersTest, inside_to_f64_conversion_snaps_onto_the_double_grid)
 //---------------------------------------------------------------------------
 // clamp | snap truncates an in-range off-notch fractional assignment; clamp
 // alone handles only the range, so the off-notch value is a rounding error.
-TEST(CoverageCornersTest, clamp_policy_truncates_an_in_range_off_notch_fractional_assignment)
-{
-  using strict = inside<{{0, 10}, per<2>}, clamp>;
-  ASSERT_EQ(strict::try_make(0.3).error(), errc::rounding_error);
+TEST(CoverageCornersTest, clamp_policy_truncates_an_in_range_off_notch_fractional_assignment) {
+    using strict = inside<{{0, 10}, per<2>}, clamp>;
+    ASSERT_EQ(strict::try_make(0.3).error(), errc::rounding_error);
 
-  using b = inside<{{0, 10}, per<2>}, clamp | snap>;   // notch 1/2
-  b x{0};
-  x = 0.3;                          // in range, off the 1/2 grid → truncates to 0
-  ASSERT_EQ(x, 0);
+    using b = inside<{{0, 10}, per<2>}, clamp | snap>; // notch 1/2
+    b x{0};
+    x = 0.3; // in range, off the 1/2 grid → truncates to 0
+    ASSERT_EQ(x, 0);
 
-  x = 0.9;                          // 0.9 → 1.8 half-notches → truncates to 1 half → 0.5
-  ASSERT_TRUE((static_cast<rational>(x) == rational{1u, 2}));
+    x = 0.9; // 0.9 → 1.8 half-notches → truncates to 1 half → 0.5
+    ASSERT_TRUE((static_cast<rational>(x) == rational{1u, 2}));
 }
 
 //---------------------------------------------------------------------------
@@ -337,15 +327,14 @@ TEST(CoverageCornersTest, clamp_policy_truncates_an_in_range_off_notch_fractiona
 // that excludes zero. math::fmod was otherwise only static_assert-tested.
 //---------------------------------------------------------------------------
 // math::fmod integer fast path (raw_from_offset imax)
-TEST(CoverageCornersTest, math_fmod_integer_fast_path_raw_from_offset_imax)
-{
-  using in_t  = inside<{{-8, 8}, per<16384>}, round_nearest>;  // integer-backed
-  using div_t = inside<{{ 1, 8}, per<16384>}, round_nearest>;  // excludes zero
-  using out_t = inside<{{-8, 8}, per<16384>}, round_nearest>;
+TEST(CoverageCornersTest, math_fmod_integer_fast_path_raw_from_offset_imax) {
+    using in_t  = inside<{{-8, 8}, per<16384>}, round_nearest>; // integer-backed
+    using div_t = inside<{{1, 8}, per<16384>}, round_nearest>;  // excludes zero
+    using out_t = inside<{{-8, 8}, per<16384>}, round_nearest>;
 
-  ASSERT_TRUE((static_cast<rational>(math::fmod<out_t>(in_t{7_r},  div_t{3_r})) == 1));
-  ASSERT_TRUE((static_cast<rational>(math::fmod<out_t>(in_t{-7_r}, div_t{3_r})) == -1));  // signed offset
-  ASSERT_TRUE((static_cast<rational>(math::fmod<out_t>(in_t{5.5_r}, div_t{2_r})) == rational{3u, 2}));
+    ASSERT_TRUE((static_cast<rational>(math::fmod<out_t>(in_t{7_r}, div_t{3_r})) == 1));
+    ASSERT_TRUE((static_cast<rational>(math::fmod<out_t>(in_t{-7_r}, div_t{3_r})) == -1)); // signed offset
+    ASSERT_TRUE((static_cast<rational>(math::fmod<out_t>(in_t{5.5_r}, div_t{2_r})) == rational{3u, 2}));
 }
 
 #ifndef BEMAN_INSIDE_MATH_NO_FP
@@ -354,11 +343,10 @@ TEST(CoverageCornersTest, math_fmod_integer_fast_path_raw_from_offset_imax)
 // (range_check()==false): the value is stored as-is.
 //---------------------------------------------------------------------------
 // unsafe f64 store out of range falls through (no report)
-TEST(CoverageCornersTest, unsafe_f64_store_out_of_range_falls_through_no_report)
-{
-  using rb = inside<{{-1, 1}, per<1024>}, f64 | unsafe>;
-  rb x = 5.0;                       // out of range, unsafe: stored as-is, no throw
-  ASSERT_EQ(double(x), 5.0);
+TEST(CoverageCornersTest, unsafe_f64_store_out_of_range_falls_through_no_report) {
+    using rb = inside<{{-1, 1}, per<1024>}, f64 | unsafe>;
+    rb x     = 5.0; // out of range, unsafe: stored as-is, no throw
+    ASSERT_EQ(double(x), 5.0);
 }
 #endif // !BEMAN_INSIDE_MATH_NO_FP
 
@@ -368,22 +356,21 @@ TEST(CoverageCornersTest, unsafe_f64_store_out_of_range_falls_through_no_report)
 // raw_from_offset() is reached through the negated branch.
 //---------------------------------------------------------------------------
 // cross-grid conversion of a negative off-notch value
-TEST(CoverageCornersTest, cross_grid_conversion_of_a_negative_off_notch_value)
-{
-  // notch 1/2 source -> notch 1/3 target: Factor = 3/2 (non-integer mapping),
-  // so the rational store path runs; the negative value drives the
-  // negative-denominator branch.
-  using src_t = inside<{{-4, 4}, per<2>}>;
-  using dst_t = inside<{{-4, 4}, per<3>}, snap>;
+TEST(CoverageCornersTest, cross_grid_conversion_of_a_negative_off_notch_value) {
+    // notch 1/2 source -> notch 1/3 target: Factor = 3/2 (non-integer mapping),
+    // so the rational store path runs; the negative value drives the
+    // negative-denominator branch.
+    using src_t = inside<{{-4, 4}, per<2>}>;
+    using dst_t = inside<{{-4, 4}, per<3>}, snap>;
 
-  src_t s{-1.5};
-  dst_t d = s;
-  // snap truncates toward ZERO in value space (matching the scalar store
-  // path and div_rounded): -1.5 on the 1/3 grid → -4/3. (Was -5/3 when the old
-  // path truncated the non-negative offset — i.e. toward -inf in value space.)
-  ASSERT_TRUE((static_cast<rational>(d) == rational{4, -3}));
+    src_t s{-1.5};
+    dst_t d = s;
+    // snap truncates toward ZERO in value space (matching the scalar store
+    // path and div_rounded): -1.5 on the 1/3 grid → -4/3. (Was -5/3 when the old
+    // path truncated the non-negative offset — i.e. toward -inf in value space.)
+    ASSERT_TRUE((static_cast<rational>(d) == rational{4, -3}));
 
-  src_t s2{1.5};
-  dst_t d2 = s2;                    // +1.5 toward zero → 4/3 (unchanged)
-  ASSERT_TRUE((static_cast<rational>(d2) == rational{4u, 3}));
+    src_t s2{1.5};
+    dst_t d2 = s2; // +1.5 toward zero → 4/3 (unchanged)
+    ASSERT_TRUE((static_cast<rational>(d2) == rational{4u, 3}));
 }

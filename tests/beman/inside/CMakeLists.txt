@@ -12,7 +12,8 @@ file(GLOB BEMAN_INSIDE_TEST_SOURCES CONFIGURE_DEPENDS *.test.cpp)
 list(
     FILTER BEMAN_INSIDE_TEST_SOURCES
     EXCLUDE
-    REGEX "/(accuracy|bench|fuzz|perf_codegen|perf_workload|single_header(_[a-z]+)?_smoke)\\.test\\.cpp$"
+    REGEX
+        "/(accuracy|bench|fuzz|perf_codegen|perf_workload|single_header(_[a-z]+)?_smoke)\\.test\\.cpp$"
 )
 foreach(test_src ${BEMAN_INSIDE_TEST_SOURCES})
     get_filename_component(test_name ${test_src} NAME)
@@ -63,7 +64,10 @@ set_tests_properties(
 
 # Self-containment smoke: a TU that sees ONLY single_include/ proves the single
 # header stands alone.
-add_executable(beman.inside.tests.single_header_smoke single_header_smoke.test.cpp)
+add_executable(
+    beman.inside.tests.single_header_smoke
+    single_header_smoke.test.cpp
+)
 target_include_directories(
     beman.inside.tests.single_header_smoke
     PRIVATE "${single_include_dir}"
