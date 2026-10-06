@@ -1,7 +1,4 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//---------------------------------------------------------------------------
-// Copyright (C) 2026 Peter Neiss
-//---------------------------------------------------------------------------
 // io — ALL of the library's string / stream / std::format support, gathered
 // into one opt-in header. The core (inside.hpp and everything it pulls) never
 // includes this, so a freestanding / bare-metal build that never includes

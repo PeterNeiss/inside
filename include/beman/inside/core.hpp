@@ -1,7 +1,4 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//---------------------------------------------------------------------------
-// Copyright (C) 2026 Peter Neiss
-//---------------------------------------------------------------------------
 // Internal — include "beman/inside/inside.hpp" (the umbrella), not this directly.
 // Defines the core `beman::inside::inside<G, P>` type; the umbrella adds the free-function
 // casts/arithmetic/range layers that depend on this complete type.

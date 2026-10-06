@@ -1,7 +1,4 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//---------------------------------------------------------------------------
-// Copyright (C) 2026 Peter Neiss
-//---------------------------------------------------------------------------
 #include <gtest/gtest.h>
 
 #include <beman/inside/formats.hpp>

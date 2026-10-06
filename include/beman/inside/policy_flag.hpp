@@ -1,7 +1,4 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//---------------------------------------------------------------------------
-// Copyright (C) 2026 Peter Neiss
-//---------------------------------------------------------------------------
 #ifndef BEMAN_INSIDE_POLICY_FLAG_HPP
 #define BEMAN_INSIDE_POLICY_FLAG_HPP
 

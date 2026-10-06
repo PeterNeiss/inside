@@ -1,7 +1,4 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//---------------------------------------------------------------------------
-// Copyright (C) 2026 Peter Neiss
-//---------------------------------------------------------------------------
 // This is derived from Peter Sommerlads odins.h, allowed by MIT license
 //---------------------------------------------------------------------------
 #ifndef BEMAN_INSIDE_DETAIL_OVERFLOW_HPP

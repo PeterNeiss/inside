@@ -1,7 +1,4 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-#---------------------------------------------------------------------------
-# Copyright (C) 2026 Peter Neiss
-#---------------------------------------------------------------------------
 # Pure-CMake amalgamator: inlines the beman/inside/ header tree into a single
 # self-contained header. Run as a script:
 #
@@ -259,8 +256,6 @@ set(banner
 //
 // Regenerate with:  cmake --build <build-dir> --target amalgamate
 // Source of truth:  include/beman/inside/*.hpp, include/beman/inside/detail/*.hpp
-//
-// Copyright (C) 2026 Peter Neiss
 //---------------------------------------------------------------------------
 #ifndef BEMAN_INSIDE_SINGLE_HEADER_HPP
 #define BEMAN_INSIDE_SINGLE_HEADER_HPP

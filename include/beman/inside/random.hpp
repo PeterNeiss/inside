@@ -1,7 +1,4 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//---------------------------------------------------------------------------
-// Copyright (C) 2026 Peter Neiss
-//---------------------------------------------------------------------------
 // Opt-in: uniform sampling over a grid. `uniform<B>(rng)` returns a B drawn
 // uniformly from the grid's slots (Lower, Lower + Notch, …, Upper) — exact, any
 // storage. Kept out of the umbrella because <random> is heavy, hosted-only and

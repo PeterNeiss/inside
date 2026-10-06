@@ -1,7 +1,4 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//---------------------------------------------------------------------------
-// Copyright (C) 2026 Peter Neiss
-//---------------------------------------------------------------------------
 // The double kernels of the math engine's double tier (cmath_adaptive.hpp):
 // a small libm in `double` — Taylor polynomials in Horner form with explicit
 // std::fma, Cody-Waite range reduction, and only std::fma / sqrt / nearbyint

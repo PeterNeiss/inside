@@ -1,7 +1,4 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//---------------------------------------------------------------------------
-// Copyright (C) 2026 Peter Neiss
-//---------------------------------------------------------------------------
 // beman.inside.fuzz: deterministic property-based fuzz harness.
 //
 //   ./beman.inside.fuzz             # random seed (printed at startup)

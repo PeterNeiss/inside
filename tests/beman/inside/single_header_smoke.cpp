@@ -1,7 +1,4 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//---------------------------------------------------------------------------
-// Copyright (C) 2026 Peter Neiss
-//---------------------------------------------------------------------------
 // Self-containment check for the amalgamated single header. This TU is compiled
 // with ONLY single_include/ on the include path (no include/), so it fails to
 // build unless the generated header is fully

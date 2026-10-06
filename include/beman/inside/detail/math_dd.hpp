@@ -1,7 +1,4 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//---------------------------------------------------------------------------
-// Copyright (C) 2026 Peter Neiss
-//---------------------------------------------------------------------------
 // The double-double kernels of the math engine's dd tier (cmath_adaptive.hpp):
 // values as an unevaluated sum Hi + Lo of two doubles (about 106 bits), with
 // error-free sums and products (std::fma), for outputs finer than the double
