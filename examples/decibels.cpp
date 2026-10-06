@@ -15,7 +15,9 @@
 #include <beman/inside/io.hpp>
 #include <beman/inside/cmath.hpp>
 
-#if defined(__cpp_lib_print)
+// std::println needs io.hpp's std::formatter, which needs <format> (libc++ 18
+// has <print> without __cpp_lib_format).
+#if defined(__cpp_lib_print) && defined(__cpp_lib_format)
 #include <print>
 using std::println;
 #else
