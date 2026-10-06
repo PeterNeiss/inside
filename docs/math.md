@@ -44,7 +44,7 @@ grid point:
 | Path | When | Cost |
 |---|---|---|
 | **Table** | the input has at most `BEMAN_INSIDE_MATH_TABLE_SLOTS` slots (default 256), the output stores an integer, `f64` or `f32` raw, and every result lies in the output's range | one load; the table is computed at compile time |
-| **Double tier** | an FPU is present (not `BEMAN_INSIDE_MATH_NO_FP`), the output's value indices stay within ±2^52, and it needs no more bits than the kernel's limit (42–49, by function) | the library's own double kernels, sized to the output, plus a proved error bound; decided results are stored as raws |
+| **Double tier** | an FPU is present (not `BEMAN_INSIDE_MATH_NO_FP`), the output's value indices stay within ±2^52, and it needs no more bits than the kernel's limit (45–49, by function) | the library's own double kernels, sized to the output, plus a proved error bound; decided results are stored as raws |
 | **dd tier** | an FPU is present, the output needs more than 36 bits, and its value indices stay within ±2^62; where the double tier also applies, it runs second | double-double kernels (about 106 bits) from compile-time tables, plus an error bound |
 | **Integer path** | always available; the only path at compile time and without an FPU | Taylor polynomials with compile-time coefficient tables in wide fixed point |
 
@@ -59,8 +59,10 @@ the range reduction's. The full kernels prove about 2^-51 of the result
 kernels' worst errors reach up to 0.99 of them. An input that is not a double
 exactly adds its rounding times the function's slope. A kernel takes outputs
 up to the bits where its full-size bound still decides about 3 results in 4
-at the output's largest values: 48 for `sin`, `cos` and `exp`, 47 for `log`
-and `atan`, 42 for `pow` and `cbrt`, whose bounds grow with |ln x|. Whenever
+at the output's largest values: 48 for `sin`, `cos` and `exp`, 47 for `log`,
+`atan`, `pow` and `cbrt`. `pow` and `cbrt` multiply the log's error by
+|y| = |e·ln b|, so past 42 bits they take the log as a sum of two doubles
+(within 2^-56 relative) and their limit holds up to |y| = 16. Whenever
 the bound does not place the result in a single slot, the dd tier or the
 integer path decides. Tests check every kernel against its bound and that the
 tiers agree slot for slot.

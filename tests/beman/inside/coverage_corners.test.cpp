@@ -69,10 +69,11 @@ namespace d
 TEST(CoverageCornersTest, dbl_cbrt_of_negatives_and_atan2_on_the_axes)
 {
   // cbrt(x<0) = -cbrt(-x). Determinism: exact golden outputs (the engine's own
-  // polynomial is bit-identical across platforms; cube roots land 1 ULP off).
-  ASSERT_EQ(d::fp_cbrt(-8.0), -0x1.fffffffffffffp+0);  // -2 (1 ULP low)
-  ASSERT_EQ(d::fp_cbrt(-27.0), -0x1.7ffffffffffffp+1);  // -3 (1 ULP low)
-  ASSERT_EQ(d::fp_cbrt(27.0), 0x1.7ffffffffffffp+1);  //  3 (1 ULP low)
+  // polynomial is bit-identical across platforms; the full kernel's log as
+  // Hi + Lo lands these cube roots exactly).
+  ASSERT_EQ(d::fp_cbrt(-8.0), -2.0);
+  ASSERT_EQ(d::fp_cbrt(-27.0), -3.0);
+  ASSERT_EQ(d::fp_cbrt(27.0), 3.0);
 
   // atan2 with x == 0: the y>0 / y<0 / y==0 axis cases (exact constants).
   ASSERT_EQ((d::fp_atan2(1.0, 0.0)), 0x1.921fb54442d18p+0);  // +pi/2

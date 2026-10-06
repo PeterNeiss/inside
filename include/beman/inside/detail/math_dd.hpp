@@ -42,25 +42,7 @@ namespace beman::inside::math::detail::dd
   // Error-free transformations and the arithmetic on them (QD-library style).
   // Products use std::fma at runtime and Dekker's split at compile time.
   //---------------------------------------------------------------------------
-  // An operand of an error-free sum, fenced off from FMA contraction: under
-  // -ffp-contract=fast (GCC's default) an operand that is a product, such as
-  // a quotient digit a·(1/b), may be fused into the sum, which then adds the
-  // exact product while the error term subtracts the rounded one. The fence
-  // costs nothing at runtime. (Clang contracts only within one expression.)
-  constexpr double fenced(double x) noexcept
-  {
-#if defined(__has_builtin)
-#  if __has_builtin(__builtin_assoc_barrier)
-    return __builtin_assoc_barrier(x);
-#  elif __has_builtin(__arithmetic_fence)
-    return __arithmetic_fence(x);
-#  else
-    return x;
-#  endif
-#else
-    return x;
-#endif
-  }
+  using fpk::fenced;
 
   constexpr dd two_sum(double a, double b) noexcept
   {
@@ -86,21 +68,7 @@ namespace beman::inside::math::detail::dd
     return {hi, a - hi};
   }
 
-  // The product rounded once, as a value the compiler cannot fuse further:
-  // under -ffp-contract=fast (GCC's default) a plain a·b feeding a later
-  // subtraction may become one fma, which subtracts the exact product where
-  // the error-free split expects the rounded one (the error then counts
-  // twice). fma(a, b, +0) is the same rounded product (+0 keeps it from
-  // folding back to a·b) and costs one instruction with hardware FMA; without
-  // it nothing contracts.
-  inline double rounded_product(double a, double b) noexcept
-  {
-#if defined(__FMA__) || defined(__ARM_FEATURE_FMA)
-    return std::fma(a, b, 0.0);
-#else
-    return a * b;
-#endif
-  }
+  using fpk::rounded_product;
 
   constexpr dd two_prod(double a, double b) noexcept
   {

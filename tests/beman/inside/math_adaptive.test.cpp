@@ -909,6 +909,29 @@ TEST(MathAdaptiveTest, double_kernels_stay_within_their_proved_bounds)
   FP_BOUND(log_k,  atanh, open1, ax::ahyp_core<ax::input_limbs<open1>, ax::in_mag<open1>, ax::ahyp::atanh>);
   FP_BOUND(pow_k,  cbrt,  sym4,  ax::cbrt_core<ax::input_limbs<sym4>>);
 
+  // pow over |y| = |e·ln b| up to 16 (past 42 bits from the log's Hi + Lo).
+  using base = inside<{{rational{1, 64}, 64}, rational{1, 64}}, round_nearest>;
+  using expo = inside<{{-4, 4}, rational{1, 8}}, round_nearest>;
+  auto pow_worst = []<int T>() {
+    using core = ax::pow_core<ax::input_limbs<base>, ax::input_limbs<expo>, ax::in_mag<expo>, ax::pow_kmax<base, expo>,
+                              ax::input_bits<base>, ax::input_bits<expo>>;
+    double worst = 0;
+    for (umax i = 1; i <= static_cast<umax>(grid_of<base>.slot_count()); i += 7)
+      for (umax j = 0; j <= static_cast<umax>(grid_of<expo>.slot_count()); ++j)
+      {
+        const base b = base::from_raw(detail::raw_from_offset<base>(i));
+        const expo e = expo::from_raw(detail::raw_from_offset<expo>(j));
+        const auto a = core{ax::exact_input(b), ax::exact_input(e)}.template run<150>();
+        double v, bound, y;
+        if (!fpk::pow_k<T>::pow(static_cast<double>(b), static_cast<double>(e), v, bound, y)) continue;
+        worst = std::max(worst, std::fabs(ddk::sub(ddk::dd{v, 0}, ddk::of_fixed(a.Value, a.Scale)).Hi) / bound);
+      }
+    return worst;
+  };
+  EXPECT_LE(pow_worst.template operator()<20>(), 1.0) << "pow 20";
+  EXPECT_LE(pow_worst.template operator()<52>(), 1.0) << "pow 52";
+  EXPECT_LE(pow_worst.template operator()<fpk::kFullBits>(), 1.0) << "pow full";
+
   // Coarse outputs get smaller kernels.
   static_assert(fpk::trig_k<ax::fp_target<out8, ax::fp_sin>>::NS < fpk::trig_k<fpk::kFullBits>::NS);
   static_assert(fpk::exp_k<ax::fp_target<outdec, ax::fp_exp>>::N < fpk::exp_k<fpk::kFullBits>::N);

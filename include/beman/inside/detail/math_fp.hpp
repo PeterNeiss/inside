@@ -75,6 +75,43 @@ namespace beman::inside::math::detail::fp
   inline constexpr double kInvSqrt3 = 0x1.279a74590331cp-1;   // 1/√3 = tan(π/6)
   inline constexpr double kTanPi12  = 0x1.126145e9ecd56p-2;   // tan(π/12) ≈ 0.2679
   inline constexpr double kThird    = 1.0 / 3.0;
+  inline constexpr double kThirdLo  = 0x1.5555555555555p-56;  // 1/3 − kThird = 2^-54/3
+
+  // An operand of an error-free sum, fenced off from FMA contraction: under
+  // -ffp-contract=fast (GCC's default) an operand that is a product, such as
+  // a quotient digit a·(1/b), may be fused into the sum, which then adds the
+  // exact product while the error term subtracts the rounded one. The fence
+  // costs nothing at runtime. (Clang contracts only within one expression.)
+  constexpr double fenced(double x) noexcept
+  {
+#if defined(__has_builtin)
+#  if __has_builtin(__builtin_assoc_barrier)
+    return __builtin_assoc_barrier(x);
+#  elif __has_builtin(__arithmetic_fence)
+    return __arithmetic_fence(x);
+#  else
+    return x;
+#  endif
+#else
+    return x;
+#endif
+  }
+
+  // The product rounded once, as a value the compiler cannot fuse further:
+  // under -ffp-contract=fast (GCC's default) a plain a·b feeding a later
+  // subtraction may become one fma, which subtracts the exact product where
+  // the error-free split expects the rounded one (the error then counts
+  // twice). fma(a, b, +0) is the same rounded product (+0 keeps it from
+  // folding back to a·b) and costs one instruction with hardware FMA; without
+  // it nothing contracts.
+  inline double rounded_product(double a, double b) noexcept
+  {
+#if defined(__FMA__) || defined(__ARM_FEATURE_FMA)
+    return std::fma(a, b, 0.0);
+#else
+    return a * b;
+#endif
+  }
 
   //---------------------------------------------------------------------------
   // The bound arithmetic.
@@ -436,6 +473,58 @@ namespace beman::inside::math::detail::fp
       const double r = fma(static_cast<double>(e), kLn2Hi, logm);
       return fma(static_cast<double>(e), kLn2Lo, r);
     }
+    // ln x as Hi + Lo, for pow and cbrt, whose y = c·ln x multiplies the
+    // log's error by |y|. With b + Bl = m + 1 exactly (both differences
+    // exact by Sterbenz) and r = a − f·b exact (f is the rounded quotient),
+    // Fl = (r − f·Bl)/b puts f + Fl within 4kU² of a/(m + 1), and |Fl| ≤
+    // 2kU·|f|. Then ln m = 2f + T, T = 2Fl + 2f·z·q(z), q = Σ z^k/(2k+3),
+    // and 2f joins e·Hi in an exact two-sum; only T and the low parts
+    // round. Relative to |ln x|, the error is HlRel:
+    // - e = 0 (|ln x| ≥ |2f|), in units of |2f|: q evaluated at f, not f +
+    //   Fl (the slope of 2·atanh f − 2f is 2z/(1 − z): 2kU·kZLog/(1 −
+    //   kZLog)); Fl's own error; Horner and the truncation; the product
+    //   2f·z and T's fma (kU each);
+    // - e ≠ 0 (|ln x| ≥ 0.3466·|e|, |2f| ≤ 0.3432): that, plus the two
+    //   additions of the low parts, e·Lo's rounding and kLn2Res, per |e|.
+    template <int>
+    struct q_series
+    {
+      static constexpr poly<N - 1> C = [] {
+        poly<N - 1> q{};
+        for (std::size_t i = 0; i + 1 < N; ++i) { q.C[i] = log_c<N>.C[i]; q.Err[i] = log_c<N>.Err[i]; }
+        return q;
+      }();
+    };
+    static constexpr double HlRel = [] {
+      const horner_bound h = horner_error(q_series<0>::C, kZLog, kU);
+      const double t = kZLog * h.Mag + 2 * kU;                    // |T|/|2f|
+      const double a2f = 2 * kU * kZLog / (1 - kZLog) + 4 * kU * kU / (1 - kZLog) + log_trunc(N)
+                       + kZLog * (h.Err + kU * h.Mag) + kU * t;
+      const double per_e = 2 * kU * (0.7 * kU + kLn2Lo) + kU * kLn2Lo + kLn2Res;
+      const double rest = 2 * kU * (0.35 * kU + 0.3432 * t);
+      return up(max_d(a2f, (0.3432 * a2f + rest + per_e) / 0.3466));
+    }();
+    [[gnu::always_inline]] static double value_hl(double x, double& lo)
+    {
+      int e;
+      double m = ::beman::inside::detail::frexp(x, &e);
+      if (m < kSqrtHalf) { m += m; --e; }
+      const double a = m - 1.0, b = m + 1.0;
+      const double bl = m - (b - 1.0);
+      const double f = a / b;
+      const double fl = fma(-f, bl, fma(-f, b, a)) / b;
+      const double z = f * f;
+      const double f2 = f + f;
+      const double t = fma(fenced(f2 * z), horner(z, q_series<0>::C.C), fl + fl);
+      const double ed = static_cast<double>(e);
+      const double h = fenced(ed * kLn2Hi), s = fenced(h + f2), sb = s - h;
+      const double sl = (h - (s - sb)) + (f2 - sb);         // h + 2f = s + sl
+      const double tail = (sl + ed * kLn2Lo) + t;
+      const double v = s + tail;
+      lo = tail - (v - s);
+      return v;
+    }
+
     static double log(double x, double& bound)
     {
       const double v = value(x);
@@ -584,30 +673,55 @@ namespace beman::inside::math::detail::fp
   // e^(y), y = ln a / 3 (or e·ln b): ln's relative error Rel_log and the
   // product's roundings move y by |y|·(Rel_log + 2kU), and e^y by that much
   // relatively, on top of Rel_exp. T counts the bits of the result; the
-  // log's error is multiplied by |y| (below 2^10), so it gets 10 more.
+  // log's error is multiplied by |y| (below 2^10), so it gets 10 more. Past
+  // T = 52 (outputs past 42 bits, where that would not decide at |y| = 16)
+  // y comes from the log's Hi + Lo instead: within |y|·(HlRel + 2^-103)
+  // (the low parts' roundings), and e^y sees one more rounding (RelLo).
   template <int T>
   struct pow_k
   {
     using L = log_k<T + 10 < kFullBits ? T + 10 : kFullBits>;
     using E = exp_k<T>;
-    static constexpr double YRel = up(L::Rel + 2 * kU);
+    static constexpr bool Hl = T > 52;
+    static constexpr double YRel = Hl ? up(L::HlRel + 0x1p-103) : up(L::Rel + 2 * kU);
+    static constexpr double ERel = Hl ? E::RelLo : E::Rel;
 
     static double cbrt(double x, double& bound)
     {
       if (x == 0.0) { bound = 0; return 0.0; }
-      const double y = L::value(x < 0 ? -x : x) * kThird;
-      const double m = E::value(y);
-      bound = m * (E::Rel + __builtin_fabs(y) * YRel) + kTiny;
+      const double a = x < 0 ? -x : x;
+      double y, m;
+      if constexpr (Hl)
+      {
+        double lo;
+        const double h = L::value_hl(a, lo);
+        y = rounded_product(h, kThird);
+        m = E::value(y, fma(h, kThird, -y) + (h * kThirdLo + lo * kThird));
+      }
+      else
+      {
+        y = L::value(a) * kThird;
+        m = E::value(y);
+      }
+      bound = m * (ERel + __builtin_fabs(y) * YRel) + kTiny;
       return x < 0 ? -m : m;
     }
 
     // b^e for b > 0, |e·ln b| ≤ 745 (else false).
     static bool pow(double b, double e, double& v, double& bound, double& y)
     {
-      y = e * L::value(b);
+      double ylo = 0;
+      if constexpr (Hl)
+      {
+        double lo;
+        const double h = L::value_hl(b, lo);
+        y = rounded_product(e, h);
+        ylo = fma(e, h, -y) + e * lo;
+      }
+      else y = e * L::value(b);
       if (!(__builtin_fabs(y) <= 745)) return false;
-      v = E::value(y);
-      bound = v * (E::Rel + __builtin_fabs(y) * YRel) + kTiny;
+      v = Hl ? E::value(y, ylo) : E::value(y);
+      bound = v * (ERel + __builtin_fabs(y) * YRel) + kTiny;
       return true;
     }
 
