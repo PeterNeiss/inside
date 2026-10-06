@@ -2322,9 +2322,11 @@ namespace beman::inside::detail
   //---------------------------------------------------------------------------
   struct big_int
   {
-    umax        Small = 0;          // the magnitude when Limbs == nullptr
+    umax        Small = 0;          // the magnitude when Size == 0
     const umax* Limbs = nullptr;    // interned magnitude, Size ≥ 2 limbs
-    std::size_t Size = 0;
+    std::size_t Size = 0;           // tested instead of Limbs: under -fno-delete-null-pointer-checks
+                                    // (implied by -fsanitize=null) GCC cannot compare an interned
+                                    // pointer with nullptr in a constant expression
     bool        Negative = false;   // never set for zero
 
     constexpr big_int() = default;
@@ -2349,15 +2351,23 @@ namespace beman::inside::detail
       *this = from_mag(std::move(v), neg);
     }
 
-    friend constexpr bool operator==(big_int const&, big_int const&) = default;
+    // By value, not by pointer (see Size): equal magnitudes intern to the
+    // same array, so this matches the defaulted comparison.
+    friend constexpr bool operator==(big_int const& a, big_int const& b) noexcept
+    {
+      if (a.Size != b.Size || a.Small != b.Small || a.Negative != b.Negative) return false;
+      for (std::size_t i = 0; i < a.Size; ++i)
+        if (a.Limbs[i] != b.Limbs[i]) return false;
+      return true;
+    }
 
-    [[nodiscard]] constexpr bool is_zero() const noexcept { return Limbs == nullptr && Small == 0; }
+    [[nodiscard]] constexpr bool is_zero() const noexcept { return Size == 0 && Small == 0; }
     [[nodiscard]] constexpr bool negative() const noexcept { return Negative; }
-    [[nodiscard]] constexpr bool fits_limb() const noexcept { return Limbs == nullptr; }
+    [[nodiscard]] constexpr bool fits_limb() const noexcept { return Size == 0; }
 
     [[nodiscard]] constexpr big::mag magnitude() const
     {
-      if (Limbs) return big::mag(Limbs, Limbs + Size);
+      if (Size != 0) return big::mag(Limbs, Limbs + Size);
       if (Small) return big::mag{Small};
       return {};
     }
@@ -2389,7 +2399,7 @@ namespace beman::inside::detail
     }
 
     [[nodiscard]] constexpr int bit_width() const
-    { return Limbs ? big::bit_width(magnitude()) : (Small ? 64 - std::countl_zero(Small) : 0); }
+    { return Size != 0 ? big::bit_width(magnitude()) : (Small ? 64 - std::countl_zero(Small) : 0); }
 
     // Truncating conversion to a builtin integer or wide_int (two's complement).
     template <typename T>
@@ -2398,14 +2408,14 @@ namespace beman::inside::detail
     {
       if constexpr (std::integral<T>)
       {
-        const umax low = Limbs ? Limbs[0] : Small;
+        const umax low = Size != 0 ? Limbs[0] : Small;
         return static_cast<T>(Negative ? umax{0} - low : low);
       }
       else
       {
         T w{0};
         for (std::size_t i = 0; i < sizeof(w.Word) / sizeof(w.Word[0]); ++i)
-          w.Word[i] = Limbs ? (i < Size ? Limbs[i] : 0) : (i == 0 ? Small : 0);
+          w.Word[i] = Size != 0 ? (i < Size ? Limbs[i] : 0) : (i == 0 ? Small : 0);
         return Negative ? -w : w;
       }
     }
@@ -2413,7 +2423,7 @@ namespace beman::inside::detail
     friend constexpr std::strong_ordering operator<=>(big_int const& a, big_int const& b)
     {
       if (a.Negative != b.Negative) return a.Negative ? std::strong_ordering::less : std::strong_ordering::greater;
-      const std::strong_ordering m = (a.Limbs || b.Limbs) ? big::compare(a.magnitude(), b.magnitude())
+      const std::strong_ordering m = (a.Size != 0 || b.Size != 0) ? big::compare(a.magnitude(), b.magnitude())
                                                           : a.Small <=> b.Small;
       return a.Negative ? 0 <=> m : m;
     }
@@ -2422,7 +2432,7 @@ namespace beman::inside::detail
 
     friend constexpr big_int operator+(big_int const& a, big_int const& b)
     {
-      if (!a.Limbs && !b.Limbs)
+      if (a.Size == 0 && b.Size == 0)
       {
         if (a.Negative == b.Negative)
         {
@@ -2448,7 +2458,7 @@ namespace beman::inside::detail
 
     friend constexpr big_int operator*(big_int const& a, big_int const& b)
     {
-      if (!a.Limbs && !b.Limbs)
+      if (a.Size == 0 && b.Size == 0)
       {
         const limb::pair<umax> p = limb::mul(a.Small, b.Small);
         if (p.Hi == 0) { big_int r; r.Small = p.Lo; r.Negative = (a.Negative != b.Negative) && p.Lo != 0; return r; }
@@ -2466,7 +2476,7 @@ namespace beman::inside::detail
     // a · 2^k (k ≥ 0).
     friend constexpr big_int operator<<(big_int const& a, int k)
     {
-      if (!a.Limbs && k < 64 && (k == 0 || (a.Small >> (64 - k)) == 0))
+      if (a.Size == 0 && k < 64 && (k == 0 || (a.Small >> (64 - k)) == 0))
       { big_int r = a; r.Small = a.Small << k; return r; }
       big::mag m = a.magnitude();
       const std::size_t words = static_cast<std::size_t>(k / 64);
@@ -2493,7 +2503,7 @@ namespace beman::inside::detail
       if consteval { constexpr_error<"big_int: division by zero">(); }
       raise(errc::division_by_zero, "big_int: division by zero");
     }
-    if (!a.Limbs && !b.Limbs)
+    if (a.Size == 0 && b.Size == 0)
     {
       big_int q, r;
       q.Small = a.Small / b.Small; q.Negative = (a.Negative != b.Negative) && q.Small != 0;
