@@ -33,7 +33,7 @@ partial / related · **○** no · **—** not applicable.
 
 | Library | Header-only | Single header | Min C++ | License | Maturity / status |
 |---|---|---|---|---|---|
-| **inside** | ● | ● ⁹ | C++23 | **none yet (TBD)** | **alpha · single-author · not yet battle-tested** |
+| **inside** | ● | ● ⁹ | C++23 | Apache-2.0 WITH LLVM-exception | **under development (v0.1.0) · single-author · not yet battle-tested** |
 | **bounded::integer** | ○ (C++ modules) ⁸ | ○ | C++20+ (clang 22+) | BSL-1.0 | mature · active |
 | **Intel safe-arithmetic** | ● | ○ | C++20 | BSL-1.0 | **pre-release · WIP (not for production)** |
 | **Boost.SafeNumerics** | ● | ○ | C++14 | BSL-1.0 | mature (Boost) |
@@ -80,8 +80,8 @@ docs as of June 2026 — corrections welcome.</sub>
 
 A filled-in cell is **not** a verdict. The mature, widely deployed options here
 (Boost.SafeNumerics, SafeInt, CNL, fpm) have years of production hardening, broad
-compiler support, and real licenses; `inside` is alpha, currently unlicensed,
-single-author, and not yet battle-tested. What `inside` brings that the others
+compiler support, and wide use; `inside` is at its first release (0.1.0),
+under development, single-author, and not yet battle-tested. What `inside` brings that the others
 don't combine is *rational* grids with arbitrary `[lower, upper]` bounds **and**
 reproducible transcendental math over those grids — not dominance of every
 column. Pick the tool that fits: if you need overflow-safe plain integers,

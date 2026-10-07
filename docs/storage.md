@@ -142,8 +142,8 @@ ratio f = inside<{2, 2}>{2} / just<3>;   // exact 2/3
 f.numerator();                          // 2  (denominator() == 3)
 
 using lvl = inside<{1, 255}>;
-auto q = lvl{7} / lvl{3};               // std::expected<inside, errc> (exact-fraction raw)
-                                        // *q is exactly 7/3
+auto q = lvl{7} / lvl{3};               // inside with an exact-fraction raw, exactly 7/3
+                                        // (a plain value: the divisor cannot be zero)
 ```
 
 Exact-fraction storage is exact (no floating-point rounding) but larger and
