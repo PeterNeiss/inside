@@ -3607,8 +3607,8 @@ template <grid G, round_mode M = round_mode::nearest, bool AnySign = (G.Interval
         const double     q  = v / nd;
         if (!((q < 0 ? -q : q) < 9007199254740992.0)) // 2^53
             return snap_double<G, M, AnySign>(v);
-        const imax   t = static_cast<imax>(q);
-        const double f = q - static_cast<double>(t);
+        const imax     t       = static_cast<imax>(q);
+        const double   f       = q - static_cast<double>(t);
         constexpr bool nearest = M == round_mode::nearest || M == round_mode::half_even;
         if (!(nearest ? (f == 0.5 || f == -0.5) : f == 0))
             return snap_double<G, M, AnySign>(v);
@@ -7519,7 +7519,8 @@ struct inside {
                 return; // reported (error_code mode)
                         // no handler (unchecked policy): fall through and store snapped as-is
         }
-        Raw = static_cast<raw_type>(detail::snap_double_from<G, detail::rounding_of(F)>(v, side)); // float for f32: lossless
+        Raw = static_cast<raw_type>(
+            detail::snap_double_from<G, detail::rounding_of(F)>(v, side)); // float for f32: lossless
     }
 
     // The one store every constructor and assignment goes through; fp storage
@@ -7532,7 +7533,7 @@ struct inside {
             store_fp(static_cast<double>(value), pol);
         else {
             const detail::rational r = detail::as_rational(value);
-            const double   v = static_cast<double>(r);
+            const double           v = static_cast<double>(r);
             store_fp(v, pol, [&] {
                 const auto c = r <=> detail::rational{v};
                 return c > 0 ? 1 : c < 0 ? -1 : 0;

@@ -248,8 +248,8 @@ template <grid G, round_mode M = round_mode::nearest, bool AnySign = (G.Interval
         const double     q  = v / nd;
         if (!((q < 0 ? -q : q) < 9007199254740992.0)) // 2^53
             return snap_double<G, M, AnySign>(v);
-        const imax   t = static_cast<imax>(q);
-        const double f = q - static_cast<double>(t);
+        const imax     t       = static_cast<imax>(q);
+        const double   f       = q - static_cast<double>(t);
         constexpr bool nearest = M == round_mode::nearest || M == round_mode::half_even;
         if (!(nearest ? (f == 0.5 || f == -0.5) : f == 0))
             return snap_double<G, M, AnySign>(v);

@@ -620,7 +620,7 @@ TEST(StorageBugs, f64_storage_rounds_the_exact_value_not_its_double) {
     EXPECT_EQ(rational{a}, want);
     // An inside source whose values are not doubles exactly takes the same route.
     using thirds = inside<{{0, 8}, rational{1, 961}}>;
-    a = thirds{rational{4096, 961}};
+    a            = thirds{rational{4096, 961}};
     EXPECT_EQ(rational{a}, want);
 
     // Directed modes: 1 + 2^-60 is above the grid point 1.0, its double is 1.0.
