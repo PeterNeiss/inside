@@ -225,6 +225,49 @@ template <grid G, round_mode M = round_mode::nearest, bool AnySign = (G.Interval
         return static_cast<double>(k) * nd;
     }
 }
+
+// The side of a source that is a double exactly: none.
+struct exact_side {
+    constexpr int operator()() const noexcept { return 0; }
+};
+
+// snap_double for a v that was rounded from an exact value x: side() gives
+// the sign of x − v. Snapping v rounds twice, and that can differ from
+// rounding x only where v sits exactly on a rounding boundary of G (a tie for
+// the nearest modes, a grid point for the directed ones): a boundary strictly
+// between x and v would be a double nearer to x than v is. There x decides,
+// and side() is only called there.
+template <grid G, round_mode M = round_mode::nearest, bool AnySign = (G.Interval.Lower < 0), typename Side>
+[[nodiscard]] constexpr double snap_double_from(double v, const Side& side) noexcept {
+    if constexpr (G.Notch == rational{0})
+        return v;
+    else if constexpr (std::is_same_v<Side, exact_side>)
+        return snap_double<G, M, AnySign>(v); // a double source rounds once
+    else {
+        constexpr double nd = static_cast<double>(G.Notch);
+        const double     q  = v / nd;
+        if (!((q < 0 ? -q : q) < 9007199254740992.0)) // 2^53
+            return snap_double<G, M, AnySign>(v);
+        const imax   t = static_cast<imax>(q);
+        const double f = q - static_cast<double>(t);
+        constexpr bool nearest = M == round_mode::nearest || M == round_mode::half_even;
+        if (!(nearest ? (f == 0.5 || f == -0.5) : f == 0))
+            return snap_double<G, M, AnySign>(v);
+        const int s = side();
+        if (s == 0)
+            return snap_double<G, M, AnySign>(v);
+        imax k;
+        if constexpr (nearest)
+            k = (f < 0 ? t - 1 : t) + (s > 0); // the half point: x picks its side
+        else if constexpr (M == round_mode::floor)
+            k = s < 0 ? t - 1 : t;
+        else if constexpr (M == round_mode::ceil)
+            k = s > 0 ? t + 1 : t;
+        else // toward zero
+            k = (t > 0 && s < 0) ? t - 1 : (t < 0 && s > 0) ? t + 1 : t;
+        return static_cast<double>(k) * nd;
+    }
+}
 } // namespace detail
 
 // Raw of a point grid (Lower == Upper): its value lives in the type, so the

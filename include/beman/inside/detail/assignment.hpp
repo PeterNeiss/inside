@@ -548,7 +548,11 @@ struct assignment<L, R> {
                 policy.report(errc::not_finite);
                 return false;
             }
-            lhs = L::from_raw(snap_double<grid_of<L>, rounding_for<L, P>>(v));
+            // v rounds rhs; at a rounding boundary the exact value decides.
+            lhs = L::from_raw(snap_double_from<grid_of<L>, rounding_for<L, P>>(v, [&] {
+                const auto c = rhs <=> rational{v};
+                return c > 0 ? 1 : c < 0 ? -1 : 0;
+            }));
             return true;
         } else if constexpr (detail::lower64<L> == detail::upper64<L>) {
             // Singleton grid: offset encoding → Raw=0; rational/direct → Raw = Lower.
@@ -989,10 +993,15 @@ struct assignment<L, R> {
 
     template <typename P>
     static constexpr void store(L& lhs, const R& rhs, P&& policy) {
-        if constexpr (fp_raw<L>)
-            // f64 target: raw IS the value — decode the source and snap to the dyadic
-            // grid (the offset machinery below mis-encodes a double raw).
+        if constexpr (fp_raw<L> && (fp_raw<R> || exact_valued<R> || double_exact<grid_of<R>>))
+            // f64 target: raw IS the value — decode the source (a double exactly)
+            // and snap to the dyadic grid (the offset machinery below mis-encodes
+            // a double raw).
             lhs = L::from_raw(snap_double<grid_of<L>, rounding_for<L, P>>(as_double(rhs)));
+        else if constexpr (fp_raw<L>)
+            // A source that is not a double exactly: round its exact value, not
+            // the double nearest to it (two roundings can differ by a notch).
+            assignment<L, rational>::store_checked(lhs, as_rational(rhs), policy, no_action{});
         else if constexpr (rational_raw<L>)
             // rational target: raw IS the value — snap the decoded source through
             // the rational-rhs store (the offset machinery below would round the

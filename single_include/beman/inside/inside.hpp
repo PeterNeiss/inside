@@ -3584,6 +3584,49 @@ template <grid G, round_mode M = round_mode::nearest, bool AnySign = (G.Interval
         return static_cast<double>(k) * nd;
     }
 }
+
+// The side of a source that is a double exactly: none.
+struct exact_side {
+    constexpr int operator()() const noexcept { return 0; }
+};
+
+// snap_double for a v that was rounded from an exact value x: side() gives
+// the sign of x − v. Snapping v rounds twice, and that can differ from
+// rounding x only where v sits exactly on a rounding boundary of G (a tie for
+// the nearest modes, a grid point for the directed ones): a boundary strictly
+// between x and v would be a double nearer to x than v is. There x decides,
+// and side() is only called there.
+template <grid G, round_mode M = round_mode::nearest, bool AnySign = (G.Interval.Lower < 0), typename Side>
+[[nodiscard]] constexpr double snap_double_from(double v, const Side& side) noexcept {
+    if constexpr (G.Notch == rational{0})
+        return v;
+    else if constexpr (std::is_same_v<Side, exact_side>)
+        return snap_double<G, M, AnySign>(v); // a double source rounds once
+    else {
+        constexpr double nd = static_cast<double>(G.Notch);
+        const double     q  = v / nd;
+        if (!((q < 0 ? -q : q) < 9007199254740992.0)) // 2^53
+            return snap_double<G, M, AnySign>(v);
+        const imax   t = static_cast<imax>(q);
+        const double f = q - static_cast<double>(t);
+        constexpr bool nearest = M == round_mode::nearest || M == round_mode::half_even;
+        if (!(nearest ? (f == 0.5 || f == -0.5) : f == 0))
+            return snap_double<G, M, AnySign>(v);
+        const int s = side();
+        if (s == 0)
+            return snap_double<G, M, AnySign>(v);
+        imax k;
+        if constexpr (nearest)
+            k = (f < 0 ? t - 1 : t) + (s > 0); // the half point: x picks its side
+        else if constexpr (M == round_mode::floor)
+            k = s < 0 ? t - 1 : t;
+        else if constexpr (M == round_mode::ceil)
+            k = s > 0 ? t + 1 : t;
+        else // toward zero
+            k = (t > 0 && s < 0) ? t - 1 : (t < 0 && s > 0) ? t + 1 : t;
+        return static_cast<double>(k) * nd;
+    }
+}
 } // namespace detail
 
 // Raw of a point grid (Lower == Upper): its value lives in the type, so the
@@ -5659,7 +5702,11 @@ struct assignment<L, R> {
                 policy.report(errc::not_finite);
                 return false;
             }
-            lhs = L::from_raw(snap_double<grid_of<L>, rounding_for<L, P>>(v));
+            // v rounds rhs; at a rounding boundary the exact value decides.
+            lhs = L::from_raw(snap_double_from<grid_of<L>, rounding_for<L, P>>(v, [&] {
+                const auto c = rhs <=> rational{v};
+                return c > 0 ? 1 : c < 0 ? -1 : 0;
+            }));
             return true;
         } else if constexpr (detail::lower64<L> == detail::upper64<L>) {
             // Singleton grid: offset encoding → Raw=0; rational/direct → Raw = Lower.
@@ -6100,10 +6147,15 @@ struct assignment<L, R> {
 
     template <typename P>
     static constexpr void store(L& lhs, const R& rhs, P&& policy) {
-        if constexpr (fp_raw<L>)
-            // f64 target: raw IS the value — decode the source and snap to the dyadic
-            // grid (the offset machinery below mis-encodes a double raw).
+        if constexpr (fp_raw<L> && (fp_raw<R> || exact_valued<R> || double_exact<grid_of<R>>))
+            // f64 target: raw IS the value — decode the source (a double exactly)
+            // and snap to the dyadic grid (the offset machinery below mis-encodes
+            // a double raw).
             lhs = L::from_raw(snap_double<grid_of<L>, rounding_for<L, P>>(as_double(rhs)));
+        else if constexpr (fp_raw<L>)
+            // A source that is not a double exactly: round its exact value, not
+            // the double nearest to it (two roundings can differ by a notch).
+            assignment<L, rational>::store_checked(lhs, as_rational(rhs), policy, no_action{});
         else if constexpr (rational_raw<L>)
             // rational target: raw IS the value — snap the decoded source through
             // the rational-rhs store (the offset machinery below would round the
@@ -7116,8 +7168,13 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy, A&& act
         if constexpr (!zero_unchecked)
             if (as_double(rhs) == 0.0)
                 return fail(errc::division_by_zero, "division by zero in div");
-        return result::from_raw(
-            raw_cast<result>(snap_double<grid_of<result>, rmode>(as_double(lhs) / as_double(rhs))));
+        // The quotient rounds once in double; its exact residual a − q·b gives
+        // the side of the true quotient where that rounding sits on a boundary.
+        const double a = as_double(lhs), b = as_double(rhs), q = a / b;
+        return result::from_raw(raw_cast<result>(snap_double_from<grid_of<result>, rmode>(q, [&] {
+            const double r = __builtin_fma(-q, b, a);
+            return ((r > 0) - (r < 0)) * (b > 0 ? 1 : -1);
+        })));
     } else if constexpr (native_div_qformat) {
         // rhs.Raw == 0 iff rhs.value == 0 (detail::lower64<R> == 0). Formula folds to
         // `(a << log2 N)/b` for power-of-two N — the native Q-format idiom.
@@ -7403,8 +7460,10 @@ struct inside {
     // which is exact because every grid point fits the raw's significand. Out-of-
     // range values run the same policy cascade as the fractional path (clamp →
     // wrap → checked-report → store as-is), with Pol's one-shot flags merged in.
-    template <typename Pol>
-    constexpr void store_fp(double v, Pol& pol) {
+    // side() is the sign of the exact source minus v (0 for a source that is
+    // a double): where v sits on a rounding boundary, the source decides.
+    template <typename Pol, typename Side = detail::exact_side>
+    constexpr void store_fp(double v, Pol& pol, const Side& side = {}) {
         constexpr policy_flag F  = P | detail::policy_flags_of<std::remove_cvref_t<Pol>>;
         const double          lo = static_cast<double>(G.Interval.Lower);
         const double          hi = static_cast<double>(G.Interval.Upper);
@@ -7426,7 +7485,7 @@ struct inside {
             if constexpr (G.Notch != 0 && has_flag(F, snap)) {
                 constexpr double nd = static_cast<double>(G.Notch);
                 if (v > lo - nd && v < hi + nd) {
-                    const double s = detail::snap_double<G, detail::rounding_of(F), true>(v);
+                    const double s = detail::snap_double_from<G, detail::rounding_of(F), true>(v, side);
                     if (s >= lo && s <= hi) {
                         Raw = static_cast<raw_type>(s);
                         return;
@@ -7460,7 +7519,7 @@ struct inside {
                 return; // reported (error_code mode)
                         // no handler (unchecked policy): fall through and store snapped as-is
         }
-        Raw = static_cast<raw_type>(detail::snap_double<G, detail::rounding_of(F)>(v)); // float for f32: lossless
+        Raw = static_cast<raw_type>(detail::snap_double_from<G, detail::rounding_of(F)>(v, side)); // float for f32: lossless
     }
 
     // The one store every constructor and assignment goes through; fp storage
@@ -7471,8 +7530,14 @@ struct inside {
             detail::assignment<inside, A>::assign(*this, value, pol);
         else if constexpr (std::is_arithmetic_v<A>)
             store_fp(static_cast<double>(value), pol);
-        else
-            store_fp(static_cast<double>(detail::as_rational(value)), pol);
+        else {
+            const detail::rational r = detail::as_rational(value);
+            const double   v = static_cast<double>(r);
+            store_fp(v, pol, [&] {
+                const auto c = r <=> detail::rational{v};
+                return c > 0 ? 1 : c < 0 ? -1 : 0;
+            });
+        }
     }
 
     template <numeric A>

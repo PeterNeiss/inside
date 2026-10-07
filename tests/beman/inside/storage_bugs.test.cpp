@@ -606,3 +606,30 @@ TEST(StorageBugsTest, value_raw_source_affine_mapping) {
     l = R{-2};
     EXPECT_EQ(rational{l}, -3);
 }
+
+// An exact value stored into f64 storage rounds once, onto the grid: the
+// double nearest to it may sit on a rounding boundary the exact value is not
+// on (4096/961 · 2^48 is …523.388, its double …523.5, a tie).
+TEST(StorageBugs, f64_storage_rounds_the_exact_value_not_its_double) {
+#ifndef BEMAN_INSIDE_MATH_NO_FP
+    using f48 = inside<{{-8, 8}, per<(std::uint64_t{1} << 48)>}, f64>;
+    const rational want{1199710202504523ull, std::int64_t{1} << 48};
+    EXPECT_EQ((rational{f48{rational{4096, 961}}}), want);
+    f48 a{0};
+    a = rational{4096, 961};
+    EXPECT_EQ(rational{a}, want);
+    // An inside source whose values are not doubles exactly takes the same route.
+    using thirds = inside<{{0, 8}, rational{1, 961}}>;
+    a = thirds{rational{4096, 961}};
+    EXPECT_EQ(rational{a}, want);
+
+    // Directed modes: 1 + 2^-60 is above the grid point 1.0, its double is 1.0.
+    using up   = inside<{{0, 2}, per<1024>}, f64 | round_ceil>;
+    using down = inside<{{0, 2}, per<1024>}, f64 | round_floor>;
+    const rational above{(std::uint64_t{1} << 60) + 1, std::int64_t{1} << 60};
+    const rational below{(std::uint64_t{1} << 60) - 1, std::int64_t{1} << 60};
+    EXPECT_EQ(rational{up{above}}, (rational{1025, 1024}));
+    EXPECT_EQ(rational{down{below}}, (rational{1023, 1024}));
+    EXPECT_EQ(rational{up{rational{1}}}, rational{1});
+#endif
+}

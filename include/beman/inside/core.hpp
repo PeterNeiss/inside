@@ -123,8 +123,10 @@ struct inside {
     // which is exact because every grid point fits the raw's significand. Out-of-
     // range values run the same policy cascade as the fractional path (clamp →
     // wrap → checked-report → store as-is), with Pol's one-shot flags merged in.
-    template <typename Pol>
-    constexpr void store_fp(double v, Pol& pol) {
+    // side() is the sign of the exact source minus v (0 for a source that is
+    // a double): where v sits on a rounding boundary, the source decides.
+    template <typename Pol, typename Side = detail::exact_side>
+    constexpr void store_fp(double v, Pol& pol, const Side& side = {}) {
         constexpr policy_flag F  = P | detail::policy_flags_of<std::remove_cvref_t<Pol>>;
         const double          lo = static_cast<double>(G.Interval.Lower);
         const double          hi = static_cast<double>(G.Interval.Upper);
@@ -146,7 +148,7 @@ struct inside {
             if constexpr (G.Notch != 0 && has_flag(F, snap)) {
                 constexpr double nd = static_cast<double>(G.Notch);
                 if (v > lo - nd && v < hi + nd) {
-                    const double s = detail::snap_double<G, detail::rounding_of(F), true>(v);
+                    const double s = detail::snap_double_from<G, detail::rounding_of(F), true>(v, side);
                     if (s >= lo && s <= hi) {
                         Raw = static_cast<raw_type>(s);
                         return;
@@ -180,7 +182,7 @@ struct inside {
                 return; // reported (error_code mode)
                         // no handler (unchecked policy): fall through and store snapped as-is
         }
-        Raw = static_cast<raw_type>(detail::snap_double<G, detail::rounding_of(F)>(v)); // float for f32: lossless
+        Raw = static_cast<raw_type>(detail::snap_double_from<G, detail::rounding_of(F)>(v, side)); // float for f32: lossless
     }
 
     // The one store every constructor and assignment goes through; fp storage
@@ -191,8 +193,14 @@ struct inside {
             detail::assignment<inside, A>::assign(*this, value, pol);
         else if constexpr (std::is_arithmetic_v<A>)
             store_fp(static_cast<double>(value), pol);
-        else
-            store_fp(static_cast<double>(detail::as_rational(value)), pol);
+        else {
+            const detail::rational r = detail::as_rational(value);
+            const double   v = static_cast<double>(r);
+            store_fp(v, pol, [&] {
+                const auto c = r <=> detail::rational{v};
+                return c > 0 ? 1 : c < 0 ? -1 : 0;
+            });
+        }
     }
 
     template <numeric A>

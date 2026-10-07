@@ -297,8 +297,13 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy, A&& act
         if constexpr (!zero_unchecked)
             if (as_double(rhs) == 0.0)
                 return fail(errc::division_by_zero, "division by zero in div");
-        return result::from_raw(
-            raw_cast<result>(snap_double<grid_of<result>, rmode>(as_double(lhs) / as_double(rhs))));
+        // The quotient rounds once in double; its exact residual a − q·b gives
+        // the side of the true quotient where that rounding sits on a boundary.
+        const double a = as_double(lhs), b = as_double(rhs), q = a / b;
+        return result::from_raw(raw_cast<result>(snap_double_from<grid_of<result>, rmode>(q, [&] {
+            const double r = __builtin_fma(-q, b, a);
+            return ((r > 0) - (r < 0)) * (b > 0 ? 1 : -1);
+        })));
     } else if constexpr (native_div_qformat) {
         // rhs.Raw == 0 iff rhs.value == 0 (detail::lower64<R> == 0). Formula folds to
         // `(a << log2 N)/b` for power-of-two N — the native Q-format idiom.
