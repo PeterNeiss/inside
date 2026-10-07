@@ -7,7 +7,7 @@ project(
     DESCRIPTION
         "Numbers that cannot go out of range: the range and step size live in the type"
     LANGUAGES CXX
-    VERSION 1.0.0
+    VERSION 0.1.0
 )
 
 # The library requires C++23: fallible operations return std::expected<T, errc>.

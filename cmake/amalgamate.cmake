@@ -4,7 +4,7 @@
 #
 #   cmake -D BEMAN_INSIDE_AMALGAMATE_INCLUDE_DIR=<repo>/include \
 #         -D BEMAN_INSIDE_AMALGAMATE_OUTPUT=<repo>/single_include/beman/inside/inside.hpp \
-#         -D BEMAN_INSIDE_AMALGAMATE_VERSION=1.0.0 \
+#         -D BEMAN_INSIDE_AMALGAMATE_VERSION=0.1.0 \
 #         [-D BEMAN_INSIDE_AMALGAMATE_COMPARE=<committed header>] \
 #         -P cmake/amalgamate.cmake
 #
