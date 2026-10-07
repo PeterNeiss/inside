@@ -5,8 +5,8 @@
 // tier decides. Every constant — ln 2, π, the 2^(j/64), 2^(j/4096) and sin(jπ/128)
 // tables, the Taylor coefficients — comes at compile time from the integer
 // path's exact series (detail/math_adaptive.hpp), never from a generator.
-// Results are within about 2^-100 relative; the tier bounds them generously
-// and lets the integer path decide whenever the bound does not.
+// Results are within about 2^-96 relative (measured); the tier bounds them
+// generously and lets the integer path decide whenever the bound does not.
 //---------------------------------------------------------------------------
 #ifndef BEMAN_INSIDE_DETAIL_MATH_DD_HPP
 #define BEMAN_INSIDE_DETAIL_MATH_DD_HPP
@@ -155,7 +155,7 @@ constexpr dd of_fixed(wide_sint<K> y, int S) noexcept {
     return negative ? neg(r) : r;
 }
 
-inline constexpr int kS = 136; // the scale constants are read at
+inline constexpr int kS = 136; // the scale (bits after the point) of the constants
 using fixed             = ax::fixed_t<2 * kS + 16>;
 
 template <std::size_t K>

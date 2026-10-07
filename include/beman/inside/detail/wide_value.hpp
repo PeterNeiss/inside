@@ -23,8 +23,6 @@
 // widest value suffices. Binary operations widen to the wider operand.
 //---------------------------------------------------------------------------
 namespace beman::inside::detail {
-template <std::size_t K>
-using exact_int_t                            = wide_sint<K>;
 inline constexpr std::size_t exact_min_limbs = 8; // scalars, 64-bit rationals
 
 template <std::size_t K>

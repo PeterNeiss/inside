@@ -1806,8 +1806,8 @@ inline constexpr auto rational::add_impl(const rational& a, const rational& b) {
     }
 
     // numerator == 0 (exact cancellation) is unreachable here: it would
-    // require a == -b, which the `a == -b` early-return at the top of
-    // add_impl already handles for canonical inputs.
+    // require a == -b, which for canonical inputs has equal denominators and
+    // took the equal-denominator branch above.
     umax     numerator = (A > B) ? (A - B) : (B - A);
     bool     r_neg     = a_neg ? (A > B) : (B > A);
     rational r;
@@ -3993,7 +3993,7 @@ constexpr bool grid_product_fits([[maybe_unused]] const grid& a, [[maybe_unused]
 
 //---------------------------------------------------------------------------
 // generic — type-level traits and predicates used everywhere else. Public
-// grid/policy introspection (`grid_of<B>`, `policy_of<B>`, `Lower/Upper/detail::notch64<B>`,
+// grid/policy introspection (`grid_of<B>`, `policy_of<B>`, `notch64<B>`,
 // `interval_of<B>`) plus the `insidable`/`numeric`/`inside_assignable` concepts; the
 // storage-shape predicates and raw/value converters are internal (`beman::inside::detail`).
 //---------------------------------------------------------------------------
@@ -4112,13 +4112,14 @@ template <typename T>
 template <insidable B>
 using raw_t = typename B::raw_type;
 
-// How an inside's value lives in its raw storage — four disjoint encodings
-// (selected by policy flags or deduced; see grid.hpp storage_pick):
+// How an inside's value lives in its raw storage (selected by policy flags or
+// deduced; see grid.hpp storage_pick):
 //   rational_raw — raw IS the value, as a rational.
 //   f64_raw      — raw IS the value, as an IEEE-754 double (dyadic grids only).
 //   f32_raw      — raw IS the value, as an IEEE-754 float  (dyadic grids only).
 //   value_raw    — raw IS the value, as a plain integer.
-//   index_raw    — raw is a 0-based notch index; value = Lower + raw*Notch.
+//   index_raw    — raw is a 0-based notch index; value = Lower + raw*Notch
+//                  (point_raw and wide_raw are index raws).
 template <insidable B>
 inline constexpr bool f64_raw = std::is_same_v<raw_t<B>, double>;
 
@@ -4680,8 +4681,8 @@ inline constexpr bool notches_compatible = [] {
 // Tail of the policy cascade: checked reports.
 // Returns true if a policy handled the failure (caller should return).
 // Cheap default — reports through the static category message (no string).
-template <insidable B, typename P>
-constexpr bool range_fail([[maybe_unused]] B& b, P&& policy) {
+template <typename P>
+constexpr bool range_fail(P&& policy) {
     if (policy.range_check()) {
         policy.report(errc::overflow);
         return true;
@@ -4764,8 +4765,6 @@ inline constexpr bool why_assignable = inside_assignable_why<Dst, std::remove_cv
 // widest value suffices. Binary operations widen to the wider operand.
 //---------------------------------------------------------------------------
 namespace beman::inside::detail {
-template <std::size_t K>
-using exact_int_t                            = wide_sint<K>;
 inline constexpr std::size_t exact_min_limbs = 8; // scalars, 64-bit rationals
 
 template <std::size_t K>
@@ -5182,12 +5181,11 @@ inline constexpr bool needs_runtime_range_check =
      !has_policy<L, P, ignore_range>);
 
 // Shared out-of-range policy cascade. Order: clamp/wrap/error *actions*, then
-// clamp/wrap *policy* bits, then `range_fail`. The three caller-supplied
-// callables cover how clamp/wrap store and the error-message rhs view. `Wrappable` is false on the fractional
-// path (no wrap *action* branch). Returns true when a handler resolved the write.
-template <bool Wrappable, insidable L, typename P, typename A, typename DoClamp, typename DoWrap, typename MsgView>
-constexpr bool dispatch_out_of_range(
-    L& lhs, P&& policy, A&& action, DoClamp do_clamp, DoWrap do_wrap, [[maybe_unused]] MsgView msg_view) {
+// clamp/wrap *policy* bits, then `range_fail`. The callers say how clamp and
+// wrap store; `Wrappable` is false on the fractional path (no wrap *action*
+// branch). Returns true when a handler resolved the write.
+template <bool Wrappable, insidable L, typename P, typename A, typename DoClamp, typename DoWrap>
+constexpr bool dispatch_out_of_range(L& lhs, P&& policy, A&& action, DoClamp do_clamp, DoWrap do_wrap) {
     using PA = plain_t<A>;
     if constexpr (clamp_action<PA>) {
         do_clamp();
@@ -5205,7 +5203,7 @@ constexpr bool dispatch_out_of_range(
         do_wrap();
         return true;
     } else
-        return range_fail(lhs, policy);
+        return range_fail(policy);
 }
 
 //---------------------------------------------------------------------------
@@ -5336,9 +5334,6 @@ inline constexpr grid_wide source_hi = [] {
         return grid_wide{1} << 64;
 }();
 
-// An integer-valued rational (|v| < 2^64) as a grid_wide.
-constexpr grid_wide integer_wide(const rational& v) noexcept { return wide_numerator(v); }
-
 //---------------------------------------------------------------------------
 // assignment
 //---------------------------------------------------------------------------
@@ -5423,8 +5418,7 @@ constexpr L& assign_exact(L& lhs, const exact_frac<K>& v, P&& policy, A&& action
                         lhs = L::from_raw(raw_of_index<L>(w));
                         if constexpr (wrap_action<plain_t<A>>)
                             action.Fn(lhs, make_wrap_carry<L, R>(saturate(q)));
-                    },
-                    [&] { return 0; }))
+                    }))
                 return lhs;
         }
         lhs = L::from_raw(raw_of_index<L>(index));
@@ -5489,12 +5483,7 @@ struct assignment<L, R> {
     template <typename P, typename A>
     static constexpr bool handle_out_of_range(L& lhs, R rhs, P&& policy, A&& action) {
         return dispatch_out_of_range<true>(
-            lhs,
-            policy,
-            action,
-            [&] { apply_clamp(lhs, rhs, action); },
-            [&] { apply_wrap(lhs, rhs, action); },
-            [&] { return rhs; });
+            lhs, policy, action, [&] { apply_clamp(lhs, rhs, action); }, [&] { apply_wrap(lhs, rhs, action); });
     }
 
     static constexpr void store(L& lhs, R rhs) {
@@ -5638,7 +5627,7 @@ struct assignment<L, R> {
             // 2^64 values, past the rational range).
             using fold         = unit_fold<L, source_lo<rational>, source_hi<rational>>;
             using W            = typename fold::W;
-            const auto [qq, w] = fold::fold(static_cast<W>(integer_wide(rhs_r)));
+            const auto [qq, w] = fold::fold(static_cast<W>(wide_numerator(rhs_r)));
             const W v          = fold::lower + w;
             q                  = qq;
             wrapped            = v < W{0} ? -rational{static_cast<umax>(-v)} : rational{static_cast<umax>(v)};
@@ -5939,8 +5928,7 @@ struct assignment<L, R> {
                     policy,
                     action,
                     [&] { apply_clamp(lhs, rhs, policy, action); },
-                    [&] { apply_wrap(lhs, rhs, policy, action); },
-                    [&] { return rhs; }))
+                    [&] { apply_wrap(lhs, rhs, policy, action); }))
                 return lhs;
         }
 
@@ -5963,7 +5951,7 @@ struct assignment<L, R> {
             return detail::lower64<R>;
         else if constexpr (detail::notch64<L> == 0)
             // Continuous fp_raw L: no grid to land on, mapping unused (store
-            // routes through snap_double). 0 avoids the /detail::notch64<L> divide-by-zero.
+            // routes through snap_double). 0 avoids the divide-by-zero by the notch.
             return rational{0};
         else if constexpr (rational_raw<R>)
             return -(detail::lower64<L> / detail::notch64<L>).value();
@@ -6116,7 +6104,7 @@ struct assignment<L, R> {
             // (either grid may reach past int64; the span can be 2^64−1).
             using fold             = unit_fold<L, wide_numerator(lower_of<R>), wide_numerator(upper_of<R>)>;
             using W                = typename fold::W;
-            const auto [excess, w] = fold::fold(static_cast<W>(integer_wide(as_rational(rhs))));
+            const auto [excess, w] = fold::fold(static_cast<W>(wide_numerator(as_rational(rhs))));
             lhs                    = L::from_raw(fold::raw_at(w));
             if constexpr (wrap_action<plain_t<A>>)
                 action.Fn(lhs, make_wrap_carry<L, R>(excess)); // carry as an inside
@@ -6141,8 +6129,7 @@ struct assignment<L, R> {
             policy,
             action,
             [&] { apply_clamp(lhs, rhs, action); },
-            [&] { apply_wrap(lhs, rhs, policy, action); },
-            [&] { return as_rational(rhs); });
+            [&] { apply_wrap(lhs, rhs, policy, action); });
     }
 
     template <typename P>
@@ -6472,29 +6459,13 @@ struct policy_ref {
     // the same size as `policy_ref<B, P, no_action>`.
     [[no_unique_address]] std::tuple<As...> Actions;
 
-  private:
-    // Pre-pick the assignment-time action that matches the policy_ref's pack,
-    // and forward to the single-action assignment::assign. At most one of the
-    // four assignment-time tags is in the pack (enforced by static_assert), so
-    // exactly one branch fires; the rest fall through to no-action.
-    // Generic assignment: store `src` into `dst` under this ref's Policy + picked
-    // action. `operator=` uses it with dst = Ref (the inside this ref wraps); the
-    // conversion operator below uses it with a fresh target, so a one-shot snap can
-    // be read out as a value (`(a * b).with_snap()`), not only assigned.
-    template <insidable Dst, numeric C>
-    constexpr Dst& assign_into(Dst& dst, const C& src) {
-        return dispatch_assign(dst, src, Policy, Actions);
-    }
-
-    template <numeric C>
-    constexpr B& assign_with_picked(const C& other) {
-        return assign_into(Ref, other);
-    }
-
   public:
+    // Stores go through dispatch_assign under this ref's Policy and actions:
+    // into Ref for `operator=`, into a fresh target for the conversion below,
+    // so a one-shot snap can be read out as a value (`(a * b).with_snap()`).
     template <numeric C>
     constexpr B& operator=(const C& other) {
-        return assign_with_picked(other);
+        return dispatch_assign(Ref, other, Policy, Actions);
     }
 
     // Value read-out: a one-shot policy ref converts to any inside the assignment
@@ -6506,7 +6477,7 @@ struct policy_ref {
         requires inside_assignable<Target, B, policy_of<Target> | policy_flags_of<P>>
     constexpr operator Target() {
         Target r;
-        assign_into(r, Ref);
+        dispatch_assign(r, Ref, Policy, Actions);
         return r;
     }
 
@@ -6514,7 +6485,7 @@ struct policy_ref {
     // checked arithmetic into `.with_clamp() = ...` without per-step `.value()`.
     template <numeric C>
     constexpr B& operator=(const std::expected<C, errc>& other) {
-        return assign_with_picked(other.value());
+        return dispatch_assign(Ref, other.value(), Policy, Actions);
     }
 
   private:
@@ -6528,7 +6499,7 @@ struct policy_ref {
   public:
     //-------------------------------------------------------------------------
     // insidable RHS overloads — route through the inside's arithmetic, then
-    // assign via assign_with_picked so callbacks fire on the narrowing back to B.
+    // assign via dispatch_assign so callbacks fire on the narrowing back to B.
     // An expected<inside> result carrying an error (rational-raw overflow,
     // division by zero) surfaces its errc through on_overflow if registered,
     // else report.
@@ -6546,9 +6517,9 @@ struct policy_ref {
                     Policy.report(result.error());
                 return Ref;
             }
-            return assign_with_picked(result.value());
+            return dispatch_assign(Ref, result.value(), Policy, Actions);
         } else
-            return assign_with_picked(std::forward<R>(result));
+            return dispatch_assign(Ref, std::forward<R>(result), Policy, Actions);
     }
 
     // Shared body for the rational `+=`/`-=`/`*=`/`/=` operators: lift Ref to
@@ -7515,7 +7486,7 @@ struct inside {
                         kd -= 1.0; // floor toward -inf
                 }
                 v -= kd * range;
-            } else if (detail::range_fail(*this, pol))
+            } else if (detail::range_fail(pol))
                 return; // reported (error_code mode)
                         // no handler (unchecked policy): fall through and store snapped as-is
         }
@@ -7946,12 +7917,6 @@ struct inside {
     template <detail::grid_wide Dlo, detail::grid_wide Dhi>
     using raw_work_t = detail::work_int_t<raw_work_bits<Dlo, Dhi>>;
 
-    // The rhs raw's exact range (0 .. slot count, or Lower .. Upper).
-    template <insidable R>
-    static constexpr detail::grid_wide raw_min_of = detail::raw_lo_exact<R>;
-    template <insidable R>
-    static constexpr detail::grid_wide raw_max_of = detail::raw_hi_exact<R>;
-
   public:
     template <insidable R>
     constexpr inside& operator+=(const R& rhs) {
@@ -7967,7 +7932,7 @@ struct inside {
         // Fast path: raw-level integer addition, safe when raw_a + raw_b is the raw
         // of value_a + value_b — direct storage, or offset encoding with Lower==0 both.
         else if constexpr (raw_add_ok<R>) {
-            using W = raw_work_t<raw_min_of<R>, raw_max_of<R>>;
+            using W = raw_work_t<detail::raw_lo_exact<R>, detail::raw_hi_exact<R>>;
             return store_raw<W>(static_cast<W>(Raw) + static_cast<W>(rhs.raw()));
         } else
             return assign_op_result(*this + rhs);
@@ -8046,7 +8011,7 @@ struct inside {
         // for a value-raw rhs. Delegating to `+= (-rhs)` instead shifts R's
         // Lower by negation and defeats +='s raw path for index-backed grids.
         if constexpr (raw_sub_ok<R>) {
-            using W          = raw_work_t<-raw_max_of<R> - sub_bias<R>, -raw_min_of<R> - sub_bias<R>>;
+            using W = raw_work_t<-detail::raw_hi_exact<R> - sub_bias<R>, -detail::raw_lo_exact<R> - sub_bias<R>>;
             constexpr W bias = static_cast<W>(sub_bias<R>);
             return store_raw<W>(static_cast<W>(Raw) - static_cast<W>(rhs.raw()) - bias);
         } else
@@ -9358,8 +9323,6 @@ constexpr wide_sint<K> div_small(const wide_sint<K>& v, umax d) noexcept {
     return neg ? -q : q;
 }
 
-// Out's slot offset of y·2^-S (S ≥ 1) rounded by M, as value-index rounding
-// (the sign rules of rounded_div).
 // The rounding step of fast_index: the magnitude's quotient b by p, its
 // remainder r, and how the shifted-out part R compares with half a unit
 // (−1 below, 0 equal, 1 above; R == 0 known separately).
@@ -9389,6 +9352,8 @@ constexpr bool round_up(bool neg, umax b0, umax r, umax p, bool low_zero, int lo
         return false;
 }
 
+// Out's slot offset of y·2^-S (S ≥ 1) rounded by M, as value-index rounding
+// (the sign rules of rounded_div).
 template <insidable Out, round_mode M, std::size_t K>
 constexpr wide_sint<K + 2> fast_index(const wide_sint<K>& y, int S) noexcept {
     // On limb arrays: |y|·q, the part above 2^S divided by p, and the part
@@ -10257,7 +10222,8 @@ constexpr fx<K> atan_series(const wide_sint<K>& u, umax du) noexcept {
     return {mul_q(u, horner<series::atanh, S, true>(mul_q(u, u, S)), S), du + 6};
 }
 
-// √a for a ≥ 0 at scale S: ⌊√(a·2^S)⌋, within da/2 + 1 units (a ≥ 1/4).
+// √a for a ≥ 0 at scale S: ⌊√(a·2^S)⌋; an a within da units gives a root
+// within da/2 + 1 units (a ≥ 1/4).
 template <std::size_t K>
 constexpr wide_sint<K> sqrt_q(const wide_sint<K>& a, int S) noexcept {
     using D = double_t<K>;
@@ -11236,7 +11202,6 @@ inline double           fp_hypot(double x, double y) { return std::sqrt(fma(x, x
 // Seeds of the dd tier's Newton steps: one step squares a seed's error,
 // so 2^-48 is enough (the dd kernels' test checks the result).
 inline constexpr int kSeedBits = 48;
-inline double        seed_log(double x) { return log_k<kSeedBits>::value(x); }
 inline double        seed_cbrt(double x) {
     if (x == 0.0)
         return 0.0;
@@ -11258,8 +11223,8 @@ inline double        seed_cbrt(double x) {
 // tier decides. Every constant — ln 2, π, the 2^(j/64), 2^(j/4096) and sin(jπ/128)
 // tables, the Taylor coefficients — comes at compile time from the integer
 // path's exact series (detail/math_adaptive.hpp), never from a generator.
-// Results are within about 2^-100 relative; the tier bounds them generously
-// and lets the integer path decide whenever the bound does not.
+// Results are within about 2^-96 relative (measured); the tier bounds them
+// generously and lets the integer path decide whenever the bound does not.
 //---------------------------------------------------------------------------
 
 
@@ -11404,7 +11369,7 @@ constexpr dd of_fixed(wide_sint<K> y, int S) noexcept {
     return negative ? neg(r) : r;
 }
 
-inline constexpr int kS = 136; // the scale constants are read at
+inline constexpr int kS = 136; // the scale (bits after the point) of the constants
 using fixed             = ax::fixed_t<2 * kS + 16>;
 
 template <std::size_t K>
@@ -13948,7 +13913,7 @@ using beman::inside::detail::rational;
 namespace detail {
 using namespace beman::inside::detail;
 
-// Exact rational source for the irrational constants.
+// π as a rational, within 2^-58 (3.1e-18), for the constants below.
 inline constexpr rational kPiRat{1068966896, 340262731};
 inline constexpr rational kTwoPiRat = 2 * kPiRat;
 
@@ -14177,11 +14142,11 @@ using namespace beman::inside::detail;
 
 // Gate for fmod's integer fast path. When both operands and Out are
 // integer-backed on commensurable notches, fmod collapses to ONE integer
-// remainder in units of g = gcd(::beman::inside::detail::notch64<InX>, ::beman::inside::detail::notch64<InY>): with x
+// remainder in units of g = gcd(notch of InX, notch of InY): with x
 // = a·g and y = b·g, x − trunc(x/y)·y = (a − (a/b)·b)·g = (a % b)·g exactly (C++ % is truncated division, the same
 // convention). Conditions:
 //   * integer raws only (rational/double raws keep the rational path),
-//   * non-zero notches, g on Out's grid (g / ::beman::inside::detail::notch64<Out> integer),
+//   * non-zero notches, g on Out's grid (g / notch of Out integer),
 //   * divisor grid excludes zero (no runtime zero check needed),
 //   * Out's interval covers ±max|y| (result magnitude is < |y|),
 //   * all unit counts fit comfortably in imax (headroom 4).
@@ -14274,7 +14239,7 @@ template <insidable Out, insidable InX, insidable InY>
 // Auto-deducing forms — algebraic tier.
 //
 // Each `fn_into<Out>(x)` has an auto form `fn(x)` that derives `Out` from `In`
-// and delegates to it. Notch policy: abs/fmod inherit `::beman::inside::detail::notch64<In>`; floor/ceil/round/trunc
+// and delegates to it. Notch policy: abs/fmod inherit In's notch; floor/ceil/round/trunc
 // deduce notch 1 since their outputs are integer-valued.
 //---------------------------------------------------------------------------
 

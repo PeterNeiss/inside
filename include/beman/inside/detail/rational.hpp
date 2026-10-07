@@ -736,8 +736,8 @@ inline constexpr auto rational::add_impl(const rational& a, const rational& b) {
     }
 
     // numerator == 0 (exact cancellation) is unreachable here: it would
-    // require a == -b, which the `a == -b` early-return at the top of
-    // add_impl already handles for canonical inputs.
+    // require a == -b, which for canonical inputs has equal denominators and
+    // took the equal-denominator branch above.
     umax     numerator = (A > B) ? (A - B) : (B - A);
     bool     r_neg     = a_neg ? (A > B) : (B > A);
     rational r;

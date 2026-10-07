@@ -11,7 +11,7 @@
 
 //---------------------------------------------------------------------------
 // generic — type-level traits and predicates used everywhere else. Public
-// grid/policy introspection (`grid_of<B>`, `policy_of<B>`, `Lower/Upper/detail::notch64<B>`,
+// grid/policy introspection (`grid_of<B>`, `policy_of<B>`, `notch64<B>`,
 // `interval_of<B>`) plus the `insidable`/`numeric`/`inside_assignable` concepts; the
 // storage-shape predicates and raw/value converters are internal (`beman::inside::detail`).
 //---------------------------------------------------------------------------
@@ -130,13 +130,14 @@ template <typename T>
 template <insidable B>
 using raw_t = typename B::raw_type;
 
-// How an inside's value lives in its raw storage — four disjoint encodings
-// (selected by policy flags or deduced; see grid.hpp storage_pick):
+// How an inside's value lives in its raw storage (selected by policy flags or
+// deduced; see grid.hpp storage_pick):
 //   rational_raw — raw IS the value, as a rational.
 //   f64_raw      — raw IS the value, as an IEEE-754 double (dyadic grids only).
 //   f32_raw      — raw IS the value, as an IEEE-754 float  (dyadic grids only).
 //   value_raw    — raw IS the value, as a plain integer.
-//   index_raw    — raw is a 0-based notch index; value = Lower + raw*Notch.
+//   index_raw    — raw is a 0-based notch index; value = Lower + raw*Notch
+//                  (point_raw and wide_raw are index raws).
 template <insidable B>
 inline constexpr bool f64_raw = std::is_same_v<raw_t<B>, double>;
 
@@ -698,8 +699,8 @@ inline constexpr bool notches_compatible = [] {
 // Tail of the policy cascade: checked reports.
 // Returns true if a policy handled the failure (caller should return).
 // Cheap default — reports through the static category message (no string).
-template <insidable B, typename P>
-constexpr bool range_fail([[maybe_unused]] B& b, P&& policy) {
+template <typename P>
+constexpr bool range_fail(P&& policy) {
     if (policy.range_check()) {
         policy.report(errc::overflow);
         return true;

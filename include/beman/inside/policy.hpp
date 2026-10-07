@@ -225,29 +225,13 @@ struct policy_ref {
     // the same size as `policy_ref<B, P, no_action>`.
     [[no_unique_address]] std::tuple<As...> Actions;
 
-  private:
-    // Pre-pick the assignment-time action that matches the policy_ref's pack,
-    // and forward to the single-action assignment::assign. At most one of the
-    // four assignment-time tags is in the pack (enforced by static_assert), so
-    // exactly one branch fires; the rest fall through to no-action.
-    // Generic assignment: store `src` into `dst` under this ref's Policy + picked
-    // action. `operator=` uses it with dst = Ref (the inside this ref wraps); the
-    // conversion operator below uses it with a fresh target, so a one-shot snap can
-    // be read out as a value (`(a * b).with_snap()`), not only assigned.
-    template <insidable Dst, numeric C>
-    constexpr Dst& assign_into(Dst& dst, const C& src) {
-        return dispatch_assign(dst, src, Policy, Actions);
-    }
-
-    template <numeric C>
-    constexpr B& assign_with_picked(const C& other) {
-        return assign_into(Ref, other);
-    }
-
   public:
+    // Stores go through dispatch_assign under this ref's Policy and actions:
+    // into Ref for `operator=`, into a fresh target for the conversion below,
+    // so a one-shot snap can be read out as a value (`(a * b).with_snap()`).
     template <numeric C>
     constexpr B& operator=(const C& other) {
-        return assign_with_picked(other);
+        return dispatch_assign(Ref, other, Policy, Actions);
     }
 
     // Value read-out: a one-shot policy ref converts to any inside the assignment
@@ -259,7 +243,7 @@ struct policy_ref {
         requires inside_assignable<Target, B, policy_of<Target> | policy_flags_of<P>>
     constexpr operator Target() {
         Target r;
-        assign_into(r, Ref);
+        dispatch_assign(r, Ref, Policy, Actions);
         return r;
     }
 
@@ -267,7 +251,7 @@ struct policy_ref {
     // checked arithmetic into `.with_clamp() = ...` without per-step `.value()`.
     template <numeric C>
     constexpr B& operator=(const std::expected<C, errc>& other) {
-        return assign_with_picked(other.value());
+        return dispatch_assign(Ref, other.value(), Policy, Actions);
     }
 
   private:
@@ -281,7 +265,7 @@ struct policy_ref {
   public:
     //-------------------------------------------------------------------------
     // insidable RHS overloads — route through the inside's arithmetic, then
-    // assign via assign_with_picked so callbacks fire on the narrowing back to B.
+    // assign via dispatch_assign so callbacks fire on the narrowing back to B.
     // An expected<inside> result carrying an error (rational-raw overflow,
     // division by zero) surfaces its errc through on_overflow if registered,
     // else report.
@@ -299,9 +283,9 @@ struct policy_ref {
                     Policy.report(result.error());
                 return Ref;
             }
-            return assign_with_picked(result.value());
+            return dispatch_assign(Ref, result.value(), Policy, Actions);
         } else
-            return assign_with_picked(std::forward<R>(result));
+            return dispatch_assign(Ref, std::forward<R>(result), Policy, Actions);
     }
 
     // Shared body for the rational `+=`/`-=`/`*=`/`/=` operators: lift Ref to

@@ -178,7 +178,7 @@ struct inside {
                         kd -= 1.0; // floor toward -inf
                 }
                 v -= kd * range;
-            } else if (detail::range_fail(*this, pol))
+            } else if (detail::range_fail(pol))
                 return; // reported (error_code mode)
                         // no handler (unchecked policy): fall through and store snapped as-is
         }
@@ -609,12 +609,6 @@ struct inside {
     template <detail::grid_wide Dlo, detail::grid_wide Dhi>
     using raw_work_t = detail::work_int_t<raw_work_bits<Dlo, Dhi>>;
 
-    // The rhs raw's exact range (0 .. slot count, or Lower .. Upper).
-    template <insidable R>
-    static constexpr detail::grid_wide raw_min_of = detail::raw_lo_exact<R>;
-    template <insidable R>
-    static constexpr detail::grid_wide raw_max_of = detail::raw_hi_exact<R>;
-
   public:
     template <insidable R>
     constexpr inside& operator+=(const R& rhs) {
@@ -630,7 +624,7 @@ struct inside {
         // Fast path: raw-level integer addition, safe when raw_a + raw_b is the raw
         // of value_a + value_b — direct storage, or offset encoding with Lower==0 both.
         else if constexpr (raw_add_ok<R>) {
-            using W = raw_work_t<raw_min_of<R>, raw_max_of<R>>;
+            using W = raw_work_t<detail::raw_lo_exact<R>, detail::raw_hi_exact<R>>;
             return store_raw<W>(static_cast<W>(Raw) + static_cast<W>(rhs.raw()));
         } else
             return assign_op_result(*this + rhs);
@@ -709,7 +703,7 @@ struct inside {
         // for a value-raw rhs. Delegating to `+= (-rhs)` instead shifts R's
         // Lower by negation and defeats +='s raw path for index-backed grids.
         if constexpr (raw_sub_ok<R>) {
-            using W          = raw_work_t<-raw_max_of<R> - sub_bias<R>, -raw_min_of<R> - sub_bias<R>>;
+            using W = raw_work_t<-detail::raw_hi_exact<R> - sub_bias<R>, -detail::raw_lo_exact<R> - sub_bias<R>>;
             constexpr W bias = static_cast<W>(sub_bias<R>);
             return store_raw<W>(static_cast<W>(Raw) - static_cast<W>(rhs.raw()) - bias);
         } else

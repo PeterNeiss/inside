@@ -28,12 +28,11 @@ inline constexpr bool needs_runtime_range_check =
      !has_policy<L, P, ignore_range>);
 
 // Shared out-of-range policy cascade. Order: clamp/wrap/error *actions*, then
-// clamp/wrap *policy* bits, then `range_fail`. The three caller-supplied
-// callables cover how clamp/wrap store and the error-message rhs view. `Wrappable` is false on the fractional
-// path (no wrap *action* branch). Returns true when a handler resolved the write.
-template <bool Wrappable, insidable L, typename P, typename A, typename DoClamp, typename DoWrap, typename MsgView>
-constexpr bool dispatch_out_of_range(
-    L& lhs, P&& policy, A&& action, DoClamp do_clamp, DoWrap do_wrap, [[maybe_unused]] MsgView msg_view) {
+// clamp/wrap *policy* bits, then `range_fail`. The callers say how clamp and
+// wrap store; `Wrappable` is false on the fractional path (no wrap *action*
+// branch). Returns true when a handler resolved the write.
+template <bool Wrappable, insidable L, typename P, typename A, typename DoClamp, typename DoWrap>
+constexpr bool dispatch_out_of_range(L& lhs, P&& policy, A&& action, DoClamp do_clamp, DoWrap do_wrap) {
     using PA = plain_t<A>;
     if constexpr (clamp_action<PA>) {
         do_clamp();
@@ -51,7 +50,7 @@ constexpr bool dispatch_out_of_range(
         do_wrap();
         return true;
     } else
-        return range_fail(lhs, policy);
+        return range_fail(policy);
 }
 
 //---------------------------------------------------------------------------
@@ -182,9 +181,6 @@ inline constexpr grid_wide source_hi = [] {
         return grid_wide{1} << 64;
 }();
 
-// An integer-valued rational (|v| < 2^64) as a grid_wide.
-constexpr grid_wide integer_wide(const rational& v) noexcept { return wide_numerator(v); }
-
 //---------------------------------------------------------------------------
 // assignment
 //---------------------------------------------------------------------------
@@ -269,8 +265,7 @@ constexpr L& assign_exact(L& lhs, const exact_frac<K>& v, P&& policy, A&& action
                         lhs = L::from_raw(raw_of_index<L>(w));
                         if constexpr (wrap_action<plain_t<A>>)
                             action.Fn(lhs, make_wrap_carry<L, R>(saturate(q)));
-                    },
-                    [&] { return 0; }))
+                    }))
                 return lhs;
         }
         lhs = L::from_raw(raw_of_index<L>(index));
@@ -335,12 +330,7 @@ struct assignment<L, R> {
     template <typename P, typename A>
     static constexpr bool handle_out_of_range(L& lhs, R rhs, P&& policy, A&& action) {
         return dispatch_out_of_range<true>(
-            lhs,
-            policy,
-            action,
-            [&] { apply_clamp(lhs, rhs, action); },
-            [&] { apply_wrap(lhs, rhs, action); },
-            [&] { return rhs; });
+            lhs, policy, action, [&] { apply_clamp(lhs, rhs, action); }, [&] { apply_wrap(lhs, rhs, action); });
     }
 
     static constexpr void store(L& lhs, R rhs) {
@@ -484,7 +474,7 @@ struct assignment<L, R> {
             // 2^64 values, past the rational range).
             using fold         = unit_fold<L, source_lo<rational>, source_hi<rational>>;
             using W            = typename fold::W;
-            const auto [qq, w] = fold::fold(static_cast<W>(integer_wide(rhs_r)));
+            const auto [qq, w] = fold::fold(static_cast<W>(wide_numerator(rhs_r)));
             const W v          = fold::lower + w;
             q                  = qq;
             wrapped            = v < W{0} ? -rational{static_cast<umax>(-v)} : rational{static_cast<umax>(v)};
@@ -785,8 +775,7 @@ struct assignment<L, R> {
                     policy,
                     action,
                     [&] { apply_clamp(lhs, rhs, policy, action); },
-                    [&] { apply_wrap(lhs, rhs, policy, action); },
-                    [&] { return rhs; }))
+                    [&] { apply_wrap(lhs, rhs, policy, action); }))
                 return lhs;
         }
 
@@ -809,7 +798,7 @@ struct assignment<L, R> {
             return detail::lower64<R>;
         else if constexpr (detail::notch64<L> == 0)
             // Continuous fp_raw L: no grid to land on, mapping unused (store
-            // routes through snap_double). 0 avoids the /detail::notch64<L> divide-by-zero.
+            // routes through snap_double). 0 avoids the divide-by-zero by the notch.
             return rational{0};
         else if constexpr (rational_raw<R>)
             return -(detail::lower64<L> / detail::notch64<L>).value();
@@ -962,7 +951,7 @@ struct assignment<L, R> {
             // (either grid may reach past int64; the span can be 2^64−1).
             using fold             = unit_fold<L, wide_numerator(lower_of<R>), wide_numerator(upper_of<R>)>;
             using W                = typename fold::W;
-            const auto [excess, w] = fold::fold(static_cast<W>(integer_wide(as_rational(rhs))));
+            const auto [excess, w] = fold::fold(static_cast<W>(wide_numerator(as_rational(rhs))));
             lhs                    = L::from_raw(fold::raw_at(w));
             if constexpr (wrap_action<plain_t<A>>)
                 action.Fn(lhs, make_wrap_carry<L, R>(excess)); // carry as an inside
@@ -987,8 +976,7 @@ struct assignment<L, R> {
             policy,
             action,
             [&] { apply_clamp(lhs, rhs, action); },
-            [&] { apply_wrap(lhs, rhs, policy, action); },
-            [&] { return as_rational(rhs); });
+            [&] { apply_wrap(lhs, rhs, policy, action); });
     }
 
     template <typename P>

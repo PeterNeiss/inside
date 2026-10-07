@@ -289,8 +289,6 @@ constexpr wide_sint<K> div_small(const wide_sint<K>& v, umax d) noexcept {
     return neg ? -q : q;
 }
 
-// Out's slot offset of y·2^-S (S ≥ 1) rounded by M, as value-index rounding
-// (the sign rules of rounded_div).
 // The rounding step of fast_index: the magnitude's quotient b by p, its
 // remainder r, and how the shifted-out part R compares with half a unit
 // (−1 below, 0 equal, 1 above; R == 0 known separately).
@@ -320,6 +318,8 @@ constexpr bool round_up(bool neg, umax b0, umax r, umax p, bool low_zero, int lo
         return false;
 }
 
+// Out's slot offset of y·2^-S (S ≥ 1) rounded by M, as value-index rounding
+// (the sign rules of rounded_div).
 template <insidable Out, round_mode M, std::size_t K>
 constexpr wide_sint<K + 2> fast_index(const wide_sint<K>& y, int S) noexcept {
     // On limb arrays: |y|·q, the part above 2^S divided by p, and the part
@@ -1188,7 +1188,8 @@ constexpr fx<K> atan_series(const wide_sint<K>& u, umax du) noexcept {
     return {mul_q(u, horner<series::atanh, S, true>(mul_q(u, u, S)), S), du + 6};
 }
 
-// √a for a ≥ 0 at scale S: ⌊√(a·2^S)⌋, within da/2 + 1 units (a ≥ 1/4).
+// √a for a ≥ 0 at scale S: ⌊√(a·2^S)⌋; an a within da units gives a root
+// within da/2 + 1 units (a ≥ 1/4).
 template <std::size_t K>
 constexpr wide_sint<K> sqrt_q(const wide_sint<K>& a, int S) noexcept {
     using D = double_t<K>;

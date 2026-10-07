@@ -31,7 +31,7 @@ using beman::inside::detail::rational;
 namespace detail {
 using namespace beman::inside::detail;
 
-// Exact rational source for the irrational constants.
+// π as a rational, within 2^-58 (3.1e-18), for the constants below.
 inline constexpr rational kPiRat{1068966896, 340262731};
 inline constexpr rational kTwoPiRat = 2 * kPiRat;
 
@@ -260,11 +260,11 @@ using namespace beman::inside::detail;
 
 // Gate for fmod's integer fast path. When both operands and Out are
 // integer-backed on commensurable notches, fmod collapses to ONE integer
-// remainder in units of g = gcd(::beman::inside::detail::notch64<InX>, ::beman::inside::detail::notch64<InY>): with x
+// remainder in units of g = gcd(notch of InX, notch of InY): with x
 // = a·g and y = b·g, x − trunc(x/y)·y = (a − (a/b)·b)·g = (a % b)·g exactly (C++ % is truncated division, the same
 // convention). Conditions:
 //   * integer raws only (rational/double raws keep the rational path),
-//   * non-zero notches, g on Out's grid (g / ::beman::inside::detail::notch64<Out> integer),
+//   * non-zero notches, g on Out's grid (g / notch of Out integer),
 //   * divisor grid excludes zero (no runtime zero check needed),
 //   * Out's interval covers ±max|y| (result magnitude is < |y|),
 //   * all unit counts fit comfortably in imax (headroom 4).
@@ -357,7 +357,7 @@ template <insidable Out, insidable InX, insidable InY>
 // Auto-deducing forms — algebraic tier.
 //
 // Each `fn_into<Out>(x)` has an auto form `fn(x)` that derives `Out` from `In`
-// and delegates to it. Notch policy: abs/fmod inherit `::beman::inside::detail::notch64<In>`; floor/ceil/round/trunc
+// and delegates to it. Notch policy: abs/fmod inherit In's notch; floor/ceil/round/trunc
 // deduce notch 1 since their outputs are integer-valued.
 //---------------------------------------------------------------------------
 

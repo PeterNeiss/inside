@@ -853,7 +853,6 @@ inline double           fp_hypot(double x, double y) { return std::sqrt(fma(x, x
 // Seeds of the dd tier's Newton steps: one step squares a seed's error,
 // so 2^-48 is enough (the dd kernels' test checks the result).
 inline constexpr int kSeedBits = 48;
-inline double        seed_log(double x) { return log_k<kSeedBits>::value(x); }
 inline double        seed_cbrt(double x) {
     if (x == 0.0)
         return 0.0;
