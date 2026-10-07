@@ -1146,7 +1146,7 @@ Byte-identical disassembly (\S\ref{sec:codegen});
 \textbf{Additional cost} & Exact rational storage, element-wise checking,
 and transcendentals correctly rounded at full \code{double} resolution. &
 \code{inside<exact>} $\approx$6.5$\times$ \code{double}; checked loop at
-20\%; math at full \code{double} resolution 8--18$\times$ \code{std} \\
+20\%; math at full \code{double} resolution 8--13$\times$ \code{std} \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -1510,10 +1510,10 @@ $2^{53}$ slots:
 \toprule
 Function & \code{std} ns & deduced grid ns & \code{double}-fine ns & fine vs.\ \code{std} \\
 \midrule
-\code{sin}  ($2^{-52}$) & 3.40 & 3.50 & 36.1 & 10.6$\times$ \\
-\code{exp}  ($2^{-40}$ on $[0,4096]$) & 2.66 & 5.57 & 21.1 & 7.9$\times$ \\
-\code{log}  ($2^{-48}$) & 2.32 & 3.99 & 41.8 & 18.0$\times$ \\
-\code{sqrt} ($2^{-51}$) & 1.23 & 1.60 & 9.30 & 7.6$\times$ \\
+\code{sin}  ($2^{-52}$) & 3.39 & 3.50 & 36.0 & 10.6$\times$ \\
+\code{exp}  ($2^{-40}$ on $[0,4096]$) & 2.66 & 5.58 & 21.1 & 7.9$\times$ \\
+\code{log}  ($2^{-48}$) & 2.32 & 3.98 & 30.1 & 13.0$\times$ \\
+\code{sqrt} ($2^{-51}$) & 1.23 & 1.60 & 9.36 & 7.6$\times$ \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -1523,7 +1523,7 @@ Function & \code{std} ns & deduced grid ns & \code{double}-fine ns & fine vs.\ \
 x86-64.}
 
 At full \code{double} resolution, correct rounding costs \textbf{8 to
-18$\times$} \code{std}. That buys results that are correct to the last bit
+13$\times$} \code{std}. That buys results that are correct to the last bit
 and identical on every platform, compiler, optimisation level and FPU or
 none --- properties \code{<cmath>} does not offer. It is a real trade, and it
 should be made deliberately: ask for the output grid you need, not the finest
@@ -1537,7 +1537,7 @@ Five conclusions, stated plainly:
 \item \textbf{There is no single cost.} The measurements in this section span
       negative cost (22\% faster than checked native, \S\ref{sec:checks}), zero
       cost (byte-identical codegen, \S\ref{sec:codegen}) and real cost
-      (6.5$\times$ for exact rationals, up to 18$\times$ for correctly
+      (6.5$\times$ for exact rationals, up to 13$\times$ for correctly
       rounded math at full resolution). Any summary of the form
       ``\code{inside} costs $N$\%'' is wrong in at least one direction; the
       honest question is always \emph{which regime does my code sit in}.
@@ -1557,7 +1557,7 @@ Five conclusions, stated plainly:
 \item \textbf{Some paths genuinely cost, and no baseline choice rescues them.}
       Exact rational arithmetic is roughly 6.5$\times$ \code{double}; a
       loop that checks every element runs at 20\% of native; correctly rounded
-      transcendentals at full \code{double} resolution are 8--18$\times$
+      transcendentals at full \code{double} resolution are 8--13$\times$
       \code{std}. These buy exactness, a range guarantee and bit-exact
       reproducibility respectively, and if you do not need those properties
       you should not pay for them.
@@ -1603,7 +1603,7 @@ Intellectual honesty requires the other side of the ledger.
       most C++ programmers expect.
 \item \textbf{Correct rounding is not free.} The transcendentals return the
       correctly rounded grid point, and at the resolution of a \code{double}
-      that costs 8--18$\times$ \code{<cmath>} (\S\ref{sec:mathcost}). Code
+      that costs 8--13$\times$ \code{<cmath>} (\S\ref{sec:mathcost}). Code
       that needs \code{double} throughput and tolerates \code{double} error
       should call \code{<cmath>}.
 \item \textbf{Not everything needs it.} A loop counter over a small container

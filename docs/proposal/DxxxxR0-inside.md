@@ -116,7 +116,7 @@ auto m = (a + b) / 2_ins; // exact, and a plain value: 2 is not zero
 - **Correct rounding over speed for the math facility.** A correctly rounded
   result is a function of the input and the output grid alone, which is what
   makes compile-time and run-time results agree. At coarse output grids this is
-  as fast as `<cmath>`; at the full resolution of a `double` it costs 8–18×
+  as fast as `<cmath>`; at the full resolution of a `double` it costs 8–13×
   (paper §7.6).
 
 ## 5. Implementation experience
