@@ -1069,15 +1069,15 @@ inline bool dd_decide(ddk::dd v, double bound, Out& out) noexcept {
     constexpr imax       first = static_cast<imax>(slot_base<Out>); // |index| ≤ 2^62
     constexpr imax       last  = static_cast<imax>(slot_base<Out> + grid_of<Out>.slot_count());
     constexpr double     lo = static_cast<double>(first) - 1024, hi = static_cast<double>(last) + 1024;
-    // Below 2^52, t.Hi's nearest integer is J itself unless t.Lo carries u
-    // past ½, which the tests then reject: one rounding instead of two.
-    constexpr bool narrow = lo > -0x1p52 && hi < 0x1p52;
-    const ddk::dd  t      = ddk::mul(v, s);
-    const double   j1     = nearest_int(t.Hi);
+    // t = J + u with J = j1 + j2: u is t.Hi's distance to its nearest
+    // integer plus t.Lo, and may pass ½ (t.Hi on a half, or t.Lo carrying
+    // it over), so it is rounded again rather than rejected.
+    const ddk::dd t  = ddk::mul(v, s);
+    const double  j1 = nearest_int(t.Hi);
     if (!(j1 >= lo && j1 <= hi))
         return false; // NaN and infinities too
     const double u  = (t.Hi - j1) + t.Lo;
-    double       j2 = narrow ? 0.0 : nearest_int(u);
+    double       j2 = nearest_int(u);
     double       d  = u - j2;
     const double bt = bound * s.Hi + fabs_d(t.Hi) * 0x1p-100 + (fabs_d(u) + 1) * 0x1p-52;
     if constexpr (M == round_mode::nearest || M == round_mode::half_even) {
