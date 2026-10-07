@@ -10590,6 +10590,11 @@ consteval int terms_for(int T, int Max, F trunc) {
 // of their rounding error.
 inline constexpr int kFullBits = 58;
 
+// sinh, asinh and acosh have a sharp form, which reaches 47 bits but costs
+// 15–40% more, and a plain one, which reaches 46: targets up to kPlainBits
+// (fp_target = bits + 10) take the plain one.
+inline constexpr int kPlainBits = 56;
+
 //---------------------------------------------------------------------------
 // sin and cos on the reduced argument r, |r| ≤ kRTrig. The reduction of
 // |x| ≤ 2^20 leaves |r| ≤ π/4 + 2^-32 (x·2/π is within 2^-32.6 of exact).
@@ -10753,6 +10758,24 @@ template <int N>
     return horner(r, exp_c<N>.C);
 }
 
+// sinh a = a + a·z·P(z) for 0 ≤ a < ln 2, z = a² ≤ kZSinh, P = Σ z^k/(2k+3)!.
+// Relative to sinh a ≥ a: z·P's truncation (the first omitted term,
+// widened by 1% for the rest), z and a·z rounding (2kU of z·P), P's
+// Horner error at z, and the fma's rounding.
+inline constexpr double kZSinh = 0.4805; // ≥ (ln 2)² = 0.480453
+constexpr double        sinh_trunc(int n) { return pow_n(kZSinh, n + 1) / factorial(2 * n + 3) * 1.01; }
+template <int T>
+inline constexpr int sinh_terms = terms_for(T, 9, sinh_trunc);
+
+template <int N>
+inline constexpr poly<N> sinh_c = series<N>([](int k) { return term{1.0, factorial(2 * k + 3)}; });
+
+template <int N>
+inline constexpr double sinh_poly_rel = [] {
+    const horner_bound h = horner_error(sinh_c<N>, kZSinh, kU);
+    return up(kZSinh * (2 * kU * h.Mag + h.Err) + sinh_trunc(N) + kU);
+}();
+
 // e^x = 2^k·e^r, x = k·ln2 + r, for |x| ≤ 745 (|k| ≤ 1100) — larger |x|
 // overflow to infinity or underflow to 0, both within the bound's kTiny
 // or failing every test downstream. r1 = x − k·Hi is exact (Hi has 33
@@ -10796,18 +10819,38 @@ struct exp_k {
     }
 
     // The hyperbolics from e = e^x within Rel: cosh's two positive terms
-    // keep it relative (1/e adds one rounding, the sum another); sinh's
-    // difference is within (Rel + kU)·cosh x + kU·|sinh x| and cosh ≤
-    // |sinh| + 1; tanh = (e^2x − 1)/(e^2x + 1) is within Rel + |t|·(Rel + 3kU).
-    static constexpr double SinhRel = up(Rel + 2 * kU), SinhAbs = up(Rel + kU);
+    // keep it relative (1/e adds one rounding, the sum another);
+    // tanh = (e^2x − 1)/(e^2x + 1) is within Rel + |t|·(Rel + 3kU). sinh of
+    // a = |x| ≥ ln 2 (kLn2Full is above it) takes (e − 1/e)/2 with e ≥ 2:
+    // e's Rel and 1/e's Rel + kU over the difference are at most
+    // Rel·coth a + kU/(e² − 1) ≤ Rel·5/3 + kU/3, and the difference rounds
+    // once; below ln 2 the odd series, relative (sinh_poly_rel). The
+    // plain form takes the difference throughout: within (Rel + kU)·cosh x
+    // + kU·|sinh x|, and cosh ≤ |sinh| + 1.
+    static constexpr int    NSh          = sinh_terms<T>;
+    static constexpr double SinhRel      = up(max_d(sinh_poly_rel<NSh>, Rel * 5 / 3 + kU / 3 + kU));
+    static constexpr double SinhPlainRel = up(Rel + 2 * kU), SinhPlainAbs = up(Rel + kU);
     static constexpr double CoshRel = up(Rel + 2 * kU);
     static constexpr double TanhRel = up(Rel + 3 * kU), TanhAbs = up(Rel);
 
     static double sinh(double x, double& bound) {
-        const double e = value(x);
-        const double v = (e - 1.0 / e) * 0.5;
-        bound          = SinhRel * __builtin_fabs(v) + SinhAbs + kTiny;
-        return v;
+        if constexpr (T <= kPlainBits) {
+            const double e = value(x);
+            const double v = (e - 1.0 / e) * 0.5;
+            bound          = SinhPlainRel * __builtin_fabs(v) + SinhPlainAbs + kTiny;
+            return v;
+        }
+        const double a = x < 0 ? -x : x;
+        double       m;
+        if (a < kLn2Full) {
+            const double z = a * a;
+            m              = fma(a * z, horner(z, sinh_c<NSh>.C), a);
+        } else {
+            const double e = value(a);
+            m              = (e - 1.0 / e) * 0.5;
+        }
+        bound = SinhRel * m + kTiny;
+        return x < 0 ? -m : m;
     }
     static double cosh(double x, double& bound) {
         const double e = value(x);
@@ -10938,28 +10981,82 @@ struct log_k {
         return v;
     }
 
-    // asinh |x| ≤ 1: ln(a + √(a² + 1)), whose argument is within 2.5kU
-    // (fma, √, sum); above 1: ln a + ln(1 + √(1 + 1/a²)), the second
+    // asinh and acosh as A = ln(1 + u), u ≥ 0 given as uh + ul with
+    // |ul| ≤ kU·uh, through ln's Hi + Lo: 1 + uh = wh + e1 exactly,
+    // wl = e1 + ul rounds once, and A = ln wh + ln(1 + q), q = wl/wh. If
+    // wh = 1, q = wl and only wl's rounding is left; below 2, |wl| ≤ kU·wh
+    // and A ≥ kU, so |q| ≤ A·(1 + 2^-50); from 2 on, |q| ≤ 2kU ≤ 3kU·A. Relative to A: ln wh within HlRel of
+    // |ln wh| ≤ 2A; wl's rounding, the quotient's, the sum with ln wh's Lo
+    // and the final sum (kU each, as |q| ≤ A); q − ln(1 + q) ≤ q²/2
+    // (½kU). Log1pRel collects these; the callers add u's own error.
+    static constexpr double              Log1pRel = up(2 * HlRel + 4 * kU * (1 + 0x1p-50) + 0.5 * kU);
+    [[gnu::always_inline]] static double log1p_hl(double uh, double ul) {
+        const double one = fenced(1.0), u = fenced(uh);
+        const double wh = fenced(one + u), b = wh - one;
+        const double wl = ((one - (wh - b)) + (u - b)) + ul;
+        double       lo;
+        const double v = value_hl(wh, lo);
+        return v + (lo + wl / wh);
+    }
+    // u = a + t, sum and remainder, exactly (a ≥ 0, t ≥ 0).
+    [[gnu::always_inline]] static double sum_hl(double a, double t, double& lo) {
+        const double fa = fenced(a), ft = fenced(t);
+        const double s = fa + ft, b = s - fa;
+        lo = (fa - (s - b)) + (ft - b);
+        return s;
+    }
+
+    // asinh a, a = |x| ≤ 2^500: u = a + t, t = a²/(1 + √(1 + a²)), the sum
+    // exact. t is within 4.5kU (a², the fma's ½kU through the root, the
+    // root, 1 + √ and the quotient), which moves A by 4.5kU·t/(1 + u)
+    // absolutely; with a = sinh A, t = cosh A − 1, so relative to A that
+    // is 4.5kU·(1 − e^-A)²/(2A) ≤ 4.5kU·0.2037 (the maximum, at A ≈ 1.26).
+    static constexpr double AsinhRel = up(Log1pRel + 4.5 * kU * 0.2037);
+    // The plain form: below 1, ln(a + √(a² + 1)), whose argument is within
+    // 2.5kU (fma, √, sum); above, ln a + ln(1 + √(1 + 1/a²)), the second
     // argument within 2kU and the sum one more rounding. Both: within
     // (Rel + kU)·|v| + 2.5kU.
     static constexpr double AhRel = up(Rel + kU), AsinhAbs = up(2.5 * kU);
     static double           asinh(double x, double& bound) {
         const double a = x < 0 ? -x : x;
-        const double m =
-            a <= 1.0 ? value(a + std::sqrt(fma(a, a, 1.0))) : value(a) + value(1.0 + std::sqrt(1.0 + 1.0 / (a * a)));
-        bound = AhRel * m + AsinhAbs + kTiny;
+        if constexpr (T <= kPlainBits) {
+            const double m = a <= 1.0 ? value(a + std::sqrt(fma(a, a, 1.0)))
+                                      : value(a) + value(1.0 + std::sqrt(1.0 + 1.0 / (a * a)));
+            bound          = AhRel * m + AsinhAbs + kTiny;
+            return x < 0 ? -m : m;
+        }
+        const double t = (a * a) / (1.0 + std::sqrt(fma(a, a, 1.0)));
+        double       ul;
+        const double uh = sum_hl(a, t, ul);
+        const double m  = log1p_hl(uh, ul);
+        bound           = AsinhRel * m + kTiny;
         return x < 0 ? -m : m;
     }
 
-    // acosh x ≥ 1: ln x + ln(1 + s), s = √d, d = 1 − 1/x². 1/x² is within
-    // 2kU, and d (exact by Sterbenz, else one rounding of at most kU·d) is
-    // within 2kU of 1 − 1/x², which moves √d by at most 2kU/s; the root, the
-    // sum and the logs add (Rel + kU)·|v| + 2kU. Pre: x ≥ 1 (s = 0 at x = 1
-    // makes the bound infinite).
+    // acosh x, 1 ≤ x ≤ 2^500: u = y + s, y = x − 1, s = √(y² + 2y) (one
+    // fma), the sum exact. y is exact below 2^53; above, its rounding moves
+    // A by at most kU·y/(1 + u) ≤ kU, and A ≥ 37. s is within 1.5kU, which
+    // moves A by 1.5kU·s/(1 + u); with s = sinh A, 1 + u = e^A, relative
+    // to A that is 1.5kU·(1 − e^-2A)/(2A) ≤ 1.5kU.
+    static constexpr double AcoshRel = up(Log1pRel + 1.5 * kU + kU / 37);
+    // The plain form: ln x + ln(1 + s), s = √d, d = 1 − 1/x². 1/x² is
+    // within 2kU, and d (exact by Sterbenz, else one rounding of at most
+    // kU·d) within 2kU of 1 − 1/x², which moves √d by at most 2kU/s; the
+    // root, the sum and the logs add (Rel + kU)·|v| + 2kU. At x = 1, s = 0
+    // makes the bound infinite.
     static double acosh(double x, double& bound) {
-        const double s = std::sqrt(1.0 - 1.0 / (x * x));
-        const double v = value(x) + value(1.0 + s);
-        bound          = AhRel * v + up(2 * kU) + up(2 * kU * (1 + 0x1p-50)) / s + kTiny;
+        if constexpr (T <= kPlainBits) {
+            const double s = std::sqrt(1.0 - 1.0 / (x * x));
+            const double v = value(x) + value(1.0 + s);
+            bound          = AhRel * v + up(2 * kU) + up(2 * kU * (1 + 0x1p-50)) / s + kTiny;
+            return v;
+        }
+        const double y = x - 1.0;
+        const double s = std::sqrt(fma(y, y, y + y));
+        double       ul;
+        const double uh = sum_hl(y, s, ul);
+        const double v  = log1p_hl(uh, ul);
+        bound           = AcoshRel * v + kTiny;
         return v;
     }
 
@@ -13034,8 +13131,7 @@ BEMAN_INSIDE_AX_KERNEL(sin, trig_k, sin, 1, fp_limit(fp_full_trig::Rel), 1.0)
 BEMAN_INSIDE_AX_KERNEL(cos, trig_k, cos, 1, fp_limit(fp_full_trig::Rel), 1.0)
 BEMAN_INSIDE_AX_KERNEL(exp, exp_k, exp, kUnbounded, fp_limit(fp_full_exp::Rel), fabs_d(v))
 BEMAN_INSIDE_AX_KERNEL(exp2, exp_k, exp2, kUnbounded, fp_limit(fp_full_exp::Rel2), fabs_d(v))
-BEMAN_INSIDE_AX_KERNEL(
-    sinh, exp_k, sinh, kUnbounded, fp_limit(fp_full_exp::SinhRel + fp_full_exp::SinhAbs), fabs_d(v) + 1)
+BEMAN_INSIDE_AX_KERNEL(sinh, exp_k, sinh, kUnbounded, fp_limit(fp_full_exp::SinhRel), fabs_d(v) + 1)
 BEMAN_INSIDE_AX_KERNEL(cosh, exp_k, cosh, kUnbounded, fp_limit(fp_full_exp::CoshRel), fabs_d(v) + 1)
 BEMAN_INSIDE_AX_KERNEL(tanh, exp_k, tanh, 1, fp_limit(fp_full_exp::TanhRel + fp_full_exp::TanhAbs), 1.0)
 BEMAN_INSIDE_AX_KERNEL(atan, atan_k, atan, 1, fp_limit(fp_full_atan::Rel + fp_full_atan::Abs), 1.0)
@@ -13054,7 +13150,7 @@ BEMAN_INSIDE_AX_KERNEL(acos,
 BEMAN_INSIDE_AX_KERNEL(log, log_k, log, kUnbounded, fp_limit(fp_full_log::Rel), 1.0 / fabs_d(x))
 BEMAN_INSIDE_AX_KERNEL(log2, log_k, log2, kUnbounded, fp_limit(fp_full_log::Rel2), 1.5 / fabs_d(x))
 BEMAN_INSIDE_AX_KERNEL(log10, log_k, log10, kUnbounded, fp_limit(fp_full_log::Rel10), 1.0 / fabs_d(x))
-BEMAN_INSIDE_AX_KERNEL(asinh, log_k, asinh, kUnbounded, fp_limit(fp_full_log::AhRel + fp_full_log::AsinhAbs), 1.0)
+BEMAN_INSIDE_AX_KERNEL(asinh, log_k, asinh, kUnbounded, fp_limit(fp_full_log::AsinhRel), 1.0)
 BEMAN_INSIDE_AX_KERNEL(
     atanh, log_k, atanh, kUnbounded, fp_limit(fp_full_log::Rel + fp_full_log::AtanhAbs), 1.0 / ((1.0 - x) * (1.0 + x)))
 // cbrt = e^(ln|x|/3): the log's error grows with |ln|x||, up to 2^4.
@@ -13066,11 +13162,10 @@ BEMAN_INSIDE_AX_KERNEL(cbrt,
                        x == 0 ? 0.0 : fabs_d(v / x))
     #undef BEMAN_INSIDE_AX_KERNEL
 
-// acosh near 1 adds 2^-52/√(1 − 1/x²): its limit holds from x = 1.1 on,
-// and its dd bound grows the same way.
+// acosh: the dd kernel's bound grows near 1 as 2^-92/√(1 − 1/x²).
 struct fp_acosh {
     static constexpr int Mag   = kUnbounded;
-    static constexpr int Limit = fp_limit(fp_full_log::AhRel + 8 * fpk::kU);
+    static constexpr int Limit = fp_limit(fp_full_log::AcoshRel);
     template <int T>
     static double value(double x, double& bound) {
         return fpk::log_k<T>::acosh(x, bound);

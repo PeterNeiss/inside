@@ -1159,8 +1159,7 @@ BEMAN_INSIDE_AX_KERNEL(sin, trig_k, sin, 1, fp_limit(fp_full_trig::Rel), 1.0)
 BEMAN_INSIDE_AX_KERNEL(cos, trig_k, cos, 1, fp_limit(fp_full_trig::Rel), 1.0)
 BEMAN_INSIDE_AX_KERNEL(exp, exp_k, exp, kUnbounded, fp_limit(fp_full_exp::Rel), fabs_d(v))
 BEMAN_INSIDE_AX_KERNEL(exp2, exp_k, exp2, kUnbounded, fp_limit(fp_full_exp::Rel2), fabs_d(v))
-BEMAN_INSIDE_AX_KERNEL(
-    sinh, exp_k, sinh, kUnbounded, fp_limit(fp_full_exp::SinhRel + fp_full_exp::SinhAbs), fabs_d(v) + 1)
+BEMAN_INSIDE_AX_KERNEL(sinh, exp_k, sinh, kUnbounded, fp_limit(fp_full_exp::SinhRel), fabs_d(v) + 1)
 BEMAN_INSIDE_AX_KERNEL(cosh, exp_k, cosh, kUnbounded, fp_limit(fp_full_exp::CoshRel), fabs_d(v) + 1)
 BEMAN_INSIDE_AX_KERNEL(tanh, exp_k, tanh, 1, fp_limit(fp_full_exp::TanhRel + fp_full_exp::TanhAbs), 1.0)
 BEMAN_INSIDE_AX_KERNEL(atan, atan_k, atan, 1, fp_limit(fp_full_atan::Rel + fp_full_atan::Abs), 1.0)
@@ -1179,7 +1178,7 @@ BEMAN_INSIDE_AX_KERNEL(acos,
 BEMAN_INSIDE_AX_KERNEL(log, log_k, log, kUnbounded, fp_limit(fp_full_log::Rel), 1.0 / fabs_d(x))
 BEMAN_INSIDE_AX_KERNEL(log2, log_k, log2, kUnbounded, fp_limit(fp_full_log::Rel2), 1.5 / fabs_d(x))
 BEMAN_INSIDE_AX_KERNEL(log10, log_k, log10, kUnbounded, fp_limit(fp_full_log::Rel10), 1.0 / fabs_d(x))
-BEMAN_INSIDE_AX_KERNEL(asinh, log_k, asinh, kUnbounded, fp_limit(fp_full_log::AhRel + fp_full_log::AsinhAbs), 1.0)
+BEMAN_INSIDE_AX_KERNEL(asinh, log_k, asinh, kUnbounded, fp_limit(fp_full_log::AsinhRel), 1.0)
 BEMAN_INSIDE_AX_KERNEL(
     atanh, log_k, atanh, kUnbounded, fp_limit(fp_full_log::Rel + fp_full_log::AtanhAbs), 1.0 / ((1.0 - x) * (1.0 + x)))
 // cbrt = e^(ln|x|/3): the log's error grows with |ln|x||, up to 2^4.
@@ -1191,11 +1190,10 @@ BEMAN_INSIDE_AX_KERNEL(cbrt,
                        x == 0 ? 0.0 : fabs_d(v / x))
     #undef BEMAN_INSIDE_AX_KERNEL
 
-// acosh near 1 adds 2^-52/√(1 − 1/x²): its limit holds from x = 1.1 on,
-// and its dd bound grows the same way.
+// acosh: the dd kernel's bound grows near 1 as 2^-92/√(1 − 1/x²).
 struct fp_acosh {
     static constexpr int Mag   = kUnbounded;
-    static constexpr int Limit = fp_limit(fp_full_log::AhRel + 8 * fpk::kU);
+    static constexpr int Limit = fp_limit(fp_full_log::AcoshRel);
     template <int T>
     static double value(double x, double& bound) {
         return fpk::log_k<T>::acosh(x, bound);

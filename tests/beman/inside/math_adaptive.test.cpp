@@ -1096,6 +1096,17 @@ TEST(MathAdaptiveTest, double_kernels_stay_within_their_proved_bounds) {
     FP_BOUND(log_k, asinh, sym4, ax::ahyp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::ahyp::asinh>);
     FP_BOUND(log_k, acosh, ge1, ax::ahyp_core<ax::input_limbs<ge1>, ax::in_mag<ge1>, ax::ahyp::acosh>);
     FP_BOUND(log_k, atanh, open1, ax::ahyp_core<ax::input_limbs<open1>, ax::in_mag<open1>, ax::ahyp::atanh>);
+    // sinh, asinh and acosh near 0 (or 1) at a fine notch and over wide ranges.
+    using fine  = inside<{{rational{-1, 64}, rational{1, 64}}, rational{1, 1 << 20}}, round_nearest>;
+    using fine1 = inside<{{1, rational{65, 64}}, rational{1, 1 << 20}}, round_nearest>;
+    using wide  = inside<{{-1'048'576, 1'048'576}, rational{1, 2}}, round_nearest>;
+    using wide1 = inside<{{1, 1'048'576}, rational{1, 2}}, round_nearest>;
+    FP_BOUND(exp_k, sinh, fine, ax::hyp_core<ax::input_limbs<fine>, ax::in_mag<fine>, ax::hyp::sinh, 1>);
+    FP_BOUND(exp_k, sinh, big, ax::hyp_core<ax::input_limbs<big>, ax::in_mag<big>, ax::hyp::sinh, 1000>);
+    FP_BOUND(log_k, asinh, fine, ax::ahyp_core<ax::input_limbs<fine>, ax::in_mag<fine>, ax::ahyp::asinh>);
+    FP_BOUND(log_k, asinh, wide, ax::ahyp_core<ax::input_limbs<wide>, ax::in_mag<wide>, ax::ahyp::asinh>);
+    FP_BOUND(log_k, acosh, fine1, ax::ahyp_core<ax::input_limbs<fine1>, ax::in_mag<fine1>, ax::ahyp::acosh>);
+    FP_BOUND(log_k, acosh, wide1, ax::ahyp_core<ax::input_limbs<wide1>, ax::in_mag<wide1>, ax::ahyp::acosh>);
     FP_BOUND(pow_k, cbrt, sym4, ax::cbrt_core<ax::input_limbs<sym4>>);
 
     // pow over |y| = |e·ln b| up to 16 (past 42 bits from the log's Hi + Lo).
