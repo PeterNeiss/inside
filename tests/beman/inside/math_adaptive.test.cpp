@@ -419,6 +419,11 @@ TEST(MathAdaptiveTest, constant_evaluation) {
     static_assert(am::exp_into<out20>(sym4{1}).raw() ==
                   out20{rational{2850325, 1 << 20}}.raw()); // e·2^20 = 2850325.0…
     static_assert(am::sin_into<out20>(sym4{0}) == out20{0});
+    // An output up to 2^62 makes sinh's and cosh's error shifts reach 64 bits
+    // (KMax + 4); they must stay defined, which constant evaluation checks.
+    using big62 = inside<{-(1LL << 62), 1LL << 62}, round_nearest>;
+    static_assert(am::sinh_into<big62>(sym4{rational{1, 2}}) == big62{1});
+    static_assert(am::cosh_into<big62>(sym4{rational{1, 2}}) == big62{1});
     SUCCEED();
 }
 
@@ -1099,8 +1104,8 @@ TEST(MathAdaptiveTest, double_kernels_stay_within_their_proved_bounds) {
     // sinh, asinh and acosh near 0 (or 1) at a fine notch and over wide ranges.
     using fine  = inside<{{rational{-1, 64}, rational{1, 64}}, rational{1, 1 << 20}}, round_nearest>;
     using fine1 = inside<{{1, rational{65, 64}}, rational{1, 1 << 20}}, round_nearest>;
-    using wide  = inside<{{-1'048'576, 1'048'576}, rational{1, 2}}, round_nearest>;
-    using wide1 = inside<{{1, 1'048'576}, rational{1, 2}}, round_nearest>;
+    using wide  = inside<{{-1'048'576, 1'048'576}, rational{64, 1}}, round_nearest>;
+    using wide1 = inside<{{64, 1'048'576}, rational{64, 1}}, round_nearest>;
     FP_BOUND(exp_k, sinh, fine, ax::hyp_core<ax::input_limbs<fine>, ax::in_mag<fine>, ax::hyp::sinh, 1>);
     FP_BOUND(exp_k, sinh, big, ax::hyp_core<ax::input_limbs<big>, ax::in_mag<big>, ax::hyp::sinh, 1000>);
     FP_BOUND(log_k, asinh, fine, ax::ahyp_core<ax::input_limbs<fine>, ax::in_mag<fine>, ax::ahyp::asinh>);

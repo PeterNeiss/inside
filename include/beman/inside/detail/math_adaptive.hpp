@@ -140,6 +140,10 @@ constexpr wide_sint<K> one_q(int W) noexcept {
     return wide_sint<K>{1} << W;
 }
 
+// An error bound v·2^-n, rounded down (callers add 1): 0 once n ≥ 64, where
+// the shift itself would be undefined.
+constexpr umax shr_bound(umax v, int n) noexcept { return n < 64 ? v >> n : 0; }
+
 // v rounded to the nearest multiple of 2^-sh (half away from zero), shifted
 // down by sh: changes the scale from 2^(W+sh) to 2^W within ½ unit.
 template <std::size_t K>
@@ -1259,8 +1263,8 @@ constexpr fx<K> atan_fixed(const wide_sint<K>& t, umax dt) noexcept {
     return {(jj < 0 ? -base : base) + a.Value, a.Error + 1};
 }
 
-// log a for a > 0 at scale S, a within da units: a = m·2^b with m in
-// [0.7, 1.42], log a = log m + b·ln 2.
+// log a for a ≥ 1 at scale S (so b ≥ 0), a within da units: a = m·2^b with
+// m in [0.7, 1.42], log a = log m + b·ln 2.
 template <int S, std::size_t K>
 constexpr fx<K> log_fixed(const wide_sint<K>& a, umax da) noexcept {
     using I = wide_sint<K>;
@@ -1270,7 +1274,7 @@ constexpr fx<K> log_fixed(const wide_sint<K>& a, umax da) noexcept {
         ++b;
         m = b >= 0 ? a >> b : a << (-b);
     }
-    const umax  dm = (b >= 0 ? (da >> b) : (da << (-b))) + 1;
+    const umax  dm = shr_bound(da, b) + 1;
     const fx<K> l  = log_series<S>(m, dm);
     return {l.Value + I{b} * static_cast<I>(ln2_q<S>), l.Error + static_cast<umax>(b < 0 ? -b : b) + 1};
 }

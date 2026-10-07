@@ -569,7 +569,7 @@ struct hyp_core {
             const umax e  = 24 + 2 * (static_cast<umax>(kk) + 2);
             const I    P  = round_shift(ev + od, S - kk - A); // e^|x| at scale A
             const I    M  = round_shift(ev - od, S + kk - A); // e^−|x| at scale A
-            const umax ep = (e >> (S - kk - A)) + 1, em = (e >> (S + kk - A)) + 1;
+            const umax ep = shr_bound(e, S - kk - A) + 1, em = shr_bound(e, S + kk - A) + 1;
             if constexpr (Fn == hyp::cosh)
                 return approx<K>{(P + M) >> 1, A, (ep + em) / 2 + 1};
             else {
