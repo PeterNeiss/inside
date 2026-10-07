@@ -1324,14 +1324,71 @@ inline bool fp_attempt_pow_base(const In& xi, Out& out) {
         bound += v * input_rel<In> * fabs_d(y);
     return fp_decide(v, bound * 1.5, out);
 }
+// The lean dd kernel of K, where it has one (detail/math_dd.hpp): its value
+// at x and its proved bound.
+template <typename K>
+struct dd_lean {};
+template <>
+struct dd_lean<fp_sin> {
+    template <typename D>
+    static D value(D x, double& bound) {
+        return ddk::sin_lean(x, bound);
+    }
+};
+template <>
+struct dd_lean<fp_cos> {
+    template <typename D>
+    static D value(D x, double& bound) {
+        return ddk::cos_lean(x, bound);
+    }
+};
+template <>
+struct dd_lean<fp_exp> {
+    template <typename D>
+    static D value(D x, double& bound) {
+        return ddk::exp_lean(x, bound);
+    }
+};
+template <>
+struct dd_lean<fp_exp2> {
+    template <typename D>
+    static D value(D x, double& bound) {
+        return ddk::exp2_lean(x, bound);
+    }
+};
+template <typename K>
+concept has_dd_lean = requires(ddk::dd x, double& b) { dd_lean<K>::template value<ddk::dd>(x, b); };
+
+// The full dd kernel at x (read from In).
 template <insidable Out, typename K, insidable In>
-inline bool dd_attempt(const In& in, Out& out) {
-    const ddk::dd x     = dd_read(in);
+inline bool dd_full_attempt(const ddk::dd& x, Out& out) {
     const ddk::dd v     = K::dd_value(x);
     double        bound = K::dd_eval(x.Hi, v.Hi);
     if constexpr (dd_input_rel<In> != 0)
         bound += dd_input_rel<In> * fabs_d(x.Hi) * K::slope(x.Hi, v.Hi);
     return dd_decide(v, bound * 1.5, out);
+}
+
+// After a lean kernel: rarely taken, so out of line.
+template <insidable Out, typename K, insidable In>
+[[gnu::cold, gnu::noinline]] bool dd_full_attempt_cold(const ddk::dd& x, Out& out) {
+    return dd_full_attempt<Out, K, In>(x, out);
+}
+
+// The lean kernel first where K has one, then the full one.
+template <insidable Out, typename K, insidable In>
+inline bool dd_attempt(const In& in, Out& out) {
+    const ddk::dd x = dd_read(in);
+    if constexpr (has_dd_lean<K>) {
+        double        bound;
+        const ddk::dd v = dd_lean<K>::value(x, bound);
+        if constexpr (dd_input_rel<In> != 0)
+            bound += dd_input_rel<In> * fabs_d(x.Hi) * K::slope(x.Hi, v.Hi);
+        if (dd_decide(v, bound * 1.5, out))
+            return true;
+        return dd_full_attempt_cold<Out, K, In>(x, out);
+    } else
+        return dd_full_attempt<Out, K, In>(x, out);
 }
 
 template <insidable Out, insidable InY, insidable InX>

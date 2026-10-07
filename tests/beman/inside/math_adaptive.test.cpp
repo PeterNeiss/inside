@@ -969,6 +969,75 @@ TEST(MathAdaptiveTest, dd_kernels_stay_far_inside_their_bound) {
     DD_ACCURACY(acosh, ge1, ax::ahyp_core<ax::input_limbs<ge1>, ax::in_mag<ge1>, ax::ahyp::acosh>);
 }
     #undef DD_ACCURACY
+
+// The lean dd kernels against the integer path at 150 bits: every error is
+// within the kernel's proved bound, for inputs read exactly (doubles) and
+// within 2^-100 (a notch of 1/3, its rounding added at slope 1·|v|).
+namespace {
+template <insidable In, typename Core, typename F>
+double lean_worst_ratio(F kernel) {
+    const long long count = static_cast<long long>(grid_of<In>.slot_count());
+    double          worst = 0;
+    for (long long i = 0; i <= count; ++i) {
+        const In      x   = In::from_raw(detail::raw_from_offset<In>(static_cast<umax>(i)));
+        const auto    a   = Core{ax::exact_input(x)}.template run<150>();
+        const ddk::dd ref = ddk::of_fixed(a.Value, a.Scale);
+        const ddk::dd xd  = ax::dd_read(x);
+        double        bound;
+        const ddk::dd v   = kernel(xd, bound);
+        const double  err = std::fabs(ddk::sub(v, ref).Hi);
+        bound += ax::dd_input_rel<In> * std::fabs(xd.Hi) * std::max(1.0, std::fabs(v.Hi)) * 1.0001;
+        worst = std::max(worst, err / bound);
+    }
+    return worst;
+}
+} // namespace
+
+    #define LEAN_BOUND(fn, In, ...) \
+        EXPECT_LE((lean_worst_ratio<In, __VA_ARGS__>([](ddk::dd x, double& b) { return ddk::fn(x, b); })), 1.0) << #fn
+
+TEST(MathAdaptiveTest, lean_dd_kernels_stay_within_their_proved_bounds) {
+    using big    = inside<{{-600, 600}, rational{1, 8}}, round_nearest>;
+    using turns  = inside<{{-1'000'000, 1'000'000}, rational{64, 1}}, round_nearest>;
+    using thirds = inside<{{-4, 4}, rational{1, 3 * 128}}, round_nearest>;
+    using fine   = inside<{{rational{-1, 64}, rational{1, 64}}, rational{1, 1 << 20}}, round_nearest>;
+    LEAN_BOUND(sin_lean, sym4, ax::trig_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::trig::sin, 1>);
+    LEAN_BOUND(cos_lean, sym4, ax::trig_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::trig::cos, 1>);
+    LEAN_BOUND(sin_lean, turns, ax::trig_core<ax::input_limbs<turns>, ax::in_mag<turns>, ax::trig::sin, 1>);
+    LEAN_BOUND(cos_lean, turns, ax::trig_core<ax::input_limbs<turns>, ax::in_mag<turns>, ax::trig::cos, 1>);
+    LEAN_BOUND(sin_lean, thirds, ax::trig_core<ax::input_limbs<thirds>, ax::in_mag<thirds>, ax::trig::sin, 1>);
+    LEAN_BOUND(cos_lean, thirds, ax::trig_core<ax::input_limbs<thirds>, ax::in_mag<thirds>, ax::trig::cos, 1>);
+    LEAN_BOUND(sin_lean, fine, ax::trig_core<ax::input_limbs<fine>, ax::in_mag<fine>, ax::trig::sin, 1>);
+    LEAN_BOUND(cos_lean, fine, ax::trig_core<ax::input_limbs<fine>, ax::in_mag<fine>, ax::trig::cos, 1>);
+    LEAN_BOUND(exp_lean, sym4, ax::exp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, 8>);
+    LEAN_BOUND(exp_lean, big, ax::exp_core<ax::input_limbs<big>, ax::in_mag<big>, 1000>);
+    LEAN_BOUND(exp_lean, thirds, ax::exp_core<ax::input_limbs<thirds>, ax::in_mag<thirds>, 8>);
+    LEAN_BOUND(exp_lean, fine, ax::exp_core<ax::input_limbs<fine>, ax::in_mag<fine>, 1>);
+    LEAN_BOUND(exp2_lean, sym4, ax::exp2_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, 8>);
+    LEAN_BOUND(exp2_lean, big, ax::exp2_core<ax::input_limbs<big>, ax::in_mag<big>, 1000>);
+}
+    #undef LEAN_BOUND
+
+// The lean kernels decide nearly every result of a 2^-52 grid by
+// themselves: their bounds are below 2^-70.
+TEST(MathAdaptiveTest, lean_dd_kernels_decide_double_fine_outputs) {
+    using amp52 = inside<{{-1, 1}, rational{1, 1LL << 52}}, round_nearest>;
+    using exp40 = inside<{{0, 4096}, rational{1, 1LL << 40}}, round_nearest>;
+    static_assert(ax::dd_tier<amp52, sym4> && !ax::fp_tier<amp52, ax::fp_sin, sym4>);
+    static_assert(ax::dd_tier<exp40, sym4> && !ax::fp_tier<exp40, ax::fp_exp, sym4>);
+    const long long count     = static_cast<long long>(grid_of<sym4>.slot_count());
+    long long       undecided = 0;
+    for (long long i = 0; i <= count; ++i) {
+        const ddk::dd x = ax::dd_read(sym4::from_raw(detail::raw_from_offset<sym4>(static_cast<umax>(i))));
+        double        b;
+        amp52         s;
+        exp40         e;
+        undecided += !ax::dd_decide(ddk::sin_lean(x, b), b * 1.5, s);
+        undecided += !ax::dd_decide(ddk::cos_lean(x, b), b * 1.5, s);
+        undecided += !ax::dd_decide(ddk::exp_lean(x, b), b * 1.5, e);
+    }
+    EXPECT_LE(undecided, 3 * (count + 1) / 1000);
+}
 #endif
 
 #ifndef BEMAN_INSIDE_MATH_NO_FP

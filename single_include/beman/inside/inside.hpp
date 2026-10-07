@@ -11698,6 +11698,187 @@ template <dd_type D>
 inline D hypot(D x, D y) noexcept {
     return sqrt(add(sqr(x), sqr(y)));
 }
+
+//---------------------------------------------------------------------------
+// The lean kernels: the dd tier's first attempt for sin, cos, exp and exp2.
+// The tier serves outputs whose value indices stay below 2^62, which about
+// 2^-70 decides nearly always, so these carry in double-double only the
+// terms that need it — the table values, the reduced argument and its
+// leading products, which are error-free — and the rest in double. Their
+// bounds are proved the way the double tier's are (detail/math_fp.hpp):
+// every rounding counted at its worst, up() for the second-order terms.
+// Results they leave undecided go to the full kernels above.
+//---------------------------------------------------------------------------
+using fpk::kU;
+using fpk::up;
+
+// A table entry or constant (of_fixed: the top 53 bits and the next 53,
+// both cut, from a value within 2^-120 of exact) is within 2^-104 of its
+// value, relatively.
+inline constexpr double kTableErr = 0x1p-104;
+
+// reduce()'s error for |x.Lo| ≤ kU·|x.Hi|, |k| ≤ Kx·max(1, |x|), the second
+// part below 2^E1 and a residual of the parts below 2^-Res of their sum: in
+// units of max(1, |x|), the roundings of x.Lo − w.Lo (|w.Lo| ≤ kU·|k|·2^E1),
+// k·c3 (below |k|·2^E3), their difference and the sum with d.Lo
+// (|d.Lo| ≤ kU·R): three of kU on the terms, kU² of R, and |k|·Res.
+consteval double reduce_abs(double Kx, int E1, int E3, int Res, double R) {
+    const double t = kU * (1 + kU) + kU * Kx * fpk::pow_n(0.5, -E1) + Kx * fpk::pow_n(0.5, -E3);
+    return up(3 * kU * t * (1 + 4 * kU) + Kx * fpk::pow_n(0.5, Res) + kU * kU * R);
+}
+
+// sin r = r + r³·S(r²), S = −1/3! + z/5! − z²/7!; cos r = 1 − r²/2 + r⁴·C(r²),
+// C = 1/4! − z/6! + z²/8!.
+inline constexpr fpk::poly<3> kLeanSinC =
+    fpk::series<3>([](int k) { return fpk::term{k % 2 ? 1.0 : -1.0, fpk::factorial(2 * k + 3)}; });
+inline constexpr fpk::poly<3> kLeanCosC =
+    fpk::series<3>([](int k) { return fpk::term{k % 2 ? -1.0 : 1.0, fpk::factorial(2 * k + 4)}; });
+
+// sin and cos for |x| ≤ 2^20, x = n·π/128 + r as in sincos. n's product
+// rounds within 2^-26.6 of a step, and |x.Lo| ≤ 2^-33, so |r| ≤ R. With
+// r = rh + rl (|rl| ≤ kU·|rh|), z = rh² exactly as zh + zl, and the table's
+// A = sin(nπ/128), B = cos(nπ/128):
+//   sin(a + r) = A + B·sr + A·cm,  sr = sin r = rh + ts,
+//   cos(a + r) = B − A·sr + B·cm,  cm = cos r − 1 = −zh/2 + tc,
+// ts = rh·zh·S + rl and tc = zh²·C − zl/2 − rh·rl in double. The products
+// B·rh and A·(−zh/2) are error-free and join A in two exact fast two-sums
+// (|A| ≥ sin(π/128) > 2|B·rh| unless A = 0); everything else is summed in
+// double. All bounds are absolute (|A|, |B| ≤ 1):
+// - sr: rl·(cos − 1) for rl·cos (kU·R³/2); rh·zh's two roundings, S's
+//   Horner error at zh (horner_error with Dz = kU), its truncation; ts's
+//   fma (kU·|ts|);
+// - cm: rl·(rh − sin rh) and rl² (kU·R⁴/6, kU²·Z); zh²'s three roundings,
+//   C's Horner error and truncation; the fmas of tc and of rh·rl + zl/2;
+// - the sum of the low parts: at most 10 roundings of kU, each partial sum
+//   within Lmax; the dropped B.Lo·ts and A.Lo·tc; the table's 2^-104 of A
+//   and B times (1 + R).
+// The reduction's error (reduce_abs: |n| ≤ 42·max(1, |x|), c1 < 2^-31,
+// c3 < 2^-86, the parts within 2^-139 of π/128) moves either value by as
+// much, times 1 + R: AbsX per max(1, |x|).
+struct lean_trig {
+    static constexpr double            R = 0.01228; // ≥ (½ + 2^-26)·π/128 + 2^-33
+    static constexpr double            Z = R * R, R3 = Z * R, R4 = Z * Z;
+    static constexpr fpk::horner_bound HS = fpk::horner_error(kLeanSinC, Z, kU);
+    static constexpr fpk::horner_bound HC = fpk::horner_error(kLeanCosC, Z, kU);
+    static constexpr double            TS = R3 * HS.Mag * (1 + 4 * kU) + kU * R * (1 + kU);       // ≥ |ts|
+    static constexpr double            TC = R4 * HC.Mag * (1 + 4 * kU) + 1.5 * kU * Z * (1 + kU); // ≥ |tc|
+    static constexpr double            SinR =
+        kU * R3 / 2 + R3 * (2 * kU * HS.Mag + HS.Err + fpk::pow_n(Z, 3) / fpk::factorial(9)) + kU * TS;
+    static constexpr double CosR = kU * R4 / 6 + 2 * kU * kU * Z +
+                                   R4 * (3 * kU * HC.Mag + HC.Err + fpk::pow_n(Z, 3) / fpk::factorial(10)) + kU * TC;
+    static constexpr double Lmax = 2 * kU * (1 + R + Z) + kU * R + kU * Z / 2 + kU + TS + kU * R + TC + kU * Z / 2;
+    static constexpr double Abs  = up(SinR + CosR + 10 * kU * Lmax + kU * (TS + TC) + kTableErr * (1 + R));
+    static constexpr double AbsX = up(reduce_abs(42, -31, -86, 139, R) * (1 + R));
+};
+
+// A + B·(rh + ts) + A·(h + tc), h = −zh/2, as above.
+template <dd_type D>
+[[gnu::always_inline]] inline D lean_rotate(D a, D b, double rh, double ts, double h, double tc) noexcept {
+    const D p  = two_prod(b.Hi, rh);
+    const D q  = two_prod(a.Hi, h);
+    const D s1 = fast_two_sum(a.Hi, p.Hi);
+    const D s2 = fast_two_sum(s1.Hi, q.Hi);
+    double  lo = std::fma(a.Lo, h, std::fma(b.Lo, rh, a.Lo + (p.Lo + q.Lo)));
+    lo         = std::fma(a.Hi, tc, lo);
+    lo         = std::fma(b.Hi, ts, lo);
+    return fast_two_sum(s2.Hi, (s1.Lo + s2.Lo) + lo);
+}
+
+template <dd_type D>
+[[gnu::always_inline]] inline sincos_t sincos_lean(D x) noexcept {
+    using C         = consts<D>;
+    const double n  = __builtin_nearbyint(x.Hi * kInvPiBy128);
+    const D      r  = reduce(x, n, C::PiBy128[0], C::PiBy128[1], C::PiBy128[2], C::PiBy128[3]);
+    const double rh = r.Hi, rl = r.Lo;
+    const D      z  = two_prod(rh, rh);
+    const double zh = z.Hi;
+    const double ts = std::fma(fpk::rounded_product(rh, zh), fpk::horner(zh, kLeanSinC.C), rl);
+    const double tc =
+        std::fma(fpk::rounded_product(zh, zh), fpk::horner(zh, kLeanCosC.C), -std::fma(rh, rl, 0.5 * z.Lo));
+    const double h  = -0.5 * zh;
+    const long   j  = static_cast<long>(n);
+    const D      sa = C::Sin[static_cast<std::size_t>(j & 255)];
+    const D      ca = C::Sin[static_cast<std::size_t>((j + 64) & 255)];
+    return {lean_rotate(sa, ca, rh, ts, h, tc), lean_rotate(ca, neg(sa), rh, ts, h, tc)};
+}
+
+// The bound of a lean sin or cos at x.
+constexpr double lean_trig_bound(double x) noexcept {
+    const double ax = x < 0 ? -x : x;
+    return lean_trig::Abs + lean_trig::AbsX * (ax > 1 ? ax : 1.0) + fpk::kTiny;
+}
+
+template <dd_type D>
+inline D sin_lean(D x, double& bound) noexcept {
+    bound = lean_trig_bound(x.Hi);
+    return sincos_lean(x).Sin;
+}
+template <dd_type D>
+inline D cos_lean(D x, double& bound) noexcept {
+    bound = lean_trig_bound(x.Hi);
+    return sincos_lean(x).Cos;
+}
+
+// e^r − 1 = r + r²·P(r), P = 1/2! + r/3! + r²/4! + r³/5!.
+inline constexpr fpk::poly<4> kLeanExpC = fpk::series<4>([](int k) { return fpk::term{1.0, fpk::factorial(k + 2)}; });
+
+// e^x for |x| ≤ 700, x = k·ln 2/4096 + r as in exp: n's product rounds
+// within 2^-29 of a step and |x.Lo| ≤ 2^-43, so |r| ≤ R. With
+// r = rh + rl and T = 2^(i/64)·2^(j/4096) (a dd product, within
+// 2·2^-104 + 6kU² of its value), e^x = 2^m·(T + T·(rh + tp)),
+// tp = rh²·P(rh) + rl in double; T.Hi·rh is error-free and joins T.Hi in
+// an exact fast two-sum. Relative to T:
+// - rh + tp: rl·(e^rh·(e^rl − 1)/rl − 1) (kU·R²·(1 + R)); rh²'s rounding,
+//   P's Horner error (at rh, exact) and truncation, tp's fma;
+// - the low parts: 5 roundings within Lmax, the dropped T.Lo·tp, T's error
+//   times 1 + R + TP;
+// divided by the least e^r/T = 1 − R − TP, plus the reduction's error
+// (reduce_abs: |k| ≤ 5910·max(1, |x|), c1 < 2^-42, no c3, the parts within
+// 2^-127 of ln 2/4096) at |x| = 700, which moves e^x by as much,
+// relatively.
+struct lean_exp {
+    static constexpr double            R  = 8.462e-5; // ≥ (½ + 2^-29)·ln 2/4096 + 2^-43
+    static constexpr fpk::horner_bound HP = fpk::horner_error(kLeanExpC, R, 0);
+    static constexpr double            TP = R * R * HP.Mag * (1 + 3 * kU) + kU * R * (1 + kU); // ≥ |tp|
+    static constexpr double            ER =
+        kU * R * R * (1 + R) + R * R * (kU * HP.Mag + HP.Err + fpk::pow_n(R, 4) / 720 * 1.0001) + kU * TP;
+    static constexpr double Et   = up(2 * kTableErr + 6 * kU * kU);
+    static constexpr double Lmax = kU * (1 + R) + kU * R + kU + TP + kU * R;
+    static constexpr double Rel  = up((ER + Et * (1 + R + TP) + 5 * kU * Lmax + kU * TP) / (1 - R - TP) +
+                                      700 * reduce_abs(5910, -42, -1074, 127, R));
+    // exp2: y = x·ln 2 (|x| ≤ 1000, so |y| ≤ 694) as a dd product, within
+    // 2^-104 + 6kU² of itself; it moves e^y by |y| times that.
+    static constexpr double Rel2 = up(Rel + 694 * (kTableErr + 6 * kU * kU));
+};
+
+template <dd_type D>
+[[gnu::always_inline]] inline D exp_lean_value(D x) noexcept {
+    using C         = consts<D>;
+    const double k  = __builtin_nearbyint(x.Hi * kInvLn2By4096);
+    const D      r  = reduce(x, k, C::Ln2By4096[0], C::Ln2By4096[1], C::Ln2By4096[2], 0);
+    const double rh = r.Hi;
+    const double tp = std::fma(fpk::rounded_product(rh, rh), fpk::horner(rh, kLeanExpC.C), r.Lo);
+    const long   ik = static_cast<long>(k);
+    const D      t =
+        mul(C::Exp2By64[static_cast<std::size_t>((ik >> 6) & 63)], C::Exp2By4096[static_cast<std::size_t>(ik & 63)]);
+    const D      p  = two_prod(t.Hi, rh);
+    const D      s  = fast_two_sum(t.Hi, p.Hi);
+    const double lo = std::fma(t.Hi, tp, std::fma(t.Lo, rh, s.Lo + (p.Lo + t.Lo)));
+    return scale(fast_two_sum(s.Hi, lo), ik >> 12);
+}
+
+template <dd_type D>
+inline D exp_lean(D x, double& bound) noexcept {
+    const D v = exp_lean_value(x);
+    bound     = lean_exp::Rel * v.Hi + fpk::kTiny;
+    return v;
+}
+template <dd_type D>
+inline D exp2_lean(D x, double& bound) noexcept {
+    const D v = exp_lean_value(mul(x, consts<D>::Ln2));
+    bound     = lean_exp::Rel2 * v.Hi + fpk::kTiny;
+    return v;
+}
 } // namespace beman::inside::math::detail::dd
 
 #endif // !BEMAN_INSIDE_MATH_NO_FP
@@ -13018,14 +13199,71 @@ inline bool fp_attempt_pow_base(const In& xi, Out& out) {
         bound += v * input_rel<In> * fabs_d(y);
     return fp_decide(v, bound * 1.5, out);
 }
+// The lean dd kernel of K, where it has one (detail/math_dd.hpp): its value
+// at x and its proved bound.
+template <typename K>
+struct dd_lean {};
+template <>
+struct dd_lean<fp_sin> {
+    template <typename D>
+    static D value(D x, double& bound) {
+        return ddk::sin_lean(x, bound);
+    }
+};
+template <>
+struct dd_lean<fp_cos> {
+    template <typename D>
+    static D value(D x, double& bound) {
+        return ddk::cos_lean(x, bound);
+    }
+};
+template <>
+struct dd_lean<fp_exp> {
+    template <typename D>
+    static D value(D x, double& bound) {
+        return ddk::exp_lean(x, bound);
+    }
+};
+template <>
+struct dd_lean<fp_exp2> {
+    template <typename D>
+    static D value(D x, double& bound) {
+        return ddk::exp2_lean(x, bound);
+    }
+};
+template <typename K>
+concept has_dd_lean = requires(ddk::dd x, double& b) { dd_lean<K>::template value<ddk::dd>(x, b); };
+
+// The full dd kernel at x (read from In).
 template <insidable Out, typename K, insidable In>
-inline bool dd_attempt(const In& in, Out& out) {
-    const ddk::dd x     = dd_read(in);
+inline bool dd_full_attempt(const ddk::dd& x, Out& out) {
     const ddk::dd v     = K::dd_value(x);
     double        bound = K::dd_eval(x.Hi, v.Hi);
     if constexpr (dd_input_rel<In> != 0)
         bound += dd_input_rel<In> * fabs_d(x.Hi) * K::slope(x.Hi, v.Hi);
     return dd_decide(v, bound * 1.5, out);
+}
+
+// After a lean kernel: rarely taken, so out of line.
+template <insidable Out, typename K, insidable In>
+[[gnu::cold, gnu::noinline]] bool dd_full_attempt_cold(const ddk::dd& x, Out& out) {
+    return dd_full_attempt<Out, K, In>(x, out);
+}
+
+// The lean kernel first where K has one, then the full one.
+template <insidable Out, typename K, insidable In>
+inline bool dd_attempt(const In& in, Out& out) {
+    const ddk::dd x = dd_read(in);
+    if constexpr (has_dd_lean<K>) {
+        double        bound;
+        const ddk::dd v = dd_lean<K>::value(x, bound);
+        if constexpr (dd_input_rel<In> != 0)
+            bound += dd_input_rel<In> * fabs_d(x.Hi) * K::slope(x.Hi, v.Hi);
+        if (dd_decide(v, bound * 1.5, out))
+            return true;
+        return dd_full_attempt_cold<Out, K, In>(x, out);
+    } else
+        return dd_full_attempt<Out, K, In>(x, out);
 }
 
 template <insidable Out, insidable InY, insidable InX>
