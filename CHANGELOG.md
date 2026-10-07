@@ -4,6 +4,18 @@
 SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 -->
 
+## Unreleased
+
+### Performance
+
+- Math at full `double` resolution: the dd tier tries lean `sin`, `cos`,
+  `exp` and `exp2` kernels first (about 2^-70, with proved bounds). `sin`
+  onto a 2^-52 grid takes 13.1 ns instead of 36.0, `exp` onto 2^-40 11.2
+  instead of 21.1; correct rounding at `double` resolution now costs 4–13×
+  `<cmath>` (was 8–13×).
+- `sinh`, `asinh` and `acosh` stay in the double tier up to 47-bit outputs
+  (was 46), through sharper forms used only past 46 bits.
+
 ## 0.1.0 — 2026-10-07
 
 First release. The library is under development and its API may change
