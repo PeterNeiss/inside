@@ -37,7 +37,8 @@ standard (grids past 64 bits need C++26), and follows the layout and tooling of
   fusion, embedded registers — anywhere a plain `int`/`float` silently
   overflows, wraps, or drifts.
 
-**Implements**: not yet proposed for standardization.
+**Implements**: not yet proposed for standardization; a draft proposal is in
+[docs/proposal/DxxxxR0-inside.md](docs/proposal/DxxxxR0-inside.md).
 
 **Status**: [Under development and not yet ready for production use.](https://github.com/bemanproject/beman/blob/main/docs/beman_library_maturity_model.md#under-development-and-not-yet-ready-for-production-use)
 The public API may change between versions; see the [changelog](CHANGELOG.md).
