@@ -16,6 +16,13 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 - `sinh`, `asinh` and `acosh` stay in the double tier up to 47-bit outputs
   (was 46), through sharper forms used only past 46 bits.
 
+### Fixed
+
+- `sinh` and `cosh` onto outputs past about 2^60, and `log`-based functions of
+  arguments past 2^64, shifted an error bound by 64 bits or more in the
+  integer path: undefined behaviour, and a compile error in constant
+  evaluation.
+
 ## 0.1.0 — 2026-10-07
 
 First release. The library is under development and its API may change

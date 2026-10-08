@@ -123,7 +123,7 @@ auto m = (a + b) / 2_ins; // exact, and a plain value: 2 is not zero
 
 The reference implementation is header-only C++23 (GCC 14+, Clang 19+, Clang 18
 with libc++), with a single-header amalgamation, a CMake package and a vcpkg
-port, and follows the Beman Standard. Its test suite (577 tests, 585 with C++26
+port, and follows the Beman Standard. Its test suite (580 tests, 588 with C++26
 reflection) runs in CI on 53 compiler/library/sanitizer configurations,
 including a check that the integer fast paths compile to call-free,
 vectorising code. Integer-aligned arithmetic compiles to the same instructions

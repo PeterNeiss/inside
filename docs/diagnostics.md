@@ -29,7 +29,7 @@ inside<grid{interval{rational{3,1}, rational{3,1}}, rational{0,1}}, 17179869184>
 | `1<<32` | 4294967296 | `clamp` |
 | `1<<33` | 8589934592 | `wrap` |
 | `1<<34` | 17179869184 | `checked` (the default `P`; overrides `unsafe`) |
-| `1<<35` | 34359738368 | (unused; was `sentinel`) |
+| `1<<35` | 34359738368 | (unused) |
 | `1<<36` | 68719476736 | `unsafe` marker (+ ignore_range, snap, ignore_zero); the only bit that turns runtime checks off |
 | `1<<37` | … | `f64` (+ round_nearest) |
 | `1<<38` | … | `exact` |

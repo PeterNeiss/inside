@@ -238,7 +238,8 @@ notch from a plain floating-point limit only down to 1/1024, so
 `from_chars<B>(text)` parses a number exactly — no `double` round-trip — and
 returns `std::expected<B, errc>`. The text is one number: an optional sign, then
 the literal grammar (`1'000`, `1.25`, `1.5e2`, `0xff`, `0b1010`, `0x1.8p3`) or a
-fraction `N/D` (the form `to_string` prints for a value with no finite decimal).
+fraction `N/D`. (`to_string` prints such a value as a mixed number, `2 1/3`,
+which `from_chars` does not read back; write it as `7/3`.)
 The value then goes through `B::try_make`, so `B`'s policy applies:
 
 ```cpp

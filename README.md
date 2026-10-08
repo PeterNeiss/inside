@@ -143,16 +143,12 @@ Library options:
 The math engine and bare-metal builds are covered in
 [docs/freestanding.md](docs/freestanding.md) and [docs/math.md](docs/math.md).
 
-**FMA on x86-64.** The math engine's double tier uses `std::fma` so that its
-kernels are bit-identical on every platform. Baseline x86-64 has no FMA
-instruction, so without `-mfma` each `std::fma` is a software-emulated libm call
-and the double tier is several times slower (the results do not change).
-`BEMAN_INSIDE_FMA` (default `ON`) therefore adds `-mfma` to every target
-that links `beman::inside` on x86-64 GCC/Clang. The resulting binary
-needs a CPU with AVX and FMA (Intel Haswell / AMD Piledriver, 2013 or later) and
-stops with `SIGILL` on older ones; configure with `-DBEMAN_INSIDE_FMA=OFF` to
-target those. If you use the single header or the headers without CMake, add
-`-mfma` (or `-march=x86-64-v3`) yourself to get the fast path.
+**FMA on x86-64.** The math engine's kernels use `std::fma`; baseline x86-64
+emulates it in software, several times slower (results don't change).
+`BEMAN_INSIDE_FMA` (default `ON`) adds `-mfma` to targets linking
+`beman::inside` on x86-64 GCC/Clang, which needs a Haswell/Piledriver (2013) or
+later CPU; configure with `-DBEMAN_INSIDE_FMA=OFF` for older ones. Without
+CMake, add `-mfma` (or `-march=x86-64-v3`) yourself.
 
 ### Supported Platforms
 

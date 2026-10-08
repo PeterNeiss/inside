@@ -89,8 +89,7 @@ the double tier's: 2^-70.3 absolute for `sin` and `cos` (plus 2^-104·max(1,
 |x|) from the reduction) and 2^-77.6 relative for `exp`; measured errors reach
 0.15 and 0.29 of them. Onto a 2^-52 amplitude grid they leave about one
 result in 60 000 undecided, onto 2^-60 about one in 400; those go to the full
-kernels. `sin` onto 2^-52
-takes 13.1 ns instead of 36.0, `exp` onto 2^-40 11.2 instead of 21.1.
+kernels.
 
 ## Conventions
 
@@ -233,53 +232,19 @@ See [arithmetic.md](arithmetic.md) for the chaining rules and
 
 Any storage works for inputs and outputs: integer index or value raws, `f64` /
 `f32`, `exact` rationals, and wide raws past 64 bits. An output with `f64`
-storage receives the correctly rounded grid point as its double. `f64` is no
-longer needed for speed: the double tier reads any input as a double and
-stores integer outputs as raws.
+storage receives the correctly rounded grid point as its double. Integer
+outputs are as fast: the double tier reads any input as a double and stores
+integer outputs as raws.
 
 ## Speed
 
-Against the double engine this library shipped before (ns per call, x86-64,
-`-O2`/`-O3 -mfma`, one core pinned). The old engine was not correctly rounded;
-on grids finer than about 2^-36 it missed notches routinely.
-
-| Inputs → outputs | New / old time |
-|---|---|
-| `f64` grids on both sides, notch 2^-14 (the old engine's best case: its store was the raw double) | 0.67–1.06×, geometric mean 0.84 (`sin` 9.3 → 8.2 ns, `exp` 13.3 → 11.0 ns) |
-| integer-backed outputs, notch 2^-20, dyadic or decimal inputs | 0.05–0.18× (faster: the old engine's double → grid store was the slow part) |
-| decimal outputs (notch 10^-6) | 0.02–0.07× (faster) |
-| integer-backed outputs, notch 2^-40 (the double tier near its limit, else the dd tier) | 0.05–1.09× (`sin` 113 → 5.9 ns, `log` 115 → 8.1 ns, `exp` 59 → 10.0 ns; `acosh`, still in the dd tier, the slowest) |
-| 2^-52, value indices up to 2^62 (the dd tier) | 0.20–0.72× |
-| `pow_base<10>` onto a 44-bit output (10^9 on a 2^-14 grid) | 0.47× (31.0 → 14.5 ns) |
-
-These were measured together on one core at a reduced clock, so the absolute
-times are about twice those in [performance.md](performance.md).
-
-Against all three engines this library shipped before (`dbl`, `flt` and the
-integer `cordic`, built from commit 0f68ee8): all 22 functions they had, each
-from an input of the same storage onto the output named, geometric mean of
-new / old time (range in parentheses). None of the three rounded correctly; `flt`
-cannot resolve a 2^-40 grid at all.
-
-| Output | vs `dbl` | vs `flt` | vs `cordic` |
-|---|---|---|---|
-| `f64`, notch 2^-14 | 0.84 (0.67–1.06) | 0.87 (0.75–1.02) | 0.09 (0.05–0.15) |
-| `f32`, notch 2^-8 | 0.83 (0.69–1.02) | 0.93 (0.80–1.08) | 0.11 (0.06–0.19) |
-| integer index, notch 2^-20 | 0.09 (0.05–0.18) | 0.16 (0.05–0.24) | 0.06 (0.02–0.10) |
-| decimal, notch 10^-6 | 0.04 (0.02–0.07) | 0.13 (0.04–0.21) | 0.06 (0.02–0.11) |
-| integer index, notch 2^-40 | 0.15 (0.05–1.09) | 0.18 (0.05–1.20) | 0.09 (0.02–0.46) |
-| `exact` (rational), notch 10^-6 | 0.47 (0.38–0.70) | 0.71 (0.60–0.94) | 0.53 (0.35–0.75) |
-
-The rows slower than an old engine are within 20%: `acosh` onto 2^-40, which
-stays in the dd tier, `hypot` on `f64` and `f32` grids, and a few `f32` rows
-against `flt`'s float polynomials.
-
-Inputs of up to 256 slots use the table path and cost one load, onto integer
-and floating-point outputs alike (`sin` of a 129-slot input onto an `f64`
-grid: 6.8 → 2.2 ns, `cbrt` 14.9 → 2.2 ns). Each table adds
-about 0.13 s of compile time on GCC; `BEMAN_INSIDE_MATH_TABLE_SLOTS=0` turns
-tables off. The tables in [performance.md](performance.md) are the current
-`bench.test.cpp` numbers.
+Onto the grid deduced from the input, the functions run from 2.4× slower to
+3× faster than `<cmath>` (the `math:` tables in [performance.md](performance.md)).
+Inputs of up to 256 slots use the table path and cost one load; each table adds
+about 0.13 s of compile time on GCC, and `BEMAN_INSIDE_MATH_TABLE_SLOTS=0` turns
+tables off. Onto grids as fine as a `double`, correct rounding costs 4–13×
+`<cmath>`: `sin` onto 2^-52 13.1 ns, `exp` onto 2^-40 11.2 ns, `log` onto
+2^-48 30.1 ns (x86-64, `-O3 -mfma`; `docs/int-considered-harmful/p04_math_cost.cpp`).
 
 ## Where correctness comes first
 
@@ -308,26 +273,12 @@ equals the integer path's, and the integer path is the only path at compile
 time and without an FPU. A build cannot change a value; it can only change how
 fast the value comes.
 
-The remaining gaps to the old engines (`acosh` onto 2^-40, `hypot` and some
-`f32` grids) are speed that can still be won without giving any of this up:
-tighter proofs for `acosh`, `asinh`, `sinh`, `cbrt` and `pow`, whose bounds
-grow with the input, would let them take finer outputs in the double tier.
+Speed that can still be won without giving any of this up: tighter proofs
+for `cbrt` and `pow`, whose bounds grow with the input, and a lean dd kernel
+for `log`.
 
 ## Compiling without floating point (`BEMAN_INSIDE_MATH_NO_FP`)
 
-On a target with no hardware FPU and no `<cmath>`, define
-**`BEMAN_INSIDE_MATH_NO_FP`** (or configure CMake with
-`-DBEMAN_INSIDE_MATH_NO_FP=ON`). The double tier — and its `#include <cmath>` —
-compiles out; the integer path computes every result, and **results do not
-change**. `f64` / `f32` storage falls back to integers.
-
-- No `<cmath>` is referenced anywhere in the library when the macro is set, in
-  the modular headers and the single header. A CI smoke
-  (`single_header_nofp_smoke`) compiles the single header with a *poison*
-  `<cmath>` first on the include path.
-- **Auto-enabled** when `__STDC_HOSTED__ == 0` (i.e. `-ffreestanding`).
-
-```bash
-g++ -std=c++23 -ffreestanding -I single_include my_app.cpp              # NO_FP auto-on
-g++ -std=c++23 -DBEMAN_INSIDE_MATH_NO_FP -I single_include my_app.cpp   # or force it
-```
+With `BEMAN_INSIDE_MATH_NO_FP` (automatic under `-ffreestanding`) the double and
+dd tiers compile out and the integer path computes every result; **results do
+not change**. See [freestanding.md](freestanding.md#math-without-cmath-beman_inside_math_no_fp).

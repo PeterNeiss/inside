@@ -39,57 +39,6 @@ under `snap` stays on the Q-format grid, computed in a wide work type when
 `raw·N` passes 64 bits). `from_chars` reads values past the
 64-bit fraction in decimal (`digits[.digits][e±n]`, or `n/d`).
 
-### Grids past 64 bits (C++26)
-
-Under C++23 a grid's limits and notch are 64-bit fractions: a limit past
-2⁶⁴, or a notch finer than about 2⁻⁶³, does not compile. Under C++26 with
-static reflection they have **no size limit**: the library interns large grid
-numbers in static storage (`std::define_static_array`), so equal grids stay the
-same type however they were spelled.
-
-```cpp
-using huge = inside<{0, 0x1p100}>;        // {0, 2¹⁰⁰}: a 101-bit index
-using fine = inside<{{0, 1}, 0x1p-80}>;    // a 2⁻⁸⁰ notch: 2⁸⁰ + 1 slots
-using sq   = inside<(grid_of<huge> * grid_of<huge>).value()>;   // {0, 2²⁰⁰}
-
-huge h = 1e30;          // 1000000000000000019884624838656: a double is exact
-auto p = h * h;         // the result grid reaches 2²⁰⁰; exact, no expected
-auto q = qword{~0ull} + qword{~0ull};     // 2⁶⁵ − 2 needs a big upper bound
-```
-
-The `_g` literal spells a grid number exactly, from decimal digits, a point
-and an `e±n` exponent: `inside<{0, 1267650600228229401496703205376_g}>` is the
-same type as `inside<{0, 0x1p100}>`, and `inside<{{0, 1}, 1e-30_g}>` has an
-exact decimal notch of 10⁻³⁰. A floating-point limit or notch is taken as its
-exact binary value, and grid arithmetic builds the rest. (`per<D>`,
-`frac<N, D>` and the `_r` / `_ins` literals stay 64-bit; under C++23 `_g` is
-64-bit too and rejects larger values at compile time.)
-
-Grid helpers such as `grid_of<B>.slot_count()` form big values; call them in a
-constant expression (`constexpr auto n = grid_of<B>.slot_count();`) — at
-runtime a result past 64 bits reports `errc::overflow`.
-
-Such an inside supports everything a wide-index inside does (above) — values
-past 64 bits may even sit on a grid with few slots, like
-`{2¹⁰⁰, 2¹⁰⁰ + 10}` in a `uint8_t`. The math functions (`sin`, `sqrt`, …)
-take and return such insides too, correctly rounded: `log` of a value near
-2³⁰⁰, or `sin` onto a 2⁻¹⁰⁰ grid ([math.md](math.md)). The big grid numbers
-themselves (limits and notch) exist only at compile time; runtime arithmetic
-on such an inside uses fixed-width integers sized from them.
-
-Requirements and switches:
-
-- C++26 with static reflection: GCC 16 with `-freflection`. The CMake option
-  `BEMAN_INSIDE_REFLECTION` (default `ON`) adds the flag under C++26; the
-  `gcc16-debug` / `gcc16-release` presets build that way.
-- The headers detect reflection (`BEMAN_INSIDE_BIG_GRIDS`); define it to `0`
-  to keep 64-bit grids on a C++26 compiler.
-- The two modes give `grid` a different layout, so they live in different
-  inline namespaces: mixing C++23 and C++26 translation units that pass
-  insides between them fails at link time instead of misbehaving.
-- Big grids cost compile time (about 4–10% in the test suite); small grids
-  compile and run exactly as under C++23.
-
 When `Lower == 0` and `Notch == 1`, `Raw` equals the value directly — no
 offset arithmetic.
 
@@ -150,10 +99,61 @@ Exact-fraction storage is exact (no floating-point rounding) but larger and
 slower than integer storage. The library picks the most efficient representation
 for each grid.
 
+### Grids past 64 bits (C++26)
+
+Under C++23 a grid's limits and notch are 64-bit fractions: a limit past
+2⁶⁴, or a notch finer than about 2⁻⁶³, does not compile. Under C++26 with
+static reflection they have **no size limit**: the library interns large grid
+numbers in static storage (`std::define_static_array`), so equal grids stay the
+same type however they were spelled.
+
+```cpp
+using huge = inside<{0, 0x1p100}>;        // {0, 2¹⁰⁰}: a 101-bit index
+using fine = inside<{{0, 1}, 0x1p-80}>;    // a 2⁻⁸⁰ notch: 2⁸⁰ + 1 slots
+using sq   = inside<(grid_of<huge> * grid_of<huge>).value()>;   // {0, 2²⁰⁰}
+
+huge h = 1e30;          // 1000000000000000019884624838656: a double is exact
+auto p = h * h;         // the result grid reaches 2²⁰⁰; exact, no expected
+auto q = qword{~0ull} + qword{~0ull};     // 2⁶⁵ − 2 needs a big upper bound
+```
+
+The `_g` literal spells a grid number exactly, from decimal digits, a point
+and an `e±n` exponent: `inside<{0, 1267650600228229401496703205376_g}>` is the
+same type as `inside<{0, 0x1p100}>`, and `inside<{{0, 1}, 1e-30_g}>` has an
+exact decimal notch of 10⁻³⁰. A floating-point limit or notch is taken as its
+exact binary value, and grid arithmetic builds the rest. (`per<D>`,
+`frac<N, D>` and the `_r` / `_ins` literals stay 64-bit; under C++23 `_g` is
+64-bit too and rejects larger values at compile time.)
+
+Grid helpers such as `grid_of<B>.slot_count()` form big values; call them in a
+constant expression (`constexpr auto n = grid_of<B>.slot_count();`) — at
+runtime a result past 64 bits reports `errc::overflow`.
+
+Such an inside supports everything a wide-index inside does (above) — values
+past 64 bits may even sit on a grid with few slots, like
+`{2¹⁰⁰, 2¹⁰⁰ + 10}` in a `uint8_t`. The math functions (`sin`, `sqrt`, …)
+take and return such insides too, correctly rounded: `log` of a value near
+2³⁰⁰, or `sin` onto a 2⁻¹⁰⁰ grid ([math.md](math.md)). The big grid numbers
+themselves (limits and notch) exist only at compile time; runtime arithmetic
+on such an inside uses fixed-width integers sized from them.
+
+Requirements and switches:
+
+- C++26 with static reflection: GCC 16 with `-freflection`. The CMake option
+  `BEMAN_INSIDE_REFLECTION` (default `ON`) adds the flag under C++26; the
+  `gcc16-debug` / `gcc16-release` presets build that way.
+- The headers detect reflection (`BEMAN_INSIDE_BIG_GRIDS`); define it to `0`
+  to keep 64-bit grids on a C++26 compiler.
+- The two modes give `grid` a different layout, so they live in different
+  inline namespaces: mixing C++23 and C++26 translation units that pass
+  insides between them fails at link time instead of misbehaving.
+- Big grids cost compile time (about 4–10% in the test suite); small grids
+  compile and run exactly as under C++23.
+
 ## Choosing the representation
 
 The rules above are the **default deduction**. Several policy flags override it
-(see [policies.md](policies.md#representation-flags) for the full table):
+(table below):
 
 ```cpp
 using gain   = inside<{{0, 4}, per<65536>}, round_nearest | f64>;
@@ -166,38 +166,27 @@ using wide   = inside<{0, 100}, u16>;    // Raw: uint16_t (pinned width, raw() =
 using sidx   = inside<{0, 4, per<16>}, u32 | indexed>; // Raw: uint32_t index
 ```
 
-`f64`/`f32` hold the value as a float (any math function takes them, [math.md](math.md)); `exact` lifts the
-notch-count limit and removes `double` entirely; `direct` makes the raw equal
-the wire/debugger value for interop; `indexed` gives signed grids a dense
-unsigned layout for serialization.
+| Flag | Forces | Grid requirement | Notes |
+|---|---|---|---|
+| `f64` | IEEE-754 `double` raw (the value itself, snapped to the grid) | dyadic **and** double-exact (every value fits `double`'s 53-bit significand) | bundles `round_nearest`. Arithmetic drops `f64` (back to deduced storage) when a result grid is too fine for `double`. Under `BEMAN_INSIDE_MATH_NO_FP` it falls back to integer storage. |
+| `f32` | IEEE-754 `float` raw (the value itself, snapped to the grid) | dyadic **and** float-exact (every value fits `float`'s 24-bit significand) | the binary32 sibling of `f64`, for single-precision FPUs. Arithmetic **demotes `f32`→`f64`** when a result grid outgrows `float` (and drops it when the grid outgrows `double`). Under `BEMAN_INSIDE_MATH_NO_FP` it falls back to integer storage. |
+| `exact` | exact-fraction raw on **any** grid | none | no notch-count limit, no `double` anywhere; arithmetic is exact — on notched grids overflow is usually provably impossible and `+ − ×` return plain bounds (no `std::expected`) |
+| `i8 u8 i16 u16 i32 u32 i64 u64` | the named fixed-width integer raw | value storage needs `Notch == 1` and the value range to fit (add `indexed` for a notched grid) | **pins the exact backing type** (e.g. a `uint16_t` where deduction would pick `uint8_t`) for a fixed wire layout. Bare = value storage (`raw() == value`, like `direct`); `+ indexed` = 0-based index storage. **No silent widening** — a type too small for the grid is a compile error. One width flag at a time; dropped on arithmetic results. |
+| `direct` | raw == value as a plain integer | `Notch == 1` | e.g. `inside<{5, 100}, direct>` stores 5..100, not index 0..95 — the raw equals the wire/debugger value |
+| `indexed` | raw == 0-based notch index | `Notch != 0` | e.g. `inside<{-5, 5}, indexed>` stores 0..10 unsigned — dense layout for serialization |
 
-The **fixed-width flags** `i8 u8 i16 u16 i32 u32 i64 u64` pin the exact backing
-integer type instead of letting deduction pick the smallest fit (e.g. force a
-`uint16_t` even where `uint8_t` would do, for a fixed wire layout). A bare width
-flag means value storage (`raw() == value`, so `Notch == 1`, like `direct`); add
-`indexed` for 0-based index storage on a notched grid. Unlike deduction or the fp
-flags there is **no silent widening** — a type too small for the grid is a
-compile error (`storage_pick` static_asserts the range fits). Mixed-flag results
-from arithmetic resolve widest-wins: `exact > f64 > f32 > {width} > direct >
-indexed > deduced` (width flags are dropped on arithmetic results, which deduce
-their own width). See [`examples/storage_flags.cpp`](../examples/storage_flags.cpp)
-for value/index storage and the compile-time fit check. `f64` is selected only
-when the grid is **double-exact** (every value fits `double`'s 53-bit significand);
-otherwise it is dropped and deduction proceeds — and a result grid finer than the
-`uint64` index space deduces a wide integer index, keeping the result exact.
+Arithmetic ORs the operands' policies; storage resolves several representation
+flags **widest-wins**: `exact > f64 > f32 > {width} > direct > indexed >
+deduced` (width flags are dropped on results, which deduce their own width),
+so an `exact + f64` sum is exact and an `f64` math chain stays double-backed.
+A result grid finer than the `uint64` index space deduces a wide integer
+index, keeping the result exact. See
+[`examples/storage_flags.cpp`](../examples/storage_flags.cpp).
 
 > **Full range and SIMD width.** The smallest-type selection uses each raw
 > type's full range: `inside<{0, 255}>` is a **uint8** and `inside<{-128, 127}>`
 > an **int8**, so SIMD-width-sensitive loops run at the same lane count as
 > native `uint8_t` / `int8_t`.
-
-## Fallible results stay out of storage
-
-Fallible operations return `std::expected<inside, errc>`, which is larger than
-the `inside` it wraps (a flag and an `errc` sit beside the value). Use it as a
-return value you test right away, or pass it straight into the next operation;
-unwrap into a plain `inside` before storing it in a member, a container or a
-buffer. Storage keeps its native width.
 
 ## Predefined hardware formats
 
@@ -318,33 +307,9 @@ drops this part in freestanding and `BEMAN_INSIDE_MATH_NO_FP` builds.
 
 ## Compile-time constants
 
-`beman::inside::zero` and `beman::inside::one` are built-in point insides for the two values you reach
-for most. They **assign into any grid that can exactly represent the value**
-(verified at compile time — out of range, or off a notch, is a compile error)
-and otherwise stand in for `0` / `1` in comparison and arithmetic:
-
-```cpp
-inside<{0, 200}>          a = zero;     // ok — stored as 0, no runtime check
-inside<{{0, 1}, per<256>}> q = one; // ok — exact (raw 256)
-inside<{5, 10}>           b = zero;     // ✗ compile error: 0 is not on this grid
-
-if (a == zero) { ... }                 // comparison
-auto c = a + one;                      // arithmetic — stays an inside
-```
-
-For any other constant, `just<value>` creates a single-value inside:
-
-```cpp
-constexpr auto pi   = just<3>;          // inside<{3, 3}>
-constexpr auto step = just<frac<1, 4>>; // exact 1/4 point-inside
-```
-
-The `_ins` literal is shorthand for `just<N>`:
-
-```cpp
-auto five = 5_ins;                // inside<{5, 5}>
-auto x    = 10_ins + my_inside;    // grid widens via just<N> + inside
-```
+`zero`, `one`, `just<V>` and the `_ins` literal are point insides: their value
+lives in the type and their raw is empty ([above](#storage-selection)). When to
+use which: [conversions.md](conversions.md#idiom-writing-literal-values-into-insides).
 
 ## `std`-vocabulary helpers
 

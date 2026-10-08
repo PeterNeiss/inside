@@ -59,9 +59,7 @@ int main()
 ```
 
 `what` is a static, null-terminated `const char*` (`beman::inside::errc_message(code)` by
-default) — no allocation, no `<string>`. See
-[Replacing the throw handler](policies.md#replacing-the-throw-handler-freestanding--bare-metal)
-in the policies guide.
+default) — no allocation, no `<string>`.
 
 ### 2. Drop the string/printing layer
 
@@ -88,18 +86,7 @@ channel, with **no `std::error_code` / `<system_error>`**: construction through
 `try_make` (an `expected<inside, errc>`), assignment and free arithmetic through a
 `beman::inside::errc` out-parameter:
 
-```cpp
-auto x = beman::inside::inside<{0, 100}>::try_make(150);   // construction: !x, x.error()
-
-beman::inside::errc ec{};                    // value-init: errc{} == 0 means "no error"
-y.policy(ec) = 200;                // per-operation
-auto s = add(y, y, ec);            // free arithmetic
-
-if (ec != beman::inside::errc{})             // first error is sticky
-    handle(ec);                    // beman::inside::errc_message(ec) -> const char*
-```
-
-See [Error code mode](policies.md#error-code-mode) for the full surface. `clamp` /
+[Error code mode](policies.md#error-code-mode) shows the surface. `clamp` /
 `wrap` policies and `std::expected` results are all non-throwing and work unchanged
 on freestanding (test `has_value()` / `error()` rather than calling `.value()`,
 which would need to throw).
@@ -108,9 +95,10 @@ which would need to throw).
 
 The transcendental math API (`beman::inside::math::sin/cos/exp/log/sqrt/pow/atan/…` in
 **`beman/inside/cmath.hpp`**) works on freestanding targets too. Define **`BEMAN_INSIDE_MATH_NO_FP`**
-and the math engine's double tier — including its `#include <cmath>` — is compiled out
-**entirely**; the integer path computes every result. The public surface, output grids,
-types **and values** are unchanged: results are correctly rounded either way.
+and the math engine's double and dd tiers — including their `#include <cmath>` — are
+compiled out **entirely**; the integer path computes every result. The public surface,
+output grids, types **and values** are unchanged: results are correctly rounded either
+way. `f64` / `f32` storage falls back to integers.
 
 - **Auto-enabled** when `__STDC_HOSTED__ == 0` (i.e. `-ffreestanding`).
 - Holds for the modular headers **and** the amalgamated
@@ -122,8 +110,10 @@ types **and values** are unchanged: results are correctly rounded either way.
 - All transcendentals are `constexpr` in every build, so they evaluate at compile time
   as well as runtime.
 
-See [Compiling without floating point](math.md#compiling-without-floating-point-beman_inside_math_no_fp)
-in the math guide for the full story.
+```bash
+g++ -std=c++23 -ffreestanding -I single_include my_app.cpp              # NO_FP auto-on
+g++ -std=c++23 -DBEMAN_INSIDE_MATH_NO_FP -I single_include my_app.cpp   # or force it
+```
 
 ## Limitations & caveats
 
@@ -143,7 +133,7 @@ in the math guide for the full story.
 
 ## Worked example
 
-`tests/beman/inside/single_header_freestanding_smoke.cpp` is a complete TU that sees **only** the
+`tests/beman/inside/single_header_freestanding_smoke.test.cpp` is a complete TU that sees **only** the
 amalgamated single header with the string block dropped and exceptions off. It installs
 a trapping handler and exercises clamp/wrap, the error-code channel, and checked
 arithmetic:

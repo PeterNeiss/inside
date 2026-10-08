@@ -206,7 +206,10 @@ if(BEMAN_INSIDE_BUILD_TOOLS)
     # prints native first, so the relative column is the inside-vs-native ratio.
     add_custom_target(
         beman.inside.perf_report
-        COMMAND beman.inside.bench ${PROJECT_SOURCE_DIR}/docs/performance.md
+        COMMAND
+            ${CMAKE_COMMAND} -E env NANOBENCH_SUPPRESS_WARNINGS=1
+            $<TARGET_FILE:beman.inside.bench>
+            ${PROJECT_SOURCE_DIR}/docs/performance.md
         COMMENT "Regenerating docs/performance.md"
     )
 

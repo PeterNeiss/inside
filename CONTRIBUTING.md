@@ -115,48 +115,12 @@ You can see the list of available options with:
 cmake -LH -S . -B build | grep "BEMAN_INSIDE" -C 2
 ```
 
-<details>
-
-<summary>Some project-specific configure arguments</summary>
-
-### `BEMAN_INSIDE_BUILD_TESTS`
-
-Enable building tests and test infrastructure. Default: `ON`.
-Values: `{ ON, OFF }`.
-
-### `BEMAN_INSIDE_BUILD_EXAMPLES`
-
-Enable building examples. Default: `ON`. Values: `{ ON, OFF }`.
-
-### `BEMAN_INSIDE_BUILD_TOOLS`
-
-Build the benchmarks (`beman.inside.bench`, nanobench), the property fuzzer
-(`beman.inside.fuzz`), the math accuracy sweep (`beman.inside.accuracy`) and the
-cachegrind perf workload (`beman.inside.perf_workload`). Also adds the
-`beman.inside.perf_report` and `beman.inside.accuracy_report` targets that
-regenerate `docs/performance.md` and `docs/accuracy.md`. Default: `OFF`.
-Values: `{ ON, OFF }`.
-
-### `BEMAN_INSIDE_MATH_CORDIC` / `BEMAN_INSIDE_MATH_FLOAT`
-
-Select the default `beman::inside::math` engine: the integer/CORDIC engine
-(FPU-free) or the float (binary32) engine instead of the double engine.
-Default: `OFF`. Values: `{ ON, OFF }`.
-
-### `BEMAN_INSIDE_STRICT_SFINAE`
-
-Drop the assignment/conversion diagnostic overloads so `is_constructible` /
-`is_convertible` stay honest. Default: `OFF`. Values: `{ ON, OFF }`.
-
-### `BEMAN_INSIDE_INSTALL_CONFIG_FILE_PACKAGE`
-
-Enable installing the CMake config file package. Default: `ON`.
-Values: `{ ON, OFF }`.
-
-This is required so that users of `beman.inside` can use
-`find_package(beman.inside)` to locate the library.
-
-</details>
+The library options are in the [README's table](README.md#build-environment).
+The project's own: `BEMAN_INSIDE_BUILD_TESTS` and `BEMAN_INSIDE_BUILD_EXAMPLES`
+(both `ON`), and `BEMAN_INSIDE_INSTALL_CONFIG_FILE_PACKAGE` (`ON`, needed for
+`find_package(beman.inside)`). `BEMAN_INSIDE_BUILD_TOOLS` also adds the
+`beman.inside.perf_report` and `beman.inside.accuracy_report` targets, which
+regenerate `docs/performance.md` and `docs/accuracy.md`.
 
 ## Maintenance targets
 

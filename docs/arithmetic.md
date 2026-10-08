@@ -36,15 +36,10 @@ auto q = div(x, y, on_overflow([&](auto& res, errc) {
 
 ## Division
 
-`inside / inside` returns a plain `inside` when the divisor's grid provably
-excludes zero (`Lower > 0 || Upper < 0` — the `divisor_excludes_zero` trait) and
-the operation can't otherwise fault; then there is nothing to unwrap.
-Otherwise it returns `std::expected<result, errc>`, because division by zero is a
-runtime possibility (and on the exact-rational path under `checked`, so is
-overflow of the 64-bit rational — unless the operand grids prove the quotient
-fits, which they do for every integer grid and every literal point).
-The library picks one of **three code paths** at compile time, based on the
-operand grids and whether `snap` is in effect.
+`inside / inside` takes one of **three code paths**, chosen at compile time from
+the operand grids and whether `snap` is in effect. It returns a plain `inside`
+when the divisor's grid excludes zero and the quotient provably fits, otherwise
+`std::expected` ([below](#when-the-result-is-stdexpected-and-when-it-isnt)).
 
 ### The three paths
 
@@ -70,7 +65,7 @@ using val = inside<{0, 100}>;
 val a{7}, b{3};
 
 // Exact rational result (path C — the default).
-auto exact = a / b;                            // inside<{rational}>, value 7/3
+auto exact = a / b;                            // expected<inside<{rational}>>, value 7/3
 
 // Per-call integer truncation (path B). The divisor's range includes 1, so the
 // quotient's range is 0..100; the divisor's range includes 0, so it is expected.
@@ -93,9 +88,9 @@ is `(51200 × 256) / 768 = 17066` — i.e. `floor(66.6667 × 256)`, **not**
 
 ### When the result is `std::expected` (and when it isn't)
 
-When the divisor's grid provably **excludes zero** (`Lower > 0 || Upper < 0` —
-the `divisor_excludes_zero` trait in `generic.hpp`) *and* the op can't otherwise
-fault, `operator/` returns a **plain `inside`** — no wrapper to unwrap:
+When the divisor's grid **excludes zero** (`Lower > 0 || Upper < 0`, the
+`divisor_excludes_zero` trait) and the op can't otherwise fault, `operator/`
+returns a **plain `inside`**:
 
 ```cpp
 using num = inside<{0, 100}, snap>;
@@ -103,14 +98,12 @@ using pos = inside<{1, 10},  snap>;   // grid excludes zero
 auto d = num{42} / pos{3};                   // inside, == 14  (not expected)
 ```
 
-The integer / Q-format fast paths (A, B) can only fault on divide-by-zero, so a
-zero-excluding divisor makes them total. The exact-rational path (C) under
-`checked` can also overflow its 64-bit rational, so it keeps the wrapper unless
-the grids rule that out: every value of a grid is `n/D` with `D` the lcm of the
-lower limit's and the notch's denominators and `|n| ≤ max(|Lower|, |Upper|)·D`,
-and when those bounds keep the quotient's numerator and denominator within 64
-bits for every pair of operands (`detail::quotient_fits_rational`), path C is
-total too — and skips the runtime overflow test:
+Paths A and B can only fault on divide-by-zero. Path C under `checked` can also
+overflow its 64-bit rational, unless the grids rule that out: every value is
+`n/D` (`D` the lcm of the lower limit's and the notch's denominators,
+`|n| ≤ max(|Lower|, |Upper|)·D`), and when those bounds keep every quotient
+within 64 bits (`detail::quotient_fits_rational`) — true for every integer grid
+and literal point — path C is total and skips the runtime overflow test:
 
 ```cpp
 using val = inside<{-100, 100}>;
@@ -120,17 +113,13 @@ using fine = inside<{{0, 1}, rational{1, umax{1} << 40}}>;
 auto f = fine{0.5} / inside<{{1, 2}, rational{1, umax{1} << 40}}>{1.5};  // expected: 2^40 denominators may overflow
 ```
 
-Otherwise the result is `std::expected<result, errc>`, which has two error
-causes:
+Otherwise the result is `std::expected<result, errc>` with one of two errors:
 
-1. **`errc::division_by_zero`** — every path runs its own zero check. Path A
-   tests `rhs.Raw == 0` (safe because Q-format Lower is 0, so raw-zero means
-   value-zero); path B tests `to_value(rhs) == 0`; path C tests
-   `rhs.Numerator == 0`.
-2. **`errc::overflow`** — rational denominator overflow, only on path C and
-   only under `checked`. The inner `rational::operator/` returns an error when
-   the resulting denominator can't fit in `imax`; the same code reaches
-   `div(a, b, ec)` and an `on_overflow` callback.
+1. **`errc::division_by_zero`** — on every path (path A tests `rhs.Raw == 0`,
+   safe because a Q-format Lower is 0).
+2. **`errc::overflow`** — the rational denominator doesn't fit `imax`; only on
+   path C under `checked`. The same code reaches `div(a, b, ec)` and an
+   `on_overflow` callback.
 
 Test the result and read the cause when it matters:
 
@@ -139,10 +128,8 @@ auto q = a / b;
 if (!q) log(errc_message(q.error()));   // "division by zero" or overflow
 ```
 
-`std::expected<inside, errc>` is larger than the `inside` it wraps (a flag and
-an `errc` sit beside the value), so keep it where it belongs — as the result
-you test right away, or as an operand passed straight into the next
-operation. Unwrap into a plain `inside` before storing it.
+Test or chain an `expected` right away and store the unwrapped `inside`
+([why](internals.md#7-error-vocabulary)).
 
 ### Opting into integer-truncation semantics
 
@@ -163,9 +150,9 @@ auto q2 = div(val{7}, val{3}, snapped);  // -> 2
 //    `rounded_*`, `clamped`, `wrapped` — see policies.md#named-policies.
 ```
 
-Without any of these, `operator/` always takes path C and returns a
-`inside<rational>` — exact, but uses rational raw storage with the perf
-characteristics described in [storage.md](storage.md).
+Without any of these, `operator/` always takes path C and returns an exact
+`inside<rational>` (in `std::expected` when the divisor's grid holds 0), with
+the rational storage costs described in [storage.md](storage.md).
 
 ### Result-grid widening on path A (the subtle bit)
 
@@ -433,22 +420,15 @@ auto capped = clamp_cast<v>(add_all(a, b, c, v{90}));   // v, value 100 (150 cla
 
 Operations return `std::expected<inside, errc>` in two cases:
 
-1. **Division and modulo** — the divisor could be zero. See
-   [Division § When the result is `std::expected`](#when-the-result-is-stdexpected-and-when-it-isnt)
-   for the two distinct failure modes division has (divide-by-zero on every
-   path, plus denominator overflow on the rational path under `checked`).
-   `f64` (double-backed) division participates identically: an `f64` `÷` whose
-   divisor grid can be zero returns `std::expected` and reports
-   `errc::division_by_zero` on a zero divisor — it is not a silent path.
+1. **Division and modulo** whose divisor grid holds zero, or whose exact
+   quotient may overflow ([details](#when-the-result-is-stdexpected-and-when-it-isnt));
+   `f64` division included.
 
-2. **Rational raw storage** — when the result grid can't be represented with
-   an integer raw type (see [storage.md](storage.md)), the result uses
-   `rational` as its raw storage. Addition and multiplication on such types
-   return `std::expected` (`errc::overflow`) because rational arithmetic can overflow
-   (`lcm(b, d)` of the denominators may exceed `imax`). This also covers an `f64`
-   result grid too fine for `double`: `f64` is dropped and the exact result is
-   stored as `rational`, so an unrepresentable `f64 ×` returns `std::expected`
-   (overflow-checked) rather than silently losing precision.
+2. **Continuous rational storage** — a grid with notch 0 (such as an exact
+   quotient) stores a `rational`; `+` and `×` on it return `std::expected`
+   (`errc::overflow`), since `lcm(b, d)` of the denominators may exceed `imax`.
+   Notched grids return plain values, exact ones included; an `f64` result too
+   fine for `double` drops `f64` and is stored as an index.
 
 All operators accept `std::expected` operands and propagate errors: if either
 operand holds an error, the result holds that error (the left one when both

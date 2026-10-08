@@ -25,20 +25,8 @@ using q8_8 = inside<{{0, 255}, per<256>}, round_nearest>;  // == beman::inside::
 `#include <beman/inside/formats.hpp>` for the curated aliases: `q4_4`, `q8_8`, `q16_16`
 (uint8/16/32), `byte`…`sqword`, and `unorm8/16/32` (`[0,1]` at N-bit resolution).
 
-The internal traits that classify these grids (`beman::inside::detail`, in
-`include/beman/inside/generic.hpp`):
-
-```cpp
-// notch and Lower are whole numbers (denominator 1)
-template <insidable B> inline constexpr bool is_integer_aligned =
-    abs_den(notch_of<B>.Denominator) == 1 && abs_den(lower_of<B>.Denominator) == 1;
-
-// Q-format: unit-numerator notch 1/N (N ≥ 2, not necessarily a power of two), Lower == 0
-template <insidable B> inline constexpr bool is_qformat =
-       !rational_raw<B> && notch_of<B>.Numerator == 1
-    && abs_den(notch_of<B>.Denominator) > 1
-    && abs_den(lower_of<B>.Denominator) == 1 && lower_of<B> == 0;
-```
+Two grid shapes take the integer fast paths: **integer-aligned** (notch and
+Lower are whole numbers) and **Q-format** (notch `1/N`, `N ≥ 2`, Lower 0).
 
 ## What `inside` adds over a raw integer Qm.n
 
@@ -84,18 +72,10 @@ in hot loops.
    `(a · N) / b` (`(a << log2 N) / b` for power-of-two `N`) (`has_qformat_fast_path` / `q_format_encode` in
    `generic.hpp`; the Q-format divide in `detail/division.hpp`). Construction is
    ~native (Q8.8 / Q16.16 measure at ~0.97×).
-3. **`f64` dyadic, `double_exact` grids** — the right choice for transcendental
-   math: the raw *is* the `double`, so feeding `beman::inside::math` is free marshalling.
-4. **Avoid in hot loops:** non-power-of-two notches and continuous (Notch 0) grids
-   fall to rational storage (gcd/lcm every op). For bulk reductions use
+3. **Avoid in hot loops:** continuous (Notch 0) grids and `exact` use rational
+   storage (gcd/lcm every op). For bulk reductions use
    `beman::inside::sum<Target>`, which checks the total once and keeps
    vectorization (`add_all` / `mul_all` are plain pairwise folds).
-
-### SIMD widths
-
-The smallest-type selection uses each type's full range: `inside<{0,255}>` is a
-**uint8** and runs lane-for-lane with native `uint8_t`. The `formats.hpp`
-aliases use the full native ranges too (`byte` is `[0,255]`).
 
 ## Performance
 
@@ -112,8 +92,8 @@ of autovectorisation — use `unsafe` inside proven-safe inner loops, or
 
 - **Hot integer/fixed-point math:** integer-aligned or Q-format grids; `unsafe`
   in the proven-safe inner loop, then assign the result into a checked type.
-- **Transcendentals:** `f64` on a dyadic `double_exact` grid (see
-  [math.md](math.md)).
+- **Transcendentals:** any grid; integer and `f64` outputs are equally fast
+  ([math.md](math.md#storage)).
 - **No rounding allowed:** `exact` — accept the rational cost.
 - **SIMD byte/halfword loops:** keep the range within the native type (the
   `formats.hpp` aliases use the full range, e.g. `byte` is `[0, 255]`) so the raw

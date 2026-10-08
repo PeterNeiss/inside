@@ -19,7 +19,7 @@ performance.
 ## 1. Grid invariants
 
 Every `inside<G, P>` carries a `grid G` value with the following invariants,
-enforced at type-instantiation time by `grid::validate` (`grid::validate` in `include/beman/inside/grid.hpp`):
+enforced at type-instantiation time by `grid::validate` (`include/beman/inside/grid.hpp`):
 
 - **`Lower ≤ Upper`** (rational comparison).
 - **`Interval.divides_evenly(Notch)`** — there must be an integer number of
@@ -265,43 +265,19 @@ The cascade is implemented in `detail/assignment.hpp` — see
 
 ## 5. Conversion summary
 
-`inside::operator imax()` — **implicit**, only when notch is
-integer-aligned. Matches native-int performance and ergonomics:
-`int n = inside<{0,100}>{42};` just works. It is deliberately the **only**
-implicit integer conversion — a second one (a removed `operator size_t`
-once existed) makes built-in mixed arithmetic like `imax_var += b`
-ambiguous. Indexing reaches `size_t` through imax's standard conversion.
-
-`inside::operator rational()` — **implicit**. Lossless and mathematically
-exact, so no risk in letting it happen silently.
-
-`inside::operator double()` — `explicit(!has_flag(P, f64) && !has_flag(P, f32))`,
-and present only when `P` carries a rounding flag. An `f64`/`f32`-policy inside
-lives on a double-exact grid, so every value is exactly representable in
-`double` and the conversion is lossless — implicit, by the same rule as
-`operator rational`. For everything else the conversion can round, so it is
-**explicit** AND gated on a rounding policy flag; a strict inside opts in
-through `to<double>()`. `as<floating>()` shares the gate so
-the two spellings agree.
-
-`to<T>(b)` / `as<T>(b)` — free-function forms of the members, for generic
-code (no `.template` disambiguator); ADL-found, same constraints.
-
-`rational::operator T()` (for unsigned, signed, floating) — **explicit**
-in all cases; rationals truncate toward zero on integer conversion.
-`r.to<T>()` is the typed-error form (`expected<T, errc>`).
-
-The named integer reductions on `rational` are free functions —
-`trunc(r)`, `floor(r)`, `ceil(r)`, `round(r)` (with `abs`, `sign`, `gcd`) —
-and replace ad-hoc `static_cast<imax>(r)` calls when intent matters.
+The user-facing rules (one implicit `operator imax` on integer-aligned grids,
+an implicit lossless `operator rational`, `operator double` implicit only for
+`f64`/`f32` and otherwise explicit and gated on a rounding flag) are in
+[conversions.md](conversions.md). On `rational` itself every `operator T()` is
+explicit and truncates toward zero; `r.to<T>()` is the typed-error form, and
+`trunc`, `floor`, `ceil`, `round` name the integer reductions.
 
 ---
 
 ## 6. The `as_rational` / `raw_imax` / `to_value` triad
 
-These three helpers in `include/beman/inside/generic.hpp` exist because three
-different "extract the value" intents used to spell the same
-`static_cast<imax>(...)`:
+Three helpers in `include/beman/inside/generic.hpp`, one per "extract the
+value" intent:
 
 | Helper | Returns | Use when |
 |---|---|---|
