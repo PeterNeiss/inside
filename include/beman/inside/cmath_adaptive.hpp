@@ -1330,6 +1330,9 @@ BEMAN_INSIDE_AX_LEAN(sin)
 BEMAN_INSIDE_AX_LEAN(cos)
 BEMAN_INSIDE_AX_LEAN(exp)
 BEMAN_INSIDE_AX_LEAN(exp2)
+BEMAN_INSIDE_AX_LEAN(log)
+BEMAN_INSIDE_AX_LEAN(log2)
+BEMAN_INSIDE_AX_LEAN(log10)
     #undef BEMAN_INSIDE_AX_LEAN
 template <typename K>
 concept has_dd_lean = requires(ddk::dd x, double& b) { dd_lean<K>::template value<ddk::dd>(x, b); };

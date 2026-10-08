@@ -1020,6 +1020,24 @@ TEST(MathAdaptiveTest, lean_dd_kernels_stay_within_their_proved_bounds) {
     LEAN_BOUND(exp_lean, fine, ax::exp_core<ax::input_limbs<fine>, ax::in_mag<fine>, 1>);
     LEAN_BOUND(exp2_lean, sym4, ax::exp2_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, 8>);
     LEAN_BOUND(exp2_lean, big, ax::exp2_core<ax::input_limbs<big>, ax::in_mag<big>, 1000>);
+    using near1 = inside<{{rational{63, 64}, rational{65, 64}}, rational{1, 1 << 20}}, round_nearest>;
+    using huge  = inside<{{rational{1, 1 << 10}, 1LL << 36}, rational{1, 1 << 10}}, round_nearest>;
+    static_assert(ax::dd_input<huge>); // indices below 2^53: read exactly
+    LEAN_BOUND(log_lean, pos64, ax::log_core<ax::input_limbs<pos64>>);
+    LEAN_BOUND(log_lean, near1, ax::log_core<ax::input_limbs<near1>>);
+    LEAN_BOUND(log2_lean, pos64, ax::logb_core<ax::input_limbs<pos64>, 2>);
+    LEAN_BOUND(log10_lean, pos64, ax::logb_core<ax::input_limbs<pos64>, 10>);
+    // A sparse sweep of a wide grid: 4096 points spread over it.
+    const auto x     = [](long long i) { return huge::from_raw(detail::raw_from_offset<huge>(static_cast<umax>(i))); };
+    double     worst = 0;
+    const long long count = static_cast<long long>(grid_of<huge>.slot_count());
+    for (long long i = 1; i < count; i += count / 4096 + 1) {
+        const auto    a = ax::log_core<ax::input_limbs<huge>>{ax::exact_input(x(i))}.template run<150>();
+        double        b = 0;
+        const ddk::dd v = ddk::log_lean(ax::dd_read(x(i)), b);
+        worst           = std::max(worst, std::fabs(ddk::sub(v, ddk::of_fixed(a.Value, a.Scale)).Hi) / b);
+    }
+    EXPECT_LE(worst, 1.0) << "log_lean huge";
 }
     #undef LEAN_BOUND
 
@@ -1041,7 +1059,16 @@ TEST(MathAdaptiveTest, lean_dd_kernels_decide_double_fine_outputs) {
         undecided += !ax::dd_decide(ddk::cos_lean(x, b), b * 1.5, s);
         undecided += !ax::dd_decide(ddk::exp_lean(x, b), b * 1.5, e);
     }
-    EXPECT_LE(undecided, 3 * (count + 1) / 1000);
+    using log48 = inside<{{-8, 8}, rational{1, 1LL << 48}}, round_nearest>;
+    static_assert(ax::dd_tier<log48, pos64> && !ax::fp_tier<log48, ax::fp_log, pos64>);
+    const long long n = static_cast<long long>(grid_of<pos64>.slot_count());
+    for (long long i = 0; i <= n; ++i) {
+        const ddk::dd x = ax::dd_read(pos64::from_raw(detail::raw_from_offset<pos64>(static_cast<umax>(i))));
+        double        b;
+        log48         l;
+        undecided += !ax::dd_decide(ddk::log_lean(x, b), b * 1.5, l);
+    }
+    EXPECT_LE(undecided, (3 * (count + 1) + n + 1) / 1000);
 }
 #endif
 

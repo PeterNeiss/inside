@@ -352,23 +352,37 @@ inline D exp(D x) noexcept {
 // from s^7 on are below 2^-53 relative and summed in double, those from
 // s^13 on below 2^-106.
 template <dd_type D>
-inline D log(D x) noexcept {
-    using C = consts<D>;
-    long m  = static_cast<long>(std::bit_cast<std::uint64_t>(x.Hi) >> 52) - 1023;
-    D    f  = scale(x, -m); // [1, 2)
+struct log_reduced {
+    long M; // the power of 2
+    D    S; // (f − c)/(f + c)
+    D    L; // ln c
+};
+
+template <dd_type D>
+[[gnu::always_inline]] inline log_reduced<D> log_reduce(D x) noexcept {
+    long m = static_cast<long>(std::bit_cast<std::uint64_t>(x.Hi) >> 52) - 1023;
+    D    f = scale(x, -m); // [1, 2)
     if (f.Hi >= 1.5) {
         f = {f.Hi * 0.5, f.Lo * 0.5};
         ++m;
     }
-    const double j  = __builtin_nearbyint(f.Hi * 128);
-    const double c  = j * 0x1p-7;
-    const D      s  = div(two_sum(f.Hi - c, f.Lo), add(f, c)); // f.Hi − c is exact
-    const D      z  = sqr(s);
-    const double zh = z.Hi;
-    D            p  = add_dominant(C::I5, zh * fpk::horner(zh, 1.0 / 11, 1.0 / 9, 1.0 / 7));
-    p               = add_dominant(C::I3, mul(z, p));     // 1/3 + z/5 + …
-    p               = add_dominant(s, mul(mul(s, z), p)); // atanh s
-    const D t       = add(mul(C::Ln2, static_cast<double>(m)), C::Log[static_cast<std::size_t>(j) - 96]);
+    const double j = __builtin_nearbyint(f.Hi * 128);
+    const double c = j * 0x1p-7;
+    return {m,
+            div(two_sum(f.Hi - c, f.Lo), add(f, c)), // f.Hi − c is exact
+            consts<D>::Log[static_cast<std::size_t>(j) - 96]};
+}
+
+template <dd_type D>
+inline D log(D x) noexcept {
+    using C               = consts<D>;
+    const auto [m, s, lc] = log_reduce(x);
+    const D      z        = sqr(s);
+    const double zh       = z.Hi;
+    D            p        = add_dominant(C::I5, zh * fpk::horner(zh, 1.0 / 11, 1.0 / 9, 1.0 / 7));
+    p                     = add_dominant(C::I3, mul(z, p));     // 1/3 + z/5 + …
+    p                     = add_dominant(s, mul(mul(s, z), p)); // atanh s
+    const D t             = add(mul(C::Ln2, static_cast<double>(m)), lc);
     return add(t, D{2 * p.Hi, 2 * p.Lo});
 }
 
@@ -725,6 +739,71 @@ template <dd_type D>
 inline D exp2_lean(D x, double& bound) noexcept {
     const D v = exp_lean_value(mul(x, consts<D>::Ln2));
     bound     = lean_exp::Rel2 * v.Hi + fpk::kTiny;
+    return v;
+}
+// 2·atanh s = 2s + 2s·z·P(z), P = 1/3 + z/5 + z²/7.
+inline constexpr fpk::poly<3> kLeanLogC = fpk::series<3>([](int k) { return fpk::term{1.0, 2.0 * k + 3}; });
+
+// ln x for normal x > 0, reduced as in log: ln x = m·ln 2 + ln c + 2·atanh s,
+// |s| ≤ S since |f − c| ≤ 1/256 and f + c ≥ 2·0.75 − 1/256. s is a dd
+// quotient: its numerator is exact, the denominator one dd sum (2kU² of
+// it), and the division within about 15kU², so s is within 32kU²·|s|.
+// m·Ln2.Hi, ln c's high part and 2s join in two exact two-sums; the tail
+// t = 2·sh·zh·P(zh) (sh = s.Hi, zh = sh²) and the low parts are summed in
+// double. All bounds absolute, |ln c| ≤ B = ln 1.5:
+// - t: zh, sh·zh and the product with P round (3kU of |t|); P's Horner
+//   error at zh; the truncation (2S⁹/9, widened 1%); and t taken at sh, not
+//   s (|s.Lo| ≤ kU·S moves it by 2S²·kU·S);
+// - 2s: 64kU²·S;
+// - the low sum: 7 roundings within Lsum = 5kU·(B + 2S) + |t|, plus per
+//   unit of |m|·ln 2 the same 5kU in Lsum (35kU²), the product
+//   m·Ln2.Lo's rounding (kU²) and Ln2's 2^-104 (PerM);
+// - ln c's table entry: 2^-104 of B.
+struct lean_log {
+    static constexpr double            S  = 0.002612; // ≥ (1/256)/1.4961
+    static constexpr double            Z  = S * S;
+    static constexpr double            B  = 0.4055; // ≥ ln 1.5
+    static constexpr fpk::horner_bound HP = fpk::horner_error(kLeanLogC, Z, kU);
+    static constexpr double            TT = 2 * S * Z * HP.Mag * (1 + 4 * kU); // ≥ |t|
+    static constexpr double            ET =
+        3 * kU * TT + 2 * S * Z * HP.Err + 2 * fpk::pow_n(S, 9) / 9 * 1.01 + 2 * Z * kU * S * 1.0001;
+    static constexpr double Lsum = 5 * kU * (B + 2 * S) + TT;
+    static constexpr double Abs  = up(ET + 64 * kU * kU * S + 7 * kU * Lsum + kTableErr * B);
+    static constexpr double PerM = up(0.6932 * (35 * kU * kU + kU * kU + kTableErr));
+};
+
+template <dd_type D>
+[[gnu::always_inline]] inline D log_lean_value(D x, double& bound) noexcept {
+    const auto [m, s, lc] = log_reduce(x);
+    const double sh = s.Hi, zh = sh * sh;
+    const double t  = 2 * (fpk::rounded_product(sh, zh) * fpk::horner(zh, kLeanLogC.C));
+    const double md = static_cast<double>(m);
+    const D      a  = two_prod(md, consts<D>::Ln2.Hi);
+    const D      s1 = two_sum(a.Hi, lc.Hi);
+    const D      s2 = two_sum(s1.Hi, 2 * s.Hi);
+    const double lo = (((s1.Lo + s2.Lo) + (a.Lo + md * consts<D>::Ln2.Lo)) + (lc.Lo + 2 * s.Lo)) + t;
+    bound           = lean_log::Abs + lean_log::PerM * (md < 0 ? -md : md);
+    return fast_two_sum(s2.Hi, lo);
+}
+
+template <dd_type D>
+inline D log_lean(D x, double& bound) noexcept {
+    return log_lean_value(x, bound);
+}
+
+// log2 and log10: ln x times the constant (within 2^-104) as a dd product
+// (within 4kU²), so the bound scales by the constant (≤ 1.4427) and adds
+// 2^-100 of the result.
+template <dd_type D>
+inline D log2_lean(D x, double& bound) noexcept {
+    const D v = mul(log_lean_value(x, bound), consts<D>::Log2e);
+    bound     = bound * 1.4427 + 0x1p-100 * (v.Hi < 0 ? -v.Hi : v.Hi);
+    return v;
+}
+template <dd_type D>
+inline D log10_lean(D x, double& bound) noexcept {
+    const D v = mul(log_lean_value(x, bound), consts<D>::Log10e);
+    bound     = bound * 0.4343 + 0x1p-100 * (v.Hi < 0 ? -v.Hi : v.Hi);
     return v;
 }
 } // namespace beman::inside::math::detail::dd
