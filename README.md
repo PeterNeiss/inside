@@ -98,10 +98,14 @@ reports)
 
 ### Examples
 
-[`examples/`](examples/) holds 30+ self-contained programs — e.g.
+[`examples/`](examples/) holds 30 self-contained programs — start with
+[`basics.cpp`](examples/basics.cpp) (clamp, wrap, bounded loops); then e.g.
 [`clock.cpp`](examples/clock.cpp) (wrap with carry),
 [`money.cpp`](examples/money.cpp) (cents-exact currency),
-[`pid_controller.cpp`](examples/pid_controller.cpp) (fixed-point control loop).
+[`expected_pipeline.cpp`](examples/expected_pipeline.cpp) (errors with their cause),
+[`json_io.cpp`](examples/json_io.cpp) (exact JSON numbers),
+[`wei.cpp`](examples/wei.cpp) (10^27-point grids),
+[`planck_to_cosmos.cpp`](examples/planck_to_cosmos.cpp) (grids past 64 bits, C++26).
 Each builds as `beman.inside.examples.<name>` and runs as a ctest test
 (`ctest --preset gcc-debug -L example`).
 

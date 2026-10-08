@@ -181,7 +181,8 @@ deduced` (width flags are dropped on results, which deduce their own width),
 so an `exact + f64` sum is exact and an `f64` math chain stays double-backed.
 A result grid finer than the `uint64` index space deduces a wide integer
 index, keeping the result exact. See
-[`examples/storage_flags.cpp`](../examples/storage_flags.cpp).
+[`examples/storage.cpp`](../examples/storage.cpp); [`examples/wei.cpp`](../examples/wei.cpp)
+and [`examples/solar_system.cpp`](../examples/solar_system.cpp) use wide raws.
 
 > **Full range and SIMD width.** The smallest-type selection uses each raw
 > type's full range: `inside<{0, 255}>` is a **uint8** and `inside<{-128, 127}>`

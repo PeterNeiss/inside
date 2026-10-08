@@ -176,9 +176,11 @@ the results.
 ### Examples and tests
 
 - [examples/division.cpp](../examples/division.cpp) — paths B and C side by
-  side; default exact-rational vs `div(a, b, snapped)`.
-- [examples/integer_division.cpp](../examples/integer_division.cpp) — the
-  type-level vs per-call forms of path B.
+  side: exact quotients, per-call and type-level `snap`, rounding modes, the
+  `errc::division_by_zero` case and a zero-free divisor's plain result.
+- [examples/expected_pipeline.cpp](../examples/expected_pipeline.cpp) —
+  chaining fallible steps (`from_chars`, division, `try_make`) with
+  `and_then` / `or_else`, and the first error's cause at the end.
 - [tests/beman/inside/inside_arithmetic.test.cpp](../tests/beman/inside/inside_arithmetic.test.cpp) — the
   `"inside div: rational vs integer paths"` case covers paths B and C across
   unit / non-unit notch and signed bounds.

@@ -1,53 +1,47 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// Fixed-point arithmetic using fractional notch grids.
-// A grid with notch 1/256 gives 8-bit fractional precision (8.8 fixed-point).
-// The library handles all scaling automatically — no manual bit shifting.
+// Fixed point as grids: a notch of 1/2^n is a Qm.n format, any other notch
+// (0.5 °C, 0.25 steps) works the same way, and the library does the scaling —
+// no shifts, no hand-tracked radix point. Products land on a finer grid, so
+// they are exact; storing back onto a coarse grid rounds by the policy.
 
+#include <iomanip>
 #include <iostream>
 
+#include <beman/inside/formats.hpp>
 #include <beman/inside/inside.hpp>
 #include <beman/inside/io.hpp>
-#include <beman/inside/formats.hpp>
 
 using namespace beman::inside;
+using beman::inside::detail::rational;
 
 int main() {
-    // 8.8 fixed-point: values from 0 to 255 in steps of 1/256.
-    // This is exactly the predefined `beman::inside::q8_8` from <beman/inside/formats.hpp>.
-    using fp8 = q8_8;
+    // Q-format reference: the predefined formats and two custom ones.
+    using q1_7        = inside<{{0, 1}, per<128>}>; // Q1.7 in [0, 1]
+    using half_signed = inside<{{-50, 50}, 0.5}>;   // 201 half steps, offset-encoded
+    static_assert(sizeof(q4_4) == 1 && sizeof(q8_8) == 2 && sizeof(q16_16) == 4);
+    static_assert(sizeof(q1_7) == 1 && sizeof(half_signed) == 1);
 
-    fp8 a = 3.5;
-    fp8 b = 7.25;
+    std::cout << std::left << std::setw(13) << "format" << std::setw(8) << "bytes" << "x + x\n";
+    auto row = [](const char* name, auto x) {
+        std::cout << std::left << std::setw(13) << name << std::setw(8) << sizeof(x) << x + x << "\n";
+    };
+    row("Q4.4", q4_4{3.25});
+    row("Q1.7", q1_7{0.75});
+    row("Q8.8", q8_8{42.5});
+    row("Q16.16", q16_16{1000.125});
+    row("half steps", half_signed{-12.5});
 
-    std::cout << "a = " << a << "\n"; // 3.5
-    std::cout << "b = " << b << "\n"; // 7.25
+    // Sums and products are exact: the product of two Q8.8 lives on 1/65536.
+    const q8_8 a{3.5}, b{7.25};
+    std::cout << "\n3.5 + 7.25 = " << a + b << ", 3.5 * 7.25 = " << a * b << "\n";
+    if (rational{a * b} != rational{203, 8}) // 25.375
+        return 1;
 
-    // Addition preserves precision
-    auto sum = a + b;
-    std::cout << "a + b = " << sum << "\n"; // 10.75
-
-    // Multiplication scales correctly
-    auto prod = a * b;
-    std::cout << "a * b = " << prod << "\n"; // 25.375
-
-    // Half-step grid: sensor readings at 0.5 resolution
-    using sensor = inside<{{0, 50}, 0.5}>;
-
-    sensor reading = 23.5;
-    sensor offset  = 2.5;
-
-    auto adjusted = reading + offset;
-    std::cout << "reading + offset = " << adjusted << "\n"; // 26
-
-    // Quarter-step grid: fine-grained control
-    using knob = inside<{{0, 10}, 0.25}>;
-
-    knob volume = 7.75;
-    std::cout << "volume = " << volume << "\n"; // 7.75
-
-    // Storage is compact: knob needs only uint8_t for 40 steps
-    static_assert(sizeof(knob) == 1);
-    std::cout << "sizeof(knob) = " << sizeof(knob) << "\n";
-
+    // Storing back onto the 0.5 °C grid rounds by the type's policy.
+    using celsius = inside<{{-40, 60}, 0.5}, round_nearest>;
+    const celsius room{21.4}, body{37};
+    std::cout << "room " << room << " C, body - room " << body - room << " C\n";
+    if (room != celsius{21.5} || rational{body - room} != rational{31, 2})
+        return 1;
     return 0;
 }
