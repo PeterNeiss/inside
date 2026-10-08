@@ -5204,6 +5204,15 @@ constexpr bool dispatch_out_of_range(L& lhs, P&& policy, A&& action, DoClamp do_
         return range_fail(policy);
 }
 
+// A failure goes to an on_error action when there is one, else the policy.
+template <typename L, typename P, typename A>
+constexpr void report_failure(L& lhs, P& policy, A& action, errc code) {
+    if constexpr (error_action<plain_t<A>>)
+        action.Fn(lhs, code, errc_message(code));
+    else
+        policy.report(code);
+}
+
 //---------------------------------------------------------------------------
 // The on_wrap carry is always an inside whose grid holds every carry the
 // source kind can produce: an inside source uses its own range, an
@@ -5348,12 +5357,7 @@ struct assignment;
 // on_wrap action the carry in the same shape as on the builtin paths.
 template <typename R, insidable L, typename P, typename A, std::size_t K>
 constexpr L& assign_exact(L& lhs, const exact_frac<K>& v, P&& policy, A&& action) {
-    auto fail = [&](errc code) {
-        if constexpr (error_action<plain_t<A>>)
-            action.Fn(lhs, code, errc_message(code));
-        else
-            policy.report(code);
-    };
+    auto fail = [&](errc code) { report_failure(lhs, policy, action, code); };
     if constexpr (rational_raw<L> || fp_raw<L>) {
         // L holds 64-bit values: narrow through the rational (a value that does
         // not fit lies outside every such grid).
@@ -5675,26 +5679,20 @@ struct assignment<L, R> {
     }
 
     template <typename P, typename A = no_action>
-    static constexpr bool store_checked(L& lhs, R rhs, P&& policy, A&& action = {}) {
-        if constexpr (rational_raw<L> && detail::notch64<L> == 0) {
-            lhs = L::from_raw(rhs);
-            return true;
-        } // continuous: store verbatim
+    static constexpr void store_checked(L& lhs, R rhs, P&& policy, A&& action = {}) {
+        if constexpr (rational_raw<L> && detail::notch64<L> == 0)
+            lhs = L::from_raw(rhs); // continuous: store verbatim
         else if constexpr (fp_raw<L>) {
             // f64 target: raw IS the value — snap to the dyadic grid (range handling
             // already ran in the assign cascade; finite guard mirrors store_f64's).
             const double v = static_cast<double>(rhs);
             if (!(v - v == 0)) [[unlikely]] // assign() screens these first
-            {
-                policy.report(errc::not_finite);
-                return false;
-            }
+                return policy.report(errc::not_finite);
             // v rounds rhs; at a rounding boundary the exact value decides.
             lhs = L::from_raw(snap_double_from<grid_of<L>, rounding_for<L, P>>(v, [&] {
                 const auto c = rhs <=> rational{v};
                 return c > 0 ? 1 : c < 0 ? -1 : 0;
             }));
-            return true;
         } else if constexpr (detail::lower64<L> == detail::upper64<L>) {
             // Singleton grid: offset encoding → Raw=0; rational/direct → Raw = Lower.
             if constexpr (rational_raw<L>)
@@ -5703,7 +5701,6 @@ struct assignment<L, R> {
                 lhs = L::from_raw(raw_cast<L>(raw_lo<L>));
             else
                 lhs = L::from_raw(0);
-            return true;
         } else {
             // Store the k-th notch slot: rational storage holds the snapped value;
             // raw_from_offset<L> covers offset- and direct-encoded integers.
@@ -5752,11 +5749,11 @@ struct assignment<L, R> {
                         static_cast<umax>((num - Lo * static_cast<imax>(aden)) * k2);
                     if (den2 == 1) {
                         store_slot(onum);
-                        return true;
+                        return;
                     }
                     if constexpr (has_round_flag) {
                         store_slot(round_quotient<L, P>(onum, den2));
-                        return true;
+                        return;
                     }
                     // strict policy, off-notch: fall through to the rational path for
                     // the error message / action plumbing (cold).
@@ -5771,36 +5768,22 @@ struct assignment<L, R> {
             if (!quotient.has_value()) [[unlikely]] {
                 const wide_slot_result slot = wide_slot<P>(rational{rhs});
                 if constexpr (!has_round_flag)
-                    if (!slot.Exact && policy.round_check()) [[unlikely]] {
-                        if constexpr (error_action<plain_t<A>>) {
-                            action.Fn(lhs, errc::rounding_error, errc_message(errc::rounding_error));
-                            return false;
-                        }
-                        policy.report(errc::rounding_error);
-                        return false;
-                    }
+                    if (!slot.Exact && policy.round_check()) [[unlikely]]
+                        return report_failure(lhs, policy, action, errc::rounding_error);
                 store_slot(slot.Slot);
-                return true;
+                return;
             }
             rational raw = *quotient;
             umax     den = static_cast<umax>(raw.Denominator);
             if (den == 1) {
                 store_slot(raw.Numerator);
-                return true;
+                return;
             }
 
-            if constexpr (has_round_flag)
-                store_slot(round_quotient<L, P>(raw.Numerator, den));
-            else if (policy.round_check()) [[unlikely]] {
-                if constexpr (error_action<plain_t<A>>) {
-                    action.Fn(lhs, errc::rounding_error, errc_message(errc::rounding_error));
-                    return false;
-                }
-                policy.report(errc::rounding_error);
-                return false;
-            } else
-                store_slot(round_quotient<L, P>(raw.Numerator, den));
-            return true;
+            if constexpr (!has_round_flag)
+                if (policy.round_check()) [[unlikely]]
+                    return report_failure(lhs, policy, action, errc::rounding_error);
+            store_slot(round_quotient<L, P>(raw.Numerator, den));
         }
     }
 
@@ -5873,17 +5856,11 @@ struct assignment<L, R> {
             if constexpr (std::floating_point<R>)
                 if (!(rhs - rhs == 0) || huge(rhs)) [[unlikely]] {
                     if (rhs != rhs) {
-                        if constexpr (error_action<plain_t<A>>)
-                            action.Fn(lhs, errc::not_finite, errc_message(errc::not_finite));
-                        else
-                            policy.report(errc::not_finite);
+                        report_failure(lhs, policy, action, errc::not_finite);
                         return lhs;
                     }
                     if (!(rhs - rhs == 0) && !has_policy<L, P, clamp>) {
-                        if constexpr (error_action<plain_t<A>>)
-                            action.Fn(lhs, errc::not_finite, errc_message(errc::not_finite));
-                        else
-                            policy.report(errc::not_finite);
+                        report_failure(lhs, policy, action, errc::not_finite);
                         return lhs;
                     }
                     return assign_exact<R>(
@@ -5905,10 +5882,7 @@ struct assignment<L, R> {
                     if (rhs == rhs)
                         return assignment<L, rational>::assign(
                             lhs, rhs > 0 ? detail::upper64<L> : detail::lower64<L>, policy);
-                if constexpr (error_action<plain_t<A>>)
-                    action.Fn(lhs, errc::not_finite, errc_message(errc::not_finite));
-                else
-                    policy.report(errc::not_finite);
+                report_failure(lhs, policy, action, errc::not_finite);
                 return lhs;
             }
 
@@ -10422,6 +10396,28 @@ inline double rounded_product(double a, double b) noexcept {
     #endif
 }
 
+// A value as the unevaluated sum Hi + Lo of two doubles, and the error-free
+// sums that make one (the dd tier's arithmetic builds on them).
+struct hilo {
+    double Hi;
+    double Lo;
+};
+
+constexpr hilo two_sum(double a, double b) noexcept {
+    a              = fenced(a);
+    b              = fenced(b);
+    const double s = a + b, bb = s - a;
+    return {s, (a - (s - bb)) + (b - bb)};
+}
+
+// |a| ≥ |b| (or a == 0).
+constexpr hilo fast_two_sum(double a, double b) noexcept {
+    a              = fenced(a);
+    b              = fenced(b);
+    const double s = a + b;
+    return {s, b - (s - a)};
+}
+
 //---------------------------------------------------------------------------
 // The bound arithmetic.
 //---------------------------------------------------------------------------
@@ -10605,51 +10601,20 @@ struct trig_k {
     // and |k|·kHalfPiRes by sec² = 1 + t² times itself.
     static constexpr double TanRel = up(sin_poly_rel<NS> + cos_poly_rel<NC> + kU + 1.5710 * kU);
 
-    static double sin(double x, double& bound) {
+    // sin x is sin, cos, −sin, −cos of r in quadrants 0…3; cos x is sin x one
+    // quadrant on.
+    static double quadrant(double x, long shift, double& bound) {
         long         q;
         double       k;
         const double r = reduce_quadrant(x, q, k);
-        double       v;
-        switch (q) {
-        case 0:
-            v = sin_poly<NS>(r);
-            break;
-        case 1:
-            v = cos_poly<NC>(r);
-            break;
-        case 2:
-            v = -sin_poly<NS>(r);
-            break;
-        default:
-            v = -cos_poly<NC>(r);
-            break;
-        }
-        bound = Rel * __builtin_fabs(v) + AbsX * (__builtin_fabs(x) > 1 ? __builtin_fabs(x) : 1.0) + kTiny;
+        q              = (q + shift) & 3;
+        const double p = q & 1 ? cos_poly<NC>(r) : sin_poly<NS>(r);
+        const double v = q & 2 ? -p : p;
+        bound          = Rel * __builtin_fabs(v) + AbsX * (__builtin_fabs(x) > 1 ? __builtin_fabs(x) : 1.0) + kTiny;
         return v;
     }
-
-    static double cos(double x, double& bound) {
-        long         q;
-        double       k;
-        const double r = reduce_quadrant(x, q, k);
-        double       v;
-        switch (q) {
-        case 0:
-            v = cos_poly<NC>(r);
-            break;
-        case 1:
-            v = -sin_poly<NS>(r);
-            break;
-        case 2:
-            v = -cos_poly<NC>(r);
-            break;
-        default:
-            v = sin_poly<NS>(r);
-            break;
-        }
-        bound = Rel * __builtin_fabs(v) + AbsX * (__builtin_fabs(x) > 1 ? __builtin_fabs(x) : 1.0) + kTiny;
-        return v;
-    }
+    static double sin(double x, double& bound) { return quadrant(x, 0, bound); }
+    static double cos(double x, double& bound) { return quadrant(x, 1, bound); }
 
     // False on a pole (odd quadrant with s == 0).
     static bool tan(double x, double& t, double& bound) {
@@ -10892,12 +10857,10 @@ struct log_k {
         const double f2 = f + f;
         const double t  = fma(fenced(f2 * z), horner(z, q_series<0>::C.C), fl + fl);
         const double ed = static_cast<double>(e);
-        const double h = fenced(ed * kLn2Hi), s = fenced(h + f2), sb = s - h;
-        const double sl   = (h - (s - sb)) + (f2 - sb); // h + 2f = s + sl
-        const double tail = (sl + ed * kLn2Lo) + t;
-        const double v    = s + tail;
-        lo                = tail - (v - s);
-        return v;
+        const hilo   h  = two_sum(ed * kLn2Hi, f2);
+        const hilo   v  = fast_two_sum(h.Hi, (h.Lo + ed * kLn2Lo) + t);
+        lo              = v.Lo;
+        return v.Hi;
     }
 
     static double log(double x, double& bound) {
@@ -10926,21 +10889,12 @@ struct log_k {
     // (½kU). Log1pRel collects these; the callers add u's own error.
     static constexpr double              Log1pRel = up(2 * HlRel + 4 * kU * (1 + 0x1p-50) + 0.5 * kU);
     [[gnu::always_inline]] static double log1p_hl(double uh, double ul) {
-        const double one = fenced(1.0), u = fenced(uh);
-        const double wh = fenced(one + u), b = wh - one;
-        const double wl = ((one - (wh - b)) + (u - b)) + ul;
+        const hilo   w  = two_sum(1.0, uh);
+        const double wl = w.Lo + ul;
         double       lo;
-        const double v = value_hl(wh, lo);
-        return v + (lo + wl / wh);
+        const double v = value_hl(w.Hi, lo);
+        return v + (lo + wl / w.Hi);
     }
-    // u = a + t, sum and remainder, exactly (a ≥ 0, t ≥ 0).
-    [[gnu::always_inline]] static double sum_hl(double a, double t, double& lo) {
-        const double fa = fenced(a), ft = fenced(t);
-        const double s = fa + ft, b = s - fa;
-        lo = (fa - (s - b)) + (ft - b);
-        return s;
-    }
-
     // asinh a, a = |x| ≤ 2^500: u = a + t, t = a²/(1 + √(1 + a²)), the sum
     // exact. t is within 4.5kU (a², the fma's ½kU through the root, the
     // root, 1 + √ and the quotient), which moves A by 4.5kU·t/(1 + u)
@@ -10961,10 +10915,9 @@ struct log_k {
             return x < 0 ? -m : m;
         }
         const double t = (a * a) / (1.0 + std::sqrt(fma(a, a, 1.0)));
-        double       ul;
-        const double uh = sum_hl(a, t, ul);
-        const double m  = log1p_hl(uh, ul);
-        bound           = AsinhRel * m + kTiny;
+        const hilo   u = two_sum(a, t);
+        const double m = log1p_hl(u.Hi, u.Lo);
+        bound          = AsinhRel * m + kTiny;
         return x < 0 ? -m : m;
     }
 
@@ -10988,10 +10941,9 @@ struct log_k {
         }
         const double y = x - 1.0;
         const double s = std::sqrt(fma(y, y, y + y));
-        double       ul;
-        const double uh = sum_hl(y, s, ul);
-        const double v  = log1p_hl(uh, ul);
-        bound           = AcoshRel * v + kTiny;
+        const hilo   u = two_sum(y, s);
+        const double v = log1p_hl(u.Hi, u.Lo);
+        bound          = AcoshRel * v + kTiny;
         return v;
     }
 
@@ -11211,31 +11163,15 @@ using namespace ::beman::inside::detail;
 namespace ax  = ::beman::inside::math::detail::ax;
 namespace fpk = ::beman::inside::math::detail::fp;
 
-struct dd {
-    double Hi;
-    double Lo;
-};
+using dd = fpk::hilo;
 
 //---------------------------------------------------------------------------
 // Error-free transformations and the arithmetic on them (QD-library style).
 // Products use std::fma at runtime and Dekker's split at compile time.
 //---------------------------------------------------------------------------
+using fpk::fast_two_sum;
 using fpk::fenced;
-
-constexpr dd two_sum(double a, double b) noexcept {
-    a              = fenced(a);
-    b              = fenced(b);
-    const double s = a + b, bb = s - a;
-    return {s, (a - (s - bb)) + (b - bb)};
-}
-
-// |a| ≥ |b| (or a == 0).
-constexpr dd fast_two_sum(double a, double b) noexcept {
-    a              = fenced(a);
-    b              = fenced(b);
-    const double s = a + b;
-    return {s, b - (s - a)};
-}
+using fpk::two_sum;
 
 constexpr dd split(double a) noexcept {
     const double c  = 134217729.0 * a; // 2^27 + 1
@@ -11516,19 +11452,33 @@ concept dd_type = std::same_as<D, dd>;
 // e^x = 2^m · 2^(i/64) · 2^(j/4096) · (1 + p(r)). The terms of p from r^4
 // on are below 2^-53 relative and summed in double.
 template <dd_type D>
+struct exp_reduced {
+    D    R; // the reduced argument
+    D    T; // 2^(i/64)·2^(j/4096)
+    long M; // the power of 2
+};
+
+template <dd_type D>
+[[gnu::always_inline]] inline exp_reduced<D> exp_reduce(D x) noexcept {
+    using C         = consts<D>;
+    const double k  = __builtin_nearbyint(x.Hi * kInvLn2By4096);
+    const long   ik = static_cast<long>(k);
+    return {
+        reduce(x, k, C::Ln2By4096[0], C::Ln2By4096[1], C::Ln2By4096[2], 0),
+        mul(C::Exp2By64[static_cast<std::size_t>((ik >> 6) & 63)], C::Exp2By4096[static_cast<std::size_t>(ik & 63)]),
+        ik >> 12};
+}
+
+template <dd_type D>
 inline D exp(D x) noexcept {
-    using C           = consts<D>;
-    const double k    = __builtin_nearbyint(x.Hi * kInvLn2By4096);
-    const D      r    = reduce(x, k, C::Ln2By4096[0], C::Ln2By4096[1], C::Ln2By4096[2], 0);
-    const double rh   = r.Hi;
-    const double tail = fpk::horner(rh, 1.0 / 5040, 1.0 / 720, 1.0 / 120, 1.0 / 24);
-    D            p    = add_dominant(C::F3, rh * tail);  // 1/3! + r/4! + …
-    p                 = add_dominant(C::F2, mul(r, p));  // 1/2! + r/3! + …
-    p                 = add_dominant(r, mul(sqr(r), p)); // e^r − 1
-    const long ik     = static_cast<long>(k);
-    const D    t =
-        mul(C::Exp2By64[static_cast<std::size_t>((ik >> 6) & 63)], C::Exp2By4096[static_cast<std::size_t>(ik & 63)]);
-    return scale(add_dominant(t, mul(t, p)), ik >> 12);
+    using C              = consts<D>;
+    const auto [r, t, m] = exp_reduce(x);
+    const double rh      = r.Hi;
+    const double tail    = fpk::horner(rh, 1.0 / 5040, 1.0 / 720, 1.0 / 120, 1.0 / 24);
+    D            p       = add_dominant(C::F3, rh * tail);  // 1/3! + r/4! + …
+    p                    = add_dominant(C::F2, mul(r, p));  // 1/2! + r/3! + …
+    p                    = add_dominant(r, mul(sqr(r), p)); // e^r − 1
+    return scale(add_dominant(t, mul(t, p)), m);
 }
 
 // ln x for normal x > 0: x = 2^m·f, f in [0.75, 1.5), c = j/128 the
@@ -11566,25 +11516,37 @@ struct sincos_t {
 // the table. The Taylor terms from r^9 (sin) and r^8 (cos) on are below
 // 2^-53 relative and summed in double.
 template <dd_type D>
+struct trig_reduced {
+    D R;      // the reduced argument
+    D Sa, Ca; // sin and cos of nπ/128
+};
+
+template <dd_type D>
+[[gnu::always_inline]] inline trig_reduced<D> trig_reduce(D x) noexcept {
+    using C        = consts<D>;
+    const double n = __builtin_nearbyint(x.Hi * kInvPiBy128);
+    const long   j = static_cast<long>(n);
+    return {reduce(x, n, C::PiBy128[0], C::PiBy128[1], C::PiBy128[2], C::PiBy128[3]),
+            C::Sin[static_cast<std::size_t>(j & 255)],
+            C::Sin[static_cast<std::size_t>((j + 64) & 255)]};
+}
+
+template <dd_type D>
 [[gnu::always_inline]] inline sincos_t sincos(D x) noexcept {
-    using C         = consts<D>;
-    const double n  = __builtin_nearbyint(x.Hi * kInvPiBy128);
-    const D      r  = reduce(x, n, C::PiBy128[0], C::PiBy128[1], C::PiBy128[2], C::PiBy128[3]);
-    const D      z  = sqr(r);
-    const double zh = z.Hi;
-    const double st = fpk::horner(zh, 1.0 / 6227020800.0, -1.0 / 39916800.0, 1.0 / 362880.0);
-    const double ct = fpk::horner(zh, 1.0 / 479001600.0, -1.0 / 3628800.0, 1.0 / 40320.0);
-    D            s  = add_dominant(neg(C::F7), zh * st); // −1/7! + z/9! − …
-    s               = add_dominant(C::F5, mul(z, s));
-    s               = add_dominant(neg(C::F3), mul(z, s));
-    const D sr      = add_dominant(r, mul(mul(r, z), s)); // sin r
-    D       c       = add_dominant(neg(C::F6), zh * ct);
-    c               = add_dominant(C::F4, mul(z, c));
-    c               = add_dominant(neg(C::F2), mul(z, c));
-    const D    cm   = mul(z, c); // cos r − 1
-    const long j    = static_cast<long>(n);
-    const D    sa   = C::Sin[static_cast<std::size_t>(j & 255)];
-    const D    ca   = C::Sin[static_cast<std::size_t>((j + 64) & 255)];
+    using C                = consts<D>;
+    const auto [r, sa, ca] = trig_reduce(x);
+    const D      z         = sqr(r);
+    const double zh        = z.Hi;
+    const double st        = fpk::horner(zh, 1.0 / 6227020800.0, -1.0 / 39916800.0, 1.0 / 362880.0);
+    const double ct        = fpk::horner(zh, 1.0 / 479001600.0, -1.0 / 3628800.0, 1.0 / 40320.0);
+    D            s         = add_dominant(neg(C::F7), zh * st); // −1/7! + z/9! − …
+    s                      = add_dominant(C::F5, mul(z, s));
+    s                      = add_dominant(neg(C::F3), mul(z, s));
+    const D sr             = add_dominant(r, mul(mul(r, z), s)); // sin r
+    D       c              = add_dominant(neg(C::F6), zh * ct);
+    c                      = add_dominant(C::F4, mul(z, c));
+    c                      = add_dominant(neg(C::F2), mul(z, c));
+    const D cm             = mul(z, c); // cos r − 1
     return {add_dominant(sa, add(mul(sa, cm), mul(ca, sr))), add_dominant(ca, sub(mul(ca, cm), mul(sa, sr)))};
 }
 
@@ -11817,19 +11779,14 @@ template <dd_type D>
 
 template <dd_type D>
 [[gnu::always_inline]] inline sincos_t sincos_lean(D x) noexcept {
-    using C         = consts<D>;
-    const double n  = __builtin_nearbyint(x.Hi * kInvPiBy128);
-    const D      r  = reduce(x, n, C::PiBy128[0], C::PiBy128[1], C::PiBy128[2], C::PiBy128[3]);
+    const auto [r, sa, ca] = trig_reduce(x);
     const double rh = r.Hi, rl = r.Lo;
     const D      z  = two_prod(rh, rh);
     const double zh = z.Hi;
     const double ts = std::fma(fpk::rounded_product(rh, zh), fpk::horner(zh, kLeanSinC.C), rl);
     const double tc =
         std::fma(fpk::rounded_product(zh, zh), fpk::horner(zh, kLeanCosC.C), -std::fma(rh, rl, 0.5 * z.Lo));
-    const double h  = -0.5 * zh;
-    const long   j  = static_cast<long>(n);
-    const D      sa = C::Sin[static_cast<std::size_t>(j & 255)];
-    const D      ca = C::Sin[static_cast<std::size_t>((j + 64) & 255)];
+    const double h = -0.5 * zh;
     return {lean_rotate(sa, ca, rh, ts, h, tc), lean_rotate(ca, neg(sa), rh, ts, h, tc)};
 }
 
@@ -11884,18 +11841,13 @@ struct lean_exp {
 
 template <dd_type D>
 [[gnu::always_inline]] inline D exp_lean_value(D x) noexcept {
-    using C         = consts<D>;
-    const double k  = __builtin_nearbyint(x.Hi * kInvLn2By4096);
-    const D      r  = reduce(x, k, C::Ln2By4096[0], C::Ln2By4096[1], C::Ln2By4096[2], 0);
-    const double rh = r.Hi;
-    const double tp = std::fma(fpk::rounded_product(rh, rh), fpk::horner(rh, kLeanExpC.C), r.Lo);
-    const long   ik = static_cast<long>(k);
-    const D      t =
-        mul(C::Exp2By64[static_cast<std::size_t>((ik >> 6) & 63)], C::Exp2By4096[static_cast<std::size_t>(ik & 63)]);
-    const D      p  = two_prod(t.Hi, rh);
-    const D      s  = fast_two_sum(t.Hi, p.Hi);
-    const double lo = std::fma(t.Hi, tp, std::fma(t.Lo, rh, s.Lo + (p.Lo + t.Lo)));
-    return scale(fast_two_sum(s.Hi, lo), ik >> 12);
+    const auto [r, t, m] = exp_reduce(x);
+    const double rh      = r.Hi;
+    const double tp      = std::fma(fpk::rounded_product(rh, rh), fpk::horner(rh, kLeanExpC.C), r.Lo);
+    const D      p       = two_prod(t.Hi, rh);
+    const D      s       = fast_two_sum(t.Hi, p.Hi);
+    const double lo      = std::fma(t.Hi, tp, std::fma(t.Lo, rh, s.Lo + (p.Lo + t.Lo)));
+    return scale(fast_two_sum(s.Hi, lo), m);
 }
 
 template <dd_type D>
@@ -12842,6 +12794,18 @@ constexpr double fabs_d(double v) noexcept { return __builtin_fabs(v); }
 // does not announce).
 inline double nearest_int(double t) noexcept { return __builtin_nearbyint(t); }
 
+// Stores the grid point with value index j, slot offset k, in out. j stays in
+// the caller's type (double or imax): only an fp raw reads it.
+template <insidable Out, typename J>
+[[gnu::always_inline]] inline void store_slot(J j, umax k, Out& out) {
+    if constexpr (integer_raw<Out>)
+        out = Out::from_raw(raw_from_offset<Out>(k));
+    else if constexpr (rational_raw<Out>) // the grid point as a fraction
+        out = store<Out>(wide_sint<2>{k});
+    else // fp raw: the grid point, exact
+        out = Out::from_raw(static_cast<raw_t<Out>>(static_cast<double>(j) * (notch_p<Out> / notch_q<Out>)));
+}
+
 // The slot of a kernel value v within an absolute bound, decided in double
 // arithmetic. t = v·q/p is v's value index (exact for a dyadic notch, else
 // within |t|·2^-52) and bt the bound in index units; the bound's own 1.5
@@ -12880,12 +12844,7 @@ inline bool fp_decide(double v, double bound, Out& out) noexcept {
     }
     if (!(j >= lo && j <= hi))
         return false;
-    if constexpr (integer_raw<Out>)
-        out = Out::from_raw(raw_from_offset<Out>(static_cast<umax>(static_cast<imax>(j - lo))));
-    else if constexpr (rational_raw<Out>) // the grid point as a fraction
-        out = store<Out>(wide_sint<2>{static_cast<umax>(static_cast<imax>(j - lo))});
-    else // fp raw: the grid point, exact
-        out = Out::from_raw(static_cast<raw_t<Out>>(j * (notch_p<Out> / notch_q<Out>)));
+    store_slot(j, static_cast<umax>(static_cast<imax>(j - lo)), out);
     return true;
 }
 
@@ -13006,12 +12965,7 @@ inline bool dd_decide(ddk::dd v, double bound, Out& out) noexcept {
     }
     if (j < first || j > last)
         return false;
-    if constexpr (integer_raw<Out>)
-        out = Out::from_raw(raw_from_offset<Out>(static_cast<umax>(j) - static_cast<umax>(first)));
-    else if constexpr (rational_raw<Out>) // the grid point as a fraction
-        out = store<Out>(wide_sint<2>{static_cast<umax>(j) - static_cast<umax>(first)});
-    else // fp raw: the grid point, exact
-        out = Out::from_raw(static_cast<raw_t<Out>>(static_cast<double>(j) * (notch_p<Out> / notch_q<Out>)));
+    store_slot(j, static_cast<umax>(j) - static_cast<umax>(first), out);
     return true;
 }
 

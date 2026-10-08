@@ -53,6 +53,15 @@ constexpr bool dispatch_out_of_range(L& lhs, P&& policy, A&& action, DoClamp do_
         return range_fail(policy);
 }
 
+// A failure goes to an on_error action when there is one, else the policy.
+template <typename L, typename P, typename A>
+constexpr void report_failure(L& lhs, P& policy, A& action, errc code) {
+    if constexpr (error_action<plain_t<A>>)
+        action.Fn(lhs, code, errc_message(code));
+    else
+        policy.report(code);
+}
+
 //---------------------------------------------------------------------------
 // The on_wrap carry is always an inside whose grid holds every carry the
 // source kind can produce: an inside source uses its own range, an
@@ -197,12 +206,7 @@ struct assignment;
 // on_wrap action the carry in the same shape as on the builtin paths.
 template <typename R, insidable L, typename P, typename A, std::size_t K>
 constexpr L& assign_exact(L& lhs, const exact_frac<K>& v, P&& policy, A&& action) {
-    auto fail = [&](errc code) {
-        if constexpr (error_action<plain_t<A>>)
-            action.Fn(lhs, code, errc_message(code));
-        else
-            policy.report(code);
-    };
+    auto fail = [&](errc code) { report_failure(lhs, policy, action, code); };
     if constexpr (rational_raw<L> || fp_raw<L>) {
         // L holds 64-bit values: narrow through the rational (a value that does
         // not fit lies outside every such grid).
@@ -524,26 +528,20 @@ struct assignment<L, R> {
     }
 
     template <typename P, typename A = no_action>
-    static constexpr bool store_checked(L& lhs, R rhs, P&& policy, A&& action = {}) {
-        if constexpr (rational_raw<L> && detail::notch64<L> == 0) {
-            lhs = L::from_raw(rhs);
-            return true;
-        } // continuous: store verbatim
+    static constexpr void store_checked(L& lhs, R rhs, P&& policy, A&& action = {}) {
+        if constexpr (rational_raw<L> && detail::notch64<L> == 0)
+            lhs = L::from_raw(rhs); // continuous: store verbatim
         else if constexpr (fp_raw<L>) {
             // f64 target: raw IS the value — snap to the dyadic grid (range handling
             // already ran in the assign cascade; finite guard mirrors store_f64's).
             const double v = static_cast<double>(rhs);
             if (!(v - v == 0)) [[unlikely]] // assign() screens these first
-            {
-                policy.report(errc::not_finite);
-                return false;
-            }
+                return policy.report(errc::not_finite);
             // v rounds rhs; at a rounding boundary the exact value decides.
             lhs = L::from_raw(snap_double_from<grid_of<L>, rounding_for<L, P>>(v, [&] {
                 const auto c = rhs <=> rational{v};
                 return c > 0 ? 1 : c < 0 ? -1 : 0;
             }));
-            return true;
         } else if constexpr (detail::lower64<L> == detail::upper64<L>) {
             // Singleton grid: offset encoding → Raw=0; rational/direct → Raw = Lower.
             if constexpr (rational_raw<L>)
@@ -552,7 +550,6 @@ struct assignment<L, R> {
                 lhs = L::from_raw(raw_cast<L>(raw_lo<L>));
             else
                 lhs = L::from_raw(0);
-            return true;
         } else {
             // Store the k-th notch slot: rational storage holds the snapped value;
             // raw_from_offset<L> covers offset- and direct-encoded integers.
@@ -601,11 +598,11 @@ struct assignment<L, R> {
                         static_cast<umax>((num - Lo * static_cast<imax>(aden)) * k2);
                     if (den2 == 1) {
                         store_slot(onum);
-                        return true;
+                        return;
                     }
                     if constexpr (has_round_flag) {
                         store_slot(round_quotient<L, P>(onum, den2));
-                        return true;
+                        return;
                     }
                     // strict policy, off-notch: fall through to the rational path for
                     // the error message / action plumbing (cold).
@@ -620,36 +617,22 @@ struct assignment<L, R> {
             if (!quotient.has_value()) [[unlikely]] {
                 const wide_slot_result slot = wide_slot<P>(rational{rhs});
                 if constexpr (!has_round_flag)
-                    if (!slot.Exact && policy.round_check()) [[unlikely]] {
-                        if constexpr (error_action<plain_t<A>>) {
-                            action.Fn(lhs, errc::rounding_error, errc_message(errc::rounding_error));
-                            return false;
-                        }
-                        policy.report(errc::rounding_error);
-                        return false;
-                    }
+                    if (!slot.Exact && policy.round_check()) [[unlikely]]
+                        return report_failure(lhs, policy, action, errc::rounding_error);
                 store_slot(slot.Slot);
-                return true;
+                return;
             }
             rational raw = *quotient;
             umax     den = static_cast<umax>(raw.Denominator);
             if (den == 1) {
                 store_slot(raw.Numerator);
-                return true;
+                return;
             }
 
-            if constexpr (has_round_flag)
-                store_slot(round_quotient<L, P>(raw.Numerator, den));
-            else if (policy.round_check()) [[unlikely]] {
-                if constexpr (error_action<plain_t<A>>) {
-                    action.Fn(lhs, errc::rounding_error, errc_message(errc::rounding_error));
-                    return false;
-                }
-                policy.report(errc::rounding_error);
-                return false;
-            } else
-                store_slot(round_quotient<L, P>(raw.Numerator, den));
-            return true;
+            if constexpr (!has_round_flag)
+                if (policy.round_check()) [[unlikely]]
+                    return report_failure(lhs, policy, action, errc::rounding_error);
+            store_slot(round_quotient<L, P>(raw.Numerator, den));
         }
     }
 
@@ -722,17 +705,11 @@ struct assignment<L, R> {
             if constexpr (std::floating_point<R>)
                 if (!(rhs - rhs == 0) || huge(rhs)) [[unlikely]] {
                     if (rhs != rhs) {
-                        if constexpr (error_action<plain_t<A>>)
-                            action.Fn(lhs, errc::not_finite, errc_message(errc::not_finite));
-                        else
-                            policy.report(errc::not_finite);
+                        report_failure(lhs, policy, action, errc::not_finite);
                         return lhs;
                     }
                     if (!(rhs - rhs == 0) && !has_policy<L, P, clamp>) {
-                        if constexpr (error_action<plain_t<A>>)
-                            action.Fn(lhs, errc::not_finite, errc_message(errc::not_finite));
-                        else
-                            policy.report(errc::not_finite);
+                        report_failure(lhs, policy, action, errc::not_finite);
                         return lhs;
                     }
                     return assign_exact<R>(
@@ -754,10 +731,7 @@ struct assignment<L, R> {
                     if (rhs == rhs)
                         return assignment<L, rational>::assign(
                             lhs, rhs > 0 ? detail::upper64<L> : detail::lower64<L>, policy);
-                if constexpr (error_action<plain_t<A>>)
-                    action.Fn(lhs, errc::not_finite, errc_message(errc::not_finite));
-                else
-                    policy.report(errc::not_finite);
+                report_failure(lhs, policy, action, errc::not_finite);
                 return lhs;
             }
 

@@ -104,6 +104,28 @@ inline double rounded_product(double a, double b) noexcept {
     #endif
 }
 
+// A value as the unevaluated sum Hi + Lo of two doubles, and the error-free
+// sums that make one (the dd tier's arithmetic builds on them).
+struct hilo {
+    double Hi;
+    double Lo;
+};
+
+constexpr hilo two_sum(double a, double b) noexcept {
+    a              = fenced(a);
+    b              = fenced(b);
+    const double s = a + b, bb = s - a;
+    return {s, (a - (s - bb)) + (b - bb)};
+}
+
+// |a| ≥ |b| (or a == 0).
+constexpr hilo fast_two_sum(double a, double b) noexcept {
+    a              = fenced(a);
+    b              = fenced(b);
+    const double s = a + b;
+    return {s, b - (s - a)};
+}
+
 //---------------------------------------------------------------------------
 // The bound arithmetic.
 //---------------------------------------------------------------------------
@@ -287,51 +309,20 @@ struct trig_k {
     // and |k|·kHalfPiRes by sec² = 1 + t² times itself.
     static constexpr double TanRel = up(sin_poly_rel<NS> + cos_poly_rel<NC> + kU + 1.5710 * kU);
 
-    static double sin(double x, double& bound) {
+    // sin x is sin, cos, −sin, −cos of r in quadrants 0…3; cos x is sin x one
+    // quadrant on.
+    static double quadrant(double x, long shift, double& bound) {
         long         q;
         double       k;
         const double r = reduce_quadrant(x, q, k);
-        double       v;
-        switch (q) {
-        case 0:
-            v = sin_poly<NS>(r);
-            break;
-        case 1:
-            v = cos_poly<NC>(r);
-            break;
-        case 2:
-            v = -sin_poly<NS>(r);
-            break;
-        default:
-            v = -cos_poly<NC>(r);
-            break;
-        }
-        bound = Rel * __builtin_fabs(v) + AbsX * (__builtin_fabs(x) > 1 ? __builtin_fabs(x) : 1.0) + kTiny;
+        q              = (q + shift) & 3;
+        const double p = q & 1 ? cos_poly<NC>(r) : sin_poly<NS>(r);
+        const double v = q & 2 ? -p : p;
+        bound          = Rel * __builtin_fabs(v) + AbsX * (__builtin_fabs(x) > 1 ? __builtin_fabs(x) : 1.0) + kTiny;
         return v;
     }
-
-    static double cos(double x, double& bound) {
-        long         q;
-        double       k;
-        const double r = reduce_quadrant(x, q, k);
-        double       v;
-        switch (q) {
-        case 0:
-            v = cos_poly<NC>(r);
-            break;
-        case 1:
-            v = -sin_poly<NS>(r);
-            break;
-        case 2:
-            v = -cos_poly<NC>(r);
-            break;
-        default:
-            v = sin_poly<NS>(r);
-            break;
-        }
-        bound = Rel * __builtin_fabs(v) + AbsX * (__builtin_fabs(x) > 1 ? __builtin_fabs(x) : 1.0) + kTiny;
-        return v;
-    }
+    static double sin(double x, double& bound) { return quadrant(x, 0, bound); }
+    static double cos(double x, double& bound) { return quadrant(x, 1, bound); }
 
     // False on a pole (odd quadrant with s == 0).
     static bool tan(double x, double& t, double& bound) {
@@ -574,12 +565,10 @@ struct log_k {
         const double f2 = f + f;
         const double t  = fma(fenced(f2 * z), horner(z, q_series<0>::C.C), fl + fl);
         const double ed = static_cast<double>(e);
-        const double h = fenced(ed * kLn2Hi), s = fenced(h + f2), sb = s - h;
-        const double sl   = (h - (s - sb)) + (f2 - sb); // h + 2f = s + sl
-        const double tail = (sl + ed * kLn2Lo) + t;
-        const double v    = s + tail;
-        lo                = tail - (v - s);
-        return v;
+        const hilo   h  = two_sum(ed * kLn2Hi, f2);
+        const hilo   v  = fast_two_sum(h.Hi, (h.Lo + ed * kLn2Lo) + t);
+        lo              = v.Lo;
+        return v.Hi;
     }
 
     static double log(double x, double& bound) {
@@ -608,21 +597,12 @@ struct log_k {
     // (½kU). Log1pRel collects these; the callers add u's own error.
     static constexpr double              Log1pRel = up(2 * HlRel + 4 * kU * (1 + 0x1p-50) + 0.5 * kU);
     [[gnu::always_inline]] static double log1p_hl(double uh, double ul) {
-        const double one = fenced(1.0), u = fenced(uh);
-        const double wh = fenced(one + u), b = wh - one;
-        const double wl = ((one - (wh - b)) + (u - b)) + ul;
+        const hilo   w  = two_sum(1.0, uh);
+        const double wl = w.Lo + ul;
         double       lo;
-        const double v = value_hl(wh, lo);
-        return v + (lo + wl / wh);
+        const double v = value_hl(w.Hi, lo);
+        return v + (lo + wl / w.Hi);
     }
-    // u = a + t, sum and remainder, exactly (a ≥ 0, t ≥ 0).
-    [[gnu::always_inline]] static double sum_hl(double a, double t, double& lo) {
-        const double fa = fenced(a), ft = fenced(t);
-        const double s = fa + ft, b = s - fa;
-        lo = (fa - (s - b)) + (ft - b);
-        return s;
-    }
-
     // asinh a, a = |x| ≤ 2^500: u = a + t, t = a²/(1 + √(1 + a²)), the sum
     // exact. t is within 4.5kU (a², the fma's ½kU through the root, the
     // root, 1 + √ and the quotient), which moves A by 4.5kU·t/(1 + u)
@@ -643,10 +623,9 @@ struct log_k {
             return x < 0 ? -m : m;
         }
         const double t = (a * a) / (1.0 + std::sqrt(fma(a, a, 1.0)));
-        double       ul;
-        const double uh = sum_hl(a, t, ul);
-        const double m  = log1p_hl(uh, ul);
-        bound           = AsinhRel * m + kTiny;
+        const hilo   u = two_sum(a, t);
+        const double m = log1p_hl(u.Hi, u.Lo);
+        bound          = AsinhRel * m + kTiny;
         return x < 0 ? -m : m;
     }
 
@@ -670,10 +649,9 @@ struct log_k {
         }
         const double y = x - 1.0;
         const double s = std::sqrt(fma(y, y, y + y));
-        double       ul;
-        const double uh = sum_hl(y, s, ul);
-        const double v  = log1p_hl(uh, ul);
-        bound           = AcoshRel * v + kTiny;
+        const hilo   u = two_sum(y, s);
+        const double v = log1p_hl(u.Hi, u.Lo);
+        bound          = AcoshRel * v + kTiny;
         return v;
     }
 

@@ -28,31 +28,15 @@ using namespace ::beman::inside::detail;
 namespace ax  = ::beman::inside::math::detail::ax;
 namespace fpk = ::beman::inside::math::detail::fp;
 
-struct dd {
-    double Hi;
-    double Lo;
-};
+using dd = fpk::hilo;
 
 //---------------------------------------------------------------------------
 // Error-free transformations and the arithmetic on them (QD-library style).
 // Products use std::fma at runtime and Dekker's split at compile time.
 //---------------------------------------------------------------------------
+using fpk::fast_two_sum;
 using fpk::fenced;
-
-constexpr dd two_sum(double a, double b) noexcept {
-    a              = fenced(a);
-    b              = fenced(b);
-    const double s = a + b, bb = s - a;
-    return {s, (a - (s - bb)) + (b - bb)};
-}
-
-// |a| ≥ |b| (or a == 0).
-constexpr dd fast_two_sum(double a, double b) noexcept {
-    a              = fenced(a);
-    b              = fenced(b);
-    const double s = a + b;
-    return {s, b - (s - a)};
-}
+using fpk::two_sum;
 
 constexpr dd split(double a) noexcept {
     const double c  = 134217729.0 * a; // 2^27 + 1
@@ -333,19 +317,33 @@ concept dd_type = std::same_as<D, dd>;
 // e^x = 2^m · 2^(i/64) · 2^(j/4096) · (1 + p(r)). The terms of p from r^4
 // on are below 2^-53 relative and summed in double.
 template <dd_type D>
+struct exp_reduced {
+    D    R; // the reduced argument
+    D    T; // 2^(i/64)·2^(j/4096)
+    long M; // the power of 2
+};
+
+template <dd_type D>
+[[gnu::always_inline]] inline exp_reduced<D> exp_reduce(D x) noexcept {
+    using C         = consts<D>;
+    const double k  = __builtin_nearbyint(x.Hi * kInvLn2By4096);
+    const long   ik = static_cast<long>(k);
+    return {
+        reduce(x, k, C::Ln2By4096[0], C::Ln2By4096[1], C::Ln2By4096[2], 0),
+        mul(C::Exp2By64[static_cast<std::size_t>((ik >> 6) & 63)], C::Exp2By4096[static_cast<std::size_t>(ik & 63)]),
+        ik >> 12};
+}
+
+template <dd_type D>
 inline D exp(D x) noexcept {
-    using C           = consts<D>;
-    const double k    = __builtin_nearbyint(x.Hi * kInvLn2By4096);
-    const D      r    = reduce(x, k, C::Ln2By4096[0], C::Ln2By4096[1], C::Ln2By4096[2], 0);
-    const double rh   = r.Hi;
-    const double tail = fpk::horner(rh, 1.0 / 5040, 1.0 / 720, 1.0 / 120, 1.0 / 24);
-    D            p    = add_dominant(C::F3, rh * tail);  // 1/3! + r/4! + …
-    p                 = add_dominant(C::F2, mul(r, p));  // 1/2! + r/3! + …
-    p                 = add_dominant(r, mul(sqr(r), p)); // e^r − 1
-    const long ik     = static_cast<long>(k);
-    const D    t =
-        mul(C::Exp2By64[static_cast<std::size_t>((ik >> 6) & 63)], C::Exp2By4096[static_cast<std::size_t>(ik & 63)]);
-    return scale(add_dominant(t, mul(t, p)), ik >> 12);
+    using C              = consts<D>;
+    const auto [r, t, m] = exp_reduce(x);
+    const double rh      = r.Hi;
+    const double tail    = fpk::horner(rh, 1.0 / 5040, 1.0 / 720, 1.0 / 120, 1.0 / 24);
+    D            p       = add_dominant(C::F3, rh * tail);  // 1/3! + r/4! + …
+    p                    = add_dominant(C::F2, mul(r, p));  // 1/2! + r/3! + …
+    p                    = add_dominant(r, mul(sqr(r), p)); // e^r − 1
+    return scale(add_dominant(t, mul(t, p)), m);
 }
 
 // ln x for normal x > 0: x = 2^m·f, f in [0.75, 1.5), c = j/128 the
@@ -383,25 +381,37 @@ struct sincos_t {
 // the table. The Taylor terms from r^9 (sin) and r^8 (cos) on are below
 // 2^-53 relative and summed in double.
 template <dd_type D>
+struct trig_reduced {
+    D R;      // the reduced argument
+    D Sa, Ca; // sin and cos of nπ/128
+};
+
+template <dd_type D>
+[[gnu::always_inline]] inline trig_reduced<D> trig_reduce(D x) noexcept {
+    using C        = consts<D>;
+    const double n = __builtin_nearbyint(x.Hi * kInvPiBy128);
+    const long   j = static_cast<long>(n);
+    return {reduce(x, n, C::PiBy128[0], C::PiBy128[1], C::PiBy128[2], C::PiBy128[3]),
+            C::Sin[static_cast<std::size_t>(j & 255)],
+            C::Sin[static_cast<std::size_t>((j + 64) & 255)]};
+}
+
+template <dd_type D>
 [[gnu::always_inline]] inline sincos_t sincos(D x) noexcept {
-    using C         = consts<D>;
-    const double n  = __builtin_nearbyint(x.Hi * kInvPiBy128);
-    const D      r  = reduce(x, n, C::PiBy128[0], C::PiBy128[1], C::PiBy128[2], C::PiBy128[3]);
-    const D      z  = sqr(r);
-    const double zh = z.Hi;
-    const double st = fpk::horner(zh, 1.0 / 6227020800.0, -1.0 / 39916800.0, 1.0 / 362880.0);
-    const double ct = fpk::horner(zh, 1.0 / 479001600.0, -1.0 / 3628800.0, 1.0 / 40320.0);
-    D            s  = add_dominant(neg(C::F7), zh * st); // −1/7! + z/9! − …
-    s               = add_dominant(C::F5, mul(z, s));
-    s               = add_dominant(neg(C::F3), mul(z, s));
-    const D sr      = add_dominant(r, mul(mul(r, z), s)); // sin r
-    D       c       = add_dominant(neg(C::F6), zh * ct);
-    c               = add_dominant(C::F4, mul(z, c));
-    c               = add_dominant(neg(C::F2), mul(z, c));
-    const D    cm   = mul(z, c); // cos r − 1
-    const long j    = static_cast<long>(n);
-    const D    sa   = C::Sin[static_cast<std::size_t>(j & 255)];
-    const D    ca   = C::Sin[static_cast<std::size_t>((j + 64) & 255)];
+    using C                = consts<D>;
+    const auto [r, sa, ca] = trig_reduce(x);
+    const D      z         = sqr(r);
+    const double zh        = z.Hi;
+    const double st        = fpk::horner(zh, 1.0 / 6227020800.0, -1.0 / 39916800.0, 1.0 / 362880.0);
+    const double ct        = fpk::horner(zh, 1.0 / 479001600.0, -1.0 / 3628800.0, 1.0 / 40320.0);
+    D            s         = add_dominant(neg(C::F7), zh * st); // −1/7! + z/9! − …
+    s                      = add_dominant(C::F5, mul(z, s));
+    s                      = add_dominant(neg(C::F3), mul(z, s));
+    const D sr             = add_dominant(r, mul(mul(r, z), s)); // sin r
+    D       c              = add_dominant(neg(C::F6), zh * ct);
+    c                      = add_dominant(C::F4, mul(z, c));
+    c                      = add_dominant(neg(C::F2), mul(z, c));
+    const D cm             = mul(z, c); // cos r − 1
     return {add_dominant(sa, add(mul(sa, cm), mul(ca, sr))), add_dominant(ca, sub(mul(ca, cm), mul(sa, sr)))};
 }
 
@@ -634,19 +644,14 @@ template <dd_type D>
 
 template <dd_type D>
 [[gnu::always_inline]] inline sincos_t sincos_lean(D x) noexcept {
-    using C         = consts<D>;
-    const double n  = __builtin_nearbyint(x.Hi * kInvPiBy128);
-    const D      r  = reduce(x, n, C::PiBy128[0], C::PiBy128[1], C::PiBy128[2], C::PiBy128[3]);
+    const auto [r, sa, ca] = trig_reduce(x);
     const double rh = r.Hi, rl = r.Lo;
     const D      z  = two_prod(rh, rh);
     const double zh = z.Hi;
     const double ts = std::fma(fpk::rounded_product(rh, zh), fpk::horner(zh, kLeanSinC.C), rl);
     const double tc =
         std::fma(fpk::rounded_product(zh, zh), fpk::horner(zh, kLeanCosC.C), -std::fma(rh, rl, 0.5 * z.Lo));
-    const double h  = -0.5 * zh;
-    const long   j  = static_cast<long>(n);
-    const D      sa = C::Sin[static_cast<std::size_t>(j & 255)];
-    const D      ca = C::Sin[static_cast<std::size_t>((j + 64) & 255)];
+    const double h = -0.5 * zh;
     return {lean_rotate(sa, ca, rh, ts, h, tc), lean_rotate(ca, neg(sa), rh, ts, h, tc)};
 }
 
@@ -701,18 +706,13 @@ struct lean_exp {
 
 template <dd_type D>
 [[gnu::always_inline]] inline D exp_lean_value(D x) noexcept {
-    using C         = consts<D>;
-    const double k  = __builtin_nearbyint(x.Hi * kInvLn2By4096);
-    const D      r  = reduce(x, k, C::Ln2By4096[0], C::Ln2By4096[1], C::Ln2By4096[2], 0);
-    const double rh = r.Hi;
-    const double tp = std::fma(fpk::rounded_product(rh, rh), fpk::horner(rh, kLeanExpC.C), r.Lo);
-    const long   ik = static_cast<long>(k);
-    const D      t =
-        mul(C::Exp2By64[static_cast<std::size_t>((ik >> 6) & 63)], C::Exp2By4096[static_cast<std::size_t>(ik & 63)]);
-    const D      p  = two_prod(t.Hi, rh);
-    const D      s  = fast_two_sum(t.Hi, p.Hi);
-    const double lo = std::fma(t.Hi, tp, std::fma(t.Lo, rh, s.Lo + (p.Lo + t.Lo)));
-    return scale(fast_two_sum(s.Hi, lo), ik >> 12);
+    const auto [r, t, m] = exp_reduce(x);
+    const double rh      = r.Hi;
+    const double tp      = std::fma(fpk::rounded_product(rh, rh), fpk::horner(rh, kLeanExpC.C), r.Lo);
+    const D      p       = two_prod(t.Hi, rh);
+    const D      s       = fast_two_sum(t.Hi, p.Hi);
+    const double lo      = std::fma(t.Hi, tp, std::fma(t.Lo, rh, s.Lo + (p.Lo + t.Lo)));
+    return scale(fast_two_sum(s.Hi, lo), m);
 }
 
 template <dd_type D>

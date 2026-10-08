@@ -936,6 +936,18 @@ constexpr double fabs_d(double v) noexcept { return __builtin_fabs(v); }
 // does not announce).
 inline double nearest_int(double t) noexcept { return __builtin_nearbyint(t); }
 
+// Stores the grid point with value index j, slot offset k, in out. j stays in
+// the caller's type (double or imax): only an fp raw reads it.
+template <insidable Out, typename J>
+[[gnu::always_inline]] inline void store_slot(J j, umax k, Out& out) {
+    if constexpr (integer_raw<Out>)
+        out = Out::from_raw(raw_from_offset<Out>(k));
+    else if constexpr (rational_raw<Out>) // the grid point as a fraction
+        out = store<Out>(wide_sint<2>{k});
+    else // fp raw: the grid point, exact
+        out = Out::from_raw(static_cast<raw_t<Out>>(static_cast<double>(j) * (notch_p<Out> / notch_q<Out>)));
+}
+
 // The slot of a kernel value v within an absolute bound, decided in double
 // arithmetic. t = v·q/p is v's value index (exact for a dyadic notch, else
 // within |t|·2^-52) and bt the bound in index units; the bound's own 1.5
@@ -974,12 +986,7 @@ inline bool fp_decide(double v, double bound, Out& out) noexcept {
     }
     if (!(j >= lo && j <= hi))
         return false;
-    if constexpr (integer_raw<Out>)
-        out = Out::from_raw(raw_from_offset<Out>(static_cast<umax>(static_cast<imax>(j - lo))));
-    else if constexpr (rational_raw<Out>) // the grid point as a fraction
-        out = store<Out>(wide_sint<2>{static_cast<umax>(static_cast<imax>(j - lo))});
-    else // fp raw: the grid point, exact
-        out = Out::from_raw(static_cast<raw_t<Out>>(j * (notch_p<Out> / notch_q<Out>)));
+    store_slot(j, static_cast<umax>(static_cast<imax>(j - lo)), out);
     return true;
 }
 
@@ -1100,12 +1107,7 @@ inline bool dd_decide(ddk::dd v, double bound, Out& out) noexcept {
     }
     if (j < first || j > last)
         return false;
-    if constexpr (integer_raw<Out>)
-        out = Out::from_raw(raw_from_offset<Out>(static_cast<umax>(j) - static_cast<umax>(first)));
-    else if constexpr (rational_raw<Out>) // the grid point as a fraction
-        out = store<Out>(wide_sint<2>{static_cast<umax>(j) - static_cast<umax>(first)});
-    else // fp raw: the grid point, exact
-        out = Out::from_raw(static_cast<raw_t<Out>>(static_cast<double>(j) * (notch_p<Out> / notch_q<Out>)));
+    store_slot(j, static_cast<umax>(j) - static_cast<umax>(first), out);
     return true;
 }
 
