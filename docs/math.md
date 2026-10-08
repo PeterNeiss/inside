@@ -45,7 +45,7 @@ grid point:
 |---|---|---|
 | **Table** | the input has at most `BEMAN_INSIDE_MATH_TABLE_SLOTS` slots (default 256), the output stores an integer, `f64` or `f32` raw, and every result lies in the output's range | one load; the table is computed at compile time |
 | **Double tier** | an FPU is present (not `BEMAN_INSIDE_MATH_NO_FP`), the output's value indices stay within ±2^52, and it needs no more bits than the kernel's limit (45–49, by function) | the library's own double kernels, sized to the output, plus a proved error bound; decided results are stored as raws |
-| **dd tier** | an FPU is present, the output needs more than 36 bits, and its value indices stay within ±2^62; where the double tier also applies, it runs second | double-double kernels (about 106 bits) from compile-time tables, plus an error bound; for `sin`, `cos`, `exp` and `exp2` a lean kernel with a proved bound of about 2^-70 runs first |
+| **dd tier** | an FPU is present, the output needs more than 36 bits, and its value indices stay within ±2^62; where the double tier also applies, it runs second | double-double kernels (about 106 bits) from compile-time tables, plus an error bound; for `sin`, `cos`, `exp`, `exp2`, `log`, `log2` and `log10` a lean kernel with a proved bound of about 2^-70 runs first |
 | **Integer path** | always available; the only path at compile time and without an FPU | Taylor polynomials with compile-time coefficient tables in wide fixed point |
 
 The double tier's kernels are Taylor polynomials sized to the output: each
@@ -81,13 +81,14 @@ kernels' errors against the integer path at 150 bits stay at least 2^8 below
 this bound; the measured worst is about 2^-96 relative.
 
 Outputs in the dd tier have notches no finer than 2^-62, so about 2^-70
-decides nearly all of them. For `sin`, `cos`, `exp` and `exp2` the tier first
-runs a lean kernel: the same tables and reduction, but only the table values,
-the reduced argument and the leading products (all error-free) in
-double-double, the polynomial tails in double. Their bounds are proved like
+decides nearly all of them. For `sin`, `cos`, `exp`, `exp2` and the logs the
+tier first runs a lean kernel: the same tables and reduction, but only the
+table values, the reduced argument and the leading products (all error-free)
+in double-double, the polynomial tails in double. Their bounds are proved like
 the double tier's: 2^-70.3 absolute for `sin` and `cos` (plus 2^-104·max(1,
-|x|) from the reduction) and 2^-77.6 relative for `exp`; measured errors reach
-0.15 and 0.29 of them. Onto a 2^-52 amplitude grid they leave about one
+|x|) from the reduction), 2^-77.6 relative for `exp`, 2^-75.3 absolute for
+`log` (plus 2^-101 per unit of the binary exponent); measured errors reach
+0.15, 0.29 and 0.26 of them. Onto a 2^-52 amplitude grid they leave about one
 result in 60 000 undecided, onto 2^-60 about one in 400; those go to the full
 kernels.
 
@@ -242,9 +243,9 @@ Onto the grid deduced from the input, the functions run from 2.4× slower to
 3× faster than `<cmath>` (the `math:` tables in [performance.md](performance.md)).
 Inputs of up to 256 slots use the table path and cost one load; each table adds
 about 0.13 s of compile time on GCC, and `BEMAN_INSIDE_MATH_TABLE_SLOTS=0` turns
-tables off. Onto grids as fine as a `double`, correct rounding costs 4–13×
-`<cmath>`: `sin` onto 2^-52 13.1 ns, `exp` onto 2^-40 11.2 ns, `log` onto
-2^-48 30.1 ns (x86-64, `-O3 -mfma`; `docs/int-considered-harmful/p04_math_cost.cpp`).
+tables off. Onto grids as fine as a `double`, correct rounding costs 4–8×
+`<cmath>`: `sin` onto 2^-52 12.9 ns, `exp` onto 2^-40 11.1 ns, `log` onto
+2^-48 16.0 ns (x86-64, `-O3 -mfma`; `docs/int-considered-harmful/p04_math_cost.cpp`).
 
 ## Where correctness comes first
 
@@ -256,7 +257,7 @@ measured on x86-64 with `-mfma`.
 | Choice | What it guards against | What it costs |
 |---|---|---|
 | The double tier's bounds proved, not measured: every rounding of every step counted at its worst, times 1.5 | a kernel error the measurements missed (an input, a compiler, a platform) turning into a wrong slot | the proofs are worst cases, about 2–4 times the error measured, so outputs near a kernel's limit fall back to the dd tier for up to 13% of inputs |
-| The full dd kernels' bound far wider than their measured error: 2^-88 + 2^-92·max(1, \|x\|) (measured at worst 2^-96), times 1.5 | the same, for kernels whose bounds are not proved (the lean `sin`, `cos`, `exp` and `exp2` kernels' are) | outputs past the double tier's limits take the dd tier, 2–9 times slower than the double tier |
+| The full dd kernels' bound far wider than their measured error: 2^-88 + 2^-92·max(1, \|x\|) (measured at worst 2^-96), times 1.5 | the same, for kernels whose bounds are not proved (the lean kernels' are) | outputs past the double tier's limits take the dd tier, 2–9 times slower than the double tier |
 | `-ffast-math`, `-fassociative-math` and `-ffinite-math-only` builds rejected with an `#error` | reassociation adding roundings the proofs did not count and breaking the error-free sums; NaN and infinity tests folded away | such builds do not compile |
 | Strict decision tests: a value within the bound of a slot boundary, exact ties and exact grid points under directed rounding go to the integer path | a rounding the double arithmetic cannot settle | the integer path's time for those inputs; rare for irrational results, every time for exact ones such as `sqrt` of a perfect square under `round_floor` |
 | `nearbyint` to round the value index, not adding and subtracting 1.5·2^52 | reassociation (Clang's `-fassociative-math`, which no macro announces) folding the add-subtract away; the tests then pass a non-integer and return a wrong slot | 0.1–0.4 ns per call (`sqrt` 1.65 → 2.05 ns, `hypot` 2.22 → 2.49 ns on `f64` grids) |
@@ -264,7 +265,7 @@ measured on x86-64 with `-mfma`.
 | Inputs that are not doubles exactly (decimal notches, rational storage) add their conversion error times the function's slope to the bound | a decimal input's rounding moving a result across a boundary | slightly more fallbacks for those inputs |
 | Error-free sums fenced against FMA contraction (`__builtin_assoc_barrier`), the error-free product's rounded part computed as `fma(a, b, +0)` | GCC's default `-ffp-contract=fast` fusing a rounded product into a later sum, which made the dd tier 1–2 notches wrong at `-O2` | about 2% more instructions in the dd tier, no measurable time |
 | The dd tier only for value indices up to 2^62 | index arithmetic overflowing 64 bits | finer or wider outputs take the integer path |
-| The full dd kernels carry about 100 bits even when the output needs 50; only `sin`, `cos`, `exp` and `exp2` have a lean kernel, with a proved bound, in front of them | an undersized kernel for some output, or a lean kernel whose bound is only measured | the other functions (`log` and those built on it, `atan`, `tan`, the hyperbolics) pay the full kernel past the double tier: `log` onto 2^-48 is 13× `std` |
+| The full dd kernels carry about 100 bits even when the output needs 50; only `sin`, `cos`, `exp`, `exp2` and the logs have a lean kernel, with a proved bound, in front of them | an undersized kernel for some output, or a lean kernel whose bound is only measured | the other functions (`atan`, `tan`, `pow`, the hyperbolics and their inverses) pay the full kernel past the double tier |
 | Rational outputs store the reduced fraction j·p/q (one gcd); f32/f64 outputs store j·notch, exact on their dyadic grids | a stored value off the grid, or not in canonical form | about 60 ns per rational result |
 | Every constant and table computed at compile time from the integer path's own series, never written out as literals | a constant that drifts from the series it should equal | compile time only: about 0.1–0.3 s in a translation unit that uses the dd tier, nothing in one that does not |
 
@@ -274,8 +275,8 @@ time and without an FPU. A build cannot change a value; it can only change how
 fast the value comes.
 
 Speed that can still be won without giving any of this up: tighter proofs
-for `cbrt` and `pow`, whose bounds grow with the input, and a lean dd kernel
-for `log`.
+for `cbrt` and `pow`, whose bounds grow with the input, and lean dd kernels
+for `pow` and the inverse hyperbolics (on top of the lean `exp` and `log`).
 
 ## Compiling without floating point (`BEMAN_INSIDE_MATH_NO_FP`)
 

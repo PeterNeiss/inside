@@ -9,10 +9,11 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 ### Performance
 
 - Math at full `double` resolution: the dd tier tries lean `sin`, `cos`,
-  `exp` and `exp2` kernels first (about 2^-70, with proved bounds). `sin`
-  onto a 2^-52 grid takes 13.1 ns instead of 36.0, `exp` onto 2^-40 11.2
-  instead of 21.1; correct rounding at `double` resolution now costs 4–13×
-  `<cmath>` (was 8–13×).
+  `exp`, `exp2`, `log`, `log2` and `log10` kernels first (about 2^-70, with
+  proved bounds). `sin` onto a 2^-52 grid takes 12.9 ns instead of 36.0,
+  `exp` onto 2^-40 11.1 instead of 21.1, `log` onto 2^-48 16.0 instead of
+  30.1; correct rounding at `double` resolution now costs 4–8× `<cmath>`
+  (was 8–13×).
 - `sinh`, `asinh` and `acosh` stay in the double tier up to 47-bit outputs
   (was 46), through sharper forms used only past 46 bits.
 
