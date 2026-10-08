@@ -1333,6 +1333,15 @@ BEMAN_INSIDE_AX_LEAN(exp2)
 BEMAN_INSIDE_AX_LEAN(log)
 BEMAN_INSIDE_AX_LEAN(log2)
 BEMAN_INSIDE_AX_LEAN(log10)
+BEMAN_INSIDE_AX_LEAN(sinh)
+BEMAN_INSIDE_AX_LEAN(cosh)
+BEMAN_INSIDE_AX_LEAN(tanh)
+BEMAN_INSIDE_AX_LEAN(asinh)
+BEMAN_INSIDE_AX_LEAN(acosh)
+BEMAN_INSIDE_AX_LEAN(atanh)
+BEMAN_INSIDE_AX_LEAN(atan)
+BEMAN_INSIDE_AX_LEAN(asin)
+BEMAN_INSIDE_AX_LEAN(acos)
     #undef BEMAN_INSIDE_AX_LEAN
 template <typename K>
 concept has_dd_lean = requires(ddk::dd x, double& b) { dd_lean<K>::template value<ddk::dd>(x, b); };
@@ -1347,34 +1356,55 @@ inline bool dd_full_attempt(const ddk::dd& x, Out& out) {
     return dd_decide(v, bound * 1.5, out);
 }
 
-// After a lean kernel: rarely taken, so out of line.
-template <insidable Out, typename K, insidable In>
-[[gnu::cold, gnu::noinline]] bool dd_full_attempt_cold(const ddk::dd& x, Out& out) {
-    return dd_full_attempt<Out, K, In>(x, out);
+// What follows a lean kernel: rarely taken, so out of line.
+template <typename F>
+[[gnu::cold, gnu::noinline]] bool dd_cold(const F& f) {
+    return f();
+}
+
+// A lean attempt (its value, setting the bound) first, then the full one.
+template <insidable Out, typename Lean, typename Full>
+[[gnu::always_inline]] inline bool dd_lean_first(const Lean& lean, const Full& full, Out& out) {
+    double        bound;
+    const ddk::dd v = lean(bound);
+    if (dd_decide(v, bound * 1.5, out))
+        return true;
+    return dd_cold(full);
 }
 
 // The lean kernel first where K has one, then the full one.
 template <insidable Out, typename K, insidable In>
 inline bool dd_attempt(const In& in, Out& out) {
     const ddk::dd x = dd_read(in);
-    if constexpr (has_dd_lean<K>) {
-        double        bound;
-        const ddk::dd v = dd_lean<K>::value(x, bound);
-        if constexpr (dd_input_rel<In> != 0)
-            bound += dd_input_rel<In> * fabs_d(x.Hi) * K::slope(x.Hi, v.Hi);
-        if (dd_decide(v, bound * 1.5, out))
-            return true;
-        return dd_full_attempt_cold<Out, K, In>(x, out);
-    } else
+    if constexpr (has_dd_lean<K>)
+        return dd_lean_first(
+            [&](double& bound) {
+                const ddk::dd v = dd_lean<K>::value(x, bound);
+                if constexpr (dd_input_rel<In> != 0)
+                    bound += dd_input_rel<In> * fabs_d(x.Hi) * K::slope(x.Hi, v.Hi);
+                return v;
+            },
+            [&] { return dd_full_attempt<Out, K, In>(x, out); },
+            out);
+    else
         return dd_full_attempt<Out, K, In>(x, out);
 }
 
 template <insidable Out, insidable InY, insidable InX>
 inline bool dd_attempt_atan2(const InY& yi, const InX& xi, Out& out) {
-    const ddk::dd y = dd_read(yi), x = dd_read(xi);
-    const ddk::dd v     = ddk::atan2(y, x);
-    const double  bound = dd_eval_bound(1.0, v.Hi) + dd_input_rel<InY> + dd_input_rel<InX>;
-    return dd_decide(v, bound * 1.5, out);
+    const ddk::dd    y = dd_read(yi), x = dd_read(xi);
+    constexpr double input = dd_input_rel<InY> + dd_input_rel<InX>;
+    return dd_lean_first(
+        [&](double& bound) {
+            const ddk::dd v = ddk::atan2_lean(y, x, bound);
+            bound += input;
+            return v;
+        },
+        [&] {
+            const ddk::dd v = ddk::atan2(y, x);
+            return dd_decide(v, (dd_eval_bound(1.0, v.Hi) + input) * 1.5, out);
+        },
+        out);
 }
 
 template <insidable Out, insidable InX, insidable InY>
@@ -1386,39 +1416,82 @@ inline bool dd_attempt_hypot(const InX& xi, const InY& yi, Out& out) {
     return dd_decide(v, bound * 1.5, out);
 }
 
+// tan: the input's rounding grows by sec² = 1 + t².
 template <insidable Out, insidable In>
 inline bool dd_attempt_tan(const In& in, Out& out) {
-    const ddk::dd x    = dd_read(in);
-    const ddk::dd t    = ddk::tan(x);
-    const double  sec2 = 1 + t.Hi * t.Hi, mx = fabs_d(x.Hi) > 1 ? fabs_d(x.Hi) : 1.0;
-    const double  bound = kDDRel * sec2 * mx + kDDAbs * mx + dd_input_rel<In> * fabs_d(x.Hi) * sec2;
-    return dd_decide(t, bound * 1.5, out);
+    const ddk::dd x     = dd_read(in);
+    auto          input = [&](double t) { return dd_input_rel<In> * fabs_d(x.Hi) * (1 + t * t); };
+    return dd_lean_first(
+        [&](double& bound) {
+            const ddk::dd t = ddk::tan_lean(x, bound);
+            bound += input(t.Hi);
+            return t;
+        },
+        [&] {
+            const ddk::dd t    = ddk::tan(x);
+            const double  sec2 = 1 + t.Hi * t.Hi, mx = fabs_d(x.Hi) > 1 ? fabs_d(x.Hi) : 1.0;
+            return dd_decide(t, (kDDRel * sec2 * mx + kDDAbs * mx + input(t.Hi)) * 1.5, out);
+        },
+        out);
 }
 
 // pow = e^(e·ln b), as in the double tier; e·ln b within the exp range.
+// The lean form: ln b within the lean log's bound Bl moves y = e·ln b by
+// |e|·Bl, the product rounds within 4kU² of |y|, and e^y adds its own Rel,
+// all relative to v. The inputs' roundings add |e|·rel(b) and |y|·rel(e).
 template <insidable Out, insidable InB, insidable InE>
 inline bool dd_attempt_pow(const InB& bi, const InE& ei, Out& out) {
     const ddk::dd b = dd_read(bi), e = dd_read(ei);
     if (!(b.Hi > 0))
         return false;
-    const ddk::dd y = ddk::mul(ddk::log(b), e);
+    auto input = [&](double L) { return dd_input_rel<InB> * fabs_d(e.Hi) + dd_input_rel<InE> * L; };
+    return dd_lean_first(
+        [&](double& bound) {
+            const ddk::dd y = ddk::mul(ddk::log_lean_value(b, bound), e);
+            const double  L = fabs_d(y.Hi);
+            if (!(L <= 700)) {
+                bound = __builtin_inf();
+                return ddk::dd{0, 0};
+            }
+            const ddk::dd v = ddk::exp_lean_value(y);
+            bound           = fabs_d(v.Hi) * (ddk::lean_exp::Rel + fabs_d(e.Hi) * bound * (1 + 0x1p-40) +
+                                              4 * fpk::kU * fpk::kU * L + input(L)) +
+                              fpk::kTiny;
+            return v;
+        },
+        [&] {
+            const ddk::dd y = ddk::mul(ddk::log(b), e);
+            const double  L = fabs_d(y.Hi);
+            if (!(L <= 700))
+                return false;
+            const ddk::dd v = ddk::exp(y);
+            return dd_decide(v, (fabs_d(v.Hi) * (kDDRel * (1 + L) + input(L)) + kDDAbs) * 1.5, out);
+        },
+        out);
+}
+
+// Base^x = e^(x·ln Base): ln Base within 2^-104 and the product's 4kU².
+// x·ln Base within the exp range (else the integer path decides).
+template <insidable Out, imax Base, insidable In>
+inline bool dd_attempt_pow_base(const In& xi, Out& out) {
+    const ddk::dd x = dd_read(xi);
+    const ddk::dd y = ddk::mul(x, ln_base<Base>);
     const double  L = fabs_d(y.Hi);
     if (!(L <= 700))
         return false;
-    const ddk::dd v = ddk::exp(y);
-    const double  bound =
-        fabs_d(v.Hi) * (kDDRel * (1 + L) + dd_input_rel<InB> * fabs_d(e.Hi) + dd_input_rel<InE> * L) + kDDAbs;
-    return dd_decide(v, bound * 1.5, out);
-}
-
-template <insidable Out, imax Base, insidable In>
-inline bool dd_attempt_pow_base(const In& xi, Out& out) {
-    const ddk::dd x     = dd_read(xi);
-    const ddk::dd y     = ddk::mul(x, ln_base<Base>);
-    const double  L     = fabs_d(y.Hi);
-    const ddk::dd v     = ddk::exp(y);
-    const double  bound = fabs_d(v.Hi) * (kDDRel * (1 + L) + dd_input_rel<In> * L) + kDDAbs;
-    return dd_decide(v, bound * 1.5, out);
+    return dd_lean_first(
+        [&](double& bound) {
+            const ddk::dd v = ddk::exp_lean_value(y);
+            bound =
+                fabs_d(v.Hi) * (ddk::lean_exp::Rel + (4 * fpk::kU * fpk::kU + ddk::kTableErr + dd_input_rel<In>)*L) +
+                fpk::kTiny;
+            return v;
+        },
+        [&] {
+            const ddk::dd v = ddk::exp(y);
+            return dd_decide(v, (fabs_d(v.Hi) * (kDDRel * (1 + L) + dd_input_rel<In> * L) + kDDAbs) * 1.5, out);
+        },
+        out);
 }
 #else
 template <insidable Out, insidable... Ins>

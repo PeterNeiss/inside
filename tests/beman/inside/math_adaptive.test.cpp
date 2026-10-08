@@ -1027,6 +1027,22 @@ TEST(MathAdaptiveTest, lean_dd_kernels_stay_within_their_proved_bounds) {
     LEAN_BOUND(log_lean, near1, ax::log_core<ax::input_limbs<near1>>);
     LEAN_BOUND(log2_lean, pos64, ax::logb_core<ax::input_limbs<pos64>, 2>);
     LEAN_BOUND(log10_lean, pos64, ax::logb_core<ax::input_limbs<pos64>, 10>);
+    LEAN_BOUND(tan_lean, tan_in, ax::trig_core<ax::input_limbs<tan_in>, ax::in_mag<tan_in>, ax::trig::tan, 12>);
+    LEAN_BOUND(sinh_lean, sym4, ax::hyp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::hyp::sinh, 8>);
+    LEAN_BOUND(sinh_lean, fine, ax::hyp_core<ax::input_limbs<fine>, ax::in_mag<fine>, ax::hyp::sinh, 1>);
+    LEAN_BOUND(cosh_lean, sym4, ax::hyp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::hyp::cosh, 8>);
+    LEAN_BOUND(tanh_lean, sym4, ax::hyp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::hyp::tanh, 1>);
+    LEAN_BOUND(tanh_lean, fine, ax::hyp_core<ax::input_limbs<fine>, ax::in_mag<fine>, ax::hyp::tanh, 1>);
+    LEAN_BOUND(asinh_lean, sym4, ax::ahyp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::ahyp::asinh>);
+    LEAN_BOUND(asinh_lean, fine, ax::ahyp_core<ax::input_limbs<fine>, ax::in_mag<fine>, ax::ahyp::asinh>);
+    LEAN_BOUND(acosh_lean, ge1, ax::ahyp_core<ax::input_limbs<ge1>, ax::in_mag<ge1>, ax::ahyp::acosh>);
+    using above1 = inside<{{1, rational{65, 64}}, rational{1, 1 << 20}}, round_nearest>;
+    LEAN_BOUND(acosh_lean, above1, ax::ahyp_core<ax::input_limbs<above1>, ax::in_mag<above1>, ax::ahyp::acosh>);
+    LEAN_BOUND(atanh_lean, open1, ax::ahyp_core<ax::input_limbs<open1>, ax::in_mag<open1>, ax::ahyp::atanh>);
+    LEAN_BOUND(atan_lean, sym4, ax::atan_core<ax::input_limbs<sym4>>);
+    LEAN_BOUND(atan_lean, thirds, ax::atan_core<ax::input_limbs<thirds>>);
+    LEAN_BOUND(asin_lean, unit, ax::asin_core<ax::input_limbs<unit>>);
+    LEAN_BOUND(acos_lean, unit, ax::acos_core<ax::input_limbs<unit>>);
     // A sparse sweep of a wide grid: 4096 points spread over it.
     const auto x     = [](long long i) { return huge::from_raw(detail::raw_from_offset<huge>(static_cast<umax>(i))); };
     double     worst = 0;

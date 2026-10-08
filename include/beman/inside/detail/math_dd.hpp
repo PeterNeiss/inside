@@ -806,6 +806,180 @@ inline D log10_lean(D x, double& bound) noexcept {
     bound     = bound * 0.4343 + 0x1p-100 * (v.Hi < 0 ? -v.Hi : v.Hi);
     return v;
 }
+//---------------------------------------------------------------------------
+// Lean kernels built on the ones above. Error terms of the dd operations,
+// relative to their exact results: a sum (add, sub, add_dominant) rounds
+// within 4kU² of |a| + |b|; a product (mul, sqr) within 4kU²; a quotient
+// (div: one reciprocal, a residual that cancels exactly, two digits) within
+// 32kU²; sqrt (one Newton step from the correctly rounded root) within 7kU²
+// plus half its argument's. x ± 1 is exact for 0.5 ≤ |x.Hi| ≤ 2 (Sterbenz:
+// the low part then adds to an exact zero), and within 2kU²·(1 + |x|) of
+// itself otherwise.
+//---------------------------------------------------------------------------
+inline constexpr double kU2 = kU * kU;
+
+// tan = sin/cos from the lean sincos, each within e: |s/c − S/C| ≤
+// e·(1 + |t|)/(|c| − e), plus the quotient's 32kU². No bound (infinity)
+// where |c| ≤ e: the full kernel decides there.
+template <dd_type D>
+inline D tan_lean(D x, double& bound) noexcept {
+    const sincos_t sc = sincos_lean(x);
+    const double   e  = lean_trig_bound(x.Hi);
+    const D        t  = div(sc.Sin, sc.Cos);
+    const double   at = t.Hi < 0 ? -t.Hi : t.Hi, c = (sc.Cos.Hi < 0 ? -sc.Cos.Hi : sc.Cos.Hi) - 2 * e;
+    bound = c > 0 ? e * (1 + at) / c * (1 + 0x1p-40) + 32 * kU2 * at : __builtin_inf();
+    return t;
+}
+
+// sinh, cosh = (e ± 1/e)/2 with e = e^x within Rel: 1/e within Rel + 32kU²,
+// the sum's 4kU² of e + 1/e; all within (Rel + 20kU²)·cosh x, and
+// cosh ≤ |sinh| + 1. tanh = (e2 − 1)/(e2 + 1), e2 = e^(2x): e2's Rel moves it
+// by 2·e2·Rel/(e2 + 1)² ≤ Rel/2; the two sums with 1 round within
+// 2kU²·(e2 + 1), 2kU² of the quotient each; the quotient 32kU².
+template <dd_type D>
+inline D sinh_lean(D x, double& bound) noexcept {
+    const D e = exp_lean_value(x);
+    const D v = ldexp(sub(e, div(D{1, 0}, e)), -1);
+    bound     = (lean_exp::Rel + 20 * kU2) * ((v.Hi < 0 ? -v.Hi : v.Hi) + 1) * (1 + 0x1p-40) + fpk::kTiny;
+    return v;
+}
+template <dd_type D>
+inline D cosh_lean(D x, double& bound) noexcept {
+    const D e = exp_lean_value(x);
+    const D v = ldexp(add(e, div(D{1, 0}, e)), -1);
+    bound     = (lean_exp::Rel + 20 * kU2) * v.Hi * (1 + 0x1p-40) + fpk::kTiny;
+    return v;
+}
+template <dd_type D>
+inline D tanh_lean(D x, double& bound) noexcept {
+    const D e2 = exp_lean_value(ldexp(x, 1));
+    bound      = (lean_exp::Rel / 2 + 36 * kU2) * (1 + 0x1p-40);
+    return div(add(e2, -1.0), add(e2, 1.0));
+}
+
+// The inverse hyperbolics as ln w, w within ε relative: within the lean
+// log's bound plus ε·(1 + 2^-40).
+// - asinh |x|: w = |x| + √(x² + 1): the square 4kU², + 1 2kU², the root
+//   2kU² + 7kU², the sum 4kU²: ε = 17kU².
+// - acosh x ≥ 1: w = x + √((x − 1)(x + 1)): x − 1 exact for x.Hi ≤ 2, else
+//   within 2kU²·(1 + x)/(x − 1) ≤ 6kU²; x + 1 2kU²·(1 + x)/(x + 1) ≤ 2kU²;
+//   the product 4kU², the root 6kU² + 7kU², the sum 4kU²: ε = 23kU².
+// - atanh |x| < 1: ½·ln((1 + a)/(1 − a)): 1 − a exact for a.Hi ≥ 0.5, else
+//   within 2kU²·(1 + a)/(1 − a) ≤ 6kU²; 1 + a 2kU²; the quotient 32kU²:
+//   ε = 40kU², and the bound halves.
+template <dd_type D>
+inline D asinh_lean(D x, double& bound) noexcept {
+    const bool negative = x.Hi < 0;
+    const D    a        = negative ? neg(x) : x;
+    const D    m        = log_lean_value(add(a, sqrt(add(sqr(a), 1.0))), bound);
+    bound += 17 * kU2 * (1 + 0x1p-40);
+    return negative ? neg(m) : m;
+}
+template <dd_type D>
+inline D acosh_lean(D x, double& bound) noexcept {
+    const D v = log_lean_value(add(x, sqrt(mul(add(x, -1.0), add(x, 1.0)))), bound);
+    bound += 23 * kU2 * (1 + 0x1p-40);
+    return v;
+}
+template <dd_type D>
+inline D atanh_lean(D x, double& bound) noexcept {
+    const bool negative = x.Hi < 0;
+    const D    a        = negative ? neg(x) : x;
+    const D    m        = ldexp(log_lean_value(div(add(a, 1.0), add(neg(a), 1.0)), bound), -1);
+    bound               = (bound + 40 * kU2) * 0.5 * (1 + 0x1p-40);
+    return negative ? neg(m) : m;
+}
+
+// atan t = t − t·z·P(z), P = 1/3 − z/5 + z²/7 − z³/9 + z⁴/11.
+inline constexpr fpk::poly<5> kLeanAtanC =
+    fpk::series<5>([](int k) { return fpk::term{k % 2 ? -1.0 : 1.0, 2.0 * k + 3}; });
+
+// atan a for 0 ≤ a ≤ 1 (a.Hi ≤ 1), reduced as in atan_unit: c = j/32,
+// t = (a − c)/(1 + a·c), |t| ≤ S. a − c is exact (Sterbenz, c ≥ 1/32, or
+// c = 0); 1 + a·c within 3kU²; so t within 36kU². atan a = atan c + t + T,
+// T = −th·zh·P(zh) in double (th = t.Hi, zh = th²); atan c + t.Hi in one
+// exact fast two-sum (atan c ≥ atan(1/32) > S unless c = 0). Absolute:
+// - T: three roundings (3kU of |T|), P's Horner error at zh, the
+//   alternating series' first omitted term S¹³/13, and T taken at th, not
+//   t (kU·S·S²);
+// - t: 36kU²·S;
+// - the low sum: 4 roundings within Lsum; atan c's table 2^-104.
+struct lean_atan {
+    static constexpr double            S    = 0.015626; // ≥ 1/64
+    static constexpr double            Z    = S * S;
+    static constexpr double            A    = 0.7854; // ≥ π/4
+    static constexpr fpk::horner_bound HP   = fpk::horner_error(kLeanAtanC, Z, kU);
+    static constexpr double            TT   = S * Z * HP.Mag * (1 + 4 * kU); // ≥ |T|
+    static constexpr double            ET   = 3 * kU * TT + S * Z * HP.Err + fpk::pow_n(S, 13) / 13 + kU * S * Z;
+    static constexpr double            Lsum = 2 * kU * (A + S) + kU * A + kU * S + TT;
+    static constexpr double            Unit = up(ET + 36 * kU2 * S + 4 * kU * Lsum + kTableErr * A);
+    // atan |x| > 1: π/2 − atan(1/|x|): the quotient 32kU² (slope ≤ 1), the
+    // difference 4kU²·(π/2 + π/4), π/2's 2^-104.
+    static constexpr double Atan = up(Unit + 32 * kU2 + 10 * kU2 + kTableErr * 1.571);
+    // atan2: the quotient of the smaller by the larger 32kU²; ±π or ±π/2 and
+    // the sum 4kU²·(π + π/4) and 2^-104 of π.
+    static constexpr double Atan2 = up(Unit + 32 * kU2 + 16 * kU2 + kTableErr * 3.1416);
+    // asin, acos = atan2 with √((1 − x)(1 + x)) as one argument: 1 ∓ x within
+    // 6kU² (as x ± 1 above), the product 4kU², the root 8kU² + 7kU² — 15kU²
+    // relative, which moves the angle by at most half of it.
+    static constexpr double Asin = up(Atan2 + 8 * kU2);
+};
+
+template <dd_type D>
+[[gnu::always_inline]] inline D atan_unit_lean(D a) noexcept {
+    const double j  = __builtin_nearbyint(a.Hi * 32);
+    const double c  = j * (1.0 / 32);
+    const D      t  = div(add(a, -c), add_dominant(D{1, 0}, mul(a, c)));
+    const double th = t.Hi, zh = th * th;
+    const double T  = -(fpk::rounded_product(th, zh) * fpk::horner(zh, kLeanAtanC.C));
+    const D      ac = consts<D>::Atan[static_cast<std::size_t>(j)];
+    const D      s  = fast_two_sum(ac.Hi, th);
+    return fast_two_sum(s.Hi, ((s.Lo + ac.Lo) + t.Lo) + T);
+}
+
+template <dd_type D>
+inline D atan_lean(D x, double& bound) noexcept {
+    const bool negative = x.Hi < 0;
+    const D    a        = negative ? neg(x) : x;
+    const D    r        = a.Hi <= 1 ? atan_unit_lean(a) : sub(consts<D>::HalfPi, atan_unit_lean(div(D{1, 0}, a)));
+    bound               = lean_atan::Atan;
+    return negative ? neg(r) : r;
+}
+
+// atan2 as in the full kernel, with the lean unit atan.
+template <dd_type D>
+inline D atan2_lean(D y, D x, double& bound) noexcept {
+    using C         = consts<D>;
+    bound           = lean_atan::Atan2;
+    const double ay = y.Hi < 0 ? -y.Hi : y.Hi, ax_ = x.Hi < 0 ? -x.Hi : x.Hi;
+    if (ay == 0 && ax_ == 0) {
+        bound = 0;
+        return D{0, 0};
+    }
+    if (ay <= ax_) {
+        const D q = div(y, x);
+        const D r = q.Hi < 0 ? neg(atan_unit_lean(neg(q))) : atan_unit_lean(q);
+        if (x.Hi > 0)
+            return r;
+        return y.Hi < 0 ? sub(r, C::Pi) : add(r, C::Pi);
+    }
+    const D q = div(x, y);
+    const D r = q.Hi < 0 ? neg(atan_unit_lean(neg(q))) : atan_unit_lean(q);
+    return y.Hi > 0 ? sub(C::HalfPi, r) : sub(neg(C::HalfPi), r);
+}
+
+template <dd_type D>
+inline D asin_lean(D x, double& bound) noexcept {
+    const D v = atan2_lean(x, sqrt(mul(add(neg(x), 1.0), add(x, 1.0))), bound);
+    bound     = lean_atan::Asin;
+    return v;
+}
+template <dd_type D>
+inline D acos_lean(D x, double& bound) noexcept {
+    const D v = atan2_lean(sqrt(mul(add(neg(x), 1.0), add(x, 1.0))), x, bound);
+    bound     = lean_atan::Asin;
+    return v;
+}
 } // namespace beman::inside::math::detail::dd
 
 #endif // !BEMAN_INSIDE_MATH_NO_FP
