@@ -11,18 +11,10 @@
 #include <optional>
 
 //---------------------------------------------------------------------------
-// beman::inside::math::adaptive — the adaptive math engine.
-//
-// Every result is the correctly rounded value on the output grid, under the
-// output's rounding mode: the engine works at the precision that grid needs
-// (see detail/math_adaptive.hpp for the decision step and the driver). That
-// makes results independent of how they were computed — the same on every
-// platform, at compile time and at runtime, with or without an FPU — and it
-// lifts the 64-bit limits: inputs and outputs may be grids past 64 bits.
-//
-// The domains are the mathematical ones (log needs x > 0, asin |x| ≤ 1, ...);
-// there is no working-scale envelope. A result past Out's range goes through
-// Out's policy, as any assignment.
+// beman::inside::math::adaptive — the math engine behind cmath.hpp (which
+// states the guarantee). The decision step and the driver are in
+// detail/math_adaptive.hpp. Domains are the mathematical ones; a result past
+// Out's range goes through Out's policy, as any assignment.
 //
 // Each call takes the first tier that applies: a compile-time table for
 // small inputs; the double kernels (detail/math_fp.hpp), then the dd kernels

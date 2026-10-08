@@ -10300,17 +10300,13 @@ constexpr approx<K> exp_fixed(const wide_sint<K>& t, umax dt, int KMax) noexcept
 // std::fma, Cody-Waite range reduction, and only std::fma / sqrt / nearbyint
 // from <cmath>.
 //
-// Every kernel is sized to its output and carries a proved error bound.
-// A kernel takes a target T in bits; its polynomials get the fewest terms
-// whose truncation stays below 2^-T relative. The bound for that size is
-// computed at compile time from the polynomial's own coefficients and
-// argument range: the first omitted term, each rounding of the Horner
-// steps, the coefficients' and the reduction constants' roundings, and the
-// reduction's own roundings. These are the usual first-order bounds of IEEE
-// arithmetic in round-to-nearest, where every operation lands within
-// kU = 2^-53 of its exact result, relatively. up() widens each bound by
-// 2^-30 of itself, which covers the second-order terms and the roundings of
-// the bound arithmetic.
+// A kernel takes a target T in bits: its polynomials get the fewest terms
+// whose truncation stays below 2^-T relative, and its error bound for that
+// size is proved at compile time from the coefficients and argument range —
+// the first omitted term, each Horner step's rounding, the constants' and the
+// reduction's roundings. These are first-order bounds of IEEE round-to-nearest
+// (each operation within kU = 2^-53, relatively); up() widens each by 2^-30 of
+// itself for the second-order terms and the bound arithmetic's roundings.
 //---------------------------------------------------------------------------
 
 
@@ -10362,11 +10358,11 @@ inline constexpr double kTanPi12   = 0x1.126145e9ecd56p-2;  // tan(π/12) ≈ 0.
 inline constexpr double kThird     = 1.0 / 3.0;
 inline constexpr double kThirdLo   = 0x1.5555555555555p-56; // 1/3 − kThird = 2^-54/3
 
-// An operand of an error-free sum, fenced off from FMA contraction: under
-// -ffp-contract=fast (GCC's default) an operand that is a product, such as
-// a quotient digit a·(1/b), may be fused into the sum, which then adds the
-// exact product while the error term subtracts the rounded one. The fence
-// costs nothing at runtime. (Clang contracts only within one expression.)
+// Under -ffp-contract=fast (GCC's default; Clang contracts only within one
+// expression) a product feeding a later sum may be fused into an fma, which
+// adds the exact product where an error-free transformation expects the
+// rounded one. fenced() keeps an operand of an error-free sum out of that, at
+// no runtime cost.
 constexpr double fenced(double x) noexcept {
     #if defined(__has_builtin)
         #if __has_builtin(__builtin_assoc_barrier)
@@ -10381,13 +10377,9 @@ constexpr double fenced(double x) noexcept {
     #endif
 }
 
-// The product rounded once, as a value the compiler cannot fuse further:
-// under -ffp-contract=fast (GCC's default) a plain a·b feeding a later
-// subtraction may become one fma, which subtracts the exact product where
-// the error-free split expects the rounded one (the error then counts
-// twice). fma(a, b, +0) is the same rounded product (+0 keeps it from
-// folding back to a·b) and costs one instruction with hardware FMA; without
-// it nothing contracts.
+// The product rounded once, which the compiler cannot fuse further:
+// fma(a, b, +0) (+0 keeps it from folding back to a·b), one instruction with
+// hardware FMA; without it nothing contracts.
 inline double rounded_product(double a, double b) noexcept {
     #if defined(__FMA__) || defined(__ARM_FEATURE_FMA)
     return std::fma(a, b, 0.0);
@@ -11869,18 +11861,10 @@ inline D exp2_lean(D x, double& bound) noexcept {
 
 
 //---------------------------------------------------------------------------
-// beman::inside::math::adaptive — the adaptive math engine.
-//
-// Every result is the correctly rounded value on the output grid, under the
-// output's rounding mode: the engine works at the precision that grid needs
-// (see detail/math_adaptive.hpp for the decision step and the driver). That
-// makes results independent of how they were computed — the same on every
-// platform, at compile time and at runtime, with or without an FPU — and it
-// lifts the 64-bit limits: inputs and outputs may be grids past 64 bits.
-//
-// The domains are the mathematical ones (log needs x > 0, asin |x| ≤ 1, ...);
-// there is no working-scale envelope. A result past Out's range goes through
-// Out's policy, as any assignment.
+// beman::inside::math::adaptive — the math engine behind cmath.hpp (which
+// states the guarantee). The decision step and the driver are in
+// detail/math_adaptive.hpp. Domains are the mathematical ones; a result past
+// Out's range goes through Out's policy, as any assignment.
 //
 // Each call takes the first tier that applies: a compile-time table for
 // small inputs; the double kernels (detail/math_fp.hpp), then the dd kernels
