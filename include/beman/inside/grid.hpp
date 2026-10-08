@@ -390,26 +390,24 @@ constexpr bool has_width_flag(policy_flag P) noexcept { return (P & raw_width_ma
 
 constexpr int width_flag_count(policy_flag P) noexcept { return std::popcount(P & raw_width_mask); }
 
-// Map the single set width bit to its C++ type (only valid when has_width_flag).
+// The type of the (lowest) set width bit, only valid when has_width_flag: the
+// flags i8, u8, …, u64 are consecutive bits.
+template <int I, typename T, typename... Ts>
+struct nth_type : nth_type<I - 1, Ts...> {};
+template <typename T, typename... Ts>
+struct nth_type<0, T, Ts...> {
+    using type = T;
+};
 template <policy_flag P>
-using raw_type_of_t = std::conditional_t<
-    (P & i8) == i8,
-    std::int8_t,
-    std::conditional_t<
-        (P & u8) == u8,
-        std::uint8_t,
-        std::conditional_t<
-            (P & i16) == i16,
-            std::int16_t,
-            std::conditional_t<
-                (P & u16) == u16,
-                std::uint16_t,
-                std::conditional_t<
-                    (P & i32) == i32,
-                    std::int32_t,
-                    std::conditional_t<(P & u32) == u32,
-                                       std::uint32_t,
-                                       std::conditional_t<(P & i64) == i64, std::int64_t, std::uint64_t>>>>>>>;
+using raw_type_of_t = typename nth_type<std::countr_zero(P& raw_width_mask) - std::countr_zero(i8),
+                                        std::int8_t,
+                                        std::uint8_t,
+                                        std::int16_t,
+                                        std::uint16_t,
+                                        std::int32_t,
+                                        std::uint32_t,
+                                        std::int64_t,
+                                        std::uint64_t>::type;
 
 // Does raw type R hold every reachable raw value of grid G under the given
 // encoding? Index storage runs 0..max_index (unsigned); value storage runs

@@ -168,6 +168,36 @@ constexpr double fp_round(double v) noexcept // half away from zero, like ration
     const double t = fp_trunc(v), f = v - t; // exact: v and t share the grid
     return f >= 0.5 ? t + 1 : f <= -0.5 ? t - 1 : t;
 }
+
+// x rounded to an integer by M: exactly, on the raw doubles, or through
+// rational. Round is half away from zero, as rational round() is.
+template <round_mode M, insidable Out, insidable In>
+constexpr Out integer_into(In x) {
+    if constexpr (exact_path<Out, In>)
+        return store_exact<Out>(exact_to_int<M>(ax::exact_input(x)));
+    else if constexpr (fp_direct<Out, integer_auto_t<In, M>, In>)
+        return fp_direct_store<Out>(x, [](double v) {
+            if constexpr (M == round_mode::floor)
+                return fp_floor(v);
+            else if constexpr (M == round_mode::ceil)
+                return fp_ceil(v);
+            else if constexpr (M == round_mode::nearest)
+                return fp_round(v);
+            else
+                return fp_trunc(v);
+        });
+    else {
+        const rational r{x};
+        if constexpr (M == round_mode::floor)
+            return store_value<Out>(floor(r));
+        else if constexpr (M == round_mode::ceil)
+            return store_value<Out>(ceil(r));
+        else if constexpr (M == round_mode::nearest)
+            return store_value<Out>(round(r));
+        else
+            return store_value<Out>(trunc(r));
+    }
+}
 } // namespace detail
 
 //---------------------------------------------------------------------------
@@ -205,54 +235,22 @@ template <insidable Out, insidable Mag, insidable Sgn>
     }
 }
 
-// ⌊x⌋ — largest integer ≤ x.
+// ⌊x⌋, ⌈x⌉, x rounded half away from zero, and x truncated toward zero.
 template <insidable Out, insidable In>
 [[nodiscard]] constexpr Out floor_into(In x) {
-    if constexpr (detail::exact_path<Out, In>)
-        return detail::store_exact<Out>(
-            detail::exact_to_int<beman::inside::detail::round_mode::floor>(detail::ax::exact_input(x)));
-    else if constexpr (detail::fp_direct<Out, detail::floor_auto_t<In>, In>)
-        return detail::fp_direct_store<Out>(x, detail::fp_floor);
-    else
-        return detail::store_value<Out>(floor(rational{x}));
+    return detail::integer_into<detail::round_mode::floor, Out>(x);
 }
-
-// ⌈x⌉ — smallest integer ≥ x.
 template <insidable Out, insidable In>
 [[nodiscard]] constexpr Out ceil_into(In x) {
-    if constexpr (detail::exact_path<Out, In>)
-        return detail::store_exact<Out>(
-            detail::exact_to_int<beman::inside::detail::round_mode::ceil>(detail::ax::exact_input(x)));
-    else if constexpr (detail::fp_direct<Out, detail::ceil_auto_t<In>, In>)
-        return detail::fp_direct_store<Out>(x, detail::fp_ceil);
-    else
-        return detail::store_value<Out>(ceil(rational{x}));
+    return detail::integer_into<detail::round_mode::ceil, Out>(x);
 }
-
-// x rounded to nearest integer, half-away-from-zero (matches the existing
-// `rational::round()` convention used throughout the library).
 template <insidable Out, insidable In>
 [[nodiscard]] constexpr Out round_into(In x) {
-    if constexpr (detail::exact_path<Out, In>)
-        return detail::store_exact<Out>(
-            detail::exact_to_int<beman::inside::detail::round_mode::nearest>(detail::ax::exact_input(x)));
-    else if constexpr (detail::fp_direct<Out, detail::round_auto_t<In>, In>)
-        return detail::fp_direct_store<Out>(x, detail::fp_round);
-    else
-        return detail::store_value<Out>(round(rational{x}));
+    return detail::integer_into<detail::round_mode::nearest, Out>(x);
 }
-
-// x truncated toward zero. Distinct from floor for negative inputs:
-// trunc(-1.7) = -1 vs floor(-1.7) = -2.
 template <insidable Out, insidable In>
 [[nodiscard]] constexpr Out trunc_into(In x) {
-    if constexpr (detail::exact_path<Out, In>)
-        return detail::store_exact<Out>(
-            detail::exact_to_int<beman::inside::detail::round_mode::trunc>(detail::ax::exact_input(x)));
-    else if constexpr (detail::fp_direct<Out, detail::trunc_auto_t<In>, In>)
-        return detail::fp_direct_store<Out>(x, detail::fp_trunc);
-    else
-        return detail::store_value<Out>(trunc(rational{x}));
+    return detail::integer_into<detail::round_mode::trunc, Out>(x);
 }
 
 namespace detail {

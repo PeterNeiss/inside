@@ -34,9 +34,8 @@ inline constexpr bool integer_native_ops = integer_ops<L, R, F> && values_fit_im
 // Decided from the combined flags by rounding_of (policy_flag.hpp), the one
 // precedence all rounding paths share; `snap` alone is truncate-toward-zero.
 // The runtime quotient and the compile-time grid endpoints MUST agree on the
-// mode (both read div_round_mode), or a result could escape its own grid.
+// mode (both read rounding_of), or a result could escape its own grid.
 //---------------------------------------------------------------------------
-constexpr round_mode div_round_mode(policy_flag eff) noexcept { return rounding_of(eff); }
 
 // Round the signed exact quotient a/b (b != 0) to an integer per `m`.
 template <std::signed_integral T>
@@ -104,10 +103,16 @@ constexpr U round_uquotient(U num, U den, round_mode m) noexcept {
     }
 }
 
+// The zero-divisor check is skipped when R's grid excludes zero or
+// `ignore_zero` is set (a zero divisor is then UB, matching the `/= 0` no-op).
+template <insidable L, insidable R, policy_flag F, policy_flag G>
+inline constexpr bool divisor_unchecked =
+    divisor_excludes_zero<R> || ((G | F | policy_of<L> | policy_of<R>)&ignore_zero) != 0;
+
 // Compile-time rounding of a quotient-interval endpoint to an integer index.
-// lo/hi differ only for half_even, where the endpoint is bracketed by
-// [floor, ceil] rather than reproducing the parity rule at compile time.
-constexpr imax round_rat_lo(rational q, round_mode m) noexcept {
+// Under half_even the endpoint is bracketed by [floor, ceil] (Upper: ceil)
+// rather than reproducing the parity rule at compile time.
+constexpr imax round_rat(rational q, round_mode m, bool upper) noexcept {
     switch (m) {
     case round_mode::nearest:
         return round(q);
@@ -116,21 +121,7 @@ constexpr imax round_rat_lo(rational q, round_mode m) noexcept {
     case round_mode::ceil:
         return ceil(q);
     case round_mode::half_even:
-        return floor(q);
-    default:
-        return trunc(q);
-    }
-}
-constexpr imax round_rat_hi(rational q, round_mode m) noexcept {
-    switch (m) {
-    case round_mode::nearest:
-        return round(q);
-    case round_mode::floor:
-        return floor(q);
-    case round_mode::ceil:
-        return ceil(q);
-    case round_mode::half_even:
-        return ceil(q);
+        return upper ? ceil(q) : floor(q);
     default:
         return trunc(q);
     }
@@ -201,7 +192,7 @@ struct division {
     static constexpr bool native_div = native_div_integer || native_div_qformat;
 
     // The rounding mode for the native paths (shared by the grid and runtime).
-    static constexpr round_mode rmode = div_round_mode(F | policy_of<L> | policy_of<R>);
+    static constexpr round_mode rmode = rounding_of(F | policy_of<L> | policy_of<R>);
 
     // A clear diagnostic when the result grid is unrepresentable, instead of the
     // raw expected-deref / .value() below failing cryptically (mirrors add/mul).
@@ -222,8 +213,8 @@ struct division {
     // is always exact, so its grid is unchanged.)
     static constexpr grid result_grid = [] {
         if constexpr (native_div_integer)
-            return grid{round_rat_lo(to_rational((*(grid_of<L> / grid_of<R>)).Interval.Lower), rmode),
-                        round_rat_hi(to_rational((*(grid_of<L> / grid_of<R>)).Interval.Upper), rmode)};
+            return grid{round_rat(to_rational((*(grid_of<L> / grid_of<R>)).Interval.Lower), rmode, false),
+                        round_rat(to_rational((*(grid_of<L> / grid_of<R>)).Interval.Upper), rmode, true)};
         else if constexpr (native_div_qformat)
             return grid{interval{rational{0}, (detail::upper64<L> / detail::notch64<R>).value()}, detail::notch64<L>};
         else
@@ -284,11 +275,9 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy, A&& act
             return result{}; // unreachable: divisor excludes zero, op cannot fail
     };
 
-    // Div-by-zero check elided when R's grid excludes zero, or `ignore_zero` is
-    // set (zero divisor is then UB, matching the `/= 0` no-op). The fail arms stay
-    // keyed on divisor_excludes_zero (which narrows the return type; ignore_zero doesn't).
-    [[maybe_unused]] constexpr bool zero_unchecked =
-        divisor_excludes_zero<R> || (((G | F | policy_of<L> | policy_of<R>)&ignore_zero) != 0);
+    // The fail arms stay keyed on divisor_excludes_zero (which narrows the
+    // return type; ignore_zero doesn't).
+    [[maybe_unused]] constexpr bool zero_unchecked = divisor_unchecked<L, R, F, G>;
 
     if constexpr (fp_raw<result>) {
         // Real division reports zero like every other path (throw / report /
@@ -374,7 +363,7 @@ struct modulo {
     // truncation it takes the dividend's sign (non-negative for a non-negative
     // dividend grid); any directional mode can flip the sign, so the grid widens
     // to the symmetric ±max_rem (|r| ≤ max_rem for every mode).
-    static constexpr round_mode rmode = div_round_mode(F | policy_of<L> | policy_of<R>);
+    static constexpr round_mode rmode = rounding_of(F | policy_of<L> | policy_of<R>);
 
     static constexpr grid result_grid =
         (rmode == round_mode::trunc && lower_of<L> >= 0) ? grid{grid_rational{0}, max_rem} : grid{-max_rem, max_rem};
@@ -396,9 +385,8 @@ template <policy_flag G, typename E, typename A>
 constexpr auto modulo<L, R, F>::mod(L lhs, R rhs, policy<G, E> policy, A&& action) -> return_t<A> {
     if constexpr (!native_mod) {
         // Integer values past imax: r = a − round(a/b)·b in exact wide integers.
-        constexpr bool zero_unchecked =
-            divisor_excludes_zero<R> || (((G | F | policy_of<L> | policy_of<R>)&ignore_zero) != 0);
-        using I = wide_sint<exact_limbs<L, R, result>>;
+        constexpr bool zero_unchecked = divisor_unchecked<L, R, F, G>;
+        using I                       = wide_sint<exact_limbs<L, R, result>>;
         const I b{trunc(exact_of(rhs))};
         if constexpr (!zero_unchecked)
             if (b.is_zero())
@@ -406,12 +394,9 @@ constexpr auto modulo<L, R, F>::mod(L lhs, R rhs, policy<G, E> policy, A&& actio
         const I a{trunc(exact_of(lhs))};
         return exact_result<result>(exact_frac<exact_limbs<L, R, result>>{a - rounded_div<rmode>(a, b) * b, I{1}});
     } else {
-        using T         = native_div_t<L, R>;
-        const T rhs_val = static_cast<T>(to_value(rhs));
-        // Zero check elided when R's grid excludes zero (return_t is plain
-        // `result`) or `ignore_zero` is set (zero divisor is then UB, matching `%= 0`).
-        constexpr bool zero_unchecked =
-            divisor_excludes_zero<R> || (((G | F | policy_of<L> | policy_of<R>)&ignore_zero) != 0);
+        using T                       = native_div_t<L, R>;
+        const T        rhs_val        = static_cast<T>(to_value(rhs));
+        constexpr bool zero_unchecked = divisor_unchecked<L, R, F, G>;
         if constexpr (!zero_unchecked)
             if (rhs_val == 0)
                 return report_or_unexpected<result>(action, policy, errc::division_by_zero, "division by zero in mod");

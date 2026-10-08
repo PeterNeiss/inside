@@ -250,40 +250,22 @@ using common_inside_t = typename detail::common_inside<Lhs, Rhs>::type;
 // grid (so, unlike std::midpoint, it neither rounds nor overflows). There is
 // no free `beman::inside::clamp` (the name is the policy flag — use clamp_cast<Target>).
 //---------------------------------------------------------------------------
-template <insidable T>
-[[nodiscard]] constexpr T min(T a, T b) {
-    return (b < a) ? b : a;
-}
-
-template <insidable T>
-[[nodiscard]] constexpr T max(T a, T b) {
-    return (a < b) ? b : a;
-}
-
-// Mixed-grid forms return the common hull type (both operands convert
-// losslessly — the hull is assignable from each by construction).
+// Both return the common type: the operand type itself for one type, else
+// the hull, which holds each operand exactly.
 template <insidable Lhs, insidable Rhs>
-    requires(!std::same_as<Lhs, Rhs>)
 [[nodiscard]] constexpr auto min(Lhs a, Rhs b) -> common_inside_t<Lhs, Rhs> {
     common_inside_t<Lhs, Rhs> ca{a}, cb{b};
     return (cb < ca) ? cb : ca;
 }
 
 template <insidable Lhs, insidable Rhs>
-    requires(!std::same_as<Lhs, Rhs>)
 [[nodiscard]] constexpr auto max(Lhs a, Rhs b) -> common_inside_t<Lhs, Rhs> {
     common_inside_t<Lhs, Rhs> ca{a}, cb{b};
     return (ca < cb) ? cb : ca;
 }
 
-template <insidable T>
-[[nodiscard]] constexpr auto midpoint(T a, T b) {
-    return (a + b) * just<frac<1, 2>>;
-}
-
-// Mixed grids: the exact average on the refined sum grid, like the same-type form.
+// The exact average, on the refined sum grid.
 template <insidable Lhs, insidable Rhs>
-    requires(!std::same_as<Lhs, Rhs>)
 [[nodiscard]] constexpr auto midpoint(Lhs a, Rhs b) {
     return (a + b) * just<frac<1, 2>>;
 }

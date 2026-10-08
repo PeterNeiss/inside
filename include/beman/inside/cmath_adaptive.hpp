@@ -1137,8 +1137,8 @@ inline constexpr int kUnbounded = 1024;
 struct fp_plain {
     static double dd_eval(double x, double v) { return dd_eval_bound(x, v); }
 };
-    #define BEMAN_INSIDE_AX_KERNEL(fn, kernel, call, mag, limit, slope_expr)                                 \
-        struct fp_##fn : fp_plain {                                                                          \
+    #define BEMAN_INSIDE_AX_KERNEL_ON(base, fn, kernel, call, mag, limit, slope_expr)                        \
+        struct fp_##fn : base {                                                                              \
             static constexpr int Mag   = mag;                                                                \
             static constexpr int Limit = limit;                                                              \
             template <int T>                                                                                 \
@@ -1151,6 +1151,7 @@ struct fp_plain {
             }                                                                                                \
             static double slope([[maybe_unused]] double x, [[maybe_unused]] double v) { return slope_expr; } \
         };
+    #define BEMAN_INSIDE_AX_KERNEL(...) BEMAN_INSIDE_AX_KERNEL_ON(fp_plain, __VA_ARGS__)
 using fp_full_trig = fpk::trig_k<fpk::kFullBits>;
 using fp_full_exp  = fpk::exp_k<fpk::kFullBits>;
 using fp_full_log  = fpk::log_k<fpk::kFullBits>;
@@ -1188,25 +1189,22 @@ BEMAN_INSIDE_AX_KERNEL(cbrt,
                        kUnbounded,
                        fp_limit(fp_full_exp::Rel + 16 * fpk::pow_k<fpk::kFullBits>::YRel),
                        x == 0 ? 0.0 : fabs_d(v / x))
-    #undef BEMAN_INSIDE_AX_KERNEL
 
 // acosh: the dd kernel's bound grows near 1 as 2^-92/√(1 − 1/x²).
-struct fp_acosh {
-    static constexpr int Mag   = kUnbounded;
-    static constexpr int Limit = fp_limit(fp_full_log::AcoshRel);
-    template <int T>
-    static double value(double x, double& bound) {
-        return fpk::log_k<T>::acosh(x, bound);
-    }
-    template <typename D>
-    static D dd_value(D x) {
-        return ddk::acosh(x);
-    }
+struct fp_acosh_eval {
     static double dd_eval(double x, double v) {
         return kDDAbs / fpk::fp_sqrt(1.0 - 1.0 / (x * x)) + dd_eval_bound(x, v);
     }
-    static double slope(double x, double) { return 1.0 / fpk::fp_sqrt((x - 1.0) * (x + 1.0)); }
 };
+BEMAN_INSIDE_AX_KERNEL_ON(fp_acosh_eval,
+                          acosh,
+                          log_k,
+                          acosh,
+                          kUnbounded,
+                          fp_limit(fp_full_log::AcoshRel),
+                          1.0 / fpk::fp_sqrt((x - 1.0) * (x + 1.0)))
+    #undef BEMAN_INSIDE_AX_KERNEL_ON
+    #undef BEMAN_INSIDE_AX_KERNEL
 
 // sqrt: correctly rounded.
 struct fp_sqrt : fp_plain {
@@ -1326,34 +1324,19 @@ inline bool fp_attempt_pow_base(const In& xi, Out& out) {
 // at x and its proved bound.
 template <typename K>
 struct dd_lean {};
-template <>
-struct dd_lean<fp_sin> {
-    template <typename D>
-    static D value(D x, double& bound) {
-        return ddk::sin_lean(x, bound);
-    }
-};
-template <>
-struct dd_lean<fp_cos> {
-    template <typename D>
-    static D value(D x, double& bound) {
-        return ddk::cos_lean(x, bound);
-    }
-};
-template <>
-struct dd_lean<fp_exp> {
-    template <typename D>
-    static D value(D x, double& bound) {
-        return ddk::exp_lean(x, bound);
-    }
-};
-template <>
-struct dd_lean<fp_exp2> {
-    template <typename D>
-    static D value(D x, double& bound) {
-        return ddk::exp2_lean(x, bound);
-    }
-};
+    #define BEMAN_INSIDE_AX_LEAN(fn)             \
+        template <>                              \
+        struct dd_lean<fp_##fn> {                \
+            template <typename D>                \
+            static D value(D x, double& bound) { \
+                return ddk::fn##_lean(x, bound); \
+            }                                    \
+        };
+BEMAN_INSIDE_AX_LEAN(sin)
+BEMAN_INSIDE_AX_LEAN(cos)
+BEMAN_INSIDE_AX_LEAN(exp)
+BEMAN_INSIDE_AX_LEAN(exp2)
+    #undef BEMAN_INSIDE_AX_LEAN
 template <typename K>
 concept has_dd_lean = requires(ddk::dd x, double& b) { dd_lean<K>::template value<ddk::dd>(x, b); };
 
@@ -1490,21 +1473,10 @@ tiers([[maybe_unused]] const F& fp, [[maybe_unused]] const D& dd, const I& integ
 // dd attempts as expressions in r (nothing of them without an FPU). FP and
 // DD in parentheses.
 #ifndef BEMAN_INSIDE_MATH_NO_FP
-    #define BEMAN_INSIDE_AX_TIERS(Out, FP, DD, fp_call, dd_call, ...) \
-        return ::beman::inside::math::adaptive::tiers<Out, FP, DD>(   \
-            [&]([[maybe_unused]] Out& r) {                            \
-                if constexpr (FP)                                     \
-                    return fp_call;                                   \
-                else                                                  \
-                    return false;                                     \
-            },                                                        \
-            [&]([[maybe_unused]] Out& r) {                            \
-                if constexpr (DD)                                     \
-                    return dd_call;                                   \
-                else                                                  \
-                    return false;                                     \
-            },                                                        \
-            [&] { return __VA_ARGS__; });
+    #define BEMAN_INSIDE_AX_TIERS(Out, FP, DD, fp_call, dd_call, ...)                                        \
+        return ::beman::inside::math::adaptive::tiers<Out, FP, DD>([&](auto& r) -> bool { return fp_call; }, \
+                                                                   [&](auto& r) -> bool { return dd_call; }, \
+                                                                   [&] { return __VA_ARGS__; });
 #else
     #define BEMAN_INSIDE_AX_TIERS(Out, FP, DD, fp_call, dd_call, ...) return __VA_ARGS__;
 #endif
@@ -1539,9 +1511,11 @@ consteval void require_rounding() noexcept {
 // One-input functions: the domain (checked on In's grid, `true` for none),
 // the double kernel's argument range (fp_ok), and the integer core.
 #define BEMAN_INSIDE_AX_UNARY(fn, domain, msg, fp_ok, ...)                                             \
+    template <insidable In>                                                                            \
+    inline constexpr bool fn##_domain = domain;                                                        \
     template <insidable Out, insidable In>                                                             \
     [[nodiscard]] constexpr Out fn##_into(In x) {                                                      \
-        static_assert(domain, "beman::inside::math::" #fn ": " msg);                                   \
+        static_assert(fn##_domain<In>, "beman::inside::math::" #fn ": " msg);                          \
         require_rounding<Out>();                                                                       \
         using core = __VA_ARGS__;                                                                      \
         BEMAN_INSIDE_AX_TABLE(Out, In, x)                                                              \
@@ -1639,6 +1613,8 @@ template <insidable Out, insidable In>
 }
 
 // tan: overflow when the result leaves Out (without clamp).
+template <insidable In>
+inline constexpr bool tan_domain = true;
 template <insidable Out, insidable In>
 [[nodiscard]] constexpr std::expected<Out, errc> tan_into(In x) {
     require_rounding<Out>();
@@ -1852,58 +1828,49 @@ template <insidable InB, insidable InE, bool BUp, bool EUp, bool Up>
 inline constexpr grid_rational pow_corner =
     ax::lattice_bound<notch_of<InB>, Up>(pow_core<InB, InE>{ax::grid_input<InB>(BUp ? upper_of<InB> : lower_of<InB>),
                                                             ax::grid_input<InE>(EUp ? upper_of<InE> : lower_of<InE>)});
-template <insidable InB, insidable InE>
-inline constexpr grid_rational pow_lo = [] {
-    grid_rational m = pow_corner<InB, InE, false, false, false>;
-    for (const grid_rational& c : {pow_corner<InB, InE, false, true, false>,
-                                   pow_corner<InB, InE, true, false, false>,
-                                   pow_corner<InB, InE, true, true, false>})
-        if (c < m)
+// The least (Up: greatest) bound over the four corners.
+template <insidable InB, insidable InE, bool Up>
+inline constexpr grid_rational pow_extreme = [] {
+    grid_rational m = pow_corner<InB, InE, false, false, Up>;
+    for (const grid_rational& c : {pow_corner<InB, InE, false, true, Up>,
+                                   pow_corner<InB, InE, true, false, Up>,
+                                   pow_corner<InB, InE, true, true, Up>})
+        if (Up ? m < c : c < m)
             m = c;
     return m;
 }();
 template <insidable InB, insidable InE>
-inline constexpr grid_rational pow_hi = [] {
-    grid_rational m = pow_corner<InB, InE, false, false, true>;
-    for (const grid_rational& c : {pow_corner<InB, InE, false, true, true>,
-                                   pow_corner<InB, InE, true, false, true>,
-                                   pow_corner<InB, InE, true, true, true>})
-        if (m < c)
-            m = c;
-    return m;
-}();
-template <insidable InB, insidable InE>
-using pow = inside<{{pow_lo<InB, InE>, pow_hi<InB, InE>}, notch_of<InB>}, ax::auto_policy<InB>>;
+using pow = inside<{{pow_extreme<InB, InE, false>, pow_extreme<InB, InE, true>}, notch_of<InB>}, ax::auto_policy<InB>>;
 } // namespace auto_t
 
-#define BEMAN_INSIDE_AX_AUTO(fn, cond)                                                         \
+#define BEMAN_INSIDE_AX_AUTO(fn)                                                               \
     template <insidable In>                                                                    \
     [[nodiscard]] constexpr auto fn(In x) {                                                    \
         static_assert(deducible<In>());                                                        \
-        if constexpr (cond)                                                                    \
+        if constexpr (fn##_domain<In>)                                                         \
             return fn##_into<auto_t::fn<In>>(x);                                               \
         else                                                                                   \
             return fn##_into<inside<{0, 1}, round_nearest>>(x); /* the _into domain message */ \
     }
 
-BEMAN_INSIDE_AX_AUTO(exp, true)
-BEMAN_INSIDE_AX_AUTO(exp2, true)
-BEMAN_INSIDE_AX_AUTO(sin, true)
-BEMAN_INSIDE_AX_AUTO(cos, true)
-BEMAN_INSIDE_AX_AUTO(tan, true)
-BEMAN_INSIDE_AX_AUTO(atan, true)
-BEMAN_INSIDE_AX_AUTO(sinh, true)
-BEMAN_INSIDE_AX_AUTO(cosh, true)
-BEMAN_INSIDE_AX_AUTO(tanh, true)
-BEMAN_INSIDE_AX_AUTO(asinh, true)
-BEMAN_INSIDE_AX_AUTO(cbrt, true)
-BEMAN_INSIDE_AX_AUTO(log, (lower_of<In> > 0))
-BEMAN_INSIDE_AX_AUTO(log2, (lower_of<In> > 0))
-BEMAN_INSIDE_AX_AUTO(log10, (lower_of<In> > 0))
-BEMAN_INSIDE_AX_AUTO(asin, (lower_of<In> >= -1 && upper_of<In> <= 1))
-BEMAN_INSIDE_AX_AUTO(acos, (lower_of<In> >= -1 && upper_of<In> <= 1))
-BEMAN_INSIDE_AX_AUTO(acosh, (lower_of<In> >= 1))
-BEMAN_INSIDE_AX_AUTO(atanh, (lower_of<In> > -1 && upper_of<In> < 1))
+BEMAN_INSIDE_AX_AUTO(exp)
+BEMAN_INSIDE_AX_AUTO(exp2)
+BEMAN_INSIDE_AX_AUTO(sin)
+BEMAN_INSIDE_AX_AUTO(cos)
+BEMAN_INSIDE_AX_AUTO(tan)
+BEMAN_INSIDE_AX_AUTO(atan)
+BEMAN_INSIDE_AX_AUTO(sinh)
+BEMAN_INSIDE_AX_AUTO(cosh)
+BEMAN_INSIDE_AX_AUTO(tanh)
+BEMAN_INSIDE_AX_AUTO(asinh)
+BEMAN_INSIDE_AX_AUTO(cbrt)
+BEMAN_INSIDE_AX_AUTO(log)
+BEMAN_INSIDE_AX_AUTO(log2)
+BEMAN_INSIDE_AX_AUTO(log10)
+BEMAN_INSIDE_AX_AUTO(asin)
+BEMAN_INSIDE_AX_AUTO(acos)
+BEMAN_INSIDE_AX_AUTO(acosh)
+BEMAN_INSIDE_AX_AUTO(atanh)
 #undef BEMAN_INSIDE_AX_AUTO
 
 template <insidable In>

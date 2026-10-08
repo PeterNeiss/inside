@@ -3749,26 +3749,24 @@ constexpr bool has_width_flag(policy_flag P) noexcept { return (P & raw_width_ma
 
 constexpr int width_flag_count(policy_flag P) noexcept { return std::popcount(P & raw_width_mask); }
 
-// Map the single set width bit to its C++ type (only valid when has_width_flag).
+// The type of the (lowest) set width bit, only valid when has_width_flag: the
+// flags i8, u8, …, u64 are consecutive bits.
+template <int I, typename T, typename... Ts>
+struct nth_type : nth_type<I - 1, Ts...> {};
+template <typename T, typename... Ts>
+struct nth_type<0, T, Ts...> {
+    using type = T;
+};
 template <policy_flag P>
-using raw_type_of_t = std::conditional_t<
-    (P & i8) == i8,
-    std::int8_t,
-    std::conditional_t<
-        (P & u8) == u8,
-        std::uint8_t,
-        std::conditional_t<
-            (P & i16) == i16,
-            std::int16_t,
-            std::conditional_t<
-                (P & u16) == u16,
-                std::uint16_t,
-                std::conditional_t<
-                    (P & i32) == i32,
-                    std::int32_t,
-                    std::conditional_t<(P & u32) == u32,
-                                       std::uint32_t,
-                                       std::conditional_t<(P & i64) == i64, std::int64_t, std::uint64_t>>>>>>>;
+using raw_type_of_t = typename nth_type<std::countr_zero(P& raw_width_mask) - std::countr_zero(i8),
+                                        std::int8_t,
+                                        std::uint8_t,
+                                        std::int16_t,
+                                        std::uint16_t,
+                                        std::int32_t,
+                                        std::uint32_t,
+                                        std::int64_t,
+                                        std::uint64_t>::type;
 
 // Does raw type R hold every reachable raw value of grid G under the given
 // encoding? Index storage runs 0..max_index (unsigned); value storage runs
@@ -6876,9 +6874,8 @@ inline constexpr bool integer_native_ops = integer_ops<L, R, F> && values_fit_im
 // Decided from the combined flags by rounding_of (policy_flag.hpp), the one
 // precedence all rounding paths share; `snap` alone is truncate-toward-zero.
 // The runtime quotient and the compile-time grid endpoints MUST agree on the
-// mode (both read div_round_mode), or a result could escape its own grid.
+// mode (both read rounding_of), or a result could escape its own grid.
 //---------------------------------------------------------------------------
-constexpr round_mode div_round_mode(policy_flag eff) noexcept { return rounding_of(eff); }
 
 // Round the signed exact quotient a/b (b != 0) to an integer per `m`.
 template <std::signed_integral T>
@@ -6946,10 +6943,16 @@ constexpr U round_uquotient(U num, U den, round_mode m) noexcept {
     }
 }
 
+// The zero-divisor check is skipped when R's grid excludes zero or
+// `ignore_zero` is set (a zero divisor is then UB, matching the `/= 0` no-op).
+template <insidable L, insidable R, policy_flag F, policy_flag G>
+inline constexpr bool divisor_unchecked =
+    divisor_excludes_zero<R> || ((G | F | policy_of<L> | policy_of<R>)&ignore_zero) != 0;
+
 // Compile-time rounding of a quotient-interval endpoint to an integer index.
-// lo/hi differ only for half_even, where the endpoint is bracketed by
-// [floor, ceil] rather than reproducing the parity rule at compile time.
-constexpr imax round_rat_lo(rational q, round_mode m) noexcept {
+// Under half_even the endpoint is bracketed by [floor, ceil] (Upper: ceil)
+// rather than reproducing the parity rule at compile time.
+constexpr imax round_rat(rational q, round_mode m, bool upper) noexcept {
     switch (m) {
     case round_mode::nearest:
         return round(q);
@@ -6958,21 +6961,7 @@ constexpr imax round_rat_lo(rational q, round_mode m) noexcept {
     case round_mode::ceil:
         return ceil(q);
     case round_mode::half_even:
-        return floor(q);
-    default:
-        return trunc(q);
-    }
-}
-constexpr imax round_rat_hi(rational q, round_mode m) noexcept {
-    switch (m) {
-    case round_mode::nearest:
-        return round(q);
-    case round_mode::floor:
-        return floor(q);
-    case round_mode::ceil:
-        return ceil(q);
-    case round_mode::half_even:
-        return ceil(q);
+        return upper ? ceil(q) : floor(q);
     default:
         return trunc(q);
     }
@@ -7043,7 +7032,7 @@ struct division {
     static constexpr bool native_div = native_div_integer || native_div_qformat;
 
     // The rounding mode for the native paths (shared by the grid and runtime).
-    static constexpr round_mode rmode = div_round_mode(F | policy_of<L> | policy_of<R>);
+    static constexpr round_mode rmode = rounding_of(F | policy_of<L> | policy_of<R>);
 
     // A clear diagnostic when the result grid is unrepresentable, instead of the
     // raw expected-deref / .value() below failing cryptically (mirrors add/mul).
@@ -7064,8 +7053,8 @@ struct division {
     // is always exact, so its grid is unchanged.)
     static constexpr grid result_grid = [] {
         if constexpr (native_div_integer)
-            return grid{round_rat_lo(to_rational((*(grid_of<L> / grid_of<R>)).Interval.Lower), rmode),
-                        round_rat_hi(to_rational((*(grid_of<L> / grid_of<R>)).Interval.Upper), rmode)};
+            return grid{round_rat(to_rational((*(grid_of<L> / grid_of<R>)).Interval.Lower), rmode, false),
+                        round_rat(to_rational((*(grid_of<L> / grid_of<R>)).Interval.Upper), rmode, true)};
         else if constexpr (native_div_qformat)
             return grid{interval{rational{0}, (detail::upper64<L> / detail::notch64<R>).value()}, detail::notch64<L>};
         else
@@ -7126,11 +7115,9 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy, A&& act
             return result{}; // unreachable: divisor excludes zero, op cannot fail
     };
 
-    // Div-by-zero check elided when R's grid excludes zero, or `ignore_zero` is
-    // set (zero divisor is then UB, matching the `/= 0` no-op). The fail arms stay
-    // keyed on divisor_excludes_zero (which narrows the return type; ignore_zero doesn't).
-    [[maybe_unused]] constexpr bool zero_unchecked =
-        divisor_excludes_zero<R> || (((G | F | policy_of<L> | policy_of<R>)&ignore_zero) != 0);
+    // The fail arms stay keyed on divisor_excludes_zero (which narrows the
+    // return type; ignore_zero doesn't).
+    [[maybe_unused]] constexpr bool zero_unchecked = divisor_unchecked<L, R, F, G>;
 
     if constexpr (fp_raw<result>) {
         // Real division reports zero like every other path (throw / report /
@@ -7216,7 +7203,7 @@ struct modulo {
     // truncation it takes the dividend's sign (non-negative for a non-negative
     // dividend grid); any directional mode can flip the sign, so the grid widens
     // to the symmetric ±max_rem (|r| ≤ max_rem for every mode).
-    static constexpr round_mode rmode = div_round_mode(F | policy_of<L> | policy_of<R>);
+    static constexpr round_mode rmode = rounding_of(F | policy_of<L> | policy_of<R>);
 
     static constexpr grid result_grid =
         (rmode == round_mode::trunc && lower_of<L> >= 0) ? grid{grid_rational{0}, max_rem} : grid{-max_rem, max_rem};
@@ -7238,9 +7225,8 @@ template <policy_flag G, typename E, typename A>
 constexpr auto modulo<L, R, F>::mod(L lhs, R rhs, policy<G, E> policy, A&& action) -> return_t<A> {
     if constexpr (!native_mod) {
         // Integer values past imax: r = a − round(a/b)·b in exact wide integers.
-        constexpr bool zero_unchecked =
-            divisor_excludes_zero<R> || (((G | F | policy_of<L> | policy_of<R>)&ignore_zero) != 0);
-        using I = wide_sint<exact_limbs<L, R, result>>;
+        constexpr bool zero_unchecked = divisor_unchecked<L, R, F, G>;
+        using I                       = wide_sint<exact_limbs<L, R, result>>;
         const I b{trunc(exact_of(rhs))};
         if constexpr (!zero_unchecked)
             if (b.is_zero())
@@ -7248,12 +7234,9 @@ constexpr auto modulo<L, R, F>::mod(L lhs, R rhs, policy<G, E> policy, A&& actio
         const I a{trunc(exact_of(lhs))};
         return exact_result<result>(exact_frac<exact_limbs<L, R, result>>{a - rounded_div<rmode>(a, b) * b, I{1}});
     } else {
-        using T         = native_div_t<L, R>;
-        const T rhs_val = static_cast<T>(to_value(rhs));
-        // Zero check elided when R's grid excludes zero (return_t is plain
-        // `result`) or `ignore_zero` is set (zero divisor is then UB, matching `%= 0`).
-        constexpr bool zero_unchecked =
-            divisor_excludes_zero<R> || (((G | F | policy_of<L> | policy_of<R>)&ignore_zero) != 0);
+        using T                       = native_div_t<L, R>;
+        const T        rhs_val        = static_cast<T>(to_value(rhs));
+        constexpr bool zero_unchecked = divisor_unchecked<L, R, F, G>;
         if constexpr (!zero_unchecked)
             if (rhs_val == 0)
                 return report_or_unexpected<result>(action, policy, errc::division_by_zero, "division by zero in mod");
@@ -8687,40 +8670,22 @@ using common_inside_t = typename detail::common_inside<Lhs, Rhs>::type;
 // grid (so, unlike std::midpoint, it neither rounds nor overflows). There is
 // no free `beman::inside::clamp` (the name is the policy flag — use clamp_cast<Target>).
 //---------------------------------------------------------------------------
-template <insidable T>
-[[nodiscard]] constexpr T min(T a, T b) {
-    return (b < a) ? b : a;
-}
-
-template <insidable T>
-[[nodiscard]] constexpr T max(T a, T b) {
-    return (a < b) ? b : a;
-}
-
-// Mixed-grid forms return the common hull type (both operands convert
-// losslessly — the hull is assignable from each by construction).
+// Both return the common type: the operand type itself for one type, else
+// the hull, which holds each operand exactly.
 template <insidable Lhs, insidable Rhs>
-    requires(!std::same_as<Lhs, Rhs>)
 [[nodiscard]] constexpr auto min(Lhs a, Rhs b) -> common_inside_t<Lhs, Rhs> {
     common_inside_t<Lhs, Rhs> ca{a}, cb{b};
     return (cb < ca) ? cb : ca;
 }
 
 template <insidable Lhs, insidable Rhs>
-    requires(!std::same_as<Lhs, Rhs>)
 [[nodiscard]] constexpr auto max(Lhs a, Rhs b) -> common_inside_t<Lhs, Rhs> {
     common_inside_t<Lhs, Rhs> ca{a}, cb{b};
     return (ca < cb) ? cb : ca;
 }
 
-template <insidable T>
-[[nodiscard]] constexpr auto midpoint(T a, T b) {
-    return (a + b) * just<frac<1, 2>>;
-}
-
-// Mixed grids: the exact average on the refined sum grid, like the same-type form.
+// The exact average, on the refined sum grid.
 template <insidable Lhs, insidable Rhs>
-    requires(!std::same_as<Lhs, Rhs>)
 [[nodiscard]] constexpr auto midpoint(Lhs a, Rhs b) {
     return (a + b) * just<frac<1, 2>>;
 }
@@ -13078,8 +13043,8 @@ inline constexpr int kUnbounded = 1024;
 struct fp_plain {
     static double dd_eval(double x, double v) { return dd_eval_bound(x, v); }
 };
-    #define BEMAN_INSIDE_AX_KERNEL(fn, kernel, call, mag, limit, slope_expr)                                 \
-        struct fp_##fn : fp_plain {                                                                          \
+    #define BEMAN_INSIDE_AX_KERNEL_ON(base, fn, kernel, call, mag, limit, slope_expr)                        \
+        struct fp_##fn : base {                                                                              \
             static constexpr int Mag   = mag;                                                                \
             static constexpr int Limit = limit;                                                              \
             template <int T>                                                                                 \
@@ -13092,6 +13057,7 @@ struct fp_plain {
             }                                                                                                \
             static double slope([[maybe_unused]] double x, [[maybe_unused]] double v) { return slope_expr; } \
         };
+    #define BEMAN_INSIDE_AX_KERNEL(...) BEMAN_INSIDE_AX_KERNEL_ON(fp_plain, __VA_ARGS__)
 using fp_full_trig = fpk::trig_k<fpk::kFullBits>;
 using fp_full_exp  = fpk::exp_k<fpk::kFullBits>;
 using fp_full_log  = fpk::log_k<fpk::kFullBits>;
@@ -13129,25 +13095,22 @@ BEMAN_INSIDE_AX_KERNEL(cbrt,
                        kUnbounded,
                        fp_limit(fp_full_exp::Rel + 16 * fpk::pow_k<fpk::kFullBits>::YRel),
                        x == 0 ? 0.0 : fabs_d(v / x))
-    #undef BEMAN_INSIDE_AX_KERNEL
 
 // acosh: the dd kernel's bound grows near 1 as 2^-92/√(1 − 1/x²).
-struct fp_acosh {
-    static constexpr int Mag   = kUnbounded;
-    static constexpr int Limit = fp_limit(fp_full_log::AcoshRel);
-    template <int T>
-    static double value(double x, double& bound) {
-        return fpk::log_k<T>::acosh(x, bound);
-    }
-    template <typename D>
-    static D dd_value(D x) {
-        return ddk::acosh(x);
-    }
+struct fp_acosh_eval {
     static double dd_eval(double x, double v) {
         return kDDAbs / fpk::fp_sqrt(1.0 - 1.0 / (x * x)) + dd_eval_bound(x, v);
     }
-    static double slope(double x, double) { return 1.0 / fpk::fp_sqrt((x - 1.0) * (x + 1.0)); }
 };
+BEMAN_INSIDE_AX_KERNEL_ON(fp_acosh_eval,
+                          acosh,
+                          log_k,
+                          acosh,
+                          kUnbounded,
+                          fp_limit(fp_full_log::AcoshRel),
+                          1.0 / fpk::fp_sqrt((x - 1.0) * (x + 1.0)))
+    #undef BEMAN_INSIDE_AX_KERNEL_ON
+    #undef BEMAN_INSIDE_AX_KERNEL
 
 // sqrt: correctly rounded.
 struct fp_sqrt : fp_plain {
@@ -13267,34 +13230,19 @@ inline bool fp_attempt_pow_base(const In& xi, Out& out) {
 // at x and its proved bound.
 template <typename K>
 struct dd_lean {};
-template <>
-struct dd_lean<fp_sin> {
-    template <typename D>
-    static D value(D x, double& bound) {
-        return ddk::sin_lean(x, bound);
-    }
-};
-template <>
-struct dd_lean<fp_cos> {
-    template <typename D>
-    static D value(D x, double& bound) {
-        return ddk::cos_lean(x, bound);
-    }
-};
-template <>
-struct dd_lean<fp_exp> {
-    template <typename D>
-    static D value(D x, double& bound) {
-        return ddk::exp_lean(x, bound);
-    }
-};
-template <>
-struct dd_lean<fp_exp2> {
-    template <typename D>
-    static D value(D x, double& bound) {
-        return ddk::exp2_lean(x, bound);
-    }
-};
+    #define BEMAN_INSIDE_AX_LEAN(fn)             \
+        template <>                              \
+        struct dd_lean<fp_##fn> {                \
+            template <typename D>                \
+            static D value(D x, double& bound) { \
+                return ddk::fn##_lean(x, bound); \
+            }                                    \
+        };
+BEMAN_INSIDE_AX_LEAN(sin)
+BEMAN_INSIDE_AX_LEAN(cos)
+BEMAN_INSIDE_AX_LEAN(exp)
+BEMAN_INSIDE_AX_LEAN(exp2)
+    #undef BEMAN_INSIDE_AX_LEAN
 template <typename K>
 concept has_dd_lean = requires(ddk::dd x, double& b) { dd_lean<K>::template value<ddk::dd>(x, b); };
 
@@ -13431,21 +13379,10 @@ tiers([[maybe_unused]] const F& fp, [[maybe_unused]] const D& dd, const I& integ
 // dd attempts as expressions in r (nothing of them without an FPU). FP and
 // DD in parentheses.
 #ifndef BEMAN_INSIDE_MATH_NO_FP
-    #define BEMAN_INSIDE_AX_TIERS(Out, FP, DD, fp_call, dd_call, ...) \
-        return ::beman::inside::math::adaptive::tiers<Out, FP, DD>(   \
-            [&]([[maybe_unused]] Out& r) {                            \
-                if constexpr (FP)                                     \
-                    return fp_call;                                   \
-                else                                                  \
-                    return false;                                     \
-            },                                                        \
-            [&]([[maybe_unused]] Out& r) {                            \
-                if constexpr (DD)                                     \
-                    return dd_call;                                   \
-                else                                                  \
-                    return false;                                     \
-            },                                                        \
-            [&] { return __VA_ARGS__; });
+    #define BEMAN_INSIDE_AX_TIERS(Out, FP, DD, fp_call, dd_call, ...)                                        \
+        return ::beman::inside::math::adaptive::tiers<Out, FP, DD>([&](auto& r) -> bool { return fp_call; }, \
+                                                                   [&](auto& r) -> bool { return dd_call; }, \
+                                                                   [&] { return __VA_ARGS__; });
 #else
     #define BEMAN_INSIDE_AX_TIERS(Out, FP, DD, fp_call, dd_call, ...) return __VA_ARGS__;
 #endif
@@ -13480,9 +13417,11 @@ consteval void require_rounding() noexcept {
 // One-input functions: the domain (checked on In's grid, `true` for none),
 // the double kernel's argument range (fp_ok), and the integer core.
 #define BEMAN_INSIDE_AX_UNARY(fn, domain, msg, fp_ok, ...)                                             \
+    template <insidable In>                                                                            \
+    inline constexpr bool fn##_domain = domain;                                                        \
     template <insidable Out, insidable In>                                                             \
     [[nodiscard]] constexpr Out fn##_into(In x) {                                                      \
-        static_assert(domain, "beman::inside::math::" #fn ": " msg);                                   \
+        static_assert(fn##_domain<In>, "beman::inside::math::" #fn ": " msg);                          \
         require_rounding<Out>();                                                                       \
         using core = __VA_ARGS__;                                                                      \
         BEMAN_INSIDE_AX_TABLE(Out, In, x)                                                              \
@@ -13580,6 +13519,8 @@ template <insidable Out, insidable In>
 }
 
 // tan: overflow when the result leaves Out (without clamp).
+template <insidable In>
+inline constexpr bool tan_domain = true;
 template <insidable Out, insidable In>
 [[nodiscard]] constexpr std::expected<Out, errc> tan_into(In x) {
     require_rounding<Out>();
@@ -13793,58 +13734,49 @@ template <insidable InB, insidable InE, bool BUp, bool EUp, bool Up>
 inline constexpr grid_rational pow_corner =
     ax::lattice_bound<notch_of<InB>, Up>(pow_core<InB, InE>{ax::grid_input<InB>(BUp ? upper_of<InB> : lower_of<InB>),
                                                             ax::grid_input<InE>(EUp ? upper_of<InE> : lower_of<InE>)});
-template <insidable InB, insidable InE>
-inline constexpr grid_rational pow_lo = [] {
-    grid_rational m = pow_corner<InB, InE, false, false, false>;
-    for (const grid_rational& c : {pow_corner<InB, InE, false, true, false>,
-                                   pow_corner<InB, InE, true, false, false>,
-                                   pow_corner<InB, InE, true, true, false>})
-        if (c < m)
+// The least (Up: greatest) bound over the four corners.
+template <insidable InB, insidable InE, bool Up>
+inline constexpr grid_rational pow_extreme = [] {
+    grid_rational m = pow_corner<InB, InE, false, false, Up>;
+    for (const grid_rational& c : {pow_corner<InB, InE, false, true, Up>,
+                                   pow_corner<InB, InE, true, false, Up>,
+                                   pow_corner<InB, InE, true, true, Up>})
+        if (Up ? m < c : c < m)
             m = c;
     return m;
 }();
 template <insidable InB, insidable InE>
-inline constexpr grid_rational pow_hi = [] {
-    grid_rational m = pow_corner<InB, InE, false, false, true>;
-    for (const grid_rational& c : {pow_corner<InB, InE, false, true, true>,
-                                   pow_corner<InB, InE, true, false, true>,
-                                   pow_corner<InB, InE, true, true, true>})
-        if (m < c)
-            m = c;
-    return m;
-}();
-template <insidable InB, insidable InE>
-using pow = inside<{{pow_lo<InB, InE>, pow_hi<InB, InE>}, notch_of<InB>}, ax::auto_policy<InB>>;
+using pow = inside<{{pow_extreme<InB, InE, false>, pow_extreme<InB, InE, true>}, notch_of<InB>}, ax::auto_policy<InB>>;
 } // namespace auto_t
 
-#define BEMAN_INSIDE_AX_AUTO(fn, cond)                                                         \
+#define BEMAN_INSIDE_AX_AUTO(fn)                                                               \
     template <insidable In>                                                                    \
     [[nodiscard]] constexpr auto fn(In x) {                                                    \
         static_assert(deducible<In>());                                                        \
-        if constexpr (cond)                                                                    \
+        if constexpr (fn##_domain<In>)                                                         \
             return fn##_into<auto_t::fn<In>>(x);                                               \
         else                                                                                   \
             return fn##_into<inside<{0, 1}, round_nearest>>(x); /* the _into domain message */ \
     }
 
-BEMAN_INSIDE_AX_AUTO(exp, true)
-BEMAN_INSIDE_AX_AUTO(exp2, true)
-BEMAN_INSIDE_AX_AUTO(sin, true)
-BEMAN_INSIDE_AX_AUTO(cos, true)
-BEMAN_INSIDE_AX_AUTO(tan, true)
-BEMAN_INSIDE_AX_AUTO(atan, true)
-BEMAN_INSIDE_AX_AUTO(sinh, true)
-BEMAN_INSIDE_AX_AUTO(cosh, true)
-BEMAN_INSIDE_AX_AUTO(tanh, true)
-BEMAN_INSIDE_AX_AUTO(asinh, true)
-BEMAN_INSIDE_AX_AUTO(cbrt, true)
-BEMAN_INSIDE_AX_AUTO(log, (lower_of<In> > 0))
-BEMAN_INSIDE_AX_AUTO(log2, (lower_of<In> > 0))
-BEMAN_INSIDE_AX_AUTO(log10, (lower_of<In> > 0))
-BEMAN_INSIDE_AX_AUTO(asin, (lower_of<In> >= -1 && upper_of<In> <= 1))
-BEMAN_INSIDE_AX_AUTO(acos, (lower_of<In> >= -1 && upper_of<In> <= 1))
-BEMAN_INSIDE_AX_AUTO(acosh, (lower_of<In> >= 1))
-BEMAN_INSIDE_AX_AUTO(atanh, (lower_of<In> > -1 && upper_of<In> < 1))
+BEMAN_INSIDE_AX_AUTO(exp)
+BEMAN_INSIDE_AX_AUTO(exp2)
+BEMAN_INSIDE_AX_AUTO(sin)
+BEMAN_INSIDE_AX_AUTO(cos)
+BEMAN_INSIDE_AX_AUTO(tan)
+BEMAN_INSIDE_AX_AUTO(atan)
+BEMAN_INSIDE_AX_AUTO(sinh)
+BEMAN_INSIDE_AX_AUTO(cosh)
+BEMAN_INSIDE_AX_AUTO(tanh)
+BEMAN_INSIDE_AX_AUTO(asinh)
+BEMAN_INSIDE_AX_AUTO(cbrt)
+BEMAN_INSIDE_AX_AUTO(log)
+BEMAN_INSIDE_AX_AUTO(log2)
+BEMAN_INSIDE_AX_AUTO(log10)
+BEMAN_INSIDE_AX_AUTO(asin)
+BEMAN_INSIDE_AX_AUTO(acos)
+BEMAN_INSIDE_AX_AUTO(acosh)
+BEMAN_INSIDE_AX_AUTO(atanh)
 #undef BEMAN_INSIDE_AX_AUTO
 
 template <insidable In>
@@ -14054,6 +13986,36 @@ constexpr double fp_round(double v) noexcept // half away from zero, like ration
     const double t = fp_trunc(v), f = v - t; // exact: v and t share the grid
     return f >= 0.5 ? t + 1 : f <= -0.5 ? t - 1 : t;
 }
+
+// x rounded to an integer by M: exactly, on the raw doubles, or through
+// rational. Round is half away from zero, as rational round() is.
+template <round_mode M, insidable Out, insidable In>
+constexpr Out integer_into(In x) {
+    if constexpr (exact_path<Out, In>)
+        return store_exact<Out>(exact_to_int<M>(ax::exact_input(x)));
+    else if constexpr (fp_direct<Out, integer_auto_t<In, M>, In>)
+        return fp_direct_store<Out>(x, [](double v) {
+            if constexpr (M == round_mode::floor)
+                return fp_floor(v);
+            else if constexpr (M == round_mode::ceil)
+                return fp_ceil(v);
+            else if constexpr (M == round_mode::nearest)
+                return fp_round(v);
+            else
+                return fp_trunc(v);
+        });
+    else {
+        const rational r{x};
+        if constexpr (M == round_mode::floor)
+            return store_value<Out>(floor(r));
+        else if constexpr (M == round_mode::ceil)
+            return store_value<Out>(ceil(r));
+        else if constexpr (M == round_mode::nearest)
+            return store_value<Out>(round(r));
+        else
+            return store_value<Out>(trunc(r));
+    }
+}
 } // namespace detail
 
 //---------------------------------------------------------------------------
@@ -14091,54 +14053,22 @@ template <insidable Out, insidable Mag, insidable Sgn>
     }
 }
 
-// ⌊x⌋ — largest integer ≤ x.
+// ⌊x⌋, ⌈x⌉, x rounded half away from zero, and x truncated toward zero.
 template <insidable Out, insidable In>
 [[nodiscard]] constexpr Out floor_into(In x) {
-    if constexpr (detail::exact_path<Out, In>)
-        return detail::store_exact<Out>(
-            detail::exact_to_int<beman::inside::detail::round_mode::floor>(detail::ax::exact_input(x)));
-    else if constexpr (detail::fp_direct<Out, detail::floor_auto_t<In>, In>)
-        return detail::fp_direct_store<Out>(x, detail::fp_floor);
-    else
-        return detail::store_value<Out>(floor(rational{x}));
+    return detail::integer_into<detail::round_mode::floor, Out>(x);
 }
-
-// ⌈x⌉ — smallest integer ≥ x.
 template <insidable Out, insidable In>
 [[nodiscard]] constexpr Out ceil_into(In x) {
-    if constexpr (detail::exact_path<Out, In>)
-        return detail::store_exact<Out>(
-            detail::exact_to_int<beman::inside::detail::round_mode::ceil>(detail::ax::exact_input(x)));
-    else if constexpr (detail::fp_direct<Out, detail::ceil_auto_t<In>, In>)
-        return detail::fp_direct_store<Out>(x, detail::fp_ceil);
-    else
-        return detail::store_value<Out>(ceil(rational{x}));
+    return detail::integer_into<detail::round_mode::ceil, Out>(x);
 }
-
-// x rounded to nearest integer, half-away-from-zero (matches the existing
-// `rational::round()` convention used throughout the library).
 template <insidable Out, insidable In>
 [[nodiscard]] constexpr Out round_into(In x) {
-    if constexpr (detail::exact_path<Out, In>)
-        return detail::store_exact<Out>(
-            detail::exact_to_int<beman::inside::detail::round_mode::nearest>(detail::ax::exact_input(x)));
-    else if constexpr (detail::fp_direct<Out, detail::round_auto_t<In>, In>)
-        return detail::fp_direct_store<Out>(x, detail::fp_round);
-    else
-        return detail::store_value<Out>(round(rational{x}));
+    return detail::integer_into<detail::round_mode::nearest, Out>(x);
 }
-
-// x truncated toward zero. Distinct from floor for negative inputs:
-// trunc(-1.7) = -1 vs floor(-1.7) = -2.
 template <insidable Out, insidable In>
 [[nodiscard]] constexpr Out trunc_into(In x) {
-    if constexpr (detail::exact_path<Out, In>)
-        return detail::store_exact<Out>(
-            detail::exact_to_int<beman::inside::detail::round_mode::trunc>(detail::ax::exact_input(x)));
-    else if constexpr (detail::fp_direct<Out, detail::trunc_auto_t<In>, In>)
-        return detail::fp_direct_store<Out>(x, detail::fp_trunc);
-    else
-        return detail::store_value<Out>(trunc(rational{x}));
+    return detail::integer_into<detail::round_mode::trunc, Out>(x);
 }
 
 namespace detail {
