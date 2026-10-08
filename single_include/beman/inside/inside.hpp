@@ -7742,15 +7742,15 @@ struct inside {
     [[nodiscard]] constexpr auto policy(this Self&& self) {
         auto pol = make_policy<P | F>();
         if constexpr (std::is_lvalue_reference_v<Self>)
-            return detail::policy_ref<inside, decltype(pol)>{self, pol};
+            return detail::policy_ref<inside, decltype(pol)>{self, pol, {}};
         else
-            return detail::policy_buffer<inside, decltype(pol)>{std::move(self), pol};
+            return detail::policy_buffer<inside, decltype(pol)>{std::move(self), pol, {}};
     }
 
     template <policy_flag F = none>
     [[nodiscard]] constexpr auto policy(errc& ec) {
         auto pol = make_policy<P | F>(ec);
-        return detail::policy_ref<inside, decltype(pol)>{*this, pol};
+        return detail::policy_ref<inside, decltype(pol)>{*this, pol, {}};
     }
 
     // with_snap<Mode>() — opt this assignment into snapping with the given rounding
