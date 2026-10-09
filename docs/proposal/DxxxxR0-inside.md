@@ -75,7 +75,7 @@ auto m = (a + b) / 2_ins; // exact, and a plain value: 2 is not zero
 - **Arithmetic widens.** `a + b` over `[0,100]` is `[0,200]`; negation mirrors
   the interval, so there is no `-INT_MIN`. No operation produces a value
   outside its result type, so overflow is not checked: it is unreachable.
-- **Division** is exact by default (`7 / 3` is `2 1/3`). Rounding is named per
+- **Division** is exact by default (`7 / 3` is `7/3`). Rounding is named per
   call (`div(a, b, rounded_floor)`) or in the type. The result is
   `std::expected<inside, errc>` when the divisor's grid holds zero (or the exact
   quotient could exceed its 64-bit rational), and a plain `inside` when the

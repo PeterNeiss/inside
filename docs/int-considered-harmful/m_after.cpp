@@ -43,7 +43,5 @@ int main()
 
   std::cout << "\ndiscount on a 1/300 grid       = $" << discount_exact
             << "   (nothing was lost)\n";
-  std::cout << "as an exact fraction of a dollar = "
-            << discount_exact.numerator() << "/" << discount_exact.denominator() << "\n";
   return 0;
 }

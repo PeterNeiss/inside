@@ -11,6 +11,11 @@
 
 #include <gtest/gtest.h>
 
+#include <version> // __cpp_lib_format
+#ifdef __cpp_lib_format
+    #include <format>
+#endif
+
 #if BEMAN_INSIDE_BIG_GRIDS
 using namespace beman::inside;
 using detail::big_int;
@@ -98,6 +103,16 @@ TEST(BigGridTest, conversions_and_io) {
     EXPECT_TRUE(from_chars<huge>("1267650600228229401496703205376").value() == huge::from_raw(raw_2_100));
     fine x = 0.25;
     EXPECT_EQ(to_string(x), to_string(rational{1, 4}));
+    // Exact decimals of any length, for values and grid numbers.
+    EXPECT_EQ(to_string(fine::from_raw(1)),
+              "0.00000000000000000000000082718061255302767487140869206996285356581211090087890625");
+    EXPECT_EQ(to_string(grid_of<inside<{{0, 1}, 1e-30_g}>>), "{[0..1], 0.000000000000000000000000000001}");
+    constexpr grid_rational third_80{big_int{1}, pow2(80) * big_int{3}};
+    EXPECT_EQ(to_string(third_80), "1/3626777458843887524118528");
+    #ifdef __cpp_lib_format
+    EXPECT_EQ(std::format("{}", f), "1267650600228229401496703205379");
+    EXPECT_EQ(std::format("{}", fine::from_raw(1)), to_string(fine::from_raw(1)));
+    #endif
 }
 
 TEST(BigGridTest, grid_number_literal) {

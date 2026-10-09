@@ -238,8 +238,8 @@ notch from a plain floating-point limit only down to 1/1024, so
 `from_chars<B>(text)` parses a number exactly — no `double` round-trip — and
 returns `std::expected<B, errc>`. The text is one number: an optional sign, then
 the literal grammar (`1'000`, `1.25`, `1.5e2`, `0xff`, `0b1010`, `0x1.8p3`) or a
-fraction `N/D`. (`to_string` prints such a value as a mixed number, `2 1/3`,
-which `from_chars` does not read back; write it as `7/3`.)
+fraction `N/D` — the forms `to_string` prints, so printed values read back.
+A number past the 64-bit rational (a long decimal) is parsed exactly too.
 The value then goes through `B::try_make`, so `B`'s policy applies:
 
 ```cpp
@@ -276,8 +276,8 @@ representation chosen at compile time — no implicit narrowing.
 
 `beman/inside/io.hpp` ships a `std::formatter` specialization for
 `inside<G, P>`. Empty `{}` matches `operator<<` (the exact value — a whole
-number, a terminating decimal such as `0.625`, or a mixed number such as
-`2 1/3`); non-empty specs route by storage shape — integer grids
+number, an exact decimal such as `0.625` however many digits, or a fraction
+such as `7/3`); non-empty specs route by storage shape — integer grids
 go through `std::formatter<imax>` (`{:>4}`, `{:#x}`, `{:b}`, …), fractional
 grids through `std::formatter<double>` (`{:.2f}`, `{:e}`).
 

@@ -167,7 +167,8 @@ TEST(WideGridTest, to_string) {
     EXPECT_EQ(to_string(fine{1.5}), to_string(rational{3, 2}));
     // 2^33 + 2^-32 = (2^65 + 1) / 2^32: the numerator passes 64 bits.
     const fine odd = fine::from_raw((detail::wide_uint<2>{1} << 65) + detail::wide_uint<2>{1});
-    EXPECT_EQ(to_string(odd), "36893488147419103233/4294967296");
+    EXPECT_EQ(to_string(odd), "8589934592.00000000023283064365386962890625");
+    EXPECT_EQ(from_chars<fine>(to_string(odd)), odd);
     EXPECT_EQ(to_string(detail::wide_uint<2>{1} << 100), "1267650600228229401496703205376");
     EXPECT_NE(to_string_debug(odd).find("wide_uint<2>"), std::string::npos);
 }

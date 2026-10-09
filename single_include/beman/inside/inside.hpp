@@ -1053,6 +1053,24 @@ using wide_uint = wide_int<N, false, L>;
 template <std::size_t N, std::unsigned_integral L = umax>
 using wide_sint = wide_int<N, true, L>;
 
+// n / d for a one-limb d: the quotient and the remainder.
+template <std::size_t K>
+struct small_divmod {
+    wide_uint<K> Quotient;
+    umax         Remainder;
+};
+
+template <std::size_t K>
+constexpr small_divmod<K> divmod_small(const wide_uint<K>& n, umax d) noexcept {
+    small_divmod<K> r{wide_uint<K>{0}, 0};
+    for (std::size_t i = K; i-- > 0;) {
+        const limb::pair<umax> qr = limb::div(r.Remainder, n.Word[i], d);
+        r.Quotient.Word[i]        = qr.Hi;
+        r.Remainder               = qr.Lo;
+    }
+    return r;
+}
+
 template <typename T>
 inline constexpr bool is_wide_int_v = false;
 template <std::size_t N, bool S, std::unsigned_integral L>
@@ -4460,11 +4478,11 @@ constexpr raw_t<L> raw_from_offset(imax offset) noexcept {
 //-------------------------------------------------------------------------
 template <insidable B>
 inline constexpr bool is_integer_interval =
-    abs_den(detail::lower64<B>.Denominator) == 1 && abs_den(detail::upper64<B>.Denominator) == 1;
+    wide_denominator(lower_of<B>) == grid_wide{1} && wide_denominator(upper_of<B>) == grid_wide{1};
 
 template <insidable B>
 inline constexpr bool is_integer_aligned =
-    abs_den(detail::notch64<B>.Denominator) == 1 && abs_den(detail::lower64<B>.Denominator) == 1;
+    wide_denominator(notch_of<B>) == grid_wide{1} && wide_denominator(lower_of<B>) == grid_wide{1};
 
 // Q-format: the canonical fixed-point shape (Q8.8, Q16.16, ...). Notch has
 // unit numerator with integer denominator > 1, Lower is an integer at 0.
@@ -4472,9 +4490,8 @@ inline constexpr bool is_integer_aligned =
 // fixed-point division, which would otherwise fall into the slow rational
 // route because Notch.Denominator > 1 disqualifies is_integer_aligned.
 template <insidable B>
-inline constexpr bool is_qformat = !rational_raw<B> && detail::notch64<B>.Numerator == 1 &&
-                                   abs_den(detail::notch64<B>.Denominator) > 1 &&
-                                   abs_den(detail::lower64<B>.Denominator) == 1 && detail::lower64<B> == 0;
+inline constexpr bool is_qformat = !rational_raw<B> && wide_numerator(notch_of<B>) == grid_wide{1} &&
+                                   wide_denominator(notch_of<B>) > grid_wide{1} && lower_of<B> == 0;
 
 // Policy test: checks both type-level and per-operation policy.
 // Composite flags (e.g. round_nearest = bit5 | snap) require all
@@ -8110,19 +8127,19 @@ template <typename T, insidable B>
 template <insidable B>
 [[nodiscard]] constexpr std::expected<B, errc> from_chars(const char* first, const char* last) {
     const auto v = detail::parse_text(first, last);
-    if constexpr (detail::exact_valued<B>)
-        if (!v && v.error() == errc::overflow) {
-            // A value past the 64-bit rational: parse it exactly instead.
-            const auto w = detail::parse_exact<detail::exact_limbs<B>>(first, last);
-            if (!w)
-                return std::unexpected{w.error()};
-            errc ec{};
-            B    b;
-            detail::assign_exact<detail::rational>(b, *w, make_policy<policy_of<B>>(ec), no_action{});
-            if (ec != errc{})
-                return std::unexpected{ec};
-            return b;
-        }
+    if (!v && v.error() == errc::overflow) {
+        // A value past the 64-bit rational (a long decimal, a wide grid's
+        // value): parse it exactly instead.
+        const auto w = detail::parse_exact<detail::exact_limbs<B>>(first, last);
+        if (!w)
+            return std::unexpected{w.error()};
+        errc ec{};
+        B    b;
+        detail::assign_exact<detail::rational>(b, *w, make_policy<policy_of<B>>(ec), no_action{});
+        if (ec != errc{})
+            return std::unexpected{ec};
+        return b;
+    }
     if (!v)
         return std::unexpected{v.error()};
     return B::try_make(*v);
@@ -9130,24 +9147,6 @@ constexpr wide_sint<K> round_shift(const wide_sint<K>& v, int sh) noexcept {
 //---------------------------------------------------------------------------
 // Exact values into fixed point.
 //---------------------------------------------------------------------------
-// n / d for a one-limb d: the quotient and the remainder.
-template <std::size_t K>
-struct small_divmod {
-    wide_uint<K> Quotient;
-    umax         Remainder;
-};
-
-template <std::size_t K>
-constexpr small_divmod<K> divmod_small(const wide_uint<K>& n, umax d) noexcept {
-    small_divmod<K> r{wide_uint<K>{0}, 0};
-    for (std::size_t i = K; i-- > 0;) {
-        const limb::pair<umax> qr = limb::div(r.Remainder, n.Word[i], d);
-        r.Quotient.Word[i]        = qr.Hi;
-        r.Remainder               = qr.Lo;
-    }
-    return r;
-}
-
 // n/d (d > 0) rounded to nearest, half away from zero; one-limb divisions
 // when d fits a limb.
 template <std::size_t K>
@@ -14683,76 +14682,82 @@ using ring_counter = inside<{0, Max}, wrap>;
 #include <version>
 
 namespace beman::inside {
-//-------------------------------------------------------------------------
-// to_string — pretty-prints `rational`, `interval`, `grid`, plus a fallback
-// for plain arithmetic types and the exact-rational form for insidables.
-//-------------------------------------------------------------------------
-[[nodiscard]] inline std::string to_string(beman::inside::detail::rational r) {
-    std::string str;
-    if (r.Denominator < 0)
-        str = "-";
+namespace detail {
+// Decimal digits of a wide integer: 19 digits per division by 10^19.
+template <std::size_t N, bool S>
+std::string wide_to_decimal(wide_int<N, S> v) {
+    const bool         neg = v.negative();
+    wide_int<N, false> u(neg ? -v : v);
+    std::string        out;
+    do {
+        const auto [q, r] = divmod_small(u, 10'000'000'000'000'000'000ull);
+        std::string part  = std::to_string(r);
+        if (!q.is_zero())
+            part.insert(0, 19 - part.size(), '0');
+        out.insert(0, part);
+        u = q;
+    } while (!u.is_zero());
+    return neg ? "-" + out : out;
+}
 
-    umax ad = detail::abs_den(r.Denominator);
-    if (ad == 1)
-        return str += std::to_string(r.Numerator);
-
-    // power-of-2 or power-of-10: decimal output
-    // find smallest 10^k divisible by ad
-    umax     pow10      = 1;
-    unsigned digits     = 0;
-    bool     is_decimal = false;
-    for (unsigned k = 0; k < 20; ++k) {
-        if (pow10 % ad == 0) {
-            is_decimal = true;
-            digits     = k;
-            break;
-        }
-        pow10 *= 10;
+// num/den (den > 0) in the forms from_chars reads: its exact decimal when the
+// reduced denominator is 2^a·5^b (however many digits), else "num/den".
+template <std::size_t K>
+std::string fraction_to_string(bool neg, wide_uint<K> num, wide_uint<K> den) {
+    using U = wide_uint<K>;
+    U g     = den;
+    for (U x = num; !x.is_zero();) {
+        const U t = g % x;
+        g         = x;
+        x         = t;
     }
-
-    if (is_decimal) {
-        umax scale = pow10 / ad;
-        umax total;
-        if (!mul_overflow(r.Numerator, scale, &total)) {
-            umax int_part  = total / pow10;
-            umax frac_part = total % pow10;
-            str += std::to_string(int_part);
-            if (digits > 0) {
-                str += ".";
-                auto frac_str = std::to_string(frac_part);
-                // zero-pad
-                for (unsigned i = 0; i < digits - frac_str.size(); ++i)
-                    str += "0";
-                str += frac_str;
-            }
-            return str;
-        }
-        // Decimal expansion would overflow the umax scratch buffer. Fall back
-        // silently to the mixed-number/fraction form — `to_string` must always
-        // produce *some* readable output, never an error.
+    num /= g;
+    den /= g;
+    std::string str  = neg && !num.is_zero() ? "-" : "";
+    int         twos = 0, fives = 0;
+    U           rest = den;
+    for (; (rest.Word[0] & 1) == 0; rest >>= 1)
+        ++twos;
+    for (auto d = divmod_small(rest, 5); d.Remainder == 0; d = divmod_small(rest, 5)) {
+        rest = d.Quotient;
+        ++fives;
     }
-
-    // mixed number for improper fractions
-    umax int_part  = r.Numerator / ad;
-    umax remainder = r.Numerator % ad;
-    if (int_part > 0) {
-        str += std::to_string(int_part);
-        if (remainder > 0) {
-            str += " ";
-            str += std::to_string(remainder);
-            str += "/";
-            str += std::to_string(ad);
-        }
-    } else {
-        str += std::to_string(r.Numerator);
-        str += "/";
-        str += std::to_string(ad);
+    if (!(rest == U{1}))
+        return str += wide_to_decimal(num) + "/" + wide_to_decimal(den);
+    // num·10^digits/den is an integer; 19 digits at a time keep the scratch
+    // below den·10^19.
+    const auto [whole, frac] = U::divmod(num, den);
+    str += wide_to_decimal(whole);
+    if (frac.is_zero())
+        return str;
+    str += '.';
+    using W = wide_uint<K + 1>;
+    W r{frac};
+    for (int left = twos > fives ? twos : fives; left > 0; left -= 19) {
+        const int chunk = left < 19 ? left : 19;
+        umax      p     = 1;
+        for (int i = 0; i < chunk; ++i)
+            p *= 10;
+        const auto [q, m]      = W::divmod(r * W{p}, W{den});
+        const std::string part = std::to_string(static_cast<umax>(q));
+        str.append(static_cast<std::size_t>(chunk) - part.size(), '0') += part;
+        r = m;
     }
     return str;
 }
+} // namespace detail
+
+//-------------------------------------------------------------------------
+// to_string — pretty-prints `rational`, `interval`, `grid`, plus a fallback
+// for plain arithmetic types and the exact form for insidables. A value
+// prints as its exact decimal when it has one, else as num/den.
+//-------------------------------------------------------------------------
+[[nodiscard]] inline std::string to_string(beman::inside::detail::rational r) {
+    return detail::fraction_to_string<1>(r.Denominator < 0, r.Numerator, detail::abs_den(r.Denominator));
+}
 
 #if BEMAN_INSIDE_BIG_GRIDS
-// A grid number: the rational form when it fits 64 bits, else num/den.
+// A grid number of any size, in the forms of to_string(rational).
 [[nodiscard]] inline std::string to_string(const detail::big_rational& r);
 #endif
 
@@ -14782,16 +14787,25 @@ template <typename V>
     return std::to_string(value);
 }
 
-// `f64` (double-backed) and `exact` (rational-backed) insides: render the
-// exact rational form. (Without this overload a f64 inside would fall to the
-// generic `std::to_string(double)` and print a lossy 6-digit form, and a
-// rational-raw inside has no std::to_string at all.) A continuous (Notch == 0)
-// f64 inside prints the double.
+namespace detail {
+// A double's exact value: a binary fraction, so always a finite decimal.
+inline std::string double_to_string(double d) {
+    int        e    = 0;
+    const umax mant = static_cast<umax>(ldexp(frexp(d < 0 ? -d : d, &e), 53)); // |d| = mant·2^(e−53)
+    e -= 53;
+    using U = wide_uint<18>; // 2^1024 and 2^1074 both fit
+    return fraction_to_string(d < 0, e >= 0 ? U{mant} << e : U{mant}, e >= 0 ? U{1} : U{1} << -e);
+}
+} // namespace detail
+
+// `f64` (double-backed) and `exact` (rational-backed) insides: the exact
+// value. A continuous (Notch == 0) f64 inside prints the double's exact
+// decimal.
 template <insidable B>
     requires(detail::fp_raw<B> || detail::rational_raw<B>)
 [[nodiscard]] inline std::string to_string(B b) {
     if constexpr (detail::fp_raw<B> && detail::notch64<B> == beman::inside::detail::rational{0})
-        return std::to_string(detail::as_double(b));
+        return detail::double_to_string(detail::as_double(b));
     else
         return to_string(beman::inside::detail::as_rational(b));
 }
@@ -14839,39 +14853,11 @@ constexpr std::string_view type_name() {
 // inspecting failing tests or storage choices.
 //-------------------------------------------------------------------------
 namespace detail {
-// Decimal digits of a wide integer: 19 digits per division by 10^19.
-template <std::size_t N, bool S>
-std::string wide_to_decimal(wide_int<N, S> v) {
-    const bool               neg = v.negative();
-    wide_int<N, false>       u(neg ? -v : v);
-    const wide_int<N, false> chunk{10'000'000'000'000'000'000ull};
-    std::string              out;
-    do {
-        const auto [q, r] = wide_int<N, false>::divmod(u, chunk);
-        std::string part  = std::to_string(static_cast<umax>(r));
-        if (!q.is_zero())
-            part.insert(0, 19 - part.size(), '0');
-        out.insert(0, part);
-        u = q;
-    } while (!u.is_zero());
-    return neg ? "-" + out : out;
-}
-
-// A wide-index value: the usual rational form when it fits, else the
-// reduced fraction num/den in decimal.
+// A wide-index value, exactly.
 template <std::size_t K>
 std::string exact_to_string(exact_frac<K> f) {
-    using I = wide_sint<K>;
-    if (const auto r = try_rational(f))
-        return beman::inside::to_string(*r);
-    I x = f.Num.negative() ? -f.Num : f.Num, y = f.Den;
-    while (!y.is_zero()) {
-        const I t = x % y;
-        x         = y;
-        y         = t;
-    }
-    const I num = f.Num / x, den = f.Den / x;
-    return den == I{1} ? wide_to_decimal(num) : wide_to_decimal(num) + "/" + wide_to_decimal(den);
+    const bool neg = f.Num.negative();
+    return fraction_to_string(neg, wide_uint<K>{neg ? -f.Num : f.Num}, wide_uint<K>{f.Den});
 }
 } // namespace detail
 
@@ -14904,9 +14890,20 @@ template <std::size_t N, bool S>
 #endif
 
 #if BEMAN_INSIDE_BIG_GRIDS
+namespace detail {
+template <std::size_t K>
+std::string big_fraction_to_string(const big_rational& r) {
+    const auto n = static_cast<wide_uint<K>>(r.Num); // two's complement
+    return fraction_to_string(r.Num.negative(), r.Num.negative() ? -n : n, static_cast<wide_uint<K>>(r.Den));
+}
+} // namespace detail
+
 [[nodiscard]] inline std::string to_string(const detail::big_rational& r) {
-    if (r.fits_rational())
-        return beman::inside::to_string(static_cast<detail::rational>(r));
+    const int bits = r.Num.bit_width() > r.Den.bit_width() ? r.Num.bit_width() : r.Den.bit_width();
+    if (bits < 512)
+        return detail::big_fraction_to_string<8>(r);
+    if (bits < 4096)
+        return detail::big_fraction_to_string<64>(r);
     const std::string num = beman::inside::to_string(r.Num);
     return r.is_integer() ? num : num + "/" + beman::inside::to_string(r.Den);
 }

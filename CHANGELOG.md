@@ -6,6 +6,18 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 ## Unreleased
 
+### Changed
+
+- `to_string`, `operator<<` and `std::format("{}")` print a value with a
+  finite decimal as that exact decimal however many digits it has (a 2^-52
+  grid, a wide value, a C++26 grid number), and any other value as `N/D`
+  (was a mixed number such as `2 1/3`). Both forms read back with
+  `from_chars`. A continuous `f64` inside prints the double's exact decimal
+  (was `std::to_string`'s six digits).
+- `from_chars` parses a number past the 64-bit rational (a long decimal)
+  exactly for every grid, not only wide ones: off-grid text reports
+  `rounding_error` (was `overflow`), and a rounding policy rounds it.
+
 ### Performance
 
 - Math at full `double` resolution: the dd tier tries lean `sin`, `cos`,
@@ -21,6 +33,8 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 ### Fixed
 
+- `std::format` of an inside on a C++26 grid with numbers past 64 bits
+  failed to compile.
 - `sinh` and `cosh` onto outputs past about 2^60, and `log`-based functions of
   arguments past 2^64, shifted an error bound by 64 bits or more in the
   integer path: undefined behaviour, and a compile error in constant

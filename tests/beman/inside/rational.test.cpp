@@ -322,7 +322,7 @@ TEST(RationalTest, rational_overflow_detection) {
 
     {
         SCOPED_TRACE("add to_string sees overflow boundary fall-through");
-        ASSERT_EQ((beman::inside::to_string(rational{M, 2})), "9223372036854775807 1/2");
+        ASSERT_EQ((beman::inside::to_string(rational{M, 2})), "9223372036854775807.5");
         ASSERT_EQ((beman::inside::to_string(rational{M / 5, 2})), "1844674407370955161.5");
     }
 }

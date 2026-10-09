@@ -480,11 +480,11 @@ constexpr raw_t<L> raw_from_offset(imax offset) noexcept {
 //-------------------------------------------------------------------------
 template <insidable B>
 inline constexpr bool is_integer_interval =
-    abs_den(detail::lower64<B>.Denominator) == 1 && abs_den(detail::upper64<B>.Denominator) == 1;
+    wide_denominator(lower_of<B>) == grid_wide{1} && wide_denominator(upper_of<B>) == grid_wide{1};
 
 template <insidable B>
 inline constexpr bool is_integer_aligned =
-    abs_den(detail::notch64<B>.Denominator) == 1 && abs_den(detail::lower64<B>.Denominator) == 1;
+    wide_denominator(notch_of<B>) == grid_wide{1} && wide_denominator(lower_of<B>) == grid_wide{1};
 
 // Q-format: the canonical fixed-point shape (Q8.8, Q16.16, ...). Notch has
 // unit numerator with integer denominator > 1, Lower is an integer at 0.
@@ -492,9 +492,8 @@ inline constexpr bool is_integer_aligned =
 // fixed-point division, which would otherwise fall into the slow rational
 // route because Notch.Denominator > 1 disqualifies is_integer_aligned.
 template <insidable B>
-inline constexpr bool is_qformat = !rational_raw<B> && detail::notch64<B>.Numerator == 1 &&
-                                   abs_den(detail::notch64<B>.Denominator) > 1 &&
-                                   abs_den(detail::lower64<B>.Denominator) == 1 && detail::lower64<B> == 0;
+inline constexpr bool is_qformat = !rational_raw<B> && wide_numerator(notch_of<B>) == grid_wide{1} &&
+                                   wide_denominator(notch_of<B>) > grid_wide{1} && lower_of<B> == 0;
 
 // Policy test: checks both type-level and per-operation policy.
 // Composite flags (e.g. round_nearest = bit5 | snap) require all

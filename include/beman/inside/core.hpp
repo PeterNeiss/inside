@@ -845,19 +845,19 @@ template <typename T, insidable B>
 template <insidable B>
 [[nodiscard]] constexpr std::expected<B, errc> from_chars(const char* first, const char* last) {
     const auto v = detail::parse_text(first, last);
-    if constexpr (detail::exact_valued<B>)
-        if (!v && v.error() == errc::overflow) {
-            // A value past the 64-bit rational: parse it exactly instead.
-            const auto w = detail::parse_exact<detail::exact_limbs<B>>(first, last);
-            if (!w)
-                return std::unexpected{w.error()};
-            errc ec{};
-            B    b;
-            detail::assign_exact<detail::rational>(b, *w, make_policy<policy_of<B>>(ec), no_action{});
-            if (ec != errc{})
-                return std::unexpected{ec};
-            return b;
-        }
+    if (!v && v.error() == errc::overflow) {
+        // A value past the 64-bit rational (a long decimal, a wide grid's
+        // value): parse it exactly instead.
+        const auto w = detail::parse_exact<detail::exact_limbs<B>>(first, last);
+        if (!w)
+            return std::unexpected{w.error()};
+        errc ec{};
+        B    b;
+        detail::assign_exact<detail::rational>(b, *w, make_policy<policy_of<B>>(ec), no_action{});
+        if (ec != errc{})
+            return std::unexpected{ec};
+        return b;
+    }
     if (!v)
         return std::unexpected{v.error()};
     return B::try_make(*v);

@@ -101,6 +101,9 @@ TEST(FromCharsTest, trailing_zeros_and_zero_exponent) {
     EXPECT_EQ(value_of<B>("0x0p99"), 0);
     EXPECT_EQ(value_of<B>("0x1.80000000000000000p1"), 3);
     EXPECT_EQ(value_of<B>("2.50e0"), (rational{5, 2}));
-    EXPECT_EQ(error_of<B>("1.00000000000000000000001"), errc::overflow);
+    // Past the 64-bit rational: parsed exactly, then off the 1/100 grid.
+    EXPECT_EQ(error_of<B>("1.00000000000000000000001"), errc::rounding_error);
+    using N = inside<{{0, 10}, per<100>}, round_nearest>;
+    EXPECT_EQ(value_of<N>("1.004999999999999999999999"), 1);
     static_assert(1.250000000000000000000_r == rational{5, 4});
 }

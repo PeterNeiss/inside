@@ -486,6 +486,24 @@ using wide_uint = wide_int<N, false, L>;
 template <std::size_t N, std::unsigned_integral L = umax>
 using wide_sint = wide_int<N, true, L>;
 
+// n / d for a one-limb d: the quotient and the remainder.
+template <std::size_t K>
+struct small_divmod {
+    wide_uint<K> Quotient;
+    umax         Remainder;
+};
+
+template <std::size_t K>
+constexpr small_divmod<K> divmod_small(const wide_uint<K>& n, umax d) noexcept {
+    small_divmod<K> r{wide_uint<K>{0}, 0};
+    for (std::size_t i = K; i-- > 0;) {
+        const limb::pair<umax> qr = limb::div(r.Remainder, n.Word[i], d);
+        r.Quotient.Word[i]        = qr.Hi;
+        r.Remainder               = qr.Lo;
+    }
+    return r;
+}
+
 template <typename T>
 inline constexpr bool is_wide_int_v = false;
 template <std::size_t N, bool S, std::unsigned_integral L>

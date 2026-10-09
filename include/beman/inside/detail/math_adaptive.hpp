@@ -157,24 +157,6 @@ constexpr wide_sint<K> round_shift(const wide_sint<K>& v, int sh) noexcept {
 //---------------------------------------------------------------------------
 // Exact values into fixed point.
 //---------------------------------------------------------------------------
-// n / d for a one-limb d: the quotient and the remainder.
-template <std::size_t K>
-struct small_divmod {
-    wide_uint<K> Quotient;
-    umax         Remainder;
-};
-
-template <std::size_t K>
-constexpr small_divmod<K> divmod_small(const wide_uint<K>& n, umax d) noexcept {
-    small_divmod<K> r{wide_uint<K>{0}, 0};
-    for (std::size_t i = K; i-- > 0;) {
-        const limb::pair<umax> qr = limb::div(r.Remainder, n.Word[i], d);
-        r.Quotient.Word[i]        = qr.Hi;
-        r.Remainder               = qr.Lo;
-    }
-    return r;
-}
-
 // n/d (d > 0) rounded to nearest, half away from zero; one-limb divisions
 // when d fits a limb.
 template <std::size_t K>

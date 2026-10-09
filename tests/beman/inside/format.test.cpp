@@ -28,25 +28,49 @@ TEST(FormatTest, rational_to_string_decimal_forms) {
     ASSERT_EQ((beman::inside::to_string(rational{43, -2})), "-21.5");
 }
 
-// rational to_string: mixed-number forms
-TEST(FormatTest, rational_to_string_mixed_number_forms) {
-    ASSERT_EQ((beman::inside::to_string(rational{7u, 3})), "2 1/3");
-    ASSERT_EQ((beman::inside::to_string(rational{22u, 7})), "3 1/7");
+// rational to_string: no finite decimal prints N/D, the form from_chars reads
+TEST(FormatTest, rational_to_string_fraction_forms) {
+    ASSERT_EQ((beman::inside::to_string(rational{7u, 3})), "7/3");
+    ASSERT_EQ((beman::inside::to_string(rational{22u, 7})), "22/7");
     ASSERT_EQ((beman::inside::to_string(rational{1u, 3})), "1/3");
     ASSERT_EQ((beman::inside::to_string(rational{2u, 7})), "2/7");
     ASSERT_EQ((beman::inside::to_string(rational{5u, 1})), "5");
     ASSERT_EQ(beman::inside::to_string(0_r), "0");
 
-    ASSERT_EQ((beman::inside::to_string(rational{7, -3})), "-2 1/3");
+    ASSERT_EQ((beman::inside::to_string(rational{7, -3})), "-7/3");
     ASSERT_EQ((beman::inside::to_string(rational{1, -3})), "-1/3");
 }
 
-// rational to_string: overflow boundary falls back to fraction
-TEST(FormatTest, rational_to_string_overflow_boundary_falls_back_to_fraction) {
+// rational to_string: a terminating decimal prints in full however many digits
+TEST(FormatTest, rational_to_string_long_decimals) {
     constexpr umax M = std::numeric_limits<umax>::max();
-    ASSERT_EQ((beman::inside::to_string(rational{M, 2})), "9223372036854775807 1/2");
-    ASSERT_EQ((beman::inside::to_string(rational{M, -2})), "-9223372036854775807 1/2");
+    ASSERT_EQ((beman::inside::to_string(rational{M, 2})), "9223372036854775807.5");
+    ASSERT_EQ((beman::inside::to_string(rational{M, -2})), "-9223372036854775807.5");
     ASSERT_EQ((beman::inside::to_string(rational{M / 5, 2})), "1844674407370955161.5");
+    ASSERT_EQ((beman::inside::to_string(rational{1u, imax{1} << 52})),
+              "0.0000000000000002220446049250313080847263336181640625");
+    ASSERT_EQ((beman::inside::to_string(rational{M, imax{1} << 62})),
+              "3.99999999999999999978315956550289911319850943982601165771484375");
+}
+
+#ifndef BEMAN_INSIDE_MATH_NO_FP // f64 storage is compiled out under the integer engine
+// A continuous f64 inside prints the double's exact decimal
+TEST(FormatTest, continuous_f64_prints_the_exact_double) {
+    using R = inside<{{0, 1}, 0}, f64>;
+    ASSERT_EQ(beman::inside::to_string(R{0.1}), "0.1000000000000000055511151231257827021181583404541015625");
+    ASSERT_EQ(beman::inside::to_string(R{0.5}), "0.5");
+    ASSERT_EQ(beman::inside::to_string(R{0.0}), "0");
+}
+#endif
+
+// to_string output parses back to the same value
+TEST(FormatTest, to_string_round_trips_through_from_chars) {
+    using third = inside<{{-10, 10}, per<3>}>;
+    for (const third v : {third{rational{7, 3}}, third{rational{-1, 3}}, third{rational{29, 3}}})
+        ASSERT_EQ(from_chars<third>(beman::inside::to_string(v)), v);
+    using fine   = inside<{{0, 1}, per<imax{1} << 52>}>;
+    const fine e = fine::from_raw(1);
+    ASSERT_EQ(from_chars<fine>(beman::inside::to_string(e)), e);
 }
 
 // rational max as integer formats without 1/
@@ -128,7 +152,7 @@ TEST(FormatTest, std_format_numeric_specs_representation_flags) {
 TEST(FormatTest, std_format_numeric_specs_rational) {
     // Empty spec — exact via to_string.
     ASSERT_EQ((std::format("{}", rational{1u, 3})), "1/3");
-    ASSERT_EQ((std::format("{}", rational{7u, 3})), "2 1/3");
+    ASSERT_EQ((std::format("{}", rational{7u, 3})), "7/3");
 
     // Non-empty spec — double formatter.
     rational r = rational{1u, 3};
