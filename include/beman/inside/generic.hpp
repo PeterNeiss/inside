@@ -593,8 +593,9 @@ template <insidable L, typename P>
     if constexpr (!detail::notched<L>)
         return v;
     else if constexpr (anchored<L>) {
-        const imax k = round_to_int((v / detail::notch64<L>).value(), rounding_for<L, P>);
-        return (rational{k} * detail::notch64<L>).value();
+        // The notch index may pass imax (a fine notch on a wide range): round
+        // it as a rational, so it never wraps.
+        return (round_to_integral((v / detail::notch64<L>).value(), rounding_for<L, P>) * detail::notch64<L>).value();
     } else {
         const rational       q  = ((v - detail::lower64<L>).value() / detail::notch64<L>).value();
         const imax           k  = floor(q);

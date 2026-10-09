@@ -1436,6 +1436,17 @@ constexpr std::unexpected<errc> fail(errc code) {
     return neg ? -mag : mag;
 }
 
+// The same rounding, kept exact as a rational: the magnitude stays a umax
+// (q + 1 cannot overflow — a nonzero remainder needs a denominator ≥ 2, so
+// q ≤ umax/2), where round_to_int narrows it to imax.
+[[nodiscard]] constexpr rational round_to_integral(rational v, round_mode m) {
+    const umax ad  = abs_den(v.Denominator);
+    const umax q   = v.Numerator / ad;
+    const bool neg = v.Denominator < 0;
+    const umax mag = q + rounds_away(m, neg, classify_remainder(m, v.Numerator % ad, ad), (q & 1) != 0);
+    return neg ? -rational{mag} : rational{mag};
+}
+
 [[nodiscard]] constexpr imax trunc(rational v) { return round_to_int(v, round_mode::trunc); }
 [[nodiscard]] constexpr imax floor(rational v) { return round_to_int(v, round_mode::floor); }
 [[nodiscard]] constexpr imax ceil(rational v) { return round_to_int(v, round_mode::ceil); }
@@ -4847,8 +4858,9 @@ template <insidable L, typename P>
     if constexpr (!detail::notched<L>)
         return v;
     else if constexpr (anchored<L>) {
-        const imax k = round_to_int((v / detail::notch64<L>).value(), rounding_for<L, P>);
-        return (rational{k} * detail::notch64<L>).value();
+        // The notch index may pass imax (a fine notch on a wide range): round
+        // it as a rational, so it never wraps.
+        return (round_to_integral((v / detail::notch64<L>).value(), rounding_for<L, P>) * detail::notch64<L>).value();
     } else {
         const rational       q  = ((v - detail::lower64<L>).value() / detail::notch64<L>).value();
         const imax           k  = floor(q);
