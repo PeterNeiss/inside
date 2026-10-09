@@ -81,7 +81,7 @@ through a program. Read it first; everything else builds on it.
 
 **Guides** — [policies & error handling](docs/policies.md) ·
 [arithmetic & rounding](docs/arithmetic.md) ·
-[conversions & casts](docs/conversions.md) ·
+[conversions, casts & text](docs/conversions.md) ([printing](docs/conversions.md#writing-text-to_string-operator-and-stdformat)) ·
 [storage & STL integration](docs/storage.md) ·
 [`beman::inside::math` — bit-exact math](docs/math.md)
 

@@ -28,12 +28,19 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   ratio, a million `+=` steps, and `from_chars_exact`.
 - `errc_message(errc::rounding_error)` reads "value is not on the grid" (was
   "notch incompatibility").
-- `to_string`, `operator<<` and `std::format("{}")` print a value with a
-  finite decimal as that exact decimal however many digits it has (a 2^-52
-  grid, a wide value, a C++26 grid number), and any other value as `N/D`
-  (was a mixed number such as `2 1/3`). Both forms read back with
-  `from_chars`. A continuous `f64` inside prints the double's exact decimal
-  (was `std::to_string`'s six digits).
+- `to_string`, `operator<<` and `std::format("{}")` print the exact value,
+  its form chosen by the grid: a decimal notch (`per<100>`, `0.05`,
+  `1e-18_g`) prints its decimals for every value (`19.90`, `2.00`); any other
+  grid prints the value's shortest exact form — its decimal however many
+  digits (a 2^-52 grid, a wide value, a C++26 grid number), else `N/D` (was a
+  mixed number such as `2 1/3`). Every form reads back with `from_chars`. A
+  continuous `f64` inside prints the double's exact decimal (was
+  `std::to_string`'s six digits). Documented in conversions.md, "Writing
+  text".
+- Format specs other than an integer grid's (`{:.2f}`, `{:e}`, `{:g}`, with
+  fill, align, sign, `#`, `0`, width) round the exact value, ties to even, for
+  every inside and `rational` (was through `double`: wrong digits past 2^53
+  and for big grids).
 - `from_chars` parses a number past the 64-bit rational (a long decimal)
   exactly for every grid, not only wide ones: off-grid text reports
   `rounding_error` (was `overflow`), and a rounding policy rounds it.

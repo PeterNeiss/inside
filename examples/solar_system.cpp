@@ -35,7 +35,7 @@ int main() {
     std::cout << "exact   " << x << " m\n";
     std::printf("double  %.9f m\n", xd);
     // 1.433e12 + 1e12 + 1e6·1e-9 m = 2433000000000.001 m
-    if (to_string(x) != "2433000000000.001")
+    if (to_string(x) != "2433000000000.001000000") // to the nanometre
         return 1;
 
     // 2. Distance to a point 3·10^12 m east and 4·10^12 m north: exactly

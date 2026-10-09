@@ -14951,9 +14951,10 @@ std::string wide_to_decimal(wide_int<N, S> v) {
 }
 
 // num/den (den > 0) in the forms from_chars reads: its exact decimal when the
-// reduced denominator is 2^a·5^b (however many digits), else "num/den".
+// reduced denominator is 2^a·5^b (however many digits, and at least
+// min_digits decimals), else "num/den".
 template <std::size_t K>
-std::string fraction_to_string(bool neg, wide_uint<K> num, wide_uint<K> den) {
+std::string fraction_to_string(bool neg, wide_uint<K> num, wide_uint<K> den, int min_digits = 0) {
     using U = wide_uint<K>;
     U g     = den;
     for (U x = num; !x.is_zero();) {
@@ -14978,12 +14979,15 @@ std::string fraction_to_string(bool neg, wide_uint<K> num, wide_uint<K> den) {
     // below den·10^19.
     const auto [whole, frac] = U::divmod(num, den);
     str += wide_to_decimal(whole);
-    if (frac.is_zero())
+    int digits = twos > fives ? twos : fives;
+    if (digits < min_digits)
+        digits = min_digits;
+    if (digits == 0)
         return str;
     str += '.';
     using W = wide_uint<K + 1>;
     W r{frac};
-    for (int left = twos > fives ? twos : fives; left > 0; left -= 19) {
+    for (int left = digits; left > 0; left -= 19) {
         const int chunk = left < 19 ? left : 19;
         umax      p     = 1;
         for (int i = 0; i < chunk; ++i)
@@ -15005,6 +15009,26 @@ std::string fraction_to_string(bool neg, wide_uint<K> num, wide_uint<K> den) {
 [[nodiscard]] inline std::string to_string(beman::inside::detail::rational r) {
     return detail::fraction_to_string<1>(r.Denominator < 0, r.Numerator, detail::abs_den(r.Denominator));
 }
+
+namespace detail {
+// The decimals every value of B prints with: n for a decimal notch — one
+// whose denominator is 2^a·5^b with b ≥ 1 (per<100>, 0.05, 1e-18) — with
+// n = max(a, b); else 0 (the value decides).
+template <insidable B>
+inline constexpr int fixed_decimals = [] {
+    if constexpr (notch_of<B> == 0)
+        return 0;
+    else {
+        grid_wide q   = wide_denominator(notch_of<B>);
+        int       two = 0, five = 0;
+        for (; q % grid_wide{2} == grid_wide{0}; q = q / grid_wide{2})
+            ++two;
+        for (; q % grid_wide{5} == grid_wide{0}; q = q / grid_wide{5})
+            ++five;
+        return q == grid_wide{1} && five > 0 ? (two > five ? two : five) : 0;
+    }
+}();
+} // namespace detail
 
 #if BEMAN_INSIDE_BIG_GRIDS
 // A grid number of any size, in the forms of to_string(rational).
@@ -15047,18 +15071,6 @@ inline std::string double_to_string(double d) {
     return fraction_to_string(d < 0, e >= 0 ? U{mant} << e : U{mant}, e >= 0 ? U{1} : U{1} << -e);
 }
 } // namespace detail
-
-// `f64` (double-backed) and `exact` (rational-backed) insides: the exact
-// value. A continuous (Notch == 0) f64 inside prints the double's exact
-// decimal.
-template <insidable B>
-    requires(detail::fp_raw<B> || detail::rational_raw<B>)
-[[nodiscard]] inline std::string to_string(B b) {
-    if constexpr (detail::fp_raw<B> && detail::notch64<B> == beman::inside::detail::rational{0})
-        return detail::double_to_string(detail::as_double(b));
-    else
-        return to_string(beman::inside::detail::as_rational(b));
-}
 
 //-------------------------------------------------------------------------
 // type_name<T>() — short raw-type label for to_string_debug. Lives here (not
@@ -15105,11 +15117,11 @@ constexpr std::string_view type_name() {
 // inspecting failing tests or storage choices.
 //-------------------------------------------------------------------------
 namespace detail {
-// A wide-index value, exactly.
+// An exact value, with at least min_digits decimals.
 template <std::size_t K>
-std::string exact_to_string(exact_frac<K> f) {
+std::string exact_to_string(exact_frac<K> f, int min_digits = 0) {
     const bool neg = f.Num.negative();
-    return fraction_to_string(neg, wide_uint<K>{neg ? -f.Num : f.Num}, wide_uint<K>{f.Den});
+    return fraction_to_string(neg, wide_uint<K>{neg ? -f.Num : f.Num}, wide_uint<K>{f.Den}, min_digits);
 }
 } // namespace detail
 
@@ -15161,12 +15173,21 @@ std::string big_fraction_to_string(const big_rational& r) {
 }
 #endif
 
+// An inside's exact value: with a decimal notch, every value prints that
+// notch's decimals (19.90, 2.00); otherwise its shortest exact form — a
+// decimal when it has one, else N/D. A continuous f64 inside prints the
+// double's exact decimal.
 template <insidable B>
 [[nodiscard]] inline std::string to_string(B b) {
-    if constexpr (detail::exact_valued<B>)
-        return detail::exact_to_string(detail::exact_of(b));
-    else
-        return beman::inside::to_string(detail::as_rational(b));
+    constexpr int n = detail::fixed_decimals<B>;
+    if constexpr (detail::fp_raw<B> && notch_of<B> == 0)
+        return detail::double_to_string(detail::as_double(b));
+    else if constexpr (detail::exact_valued<B>)
+        return detail::exact_to_string(detail::exact_of(b), n);
+    else {
+        const detail::rational r = detail::as_rational(b);
+        return detail::fraction_to_string<1>(r.Denominator < 0, r.Numerator, detail::abs_den(r.Denominator), n);
+    }
 }
 
 template <insidable B>
@@ -15252,13 +15273,240 @@ struct numeric_spec_formatter {
 };
 } // namespace beman::inside::detail
 
+namespace beman::inside::detail {
+// Decimal digits of num/den (den > 0) on demand: the integer part, then the
+// fraction one chunk at a time. Tail() says whether anything nonzero is left,
+// which rounding needs to tell a tie from a value above it.
+template <std::size_t K>
+struct decimal_stream {
+    using W = wide_uint<K + 1>;
+    W Rem, Den;
+
+    decimal_stream(const wide_uint<K>& num, const wide_uint<K>& den) : Rem{num}, Den{den} {}
+
+    std::string whole() {
+        const auto [q, r] = W::divmod(Rem, Den);
+        Rem               = r;
+        return wide_to_decimal(q);
+    }
+    std::string next(int n) {
+        std::string out;
+        for (; n > 0; n -= 19) {
+            const int chunk = n < 19 ? n : 19;
+            umax      p     = 1;
+            for (int i = 0; i < chunk; ++i)
+                p *= 10;
+            const auto [q, r]      = W::divmod(Rem * W{p}, Den);
+            const std::string part = std::to_string(static_cast<umax>(q));
+            out.append(static_cast<std::size_t>(chunk) - part.size(), '0') += part;
+            Rem = r;
+        }
+        return out;
+    }
+    bool tail() const { return !Rem.is_zero(); }
+};
+
+// Keep the first `keep` digits of `d` (digits[keep..] and a nonzero tail are
+// what is cut), rounded to nearest, ties to even. A carry out of the first
+// digit prepends a '1'; returns whether it did.
+inline bool round_digits(std::string& d, std::size_t keep, bool tail) {
+    const bool more = tail || d.find_first_not_of('0', keep + 1) != std::string::npos;
+    const char cut  = keep < d.size() ? d[keep] : '0';
+    d.resize(keep);
+    const bool up = cut > '5' || (cut == '5' && (more || (keep > 0 && (d[keep - 1] - '0') % 2 == 1)));
+    if (!up)
+        return false;
+    for (std::size_t i = keep; i-- > 0;) {
+        if (d[i] != '9') {
+            ++d[i];
+            return false;
+        }
+        d[i] = '0';
+    }
+    d.insert(d.begin(), '1');
+    return true;
+}
+
+// A std::format spec for exact values: [[fill]align][sign][#][0][width]
+// [.precision][type], type one of f F e E g G (or none). The digits come from
+// the exact value, rounded once, ties to even — as printf rounds a double's
+// exact value — so wide and big values print correctly.
+struct exact_format_spec {
+    char Fill = ' ', Align = 0, Sign = '-', Type = 0;
+    bool Alt = false, Zero = false;
+    int  Width = 0, Precision = -1;
+
+    constexpr auto parse(std::format_parse_context& ctx) {
+        auto       it       = ctx.begin();
+        const auto end      = ctx.end();
+        auto       is_align = [](char c) { return c == '<' || c == '>' || c == '^'; };
+        auto       number   = [&](int& v) {
+            for (v = 0; it != end && *it >= '0' && *it <= '9'; ++it)
+                v = v * 10 + (*it - '0');
+        };
+        if (it != end && it + 1 != end && is_align(it[1]) && *it != '{' && *it != '}') {
+            Fill  = *it;
+            Align = it[1];
+            it += 2;
+        } else if (it != end && is_align(*it))
+            Align = *it++;
+        if (it != end && (*it == '+' || *it == '-' || *it == ' '))
+            Sign = *it++;
+        if (it != end && *it == '#') {
+            Alt = true;
+            ++it;
+        }
+        if (it != end && *it == '0') {
+            Zero = true;
+            ++it;
+        }
+        number(Width);
+        if (it != end && *it == '.') {
+            ++it;
+            if (it == end || *it < '0' || *it > '9')
+                throw std::format_error("inside: precision needs digits");
+            number(Precision);
+        }
+        if (it != end && std::string_view{"fFeEgG"}.find(*it) != std::string_view::npos)
+            Type = *it++;
+        if (it != end && *it != '}')
+            throw std::format_error("inside: unsupported format spec (use f, e or g with fill, align, sign, #, 0, "
+                                    "width and precision)");
+        return it;
+    }
+
+    // The value's text: `plain` (to_string) for no type and no precision,
+    // else the digits the spec asks for.
+    template <std::size_t K>
+    std::string body(const wide_uint<K>& num, const wide_uint<K>& den, std::string_view plain) const {
+        if (Type == 0 && Precision < 0)
+            return std::string{plain};
+        const char t     = Type == 0 ? 'g' : static_cast<char>(Type | 0x20); // lower case
+        const bool upper = Type == 'F' || Type == 'E' || Type == 'G';
+        int        p     = Precision < 0 ? 6 : Precision;
+        if (t == 'f')
+            return fixed(num, den, p);
+        if (t == 'g') {
+            p = p == 0 ? 1 : p;
+            // The exponent after rounding to p significant digits picks the form.
+            int         x = 0;
+            const auto  e = scientific(num, den, p - 1, x);
+            std::string out;
+            if (x < p && x >= -4)
+                out = fixed(num, den, p - 1 - x);
+            else
+                out = e;
+            if (!Alt && out.find('.') != std::string::npos) {
+                const std::size_t ep = out.find('e');
+                std::string       m = out.substr(0, ep), tail = ep == std::string::npos ? "" : out.substr(ep);
+                m.erase(m.find_last_not_of('0') + 1);
+                if (m.back() == '.')
+                    m.pop_back();
+                out = m + tail;
+            }
+            return upper ? to_upper(out) : out;
+        }
+        int x = 0;
+        return upper ? to_upper(scientific(num, den, p, x)) : scientific(num, den, p, x);
+    }
+
+    // Sign, then fill and alignment (numbers align right; `0` pads after the sign).
+    template <typename Ctx>
+    auto write(bool negative, std::string text, Ctx& ctx) const {
+        std::string sign = negative ? "-" : Sign == '+' ? "+" : Sign == ' ' ? " " : "";
+        std::size_t len  = sign.size() + text.size();
+        std::size_t pad  = static_cast<std::size_t>(Width) > len ? static_cast<std::size_t>(Width) - len : 0;
+        std::string out;
+        if (Zero && Align == 0)
+            out = sign + std::string(pad, '0') + text;
+        else if (Align == '<')
+            out = sign + text + std::string(pad, Fill);
+        else if (Align == '^')
+            out = std::string(pad / 2, Fill) + sign + text + std::string(pad - pad / 2, Fill);
+        else
+            out = std::string(pad, Fill) + sign + text;
+        return std::format_to(ctx.out(), "{}", out);
+    }
+
+  private:
+    static std::string to_upper(std::string s) {
+        for (char& c : s)
+            if (c == 'e')
+                c = 'E';
+        return s;
+    }
+
+    template <std::size_t K>
+    std::string fixed(const wide_uint<K>& num, const wide_uint<K>& den, int p) const {
+        decimal_stream<K> ds{num, den};
+        const std::string whole = ds.whole();
+        std::string       d     = whole + ds.next(p + 1);
+        round_digits(d, whole.size() + static_cast<std::size_t>(p), ds.tail()); // a carry lengthens d
+        std::string out = d.substr(0, d.size() - static_cast<std::size_t>(p));
+        if (p > 0 || Alt)
+            out += '.';
+        return out + d.substr(d.size() - static_cast<std::size_t>(p));
+    }
+
+    // d.ddd…e±XX with p decimals; x receives the exponent.
+    template <std::size_t K>
+    std::string scientific(const wide_uint<K>& num, const wide_uint<K>& den, int p, int& x) const {
+        decimal_stream<K> ds{num, den};
+        std::string       d = ds.whole(); // from the first significant digit on
+        x                   = static_cast<int>(d.size()) - 1;
+        if (d == "0" && !num.is_zero())
+            for (x = 0; d == "0"; --x) // the first nonzero digit of the fraction
+                d = ds.next(1);
+        if (static_cast<int>(d.size()) < p + 2)
+            d += ds.next(p + 2 - static_cast<int>(d.size()));
+        if (round_digits(d, static_cast<std::size_t>(p) + 1, ds.tail())) {
+            ++x;
+            d.pop_back();
+        }
+        std::string out = d.substr(0, 1);
+        if (p > 0 || Alt)
+            out += '.';
+        out += d.substr(1);
+        const int ax = x < 0 ? -x : x;
+        return out + (x < 0 ? "e-" : "e+") + (ax < 10 ? "0" : "") + std::to_string(ax);
+    }
+};
+} // namespace beman::inside::detail
+
+namespace beman::inside::detail {
+// x's exact value as a sign and a magnitude fraction, for the exact specs.
+template <insidable B>
+auto spec_value(const B& b) {
+    if constexpr (fp_raw<B>)
+        return exact_of_double(as_double(b));
+    else
+        return exact_of(b);
+}
+template <std::size_t K>
+bool spec_negative(const exact_frac<K>& f) {
+    return f.Num.negative();
+}
+template <std::size_t K>
+wide_uint<K> spec_magnitude(const exact_frac<K>& f) {
+    return wide_uint<K>{f.Num.negative() ? -f.Num : f.Num};
+}
+template <std::size_t K>
+wide_uint<K> spec_denominator(const exact_frac<K>& f) {
+    return wide_uint<K>{f.Den};
+}
+} // namespace beman::inside::detail
+
+// Empty `{}` prints to_string. A notched integer grid within imax takes the
+// integer specs (std::formatter<imax>: {:>4}, {:#x}); every other inside takes
+// the exact specs ({:.2f}, {:e}, {:g}, fill / align / sign / width), rounded
+// from the exact value.
 template <beman::inside::grid G, beman::inside::policy_flag P>
 struct std::formatter<beman::inside::inside<G, P>>
     : beman::inside::detail::numeric_spec_formatter<
           std::conditional_t<beman::inside::detail::is_integer_aligned<beman::inside::inside<G, P>> && G.Notch != 0 &&
                                  beman::inside::detail::values_fit_imax<beman::inside::inside<G, P>>,
                              std::formatter<beman::inside::imax>,
-                             std::formatter<double>>> {
+                             beman::inside::detail::exact_format_spec>> {
     using B = beman::inside::inside<G, P>;
     // Integer formatting only for a notched integer grid: a continuous grid
     // (notch 0) holds fractions even between integer bounds.
@@ -15267,23 +15515,37 @@ struct std::formatter<beman::inside::inside<G, P>>
 
     template <typename Ctx>
     auto format(const B& b, Ctx& ctx) const {
+        namespace d = beman::inside::detail;
         if constexpr (integer_path)
-            return this->Numeric.format(beman::inside::detail::to_value(b), ctx);
-        else if (this->HasSpec)
-            return this->Numeric.format(beman::inside::detail::as_double(b), ctx);
-        else
+            return this->Numeric.format(d::to_value(b), ctx);
+        else if (!this->HasSpec)
             return std::format_to(ctx.out(), "{}", beman::inside::to_string(b));
+        else {
+            const auto  v     = d::spec_value(b);
+            std::string plain = beman::inside::to_string(b);
+            if (!plain.empty() && plain[0] == '-')
+                plain.erase(0, 1);
+            return this->Numeric.write(
+                d::spec_negative(v), this->Numeric.body(d::spec_magnitude(v), d::spec_denominator(v), plain), ctx);
+        }
     }
 };
 
 template <>
 struct std::formatter<beman::inside::detail::rational>
-    : beman::inside::detail::numeric_spec_formatter<std::formatter<double>> {
+    : beman::inside::detail::numeric_spec_formatter<beman::inside::detail::exact_format_spec> {
     template <typename Ctx>
     auto format(const beman::inside::detail::rational& r, Ctx& ctx) const {
-        if (HasSpec)
-            return Numeric.format(static_cast<double>(r), ctx);
-        return std::format_to(ctx.out(), "{}", beman::inside::to_string(r));
+        namespace d = beman::inside::detail;
+        if (!HasSpec)
+            return std::format_to(ctx.out(), "{}", beman::inside::to_string(r));
+        std::string plain = beman::inside::to_string(r);
+        if (!plain.empty() && plain[0] == '-')
+            plain.erase(0, 1);
+        return Numeric.write(
+            r.Denominator < 0 && r.Numerator != 0,
+            Numeric.body(d::wide_uint<1>{r.Numerator}, d::wide_uint<1>{d::abs_den(r.Denominator)}, plain),
+            ctx);
     }
 };
 

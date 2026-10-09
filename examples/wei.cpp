@@ -56,7 +56,7 @@ int main() {
     accounts.fill(*from_chars<eth>("999999999.999999999999999999"));
     const total sum = beman::inside::sum<total>(accounts);
     std::cout << "sum      " << sum << " ETH\n";
-    if (to_string(sum) != "999999999999.999999999999999")
+    if (to_string(sum) != "999999999999.999999999999999000") // a 10^-18 grid: 18 decimals
         return 1;
 
     // 4. balance × price has a 10^-20 notch — a grid past 64-bit numbers —

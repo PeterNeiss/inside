@@ -154,13 +154,70 @@ TEST(FormatTest, std_format_numeric_specs_rational) {
     ASSERT_EQ((std::format("{}", rational{1u, 3})), "1/3");
     ASSERT_EQ((std::format("{}", rational{7u, 3})), "7/3");
 
-    // Non-empty spec — double formatter.
+    // Non-empty spec — rounded from the exact value (the same digits a double
+    // formatter gives where the double is close enough).
     rational r = rational{1u, 3};
     ASSERT_EQ((std::format("{:.3f}", r)), (std::format("{:.3f}", static_cast<double>(r))));
     ASSERT_EQ((std::format("{:.6f}", r)), (std::format("{:.6f}", static_cast<double>(r))));
     ASSERT_EQ((std::format("{:e}", r)), (std::format("{:e}", static_cast<double>(r))));
+    ASSERT_EQ((std::format("{:.25f}", r)), "0.3333333333333333333333333");
+}
+
+// Exact specs: digits rounded from the exact value, ties to even like printf.
+TEST(FormatTest, std_format_exact_specs) {
+    using q = inside<{{-2, 2}, per<1024>}>;
+    EXPECT_EQ(std::format("{:.2f} {:.2f} {:.0f} {:.0f}", q{0.125}, q{0.375}, q{0.5}, q{1.5}), "0.12 0.38 0 2");
+    EXPECT_EQ(std::format("{:e} {:.3g} {:G}", q{0.0009765625}, q{0.0009765625}, q{0.0009765625}),
+              "9.765625e-04 0.000977 0.000976562");
+    EXPECT_EQ(std::format("[{:>8.3f}] [{:<8.1f}] [{:*^9.1f}] [{:+.1f}] [{: .1f}] [{:08.2f}]",
+                          q{-0.5},
+                          q{0.5},
+                          q{0.5},
+                          q{0.5},
+                          q{0.5},
+                          q{-0.5}),
+              "[  -0.500] [0.5     ] [***0.5***] [+0.5] [ 0.5] [-0000.50]");
+    EXPECT_EQ(std::format("{:#.0f} {:#.0e}", q{1.5}, q{1.5}), "2. 2.e+00");
+    // A width alone keeps the exact text.
+    using third = inside<{{0, 10}, per<3>}>;
+    EXPECT_EQ(std::format("[{:>6}] [{:.4f}]", third{rational{7, 3}}, third{rational{7, 3}}), "[   7/3] [2.3333]");
+    // A wide value past 2^53: exact digits a double cannot give.
+    using fine     = inside<{{0, umax{1} << 34}, per<(umax{1} << 32)>}>;
+    const fine odd = fine::from_raw((detail::wide_uint<2>{1} << 65) + detail::wide_uint<2>{1});
+    EXPECT_EQ(std::format("{:.12f}", odd), "8589934592.000000000233");
+    EXPECT_EQ(std::format("{:.15e}", odd), "8.589934592000000e+09");
+    EXPECT_THROW((void)std::vformat("{:x}", std::make_format_args(odd)), std::format_error);
 }
 #endif // __cpp_lib_format
+
+// A decimal notch prints every value with that notch's decimals; any other
+// notch prints the value's shortest exact form.
+TEST(FormatTest, decimal_notches_fix_the_digits) {
+    using cents = inside<{{-100, 100}, per<100>}>;
+    EXPECT_EQ(beman::inside::to_string(cents{rational{199, 10}}), "19.90");
+    EXPECT_EQ(beman::inside::to_string(cents{2}), "2.00");
+    EXPECT_EQ(beman::inside::to_string(cents{rational{-1, 20}}), "-0.05");
+    EXPECT_EQ(beman::inside::to_string(cents{0}), "0.00");
+    using nickel = inside<{{0, 1}, frac<1, 20>}>; // 0.05: two decimals
+    EXPECT_EQ(beman::inside::to_string(nickel{rational{1, 10}}), "0.10");
+    using milli = inside<{{0, 1}, frac<1, 200>}>; // 0.005: three
+    EXPECT_EQ(beman::inside::to_string(milli{rational{1, 2}}), "0.500");
+    using exact_cents = inside<{{0, 100}, per<100>}, exact>; // every raw kind
+    EXPECT_EQ(beman::inside::to_string(exact_cents{rational{3, 2}}), "1.50");
+    // Binary and other notches: the value decides.
+    using quarter = inside<{{0, 4}, per<4>}>;
+    EXPECT_EQ(beman::inside::to_string(quarter{1.5}), "1.5");
+    EXPECT_EQ(beman::inside::to_string(quarter{2}), "2");
+    using sixth = inside<{{0, 4}, per<6>}>;
+    EXPECT_EQ(beman::inside::to_string(sixth{rational{1, 2}}), "0.5");
+    EXPECT_EQ(beman::inside::to_string(sixth{rational{1, 3}}), "1/3");
+    // Every form reads back.
+    for (const cents c : {cents{rational{199, 10}}, cents{-1}, cents{0}})
+        EXPECT_EQ(from_chars<cents>(beman::inside::to_string(c)), c);
+#ifdef __cpp_lib_format
+    EXPECT_EQ(std::format("{}", cents{rational{199, 10}}), "19.90");
+#endif
+}
 
 // interval and grid to_string
 TEST(FormatTest, interval_and_grid_to_string) {

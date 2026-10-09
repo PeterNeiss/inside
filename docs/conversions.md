@@ -235,12 +235,72 @@ ratio with no finite decimal (1/3). The two-limit form `{lo, hi}` derives its
 notch from a plain floating-point limit only down to 1/1024, so
 `inside<{0.1, 1}>` is a compile error that points to `0.1_r`.
 
+## Writing text: `to_string`, `operator<<` and `std::format`
+
+`to_string(x)`, `std::cout << x` and `std::format("{}", x)` print the same
+text: the **exact** value, never rounded. Its form follows the grid:
+
+| Grid | Prints | Examples |
+|---|---|---|
+| integer notch | the integer | `42`, `-7` |
+| decimal notch (`per<100>`, `0.05`, `1e-18_g`: a denominator 2^a·5^b with a factor 5) | that notch's decimals for every value | `19.90`, `2.00`, `-0.05` on a cents grid |
+| any other notch, or continuous | the shortest exact form: a decimal when the value has one, else `N/D` | `0.5`, `0.0000152587890625` (`per<65536>`); `1/3`, `7/3` (`per<3>`) |
+
+So a column of prices lines up (`19.90`, not `19.9`), a binary fixed-point
+value is not padded to its 16 decimals, and a value with no finite decimal
+stays exact as a fraction. Every form is one `from_chars` reads, so printed
+values read back unchanged.
+
+Other cases follow the same idea:
+
+- **`f64` storage** prints the exact value too: on a notched grid by the rule
+  above; on a continuous grid the stored double's full decimal (`0.1` shows as
+  `0.1000000000000000055511151231257827021181583404541015625`).
+- **Wide and C++26 big values** print all their digits (`1267650600228229401496703205379`).
+- **`rational`** and grid numbers print their shortest exact form; an
+  `interval` prints `[lo..hi]` and a `grid` `{[lo..hi], notch}`.
+- **`to_string_debug(x)`** adds the raw, its type and the grid:
+  `0.5 {128[uint16_t Max:512] {[0..2], 0.00390625}}`.
+
+### Format specs
+
+A non-empty spec formats the value. A notched integer grid whose values fit
+`int64` takes the integer specs (`std::formatter<imax>`: `{:>4}`, `{:#x}`,
+`{:b}`). Every other inside — and `rational` — takes `f`, `e` and `g` with
+fill, alignment, sign, `#`, `0`, width and precision, **rounded from the
+exact value** (to nearest, ties to even, as `printf` rounds a double's exact
+value). The digits are right for wide and big values that no `double` holds;
+a width alone keeps the exact text.
+
+```cpp
+#include <beman/inside/io.hpp>
+#include <print>
+
+inside<{0, 100}> hp{42};
+std::println("HP = {}",       hp);       // 42
+std::println("HP = {:>5}",    hp);       //    42
+std::println("HP = {:#04x}",  hp);       // 0x2a
+
+using cents = inside<{{0, 1'000'000}, per<100>}>;
+cents price{19.9_r};
+std::println("{}", price);               // 19.90
+std::println("{:.1f}", price);           // 19.9
+std::println("{:>8}", price);            //    19.90
+
+inside<{{0, 1}, per<1024>}> g{0.125};
+std::println("{} {:.2f} {:e}", g, g, g); // 0.125 0.12 1.250000e-01
+```
+
+See `examples/decibels.cpp` for the same pattern in a real Q-format
+conversion routine.
+
 ## Reading text: `from_chars<B>` and `operator>>`
 
 `from_chars<B>(text)` parses a number exactly — no `double` round-trip — and
 returns `std::expected<B, errc>`. The text is one number: an optional sign, then
 the literal grammar (`1'000`, `1.25`, `1.5e2`, `0xff`, `0b1010`, `0x1.8p3`) or a
-fraction `N/D` — the forms `to_string` prints, so printed values read back.
+fraction `N/D` — the forms [`to_string` prints](#writing-text-to_string-operator-and-stdformat), so
+printed values read back.
 A number past the 64-bit rational (a long decimal) is parsed exactly too.
 The value then goes through `B::try_make`, so `B`'s policy applies:
 
@@ -288,29 +348,3 @@ a + b == 100;     // true
 
 Mixed-type comparisons (`inside<G1> < inside<G2>`) compute on a common
 representation chosen at compile time — no implicit narrowing.
-
-## `std::print` / `std::format` integration
-
-`beman/inside/io.hpp` ships a `std::formatter` specialization for
-`inside<G, P>`. Empty `{}` matches `operator<<` (the exact value — a whole
-number, an exact decimal such as `0.625` however many digits, or a fraction
-such as `7/3`); non-empty specs route by storage shape — integer grids
-go through `std::formatter<imax>` (`{:>4}`, `{:#x}`, `{:b}`, …), fractional
-grids through `std::formatter<double>` (`{:.2f}`, `{:e}`).
-
-```cpp
-#include <beman/inside/io.hpp>
-#include <print>
-
-inside<{0, 100}> hp{42};
-std::println("HP = {}",       hp);       // 42
-std::println("HP = {:>5}",    hp);       //    42
-std::println("HP = {:#04x}",  hp);       // 0x2a
-
-inside<{{0, 1}, per<16>}, round_nearest> g{0.625};
-std::println("gain = {}",    g);          // 0.625 (exact)
-std::println("gain = {:.3f}", g);          // 0.625
-```
-
-See `examples/decibels.cpp` for the same pattern in a real Q-format
-conversion routine.
