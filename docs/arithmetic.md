@@ -188,6 +188,35 @@ the results.
   Q-format fast-path correctness test with the bit-exact 200/3 → 17066
   reference.
 
+## Rounding straight into a type: `mul_into<Out>` / `div_into<Out>`
+
+`a * b` and `a / b` produce the exact result on its own grid, which you then
+store. When that grid is not wanted — or cannot exist — round the exact
+result straight into the type you need:
+
+```cpp
+using eth   = inside<{{0, 1'000'000'000}, 1e-18_r}>;          // wei
+using price = inside<{{0, 100'000'000}, per<100>}>;           // dollars, to the cent
+using usd   = inside<{{0, 1'000'000'000'000'000}, per<100>}, round_nearest>;
+
+usd value = mul_into<usd>(balance, p);         // one rounding, to the cent
+auto r    = div_into<usd, round_floor>(a, b);  // Out's policy, plus per-call flags
+```
+
+- **`mul_into<Out, F = none>(a, b)`** — the exact product, rounded once onto
+  `Out` by `Out`'s policy (`| F`). Use it when the product grid would need
+  grid numbers past 64 bits (the `eth × price` notch above is 10⁻²⁰: a C++23
+  compile error for `a * b`), or simply to skip the intermediate type.
+- **`div_into<Out, F = none>(a, b)`** — the exact quotient, rounded once onto
+  `Out`. It returns `Out` when `b`'s grid excludes zero and
+  `std::expected<Out, errc>` otherwise; in that case every failure — a zero
+  divisor, or a store `Out`'s policy rejects — is the error. Unlike `a / b`
+  it never forms a continuous quotient, so a quotient with no 64-bit fraction
+  still lands on `Out`.
+
+A store that fails in the plain-`Out` forms is reported through the policy
+(it throws under `checked`).
+
 ## Scalars in inside arithmetic need a grid
 
 A raw `int` or `double` carries no grid, so `inside op rawscalar` has no

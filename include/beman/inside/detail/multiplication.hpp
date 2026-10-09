@@ -18,8 +18,9 @@ namespace beman::inside::detail {
 template <insidable L, insidable R = L>
 struct multiplication {
     static_assert(grid_product_fits(grid_of<L>, grid_of<R>),
-                  "multiplication: the result grid exceeds the 64-bit grid numbers — coarsen "
-                  "the operand grids, or build with C++26 big grids");
+                  "multiplication: the result grid exceeds the 64-bit grid numbers — round the "
+                  "product into a coarser type with mul_into<Out>(a, b), coarsen the operand "
+                  "grids, or build with C++26 big grids");
     // (Falls back to L's grid when the assertion failed, so the build stops at
     // that message instead of the rational overflow behind it.)
     static constexpr grid result_grid =

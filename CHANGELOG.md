@@ -6,6 +6,14 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 ## Unreleased
 
+### Added
+
+- `mul_into<Out, F>(a, b)` and `div_into<Out, F>(a, b)`: the exact product or
+  quotient, rounded once onto `Out` by its policy, without forming the
+  product or quotient grid — for products whose grid would need numbers past
+  64 bits under C++23, and quotients with no 64-bit fraction. `div_into`
+  returns `std::expected<Out, errc>` when the divisor's grid holds zero.
+
 ### Changed
 
 - `to_string`, `operator<<` and `std::format("{}")` print a value with a

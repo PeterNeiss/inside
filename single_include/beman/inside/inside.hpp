@@ -6885,8 +6885,9 @@ namespace beman::inside::detail {
 template <insidable L, insidable R = L>
 struct multiplication {
     static_assert(grid_product_fits(grid_of<L>, grid_of<R>),
-                  "multiplication: the result grid exceeds the 64-bit grid numbers — coarsen "
-                  "the operand grids, or build with C++26 big grids");
+                  "multiplication: the result grid exceeds the 64-bit grid numbers — round the "
+                  "product into a coarser type with mul_into<Out>(a, b), coarsen the operand "
+                  "grids, or build with C++26 big grids");
     // (Falls back to L's grid when the assertion failed, so the build stops at
     // that message instead of the rational overflow behind it.)
     static constexpr grid result_grid =
@@ -8678,6 +8679,49 @@ BEMAN_INSIDE_ARITH_FN(mul, mul_op)
 BEMAN_INSIDE_ARITH_FN(div, div_op)
 BEMAN_INSIDE_ARITH_FN(mod, mod_op)
 #undef BEMAN_INSIDE_ARITH_FN
+
+//---------------------------------------------------------------------------
+// mul_into<Out> / div_into<Out> — the exact product or quotient, rounded once
+// onto Out by Out's policy (plus the per-call flags F). Neither forms the
+// product or quotient grid, so they work where `a * b` would need grid numbers
+// past 64 bits (C++23) or a quotient past the 64-bit fraction. A store that
+// fails is reported through the policy (it throws under `checked`).
+// div_into returns std::expected<Out, errc> when the divisor's grid holds 0 —
+// then every failure, a zero divisor or a failed store, is the error — else Out.
+//---------------------------------------------------------------------------
+namespace detail {
+template <insidable Out, std::size_t K, typename P>
+constexpr Out store_exact_into(const exact_frac<K>& v, P&& policy) {
+    Out out{};
+    assign_exact<rational>(out, v, policy, no_action{});
+    return out;
+}
+} // namespace detail
+
+template <insidable Out, policy_flag F = none, insidable A, insidable B>
+[[nodiscard]] constexpr Out mul_into(const A& a, const B& b) {
+    using E = detail::exact_frac<detail::exact_limbs<A, B, Out>>;
+    return detail::store_exact_into<Out>(E{detail::exact_of(a)} * E{detail::exact_of(b)},
+                                         make_policy<policy_of<Out> | F>());
+}
+
+template <insidable Out, policy_flag F = none, insidable A, insidable B>
+[[nodiscard]] constexpr auto div_into(const A& a, const B& b)
+    -> std::conditional_t<detail::divisor_excludes_zero<B>, Out, std::expected<Out, errc>> {
+    using E     = detail::exact_frac<detail::exact_limbs<A, B, Out>>;
+    const E num = E{detail::exact_of(a)}, den = E{detail::exact_of(b)};
+    if constexpr (detail::divisor_excludes_zero<B>)
+        return detail::store_exact_into<Out>(num / den, make_policy<policy_of<Out> | F>());
+    else {
+        if (den.Num.is_zero())
+            return std::unexpected{errc::division_by_zero};
+        errc      ec{};
+        const Out out = detail::store_exact_into<Out>(num / den, make_policy<policy_of<Out> | F>(ec));
+        if (ec != errc{})
+            return std::unexpected{ec};
+        return out;
+    }
+}
 
 // Binary operators: +, -, * use the default policy; / and % carry the
 // operands' own policies (snap/rounding select the native integer paths).
