@@ -80,26 +80,44 @@ inline constexpr grid_rational abs_auto_upper = grid_abs(lower_of<In>) > grid_ab
                                                     ? grid_abs(lower_of<In>)
                                                     : grid_abs(upper_of<In>);
 
+// The lattice of ±x: x's notch, refined by 2·Lower when x's lattice does
+// not pass through 0 (±(0.25 + k/2) lie on 0.25 + ℤ/2; ±(0.5 + k) on ℤ/2).
 template <insidable In>
-using abs_auto_t = deduced_inside<{{grid_rational{0}, abs_auto_upper<In>}, notch_of<In>}, out_policy<In>, In>;
+inline constexpr grid_rational sym_notch =
+    anchored<In> ? notch_of<In> : grid_gcd_of(notch_of<In>, grid_add(lower_of<In>, lower_of<In>));
+
+// The lowest non-negative point of that lattice: 0 when it passes through 0.
+template <insidable In>
+inline constexpr grid_rational sym_floor = [] {
+    if constexpr (anchored<In>)
+        return grid_rational{0};
+    else {
+        const grid_rational n = sym_notch<In>, l = lower_of<In>;
+        // l − n·⌊l/n⌋, with ⌊l/n⌋ from the rounding helper below
+        return grid_sub(l, grid_mul(n, grid_to_int<round_mode::floor>(grid_div_of(l, n))));
+    }
+}();
+
+template <insidable In>
+using abs_auto_t = deduced_inside<{{sym_floor<In>, abs_auto_upper<In>}, sym_notch<In>}, out_policy<In>, In>;
 
 // sign(x) ∈ {sign(Lower) … sign(Upper)}, integer notch.
 template <insidable In>
 using sign_auto_t = deduced_inside<{grid_sign(lower_of<In>), grid_sign(upper_of<In>)}, out_policy<In>, In>;
 
 // copysign(mag, sgn): |mag| with sgn's possible signs. |mag| ranges over
-// [m_lo, m_hi] (m_lo = 0 when mag's interval spans 0); a valid grid's Lower is
-// a multiple of its notch, so ±|mag| stays on mag's lattice.
+// [m_lo, m_hi] (m_lo = 0 when mag's interval spans 0); ±|mag| lies on
+// sym_notch's lattice (mag's own when it passes through 0).
 template <insidable Mag>
 inline constexpr grid_rational abs_auto_lower =
-    (lower_of<Mag> <= 0 && upper_of<Mag> >= 0)            ? grid_rational{0}
+    (lower_of<Mag> <= 0 && upper_of<Mag> >= 0)            ? sym_floor<Mag>
     : (grid_abs(lower_of<Mag>) < grid_abs(upper_of<Mag>)) ? grid_abs(lower_of<Mag>)
                                                           : grid_abs(upper_of<Mag>);
 
 template <insidable Mag, insidable Sgn>
 using copysign_auto_t = deduced_inside<{{lower_of<Sgn> < 0 ? -abs_auto_upper<Mag> : abs_auto_lower<Mag>,
                                          upper_of<Sgn> >= 0 ? abs_auto_upper<Mag> : -abs_auto_lower<Mag>},
-                                        notch_of<Mag>},
+                                        sym_notch<Mag>},
                                        out_policy<Mag>,
                                        Mag>;
 
@@ -185,7 +203,8 @@ constexpr Out integer_into(In x) {
 // |x|. Output Lower must be ≥ 0 (the result is always non-negative).
 template <insidable Out, insidable In>
 [[nodiscard]] constexpr Out abs_into(In x) {
-    static_assert(lower_of<Out> <= 0, "beman::inside::math::abs: Out must include 0");
+    static_assert(lower_of<Out> <= detail::abs_auto_lower<In>,
+                  "beman::inside::math::abs: Out must include the smallest |x| (0 when x's range spans 0)");
     if constexpr (detail::any_wide_valued<Out, In>)
         return detail::store_exact<Out>(detail::ax::abs(detail::ax::exact_input(x)));
     else if constexpr (detail::fp_direct<Out, detail::abs_auto_t<In>, In>)
@@ -252,6 +271,10 @@ inline constexpr bool fmod_int_fast = [] {
         !::beman::inside::detail::notched<Out>)
         return false;
     if (!divisor_excludes_zero<InY>)
+        return false;
+    // Lower/g must be an integer: the lattices pass through 0.
+    if (!::beman::inside::detail::anchored<InX> || !::beman::inside::detail::anchored<InY> ||
+        !::beman::inside::detail::anchored<Out>)
         return false;
     auto go = gcd(::beman::inside::detail::notch64<InX>, ::beman::inside::detail::notch64<InY>);
     if (!go.has_value())

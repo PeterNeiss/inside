@@ -48,11 +48,6 @@ struct multiplication {
         point_grid<Point> && lower_of<Point> != 0 && !rational_storage<X> && !fp_storage<X> && notched<X> &&
         !rational_storage<result> && !fp_storage<result> && !wide_valued<X> && !wide_valued<result>;
 
-    // An operand's unit in the product grid (grid operator*): its notch, or
-    // |c| for a point c.
-    template <insidable X>
-    static constexpr grid_rational unit_of = (point_grid<X>) ? abs(lower_of<X>) : notch_of<X>;
-
     template <bool Negate, insidable X>
     static constexpr result scale_by_point(const X& x) {
         static_assert(max_index_v<result> == max_index_v<X>);
@@ -93,17 +88,15 @@ struct multiplication {
         } else if constexpr (point_storage<result>)
             return result::from_raw(raw_t<result>{}); // a product with 0: the point 0
         else if constexpr (integer_storage<L> && integer_storage<R>) {
-            // Integer raws: multiply the operands' values in their own units, in
-            // imax or by wrapping arithmetic (wide_value.hpp). The product notch is the product
-            // of those units (a notch, or |c| for a point c), so the product of the
-            // unit counts is the result's value index — exact for every grid and
-            // sign, at any width.
-            using W = index_work_t<result, L, unit_of<L>, R, unit_of<R>>;
-            static_assert(
-                wide_numerator(unit_of<L>) * wide_numerator(unit_of<R>) * wide_denominator(notch_of<result>) ==
-                    wide_denominator(unit_of<L>) * wide_denominator(unit_of<R>) * wide_numerator(notch_of<result>),
-                "multiplication: the product notch is the product of the operand units");
-            return from_value_index<result>(value_in_units<W, unit_of<L>>(lhs) * value_in_units<W, unit_of<R>>(rhs));
+            // Integer raws: multiply the operands' values in their own units (a
+            // notch or value unit, or |c| for a point c), in imax or by wrapping
+            // arithmetic (wide_value.hpp). The product of the unit counts counts
+            // the product in the product of the units — on anchored grids the
+            // result notch — exact for every grid and sign, at any width.
+            constexpr grid_rational U = grid_mul(unit_of<L>, unit_of<R>);
+            using W                   = index_work_t<result, L, unit_of<L>, R, unit_of<R>, U>;
+            return from_value_in_units<result, U>(value_in_units<W, unit_of<L>>(lhs) *
+                                                  value_in_units<W, unit_of<R>>(rhs));
         } else if constexpr (wide_valued<result>)
             // An fp or rational operand into a result with more than 2^64 slots.
             return exact_result<result>(exact_of(lhs) * exact_of(rhs));

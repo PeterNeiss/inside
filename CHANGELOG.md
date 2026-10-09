@@ -8,6 +8,16 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 ### Added
 
+- Grids whose Lower is not a multiple of the notch: `inside<{{0.5, 255.5}, 1}>`
+  holds 0.5, 1.5, …, 255.5 in a `uint8_t`. Every operation works on them —
+  rounding stores (in value space, every mode), conversions, `+ − × /`,
+  comparison, clamp and wrap, text, ranges, `sum`, `numeric_limits`, random
+  and the math engine, correctly rounded onto such an output too (`wrap`
+  outputs excepted). Result grids track the lattice: a product of two
+  half-offset grids has notch 1/2, `hull` refines by the offset between two
+  lattices, and `abs` the lattice of ±x. `grid::anchored()` and
+  `grid::value_unit()` describe a grid; `grid::try_make` no longer rejects
+  such a Lower. Grids that were valid before behave and compile as before.
 - `mul_into<Out, F>(a, b)` and `div_into<Out, F>(a, b)`: the exact product or
   quotient, rounded once onto `Out` by its policy, without forming the
   product or quotient grid — for products whose grid would need numbers past

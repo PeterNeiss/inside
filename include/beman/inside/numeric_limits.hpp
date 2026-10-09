@@ -66,15 +66,19 @@ struct std::numeric_limits<beman::inside::inside<G, P>> {
     static constexpr B max() noexcept { return B{::beman::inside::detail::upper64<B>}; }
     static constexpr B lowest() noexcept { return B{::beman::inside::detail::lower64<B>}; }
     // Exact types have no rounding noise — epsilon and round_error are 0 when
-    // 0 is on the grid (it always is when 0 ∈ interval, since the grid is
-    // validated such that Lower is an integer multiple of Notch). When 0 is
-    // outside the interval, fall back to the grid minimum — the closest
-    // representable stand-in for "no error" the type can express.
+    // 0 is on the grid. A lattice that misses 0 but spans it gives its first
+    // point above 0; when 0 is outside the interval, the grid minimum — the
+    // closest representable stand-in for "no error" the type can express.
     static constexpr B epsilon() noexcept {
-        if constexpr (G.Interval.Lower <= beman::inside::detail::rational{0} &&
-                      beman::inside::detail::rational{0} <= G.Interval.Upper)
+        if constexpr (G.representable(beman::inside::detail::grid_rational{0}))
             return B{beman::inside::detail::rational{0}};
-        else
+        else if constexpr (G.Interval.Lower < beman::inside::detail::rational{0} &&
+                           beman::inside::detail::rational{0} < G.Interval.Upper) {
+            constexpr auto lo = ::beman::inside::detail::lower64<B>, n = ::beman::inside::detail::notch64<B>;
+            return B{
+                (lo + (beman::inside::detail::rational{beman::inside::detail::ceil((-lo / n).value())} * n).value())
+                    .value()};
+        } else
             return B{::beman::inside::detail::lower64<B>};
     }
     static constexpr B round_error() noexcept { return epsilon(); }

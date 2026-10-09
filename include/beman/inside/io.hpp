@@ -103,15 +103,16 @@ std::string fraction_to_string(bool neg, wide_uint<K> num, wide_uint<K> den, int
 }
 
 namespace detail {
-// The decimals every value of B prints with: n for a decimal notch — one
-// whose denominator is 2^a·5^b with b ≥ 1 (per<100>, 0.05, 1e-18) — with
+// The decimals every value of B prints with: n for a decimal lattice — one
+// whose value unit (the notch, or gcd(Notch, Lower) off 0) has a
+// denominator 2^a·5^b with b ≥ 1 (per<100>, 0.05, 1e-18) — with
 // n = max(a, b); else 0 (the value decides).
 template <insidable B>
 inline constexpr int fixed_decimals = [] {
     if constexpr (!notched<B>)
         return 0;
     else {
-        grid_wide q   = wide_denominator(notch_of<B>);
+        grid_wide q   = wide_denominator(grid_of<B>.value_unit());
         int       two = 0, five = 0;
         for (; q % grid_wide{2} == grid_wide{0}; q = q / grid_wide{2})
             ++two;

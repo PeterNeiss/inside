@@ -51,14 +51,14 @@ TEST(GridTryMakeTest, grid_try_make_rejects_malformed_grids_with_typed_errors) {
         ASSERT_FALSE(g.has_value());
         ASSERT_EQ(g.error(), errc::rounding_error);
     }
+}
 
-    {
-        SCOPED_TRACE("Lower / notch has non-unit denominator -> rounding_error");
-        // notch 2, lower 1: lower/notch = 1/2, denominator != 1
-        auto g = grid::try_make(interval{1, 11}, 2_r);
-        ASSERT_FALSE(g.has_value());
-        ASSERT_EQ(g.error(), errc::rounding_error);
-    }
+// A Lower off the notch's multiples is fine: the lattice is 1, 3, …, 11.
+TEST(GridTryMakeTest, grid_try_make_accepts_an_unanchored_lattice) {
+    auto g = grid::try_make(interval{1, 11}, 2_r);
+    ASSERT_TRUE(g.has_value());
+    EXPECT_FALSE(g->anchored());
+    EXPECT_EQ(g->slot_count(), detail::grid_wide{5});
 }
 
 // grid::try_make rejects a negative notch (decoding would count downward)

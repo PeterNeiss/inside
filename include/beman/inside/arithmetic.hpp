@@ -208,19 +208,24 @@ template <insidable Target, std::ranges::input_range Rng>
 
     if constexpr ((detail::integer_storage<B> || detail::fp_storage<B>) && !detail::point_storage<B> &&
                   detail::notched<B>) {
-        constexpr int bits =
-            detail::signed_value_bits_of({detail::units_lo<B, notch_of<B>>, detail::units_hi<B, notch_of<B>>}) + 64;
-        using I = detail::wide_sint<detail::limbs_for_bits(bits)>;
+        // The total in units of U, the value unit: the notch on an anchored
+        // grid, so each value counts as its value index.
+        constexpr detail::grid_rational U = grid_of<B>.value_unit();
+        constexpr int bits = detail::signed_value_bits_of({detail::units_lo<B, U>, detail::units_hi<B, U>}) + 64;
+        using I            = detail::wide_sint<detail::limbs_for_bits(bits)>;
         I total{0};
         if constexpr (detail::fp_storage<B>) {
-            // A dyadic grid: value / notch is an exact integer below 2^53.
-            constexpr double notch = static_cast<double>(notch_of<B>);
+            // A dyadic grid: value / U is an exact integer below 2^53.
+            constexpr double unit = static_cast<double>(U);
             for (const auto& b : r)
-                total += I{static_cast<imax>(detail::as_double(b) / notch)};
+                total += I{static_cast<imax>(detail::as_double(b) / unit)};
         } else if constexpr (!detail::wide_index_storage<B> && sizeof(detail::raw_t<B>) <= 4) {
-            constexpr imax base = detail::index_storage<B> ? static_cast<imax>(detail::slot_base<B>) : 0;
-            auto           it   = std::ranges::begin(r);
-            auto           end  = std::ranges::end(r);
+            // Each value is base + raw·scale units (scale 1 when anchored).
+            constexpr imax base =
+                detail::index_storage<B> ? static_cast<imax>(detail::exact_quotient(lower_of<B>, U)) : 0;
+            constexpr imax scale = static_cast<imax>(detail::exact_quotient(notch_of<B>, U));
+            auto           it    = std::ranges::begin(r);
+            auto           end   = std::ranges::end(r);
             while (it != end) {
                 imax acc = 0, cnt = 0;
                 if constexpr (std::ranges::random_access_range<Rng>) {
@@ -233,16 +238,19 @@ template <insidable Target, std::ranges::input_range Rng>
                     for (; it != end && cnt < (imax{1} << 30); ++it, ++cnt)
                         acc += detail::raw_imax(*it);
                 }
-                total += I{acc} + I{cnt} * I{base};
+                if constexpr (scale == 1)
+                    total += I{acc} + I{cnt} * I{base};
+                else
+                    total += I{acc} * I{scale} + I{cnt} * I{base};
             }
         } else
             for (const auto& b : r)
-                total += detail::value_index<I>(b);
+                total += detail::value_in_units<I, U>(b);
         if constexpr (!detail::wide_valued<B>) {
             // A total within imax: the cheaper 64-bit rational store.
             constexpr imax lo = std::numeric_limits<imax>::min(), hi = std::numeric_limits<imax>::max();
             if (!(total < I{lo}) && !(I{hi} < total))
-                if (const auto v = detail::rational{static_cast<imax>(total)} * detail::notch64<B>) {
+                if (const auto v = detail::rational{static_cast<imax>(total)} * detail::to_rational(U)) {
                     detail::assignment<Target, detail::rational>::assign(out, *v, policy, no_action{});
                     return out;
                 }
@@ -250,8 +258,8 @@ template <insidable Target, std::ranges::input_range Rng>
         constexpr std::size_t K =
             detail::limbs_for_bits(I::bits + detail::exact_value_bits<B> + detail::exact_value_bits<Target>);
         using W = detail::wide_sint<K>;
-        const detail::exact_frac<K> v{static_cast<W>(total) * static_cast<W>(detail::wide_numerator(notch_of<B>)),
-                                      static_cast<W>(detail::wide_denominator(notch_of<B>))};
+        const detail::exact_frac<K> v{static_cast<W>(total) * static_cast<W>(detail::wide_numerator(U)),
+                                      static_cast<W>(detail::wide_denominator(U))};
         no_action                   none;
         detail::assign_exact<detail::rational>(out, v, policy, none);
     } else {

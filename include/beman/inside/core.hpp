@@ -81,9 +81,9 @@ struct inside {
     // Representation flags vs grid shape (exact has no requirement; a result
     // policy may carry several flags — storage selection resolves widest-wins,
     // so no mutual-exclusion asserts here).
-    static_assert(!has_flag(P, direct) || G.Notch == 1,
+    static_assert(!has_flag(P, direct) || detail::unit_lattice(G),
                   "inside: the `direct` policy (raw == value as a plain integer) "
-                  "requires Notch == 1");
+                  "requires integer values (Notch 1, integer Lower)");
     static_assert(!has_flag(P, indexed) || G.Notch != 0,
                   "inside: the `indexed` policy (raw == 0-based notch index) "
                   "requires a notch (Notch != 0)");
@@ -485,10 +485,11 @@ struct inside {
                 (detail::wide_denominator(lower_of<R>) * detail::wide_numerator(notch_of<inside>)) ==
             detail::grid_wide{0};
 
+    // (R anchored: its Lower is a whole number of notches, the bias.)
     template <insidable R>
     static constexpr bool raw_add_ok =
         detail::integer_storage<inside> && detail::integer_storage<R> && !detail::point_storage<R> &&
-        detail::notched<inside> && notch_of<inside> == notch_of<R>;
+        detail::notched<inside> && notch_of<inside> == notch_of<R> && detail::anchored<R>;
 
     template <insidable R>
     static constexpr detail::grid_wide point_delta = detail::exact_quotient(lower_of<R>, notch_of<inside>);
@@ -803,13 +804,13 @@ template <insidable B>
 // comparison
 //---------------------------------------------------------------------------
 namespace detail {
-// Integer value-index comparison eligibility: an integer-backed inside
-// whose value indices (value/Notch — integral by the grid anchor
-// invariant) fit imax, so two same-notch insides compare as
-// `bias + raw` without a rational decode.
+// Integer value-index comparison eligibility: an integer-backed anchored
+// inside whose value indices (value/Notch, integers) fit imax, so two
+// same-notch insides compare as `bias + raw` without a rational decode.
 template <insidable B>
 inline constexpr bool index_cmp_fits = [] {
-    if constexpr (rational_storage<B> || fp_storage<B> || !detail::notched<B> || !values_fit_imax<B>)
+    if constexpr (rational_storage<B> || fp_storage<B> || !detail::notched<B> || !detail::anchored<B> ||
+                  !values_fit_imax<B>)
         return false;
     else {
         constexpr auto lo  = detail::lower64<B> / detail::notch64<B>;

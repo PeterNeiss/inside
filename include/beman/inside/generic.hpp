@@ -175,7 +175,8 @@ concept fraction_storage = insidable<B> && is_exact_frac_v<raw_t<B>>;
 template <insidable B>
 inline constexpr bool integer_raw_holds_value =
     (policy_of<B> & direct) == direct || (has_width_flag(policy_of<B>) && (policy_of<B> & indexed) != indexed) ||
-    ((policy_of<B> & indexed) != indexed && notch_of<B> == 1 && (lower_of<B> == 0 || std::signed_integral<raw_t<B>>));
+    ((policy_of<B> & indexed) != indexed && unit_lattice(grid_of<B>) &&
+     (lower_of<B> == 0 || std::signed_integral<raw_t<B>>));
 
 template <typename B>
 concept integer_value_storage = insidable<B> && std::integral<raw_t<B>> && integer_raw_holds_value<B>;
@@ -224,6 +225,12 @@ inline constexpr bool notched = notch_of<B> != 0;
 
 template <insidable B>
 inline constexpr bool point_grid = lower_of<B> == upper_of<B>;
+
+// The lattice passes through 0 (grid::anchored): every value is a whole
+// number of notches, the value index J = value/Notch an integer. Unanchored
+// grids ({{0.5, 10.5}, 1}) take the paths that work from Lower.
+template <insidable B>
+inline constexpr bool anchored = grid_of<B>.anchored();
 
 template <insidable B>
 inline constexpr bool wide_grid_numbers =
@@ -364,10 +371,12 @@ constexpr bool rational_add_is_safe(grid g_l, grid g_r) noexcept {
     return true;
 }
 
-// Notch is a non-zero integer (denominator 1) — the grid is notch-aligned,
-// so values map 1:1 to integers. Gates the implicit imax/size_t conversions.
+// Notch a non-zero integer and Lower an integer — every value is an
+// integer ({{0.5, 10.5}, 1} has an integer notch but not integer values).
+// Gates the implicit imax/size_t conversions.
 template <grid G>
-inline constexpr bool integer_notch = wide_denominator(G.Notch) == grid_wide{1} && G.Notch != 0;
+inline constexpr bool integer_notch =
+    wide_denominator(G.Notch) == grid_wide{1} && G.Notch != 0 && wide_denominator(G.Interval.Lower) == grid_wide{1};
 
 // ONLY type conversion, NO value representation conversion calculation
 template <insidable B>
@@ -571,17 +580,29 @@ inline constexpr round_mode rounding_for = has_policy<L, P, round_floor>       ?
                                            : has_policy<L, P, round_nearest>   ? round_mode::nearest
                                                                                : round_mode::trunc;
 
-// v rounded onto L's lattice {k·Notch} by rounding_for<L, P> (value index,
-// ties half away from zero) — not limited to [Lower, Upper], so wrap can
-// round first and fold an on-lattice value after. Lower/Notch is an integer
-// on every valid grid, so the lattice points are exactly the grid's.
+// The lattice index of Lower: ⌊Lower/Notch⌋ (= Lower/Notch when anchored).
+// Its parity, plus an offset's, says which lattice points are even.
+template <insidable L>
+inline constexpr imax lower_index = detail::notched<L> ? floor((detail::lower64<L> / detail::notch64<L>).value()) : 0;
+
+// v rounded onto L's lattice {Lower + k·Notch} by rounding_for<L, P> (value
+// space, ties half away from zero) — not limited to [Lower, Upper], so wrap
+// can round first and fold an on-lattice value after.
 template <insidable L, typename P>
 [[nodiscard]] constexpr rational round_to_lattice(rational v) {
     if constexpr (!detail::notched<L>)
         return v;
-    else {
+    else if constexpr (anchored<L>) {
         const imax k = round_to_int((v / detail::notch64<L>).value(), rounding_for<L, P>);
         return (rational{k} * detail::notch64<L>).value();
+    } else {
+        const rational       q  = ((v - detail::lower64<L>).value() / detail::notch64<L>).value();
+        const imax           k  = floor(q);
+        const rational       f  = (q - rational{k}).value(); // in [0, 1)
+        constexpr round_mode m  = rounding_for<L, P>;
+        const bool           up = rounds_up(
+            m, v < 0, classify_remainder(m, f.Numerator, abs_den(f.Denominator)), ((k + lower_index<L>)&1) != 0);
+        return (detail::lower64<L> + (rational{k + up} * detail::notch64<L>).value()).value();
     }
 }
 
@@ -643,6 +664,23 @@ template <insidable L, typename P>
     return q + rounds_away(m, false, classify_remainder(m, r, den), (q & 1) != 0);
 }
 
+// The offset quotient num/den (den ≥ 1) of an unanchored grid rounded in
+// value space: the value Lower + (num/den)·Notch is below zero exactly when
+// num/den < −Lower/Notch, compared without overflow in 128 bits.
+template <insidable L, typename P>
+[[nodiscard]] constexpr umax round_offset_unanchored(umax num, umax den) noexcept {
+    const umax           q = num / den, r = num % den;
+    constexpr round_mode m        = rounding_for<L, P>;
+    bool                 negative = false;
+    if constexpr (detail::lower64<L> < 0) {
+        constexpr rational c = (-detail::lower64<L> / detail::notch64<L>).value(); // > 0
+        using W              = wide_uint<2>;
+        negative             = W{num} * W{abs_den(c.Denominator)} < W{c.Numerator} * W{den};
+    }
+    return q +
+           rounds_up(m, negative, classify_remainder(m, r, den), ((q + static_cast<umax>(lower_index<L>)) & 1) != 0);
+}
+
 // Round the non-negative offset quotient num/den (den >= 1) to an integer
 // notch index per L's rounding policy.
 //
@@ -651,7 +689,7 @@ template <insidable L, typename P>
 // reference). The offset num/den is >= 0 (sign lost by subtracting Lower), so
 // we rebuild the signed value-index NUM = m·den + num (m = Lower/Notch), round
 // it like div_rounded, and return the offset J - m. m is integral on every
-// dyadic/integer-aligned/Q-format grid; otherwise fall back to offset rounding.
+// anchored grid; an unanchored one rounds the offset against the value's sign.
 template <insidable L, typename P>
 [[nodiscard]] constexpr umax round_quotient(umax num, umax den) noexcept {
     constexpr rational zl =
@@ -659,7 +697,9 @@ template <insidable L, typename P>
     constexpr bool vidx = (zl.Denominator == 1 || zl.Denominator == -1);
     constexpr imax m    = vidx ? signed_numerator(zl) : imax{0};
 
-    if constexpr (!vidx)
+    if constexpr (!anchored<L>)
+        return round_offset_unanchored<L, P>(num, den);
+    else if constexpr (!vidx)
         return round_offset<L, P>(num / den, num % den, den);
     else {
         // Round the signed value-index NUM/di exactly like detail::div_rounded.
@@ -706,7 +746,10 @@ inline constexpr bool notches_compatible = [] {
         return !notched<L> || (grid_divides_evenly(notch_of<R>, notch_of<L>) &&
                                grid_same_lattice(lower_of<R>, lower_of<L>, notch_of<L>));
     else
-        return abs_den(assignment<L, R>::Factor.Denominator) == 1;
+        // R's notch a whole number of L's, and R's lattice on L's (a given
+        // when both pass through 0).
+        return abs_den(assignment<L, R>::Factor.Denominator) == 1 &&
+               grid_same_lattice(lower_of<R>, lower_of<L>, notch_of<L>);
 }();
 
 // Tail of the policy cascade: checked reports.

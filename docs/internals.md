@@ -24,7 +24,13 @@ enforced at type-instantiation time by `grid::validate` (`include/beman/inside/g
   `max_index_v<B>` (`include/beman/inside/generic.hpp`).
 - **`Notch == 0` is legal** and means "any rational in the interval". The
   storage shape changes accordingly (see §2).
-- **`Lower/Notch` and `Upper/Notch` resolve to integer rationals** when `Notch != 0`.
+- **Lower need not be a multiple of the notch.** The values are `Lower,
+  Lower + Notch, …, Upper`, so `{{0.5, 10.5}, 1}` holds 0.5, 1.5, …, 10.5.
+  A grid whose lattice passes through 0 (`Lower/Notch` an integer) is
+  *anchored* (`grid::anchored()`); every value is then a whole number of
+  notches, its value index. On an unanchored grid every value is a whole
+  number of its *value unit* `gcd(Notch, Lower)` (`grid::value_unit()`, the
+  notch when anchored).
 - **`Notch ≥ 0`** — decoding is `Lower + raw·Notch`, so a negative notch would
   count downward (`per<D>` is positive by construction; any other spelling
   of a negative notch is rejected here).
@@ -40,9 +46,9 @@ exact binary value, so a double that needs a notch finer than 1/1024 (0.1 is
 explicit notch; rational, `frac`, `_r` and inside limits are taken exactly.
 
 `grid::try_make(interval, notch)` checks the same invariants at runtime and
-returns `std::expected<grid, errc>` — `domain_error` for `Lower > Upper`,
-`rounding_error` when the notch does not divide the interval or `Lower` is off
-the lattice. It serves grids built from runtime configuration (for instance, to
+returns `std::expected<grid, errc>` — `domain_error` for `Lower > Upper` or a
+negative notch, `rounding_error` when the notch does not divide the interval.
+It serves grids built from runtime configuration (for instance, to
 validate a config before choosing between precompiled types); a runtime `grid`
 cannot become an `inside<G, P>` template argument.
 
@@ -56,6 +62,26 @@ in a product scales the other operand's lattice: `grid × point{c}` has notch
 `N·|c|` (`operator*` in `grid.hpp`) rather than notch 0, so the product keeps
 integer storage. `multiplication::point_scale` then reuses the operand's offset
 as the result's (counted from the far end for `c < 0`) — no multiply at all.
+
+**Unanchored operands.** A sum lies on `(La + Lb) + gcd(Na, Nb)·ℤ`, so `+`
+keeps the gcd notch whatever the anchors. A product `(La + i·Na)(Lb + j·Nb)`
+differs from `La·Lb` by multiples of `Na·Nb`, `Na·Lb` and `Nb·La`; the
+product notch is their gcd, and an anchored operand's term is already a
+multiple of `Na·Nb` (`detail::product_notch`). `hull` refines the notch gcd
+by the offset `Lb − La` when the two lattices do not line up. The integer
+paths of `+` and `×` count each operand in its value unit
+(`value_in_units`) and the result in the matching unit
+(`from_value_in_units`); on anchored grids those units are the notches and
+the code is the value-index path it always was.
+
+**Rounding on an unanchored grid** is the same value-space rule as
+everywhere: toward zero is down for a value ≥ 0 and up below 0 (on such a
+lattice the two candidates can straddle 0), a tie of `nearest` goes away
+from zero (up at 0 itself), and `half_even` picks the lattice point with an
+even index counted from the anchor. `rounds_up` (`detail/rounding.hpp`) is
+the floor-based form of that decision; `round_quotient`, `round_to_lattice`,
+`exact_index` and `snap_double` use it for unanchored grids and keep their
+anchored code unchanged.
 
 ---
 

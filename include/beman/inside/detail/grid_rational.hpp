@@ -105,6 +105,44 @@ constexpr rational                      to_rational(const rational& r) { return 
 constexpr std::expected<rational, errc> grid_gcd(const rational& a, const rational& b) { return gcd(a, b); }
 #endif
 
+// + − × and gcd of grid numbers as grid numbers in both modes, for the
+// compile-time grid computations (a 64-bit overflow stops the build).
+constexpr grid_rational grid_add(const grid_rational& a, const grid_rational& b) {
+#if BEMAN_INSIDE_BIG_GRIDS
+    return a + b;
+#else
+    return (a + b).value();
+#endif
+}
+constexpr grid_rational grid_sub(const grid_rational& a, const grid_rational& b) {
+#if BEMAN_INSIDE_BIG_GRIDS
+    return a - b;
+#else
+    return (a - b).value();
+#endif
+}
+constexpr grid_rational grid_mul(const grid_rational& a, const grid_rational& b) {
+#if BEMAN_INSIDE_BIG_GRIDS
+    return a * b;
+#else
+    return (a * b).value();
+#endif
+}
+constexpr grid_rational grid_div_of(const grid_rational& a, const grid_rational& b) {
+#if BEMAN_INSIDE_BIG_GRIDS
+    return a / b;
+#else
+    return (a / b).value();
+#endif
+}
+constexpr grid_rational grid_gcd_of(const grid_rational& a, const grid_rational& b) {
+#if BEMAN_INSIDE_BIG_GRIDS
+    return grid_gcd(a, b);
+#else
+    return grid_gcd(a, b).value();
+#endif
+}
+
 //---------------------------------------------------------------------------
 // parse_grid_literal — the _g literal: decimal digits (with ' separators),
 // an optional point and an optional e±n exponent, taken exactly. With big

@@ -698,6 +698,10 @@ void prop_subnormal_construct(fuzz_state& s, long iters) {
         bool     zero_in_range = (lo <= 0) && (hi >= 0);
         if (!zero_in_range)
             return;
+        // The floor of a tiny positive value: 0, or on a lattice that misses 0
+        // the point just below it.
+        const rational                         n     = notch_of<B>;
+        const rational                         below = (lo + (rational{floor((-lo / n).value())} * n).value()).value();
         std::uniform_real_distribution<double> mantissa(1.0, 2.0);
         std::uniform_int_distribution<int>     exp_dist(-300, -70);
         for (long i = 0; i < iters; ++i) {
@@ -709,7 +713,7 @@ void prop_subnormal_construct(fuzz_state& s, long iters) {
                              b            = v;
                              rational got = b;
                              // Floored toward lo, but for tiny v near zero the floor is 0 (or lo).
-                             FUZZ_REQUIRE(s, got == 0 || got == lo);
+                             FUZZ_REQUIRE(s, got == 0 || got == lo || (!anchored<B> && got == below));
                          }));
         }
     }
@@ -770,7 +774,9 @@ void prop_compound_add_same_inside(fuzz_state& s, long iters) {
     // grids whose Lower != 0 on at least one side, or notches that mismatch).
     // For grids whose value ranges allow it, b += b should still produce 2*b
     // (or saturate/throw on overshoot). We restrict to picks that stay in range.
-    if constexpr (!rational_storage<B>) {
+    // (On an unanchored lattice b + b lies on another lattice: not assignable
+    // back without rounding.)
+    if constexpr (!rational_storage<B> && anchored<B>) {
         s.current_prop = "compound_add_same_inside";
         for (long i = 0; i < iters; ++i) {
             s.iter          = i;
@@ -1058,7 +1064,7 @@ void prop_sin_cos(fuzz_state& s, long iters) {
     for (long i = 0; i < iters; ++i) {
         s.iter      = i;
         A        a  = A::from_raw(random_in_range_raw<A>(s.rng));
-        double   ad = a;
+        double   ad = static_cast<double>(a);
         rational sn = math::sin(a);
         rational cs = math::cos(a);
         FUZZ_REQUIRE(s, approx_le(sn, rational{std::sin(ad)}, tol));
@@ -1076,7 +1082,7 @@ void prop_tan(fuzz_state& s, long iters) {
     for (long i = 0; i < iters; ++i) {
         s.iter    = i;
         A      a  = A::from_raw(random_in_range_raw<A>(s.rng));
-        double ad = a;
+        double ad = static_cast<double>(a);
         auto   t  = math::tan(a);
         if (t.has_value()) {
             double o = std::tan(ad);
@@ -1098,7 +1104,7 @@ void prop_exp_log(fuzz_state& s, long iters) {
         for (long i = 0; i < iters; ++i) {
             s.iter    = i;
             In     x  = In::from_raw(random_in_range_raw<In>(s.rng));
-            double xd = x;
+            double xd = static_cast<double>(x);
             FUZZ_REQUIRE(s, approx_rel(rational{math::exp2(x)}, std::exp2(xd), 0.01, rational{8, 16384}));
         }
     }
@@ -1108,7 +1114,7 @@ void prop_exp_log(fuzz_state& s, long iters) {
         for (long i = 0; i < iters; ++i) {
             s.iter    = i;
             In     x  = In::from_raw(random_in_range_raw<In>(s.rng));
-            double xd = x;
+            double xd = static_cast<double>(x);
             FUZZ_REQUIRE(s, approx_le(rational{math::log2(x)}, rational{std::log2(xd)}, rational{16, 16384}));
         }
     }
@@ -1118,7 +1124,7 @@ void prop_exp_log(fuzz_state& s, long iters) {
         for (long i = 0; i < iters; ++i) {
             s.iter    = i;
             In     x  = In::from_raw(random_in_range_raw<In>(s.rng));
-            double xd = x;
+            double xd = static_cast<double>(x);
             FUZZ_REQUIRE(s, approx_rel(rational{math::exp(x)}, std::exp(xd), 0.01, rational{4, 256}));
         }
     }
@@ -1128,7 +1134,7 @@ void prop_exp_log(fuzz_state& s, long iters) {
         for (long i = 0; i < iters; ++i) {
             s.iter    = i;
             In     x  = In::from_raw(random_in_range_raw<In>(s.rng));
-            double xd = x;
+            double xd = static_cast<double>(x);
             // log's auto output is Q.8 (notch 1/256), so accuracy is a few Q.8 ULP.
             FUZZ_REQUIRE(s, approx_le(rational{math::log(x)}, rational{std::log(xd)}, rational{8, 256}));
         }
@@ -1139,7 +1145,7 @@ void prop_exp_log(fuzz_state& s, long iters) {
         for (long i = 0; i < iters; ++i) {
             s.iter    = i;
             In     x  = In::from_raw(random_in_range_raw<In>(s.rng));
-            double xd = x;
+            double xd = static_cast<double>(x);
             double o  = std::pow(10.0, xd);
             if (o > 60000.0)
                 continue; // stay inside the output grid range
@@ -1180,7 +1186,7 @@ void prop_extended_math(fuzz_state& s, long iters) {
         for (long i = 0; i < iters; ++i) {
             s.iter         = i;
             In     x       = In::from_raw(random_in_range_raw<In>(s.rng));
-            double xd      = x;
+            double xd      = static_cast<double>(x);
             s.current_prop = "atan";
             FUZZ_REQUIRE(s, approx_le(rational{math::atan(x)}, rational{std::atan(xd)}, tol));
             s.current_prop = "asin";
@@ -1196,7 +1202,7 @@ void prop_extended_math(fuzz_state& s, long iters) {
         for (long i = 0; i < iters; ++i) {
             s.iter         = i;
             In     x       = In::from_raw(random_in_range_raw<In>(s.rng));
-            double xd      = x;
+            double xd      = static_cast<double>(x);
             s.current_prop = "sinh";
             FUZZ_REQUIRE(s, approx_rel(rational{math::sinh(x)}, std::sinh(xd), 0.01, tol));
             s.current_prop = "cosh";
@@ -1213,7 +1219,7 @@ void prop_extended_math(fuzz_state& s, long iters) {
         for (long i = 0; i < iters; ++i) {
             s.iter    = i;
             In     x  = In::from_raw(random_in_range_raw<In>(s.rng));
-            double xd = x;
+            double xd = static_cast<double>(x);
             FUZZ_REQUIRE(s, approx_le(rational{math::log10(x)}, rational{std::log10(xd)}, tol));
         }
     }
@@ -1225,7 +1231,7 @@ void prop_extended_math(fuzz_state& s, long iters) {
         for (long i = 0; i < iters; ++i) {
             s.iter    = i;
             In     x  = In::from_raw(random_in_range_raw<In>(s.rng));
-            double xd = x;
+            double xd = static_cast<double>(x);
             FUZZ_REQUIRE(s, approx_rel(rational{math::cbrt(x)}, std::cbrt(xd), 0.01, tol));
         }
     }
@@ -1238,8 +1244,8 @@ void prop_extended_math(fuzz_state& s, long iters) {
             s.iter    = i;
             In     x  = In::from_raw(random_in_range_raw<In>(s.rng));
             In     y  = In::from_raw(random_in_range_raw<In>(s.rng));
-            double xd = x;
-            double yd = y;
+            double xd = static_cast<double>(x);
+            double yd = static_cast<double>(y);
             FUZZ_REQUIRE(s, approx_rel(rational{math::hypot(x, y)}, std::hypot(xd, yd), 0.01, tol));
         }
     }
@@ -1253,8 +1259,8 @@ void prop_extended_math(fuzz_state& s, long iters) {
             s.iter    = i;
             B      b  = B::from_raw(random_in_range_raw<B>(s.rng));
             E      e  = E::from_raw(random_in_range_raw<E>(s.rng));
-            double bd = b;
-            double ed = e;
+            double bd = static_cast<double>(b);
+            double ed = static_cast<double>(e);
             double o  = std::pow(bd, ed);
             auto   r  = math::pow(b, e);
             if (r.has_value() && o < 1e6)
@@ -1423,6 +1429,13 @@ int main(int argc, char** argv) {
     // exercises rational::add_unchecked / mul_unchecked.
     run_props<inside<{{-1000, 1000}, 0}>>(s, iters, "raw_rat");
     run_props<inside<{{-1000, 1000}, 0}, none>>(s, iters, "raw_rat_unck");
+    // Unanchored lattices (Lower off the notch's multiples): offset storage
+    // whose values are not whole notches.
+    run_props<inside<{{0.5_r, 100.5_r}, 1}>>(s, iters, "half_off");
+    run_props<inside<{{-20.25_r, 20.25_r}, 0.5_r}>>(s, iters, "quarter_off");
+    run_props<inside<{{-7.1_r, 2.9_r}, 0.2_r}>>(s, iters, "tenth_off");
+    run_props<inside<{{-50.5_r, -10.5_r}, 1}>>(s, iters, "neg_off");
+    run_props<inside<{{0.5_r, 255.5_r}, 1}>>(s, iters, "byte_off");
 
     // Standalone (non-grid) properties.
     guarded(s, [&] { prop_interval_eq(s); });
@@ -1446,6 +1459,11 @@ int main(int argc, char** argv) {
     guarded(s, [&] { prop_cross_add<inside<{0, 100}>, inside<{0, 1000}>>(s, iters, "u100+u1k"); });
     guarded(s, [&] { prop_cross_add<inside<{-50, 50}>, inside<{0, 100}>>(s, iters, "s50+u100"); });
     guarded(s, [&] { prop_cross_add<inside<{{0, 50}, 0.5}>, inside<{{-50, 50}, 0.5}>>(s, iters, "u50half+s50half"); });
+    guarded(s, [&] { prop_cross_add<inside<{{0.5_r, 100.5_r}, 1}>, inside<{-100, 100}>>(s, iters, "half_off+s100"); });
+    guarded(s, [&] {
+        prop_cross_add<inside<{{0.5_r, 100.5_r}, 1}>, inside<{{-20.25_r, 20.25_r}, 0.5_r}>>(
+            s, iters, "half_off+quarter_off");
+    });
 
     std::cout << "passed=" << s.passed << " failed=" << s.failed << "\n";
     return (s.failed > 0) ? 1 : 0;

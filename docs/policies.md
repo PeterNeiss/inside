@@ -43,6 +43,14 @@ range. The conversion predicates follow the same order
 true). A policy without a rounding mode rounds nothing, so 9.5 into
 `inside<{0, 9}>` is out of range.
 
+Rounding is in value space on every grid, including one whose values are
+offset from the notch's multiples (`{{0.5, 10.5}, 1}`): `snap` truncates
+toward zero — down for a value ≥ 0, up below 0 — and a tie of `round_nearest`
+goes away from zero. On such a grid 0 itself can be a tie (between −0.5 and
+0.5 on `{{-2.5, 2.5}, 1}`); it rounds up, as a value ≥ 0 does.
+`round_half_even` picks the even point counting from the lattice's anchor
+(…, −1.5, 0.5, 2.5, … on that grid).
+
 ## Policy flags
 
 | Flag | Effect |

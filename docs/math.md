@@ -119,6 +119,15 @@ kernels.
   `math::pow_base_into<Out, 10>(x)`. The result is correctly rounded under
   `Out`'s rounding mode; a result past `Out`'s range goes through `Out`'s policy
   (`clamp` saturates, `wrap` wraps, the default reports).
+- **Grids off the notch's multiples.** An input or output whose values are
+  offset from the notch's multiples (`{{0.5, 10.5}, 1}`) works like any other
+  and is correctly rounded too: the engine evaluates on an anchored grid of
+  every output point and every midpoint between two, rounded down and up, and
+  the output rounds the bracketed value by its own mode. That costs two
+  evaluations. Such an output cannot use `wrap` (a compile error; `clamp` and
+  the default work). `abs` and `copysign` deduce the lattice of ±x (notch
+  `gcd(Notch, 2·Lower)`), and `fmod`, `atan2` and `hypot` the gcd of both
+  inputs' value units.
 - **Error model.** A domain limit knowable from the *type* is a `static_assert`.
   A failure that depends on the *runtime value* is reported through
   `std::expected<Out, errc>` (`tan`, `pow`, mixed-sign `sqrt`). Total functions

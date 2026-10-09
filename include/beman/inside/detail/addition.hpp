@@ -67,12 +67,12 @@ struct addition {
         } else if constexpr (point_storage<result>)
             res = result::from_raw(raw_t<result>{}); // point + point: a point
         else if constexpr (integer_storage<L> && integer_storage<R>) {
-            // Integer raws: add the value indices in result-notch units (the result
-            // notch is gcd(N_L, N_R), so it divides both), in imax or by wrapping
+            // Integer raws: add the values in a unit dividing both operands' (the
+            // result notch gcd(N_L, N_R) on anchored grids), in imax or by wrapping
             // arithmetic (wide_value.hpp). Exact for every grid, at any width.
-            using W = index_work_t<result, L, notch_of<result>, R, notch_of<result>>;
-            res     = from_value_index<result>(value_in_units<W, notch_of<result>>(lhs) +
-                                               value_in_units<W, notch_of<result>>(rhs));
+            constexpr grid_rational U = grid_gcd_of(unit_of<L>, unit_of<R>);
+            using W                   = index_work_t<result, L, U, R, U, U>;
+            res = from_value_in_units<result, U>(value_in_units<W, U>(lhs) + value_in_units<W, U>(rhs));
         } else if constexpr (wide_valued<result>)
             // An fp or rational operand into a result with more than 2^64 slots.
             res = exact_result<result>(exact_of(lhs) + exact_of(rhs));

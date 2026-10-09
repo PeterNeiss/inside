@@ -14,8 +14,9 @@
 // wide_value — exact values of insides the 64-bit paths cannot hold: a wide
 // index raw (more than 2^64 slots), or grid numbers past 64 bits.
 //
-// On a valid grid Lower/Notch is an integer m (slot_base), so a value is its
-// value index J = m + raw times Notch, exactly. exact_frac<K> carries a value
+// On an anchored grid Lower/Notch is an integer m (slot_base), so a value is
+// its value index J = m + raw times Notch, exactly; an unanchored grid counts
+// in its value unit gcd(Notch, Lower) instead. exact_frac<K> carries a value
 // as an unreduced fraction of K-limb integers; comparisons cross-multiply, and
 // a store divides by the target notch and rounds by the policy's mode.
 //
@@ -79,7 +80,8 @@ constexpr exact_frac<K> exact_of_grid(const grid_rational& r) noexcept {
     return {static_cast<wide_sint<K>>(wide_numerator(r)), static_cast<wide_sint<K>>(wide_denominator(r))};
 }
 
-// m = Lower/Notch, the value index of slot 0 (0 for a continuous grid).
+// m = Lower/Notch, the value index of slot 0 (0 for a continuous grid). An
+// integer only on an anchored grid: the paths that use it require one.
 template <insidable B>
 inline constexpr grid_wide slot_base = [] {
     if constexpr (!notched<B>)
@@ -88,6 +90,18 @@ inline constexpr grid_wide slot_base = [] {
         return wide_numerator(lower_of<B>) * wide_denominator(notch_of<B>) /
                (wide_denominator(lower_of<B>) * wide_numerator(notch_of<B>));
 }();
+
+// ⌊a / b⌋ for grid numbers (b > 0).
+constexpr grid_wide floor_quotient(const grid_rational& a, const grid_rational& b) noexcept {
+    const grid_wide n = wide_numerator(a) * wide_denominator(b), d = wide_denominator(a) * wide_numerator(b);
+    const grid_wide q = n / d;
+    return (n % d != grid_wide{0} && n.negative()) ? q - grid_wide{1} : q;
+}
+
+// The lattice index of Lower, ⌊Lower/Notch⌋ — slot_base on an anchored grid.
+// Its parity plus an offset's says which lattice points are even.
+template <insidable B>
+inline constexpr grid_wide lower_index_wide = notched<B> ? floor_quotient(lower_of<B>, notch_of<B>) : grid_wide{0};
 
 // Bits that bound every value of B's grid: |value| < 2^grid_magnitude_bits.
 template <insidable B>
@@ -135,11 +149,14 @@ constexpr auto exact_of(const B& b) {
         return exact_of<K>(b.raw());
     else if constexpr (fraction_storage<B>)
         return exact_frac<K>{b.raw()};
-    else if constexpr (wide_valued<B>) {
+    else if constexpr (wide_valued<B> && anchored<B>) {
         const I j = static_cast<I>(slot_base<B>) + I{b.raw()};
         return exact_frac<K>{j * static_cast<I>(wide_numerator(notch_of<B>)),
                              static_cast<I>(wide_denominator(notch_of<B>))};
-    } else
+    } else if constexpr (wide_valued<B>) // Lower + raw·Notch over their common denominator
+        return exact_of_grid<K>(lower_of<B>) + exact_frac<K>{I{b.raw()} * static_cast<I>(wide_numerator(notch_of<B>)),
+                                                             static_cast<I>(wide_denominator(notch_of<B>))};
+    else
         return exact_of<K>(as_rational(b));
 }
 
@@ -319,10 +336,23 @@ constexpr auto exact_index(const exact_frac<K>& f) noexcept {
     constexpr std::size_t KK = exact_max<K, exact_limbs<L>>;
     using I                  = wide_sint<KK>;
     const exact_frac<KK> g{f};
-    const I              n     = g.Num * static_cast<I>(wide_denominator(notch_of<L>));
-    const I              d     = g.Den * static_cast<I>(wide_numerator(notch_of<L>)); // > 0
-    const bool           exact = (n % d).is_zero();
-    return exact_index_result<KK>{rounded_div<M>(n, d) - static_cast<I>(slot_base<L>), exact};
+    if constexpr (anchored<L>) {
+        const I    n     = g.Num * static_cast<I>(wide_denominator(notch_of<L>));
+        const I    d     = g.Den * static_cast<I>(wide_numerator(notch_of<L>)); // > 0
+        const bool exact = (n % d).is_zero();
+        return exact_index_result<KK>{rounded_div<M>(n, d) - static_cast<I>(slot_base<L>), exact};
+    } else {
+        // The offset (f − Lower)/Notch rounded in value space (rounds_up).
+        const exact_frac<KK> o = g + -exact_of_grid<KK>(lower_of<L>);
+        const I              n = o.Num * static_cast<I>(wide_denominator(notch_of<L>));
+        const I              d = o.Den * static_cast<I>(wide_numerator(notch_of<L>)); // > 0 (Den > 0)
+        const auto [q, r]      = floor_divmod(n, d);
+        const bool up          = rounds_up(M,
+                                           g.Num.negative(),
+                                           classify_remainder(M, r, d),
+                                           ((q + static_cast<I>(lower_index_wide<L>)).Word[0] & 1u) != 0);
+        return exact_index_result<KK>{up ? q + I{1} : q, r.is_zero()};
+    }
 }
 
 // The raw of slot offset `offset` (0 .. slot count) in L's storage. W is
@@ -334,7 +364,16 @@ constexpr raw_t<L> raw_of_slot(const W& offset) noexcept {
         return raw_t<L>{};
     else if constexpr (index_storage<L>)
         return static_cast<raw_t<L>>(offset);
-    else {
+    else if constexpr (!anchored<L>) {
+        // Lower + offset·Notch (an fp or rational raw: integer value storage
+        // has integer values, an anchored grid).
+        const rational k = offset < W{0} ? -rational{static_cast<umax>(-offset)} : rational{static_cast<umax>(offset)};
+        if constexpr (fp_storage<L>) // exact on a double/float-exact grid
+            return static_cast<raw_t<L>>(static_cast<double>(k) * static_cast<double>(notch_of<L>) +
+                                         static_cast<double>(lower_of<L>));
+        else
+            return (detail::lower64<L> + (k * detail::notch64<L>).value()).value();
+    } else {
         const W j = offset + static_cast<W>(slot_base<L>);
         if constexpr (fp_storage<L>) // the value J·Notch: exact on a double/float-exact grid
             return static_cast<raw_t<L>>(static_cast<double>(j) * static_cast<double>(notch_of<L>));
@@ -369,13 +408,20 @@ inline constexpr grid_wide units_hi = exact_quotient(upper_of<X>, Unit);
 // result's slot offsets) provably fits — then nothing wraps, and the
 // compiler keeps the value ranges, as the builtin paths always did — else
 // the wrapping type.
-template <insidable Result, insidable L, grid_rational UL, insidable R, grid_rational UR>
+// URes: the unit the result is counted in (its notch, or a finer unit
+// that also divides its Lower when the grids do not pass through 0).
+template <insidable     Result,
+          insidable     L,
+          grid_rational UL,
+          insidable     R,
+          grid_rational UR,
+          grid_rational URes = notch_of<Result>>
 using index_work_t = std::conditional_t<signed_value_bits_of({units_lo<L, UL>,
                                                               units_hi<L, UL>,
                                                               units_lo<R, UR>,
                                                               units_hi<R, UR>,
-                                                              units_lo<Result, notch_of<Result>>,
-                                                              units_hi<Result, notch_of<Result>>,
+                                                              units_lo<Result, URes>,
+                                                              units_hi<Result, URes>,
                                                               grid_of<Result>.slot_count()}) <= 63,
                                         imax,
                                         wrap_work_t<Result>>;
@@ -393,8 +439,13 @@ constexpr W value_index(const X& x) noexcept {
         return static_cast<W>(x.raw());
 }
 
-// x's value in units of the notch `unit` (an integer: the unit divides
-// x's notch, or x's value for a point).
+// The unit an integer path counts X's values in: its value unit (the notch
+// on an anchored grid), or |c| for a point c.
+template <insidable X>
+inline constexpr grid_rational unit_of = point_grid<X> ? abs(lower_of<X>) : grid_of<X>.value_unit();
+
+// x's value in units of `Unit` (an integer: the unit divides x's notch and
+// Lower, or x's value for a point).
 template <typename W, grid_rational Unit, insidable X>
 constexpr W value_in_units(const X& x) noexcept {
     // A point (Lower == Upper) holds its value in the type — even under a
@@ -402,6 +453,11 @@ constexpr W value_in_units(const X& x) noexcept {
     if constexpr (point_grid<X>) {
         constexpr grid_wide q = exact_quotient(lower_of<X>, Unit);
         return static_cast<W>(q);
+    } else if constexpr (!anchored<X>) {
+        // An index raw (integer value storage has integer values): Lower in
+        // units, plus raw notches of `scale` units each.
+        constexpr grid_wide base = exact_quotient(lower_of<X>, Unit), scale = exact_quotient(notch_of<X>, Unit);
+        return static_cast<W>(base) + static_cast<W>(x.raw()) * static_cast<W>(scale);
     } else {
         constexpr grid_wide scale = exact_quotient(notch_of<X>, Unit);
         if constexpr (scale == grid_wide{1})
@@ -420,6 +476,21 @@ constexpr Result from_value_index(const W& j) noexcept {
         return Result::from_raw(static_cast<raw_t<Result>>(j - static_cast<W>(slot_base<Result>)));
     else
         return Result::from_raw(static_cast<raw_t<Result>>(j));
+}
+
+// The Result whose value is j `Unit`s (on its lattice by construction; an
+// exact division when Unit is finer than its notch).
+template <insidable Result, grid_rational Unit, typename W>
+constexpr Result from_value_in_units(const W& j) noexcept {
+    if constexpr (point_storage<Result> || (anchored<Result> && Unit == notch_of<Result>))
+        return from_value_index<Result>(j);
+    else if constexpr (index_storage<Result>) {
+        constexpr grid_wide base  = exact_quotient(lower_of<Result>, Unit),
+                            scale = exact_quotient(notch_of<Result>, Unit);
+        return Result::from_raw(static_cast<raw_t<Result>>((j - static_cast<W>(base)) / static_cast<W>(scale)));
+    } else // integer values counted in Unit = 1/k
+        return Result::from_raw(
+            static_cast<raw_t<Result>>(j / static_cast<W>(exact_quotient(grid_rational{1}, Unit))));
 }
 
 // Exact result of grid arithmetic: the value is on the result lattice and

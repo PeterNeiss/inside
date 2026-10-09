@@ -805,18 +805,15 @@ inline constexpr int pow_kmax = [] {
 template <insidable InX, insidable InY>
 inline constexpr int hypot_bits = 2 * (input_bits<InX> + input_bits<InY>)+2;
 
-// gcd of two notches (0 when either is 0), for two-input outputs.
+// gcd of two value units (0 when either is continuous), for two-input
+// outputs: the notches, or finer where a lattice does not pass through 0.
+// Every value of both inputs is a multiple of it.
 template <insidable A, insidable B>
 inline constexpr grid_rational gcd_notch = [] {
     if constexpr (!notched<A> || !notched<B>)
         return grid_rational{0};
-#if BEMAN_INSIDE_BIG_GRIDS
     else
-        return grid_gcd(notch_of<A>, notch_of<B>);
-#else
-    else
-        return *grid_gcd(notch_of<A>, notch_of<B>);
-#endif
+        return grid_gcd_of(grid_of<A>.value_unit(), grid_of<B>.value_unit());
 }();
 
 //---------------------------------------------------------------------------
@@ -1508,6 +1505,74 @@ namespace ax = ::beman::inside::math::detail::ax;
 using ::beman::inside::detail::grid_rational;
 using ::beman::inside::detail::wide_valued;
 
+//---------------------------------------------------------------------------
+// Unanchored grids. The engine counts results in Out's notch from 0 and
+// inputs by their value index, so a lattice that does not pass through 0
+// ({{0.5, 10.5}, 1}) is computed through anchored grids:
+//   * an input is viewed exactly on its value unit gcd(Notch, Lower);
+//   * an output is computed rounded down and up on the grid of every Out
+//     point and every half point between two (unit gcd(Notch/2, Lower)),
+//     one notch wider on each side. Equal, the value is that point; else it
+//     lies strictly between two neighbours there, where no rounding
+//     boundary of Out falls, so their midpoint rounds as the value does.
+// wrap would fold the wider grid differently, so it needs an anchored Out.
+//---------------------------------------------------------------------------
+namespace anchoring {
+using ::beman::inside::detail::anchored;
+
+template <insidable In>
+constexpr auto anchored_input(const In& x) {
+    if constexpr (anchored<In>)
+        return x;
+    else
+        return inside<grid{grid_of<In>.Interval, grid_of<In>.value_unit()}, policy_of<In>>{x};
+}
+
+template <insidable Out>
+inline constexpr grid_rational half_unit = ::beman::inside::detail::grid_gcd_of(
+    ::beman::inside::detail::grid_div_of(notch_of<Out>, grid_rational{2}), lower_of<Out>);
+
+template <insidable Out, policy_flag R>
+using bracket_t = inside<grid{{::beman::inside::detail::grid_sub(lower_of<Out>, notch_of<Out>),
+                               ::beman::inside::detail::grid_add(upper_of<Out>, notch_of<Out>)},
+                              half_unit<Out>},
+                         R | (policy_of<Out> & clamp)>;
+
+// fn.operator()<O>(xs...) for an anchored O: Out's result, or its error.
+template <insidable Out, typename Fn, insidable... Ins>
+constexpr auto via_anchored(const Fn& fn, const Ins&... xs) {
+    static_assert(anchored<Out> || !has_flag(policy_of<Out>, wrap),
+                  "beman::inside::math: wrap onto a grid that does not pass through 0 is not supported - "
+                  "use clamp, or an anchored output grid");
+    if constexpr (anchored<Out>)
+        return fn.template operator()<Out>(anchored_input(xs)...);
+    else {
+        const auto lo                   = fn.template operator()<bracket_t<Out, round_floor>>(anchored_input(xs)...);
+        const auto hi                   = fn.template operator()<bracket_t<Out, round_ceil>>(anchored_input(xs)...);
+        auto                        mid = [](const auto& a, const auto& b) {
+            using ::beman::inside::detail::exact_of;
+            const auto s = exact_of(a) + exact_of(b);
+            return decltype(s){s.Num, s.Den + s.Den};
+        };
+        if constexpr (::beman::inside::detail::is_expected_v<decltype(lo)>) {
+            using R = std::expected<Out, errc>;
+            if (!lo)
+                return R{std::unexpected{lo.error()}};
+            if (!hi)
+                return R{std::unexpected{hi.error()}};
+            errc      ec{};
+            const Out out = ax::store_exact<Out>(mid(*lo, *hi), make_policy<policy_of<Out>>(ec));
+            return ec == errc{} ? R{out} : R{std::unexpected{ec}};
+        } else
+            return ax::store_exact<Out>(mid(lo, hi), make_policy<policy_of<Out>>());
+    }
+}
+
+// Whether a call needs via_anchored.
+template <insidable Out, insidable... Ins>
+inline constexpr bool unanchored_call = !anchored<Out> || (!anchored<Ins> || ...);
+} // namespace anchoring
+
 // What follows a fast tier: rarely taken, so out of line, which keeps its
 // frame off the tier's fast path.
 template <typename F>
@@ -1583,17 +1648,21 @@ consteval void require_rounding() noexcept {
 
 // One-input functions: the domain (checked on In's grid, `true` for none),
 // the double kernel's argument range (fp_ok), and the integer core.
-#define BEMAN_INSIDE_AX_UNARY(fn, domain, msg, fp_ok, ...)                                             \
-    template <insidable In>                                                                            \
-    inline constexpr bool fn##_domain = domain;                                                        \
-    template <insidable Out, insidable In>                                                             \
-    [[nodiscard]] constexpr Out fn##_into(In x) {                                                      \
-        static_assert(fn##_domain<In>, "beman::inside::math::" #fn ": " msg);                          \
-        require_rounding<Out>();                                                                       \
-        using core = __VA_ARGS__;                                                                      \
-        BEMAN_INSIDE_AX_TABLE(Out, In, x)                                                              \
-        BEMAN_INSIDE_AX_KERNEL_TIERS(                                                                  \
-            Out, In, fn, x, (fp_ok), ax::evaluate<Out, ax::start_bits<Out>>(core{ax::exact_input(x)})) \
+#define BEMAN_INSIDE_AX_UNARY(fn, domain, msg, fp_ok, ...)                                                 \
+    template <insidable In>                                                                                \
+    inline constexpr bool fn##_domain = domain;                                                            \
+    template <insidable Out, insidable In>                                                                 \
+    [[nodiscard]] constexpr Out fn##_into(In x) {                                                          \
+        static_assert(fn##_domain<In>, "beman::inside::math::" #fn ": " msg);                              \
+        require_rounding<Out>();                                                                           \
+        if constexpr (anchoring::unanchored_call<Out, In>)                                                 \
+            return anchoring::via_anchored<Out>([]<insidable O>(auto v) { return fn##_into<O>(v); }, x);   \
+        else {                                                                                             \
+            using core = __VA_ARGS__;                                                                      \
+            BEMAN_INSIDE_AX_TABLE(Out, In, x)                                                              \
+            BEMAN_INSIDE_AX_KERNEL_TIERS(                                                                  \
+                Out, In, fn, x, (fp_ok), ax::evaluate<Out, ax::start_bits<Out>>(core{ax::exact_input(x)})) \
+        }                                                                                                  \
     }
 
 BEMAN_INSIDE_AX_UNARY(
@@ -1665,13 +1734,17 @@ template <insidable Out, insidable In>
     requires(lower_of<In> >= 0)
 [[nodiscard]] constexpr Out sqrt_into(In x) {
     require_rounding<Out>();
-    BEMAN_INSIDE_AX_KERNEL_TIERS(Out,
-                                 In,
-                                 sqrt,
-                                 x,
-                                 true,
-                                 ax::evaluate<Out, ax::start_bits<Out>>(
-                                     ax::sqrt_core<ax::input_limbs<In>, ax::input_bits<In>>{ax::exact_input(x)}))
+    if constexpr (anchoring::unanchored_call<Out, In>)
+        return anchoring::via_anchored<Out>([]<insidable O>(auto v) { return sqrt_into<O>(v); }, x);
+    else {
+        BEMAN_INSIDE_AX_KERNEL_TIERS(Out,
+                                     In,
+                                     sqrt,
+                                     x,
+                                     true,
+                                     ax::evaluate<Out, ax::start_bits<Out>>(
+                                         ax::sqrt_core<ax::input_limbs<In>, ax::input_bits<In>>{ax::exact_input(x)}))
+    }
 }
 
 // sqrt of a mixed-sign input: domain_error on a negative value.
@@ -1679,10 +1752,14 @@ template <insidable Out, insidable In>
     requires(lower_of<In> < 0)
 [[nodiscard]] constexpr std::expected<Out, errc> sqrt_into(In x) {
     require_rounding<Out>();
-    const auto v = ax::exact_input(x);
-    if (v.Num.negative())
-        return std::unexpected(errc::domain_error);
-    return ax::evaluate<Out, ax::start_bits<Out>>(ax::sqrt_core<ax::input_limbs<In>, ax::input_bits<In>>{v});
+    if constexpr (anchoring::unanchored_call<Out, In>)
+        return anchoring::via_anchored<Out>([]<insidable O>(auto v) { return sqrt_into<O>(v); }, x);
+    else {
+        const auto v = ax::exact_input(x);
+        if (v.Num.negative())
+            return std::unexpected(errc::domain_error);
+        return ax::evaluate<Out, ax::start_bits<Out>>(ax::sqrt_core<ax::input_limbs<In>, ax::input_bits<In>>{v});
+    }
 }
 
 // tan: overflow when the result leaves Out (without clamp).
@@ -1691,44 +1768,56 @@ inline constexpr bool tan_domain = true;
 template <insidable Out, insidable In>
 [[nodiscard]] constexpr std::expected<Out, errc> tan_into(In x) {
     require_rounding<Out>();
-    using core = ax::trig_core<ax::input_limbs<In>, ax::in_mag<In>, ax::trig::tan, ax::out_kmax<Out>>;
-    BEMAN_INSIDE_AX_TIERS(Out,
-                          (ax::fp_tier<Out, ax::fp_tan, In> && ax::in_max<In> <= 0x1p20),
-                          (ax::dd_tier<Out, In> && ax::in_max<In> <= 0x1p20),
-                          (ax::fp_attempt_tan<Out>(x, r)),
-                          (ax::dd_attempt_tan<Out>(x, r)),
-                          ax::evaluate_checked<Out, ax::start_bits<Out>>(core{ax::exact_input(x)}))
+    if constexpr (anchoring::unanchored_call<Out, In>)
+        return anchoring::via_anchored<Out>([]<insidable O>(auto v) { return tan_into<O>(v); }, x);
+    else {
+        using core = ax::trig_core<ax::input_limbs<In>, ax::in_mag<In>, ax::trig::tan, ax::out_kmax<Out>>;
+        BEMAN_INSIDE_AX_TIERS(Out,
+                              (ax::fp_tier<Out, ax::fp_tan, In> && ax::in_max<In> <= 0x1p20),
+                              (ax::dd_tier<Out, In> && ax::in_max<In> <= 0x1p20),
+                              (ax::fp_attempt_tan<Out>(x, r)),
+                              (ax::dd_attempt_tan<Out>(x, r)),
+                              ax::evaluate_checked<Out, ax::start_bits<Out>>(core{ax::exact_input(x)}))
+    }
 }
 
 template <insidable Out, insidable InY, insidable InX>
 [[nodiscard]] constexpr Out atan2_into(InY y, InX x) {
     require_rounding<Out>();
-    constexpr std::size_t E =
-        ax::input_limbs<InY> > ax::input_limbs<InX> ? ax::input_limbs<InY> : ax::input_limbs<InX>;
-    using F = ::beman::inside::detail::exact_frac<E>;
-    BEMAN_INSIDE_AX_TIERS(
-        Out,
-        (ax::fp_tier<Out, ax::fp_atan2, InY, InX> && ax::in_max<InY> <= 0x1p500 && ax::in_max<InX> <= 0x1p500),
-        (ax::dd_tier<Out, InY, InX>),
-        (ax::fp_attempt_atan2<Out>(y, x, r)),
-        (ax::dd_attempt_atan2<Out>(y, x, r)),
-        ax::evaluate<Out, ax::start_bits<Out>>(ax::atan2_core<E>{F{ax::exact_input(y)}, F{ax::exact_input(x)}}))
+    if constexpr (anchoring::unanchored_call<Out, InY, InX>)
+        return anchoring::via_anchored<Out>([]<insidable O>(auto a, auto b) { return atan2_into<O>(a, b); }, y, x);
+    else {
+        constexpr std::size_t E =
+            ax::input_limbs<InY> > ax::input_limbs<InX> ? ax::input_limbs<InY> : ax::input_limbs<InX>;
+        using F = ::beman::inside::detail::exact_frac<E>;
+        BEMAN_INSIDE_AX_TIERS(
+            Out,
+            (ax::fp_tier<Out, ax::fp_atan2, InY, InX> && ax::in_max<InY> <= 0x1p500 && ax::in_max<InX> <= 0x1p500),
+            (ax::dd_tier<Out, InY, InX>),
+            (ax::fp_attempt_atan2<Out>(y, x, r)),
+            (ax::dd_attempt_atan2<Out>(y, x, r)),
+            ax::evaluate<Out, ax::start_bits<Out>>(ax::atan2_core<E>{F{ax::exact_input(y)}, F{ax::exact_input(x)}}))
+    }
 }
 
 template <insidable Out, insidable InX, insidable InY>
 [[nodiscard]] constexpr Out hypot_into(InX x, InY y) {
     require_rounding<Out>();
-    constexpr int         Bits = ax::hypot_bits<InX, InY>;
-    constexpr std::size_t E    = ::beman::inside::detail::limbs_for_bits(Bits);
-    using F                    = ::beman::inside::detail::exact_frac<E>;
-    BEMAN_INSIDE_AX_TIERS(
-        Out,
-        (ax::fp_tier<Out, ax::fp_hypot, InX, InY> && ax::in_max<InX> <= 0x1p500 && ax::in_max<InY> <= 0x1p500),
-        (ax::dd_tier<Out, InX, InY>),
-        (ax::fp_attempt_hypot<Out>(x, y, r)),
-        (ax::dd_attempt_hypot<Out>(x, y, r)),
-        ax::evaluate<Out, ax::start_bits<Out>>(ax::sqrt_core<E, Bits>{F{ax::exact_input(x)} * F{ax::exact_input(x)} +
-                                                                      F{ax::exact_input(y)} * F{ax::exact_input(y)}}))
+    if constexpr (anchoring::unanchored_call<Out, InX, InY>)
+        return anchoring::via_anchored<Out>([]<insidable O>(auto a, auto b) { return hypot_into<O>(a, b); }, x, y);
+    else {
+        constexpr int         Bits = ax::hypot_bits<InX, InY>;
+        constexpr std::size_t E    = ::beman::inside::detail::limbs_for_bits(Bits);
+        using F                    = ::beman::inside::detail::exact_frac<E>;
+        BEMAN_INSIDE_AX_TIERS(
+            Out,
+            (ax::fp_tier<Out, ax::fp_hypot, InX, InY> && ax::in_max<InX> <= 0x1p500 && ax::in_max<InY> <= 0x1p500),
+            (ax::dd_tier<Out, InX, InY>),
+            (ax::fp_attempt_hypot<Out>(x, y, r)),
+            (ax::dd_attempt_hypot<Out>(x, y, r)),
+            ax::evaluate<Out, ax::start_bits<Out>>(ax::sqrt_core<E, Bits>{
+                F{ax::exact_input(x)} * F{ax::exact_input(x)} + F{ax::exact_input(y)} * F{ax::exact_input(y)}}))
+    }
 }
 
 // pow: domain_error for a base ≤ 0; overflow when the result leaves Out
@@ -1736,24 +1825,28 @@ template <insidable Out, insidable InX, insidable InY>
 template <insidable Out, insidable InB, insidable InE>
 [[nodiscard]] constexpr std::expected<Out, errc> pow_into(InB base, InE exp) {
     require_rounding<Out>();
-    const auto integer = [&]() -> std::expected<Out, errc> {
-        const auto b = ax::exact_input(base);
-        if (b.Num.negative() || b.Num.is_zero())
-            return std::unexpected(errc::domain_error);
-        using core = ax::pow_core<ax::input_limbs<InB>,
-                                  ax::input_limbs<InE>,
-                                  ax::in_mag<InE>,
-                                  ax::out_kmax<Out>,
-                                  ax::input_bits<InB>,
-                                  ax::input_bits<InE>>;
-        return ax::evaluate_checked<Out, ax::start_bits<Out>>(core{b, ax::exact_input(exp)});
-    };
-    BEMAN_INSIDE_AX_TIERS(Out,
-                          (ax::fp_tier<Out, ax::fp_pow, InB, InE>),
-                          (ax::dd_tier<Out, InB, InE>),
-                          (ax::fp_attempt_pow<Out>(base, exp, r)),
-                          (ax::dd_attempt_pow<Out>(base, exp, r)),
-                          integer())
+    if constexpr (anchoring::unanchored_call<Out, InB, InE>)
+        return anchoring::via_anchored<Out>([]<insidable O>(auto a, auto b) { return pow_into<O>(a, b); }, base, exp);
+    else {
+        const auto integer = [&]() -> std::expected<Out, errc> {
+            const auto b = ax::exact_input(base);
+            if (b.Num.negative() || b.Num.is_zero())
+                return std::unexpected(errc::domain_error);
+            using core = ax::pow_core<ax::input_limbs<InB>,
+                                      ax::input_limbs<InE>,
+                                      ax::in_mag<InE>,
+                                      ax::out_kmax<Out>,
+                                      ax::input_bits<InB>,
+                                      ax::input_bits<InE>>;
+            return ax::evaluate_checked<Out, ax::start_bits<Out>>(core{b, ax::exact_input(exp)});
+        };
+        BEMAN_INSIDE_AX_TIERS(Out,
+                              (ax::fp_tier<Out, ax::fp_pow, InB, InE>),
+                              (ax::dd_tier<Out, InB, InE>),
+                              (ax::fp_attempt_pow<Out>(base, exp, r)),
+                              (ax::dd_attempt_pow<Out>(base, exp, r)),
+                              integer())
+    }
 }
 
 // Base^x for a compile-time integer Base ≥ 2.
@@ -1761,13 +1854,18 @@ template <insidable Out, imax Base, insidable In>
 [[nodiscard]] constexpr Out pow_base_into(In x) {
     static_assert(Base >= 2, "beman::inside::math::pow_base: Base must be at least 2");
     require_rounding<Out>();
-    using core = ax::pow_core<2, ax::input_limbs<In>, ax::in_mag<In>, ax::out_kmax<Out>, 66, ax::input_bits<In>, Base>;
-    BEMAN_INSIDE_AX_TIERS(Out,
-                          (ax::fp_tier<Out, ax::fp_pow_base, In> && ax::in_max<In> <= 1000),
-                          (ax::dd_tier<Out, In> && ax::in_max<In> <= 700),
-                          (ax::fp_attempt_pow_base<Out, Base>(x, r)),
-                          (ax::dd_attempt_pow_base<Out, Base>(x, r)),
-                          ax::evaluate<Out, ax::start_bits<Out>>(core{ax::exact_int<2>(Base), ax::exact_input(x)}))
+    if constexpr (anchoring::unanchored_call<Out, In>)
+        return anchoring::via_anchored<Out>([]<insidable O>(auto v) { return pow_base_into<O, Base>(v); }, x);
+    else {
+        using core =
+            ax::pow_core<2, ax::input_limbs<In>, ax::in_mag<In>, ax::out_kmax<Out>, 66, ax::input_bits<In>, Base>;
+        BEMAN_INSIDE_AX_TIERS(Out,
+                              (ax::fp_tier<Out, ax::fp_pow_base, In> && ax::in_max<In> <= 1000),
+                              (ax::dd_tier<Out, In> && ax::in_max<In> <= 700),
+                              (ax::fp_attempt_pow_base<Out, Base>(x, r)),
+                              (ax::dd_attempt_pow_base<Out, Base>(x, r)),
+                              ax::evaluate<Out, ax::start_bits<Out>>(core{ax::exact_int<2>(Base), ax::exact_input(x)}))
+    }
 }
 
 //---------------------------------------------------------------------------
