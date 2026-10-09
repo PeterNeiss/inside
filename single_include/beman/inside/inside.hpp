@@ -15306,14 +15306,31 @@ struct decimal_stream {
     bool tail() const { return !Rem.is_zero(); }
 };
 
-// Keep the first `keep` digits of `d` (digits[keep..] and a nonzero tail are
-// what is cut), rounded to nearest, ties to even. A carry out of the first
-// digit prepends a '1'; returns whether it did.
-inline bool round_digits(std::string& d, std::size_t keep, bool tail) {
+// Keep the first `keep` digits of the magnitude `d` (digits[keep..] and a
+// nonzero tail are what is cut), rounded by `mode` for a value of the given
+// sign. A carry out of the first digit prepends a '1'; returns whether it did.
+inline bool round_digits(std::string& d, std::size_t keep, bool tail, round_mode mode, bool negative) {
     const bool more = tail || d.find_first_not_of('0', keep + 1) != std::string::npos;
     const char cut  = keep < d.size() ? d[keep] : '0';
     d.resize(keep);
-    const bool up = cut > '5' || (cut == '5' && (more || (keep > 0 && (d[keep - 1] - '0') % 2 == 1)));
+    const bool inexact = cut != '0' || more;
+    bool       up      = false;
+    switch (mode) {
+    case round_mode::trunc:
+        break;
+    case round_mode::floor:
+        up = negative && inexact;
+        break;
+    case round_mode::ceil:
+        up = !negative && inexact;
+        break;
+    case round_mode::nearest: // ties away from zero
+        up = cut >= '5';
+        break;
+    case round_mode::half_even:
+        up = cut > '5' || (cut == '5' && (more || (keep > 0 && (d[keep - 1] - '0') % 2 == 1)));
+        break;
+    }
     if (!up)
         return false;
     for (std::size_t i = keep; i-- > 0;) {
@@ -15329,8 +15346,8 @@ inline bool round_digits(std::string& d, std::size_t keep, bool tail) {
 
 // A std::format spec for exact values: [[fill]align][sign][#][0][width]
 // [.precision][type], type one of f F e E g G (or none). The digits come from
-// the exact value, rounded once, ties to even — as printf rounds a double's
-// exact value — so wide and big values print correctly.
+// the exact value, rounded once by the type's rounding mode (display_rounding),
+// so wide and big values print correctly.
 struct exact_format_spec {
     char Fill = ' ', Align = 0, Sign = '-', Type = 0;
     bool Alt = false, Zero = false;
@@ -15378,22 +15395,26 @@ struct exact_format_spec {
     // The value's text: `plain` (to_string) for no type and no precision,
     // else the digits the spec asks for.
     template <std::size_t K>
-    std::string body(const wide_uint<K>& num, const wide_uint<K>& den, std::string_view plain) const {
+    std::string body(const wide_uint<K>& num,
+                     const wide_uint<K>& den,
+                     std::string_view    plain,
+                     bool                negative,
+                     round_mode          mode) const {
         if (Type == 0 && Precision < 0)
             return std::string{plain};
         const char t     = Type == 0 ? 'g' : static_cast<char>(Type | 0x20); // lower case
         const bool upper = Type == 'F' || Type == 'E' || Type == 'G';
         int        p     = Precision < 0 ? 6 : Precision;
         if (t == 'f')
-            return fixed(num, den, p);
+            return fixed(num, den, p, negative, mode);
         if (t == 'g') {
             p = p == 0 ? 1 : p;
             // The exponent after rounding to p significant digits picks the form.
             int         x = 0;
-            const auto  e = scientific(num, den, p - 1, x);
+            const auto  e = scientific(num, den, p - 1, x, negative, mode);
             std::string out;
             if (x < p && x >= -4)
-                out = fixed(num, den, p - 1 - x);
+                out = fixed(num, den, p - 1 - x, negative, mode);
             else
                 out = e;
             if (!Alt && out.find('.') != std::string::npos) {
@@ -15406,8 +15427,9 @@ struct exact_format_spec {
             }
             return upper ? to_upper(out) : out;
         }
-        int x = 0;
-        return upper ? to_upper(scientific(num, den, p, x)) : scientific(num, den, p, x);
+        int               x   = 0;
+        const std::string out = scientific(num, den, p, x, negative, mode);
+        return upper ? to_upper(out) : out;
     }
 
     // Sign, then fill and alignment (numbers align right; `0` pads after the sign).
@@ -15437,11 +15459,11 @@ struct exact_format_spec {
     }
 
     template <std::size_t K>
-    std::string fixed(const wide_uint<K>& num, const wide_uint<K>& den, int p) const {
+    std::string fixed(const wide_uint<K>& num, const wide_uint<K>& den, int p, bool negative, round_mode mode) const {
         decimal_stream<K> ds{num, den};
         const std::string whole = ds.whole();
         std::string       d     = whole + ds.next(p + 1);
-        round_digits(d, whole.size() + static_cast<std::size_t>(p), ds.tail()); // a carry lengthens d
+        round_digits(d, whole.size() + static_cast<std::size_t>(p), ds.tail(), mode, negative); // a carry lengthens d
         std::string out = d.substr(0, d.size() - static_cast<std::size_t>(p));
         if (p > 0 || Alt)
             out += '.';
@@ -15450,7 +15472,8 @@ struct exact_format_spec {
 
     // d.ddd…e±XX with p decimals; x receives the exponent.
     template <std::size_t K>
-    std::string scientific(const wide_uint<K>& num, const wide_uint<K>& den, int p, int& x) const {
+    std::string
+    scientific(const wide_uint<K>& num, const wide_uint<K>& den, int p, int& x, bool negative, round_mode mode) const {
         decimal_stream<K> ds{num, den};
         std::string       d = ds.whole(); // from the first significant digit on
         x                   = static_cast<int>(d.size()) - 1;
@@ -15459,7 +15482,7 @@ struct exact_format_spec {
                 d = ds.next(1);
         if (static_cast<int>(d.size()) < p + 2)
             d += ds.next(p + 2 - static_cast<int>(d.size()));
-        if (round_digits(d, static_cast<std::size_t>(p) + 1, ds.tail())) {
+        if (round_digits(d, static_cast<std::size_t>(p) + 1, ds.tail(), mode, negative)) {
             ++x;
             d.pop_back();
         }
@@ -15474,6 +15497,14 @@ struct exact_format_spec {
 } // namespace beman::inside::detail
 
 namespace beman::inside::detail {
+// The rounding a format spec applies to B: B's own mode when its policy
+// names one (as storing at that precision would round), else ties to even.
+template <insidable B>
+inline constexpr round_mode display_rounding =
+    has_any_flag(policy_of<B>, round_floor | round_ceil | round_nearest | round_half_even | snap)
+        ? rounding_of(policy_of<B>)
+        : round_mode::half_even;
+
 // x's exact value as a sign and a magnitude fraction, for the exact specs.
 template <insidable B>
 auto spec_value(const B& b) {
@@ -15499,7 +15530,7 @@ wide_uint<K> spec_denominator(const exact_frac<K>& f) {
 // Empty `{}` prints to_string. A notched integer grid within imax takes the
 // integer specs (std::formatter<imax>: {:>4}, {:#x}); every other inside takes
 // the exact specs ({:.2f}, {:e}, {:g}, fill / align / sign / width), rounded
-// from the exact value.
+// from the exact value by the type's rounding mode (ties to even without one).
 template <beman::inside::grid G, beman::inside::policy_flag P>
 struct std::formatter<beman::inside::inside<G, P>>
     : beman::inside::detail::numeric_spec_formatter<
@@ -15525,8 +15556,11 @@ struct std::formatter<beman::inside::inside<G, P>>
             std::string plain = beman::inside::to_string(b);
             if (!plain.empty() && plain[0] == '-')
                 plain.erase(0, 1);
+            const bool neg = d::spec_negative(v);
             return this->Numeric.write(
-                d::spec_negative(v), this->Numeric.body(d::spec_magnitude(v), d::spec_denominator(v), plain), ctx);
+                neg,
+                this->Numeric.body(d::spec_magnitude(v), d::spec_denominator(v), plain, neg, d::display_rounding<B>),
+                ctx);
         }
     }
 };
@@ -15542,10 +15576,14 @@ struct std::formatter<beman::inside::detail::rational>
         std::string plain = beman::inside::to_string(r);
         if (!plain.empty() && plain[0] == '-')
             plain.erase(0, 1);
-        return Numeric.write(
-            r.Denominator < 0 && r.Numerator != 0,
-            Numeric.body(d::wide_uint<1>{r.Numerator}, d::wide_uint<1>{d::abs_den(r.Denominator)}, plain),
-            ctx);
+        const bool neg = r.Denominator < 0 && r.Numerator != 0;
+        return Numeric.write(neg,
+                             Numeric.body(d::wide_uint<1>{r.Numerator},
+                                          d::wide_uint<1>{d::abs_den(r.Denominator)},
+                                          plain,
+                                          neg,
+                                          d::round_mode::half_even),
+                             ctx);
     }
 };
 

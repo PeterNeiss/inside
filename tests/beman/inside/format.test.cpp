@@ -188,6 +188,32 @@ TEST(FormatTest, std_format_exact_specs) {
     EXPECT_EQ(std::format("{:.15e}", odd), "8.589934592000000e+09");
     EXPECT_THROW((void)std::vformat("{:x}", std::make_format_args(odd)), std::format_error);
 }
+
+// A spec rounds by the type's own rounding mode, as storing at that
+// precision would; without one, ties to even.
+TEST(FormatTest, std_format_specs_follow_the_rounding_policy) {
+    auto row = []<policy_flag P>() {
+        using T = inside<{{-2, 2}, per<1000>}, P>;
+        return std::format("{:.2f} {:.2f} {:.2f} {:.2f}",
+                           T{rational{125, 1000}},
+                           T{rational{129, 1000}},
+                           T{rational{-125, 1000}},
+                           T{rational{-129, 1000}});
+    };
+    EXPECT_EQ(row.template operator()<checked>(), "0.12 0.13 -0.12 -0.13");
+    EXPECT_EQ(row.template operator()<round_half_even>(), "0.12 0.13 -0.12 -0.13");
+    EXPECT_EQ(row.template operator()<round_nearest>(), "0.13 0.13 -0.13 -0.13");
+    EXPECT_EQ(row.template operator()<round_floor>(), "0.12 0.12 -0.13 -0.13");
+    EXPECT_EQ(row.template operator()<round_ceil>(), "0.13 0.13 -0.12 -0.12");
+    EXPECT_EQ(row.template operator()<snap>(), "0.12 0.12 -0.12 -0.12");
+    using floor_t = inside<{{-2, 2}, per<1000>}, round_floor>;
+    EXPECT_EQ(std::format("{:.1e}", floor_t{rational{135, 1000}}), "1.3e-01");
+    // The same digits a store at that precision gives.
+    using cents_nearest = inside<{{-2, 2}, per<100>}, round_nearest>;
+    using milli_nearest = inside<{{-2, 2}, per<1000>}, round_nearest>;
+    const milli_nearest m{rational{125, 1000}};
+    EXPECT_EQ(std::format("{:.2f}", m), beman::inside::to_string(cents_nearest{m}));
+}
 #endif // __cpp_lib_format
 
 // A decimal notch prints every value with that notch's decimals; any other

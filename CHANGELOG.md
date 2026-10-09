@@ -38,9 +38,11 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   `std::to_string`'s six digits). Documented in conversions.md, "Writing
   text".
 - Format specs other than an integer grid's (`{:.2f}`, `{:e}`, `{:g}`, with
-  fill, align, sign, `#`, `0`, width) round the exact value, ties to even, for
-  every inside and `rational` (was through `double`: wrong digits past 2^53
-  and for big grids).
+  fill, align, sign, `#`, `0`, width) round the exact value once, by the
+  type's rounding policy (`round_floor`, `round_ceil`, `round_nearest`,
+  `round_half_even`, `snap`; ties to even without one, and for `rational`),
+  for every inside (was through `double`: wrong digits past 2^53 and for big
+  grids).
 - `from_chars` parses a number past the 64-bit rational (a long decimal)
   exactly for every grid, not only wide ones: off-grid text reports
   `rounding_error` (was `overflow`), and a rounding policy rounds it.

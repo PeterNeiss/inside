@@ -267,10 +267,18 @@ Other cases follow the same idea:
 A non-empty spec formats the value. A notched integer grid whose values fit
 `int64` takes the integer specs (`std::formatter<imax>`: `{:>4}`, `{:#x}`,
 `{:b}`). Every other inside — and `rational` — takes `f`, `e` and `g` with
-fill, alignment, sign, `#`, `0`, width and precision, **rounded from the
-exact value** (to nearest, ties to even, as `printf` rounds a double's exact
-value). The digits are right for wide and big values that no `double` holds;
+fill, alignment, sign, `#`, `0`, width and precision, **rounded once from the
+exact value by the type's rounding policy** — the digits a store at that
+precision would give: `round_floor` rounds down, `round_ceil` up,
+`round_nearest` to nearest with ties away from zero, `round_half_even` ties
+to even, `snap` toward zero. A type without a rounding flag, and `rational`,
+round to nearest with ties to even, as `printf` rounds a double's exact
+value. The digits are right for wide and big values that no `double` holds;
 a width alone keeps the exact text.
+
+| 0.125 / −0.129 with `{:.2f}` | no flag | `round_nearest` | `round_floor` | `round_ceil` | `snap` |
+|---|---|---|---|---|---|
+| prints | `0.12` / `-0.13` | `0.13` / `-0.13` | `0.12` / `-0.13` | `0.13` / `-0.12` | `0.12` / `-0.12` |
 
 ```cpp
 #include <beman/inside/io.hpp>
