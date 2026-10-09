@@ -146,6 +146,29 @@ constexpr auto exact_of(const B& b) {
         return exact_of<K>(as_rational(b));
 }
 
+// f in lowest terms.
+template <std::size_t K>
+constexpr exact_frac<K> reduced(const exact_frac<K>& f) noexcept {
+    using I = wide_sint<K>;
+    I a = f.Num.negative() ? -f.Num : f.Num, b = f.Den;
+    while (!b.is_zero()) {
+        const I t = a % b;
+        a         = b;
+        b         = t;
+    }
+    if (a == I{1})
+        return f;
+    return {f.Num / a, f.Den / a};
+}
+
+// b's value in lowest terms, in the fewest limbs that hold every value of B.
+template <insidable B>
+constexpr auto reduced_exact(const B& b) {
+    constexpr std::size_t K = limbs_for_bits(exact_value_bits<B> + 1);
+    const auto            r = reduced(exact_of(b));
+    return exact_frac<K>{static_cast<wide_sint<K>>(r.Num), static_cast<wide_sint<K>>(r.Den)};
+}
+
 // A double whose magnitude is at least 2^64 (so an integer), as an exact
 // value for a store into L. Past L's magnitude only its side matters, so a
 // value just beyond the grid stands in.
@@ -173,21 +196,12 @@ constexpr wide_sint<K> trunc(const exact_frac<K>& f) noexcept {
 template <std::size_t K>
 constexpr std::expected<rational, errc> try_rational(const exact_frac<K>& f) noexcept {
     using I        = wide_sint<K>;
-    const bool neg = f.Num.negative();
-    I          a = neg ? -f.Num : f.Num, b = f.Den;
-    I          x = a, y = b;
-    while (!y.is_zero()) {
-        const I t = x % y;
-        x         = y;
-        y         = t;
-    }
-    if (!x.is_zero()) {
-        a /= x;
-        b /= x;
-    }
-    if (a > I{std::numeric_limits<umax>::max()} || b > I{std::numeric_limits<imax>::max()})
+    const auto r   = reduced(f);
+    const bool neg = r.Num.negative();
+    const I    a   = neg ? -r.Num : r.Num;
+    if (a > I{std::numeric_limits<umax>::max()} || r.Den > I{std::numeric_limits<imax>::max()})
         return std::unexpected{errc::overflow};
-    const imax den = static_cast<imax>(b);
+    const imax den = static_cast<imax>(r.Den);
     return rational{static_cast<umax>(a), neg ? -den : den};
 }
 

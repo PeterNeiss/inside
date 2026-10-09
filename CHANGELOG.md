@@ -20,6 +20,9 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 ### Performance
 
+- `+=` and `-=` of same-notch insides with an offset (Lower ≠ 0) are a raw
+  add for every grid, and a same-notch assignment of a wide value is a raw
+  shift: a wide-index `x += step` takes about 1 ns instead of 150.
 - Math at full `double` resolution: the dd tier tries lean `sin`, `cos`,
   `exp`, `exp2`, `log`, `log2` and `log10` kernels first (about 2^-70, with
   proved bounds), and lean compositions of them for `tan`, the hyperbolics
@@ -33,6 +36,11 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 ### Fixed
 
+- `numerator()` / `denominator()` work for every inside: a wide integer when
+  the grid's values pass `imax` (they did not compile).
+- `sum<Target>` sums wide-index elements and totals past 64 bits exactly (it
+  did not compile, or threw `bad_expected_access`); a continuous total past
+  the 64-bit rational is reported through `Target`'s policy.
 - `std::format` of an inside on a C++26 grid with numbers past 64 bits
   failed to compile.
 - `sinh` and `cosh` onto outputs past about 2^60, and `log`-based functions of

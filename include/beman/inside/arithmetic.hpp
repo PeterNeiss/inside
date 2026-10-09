@@ -147,55 +147,78 @@ template <insidable First, insidable... Rest>
 
 //---------------------------------------------------------------------------
 // sum<Target> — bulk reduction with ONE deferred range check. Per-element
-// `target += b` re-validates every step (blocks vectorization); this
-// accumulates raws in imax and applies Target's policy once to the total
-// (semantic difference: the *total* is validated, not every prefix). Fast
-// path: ≤32-bit integer raws, flushed to a rational every 2^30 elements so the
-// accumulator can't overflow; wider/rational/f64 take the per-element fold.
+// `target += b` re-validates every step (blocks vectorization); this computes
+// the exact total and stores it into Target once, by Target's policy
+// (semantic difference: the *total* is validated, not every prefix).
+// Notched integer raws (wide ones too) sum value indices exactly — Σvalue =
+// Notch·ΣJ — in a wide integer with 64 bits of headroom for the count; ≤32-bit
+// raws add in imax blocks of 2^30 elements, the loop that vectorizes. Other
+// elements (continuous, f64) add as 64-bit rationals; a total past that
+// reports overflow through Target's policy.
 //---------------------------------------------------------------------------
 template <insidable Target, std::ranges::input_range Rng>
     requires insidable<std::remove_cvref_t<std::ranges::range_reference_t<Rng>>>
 [[nodiscard]] constexpr Target sum(Rng&& r) {
     using B = std::remove_cvref_t<std::ranges::range_reference_t<Rng>>;
-    using detail::rational;
-    rational total{0};
+    Target out{};
+    auto   policy = make_policy<policy_of<Target>>();
 
-    if constexpr ((detail::value_raw<B> || detail::index_raw<B>) && sizeof(detail::raw_t<B>) <= 4) {
-        auto flush = [&](imax acc, imax cnt) {
-            // value storage: raw IS the value. index: Σvalue = cnt·Lower + Σraw·Notch.
-            rational part = [&] {
-                if constexpr (detail::index_raw<B>)
-                    return ((rational{acc} * ::beman::inside::detail::notch64<B>).value() +
-                            (rational{cnt} * ::beman::inside::detail::lower64<B>).value())
-                        .value();
-                else
-                    return rational{acc};
-            }();
-            total = (total + part).value();
-        };
-        auto it  = std::ranges::begin(r);
-        auto end = std::ranges::end(r);
-        while (it != end) {
-            // Branch-free inner block (≤ 2^30 elements keeps the imax accumulator
-            // overflow-free) — the loop that vectorizes.
-            imax acc = 0, cnt = 0;
-            if constexpr (std::ranges::random_access_range<Rng>) {
-                const imax block = std::min<imax>(end - it, imax{1} << 30);
-                for (imax j = 0; j < block; ++j)
-                    acc += detail::raw_imax(it[j]);
-                it += block;
-                cnt = block;
-            } else {
-                for (; it != end && cnt < (imax{1} << 30); ++it, ++cnt)
-                    acc += detail::raw_imax(*it);
+    if constexpr (detail::integer_raw<B> && !detail::point_raw<B> && notch_of<B> != 0) {
+        constexpr int bits =
+            detail::signed_value_bits_of({detail::units_lo<B, notch_of<B>>, detail::units_hi<B, notch_of<B>>}) + 64;
+        using I = detail::wide_sint<detail::limbs_for_bits(bits)>;
+        I total{0};
+        if constexpr (!detail::wide_raw<B> && sizeof(detail::raw_t<B>) <= 4) {
+            constexpr imax base = detail::index_raw<B> ? static_cast<imax>(detail::slot_base<B>) : 0;
+            auto           it   = std::ranges::begin(r);
+            auto           end  = std::ranges::end(r);
+            while (it != end) {
+                imax acc = 0, cnt = 0;
+                if constexpr (std::ranges::random_access_range<Rng>) {
+                    const imax block = std::min<imax>(end - it, imax{1} << 30);
+                    for (imax j = 0; j < block; ++j)
+                        acc += detail::raw_imax(it[j]);
+                    it += block;
+                    cnt = block;
+                } else {
+                    for (; it != end && cnt < (imax{1} << 30); ++it, ++cnt)
+                        acc += detail::raw_imax(*it);
+                }
+                total += I{acc} + I{cnt} * I{base};
             }
-            flush(acc, cnt);
+        } else
+            for (const auto& b : r)
+                total += detail::value_index<I>(b);
+        if constexpr (!detail::exact_valued<B>) {
+            // A total within imax: the cheaper 64-bit rational store.
+            constexpr imax lo = std::numeric_limits<imax>::min(), hi = std::numeric_limits<imax>::max();
+            if (!(total < I{lo}) && !(I{hi} < total))
+                if (const auto v = detail::rational{static_cast<imax>(total)} * detail::notch64<B>) {
+                    detail::assignment<Target, detail::rational>::assign(out, *v, policy, no_action{});
+                    return out;
+                }
         }
+        constexpr std::size_t K =
+            detail::limbs_for_bits(I::bits + detail::exact_value_bits<B> + detail::exact_value_bits<Target>);
+        using W = detail::wide_sint<K>;
+        const detail::exact_frac<K> v{static_cast<W>(total) * static_cast<W>(detail::wide_numerator(notch_of<B>)),
+                                      static_cast<W>(detail::wide_denominator(notch_of<B>))};
+        no_action                   none;
+        detail::assign_exact<detail::rational>(out, v, policy, none);
     } else {
-        for (const auto& b : r)
-            total = (total + detail::as_rational(b)).value();
+        detail::rational total{0};
+        for (const auto& b : r) {
+            const auto s = total + detail::as_rational(b);
+            if (!s) [[unlikely]] {
+                no_action none;
+                detail::report_failure(out, policy, none, s.error());
+                return out;
+            }
+            total = *s;
+        }
+        detail::assignment<Target, detail::rational>::assign(out, total, policy, no_action{});
     }
-    return Target{total};
+    return out;
 }
 
 //---------------------------------------------------------------------------

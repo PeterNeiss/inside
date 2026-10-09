@@ -83,10 +83,12 @@ imax oracle(B a, B b) { return as<imax>(a) % as<imax>(b); }
 
 ## Exact read-out: `numerator()` / `denominator()`
 
-A fractional (Q-format) inside holds an exact value. To read it back out
-exactly — without naming the internal representation — use the integer-pair
-accessors. The numerator carries the sign; the denominator is positive; an
-integer-notch inside reports a denominator of 1.
+Every inside holds an exact value. To read it back out exactly — without
+naming the internal representation — use the integer-pair accessors: the value
+in lowest terms, the numerator carrying the sign, the denominator positive (1
+on an integer notch). They return `imax` when every value of the grid fits it,
+and otherwise a wide integer that holds every value (a wide grid, a grid
+reaching past `int64`).
 
 ```cpp
 inside<{{-4, 4}, per<16>}, round_nearest> g{0.1875};

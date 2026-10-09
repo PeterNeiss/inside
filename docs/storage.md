@@ -30,10 +30,12 @@ auto s = a + a;                         // exact; a 2-limb index again
 ```
 
 Such an inside compares, adds, subtracts, multiplies, negates, takes `%`,
-assigns (under every policy and `on_clamp` / `on_wrap` action), prints,
-parses, hashes and samples exactly. Its values can outgrow the 64-bit exact
-fraction, so it has no implicit conversion to it — compare it, or read it
-with `to<T>()`. A quotient `a / b` is an exact fraction and reports
+assigns (under every policy and `on_clamp` / `on_wrap` action), sums, prints,
+parses, hashes and samples exactly; `+=`, `-=` and same-notch assignments
+are a raw add of the limbs. Its values can outgrow the 64-bit exact
+fraction, so it has no implicit conversion to it — compare it, read it
+exactly with `numerator()` / `denominator()` (wide integers), or
+approximately with `to<T>()`. A quotient `a / b` is an exact fraction and reports
 `errc::overflow` when it does not fit one (a same-notch Q-format quotient
 under `snap` stays on the Q-format grid, computed in a wide work type when
 `raw·N` passes 64 bits). `from_chars` reads values past the

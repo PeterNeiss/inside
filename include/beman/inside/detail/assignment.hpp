@@ -278,6 +278,23 @@ constexpr L& assign_exact(L& lhs, const exact_frac<K>& v, P&& policy, A&& action
 }
 
 //---------------------------------------------------------------------------
+// Same-notch raw mapping for wide assignments: R's raw plus a constant is L's
+// raw (value index J = raw + slot base for an index raw, J = raw for a value
+// raw).
+//---------------------------------------------------------------------------
+template <insidable L, insidable R>
+inline constexpr bool same_notch_raws = integer_raw<L> && integer_raw<R> && !point_raw<L> && !point_raw<R> &&
+                                        notch_of<L> != 0 && notch_of<L> == notch_of<R>;
+template <insidable L, insidable R>
+inline constexpr grid_wide same_notch_shift =
+    (index_raw<R> ? slot_base<R> : grid_wide{0}) - (index_raw<L> ? slot_base<L> : grid_wide{0});
+template <insidable L, insidable R>
+inline constexpr int same_notch_bits = signed_value_bits_of({raw_lo_exact<R> + same_notch_shift<L, R>,
+                                                             raw_hi_exact<R> + same_notch_shift<L, R>,
+                                                             raw_lo_exact<L>,
+                                                             raw_hi_exact<L>});
+
+//---------------------------------------------------------------------------
 // assign(insidable, integral)
 //---------------------------------------------------------------------------
 template <insidable L, std::integral R>
@@ -1015,6 +1032,16 @@ struct assignment<L, R> {
                           "rhs interval lies entirely outside lhs interval and the policy cannot bring it into range");
             static_assert(notches_compatible<L, R> || has_policy<L, P, snap>,
                           "incompatible notches: use with_snap() or policy<snap>() to allow rounding");
+            if constexpr (same_notch_raws<L, R>) {
+                // Equal notches: the raw maps by a constant shift. Out of range
+                // takes the exact path's policy cascade below.
+                using W     = work_int_t<same_notch_bits<L, R>>;
+                const W raw = static_cast<W>(rhs.raw()) + static_cast<W>(same_notch_shift<L, R>);
+                if (raw >= static_cast<W>(raw_lo_exact<L>) && raw <= static_cast<W>(raw_hi_exact<L>)) [[likely]] {
+                    lhs = L::from_raw(static_cast<raw_t<L>>(raw));
+                    return lhs;
+                }
+            }
             return assign_exact<R>(lhs, exact_of(rhs), policy, std::forward<A>(action));
         } else
             return assign_builtin(lhs, rhs, policy, std::forward<A>(action));

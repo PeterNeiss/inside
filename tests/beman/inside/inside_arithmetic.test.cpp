@@ -432,6 +432,18 @@ TEST(InsideArithmeticTest, beman_inside_sum_bulk_reduction_with_one_deferred_che
     using r = inside<{{0, 4}, per<256>}, round_nearest | f64>;
     std::vector<r> rs(3, r{rational{1, 256}});
     ASSERT_EQ(rational{beman::inside::sum<qsum>(rs)}, (rational{3, 256}));
+
+    // 64-bit raws whose index total passes 64 bits: summed exactly.
+    using u64 = inside<{0, std::numeric_limits<umax>::max()}>;
+    std::vector<u64> big(4, u64{std::numeric_limits<umax>::max()});
+    using wide_total = inside<{0, std::numeric_limits<umax>::max()}, clamp>;
+    ASSERT_TRUE(beman::inside::sum<wide_total>(big) == std::numeric_limits<umax>::max());
+
+    // A continuous total past the 64-bit rational is reported through the
+    // target's policy (not bad_expected_access).
+    using cont = inside<{{0, 1}, 0}>;
+    std::vector<cont> c{cont{rational{1, (imax{1} << 62) - 1}}, cont{rational{1, (imax{1} << 62) - 3}}};
+    ASSERT_THROW((void)beman::inside::sum<cont>(c), inside_error);
 }
 
 // Issue #7 closure (user decision 2026-06-12): `inside op raw-scalar` is the

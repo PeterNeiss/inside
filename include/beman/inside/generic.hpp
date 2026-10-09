@@ -424,9 +424,9 @@ inline constexpr imax raw_hi = !index_raw<B> ? upper_imax<B> : static_cast<imax>
 // The exact raw range: 0 .. slot count for index storage, Lower .. Upper
 // for value storage (integers there). Sizes the work types below.
 template <insidable B>
-inline constexpr grid_wide raw_lo_exact = index_raw<B> ? grid_wide{0} : wide_numerator(detail::lower64<B>);
+inline constexpr grid_wide raw_lo_exact = index_raw<B> ? grid_wide{0} : wide_numerator(lower_of<B>);
 template <insidable B>
-inline constexpr grid_wide raw_hi_exact = index_raw<B> ? grid_of<B>.slot_count() : wide_numerator(detail::upper64<B>);
+inline constexpr grid_wide raw_hi_exact = index_raw<B> ? grid_of<B>.slot_count() : wide_numerator(upper_of<B>);
 
 // Value bits a signed integer needs to hold every value in [lo, hi].
 constexpr int signed_value_bits(const grid_wide& lo, const grid_wide& hi) noexcept {

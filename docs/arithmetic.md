@@ -349,7 +349,9 @@ vectorization (on the reference machine: 9 vs 4 instructions per element).
 `beman::inside::sum<Target>(range)` accumulates exactly with **one** deferred check:
 the *total* is validated/clamped against `Target`'s policy, not every running
 prefix — and runs within a few percent of the native loop (see
-[performance.md](performance.md), "accumulate 1000").
+[performance.md](performance.md), "accumulate 1000"). The total is exact
+whatever the elements: wide-index elements, and totals past 64 bits, are
+summed in a wide integer and rounded into `Target` once.
 
 ```cpp
 using elem = inside<{0, 200'000}, checked>;

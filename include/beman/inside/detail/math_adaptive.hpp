@@ -948,21 +948,6 @@ constexpr wide_sint<K> icbrt(const wide_sint<K>& n) noexcept {
         return I{icbrt64(static_cast<umax>(n))};
 }
 
-// The fraction in lowest terms.
-template <std::size_t K>
-constexpr exact_frac<K> reduced(const exact_frac<K>& f) noexcept {
-    using I = wide_sint<K>;
-    I a = f.Num.negative() ? -f.Num : f.Num, b = f.Den;
-    while (!b.is_zero()) {
-        const I t = a % b;
-        a         = b;
-        b         = t;
-    }
-    if (a.is_zero() || a == I{1})
-        return f;
-    return {f.Num / a, f.Den / a};
-}
-
 template <std::size_t K>
 constexpr bool is_zero(const exact_frac<K>& f) noexcept {
     return f.Num.is_zero();

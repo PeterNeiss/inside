@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <random>
 #include <unordered_set>
+#include <vector>
 
 using namespace beman::inside;
 using beman::inside::detail::rational;
@@ -161,6 +162,60 @@ TEST(WideGridTest, conversions) {
     fine big = p34;
     EXPECT_EQ(big.to<std::int32_t>().error(), errc::overflow);
     EXPECT_EQ(fine_signed{-1}.to<unsigned>().error(), errc::domain_error);
+}
+
+TEST(WideGridTest, exact_read_out) {
+    // 2^33 + 2^-32 = (2^65 + 1) / 2^32, in lowest terms.
+    const fine odd = fine::from_raw((detail::wide_uint<2>{1} << 65) + detail::wide_uint<2>{1});
+    using N        = decltype(odd.numerator());
+    static_assert(detail::is_wide_int_v<N>);
+    EXPECT_TRUE(odd.numerator() == (N{1} << 65) + N{1});
+    EXPECT_TRUE(odd.denominator() == N{1} << 32);
+    const fine half{0.5};
+    EXPECT_TRUE(half.numerator() == N{1} && half.denominator() == N{2});
+    const fine_signed neg{-0.75};
+    EXPECT_TRUE(neg.numerator() == -decltype(neg.numerator()){3});
+    // A 64-bit grid whose values pass imax reads out wide too.
+    using big64     = inside<{0, std::numeric_limits<umax>::max()}>;
+    const big64 top = std::numeric_limits<umax>::max();
+    EXPECT_TRUE(top.numerator() == decltype(top.numerator()){std::numeric_limits<umax>::max()});
+    // A grid whose values fit imax keeps imax.
+    static_assert(std::is_same_v<decltype(inside<{0, 100}>{}.numerator()), imax>);
+}
+
+TEST(WideGridTest, same_notch_assignment) {
+    // A wider sum maps back by a raw shift; out of range runs the policy.
+    fine f = fine{1.5} + fine{2.25};
+    EXPECT_TRUE(f == 3.75);
+    fine_signed g = fine{1.5} + fine{2.25}; // offset raw (Lower ≠ 0)
+    EXPECT_TRUE(g == 3.75);
+    g = fine_signed{-1.5} - fine{2.25};
+    EXPECT_TRUE(g == -3.75);
+    const auto over = fine{rational{p34}} + fine{tick};
+    EXPECT_THROW(f = over, inside_error);
+    fine_clamp c = 0;
+    c            = over;
+    EXPECT_TRUE(c == rational{p34});
+    fine_wrap w = 0;
+    w           = over; // 2^34 + 2^-32 wraps to 0
+    EXPECT_TRUE(w == 0);
+}
+
+TEST(WideGridTest, sum) {
+    // 2^33 + 2^-32 per element: exact, however many 64-bit words the
+    // index total needs.
+    const fine        e = fine::from_raw((detail::wide_uint<2>{1} << 65) + detail::wide_uint<2>{1});
+    std::vector<fine> v(1000, e);
+    using total = inside<{{0, p34 * 4096}, per<p32>}>;
+    EXPECT_TRUE(beman::inside::sum<total>(v) == total::from_raw(detail::wide_uint<2>{1000} * e.raw()));
+    // Offset (index raw, Lower ≠ 0) wide elements.
+    std::vector<fine_signed> s{fine_signed{-1.5}, fine_signed{0.25}, fine_signed{tick}};
+    EXPECT_TRUE(beman::inside::sum<fine_signed>(s) == fine_signed{(rational{-5, 4} + tick).value()});
+    // Into a 64-bit target, by its policy: the total is checked once.
+    using coarse = inside<{0, 100}, round_nearest>;
+    EXPECT_TRUE(beman::inside::sum<coarse>(std::vector<fine>(3, fine{2.25})) == 7);
+    using six = inside<{0, 6}>;
+    EXPECT_THROW((void)beman::inside::sum<six>(std::vector<fine>(3, fine{2.25})), inside_error);
 }
 
 TEST(WideGridTest, to_string) {

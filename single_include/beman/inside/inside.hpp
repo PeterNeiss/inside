@@ -4422,9 +4422,9 @@ inline constexpr imax raw_hi = !index_raw<B> ? upper_imax<B> : static_cast<imax>
 // The exact raw range: 0 .. slot count for index storage, Lower .. Upper
 // for value storage (integers there). Sizes the work types below.
 template <insidable B>
-inline constexpr grid_wide raw_lo_exact = index_raw<B> ? grid_wide{0} : wide_numerator(detail::lower64<B>);
+inline constexpr grid_wide raw_lo_exact = index_raw<B> ? grid_wide{0} : wide_numerator(lower_of<B>);
 template <insidable B>
-inline constexpr grid_wide raw_hi_exact = index_raw<B> ? grid_of<B>.slot_count() : wide_numerator(detail::upper64<B>);
+inline constexpr grid_wide raw_hi_exact = index_raw<B> ? grid_of<B>.slot_count() : wide_numerator(upper_of<B>);
 
 // Value bits a signed integer needs to hold every value in [lo, hi].
 constexpr int signed_value_bits(const grid_wide& lo, const grid_wide& hi) noexcept {
@@ -4903,6 +4903,29 @@ constexpr auto exact_of(const B& b) {
         return exact_of<K>(as_rational(b));
 }
 
+// f in lowest terms.
+template <std::size_t K>
+constexpr exact_frac<K> reduced(const exact_frac<K>& f) noexcept {
+    using I = wide_sint<K>;
+    I a = f.Num.negative() ? -f.Num : f.Num, b = f.Den;
+    while (!b.is_zero()) {
+        const I t = a % b;
+        a         = b;
+        b         = t;
+    }
+    if (a == I{1})
+        return f;
+    return {f.Num / a, f.Den / a};
+}
+
+// b's value in lowest terms, in the fewest limbs that hold every value of B.
+template <insidable B>
+constexpr auto reduced_exact(const B& b) {
+    constexpr std::size_t K = limbs_for_bits(exact_value_bits<B> + 1);
+    const auto            r = reduced(exact_of(b));
+    return exact_frac<K>{static_cast<wide_sint<K>>(r.Num), static_cast<wide_sint<K>>(r.Den)};
+}
+
 // A double whose magnitude is at least 2^64 (so an integer), as an exact
 // value for a store into L. Past L's magnitude only its side matters, so a
 // value just beyond the grid stands in.
@@ -4930,21 +4953,12 @@ constexpr wide_sint<K> trunc(const exact_frac<K>& f) noexcept {
 template <std::size_t K>
 constexpr std::expected<rational, errc> try_rational(const exact_frac<K>& f) noexcept {
     using I        = wide_sint<K>;
-    const bool neg = f.Num.negative();
-    I          a = neg ? -f.Num : f.Num, b = f.Den;
-    I          x = a, y = b;
-    while (!y.is_zero()) {
-        const I t = x % y;
-        x         = y;
-        y         = t;
-    }
-    if (!x.is_zero()) {
-        a /= x;
-        b /= x;
-    }
-    if (a > I{std::numeric_limits<umax>::max()} || b > I{std::numeric_limits<imax>::max()})
+    const auto r   = reduced(f);
+    const bool neg = r.Num.negative();
+    const I    a   = neg ? -r.Num : r.Num;
+    if (a > I{std::numeric_limits<umax>::max()} || r.Den > I{std::numeric_limits<imax>::max()})
         return std::unexpected{errc::overflow};
-    const imax den = static_cast<imax>(b);
+    const imax den = static_cast<imax>(r.Den);
     return rational{static_cast<umax>(a), neg ? -den : den};
 }
 
@@ -5444,6 +5458,23 @@ constexpr L& assign_exact(L& lhs, const exact_frac<K>& v, P&& policy, A&& action
         return lhs;
     }
 }
+
+//---------------------------------------------------------------------------
+// Same-notch raw mapping for wide assignments: R's raw plus a constant is L's
+// raw (value index J = raw + slot base for an index raw, J = raw for a value
+// raw).
+//---------------------------------------------------------------------------
+template <insidable L, insidable R>
+inline constexpr bool same_notch_raws = integer_raw<L> && integer_raw<R> && !point_raw<L> && !point_raw<R> &&
+                                        notch_of<L> != 0 && notch_of<L> == notch_of<R>;
+template <insidable L, insidable R>
+inline constexpr grid_wide same_notch_shift =
+    (index_raw<R> ? slot_base<R> : grid_wide{0}) - (index_raw<L> ? slot_base<L> : grid_wide{0});
+template <insidable L, insidable R>
+inline constexpr int same_notch_bits = signed_value_bits_of({raw_lo_exact<R> + same_notch_shift<L, R>,
+                                                             raw_hi_exact<R> + same_notch_shift<L, R>,
+                                                             raw_lo_exact<L>,
+                                                             raw_hi_exact<L>});
 
 //---------------------------------------------------------------------------
 // assign(insidable, integral)
@@ -6183,6 +6214,16 @@ struct assignment<L, R> {
                           "rhs interval lies entirely outside lhs interval and the policy cannot bring it into range");
             static_assert(notches_compatible<L, R> || has_policy<L, P, snap>,
                           "incompatible notches: use with_snap() or policy<snap>() to allow rounding");
+            if constexpr (same_notch_raws<L, R>) {
+                // Equal notches: the raw maps by a constant shift. Out of range
+                // takes the exact path's policy cascade below.
+                using W     = work_int_t<same_notch_bits<L, R>>;
+                const W raw = static_cast<W>(rhs.raw()) + static_cast<W>(same_notch_shift<L, R>);
+                if (raw >= static_cast<W>(raw_lo_exact<L>) && raw <= static_cast<W>(raw_hi_exact<L>)) [[likely]] {
+                    lhs = L::from_raw(static_cast<raw_t<L>>(raw));
+                    return lhs;
+                }
+            }
             return assign_exact<R>(lhs, exact_of(rhs), policy, std::forward<A>(action));
         } else
             return assign_builtin(lhs, rhs, policy, std::forward<A>(action));
@@ -7685,20 +7726,22 @@ struct inside {
         return to<T>().value();
     }
 
-    // numerator() / denominator() — the exact value of a fractional inside as an
+    // numerator() / denominator() — the exact value in lowest terms as an
     // integer pair (sign on the numerator, denominator positive). The supported
     // exact read-out that keeps callers in plain integers. Integer-notch ⇒ den == 1.
-    // Gated on every value fitting imax (a grid reaching past int64 has no imax
-    // numerator for its largest values — read it as a rational instead).
-    [[nodiscard]] constexpr imax numerator() const
-        requires detail::values_fit_imax<inside>
-    {
-        return fraction().first;
+    // imax when every value fits it, else a wide integer that holds every value
+    // (a wide grid, a grid past int64).
+    [[nodiscard]] constexpr auto numerator() const {
+        if constexpr (detail::values_fit_imax<inside>)
+            return fraction().first;
+        else
+            return detail::reduced_exact(*this).Num;
     }
-    [[nodiscard]] constexpr imax denominator() const
-        requires detail::values_fit_imax<inside>
-    {
-        return fraction().second;
+    [[nodiscard]] constexpr auto denominator() const {
+        if constexpr (detail::values_fit_imax<inside>)
+            return fraction().second;
+        else
+            return detail::reduced_exact(*this).Den;
     }
 
   private:
@@ -7834,44 +7877,31 @@ struct inside {
 
   private:
     // Raw-space fast paths of += and -=. Each adds a delta to the raw: a
-    // compile-time constant (point rhs), the rhs raw, or −rhs raw − bias.
+    // compile-time constant (point rhs), or ±rhs raw plus a constant bias.
+    // With equal notches, raw(v_l ± v_r) = raw_l ± (raw_r + bias): the bias is
+    // Lower/Notch of an index-raw rhs (its raw is Lower-relative), else 0.
     //   point_delta<R>   — rhs is one whole number of notches: the delta.
-    //   raw_add_ok<R>    — rhs raw adds directly (direct storage, or both
-    //                      offset-encoded at Lower 0).
-    //   raw_sub_ok<R>    — rhs raw subtracts with a constant bias.
+    //   raw_add_ok<R>    — rhs raw adds or subtracts with that bias.
     // The add runs in raw_work_t, sized from the raw and delta ranges: imax for
     // every grid within int64, a wide_int beyond — never overflowing.
     template <insidable R>
     static constexpr bool point_delta_ok =
-        !detail::rational_raw<inside> && !detail::fp_raw<inside> && detail::notch64<inside> != 0 &&
-        detail::lower64<R> == detail::upper64<R> && (detail::lower64<R> / detail::notch64<inside>).has_value() &&
-        detail::abs_den((*(detail::lower64<R> / detail::notch64<inside>)).Denominator) == 1;
+        detail::integer_raw<inside> && notch_of<inside> != 0 && lower_of<R> == upper_of<R> &&
+        (detail::wide_numerator(lower_of<R>) * detail::wide_denominator(notch_of<inside>)) %
+                (detail::wide_denominator(lower_of<R>) * detail::wide_numerator(notch_of<inside>)) ==
+            detail::grid_wide{0};
 
     template <insidable R>
     static constexpr bool raw_add_ok =
-        !detail::rational_raw<inside> && !detail::rational_raw<R> && !detail::fp_raw<inside> && !detail::fp_raw<R> &&
-        detail::notch64<inside> == detail::notch64<R> &&
-        (!detail::index_raw<R> || (detail::lower64<inside> == 0 && detail::lower64<R> == 0));
+        detail::integer_raw<inside> && detail::integer_raw<R> && !detail::point_raw<R> && notch_of<inside> != 0 &&
+        notch_of<inside> == notch_of<R>;
 
     template <insidable R>
-    static constexpr bool raw_sub_ok =
-        !detail::rational_raw<inside> && !detail::rational_raw<R> && !detail::fp_raw<inside> && !detail::fp_raw<R> &&
-        detail::notch64<inside> != 0 && detail::notch64<inside> == detail::notch64<R> &&
-        (!detail::index_raw<R> ||
-         ((detail::lower64<R> / detail::notch64<inside>).has_value() &&
-          detail::abs_den((*(detail::lower64<R> / detail::notch64<inside>)).Denominator) == 1));
-
-    // The rhs raw's exact range, as a delta: +raw for +=, −raw − bias for -=
-    // (the bias is detail::lower64<R>/Notch for an index-raw rhs, else 0).
+    static constexpr detail::grid_wide point_delta = detail::exact_quotient(lower_of<R>, notch_of<inside>);
     template <insidable R>
-    static constexpr detail::grid_wide point_delta = [] {
-        const auto q = *(detail::lower64<R> / detail::notch64<inside>);
-        return detail::wide_numerator(q);
-    }();
-    template <insidable R>
-    static constexpr detail::grid_wide sub_bias = [] {
+    static constexpr detail::grid_wide add_bias = [] {
         if constexpr (detail::index_raw<R>)
-            return point_delta<R>;
+            return detail::slot_base<R>;
         else
             return detail::grid_wide{0};
     }();
@@ -7902,12 +7932,10 @@ struct inside {
             using W           = raw_work_t<point_delta<R>, point_delta<R>>;
             constexpr W delta = static_cast<W>(point_delta<R>);
             return store_raw<W>(static_cast<W>(Raw) + delta);
-        }
-        // Fast path: raw-level integer addition, safe when raw_a + raw_b is the raw
-        // of value_a + value_b — direct storage, or offset encoding with Lower==0 both.
-        else if constexpr (raw_add_ok<R>) {
-            using W = raw_work_t<detail::raw_lo_exact<R>, detail::raw_hi_exact<R>>;
-            return store_raw<W>(static_cast<W>(Raw) + static_cast<W>(rhs.raw()));
+        } else if constexpr (raw_add_ok<R>) {
+            using W = raw_work_t<detail::raw_lo_exact<R> + add_bias<R>, detail::raw_hi_exact<R> + add_bias<R>>;
+            constexpr W bias = static_cast<W>(add_bias<R>);
+            return store_raw<W>(static_cast<W>(Raw) + static_cast<W>(rhs.raw()) + bias);
         } else
             return assign_op_result(*this + rhs);
     }
@@ -7979,14 +8007,10 @@ struct inside {
 
     template <insidable R>
     constexpr inside& operator-=(const R& rhs) {
-        // Raw-space fast path, the subtraction mirror of +='s: with equal
-        // notches, raw(v_l − v_r) = raw_l − raw_r − bias, where the bias is
-        // detail::lower64<R>/Notch for an index-raw rhs (its raw is Lower-relative) and 0
-        // for a value-raw rhs. Delegating to `+= (-rhs)` instead shifts R's
-        // Lower by negation and defeats +='s raw path for index-backed grids.
-        if constexpr (raw_sub_ok<R>) {
-            using W = raw_work_t<-detail::raw_hi_exact<R> - sub_bias<R>, -detail::raw_lo_exact<R> - sub_bias<R>>;
-            constexpr W bias = static_cast<W>(sub_bias<R>);
+        // Raw-space fast path, the subtraction mirror of +='s.
+        if constexpr (raw_add_ok<R>) {
+            using W = raw_work_t<-detail::raw_hi_exact<R> - add_bias<R>, -detail::raw_lo_exact<R> - add_bias<R>>;
+            constexpr W bias = static_cast<W>(add_bias<R>);
             return store_raw<W>(static_cast<W>(Raw) - static_cast<W>(rhs.raw()) - bias);
         } else
             return *this += (-rhs);
@@ -8558,55 +8582,78 @@ template <insidable First, insidable... Rest>
 
 //---------------------------------------------------------------------------
 // sum<Target> — bulk reduction with ONE deferred range check. Per-element
-// `target += b` re-validates every step (blocks vectorization); this
-// accumulates raws in imax and applies Target's policy once to the total
-// (semantic difference: the *total* is validated, not every prefix). Fast
-// path: ≤32-bit integer raws, flushed to a rational every 2^30 elements so the
-// accumulator can't overflow; wider/rational/f64 take the per-element fold.
+// `target += b` re-validates every step (blocks vectorization); this computes
+// the exact total and stores it into Target once, by Target's policy
+// (semantic difference: the *total* is validated, not every prefix).
+// Notched integer raws (wide ones too) sum value indices exactly — Σvalue =
+// Notch·ΣJ — in a wide integer with 64 bits of headroom for the count; ≤32-bit
+// raws add in imax blocks of 2^30 elements, the loop that vectorizes. Other
+// elements (continuous, f64) add as 64-bit rationals; a total past that
+// reports overflow through Target's policy.
 //---------------------------------------------------------------------------
 template <insidable Target, std::ranges::input_range Rng>
     requires insidable<std::remove_cvref_t<std::ranges::range_reference_t<Rng>>>
 [[nodiscard]] constexpr Target sum(Rng&& r) {
     using B = std::remove_cvref_t<std::ranges::range_reference_t<Rng>>;
-    using detail::rational;
-    rational total{0};
+    Target out{};
+    auto   policy = make_policy<policy_of<Target>>();
 
-    if constexpr ((detail::value_raw<B> || detail::index_raw<B>) && sizeof(detail::raw_t<B>) <= 4) {
-        auto flush = [&](imax acc, imax cnt) {
-            // value storage: raw IS the value. index: Σvalue = cnt·Lower + Σraw·Notch.
-            rational part = [&] {
-                if constexpr (detail::index_raw<B>)
-                    return ((rational{acc} * ::beman::inside::detail::notch64<B>).value() +
-                            (rational{cnt} * ::beman::inside::detail::lower64<B>).value())
-                        .value();
-                else
-                    return rational{acc};
-            }();
-            total = (total + part).value();
-        };
-        auto it  = std::ranges::begin(r);
-        auto end = std::ranges::end(r);
-        while (it != end) {
-            // Branch-free inner block (≤ 2^30 elements keeps the imax accumulator
-            // overflow-free) — the loop that vectorizes.
-            imax acc = 0, cnt = 0;
-            if constexpr (std::ranges::random_access_range<Rng>) {
-                const imax block = std::min<imax>(end - it, imax{1} << 30);
-                for (imax j = 0; j < block; ++j)
-                    acc += detail::raw_imax(it[j]);
-                it += block;
-                cnt = block;
-            } else {
-                for (; it != end && cnt < (imax{1} << 30); ++it, ++cnt)
-                    acc += detail::raw_imax(*it);
+    if constexpr (detail::integer_raw<B> && !detail::point_raw<B> && notch_of<B> != 0) {
+        constexpr int bits =
+            detail::signed_value_bits_of({detail::units_lo<B, notch_of<B>>, detail::units_hi<B, notch_of<B>>}) + 64;
+        using I = detail::wide_sint<detail::limbs_for_bits(bits)>;
+        I total{0};
+        if constexpr (!detail::wide_raw<B> && sizeof(detail::raw_t<B>) <= 4) {
+            constexpr imax base = detail::index_raw<B> ? static_cast<imax>(detail::slot_base<B>) : 0;
+            auto           it   = std::ranges::begin(r);
+            auto           end  = std::ranges::end(r);
+            while (it != end) {
+                imax acc = 0, cnt = 0;
+                if constexpr (std::ranges::random_access_range<Rng>) {
+                    const imax block = std::min<imax>(end - it, imax{1} << 30);
+                    for (imax j = 0; j < block; ++j)
+                        acc += detail::raw_imax(it[j]);
+                    it += block;
+                    cnt = block;
+                } else {
+                    for (; it != end && cnt < (imax{1} << 30); ++it, ++cnt)
+                        acc += detail::raw_imax(*it);
+                }
+                total += I{acc} + I{cnt} * I{base};
             }
-            flush(acc, cnt);
+        } else
+            for (const auto& b : r)
+                total += detail::value_index<I>(b);
+        if constexpr (!detail::exact_valued<B>) {
+            // A total within imax: the cheaper 64-bit rational store.
+            constexpr imax lo = std::numeric_limits<imax>::min(), hi = std::numeric_limits<imax>::max();
+            if (!(total < I{lo}) && !(I{hi} < total))
+                if (const auto v = detail::rational{static_cast<imax>(total)} * detail::notch64<B>) {
+                    detail::assignment<Target, detail::rational>::assign(out, *v, policy, no_action{});
+                    return out;
+                }
         }
+        constexpr std::size_t K =
+            detail::limbs_for_bits(I::bits + detail::exact_value_bits<B> + detail::exact_value_bits<Target>);
+        using W = detail::wide_sint<K>;
+        const detail::exact_frac<K> v{static_cast<W>(total) * static_cast<W>(detail::wide_numerator(notch_of<B>)),
+                                      static_cast<W>(detail::wide_denominator(notch_of<B>))};
+        no_action                   none;
+        detail::assign_exact<detail::rational>(out, v, policy, none);
     } else {
-        for (const auto& b : r)
-            total = (total + detail::as_rational(b)).value();
+        detail::rational total{0};
+        for (const auto& b : r) {
+            const auto s = total + detail::as_rational(b);
+            if (!s) [[unlikely]] {
+                no_action none;
+                detail::report_failure(out, policy, none, s.error());
+                return out;
+            }
+            total = *s;
+        }
+        detail::assignment<Target, detail::rational>::assign(out, total, policy, no_action{});
     }
-    return Target{total};
+    return out;
 }
 
 //---------------------------------------------------------------------------
@@ -9936,21 +9983,6 @@ constexpr wide_sint<K> icbrt(const wide_sint<K>& n) noexcept {
         return x;
     } else
         return I{icbrt64(static_cast<umax>(n))};
-}
-
-// The fraction in lowest terms.
-template <std::size_t K>
-constexpr exact_frac<K> reduced(const exact_frac<K>& f) noexcept {
-    using I = wide_sint<K>;
-    I a = f.Num.negative() ? -f.Num : f.Num, b = f.Den;
-    while (!b.is_zero()) {
-        const I t = a % b;
-        a         = b;
-        b         = t;
-    }
-    if (a.is_zero() || a == I{1})
-        return f;
-    return {f.Num / a, f.Den / a};
 }
 
 template <std::size_t K>
