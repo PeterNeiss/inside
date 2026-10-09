@@ -2,6 +2,8 @@
 #ifndef BEMAN_INSIDE_POLICY_FLAG_HPP
 #define BEMAN_INSIDE_POLICY_FLAG_HPP
 
+#include <beman/inside/detail/rounding.hpp>
+
 #include <tuple>
 #include <type_traits>
 #include <utility>
@@ -150,8 +152,7 @@ namespace detail {
 // An explicit directional or half-even mode beats round_nearest (which f64 /
 // f32 carry by default, so `f64 | round_floor` floors); `snap` alone, or no
 // rounding flag at all, truncates toward zero. Ties of `nearest` go half
-// away from zero.
-enum class round_mode { trunc, nearest, floor, ceil, half_even };
+// away from zero. round_mode and the shared decision: detail/rounding.hpp.
 
 [[nodiscard]] constexpr round_mode rounding_of(policy_flag f) noexcept {
     if (has_flag(f, round_floor))

@@ -297,28 +297,13 @@ constexpr std::expected<exact_frac<K>, errc> parse_exact(const char* first, cons
 // n / d (d != 0) rounded to an integer by M; the sign rules of div_rounded.
 template <round_mode M, std::size_t K>
 constexpr wide_sint<K> rounded_div(const wide_sint<K>& n, const wide_sint<K>& d) noexcept {
-    using I     = wide_sint<K>;
-    auto [q, r] = I::divmod(n, d); // toward zero
-    if (r.is_zero())
-        return q;
+    using I        = wide_sint<K>;
+    auto [q, r]    = I::divmod(n, d); // toward zero
     const bool neg = n.negative() != d.negative();
     const I    ar = r.negative() ? -r : r, ad = d.negative() ? -d : d;
-    const I    away = neg ? q - I{1} : q + I{1};
-    const I    r2   = ar * I{2};
-    if constexpr (M == round_mode::floor) {
-        if (neg)
-            q = away;
-    } else if constexpr (M == round_mode::ceil) {
-        if (!neg)
-            q = away;
-    } else if constexpr (M == round_mode::nearest) {
-        if (r2 >= ad)
-            q = away;
-    } else if constexpr (M == round_mode::half_even) {
-        if (r2 > ad || (r2 == ad && (q.Word[0] & 1u) != 0))
-            q = away;
-    }
-    return q;
+    if (!rounds_away(M, neg, classify_remainder(M, ar, ad), (q.Word[0] & 1u) != 0))
+        return q;
+    return neg ? q - I{1} : q + I{1};
 }
 
 // The value index of f on L's lattice (f / Notch) rounded by M, minus the

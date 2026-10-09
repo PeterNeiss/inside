@@ -63,21 +63,10 @@ constexpr grid_rational grid_to_int(const grid_rational& r) {
     const grid_wide n = wide_numerator(r), d = wide_denominator(r);
     grid_wide       q   = n / d;
     const grid_wide rem = n - q * d;
-    if (!rem.is_zero()) {
-        const bool      neg  = n.negative();
-        const grid_wide arem = neg ? -rem : rem;
-        const grid_wide away = neg ? q - grid_wide{1} : q + grid_wide{1};
-        if constexpr (M == round_mode::floor) {
-            if (neg)
-                q = away;
-        } else if constexpr (M == round_mode::ceil) {
-            if (!neg)
-                q = away;
-        } else if constexpr (M == round_mode::nearest) {
-            if (!(arem + arem < d))
-                q = away;
-        }
-    }
+    const bool      neg = n.negative();
+    const bool      odd = !(q / grid_wide{2} * grid_wide{2} == q);
+    if (rounds_away(M, neg, classify_remainder(M, neg ? -rem : rem, d), odd))
+        q = neg ? q - grid_wide{1} : q + grid_wide{1};
 #if BEMAN_INSIDE_BIG_GRIDS
     return grid_rational{q};
 #else
@@ -155,19 +144,24 @@ constexpr Out fp_direct_store(In x, F f) noexcept {
     return Out::from_raw(raw_cast<Out>(f(static_cast<double>(x.raw()))));
 }
 
-constexpr double fp_trunc(double v) noexcept { return static_cast<double>(static_cast<imax>(v)); }
-constexpr double fp_floor(double v) noexcept {
-    const double t = fp_trunc(v);
-    return t > v ? t - 1 : t;
-}
-constexpr double fp_ceil(double v) noexcept {
-    const double t = fp_trunc(v);
-    return t < v ? t + 1 : t;
-}
-constexpr double fp_round(double v) noexcept // half away from zero, like rational round()
-{
-    const double t = fp_trunc(v), f = v - t; // exact: v and t share the grid
-    return f >= 0.5 ? t + 1 : f <= -0.5 ? t - 1 : t;
+// v rounded to an integer by m, on the double: v and its truncation share
+// the grid, so the dropped fraction is exact. Compares the fraction directly
+// (not through rounds_away): the sign-free classification costs instructions
+// on this hot path.
+constexpr double fp_round_to_int(double v, round_mode m) noexcept {
+    const double t = static_cast<double>(static_cast<imax>(v));
+    switch (m) {
+    case round_mode::floor:
+        return t > v ? t - 1 : t;
+    case round_mode::ceil:
+        return t < v ? t + 1 : t;
+    case round_mode::nearest: {
+        const double f = v - t;
+        return f >= 0.5 ? t + 1 : f <= -0.5 ? t - 1 : t;
+    }
+    default:
+        return t;
+    }
 }
 
 // x rounded to an integer by M: exactly, on the raw doubles, or through
@@ -177,27 +171,9 @@ constexpr Out integer_into(In x) {
     if constexpr (any_wide_valued<Out, In>)
         return store_exact<Out>(exact_to_int<M>(ax::exact_input(x)));
     else if constexpr (fp_direct<Out, integer_auto_t<In, M>, In>)
-        return fp_direct_store<Out>(x, [](double v) {
-            if constexpr (M == round_mode::floor)
-                return fp_floor(v);
-            else if constexpr (M == round_mode::ceil)
-                return fp_ceil(v);
-            else if constexpr (M == round_mode::nearest)
-                return fp_round(v);
-            else
-                return fp_trunc(v);
-        });
-    else {
-        const rational r{x};
-        if constexpr (M == round_mode::floor)
-            return store_value<Out>(floor(r));
-        else if constexpr (M == round_mode::ceil)
-            return store_value<Out>(ceil(r));
-        else if constexpr (M == round_mode::nearest)
-            return store_value<Out>(round(r));
-        else
-            return store_value<Out>(trunc(r));
-    }
+        return fp_direct_store<Out>(x, [](double v) { return fp_round_to_int(v, M); });
+    else
+        return store_value<Out>(round_to_int(rational{x}, M));
 }
 } // namespace detail
 

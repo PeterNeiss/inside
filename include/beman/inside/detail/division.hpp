@@ -40,30 +40,15 @@ inline constexpr bool integer_native_ops = integer_ops<L, R, F> && values_fit_im
 // Round the signed exact quotient a/b (b != 0) to an integer per `m`.
 template <std::signed_integral T>
 constexpr T div_rounded(T a, T b, round_mode m) noexcept {
-    using U   = std::make_unsigned_t<T>;
-    const T t = a / b; // C++ truncation toward zero
-    const T r = a % b; // sign of a, |r| < |b|
-    if (r == 0 || m == round_mode::trunc)
+    using U        = std::make_unsigned_t<T>;
+    const T    t   = a / b;                        // C++ truncation toward zero
+    const T    r   = a % b;                        // sign of a, |r| < |b|
+    const bool neg = (a < 0) != (b < 0);           // exact quotient is negative
+    const U    ar  = r < 0 ? U(~U(r) + 1u) : U(r); // |r|, |b| in U (safe for T::min)
+    const U    ab  = b < 0 ? U(~U(b) + 1u) : U(b);
+    if (!rounds_away(m, neg, classify_remainder(m, ar, ab), (t & 1) != 0))
         return t;
-    const bool neg = (a < 0) != (b < 0); // exact quotient is negative
-    // |r|, |b| in U (safe for T::min); ab - ar is safe: 0 < ar < ab
-    const U ar   = r < 0 ? U(~U(r) + 1u) : U(r);
-    const U ab   = b < 0 ? U(~U(b) + 1u) : U(b);
-    const T away = neg ? T(t - 1) : T(t + 1);
-    switch (m) {
-    case round_mode::floor:
-        return neg ? away : t;
-    case round_mode::ceil:
-        return neg ? t : away;
-    case round_mode::nearest:
-        return (ar >= ab - ar) ? away : t; // half away from zero
-    case round_mode::half_even:
-        if (ar != ab - ar)
-            return (ar < ab - ar) ? t : away;
-        return (t & 1) == 0 ? t : away; // tie → even
-    default:
-        return t;
-    }
+    return neg ? T(t - 1) : T(t + 1);
 }
 
 // The narrowest signed type in which native div/mod of L by R is exact: int32
@@ -82,25 +67,8 @@ using native_div_t = std::conditional_t<(lower_imax<L> > std::numeric_limits<std
 // U is a builtin unsigned integer or an unsigned wide_int.
 template <raw_integer U>
 constexpr U round_uquotient(U num, U den, round_mode m) noexcept {
-    const U t = num / den, r = num % den;
-    if (r == 0 || m == round_mode::trunc)
-        return t;
-    switch (m) {
-    case round_mode::floor:
-        return t; // non-negative: floor == trunc
-    case round_mode::ceil:
-        return t + 1;
-    case round_mode::nearest:
-        return (r >= den - r) ? t + 1 : t;
-    case round_mode::half_even:
-        if (r < den - r)
-            return t;
-        if (r > den - r)
-            return t + 1;
-        return (t & 1) == 0 ? t : t + 1;
-    default:
-        return t;
-    }
+    const U t = num / den;
+    return rounds_away(m, false, classify_remainder(m, U(num % den), den), (t & 1) != 0) ? t + 1 : t;
 }
 
 // The zero-divisor check is skipped when R's grid excludes zero or
@@ -113,18 +81,9 @@ inline constexpr bool divisor_unchecked =
 // Under half_even the endpoint is bracketed by [floor, ceil] (Upper: ceil)
 // rather than reproducing the parity rule at compile time.
 constexpr imax round_rat(rational q, round_mode m, bool upper) noexcept {
-    switch (m) {
-    case round_mode::nearest:
-        return round(q);
-    case round_mode::floor:
-        return floor(q);
-    case round_mode::ceil:
-        return ceil(q);
-    case round_mode::half_even:
-        return upper ? ceil(q) : floor(q);
-    default:
-        return trunc(q);
-    }
+    if (m == round_mode::half_even)
+        m = upper ? round_mode::ceil : round_mode::floor;
+    return round_to_int(q, m);
 }
 
 // Every value of a 64-bit grid with a nonzero notch (or a point grid) is

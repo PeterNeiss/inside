@@ -1128,6 +1128,62 @@ struct std::numeric_limits<beman::inside::detail::wide_int<N, Signed, L>> {
 };
 
 
+// ======================================================================
+//  beman/inside/detail/rounding.hpp
+// ======================================================================
+
+//---------------------------------------------------------------------------
+// The rounding decision every integer rounding path shares. A path
+// truncates toward zero, classifies the dropped remainder, and asks
+// rounds_away whether the mode moves the quotient one unit away from zero.
+// The arithmetic (builtin, wide, rational, double) stays with the caller;
+// only the decision lives here. With a constant mode it folds to the one
+// comparison that mode needs.
+//---------------------------------------------------------------------------
+namespace beman::inside::detail {
+
+// Ties of `nearest` go half away from zero. rounding_of (policy_flag.hpp)
+// maps a flag set to its mode.
+enum class round_mode { trunc, nearest, floor, ceil, half_even };
+
+// Where a truncation's dropped remainder sits against half a unit. Only the
+// nearest modes read the half; for the others every nonzero remainder
+// classifies as below_half (they need only "inexact").
+enum class remainder_class : unsigned char { zero, below_half, half, above_half };
+
+// The remainder magnitude r of a divisor magnitude d (0 ≤ r < d), classified
+// for m. Compares r with d − r, so 2·r never has to fit T.
+template <typename T>
+[[nodiscard]] constexpr remainder_class classify_remainder(round_mode m, const T& r, const T& d) noexcept {
+    if (r == T{0})
+        return remainder_class::zero;
+    if (m != round_mode::nearest && m != round_mode::half_even)
+        return remainder_class::below_half;
+    const T rest = d - r;
+    return r < rest ? remainder_class::below_half : rest < r ? remainder_class::above_half : remainder_class::half;
+}
+
+// Whether rounding by m moves a truncated quotient one unit away from zero.
+// `negative`: the exact value's sign; `odd`: the truncated quotient's parity.
+[[nodiscard]] constexpr bool rounds_away(round_mode m, bool negative, remainder_class r, bool odd) noexcept {
+    if (r == remainder_class::zero)
+        return false;
+    switch (m) {
+    case round_mode::floor:
+        return negative;
+    case round_mode::ceil:
+        return !negative;
+    case round_mode::nearest:
+        return r != remainder_class::below_half;
+    case round_mode::half_even:
+        return r == remainder_class::above_half || (r == remainder_class::half && odd);
+    default:
+        return false;
+    }
+}
+} // namespace beman::inside::detail
+
+
 
 
 namespace beman::inside::detail {
@@ -1349,41 +1405,19 @@ constexpr std::unexpected<errc> fail(errc code) {
     return (v.Denominator < 0) ? -n : n;
 }
 
-[[nodiscard]] constexpr imax trunc(rational v) {
-    umax q = v.Numerator / abs_den(v.Denominator);
-    return (v.Denominator < 0) ? -q : q;
+// v rounded to an integer by m (nearest: half away from zero).
+[[nodiscard]] constexpr imax round_to_int(rational v, round_mode m) {
+    const umax ad  = abs_den(v.Denominator);
+    const umax q   = v.Numerator / ad;
+    const bool neg = v.Denominator < 0;
+    const umax mag = q + rounds_away(m, neg, classify_remainder(m, v.Numerator % ad, ad), (q & 1) != 0);
+    return neg ? -mag : mag;
 }
 
-[[nodiscard]] constexpr imax floor(rational v) {
-    umax ad  = abs_den(v.Denominator);
-    umax q   = v.Numerator / ad;
-    umax rem = v.Numerator % ad;
-    // negative with non-zero remainder: step one further toward -inf
-    if (v.Denominator < 0 && rem != 0)
-        return -q - 1;
-    return (v.Denominator < 0) ? -q : q;
-}
-
-[[nodiscard]] constexpr imax ceil(rational v) {
-    umax ad  = abs_den(v.Denominator);
-    umax q   = v.Numerator / ad;
-    umax rem = v.Numerator % ad;
-    // negative value: ceiling toward +inf coincides with truncation toward zero
-    if (v.Denominator < 0)
-        return -q;
-    // positive with non-zero remainder: step one further toward +inf
-    return q + (rem != 0 ? 1 : 0);
-}
-
-[[nodiscard]] constexpr imax round(rational v) {
-    umax ad  = abs_den(v.Denominator);
-    umax q   = v.Numerator / ad;
-    umax rem = v.Numerator % ad;
-    // half-away-from-zero: bump magnitude when 2*rem >= ad
-    if (rem * 2 >= ad)
-        ++q;
-    return (v.Denominator < 0) ? -q : q;
-}
+[[nodiscard]] constexpr imax trunc(rational v) { return round_to_int(v, round_mode::trunc); }
+[[nodiscard]] constexpr imax floor(rational v) { return round_to_int(v, round_mode::floor); }
+[[nodiscard]] constexpr imax ceil(rational v) { return round_to_int(v, round_mode::ceil); }
+[[nodiscard]] constexpr imax round(rational v) { return round_to_int(v, round_mode::nearest); }
 
 //---------------------------------------------------------------------------
 // abs
@@ -2098,30 +2132,30 @@ concept rational_lift_operands =
     return lift([](rational r) { return -r; }, v);
 }
 
-#define BEMAN_INSIDE_RATIONAL_OP(op)                                                                        \
-    template <arithmetic T>                                                                                 \
-    [[nodiscard]] inline constexpr auto operator op(T lhs, rational const& rhs) {                           \
-        return rational{lhs} op rhs;                                                                        \
-    }                                                                                                       \
-    template <arithmetic T>                                                                                 \
-    [[nodiscard]] inline constexpr auto operator op(rational const& lhs, T rhs) {                           \
-        return lhs op rational{rhs};                                                                        \
-    }                                                                                                       \
-    template <class L, class R>                                                                             \
-        requires rational_lift_operands<L, R>                                                               \
-    [[nodiscard]] inline constexpr auto operator op(L const& lhs, R const& rhs) {                           \
-        return lift([](auto const& a, auto const& b) { return a op b; }, lhs, rhs);                         \
-    }                                                                                                       \
-    inline constexpr rational& rational::operator op## = (rational const& rhs) {                            \
-        *this = (*this op rhs).value();                                                                     \
-        return *this;                                                                                       \
-    }                                                                                                       \
-    template <arithmetic T>                                                                                 \
-    inline constexpr rational& operator op## = (rational & lhs, T rhs) {                                    \
-        return lhs op## = rational{rhs};                                                                    \
-    }                                                                                                       \
-    inline constexpr rational& operator op## = (rational & lhs, std::expected<rational, errc> const& rhs) { \
-        return lhs op## = rhs.value();                                                                      \
+#define BEMAN_INSIDE_RATIONAL_OP(op)                                                                      \
+    template <arithmetic T>                                                                               \
+    [[nodiscard]] inline constexpr auto operator op(T lhs, rational const& rhs) {                         \
+        return rational{lhs} op rhs;                                                                      \
+    }                                                                                                     \
+    template <arithmetic T>                                                                               \
+    [[nodiscard]] inline constexpr auto operator op(rational const& lhs, T rhs) {                         \
+        return lhs op rational{rhs};                                                                      \
+    }                                                                                                     \
+    template <class L, class R>                                                                           \
+        requires rational_lift_operands<L, R>                                                             \
+    [[nodiscard]] inline constexpr auto operator op(L const& lhs, R const& rhs) {                         \
+        return lift([](auto const& a, auto const& b) { return a op b; }, lhs, rhs);                       \
+    }                                                                                                     \
+    inline constexpr rational& rational::operator op##=(rational const& rhs) {                            \
+        *this = (*this op rhs).value();                                                                   \
+        return *this;                                                                                     \
+    }                                                                                                     \
+    template <arithmetic T>                                                                               \
+    inline constexpr rational& operator op##=(rational & lhs, T rhs) {                                    \
+        return lhs op## = rational{rhs};                                                                  \
+    }                                                                                                     \
+    inline constexpr rational& operator op##=(rational & lhs, std::expected<rational, errc> const& rhs) { \
+        return lhs op## = rhs.value();                                                                    \
     }
 
 BEMAN_INSIDE_RATIONAL_OP(+)
@@ -3064,6 +3098,7 @@ corner_hull(grid_rational a, grid_rational b, grid_rational c, grid_rational d) 
 // ======================================================================
 
 
+
 // BEMAN_INSIDE_MATH_NO_FP — no hardware floating point anywhere: the f64/f32
 // storage flags fall back to deduced integer storage, and the math engine's
 // double tier compiles out (its integer path computes every result; results
@@ -3208,8 +3243,7 @@ namespace detail {
 // An explicit directional or half-even mode beats round_nearest (which f64 /
 // f32 carry by default, so `f64 | round_floor` floors); `snap` alone, or no
 // rounding flag at all, truncates toward zero. Ties of `nearest` go half
-// away from zero.
-enum class round_mode { trunc, nearest, floor, ceil, half_even };
+// away from zero. round_mode and the shared decision: detail/rounding.hpp.
 
 [[nodiscard]] constexpr round_mode rounding_of(policy_flag f) noexcept {
     if (has_flag(f, round_floor))
@@ -4606,22 +4640,7 @@ template <insidable L, typename P>
     if constexpr (!detail::notched<L>)
         return v;
     else {
-        const rational       qv = (v / detail::notch64<L>).value();
-        constexpr round_mode m  = rounding_for<L, P>;
-        imax                 k;
-        if constexpr (m == round_mode::nearest)
-            k = round(qv);
-        else if constexpr (m == round_mode::floor)
-            k = floor(qv);
-        else if constexpr (m == round_mode::ceil)
-            k = ceil(qv);
-        else if constexpr (m == round_mode::half_even) {
-            const imax     f    = floor(qv);
-            const rational frac = (qv - rational{f}).value();
-            const rational half{1, 2};
-            k = frac > half ? f + 1 : frac < half ? f : ((f & 1) ? f + 1 : f);
-        } else
-            k = trunc(qv);
+        const imax k = round_to_int((v / detail::notch64<L>).value(), rounding_for<L, P>);
         return (rational{k} * detail::notch64<L>).value();
     }
 }
@@ -4681,20 +4700,7 @@ template <insidable L, typename P>
 template <insidable L, typename P>
 [[nodiscard]] constexpr umax round_offset(umax q, umax r, umax den) noexcept {
     constexpr round_mode m = rounding_for<L, P>;
-    if constexpr (m == round_mode::nearest)
-        return (r * 2 >= den) ? q + 1 : q;
-    else if constexpr (m == round_mode::floor)
-        return q;
-    else if constexpr (m == round_mode::ceil)
-        return (r != 0) ? q + 1 : q;
-    else if constexpr (m == round_mode::half_even) {
-        if (r * 2 < den)
-            return q;
-        if (r * 2 > den)
-            return q + 1;
-        return (q & 1) ? q + 1 : q;
-    } else
-        return q;
+    return q + rounds_away(m, false, classify_remainder(m, r, den), (q & 1) != 0);
 }
 
 // Round the non-negative offset quotient num/den (den >= 1) to an integer
@@ -4725,33 +4731,14 @@ template <insidable L, typename P>
         if (num > static_cast<umax>(std::numeric_limits<imax>::max()) || mul_overflow(m, di, &mdi) ||
             add_overflow(mdi, static_cast<imax>(num), &NUM)) [[unlikely]]
             return round_offset<L, P>(num / den, num % den, den);
-        const imax t  = NUM / di; // C++ truncation toward zero
-        const imax rr = NUM % di; // sign of NUM, |rr| < di
-        imax       J;
-        if (rr == 0)
-            J = t;
-        else {
-            const bool           neg  = NUM < 0;
-            const umax           ar   = (rr < 0) ? ~static_cast<umax>(rr) + 1u : static_cast<umax>(rr);
-            const umax           ab   = static_cast<umax>(di); // ab - ar safe: 0 < ar < ab
-            constexpr round_mode mode = rounding_for<L, P>;
-            if constexpr (mode == round_mode::nearest) // half away from zero
-                J = (ar >= ab - ar) ? (neg ? t - 1 : t + 1) : t;
-            else if constexpr (mode == round_mode::floor) // toward -inf
-                J = neg ? t - 1 : t;
-            else if constexpr (mode == round_mode::ceil) // toward +inf
-                J = neg ? t : t + 1;
-            else if constexpr (mode == round_mode::half_even) // tie -> even value
-            {
-                if (ar < ab - ar)
-                    J = t;
-                else if (ar > ab - ar)
-                    J = neg ? t - 1 : t + 1;
-                else
-                    J = (t & 1) == 0 ? t : (neg ? t - 1 : t + 1);
-            } else // snap: toward zero
-                J = t;
-        }
+        const imax           t    = NUM / di; // C++ truncation toward zero
+        const imax           rr   = NUM % di; // sign of NUM, |rr| < di
+        const bool           neg  = NUM < 0;
+        const umax           ar   = (rr < 0) ? ~static_cast<umax>(rr) + 1u : static_cast<umax>(rr);
+        constexpr round_mode mode = rounding_for<L, P>;
+        const imax J = rounds_away(mode, neg, classify_remainder(mode, ar, static_cast<umax>(di)), (t & 1) != 0)
+                           ? (neg ? t - 1 : t + 1)
+                           : t;
         return static_cast<umax>(J - m); // offset index k = J - m (>= 0)
     }
 }
@@ -5142,28 +5129,13 @@ constexpr std::expected<exact_frac<K>, errc> parse_exact(const char* first, cons
 // n / d (d != 0) rounded to an integer by M; the sign rules of div_rounded.
 template <round_mode M, std::size_t K>
 constexpr wide_sint<K> rounded_div(const wide_sint<K>& n, const wide_sint<K>& d) noexcept {
-    using I     = wide_sint<K>;
-    auto [q, r] = I::divmod(n, d); // toward zero
-    if (r.is_zero())
-        return q;
+    using I        = wide_sint<K>;
+    auto [q, r]    = I::divmod(n, d); // toward zero
     const bool neg = n.negative() != d.negative();
     const I    ar = r.negative() ? -r : r, ad = d.negative() ? -d : d;
-    const I    away = neg ? q - I{1} : q + I{1};
-    const I    r2   = ar * I{2};
-    if constexpr (M == round_mode::floor) {
-        if (neg)
-            q = away;
-    } else if constexpr (M == round_mode::ceil) {
-        if (!neg)
-            q = away;
-    } else if constexpr (M == round_mode::nearest) {
-        if (r2 >= ad)
-            q = away;
-    } else if constexpr (M == round_mode::half_even) {
-        if (r2 > ad || (r2 == ad && (q.Word[0] & 1u) != 0))
-            q = away;
-    }
-    return q;
+    if (!rounds_away(M, neg, classify_remainder(M, ar, ad), (q.Word[0] & 1u) != 0))
+        return q;
+    return neg ? q - I{1} : q + I{1};
 }
 
 // The value index of f on L's lattice (f / Notch) rounded by M, minus the
@@ -7092,30 +7064,15 @@ inline constexpr bool integer_native_ops = integer_ops<L, R, F> && values_fit_im
 // Round the signed exact quotient a/b (b != 0) to an integer per `m`.
 template <std::signed_integral T>
 constexpr T div_rounded(T a, T b, round_mode m) noexcept {
-    using U   = std::make_unsigned_t<T>;
-    const T t = a / b; // C++ truncation toward zero
-    const T r = a % b; // sign of a, |r| < |b|
-    if (r == 0 || m == round_mode::trunc)
+    using U        = std::make_unsigned_t<T>;
+    const T    t   = a / b;                        // C++ truncation toward zero
+    const T    r   = a % b;                        // sign of a, |r| < |b|
+    const bool neg = (a < 0) != (b < 0);           // exact quotient is negative
+    const U    ar  = r < 0 ? U(~U(r) + 1u) : U(r); // |r|, |b| in U (safe for T::min)
+    const U    ab  = b < 0 ? U(~U(b) + 1u) : U(b);
+    if (!rounds_away(m, neg, classify_remainder(m, ar, ab), (t & 1) != 0))
         return t;
-    const bool neg = (a < 0) != (b < 0); // exact quotient is negative
-    // |r|, |b| in U (safe for T::min); ab - ar is safe: 0 < ar < ab
-    const U ar   = r < 0 ? U(~U(r) + 1u) : U(r);
-    const U ab   = b < 0 ? U(~U(b) + 1u) : U(b);
-    const T away = neg ? T(t - 1) : T(t + 1);
-    switch (m) {
-    case round_mode::floor:
-        return neg ? away : t;
-    case round_mode::ceil:
-        return neg ? t : away;
-    case round_mode::nearest:
-        return (ar >= ab - ar) ? away : t; // half away from zero
-    case round_mode::half_even:
-        if (ar != ab - ar)
-            return (ar < ab - ar) ? t : away;
-        return (t & 1) == 0 ? t : away; // tie → even
-    default:
-        return t;
-    }
+    return neg ? T(t - 1) : T(t + 1);
 }
 
 // The narrowest signed type in which native div/mod of L by R is exact: int32
@@ -7134,25 +7091,8 @@ using native_div_t = std::conditional_t<(lower_imax<L> > std::numeric_limits<std
 // U is a builtin unsigned integer or an unsigned wide_int.
 template <raw_integer U>
 constexpr U round_uquotient(U num, U den, round_mode m) noexcept {
-    const U t = num / den, r = num % den;
-    if (r == 0 || m == round_mode::trunc)
-        return t;
-    switch (m) {
-    case round_mode::floor:
-        return t; // non-negative: floor == trunc
-    case round_mode::ceil:
-        return t + 1;
-    case round_mode::nearest:
-        return (r >= den - r) ? t + 1 : t;
-    case round_mode::half_even:
-        if (r < den - r)
-            return t;
-        if (r > den - r)
-            return t + 1;
-        return (t & 1) == 0 ? t : t + 1;
-    default:
-        return t;
-    }
+    const U t = num / den;
+    return rounds_away(m, false, classify_remainder(m, U(num % den), den), (t & 1) != 0) ? t + 1 : t;
 }
 
 // The zero-divisor check is skipped when R's grid excludes zero or
@@ -7165,18 +7105,9 @@ inline constexpr bool divisor_unchecked =
 // Under half_even the endpoint is bracketed by [floor, ceil] (Upper: ceil)
 // rather than reproducing the parity rule at compile time.
 constexpr imax round_rat(rational q, round_mode m, bool upper) noexcept {
-    switch (m) {
-    case round_mode::nearest:
-        return round(q);
-    case round_mode::floor:
-        return floor(q);
-    case round_mode::ceil:
-        return ceil(q);
-    case round_mode::half_even:
-        return upper ? ceil(q) : floor(q);
-    default:
-        return trunc(q);
-    }
+    if (m == round_mode::half_even)
+        m = upper ? round_mode::ceil : round_mode::floor;
+    return round_to_int(q, m);
 }
 
 // Every value of a 64-bit grid with a nonzero notch (or a point grid) is
@@ -9534,28 +9465,19 @@ constexpr wide_sint<K> div_small(const wide_sint<K>& v, umax d) noexcept {
 // (−1 below, 0 equal, 1 above; R == 0 known separately).
 template <round_mode M>
 constexpr bool round_up(bool neg, umax b0, umax r, umax p, bool low_zero, int low_vs_half) noexcept {
-    const bool inexact = r != 0 || !low_zero;
-    if constexpr (M == round_mode::floor)
-        return neg && inexact;
-    else if constexpr (M == round_mode::ceil)
-        return !neg && inexact;
-    else if constexpr (M == round_mode::nearest || M == round_mode::half_even) {
-        const umax d = p - r;
-        int        cmp;
-        if (r > d)
-            cmp = 1;
+    remainder_class c = (r == 0 && low_zero) ? remainder_class::zero : remainder_class::below_half;
+    if constexpr (M == round_mode::nearest || M == round_mode::half_even) {
+        const umax d = p - r; // r + R against p/2, R the shifted-out part
+        if (r > d || (r == d && !low_zero))
+            c = remainder_class::above_half;
         else if (r == d)
-            cmp = low_zero ? 0 : 1;
-        else if (r + 1 < d)
-            cmp = -1;
-        else
-            cmp = low_vs_half;
-        if constexpr (M == round_mode::nearest)
-            return cmp >= 0;
-        else
-            return cmp > 0 || (cmp == 0 && (b0 & 1u) != 0);
-    } else
-        return false;
+            c = remainder_class::half;
+        else if (r + 1 == d)
+            c = low_vs_half < 0    ? remainder_class::below_half
+                : low_vs_half == 0 ? remainder_class::half
+                                   : remainder_class::above_half;
+    }
+    return rounds_away(M, neg, c, (b0 & 1u) != 0);
 }
 
 // Out's slot offset of y·2^-S (S ≥ 1) rounded by M, as value-index rounding
@@ -14398,21 +14320,10 @@ constexpr grid_rational grid_to_int(const grid_rational& r) {
     const grid_wide n = wide_numerator(r), d = wide_denominator(r);
     grid_wide       q   = n / d;
     const grid_wide rem = n - q * d;
-    if (!rem.is_zero()) {
-        const bool      neg  = n.negative();
-        const grid_wide arem = neg ? -rem : rem;
-        const grid_wide away = neg ? q - grid_wide{1} : q + grid_wide{1};
-        if constexpr (M == round_mode::floor) {
-            if (neg)
-                q = away;
-        } else if constexpr (M == round_mode::ceil) {
-            if (!neg)
-                q = away;
-        } else if constexpr (M == round_mode::nearest) {
-            if (!(arem + arem < d))
-                q = away;
-        }
-    }
+    const bool      neg = n.negative();
+    const bool      odd = !(q / grid_wide{2} * grid_wide{2} == q);
+    if (rounds_away(M, neg, classify_remainder(M, neg ? -rem : rem, d), odd))
+        q = neg ? q - grid_wide{1} : q + grid_wide{1};
 #if BEMAN_INSIDE_BIG_GRIDS
     return grid_rational{q};
 #else
@@ -14490,19 +14401,24 @@ constexpr Out fp_direct_store(In x, F f) noexcept {
     return Out::from_raw(raw_cast<Out>(f(static_cast<double>(x.raw()))));
 }
 
-constexpr double fp_trunc(double v) noexcept { return static_cast<double>(static_cast<imax>(v)); }
-constexpr double fp_floor(double v) noexcept {
-    const double t = fp_trunc(v);
-    return t > v ? t - 1 : t;
-}
-constexpr double fp_ceil(double v) noexcept {
-    const double t = fp_trunc(v);
-    return t < v ? t + 1 : t;
-}
-constexpr double fp_round(double v) noexcept // half away from zero, like rational round()
-{
-    const double t = fp_trunc(v), f = v - t; // exact: v and t share the grid
-    return f >= 0.5 ? t + 1 : f <= -0.5 ? t - 1 : t;
+// v rounded to an integer by m, on the double: v and its truncation share
+// the grid, so the dropped fraction is exact. Compares the fraction directly
+// (not through rounds_away): the sign-free classification costs instructions
+// on this hot path.
+constexpr double fp_round_to_int(double v, round_mode m) noexcept {
+    const double t = static_cast<double>(static_cast<imax>(v));
+    switch (m) {
+    case round_mode::floor:
+        return t > v ? t - 1 : t;
+    case round_mode::ceil:
+        return t < v ? t + 1 : t;
+    case round_mode::nearest: {
+        const double f = v - t;
+        return f >= 0.5 ? t + 1 : f <= -0.5 ? t - 1 : t;
+    }
+    default:
+        return t;
+    }
 }
 
 // x rounded to an integer by M: exactly, on the raw doubles, or through
@@ -14512,27 +14428,9 @@ constexpr Out integer_into(In x) {
     if constexpr (any_wide_valued<Out, In>)
         return store_exact<Out>(exact_to_int<M>(ax::exact_input(x)));
     else if constexpr (fp_direct<Out, integer_auto_t<In, M>, In>)
-        return fp_direct_store<Out>(x, [](double v) {
-            if constexpr (M == round_mode::floor)
-                return fp_floor(v);
-            else if constexpr (M == round_mode::ceil)
-                return fp_ceil(v);
-            else if constexpr (M == round_mode::nearest)
-                return fp_round(v);
-            else
-                return fp_trunc(v);
-        });
-    else {
-        const rational r{x};
-        if constexpr (M == round_mode::floor)
-            return store_value<Out>(floor(r));
-        else if constexpr (M == round_mode::ceil)
-            return store_value<Out>(ceil(r));
-        else if constexpr (M == round_mode::nearest)
-            return store_value<Out>(round(r));
-        else
-            return store_value<Out>(trunc(r));
-    }
+        return fp_direct_store<Out>(x, [](double v) { return fp_round_to_int(v, M); });
+    else
+        return store_value<Out>(round_to_int(rational{x}, M));
 }
 } // namespace detail
 

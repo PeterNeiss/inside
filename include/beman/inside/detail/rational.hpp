@@ -7,6 +7,7 @@
 #include <beman/inside/detail/overflow.hpp> // add/sub/mul_overflow
 #include <beman/inside/detail/debug.hpp>    // errc, detail::raise, detail::constexpr_error
 #include <beman/inside/detail/wide_int.hpp> // limb kernels for exact 128-bit cross products
+#include <beman/inside/detail/rounding.hpp> // round_mode, rounds_away
 
 #include <expected> // std::expected, std::unexpected
 
@@ -235,41 +236,19 @@ constexpr std::unexpected<errc> fail(errc code) {
     return (v.Denominator < 0) ? -n : n;
 }
 
-[[nodiscard]] constexpr imax trunc(rational v) {
-    umax q = v.Numerator / abs_den(v.Denominator);
-    return (v.Denominator < 0) ? -q : q;
+// v rounded to an integer by m (nearest: half away from zero).
+[[nodiscard]] constexpr imax round_to_int(rational v, round_mode m) {
+    const umax ad  = abs_den(v.Denominator);
+    const umax q   = v.Numerator / ad;
+    const bool neg = v.Denominator < 0;
+    const umax mag = q + rounds_away(m, neg, classify_remainder(m, v.Numerator % ad, ad), (q & 1) != 0);
+    return neg ? -mag : mag;
 }
 
-[[nodiscard]] constexpr imax floor(rational v) {
-    umax ad  = abs_den(v.Denominator);
-    umax q   = v.Numerator / ad;
-    umax rem = v.Numerator % ad;
-    // negative with non-zero remainder: step one further toward -inf
-    if (v.Denominator < 0 && rem != 0)
-        return -q - 1;
-    return (v.Denominator < 0) ? -q : q;
-}
-
-[[nodiscard]] constexpr imax ceil(rational v) {
-    umax ad  = abs_den(v.Denominator);
-    umax q   = v.Numerator / ad;
-    umax rem = v.Numerator % ad;
-    // negative value: ceiling toward +inf coincides with truncation toward zero
-    if (v.Denominator < 0)
-        return -q;
-    // positive with non-zero remainder: step one further toward +inf
-    return q + (rem != 0 ? 1 : 0);
-}
-
-[[nodiscard]] constexpr imax round(rational v) {
-    umax ad  = abs_den(v.Denominator);
-    umax q   = v.Numerator / ad;
-    umax rem = v.Numerator % ad;
-    // half-away-from-zero: bump magnitude when 2*rem >= ad
-    if (rem * 2 >= ad)
-        ++q;
-    return (v.Denominator < 0) ? -q : q;
-}
+[[nodiscard]] constexpr imax trunc(rational v) { return round_to_int(v, round_mode::trunc); }
+[[nodiscard]] constexpr imax floor(rational v) { return round_to_int(v, round_mode::floor); }
+[[nodiscard]] constexpr imax ceil(rational v) { return round_to_int(v, round_mode::ceil); }
+[[nodiscard]] constexpr imax round(rational v) { return round_to_int(v, round_mode::nearest); }
 
 //---------------------------------------------------------------------------
 // abs
@@ -984,30 +963,30 @@ concept rational_lift_operands =
     return lift([](rational r) { return -r; }, v);
 }
 
-#define BEMAN_INSIDE_RATIONAL_OP(op)                                                                        \
-    template <arithmetic T>                                                                                 \
-    [[nodiscard]] inline constexpr auto operator op(T lhs, rational const& rhs) {                           \
-        return rational{lhs} op rhs;                                                                        \
-    }                                                                                                       \
-    template <arithmetic T>                                                                                 \
-    [[nodiscard]] inline constexpr auto operator op(rational const& lhs, T rhs) {                           \
-        return lhs op rational{rhs};                                                                        \
-    }                                                                                                       \
-    template <class L, class R>                                                                             \
-        requires rational_lift_operands<L, R>                                                               \
-    [[nodiscard]] inline constexpr auto operator op(L const& lhs, R const& rhs) {                           \
-        return lift([](auto const& a, auto const& b) { return a op b; }, lhs, rhs);                         \
-    }                                                                                                       \
-    inline constexpr rational& rational::operator op## = (rational const& rhs) {                            \
-        *this = (*this op rhs).value();                                                                     \
-        return *this;                                                                                       \
-    }                                                                                                       \
-    template <arithmetic T>                                                                                 \
-    inline constexpr rational& operator op## = (rational & lhs, T rhs) {                                    \
-        return lhs op## = rational{rhs};                                                                    \
-    }                                                                                                       \
-    inline constexpr rational& operator op## = (rational & lhs, std::expected<rational, errc> const& rhs) { \
-        return lhs op## = rhs.value();                                                                      \
+#define BEMAN_INSIDE_RATIONAL_OP(op)                                                                      \
+    template <arithmetic T>                                                                               \
+    [[nodiscard]] inline constexpr auto operator op(T lhs, rational const& rhs) {                         \
+        return rational{lhs} op rhs;                                                                      \
+    }                                                                                                     \
+    template <arithmetic T>                                                                               \
+    [[nodiscard]] inline constexpr auto operator op(rational const& lhs, T rhs) {                         \
+        return lhs op rational{rhs};                                                                      \
+    }                                                                                                     \
+    template <class L, class R>                                                                           \
+        requires rational_lift_operands<L, R>                                                             \
+    [[nodiscard]] inline constexpr auto operator op(L const& lhs, R const& rhs) {                         \
+        return lift([](auto const& a, auto const& b) { return a op b; }, lhs, rhs);                       \
+    }                                                                                                     \
+    inline constexpr rational& rational::operator op##=(rational const& rhs) {                            \
+        *this = (*this op rhs).value();                                                                   \
+        return *this;                                                                                     \
+    }                                                                                                     \
+    template <arithmetic T>                                                                               \
+    inline constexpr rational& operator op##=(rational & lhs, T rhs) {                                    \
+        return lhs op## = rational{rhs};                                                                  \
+    }                                                                                                     \
+    inline constexpr rational& operator op##=(rational & lhs, std::expected<rational, errc> const& rhs) { \
+        return lhs op## = rhs.value();                                                                    \
     }
 
 BEMAN_INSIDE_RATIONAL_OP(+)

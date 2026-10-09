@@ -558,22 +558,7 @@ template <insidable L, typename P>
     if constexpr (!detail::notched<L>)
         return v;
     else {
-        const rational       qv = (v / detail::notch64<L>).value();
-        constexpr round_mode m  = rounding_for<L, P>;
-        imax                 k;
-        if constexpr (m == round_mode::nearest)
-            k = round(qv);
-        else if constexpr (m == round_mode::floor)
-            k = floor(qv);
-        else if constexpr (m == round_mode::ceil)
-            k = ceil(qv);
-        else if constexpr (m == round_mode::half_even) {
-            const imax     f    = floor(qv);
-            const rational frac = (qv - rational{f}).value();
-            const rational half{1, 2};
-            k = frac > half ? f + 1 : frac < half ? f : ((f & 1) ? f + 1 : f);
-        } else
-            k = trunc(qv);
+        const imax k = round_to_int((v / detail::notch64<L>).value(), rounding_for<L, P>);
         return (rational{k} * detail::notch64<L>).value();
     }
 }
@@ -633,20 +618,7 @@ template <insidable L, typename P>
 template <insidable L, typename P>
 [[nodiscard]] constexpr umax round_offset(umax q, umax r, umax den) noexcept {
     constexpr round_mode m = rounding_for<L, P>;
-    if constexpr (m == round_mode::nearest)
-        return (r * 2 >= den) ? q + 1 : q;
-    else if constexpr (m == round_mode::floor)
-        return q;
-    else if constexpr (m == round_mode::ceil)
-        return (r != 0) ? q + 1 : q;
-    else if constexpr (m == round_mode::half_even) {
-        if (r * 2 < den)
-            return q;
-        if (r * 2 > den)
-            return q + 1;
-        return (q & 1) ? q + 1 : q;
-    } else
-        return q;
+    return q + rounds_away(m, false, classify_remainder(m, r, den), (q & 1) != 0);
 }
 
 // Round the non-negative offset quotient num/den (den >= 1) to an integer
@@ -677,33 +649,14 @@ template <insidable L, typename P>
         if (num > static_cast<umax>(std::numeric_limits<imax>::max()) || mul_overflow(m, di, &mdi) ||
             add_overflow(mdi, static_cast<imax>(num), &NUM)) [[unlikely]]
             return round_offset<L, P>(num / den, num % den, den);
-        const imax t  = NUM / di; // C++ truncation toward zero
-        const imax rr = NUM % di; // sign of NUM, |rr| < di
-        imax       J;
-        if (rr == 0)
-            J = t;
-        else {
-            const bool           neg  = NUM < 0;
-            const umax           ar   = (rr < 0) ? ~static_cast<umax>(rr) + 1u : static_cast<umax>(rr);
-            const umax           ab   = static_cast<umax>(di); // ab - ar safe: 0 < ar < ab
-            constexpr round_mode mode = rounding_for<L, P>;
-            if constexpr (mode == round_mode::nearest) // half away from zero
-                J = (ar >= ab - ar) ? (neg ? t - 1 : t + 1) : t;
-            else if constexpr (mode == round_mode::floor) // toward -inf
-                J = neg ? t - 1 : t;
-            else if constexpr (mode == round_mode::ceil) // toward +inf
-                J = neg ? t : t + 1;
-            else if constexpr (mode == round_mode::half_even) // tie -> even value
-            {
-                if (ar < ab - ar)
-                    J = t;
-                else if (ar > ab - ar)
-                    J = neg ? t - 1 : t + 1;
-                else
-                    J = (t & 1) == 0 ? t : (neg ? t - 1 : t + 1);
-            } else // snap: toward zero
-                J = t;
-        }
+        const imax           t    = NUM / di; // C++ truncation toward zero
+        const imax           rr   = NUM % di; // sign of NUM, |rr| < di
+        const bool           neg  = NUM < 0;
+        const umax           ar   = (rr < 0) ? ~static_cast<umax>(rr) + 1u : static_cast<umax>(rr);
+        constexpr round_mode mode = rounding_for<L, P>;
+        const imax J = rounds_away(mode, neg, classify_remainder(mode, ar, static_cast<umax>(di)), (t & 1) != 0)
+                           ? (neg ? t - 1 : t + 1)
+                           : t;
         return static_cast<umax>(J - m); // offset index k = J - m (>= 0)
     }
 }

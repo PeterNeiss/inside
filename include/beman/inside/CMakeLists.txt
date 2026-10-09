@@ -26,6 +26,7 @@ target_sources(
                 detail/overflow.hpp
                 detail/rational.hpp
                 detail/rep.hpp
+                detail/rounding.hpp
                 formats.hpp
                 generic.hpp
                 grid.hpp

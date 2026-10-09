@@ -280,28 +280,19 @@ constexpr wide_sint<K> div_small(const wide_sint<K>& v, umax d) noexcept {
 // (−1 below, 0 equal, 1 above; R == 0 known separately).
 template <round_mode M>
 constexpr bool round_up(bool neg, umax b0, umax r, umax p, bool low_zero, int low_vs_half) noexcept {
-    const bool inexact = r != 0 || !low_zero;
-    if constexpr (M == round_mode::floor)
-        return neg && inexact;
-    else if constexpr (M == round_mode::ceil)
-        return !neg && inexact;
-    else if constexpr (M == round_mode::nearest || M == round_mode::half_even) {
-        const umax d = p - r;
-        int        cmp;
-        if (r > d)
-            cmp = 1;
+    remainder_class c = (r == 0 && low_zero) ? remainder_class::zero : remainder_class::below_half;
+    if constexpr (M == round_mode::nearest || M == round_mode::half_even) {
+        const umax d = p - r; // r + R against p/2, R the shifted-out part
+        if (r > d || (r == d && !low_zero))
+            c = remainder_class::above_half;
         else if (r == d)
-            cmp = low_zero ? 0 : 1;
-        else if (r + 1 < d)
-            cmp = -1;
-        else
-            cmp = low_vs_half;
-        if constexpr (M == round_mode::nearest)
-            return cmp >= 0;
-        else
-            return cmp > 0 || (cmp == 0 && (b0 & 1u) != 0);
-    } else
-        return false;
+            c = remainder_class::half;
+        else if (r + 1 == d)
+            c = low_vs_half < 0    ? remainder_class::below_half
+                : low_vs_half == 0 ? remainder_class::half
+                                   : remainder_class::above_half;
+    }
+    return rounds_away(M, neg, c, (b0 & 1u) != 0);
 }
 
 // Out's slot offset of y·2^-S (S ≥ 1) rounded by M, as value-index rounding
