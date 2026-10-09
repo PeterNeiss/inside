@@ -37,7 +37,7 @@ TEST(WideGridTest, deduces_wide_index) {
     static_assert(std::is_same_v<fine::raw_type, detail::wide_uint<2>>);
     static_assert(std::is_same_v<fine_signed::raw_type, detail::wide_uint<2>>);
     static_assert(sizeof(fine) == 16);
-    static_assert(detail::wide_raw<fine> && detail::index_raw<fine>);
+    static_assert(detail::wide_index_storage<fine> && detail::index_storage<fine>);
     static_assert(grid_of<fine>.slot_bits() == 67);
     // `indexed` sizes from the same slot count.
     static_assert(std::is_same_v<inside<{{0, p34}, per<p32>}, indexed>::raw_type, detail::wide_uint<2>>);
@@ -129,14 +129,14 @@ TEST(WideGridTest, comparisons) {
 TEST(WideGridTest, arithmetic) {
     fine a = 1.5, b = rational{1} + tick;
     auto sum = a + b; // {0, 2^35}, notch 2^-32
-    static_assert(detail::wide_raw<decltype(sum)>);
+    static_assert(detail::wide_index_storage<decltype(sum)>);
     EXPECT_TRUE(sum == (rational{5, 2} + tick).value());
     auto diff = a - b; // {−2^34, 2^34}
     EXPECT_TRUE(diff == (rational{1, 2} - tick).value());
     auto neg = -a;
     EXPECT_TRUE(neg == -1.5);
     auto prod = a * inside<{0, 3}>{3}; // {0, 3·2^34}, notch 2^-32
-    static_assert(detail::wide_raw<decltype(prod)>);
+    static_assert(detail::wide_index_storage<decltype(prod)>);
     EXPECT_TRUE(prod == 4.5);
     // narrow + wide and back.
     auto mixed = inside<{0, 100}>{7} + a;
@@ -147,7 +147,7 @@ TEST(WideGridTest, uint64_difference_widens) {
     constexpr umax kUM = ~umax{0};
     qword          x{kUM}, y{3};
     auto           d = x - y; // spans 2^65 values
-    static_assert(detail::wide_raw<decltype(d)>);
+    static_assert(detail::wide_index_storage<decltype(d)>);
     EXPECT_TRUE(d == kUM - 3);
     EXPECT_TRUE(y - x == -rational{kUM - 3});
     EXPECT_EQ(x.to<std::uint64_t>().value(), kUM);
@@ -277,7 +277,7 @@ TEST(WideGridTest, modulo) {
     // qword differences span 2^65 values: integers past imax.
     constexpr umax kUM = ~umax{0};
     auto           d   = qword{kUM} - qword{0};
-    static_assert(detail::wide_raw<decltype(d)>);
+    static_assert(detail::wide_index_storage<decltype(d)>);
     auto m = mod(d, inside<{1, 1000}>{7}, policy<snap>{});
     EXPECT_TRUE(m == (kUM % 7));
     auto n = mod(-d, inside<{1, 1000}>{7}, policy<snap>{}); // takes the dividend's sign
@@ -343,7 +343,7 @@ TEST(WideGridTest, limb_edges) {
 
     // Sums and differences across the boundary, both ends.
     auto s = o + inside<{{0, 1}, per<4>}>{1}; // 2^64 + 4 slots
-    static_assert(detail::wide_raw<decltype(s)>);
+    static_assert(detail::wide_index_storage<decltype(s)>);
     EXPECT_TRUE((s == rational{(umax{1} << 62) + 1}));
 #if BEMAN_INSIDE_BIG_GRIDS
     // (2^64 − 1)/4 + (2^64 − 1)/4 passes the 64-bit grid numbers.
@@ -373,7 +373,7 @@ TEST(WideGridTest, qformat_division_past_64_bits) {
     q32  a = 1000.5, b = 0.25;
     auto q = (a / b).value();                              // b's grid includes 0
     static_assert(notch_of<decltype(q)> == notch_of<q32>); // Q-format result
-    static_assert(!detail::rational_raw<decltype(q)>);
+    static_assert(!detail::rational_storage<decltype(q)>);
     EXPECT_TRUE(q == 4002);
     auto r = (q32{1} / q32{3}).value(); // rounds to the nearest 2^-32
     EXPECT_TRUE((r == rational{1431655765, imax{1} << 32}));

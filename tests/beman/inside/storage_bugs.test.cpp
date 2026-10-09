@@ -22,7 +22,7 @@ using namespace beman::inside::detail;
 //
 // The rational-mixed `add` branch stores `((sum - lower_of<result>) / notch_of<result>)`
 // directly into `res.Raw`. That's the L-offset, but when the result type is
-// !index_raw<result> the Raw must hold the *value*. Same encoding-
+// value_storage<result> the Raw must hold the *value*. Same encoding-
 // mismatch class as the previously-fixed assignment paths.
 //---------------------------------------------------------------------------
 // Bug A: rational-mixed add into direct-storage result
@@ -44,7 +44,7 @@ TEST(StorageBugsTest, bug_a_rational_mixed_add_into_direct_storage_result) {
 // notch-offset, which is correct for offset-encoded raws but wrong for
 // direct-storage signed raws (where Raw is the value).
 //
-// The is_integer_aligned fast path (multiplication.hpp:70-87) catches the
+// The integer_lattice fast path (multiplication.hpp:70-87) catches the
 // all-integer case, so the bug only surfaces when one operand has a
 // fractional notch (which forces the result to be non-integer-aligned and
 // skips the fast path). L stays direct (Notch_L = 1, signed lower).
@@ -265,7 +265,7 @@ TEST(StorageBugsTest, try_make_reports_on_checked_f64_target) {
 TEST(StorageBugsTest, scalar_comparison_does_not_truncate_the_scalar) {
     using namespace beman::inside;
     inside<{-10, 10}> one{1}, minus_one{-1};
-    static_assert(detail::value_raw<decltype(one)>);
+    static_assert(detail::integer_value_storage<decltype(one)>);
     EXPECT_FALSE(one == 1.5);
     EXPECT_TRUE(one < 1.5);
     EXPECT_TRUE(minus_one > -1.5);
@@ -594,7 +594,7 @@ TEST(StorageBugsTest, full_int64_grid_compound_ops) {
 TEST(StorageBugsTest, value_raw_source_affine_mapping) {
     using R = inside<{-5, 5}>; // int8 value raw
     using L = inside<{{-6, 6}, 3}, round_nearest>;
-    static_assert(detail::value_raw<R>);
+    static_assert(detail::integer_value_storage<R>);
     static_assert(rational{L{R{-5}}} == -6);
     static_assert(rational{L{R{-4}}} == -3);
     static_assert(rational{L{R{4}}} == 3);

@@ -206,18 +206,19 @@ template <insidable Target, std::ranges::input_range Rng>
     Target out{};
     auto   policy = make_policy<policy_of<Target>>();
 
-    if constexpr ((detail::integer_raw<B> || detail::fp_raw<B>) && !detail::point_raw<B> && notch_of<B> != 0) {
+    if constexpr ((detail::integer_storage<B> || detail::fp_storage<B>) && !detail::point_storage<B> &&
+                  detail::notched<B>) {
         constexpr int bits =
             detail::signed_value_bits_of({detail::units_lo<B, notch_of<B>>, detail::units_hi<B, notch_of<B>>}) + 64;
         using I = detail::wide_sint<detail::limbs_for_bits(bits)>;
         I total{0};
-        if constexpr (detail::fp_raw<B>) {
+        if constexpr (detail::fp_storage<B>) {
             // A dyadic grid: value / notch is an exact integer below 2^53.
             constexpr double notch = static_cast<double>(notch_of<B>);
             for (const auto& b : r)
                 total += I{static_cast<imax>(detail::as_double(b) / notch)};
-        } else if constexpr (!detail::wide_raw<B> && sizeof(detail::raw_t<B>) <= 4) {
-            constexpr imax base = detail::index_raw<B> ? static_cast<imax>(detail::slot_base<B>) : 0;
+        } else if constexpr (!detail::wide_index_storage<B> && sizeof(detail::raw_t<B>) <= 4) {
+            constexpr imax base = detail::index_storage<B> ? static_cast<imax>(detail::slot_base<B>) : 0;
             auto           it   = std::ranges::begin(r);
             auto           end  = std::ranges::end(r);
             while (it != end) {
@@ -237,7 +238,7 @@ template <insidable Target, std::ranges::input_range Rng>
         } else
             for (const auto& b : r)
                 total += detail::value_index<I>(b);
-        if constexpr (!detail::exact_valued<B>) {
+        if constexpr (!detail::wide_valued<B>) {
             // A total within imax: the cheaper 64-bit rational store.
             constexpr imax lo = std::numeric_limits<imax>::min(), hi = std::numeric_limits<imax>::max();
             if (!(total < I{lo}) && !(I{hi} < total))
@@ -389,7 +390,7 @@ template <typename A>
 concept raw_scalar = std::integral<A> || std::floating_point<A>;
 
 #define BEMAN_INSIDE_SCALAR_MSG                                                      \
-    "an inside cannot be combined with a raw scalar: give the scalar a grid — "      \
+    "an inside cannot be combined with a raw scalar: give the scalar a grid — "    \
     "`1_ins`, `just<1>`, `one`, or `inside<{lo,hi}>{n}` for a runtime value with a " \
     "known range"
 #define BEMAN_INSIDE_NO_SCALAR(op)                                          \
@@ -402,7 +403,7 @@ concept raw_scalar = std::integral<A> || std::floating_point<A>;
         static_assert(detail::dependent_false<B>, BEMAN_INSIDE_SCALAR_MSG); \
     }                                                                       \
     template <insidable B, raw_scalar A>                                    \
-    B& operator op## = (B&, A) {                                            \
+    B& operator op##=(B&, A) {                                              \
         static_assert(detail::dependent_false<B>, BEMAN_INSIDE_SCALAR_MSG); \
     }
 

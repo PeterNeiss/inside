@@ -130,7 +130,7 @@ using trunc_auto_t = integer_auto_t<In, round_mode::trunc>;
 // The exact path: an input or output past the 64-bit rationals (more than
 // 2^64 slots, or grid numbers past 64 bits) computes on exact values.
 template <insidable... Bs>
-inline constexpr bool exact_path = (exact_valued<Bs> || ...);
+inline constexpr bool any_wide_valued = (wide_valued<Bs> || ...);
 
 template <insidable Out, std::size_t E>
 constexpr Out store_exact(const exact_frac<E>& v) {
@@ -148,7 +148,7 @@ constexpr exact_frac<E> exact_to_int(const exact_frac<E>& v) noexcept {
 // auto-deduced Out holds every result by construction, so the result is
 // stored as the raw without the rational round-trip.
 template <insidable Out, insidable AutoOut, insidable In>
-inline constexpr bool fp_direct = std::same_as<Out, AutoOut> && fp_raw<In> && fp_raw<Out>;
+inline constexpr bool fp_direct = std::same_as<Out, AutoOut> && fp_storage<In> && fp_storage<Out>;
 
 template <insidable Out, insidable In, typename F>
 constexpr Out fp_direct_store(In x, F f) noexcept {
@@ -174,7 +174,7 @@ constexpr double fp_round(double v) noexcept // half away from zero, like ration
 // rational. Round is half away from zero, as rational round() is.
 template <round_mode M, insidable Out, insidable In>
 constexpr Out integer_into(In x) {
-    if constexpr (exact_path<Out, In>)
+    if constexpr (any_wide_valued<Out, In>)
         return store_exact<Out>(exact_to_int<M>(ax::exact_input(x)));
     else if constexpr (fp_direct<Out, integer_auto_t<In, M>, In>)
         return fp_direct_store<Out>(x, [](double v) {
@@ -210,7 +210,7 @@ constexpr Out integer_into(In x) {
 template <insidable Out, insidable In>
 [[nodiscard]] constexpr Out abs_into(In x) {
     static_assert(lower_of<Out> <= 0, "beman::inside::math::abs: Out must include 0");
-    if constexpr (detail::exact_path<Out, In>)
+    if constexpr (detail::any_wide_valued<Out, In>)
         return detail::store_exact<Out>(detail::ax::abs(detail::ax::exact_input(x)));
     else if constexpr (detail::fp_direct<Out, detail::abs_auto_t<In>, In>)
         return detail::fp_direct_store<Out>(x, [](double v) { return v < 0 ? -v : v; });
@@ -227,7 +227,7 @@ template <insidable Out, insidable In>
 // copysign(mag, sgn) — |mag| with the sign of sgn; sgn == 0 counts as positive.
 template <insidable Out, insidable Mag, insidable Sgn>
 [[nodiscard]] constexpr Out copysign_into(Mag mag, Sgn sgn) {
-    if constexpr (detail::exact_path<Out, Mag>) {
+    if constexpr (detail::any_wide_valued<Out, Mag>) {
         const auto a = detail::ax::abs(detail::ax::exact_input(mag));
         return detail::store_exact<Out>(sgn < 0 ? -a : a);
     } else {
@@ -269,10 +269,11 @@ using namespace beman::inside::detail;
 //   * all unit counts fit comfortably in imax (headroom 4).
 template <insidable Out, insidable InX, insidable InY>
 inline constexpr bool fmod_int_fast = [] {
-    if (rational_raw<InX> || fp_raw<InX> || rational_raw<InY> || fp_raw<InY> || rational_raw<Out> || fp_raw<Out>)
+    if (rational_storage<InX> || fp_storage<InX> || rational_storage<InY> || fp_storage<InY> ||
+        rational_storage<Out> || fp_storage<Out>)
         return false;
-    if (::beman::inside::detail::notch64<InX> == 0 || ::beman::inside::detail::notch64<InY> == 0 ||
-        ::beman::inside::detail::notch64<Out> == 0)
+    if (!::beman::inside::detail::notched<InX> || !::beman::inside::detail::notched<InY> ||
+        !::beman::inside::detail::notched<Out>)
         return false;
     if (!divisor_excludes_zero<InY>)
         return false;
@@ -304,7 +305,7 @@ inline constexpr bool fmod_int_fast = [] {
 // Result has the sign of x. Pre: y != 0 (fmod_into checks it).
 template <insidable Out, insidable InX, insidable InY>
 [[nodiscard]] constexpr Out fmod_nonzero(InX x, InY y) {
-    if constexpr (detail::exact_path<Out, InX, InY>) {
+    if constexpr (detail::any_wide_valued<Out, InX, InY>) {
         // x − trunc(x/y)·y on exact values.
         constexpr std::size_t E =
             2 * (detail::ax::input_limbs<InX> > detail::ax::input_limbs<InY> ? detail::ax::input_limbs<InX>
@@ -324,8 +325,8 @@ template <insidable Out, insidable InX, insidable InY>
         constexpr imax loy = trunc((::beman::inside::detail::lower64<InY> / g).value());
         constexpr imax loo =
             trunc((::beman::inside::detail::lower64<Out> / ::beman::inside::detail::notch64<Out>).value());
-        const imax a = beman::inside::detail::raw_imax(x) * wx + (beman::inside::detail::index_raw<InX> ? lox : 0);
-        const imax b = beman::inside::detail::raw_imax(y) * wy + (beman::inside::detail::index_raw<InY> ? loy : 0);
+        const imax a = beman::inside::detail::raw_imax(x) * wx + (beman::inside::detail::index_storage<InX> ? lox : 0);
+        const imax b = beman::inside::detail::raw_imax(y) * wy + (beman::inside::detail::index_storage<InY> ? loy : 0);
         const imax r = a % b; // |r| < |b|, in Out's range
         return Out::from_raw(beman::inside::detail::raw_from_offset<Out>(r * wo - loo));
     } else {

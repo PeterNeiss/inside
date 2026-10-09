@@ -29,7 +29,7 @@ struct std::numeric_limits<beman::inside::inside<G, P>> {
     static constexpr bool is_specialized = true;
     static constexpr bool is_signed      = (G.Interval.Lower < beman::inside::detail::rational{0});
     // Every value is an integer: a non-zero integer notch over an integer Lower.
-    static constexpr bool is_integer        = beman::inside::detail::is_integer_aligned<B> && G.Notch != 0;
+    static constexpr bool is_integer        = beman::inside::detail::integer_lattice<B> && G.Notch != 0;
     static constexpr bool is_exact          = true; // rational + integer raw are both exact
     static constexpr bool is_bounded        = true;
     static constexpr bool is_modulo         = (P & beman::inside::wrap) != 0;
@@ -85,16 +85,16 @@ struct std::hash<beman::inside::inside<G, P>> {
     using B = beman::inside::inside<G, P>;
 
     constexpr std::size_t operator()(const B& b) const noexcept {
-        if constexpr (beman::inside::detail::fp_raw<B>) {
+        if constexpr (beman::inside::detail::fp_storage<B>) {
             // The hash of the same value without fp storage.
             using twin = beman::inside::detail::without_fp_storage<G, P>;
             return std::hash<twin>{}(twin{b});
-        } else if constexpr (beman::inside::detail::rational_raw<B>) {
+        } else if constexpr (beman::inside::detail::rational_storage<B>) {
             // Boost-style hash combine over (Numerator, Denominator).
             auto h1 = std::hash<beman::inside::umax>{}(b.raw().Numerator);
             auto h2 = std::hash<beman::inside::imax>{}(b.raw().Denominator);
             return h1 ^ (h2 + 0x9e3779b97f4a7c15ULL + (h1 << 6) + (h1 >> 2));
-        } else if constexpr (beman::inside::detail::wide_raw<B>) {
+        } else if constexpr (beman::inside::detail::wide_index_storage<B>) {
             // Same combine over the limbs of a wide index.
             std::size_t h = 0;
             for (auto w : b.raw().Word)

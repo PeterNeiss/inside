@@ -108,7 +108,7 @@ namespace detail {
 // n = max(a, b); else 0 (the value decides).
 template <insidable B>
 inline constexpr int fixed_decimals = [] {
-    if constexpr (notch_of<B> == 0)
+    if constexpr (!notched<B>)
         return 0;
     else {
         grid_wide q   = wide_denominator(notch_of<B>);
@@ -260,7 +260,7 @@ std::string big_fraction_to_string(const big_rational& r) {
 template <insidable B>
 [[nodiscard]] inline std::string to_string(B b) {
     constexpr int n = detail::fixed_decimals<B>;
-    if constexpr (detail::exact_valued<B>)
+    if constexpr (detail::wide_valued<B>)
         return detail::exact_to_string(detail::exact_of(b), n);
     else {
         const detail::rational r = detail::as_rational(b);
@@ -273,7 +273,7 @@ template <insidable B>
     std::string str;
     str += beman::inside::to_string(b);
     str += " {";
-    if constexpr (detail::frac_raw<B>)
+    if constexpr (detail::fraction_storage<B>)
         str += detail::exact_to_string(b.raw());
     else
         str += beman::inside::to_string(+b.raw());
@@ -605,7 +605,7 @@ wide_uint<K> spec_denominator(const exact_frac<K>& f) {
 template <beman::inside::grid G, beman::inside::policy_flag P>
 struct std::formatter<beman::inside::inside<G, P>>
     : beman::inside::detail::numeric_spec_formatter<
-          std::conditional_t<beman::inside::detail::is_integer_aligned<beman::inside::inside<G, P>> && G.Notch != 0 &&
+          std::conditional_t<beman::inside::detail::integer_lattice<beman::inside::inside<G, P>> && G.Notch != 0 &&
                                  beman::inside::detail::values_fit_imax<beman::inside::inside<G, P>>,
                              std::formatter<beman::inside::imax>,
                              beman::inside::detail::exact_format_spec>> {
@@ -613,7 +613,7 @@ struct std::formatter<beman::inside::inside<G, P>>
     // Integer formatting only for a notched integer grid: a continuous grid
     // (notch 0) holds fractions even between integer bounds.
     static constexpr bool integer_path =
-        beman::inside::detail::is_integer_aligned<B> && G.Notch != 0 && beman::inside::detail::values_fit_imax<B>;
+        beman::inside::detail::integer_lattice<B> && G.Notch != 0 && beman::inside::detail::values_fit_imax<B>;
 
     template <typename Ctx>
     auto format(const B& b, Ctx& ctx) const {

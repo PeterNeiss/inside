@@ -33,10 +33,11 @@ struct addition {
     // a longer denominator.
     template <policy_flag F>
     static constexpr bool needs_overflow_check =
-        frac_raw<result> || (rational_raw<result> &&
-                             (has_any_flag(F, checked) || is_checked(policy_of<L>) || is_checked(policy_of<R>) ||
-                              has_any_flag(F | policy_of<L> | policy_of<R>, exact)) &&
-                             !rational_add_is_safe(grid_of<L>, grid_of<R>));
+        fraction_storage<result> ||
+        (rational_storage<result> &&
+         (has_any_flag(F, checked) || is_checked(policy_of<L>) || is_checked(policy_of<R>) ||
+          has_any_flag(F | policy_of<L> | policy_of<R>, exact)) &&
+         !rational_add_is_safe(grid_of<L>, grid_of<R>));
 
     // Plain result when an overflow action takes the failure or no check is
     // needed; else std::expected<result, errc>.
@@ -47,20 +48,20 @@ struct addition {
     template <policy_flag F = none, typename E = empty_ref, typename A = no_action>
     static constexpr auto add(L lhs, R rhs, policy<F, E> policy = {}, A&& action = {}) -> return_t<F, A> {
         result res;
-        if constexpr (fp_raw<result>) {
+        if constexpr (fp_storage<result>) {
             // Exact by construction, no snap: fp storage is kept only when the
             // result grid is double/float-exact (fp_rep), and grid values are notch
             // multiples, so the sum is itself a representable result-grid point and
             // the double add is exact. (Division still snaps — a quotient is not a
             // grid point.)
             res = result::from_raw(raw_cast<result>(as_double(lhs) + as_double(rhs)));
-        } else if constexpr (frac_raw<result>) {
+        } else if constexpr (fraction_storage<result>) {
             const auto sum = frac_raw_of<raw_t<result>>(exact_of(lhs) + exact_of(rhs));
             if (!sum) [[unlikely]]
                 return report_or_unexpected<result>(action, policy, errc::overflow, "fraction overflow in add");
             res = result::from_raw(*sum);
-        } else if constexpr (rational_raw<result>) {
-            static_assert(!exact_valued<L> && !exact_valued<R>,
+        } else if constexpr (rational_storage<result>) {
+            static_assert(!wide_valued<L> && !wide_valued<R>,
                           "addition: a wide-index operand with a continuous result is not supported yet");
             if constexpr (needs_overflow_check<F>) {
                 auto sum = rational::add(lhs, rhs);
@@ -69,16 +70,16 @@ struct addition {
                 res = result::from_raw(*sum);
             } else
                 res = result::from_raw(rational::add_unchecked(lhs, rhs));
-        } else if constexpr (point_raw<result>)
+        } else if constexpr (point_storage<result>)
             res = result::from_raw(raw_t<result>{}); // point + point: a point
-        else if constexpr (integer_raw<L> && integer_raw<R>) {
+        else if constexpr (integer_storage<L> && integer_storage<R>) {
             // Integer raws: add the value indices in result-notch units (the result
             // notch is gcd(N_L, N_R), so it divides both), in imax or by wrapping
             // arithmetic (wide_value.hpp). Exact for every grid, at any width.
             using W = index_work_t<result, L, notch_of<result>, R, notch_of<result>>;
             res     = from_value_index<result>(value_in_units<W, notch_of<result>>(lhs) +
-                                               value_in_units<W, notch_of<result>>(rhs));
-        } else if constexpr (exact_valued<result>)
+                                           value_in_units<W, notch_of<result>>(rhs));
+        } else if constexpr (wide_valued<result>)
             // An fp or rational operand into a result with more than 2^64 slots.
             res = exact_result<result>(exact_of(lhs) + exact_of(rhs));
         else {

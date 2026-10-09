@@ -119,9 +119,9 @@ struct inside_range {
             // engine: for index storage the iterator index IS the raw (it stays in
             // [0, max_index_v], which the raw type holds); integer-grid value
             // storage is a multiply-add in raw space. Rational/fp raws keep the exact generic path.
-            if constexpr (detail::index_raw<value_type>)
+            if constexpr (detail::index_storage<value_type>)
                 return value_type::from_raw(static_cast<typename value_type::raw_type>(slot()));
-            else if constexpr (detail::value_raw<value_type> &&
+            else if constexpr (detail::integer_value_storage<value_type> &&
                                detail::abs_den(::beman::inside::detail::notch64<value_type>.Denominator) == 1 &&
                                detail::abs_den(::beman::inside::detail::lower64<value_type>.Denominator) == 1) {
                 constexpr imax notch_step = static_cast<imax>(::beman::inside::detail::notch64<value_type>.Numerator);
@@ -189,9 +189,9 @@ struct inside_range {
         // Map a grid value back to its notch index: (start - Lower) / Notch.
         // Same storage split as iterator::operator* — index raw already is the
         // notch index; integer-grid value raw divides out the (integer) step.
-        if constexpr (detail::index_raw<value_type>)
+        if constexpr (detail::index_storage<value_type>)
             StartIndex = static_cast<umax>(start.raw());
-        else if constexpr (detail::value_raw<value_type> &&
+        else if constexpr (detail::integer_value_storage<value_type> &&
                            detail::abs_den(::beman::inside::detail::notch64<value_type>.Denominator) == 1 &&
                            detail::abs_den(::beman::inside::detail::lower64<value_type>.Denominator) == 1) {
             constexpr imax notch_step = static_cast<imax>(::beman::inside::detail::notch64<value_type>.Numerator);

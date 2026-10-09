@@ -40,9 +40,9 @@ constexpr int grid_bits(const grid_wide& v) {
 // raw's: the 64-bit rational's, or a wide fraction's.
 template <insidable In>
 inline constexpr int input_bits = [] {
-    if constexpr (frac_raw<In>)
+    if constexpr (fraction_storage<In>)
         return decltype(raw_t<In>::Num)::bits;
-    else if constexpr (notch_of<In> == 0)
+    else if constexpr (!notched<In>)
         return 130;
     else
         return grid_magnitude_bits<In> + grid_bits(wide_denominator(notch_of<In>)) + 2;
@@ -54,7 +54,7 @@ inline constexpr std::size_t input_limbs = limbs_for_bits(input_bits<In>);
 template <insidable In>
 constexpr exact_frac<input_limbs<In>> exact_input(const In& x) {
     using I = wide_sint<input_limbs<In>>;
-    if constexpr (exact_valued<In>) {
+    if constexpr (wide_valued<In>) {
         const auto v = exact_of(x);
         return {static_cast<I>(v.Num), static_cast<I>(v.Den)};
     } else {
@@ -362,9 +362,9 @@ struct trig_core {
     template <int W>
     constexpr auto run() const {
         constexpr int S = W + 10 + (Fn == trig::tan ? KMax + 4 : 0);
-        constexpr int T = S + Mag + 4;                                       // reduce with Mag more bits
-        using I         = fixed_t<(Fn == trig::tan ? S + KMax + 4 : S + 2)>; // |sin|, |cos| ≤ 1; |tan| ≤ 2^(KMax+3)
-        using R         = fixed_t<T + Mag + 8>;
+        constexpr int T = S + Mag + 4;                               // reduce with Mag more bits
+        using I = fixed_t<(Fn == trig::tan ? S + KMax + 4 : S + 2)>; // |sin|, |cos| ≤ 1; |tan| ≤ 2^(KMax+3)
+        using R = fixed_t<T + Mag + 8>;
         constexpr std::size_t K  = limbs_of<I>;
         const R               xq = to_q<T, limbs_of<R>>(X);
         const R               hp = static_cast<R>(pi_q<T - 1>);                                    // π/2 within 1
@@ -612,7 +612,7 @@ struct ahyp_core {
                 const I     lv = l.Value + I{h} * static_cast<I>(ln2_q<S>);
                 return approx<K>{neg ? -lv : lv, S, l.Error + static_cast<umax>(h) + 1};
             } else {
-                const F     r{(a.Num - a.Den) * (a.Num + a.Den), a.Den * a.Den};     // x² − 1 = (n − d)(n + d)/d²
+                const F     r{(a.Num - a.Den) * (a.Num + a.Den), a.Den * a.Den}; // x² − 1 = (n − d)(n + d)/d²
                 const I     v = to_q<S, K>(a) + sqrt_exact_q<S, K, 2 * Bits + 2>(r); // ≥ 1, within 2
                 const fx<K> l = log_fixed<S>(v, 2);
                 return approx<K>{l.Value, S, l.Error};
@@ -709,7 +709,7 @@ template <grid_rational Notch, bool Up, std::size_t K>
 constexpr wide_sint<K + notch_limbs<Notch>> lattice_index(const wide_sint<K>& n, const wide_sint<K>& d) {
     using J   = wide_sint<K + notch_limbs<Notch>>;
     const J p = static_cast<J>(wide_numerator(Notch)), q = static_cast<J>(wide_denominator(Notch));
-    return rounded_div<Up ? round_mode::ceil : round_mode::floor>(J{n} * q, J{d} * p);
+    return rounded_div < Up ? round_mode::ceil : round_mode::floor > (J{n} * q, J{d} * p);
 }
 
 template <grid_rational Notch, bool Up, int W, int Cap, typename Core>
@@ -808,7 +808,7 @@ inline constexpr int hypot_bits = 2 * (input_bits<InX> + input_bits<InY>)+2;
 // gcd of two notches (0 when either is 0), for two-input outputs.
 template <insidable A, insidable B>
 inline constexpr grid_rational gcd_notch = [] {
-    if constexpr (notch_of<A> == 0 || notch_of<B> == 0)
+    if constexpr (!notched<A> || !notched<B>)
         return grid_rational{0};
 #if BEMAN_INSIDE_BIG_GRIDS
     else
@@ -841,7 +841,7 @@ inline constexpr bool fp_tier_available = false;
 // significant bits.
 template <insidable In>
 inline constexpr bool fp_exact_input = [] {
-    if constexpr (exact_valued<In> || rational_raw<In> || notch_of<In> == 0)
+    if constexpr (wide_valued<In> || rational_storage<In> || !notched<In>)
         return false;
     else {
         const grid_wide q = wide_denominator(notch_of<In>), p = wide_numerator(notch_of<In>);
@@ -857,7 +857,7 @@ inline constexpr int kFpOnlyBits = 36;
 // Bits of Out's value indices: every |index| < 2^index_bits.
 template <insidable Out>
 inline constexpr int index_bits = [] {
-    if constexpr (!slotted<Out> || exact_valued<Out>)
+    if constexpr (!notched<Out> || wide_valued<Out>)
         return 1024;
     else {
         const grid_wide lo = slot_base<Out>, hi = slot_base<Out> + grid_of<Out>.slot_count();
@@ -875,13 +875,13 @@ inline constexpr int fp_bits = index_bits<Out> < Mag + out_bits<Out> - 1 ? index
 
 // Value indices of Out within ±2^52, so its slot bounds are doubles exactly.
 template <insidable Out>
-inline constexpr bool fp_output = slotted<Out> && !exact_valued<Out> && index_bits<Out> <= 52;
+inline constexpr bool fp_output = notched<Out> && !wide_valued<Out> && index_bits<Out> <= 52;
 
 // The tier for kernel K: Out within its limit. Inputs the tier reads as
 // doubles: anything within the 64-bit rationals.
 template <insidable Out, typename K, insidable... Ins>
 inline constexpr bool fp_tier =
-    fp_tier_available && fp_output<Out> && fp_bits<Out, K::Mag> <= K::Limit && (!exact_valued<Ins> && ...);
+    fp_tier_available && fp_output<Out> && fp_bits<Out, K::Mag> <= K::Limit && (!wide_valued<Ins> && ...);
 
 // A grid's notch p/q as doubles (both below 2^63, so within 2^-53 of p and
 // q), and whether it is a power of two, so that scaling by it is exact.
@@ -897,7 +897,7 @@ inline constexpr bool dyadic_notch = [] {
 
 // Value indices of In below 2^53: exact as doubles.
 template <insidable In>
-inline constexpr bool small_index = !exact_valued<In> && !rational_raw<In> && notch_of<In> != 0 &&
+inline constexpr bool small_index = !wide_valued<In> && !rational_storage<In> && notched<In> &&
                                     grid_magnitude_bits<In> + grid_bits(wide_denominator(notch_of<In>)) -
                                             grid_bits(wide_numerator(notch_of<In>)) + 1 <=
                                         53;
@@ -908,7 +908,7 @@ inline constexpr bool small_index = !exact_valued<In> && !rational_raw<In> && no
 // conversion's nearest double.
 template <insidable In>
 constexpr double input_double(const In& x) noexcept {
-    if constexpr (fp_raw<In> || point_raw<In> || rational_raw<In>)
+    if constexpr (fp_storage<In> || point_storage<In> || rational_storage<In>)
         return as_double(x);
     else if constexpr (fp_exact_input<In>)
         return static_cast<double>(value_index<imax>(x)) * (notch_p<In> / notch_q<In>);
@@ -935,9 +935,9 @@ inline double nearest_int(double t) noexcept { return __builtin_nearbyint(t); }
 // the caller's type (double or imax): only an fp raw reads it.
 template <insidable Out, typename J>
 [[gnu::always_inline]] inline void store_slot(J j, umax k, Out& out) {
-    if constexpr (integer_raw<Out>)
+    if constexpr (integer_storage<Out>)
         out = Out::from_raw(raw_from_offset<Out>(k));
-    else if constexpr (rational_raw<Out>) // the grid point as a fraction
+    else if constexpr (rational_storage<Out>) // the grid point as a fraction
         out = store<Out>(wide_sint<2>{k});
     else // fp raw: the grid point, exact
         out = Out::from_raw(static_cast<raw_t<Out>>(static_cast<double>(j) * (notch_p<Out> / notch_q<Out>)));
@@ -1015,7 +1015,7 @@ inline constexpr double two53 = 0x1p53;
 // are doubles exactly.
 template <insidable Out>
 inline constexpr bool dd_output = [] {
-    if constexpr (!slotted<Out> || exact_valued<Out> || out_bits<Out> + mag_bits<Out> <= kFpOnlyBits)
+    if constexpr (!notched<Out> || wide_valued<Out> || out_bits<Out> + mag_bits<Out> <= kFpOnlyBits)
         return false;
     else {
         if (!(notch_p<Out> < two53 && notch_q<Out> < two53))
@@ -1029,23 +1029,23 @@ inline constexpr bool dd_output = [] {
 // Inputs the tier reads exactly (doubles) or within 2^-100 (index·p/q, or
 // a rational raw's numerator over its denominator).
 template <insidable In>
-inline constexpr bool dd_input = !exact_valued<In> && !point_raw<In> &&
-                                 (fp_raw<In> || fp_exact_input<In> || rational_raw<In> ||
+inline constexpr bool dd_input = !wide_valued<In> && !point_storage<In> &&
+                                 (fp_storage<In> || fp_exact_input<In> || rational_storage<In> ||
                                   (small_index<In> && notch_p<In> < two53 && notch_q<In> < two53));
 
 template <insidable Out, insidable... Ins>
 inline constexpr bool dd_tier = fp_tier_available && dd_output<Out> && (dd_input<Ins> && ...);
 
 template <insidable In>
-inline constexpr double dd_input_rel = (fp_raw<In> || fp_exact_input<In>) ? 0.0 : 0x1p-100;
+inline constexpr double dd_input_rel = (fp_storage<In> || fp_exact_input<In>) ? 0.0 : 0x1p-100;
 
 template <insidable In>
 inline ddk::dd dd_read(const In& x) noexcept {
-    if constexpr (fp_raw<In>)
+    if constexpr (fp_storage<In>)
         return {as_double(x), 0};
     else if constexpr (fp_exact_input<In>)
         return {input_double(x), 0};
-    else if constexpr (rational_raw<In>) {
+    else if constexpr (rational_storage<In>) {
         const rational r     = x.raw();     // ±Numerator/|Denominator|
         auto           exact = [](umax n) { // two 32-bit halves, each a double exactly
             return ddk::fast_two_sum(static_cast<double>(n & ~umax{0xFFFFFFFF}),
@@ -1458,8 +1458,8 @@ inline bool dd_attempt_pow(const InB& bi, const InE& ei, Out& out) {
             }
             const ddk::dd v = ddk::exp_lean_value(y);
             bound           = fabs_d(v.Hi) * (ddk::lean_exp::Rel + fabs_d(e.Hi) * bound * (1 + 0x1p-40) +
-                                              4 * fpk::kU * fpk::kU * L + input(L)) +
-                              fpk::kTiny;
+                                    4 * fpk::kU * fpk::kU * L + input(L)) +
+                    fpk::kTiny;
             return v;
         },
         [&] {
@@ -1505,8 +1505,8 @@ inline constexpr bool dd_tier = false;
 
 namespace beman::inside::math::adaptive {
 namespace ax = ::beman::inside::math::detail::ax;
-using ::beman::inside::detail::exact_valued;
 using ::beman::inside::detail::grid_rational;
+using ::beman::inside::detail::wide_valued;
 
 // What follows a fast tier: rarely taken, so out of line, which keeps its
 // frame off the tier's fast path.
@@ -1576,7 +1576,7 @@ tiers([[maybe_unused]] const F& fp, [[maybe_unused]] const D& dd, const I& integ
 // rounding mode, like any assignment that may round.
 template <insidable Out>
 consteval void require_rounding() noexcept {
-    static_assert(has_flag(policy_of<Out>, snap) || !ax::slotted<Out>,
+    static_assert(has_flag(policy_of<Out>, snap) || !ax::notched<Out>,
                   "beman::inside::math: the result is rounded onto Out's grid - Out must permit rounding "
                   "(declare it with round_nearest, round_floor, ...)");
 }
@@ -1781,7 +1781,7 @@ consteval bool deducible() noexcept {
     static_assert(has_flag(policy_of<In>, snap),
                   "beman::inside::math: a deduced result is rounded onto the input's grid - its operand "
                   "must permit rounding (declare it with round_nearest, round_floor, ...)");
-    static_assert(notch_of<In> != 0,
+    static_assert(::beman::inside::detail::notched<In>,
                   "beman::inside::math: a deduced output takes the input's notch - the input needs one");
     return true;
 }

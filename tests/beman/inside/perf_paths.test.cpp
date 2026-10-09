@@ -93,7 +93,7 @@ TEST(PerfPathsTest, q_format_division_result_type_is_q_format_same_notch_as_l) {
     auto q   = div(fp{200}, fp{8}, snapped);
     using R  = std::remove_cvref_t<decltype(*q)>;
     static_assert(notch_of<R> == notch_of<fp>); // same Q-format, not rational-raw
-    static_assert(!(rational_raw<R>));
+    static_assert(!(rational_storage<R>));
 }
 
 //---------------------------------------------------------------------------
@@ -129,10 +129,10 @@ TEST(PerfPathsTest, operator_rational_handles_fractional_q_format_value) {
 TEST(PerfPathsTest, multiply_by_point_keeps_integer_storage) {
     using U  = inside<{0, 200}>;
     using R3 = decltype(U{} * just<3>);
-    static_assert(!rational_raw<R3>);
+    static_assert(!rational_storage<R3>);
     static_assert(notch_of<R3> == 3 && lower_of<R3> == 0 && upper_of<R3> == 600);
     using RH = decltype(midpoint(U{}, U{}));
-    static_assert(!rational_raw<RH>);
+    static_assert(!rational_storage<RH>);
     static_assert(notch_of<RH> == rational{1, 2});
 }
 
@@ -179,7 +179,7 @@ TEST(PerfPathsTest, int32_native_div_mod_matches_wide_reference) {
 //---------------------------------------------------------------------------
 TEST(PerfPathsTest, fraction_and_to_value_fast_paths_match_rational) {
     using Q = inside<{-4, 4, frac<1, 8>}>; // dyadic, negative Lower
-    static_assert(index_raw<Q> && has_qformat_fast_path<Q>);
+    static_assert(index_storage<Q> && qformat_codec_fits<Q>);
     for (imax k = 0; k <= 64; ++k) {
         Q              q = Q::from_raw(static_cast<Q::raw_type>(k));
         const rational r{q};
@@ -189,7 +189,7 @@ TEST(PerfPathsTest, fraction_and_to_value_fast_paths_match_rational) {
         EXPECT_EQ(to_value(q), trunc(r));
     }
     using I = inside<{-30, 90, 3}>; // integer notch 3, index storage
-    static_assert(index_raw<I> && is_integer_aligned<I>);
+    static_assert(index_storage<I> && integer_lattice<I>);
     for (imax v = -30; v <= 90; v += 3) {
         I i{v};
         EXPECT_EQ(to_value(i), v);
@@ -207,7 +207,7 @@ TEST(PerfPathsTest, fraction_and_to_value_fast_paths_match_rational) {
 #ifndef BEMAN_INSIDE_MATH_NO_FP
 TEST(PerfPathsTest, fp_algebraic_fast_path_matches_rational) {
     using X = inside<{{-8, 8}, per<4>}, round_nearest | f64>;
-    static_assert(fp_raw<X>);
+    static_assert(fp_storage<X>);
     for (int k = -32; k <= 32; ++k) {
         const X        x = X::from_raw(k / 4.0);
         const rational r{x};

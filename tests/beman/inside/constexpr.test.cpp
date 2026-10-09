@@ -201,15 +201,15 @@ TEST(ConstexprTest, constexpr_storage_min_picks_the_smallest_fitting_raw) {
 // constexpr: storage-kind classification
 TEST(ConstexprTest, constexpr_storage_kind_classification) {
     // The disjoint storage encodings, deduced from the grid.
-    // value_raw: Raw == value as a plain int (notch 1 + lower 0, or signed raw).
-    static_assert(value_raw<inside<{0, 100}>>);
-    static_assert(value_raw<inside<{-40, 85}>>);
-    // rational_raw: notch 0 — Raw is the value as a rational.
-    static_assert(rational_raw<inside<{{-10, 10}, 0}>>);
-    // index_raw: notch 1 with non-zero unsigned lower, OR fractional notch — Raw
+    // integer_value_storage: Raw == value as a plain int (notch 1 + lower 0, or signed raw).
+    static_assert(integer_value_storage<inside<{0, 100}>>);
+    static_assert(integer_value_storage<inside<{-40, 85}>>);
+    // rational_storage: notch 0 — Raw is the value as a rational.
+    static_assert(rational_storage<inside<{{-10, 10}, 0}>>);
+    // index_storage: notch 1 with non-zero unsigned lower, OR fractional notch — Raw
     // is a 0-based notch index.
-    static_assert(index_raw<inside<{5, 100}>>);
-    static_assert(index_raw<inside<{{0, 5}, rational{1u, 2}}>>);
+    static_assert(index_storage<inside<{5, 100}>>);
+    static_assert(index_storage<inside<{{0, 5}, rational{1u, 2}}>>);
 }
 
 //---------------------------------------------------------------------------
@@ -229,7 +229,7 @@ TEST(ConstexprTest, constexpr_inside_plus_on_signed_direct_grids) {
 // constexpr: inside +/-/* on offset-encoded grids
 TEST(ConstexprTest, constexpr_inside_plus_on_offset_encoded_grids) {
     using o = inside<{10, 50}>; // offset encoding (uint8 raw)
-    static_assert(index_raw<o>);
+    static_assert(index_storage<o>);
 
     constexpr o a{15}, b{40};
     static_assert(a + b == 55);

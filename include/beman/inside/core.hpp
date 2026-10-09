@@ -245,8 +245,7 @@ struct inside {
     //                       in-range sites (array indexing). FP shares the gate.
     //   to<T>(b)/as<T>(b) — free-function forms, for generic code.
     constexpr operator imax() const
-        requires(detail::notch_is_unit_integer<G> &&
-                 G.Interval.Lower >= detail::rational{std::numeric_limits<imax>::min()} &&
+        requires(detail::integer_notch<G> && G.Interval.Lower >= detail::rational{std::numeric_limits<imax>::min()} &&
                  G.Interval.Upper <= detail::rational{std::numeric_limits<imax>::max()})
     {
         return detail::to_value(*this);
@@ -261,16 +260,16 @@ struct inside {
     // Unavailable on a wide-index grid: its values outgrow the 64-bit rational
     // (compare it, or read it with to<T>()).
     constexpr operator detail::rational() const
-        requires(!detail::exact_valued<inside>)
+        requires(!detail::wide_valued<inside>)
     {
         if constexpr (G.Interval.Lower == G.Interval.Upper)
             return G.Interval.Lower;
-        else if constexpr (!detail::index_raw<inside>)
+        else if constexpr (detail::value_storage<inside>)
             return Raw;
         // Q-format-with-integer-Lower fast path skips the generic path's three
         // rational ops. Falls through to the rational path when the raw is too wide
         // to widen safely (e.g. uint64 from a Q16.16 × Q16.16 result type).
-        else if constexpr (detail::has_qformat_fast_path<inside>)
+        else if constexpr (detail::qformat_codec_fits<inside>)
             return detail::q_format_decode(*this);
         else
             return (*(Raw * detail::notch64<inside>)+detail::lower64<inside>).value();
@@ -287,7 +286,7 @@ struct inside {
         constexpr bool check_hi = upper_of<inside> > detail::rational{lim::max()};
         if constexpr (!check_lo && !check_hi && detail::values_fit_imax<inside>)
             return static_cast<T>(detail::to_value(*this));
-        else if constexpr (detail::exact_valued<inside>) {
+        else if constexpr (detail::wide_valued<inside>) {
             const auto v = detail::exact_of(*this);
             if (check_lo && v < detail::exact_of(lim::min()))
                 return std::unexpected{std::unsigned_integral<T> ? errc::domain_error : errc::overflow};
@@ -344,9 +343,9 @@ struct inside {
     // grids need no division; dyadic Q-format grids reduce by shifting out
     // common factors of two instead of a gcd.
     constexpr std::pair<imax, imax> fraction() const {
-        if constexpr (detail::index_raw<inside> && detail::is_integer_aligned<inside>)
+        if constexpr (detail::index_storage<inside> && detail::integer_lattice<inside>)
             return {detail::to_value(*this), 1};
-        else if constexpr (detail::index_raw<inside> && detail::has_qformat_fast_path<inside> &&
+        else if constexpr (detail::index_storage<inside> && detail::qformat_codec_fits<inside> &&
                            std::has_single_bit(detail::abs_den(detail::notch64<inside>.Denominator))) {
             constexpr imax nd  = detail::abs_den(detail::notch64<inside>.Denominator);
             constexpr int  k   = std::countr_zero(static_cast<umax>(nd));
@@ -368,18 +367,18 @@ struct inside {
 
     [[nodiscard]] constexpr negative operator-() const {
         negative neg;
-        if constexpr (detail::point_raw<inside>)
+        if constexpr (detail::point_storage<inside>)
             neg = negative::from_raw({}); // −point is a point: no raw
-        else if constexpr (detail::fp_raw<inside>)
+        else if constexpr (detail::fp_storage<inside>)
             neg = negative::from_raw(raw_type{} - Raw); // 0 − 0 is +0: no −0.0 raw
-        else if constexpr (detail::rational_raw<inside>)
+        else if constexpr (detail::rational_storage<inside>)
             neg = negative::from_raw(-(Raw));
         else {
             // Integer raws: the negated value index is −J (wide_value.hpp), in imax
             // when the bounds allow, else by wrapping. Index storage on both sides
             // counts the slot from the opposite end instead.
             using W = detail::index_work_t<negative, inside, G.Notch, inside, G.Notch>;
-            if constexpr (detail::index_raw<inside> && detail::index_raw<negative>) {
+            if constexpr (detail::index_storage<inside> && detail::index_storage<negative>) {
                 constexpr W count = static_cast<W>(G.slot_count());
                 neg = negative::from_raw(static_cast<detail::raw_t<negative>>(count - static_cast<W>(Raw)));
             } else
@@ -481,21 +480,21 @@ struct inside {
     // every grid within int64, a wide_int beyond — never overflowing.
     template <insidable R>
     static constexpr bool point_delta_ok =
-        detail::integer_raw<inside> && notch_of<inside> != 0 && lower_of<R> == upper_of<R> &&
+        detail::integer_storage<inside> && detail::notched<inside> && detail::point_grid<R> &&
         (detail::wide_numerator(lower_of<R>) * detail::wide_denominator(notch_of<inside>)) %
                 (detail::wide_denominator(lower_of<R>) * detail::wide_numerator(notch_of<inside>)) ==
             detail::grid_wide{0};
 
     template <insidable R>
     static constexpr bool raw_add_ok =
-        detail::integer_raw<inside> && detail::integer_raw<R> && !detail::point_raw<R> && notch_of<inside> != 0 &&
-        notch_of<inside> == notch_of<R>;
+        detail::integer_storage<inside> && detail::integer_storage<R> && !detail::point_storage<R> &&
+        detail::notched<inside> && notch_of<inside> == notch_of<R>;
 
     template <insidable R>
     static constexpr detail::grid_wide point_delta = detail::exact_quotient(lower_of<R>, notch_of<inside>);
     template <insidable R>
     static constexpr detail::grid_wide add_bias = [] {
-        if constexpr (detail::index_raw<R>)
+        if constexpr (detail::index_storage<R>)
             return detail::slot_base<R>;
         else
             return detail::grid_wide{0};
@@ -793,7 +792,7 @@ template <insidable B>
         return std::unexpected{w.error()};
     if (*w < detail::exact_of_grid<K>(lower_of<B>) || detail::exact_of_grid<K>(upper_of<B>) < *w)
         return std::unexpected{errc::overflow};
-    if constexpr (notch_of<B> != 0)
+    if constexpr (detail::notched<B>)
         if (!detail::exact_index<B, detail::round_mode::trunc>(*w).Exact)
             return std::unexpected{errc::rounding_error};
     errc ec{};
@@ -814,7 +813,7 @@ namespace detail {
 // `bias + raw` without a rational decode.
 template <insidable B>
 inline constexpr bool index_cmp_fits = [] {
-    if constexpr (rational_raw<B> || fp_raw<B> || detail::notch64<B> == 0 || !values_fit_imax<B>)
+    if constexpr (rational_storage<B> || fp_storage<B> || !detail::notched<B> || !values_fit_imax<B>)
         return false;
     else {
         constexpr auto lo  = detail::lower64<B> / detail::notch64<B>;
@@ -828,7 +827,7 @@ inline constexpr bool index_cmp_fits = [] {
 // 0 for direct storage (raw is already the value == the index at notch 1).
 template <insidable B>
 inline constexpr imax index_cmp_bias = [] {
-    if constexpr (index_raw<B>) {
+    if constexpr (index_storage<B>) {
         constexpr auto lo = *(detail::lower64<B> / detail::notch64<B>);
         return signed_numerator(lo);
     } else
@@ -857,25 +856,26 @@ inline constexpr auto equal_to = [](const auto& a, const auto& b) { return a == 
 
 // Every value of B is exactly a double (fp storage, or a double-exact grid).
 template <insidable B>
-inline constexpr bool exact_in_double = fp_raw<B> || double_exact<grid_of<B>>;
+inline constexpr bool exact_in_double = fp_storage<B> || double_exact<grid_of<B>>;
 
 // inside ⋈ inside (⋈ = `cmp`: <=> or ==) in the cheapest exact form the two
 // storage shapes allow.
 template <insidable L, insidable R, class Cmp>
 constexpr auto compare(const L& lhs, const R& rhs, Cmp cmp) {
     // same grid and encoding: Raw is monotonically ordered and comparable
-    if constexpr (grid_of<L> == grid_of<R> && same_encoding<L, R>)
+    if constexpr (grid_of<L> == grid_of<R> && same_storage<L, R>)
         return cmp(lhs.raw(), rhs.raw());
     // a wide-index operand: exact wide fractions
-    else if constexpr (exact_valued<L> || exact_valued<R>)
+    else if constexpr (wide_valued<L> || wide_valued<R>)
         return cmp(exact_of(lhs), exact_of(rhs));
     // an fp-backed operand: compare in double when both sides' values are
     // exact in double (raw_imax would truncate the fp raw); otherwise the
     // rational fallback below keeps the comparison exact.
-    else if constexpr ((fp_raw<L> || fp_raw<R>) && exact_in_double<L> && exact_in_double<R>)
+    else if constexpr ((fp_storage<L> || fp_storage<R>) && exact_in_double<L> && exact_in_double<R>)
         return cmp(as_double(lhs), as_double(rhs));
     // both integer-direct (notch=1, Raw==value): compare as integers
-    else if constexpr (value_raw<L> && value_raw<R> && values_fit_imax<L> && values_fit_imax<R>)
+    else if constexpr (integer_value_storage<L> && integer_value_storage<R> && values_fit_imax<L> &&
+                       values_fit_imax<R>)
         return cmp(raw_imax(lhs), raw_imax(rhs));
     // same nonzero notch, integer-backed: compare signed value indices
     // (compile-time bias + raw) — e.g. two same-Q-format fixed-point types
@@ -905,7 +905,7 @@ namespace detail {
 // provably fit imax for every representable c of type A.
 template <insidable B, typename A>
 inline constexpr bool scalar_index_cmp_fits = [] {
-    if constexpr (!std::integral<A> || !index_raw<B> || !index_cmp_fits<B>)
+    if constexpr (!std::integral<A> || value_storage<B> || !index_cmp_fits<B>)
         return false;
     else {
         constexpr umax cap       = static_cast<umax>(std::numeric_limits<imax>::max());
@@ -941,7 +941,7 @@ constexpr auto compare_scalar(const B& lhs, A rhs, Cmp cmp) {
     constexpr bool imax_scalar = std::signed_integral<A> || (std::unsigned_integral<A> && sizeof(A) < sizeof(imax));
     constexpr bool double_exact_values =
         lower_of<B> >= rational{-(imax{1} << 53)} && upper_of<B> <= rational{imax{1} << 53};
-    if constexpr (exact_valued<B>) {
+    if constexpr (wide_valued<B>) {
         if constexpr (std::floating_point<A>) {
             if (rhs == rhs && !(rhs - rhs == 0)) // ±inf lies past every grid
                 return cmp(exact_of(0), exact_of(rhs < 0 ? -1 : 1));
@@ -949,9 +949,9 @@ constexpr auto compare_scalar(const B& lhs, A rhs, Cmp cmp) {
                 return cmp(exact_of(lhs), exact_of_double(static_cast<double>(rhs)));
         }
         return cmp(exact_of(lhs), exact_of(as_rational(rhs)));
-    } else if constexpr (value_raw<B> && values_fit_imax<B> && imax_scalar)
+    } else if constexpr (integer_value_storage<B> && values_fit_imax<B> && imax_scalar)
         return cmp(raw_imax(lhs), static_cast<imax>(rhs));
-    else if constexpr (value_raw<B> && values_fit_imax<B> && std::floating_point<A> && double_exact_values)
+    else if constexpr (integer_value_storage<B> && values_fit_imax<B> && std::floating_point<A> && double_exact_values)
         return cmp(static_cast<double>(raw_imax(lhs)), static_cast<double>(rhs));
     else if constexpr (scalar_index_cmp_fits<B, A>)
         return cmp((index_cmp_bias<B> + raw_imax(lhs)) * static_cast<imax>(detail::notch64<B>.Numerator),

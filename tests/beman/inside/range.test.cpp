@@ -258,12 +258,12 @@ TEST(RangeTest, inside_range_full_width_raw_visits_every_value_once) {
 TEST(RangeTest, inside_range_fast_decode_arms_engage_dispatch_pins) {
     // The operator* fast arms are gated on the storage kind; these pins fail if
     // a storage-selection change silently reroutes a type to another arm.
-    static_assert(value_raw<inside_range<{0, 999}>::value_type>);
-    static_assert(index_raw<inside_range<{{0, 4}, per<256>}>::value_type>);
-    static_assert(index_raw<inside_range<{{-2, 2}, per<4>}>::value_type>);
-    static_assert(rational_raw<inside_range<{{0, 2}, per<3>}, exact>::value_type>);
+    static_assert(integer_value_storage<inside_range<{0, 999}>::value_type>);
+    static_assert(index_storage<inside_range<{{0, 4}, per<256>}>::value_type>);
+    static_assert(index_storage<inside_range<{{-2, 2}, per<4>}>::value_type>);
+    static_assert(rational_storage<inside_range<{{0, 2}, per<3>}, exact>::value_type>);
 #ifndef BEMAN_INSIDE_MATH_NO_FP // under BEMAN_INSIDE_MATH_NO_FP the f64 storage arm is elided
-    static_assert(fp_raw<inside_range<{{0, 4}, per<256>}, f64 | round_nearest>::value_type>);
+    static_assert(fp_storage<inside_range<{{0, 4}, per<256>}, f64 | round_nearest>::value_type>);
 #endif
 }
 

@@ -484,7 +484,7 @@ constexpr auto storage_pick() {
         // WIDEN the storage to binary64. This makes a deduced f32 output (a cmath
         // result inheriting the operand's flag) whose grid overflows float store its
         // value in double rather than hard-erroring — the value stays exact. The f32
-        // POLICY bit remains (harmless; storage is raw-driven via fp_raw).
+        // POLICY bit remains (harmless; storage is raw-driven via fp_storage).
         return double{};
     else if constexpr (has_flag(P, f32) && dyadic_grid<G>) {
         // Too fine for double too → genuinely unrepresentable as fp storage.

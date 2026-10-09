@@ -14,9 +14,9 @@
 namespace beman::inside {
 template <insidable B, std::uniform_random_bit_generator G>
 [[nodiscard]] B uniform(G& g) {
-    static_assert(detail::notch64<B> != 0 || detail::lower64<B> == detail::upper64<B>,
+    static_assert(detail::notched<B> || detail::point_grid<B>,
                   "uniform<B>: a continuous grid (notch 0) has no slots to choose from");
-    if constexpr (detail::wide_raw<B>) {
+    if constexpr (detail::wide_index_storage<B>) {
         // More than 2^64 slots: draw limbs uniformly, masked to the slot count's
         // bit width, and reject draws past the count (accepts > 1/2 of draws).
         using W                = detail::raw_t<B>;
@@ -35,10 +35,10 @@ template <insidable B, std::uniform_random_bit_generator G>
     } else {
         std::uniform_int_distribution<umax> pick(0, detail::max_index_v<B>);
         const umax                          k = pick(g);
-        if constexpr (detail::fp_raw<B> || detail::rational_raw<B>) {
+        if constexpr (detail::fp_storage<B> || detail::rational_storage<B>) {
             const detail::rational v =
                 (detail::lower64<B> + (detail::rational{k} * detail::notch64<B>).value()).value();
-            if constexpr (detail::fp_raw<B>)
+            if constexpr (detail::fp_storage<B>)
                 return B::from_raw(static_cast<detail::raw_t<B>>(static_cast<double>(v))); // exact: fp-exact grid
             else
                 return B::from_raw(v);

@@ -13,7 +13,7 @@ using namespace beman::inside::detail;
 
 TEST(NoFpStorageTest, f64_flag_is_integer_backed) {
     using F = inside<{{0, 4}, per<4>}, f64>;
-    static_assert(!fp_raw<F>);
+    static_assert(!fp_storage<F>);
     const F f{rational{3, 4}};
     EXPECT_EQ(rational{f}, (rational{3, 4}));
 }

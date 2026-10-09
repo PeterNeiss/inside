@@ -43,8 +43,8 @@ TEST(BigGridTest, storage) {
     static_assert(std::is_same_v<huge::raw_type, detail::wide_uint<2>>);
     static_assert(std::is_same_v<far::raw_type, std::uint8_t>);          // 11 slots
     static_assert(std::is_same_v<fine::raw_type, detail::wide_uint<2>>); // 2^80 + 1 slots
-    static_assert(detail::big_valued<far> && detail::exact_valued<far>);
-    static_assert(!detail::big_valued<inside<{0, 100}>>);
+    static_assert(detail::wide_grid_numbers<far> && detail::wide_valued<far>);
+    static_assert(!detail::wide_grid_numbers<inside<{0, 100}>>);
     // Equal grids are the same type, however they were spelled.
     static_assert(std::is_same_v<inside<{0, g(pow2(50) * pow2(50))}>, huge>);
 }
@@ -211,7 +211,7 @@ TEST(BigGridTest, continuous_past_64_bits) {
     const length universe = *from_chars<length>("8.8e26");
     const auto   ratio    = universe / planck;
     ASSERT_TRUE(ratio.has_value());
-    static_assert(detail::frac_raw<std::remove_cvref_t<decltype(*ratio)>>);
+    static_assert(detail::fraction_storage<std::remove_cvref_t<decltype(*ratio)>>);
     EXPECT_EQ(to_string(*ratio), "17600000000000000000000000000000000000000000000000000000000000000000/323251");
     EXPECT_TRUE(*ratio > 5.4e61 && *ratio < 5.5e61);
     #ifdef __cpp_lib_format
@@ -225,7 +225,7 @@ TEST(BigGridTest, continuous_past_64_bits) {
 
     // Declared directly, with every policy.
     using big_real = inside<{{0, 1e30_g}, 0}>;
-    static_assert(detail::frac_raw<big_real>);
+    static_assert(detail::fraction_storage<big_real>);
     big_real b = rational{1, 3};
     EXPECT_EQ(to_string(b), "1/3");
     b = *from_chars<big_real>("123456789012345678901234567890/11");

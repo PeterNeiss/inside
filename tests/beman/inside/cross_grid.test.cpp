@@ -69,7 +69,7 @@ void check_cross(const std::vector<double>& va, const std::vector<double>& vb) {
                 SCOPED_TRACE(::testing::Message() << "- a=" << to_string(ar) << " b=" << to_string(br));
                 ASSERT_TRUE(static_cast<rational>(a - b) == *(ar - br));
             }
-            if constexpr (requires { a * b; }) {
+            if constexpr (requires { a* b; }) {
                 SCOPED_TRACE(::testing::Message() << "* a=" << to_string(ar) << " b=" << to_string(br));
                 ASSERT_TRUE(static_cast<rational>(a * b) == *(ar * br));
             }
@@ -117,7 +117,7 @@ TEST(CrossGridTest, cross_grid_compare_arith_asymmetric_offsets_same_notch) {
 // fractional notch-offset inside to a direct-storage (integer) inside used to
 // drop the fractional part (-7.75 + (-3) silently became -10, not -10.75)
 // because the dispatch chose the integer `to_value` path. The integer path is
-// now gated on is_integer_aligned of BOTH operands (matching multiplication).
+// now gated on integer_lattice of BOTH operands (matching multiplication).
 // regression: fractional + integer-direct keeps the fraction
 TEST(CrossGridTest, regression_fractional_plus_integer_direct_keeps_the_fraction) {
     using Frac = inside<{{-8, 8}, per<4>}>; // fractional, notch-offset storage
@@ -139,7 +139,7 @@ TEST(CrossGridTest, regression_fractional_plus_integer_direct_keeps_the_fraction
 TEST(CrossGridTest, integer_paths_stay_engaged_and_fp_stays_excluded) {
     using whole    = inside<{0, 100}>;
     using quarters = inside<{{0, 1}, per<4>}>;
-    static_assert(!detail::rational_raw<decltype(whole{} + quarters{})>);
+    static_assert(!detail::rational_storage<decltype(whole{} + quarters{})>);
     static_assert(whole{3} + quarters{0.75} == 3.75);
 
     using tenths       = inside<{{0, 100}, per<10>}>;

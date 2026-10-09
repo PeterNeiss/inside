@@ -120,8 +120,8 @@ TEST(InsideArithmeticTest, inside_div_rational_vs_integer_paths) {
     {
         SCOPED_TRACE("offset-encoded storage takes integer path");
         using off = inside<{5, 100}>;
-        static_assert(!(!index_raw<off>));
-        static_assert(index_raw<off>);
+        static_assert(!(value_storage<off>));
+        static_assert(index_storage<off>);
 
         constexpr off  a{50}, b{10};
         constexpr auto q = div(a, b, snapped);

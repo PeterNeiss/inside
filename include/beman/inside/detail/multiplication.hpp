@@ -33,10 +33,11 @@ struct multiplication {
     // (A wide fraction raw may always overflow, as for addition.)
     template <policy_flag F>
     static constexpr bool needs_overflow_check =
-        frac_raw<result> || (rational_raw<result> &&
-                             (has_any_flag(F, checked) || is_checked(policy_of<L>) || is_checked(policy_of<R>) ||
-                              has_any_flag(F | policy_of<L> | policy_of<R>, exact)) &&
-                             !rational_mul_is_safe(grid_of<L>, grid_of<R>));
+        fraction_storage<result> ||
+        (rational_storage<result> &&
+         (has_any_flag(F, checked) || is_checked(policy_of<L>) || is_checked(policy_of<R>) ||
+          has_any_flag(F | policy_of<L> | policy_of<R>, exact)) &&
+         !rational_mul_is_safe(grid_of<L>, grid_of<R>));
 
     // Plain result when an overflow action takes the failure or no check is
     // needed; else std::expected<result, errc>.
@@ -49,19 +50,19 @@ struct multiplication {
     // the far end when c < 0. No multiply at all.
     template <insidable Point, insidable X>
     static constexpr bool point_scale =
-        lower_of<Point> == upper_of<Point> && lower_of<Point> != 0 && !rational_raw<X> && !fp_raw<X> &&
-        notch_of<X> != 0 && !rational_raw<result> && !fp_raw<result> && !exact_valued<X> && !exact_valued<result>;
+        point_grid<Point> && lower_of<Point> != 0 && !rational_storage<X> && !fp_storage<X> && notched<X> &&
+        !rational_storage<result> && !fp_storage<result> && !wide_valued<X> && !wide_valued<result>;
 
     // An operand's unit in the product grid (grid operator*): its notch, or
     // |c| for a point c.
     template <insidable X>
-    static constexpr grid_rational unit_of = (lower_of<X> == upper_of<X>) ? abs(lower_of<X>) : notch_of<X>;
+    static constexpr grid_rational unit_of = (point_grid<X>) ? abs(lower_of<X>) : notch_of<X>;
 
     template <bool Negate, insidable X>
     static constexpr result scale_by_point(const X& x) {
         static_assert(max_index_v<result> == max_index_v<X>);
         umax off;
-        if constexpr (index_raw<X>)
+        if constexpr (index_storage<X>)
             off = static_cast<umax>(x.raw());
         else
             off = static_cast<umax>(x.raw()) - static_cast<umax>(raw_lo<X>);
@@ -70,7 +71,7 @@ struct multiplication {
 
     template <typename P, typename A = no_action>
     static constexpr auto mul(L lhs, R rhs, P&& policy, A&& action = {}) -> return_t<policy_flags_of<plain_t<P>>, A> {
-        if constexpr (fp_raw<result>) {
+        if constexpr (fp_storage<result>) {
             // Exact by construction, no snap (see addition.hpp): operands are notch
             // multiples, the product index |ia·ib| stays under the double_exact 2^53
             // gate, so the double multiply is exact and on the result lattice.
@@ -79,13 +80,13 @@ struct multiplication {
             return scale_by_point<(lower_of<R> < 0)>(lhs);
         else if constexpr (point_scale<L, R>)
             return scale_by_point<(lower_of<L> < 0)>(rhs);
-        else if constexpr (frac_raw<result>) {
+        else if constexpr (fraction_storage<result>) {
             const auto prod = frac_raw_of<raw_t<result>>(exact_of(lhs) * exact_of(rhs));
             if (!prod) [[unlikely]]
                 return report_or_unexpected<result>(action, policy, errc::overflow, "fraction overflow in mul");
             return result::from_raw(*prod);
-        } else if constexpr (rational_raw<result>) {
-            static_assert(!exact_valued<L> && !exact_valued<R>,
+        } else if constexpr (rational_storage<result>) {
+            static_assert(!wide_valued<L> && !wide_valued<R>,
                           "multiplication: a wide-index operand with a continuous result is not supported yet");
             if constexpr (needs_overflow_check<policy_flags_of<plain_t<P>>>) {
                 auto prod = as_rational(lhs) * as_rational(rhs);
@@ -94,9 +95,9 @@ struct multiplication {
                 return result::from_raw(raw_cast<result>(*prod));
             } else
                 return result::from_raw(raw_cast<result>(rational::mul_unchecked(as_rational(lhs), as_rational(rhs))));
-        } else if constexpr (point_raw<result>)
+        } else if constexpr (point_storage<result>)
             return result::from_raw(raw_t<result>{}); // a product with 0: the point 0
-        else if constexpr (integer_raw<L> && integer_raw<R>) {
+        else if constexpr (integer_storage<L> && integer_storage<R>) {
             // Integer raws: multiply the operands' values in their own units, in
             // imax or by wrapping arithmetic (wide_value.hpp). The product notch is the product
             // of those units (a notch, or |c| for a point c), so the product of the
@@ -108,7 +109,7 @@ struct multiplication {
                     wide_denominator(unit_of<L>) * wide_denominator(unit_of<R>) * wide_numerator(notch_of<result>),
                 "multiplication: the product notch is the product of the operand units");
             return from_value_index<result>(value_in_units<W, unit_of<L>>(lhs) * value_in_units<W, unit_of<R>>(rhs));
-        } else if constexpr (exact_valued<result>)
+        } else if constexpr (wide_valued<result>)
             // An fp or rational operand into a result with more than 2^64 slots.
             return exact_result<result>(exact_of(lhs) * exact_of(rhs));
         else {

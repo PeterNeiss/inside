@@ -69,7 +69,7 @@ in hot loops.
    wide unchecked loops vectorize at native lane count.
 2. **Q-format grids (notch `1/N`, Lower 0)** — a power-of-two `N` makes scaling a
    shift. Division of two same-notch Q-format operands takes the fast path
-   `(a · N) / b` (`(a << log2 N) / b` for power-of-two `N`) (`has_qformat_fast_path` / `q_format_encode` in
+   `(a · N) / b` (`(a << log2 N) / b` for power-of-two `N`) (`qformat_codec_fits` / `q_format_encode` in
    `generic.hpp`; the Q-format divide in `detail/division.hpp`). Construction is
    ~native (Q8.8 / Q16.16 measure at ~0.97×).
 3. **Avoid in hot loops:** continuous (Notch 0) grids and `exact` use rational

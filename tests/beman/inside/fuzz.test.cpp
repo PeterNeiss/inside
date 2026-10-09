@@ -71,7 +71,7 @@ void guarded(fuzz_state& s, Fn&& fn) {
 template <insidable B>
 typename B::raw_type random_in_range_raw(std::mt19937_64& rng) {
     using raw = typename B::raw_type;
-    if constexpr (f64_raw<B>) {
+    if constexpr (f64_storage<B>) {
         // `f64` (double-backed) bounds hold a grid point as a double — generate a
         // random in-range grid point Lower + k·Notch (the integer-cast branch below
         // would truncate a fractional Lower and land below range, e.g. log2 of ~0).
@@ -84,7 +84,7 @@ typename B::raw_type random_in_range_raw(std::mt19937_64& rng) {
             return static_cast<double>(lower_of<B>) +
                    static_cast<double>(dist(rng)) * static_cast<double>(notch_of<B>);
         }
-    } else if constexpr (!index_raw<B>) {
+    } else if constexpr (value_storage<B>) {
         auto                                lo = trunc(lower_of<B>);
         auto                                hi = trunc(upper_of<B>);
         std::uniform_int_distribution<imax> dist(lo, hi);
@@ -133,7 +133,7 @@ void prop_storage_size(fuzz_state& s) {
 
 template <insidable B>
 void prop_round_trip(fuzz_state& s, long iters) {
-    if constexpr (rational_raw<B>)
+    if constexpr (rational_storage<B>)
         return;
     else {
         s.current_prop = "round_trip";
@@ -150,7 +150,7 @@ void prop_round_trip(fuzz_state& s, long iters) {
 
 template <insidable B>
 void prop_native_compare(fuzz_state& s, long iters) {
-    if constexpr (is_integer_aligned<B> && !rational_raw<B>) {
+    if constexpr (integer_lattice<B> && !rational_storage<B>) {
         s.current_prop                         = "native_compare";
         auto                                lo = trunc(lower_of<B>);
         auto                                hi = trunc(upper_of<B>);
@@ -171,7 +171,7 @@ void prop_native_compare(fuzz_state& s, long iters) {
 
 template <insidable B>
 void prop_clamp(fuzz_state& s, long iters) {
-    if constexpr (is_integer_aligned<B> && !rational_raw<B>) {
+    if constexpr (integer_lattice<B> && !rational_storage<B>) {
         s.current_prop = "clamp";
         using BC       = inside<grid_of<B>, clamp>;
         auto lo        = trunc(lower_of<B>);
@@ -189,7 +189,7 @@ void prop_clamp(fuzz_state& s, long iters) {
 
 template <insidable B>
 void prop_wrap(fuzz_state& s, long iters) {
-    if constexpr (is_integer_aligned<B> && !rational_raw<B>) {
+    if constexpr (integer_lattice<B> && !rational_storage<B>) {
         s.current_prop = "wrap";
         using BW       = inside<grid_of<B>, wrap>;
         auto lo        = trunc(lower_of<B>);
@@ -208,7 +208,7 @@ void prop_wrap(fuzz_state& s, long iters) {
 
 template <insidable B>
 void prop_try_make(fuzz_state& s, long iters) {
-    if constexpr (is_integer_aligned<B> && !rational_raw<B>) {
+    if constexpr (integer_lattice<B> && !rational_storage<B>) {
         s.current_prop = "try_make";
         auto lo        = trunc(lower_of<B>);
         auto hi        = trunc(upper_of<B>);
@@ -227,7 +227,7 @@ void prop_try_make(fuzz_state& s, long iters) {
 
 template <insidable B>
 void prop_on_clamp(fuzz_state& s, long iters) {
-    if constexpr (is_integer_aligned<B> && !rational_raw<B>) {
+    if constexpr (integer_lattice<B> && !rational_storage<B>) {
         s.current_prop = "on_clamp";
         using BC       = inside<grid_of<B>, clamp>;
         auto lo        = trunc(lower_of<B>);
@@ -264,7 +264,7 @@ void prop_on_clamp(fuzz_state& s, long iters) {
 
 template <insidable B>
 void prop_arith_vs_rational(fuzz_state& s, long iters) {
-    if constexpr (rational_raw<B>)
+    if constexpr (rational_storage<B>)
         return;
     else {
         s.current_prop = "arith_vs_rational";
@@ -287,7 +287,7 @@ void prop_arith_vs_rational(fuzz_state& s, long iters) {
 
 template <insidable B>
 void prop_mul_vs_rational(fuzz_state& s, long iters) {
-    if constexpr (!rational_raw<B>) {
+    if constexpr (!rational_storage<B>) {
         s.current_prop = "mul_vs_rational";
         for (long i = 0; i < iters; ++i) {
             s.iter                  = i;
@@ -333,7 +333,7 @@ template <insidable B>
 void prop_round_trip_construct(fuzz_state& s, long iters) {
     // Pick an in-range raw, decode via value(), re-construct via B{value}, and
     // verify the new inside's value matches the original.
-    if constexpr (is_integer_aligned<B> && !rational_raw<B>) {
+    if constexpr (integer_lattice<B> && !rational_storage<B>) {
         s.current_prop                         = "round_trip_construct";
         auto                                lo = trunc(lower_of<B>);
         auto                                hi = trunc(upper_of<B>);
@@ -353,7 +353,7 @@ void prop_round_trip_construct(fuzz_state& s, long iters) {
 
 template <insidable B>
 void prop_negation(fuzz_state& s, long iters) {
-    if constexpr (rational_raw<B>)
+    if constexpr (rational_storage<B>)
         return;
     else {
         s.current_prop = "negation";
@@ -374,7 +374,7 @@ void prop_negation(fuzz_state& s, long iters) {
 
 template <insidable B>
 void prop_compound_add_inside(fuzz_state& s, long iters) {
-    if constexpr (is_integer_aligned<B> && !rational_raw<B>) {
+    if constexpr (integer_lattice<B> && !rational_storage<B>) {
         s.current_prop = "compound_add_inside";
         // The delta is itself an inside (raw int RHS is now ill-formed). A signed grid
         // spanning ±(Upper−Lower) covers every in-range delta.
@@ -403,7 +403,7 @@ template <insidable B>
 void prop_modulo(fuzz_state& s, long iters) {
     // Only applies to integer-aligned grids; result is expected<inside, errc>.
     // mod requires `snap` per the README, so derive a typed alias.
-    if constexpr (is_integer_aligned<B> && !rational_raw<B>) {
+    if constexpr (integer_lattice<B> && !rational_storage<B>) {
         s.current_prop = "modulo";
         using BI       = inside<grid_of<B>, snap>;
         auto lo        = trunc(lower_of<B>);
@@ -450,7 +450,7 @@ void prop_modulo(fuzz_state& s, long iters) {
 
 template <insidable B>
 void prop_increment_wrap(fuzz_state& s, long iters) {
-    if constexpr (is_integer_aligned<B> && !rational_raw<B>) {
+    if constexpr (integer_lattice<B> && !rational_storage<B>) {
         s.current_prop                            = "increment_wrap";
         using BW                                  = inside<grid_of<B>, wrap>;
         auto                                lo    = trunc(lower_of<B>);
@@ -477,7 +477,7 @@ void prop_increment_wrap(fuzz_state& s, long iters) {
 
 template <insidable B>
 void prop_div_by_zero(fuzz_state& s, long iters) {
-    if constexpr (is_integer_aligned<B> && !rational_raw<B> && lower_of<B> <= 0 && upper_of<B> >= 0) {
+    if constexpr (integer_lattice<B> && !rational_storage<B> && lower_of<B> <= 0 && upper_of<B> >= 0) {
         s.current_prop = "div_by_zero";
         B zero{0};
         for (long i = 0; i < iters; ++i) {
@@ -491,7 +491,7 @@ void prop_div_by_zero(fuzz_state& s, long iters) {
 
 template <insidable B>
 void prop_spaceship_symmetry(fuzz_state& s, long iters) {
-    if constexpr (rational_raw<B>)
+    if constexpr (rational_storage<B>)
         return;
     else {
         s.current_prop = "spaceship_symmetry";
@@ -554,7 +554,7 @@ void prop_compound_div_mod_zero(fuzz_state& s, long iters) {
     // zero guard → report → throws division_by_zero. (Raw `b /= 0` is now ill-
     // formed; the insidable `%= zero-inside` path needs a snap integer divisor
     // and is covered for snap bounds in test_compound_assign.)
-    if constexpr (is_integer_aligned<B> && !rational_raw<B>) {
+    if constexpr (integer_lattice<B> && !rational_storage<B>) {
         s.current_prop = "compound_div_zero";
         // The divisor is the constant 0_r, so any in-range dividend throws; pick
         // `start` from the grid's actual [lo, hi] (a fully-negative grid has hi < 1,
@@ -580,7 +580,7 @@ void prop_compound_inside_overshoot(fuzz_state& s, long iters) {
     // grids already use the default `checked` policy, so the report path throws
     // overflow. Pick start values where adding `delta` lands outside the
     // grid; skip those that would still fit.
-    if constexpr (is_integer_aligned<B> && !rational_raw<B>) {
+    if constexpr (integer_lattice<B> && !rational_storage<B>) {
         s.current_prop = "compound_inside_overshoot";
         auto lo        = trunc(lower_of<B>);
         auto hi        = trunc(upper_of<B>);
@@ -610,7 +610,7 @@ void prop_non_notch_assign(fuzz_state& s, long iters) {
     // Targets assignment.hpp:289 (round_nearest), 291 (snap silent floor),
     // 296 (checked rounding_error report → throws), and 299 (silent floor for
     // unchecked policy). Only meaningful for fixed-point grids (notch != 1).
-    if constexpr (!is_integer_aligned<B> && !rational_raw<B>) {
+    if constexpr (!integer_lattice<B> && !rational_storage<B>) {
         s.current_prop = "non_notch_assign";
         // The catalogue's B already uses the default `checked` policy, so a non-
         // notch-aligned assignment to B must throw rounding_error.
@@ -690,7 +690,7 @@ void prop_subnormal_construct(fuzz_state& s, long iters) {
     // Targets math.hpp:179-180 — abs_fraction shift cap for very small doubles.
     // The path is taken when the input double has a negative exponent so large
     // that bits-exponent > 62. Any double in (0, 2^-62) qualifies.
-    if constexpr (!is_integer_aligned<B> && !rational_raw<B>) {
+    if constexpr (!integer_lattice<B> && !rational_storage<B>) {
         s.current_prop         = "subnormal_construct";
         using BIR              = inside<grid_of<B>, snap>;
         rational lo            = lower_of<B>;
@@ -770,7 +770,7 @@ void prop_compound_add_same_inside(fuzz_state& s, long iters) {
     // grids whose Lower != 0 on at least one side, or notches that mismatch).
     // For grids whose value ranges allow it, b += b should still produce 2*b
     // (or saturate/throw on overshoot). We restrict to picks that stay in range.
-    if constexpr (!rational_raw<B>) {
+    if constexpr (!rational_storage<B>) {
         s.current_prop = "compound_add_same_inside";
         for (long i = 0; i < iters; ++i) {
             s.iter          = i;
@@ -790,13 +790,13 @@ void prop_compound_add_same_inside(fuzz_state& s, long iters) {
 
 template <insidable B>
 void prop_raw_rational_arith(fuzz_state& s, long iters) {
-    // Targets addition.hpp:48-63 (the rational_raw<result> branches) and
+    // Targets addition.hpp:48-63 (the rational_storage<result> branches) and
     // multiplication.hpp:44-63 (same for mul). For raw-rational grids (notch=0)
     // arithmetic goes through the rational-add/mul paths directly. Most random
     // small-integer values won't overflow the rational machinery, so we mostly
     // exercise the success branches; occasional out-of-range results land in
     // the error path.
-    if constexpr (rational_raw<B>) {
+    if constexpr (rational_storage<B>) {
         s.current_prop                         = "raw_rational_arith";
         rational                            lo = lower_of<B>;
         rational                            hi = upper_of<B>;
@@ -846,7 +846,7 @@ void prop_raw_rational_arith(fuzz_state& s, long iters) {
 // oracle. (money's 1/100 notch is deliberately excluded.)
 template <insidable B>
 inline constexpr bool DyadicNotch = [] {
-    if constexpr (rational_raw<B> || is_integer_aligned<B>)
+    if constexpr (rational_storage<B> || integer_lattice<B>)
         return false;
     else {
         imax d = abs_den(notch_of<B>.Denominator);
@@ -857,7 +857,7 @@ inline constexpr bool DyadicNotch = [] {
 template <insidable B>
 void prop_casts(fuzz_state& s, long iters) {
     // Free-function cast API on integer grids: exact integer oracles.
-    if constexpr (is_integer_aligned<B> && !rational_raw<B>) {
+    if constexpr (integer_lattice<B> && !rational_storage<B>) {
         s.current_prop = "casts";
         auto lo        = trunc(lower_of<B>);
         auto hi        = trunc(upper_of<B>);
@@ -909,7 +909,7 @@ template <insidable B>
 void prop_predicates(fuzz_state& s, long iters) {
     // conversion_overflows / conversion_rounds / conversion_is_lossy must agree with the actual
     // checked conversion outcome.
-    if constexpr (is_integer_aligned<B> && !rational_raw<B>) {
+    if constexpr (integer_lattice<B> && !rational_storage<B>) {
         s.current_prop = "predicates";
         auto lo        = trunc(lower_of<B>);
         auto hi        = trunc(upper_of<B>);
@@ -959,7 +959,7 @@ template <insidable B>
 void prop_range(fuzz_state& s, long iters) {
     // inside_range walks every notch slot exactly once; a mid-range start rotates
     // the sequence. Capped so the billion-wide catalogue grids stay fast.
-    if constexpr (!rational_raw<B>) {
+    if constexpr (!rational_storage<B>) {
         constexpr umax N = max_index_v<B> + 1;
         if constexpr (N <= 100000) {
             s.current_prop                         = "range";

@@ -34,7 +34,7 @@ namespace {
 // NaN/inf/subnormal.
 template <class R>
 void check_bits(const R& r, const char* op) {
-    if constexpr (f64_raw<R>) {
+    if constexpr (f64_storage<R>) {
         const double v = r.raw();
         SCOPED_TRACE(::testing::Message() << op << " raw=" << v);
         ASSERT_TRUE(std::isfinite(v));
@@ -61,7 +61,7 @@ void oracle_check(A a, B b) {
         ASSERT_TRUE(static_cast<rational>(r) == *(ar - br));
         check_bits(r, "-");
     }
-    if constexpr (requires { a * b; }) {
+    if constexpr (requires { a* b; }) {
         auto r = a * b;
         SCOPED_TRACE(::testing::Message() << "* a=" << to_string(ar) << " b=" << to_string(br));
         ASSERT_TRUE(static_cast<rational>(r) == *(ar * br));
@@ -327,7 +327,7 @@ TEST(F64ExactTest, over_fine_f64_product_deduces_wide_index_stays_exact) {
 // A f64 (double-backed) target rejects non-finite assignments: NaN/inf can
 // never be an on-grid value, so the store guard reports errc::not_finite rather
 // than poisoning the raw double. Exercises the non-finite branch in
-// store_checked for fp_raw storage.
+// store_checked for fp_storage storage.
 //---------------------------------------------------------------------------
 // f64 storage rejects non-finite assignment
 TEST(F64ExactTest, f64_storage_rejects_non_finite_assignment) {

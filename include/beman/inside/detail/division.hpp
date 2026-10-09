@@ -22,8 +22,8 @@ namespace beman::inside::detail {
 // Both operands are plain integer grids and the caller accepted integer
 // truncation (snap) — the prerequisite for native integer div / mod.
 template <insidable L, insidable R, policy_flag F>
-inline constexpr bool integer_ops = ((F | policy_of<L> | policy_of<R>)&snap) && !rational_raw<L> && !rational_raw<R> &&
-                                    is_integer_aligned<L> && is_integer_aligned<R>;
+inline constexpr bool integer_ops = ((F | policy_of<L> | policy_of<R>)&snap) && !rational_storage<L> &&
+                                    !rational_storage<R> && integer_lattice<L> && integer_lattice<R>;
 
 // ...and every value fits imax, so the builtin integer division applies.
 template <insidable L, insidable R, policy_flag F>
@@ -156,10 +156,10 @@ constexpr value_bounds value_bounds_of() noexcept {
 // notches and point grids; a continuous or exact-valued operand gives false.
 template <insidable L, insidable R>
 constexpr bool quotient_fits_rational() noexcept {
-    if constexpr (exact_valued<L> || exact_valued<R>)
+    if constexpr (wide_valued<L> || wide_valued<R>)
         return false;
     else {
-        constexpr auto bounded = []<insidable B>() { return notch64<B>.Numerator != 0 || lower64<B> == upper64<B>; };
+        constexpr auto bounded = []<insidable B>() { return notch64<B>.Numerator != 0 || point_grid<B>; };
         if (!bounded.template operator()<L>() || !bounded.template operator()<R>())
             return false;
         constexpr value_bounds l = value_bounds_of<L>(), r = value_bounds_of<R>();
@@ -182,10 +182,10 @@ struct division {
     // (if constexpr: naming a 64-bit view instantiates it, even where && would
     // skip it — so an exact-valued operand returns before any is named.)
     static constexpr bool native_div_qformat = [] {
-        if constexpr (exact_valued<L> || exact_valued<R>)
+        if constexpr (wide_valued<L> || wide_valued<R>)
             return false;
         else
-            return ((F | policy_of<L> | policy_of<R>)&snap) && is_qformat<L> && is_qformat<R> &&
+            return ((F | policy_of<L> | policy_of<R>)&snap) && qformat_grid<L> && qformat_grid<R> &&
                    notch_of<L> == notch_of<R>;
     }();
 
@@ -238,8 +238,8 @@ struct division {
     // A wide-index operand's quotient may outgrow the 64-bit rational
     // whatever the policy, so that path always reports.
     static constexpr bool fits_rational        = quotient_fits_rational<L, R>();
-    static constexpr bool may_overflow_nonzero = !native_div && !fp_raw<result> && !fits_rational &&
-                                                 (needs_overflow_check<F> != 0 || exact_valued<L> || exact_valued<R>);
+    static constexpr bool may_overflow_nonzero = !native_div && !fp_storage<result> && !fits_rational &&
+                                                 (needs_overflow_check<F> != 0 || wide_valued<L> || wide_valued<R>);
 
     // Real division can still fail on a zero divisor, so it uses the same
     // return-type rule as the rest: plain `result` when the op cannot fail
@@ -279,7 +279,7 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy, A&& act
     // return type; ignore_zero doesn't).
     [[maybe_unused]] constexpr bool zero_unchecked = divisor_unchecked<L, R, F, G>;
 
-    if constexpr (fp_raw<result>) {
+    if constexpr (fp_storage<result>) {
         // Real division reports zero like every other path (throw / report /
         // action / unexpected). Finite operands keep the quotient finite, so no
         // non-finite ever reaches storage.
@@ -317,13 +317,13 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy, A&& act
         result res;
         from_value(res, imax{div_rounded(static_cast<T>(to_value(lhs)), rhs_val, rmode)});
         return res;
-    } else if constexpr (exact_valued<L> || exact_valued<R>) {
+    } else if constexpr (wide_valued<L> || wide_valued<R>) {
         // A wide-index or big-grid operand: the exact quotient, in the result's raw.
         const auto d = exact_of(rhs);
         if constexpr (!zero_unchecked)
             if (d.Num.is_zero())
                 return fail(errc::division_by_zero, "division by zero in div");
-        if constexpr (frac_raw<result>) {
+        if constexpr (fraction_storage<result>) {
             // Grids past 64 bits: the exact quotient in the result's wide fraction.
             const auto q = frac_raw_of<raw_t<result>>(exact_of(lhs) / d);
             if (!q) [[unlikely]]

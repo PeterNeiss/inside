@@ -34,7 +34,7 @@ std::string describe(const X& x) {
     else if constexpr (insidable<X>) {
         std::string s = to_string(x);
 #ifdef __cpp_lib_format
-        if constexpr (!(detail::is_integer_aligned<X> && notch_of<X> != 0 && detail::values_fit_imax<X>))
+        if constexpr (!(detail::integer_lattice<X> && notch_of<X> != 0 && detail::values_fit_imax<X>))
             s += std::format(" [{:.3f}|{:e}]", x, x);
 #endif
         return s;
@@ -60,22 +60,22 @@ std::string shape() {
     return detail::is_expected_v<R> ? "expected" : "plain";
 }
 
-const rational kValues[] = {rational{0},
-                            rational{1},
-                            rational{-1},
-                            rational{1, 4},
-                            rational{3, 8},
-                            rational{1, 3},
-                            rational{5, 2},
-                            rational{-7, 4},
-                            rational{4},
-                            rational{9, 2},
-                            rational{-17, 4},
-                            rational{1, 1024},
-                            rational{1023, 256},
-                            rational{100},
-                            rational{101}};
-const char* const kTexts[] = {"0.25", "0.1", "2.5", "-1.75", "7/3", "4", "4.5", "1e30", "x"};
+const rational    kValues[]  = {rational{0},
+                                rational{1},
+                                rational{-1},
+                                rational{1, 4},
+                                rational{3, 8},
+                                rational{1, 3},
+                                rational{5, 2},
+                                rational{-7, 4},
+                                rational{4},
+                                rational{9, 2},
+                                rational{-17, 4},
+                                rational{1, 1024},
+                                rational{1023, 256},
+                                rational{100},
+                                rational{101}};
+const char* const kTexts[]   = {"0.25", "0.1", "2.5", "-1.75", "7/3", "4", "4.5", "1e30", "x"};
 const double      kDoubles[] = {0.25, 0.1, 2.5, -1.75, 1e30, 4.0};
 
 // Everything T does. FP is the storage flag under test (none, f64 or f32),
@@ -116,7 +116,7 @@ std::vector<std::string> trace() {
             // (% and the deduced math reject a type at compile time by the same
             // rules with or without the flag: integer grids with snap, and a
             // rounding policy.)
-            if constexpr (has_flag(P, snap) && detail::is_integer_aligned<T>)
+            if constexpr (has_flag(P, snap) && detail::integer_lattice<T>)
                 add("%", attempt([&] { return a % b; }));
             add("<=>", describe(a <=> b));
             add("<=> int", describe(a <=> 2));
@@ -124,21 +124,21 @@ std::vector<std::string> trace() {
             static_assert(std::is_same_v<decltype(a <=> 2.5), std::partial_ordering>);
             add("==", describe(a == b));
             add("+=", attempt([&] {
-                T x = a;
-                x += b;
-                return x;
-            }));
-            add("-=", attempt([&] {
-                T x = a;
-                x -= b;
-                return x;
-            }));
-            if constexpr (has_flag(P, snap)) // the product's finer notch needs rounding
-                add("*=", attempt([&] {
                     T x = a;
-                    x *= b;
+                    x += b;
                     return x;
                 }));
+            add("-=", attempt([&] {
+                    T x = a;
+                    x -= b;
+                    return x;
+                }));
+            if constexpr (has_flag(P, snap)) // the product's finer notch needs rounding
+                add("*=", attempt([&] {
+                        T x = a;
+                        x *= b;
+                        return x;
+                    }));
         }
     }
     // Mixed with the same type without the flag, both ways.
@@ -184,7 +184,7 @@ std::vector<std::string> trace() {
 
 template <grid G, policy_flag P>
 void check() {
-    const auto plain = trace<G, P, none>();
+    const auto plain  = trace<G, P, none>();
     const auto with64 = trace<G, P, f64>();
     const auto with32 = trace<G, P, f32>();
     ASSERT_EQ(plain.size(), with64.size());
@@ -200,7 +200,7 @@ inline constexpr grid fine{{0, 16}, per<256>};
 inline constexpr grid whole{-100, 100};
 } // namespace
 
-#define BEMAN_INSIDE_INVARIANCE(name, g, p)       \
+#define BEMAN_INSIDE_INVARIANCE(name, g, p) \
     TEST(StorageInvarianceTest, name) { check<g, p>(); }
 
 BEMAN_INSIDE_INVARIANCE(quarters_checked, quarters, checked)

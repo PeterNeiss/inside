@@ -33,7 +33,7 @@ template <insidable B, numeric A>
 
 template <insidable B, numeric A>
 [[nodiscard]] constexpr bool conversion_rounds(A value) noexcept {
-    if constexpr (::beman::inside::detail::notch64<B> == 0)
+    if constexpr (!::beman::inside::detail::notched<B>)
         return false; // continuous grid: no notch to miss
     if constexpr (std::floating_point<A>)
         if (!(value - value == 0))

@@ -82,7 +82,7 @@ constexpr exact_frac<K> exact_of_grid(const grid_rational& r) noexcept {
 // m = Lower/Notch, the value index of slot 0 (0 for a continuous grid).
 template <insidable B>
 inline constexpr grid_wide slot_base = [] {
-    if constexpr (notch_of<B> == 0)
+    if constexpr (!notched<B>)
         return grid_wide{0};
     else
         return wide_numerator(lower_of<B>) * wide_denominator(notch_of<B>) /
@@ -103,12 +103,12 @@ inline constexpr int grid_magnitude_bits = [] {
 // Bits of B's values as fractions J·n/d: numerator and denominator together.
 template <insidable B>
 inline constexpr int exact_value_bits = [] {
-    if constexpr (point_raw<B>) {
+    if constexpr (point_storage<B>) {
         auto bits = [](const grid_wide& v) { return bit_width_of(v.negative() ? -v : v); };
         return bits(wide_numerator(lower_of<B>)) + bits(wide_denominator(lower_of<B>));
-    } else if constexpr (frac_raw<B>)
+    } else if constexpr (fraction_storage<B>)
         return 2 * decltype(raw_t<B>::Num)::bits;
-    else if constexpr (!exact_valued<B> || rational_raw<B>)
+    else if constexpr (!wide_valued<B> || rational_storage<B>)
         return 128; // a 64-bit rational
     else {
         auto bits = [](const grid_wide& v) { return bit_width_of(v.negative() ? -v : v); };
@@ -129,13 +129,13 @@ template <insidable B>
 constexpr auto exact_of(const B& b) {
     constexpr std::size_t K = exact_limbs<B>;
     using I                 = wide_sint<K>;
-    if constexpr (point_raw<B>)
+    if constexpr (point_storage<B>)
         return exact_of_grid<K>(lower_of<B>);
-    else if constexpr (rational_raw<B>)
+    else if constexpr (rational_storage<B>)
         return exact_of<K>(b.raw());
-    else if constexpr (frac_raw<B>)
+    else if constexpr (fraction_storage<B>)
         return exact_frac<K>{b.raw()};
-    else if constexpr (exact_valued<B>) {
+    else if constexpr (wide_valued<B>) {
         const I j = static_cast<I>(slot_base<B>) + I{b.raw()};
         return exact_frac<K>{j * static_cast<I>(wide_numerator(notch_of<B>)),
                              static_cast<I>(wide_denominator(notch_of<B>))};
@@ -343,12 +343,12 @@ constexpr auto exact_index(const exact_frac<K>& f) noexcept {
 // The raw of slot offset `index` (0 .. slot count) in L's encoding.
 template <insidable L, std::size_t K>
 constexpr raw_t<L> raw_of_index(const wide_sint<K>& index) noexcept {
-    if constexpr (point_raw<L>)
+    if constexpr (point_storage<L>)
         return raw_t<L>{};
-    else if constexpr (fp_raw<L>) // the value J·Notch: exact on a double/float-exact grid
+    else if constexpr (fp_storage<L>) // the value J·Notch: exact on a double/float-exact grid
         return static_cast<raw_t<L>>(static_cast<double>(index + static_cast<wide_sint<K>>(slot_base<L>)) *
                                      static_cast<double>(notch_of<L>));
-    else if constexpr (index_raw<L>)
+    else if constexpr (index_storage<L>)
         return static_cast<raw_t<L>>(index);
     else // value raw: raw == J
         return static_cast<raw_t<L>>(index + static_cast<wide_sint<K>>(slot_base<L>));
@@ -364,7 +364,7 @@ constexpr raw_t<L> raw_of_index(const wide_sint<K>& index) noexcept {
 // Lower/Notch, a value raw as is — value storage has notch 1).
 //---------------------------------------------------------------------------
 template <insidable Result>
-using wrap_work_t = std::conditional_t<wide_raw<Result>, raw_t<Result>, umax>;
+using wrap_work_t = std::conditional_t<wide_index_storage<Result>, raw_t<Result>, umax>;
 
 // An operand's value-index range in `Unit`s: Lower/Unit .. Upper/Unit.
 template <insidable X, grid_rational Unit>
@@ -388,18 +388,14 @@ using index_work_t = std::conditional_t<signed_value_bits_of({units_lo<L, UL>,
                                         imax,
                                         wrap_work_t<Result>>;
 
-// Integer raws: neither fp nor rational (a point's empty raw counts).
-template <insidable B>
-inline constexpr bool integer_raw = !fp_raw<B> && !rational_raw<B> && !frac_raw<B>;
-
 // a / b for grid numbers, known at compile time to be an integer.
 constexpr grid_wide exact_quotient(const grid_rational& a, const grid_rational& b) noexcept {
     return wide_numerator(a) * wide_denominator(b) / (wide_denominator(a) * wide_numerator(b));
 }
 
-template <typename W, insidable X>
+template <typename W, integer_storage X>
 constexpr W value_index(const X& x) noexcept {
-    if constexpr (index_raw<X>)
+    if constexpr (index_storage<X>)
         return static_cast<W>(slot_base<X>) + static_cast<W>(x.raw());
     else
         return static_cast<W>(x.raw());
@@ -411,7 +407,7 @@ template <typename W, grid_rational Unit, insidable X>
 constexpr W value_in_units(const X& x) noexcept {
     // A point (Lower == Upper) holds its value in the type — even under a
     // width flag, whose raw stores it again.
-    if constexpr (lower_of<X> == upper_of<X>) {
+    if constexpr (point_grid<X>) {
         constexpr grid_wide q = exact_quotient(lower_of<X>, Unit);
         return static_cast<W>(q);
     } else {
@@ -426,9 +422,9 @@ constexpr W value_in_units(const X& x) noexcept {
 // The Result whose value index is j (taken modulo 2^bits).
 template <insidable Result, typename W>
 constexpr Result from_value_index(const W& j) noexcept {
-    if constexpr (point_raw<Result>)
+    if constexpr (point_storage<Result>)
         return Result::from_raw(raw_t<Result>{});
-    else if constexpr (index_raw<Result>)
+    else if constexpr (index_storage<Result>)
         return Result::from_raw(static_cast<raw_t<Result>>(j - static_cast<W>(slot_base<Result>)));
     else
         return Result::from_raw(static_cast<raw_t<Result>>(j));

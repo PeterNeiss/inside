@@ -36,7 +36,7 @@ TEST(StorageFlagsTest, exact_forces_rational_raw_on_any_grid) {
     // A notched grid that deduction would store as an integer index.
     using E = inside<{{0, 10}, per<4>}, exact | round_nearest>;
     static_assert(std::is_same_v<E::raw_type, rational>);
-    static_assert(detail::rational_raw<E>);
+    static_assert(detail::rational_storage<E>);
 
     // The value is held as an exact fraction and still obeys the grid.
     E q{rational{3, 4}};
@@ -55,7 +55,7 @@ TEST(StorageFlagsTest, exact_forces_rational_raw_on_any_grid) {
 
     // Non-dyadic grids are fine (this is what `f64` cannot do).
     using T = inside<{{0, 1}, per<3>}, exact>;
-    static_assert(detail::rational_raw<T>);
+    static_assert(detail::rational_storage<T>);
     T third{rational{1, 3}};
     ASSERT_EQ(rational{third}, (rational{1, 3}));
     ASSERT_EQ(beman::inside::to_string(third), "1/3");
@@ -64,11 +64,11 @@ TEST(StorageFlagsTest, exact_forces_rational_raw_on_any_grid) {
 // direct forces raw == value where deduction picks an index
 TEST(StorageFlagsTest, direct_forces_raw_eq_value_where_deduction_picks_an_index) {
     // Deduced: {5,100} is index storage (unsigned raw 0..95).
-    static_assert(detail::index_raw<inside<{5, 100}>>);
+    static_assert(detail::index_storage<inside<{5, 100}>>);
 
     // Forced: raw holds the value 5..100 itself.
     using D = inside<{5, 100}, direct>;
-    static_assert(detail::value_raw<D>);
+    static_assert(detail::integer_value_storage<D>);
     static_assert(std::is_same_v<D::raw_type, std::uint8_t>);
 
     D d{42};
@@ -90,11 +90,11 @@ TEST(StorageFlagsTest, direct_forces_raw_eq_value_where_deduction_picks_an_index
 // indexed forces raw == 0-based index where deduction picks a value
 TEST(StorageFlagsTest, indexed_forces_raw_eq_0_based_index_where_deduction_picks_a_value) {
     // Deduced: {-5,5} is signed direct storage.
-    static_assert(detail::value_raw<inside<{-5, 5}>>);
+    static_assert(detail::integer_value_storage<inside<{-5, 5}>>);
 
     // Forced: dense unsigned 0-based index 0..10.
     using I = inside<{-5, 5}, indexed>;
-    static_assert(detail::index_raw<I>);
+    static_assert(detail::index_storage<I>);
     static_assert(std::is_same_v<I::raw_type, std::uint8_t>);
 
     ASSERT_EQ(I{-5}.raw(), 0);
@@ -111,7 +111,7 @@ TEST(StorageFlagsTest, fixed_width_flags_pin_the_raw_type_value_storage) {
 
     using W = inside<{0, 100}, u16>;
     static_assert(std::is_same_v<W::raw_type, std::uint16_t>);
-    static_assert(detail::value_raw<W>); // raw == value
+    static_assert(detail::integer_value_storage<W>); // raw == value
     ASSERT_EQ(W{42}.raw(), 42);
     ASSERT_EQ(rational{W{42}}, 42);
     ASSERT_TRUE(static_cast<imax>(W{42}) == 42);
@@ -119,7 +119,7 @@ TEST(StorageFlagsTest, fixed_width_flags_pin_the_raw_type_value_storage) {
     // Signed width holds negatives directly (value storage, not an index).
     using S = inside<{-5, 5}, i8>;
     static_assert(std::is_same_v<S::raw_type, std::int8_t>);
-    static_assert(detail::value_raw<S>);
+    static_assert(detail::integer_value_storage<S>);
     ASSERT_EQ(S{-5}.raw(), -5);
     ASSERT_EQ(S{0}.raw(), 0);
     ASSERT_EQ(rational{S{-3}}, -3);
@@ -128,7 +128,7 @@ TEST(StorageFlagsTest, fixed_width_flags_pin_the_raw_type_value_storage) {
     // overrides deduction, which would otherwise pick an index for Lower != 0).
     using V = inside<{5, 100}, u8>;
     static_assert(std::is_same_v<V::raw_type, std::uint8_t>);
-    static_assert(detail::value_raw<V>);
+    static_assert(detail::integer_value_storage<V>);
     ASSERT_EQ(V{42}.raw(), 42);                      // raw IS the value, not 37
     ASSERT_TRUE((inside<{5, 100}>{42}.raw() == 37)); // deduced index for contrast
 
@@ -149,7 +149,7 @@ TEST(StorageFlagsTest, a_width_flag_with_indexed_pins_the_raw_type_for_index_sto
     // type. {0,4} step 1/16 → 64 slots; pin uint32 even though uint8 would fit.
     using I = inside<{{0, 4}, per<16>}, u32 | indexed>;
     static_assert(std::is_same_v<I::raw_type, std::uint32_t>);
-    static_assert(detail::index_raw<I>);
+    static_assert(detail::index_storage<I>);
     ASSERT_EQ(I{rational{0}}.raw(), 0);
     ASSERT_EQ(I{rational{4}}.raw(), 64);
     ASSERT_EQ((rational{I{rational{1, 16}}}), (rational{1, 16}));
@@ -170,25 +170,25 @@ TEST(StorageFlagsTest, representation_flags_resolve_widest_wins) {
     using Re  = inside<{{0, 4}, per<256>}, round_nearest | f64>;
     using Sum = decltype(Ex{} + Re{});
     static_assert((policy_of<Sum> & exact) == exact);
-    static_assert(detail::rational_raw<Sum>);
+    static_assert(detail::rational_storage<Sum>);
     ASSERT_EQ((rational{Sum{Ex{rational{1, 256}} + Re{rational{2, 256}}}}), (rational{3, 256}));
 
     // exact | f64 spelled directly on one inside: exact wins, both engines.
     using Both = inside<{{0, 4}, per<256>}, exact | f64>;
-    static_assert(detail::rational_raw<Both>);
+    static_assert(detail::rational_storage<Both>);
 
     // f64 beats direct on a dyadic unit grid (default engine only — under
     // BEMAN_INSIDE_MATH_NO_FP the f64 arm is elided and direct wins).
     using RD = inside<{0, 4}, f64 | direct>;
 #ifndef BEMAN_INSIDE_MATH_NO_FP
-    static_assert(detail::f64_raw<RD>);
+    static_assert(detail::f64_storage<RD>);
 #else
-    static_assert(detail::value_raw<RD>);
+    static_assert(detail::integer_value_storage<RD>);
 #endif
 
     // direct beats indexed.
     using DI = inside<{5, 100}, direct | indexed>;
-    static_assert(detail::value_raw<DI>);
+    static_assert(detail::integer_value_storage<DI>);
     ASSERT_EQ(DI{42}.raw(), 42);
 }
 
@@ -197,8 +197,8 @@ TEST(StorageFlagsTest, representation_flags_resolve_widest_wins) {
 TEST(StorageFlagsTest, f32_selects_binary32_backed_storage_arithmetic_demotes_when_too_fine) {
     using F = inside<{{-8, 8}, per<256>}, round_nearest | f32>;
     static_assert(std::is_same_v<F::raw_type, float>);
-    static_assert(detail::f32_raw<F>);
-    static_assert(detail::fp_raw<F> && !detail::f64_raw<F>);
+    static_assert(detail::f32_storage<F>);
+    static_assert(detail::fp_storage<F> && !detail::f64_storage<F>);
 
     // Construct/read are lossless on the float-exact grid.
     F a{rational{3, 2}};
@@ -208,19 +208,19 @@ TEST(StorageFlagsTest, f32_selects_binary32_backed_storage_arithmetic_demotes_wh
 
     // f32 ⊕ f32 stays f32 while the result grid still fits float...
     using Sum = decltype(F{} + F{}); // notch 1/256, |v|≤16
-    static_assert(detail::f32_raw<Sum>);
+    static_assert(detail::f32_storage<Sum>);
 
     // ...but a product whose grid outgrows float's 24-bit significand demotes to f64
     // (notch 1/65536, |v|≤2^16 → 2^32 > 2^24, but < 2^53).
     using Wide     = inside<{{-256, 256}, per<256>}, round_nearest | f32>;
     using WideProd = decltype(Wide{} * Wide{});
-    static_assert(detail::f64_raw<WideProd>);
+    static_assert(detail::f64_storage<WideProd>);
 
     // Mixing f32 with f64 widens to f64; exact still beats both.
     using D = inside<{{-8, 8}, per<256>}, round_nearest | f64>;
-    static_assert(detail::f64_raw<decltype(F{} + D{})>);
+    static_assert(detail::f64_storage<decltype(F{} + D{})>);
     using E = inside<{{-8, 8}, per<256>}, exact>;
-    static_assert(detail::rational_raw<decltype(E{} + F{})>);
+    static_assert(detail::rational_storage<decltype(E{} + F{})>);
 }
 
 // math outputs: a deduced output keeps f32 / f64 storage where its grid is
@@ -235,17 +235,17 @@ TEST(StorageFlagsTest, math_outputs_and_fp_storage) {
     const auto s0 = math::sin(Ang0{1});
     const auto r  = math::sqrt(Sq{4});
     const auto r0 = math::sqrt(Sq0{4});
-    static_assert(detail::f32_raw<decltype(s)> && detail::f32_raw<decltype(r)>);
+    static_assert(detail::f32_storage<decltype(s)> && detail::f32_storage<decltype(r)>);
     static_assert(grid_of<decltype(s)> == grid_of<decltype(s0)>);
     ASSERT_EQ(rational{s}, rational{s0});
     ASSERT_EQ(rational{r}, rational{r0});
     // exp's range e^20 ≈ 4.85e8 outgrows float but not double: f64 storage.
     using Big    = inside<{{0, 20}, per<256>}, round_nearest | f32>;
     const auto e = math::exp(Big{2});
-    static_assert(detail::f64_raw<decltype(e)>);
+    static_assert(detail::f64_storage<decltype(e)>);
     ASSERT_EQ(rational{e}, rational{math::exp(inside<{{0, 20}, per<256>}, round_nearest>{2})});
     using Out = inside<{{-1, 1}, per<256>}, round_nearest | f32>;
-    static_assert(detail::f32_raw<decltype(math::sin_into<Out>(Ang{0}))>);
+    static_assert(detail::f32_storage<decltype(math::sin_into<Out>(Ang{0}))>);
 }
 #endif // !BEMAN_INSIDE_MATH_NO_FP
 
@@ -258,7 +258,7 @@ TEST(StorageFlagsTest, f64_is_the_double_backed_flag) {
     // compute engine — true in the double AND float builds).
     using F = inside<{{0, 4}, per<256>}, round_nearest | f64>;
     static_assert(std::is_same_v<F::raw_type, double>);
-    static_assert(detail::f64_raw<F>);
+    static_assert(detail::f64_storage<F>);
 #endif
 }
 
@@ -364,7 +364,7 @@ TEST(StorageFlagsTest, atan_atan2_accept_magnitudes_beyond_1) {
 }
 
 // Regression: per-operation policy overrides (`with_*`, `on_*`, `policy(ec)`)
-// route through the assignment engine, which previously had no f64_raw arm
+// route through the assignment engine, which previously had no f64_storage arm
 // and wrote integer offsets into the double raw (e.g. with_clamp stored the
 // notch COUNT instead of the endpoint).
 // per-operation policies work on f64-backed bounds

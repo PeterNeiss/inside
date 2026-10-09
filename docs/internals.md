@@ -100,29 +100,42 @@ operand policies, and the widest representation present wins:
 `storage_min_t<G>` picks the smallest integer type that can hold every
 reachable index, using the type's full range (see [storage.md](storage.md)).
 
-Four **disjoint predicates** in `include/beman/inside/generic.hpp` classify an
-inside's encoding (the first two read the raw type alone; the integer pair
-also consults the policy, mirroring `storage_pick` exactly):
+Storage **concepts** in `include/beman/inside/generic.hpp` partition every
+inside by what its raw holds. The leaves are disjoint; the raw type alone
+decides all but the integer pair, which also consults the policy
+(`integer_raw_holds_value`, mirroring `storage_pick` exactly). The groups
+are disjunctions of leaves, so they subsume them in `requires` clauses:
 
-| Predicate | Meaning |
-|---|---|
-| `rational_raw<B>` | raw IS the value, as an exact fraction |
-| `fp_raw<B>`       | raw IS the value, as an IEEE-754 `double` or `float` (`f64_raw` / `f32_raw`) |
-| `value_raw<B>`    | raw IS the value, as a plain integer |
-| `index_raw<B>`    | raw is a 0-based notch index; value = Lower + raw·Notch. Includes `point_raw<B>`: a point's empty `point_slot` raw, which reads as index 0 |
+| Concept | Raw | Meaning |
+|---|---|---|
+| `value_storage<B>` | — | raw IS the value: one of the next four |
+| ├ `fp_storage<B>` | `double` / `float` | `f64_storage` / `f32_storage` |
+| ├ `rational_storage<B>` | `rational` | exact 64-bit fraction |
+| ├ `fraction_storage<B>` | `exact_frac<K>` | continuous grid with limits past 64 bits |
+| └ `integer_value_storage<B>` | builtin integer | plain integer value |
+| `index_storage<B>` | — | raw is a 0-based slot index; value = Lower + raw·Notch |
+| ├ `point_storage<B>` | `point_slot` | a point's empty raw, read as slot 0 |
+| ├ `integer_index_storage<B>` | builtin integer | |
+| └ `wide_index_storage<B>` | `wide_int` | more than 2^64 slots |
+| `integer_storage<B>` | — | `index_storage` or `integer_value_storage` |
 
-The common query `!index_raw<B>` means "raw is the value" (any of the first
-three). Note the decode direction must dispatch on the **encoding, not the
-raw type's signedness** — a `direct` inside with Lower ≥ 0 has an *unsigned*
-value raw; `detail::as_double` is the kind-aware raw → double decoder.
+Decoding must dispatch on the **storage, not the raw type's signedness** — a
+`direct` inside with Lower ≥ 0 has an *unsigned* value raw;
+`detail::as_double` is the storage-aware raw → double decoder.
+
+Grid-shape and magnitude traits sit beside them: `notched<B>` (Notch ≠ 0; a
+point may still have Notch 0), `point_grid<B>` (Lower == Upper — a value fact:
+under a width flag a point stores its value again instead of `point_slot`),
+and `wide_valued<B>` (values past 64 bits: a wide index raw, or grid numbers
+past 64 bits, `wide_grid_numbers<B>`; these take the exact paths of §2a).
 
 Two more predicates classify the grid's integer-ness (independent of the
 storage encoding), gating arithmetic fast paths:
 
-- `is_integer_interval<B>` — `Lower` and `Upper` have integer denominators
+- `integer_limits<B>` — `Lower` and `Upper` have integer denominators
   (Notch may still be fractional, e.g. `{0, 100}, 1/10`).
-- `is_integer_aligned<B>` — `Notch` and `Lower` have integer denominators.
-  Under the divides-evenly invariant this implies `is_integer_interval`,
+- `integer_lattice<B>` — `Notch` and `Lower` have integer denominators.
+  Under the divides-evenly invariant this implies `integer_limits`,
   but the converse is not true. Both predicates exist because they gate
   different fast paths.
 
@@ -153,8 +166,8 @@ compare grid numbers, or hide the view behind `if constexpr`.
 (`detail/int_for_bits.hpp`) is the one width rule: a builtin integer up to 64
 bits, else a `wide_int` (`detail/wide_int.hpp`, Knuth-D division, the only
 `__int128` site). A grid with more than 2⁶⁴ slots gets a `wide_int` index
-(`wide_raw<B>`); a grid number past 64 bits makes `big_valued<B>`. Either makes
-`exact_valued<B>`, which routes every operation to the exact paths of
+(`wide_index_storage<B>`); a grid number past 64 bits makes `wide_grid_numbers<B>`. Either makes
+`wide_valued<B>`, which routes every operation to the exact paths of
 `detail/wide_value.hpp`.
 
 **Value indices.** On a valid grid `m = Lower/Notch` is an integer
@@ -182,13 +195,13 @@ way; both are `imax` for every grid within int64.
 
 For grids with **integer Lower, unit-numerator Notch** (e.g. `1/256`,
 `1/65536`), and a raw that fits in `imax`, the rational ↔ value conversion
-collapses to integer arithmetic. The gate is `has_qformat_fast_path<B>`
+collapses to integer arithmetic. The gate is `qformat_codec_fits<B>`
 (`include/beman/inside/generic.hpp`):
 
 ```cpp
 abs_den(lower_of<B>.Denominator) == 1
 && notch_of<B>.Numerator == 1
-&& !rational_raw<B>
+&& !rational_storage<B>
 && (std::signed_integral<raw_t<B>>          // raw fits imax
     || max_index_v<B> <= imax_max)
 ```
@@ -284,7 +297,7 @@ value" intent:
 | `raw_imax(b)`  | `imax` (raw widened) | You want the **raw** as a signed integer (e.g. inside offset arithmetic) |
 | `to_value(b)`    | `imax` (truncated value) | You want the inside's **value** as an integer |
 
-When `!index_raw<B>` (raw is the value), `raw_imax(b) == to_value(b)`. For
+When `value_storage<B>` (raw is the value), `raw_imax(b) == to_value(b)`. For
 index storage they differ — `Raw` is an index, `to_value` multiplies by
 `Notch` and adds `Lower`. On integer-aligned grids that is one integer
 multiply-add, on Q-format grids one truncating integer divide; only other grids
@@ -351,7 +364,7 @@ is what keeps the core free of `<string>`/`<ostream>`/`<format>`/`<cmath>`:
 | `beman/inside/casts.hpp`       | `clamp_cast`, `wrap_cast`, `checked_cast`, `unchecked_cast`, `clamp_floor` / `clamp_ceil` / `clamp_round` |
 | `beman/inside/arithmetic.hpp`  | Free `add` / `sub` / `mul` / `div` / `mod` (one variadic overload each; `detail::arith` maps the three call forms — policy, actions, `errc&` — onto the op's core), variadic folds `add_all` / `mul_all`, `sum<Target>`, `common_inside_t` and its `std::common_type` specialisation, `min` / `max` / `midpoint`, `dot` / `cross` / `lerp`, `operator+` / `-` / `*` / `/` / `%`, expected-lift overloads |
 | `beman/inside/range.hpp`       | `inside_range<G, P>` iterator helper |
-| `beman/inside/generic.hpp`     | Public grid/policy introspection (`grid_of` / `policy_of` / `interval_of` / `lower_of` / `upper_of` / `notch_of`) and the `insidable` / `numeric` / `inside_assignable` concepts. Storage/raw/dispatch plumbing (`raw_t`, the `rational_raw` / `fp_raw` / `value_raw` / `index_raw` predicates, `as_double`, `to_value` / `from_value`, `raw_cast` / `raw_imax`, `q_format_encode/decode`, `max_index_v`, `raw_lo` / `raw_hi`, `detail::as_rational`, …) lives in `beman::inside::detail` |
+| `beman/inside/generic.hpp`     | Public grid/policy introspection (`grid_of` / `policy_of` / `interval_of` / `lower_of` / `upper_of` / `notch_of`) and the `insidable` / `numeric` / `inside_assignable` concepts. Storage/raw/dispatch plumbing (`raw_t`, the `rational_storage` / `fp_storage` / `integer_value_storage` / `index_storage` predicates, `as_double`, `to_value` / `from_value`, `raw_cast` / `raw_imax`, `q_format_encode/decode`, `max_index_v`, `raw_lo` / `raw_hi`, `detail::as_rational`, …) lives in `beman::inside::detail` |
 | `beman/inside/detail/assignment.hpp`  | `beman::inside::detail::assignment<L, R>` specialisations for integral / fractional / insidable rhs (incl. the Q-format integer shortcut for fractional rhs) |
 | `beman/inside/cmath.hpp`       | `beman::inside::math` — the `<cmath>`-shaped public API: the constants, the grid operations (abs, sign, copysign, floor, ceil, round, trunc, fmod, pown, `amp<K>`) and the transcendentals of `cmath_adaptive.hpp`. See [math.md](math.md) |
 | `beman/inside/cmath_adaptive.hpp` | The math engine: one core per function (exact inputs, a fixed-point result with an error bound, the exact rational results), the `_into` and deduced forms, the double, dd and table tiers |
