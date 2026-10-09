@@ -36,6 +36,14 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 ### Fixed
 
+- C++26 grids past 64 bits: `just<V>` takes any grid number (`just<5_g>`,
+  `just<1.616255e-35_g>`); a big point stores into a grid, adds as a
+  constant, converts to `double` and prints. A continuous grid whose limits
+  pass 64 bits — a quotient of big-grid values among them — stores an exact
+  fraction of fixed-width integers sized from the limits, so `a / b` keeps
+  and prints its exact value (it did not compile); `+`, `×` and `/` report
+  `overflow` when a fraction outgrows the raw. Comparing a big-grid value with
+  a `double` uses the double's exact value (doubles past 2^64 compared wrong).
 - `numerator()` / `denominator()` work for every inside: a wide integer when
   the grid's values pass `imax` (they did not compile).
 - `sum<Target>` sums wide-index elements and totals past 64 bits exactly (it

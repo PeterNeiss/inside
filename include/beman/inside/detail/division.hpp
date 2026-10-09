@@ -318,15 +318,23 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy, A&& act
         from_value(res, imax{div_rounded(static_cast<T>(to_value(lhs)), rhs_val, rmode)});
         return res;
     } else if constexpr (exact_valued<L> || exact_valued<R>) {
-        // A wide-index operand: the exact quotient, narrowed to the rational raw.
+        // A wide-index or big-grid operand: the exact quotient, in the result's raw.
         const auto d = exact_of(rhs);
         if constexpr (!zero_unchecked)
             if (d.Num.is_zero())
                 return fail(errc::division_by_zero, "division by zero in div");
-        const auto q = try_rational(exact_of(lhs) / d);
-        if (!q) [[unlikely]]
-            return fail(errc::overflow, "rational overflow in div");
-        return result::from_raw(*q);
+        if constexpr (frac_raw<result>) {
+            // Grids past 64 bits: the exact quotient in the result's wide fraction.
+            const auto q = frac_raw_of<raw_t<result>>(exact_of(lhs) / d);
+            if (!q) [[unlikely]]
+                return fail(errc::overflow, "quotient past its fraction raw in div");
+            return result::from_raw(*q);
+        } else {
+            const auto q = try_rational(exact_of(lhs) / d);
+            if (!q) [[unlikely]]
+                return fail(errc::overflow, "rational overflow in div");
+            return result::from_raw(*q);
+        }
     } else if constexpr (needs_overflow_check<G> && !fits_rational) {
         rational rhs_r = rhs;
         if constexpr (!zero_unchecked)

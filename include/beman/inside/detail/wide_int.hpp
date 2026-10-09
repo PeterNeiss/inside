@@ -508,6 +508,32 @@ template <typename T>
 inline constexpr bool is_wide_int_v = false;
 template <std::size_t N, bool S, std::unsigned_integral L>
 inline constexpr bool is_wide_int_v<wide_int<N, S, L>> = true;
+
+//---------------------------------------------------------------------------
+// exact_frac — an exact value as a fraction of K-limb integers: the exact
+// paths' intermediate (wide_value.hpp), and, reduced, the raw of a continuous
+// grid whose limits pass 64 bits. Structural, so it can be a raw.
+//---------------------------------------------------------------------------
+inline constexpr std::size_t exact_min_limbs = 8; // scalars, 64-bit rationals
+
+template <std::size_t K>
+struct exact_frac {
+    wide_sint<K> Num{0};
+    wide_sint<K> Den{1}; // > 0; not reduced
+
+    constexpr exact_frac() = default;
+    constexpr exact_frac(wide_sint<K> n, wide_sint<K> d) noexcept : Num{n}, Den{d} {}
+    template <std::size_t M>
+        requires(M < K)
+    constexpr exact_frac(const exact_frac<M>& o) noexcept : Num{o.Num}, Den{o.Den} {} // widens
+
+    constexpr explicit operator double() const noexcept { return static_cast<double>(Num) / static_cast<double>(Den); }
+};
+
+template <typename T>
+inline constexpr bool is_exact_frac_v = false;
+template <std::size_t K>
+inline constexpr bool is_exact_frac_v<exact_frac<K>> = true;
 } // namespace beman::inside::detail
 
 template <std::size_t N, bool Signed, std::unsigned_integral L>

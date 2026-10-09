@@ -139,6 +139,19 @@ take and return such insides too, correctly rounded: `log` of a value near
 themselves (limits and notch) exist only at compile time; runtime arithmetic
 on such an inside uses fixed-width integers sized from them.
 
+A continuous grid (notch 0) whose limits pass 64 bits stores its value as an
+exact fraction of fixed-width integers sized from the limits, so a quotient
+of such values keeps its exact value and prints it:
+
+```cpp
+using length = inside<{{1e-41_g, 1e27_g}, 1e-41_g}, round_nearest>;
+auto ratio = universe / planck;   // expected<…>: exactly 17600…000/323251
+math::log10_into<decade>(*ratio); // 61.7359724…, rounded once
+```
+
+A sum, product or quotient whose fraction outgrows those integers reports
+`errc::overflow`, as one past the 64-bit fraction does on a 64-bit grid.
+
 Requirements and switches:
 
 - C++26 with static reflection: GCC 16 with `-freflection`. The CMake option

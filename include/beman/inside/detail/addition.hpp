@@ -29,12 +29,14 @@ struct addition {
     using rep_t  = fp_rep<L, R, result_grid>;
     using result = inside<result_grid, rep_t::result_policy>;
 
+    // A wide fraction raw may always overflow: the sum of two fractions has
+    // a longer denominator.
     template <policy_flag F>
     static constexpr bool needs_overflow_check =
-        rational_raw<result> &&
-        (has_any_flag(F, checked) || is_checked(policy_of<L>) || is_checked(policy_of<R>) ||
-         has_any_flag(F | policy_of<L> | policy_of<R>, exact)) &&
-        !rational_add_is_safe(grid_of<L>, grid_of<R>);
+        frac_raw<result> || (rational_raw<result> &&
+                             (has_any_flag(F, checked) || is_checked(policy_of<L>) || is_checked(policy_of<R>) ||
+                              has_any_flag(F | policy_of<L> | policy_of<R>, exact)) &&
+                             !rational_add_is_safe(grid_of<L>, grid_of<R>));
 
     // Plain result when an overflow action takes the failure or no check is
     // needed; else std::expected<result, errc>.
@@ -52,6 +54,11 @@ struct addition {
             // the double add is exact. (Division still snaps — a quotient is not a
             // grid point.)
             res = result::from_raw(raw_cast<result>(as_double(lhs) + as_double(rhs)));
+        } else if constexpr (frac_raw<result>) {
+            const auto sum = frac_raw_of<raw_t<result>>(exact_of(lhs) + exact_of(rhs));
+            if (!sum) [[unlikely]]
+                return report_or_unexpected<result>(action, policy, errc::overflow, "fraction overflow in add");
+            res = result::from_raw(*sum);
         } else if constexpr (rational_raw<result>) {
             static_assert(!exact_valued<L> && !exact_valued<R>,
                           "addition: a wide-index operand with a continuous result is not supported yet");

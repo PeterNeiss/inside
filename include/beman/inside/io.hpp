@@ -185,6 +185,8 @@ constexpr std::string_view type_name() {
         return "wide_uint<3>";
     if constexpr (is_wide_int_v<T>)
         return "wide_int";
+    if constexpr (is_exact_frac_v<T>)
+        return "exact_frac";
     return "unknown";
 }
 } // namespace detail
@@ -264,7 +266,10 @@ template <insidable B>
     std::string str;
     str += beman::inside::to_string(b);
     str += " {";
-    str += beman::inside::to_string(+b.raw());
+    if constexpr (detail::frac_raw<B>)
+        str += detail::exact_to_string(b.raw());
+    else
+        str += beman::inside::to_string(+b.raw());
     str += "[" + std::string(detail::type_name<detail::raw_t<B>>());
     constexpr auto slots = grid_of<B>.slot_count();
     str += " Max:" + beman::inside::to_string(slots) + "] ";

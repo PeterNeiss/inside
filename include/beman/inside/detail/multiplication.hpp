@@ -33,12 +33,13 @@ struct multiplication {
     // The dropped-fp case lands on a rational result when the product grid outgrows
     // uint index space; its product numerator can exceed `umax`, so check it (the
     // result carries `checked`) rather than wrap.
+    // (A wide fraction raw may always overflow, as for addition.)
     template <policy_flag F>
     static constexpr bool needs_overflow_check =
-        rational_raw<result> &&
-        (has_any_flag(F, checked) || is_checked(policy_of<L>) || is_checked(policy_of<R>) ||
-         has_any_flag(F | policy_of<L> | policy_of<R>, exact) || dropped_fp) &&
-        !rational_mul_is_safe(grid_of<L>, grid_of<R>);
+        frac_raw<result> || (rational_raw<result> &&
+                             (has_any_flag(F, checked) || is_checked(policy_of<L>) || is_checked(policy_of<R>) ||
+                              has_any_flag(F | policy_of<L> | policy_of<R>, exact) || dropped_fp) &&
+                             !rational_mul_is_safe(grid_of<L>, grid_of<R>));
 
     // Plain result when an overflow action takes the failure or no check is
     // needed; else std::expected<result, errc>.
@@ -81,7 +82,12 @@ struct multiplication {
             return scale_by_point<(lower_of<R> < 0)>(lhs);
         else if constexpr (point_scale<L, R>)
             return scale_by_point<(lower_of<L> < 0)>(rhs);
-        else if constexpr (rational_raw<result>) {
+        else if constexpr (frac_raw<result>) {
+            const auto prod = frac_raw_of<raw_t<result>>(exact_of(lhs) * exact_of(rhs));
+            if (!prod) [[unlikely]]
+                return report_or_unexpected<result>(action, policy, errc::overflow, "fraction overflow in mul");
+            return result::from_raw(*prod);
+        } else if constexpr (rational_raw<result>) {
             static_assert(!exact_valued<L> && !exact_valued<R>,
                           "multiplication: a wide-index operand with a continuous result is not supported yet");
             if constexpr (needs_overflow_check<policy_flags_of<plain_t<P>>>) {

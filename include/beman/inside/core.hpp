@@ -969,10 +969,12 @@ constexpr auto compare_scalar(const B& lhs, A rhs, Cmp cmp) {
     constexpr bool double_exact_values =
         lower_of<B> >= rational{-(imax{1} << 53)} && upper_of<B> <= rational{imax{1} << 53};
     if constexpr (exact_valued<B>) {
-        // Every grid number lies strictly inside ±2^64; so does a wide grid.
-        if constexpr (std::floating_point<A>)
-            if (rhs == rhs && !(rhs < 0x1p64 && rhs > -0x1p64))
+        if constexpr (std::floating_point<A>) {
+            if (rhs == rhs && !(rhs - rhs == 0)) // ±inf lies past every grid
                 return cmp(exact_of(0), exact_of(rhs < 0 ? -1 : 1));
+            if (rhs == rhs)
+                return cmp(exact_of(lhs), exact_of_double(static_cast<double>(rhs)));
+        }
         return cmp(exact_of(lhs), exact_of(as_rational(rhs)));
     } else if constexpr (value_raw<B> && values_fit_imax<B> && imax_scalar)
         return cmp(raw_imax(lhs), static_cast<imax>(rhs));
@@ -1005,8 +1007,10 @@ template <insidable B, detail::arithmetic A>
 //---------------------------------------------------------------------------
 // just
 //---------------------------------------------------------------------------
+// The point grid holds the value, so no value constructor is needed: grid
+// numbers past 64 bits (C++26 `_g`) work too.
 template <auto value>
-inline constexpr auto just = inside<grid{value}>{value};
+inline constexpr auto just = inside<grid{value}>::from_raw({});
 
 //---------------------------------------------------------------------------
 // zero / one — universal exact constants. Single-point insides that assign into

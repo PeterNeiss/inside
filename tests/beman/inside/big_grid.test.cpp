@@ -154,6 +154,97 @@ TEST(BigGridTest, math_grid_ops) {
     static_assert(lower_of<decltype(math::floor(x))> == -4);
 }
 
+TEST(BigGridTest, just_big_and_small_grid_numbers) {
+    // Points past 64 bits, in either direction.
+    constexpr auto big  = just<g(pow2(100))>;
+    constexpr auto tiny = just<1.616255e-35_g>;
+    constexpr auto five = just<5_g>;
+    static_assert(five == 5);
+    static_assert(big > five && tiny < five && tiny > 0);
+    EXPECT_TRUE(big == huge::from_raw(raw_2_100));
+    EXPECT_DOUBLE_EQ(detail::as_double(big), 0x1p100);
+    EXPECT_DOUBLE_EQ(detail::as_double(tiny), 1.616255e-35);
+    EXPECT_EQ(to_string(tiny), "0.00000000000000000000000000000000001616255");
+    // Stored into a grid; added as a point delta.
+    huge h = big;
+    EXPECT_TRUE(h == big);
+    h = 0;
+    h += just<g(pow2(99))>;
+    h += just<g(pow2(99))>;
+    EXPECT_TRUE(h == big);
+    using planck = inside<{{0, 1}, 1e-41_g}>;
+    planck p     = tiny;
+    EXPECT_TRUE(p == tiny);
+}
+
+TEST(BigGridTest, division) {
+    // Big ÷ big: the exact quotient, reported when it passes the 64-bit rational.
+    const far  a{huge::from_raw(raw_2_100_3)};
+    const huge b{huge::from_raw(raw_2_100)};
+    const auto q = a / b; // (2^100 + 3) / 2^100: exact in the quotient's wide fraction
+    ASSERT_TRUE(q.has_value());
+    EXPECT_EQ(
+        to_string(*q),
+        "1.0000000000000000000000000000023665827156630354162351856958483586890196193053270690143108367919921875");
+    const auto r = far{huge::from_raw(raw_2_100)} / b;
+    ASSERT_TRUE(r.has_value());
+    EXPECT_TRUE(*r == 1);
+    const auto s = b / huge{4};
+    ASSERT_TRUE(s.has_value());
+    constexpr huge::raw_type raw_2_98 = static_cast<huge::raw_type>(pow2(98));
+    EXPECT_TRUE(*s == huge::from_raw(raw_2_98));
+    const auto t = huge{12} / huge{8};
+    ASSERT_TRUE(t.has_value());
+    EXPECT_TRUE(*t == 1.5);
+    using micro  = inside<{{0, 1}, 1e-30_g}>;
+    const auto u = micro{0.5} / micro{0.25};
+    ASSERT_TRUE(u.has_value());
+    EXPECT_TRUE(*u == 2);
+}
+
+TEST(BigGridTest, continuous_past_64_bits) {
+    // A quotient of big-grid values holds its exact value: a wide fraction raw.
+    using length          = inside<{{1e-41_g, 1e27_g}, 1e-41_g}, round_nearest>;
+    const length planck   = *from_chars<length>("1.616255e-35");
+    const length universe = *from_chars<length>("8.8e26");
+    const auto   ratio    = universe / planck;
+    ASSERT_TRUE(ratio.has_value());
+    static_assert(detail::frac_raw<std::remove_cvref_t<decltype(*ratio)>>);
+    EXPECT_EQ(to_string(*ratio), "17600000000000000000000000000000000000000000000000000000000000000000/323251");
+    EXPECT_TRUE(*ratio > 5.4e61 && *ratio < 5.5e61);
+    using decade = inside<{{-100, 100}, per<1 << 20>}, round_nearest>;
+    EXPECT_EQ(math::log10_into<decade>(*ratio), (decade{rational{64'734'859, 1 << 20}})); // 61.7359724…
+    const auto one = universe / universe;
+    EXPECT_TRUE(*one == 1);
+    EXPECT_EQ(to_string(*(planck / length{2})), "0.000000000000000000000000000000000008081275");
+
+    // Declared directly, with every policy.
+    using big_real = inside<{{0, 1e30_g}, 0}>;
+    static_assert(detail::frac_raw<big_real>);
+    big_real b = rational{1, 3};
+    EXPECT_EQ(to_string(b), "1/3");
+    b = *from_chars<big_real>("123456789012345678901234567890/11");
+    EXPECT_EQ(to_string(b), "123456789012345678901234567890/11");
+    EXPECT_THROW(b = -1, inside_error);
+    inside<{{0, 1e30_g}, 0}, clamp> c = 0;
+    c                                 = huge::from_raw(raw_2_100);
+    EXPECT_EQ(to_string(c), "1000000000000000000000000000000");
+    inside<{{0, 1e30_g}, 0}, wrap> w = 0;
+    w                                = far{huge::from_raw(raw_2_100_3)}; // 2^100 + 3 − 10^30
+    EXPECT_EQ(to_string(w), "267650600228229401496703205379");
+    // + and × hold the exact value, and report a fraction past the raw.
+    const auto s = b + b;
+    ASSERT_TRUE(s.has_value());
+    EXPECT_EQ(to_string(*s), "246913578024691357802469135780/11");
+    const auto p = b * big_real{rational{1, 2}};
+    ASSERT_TRUE(p.has_value());
+    EXPECT_EQ(to_string(*p), "61728394506172839450617283945/11");
+    // 1/(2^250 + 1) fits big_real's raw; its square does not fit the product's.
+    const big_real x =
+        *from_chars<big_real>("1/1809251394333065553493296640760748560207343510400633813116524750123642650625");
+    EXPECT_EQ((x * x).error(), errc::overflow);
+}
+
 #else
 TEST(BigGridTest, needs_cxx26_reflection) { GTEST_SKIP() << "C++26 static reflection unavailable"; }
 #endif

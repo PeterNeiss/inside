@@ -1075,6 +1075,32 @@ template <typename T>
 inline constexpr bool is_wide_int_v = false;
 template <std::size_t N, bool S, std::unsigned_integral L>
 inline constexpr bool is_wide_int_v<wide_int<N, S, L>> = true;
+
+//---------------------------------------------------------------------------
+// exact_frac — an exact value as a fraction of K-limb integers: the exact
+// paths' intermediate (wide_value.hpp), and, reduced, the raw of a continuous
+// grid whose limits pass 64 bits. Structural, so it can be a raw.
+//---------------------------------------------------------------------------
+inline constexpr std::size_t exact_min_limbs = 8; // scalars, 64-bit rationals
+
+template <std::size_t K>
+struct exact_frac {
+    wide_sint<K> Num{0};
+    wide_sint<K> Den{1}; // > 0; not reduced
+
+    constexpr exact_frac() = default;
+    constexpr exact_frac(wide_sint<K> n, wide_sint<K> d) noexcept : Num{n}, Den{d} {}
+    template <std::size_t M>
+        requires(M < K)
+    constexpr exact_frac(const exact_frac<M>& o) noexcept : Num{o.Num}, Den{o.Den} {} // widens
+
+    constexpr explicit operator double() const noexcept { return static_cast<double>(Num) / static_cast<double>(Den); }
+};
+
+template <typename T>
+inline constexpr bool is_exact_frac_v = false;
+template <std::size_t K>
+inline constexpr bool is_exact_frac_v<exact_frac<K>> = true;
 } // namespace beman::inside::detail
 
 template <std::size_t N, bool Signed, std::unsigned_integral L>
@@ -3697,13 +3723,36 @@ struct signed_direct_raw<G, true> {
     using type = smallest_int_for_t<trunc(G.Interval.Lower), trunc(G.Interval.Upper)>;
 };
 
+// A continuous grid stores its value as an exact fraction: the 64-bit
+// rational, or — for limits past 64 bits (C++26) — a reduced fraction of K-limb
+// integers, K holding twice the limits' bits. A value that needs more reports
+// overflow, as one past the 64-bit rational does.
+#if BEMAN_INSIDE_BIG_GRIDS
+template <grid G>
+inline constexpr std::size_t frac_limbs = [] {
+    auto bits = [](const grid_rational& r) {
+        const grid_wide n = wide_numerator(r);
+        return bit_width_of(n.negative() ? -n : n) + bit_width_of(wide_denominator(r));
+    };
+    const int b = bits(G.Interval.Lower) > bits(G.Interval.Upper) ? bits(G.Interval.Lower) : bits(G.Interval.Upper);
+    return limbs_for_bits(2 * b + 2);
+}();
+template <grid G>
+using continuous_raw_t = std::conditional_t<fits_rational(G.Interval.Lower) && fits_rational(G.Interval.Upper),
+                                            detail::rational,
+                                            exact_frac<frac_limbs<G>>>;
+#else
+template <grid G>
+using continuous_raw_t = detail::rational;
+#endif
+
 template <grid G>
 using storage_min_t = std::conditional_t<
     (G.Interval.Lower == G.Interval.Upper),
     point_slot,
     std::conditional_t<
         (G.Notch == 0),
-        detail::rational,
+        continuous_raw_t<G>,
         std::conditional_t<(!G.max_index_representable()),
                            index_raw_for_t<G>,
                            std::conditional_t<(G.Interval.Lower < 0 && G.Notch == 1 && fits_imax(G.Interval)),
@@ -4151,6 +4200,11 @@ inline constexpr bool fp_raw = f64_raw<B> || f32_raw<B>;
 template <insidable B>
 inline constexpr bool rational_raw = std::is_same_v<raw_t<B>, rational>;
 
+// frac_raw — a continuous grid whose limits pass 64 bits (C++26): the raw is a
+// reduced exact fraction of as many limbs as the limits need (grid.hpp).
+template <insidable B>
+inline constexpr bool frac_raw = is_exact_frac_v<raw_t<B>>;
+
 // point_raw — a point grid's empty raw (point_slot): index storage at slot 0.
 template <insidable B>
 inline constexpr bool point_raw = std::is_same_v<raw_t<B>, point_slot>;
@@ -4174,7 +4228,7 @@ template <insidable B>
 inline constexpr bool exact_valued = wide_raw<B> || big_valued<B>;
 
 template <insidable B>
-inline constexpr bool value_raw = !fp_raw<B> && !rational_raw<B> && !point_raw<B> && !wide_raw<B> &&
+inline constexpr bool value_raw = !fp_raw<B> && !rational_raw<B> && !frac_raw<B> && !point_raw<B> && !wide_raw<B> &&
                                   ((policy_of<B> & direct) == direct
                                    // A pinned width flag without `indexed` is value storage (raw == value)
                                    // regardless of Lower's sign — storage_pick checked the range fits.
@@ -4183,7 +4237,7 @@ inline constexpr bool value_raw = !fp_raw<B> && !rational_raw<B> && !point_raw<B
                                     (lower_of<B> == 0 || std::signed_integral<raw_t<B>>)));
 
 template <insidable B>
-inline constexpr bool index_raw = !fp_raw<B> && !rational_raw<B> && !value_raw<B>;
+inline constexpr bool index_raw = !fp_raw<B> && !rational_raw<B> && !frac_raw<B> && !value_raw<B>;
 
 // Same raw type AND same encoding (value vs index): only then does one
 // inside's raw mean the same as another's on the same grid. A grid alone
@@ -4201,10 +4255,10 @@ constexpr auto exact_of(const B& b); // wide_value.hpp
 
 template <insidable B>
 [[nodiscard]] constexpr double as_double(const B& b) noexcept {
-    if constexpr (point_raw<B>)
-        return static_cast<double>(detail::lower64<B>);
-    else if constexpr (exact_valued<B>)
+    if constexpr (exact_valued<B>)
         return static_cast<double>(exact_of(b));
+    else if constexpr (point_raw<B>)
+        return static_cast<double>(detail::lower64<B>);
     else if constexpr (!index_raw<B>)
         return static_cast<double>(b.raw());
     else
@@ -4780,21 +4834,6 @@ inline constexpr bool why_assignable = inside_assignable_why<Dst, std::remove_cv
 // widest value suffices. Binary operations widen to the wider operand.
 //---------------------------------------------------------------------------
 namespace beman::inside::detail {
-inline constexpr std::size_t exact_min_limbs = 8; // scalars, 64-bit rationals
-
-template <std::size_t K>
-struct exact_frac {
-    wide_sint<K> Num;
-    wide_sint<K> Den; // > 0; not reduced
-
-    constexpr exact_frac() = default;
-    constexpr exact_frac(wide_sint<K> n, wide_sint<K> d) noexcept : Num{n}, Den{d} {}
-    template <std::size_t M>
-        requires(M < K)
-    constexpr exact_frac(const exact_frac<M>& o) noexcept : Num{o.Num}, Den{o.Den} {} // widens
-
-    constexpr explicit operator double() const noexcept { return static_cast<double>(Num) / static_cast<double>(Den); }
-};
 
 template <std::size_t A, std::size_t B>
 inline constexpr std::size_t exact_max = A > B ? A : B;
@@ -4874,7 +4913,12 @@ inline constexpr int grid_magnitude_bits = [] {
 // Bits of B's values as fractions J·n/d: numerator and denominator together.
 template <insidable B>
 inline constexpr int exact_value_bits = [] {
-    if constexpr (!exact_valued<B>)
+    if constexpr (point_raw<B>) {
+        auto bits = [](const grid_wide& v) { return bit_width_of(v.negative() ? -v : v); };
+        return bits(wide_numerator(lower_of<B>)) + bits(wide_denominator(lower_of<B>));
+    } else if constexpr (frac_raw<B>)
+        return 2 * decltype(raw_t<B>::Num)::bits;
+    else if constexpr (!exact_valued<B> || rational_raw<B>)
         return 128; // a 64-bit rational
     else {
         auto bits = [](const grid_wide& v) { return bit_width_of(v.negative() ? -v : v); };
@@ -4895,7 +4939,13 @@ template <insidable B>
 constexpr auto exact_of(const B& b) {
     constexpr std::size_t K = exact_limbs<B>;
     using I                 = wide_sint<K>;
-    if constexpr (exact_valued<B>) {
+    if constexpr (point_raw<B>)
+        return exact_of_grid<K>(lower_of<B>);
+    else if constexpr (rational_raw<B>)
+        return exact_of<K>(b.raw());
+    else if constexpr (frac_raw<B>)
+        return exact_frac<K>{b.raw()};
+    else if constexpr (exact_valued<B>) {
         const I j = static_cast<I>(slot_base<B>) + I{b.raw()};
         return exact_frac<K>{j * static_cast<I>(wide_numerator(notch_of<B>)),
                              static_cast<I>(wide_denominator(notch_of<B>))};
@@ -4916,6 +4966,18 @@ constexpr exact_frac<K> reduced(const exact_frac<K>& f) noexcept {
     if (a == I{1})
         return f;
     return {f.Num / a, f.Den / a};
+}
+
+// v in lowest terms as the fraction raw F, or nothing when it needs more
+// limbs than F has.
+template <typename F, std::size_t K>
+constexpr std::optional<F> frac_raw_of(const exact_frac<K>& v) noexcept {
+    const auto r      = reduced(v);
+    using I           = decltype(F::Num);
+    constexpr int cap = I::bits - 1; // magnitude bits
+    if (bit_width_of(r.Num.negative() ? -r.Num : r.Num) > cap || bit_width_of(r.Den) > cap)
+        return std::nullopt;
+    return F{static_cast<I>(r.Num), static_cast<I>(r.Den)};
 }
 
 // b's value in lowest terms, in the fewest limbs that hold every value of B.
@@ -4941,6 +5003,16 @@ constexpr exact_frac<exact_limbs<L>> exact_of_large(double d) noexcept {
     const double f = frexp(m, &e);                                   // m = f·2^e, f in [0.5, 1)
     const I      v = I{static_cast<umax>(ldexp(f, 53))} << (e - 53); // e ≥ 65
     return {neg ? -v : v, I{1}};
+}
+
+// A finite double's exact value: m·2^e, with 2^1024 and 2^-1074 in reach.
+constexpr exact_frac<18> exact_of_double(double d) noexcept {
+    using I         = wide_sint<18>;
+    int        e    = 0;
+    const umax mant = static_cast<umax>(ldexp(frexp(d < 0 ? -d : d, &e), 53)); // |d| = mant·2^(e−53)
+    e -= 53;
+    const I n = e >= 0 ? I{mant} << e : I{mant};
+    return {d < 0 ? -n : n, e >= 0 ? I{1} : I{1} << -e};
 }
 
 // Truncation toward zero, as an integer.
@@ -5125,7 +5197,7 @@ using index_work_t = std::conditional_t<signed_value_bits_of({units_lo<L, UL>,
 
 // Integer raws: neither fp nor rational (a point's empty raw counts).
 template <insidable B>
-inline constexpr bool integer_raw = !fp_raw<B> && !rational_raw<B>;
+inline constexpr bool integer_raw = !fp_raw<B> && !rational_raw<B> && !frac_raw<B>;
 
 // a / b for grid numbers, known at compile time to be an integer.
 constexpr grid_wide exact_quotient(const grid_rational& a, const grid_rational& b) noexcept {
@@ -5389,7 +5461,39 @@ struct assignment;
 template <typename R, insidable L, typename P, typename A, std::size_t K>
 constexpr L& assign_exact(L& lhs, const exact_frac<K>& v, P&& policy, A&& action) {
     auto fail = [&](errc code) { report_failure(lhs, policy, action, code); };
-    if constexpr (rational_raw<L> || fp_raw<L>) {
+    if constexpr (frac_raw<L>) {
+        // A continuous grid past 64 bits: the value itself, reduced, when it
+        // lies within the limits and fits the raw's limbs.
+        if constexpr (clamp_action<plain_t<A>> || wrap_action<plain_t<A>>)
+            static_assert(dependent_false<A>, "on_clamp / on_wrap: not supported on a continuous grid past 64 bits");
+        constexpr std::size_t KK = exact_max<K, exact_limbs<L>>;
+        const exact_frac<KK>  lo = exact_of_grid<KK>(lower_of<L>), hi = exact_of_grid<KK>(upper_of<L>);
+        auto                  store = [&](const exact_frac<KK>& x) {
+            if (const auto r = frac_raw_of<raw_t<L>>(x)) [[likely]]
+                lhs = L::from_raw(*r);
+            else
+                fail(errc::overflow);
+        };
+        const exact_frac<KK> x{v};
+        if (x < lo || hi < x) [[unlikely]] {
+            dispatch_out_of_range<true>(
+                lhs,
+                policy,
+                action,
+                [&] { store(x < lo ? lo : hi); },
+                [&] {
+                    // x − q·span with q = ⌊(x − lo)/span⌋: into [lo, hi).
+                    const exact_frac<KK> span = hi + -lo, t = (x + -lo) / span;
+                    auto [q, m] = wide_sint<KK>::divmod(t.Num, t.Den);
+                    if (m.negative())
+                        q -= wide_sint<KK>{1};
+                    store(x + -(exact_frac<KK>{q, wide_sint<KK>{1}} * span));
+                });
+            return lhs;
+        }
+        store(x);
+        return lhs;
+    } else if constexpr (rational_raw<L> || fp_raw<L>) {
         // L holds 64-bit values: narrow through the rational (a value that does
         // not fit lies outside every such grid).
         const auto r = try_rational(v);
@@ -6701,12 +6805,14 @@ struct addition {
     using rep_t  = fp_rep<L, R, result_grid>;
     using result = inside<result_grid, rep_t::result_policy>;
 
+    // A wide fraction raw may always overflow: the sum of two fractions has
+    // a longer denominator.
     template <policy_flag F>
     static constexpr bool needs_overflow_check =
-        rational_raw<result> &&
-        (has_any_flag(F, checked) || is_checked(policy_of<L>) || is_checked(policy_of<R>) ||
-         has_any_flag(F | policy_of<L> | policy_of<R>, exact)) &&
-        !rational_add_is_safe(grid_of<L>, grid_of<R>);
+        frac_raw<result> || (rational_raw<result> &&
+                             (has_any_flag(F, checked) || is_checked(policy_of<L>) || is_checked(policy_of<R>) ||
+                              has_any_flag(F | policy_of<L> | policy_of<R>, exact)) &&
+                             !rational_add_is_safe(grid_of<L>, grid_of<R>));
 
     // Plain result when an overflow action takes the failure or no check is
     // needed; else std::expected<result, errc>.
@@ -6724,6 +6830,11 @@ struct addition {
             // the double add is exact. (Division still snaps — a quotient is not a
             // grid point.)
             res = result::from_raw(raw_cast<result>(as_double(lhs) + as_double(rhs)));
+        } else if constexpr (frac_raw<result>) {
+            const auto sum = frac_raw_of<raw_t<result>>(exact_of(lhs) + exact_of(rhs));
+            if (!sum) [[unlikely]]
+                return report_or_unexpected<result>(action, policy, errc::overflow, "fraction overflow in add");
+            res = result::from_raw(*sum);
         } else if constexpr (rational_raw<result>) {
             static_assert(!exact_valued<L> && !exact_valued<R>,
                           "addition: a wide-index operand with a continuous result is not supported yet");
@@ -6789,12 +6900,13 @@ struct multiplication {
     // The dropped-fp case lands on a rational result when the product grid outgrows
     // uint index space; its product numerator can exceed `umax`, so check it (the
     // result carries `checked`) rather than wrap.
+    // (A wide fraction raw may always overflow, as for addition.)
     template <policy_flag F>
     static constexpr bool needs_overflow_check =
-        rational_raw<result> &&
-        (has_any_flag(F, checked) || is_checked(policy_of<L>) || is_checked(policy_of<R>) ||
-         has_any_flag(F | policy_of<L> | policy_of<R>, exact) || dropped_fp) &&
-        !rational_mul_is_safe(grid_of<L>, grid_of<R>);
+        frac_raw<result> || (rational_raw<result> &&
+                             (has_any_flag(F, checked) || is_checked(policy_of<L>) || is_checked(policy_of<R>) ||
+                              has_any_flag(F | policy_of<L> | policy_of<R>, exact) || dropped_fp) &&
+                             !rational_mul_is_safe(grid_of<L>, grid_of<R>));
 
     // Plain result when an overflow action takes the failure or no check is
     // needed; else std::expected<result, errc>.
@@ -6837,7 +6949,12 @@ struct multiplication {
             return scale_by_point<(lower_of<R> < 0)>(lhs);
         else if constexpr (point_scale<L, R>)
             return scale_by_point<(lower_of<L> < 0)>(rhs);
-        else if constexpr (rational_raw<result>) {
+        else if constexpr (frac_raw<result>) {
+            const auto prod = frac_raw_of<raw_t<result>>(exact_of(lhs) * exact_of(rhs));
+            if (!prod) [[unlikely]]
+                return report_or_unexpected<result>(action, policy, errc::overflow, "fraction overflow in mul");
+            return result::from_raw(*prod);
+        } else if constexpr (rational_raw<result>) {
             static_assert(!exact_valued<L> && !exact_valued<R>,
                           "multiplication: a wide-index operand with a continuous result is not supported yet");
             if constexpr (needs_overflow_check<policy_flags_of<plain_t<P>>>) {
@@ -7190,15 +7307,23 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy, A&& act
         from_value(res, imax{div_rounded(static_cast<T>(to_value(lhs)), rhs_val, rmode)});
         return res;
     } else if constexpr (exact_valued<L> || exact_valued<R>) {
-        // A wide-index operand: the exact quotient, narrowed to the rational raw.
+        // A wide-index or big-grid operand: the exact quotient, in the result's raw.
         const auto d = exact_of(rhs);
         if constexpr (!zero_unchecked)
             if (d.Num.is_zero())
                 return fail(errc::division_by_zero, "division by zero in div");
-        const auto q = try_rational(exact_of(lhs) / d);
-        if (!q) [[unlikely]]
-            return fail(errc::overflow, "rational overflow in div");
-        return result::from_raw(*q);
+        if constexpr (frac_raw<result>) {
+            // Grids past 64 bits: the exact quotient in the result's wide fraction.
+            const auto q = frac_raw_of<raw_t<result>>(exact_of(lhs) / d);
+            if (!q) [[unlikely]]
+                return fail(errc::overflow, "quotient past its fraction raw in div");
+            return result::from_raw(*q);
+        } else {
+            const auto q = try_rational(exact_of(lhs) / d);
+            if (!q) [[unlikely]]
+                return fail(errc::overflow, "rational overflow in div");
+            return result::from_raw(*q);
+        }
     } else if constexpr (needs_overflow_check<G> && !fits_rational) {
         rational rhs_r = rhs;
         if constexpr (!zero_unchecked)
@@ -8292,10 +8417,12 @@ constexpr auto compare_scalar(const B& lhs, A rhs, Cmp cmp) {
     constexpr bool double_exact_values =
         lower_of<B> >= rational{-(imax{1} << 53)} && upper_of<B> <= rational{imax{1} << 53};
     if constexpr (exact_valued<B>) {
-        // Every grid number lies strictly inside ±2^64; so does a wide grid.
-        if constexpr (std::floating_point<A>)
-            if (rhs == rhs && !(rhs < 0x1p64 && rhs > -0x1p64))
+        if constexpr (std::floating_point<A>) {
+            if (rhs == rhs && !(rhs - rhs == 0)) // ±inf lies past every grid
                 return cmp(exact_of(0), exact_of(rhs < 0 ? -1 : 1));
+            if (rhs == rhs)
+                return cmp(exact_of(lhs), exact_of_double(static_cast<double>(rhs)));
+        }
         return cmp(exact_of(lhs), exact_of(as_rational(rhs)));
     } else if constexpr (value_raw<B> && values_fit_imax<B> && imax_scalar)
         return cmp(raw_imax(lhs), static_cast<imax>(rhs));
@@ -8328,8 +8455,10 @@ template <insidable B, detail::arithmetic A>
 //---------------------------------------------------------------------------
 // just
 //---------------------------------------------------------------------------
+// The point grid holds the value, so no value constructor is needed: grid
+// numbers past 64 bits (C++26 `_g`) work too.
 template <auto value>
-inline constexpr auto just = inside<grid{value}>{value};
+inline constexpr auto just = inside<grid{value}>::from_raw({});
 
 //---------------------------------------------------------------------------
 // zero / one — universal exact constants. Single-point insides that assign into
@@ -12170,11 +12299,13 @@ constexpr int grid_bits(const grid_wide& v) {
 }
 
 // A value of In is n/d with d dividing the notch's denominator and
-// |n| < 2^magnitude·d: its bits, plus a sign. A continuous grid takes the
-// 64-bit rational's.
+// |n| < 2^magnitude·d: its bits, plus a sign. A continuous grid takes its
+// raw's: the 64-bit rational's, or a wide fraction's.
 template <insidable In>
 inline constexpr int input_bits = [] {
-    if constexpr (notch_of<In> == 0)
+    if constexpr (frac_raw<In>)
+        return decltype(raw_t<In>::Num)::bits;
+    else if constexpr (notch_of<In> == 0)
         return 130;
     else
         return grid_magnitude_bits<In> + grid_bits(wide_denominator(notch_of<In>)) + 2;
@@ -14875,6 +15006,8 @@ constexpr std::string_view type_name() {
         return "wide_uint<3>";
     if constexpr (is_wide_int_v<T>)
         return "wide_int";
+    if constexpr (is_exact_frac_v<T>)
+        return "exact_frac";
     return "unknown";
 }
 } // namespace detail
@@ -14954,7 +15087,10 @@ template <insidable B>
     std::string str;
     str += beman::inside::to_string(b);
     str += " {";
-    str += beman::inside::to_string(+b.raw());
+    if constexpr (detail::frac_raw<B>)
+        str += detail::exact_to_string(b.raw());
+    else
+        str += beman::inside::to_string(+b.raw());
     str += "[" + std::string(detail::type_name<detail::raw_t<B>>());
     constexpr auto slots = grid_of<B>.slot_count();
     str += " Max:" + beman::inside::to_string(slots) + "] ";

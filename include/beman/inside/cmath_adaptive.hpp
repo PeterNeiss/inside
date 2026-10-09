@@ -36,11 +36,13 @@ constexpr int grid_bits(const grid_wide& v) {
 }
 
 // A value of In is n/d with d dividing the notch's denominator and
-// |n| < 2^magnitude·d: its bits, plus a sign. A continuous grid takes the
-// 64-bit rational's.
+// |n| < 2^magnitude·d: its bits, plus a sign. A continuous grid takes its
+// raw's: the 64-bit rational's, or a wide fraction's.
 template <insidable In>
 inline constexpr int input_bits = [] {
-    if constexpr (notch_of<In> == 0)
+    if constexpr (frac_raw<In>)
+        return decltype(raw_t<In>::Num)::bits;
+    else if constexpr (notch_of<In> == 0)
         return 130;
     else
         return grid_magnitude_bits<In> + grid_bits(wide_denominator(notch_of<In>)) + 2;

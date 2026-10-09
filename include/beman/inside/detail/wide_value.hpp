@@ -7,6 +7,7 @@
 
 #include <compare>
 #include <expected>
+#include <optional>
 #include <utility>
 
 //---------------------------------------------------------------------------
@@ -23,21 +24,6 @@
 // widest value suffices. Binary operations widen to the wider operand.
 //---------------------------------------------------------------------------
 namespace beman::inside::detail {
-inline constexpr std::size_t exact_min_limbs = 8; // scalars, 64-bit rationals
-
-template <std::size_t K>
-struct exact_frac {
-    wide_sint<K> Num;
-    wide_sint<K> Den; // > 0; not reduced
-
-    constexpr exact_frac() = default;
-    constexpr exact_frac(wide_sint<K> n, wide_sint<K> d) noexcept : Num{n}, Den{d} {}
-    template <std::size_t M>
-        requires(M < K)
-    constexpr exact_frac(const exact_frac<M>& o) noexcept : Num{o.Num}, Den{o.Den} {} // widens
-
-    constexpr explicit operator double() const noexcept { return static_cast<double>(Num) / static_cast<double>(Den); }
-};
 
 template <std::size_t A, std::size_t B>
 inline constexpr std::size_t exact_max = A > B ? A : B;
@@ -117,7 +103,12 @@ inline constexpr int grid_magnitude_bits = [] {
 // Bits of B's values as fractions J·n/d: numerator and denominator together.
 template <insidable B>
 inline constexpr int exact_value_bits = [] {
-    if constexpr (!exact_valued<B>)
+    if constexpr (point_raw<B>) {
+        auto bits = [](const grid_wide& v) { return bit_width_of(v.negative() ? -v : v); };
+        return bits(wide_numerator(lower_of<B>)) + bits(wide_denominator(lower_of<B>));
+    } else if constexpr (frac_raw<B>)
+        return 2 * decltype(raw_t<B>::Num)::bits;
+    else if constexpr (!exact_valued<B> || rational_raw<B>)
         return 128; // a 64-bit rational
     else {
         auto bits = [](const grid_wide& v) { return bit_width_of(v.negative() ? -v : v); };
@@ -138,7 +129,13 @@ template <insidable B>
 constexpr auto exact_of(const B& b) {
     constexpr std::size_t K = exact_limbs<B>;
     using I                 = wide_sint<K>;
-    if constexpr (exact_valued<B>) {
+    if constexpr (point_raw<B>)
+        return exact_of_grid<K>(lower_of<B>);
+    else if constexpr (rational_raw<B>)
+        return exact_of<K>(b.raw());
+    else if constexpr (frac_raw<B>)
+        return exact_frac<K>{b.raw()};
+    else if constexpr (exact_valued<B>) {
         const I j = static_cast<I>(slot_base<B>) + I{b.raw()};
         return exact_frac<K>{j * static_cast<I>(wide_numerator(notch_of<B>)),
                              static_cast<I>(wide_denominator(notch_of<B>))};
@@ -159,6 +156,18 @@ constexpr exact_frac<K> reduced(const exact_frac<K>& f) noexcept {
     if (a == I{1})
         return f;
     return {f.Num / a, f.Den / a};
+}
+
+// v in lowest terms as the fraction raw F, or nothing when it needs more
+// limbs than F has.
+template <typename F, std::size_t K>
+constexpr std::optional<F> frac_raw_of(const exact_frac<K>& v) noexcept {
+    const auto r      = reduced(v);
+    using I           = decltype(F::Num);
+    constexpr int cap = I::bits - 1; // magnitude bits
+    if (bit_width_of(r.Num.negative() ? -r.Num : r.Num) > cap || bit_width_of(r.Den) > cap)
+        return std::nullopt;
+    return F{static_cast<I>(r.Num), static_cast<I>(r.Den)};
 }
 
 // b's value in lowest terms, in the fewest limbs that hold every value of B.
@@ -184,6 +193,16 @@ constexpr exact_frac<exact_limbs<L>> exact_of_large(double d) noexcept {
     const double f = frexp(m, &e);                                   // m = f·2^e, f in [0.5, 1)
     const I      v = I{static_cast<umax>(ldexp(f, 53))} << (e - 53); // e ≥ 65
     return {neg ? -v : v, I{1}};
+}
+
+// A finite double's exact value: m·2^e, with 2^1024 and 2^-1074 in reach.
+constexpr exact_frac<18> exact_of_double(double d) noexcept {
+    using I         = wide_sint<18>;
+    int        e    = 0;
+    const umax mant = static_cast<umax>(ldexp(frexp(d < 0 ? -d : d, &e), 53)); // |d| = mant·2^(e−53)
+    e -= 53;
+    const I n = e >= 0 ? I{mant} << e : I{mant};
+    return {d < 0 ? -n : n, e >= 0 ? I{1} : I{1} << -e};
 }
 
 // Truncation toward zero, as an integer.
@@ -368,7 +387,7 @@ using index_work_t = std::conditional_t<signed_value_bits_of({units_lo<L, UL>,
 
 // Integer raws: neither fp nor rational (a point's empty raw counts).
 template <insidable B>
-inline constexpr bool integer_raw = !fp_raw<B> && !rational_raw<B>;
+inline constexpr bool integer_raw = !fp_raw<B> && !rational_raw<B> && !frac_raw<B>;
 
 // a / b for grid numbers, known at compile time to be an integer.
 constexpr grid_wide exact_quotient(const grid_rational& a, const grid_rational& b) noexcept {

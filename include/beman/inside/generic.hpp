@@ -153,6 +153,11 @@ inline constexpr bool fp_raw = f64_raw<B> || f32_raw<B>;
 template <insidable B>
 inline constexpr bool rational_raw = std::is_same_v<raw_t<B>, rational>;
 
+// frac_raw — a continuous grid whose limits pass 64 bits (C++26): the raw is a
+// reduced exact fraction of as many limbs as the limits need (grid.hpp).
+template <insidable B>
+inline constexpr bool frac_raw = is_exact_frac_v<raw_t<B>>;
+
 // point_raw — a point grid's empty raw (point_slot): index storage at slot 0.
 template <insidable B>
 inline constexpr bool point_raw = std::is_same_v<raw_t<B>, point_slot>;
@@ -176,7 +181,7 @@ template <insidable B>
 inline constexpr bool exact_valued = wide_raw<B> || big_valued<B>;
 
 template <insidable B>
-inline constexpr bool value_raw = !fp_raw<B> && !rational_raw<B> && !point_raw<B> && !wide_raw<B> &&
+inline constexpr bool value_raw = !fp_raw<B> && !rational_raw<B> && !frac_raw<B> && !point_raw<B> && !wide_raw<B> &&
                                   ((policy_of<B> & direct) == direct
                                    // A pinned width flag without `indexed` is value storage (raw == value)
                                    // regardless of Lower's sign — storage_pick checked the range fits.
@@ -185,7 +190,7 @@ inline constexpr bool value_raw = !fp_raw<B> && !rational_raw<B> && !point_raw<B
                                     (lower_of<B> == 0 || std::signed_integral<raw_t<B>>)));
 
 template <insidable B>
-inline constexpr bool index_raw = !fp_raw<B> && !rational_raw<B> && !value_raw<B>;
+inline constexpr bool index_raw = !fp_raw<B> && !rational_raw<B> && !frac_raw<B> && !value_raw<B>;
 
 // Same raw type AND same encoding (value vs index): only then does one
 // inside's raw mean the same as another's on the same grid. A grid alone
@@ -203,10 +208,10 @@ constexpr auto exact_of(const B& b); // wide_value.hpp
 
 template <insidable B>
 [[nodiscard]] constexpr double as_double(const B& b) noexcept {
-    if constexpr (point_raw<B>)
-        return static_cast<double>(detail::lower64<B>);
-    else if constexpr (exact_valued<B>)
+    if constexpr (exact_valued<B>)
         return static_cast<double>(exact_of(b));
+    else if constexpr (point_raw<B>)
+        return static_cast<double>(detail::lower64<B>);
     else if constexpr (!index_raw<B>)
         return static_cast<double>(b.raw());
     else

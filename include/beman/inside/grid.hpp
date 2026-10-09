@@ -320,13 +320,36 @@ struct signed_direct_raw<G, true> {
     using type = smallest_int_for_t<trunc(G.Interval.Lower), trunc(G.Interval.Upper)>;
 };
 
+// A continuous grid stores its value as an exact fraction: the 64-bit
+// rational, or — for limits past 64 bits (C++26) — a reduced fraction of K-limb
+// integers, K holding twice the limits' bits. A value that needs more reports
+// overflow, as one past the 64-bit rational does.
+#if BEMAN_INSIDE_BIG_GRIDS
+template <grid G>
+inline constexpr std::size_t frac_limbs = [] {
+    auto bits = [](const grid_rational& r) {
+        const grid_wide n = wide_numerator(r);
+        return bit_width_of(n.negative() ? -n : n) + bit_width_of(wide_denominator(r));
+    };
+    const int b = bits(G.Interval.Lower) > bits(G.Interval.Upper) ? bits(G.Interval.Lower) : bits(G.Interval.Upper);
+    return limbs_for_bits(2 * b + 2);
+}();
+template <grid G>
+using continuous_raw_t = std::conditional_t<fits_rational(G.Interval.Lower) && fits_rational(G.Interval.Upper),
+                                            detail::rational,
+                                            exact_frac<frac_limbs<G>>>;
+#else
+template <grid G>
+using continuous_raw_t = detail::rational;
+#endif
+
 template <grid G>
 using storage_min_t = std::conditional_t<
     (G.Interval.Lower == G.Interval.Upper),
     point_slot,
     std::conditional_t<
         (G.Notch == 0),
-        detail::rational,
+        continuous_raw_t<G>,
         std::conditional_t<(!G.max_index_representable()),
                            index_raw_for_t<G>,
                            std::conditional_t<(G.Interval.Lower < 0 && G.Notch == 1 && fits_imax(G.Interval)),

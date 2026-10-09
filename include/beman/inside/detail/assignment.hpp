@@ -207,7 +207,39 @@ struct assignment;
 template <typename R, insidable L, typename P, typename A, std::size_t K>
 constexpr L& assign_exact(L& lhs, const exact_frac<K>& v, P&& policy, A&& action) {
     auto fail = [&](errc code) { report_failure(lhs, policy, action, code); };
-    if constexpr (rational_raw<L> || fp_raw<L>) {
+    if constexpr (frac_raw<L>) {
+        // A continuous grid past 64 bits: the value itself, reduced, when it
+        // lies within the limits and fits the raw's limbs.
+        if constexpr (clamp_action<plain_t<A>> || wrap_action<plain_t<A>>)
+            static_assert(dependent_false<A>, "on_clamp / on_wrap: not supported on a continuous grid past 64 bits");
+        constexpr std::size_t KK = exact_max<K, exact_limbs<L>>;
+        const exact_frac<KK>  lo = exact_of_grid<KK>(lower_of<L>), hi = exact_of_grid<KK>(upper_of<L>);
+        auto                  store = [&](const exact_frac<KK>& x) {
+            if (const auto r = frac_raw_of<raw_t<L>>(x)) [[likely]]
+                lhs = L::from_raw(*r);
+            else
+                fail(errc::overflow);
+        };
+        const exact_frac<KK> x{v};
+        if (x < lo || hi < x) [[unlikely]] {
+            dispatch_out_of_range<true>(
+                lhs,
+                policy,
+                action,
+                [&] { store(x < lo ? lo : hi); },
+                [&] {
+                    // x − q·span with q = ⌊(x − lo)/span⌋: into [lo, hi).
+                    const exact_frac<KK> span = hi + -lo, t = (x + -lo) / span;
+                    auto [q, m] = wide_sint<KK>::divmod(t.Num, t.Den);
+                    if (m.negative())
+                        q -= wide_sint<KK>{1};
+                    store(x + -(exact_frac<KK>{q, wide_sint<KK>{1}} * span));
+                });
+            return lhs;
+        }
+        store(x);
+        return lhs;
+    } else if constexpr (rational_raw<L> || fp_raw<L>) {
         // L holds 64-bit values: narrow through the rational (a value that does
         // not fit lies outside every such grid).
         const auto r = try_rational(v);
