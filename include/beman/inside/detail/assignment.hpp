@@ -525,8 +525,14 @@ struct assignment<L, R> {
                 return;
             }
         rational rhs_r{rhs};
-        if constexpr (has_policy<L, P, snap>)
-            rhs_r = round_to_lattice<L, P>(rhs_r);
+        if constexpr (has_policy<L, P, snap>) {
+            const auto r = try_round_to_lattice<L, P>(rhs_r);
+            if (!r) [[unlikely]] {
+                policy.report(errc::overflow);
+                return;
+            }
+            rhs_r = *r;
+        }
         imax     q;
         rational wrapped;
         if (abs_den(rhs_r.Denominator) == 1 && detail::notch64<L> == 1 &&

@@ -580,30 +580,76 @@ inline constexpr round_mode rounding_for = has_policy<L, P, round_floor>       ?
                                            : has_policy<L, P, round_nearest>   ? round_mode::nearest
                                                                                : round_mode::trunc;
 
-// The lattice index of Lower: ⌊Lower/Notch⌋ (= Lower/Notch when anchored).
-// Its parity, plus an offset's, says which lattice points are even.
+// Whether the lattice index of Lower, ⌊Lower/Notch⌋ (= Lower/Notch when
+// anchored), is odd: with an offset's parity it says which lattice points are
+// even. Exact past imax.
 template <insidable L>
-inline constexpr imax lower_index = detail::notched<L> ? floor((detail::lower64<L> / detail::notch64<L>).value()) : 0;
+inline constexpr bool lower_index_odd =
+    detail::notched<L> &&
+    (round_to_integral((detail::lower64<L> / detail::notch64<L>).value(), round_mode::floor).Numerator & 1) != 0;
+
+// The rounding step onto L's lattice by rounding_for<L, P>: the exact
+// lattice offset q (v/Notch when anchored, (v − Lower)/Notch otherwise) as
+// a base index and whether to step one unit up from it. `negative`: v < 0.
+// A rational index never wraps, however far past imax it lies.
+struct lattice_step {
+    rational Base;
+    bool     Step;
+};
+template <insidable L, typename P>
+[[nodiscard]] constexpr lattice_step lattice_step_of(rational q, bool negative) {
+    constexpr round_mode m = rounding_for<L, P>;
+    if constexpr (anchored<L>)
+        return {round_to_integral(q, m), false}; // the value index's own sign rules
+    else {
+        const rational k = round_to_integral(q, round_mode::floor);
+        const rational f = (q - k).value(); // in [0, 1): no overflow
+        return {k,
+                rounds_up(m,
+                          negative,
+                          classify_remainder(m, f.Numerator, abs_den(f.Denominator)),
+                          ((k.Numerator & 1) != 0) != lower_index_odd<L>)};
+    }
+}
 
 // v rounded onto L's lattice {Lower + k·Notch} by rounding_for<L, P> (value
-// space, ties half away from zero) — not limited to [Lower, Upper], so wrap
-// can round first and fold an on-lattice value after.
+// space, ties half away from zero). Pre: the result fits the rational range
+// (a v within one notch of L's limits); try_round_to_lattice checks it.
 template <insidable L, typename P>
 [[nodiscard]] constexpr rational round_to_lattice(rational v) {
     if constexpr (!detail::notched<L>)
         return v;
     else if constexpr (anchored<L>) {
-        // The notch index may pass imax (a fine notch on a wide range): round
-        // it as a rational, so it never wraps.
-        return (round_to_integral((v / detail::notch64<L>).value(), rounding_for<L, P>) * detail::notch64<L>).value();
+        return (lattice_step_of<L, P>((v / detail::notch64<L>).value(), v < 0).Base * detail::notch64<L>).value();
     } else {
-        const rational       q  = ((v - detail::lower64<L>).value() / detail::notch64<L>).value();
-        const imax           k  = floor(q);
-        const rational       f  = (q - rational{k}).value(); // in [0, 1)
-        constexpr round_mode m  = rounding_for<L, P>;
-        const bool           up = rounds_up(
-            m, v < 0, classify_remainder(m, f.Numerator, abs_den(f.Denominator)), ((k + lower_index<L>)&1) != 0);
-        return (detail::lower64<L> + (rational{k + up} * detail::notch64<L>).value()).value();
+        const auto [k, up] =
+            lattice_step_of<L, P>(((v - detail::lower64<L>).value() / detail::notch64<L>).value(), v < 0);
+        const rational j = up ? (k + rational{1}).value() : k;
+        return (detail::lower64<L> + (j * detail::notch64<L>).value()).value();
+    }
+}
+
+// The same for any v — not limited to [Lower, Upper], so wrap can round
+// first and fold an on-lattice value after: a result past the rational
+// range is errc::overflow. (Separate from round_to_lattice: an expected
+// result on that hot store path cost instructions.)
+template <insidable L, typename P>
+[[nodiscard]] constexpr std::expected<rational, errc> try_round_to_lattice(rational v) {
+    if constexpr (!detail::notched<L>)
+        return v;
+    else {
+        const auto q =
+            anchored<L> ? try_div(v, detail::notch64<L>) : try_sub(v, detail::lower64<L>).and_then([](rational off) {
+                return try_div(off, detail::notch64<L>);
+            });
+        if (!q)
+            return q;
+        const auto [base, step] = lattice_step_of<L, P>(*q, v < 0);
+        const auto j            = step ? try_add(base, rational{1}) : std::expected<rational, errc>{base};
+        if (!j)
+            return j;
+        const auto offset = try_mul(*j, detail::notch64<L>);
+        return (offset && !anchored<L>) ? try_add(detail::lower64<L>, *offset) : offset;
     }
 }
 
@@ -625,7 +671,7 @@ template <insidable L, typename P>
         constexpr rational hi = (detail::upper64<L> + detail::notch64<L>).value_or(detail::upper64<L>);
         if (v <= lo || v >= hi)
             return false;
-        out = round_to_lattice<L, P>(v);
+        out = round_to_lattice<L, P>(v); // within one notch of the limits: fits
         return includes(interval_of<L>, out);
     }
 }
@@ -678,8 +724,7 @@ template <insidable L, typename P>
         using W              = wide_uint<2>;
         negative             = W{num} * W{abs_den(c.Denominator)} < W{c.Numerator} * W{den};
     }
-    return q +
-           rounds_up(m, negative, classify_remainder(m, r, den), ((q + static_cast<umax>(lower_index<L>)) & 1) != 0);
+    return q + rounds_up(m, negative, classify_remainder(m, r, den), ((q & 1) != 0) != lower_index_odd<L>);
 }
 
 // Round the non-negative offset quotient num/den (den >= 1) to an integer

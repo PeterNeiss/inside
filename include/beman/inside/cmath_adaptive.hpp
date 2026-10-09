@@ -1571,7 +1571,7 @@ constexpr std::optional<imax> bracket_slot(imax num, bool negative) noexcept {
     const imax k           = q + rounds_up(m,
                                            negative,
                                            classify_remainder(m, static_cast<umax>(r), static_cast<umax>(den)),
-                                           ((q + lower_index<Out>)&1) != 0);
+                                           ((q & 1) != 0) != lower_index_odd<Out>);
     if (k < 0 || static_cast<umax>(k) > max_index_v<Out>)
         return std::nullopt;
     return k;

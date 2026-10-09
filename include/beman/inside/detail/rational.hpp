@@ -236,24 +236,30 @@ constexpr std::unexpected<errc> fail(errc code) {
     return (v.Denominator < 0) ? -n : n;
 }
 
-// v rounded to an integer by m (nearest: half away from zero).
-[[nodiscard]] constexpr imax round_to_int(rational v, round_mode m) {
+// v rounded to an integer by m (nearest: half away from zero), as a sign
+// and a umax magnitude: q + 1 cannot overflow, since a nonzero remainder
+// needs a denominator ≥ 2, so q ≤ umax/2.
+struct rounded_integer {
+    umax Magnitude;
+    bool Negative;
+};
+[[nodiscard]] constexpr rounded_integer round_magnitude(rational v, round_mode m) {
     const umax ad  = abs_den(v.Denominator);
     const umax q   = v.Numerator / ad;
     const bool neg = v.Denominator < 0;
-    const umax mag = q + rounds_away(m, neg, classify_remainder(m, v.Numerator % ad, ad), (q & 1) != 0);
+    return {q + rounds_away(m, neg, classify_remainder(m, v.Numerator % ad, ad), (q & 1) != 0), neg};
+}
+
+// Narrowed to imax (callers keep |v| within it).
+[[nodiscard]] constexpr imax round_to_int(rational v, round_mode m) {
+    const auto [mag, neg] = round_magnitude(v, m);
     return neg ? -mag : mag;
 }
 
-// The same rounding, kept exact as a rational: the magnitude stays a umax
-// (q + 1 cannot overflow — a nonzero remainder needs a denominator ≥ 2, so
-// q ≤ umax/2), where round_to_int narrows it to imax.
+// Kept exact as a rational, for indices that may pass imax.
 [[nodiscard]] constexpr rational round_to_integral(rational v, round_mode m) {
-    const umax ad  = abs_den(v.Denominator);
-    const umax q   = v.Numerator / ad;
-    const bool neg = v.Denominator < 0;
-    const umax mag = q + rounds_away(m, neg, classify_remainder(m, v.Numerator % ad, ad), (q & 1) != 0);
-    return neg ? -rational{mag} : rational{mag};
+    const auto [mag, neg] = round_magnitude(v, m);
+    return make_raw(mag, (neg && mag != 0) ? imax{-1} : imax{1});
 }
 
 [[nodiscard]] constexpr imax trunc(rational v) { return round_to_int(v, round_mode::trunc); }
