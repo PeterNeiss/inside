@@ -69,7 +69,7 @@ void check_cross(const std::vector<double>& va, const std::vector<double>& vb) {
                 SCOPED_TRACE(::testing::Message() << "- a=" << to_string(ar) << " b=" << to_string(br));
                 ASSERT_TRUE(static_cast<rational>(a - b) == *(ar - br));
             }
-            if constexpr (requires { a* b; }) {
+            if constexpr (requires { a * b; }) {
                 SCOPED_TRACE(::testing::Message() << "* a=" << to_string(ar) << " b=" << to_string(br));
                 ASSERT_TRUE(static_cast<rational>(a * b) == *(ar * br));
             }

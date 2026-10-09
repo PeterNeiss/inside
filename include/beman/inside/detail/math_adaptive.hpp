@@ -528,7 +528,7 @@ constexpr Out store(const wide_sint<K>& index, P&& policy) {
         if (!index.negative() && !(count < index)) [[likely]] {
             constexpr double notch = static_cast<double>(static_cast<imax>(wide_numerator(notch_of<Out>))) /
                                      static_cast<double>(static_cast<imax>(wide_denominator(notch_of<Out>)));
-            const imax j = static_cast<imax>(index) + static_cast<imax>(slot_base<Out>);
+            const imax       j     = static_cast<imax>(index) + static_cast<imax>(slot_base<Out>);
             return Out::from_raw(static_cast<raw_t<Out>>(static_cast<double>(j) * notch));
         }
     } else if constexpr (rational_storage<Out> && notch_fits64<Out>) {

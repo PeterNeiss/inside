@@ -362,9 +362,9 @@ struct trig_core {
     template <int W>
     constexpr auto run() const {
         constexpr int S = W + 10 + (Fn == trig::tan ? KMax + 4 : 0);
-        constexpr int T = S + Mag + 4;                               // reduce with Mag more bits
-        using I = fixed_t<(Fn == trig::tan ? S + KMax + 4 : S + 2)>; // |sin|, |cos| ≤ 1; |tan| ≤ 2^(KMax+3)
-        using R = fixed_t<T + Mag + 8>;
+        constexpr int T = S + Mag + 4;                                       // reduce with Mag more bits
+        using I         = fixed_t<(Fn == trig::tan ? S + KMax + 4 : S + 2)>; // |sin|, |cos| ≤ 1; |tan| ≤ 2^(KMax+3)
+        using R         = fixed_t<T + Mag + 8>;
         constexpr std::size_t K  = limbs_of<I>;
         const R               xq = to_q<T, limbs_of<R>>(X);
         const R               hp = static_cast<R>(pi_q<T - 1>);                                    // π/2 within 1
@@ -612,7 +612,7 @@ struct ahyp_core {
                 const I     lv = l.Value + I{h} * static_cast<I>(ln2_q<S>);
                 return approx<K>{neg ? -lv : lv, S, l.Error + static_cast<umax>(h) + 1};
             } else {
-                const F     r{(a.Num - a.Den) * (a.Num + a.Den), a.Den * a.Den}; // x² − 1 = (n − d)(n + d)/d²
+                const F     r{(a.Num - a.Den) * (a.Num + a.Den), a.Den * a.Den};     // x² − 1 = (n − d)(n + d)/d²
                 const I     v = to_q<S, K>(a) + sqrt_exact_q<S, K, 2 * Bits + 2>(r); // ≥ 1, within 2
                 const fx<K> l = log_fixed<S>(v, 2);
                 return approx<K>{l.Value, S, l.Error};
@@ -709,7 +709,7 @@ template <grid_rational Notch, bool Up, std::size_t K>
 constexpr wide_sint<K + notch_limbs<Notch>> lattice_index(const wide_sint<K>& n, const wide_sint<K>& d) {
     using J   = wide_sint<K + notch_limbs<Notch>>;
     const J p = static_cast<J>(wide_numerator(Notch)), q = static_cast<J>(wide_denominator(Notch));
-    return rounded_div < Up ? round_mode::ceil : round_mode::floor > (J{n} * q, J{d} * p);
+    return rounded_div<Up ? round_mode::ceil : round_mode::floor>(J{n} * q, J{d} * p);
 }
 
 template <grid_rational Notch, bool Up, int W, int Cap, typename Core>
@@ -1458,8 +1458,8 @@ inline bool dd_attempt_pow(const InB& bi, const InE& ei, Out& out) {
             }
             const ddk::dd v = ddk::exp_lean_value(y);
             bound           = fabs_d(v.Hi) * (ddk::lean_exp::Rel + fabs_d(e.Hi) * bound * (1 + 0x1p-40) +
-                                    4 * fpk::kU * fpk::kU * L + input(L)) +
-                    fpk::kTiny;
+                                              4 * fpk::kU * fpk::kU * L + input(L)) +
+                              fpk::kTiny;
             return v;
         },
         [&] {

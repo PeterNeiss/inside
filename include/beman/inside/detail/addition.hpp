@@ -72,7 +72,7 @@ struct addition {
             // arithmetic (wide_value.hpp). Exact for every grid, at any width.
             using W = index_work_t<result, L, notch_of<result>, R, notch_of<result>>;
             res     = from_value_index<result>(value_in_units<W, notch_of<result>>(lhs) +
-                                           value_in_units<W, notch_of<result>>(rhs));
+                                               value_in_units<W, notch_of<result>>(rhs));
         } else if constexpr (wide_valued<result>)
             // An fp or rational operand into a result with more than 2^64 slots.
             res = exact_result<result>(exact_of(lhs) + exact_of(rhs));

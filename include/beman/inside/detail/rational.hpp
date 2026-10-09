@@ -963,30 +963,30 @@ concept rational_lift_operands =
     return lift([](rational r) { return -r; }, v);
 }
 
-#define BEMAN_INSIDE_RATIONAL_OP(op)                                                                      \
-    template <arithmetic T>                                                                               \
-    [[nodiscard]] inline constexpr auto operator op(T lhs, rational const& rhs) {                         \
-        return rational{lhs} op rhs;                                                                      \
-    }                                                                                                     \
-    template <arithmetic T>                                                                               \
-    [[nodiscard]] inline constexpr auto operator op(rational const& lhs, T rhs) {                         \
-        return lhs op rational{rhs};                                                                      \
-    }                                                                                                     \
-    template <class L, class R>                                                                           \
-        requires rational_lift_operands<L, R>                                                             \
-    [[nodiscard]] inline constexpr auto operator op(L const& lhs, R const& rhs) {                         \
-        return lift([](auto const& a, auto const& b) { return a op b; }, lhs, rhs);                       \
-    }                                                                                                     \
-    inline constexpr rational& rational::operator op##=(rational const& rhs) {                            \
-        *this = (*this op rhs).value();                                                                   \
-        return *this;                                                                                     \
-    }                                                                                                     \
-    template <arithmetic T>                                                                               \
-    inline constexpr rational& operator op##=(rational & lhs, T rhs) {                                    \
-        return lhs op## = rational{rhs};                                                                  \
-    }                                                                                                     \
-    inline constexpr rational& operator op##=(rational & lhs, std::expected<rational, errc> const& rhs) { \
-        return lhs op## = rhs.value();                                                                    \
+#define BEMAN_INSIDE_RATIONAL_OP(op)                                                                        \
+    template <arithmetic T>                                                                                 \
+    [[nodiscard]] inline constexpr auto operator op(T lhs, rational const& rhs) {                           \
+        return rational{lhs} op rhs;                                                                        \
+    }                                                                                                       \
+    template <arithmetic T>                                                                                 \
+    [[nodiscard]] inline constexpr auto operator op(rational const& lhs, T rhs) {                           \
+        return lhs op rational{rhs};                                                                        \
+    }                                                                                                       \
+    template <class L, class R>                                                                             \
+        requires rational_lift_operands<L, R>                                                               \
+    [[nodiscard]] inline constexpr auto operator op(L const& lhs, R const& rhs) {                           \
+        return lift([](auto const& a, auto const& b) { return a op b; }, lhs, rhs);                         \
+    }                                                                                                       \
+    inline constexpr rational& rational::operator op## = (rational const& rhs) {                            \
+        *this = (*this op rhs).value();                                                                     \
+        return *this;                                                                                       \
+    }                                                                                                       \
+    template <arithmetic T>                                                                                 \
+    inline constexpr rational& operator op## = (rational & lhs, T rhs) {                                    \
+        return lhs op## = rational{rhs};                                                                    \
+    }                                                                                                       \
+    inline constexpr rational& operator op## = (rational & lhs, std::expected<rational, errc> const& rhs) { \
+        return lhs op## = rhs.value();                                                                      \
     }
 
 BEMAN_INSIDE_RATIONAL_OP(+)

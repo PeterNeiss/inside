@@ -390,7 +390,7 @@ template <typename A>
 concept raw_scalar = std::integral<A> || std::floating_point<A>;
 
 #define BEMAN_INSIDE_SCALAR_MSG                                                      \
-    "an inside cannot be combined with a raw scalar: give the scalar a grid — "    \
+    "an inside cannot be combined with a raw scalar: give the scalar a grid — "      \
     "`1_ins`, `just<1>`, `one`, or `inside<{lo,hi}>{n}` for a runtime value with a " \
     "known range"
 #define BEMAN_INSIDE_NO_SCALAR(op)                                          \
@@ -403,7 +403,7 @@ concept raw_scalar = std::integral<A> || std::floating_point<A>;
         static_assert(detail::dependent_false<B>, BEMAN_INSIDE_SCALAR_MSG); \
     }                                                                       \
     template <insidable B, raw_scalar A>                                    \
-    B& operator op##=(B&, A) {                                              \
+    B& operator op## = (B&, A) {                                            \
         static_assert(detail::dependent_false<B>, BEMAN_INSIDE_SCALAR_MSG); \
     }
 

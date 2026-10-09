@@ -61,7 +61,7 @@ void oracle_check(A a, B b) {
         ASSERT_TRUE(static_cast<rational>(r) == *(ar - br));
         check_bits(r, "-");
     }
-    if constexpr (requires { a* b; }) {
+    if constexpr (requires { a * b; }) {
         auto r = a * b;
         SCOPED_TRACE(::testing::Message() << "* a=" << to_string(ar) << " b=" << to_string(br));
         ASSERT_TRUE(static_cast<rational>(r) == *(ar * br));
