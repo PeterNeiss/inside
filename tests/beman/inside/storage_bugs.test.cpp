@@ -274,15 +274,16 @@ TEST(StorageBugsTest, scalar_comparison_does_not_truncate_the_scalar) {
 }
 
 #ifndef BEMAN_INSIDE_MATH_NO_FP
-// ++ / += point on `f64` storage adds the value, not a notch count to the raw.
+// ++ / += point on `f64` storage adds the value, not a notch count to the raw
+// (++ moves one notch, 1/256 here).
 TEST(StorageBugsTest, increment_on_f64_storage) {
     using namespace beman::inside;
     using rl = inside<{{-4, 4}, per<256>}, f64 | round_nearest>;
     rl x{rational{3, 2}};
     ++x;
-    EXPECT_EQ(x.raw(), 2.5);
+    EXPECT_EQ(x.raw(), 1.5 + 1.0 / 256);
     x += 1_ins;
-    EXPECT_EQ(x.raw(), 3.5);
+    EXPECT_EQ(x.raw(), 2.5 + 1.0 / 256);
     --x;
     EXPECT_EQ(x.raw(), 2.5);
 }

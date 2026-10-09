@@ -37,7 +37,7 @@ inline constexpr rational kTwoPiRat = 2 * kPiRat;
 // storage flag (i8 … u64) — the output range differs, as for arithmetic — and
 // minus f64 / f32, which deduced_inside re-adds where the output grid allows.
 template <insidable In>
-inline constexpr policy_flag out_policy = policy_of<In> & ~(raw_width_mask | f64 | f32);
+inline constexpr policy_flag out_policy = policy_of<In> & ~(raw_width_mask | f64 | f32 | cursor_marker);
 
 // A 64-bit grid operation's result through Out's assignment.
 template <insidable Out, typename V>

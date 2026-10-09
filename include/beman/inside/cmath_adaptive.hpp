@@ -759,7 +759,8 @@ inline constexpr imax max_abs_int = ceil_abs(lower_of<In>) > ceil_abs(upper_of<I
 // f64 / f32 (deduced_inside re-adds them where the output grid allows),
 // rounding to nearest.
 template <insidable In>
-inline constexpr policy_flag auto_policy = (policy_of<In> & ~(raw_width_mask | f64 | f32)) | round_nearest;
+inline constexpr policy_flag auto_policy =
+    (policy_of<In> & ~(raw_width_mask | f64 | f32 | cursor_marker)) | round_nearest;
 
 template <insidable In, grid_rational Lo, grid_rational Hi>
 using auto_grid_t = deduced_inside<{{Lo, Hi}, notch_of<In>}, auto_policy<In>, In>;
@@ -1525,7 +1526,8 @@ constexpr auto anchored_input(const In& x) {
     if constexpr (anchored<In>)
         return x;
     else
-        return inside<grid{grid_of<In>.Interval, grid_of<In>.value_unit()}, policy_of<In>>{x};
+        return inside<grid{grid_of<In>.Interval, grid_of<In>.value_unit()},
+                      policy_of<In> & ~::beman::inside::detail::cursor_marker>{x};
 }
 
 template <insidable Out>

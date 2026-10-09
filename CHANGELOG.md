@@ -8,6 +8,9 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 ### Added
 
+- `cursor<T, Step>`: an inside stepping through `T`'s range by `Step` and one
+  step past its Upper, for `for (cursor<T, per<4>> t; t != end(t); ++t)`.
+  It starts at `T`'s Lower by default; `end(t)` is its past-the-end value.
 - Grids whose Lower is not a multiple of the notch: `inside<{{0.5, 255.5}, 1}>`
   holds 0.5, 1.5, …, 255.5 in a `uint8_t`. Every operation works on them —
   rounding stores (in value space, every mode), conversions, `+ − × /`,
@@ -35,6 +38,9 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 ### Changed
 
+- `++` / `--` move one notch on every grid (was ±1): on `per<1024>` they add
+  1/1024. A grid without a notch has no `++`. Breaking for code that relied on
+  `++` adding 1 on a fine grid (`std::iota` over such a type steps by the notch).
 - `f64` and `f32` are storage only: every result — value, rounding, error
   code, plain-or-`expected` return, ordering type, printing, `numeric_limits`,
   hash, deduced math types — is the one the type gives without them

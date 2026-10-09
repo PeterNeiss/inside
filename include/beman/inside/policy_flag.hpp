@@ -123,7 +123,10 @@ inline constexpr policy_flag indexed{1ull << 40};
 // check). Includes `snap` so notch-incompatible assigns compile.
 namespace detail {
 inline constexpr policy_flag unsafe_marker{1ull << 36};
-}
+// Marks a cursor (`T::cursor<Step>`): default construction starts at Lower,
+// and `end(t)` names its past-the-end value. Results never carry it.
+inline constexpr policy_flag cursor_marker{1ull << 50};
+} // namespace detail
 inline constexpr policy_flag unsafe{detail::unsafe_marker | ignore_range | snap | ignore_zero};
 
 //---------------------------------------------------------------------------

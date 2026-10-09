@@ -2,7 +2,7 @@
 // Audio-shaped corners of beman::inside::math, each result the correctly
 // rounded point of its output grid (no <cmath>, the same at compile time and on
 // every platform):
-//   1. An exponential decay envelope, exp(-t).
+//   1. An exponential curve over a stepping loop, exp(t).
 //   2. A log-spaced frequency sweep, 20 Hz · 2^(step/4).
 //   3. A tanh soft clipper beside a hard clip, and cosh² − sinh² = 1.
 //   4. Octaves with log2, and a cube-root loudness curve.
@@ -16,13 +16,13 @@
 using namespace beman::inside;
 
 int main() {
-    // 1. Decay: t = 0, 0.25, …, 2 as n/4 on a grid, amp on Q.14.
-    using time_t = inside<{{-4, 0}, per<1024>}, round_nearest>;
-    using amp_t  = inside<{{0, 1}, per<16384>}, round_nearest>;
-    std::cout << "t     exp(-t)\n";
-    for (int n = 0; n <= 8; n += 2) {
-        const time_t neg_t{inside<{-8, 0}>{-n} / just<4>};
-        std::cout << -neg_t << "\t" << amp_t{math::exp(neg_t)} << "\n";
+    // 1. Growth and decay: t = −4, −3.75, …, 4 by a cursor over time_t in
+    //    steps of 1/4 (it may step one past 4), amp on Q.14.
+    using time_t = inside<{{-4, 4}, per<1024>}, round_nearest>;
+    using amp_t  = inside<{{0, 100}, per<16384>}, round_nearest>;
+    std::cout << "t     exp(t)\n";
+    for (cursor<time_t, per<4>> t; t != end(t); ++t) {
+        std::cout << t << "\t" << math::exp_into<amp_t>(t) << "\n";
     }
 
     // 2. Sweep: 4 steps per octave from 20 Hz; every 4th step doubles exactly.

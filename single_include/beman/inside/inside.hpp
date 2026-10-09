@@ -3274,7 +3274,10 @@ inline constexpr policy_flag indexed{1ull << 40};
 // check). Includes `snap` so notch-incompatible assigns compile.
 namespace detail {
 inline constexpr policy_flag unsafe_marker{1ull << 36};
-}
+// Marks a cursor (`T::cursor<Step>`): default construction starts at Lower,
+// and `end(t)` names its past-the-end value. Results never carry it.
+inline constexpr policy_flag cursor_marker{1ull << 50};
+} // namespace detail
 inline constexpr policy_flag unsafe{detail::unsafe_marker | ignore_range | snap | ignore_zero};
 
 //---------------------------------------------------------------------------
@@ -7874,7 +7877,7 @@ struct inside {
                   "inside: the `indexed` policy (raw == 0-based notch index) "
                   "requires a notch (Notch != 0)");
 
-    using negative = inside<-G, P>;
+    using negative = inside<-G, P & ~detail::cursor_marker>; // −cursor is no cursor
     using raw_type = detail::storage_for_t<G, P>;
 
   private:
@@ -7898,7 +7901,14 @@ struct inside {
     // overload zero-filled Raw, which decoded to an out-of-range value or an invalid
     // {0,0} rational for grids not containing 0 — a defined-but-invalid footgun.
     // Value-init `inside{}` still zero-fills where a zero raw is genuinely wanted.)
-    constexpr inside() = default;
+    constexpr inside()
+        requires(!has_flag(P, detail::cursor_marker))
+    = default;
+
+    // A cursor starts at Lower: its index raw 0 (cursors always store an index).
+    constexpr inside()
+        requires(has_flag(P, detail::cursor_marker))
+        : Raw{0} {}
 
   private:
     // The one store every constructor and assignment goes through — the same
@@ -8467,16 +8477,16 @@ struct inside {
     }
 
   public:
-    // ++/-- add the point inside `just<±1>` through the insidable += (which has
-    // the raw-level integer fast path) instead of the rational round-trip,
-    // which decodes to rational and re-stores through the full quotient/
-    // rounding machinery (~30× the instructions on an integer grid). `just`
-    // itself is declared after the class, so spell the point inside directly.
+    // ++/-- move one notch: they add the point inside of ±Notch through the
+    // insidable += (which has the raw-level integer fast path) instead of the
+    // rational round-trip (~30× the instructions on an integer grid). On a
+    // notch-1 grid that is ±1; on a cursor, one step. `just` itself is declared
+    // after the class, so spell the point inside directly.
     constexpr inside& operator++() {
-        // constexpr local: the point inside is materialised at compile time (the
-        // ctor's error path otherwise blocks constant folding at -O3).
-        constexpr auto kOne = inside<grid{detail::rational{1}}>{detail::rational{1}};
-        return *this += kOne;
+        static_assert(G.Notch != 0, "inside: ++ steps one notch - a grid without a notch has none to step");
+        // constexpr local: the point inside is materialised at compile time.
+        constexpr auto kStep = inside<grid{G.Notch}>::from_raw({});
+        return *this += kStep;
     }
     constexpr inside operator++(int) {
         inside t = *this;
@@ -8484,8 +8494,9 @@ struct inside {
         return t;
     }
     constexpr inside& operator--() {
-        constexpr auto kMinusOne = inside<grid{detail::rational{-1}}>{detail::rational{-1}};
-        return *this += kMinusOne;
+        static_assert(G.Notch != 0, "inside: -- steps one notch - a grid without a notch has none to step");
+        constexpr auto kStep = inside<grid{-G.Notch}>::from_raw({});
+        return *this += kStep;
     }
     constexpr inside operator--(int) {
         inside t = *this;
@@ -8646,6 +8657,16 @@ inline constexpr auto equal_to = [](const auto& a, const auto& b) { return a == 
 template <insidable B>
 inline constexpr bool exact_in_double = fp_storage<B> || double_exact<grid_of<B>>;
 
+// A point P that is one of X's slots, with X storing a builtin index: X's
+// raw orders like its value, so X ⋈ P is its raw ⋈ that constant slot
+// (`t != end(t)`, `x <= 4_ins`).
+template <insidable X, insidable P>
+inline constexpr bool point_is_slot =
+    integer_index_storage<X> && !point_grid<X> && point_grid<P> && grid_of<X>.representable(lower_of<P>);
+template <insidable X, insidable P>
+inline constexpr raw_t<X> point_slot_of =
+    static_cast<raw_t<X>>(exact_quotient(grid_sub(lower_of<P>, lower_of<X>), notch_of<X>));
+
 // inside ⋈ inside (⋈ = `cmp`: <=> or ==) in the cheapest exact form the two
 // storage shapes allow.
 template <insidable L, insidable R, class Cmp>
@@ -8653,6 +8674,10 @@ constexpr auto compare(const L& lhs, const R& rhs, Cmp cmp) {
     // same grid and encoding: Raw is monotonically ordered and comparable
     if constexpr (grid_of<L> == grid_of<R> && same_storage<L, R>)
         return cmp(lhs.raw(), rhs.raw());
+    else if constexpr (point_is_slot<L, R>)
+        return cmp(lhs.raw(), point_slot_of<L, R>);
+    else if constexpr (point_is_slot<R, L>)
+        return cmp(point_slot_of<R, L>, rhs.raw());
     // a wide-index operand: exact wide fractions
     else if constexpr (wide_valued<L> || wide_valued<R>)
         return cmp(exact_of(lhs), exact_of(rhs));
@@ -8775,6 +8800,47 @@ template <insidable B, detail::arithmetic A>
 // numbers past 64 bits (C++26 `_g`) work too.
 template <auto value>
 inline constexpr auto just = inside<grid{value}>::from_raw({});
+
+//---------------------------------------------------------------------------
+// cursor<T, Step> — an inside on {{Lower, Upper + Step}, Step} of T: it steps
+// (++ moves one notch) from Lower through Upper and one step past it, the
+// end. It keeps T's checks and rounding, stores a slot index (so default
+// construction starts at Lower), and carries cursor_marker, which gives it
+// `end(t)`. Step is a number (an integer, `rational`, `per<N>`), T's notch by
+// default: a positive whole number of notches of T dividing its range, so
+// every value but the end is a value of T.
+//   for (cursor<time_t, per<4>> t; t != end(t); ++t) …
+//---------------------------------------------------------------------------
+namespace detail {
+template <insidable T>
+consteval grid cursor_grid(const auto& step) {
+    const grid_rational s = grid{step}.Interval.Lower;
+    if (!(s > 0))
+        constexpr_error<"cursor<T, Step>: the step must be positive - a cursor steps forward, one past the end">();
+    if (notch_of<T> == 0)
+        constexpr_error<"cursor<T, Step>: T has no notch - a continuous grid has no lattice to step on">();
+    if (!interval_of<T>.divides_evenly(s))
+        constexpr_error<"cursor<T, Step>: the step must divide the range of T evenly">();
+    if (!grid_divides_evenly(s, notch_of<T>))
+        constexpr_error<"cursor<T, Step>: the step must be a whole number of notches of T">();
+    return grid{interval{lower_of<T>, grid_add(upper_of<T>, s)}, s};
+}
+
+consteval policy_flag cursor_policy(policy_flag p) {
+    return (p & ~(raw_width_mask | f64 | f32 | direct | exact)) | indexed | cursor_marker;
+}
+} // namespace detail
+
+template <insidable T, auto Step = notch_of<T>>
+using cursor = inside<detail::cursor_grid<T>(Step), detail::cursor_policy(policy_of<T>)>;
+
+// end(t): a cursor's past-the-end value, one step past T's Upper. Only a
+// cursor has one — on any other inside its Upper is a value, not an end.
+template <insidable B>
+    requires(has_flag(policy_of<B>, detail::cursor_marker))
+[[nodiscard]] constexpr auto end(const B&) noexcept {
+    return just<upper_of<B>>;
+}
 
 //---------------------------------------------------------------------------
 // zero / one — universal exact constants. Single-point insides that assign into
@@ -13381,7 +13447,8 @@ inline constexpr imax max_abs_int = ceil_abs(lower_of<In>) > ceil_abs(upper_of<I
 // f64 / f32 (deduced_inside re-adds them where the output grid allows),
 // rounding to nearest.
 template <insidable In>
-inline constexpr policy_flag auto_policy = (policy_of<In> & ~(raw_width_mask | f64 | f32)) | round_nearest;
+inline constexpr policy_flag auto_policy =
+    (policy_of<In> & ~(raw_width_mask | f64 | f32 | cursor_marker)) | round_nearest;
 
 template <insidable In, grid_rational Lo, grid_rational Hi>
 using auto_grid_t = deduced_inside<{{Lo, Hi}, notch_of<In>}, auto_policy<In>, In>;
@@ -14147,7 +14214,8 @@ constexpr auto anchored_input(const In& x) {
     if constexpr (anchored<In>)
         return x;
     else
-        return inside<grid{grid_of<In>.Interval, grid_of<In>.value_unit()}, policy_of<In>>{x};
+        return inside<grid{grid_of<In>.Interval, grid_of<In>.value_unit()},
+                      policy_of<In> & ~::beman::inside::detail::cursor_marker>{x};
 }
 
 template <insidable Out>
@@ -14831,7 +14899,7 @@ inline constexpr rational kTwoPiRat = 2 * kPiRat;
 // storage flag (i8 … u64) — the output range differs, as for arithmetic — and
 // minus f64 / f32, which deduced_inside re-adds where the output grid allows.
 template <insidable In>
-inline constexpr policy_flag out_policy = policy_of<In> & ~(raw_width_mask | f64 | f32);
+inline constexpr policy_flag out_policy = policy_of<In> & ~(raw_width_mask | f64 | f32 | cursor_marker);
 
 // A 64-bit grid operation's result through Out's assignment.
 template <insidable Out, typename V>

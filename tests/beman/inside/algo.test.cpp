@@ -125,11 +125,11 @@ TEST(AlgoTest, algo_classic_stl_algorithms) {
     ASSERT_EQ(*mm.first, 20);
     ASSERT_EQ(*mm.second, 99);
 
-    // iota
+    // iota: ++ moves one notch (1/2 on this grid)
     std::vector<cell> iota_v(5);
     std::iota(iota_v.begin(), iota_v.end(), cell{10});
     ASSERT_EQ(iota_v.front(), 10);
-    ASSERT_EQ(iota_v.back(), 14);
+    ASSERT_EQ(iota_v.back(), 12);
 }
 
 // beman::inside::min / max / midpoint over bounds

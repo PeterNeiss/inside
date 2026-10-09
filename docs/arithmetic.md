@@ -431,6 +431,39 @@ a += just<frac<1, 4>>;  // 0.75 — exact inside-space accumulation, snaps to 1/
 a *= 0.5_ins;           // 0.375, rounded to 0.38 on assign
 ```
 
+`++` and `--` move one notch: on a notch-1 grid that is ±1, on
+`inside<{{0, 2}, per<4>}>` it is ±1/4. A grid without a notch has no `++`.
+
+## Stepping loops: `cursor<T, Step>`
+
+`for (T t = lo; t <= hi; t += step)` needs a value one step past `hi`, which
+`T` cannot hold, so the last increment reports out of range. A cursor is an
+inside that can hold it: `cursor<T, Step>` steps through `T`'s range by `Step`
+and one step past its Upper. It starts at `T`'s Lower, and `end(t)` is the
+value one past the last:
+
+```cpp
+using time_t = inside<{{-4, 4}, per<1024>}, round_nearest>;
+for (cursor<time_t, per<4>> t; t != end(t); ++t)         // −4, −3.75, …, 4
+    std::cout << t << " " << math::exp_into<amp_t>(t) << "\n";
+for (cursor<time_t, 0.25_r> t = -2_ins; t <= 2_ins; ++t) // any start, the classic test
+    …
+```
+
+- It is a plain inside on `{{Lower, Upper + Step}, Step}`: math, printing,
+  comparison and assignment back to `T` (exact: every value but the end is
+  one of `T`'s) work on it directly. It keeps `T`'s checks and rounding; `--`
+  below Lower and `++` past the end report like any out-of-range value.
+- `Step` is a number (an integer, `rational`, `per<N>`) and defaults to `T`'s
+  notch. It must be positive, divide `T`'s range, and be a whole number of
+  `T`'s notches — checked at compile time.
+- A default-constructed cursor is `T`'s Lower (a plain inside's default
+  constructor leaves it uninitialized). `end(t)` exists only for cursors;
+  `t != end(t)` is one integer compare.
+- It is a cursor, not an iterator: an iterator would need `*it`, traits and the
+  range concepts, and could no longer be an inside. For a range use
+  [`inside_range`](storage.md#iteration-inside_range).
+
 ## Variadic folds
 
 `add_all` and `mul_all` are variadic equivalents of `+` and `*` over insides:
