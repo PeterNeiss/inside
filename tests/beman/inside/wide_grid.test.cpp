@@ -17,7 +17,6 @@
 #include <vector>
 
 using namespace beman::inside;
-using beman::inside::detail::rational;
 
 namespace {
 constexpr umax p32 = umax{1} << 32;

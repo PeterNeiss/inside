@@ -10,7 +10,6 @@
 #include <set>
 
 using namespace beman::inside;
-using detail::rational;
 
 TEST(SignTest, sign_grid_follows_the_input_signs) {
     using S = inside<{-50, 50}>;

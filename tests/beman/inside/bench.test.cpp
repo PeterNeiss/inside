@@ -1128,13 +1128,13 @@ static void bench_rational() {
     });
     finish(mx);
 
-    // detail::rational directly — the primitive every slow path sits on.
+    // rational directly — the primitive every slow path sits on.
     auto ra = group("rational engine add", kIters);
     ra.run("native fraction", [&] {
         ++i;
         doNotOptimizeAway(fraction_add(fa[i & kMask], fb[i & kMask]).num);
     });
-    ra.run("detail::rational", [&] {
+    ra.run("rational", [&] {
         ++i;
         doNotOptimizeAway((qa[i & kMask] + qb[i & kMask])->Numerator);
     });
@@ -1145,7 +1145,7 @@ static void bench_rational() {
         ++i;
         doNotOptimizeAway(fraction_mul(fa[i & kMask], fb[i & kMask]).num);
     });
-    rm.run("detail::rational", [&] {
+    rm.run("rational", [&] {
         ++i;
         doNotOptimizeAway((qa[i & kMask] * qb[i & kMask])->Numerator);
     });
@@ -1157,7 +1157,7 @@ static void bench_rational() {
         fraction64 a = fa[i & kMask], b = fb[i & kMask];
         doNotOptimizeAway(a.num * b.den < b.num * a.den);
     });
-    rc.run("detail::rational", [&] {
+    rc.run("rational", [&] {
         ++i;
         doNotOptimizeAway(qa[i & kMask] < qb[i & kMask]);
     });

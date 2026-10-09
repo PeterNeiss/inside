@@ -13,7 +13,6 @@
 #include <expected>
 
 using namespace beman::inside;
-using beman::inside::detail::rational;
 
 namespace {
 // Mixed-sign sqrt: deterministic expected results under both engines.

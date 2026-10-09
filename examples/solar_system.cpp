@@ -14,7 +14,6 @@
 #include <beman/inside/io.hpp>
 
 using namespace beman::inside;
-using beman::inside::detail::rational;
 
 inline constexpr rational nm{1, 1'000'000'000};
 using metres = inside<{{-10'000'000'000'000, 10'000'000'000'000}, nm}>;      // ±10^13 m to 1 nm

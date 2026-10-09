@@ -16,7 +16,6 @@
 #include <beman/inside/io.hpp>
 
 using namespace beman::inside;
-using beman::inside::detail::rational;
 
 inline constexpr rational wei{1, 1'000'000'000'000'000'000}; // 10^-18 ETH
 

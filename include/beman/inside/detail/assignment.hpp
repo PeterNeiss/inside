@@ -1013,10 +1013,12 @@ struct assignment<L, R> {
             // A source that is not a double exactly: round its exact value, not
             // the double nearest to it (two roundings can differ by a notch).
             assignment<L, rational>::store_checked(lhs, as_rational(rhs), policy, no_action{});
-        else if constexpr (rational_raw<L>)
+        else if constexpr (rational_raw<L> || rational_raw<R>)
             // rational target: raw IS the value — snap the decoded source through
             // the rational-rhs store (the offset machinery below would round the
-            // VALUE to a notch index and store that number as the raw).
+            // VALUE to a notch index and store that number as the raw). A rational
+            // source can lie between L's notches whatever its grid: the same
+            // store rounds it by the policy, or reports rounding_error.
             assignment<L, rational>::store_checked(lhs, as_rational(rhs), policy, no_action{});
         else if constexpr (is_integer_mapping) {
             // exact: Factor and Offset have integer denominators, no rounding ambiguity

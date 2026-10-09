@@ -9,7 +9,6 @@
 #include <cmath>
 
 using namespace beman::inside;
-using detail::rational;
 
 namespace {
 using A                 = inside<{{-64, 64}, per<1024>}, round_nearest | f64>;

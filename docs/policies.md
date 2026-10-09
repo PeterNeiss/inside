@@ -256,6 +256,15 @@ auto maybe = inside<{0, 100}>::try_make(150);
 if (!maybe) { /* maybe.error() == errc::overflow */ }
 ```
 
+`try_make<F>(value)` adds the flags `F` to the type's policy for that store,
+and `try_make` of a `std::expected` passes its error on, so a fallible step
+feeds the next without unwrapping:
+
+```cpp
+using volts = inside<{{-1, 1}, per<1'000'000>}, round_nearest>;
+auto v = volts::try_make((x - offset) / gain);   // the quotient's error, or the store's
+```
+
 For types with a `clamp` or `wrap` policy, `try_make` applies the policy
 before checking, so it will always succeed:
 

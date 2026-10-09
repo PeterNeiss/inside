@@ -54,7 +54,7 @@ enum class errc {
     division_by_zero, // divisor is zero
     overflow,         // value does not fit its destination's range (an inside's
                       // interval, a native type, a rational's 64-bit fields)
-    rounding_error,   // notch incompatibility
+    rounding_error,   // value is not on the grid (between notches)
     not_finite,       // non-finite double input (NaN/Inf)
     invalid_format,   // text that is not a number (from_chars, operator>>)
 };
@@ -71,7 +71,7 @@ constexpr const char* errc_message(errc e) noexcept {
     case errc::overflow:
         return "value does not fit its range";
     case errc::rounding_error:
-        return "notch incompatibility";
+        return "value is not on the grid";
     case errc::not_finite:
         return "non-finite floating-point value";
     case errc::invalid_format:

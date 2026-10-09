@@ -788,14 +788,23 @@ struct inside {
         return t;
     }
 
-    template <numeric A>
+    // try_make<F>(value): the constructors' store under this type's policy plus
+    // the flags F, with the failure as the error. An expected value passes its
+    // error on, so fallible steps chain.
+    template <policy_flag F = none, numeric A>
     [[nodiscard]] static constexpr std::expected<inside, errc> try_make(A value) {
         errc   ec{};
         inside result;
-        result.store_value(value, make_policy<P>(ec)); // the constructors' store
+        result.store_value(value, make_policy<P | F>(ec));
         if (ec != errc{})
             return std::unexpected{ec};
         return result;
+    }
+    template <policy_flag F = none, numeric A>
+    [[nodiscard]] static constexpr std::expected<inside, errc> try_make(const std::expected<A, errc>& value) {
+        if (!value)
+            return std::unexpected{value.error()};
+        return try_make<F>(*value);
     }
 };
 
@@ -818,14 +827,16 @@ template <typename T, insidable B>
 }
 
 //---------------------------------------------------------------------------
-// from_chars<B>(first, last) — text → B, exactly (no double round-trip). The
+// from_chars<B, F>(first, last) — text → B, exactly (no double round-trip). The
 // whole range must be one number: an optional sign, then the literal grammar
 // (1'000, 1.25, 1.5e2, 0xff, 0b1010, 0x1.8p3) or a fraction N/D. Malformed text
-// is errc::invalid_format; the value then goes through B::try_make, so B's
-// policy rounds, clamps or wraps it and reports overflow / rounding_error.
-// (io.hpp adds a std::string_view overload and operator>>.)
+// is errc::invalid_format; the value then goes through B::try_make<F>, so B's
+// policy plus the flags F round, clamp or wrap it and report overflow /
+// rounding_error. from_chars_exact<B> accepts only a value B holds exactly:
+// off the grid is rounding_error and out of range overflow, whatever B's
+// policy. (io.hpp adds std::string_view overloads and operator>>.)
 //---------------------------------------------------------------------------
-template <insidable B>
+template <insidable B, policy_flag F = none>
 [[nodiscard]] constexpr std::expected<B, errc> from_chars(const char* first, const char* last) {
     const auto v = detail::parse_text(first, last);
     if (!v && v.error() == errc::overflow) {
@@ -835,15 +846,44 @@ template <insidable B>
         if (!w)
             return std::unexpected{w.error()};
         errc ec{};
-        B    b;
-        detail::assign_exact<detail::rational>(b, *w, make_policy<policy_of<B>>(ec), no_action{});
+        B    b{};
+        detail::assign_exact<detail::rational>(b, *w, make_policy<policy_of<B> | F>(ec), no_action{});
         if (ec != errc{})
             return std::unexpected{ec};
         return b;
     }
     if (!v)
         return std::unexpected{v.error()};
-    return B::try_make(*v);
+    return B::template try_make<F>(*v);
+}
+
+template <insidable B>
+[[nodiscard]] constexpr std::expected<B, errc> from_chars_exact(const char* first, const char* last) {
+    const auto v = detail::parse_text(first, last);
+    if (v) {
+        if (conversion_overflows<B>(*v))
+            return std::unexpected{errc::overflow};
+        if (conversion_rounds<B>(*v))
+            return std::unexpected{errc::rounding_error};
+        return B::template try_make<snap>(*v); // on the grid: nothing rounds
+    }
+    if (v.error() != errc::overflow)
+        return std::unexpected{v.error()};
+    constexpr std::size_t K = detail::exact_limbs<B>;
+    const auto            w = detail::parse_exact<K>(first, last);
+    if (!w)
+        return std::unexpected{w.error()};
+    if (*w < detail::exact_of_grid<K>(lower_of<B>) || detail::exact_of_grid<K>(upper_of<B>) < *w)
+        return std::unexpected{errc::overflow};
+    if constexpr (notch_of<B> != 0)
+        if (!detail::exact_index<B, detail::round_mode::trunc>(*w).Exact)
+            return std::unexpected{errc::rounding_error};
+    errc ec{};
+    B    b{};
+    detail::assign_exact<detail::rational>(b, *w, make_policy<policy_of<B>>(ec), no_action{});
+    if (ec != errc{})
+        return std::unexpected{ec};
+    return b;
 }
 
 //---------------------------------------------------------------------------

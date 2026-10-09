@@ -5,12 +5,12 @@ arithmetic types — the exact integer-pair read-out, the named casts, the
 conversion predicates, the implicit conversion operators, and the idioms for
 writing literal values into insides.
 
-> **Note.** The exact fractional representation type is an internal
-> implementation detail (`beman::inside::detail::rational`) and is **not** part of the
-> public surface. You never name it, receive it, or operate on it: scalars
-> enter an inside through construction or `_ins` / `just<>` / `frac<N,D>`, and
-> exact values come back out through `numerator()` / `denominator()`. Stay in
-> inside-space for arithmetic — that is where the no-overflow guarantee lives.
+> **Note.** `beman::inside::rational` is an exact 64-bit fraction: the value
+> of `0.1_r`, the raw of a continuous inside, and a runtime exact value you
+> can construct an inside from or compare with. Its arithmetic returns
+> `std::expected` (a fraction can outgrow 64 bits); stay in inside-space for
+> arithmetic — that is where the no-overflow guarantee lives — and read exact
+> values out with `numerator()` / `denominator()`.
 
 ## Implicit operator conversions on `inside`
 
@@ -254,6 +254,21 @@ from_chars<inside<{{0, 1}, per<10>}>>("0.1");   // exactly 1/10
 
 inside<{0, 100}> a{0};
 std::cin >> a;              // io.hpp: one token; failbit on error, a unchanged
+```
+
+Flags after the type add to `B`'s policy for that call, as `x.policy<F>()`
+does; `from_chars_exact<B>` instead accepts only a value `B` holds exactly,
+whatever `B`'s policy:
+
+```cpp
+using cents = inside<{{0, 1'000'000}, per<100>}>;
+from_chars<cents>("1.005");                 // errc::rounding_error
+from_chars<cents, round_nearest>("1.005");  // 1.01 (ties away from zero)
+
+using price = inside<{{0, 1'000'000}, per<100>}, round_nearest | clamp>;
+from_chars<price>("1.005");                 // 1.01: price rounds
+from_chars_exact<price>("1.005");           // errc::rounding_error
+from_chars_exact<price>("2000000");         // errc::overflow, not clamped
 ```
 
 The core header takes a pointer pair, `from_chars<B>(first, last)`, and is

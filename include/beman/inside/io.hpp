@@ -289,10 +289,15 @@ inline std::ostream& operator<<(std::ostream& stream, B b) {
     return stream;
 }
 
-// from_chars<B>(text) — the std::string_view form of from_chars<B>(first, last).
-template <insidable B>
+// from_chars<B, F>(text) / from_chars_exact<B>(text) — the std::string_view
+// forms of the pointer-pair overloads.
+template <insidable B, policy_flag F = none>
 [[nodiscard]] constexpr std::expected<B, errc> from_chars(std::string_view text) {
-    return from_chars<B>(text.data(), text.data() + text.size());
+    return from_chars<B, F>(text.data(), text.data() + text.size());
+}
+template <insidable B>
+[[nodiscard]] constexpr std::expected<B, errc> from_chars_exact(std::string_view text) {
+    return from_chars_exact<B>(text.data(), text.data() + text.size());
 }
 
 // Reads one whitespace-delimited token and parses it with from_chars<B>. On an

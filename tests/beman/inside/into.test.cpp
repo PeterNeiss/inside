@@ -11,7 +11,6 @@
 #include <type_traits>
 
 using namespace beman::inside;
-using beman::inside::detail::rational;
 
 namespace {
 inline constexpr rational wei{1, 1'000'000'000'000'000'000};
@@ -35,7 +34,7 @@ TEST(IntoTest, mul_into_rounds_the_exact_product_once) {
 }
 
 TEST(IntoTest, mul_into_range_follows_out_policy) {
-    using small = inside<{0, 100}>;
+    using small   = inside<{0, 100}>;
     using clamped = inside<{0, 100}, clamp>;
     const small a{20}, b{30};
     EXPECT_THROW((void)mul_into<small>(a, b), inside_error);
@@ -64,7 +63,7 @@ TEST(IntoTest, div_into) {
     using ten = inside<{0, 10}>;
     EXPECT_EQ(div_into<ten>(any{7}, any{2}).error(), errc::rounding_error);
     // A quotient with no 64-bit fraction, straight onto a grid.
-    using fine = inside<{{0, 2}, per<(umax{1} << 62)>}, round_nearest>;
+    using fine  = inside<{{0, 2}, per<(umax{1} << 62)>}, round_nearest>;
     const eth a = *from_chars<eth>("1.000000000000000001"), b = *from_chars<eth>("0.999999999999999999");
     EXPECT_EQ(div_into<fine>(a, b).value(), fine::from_raw((umax{1} << 62) + 9));
 }

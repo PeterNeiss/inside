@@ -1056,8 +1056,11 @@ consteval rational make_frac() {
 } // namespace beman::inside::detail
 
 namespace beman::inside {
-// `rational` is internal, but the grid-building helpers are public — they
-// never name the type:
+// `rational` — an exact 64-bit fraction: the value of a literal (`0.1_r`), a
+// continuous inside's raw, and a runtime exact value to compute with.
+using detail::rational;
+
+// The grid-building helpers:
 //   per<D>       the step 1/D — the common notch (per<256> is Q·8);
 //   frac<N, D>   any exact ratio (signed numerator): a limit like frac<-6, 5>
 //                for -1.2, or another step like frac<360, 4096>;

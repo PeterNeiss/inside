@@ -8,7 +8,6 @@
 #include <gtest/gtest.h>
 
 using namespace beman::inside;
-using detail::rational;
 
 TEST(MathTurnsTest, a_wrapping_radians_grid_folds_modulo_span_plus_notch) {
     using wrapped = inside<{{0, 6.28125}, per<64>}, wrap | round_nearest | f64>;

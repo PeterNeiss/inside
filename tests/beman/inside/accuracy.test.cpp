@@ -21,7 +21,7 @@ using namespace beman::inside;
 
 namespace {
 // Exact value of an inside (or grid constant) as long double, via rational.
-long double to_long_double(detail::rational r) {
+long double to_long_double(rational r) {
     return static_cast<long double>(r.Numerator) / static_cast<long double>(r.Denominator);
 }
 
@@ -65,8 +65,8 @@ stats sweep(EngineFn engine_fn, ReferenceFn reference_fn, long target_samples = 
                 return outcome;
         }();
         const long double out_notch = to_long_double(notch_of<std::remove_cv_t<decltype(result)>>);
-        const long double err       = std::fabs(to_long_double(detail::rational{result}) - reference_fn(value)) /
-                                      (out_notch > 0.0L ? out_notch : 1.0L);
+        const long double err =
+            std::fabs(to_long_double(rational{result}) - reference_fn(value)) / (out_notch > 0.0L ? out_notch : 1.0L);
 
         if (err > s.max_err)
             s.max_err = err;
@@ -103,7 +103,7 @@ using tan_dec   = inside<{{-1.5, 1.5}, per<1000>}, round_nearest>;
 using unit_dec  = inside<{{-1, 1}, per<1000>}, round_nearest>;
 using sqrt_dec  = inside<{{0, 16}, per<1000>}, round_nearest>;
 using log_dec   = inside<{{1, 1000}, per<1000>}, round_nearest>;
-using atanh_dec = inside<{{detail::rational{-999, 1000}, detail::rational{999, 1000}}, per<1000>}, round_nearest>;
+using atanh_dec = inside<{{rational{-999, 1000}, rational{999, 1000}}, per<1000>}, round_nearest>;
 
 using fine_out = inside<{{-4096, 4096}, per<(std::uint64_t{1} << 40)>}, round_nearest>;
 } // namespace

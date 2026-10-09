@@ -28,7 +28,7 @@ these paths, so there is nothing for the platform to round differently:
 
 - Widths are fixed: `using umax = std::uint64_t; using imax = std::int64_t;`
   (`include/beman/inside/math.hpp`). The value path is `imax` everywhere.
-- Exact fractions use `beman::inside::detail::rational` (`detail/rational.hpp`); every
+- Exact fractions use `beman::inside::rational` (`detail/rational.hpp`); every
   checked operation routes through overflow-detecting `add/sub/mul`
   (`detail/overflow.hpp`), so an overflow becomes a reported `errc::overflow`
   rather than a platform-dependent wrap.

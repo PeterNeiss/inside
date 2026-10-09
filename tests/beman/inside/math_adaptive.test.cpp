@@ -10,7 +10,6 @@ using namespace beman::inside;
 namespace ax = beman::inside::math::detail::ax;
 using beman::inside::umax;
 using detail::exact_frac;
-using detail::rational;
 using detail::wide_sint;
 
 namespace {

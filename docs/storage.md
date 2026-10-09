@@ -67,10 +67,10 @@ encoding:
 using fstep = inside<{{-5, 5}, 0.5}>;    // Raw: uint8_t (20 steps, offset encoding)
 ```
 
-**Exact-fraction storage** — when `Notch == 0`, `Raw` becomes the internal
-exact-fraction representation (`beman::inside::detail::rational`). This happens for grids
-with `Notch == 0` and exact division results. You never name that type; you
-read the value back out with `numerator()` / `denominator()`.
+**Exact-fraction storage** — when `Notch == 0`, `Raw` becomes an exact
+fraction (`beman::inside::rational`). This happens for grids
+with `Notch == 0` and exact division results. Read the value back out with
+`numerator()` / `denominator()`.
 
 **No storage for a point** — a single-value grid (`Lower == Upper`: `just<…>`,
 `5_ins`, `zero`, `one`, `math::pi`) holds its value in the type, so its raw is

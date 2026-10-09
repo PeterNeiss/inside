@@ -5,14 +5,11 @@ tutorial; for that see [tutorial.md](tutorial.md). Use this when you need to add
 arithmetic operator, debug a storage-shape edge case, or reason about
 performance.
 
-> The exact-fraction representation type is `beman::inside::detail::rational` — an
-> **internal** type. It is the raw storage for continuous grids and (under C++23)
-> the grid's NTTP substrate — under C++26 grids use `detail::big_rational`, see
-> §2a — so it appears throughout these internals, but it is not on
-> the public surface: consumers spell grids with literals / `per<D>` /
-> `frac<N,D>`, read exact values out with `numerator()` / `denominator()`, and
-> never name the type. The bare word "rational" below always means
-> `beman::inside::detail::rational`.
+> The exact-fraction type is `beman::inside::rational` (defined in `detail`,
+> public through a using-declaration). It is the raw storage for continuous
+> grids and (under C++23) the grid's NTTP substrate — under C++26 grids use
+> `detail::big_rational`, see §2a. The bare word "rational" below always means
+> `beman::inside::rational`.
 
 ---
 

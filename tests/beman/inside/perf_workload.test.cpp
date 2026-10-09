@@ -140,7 +140,7 @@ std::int64_t run_checked_add() {
 }
 
 std::int64_t run_rational_store() {
-    using R          = detail::rational;
+    using R          = rational;
     using Q8         = inside<{{0, 255}, per<256>}, round_nearest>;
     std::int64_t acc = 0, x = 1;
     Q8           q = 0;
@@ -157,7 +157,7 @@ std::int64_t run_rational_store() {
 }
 
 std::int64_t run_rational_compare() {
-    using R          = detail::rational;
+    using R          = rational;
     std::int64_t acc = 0, x = 1;
     for (long i = 0; i < iters; ++i) {
         lcg(x);
@@ -185,7 +185,7 @@ std::int64_t run_math(F f) {
     return acc;
 }
 
-using angle8 = inside<{{-4, detail::rational{127, 32}}, per<32>}, round_nearest>; // 256 slots
+using angle8 = inside<{{-4, rational{127, 32}}, per<32>}, round_nearest>; // 256 slots
 using angle  = inside<{{-4, 4}, per<512>}, round_nearest>;
 using dec    = inside<{{-4, 4}, per<1000>}, round_nearest>;
 using out20  = inside<{{-64, 64}, per<(1u << 20)>}, round_nearest>;

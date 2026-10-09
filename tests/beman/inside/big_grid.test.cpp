@@ -20,7 +20,6 @@
 using namespace beman::inside;
 using detail::big_int;
 using detail::grid_rational;
-using detail::rational;
 
 namespace {
 consteval big_int       pow2(int k) { return big_int{1} << k; }

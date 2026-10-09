@@ -12,7 +12,6 @@
 #include <beman/inside/io.hpp>
 
 using namespace beman::inside;
-using beman::inside::detail::rational;
 
 int main() {
     // Q-format reference: the predefined formats and two custom ones.

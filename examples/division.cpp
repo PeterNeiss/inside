@@ -13,7 +13,6 @@
 #include <beman/inside/io.hpp>
 
 using namespace beman::inside;
-using beman::inside::detail::rational;
 
 int main() {
     using val = inside<{0, 100}>;

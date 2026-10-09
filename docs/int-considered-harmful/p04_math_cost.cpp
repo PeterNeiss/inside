@@ -18,7 +18,6 @@
 #include <beman/inside/cmath.hpp>
 
 using namespace beman::inside;
-using detail::rational;
 
 namespace
 {

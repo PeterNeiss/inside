@@ -9,7 +9,6 @@
 #include <string>
 
 using namespace beman::inside;
-using detail::rational;
 
 namespace {
 template <class B>
@@ -106,4 +105,36 @@ TEST(FromCharsTest, trailing_zeros_and_zero_exponent) {
     using N = inside<{{0, 10}, per<100>}, round_nearest>;
     EXPECT_EQ(value_of<N>("1.004999999999999999999999"), 1);
     static_assert(1.250000000000000000000_r == rational{5, 4});
+}
+
+TEST(FromCharsTest, per_call_flags) {
+    using cents = inside<{{0, 100}, per<100>}>; // checked: off-grid is an error
+    EXPECT_EQ(from_chars<cents>("1.005").error(), errc::rounding_error);
+    EXPECT_EQ((rational{*from_chars<cents, round_nearest>("1.005")}), (rational{101, 100}));
+    EXPECT_EQ((rational{*from_chars<cents, round_floor>("1.009")}), (rational{1}));
+    EXPECT_EQ((rational{*from_chars<cents, clamp>("150")}), rational{100});
+    // Long decimals take the exact parse, with the same flags.
+    EXPECT_EQ((rational{*from_chars<cents, round_nearest>("1.004999999999999999999999")}), rational{1});
+}
+
+TEST(FromCharsTest, exact_rejects_what_the_policy_would_round_or_clamp) {
+    using price = inside<{{0, 100}, per<100>}, round_nearest | clamp>;
+    EXPECT_EQ(rational{*from_chars<price>("1.005")}, (rational{101, 100})); // rounded
+    EXPECT_EQ(from_chars_exact<price>("1.005").error(), errc::rounding_error);
+    EXPECT_EQ(from_chars_exact<price>("150").error(), errc::overflow);
+    EXPECT_EQ(from_chars_exact<price>("1.0x").error(), errc::invalid_format);
+    EXPECT_EQ(rational{*from_chars_exact<price>("12.34")}, (rational{1234, 100}));
+    static_assert(std::is_same_v<decltype(from_chars_exact<price>("1"))::value_type, price>);
+    EXPECT_EQ(from_chars_exact<price>("1.004999999999999999999999").error(), errc::rounding_error);
+}
+
+TEST(FromCharsTest, try_make_takes_an_expected) {
+    using volts = inside<{{-1, 1}, per<1000>}, round_nearest>;
+    using any   = inside<{0, 100}>;
+    EXPECT_EQ(rational{*volts::try_make(any{1} / any{3})}, (rational{333, 1000}));
+    EXPECT_EQ(volts::try_make(any{1} / any{0}).error(), errc::division_by_zero);
+    EXPECT_EQ(volts::try_make(any{3} / any{2}).error(), errc::overflow);
+    using strict = inside<{{-1, 1}, per<1000>}>;
+    EXPECT_EQ(strict::try_make(any{1} / any{3}).error(), errc::rounding_error);
+    EXPECT_EQ(rational{*strict::try_make<round_nearest>(any{1} / any{3})}, (rational{333, 1000}));
 }

@@ -14,7 +14,6 @@
 #include <beman/inside/io.hpp>
 
 using namespace beman::inside;
-using beman::inside::detail::rational;
 
 int main() {
     // 1. Decay: t = 0, 0.25, …, 2 as n/4 on a grid, amp on Q.14.

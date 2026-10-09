@@ -370,3 +370,19 @@ TEST(InsideAssignTest, wrap_on_fractional_notch_grids_insidable_rhs) {
     ASSERT_EQ(deg{wide{370}}, 10);
     ASSERT_EQ(deg{wide{-10}}, 350);
 }
+
+// A continuous source (an exact quotient) between the target's notches is a
+// rounding_error under checked, and rounds under a rounding policy.
+TEST(InsideAssignTest, continuous_source_off_the_lattice_is_checked) {
+    using any        = inside<{0, 100}>;
+    using strict     = inside<{{-1, 1}, per<1000>}>;
+    using near       = inside<{{-1, 1}, per<1000>}, round_nearest>;
+    const auto third = (any{1} / any{3}).value();
+    EXPECT_THROW(strict{third}, inside_error);
+    strict s{0};
+    EXPECT_THROW(s = third, inside_error);
+    EXPECT_EQ(near{third}, (rational{333, 1000}));
+    const auto half = (any{1} / any{2}).value();
+    s               = half; // on the lattice: exact
+    EXPECT_EQ(s, (rational{1, 2}));
+}

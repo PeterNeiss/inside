@@ -19,7 +19,6 @@
 #include <limits>
 
 using namespace beman::inside;
-using beman::inside::detail::rational;
 
 // default ctor is trivial (no zero-fill footgun)
 TEST(StorageFlagsTest, default_ctor_is_trivial_no_zero_fill_footgun) {

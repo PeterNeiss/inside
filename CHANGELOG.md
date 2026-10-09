@@ -13,9 +13,17 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   product or quotient grid — for products whose grid would need numbers past
   64 bits under C++23, and quotients with no 64-bit fraction. `div_into`
   returns `std::expected<Out, errc>` when the divisor's grid holds zero.
+- `from_chars<B, F>(text)` adds per-call policy flags; `from_chars_exact<B>`
+  accepts only a value `B` holds exactly (off the grid `rounding_error`, out
+  of range `overflow`, whatever `B`'s policy).
+- `B::try_make<F>(value)` adds per-call flags, and `B::try_make` takes a
+  `std::expected` and passes its error on.
+- `beman::inside::rational` is public (was `detail::rational`).
 
 ### Changed
 
+- `errc_message(errc::rounding_error)` reads "value is not on the grid" (was
+  "notch incompatibility").
 - `to_string`, `operator<<` and `std::format("{}")` print a value with a
   finite decimal as that exact decimal however many digits it has (a 2^-52
   grid, a wide value, a C++26 grid number), and any other value as `N/D`
@@ -44,6 +52,9 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 ### Fixed
 
+- Storing a continuous inside (an exact quotient) into a checked notched
+  inside rounded it silently when it fell between notches; it reports
+  `rounding_error` now, and a rounding policy rounds it.
 - C++26 grids past 64 bits: `just<V>` takes any grid number (`just<5_g>`,
   `just<1.616255e-35_g>`); a big point stores into a grid, adds as a
   constant, converts to `double` and prints. A continuous grid whose limits

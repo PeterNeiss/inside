@@ -29,8 +29,8 @@ int main() {
     // 1. Orders of magnitude, each log10 correctly rounded.
     const decade lp = math::log10_into<decade>(planck), lu = math::log10_into<decade>(universe);
     std::cout << std::format("log10 planck = {:.6f}, log10 universe = {:.6f}, apart {:.6f}\n", lp, lu, lu - lp);
-    if (lp != decade{beman::inside::detail::rational{-36'481'522, 1 << 20}} ||
-        lu != decade{beman::inside::detail::rational{28'253'338, 1 << 20}})
+    if (lp != decade{beman::inside::rational{-36'481'522, 1 << 20}} ||
+        lu != decade{beman::inside::rational{28'253'338, 1 << 20}})
         return 1;
 
     // 2. The geometric mean, exact to the last of 41 decimals.

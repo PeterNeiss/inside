@@ -14,7 +14,6 @@
 #include <beman/inside/io.hpp>
 
 using namespace beman::inside;
-using beman::inside::detail::rational;
 
 int main() {
     // 1. Polar round trip on a Q.14 unit square.

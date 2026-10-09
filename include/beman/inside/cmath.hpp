@@ -26,8 +26,6 @@
 // with -ffast-math are rejected (policy_flag.hpp).
 //---------------------------------------------------------------------------
 namespace beman::inside::math {
-using beman::inside::detail::rational;
-
 namespace detail {
 using namespace beman::inside::detail;
 
