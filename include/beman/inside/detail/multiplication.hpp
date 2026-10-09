@@ -117,8 +117,7 @@ struct multiplication {
             // was dropped from a result grid that is not double-exact): the exact
             // rational product, converted to the result's raw.
             auto prod = rational::mul_unchecked(as_rational(lhs), as_rational(rhs));
-            return result::from_raw(raw_from_offset<result>(
-                ((prod - detail::lower64<result>) / detail::notch64<result>).value().Numerator));
+            return result::from_raw(raw_of_lattice_value<result>(prod));
         }
     }
 };

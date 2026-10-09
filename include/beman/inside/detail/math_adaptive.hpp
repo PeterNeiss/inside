@@ -520,7 +520,7 @@ constexpr Out store(const wide_sint<K>& index, P&& policy) {
     if constexpr (integer_storage<Out>) {
         constexpr I count = static_cast<I>(grid_of<Out>.slot_count());
         if (!index.negative() && !(count < index)) [[likely]]
-            return Out::from_raw(raw_of_index<Out>(index));
+            return Out::from_raw(raw_of_slot<Out>(index));
     } else if constexpr (fp_storage<Out> && !wide_valued<Out>) {
         // A floating-point raw holds the grid point itself: on its double- (or
         // float-) exact grid, value index × notch is exact in that type.

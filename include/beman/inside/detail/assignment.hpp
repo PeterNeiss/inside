@@ -136,23 +136,6 @@ struct unit_fold {
         return static_cast<imax>(d < kMin ? kMin : kMax < d ? kMax : d);
     }
 
-    // The raw of Lower + offset (0 ≤ offset ≤ span) in L's encoding.
-    static constexpr raw_t<L> raw_at(const W& offset) noexcept {
-        if constexpr (point_storage<L>)
-            return raw_t<L>{}; // a point has one slot
-        else if constexpr (index_storage<L>)
-            return static_cast<raw_t<L>>(offset);
-        else if constexpr (rational_storage<L> || fp_storage<L>) {
-            const W        v = lower + offset; // |v| < 2^64: a grid value
-            const rational r = v < W{0} ? -rational{static_cast<umax>(-v)} : rational{static_cast<umax>(v)};
-            if constexpr (rational_storage<L>)
-                return r;
-            else
-                return static_cast<raw_t<L>>(static_cast<double>(r));
-        } else
-            return static_cast<raw_t<L>>(lower + offset);
-    }
-
     // v = Lower + carry·(span + 1) + offset with 0 ≤ offset ≤ span.
     struct folded {
         imax Carry;
@@ -264,7 +247,7 @@ constexpr L& assign_exact(L& lhs, const exact_frac<K>& v, P&& policy, A&& action
                     action,
                     [&] {
                         const bool low = index.negative();
-                        lhs            = L::from_raw(raw_of_index<L>(low ? I{0} : count));
+                        lhs            = L::from_raw(raw_of_slot<L>(low ? I{0} : count));
                         if constexpr (clamp_action<plain_t<A>>) {
                             // The overshoot rhs − bound, shaped like the builtin paths'.
                             const auto over =
@@ -282,13 +265,13 @@ constexpr L& assign_exact(L& lhs, const exact_frac<K>& v, P&& policy, A&& action
                     },
                     [&] {
                         const auto [q, w] = floor_divmod(index, count + I{1});
-                        lhs               = L::from_raw(raw_of_index<L>(w));
+                        lhs               = L::from_raw(raw_of_slot<L>(w));
                         if constexpr (wrap_action<plain_t<A>>)
                             action.Fn(lhs, make_wrap_carry<L, R>(saturate(q)));
                     }))
                 return lhs;
         }
-        lhs = L::from_raw(raw_of_index<L>(index));
+        lhs = L::from_raw(raw_of_slot<L>(index));
         return lhs;
     }
 }
@@ -349,7 +332,7 @@ struct assignment<L, R> {
         // so the two-way pick is the full clamp.
         const W    v   = static_cast<W>(rhs);
         const bool low = v < fold::lower;
-        lhs            = L::from_raw(fold::raw_at(low ? W{0} : fold::span));
+        lhs            = L::from_raw(raw_of_slot<L>(low ? W{0} : fold::span));
         if constexpr (clamp_action<plain_t<A>>)
             action.Fn(lhs, fold::saturate(v - (low ? fold::lower : fold::upper)));
     }
@@ -359,7 +342,7 @@ struct assignment<L, R> {
         // Modular wrap on the exact offset rhs − Lower into span + 1 slots. The
         // carry saturates at imax, like the carry grid (wrap_carry_grid).
         const auto [carry, w] = fold::fold(static_cast<W>(rhs));
-        lhs                   = L::from_raw(fold::raw_at(w));
+        lhs                   = L::from_raw(raw_of_slot<L>(w));
         if constexpr (wrap_action<plain_t<A>>)
             action.Fn(lhs, make_wrap_carry<L, R>(carry));
     }
@@ -968,7 +951,7 @@ struct assignment<L, R> {
             using fold             = unit_fold<L, wide_numerator(lower_of<R>), wide_numerator(upper_of<R>)>;
             using W                = typename fold::W;
             const auto [excess, w] = fold::fold(static_cast<W>(wide_numerator(as_rational(rhs))));
-            lhs                    = L::from_raw(fold::raw_at(w));
+            lhs                    = L::from_raw(raw_of_slot<L>(w));
             if constexpr (wrap_action<plain_t<A>>)
                 action.Fn(lhs, make_wrap_carry<L, R>(excess)); // carry as an inside
         } else if constexpr (wrap_action<plain_t<A>>) {

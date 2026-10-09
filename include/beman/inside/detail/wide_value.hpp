@@ -325,18 +325,25 @@ constexpr auto exact_index(const exact_frac<K>& f) noexcept {
     return exact_index_result<KK>{rounded_div<M>(n, d) - static_cast<I>(slot_base<L>), exact};
 }
 
-// The raw of slot offset `index` (0 .. slot count) in L's encoding.
-template <insidable L, std::size_t K>
-constexpr raw_t<L> raw_of_index(const wide_sint<K>& index) noexcept {
+// The raw of slot offset `offset` (0 .. slot count) in L's storage. W is
+// any signed integer holding the offset and the value index J = offset +
+// Lower/Notch: imax, a wide_int, a wide_sint.
+template <insidable L, typename W>
+constexpr raw_t<L> raw_of_slot(const W& offset) noexcept {
     if constexpr (point_storage<L>)
         return raw_t<L>{};
-    else if constexpr (fp_storage<L>) // the value J·Notch: exact on a double/float-exact grid
-        return static_cast<raw_t<L>>(static_cast<double>(index + static_cast<wide_sint<K>>(slot_base<L>)) *
-                                     static_cast<double>(notch_of<L>));
     else if constexpr (index_storage<L>)
-        return static_cast<raw_t<L>>(index);
-    else // value raw: raw == J
-        return static_cast<raw_t<L>>(index + static_cast<wide_sint<K>>(slot_base<L>));
+        return static_cast<raw_t<L>>(offset);
+    else {
+        const W j = offset + static_cast<W>(slot_base<L>);
+        if constexpr (fp_storage<L>) // the value J·Notch: exact on a double/float-exact grid
+            return static_cast<raw_t<L>>(static_cast<double>(j) * static_cast<double>(notch_of<L>));
+        else if constexpr (rational_storage<L>) { // |J| < 2^64: a 64-bit grid's value index
+            const rational r = j < W{0} ? -rational{static_cast<umax>(-j)} : rational{static_cast<umax>(j)};
+            return (r * detail::notch64<L>).value();
+        } else // integer value raw: raw == J (Notch 1)
+            return static_cast<raw_t<L>>(j);
+    }
 }
 
 //---------------------------------------------------------------------------
@@ -419,7 +426,7 @@ constexpr Result from_value_index(const W& j) noexcept {
 // inside its interval by construction, so it maps straight to a raw.
 template <insidable Result, std::size_t K>
 constexpr Result exact_result(const exact_frac<K>& v) noexcept {
-    return Result::from_raw(raw_of_index<Result>(exact_index<Result, round_mode::trunc>(v).Index));
+    return Result::from_raw(raw_of_slot<Result>(exact_index<Result, round_mode::trunc>(v).Index));
 }
 } // namespace beman::inside::detail
 

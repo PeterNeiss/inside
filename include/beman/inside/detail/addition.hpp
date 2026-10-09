@@ -86,8 +86,7 @@ struct addition {
             // An fp or rational operand into an integer result: the exact rational
             // sum, converted to the result's raw.
             auto sum = rational::add_unchecked(lhs, rhs);
-            res      = result::from_raw(raw_from_offset<result>(
-                ((sum - detail::lower64<result>) / detail::notch64<result>).value().Numerator));
+            res      = result::from_raw(raw_of_lattice_value<result>(sum));
         }
         return res;
     }

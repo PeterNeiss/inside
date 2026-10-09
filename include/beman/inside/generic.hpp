@@ -105,6 +105,7 @@ inline constexpr bool dependent_false = false;
 //   raw_cast<B>(x)         x     → raw_t<B>     TYPE cast only — no value arithmetic
 //   raw_imax(b)            raw   → imax         widen the raw bits (NOT the value for index storage)
 //   raw_from_offset<B>(o)  index → raw_t<B>     adds raw_lo for direct storage; identity for index
+//   raw_of_slot<B>(o)      index → raw_t<B>     any storage, any width (detail/wide_value.hpp)
 //-------------------------------------------------------------------------
 
 // Uniform rational view of a scalar or inside (rational{v} / operator rational()).
@@ -514,22 +515,22 @@ template <typename W>
     return f;
 }
 
-template <insidable L>
-constexpr raw_t<L> raw_from_offset(umax offset) noexcept {
-    // Add in umax: the bits are the same, but a value raw of a grid
-    // reaching past int64 (offset + Lower ≥ 2^63) must not overflow imax.
-    if constexpr (value_storage<L>)
-        return raw_cast<L>(offset + static_cast<umax>(raw_lo<L>));
-    else
-        return raw_cast<L>(offset);
-}
-
-template <insidable L>
-constexpr raw_t<L> raw_from_offset(imax offset) noexcept {
+// Offset (umax or imax) → raw. Adds in umax: the bits are the same, but a
+// value raw of a grid reaching past int64 (offset + Lower ≥ 2^63) must not
+// overflow imax.
+template <insidable L, std::integral W>
+constexpr raw_t<L> raw_from_offset(W offset) noexcept {
     if constexpr (value_storage<L>)
         return raw_cast<L>(static_cast<umax>(offset) + static_cast<umax>(raw_lo<L>));
     else
         return raw_cast<L>(static_cast<umax>(offset));
+}
+
+// The raw of a value v on L's lattice within [Lower, Upper], through its
+// exact offset (v − Lower)/Notch.
+template <insidable L>
+constexpr raw_t<L> raw_of_lattice_value(rational v) {
+    return raw_from_offset<L>(((v - detail::lower64<L>).value() / detail::notch64<L>).value().Numerator);
 }
 
 //-------------------------------------------------------------------------
@@ -630,7 +631,7 @@ template <insidable L, typename P>
     else if constexpr (rational_storage<L>)
         return {r, true};
     else
-        return {raw_from_offset<L>(((r - detail::lower64<L>).value() / detail::notch64<L>).value().Numerator), true};
+        return {raw_of_lattice_value<L>(r), true};
 }
 
 // Rounds the split offset quotient q + r/den (r < den ≤ imax_max) per L's
