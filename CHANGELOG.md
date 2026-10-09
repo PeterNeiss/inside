@@ -22,6 +22,10 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 ### Changed
 
+- Examples: `wei`, `huge_angles`, `planck_to_cosmos`, `solar_system`,
+  `expected_pipeline` and `json_io` drop their workarounds — exact decimal
+  output, `sum`, `mul_into` / `div_into`, `just<…_g>` and the exact big-grid
+  ratio, a million `+=` steps, and `from_chars_exact`.
 - `errc_message(errc::rounding_error)` reads "value is not on the grid" (was
   "notch incompatibility").
 - `to_string`, `operator<<` and `std::format("{}")` print a value with a

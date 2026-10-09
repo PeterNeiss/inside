@@ -3,8 +3,8 @@
 // universe (8.8·10^26 m), on a 10^-41 m grid: about 2^226 points. Grid numbers
 // past 64 bits need C++26 static reflection (GCC 16 -freflection); the `_g`
 // literal spells them exactly.
-//   1. Each length's log10, correctly rounded: the universe is about 10^61.74
-//      Planck lengths.
+//   1. The universe in Planck lengths: their exact ratio, and its log10
+//      correctly rounded — about 10^61.74.
 //   2. Their geometric mean — halfway in log scale — by sqrt, correctly rounded
 //      onto the same 10^-41 m grid: about 0.12 mm.
 
@@ -23,14 +23,17 @@ using length = inside<{{1e-41_g, 1e27_g}, 1e-41_g}, round_nearest>; // positive:
 using decade = inside<{{-100, 100}, per<1 << 20>}, round_nearest>;  // log10 to 2^-20
 
 int main() {
-    const length planck   = *from_chars<length>("1.616255e-35");
-    const length universe = *from_chars<length>("8.8e26");
+    const length planck   = just<1.616255e-35_g>;
+    const length universe = just<8.8e26_g>;
 
-    // 1. Orders of magnitude, each log10 correctly rounded.
-    const decade lp = math::log10_into<decade>(planck), lu = math::log10_into<decade>(universe);
-    std::cout << std::format("log10 planck = {:.6f}, log10 universe = {:.6f}, apart {:.6f}\n", lp, lu, lu - lp);
-    if (lp != decade{beman::inside::rational{-36'481'522, 1 << 20}} ||
-        lu != decade{beman::inside::rational{28'253'338, 1 << 20}})
+    // 1. The exact ratio (a fraction of 226-bit integers), and one rounding
+    //    for its log10.
+    const auto ratio = universe / planck;
+    std::cout << "universe / planck = " << *ratio << "\n";
+    const decade d = math::log10_into<decade>(*ratio);
+    std::cout << std::format("log10              = {:.6f}\n", d);
+    if (to_string(*ratio) != "17600000000000000000000000000000000000000000000000000000000000000000/323251" ||
+        d != decade{rational{64'734'859, 1 << 20}})
         return 1;
 
     // 2. The geometric mean, exact to the last of 41 decimals.

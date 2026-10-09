@@ -21,20 +21,21 @@ using leg    = inside<{{-10'000'000, 10'000'000}, nm}>;                      // 
 using mm     = inside<{{0, 100'000'000'000'000}, per<1000>}, round_nearest>; // a distance, to 1 mm
 
 int main() {
-    // 1. Start at Saturn's distance and add 100 000 legs of 1000.000000001 km
-    //    (the 1 nm is what a double cannot keep at this scale).
+    // 1. Start at Saturn's distance and add a million legs of 1000.000000001 km
+    //    (the 1 nm is what a double cannot keep at this scale). Each += is a
+    //    raw add of two 64-bit limbs.
     const metres start{1'433'000'000'000};
     const leg    step{rational{1'000'000'000'000'001, 1'000'000'000}}; // 1e6 m + 1 nm
     metres       x  = start;
     double       xd = 1.433e12;
-    for (int i = 0; i < 100'000; ++i) {
+    for (int i = 0; i < 1'000'000; ++i) {
         x += step;
         xd += 1e6 + 1e-9;
     }
     std::cout << "exact   " << x << " m\n";
     std::printf("double  %.9f m\n", xd);
-    // 1.433e12 + 1e11 + 1e5·1e-9 m = 1533000000000.0001 m
-    if (x != metres{rational{15'330'000'000'000'001, 10'000}})
+    // 1.433e12 + 1e12 + 1e6·1e-9 m = 2433000000000.001 m
+    if (to_string(x) != "2433000000000.001")
         return 1;
 
     // 2. Distance to a point 3·10^12 m east and 4·10^12 m north: exactly

@@ -9,7 +9,6 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
-#include <format>
 #include <iostream>
 
 #include <beman/inside/cmath.hpp>
@@ -31,8 +30,8 @@ int main() {
         const radians x{r.x};
         const amp52   s = math::sin_into<amp52>(x), c = math::cos_into<amp52>(x);
         const double  xd = static_cast<double>(r.x);
-        std::cout << "x = " << x
-                  << std::format("\n  sin                    {:.16f}\n  cos                    {:.16f}\n", s, c);
+        // The results print exactly: a 2^-52 grid point has 52 decimals.
+        std::cout << "x = " << x << "\n  sin                    " << s << "\n  cos                    " << c << "\n";
         std::printf("  std::sin(double)       %.16f\n  sin(fmod(x, 2*pi))     %.16f\n",
                     std::sin(xd),
                     std::sin(std::fmod(xd, 2 * 3.141592653589793)));

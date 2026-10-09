@@ -179,7 +179,7 @@ the results.
   side: exact quotients, per-call and type-level `snap`, rounding modes, the
   `errc::division_by_zero` case and a zero-free divisor's plain result.
 - [examples/expected_pipeline.cpp](../examples/expected_pipeline.cpp) —
-  chaining fallible steps (`from_chars`, division, `try_make`) with
+  chaining fallible steps (`from_chars`, `div_into`) with
   `and_then` / `or_else`, and the first error's cause at the end.
 - [tests/beman/inside/inside_arithmetic.test.cpp](../tests/beman/inside/inside_arithmetic.test.cpp) — the
   `"inside div: rational vs integer paths"` case covers paths B and C across

@@ -4,8 +4,9 @@
 // and every amount, fee and total stays exact.
 //   1. Parse amounts exactly from text; a double keeps only ~17 digits.
 //   2. A fee is gas × price, exactly; an overdraft is reported, not wrapped.
-//   3. A total over many accounts: wide raws add like any other.
-//   4. Convert to dollars at a price in cents, rounded once, to the cent.
+//   3. A total over many accounts: sum adds the wide raws exactly.
+//   4. Convert to dollars at $3141.59 per ETH: the exact product, rounded once
+//      to the cent.
 
 #include <array>
 #include <format>
@@ -19,12 +20,12 @@ using namespace beman::inside;
 
 inline constexpr rational wei{1, 1'000'000'000'000'000'000}; // 10^-18 ETH
 
-using eth   = inside<{{0, 1'000'000'000}, wei}>;                   // one account
-using total = inside<{{0, 1'000'000'000'000}, wei}>;               // a thousand of them
-using gas   = inside<{0, 30'000'000}>;                             // units of work
-using gwei  = inside<{{0, 10'000}, rational{1, 1'000'000'000}}>;   // price per unit, ETH
-using quote = inside<{0, 100'000'000}>;                            // cents per ETH
-using cents = inside<{0, 100'000'000'000'000'000}, round_nearest>; // a whole number of cents
+using eth   = inside<{{0, 1'000'000'000}, wei}>;                             // one account
+using total = inside<{{0, 1'000'000'000'000}, wei}>;                         // a thousand of them
+using gas   = inside<{0, 30'000'000}>;                                       // units of work
+using gwei  = inside<{{0, 10'000}, rational{1, 1'000'000'000}}>;             // price per unit, ETH
+using price = inside<{{0, 1'000'000}, per<100>}>;                            // dollars per ETH, to the cent
+using usd   = inside<{{0, 1'000'000'000'000'000}, per<100>}, round_nearest>; // dollars, to the cent
 
 int main() {
     static_assert(sizeof(eth) == 16); // 10^27 + 1 points: two 64-bit limbs
@@ -34,7 +35,7 @@ int main() {
     const eth         balance = *from_chars<eth>(text);
     std::cout << "balance  " << balance << " ETH\n"
               << "double   " << std::format("{:.17g}", std::stod(text)) << "\n";
-    if (balance != *from_chars<eth>("123456789.123456789123456789"))
+    if (to_string(balance) != text)
         return 1;
 
     // 2. 21000 gas at 30 gwei is exactly 0.00063 ETH.
@@ -53,18 +54,16 @@ int main() {
     // 3. A thousand accounts near the top of the grid.
     std::array<eth, 1000> accounts;
     accounts.fill(*from_chars<eth>("999999999.999999999999999999"));
-    total sum{0};
-    for (const eth& a : accounts)
-        sum += a;
+    const total sum = beman::inside::sum<total>(accounts);
     std::cout << "sum      " << sum << " ETH\n";
-    if (sum != *from_chars<total>("999999999999.999999999999999"))
+    if (to_string(sum) != "999999999999.999999999999999")
         return 1;
 
-    // 4. At $3141.59 (314159 cents per ETH): the exact product rounds once, to
-    //    a whole cent; dividing by 100 is exact on the cents grid.
-    const cents value{balance * quote{314'159}};
-    std::cout << "value    $" << value * just<rational{1, 100}> << "\n";
-    if (value != 38'785'061'414'236)
+    // 4. balance × price has a 10^-20 notch — a grid past 64-bit numbers —
+    //    so round the exact product straight onto the cents grid.
+    const usd value = mul_into<usd>(balance, *from_chars<price>("3141.59"));
+    std::cout << "value    $" << value << "\n";
+    if (to_string(value) != "387850614142.36")
         return 1;
     return 0;
 }
