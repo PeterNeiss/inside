@@ -59,5 +59,16 @@ inline constexpr policy_flag fp_storage_for = [] {
 // fp storage its operands' flags and G allow.
 template <grid G, policy_flag P, insidable... Ins>
 using deduced_inside = inside<G, P | fp_storage_for<G, Ins...>>;
+// Whether a + or × into Result runs its overflow check. The result grid
+// holds every result, so only a rational or fraction raw can overflow: a
+// fraction raw always may (its denominator grows); a rational raw under a
+// checked or `exact` policy, unless the grids prove the op fits
+// (RationalSafe: rational_add_is_safe / rational_mul_is_safe).
+template <insidable Result, insidable L, insidable R, policy_flag F, bool RationalSafe>
+inline constexpr bool lattice_op_checked =
+    fraction_storage<Result> || (rational_storage<Result> &&
+                                 (has_any_flag(F, checked) || is_checked(policy_of<L>) || is_checked(policy_of<R>) ||
+                                  has_any_flag(F | policy_of<L> | policy_of<R>, exact)) &&
+                                 !RationalSafe);
 } // namespace beman::inside::detail
 #endif

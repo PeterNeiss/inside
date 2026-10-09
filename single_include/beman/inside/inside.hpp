@@ -372,7 +372,7 @@ using smallest_int_for_t = std::conditional_t<
                        std::int16_t,
                        std::conditional_t<(Low >= INT32_MIN && High <= INT32_MAX), std::int32_t, std::int64_t>>>;
 
-// (type_name<T>() — used only by the debug stringifier — lives in
+// (type_name_v<T> — used only by the debug stringifier — lives in
 // "beman/inside/io.hpp" so the core stays free of <string_view>.)
 
 // Subset of arithmetic excluding integrals — the rhs types that need the
@@ -6829,6 +6829,17 @@ inline constexpr policy_flag fp_storage_for = [] {
 // fp storage its operands' flags and G allow.
 template <grid G, policy_flag P, insidable... Ins>
 using deduced_inside = inside<G, P | fp_storage_for<G, Ins...>>;
+// Whether a + or × into Result runs its overflow check. The result grid
+// holds every result, so only a rational or fraction raw can overflow: a
+// fraction raw always may (its denominator grows); a rational raw under a
+// checked or `exact` policy, unless the grids prove the op fits
+// (RationalSafe: rational_add_is_safe / rational_mul_is_safe).
+template <insidable Result, insidable L, insidable R, policy_flag F, bool RationalSafe>
+inline constexpr bool lattice_op_checked =
+    fraction_storage<Result> || (rational_storage<Result> &&
+                                 (has_any_flag(F, checked) || is_checked(policy_of<L>) || is_checked(policy_of<R>) ||
+                                  has_any_flag(F | policy_of<L> | policy_of<R>, exact)) &&
+                                 !RationalSafe);
 } // namespace beman::inside::detail
 
 //---------------------------------------------------------------------------
@@ -6852,15 +6863,9 @@ struct addition {
     using rep_t  = fp_rep<L, R, result_grid>;
     using result = inside<result_grid, rep_t::result_policy>;
 
-    // A wide fraction raw may always overflow: the sum of two fractions has
-    // a longer denominator.
     template <policy_flag F>
     static constexpr bool needs_overflow_check =
-        fraction_storage<result> ||
-        (rational_storage<result> &&
-         (has_any_flag(F, checked) || is_checked(policy_of<L>) || is_checked(policy_of<R>) ||
-          has_any_flag(F | policy_of<L> | policy_of<R>, exact)) &&
-         !rational_add_is_safe(grid_of<L>, grid_of<R>));
+        lattice_op_checked<result, L, R, F, rational_add_is_safe(grid_of<L>, grid_of<R>)>;
 
     // Plain result when an overflow action takes the failure or no check is
     // needed; else std::expected<result, errc>.
@@ -6944,14 +6949,9 @@ struct multiplication {
     using rep_t  = fp_rep<L, R, result_grid>;
     using result = inside<result_grid, rep_t::result_policy>;
 
-    // (A wide fraction raw may always overflow, as for addition.)
     template <policy_flag F>
     static constexpr bool needs_overflow_check =
-        fraction_storage<result> ||
-        (rational_storage<result> &&
-         (has_any_flag(F, checked) || is_checked(policy_of<L>) || is_checked(policy_of<R>) ||
-          has_any_flag(F | policy_of<L> | policy_of<R>, exact)) &&
-         !rational_mul_is_safe(grid_of<L>, grid_of<R>));
+        lattice_op_checked<result, L, R, F, rational_mul_is_safe(grid_of<L>, grid_of<R>)>;
 
     // Plain result when an overflow action takes the failure or no check is
     // needed; else std::expected<result, errc>.
@@ -14971,42 +14971,42 @@ template <typename V>
 }
 
 //-------------------------------------------------------------------------
-// type_name<T>() — short raw-type label for to_string_debug. Lives here (not
+// type_name_v<T> — short raw-type label for to_string_debug. Lives here (not
 // in the core math header) so the core never pulls <string_view>.
 //-------------------------------------------------------------------------
 namespace detail {
 template <typename T>
-constexpr std::string_view type_name() {
-    if constexpr (std::is_same_v<T, std::uint8_t>)
-        return "uint8_t";
-    if constexpr (std::is_same_v<T, std::uint16_t>)
-        return "uint16_t";
-    if constexpr (std::is_same_v<T, std::uint32_t>)
-        return "uint32_t";
-    if constexpr (std::is_same_v<T, std::uint64_t>)
-        return "uint64_t";
-    if constexpr (std::is_same_v<T, std::int8_t>)
-        return "int8_t";
-    if constexpr (std::is_same_v<T, std::int16_t>)
-        return "int16_t";
-    if constexpr (std::is_same_v<T, std::int32_t>)
-        return "int32_t";
-    if constexpr (std::is_same_v<T, std::int64_t>)
-        return "int64_t";
-    if constexpr (std::is_same_v<T, rational>)
-        return "rational";
-    if constexpr (std::is_same_v<T, point_slot>)
-        return "point";
-    if constexpr (std::is_same_v<T, wide_uint<2>>)
-        return "wide_uint<2>";
-    if constexpr (std::is_same_v<T, wide_uint<3>>)
-        return "wide_uint<3>";
-    if constexpr (is_wide_int_v<T>)
-        return "wide_int";
-    if constexpr (is_exact_frac_v<T>)
-        return "exact_frac";
-    return "unknown";
-}
+inline constexpr std::string_view type_name_v = is_wide_int_v<T>     ? "wide_int"
+                                                : is_exact_frac_v<T> ? "exact_frac"
+                                                                     : "unknown";
+template <>
+inline constexpr std::string_view type_name_v<std::uint8_t> = "uint8_t";
+template <>
+inline constexpr std::string_view type_name_v<std::uint16_t> = "uint16_t";
+template <>
+inline constexpr std::string_view type_name_v<std::uint32_t> = "uint32_t";
+template <>
+inline constexpr std::string_view type_name_v<std::uint64_t> = "uint64_t";
+template <>
+inline constexpr std::string_view type_name_v<std::int8_t> = "int8_t";
+template <>
+inline constexpr std::string_view type_name_v<std::int16_t> = "int16_t";
+template <>
+inline constexpr std::string_view type_name_v<std::int32_t> = "int32_t";
+template <>
+inline constexpr std::string_view type_name_v<std::int64_t> = "int64_t";
+template <>
+inline constexpr std::string_view type_name_v<double> = "double";
+template <>
+inline constexpr std::string_view type_name_v<float> = "float";
+template <>
+inline constexpr std::string_view type_name_v<rational> = "rational";
+template <>
+inline constexpr std::string_view type_name_v<point_slot> = "point";
+template <>
+inline constexpr std::string_view type_name_v<wide_uint<2>> = "wide_uint<2>";
+template <>
+inline constexpr std::string_view type_name_v<wide_uint<3>> = "wide_uint<3>";
 } // namespace detail
 
 //-------------------------------------------------------------------------
@@ -15094,7 +15094,7 @@ template <insidable B>
         str += detail::exact_to_string(b.raw());
     else
         str += beman::inside::to_string(+b.raw());
-    str += "[" + std::string(detail::type_name<detail::raw_t<B>>());
+    str += "[" + std::string(detail::type_name_v<detail::raw_t<B>>);
     constexpr auto slots = grid_of<B>.slot_count();
     str += " Max:" + beman::inside::to_string(slots) + "] ";
     str += beman::inside::to_string(grid_of<B>);

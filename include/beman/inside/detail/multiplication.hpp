@@ -30,14 +30,9 @@ struct multiplication {
     using rep_t  = fp_rep<L, R, result_grid>;
     using result = inside<result_grid, rep_t::result_policy>;
 
-    // (A wide fraction raw may always overflow, as for addition.)
     template <policy_flag F>
     static constexpr bool needs_overflow_check =
-        fraction_storage<result> ||
-        (rational_storage<result> &&
-         (has_any_flag(F, checked) || is_checked(policy_of<L>) || is_checked(policy_of<R>) ||
-          has_any_flag(F | policy_of<L> | policy_of<R>, exact)) &&
-         !rational_mul_is_safe(grid_of<L>, grid_of<R>));
+        lattice_op_checked<result, L, R, F, rational_mul_is_safe(grid_of<L>, grid_of<R>)>;
 
     // Plain result when an overflow action takes the failure or no check is
     // needed; else std::expected<result, errc>.

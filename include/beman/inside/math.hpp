@@ -54,7 +54,7 @@ using smallest_int_for_t = std::conditional_t<
                        std::int16_t,
                        std::conditional_t<(Low >= INT32_MIN && High <= INT32_MAX), std::int32_t, std::int64_t>>>;
 
-// (type_name<T>() — used only by the debug stringifier — lives in
+// (type_name_v<T> — used only by the debug stringifier — lives in
 // "beman/inside/io.hpp" so the core stays free of <string_view>.)
 
 // Subset of arithmetic excluding integrals — the rhs types that need the

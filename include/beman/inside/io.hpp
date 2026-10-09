@@ -154,42 +154,42 @@ template <typename V>
 }
 
 //-------------------------------------------------------------------------
-// type_name<T>() — short raw-type label for to_string_debug. Lives here (not
+// type_name_v<T> — short raw-type label for to_string_debug. Lives here (not
 // in the core math header) so the core never pulls <string_view>.
 //-------------------------------------------------------------------------
 namespace detail {
 template <typename T>
-constexpr std::string_view type_name() {
-    if constexpr (std::is_same_v<T, std::uint8_t>)
-        return "uint8_t";
-    if constexpr (std::is_same_v<T, std::uint16_t>)
-        return "uint16_t";
-    if constexpr (std::is_same_v<T, std::uint32_t>)
-        return "uint32_t";
-    if constexpr (std::is_same_v<T, std::uint64_t>)
-        return "uint64_t";
-    if constexpr (std::is_same_v<T, std::int8_t>)
-        return "int8_t";
-    if constexpr (std::is_same_v<T, std::int16_t>)
-        return "int16_t";
-    if constexpr (std::is_same_v<T, std::int32_t>)
-        return "int32_t";
-    if constexpr (std::is_same_v<T, std::int64_t>)
-        return "int64_t";
-    if constexpr (std::is_same_v<T, rational>)
-        return "rational";
-    if constexpr (std::is_same_v<T, point_slot>)
-        return "point";
-    if constexpr (std::is_same_v<T, wide_uint<2>>)
-        return "wide_uint<2>";
-    if constexpr (std::is_same_v<T, wide_uint<3>>)
-        return "wide_uint<3>";
-    if constexpr (is_wide_int_v<T>)
-        return "wide_int";
-    if constexpr (is_exact_frac_v<T>)
-        return "exact_frac";
-    return "unknown";
-}
+inline constexpr std::string_view type_name_v = is_wide_int_v<T>     ? "wide_int"
+                                                : is_exact_frac_v<T> ? "exact_frac"
+                                                                     : "unknown";
+template <>
+inline constexpr std::string_view type_name_v<std::uint8_t> = "uint8_t";
+template <>
+inline constexpr std::string_view type_name_v<std::uint16_t> = "uint16_t";
+template <>
+inline constexpr std::string_view type_name_v<std::uint32_t> = "uint32_t";
+template <>
+inline constexpr std::string_view type_name_v<std::uint64_t> = "uint64_t";
+template <>
+inline constexpr std::string_view type_name_v<std::int8_t> = "int8_t";
+template <>
+inline constexpr std::string_view type_name_v<std::int16_t> = "int16_t";
+template <>
+inline constexpr std::string_view type_name_v<std::int32_t> = "int32_t";
+template <>
+inline constexpr std::string_view type_name_v<std::int64_t> = "int64_t";
+template <>
+inline constexpr std::string_view type_name_v<double> = "double";
+template <>
+inline constexpr std::string_view type_name_v<float> = "float";
+template <>
+inline constexpr std::string_view type_name_v<rational> = "rational";
+template <>
+inline constexpr std::string_view type_name_v<point_slot> = "point";
+template <>
+inline constexpr std::string_view type_name_v<wide_uint<2>> = "wide_uint<2>";
+template <>
+inline constexpr std::string_view type_name_v<wide_uint<3>> = "wide_uint<3>";
 } // namespace detail
 
 //-------------------------------------------------------------------------
@@ -277,7 +277,7 @@ template <insidable B>
         str += detail::exact_to_string(b.raw());
     else
         str += beman::inside::to_string(+b.raw());
-    str += "[" + std::string(detail::type_name<detail::raw_t<B>>());
+    str += "[" + std::string(detail::type_name_v<detail::raw_t<B>>);
     constexpr auto slots = grid_of<B>.slot_count();
     str += " Max:" + beman::inside::to_string(slots) + "] ";
     str += beman::inside::to_string(grid_of<B>);
