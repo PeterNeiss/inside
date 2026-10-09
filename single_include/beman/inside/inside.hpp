@@ -7952,10 +7952,11 @@ struct inside {
     }
 
     // Conversion summary:
-    //   operator imax     — implicit, when the grid is notch-aligned and fits in
-    //                       int64 (else use `to<imax>()`). Also the `vec[b]` index
-    //                       path. No second implicit integer operator (would make
-    //                       `imax_var += b` ambiguous).
+    //   operator imax     — implicit, when the values are integers or the policy
+    //                       may round (then rounded by its mode), and the interval
+    //                       fits int64 (else use `to<imax>()`). Also the `vec[b]`
+    //                       index path. No second implicit integer operator (would
+    //                       make `imax_var += b` ambiguous).
     //   operator rational — implicit; lossless and exact.
     //   operator double   — explicit, and gated on a rounding flag (a double
     //                       may round the value); the same with `f64` storage.
@@ -7966,10 +7967,14 @@ struct inside {
     //                       in-range sites (array indexing). FP shares the gate.
     //   to<T>(b)/as<T>(b) — free-function forms, for generic code.
     constexpr operator imax() const
-        requires(detail::integer_notch<G> && G.Interval.Lower >= detail::rational{std::numeric_limits<imax>::min()} &&
+        requires((detail::integer_notch<G> || ((P & snap) != 0 && !detail::wide_valued<inside>)) &&
+                 G.Interval.Lower >= detail::rational{std::numeric_limits<imax>::min()} &&
                  G.Interval.Upper <= detail::rational{std::numeric_limits<imax>::max()})
     {
-        return detail::to_value(*this);
+        if constexpr (detail::integer_notch<G>)
+            return detail::to_value(*this);
+        else
+            return round_to_int(detail::as_rational(*this), detail::rounding_of(P));
     }
 
     constexpr explicit operator double() const

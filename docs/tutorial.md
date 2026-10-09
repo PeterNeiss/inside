@@ -82,7 +82,7 @@ explicit precisely because it drops the guarantee.
 
 - `to<T>()` — typed, fallible conversion to a native integer.
 - `numerator()` / `denominator()` — exact read-out, no rounding.
-- implicit `operator imax()` for integer-aligned grids (so an inside indexes
+- implicit `operator imax()` for integer-aligned grids, or any grid whose policy rounds (so an inside indexes
   an array directly).
 - explicit `double(b)` — opt in to floating point (the same with `f64`
   storage).

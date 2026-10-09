@@ -451,6 +451,15 @@ TEST(UnanchoredGrid, range_limits_random) {
     EXPECT_FALSE(std::numeric_limits<inside<kHalfOff>>::is_integer);
     static_assert(!std::is_convertible_v<inside<kHalfOff>, imax>); // no silent truncation
     static_assert(std::is_convertible_v<inside<{0, 10}>, imax>);
+    // with a rounding policy it converts, rounded by the policy's mode
+    EXPECT_EQ(static_cast<imax>(inside<kHalfOff, round_nearest>{2.5}), 3);
+    EXPECT_EQ(static_cast<imax>(inside<kHalfOff, round_floor>{2.5}), 2);
+    EXPECT_EQ(static_cast<imax>(inside<kHalfOff, snap>{2.5}), 2);
+    EXPECT_EQ(static_cast<imax>(inside<kQuarterOff, snap>{-1.75}), -1);
+    EXPECT_EQ(static_cast<imax>(inside<kHalfOff, round_half_even>{2.5}), 2);
+    EXPECT_EQ(static_cast<imax>(inside<kHalfOff, round_half_even>{3.5}), 4);
+    const imax i = inside<{{0, 4}, per<4>}, round_ceil>{1.25};
+    EXPECT_EQ(i, 2);
 
     std::mt19937_64 rng{42};
     for (int i = 0; i < 200; ++i) {

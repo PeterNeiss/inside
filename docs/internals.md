@@ -303,7 +303,7 @@ The cascade is implemented in `detail/assignment.hpp` — see
 
 ## 5. Conversion summary
 
-The user-facing rules (one implicit `operator imax` on integer-aligned grids,
+The user-facing rules (one implicit `operator imax` on integer-aligned grids or a rounding policy,
 an implicit lossless `operator rational`, `operator double` explicit and gated
 on a rounding flag, `f64`/`f32` storage included) are in
 [conversions.md](conversions.md). On `rational` itself every `operator T()` is

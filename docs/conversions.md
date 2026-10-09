@@ -16,7 +16,7 @@ writing literal values into insides.
 
 | Conversion | When it applies | Purpose |
 |---|---|---|
-| `operator imax()` (implicit) | integer-notch grid (notch denom = 1) with Lower ≥ imax_min and Upper ≤ imax_max | drop-in for integer contexts: accumulators, comparisons, and indexing (`vec[b]` converts imax → size_t) |
+| `operator imax()` (implicit) | integer values (integer notch and Lower), or a policy that may round (`snap`, `round_*`: the value is rounded by that mode); Lower ≥ imax_min and Upper ≤ imax_max | drop-in for integer contexts: accumulators, comparisons, and indexing (`vec[b]` converts imax → size_t) |
 | `operator double()` (explicit) | the grid carries a rounding policy (`round_*` or `snap`) — with or without `f64` storage | floating-point arithmetic / printf |
 
 `operator imax()` is deliberately the **only** implicit integer conversion —

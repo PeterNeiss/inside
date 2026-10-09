@@ -18,6 +18,9 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   lattices, and `abs` the lattice of ±x. `grid::anchored()` and
   `grid::value_unit()` describe a grid; `grid::try_make` no longer rejects
   such a Lower. Grids that were valid before behave and compile as before.
+- The implicit `operator imax()` exists when the policy may round (`snap`,
+  `round_*`), rounding the value by that mode; without a rounding flag it
+  still needs integer values.
 - `mul_into<Out, F>(a, b)` and `div_into<Out, F>(a, b)`: the exact product or
   quotient, rounded once onto `Out` by its policy, without forming the
   product or quotient grid — for products whose grid would need numbers past
