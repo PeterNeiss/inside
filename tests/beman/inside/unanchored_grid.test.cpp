@@ -126,8 +126,10 @@ TEST(UnanchoredGrid, storage) {
     static_assert(!integer_value_storage<inside<kNegOff>>);
     static_assert(!unit_lattice(kHalfOff));
     static_assert(index_storage<inside<kHalfOff, indexed | u8>>);
+#ifndef BEMAN_INSIDE_MATH_NO_FP
     // a dyadic offset grid may store its value in a double
     static_assert(f64_storage<inside<kQuarterOff, f64>>);
+#endif
     static_assert(!double_exact<kThirdOff>);
 }
 
@@ -174,10 +176,12 @@ void check_store_rational() {
             continue;
         }
         EXPECT_EQ(static_cast<rational>(B{v}), want);
-        if (static_cast<double>(v) == static_cast<double>(v) && rational{static_cast<double>(v)} == v)
+        if (static_cast<double>(v) == static_cast<double>(v) && rational{static_cast<double>(v)} == v) {
             EXPECT_EQ(static_cast<rational>(B{static_cast<double>(v)}), want);
-        if (abs_den(v.Denominator) == 1)
+        }
+        if (abs_den(v.Denominator) == 1) {
             EXPECT_EQ(static_cast<rational>(B{static_cast<imax>(signed_numerator(v))}), want);
+        }
     }
 }
 
@@ -299,10 +303,11 @@ void check_pairs() {
             EXPECT_EQ(static_cast<rational>(a * b), *(x * y));
             if (y != 0) {
                 const auto q = a / b;
-                if constexpr (is_expected_v<decltype(q)>)
+                if constexpr (is_expected_v<decltype(q)>) {
                     EXPECT_EQ(static_cast<rational>(*q), *(x / y));
-                else
+                } else {
                     EXPECT_EQ(static_cast<rational>(q), *(x / y));
+                }
             }
             EXPECT_EQ((a <=> b) < 0, x < y);
             EXPECT_EQ(a == b, x == y);
