@@ -420,6 +420,47 @@ struct assignment<L, R> {
 };
 
 //---------------------------------------------------------------------------
+// The integer store of an unanchored lattice: Notch = S/K and Lower = M/K
+// over their common denominator K. MaxDen bounds a source denominator so
+// that num·K, M·aden and aden·S stay in imax (|num| ≤ |value|·aden, and
+// every in-range |value| is at most Mag); Ok when the grid allows any.
+//---------------------------------------------------------------------------
+struct unanchored_codec_t {
+    imax K, S, M;
+    umax MaxDen;
+    bool Ok;
+};
+template <insidable L>
+inline constexpr unanchored_codec_t unanchored_codec = [] {
+    constexpr unanchored_codec_t no{0, 0, 0, 0, false};
+    if constexpr (anchored<L> || !index_storage<L> || point_storage<L> || !values_fit_imax<L>)
+        return no;
+    else {
+        constexpr umax cap = static_cast<umax>(std::numeric_limits<imax>::max());
+        const rational n = detail::notch64<L>, lo = detail::lower64<L>, hi = detail::upper64<L>;
+        const umax     dn = abs_den(n.Denominator), dl = abs_den(lo.Denominator);
+        umax           k;
+        if (mul_overflow(dn / std::gcd(dn, dl), dl, &k) || k > cap)
+            return no;
+        umax s, mm;
+        if (mul_overflow(n.Numerator, k / dn, &s) || s > cap || mul_overflow(lo.Numerator, k / dl, &mm) || mm > cap)
+            return no;
+        // Mag: a bound on every in-range |value|, plus one.
+        const umax mag = static_cast<umax>(ceil(abs(lo) > abs(hi) ? abs(lo) : abs(hi))) + 1;
+        umax       km, kms;
+        if (mul_overflow(k, mag, &km) || mul_overflow(km, umax{4}, &kms))
+            return no;
+        const umax by_num = cap / kms; // num·K and M·aden each below cap/2
+        const umax by_den = cap / s;   // aden·S
+        return unanchored_codec_t{static_cast<imax>(k),
+                                  static_cast<imax>(s),
+                                  lo.Denominator < 0 ? -static_cast<imax>(mm) : static_cast<imax>(mm),
+                                  by_num < by_den ? by_num : by_den,
+                                  true};
+    }
+}();
+
+//---------------------------------------------------------------------------
 // assign(insidable, floating_point | rational)
 //---------------------------------------------------------------------------
 template <insidable L, typename R>
@@ -631,6 +672,30 @@ struct assignment<L, R> {
                     }
                     // strict policy, off-notch: fall through to the rational path for
                     // the error message / action plumbing (cold).
+                }
+            }
+
+            // The same shortcut for an unanchored lattice: with K the common
+            // denominator of Notch and Lower, Notch = sN/K and Lower = m/K, the
+            // offset is (num·K − m·aden)/(aden·sN), reduced by g = gcd(aden, K).
+            if constexpr (unanchored_codec<L>.Ok) {
+                constexpr auto c = unanchored_codec<L>;
+                const rational rv{rhs};
+                const umax     aden = abs_den(rv.Denominator);
+                if (aden <= c.MaxDen) {
+                    const umax g    = std::gcd(aden, static_cast<umax>(c.K));
+                    const imax num  = signed_numerator(rv);
+                    const umax onum = // ≥ 0: rhs ≥ Lower (in range)
+                        static_cast<umax>(num * (c.K / static_cast<imax>(g)) - c.M * static_cast<imax>(aden / g));
+                    const umax den2 = (aden / g) * static_cast<umax>(c.S);
+                    if (onum % den2 == 0) {
+                        store_slot(onum / den2);
+                        return;
+                    }
+                    if constexpr (has_round_flag) {
+                        store_slot(round_quotient<L, P>(onum, den2));
+                        return;
+                    }
                 }
             }
 

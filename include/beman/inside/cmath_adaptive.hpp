@@ -1532,11 +1532,48 @@ template <insidable Out>
 inline constexpr grid_rational half_unit = ::beman::inside::detail::grid_gcd_of(
     ::beman::inside::detail::grid_div_of(notch_of<Out>, grid_rational{2}), lower_of<Out>);
 
-template <insidable Out, policy_flag R>
+template <insidable Out, policy_flag R, grid_rational Unit = half_unit<Out>>
 using bracket_t = inside<grid{{::beman::inside::detail::grid_sub(lower_of<Out>, notch_of<Out>),
                                ::beman::inside::detail::grid_add(upper_of<Out>, notch_of<Out>)},
-                              half_unit<Out>},
+                              Unit},
                          R | (policy_of<Out> & clamp)>;
+
+// The integer form: a bracket 16 times finer than half_unit, counted in
+// imax. Rounded down there, the value lies in [y, y + F); only when y is
+// itself a rounding boundary of Out (a point or a half point — at most one
+// bracket point in 16) does rounding up decide whether the value is exactly y.
+// Then Out's slot follows from the bracket index by one integer division.
+template <insidable Out>
+inline constexpr grid_rational fine_unit = ::beman::inside::detail::grid_div_of(half_unit<Out>, grid_rational{1024});
+
+template <insidable Out>
+inline constexpr bool integer_bracket = [] {
+    using ::beman::inside::detail::signed_value_bits_of, ::beman::inside::detail::units_lo,
+        ::beman::inside::detail::units_hi;
+    if constexpr (wide_valued<Out>)
+        return false;
+    else {
+        using B = bracket_t<Out, round_floor, fine_unit<Out>>;
+        return !wide_valued<B> &&
+               signed_value_bits_of({units_lo<B, fine_unit<Out>>, units_hi<B, fine_unit<Out>>}) < 60;
+    }
+}();
+
+// Out's slot for a value known as `num/den` bracket units past Lower (in
+// value space: `negative` is the value's sign), or nothing past Out's range.
+template <insidable Out, imax den>
+constexpr std::optional<imax> bracket_slot(imax num, bool negative) noexcept {
+    using namespace ::beman::inside::detail;
+    constexpr round_mode m = rounding_for<Out, policy<none>>;
+    const auto [q, r]      = floor_divmod(num, den);
+    const imax k           = q + rounds_up(m,
+                                           negative,
+                                           classify_remainder(m, static_cast<umax>(r), static_cast<umax>(den)),
+                                           ((q + lower_index<Out>)&1) != 0);
+    if (k < 0 || static_cast<umax>(k) > max_index_v<Out>)
+        return std::nullopt;
+    return k;
+}
 
 // fn.operator()<O>(xs...) for an anchored O: Out's result, or its error.
 template <insidable Out, typename Fn, insidable... Ins>
@@ -1544,9 +1581,57 @@ constexpr auto via_anchored(const Fn& fn, const Ins&... xs) {
     static_assert(anchored<Out> || !has_flag(policy_of<Out>, wrap),
                   "beman::inside::math: wrap onto a grid that does not pass through 0 is not supported - "
                   "use clamp, or an anchored output grid");
+    using ::beman::inside::detail::is_expected_v;
     if constexpr (anchored<Out>)
         return fn.template operator()<Out>(anchored_input(xs)...);
-    else {
+    else if constexpr (integer_bracket<Out>) {
+        using namespace ::beman::inside::detail;
+        constexpr grid_rational F       = fine_unit<Out>;
+        constexpr imax          c       = static_cast<imax>(exact_quotient(lower_of<Out>, F)); // Lower in F
+        constexpr imax          s       = static_cast<imax>(exact_quotient(notch_of<Out>, F)); // Notch in F (even)
+        using Lo                        = bracket_t<Out, round_floor, F>;
+        using Hi                        = bracket_t<Out, round_ceil, F>;
+        using R                         = decltype(fn.template operator()<Lo>(anchored_input(xs)...));
+        constexpr bool checked          = is_expected_v<R>;
+        using Res                       = std::conditional_t<checked, std::expected<Out, errc>, Out>;
+        const R lo                      = fn.template operator()<Lo>(anchored_input(xs)...);
+        const auto               unwrap = [](const auto& r) -> const auto& {
+            if constexpr (checked)
+                return *r;
+            else
+                return r;
+        };
+        if constexpr (checked)
+            if (!lo)
+                return Res{std::unexpected{lo.error()}};
+        const imax j = value_in_units<imax, F>(unwrap(lo)); // y = j·F
+        const imax t = j - c;                               // y − Lower, in F
+        // The value lies inside (y, y + F): 2t + 1 half units of F.
+        std::optional<imax> k;
+        if (t % (s / 2) != 0) [[likely]]
+            k = bracket_slot<Out, 2 * s>(2 * t + 1, j < 0);
+        else { // y is a boundary of Out: is the value exactly y?
+            const auto hi = fn.template operator()<Hi>(anchored_input(xs)...);
+            if constexpr (checked)
+                if (!hi)
+                    return Res{std::unexpected{hi.error()}};
+            k = value_in_units<imax, F>(unwrap(hi)) == j ? bracket_slot<Out, s>(t, j < 0)
+                                                         : bracket_slot<Out, 2 * s>(2 * t + 1, j < 0);
+        }
+        if (k) [[likely]]
+            return Res{Out::from_raw(raw_of_slot<Out>(*k))};
+        // Past Out's range: the bracket value through Out's policy (it rounds
+        // as the value does, and lies on the same side of the range).
+        const auto v = exact_of(unwrap(lo)) +
+                       exact_frac<exact_min_limbs>{wide_sint<exact_min_limbs>{1}, wide_sint<exact_min_limbs>{2}} *
+                           exact_of_grid<exact_min_limbs>(F);
+        if constexpr (checked) {
+            errc      ec{};
+            const Out out = ax::store_exact<Out>(v, make_policy<policy_of<Out>>(ec));
+            return ec == errc{} ? Res{out} : Res{std::unexpected{ec}};
+        } else
+            return ax::store_exact<Out>(v, make_policy<policy_of<Out>>());
+    } else {
         const auto lo                   = fn.template operator()<bracket_t<Out, round_floor>>(anchored_input(xs)...);
         const auto hi                   = fn.template operator()<bracket_t<Out, round_ceil>>(anchored_input(xs)...);
         auto                        mid = [](const auto& a, const auto& b) {
@@ -1554,7 +1639,7 @@ constexpr auto via_anchored(const Fn& fn, const Ins&... xs) {
             const auto s = exact_of(a) + exact_of(b);
             return decltype(s){s.Num, s.Den + s.Den};
         };
-        if constexpr (::beman::inside::detail::is_expected_v<decltype(lo)>) {
+        if constexpr (is_expected_v<decltype(lo)>) {
             using R = std::expected<Out, errc>;
             if (!lo)
                 return R{std::unexpected{lo.error()}};

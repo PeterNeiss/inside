@@ -5992,6 +5992,47 @@ struct assignment<L, R> {
 };
 
 //---------------------------------------------------------------------------
+// The integer store of an unanchored lattice: Notch = S/K and Lower = M/K
+// over their common denominator K. MaxDen bounds a source denominator so
+// that num·K, M·aden and aden·S stay in imax (|num| ≤ |value|·aden, and
+// every in-range |value| is at most Mag); Ok when the grid allows any.
+//---------------------------------------------------------------------------
+struct unanchored_codec_t {
+    imax K, S, M;
+    umax MaxDen;
+    bool Ok;
+};
+template <insidable L>
+inline constexpr unanchored_codec_t unanchored_codec = [] {
+    constexpr unanchored_codec_t no{0, 0, 0, 0, false};
+    if constexpr (anchored<L> || !index_storage<L> || point_storage<L> || !values_fit_imax<L>)
+        return no;
+    else {
+        constexpr umax cap = static_cast<umax>(std::numeric_limits<imax>::max());
+        const rational n = detail::notch64<L>, lo = detail::lower64<L>, hi = detail::upper64<L>;
+        const umax     dn = abs_den(n.Denominator), dl = abs_den(lo.Denominator);
+        umax           k;
+        if (mul_overflow(dn / std::gcd(dn, dl), dl, &k) || k > cap)
+            return no;
+        umax s, mm;
+        if (mul_overflow(n.Numerator, k / dn, &s) || s > cap || mul_overflow(lo.Numerator, k / dl, &mm) || mm > cap)
+            return no;
+        // Mag: a bound on every in-range |value|, plus one.
+        const umax mag = static_cast<umax>(ceil(abs(lo) > abs(hi) ? abs(lo) : abs(hi))) + 1;
+        umax       km, kms;
+        if (mul_overflow(k, mag, &km) || mul_overflow(km, umax{4}, &kms))
+            return no;
+        const umax by_num = cap / kms; // num·K and M·aden each below cap/2
+        const umax by_den = cap / s;   // aden·S
+        return unanchored_codec_t{static_cast<imax>(k),
+                                  static_cast<imax>(s),
+                                  lo.Denominator < 0 ? -static_cast<imax>(mm) : static_cast<imax>(mm),
+                                  by_num < by_den ? by_num : by_den,
+                                  true};
+    }
+}();
+
+//---------------------------------------------------------------------------
 // assign(insidable, floating_point | rational)
 //---------------------------------------------------------------------------
 template <insidable L, typename R>
@@ -6203,6 +6244,30 @@ struct assignment<L, R> {
                     }
                     // strict policy, off-notch: fall through to the rational path for
                     // the error message / action plumbing (cold).
+                }
+            }
+
+            // The same shortcut for an unanchored lattice: with K the common
+            // denominator of Notch and Lower, Notch = sN/K and Lower = m/K, the
+            // offset is (num·K − m·aden)/(aden·sN), reduced by g = gcd(aden, K).
+            if constexpr (unanchored_codec<L>.Ok) {
+                constexpr auto c = unanchored_codec<L>;
+                const rational rv{rhs};
+                const umax     aden = abs_den(rv.Denominator);
+                if (aden <= c.MaxDen) {
+                    const umax g    = std::gcd(aden, static_cast<umax>(c.K));
+                    const imax num  = signed_numerator(rv);
+                    const umax onum = // ≥ 0: rhs ≥ Lower (in range)
+                        static_cast<umax>(num * (c.K / static_cast<imax>(g)) - c.M * static_cast<imax>(aden / g));
+                    const umax den2 = (aden / g) * static_cast<umax>(c.S);
+                    if (onum % den2 == 0) {
+                        store_slot(onum / den2);
+                        return;
+                    }
+                    if constexpr (has_round_flag) {
+                        store_slot(round_quotient<L, P>(onum, den2));
+                        return;
+                    }
                 }
             }
 
@@ -14089,11 +14154,48 @@ template <insidable Out>
 inline constexpr grid_rational half_unit = ::beman::inside::detail::grid_gcd_of(
     ::beman::inside::detail::grid_div_of(notch_of<Out>, grid_rational{2}), lower_of<Out>);
 
-template <insidable Out, policy_flag R>
+template <insidable Out, policy_flag R, grid_rational Unit = half_unit<Out>>
 using bracket_t = inside<grid{{::beman::inside::detail::grid_sub(lower_of<Out>, notch_of<Out>),
                                ::beman::inside::detail::grid_add(upper_of<Out>, notch_of<Out>)},
-                              half_unit<Out>},
+                              Unit},
                          R | (policy_of<Out> & clamp)>;
+
+// The integer form: a bracket 16 times finer than half_unit, counted in
+// imax. Rounded down there, the value lies in [y, y + F); only when y is
+// itself a rounding boundary of Out (a point or a half point — at most one
+// bracket point in 16) does rounding up decide whether the value is exactly y.
+// Then Out's slot follows from the bracket index by one integer division.
+template <insidable Out>
+inline constexpr grid_rational fine_unit = ::beman::inside::detail::grid_div_of(half_unit<Out>, grid_rational{1024});
+
+template <insidable Out>
+inline constexpr bool integer_bracket = [] {
+    using ::beman::inside::detail::signed_value_bits_of, ::beman::inside::detail::units_lo,
+        ::beman::inside::detail::units_hi;
+    if constexpr (wide_valued<Out>)
+        return false;
+    else {
+        using B = bracket_t<Out, round_floor, fine_unit<Out>>;
+        return !wide_valued<B> &&
+               signed_value_bits_of({units_lo<B, fine_unit<Out>>, units_hi<B, fine_unit<Out>>}) < 60;
+    }
+}();
+
+// Out's slot for a value known as `num/den` bracket units past Lower (in
+// value space: `negative` is the value's sign), or nothing past Out's range.
+template <insidable Out, imax den>
+constexpr std::optional<imax> bracket_slot(imax num, bool negative) noexcept {
+    using namespace ::beman::inside::detail;
+    constexpr round_mode m = rounding_for<Out, policy<none>>;
+    const auto [q, r]      = floor_divmod(num, den);
+    const imax k           = q + rounds_up(m,
+                                           negative,
+                                           classify_remainder(m, static_cast<umax>(r), static_cast<umax>(den)),
+                                           ((q + lower_index<Out>)&1) != 0);
+    if (k < 0 || static_cast<umax>(k) > max_index_v<Out>)
+        return std::nullopt;
+    return k;
+}
 
 // fn.operator()<O>(xs...) for an anchored O: Out's result, or its error.
 template <insidable Out, typename Fn, insidable... Ins>
@@ -14101,9 +14203,57 @@ constexpr auto via_anchored(const Fn& fn, const Ins&... xs) {
     static_assert(anchored<Out> || !has_flag(policy_of<Out>, wrap),
                   "beman::inside::math: wrap onto a grid that does not pass through 0 is not supported - "
                   "use clamp, or an anchored output grid");
+    using ::beman::inside::detail::is_expected_v;
     if constexpr (anchored<Out>)
         return fn.template operator()<Out>(anchored_input(xs)...);
-    else {
+    else if constexpr (integer_bracket<Out>) {
+        using namespace ::beman::inside::detail;
+        constexpr grid_rational F       = fine_unit<Out>;
+        constexpr imax          c       = static_cast<imax>(exact_quotient(lower_of<Out>, F)); // Lower in F
+        constexpr imax          s       = static_cast<imax>(exact_quotient(notch_of<Out>, F)); // Notch in F (even)
+        using Lo                        = bracket_t<Out, round_floor, F>;
+        using Hi                        = bracket_t<Out, round_ceil, F>;
+        using R                         = decltype(fn.template operator()<Lo>(anchored_input(xs)...));
+        constexpr bool checked          = is_expected_v<R>;
+        using Res                       = std::conditional_t<checked, std::expected<Out, errc>, Out>;
+        const R lo                      = fn.template operator()<Lo>(anchored_input(xs)...);
+        const auto               unwrap = [](const auto& r) -> const auto& {
+            if constexpr (checked)
+                return *r;
+            else
+                return r;
+        };
+        if constexpr (checked)
+            if (!lo)
+                return Res{std::unexpected{lo.error()}};
+        const imax j = value_in_units<imax, F>(unwrap(lo)); // y = j·F
+        const imax t = j - c;                               // y − Lower, in F
+        // The value lies inside (y, y + F): 2t + 1 half units of F.
+        std::optional<imax> k;
+        if (t % (s / 2) != 0) [[likely]]
+            k = bracket_slot<Out, 2 * s>(2 * t + 1, j < 0);
+        else { // y is a boundary of Out: is the value exactly y?
+            const auto hi = fn.template operator()<Hi>(anchored_input(xs)...);
+            if constexpr (checked)
+                if (!hi)
+                    return Res{std::unexpected{hi.error()}};
+            k = value_in_units<imax, F>(unwrap(hi)) == j ? bracket_slot<Out, s>(t, j < 0)
+                                                         : bracket_slot<Out, 2 * s>(2 * t + 1, j < 0);
+        }
+        if (k) [[likely]]
+            return Res{Out::from_raw(raw_of_slot<Out>(*k))};
+        // Past Out's range: the bracket value through Out's policy (it rounds
+        // as the value does, and lies on the same side of the range).
+        const auto v = exact_of(unwrap(lo)) +
+                       exact_frac<exact_min_limbs>{wide_sint<exact_min_limbs>{1}, wide_sint<exact_min_limbs>{2}} *
+                           exact_of_grid<exact_min_limbs>(F);
+        if constexpr (checked) {
+            errc      ec{};
+            const Out out = ax::store_exact<Out>(v, make_policy<policy_of<Out>>(ec));
+            return ec == errc{} ? Res{out} : Res{std::unexpected{ec}};
+        } else
+            return ax::store_exact<Out>(v, make_policy<policy_of<Out>>());
+    } else {
         const auto lo                   = fn.template operator()<bracket_t<Out, round_floor>>(anchored_input(xs)...);
         const auto hi                   = fn.template operator()<bracket_t<Out, round_ceil>>(anchored_input(xs)...);
         auto                        mid = [](const auto& a, const auto& b) {
@@ -14111,7 +14261,7 @@ constexpr auto via_anchored(const Fn& fn, const Ins&... xs) {
             const auto s = exact_of(a) + exact_of(b);
             return decltype(s){s.Num, s.Den + s.Den};
         };
-        if constexpr (::beman::inside::detail::is_expected_v<decltype(lo)>) {
+        if constexpr (is_expected_v<decltype(lo)>) {
             using R = std::expected<Out, errc>;
             if (!lo)
                 return R{std::unexpected{lo.error()}};

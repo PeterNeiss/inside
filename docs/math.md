@@ -121,10 +121,12 @@ kernels.
   (`clamp` saturates, `wrap` wraps, the default reports).
 - **Grids off the notch's multiples.** An input or output whose values are
   offset from the notch's multiples (`{{0.5, 10.5}, 1}`) works like any other
-  and is correctly rounded too: the engine evaluates on an anchored grid of
-  every output point and every midpoint between two, rounded down and up, and
-  the output rounds the bracketed value by its own mode. That costs two
-  evaluations. Such an output cannot use `wrap` (a compile error; `clamp` and
+  and is correctly rounded too: the engine rounds down onto an anchored grid
+  16 times finer than the output's points and midpoints, and the output's slot
+  follows by one integer division; only a result that lands exactly on a
+  rounding boundary takes a second evaluation (rounded up) to tell whether it
+  is exact. Expect about 1.5× the time of an anchored output. Such an output
+  cannot use `wrap` (a compile error; `clamp` and
   the default work). `abs` and `copysign` deduce the lattice of ±x (notch
   `gcd(Notch, 2·Lower)`), and `fmod`, `atan2` and `hypot` the gcd of both
   inputs' value units.
