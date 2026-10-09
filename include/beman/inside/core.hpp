@@ -66,21 +66,18 @@ template <grid G, policy_flag P>
 struct inside {
     static_assert(grid::validate<G>());
     static_assert(!(P & clamp) || !(P & wrap), "clamp and wrap are mutually exclusive");
-#ifndef BEMAN_INSIDE_MATH_NO_FP
-    // Under the default (double) engine the `f64` policy is double-backed, and
-    // its value snaps to the grid (Lower + k·Notch). That snap is only exact
-    // when the grid is dyadic — power-of-two notch and Lower — so grid points
-    // are representable in IEEE-754 double. A continuous grid (Notch == 0) has
-    // no grid to snap to. Anything else is rejected here rather than silently
-    // demoted to integer storage.
-    static_assert(!has_flag(P, f64) || detail::dyadic_grid<G> || G.Notch == 0,
-                  "inside: the `f64` policy requires a dyadic grid (power-of-two "
-                  "notch and Lower, so values are exactly representable in double)");
-    static_assert(!has_flag(P, f32) || detail::dyadic_grid<G> || G.Notch == 0,
-                  "inside: the `f32` policy requires a dyadic grid (power-of-two notch "
-                  "and Lower); values must also fit float's 24-bit significand "
-                  "(checked at storage selection — see `float_exact`)");
-#endif
+    // `f64` / `f32` store the value in a double / float, which must hold every
+    // value exactly: a dyadic grid (power-of-two notch and Lower). A
+    // continuous grid holds any fraction, so it is rejected — the flag would
+    // change results, and it is storage only. (A point keeps its value in the
+    // type.)
+    static_assert(!has_flag(P, f64) || detail::dyadic_grid<G> || G.Interval.Lower == G.Interval.Upper,
+                  "inside: `f64` storage needs a grid whose values double holds exactly — a dyadic "
+                  "notch and Lower; a continuous grid holds any fraction (drop the flag)");
+    static_assert(!has_flag(P, f32) || detail::dyadic_grid<G> || G.Interval.Lower == G.Interval.Upper,
+                  "inside: `f32` storage needs a grid whose values float holds exactly — a dyadic "
+                  "notch and Lower within float's 24-bit significand; a continuous grid holds any "
+                  "fraction (drop the flag)");
     // Representation flags vs grid shape (exact has no requirement; a result
     // policy may carry several flags — storage selection resolves widest-wins,
     // so no mutual-exclusion asserts here).
@@ -118,90 +115,11 @@ struct inside {
     constexpr inside() = default;
 
   private:
-    // Snap a value onto fp storage: lossless on the (fp-exact) dyadic grid — the
-    // snap is computed in double and narrowed to the raw type (double or float),
-    // which is exact because every grid point fits the raw's significand. Out-of-
-    // range values run the same policy cascade as the fractional path (clamp →
-    // wrap → checked-report → store as-is), with Pol's one-shot flags merged in.
-    // side() is the sign of the exact source minus v (0 for a source that is
-    // a double): where v sits on a rounding boundary, the source decides.
-    template <typename Pol, typename Side = detail::exact_side>
-    constexpr void store_fp(double v, Pol& pol, const Side& side = {}) {
-        constexpr policy_flag F  = P | detail::policy_flags_of<std::remove_cvref_t<Pol>>;
-        const double          lo = static_cast<double>(G.Interval.Lower);
-        const double          hi = static_cast<double>(G.Interval.Upper);
-        // NaN/±inf (`v - v` is NaN exactly then): clamp saturates an infinity,
-        // anything else reports not_finite through the policy, like the
-        // rational path.
-        if (!(v - v == 0)) [[unlikely]] {
-            if constexpr (has_flag(F, clamp))
-                if (v == v) {
-                    Raw = static_cast<raw_type>(v > 0 ? hi : lo);
-                    return;
-                }
-            pol.report(errc::not_finite);
-            return;
-        }
-        if (v < lo || v > hi) {
-            // Round, then range-check (as assignment does): a value less than one
-            // notch outside may snap onto an endpoint.
-            if constexpr (G.Notch != 0 && has_flag(F, snap)) {
-                constexpr double nd = static_cast<double>(G.Notch);
-                if (v > lo - nd && v < hi + nd) {
-                    const double s = detail::snap_double_from<G, detail::rounding_of(F), true>(v, side);
-                    if (s >= lo && s <= hi) {
-                        Raw = static_cast<raw_type>(s);
-                        return;
-                    }
-                }
-            }
-            if constexpr (has_flag(F, clamp))
-                v = v < lo ? lo : hi;
-            else if constexpr (has_flag(F, wrap)) {
-                // Round onto the lattice first, as the rational path does, so the
-                // folded value is a grid point and cannot round up past Upper.
-                v = detail::snap_double<G, detail::rounding_of(F), /*AnySign=*/true>(v);
-                // Fold into [Lower, Lower + range), range = span + notch — the same
-                // convention as the fractional apply_wrap. floor(q) without an
-                // unguarded imax cast: for |q| >= 2^52 the double is already integral
-                // (floor(q) == q), else narrow to imax (safe) and adjust toward -inf.
-                const double range = hi - lo + static_cast<double>(G.Notch);
-                const double q     = (v - lo) / range;
-                const double aq    = q < 0 ? -q : q;
-                double       kd;
-                if (aq >= 4503599627370496.0) // 2^52
-                    kd = q;
-                else {
-                    const imax k = static_cast<imax>(q); // |q| < 2^52 < imax
-                    kd           = static_cast<double>(k);
-                    if (q < 0 && kd != q)
-                        kd -= 1.0; // floor toward -inf
-                }
-                v -= kd * range;
-            } else if (detail::range_fail(pol))
-                return; // reported (error_code mode)
-                        // no handler (unchecked policy): fall through and store snapped as-is
-        }
-        Raw = static_cast<raw_type>(
-            detail::snap_double_from<G, detail::rounding_of(F)>(v, side)); // float for f32: lossless
-    }
-
-    // The one store every constructor and assignment goes through; fp storage
-    // takes the value as a double.
+    // The one store every constructor and assignment goes through — the same
+    // for every raw kind, so f64 / f32 storage gives the same results.
     template <numeric A, typename Pol>
     constexpr void store_value(const A& value, Pol&& pol) {
-        if constexpr (!detail::fp_raw<inside>)
-            detail::assignment<inside, A>::assign(*this, value, pol);
-        else if constexpr (std::is_arithmetic_v<A>)
-            store_fp(static_cast<double>(value), pol);
-        else {
-            const detail::rational r = detail::as_rational(value);
-            const double           v = static_cast<double>(r);
-            store_fp(v, pol, [&] {
-                const auto c = r <=> detail::rational{v};
-                return c > 0 ? 1 : c < 0 ? -1 : 0;
-            });
-        }
+        detail::assignment<inside, A>::assign(*this, value, pol);
     }
 
     template <numeric A>
@@ -318,8 +236,8 @@ struct inside {
     //                       path. No second implicit integer operator (would make
     //                       `imax_var += b` ambiguous).
     //   operator rational — implicit; lossless and exact.
-    //   operator double   — implicit for an `f64` inside (dyadic grid → lossless);
-    //                       explicit otherwise and gated on a rounding flag.
+    //   operator double   — explicit, and gated on a rounding flag (a double
+    //                       may round the value); the same with `f64` storage.
     //                       A strict inside opts in via `to<double>().value()`.
     //   to<T>()           — typed-error narrowing/widening → `expected<T, errc>`
     //                       (overflow / domain_error).
@@ -334,7 +252,7 @@ struct inside {
         return detail::to_value(*this);
     }
 
-    constexpr explicit(!has_flag(P, f64) && !has_flag(P, f32)) operator double() const
+    constexpr explicit operator double() const
         requires((P & (round_floor | round_ceil | round_nearest | round_half_even | snap)) != 0)
     {
         return detail::as_double(*this);
@@ -453,7 +371,7 @@ struct inside {
         if constexpr (detail::point_raw<inside>)
             neg = negative::from_raw({}); // −point is a point: no raw
         else if constexpr (detail::fp_raw<inside>)
-            neg = negative::from_raw(-Raw);
+            neg = negative::from_raw(raw_type{} - Raw); // 0 − 0 is +0: no −0.0 raw
         else if constexpr (detail::rational_raw<inside>)
             neg = negative::from_raw(-(Raw));
         else {
@@ -919,8 +837,23 @@ inline constexpr imax index_cmp_bias = [] {
 } // namespace detail
 
 namespace detail {
-inline constexpr auto three_way = [](const auto& a, const auto& b) { return a <=> b; };
-inline constexpr auto equal_to  = [](const auto& a, const auto& b) { return a == b; };
+// Inside values are finite and exact, so they are always ordered: <=> of two
+// insides, or of an inside and an integer, is a strong_ordering whatever the
+// storage (a double raw would give partial_ordering); against a floating
+// scalar it is a partial_ordering (NaN is unordered).
+inline constexpr auto three_way = [](const auto& a, const auto& b) -> std::strong_ordering {
+    const auto c = a <=> b;
+    if constexpr (std::is_same_v<std::remove_const_t<decltype(c)>, std::partial_ordering>)
+        return c < 0   ? std::strong_ordering::less
+               : c > 0 ? std::strong_ordering::greater
+                       : std::strong_ordering::equal;
+    else
+        return c;
+};
+inline constexpr auto three_way_partial = [](const auto& a, const auto& b) -> std::partial_ordering {
+    return a <=> b;
+};
+inline constexpr auto equal_to = [](const auto& a, const auto& b) { return a == b; };
 
 // Every value of B is exactly a double (fp storage, or a double-exact grid).
 template <insidable B>
@@ -1036,7 +969,10 @@ constexpr auto compare_scalar(const B& lhs, A rhs, Cmp cmp) {
 
 template <insidable B, detail::arithmetic A>
 [[nodiscard]] constexpr auto operator<=>(const B& lhs, A rhs) {
-    return detail::compare_scalar(lhs, rhs, detail::three_way);
+    if constexpr (std::floating_point<A>)
+        return detail::compare_scalar(lhs, rhs, detail::three_way_partial);
+    else
+        return detail::compare_scalar(lhs, rhs, detail::three_way);
 }
 
 template <insidable B, detail::arithmetic A>

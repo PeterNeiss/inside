@@ -53,15 +53,20 @@ TEST(FormatTest, rational_to_string_long_decimals) {
               "3.99999999999999999978315956550289911319850943982601165771484375");
 }
 
-#ifndef BEMAN_INSIDE_MATH_NO_FP // f64 storage is compiled out under the integer engine
-// A continuous f64 inside prints the double's exact decimal
-TEST(FormatTest, continuous_f64_prints_the_exact_double) {
-    using R = inside<{{0, 1}, 0}, f64>;
-    ASSERT_EQ(beman::inside::to_string(R{0.1}), "0.1000000000000000055511151231257827021181583404541015625");
-    ASSERT_EQ(beman::inside::to_string(R{0.5}), "0.5");
-    ASSERT_EQ(beman::inside::to_string(R{0.0}), "0");
-}
+// f64 / f32 storage prints what the same type without it prints
+TEST(FormatTest, fp_storage_prints_the_same) {
+    using Q  = inside<{{-4, 4}, per<1024>}, round_nearest>;
+    using QD = inside<{{-4, 4}, per<1024>}, round_nearest | f64>;
+    using QF = inside<{{-4, 4}, per<1024>}, round_nearest | f32>;
+    for (const rational v : {rational{1, 1024}, rational{-3, 8}, rational{0}, rational{7, 2}}) {
+        EXPECT_EQ(beman::inside::to_string(QD{v}), beman::inside::to_string(Q{v}));
+        EXPECT_EQ(beman::inside::to_string(QF{v}), beman::inside::to_string(Q{v}));
+#ifdef __cpp_lib_format
+        EXPECT_EQ(std::format("{:.2f} {:e}", QD{v}, QD{v}), std::format("{:.2f} {:e}", Q{v}, Q{v}));
 #endif
+    }
+    EXPECT_EQ(beman::inside::to_string(-QD{0}), "0"); // no −0
+}
 
 // to_string output parses back to the same value
 TEST(FormatTest, to_string_round_trips_through_from_chars) {

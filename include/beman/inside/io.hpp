@@ -153,17 +153,6 @@ template <typename V>
     return std::to_string(value);
 }
 
-namespace detail {
-// A double's exact value: a binary fraction, so always a finite decimal.
-inline std::string double_to_string(double d) {
-    int        e    = 0;
-    const umax mant = static_cast<umax>(ldexp(frexp(d < 0 ? -d : d, &e), 53)); // |d| = mant·2^(e−53)
-    e -= 53;
-    using U = wide_uint<18>; // 2^1024 and 2^1074 both fit
-    return fraction_to_string(d < 0, e >= 0 ? U{mant} << e : U{mant}, e >= 0 ? U{1} : U{1} << -e);
-}
-} // namespace detail
-
 //-------------------------------------------------------------------------
 // type_name<T>() — short raw-type label for to_string_debug. Lives here (not
 // in the core math header) so the core never pulls <string_view>.
@@ -267,14 +256,11 @@ std::string big_fraction_to_string(const big_rational& r) {
 
 // An inside's exact value: with a decimal notch, every value prints that
 // notch's decimals (19.90, 2.00); otherwise its shortest exact form — a
-// decimal when it has one, else N/D. A continuous f64 inside prints the
-// double's exact decimal.
+// decimal when it has one, else N/D. (f64 / f32 storage prints the same.)
 template <insidable B>
 [[nodiscard]] inline std::string to_string(B b) {
     constexpr int n = detail::fixed_decimals<B>;
-    if constexpr (detail::fp_raw<B> && notch_of<B> == 0)
-        return detail::double_to_string(detail::as_double(b));
-    else if constexpr (detail::exact_valued<B>)
+    if constexpr (detail::exact_valued<B>)
         return detail::exact_to_string(detail::exact_of(b), n);
     else {
         const detail::rational r = detail::as_rational(b);
@@ -598,13 +584,6 @@ inline constexpr round_mode display_rounding =
         : round_mode::half_even;
 
 // x's exact value as a sign and a magnitude fraction, for the exact specs.
-template <insidable B>
-auto spec_value(const B& b) {
-    if constexpr (fp_raw<B>)
-        return exact_of_double(as_double(b));
-    else
-        return exact_of(b);
-}
 template <std::size_t K>
 bool spec_negative(const exact_frac<K>& f) {
     return f.Num.negative();
@@ -644,7 +623,7 @@ struct std::formatter<beman::inside::inside<G, P>>
         else if (!this->HasSpec)
             return std::format_to(ctx.out(), "{}", beman::inside::to_string(b));
         else {
-            const auto  v     = d::spec_value(b);
+            const auto  v     = d::exact_of(b);
             std::string plain = beman::inside::to_string(b);
             if (!plain.empty() && plain[0] == '-')
                 plain.erase(0, 1);

@@ -102,10 +102,12 @@ kernels.
   resolution `1/K`) is a ready-made output grid: `math::sin_into<math::amp<32768>>(x)`.
 - **Rounding needs permission.** A transcendental result is rounded onto a grid,
   so the operand of a deduced form (or the `Out` of an explicit one) must permit
-  rounding: `round_nearest`, `round_floor`, `round_ceil`, `round_half_even`,
-  `snap` or `f64`. Omitting it is a compile error.
+  rounding: `round_nearest`, `round_floor`, `round_ceil`, `round_half_even`
+  or `snap`. Omitting it is a compile error (`f64` storage alone does not
+  permit rounding).
 - **Deduced outputs: `fn(x)`.** The output takes the input's notch and policy
-  (minus any fixed storage width, plus `round_nearest`). Its interval is the
+  (minus any fixed storage width, plus `round_nearest`; `f64` / `f32` storage
+  stays where the output grid is exact in that format, as for arithmetic). Its interval is the
   function's range over the input, computed at compile time by the same engine
   and rounded outward to the notch. Exceptions: `sin`/`cos` give `[-1, 1]`,
   `tan` gives `[-1024, 1024]`, `atan2` gives `[-π, π]` and `hypot` `[0, …]` on
@@ -236,8 +238,9 @@ See [arithmetic.md](arithmetic.md) for the chaining rules and
 ## Storage
 
 Any storage works for inputs and outputs: integer index or value raws, `f64` /
-`f32`, `exact` rationals, and wide raws past 64 bits. An output with `f64`
-storage receives the correctly rounded grid point as its double. Integer
+`f32`, `exact` rationals, and wide raws past 64 bits — with the same results:
+an output with `f64` storage receives the correctly rounded grid point as its
+double. Integer
 outputs are as fast: the double tier reads any input as a double and stores
 integer outputs as raws.
 

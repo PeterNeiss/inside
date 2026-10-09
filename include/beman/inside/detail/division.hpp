@@ -221,9 +221,9 @@ struct division {
             return *(grid_of<L> / grid_of<R>);
     }();
 
-    // fp / representation propagation — shared rule in detail/rep.hpp.
-    // AllowContinuous: a continuous quotient (Notch 0) keeps fp verbatim.
-    using rep_t  = fp_rep<L, R, result_grid, /*AllowContinuous=*/true>;
+    // fp / representation propagation — shared rule in detail/rep.hpp (a
+    // continuous quotient drops fp: it is an exact fraction).
+    using rep_t  = fp_rep<L, R, result_grid>;
     using result = inside<result_grid, rep_t::result_policy>;
 
     template <policy_flag G = F>

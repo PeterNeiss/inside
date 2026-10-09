@@ -345,6 +345,9 @@ template <insidable L, std::size_t K>
 constexpr raw_t<L> raw_of_index(const wide_sint<K>& index) noexcept {
     if constexpr (point_raw<L>)
         return raw_t<L>{};
+    else if constexpr (fp_raw<L>) // the value J·Notch: exact on a double/float-exact grid
+        return static_cast<raw_t<L>>(static_cast<double>(index + static_cast<wide_sint<K>>(slot_base<L>)) *
+                                     static_cast<double>(notch_of<L>));
     else if constexpr (index_raw<L>)
         return static_cast<raw_t<L>>(index);
     else // value raw: raw == J

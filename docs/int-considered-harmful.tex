@@ -1077,7 +1077,8 @@ grid point is exactly representable in the significand. This is enforced by
 \code{static\_assert}: asking for \code{f64} on a grid too fine for a
 \code{double} is a compile error that names the fix (a coarser grid, or exact
 storage), not a quiet loss of precision. The rule that decides it is the same
-$2^{53}$ boundary that \S\ref{sec:double} demonstrated.
+$2^{53}$ boundary that \S\ref{sec:double} demonstrated. The flags pick storage
+and nothing else: every result is the one the same type gives without them.
 
 \subsection{Reproducibility}
 

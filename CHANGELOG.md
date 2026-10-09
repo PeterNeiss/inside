@@ -22,6 +22,26 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 ### Changed
 
+- `f64` and `f32` are storage only: every result — value, rounding, error
+  code, plain-or-`expected` return, ordering type, printing, `numeric_limits`,
+  hash, deduced math types — is the one the type gives without them
+  (`storage_invariance.test.cpp` compares the two for every operation).
+  Breaking:
+  - they no longer carry `round_nearest`; a type that rounds says so
+    (`round_nearest | f64`). Without a rounding flag an off-grid value reports
+    `rounding_error`, `/` gives the exact quotient and `%` needs `snap`, as
+    without `f64`.
+  - a continuous grid with `f64` / `f32` is a compile error (a double cannot
+    hold every fraction); arithmetic drops the flag for a continuous result.
+  - `operator double` is explicit and gated on a rounding flag for every
+    type (it was implicit for `f64` / `f32`).
+  - `math::amp<K>` is `round_nearest`, with `f64` storage for a power-of-two K.
+  Fixed on the way: wrapping a huge double into an `f64` type folded it
+  inexactly in double; `from_chars` of a value past the 64-bit rational into
+  an `f64` type ignored `clamp` / `wrap`; `-x` of a zero `f64` value stored
+  `-0.0`; `sum` of `f64` elements overflowed where integer raws sum exactly;
+  two `unsafe | f64` operands gave an unchecked result where two `unsafe`
+  operands give a checked one.
 - Examples: `wei`, `huge_angles`, `planck_to_cosmos`, `solar_system`,
   `expected_pipeline` and `json_io` drop their workarounds — exact decimal
   output, `sum`, `mul_into` / `div_into`, `just<…_g>` and the exact big-grid

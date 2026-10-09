@@ -223,31 +223,35 @@ TEST(StorageFlagsTest, f32_selects_binary32_backed_storage_arithmetic_demotes_wh
     static_assert(detail::rational_raw<decltype(E{} + F{})>);
 }
 
-// math output lands in f32 storage
-TEST(StorageFlagsTest, math_output_lands_in_f32_storage) {
-    using Ang = inside<{{-8, 8}, per<256>}, round_nearest | f32>;
-    using Sq  = inside<{{0, 16}, per<256>}, round_nearest | f32>;
-    // A deduced output keeps the input's f32 storage.
-    auto s = math::sin(Ang{0});
-    auto r = math::sqrt(Sq{4});
-    static_assert(detail::f32_raw<decltype(s)>);
-    static_assert(detail::f32_raw<decltype(r)>);
-    ASSERT_EQ(rational{s}, 0);
-    ASSERT_EQ(rational{r}, 2);
-
-    // Auto-demote: an f32 input whose result grid overflows binary32 (exp's range
-    // e^20 ≈ 4.85e8 > 2^24, still < 2^53) widens its OUTPUT to f64 storage rather
-    // than hard-erroring — the deduced output never static_asserts on f32 overflow.
-    using Big = inside<{{0, 20}, per<256>}, round_nearest | f32>;
-    auto e    = math::exp(Big{2});
-    static_assert(detail::f64_raw<decltype(e)>); // demoted f32 → f64
-    ASSERT_TRUE(rational{e} > rational{7});      // ≈ 7.39
+// math outputs: a deduced output keeps f32 / f64 storage where its grid is
+// exact in that format (as arithmetic does), and its value is the one the
+// input gives without the flag; `_into` keeps the named storage
+TEST(StorageFlagsTest, math_outputs_and_fp_storage) {
+    using Ang     = inside<{{-8, 8}, per<256>}, round_nearest | f32>;
+    using Ang0    = inside<{{-8, 8}, per<256>}, round_nearest>;
+    using Sq      = inside<{{0, 16}, per<256>}, round_nearest | f32>;
+    using Sq0     = inside<{{0, 16}, per<256>}, round_nearest>;
+    const auto s  = math::sin(Ang{1});
+    const auto s0 = math::sin(Ang0{1});
+    const auto r  = math::sqrt(Sq{4});
+    const auto r0 = math::sqrt(Sq0{4});
+    static_assert(detail::f32_raw<decltype(s)> && detail::f32_raw<decltype(r)>);
+    static_assert(grid_of<decltype(s)> == grid_of<decltype(s0)>);
+    ASSERT_EQ(rational{s}, rational{s0});
+    ASSERT_EQ(rational{r}, rational{r0});
+    // exp's range e^20 ≈ 4.85e8 outgrows float but not double: f64 storage.
+    using Big    = inside<{{0, 20}, per<256>}, round_nearest | f32>;
+    const auto e = math::exp(Big{2});
+    static_assert(detail::f64_raw<decltype(e)>);
+    ASSERT_EQ(rational{e}, rational{math::exp(inside<{{0, 20}, per<256>}, round_nearest>{2})});
+    using Out = inside<{{-1, 1}, per<256>}, round_nearest | f32>;
+    static_assert(detail::f32_raw<decltype(math::sin_into<Out>(Ang{0}))>);
 }
 #endif // !BEMAN_INSIDE_MATH_NO_FP
 
-// f64 is the double-backed flag and carries round_nearest
+// f64 is the double-backed flag, storage only: no rounding of its own
 TEST(StorageFlagsTest, f64_is_the_double_backed_flag) {
-    static_assert(has_flag(beman::inside::f64, round_nearest)); // carries snap/round
+    static_assert(!has_flag(beman::inside::f64, snap) && !has_flag(beman::inside::f32, snap));
 
 #ifndef BEMAN_INSIDE_MATH_NO_FP
     // f64 selects binary64-backed storage (storage is independent of the

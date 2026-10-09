@@ -612,7 +612,7 @@ TEST(StorageBugsTest, value_raw_source_affine_mapping) {
 // on (4096/961 · 2^48 is …523.388, its double …523.5, a tie).
 TEST(StorageBugs, f64_storage_rounds_the_exact_value_not_its_double) {
 #ifndef BEMAN_INSIDE_MATH_NO_FP
-    using f48 = inside<{{-8, 8}, per<(std::uint64_t{1} << 48)>}, f64>;
+    using f48 = inside<{{-8, 8}, per<(std::uint64_t{1} << 48)>}, round_nearest | f64>;
     const rational want{1199710202504523ull, std::int64_t{1} << 48};
     EXPECT_EQ((rational{f48{rational{4096, 961}}}), want);
     f48 a{0};

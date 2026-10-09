@@ -76,8 +76,10 @@ operand policies, and the widest representation present wins:
   f64 in P AND double_exact grid ──────▶  double raw     (raw IS the value; with an FPU
        │ no   (elided under BEMAN_INSIDE_MATH_NO_FP)                only — NO_FP falls through.
        │                                                  Direct misuse on a too-fine grid is a
-       │                                                  static_assert; arithmetic instead DROPS
-       │                                                  `f64` when the result isn't double_exact)
+       │                                                  static_assert — a continuous grid too;
+       │                                                  arithmetic instead DROPS `f64` when the
+       │                                                  result isn't double_exact. Storage only:
+       │                                                  results equal the flag-free type's)
   f32 in P AND float_exact grid ───────▶  float raw      (else widened to double when
        │ no   (elided under BEMAN_INSIDE_MATH_NO_FP)                double_exact; same misuse rule)
   i8…u64 width flag in P ──────────────▶  that integer   (value storage, or index with
@@ -263,8 +265,8 @@ The cascade is implemented in `detail/assignment.hpp` — see
 ## 5. Conversion summary
 
 The user-facing rules (one implicit `operator imax` on integer-aligned grids,
-an implicit lossless `operator rational`, `operator double` implicit only for
-`f64`/`f32` and otherwise explicit and gated on a rounding flag) are in
+an implicit lossless `operator rational`, `operator double` explicit and gated
+on a rounding flag, `f64`/`f32` storage included) are in
 [conversions.md](conversions.md). On `rational` itself every `operator T()` is
 explicit and truncates toward zero; `r.to<T>()` is the typed-error form, and
 `trunc`, `floor`, `ceil`, `round` name the integer reductions.

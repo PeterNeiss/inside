@@ -17,7 +17,7 @@ writing literal values into insides.
 | Conversion | When it applies | Purpose |
 |---|---|---|
 | `operator imax()` (implicit) | integer-notch grid (notch denom = 1) with Lower ≥ imax_min and Upper ≤ imax_max | drop-in for integer contexts: accumulators, comparisons, and indexing (`vec[b]` converts imax → size_t) |
-| `operator double()` (**implicit** for an `f64`-policy inside, explicit otherwise) | `f64`: always (the double-exact grid makes every value exact in `double`). Others: grid carries a rounding policy (`round_*` or `snap`) | floating-point arithmetic / printf |
+| `operator double()` (explicit) | the grid carries a rounding policy (`round_*` or `snap`) — with or without `f64` storage | floating-point arithmetic / printf |
 
 `operator imax()` is deliberately the **only** implicit integer conversion —
 a second one (e.g. `size_t`) would make built-in mixed arithmetic like
@@ -35,9 +35,6 @@ std::vector<int> vec(101);
 vec[b] = 0;                // no .as<>() — imax, then imax → size_t
 
 double e = double(b);      // explicit (rounding-gated operator double())
-
-using gain = inside<{{0, 4}, per<65536>}, round_nearest | f64>;
-double d = gain{0.5};      // implicit — an f64 inside's value is exact in double (double-exact grid)
 ```
 
 For wide grids (Upper > imax_max) the implicit operators are SFINAE-disabled
@@ -253,9 +250,7 @@ values read back unchanged.
 
 Other cases follow the same idea:
 
-- **`f64` storage** prints the exact value too: on a notched grid by the rule
-  above; on a continuous grid the stored double's full decimal (`0.1` shows as
-  `0.1000000000000000055511151231257827021181583404541015625`).
+- **`f64` / `f32` storage** prints exactly what the type prints without it.
 - **Wide and C++26 big values** print all their digits (`1267650600228229401496703205379`).
 - **`rational`** and grid numbers print their shortest exact form; an
   `interval` prints `[lo..hi]` and a `grid` `{[lo..hi], notch}`.

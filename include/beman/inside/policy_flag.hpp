@@ -70,18 +70,16 @@ inline constexpr policy_flag wrap{1ull << 33};  // modular arithmetic
 // ({width} = the fixed-width integer flags i8..u64 declared below; they pin the
 // exact backing type rather than letting deduction pick the smallest fit.)
 //
-// `f64` — binary64-backed storage (value held as IEEE-754 double, notch
-// nominal); an ordinary round_nearest integer inside under
-// BEMAN_INSIDE_MATH_NO_FP. Power-of-2 notch + dyadic Lower required so
-// on-grid values are exact in double (see `double_exact`).
-inline constexpr policy_flag f64{(1ull << 37) | round_nearest};
-
-// `f32` — binary32-backed storage (raw held as IEEE-754 float, notch nominal);
-// the single-precision sibling of `f64`, for float-only FPUs (Cortex-M4F).
-// Power-of-2 notch + dyadic Lower required AND every on-grid value must fit
-// float's 24-bit significand (see `float_exact`). Like `f64` it is an
-// ordinary round_nearest integer inside under BEMAN_INSIDE_MATH_NO_FP.
-inline constexpr policy_flag f32{(1ull << 41) | round_nearest};
+// `f64` / `f32` — store the value as an IEEE-754 double / float. Storage
+// only: every result (value, rounding, error, return type, printing) is the
+// one the same type gives without the flag; the grid must be one whose values
+// the format holds exactly (a dyadic notch and Lower, see `double_exact` /
+// `float_exact`; a continuous grid is rejected). Rounding is stated
+// separately (`round_nearest | f64`). Under BEMAN_INSIDE_MATH_NO_FP they fall
+// back to the deduced integer storage. `f32` targets float-only FPUs
+// (Cortex-M4F).
+inline constexpr policy_flag f64{1ull << 37};
+inline constexpr policy_flag f32{1ull << 41};
 
 // Fixed-width integer raw storage — pin the exact backing type instead of
 // letting deduction pick the smallest fit. A bare width flag means *value*

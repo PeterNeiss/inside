@@ -34,9 +34,10 @@ inline constexpr rational kPiRat{1068966896, 340262731};
 inline constexpr rational kTwoPiRat = 2 * kPiRat;
 
 // Policy of an auto-deduced output: the input's, minus any fixed-width
-// storage flag (i8 … u64) — the output range differs, as for arithmetic.
+// storage flag (i8 … u64) — the output range differs, as for arithmetic — and
+// minus f64 / f32, which deduced_inside re-adds where the output grid allows.
 template <insidable In>
-inline constexpr policy_flag out_policy = policy_of<In> & ~raw_width_mask;
+inline constexpr policy_flag out_policy = policy_of<In> & ~(raw_width_mask | f64 | f32);
 
 // A 64-bit grid operation's result through Out's assignment.
 template <insidable Out, typename V>
@@ -91,11 +92,11 @@ inline constexpr grid_rational abs_auto_upper = grid_abs(lower_of<In>) > grid_ab
                                                     : grid_abs(upper_of<In>);
 
 template <insidable In>
-using abs_auto_t = inside<{{grid_rational{0}, abs_auto_upper<In>}, notch_of<In>}, out_policy<In>>;
+using abs_auto_t = deduced_inside<{{grid_rational{0}, abs_auto_upper<In>}, notch_of<In>}, out_policy<In>, In>;
 
 // sign(x) ∈ {sign(Lower) … sign(Upper)}, integer notch.
 template <insidable In>
-using sign_auto_t = inside<{grid_sign(lower_of<In>), grid_sign(upper_of<In>)}, out_policy<In>>;
+using sign_auto_t = deduced_inside<{grid_sign(lower_of<In>), grid_sign(upper_of<In>)}, out_policy<In>, In>;
 
 // copysign(mag, sgn): |mag| with sgn's possible signs. |mag| ranges over
 // [m_lo, m_hi] (m_lo = 0 when mag's interval spans 0); a valid grid's Lower is
@@ -107,13 +108,15 @@ inline constexpr grid_rational abs_auto_lower =
                                                           : grid_abs(upper_of<Mag>);
 
 template <insidable Mag, insidable Sgn>
-using copysign_auto_t = inside<{{lower_of<Sgn> < 0 ? -abs_auto_upper<Mag> : abs_auto_lower<Mag>,
-                                 upper_of<Sgn> >= 0 ? abs_auto_upper<Mag> : -abs_auto_lower<Mag>},
-                                notch_of<Mag>},
-                               out_policy<Mag>>;
+using copysign_auto_t = deduced_inside<{{lower_of<Sgn> < 0 ? -abs_auto_upper<Mag> : abs_auto_lower<Mag>,
+                                         upper_of<Sgn> >= 0 ? abs_auto_upper<Mag> : -abs_auto_lower<Mag>},
+                                        notch_of<Mag>},
+                                       out_policy<Mag>,
+                                       Mag>;
 
 template <insidable In, round_mode M>
-using integer_auto_t = inside<{{grid_to_int<M>(lower_of<In>), grid_to_int<M>(upper_of<In>)}, 1}, out_policy<In>>;
+using integer_auto_t =
+    deduced_inside<{{grid_to_int<M>(lower_of<In>), grid_to_int<M>(upper_of<In>)}, 1}, out_policy<In>, In>;
 
 template <insidable In>
 using floor_auto_t = integer_auto_t<In, round_mode::floor>;
@@ -425,10 +428,12 @@ inline constexpr grid_rational fmod_bound =
     abs_auto_upper<InX> < abs_auto_upper<InY> ? abs_auto_upper<InX> : abs_auto_upper<InY>;
 
 template <insidable InX, insidable InY>
-using fmod_auto_t = inside<{{(lower_of<InX> < 0 ? -fmod_bound<InX, InY> : grid_rational{0}),
-                             (upper_of<InX> > 0 ? fmod_bound<InX, InY> : grid_rational{0})},
-                            ax::gcd_notch<InX, InY>},
-                           out_policy<InX> | round_nearest>;
+using fmod_auto_t = deduced_inside<{{(lower_of<InX> < 0 ? -fmod_bound<InX, InY> : grid_rational{0}),
+                                     (upper_of<InX> > 0 ? fmod_bound<InX, InY> : grid_rational{0})},
+                                    ax::gcd_notch<InX, InY>},
+                                   out_policy<InX> | round_nearest,
+                                   InX,
+                                   InY>;
 } // namespace detail
 
 template <insidable InX, insidable InY>
@@ -439,11 +444,12 @@ template <insidable InX, insidable InY>
 //---------------------------------------------------------------------------
 // amp<K> — amplitude grid [-1, 1] at 1/K resolution: a ready-made explicit
 // output for sin / cos (`math::sin_into<math::amp<32768>>(angle)`), decoupling
-// the output precision from the angle's grid. K must be a power of two (f64).
-// All angles are radians, as in <cmath>.
+// the output precision from the angle's grid; results round to nearest. A
+// power-of-two K stores the value in a double (storage only). All angles are
+// radians, as in <cmath>.
 //---------------------------------------------------------------------------
 template <std::uint64_t K>
-using amp = inside<{{rational{-1}, rational{1}}, per<K>}, f64>;
+using amp = inside<{{rational{-1}, rational{1}}, per<K>}, round_nearest | ((K & (K - 1)) == 0 ? f64 : none)>;
 
 //---------------------------------------------------------------------------
 // The transcendentals: the adaptive engine.

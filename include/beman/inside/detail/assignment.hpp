@@ -239,7 +239,7 @@ constexpr L& assign_exact(L& lhs, const exact_frac<K>& v, P&& policy, A&& action
         }
         store(x);
         return lhs;
-    } else if constexpr (rational_raw<L> || fp_raw<L>) {
+    } else if constexpr (rational_raw<L>) {
         // L holds 64-bit values: narrow through the rational (a value that does
         // not fit lies outside every such grid).
         const auto r = try_rational(v);
@@ -250,7 +250,7 @@ constexpr L& assign_exact(L& lhs, const exact_frac<K>& v, P&& policy, A&& action
         if constexpr (clamp_action<plain_t<A>> || wrap_action<plain_t<A>>)
             static_assert(
                 dependent_false<A>,
-                "on_clamp / on_wrap: a source past the 64-bit rational into a rational or fp inside is not supported");
+                "on_clamp / on_wrap: a source past the 64-bit rational into a rational inside is not supported");
         return assignment<L, rational>::assign(lhs, *r, policy, std::forward<A>(action));
     } else {
         // (Plain variables, not a structured binding: Clang rejects a binding
@@ -587,10 +587,19 @@ struct assignment<L, R> {
             if (!(v - v == 0)) [[unlikely]] // assign() screens these first
                 return policy.report(errc::not_finite);
             // v rounds rhs; at a rounding boundary the exact value decides.
-            lhs = L::from_raw(snap_double_from<grid_of<L>, rounding_for<L, P>>(v, [&] {
+            const auto side = [&] {
                 const auto c = rhs <=> rational{v};
                 return c > 0 ? 1 : c < 0 ? -1 : 0;
-            }));
+            };
+            // Off the grid without a rounding policy: rounding_error, as for
+            // integer storage.
+            if constexpr (!(has_policy<L, P, round_nearest> || has_policy<L, P, round_floor> ||
+                            has_policy<L, P, round_ceil> || has_policy<L, P, round_half_even> ||
+                            has_policy<L, P, snap>))
+                if (policy.round_check() &&
+                    (side() != 0 || snap_double<grid_of<L>, round_mode::trunc, /*AnySign=*/true>(v) != v)) [[unlikely]]
+                    return report_failure(lhs, policy, action, errc::rounding_error);
+            lhs = L::from_raw(snap_double_from<grid_of<L>, rounding_for<L, P>>(v, side));
         } else if constexpr (detail::lower64<L> == detail::upper64<L>) {
             // Singleton grid: offset encoding → Raw=0; rational/direct → Raw = Lower.
             if constexpr (rational_raw<L>)
@@ -820,8 +829,8 @@ struct assignment<L, R> {
         if constexpr (rational_raw<L>)
             return detail::lower64<R>;
         else if constexpr (detail::notch64<L> == 0)
-            // Continuous fp_raw L: no grid to land on, mapping unused (store
-            // routes through snap_double). 0 avoids the divide-by-zero by the notch.
+            // A point L (notch 0): one value, mapping unused. 0 avoids the
+            // divide-by-zero by the notch.
             return rational{0};
         else if constexpr (rational_raw<R>)
             return -(detail::lower64<L> / detail::notch64<L>).value();
@@ -833,8 +842,8 @@ struct assignment<L, R> {
         if constexpr (rational_raw<L>)
             return detail::notch64<R>;
         else if constexpr (detail::notch64<L> == 0)
-            // Continuous fp_raw L (see calcOffset). A denominator-1 Factor also
-            // makes assign_notch_ok vacuously true (any value representable).
+            // A point L (see calcOffset). A denominator-1 Factor also makes
+            // assign_notch_ok vacuously true.
             return rational{0};
         else if constexpr (rational_raw<R>)
             return (rational{1} / detail::notch64<L>).value();

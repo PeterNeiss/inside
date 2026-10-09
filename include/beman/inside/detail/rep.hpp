@@ -14,19 +14,17 @@
 // (the fp result would diverge from the exact result — see grid::double_exact
 // / float_exact). Widest-wins: prefer f32 only when both operands are
 // f32-only and the result fits float; an f64 operand or a too-fine-for-float
-// result widens to f64; too fine for double → exact. Division sets
-// AllowContinuous: a continuous result (Notch 0) keeps fp regardless — the
-// raw stores the quotient verbatim, so there is no grid to land on.
+// result widens to f64; too fine for double → exact; a continuous result
+// (Notch 0) drops it. fp storage never changes a result: the flags only pick
+// the raw, and the result's other flags are computed as without them.
 //---------------------------------------------------------------------------
 namespace beman::inside::detail {
-template <insidable Lhs, insidable Rhs, grid ResultGrid, bool AllowContinuous = false>
+template <insidable Lhs, insidable Rhs, grid ResultGrid>
 struct fp_rep {
-    static constexpr bool any_f64       = has_flag(policy_of<Lhs>, f64) || has_flag(policy_of<Rhs>, f64);
-    static constexpr bool any_f32       = has_flag(policy_of<Lhs>, f32) || has_flag(policy_of<Rhs>, f32);
-    static constexpr bool continuous_ok = AllowContinuous && ResultGrid.Notch == 0;
-    static constexpr bool keep_f32      = any_f32 && !any_f64 && (continuous_ok || float_exact<ResultGrid>);
-    static constexpr bool keep_f64 = !keep_f32 && (any_f64 || any_f32) && (continuous_ok || double_exact<ResultGrid>);
-    static constexpr bool dropped_fp = (any_f64 || any_f32) && !keep_f64 && !keep_f32;
+    static constexpr bool any_f64  = has_flag(policy_of<Lhs>, f64) || has_flag(policy_of<Rhs>, f64);
+    static constexpr bool any_f32  = has_flag(policy_of<Lhs>, f32) || has_flag(policy_of<Rhs>, f32);
+    static constexpr bool keep_f32 = any_f32 && !any_f64 && float_exact<ResultGrid>;
+    static constexpr bool keep_f64 = !keep_f32 && (any_f64 || any_f32) && double_exact<ResultGrid>;
     // Carry both operands' representation flags (widest-wins at storage selection).
     // `direct` needs notch 1 and `indexed` a non-zero notch; a result grid
     // that cannot hold them drops them (storage is then deduced).
@@ -37,8 +35,29 @@ struct fp_rep {
     // either operand is (a plain result is always checked); a representation
     // carried from two `unsafe` operands stays unchecked.
     static constexpr policy_flag result_policy =
-        rep |
-        ((rep == none || is_checked(policy_of<Lhs>) || is_checked(policy_of<Rhs>)) ? checked : detail::unsafe_marker);
+        rep | ((carried == none || is_checked(policy_of<Lhs>) || is_checked(policy_of<Rhs>)) ? checked
+                                                                                             : detail::unsafe_marker);
 };
+
+// The fp storage a result on grid G keeps from its operands Ins — fp_rep's
+// rule for any number of operands: f32 when only f32 operands and float holds
+// G exactly, f64 when double does, else none. Storage only: the result's
+// value and policy are the same either way.
+template <grid G, insidable... Ins>
+inline constexpr policy_flag fp_storage_for = [] {
+    constexpr bool any_f64 = (has_flag(policy_of<Ins>, f64) || ...);
+    constexpr bool any_f32 = (has_flag(policy_of<Ins>, f32) || ...);
+    if constexpr (any_f32 && !any_f64 && float_exact<G>)
+        return f32;
+    else if constexpr ((any_f64 || any_f32) && double_exact<G>)
+        return f64;
+    else
+        return none;
+}();
+
+// A deduced result type: grid G, policy P (without storage flags), plus the
+// fp storage its operands' flags and G allow.
+template <grid G, policy_flag P, insidable... Ins>
+using deduced_inside = inside<G, P | fp_storage_for<G, Ins...>>;
 } // namespace beman::inside::detail
 #endif

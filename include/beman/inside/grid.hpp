@@ -467,7 +467,7 @@ constexpr auto storage_pick() {
     else if constexpr (has_flag(P, exact))
         return detail::rational{};
 #ifndef BEMAN_INSIDE_MATH_NO_FP
-    else if constexpr (has_flag(P, f64) && (double_exact<G> || G.Notch == 0))
+    else if constexpr (has_flag(P, f64) && double_exact<G>)
         return double{};
     else if constexpr (has_flag(P, f64) && dyadic_grid<G>) {
         // `f64` explicitly requested on a dyadic grid double can't represent
@@ -477,7 +477,7 @@ constexpr auto storage_pick() {
                       "f64 storage: grid exceeds double's 53-bit significand — coarsen the "
                       "notch/range or use `exact`");
         return double{}; // unreachable; fixes the deduced return type
-    } else if constexpr (has_flag(P, f32) && (float_exact<G> || G.Notch == 0))
+    } else if constexpr (has_flag(P, f32) && float_exact<G>)
         return float{};
     else if constexpr (has_flag(P, f32) && double_exact<G>)
         // `f32` requested on a grid too fine for float but representable in double:

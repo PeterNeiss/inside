@@ -212,7 +212,7 @@ void check_snap(double x) {
 //---------------------------------------------------------------------------
 // f64 assignment snaps to nearest grid, ties away from zero
 TEST(F64ExactTest, f64_assignment_snaps_to_nearest_grid_ties_away_from_zero) {
-    using R         = inside<{{-4, 4}, per<256>}, f64>; // double-exact, crosses zero
+    using R         = inside<{{-4, 4}, per<256>}, round_nearest | f64>; // double-exact, crosses zero
     const double nd = static_cast<double>(notch_of<R>);
 
     // exact half-way ties on both sides of zero
@@ -294,10 +294,10 @@ TEST(F64ExactTest, f64_division_by_zero_is_reported_not_stored_as_inf) {
     ASSERT_EQ(q.error(), errc::division_by_zero);
     ASSERT_TRUE((N{3.0} / Dz{2.0}).has_value()); // nonzero divisor: value present
 
-    // divisor excludes zero -> plain (non-expected) result; double() compiles only
-    // because it is an inside, not an expected
+    // divisor excludes zero -> plain (non-expected) result: the exact quotient
     auto p = N{3.0} / N{2.0};
-    ASSERT_TRUE(static_cast<double>(p) == 1.5);
+    static_assert(insidable<decltype(p)>);
+    ASSERT_EQ(rational{p}, (rational{3, 2}));
 
     // expected lift surfaces the error code
     auto en = []() -> std::expected<N, errc> { return N{3.0}; };

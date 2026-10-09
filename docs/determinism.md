@@ -42,7 +42,9 @@ same bits, period.
 ## The `f64` (double-backed) path
 
 An `f64` inside holds its value as an
-IEEE-754 `double`. It is only ever selected on a **`double_exact`** grid —
+IEEE-754 `double`. The flag is storage only: every result is the one the same
+type gives without it (a test compares the two for every operation). It is
+only ever selected on a **`double_exact`** grid —
 dyadic *and* every on-grid value within the 53-bit significand (see
 [math.md](math.md#storage) and
 [storage.md](storage.md#choosing-the-representation)). The same reasoning
@@ -55,9 +57,9 @@ determinism:
   `<cmath>`-free, and narrows to `imax` only when provably safe — the same
   rounding rule as integer and rational storage.
 - On-grid `+ − ×` whose exact result still fits the result grid are computed
-  exactly; an operation whose result `double` *cannot* represent **drops the
-  `f64` flag** and stores the result in exact (rational/integer) storage, so
-  `f64` math never silently diverges from the exact grid arithmetic.
+  exactly; an operation whose result `double` *cannot* represent — a finer
+  grid, or a continuous quotient — **drops the `f64` flag** and stores the
+  result in exact (rational/integer) storage, so `f64` never changes a result.
 
 **Condition.** IEEE-754 correctly-rounded `+ − × ÷` are deterministic given:
 round-to-nearest-even (the default), IEEE-754 binary64, and no value-changing

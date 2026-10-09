@@ -195,9 +195,9 @@ template <insidable First, insidable... Rest>
 // (semantic difference: the *total* is validated, not every prefix).
 // Notched integer raws (wide ones too) sum value indices exactly — Σvalue =
 // Notch·ΣJ — in a wide integer with 64 bits of headroom for the count; ≤32-bit
-// raws add in imax blocks of 2^30 elements, the loop that vectorizes. Other
-// elements (continuous, f64) add as 64-bit rationals; a total past that
-// reports overflow through Target's policy.
+// raws add in imax blocks of 2^30 elements, the loop that vectorizes; f64 /
+// f32 elements give the same indices. Continuous elements add as 64-bit
+// rationals; a total past that reports overflow through Target's policy.
 //---------------------------------------------------------------------------
 template <insidable Target, std::ranges::input_range Rng>
     requires insidable<std::remove_cvref_t<std::ranges::range_reference_t<Rng>>>
@@ -206,12 +206,17 @@ template <insidable Target, std::ranges::input_range Rng>
     Target out{};
     auto   policy = make_policy<policy_of<Target>>();
 
-    if constexpr (detail::integer_raw<B> && !detail::point_raw<B> && notch_of<B> != 0) {
+    if constexpr ((detail::integer_raw<B> || detail::fp_raw<B>) && !detail::point_raw<B> && notch_of<B> != 0) {
         constexpr int bits =
             detail::signed_value_bits_of({detail::units_lo<B, notch_of<B>>, detail::units_hi<B, notch_of<B>>}) + 64;
         using I = detail::wide_sint<detail::limbs_for_bits(bits)>;
         I total{0};
-        if constexpr (!detail::wide_raw<B> && sizeof(detail::raw_t<B>) <= 4) {
+        if constexpr (detail::fp_raw<B>) {
+            // A dyadic grid: value / notch is an exact integer below 2^53.
+            constexpr double notch = static_cast<double>(notch_of<B>);
+            for (const auto& b : r)
+                total += I{static_cast<imax>(detail::as_double(b) / notch)};
+        } else if constexpr (!detail::wide_raw<B> && sizeof(detail::raw_t<B>) <= 4) {
             constexpr imax base = detail::index_raw<B> ? static_cast<imax>(detail::slot_base<B>) : 0;
             auto           it   = std::ranges::begin(r);
             auto           end  = std::ranges::end(r);
@@ -303,7 +308,7 @@ template <insidable Lhs, insidable Rhs>
     requires(!std::same_as<Lhs, Rhs>) && (hull(grid_of<Lhs>, grid_of<Rhs>).has_value())
 struct common_inside<Lhs, Rhs> {
     static constexpr grid hull_grid = *hull(grid_of<Lhs>, grid_of<Rhs>);
-    using type = inside<hull_grid, fp_rep<Lhs, Rhs, hull_grid, /*AllowContinuous=*/true>::result_policy>;
+    using type                      = inside<hull_grid, fp_rep<Lhs, Rhs, hull_grid>::result_policy>;
 };
 } // namespace detail
 

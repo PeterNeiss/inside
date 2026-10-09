@@ -285,8 +285,8 @@ TEST(CoverageCornersTest, f64_store_out_of_range_checked_policy) {
 #ifndef BEMAN_INSIDE_MATH_NO_FP
 // inside -> f64 conversion snaps onto the double grid
 TEST(CoverageCornersTest, inside_to_f64_conversion_snaps_onto_the_double_grid) {
-    using src_t = inside<{-2, 2}>;                   // integer-backed source
-    using rb    = inside<{{-2, 2}, per<1024>}, f64>; // double-backed target
+    using src_t = inside<{-2, 2}>;                                   // integer-backed source
+    using rb    = inside<{{-2, 2}, per<1024>}, round_nearest | f64>; // double-backed target
 
     src_t src{1};
     rb    dst = src; // insidable -> f64 store

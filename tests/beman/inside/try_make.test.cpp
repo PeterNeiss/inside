@@ -47,7 +47,7 @@ TEST(TryMakeTest, matches_per_op_policy_ec_on_the_same_input) {
 #ifndef BEMAN_INSIDE_MATH_NO_FP
 // fp storage goes through the same store as the constructors
 TEST(TryMakeTest, fp_storage_reports_like_the_constructor) {
-    using F = inside<{{0, 1}, per<4>}, f64>;
+    using F = inside<{{0, 1}, per<4>}, round_nearest | f64>;
     EXPECT_EQ(F::try_make(1.2).error(), errc::overflow); // rounds to 1.25: outside
     ASSERT_TRUE(F::try_make(1.1).has_value());           // rounds to 1.0
     EXPECT_EQ(F::try_make(1.1)->raw(), 1.0);

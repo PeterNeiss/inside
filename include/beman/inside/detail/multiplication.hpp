@@ -27,19 +27,15 @@ struct multiplication {
         grid_product_fits(grid_of<L>, grid_of<R>) ? (grid_of<L> * grid_of<R>).value() : grid_of<L>;
     // fp / representation propagation — shared rule in detail/rep.hpp. The product
     // grid (notch = N_L·N_R) is finer, so demotion/dropping is the common case.
-    using rep_t                      = fp_rep<L, R, result_grid>;
-    static constexpr bool dropped_fp = rep_t::dropped_fp;
-    using result                     = inside<result_grid, rep_t::result_policy>;
+    using rep_t  = fp_rep<L, R, result_grid>;
+    using result = inside<result_grid, rep_t::result_policy>;
 
-    // The dropped-fp case lands on a rational result when the product grid outgrows
-    // uint index space; its product numerator can exceed `umax`, so check it (the
-    // result carries `checked`) rather than wrap.
     // (A wide fraction raw may always overflow, as for addition.)
     template <policy_flag F>
     static constexpr bool needs_overflow_check =
         frac_raw<result> || (rational_raw<result> &&
                              (has_any_flag(F, checked) || is_checked(policy_of<L>) || is_checked(policy_of<R>) ||
-                              has_any_flag(F | policy_of<L> | policy_of<R>, exact) || dropped_fp) &&
+                              has_any_flag(F | policy_of<L> | policy_of<R>, exact)) &&
                              !rational_mul_is_safe(grid_of<L>, grid_of<R>));
 
     // Plain result when an overflow action takes the failure or no check is
