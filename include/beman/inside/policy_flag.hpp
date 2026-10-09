@@ -146,6 +146,12 @@ inline constexpr policy_flag unsafe{detail::unsafe_marker | ignore_range | snap 
     return has_flag(set, checked) || !has_flag(set, detail::unsafe_marker);
 }
 
+// Whether an out-of-range value does anything under a flag set: a clamp or
+// wrap bit stores it, a checked range reports it. False under `unsafe`.
+[[nodiscard]] constexpr bool range_handled(policy_flag set) noexcept {
+    return has_any_flag(set, clamp | wrap) || (is_checked(set) && !has_flag(set, ignore_range));
+}
+
 namespace detail {
 // The rounding mode a flag set selects — the ONE precedence every rounding
 // path uses (integer, rational and fp storage, division, math stores).

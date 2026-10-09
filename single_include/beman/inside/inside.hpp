@@ -3237,6 +3237,12 @@ inline constexpr policy_flag unsafe{detail::unsafe_marker | ignore_range | snap 
     return has_flag(set, checked) || !has_flag(set, detail::unsafe_marker);
 }
 
+// Whether an out-of-range value does anything under a flag set: a clamp or
+// wrap bit stores it, a checked range reports it. False under `unsafe`.
+[[nodiscard]] constexpr bool range_handled(policy_flag set) noexcept {
+    return has_any_flag(set, clamp | wrap) || (is_checked(set) && !has_flag(set, ignore_range));
+}
+
 namespace detail {
 // The rounding mode a flag set selects — the ONE precedence every rounding
 // path uses (integer, rational and fp storage, division, math stores).
@@ -4575,6 +4581,27 @@ constexpr int signed_value_bits_of(std::initializer_list<grid_wide> vals) noexce
 template <int Bits>
 using work_int_t = int_for_bits_t<(Bits < 63 ? 63 : Bits), true>;
 
+// t = Quot·m + Rem with 0 ≤ Rem < m (m > 0): division rounded toward −∞,
+// the fold of every wrap. A wide int divides once for both parts.
+template <typename W>
+struct floored {
+    W Quot, Rem;
+};
+template <typename W>
+[[nodiscard]] constexpr floored<W> floor_divmod(const W& t, const W& m) noexcept {
+    floored<W> f;
+    if constexpr (is_wide_int_v<W>) {
+        auto [q, r] = W::divmod(t, m);
+        f           = {q, r};
+    } else
+        f = {t / m, t % m};
+    if (f.Rem < W{0}) {
+        f.Rem += m;
+        f.Quot -= W{1};
+    }
+    return f;
+}
+
 template <insidable L>
 constexpr raw_t<L> raw_from_offset(umax offset) noexcept {
     // Add in umax: the bits are the same, but a value raw of a grid
@@ -5281,11 +5308,8 @@ namespace beman::inside::detail {
 //---------------------------------------------------------------------------
 template <insidable L, typename P, typename A>
 inline constexpr bool needs_runtime_range_check =
-    clamp_action<plain_t<A>> || wrap_action<plain_t<A>> || error_action<plain_t<A>> || has_policy<L, P, clamp> ||
-    has_policy<L, P, wrap> ||
-    ((plain_t<P>::test(checked) ||
-      is_checked(policy_of<L> | (plain_t<P>::test(detail::unsafe_marker) ? detail::unsafe_marker : none))) &&
-     !has_policy<L, P, ignore_range>);
+    clamp_action<plain_t<A>> || wrap_action<plain_t<A>> || error_action<plain_t<A>> ||
+    range_handled(policy_of<L> | plain_t<P>::Flags);
 
 // Shared out-of-range policy cascade. Order: clamp/wrap/error *actions*, then
 // clamp/wrap *policy* bits, then `range_fail`. The callers say how clamp and
@@ -5422,13 +5446,7 @@ struct unit_fold {
         W    Offset;
     };
     static constexpr folded fold(const W& v) noexcept {
-        constexpr W range = span + W{1};
-        const W     t     = v - lower;
-        W           q = t / range, w = t % range;
-        if (w < W{0}) {
-            w += range;
-            q -= W{1};
-        }
+        const auto [q, w] = floor_divmod(v - lower, span + W{1});
         return {saturate(q), w};
     }
 };
@@ -5490,9 +5508,7 @@ constexpr L& assign_exact(L& lhs, const exact_frac<K>& v, P&& policy, A&& action
                 [&] {
                     // x − q·span with q = ⌊(x − lo)/span⌋: into [lo, hi).
                     const exact_frac<KK> span = hi + -lo, t = (x + -lo) / span;
-                    auto [q, m] = wide_sint<KK>::divmod(t.Num, t.Den);
-                    if (m.negative())
-                        q -= wide_sint<KK>{1};
+                    const auto           q = floor_divmod(t.Num, t.Den).Quot;
                     store(x + -(exact_frac<KK>{q, wide_sint<KK>{1}} * span));
                 });
             return lhs;
@@ -5552,13 +5568,8 @@ constexpr L& assign_exact(L& lhs, const exact_frac<K>& v, P&& policy, A&& action
                         }
                     },
                     [&] {
-                        const I range = count + I{1};
-                        auto [q, w]   = I::divmod(index, range);
-                        if (w.negative()) {
-                            w += range;
-                            q -= I{1};
-                        }
-                        lhs = L::from_raw(raw_of_index<L>(w));
+                        const auto [q, w] = floor_divmod(index, count + I{1});
+                        lhs               = L::from_raw(raw_of_index<L>(w));
                         if constexpr (wrap_action<plain_t<A>>)
                             action.Fn(lhs, make_wrap_carry<L, R>(saturate(q)));
                     }))
@@ -6423,6 +6434,8 @@ struct policy : E {
         requires std::same_as<E, detail::error_ref>
         : E(ec) {}
 
+    static constexpr policy_flag Flags = W;
+
     static constexpr bool test(policy_flag w) { return has_flag(W, w); }
 
     static constexpr bool range_check() {
@@ -6547,20 +6560,27 @@ inline constexpr auto wrapped           = make_policy<wrap>();
 // compound op can each fire a different action (e.g. on_overflow + on_clamp).
 //---------------------------------------------------------------------------
 namespace detail {
-// Shared assignment dispatch: store `src` into `dst` under `policy` + the single
-// matching action from `actions` (at most one assignment-time tag is present).
-// Backs both policy_ref (dst = the wrapped inside) and policy_buffer (dst = a fresh
-// target), so the conversion/assignment logic lives in exactly one place.
+// The single assignment-time action among `actions` (at most one such tag is
+// present), or no_action.
+template <typename... As>
+constexpr decltype(auto) assignment_action(std::tuple<As...>& actions) {
+    if constexpr (has_action<is_clamp_action, As...>)
+        return pick_action_in<is_clamp_action>(actions);
+    else if constexpr (has_action<is_wrap_action, As...>)
+        return pick_action_in<is_wrap_action>(actions);
+    else if constexpr (has_action<is_error_action, As...>)
+        return pick_action_in<is_error_action>(actions);
+    else
+        return no_action{};
+}
+
+// Shared assignment dispatch: store `src` into `dst` under `policy` + that
+// action. Backs both policy_ref (dst = the wrapped inside) and policy_buffer
+// (dst = a fresh target), so the conversion/assignment logic lives in exactly
+// one place.
 template <insidable Dst, numeric C, typename P, typename... As>
 constexpr Dst& dispatch_assign(Dst& dst, const C& src, P& policy, std::tuple<As...>& actions) {
-    if constexpr (has_action<is_clamp_action, As...>)
-        return assignment<Dst, C>::assign(dst, src, policy, pick_action_in<is_clamp_action>(actions));
-    else if constexpr (has_action<is_wrap_action, As...>)
-        return assignment<Dst, C>::assign(dst, src, policy, pick_action_in<is_wrap_action>(actions));
-    else if constexpr (has_action<is_error_action, As...>)
-        return assignment<Dst, C>::assign(dst, src, policy, pick_action_in<is_error_action>(actions));
-    else
-        return assignment<Dst, C>::assign(dst, src, policy);
+    return assignment<Dst, C>::assign(dst, src, policy, assignment_action(actions));
 }
 
 // policy_buffer — the rvalue-receiver sibling of policy_ref. `with_snap()` etc.
@@ -7984,17 +8004,13 @@ struct inside {
     constexpr inside& store_raw(W new_raw) {
         constexpr W lo = static_cast<W>(detail::raw_lo_exact<inside>);
         constexpr W hi = static_cast<W>(detail::raw_hi_exact<inside>);
-        if constexpr (has_any_flag(P, clamp | wrap) || (is_checked(P) && !has_flag(P, ignore_range)))
+        if constexpr (range_handled(P))
             if (new_raw < lo || new_raw > hi) {
                 if constexpr (P & clamp)
                     new_raw = new_raw < lo ? lo : hi;
-                else if constexpr (P & wrap) {
-                    constexpr W range = hi - lo + W{1};
-                    W           w     = (new_raw - lo) % range;
-                    if (w < W{0})
-                        w += range;
-                    new_raw = lo + w;
-                } else {
+                else if constexpr (P & wrap)
+                    new_raw = lo + detail::floor_divmod(new_raw - lo, hi - lo + W{1}).Rem;
+                else {
                     make_policy<P>().report(errc::overflow);
                     return *this;
                 }

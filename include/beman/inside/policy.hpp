@@ -38,6 +38,8 @@ struct policy : E {
         requires std::same_as<E, detail::error_ref>
         : E(ec) {}
 
+    static constexpr policy_flag Flags = W;
+
     static constexpr bool test(policy_flag w) { return has_flag(W, w); }
 
     static constexpr bool range_check() {
@@ -162,20 +164,27 @@ inline constexpr auto wrapped           = make_policy<wrap>();
 // compound op can each fire a different action (e.g. on_overflow + on_clamp).
 //---------------------------------------------------------------------------
 namespace detail {
-// Shared assignment dispatch: store `src` into `dst` under `policy` + the single
-// matching action from `actions` (at most one assignment-time tag is present).
-// Backs both policy_ref (dst = the wrapped inside) and policy_buffer (dst = a fresh
-// target), so the conversion/assignment logic lives in exactly one place.
+// The single assignment-time action among `actions` (at most one such tag is
+// present), or no_action.
+template <typename... As>
+constexpr decltype(auto) assignment_action(std::tuple<As...>& actions) {
+    if constexpr (has_action<is_clamp_action, As...>)
+        return pick_action_in<is_clamp_action>(actions);
+    else if constexpr (has_action<is_wrap_action, As...>)
+        return pick_action_in<is_wrap_action>(actions);
+    else if constexpr (has_action<is_error_action, As...>)
+        return pick_action_in<is_error_action>(actions);
+    else
+        return no_action{};
+}
+
+// Shared assignment dispatch: store `src` into `dst` under `policy` + that
+// action. Backs both policy_ref (dst = the wrapped inside) and policy_buffer
+// (dst = a fresh target), so the conversion/assignment logic lives in exactly
+// one place.
 template <insidable Dst, numeric C, typename P, typename... As>
 constexpr Dst& dispatch_assign(Dst& dst, const C& src, P& policy, std::tuple<As...>& actions) {
-    if constexpr (has_action<is_clamp_action, As...>)
-        return assignment<Dst, C>::assign(dst, src, policy, pick_action_in<is_clamp_action>(actions));
-    else if constexpr (has_action<is_wrap_action, As...>)
-        return assignment<Dst, C>::assign(dst, src, policy, pick_action_in<is_wrap_action>(actions));
-    else if constexpr (has_action<is_error_action, As...>)
-        return assignment<Dst, C>::assign(dst, src, policy, pick_action_in<is_error_action>(actions));
-    else
-        return assignment<Dst, C>::assign(dst, src, policy);
+    return assignment<Dst, C>::assign(dst, src, policy, assignment_action(actions));
 }
 
 // policy_buffer — the rvalue-receiver sibling of policy_ref. `with_snap()` etc.

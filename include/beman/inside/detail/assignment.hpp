@@ -21,11 +21,8 @@ namespace beman::inside::detail {
 //---------------------------------------------------------------------------
 template <insidable L, typename P, typename A>
 inline constexpr bool needs_runtime_range_check =
-    clamp_action<plain_t<A>> || wrap_action<plain_t<A>> || error_action<plain_t<A>> || has_policy<L, P, clamp> ||
-    has_policy<L, P, wrap> ||
-    ((plain_t<P>::test(checked) ||
-      is_checked(policy_of<L> | (plain_t<P>::test(detail::unsafe_marker) ? detail::unsafe_marker : none))) &&
-     !has_policy<L, P, ignore_range>);
+    clamp_action<plain_t<A>> || wrap_action<plain_t<A>> || error_action<plain_t<A>> ||
+    range_handled(policy_of<L> | plain_t<P>::Flags);
 
 // Shared out-of-range policy cascade. Order: clamp/wrap/error *actions*, then
 // clamp/wrap *policy* bits, then `range_fail`. The callers say how clamp and
@@ -162,13 +159,7 @@ struct unit_fold {
         W    Offset;
     };
     static constexpr folded fold(const W& v) noexcept {
-        constexpr W range = span + W{1};
-        const W     t     = v - lower;
-        W           q = t / range, w = t % range;
-        if (w < W{0}) {
-            w += range;
-            q -= W{1};
-        }
+        const auto [q, w] = floor_divmod(v - lower, span + W{1});
         return {saturate(q), w};
     }
 };
@@ -230,9 +221,7 @@ constexpr L& assign_exact(L& lhs, const exact_frac<K>& v, P&& policy, A&& action
                 [&] {
                     // x − q·span with q = ⌊(x − lo)/span⌋: into [lo, hi).
                     const exact_frac<KK> span = hi + -lo, t = (x + -lo) / span;
-                    auto [q, m] = wide_sint<KK>::divmod(t.Num, t.Den);
-                    if (m.negative())
-                        q -= wide_sint<KK>{1};
+                    const auto           q = floor_divmod(t.Num, t.Den).Quot;
                     store(x + -(exact_frac<KK>{q, wide_sint<KK>{1}} * span));
                 });
             return lhs;
@@ -292,13 +281,8 @@ constexpr L& assign_exact(L& lhs, const exact_frac<K>& v, P&& policy, A&& action
                         }
                     },
                     [&] {
-                        const I range = count + I{1};
-                        auto [q, w]   = I::divmod(index, range);
-                        if (w.negative()) {
-                            w += range;
-                            q -= I{1};
-                        }
-                        lhs = L::from_raw(raw_of_index<L>(w));
+                        const auto [q, w] = floor_divmod(index, count + I{1});
+                        lhs               = L::from_raw(raw_of_index<L>(w));
                         if constexpr (wrap_action<plain_t<A>>)
                             action.Fn(lhs, make_wrap_carry<L, R>(saturate(q)));
                     }))

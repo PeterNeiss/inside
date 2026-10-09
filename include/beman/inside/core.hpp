@@ -542,17 +542,13 @@ struct inside {
     constexpr inside& store_raw(W new_raw) {
         constexpr W lo = static_cast<W>(detail::raw_lo_exact<inside>);
         constexpr W hi = static_cast<W>(detail::raw_hi_exact<inside>);
-        if constexpr (has_any_flag(P, clamp | wrap) || (is_checked(P) && !has_flag(P, ignore_range)))
+        if constexpr (range_handled(P))
             if (new_raw < lo || new_raw > hi) {
                 if constexpr (P & clamp)
                     new_raw = new_raw < lo ? lo : hi;
-                else if constexpr (P & wrap) {
-                    constexpr W range = hi - lo + W{1};
-                    W           w     = (new_raw - lo) % range;
-                    if (w < W{0})
-                        w += range;
-                    new_raw = lo + w;
-                } else {
+                else if constexpr (P & wrap)
+                    new_raw = lo + detail::floor_divmod(new_raw - lo, hi - lo + W{1}).Rem;
+                else {
                     make_policy<P>().report(errc::overflow);
                     return *this;
                 }

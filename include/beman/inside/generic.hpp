@@ -493,6 +493,27 @@ constexpr int signed_value_bits_of(std::initializer_list<grid_wide> vals) noexce
 template <int Bits>
 using work_int_t = int_for_bits_t<(Bits < 63 ? 63 : Bits), true>;
 
+// t = Quot·m + Rem with 0 ≤ Rem < m (m > 0): division rounded toward −∞,
+// the fold of every wrap. A wide int divides once for both parts.
+template <typename W>
+struct floored {
+    W Quot, Rem;
+};
+template <typename W>
+[[nodiscard]] constexpr floored<W> floor_divmod(const W& t, const W& m) noexcept {
+    floored<W> f;
+    if constexpr (is_wide_int_v<W>) {
+        auto [q, r] = W::divmod(t, m);
+        f           = {q, r};
+    } else
+        f = {t / m, t % m};
+    if (f.Rem < W{0}) {
+        f.Rem += m;
+        f.Quot -= W{1};
+    }
+    return f;
+}
+
 template <insidable L>
 constexpr raw_t<L> raw_from_offset(umax offset) noexcept {
     // Add in umax: the bits are the same, but a value raw of a grid
