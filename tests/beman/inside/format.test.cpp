@@ -296,8 +296,6 @@ TEST(FormatTest, type_name_covers_all_raw_types) {
     ASSERT_TRUE(type_name_v<std::int32_t> == "int32_t");
     ASSERT_TRUE(type_name_v<std::int64_t> == "int64_t");
     ASSERT_TRUE(type_name_v<rational> == "rational");
-    ASSERT_TRUE(type_name_v<double> == "double");
-    ASSERT_TRUE(type_name_v<float> == "float");
     ASSERT_TRUE(type_name_v<point_slot> == "point");
     ASSERT_TRUE(type_name_v<bool> == "unknown");
 }

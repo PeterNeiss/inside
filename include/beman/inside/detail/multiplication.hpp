@@ -29,8 +29,7 @@ struct multiplication {
     using result = inside<result_grid>;
 
     template <policy_flag F>
-    static constexpr bool needs_overflow_check =
-        lattice_op_checked<result, L, R, F, rational_mul_is_safe(grid_of<L>, grid_of<R>)>;
+    static constexpr bool needs_overflow_check = lattice_op_checked<result, L, R, F>;
 
     // Plain result when an overflow action takes the failure or no check is
     // needed; else std::expected<result, errc>.
@@ -74,29 +73,21 @@ struct multiplication {
                 auto prod = as_rational(lhs) * as_rational(rhs);
                 if (!prod) [[unlikely]]
                     return report_or_unexpected<result>(action, policy, errc::overflow, "rational overflow in mul");
-                return result::from_raw(raw_cast<result>(*prod));
+                return result::from_raw(*prod);
             } else
-                return result::from_raw(raw_cast<result>(rational::mul_unchecked(as_rational(lhs), as_rational(rhs))));
+                return result::from_raw(rational::mul_unchecked(as_rational(lhs), as_rational(rhs)));
         } else if constexpr (point_storage<result>)
             return result::from_raw(raw_t<result>{}); // a product with 0: the point 0
-        else if constexpr (integer_storage<L> && integer_storage<R>) {
-            // Integer raws: multiply the operands' values in their own units (a
-            // notch or value unit, or |c| for a point c), in imax or by wrapping
-            // arithmetic (wide_value.hpp). The product of the unit counts counts
-            // the product in the product of the units — on anchored grids the
+        else {
+            // Integer raws (a notched result has no continuous operand): multiply the operands' values in their own
+            // units (a notch or value unit, or |c| for a point c), in imax or by wrapping arithmetic (wide_value.hpp).
+            // The product of the unit counts counts the product in the product of the units — on anchored grids the
             // result notch — exact for every grid and sign, at any width.
+            static_assert(integer_storage<L> && integer_storage<R>);
             constexpr grid_rational U = grid_mul(unit_of<L>, unit_of<R>);
             using W                   = index_work_t<result, L, unit_of<L>, R, unit_of<R>, U>;
             return from_value_in_units<result, U>(value_in_units<W, unit_of<L>>(lhs) *
                                                   value_in_units<W, unit_of<R>>(rhs));
-        } else if constexpr (wide_valued<result>)
-            // A rational operand into a result with more than 2^64 slots.
-            return exact_result<result>(exact_of(lhs) * exact_of(rhs));
-        else {
-            // A rational operand into an integer result: the exact rational
-            // product, converted to the result's raw.
-            auto prod = rational::mul_unchecked(as_rational(lhs), as_rational(rhs));
-            return result::from_raw(raw_of_lattice_value<result>(prod));
         }
     }
 };

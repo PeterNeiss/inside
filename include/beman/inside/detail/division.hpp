@@ -111,15 +111,14 @@ constexpr value_bounds value_bounds_of() noexcept {
 
 // The checked rational quotient (a/b)/(c/d) = (a·d)/(b·c) cannot overflow
 // for any values of L and R: c, a·d and b·c stay within the rational's
-// fields (rational::div_impl). Bounded only for 64-bit grids with nonzero
-// notches and point grids; a continuous or exact-valued operand gives false.
+// fields (rational::div_impl). Bounded only for 64-bit integer raws; a
+// continuous operand gives false.
 template <insidable L, insidable R>
 constexpr bool quotient_fits_rational() noexcept {
     if constexpr (wide_valued<L> || wide_valued<R>)
         return false;
     else {
-        constexpr auto bounded = []<insidable B>() { return notch64<B>.Numerator != 0 || point_grid<B>; };
-        if (!bounded.template operator()<L>() || !bounded.template operator()<R>())
+        if (!integer_storage<L> || !integer_storage<R>) // a continuous operand bounds no denominator
             return false;
         constexpr value_bounds l = value_bounds_of<L>(), r = value_bounds_of<R>();
         constexpr umax         imax_max = static_cast<umax>(std::numeric_limits<imax>::max());

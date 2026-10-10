@@ -11,9 +11,9 @@
 //---------------------------------------------------------------------------
 // addition — `add(L, R, policy, action) -> inside<G>`, G = grid_of<L> + grid_of<R>.
 // The grid arithmetic is sound by construction (the result interval contains
-// every runtime sum), so overflow can only happen on rational-raw results.
-// Specialises on the storage shapes: rational result, mixed rational/integer,
-// direct integer-space add, or both notch-offset (scale via lhs/rhs_widen).
+// every runtime sum), so overflow can only happen on continuous results.
+// Shapes: a continuous result (exact fraction, or a rational raw), a point,
+// or integer raws added as value counts in a common unit.
 //---------------------------------------------------------------------------
 namespace beman::inside::detail {
 template <insidable L, insidable R = L>
@@ -29,8 +29,7 @@ struct addition {
     using result = inside<result_grid>;
 
     template <policy_flag F>
-    static constexpr bool needs_overflow_check =
-        lattice_op_checked<result, L, R, F, rational_add_is_safe(grid_of<L>, grid_of<R>)>;
+    static constexpr bool needs_overflow_check = lattice_op_checked<result, L, R, F>;
 
     // Plain result when an overflow action takes the failure or no check is
     // needed; else std::expected<result, errc>.
@@ -58,21 +57,15 @@ struct addition {
                 res = result::from_raw(rational::add_unchecked(lhs, rhs));
         } else if constexpr (point_storage<result>)
             res = result::from_raw(raw_t<result>{}); // point + point: a point
-        else if constexpr (integer_storage<L> && integer_storage<R>) {
-            // Integer raws: add the values in a unit dividing both operands' (the
-            // result notch gcd(N_L, N_R) on anchored grids), in imax or by wrapping
-            // arithmetic (wide_value.hpp). Exact for every grid, at any width.
+        else {
+            // Integer raws (a notched result has no continuous operand): add the
+            // values in a unit dividing both operands' (the result notch
+            // gcd(N_L, N_R) on anchored grids), in imax or by wrapping arithmetic
+            // (wide_value.hpp). Exact for every grid, at any width.
+            static_assert(integer_storage<L> && integer_storage<R>);
             constexpr grid_rational U = grid_gcd_of(unit_of<L>, unit_of<R>);
             using W                   = index_work_t<result, L, U, R, U, U>;
             res = from_value_in_units<result, U>(value_in_units<W, U>(lhs) + value_in_units<W, U>(rhs));
-        } else if constexpr (wide_valued<result>)
-            // A rational operand into a result with more than 2^64 slots.
-            res = exact_result<result>(exact_of(lhs) + exact_of(rhs));
-        else {
-            // A rational operand into an integer result: the exact rational
-            // sum, converted to the result's raw.
-            auto sum = rational::add_unchecked(lhs, rhs);
-            res      = result::from_raw(raw_of_lattice_value<result>(sum));
         }
         return res;
     }

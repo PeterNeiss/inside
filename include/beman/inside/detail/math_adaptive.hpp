@@ -522,8 +522,8 @@ constexpr Out store(const wide_sint<K>& index, P&& policy) {
         if (!index.negative() && !(count < index)) [[likely]]
             return Out::from_raw(raw_of_slot<Out>(index));
     }
-    // The grid point (index + Lower/Notch)·Notch, exact: stored through Out's
-    // assignment (a floating-point or rational raw holds it exactly).
+    // Past Out's range: the grid point (index + Lower/Notch)·Notch, exact,
+    // through Out's assignment (its policy clamps, wraps or reports).
     constexpr std::size_t KK = exact_max<K, exact_limbs<Out>>;
     using J                  = wide_sint<KK>;
     const exact_frac<KK> v{(J{index} + static_cast<J>(slot_base<Out>)) * static_cast<J>(wide_numerator(notch_of<Out>)),
@@ -653,7 +653,7 @@ inline constexpr bool table_input =
 
 // Outputs whose raw a table can hold: an integer index or value.
 template <insidable Out>
-inline constexpr bool table_output = integer_storage<Out> && notched<Out> && !wide_valued<Out>;
+inline constexpr bool table_output = notched<Out> && !wide_valued<Out>;
 
 // The slot offset of an input value (0 … slot count).
 template <insidable In>
@@ -672,13 +672,10 @@ constexpr In slot_input(std::size_t i) noexcept {
 template <insidable Out, insidable In, int W0, auto MakeCore, std::size_t I>
 inline constexpr imax table_slot = slot_of<Out, W0>(MakeCore(slot_input<In>(I)));
 
-// Out's raw for slot offset I, as store gives it to every other tier.
+// Out's raw for slot offset I (a table output is an integer raw).
 template <insidable Out>
 constexpr raw_t<Out> table_raw(imax i) noexcept {
-    if constexpr (integer_storage<Out>)
-        return raw_from_offset<Out>(static_cast<umax>(i));
-    else
-        return store<Out>(wide_sint<2>{static_cast<umax>(i)}).raw();
+    return raw_from_offset<Out>(static_cast<umax>(i));
 }
 
 // Out's raws for every In slot; Valid when all lie in Out's range. MakeCore

@@ -143,8 +143,8 @@ TEST(ConsistencyTest, result_drops_invalid_direct_and_indexed) {
     EXPECT_EQ(rational{ii}, q(2)); // zero-free divisor, quotient fits: a plain value
 }
 
-// Math auto-output types do not inherit fixed-width storage flags.
-TEST(ConsistencyTest, math_output_drops_width_flags) {
+// A math auto-output deduces its own storage from its grid.
+TEST(ConsistencyTest, math_output_deduces_its_storage) {
     using B8 = inside<{-128, 127}, round_nearest>;
     EXPECT_EQ(rational{math::abs(B8{-128})}, q(128));
 }

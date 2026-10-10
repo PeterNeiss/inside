@@ -106,7 +106,7 @@ inline constexpr bool dependent_false = false;
 //   from_value(b, v)       imax  → raw          store integer value v into b (inverse of to_value)
 //   raw_cast<B>(x)         x     → raw_t<B>     TYPE cast only — no value arithmetic
 //   raw_imax(b)            raw   → imax         widen the raw bits (NOT the value for index storage)
-//   raw_from_offset<B>(o)  index → raw_t<B>     adds raw_lo for value storage; identity for index
+//   raw_from_offset<B>(o)  index → raw_t<B>     adds raw_lo (Lower for a value raw, 0 for an index)
 //   raw_of_slot<B>(o)      index → raw_t<B>     any storage, any width (detail/wide_value.hpp)
 //-------------------------------------------------------------------------
 
@@ -242,7 +242,7 @@ struct index_double_codec {
 };
 template <insidable B>
 inline constexpr index_double_codec index_double = [] {
-    if constexpr (!integer_index_storage<B> || !notched<B> || !anchored<B> || wide_valued<B>)
+    if constexpr (!integer_index_storage<B> || !anchored<B> || wide_valued<B>)
         return index_double_codec{};
     else {
         constexpr umax k53 = umax{1} << 53;
@@ -287,7 +287,7 @@ template <insidable B>
 inline constexpr imax upper_imax = trunc(detail::upper64<B>);
 
 // Slot count via grid::max_index (overflow-safe: 0 when it doesn't fit umax,
-// for grids that store as rational and never use the index).
+// for grids with a wide index, which take the exact wide paths).
 template <insidable B>
 inline constexpr umax max_index_v = grid_of<B>.max_index();
 
@@ -299,90 +299,6 @@ template <insidable B>
 inline constexpr bool values_fit_imax =
     !wide_valued<B> && fits_imax(interval_of<B>) &&
     (value_storage<B> || max_index_v<B> <= static_cast<umax>(std::numeric_limits<imax>::max()));
-
-//-------------------------------------------------------------------------
-// grid_value_bounds / rational_mul_is_safe / rational_add_is_safe
-//
-// Conservative compile-time inside on the (numerator, denominator) of any
-// canonical value on a grid, and derived "can the rational op of two grid
-// values overflow imax" predicates — letting checked exact arithmetic drop
-// the expected wrapper when the grids prove no overflow is reachable.
-//
-// For a notched grid every value v = lo + k·notch over the common denominator
-// dC = |lo.den|·|hi.den|·|notch.den| is linear in k, so the max scaled
-// numerator is at an endpoint. A continuous grid (Notch == 0, non-point) has
-// unbounded denominators — nothing provable, so the helpers return false.
-//-------------------------------------------------------------------------
-constexpr bool grid_value_bounds(grid g, umax& max_num, umax& max_den) noexcept {
-    if (g.Notch == 0 && !(g.Interval.Lower == g.Interval.Upper))
-        return false; // continuous: dens unbounded
-    if (!fits_rational(g.Interval.Lower) || !fits_rational(g.Interval.Upper) || !fits_rational(g.Notch))
-        return false; // past 64-bit grid numbers: nothing provable here
-    const rational lower = to_rational(g.Interval.Lower), upper = to_rational(g.Interval.Upper);
-    const rational notch = to_rational(g.Notch);
-
-    umax d_lo = abs_den(lower.Denominator);
-    umax d_hi = abs_den(upper.Denominator);
-    umax d_no = (notch.Numerator == 0) ? umax{1} : abs_den(notch.Denominator);
-
-    umax d_common;
-    if (mul_overflow(d_lo, d_hi, &d_common))
-        return false;
-    if (mul_overflow(d_common, d_no, &d_common))
-        return false;
-
-    umax lo_scaled, hi_scaled;
-    if (mul_overflow(lower.Numerator, d_common / d_lo, &lo_scaled))
-        return false;
-    if (mul_overflow(upper.Numerator, d_common / d_hi, &hi_scaled))
-        return false;
-
-    max_num = lo_scaled > hi_scaled ? lo_scaled : hi_scaled;
-    max_den = d_common;
-    return true;
-}
-
-constexpr bool rational_mul_is_safe(grid g_l, grid g_r) noexcept {
-    umax n_l, d_l, n_r, d_r;
-    if (!grid_value_bounds(g_l, n_l, d_l))
-        return false;
-    if (!grid_value_bounds(g_r, n_r, d_r))
-        return false;
-
-    umax num_prod, den_prod;
-    if (mul_overflow(n_l, n_r, &num_prod))
-        return false;
-    if (mul_overflow(d_l, d_r, &den_prod))
-        return false;
-    if (den_prod > static_cast<umax>(std::numeric_limits<imax>::max()))
-        return false;
-    return true;
-}
-
-// add_impl's worst case over the conservative common denominator
-// D = d_l*d_r: scaled numerators A <= n_l*d_r and B <= n_r*d_l, sum
-// A + B. (The same-denominator and lcm-reduced paths only shrink these;
-// mixed signs subtract magnitudes.)
-constexpr bool rational_add_is_safe(grid g_l, grid g_r) noexcept {
-    umax n_l, d_l, n_r, d_r;
-    if (!grid_value_bounds(g_l, n_l, d_l))
-        return false;
-    if (!grid_value_bounds(g_r, n_r, d_r))
-        return false;
-
-    umax den, a, b, sum;
-    if (mul_overflow(d_l, d_r, &den))
-        return false;
-    if (den > static_cast<umax>(std::numeric_limits<imax>::max()))
-        return false;
-    if (mul_overflow(n_l, d_r, &a))
-        return false;
-    if (mul_overflow(n_r, d_l, &b))
-        return false;
-    if (add_overflow(a, b, &sum))
-        return false;
-    return true;
-}
 
 // Notch a non-zero integer and Lower an integer — every value is an
 // integer ({{0.5, 10.5}, 1} has an integer notch but not integer values).
@@ -485,16 +401,15 @@ constexpr void from_value(B& b, imax val) {
 }
 
 //-------------------------------------------------------------------------
-// raw_lo / raw_hi / raw_from_offset — map interval endpoints to raw space. For
-// notch-offset storage the raw is a 0-based index (raw_lo == 0); for direct
-// storage the raw IS the value (raw_lo == lower_imax<B>), so an offset needs
-// raw_lo<L> added back before storing.
+// raw_lo / raw_hi / raw_from_offset — an integer raw's endpoints. An index
+// raw is 0-based (raw_lo == 0); a value raw IS the value (raw_lo == Lower),
+// so an offset needs raw_lo<L> added back before storing.
 //-------------------------------------------------------------------------
 template <insidable B>
-inline constexpr imax raw_lo = value_storage<B> ? lower_imax<B> : 0;
+inline constexpr imax raw_lo = integer_value_storage<B> ? lower_imax<B> : 0;
 
 template <insidable B>
-inline constexpr imax raw_hi = value_storage<B> ? upper_imax<B> : static_cast<imax>(max_index_v<B>);
+inline constexpr imax raw_hi = integer_value_storage<B> ? upper_imax<B> : static_cast<imax>(max_index_v<B>);
 
 // The exact raw range: 0 .. slot count for index storage, Lower .. Upper
 // for value storage (integers there). Sizes the work types below.
@@ -554,10 +469,7 @@ template <typename W>
 // overflow imax.
 template <insidable L, std::integral W>
 constexpr raw_t<L> raw_from_offset(W offset) noexcept {
-    if constexpr (value_storage<L>)
-        return raw_cast<L>(static_cast<umax>(offset) + static_cast<umax>(raw_lo<L>));
-    else
-        return raw_cast<L>(static_cast<umax>(offset));
+    return raw_cast<L>(static_cast<umax>(offset) + static_cast<umax>(raw_lo<L>)); // raw_lo: 0 for an index raw
 }
 
 // The raw of L's Lower (low) or Upper endpoint: the exact constant for a

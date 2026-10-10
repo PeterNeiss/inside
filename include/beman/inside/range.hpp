@@ -114,25 +114,9 @@ struct inside_range {
         }
 
         [[nodiscard]] constexpr value_type operator*() const {
-            // value = Lower + index * Notch (always exact: lies on the grid).
-            // Integer-backed storages decode without the rational/assignment
-            // engine: for index storage the iterator index IS the raw (it stays in
-            // [0, max_index_v], which the raw type holds); integer-grid value
-            // storage is a multiply-add in raw space. Rational raws keep the exact generic path.
-            if constexpr (detail::index_storage<value_type>)
-                return value_type::from_raw(static_cast<typename value_type::raw_type>(slot()));
-            else if constexpr (detail::integer_value_storage<value_type> &&
-                               detail::abs_den(::beman::inside::detail::notch64<value_type>.Denominator) == 1 &&
-                               detail::abs_den(::beman::inside::detail::lower64<value_type>.Denominator) == 1) {
-                constexpr imax notch_step = static_cast<imax>(::beman::inside::detail::notch64<value_type>.Numerator);
-                return value_type::from_raw(static_cast<typename value_type::raw_type>(
-                    detail::lower_imax<value_type> + static_cast<imax>(slot()) * notch_step));
-            } else {
-                detail::rational val = (detail::to_rational(G.Interval.Lower) +
-                                        (detail::rational{slot()} * detail::to_rational(G.Notch)).value())
-                                           .value();
-                return value_type{val};
-            }
+            // value = Lower + index * Notch: an integer raw (a range needs a
+            // notch), slot() for an index raw, Lower + slot() for a value raw.
+            return value_type::from_raw(detail::raw_from_offset<value_type>(slot()));
         }
 
         [[nodiscard]] constexpr value_type operator[](difference_type n) const { return *(*this + n); }
@@ -186,25 +170,8 @@ struct inside_range {
     constexpr inside_range() : StartIndex{0} {}
 
     constexpr inside_range(value_type start) {
-        // Map a grid value back to its notch index: (start - Lower) / Notch.
-        // Same storage split as iterator::operator* — index raw already is the
-        // notch index; integer-grid value raw divides out the (integer) step.
-        if constexpr (detail::index_storage<value_type>)
-            StartIndex = static_cast<umax>(start.raw());
-        else if constexpr (detail::integer_value_storage<value_type> &&
-                           detail::abs_den(::beman::inside::detail::notch64<value_type>.Denominator) == 1 &&
-                           detail::abs_den(::beman::inside::detail::lower64<value_type>.Denominator) == 1) {
-            constexpr imax notch_step = static_cast<imax>(::beman::inside::detail::notch64<value_type>.Numerator);
-            StartIndex =
-                static_cast<umax>((static_cast<imax>(start.raw()) - detail::lower_imax<value_type>) / notch_step);
-        } else {
-            // The result has integer denominator (start is on the grid) so the
-            // numerator is the index directly.
-            auto offset =
-                ((detail::as_rational(start) - detail::to_rational(G.Interval.Lower)) / detail::to_rational(G.Notch))
-                    .value();
-            StartIndex = offset.Numerator;
-        }
+        // Map a grid value back to its notch index: the raw's offset.
+        StartIndex = static_cast<umax>(start.raw()) - static_cast<umax>(detail::raw_lo<value_type>);
     }
 
     constexpr iterator begin() const { return {StartIndex, 0}; }

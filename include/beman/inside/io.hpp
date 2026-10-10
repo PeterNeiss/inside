@@ -180,10 +180,6 @@ inline constexpr std::string_view type_name_v<std::int32_t> = "int32_t";
 template <>
 inline constexpr std::string_view type_name_v<std::int64_t> = "int64_t";
 template <>
-inline constexpr std::string_view type_name_v<double> = "double";
-template <>
-inline constexpr std::string_view type_name_v<float> = "float";
-template <>
 inline constexpr std::string_view type_name_v<rational> = "rational";
 template <>
 inline constexpr std::string_view type_name_v<point_slot> = "point";

@@ -903,9 +903,7 @@ inline constexpr bool small_index = !wide_valued<In> && notched<In> &&
 // conversion's nearest double.
 template <insidable In>
 constexpr double input_double(const In& x) noexcept {
-    if constexpr (point_storage<In> || rational_storage<In>)
-        return as_double(x);
-    else if constexpr (fp_exact_input<In>)
+    if constexpr (fp_exact_input<In>)
         return static_cast<double>(value_index<imax>(x)) * (notch_p<In> / notch_q<In>);
     else if constexpr (small_index<In>)
         return static_cast<double>(value_index<imax>(x)) * notch_p<In> / notch_q<In>;
@@ -929,10 +927,7 @@ inline double nearest_int(double t) noexcept { return __builtin_nearbyint(t); }
 // Stores the grid point with slot offset k in out.
 template <insidable Out>
 [[gnu::always_inline]] inline void store_slot(umax k, Out& out) {
-    if constexpr (integer_storage<Out>)
-        out = Out::from_raw(raw_from_offset<Out>(k));
-    else // a rational raw: the grid point as a fraction
-        out = store<Out>(wide_sint<2>{k});
+    out = Out::from_raw(raw_from_offset<Out>(k)); // a slot: a notched, integer raw
 }
 
 // The slot of a kernel value v within an absolute bound, decided in double

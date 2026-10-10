@@ -122,7 +122,7 @@ inline constexpr int exact_value_bits = [] {
         return bits(wide_numerator(lower_of<B>)) + bits(wide_denominator(lower_of<B>));
     } else if constexpr (fraction_storage<B>)
         return 2 * decltype(raw_t<B>::Num)::bits;
-    else if constexpr (!wide_valued<B> || rational_storage<B>)
+    else if constexpr (!wide_valued<B>)
         return 128; // a 64-bit rational
     else {
         auto bits = [](const grid_wide& v) { return bit_width_of(v.negative() ? -v : v); };

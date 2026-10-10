@@ -144,16 +144,15 @@ struct grid {
         return fits;
     }
 
-    // Index-storage slot count (0 on overflow; the over-flow branch of storage_min
-    // is discarded for such grids, which pick rational storage instead).
+    // Index-storage slot count (0 on overflow: such grids store a wide index).
     [[nodiscard]] constexpr umax max_index() const {
         umax c = 0;
         (void)max_index_checked(c);
         return c;
     }
 
-    // True when the slot count fits umax (index storage is possible). False ⇒ the
-    // grid is still valid but stores its value as a rational, never an index.
+    // True when the slot count fits umax (a builtin index). False ⇒ the grid is
+    // still valid and stores a wide index.
     [[nodiscard]] constexpr bool max_index_representable() const {
         umax c = 0;
         return max_index_checked(c);
@@ -251,7 +250,7 @@ struct point_slot {
 };
 } // namespace detail
 
-// Both endpoints lie in imax — the signed-direct candidates (and every
+// Both endpoints lie in imax — the signed value raw candidates (and every
 // `trunc(endpoint)` constant) are only meaningful then.
 namespace detail {
 // Notch 1 from an integer Lower: the values are integers, so a raw can hold
@@ -337,7 +336,7 @@ constexpr auto storage_min() {
         return smallest_uint_for_t<static_cast<umax>(trunc(G.Interval.Upper))>{};
 }
 
-// The raw type of inside<G, P>, for every policy.
+// The raw type of inside<G, P> (the policy plays no part).
 template <grid G>
 using storage_min_t = decltype(storage_min<G>());
 
@@ -468,7 +467,7 @@ constexpr bool grid_product_fits([[maybe_unused]] const grid& a, [[maybe_unused]
 [[nodiscard]] inline constexpr std::expected<grid, errc> operator*(const grid& lhs, const grid& rhs) {
     // A point operand c (notch 0) scales the other lattice exactly: its notch
     // becomes N·|c|, so `x * just<c>` keeps integer storage instead of turning
-    // continuous (rational-backed).
+    // continuous.
     return detail::lift([](interval i, detail::grid_rational n) { return grid{i, n}; },
                         lhs.Interval * rhs.Interval,
                         detail::product_notch(lhs, rhs));

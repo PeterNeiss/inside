@@ -284,8 +284,8 @@ constexpr L& assign_exact(L& lhs, const exact_frac<K>& v, P&& policy, A&& action
 // raw).
 //---------------------------------------------------------------------------
 template <insidable L, insidable R>
-inline constexpr bool same_notch_raws = integer_storage<L> && integer_storage<R> && !point_storage<L> &&
-                                        !point_storage<R> && notched<L> && notch_of<L> == notch_of<R>;
+inline constexpr bool same_notch_raws =
+    notched<L> && notch_of<L> == notch_of<R> && !point_storage<L> && !point_storage<R>; // ⇒ integer raws
 // The shift is the exact offset between the Lowers in notches, plus the raws
 // of the Lowers (0 for an index raw, Lower for a value raw): exact on
 // unanchored lattices too.
@@ -438,7 +438,7 @@ struct unanchored_codec_t {
 template <insidable L>
 inline constexpr unanchored_codec_t unanchored_codec = [] {
     constexpr unanchored_codec_t no{0, 0, 0, 0, false};
-    if constexpr (anchored<L> || !index_storage<L> || point_storage<L> || !values_fit_imax<L>)
+    if constexpr (anchored<L> || point_storage<L> || !values_fit_imax<L>) // unanchored ⇒ index raw
         return no;
     else {
         constexpr umax cap = static_cast<umax>(std::numeric_limits<imax>::max());
@@ -606,8 +606,8 @@ struct assignment<L, R> {
             // whose values double holds: v/Notch is exact, so round it in
             // double (the integer storage's rule) and read the slot off the
             // value index. No rational round trip.
-            if constexpr (std::floating_point<R> && integer_storage<L> && !wide_valued<L> && anchored<L> &&
-                          double_exact<grid_of<L>> && std::has_single_bit(detail::notch64<L>.Numerator)) {
+            if constexpr (std::floating_point<R> && anchored<L> && double_exact<grid_of<L>> &&
+                          std::has_single_bit(detail::notch64<L>.Numerator)) {
                 constexpr imax lo = signed_numerator((detail::lower64<L> / detail::notch64<L>).value());
                 const double   v  = static_cast<double>(rhs);
                 const imax     j  = snap_double_index<grid_of<L>, rounding_for<L, P>>(v);
@@ -843,33 +843,21 @@ struct assignment<L, R> {
 template <insidable L, insidable R>
 struct assignment<L, R> {
   private:
-    // Offset/Factor map rhs.Raw → lhs.Raw via `lhs.Raw = Factor·rhs.Raw + Offset`.
-    // Branches: L rational (pass value through), R rational (pre-divide by
-    // detail::notch64<L>), both integer (the hot path, collapses to integer math).
+    // Offset/Factor map rhs.Raw → lhs.Raw via `lhs.Raw = Factor·rhs.Raw + Offset`
+    // between two integer raws. A continuous side stores through the rational
+    // path instead (both 0, unused), and a point L holds one value (both 0).
+    static constexpr bool maps_raws = integer_storage<L> && integer_storage<R>;
+
     static constexpr rational calcOffset() {
-        if constexpr (rational_storage<L>)
-            return detail::lower64<R>;
-        else if constexpr (!detail::notched<L>)
-            // A point L (notch 0): one value, mapping unused. 0 avoids the
-            // divide-by-zero by the notch.
+        if constexpr (!maps_raws || !detail::notched<L>)
             return rational{0};
-        else if constexpr (rational_storage<R>)
-            return -(detail::lower64<L> / detail::notch64<L>).value();
         else
             return ((detail::lower64<R> - detail::lower64<L>) / detail::notch64<L>).value();
     }
 
     static constexpr rational calcFactor() {
-        if constexpr (rational_storage<L>)
-            return detail::notch64<R>;
-        else if constexpr (!detail::notched<L>)
-            // A point L (see calcOffset). A denominator-1 Factor also makes
-            // assign_notch_ok vacuously true.
-            return rational{0};
-        else if constexpr (rational_storage<R>)
-            return (rational{1} / detail::notch64<L>).value();
-        else if constexpr (point_storage<R>)
-            return rational{0}; // raw is always 0: the mapping is Offset alone
+        if constexpr (!maps_raws || !detail::notched<L> || point_storage<R>)
+            return rational{0}; // a point R's raw is always 0: the mapping is Offset alone
         else
             return (detail::notch64<R> / detail::notch64<L>).value();
     }
@@ -883,8 +871,8 @@ struct assignment<L, R> {
     // It also needs every raw and every mapped raw in imax: map_raw's L-raw
     // range is [Offset, Offset + Factor·max_index<R>] (+ Lower for value storage).
     static constexpr bool is_integer_mapping = [] {
-        if constexpr (rational_storage<L> || rational_storage<R> || abs_den(Factor.Denominator) != 1 ||
-                      abs_den(Offset.Denominator) != 1 || !values_fit_imax<L> || !values_fit_imax<R>)
+        if constexpr (!maps_raws || abs_den(Factor.Denominator) != 1 || abs_den(Offset.Denominator) != 1 ||
+                      !values_fit_imax<L> || !values_fit_imax<R>)
             return false;
         else {
             const rational base = index_storage<L> ? rational{0} : detail::lower64<L>;
@@ -913,8 +901,8 @@ struct assignment<L, R> {
     };
     static constexpr affine_map_t affine_map = [] {
         constexpr affine_map_t no{0, 0, 0, false};
-        if constexpr (rational_storage<L> || rational_storage<R> || !detail::notched<L> || is_integer_mapping ||
-                      !values_fit_imax<L> || !values_fit_imax<R>)
+        if constexpr (!maps_raws || !detail::notched<L> || is_integer_mapping || !values_fit_imax<L> ||
+                      !values_fit_imax<R>)
             return no;
         else {
             constexpr umax cap = static_cast<umax>(std::numeric_limits<imax>::max());
@@ -951,22 +939,13 @@ struct assignment<L, R> {
         }
     }();
 
-    // Map rhs.Raw into L's raw space (requires is_integer_mapping). The
-    // Offset/Factor formula assumes offset encoding both sides; for direct
-    // storage, subtract detail::lower64<R> first (R-value → R-offset) and add detail::lower64<L>
-    // after (raw_from_offset<L>). All integer (is_integer_mapping guarantees it).
+    // Map rhs.Raw into L's raw space (requires is_integer_mapping): Offset and
+    // Factor map 0-based offsets, and raw_lo turns a raw into its offset and
+    // back (0 for an index raw, Lower for a value raw). Offset is an exact
+    // integer here, so trunc(Offset) is a constant.
     static constexpr imax map_raw(auto rhs_raw) {
-        imax r_offset = rhs_raw;
-        if constexpr (value_storage<R>)
-            r_offset -= raw_lo<R>;
-
-        // Offset is an exact integer here, so trunc(Offset) is a constexpr constant.
-        imax l_offset = static_cast<imax>(Factor.Numerator) * r_offset + trunc(Offset);
-
-        if constexpr (value_storage<L>)
-            return l_offset + raw_lo<L>;
-        else
-            return l_offset;
+        return static_cast<imax>(Factor.Numerator) * (static_cast<imax>(rhs_raw) - raw_lo<R>)+trunc(Offset) +
+               raw_lo<L>;
     }
 
   private:
@@ -1025,12 +1004,9 @@ struct assignment<L, R> {
 
     template <typename P>
     static constexpr void store(L& lhs, const R& rhs, P&& policy) {
-        if constexpr (rational_storage<L> || rational_storage<R>)
-            // rational target: raw IS the value — snap the decoded source through
-            // the rational-rhs store (the offset machinery below would round the
-            // VALUE to a notch index and store that number as the raw). A rational
-            // source can lie between L's notches whatever its grid: the same
-            // store rounds it by the policy, or reports rounding_error.
+        if constexpr (!maps_raws)
+            // A continuous side: store the source's value through the rational
+            // store, which rounds it by the policy or reports rounding_error.
             assignment<L, rational>::store_checked(lhs, as_rational(rhs), policy, no_action{});
         else if constexpr (is_integer_mapping) {
             // exact: Factor and Offset have integer denominators, no rounding ambiguity
@@ -1043,16 +1019,15 @@ struct assignment<L, R> {
             // round_quotient (invariant under reduction — bit-identical to the
             // rational chain below).
             // Offset/Factor map R's 0-based offset: a value raw counts from Lower.
-            const imax r_offset = static_cast<imax>(rhs.raw()) - (index_storage<R> ? imax{0} : raw_lo<R>);
+            const imax r_offset = static_cast<imax>(rhs.raw()) - raw_lo<R>; // 0 for an index raw
             const imax num      = affine_map.Add + r_offset * affine_map.Mul;
             const umax q =
                 round_quotient<L, P>(static_cast<umax>(num < 0 ? -num : num), static_cast<umax>(affine_map.Den));
             lhs = L::from_raw(num < 0 ? raw_from_offset<L>(-static_cast<imax>(q)) : raw_from_offset<L>(q));
         } else {
-            // Offset/Factor map R's 0-based offset (a rational raw is the value,
-            // which calcOffset/calcFactor already account for).
+            // Offset/Factor map R's 0-based offset (a value raw counts from Lower).
             const rational r_offset = [&] {
-                if constexpr (rational_storage<R> || index_storage<R>)
+                if constexpr (raw_lo<R> == 0)
                     return rational{rhs.raw()};
                 else
                     return (rational{rhs.raw()} - detail::lower64<R>).value();

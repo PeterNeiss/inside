@@ -469,16 +469,15 @@ struct inside {
     // every grid within int64, a wide_int beyond — never overflowing.
     template <insidable R>
     static constexpr bool point_delta_ok =
-        detail::integer_storage<inside> && detail::notched<inside> && detail::point_grid<R> &&
+        detail::notched<inside> && detail::point_grid<R> &&
         (detail::wide_numerator(lower_of<R>) * detail::wide_denominator(notch_of<inside>)) %
                 (detail::wide_denominator(lower_of<R>) * detail::wide_numerator(notch_of<inside>)) ==
             detail::grid_wide{0};
 
     // (R anchored: its Lower is a whole number of notches, the bias.)
     template <insidable R>
-    static constexpr bool raw_add_ok =
-        detail::integer_storage<inside> && detail::integer_storage<R> && !detail::point_storage<R> &&
-        detail::notched<inside> && notch_of<inside> == notch_of<R> && detail::anchored<R>;
+    static constexpr bool raw_add_ok = detail::notched<inside> && notch_of<inside> == notch_of<R> &&
+                                       !detail::point_storage<R> && detail::anchored<R>; // ⇒ integer raws
 
     template <insidable R>
     static constexpr detail::grid_wide point_delta = detail::exact_quotient(lower_of<R>, notch_of<inside>);
@@ -511,7 +510,7 @@ struct inside {
         // Point-inside rhs (just<v> / 1_ins / ++) whose value is a whole number of
         // this grid's notches: the raw delta is a compile-time constant and the
         // raw encoding cancels every Lower term (raw(v+d) = raw(v) + d/Notch for
-        // offset and direct storage alike), so this compiles to one integer add.
+        // index and value raws alike), so this compiles to one integer add.
         if constexpr (point_delta_ok<R>) {
             using W           = raw_work_t<point_delta<R>, point_delta<R>>;
             constexpr W delta = static_cast<W>(point_delta<R>);
@@ -810,7 +809,7 @@ inline constexpr bool index_cmp_fits = [] {
 }();
 
 // Signed value index of Raw == 0: Lower/Notch for offset (index) storage,
-// 0 for direct storage (raw is already the value == the index at notch 1).
+// 0 for a value raw (raw is already the value == the index at notch 1).
 template <insidable B>
 inline constexpr imax index_cmp_bias = [] {
     if constexpr (index_storage<B>) {
@@ -864,7 +863,7 @@ constexpr auto compare(const L& lhs, const R& rhs, Cmp cmp) {
     // a wide-index operand: exact wide fractions
     else if constexpr (wide_valued<L> || wide_valued<R>)
         return cmp(exact_of(lhs), exact_of(rhs));
-    // both integer-direct (notch=1, Raw==value): compare as integers
+    // both integer value raws (notch 1, Raw == value): compare as integers
     else if constexpr (integer_value_storage<L> && integer_value_storage<R> && values_fit_imax<L> &&
                        values_fit_imax<R>)
         return cmp(raw_imax(lhs), raw_imax(rhs));
