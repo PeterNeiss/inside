@@ -866,18 +866,6 @@ template <insidable X, insidable P>
 inline constexpr raw_t<X> point_slot_of =
     static_cast<raw_t<X>>(exact_quotient(grid_sub(lower_of<P>, lower_of<X>), notch_of<X>));
 
-// Two integer raws whose values, counted in the gcd of their value units,
-// fit imax.
-template <insidable L, insidable R>
-inline constexpr bool units_cmp_fits = [] {
-    if constexpr (!integer_storage<L> || !integer_storage<R>)
-        return false;
-    else {
-        constexpr grid_rational U = grid_gcd_of(unit_of<L>, unit_of<R>);
-        return signed_value_bits_of({units_lo<L, U>, units_hi<L, U>, units_lo<R, U>, units_hi<R, U>}) <= 63;
-    }
-}();
-
 // inside ⋈ inside (⋈ = `cmp`: <=> or ==) in the cheapest exact form the two
 // storage shapes allow.
 template <insidable L, insidable R, class Cmp>

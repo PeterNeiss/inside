@@ -5244,6 +5244,18 @@ constexpr W value_index(const X& x) noexcept {
 template <insidable X>
 inline constexpr grid_rational unit_of = point_grid<X> ? abs(lower_of<X>) : grid_of<X>.value_unit();
 
+// Two integer raws whose values, counted in the gcd of their value units,
+// fit imax.
+template <insidable L, insidable R>
+inline constexpr bool units_cmp_fits = [] {
+    if constexpr (!integer_storage<L> || !integer_storage<R>)
+        return false;
+    else {
+        constexpr grid_rational U = grid_gcd_of(unit_of<L>, unit_of<R>);
+        return signed_value_bits_of({units_lo<L, U>, units_hi<L, U>, units_lo<R, U>, units_hi<R, U>}) <= 63;
+    }
+}();
+
 // x's value in units of `Unit` (an integer: the unit divides x's notch and
 // Lower, or x's value for a point).
 template <typename W, grid_rational Unit, insidable X>
@@ -6306,6 +6318,18 @@ struct assignment<L, R> {
             [&] { apply_wrap(lhs, rhs, policy, action); });
     }
 
+    // R's value outside L's interval: for integer raws an integer compare of
+    // counts in a common unit against L's endpoints, else the exact value.
+    static constexpr bool out_of_interval(const R& rhs) {
+        if constexpr (units_cmp_fits<L, R>) {
+            constexpr grid_rational U  = grid_gcd_of(unit_of<L>, unit_of<R>);
+            constexpr imax          lo = static_cast<imax>(units_lo<L, U>), hi = static_cast<imax>(units_hi<L, U>);
+            const imax              c = value_in_units<imax, U>(rhs);
+            return c < lo || c > hi;
+        } else
+            return not includes(interval_of<L>, as_rational(rhs));
+    }
+
     template <typename P>
     static constexpr void store(L& lhs, const R& rhs, P&& policy) {
         if constexpr (!maps_raws)
@@ -6389,11 +6413,11 @@ struct assignment<L, R> {
                     if (imax mapped = map_raw(rhs.raw()); mapped < raw_lo<L> || mapped > raw_hi<L>)
                         if (try_clamp_or_fail(lhs, rhs, policy, action))
                             return lhs;
-                } else if (const rational v = as_rational(rhs); not includes(interval_of<L>, v)) {
+                } else if (out_of_interval(rhs)) {
                     // Round first: a value just outside may round onto an endpoint.
                     // (The integer mapping above lands on the lattice: nothing to round.)
                     if constexpr (rounds_before_range_check<L, plain_t<P>>)
-                        if (const auto rr = raw_if_rounds_inside<L, plain_t<P>>(v); rr.Ok) {
+                        if (const auto rr = raw_if_rounds_inside<L, plain_t<P>>(as_rational(rhs)); rr.Ok) {
                             lhs = L::from_raw(rr.Raw);
                             return lhs;
                         }
@@ -8245,18 +8269,6 @@ inline constexpr bool point_is_slot =
 template <insidable X, insidable P>
 inline constexpr raw_t<X> point_slot_of =
     static_cast<raw_t<X>>(exact_quotient(grid_sub(lower_of<P>, lower_of<X>), notch_of<X>));
-
-// Two integer raws whose values, counted in the gcd of their value units,
-// fit imax.
-template <insidable L, insidable R>
-inline constexpr bool units_cmp_fits = [] {
-    if constexpr (!integer_storage<L> || !integer_storage<R>)
-        return false;
-    else {
-        constexpr grid_rational U = grid_gcd_of(unit_of<L>, unit_of<R>);
-        return signed_value_bits_of({units_lo<L, U>, units_hi<L, U>, units_lo<R, U>, units_hi<R, U>}) <= 63;
-    }
-}();
 
 // inside ⋈ inside (⋈ = `cmp`: <=> or ==) in the cheapest exact form the two
 // storage shapes allow.
