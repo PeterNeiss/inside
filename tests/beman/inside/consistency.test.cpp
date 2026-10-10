@@ -544,3 +544,17 @@ TEST(ConsistencyTest, hash_covers_every_storage) {
     using C = inside<{{0, 1}, 0}>;
     EXPECT_EQ(std::hash<C>{}(C{q(1, 3)}), std::hash<C>{}(C{q(1, 3)}));
 }
+
+// Signed fixed-point division under snap stays on the operands' notch, rounded
+// like the exact quotient (signed Q15: -1..1 in steps of 2^-15).
+TEST(ConsistencyTest, signed_qformat_division_stays_on_the_notch) {
+    using q15 = inside<{{-1, 1}, per<32768>}, round_nearest>;
+    auto r    = (q15{q(1, 2)} / q15{q(3, 4)}).value();
+    static_assert(notch_of<decltype(r)> == rational{1, 32768});
+    static_assert(!rational_storage<decltype(r)>);
+    EXPECT_EQ(rational{r}, q(21845, 32768)); // 2/3 · 2^15 = 21845.33 → 21845
+    EXPECT_EQ(rational{(q15{q(-1, 2)} / q15{q(3, 4)}).value()}, q(-21845, 32768));
+    using fl = inside<{{-1, 1}, per<32768>}, round_floor>;
+    EXPECT_EQ(rational{(fl{q(-1, 2)} / fl{q(3, 4)}).value()}, q(-21846, 32768));
+    EXPECT_EQ((q15{q(1, 2)} / q15{0}).error(), errc::division_by_zero);
+}

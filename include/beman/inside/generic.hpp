@@ -504,15 +504,6 @@ template <insidable B>
 inline constexpr bool integer_lattice =
     integer_notch<grid_of<B>> || (lower_of<B> == upper_of<B> && wide_denominator(lower_of<B>) == grid_wide{1});
 
-// Q-format: the canonical fixed-point shape (Q8.8, Q16.16, ...). Notch has
-// unit numerator with integer denominator > 1, Lower is an integer at 0.
-// Value = Raw / Notch.Denominator. Used to gate the integer fast path for
-// fixed-point division, which would otherwise fall into the slow rational
-// route because Notch.Denominator > 1 disqualifies integer_lattice.
-template <insidable B>
-inline constexpr bool qformat_grid =
-    wide_numerator(notch_of<B>) == grid_wide{1} && wide_denominator(notch_of<B>) > grid_wide{1} && lower_of<B> == 0;
-
 // Policy test: checks both type-level and per-operation policy.
 // Composite flags (e.g. round_nearest = bit5 | snap) require all
 // their bits set — having a subset like just `snap` does NOT match.

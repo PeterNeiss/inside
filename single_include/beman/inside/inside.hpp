@@ -4511,15 +4511,6 @@ template <insidable B>
 inline constexpr bool integer_lattice =
     integer_notch<grid_of<B>> || (lower_of<B> == upper_of<B> && wide_denominator(lower_of<B>) == grid_wide{1});
 
-// Q-format: the canonical fixed-point shape (Q8.8, Q16.16, ...). Notch has
-// unit numerator with integer denominator > 1, Lower is an integer at 0.
-// Value = Raw / Notch.Denominator. Used to gate the integer fast path for
-// fixed-point division, which would otherwise fall into the slow rational
-// route because Notch.Denominator > 1 disqualifies integer_lattice.
-template <insidable B>
-inline constexpr bool qformat_grid =
-    wide_numerator(notch_of<B>) == grid_wide{1} && wide_denominator(notch_of<B>) > grid_wide{1} && lower_of<B> == 0;
-
 // Policy test: checks both type-level and per-operation policy.
 // Composite flags (e.g. round_nearest = bit5 | snap) require all
 // their bits set — having a subset like just `snap` does NOT match.
@@ -7024,15 +7015,6 @@ using native_div_t = std::conditional_t<(lower_imax<L> > std::numeric_limits<std
                                         std::int32_t,
                                         imax>;
 
-// Round a non-negative quotient num/den (den != 0) per `m`. Used by the
-// Q-format path, whose raws are non-negative (Lower == 0).
-// U is a builtin unsigned integer or an unsigned wide_int.
-template <raw_integer U>
-constexpr U round_uquotient(U num, U den, round_mode m) noexcept {
-    const U t = num / den;
-    return rounds_away(m, false, classify_remainder(m, U(num % den), den), (t & 1) != 0) ? t + 1 : t;
-}
-
 // The zero-divisor check is skipped when R's grid excludes zero or
 // `ignore_zero` is set (a zero divisor is then UB, matching the `/= 0` no-op).
 template <insidable L, insidable R, policy_flag F, policy_flag G>
@@ -7094,50 +7076,52 @@ template <insidable L, insidable R = L, policy_flag F = none>
 struct division {
     // Native integer division, two flavours gated on `snap`:
     //   native_div_integer — both operands integer-aligned; formula `a / b`.
-    //   native_div_qformat — both same Q-format (Notch = 1/N, Lower = 0); formula
-    //                        `(a·N)/b` (the native `(a << log2 N)/b` idiom).
-    // Otherwise the exact-rational path returns inside<rational>.
+    //   native_div_fixed   — both on one notch 1/K (K > 1), anchored, any sign:
+    //                        the quotient's index on that notch is
+    //                        round(ja·K / jb) of the value indices (the native
+    //                        `(a << log2 K)/b` idiom for a power-of-two K).
+    // Otherwise the exact-rational path returns a continuous quotient.
     static constexpr bool native_div_integer = integer_native_ops<L, R, F>;
 
     // (if constexpr: naming a 64-bit view instantiates it, even where && would
     // skip it — so an exact-valued operand returns before any is named.)
-    static constexpr bool native_div_qformat = [] {
-        if constexpr (wide_valued<L> || wide_valued<R>)
+    static constexpr bool native_div_fixed = [] {
+        if constexpr (wide_grid_numbers<L> || wide_grid_numbers<R> || !notched<L> || notch_of<L> != notch_of<R> ||
+                      !anchored<L> || !anchored<R> || !(grid_of<L> / grid_of<R>).has_value())
             return false;
         else
-            return ((F | policy_of<L> | policy_of<R>)&snap) && qformat_grid<L> && qformat_grid<R> &&
-                   notch_of<L> == notch_of<R>;
+            return ((F | policy_of<L> | policy_of<R>)&snap) && wide_numerator(notch_of<L>) == grid_wide{1} &&
+                   grid_wide{1} < wide_denominator(notch_of<L>);
     }();
 
-    static constexpr bool native_div = native_div_integer || native_div_qformat;
+    static constexpr bool native_div = native_div_integer || native_div_fixed;
 
     // The rounding mode for the native paths (shared by the grid and runtime).
     static constexpr round_mode rmode = rounding_of(F | policy_of<L> | policy_of<R>);
 
     // A clear diagnostic when the result grid is unrepresentable, instead of the
     // raw expected-deref / .value() below failing cryptically (mirrors add/mul).
-    static_assert(native_div_qformat || (grid_of<L> / grid_of<R>).has_value(),
+    static_assert((grid_of<L> / grid_of<R>).has_value(),
                   "division: result grid not representable (notch/interval exceeds the "
                   "representable rational range) — coarsen the operand grids");
-    static_assert(
-        [] {
-            if constexpr (native_div_qformat)
-                return (detail::upper64<L> / detail::notch64<R>).has_value();
-            else
-                return true;
-        }(),
-        "division: Q-format result grid not representable — coarsen the operand grids");
 
-    // Native-integer endpoints rounded with the same mode as the runtime
-    // quotient, so e.g. round_ceil can't escape the grid. (The Q-format extreme
-    // is always exact, so its grid is unchanged.)
+    // The native paths' endpoints rounded with the same mode as the runtime
+    // quotient, so e.g. round_ceil can't escape the grid: onto the integers,
+    // or onto the operands' notch 1/K.
     static constexpr grid result_grid = [] {
+        constexpr interval q = (*(grid_of<L> / grid_of<R>)).Interval;
         if constexpr (native_div_integer)
-            return grid{round_rat(to_rational((*(grid_of<L> / grid_of<R>)).Interval.Lower), rmode, false),
-                        round_rat(to_rational((*(grid_of<L> / grid_of<R>)).Interval.Upper), rmode, true)};
-        else if constexpr (native_div_qformat)
-            return grid{interval{rational{0}, (detail::upper64<L> / detail::notch64<R>).value()}, detail::notch64<L>};
-        else
+            return grid{round_rat(to_rational(q.Lower), rmode, false), round_rat(to_rational(q.Upper), rmode, true)};
+        else if constexpr (native_div_fixed) {
+            // An endpoint on the notch stays; one off it rounds onto it.
+            constexpr rational n = detail::notch64<L>, k = (rational{1} / n).value();
+            auto               on = [&](const grid_rational& x, bool up) {
+                return grid_divides_evenly(x, notch_of<L>)
+                           ? to_rational(x)
+                           : (rational{round_rat((to_rational(x) * k).value(), rmode, up)} * n).value();
+            };
+            return grid{interval{on(q.Lower, false), on(q.Upper, true)}, n};
+        } else
             return *(grid_of<L> / grid_of<R>);
     }();
 
@@ -7192,21 +7176,26 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy, A&& act
     // return type; ignore_zero doesn't).
     [[maybe_unused]] constexpr bool zero_unchecked = divisor_unchecked<L, R, F, G>;
 
-    if constexpr (native_div_qformat) {
-        // rhs.Raw == 0 iff rhs.value == 0 (detail::lower64<R> == 0). Formula folds to
-        // `(a << log2 N)/b` for power-of-two N — the native Q-format idiom.
+    if constexpr (native_div_fixed) {
+        // ja·K and jb in the narrowest signed type that holds them: a 32-bit
+        // divide where it fits (Q8.8, Q15, ...), else 64 bits, else a wide_int.
+        constexpr grid_wide K    = wide_denominator(notch_of<L>);
+        constexpr int       bits = signed_value_bits_of({exact_quotient(lower_of<L>, notch_of<L>) * K,
+                                                         exact_quotient(upper_of<L>, notch_of<L>) * K,
+                                                         exact_quotient(lower_of<R>, notch_of<R>),
+                                                         exact_quotient(upper_of<R>, notch_of<R>)});
+        using W    = std::conditional_t<(bits <= 32),
+                                        std::int32_t,
+                                        std::conditional_t<(bits <= 64), imax, wide_sint<limbs_for_bits(bits)>>>;
+        const W jb = value_index<W>(rhs);
         if constexpr (!zero_unchecked)
-            if (rhs.raw() == 0)
+            if (jb == W{0})
                 return fail(errc::division_by_zero, "division by zero in div");
-        constexpr umax N = abs_den(detail::notch64<L>.Denominator);
-        // The scaled dividend raw·N in the narrowest type that holds it: a 32-bit
-        // divide where it fits (Q8.8, Q16.15, ...), else 64 bits, else a wide_int.
-        constexpr int dividend_bits = std::bit_width(max_index_v<L>) + std::bit_width(N);
-        using U = std::conditional_t<(max_index_v<L> <= std::numeric_limits<std::uint32_t>::max() / N),
-                                     std::uint32_t,
-                                     int_for_bits_t<(dividend_bits < 64 ? 64 : dividend_bits), false>>;
-        return result::from_raw(raw_cast<result>(
-            round_uquotient<U>(static_cast<U>(static_cast<U>(lhs.raw()) * U{N}), static_cast<U>(rhs.raw()), rmode)));
+        const W ja = value_index<W>(lhs) * static_cast<W>(K);
+        if constexpr (std::is_integral_v<W>)
+            return from_value_index<result>(div_rounded(ja, jb, rmode));
+        else
+            return from_value_index<result>(rounded_div<rmode>(ja, jb));
     } else if constexpr (native_div_integer) {
         using T         = native_div_t<L, R>;
         const T rhs_val = static_cast<T>(to_value(rhs));
