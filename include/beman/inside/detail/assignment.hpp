@@ -492,7 +492,7 @@ struct assignment<L, R> {
 
         // The clamp target is an interval endpoint — a grid point — so the slot is 0
         // or max_index_v, no rounding. Rational takes the exact constant;
-        // raw_from_offset<L> adds Lower back for direct-encoded storage.
+        // raw_from_offset<L> adds Lower back for value storage.
         if constexpr (rational_storage<L>)
             lhs = L::from_raw(low ? detail::lower64<L> : detail::upper64<L>);
         else
@@ -591,25 +591,14 @@ struct assignment<L, R> {
 
     template <typename P, typename A = no_action>
     static constexpr void store_checked(L& lhs, R rhs, P&& policy, A&& action = {}) {
-        if constexpr (rational_storage<L> && !detail::notched<L>)
+        if constexpr (rational_storage<L>)
             lhs = L::from_raw(rhs); // continuous: store verbatim
-        else if constexpr (detail::point_grid<L>) {
-            // Singleton grid: offset encoding → Raw=0; rational/direct → Raw = Lower.
-            if constexpr (rational_storage<L>)
-                lhs = L::from_raw(detail::lower64<L>);
-            else if constexpr (value_storage<L>)
-                lhs = L::from_raw(raw_cast<L>(raw_lo<L>));
-            else
-                lhs = L::from_raw(0);
-        } else {
-            // Store the k-th notch slot: rational storage holds the snapped value;
-            // raw_from_offset<L> covers offset- and direct-encoded integers.
-            auto store_slot = [&](auto k) {
-                if constexpr (rational_storage<L>)
-                    lhs = L::from_raw((detail::lower64<L> + (rational{k} * detail::notch64<L>).value()).value());
-                else
-                    lhs = L::from_raw(raw_from_offset<L>(k));
-            };
+        else if constexpr (detail::point_grid<L>)
+            lhs = L::from_raw({}); // a point: its value is the type
+        else {
+            // Store the k-th notch slot: raw_from_offset<L> covers index and
+            // value raws.
+            auto store_slot = [&](auto k) { lhs = L::from_raw(raw_from_offset<L>(k)); };
 
             constexpr bool has_round_flag = has_policy<L, P, round_nearest> || has_policy<L, P, round_floor> ||
                                             has_policy<L, P, round_ceil> || has_policy<L, P, round_half_even> ||
@@ -1077,7 +1066,7 @@ struct assignment<L, R> {
             // Round the L-offset to a notch index in VALUE space via round_quotient
             // (same as the scalar path), honouring every rounding mode.
             umax q = round_quotient<L, P>(rat.Numerator, ad);
-            // rat is the L-offset; raw_from_offset<L> adds detail::lower64<L> back for direct storage.
+            // rat is the L-offset; raw_from_offset<L> adds detail::lower64<L> back for value storage.
             lhs =
                 L::from_raw((rat.Denominator < 0) ? raw_from_offset<L>(-static_cast<imax>(q)) : raw_from_offset<L>(q));
         }

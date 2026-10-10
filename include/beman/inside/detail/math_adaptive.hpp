@@ -521,18 +521,6 @@ constexpr Out store(const wide_sint<K>& index, P&& policy) {
         constexpr I count = static_cast<I>(grid_of<Out>.slot_count());
         if (!index.negative() && !(count < index)) [[likely]]
             return Out::from_raw(raw_of_slot<Out>(index));
-    } else if constexpr (rational_storage<Out> && notch_fits64<Out>) {
-        // A rational raw holds the grid point j·p/q itself: built directly
-        // (the constructor reduces it) when j·p fits 64 bits.
-        constexpr I    count = static_cast<I>(grid_of<Out>.slot_count());
-        constexpr imax p     = static_cast<imax>(wide_numerator(notch_of<Out>));
-        constexpr imax q     = static_cast<imax>(wide_denominator(notch_of<Out>));
-        if (!index.negative() && !(count < index) && bit_width_of(index) < 63) [[likely]] {
-            imax j = 0, num = 0;
-            if (!__builtin_add_overflow(static_cast<imax>(index), static_cast<imax>(slot_base<Out>), &j) &&
-                !__builtin_mul_overflow(j, p, &num))
-                return Out::from_raw(rational{num, q});
-        }
     }
     // The grid point (index + Lower/Notch)·Notch, exact: stored through Out's
     // assignment (a floating-point or rational raw holds it exactly).
@@ -670,27 +658,13 @@ inline constexpr bool table_output = integer_storage<Out> && notched<Out> && !wi
 // The slot offset of an input value (0 … slot count).
 template <insidable In>
 constexpr std::size_t offset_of(const In& x) noexcept {
-    if constexpr (rational_storage<In>) {
-        // A rational raw holds the value r, a multiple of the notch n: its den
-        // divides n's, so r/n = num(r)·(den(n)/den(r))/num(n) exactly.
-        const rational     r  = x.raw();
-        constexpr rational n  = to_rational(notch_of<In>);
-        const imax         rd = r.Denominator < 0 ? -r.Denominator : r.Denominator;
-        const __int128     rn =
-            r.Denominator < 0 ? -static_cast<__int128>(r.Numerator) : static_cast<__int128>(r.Numerator);
-        const __int128 j = rn * (n.Denominator / rd) / static_cast<__int128>(n.Numerator);
-        return static_cast<std::size_t>(static_cast<imax>(j) - static_cast<imax>(slot_base<In>));
-    } else
-        return static_cast<std::size_t>(value_index<imax>(x) - static_cast<imax>(slot_base<In>));
+    return static_cast<std::size_t>(value_index<imax>(x) - static_cast<imax>(slot_base<In>));
 }
 
-// In's value at slot I (a rational raw holds the value).
+// In's value at slot I.
 template <insidable In>
 constexpr In slot_input(std::size_t i) noexcept {
-    if constexpr (rational_storage<In>)
-        return In::from_raw(to_rational(lower_of<In>) + rational{static_cast<imax>(i)} * to_rational(notch_of<In>));
-    else
-        return In::from_raw(raw_from_offset<In>(static_cast<umax>(i)));
+    return In::from_raw(raw_from_offset<In>(static_cast<umax>(i)));
 }
 
 // Out's slot for In's slot I, or −1 past Out's range: one constant

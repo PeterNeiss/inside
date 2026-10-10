@@ -51,6 +51,15 @@ TEST(GridTest, grid_storage_min_selection) {
     // Signed integer case (notch 1, negative lower)
     static_assert(std::is_same_v<storage_min_t<grid{-127, 127, 1}>, std::int8_t>);
     static_assert(std::is_same_v<storage_min_t<grid{-32000, 32000, 1}>, std::int16_t>);
+
+    // Lower above 0: the value when it is no wider than the index, else the index
+    static_assert(deduces_value<grid{5, 100, 1}> && std::is_same_v<storage_min_t<grid{5, 100, 1}>, std::uint8_t>);
+    static_assert(deduces_value<grid{1024, 65535, 1}>);
+    static_assert(std::is_same_v<storage_min_t<grid{1024, 65535, 1}>, std::uint16_t>);
+    static_assert(!deduces_value<grid{200, 300, 1}> && std::is_same_v<storage_min_t<grid{200, 300, 1}>, std::uint8_t>);
+    // a notched or offset lattice keeps the index
+    static_assert(!deduces_value<grid{{0, 1}, rational{1, 256}}>);
+    static_assert(!deduces_value<grid{{0.5_r, 10.5_r}, 1}>);
 }
 
 // grid arithmetic

@@ -125,19 +125,18 @@ TEST(FormatTest, std_format_numeric_specs_fractional_inside_goes_through_double)
     ASSERT_EQ((std::format("{}", f)), "1.25");
 }
 
-// std::format numeric specs - representation flags
-TEST(FormatTest, std_format_numeric_specs_representation_flags) {
-    // `exact` on a notched grid: empty spec keeps the exact fraction; a
-    // numeric spec routes through std::formatter<double> like any fractional
-    // grid.
-    using ex = inside<{{0, 1}, per<3>}, exact>;
+// std::format numeric specs - by storage
+TEST(FormatTest, std_format_numeric_specs_by_storage) {
+    // A thirds grid: empty spec keeps the exact fraction; a numeric spec
+    // routes through std::formatter<double> like any fractional grid.
+    using ex = inside<{{0, 1}, per<3>}>;
     ex e{rational{2u, 3}};
     ASSERT_EQ((std::format("{}", e)), "2/3");
     ASSERT_EQ((std::format("{:.3f}", e)), (std::format("{:.3f}", static_cast<double>(rational{e}))));
 
-    // `indexed` keeps the integer-grid routing: specs format the VALUE (via
-    // std::formatter<imax>), never the raw index.
-    using ix = inside<{-5, 5}, indexed>;
+    // A signed whole-number grid: specs format the VALUE (via
+    // std::formatter<imax>).
+    using ix = inside<{-5, 5}>;
     ix i{-3};
     ASSERT_EQ((std::format("{}", i)), "-3");
     ASSERT_EQ((std::format("{:>4}", i)), "  -3");
@@ -224,8 +223,6 @@ TEST(FormatTest, decimal_notches_fix_the_digits) {
     EXPECT_EQ(beman::inside::to_string(nickel{rational{1, 10}}), "0.10");
     using milli = inside<{{0, 1}, frac<1, 200>}>; // 0.005: three
     EXPECT_EQ(beman::inside::to_string(milli{rational{1, 2}}), "0.500");
-    using exact_cents = inside<{{0, 100}, per<100>}, exact>; // every raw kind
-    EXPECT_EQ(beman::inside::to_string(exact_cents{rational{3, 2}}), "1.50");
     // Binary and other notches: the value decides.
     using quarter = inside<{{0, 4}, per<4>}>;
     EXPECT_EQ(beman::inside::to_string(quarter{1.5}), "1.5");

@@ -67,9 +67,6 @@ TEST(ConsistencyTest, integer_source_off_notch_rounds_like_rational_source) {
     using Strict = inside<{{0, 10}, 2}>; // checked, no rounding mode
     EXPECT_EQ(Strict::try_make(3).error(), errc::rounding_error);
     EXPECT_THROW((void)Strict{3}, inside_error);
-
-    using Ex = inside<{{0, 10}, 2}, exact | round_nearest>; // rational storage snaps too
-    EXPECT_EQ(rational{Ex{3}}, q(4));
 }
 
 TEST(ConsistencyTest, integer_source_snaps_on_every_path) {
@@ -125,9 +122,9 @@ TEST(ConsistencyTest, inside_source_wrap_rounds_first) {
 
 // unchecked_cast keeps the target's storage layout (representation flags).
 TEST(ConsistencyTest, unchecked_cast_respects_storage_flags) {
-    using D = inside<{5, 100}, direct>;
+    using D = inside<{5, 100}>;
     EXPECT_EQ(rational{unchecked_cast<D>(7)}, q(7));
-    using W = inside<{5, 100}, u16>;
+    using W = inside<{5, 100}>;
     EXPECT_EQ(rational{unchecked_cast<W>(7)}, q(7));
     using F = inside<{{0, 4}, per<2>}>;
     EXPECT_EQ(rational{unchecked_cast<F>(1.5)}, rational{1.5});
@@ -136,9 +133,9 @@ TEST(ConsistencyTest, unchecked_cast_respects_storage_flags) {
 // Representation flags carried into a result are dropped when the result grid
 // cannot hold them, instead of tripping inside's static_asserts.
 TEST(ConsistencyTest, result_drops_invalid_direct_and_indexed) {
-    using D  = inside<{0, 10}, direct>;
+    using D  = inside<{0, 10}>;
     using H  = inside<{{0, 1}, per<2>}>;
-    using IX = inside<{1, 10}, indexed>;
+    using IX = inside<{1, 10}>;
     EXPECT_EQ(rational{D{3} * H{q(1, 2)}}, q(3, 2));
     auto dd = D{6} / D{3};
     EXPECT_EQ(rational{*dd}, q(2));
@@ -148,7 +145,7 @@ TEST(ConsistencyTest, result_drops_invalid_direct_and_indexed) {
 
 // Math auto-output types do not inherit fixed-width storage flags.
 TEST(ConsistencyTest, math_output_drops_width_flags) {
-    using B8 = inside<{-128, 127}, i8 | round_nearest>;
+    using B8 = inside<{-128, 127}, round_nearest>;
     EXPECT_EQ(rational{math::abs(B8{-128})}, q(128));
 }
 
@@ -187,12 +184,12 @@ TEST(ConsistencyTest, fmod_zero_divisor_is_an_error_value) {
     EXPECT_EQ(rational{*math::fmod(X{7}, X{-3})}, q(1));
 }
 
-// `exact` (rational) arithmetic is overflow-checked, and a result keeps the
-// operands' `checked` even when it carries a representation flag.
-TEST(ConsistencyTest, exact_arithmetic_is_overflow_checked) {
-    using E = inside<{{0, 1}, rational{0}}, exact>;
+// Continuous (rational) arithmetic is overflow-checked, and a result is
+// checked.
+TEST(ConsistencyTest, continuous_arithmetic_is_overflow_checked) {
+    using E = inside<{{0, 1}, rational{0}}>;
     static_assert(detail::is_expected_v<decltype(E{q(1, 3)} + E{q(1, 7)})>);
-    using D = inside<{0, 10}, direct | checked>;
+    using D = inside<{0, 10}, checked>;
     static_assert(has_flag(policy_of<decltype(D{1} + D{2})>, checked));
 }
 
@@ -202,7 +199,7 @@ TEST(ConsistencyTest, exact_arithmetic_is_overflow_checked) {
 //---------------------------------------------------------------------------
 TEST(ConsistencyTest, compound_ops_report_errors_through_the_policy) {
     constexpr imax big = (imax{1} << 62) - 1;
-    using E            = inside<{{0, 1}, rational{0}}, exact | checked>;
+    using E            = inside<{{0, 1}, rational{0}}, checked>;
     E e{q(1, big)};
     EXPECT_THROW(e += q(1, big - 2), inside_error);    // rational RHS overflow
     EXPECT_EQ(rational{e}, q(1, big));                 // left unchanged
@@ -277,9 +274,9 @@ TEST(ConsistencyTest, pow_past_the_output_range) {
     EXPECT_EQ(rational{*math::pow(B{4}, E{20})}, q(1) * (umax{1} << 40));
 }
 
-// conversion_rounds sees the notch of an `exact` (rational-raw) grid.
-TEST(ConsistencyTest, trunc_predicate_on_exact_notched_grid) {
-    using E = inside<{{0, 1}, per<3>}, exact>;
+// conversion_rounds sees the notch of a non-dyadic notched grid.
+TEST(ConsistencyTest, trunc_predicate_on_thirds_grid) {
+    using E = inside<{{0, 1}, per<3>}>;
     EXPECT_TRUE(conversion_rounds<E>(0.5));
     EXPECT_FALSE(conversion_rounds<E>(q(1, 3)));
 }

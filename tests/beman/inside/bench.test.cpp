@@ -1039,8 +1039,8 @@ fraction64 fraction_div(fraction64 a, fraction64 b) { return fraction_reduce(a.n
 } // namespace
 
 static void bench_rational() {
-    using exact_grid = inside<{{-8, 8}, per<1024>}, exact>;
-    std::vector<exact_grid> ea(kMask + 1), eb(kMask + 1), ep(kMask + 1);
+    using continuous = inside<{{-8, 8}, 0}>; // a rational raw
+    std::vector<continuous> ea(kMask + 1), eb(kMask + 1), ep(kMask + 1);
     std::vector<rational>   qa(kMask + 1), qb(kMask + 1);
     std::vector<fraction64> fa(kMask + 1), fb(kMask + 1), fp_(kMask + 1);
     std::vector<double>     da(kMask + 1), db(kMask + 1);
@@ -1064,7 +1064,7 @@ static void bench_rational() {
     std::size_t             i      = 0;
     constexpr std::uint64_t kIters = 100'000;
 
-    auto add = group("exact-backed add (rational storage)", kIters);
+    auto add = group("rational add (continuous grid)", kIters);
     add.run("native fraction", [&] {
         ++i;
         doNotOptimizeAway(fraction_add(fa[i & kMask], fb[i & kMask]).num);
@@ -1073,41 +1073,41 @@ static void bench_rational() {
         ++i;
         doNotOptimizeAway(da[i & kMask] + db[i & kMask]);
     });
-    add.run("inside<exact>", [&] {
+    add.run("inside (continuous)", [&] {
         ++i;
-        doNotOptimizeAway((ea[i & kMask] + eb[i & kMask]).raw().Numerator);
+        doNotOptimizeAway((ea[i & kMask] + eb[i & kMask])->raw().Numerator);
     });
     finish(add);
 
-    auto mul = group("exact-backed mul (rational storage)", kIters);
+    auto mul = group("rational mul (continuous grid)", kIters);
     mul.run("native fraction", [&] {
         ++i;
         doNotOptimizeAway(fraction_mul(fa[i & kMask], fb[i & kMask]).num);
     });
-    mul.run("inside<exact>", [&] {
+    mul.run("inside (continuous)", [&] {
         ++i;
-        doNotOptimizeAway((ea[i & kMask] * eb[i & kMask]).raw().Numerator);
+        doNotOptimizeAway((ea[i & kMask] * eb[i & kMask])->raw().Numerator);
     });
     finish(mul);
 
-    auto dv = group("exact-backed div (rational storage)", kIters);
+    auto dv = group("rational div (continuous grid)", kIters);
     dv.run("native fraction", [&] {
         ++i;
         doNotOptimizeAway(fraction_div(fa[i & kMask], fp_[i & kMask]).num);
     });
-    dv.run("inside<exact>", [&] {
+    dv.run("inside (continuous)", [&] {
         ++i;
         doNotOptimizeAway((ea[i & kMask] / ep[i & kMask])->raw().Numerator);
     });
     finish(dv);
 
-    auto cp = group("exact-backed compare <", kIters);
+    auto cp = group("rational compare < (continuous grid)", kIters);
     cp.run("native fraction cross-multiply", [&] {
         ++i;
         fraction64 a = fa[i & kMask], b = fb[i & kMask];
         doNotOptimizeAway(a.num * b.den < b.num * a.den);
     });
-    cp.run("inside<exact>", [&] {
+    cp.run("inside (continuous)", [&] {
         ++i;
         doNotOptimizeAway(ea[i & kMask] < eb[i & kMask]);
     });
@@ -1115,16 +1115,16 @@ static void bench_rational() {
 
     // rational-raw operand meets an integer-backed inside: the residual rational
     // branch the Tier-3 integer gates deliberately exclude.
-    auto mx = group("mixed exact + integer-grid add", kIters);
+    auto mx = group("mixed continuous + integer-grid add", kIters);
     mx.run("native fraction + int", [&] {
         ++i;
         fraction64   a = fa[i & kMask];
         std::int64_t n = static_cast<std::int64_t>(ib[i & kMask].raw());
         doNotOptimizeAway(fraction_add(a, fraction64{n, 1}).num);
     });
-    mx.run("inside<exact> + inside integer grid", [&] {
+    mx.run("inside continuous + inside integer grid", [&] {
         ++i;
-        doNotOptimizeAway((ea[i & kMask] + ib[i & kMask]).raw().Numerator);
+        doNotOptimizeAway((ea[i & kMask] + ib[i & kMask])->raw().Numerator);
     });
     finish(mx);
 
@@ -1503,7 +1503,7 @@ int main(int argc, char** argv) {
                   "appear when the kernel grants perf-counter access.\n\n"
                   "Known slow paths (measured in the tables below, by design):\n"
                   "arithmetic with a rational-raw operand takes the exact rational path —\n"
-                  "its cost is measured directly in the exact-backed / rational-engine\n"
+                  "its cost is measured directly in the continuous-grid / rational-engine\n"
                   "tables against a hand-rolled reduced int64 fraction (the mixed\n"
                   "integer/notch-offset add and cross-grid non-integer stores have folded\n"
                   "integer fast paths, gated on imax-safe spans); a rational RHS in a\n"

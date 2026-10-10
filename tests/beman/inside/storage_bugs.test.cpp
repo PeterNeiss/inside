@@ -287,53 +287,6 @@ TEST(StorageBugsTest, predicates_handle_non_finite_input) {
 }
 
 //---------------------------------------------------------------------------
-// 2026-10 defect pass. A grid does not fix the raw encoding: `indexed`,
-// `direct` and the width flags pick it per policy, so two insides on
-// the same grid may store the same value differently.
-//---------------------------------------------------------------------------
-TEST(StorageBugsTest, same_grid_different_encoding_compares_by_value) {
-    using A = inside<{{10, 20}, 1}, indexed>;
-    using B = inside<{{10, 20}, 1}, direct>;
-    static_assert(A{15} == B{15});
-    static_assert(A{12} < B{15});
-
-    using G1 = inside<{{-5, 5}, 1}, indexed>;
-    using G2 = inside<{{-5, 5}, 1}>; // deduced: direct int8
-    static_assert(G1{2} == G2{2});
-    static_assert(G1{-3} < G2{2});
-    static_assert(!(G1{2} != G2{2}));
-
-    using C = inside<{{0, 1}, per<4>}>;
-    using D = inside<{{0, 1}, per<4>}>; // deduced: index uint8
-    static_assert(C{rational{1, 2}} == D{rational{1, 2}});
-    static_assert(C{rational{1, 4}} < D{rational{1, 2}});
-
-    G1 a{-4};
-    G2 b{3};
-    EXPECT_LT(a, b);
-    EXPECT_NE(a, b);
-}
-
-TEST(StorageBugsTest, same_grid_different_encoding_assigns_by_value) {
-    using G1 = inside<{{-5, 5}, 1}, indexed>;
-    using G2 = inside<{{-5, 5}, 1}>;
-    static_assert(G1{G2{2}}.as<int>() == 2);
-    static_assert(G2{G1{2}}.as<int>() == 2);
-
-    using H1 = inside<{{10, 20}, 1}, direct>;
-    using H2 = inside<{{10, 20}, 1}>;
-    static_assert(H2{H1{15}}.as<int>() == 15);
-    static_assert(H1{H2{15}}.as<int>() == 15);
-
-    static_assert(unchecked_cast<G1>(G2{2}).as<int>() == 2);
-
-    G1 x{0};
-    x = G2{-5};
-    EXPECT_EQ(x.as<int>(), -5);
-    EXPECT_EQ(x.raw(), 0u);
-}
-
-//---------------------------------------------------------------------------
 // A 64-bit unsigned source above INT64_MAX must not be read as negative.
 //---------------------------------------------------------------------------
 TEST(StorageBugsTest, uint64_source_above_int64_max) {
@@ -412,14 +365,14 @@ TEST(StorageBugsTest, clamp_wrap_from_disjoint_integral_type) {
 }
 
 //---------------------------------------------------------------------------
-// A fixed-width flag pins a point's wire layout (value storage).
+// A point grid stores nothing: its value is the type.
 //---------------------------------------------------------------------------
-TEST(StorageBugsTest, width_flag_on_point_grid) {
-    using P5 = inside<grid{5}, u8>;
-    static_assert(sizeof(P5) == 1);
-    static_assert(P5{5}.raw() == 5 && P5{5} == 5);
-    using M7 = inside<grid{-7}, i16>;
-    static_assert(M7{-7}.raw() == -7 && M7{-7} == -7);
+TEST(StorageBugsTest, point_grid_stores_nothing) {
+    using P5 = inside<grid{5}>;
+    static_assert(point_storage<P5> && sizeof(P5) == 1);
+    static_assert(P5{5} == 5);
+    using M7 = inside<grid{-7}>;
+    static_assert(M7{-7} == -7);
     static_assert(P5{5} + inside<{0, 10}>{3} == 8);
 
     inside<{0, 10}> t{3};
@@ -581,7 +534,7 @@ TEST(StorageBugsTest, value_raw_source_affine_mapping) {
     static_assert(rational{L{R{-4}}} == -3);
     static_assert(rational{L{R{4}}} == 3);
     static_assert(rational{L{R{5}}} == 6);
-    using LX = inside<{{-6, 6}, 3}, round_nearest | exact>;
+    using LX = inside<{{-6, 6}, 3}, round_nearest>;
     static_assert(rational{LX{R{-5}}} == -6);
 
     L l{0};

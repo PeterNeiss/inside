@@ -66,18 +66,9 @@ template <grid G, policy_flag P>
 struct inside {
     static_assert(grid::validate<G>());
     static_assert(!(P & clamp) || !(P & wrap), "clamp and wrap are mutually exclusive");
-    // Representation flags vs grid shape (exact has no requirement; a result
-    // policy may carry several flags — storage selection resolves widest-wins,
-    // so no mutual-exclusion asserts here).
-    static_assert(!has_flag(P, direct) || detail::unit_lattice(G),
-                  "inside: the `direct` policy (raw == value as a plain integer) "
-                  "requires integer values (Notch 1, integer Lower)");
-    static_assert(!has_flag(P, indexed) || G.Notch != 0,
-                  "inside: the `indexed` policy (raw == 0-based notch index) "
-                  "requires a notch (Notch != 0)");
 
     using negative = inside<-G, P & ~detail::cursor_marker>; // −cursor is no cursor
-    using raw_type = detail::storage_for_t<G, P>;
+    using raw_type = detail::storage_min_t<G>;
 
   private:
     [[no_unique_address]] raw_type Raw; // empty for a point grid
@@ -104,10 +95,10 @@ struct inside {
         requires(!has_flag(P, detail::cursor_marker))
     = default;
 
-    // A cursor starts at Lower: its index raw 0 (cursors always store an index).
+    // A cursor starts at Lower: slot 0.
     constexpr inside()
         requires(has_flag(P, detail::cursor_marker))
-        : Raw{0} {}
+        : Raw{detail::raw_from_offset<inside>(umax{0})} {}
 
   private:
     // The one store every constructor and assignment goes through — the same
@@ -808,7 +799,7 @@ namespace detail {
 // same-notch insides compare as `bias + raw` without a rational decode.
 template <insidable B>
 inline constexpr bool index_cmp_fits = [] {
-    if constexpr (rational_storage<B> || !detail::notched<B> || !detail::anchored<B> || !values_fit_imax<B>)
+    if constexpr (!detail::notched<B> || !detail::anchored<B> || !values_fit_imax<B>)
         return false;
     else {
         constexpr auto lo  = detail::lower64<B> / detail::notch64<B>;
@@ -863,8 +854,8 @@ inline constexpr raw_t<X> point_slot_of =
 // storage shapes allow.
 template <insidable L, insidable R, class Cmp>
 constexpr auto compare(const L& lhs, const R& rhs, Cmp cmp) {
-    // same grid and encoding: Raw is monotonically ordered and comparable
-    if constexpr (grid_of<L> == grid_of<R> && same_storage<L, R>)
+    // same grid, so the same encoding: Raw is monotonically ordered and comparable
+    if constexpr (grid_of<L> == grid_of<R>)
         return cmp(lhs.raw(), rhs.raw());
     else if constexpr (point_is_slot<L, R>)
         return cmp(lhs.raw(), point_slot_of<L, R>);
@@ -994,8 +985,8 @@ inline constexpr auto just = inside<grid{value}>::from_raw({});
 //---------------------------------------------------------------------------
 // cursor<T, Step> — an inside on {{Lower, Upper + Step}, Step} of T: it steps
 // (++ moves one notch) from Lower through Upper and one step past it, the
-// end. It keeps T's checks and rounding, stores a slot index (so default
-// construction starts at Lower), and carries cursor_marker, which gives it
+// end. It keeps T's checks and rounding, default construction starts at
+// Lower, and it carries cursor_marker, which gives it
 // `end(t)`. Step is a number (an integer, `rational`, `per<N>`), T's notch by
 // default: a positive whole number of notches of T dividing its range, so
 // every value but the end is a value of T.
@@ -1016,9 +1007,7 @@ consteval grid cursor_grid(const auto& step) {
     return grid{interval{lower_of<T>, grid_add(upper_of<T>, s)}, s};
 }
 
-consteval policy_flag cursor_policy(policy_flag p) {
-    return (p & ~(raw_width_mask | direct | exact)) | indexed | cursor_marker;
-}
+consteval policy_flag cursor_policy(policy_flag p) { return p | cursor_marker; }
 } // namespace detail
 
 template <insidable T, auto Step = notch_of<T>>

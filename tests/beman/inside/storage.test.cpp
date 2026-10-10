@@ -1,0 +1,241 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+// Storage deduced from the grid, and how the behaviour policies act on it.
+
+#include <beman/inside/inside.hpp>
+#include <beman/inside/cmath.hpp>
+#include <beman/inside/formats.hpp> // beman::inside::byte
+#include <beman/inside/io.hpp>
+
+#include <gtest/gtest.h>
+
+#include <cmath>
+#include <limits>
+
+using namespace beman::inside;
+
+// default ctor is trivial (no zero-fill footgun)
+TEST(StorageTest, default_ctor_is_trivial_no_zero_fill_footgun) {
+    // The default ctor is `= default` for every policy — Raw is uninitialized,
+    // like a built-in scalar, rather than zero-filled to a possibly-invalid slot.
+    // checked is the default policy; rational/value/index storage all stay trivial.
+    static_assert(std::is_trivially_default_constructible_v<inside<{0, 10}>>);    // index
+    static_assert(std::is_trivially_default_constructible_v<inside<{-100, -5}>>); // signed value
+    static_assert(std::is_trivially_default_constructible_v<inside<grid{5}>>);    // point grid
+    static_assert(std::is_trivially_default_constructible_v<inside<{{0, 10}, per<4>}, round_nearest>>);
+}
+
+// behaviour policies on a notched grid
+TEST(StorageTest, behaviour_policies_on_a_notched_grid) {
+    // clamp: out-of-range snaps to the endpoint.
+    using EC = inside<{{0, 10}, per<4>}, clamp | round_nearest>;
+    ASSERT_EQ(rational{EC{rational{15}}}, 10);
+    ASSERT_EQ(rational{EC{rational{-3}}}, 0);
+
+    // wrap: modular reduction onto the grid
+    // (range = Upper − Lower + Notch = 10.25, so 11.25 wraps to 1).
+    using EW = inside<{{0, 10}, per<4>}, wrap | round_nearest>;
+    ASSERT_EQ((rational{EW{rational{45, 4}}}), 1);
+
+    // try_make: out-of-range yields errc::overflow.
+    using DS  = inside<{5, 100}, checked>;
+    auto ok   = DS::try_make(42);
+    auto fail = DS::try_make(200);
+    ASSERT_TRUE(ok.has_value());
+    ASSERT_EQ(*ok, 42);
+    ASSERT_TRUE(!fail.has_value());
+    ASSERT_EQ(fail.error(), errc::overflow);
+}
+
+// a dyadic grid runs the full out-of-range policy cascade
+TEST(StorageTest, dyadic_grid_runs_the_full_out_of_range_policy_cascade) {
+    // clamp: saturate to the (grid-point) endpoint.
+    using RC = inside<{{0, 4}, per<256>}, clamp>;
+    ASSERT_TRUE(static_cast<double>(rational{RC{9.5}}) == 4.0);
+    ASSERT_TRUE(static_cast<double>(rational{RC{-1.5}}) == 0.0);
+
+    // wrap: fold into [Lower, Lower + span + notch) — same convention as the
+    // fractional path. Span 0..359 with notch 1 wraps 370 → 10, -10 → 350.
+    using RW = inside<{{0, 359}, 1}, wrap>;
+    ASSERT_TRUE(static_cast<double>(rational{RW{370.0}}) == 10.0);
+    ASSERT_TRUE(static_cast<double>(rational{RW{-10.0}}) == 350.0);
+
+    // checked: out-of-range reports (throws) instead of silently storing.
+    using RK = inside<{{0, 4}, per<256>}, checked>;
+    ASSERT_THROW((void)(RK{9.5}), beman::inside::inside_error);
+    ASSERT_TRUE(static_cast<double>(rational{RK{2.5}}) == 2.5);
+
+    // try_make: out-of-range yields errc::overflow.
+    ASSERT_TRUE(RK::try_make(2.0).has_value());
+    ASSERT_TRUE(!RK::try_make(9.5).has_value());
+
+    // no flags: checked like every policy without `unsafe`; in range, stores the value.
+    using RU = inside<{{0, 4}, per<256>}>;
+    ASSERT_TRUE(static_cast<double>(rational{RU{2.5}}) == 2.5);
+}
+
+// non-finite doubles are rejected, both engines
+TEST(StorageTest, non_finite_doubles_are_rejected_both_engines) {
+    // Default engine: store_real guards before the grid snap; fixed engine:
+    // the integer-backed path throws in rational(double). Same observable.
+    using R          = inside<{{0, 4}, per<256>}, round_nearest>;
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    const double inf = std::numeric_limits<double>::infinity();
+    ASSERT_THROW((void)(R{nan}), beman::inside::inside_error);
+    ASSERT_THROW((void)(R{inf}), beman::inside::inside_error);
+    ASSERT_THROW((void)(R{-inf}), beman::inside::inside_error);
+
+    // Non-finite input is reported as errc::not_finite (distinct from the
+    // overflow used for finite-but-out-of-interval values), both engines.
+    try {
+        R{nan};
+        FAIL() << "expected throw";
+    } catch (const beman::inside::inside_error& e) {
+        ASSERT_EQ(e.Code, errc::not_finite);
+    }
+}
+
+// Full-domain inverse trig (improvement #2): atan beyond |x| ≤ 1 via
+// reciprocal reduction; atan2 beyond the unit square via max-magnitude
+// normalization. Engine-neutral (both engines accept the same programs).
+// atan / atan2 accept magnitudes beyond 1
+TEST(StorageTest, atan_atan2_accept_magnitudes_beyond_1) {
+    using wide_t = inside<{{-16, 16}, per<16384>}, round_nearest>;
+
+    auto val = [](auto b) { return static_cast<double>(rational{b}); };
+
+    // Determinism: pin the exact grid output (a multiple of 1/16384, exactly
+    // representable in double). These values are bit-identical on both math engines
+    // and every platform; the comments give the true atan they snap to.
+    ASSERT_EQ(val(math::atan(wide_t{2})), 0x1.1b7p+0);                // ~1.1071488
+    ASSERT_EQ(val(math::atan(wide_t{-3})), -0x1.3fcp+0);              // ~-1.2490234
+    ASSERT_EQ(val(math::atan(wide_t{16})), 0x1.8224p+0);              // ~1.5083618
+    ASSERT_EQ((val(math::atan(wide_t{rational{1, 2}}))), 0x1.dacp-2); // ~0.4636230
+
+    ASSERT_EQ((val(math::atan2(wide_t{3}, wide_t{1}))), 0x1.3fcp+0);   // ~1.2490234
+    ASSERT_EQ((val(math::atan2(wide_t{1}, wide_t{-5}))), 0x1.78dcp+1); // ~2.9442139
+    ASSERT_EQ((val(math::atan2(wide_t{-7}, wide_t{2}))), -0x1.4aep+0); // ~-1.2924805
+}
+
+// Per-operation policy overrides (`with_*`, `on_*`, `policy(ec)`) route
+// through the assignment engine and store the endpoint, not a notch count.
+TEST(StorageTest, per_operation_policies_work_on_dyadic_bounds) {
+    using R = inside<{{1, 4}, per<256>}, round_nearest>; // Lower != 0
+
+    R a{2.0};
+    a.with_clamp() = 9.5;
+    ASSERT_TRUE(static_cast<double>(rational{a}) == 4.0);
+    a.with_clamp() = 0.25;
+    ASSERT_TRUE(static_cast<double>(rational{a}) == 1.0);
+
+    R   b{2.0};
+    int fired                                 = 0;
+    b.on_clamp([&](auto&, auto) { ++fired; }) = 0.0;
+    ASSERT_TRUE(static_cast<double>(rational{b}) == 1.0);
+    ASSERT_EQ(fired, 1);
+
+    // In-range per-operation store snaps onto the grid.
+    R c{1.0};
+    c.policy<snap>() = 2.5;
+    ASSERT_TRUE(static_cast<double>(rational{c}) == 2.5);
+
+    // error_code mode: out-of-range reports, value unchanged.
+    beman::inside::errc ec{};
+    R                   d{2.0};
+    d.policy<checked>(ec) = 9.5;
+    ASSERT_TRUE(ec != errc{});
+    ASSERT_TRUE(static_cast<double>(rational{d}) == 2.0);
+
+    // inside rhs through the per-operation clamp.
+    using S = inside<{0, 100}>;
+    R e{2.0};
+    e.with_clamp() = S{50};
+    ASSERT_TRUE(static_cast<double>(rational{e}) == 4.0);
+
+    // wrap override.
+    using W = inside<{{0, 359}, 1}, round_nearest>;
+    W w{0.0};
+    w.with_wrap() = 370.0;
+    ASSERT_TRUE(static_cast<double>(rational{w}) == 10.0);
+}
+
+// Checked arithmetic on notched grids returns a plain inside: the result grid
+// holds every result. Continuous (Notch == 0) grids store arbitrary
+// rationals, so nothing is provable and they keep the wrapper.
+TEST(StorageTest, notched_arithmetic_returns_a_plain_inside) {
+    using E = inside<{{0, 10}, per<4>}, checked | round_nearest>;
+    E a{rational{3, 4}}, b{rational{5, 4}};
+
+    auto s = a + b;
+    static_assert(!detail::is_expected_v<decltype(s)>);
+    ASSERT_EQ(rational{s}, 2);
+
+    auto d = a - b;
+    static_assert(!detail::is_expected_v<decltype(d)>);
+    ASSERT_EQ(rational{d}, (rational{-1, 2}));
+
+    auto p = a * b;
+    static_assert(!detail::is_expected_v<decltype(p)>);
+    ASSERT_EQ(rational{p}, (rational{15, 16}));
+
+    // Continuous grids: denominators unbounded → wrapper stays (add AND mul).
+    using C = inside<{{0, 10}, 0}, checked>;
+    static_assert(detail::is_expected_v<decltype(C{} + C{})>);
+    static_assert(detail::is_expected_v<decltype(C{} * C{})>);
+
+    // ...and the check is real: huge-denominator values overflow into an error
+    // instead of silently wrapping (the pre-fix mul gate claimed these safe).
+    C    x    = C::from_raw(rational{1, imax{1} << 40});
+    auto wide = x * x; // den 2^80 > imax
+    ASSERT_TRUE(!wide.has_value());
+    ASSERT_EQ(wide.error(), errc::overflow);
+}
+
+// Smaller-threads batch: wide trig envelope, pown, clamp saturation.
+// sin/cos/tan accept radians up to 2^20
+TEST(StorageTest, sin_cos_tan_accept_radians_up_to_2_20) {
+    using wide_t     = inside<{{-(imax{1} << 20), imax{1} << 20}, per<1024>}, round_nearest>;
+    auto         val = [](auto b) { return static_cast<double>(rational{b}); };
+    const double tol = 2.0 / 1024; // grid tolerance (notch ≈ 9.8e-4)
+
+    const double xs[] = {100000.0, -551496.5, 1048576.0, -1048576.0, 3.0};
+    for (double x : xs) {
+        ASSERT_TRUE(std::fabs(val(math::sin(wide_t{x})) - std::sin(x)) < tol);
+        ASSERT_TRUE(std::fabs(val(math::cos(wide_t{x})) - std::cos(x)) < tol);
+    }
+}
+
+// pown<E> - exact compile-time integer powers on any inside
+TEST(StorageTest, pown_e_exact_compile_time_integer_powers_on_any_inside) {
+    using s8 = inside<{-10, 10}>;
+    ASSERT_TRUE(math::pown<3>(s8{-2}) == -8);
+    ASSERT_TRUE(math::pown<0>(s8{7}) == 1);
+    ASSERT_TRUE(math::pown<1>(s8{5}) == 5);
+    ASSERT_TRUE(math::pown<5>(s8{3}) == 243);
+
+    // Result grid widens corner-correctly: (-10..10)^3 covers ±1000.
+    using cube_t = decltype(math::pown<3>(s8{}));
+    static_assert(lower_of<cube_t> <= -1000);
+    static_assert(upper_of<cube_t> >= 1000);
+
+    // Exact on fractional grids.
+    using q = inside<{{0, 2}, per<4>}, round_nearest>;
+    ASSERT_EQ((rational{math::pown<2>(q{rational{3, 4}})}), (rational{9, 16}));
+}
+
+// tan saturates instead of erroring when Out carries clamp
+TEST(StorageTest, tan_saturates_instead_of_erroring_when_out_carries_clamp) {
+    // Explicit-Out spelling is the impl form (`tan<T>(x)` would bind T as the
+    // INPUT of the auto form).
+    using in_t  = inside<{{-2, 2}, per<16384>}, round_nearest>;
+    using sat_t = inside<{{-1, 1}, per<16384>}, round_nearest | clamp>;
+    using err_t = inside<{{-1, 1}, per<16384>}, round_nearest>;
+
+    // tan(1.2) ≈ 2.57 — beyond [-1, 1].
+    auto sat = math::tan_into<sat_t>(in_t{1.2});
+    ASSERT_TRUE(sat.has_value());
+    ASSERT_TRUE(static_cast<double>(rational{*sat}) == 1.0); // clamped to Upper
+
+    auto err = math::tan_into<err_t>(in_t{1.2});
+    ASSERT_TRUE(!err.has_value());
+    ASSERT_EQ(err.error(), errc::overflow);
+}

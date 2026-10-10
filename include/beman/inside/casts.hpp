@@ -67,9 +67,7 @@ template <insidable B, numeric A>
 // every domain/round check. UB if the value is actually out of range.
 template <insidable B, numeric A>
 [[nodiscard]] constexpr B unchecked_cast(A value) {
-    // Keep B's representation flags so the twin's raw layout is B's.
-    constexpr policy_flag representation = policy_of<B> & (exact | direct | indexed | raw_width_mask);
-    using twin                           = inside<grid_of<B>, unsafe | representation>;
+    using twin = inside<grid_of<B>, unsafe>;
     return B::from_raw(twin{value}.raw()); // same grid → identical raw layout
 }
 

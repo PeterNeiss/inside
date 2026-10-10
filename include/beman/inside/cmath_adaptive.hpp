@@ -755,10 +755,9 @@ template <insidable In>
 inline constexpr imax max_abs_int = ceil_abs(lower_of<In>) > ceil_abs(upper_of<In>) ? ceil_abs(lower_of<In>)
                                                                                     : ceil_abs(upper_of<In>);
 
-// Policy of a deduced output: the input's, minus a fixed storage width,
-// rounding to nearest.
+// Policy of a deduced output: the input's (no cursor), rounding to nearest.
 template <insidable In>
-inline constexpr policy_flag auto_policy = (policy_of<In> & ~(raw_width_mask | cursor_marker)) | round_nearest;
+inline constexpr policy_flag auto_policy = (policy_of<In> & ~cursor_marker) | round_nearest;
 
 template <insidable In, grid_rational Lo, grid_rational Hi>
 using auto_grid_t = inside<{{Lo, Hi}, notch_of<In>}, auto_policy<In>>;
@@ -837,7 +836,7 @@ inline constexpr bool fp_tier_available = false;
 // significant bits.
 template <insidable In>
 inline constexpr bool fp_exact_input = [] {
-    if constexpr (wide_valued<In> || rational_storage<In> || !notched<In>)
+    if constexpr (wide_valued<In> || !notched<In>)
         return false;
     else {
         const grid_wide q = wide_denominator(notch_of<In>), p = wide_numerator(notch_of<In>);
@@ -893,7 +892,7 @@ inline constexpr bool dyadic_notch = [] {
 
 // Value indices of In below 2^53: exact as doubles.
 template <insidable In>
-inline constexpr bool small_index = !wide_valued<In> && !rational_storage<In> && notched<In> &&
+inline constexpr bool small_index = !wide_valued<In> && notched<In> &&
                                     grid_magnitude_bits<In> + grid_bits(wide_denominator(notch_of<In>)) -
                                             grid_bits(wide_numerator(notch_of<In>)) + 1 <=
                                         53;

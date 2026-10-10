@@ -22,8 +22,8 @@ namespace beman::inside::detail {
 // Both operands are plain integer grids and the caller accepted integer
 // truncation (snap) — the prerequisite for native integer div / mod.
 template <insidable L, insidable R, policy_flag F>
-inline constexpr bool integer_ops = ((F | policy_of<L> | policy_of<R>)&snap) && !rational_storage<L> &&
-                                    !rational_storage<R> && integer_lattice<L> && integer_lattice<R>;
+inline constexpr bool integer_ops =
+    ((F | policy_of<L> | policy_of<R>)&snap) && integer_lattice<L> && integer_lattice<R>;
 
 // ...and every value fits imax, so the builtin integer division applies.
 template <insidable L, insidable R, policy_flag F>
@@ -180,14 +180,12 @@ struct division {
             return *(grid_of<L> / grid_of<R>);
     }();
 
-    // Representation propagation — shared rule in detail/rep.hpp.
-    using rep_t  = result_rep<L, R, result_grid>;
-    using result = inside<result_grid, rep_t::result_policy>;
+    // A result is checked, whatever its operands' policies.
+    using result = inside<result_grid>;
 
     template <policy_flag G = F>
     static constexpr bool needs_overflow_check =
-        has_any_flag(G | F, checked) || is_checked(policy_of<L>) || is_checked(policy_of<R>) ||
-        has_any_flag(G | F | policy_of<L> | policy_of<R>, exact);
+        has_any_flag(G | F, checked) || is_checked(policy_of<L>) || is_checked(policy_of<R>);
 
     // For a nonzero divisor the op fails only on the checked rational path
     // (overflow). So when the divisor excludes zero AND this is false, `div`

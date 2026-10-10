@@ -125,7 +125,7 @@ TEST(UnanchoredGrid, storage) {
     // notch 1 but non-integer values: never value storage
     static_assert(!integer_value_storage<inside<kNegOff>>);
     static_assert(!unit_lattice(kHalfOff));
-    static_assert(index_storage<inside<kHalfOff, indexed | u8>>);
+    static_assert(index_storage<inside<kHalfOff>>);
     static_assert(!double_exact<kThirdOff>);
 }
 
@@ -211,9 +211,9 @@ TEST(UnanchoredGrid, store_rounds_dyadic_offsets) {
 }
 
 TEST(UnanchoredGrid, store_rounds_with_exact_storage) {
-    check_store_rational<kQuarterOff, round_nearest, exact>();
-    check_store_rational<kSymOff, snap, exact>();
-    check_store_rational<kThirdOff, round_half_even, exact>();
+    check_store_rational<kQuarterOff, round_nearest>();
+    check_store_rational<kSymOff, snap>();
+    check_store_rational<kThirdOff, round_half_even>();
 }
 
 TEST(UnanchoredGrid, off_lattice_store_is_an_error_without_rounding) {

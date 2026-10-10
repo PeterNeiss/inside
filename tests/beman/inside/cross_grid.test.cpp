@@ -157,40 +157,37 @@ TEST(CrossGridTest, integer_paths_stay_engaged_and_fp_stays_excluded) {
 }
 
 // regression: cross-grid assign onto rational storage keeps the value
-TEST(CrossGridTest, regression_cross_grid_assign_onto_rational_storage_keeps_the_value) {
-    // The insidable-rhs store used the notch-index machinery for rational-raw
-    // targets: an index-raw source had its VALUE rounded to a whole number
-    // (7/3 -> 2/1) and a rational-raw source had the grid transform applied to
-    // a raw that already was the value (5/3 -> corrupted). Both must store the
-    // exact source value.
-    using exact_t = inside<{{0, 4}, per<3>}, exact | round_nearest>;
+TEST(CrossGridTest, cross_grid_assign_keeps_the_value) {
+    // An inside source stores its exact value; rounding only where the source
+    // is off the target grid.
+    using thirds = inside<{{0, 4}, per<3>}, round_nearest>;
 
     using index_src = inside<{{0, 4}, per<3>}, round_nearest>;
-    exact_t from_index;
+    thirds from_index;
     from_index = index_src{rational{7, 3}};
-    ASSERT_EQ(from_index.raw(), (rational{7, 3}));
+    ASSERT_EQ(rational{from_index}, (rational{7, 3}));
 
-    using exact_wide = inside<{{-4, 4}, per<3>}, exact | round_nearest>;
-    exact_t from_exact;
-    from_exact = exact_wide{rational{5, 3}};
-    ASSERT_EQ(from_exact.raw(), (rational{5, 3}));
+    using wide_thirds = inside<{{-4, 4}, per<3>}, round_nearest>;
+    thirds from_exact;
+    from_exact = wide_thirds{rational{5, 3}};
+    ASSERT_EQ(rational{from_exact}, (rational{5, 3}));
 
     using value_src = inside<{0, 4}, snap>;
-    exact_t from_value_raw;
+    thirds from_value_raw;
     from_value_raw = value_src{3};
-    ASSERT_EQ(from_value_raw.raw(), rational{3});
+    ASSERT_EQ(rational{from_value_raw}, rational{3});
 
-    using dyadic_src   = inside<{{0, 4}, per<256>}, round_nearest>;
-    using exact_dyadic = inside<{{0, 4}, per<256>}, exact | round_nearest>;
-    exact_dyadic from_dyadic;
+    using dyadic_src = inside<{{0, 4}, per<256>}, round_nearest>;
+    using dyadic     = inside<{{0, 4}, per<256>}, round_nearest>;
+    dyadic from_dyadic;
     from_dyadic = dyadic_src{rational{513, 256}};
-    ASSERT_EQ(from_dyadic.raw(), (rational{513, 256}));
+    ASSERT_EQ(rational{from_dyadic}, (rational{513, 256}));
 
     // rounding still happens when the source is off the target grid
-    using exact_coarse = inside<{{0, 4}, 1}, exact | round_nearest>;
-    exact_coarse rounded;
+    using units = inside<{{0, 4}, 1}, round_nearest>;
+    units rounded;
     rounded = index_src{rational{7, 3}}; // 2.33 -> 2 on the unit grid
-    ASSERT_EQ(rounded.raw(), rational{2});
+    ASSERT_EQ(rational{rounded}, rational{2});
 }
 
 // scalar comparison integer arm agrees with the rational decode

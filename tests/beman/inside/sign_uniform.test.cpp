@@ -57,9 +57,9 @@ std::set<rational> sample(int n) {
 
 TEST(UniformTest, uniform_covers_every_slot_and_stays_on_the_grid) {
     using ints    = inside<{0, 9}>;
-    using idx     = inside<{-5, 5}, indexed>;
+    using idx     = inside<{-5, 5}>;
     using quarter = inside<{{-1, 1}, per<4>}>;
-    using thirds  = inside<{{0, 1}, per<3>}, exact>;
+    using thirds  = inside<{{0, 1}, per<3>}>;
     EXPECT_EQ(sample<ints>(2000).size(), 10u);
     EXPECT_EQ(sample<idx>(2000).size(), 11u);
     const auto q = sample<quarter>(2000);

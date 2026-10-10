@@ -119,15 +119,15 @@ TEST(InsideArithmeticTest, inside_div_rational_vs_integer_paths) {
 
     {
         SCOPED_TRACE("offset-encoded storage takes integer path");
-        using off = inside<{5, 100}>;
+        using off = inside<{200, 300}>;
         static_assert(!(value_storage<off>));
         static_assert(index_storage<off>);
 
-        constexpr off  a{50}, b{10};
+        constexpr off  a{300}, b{200};
         constexpr auto q = div(a, b, snapped);
-        // off's grid {5,100} excludes zero, so div returns a plain inside (no expected).
+        // off's grid {200,300} excludes zero, so div returns a plain inside (no expected).
         static_assert(!(std::is_same_v<typename decltype(q)::raw_type, rational>));
-        static_assert(q == 5);
+        static_assert(q == 1);
     }
 
     {

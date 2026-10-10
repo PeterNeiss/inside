@@ -291,8 +291,8 @@ template <insidable Target, std::ranges::input_range Rng>
 
 //---------------------------------------------------------------------------
 // common_inside — the "hull" type able to hold every value of L and R exactly:
-// interval hull + notch gcd (grid `hull`), representation propagated by the
-// same rule as arithmetic results (detail::result_rep). Backs the
+// interval hull + notch gcd (grid `hull`), checked like arithmetic results.
+// Backs the
 // std::common_type specialisation (numeric_limits.hpp) and mixed-grid
 // min/max below. The primary has no `type` when the hull grid is
 // unrepresentable, so common_type_t SFINAEs away instead of erroring.
@@ -311,7 +311,7 @@ template <insidable Lhs, insidable Rhs>
     requires(!std::same_as<Lhs, Rhs>) && (hull(grid_of<Lhs>, grid_of<Rhs>).has_value())
 struct common_inside<Lhs, Rhs> {
     static constexpr grid hull_grid = *hull(grid_of<Lhs>, grid_of<Rhs>);
-    using type                      = inside<hull_grid, result_rep<Lhs, Rhs, hull_grid>::result_policy>;
+    using type                      = inside<hull_grid>;
 };
 } // namespace detail
 

@@ -209,7 +209,7 @@ TEST(CompoundAssignTest, compound_policy_tail_at_the_raw_edges) {
 // compound -=: non-fast storages still route through += (-rhs)
 TEST(CompoundAssignTest, compound_non_fast_storages_still_route_through_plus_rhs) {
     // rational raw falls back and stays exact
-    using ex = inside<{{0, 4}, per<3>}, exact | round_nearest>;
+    using ex = inside<{{0, 4}, per<3>}, round_nearest>;
     ex exact_lhs{rational{7, 3}};
     exact_lhs -= ex{rational{2, 3}};
     ASSERT_EQ(rational{exact_lhs}, (rational{5, 3}));

@@ -33,10 +33,10 @@ using namespace beman::inside::detail;
 inline constexpr rational kPiRat{1068966896, 340262731};
 inline constexpr rational kTwoPiRat = 2 * kPiRat;
 
-// Policy of an auto-deduced output: the input's, minus any fixed-width
-// storage flag (i8 … u64) — the output range differs, as for arithmetic.
+// Policy of an auto-deduced output: the input's (a cursor's output is no
+// cursor).
 template <insidable In>
-inline constexpr policy_flag out_policy = policy_of<In> & ~(raw_width_mask | cursor_marker);
+inline constexpr policy_flag out_policy = policy_of<In> & ~cursor_marker;
 
 // A 64-bit grid operation's result through Out's assignment.
 template <insidable Out, typename V>
@@ -253,8 +253,6 @@ using namespace beman::inside::detail;
 //   * all unit counts fit comfortably in imax (headroom 4).
 template <insidable Out, insidable InX, insidable InY>
 inline constexpr bool fmod_int_fast = [] {
-    if (rational_storage<InX> || rational_storage<InY> || rational_storage<Out>)
-        return false;
     if (!::beman::inside::detail::notched<InX> || !::beman::inside::detail::notched<InY> ||
         !::beman::inside::detail::notched<Out>)
         return false;

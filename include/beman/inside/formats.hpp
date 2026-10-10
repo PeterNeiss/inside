@@ -20,7 +20,7 @@
 //---------------------------------------------------------------------------
 namespace beman::inside {
 //-------------------------------------------------------------------------
-// Native integer widths — direct storage (Raw == value), `checked`.
+// Native integer widths — value storage (Raw == value), `checked`.
 // Full native range.
 //-------------------------------------------------------------------------
 using byte  = inside<{0, 255}>;        // uint8

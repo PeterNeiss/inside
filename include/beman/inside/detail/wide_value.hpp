@@ -364,18 +364,9 @@ constexpr raw_t<L> raw_of_slot(const W& offset) noexcept {
         return raw_t<L>{};
     else if constexpr (index_storage<L>)
         return static_cast<raw_t<L>>(offset);
-    else if constexpr (!anchored<L>) {
-        // Lower + offset·Notch (a rational raw: integer value storage has
-        // integer values, an anchored grid).
-        const rational k = offset < W{0} ? -rational{static_cast<umax>(-offset)} : rational{static_cast<umax>(offset)};
-        return (detail::lower64<L> + (k * detail::notch64<L>).value()).value();
-    } else {
-        const W j = offset + static_cast<W>(slot_base<L>);
-        if constexpr (rational_storage<L>) { // |J| < 2^64: a 64-bit grid's value index
-            const rational r = j < W{0} ? -rational{static_cast<umax>(-j)} : rational{static_cast<umax>(j)};
-            return (r * detail::notch64<L>).value();
-        } else // integer value raw: raw == J (Notch 1)
-            return static_cast<raw_t<L>>(j);
+    else { // integer value raw on a whole-number grid: raw == J (Notch 1)
+        static_assert(integer_value_storage<L>, "raw_of_slot: a slot needs a notched grid");
+        return static_cast<raw_t<L>>(offset + static_cast<W>(slot_base<L>));
     }
 }
 
@@ -442,8 +433,7 @@ inline constexpr grid_rational unit_of = point_grid<X> ? abs(lower_of<X>) : grid
 // Lower, or x's value for a point).
 template <typename W, grid_rational Unit, insidable X>
 constexpr W value_in_units(const X& x) noexcept {
-    // A point (Lower == Upper) holds its value in the type — even under a
-    // width flag, whose raw stores it again.
+    // A point (Lower == Upper) holds its value in the type.
     if constexpr (point_grid<X>) {
         constexpr grid_wide q = exact_quotient(lower_of<X>, Unit);
         return static_cast<W>(q);

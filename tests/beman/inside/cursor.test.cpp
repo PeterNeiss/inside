@@ -35,10 +35,9 @@ TEST(Cursor, type) {
     static_assert(has_flag(policy_of<cur>, cursor_marker));
     static_assert(index_storage<cur>);
     static_assert(std::is_same_v<raw_t<cur>, std::uint8_t>);
-    // storage flags are T's, not the cursor's
-    using pinned = inside<{0, 200}, u8>;
-    static_assert(index_storage<cursor<pinned>>);
-    static_assert(!has_flag(policy_of<cursor<pinned>>, u8));
+    // a whole-number cursor stores its value, and still starts at Lower
+    static_assert(integer_value_storage<cursor<inside<{5, 100}>>>);
+    static_assert(rational{cursor<inside<{5, 100}>>{}} == 5);
     // the step as a rational, per<N> or an integer; T's notch by default
     static_assert(std::is_same_v<cursor<time_t_, 0.25_r>, cur>);
     static_assert(std::is_same_v<cursor<inside<{0, 10}>, 2>, cursor<inside<{0, 10}>, rational{2}>>);

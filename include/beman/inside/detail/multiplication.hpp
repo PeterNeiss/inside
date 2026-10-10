@@ -25,9 +25,8 @@ struct multiplication {
     // that message instead of the rational overflow behind it.)
     static constexpr grid result_grid =
         grid_product_fits(grid_of<L>, grid_of<R>) ? (grid_of<L> * grid_of<R>).value() : grid_of<L>;
-    // Representation propagation — shared rule in detail/rep.hpp.
-    using rep_t  = result_rep<L, R, result_grid>;
-    using result = inside<result_grid, rep_t::result_policy>;
+    // A result is checked, whatever its operands' policies.
+    using result = inside<result_grid>;
 
     template <policy_flag F>
     static constexpr bool needs_overflow_check =
@@ -44,8 +43,7 @@ struct multiplication {
     // the far end when c < 0. No multiply at all.
     template <insidable Point, insidable X>
     static constexpr bool point_scale =
-        point_grid<Point> && lower_of<Point> != 0 && !rational_storage<X> && notched<X> && !rational_storage<result> &&
-        !wide_valued<X> && !wide_valued<result>;
+        point_grid<Point> && lower_of<Point> != 0 && notched<X> && !wide_valued<X> && !wide_valued<result>;
 
     template <bool Negate, insidable X>
     static constexpr result scale_by_point(const X& x) {

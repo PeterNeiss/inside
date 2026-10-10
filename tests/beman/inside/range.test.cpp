@@ -218,12 +218,12 @@ void require_decodes_analytically() {
 
 // inside_range: decode agrees with Lower + i*Notch on every storage kind
 TEST(RangeTest, inside_range_decode_agrees_with_lower_plus_i_notch_on_every_storage_kind) {
-    require_decodes_analytically<inside_range<{0, 999}>>();                // value raw
-    require_decodes_analytically<inside_range<{-500, 500}>>();             // value raw, signed
-    require_decodes_analytically<inside_range<{{0, 4}, per<256>}>>();      // index raw
-    require_decodes_analytically<inside_range<{{-2, 2}, per<4>}>>();       // index raw, offset Lower
-    require_decodes_analytically<inside_range<{0, 255}>>();                // full-width uint8 raw
-    require_decodes_analytically<inside_range<{{0, 2}, per<3>}, exact>>(); // rational raw fallback
+    require_decodes_analytically<inside_range<{0, 999}>>();           // value raw
+    require_decodes_analytically<inside_range<{-500, 500}>>();        // value raw, signed
+    require_decodes_analytically<inside_range<{{0, 4}, per<256>}>>(); // index raw
+    require_decodes_analytically<inside_range<{{-2, 2}, per<4>}>>();  // index raw, offset Lower
+    require_decodes_analytically<inside_range<{0, 255}>>();           // full-width uint8 raw
+    require_decodes_analytically<inside_range<{{0, 2}, per<3>}>>();   // index raw, notch 1/3
 }
 
 // inside_range: start ctor inverts the decode on every storage kind
@@ -236,7 +236,7 @@ TEST(RangeTest, inside_range_start_ctor_inverts_the_decode_on_every_storage_kind
     };
     first_equals_start(inside_range<{0, 999}>{}, 500);
     first_equals_start(inside_range<{{0, 4}, per<256>}>{}, 2);
-    first_equals_start(inside_range<{{0, 2}, per<3>}, exact>{}, 1);
+    first_equals_start(inside_range<{{0, 2}, per<3>}>{}, 1);
 }
 
 // inside_range: a grid filling its raw type visits every value once
@@ -258,7 +258,7 @@ TEST(RangeTest, inside_range_fast_decode_arms_engage_dispatch_pins) {
     static_assert(integer_value_storage<inside_range<{0, 999}>::value_type>);
     static_assert(index_storage<inside_range<{{0, 4}, per<256>}>::value_type>);
     static_assert(index_storage<inside_range<{{-2, 2}, per<4>}>::value_type>);
-    static_assert(rational_storage<inside_range<{{0, 2}, per<3>}, exact>::value_type>);
+    static_assert(index_storage<inside_range<{{0, 2}, per<3>}>::value_type>);
 }
 
 // inside_range: random access and reverse on a mid-range start

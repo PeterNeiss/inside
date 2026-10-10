@@ -35,10 +35,7 @@ template <insidable B, std::uniform_random_bit_generator G>
     } else {
         std::uniform_int_distribution<umax> pick(0, detail::max_index_v<B>);
         const umax                          k = pick(g);
-        if constexpr (detail::rational_storage<B>)
-            return B::from_raw((detail::lower64<B> + (detail::rational{k} * detail::notch64<B>).value()).value());
-        else
-            return B::from_raw(detail::raw_from_offset<B>(k)); // index or value storage
+        return B::from_raw(detail::raw_from_offset<B>(k)); // index or value storage
     }
 }
 } // namespace beman::inside

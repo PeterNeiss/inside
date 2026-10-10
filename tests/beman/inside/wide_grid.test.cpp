@@ -39,8 +39,6 @@ TEST(WideGridTest, deduces_wide_index) {
     static_assert(sizeof(fine) == 16);
     static_assert(detail::wide_index_storage<fine> && detail::index_storage<fine>);
     static_assert(grid_of<fine>.slot_bits() == 67);
-    // `indexed` sizes from the same slot count.
-    static_assert(std::is_same_v<inside<{{0, p34}, per<p32>}, indexed>::raw_type, detail::wide_uint<2>>);
     // A 64-bit rational cannot hold every value: no implicit conversion.
     static_assert(!std::is_convertible_v<fine, rational>);
     static_assert(!std::is_convertible_v<fine, imax>);

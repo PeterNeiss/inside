@@ -64,47 +64,8 @@ inline constexpr policy_flag checked{1ull << 34}; // runtime range/notch/overflo
 inline constexpr policy_flag clamp{1ull << 32}; // saturate to boundary
 inline constexpr policy_flag wrap{1ull << 33};  // modular arithmetic
 
-// Representation flags — select raw storage. Without one, storage is deduced
-// from the grid (notch-0 → rational; unit notch at/below 0 → integer value;
-// else 0-based index). Binary ops OR operand policies; storage resolves
-// widest-wins: exact > {width} > direct > indexed > deduced.
-// ({width} = the fixed-width integer flags i8..u64 declared below; they pin the
-// exact backing type rather than letting deduction pick the smallest fit.)
-
-// Fixed-width integer raw storage — pin the exact backing type instead of
-// letting deduction pick the smallest fit. A bare width flag means *value*
-// storage (raw == value, like `direct`, so Notch == 1 and the value range must
-// fit the type); OR in `indexed` for 0-based notch-index storage. `storage_pick`
-// static_asserts the type is big enough for the grid (no silent widening). One
-// width flag at a time. They carry no rounding — plain integer storage, like
-// `direct`/`indexed`.
-inline constexpr policy_flag i8{1ull << 42};
-inline constexpr policy_flag u8{1ull << 43};
-inline constexpr policy_flag i16{1ull << 44};
-inline constexpr policy_flag u16{1ull << 45};
-inline constexpr policy_flag i32{1ull << 46};
-inline constexpr policy_flag u32{1ull << 47};
-inline constexpr policy_flag i64{1ull << 48};
-inline constexpr policy_flag u64{1ull << 49};
-
-// OR of every fixed-width flag — lets storage_pick test "any width pinned" and
-// count set bits (exactly one allowed) in a single mask.
-inline constexpr policy_flag raw_width_mask{i8 | u8 | i16 | u16 | i32 | u32 | i64 | u64};
-
-// `exact` — force rational raw storage on any grid. Values still obey the grid;
-// exact fractions, no notch-count limit, no double. Slowest; overflow-checked
-// rational math. Identical under both engines.
-inline constexpr policy_flag exact{1ull << 38};
-
-// `direct` — force raw == value (plain integer) where deduction would pick a
-// 0-based index (inside<{5,100}> stores 5..100). Wire/debugger value for interop.
-// Requires Notch == 1.
-inline constexpr policy_flag direct{1ull << 39};
-
-// `indexed` — force raw == 0-based notch index where deduction would pick
-// direct storage (inside<{-5,5}> stores 0..10). Dense unsigned layout. Requires
-// Notch != 0.
-inline constexpr policy_flag indexed{1ull << 40};
+// No flag picks the raw: storage follows the grid alone (grid.hpp
+// storage_min, docs/storage.md).
 
 // opt-out of `checked`: no domain/round/overflow/div-by-zero checks (reading
 // out-of-range or dividing by zero is UB; `/= 0` no-ops, `a / 0` skips the
@@ -132,7 +93,7 @@ inline constexpr policy_flag unsafe{detail::unsafe_marker | ignore_range | snap 
 
 // Runtime checks run unless the policy opts out with `unsafe`; an explicit
 // `checked` wins over `unsafe`. So `inside<G, round_nearest>` and
-// `inside<G, indexed>` are checked, exactly like the default `inside<G>`.
+// `inside<G, clamp>` are checked, exactly like the default `inside<G>`.
 [[nodiscard]] constexpr bool is_checked(policy_flag set) noexcept {
     return has_flag(set, checked) || !has_flag(set, detail::unsafe_marker);
 }
