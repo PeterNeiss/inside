@@ -516,6 +516,12 @@ constexpr bool grid_product_fits([[maybe_unused]] const grid& a, [[maybe_unused]
 // operator+
 //---------------------------------------------------------------------------
 [[nodiscard]] inline constexpr std::expected<grid, errc> operator+(const grid& lhs, const grid& rhs) {
+    // A continuous operand makes the sum continuous. (A point, also notch 0,
+    // shifts the other lattice: gcd(0, n) = n is its notch.)
+    auto continuous = [](const grid& g) { return g.Notch == 0 && g.Interval.Lower != g.Interval.Upper; };
+    if (continuous(lhs) || continuous(rhs))
+        return detail::lift([](interval i) { return grid{i, detail::grid_rational{0}}; },
+                            lhs.Interval + rhs.Interval);
     // gcd returns expected — lift it so a notch-denominator overflow produces
     // errc::overflow rather than a silently wrapped result grid.
     return detail::lift([](interval i, detail::grid_rational n) { return grid{i, n}; },
