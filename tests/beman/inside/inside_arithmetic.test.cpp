@@ -62,7 +62,7 @@ TEST(InsideArithmeticTest, inside_mul) {
     static_assert(a * b == 1632);
 
     // Fractional-notch ops require runtime construction from `double` (the
-    // f64-valued assignment specialization is not constexpr-evaluable).
+    // double-valued assignment specialization is not constexpr-evaluable).
     using u4 = inside<{{0.75, 10.5}, 0.25}>;
     u4   d{3};
     u4   e{3.25};
@@ -428,11 +428,6 @@ TEST(InsideArithmeticTest, beman_inside_sum_bulk_reduction_with_one_deferred_che
     using qsum = inside<{{0, 16}, per<256>}, round_nearest>;
     ASSERT_EQ(rational{beman::inside::sum<qsum>(qs)}, (rational{3, 256}));
 
-    // f64 storage falls to the exact rational fold — same result.
-    using r = inside<{{0, 4}, per<256>}, round_nearest | f64>;
-    std::vector<r> rs(3, r{rational{1, 256}});
-    ASSERT_EQ(rational{beman::inside::sum<qsum>(rs)}, (rational{3, 256}));
-
     // 64-bit raws whose index total passes 64 bits: summed exactly.
     using u64 = inside<{0, std::numeric_limits<umax>::max()}>;
     std::vector<u64> big(4, u64{std::numeric_limits<umax>::max()});
@@ -464,7 +459,7 @@ TEST(InsideArithmeticTest, scalar_operand_ban_guidance_overloads_pinned) {
     static_assert(requires(pct b) { b / 2; });
     static_assert(requires(pct b) { 1 + b; });
 
-    // ...and resolve to the guidance overloads (return type B), not to a f64
+    // ...and resolve to the guidance overloads (return type B), not to a double
     // widening operator (whose result grid would be a different inside type).
     static_assert(std::same_as<decltype(std::declval<pct>() + 1), pct>);
     static_assert(std::same_as<decltype(std::declval<pct>() * 2), pct>);

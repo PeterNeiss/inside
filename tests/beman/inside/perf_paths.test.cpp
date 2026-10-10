@@ -202,14 +202,12 @@ TEST(PerfPathsTest, fraction_and_to_value_fast_paths_match_rational) {
 }
 
 //---------------------------------------------------------------------------
-// Double-backed abs/floor/ceil/round/trunc match the exact rational results.
+// The integer abs/floor/ceil/round/trunc paths match the exact rational
+// results, on a dyadic and a decimal notch.
 //---------------------------------------------------------------------------
-#ifndef BEMAN_INSIDE_MATH_NO_FP
-TEST(PerfPathsTest, fp_algebraic_fast_path_matches_rational) {
-    using X = inside<{{-8, 8}, per<4>}, round_nearest | f64>;
-    static_assert(fp_storage<X>);
-    for (int k = -32; k <= 32; ++k) {
-        const X        x = X::from_raw(k / 4.0);
+template <typename X>
+void expect_algebraic_matches_rational() {
+    for (const X x : inside_range<grid_of<X>, policy_of<X>>{}) {
         const rational r{x};
         EXPECT_EQ(rational{math::abs(x)}, abs(r));
         EXPECT_EQ(rational{math::floor(x)}, rational{floor(r)});
@@ -218,4 +216,9 @@ TEST(PerfPathsTest, fp_algebraic_fast_path_matches_rational) {
         EXPECT_EQ(rational{math::trunc(x)}, rational{trunc(r)});
     }
 }
-#endif
+
+TEST(PerfPathsTest, int_algebraic_fast_path_matches_rational) {
+    expect_algebraic_matches_rational<inside<{{-8, 8}, per<4>}, round_nearest>>();
+    expect_algebraic_matches_rational<inside<{{-3, 5}, per<10>}, round_nearest>>();
+    expect_algebraic_matches_rational<inside<{{0, 6}, rational{3, 4}}, round_nearest>>();
+}

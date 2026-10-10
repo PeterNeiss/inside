@@ -257,7 +257,7 @@ std::string big_fraction_to_string(const big_rational& r) {
 
 // An inside's exact value: with a decimal notch, every value prints that
 // notch's decimals (19.90, 2.00); otherwise its shortest exact form — a
-// decimal when it has one, else N/D. (f64 / f32 storage prints the same.)
+// decimal when it has one, else N/D.
 template <insidable B>
 [[nodiscard]] inline std::string to_string(B b) {
     constexpr int n = detail::fixed_decimals<B>;

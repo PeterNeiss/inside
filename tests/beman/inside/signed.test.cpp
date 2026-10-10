@@ -67,7 +67,7 @@ TEST(SignedTest, signed_storage_uses_full_range_including_minimum) {
 }
 
 // Regression: signed-direct storage previously recorded the *offset*
-// (rhs - Lower) instead of the value when constructed from f64-valued
+// (rhs - Lower) instead of the value when constructed from fractional
 // rhs (rational/double) or from another inside via the inside-to-inside
 // store path. Both paths now route through `raw_from_offset<L>`, which
 // adds lower_of<L> back for direct-storage targets.

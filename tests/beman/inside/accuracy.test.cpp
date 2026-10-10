@@ -88,15 +88,15 @@ void row(std::FILE* out, const char* function, const char* grid, const char* dom
                  s.samples);
 }
 
-// Input grids, in three kinds: dyadic 2^-14 lattices with `f64` storage
-// (deduced outputs keep it), the same ranges in steps of 1/1000 (inputs
+// Input grids, in three kinds: dyadic 2^-14 lattices (deduced outputs),
+// the same ranges in steps of 1/1000 (inputs
 // that are not doubles exactly), and explicit outputs with a 2^-40 notch.
-using angle_grid = inside<{{-8, 8}, per<16384>}, round_nearest | f64>;
-using tan_grid   = inside<{{-1.5, 1.5}, per<16384>}, round_nearest | f64>;
-using unit_grid  = inside<{{-1, 1}, per<16384>}, round_nearest | f64>;
-using sqrt_grid  = inside<{{0, 16}, per<16384>}, round_nearest | f64>;
-using log_grid   = inside<{{1, 1000}, per<16384>}, round_nearest | f64>;
-using atanh_grid = inside<{{-0.99951171875, 0.99951171875}, per<16384>}, round_nearest | f64>;
+using angle_grid = inside<{{-8, 8}, per<16384>}, round_nearest>;
+using tan_grid   = inside<{{-1.5, 1.5}, per<16384>}, round_nearest>;
+using unit_grid  = inside<{{-1, 1}, per<16384>}, round_nearest>;
+using sqrt_grid  = inside<{{0, 16}, per<16384>}, round_nearest>;
+using log_grid   = inside<{{1, 1000}, per<16384>}, round_nearest>;
+using atanh_grid = inside<{{-0.99951171875, 0.99951171875}, per<16384>}, round_nearest>;
 
 using angle_dec = inside<{{-8, 8}, per<1000>}, round_nearest>;
 using tan_dec   = inside<{{-1.5, 1.5}, per<1000>}, round_nearest>;
@@ -127,9 +127,9 @@ int main(int argc, char** argv) {
                  "the **output grid notch**: max < 0.5 means every sampled result is the\n"
                  "correctly rounded grid point. The engine rounds correctly by construction\n"
                  "(see [math.md](math.md)); this table checks it on three kinds of grid:\n"
-                 "`f64 2^-14` (dyadic inputs with `f64` storage, deduced outputs),\n"
+                 "`dyadic 2^-14` (dyadic inputs, deduced outputs),\n"
                  "`decimal` (inputs in steps of 1/1000, deduced outputs) and `out 2^-40`\n"
-                 "(the f64 inputs into an explicit output with a 2^-40 notch). The\n"
+                 "(the dyadic inputs into an explicit output with a 2^-40 notch). The\n"
                  "long-double reference carries 64 bits, so on the 2^-40 outputs a result\n"
                  "within about 2^-20 notch of a rounding boundary can read as up to a hair\n"
                  "past 0.5.\n\n"
@@ -140,7 +140,7 @@ int main(int argc, char** argv) {
 #define BEMAN_INSIDE_ACCURACY(fn, In, Dec, domain, ref)                                    \
     row(out,                                                                               \
         #fn,                                                                               \
-        "f64 2^-14",                                                                       \
+        "dyadic 2^-14",                                                                    \
         domain,                                                                            \
         sweep<In>([](In x) { return math::fn(x); }, [](long double v) { return ref; }));   \
     row(out,                                                                               \

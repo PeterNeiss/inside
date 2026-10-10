@@ -17,7 +17,7 @@
 // iterator wraps modulo the slot count so a mid-range start visits every slot
 // once. Models random_access_range + sized_range (so std::ranges algorithms
 // work directly). iterator_category is input_iterator_tag because operator*
-// returns by value; iterator_concept carries the f64 random-access capability.
+// returns by value; iterator_concept carries the random-access capability.
 //---------------------------------------------------------------------------
 namespace beman::inside {
 namespace detail {

@@ -24,7 +24,7 @@ using namespace beman::inside;
 int main() {
     // Radians-valued angle inside covering one full cycle. ±8 rad is wider
     // than 2π so the conversion result always fits without saturation.
-    using angle_t = inside<{{-8, 8}, per<16384>}, round_nearest | f64>;
+    using angle_t = inside<{{-8, 8}, per<16384>}, round_nearest>;
 
     // 2π / 65536 — the radians-per-slot for a uint16 phase counter, as a
     // compile-time point-inside. Multiplying the phase (lifted into an inside) by

@@ -11,9 +11,9 @@
 using namespace beman::inside;
 
 namespace {
-using A                 = inside<{{-64, 64}, per<1024>}, round_nearest | f64>;
-using C                 = inside<{{1, 64}, per<1024>}, round_nearest | f64>;
-using T                 = inside<{{-0.9990234375, 0.9990234375}, per<1024>}, round_nearest | f64>;
+using A                 = inside<{{-64, 64}, per<1024>}, round_nearest>;
+using C                 = inside<{{1, 64}, per<1024>}, round_nearest>;
+using T                 = inside<{{-0.9990234375, 0.9990234375}, per<1024>}, round_nearest>;
 constexpr double kNotch = 1.0 / 1024;
 
 template <class R>
@@ -54,7 +54,7 @@ TEST(InverseHyperbolicTest, every_engine_matches_cmath_within_one_notch) {
     EXPECT_NEAR(value(math::atanh(T{0.9990234375})), std::atanh(0.9990234375), kNotch);
 }
 
-TEST(InverseHyperbolicTest, explicit_output_and_non_f64_grids) {
+TEST(InverseHyperbolicTest, explicit_output_and_decimal_grids) {
     using I = inside<{-20, 20}, round_nearest>; // integer grid
     EXPECT_EQ(rational{math::asinh(I{3})}, 2);  // asinh(3) ≈ 1.818 → 2
     using Out = inside<{{0, 8}, per<256>}, round_nearest>;

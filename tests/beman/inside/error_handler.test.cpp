@@ -16,7 +16,7 @@ using namespace beman::inside;
 
 namespace {
 // A custom [[noreturn]] handler that records the code, then escapes via a
-// throw of its own type so the test can observe it (a f64 bare-metal handler
+// throw of its own type so the test can observe it (a bare-metal handler
 // would reset/halt instead).
 struct handler_fired {
     errc        code;
@@ -86,13 +86,13 @@ TEST(ErrorHandlerTest,
     }
 }
 
-// default handler throws inside_error carrying the code / not_finite on non-finite f64 input
+// default handler throws inside_error carrying the code / not_finite on non-finite double input
 TEST(ErrorHandlerTest, default_handler_throws_inside_error_carrying_the_code__not_finite_on_non_finite_f64_input) {
     using c100 = inside<{0, 100}, checked>;
 
     {
-        SCOPED_TRACE("not_finite on non-finite f64 input");
-        using R = inside<{0.0, 1.0}, f64>;
+        SCOPED_TRACE("not_finite on non-finite double input");
+        using R = inside<{0.0, 1.0}>;
         try {
             R r{std::numeric_limits<double>::infinity()};
             (void)r;

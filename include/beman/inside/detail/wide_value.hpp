@@ -365,19 +365,13 @@ constexpr raw_t<L> raw_of_slot(const W& offset) noexcept {
     else if constexpr (index_storage<L>)
         return static_cast<raw_t<L>>(offset);
     else if constexpr (!anchored<L>) {
-        // Lower + offset·Notch (an fp or rational raw: integer value storage
-        // has integer values, an anchored grid).
+        // Lower + offset·Notch (a rational raw: integer value storage has
+        // integer values, an anchored grid).
         const rational k = offset < W{0} ? -rational{static_cast<umax>(-offset)} : rational{static_cast<umax>(offset)};
-        if constexpr (fp_storage<L>) // exact on a double/float-exact grid
-            return static_cast<raw_t<L>>(static_cast<double>(k) * static_cast<double>(notch_of<L>) +
-                                         static_cast<double>(lower_of<L>));
-        else
-            return (detail::lower64<L> + (k * detail::notch64<L>).value()).value();
+        return (detail::lower64<L> + (k * detail::notch64<L>).value()).value();
     } else {
         const W j = offset + static_cast<W>(slot_base<L>);
-        if constexpr (fp_storage<L>) // the value J·Notch: exact on a double/float-exact grid
-            return static_cast<raw_t<L>>(static_cast<double>(j) * static_cast<double>(notch_of<L>));
-        else if constexpr (rational_storage<L>) { // |J| < 2^64: a 64-bit grid's value index
+        if constexpr (rational_storage<L>) { // |J| < 2^64: a 64-bit grid's value index
             const rational r = j < W{0} ? -rational{static_cast<umax>(-j)} : rational{static_cast<umax>(j)};
             return (r * detail::notch64<L>).value();
         } else // integer value raw: raw == J (Notch 1)

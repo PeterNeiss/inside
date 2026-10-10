@@ -50,12 +50,11 @@ extern "C" long ins_perf_mul_fast(long a, long b) {
     return static_cast<long>((x * y).raw());
 }
 
-// f64-backed fast arm: add on a dyadic `f64` grid must lower to a bare
-// double add (one addsd) — the fp arm skips snap_double because the result
-// grid is double-exact by construction.
-using D = inside<{{-8, 8}, per<16384>}, round_nearest | f64>;
+// Index raw → double: one convert and one multiply (as_double's
+// index_double codec), no rational decode.
+using D = inside<{{-8, 8}, per<16384>}, round_nearest>;
 
-extern "C" double ins_perf_fp_add(D a, D b) { return (a + b).raw(); }
+extern "C" double ins_perf_to_double(D a) { return static_cast<double>(a); }
 
 // Compound subtraction fast path: `-=` on same-notch integer-backed grids
 // must subtract raws directly (index-raw Q8.8 here — the case that would

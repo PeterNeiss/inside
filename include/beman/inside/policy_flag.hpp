@@ -8,11 +8,10 @@
 #include <type_traits>
 #include <utility>
 
-// BEMAN_INSIDE_MATH_NO_FP — no hardware floating point anywhere: the f64/f32
-// storage flags fall back to deduced integer storage, and the math engine's
-// double tier compiles out (its integer path computes every result; results
-// do not change). Resolved here, in a header every other one includes, so
-// storage selection and the math headers always agree. Define it to force the
+// BEMAN_INSIDE_MATH_NO_FP — no hardware floating point anywhere: the math
+// engine's double and dd tiers compile out (its integer path computes every
+// result; results do not change). Resolved here, in a header every other one
+// includes, so all the math headers agree. Define it to force the
 // FP-free build; it is auto-enabled on freestanding targets
 // (__STDC_HOSTED__ == 0). Public API and grid deduction are unchanged.
 #if !defined(BEMAN_INSIDE_MATH_NO_FP)
@@ -22,9 +21,9 @@
 #endif
 
 // -ffast-math is not supported. The library's results are exact or correctly
-// rounded, and that rests on IEEE arithmetic as written: f64/f32 storage
-// detects overflow through infinities and NaN, and the math engine's error
-// bounds and error-free sums count every rounding in program order. Fast-math
+// rounded, and that rests on IEEE arithmetic as written: double sources are
+// screened for infinities and NaN, and the math engine's error bounds and
+// error-free sums count every rounding in program order. Fast-math
 // lets the compiler assume no NaN or infinity and reassociate, which can
 // change results silently, so a build that announces it stops here.
 #if defined(__FAST_MATH__) || defined(__ASSOCIATIVE_MATH__) || (defined(__FINITE_MATH_ONLY__) && __FINITE_MATH_ONLY__)
@@ -68,28 +67,17 @@ inline constexpr policy_flag wrap{1ull << 33};  // modular arithmetic
 // Representation flags — select raw storage. Without one, storage is deduced
 // from the grid (notch-0 → rational; unit notch at/below 0 → integer value;
 // else 0-based index). Binary ops OR operand policies; storage resolves
-// widest-wins: exact > f64 > f32 > {width} > direct > indexed > deduced.
+// widest-wins: exact > {width} > direct > indexed > deduced.
 // ({width} = the fixed-width integer flags i8..u64 declared below; they pin the
 // exact backing type rather than letting deduction pick the smallest fit.)
-//
-// `f64` / `f32` — store the value as an IEEE-754 double / float. Storage
-// only: every result (value, rounding, error, return type, printing) is the
-// one the same type gives without the flag; the grid must be one whose values
-// the format holds exactly (a dyadic notch and Lower, see `double_exact` /
-// `float_exact`; a continuous grid is rejected). Rounding is stated
-// separately (`round_nearest | f64`). Under BEMAN_INSIDE_MATH_NO_FP they fall
-// back to the deduced integer storage. `f32` targets float-only FPUs
-// (Cortex-M4F).
-inline constexpr policy_flag f64{1ull << 37};
-inline constexpr policy_flag f32{1ull << 41};
 
 // Fixed-width integer raw storage — pin the exact backing type instead of
 // letting deduction pick the smallest fit. A bare width flag means *value*
 // storage (raw == value, like `direct`, so Notch == 1 and the value range must
 // fit the type); OR in `indexed` for 0-based notch-index storage. `storage_pick`
 // static_asserts the type is big enough for the grid (no silent widening). One
-// width flag at a time. Unlike `f32`/`f64` these carry no `round_nearest` — they
-// are plain integer storage, like `direct`/`indexed`.
+// width flag at a time. They carry no rounding — plain integer storage, like
+// `direct`/`indexed`.
 inline constexpr policy_flag i8{1ull << 42};
 inline constexpr policy_flag u8{1ull << 43};
 inline constexpr policy_flag i16{1ull << 44};
@@ -133,7 +121,7 @@ inline constexpr policy_flag unsafe{detail::unsafe_marker | ignore_range | snap 
 // Flag-set membership predicates. `has_flag(set, flag)` is true iff EVERY bit
 // of `flag` is present in `set` — reads better than the raw `(set & flag) ==
 // flag` and is correct for composite flags (e.g. `round_nearest` carries
-// `snap`, `f64` carries `round_nearest`), where a bare `set & flag`
+// `snap`), where a bare `set & flag`
 // truthy test would misfire. `has_any_flag` tests for any overlap.
 //---------------------------------------------------------------------------
 [[nodiscard]] constexpr bool has_flag(policy_flag set, policy_flag flag) noexcept { return (set & flag) == flag; }
@@ -144,7 +132,7 @@ inline constexpr policy_flag unsafe{detail::unsafe_marker | ignore_range | snap 
 
 // Runtime checks run unless the policy opts out with `unsafe`; an explicit
 // `checked` wins over `unsafe`. So `inside<G, round_nearest>` and
-// `inside<G, f64>` are checked, exactly like the default `inside<G>`.
+// `inside<G, indexed>` are checked, exactly like the default `inside<G>`.
 [[nodiscard]] constexpr bool is_checked(policy_flag set) noexcept {
     return has_flag(set, checked) || !has_flag(set, detail::unsafe_marker);
 }
@@ -157,9 +145,8 @@ inline constexpr policy_flag unsafe{detail::unsafe_marker | ignore_range | snap 
 
 namespace detail {
 // The rounding mode a flag set selects — the ONE precedence every rounding
-// path uses (integer, rational and fp storage, division, math stores).
-// An explicit directional or half-even mode beats round_nearest (which f64 /
-// f32 carry by default, so `f64 | round_floor` floors); `snap` alone, or no
+// path uses (integer and rational storage, division, math stores).
+// An explicit directional or half-even mode beats round_nearest; `snap` alone, or no
 // rounding flag at all, truncates toward zero. Ties of `nearest` go half
 // away from zero. round_mode and the shared decision: detail/rounding.hpp.
 

@@ -39,7 +39,6 @@ TEST(Cursor, type) {
     using pinned = inside<{0, 200}, u8>;
     static_assert(index_storage<cursor<pinned>>);
     static_assert(!has_flag(policy_of<cursor<pinned>>, u8));
-    static_assert(!has_flag(policy_of<cursor<inside<{{-4, 4}, per<4>}, f64 | round_nearest>>>, f64));
     // the step as a rational, per<N> or an integer; T's notch by default
     static_assert(std::is_same_v<cursor<time_t_, 0.25_r>, cur>);
     static_assert(std::is_same_v<cursor<inside<{0, 10}>, 2>, cursor<inside<{0, 10}>, rational{2}>>);

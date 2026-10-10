@@ -68,7 +68,7 @@ template <insidable B, numeric A>
 template <insidable B, numeric A>
 [[nodiscard]] constexpr B unchecked_cast(A value) {
     // Keep B's representation flags so the twin's raw layout is B's.
-    constexpr policy_flag representation = policy_of<B> & (exact | f64 | f32 | direct | indexed | raw_width_mask);
+    constexpr policy_flag representation = policy_of<B> & (exact | direct | indexed | raw_width_mask);
     using twin                           = inside<grid_of<B>, unsafe | representation>;
     return B::from_raw(twin{value}.raw()); // same grid → identical raw layout
 }

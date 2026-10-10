@@ -3176,11 +3176,10 @@ corner_hull(grid_rational a, grid_rational b, grid_rational c, grid_rational d) 
 
 
 
-// BEMAN_INSIDE_MATH_NO_FP — no hardware floating point anywhere: the f64/f32
-// storage flags fall back to deduced integer storage, and the math engine's
-// double tier compiles out (its integer path computes every result; results
-// do not change). Resolved here, in a header every other one includes, so
-// storage selection and the math headers always agree. Define it to force the
+// BEMAN_INSIDE_MATH_NO_FP — no hardware floating point anywhere: the math
+// engine's double and dd tiers compile out (its integer path computes every
+// result; results do not change). Resolved here, in a header every other one
+// includes, so all the math headers agree. Define it to force the
 // FP-free build; it is auto-enabled on freestanding targets
 // (__STDC_HOSTED__ == 0). Public API and grid deduction are unchanged.
 #if !defined(BEMAN_INSIDE_MATH_NO_FP)
@@ -3190,9 +3189,9 @@ corner_hull(grid_rational a, grid_rational b, grid_rational c, grid_rational d) 
 #endif
 
 // -ffast-math is not supported. The library's results are exact or correctly
-// rounded, and that rests on IEEE arithmetic as written: f64/f32 storage
-// detects overflow through infinities and NaN, and the math engine's error
-// bounds and error-free sums count every rounding in program order. Fast-math
+// rounded, and that rests on IEEE arithmetic as written: double sources are
+// screened for infinities and NaN, and the math engine's error bounds and
+// error-free sums count every rounding in program order. Fast-math
 // lets the compiler assume no NaN or infinity and reassociate, which can
 // change results silently, so a build that announces it stops here.
 #if defined(__FAST_MATH__) || defined(__ASSOCIATIVE_MATH__) || (defined(__FINITE_MATH_ONLY__) && __FINITE_MATH_ONLY__)
@@ -3236,28 +3235,17 @@ inline constexpr policy_flag wrap{1ull << 33};  // modular arithmetic
 // Representation flags — select raw storage. Without one, storage is deduced
 // from the grid (notch-0 → rational; unit notch at/below 0 → integer value;
 // else 0-based index). Binary ops OR operand policies; storage resolves
-// widest-wins: exact > f64 > f32 > {width} > direct > indexed > deduced.
+// widest-wins: exact > {width} > direct > indexed > deduced.
 // ({width} = the fixed-width integer flags i8..u64 declared below; they pin the
 // exact backing type rather than letting deduction pick the smallest fit.)
-//
-// `f64` / `f32` — store the value as an IEEE-754 double / float. Storage
-// only: every result (value, rounding, error, return type, printing) is the
-// one the same type gives without the flag; the grid must be one whose values
-// the format holds exactly (a dyadic notch and Lower, see `double_exact` /
-// `float_exact`; a continuous grid is rejected). Rounding is stated
-// separately (`round_nearest | f64`). Under BEMAN_INSIDE_MATH_NO_FP they fall
-// back to the deduced integer storage. `f32` targets float-only FPUs
-// (Cortex-M4F).
-inline constexpr policy_flag f64{1ull << 37};
-inline constexpr policy_flag f32{1ull << 41};
 
 // Fixed-width integer raw storage — pin the exact backing type instead of
 // letting deduction pick the smallest fit. A bare width flag means *value*
 // storage (raw == value, like `direct`, so Notch == 1 and the value range must
 // fit the type); OR in `indexed` for 0-based notch-index storage. `storage_pick`
 // static_asserts the type is big enough for the grid (no silent widening). One
-// width flag at a time. Unlike `f32`/`f64` these carry no `round_nearest` — they
-// are plain integer storage, like `direct`/`indexed`.
+// width flag at a time. They carry no rounding — plain integer storage, like
+// `direct`/`indexed`.
 inline constexpr policy_flag i8{1ull << 42};
 inline constexpr policy_flag u8{1ull << 43};
 inline constexpr policy_flag i16{1ull << 44};
@@ -3301,7 +3289,7 @@ inline constexpr policy_flag unsafe{detail::unsafe_marker | ignore_range | snap 
 // Flag-set membership predicates. `has_flag(set, flag)` is true iff EVERY bit
 // of `flag` is present in `set` — reads better than the raw `(set & flag) ==
 // flag` and is correct for composite flags (e.g. `round_nearest` carries
-// `snap`, `f64` carries `round_nearest`), where a bare `set & flag`
+// `snap`), where a bare `set & flag`
 // truthy test would misfire. `has_any_flag` tests for any overlap.
 //---------------------------------------------------------------------------
 [[nodiscard]] constexpr bool has_flag(policy_flag set, policy_flag flag) noexcept { return (set & flag) == flag; }
@@ -3312,7 +3300,7 @@ inline constexpr policy_flag unsafe{detail::unsafe_marker | ignore_range | snap 
 
 // Runtime checks run unless the policy opts out with `unsafe`; an explicit
 // `checked` wins over `unsafe`. So `inside<G, round_nearest>` and
-// `inside<G, f64>` are checked, exactly like the default `inside<G>`.
+// `inside<G, indexed>` are checked, exactly like the default `inside<G>`.
 [[nodiscard]] constexpr bool is_checked(policy_flag set) noexcept {
     return has_flag(set, checked) || !has_flag(set, detail::unsafe_marker);
 }
@@ -3325,9 +3313,8 @@ inline constexpr policy_flag unsafe{detail::unsafe_marker | ignore_range | snap 
 
 namespace detail {
 // The rounding mode a flag set selects — the ONE precedence every rounding
-// path uses (integer, rational and fp storage, division, math stores).
-// An explicit directional or half-even mode beats round_nearest (which f64 /
-// f32 carry by default, so `f64 | round_floor` floors); `snap` alone, or no
+// path uses (integer and rational storage, division, math stores).
+// An explicit directional or half-even mode beats round_nearest; `snap` alone, or no
 // rounding flag at all, truncates toward zero. Ties of `nearest` go half
 // away from zero. round_mode and the shared decision: detail/rounding.hpp.
 
@@ -3731,143 +3718,28 @@ struct grid {
 } // namespace BEMAN_INSIDE_GRID_ABI
 
 namespace detail {
-// The side of a source that is a double exactly: none.
-struct exact_side {
-    constexpr int operator()() const noexcept { return 0; }
-};
-
-// snap_double / snap_double_from on an unanchored grid. In units of the
-// notch its lattice is a + ℤ (0 < a < 1, the fraction of Lower/Notch), and
-// every rounding boundary — a lattice point, or the half point between two —
-// lies on a + ½·ℤ: a double, so the fraction of v/Notch is compared with it
-// rather than shifted by a (which could round). The rules are the integer
-// storage's, in value space: toward zero is down for v ≥ 0 and up below 0,
-// and a tie of `nearest` goes away from zero (up at 0 itself).
-template <grid G, round_mode M, typename Side>
-[[nodiscard]] constexpr double snap_double_offset(double v, const Side& side) noexcept {
+// The value index v/Notch of a double v rounded onto G by mode M, the
+// integer storage's rule (rounding_of; ties of `nearest` half away from
+// zero). G is anchored with a power-of-two notch whose values double holds
+// (double_exact), so v/Notch is exact and below 2^53 for every v in range.
+// G and M are template parameters so each store compiles to its own
+// branch-free rounding.
+template <grid G, round_mode M>
+[[nodiscard]] constexpr imax snap_double_index(double v) noexcept {
     constexpr double nd = static_cast<double>(G.Notch);
-    constexpr double a  = [] {
-        const double l = static_cast<double>(G.Interval.Lower) / nd;
-        const double f = l - static_cast<double>(static_cast<imax>(l));
-        return f < 0 ? f + 1 : f;
-    }();
-    const double q = v / nd;
-    if (!((q < 0 ? -q : q) < 4503599627370496.0)) // 2^52: no lattice point between doubles
-        return v;
-    imax t = static_cast<imax>(q);
-    if (static_cast<double>(t) > q)
-        --t;                                         // ⌊q⌋
-    const double f     = q - static_cast<double>(t); // exact, 0 ≤ f < 1
-    const bool   below = f < a;
-    const imax   k     = below ? t - 1 : t;   // the lattice point at or below v: k + a
-    const double lo    = below ? a - 1.0 : a; // f − lo ∈ [0, 1): v's place past it
-    imax         r     = k;
-    if (f == lo) { // on the lattice: only an exact source just off it moves
-        if constexpr (!std::is_same_v<Side, exact_side>)
-            if constexpr (M != round_mode::nearest && M != round_mode::half_even) {
-                const int s = side();
-                if (s < 0 && (M == round_mode::floor || (M == round_mode::trunc && v > 0)))
-                    r = k - 1;
-                else if (s > 0 && (M == round_mode::ceil || (M == round_mode::trunc && v < 0)))
-                    r = k + 1;
-            }
-    } else if constexpr (M == round_mode::ceil)
-        r = k + 1;
-    else if constexpr (M == round_mode::trunc)
-        r = k + (v < 0);
-    else if constexpr (M == round_mode::nearest || M == round_mode::half_even) {
-        const double half = lo + 0.5;
-        if (f > half)
-            r = k + 1;
-        else if (f == half) {
-            int s = 0;
-            if constexpr (!std::is_same_v<Side, exact_side>)
-                s = side();
-            if (s != 0)
-                r = k + (s > 0);
-            else if constexpr (M == round_mode::nearest)
-                r = k + (v >= 0);
-            else
-                r = k + (k & 1);
-        }
-    }
-    return (static_cast<double>(r) + a) * nd;
-}
-
-// Snap a double onto the (dyadic) grid G by rounding mode M — the same rule
-// as integer storage (rounding_of; ties of `nearest` half away from zero). On
-// an fp grid the notch is a power of two, so v/notch is the exact signed value
-// index. A continuous grid (notch 0) has nothing to snap to. |index| >= 2^52 is
-// already integral, so the imax narrowing below is always safe. G and M are
-// template parameters so each store compiles to its own branch-free rounding.
-// AnySign: v may lie below a grid that starts at 0 or higher (the wrap path
-// rounds out-of-range values); otherwise that half of the tie test is dead.
-template <grid G, round_mode M = round_mode::nearest, bool AnySign = (G.Interval.Lower < 0)>
-[[nodiscard]] constexpr double snap_double(double v) noexcept {
-    if constexpr (G.Notch == rational{0})
-        return v;
-    else if constexpr (!G.anchored())
-        return snap_double_offset<G, M>(v, exact_side{});
-    else {
-        constexpr double nd = static_cast<double>(G.Notch);
-        const double     q  = v / nd;
-        if ((q < 0 ? -q : q) >= 4503599627370496.0) // 2^52
-            return v;
-        const imax   t = static_cast<imax>(q);       // toward zero
-        const double f = q - static_cast<double>(t); // exact, sign of q, |f| < 1
-        imax         k = t;
-        if constexpr (M == round_mode::nearest) {
-            k += (f >= 0.5);
-            if constexpr (AnySign)
-                k -= (f <= -0.5);
-        } else if constexpr (M == round_mode::floor)
-            k -= (f < 0);
-        else if constexpr (M == round_mode::ceil)
-            k += (f > 0);
-        else if constexpr (M == round_mode::half_even)
-            k += (f > 0.5 || (f == 0.5 && (t & 1))) - (f < -0.5 || (f == -0.5 && (t & 1)));
-        return static_cast<double>(k) * nd;
-    }
-}
-
-// snap_double for a v that was rounded from an exact value x: side() gives
-// the sign of x − v. Snapping v rounds twice, and that can differ from
-// rounding x only where v sits exactly on a rounding boundary of G (a tie for
-// the nearest modes, a grid point for the directed ones): a boundary strictly
-// between x and v would be a double nearer to x than v is. There x decides,
-// and side() is only called there.
-template <grid G, round_mode M = round_mode::nearest, bool AnySign = (G.Interval.Lower < 0), typename Side>
-[[nodiscard]] constexpr double snap_double_from(double v, const Side& side) noexcept {
-    if constexpr (G.Notch == rational{0})
-        return v;
-    else if constexpr (std::is_same_v<Side, exact_side>)
-        return snap_double<G, M, AnySign>(v); // a double source rounds once
-    else if constexpr (!G.anchored())
-        return snap_double_offset<G, M>(v, side);
-    else {
-        constexpr double nd = static_cast<double>(G.Notch);
-        const double     q  = v / nd;
-        if (!((q < 0 ? -q : q) < 9007199254740992.0)) // 2^53
-            return snap_double<G, M, AnySign>(v);
-        const imax     t       = static_cast<imax>(q);
-        const double   f       = q - static_cast<double>(t);
-        constexpr bool nearest = M == round_mode::nearest || M == round_mode::half_even;
-        if (!(nearest ? (f == 0.5 || f == -0.5) : f == 0))
-            return snap_double<G, M, AnySign>(v);
-        const int s = side();
-        if (s == 0)
-            return snap_double<G, M, AnySign>(v);
-        imax k;
-        if constexpr (nearest)
-            k = (f < 0 ? t - 1 : t) + (s > 0); // the half point: x picks its side
-        else if constexpr (M == round_mode::floor)
-            k = s < 0 ? t - 1 : t;
-        else if constexpr (M == round_mode::ceil)
-            k = s > 0 ? t + 1 : t;
-        else // toward zero
-            k = (t > 0 && s < 0) ? t - 1 : (t < 0 && s > 0) ? t + 1 : t;
-        return static_cast<double>(k) * nd;
-    }
+    const double     q  = v / nd;
+    const imax       t  = static_cast<imax>(q);       // toward zero
+    const double     f  = q - static_cast<double>(t); // exact, sign of q, |f| < 1
+    if constexpr (M == round_mode::nearest)
+        return t + (f >= 0.5) - (G.Interval.Lower < 0 && f <= -0.5);
+    else if constexpr (M == round_mode::floor)
+        return t - (f < 0);
+    else if constexpr (M == round_mode::ceil)
+        return t + (f > 0);
+    else if constexpr (M == round_mode::half_even)
+        return t + (f > 0.5 || (f == 0.5 && (t & 1))) - (f < -0.5 || (f == -0.5 && (t & 1)));
+    else
+        return t;
 }
 } // namespace detail
 
@@ -3965,8 +3837,7 @@ using storage_min_t = std::conditional_t<
                                               smallest_uint_for_t<G.max_index()>>>>>;
 
 // Dyadic grid: power-of-2 notch denominator and Lower denominator, so every
-// on-grid value is exactly representable in IEEE-754 `double`. Precondition
-// for double-backed (`f64`) storage.
+// on-grid value is a binary fraction (a double when it fits double_exact).
 // A positive power of two, and its log2 (exact at any width).
 constexpr bool is_pow2(const grid_wide& v) noexcept {
     return grid_wide{0} < v && v == (grid_wide{1} << (bit_width_of(v) - 1));
@@ -4004,15 +3875,10 @@ constexpr bool compute_fp_exact() noexcept {
     }
 }
 
-// double: 53-bit significand, notch at least 2^-1022. Necessary
-// precondition for `f64` storage.
+// double: 53-bit significand, notch at least 2^-1022 — every value of G is
+// a double.
 template <grid G>
 inline constexpr bool double_exact = compute_fp_exact<G, 53, 1022>();
-
-// float: 24-bit significand, notch at least 2^-126. Necessary precondition
-// for `f32` (binary32-backed) storage.
-template <grid G>
-inline constexpr bool float_exact = compute_fp_exact<G, 24, 126>();
 
 // Fixed-width raw storage (policy_flag.hpp i8..u64) — pin the exact backing
 // type instead of letting storage_min pick the smallest fit.
@@ -4059,11 +3925,8 @@ constexpr bool storage_fits() noexcept {
 }
 
 // Storage for an inside<G, P>: representation flags pick the raw type, widest-wins
-// (exact > f64 > f32 > {width} > direct > indexed > deduced).
+// (exact > {width} > direct > indexed > deduced).
 //   exact   → rational raw on any grid.
-//   f64     → double-backed on a dyadic or notch-0 grid; elided under
-//             BEMAN_INSIDE_MATH_NO_FP (falls through to deduced).
-//   f32     → float-backed when float holds the grid, else widened to double.
 //   {width} → the pinned i8..u64 type, value or (with `indexed`) index storage.
 //   direct  → raw == value, plain integer (Notch 1, integer Lower).
 //   indexed → raw == 0-based notch index (Notch != 0).
@@ -4076,34 +3939,6 @@ constexpr auto storage_pick() {
         return point_slot{};
     else if constexpr (has_flag(P, exact))
         return detail::rational{};
-#ifndef BEMAN_INSIDE_MATH_NO_FP
-    else if constexpr (has_flag(P, f64) && double_exact<G>)
-        return double{};
-    else if constexpr (has_flag(P, f64) && dyadic_grid<G>) {
-        // `f64` explicitly requested on a dyadic grid double can't represent
-        // exactly (max |value·2^f| ≥ 2^53, or notch below the smallest normal).
-        // Arithmetic drops the flag before reaching here, so this is direct misuse.
-        static_assert(double_exact<G>,
-                      "f64 storage: grid exceeds double's 53-bit significand — coarsen the "
-                      "notch/range or use `exact`");
-        return double{}; // unreachable; fixes the deduced return type
-    } else if constexpr (has_flag(P, f32) && float_exact<G>)
-        return float{};
-    else if constexpr (has_flag(P, f32) && double_exact<G>)
-        // `f32` requested on a grid too fine for float but representable in double:
-        // WIDEN the storage to binary64. This makes a deduced f32 output (a cmath
-        // result inheriting the operand's flag) whose grid overflows float store its
-        // value in double rather than hard-erroring — the value stays exact. The f32
-        // POLICY bit remains (harmless; storage is raw-driven via fp_storage).
-        return double{};
-    else if constexpr (has_flag(P, f32) && dyadic_grid<G>) {
-        // Too fine for double too → genuinely unrepresentable as fp storage.
-        static_assert(double_exact<G>,
-                      "f32 storage: grid exceeds double's 53-bit significand — coarsen the "
-                      "notch/range or use `exact`");
-        return float{}; // unreachable; fixes the deduced return type
-    }
-#endif
     else if constexpr (has_width_flag(P)) {
         // User-pinned raw width (i8..u64). Encoding follows `indexed` (0-based
         // notch index) else value storage (raw == value, integer values like `direct`).
@@ -4408,7 +4243,6 @@ using raw_t = typename B::raw_type;
 // inside; each names the raw type and what it means:
 //
 //   value_storage — the raw IS the value
-//     fp_storage = f64_storage | f32_storage   IEEE double / float (fp-exact grids)
 //     rational_storage                         a 64-bit rational
 //     fraction_storage                         an exact_frac (continuous, limits past 64 bits)
 //     integer_value_storage                    a builtin integer
@@ -4420,18 +4254,6 @@ using raw_t = typename B::raw_type;
 //
 // Concepts, so the groups subsume their leaves and can constrain helpers.
 //-------------------------------------------------------------------------
-template <typename B>
-concept f64_storage = insidable<B> && std::same_as<raw_t<B>, double>;
-
-template <typename B>
-concept f32_storage = insidable<B> && std::same_as<raw_t<B>, float>;
-
-// fp storage shares every value-path branch: read/store/compare/arithmetic
-// compute in double, narrowing to the raw type on store (lossless on an
-// fp-exact grid).
-template <typename B>
-concept fp_storage = f64_storage<B> || f32_storage<B>;
-
 template <typename B>
 concept rational_storage = insidable<B> && std::same_as<raw_t<B>, rational>;
 
@@ -4465,7 +4287,7 @@ template <typename B>
 concept wide_index_storage = insidable<B> && is_wide_int_v<raw_t<B>>;
 
 template <typename B>
-concept value_storage = fp_storage<B> || rational_storage<B> || fraction_storage<B> || integer_value_storage<B>;
+concept value_storage = rational_storage<B> || fraction_storage<B> || integer_value_storage<B>;
 
 template <typename B>
 concept index_storage = point_storage<B> || integer_index_storage<B> || wide_index_storage<B>;
@@ -4475,7 +4297,7 @@ concept integer_storage = index_storage<B> || integer_value_storage<B>;
 
 // Same raw type AND same encoding (value vs index): only then does one
 // inside's raw mean the same as another's on the same grid. A grid alone
-// does not fix the encoding — `indexed` / `direct` / `f64` / a width flag
+// does not fix the encoding — `indexed` / `direct` / a width flag
 // pick it per policy.
 template <insidable L, insidable R>
 inline constexpr bool same_storage = std::is_same_v<raw_t<L>, raw_t<R>> && index_storage<L> == index_storage<R>;
@@ -4511,9 +4333,8 @@ inline constexpr bool wide_grid_numbers =
 template <insidable B>
 inline constexpr bool wide_valued = wide_index_storage<B> || wide_grid_numbers<B>;
 
-// Ungated double view of any inside, for the `f64` arithmetic arms (the
-// public operator double() is gated on a rounding flag; this is always
-// available). Everything but index storage holds the value verbatim; an
+// Ungated double view of any inside (the public operator double() is gated
+// on a rounding flag; this is always available). Everything but index storage holds the value verbatim; an
 // index decodes through the grid.
 template <insidable B>
 constexpr auto exact_of(const B& b); // wide_value.hpp
@@ -4726,7 +4547,19 @@ template <insidable B>
     requires qformat_codec_fits<B>
 constexpr rational q_format_decode(B b) noexcept {
     constexpr imax nd = abs_den(detail::notch64<B>.Denominator);
-    return rational{raw_imax(b) + lower_imax<B> * nd, nd};
+    const imax     n  = raw_imax(b) + lower_imax<B> * nd;
+    if constexpr (std::has_single_bit(static_cast<umax>(nd))) {
+        // A power-of-two denominator reduces by the common trailing zeros.
+        const umax m = n < 0 ? umax{0} - static_cast<umax>(n) : static_cast<umax>(n);
+        if (m == 0)
+            return rational{0};
+        const int s = std::min(std::countr_zero(m), std::countr_zero(static_cast<umax>(nd)));
+        rational  r;
+        r.Numerator   = m >> s;
+        r.Denominator = n < 0 ? -(nd >> s) : nd >> s;
+        return r;
+    } else
+        return rational{n, nd};
 }
 
 // Library-internal extraction helper. Always succeeds (returns `imax`
@@ -4996,9 +4829,7 @@ template <insidable L, typename P>
     rational r;
     if (!rounds_into_range<L, P>(v, r))
         return {raw_t<L>{}, false};
-    if constexpr (fp_storage<L>)
-        return {static_cast<raw_t<L>>(static_cast<double>(r)), true}; // exact: fp-exact grid
-    else if constexpr (rational_storage<L>)
+    if constexpr (rational_storage<L>)
         return {r, true};
     else
         return {raw_of_lattice_value<L>(r), true};
@@ -5534,19 +5365,13 @@ constexpr raw_t<L> raw_of_slot(const W& offset) noexcept {
     else if constexpr (index_storage<L>)
         return static_cast<raw_t<L>>(offset);
     else if constexpr (!anchored<L>) {
-        // Lower + offset·Notch (an fp or rational raw: integer value storage
-        // has integer values, an anchored grid).
+        // Lower + offset·Notch (a rational raw: integer value storage has
+        // integer values, an anchored grid).
         const rational k = offset < W{0} ? -rational{static_cast<umax>(-offset)} : rational{static_cast<umax>(offset)};
-        if constexpr (fp_storage<L>) // exact on a double/float-exact grid
-            return static_cast<raw_t<L>>(static_cast<double>(k) * static_cast<double>(notch_of<L>) +
-                                         static_cast<double>(lower_of<L>));
-        else
-            return (detail::lower64<L> + (k * detail::notch64<L>).value()).value();
+        return (detail::lower64<L> + (k * detail::notch64<L>).value()).value();
     } else {
         const W j = offset + static_cast<W>(slot_base<L>);
-        if constexpr (fp_storage<L>) // the value J·Notch: exact on a double/float-exact grid
-            return static_cast<raw_t<L>>(static_cast<double>(j) * static_cast<double>(notch_of<L>));
-        else if constexpr (rational_storage<L>) { // |J| < 2^64: a 64-bit grid's value index
+        if constexpr (rational_storage<L>) { // |J| < 2^64: a 64-bit grid's value index
             const rational r = j < W{0} ? -rational{static_cast<umax>(-j)} : rational{static_cast<umax>(j)};
             return (r * detail::notch64<L>).value();
         } else // integer value raw: raw == J (Notch 1)
@@ -5679,6 +5504,7 @@ constexpr Result exact_result(const exact_frac<K>& v) noexcept {
 // ======================================================================
 //  beman/inside/detail/assignment.hpp
 // ======================================================================
+
 
 
 namespace beman::inside::detail {
@@ -6164,12 +5990,9 @@ struct assignment<L, R> {
             overshoot = rhs - clamped;
 
         // The clamp target is an interval endpoint — a grid point — so the slot is 0
-        // or max_index_v, no rounding. f64 takes the endpoint as a double, rational
-        // the exact constant (a double round-trip would lose non-dyadic endpoints);
+        // or max_index_v, no rounding. Rational takes the exact constant;
         // raw_from_offset<L> adds Lower back for direct-encoded storage.
-        if constexpr (fp_storage<L>)
-            lhs = L::from_raw(low ? static_cast<double>(detail::lower64<L>) : static_cast<double>(detail::upper64<L>));
-        else if constexpr (rational_storage<L>)
+        if constexpr (rational_storage<L>)
             lhs = L::from_raw(low ? detail::lower64<L> : detail::upper64<L>);
         else
             lhs = L::from_raw(raw_from_offset<L>(low ? umax{0} : max_index_v<L>));
@@ -6269,27 +6092,7 @@ struct assignment<L, R> {
     static constexpr void store_checked(L& lhs, R rhs, P&& policy, A&& action = {}) {
         if constexpr (rational_storage<L> && !detail::notched<L>)
             lhs = L::from_raw(rhs); // continuous: store verbatim
-        else if constexpr (fp_storage<L>) {
-            // f64 target: raw IS the value — snap to the dyadic grid (range handling
-            // already ran in the assign cascade; finite guard mirrors store_f64's).
-            const double v = static_cast<double>(rhs);
-            if (!(v - v == 0)) [[unlikely]] // assign() screens these first
-                return policy.report(errc::not_finite);
-            // v rounds rhs; at a rounding boundary the exact value decides.
-            const auto side = [&] {
-                const auto c = rhs <=> rational{v};
-                return c > 0 ? 1 : c < 0 ? -1 : 0;
-            };
-            // Off the grid without a rounding policy: rounding_error, as for
-            // integer storage.
-            if constexpr (!(has_policy<L, P, round_nearest> || has_policy<L, P, round_floor> ||
-                            has_policy<L, P, round_ceil> || has_policy<L, P, round_half_even> ||
-                            has_policy<L, P, snap>))
-                if (policy.round_check() &&
-                    (side() != 0 || snap_double<grid_of<L>, round_mode::trunc, /*AnySign=*/true>(v) != v)) [[unlikely]]
-                    return report_failure(lhs, policy, action, errc::rounding_error);
-            lhs = L::from_raw(snap_double_from<grid_of<L>, rounding_for<L, P>>(v, side));
-        } else if constexpr (detail::point_grid<L>) {
+        else if constexpr (detail::point_grid<L>) {
             // Singleton grid: offset encoding → Raw=0; rational/direct → Raw = Lower.
             if constexpr (rational_storage<L>)
                 lhs = L::from_raw(detail::lower64<L>);
@@ -6311,19 +6114,20 @@ struct assignment<L, R> {
                                             has_policy<L, P, round_ceil> || has_policy<L, P, round_half_even> ||
                                             has_policy<L, P, snap>;
 
-            // A floating source on a grid whose values double holds exactly:
-            // round in double (snap_double, the integer storage's rule) and
-            // read the slot off the value index, exact. No rational round trip.
+            // A floating source on an anchored grid with a power-of-two notch
+            // whose values double holds: v/Notch is exact, so round it in
+            // double (the integer storage's rule) and read the slot off the
+            // value index. No rational round trip.
             if constexpr (std::floating_point<R> && integer_storage<L> && !wide_valued<L> && anchored<L> &&
-                          double_exact<grid_of<L>>) {
-                constexpr double nd = static_cast<double>(detail::notch64<L>);
-                constexpr imax   lo = signed_numerator((detail::lower64<L> / detail::notch64<L>).value());
-                const double     v  = static_cast<double>(rhs);
-                const double     s  = snap_double<grid_of<L>, rounding_for<L, P>>(v);
+                          double_exact<grid_of<L>> && std::has_single_bit(detail::notch64<L>.Numerator)) {
+                constexpr imax lo = signed_numerator((detail::lower64<L> / detail::notch64<L>).value());
+                const double   v  = static_cast<double>(rhs);
+                const imax     j  = snap_double_index<grid_of<L>, rounding_for<L, P>>(v);
                 if constexpr (!has_round_flag)
-                    if (s != v && policy.round_check()) [[unlikely]]
+                    if (static_cast<double>(j) * static_cast<double>(detail::notch64<L>) != v && policy.round_check())
+                        [[unlikely]]
                         return report_failure(lhs, policy, action, errc::rounding_error);
-                store_slot(static_cast<umax>(static_cast<imax>(s / nd) - lo));
+                store_slot(static_cast<umax>(j - lo));
                 return;
             }
 
@@ -6332,7 +6136,7 @@ struct assignment<L, R> {
             // instead of two rational ops. round_quotient is invariant under reduction,
             // so the slot is bit-identical to the rational path. Oversized denominators
             // fall through (the kMaxDen guard keeps every product inside imax).
-            if constexpr (qformat_codec_fits<L> && !fp_storage<L> && detail::notched<L>) {
+            if constexpr (qformat_codec_fits<L> && detail::notched<L>) {
                 constexpr imax K   = abs_den(detail::notch64<L>.Denominator);
                 constexpr imax Lo  = lower_imax<L>;
                 constexpr umax kKM = [] {
@@ -6587,13 +6391,12 @@ struct assignment<L, R> {
     static constexpr rational Factor = calcFactor();
 
     // Raw-space integer-only mapping — requires integer raw storage on both
-    // sides (not rational, not f64).
+    // sides (not rational).
     // It also needs every raw and every mapped raw in imax: map_raw's L-raw
     // range is [Offset, Offset + Factor·max_index<R>] (+ Lower for value storage).
     static constexpr bool is_integer_mapping = [] {
-        if constexpr (rational_storage<L> || rational_storage<R> || fp_storage<L> || fp_storage<R> ||
-                      abs_den(Factor.Denominator) != 1 || abs_den(Offset.Denominator) != 1 || !values_fit_imax<L> ||
-                      !values_fit_imax<R>)
+        if constexpr (rational_storage<L> || rational_storage<R> || abs_den(Factor.Denominator) != 1 ||
+                      abs_den(Offset.Denominator) != 1 || !values_fit_imax<L> || !values_fit_imax<R>)
             return false;
         else {
             const rational base = index_storage<L> ? rational{0} : detail::lower64<L>;
@@ -6622,8 +6425,8 @@ struct assignment<L, R> {
     };
     static constexpr affine_map_t affine_map = [] {
         constexpr affine_map_t no{0, 0, 0, false};
-        if constexpr (rational_storage<L> || rational_storage<R> || fp_storage<L> || fp_storage<R> ||
-                      !detail::notched<L> || is_integer_mapping || !values_fit_imax<L> || !values_fit_imax<R>)
+        if constexpr (rational_storage<L> || rational_storage<R> || !detail::notched<L> || is_integer_mapping ||
+                      !values_fit_imax<L> || !values_fit_imax<R>)
             return no;
         else {
             constexpr umax cap = static_cast<umax>(std::numeric_limits<imax>::max());
@@ -6681,14 +6484,8 @@ struct assignment<L, R> {
   private:
     template <typename A>
     static constexpr void apply_clamp(L& lhs, const R& rhs, A&& action) {
-        // raw_lo/raw_hi are already the correct Raw (no raw_from_offset). Real storage
-        // takes the endpoint as a double (raw_lo/Hi truncate fractional dyadic endpoints).
-        if constexpr (fp_storage<L>)
-            lhs = L::from_raw((as_rational(rhs) < detail::lower64<L>) ? static_cast<double>(detail::lower64<L>)
-                                                                      : static_cast<double>(detail::upper64<L>));
-        else
-            lhs =
-                L::from_raw((as_rational(rhs) < detail::lower64<L>) ? raw_cast<L>(raw_lo<L>) : raw_cast<L>(raw_hi<L>));
+        // raw_lo/raw_hi are already the correct Raw (no raw_from_offset).
+        lhs = L::from_raw((as_rational(rhs) < detail::lower64<L>) ? raw_cast<L>(raw_lo<L>) : raw_cast<L>(raw_hi<L>));
         // Overshoot (rhs − clamped) as an inside, via the result-grid inference of normal
         // inside arithmetic: both operands are insides, so the overshoot is too. It is always
         // in-grid and on-notch for grid_of<R> − grid_of<L>, so the construction is exact.
@@ -6707,7 +6504,7 @@ struct assignment<L, R> {
         // values are integers (no rounding to do). Anything else routes through
         // the rational modular wrap, which rounds by the policy first.
         if constexpr (integer_limits<L> && abs_den(detail::notch64<L>.Denominator) == 1 &&
-                      detail::notch64<L>.Numerator == 1 && !fp_storage<R> && integer_lattice<R>) {
+                      detail::notch64<L>.Numerator == 1 && integer_lattice<R>) {
             // Unit-integer fast path: modular wrap on the integer value, exact
             // (either grid may reach past int64; the span can be 2^64−1).
             using fold             = unit_fold<L, wide_numerator(lower_of<R>), wide_numerator(upper_of<R>)>;
@@ -6742,16 +6539,7 @@ struct assignment<L, R> {
 
     template <typename P>
     static constexpr void store(L& lhs, const R& rhs, P&& policy) {
-        if constexpr (fp_storage<L> && (fp_storage<R> || wide_valued<R> || double_exact<grid_of<R>>))
-            // f64 target: raw IS the value — decode the source (a double exactly)
-            // and snap to the dyadic grid (the offset machinery below mis-encodes
-            // a double raw).
-            lhs = L::from_raw(snap_double<grid_of<L>, rounding_for<L, P>>(as_double(rhs)));
-        else if constexpr (fp_storage<L>)
-            // A source that is not a double exactly: round its exact value, not
-            // the double nearest to it (two roundings can differ by a notch).
-            assignment<L, rational>::store_checked(lhs, as_rational(rhs), policy, no_action{});
-        else if constexpr (rational_storage<L> || rational_storage<R>)
+        if constexpr (rational_storage<L> || rational_storage<R>)
             // rational target: raw IS the value — snap the decoded source through
             // the rational-rhs store (the offset machinery below would round the
             // VALUE to a notch index and store that number as the raw). A rational
@@ -6830,11 +6618,7 @@ struct assignment<L, R> {
         static_assert(notches_compatible<L, R> || has_policy<L, P, snap>,
                       "incompatible notches: use with_snap() or policy<snap>() to allow rounding");
 
-        // A `f64` source holds its value as a double raw, which the raw-mapping
-        // formulas below would misread as an index: take the double path.
-        if constexpr (fp_storage<R>)
-            return assignment<L, double>::assign(lhs, as_double(rhs), policy, std::forward<A>(action));
-        else if constexpr (not includes(interval_of<L>, interval_of<R>)) {
+        if constexpr (not includes(interval_of<L>, interval_of<R>)) {
             if constexpr (needs_runtime_range_check<L, plain_t<P>, plain_t<A>>) {
                 if constexpr (is_integer_mapping) {
                     if (imax mapped = map_raw(rhs.raw()); mapped < raw_lo<L> || mapped > raw_hi<L>)
@@ -7244,58 +7028,27 @@ struct policy_ref {
 
 
 //---------------------------------------------------------------------------
-// rep — representation-flag propagation for binary arithmetic results, shared
-// by addition/multiplication/division. Propagate fp storage only when the
-// result grid stays exactly representable in the chosen width; otherwise
-// demote (f32→f64) or drop it so storage_pick deduces an exact representation
-// (the fp result would diverge from the exact result — see grid::double_exact
-// / float_exact). Widest-wins: prefer f32 only when both operands are
-// f32-only and the result fits float; an f64 operand or a too-fine-for-float
-// result widens to f64; too fine for double → exact; a continuous result
-// (Notch 0) drops it. fp storage never changes a result: the flags only pick
-// the raw, and the result's other flags are computed as without them.
+// result_rep — representation-flag propagation for binary arithmetic results,
+// shared by addition/multiplication/division. The result carries `exact`, and
+// `direct` / `indexed` where its grid can hold them; otherwise storage_pick
+// deduces it.
 //---------------------------------------------------------------------------
 namespace beman::inside::detail {
 template <insidable Lhs, insidable Rhs, grid ResultGrid>
-struct fp_rep {
-    static constexpr bool any_f64  = has_flag(policy_of<Lhs>, f64) || has_flag(policy_of<Rhs>, f64);
-    static constexpr bool any_f32  = has_flag(policy_of<Lhs>, f32) || has_flag(policy_of<Rhs>, f32);
-    static constexpr bool keep_f32 = any_f32 && !any_f64 && float_exact<ResultGrid>;
-    static constexpr bool keep_f64 = !keep_f32 && (any_f64 || any_f32) && double_exact<ResultGrid>;
-    // Carry both operands' representation flags (widest-wins at storage selection).
+struct result_rep {
     // `direct` needs notch 1 and `indexed` a non-zero notch; a result grid
     // that cannot hold them drops them (storage is then deduced).
     static constexpr policy_flag carried = (policy_of<Lhs> | policy_of<Rhs>)&(
         exact | (ResultGrid.Notch == 1 ? direct : none) | (ResultGrid.Notch != 0 ? indexed : none));
-    static constexpr policy_flag rep = carried | (keep_f64 ? f64 : none) | (keep_f32 ? f32 : none);
     // The result inside's policy: the propagated representation, checked when
     // either operand is (a plain result is always checked); a representation
     // carried from two `unsafe` operands stays unchecked.
     static constexpr policy_flag result_policy =
-        rep | ((carried == none || is_checked(policy_of<Lhs>) || is_checked(policy_of<Rhs>)) ? checked
-                                                                                             : detail::unsafe_marker);
+        carried |
+        ((carried == none || is_checked(policy_of<Lhs>) || is_checked(policy_of<Rhs>)) ? checked
+                                                                                       : detail::unsafe_marker);
 };
 
-// The fp storage a result on grid G keeps from its operands Ins — fp_rep's
-// rule for any number of operands: f32 when only f32 operands and float holds
-// G exactly, f64 when double does, else none. Storage only: the result's
-// value and policy are the same either way.
-template <grid G, insidable... Ins>
-inline constexpr policy_flag fp_storage_for = [] {
-    constexpr bool any_f64 = (has_flag(policy_of<Ins>, f64) || ...);
-    constexpr bool any_f32 = (has_flag(policy_of<Ins>, f32) || ...);
-    if constexpr (any_f32 && !any_f64 && float_exact<G>)
-        return f32;
-    else if constexpr ((any_f64 || any_f32) && double_exact<G>)
-        return f64;
-    else
-        return none;
-}();
-
-// A deduced result type: grid G, policy P (without storage flags), plus the
-// fp storage its operands' flags and G allow.
-template <grid G, policy_flag P, insidable... Ins>
-using deduced_inside = inside<G, P | fp_storage_for<G, Ins...>>;
 // Whether a + or × into Result runs its overflow check. The result grid
 // holds every result, so only a rational or fraction raw can overflow: a
 // fraction raw always may (its denominator grows); a rational raw under a
@@ -7327,7 +7080,7 @@ struct addition {
     static constexpr grid result_grid =
         grid_sum_fits(grid_of<L>, grid_of<R>) ? (grid_of<L> + grid_of<R>).value() : grid_of<L>;
     // fp / representation propagation — shared rule in detail/rep.hpp.
-    using rep_t  = fp_rep<L, R, result_grid>;
+    using rep_t  = result_rep<L, R, result_grid>;
     using result = inside<result_grid, rep_t::result_policy>;
 
     template <policy_flag F>
@@ -7343,14 +7096,7 @@ struct addition {
     template <policy_flag F = none, typename E = empty_ref, typename A = no_action>
     static constexpr auto add(L lhs, R rhs, policy<F, E> policy = {}, A&& action = {}) -> return_t<F, A> {
         result res;
-        if constexpr (fp_storage<result>) {
-            // Exact by construction, no snap: fp storage is kept only when the
-            // result grid is double/float-exact (fp_rep), and grid values are notch
-            // multiples, so the sum is itself a representable result-grid point and
-            // the double add is exact. (Division still snaps — a quotient is not a
-            // grid point.)
-            res = result::from_raw(raw_cast<result>(as_double(lhs) + as_double(rhs)));
-        } else if constexpr (fraction_storage<result>) {
+        if constexpr (fraction_storage<result>) {
             const auto sum = frac_raw_of<raw_t<result>>(exact_of(lhs) + exact_of(rhs));
             if (!sum) [[unlikely]]
                 return report_or_unexpected<result>(action, policy, errc::overflow, "fraction overflow in add");
@@ -7413,7 +7159,7 @@ struct multiplication {
         grid_product_fits(grid_of<L>, grid_of<R>) ? (grid_of<L> * grid_of<R>).value() : grid_of<L>;
     // fp / representation propagation — shared rule in detail/rep.hpp. The product
     // grid (notch = N_L·N_R) is finer, so demotion/dropping is the common case.
-    using rep_t  = fp_rep<L, R, result_grid>;
+    using rep_t  = result_rep<L, R, result_grid>;
     using result = inside<result_grid, rep_t::result_policy>;
 
     template <policy_flag F>
@@ -7431,8 +7177,8 @@ struct multiplication {
     // the far end when c < 0. No multiply at all.
     template <insidable Point, insidable X>
     static constexpr bool point_scale =
-        point_grid<Point> && lower_of<Point> != 0 && !rational_storage<X> && !fp_storage<X> && notched<X> &&
-        !rational_storage<result> && !fp_storage<result> && !wide_valued<X> && !wide_valued<result>;
+        point_grid<Point> && lower_of<Point> != 0 && !rational_storage<X> && notched<X> && !rational_storage<result> &&
+        !wide_valued<X> && !wide_valued<result>;
 
     template <bool Negate, insidable X>
     static constexpr result scale_by_point(const X& x) {
@@ -7447,12 +7193,7 @@ struct multiplication {
 
     template <typename P, typename A = no_action>
     static constexpr auto mul(L lhs, R rhs, P&& policy, A&& action = {}) -> return_t<policy_flags_of<plain_t<P>>, A> {
-        if constexpr (fp_storage<result>) {
-            // Exact by construction, no snap (see addition.hpp): operands are notch
-            // multiples, the product index |ia·ib| stays under the double_exact 2^53
-            // gate, so the double multiply is exact and on the result lattice.
-            return result::from_raw(raw_cast<result>(as_double(lhs) * as_double(rhs)));
-        } else if constexpr (point_scale<R, L>)
+        if constexpr (point_scale<R, L>)
             return scale_by_point<(lower_of<R> < 0)>(lhs);
         else if constexpr (point_scale<L, R>)
             return scale_by_point<(lower_of<L> < 0)>(rhs);
@@ -7484,12 +7225,11 @@ struct multiplication {
             return from_value_in_units<result, U>(value_in_units<W, unit_of<L>>(lhs) *
                                                   value_in_units<W, unit_of<R>>(rhs));
         } else if constexpr (wide_valued<result>)
-            // An fp or rational operand into a result with more than 2^64 slots.
+            // A rational operand into a result with more than 2^64 slots.
             return exact_result<result>(exact_of(lhs) * exact_of(rhs));
         else {
-            // An fp or rational operand into an integer result (reached when `f64`
-            // was dropped from a result grid that is not double-exact): the exact
-            // rational product, converted to the result's raw.
+            // A rational operand into an integer result: the exact rational
+            // product, converted to the result's raw.
             auto prod = rational::mul_unchecked(as_rational(lhs), as_rational(rhs));
             return result::from_raw(raw_of_lattice_value<result>(prod));
         }
@@ -7675,7 +7415,7 @@ struct division {
 
     // fp / representation propagation — shared rule in detail/rep.hpp (a
     // continuous quotient drops fp: it is an exact fraction).
-    using rep_t  = fp_rep<L, R, result_grid>;
+    using rep_t  = result_rep<L, R, result_grid>;
     using result = inside<result_grid, rep_t::result_policy>;
 
     template <policy_flag G = F>
@@ -7689,15 +7429,12 @@ struct division {
     // operand grids may prove the quotient fits (quotient_fits_rational).
     // A wide-index operand's quotient may outgrow the 64-bit rational
     // whatever the policy, so that path always reports.
-    static constexpr bool fits_rational        = quotient_fits_rational<L, R>();
-    static constexpr bool may_overflow_nonzero = !native_div && !fp_storage<result> && !fits_rational &&
-                                                 (needs_overflow_check<F> != 0 || wide_valued<L> || wide_valued<R>);
+    static constexpr bool fits_rational = quotient_fits_rational<L, R>();
+    static constexpr bool may_overflow_nonzero =
+        !native_div && !fits_rational && (needs_overflow_check<F> != 0 || wide_valued<L> || wide_valued<R>);
 
-    // Real division can still fail on a zero divisor, so it uses the same
-    // return-type rule as the rest: plain `result` when the op cannot fail
-    // (overflow-action, or the divisor grid excludes zero with no rational
-    // overflow), else expected<result, errc>. Real has no rational overflow, so
-    // may_overflow_nonzero is false for it (above).
+    // Plain `result` when the op cannot fail (overflow-action, or the divisor
+    // grid excludes zero with no rational overflow), else expected<result, errc>.
     template <typename A>
     using return_t =
         std::conditional_t<overflow_action<plain_t<A>> || (divisor_excludes_zero<R> && !may_overflow_nonzero),
@@ -7717,7 +7454,6 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy, A&& act
     // `fail` must stay well-formed even when return_t narrowed to plain
     // `result` (divisor excludes zero, no overflow); there every call to it is
     // removed by the guards below, so the final arm is dead (return-type only).
-    // Shared by the f64 and non-f64 paths (f64 fails only on a zero divisor).
     [[maybe_unused]] auto fail = [&](errc code, const char* what) -> return_t<A> {
         if constexpr (overflow_action<plain_t<A>>)
             return report_or_unexpected<result>(action, policy, code, what); // -> result
@@ -7731,21 +7467,7 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy, A&& act
     // return type; ignore_zero doesn't).
     [[maybe_unused]] constexpr bool zero_unchecked = divisor_unchecked<L, R, F, G>;
 
-    if constexpr (fp_storage<result>) {
-        // Real division reports zero like every other path (throw / report /
-        // action / unexpected). Finite operands keep the quotient finite, so no
-        // non-finite ever reaches storage.
-        if constexpr (!zero_unchecked)
-            if (as_double(rhs) == 0.0)
-                return fail(errc::division_by_zero, "division by zero in div");
-        // The quotient rounds once in double; its exact residual a − q·b gives
-        // the side of the true quotient where that rounding sits on a boundary.
-        const double a = as_double(lhs), b = as_double(rhs), q = a / b;
-        return result::from_raw(raw_cast<result>(snap_double_from<grid_of<result>, rmode>(q, [&] {
-            const double r = __builtin_fma(-q, b, a);
-            return ((r > 0) - (r < 0)) * (b > 0 ? 1 : -1);
-        })));
-    } else if constexpr (native_div_qformat) {
+    if constexpr (native_div_qformat) {
         // rhs.Raw == 0 iff rhs.value == 0 (detail::lower64<R> == 0). Formula folds to
         // `(a << log2 N)/b` for power-of-two N — the native Q-format idiom.
         if constexpr (!zero_unchecked)
@@ -7977,18 +7699,6 @@ template <grid G, policy_flag P>
 struct inside {
     static_assert(grid::validate<G>());
     static_assert(!(P & clamp) || !(P & wrap), "clamp and wrap are mutually exclusive");
-    // `f64` / `f32` store the value in a double / float, which must hold every
-    // value exactly: a dyadic grid (power-of-two notch and Lower). A
-    // continuous grid holds any fraction, so it is rejected — the flag would
-    // change results, and it is storage only. (A point keeps its value in the
-    // type.)
-    static_assert(!has_flag(P, f64) || detail::dyadic_grid<G> || G.Interval.Lower == G.Interval.Upper,
-                  "inside: `f64` storage needs a grid whose values double holds exactly — a dyadic "
-                  "notch and Lower; a continuous grid holds any fraction (drop the flag)");
-    static_assert(!has_flag(P, f32) || detail::dyadic_grid<G> || G.Interval.Lower == G.Interval.Upper,
-                  "inside: `f32` storage needs a grid whose values float holds exactly — a dyadic "
-                  "notch and Lower within float's 24-bit significand; a continuous grid holds any "
-                  "fraction (drop the flag)");
     // Representation flags vs grid shape (exact has no requirement; a result
     // policy may carry several flags — storage selection resolves widest-wins,
     // so no mutual-exclusion asserts here).
@@ -8034,7 +7744,7 @@ struct inside {
 
   private:
     // The one store every constructor and assignment goes through — the same
-    // for every raw kind, so f64 / f32 storage gives the same results.
+    // for every raw kind.
     template <numeric A, typename Pol>
     constexpr void store_value(const A& value, Pol&& pol) {
         detail::assignment<inside, A>::assign(*this, value, pol);
@@ -8156,7 +7866,7 @@ struct inside {
     //                       make `imax_var += b` ambiguous).
     //   operator rational — implicit; lossless and exact.
     //   operator double   — explicit, and gated on a rounding flag (a double
-    //                       may round the value); the same with `f64` storage.
+    //                       may round the value).
     //                       A strict inside opts in via `to<double>().value()`.
     //   to<T>()           — typed-error narrowing/widening → `expected<T, errc>`
     //                       (overflow / domain_error).
@@ -8292,8 +8002,6 @@ struct inside {
         negative neg;
         if constexpr (detail::point_storage<inside>)
             neg = negative::from_raw({}); // −point is a point: no raw
-        else if constexpr (detail::fp_storage<inside>)
-            neg = negative::from_raw(raw_type{} - Raw); // 0 − 0 is +0: no −0.0 raw
         else if constexpr (detail::rational_storage<inside>)
             neg = negative::from_raw(-(Raw));
         else {
@@ -8733,8 +8441,7 @@ namespace detail {
 // same-notch insides compare as `bias + raw` without a rational decode.
 template <insidable B>
 inline constexpr bool index_cmp_fits = [] {
-    if constexpr (rational_storage<B> || fp_storage<B> || !detail::notched<B> || !detail::anchored<B> ||
-                  !values_fit_imax<B>)
+    if constexpr (rational_storage<B> || !detail::notched<B> || !detail::anchored<B> || !values_fit_imax<B>)
         return false;
     else {
         constexpr auto lo  = detail::lower64<B> / detail::notch64<B>;
@@ -8775,10 +8482,6 @@ inline constexpr auto three_way_partial = [](const auto& a, const auto& b) -> st
 };
 inline constexpr auto equal_to = [](const auto& a, const auto& b) { return a == b; };
 
-// Every value of B is exactly a double (fp storage, or a double-exact grid).
-template <insidable B>
-inline constexpr bool exact_in_double = fp_storage<B> || double_exact<grid_of<B>>;
-
 // A point P that is one of X's slots, with X storing a builtin index: X's
 // raw orders like its value, so X ⋈ P is its raw ⋈ that constant slot
 // (`t != end(t)`, `x <= 4_ins`).
@@ -8803,11 +8506,6 @@ constexpr auto compare(const L& lhs, const R& rhs, Cmp cmp) {
     // a wide-index operand: exact wide fractions
     else if constexpr (wide_valued<L> || wide_valued<R>)
         return cmp(exact_of(lhs), exact_of(rhs));
-    // an fp-backed operand: compare in double when both sides' values are
-    // exact in double (raw_imax would truncate the fp raw); otherwise the
-    // rational fallback below keeps the comparison exact.
-    else if constexpr ((fp_storage<L> || fp_storage<R>) && exact_in_double<L> && exact_in_double<R>)
-        return cmp(as_double(lhs), as_double(rhs));
     // both integer-direct (notch=1, Raw==value): compare as integers
     else if constexpr (integer_value_storage<L> && integer_value_storage<R> && values_fit_imax<L> &&
                        values_fit_imax<R>)
@@ -8888,6 +8586,9 @@ constexpr auto compare_scalar(const B& lhs, A rhs, Cmp cmp) {
         return cmp(raw_imax(lhs), static_cast<imax>(rhs));
     else if constexpr (integer_value_storage<B> && values_fit_imax<B> && std::floating_point<A> && double_exact_values)
         return cmp(static_cast<double>(raw_imax(lhs)), static_cast<double>(rhs));
+    else if constexpr (integer_index_storage<B> && std::floating_point<A> && double_exact<grid_of<B>> &&
+                       index_double<B>.Ok)
+        return cmp(as_double(lhs), static_cast<double>(rhs)); // exact: every value is a double
     else if constexpr (scalar_index_cmp_fits<B, A>)
         return cmp((index_cmp_bias<B> + raw_imax(lhs)) * static_cast<imax>(detail::notch64<B>.Numerator),
                    static_cast<imax>(rhs) * detail::notch64<B>.Denominator);
@@ -8949,7 +8650,7 @@ consteval grid cursor_grid(const auto& step) {
 }
 
 consteval policy_flag cursor_policy(policy_flag p) {
-    return (p & ~(raw_width_mask | f64 | f32 | direct | exact)) | indexed | cursor_marker;
+    return (p & ~(raw_width_mask | direct | exact)) | indexed | cursor_marker;
 }
 } // namespace detail
 
@@ -9064,7 +8765,7 @@ template <insidable B, numeric A>
 template <insidable B, numeric A>
 [[nodiscard]] constexpr B unchecked_cast(A value) {
     // Keep B's representation flags so the twin's raw layout is B's.
-    constexpr policy_flag representation = policy_of<B> & (exact | f64 | f32 | direct | indexed | raw_width_mask);
+    constexpr policy_flag representation = policy_of<B> & (exact | direct | indexed | raw_width_mask);
     using twin                           = inside<grid_of<B>, unsafe | representation>;
     return B::from_raw(twin{value}.raw()); // same grid → identical raw layout
 }
@@ -9263,8 +8964,8 @@ template <insidable First, insidable... Rest>
 // (semantic difference: the *total* is validated, not every prefix).
 // Notched integer raws (wide ones too) sum value indices exactly — Σvalue =
 // Notch·ΣJ — in a wide integer with 64 bits of headroom for the count; ≤32-bit
-// raws add in imax blocks of 2^30 elements, the loop that vectorizes; f64 /
-// f32 elements give the same indices. Continuous elements add as 64-bit
+// raws add in imax blocks of 2^30 elements, the loop that vectorizes.
+// Continuous elements add as 64-bit
 // rationals; a total past that reports overflow through Target's policy.
 //---------------------------------------------------------------------------
 template <insidable Target, std::ranges::input_range Rng>
@@ -9274,20 +8975,14 @@ template <insidable Target, std::ranges::input_range Rng>
     Target out{};
     auto   policy = make_policy<policy_of<Target>>();
 
-    if constexpr ((detail::integer_storage<B> || detail::fp_storage<B>) && !detail::point_storage<B> &&
-                  detail::notched<B>) {
+    if constexpr (detail::integer_storage<B> && !detail::point_storage<B> && detail::notched<B>) {
         // The total in units of U, the value unit: the notch on an anchored
         // grid, so each value counts as its value index.
         constexpr detail::grid_rational U = grid_of<B>.value_unit();
         constexpr int bits = detail::signed_value_bits_of({detail::units_lo<B, U>, detail::units_hi<B, U>}) + 64;
         using I            = detail::wide_sint<detail::limbs_for_bits(bits)>;
         I total{0};
-        if constexpr (detail::fp_storage<B>) {
-            // A dyadic grid: value / U is an exact integer below 2^53.
-            constexpr double unit = static_cast<double>(U);
-            for (const auto& b : r)
-                total += I{static_cast<imax>(detail::as_double(b) / unit)};
-        } else if constexpr (!detail::wide_index_storage<B> && sizeof(detail::raw_t<B>) <= 4) {
+        if constexpr (!detail::wide_index_storage<B> && sizeof(detail::raw_t<B>) <= 4) {
             // Each value is base + raw·scale units (scale 1 when anchored).
             constexpr imax base =
                 detail::index_storage<B> ? static_cast<imax>(detail::exact_quotient(lower_of<B>, U)) : 0;
@@ -9366,7 +9061,7 @@ template <insidable Target, std::ranges::input_range Rng>
 //---------------------------------------------------------------------------
 // common_inside — the "hull" type able to hold every value of L and R exactly:
 // interval hull + notch gcd (grid `hull`), representation propagated by the
-// same widest-wins rule as arithmetic results (detail::fp_rep). Backs the
+// same rule as arithmetic results (detail::result_rep). Backs the
 // std::common_type specialisation (numeric_limits.hpp) and mixed-grid
 // min/max below. The primary has no `type` when the hull grid is
 // unrepresentable, so common_type_t SFINAEs away instead of erroring.
@@ -9385,7 +9080,7 @@ template <insidable Lhs, insidable Rhs>
     requires(!std::same_as<Lhs, Rhs>) && (hull(grid_of<Lhs>, grid_of<Rhs>).has_value())
 struct common_inside<Lhs, Rhs> {
     static constexpr grid hull_grid = *hull(grid_of<Lhs>, grid_of<Rhs>);
-    using type                      = inside<hull_grid, fp_rep<Lhs, Rhs, hull_grid>::result_policy>;
+    using type                      = inside<hull_grid, result_rep<Lhs, Rhs, hull_grid>::result_policy>;
 };
 } // namespace detail
 
@@ -9460,7 +9155,7 @@ BEMAN_INSIDE_LIFT_OP(%)
 //
 // Concrete (non-auto) return type on purpose: keeps these SFINAE-transparent,
 // so `requires { b + 1; }` stays well-formed and the static_assert fires only
-// on a f64 call.
+// on a call.
 //---------------------------------------------------------------------------
 template <typename A>
 concept raw_scalar = std::integral<A> || std::floating_point<A>;
@@ -9514,7 +9209,7 @@ struct std::common_type<beman::inside::inside<G1, P1>, beman::inside::inside<G2,
 // iterator wraps modulo the slot count so a mid-range start visits every slot
 // once. Models random_access_range + sized_range (so std::ranges algorithms
 // work directly). iterator_category is input_iterator_tag because operator*
-// returns by value; iterator_concept carries the f64 random-access capability.
+// returns by value; iterator_concept carries the random-access capability.
 //---------------------------------------------------------------------------
 namespace beman::inside {
 namespace detail {
@@ -10248,16 +9943,6 @@ constexpr Out store(const wide_sint<K>& index, P&& policy) {
         constexpr I count = static_cast<I>(grid_of<Out>.slot_count());
         if (!index.negative() && !(count < index)) [[likely]]
             return Out::from_raw(raw_of_slot<Out>(index));
-    } else if constexpr (fp_storage<Out> && !wide_valued<Out>) {
-        // A floating-point raw holds the grid point itself: on its double- (or
-        // float-) exact grid, value index × notch is exact in that type.
-        constexpr I count = static_cast<I>(grid_of<Out>.slot_count());
-        if (!index.negative() && !(count < index)) [[likely]] {
-            constexpr double notch = static_cast<double>(static_cast<imax>(wide_numerator(notch_of<Out>))) /
-                                     static_cast<double>(static_cast<imax>(wide_denominator(notch_of<Out>)));
-            const imax       j     = static_cast<imax>(index) + static_cast<imax>(slot_base<Out>);
-            return Out::from_raw(static_cast<raw_t<Out>>(static_cast<double>(j) * notch));
-        }
     } else if constexpr (rational_storage<Out> && notch_fits64<Out>) {
         // A rational raw holds the grid point j·p/q itself: built directly
         // (the constructor reduces it) when j·p fits 64 bits.
@@ -10400,10 +10085,9 @@ template <insidable In>
 inline constexpr bool table_input =
     !wide_valued<In> && notched<In> && grid_of<In>.slot_count() < grid_wide{BEMAN_INSIDE_MATH_TABLE_SLOTS};
 
-// Outputs whose raw a table can hold: an integer index or value, or a
-// floating-point raw (the grid point as a double or float).
+// Outputs whose raw a table can hold: an integer index or value.
 template <insidable Out>
-inline constexpr bool table_output = (integer_storage<Out> || fp_storage<Out>) && notched<Out> && !wide_valued<Out>;
+inline constexpr bool table_output = integer_storage<Out> && notched<Out> && !wide_valued<Out>;
 
 // The slot offset of an input value (0 … slot count).
 template <insidable In>
@@ -10418,25 +10102,15 @@ constexpr std::size_t offset_of(const In& x) noexcept {
             r.Denominator < 0 ? -static_cast<__int128>(r.Numerator) : static_cast<__int128>(r.Numerator);
         const __int128 j = rn * (n.Denominator / rd) / static_cast<__int128>(n.Numerator);
         return static_cast<std::size_t>(static_cast<imax>(j) - static_cast<imax>(slot_base<In>));
-    } else if constexpr (fp_storage<In>) {
-        // A floating-point raw holds the value on a dyadic grid: (value −
-        // Lower)·2^k is exact.
-        constexpr double lower = static_cast<double>(to_rational(lower_of<In>));
-        constexpr double inv   = static_cast<double>(to_rational(grid_rational{1} / notch_of<In>));
-        return static_cast<std::size_t>((static_cast<double>(x.raw()) - lower) * inv);
     } else
         return static_cast<std::size_t>(value_index<imax>(x) - static_cast<imax>(slot_base<In>));
 }
 
-// In's value at slot I (rational and floating-point raws hold the value).
+// In's value at slot I (a rational raw holds the value).
 template <insidable In>
 constexpr In slot_input(std::size_t i) noexcept {
     if constexpr (rational_storage<In>)
         return In::from_raw(to_rational(lower_of<In>) + rational{static_cast<imax>(i)} * to_rational(notch_of<In>));
-    else if constexpr (fp_storage<In>) // the value, exact on the dyadic grid
-        return In::from_raw(
-            static_cast<raw_t<In>>(static_cast<double>(to_rational(lower_of<In>)) +
-                                   static_cast<double>(i) * static_cast<double>(to_rational(notch_of<In>))));
     else
         return In::from_raw(raw_from_offset<In>(static_cast<umax>(i)));
 }
@@ -13565,15 +13239,13 @@ template <insidable In>
 inline constexpr imax max_abs_int = ceil_abs(lower_of<In>) > ceil_abs(upper_of<In>) ? ceil_abs(lower_of<In>)
                                                                                     : ceil_abs(upper_of<In>);
 
-// Policy of a deduced output: the input's, minus a fixed storage width and
-// f64 / f32 (deduced_inside re-adds them where the output grid allows),
+// Policy of a deduced output: the input's, minus a fixed storage width,
 // rounding to nearest.
 template <insidable In>
-inline constexpr policy_flag auto_policy =
-    (policy_of<In> & ~(raw_width_mask | f64 | f32 | cursor_marker)) | round_nearest;
+inline constexpr policy_flag auto_policy = (policy_of<In> & ~(raw_width_mask | cursor_marker)) | round_nearest;
 
 template <insidable In, grid_rational Lo, grid_rational Hi>
-using auto_grid_t = deduced_inside<{{Lo, Hi}, notch_of<In>}, auto_policy<In>, In>;
+using auto_grid_t = inside<{{Lo, Hi}, notch_of<In>}, auto_policy<In>>;
 
 // The bound of Core's result at In's lower or upper end.
 template <insidable In, typename Core, bool AtUpper, bool Up>
@@ -13716,7 +13388,7 @@ inline constexpr bool small_index = !wide_valued<In> && !rational_storage<In> &&
 // conversion's nearest double.
 template <insidable In>
 constexpr double input_double(const In& x) noexcept {
-    if constexpr (fp_storage<In> || point_storage<In> || rational_storage<In>)
+    if constexpr (point_storage<In> || rational_storage<In>)
         return as_double(x);
     else if constexpr (fp_exact_input<In>)
         return static_cast<double>(value_index<imax>(x)) * (notch_p<In> / notch_q<In>);
@@ -13739,16 +13411,13 @@ constexpr double fabs_d(double v) noexcept { return __builtin_fabs(v); }
 // does not announce).
 inline double nearest_int(double t) noexcept { return __builtin_nearbyint(t); }
 
-// Stores the grid point with value index j, slot offset k, in out. j stays in
-// the caller's type (double or imax): only an fp raw reads it.
-template <insidable Out, typename J>
-[[gnu::always_inline]] inline void store_slot(J j, umax k, Out& out) {
+// Stores the grid point with slot offset k in out.
+template <insidable Out>
+[[gnu::always_inline]] inline void store_slot(umax k, Out& out) {
     if constexpr (integer_storage<Out>)
         out = Out::from_raw(raw_from_offset<Out>(k));
-    else if constexpr (rational_storage<Out>) // the grid point as a fraction
+    else // a rational raw: the grid point as a fraction
         out = store<Out>(wide_sint<2>{k});
-    else // fp raw: the grid point, exact
-        out = Out::from_raw(static_cast<raw_t<Out>>(static_cast<double>(j) * (notch_p<Out> / notch_q<Out>)));
 }
 
 // The slot of a kernel value v within an absolute bound, decided in double
@@ -13789,7 +13458,7 @@ inline bool fp_decide(double v, double bound, Out& out) noexcept {
     }
     if (!(j >= lo && j <= hi))
         return false;
-    store_slot(j, static_cast<umax>(static_cast<imax>(j - lo)), out);
+    store_slot(static_cast<umax>(static_cast<imax>(j - lo)), out);
     return true;
 }
 
@@ -13837,21 +13506,19 @@ inline constexpr bool dd_output = [] {
 // Inputs the tier reads exactly (doubles) or within 2^-100 (index·p/q, or
 // a rational raw's numerator over its denominator).
 template <insidable In>
-inline constexpr bool dd_input = !wide_valued<In> && !point_storage<In> &&
-                                 (fp_storage<In> || fp_exact_input<In> || rational_storage<In> ||
-                                  (small_index<In> && notch_p<In> < two53 && notch_q<In> < two53));
+inline constexpr bool dd_input =
+    !wide_valued<In> && !point_storage<In> &&
+    (fp_exact_input<In> || rational_storage<In> || (small_index<In> && notch_p<In> < two53 && notch_q<In> < two53));
 
 template <insidable Out, insidable... Ins>
 inline constexpr bool dd_tier = fp_tier_available && dd_output<Out> && (dd_input<Ins> && ...);
 
 template <insidable In>
-inline constexpr double dd_input_rel = (fp_storage<In> || fp_exact_input<In>) ? 0.0 : 0x1p-100;
+inline constexpr double dd_input_rel = fp_exact_input<In> ? 0.0 : 0x1p-100;
 
 template <insidable In>
 inline ddk::dd dd_read(const In& x) noexcept {
-    if constexpr (fp_storage<In>)
-        return {as_double(x), 0};
-    else if constexpr (fp_exact_input<In>)
+    if constexpr (fp_exact_input<In>)
         return {input_double(x), 0};
     else if constexpr (rational_storage<In>) {
         const rational r     = x.raw();     // ±Numerator/|Denominator|
@@ -13910,7 +13577,7 @@ inline bool dd_decide(ddk::dd v, double bound, Out& out) noexcept {
     }
     if (j < first || j > last)
         return false;
-    store_slot(j, static_cast<umax>(j) - static_cast<umax>(first), out);
+    store_slot(static_cast<umax>(j) - static_cast<umax>(first), out);
     return true;
 }
 
@@ -14816,11 +14483,11 @@ template <insidable In>
 using atanh =
     ax::increasing_t<In, ax::ahyp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::ahyp::atanh, ax::input_bits<In>>>;
 template <insidable In>
-using sin = ax::deduced_inside<{{-1, 1}, notch_of<In>}, ax::auto_policy<In>, In>;
+using sin = inside<{{-1, 1}, notch_of<In>}, ax::auto_policy<In>>;
 template <insidable In>
 using cos = sin<In>;
 template <insidable In>
-using tan = ax::deduced_inside<{{-1024, 1024}, notch_of<In>}, ax::auto_policy<In>, In>;
+using tan = inside<{{-1024, 1024}, notch_of<In>}, ax::auto_policy<In>>;
 
 // cosh is even: its least value is 1 when In spans 0, else at the end
 // nearer 0.
@@ -14867,8 +14534,7 @@ template <insidable A, insidable B>
 inline constexpr grid_rational pi_up =
     ax::lattice_bound<ax::gcd_notch<A, B>, true>(ax::atan2_core<1>{ax::exact_int<1>(0), ax::exact_int<1>(-1)});
 template <insidable InY, insidable InX>
-using atan2 =
-    ax::deduced_inside<{{-pi_up<InY, InX>, pi_up<InY, InX>}, ax::gcd_notch<InY, InX>}, ax::auto_policy<InY>, InY, InX>;
+using atan2 = inside<{{-pi_up<InY, InX>, pi_up<InY, InX>}, ax::gcd_notch<InY, InX>}, ax::auto_policy<InY>>;
 
 // hypot: [0, hypot of the largest magnitudes] on the gcd notch.
 template <insidable InX, insidable InY>
@@ -14882,7 +14548,7 @@ inline constexpr grid_rational hypot_hi = [] {
         ax::sqrt_core<hypot_limbs<InX, InY>, ax::hypot_bits<InX, InY>>{a * a + b * b});
 }();
 template <insidable InX, insidable InY>
-using hypot = ax::deduced_inside<{{0, hypot_hi<InX, InY>}, ax::gcd_notch<InX, InY>}, ax::auto_policy<InX>, InX, InY>;
+using hypot = inside<{{0, hypot_hi<InX, InY>}, ax::gcd_notch<InX, InY>}, ax::auto_policy<InX>>;
 
 // pow: b^e is monotone in each argument for b > 0, so the extremes are at
 // the corners of the input rectangle. Notch of the base.
@@ -14909,10 +14575,7 @@ inline constexpr grid_rational pow_extreme = [] {
     return m;
 }();
 template <insidable InB, insidable InE>
-using pow = ax::deduced_inside<{{pow_extreme<InB, InE, false>, pow_extreme<InB, InE, true>}, notch_of<InB>},
-                               ax::auto_policy<InB>,
-                               InB,
-                               InE>;
+using pow = inside<{{pow_extreme<InB, InE, false>, pow_extreme<InB, InE, true>}, notch_of<InB>}, ax::auto_policy<InB>>;
 } // namespace auto_t
 
 #define BEMAN_INSIDE_AX_AUTO(fn)                                                               \
@@ -15018,10 +14681,9 @@ inline constexpr rational kPiRat{1068966896, 340262731};
 inline constexpr rational kTwoPiRat = 2 * kPiRat;
 
 // Policy of an auto-deduced output: the input's, minus any fixed-width
-// storage flag (i8 … u64) — the output range differs, as for arithmetic — and
-// minus f64 / f32, which deduced_inside re-adds where the output grid allows.
+// storage flag (i8 … u64) — the output range differs, as for arithmetic.
 template <insidable In>
-inline constexpr policy_flag out_policy = policy_of<In> & ~(raw_width_mask | f64 | f32 | cursor_marker);
+inline constexpr policy_flag out_policy = policy_of<In> & ~(raw_width_mask | cursor_marker);
 
 // A 64-bit grid operation's result through Out's assignment.
 template <insidable Out, typename V>
@@ -15083,11 +14745,11 @@ inline constexpr grid_rational sym_floor = [] {
 }();
 
 template <insidable In>
-using abs_auto_t = deduced_inside<{{sym_floor<In>, abs_auto_upper<In>}, sym_notch<In>}, out_policy<In>, In>;
+using abs_auto_t = inside<{{sym_floor<In>, abs_auto_upper<In>}, sym_notch<In>}, out_policy<In>>;
 
 // sign(x) ∈ {sign(Lower) … sign(Upper)}, integer notch.
 template <insidable In>
-using sign_auto_t = deduced_inside<{grid_sign(lower_of<In>), grid_sign(upper_of<In>)}, out_policy<In>, In>;
+using sign_auto_t = inside<{grid_sign(lower_of<In>), grid_sign(upper_of<In>)}, out_policy<In>>;
 
 // copysign(mag, sgn): |mag| with sgn's possible signs. |mag| ranges over
 // [m_lo, m_hi] (m_lo = 0 when mag's interval spans 0); ±|mag| lies on
@@ -15099,15 +14761,13 @@ inline constexpr grid_rational abs_auto_lower =
                                                           : grid_abs(upper_of<Mag>);
 
 template <insidable Mag, insidable Sgn>
-using copysign_auto_t = deduced_inside<{{lower_of<Sgn> < 0 ? -abs_auto_upper<Mag> : abs_auto_lower<Mag>,
-                                         upper_of<Sgn> >= 0 ? abs_auto_upper<Mag> : -abs_auto_lower<Mag>},
-                                        sym_notch<Mag>},
-                                       out_policy<Mag>,
-                                       Mag>;
+using copysign_auto_t = inside<{{lower_of<Sgn> < 0 ? -abs_auto_upper<Mag> : abs_auto_lower<Mag>,
+                                 upper_of<Sgn> >= 0 ? abs_auto_upper<Mag> : -abs_auto_lower<Mag>},
+                                sym_notch<Mag>},
+                               out_policy<Mag>>;
 
 template <insidable In, round_mode M>
-using integer_auto_t =
-    deduced_inside<{{grid_to_int<M>(lower_of<In>), grid_to_int<M>(upper_of<In>)}, 1}, out_policy<In>, In>;
+using integer_auto_t = inside<{{grid_to_int<M>(lower_of<In>), grid_to_int<M>(upper_of<In>)}, 1}, out_policy<In>>;
 
 template <insidable In>
 using floor_auto_t = integer_auto_t<In, round_mode::floor>;
@@ -15133,48 +14793,36 @@ constexpr exact_frac<E> exact_to_int(const exact_frac<E>& v) noexcept {
     return {rounded_div<M>(v.Num, v.Den), wide_sint<E>{1}};
 }
 
-// Double-backed fast path for the algebraic tier. |x| and the integer
-// roundings of a grid value are exact in double (|x| < 2^53 on a
-// double_exact grid, so the imax cast cannot overflow), and the
-// auto-deduced Out holds every result by construction, so the result is
-// stored as the raw without the rational round-trip.
+// Integer fast path for the algebraic tier: an anchored integer raw holds
+// the value J·p/q (J its value index, Notch p/q), so its integer rounding is
+// J·p over q rounded. It applies when the auto-deduced Out (which holds every
+// result by construction) is the target and |J·p| fits imax.
 template <insidable Out, insidable AutoOut, insidable In>
-inline constexpr bool fp_direct = std::same_as<Out, AutoOut> && fp_storage<In> && fp_storage<Out>;
-
-template <insidable Out, insidable In, typename F>
-constexpr Out fp_direct_store(In x, F f) noexcept {
-    return Out::from_raw(raw_cast<Out>(f(static_cast<double>(x.raw()))));
-}
-
-// v rounded to an integer by m, on the double: v and its truncation share
-// the grid, so the dropped fraction is exact. Compares the fraction directly
-// (not through rounds_away): the sign-free classification costs instructions
-// on this hot path.
-constexpr double fp_round_to_int(double v, round_mode m) noexcept {
-    const double t = static_cast<double>(static_cast<imax>(v));
-    switch (m) {
-    case round_mode::floor:
-        return t > v ? t - 1 : t;
-    case round_mode::ceil:
-        return t < v ? t + 1 : t;
-    case round_mode::nearest: {
-        const double f = v - t;
-        return f >= 0.5 ? t + 1 : f <= -0.5 ? t - 1 : t;
+inline constexpr bool int_direct = [] {
+    if constexpr (!std::same_as<Out, AutoOut> || !integer_storage<In> || !integer_storage<Out> || !notched<In> ||
+                  !anchored<In> || wide_valued<In> || wide_valued<Out>)
+        return false;
+    else {
+        const rational n  = notch64<In>;
+        const auto     lo = lower64<In> / n, hi = upper64<In> / n;
+        if (!lo || !hi)
+            return false;
+        const umax m = lo->Numerator > hi->Numerator ? lo->Numerator : hi->Numerator; // max |J|
+        return m <= static_cast<umax>(std::numeric_limits<imax>::max()) / n.Numerator;
     }
-    default:
-        return t;
-    }
-}
+}();
 
-// x rounded to an integer by M: exactly, on the raw doubles, or through
+// x rounded to an integer by M: exactly, on the value index, or through
 // rational. Round is half away from zero, as rational round() is.
 template <round_mode M, insidable Out, insidable In>
 constexpr Out integer_into(In x) {
     if constexpr (any_wide_valued<Out, In>)
         return store_exact<Out>(exact_to_int<M>(ax::exact_input(x)));
-    else if constexpr (fp_direct<Out, integer_auto_t<In, M>, In>)
-        return fp_direct_store<Out>(x, [](double v) { return fp_round_to_int(v, M); });
-    else
+    else if constexpr (int_direct<Out, integer_auto_t<In, M>, In>) {
+        constexpr imax p = static_cast<imax>(notch64<In>.Numerator);
+        constexpr imax q = static_cast<imax>(abs_den(notch64<In>.Denominator));
+        return from_value_index<Out>(div_rounded(value_index<imax>(x) * p, q, M));
+    } else
         return store_value<Out>(round_to_int(rational{x}, M));
 }
 } // namespace detail
@@ -15191,9 +14839,13 @@ template <insidable Out, insidable In>
                   "beman::inside::math::abs: Out must include the smallest |x| (0 when x's range spans 0)");
     if constexpr (detail::any_wide_valued<Out, In>)
         return detail::store_exact<Out>(detail::ax::abs(detail::ax::exact_input(x)));
-    else if constexpr (detail::fp_direct<Out, detail::abs_auto_t<In>, In>)
-        return detail::fp_direct_store<Out>(x, [](double v) { return v < 0 ? -v : v; });
-    else
+    else if constexpr (std::same_as<Out, detail::abs_auto_t<In>> && detail::integer_storage<In> &&
+                       detail::integer_storage<Out> && detail::notched<In> && detail::anchored<In> &&
+                       notch_of<Out> == notch_of<In> && !detail::wide_valued<In>) {
+        // The same lattice through 0: |x| is the value index's magnitude.
+        const imax j = detail::value_index<imax>(x);
+        return detail::from_value_index<Out>(j < 0 ? -j : j);
+    } else
         return detail::store_value<Out>(beman::inside::detail::abs(rational{x}));
 }
 
@@ -15241,15 +14893,14 @@ using namespace beman::inside::detail;
 // remainder in units of g = gcd(notch of InX, notch of InY): with x
 // = a·g and y = b·g, x − trunc(x/y)·y = (a − (a/b)·b)·g = (a % b)·g exactly (C++ % is truncated division, the same
 // convention). Conditions:
-//   * integer raws only (rational/double raws keep the rational path),
+//   * integer raws only (rational raws keep the rational path),
 //   * non-zero notches, g on Out's grid (g / notch of Out integer),
 //   * divisor grid excludes zero (no runtime zero check needed),
 //   * Out's interval covers ±max|y| (result magnitude is < |y|),
 //   * all unit counts fit comfortably in imax (headroom 4).
 template <insidable Out, insidable InX, insidable InY>
 inline constexpr bool fmod_int_fast = [] {
-    if (rational_storage<InX> || fp_storage<InX> || rational_storage<InY> || fp_storage<InY> ||
-        rational_storage<Out> || fp_storage<Out>)
+    if (rational_storage<InX> || rational_storage<InY> || rational_storage<Out>)
         return false;
     if (!::beman::inside::detail::notched<InX> || !::beman::inside::detail::notched<InY> ||
         !::beman::inside::detail::notched<Out>)
@@ -15349,7 +15000,7 @@ template <insidable Out, insidable InX, insidable InY>
 //---------------------------------------------------------------------------
 // Repeated squaring in inside-space: every multiply widens the result grid
 // corner-correctly, so the result is exact for exact inputs and negative
-// bases are fine. No engine, no `f64` requirement — works on any inside
+// bases are fine. No engine — works on any inside
 // (like abs/floor/fmod). Checked rational raws may return
 // std::expected<inside, errc> per the usual arithmetic vocabulary. Negative
 // exponents are deferred (they need the division error story).
@@ -15412,12 +15063,10 @@ inline constexpr grid_rational fmod_bound =
     abs_auto_upper<InX> < abs_auto_upper<InY> ? abs_auto_upper<InX> : abs_auto_upper<InY>;
 
 template <insidable InX, insidable InY>
-using fmod_auto_t = deduced_inside<{{(lower_of<InX> < 0 ? -fmod_bound<InX, InY> : grid_rational{0}),
-                                     (upper_of<InX> > 0 ? fmod_bound<InX, InY> : grid_rational{0})},
-                                    ax::gcd_notch<InX, InY>},
-                                   out_policy<InX> | round_nearest,
-                                   InX,
-                                   InY>;
+using fmod_auto_t = inside<{{(lower_of<InX> < 0 ? -fmod_bound<InX, InY> : grid_rational{0}),
+                             (upper_of<InX> > 0 ? fmod_bound<InX, InY> : grid_rational{0})},
+                            ax::gcd_notch<InX, InY>},
+                           out_policy<InX> | round_nearest>;
 } // namespace detail
 
 template <insidable InX, insidable InY>
@@ -15428,12 +15077,11 @@ template <insidable InX, insidable InY>
 //---------------------------------------------------------------------------
 // amp<K> — amplitude grid [-1, 1] at 1/K resolution: a ready-made explicit
 // output for sin / cos (`math::sin_into<math::amp<32768>>(angle)`), decoupling
-// the output precision from the angle's grid; results round to nearest. A
-// power-of-two K stores the value in a double (storage only). All angles are
-// radians, as in <cmath>.
+// the output precision from the angle's grid; results round to nearest. All
+// angles are radians, as in <cmath>.
 //---------------------------------------------------------------------------
 template <std::uint64_t K>
-using amp = inside<{{rational{-1}, rational{1}}, per<K>}, round_nearest | ((K & (K - 1)) == 0 ? f64 : none)>;
+using amp = inside<{{rational{-1}, rational{1}}, per<K>}, round_nearest>;
 
 //---------------------------------------------------------------------------
 // The transcendentals: the adaptive engine.
@@ -15819,7 +15467,7 @@ std::string big_fraction_to_string(const big_rational& r) {
 
 // An inside's exact value: with a decimal notch, every value prints that
 // notch's decimals (19.90, 2.00); otherwise its shortest exact form — a
-// decimal when it has one, else N/D. (f64 / f32 storage prints the same.)
+// decimal when it has one, else N/D.
 template <insidable B>
 [[nodiscard]] inline std::string to_string(B b) {
     constexpr int n = detail::fixed_decimals<B>;
@@ -16236,16 +15884,8 @@ struct std::formatter<beman::inside::detail::rational>
 // numeric_limits / hash — std:: specialisations for inside<G, P>.
 // numeric_limits reports the *grid* bounds (Lower/Upper), not the raw type's
 // limits. std::hash hashes the Raw member (rational raw: Numerator+Denominator,
-// boost-style combine). Both are the same with or without `f64` / `f32`. (std::common_type lives in arithmetic.hpp,
-// always on.)
+// boost-style combine). (std::common_type lives in arithmetic.hpp, always on.)
 //---------------------------------------------------------------------------
-
-namespace beman::inside::detail {
-// The same inside without `f64` / `f32`: those flags only pick the raw, so
-// limits and hashes are the ones the type has without them.
-template <grid G, policy_flag P>
-using without_fp_storage = inside<G, P & ~(f64 | f32)>;
-} // namespace beman::inside::detail
 
 template <beman::inside::grid G, beman::inside::policy_flag P>
 struct std::numeric_limits<beman::inside::inside<G, P>> {
@@ -16280,10 +15920,9 @@ struct std::numeric_limits<beman::inside::inside<G, P>> {
         }
     }();
 
-    // digits / digits10 forward to the deduced raw type (as without `f64` /
-    // `f32`) so generic algorithms see the storage size, not the rational
-    // interval count.
-    using deduced_raw             = beman::inside::detail::raw_t<beman::inside::detail::without_fp_storage<G, P>>;
+    // digits / digits10 forward to the raw type so generic algorithms see the
+    // storage size, not the rational interval count.
+    using deduced_raw             = beman::inside::detail::raw_t<B>;
     static constexpr int digits   = std::numeric_limits<deduced_raw>::digits;
     static constexpr int digits10 = std::numeric_limits<deduced_raw>::digits10;
 
@@ -16314,11 +15953,7 @@ struct std::hash<beman::inside::inside<G, P>> {
     using B = beman::inside::inside<G, P>;
 
     constexpr std::size_t operator()(const B& b) const noexcept {
-        if constexpr (beman::inside::detail::fp_storage<B>) {
-            // The hash of the same value without fp storage.
-            using twin = beman::inside::detail::without_fp_storage<G, P>;
-            return std::hash<twin>{}(twin{b});
-        } else if constexpr (beman::inside::detail::rational_storage<B>) {
+        if constexpr (beman::inside::detail::rational_storage<B>) {
             // Boost-style hash combine over (Numerator, Denominator).
             auto h1 = std::hash<beman::inside::umax>{}(b.raw().Numerator);
             auto h2 = std::hash<beman::inside::imax>{}(b.raw().Denominator);
@@ -16373,14 +16008,9 @@ template <insidable B, std::uniform_random_bit_generator G>
     } else {
         std::uniform_int_distribution<umax> pick(0, detail::max_index_v<B>);
         const umax                          k = pick(g);
-        if constexpr (detail::fp_storage<B> || detail::rational_storage<B>) {
-            const detail::rational v =
-                (detail::lower64<B> + (detail::rational{k} * detail::notch64<B>).value()).value();
-            if constexpr (detail::fp_storage<B>)
-                return B::from_raw(static_cast<detail::raw_t<B>>(static_cast<double>(v))); // exact: fp-exact grid
-            else
-                return B::from_raw(v);
-        } else
+        if constexpr (detail::rational_storage<B>)
+            return B::from_raw((detail::lower64<B> + (detail::rational{k} * detail::notch64<B>).value()).value());
+        else
             return B::from_raw(detail::raw_from_offset<B>(k)); // index or value storage
     }
 }

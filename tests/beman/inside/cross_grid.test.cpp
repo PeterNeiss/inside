@@ -133,8 +133,7 @@ TEST(CrossGridTest, regression_fractional_plus_integer_direct_keeps_the_fraction
 
 //---------------------------------------------------------------------------
 // Integer-raw sums of mixed grids stay on integer storage (the wrapping
-// value-index path), and fp-backed operands stay off it (a double raw has no
-// integer index; f64_exact.test.cpp caught exactly that during development).
+// value-index path).
 //---------------------------------------------------------------------------
 TEST(CrossGridTest, integer_paths_stay_engaged_and_fp_stays_excluded) {
     using whole    = inside<{0, 100}>;
@@ -147,8 +146,8 @@ TEST(CrossGridTest, integer_paths_stay_engaged_and_fp_stays_excluded) {
     static_assert(detail::assignment<quarter_grid, tenths>::affine_map.Ok);
 
     // fp-backed operands: the sum is exact either way.
-    using coarse_real = inside<{{0, (umax{1} << 40)}, per<2>}, f64>;
-    using fine_real   = inside<{{0, 1}, per<(1u << 20)>}, f64>;
+    using coarse_real = inside<{{0, (umax{1} << 40)}, per<2>}>;
+    using fine_real   = inside<{{0, 1}, per<(1u << 20)>}>;
     EXPECT_TRUE(coarse_real{1.5} + fine_real{0.25} == 1.75);
 
     // value check across a negative Lower, at compile time (constexpr path).
@@ -181,11 +180,11 @@ TEST(CrossGridTest, regression_cross_grid_assign_onto_rational_storage_keeps_the
     from_value_raw = value_src{3};
     ASSERT_EQ(from_value_raw.raw(), rational{3});
 
-    using f64_src      = inside<{{0, 4}, per<256>}, f64 | round_nearest>;
+    using dyadic_src   = inside<{{0, 4}, per<256>}, round_nearest>;
     using exact_dyadic = inside<{{0, 4}, per<256>}, exact | round_nearest>;
-    exact_dyadic from_f64;
-    from_f64 = f64_src{rational{513, 256}};
-    ASSERT_EQ(from_f64.raw(), (rational{513, 256}));
+    exact_dyadic from_dyadic;
+    from_dyadic = dyadic_src{rational{513, 256}};
+    ASSERT_EQ(from_dyadic.raw(), (rational{513, 256}));
 
     // rounding still happens when the source is off the target grid
     using exact_coarse = inside<{{0, 4}, 1}, exact | round_nearest>;

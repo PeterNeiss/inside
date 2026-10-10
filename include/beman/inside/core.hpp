@@ -66,18 +66,6 @@ template <grid G, policy_flag P>
 struct inside {
     static_assert(grid::validate<G>());
     static_assert(!(P & clamp) || !(P & wrap), "clamp and wrap are mutually exclusive");
-    // `f64` / `f32` store the value in a double / float, which must hold every
-    // value exactly: a dyadic grid (power-of-two notch and Lower). A
-    // continuous grid holds any fraction, so it is rejected — the flag would
-    // change results, and it is storage only. (A point keeps its value in the
-    // type.)
-    static_assert(!has_flag(P, f64) || detail::dyadic_grid<G> || G.Interval.Lower == G.Interval.Upper,
-                  "inside: `f64` storage needs a grid whose values double holds exactly — a dyadic "
-                  "notch and Lower; a continuous grid holds any fraction (drop the flag)");
-    static_assert(!has_flag(P, f32) || detail::dyadic_grid<G> || G.Interval.Lower == G.Interval.Upper,
-                  "inside: `f32` storage needs a grid whose values float holds exactly — a dyadic "
-                  "notch and Lower within float's 24-bit significand; a continuous grid holds any "
-                  "fraction (drop the flag)");
     // Representation flags vs grid shape (exact has no requirement; a result
     // policy may carry several flags — storage selection resolves widest-wins,
     // so no mutual-exclusion asserts here).
@@ -123,7 +111,7 @@ struct inside {
 
   private:
     // The one store every constructor and assignment goes through — the same
-    // for every raw kind, so f64 / f32 storage gives the same results.
+    // for every raw kind.
     template <numeric A, typename Pol>
     constexpr void store_value(const A& value, Pol&& pol) {
         detail::assignment<inside, A>::assign(*this, value, pol);
@@ -245,7 +233,7 @@ struct inside {
     //                       make `imax_var += b` ambiguous).
     //   operator rational — implicit; lossless and exact.
     //   operator double   — explicit, and gated on a rounding flag (a double
-    //                       may round the value); the same with `f64` storage.
+    //                       may round the value).
     //                       A strict inside opts in via `to<double>().value()`.
     //   to<T>()           — typed-error narrowing/widening → `expected<T, errc>`
     //                       (overflow / domain_error).
@@ -381,8 +369,6 @@ struct inside {
         negative neg;
         if constexpr (detail::point_storage<inside>)
             neg = negative::from_raw({}); // −point is a point: no raw
-        else if constexpr (detail::fp_storage<inside>)
-            neg = negative::from_raw(raw_type{} - Raw); // 0 − 0 is +0: no −0.0 raw
         else if constexpr (detail::rational_storage<inside>)
             neg = negative::from_raw(-(Raw));
         else {
@@ -822,8 +808,7 @@ namespace detail {
 // same-notch insides compare as `bias + raw` without a rational decode.
 template <insidable B>
 inline constexpr bool index_cmp_fits = [] {
-    if constexpr (rational_storage<B> || fp_storage<B> || !detail::notched<B> || !detail::anchored<B> ||
-                  !values_fit_imax<B>)
+    if constexpr (rational_storage<B> || !detail::notched<B> || !detail::anchored<B> || !values_fit_imax<B>)
         return false;
     else {
         constexpr auto lo  = detail::lower64<B> / detail::notch64<B>;
@@ -864,10 +849,6 @@ inline constexpr auto three_way_partial = [](const auto& a, const auto& b) -> st
 };
 inline constexpr auto equal_to = [](const auto& a, const auto& b) { return a == b; };
 
-// Every value of B is exactly a double (fp storage, or a double-exact grid).
-template <insidable B>
-inline constexpr bool exact_in_double = fp_storage<B> || double_exact<grid_of<B>>;
-
 // A point P that is one of X's slots, with X storing a builtin index: X's
 // raw orders like its value, so X ⋈ P is its raw ⋈ that constant slot
 // (`t != end(t)`, `x <= 4_ins`).
@@ -892,11 +873,6 @@ constexpr auto compare(const L& lhs, const R& rhs, Cmp cmp) {
     // a wide-index operand: exact wide fractions
     else if constexpr (wide_valued<L> || wide_valued<R>)
         return cmp(exact_of(lhs), exact_of(rhs));
-    // an fp-backed operand: compare in double when both sides' values are
-    // exact in double (raw_imax would truncate the fp raw); otherwise the
-    // rational fallback below keeps the comparison exact.
-    else if constexpr ((fp_storage<L> || fp_storage<R>) && exact_in_double<L> && exact_in_double<R>)
-        return cmp(as_double(lhs), as_double(rhs));
     // both integer-direct (notch=1, Raw==value): compare as integers
     else if constexpr (integer_value_storage<L> && integer_value_storage<R> && values_fit_imax<L> &&
                        values_fit_imax<R>)
@@ -977,6 +953,9 @@ constexpr auto compare_scalar(const B& lhs, A rhs, Cmp cmp) {
         return cmp(raw_imax(lhs), static_cast<imax>(rhs));
     else if constexpr (integer_value_storage<B> && values_fit_imax<B> && std::floating_point<A> && double_exact_values)
         return cmp(static_cast<double>(raw_imax(lhs)), static_cast<double>(rhs));
+    else if constexpr (integer_index_storage<B> && std::floating_point<A> && double_exact<grid_of<B>> &&
+                       index_double<B>.Ok)
+        return cmp(as_double(lhs), static_cast<double>(rhs)); // exact: every value is a double
     else if constexpr (scalar_index_cmp_fits<B, A>)
         return cmp((index_cmp_bias<B> + raw_imax(lhs)) * static_cast<imax>(detail::notch64<B>.Numerator),
                    static_cast<imax>(rhs) * detail::notch64<B>.Denominator);
@@ -1038,7 +1017,7 @@ consteval grid cursor_grid(const auto& step) {
 }
 
 consteval policy_flag cursor_policy(policy_flag p) {
-    return (p & ~(raw_width_mask | f64 | f32 | direct | exact)) | indexed | cursor_marker;
+    return (p & ~(raw_width_mask | direct | exact)) | indexed | cursor_marker;
 }
 } // namespace detail
 

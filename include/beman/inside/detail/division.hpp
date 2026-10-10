@@ -182,7 +182,7 @@ struct division {
 
     // fp / representation propagation — shared rule in detail/rep.hpp (a
     // continuous quotient drops fp: it is an exact fraction).
-    using rep_t  = fp_rep<L, R, result_grid>;
+    using rep_t  = result_rep<L, R, result_grid>;
     using result = inside<result_grid, rep_t::result_policy>;
 
     template <policy_flag G = F>
@@ -196,15 +196,12 @@ struct division {
     // operand grids may prove the quotient fits (quotient_fits_rational).
     // A wide-index operand's quotient may outgrow the 64-bit rational
     // whatever the policy, so that path always reports.
-    static constexpr bool fits_rational        = quotient_fits_rational<L, R>();
-    static constexpr bool may_overflow_nonzero = !native_div && !fp_storage<result> && !fits_rational &&
-                                                 (needs_overflow_check<F> != 0 || wide_valued<L> || wide_valued<R>);
+    static constexpr bool fits_rational = quotient_fits_rational<L, R>();
+    static constexpr bool may_overflow_nonzero =
+        !native_div && !fits_rational && (needs_overflow_check<F> != 0 || wide_valued<L> || wide_valued<R>);
 
-    // Real division can still fail on a zero divisor, so it uses the same
-    // return-type rule as the rest: plain `result` when the op cannot fail
-    // (overflow-action, or the divisor grid excludes zero with no rational
-    // overflow), else expected<result, errc>. Real has no rational overflow, so
-    // may_overflow_nonzero is false for it (above).
+    // Plain `result` when the op cannot fail (overflow-action, or the divisor
+    // grid excludes zero with no rational overflow), else expected<result, errc>.
     template <typename A>
     using return_t =
         std::conditional_t<overflow_action<plain_t<A>> || (divisor_excludes_zero<R> && !may_overflow_nonzero),
@@ -224,7 +221,6 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy, A&& act
     // `fail` must stay well-formed even when return_t narrowed to plain
     // `result` (divisor excludes zero, no overflow); there every call to it is
     // removed by the guards below, so the final arm is dead (return-type only).
-    // Shared by the f64 and non-f64 paths (f64 fails only on a zero divisor).
     [[maybe_unused]] auto fail = [&](errc code, const char* what) -> return_t<A> {
         if constexpr (overflow_action<plain_t<A>>)
             return report_or_unexpected<result>(action, policy, code, what); // -> result
@@ -238,21 +234,7 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy, A&& act
     // return type; ignore_zero doesn't).
     [[maybe_unused]] constexpr bool zero_unchecked = divisor_unchecked<L, R, F, G>;
 
-    if constexpr (fp_storage<result>) {
-        // Real division reports zero like every other path (throw / report /
-        // action / unexpected). Finite operands keep the quotient finite, so no
-        // non-finite ever reaches storage.
-        if constexpr (!zero_unchecked)
-            if (as_double(rhs) == 0.0)
-                return fail(errc::division_by_zero, "division by zero in div");
-        // The quotient rounds once in double; its exact residual a − q·b gives
-        // the side of the true quotient where that rounding sits on a boundary.
-        const double a = as_double(lhs), b = as_double(rhs), q = a / b;
-        return result::from_raw(raw_cast<result>(snap_double_from<grid_of<result>, rmode>(q, [&] {
-            const double r = __builtin_fma(-q, b, a);
-            return ((r > 0) - (r < 0)) * (b > 0 ? 1 : -1);
-        })));
-    } else if constexpr (native_div_qformat) {
+    if constexpr (native_div_qformat) {
         // rhs.Raw == 0 iff rhs.value == 0 (detail::lower64<R> == 0). Formula folds to
         // `(a << log2 N)/b` for power-of-two N — the native Q-format idiom.
         if constexpr (!zero_unchecked)

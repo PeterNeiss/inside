@@ -126,10 +126,6 @@ TEST(UnanchoredGrid, storage) {
     static_assert(!integer_value_storage<inside<kNegOff>>);
     static_assert(!unit_lattice(kHalfOff));
     static_assert(index_storage<inside<kHalfOff, indexed | u8>>);
-#ifndef BEMAN_INSIDE_MATH_NO_FP
-    // a dyadic offset grid may store its value in a double
-    static_assert(f64_storage<inside<kQuarterOff, f64>>);
-#endif
     static_assert(!double_exact<kThirdOff>);
 }
 
@@ -203,15 +199,15 @@ TEST(UnanchoredGrid, store_rounds_in_value_space) {
     check_store_all_modes<kNegOff>();
 }
 
-TEST(UnanchoredGrid, store_rounds_with_f64_storage) {
-    check_store_rational<kQuarterOff, round_nearest, f64>();
-    check_store_rational<kQuarterOff, round_floor, f64>();
-    check_store_rational<kQuarterOff, round_ceil, f64>();
-    check_store_rational<kQuarterOff, round_half_even, f64>();
-    check_store_rational<kQuarterOff, snap, f64>();
-    check_store_rational<kSymOff, round_nearest, f64>();
-    check_store_rational<kSymOff, snap, f64>();
-    check_store_rational<kHalfOff, round_half_even, f64>();
+TEST(UnanchoredGrid, store_rounds_dyadic_offsets) {
+    check_store_rational<kQuarterOff, round_nearest>();
+    check_store_rational<kQuarterOff, round_floor>();
+    check_store_rational<kQuarterOff, round_ceil>();
+    check_store_rational<kQuarterOff, round_half_even>();
+    check_store_rational<kQuarterOff, snap>();
+    check_store_rational<kSymOff, round_nearest>();
+    check_store_rational<kSymOff, snap>();
+    check_store_rational<kHalfOff, round_half_even>();
 }
 
 TEST(UnanchoredGrid, store_rounds_with_exact_storage) {
@@ -477,10 +473,10 @@ TEST(UnanchoredGrid, range_limits_random) {
 // sum<>
 //---------------------------------------------------------------------------
 TEST(UnanchoredGrid, sum) {
-    std::vector<inside<kHalfOff>>         halves;
-    std::vector<inside<kTenthOff>>        tenths;
-    std::vector<inside<kQuarterOff, f64>> quarters;
-    rational                              h{0}, t{0}, q{0};
+    std::vector<inside<kHalfOff>>    halves;
+    std::vector<inside<kTenthOff>>   tenths;
+    std::vector<inside<kQuarterOff>> quarters;
+    rational                         h{0}, t{0}, q{0};
     for (const rational v : slots<kHalfOff>()) {
         halves.emplace_back(v);
         h = *(h + v);

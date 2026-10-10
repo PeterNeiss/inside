@@ -34,10 +34,9 @@ inline constexpr rational kPiRat{1068966896, 340262731};
 inline constexpr rational kTwoPiRat = 2 * kPiRat;
 
 // Policy of an auto-deduced output: the input's, minus any fixed-width
-// storage flag (i8 … u64) — the output range differs, as for arithmetic — and
-// minus f64 / f32, which deduced_inside re-adds where the output grid allows.
+// storage flag (i8 … u64) — the output range differs, as for arithmetic.
 template <insidable In>
-inline constexpr policy_flag out_policy = policy_of<In> & ~(raw_width_mask | f64 | f32 | cursor_marker);
+inline constexpr policy_flag out_policy = policy_of<In> & ~(raw_width_mask | cursor_marker);
 
 // A 64-bit grid operation's result through Out's assignment.
 template <insidable Out, typename V>
@@ -99,11 +98,11 @@ inline constexpr grid_rational sym_floor = [] {
 }();
 
 template <insidable In>
-using abs_auto_t = deduced_inside<{{sym_floor<In>, abs_auto_upper<In>}, sym_notch<In>}, out_policy<In>, In>;
+using abs_auto_t = inside<{{sym_floor<In>, abs_auto_upper<In>}, sym_notch<In>}, out_policy<In>>;
 
 // sign(x) ∈ {sign(Lower) … sign(Upper)}, integer notch.
 template <insidable In>
-using sign_auto_t = deduced_inside<{grid_sign(lower_of<In>), grid_sign(upper_of<In>)}, out_policy<In>, In>;
+using sign_auto_t = inside<{grid_sign(lower_of<In>), grid_sign(upper_of<In>)}, out_policy<In>>;
 
 // copysign(mag, sgn): |mag| with sgn's possible signs. |mag| ranges over
 // [m_lo, m_hi] (m_lo = 0 when mag's interval spans 0); ±|mag| lies on
@@ -115,15 +114,13 @@ inline constexpr grid_rational abs_auto_lower =
                                                           : grid_abs(upper_of<Mag>);
 
 template <insidable Mag, insidable Sgn>
-using copysign_auto_t = deduced_inside<{{lower_of<Sgn> < 0 ? -abs_auto_upper<Mag> : abs_auto_lower<Mag>,
-                                         upper_of<Sgn> >= 0 ? abs_auto_upper<Mag> : -abs_auto_lower<Mag>},
-                                        sym_notch<Mag>},
-                                       out_policy<Mag>,
-                                       Mag>;
+using copysign_auto_t = inside<{{lower_of<Sgn> < 0 ? -abs_auto_upper<Mag> : abs_auto_lower<Mag>,
+                                 upper_of<Sgn> >= 0 ? abs_auto_upper<Mag> : -abs_auto_lower<Mag>},
+                                sym_notch<Mag>},
+                               out_policy<Mag>>;
 
 template <insidable In, round_mode M>
-using integer_auto_t =
-    deduced_inside<{{grid_to_int<M>(lower_of<In>), grid_to_int<M>(upper_of<In>)}, 1}, out_policy<In>, In>;
+using integer_auto_t = inside<{{grid_to_int<M>(lower_of<In>), grid_to_int<M>(upper_of<In>)}, 1}, out_policy<In>>;
 
 template <insidable In>
 using floor_auto_t = integer_auto_t<In, round_mode::floor>;
@@ -149,48 +146,36 @@ constexpr exact_frac<E> exact_to_int(const exact_frac<E>& v) noexcept {
     return {rounded_div<M>(v.Num, v.Den), wide_sint<E>{1}};
 }
 
-// Double-backed fast path for the algebraic tier. |x| and the integer
-// roundings of a grid value are exact in double (|x| < 2^53 on a
-// double_exact grid, so the imax cast cannot overflow), and the
-// auto-deduced Out holds every result by construction, so the result is
-// stored as the raw without the rational round-trip.
+// Integer fast path for the algebraic tier: an anchored integer raw holds
+// the value J·p/q (J its value index, Notch p/q), so its integer rounding is
+// J·p over q rounded. It applies when the auto-deduced Out (which holds every
+// result by construction) is the target and |J·p| fits imax.
 template <insidable Out, insidable AutoOut, insidable In>
-inline constexpr bool fp_direct = std::same_as<Out, AutoOut> && fp_storage<In> && fp_storage<Out>;
-
-template <insidable Out, insidable In, typename F>
-constexpr Out fp_direct_store(In x, F f) noexcept {
-    return Out::from_raw(raw_cast<Out>(f(static_cast<double>(x.raw()))));
-}
-
-// v rounded to an integer by m, on the double: v and its truncation share
-// the grid, so the dropped fraction is exact. Compares the fraction directly
-// (not through rounds_away): the sign-free classification costs instructions
-// on this hot path.
-constexpr double fp_round_to_int(double v, round_mode m) noexcept {
-    const double t = static_cast<double>(static_cast<imax>(v));
-    switch (m) {
-    case round_mode::floor:
-        return t > v ? t - 1 : t;
-    case round_mode::ceil:
-        return t < v ? t + 1 : t;
-    case round_mode::nearest: {
-        const double f = v - t;
-        return f >= 0.5 ? t + 1 : f <= -0.5 ? t - 1 : t;
+inline constexpr bool int_direct = [] {
+    if constexpr (!std::same_as<Out, AutoOut> || !integer_storage<In> || !integer_storage<Out> || !notched<In> ||
+                  !anchored<In> || wide_valued<In> || wide_valued<Out>)
+        return false;
+    else {
+        const rational n  = notch64<In>;
+        const auto     lo = lower64<In> / n, hi = upper64<In> / n;
+        if (!lo || !hi)
+            return false;
+        const umax m = lo->Numerator > hi->Numerator ? lo->Numerator : hi->Numerator; // max |J|
+        return m <= static_cast<umax>(std::numeric_limits<imax>::max()) / n.Numerator;
     }
-    default:
-        return t;
-    }
-}
+}();
 
-// x rounded to an integer by M: exactly, on the raw doubles, or through
+// x rounded to an integer by M: exactly, on the value index, or through
 // rational. Round is half away from zero, as rational round() is.
 template <round_mode M, insidable Out, insidable In>
 constexpr Out integer_into(In x) {
     if constexpr (any_wide_valued<Out, In>)
         return store_exact<Out>(exact_to_int<M>(ax::exact_input(x)));
-    else if constexpr (fp_direct<Out, integer_auto_t<In, M>, In>)
-        return fp_direct_store<Out>(x, [](double v) { return fp_round_to_int(v, M); });
-    else
+    else if constexpr (int_direct<Out, integer_auto_t<In, M>, In>) {
+        constexpr imax p = static_cast<imax>(notch64<In>.Numerator);
+        constexpr imax q = static_cast<imax>(abs_den(notch64<In>.Denominator));
+        return from_value_index<Out>(div_rounded(value_index<imax>(x) * p, q, M));
+    } else
         return store_value<Out>(round_to_int(rational{x}, M));
 }
 } // namespace detail
@@ -207,9 +192,13 @@ template <insidable Out, insidable In>
                   "beman::inside::math::abs: Out must include the smallest |x| (0 when x's range spans 0)");
     if constexpr (detail::any_wide_valued<Out, In>)
         return detail::store_exact<Out>(detail::ax::abs(detail::ax::exact_input(x)));
-    else if constexpr (detail::fp_direct<Out, detail::abs_auto_t<In>, In>)
-        return detail::fp_direct_store<Out>(x, [](double v) { return v < 0 ? -v : v; });
-    else
+    else if constexpr (std::same_as<Out, detail::abs_auto_t<In>> && detail::integer_storage<In> &&
+                       detail::integer_storage<Out> && detail::notched<In> && detail::anchored<In> &&
+                       notch_of<Out> == notch_of<In> && !detail::wide_valued<In>) {
+        // The same lattice through 0: |x| is the value index's magnitude.
+        const imax j = detail::value_index<imax>(x);
+        return detail::from_value_index<Out>(j < 0 ? -j : j);
+    } else
         return detail::store_value<Out>(beman::inside::detail::abs(rational{x}));
 }
 
@@ -257,15 +246,14 @@ using namespace beman::inside::detail;
 // remainder in units of g = gcd(notch of InX, notch of InY): with x
 // = a·g and y = b·g, x − trunc(x/y)·y = (a − (a/b)·b)·g = (a % b)·g exactly (C++ % is truncated division, the same
 // convention). Conditions:
-//   * integer raws only (rational/double raws keep the rational path),
+//   * integer raws only (rational raws keep the rational path),
 //   * non-zero notches, g on Out's grid (g / notch of Out integer),
 //   * divisor grid excludes zero (no runtime zero check needed),
 //   * Out's interval covers ±max|y| (result magnitude is < |y|),
 //   * all unit counts fit comfortably in imax (headroom 4).
 template <insidable Out, insidable InX, insidable InY>
 inline constexpr bool fmod_int_fast = [] {
-    if (rational_storage<InX> || fp_storage<InX> || rational_storage<InY> || fp_storage<InY> ||
-        rational_storage<Out> || fp_storage<Out>)
+    if (rational_storage<InX> || rational_storage<InY> || rational_storage<Out>)
         return false;
     if (!::beman::inside::detail::notched<InX> || !::beman::inside::detail::notched<InY> ||
         !::beman::inside::detail::notched<Out>)
@@ -365,7 +353,7 @@ template <insidable Out, insidable InX, insidable InY>
 //---------------------------------------------------------------------------
 // Repeated squaring in inside-space: every multiply widens the result grid
 // corner-correctly, so the result is exact for exact inputs and negative
-// bases are fine. No engine, no `f64` requirement — works on any inside
+// bases are fine. No engine — works on any inside
 // (like abs/floor/fmod). Checked rational raws may return
 // std::expected<inside, errc> per the usual arithmetic vocabulary. Negative
 // exponents are deferred (they need the division error story).
@@ -428,12 +416,10 @@ inline constexpr grid_rational fmod_bound =
     abs_auto_upper<InX> < abs_auto_upper<InY> ? abs_auto_upper<InX> : abs_auto_upper<InY>;
 
 template <insidable InX, insidable InY>
-using fmod_auto_t = deduced_inside<{{(lower_of<InX> < 0 ? -fmod_bound<InX, InY> : grid_rational{0}),
-                                     (upper_of<InX> > 0 ? fmod_bound<InX, InY> : grid_rational{0})},
-                                    ax::gcd_notch<InX, InY>},
-                                   out_policy<InX> | round_nearest,
-                                   InX,
-                                   InY>;
+using fmod_auto_t = inside<{{(lower_of<InX> < 0 ? -fmod_bound<InX, InY> : grid_rational{0}),
+                             (upper_of<InX> > 0 ? fmod_bound<InX, InY> : grid_rational{0})},
+                            ax::gcd_notch<InX, InY>},
+                           out_policy<InX> | round_nearest>;
 } // namespace detail
 
 template <insidable InX, insidable InY>
@@ -444,12 +430,11 @@ template <insidable InX, insidable InY>
 //---------------------------------------------------------------------------
 // amp<K> — amplitude grid [-1, 1] at 1/K resolution: a ready-made explicit
 // output for sin / cos (`math::sin_into<math::amp<32768>>(angle)`), decoupling
-// the output precision from the angle's grid; results round to nearest. A
-// power-of-two K stores the value in a double (storage only). All angles are
-// radians, as in <cmath>.
+// the output precision from the angle's grid; results round to nearest. All
+// angles are radians, as in <cmath>.
 //---------------------------------------------------------------------------
 template <std::uint64_t K>
-using amp = inside<{{rational{-1}, rational{1}}, per<K>}, round_nearest | ((K & (K - 1)) == 0 ? f64 : none)>;
+using amp = inside<{{rational{-1}, rational{1}}, per<K>}, round_nearest>;
 
 //---------------------------------------------------------------------------
 // The transcendentals: the adaptive engine.

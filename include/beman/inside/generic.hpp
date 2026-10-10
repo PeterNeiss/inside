@@ -7,6 +7,8 @@
 #include <beman/inside/grid.hpp>
 #include <beman/inside/policy_flag.hpp>
 
+#include <algorithm>
+#include <bit>
 #include <initializer_list>
 
 //---------------------------------------------------------------------------
@@ -137,7 +139,6 @@ using raw_t = typename B::raw_type;
 // inside; each names the raw type and what it means:
 //
 //   value_storage — the raw IS the value
-//     fp_storage = f64_storage | f32_storage   IEEE double / float (fp-exact grids)
 //     rational_storage                         a 64-bit rational
 //     fraction_storage                         an exact_frac (continuous, limits past 64 bits)
 //     integer_value_storage                    a builtin integer
@@ -149,18 +150,6 @@ using raw_t = typename B::raw_type;
 //
 // Concepts, so the groups subsume their leaves and can constrain helpers.
 //-------------------------------------------------------------------------
-template <typename B>
-concept f64_storage = insidable<B> && std::same_as<raw_t<B>, double>;
-
-template <typename B>
-concept f32_storage = insidable<B> && std::same_as<raw_t<B>, float>;
-
-// fp storage shares every value-path branch: read/store/compare/arithmetic
-// compute in double, narrowing to the raw type on store (lossless on an
-// fp-exact grid).
-template <typename B>
-concept fp_storage = f64_storage<B> || f32_storage<B>;
-
 template <typename B>
 concept rational_storage = insidable<B> && std::same_as<raw_t<B>, rational>;
 
@@ -194,7 +183,7 @@ template <typename B>
 concept wide_index_storage = insidable<B> && is_wide_int_v<raw_t<B>>;
 
 template <typename B>
-concept value_storage = fp_storage<B> || rational_storage<B> || fraction_storage<B> || integer_value_storage<B>;
+concept value_storage = rational_storage<B> || fraction_storage<B> || integer_value_storage<B>;
 
 template <typename B>
 concept index_storage = point_storage<B> || integer_index_storage<B> || wide_index_storage<B>;
@@ -204,7 +193,7 @@ concept integer_storage = index_storage<B> || integer_value_storage<B>;
 
 // Same raw type AND same encoding (value vs index): only then does one
 // inside's raw mean the same as another's on the same grid. A grid alone
-// does not fix the encoding — `indexed` / `direct` / `f64` / a width flag
+// does not fix the encoding — `indexed` / `direct` / a width flag
 // pick it per policy.
 template <insidable L, insidable R>
 inline constexpr bool same_storage = std::is_same_v<raw_t<L>, raw_t<R>> && index_storage<L> == index_storage<R>;
@@ -240,9 +229,8 @@ inline constexpr bool wide_grid_numbers =
 template <insidable B>
 inline constexpr bool wide_valued = wide_index_storage<B> || wide_grid_numbers<B>;
 
-// Ungated double view of any inside, for the `f64` arithmetic arms (the
-// public operator double() is gated on a rounding flag; this is always
-// available). Everything but index storage holds the value verbatim; an
+// Ungated double view of any inside (the public operator double() is gated
+// on a rounding flag; this is always available). Everything but index storage holds the value verbatim; an
 // index decodes through the grid.
 template <insidable B>
 constexpr auto exact_of(const B& b); // wide_value.hpp
@@ -455,7 +443,19 @@ template <insidable B>
     requires qformat_codec_fits<B>
 constexpr rational q_format_decode(B b) noexcept {
     constexpr imax nd = abs_den(detail::notch64<B>.Denominator);
-    return rational{raw_imax(b) + lower_imax<B> * nd, nd};
+    const imax     n  = raw_imax(b) + lower_imax<B> * nd;
+    if constexpr (std::has_single_bit(static_cast<umax>(nd))) {
+        // A power-of-two denominator reduces by the common trailing zeros.
+        const umax m = n < 0 ? umax{0} - static_cast<umax>(n) : static_cast<umax>(n);
+        if (m == 0)
+            return rational{0};
+        const int s = std::min(std::countr_zero(m), std::countr_zero(static_cast<umax>(nd)));
+        rational  r;
+        r.Numerator   = m >> s;
+        r.Denominator = n < 0 ? -(nd >> s) : nd >> s;
+        return r;
+    } else
+        return rational{n, nd};
 }
 
 // Library-internal extraction helper. Always succeeds (returns `imax`
@@ -725,9 +725,7 @@ template <insidable L, typename P>
     rational r;
     if (!rounds_into_range<L, P>(v, r))
         return {raw_t<L>{}, false};
-    if constexpr (fp_storage<L>)
-        return {static_cast<raw_t<L>>(static_cast<double>(r)), true}; // exact: fp-exact grid
-    else if constexpr (rational_storage<L>)
+    if constexpr (rational_storage<L>)
         return {r, true};
     else
         return {raw_of_lattice_value<L>(r), true};

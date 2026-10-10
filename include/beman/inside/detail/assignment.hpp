@@ -6,6 +6,8 @@
 #include <beman/inside/detail/wide_value.hpp>
 #include <beman/inside/grid.hpp>
 
+#include <bit>
+
 namespace beman::inside::detail {
 //---------------------------------------------------------------------------
 // assignment — narrowing/coercion between bounded and arithmetic types. Three
@@ -489,12 +491,9 @@ struct assignment<L, R> {
             overshoot = rhs - clamped;
 
         // The clamp target is an interval endpoint — a grid point — so the slot is 0
-        // or max_index_v, no rounding. f64 takes the endpoint as a double, rational
-        // the exact constant (a double round-trip would lose non-dyadic endpoints);
+        // or max_index_v, no rounding. Rational takes the exact constant;
         // raw_from_offset<L> adds Lower back for direct-encoded storage.
-        if constexpr (fp_storage<L>)
-            lhs = L::from_raw(low ? static_cast<double>(detail::lower64<L>) : static_cast<double>(detail::upper64<L>));
-        else if constexpr (rational_storage<L>)
+        if constexpr (rational_storage<L>)
             lhs = L::from_raw(low ? detail::lower64<L> : detail::upper64<L>);
         else
             lhs = L::from_raw(raw_from_offset<L>(low ? umax{0} : max_index_v<L>));
@@ -594,27 +593,7 @@ struct assignment<L, R> {
     static constexpr void store_checked(L& lhs, R rhs, P&& policy, A&& action = {}) {
         if constexpr (rational_storage<L> && !detail::notched<L>)
             lhs = L::from_raw(rhs); // continuous: store verbatim
-        else if constexpr (fp_storage<L>) {
-            // f64 target: raw IS the value — snap to the dyadic grid (range handling
-            // already ran in the assign cascade; finite guard mirrors store_f64's).
-            const double v = static_cast<double>(rhs);
-            if (!(v - v == 0)) [[unlikely]] // assign() screens these first
-                return policy.report(errc::not_finite);
-            // v rounds rhs; at a rounding boundary the exact value decides.
-            const auto side = [&] {
-                const auto c = rhs <=> rational{v};
-                return c > 0 ? 1 : c < 0 ? -1 : 0;
-            };
-            // Off the grid without a rounding policy: rounding_error, as for
-            // integer storage.
-            if constexpr (!(has_policy<L, P, round_nearest> || has_policy<L, P, round_floor> ||
-                            has_policy<L, P, round_ceil> || has_policy<L, P, round_half_even> ||
-                            has_policy<L, P, snap>))
-                if (policy.round_check() &&
-                    (side() != 0 || snap_double<grid_of<L>, round_mode::trunc, /*AnySign=*/true>(v) != v)) [[unlikely]]
-                    return report_failure(lhs, policy, action, errc::rounding_error);
-            lhs = L::from_raw(snap_double_from<grid_of<L>, rounding_for<L, P>>(v, side));
-        } else if constexpr (detail::point_grid<L>) {
+        else if constexpr (detail::point_grid<L>) {
             // Singleton grid: offset encoding → Raw=0; rational/direct → Raw = Lower.
             if constexpr (rational_storage<L>)
                 lhs = L::from_raw(detail::lower64<L>);
@@ -636,19 +615,20 @@ struct assignment<L, R> {
                                             has_policy<L, P, round_ceil> || has_policy<L, P, round_half_even> ||
                                             has_policy<L, P, snap>;
 
-            // A floating source on a grid whose values double holds exactly:
-            // round in double (snap_double, the integer storage's rule) and
-            // read the slot off the value index, exact. No rational round trip.
+            // A floating source on an anchored grid with a power-of-two notch
+            // whose values double holds: v/Notch is exact, so round it in
+            // double (the integer storage's rule) and read the slot off the
+            // value index. No rational round trip.
             if constexpr (std::floating_point<R> && integer_storage<L> && !wide_valued<L> && anchored<L> &&
-                          double_exact<grid_of<L>>) {
-                constexpr double nd = static_cast<double>(detail::notch64<L>);
-                constexpr imax   lo = signed_numerator((detail::lower64<L> / detail::notch64<L>).value());
-                const double     v  = static_cast<double>(rhs);
-                const double     s  = snap_double<grid_of<L>, rounding_for<L, P>>(v);
+                          double_exact<grid_of<L>> && std::has_single_bit(detail::notch64<L>.Numerator)) {
+                constexpr imax lo = signed_numerator((detail::lower64<L> / detail::notch64<L>).value());
+                const double   v  = static_cast<double>(rhs);
+                const imax     j  = snap_double_index<grid_of<L>, rounding_for<L, P>>(v);
                 if constexpr (!has_round_flag)
-                    if (s != v && policy.round_check()) [[unlikely]]
+                    if (static_cast<double>(j) * static_cast<double>(detail::notch64<L>) != v && policy.round_check())
+                        [[unlikely]]
                         return report_failure(lhs, policy, action, errc::rounding_error);
-                store_slot(static_cast<umax>(static_cast<imax>(s / nd) - lo));
+                store_slot(static_cast<umax>(j - lo));
                 return;
             }
 
@@ -657,7 +637,7 @@ struct assignment<L, R> {
             // instead of two rational ops. round_quotient is invariant under reduction,
             // so the slot is bit-identical to the rational path. Oversized denominators
             // fall through (the kMaxDen guard keeps every product inside imax).
-            if constexpr (qformat_codec_fits<L> && !fp_storage<L> && detail::notched<L>) {
+            if constexpr (qformat_codec_fits<L> && detail::notched<L>) {
                 constexpr imax K   = abs_den(detail::notch64<L>.Denominator);
                 constexpr imax Lo  = lower_imax<L>;
                 constexpr umax kKM = [] {
@@ -912,13 +892,12 @@ struct assignment<L, R> {
     static constexpr rational Factor = calcFactor();
 
     // Raw-space integer-only mapping — requires integer raw storage on both
-    // sides (not rational, not f64).
+    // sides (not rational).
     // It also needs every raw and every mapped raw in imax: map_raw's L-raw
     // range is [Offset, Offset + Factor·max_index<R>] (+ Lower for value storage).
     static constexpr bool is_integer_mapping = [] {
-        if constexpr (rational_storage<L> || rational_storage<R> || fp_storage<L> || fp_storage<R> ||
-                      abs_den(Factor.Denominator) != 1 || abs_den(Offset.Denominator) != 1 || !values_fit_imax<L> ||
-                      !values_fit_imax<R>)
+        if constexpr (rational_storage<L> || rational_storage<R> || abs_den(Factor.Denominator) != 1 ||
+                      abs_den(Offset.Denominator) != 1 || !values_fit_imax<L> || !values_fit_imax<R>)
             return false;
         else {
             const rational base = index_storage<L> ? rational{0} : detail::lower64<L>;
@@ -947,8 +926,8 @@ struct assignment<L, R> {
     };
     static constexpr affine_map_t affine_map = [] {
         constexpr affine_map_t no{0, 0, 0, false};
-        if constexpr (rational_storage<L> || rational_storage<R> || fp_storage<L> || fp_storage<R> ||
-                      !detail::notched<L> || is_integer_mapping || !values_fit_imax<L> || !values_fit_imax<R>)
+        if constexpr (rational_storage<L> || rational_storage<R> || !detail::notched<L> || is_integer_mapping ||
+                      !values_fit_imax<L> || !values_fit_imax<R>)
             return no;
         else {
             constexpr umax cap = static_cast<umax>(std::numeric_limits<imax>::max());
@@ -1006,14 +985,8 @@ struct assignment<L, R> {
   private:
     template <typename A>
     static constexpr void apply_clamp(L& lhs, const R& rhs, A&& action) {
-        // raw_lo/raw_hi are already the correct Raw (no raw_from_offset). Real storage
-        // takes the endpoint as a double (raw_lo/Hi truncate fractional dyadic endpoints).
-        if constexpr (fp_storage<L>)
-            lhs = L::from_raw((as_rational(rhs) < detail::lower64<L>) ? static_cast<double>(detail::lower64<L>)
-                                                                      : static_cast<double>(detail::upper64<L>));
-        else
-            lhs =
-                L::from_raw((as_rational(rhs) < detail::lower64<L>) ? raw_cast<L>(raw_lo<L>) : raw_cast<L>(raw_hi<L>));
+        // raw_lo/raw_hi are already the correct Raw (no raw_from_offset).
+        lhs = L::from_raw((as_rational(rhs) < detail::lower64<L>) ? raw_cast<L>(raw_lo<L>) : raw_cast<L>(raw_hi<L>));
         // Overshoot (rhs − clamped) as an inside, via the result-grid inference of normal
         // inside arithmetic: both operands are insides, so the overshoot is too. It is always
         // in-grid and on-notch for grid_of<R> − grid_of<L>, so the construction is exact.
@@ -1032,7 +1005,7 @@ struct assignment<L, R> {
         // values are integers (no rounding to do). Anything else routes through
         // the rational modular wrap, which rounds by the policy first.
         if constexpr (integer_limits<L> && abs_den(detail::notch64<L>.Denominator) == 1 &&
-                      detail::notch64<L>.Numerator == 1 && !fp_storage<R> && integer_lattice<R>) {
+                      detail::notch64<L>.Numerator == 1 && integer_lattice<R>) {
             // Unit-integer fast path: modular wrap on the integer value, exact
             // (either grid may reach past int64; the span can be 2^64−1).
             using fold             = unit_fold<L, wide_numerator(lower_of<R>), wide_numerator(upper_of<R>)>;
@@ -1067,16 +1040,7 @@ struct assignment<L, R> {
 
     template <typename P>
     static constexpr void store(L& lhs, const R& rhs, P&& policy) {
-        if constexpr (fp_storage<L> && (fp_storage<R> || wide_valued<R> || double_exact<grid_of<R>>))
-            // f64 target: raw IS the value — decode the source (a double exactly)
-            // and snap to the dyadic grid (the offset machinery below mis-encodes
-            // a double raw).
-            lhs = L::from_raw(snap_double<grid_of<L>, rounding_for<L, P>>(as_double(rhs)));
-        else if constexpr (fp_storage<L>)
-            // A source that is not a double exactly: round its exact value, not
-            // the double nearest to it (two roundings can differ by a notch).
-            assignment<L, rational>::store_checked(lhs, as_rational(rhs), policy, no_action{});
-        else if constexpr (rational_storage<L> || rational_storage<R>)
+        if constexpr (rational_storage<L> || rational_storage<R>)
             // rational target: raw IS the value — snap the decoded source through
             // the rational-rhs store (the offset machinery below would round the
             // VALUE to a notch index and store that number as the raw). A rational
@@ -1155,11 +1119,7 @@ struct assignment<L, R> {
         static_assert(notches_compatible<L, R> || has_policy<L, P, snap>,
                       "incompatible notches: use with_snap() or policy<snap>() to allow rounding");
 
-        // A `f64` source holds its value as a double raw, which the raw-mapping
-        // formulas below would misread as an index: take the double path.
-        if constexpr (fp_storage<R>)
-            return assignment<L, double>::assign(lhs, as_double(rhs), policy, std::forward<A>(action));
-        else if constexpr (not includes(interval_of<L>, interval_of<R>)) {
+        if constexpr (not includes(interval_of<L>, interval_of<R>)) {
             if constexpr (needs_runtime_range_check<L, plain_t<P>, plain_t<A>>) {
                 if constexpr (is_integer_mapping) {
                     if (imax mapped = map_raw(rhs.raw()); mapped < raw_lo<L> || mapped > raw_hi<L>)

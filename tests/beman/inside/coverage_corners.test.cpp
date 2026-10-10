@@ -266,37 +266,32 @@ TEST(CoverageCornersTest, on_overflow_compound_subtract_that_does_not_overflow) 
     ASSERT_EQ(acc, 40);
 }
 
-#ifndef BEMAN_INSIDE_MATH_NO_FP
 //---------------------------------------------------------------------------
 // inside.hpp:161-163 — store_real out-of-range with a reporting policy
 // (the clamp/wrap arms are covered elsewhere; the range_fail arm was not).
 //---------------------------------------------------------------------------
-// f64 store out of range: checked policy
-TEST(CoverageCornersTest, f64_store_out_of_range_checked_policy) {
-    using rbc = inside<{{-1, 1}, per<1024>}, f64 | checked>;
+// double store out of range: checked policy
+TEST(CoverageCornersTest, double_store_out_of_range_checked_policy) {
+    using rbc = inside<{{-1, 1}, per<1024>}, checked>;
     ASSERT_THROW((void)((rbc{5.0})), beman::inside::inside_error); // out of range -> report (throws)
 }
-#endif // !BEMAN_INSIDE_MATH_NO_FP
 
 //---------------------------------------------------------------------------
-// assignment.hpp:609-613 — inside -> inside store into a `f64` (double-backed)
-// target decodes the source and snaps to the dyadic grid.
+// inside -> inside store into a dyadic target.
 //---------------------------------------------------------------------------
-#ifndef BEMAN_INSIDE_MATH_NO_FP
-// inside -> f64 conversion snaps onto the double grid
-TEST(CoverageCornersTest, inside_to_f64_conversion_snaps_onto_the_double_grid) {
-    using src_t = inside<{-2, 2}>;                                   // integer-backed source
-    using rb    = inside<{{-2, 2}, per<1024>}, round_nearest | f64>; // double-backed target
+// inside -> dyadic conversion lands on the grid
+TEST(CoverageCornersTest, inside_to_dyadic_conversion_lands_on_the_grid) {
+    using src_t = inside<{-2, 2}>;                             // integer-backed source
+    using rb    = inside<{{-2, 2}, per<1024>}, round_nearest>; // dyadic target
 
     src_t src{1};
-    rb    dst = src; // insidable -> f64 store
+    rb    dst = src; // insidable -> dyadic store
     ASSERT_EQ(double(dst), 1.0);
 
     src_t neg{-2};
     rb    dn = neg;
     ASSERT_EQ(double(dn), -2.0);
 }
-#endif // !BEMAN_INSIDE_MATH_NO_FP
 
 //---------------------------------------------------------------------------
 // assignment.hpp:475-476 — off-notch fractional store on a policy with no
@@ -323,7 +318,7 @@ TEST(CoverageCornersTest, clamp_policy_truncates_an_in_range_off_notch_fractiona
 //---------------------------------------------------------------------------
 // generic.hpp:355-361 — raw_from_offset(imax) overload, reached from the
 // integer fast path of math::fmod (cmath.hpp:1012, fmod_int_fast) with a
-// signed offset. Needs non-f64, non-rational integer grids and a divisor
+// signed offset. Needs non-rational integer grids and a divisor
 // that excludes zero. math::fmod was otherwise only static_assert-tested.
 //---------------------------------------------------------------------------
 // math::fmod integer fast path (raw_from_offset imax)
@@ -336,19 +331,6 @@ TEST(CoverageCornersTest, math_fmod_integer_fast_path_raw_from_offset_imax) {
     ASSERT_TRUE((static_cast<rational>(math::fmod<out_t>(in_t{-7_r}, div_t{3_r})) == -1)); // signed offset
     ASSERT_TRUE((static_cast<rational>(math::fmod<out_t>(in_t{5.5_r}, div_t{2_r})) == rational{3u, 2}));
 }
-
-#ifndef BEMAN_INSIDE_MATH_NO_FP
-//---------------------------------------------------------------------------
-// generic.hpp:469 — range_fail returns false for an unchecked policy
-// (range_check()==false): the value is stored as-is.
-//---------------------------------------------------------------------------
-// unsafe f64 store out of range falls through (no report)
-TEST(CoverageCornersTest, unsafe_f64_store_out_of_range_falls_through_no_report) {
-    using rb = inside<{{-1, 1}, per<1024>}, f64 | unsafe>;
-    rb x     = 5.0; // out of range, unsafe: stored as-is, no throw
-    ASSERT_EQ(double(x), 5.0);
-}
-#endif // !BEMAN_INSIDE_MATH_NO_FP
 
 //---------------------------------------------------------------------------
 // assignment.hpp:631-634 + generic.hpp:355-361 — inside -> inside store on the

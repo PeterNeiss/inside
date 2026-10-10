@@ -26,7 +26,7 @@ struct addition {
     static constexpr grid result_grid =
         grid_sum_fits(grid_of<L>, grid_of<R>) ? (grid_of<L> + grid_of<R>).value() : grid_of<L>;
     // fp / representation propagation — shared rule in detail/rep.hpp.
-    using rep_t  = fp_rep<L, R, result_grid>;
+    using rep_t  = result_rep<L, R, result_grid>;
     using result = inside<result_grid, rep_t::result_policy>;
 
     template <policy_flag F>
@@ -42,14 +42,7 @@ struct addition {
     template <policy_flag F = none, typename E = empty_ref, typename A = no_action>
     static constexpr auto add(L lhs, R rhs, policy<F, E> policy = {}, A&& action = {}) -> return_t<F, A> {
         result res;
-        if constexpr (fp_storage<result>) {
-            // Exact by construction, no snap: fp storage is kept only when the
-            // result grid is double/float-exact (fp_rep), and grid values are notch
-            // multiples, so the sum is itself a representable result-grid point and
-            // the double add is exact. (Division still snaps — a quotient is not a
-            // grid point.)
-            res = result::from_raw(raw_cast<result>(as_double(lhs) + as_double(rhs)));
-        } else if constexpr (fraction_storage<result>) {
+        if constexpr (fraction_storage<result>) {
             const auto sum = frac_raw_of<raw_t<result>>(exact_of(lhs) + exact_of(rhs));
             if (!sum) [[unlikely]]
                 return report_or_unexpected<result>(action, policy, errc::overflow, "fraction overflow in add");

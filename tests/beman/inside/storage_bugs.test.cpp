@@ -64,7 +64,7 @@ TEST(StorageBugsTest, bug_b_signed_direct_multiplication_third_quadrant) {
 //---------------------------------------------------------------------------
 // Bug C — assignment.hpp:428
 //
-// `assign(insidable, f64 R)` checks for `has_policy<L, P, clamp>` but not
+// `assign(insidable, double R)` checked for `has_policy<L, P, clamp>` but not
 // for `has_policy<L, P, wrap>`. An `inside<{...}, wrap>` constructed from a
 // double silently stores the unwrapped value (which may be out of range)
 // because it falls through `range_fail` without `checked` set.
@@ -73,8 +73,8 @@ TEST(StorageBugsTest, bug_b_signed_direct_multiplication_third_quadrant) {
 // `is_constant_evaluated()` throw in assignment::assign fires before the
 // policy machinery can react).
 //---------------------------------------------------------------------------
-// Bug C: wrap policy fires for f64 rhs
-TEST(StorageBugsTest, bug_c_wrap_policy_fires_for_f64_rhs) {
+// Bug C: wrap policy fires for a double rhs
+TEST(StorageBugsTest, bug_c_wrap_policy_fires_for_double_rhs) {
     using L = inside<{0, 100}, wrap>;
 
     // 120 wraps once into [0, 100] → 19 (since the range is 101 inclusive).
@@ -121,45 +121,34 @@ TEST(StorageBugsTest, bug_d_gcd_lcm_overflow_propagates_to_grid_operator_plus) {
 #endif
 }
 
-#ifndef BEMAN_INSIDE_MATH_NO_FP
 //---------------------------------------------------------------------------
-// Bug E — grid.hpp double_exact / arithmetic.
+// Bug E — arithmetic past double's 53-bit significand.
 //
-// `f64` (double-backed) arithmetic silently diverged from the exact grid
-// arithmetic whenever a result needed more than double's 53-bit significand.
-// `dyadic_grid<G>` (the old storage guard) checks only power-of-two
-// denominators; it ignores the significand. A f64 `×` whose product grid
-// outgrows 2^53 (notch = N_L·N_R) dropped the low bits.
-//
-// Fix: `f64` is selected only on `double_exact` grids; an op whose result
-// grid isn't double-exact drops `f64` and falls back to exact storage, so the
-// result equals the exact rational product.
+// A `×` whose product grid outgrows 2^53 (notch = N_L·N_R) keeps every
+// bit: the result equals the exact rational product.
 //---------------------------------------------------------------------------
-// Bug E: f64 * stays exact (drops f64 when product exceeds 2^53)
-TEST(StorageBugsTest, bug_e_f64_stays_exact_drops_f64_when_product_exceeds_2_53) {
-    using U = inside<{{0, 4}, per<(1u << 26)>}, f64>; // exact operand (f=26)
-    static_assert(std::is_same_v<U::raw_type, double>);
+// Bug E: * stays exact when the product exceeds 2^53
+TEST(StorageBugsTest, bug_e_product_stays_exact_past_2_53) {
+    using U = inside<{{0, 4}, per<(1u << 26)>}>; // f=26
 
-    const U a = 4.0 - std::ldexp(1.0, -26);                        // index 2^28-1, exact
-    auto    p = a * a;                                             // product grid f=52 > 53 bits
-    static_assert(!std::is_same_v<decltype(p)::raw_type, double>); // f64 dropped
+    const U        a  = 4.0 - std::ldexp(1.0, -26); // index 2^28-1, exact
+    auto           p  = a * a;                      // product grid f=52 > 53 bits
     const rational ar = static_cast<rational>(a);
     ASSERT_TRUE(static_cast<rational>(p) == *(ar * ar));
 }
 
 //---------------------------------------------------------------------------
-// Bug F — division.hpp f64 path.
+// Bug F — division by zero.
 //
-// Real `÷0` stored a bare `inf` (snap_double then did static_cast<imax>(inf),
-// UB), bypassing the error vocabulary. Fix: f64 division reports zero like
-// every other path — the return widens to expected<result, errc> when the
-// divisor grid can be zero (errc::division_by_zero on a zero divisor), and the
-// expected-lift carries that cause on through a chain.
+// `÷0` reports through the error vocabulary: the return widens to
+// expected<result, errc> when the divisor grid can be zero
+// (errc::division_by_zero on a zero divisor), and the expected-lift carries
+// that cause on through a chain.
 //---------------------------------------------------------------------------
-// Bug F: f64 div-by-zero is reported, not a silent inf
-TEST(StorageBugsTest, bug_f_f64_div_by_zero_is_reported_not_a_silent_inf) {
-    using N  = inside<{{1, 4}, per<1024>}, f64>;
-    using Dz = inside<{{0, 4}, per<1024>}, f64>; // divisor grid spans zero
+// Bug F: div-by-zero is reported, not a silent inf
+TEST(StorageBugsTest, bug_f_div_by_zero_is_reported_not_a_silent_inf) {
+    using N  = inside<{{1, 4}, per<1024>}>;
+    using Dz = inside<{{0, 4}, per<1024>}>; // divisor grid spans zero
 
     auto q = N{3.0} / Dz{0.0};
     ASSERT_FALSE(q.has_value()); // an error — not inf
@@ -170,7 +159,6 @@ TEST(StorageBugsTest, bug_f_f64_div_by_zero_is_reported_not_a_silent_inf) {
     ASSERT_FALSE(z.has_value());
     ASSERT_EQ(z.error(), errc::division_by_zero);
 }
-#endif // !BEMAN_INSIDE_MATH_NO_FP
 
 //---------------------------------------------------------------------------
 // 2026-07: fp-derived rational store on a snap grid with |Lower| ≫ 1. The
@@ -218,20 +206,19 @@ TEST(StorageBugsTest, fp_derived_rational_store_on_a_wide_snap_grid_uses_the_exa
     }
 }
 
-#ifndef BEMAN_INSIDE_MATH_NO_FP // `f64` storage is compiled out under the integer engine
 //---------------------------------------------------------------------------
-// A `f64` (double-raw) source through every store path, and one-shot
-// policies on a `f64` target. The raw is the value, not a notch index.
+// A dyadic source through every store path, and one-shot policies on a
+// dyadic target.
 //---------------------------------------------------------------------------
 namespace {
-using RealSmall = beman::inside::inside<{{0, 4}, beman::inside::per<4>}, beman::inside::f64>;
-using RealWide  = beman::inside::inside<{{-8, 8}, beman::inside::per<4>}, beman::inside::f64>;
+using RealSmall = beman::inside::inside<{{0, 4}, beman::inside::per<4>}>;
+using RealWide  = beman::inside::inside<{{-8, 8}, beman::inside::per<4>}>;
 using Int10     = beman::inside::inside<{0, 10}>;
 } // namespace
 
-TEST(StorageBugsTest, f64_source_into_integer_grid_reads_the_value) {
+TEST(StorageBugsTest, dyadic_source_into_integer_grid_reads_the_value) {
     using namespace beman::inside;
-    const RealWide half = RealWide::from_raw(2.5);
+    const RealWide half = RealWide{2.5};
     EXPECT_EQ(detail::to_value(clamp_round<Int10>(half)), 3);
     Int10 i{0};
     i.with_snap<round_nearest>() = half;
@@ -240,23 +227,22 @@ TEST(StorageBugsTest, f64_source_into_integer_grid_reads_the_value) {
     EXPECT_EQ(detail::to_value(j), 5);
 }
 
-TEST(StorageBugsTest, one_shot_policy_applies_to_f64_target) {
+TEST(StorageBugsTest, one_shot_policy_applies_to_dyadic_target) {
     using namespace beman::inside;
-    const RealWide big = RealWide::from_raw(7.5), low = RealWide::from_raw(-1.0);
-    EXPECT_EQ(clamp_cast<RealSmall>(big).raw(), 4.0);
-    EXPECT_EQ(clamp_cast<RealSmall>(low).raw(), 0.0);
-    EXPECT_EQ(wrap_cast<RealSmall>(big).raw(), 7.5 - 4.25);
-    RealSmall r    = RealSmall::from_raw(1.0);
+    const RealWide big = RealWide{7.5}, low = RealWide{-1.0};
+    EXPECT_EQ(rational{clamp_cast<RealSmall>(big)}, rational{4.0});
+    EXPECT_EQ(rational{clamp_cast<RealSmall>(low)}, rational{0.0});
+    EXPECT_EQ(rational{wrap_cast<RealSmall>(big)}, rational{7.5 - 4.25});
+    RealSmall r    = RealSmall{1.0};
     r.with_clamp() = big;
-    EXPECT_EQ(r.raw(), 4.0);
+    EXPECT_EQ(rational{r}, rational{4.0});
 }
 
-TEST(StorageBugsTest, try_make_reports_on_checked_f64_target) {
+TEST(StorageBugsTest, try_make_reports_on_checked_dyadic_target) {
     using namespace beman::inside;
-    using Checked = inside<{{0, 4}, per<4>}, f64 | checked>;
-    EXPECT_EQ(Checked::try_make(RealWide::from_raw(7.5)).error(), errc::overflow);
+    using Checked = inside<{{0, 4}, per<4>}, checked>;
+    EXPECT_EQ(Checked::try_make(RealWide{7.5}).error(), errc::overflow);
 }
-#endif
 
 //---------------------------------------------------------------------------
 // Comparing integer storage with a floating or wide unsigned scalar must not
@@ -273,21 +259,18 @@ TEST(StorageBugsTest, scalar_comparison_does_not_truncate_the_scalar) {
     EXPECT_TRUE(one < std::numeric_limits<std::uint64_t>::max());
 }
 
-#ifndef BEMAN_INSIDE_MATH_NO_FP
-// ++ / += point on `f64` storage adds the value, not a notch count to the raw
-// (++ moves one notch, 1/256 here).
-TEST(StorageBugsTest, increment_on_f64_storage) {
+// ++ moves one notch (1/256 here); += point adds the value.
+TEST(StorageBugsTest, increment_moves_one_notch) {
     using namespace beman::inside;
-    using rl = inside<{{-4, 4}, per<256>}, f64 | round_nearest>;
+    using rl = inside<{{-4, 4}, per<256>}, round_nearest>;
     rl x{rational{3, 2}};
     ++x;
-    EXPECT_EQ(x.raw(), 1.5 + 1.0 / 256);
+    EXPECT_EQ(rational{x}, (rational{385, 256}));
     x += 1_ins;
-    EXPECT_EQ(x.raw(), 2.5 + 1.0 / 256);
+    EXPECT_EQ(rational{x}, (rational{641, 256}));
     --x;
-    EXPECT_EQ(x.raw(), 2.5);
+    EXPECT_EQ(rational{x}, (rational{5, 2}));
 }
-#endif
 
 // The noexcept conversion predicates classify non-finite input instead of raising.
 TEST(StorageBugsTest, predicates_handle_non_finite_input) {
@@ -305,7 +288,7 @@ TEST(StorageBugsTest, predicates_handle_non_finite_input) {
 
 //---------------------------------------------------------------------------
 // 2026-10 defect pass. A grid does not fix the raw encoding: `indexed`,
-// `direct`, `f64` and the width flags pick it per policy, so two insides on
+// `direct` and the width flags pick it per policy, so two insides on
 // the same grid may store the same value differently.
 //---------------------------------------------------------------------------
 TEST(StorageBugsTest, same_grid_different_encoding_compares_by_value) {
@@ -320,12 +303,10 @@ TEST(StorageBugsTest, same_grid_different_encoding_compares_by_value) {
     static_assert(G1{-3} < G2{2});
     static_assert(!(G1{2} != G2{2}));
 
-#ifndef BEMAN_INSIDE_MATH_NO_FP
-    using C = inside<{{0, 1}, per<4>}, f64>;
+    using C = inside<{{0, 1}, per<4>}>;
     using D = inside<{{0, 1}, per<4>}>; // deduced: index uint8
     static_assert(C{rational{1, 2}} == D{rational{1, 2}});
     static_assert(C{rational{1, 4}} < D{rational{1, 2}});
-#endif
 
     G1 a{-4};
     G2 b{3};
@@ -608,12 +589,11 @@ TEST(StorageBugsTest, value_raw_source_affine_mapping) {
     EXPECT_EQ(rational{l}, -3);
 }
 
-// An exact value stored into f64 storage rounds once, onto the grid: the
-// double nearest to it may sit on a rounding boundary the exact value is not
-// on (4096/961 · 2^48 is …523.388, its double …523.5, a tie).
-TEST(StorageBugs, f64_storage_rounds_the_exact_value_not_its_double) {
-#ifndef BEMAN_INSIDE_MATH_NO_FP
-    using f48 = inside<{{-8, 8}, per<(std::uint64_t{1} << 48)>}, round_nearest | f64>;
+// An exact value stores by its own rounding, not its double's: the double
+// nearest to it may sit on a rounding boundary the exact value is not on
+// (4096/961 · 2^48 is …523.388, its double …523.5, a tie).
+TEST(StorageBugs, store_rounds_the_exact_value_not_its_double) {
+    using f48 = inside<{{-8, 8}, per<(std::uint64_t{1} << 48)>}, round_nearest>;
     const rational want{1199710202504523ull, std::int64_t{1} << 48};
     EXPECT_EQ((rational{f48{rational{4096, 961}}}), want);
     f48 a{0};
@@ -625,12 +605,11 @@ TEST(StorageBugs, f64_storage_rounds_the_exact_value_not_its_double) {
     EXPECT_EQ(rational{a}, want);
 
     // Directed modes: 1 + 2^-60 is above the grid point 1.0, its double is 1.0.
-    using up   = inside<{{0, 2}, per<1024>}, f64 | round_ceil>;
-    using down = inside<{{0, 2}, per<1024>}, f64 | round_floor>;
+    using up   = inside<{{0, 2}, per<1024>}, round_ceil>;
+    using down = inside<{{0, 2}, per<1024>}, round_floor>;
     const rational above{(std::uint64_t{1} << 60) + 1, std::int64_t{1} << 60};
     const rational below{(std::uint64_t{1} << 60) - 1, std::int64_t{1} << 60};
     EXPECT_EQ(rational{up{above}}, (rational{1025, 1024}));
     EXPECT_EQ(rational{down{below}}, (rational{1023, 1024}));
     EXPECT_EQ(rational{up{rational{1}}}, rational{1});
-#endif
 }

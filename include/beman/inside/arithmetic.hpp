@@ -195,8 +195,8 @@ template <insidable First, insidable... Rest>
 // (semantic difference: the *total* is validated, not every prefix).
 // Notched integer raws (wide ones too) sum value indices exactly — Σvalue =
 // Notch·ΣJ — in a wide integer with 64 bits of headroom for the count; ≤32-bit
-// raws add in imax blocks of 2^30 elements, the loop that vectorizes; f64 /
-// f32 elements give the same indices. Continuous elements add as 64-bit
+// raws add in imax blocks of 2^30 elements, the loop that vectorizes.
+// Continuous elements add as 64-bit
 // rationals; a total past that reports overflow through Target's policy.
 //---------------------------------------------------------------------------
 template <insidable Target, std::ranges::input_range Rng>
@@ -206,20 +206,14 @@ template <insidable Target, std::ranges::input_range Rng>
     Target out{};
     auto   policy = make_policy<policy_of<Target>>();
 
-    if constexpr ((detail::integer_storage<B> || detail::fp_storage<B>) && !detail::point_storage<B> &&
-                  detail::notched<B>) {
+    if constexpr (detail::integer_storage<B> && !detail::point_storage<B> && detail::notched<B>) {
         // The total in units of U, the value unit: the notch on an anchored
         // grid, so each value counts as its value index.
         constexpr detail::grid_rational U = grid_of<B>.value_unit();
         constexpr int bits = detail::signed_value_bits_of({detail::units_lo<B, U>, detail::units_hi<B, U>}) + 64;
         using I            = detail::wide_sint<detail::limbs_for_bits(bits)>;
         I total{0};
-        if constexpr (detail::fp_storage<B>) {
-            // A dyadic grid: value / U is an exact integer below 2^53.
-            constexpr double unit = static_cast<double>(U);
-            for (const auto& b : r)
-                total += I{static_cast<imax>(detail::as_double(b) / unit)};
-        } else if constexpr (!detail::wide_index_storage<B> && sizeof(detail::raw_t<B>) <= 4) {
+        if constexpr (!detail::wide_index_storage<B> && sizeof(detail::raw_t<B>) <= 4) {
             // Each value is base + raw·scale units (scale 1 when anchored).
             constexpr imax base =
                 detail::index_storage<B> ? static_cast<imax>(detail::exact_quotient(lower_of<B>, U)) : 0;
@@ -298,7 +292,7 @@ template <insidable Target, std::ranges::input_range Rng>
 //---------------------------------------------------------------------------
 // common_inside — the "hull" type able to hold every value of L and R exactly:
 // interval hull + notch gcd (grid `hull`), representation propagated by the
-// same widest-wins rule as arithmetic results (detail::fp_rep). Backs the
+// same rule as arithmetic results (detail::result_rep). Backs the
 // std::common_type specialisation (numeric_limits.hpp) and mixed-grid
 // min/max below. The primary has no `type` when the hull grid is
 // unrepresentable, so common_type_t SFINAEs away instead of erroring.
@@ -317,7 +311,7 @@ template <insidable Lhs, insidable Rhs>
     requires(!std::same_as<Lhs, Rhs>) && (hull(grid_of<Lhs>, grid_of<Rhs>).has_value())
 struct common_inside<Lhs, Rhs> {
     static constexpr grid hull_grid = *hull(grid_of<Lhs>, grid_of<Rhs>);
-    using type                      = inside<hull_grid, fp_rep<Lhs, Rhs, hull_grid>::result_policy>;
+    using type                      = inside<hull_grid, result_rep<Lhs, Rhs, hull_grid>::result_policy>;
 };
 } // namespace detail
 
@@ -392,7 +386,7 @@ BEMAN_INSIDE_LIFT_OP(%)
 //
 // Concrete (non-auto) return type on purpose: keeps these SFINAE-transparent,
 // so `requires { b + 1; }` stays well-formed and the static_assert fires only
-// on a f64 call.
+// on a call.
 //---------------------------------------------------------------------------
 template <typename A>
 concept raw_scalar = std::integral<A> || std::floating_point<A>;

@@ -32,15 +32,15 @@ namespace
     return std::chrono::duration<double, std::nano>(std::chrono::steady_clock::now() - t0).count() / n;
   }
 
-  using angle = inside<{{-8, 8}, per<16384>}, round_nearest | f64>;          // inputs
-  using pos   = inside<{{rational{1, 256}, 256}, per<256>}, round_nearest | f64>;
-  using unit4 = inside<{{0, 4}, per<65536>}, round_nearest | f64>;
+  using angle = inside<{{-8, 8}, per<16384>}, round_nearest>;          // inputs
+  using pos   = inside<{{rational{1, 256}, 256}, per<256>}, round_nearest>;
+  using unit4 = inside<{{0, 4}, per<65536>}, round_nearest>;
 
   // Outputs as fine as a double: every one has close to 2^53 slots.
   using sin_fine  = math::amp<(std::uint64_t{1} << 52)>;                                      // 2^-52
-  using exp_fine  = inside<{{0, 4096}, per<(std::uint64_t{1} << 40)>}, round_nearest | f64>;  // 2^-40
-  using log_fine  = inside<{{-8, 8}, per<(std::uint64_t{1} << 48)>}, round_nearest | f64>;    // 2^-48
-  using sqrt_fine = inside<{{0, 2}, per<(std::uint64_t{1} << 51)>}, round_nearest | f64>;     // 2^-51
+  using exp_fine  = inside<{{0, 4096}, per<(std::uint64_t{1} << 40)>}, round_nearest>;  // 2^-40
+  using log_fine  = inside<{{-8, 8}, per<(std::uint64_t{1} << 48)>}, round_nearest>;    // 2^-48
+  using sqrt_fine = inside<{{0, 2}, per<(std::uint64_t{1} << 51)>}, round_nearest>;     // 2^-51
 }
 
 int main()

@@ -11,16 +11,8 @@
 // numeric_limits / hash — std:: specialisations for inside<G, P>.
 // numeric_limits reports the *grid* bounds (Lower/Upper), not the raw type's
 // limits. std::hash hashes the Raw member (rational raw: Numerator+Denominator,
-// boost-style combine). Both are the same with or without `f64` / `f32`. (std::common_type lives in arithmetic.hpp,
-// always on.)
+// boost-style combine). (std::common_type lives in arithmetic.hpp, always on.)
 //---------------------------------------------------------------------------
-
-namespace beman::inside::detail {
-// The same inside without `f64` / `f32`: those flags only pick the raw, so
-// limits and hashes are the ones the type has without them.
-template <grid G, policy_flag P>
-using without_fp_storage = inside<G, P & ~(f64 | f32)>;
-} // namespace beman::inside::detail
 
 template <beman::inside::grid G, beman::inside::policy_flag P>
 struct std::numeric_limits<beman::inside::inside<G, P>> {
@@ -55,10 +47,9 @@ struct std::numeric_limits<beman::inside::inside<G, P>> {
         }
     }();
 
-    // digits / digits10 forward to the deduced raw type (as without `f64` /
-    // `f32`) so generic algorithms see the storage size, not the rational
-    // interval count.
-    using deduced_raw             = beman::inside::detail::raw_t<beman::inside::detail::without_fp_storage<G, P>>;
+    // digits / digits10 forward to the raw type so generic algorithms see the
+    // storage size, not the rational interval count.
+    using deduced_raw             = beman::inside::detail::raw_t<B>;
     static constexpr int digits   = std::numeric_limits<deduced_raw>::digits;
     static constexpr int digits10 = std::numeric_limits<deduced_raw>::digits10;
 
@@ -89,11 +80,7 @@ struct std::hash<beman::inside::inside<G, P>> {
     using B = beman::inside::inside<G, P>;
 
     constexpr std::size_t operator()(const B& b) const noexcept {
-        if constexpr (beman::inside::detail::fp_storage<B>) {
-            // The hash of the same value without fp storage.
-            using twin = beman::inside::detail::without_fp_storage<G, P>;
-            return std::hash<twin>{}(twin{b});
-        } else if constexpr (beman::inside::detail::rational_storage<B>) {
+        if constexpr (beman::inside::detail::rational_storage<B>) {
             // Boost-style hash combine over (Numerator, Denominator).
             auto h1 = std::hash<beman::inside::umax>{}(b.raw().Numerator);
             auto h2 = std::hash<beman::inside::imax>{}(b.raw().Denominator);

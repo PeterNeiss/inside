@@ -15,7 +15,7 @@ volatile beman::inside::errc g_last{};
 [[noreturn]] void trap_handler(beman::inside::errc code, const char* /*what*/) {
     g_last = code;
     for (;;) {
-    } // a f64 target would reset/halt
+    } // a bare-metal target would reset/halt
 }
 } // namespace
 

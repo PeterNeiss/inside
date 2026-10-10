@@ -44,15 +44,13 @@ TEST(TryMakeTest, matches_per_op_policy_ec_on_the_same_input) {
     EXPECT_EQ(pct::try_make(200).error(), ec_op);
 }
 
-#ifndef BEMAN_INSIDE_MATH_NO_FP
-// fp storage goes through the same store as the constructors
-TEST(TryMakeTest, fp_storage_reports_like_the_constructor) {
-    using F = inside<{{0, 1}, per<4>}, round_nearest | f64>;
+// a double source goes through the same store as the constructors
+TEST(TryMakeTest, double_source_reports_like_the_constructor) {
+    using F = inside<{{0, 1}, per<4>}, round_nearest>;
     EXPECT_EQ(F::try_make(1.2).error(), errc::overflow); // rounds to 1.25: outside
     ASSERT_TRUE(F::try_make(1.1).has_value());           // rounds to 1.0
-    EXPECT_EQ(F::try_make(1.1)->raw(), 1.0);
+    EXPECT_EQ(rational{*F::try_make(1.1)}, rational{1});
 }
-#endif
 
 // error values work in constant evaluation (error-code mode records, no abort)
 TEST(TryMakeTest, errors_are_values_at_compile_time) {

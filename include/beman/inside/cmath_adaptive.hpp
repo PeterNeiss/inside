@@ -755,15 +755,13 @@ template <insidable In>
 inline constexpr imax max_abs_int = ceil_abs(lower_of<In>) > ceil_abs(upper_of<In>) ? ceil_abs(lower_of<In>)
                                                                                     : ceil_abs(upper_of<In>);
 
-// Policy of a deduced output: the input's, minus a fixed storage width and
-// f64 / f32 (deduced_inside re-adds them where the output grid allows),
+// Policy of a deduced output: the input's, minus a fixed storage width,
 // rounding to nearest.
 template <insidable In>
-inline constexpr policy_flag auto_policy =
-    (policy_of<In> & ~(raw_width_mask | f64 | f32 | cursor_marker)) | round_nearest;
+inline constexpr policy_flag auto_policy = (policy_of<In> & ~(raw_width_mask | cursor_marker)) | round_nearest;
 
 template <insidable In, grid_rational Lo, grid_rational Hi>
-using auto_grid_t = deduced_inside<{{Lo, Hi}, notch_of<In>}, auto_policy<In>, In>;
+using auto_grid_t = inside<{{Lo, Hi}, notch_of<In>}, auto_policy<In>>;
 
 // The bound of Core's result at In's lower or upper end.
 template <insidable In, typename Core, bool AtUpper, bool Up>
@@ -906,7 +904,7 @@ inline constexpr bool small_index = !wide_valued<In> && !rational_storage<In> &&
 // conversion's nearest double.
 template <insidable In>
 constexpr double input_double(const In& x) noexcept {
-    if constexpr (fp_storage<In> || point_storage<In> || rational_storage<In>)
+    if constexpr (point_storage<In> || rational_storage<In>)
         return as_double(x);
     else if constexpr (fp_exact_input<In>)
         return static_cast<double>(value_index<imax>(x)) * (notch_p<In> / notch_q<In>);
@@ -929,16 +927,13 @@ constexpr double fabs_d(double v) noexcept { return __builtin_fabs(v); }
 // does not announce).
 inline double nearest_int(double t) noexcept { return __builtin_nearbyint(t); }
 
-// Stores the grid point with value index j, slot offset k, in out. j stays in
-// the caller's type (double or imax): only an fp raw reads it.
-template <insidable Out, typename J>
-[[gnu::always_inline]] inline void store_slot(J j, umax k, Out& out) {
+// Stores the grid point with slot offset k in out.
+template <insidable Out>
+[[gnu::always_inline]] inline void store_slot(umax k, Out& out) {
     if constexpr (integer_storage<Out>)
         out = Out::from_raw(raw_from_offset<Out>(k));
-    else if constexpr (rational_storage<Out>) // the grid point as a fraction
+    else // a rational raw: the grid point as a fraction
         out = store<Out>(wide_sint<2>{k});
-    else // fp raw: the grid point, exact
-        out = Out::from_raw(static_cast<raw_t<Out>>(static_cast<double>(j) * (notch_p<Out> / notch_q<Out>)));
 }
 
 // The slot of a kernel value v within an absolute bound, decided in double
@@ -979,7 +974,7 @@ inline bool fp_decide(double v, double bound, Out& out) noexcept {
     }
     if (!(j >= lo && j <= hi))
         return false;
-    store_slot(j, static_cast<umax>(static_cast<imax>(j - lo)), out);
+    store_slot(static_cast<umax>(static_cast<imax>(j - lo)), out);
     return true;
 }
 
@@ -1027,21 +1022,19 @@ inline constexpr bool dd_output = [] {
 // Inputs the tier reads exactly (doubles) or within 2^-100 (index·p/q, or
 // a rational raw's numerator over its denominator).
 template <insidable In>
-inline constexpr bool dd_input = !wide_valued<In> && !point_storage<In> &&
-                                 (fp_storage<In> || fp_exact_input<In> || rational_storage<In> ||
-                                  (small_index<In> && notch_p<In> < two53 && notch_q<In> < two53));
+inline constexpr bool dd_input =
+    !wide_valued<In> && !point_storage<In> &&
+    (fp_exact_input<In> || rational_storage<In> || (small_index<In> && notch_p<In> < two53 && notch_q<In> < two53));
 
 template <insidable Out, insidable... Ins>
 inline constexpr bool dd_tier = fp_tier_available && dd_output<Out> && (dd_input<Ins> && ...);
 
 template <insidable In>
-inline constexpr double dd_input_rel = (fp_storage<In> || fp_exact_input<In>) ? 0.0 : 0x1p-100;
+inline constexpr double dd_input_rel = fp_exact_input<In> ? 0.0 : 0x1p-100;
 
 template <insidable In>
 inline ddk::dd dd_read(const In& x) noexcept {
-    if constexpr (fp_storage<In>)
-        return {as_double(x), 0};
-    else if constexpr (fp_exact_input<In>)
+    if constexpr (fp_exact_input<In>)
         return {input_double(x), 0};
     else if constexpr (rational_storage<In>) {
         const rational r     = x.raw();     // ±Numerator/|Denominator|
@@ -1100,7 +1093,7 @@ inline bool dd_decide(ddk::dd v, double bound, Out& out) noexcept {
     }
     if (j < first || j > last)
         return false;
-    store_slot(j, static_cast<umax>(j) - static_cast<umax>(first), out);
+    store_slot(static_cast<umax>(j) - static_cast<umax>(first), out);
     return true;
 }
 
@@ -2006,11 +1999,11 @@ template <insidable In>
 using atanh =
     ax::increasing_t<In, ax::ahyp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::ahyp::atanh, ax::input_bits<In>>>;
 template <insidable In>
-using sin = ax::deduced_inside<{{-1, 1}, notch_of<In>}, ax::auto_policy<In>, In>;
+using sin = inside<{{-1, 1}, notch_of<In>}, ax::auto_policy<In>>;
 template <insidable In>
 using cos = sin<In>;
 template <insidable In>
-using tan = ax::deduced_inside<{{-1024, 1024}, notch_of<In>}, ax::auto_policy<In>, In>;
+using tan = inside<{{-1024, 1024}, notch_of<In>}, ax::auto_policy<In>>;
 
 // cosh is even: its least value is 1 when In spans 0, else at the end
 // nearer 0.
@@ -2057,8 +2050,7 @@ template <insidable A, insidable B>
 inline constexpr grid_rational pi_up =
     ax::lattice_bound<ax::gcd_notch<A, B>, true>(ax::atan2_core<1>{ax::exact_int<1>(0), ax::exact_int<1>(-1)});
 template <insidable InY, insidable InX>
-using atan2 =
-    ax::deduced_inside<{{-pi_up<InY, InX>, pi_up<InY, InX>}, ax::gcd_notch<InY, InX>}, ax::auto_policy<InY>, InY, InX>;
+using atan2 = inside<{{-pi_up<InY, InX>, pi_up<InY, InX>}, ax::gcd_notch<InY, InX>}, ax::auto_policy<InY>>;
 
 // hypot: [0, hypot of the largest magnitudes] on the gcd notch.
 template <insidable InX, insidable InY>
@@ -2072,7 +2064,7 @@ inline constexpr grid_rational hypot_hi = [] {
         ax::sqrt_core<hypot_limbs<InX, InY>, ax::hypot_bits<InX, InY>>{a * a + b * b});
 }();
 template <insidable InX, insidable InY>
-using hypot = ax::deduced_inside<{{0, hypot_hi<InX, InY>}, ax::gcd_notch<InX, InY>}, ax::auto_policy<InX>, InX, InY>;
+using hypot = inside<{{0, hypot_hi<InX, InY>}, ax::gcd_notch<InX, InY>}, ax::auto_policy<InX>>;
 
 // pow: b^e is monotone in each argument for b > 0, so the extremes are at
 // the corners of the input rectangle. Notch of the base.
@@ -2099,10 +2091,7 @@ inline constexpr grid_rational pow_extreme = [] {
     return m;
 }();
 template <insidable InB, insidable InE>
-using pow = ax::deduced_inside<{{pow_extreme<InB, InE, false>, pow_extreme<InB, InE, true>}, notch_of<InB>},
-                               ax::auto_policy<InB>,
-                               InB,
-                               InE>;
+using pow = inside<{{pow_extreme<InB, InE, false>, pow_extreme<InB, InE, true>}, notch_of<InB>}, ax::auto_policy<InB>>;
 } // namespace auto_t
 
 #define BEMAN_INSIDE_AX_AUTO(fn)                                                               \

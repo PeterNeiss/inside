@@ -797,7 +797,7 @@ static void bench_store_convert() {
     finish(wrp);
 
     // conversions OUT of inside — the API-boundary direction (stores are above).
-    using dyadic_real = inside<{{-8, 8}, per<16384>}, round_nearest | f64>;
+    using dyadic_real = inside<{{-8, 8}, per<16384>}, round_nearest>;
     std::vector<dyadic_real> rv(kMask + 1);
     std::vector<u200>        uv(kMask + 1);
     for (std::size_t j = 0; j <= kMask; ++j) {
@@ -818,7 +818,7 @@ static void bench_store_convert() {
         ++i;
         doNotOptimizeAway(*uv[i & kMask].to<std::uint8_t>());
     });
-    conv.run("static_cast<double> (f64-backed)", [&] {
+    conv.run("static_cast<double> (dyadic index)", [&] {
         ++i;
         doNotOptimizeAway(static_cast<double>(rv[i & kMask]));
     });
@@ -968,11 +968,11 @@ static void bench_helpers() {
 }
 
 //---------------------------------------------------------------------------
-// f64-backed (f64) arithmetic — one double op behind the fp fast arm;
-// parity with native double is the expectation being pinned.
+// Dyadic-grid arithmetic on integer raws next to the same values in native
+// double.
 //---------------------------------------------------------------------------
-static void bench_fp_backed() {
-    using dyadic_real = inside<{{-8, 8}, per<16384>}, round_nearest | f64>;
+static void bench_dyadic() {
+    using dyadic_real = inside<{{-8, 8}, per<16384>}, round_nearest>;
     std::vector<dyadic_real> va(kMask + 1), vb(kMask + 1);
     std::vector<double>      da(kMask + 1), db(kMask + 1);
     for (std::size_t j = 0; j <= kMask; ++j) {
@@ -985,23 +985,23 @@ static void bench_fp_backed() {
     }
     std::size_t i = 0;
 
-    auto add = group("f64-backed add (dyadic 1/16384 grid)");
+    auto add = group("dyadic add (1/16384 grid)");
     add.run("native double", [&] {
         ++i;
         doNotOptimizeAway(da[i & kMask] + db[i & kMask]);
     });
-    add.run("inside<f64>", [&] {
+    add.run("inside (index raw)", [&] {
         ++i;
         doNotOptimizeAway((va[i & kMask] + vb[i & kMask]).raw());
     });
     finish(add);
 
-    auto mul = group("f64-backed mul (dyadic 1/16384 grid)");
+    auto mul = group("dyadic mul (1/16384 grid)");
     mul.run("native double", [&] {
         ++i;
         doNotOptimizeAway(da[i & kMask] * db[i & kMask]);
     });
-    mul.run("inside<f64>", [&] {
+    mul.run("inside (index raw)", [&] {
         ++i;
         doNotOptimizeAway((va[i & kMask] * vb[i & kMask]).raw());
     });
@@ -1214,39 +1214,37 @@ static void bench_range() {
 // (grids match tests/beman/inside/cmath.test.cpp).
 //---------------------------------------------------------------------------
 static void bench_cmath() {
-    using algeb_t     = inside<{{-8, 8}, per<16384>}, round_nearest | f64>;
-    using sqrt_in_t   = inside<{{0, 4}, per<65536>}, round_nearest | f64>;
-    using exp2_in_t   = inside<{{-4, 4}, per<16384>}, round_nearest | f64>;
-    using log2_in_t   = inside<{{0x1p-8_r, 256}, per<16384>}, round_nearest | f64>;
-    using exp_in_t    = inside<{{-10, 10}, per<16384>}, round_nearest | f64>;
-    using log_in_t    = inside<{{0x1p-8_r, 256}, per<256>}, round_nearest | f64>;
-    using pow_in_t    = inside<{{-9, 9}, per<16384>}, round_nearest | f64>;
-    using angle_t     = inside<{{-8, 8}, per<16384>}, round_nearest | f64>;
-    using angle_f32_t = inside<{{-8, 8}, per<16384>}, round_nearest | f32>;
-    using tan_in_t    = inside<{{-0.75_r, 0.75_r}, per<16384>}, round_nearest | f64>;
-    using atan2_in_t  = inside<{{-1, 1}, per<16384>}, round_nearest | f64>;
-    using fmod_x_t    = inside<{{-8, 8}, per<16384>}, round_nearest>;
-    using fmod_y_t    = inside<{{0.25_r, 4}, per<16384>}, round_nearest>;
-    using pow_b_t     = inside<{{1, 16}, per<65536>}, round_nearest | f64>;
-    using pow_e_t     = inside<{{-2, 2}, per<16384>}, round_nearest | f64>;
+    using algeb_t    = inside<{{-8, 8}, per<16384>}, round_nearest>;
+    using sqrt_in_t  = inside<{{0, 4}, per<65536>}, round_nearest>;
+    using exp2_in_t  = inside<{{-4, 4}, per<16384>}, round_nearest>;
+    using log2_in_t  = inside<{{0x1p-8_r, 256}, per<16384>}, round_nearest>;
+    using exp_in_t   = inside<{{-10, 10}, per<16384>}, round_nearest>;
+    using log_in_t   = inside<{{0x1p-8_r, 256}, per<256>}, round_nearest>;
+    using pow_in_t   = inside<{{-9, 9}, per<16384>}, round_nearest>;
+    using angle_t    = inside<{{-8, 8}, per<16384>}, round_nearest>;
+    using tan_in_t   = inside<{{-0.75_r, 0.75_r}, per<16384>}, round_nearest>;
+    using atan2_in_t = inside<{{-1, 1}, per<16384>}, round_nearest>;
+    using fmod_x_t   = inside<{{-8, 8}, per<16384>}, round_nearest>;
+    using fmod_y_t   = inside<{{0.25_r, 4}, per<16384>}, round_nearest>;
+    using pow_b_t    = inside<{{1, 16}, per<65536>}, round_nearest>;
+    using pow_e_t    = inside<{{-2, 2}, per<16384>}, round_nearest>;
 
-    constexpr std::size_t    M = 4096;
-    std::vector<algeb_t>     v_alg, v_alg2;
-    std::vector<sqrt_in_t>   v_sqrt;
-    std::vector<exp2_in_t>   v_exp2;
-    std::vector<log2_in_t>   v_log2;
-    std::vector<exp_in_t>    v_exp;
-    std::vector<log_in_t>    v_log;
-    std::vector<pow_in_t>    v_pow;
-    std::vector<angle_t>     v_ang;
-    std::vector<angle_f32_t> v_angf;
-    std::vector<tan_in_t>    v_tan;
-    std::vector<atan2_in_t>  v_aty, v_atx;
-    std::vector<fmod_x_t>    v_fmx;
-    std::vector<fmod_y_t>    v_fmy;
-    std::vector<pow_b_t>     v_powb;
-    std::vector<pow_e_t>     v_powe;
-    std::vector<double>      d_qs, d_q, fp_log2, fp_log, fp_tan, d_aty, d_atx, d_fmy, d_powb, d_powe;
+    constexpr std::size_t   M = 4096;
+    std::vector<algeb_t>    v_alg, v_alg2;
+    std::vector<sqrt_in_t>  v_sqrt;
+    std::vector<exp2_in_t>  v_exp2;
+    std::vector<log2_in_t>  v_log2;
+    std::vector<exp_in_t>   v_exp;
+    std::vector<log_in_t>   v_log;
+    std::vector<pow_in_t>   v_pow;
+    std::vector<angle_t>    v_ang;
+    std::vector<tan_in_t>   v_tan;
+    std::vector<atan2_in_t> v_aty, v_atx;
+    std::vector<fmod_x_t>   v_fmx;
+    std::vector<fmod_y_t>   v_fmy;
+    std::vector<pow_b_t>    v_powb;
+    std::vector<pow_e_t>    v_powe;
+    std::vector<double>     d_qs, d_q, fp_log2, fp_log, fp_tan, d_aty, d_atx, d_fmy, d_powb, d_powe;
     for (std::size_t j = 0; j < M; ++j) {
         imax     k  = static_cast<imax>((j * 16) & 0xFFFF);
         rational q  = rational{k, 16384};
@@ -1266,7 +1264,6 @@ static void bench_cmath() {
         v_log.push_back(log_in_t{rl});
         v_pow.push_back(pow_in_t{qs});
         v_ang.push_back(angle_t{qs});
-        v_angf.push_back(angle_f32_t{qs});
         v_tan.push_back(tan_in_t{rt});
         v_aty.push_back(atan2_in_t{ry});
         v_atx.push_back(atan2_in_t{rx});
@@ -1341,21 +1338,6 @@ static void bench_cmath() {
                              std::pow(d_powb[i & J], d_powe[i & J]),
                              (*beman::inside::math::pow(v_powb[i & J], v_powe[i & J])).raw())
 #undef BEMAN_INSIDE_CMATH_GROUP
-
-#ifndef BEMAN_INSIDE_MATH_NO_FP
-    {
-        auto bench = group("math: sin (f32 storage)", 50'000);
-        bench.run("std sinf", [&] {
-            ++i;
-            doNotOptimizeAway(std::sin(static_cast<float>(d_qs[i & J])));
-        });
-        bench.run("beman::inside::math::sin (f32 inside)", [&] {
-            ++i;
-            doNotOptimizeAway(beman::inside::math::sin(v_angf[i & J]).raw());
-        });
-        finish(bench);
-    }
-#endif
 }
 
 //---------------------------------------------------------------------------
@@ -1536,7 +1518,7 @@ int main(int argc, char** argv) {
     bench_fixed_point();
     bench_store_convert();
     bench_helpers();
-    bench_fp_backed();
+    bench_dyadic();
     bench_rational();
     bench_range();
     bench_cmath();

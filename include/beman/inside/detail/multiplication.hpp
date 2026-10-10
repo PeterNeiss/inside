@@ -27,7 +27,7 @@ struct multiplication {
         grid_product_fits(grid_of<L>, grid_of<R>) ? (grid_of<L> * grid_of<R>).value() : grid_of<L>;
     // fp / representation propagation — shared rule in detail/rep.hpp. The product
     // grid (notch = N_L·N_R) is finer, so demotion/dropping is the common case.
-    using rep_t  = fp_rep<L, R, result_grid>;
+    using rep_t  = result_rep<L, R, result_grid>;
     using result = inside<result_grid, rep_t::result_policy>;
 
     template <policy_flag F>
@@ -45,8 +45,8 @@ struct multiplication {
     // the far end when c < 0. No multiply at all.
     template <insidable Point, insidable X>
     static constexpr bool point_scale =
-        point_grid<Point> && lower_of<Point> != 0 && !rational_storage<X> && !fp_storage<X> && notched<X> &&
-        !rational_storage<result> && !fp_storage<result> && !wide_valued<X> && !wide_valued<result>;
+        point_grid<Point> && lower_of<Point> != 0 && !rational_storage<X> && notched<X> && !rational_storage<result> &&
+        !wide_valued<X> && !wide_valued<result>;
 
     template <bool Negate, insidable X>
     static constexpr result scale_by_point(const X& x) {
@@ -61,12 +61,7 @@ struct multiplication {
 
     template <typename P, typename A = no_action>
     static constexpr auto mul(L lhs, R rhs, P&& policy, A&& action = {}) -> return_t<policy_flags_of<plain_t<P>>, A> {
-        if constexpr (fp_storage<result>) {
-            // Exact by construction, no snap (see addition.hpp): operands are notch
-            // multiples, the product index |ia·ib| stays under the double_exact 2^53
-            // gate, so the double multiply is exact and on the result lattice.
-            return result::from_raw(raw_cast<result>(as_double(lhs) * as_double(rhs)));
-        } else if constexpr (point_scale<R, L>)
+        if constexpr (point_scale<R, L>)
             return scale_by_point<(lower_of<R> < 0)>(lhs);
         else if constexpr (point_scale<L, R>)
             return scale_by_point<(lower_of<L> < 0)>(rhs);
@@ -98,12 +93,11 @@ struct multiplication {
             return from_value_in_units<result, U>(value_in_units<W, unit_of<L>>(lhs) *
                                                   value_in_units<W, unit_of<R>>(rhs));
         } else if constexpr (wide_valued<result>)
-            // An fp or rational operand into a result with more than 2^64 slots.
+            // A rational operand into a result with more than 2^64 slots.
             return exact_result<result>(exact_of(lhs) * exact_of(rhs));
         else {
-            // An fp or rational operand into an integer result (reached when `f64`
-            // was dropped from a result grid that is not double-exact): the exact
-            // rational product, converted to the result's raw.
+            // A rational operand into an integer result: the exact rational
+            // product, converted to the result's raw.
             auto prod = rational::mul_unchecked(as_rational(lhs), as_rational(rhs));
             return result::from_raw(raw_of_lattice_value<result>(prod));
         }

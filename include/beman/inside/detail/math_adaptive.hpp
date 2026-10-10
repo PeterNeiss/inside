@@ -521,16 +521,6 @@ constexpr Out store(const wide_sint<K>& index, P&& policy) {
         constexpr I count = static_cast<I>(grid_of<Out>.slot_count());
         if (!index.negative() && !(count < index)) [[likely]]
             return Out::from_raw(raw_of_slot<Out>(index));
-    } else if constexpr (fp_storage<Out> && !wide_valued<Out>) {
-        // A floating-point raw holds the grid point itself: on its double- (or
-        // float-) exact grid, value index × notch is exact in that type.
-        constexpr I count = static_cast<I>(grid_of<Out>.slot_count());
-        if (!index.negative() && !(count < index)) [[likely]] {
-            constexpr double notch = static_cast<double>(static_cast<imax>(wide_numerator(notch_of<Out>))) /
-                                     static_cast<double>(static_cast<imax>(wide_denominator(notch_of<Out>)));
-            const imax       j     = static_cast<imax>(index) + static_cast<imax>(slot_base<Out>);
-            return Out::from_raw(static_cast<raw_t<Out>>(static_cast<double>(j) * notch));
-        }
     } else if constexpr (rational_storage<Out> && notch_fits64<Out>) {
         // A rational raw holds the grid point j·p/q itself: built directly
         // (the constructor reduces it) when j·p fits 64 bits.
@@ -673,10 +663,9 @@ template <insidable In>
 inline constexpr bool table_input =
     !wide_valued<In> && notched<In> && grid_of<In>.slot_count() < grid_wide{BEMAN_INSIDE_MATH_TABLE_SLOTS};
 
-// Outputs whose raw a table can hold: an integer index or value, or a
-// floating-point raw (the grid point as a double or float).
+// Outputs whose raw a table can hold: an integer index or value.
 template <insidable Out>
-inline constexpr bool table_output = (integer_storage<Out> || fp_storage<Out>) && notched<Out> && !wide_valued<Out>;
+inline constexpr bool table_output = integer_storage<Out> && notched<Out> && !wide_valued<Out>;
 
 // The slot offset of an input value (0 … slot count).
 template <insidable In>
@@ -691,25 +680,15 @@ constexpr std::size_t offset_of(const In& x) noexcept {
             r.Denominator < 0 ? -static_cast<__int128>(r.Numerator) : static_cast<__int128>(r.Numerator);
         const __int128 j = rn * (n.Denominator / rd) / static_cast<__int128>(n.Numerator);
         return static_cast<std::size_t>(static_cast<imax>(j) - static_cast<imax>(slot_base<In>));
-    } else if constexpr (fp_storage<In>) {
-        // A floating-point raw holds the value on a dyadic grid: (value −
-        // Lower)·2^k is exact.
-        constexpr double lower = static_cast<double>(to_rational(lower_of<In>));
-        constexpr double inv   = static_cast<double>(to_rational(grid_rational{1} / notch_of<In>));
-        return static_cast<std::size_t>((static_cast<double>(x.raw()) - lower) * inv);
     } else
         return static_cast<std::size_t>(value_index<imax>(x) - static_cast<imax>(slot_base<In>));
 }
 
-// In's value at slot I (rational and floating-point raws hold the value).
+// In's value at slot I (a rational raw holds the value).
 template <insidable In>
 constexpr In slot_input(std::size_t i) noexcept {
     if constexpr (rational_storage<In>)
         return In::from_raw(to_rational(lower_of<In>) + rational{static_cast<imax>(i)} * to_rational(notch_of<In>));
-    else if constexpr (fp_storage<In>) // the value, exact on the dyadic grid
-        return In::from_raw(
-            static_cast<raw_t<In>>(static_cast<double>(to_rational(lower_of<In>)) +
-                                   static_cast<double>(i) * static_cast<double>(to_rational(notch_of<In>))));
     else
         return In::from_raw(raw_from_offset<In>(static_cast<umax>(i)));
 }

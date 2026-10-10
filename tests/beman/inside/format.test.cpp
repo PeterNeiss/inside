@@ -53,19 +53,10 @@ TEST(FormatTest, rational_to_string_long_decimals) {
               "3.99999999999999999978315956550289911319850943982601165771484375");
 }
 
-// f64 / f32 storage prints what the same type without it prints
-TEST(FormatTest, fp_storage_prints_the_same) {
-    using Q  = inside<{{-4, 4}, per<1024>}, round_nearest>;
-    using QD = inside<{{-4, 4}, per<1024>}, round_nearest | f64>;
-    using QF = inside<{{-4, 4}, per<1024>}, round_nearest | f32>;
-    for (const rational v : {rational{1, 1024}, rational{-3, 8}, rational{0}, rational{7, 2}}) {
-        EXPECT_EQ(beman::inside::to_string(QD{v}), beman::inside::to_string(Q{v}));
-        EXPECT_EQ(beman::inside::to_string(QF{v}), beman::inside::to_string(Q{v}));
-#ifdef __cpp_lib_format
-        EXPECT_EQ(std::format("{:.2f} {:e}", QD{v}, QD{v}), std::format("{:.2f} {:e}", Q{v}, Q{v}));
-#endif
-    }
-    EXPECT_EQ(beman::inside::to_string(-QD{0}), "0"); // no −0
+// −0 prints as 0
+TEST(FormatTest, negative_zero_prints_as_zero) {
+    using Q = inside<{{-4, 4}, per<1024>}, round_nearest>;
+    EXPECT_EQ(beman::inside::to_string(-Q{0}), "0");
 }
 
 // to_string output parses back to the same value

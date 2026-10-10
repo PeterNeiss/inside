@@ -31,10 +31,10 @@ using db_t = inside<{{-24, 12}, per<2>}, round_nearest>;
 // (i.e. ~[0.063, 3.98]) with 1/65536 resolution — well below per-step audible.
 using gain_t = inside<{{0, 4}, per<65536>}, round_nearest>;
 
-// dB/20 intermediate: dB ∈ [-24, 12] → [-1.2, 0.6]. `f64` (the math operand
-// feeding pow_base<10>) requires a dyadic grid, so use a power-of-two notch and
-// integer endpoints (the 1/40 step is snapped onto 1/65536, far below audible).
-using db_div20_t = inside<{{-2, 1}, per<65536>}, round_nearest | f64>;
+// dB/20 intermediate: dB ∈ [-24, 12] → [-1.2, 0.6], on a power-of-two notch
+// with integer endpoints (the 1/40 step is snapped onto 1/65536, far below
+// audible).
+using db_div20_t = inside<{{-2, 1}, per<65536>}, round_nearest>;
 
 // Decibels → linear amplitude via 10^(dB/20). The library's pow_base<10>
 // derives log2(10) at compile time from its own log2 implementation, so the
@@ -63,7 +63,7 @@ int main() {
 
     using time_t    = inside<{{0, 1}, per<N>}, round_nearest>;
     using offset_t  = inside<{{-2, 2}, per<16384>}, round_nearest>;
-    using angle_t   = inside<{{-4, 10}, per<16384>}, round_nearest | f64>;
+    using angle_t   = inside<{{-4, 10}, per<16384>}, round_nearest>;
     using gainfac_t = inside<{{0, 1}, per<1024>}, round_nearest>;
 
     constexpr offset_t offsets[4] = {

@@ -48,7 +48,7 @@ calls_besides_raise() {
     /[[:space:]]call[a-z]*[[:space:]]/ { call = $0; pending = 1 }
     END { if (pending) print call }'
 }
-for fn in ins_perf_add_fast ins_perf_add_loop ins_perf_mul_fast ins_perf_sub_compound ins_perf_fp_add ins_perf_range_sum; do
+for fn in ins_perf_add_fast ins_perf_add_loop ins_perf_mul_fast ins_perf_sub_compound ins_perf_to_double ins_perf_range_sum; do
   body="$(printf '%s\n' "$DIS" | sed -n "/<$fn>:/,/^\$/p")"
   [ -n "$body" ] || fail "could not find $fn in the disassembly" "$DIS"
   if [ -n "$(calls_besides_raise "$body")" ]; then

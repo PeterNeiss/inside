@@ -71,20 +71,7 @@ void guarded(fuzz_state& s, Fn&& fn) {
 template <insidable B>
 typename B::raw_type random_in_range_raw(std::mt19937_64& rng) {
     using raw = typename B::raw_type;
-    if constexpr (f64_storage<B>) {
-        // `f64` (double-backed) bounds hold a grid point as a double — generate a
-        // random in-range grid point Lower + k·Notch (the integer-cast branch below
-        // would truncate a fractional Lower and land below range, e.g. log2 of ~0).
-        if constexpr (notch_of<B> == rational{0}) {
-            std::uniform_real_distribution<double> dist(static_cast<double>(lower_of<B>),
-                                                        static_cast<double>(upper_of<B>));
-            return dist(rng);
-        } else {
-            std::uniform_int_distribution<umax> dist(0, max_index_v<B>);
-            return static_cast<double>(lower_of<B>) +
-                   static_cast<double>(dist(rng)) * static_cast<double>(notch_of<B>);
-        }
-    } else if constexpr (value_storage<B>) {
+    if constexpr (value_storage<B>) {
         auto                                lo = trunc(lower_of<B>);
         auto                                hi = trunc(upper_of<B>);
         std::uniform_int_distribution<imax> dist(lo, hi);
@@ -105,11 +92,10 @@ rational to_rational(B b) {
     return b;
 }
 
-// |a - b| <= tol. The math operand under the default engine is a `f64` inside:
-// its value is a grid point (snapped, low-denominator) and converts to an exact
-// double, while the std:: oracle is a full-precision double. We compare in
-// double — subtracting two rationals whose denominators are 1/notch and ~2^52
-// would overflow imax. The args stay `rational` so every call site is unchanged.
+// |a - b| <= tol. The math operand is a dyadic inside: its value is a grid
+// point (snapped, low-denominator) and converts to an exact double, while the std:: oracle is a full-precision double.
+// We compare in double — subtracting two rationals whose denominators are 1/notch and ~2^52 would overflow imax. The
+// args stay `rational` so every call site is unchanged.
 inline bool approx_le(rational a, rational b, rational tol) {
     return std::fabs(static_cast<double>(a) - static_cast<double>(b)) <= static_cast<double>(tol);
 }
@@ -1025,7 +1011,7 @@ void prop_cmath_exact(fuzz_state& s, long iters) {
 }
 
 void prop_sqrt(fuzz_state& s, long iters) {
-    using In       = inside<{{0, 4}, per<65536>}, round_nearest | f64>;
+    using In       = inside<{{0, 4}, per<65536>}, round_nearest>;
     using Out      = inside<{{0, 2}, per<16384>}, round_nearest>;
     s.current_grid = "cmath";
     s.current_prop = "sqrt";
@@ -1041,7 +1027,7 @@ void prop_sqrt(fuzz_state& s, long iters) {
 
     // Mixed-sign overload returns std::expected (domain_error for negatives).
     s.current_prop = "sqrt_signed";
-    using SIn      = inside<{{-1, 1}, per<65536>}, round_nearest | f64>;
+    using SIn      = inside<{{-1, 1}, per<65536>}, round_nearest>;
     for (long i = 0; i < iters; ++i) {
         s.iter       = i;
         SIn      x   = SIn::from_raw(random_in_range_raw<SIn>(s.rng));
@@ -1056,7 +1042,7 @@ void prop_sqrt(fuzz_state& s, long iters) {
 }
 
 void prop_sin_cos(fuzz_state& s, long iters) {
-    using A        = inside<{{-8, 8}, per<16384>}, round_nearest | f64>;
+    using A        = inside<{{-8, 8}, per<16384>}, round_nearest>;
     s.current_grid = "cmath";
     s.current_prop = "sin_cos";
     const rational tol{8, 16384};
@@ -1075,7 +1061,7 @@ void prop_sin_cos(fuzz_state& s, long iters) {
 }
 
 void prop_tan(fuzz_state& s, long iters) {
-    using A        = inside<{{-8, 8}, per<16384>}, round_nearest | f64>;
+    using A        = inside<{{-8, 8}, per<16384>}, round_nearest>;
     s.current_grid = "cmath";
     s.current_prop = "tan";
     const rational tol{16, 1024};
@@ -1099,7 +1085,7 @@ void prop_exp_log(fuzz_state& s, long iters) {
     s.current_grid = "cmath";
 
     {
-        using In       = inside<{{-4, 4}, per<16384>}, round_nearest | f64>;
+        using In       = inside<{{-4, 4}, per<16384>}, round_nearest>;
         s.current_prop = "exp2";
         for (long i = 0; i < iters; ++i) {
             s.iter    = i;
@@ -1109,7 +1095,7 @@ void prop_exp_log(fuzz_state& s, long iters) {
         }
     }
     {
-        using In       = inside<{{0x1p-8_r, 256}, per<16384>}, round_nearest | f64>;
+        using In       = inside<{{0x1p-8_r, 256}, per<16384>}, round_nearest>;
         s.current_prop = "log2";
         for (long i = 0; i < iters; ++i) {
             s.iter    = i;
@@ -1119,7 +1105,7 @@ void prop_exp_log(fuzz_state& s, long iters) {
         }
     }
     {
-        using In       = inside<{{-10, 10}, per<16384>}, round_nearest | f64>;
+        using In       = inside<{{-10, 10}, per<16384>}, round_nearest>;
         s.current_prop = "exp";
         for (long i = 0; i < iters; ++i) {
             s.iter    = i;
@@ -1129,7 +1115,7 @@ void prop_exp_log(fuzz_state& s, long iters) {
         }
     }
     {
-        using In       = inside<{{0x1p-8_r, 256}, per<256>}, round_nearest | f64>;
+        using In       = inside<{{0x1p-8_r, 256}, per<256>}, round_nearest>;
         s.current_prop = "log";
         for (long i = 0; i < iters; ++i) {
             s.iter    = i;
@@ -1140,7 +1126,7 @@ void prop_exp_log(fuzz_state& s, long iters) {
         }
     }
     {
-        using In       = inside<{{-9, 9}, per<16384>}, round_nearest | f64>;
+        using In       = inside<{{-9, 9}, per<16384>}, round_nearest>;
         s.current_prop = "pow_base";
         for (long i = 0; i < iters; ++i) {
             s.iter    = i;
@@ -1155,7 +1141,7 @@ void prop_exp_log(fuzz_state& s, long iters) {
 }
 
 void prop_atan2(fuzz_state& s, long iters) {
-    using In       = inside<{{-1, 1}, per<16384>}, round_nearest | f64>;
+    using In       = inside<{{-1, 1}, per<16384>}, round_nearest>;
     s.current_grid = "cmath";
     s.current_prop = "atan2";
     const rational tol{16, 16384}; // radians: a few output notches
@@ -1182,7 +1168,7 @@ void prop_extended_math(fuzz_state& s, long iters) {
 
     // Inverse trig — input [-1, 1], output radians.
     {
-        using In = inside<{{-1, 1}, per<65536>}, round_nearest | f64>;
+        using In = inside<{{-1, 1}, per<65536>}, round_nearest>;
         for (long i = 0; i < iters; ++i) {
             s.iter         = i;
             In     x       = In::from_raw(random_in_range_raw<In>(s.rng));
@@ -1198,7 +1184,7 @@ void prop_extended_math(fuzz_state& s, long iters) {
 
     // Hyperbolic — input [-10, 10].
     {
-        using In = inside<{{-10, 10}, per<65536>}, round_nearest | f64>;
+        using In = inside<{{-10, 10}, per<65536>}, round_nearest>;
         for (long i = 0; i < iters; ++i) {
             s.iter         = i;
             In     x       = In::from_raw(random_in_range_raw<In>(s.rng));
@@ -1214,7 +1200,7 @@ void prop_extended_math(fuzz_state& s, long iters) {
 
     // log10 — input (0, 1024].
     {
-        using In       = inside<{{1, 1024}, per<65536>}, round_nearest | f64>;
+        using In       = inside<{{1, 1024}, per<65536>}, round_nearest>;
         s.current_prop = "log10";
         for (long i = 0; i < iters; ++i) {
             s.iter    = i;
@@ -1226,7 +1212,7 @@ void prop_extended_math(fuzz_state& s, long iters) {
 
     // cbrt — signed input.
     {
-        using In       = inside<{{-16, 16}, per<65536>}, round_nearest | f64>;
+        using In       = inside<{{-16, 16}, per<65536>}, round_nearest>;
         s.current_prop = "cbrt";
         for (long i = 0; i < iters; ++i) {
             s.iter    = i;
@@ -1238,7 +1224,7 @@ void prop_extended_math(fuzz_state& s, long iters) {
 
     // hypot — two signed inputs.
     {
-        using In       = inside<{{-16, 16}, per<65536>}, round_nearest | f64>;
+        using In       = inside<{{-16, 16}, per<65536>}, round_nearest>;
         s.current_prop = "hypot";
         for (long i = 0; i < iters; ++i) {
             s.iter    = i;
@@ -1252,8 +1238,8 @@ void prop_extended_math(fuzz_state& s, long iters) {
 
     // pow — positive base, returns expected.
     {
-        using B        = inside<{{1, 16}, per<65536>}, round_nearest | f64>;
-        using E        = inside<{{-4, 8}, per<65536>}, round_nearest | f64>;
+        using B        = inside<{{1, 16}, per<65536>}, round_nearest>;
+        using E        = inside<{{-4, 8}, per<65536>}, round_nearest>;
         s.current_prop = "pow";
         for (long i = 0; i < iters; ++i) {
             s.iter    = i;
@@ -1451,8 +1437,6 @@ int main(int argc, char** argv) {
     guarded(s, [&] { prop_extended_math(s, iters); });
     guarded(s, [&] { prop_wrap_fractional(s, iters); });
     guarded(s, [&] { prop_math_tiers(s, iters); });
-#ifndef BEMAN_INSIDE_MATH_NO_FP
-#endif
 
     // Cross-grid arithmetic: mix grids of different lower/upper but same notch.
     guarded(s, [&] { prop_cross_add<inside<{0, 100}>, inside<{-100, 100}>>(s, iters, "u100+s100"); });

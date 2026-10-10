@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// Phase-1: transcendentals are gated on `snap` (rounding permission), not `f64`
-// (double storage). This exercises the new capability — `beman::inside::math` on NON-`f64`
-// snap grids: integer-index storage and non-dyadic (1/100) grids — using exact
+// Transcendentals are gated on `snap` (rounding permission). This exercises
+// `beman::inside::math` on snap grids: integer-index storage and non-dyadic
+// (1/100) grids — using exact
 // special values that are bit-exact on both engines and any grid containing them.
 
 #include <beman/inside/inside.hpp>
@@ -12,10 +12,9 @@
 using namespace beman::inside;
 using namespace beman::inside::detail;
 
-// snap-gated transcendentals on non-f64 grids (integer & 1/100)
-TEST(MathSnapGridsTest, snap_gated_transcendentals_on_non_f64_grids_integer_1_100) {
-    // round_nearest implies snap but NOT f64 → these are integer/index-stored,
-    // not double-backed. Pre-Phase-1 these were a hard `require_real` compile error.
+// snap-gated transcendentals on integer and 1/100 grids
+TEST(MathSnapGridsTest, snap_gated_transcendentals_on_integer_and_1_100_grids) {
+    // round_nearest implies snap.
     using Ang = inside<{{-8, 8}, per<16384>}, round_nearest>; // integer-index storage
     ASSERT_EQ(rational{math::sin(Ang{0})}, 0);
     ASSERT_EQ(rational{math::cos(Ang{0})}, 1);

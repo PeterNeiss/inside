@@ -35,14 +35,9 @@ template <insidable B, std::uniform_random_bit_generator G>
     } else {
         std::uniform_int_distribution<umax> pick(0, detail::max_index_v<B>);
         const umax                          k = pick(g);
-        if constexpr (detail::fp_storage<B> || detail::rational_storage<B>) {
-            const detail::rational v =
-                (detail::lower64<B> + (detail::rational{k} * detail::notch64<B>).value()).value();
-            if constexpr (detail::fp_storage<B>)
-                return B::from_raw(static_cast<detail::raw_t<B>>(static_cast<double>(v))); // exact: fp-exact grid
-            else
-                return B::from_raw(v);
-        } else
+        if constexpr (detail::rational_storage<B>)
+            return B::from_raw((detail::lower64<B> + (detail::rational{k} * detail::notch64<B>).value()).value());
+        else
             return B::from_raw(detail::raw_from_offset<B>(k)); // index or value storage
     }
 }

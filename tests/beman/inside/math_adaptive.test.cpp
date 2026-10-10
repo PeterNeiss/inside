@@ -639,14 +639,14 @@ TEST(MathAdaptiveTest, double_tier_agrees_with_the_integer_path) {
     TIER_CHECK(cbrt, out16e, sym4, ax::cbrt_core<ax::input_limbs<sym4>>);
     TIER_CHECK(atanh, out20, open1, ax::ahyp_core<ax::input_limbs<open1>, ax::in_mag<open1>, ax::ahyp::atanh>);
     // Floating-point outputs: the slot decided in double arithmetic.
-    using f64out  = inside<{{-64, 64}, per<16384>}, round_nearest | f64>;
-    using f64outf = inside<{{-64, 64}, per<16384>}, round_floor | f64>;
-    using f64outt = inside<{{-64, 64}, per<16384>}, snap | f64>;
-    TIER_CHECK(sin, f64out, sym4, ax::trig_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::trig::sin, 1>);
-    TIER_CHECK(exp, f64outf, sym4, ax::exp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::out_kmax<f64outf>>);
-    TIER_CHECK(atan, f64out, sym4, ax::atan_core<ax::input_limbs<sym4>>);
-    TIER_CHECK(sin, f64outt, sym4, ax::trig_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::trig::sin, 1>);
-    TIER_CHECK(log, f64outf, pos64, ax::log_core<ax::input_limbs<pos64>>);
+    using b14out  = inside<{{-64, 64}, per<16384>}, round_nearest>;
+    using b14outf = inside<{{-64, 64}, per<16384>}, round_floor>;
+    using b14outt = inside<{{-64, 64}, per<16384>}, snap>;
+    TIER_CHECK(sin, b14out, sym4, ax::trig_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::trig::sin, 1>);
+    TIER_CHECK(exp, b14outf, sym4, ax::exp_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::out_kmax<b14outf>>);
+    TIER_CHECK(atan, b14out, sym4, ax::atan_core<ax::input_limbs<sym4>>);
+    TIER_CHECK(sin, b14outt, sym4, ax::trig_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::trig::sin, 1>);
+    TIER_CHECK(log, b14outf, pos64, ax::log_core<ax::input_limbs<pos64>>);
 
     // Decimal inputs: the tier reads them as index·p/q, within 2^-51.
     using symm  = inside<{{-4, 4}, rational{1, 1000}}, round_nearest>;
@@ -660,7 +660,7 @@ TEST(MathAdaptiveTest, double_tier_agrees_with_the_integer_path) {
     TIER_CHECK(log, out20, posm, ax::log_core<ax::input_limbs<posm>>);
     TIER_CHECK(sqrt, out16e, posm, ax::sqrt_core<ax::input_limbs<posm>>);
     TIER_CHECK(asin, out20, unitm, ax::asin_core<ax::input_limbs<unitm>>);
-    TIER_CHECK(sin, f64out, symm, ax::trig_core<ax::input_limbs<symm>, ax::in_mag<symm>, ax::trig::sin, 1>);
+    TIER_CHECK(sin, b14out, symm, ax::trig_core<ax::input_limbs<symm>, ax::in_mag<symm>, ax::trig::sin, 1>);
 }
 #undef TIER_CHECK
 
@@ -679,20 +679,20 @@ TEST(MathAdaptiveTest, tables_agree_with_the_integer_path) {
         (tier_mismatches<outdec, p8, ax::log_core<ax::input_limbs<p8>>>([](p8 x) { return am::log_into<outdec>(x); })),
         0);
     // Floating-point outputs: the table holds the grid point as a double or float.
-    using f64t = inside<{{-64, 64}, per<16384>}, round_nearest | f64>;
-    using f32t = inside<{{-64, 64}, per<256>}, round_floor | f32>;
-    static_assert(ax::table_output<f64t> && ax::table_output<f32t>);
-    static_assert(ax::result_table<f64t, s8, ax::start_bits<f64t>, [](s8 v) {
+    using b14t = inside<{{-64, 64}, per<16384>}, round_nearest>;
+    using b8t  = inside<{{-64, 64}, per<256>}, round_floor>;
+    static_assert(ax::table_output<b14t> && ax::table_output<b8t>);
+    static_assert(ax::result_table<b14t, s8, ax::start_bits<b14t>, [](s8 v) {
                       return ax::trig_core<ax::input_limbs<s8>, ax::in_mag<s8>, ax::trig::sin, 1>{ax::exact_input(v)};
                   }>::Table.Valid);
-    EXPECT_EQ((tier_mismatches<f64t, s8, ax::trig_core<ax::input_limbs<s8>, ax::in_mag<s8>, ax::trig::sin, 1>>(
-                  [](s8 x) { return am::sin_into<f64t>(x); })),
+    EXPECT_EQ((tier_mismatches<b14t, s8, ax::trig_core<ax::input_limbs<s8>, ax::in_mag<s8>, ax::trig::sin, 1>>(
+                  [](s8 x) { return am::sin_into<b14t>(x); })),
               0);
-    EXPECT_EQ((tier_mismatches<f32t, s8, ax::exp_core<ax::input_limbs<s8>, ax::in_mag<s8>, ax::out_kmax<f32t>>>(
-                  [](s8 x) { return am::exp_into<f32t>(x); })),
+    EXPECT_EQ((tier_mismatches<b8t, s8, ax::exp_core<ax::input_limbs<s8>, ax::in_mag<s8>, ax::out_kmax<b8t>>>(
+                  [](s8 x) { return am::exp_into<b8t>(x); })),
               0);
     EXPECT_EQ(
-        (tier_mismatches<f64t, p8, ax::log_core<ax::input_limbs<p8>>>([](p8 x) { return am::log_into<f64t>(x); })), 0);
+        (tier_mismatches<b14t, p8, ax::log_core<ax::input_limbs<p8>>>([](p8 x) { return am::log_into<b14t>(x); })), 0);
     // Results past Out's range keep the computed path, and its policy.
     using small_clamp = inside<{{0, 4}, rational{1, 64}}, round_nearest | clamp>;
     using table       = ax::result_table<small_clamp, s8, ax::start_bits<small_clamp>, [](s8 v) {
@@ -788,7 +788,7 @@ TEST(MathAdaptiveTest, double_tier_agrees_on_decimal_inputs_and_checked_forms) {
 
 // The dd tier: outputs past the double tier with value indices up to 2^62.
 // Every result must equal the integer path's, in every rounding mode, for
-// decimal outputs (q up to 10^15) and f64 outputs too.
+// decimal outputs (q up to 10^15) and dyadic outputs too.
 namespace {
 using out52    = inside<{{-1024, 1024}, rational{1, umax{1} << 52}}, round_nearest>; // indices ±2^62
 using out44f   = inside<{{-64, 64}, rational{1, umax{1} << 44}}, round_floor>;
@@ -796,7 +796,7 @@ using out48c   = inside<{{-64, 64}, rational{1, umax{1} << 48}}, round_ceil>;
 using out50t   = inside<{{-64, 64}, rational{1, umax{1} << 50}}, snap>;
 using out46e   = inside<{{-64, 64}, rational{1, umax{1} << 46}}, round_half_even>;
 using outdec15 = inside<{{-64, 64}, rational{1, 1'000'000'000'000'000}}, round_nearest>;
-using f64out44 = inside<{{-64, 64}, rational{1, umax{1} << 44}}, round_nearest | f64>;
+using b44out   = inside<{{-64, 64}, rational{1, umax{1} << 44}}, round_nearest>;
 using symm4    = inside<{{-4, 4}, rational{1, 1000}}, round_nearest>;
 using posm8    = inside<{{rational{1, 1000}, 8}, rational{1, 1000}}, round_nearest>;
 } // namespace
@@ -807,7 +807,7 @@ using posm8    = inside<{{rational{1, 1000}, 8}, rational{1, 1000}}, round_neare
 
 TEST(MathAdaptiveTest, dd_tier_agrees_with_the_integer_path) {
     static_assert(!ax::fp_tier_available ||
-                  (ax::dd_tier<out52, sym4> && ax::dd_tier<outdec15, symm4> && ax::dd_tier<f64out44, sym4>));
+                  (ax::dd_tier<out52, sym4> && ax::dd_tier<outdec15, symm4> && ax::dd_tier<b44out, sym4>));
     static_assert(!ax::dd_tier<out20, sym4>); // the double tier's
 #ifndef BEMAN_INSIDE_MATH_NO_FP
     // Below their limits the double kernels run first and the dd tier takes
@@ -846,7 +846,7 @@ TEST(MathAdaptiveTest, dd_tier_agrees_with_the_integer_path) {
     DD_CHECK(acos, out50t, unit, ax::acos_core<ax::input_limbs<unit>>);
     DD_CHECK(atanh, out52, open1, ax::ahyp_core<ax::input_limbs<open1>, ax::in_mag<open1>, ax::ahyp::atanh>);
     DD_CHECK(acosh, out52, ge1, ax::ahyp_core<ax::input_limbs<ge1>, ax::in_mag<ge1>, ax::ahyp::acosh>);
-    DD_CHECK(sin, f64out44, sym4, ax::trig_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::trig::sin, 1>);
+    DD_CHECK(sin, b44out, sym4, ax::trig_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::trig::sin, 1>);
     // 2^-40 outputs: the double kernels near their limits, the dd tier after.
     DD_CHECK(sin, out40, sym4, ax::trig_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::trig::sin, 1>);
     DD_CHECK(exp2, out40, sym4, ax::exp2_core<ax::input_limbs<sym4>, ax::in_mag<sym4>, ax::out_kmax<out40>>);
@@ -869,7 +869,7 @@ TEST(MathAdaptiveTest, dd_tier_agrees_with_the_integer_path) {
                   ax::trig_core<ax::input_limbs<tan_in>, ax::in_mag<tan_in>, ax::trig::tan, ax::out_kmax<out40>>>(
                   [](tan_in x) { return *am::tan_into<out40>(x); })),
               0);
-    DD_CHECK(exp, f64out44, symm4, ax::exp_core<ax::input_limbs<symm4>, ax::in_mag<symm4>, ax::out_kmax<f64out44>>);
+    DD_CHECK(exp, b44out, symm4, ax::exp_core<ax::input_limbs<symm4>, ax::in_mag<symm4>, ax::out_kmax<b44out>>);
     using tanout = inside<{{-1024, 1024}, rational{1, umax{1} << 52}}, round_nearest>;
     EXPECT_EQ((tier_mismatches<
                   tanout,
@@ -908,7 +908,7 @@ TEST(MathAdaptiveTest, dd_tier_agrees_with_the_integer_path) {
             if (r.has_value() != r2.has_value() || (r && r->raw() != r2->raw()))
                 ++bad;
         }
-    // pow_base<10> onto a 44-bit output, as the deduced pow10 of an f64 grid.
+    // pow_base<10> onto a 44-bit output, as the deduced pow10 of a dyadic grid.
     using p10out = inside<{{0, 1'000'000'000}, rational{1, 16384}}, round_nearest>;
     for (int j = -900; j <= 900; ++j) {
         const auto e  = inside<{{-9, 9}, rational{1, 100}}, round_nearest>{rational{j, 100}};
@@ -1194,9 +1194,9 @@ TEST(MathAdaptiveTest, double_kernels_stay_within_their_proved_bounds) {
 #endif
 
 // Results depend only on values, never on storage: every input storage
-// (index, f64, f32, exact rational, direct value) and every output storage
-// (index, f64, exact rational) gives the same grid point, through the table,
-// double, dd and integer paths alike.
+// (index, exact rational, direct value) and every output storage (index,
+// exact rational) gives the same grid point, through the table, double, dd
+// and integer paths alike.
 namespace {
 template <class Out, class In, class F>
 std::vector<rational> results_of(F f) {
@@ -1221,18 +1221,15 @@ int count_diff(const A& a, const B& b) {
 #define STORAGE_IN(fn, Out, Lo, Hi, Notch, Notch2)                                                      \
     {                                                                                                   \
         using Ii        = inside<{{Lo, Hi}, Notch}, round_nearest>;                                     \
-        using If        = inside<{{Lo, Hi}, Notch2}, round_nearest | f64>;                              \
-        using Is        = inside<{{Lo, Hi}, Notch2}, round_nearest | f32>;                              \
         using Ix        = inside<{{Lo, Hi}, Notch}, round_nearest | exact>;                             \
         using Iy        = inside<{{Lo, Hi}, Notch2}, round_nearest>;                                    \
+        using Iyx       = inside<{{Lo, Hi}, Notch2}, round_nearest | exact>;                            \
         const auto base = results_of<Out, Ii>([](Ii x) { return am::fn##_into<Out>(x); });              \
         const auto dy   = results_of<Out, Iy>([](Iy x) { return am::fn##_into<Out>(x); });              \
         EXPECT_EQ(count_diff(base, results_of<Out, Ix>([](Ix x) { return am::fn##_into<Out>(x); })), 0) \
             << #fn " exact in " #Out;                                                                   \
-        EXPECT_EQ(count_diff(dy, results_of<Out, If>([](If x) { return am::fn##_into<Out>(x); })), 0)   \
-            << #fn " f64 in " #Out;                                                                     \
-        EXPECT_EQ(count_diff(dy, results_of<Out, Is>([](Is x) { return am::fn##_into<Out>(x); })), 0)   \
-            << #fn " f32 in " #Out;                                                                     \
+        EXPECT_EQ(count_diff(dy, results_of<Out, Iyx>([](Iyx x) { return am::fn##_into<Out>(x); })), 0) \
+            << #fn " dyadic exact in " #Out;                                                            \
     }
 
 TEST(MathAdaptiveTest, results_do_not_depend_on_input_storage) {
@@ -1262,12 +1259,11 @@ TEST(MathAdaptiveTest, results_do_not_depend_on_input_storage) {
 TEST(MathAdaptiveTest, results_do_not_depend_on_output_storage) {
     using sym = inside<{{-4, 4}, rational{1, 1000}}, round_nearest>;
     using pos = inside<{{rational{1, 8}, 8}, rational{1, 1000}}, round_nearest>;
-    // A decimal notch (index and exact storage) and dyadic ones (index, f64,
-    // exact), on both sides of the double tier's 36 bits.
+    // A decimal notch and dyadic ones (index and exact storage), on both
+    // sides of the double tier's 36 bits.
     using d6i  = inside<{{-1024, 1024}, rational{1, 1'000'000}}, round_nearest>;
     using d6x  = inside<{{-1024, 1024}, rational{1, 1'000'000}}, round_nearest | exact>;
     using b14i = inside<{{-1024, 1024}, rational{1, 16384}}, round_ceil>;
-    using b14f = inside<{{-1024, 1024}, rational{1, 16384}}, round_ceil | f64>;
     using b14x = inside<{{-1024, 1024}, rational{1, 16384}}, round_ceil | exact>;
     using b40i = inside<{{-1024, 1024}, rational{1, umax{1} << 40}}, round_floor>;
     using b40x = inside<{{-1024, 1024}, rational{1, umax{1} << 40}}, round_floor | exact>;
@@ -1280,10 +1276,9 @@ TEST(MathAdaptiveTest, results_do_not_depend_on_output_storage) {
     SAME_OUT(exp, sym, d6i, d6x);
     SAME_OUT(log, pos, d6i, d6x);
     SAME_OUT(atan, sym, d6i, d6x);
-    SAME_OUT(sin, sym, b14i, b14f);
     SAME_OUT(sin, sym, b14i, b14x);
     SAME_OUT(cbrt, sym, b14i, b14x);
-    SAME_OUT(sqrt, pos, b14i, b14f);
+    SAME_OUT(sqrt, pos, b14i, b14x);
     SAME_OUT(sin, sym, b40i, b40x);
     SAME_OUT(exp, sym, b40i, b40x);
     SAME_OUT(asinh, sym, b40i, b40x);

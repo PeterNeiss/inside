@@ -11,7 +11,7 @@ using namespace beman::inside::detail;
 // `b *= 2.0` are ill-formed (guidance static_assert in arithmetic.hpp). The only
 // non-inside operand a compound assign accepts is a `rational`. As with the binary
 // operators, the guidance overloads are SFINAE-transparent (the static_assert
-// fires only on a f64 call), so the ill-formedness can't be probed with
+// fires only on a call), so the ill-formedness can't be probed with
 // `requires` — only the sanctioned spellings are positively testable.
 // compound assignment: sanctioned RHS compiles
 TEST(CompoundAssignTest, compound_assignment_sanctioned_rhs_compiles) {
@@ -214,11 +214,11 @@ TEST(CompoundAssignTest, compound_non_fast_storages_still_route_through_plus_rhs
     exact_lhs -= ex{rational{2, 3}};
     ASSERT_EQ(rational{exact_lhs}, (rational{5, 3}));
 
-    // f64-backed falls back (fp raws are excluded from the raw fast path)
-    using rl = inside<{{-4, 4}, per<256>}, f64 | round_nearest>;
-    rl f64_lhs{rational{3, 2}};
-    f64_lhs -= rl{rational{1, 4}};
-    ASSERT_EQ(rational{f64_lhs}, (rational{5, 4}));
+    // a signed dyadic grid
+    using rl = inside<{{-4, 4}, per<256>}, round_nearest>;
+    rl dy_lhs{rational{3, 2}};
+    dy_lhs -= rl{rational{1, 4}};
+    ASSERT_EQ(rational{dy_lhs}, (rational{5, 4}));
 
     // cross-notch operands take the binary route
     using tenths   = inside<{{0, 10}, per<10>}, round_nearest>;

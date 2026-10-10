@@ -69,9 +69,5 @@ TEST(UniformTest, uniform_covers_every_slot_and_stays_on_the_grid) {
         EXPECT_EQ(detail::abs_den(slots.Denominator), 1u); // on the 1/4 lattice
     }
     EXPECT_EQ(sample<thirds>(2000).size(), 4u);
-#ifndef BEMAN_INSIDE_MATH_NO_FP
-    using f64q = inside<{{0, 2}, per<4>}, f64>;
-    EXPECT_EQ(sample<f64q>(2000).size(), 9u);
-#endif
     EXPECT_EQ(sample<decltype(5_ins)>(10).size(), 1u); // a point
 }

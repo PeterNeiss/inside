@@ -23,31 +23,25 @@ namespace {
 rational q(imax n, imax d = 1) { return rational{n, d}; }
 } // namespace
 
-#ifndef BEMAN_INSIDE_MATH_NO_FP // f64 storage is compiled out under the integer engine
-
 //---------------------------------------------------------------------------
-// One tie rule (half away from zero) and honoured rounding modes on f64 storage.
+// One tie rule (half away from zero) and honoured rounding modes.
 //---------------------------------------------------------------------------
-TEST(ConsistencyTest, f64_storage_rounds_like_integer_storage) {
-    using F = inside<{{-4, 4}, per<2>}, round_nearest | f64>;
-    using I = inside<{{-4, 4}, per<2>}, round_nearest>;
-    for (rational v : {q(-3, 4), q(-1, 4), q(1, 4), q(3, 4), q(-5, 4), q(5, 4)})
-        EXPECT_EQ(rational{F{v}}, rational{I{v}}) << "v = " << static_cast<double>(v);
-    EXPECT_EQ(F{q(-1, 4)}.raw(), -0.5); // half away from zero
+TEST(ConsistencyTest, ties_round_half_away_from_zero) {
+    using F = inside<{{-4, 4}, per<2>}, round_nearest>;
+    EXPECT_EQ(rational{F{q(-1, 4)}}, rational{-0.5});
+    EXPECT_EQ(rational{F{q(1, 4)}}, rational{0.5});
 }
 
-TEST(ConsistencyTest, f64_storage_honours_rounding_mode) {
-    using Fl = inside<{{-4, 4}, per<2>}, f64 | round_floor>;
-    using Ce = inside<{{-4, 4}, per<2>}, f64 | round_ceil>;
-    using He = inside<{{-4, 4}, per<2>}, f64 | round_half_even>;
-    EXPECT_EQ(Fl{q(2, 5)}.raw(), 0.0);
-    EXPECT_EQ(Fl{q(-1, 10)}.raw(), -0.5);
-    EXPECT_EQ(Ce{q(1, 10)}.raw(), 0.5);
-    EXPECT_EQ(He{q(3, 4)}.raw(), 1.0); // 1.5 notches → 2 (even)
-    EXPECT_EQ(He{q(1, 4)}.raw(), 0.0); // 0.5 notches → 0 (even)
+TEST(ConsistencyTest, store_honours_rounding_mode) {
+    using Fl = inside<{{-4, 4}, per<2>}, round_floor>;
+    using Ce = inside<{{-4, 4}, per<2>}, round_ceil>;
+    using He = inside<{{-4, 4}, per<2>}, round_half_even>;
+    EXPECT_EQ(rational{Fl{q(2, 5)}}, rational{0.0});
+    EXPECT_EQ(rational{Fl{q(-1, 10)}}, rational{-0.5});
+    EXPECT_EQ(rational{Ce{q(1, 10)}}, rational{0.5});
+    EXPECT_EQ(rational{He{q(3, 4)}}, rational{1.0}); // 1.5 notches → 2 (even)
+    EXPECT_EQ(rational{He{q(1, 4)}}, rational{0.0}); // 0.5 notches → 0 (even)
 }
-
-#endif
 
 // A math result exactly on a tie rounds like the assignment path.
 TEST(ConsistencyTest, math_tie_rule_matches_assignment) {
@@ -78,16 +72,14 @@ TEST(ConsistencyTest, integer_source_off_notch_rounds_like_rational_source) {
     EXPECT_EQ(rational{Ex{3}}, q(4));
 }
 
-#ifndef BEMAN_INSIDE_MATH_NO_FP
-TEST(ConsistencyTest, f64_target_from_integer_snaps_on_every_path) {
-    using F = inside<{{0, 10}, 2}, round_nearest | f64>;
-    EXPECT_EQ(F{3}.raw(), 4.0);
-    EXPECT_EQ(F::try_make(3)->raw(), 4.0);
-    F b          = F::from_raw(0.0);
+TEST(ConsistencyTest, integer_source_snaps_on_every_path) {
+    using F = inside<{{0, 10}, 2}, round_nearest>;
+    EXPECT_EQ(rational{F{3}}, q(4));
+    EXPECT_EQ(rational{*F::try_make(3)}, q(4));
+    F b          = F{0.0};
     b.policy<>() = 3;
-    EXPECT_EQ(b.raw(), 4.0);
+    EXPECT_EQ(rational{b}, q(4));
 }
-#endif
 
 //---------------------------------------------------------------------------
 // wrap folds modulo span + notch whatever the source type.
@@ -114,12 +106,10 @@ TEST(ConsistencyTest, wrap_then_round_stays_on_the_grid) {
     EXPECT_EQ(rational{W{q(-3, 10)}}, q(0)); // -0.3 → 0
     EXPECT_EQ(rational{W{q(-7, 10)}}, q(8)); // -0.7 → -1 ≡ 8
     EXPECT_EQ(rational{W{q(39, 4)}}, q(1));  // 9.75 → 10 ≡ 1
-#ifndef BEMAN_INSIDE_MATH_NO_FP
-    using F = inside<{{0, 8}, 1}, round_nearest | f64 | wrap>;
-    EXPECT_EQ(F{8.5}.raw(), 0.0);
-    EXPECT_EQ(F{-0.3}.raw(), 0.0);
-    EXPECT_EQ(F{-0.7}.raw(), 8.0);
-#endif
+    using F = inside<{{0, 8}, 1}, round_nearest | wrap>;
+    EXPECT_EQ(rational{F{8.5}}, rational{0.0});
+    EXPECT_EQ(rational{F{-0.3}}, rational{0.0});
+    EXPECT_EQ(rational{F{-0.7}}, rational{8.0});
 }
 
 // An inside source with off-integer values wraps after rounding by the target's
@@ -139,10 +129,8 @@ TEST(ConsistencyTest, unchecked_cast_respects_storage_flags) {
     EXPECT_EQ(rational{unchecked_cast<D>(7)}, q(7));
     using W = inside<{5, 100}, u16>;
     EXPECT_EQ(rational{unchecked_cast<W>(7)}, q(7));
-#ifndef BEMAN_INSIDE_MATH_NO_FP
-    using F = inside<{{0, 4}, per<2>}, f64>;
-    EXPECT_EQ(unchecked_cast<F>(1.5).raw(), 1.5);
-#endif
+    using F = inside<{{0, 4}, per<2>}>;
+    EXPECT_EQ(rational{unchecked_cast<F>(1.5)}, rational{1.5});
 }
 
 // Representation flags carried into a result are dropped when the result grid
@@ -164,11 +152,10 @@ TEST(ConsistencyTest, math_output_drops_width_flags) {
     EXPECT_EQ(rational{math::abs(B8{-128})}, q(128));
 }
 
-#ifndef BEMAN_INSIDE_MATH_NO_FP
-// An f64 inside compared with an inside whose values are not exact in double
-// compares exactly, not after rounding the other side to double.
-TEST(ConsistencyTest, fp_vs_exact_comparison_is_exact) {
-    using F = inside<{{0, 2}, per<2>}, f64>;
+// A dyadic inside compared with an inside whose values are not exact in
+// double compares exactly, not after rounding the other side to double.
+TEST(ConsistencyTest, dyadic_vs_exact_comparison_is_exact) {
+    using F = inside<{{0, 2}, per<2>}>;
     using C = inside<{{0, 2}, rational{0}}>;         // continuous, rational raw
     const C c{(q(1) + q(1, imax{1} << 53)).value()}; // 1 + 2^-53: rounds to 1.0
     const F one{1};
@@ -177,7 +164,6 @@ TEST(ConsistencyTest, fp_vs_exact_comparison_is_exact) {
     EXPECT_TRUE(c > one);
     EXPECT_TRUE(one == C{q(1)}); // equal values still compare equal
 }
-#endif
 
 // fmod: exact result on the gcd notch, sized by both operands, any divisor sign.
 TEST(ConsistencyTest, fmod_output_grid_is_exact_and_large_enough) {
@@ -273,12 +259,10 @@ TEST(ConsistencyTest, non_finite_input_goes_through_the_policy) {
     using C = inside<{0, 10}, round_nearest | clamp>;
     EXPECT_EQ(rational{C{inf}}, q(10));
     EXPECT_EQ(rational{C{-inf}}, q(0));
-#ifndef BEMAN_INSIDE_MATH_NO_FP
-    using F = inside<{{0, 10}, per<2>}, f64>;
+    using F = inside<{{0, 10}, per<2>}>;
     EXPECT_EQ(F::try_make(nan).error(), errc::not_finite);
-    using FC = inside<{{0, 10}, per<2>}, f64 | clamp>;
-    EXPECT_EQ(FC{inf}.raw(), 10.0);
-#endif
+    using FC = inside<{{0, 10}, per<2>}, clamp>;
+    EXPECT_EQ(rational{FC{inf}}, rational{10.0});
 }
 
 // pow: a result past Out reports overflow, and saturates under clamp.
@@ -379,15 +363,13 @@ TEST(ConsistencyTest, rounding_runs_before_the_range_check) {
     EXPECT_EQ(fired, 0);
 }
 
-#ifndef BEMAN_INSIDE_MATH_NO_FP
-TEST(ConsistencyTest, fp_storage_rounds_before_the_range_check) {
-    using F = inside<{{0, 1}, per<4>}, round_nearest | f64>;
-    EXPECT_EQ(F{1.1}.raw(), 1.0);
+TEST(ConsistencyTest, double_source_rounds_before_the_range_check) {
+    using F = inside<{{0, 1}, per<4>}, round_nearest>;
+    EXPECT_EQ(rational{F{1.1}}, rational{1.0});
     EXPECT_EQ(F::try_make(1.2).error(), errc::overflow); // rounds to 1.25
-    using Ff = inside<{{0, 1}, per<4>}, f64 | round_floor>;
-    EXPECT_EQ(Ff{1.2}.raw(), 1.0); // floors in range
+    using Ff = inside<{{0, 1}, per<4>}, round_floor>;
+    EXPECT_EQ(rational{Ff{1.2}}, rational{1.0}); // floors in range
 }
-#endif
 
 TEST(ConsistencyTest, predicates_round_before_the_range_check) {
     using bin = inside<{0, 9}, round_floor>;
@@ -483,6 +465,7 @@ TEST(ConsistencyTest, double_store_into_integer_storage_matches_rational) {
     expect_double_store_exact<inside<{{0, 4}, per<65536>}, round_nearest>>();
     expect_double_store_exact<inside<{{-4, 4}, per<2>}, round_half_even>>();
     expect_double_store_exact<inside<{{-100, 100}, per<1000>}, round_nearest>>();             // not dyadic
+    expect_double_store_exact<inside<{{-6, 6}, rational{3, 4}}, round_nearest>>();            // dyadic, notch not 2^k
     expect_double_store_exact<inside<{{rational{1, 4}, rational{17, 4}}, 1}, round_floor>>(); // unanchored
 }
 

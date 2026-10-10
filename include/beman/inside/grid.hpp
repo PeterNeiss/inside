@@ -207,143 +207,28 @@ struct grid {
 } // namespace BEMAN_INSIDE_GRID_ABI
 
 namespace detail {
-// The side of a source that is a double exactly: none.
-struct exact_side {
-    constexpr int operator()() const noexcept { return 0; }
-};
-
-// snap_double / snap_double_from on an unanchored grid. In units of the
-// notch its lattice is a + ℤ (0 < a < 1, the fraction of Lower/Notch), and
-// every rounding boundary — a lattice point, or the half point between two —
-// lies on a + ½·ℤ: a double, so the fraction of v/Notch is compared with it
-// rather than shifted by a (which could round). The rules are the integer
-// storage's, in value space: toward zero is down for v ≥ 0 and up below 0,
-// and a tie of `nearest` goes away from zero (up at 0 itself).
-template <grid G, round_mode M, typename Side>
-[[nodiscard]] constexpr double snap_double_offset(double v, const Side& side) noexcept {
+// The value index v/Notch of a double v rounded onto G by mode M, the
+// integer storage's rule (rounding_of; ties of `nearest` half away from
+// zero). G is anchored with a power-of-two notch whose values double holds
+// (double_exact), so v/Notch is exact and below 2^53 for every v in range.
+// G and M are template parameters so each store compiles to its own
+// branch-free rounding.
+template <grid G, round_mode M>
+[[nodiscard]] constexpr imax snap_double_index(double v) noexcept {
     constexpr double nd = static_cast<double>(G.Notch);
-    constexpr double a  = [] {
-        const double l = static_cast<double>(G.Interval.Lower) / nd;
-        const double f = l - static_cast<double>(static_cast<imax>(l));
-        return f < 0 ? f + 1 : f;
-    }();
-    const double q = v / nd;
-    if (!((q < 0 ? -q : q) < 4503599627370496.0)) // 2^52: no lattice point between doubles
-        return v;
-    imax t = static_cast<imax>(q);
-    if (static_cast<double>(t) > q)
-        --t;                                         // ⌊q⌋
-    const double f     = q - static_cast<double>(t); // exact, 0 ≤ f < 1
-    const bool   below = f < a;
-    const imax   k     = below ? t - 1 : t;   // the lattice point at or below v: k + a
-    const double lo    = below ? a - 1.0 : a; // f − lo ∈ [0, 1): v's place past it
-    imax         r     = k;
-    if (f == lo) { // on the lattice: only an exact source just off it moves
-        if constexpr (!std::is_same_v<Side, exact_side>)
-            if constexpr (M != round_mode::nearest && M != round_mode::half_even) {
-                const int s = side();
-                if (s < 0 && (M == round_mode::floor || (M == round_mode::trunc && v > 0)))
-                    r = k - 1;
-                else if (s > 0 && (M == round_mode::ceil || (M == round_mode::trunc && v < 0)))
-                    r = k + 1;
-            }
-    } else if constexpr (M == round_mode::ceil)
-        r = k + 1;
-    else if constexpr (M == round_mode::trunc)
-        r = k + (v < 0);
-    else if constexpr (M == round_mode::nearest || M == round_mode::half_even) {
-        const double half = lo + 0.5;
-        if (f > half)
-            r = k + 1;
-        else if (f == half) {
-            int s = 0;
-            if constexpr (!std::is_same_v<Side, exact_side>)
-                s = side();
-            if (s != 0)
-                r = k + (s > 0);
-            else if constexpr (M == round_mode::nearest)
-                r = k + (v >= 0);
-            else
-                r = k + (k & 1);
-        }
-    }
-    return (static_cast<double>(r) + a) * nd;
-}
-
-// Snap a double onto the (dyadic) grid G by rounding mode M — the same rule
-// as integer storage (rounding_of; ties of `nearest` half away from zero). On
-// an fp grid the notch is a power of two, so v/notch is the exact signed value
-// index. A continuous grid (notch 0) has nothing to snap to. |index| >= 2^52 is
-// already integral, so the imax narrowing below is always safe. G and M are
-// template parameters so each store compiles to its own branch-free rounding.
-// AnySign: v may lie below a grid that starts at 0 or higher (the wrap path
-// rounds out-of-range values); otherwise that half of the tie test is dead.
-template <grid G, round_mode M = round_mode::nearest, bool AnySign = (G.Interval.Lower < 0)>
-[[nodiscard]] constexpr double snap_double(double v) noexcept {
-    if constexpr (G.Notch == rational{0})
-        return v;
-    else if constexpr (!G.anchored())
-        return snap_double_offset<G, M>(v, exact_side{});
-    else {
-        constexpr double nd = static_cast<double>(G.Notch);
-        const double     q  = v / nd;
-        if ((q < 0 ? -q : q) >= 4503599627370496.0) // 2^52
-            return v;
-        const imax   t = static_cast<imax>(q);       // toward zero
-        const double f = q - static_cast<double>(t); // exact, sign of q, |f| < 1
-        imax         k = t;
-        if constexpr (M == round_mode::nearest) {
-            k += (f >= 0.5);
-            if constexpr (AnySign)
-                k -= (f <= -0.5);
-        } else if constexpr (M == round_mode::floor)
-            k -= (f < 0);
-        else if constexpr (M == round_mode::ceil)
-            k += (f > 0);
-        else if constexpr (M == round_mode::half_even)
-            k += (f > 0.5 || (f == 0.5 && (t & 1))) - (f < -0.5 || (f == -0.5 && (t & 1)));
-        return static_cast<double>(k) * nd;
-    }
-}
-
-// snap_double for a v that was rounded from an exact value x: side() gives
-// the sign of x − v. Snapping v rounds twice, and that can differ from
-// rounding x only where v sits exactly on a rounding boundary of G (a tie for
-// the nearest modes, a grid point for the directed ones): a boundary strictly
-// between x and v would be a double nearer to x than v is. There x decides,
-// and side() is only called there.
-template <grid G, round_mode M = round_mode::nearest, bool AnySign = (G.Interval.Lower < 0), typename Side>
-[[nodiscard]] constexpr double snap_double_from(double v, const Side& side) noexcept {
-    if constexpr (G.Notch == rational{0})
-        return v;
-    else if constexpr (std::is_same_v<Side, exact_side>)
-        return snap_double<G, M, AnySign>(v); // a double source rounds once
-    else if constexpr (!G.anchored())
-        return snap_double_offset<G, M>(v, side);
-    else {
-        constexpr double nd = static_cast<double>(G.Notch);
-        const double     q  = v / nd;
-        if (!((q < 0 ? -q : q) < 9007199254740992.0)) // 2^53
-            return snap_double<G, M, AnySign>(v);
-        const imax     t       = static_cast<imax>(q);
-        const double   f       = q - static_cast<double>(t);
-        constexpr bool nearest = M == round_mode::nearest || M == round_mode::half_even;
-        if (!(nearest ? (f == 0.5 || f == -0.5) : f == 0))
-            return snap_double<G, M, AnySign>(v);
-        const int s = side();
-        if (s == 0)
-            return snap_double<G, M, AnySign>(v);
-        imax k;
-        if constexpr (nearest)
-            k = (f < 0 ? t - 1 : t) + (s > 0); // the half point: x picks its side
-        else if constexpr (M == round_mode::floor)
-            k = s < 0 ? t - 1 : t;
-        else if constexpr (M == round_mode::ceil)
-            k = s > 0 ? t + 1 : t;
-        else // toward zero
-            k = (t > 0 && s < 0) ? t - 1 : (t < 0 && s > 0) ? t + 1 : t;
-        return static_cast<double>(k) * nd;
-    }
+    const double     q  = v / nd;
+    const imax       t  = static_cast<imax>(q);       // toward zero
+    const double     f  = q - static_cast<double>(t); // exact, sign of q, |f| < 1
+    if constexpr (M == round_mode::nearest)
+        return t + (f >= 0.5) - (G.Interval.Lower < 0 && f <= -0.5);
+    else if constexpr (M == round_mode::floor)
+        return t - (f < 0);
+    else if constexpr (M == round_mode::ceil)
+        return t + (f > 0);
+    else if constexpr (M == round_mode::half_even)
+        return t + (f > 0.5 || (f == 0.5 && (t & 1))) - (f < -0.5 || (f == -0.5 && (t & 1)));
+    else
+        return t;
 }
 } // namespace detail
 
@@ -441,8 +326,7 @@ using storage_min_t = std::conditional_t<
                                               smallest_uint_for_t<G.max_index()>>>>>;
 
 // Dyadic grid: power-of-2 notch denominator and Lower denominator, so every
-// on-grid value is exactly representable in IEEE-754 `double`. Precondition
-// for double-backed (`f64`) storage.
+// on-grid value is a binary fraction (a double when it fits double_exact).
 // A positive power of two, and its log2 (exact at any width).
 constexpr bool is_pow2(const grid_wide& v) noexcept {
     return grid_wide{0} < v && v == (grid_wide{1} << (bit_width_of(v) - 1));
@@ -480,15 +364,10 @@ constexpr bool compute_fp_exact() noexcept {
     }
 }
 
-// double: 53-bit significand, notch at least 2^-1022. Necessary
-// precondition for `f64` storage.
+// double: 53-bit significand, notch at least 2^-1022 — every value of G is
+// a double.
 template <grid G>
 inline constexpr bool double_exact = compute_fp_exact<G, 53, 1022>();
-
-// float: 24-bit significand, notch at least 2^-126. Necessary precondition
-// for `f32` (binary32-backed) storage.
-template <grid G>
-inline constexpr bool float_exact = compute_fp_exact<G, 24, 126>();
 
 // Fixed-width raw storage (policy_flag.hpp i8..u64) — pin the exact backing
 // type instead of letting storage_min pick the smallest fit.
@@ -535,11 +414,8 @@ constexpr bool storage_fits() noexcept {
 }
 
 // Storage for an inside<G, P>: representation flags pick the raw type, widest-wins
-// (exact > f64 > f32 > {width} > direct > indexed > deduced).
+// (exact > {width} > direct > indexed > deduced).
 //   exact   → rational raw on any grid.
-//   f64     → double-backed on a dyadic or notch-0 grid; elided under
-//             BEMAN_INSIDE_MATH_NO_FP (falls through to deduced).
-//   f32     → float-backed when float holds the grid, else widened to double.
 //   {width} → the pinned i8..u64 type, value or (with `indexed`) index storage.
 //   direct  → raw == value, plain integer (Notch 1, integer Lower).
 //   indexed → raw == 0-based notch index (Notch != 0).
@@ -552,34 +428,6 @@ constexpr auto storage_pick() {
         return point_slot{};
     else if constexpr (has_flag(P, exact))
         return detail::rational{};
-#ifndef BEMAN_INSIDE_MATH_NO_FP
-    else if constexpr (has_flag(P, f64) && double_exact<G>)
-        return double{};
-    else if constexpr (has_flag(P, f64) && dyadic_grid<G>) {
-        // `f64` explicitly requested on a dyadic grid double can't represent
-        // exactly (max |value·2^f| ≥ 2^53, or notch below the smallest normal).
-        // Arithmetic drops the flag before reaching here, so this is direct misuse.
-        static_assert(double_exact<G>,
-                      "f64 storage: grid exceeds double's 53-bit significand — coarsen the "
-                      "notch/range or use `exact`");
-        return double{}; // unreachable; fixes the deduced return type
-    } else if constexpr (has_flag(P, f32) && float_exact<G>)
-        return float{};
-    else if constexpr (has_flag(P, f32) && double_exact<G>)
-        // `f32` requested on a grid too fine for float but representable in double:
-        // WIDEN the storage to binary64. This makes a deduced f32 output (a cmath
-        // result inheriting the operand's flag) whose grid overflows float store its
-        // value in double rather than hard-erroring — the value stays exact. The f32
-        // POLICY bit remains (harmless; storage is raw-driven via fp_storage).
-        return double{};
-    else if constexpr (has_flag(P, f32) && dyadic_grid<G>) {
-        // Too fine for double too → genuinely unrepresentable as fp storage.
-        static_assert(double_exact<G>,
-                      "f32 storage: grid exceeds double's 53-bit significand — coarsen the "
-                      "notch/range or use `exact`");
-        return float{}; // unreachable; fixes the deduced return type
-    }
-#endif
     else if constexpr (has_width_flag(P)) {
         // User-pinned raw width (i8..u64). Encoding follows `indexed` (0-based
         // notch index) else value storage (raw == value, integer values like `direct`).
