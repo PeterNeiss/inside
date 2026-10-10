@@ -20,7 +20,7 @@
 //---------------------------------------------------------------------------
 namespace beman::inside {
 //---------------------------------------------------------------------------
-// add / sub / mul / div / mod — each takes one of three trailing forms:
+// add / sub / mul / div / mod / divmod — each takes one of three trailing forms:
 //   op(l, r [, policy [, action]])   explicit per-call policy (+ action)
 //   op(l, r, on_overflow(λ), ...)    tagged actions (policy = their implied flags)
 //   op(l, r, ec [, action])          error-code form (checked, reports into ec)
@@ -97,6 +97,12 @@ struct mod_op {
         return modulo<L, R, flags_of<P>>::mod(l, r, p, std::forward<A>(a));
     }
 };
+struct divmod_op {
+    template <class L, class R, class P, class A>
+    constexpr auto operator()(const L& l, const R& r, P&& p, A&& a) const {
+        return quotient_remainder<L, R, flags_of<P>>::divmod(l, r, p, std::forward<A>(a));
+    }
+};
 } // namespace detail
 
 #define BEMAN_INSIDE_ARITH_FN(name, op)                                             \
@@ -113,6 +119,7 @@ BEMAN_INSIDE_ARITH_FN(sub, sub_op)
 BEMAN_INSIDE_ARITH_FN(mul, mul_op)
 BEMAN_INSIDE_ARITH_FN(div, div_op)
 BEMAN_INSIDE_ARITH_FN(mod, mod_op)
+BEMAN_INSIDE_ARITH_FN(divmod, divmod_op)
 #undef BEMAN_INSIDE_ARITH_FN
 
 //---------------------------------------------------------------------------

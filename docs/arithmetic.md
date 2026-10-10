@@ -14,7 +14,7 @@ auto quot = a / b;   // std::expected<inside<{rational}>, errc>
 
 Division is rich enough to warrant its [own section](#division) below — `inside / inside` picks between three code paths at compile time, and its `std::expected` result has two distinct failure causes.
 
-The free functions `add`, `sub`, `mul`, `div`, and `mod` take one of three
+The free functions `add`, `sub`, `mul`, `div`, `mod` and `divmod` take one of three
 trailing forms:
 
 - `op(l, r [, policy [, action]])` — a named convenience policy
@@ -369,6 +369,19 @@ auto r3 = a % 5_ins;    // inside<{0, 4}>, value 2 — a literal divisor, no exp
 An integer literal is an integer-valued point, so `a % 5_ins` and, under
 `snap`, `a / 5_ins` take the native integer paths. A non-integer point
 (`0.5_ins`) is rejected by `%` like any non-integer grid.
+
+`divmod(a, b)` returns both halves from one division: a
+`divmod_result<Q, R>` with members `Quotient` and `Remainder`, typed as
+`a / b` and `a % b` with the same rounding mode. It takes the same trailing
+forms as `div` and has the same requirements as `%`, and every value must fit
+`imax`. Like `%`, it returns `std::expected` only when the divisor's grid
+holds zero:
+
+```cpp
+auto [q, r] = divmod(val{17}, pos{5});      // 3, 2
+using num   = inside<{-100, 100}>;
+auto [f, m] = divmod(num{-8}, pos{3}, rounded_floor); // -3, 1
+```
 
 ## Bulk reduction: `beman::inside::sum<Target>(range)`
 

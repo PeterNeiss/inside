@@ -35,6 +35,11 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 - `B::try_make<F>(value)` adds per-call flags, and `B::try_make` takes a
   `std::expected` and passes its error on.
 - `beman::inside::rational` is public (was `detail::rational`).
+- `divmod(a, b)`: the rounded quotient and its remainder from one division,
+  `auto [q, r] = divmod(a, b, snapped);`. The halves have the types of `a / b`
+  and `a % b`. It has the same requirements as `%` (integer grids and a
+  rounding policy), and every value must fit `imax`. It returns
+  `std::expected` only when the divisor's grid holds zero.
 
 ### Changed
 

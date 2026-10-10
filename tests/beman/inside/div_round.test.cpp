@@ -139,6 +139,9 @@ void sweep_div_mod() {
             SCOPED_TRACE(::testing::Message() << "a=" << a << " b=" << b << " expected q=" << q);
             ASSERT_TRUE(static_cast<rational>(ba / bb) == q);         // quotient per mode
             ASSERT_TRUE(static_cast<rational>(ba % bb) == a - q * b); // remainder a − q·b
+            const auto [dq, dr] = divmod(ba, bb);                     // divmod agrees with / and %
+            ASSERT_TRUE(dq == ba / bb);
+            ASSERT_TRUE(dr == ba % bb);
         }
 }
 } // namespace
@@ -171,4 +174,42 @@ TEST(DivRoundTest, div_mod_property_sweep_vs_reference_every_mode) {
     using TDn = inside<{-7, -1}, snap>;
     sweep_div_mod<TA, TD, ref_trunc>();
     sweep_div_mod<TA, TDn, ref_trunc>();
+}
+
+// divmod: the grids of / and %, expected only when the divisor may be zero
+TEST(DivRoundTest, divmod_types_and_errors) {
+    using val = inside<{0, 100}, snap>;
+    using pos = inside<{1, 10}, snap>;
+
+    const auto [q, r] = divmod(val{17}, pos{5});
+    static_assert(std::same_as<decltype(q), const decltype(val{} / pos{1})>);
+    static_assert(std::same_as<decltype(r), const decltype(val{} % pos{1})>);
+    ASSERT_TRUE(q == 3_ins);
+    ASSERT_TRUE(r == 2_ins);
+
+    // A per-call rounding policy picks the quotient; the remainder follows it.
+    using num          = inside<{-100, 100}>;
+    using den          = inside<{1, 10}>;
+    const auto [f, fr] = divmod(num{-8}, den{3}, rounded_floor);
+    ASSERT_TRUE(f == -3_ins);
+    ASSERT_TRUE(fr == 1_ins);
+
+    // A divisor grid holding zero: expected, division_by_zero.
+    auto e   = divmod(val{17}, val{0});
+    using vq = decltype(val{} / val{1})::value_type;
+    using vr = decltype(val{} % val{1})::value_type;
+    static_assert(std::same_as<decltype(e), std::expected<divmod_result<vq, vr>, errc>>);
+    ASSERT_FALSE(e.has_value());
+    ASSERT_EQ(e.error(), errc::division_by_zero);
+    auto ok = divmod(val{17}, val{4});
+    ASSERT_TRUE(ok.has_value() && ok->Quotient == 4_ins && ok->Remainder == 1_ins);
+
+    errc ec{};
+    (void)divmod(val{1}, val{0}, ec);
+    ASSERT_EQ(ec, errc::division_by_zero);
+
+    static_assert([] {
+        const auto [cq, cr] = divmod(val{99}, pos{10});
+        return cq == 9_ins && cr == 9_ins;
+    }());
 }

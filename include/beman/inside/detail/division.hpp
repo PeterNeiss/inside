@@ -18,6 +18,16 @@
 // checked). `modulo::mod` is integer-only — non-integer remainders aren't
 // well-defined on fractional notches.
 //---------------------------------------------------------------------------
+namespace beman::inside {
+// divmod's result: the rounded quotient and its remainder, for
+// `auto [q, r] = divmod(a, b);`.
+template <insidable Q, insidable R>
+struct divmod_result {
+    Q Quotient;
+    R Remainder;
+};
+} // namespace beman::inside
+
 namespace beman::inside::detail {
 // Both operands are plain integer grids and the caller accepted integer
 // truncation (snap) — the prerequisite for native integer div / mod.
@@ -384,6 +394,48 @@ constexpr auto modulo<L, R, F>::mod(L lhs, R rhs, policy<G, E> policy, A&& actio
         return res;
     }
 }
+
+//---------------------------------------------------------------------------
+// divmod (what `%` requires, with every value within imax): the rounded
+// quotient and the remainder consistent with it, r = a − q·b, from one native
+// division. The two halves have the grids of `a / b` and `a % b`.
+//---------------------------------------------------------------------------
+template <insidable L, insidable R, policy_flag F = none>
+struct quotient_remainder {
+    static_assert(integer_native_ops<L, R, F>, "divmod requires integer-valued grids within imax and snap");
+
+    static constexpr round_mode rmode = rounding_of(F | policy_of<L> | policy_of<R>);
+
+    using result = divmod_result<typename division<L, R, F>::result, typename modulo<L, R, F>::result>;
+
+    template <typename A>
+    using return_t = std::
+        conditional_t<overflow_action<plain_t<A>> || divisor_excludes_zero<R>, result, std::expected<result, errc>>;
+
+    template <policy_flag G = F, typename E = empty_ref, typename A = no_action>
+    static constexpr return_t<A> divmod(L lhs, R rhs, policy<G, E> policy = {}, A&& action = {}) {
+        using T         = native_div_t<L, R>;
+        const T rhs_val = static_cast<T>(to_value(rhs));
+        if constexpr (!divisor_unchecked<L, R, F, G>)
+            if (rhs_val == 0) {
+                if constexpr (overflow_action<plain_t<A>>) {
+                    result res{};
+                    action.Fn(res.Quotient, errc::division_by_zero);
+                    return res;
+                } else {
+                    if constexpr (uses_error_ref<std::remove_cvref_t<decltype(policy)>>)
+                        policy.report(errc::division_by_zero);
+                    return std::unexpected{errc::division_by_zero};
+                }
+            }
+        const T    lhs_val = static_cast<T>(to_value(lhs));
+        const imax q       = div_rounded(lhs_val, rhs_val, rmode);
+        result     res;
+        from_value(res.Quotient, q);
+        from_value(res.Remainder, lhs_val - q * rhs_val);
+        return res;
+    }
+};
 } // namespace beman::inside::detail
 
 #endif // BEMAN_INSIDE_DETAIL_DIVISION_HPP
