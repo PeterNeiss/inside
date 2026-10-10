@@ -216,6 +216,7 @@ endif()
 if(BEMAN_INSIDE_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests/beman/inside)
+    add_subdirectory(docs/proposal)
 endif()
 
 if(BEMAN_INSIDE_BUILD_EXAMPLES)
