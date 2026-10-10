@@ -10,7 +10,7 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 | Date | 2026-10-07 |
 | Audience | SG6 (Numerics), LEWG Incubator |
 | Reply-to | Peter Neiss (<https://github.com/PeterNeiss>) |
-| Reference implementation | [beman.inside v0.1.0](https://github.com/PeterNeiss/inside/tree/v0.1.0) |
+| Reference implementation | [beman.inside v0.2.0](https://github.com/PeterNeiss/inside/tree/v0.2.0) |
 
 ## 1. Abstract
 

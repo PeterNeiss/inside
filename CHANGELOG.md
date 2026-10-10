@@ -4,7 +4,19 @@
 SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 -->
 
-## Unreleased
+## 0.2.0 — 2026-10-10
+
+### Upgrading from 0.1.0
+
+- Drop the storage flags `exact`, `direct`, `indexed`, `i8`…`u64`, `f64` and
+  `f32`: storage now follows from the grid, and values, rounding and errors
+  are unchanged. Where a wire format needs a fixed integer width, store
+  `x.as<std::uint16_t>()`, or `x.to<std::uint16_t>()` for a
+  `std::expected`.
+- `++` / `--` move one notch, not 1: on `per<1024>` write `x += 1_ins` to add 1.
+- Text: a value with no finite decimal prints as `N/D` (was a mixed number
+  such as `2 1/3`). Off-grid text that no 64-bit rational holds reports
+  `rounding_error` (was `overflow`).
 
 ### Added
 

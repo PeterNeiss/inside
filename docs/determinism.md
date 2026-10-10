@@ -94,7 +94,8 @@ stored results, golden files and replay logs stay valid after an upgrade.
   does not merge silently.
 - Values change only deliberately, in a documented release that re-pins the
   affected tests and lists the change here by function. Algebraic results
-  (`+ − × ÷`, conversions, rounding) never change. No value has changed since
+  (`+ − × ÷`, conversions, rounding) change only where a result was wrong,
+  and each such fix is listed under Fixed. No math value has changed since
   0.1.0.
 
 ## Compile-time determinism
