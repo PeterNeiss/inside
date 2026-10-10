@@ -29,7 +29,7 @@ auto i = index::try_make(10);  // !i, i.error() == errc::overflow
 ```
 
 Every policy runs the runtime checks unless it carries `unsafe`:
-`inside<G>`, `inside<G, round_nearest>` and `inside<G, f64>` all report an
+`inside<G>`, `inside<G, round_nearest>` and `inside<G, indexed>` all report an
 out-of-range or off-notch value (by default, by throwing). `clamp` / `wrap`
 handle the range instead, and `snap` / `round_*` handle the notch. Use `unsafe`
 to drop runtime checks for maximum performance when correctness is proven
@@ -66,11 +66,11 @@ goes away from zero. On such a grid 0 itself can be a tie (between −0.5 and
 | `round_half_even` | banker's rounding — half to even (implies `snap`) |
 | `ignore_zero` | skip the divide-by-zero check — `a / 0` / `a % 0` is UB (binary `div`/`mod`); compound `/= 0` / `%= 0` no-op |
 | `ignore_range` | suppress the runtime range check |
-| `f64` / `f32` / `exact` / `direct` / `indexed` / `i8`…`u64` | **representation flags** — select how the raw value is stored; see the next section |
+| `exact` / `direct` / `indexed` / `i8`…`u64` | **representation flags** — select how the raw value is stored; see the next section |
 
 ## Representation flags
 
-`f64`, `f32`, `exact`, `direct`, `indexed` and `i8`…`u64` select what the raw
+`exact`, `direct`, `indexed` and `i8`…`u64` select what the raw
 storage holds instead of the deduced default; arithmetic results resolve them
 widest-wins. The table and rules are in
 [storage.md](storage.md#choosing-the-representation).

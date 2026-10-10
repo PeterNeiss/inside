@@ -180,8 +180,7 @@ struct division {
             return *(grid_of<L> / grid_of<R>);
     }();
 
-    // fp / representation propagation — shared rule in detail/rep.hpp (a
-    // continuous quotient drops fp: it is an exact fraction).
+    // Representation propagation — shared rule in detail/rep.hpp.
     using rep_t  = result_rep<L, R, result_grid>;
     using result = inside<result_grid, rep_t::result_policy>;
 

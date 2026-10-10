@@ -25,7 +25,7 @@ struct addition {
     // that message instead of the rational overflow behind it.)
     static constexpr grid result_grid =
         grid_sum_fits(grid_of<L>, grid_of<R>) ? (grid_of<L> + grid_of<R>).value() : grid_of<L>;
-    // fp / representation propagation — shared rule in detail/rep.hpp.
+    // Representation propagation — shared rule in detail/rep.hpp.
     using rep_t  = result_rep<L, R, result_grid>;
     using result = inside<result_grid, rep_t::result_policy>;
 
@@ -67,10 +67,10 @@ struct addition {
             using W                   = index_work_t<result, L, U, R, U, U>;
             res = from_value_in_units<result, U>(value_in_units<W, U>(lhs) + value_in_units<W, U>(rhs));
         } else if constexpr (wide_valued<result>)
-            // An fp or rational operand into a result with more than 2^64 slots.
+            // A rational operand into a result with more than 2^64 slots.
             res = exact_result<result>(exact_of(lhs) + exact_of(rhs));
         else {
-            // An fp or rational operand into an integer result: the exact rational
+            // A rational operand into an integer result: the exact rational
             // sum, converted to the result's raw.
             auto sum = rational::add_unchecked(lhs, rhs);
             res      = result::from_raw(raw_of_lattice_value<result>(sum));

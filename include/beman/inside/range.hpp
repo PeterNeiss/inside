@@ -118,7 +118,7 @@ struct inside_range {
             // Integer-backed storages decode without the rational/assignment
             // engine: for index storage the iterator index IS the raw (it stays in
             // [0, max_index_v], which the raw type holds); integer-grid value
-            // storage is a multiply-add in raw space. Rational/fp raws keep the exact generic path.
+            // storage is a multiply-add in raw space. Rational raws keep the exact generic path.
             if constexpr (detail::index_storage<value_type>)
                 return value_type::from_raw(static_cast<typename value_type::raw_type>(slot()));
             else if constexpr (detail::integer_value_storage<value_type> &&

@@ -189,8 +189,6 @@ The rules above are the **default deduction**. Several policy flags override it
 (table below):
 
 ```cpp
-using gain   = inside<{{0, 4}, per<65536>}, round_nearest | f64>;
-                                       // Raw: double (double-exact grid)
 using ratio  = inside<{{0, 1}, per<3>}, exact>;
                                        // Raw: exact fraction on a NOTCHED grid
 using regval = inside<{5, 100}, direct>; // Raw: uint8_t, raw() == value (5..100)
@@ -201,18 +199,15 @@ using sidx   = inside<{0, 4, per<16>}, u32 | indexed>; // Raw: uint32_t index
 
 | Flag | Forces | Grid requirement | Notes |
 |---|---|---|---|
-| `f64` | IEEE-754 `double` raw (the value itself) | dyadic **and** double-exact (every value fits `double`'s 53-bit significand); a continuous grid is a compile error | **storage only**: every result — value, rounding, error, return type, printing — is the one the type gives without it; rounding is stated separately (`round_nearest \| f64`). Arithmetic and deduced math results keep it when their grid is double-exact, else drop it. Under `BEMAN_INSIDE_MATH_NO_FP` it falls back to integer storage. |
-| `f32` | IEEE-754 `float` raw (the value itself) | dyadic **and** float-exact (every value fits `float`'s 24-bit significand) | the binary32 sibling of `f64`, for single-precision FPUs, storage only as well. Results **demote `f32`→`f64`** when their grid outgrows `float` (and drop it when the grid outgrows `double`). Under `BEMAN_INSIDE_MATH_NO_FP` it falls back to integer storage. |
 | `exact` | exact-fraction raw on **any** grid | none | no notch-count limit, no `double` anywhere; arithmetic is exact — on notched grids overflow is usually provably impossible and `+ − ×` return plain bounds (no `std::expected`) |
 | `i8 u8 i16 u16 i32 u32 i64 u64` | the named fixed-width integer raw | value storage needs integer values (`Notch == 1`, integer Lower) and the value range to fit (add `indexed` for a notched grid) | **pins the exact backing type** (e.g. a `uint16_t` where deduction would pick `uint8_t`) for a fixed wire layout. Bare = value storage (`raw() == value`, like `direct`); `+ indexed` = 0-based index storage. **No silent widening** — a type too small for the grid is a compile error. One width flag at a time; dropped on arithmetic results. |
 | `direct` | raw == value as a plain integer | integer values (`Notch == 1`, integer Lower) | e.g. `inside<{5, 100}, direct>` stores 5..100, not index 0..95 — the raw equals the wire/debugger value |
 | `indexed` | raw == 0-based notch index | `Notch != 0` | e.g. `inside<{-5, 5}, indexed>` stores 0..10 unsigned — dense layout for serialization |
 
 Arithmetic ORs the operands' policies; storage resolves several representation
-flags **widest-wins**: `exact > f64 > f32 > {width} > direct > indexed >
-deduced` (width flags are dropped on results, which deduce their own width),
-so an `exact + f64` sum is exact and an `f64` math chain stays double-backed
-where its grids allow.
+flags **widest-wins**: `exact > {width} > direct > indexed > deduced` (width
+flags are dropped on results, which deduce their own width), so a sum with an
+`exact` operand is exact.
 A result grid finer than the `uint64` index space deduces a wide integer
 index, keeping the result exact. See
 [`examples/storage.cpp`](../examples/storage.cpp); [`examples/wei.cpp`](../examples/wei.cpp)

@@ -52,13 +52,11 @@ Lower are whole numbers) and **Q-format** (notch `1/N`, `N ≥ 2`, Lower 0).
 |---|---|---|---|
 | `direct` | the value, as a plain integer (Notch 1) | cheapest — one int | integer ranges, interop (`raw()` == wire value) |
 | deduced / `indexed` | 0-based notch index | one int (+ a shift/offset to read the value) | Q-format, dense serialization |
-| `f64` | the value as IEEE-754 `double` | one double; FPU | math operands (sin/cos/…) |
-| `f32` | the value as IEEE-754 `float` | one float; single-precision FPU is enough | values on float-only FPUs (Cortex-M4F) |
 | `exact` | exact fraction (`rational`) | **gcd/lcm per op** | when rounding is unacceptable |
 
 Storage is deduced from the grid unless a representation flag overrides it (see
 [storage.md](storage.md#choosing-the-representation)). Rule of thumb: integer-raw
-(direct/indexed) and `f64`/`f32` are cheap; **rational is the slow one** — avoid it
+(direct/indexed) is cheap; **rational is the slow one** — avoid it
 in hot loops.
 
 ## Which grids are fast
@@ -92,7 +90,7 @@ of autovectorisation — use `unsafe` inside proven-safe inner loops, or
 
 - **Hot integer/fixed-point math:** integer-aligned or Q-format grids; `unsafe`
   in the proven-safe inner loop, then assign the result into a checked type.
-- **Transcendentals:** any grid; integer and `f64` outputs are equally fast
+- **Transcendentals:** any grid; integer outputs are the fast ones
   ([math.md](math.md#storage)).
 - **No rounding allowed:** `exact` — accept the rational cost.
 - **SIMD byte/halfword loops:** keep the range within the native type (the

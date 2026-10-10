@@ -1070,15 +1070,9 @@ $1.4\times10^{-11}$ in \code{double}. The \code{static\_assert(sizeof(money) ==
 arbitrary-precision arithmetic, because the grid is known at compile time and
 the value is stored as an integer count of notches.
 
-Floating-point storage is still available, but only where it is provably
-lossless: the \code{f64} and \code{f32} flags are permitted only on
-\emph{dyadic} grids --- power-of-two notch and lower bound --- so that every
-grid point is exactly representable in the significand. This is enforced by
-\code{static\_assert}: asking for \code{f64} on a grid too fine for a
-\code{double} is a compile error that names the fix (a coarser grid, or exact
-storage), not a quiet loss of precision. The rule that decides it is the same
-$2^{53}$ boundary that \S\ref{sec:double} demonstrated. The flags pick storage
-and nothing else: every result is the one the same type gives without them.
+There is no floating-point storage at all. A \code{double} enters an
+\code{inside} through one exact rounding onto its grid and leaves it through
+one correctly rounded conversion; in between, the value is an integer.
 
 \subsection{Reproducibility}
 
@@ -1146,7 +1140,7 @@ Byte-identical disassembly (\S\ref{sec:codegen});
 \textbf{Additional cost} & Exact rational storage, element-wise checking,
 and transcendentals correctly rounded at full \code{double} resolution. &
 \code{inside<exact>} $\approx$6.5$\times$ \code{double}; checked loop at
-20\%; math at full \code{double} resolution 4--8$\times$ \code{std} \\
+20\%; math at full \code{double} resolution 4--9$\times$ \code{std} \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -1510,10 +1504,10 @@ $2^{53}$ slots:
 \toprule
 Function & \code{std} ns & deduced grid ns & \code{double}-fine ns & fine vs.\ \code{std} \\
 \midrule
-\code{sin}  ($2^{-52}$) & 3.38 & 3.39 & 12.9 & 3.8$\times$ \\
-\code{exp}  ($2^{-40}$ on $[0,4096]$) & 2.66 & 5.50 & 11.1 & 4.2$\times$ \\
-\code{log}  ($2^{-48}$) & 2.32 & 3.97 & 16.0 & 6.9$\times$ \\
-\code{sqrt} ($2^{-51}$) & 1.22 & 1.67 & 9.34 & 7.6$\times$ \\
+\code{sin}  ($2^{-52}$) & 3.41 & 4.84 & 14.6 & 4.3$\times$ \\
+\code{exp}  ($2^{-40}$ on $[0,4096]$) & 2.67 & 7.12 & 12.5 & 4.7$\times$ \\
+\code{log}  ($2^{-48}$) & 2.34 & 5.60 & 17.4 & 7.4$\times$ \\
+\code{sqrt} ($2^{-51}$) & 1.23 & 2.41 & 10.6 & 8.6$\times$ \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -1523,7 +1517,7 @@ Function & \code{std} ns & deduced grid ns & \code{double}-fine ns & fine vs.\ \
 x86-64.}
 
 At full \code{double} resolution, correct rounding costs \textbf{4 to
-8$\times$} \code{std}. That buys results that are correct to the last bit
+9$\times$} \code{std}. That buys results that are correct to the last bit
 and identical on every platform, compiler, optimisation level and FPU or
 none --- properties \code{<cmath>} does not offer. It is a real trade, and it
 should be made deliberately: ask for the output grid you need, not the finest
@@ -1557,7 +1551,7 @@ Five conclusions, stated plainly:
 \item \textbf{Some paths genuinely cost, and no baseline choice rescues them.}
       Exact rational arithmetic is roughly 6.5$\times$ \code{double}; a
       loop that checks every element runs at 20\% of native; correctly rounded
-      transcendentals at full \code{double} resolution are 4--8$\times$
+      transcendentals at full \code{double} resolution are 4--9$\times$
       \code{std}. These buy exactness, a range guarantee and bit-exact
       reproducibility respectively, and if you do not need those properties
       you should not pay for them.
@@ -1603,7 +1597,7 @@ Intellectual honesty requires the other side of the ledger.
       most C++ programmers expect.
 \item \textbf{Correct rounding is not free.} The transcendentals return the
       correctly rounded grid point, and at the resolution of a \code{double}
-      that costs 4--8$\times$ \code{<cmath>} (\S\ref{sec:mathcost}). Code
+      that costs 4--9$\times$ \code{<cmath>} (\S\ref{sec:mathcost}). Code
       that needs \code{double} throughput and tolerates \code{double} error
       should call \code{<cmath>}.
 \item \textbf{Not everything needs it.} A loop counter over a small container

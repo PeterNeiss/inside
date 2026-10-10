@@ -43,7 +43,7 @@ grid point:
 
 | Path | When | Cost |
 |---|---|---|
-| **Table** | the input has at most `BEMAN_INSIDE_MATH_TABLE_SLOTS` slots (default 256), the output stores an integer, `f64` or `f32` raw, and every result lies in the output's range | one load; the table is computed at compile time |
+| **Table** | the input has at most `BEMAN_INSIDE_MATH_TABLE_SLOTS` slots (default 256), the output stores an integer raw, and every result lies in the output's range | one load; the table is computed at compile time |
 | **Double tier** | an FPU is present (not `BEMAN_INSIDE_MATH_NO_FP`), the output's value indices stay within ±2^52, and it needs no more bits than the kernel's limit (45–49, by function) | the library's own double kernels, sized to the output, plus a proved error bound; decided results are stored as raws |
 | **dd tier** | an FPU is present, the output needs more than 36 bits, and its value indices stay within ±2^62; where the double tier also applies, it runs second | double-double kernels (about 106 bits) from compile-time tables, plus an error bound; for every function but `sqrt`, `cbrt` and `hypot` (one Newton step already) a lean kernel with a proved bound of about 2^-70 runs first |
 | **Integer path** | always available; the only path at compile time and without an FPU | Taylor polynomials with compile-time coefficient tables in wide fixed point |
@@ -103,11 +103,9 @@ kernels.
 - **Rounding needs permission.** A transcendental result is rounded onto a grid,
   so the operand of a deduced form (or the `Out` of an explicit one) must permit
   rounding: `round_nearest`, `round_floor`, `round_ceil`, `round_half_even`
-  or `snap`. Omitting it is a compile error (`f64` storage alone does not
-  permit rounding).
+  or `snap`. Omitting it is a compile error.
 - **Deduced outputs: `fn(x)`.** The output takes the input's notch and policy
-  (minus any fixed storage width, plus `round_nearest`; `f64` / `f32` storage
-  stays where the output grid is exact in that format, as for arithmetic). Its interval is the
+  (minus any fixed storage width, plus `round_nearest`). Its interval is the
   function's range over the input, computed at compile time by the same engine
   and rounded outward to the notch. Exceptions: `sin`/`cos` give `[-1, 1]`,
   `tan` gives `[-1024, 1024]`, `atan2` gives `[-π, π]` and `hypot` `[0, …]` on
@@ -248,22 +246,20 @@ See [arithmetic.md](arithmetic.md) for the chaining rules and
 
 ## Storage
 
-Any storage works for inputs and outputs: integer index or value raws, `f64` /
-`f32`, `exact` rationals, and wide raws past 64 bits — with the same results:
-an output with `f64` storage receives the correctly rounded grid point as its
-double. Integer
-outputs are as fast: the double tier reads any input as a double and stores
-integer outputs as raws.
+Any storage works for inputs and outputs: integer index or value raws,
+`exact` rationals, and wide raws past 64 bits — with the same results. The
+double tier reads an integer input as its value index times the notch (exact
+on a dyadic grid) and stores integer outputs as raws.
 
 ## Speed
 
-Onto the grid deduced from the input, the functions run from 2.4× slower to
+Onto the grid deduced from the input, the functions run from 2.8× slower to
 3× faster than `<cmath>` (the `math:` tables in [performance.md](performance.md)).
 Inputs of up to 256 slots use the table path and cost one load; each table adds
 about 0.13 s of compile time on GCC, and `BEMAN_INSIDE_MATH_TABLE_SLOTS=0` turns
-tables off. Onto grids as fine as a `double`, correct rounding costs 4–8×
-`<cmath>`: `sin` onto 2^-52 12.9 ns, `exp` onto 2^-40 11.1 ns, `log` onto
-2^-48 16.0 ns (x86-64, `-O3 -mfma`; `docs/int-considered-harmful/p04_math_cost.cpp`).
+tables off. Onto grids as fine as a `double`, correct rounding costs 4–9×
+`<cmath>`: `sin` onto 2^-52 14.6 ns, `exp` onto 2^-40 12.5 ns, `log` onto
+2^-48 17.4 ns (x86-64, `-O3 -mfma`; `docs/int-considered-harmful/p04_math_cost.cpp`).
 
 ## Where correctness comes first
 
@@ -278,13 +274,13 @@ measured on x86-64 with `-mfma`.
 | The full dd kernels' bound far wider than their measured error: 2^-88 + 2^-92·max(1, \|x\|) (measured at worst 2^-96), times 1.5 | the same, for kernels whose bounds are not proved (the lean kernels' are) | outputs past the double tier's limits take the dd tier, 2–9 times slower than the double tier |
 | `-ffast-math`, `-fassociative-math` and `-ffinite-math-only` builds rejected with an `#error` | reassociation adding roundings the proofs did not count and breaking the error-free sums; NaN and infinity tests folded away | such builds do not compile |
 | Strict decision tests: a value within the bound of a slot boundary, exact ties and exact grid points under directed rounding go to the integer path | a rounding the double arithmetic cannot settle | the integer path's time for those inputs; rare for irrational results, every time for exact ones such as `sqrt` of a perfect square under `round_floor` |
-| `nearbyint` to round the value index, not adding and subtracting 1.5·2^52 | reassociation (Clang's `-fassociative-math`, which no macro announces) folding the add-subtract away; the tests then pass a non-integer and return a wrong slot | 0.1–0.4 ns per call (`sqrt` 1.65 → 2.05 ns, `hypot` 2.22 → 2.49 ns on `f64` grids) |
+| `nearbyint` to round the value index, not adding and subtracting 1.5·2^52 | reassociation (Clang's `-fassociative-math`, which no macro announces) folding the add-subtract away; the tests then pass a non-integer and return a wrong slot | 0.1–0.4 ns per call |
 | Range checked in double before the index becomes an integer; no finite checks, since NaN and infinities fail every comparison | a huge or non-finite kernel value converted to an integer (undefined behaviour) | none measured |
 | Inputs that are not doubles exactly (decimal notches, rational storage) add their conversion error times the function's slope to the bound | a decimal input's rounding moving a result across a boundary | slightly more fallbacks for those inputs |
 | Error-free sums fenced against FMA contraction (`__builtin_assoc_barrier`), the error-free product's rounded part computed as `fma(a, b, +0)` | GCC's default `-ffp-contract=fast` fusing a rounded product into a later sum, which made the dd tier 1–2 notches wrong at `-O2` | about 2% more instructions in the dd tier, no measurable time |
 | The dd tier only for value indices up to 2^62 | index arithmetic overflowing 64 bits | finer or wider outputs take the integer path |
 | The full dd kernels carry about 100 bits even when the output needs 50, behind a lean kernel with a proved bound | an undersized kernel for some output, or a lean kernel whose bound is only measured | a result the lean kernel leaves undecided pays both |
-| Rational outputs store the reduced fraction j·p/q (one gcd); f32/f64 outputs store j·notch, exact on their dyadic grids | a stored value off the grid, or not in canonical form | about 60 ns per rational result |
+| Rational outputs store the reduced fraction j·p/q (one gcd) | a stored value off the grid, or not in canonical form | about 60 ns per rational result |
 | Every constant and table computed at compile time from the integer path's own series, never written out as literals | a constant that drifts from the series it should equal | compile time only: about 0.1–0.3 s in a translation unit that uses the dd tier, nothing in one that does not |
 
 What the tiers never trade away: they return a result only when it provably

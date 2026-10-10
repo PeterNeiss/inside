@@ -98,7 +98,7 @@ The transcendental math API (`beman::inside::math::sin/cos/exp/log/sqrt/pow/atan
 and the math engine's double and dd tiers — including their `#include <cmath>` — are
 compiled out **entirely**; the integer path computes every result. The public surface,
 output grids, types **and values** are unchanged: results are correctly rounded either
-way. `f64` / `f32` storage falls back to integers.
+way.
 
 - **Auto-enabled** when `__STDC_HOSTED__ == 0` (i.e. `-ffreestanding`).
 - Holds for the modular headers **and** the amalgamated

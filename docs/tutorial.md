@@ -84,8 +84,7 @@ explicit precisely because it drops the guarantee.
 - `numerator()` / `denominator()` — exact read-out, no rounding.
 - implicit `operator imax()` for integer-aligned grids, or any grid whose policy rounds (so an inside indexes
   an array directly).
-- explicit `double(b)` — opt in to floating point (the same with `f64`
-  storage).
+- explicit `double(b)` — opt in to floating point.
 
 See [conversions.md](conversions.md).
 

@@ -17,7 +17,7 @@ writing literal values into insides.
 | Conversion | When it applies | Purpose |
 |---|---|---|
 | `operator imax()` (implicit) | integer values (integer notch and Lower), or a policy that may round (`snap`, `round_*`: the value is rounded by that mode); Lower ≥ imax_min and Upper ≤ imax_max | drop-in for integer contexts: accumulators, comparisons, and indexing (`vec[b]` converts imax → size_t) |
-| `operator double()` (explicit) | the grid carries a rounding policy (`round_*` or `snap`) — with or without `f64` storage | floating-point arithmetic / printf |
+| `operator double()` (explicit) | the grid carries a rounding policy (`round_*` or `snap`) | floating-point arithmetic / printf |
 
 `operator imax()` is deliberately the **only** implicit integer conversion —
 a second one (e.g. `size_t`) would make built-in mixed arithmetic like
@@ -126,9 +126,9 @@ checked_cast  <pct>(42);    // 42   (throws on out-of-range or off-notch)
 unchecked_cast<pct>(42);    // 42   (skips runtime checks)
 ```
 
-The cast's policy applies to every target and source shape: an `f64`
-(double-backed) target is clamped or wrapped like any other, and an `f64`
-source is read by value (`clamp_round<pct>(r)` with `r == 2.5` gives 3). The
+The cast's policy applies to every target and source shape: any target is
+clamped or wrapped by value, and an inside source is read by value
+(`clamp_round<pct>(r)` with `r == 2.5` gives 3). The
 same holds for the fluent forms — `b.with_clamp() = r`, `(r * k).with_snap()`.
 
 For `double → bounded` pipelines (audio / graphics / DSP), the `clamp_*`
@@ -250,7 +250,6 @@ values read back unchanged.
 
 Other cases follow the same idea:
 
-- **`f64` / `f32` storage** prints exactly what the type prints without it.
 - **Wide and C++26 big values** print all their digits (`1267650600228229401496703205379`).
 - **`rational`** and grid numbers print their shortest exact form; an
   `interval` prints `[lo..hi]` and a `grid` `{[lo..hi], notch}`.

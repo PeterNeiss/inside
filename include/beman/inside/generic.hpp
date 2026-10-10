@@ -708,8 +708,8 @@ template <insidable L, typename P>
 }
 
 // Store-side form for the assignment paths: when v rounds inside, the raw of
-// the rounded lattice point (an exact in-range point: an index, rational or
-// double raw, no further rounding). Cold and out of line, and it returns the
+// the rounded lattice point (an exact in-range point: an index or rational
+// raw, no further rounding). Cold and out of line, and it returns the
 // raw in registers instead of writing through the caller's inside:
 //   - a second call site of the large store functions stops GCC inlining
 //     them into the hot path (~40 instructions per in-range store);

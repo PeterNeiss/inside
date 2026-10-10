@@ -138,7 +138,7 @@ Library options:
 
 | Option | Default | Effect |
 |--------|---------|--------|
-| `BEMAN_INSIDE_MATH_NO_FP` | `OFF` | Build without hardware floating point: no `f64`/`f32` storage, no `<cmath>`; math results do not change |
+| `BEMAN_INSIDE_MATH_NO_FP` | `OFF` | Build without hardware floating point: no `<cmath>`, the math engine's integer path computes every result; results do not change |
 | `BEMAN_INSIDE_STRICT_SFINAE` | `OFF` | Drop the assignment diagnostic overloads so `is_constructible` stays honest |
 | `BEMAN_INSIDE_FMA` | `ON` | Add `-mfma` on x86-64 GCC/Clang so the math engine's `std::fma` is one instruction (see below) |
 | `BEMAN_INSIDE_BUILD_TOOLS` | `OFF` | Build the benchmarks, property fuzzer, accuracy sweep and perf workload |

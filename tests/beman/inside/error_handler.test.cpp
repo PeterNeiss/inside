@@ -87,7 +87,7 @@ TEST(ErrorHandlerTest,
 }
 
 // default handler throws inside_error carrying the code / not_finite on non-finite double input
-TEST(ErrorHandlerTest, default_handler_throws_inside_error_carrying_the_code__not_finite_on_non_finite_f64_input) {
+TEST(ErrorHandlerTest, default_handler_throws_inside_error_carrying_the_code__not_finite_on_non_finite_double_input) {
     using c100 = inside<{0, 100}, checked>;
 
     {

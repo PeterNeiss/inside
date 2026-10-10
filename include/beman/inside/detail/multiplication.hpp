@@ -12,7 +12,7 @@
 // multiplication — `mul(L, R, policy, action) -> inside<grid_of<L> * grid_of<R>>`.
 // Integer raws multiply their value indices (wide_value.hpp), in imax when the
 // grids' bounds allow, else by wrapping arithmetic as wide as the result raw.
-// fp results, point scaling and rational results have their own branches.
+// Point scaling and rational results have their own branches.
 //---------------------------------------------------------------------------
 namespace beman::inside::detail {
 template <insidable L, insidable R = L>
@@ -25,8 +25,7 @@ struct multiplication {
     // that message instead of the rational overflow behind it.)
     static constexpr grid result_grid =
         grid_product_fits(grid_of<L>, grid_of<R>) ? (grid_of<L> * grid_of<R>).value() : grid_of<L>;
-    // fp / representation propagation — shared rule in detail/rep.hpp. The product
-    // grid (notch = N_L·N_R) is finer, so demotion/dropping is the common case.
+    // Representation propagation — shared rule in detail/rep.hpp.
     using rep_t  = result_rep<L, R, result_grid>;
     using result = inside<result_grid, rep_t::result_policy>;
 

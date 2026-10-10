@@ -487,14 +487,12 @@ auto capped = clamp_cast<v>(add_all(a, b, c, v{90}));   // v, value 100 (150 cla
 Operations return `std::expected<inside, errc>` in two cases:
 
 1. **Division and modulo** whose divisor grid holds zero, or whose exact
-   quotient may overflow ([details](#when-the-result-is-stdexpected-and-when-it-isnt)),
-   with or without `f64` storage.
+   quotient may overflow ([details](#when-the-result-is-stdexpected-and-when-it-isnt)).
 
 2. **Continuous rational storage** — a grid with notch 0 (such as an exact
    quotient) stores a `rational`; `+` and `×` on it return `std::expected`
    (`errc::overflow`), since `lcm(b, d)` of the denominators may exceed `imax`.
-   Notched grids return plain values, exact ones included. (`f64` / `f32`
-   storage never changes which: a result too fine for `double` drops the flag.)
+   Notched grids return plain values, exact ones included.
 
 All operators accept `std::expected` operands and propagate errors: if either
 operand holds an error, the result holds that error (the left one when both

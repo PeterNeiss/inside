@@ -4812,8 +4812,8 @@ template <insidable L, typename P>
 }
 
 // Store-side form for the assignment paths: when v rounds inside, the raw of
-// the rounded lattice point (an exact in-range point: an index, rational or
-// double raw, no further rounding). Cold and out of line, and it returns the
+// the rounded lattice point (an exact in-range point: an index or rational
+// raw, no further rounding). Cold and out of line, and it returns the
 // raw in registers instead of writing through the caller's inside:
 //   - a second call site of the large store functions stops GCC inlining
 //     them into the hot path (~40 instructions per in-range store);
@@ -7079,7 +7079,7 @@ struct addition {
     // that message instead of the rational overflow behind it.)
     static constexpr grid result_grid =
         grid_sum_fits(grid_of<L>, grid_of<R>) ? (grid_of<L> + grid_of<R>).value() : grid_of<L>;
-    // fp / representation propagation — shared rule in detail/rep.hpp.
+    // Representation propagation — shared rule in detail/rep.hpp.
     using rep_t  = result_rep<L, R, result_grid>;
     using result = inside<result_grid, rep_t::result_policy>;
 
@@ -7121,10 +7121,10 @@ struct addition {
             using W                   = index_work_t<result, L, U, R, U, U>;
             res = from_value_in_units<result, U>(value_in_units<W, U>(lhs) + value_in_units<W, U>(rhs));
         } else if constexpr (wide_valued<result>)
-            // An fp or rational operand into a result with more than 2^64 slots.
+            // A rational operand into a result with more than 2^64 slots.
             res = exact_result<result>(exact_of(lhs) + exact_of(rhs));
         else {
-            // An fp or rational operand into an integer result: the exact rational
+            // A rational operand into an integer result: the exact rational
             // sum, converted to the result's raw.
             auto sum = rational::add_unchecked(lhs, rhs);
             res      = result::from_raw(raw_of_lattice_value<result>(sum));
@@ -7144,7 +7144,7 @@ struct addition {
 // multiplication — `mul(L, R, policy, action) -> inside<grid_of<L> * grid_of<R>>`.
 // Integer raws multiply their value indices (wide_value.hpp), in imax when the
 // grids' bounds allow, else by wrapping arithmetic as wide as the result raw.
-// fp results, point scaling and rational results have their own branches.
+// Point scaling and rational results have their own branches.
 //---------------------------------------------------------------------------
 namespace beman::inside::detail {
 template <insidable L, insidable R = L>
@@ -7157,8 +7157,7 @@ struct multiplication {
     // that message instead of the rational overflow behind it.)
     static constexpr grid result_grid =
         grid_product_fits(grid_of<L>, grid_of<R>) ? (grid_of<L> * grid_of<R>).value() : grid_of<L>;
-    // fp / representation propagation — shared rule in detail/rep.hpp. The product
-    // grid (notch = N_L·N_R) is finer, so demotion/dropping is the common case.
+    // Representation propagation — shared rule in detail/rep.hpp.
     using rep_t  = result_rep<L, R, result_grid>;
     using result = inside<result_grid, rep_t::result_policy>;
 
@@ -7413,8 +7412,7 @@ struct division {
             return *(grid_of<L> / grid_of<R>);
     }();
 
-    // fp / representation propagation — shared rule in detail/rep.hpp (a
-    // continuous quotient drops fp: it is an exact fraction).
+    // Representation propagation — shared rule in detail/rep.hpp.
     using rep_t  = result_rep<L, R, result_grid>;
     using result = inside<result_grid, rep_t::result_policy>;
 
@@ -8466,7 +8464,7 @@ inline constexpr imax index_cmp_bias = [] {
 namespace detail {
 // Inside values are finite and exact, so they are always ordered: <=> of two
 // insides, or of an inside and an integer, is a strong_ordering whatever the
-// storage (a double raw would give partial_ordering); against a floating
+// storage; against a floating
 // scalar it is a partial_ordering (NaN is unordered).
 inline constexpr auto three_way = [](const auto& a, const auto& b) -> std::strong_ordering {
     const auto c = a <=> b;
@@ -9310,7 +9308,7 @@ struct inside_range {
             // Integer-backed storages decode without the rational/assignment
             // engine: for index storage the iterator index IS the raw (it stays in
             // [0, max_index_v], which the raw type holds); integer-grid value
-            // storage is a multiply-add in raw space. Rational/fp raws keep the exact generic path.
+            // storage is a multiply-add in raw space. Rational raws keep the exact generic path.
             if constexpr (detail::index_storage<value_type>)
                 return value_type::from_raw(static_cast<typename value_type::raw_type>(slot()));
             else if constexpr (detail::integer_value_storage<value_type> &&

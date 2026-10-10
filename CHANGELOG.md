@@ -41,26 +41,12 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 - `++` / `--` move one notch on every grid (was ±1): on `per<1024>` they add
   1/1024. A grid without a notch has no `++`. Breaking for code that relied on
   `++` adding 1 on a fine grid (`std::iota` over such a type steps by the notch).
-- `f64` and `f32` are storage only: every result — value, rounding, error
-  code, plain-or-`expected` return, ordering type, printing, `numeric_limits`,
-  hash, deduced math types — is the one the type gives without them
-  (`storage_invariance.test.cpp` compares the two for every operation).
-  Breaking:
-  - they no longer carry `round_nearest`; a type that rounds says so
-    (`round_nearest | f64`). Without a rounding flag an off-grid value reports
-    `rounding_error`, `/` gives the exact quotient and `%` needs `snap`, as
-    without `f64`.
-  - a continuous grid with `f64` / `f32` is a compile error (a double cannot
-    hold every fraction); arithmetic drops the flag for a continuous result.
-  - `operator double` is explicit and gated on a rounding flag for every
-    type (it was implicit for `f64` / `f32`).
-  - `math::amp<K>` is `round_nearest`, with `f64` storage for a power-of-two K.
-  Fixed on the way: wrapping a huge double into an `f64` type folded it
-  inexactly in double; `from_chars` of a value past the 64-bit rational into
-  an `f64` type ignored `clamp` / `wrap`; `-x` of a zero `f64` value stored
-  `-0.0`; `sum` of `f64` elements overflowed where integer raws sum exactly;
-  two `unsafe | f64` operands gave an unchecked result where two `unsafe`
-  operands give a checked one.
+- **Removed `f64` and `f32` storage** (breaking). The flags only picked a
+  double/float raw, and every result already equalled the flag-free type's;
+  drop the flag and the type stores an integer index with the same values,
+  rounding, errors and printing. Spell rounding as before (`round_nearest`).
+  `math::amp<K>` is `round_nearest` on integer storage for every K. The math
+  engine's double and dd tiers are unchanged.
 - Examples: `wei`, `huge_angles`, `planck_to_cosmos`, `solar_system`,
   `expected_pipeline` and `json_io` drop their workarounds — exact decimal
   output, `sum`, `mul_into` / `div_into`, `just<…_g>` and the exact big-grid
@@ -72,10 +58,8 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   `1e-18_g`) prints its decimals for every value (`19.90`, `2.00`); any other
   grid prints the value's shortest exact form — its decimal however many
   digits (a 2^-52 grid, a wide value, a C++26 grid number), else `N/D` (was a
-  mixed number such as `2 1/3`). Every form reads back with `from_chars`. A
-  continuous `f64` inside prints the double's exact decimal (was
-  `std::to_string`'s six digits). Documented in conversions.md, "Writing
-  text".
+  mixed number such as `2 1/3`). Every form reads back with `from_chars`.
+  Documented in conversions.md, "Writing text".
 - Format specs other than an integer grid's (`{:.2f}`, `{:e}`, `{:g}`, with
   fill, align, sign, `#`, `0`, width) round the exact value once, by the
   type's rounding policy (`round_floor`, `round_ceil`, `round_nearest`,
@@ -88,6 +72,14 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 ### Performance
 
+- Integer storage reads and writes doubles directly: storing a `double` into
+  a double-exact grid with a power-of-two notch rounds `v / Notch` in double
+  (about 2 ns, was 5–9 with a rational detour), and reading an index raw as a
+  `double` is one convert and one multiply or divide. `math::floor`, `ceil`,
+  `round`, `trunc` and `abs` work on the value index; comparing with a
+  `double` on such a grid compares in double, exactly. Dyadic division
+  reduces its operands by trailing zeros instead of a gcd (24 → 12 ns).
+
 - `+=` and `-=` of same-notch insides with an offset (Lower ≠ 0) are a raw
   add for every grid, and a same-notch assignment of a wide value is a raw
   shift: a wide-index `x += step` takes about 1 ns instead of 150.
@@ -95,14 +87,18 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   `exp`, `exp2`, `log`, `log2` and `log10` kernels first (about 2^-70, with
   proved bounds), and lean compositions of them for `tan`, the hyperbolics
   and their inverses, `atan`, `atan2`, `asin`, `acos`, `pow` and `Base^x`
-  (1.4–2.2× faster onto outputs past the double tier). `sin` onto a 2^-52 grid takes 12.9 ns instead of 36.0,
-  `exp` onto 2^-40 11.1 instead of 21.1, `log` onto 2^-48 16.0 instead of
-  30.1; correct rounding at `double` resolution now costs 4–8× `<cmath>`
+  (1.4–2.2× faster onto outputs past the double tier). `sin` onto a 2^-52 grid takes 14.6 ns instead of 36.0,
+  `exp` onto 2^-40 12.5 instead of 21.1, `log` onto 2^-48 17.4 instead of
+  30.1; correct rounding at `double` resolution now costs 4–9× `<cmath>`
   (was 8–13×).
 - `sinh`, `asinh` and `acosh` stay in the double tier up to 47-bit outputs
   (was 46), through sharper forms used only past 46 bits.
 
 ### Fixed
+
+- `snap` alone (truncate toward zero) floored a negative off-notch value
+  whose exact signed index passed 64 bits — a double, or a rational with a
+  fine denominator, on a fine signed grid — instead of truncating it.
 
 - Storing a continuous inside (an exact quotient) into a checked notched
   inside rounded it silently when it fell between notches; it reports

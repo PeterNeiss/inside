@@ -11,7 +11,7 @@ conditions.
 | Layer | Reproducible? | Condition |
 |---|---|---|
 | Integer & rational storage / `+ − × ÷` | **Always** | none — fixed-width `int64`, exact rational |
-| `f64` / `f32` (float-backed) storage & arithmetic | **Yes** | IEEE-754 binary64/binary32, round-to-nearest (`-ffast-math` is rejected at compile time) |
+| Conversions to and from `double` | **Yes** | IEEE-754 binary64, round-to-nearest (`-ffast-math` is rejected at compile time) |
 | `beman::inside::math` transcendentals | **Always** | none — every result is the correctly rounded grid point, the same at compile time, at runtime, with or without an FPU |
 | Compile-time constants & coefficients | **Always** | `constexpr`, no external codegen |
 
@@ -22,7 +22,7 @@ bit.
 
 ## The integer & rational core is deterministic by construction
 
-Every inside without `f64`/`f32` storage holds a fixed-width integer index/value, and
+Every inside holds a fixed-width integer index/value or an exact fraction, and
 all of its arithmetic is integer or exact-rational. There is no floating point on
 these paths, so there is nothing for the platform to round differently:
 
@@ -39,27 +39,14 @@ these paths, so there is nothing for the platform to round differently:
 Two builds on two architectures that take an integer/rational path produce the
 same bits, period.
 
-## The `f64` (double-backed) path
+## Conversions to and from `double`
 
-An `f64` inside holds its value as an
-IEEE-754 `double`. The flag is storage only: every result is the one the same
-type gives without it (a test compares the two for every operation). It is
-only ever selected on a **`double_exact`** grid —
-dyadic *and* every on-grid value within the 53-bit significand (see
-[math.md](math.md#storage) and
-[storage.md](storage.md#choosing-the-representation)). The same reasoning
-applies to `f32` with binary32's 24-bit significand. Consequences for
-determinism:
-
-- On-grid values are *exactly* representable, so storing/loading is lossless.
-- `detail::snap_double` (`include/beman/inside/grid.hpp`) rounds by the policy's
-  mode (ties of `round_nearest` half away from zero), stays `constexpr` and
-  `<cmath>`-free, and narrows to `imax` only when provably safe — the same
-  rounding rule as integer and rational storage.
-- On-grid `+ − ×` whose exact result still fits the result grid are computed
-  exactly; an operation whose result `double` *cannot* represent — a finer
-  grid, or a continuous quotient — **drops the `f64` flag** and stores the
-  result in exact (rational/integer) storage, so `f64` never changes a result.
+A `double` stored into an inside is rounded exactly: on a double-exact grid
+with a power-of-two notch, `v / Notch` is exact and is rounded by the
+policy's mode (`detail::snap_double_index`, `include/beman/inside/grid.hpp`);
+elsewhere the double is decomposed into its exact fraction first. Reading an
+inside as a `double` is one correctly rounded IEEE operation when the grid
+allows it (`detail::as_double`), else the rational decode.
 
 **Condition.** IEEE-754 correctly-rounded `+ − × ÷` are deterministic given:
 round-to-nearest-even (the default), IEEE-754 binary64, and no value-changing
@@ -121,7 +108,7 @@ compile time equals the runtime one.
 ## Checklist for reproducible builds
 
 - Transcendentals need nothing: they are correctly rounded in every build.
-- For `f64` / `f32` storage and arithmetic: keep round-to-nearest-even and
+- For conversions to and from `double`: keep round-to-nearest-even and
   target IEEE-754 binary64 (on 32-bit x86 use SSE2, not x87). `-ffast-math`
   and the flags that announce themselves are rejected; don't pass Clang's
   `-fassociative-math` or `-funsafe-math-optimizations`, which do not.
@@ -136,6 +123,6 @@ compile time equals the runtime one.
 | You want to… | Read |
 |---|---|
 | call sin/cos/sqrt/… | [math.md](math.md) |
-| understand `f64` / double-backed storage | [storage.md](storage.md) |
+| understand storage representations | [storage.md](storage.md) |
 | pick fast grids (fixed-point) | [fixed-point.md](fixed-point.md) |
 | know *why* it's shaped this way | [internals.md](internals.md) |
