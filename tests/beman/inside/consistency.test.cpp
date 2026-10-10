@@ -489,3 +489,58 @@ TEST(ConsistencyTest, snap_truncates_fine_negative_rationals_toward_zero) {
     EXPECT_EQ((rational{T{rational{-55 * (imax{1} << 47) - 1, k2_61}}}), q(-55, 16384));
     EXPECT_EQ((rational{T{rational{55 * (imax{1} << 47) + 1, k2_61}}}), q(55, 16384));
 }
+
+//---------------------------------------------------------------------------
+// Continuous grids after the storage change (2026-10-10 sweep).
+//---------------------------------------------------------------------------
+// A continuous quotient is exact: the integer division paths need integer
+// values, which a continuous grid does not have whatever its limits.
+TEST(ConsistencyTest, continuous_division_is_exact) {
+    using C = inside<{{1, 10}, 0}, round_nearest>;
+    EXPECT_EQ(rational{*(C{q(7, 2)} / C{q(3, 2)})}, q(7, 3));
+}
+
+// Wrapping a continuous source folds its value, not its numerator.
+TEST(ConsistencyTest, continuous_source_wraps_by_value) {
+    using W = inside<{0, 3}, wrap | round_nearest>;
+    W w{0};
+    w = inside<{{0, 10}, 0}>{q(11, 2)}; // 5.5 ≡ 1.5 (mod 4) → 2
+    EXPECT_EQ(rational{w}, q(2));
+}
+
+// hull with a point keeps the lattice: max/min with a constant stay integer.
+TEST(ConsistencyTest, hull_with_a_point_keeps_the_lattice) {
+    const auto m = max(inside<{0, 100}>{3}, just<0>);
+    static_assert(integer_storage<std::remove_cvref_t<decltype(m)>>);
+    EXPECT_EQ(rational{m}, q(3));
+    const auto two = max(just<5>, just<rational{1, 2}>);
+    static_assert(notch_of<std::remove_cvref_t<decltype(two)>> == rational{9, 2});
+    EXPECT_EQ(rational{two}, q(5));
+}
+
+// Clamping an inside into a continuous target stores the exact endpoint.
+TEST(ConsistencyTest, clamp_into_continuous_stores_the_endpoint) {
+    inside<{{rational{1, 2}, rational{21, 2}}, 0}, clamp> c{q(1, 2)};
+    c = inside<{0, 20}>{15};
+    EXPECT_EQ(rational{c}, q(21, 2));
+    c = inside<{-5, 0}>{-3};
+    EXPECT_EQ(rational{c}, q(1, 2));
+}
+
+// Notched → continuous needs no snap; continuous → notched is checked on store.
+TEST(ConsistencyTest, continuous_sides_are_assignable) {
+    inside<{{0, 1}, 0}> c{0};
+    c = inside<{{0, 1}, per<10>}>{q(3, 10)};
+    EXPECT_EQ(rational{c}, q(3, 10));
+    inside<{{0, 10}, 2}> e{0};
+    e = inside<{{0, 10}, 0}>{4};
+    EXPECT_EQ(rational{e}, q(4));
+    EXPECT_THROW((e = inside<{{0, 10}, 0}>{3}), inside_error);
+}
+
+TEST(ConsistencyTest, hash_covers_every_storage) {
+    EXPECT_EQ(std::hash<std::remove_cvref_t<decltype(just<5>)>>{}(just<5>),
+              std::hash<std::remove_cvref_t<decltype(just<5>)>>{}(just<5>));
+    using C = inside<{{0, 1}, 0}>;
+    EXPECT_EQ(std::hash<C>{}(C{q(1, 3)}), std::hash<C>{}(C{q(1, 3)}));
+}

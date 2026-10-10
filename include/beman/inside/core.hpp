@@ -334,7 +334,7 @@ struct inside {
     // grids need no division; dyadic Q-format grids reduce by shifting out
     // common factors of two instead of a gcd.
     constexpr std::pair<imax, imax> fraction() const {
-        if constexpr (detail::index_storage<inside> && detail::integer_lattice<inside>)
+        if constexpr (detail::integer_storage<inside> && detail::integer_lattice<inside>)
             return {detail::to_value(*this), 1};
         else if constexpr (detail::index_storage<inside> && detail::qformat_codec_fits<inside> &&
                            std::has_single_bit(detail::abs_den(detail::notch64<inside>.Denominator))) {
@@ -359,8 +359,8 @@ struct inside {
     [[nodiscard]] constexpr negative operator-() const {
         negative neg;
         if constexpr (detail::point_storage<inside>)
-            neg = negative::from_raw({}); // −point is a point: no raw
-        else if constexpr (detail::rational_storage<inside>)
+            neg = negative::from_raw({});            // −point is a point: no raw
+        else if constexpr (!detail::notched<inside>) // continuous: the raw is the value
             neg = negative::from_raw(-(Raw));
         else {
             // Integer raws: the negated value index is −J (wide_value.hpp), in imax

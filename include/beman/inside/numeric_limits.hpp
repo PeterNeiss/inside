@@ -21,7 +21,7 @@ struct std::numeric_limits<beman::inside::inside<G, P>> {
     static constexpr bool is_specialized = true;
     static constexpr bool is_signed      = (G.Interval.Lower < beman::inside::detail::rational{0});
     // Every value is an integer: a non-zero integer notch over an integer Lower.
-    static constexpr bool is_integer        = beman::inside::detail::integer_lattice<B> && G.Notch != 0;
+    static constexpr bool is_integer        = beman::inside::detail::integer_lattice<B>;
     static constexpr bool is_exact          = true; // rational + integer raw are both exact
     static constexpr bool is_bounded        = true;
     static constexpr bool is_modulo         = (P & beman::inside::wrap) != 0;
@@ -79,18 +79,25 @@ template <beman::inside::grid G, beman::inside::policy_flag P>
 struct std::hash<beman::inside::inside<G, P>> {
     using B = beman::inside::inside<G, P>;
 
+    // Boost-style combine of h with the limbs of a wide integer.
+    static constexpr std::size_t combine(std::size_t h, const auto& w) noexcept {
+        for (auto limb : w.Word)
+            h ^= std::hash<beman::inside::umax>{}(limb) + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2);
+        return h;
+    }
+
     constexpr std::size_t operator()(const B& b) const noexcept {
-        if constexpr (beman::inside::detail::rational_storage<B>) {
+        if constexpr (beman::inside::detail::point_storage<B>)
+            return 0; // one value: the type
+        else if constexpr (beman::inside::detail::fraction_storage<B>)
+            return combine(combine(0, b.raw().Num), b.raw().Den); // a reduced fraction
+        else if constexpr (beman::inside::detail::rational_storage<B>) {
             // Boost-style hash combine over (Numerator, Denominator).
             auto h1 = std::hash<beman::inside::umax>{}(b.raw().Numerator);
             auto h2 = std::hash<beman::inside::imax>{}(b.raw().Denominator);
             return h1 ^ (h2 + 0x9e3779b97f4a7c15ULL + (h1 << 6) + (h1 >> 2));
         } else if constexpr (beman::inside::detail::wide_index_storage<B>) {
-            // Same combine over the limbs of a wide index.
-            std::size_t h = 0;
-            for (auto w : b.raw().Word)
-                h ^= std::hash<beman::inside::umax>{}(w) + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2);
-            return h;
+            return combine(0, b.raw());
         } else
             return std::hash<beman::inside::detail::raw_t<B>>{}(b.raw());
     }

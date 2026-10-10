@@ -524,11 +524,14 @@ constexpr bool grid_product_fits([[maybe_unused]] const grid& a, [[maybe_unused]
 [[nodiscard]] inline constexpr std::expected<grid, errc> hull(const grid& lhs, const grid& rhs) {
     const interval iv{lhs.Interval.Lower < rhs.Interval.Lower ? lhs.Interval.Lower : rhs.Interval.Lower,
                       lhs.Interval.Upper < rhs.Interval.Upper ? rhs.Interval.Upper : lhs.Interval.Upper};
-    if (lhs.Notch == 0 || rhs.Notch == 0)
+    // A continuous operand makes the hull continuous; a point (also notch 0)
+    // joins the other lattice through the offset between them.
+    auto continuous = [](const grid& g) { return g.Notch == 0 && g.Interval.Lower != g.Interval.Upper; };
+    if (continuous(lhs) || continuous(rhs))
         return grid{iv, detail::grid_rational{0}};
     auto gcd = [](const detail::grid_rational& x, const detail::grid_rational& y) { return detail::grid_gcd(x, y); };
     std::expected<detail::grid_rational, errc> n = detail::lift(gcd, lhs.Notch, rhs.Notch);
-    if (n && !detail::grid_same_lattice(lhs.Interval.Lower, rhs.Interval.Lower, *n))
+    if (n && (*n == 0 || !detail::grid_same_lattice(lhs.Interval.Lower, rhs.Interval.Lower, *n)))
         n = detail::lift(gcd, n, rhs.Interval.Lower - lhs.Interval.Lower);
     return detail::lift([iv](detail::grid_rational g) { return grid{iv, g}; }, n);
 }

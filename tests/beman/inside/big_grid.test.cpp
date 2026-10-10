@@ -250,6 +250,27 @@ TEST(BigGridTest, continuous_past_64_bits) {
     EXPECT_EQ((x * x).error(), errc::overflow);
 }
 
+// A continuous grid past 64 bits (an exact-fraction raw) negates and subtracts.
+TEST(BigGrid, big_continuous_negates) {
+    using F = inside<{{-1e30_g, 1e30_g}, 0}>;
+    static_assert(detail::fraction_storage<F>);
+    const F a{3}, b{rational{1, 2}};
+    EXPECT_EQ(to_string(-a), "-3");
+    EXPECT_EQ(to_string(*(b - a)), "-2.5");
+}
+
+// A same-notch store between grids whose lattices sit off 0 shifts by the
+// exact offset between their Lowers (here one notch: 1/8 − (−1/8) = 1/4).
+TEST(BigGrid, same_notch_store_between_unanchored_wide_grids) {
+    using L = inside<{{-0.125_g, 1180591620717411303423.875_g}, 0.25_g}>;
+    using R = inside<{{0.125_g, 1180591620717411303424.125_g}, 0.25_g}>;
+    const R r{rational{11, 8}};
+    L       l{rational{-1, 8}};
+    l = r;
+    EXPECT_EQ(to_string(l), "1.375");
+}
+
 #else
 TEST(BigGridTest, needs_cxx26_reflection) { GTEST_SKIP() << "C++26 static reflection unavailable"; }
+
 #endif

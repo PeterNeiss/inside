@@ -286,9 +286,12 @@ constexpr L& assign_exact(L& lhs, const exact_frac<K>& v, P&& policy, A&& action
 template <insidable L, insidable R>
 inline constexpr bool same_notch_raws = integer_storage<L> && integer_storage<R> && !point_storage<L> &&
                                         !point_storage<R> && notched<L> && notch_of<L> == notch_of<R>;
+// The shift is the exact offset between the Lowers in notches, plus the raws
+// of the Lowers (0 for an index raw, Lower for a value raw): exact on
+// unanchored lattices too.
 template <insidable L, insidable R>
 inline constexpr grid_wide same_notch_shift =
-    (index_storage<R> ? slot_base<R> : grid_wide{0}) - (index_storage<L> ? slot_base<L> : grid_wide{0});
+    exact_quotient(grid_sub(lower_of<R>, lower_of<L>), notch_of<L>) + raw_lo_exact<L> - raw_lo_exact<R>;
 template <insidable L, insidable R>
 inline constexpr int same_notch_bits = signed_value_bits_of({raw_lo_exact<R> + same_notch_shift<L, R>,
                                                              raw_hi_exact<R> + same_notch_shift<L, R>,
@@ -490,13 +493,8 @@ struct assignment<L, R> {
         else
             overshoot = rhs - clamped;
 
-        // The clamp target is an interval endpoint — a grid point — so the slot is 0
-        // or max_index_v, no rounding. Rational takes the exact constant;
-        // raw_from_offset<L> adds Lower back for value storage.
-        if constexpr (rational_storage<L>)
-            lhs = L::from_raw(low ? detail::lower64<L> : detail::upper64<L>);
-        else
-            lhs = L::from_raw(raw_from_offset<L>(low ? umax{0} : max_index_v<L>));
+        // The clamp target is an interval endpoint — a grid point, no rounding.
+        lhs = L::from_raw(endpoint_raw<L>(low));
 
         if constexpr (clamp_action<plain_t<A>>)
             action.Fn(lhs, overshoot);
@@ -974,8 +972,7 @@ struct assignment<L, R> {
   private:
     template <typename A>
     static constexpr void apply_clamp(L& lhs, const R& rhs, A&& action) {
-        // raw_lo/raw_hi are already the correct Raw (no raw_from_offset).
-        lhs = L::from_raw((as_rational(rhs) < detail::lower64<L>) ? raw_cast<L>(raw_lo<L>) : raw_cast<L>(raw_hi<L>));
+        lhs = L::from_raw(endpoint_raw<L>(as_rational(rhs) < detail::lower64<L>));
         // Overshoot (rhs − clamped) as an inside, via the result-grid inference of normal
         // inside arithmetic: both operands are insides, so the overshoot is too. It is always
         // in-grid and on-notch for grid_of<R> − grid_of<L>, so the construction is exact.
@@ -993,8 +990,7 @@ struct assignment<L, R> {
         // consecutive integers are adjacent grid points — and for a source whose
         // values are integers (no rounding to do). Anything else routes through
         // the rational modular wrap, which rounds by the policy first.
-        if constexpr (integer_limits<L> && abs_den(detail::notch64<L>.Denominator) == 1 &&
-                      detail::notch64<L>.Numerator == 1 && integer_lattice<R>) {
+        if constexpr (unit_lattice(grid_of<L>) && integer_lattice<R>) {
             // Unit-integer fast path: modular wrap on the integer value, exact
             // (either grid may reach past int64; the span can be 2^64−1).
             using fold             = unit_fold<L, wide_numerator(lower_of<R>), wide_numerator(upper_of<R>)>;

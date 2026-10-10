@@ -560,6 +560,16 @@ constexpr raw_t<L> raw_from_offset(W offset) noexcept {
         return raw_cast<L>(static_cast<umax>(offset));
 }
 
+// The raw of L's Lower (low) or Upper endpoint: the exact constant for a
+// rational raw, slot 0 or max_index_v for an integer one.
+template <insidable L>
+constexpr raw_t<L> endpoint_raw(bool low) noexcept {
+    if constexpr (rational_storage<L>)
+        return low ? detail::lower64<L> : detail::upper64<L>;
+    else
+        return raw_from_offset<L>(low ? umax{0} : max_index_v<L>);
+}
+
 // The raw of a value v on L's lattice within [Lower, Upper], through its
 // exact offset (v − Lower)/Notch.
 template <insidable L>
@@ -571,8 +581,9 @@ constexpr raw_t<L> raw_of_lattice_value(rational v) {
 // integer_limits vs integer_lattice — easy to confuse, both needed.
 //   integer_limits<B>: Lower and Upper integer (Notch may be fractional,
 //     e.g. inside<{0,100}, 1/10>). Lets Lower/Upper be used as imax constants.
-//   integer_lattice<B>: Notch and Lower integer ⇒ integer_limits (not the
-//     converse). Precondition for native integer raw arithmetic (Raw == value).
+//   integer_lattice<B>: every value an integer — an integer Lower and an
+//     integer non-zero Notch, or a point ⇒ integer_limits (not the converse).
+//     A continuous grid (Notch 0) is not one, whatever its limits.
 //-------------------------------------------------------------------------
 template <insidable B>
 inline constexpr bool integer_limits =
@@ -580,7 +591,7 @@ inline constexpr bool integer_limits =
 
 template <insidable B>
 inline constexpr bool integer_lattice =
-    wide_denominator(notch_of<B>) == grid_wide{1} && wide_denominator(lower_of<B>) == grid_wide{1};
+    integer_notch<grid_of<B>> || (lower_of<B> == upper_of<B> && wide_denominator(lower_of<B>) == grid_wide{1});
 
 // Q-format: the canonical fixed-point shape (Q8.8, Q16.16, ...). Notch has
 // unit numerator with integer denominator > 1, Lower is an integer at 0.
@@ -815,11 +826,15 @@ template <typename L, typename R>
 inline constexpr bool notches_compatible = [] {
     if constexpr (point_grid<R>)
         return point_on_lattice<L, R>;
+    else if constexpr (!notched<L> || !notched<R>)
+        // A continuous target holds every value; a continuous source is
+        // checked when stored, like a rational scalar.
+        return true;
     else if constexpr (wide_valued<L> || wide_valued<R>)
         // Every R value on L's lattice: R's notch a multiple of L's, and R's
         // lattice anchored on L's.
-        return !notched<L> || (grid_divides_evenly(notch_of<R>, notch_of<L>) &&
-                               grid_same_lattice(lower_of<R>, lower_of<L>, notch_of<L>));
+        return grid_divides_evenly(notch_of<R>, notch_of<L>) &&
+               grid_same_lattice(lower_of<R>, lower_of<L>, notch_of<L>);
     else
         // R's notch a whole number of L's, and R's lattice on L's (a given
         // when both pass through 0).

@@ -3996,11 +3996,14 @@ constexpr bool grid_product_fits([[maybe_unused]] const grid& a, [[maybe_unused]
 [[nodiscard]] inline constexpr std::expected<grid, errc> hull(const grid& lhs, const grid& rhs) {
     const interval iv{lhs.Interval.Lower < rhs.Interval.Lower ? lhs.Interval.Lower : rhs.Interval.Lower,
                       lhs.Interval.Upper < rhs.Interval.Upper ? rhs.Interval.Upper : lhs.Interval.Upper};
-    if (lhs.Notch == 0 || rhs.Notch == 0)
+    // A continuous operand makes the hull continuous; a point (also notch 0)
+    // joins the other lattice through the offset between them.
+    auto continuous = [](const grid& g) { return g.Notch == 0 && g.Interval.Lower != g.Interval.Upper; };
+    if (continuous(lhs) || continuous(rhs))
         return grid{iv, detail::grid_rational{0}};
     auto gcd = [](const detail::grid_rational& x, const detail::grid_rational& y) { return detail::grid_gcd(x, y); };
     std::expected<detail::grid_rational, errc> n = detail::lift(gcd, lhs.Notch, rhs.Notch);
-    if (n && !detail::grid_same_lattice(lhs.Interval.Lower, rhs.Interval.Lower, *n))
+    if (n && (*n == 0 || !detail::grid_same_lattice(lhs.Interval.Lower, rhs.Interval.Lower, *n)))
         n = detail::lift(gcd, n, rhs.Interval.Lower - lhs.Interval.Lower);
     return detail::lift([iv](detail::grid_rational g) { return grid{iv, g}; }, n);
 }
@@ -4557,6 +4560,16 @@ constexpr raw_t<L> raw_from_offset(W offset) noexcept {
         return raw_cast<L>(static_cast<umax>(offset));
 }
 
+// The raw of L's Lower (low) or Upper endpoint: the exact constant for a
+// rational raw, slot 0 or max_index_v for an integer one.
+template <insidable L>
+constexpr raw_t<L> endpoint_raw(bool low) noexcept {
+    if constexpr (rational_storage<L>)
+        return low ? detail::lower64<L> : detail::upper64<L>;
+    else
+        return raw_from_offset<L>(low ? umax{0} : max_index_v<L>);
+}
+
 // The raw of a value v on L's lattice within [Lower, Upper], through its
 // exact offset (v − Lower)/Notch.
 template <insidable L>
@@ -4568,8 +4581,9 @@ constexpr raw_t<L> raw_of_lattice_value(rational v) {
 // integer_limits vs integer_lattice — easy to confuse, both needed.
 //   integer_limits<B>: Lower and Upper integer (Notch may be fractional,
 //     e.g. inside<{0,100}, 1/10>). Lets Lower/Upper be used as imax constants.
-//   integer_lattice<B>: Notch and Lower integer ⇒ integer_limits (not the
-//     converse). Precondition for native integer raw arithmetic (Raw == value).
+//   integer_lattice<B>: every value an integer — an integer Lower and an
+//     integer non-zero Notch, or a point ⇒ integer_limits (not the converse).
+//     A continuous grid (Notch 0) is not one, whatever its limits.
 //-------------------------------------------------------------------------
 template <insidable B>
 inline constexpr bool integer_limits =
@@ -4577,7 +4591,7 @@ inline constexpr bool integer_limits =
 
 template <insidable B>
 inline constexpr bool integer_lattice =
-    wide_denominator(notch_of<B>) == grid_wide{1} && wide_denominator(lower_of<B>) == grid_wide{1};
+    integer_notch<grid_of<B>> || (lower_of<B> == upper_of<B> && wide_denominator(lower_of<B>) == grid_wide{1});
 
 // Q-format: the canonical fixed-point shape (Q8.8, Q16.16, ...). Notch has
 // unit numerator with integer denominator > 1, Lower is an integer at 0.
@@ -4812,11 +4826,15 @@ template <typename L, typename R>
 inline constexpr bool notches_compatible = [] {
     if constexpr (point_grid<R>)
         return point_on_lattice<L, R>;
+    else if constexpr (!notched<L> || !notched<R>)
+        // A continuous target holds every value; a continuous source is
+        // checked when stored, like a rational scalar.
+        return true;
     else if constexpr (wide_valued<L> || wide_valued<R>)
         // Every R value on L's lattice: R's notch a multiple of L's, and R's
         // lattice anchored on L's.
-        return !notched<L> || (grid_divides_evenly(notch_of<R>, notch_of<L>) &&
-                               grid_same_lattice(lower_of<R>, lower_of<L>, notch_of<L>));
+        return grid_divides_evenly(notch_of<R>, notch_of<L>) &&
+               grid_same_lattice(lower_of<R>, lower_of<L>, notch_of<L>);
     else
         // R's notch a whole number of L's, and R's lattice on L's (a given
         // when both pass through 0).
@@ -5662,9 +5680,12 @@ constexpr L& assign_exact(L& lhs, const exact_frac<K>& v, P&& policy, A&& action
 template <insidable L, insidable R>
 inline constexpr bool same_notch_raws = integer_storage<L> && integer_storage<R> && !point_storage<L> &&
                                         !point_storage<R> && notched<L> && notch_of<L> == notch_of<R>;
+// The shift is the exact offset between the Lowers in notches, plus the raws
+// of the Lowers (0 for an index raw, Lower for a value raw): exact on
+// unanchored lattices too.
 template <insidable L, insidable R>
 inline constexpr grid_wide same_notch_shift =
-    (index_storage<R> ? slot_base<R> : grid_wide{0}) - (index_storage<L> ? slot_base<L> : grid_wide{0});
+    exact_quotient(grid_sub(lower_of<R>, lower_of<L>), notch_of<L>) + raw_lo_exact<L> - raw_lo_exact<R>;
 template <insidable L, insidable R>
 inline constexpr int same_notch_bits = signed_value_bits_of({raw_lo_exact<R> + same_notch_shift<L, R>,
                                                              raw_hi_exact<R> + same_notch_shift<L, R>,
@@ -5866,13 +5887,8 @@ struct assignment<L, R> {
         else
             overshoot = rhs - clamped;
 
-        // The clamp target is an interval endpoint — a grid point — so the slot is 0
-        // or max_index_v, no rounding. Rational takes the exact constant;
-        // raw_from_offset<L> adds Lower back for value storage.
-        if constexpr (rational_storage<L>)
-            lhs = L::from_raw(low ? detail::lower64<L> : detail::upper64<L>);
-        else
-            lhs = L::from_raw(raw_from_offset<L>(low ? umax{0} : max_index_v<L>));
+        // The clamp target is an interval endpoint — a grid point, no rounding.
+        lhs = L::from_raw(endpoint_raw<L>(low));
 
         if constexpr (clamp_action<plain_t<A>>)
             action.Fn(lhs, overshoot);
@@ -6350,8 +6366,7 @@ struct assignment<L, R> {
   private:
     template <typename A>
     static constexpr void apply_clamp(L& lhs, const R& rhs, A&& action) {
-        // raw_lo/raw_hi are already the correct Raw (no raw_from_offset).
-        lhs = L::from_raw((as_rational(rhs) < detail::lower64<L>) ? raw_cast<L>(raw_lo<L>) : raw_cast<L>(raw_hi<L>));
+        lhs = L::from_raw(endpoint_raw<L>(as_rational(rhs) < detail::lower64<L>));
         // Overshoot (rhs − clamped) as an inside, via the result-grid inference of normal
         // inside arithmetic: both operands are insides, so the overshoot is too. It is always
         // in-grid and on-notch for grid_of<R> − grid_of<L>, so the construction is exact.
@@ -6369,8 +6384,7 @@ struct assignment<L, R> {
         // consecutive integers are adjacent grid points — and for a source whose
         // values are integers (no rounding to do). Anything else routes through
         // the rational modular wrap, which rounds by the policy first.
-        if constexpr (integer_limits<L> && abs_den(detail::notch64<L>.Denominator) == 1 &&
-                      detail::notch64<L>.Numerator == 1 && integer_lattice<R>) {
+        if constexpr (unit_lattice(grid_of<L>) && integer_lattice<R>) {
             // Unit-integer fast path: modular wrap on the integer value, exact
             // (either grid may reach past int64; the span can be 2^64−1).
             using fold             = unit_fold<L, wide_numerator(lower_of<R>), wide_numerator(upper_of<R>)>;
@@ -7804,7 +7818,7 @@ struct inside {
     // grids need no division; dyadic Q-format grids reduce by shifting out
     // common factors of two instead of a gcd.
     constexpr std::pair<imax, imax> fraction() const {
-        if constexpr (detail::index_storage<inside> && detail::integer_lattice<inside>)
+        if constexpr (detail::integer_storage<inside> && detail::integer_lattice<inside>)
             return {detail::to_value(*this), 1};
         else if constexpr (detail::index_storage<inside> && detail::qformat_codec_fits<inside> &&
                            std::has_single_bit(detail::abs_den(detail::notch64<inside>.Denominator))) {
@@ -7829,8 +7843,8 @@ struct inside {
     [[nodiscard]] constexpr negative operator-() const {
         negative neg;
         if constexpr (detail::point_storage<inside>)
-            neg = negative::from_raw({}); // −point is a point: no raw
-        else if constexpr (detail::rational_storage<inside>)
+            neg = negative::from_raw({});            // −point is a point: no raw
+        else if constexpr (!detail::notched<inside>) // continuous: the raw is the value
             neg = negative::from_raw(-(Raw));
         else {
             // Integer raws: the negated value index is −J (wide_value.hpp), in imax
@@ -15611,7 +15625,7 @@ wide_uint<K> spec_denominator(const exact_frac<K>& f) {
 template <beman::inside::grid G, beman::inside::policy_flag P>
 struct std::formatter<beman::inside::inside<G, P>>
     : beman::inside::detail::numeric_spec_formatter<
-          std::conditional_t<beman::inside::detail::integer_lattice<beman::inside::inside<G, P>> && G.Notch != 0 &&
+          std::conditional_t<beman::inside::detail::integer_lattice<beman::inside::inside<G, P>> &&
                                  beman::inside::detail::values_fit_imax<beman::inside::inside<G, P>>,
                              std::formatter<beman::inside::imax>,
                              beman::inside::detail::exact_format_spec>> {
@@ -15619,7 +15633,7 @@ struct std::formatter<beman::inside::inside<G, P>>
     // Integer formatting only for a notched integer grid: a continuous grid
     // (notch 0) holds fractions even between integer bounds.
     static constexpr bool integer_path =
-        beman::inside::detail::integer_lattice<B> && G.Notch != 0 && beman::inside::detail::values_fit_imax<B>;
+        beman::inside::detail::integer_lattice<B> && beman::inside::detail::values_fit_imax<B>;
 
     template <typename Ctx>
     auto format(const B& b, Ctx& ctx) const {
@@ -15689,7 +15703,7 @@ struct std::numeric_limits<beman::inside::inside<G, P>> {
     static constexpr bool is_specialized = true;
     static constexpr bool is_signed      = (G.Interval.Lower < beman::inside::detail::rational{0});
     // Every value is an integer: a non-zero integer notch over an integer Lower.
-    static constexpr bool is_integer        = beman::inside::detail::integer_lattice<B> && G.Notch != 0;
+    static constexpr bool is_integer        = beman::inside::detail::integer_lattice<B>;
     static constexpr bool is_exact          = true; // rational + integer raw are both exact
     static constexpr bool is_bounded        = true;
     static constexpr bool is_modulo         = (P & beman::inside::wrap) != 0;
@@ -15747,18 +15761,25 @@ template <beman::inside::grid G, beman::inside::policy_flag P>
 struct std::hash<beman::inside::inside<G, P>> {
     using B = beman::inside::inside<G, P>;
 
+    // Boost-style combine of h with the limbs of a wide integer.
+    static constexpr std::size_t combine(std::size_t h, const auto& w) noexcept {
+        for (auto limb : w.Word)
+            h ^= std::hash<beman::inside::umax>{}(limb) + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2);
+        return h;
+    }
+
     constexpr std::size_t operator()(const B& b) const noexcept {
-        if constexpr (beman::inside::detail::rational_storage<B>) {
+        if constexpr (beman::inside::detail::point_storage<B>)
+            return 0; // one value: the type
+        else if constexpr (beman::inside::detail::fraction_storage<B>)
+            return combine(combine(0, b.raw().Num), b.raw().Den); // a reduced fraction
+        else if constexpr (beman::inside::detail::rational_storage<B>) {
             // Boost-style hash combine over (Numerator, Denominator).
             auto h1 = std::hash<beman::inside::umax>{}(b.raw().Numerator);
             auto h2 = std::hash<beman::inside::imax>{}(b.raw().Denominator);
             return h1 ^ (h2 + 0x9e3779b97f4a7c15ULL + (h1 << 6) + (h1 >> 2));
         } else if constexpr (beman::inside::detail::wide_index_storage<B>) {
-            // Same combine over the limbs of a wide index.
-            std::size_t h = 0;
-            for (auto w : b.raw().Word)
-                h ^= std::hash<beman::inside::umax>{}(w) + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2);
-            return h;
+            return combine(0, b.raw());
         } else
             return std::hash<beman::inside::detail::raw_t<B>>{}(b.raw());
     }

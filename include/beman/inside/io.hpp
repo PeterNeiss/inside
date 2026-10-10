@@ -606,7 +606,7 @@ wide_uint<K> spec_denominator(const exact_frac<K>& f) {
 template <beman::inside::grid G, beman::inside::policy_flag P>
 struct std::formatter<beman::inside::inside<G, P>>
     : beman::inside::detail::numeric_spec_formatter<
-          std::conditional_t<beman::inside::detail::integer_lattice<beman::inside::inside<G, P>> && G.Notch != 0 &&
+          std::conditional_t<beman::inside::detail::integer_lattice<beman::inside::inside<G, P>> &&
                                  beman::inside::detail::values_fit_imax<beman::inside::inside<G, P>>,
                              std::formatter<beman::inside::imax>,
                              beman::inside::detail::exact_format_spec>> {
@@ -614,7 +614,7 @@ struct std::formatter<beman::inside::inside<G, P>>
     // Integer formatting only for a notched integer grid: a continuous grid
     // (notch 0) holds fractions even between integer bounds.
     static constexpr bool integer_path =
-        beman::inside::detail::integer_lattice<B> && G.Notch != 0 && beman::inside::detail::values_fit_imax<B>;
+        beman::inside::detail::integer_lattice<B> && beman::inside::detail::values_fit_imax<B>;
 
     template <typename Ctx>
     auto format(const B& b, Ctx& ctx) const {
