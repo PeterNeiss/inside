@@ -620,9 +620,9 @@ struct assignment<L, R> {
             }
 
             // Q-format integer shortcut: with integer Lower and notch 1/K the offset is
-            // (num − Lo·aden)·(K/g) / (aden/g), g = gcd(aden, K) — one gcd + integer ops
-            // instead of two rational ops. round_quotient is invariant under reduction,
-            // so the slot is bit-identical to the rational path. Oversized denominators
+            // (num − Lo·aden)·K / aden — integer ops instead of two rational ops.
+            // round_quotient is invariant under reduction, so the slot is
+            // bit-identical to the rational path. Oversized denominators
             // fall through (the kMaxDen guard keeps every product inside imax).
             if constexpr (qformat_codec_fits<L> && detail::notched<L>) {
                 constexpr imax K   = abs_den(detail::notch64<L>.Denominator);
@@ -645,18 +645,18 @@ struct assignment<L, R> {
                 const rational rv{rhs}; // exact (copy for rational R)
                 const umax     aden = abs_den(rv.Denominator);
                 if (kMaxDen != 0 && aden <= kMaxDen) {
-                    const umax g    = std::gcd(aden, static_cast<umax>(K));
-                    const umax den2 = aden / g;
-                    const imax k2   = K / static_cast<imax>(g);
+                    // The offset (num − Lo·aden)·K / aden, unreduced: round_quotient
+                    // rounds it as the reduced fraction would, and kMaxDen keeps the
+                    // product in imax.
                     const imax num  = signed_numerator(rv);
                     const umax onum = // ≥ 0: rhs ≥ Lower (in range)
-                        static_cast<umax>((num - Lo * static_cast<imax>(aden)) * k2);
-                    if (den2 == 1) {
-                        store_slot(onum);
+                        static_cast<umax>((num - Lo * static_cast<imax>(aden)) * K);
+                    if (onum % aden == 0) {
+                        store_slot(onum / aden);
                         return;
                     }
                     if constexpr (has_round_flag) {
-                        store_slot(round_quotient<L, P>(onum, den2));
+                        store_slot(round_quotient<L, P>(onum, aden));
                         return;
                     }
                     // strict policy, off-notch: fall through to the rational path for

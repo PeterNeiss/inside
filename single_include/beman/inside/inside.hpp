@@ -1220,6 +1220,14 @@ inline constexpr void trim(umax& numerator, imax& denominator) {
     umax ad = abs_den(denominator);
     if (ad <= 1)
         return;
+    if (std::has_single_bit(ad)) {
+        // A power-of-two denominator: gcd(n, 2^k) = 2^ctz(n | 2^k), no loop.
+        const int s = std::countr_zero(numerator | ad);
+        numerator >>= s;
+        ad >>= s;
+        denominator = (denominator < 0) ? -static_cast<imax>(ad) : static_cast<imax>(ad);
+        return;
+    }
     auto g = std::gcd(numerator, ad);
     if (g <= 1)
         return;
@@ -4354,12 +4362,11 @@ constexpr rational q_format_decode(B b) noexcept {
     constexpr imax nd = abs_den(detail::notch64<B>.Denominator);
     const imax     n  = raw_imax(b) + lower_imax<B> * nd;
     if constexpr (std::has_single_bit(static_cast<umax>(nd))) {
-        // A power-of-two denominator reduces by the common trailing zeros.
+        // A power-of-two denominator reduces by the common trailing zeros
+        // (0 reduces to 0/1).
         const umax m = n < 0 ? umax{0} - static_cast<umax>(n) : static_cast<umax>(n);
-        if (m == 0)
-            return rational{0};
-        const int s = std::min(std::countr_zero(m), std::countr_zero(static_cast<umax>(nd)));
-        rational  r;
+        const int  s = std::countr_zero(m | static_cast<umax>(nd));
+        rational   r;
         r.Numerator   = m >> s;
         r.Denominator = n < 0 ? -(nd >> s) : nd >> s;
         return r;
@@ -5925,9 +5932,9 @@ struct assignment<L, R> {
             }
 
             // Q-format integer shortcut: with integer Lower and notch 1/K the offset is
-            // (num − Lo·aden)·(K/g) / (aden/g), g = gcd(aden, K) — one gcd + integer ops
-            // instead of two rational ops. round_quotient is invariant under reduction,
-            // so the slot is bit-identical to the rational path. Oversized denominators
+            // (num − Lo·aden)·K / aden — integer ops instead of two rational ops.
+            // round_quotient is invariant under reduction, so the slot is
+            // bit-identical to the rational path. Oversized denominators
             // fall through (the kMaxDen guard keeps every product inside imax).
             if constexpr (qformat_codec_fits<L> && detail::notched<L>) {
                 constexpr imax K   = abs_den(detail::notch64<L>.Denominator);
@@ -5950,18 +5957,18 @@ struct assignment<L, R> {
                 const rational rv{rhs}; // exact (copy for rational R)
                 const umax     aden = abs_den(rv.Denominator);
                 if (kMaxDen != 0 && aden <= kMaxDen) {
-                    const umax g    = std::gcd(aden, static_cast<umax>(K));
-                    const umax den2 = aden / g;
-                    const imax k2   = K / static_cast<imax>(g);
+                    // The offset (num − Lo·aden)·K / aden, unreduced: round_quotient
+                    // rounds it as the reduced fraction would, and kMaxDen keeps the
+                    // product in imax.
                     const imax num  = signed_numerator(rv);
                     const umax onum = // ≥ 0: rhs ≥ Lower (in range)
-                        static_cast<umax>((num - Lo * static_cast<imax>(aden)) * k2);
-                    if (den2 == 1) {
-                        store_slot(onum);
+                        static_cast<umax>((num - Lo * static_cast<imax>(aden)) * K);
+                    if (onum % aden == 0) {
+                        store_slot(onum / aden);
                         return;
                     }
                     if constexpr (has_round_flag) {
-                        store_slot(round_quotient<L, P>(onum, den2));
+                        store_slot(round_quotient<L, P>(onum, aden));
                         return;
                     }
                     // strict policy, off-notch: fall through to the rational path for
@@ -7690,10 +7697,8 @@ struct inside {
         else if constexpr (detail::index_storage<inside> && detail::qformat_codec_fits<inside> &&
                            std::has_single_bit(detail::abs_den(detail::notch64<inside>.Denominator))) {
             constexpr imax nd  = detail::abs_den(detail::notch64<inside>.Denominator);
-            constexpr int  k   = std::countr_zero(static_cast<umax>(nd));
             const imax     num = detail::raw_imax(*this) + detail::lower_imax<inside> * nd;
-            const int      tz  = std::countr_zero(static_cast<umax>(num)); // num == 0: 64
-            const int      s   = tz < k ? tz : k;
+            const int      s   = std::countr_zero(static_cast<umax>(num) | static_cast<umax>(nd)); // 0 → 0/1
             return {num >> s, nd >> s};
         } else {
             auto r = detail::as_rational(*this);
@@ -7930,8 +7935,23 @@ struct inside {
     // Only a `rational` (a library type) may join an inside in a compound assign;
     // raw int/float/double are ill-formed — give the scalar a grid (`1_ins` /
     // `just<1>` / `inside<{lo,hi}>{n}`), mirroring the binary operators.
+    // A rational on a Q-format grid's lattice as a signed notch count (rhs·K
+    // for notch 1/K), when it is a whole number of notches of moderate size.
+    static constexpr bool raw_delta_ok = detail::qformat_codec_fits<inside> && detail::values_fit_imax<inside>;
+    static constexpr std::optional<imax> notch_delta(const detail::rational& r) noexcept {
+        constexpr umax K = detail::abs_den(detail::notch64<inside>.Denominator);
+        const umax     d = detail::abs_den(r.Denominator);
+        if (K % d != 0 || r.Numerator > (umax{1} << 62) / (K / d))
+            return std::nullopt;
+        const imax n = static_cast<imax>(r.Numerator * (K / d));
+        return r.Denominator < 0 ? -n : n;
+    }
+
     template <std::same_as<detail::rational> A>
     constexpr inside& operator+=(const A& rhs) {
+        if constexpr (raw_delta_ok)
+            if (const auto n = notch_delta(rhs)) [[likely]]
+                return store_raw<imax>(static_cast<imax>(Raw) + *n);
         return assign_op_result(detail::rational{*this} + rhs);
     }
 
@@ -7948,6 +7968,9 @@ struct inside {
 
     template <std::same_as<detail::rational> A>
     constexpr inside& operator-=(const A& rhs) {
+        if constexpr (raw_delta_ok)
+            if (const auto n = notch_delta(rhs)) [[likely]]
+                return store_raw<imax>(static_cast<imax>(Raw) - *n);
         return assign_op_result(detail::rational{*this} - rhs);
     }
 

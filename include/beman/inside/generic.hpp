@@ -355,12 +355,11 @@ constexpr rational q_format_decode(B b) noexcept {
     constexpr imax nd = abs_den(detail::notch64<B>.Denominator);
     const imax     n  = raw_imax(b) + lower_imax<B> * nd;
     if constexpr (std::has_single_bit(static_cast<umax>(nd))) {
-        // A power-of-two denominator reduces by the common trailing zeros.
+        // A power-of-two denominator reduces by the common trailing zeros
+        // (0 reduces to 0/1).
         const umax m = n < 0 ? umax{0} - static_cast<umax>(n) : static_cast<umax>(n);
-        if (m == 0)
-            return rational{0};
-        const int s = std::min(std::countr_zero(m), std::countr_zero(static_cast<umax>(nd)));
-        rational  r;
+        const int  s = std::countr_zero(m | static_cast<umax>(nd));
+        rational   r;
         r.Numerator   = m >> s;
         r.Denominator = n < 0 ? -(nd >> s) : nd >> s;
         return r;

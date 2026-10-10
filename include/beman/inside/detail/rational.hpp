@@ -9,6 +9,7 @@
 #include <beman/inside/detail/wide_int.hpp> // limb kernels for exact 128-bit cross products
 #include <beman/inside/detail/rounding.hpp> // round_mode, rounds_away
 
+#include <bit>
 #include <expected> // std::expected, std::unexpected
 
 #include <numeric>
@@ -29,6 +30,14 @@ inline constexpr void trim(umax& numerator, imax& denominator) {
     umax ad = abs_den(denominator);
     if (ad <= 1)
         return;
+    if (std::has_single_bit(ad)) {
+        // A power-of-two denominator: gcd(n, 2^k) = 2^ctz(n | 2^k), no loop.
+        const int s = std::countr_zero(numerator | ad);
+        numerator >>= s;
+        ad >>= s;
+        denominator = (denominator < 0) ? -static_cast<imax>(ad) : static_cast<imax>(ad);
+        return;
+    }
     auto g = std::gcd(numerator, ad);
     if (g <= 1)
         return;
