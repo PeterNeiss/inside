@@ -694,9 +694,9 @@ value of the type is exactly $\text{Lower} + k \cdot \text{Notch}$ for some
 integer $k$. The \code{policy} says what happens when a value would leave the
 range. Storage is selected automatically: the narrowest of
 \code{uint8}\ldots\code{int64} that can number every point on the grid, or an
-exact fraction for a continuous grid. \code{double} or \code{float} storage is
-available on request, for grids whose every point is exact in it, and grids
-too large for 64 bits get wider integers (\S\ref{sec:noceiling}).
+exact fraction for a continuous grid, and grids too large for 64 bits get
+wider integers (\S\ref{sec:noceiling}). No flag overrides it: storage follows
+from the grid alone.
 
 \begin{lstlisting}
 using namespace beman::inside;
@@ -1131,15 +1131,15 @@ Regime & When & Measured \\
 compiler can discharge, replacing checks the equivalent hand-written code must
 perform at runtime; comparisons the grid lets run on raw storage. &
 22\% faster than native checked (\S\ref{sec:checks}); comparison against a
-scalar at 129\% of native \\[0.6em]
+scalar at 131\% of native \\[0.6em]
 \textbf{Zero cost} & Integer-aligned operands on the same grid, where all the
 range reasoning happens in the type system. &
 Byte-identical disassembly (\S\ref{sec:codegen});
 \code{inside<unsafe>} at 99.7\% (\S\ref{sec:fair}); add, construct,
 \code{std::accumulate}, sort, transform at 95--101\% \\[0.6em]
-\textbf{Additional cost} & Exact rational storage, element-wise checking,
-and transcendentals correctly rounded at full \code{double} resolution. &
-\code{inside<exact>} $\approx$6.5$\times$ \code{double}; checked loop at
+\textbf{Additional cost} & Rational storage (continuous grids), element-wise
+checking, and transcendentals correctly rounded at full \code{double}
+resolution. & rational add $\approx$11$\times$ \code{double}; checked loop at
 20\%; math at full \code{double} resolution 4--9$\times$ \code{std} \\
 \bottomrule
 \end{tabular}
@@ -1396,8 +1396,8 @@ instruction count, give or take one. (The first edition of this paper measured
 34\% and 17\% here; the difference is the library, not the benchmark.)
 
 \begin{benchtable}{increment (u32 [0,200000])}
-  100.0\% & 0.20 & 4.00 & \texttt{native ++} \\
-  12.0\% & 1.70 & 6.00 & \texttt{inside ++} \\
+  100.0\% & 0.21 & 4.00 & \texttt{native ++} \\
+  12.2\% & 1.70 & 6.00 & \texttt{inside ++} \\
 \end{benchtable}
 
 \noindent
@@ -1413,27 +1413,27 @@ microbenchmark exposes, reported here because it is in the table.
 
 \begin{benchtable}{accumulate 1000 (u32 [0,200000], per element)}
   100.0\% & 0.05 & 1.03 & \texttt{native loop} \\
-  101.1\% & 0.05 & 1.03 & \texttt{inside<unsafe> loop} \\
-  19.9\% & 0.26 & 9.01 & \texttt{inside<checked> loop} \\
-  49.9\% & 0.10 & 2.34 & \texttt{beman::inside::sum<checked> (bulk check)} \\
-  99.9\% & 0.05 & 1.03 & \texttt{std::accumulate native} \\
-  100.0\% & 0.05 & 1.03 & \texttt{std::accumulate inside} \\
+  100.4\% & 0.05 & 1.03 & \texttt{inside<unsafe> loop} \\
+  20.1\% & 0.26 & 9.01 & \texttt{inside<checked> loop} \\
+  46.7\% & 0.11 & 2.50 & \texttt{beman::inside::sum<checked> (bulk check)} \\
+  100.8\% & 0.05 & 1.03 & \texttt{std::accumulate native} \\
+  100.3\% & 0.05 & 1.03 & \texttt{std::accumulate inside} \\
 \end{benchtable}
 
 \noindent
 The accumulate table carries the single most actionable result in the report.
-An \code{inside<checked>} element-wise loop runs at 19.9\% of native because it
+An \code{inside<checked>} element-wise loop runs at 20.1\% of native because it
 range-checks every element, which also stops the loop from vectorising. Using
 \code{beman::inside::sum}, which validates the total instead of each addend,
-moves it to 49.9\% --- a 2.5$\times$ improvement from choosing the right API
+moves it to 46.7\% --- a 2.3$\times$ improvement from choosing the right API
 for the job. Without the check, a hand loop and \code{std::accumulate} over
 \code{inside} both vectorise exactly like native code.
 
 \begin{benchtable}{comparison ==}
-  100.0\% & 0.53 & 12.00 & \texttt{native int16} \\
-  98.9\% & 0.53 & 12.00 & \texttt{inside same grid} \\
-  128.6\% & 0.41 & 9.00 & \texttt{inside == int scalar (value raw)} \\
-  128.6\% & 0.41 & 9.00 & \texttt{inside Q8.8 == int scalar (index raw)} \\
+  100.0\% & 0.54 & 12.00 & \texttt{native int16} \\
+  100.8\% & 0.53 & 12.00 & \texttt{inside same grid} \\
+  130.6\% & 0.41 & 9.00 & \texttt{inside == int scalar (value raw)} \\
+  130.8\% & 0.41 & 9.00 & \texttt{inside Q8.8 == int scalar (index raw)} \\
 \end{benchtable}
 
 \noindent
@@ -1441,27 +1441,28 @@ Comparison against a scalar beats native, with \emph{fewer} instructions (9
 against 12), because the grid tells the compiler the comparison can be done on
 raw storage without a conversion.
 
-\begin{benchtable}{exact-backed add (rational storage)}
-  100.0\% & 4.87 & 97.20 & \texttt{native fraction} \\
-  518.5\% & 0.94 & 12.00 & \texttt{std double (reference)} \\
-  79.1\% & 6.16 & 127.98 & \texttt{inside<exact>} \\
+\begin{benchtable}{rational add (continuous grid)}
+  100.0\% & 4.84 & 97.20 & \texttt{native fraction} \\
+  841.1\% & 0.58 & 12.00 & \texttt{std double (reference)} \\
+  73.7\% & 6.57 & 130.30 & \texttt{inside (continuous)} \\
 \end{benchtable}
 
 \noindent
-Exact rational arithmetic costs about 25\% against a hand-rolled reduced
-\code{int64} fraction, and roughly 6.5$\times$ against \code{double} --- which
-is the price of the exactness demonstrated in \S\ref{sec:correctness}, not an
-inefficiency. If you do not need exact thirds, do not ask for them: a grid
-with a fixed notch (cents, $2^{-14}$) stores an integer and pays none of this.
+Rational arithmetic, checked for overflow, costs about a third more than a
+hand-rolled reduced \code{int64} fraction, and roughly 11$\times$ a
+\code{double} (24 cycles against 2) --- the price of the exactness
+demonstrated in \S\ref{sec:correctness}, not an inefficiency. Only a
+continuous grid pays it: any notched grid, thirds included (\code{per<3>}),
+stores an exact integer index and pays none of this.
 
 \begin{benchtable}{sort 10k (per element)}
-  100.0\% & 15.14 & 104.12 & \texttt{native int16} \\
-  95.4\% & 15.87 & 99.27 & \texttt{inside} \\
+  100.0\% & 15.13 & 104.12 & \texttt{native int16} \\
+  96.4\% & 15.69 & 99.27 & \texttt{inside} \\
 \end{benchtable}
 
 \begin{benchtable}{transform v+1 10k (per element)}
   100.0\% & 0.01 & 0.32 & \texttt{native uint8} \\
-  99.3\% & 0.01 & 0.32 & \texttt{inside u255 (8-bit storage)} \\
+  100.2\% & 0.01 & 0.32 & \texttt{inside u255 (8-bit storage)} \\
 \end{benchtable}
 
 \subsection{What correct rounding costs}\label{sec:mathcost}
@@ -1478,12 +1479,12 @@ with \code{<cmath>}:
 \toprule
 Function (deduced grid) & \code{std} ns & \code{inside} ns & rel. \\
 \midrule
-\code{sin}   & 3.71 & 3.79 &  97.8\% \\
-\code{hypot} & 2.95 & 2.49 & 118.7\% \\
-\code{atan2} & 7.67 & 6.56 & 117.0\% \\
-\code{log}   & 2.61 & 4.30 &  60.5\% \\
-\code{sqrt}  & 1.22 & 1.86 &  66.0\% \\
-\code{exp}   & 2.87 & 6.21 &  46.2\% \\
+\code{sin}   & 3.72 & 4.67 &  79.8\% \\
+\code{hypot} & 2.96 & 3.13 &  94.6\% \\
+\code{atan2} & 7.69 & 7.53 & 102.0\% \\
+\code{log}   & 2.62 & 5.40 &  48.5\% \\
+\code{sqrt}  & 1.23 & 2.23 &  55.2\% \\
+\code{exp}   & 2.89 & 6.99 &  41.3\% \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -1531,7 +1532,7 @@ Five conclusions, stated plainly:
 \item \textbf{There is no single cost.} The measurements in this section span
       negative cost (22\% faster than checked native, \S\ref{sec:checks}), zero
       cost (byte-identical codegen, \S\ref{sec:codegen}) and real cost
-      (6.5$\times$ for exact rationals, up to 13$\times$ for correctly
+      (11$\times$ for rationals, up to 9$\times$ for correctly
       rounded math at full resolution). Any summary of the form
       ``\code{inside} costs $N$\%'' is wrong in at least one direction; the
       honest question is always \emph{which regime does my code sit in}.
@@ -1549,7 +1550,7 @@ Five conclusions, stated plainly:
       native in \S\ref{sec:fair}, by a different method, which is the same
       answer.
 \item \textbf{Some paths genuinely cost, and no baseline choice rescues them.}
-      Exact rational arithmetic is roughly 6.5$\times$ \code{double}; a
+      Rational arithmetic is roughly 11$\times$ \code{double}; a
       loop that checks every element runs at 20\% of native; correctly rounded
       transcendentals at full \code{double} resolution are 4--9$\times$
       \code{std}. These buy exactness, a range guarantee and bit-exact

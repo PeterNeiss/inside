@@ -247,7 +247,8 @@ See [arithmetic.md](arithmetic.md) for the chaining rules and
 ## Storage
 
 Any storage works for inputs and outputs: integer index or value raws,
-`exact` rationals, and wide raws past 64 bits — with the same results. The
+exact fractions of continuous grids, and wide raws past 64 bits — with the
+same results. The
 double tier reads an integer input as its value index times the notch (exact
 on a dyadic grid) and stores integer outputs as raws.
 

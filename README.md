@@ -25,8 +25,9 @@ standard (grids past 64 bits need C++26), and follows the layout and tooling of
   (saturate), `wrap` (modular), checked error — decides the outcome. Fallible
   results such as division come back as `std::expected<inside, errc>`.
 - **It's fixed-point, done by the compiler.** Think Qm.n with the scale and
-  range checked for you; the optimal raw storage (uint8…int64, double, exact
-  fraction, or a multi-limb integer past 2⁶⁴ steps) is picked automatically.
+  range checked for you; the raw storage (uint8…int64, an exact fraction for a
+  continuous grid, or a multi-limb integer past 2⁶⁴ steps) follows from the
+  grid alone.
 - **Any size of grid.** Under C++26 with static reflection a grid's limits and
   notch have no size limit (`inside<{0, 0x1p100}>`); see
   [docs/storage.md](docs/storage.md#grids-past-64-bits-c26).

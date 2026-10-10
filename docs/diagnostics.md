@@ -32,11 +32,11 @@ inside<grid{interval{rational{3,1}, rational{3,1}}, rational{0,1}}, 17179869184>
 | `1<<35` | 34359738368 | (unused) |
 | `1<<36` | 68719476736 | `unsafe` marker (+ ignore_range, snap, ignore_zero); the only bit that turns runtime checks off |
 | `1<<37` | … | (unused) |
-| `1<<38` | … | `exact` |
-| `1<<39` | … | `direct` |
-| `1<<40` | … | `indexed` |
+| `1<<38` | … | (unused) |
+| `1<<39` | … | (unused) |
+| `1<<40` | … | (unused) |
 | `1<<41` | … | (unused) |
-| `1<<42`…`1<<49` | … | width flags `i8 u8 i16 u16 i32 u32 i64 u64` |
+| `1<<42`…`1<<49` | … | (unused) |
 
 So `17179869184` is simply `checked`, the default policy of `inside<G>`. Every
 other policy without the `unsafe` bit is checked too. (Full table:

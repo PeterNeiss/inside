@@ -1,7 +1,7 @@
 # Storage, iteration & standard-library integration
 
-Each `inside` stores a single private `Raw` member. The storage type is selected
-automatically per grid; this page summarises the user-visible rules and
+Each `inside` stores a single private `Raw` member. The storage type follows
+from the grid alone — no policy flag picks it; this page summarises the rules and
 shows how `inside` integrates with the standard containers and algorithms.
 For the full decision tree see [internals.md](internals.md); for which grids are
 fastest (from a fixed-point perspective) see [fixed-point.md](fixed-point.md).
@@ -16,6 +16,17 @@ The value is recovered as `Raw * Notch + Lower` (offset encoding).
 using pct  = inside<{0, 100}>;          // Raw: uint8_t  (101 values)
 using big  = inside<{0, 100'000}>;      // Raw: uint32_t (100 001 values)
 using step = inside<{{0, 5}, 0.5}>;     // Raw: uint8_t  (10 steps)
+```
+
+**Whole numbers store the value** where that costs no width: with `Notch == 1`
+and integer limits, `Raw` is the value itself when its type is no wider than
+the index's. From `Lower == 0` index and value coincide; above 0 the value
+wins until it needs a wider type:
+
+```cpp
+using reg  = inside<{5, 100}>;          // Raw: uint8_t, raw() == value (5..100)
+using port = inside<{1024, 65535}>;     // Raw: uint16_t, raw() == value
+using year = inside<{200, 300}>;        // Raw: uint8_t index (300 needs 16 bits)
 ```
 
 **Wide integer storage** — a grid with more than 2⁶⁴ slots stores its index
@@ -41,9 +52,6 @@ under `snap` stays on the Q-format grid, computed in a wide work type when
 `raw·N` passes 64 bits). `from_chars` reads values past the
 64-bit fraction in decimal (`digits[.digits][e±n]`, or `n/d`).
 
-When `Lower == 0` and `Notch == 1`, `Raw` equals the value directly — no
-offset arithmetic.
-
 A grid written with two limits derives its notch (the coarsest `1/k` keeping
 integers and both limits on the grid), and storage follows from that:
 `inside<{0.5, 10}>` has notch 1/2 and 20 values in a `uint8_t`;
@@ -55,9 +63,9 @@ directly (`Raw == value`) with no offset, matching native `int` performance
 exactly.
 
 ```cpp
-using temp = inside<{-40, 85}>;          // Raw: int8_t  (direct storage)
-using pos  = inside<{-100'000, 100'000}>;// Raw: int32_t (direct storage)
-using diff = inside<{-255, 255}>;        // Raw: int16_t (direct storage)
+using temp = inside<{-40, 85}>;          // Raw: int8_t  (the value)
+using pos  = inside<{-100'000, 100'000}>;// Raw: int32_t (the value)
+using diff = inside<{-255, 255}>;        // Raw: int16_t (the value)
 ```
 
 Grids with `Lower < 0` and a fractional notch still use unsigned offset
@@ -69,8 +77,7 @@ using fstep = inside<{{-5, 5}, 0.5}>;    // Raw: uint8_t (20 steps, offset encod
 
 **Grids off the notch's multiples** — Lower need not be a multiple of the
 notch: the values are Lower, Lower + Notch, …, Upper. Such a grid always uses
-offset encoding, even with notch 1, because its values are not integers
-(value storage, `direct` and the bare width flags need integer values):
+offset encoding, even with notch 1, because its values are not integers:
 
 ```cpp
 using centres = inside<{{0.5, 255.5}, 1}>;     // Raw: uint8_t, 0.5 … 255.5 (bin centres)
@@ -183,31 +190,16 @@ Requirements and switches:
 - Big grids cost compile time (about 4–10% in the test suite); small grids
   compile and run exactly as under C++23.
 
-## Choosing the representation
+## Why no representation flags
 
-The rules above are the **default deduction**. Several policy flags override it
-(table below):
+Storage is not a policy: the same grid always has the same raw, so two
+insides on one grid share their encoding and every result type deduces its
+own. Every former flag only changed the layout, never a value:
+- a notched grid's index is already exact (past 2⁶⁴ slots a wide index);
+- value storage happens where it is free;
+- for a fixed wire layout, write `b.to<std::uint16_t>()` into the field
+  (checked) and read it back with `B{field}` or `B::try_make(field)`.
 
-```cpp
-using ratio  = inside<{{0, 1}, per<3>}, exact>;
-                                       // Raw: exact fraction on a NOTCHED grid
-using regval = inside<{5, 100}, direct>; // Raw: uint8_t, raw() == value (5..100)
-using slot   = inside<{-5, 5}, indexed>; // Raw: uint8_t, raw() == index (0..10)
-using wide   = inside<{0, 100}, u16>;    // Raw: uint16_t (pinned width, raw() == value)
-using sidx   = inside<{0, 4, per<16>}, u32 | indexed>; // Raw: uint32_t index
-```
-
-| Flag | Forces | Grid requirement | Notes |
-|---|---|---|---|
-| `exact` | exact-fraction raw on **any** grid | none | no notch-count limit, no `double` anywhere; arithmetic is exact — on notched grids overflow is usually provably impossible and `+ − ×` return plain bounds (no `std::expected`) |
-| `i8 u8 i16 u16 i32 u32 i64 u64` | the named fixed-width integer raw | value storage needs integer values (`Notch == 1`, integer Lower) and the value range to fit (add `indexed` for a notched grid) | **pins the exact backing type** (e.g. a `uint16_t` where deduction would pick `uint8_t`) for a fixed wire layout. Bare = value storage (`raw() == value`, like `direct`); `+ indexed` = 0-based index storage. **No silent widening** — a type too small for the grid is a compile error. One width flag at a time; dropped on arithmetic results. |
-| `direct` | raw == value as a plain integer | integer values (`Notch == 1`, integer Lower) | e.g. `inside<{5, 100}, direct>` stores 5..100, not index 0..95 — the raw equals the wire/debugger value |
-| `indexed` | raw == 0-based notch index | `Notch != 0` | e.g. `inside<{-5, 5}, indexed>` stores 0..10 unsigned — dense layout for serialization |
-
-Arithmetic ORs the operands' policies; storage resolves several representation
-flags **widest-wins**: `exact > {width} > direct > indexed > deduced` (width
-flags are dropped on results, which deduce their own width), so a sum with an
-`exact` operand is exact.
 A result grid finer than the `uint64` index space deduces a wide integer
 index, keeping the result exact. See
 [`examples/storage.cpp`](../examples/storage.cpp); [`examples/wei.cpp`](../examples/wei.cpp)
@@ -222,8 +214,7 @@ and [`examples/solar_system.cpp`](../examples/solar_system.cpp) use wide raws.
 
 `#include <beman/inside/formats.hpp>` for a curated set of `beman::inside::` aliases that map to
 native byte widths — so you can write `beman::inside::byte` / `beman::inside::unorm16` / `beman::inside::q8_8`
-instead of spelling the grid and policy by hand. (The bare `u8`/`i16`/… names are
-storage *flags*, so the native-width types use width words instead.)
+instead of spelling the grid and policy by hand.
 
 | Type | Range / notch | Storage |
 |---|---|---|

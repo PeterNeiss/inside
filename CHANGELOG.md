@@ -41,6 +41,15 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 - `++` / `--` move one notch on every grid (was ±1): on `per<1024>` they add
   1/1024. A grid without a notch has no `++`. Breaking for code that relied on
   `++` adding 1 on a fine grid (`std::iota` over such a type steps by the notch).
+- **Storage follows from the grid alone** (breaking): `exact`, `direct`,
+  `indexed` and the width flags `i8`…`u64` are gone. They only picked a raw
+  layout; values never changed. A notched grid's index is already exact (a
+  wide index past 2^64 slots); a whole-number grid stores its value wherever
+  that is no wider than the index (`inside<{5, 100}>` holds 5..100 in a
+  `uint8_t`, was the index 0..95; `{200, 300}` keeps the index), so `direct`
+  is the default where it is free. For a fixed wire layout, write
+  `to<std::uint16_t>()` into the field. Arithmetic results are plain checked
+  insides.
 - **Removed `f64` and `f32` storage** (breaking). The flags only picked a
   double/float raw, and every result already equalled the flag-free type's;
   drop the flag and the type stores an integer index with the same values,
@@ -95,6 +104,10 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   (was 46), through sharper forms used only past 46 bits.
 
 ### Fixed
+
+- A continuous inside plus a notched one took the notched grid's notch
+  (gcd(0, n) = n, a point's rule): `3/10 + 5` stored a nonsense index. The
+  sum is continuous now, as `hull` already was.
 
 - `snap` alone (truncate toward zero) floored a negative off-notch value
   whose exact signed index passed 64 bits — a double, or a rational with a

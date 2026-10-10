@@ -87,31 +87,22 @@ anchored code unchanged.
 
 ## 2. Storage encoding
 
-Representation is selected by the policy's **representation flags**
-(`exact` / `direct` / `indexed` / the `i8`…`u64` width flags, see
-[policies.md](policies.md#representation-flags)), with grid deduction as the
-default. `storage_pick<G, P>` (`include/beman/inside/grid.hpp`) resolves the flags
-**widest-wins** — a result of mixed-representation arithmetic ORs both
-operand policies, and the widest representation present wins:
+Storage is a function of the grid alone: `storage_min_t<G>`
+(`include/beman/inside/grid.hpp`). No policy flag changes it, so two insides
+on one grid always share their encoding:
 
 ```text
-  Lower == Upper (point), no width flag ▶  empty raw      (value lives in the type; reads as
-       │ no                                               index 0, so value = Lower)
-  exact in P ──────────────────────────▶  rational raw   (raw IS the value, exact fraction)
-       │ no
-  i8…u64 width flag in P ──────────────▶  that integer   (value storage, or index with
-       │ no                                               `indexed`; too small = static_assert)
-  direct in P AND Notch == 1 ──────────▶  integer raw    (raw IS the value)
-       │ no
-  indexed in P AND Notch != 0 ─────────▶  unsigned raw   (raw = 0-based notch index)
-       │ no
-  deduced (storage_min_t<G>):
-        Notch == 0                  ───▶  rational raw   (continuous grid)
-        index count > umax          ───▶  wide_int raw   (index in 64-bit limbs; exact
+  Lower == Upper (point)            ───▶  empty raw      (value lives in the type; reads as
+                                                          index 0, so value = Lower)
+  Notch == 0                        ───▶  rational raw   (continuous grid; exact_frac past
+                                                          64-bit limits)
+  index count > umax                ───▶  wide_int raw   (index in 64-bit limbs; exact
                                                           wide paths, detail/wide_value.hpp)
-        Notch == 1 AND (Lower == 0
-          or signed raw)            ───▶  integer raw    (raw IS the value)
-        otherwise                   ───▶  unsigned raw   (raw = 0-based notch index)
+  deduces_value<G>: Notch == 1,
+    integer limits, and below 0
+    signed within int64 / from 0 /
+    above 0 no wider than the index ───▶  integer raw    (raw IS the value)
+  otherwise                         ───▶  unsigned raw   (raw = 0-based notch index)
 ```
 
 `storage_min_t<G>` picks the smallest integer type that can hold every
@@ -119,8 +110,8 @@ reachable index, using the type's full range (see [storage.md](storage.md)).
 
 Storage **concepts** in `include/beman/inside/generic.hpp` partition every
 inside by what its raw holds. The leaves are disjoint; the raw type alone
-decides all but the integer pair, which also consults the policy
-(`integer_raw_holds_value`, mirroring `storage_pick` exactly). The groups
+decides all but the integer pair, which the grid decides
+(`integer_raw_holds_value` is `deduces_value<G>`). The groups
 are disjunctions of leaves, so they subsume them in `requires` clauses:
 
 | Concept | Raw | Meaning |
@@ -136,12 +127,11 @@ are disjunctions of leaves, so they subsume them in `requires` clauses:
 | `integer_storage<B>` | — | `index_storage` or `integer_value_storage` |
 
 Decoding must dispatch on the **storage, not the raw type's signedness** — a
-`direct` inside with Lower ≥ 0 has an *unsigned* value raw;
+whole-number grid above 0 has an *unsigned* value raw;
 `detail::as_double` is the storage-aware raw → double decoder.
 
 Grid-shape and magnitude traits sit beside them: `notched<B>` (Notch ≠ 0; a
-point may still have Notch 0), `point_grid<B>` (Lower == Upper — a value fact:
-under a width flag a point stores its value again instead of `point_slot`),
+point may still have Notch 0), `point_grid<B>` (Lower == Upper),
 and `wide_valued<B>` (values past 64 bits: a wide index raw, or grid numbers
 past 64 bits, `wide_grid_numbers<B>`; these take the exact paths of §2a).
 
@@ -341,7 +331,7 @@ Per-operation audit:
 | Operation | Shape | Causes |
 |---|---|---|
 | `a + b`, `a − b`, `a × b` (integer raws) | `inside` | total — result grid contains every value by construction |
-| same, rational raw + `checked`, overflow not provably excluded | `expected` | `overflow`. Notched grids inside the denominators, so most `exact` arithmetic PROVES safety at compile time and returns a plain `inside`; continuous (Notch 0) grids hold arbitrary rationals and keep the wrapper |
+| same, rational raw + `checked` | `expected` | `overflow`: a continuous (Notch 0) grid holds arbitrary rationals, so the sum's denominator may outgrow the raw |
 | `a / b`, `mod` (divisor grid excludes 0) | `inside` | total |
 | `a / b`, `mod` (divisor may be 0) | `expected` | `division_by_zero`, `overflow` (rational raw) |
 | `math::sin/cos/exp/log/…` | `inside` | total over the asserted domain |

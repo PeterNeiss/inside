@@ -66,14 +66,11 @@ goes away from zero. On such a grid 0 itself can be a tie (between −0.5 and
 | `round_half_even` | banker's rounding — half to even (implies `snap`) |
 | `ignore_zero` | skip the divide-by-zero check — `a / 0` / `a % 0` is UB (binary `div`/`mod`); compound `/= 0` / `%= 0` no-op |
 | `ignore_range` | suppress the runtime range check |
-| `exact` / `direct` / `indexed` / `i8`…`u64` | **representation flags** — select how the raw value is stored; see the next section |
 
-## Representation flags
+## Storage is not a policy
 
-`exact`, `direct`, `indexed` and `i8`…`u64` select what the raw
-storage holds instead of the deduced default; arithmetic results resolve them
-widest-wins. The table and rules are in
-[storage.md](storage.md#choosing-the-representation).
+No flag selects the raw storage: it follows from the grid alone (see
+[storage.md](storage.md#why-no-representation-flags)).
 
 > **API-boundary shorthand:** the modern idiom for "saturate-and-round into
 > this type" is to put `clamp | round_nearest` on the target inside's policy

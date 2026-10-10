@@ -12,8 +12,8 @@ An `inside`'s type is a **grid** `{interval, notch}`:
 - **notch** = the resolution (the value of 1 LSB). `per<2^N>` is a fraction
   `1/2^N` — i.e. **N fractional bits**.
 - **interval** = `[Lower, Upper]`, the representable range.
-- A value is `Lower + index · notch`; with the `direct` policy the raw storage
-  *is* the value, exactly like a plain fixed-point register.
+- A value is `Lower + index · notch`; on a whole-number grid the raw storage
+  *is* the value where that costs no width, like a plain integer register.
 
 So a Q8.8 unsigned register — 8 integer bits, 8 fractional bits, range `[0, 255]`
 step `1/256` — is:
@@ -43,21 +43,20 @@ Lower are whole numbers) and **Q-format** (notch `1/N`, `N ≥ 2`, Lower 0).
 - **Out-of-range is explicit.** `clamp`/`wrap` saturate/fold; `checked`
   reports (`std::expected` / `beman::inside::errc`) instead of silently
   wrapping.
-- **Exactness on tap.** Need no rounding at all? The `exact` policy stores a
-  rational and never loses a bit (slower — see below).
+- **Exactness by default.** Values on a notched grid are exact integer
+  indices; only a continuous grid (an exact quotient) needs a rational.
 
 ## Storage representations and their cost
 
 | Representation | Raw holds | Cost | Use for |
 |---|---|---|---|
-| `direct` | the value, as a plain integer (Notch 1) | cheapest — one int | integer ranges, interop (`raw()` == wire value) |
-| deduced / `indexed` | 0-based notch index | one int (+ a shift/offset to read the value) | Q-format, dense serialization |
-| `exact` | exact fraction (`rational`) | **gcd/lcm per op** | when rounding is unacceptable |
+| value (whole-number grids) | the value, as a plain integer (Notch 1) | cheapest — one int | integer ranges, interop (`raw()` == wire value) |
+| index (every other notched grid) | 0-based notch index | one int (+ a shift/offset to read the value) | Q-format, dense serialization |
+| exact fraction (continuous grids) | `rational` | **gcd/lcm per op** | exact quotients |
 
-Storage is deduced from the grid unless a representation flag overrides it (see
-[storage.md](storage.md#choosing-the-representation)). Rule of thumb: integer-raw
-(direct/indexed) is cheap; **rational is the slow one** — avoid it
-in hot loops.
+Storage follows from the grid alone (see
+[storage.md](storage.md#storage-selection)). Rule of thumb: integer raws are
+cheap; **rational is the slow one** — keep continuous grids out of hot loops.
 
 ## Which grids are fast
 
@@ -70,8 +69,8 @@ in hot loops.
    `(a · N) / b` (`(a << log2 N) / b` for power-of-two `N`) (`qformat_codec_fits` / `q_format_encode` in
    `generic.hpp`; the Q-format divide in `detail/division.hpp`). Construction is
    ~native (Q8.8 / Q16.16 measure at ~0.97×).
-3. **Avoid in hot loops:** continuous (Notch 0) grids and `exact` use rational
-   storage (gcd/lcm every op). For bulk reductions use
+3. **Avoid in hot loops:** continuous (Notch 0) grids use rational storage
+   (gcd/lcm every op). For bulk reductions use
    `beman::inside::sum<Target>`, which checks the total once and keeps
    vectorization (`add_all` / `mul_all` are plain pairwise folds).
 
@@ -92,7 +91,8 @@ of autovectorisation — use `unsafe` inside proven-safe inner loops, or
   in the proven-safe inner loop, then assign the result into a checked type.
 - **Transcendentals:** any grid; integer outputs are the fast ones
   ([math.md](math.md#storage)).
-- **No rounding allowed:** `exact` — accept the rational cost.
+- **No rounding allowed:** pick a notch that holds every value (thirds:
+  `per<3>`); only a continuous grid pays the rational cost.
 - **SIMD byte/halfword loops:** keep the range within the native type (the
   `formats.hpp` aliases use the full range, e.g. `byte` is `[0, 255]`) so the raw
   stays at native width.
