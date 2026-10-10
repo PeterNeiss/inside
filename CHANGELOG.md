@@ -81,6 +81,15 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 ### Performance
 
+- Integer raws skip the rational detours: comparisons of any two integer
+  grids are one integer compare (counts of a common unit); `/` into an exact
+  quotient builds one fraction from the value indices; signed fixed-point
+  `/` under `snap` (e.g. Q15) stays on its notch like the unsigned one;
+  `+=`/`-=` of a rational on a Q-format grid is a raw add (248 → 36
+  instructions); floor/ceil/round on a 2^-k notch are shifts (native
+  parity); `copysign`'s and a wider `fmod`'s integer paths. Power-of-two
+  fractions reduce without a gcd (rational add 130 → 71 instructions).
+
 - Integer storage reads and writes doubles directly: storing a `double` into
   a double-exact grid with a power-of-two notch rounds `v / Notch` in double
   (about 2 ns, was 5–9 with a rational detour), and reading an index raw as a
@@ -104,6 +113,17 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   (was 46), through sharper forms used only past 46 bits.
 
 ### Fixed
+
+- Continuous grids: `/` and `%` truncated their operands under `snap`
+  (7/2 ÷ 3/2 gave 3); wrapping a continuous source folded its numerator;
+  clamping into a continuous target stored truncated endpoints; a notched
+  source into a continuous target needed `snap`; `std::hash` of a point or
+  an exact-fraction raw did not compile; and (C++26) `-x` of a big
+  continuous value divided by zero.
+- `min`/`max`/`common_type` with a constant (`max(x, just<0>)`) went to a
+  continuous, rational-raw type; the hull of a point keeps the lattice.
+- (C++26) A same-notch store between unanchored wide grids landed one notch
+  off.
 
 - A continuous inside plus a notched one took the notched grid's notch
   (gcd(0, n) = n, a point's rule): `3/10 + 5` stored a nonsense index. The

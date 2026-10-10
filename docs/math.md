@@ -281,7 +281,6 @@ measured on x86-64 with `-mfma`.
 | Error-free sums fenced against FMA contraction (`__builtin_assoc_barrier`), the error-free product's rounded part computed as `fma(a, b, +0)` | GCC's default `-ffp-contract=fast` fusing a rounded product into a later sum, which made the dd tier 1–2 notches wrong at `-O2` | about 2% more instructions in the dd tier, no measurable time |
 | The dd tier only for value indices up to 2^62 | index arithmetic overflowing 64 bits | finer or wider outputs take the integer path |
 | The full dd kernels carry about 100 bits even when the output needs 50, behind a lean kernel with a proved bound | an undersized kernel for some output, or a lean kernel whose bound is only measured | a result the lean kernel leaves undecided pays both |
-| Rational outputs store the reduced fraction j·p/q (one gcd) | a stored value off the grid, or not in canonical form | about 60 ns per rational result |
 | Every constant and table computed at compile time from the integer path's own series, never written out as literals | a constant that drifts from the series it should equal | compile time only: about 0.1–0.3 s in a translation unit that uses the dd tier, nothing in one that does not |
 
 What the tiers never trade away: they return a result only when it provably
