@@ -11,7 +11,10 @@
 
 #include <gtest/gtest.h>
 
+#include <bit>
+#include <cstdint>
 #include <limits>
+#include <vector>
 
 using namespace beman::inside;
 using namespace beman::inside::detail;
@@ -426,4 +429,83 @@ TEST(ConsistencyTest, point_insides_store_nothing) {
     EXPECT_EQ(rational{-5_ins}, q(-5));
     EXPECT_EQ((rational{just<frac<1, 3>>}), q(1, 3));
     EXPECT_EQ((rational{val{17} * just<frac<1, 2>>}), q(17, 2));
+}
+
+//---------------------------------------------------------------------------
+// The double fast paths of integer storage (store from a double, decode to a
+// double) agree with the exact rational path on every input.
+//---------------------------------------------------------------------------
+namespace {
+// Grid points, ties, one ulp either side of each, and pseudo-random values.
+template <typename T>
+std::vector<double> probe_doubles() {
+    constexpr double lo  = static_cast<double>(lower64<T>);
+    constexpr double hi  = static_cast<double>(upper64<T>);
+    constexpr double nd  = static_cast<double>(notch64<T>);
+    auto             ulp = [](double v, int s) {
+        return std::bit_cast<double>(std::bit_cast<std::int64_t>(v) + (v < 0 ? -s : s));
+    };
+    std::vector<double> out;
+    for (double v = lo; v <= hi; v += nd * 37)
+        for (double w : {v, v + nd / 2, v - nd / 2})
+            for (double x : {w, ulp(w, 1), ulp(w, -1)})
+                if (x >= lo && x <= hi)
+                    out.push_back(x);
+    std::uint64_t s = 0x9E3779B97F4A7C15;
+    for (int i = 0; i < 2000; ++i) {
+        s = s * 6364136223846793005u + 1442695040888963407u;
+        out.push_back(lo + (hi - lo) * static_cast<double>(s >> 11) * 0x1p-53);
+    }
+    return out;
+}
+
+template <typename T>
+void expect_double_store_exact() {
+    for (double d : probe_doubles<T>())
+        EXPECT_EQ(T{d}.raw(), T{rational{d}}.raw()) << "d = " << d;
+}
+
+template <typename T>
+void expect_double_decode_exact() {
+    for (double d : probe_doubles<T>()) {
+        const T t{rational{d}};
+        EXPECT_EQ(static_cast<double>(t), static_cast<double>(rational{t})) << "d = " << d;
+    }
+}
+} // namespace
+
+TEST(ConsistencyTest, double_store_into_integer_storage_matches_rational) {
+    expect_double_store_exact<inside<{{-8, 8}, per<16384>}, round_nearest>>();
+    expect_double_store_exact<inside<{{-8, 8}, per<16384>}, round_floor>>();
+    expect_double_store_exact<inside<{{-8, 8}, per<16384>}, round_ceil>>();
+    expect_double_store_exact<inside<{{-8, 8}, per<16384>}, round_half_even>>();
+    expect_double_store_exact<inside<{{-8, 8}, per<16384>}, snap>>();
+    expect_double_store_exact<inside<{{0, 4}, per<65536>}, round_nearest>>();
+    expect_double_store_exact<inside<{{-4, 4}, per<2>}, round_half_even>>();
+    expect_double_store_exact<inside<{{-100, 100}, per<1000>}, round_nearest>>();             // not dyadic
+    expect_double_store_exact<inside<{{rational{1, 4}, rational{17, 4}}, 1}, round_floor>>(); // unanchored
+}
+
+TEST(ConsistencyTest, double_store_into_integer_storage_reports_off_grid) {
+    using strict = inside<{{-8, 8}, per<16384>}>;
+    EXPECT_EQ(strict::try_make(0.1).error(), errc::rounding_error);
+    EXPECT_EQ(rational{strict::try_make(0.25).value()}, q(1, 4));
+    EXPECT_EQ(rational{strict::try_make(-8.0).value()}, q(-8));
+}
+
+TEST(ConsistencyTest, integer_storage_decodes_to_the_nearest_double) {
+    expect_double_decode_exact<inside<{{-8, 8}, per<16384>}, round_nearest>>();
+    expect_double_decode_exact<inside<{{-100, 100}, per<1000>}, round_nearest>>();
+    expect_double_decode_exact<inside<{{-10, 10}, per<3>}, round_nearest>>();
+    expect_double_decode_exact<inside<{{0, 7}, rational{7, 1024}}, round_nearest>>();
+}
+
+// A fine-denominator source whose signed value index overflows imax rounds in
+// value space too: `snap` alone truncates toward zero, also below zero.
+TEST(ConsistencyTest, snap_truncates_fine_negative_rationals_toward_zero) {
+    using T              = inside<{{-8, 8}, per<16384>}, snap>;
+    constexpr imax k2_61 = imax{1} << 61;
+    EXPECT_EQ((rational{T{rational{-55 * (imax{1} << 47) + 1, k2_61}}}), q(-54, 16384));
+    EXPECT_EQ((rational{T{rational{-55 * (imax{1} << 47) - 1, k2_61}}}), q(-55, 16384));
+    EXPECT_EQ((rational{T{rational{55 * (imax{1} << 47) + 1, k2_61}}}), q(55, 16384));
 }

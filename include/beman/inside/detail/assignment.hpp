@@ -636,6 +636,22 @@ struct assignment<L, R> {
                                             has_policy<L, P, round_ceil> || has_policy<L, P, round_half_even> ||
                                             has_policy<L, P, snap>;
 
+            // A floating source on a grid whose values double holds exactly:
+            // round in double (snap_double, the integer storage's rule) and
+            // read the slot off the value index, exact. No rational round trip.
+            if constexpr (std::floating_point<R> && integer_storage<L> && !wide_valued<L> && anchored<L> &&
+                          double_exact<grid_of<L>>) {
+                constexpr double nd = static_cast<double>(detail::notch64<L>);
+                constexpr imax   lo = signed_numerator((detail::lower64<L> / detail::notch64<L>).value());
+                const double     v  = static_cast<double>(rhs);
+                const double     s  = snap_double<grid_of<L>, rounding_for<L, P>>(v);
+                if constexpr (!has_round_flag)
+                    if (s != v && policy.round_check()) [[unlikely]]
+                        return report_failure(lhs, policy, action, errc::rounding_error);
+                store_slot(static_cast<umax>(static_cast<imax>(s / nd) - lo));
+                return;
+            }
+
             // Q-format integer shortcut: with integer Lower and notch 1/K the offset is
             // (num − Lo·aden)·(K/g) / (aden/g), g = gcd(aden, K) — one gcd + integer ops
             // instead of two rational ops. round_quotient is invariant under reduction,

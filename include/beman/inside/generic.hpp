@@ -247,6 +247,35 @@ inline constexpr bool wide_valued = wide_index_storage<B> || wide_grid_numbers<B
 template <insidable B>
 constexpr auto exact_of(const B& b); // wide_value.hpp
 
+// Index raw → double in one IEEE operation. On an anchored grid with Notch
+// p/q the value is J·p/q, J = raw + Lower/Notch. With |J·p| and q at most 2^53
+// both are exact doubles, so double(J·p) / double(q) is the correctly rounded
+// quotient: what the rational decode gives (a power-of-two q compiles to a
+// multiply).
+struct index_double_codec {
+    bool   Ok;
+    imax   LowerIndex; // Lower / Notch
+    imax   P;          // Notch numerator
+    double Q;          // Notch denominator
+};
+template <insidable B>
+inline constexpr index_double_codec index_double = [] {
+    if constexpr (!integer_index_storage<B> || !notched<B> || !anchored<B> || wide_valued<B>)
+        return index_double_codec{};
+    else {
+        constexpr umax k53 = umax{1} << 53;
+        const rational n   = notch64<B>;
+        const auto     lo = lower64<B> / n, hi = upper64<B> / n;
+        if (!lo || !hi || abs_den(n.Denominator) > k53)
+            return index_double_codec{};
+        const umax m = lo->Numerator > hi->Numerator ? lo->Numerator : hi->Numerator; // max |J|
+        if (m > k53 / n.Numerator)
+            return index_double_codec{};
+        return index_double_codec{
+            true, signed_numerator(*lo), static_cast<imax>(n.Numerator), static_cast<double>(abs_den(n.Denominator))};
+    }
+}();
+
 template <insidable B>
 [[nodiscard]] constexpr double as_double(const B& b) noexcept {
     if constexpr (wide_valued<B>)
@@ -255,6 +284,8 @@ template <insidable B>
         return static_cast<double>(detail::lower64<B>);
     else if constexpr (value_storage<B>)
         return static_cast<double>(b.raw());
+    else if constexpr (constexpr auto c = index_double<B>; c.Ok)
+        return static_cast<double>((static_cast<imax>(b.raw()) + c.LowerIndex) * c.P) / c.Q;
     else
         return static_cast<double>((*(b.raw() * detail::notch64<B>)+detail::lower64<B>).value());
 }
@@ -749,14 +780,20 @@ template <insidable L, typename P>
         return round_offset<L, P>(num / den, num % den, den);
     else {
         // Round the signed value-index NUM/di exactly like detail::div_rounded.
-        // A numerator or m·di beyond imax (fp-derived sources on grids with
-        // large |Lower·count|) cannot rebuild the signed index — fall back to
-        // the offset rule, which differs only at exact ties on negative values.
+        // A numerator or m·di beyond imax (fine-denominator sources on grids
+        // with large |Lower·count|) cannot rebuild the signed index: round the
+        // offset's floor q instead, in value space — the value is below zero
+        // exactly when the floor's value index m + q is.
         const imax di = static_cast<imax>(den);
         imax       mdi, NUM;
         if (num > static_cast<umax>(std::numeric_limits<imax>::max()) || mul_overflow(m, di, &mdi) ||
-            add_overflow(mdi, static_cast<imax>(num), &NUM)) [[unlikely]]
-            return round_offset<L, P>(num / den, num % den, den);
+            add_overflow(mdi, static_cast<imax>(num), &NUM)) [[unlikely]] {
+            constexpr round_mode mode = rounding_for<L, P>;
+            const umax           q = num / den, r = num % den;
+            const bool           negative = m < 0 && q < umax{0} - static_cast<umax>(m);
+            return q +
+                   rounds_up(mode, negative, classify_remainder(mode, r, den), ((q ^ static_cast<umax>(m)) & 1) != 0);
+        }
         const imax           t    = NUM / di; // C++ truncation toward zero
         const imax           rr   = NUM % di; // sign of NUM, |rr| < di
         const bool           neg  = NUM < 0;
