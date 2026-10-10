@@ -866,6 +866,18 @@ template <insidable X, insidable P>
 inline constexpr raw_t<X> point_slot_of =
     static_cast<raw_t<X>>(exact_quotient(grid_sub(lower_of<P>, lower_of<X>), notch_of<X>));
 
+// Two integer raws whose values, counted in the gcd of their value units,
+// fit imax.
+template <insidable L, insidable R>
+inline constexpr bool units_cmp_fits = [] {
+    if constexpr (!integer_storage<L> || !integer_storage<R>)
+        return false;
+    else {
+        constexpr grid_rational U = grid_gcd_of(unit_of<L>, unit_of<R>);
+        return signed_value_bits_of({units_lo<L, U>, units_hi<L, U>, units_lo<R, U>, units_hi<R, U>}) <= 63;
+    }
+}();
+
 // inside ⋈ inside (⋈ = `cmp`: <=> or ==) in the cheapest exact form the two
 // storage shapes allow.
 template <insidable L, insidable R, class Cmp>
@@ -880,16 +892,13 @@ constexpr auto compare(const L& lhs, const R& rhs, Cmp cmp) {
     // a wide-index operand: exact wide fractions
     else if constexpr (wide_valued<L> || wide_valued<R>)
         return cmp(exact_of(lhs), exact_of(rhs));
-    // both integer value raws (notch 1, Raw == value): compare as integers
-    else if constexpr (integer_value_storage<L> && integer_value_storage<R> && values_fit_imax<L> &&
-                       values_fit_imax<R>)
-        return cmp(raw_imax(lhs), raw_imax(rhs));
-    // same nonzero notch, integer-backed: compare signed value indices
-    // (compile-time bias + raw) — e.g. two same-Q-format fixed-point types
-    // with different intervals, without the rational decode.
-    else if constexpr (detail::notch64<L> == detail::notch64<R> && index_cmp_fits<L> && index_cmp_fits<R>)
-        return cmp(index_cmp_bias<L> + raw_imax(lhs), index_cmp_bias<R> + raw_imax(rhs));
-    else
+    // integer raws: both values as exact counts of a unit dividing them both
+    // (the gcd of their value units), one integer compare — any notches and
+    // offsets, without the rational decode.
+    else if constexpr (units_cmp_fits<L, R>) {
+        constexpr grid_rational U = grid_gcd_of(unit_of<L>, unit_of<R>);
+        return cmp(value_in_units<imax, U>(lhs), value_in_units<imax, U>(rhs));
+    } else
         return cmp(as_rational(lhs), as_rational(rhs));
 }
 } // namespace detail

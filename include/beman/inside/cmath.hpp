@@ -5,6 +5,7 @@
 #include <beman/inside/inside.hpp>
 #include <beman/inside/cmath_adaptive.hpp> // the math engine
 
+#include <bit>
 #include <cstdint>
 #include <expected>
 
@@ -174,7 +175,22 @@ constexpr Out integer_into(In x) {
     else if constexpr (int_direct<Out, integer_auto_t<In, M>, In>) {
         constexpr imax p = static_cast<imax>(notch64<In>.Numerator);
         constexpr imax q = static_cast<imax>(abs_den(notch64<In>.Denominator));
-        return from_value_index<Out>(div_rounded(value_index<imax>(x) * p, q, M));
+        const imax     j = value_index<imax>(x) * p;
+        if constexpr (p == 1 && std::has_single_bit(static_cast<umax>(q)) && M != round_mode::half_even) {
+            // A notch 2^-k: shifts. floor is the arithmetic shift, ceil its
+            // mirror; nearest and trunc shift the magnitude (half away from 0).
+            constexpr int k = std::countr_zero(static_cast<umax>(q));
+            if constexpr (M == round_mode::floor)
+                return from_value_index<Out>(j >> k);
+            else if constexpr (M == round_mode::ceil)
+                return from_value_index<Out>(-((-j) >> k));
+            else {
+                const imax s = j >> 63, a = (j ^ s) - s; // sign mask, |j|
+                const imax r = (a + (M == round_mode::nearest ? q / 2 : 0)) >> k;
+                return from_value_index<Out>((r ^ s) - s);
+            }
+        } else
+            return from_value_index<Out>(div_rounded(j, q, M));
     } else
         return store_value<Out>(round_to_int(rational{x}, M));
 }
@@ -192,9 +208,8 @@ template <insidable Out, insidable In>
                   "beman::inside::math::abs: Out must include the smallest |x| (0 when x's range spans 0)");
     if constexpr (detail::any_wide_valued<Out, In>)
         return detail::store_exact<Out>(detail::ax::abs(detail::ax::exact_input(x)));
-    else if constexpr (std::same_as<Out, detail::abs_auto_t<In>> && detail::integer_storage<In> &&
-                       detail::integer_storage<Out> && detail::notched<In> && detail::anchored<In> &&
-                       notch_of<Out> == notch_of<In> && !detail::wide_valued<In>) {
+    else if constexpr (std::same_as<Out, detail::abs_auto_t<In>> && detail::notched<In> && detail::anchored<In> &&
+                       notch_of<Out> == notch_of<In>) {
         // The same lattice through 0: |x| is the value index's magnitude.
         const imax j = detail::value_index<imax>(x);
         return detail::from_value_index<Out>(j < 0 ? -j : j);
@@ -214,6 +229,11 @@ template <insidable Out, insidable Mag, insidable Sgn>
     if constexpr (detail::any_wide_valued<Out, Mag>) {
         const auto a = detail::ax::abs(detail::ax::exact_input(mag));
         return detail::store_exact<Out>(sgn < 0 ? -a : a);
+    } else if constexpr (std::same_as<Out, detail::copysign_auto_t<Mag, Sgn>> && detail::notched<Mag> &&
+                         detail::anchored<Mag> && notch_of<Out> == notch_of<Mag>) {
+        // The same lattice through 0: ±|value index|.
+        const imax j = detail::value_index<imax>(mag), a = j < 0 ? -j : j;
+        return detail::from_value_index<Out>(sgn < 0 ? -a : a);
     } else {
         const rational a = beman::inside::detail::abs(rational{mag});
         return detail::store_value<Out>(sgn < 0 ? -a : a);
@@ -248,17 +268,15 @@ using namespace beman::inside::detail;
 // convention). Conditions:
 //   * integer raws only (rational raws keep the rational path),
 //   * non-zero notches, g on Out's grid (g / notch of Out integer),
-//   * divisor grid excludes zero (no runtime zero check needed),
-//   * Out's interval covers ±max|y| (result magnitude is < |y|),
+//   * Out's interval covers the remainders: ±min(max|x|, max|y|), x's sign,
 //   * all unit counts fit comfortably in imax (headroom 4).
 template <insidable Out, insidable InX, insidable InY>
 inline constexpr bool fmod_int_fast = [] {
     if (!::beman::inside::detail::notched<InX> || !::beman::inside::detail::notched<InY> ||
         !::beman::inside::detail::notched<Out>)
         return false;
-    if (!divisor_excludes_zero<InY>)
-        return false;
-    // Lower/g must be an integer: the lattices pass through 0.
+    // (y != 0 is fmod_nonzero's precondition.) Lower/g must be an integer:
+    // the lattices pass through 0.
     if (!::beman::inside::detail::anchored<InX> || !::beman::inside::detail::anchored<InY> ||
         !::beman::inside::detail::anchored<Out>)
         return false;
@@ -275,7 +293,10 @@ inline constexpr bool fmod_int_fast = [] {
     rational maxy = abs(::beman::inside::detail::lower64<InY>) > abs(::beman::inside::detail::upper64<InY>)
                         ? abs(::beman::inside::detail::lower64<InY>)
                         : abs(::beman::inside::detail::upper64<InY>);
-    if (::beman::inside::detail::lower64<Out> > -maxy || ::beman::inside::detail::upper64<Out> < maxy)
+    // Out holds every remainder: |r| ≤ min(max|x|, max|y|), with x's sign.
+    const rational bound = maxx < maxy ? maxx : maxy;
+    if (::beman::inside::detail::lower64<Out> > (::beman::inside::detail::lower64<InX> < 0 ? -bound : rational{0}) ||
+        ::beman::inside::detail::upper64<Out> < (::beman::inside::detail::upper64<InX> > 0 ? bound : rational{0}))
         return false;
     constexpr umax lim = static_cast<umax>(std::numeric_limits<imax>::max() / 4);
     auto           ux  = maxx / g;

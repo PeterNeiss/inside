@@ -217,6 +217,32 @@ void expect_algebraic_matches_rational() {
     }
 }
 
+// copysign and fmod onto their deduced outputs match the exact results.
+template <typename X, typename Y>
+void expect_copysign_fmod_match_rational() {
+    for (const X x : inside_range<grid_of<X>, policy_of<X>>{})
+        for (const Y y : inside_range<grid_of<Y>, policy_of<Y>>{}) {
+            const rational rx{x}, ry{y};
+            EXPECT_EQ(rational{math::copysign(x, y)}, ry < 0 ? -abs(rx) : abs(rx));
+            if (ry != 0) {
+                const auto     r    = math::fmod(x, y);
+                const rational want = (rx - (rational{trunc((rx / ry).value())} * ry).value()).value();
+                if constexpr (is_expected_v<decltype(r)>)
+                    EXPECT_EQ(rational{*r}, want);
+                else
+                    EXPECT_EQ(rational{r}, want);
+            }
+        }
+}
+
+TEST(PerfPathsTest, int_copysign_fmod_match_rational) {
+    expect_copysign_fmod_match_rational<inside<{{-2, 2}, per<4>}, round_nearest>,
+                                        inside<{{-3, 3}, per<2>}, round_nearest>>();
+    expect_copysign_fmod_match_rational<inside<{0, 20}, round_nearest>, inside<{1, 7}, round_nearest>>();
+    expect_copysign_fmod_match_rational<inside<{{-1, 3}, per<10>}, round_nearest>,
+                                        inside<{{-1, 1}, per<5>}, round_nearest>>();
+}
+
 TEST(PerfPathsTest, int_algebraic_fast_path_matches_rational) {
     expect_algebraic_matches_rational<inside<{{-8, 8}, per<4>}, round_nearest>>();
     expect_algebraic_matches_rational<inside<{{-3, 5}, per<10>}, round_nearest>>();

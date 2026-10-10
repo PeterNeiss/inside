@@ -175,6 +175,26 @@ struct division {
     // A result is checked, whatever its operands' policies.
     using result = inside<result_grid>;
 
+    // The exact quotient of two anchored integer raws as one 64-bit fraction:
+    // |J_L|·p_L·q_R and |J_R|·p_R·q_L bounded by 2^62 for every value.
+    static constexpr bool int_quotient_fits = [] {
+        if constexpr (!rational_storage<result> || !notched<L> || !notched<R> || !anchored<L> || !anchored<R> ||
+                      wide_valued<L> || wide_valued<R>)
+            return false;
+        else {
+            constexpr grid_wide lim   = grid_wide{1} << 62;
+            auto                max_j = []<insidable B>() {
+                const grid_wide lo = exact_quotient(lower_of<B>, notch_of<B>),
+                                hi = exact_quotient(upper_of<B>, notch_of<B>);
+                const grid_wide a = lo.negative() ? -lo : lo, b = hi.negative() ? -hi : hi;
+                return a < b ? b : a;
+            };
+            const grid_wide       a = wide_numerator(notch_of<L>) * wide_denominator(notch_of<R>);
+            const grid_wide       b = wide_numerator(notch_of<R>) * wide_denominator(notch_of<L>);
+            return max_j.template operator()<L>() * a < lim && max_j.template operator()<R>() * b < lim;
+        }
+    }();
+
     template <policy_flag G = F>
     static constexpr bool needs_overflow_check =
         has_any_flag(G | F, checked) || is_checked(policy_of<L>) || is_checked(policy_of<R>);
@@ -270,6 +290,19 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy, A&& act
                 return fail(errc::overflow, "rational overflow in div");
             return result::from_raw(*q);
         }
+    } else if constexpr (int_quotient_fits) {
+        // Two integer raws: J_L·Notch_L / (J_R·Notch_R) as one fraction of
+        // value indices, reduced once — no operand decodes, no checked divide.
+        constexpr imax a =
+            static_cast<imax>(notch64<L>.Numerator) * static_cast<imax>(abs_den(notch64<R>.Denominator));
+        constexpr imax b =
+            static_cast<imax>(notch64<R>.Numerator) * static_cast<imax>(abs_den(notch64<L>.Denominator));
+        const imax d = value_index<imax>(rhs) * b;
+        if constexpr (!zero_unchecked)
+            if (d == 0)
+                return fail(errc::division_by_zero, "division by zero in div");
+        const imax n = value_index<imax>(lhs) * a;
+        return result::from_raw(d < 0 ? rational{-n, -d} : rational{n, d});
     } else if constexpr (needs_overflow_check<G> && !fits_rational) {
         rational rhs_r = rhs;
         if constexpr (!zero_unchecked)

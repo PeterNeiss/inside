@@ -139,6 +139,9 @@ inline constexpr std::size_t exact_limbs = [] {
     return k > exact_min_limbs ? k : exact_min_limbs;
 }();
 
+template <typename W, integer_storage X>
+constexpr W value_index(const X& x) noexcept;
+
 template <insidable B>
 constexpr auto exact_of(const B& b) {
     constexpr std::size_t K = exact_limbs<B>;
@@ -149,15 +152,13 @@ constexpr auto exact_of(const B& b) {
         return exact_of<K>(b.raw());
     else if constexpr (fraction_storage<B>)
         return exact_frac<K>{b.raw()};
-    else if constexpr (wide_valued<B> && anchored<B>) {
-        const I j = static_cast<I>(slot_base<B>) + I{b.raw()};
-        return exact_frac<K>{j * static_cast<I>(wide_numerator(notch_of<B>)),
+    else if constexpr (anchored<B>) // an integer raw: its value index J times the notch
+        return exact_frac<K>{value_index<I>(b) * static_cast<I>(wide_numerator(notch_of<B>)),
                              static_cast<I>(wide_denominator(notch_of<B>))};
-    } else if constexpr (wide_valued<B>) // Lower + raw·Notch over their common denominator
-        return exact_of_grid<K>(lower_of<B>) + exact_frac<K>{I{b.raw()} * static_cast<I>(wide_numerator(notch_of<B>)),
-                                                             static_cast<I>(wide_denominator(notch_of<B>))};
-    else
-        return exact_of<K>(as_rational(b));
+    else // an unanchored index raw: Lower + raw·Notch over their common denominator
+        return exact_of_grid<K>(lower_of<B>) +
+               exact_frac<K>{static_cast<I>(b.raw()) * static_cast<I>(wide_numerator(notch_of<B>)),
+                             static_cast<I>(wide_denominator(notch_of<B>))};
 }
 
 // f in lowest terms.

@@ -4953,6 +4953,9 @@ inline constexpr std::size_t exact_limbs = [] {
     return k > exact_min_limbs ? k : exact_min_limbs;
 }();
 
+template <typename W, integer_storage X>
+constexpr W value_index(const X& x) noexcept;
+
 template <insidable B>
 constexpr auto exact_of(const B& b) {
     constexpr std::size_t K = exact_limbs<B>;
@@ -4963,15 +4966,13 @@ constexpr auto exact_of(const B& b) {
         return exact_of<K>(b.raw());
     else if constexpr (fraction_storage<B>)
         return exact_frac<K>{b.raw()};
-    else if constexpr (wide_valued<B> && anchored<B>) {
-        const I j = static_cast<I>(slot_base<B>) + I{b.raw()};
-        return exact_frac<K>{j * static_cast<I>(wide_numerator(notch_of<B>)),
+    else if constexpr (anchored<B>) // an integer raw: its value index J times the notch
+        return exact_frac<K>{value_index<I>(b) * static_cast<I>(wide_numerator(notch_of<B>)),
                              static_cast<I>(wide_denominator(notch_of<B>))};
-    } else if constexpr (wide_valued<B>) // Lower + raw·Notch over their common denominator
-        return exact_of_grid<K>(lower_of<B>) + exact_frac<K>{I{b.raw()} * static_cast<I>(wide_numerator(notch_of<B>)),
-                                                             static_cast<I>(wide_denominator(notch_of<B>))};
-    else
-        return exact_of<K>(as_rational(b));
+    else // an unanchored index raw: Lower + raw·Notch over their common denominator
+        return exact_of_grid<K>(lower_of<B>) +
+               exact_frac<K>{static_cast<I>(b.raw()) * static_cast<I>(wide_numerator(notch_of<B>)),
+                             static_cast<I>(wide_denominator(notch_of<B>))};
 }
 
 // f in lowest terms.
@@ -7128,6 +7129,26 @@ struct division {
     // A result is checked, whatever its operands' policies.
     using result = inside<result_grid>;
 
+    // The exact quotient of two anchored integer raws as one 64-bit fraction:
+    // |J_L|·p_L·q_R and |J_R|·p_R·q_L bounded by 2^62 for every value.
+    static constexpr bool int_quotient_fits = [] {
+        if constexpr (!rational_storage<result> || !notched<L> || !notched<R> || !anchored<L> || !anchored<R> ||
+                      wide_valued<L> || wide_valued<R>)
+            return false;
+        else {
+            constexpr grid_wide lim   = grid_wide{1} << 62;
+            auto                max_j = []<insidable B>() {
+                const grid_wide lo = exact_quotient(lower_of<B>, notch_of<B>),
+                                hi = exact_quotient(upper_of<B>, notch_of<B>);
+                const grid_wide a = lo.negative() ? -lo : lo, b = hi.negative() ? -hi : hi;
+                return a < b ? b : a;
+            };
+            const grid_wide       a = wide_numerator(notch_of<L>) * wide_denominator(notch_of<R>);
+            const grid_wide       b = wide_numerator(notch_of<R>) * wide_denominator(notch_of<L>);
+            return max_j.template operator()<L>() * a < lim && max_j.template operator()<R>() * b < lim;
+        }
+    }();
+
     template <policy_flag G = F>
     static constexpr bool needs_overflow_check =
         has_any_flag(G | F, checked) || is_checked(policy_of<L>) || is_checked(policy_of<R>);
@@ -7223,6 +7244,19 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy, A&& act
                 return fail(errc::overflow, "rational overflow in div");
             return result::from_raw(*q);
         }
+    } else if constexpr (int_quotient_fits) {
+        // Two integer raws: J_L·Notch_L / (J_R·Notch_R) as one fraction of
+        // value indices, reduced once — no operand decodes, no checked divide.
+        constexpr imax a =
+            static_cast<imax>(notch64<L>.Numerator) * static_cast<imax>(abs_den(notch64<R>.Denominator));
+        constexpr imax b =
+            static_cast<imax>(notch64<R>.Numerator) * static_cast<imax>(abs_den(notch64<L>.Denominator));
+        const imax d = value_index<imax>(rhs) * b;
+        if constexpr (!zero_unchecked)
+            if (d == 0)
+                return fail(errc::division_by_zero, "division by zero in div");
+        const imax n = value_index<imax>(lhs) * a;
+        return result::from_raw(d < 0 ? rational{-n, -d} : rational{n, d});
     } else if constexpr (needs_overflow_check<G> && !fits_rational) {
         rational rhs_r = rhs;
         if constexpr (!zero_unchecked)
@@ -8212,6 +8246,18 @@ template <insidable X, insidable P>
 inline constexpr raw_t<X> point_slot_of =
     static_cast<raw_t<X>>(exact_quotient(grid_sub(lower_of<P>, lower_of<X>), notch_of<X>));
 
+// Two integer raws whose values, counted in the gcd of their value units,
+// fit imax.
+template <insidable L, insidable R>
+inline constexpr bool units_cmp_fits = [] {
+    if constexpr (!integer_storage<L> || !integer_storage<R>)
+        return false;
+    else {
+        constexpr grid_rational U = grid_gcd_of(unit_of<L>, unit_of<R>);
+        return signed_value_bits_of({units_lo<L, U>, units_hi<L, U>, units_lo<R, U>, units_hi<R, U>}) <= 63;
+    }
+}();
+
 // inside ⋈ inside (⋈ = `cmp`: <=> or ==) in the cheapest exact form the two
 // storage shapes allow.
 template <insidable L, insidable R, class Cmp>
@@ -8226,16 +8272,13 @@ constexpr auto compare(const L& lhs, const R& rhs, Cmp cmp) {
     // a wide-index operand: exact wide fractions
     else if constexpr (wide_valued<L> || wide_valued<R>)
         return cmp(exact_of(lhs), exact_of(rhs));
-    // both integer value raws (notch 1, Raw == value): compare as integers
-    else if constexpr (integer_value_storage<L> && integer_value_storage<R> && values_fit_imax<L> &&
-                       values_fit_imax<R>)
-        return cmp(raw_imax(lhs), raw_imax(rhs));
-    // same nonzero notch, integer-backed: compare signed value indices
-    // (compile-time bias + raw) — e.g. two same-Q-format fixed-point types
-    // with different intervals, without the rational decode.
-    else if constexpr (detail::notch64<L> == detail::notch64<R> && index_cmp_fits<L> && index_cmp_fits<R>)
-        return cmp(index_cmp_bias<L> + raw_imax(lhs), index_cmp_bias<R> + raw_imax(rhs));
-    else
+    // integer raws: both values as exact counts of a unit dividing them both
+    // (the gcd of their value units), one integer compare — any notches and
+    // offsets, without the rational decode.
+    else if constexpr (units_cmp_fits<L, R>) {
+        constexpr grid_rational U = grid_gcd_of(unit_of<L>, unit_of<R>);
+        return cmp(value_in_units<imax, U>(lhs), value_in_units<imax, U>(rhs));
+    } else
         return cmp(as_rational(lhs), as_rational(rhs));
 }
 } // namespace detail
@@ -14469,7 +14512,22 @@ constexpr Out integer_into(In x) {
     else if constexpr (int_direct<Out, integer_auto_t<In, M>, In>) {
         constexpr imax p = static_cast<imax>(notch64<In>.Numerator);
         constexpr imax q = static_cast<imax>(abs_den(notch64<In>.Denominator));
-        return from_value_index<Out>(div_rounded(value_index<imax>(x) * p, q, M));
+        const imax     j = value_index<imax>(x) * p;
+        if constexpr (p == 1 && std::has_single_bit(static_cast<umax>(q)) && M != round_mode::half_even) {
+            // A notch 2^-k: shifts. floor is the arithmetic shift, ceil its
+            // mirror; nearest and trunc shift the magnitude (half away from 0).
+            constexpr int k = std::countr_zero(static_cast<umax>(q));
+            if constexpr (M == round_mode::floor)
+                return from_value_index<Out>(j >> k);
+            else if constexpr (M == round_mode::ceil)
+                return from_value_index<Out>(-((-j) >> k));
+            else {
+                const imax s = j >> 63, a = (j ^ s) - s; // sign mask, |j|
+                const imax r = (a + (M == round_mode::nearest ? q / 2 : 0)) >> k;
+                return from_value_index<Out>((r ^ s) - s);
+            }
+        } else
+            return from_value_index<Out>(div_rounded(j, q, M));
     } else
         return store_value<Out>(round_to_int(rational{x}, M));
 }
@@ -14487,9 +14545,8 @@ template <insidable Out, insidable In>
                   "beman::inside::math::abs: Out must include the smallest |x| (0 when x's range spans 0)");
     if constexpr (detail::any_wide_valued<Out, In>)
         return detail::store_exact<Out>(detail::ax::abs(detail::ax::exact_input(x)));
-    else if constexpr (std::same_as<Out, detail::abs_auto_t<In>> && detail::integer_storage<In> &&
-                       detail::integer_storage<Out> && detail::notched<In> && detail::anchored<In> &&
-                       notch_of<Out> == notch_of<In> && !detail::wide_valued<In>) {
+    else if constexpr (std::same_as<Out, detail::abs_auto_t<In>> && detail::notched<In> && detail::anchored<In> &&
+                       notch_of<Out> == notch_of<In>) {
         // The same lattice through 0: |x| is the value index's magnitude.
         const imax j = detail::value_index<imax>(x);
         return detail::from_value_index<Out>(j < 0 ? -j : j);
@@ -14509,6 +14566,11 @@ template <insidable Out, insidable Mag, insidable Sgn>
     if constexpr (detail::any_wide_valued<Out, Mag>) {
         const auto a = detail::ax::abs(detail::ax::exact_input(mag));
         return detail::store_exact<Out>(sgn < 0 ? -a : a);
+    } else if constexpr (std::same_as<Out, detail::copysign_auto_t<Mag, Sgn>> && detail::notched<Mag> &&
+                         detail::anchored<Mag> && notch_of<Out> == notch_of<Mag>) {
+        // The same lattice through 0: ±|value index|.
+        const imax j = detail::value_index<imax>(mag), a = j < 0 ? -j : j;
+        return detail::from_value_index<Out>(sgn < 0 ? -a : a);
     } else {
         const rational a = beman::inside::detail::abs(rational{mag});
         return detail::store_value<Out>(sgn < 0 ? -a : a);
@@ -14543,17 +14605,15 @@ using namespace beman::inside::detail;
 // convention). Conditions:
 //   * integer raws only (rational raws keep the rational path),
 //   * non-zero notches, g on Out's grid (g / notch of Out integer),
-//   * divisor grid excludes zero (no runtime zero check needed),
-//   * Out's interval covers ±max|y| (result magnitude is < |y|),
+//   * Out's interval covers the remainders: ±min(max|x|, max|y|), x's sign,
 //   * all unit counts fit comfortably in imax (headroom 4).
 template <insidable Out, insidable InX, insidable InY>
 inline constexpr bool fmod_int_fast = [] {
     if (!::beman::inside::detail::notched<InX> || !::beman::inside::detail::notched<InY> ||
         !::beman::inside::detail::notched<Out>)
         return false;
-    if (!divisor_excludes_zero<InY>)
-        return false;
-    // Lower/g must be an integer: the lattices pass through 0.
+    // (y != 0 is fmod_nonzero's precondition.) Lower/g must be an integer:
+    // the lattices pass through 0.
     if (!::beman::inside::detail::anchored<InX> || !::beman::inside::detail::anchored<InY> ||
         !::beman::inside::detail::anchored<Out>)
         return false;
@@ -14570,7 +14630,10 @@ inline constexpr bool fmod_int_fast = [] {
     rational maxy = abs(::beman::inside::detail::lower64<InY>) > abs(::beman::inside::detail::upper64<InY>)
                         ? abs(::beman::inside::detail::lower64<InY>)
                         : abs(::beman::inside::detail::upper64<InY>);
-    if (::beman::inside::detail::lower64<Out> > -maxy || ::beman::inside::detail::upper64<Out> < maxy)
+    // Out holds every remainder: |r| ≤ min(max|x|, max|y|), with x's sign.
+    const rational bound = maxx < maxy ? maxx : maxy;
+    if (::beman::inside::detail::lower64<Out> > (::beman::inside::detail::lower64<InX> < 0 ? -bound : rational{0}) ||
+        ::beman::inside::detail::upper64<Out> < (::beman::inside::detail::upper64<InX> > 0 ? bound : rational{0}))
         return false;
     constexpr umax lim = static_cast<umax>(std::numeric_limits<imax>::max() / 4);
     auto           ux  = maxx / g;
