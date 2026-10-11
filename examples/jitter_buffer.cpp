@@ -5,8 +5,8 @@
 //
 // Demonstrates:
 //   - `on_error` callback (per-write hook) on a checked inside
-//   - `checked_cast` for slot-index validation
-//   - `inside_range` to walk every slot in playback order
+//   - `wrap_cast` to fold a sequence number into its slot
+//   - `values<T>` to size the window and walk every slot in playback order
 //   - Fixed-point packet timestamps (1/8 ms resolution)
 
 #include <iostream>
@@ -29,8 +29,9 @@ using packet_id_t = inside<{0, 63}>;
 using ts_t = inside<{{0, 8000}, per<8>}, round_nearest>;
 
 int main() {
-    std::vector<packet_id_t> slots(16, packet_id_t{0});
-    std::vector<bool>        filled(16, false);
+    constexpr std::size_t    window = values<slot_id_t>.size(); // 16
+    std::vector<packet_id_t> slots(window, packet_id_t{0});
+    std::vector<bool>        filled(window, false);
 
     int dropped = 0;
 
@@ -38,11 +39,9 @@ int main() {
     // window (offset > 63), the write is rejected and on_error fires.
     auto insert = [&](int seq, int base) {
         int offset = seq - base;
-        int slot   = (seq % 16);
 
-        // Validate the slot index up front. `checked_cast` throws on garbage
-        // input — useful at the trust boundary (e.g. parsing a packet header).
-        auto idx = checked_cast<slot_id_t>(slot);
+        // The slot is seq modulo the window: wrap_cast folds it into slot_id_t.
+        const auto idx = wrap_cast<slot_id_t>(seq);
 
         bool stored = true;
         slots[idx].on_error([&](auto&, errc, auto) {
@@ -53,13 +52,13 @@ int main() {
         filled[idx] = stored;
     };
 
-    // Insert 20 packets: most within window, two stragglers way past base.
+    // Insert 18 packets: most within window, two stragglers way past base.
     std::cout << "inserting packets relative to base seq=0:\n";
     for (int seq : {0, 3, 1, 5, 4, 2, 8, 6, 9, 11, 10, 13, 12, 14, 15, 7, 90, 100})
         insert(seq, 0);
 
     std::cout << "\nplayback order:\n";
-    for (auto slot : inside_range<{0, 15}>{}) {
+    for (slot_id_t slot : values<slot_id_t>) {
         if (!filled[slot])
             std::cout << "  slot " << slot << "  <empty>\n";
         else

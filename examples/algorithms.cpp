@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <iostream>
+#include <iterator>
 #include <numeric>
 #include <vector>
 
@@ -108,9 +109,10 @@ int main() {
     // --- reduce ---
     std::cout << "\n--- reduce ---\n";
     {
+        // sum<Target>: an exact total with one range check against Target.
         using wide_score          = inside<{0, 100'000}>;
         std::vector<score> scores = {100, 250, 500, 750, 1000};
-        auto               total  = std::reduce(scores.begin(), scores.end(), wide_score{0}, std::plus<>{});
+        auto               total  = sum<wide_score>(scores);
         std::cout << "total: " << total << "\n";
 
         // transform_reduce: weighted sum
@@ -153,7 +155,7 @@ int main() {
     // --- classic STL (iterator-based) ---
     std::cout << "\n--- classic STL ---\n";
     {
-        // std::sort with custom comparator
+        // std::sort
         std::vector<score> v = {500, 100, 800, 300, 700};
         std::sort(v.begin(), v.end());
         show("sort", v);
@@ -243,20 +245,27 @@ int main() {
         show("iota", iota_v);
     }
 
-    // --- inside_range ---
-    std::cout << "\n--- inside_range ---\n";
+    // --- values<T> / inside_range / cursor ---
+    std::cout << "\n--- values<T> / inside_range / cursor ---\n";
     {
-        std::cout << "for_each [0..9]: ";
-        for (auto i : inside_range<{0, 9}>{})
+        using idx = inside<{0, 9}>;
+        std::cout << "values<idx>:     ";
+        for (idx i : values<idx>)
             std::cout << i << " ";
         std::cout << "\n";
 
         // wrap-around range starting at 7
-        std::cout << "wrap from 7:    ";
-        using idx = inside<{0, 9}>;
-        for (auto i : inside_range<{0, 9}>{idx{7}})
+        std::cout << "wrap from 7:     ";
+        for (idx i : inside_range<grid_of<idx>>{idx{7}})
             std::cout << i << " ";
         std::cout << "\n";
+
+        // A cursor is an iterator and end(c) its sentinel: every third index.
+        std::vector<idx> thirds;
+        cursor<idx, 3>   c;
+        rng::copy(c, end(c), std::back_inserter(thirds));
+        show("cursor<idx, 3>", thirds);
+        std::cout << "count > 4:       " << rng::count_if(values<idx>, [](idx i) { return i > 4_ins; }) << "\n";
     }
 
     return 0;

@@ -33,8 +33,8 @@ using step  = inside<{1, 60}>; // a divisor that cannot be zero: no expected
 // returns what remains, which is checked rather than assumed.
 constexpr count binomial(small n, small k) {
     count c{1};
-    for (int j = 1; j <= k; ++j) {
-        const step i{j};
+    for (cursor<step> j; j <= k; ++j) {
+        const step i      = *j;
         const auto [q, r] = divmod(c * (n - i + 1_ins), i, snapped);
         if (r != 0_ins)
             throw "not a whole number";
@@ -63,7 +63,7 @@ int main() {
               << "C(60, 30)   " << binomial(small{60}, small{30}) << "\n";
 
     // 3. One ticket's chance is exactly 1/C(49, 6); a double rounds it.
-    const auto odds = just<1> / tickets;
+    const auto odds = one / tickets;
     std::cout << "lottery     " << *odds << " (double " << std::format("{:.17g}", 1.0 / 13'983'816) << ")\n";
     if (to_string(*odds) != "1/13983816")
         return 1;
@@ -71,7 +71,7 @@ int main() {
     // De Méré: P(at least one six in four rolls) = 1 − (5/6)^4 — a constant
     // grid point, computed exactly at compile time.
     constexpr auto miss  = just<rational{5, 6}>;
-    constexpr auto demer = just<1> - miss * miss * miss * miss;
+    constexpr auto demer = one - miss * miss * miss * miss;
     std::cout << "de Mere     " << demer << " > 1/2\n";
     static_assert(demer > just<rational{1, 2}>);
     if (to_string(demer) != "671/1296")

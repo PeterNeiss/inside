@@ -59,8 +59,8 @@ int main() {
     using t_t  = inside<{{0, 1}, per<16>}, round_nearest>;
     axis x0{20}, x1{80};
     std::cout << "\nlerp x from " << x0 << " to " << x1 << ":\n";
-    for (t_t t : {t_t{0}, t_t{0.25}, t_t{0.5}, t_t{0.75}, t_t{1}})
-        std::cout << "  t = " << t << "  ->  " << lerp(x0, x1, t) << "\n";
+    for (cursor<t_t, per<4>> t; t != end(t); ++t) // 0, 0.25, …, 1
+        std::cout << "  t = " << t << "  ->  " << lerp(x0, x1, *t) << "\n";
 
     return 0;
 }

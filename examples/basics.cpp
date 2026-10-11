@@ -63,10 +63,10 @@ int main() {
 
     // 3. Bounded loops.
     const int arr[] = {10, 20, 30, 40, 50, 60, 70, 80, 90, 100};
+    using idx       = inside<{0, 9}>;
     std::cout << "from 5, wrapping:";
-    for (auto i : inside_range<{0, 9}>{5})
+    for (idx i : inside_range<grid_of<idx>>{5})
         std::cout << ' ' << arr[i];
-    using idx = inside<{0, 9}>;
     std::cout << "\nevery index:     ";
     for (idx i : values<idx>)
         std::cout << ' ' << arr[i];

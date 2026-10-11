@@ -3,7 +3,7 @@
 //
 // Demonstrates:
 //   - `std::hash<inside>` integration (via numeric_limits.hpp)
-//   - `std::numeric_limits<inside>::max()` capacity query
+//   - `std::numeric_limits<inside>` bounds and `values<T>.size()` capacity
 //   - `try_make` for guarded construction from untrusted input
 //   - Conversion predicate `conversion_overflows` to fail fast
 
@@ -20,9 +20,8 @@ using namespace beman::inside;
 using pool_id = inside<{0, 999}>;
 
 struct id_pool {
-    std::unordered_set<pool_id> allocated;
-    static constexpr imax       capacity =
-        imax{std::numeric_limits<pool_id>::max()} - imax{std::numeric_limits<pool_id>::min()} + 1;
+    std::unordered_set<pool_id>  allocated;
+    static constexpr std::size_t capacity = values<pool_id>.size();
 
     bool allocate(int request) {
         // Bail before construction if the request is out of range — exposes
@@ -32,10 +31,7 @@ struct id_pool {
             std::cout << "  reject (out of range): " << request << "\n";
             return false;
         }
-        auto maybe = pool_id::try_make(request);
-        if (!maybe)
-            return false;
-        auto [_, inserted] = allocated.insert(*maybe);
+        auto [_, inserted] = allocated.insert(pool_id{request}); // in range: the gate checked it
         if (!inserted)
             std::cout << "  reject (duplicate):  " << request << "\n";
         return inserted;
@@ -71,8 +67,8 @@ int main() {
     // no exception is thrown.
     auto bad  = pool_id::try_make(2000);
     auto good = pool_id::try_make(123);
-    std::cout << "\ntry_make(2000) -> " << (bad ? "has value" : errc_message(bad.error())) << "\n";
-    std::cout << "try_make( 123) -> " << (good ? "has value" : errc_message(good.error())) << "\n";
+    std::cout << "\ntry_make(2000) -> " << (bad ? to_string(*bad) : errc_message(bad.error())) << "\n";
+    std::cout << "try_make( 123) -> " << (good ? to_string(*good) : errc_message(good.error())) << "\n";
 
     return 0;
 }
