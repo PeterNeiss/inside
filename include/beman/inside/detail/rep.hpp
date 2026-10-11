@@ -7,14 +7,45 @@
 #include <beman/inside/policy_flag.hpp>
 
 namespace beman::inside::detail {
+enum class exact_op : unsigned char { add, mul, div };
+
+// An exact L op R into the continuous Result that the grids prove cannot
+// overflow. Result carries a denominator bound (grid.hpp: den_bound), so its
+// raw holds every value: a fraction raw is sized from the bound; a 64-bit
+// rational needs the unchecked kernels' intermediates in range too —
+//   +: each operand over the common denominator D_L·D_R fits umax;
+//   ×: nothing more (numerator ≤ num_bound(Result), denominator ≤ D_L·D_R);
+//   ÷: the divisor's numerator fits imax (1/r moves it to the denominator).
+template <exact_op Op, insidable Result, insidable L, insidable R>
+inline constexpr bool exact_fits = [] {
+    if constexpr (grid_of<Result>.MaxDenominator == 0)
+        return false;
+    else if constexpr (fraction_storage<Result>)
+        return true;
+    else if constexpr (!rational_storage<Result>)
+        return false;
+    else {
+        const grid_wide umax_max{std::numeric_limits<umax>::max()}, imax_max{std::numeric_limits<imax>::max()};
+        if constexpr (Op == exact_op::add) {
+            const grid_wide d = den_bound(grid_of<L>) * den_bound(grid_of<R>);
+            return !(umax_max < num_bound(interval_of<L>, d)) && !(umax_max < num_bound(interval_of<R>, d));
+        } else if constexpr (Op == exact_op::div)
+            return !(imax_max < num_bound(grid_of<R>));
+        else
+            return true;
+    }
+}();
+
 // Whether a + or × into Result runs its overflow check. The result grid
-// holds every result, so only a continuous result can overflow: a fraction
+// holds every result, so only a continuous result can overflow, and not one
+// whose denominator bound proves it fits (exact_fits): otherwise a fraction
 // raw always may (its denominator grows); a rational raw under a checked
 // policy (a continuous operand bounds no denominator).
-template <insidable Result, insidable L, insidable R, policy_flag F>
+template <exact_op Op, insidable Result, insidable L, insidable R, policy_flag F>
 inline constexpr bool lattice_op_checked =
-    fraction_storage<Result> ||
-    (rational_storage<Result> && (has_any_flag(F, checked) || is_checked(policy_of<L>) || is_checked(policy_of<R>)));
+    !exact_fits<Op, Result, L, R> &&
+    (fraction_storage<Result> ||
+     (rational_storage<Result> && (has_any_flag(F, checked) || is_checked(policy_of<L>) || is_checked(policy_of<R>))));
 
 // `x * just<c>` and `x / just<c>` (c != 0): the result lattice is x's lattice
 // scaled by c or 1/c (grid operator* / operator/), so the result offset IS x's

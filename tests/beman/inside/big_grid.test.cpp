@@ -205,23 +205,23 @@ TEST(BigGridTest, division) {
 }
 
 TEST(BigGridTest, continuous_past_64_bits) {
-    // A quotient of big-grid values holds its exact value: a wide fraction raw.
+    // A quotient of big-grid values holds its exact value: a wide fraction raw,
+    // sized from the quotient's denominator bound — so a plain value.
     using length          = inside<{{1e-41_g, 1e27_g}, 1e-41_g}, round_nearest>;
     const length planck   = *from_chars<length>("1.616255e-35");
     const length universe = *from_chars<length>("8.8e26");
     const auto   ratio    = universe / planck;
-    ASSERT_TRUE(ratio.has_value());
-    static_assert(detail::fraction_storage<std::remove_cvref_t<decltype(*ratio)>>);
-    EXPECT_EQ(to_string(*ratio), "17600000000000000000000000000000000000000000000000000000000000000000/323251");
-    EXPECT_TRUE(*ratio > 5.4e61 && *ratio < 5.5e61);
+    static_assert(detail::fraction_storage<std::remove_cvref_t<decltype(ratio)>>);
+    EXPECT_EQ(to_string(ratio), "17600000000000000000000000000000000000000000000000000000000000000000/323251");
+    EXPECT_TRUE(ratio > 5.4e61 && ratio < 5.5e61);
     #ifdef __cpp_lib_format
-    EXPECT_EQ(std::format("{:.6e}", *ratio), "5.444685e+61");
+    EXPECT_EQ(std::format("{:.6e}", ratio), "5.444685e+61");
     #endif
     using decade = inside<{{-100, 100}, per<1 << 20>}, round_nearest>;
-    EXPECT_EQ(math::log10_into<decade>(*ratio), (decade{rational{64'734'859, 1 << 20}})); // 61.7359724…
+    EXPECT_EQ(math::log10_into<decade>(ratio), (decade{rational{64'734'859, 1 << 20}})); // 61.7359724…
     const auto one = universe / universe;
-    EXPECT_TRUE(*one == 1);
-    EXPECT_EQ(to_string(*(planck / length{2})), "0.000000000000000000000000000000000008081275");
+    EXPECT_TRUE(one == 1);
+    EXPECT_EQ(to_string(planck / length{2}), "0.000000000000000000000000000000000008081275");
 
     // Declared directly, with every policy.
     using big_real = inside<{{0, 1e30_g}, 0}>;

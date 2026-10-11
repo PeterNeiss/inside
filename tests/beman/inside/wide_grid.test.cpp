@@ -258,14 +258,13 @@ TEST(WideGridTest, division) {
     // (fine / fine has a quotient interval past 2^64: it needs C++26 big grids.)
     using divisor = inside<{{1, 4}, per<4>}>;
     fine a        = 3;
-    auto q        = a / divisor{1.5}; // exact; may report overflow
-    ASSERT_TRUE(q.has_value());
-    EXPECT_TRUE(*q == 2);
+    auto q        = a / divisor{1.5}; // exact; may report overflow (C++23), a plain value (C++26)
+    EXPECT_TRUE(detail::lift_unwrap(q) == 2);
     // (2^33 + 2^-32) / 1 has no 64-bit rational form: reported, not wrapped —
     // in C++26 the quotient's denominator bound sizes a fraction that holds it.
     const fine odd = fine::from_raw((detail::wide_uint<2>{1} << 65) + detail::wide_uint<2>{1});
 #if BEMAN_INSIDE_BIG_GRIDS
-    EXPECT_TRUE(*(odd / divisor{1}) == odd);
+    EXPECT_TRUE(odd / divisor{1} == odd);
 #else
     EXPECT_EQ((odd / divisor{1}).error(), errc::overflow);
 #endif

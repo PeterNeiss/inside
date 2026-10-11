@@ -29,7 +29,7 @@ struct multiplication {
     using result = inside<result_grid>;
 
     template <policy_flag F>
-    static constexpr bool needs_overflow_check = lattice_op_checked<result, L, R, F>;
+    static constexpr bool needs_overflow_check = lattice_op_checked<exact_op::mul, result, L, R, F>;
 
     // Plain result when an overflow action takes the failure or no check is
     // needed; else std::expected<result, errc>.
@@ -45,8 +45,9 @@ struct multiplication {
             return scale_by_point<result, (lower_of<L> < 0)>(rhs);
         else if constexpr (fraction_storage<result>) {
             const auto prod = frac_raw_of<raw_t<result>>(exact_of(lhs) * exact_of(rhs));
-            if (!prod) [[unlikely]]
-                return report_or_unexpected<result>(action, policy, errc::overflow, "fraction overflow in mul");
+            if constexpr (needs_overflow_check<policy_flags_of<plain_t<P>>>)
+                if (!prod) [[unlikely]]
+                    return report_or_unexpected<result>(action, policy, errc::overflow, "fraction overflow in mul");
             return result::from_raw(*prod);
         } else if constexpr (rational_storage<result>) {
             static_assert(!wide_valued<L> && !wide_valued<R>,

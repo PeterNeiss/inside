@@ -6994,14 +6994,45 @@ struct policy_ref {
 
 
 namespace beman::inside::detail {
+enum class exact_op : unsigned char { add, mul, div };
+
+// An exact L op R into the continuous Result that the grids prove cannot
+// overflow. Result carries a denominator bound (grid.hpp: den_bound), so its
+// raw holds every value: a fraction raw is sized from the bound; a 64-bit
+// rational needs the unchecked kernels' intermediates in range too —
+//   +: each operand over the common denominator D_L·D_R fits umax;
+//   ×: nothing more (numerator ≤ num_bound(Result), denominator ≤ D_L·D_R);
+//   ÷: the divisor's numerator fits imax (1/r moves it to the denominator).
+template <exact_op Op, insidable Result, insidable L, insidable R>
+inline constexpr bool exact_fits = [] {
+    if constexpr (grid_of<Result>.MaxDenominator == 0)
+        return false;
+    else if constexpr (fraction_storage<Result>)
+        return true;
+    else if constexpr (!rational_storage<Result>)
+        return false;
+    else {
+        const grid_wide umax_max{std::numeric_limits<umax>::max()}, imax_max{std::numeric_limits<imax>::max()};
+        if constexpr (Op == exact_op::add) {
+            const grid_wide d = den_bound(grid_of<L>) * den_bound(grid_of<R>);
+            return !(umax_max < num_bound(interval_of<L>, d)) && !(umax_max < num_bound(interval_of<R>, d));
+        } else if constexpr (Op == exact_op::div)
+            return !(imax_max < num_bound(grid_of<R>));
+        else
+            return true;
+    }
+}();
+
 // Whether a + or × into Result runs its overflow check. The result grid
-// holds every result, so only a continuous result can overflow: a fraction
+// holds every result, so only a continuous result can overflow, and not one
+// whose denominator bound proves it fits (exact_fits): otherwise a fraction
 // raw always may (its denominator grows); a rational raw under a checked
 // policy (a continuous operand bounds no denominator).
-template <insidable Result, insidable L, insidable R, policy_flag F>
+template <exact_op Op, insidable Result, insidable L, insidable R, policy_flag F>
 inline constexpr bool lattice_op_checked =
-    fraction_storage<Result> ||
-    (rational_storage<Result> && (has_any_flag(F, checked) || is_checked(policy_of<L>) || is_checked(policy_of<R>)));
+    !exact_fits<Op, Result, L, R> &&
+    (fraction_storage<Result> ||
+     (rational_storage<Result> && (has_any_flag(F, checked) || is_checked(policy_of<L>) || is_checked(policy_of<R>))));
 
 // `x * just<c>` and `x / just<c>` (c != 0): the result lattice is x's lattice
 // scaled by c or 1/c (grid operator* / operator/), so the result offset IS x's
@@ -7044,7 +7075,7 @@ struct addition {
     using result = inside<result_grid>;
 
     template <policy_flag F>
-    static constexpr bool needs_overflow_check = lattice_op_checked<result, L, R, F>;
+    static constexpr bool needs_overflow_check = lattice_op_checked<exact_op::add, result, L, R, F>;
 
     // Plain result when an overflow action takes the failure or no check is
     // needed; else std::expected<result, errc>.
@@ -7057,8 +7088,9 @@ struct addition {
         result res;
         if constexpr (fraction_storage<result>) {
             const auto sum = frac_raw_of<raw_t<result>>(exact_of(lhs) + exact_of(rhs));
-            if (!sum) [[unlikely]]
-                return report_or_unexpected<result>(action, policy, errc::overflow, "fraction overflow in add");
+            if constexpr (needs_overflow_check<F>)
+                if (!sum) [[unlikely]]
+                    return report_or_unexpected<result>(action, policy, errc::overflow, "fraction overflow in add");
             res = result::from_raw(*sum);
         } else if constexpr (rational_storage<result>) {
             static_assert(!wide_valued<L> && !wide_valued<R>,
@@ -7114,7 +7146,7 @@ struct multiplication {
     using result = inside<result_grid>;
 
     template <policy_flag F>
-    static constexpr bool needs_overflow_check = lattice_op_checked<result, L, R, F>;
+    static constexpr bool needs_overflow_check = lattice_op_checked<exact_op::mul, result, L, R, F>;
 
     // Plain result when an overflow action takes the failure or no check is
     // needed; else std::expected<result, errc>.
@@ -7130,8 +7162,9 @@ struct multiplication {
             return scale_by_point<result, (lower_of<L> < 0)>(rhs);
         else if constexpr (fraction_storage<result>) {
             const auto prod = frac_raw_of<raw_t<result>>(exact_of(lhs) * exact_of(rhs));
-            if (!prod) [[unlikely]]
-                return report_or_unexpected<result>(action, policy, errc::overflow, "fraction overflow in mul");
+            if constexpr (needs_overflow_check<policy_flags_of<plain_t<P>>>)
+                if (!prod) [[unlikely]]
+                    return report_or_unexpected<result>(action, policy, errc::overflow, "fraction overflow in mul");
             return result::from_raw(*prod);
         } else if constexpr (rational_storage<result>) {
             static_assert(!wide_valued<L> && !wide_valued<R>,
@@ -7379,8 +7412,13 @@ struct division {
     // Exact and in range by construction: it cannot fail.
     static constexpr bool point_divisor = !native_div && point_grid<R> && lower_of<R> != 0 && notched<result>;
 
-    static constexpr bool may_overflow_nonzero = !native_div && !point_divisor && !fits_rational &&
-                                                 (needs_overflow_check<F> != 0 || wide_valued<L> || wide_valued<R>);
+    // A continuous quotient whose denominator bound proves it fits (rep.hpp)
+    // cannot overflow either.
+    static constexpr bool bound_fits = exact_fits<exact_op::div, result, L, R>;
+
+    static constexpr bool may_overflow_nonzero =
+        !native_div && !point_divisor && !fits_rational && !bound_fits &&
+        (needs_overflow_check<F> != 0 || wide_valued<L> || wide_valued<R> || wide_valued<result>);
 
     // Plain `result` when the op cannot fail (overflow-action, or the divisor
     // grid excludes zero with no rational overflow), else expected<result, errc>.
@@ -7459,13 +7497,15 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy, A&& act
         if constexpr (fraction_storage<result>) {
             // Grids past 64 bits: the exact quotient in the result's wide fraction.
             const auto q = frac_raw_of<raw_t<result>>(exact_of(lhs) / d);
-            if (!q) [[unlikely]]
-                return fail(errc::overflow, "quotient past its fraction raw in div");
+            if constexpr (!bound_fits)
+                if (!q) [[unlikely]]
+                    return fail(errc::overflow, "quotient past its fraction raw in div");
             return result::from_raw(*q);
         } else {
             const auto q = try_rational(exact_of(lhs) / d);
-            if (!q) [[unlikely]]
-                return fail(errc::overflow, "rational overflow in div");
+            if constexpr (!bound_fits)
+                if (!q) [[unlikely]]
+                    return fail(errc::overflow, "rational overflow in div");
             return result::from_raw(*q);
         }
     } else if constexpr (int_quotient_fits) {
@@ -7481,7 +7521,7 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy, A&& act
                 return fail(errc::division_by_zero, "division by zero in div");
         const imax n = value_index<imax>(lhs) * a;
         return result::from_raw(d < 0 ? rational{-n, -d} : rational{n, d});
-    } else if constexpr (needs_overflow_check<G> && !fits_rational) {
+    } else if constexpr (needs_overflow_check<G> && !fits_rational && !bound_fits) {
         rational rhs_r = rhs;
         if constexpr (!zero_unchecked)
             if (rhs_r.Numerator == 0)

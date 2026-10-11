@@ -29,7 +29,7 @@ struct addition {
     using result = inside<result_grid>;
 
     template <policy_flag F>
-    static constexpr bool needs_overflow_check = lattice_op_checked<result, L, R, F>;
+    static constexpr bool needs_overflow_check = lattice_op_checked<exact_op::add, result, L, R, F>;
 
     // Plain result when an overflow action takes the failure or no check is
     // needed; else std::expected<result, errc>.
@@ -42,8 +42,9 @@ struct addition {
         result res;
         if constexpr (fraction_storage<result>) {
             const auto sum = frac_raw_of<raw_t<result>>(exact_of(lhs) + exact_of(rhs));
-            if (!sum) [[unlikely]]
-                return report_or_unexpected<result>(action, policy, errc::overflow, "fraction overflow in add");
+            if constexpr (needs_overflow_check<F>)
+                if (!sum) [[unlikely]]
+                    return report_or_unexpected<result>(action, policy, errc::overflow, "fraction overflow in add");
             res = result::from_raw(*sum);
         } else if constexpr (rational_storage<result>) {
             static_assert(!wide_valued<L> && !wide_valued<R>,

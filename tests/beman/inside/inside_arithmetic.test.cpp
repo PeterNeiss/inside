@@ -187,12 +187,17 @@ TEST(InsideArithmeticTest, inside_div_rational_vs_integer_paths) {
         static_assert(static_cast<rational>(n / d) == rational{-7, 2});
         // A divisor grid containing zero still reports.
         static_assert(is_expected_v<decltype(n / val{2})>);
-        // Grids whose values need 2^40 denominators: the quotient may pass 64
-        // bits, so the checked rational path stays.
+        // Grids whose values need 2^40 denominators: the quotient's
+        // denominators reach 2^81, past the 64-bit rational, so the checked
+        // rational path stays — in C++26 a fraction sized from the bound holds it.
         using fine = inside<{{0, 1}, rational{1, umax{1} << 40}}>;
         using fpos = inside<{{1, 2}, rational{1, umax{1} << 40}}>;
+#if BEMAN_INSIDE_BIG_GRIDS
+        static_assert(!is_expected_v<decltype(fine{0.5} / fpos{1.5})>);
+#else
         static_assert(is_expected_v<decltype(fine{0.5} / fpos{1.5})>);
-        EXPECT_TRUE(*(fine{0.5} / fpos{1.5}) == (just<frac<1, 3>>)); // (C++26: a fraction raw)
+#endif
+        EXPECT_TRUE(lift_unwrap(fine{0.5} / fpos{1.5}) == (just<frac<1, 3>>));
     }
 }
 

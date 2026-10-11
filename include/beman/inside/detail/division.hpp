@@ -223,8 +223,13 @@ struct division {
     // Exact and in range by construction: it cannot fail.
     static constexpr bool point_divisor = !native_div && point_grid<R> && lower_of<R> != 0 && notched<result>;
 
-    static constexpr bool may_overflow_nonzero = !native_div && !point_divisor && !fits_rational &&
-                                                 (needs_overflow_check<F> != 0 || wide_valued<L> || wide_valued<R>);
+    // A continuous quotient whose denominator bound proves it fits (rep.hpp)
+    // cannot overflow either.
+    static constexpr bool bound_fits = exact_fits<exact_op::div, result, L, R>;
+
+    static constexpr bool may_overflow_nonzero =
+        !native_div && !point_divisor && !fits_rational && !bound_fits &&
+        (needs_overflow_check<F> != 0 || wide_valued<L> || wide_valued<R> || wide_valued<result>);
 
     // Plain `result` when the op cannot fail (overflow-action, or the divisor
     // grid excludes zero with no rational overflow), else expected<result, errc>.
@@ -303,13 +308,15 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy, A&& act
         if constexpr (fraction_storage<result>) {
             // Grids past 64 bits: the exact quotient in the result's wide fraction.
             const auto q = frac_raw_of<raw_t<result>>(exact_of(lhs) / d);
-            if (!q) [[unlikely]]
-                return fail(errc::overflow, "quotient past its fraction raw in div");
+            if constexpr (!bound_fits)
+                if (!q) [[unlikely]]
+                    return fail(errc::overflow, "quotient past its fraction raw in div");
             return result::from_raw(*q);
         } else {
             const auto q = try_rational(exact_of(lhs) / d);
-            if (!q) [[unlikely]]
-                return fail(errc::overflow, "rational overflow in div");
+            if constexpr (!bound_fits)
+                if (!q) [[unlikely]]
+                    return fail(errc::overflow, "rational overflow in div");
             return result::from_raw(*q);
         }
     } else if constexpr (int_quotient_fits) {
@@ -325,7 +332,7 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy, A&& act
                 return fail(errc::division_by_zero, "division by zero in div");
         const imax n = value_index<imax>(lhs) * a;
         return result::from_raw(d < 0 ? rational{-n, -d} : rational{n, d});
-    } else if constexpr (needs_overflow_check<G> && !fits_rational) {
+    } else if constexpr (needs_overflow_check<G> && !fits_rational && !bound_fits) {
         rational rhs_r = rhs;
         if constexpr (!zero_unchecked)
             if (rhs_r.Numerator == 0)
