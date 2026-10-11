@@ -88,3 +88,41 @@ TEST(BoundedRationalTest, sweep_matches_checked_rational) {
                       (((qr + qr).value() * qr).value() - (qr / rational{y}).value()).value());
         }
 }
+
+// A bounded grid holds only values within its bound: a denominator past it
+// is off the grid, like a value off a notched grid's lattice.
+TEST(BoundedRationalTest, store_past_the_bound_reports_rounding_error) {
+    using thousandths = inside<{interval{0, 1}, max_denominator{1000}}>;
+    EXPECT_TRUE(thousandths::try_make(rational{7, 1000}).has_value());
+    EXPECT_EQ(thousandths::try_make(rational{1, 1001}).error(), errc::rounding_error);
+    EXPECT_EQ(from_chars<thousandths>("0.0001").error(), errc::rounding_error);
+    EXPECT_THROW((thousandths{rational{1, 1001}}), inside_error);
+    static_assert(!thousandths::try_make(rational{1, 1001}).has_value()); // also at compile time
+
+    // Compound assignment stores back through the same check.
+    thousandths x{rational{1, 10}};
+    x *= thousandths{rational{1, 10}}; // 1/100: within the bound
+    EXPECT_TRUE(x == rational(1, 100));
+    EXPECT_THROW((x *= thousandths{rational{1, 100}}), inside_error); // 1/10000
+
+    // A quotient type's bound is what the grids allow, so its own results fit.
+    auto q = num{1} / den{7};
+    q      = num{3} / den{7};
+    EXPECT_TRUE(q == rational(3, 7));
+
+    // unsafe: the caller's contract, not checked.
+    inside<{interval{0, 1}, max_denominator{1000}}, unsafe> u{rational{1, 1001}};
+    EXPECT_TRUE(u == rational(1, 1001));
+}
+
+#if BEMAN_INSIDE_BIG_GRIDS
+// C++26: the same check on a bounded grid stored as a wide fraction.
+TEST(BoundedRationalTest, wide_bounded_store_checks_the_bound) {
+    constexpr grid e18{interval{0, 1}, max_denominator{1'000'000'000'000'000'000}};
+    using wide = inside<*(e18 * e18)>; // denominators ≤ 10^36
+    static_assert(fraction_storage<wide>);
+    const auto ok = from_chars<wide>("0.000000000000000000000000000000000001"); // 10^-36
+    ASSERT_TRUE(ok.has_value());
+    EXPECT_EQ(from_chars<wide>("0.0000000000000000000000000000000000001").error(), errc::rounding_error); // 10^-37
+}
+#endif

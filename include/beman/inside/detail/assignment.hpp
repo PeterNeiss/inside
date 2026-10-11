@@ -191,6 +191,13 @@ constexpr L& assign_exact(L& lhs, const exact_frac<K>& v, P&& policy, A&& action
         constexpr std::size_t KK = exact_max<K, exact_limbs<L>>;
         const exact_frac<KK>  lo = exact_of_grid<KK>(lower_of<L>), hi = exact_of_grid<KK>(upper_of<L>);
         auto                  store = [&](const exact_frac<KK>& x) {
+            // A bounded grid: a denominator past its bound is off the grid.
+            if constexpr (grid_of<L>.MaxDenominator != 0) {
+                constexpr exact_frac<KK> bound = exact_of_grid<KK>(grid_of<L>.MaxDenominator);
+                if (bound.Num < reduced(x).Den &&
+                    (std::is_constant_evaluated() || is_checked(policy_of<L> | plain_t<P>::Flags))) [[unlikely]]
+                    return fail(errc::rounding_error);
+            }
             if (const auto r = frac_raw_of<raw_t<L>>(x)) [[likely]]
                 lhs = L::from_raw(*r);
             else
@@ -589,9 +596,16 @@ struct assignment<L, R> {
 
     template <typename P, typename A = no_action>
     static constexpr void store_checked(L& lhs, R rhs, P&& policy, A&& action = {}) {
-        if constexpr (rational_storage<L>)
-            lhs = L::from_raw(rhs); // continuous: store verbatim
-        else if constexpr (detail::point_grid<L>)
+        if constexpr (rational_storage<L>) {
+            // Continuous: store verbatim. A bounded grid's values have
+            // denominators ≤ its bound: one past it is off the grid, reported
+            // under every policy but unsafe (no rounding onto a bound yet).
+            if constexpr (grid_of<L>.MaxDenominator != 0)
+                if (abs_den(rational{rhs}.Denominator) > to_rational(grid_of<L>.MaxDenominator).Numerator &&
+                    (std::is_constant_evaluated() || is_checked(policy_of<L> | plain_t<P>::Flags))) [[unlikely]]
+                    return report_failure(lhs, policy, action, errc::rounding_error);
+            lhs = L::from_raw(rhs);
+        } else if constexpr (detail::point_grid<L>)
             lhs = L::from_raw({}); // a point: its value is the type
         else {
             // Store the k-th notch slot: raw_from_offset<L> covers index and
