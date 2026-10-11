@@ -14725,8 +14725,16 @@ inline constexpr grid_rational sym_floor = [] {
     }
 }();
 
+// An exact math output's grid: the lattice when it has a notch, else
+// continuous with the denominator bound d (an exact ±x or x − k·y keeps the
+// inputs' denominators bounded, grid.hpp den_bound).
+consteval grid exact_out_grid(const interval& iv, const grid_rational& notch, const grid_wide& d) {
+    return notch == 0 ? bounded_continuous(iv, d) : grid{iv, notch};
+}
+
 template <insidable In>
-using abs_auto_t = inside<{{sym_floor<In>, abs_auto_upper<In>}, sym_notch<In>}, out_policy<In>>;
+using abs_auto_t =
+    inside<exact_out_grid({sym_floor<In>, abs_auto_upper<In>}, sym_notch<In>, den_bound(grid_of<In>)), out_policy<In>>;
 
 // sign(x) ∈ {sign(Lower) … sign(Upper)}, integer notch.
 template <insidable In>
@@ -14742,9 +14750,10 @@ inline constexpr grid_rational abs_auto_lower =
                                                           : grid_abs(upper_of<Mag>);
 
 template <insidable Mag, insidable Sgn>
-using copysign_auto_t = inside<{{lower_of<Sgn> < 0 ? -abs_auto_upper<Mag> : abs_auto_lower<Mag>,
-                                 upper_of<Sgn> >= 0 ? abs_auto_upper<Mag> : -abs_auto_lower<Mag>},
-                                sym_notch<Mag>},
+using copysign_auto_t = inside<exact_out_grid({lower_of<Sgn> < 0 ? -abs_auto_upper<Mag> : abs_auto_lower<Mag>,
+                                               upper_of<Sgn> >= 0 ? abs_auto_upper<Mag> : -abs_auto_lower<Mag>},
+                                              sym_notch<Mag>,
+                                              den_bound(grid_of<Mag>)),
                                out_policy<Mag>>;
 
 template <insidable In, round_mode M>
@@ -15062,9 +15071,10 @@ inline constexpr grid_rational fmod_bound =
     abs_auto_upper<InX> < abs_auto_upper<InY> ? abs_auto_upper<InX> : abs_auto_upper<InY>;
 
 template <insidable InX, insidable InY>
-using fmod_auto_t = inside<{{(lower_of<InX> < 0 ? -fmod_bound<InX, InY> : grid_rational{0}),
-                             (upper_of<InX> > 0 ? fmod_bound<InX, InY> : grid_rational{0})},
-                            ax::gcd_notch<InX, InY>},
+using fmod_auto_t = inside<exact_out_grid({(lower_of<InX> < 0 ? -fmod_bound<InX, InY> : grid_rational{0}),
+                                           (upper_of<InX> > 0 ? fmod_bound<InX, InY> : grid_rational{0})},
+                                          ax::gcd_notch<InX, InY>,
+                                          den_bound(grid_of<InX>) * den_bound(grid_of<InY>)),
                            out_policy<InX> | round_nearest>;
 } // namespace detail
 

@@ -3,6 +3,7 @@
 // bound (grid::MaxDenominator) holds every exact +, −, ×, ÷ result, so those
 // ops return plain values instead of std::expected.
 
+#include <beman/inside/cmath.hpp>
 #include <beman/inside/inside.hpp>
 #include <beman/inside/io.hpp>
 
@@ -126,3 +127,18 @@ TEST(BoundedRationalTest, wide_bounded_store_checks_the_bound) {
     EXPECT_EQ(from_chars<wide>("0.0000000000000000000000000000000000001").error(), errc::rounding_error); // 10^-37
 }
 #endif
+
+// Exact math outputs on continuous inputs keep the bound.
+TEST(BoundedRationalTest, abs_copysign_fmod_keep_the_bound) {
+    using signed_quot = decltype(inside<{-100, 100}>{} / den{});
+    const signed_quot q{rational{-50, 3}};
+    const auto        a = math::abs(q);
+    static_assert(grid_of<std::remove_cvref_t<decltype(a)>>.MaxDenominator == 7);
+    EXPECT_TRUE(a == rational(50, 3));
+    const auto c = math::copysign(q, 1_ins);
+    static_assert(grid_of<std::remove_cvref_t<decltype(c)>>.MaxDenominator == 7);
+    EXPECT_TRUE(c == rational(50, 3));
+    const auto r = math::fmod(q, inside<{1, 4}>{3}); // −50/3 + 5·3 = −5/3
+    static_assert(grid_of<std::remove_cvref_t<decltype(r)>>.MaxDenominator == 7);
+    EXPECT_TRUE(lift_unwrap(r) == rational(-5, 3));
+}
