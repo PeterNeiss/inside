@@ -14,10 +14,11 @@ using namespace beman::inside::detail;
 TEST(GridTest, grid_structured_binding) {
 
     grid g{{0, 100}, 2};
-    auto [iv, notch] = g;
+    auto [iv, notch, max_den] = g;
     ASSERT_EQ(iv.Lower, 0);
     ASSERT_EQ(iv.Upper, 100);
     ASSERT_EQ(notch, 2);
+    ASSERT_EQ(max_den, 0); // a lattice bounds its denominators itself
 }
 
 // grid construction and max_index
@@ -311,4 +312,59 @@ TEST(GridTest, half_open_wrap_has_the_written_period) {
     inside<{{0, 64}, per<16>, bounds::half_open}, wrap> x{0};
     x = 66;
     EXPECT_EQ(x, 2);
+}
+
+//---------------------------------------------------------------------------
+// Denominator bounds — a continuous grid that an exact op produces knows how
+// large its values' denominators can get.
+//---------------------------------------------------------------------------
+namespace {
+constexpr grid kHundred{0, 100}, kOneToSeven{1, 7};
+constexpr grid kThousandths{interval{0, 1}, max_denominator{1000}};
+constexpr grid kUnbounded{{0, 10}, 0};
+} // namespace
+
+TEST(GridTest, quotients_and_their_results_bound_denominators) {
+    // x/y = p·b/(a·r): den ≤ den_bound(x)·num_bound(y) = 1·7
+    constexpr grid q = *(kHundred / kOneToSeven);
+    static_assert(q.Notch == 0 && q.MaxDenominator == 7);
+    static_assert((*(q + grid{32})).MaxDenominator == 7);           // a point adds den 1
+    static_assert((*(q * q)).MaxDenominator == 49);                 // products multiply
+    static_assert((*(q - q)).MaxDenominator == 49);                 // sums too
+    static_assert((-q).MaxDenominator == 7);                        // negation keeps it
+    static_assert((*(kHundred / grid{-7, 7})).MaxDenominator == 7); // a divisor spanning 0 too
+    static_assert((*(q + kUnbounded)).MaxDenominator == 0);         // unbounded stays unbounded
+    static_assert((*(kHundred / kUnbounded)).MaxDenominator == 0);
+    // hull: the larger bound; a lattice bounds by its value unit's denominator
+    static_assert((*hull(kThousandths, grid{{0, 2}, rational{1, 4}})).MaxDenominator == 1000);
+    static_assert((*hull(kThousandths, kUnbounded)).MaxDenominator == 0);
+    // a quotient that is a point, or lands on a lattice, carries no bound
+    static_assert((*(grid{3} / grid{4})).MaxDenominator == 0);
+    static_assert((*(kHundred / grid{4})).MaxDenominator == 0);
+    static_assert(grid::validate<q>());
+}
+
+TEST(GridTest, max_denominator_spelling_and_representable) {
+    static_assert(kThousandths.MaxDenominator == 1000 && kThousandths.Notch == 0);
+    static_assert(kThousandths.representable(rational{1, 1000}));
+    static_assert(!kThousandths.representable(rational{1, 1001}));
+    static_assert(kUnbounded.representable(rational{1, 1001}));
+    static_assert(kThousandths != grid{{0, 1}, 0}); // a bound is part of the type
+    static_assert(den_bound(kThousandths) == grid_wide{1000});
+    static_assert(den_bound(grid{{0.5_r, 10.5_r}, 1}) == grid_wide{2});
+    static_assert(num_bound(kThousandths) == grid_wide{1000});
+}
+
+TEST(GridTest, bounds_past_their_storage_are_dropped) {
+    constexpr grid billionths{interval{0, 1}, max_denominator{1'000'000'000}};
+    constexpr grid b2 = *(billionths * billionths);
+    static_assert(b2.MaxDenominator == 1'000'000'000'000'000'000);
+#if BEMAN_INSIDE_BIG_GRIDS
+    // C++26: kept until num + den need more than BEMAN_INSIDE_MAX_FRACTION_BITS
+    constexpr grid b4 = *(b2 * b2), b8 = *(b4 * b4), b16 = *(b8 * b8), b32 = *(b16 * b16);
+    static_assert(b16.MaxDenominator != 0 && b32.MaxDenominator == 0); // 10^144 kept, 10^288 dropped
+#else
+    // C++23: kept while it fits the 64-bit rational
+    static_assert((*(b2 * billionths)).MaxDenominator == 0);
+#endif
 }

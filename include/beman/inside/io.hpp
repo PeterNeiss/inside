@@ -144,6 +144,10 @@ inline constexpr int fixed_decimals = [] {
     str += beman::inside::to_string(g.Interval);
     str += ", ";
     str += beman::inside::to_string(g.Notch);
+    if (g.MaxDenominator != 0) {
+        str += ", den<=";
+        str += beman::inside::to_string(g.MaxDenominator);
+    }
     str += "}";
     return str;
 }

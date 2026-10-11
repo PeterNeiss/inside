@@ -242,6 +242,7 @@ TEST(FormatTest, decimal_notches_fix_the_digits) {
 TEST(FormatTest, interval_and_grid_to_string) {
     ASSERT_EQ((beman::inside::to_string(interval{0, 10})), "[0..10]");
     ASSERT_EQ((beman::inside::to_string(grid{interval{0, 10}, 1_r})), ("{[0..10], 1}"));
+    ASSERT_EQ((beman::inside::to_string(grid{interval{0, 1}, max_denominator{7}})), ("{[0..1], 0, den<=7}"));
 }
 
 // ostream operator<< for rational
