@@ -4,6 +4,23 @@
 SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 -->
 
+## Unreleased
+
+### Upgrading from 0.2.0
+
+- `inside_range::strided(n)` and `indexed()` are gone: pipe
+  `std::views::stride(n)` / `std::views::enumerate` (C++23), or step with a
+  `cursor<T, Step>`. `enumerate` yields a `ptrdiff_t` position, not `size_t`.
+
+### Added
+
+- `values<T>`: every value of an inside type as a random-access sized range,
+  `for (T x : values<T>)`, `std::ranges::find(values<T>, x)`.
+- A cursor is a bidirectional iterator with `end(t)` as its sentinel: `*t`
+  gives its value (converting into `T` exactly), so
+  `std::ranges::subrange(t, end(t))`, `std::views::iota(t, end(t))` and the
+  iterator-pair algorithms take it. Plain insides stay non-iterators.
+
 ## 0.2.0 — 2026-10-10
 
 ### Upgrading from 0.1.0

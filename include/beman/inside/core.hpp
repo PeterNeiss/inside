@@ -19,6 +19,7 @@
 #include <bit> // std::countr_zero, std::has_single_bit
 #include <optional>
 #include <expected> // std::expected, std::unexpected
+#include <iterator> // std::incrementable_traits, std::indirectly_readable_traits
 #include <utility>  // std::pair
 
 // Deducing `this` (P0847) folds the lvalue/rvalue overload pairs below.
@@ -60,6 +61,14 @@ constexpr auto abs(In x);
 // generic.hpp/policy.hpp (traits + policy machinery).
 //---------------------------------------------------------------------------
 namespace beman::inside {
+namespace detail {
+// What `*t` yields for a cursor on G: G without its end point, no cursor — a
+// value of T, which assigns into T.
+template <grid G, policy_flag P>
+using cursor_value_t =
+    inside<grid{interval{G.Interval.Lower, grid_sub(G.Interval.Upper, G.Notch)}, G.Notch}, P & ~cursor_marker>;
+} // namespace detail
+
 //---------------------------------------------------------------------------
 // inside
 //---------------------------------------------------------------------------
@@ -708,6 +717,14 @@ struct inside {
         return t;
     }
 
+    // *t: a cursor's value without the end, so a cursor is its own iterator
+    // and end(t) its sentinel. At the end it reports out of range.
+    [[nodiscard]] constexpr auto operator*() const
+        requires(has_flag(P, detail::cursor_marker))
+    {
+        return detail::cursor_value_t<G, P>{*this};
+    }
+
     // try_make<F>(value): the constructors' store under this type's policy plus
     // the flags F, with the failure as the error. An expected value passes its
     // error on, so fallible steps chain.
@@ -1063,5 +1080,20 @@ constexpr auto operator""_ins() {
 }
 
 } // namespace beman::inside
+
+// A cursor is a bidirectional iterator: it steps by ++/--, *t reads its value,
+// and end(t) is its sentinel. Not random access: t - u is arithmetic, an
+// inside, not a distance. Plain insides get no traits, so they stay numbers.
+template <beman::inside::grid G, beman::inside::policy_flag P>
+    requires(beman::inside::has_flag(P, beman::inside::detail::cursor_marker))
+struct std::incrementable_traits<beman::inside::inside<G, P>> {
+    using difference_type = beman::inside::imax;
+};
+
+template <beman::inside::grid G, beman::inside::policy_flag P>
+    requires(beman::inside::has_flag(P, beman::inside::detail::cursor_marker))
+struct std::indirectly_readable_traits<beman::inside::inside<G, P>> {
+    using value_type = beman::inside::detail::cursor_value_t<G, P>;
+};
 
 #endif // BEMAN_INSIDE_CORE_HPP

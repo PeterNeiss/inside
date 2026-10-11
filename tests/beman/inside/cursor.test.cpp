@@ -8,6 +8,9 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <iterator>
+#include <ranges>
 #include <type_traits>
 #include <vector>
 
@@ -139,4 +142,41 @@ TEST(Cursor, point_compare_is_a_slot_compare) {
         EXPECT_EQ(2_ins <= t, rational{2} <= v);
         EXPECT_EQ(t < 0.1_ins, v < 0.1_r); // the general path
     }
+}
+
+// A cursor is its own bidirectional iterator; end(t) is its sentinel.
+static_assert(std::bidirectional_iterator<cur>);
+static_assert(!std::random_access_iterator<cur>); // t - u is arithmetic, not a distance
+static_assert(std::sentinel_for<decltype(end(cur{})), cur>);
+static_assert(!std::sized_sentinel_for<cur, cur>);
+static_assert(std::same_as<std::iter_difference_t<cur>, imax>);
+static_assert(std::same_as<std::iter_value_t<cur>, inside<{{-4, 4}, per<4>}, round_nearest>>);
+static_assert(std::convertible_to<std::iter_value_t<cur>, time_t_>);
+// plain insides stay numbers, not iterators
+static_assert(!std::weakly_incrementable<time_t_>);
+static_assert(!std::indirectly_readable<time_t_>);
+static_assert(!std::ranges::range<time_t_>);
+
+TEST(Cursor, is_an_iterator) {
+    const auto            want = quarter_steps();
+    std::vector<rational> a, b, c;
+    cur                   t;
+    for (time_t_ x : std::ranges::subrange(t, end(t)))
+        a.push_back(static_cast<rational>(x));
+    for (cur u : std::views::iota(cur{}, end(cur{})))
+        b.push_back(static_cast<rational>(u));
+    std::ranges::for_each(std::ranges::subrange(t, end(t)), [&](auto x) { c.push_back(static_cast<rational>(x)); });
+    EXPECT_EQ(a, want);
+    EXPECT_EQ(b, want);
+    EXPECT_EQ(c, want);
+    EXPECT_EQ(std::ranges::distance(t, end(t)), 33);
+    EXPECT_EQ(static_cast<rational>(*std::ranges::find(t, end(t), 1.5_ins)), 1.5_r);
+
+    static_assert([] {
+        cursor<inside<{0, 9}>, 3> i;
+        return std::ranges::count_if(i, end(i), [](auto v) { return v > 2_ins; }) == 3;
+    }());
+
+    cur e = end(t);
+    EXPECT_THROW((void)*e, inside_error); // the end has no value
 }

@@ -473,9 +473,21 @@ for (cursor<time_t, 0.25_r> t = -2_ins; t <= 2_ins; ++t) // any start, the class
 - A default-constructed cursor is `T`'s Lower (a plain inside's default
   constructor leaves it uninitialized). `end(t)` exists only for cursors;
   `t != end(t)` is one integer compare.
-- It is a cursor, not an iterator: an iterator would need `*it`, traits and the
-  range concepts, and could no longer be an inside. For a range use
-  [`inside_range`](storage.md#iteration-inside_range).
+- A cursor is also its own bidirectional iterator, and `end(t)` is its
+  sentinel. `*t` is its value without the end, which converts into `T`
+  exactly, so the range algorithms take a cursor directly:
+
+  ```cpp
+  cursor<time_t, per<4>> t;
+  for (time_t x : std::ranges::subrange(t, end(t))) …
+  auto hit = std::ranges::find(t, end(t), 1.5_ins);
+  std::views::iota(t, end(t))                      // yields the cursors
+  ```
+
+  `*` on the end reports out of range. A cursor is not random access: `t - u`
+  is arithmetic and gives an inside, not a distance, so `std::ranges::distance`
+  counts the steps. Plain insides have no `*` and no iterator traits. For every
+  value of a type, use [`values<T>`](storage.md#iteration-inside_range).
 
 ## Variadic folds
 

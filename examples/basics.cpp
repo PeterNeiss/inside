@@ -3,7 +3,8 @@
 // type's policy, written once.
 //   1. `clamp` — saturate: a brightness, an RGB pixel.
 //   2. `wrap` — modular: a compass heading.
-//   3. `inside_range` — loops whose index is an inside, so `arr[i]` is in range.
+//   3. `inside_range`, `values<T>`, `cursor` — loops whose index is an inside,
+//      so `arr[i]` is in range.
 // The default policy, `checked`, reports instead; errors.cpp shows how.
 
 #include <iostream>
@@ -65,13 +66,13 @@ int main() {
     std::cout << "from 5, wrapping:";
     for (auto i : inside_range<{0, 9}>{5})
         std::cout << ' ' << arr[i];
-    std::cout << "\nevery other:     ";
-    for (auto i : inside_range<{0, 9}>{}.strided(2))
+    using idx = inside<{0, 9}>;
+    std::cout << "\nevery index:     ";
+    for (idx i : values<idx>)
         std::cout << ' ' << arr[i];
-    std::cout << "\nindexed:         ";
-    for (auto [pos, i] : inside_range<{0, 9}>{}.indexed())
-        if (pos < 3)
-            std::cout << " #" << pos << "=" << arr[i];
+    std::cout << "\nevery third:     ";
+    for (cursor<idx, 3> i; i != end(i); ++i)
+        std::cout << ' ' << arr[*i];
     std::cout << "\n";
     return 0;
 }

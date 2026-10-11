@@ -297,19 +297,29 @@ for (auto i : inside_range<{0, 9}>{})
   bins[i] = some_value(i);   // no .as<>() needed
 ```
 
+`values<T>` is the same range spelled by a type: every value of `T`, Lower to
+Upper. It needs a notch, and a cursor has none (its grid ends past `T`'s
+Upper):
+
+```cpp
+using bin = inside<{0, 9}>;
+for (bin b : values<bin>) { ... }
+auto it = std::ranges::find_if(values<bin>, is_full);
+```
+
 `inside_range` is a random-access, sized range, so the standard view adaptors
-work on it directly. It also offers two conveniences:
+and algorithms work on it directly:
 
 ```cpp
 inside_range<{0, 9}> r;
-for (auto i : std::views::reverse(r)) { ... }   // 9 8 7 … 0
-for (auto i : r.strided(3))          { ... }    // 0 3 6 9  (every 3rd value)
-for (auto [idx, v] : r.indexed())    { ... }    // (0,0) (1,1) …  position + value
+for (auto i : std::views::reverse(r))      { ... }  // 9 8 7 … 0
+for (auto i : r | std::views::stride(3))   { ... }  // 0 3 6 9
+for (auto [n, v] : std::views::enumerate(r)) { ... } // (0,0) (1,1) …
 ```
 
-`strided` and `indexed` are portable stand-ins for C++23 `std::views::stride`
-/ `std::views::enumerate`, so they also work with standard libraries that do not
-ship those views yet.
+`std::views::stride` and `std::views::enumerate` are C++23; libc++ 20 does not
+ship them yet. A [`cursor<T, Step>`](arithmetic.md#stepping-loops-cursort-step)
+steps by more than one notch with any standard library.
 
 ## Random sampling: `uniform<B>(rng)`
 

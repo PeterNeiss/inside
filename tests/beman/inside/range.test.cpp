@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <iterator>
 #include <ranges>
+#include <type_traits>
 #include <vector>
 
 using namespace beman::inside;
@@ -153,15 +154,6 @@ TEST(RangeTest, inside_range_postfix_plus_plus_behave_standard) {
     ASSERT_EQ(int(to_value(*it)), 0);
 }
 
-// inside_range::indexed pairs each value with its position
-TEST(RangeTest, inside_range_indexed_pairs_each_value_with_its_position) {
-    small_grid                         r;
-    std::vector<std::pair<imax, imax>> seen;
-    for (auto [i, v] : r.indexed())
-        seen.emplace_back(i, v);
-    ASSERT_TRUE((seen == std::vector<std::pair<imax, imax>>{{0, 0}, {1, 1}, {2, 2}, {3, 3}, {4, 4}}));
-}
-
 // inside_range works with std::views::reverse
 TEST(RangeTest, inside_range_works_with_std_views_reverse) {
     small_grid        r; // 0,1,2,3,4
@@ -171,12 +163,24 @@ TEST(RangeTest, inside_range_works_with_std_views_reverse) {
     ASSERT_TRUE((seen == std::vector<imax>{4, 3, 2, 1, 0}));
 }
 
-// inside_range::strided visits every step-th value
-TEST(RangeTest, inside_range_strided_visits_every_step_th_value) {
+#ifdef __cpp_lib_ranges_enumerate
+// std::views::enumerate pairs each value with its position
+TEST(RangeTest, inside_range_with_std_views_enumerate) {
+    small_grid                         r;
+    std::vector<std::pair<imax, imax>> seen;
+    for (auto [i, v] : std::views::enumerate(r))
+        seen.emplace_back(i, v);
+    ASSERT_TRUE((seen == std::vector<std::pair<imax, imax>>{{0, 0}, {1, 1}, {2, 2}, {3, 3}, {4, 4}}));
+}
+#endif
+
+#ifdef __cpp_lib_ranges_stride
+// std::views::stride visits every step-th value
+TEST(RangeTest, inside_range_with_std_views_stride) {
     small_grid r; // 0,1,2,3,4
-    auto       collect = [&](std::size_t step) {
+    auto       collect = [&](imax step) {
         std::vector<imax> seen;
-        for (auto v : r.strided(step))
+        for (auto v : r | std::views::stride(step))
             seen.push_back(v);
         return seen;
     };
@@ -187,11 +191,45 @@ TEST(RangeTest, inside_range_strided_visits_every_step_th_value) {
 
     // Fractional grid strides over notch values too.
     using frac_grid = inside_range<{{0, 1}, per<4>}>; // 0,.25,.5,.75,1
-    frac_grid             f;
     std::vector<rational> fseen;
-    for (auto v : f.strided(2))
+    for (auto v : frac_grid{} | std::views::stride(2))
         fseen.push_back(rational{v});
     ASSERT_TRUE((fseen == std::vector<rational>{rational{0}, rational{1, 2}, rational{1}}));
+}
+#endif
+
+//---------------------------------------------------------------------------
+// values<T>: the range of a type's values
+//---------------------------------------------------------------------------
+namespace {
+using bin     = inside<{0, 9}>;
+using quarter = inside<{{0, 1}, per<4>}, round_nearest>;
+
+template <typename T>
+concept has_values = requires { values<T>; };
+} // namespace
+
+static_assert(std::is_same_v<std::remove_const_t<decltype(values<bin>)>, inside_range<{0, 9}>>);
+static_assert(
+    std::is_same_v<std::remove_const_t<decltype(values<quarter>)>, inside_range<{{0, 1}, per<4>}, round_nearest>>);
+static_assert(std::ranges::random_access_range<decltype(values<bin>)>);
+static_assert(std::ranges::sized_range<decltype(values<bin>)>);
+static_assert(std::is_same_v<std::ranges::range_value_t<decltype(values<quarter>)>, quarter>);
+static_assert(has_values<bin>);
+static_assert(!has_values<cursor<bin>>);         // ends past bin's Upper
+static_assert(!has_values<inside<{{0, 1}, 0}>>); // no notch
+static_assert(std::ranges::size(values<bin>) == 10);
+static_assert(std::ranges::count_if(values<bin>, [](bin b) { return b > 5_ins; }) == 4);
+
+TEST(RangeTest, values_walks_every_value_of_a_type) {
+    std::vector<rational> seen;
+    for (quarter q : values<quarter>)
+        seen.push_back(rational{q});
+    ASSERT_TRUE((seen == std::vector<rational>{0, rational{1, 4}, rational{1, 2}, rational{3, 4}, 1}));
+
+    auto it = std::ranges::find(values<bin>, bin{7});
+    ASSERT_EQ(it - std::ranges::begin(values<bin>), 7);
+    ASSERT_EQ(rational{*std::ranges::max_element(values<bin>)}, 9);
 }
 
 //---------------------------------------------------------------------------

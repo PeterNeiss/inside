@@ -7516,6 +7516,14 @@ constexpr auto abs(In x);
 // generic.hpp/policy.hpp (traits + policy machinery).
 //---------------------------------------------------------------------------
 namespace beman::inside {
+namespace detail {
+// What `*t` yields for a cursor on G: G without its end point, no cursor — a
+// value of T, which assigns into T.
+template <grid G, policy_flag P>
+using cursor_value_t =
+    inside<grid{interval{G.Interval.Lower, grid_sub(G.Interval.Upper, G.Notch)}, G.Notch}, P & ~cursor_marker>;
+} // namespace detail
+
 //---------------------------------------------------------------------------
 // inside
 //---------------------------------------------------------------------------
@@ -8164,6 +8172,14 @@ struct inside {
         return t;
     }
 
+    // *t: a cursor's value without the end, so a cursor is its own iterator
+    // and end(t) its sentinel. At the end it reports out of range.
+    [[nodiscard]] constexpr auto operator*() const
+        requires(has_flag(P, detail::cursor_marker))
+    {
+        return detail::cursor_value_t<G, P>{*this};
+    }
+
     // try_make<F>(value): the constructors' store under this type's policy plus
     // the flags F, with the failure as the error. An expected value passes its
     // error on, so fallible steps chain.
@@ -8519,6 +8535,21 @@ constexpr auto operator""_ins() {
 }
 
 } // namespace beman::inside
+
+// A cursor is a bidirectional iterator: it steps by ++/--, *t reads its value,
+// and end(t) is its sentinel. Not random access: t - u is arithmetic, an
+// inside, not a distance. Plain insides get no traits, so they stay numbers.
+template <beman::inside::grid G, beman::inside::policy_flag P>
+    requires(beman::inside::has_flag(P, beman::inside::detail::cursor_marker))
+struct std::incrementable_traits<beman::inside::inside<G, P>> {
+    using difference_type = beman::inside::imax;
+};
+
+template <beman::inside::grid G, beman::inside::policy_flag P>
+    requires(beman::inside::has_flag(P, beman::inside::detail::cursor_marker))
+struct std::indirectly_readable_traits<beman::inside::inside<G, P>> {
+    using value_type = beman::inside::detail::cursor_value_t<G, P>;
+};
 
 
 // ======================================================================
@@ -9042,73 +9073,6 @@ struct std::common_type<beman::inside::inside<G1, P1>, beman::inside::inside<G2,
 // returns by value; iterator_concept carries the random-access capability.
 //---------------------------------------------------------------------------
 namespace beman::inside {
-namespace detail {
-// enumerate_view — C++20 stand-in for std::views::enumerate (C++23), yielding
-// pair<index, value> by value (all indexed() needs).
-template <class R>
-struct enumerate_view {
-    R Base;
-
-    struct iterator {
-        std::ranges::iterator_t<const R> It{};
-        std::size_t                      Index{0};
-
-        using value_type      = std::pair<std::size_t, std::ranges::range_value_t<R>>;
-        using difference_type = std::ptrdiff_t;
-
-        [[nodiscard]] constexpr value_type operator*() const { return {Index, *It}; }
-        constexpr iterator&                operator++() {
-            ++It;
-            ++Index;
-            return *this;
-        }
-        constexpr iterator operator++(int) {
-            auto t = *this;
-            ++*this;
-            return t;
-        }
-        [[nodiscard]] constexpr bool operator==(const iterator& o) const { return It == o.It; }
-    };
-
-    constexpr iterator begin() const { return {std::ranges::begin(Base), 0}; }
-    constexpr iterator end() const { return {std::ranges::end(Base), 0}; }
-};
-
-// stride_view — stand-in for std::views::stride (likewise). Visits every
-// `step`-th element; forward-only, and the advance checks `end` so a length
-// that isn't a multiple of the stride still terminates.
-template <class R>
-struct stride_view {
-    R           Base;
-    std::size_t Step{1};
-
-    struct iterator {
-        std::ranges::iterator_t<const R> It{};
-        std::ranges::iterator_t<const R> End{};
-        std::size_t                      Step{1};
-
-        using value_type      = std::ranges::range_value_t<R>;
-        using difference_type = std::ptrdiff_t;
-
-        [[nodiscard]] constexpr value_type operator*() const { return *It; }
-        constexpr iterator&                operator++() {
-            for (std::size_t k = 0; k < Step && It != End; ++k)
-                ++It;
-            return *this;
-        }
-        constexpr iterator operator++(int) {
-            auto t = *this;
-            ++*this;
-            return t;
-        }
-        [[nodiscard]] constexpr bool operator==(const iterator& o) const { return It == o.It; }
-    };
-
-    constexpr iterator begin() const { return {std::ranges::begin(Base), std::ranges::end(Base), Step}; }
-    constexpr iterator end() const { return {std::ranges::end(Base), std::ranges::end(Base), Step}; }
-};
-} // namespace detail
-
 template <grid G, policy_flag P = checked>
     requires(G.Notch != 0)
 struct inside_range {
@@ -9200,15 +9164,13 @@ struct inside_range {
     constexpr iterator end() const { return {StartIndex, static_cast<imax>(slot_count)}; }
 
     constexpr std::size_t size() const { return slot_count; }
-
-    // `indexed()` pairs each value with its zero-based position (≈ C++23
-    // std::views::enumerate), via detail::enumerate_view for C++20.
-    constexpr auto indexed() const { return detail::enumerate_view<inside_range>{*this}; }
-
-    // `strided(step)` visits every `step`-th grid value (≈ C++23 std::views::
-    // stride). `std::views::reverse` already works directly, so there's no reverse().
-    constexpr auto strided(std::size_t step) const { return detail::stride_view<inside_range>{*this, step}; }
 };
+
+// values<T>: every value of T, Lower to Upper, as a random-access sized range.
+// A cursor has none: its grid ends past T's Upper.
+template <insidable T>
+    requires(notch_of<T> != 0 && !has_flag(policy_of<T>, detail::cursor_marker))
+inline constexpr inside_range<grid_of<T>, policy_of<T>> values{};
 
 } // namespace beman::inside
 
