@@ -520,6 +520,13 @@ constexpr bool grid_product_fits([[maybe_unused]] const grid& a, [[maybe_unused]
 //---------------------------------------------------------------------------
 [[nodiscard]] inline constexpr std::expected<grid, errc> operator/(const grid& lhs, const grid& rhs) {
     auto d = lhs.Interval / rhs.Interval;
+    // A nonzero point divisor c scales the other lattice exactly, as in
+    // operator*: its notch becomes N/|c|, so `x / just<c>` keeps integer
+    // storage instead of turning continuous. Any other quotient is continuous.
+    if (d.has_value() && rhs.Interval.Lower == rhs.Interval.Upper && lhs.Notch != 0)
+        return detail::lift([](interval i, detail::grid_rational n) { return grid{i, n}; },
+                            *d,
+                            lhs.Notch / detail::abs(rhs.Interval.Lower));
     if (d.has_value())
         return grid{*d, detail::grid_rational{0}};
 

@@ -94,8 +94,9 @@ truncating a small positive number goes down to the point below 0.
 
 **Exact-fraction storage** — when `Notch == 0`, `Raw` becomes an exact
 fraction (`beman::inside::rational`). This happens for grids
-with `Notch == 0` and exact division results. Read the value back out with
-`numerator()` / `denominator()`.
+with `Notch == 0` and exact division results (except division by a point,
+which keeps the dividend's lattice scaled: `x / 5_ins` has notch `N/5`).
+Read the value back out with `numerator()` / `denominator()`.
 
 **No storage for a point** — a single-value grid (`Lower == Upper`: `just<…>`,
 `5_ins`, `zero`, `one`, `math::pi`) holds its value in the type, so its raw is

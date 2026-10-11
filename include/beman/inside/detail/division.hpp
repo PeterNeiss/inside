@@ -216,8 +216,15 @@ struct division {
     // A wide-index operand's quotient may outgrow the 64-bit rational
     // whatever the policy, so that path always reports.
     static constexpr bool fits_rational = quotient_fits_rational<L, R>();
-    static constexpr bool may_overflow_nonzero =
-        !native_div && !fits_rational && (needs_overflow_check<F> != 0 || wide_valued<L> || wide_valued<R>);
+
+    // `x / just<c>` (c != 0) off the native paths: the result keeps x's
+    // lattice scaled by 1/|c| (grid operator/), so it is x's offset (see
+    // rep.hpp) — or, past 64 bits, the exact quotient on that lattice.
+    // Exact and in range by construction: it cannot fail.
+    static constexpr bool point_divisor = !native_div && point_grid<R> && lower_of<R> != 0 && notched<result>;
+
+    static constexpr bool may_overflow_nonzero = !native_div && !point_divisor && !fits_rational &&
+                                                 (needs_overflow_check<F> != 0 || wide_valued<L> || wide_valued<R>);
 
     // Plain `result` when the op cannot fail (overflow-action, or the divisor
     // grid excludes zero with no rational overflow), else expected<result, errc>.
@@ -282,6 +289,11 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy, A&& act
         result res;
         from_value(res, imax{div_rounded(static_cast<T>(to_value(lhs)), rhs_val, rmode)});
         return res;
+    } else if constexpr (point_divisor) {
+        if constexpr (point_scale<R, L, result>)
+            return scale_by_point<result, (lower_of<R> < 0)>(lhs);
+        else
+            return exact_result<result>(exact_of(lhs) / exact_of(rhs));
     } else if constexpr (wide_valued<L> || wide_valued<R>) {
         // A wide-index or big-grid operand: the exact quotient, in the result's raw.
         const auto d = exact_of(rhs);

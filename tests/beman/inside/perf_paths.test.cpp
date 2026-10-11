@@ -148,6 +148,33 @@ TEST(PerfPathsTest, multiply_by_point_matches_exact_product) {
     EXPECT_EQ(rational{midpoint(a, b)}, (rational{7, 2}));
 }
 
+// Point-operand divide — `x / just<c>` scales x's lattice by 1/|c| the same way:
+// integer storage, a plain result, and sums of it stay plain.
+TEST(PerfPathsTest, divide_by_point_keeps_integer_storage) {
+    using U  = inside<{-100, 100}>;
+    using R5 = decltype(U{} / 5_ins);
+    static_assert(!rational_storage<R5>);
+    static_assert(notch_of<R5> == rational{1, 5} && lower_of<R5> == -20 && upper_of<R5> == 20);
+    using RN = decltype(U{} / just<frac<-3, 2>>);
+    static_assert(notch_of<RN> == rational{2, 3} && lower_of<RN> == rational{-200, 3});
+    using tenth = inside<{{-50, 150}, per<10>}>;
+    using F     = decltype(tenth{} * 9_ins / 5_ins + 32_ins); // plain: no expected anywhere
+    static_assert(notch_of<F> == rational{9, 50} && lower_of<F> == -58 && upper_of<F> == 302);
+    static_assert(tenth{100.1_ins} * 9_ins / 5_ins + 32_ins == 212.18_ins);
+    // A range divisor stays continuous.
+    static_assert(rational_storage<decltype(U{} / inside<{1, 7}>{})>);
+}
+
+TEST(PerfPathsTest, divide_by_point_matches_exact_quotient) {
+    for (int v : {-100, -7, 0, 1, 99, 100}) {
+        inside<{-100, 100}> x{v};
+        EXPECT_EQ(rational{x / just<3>}, (rational{v} / rational{3}).value());
+        EXPECT_EQ(rational{x / just<-4>}, (rational{v} / rational{-4}).value());
+        EXPECT_EQ((rational{x / just<frac<-3, 2>>}), (rational{v} * rational(-2, 3)).value());
+        EXPECT_EQ(rational{x / just<3> * just<3>}, rational{v});
+    }
+}
+
 //---------------------------------------------------------------------------
 // Native div/mod narrowed to int32 — boundary values must match the 64-bit result.
 //---------------------------------------------------------------------------

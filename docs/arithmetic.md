@@ -41,13 +41,14 @@ the operand grids and whether `snap` is in effect. It returns a plain `inside`
 when the divisor's grid excludes zero and the quotient provably fits, otherwise
 `std::expected` ([below](#when-the-result-is-stdexpected-and-when-it-isnt)).
 
-### The three paths
+### The four paths
 
 | Path | Triggered when… | Algorithm | Result storage | Result interval |
 |---|---|---|---|---|
 | **Q-format fast** | `snap` is set **and** both operands share the same Q-format grid (notch `1/N` with `N ≥ 2`, `Lower == 0`) | `(lhs.Raw × N) ÷ rhs.Raw` — the textbook fixed-point divide, **rounded per the policy's mode** (folds to `(a << log2(N)) / b` for power-of-2 N under plain `snap`) | Q-format integer raw, **same notch as L** | `[0, upper_of<L> / notch_of<R>]` — Upper *expands* (see below) |
 | **Integer-aligned fast** | `snap` is set **and** both grids are integer-aligned (notch and Lower both have denominator 1) **and** neither operand uses rational raw storage | `to_value(lhs) / to_value(rhs)`, **rounded per the policy's mode** — see below | Integer raw | `grid_of<L> / grid_of<R>` with each endpoint rounded by the same mode |
 | **Exact rational** *(fall-through)* | everything else | `as_rational(lhs) / rational{rhs}` — exact rational arithmetic. Under `checked` this is the expected-returning `rational::operator/`; under `unsafe` it's the unchecked variant. | `rational` raw — the result type is `inside<{interval, 0}>` | `*(grid_of<L> / grid_of<R>)` — the grid divider widens the interval when the divisor's range straddles zero |
+| **Point scale** *(path D)* | the divisor is a nonzero point `c` (`5_ins`, `just<c>`), the dividend has a notch, and no native path applies | none — the raw is reused (mirrored for negative `c`), as for `x * just<c>` | **the dividend's lattice scaled by 1/\|c\|**: notch `N/|c|`, integer raw | `grid_of<L> / c` |
 
 Both native paths divide in 32 bits when both operand ranges fit (the integer
 path excludes `INT32_MIN`, so `a / -1` cannot overflow), so `/` and `%` on small
@@ -100,7 +101,7 @@ using pos = inside<{1, 10},  snap>;   // grid excludes zero
 auto d = num{42} / pos{3};                   // inside, == 14  (not expected)
 ```
 
-Paths A and B can only fault on divide-by-zero. Path C under `checked` can also
+Paths A and B can only fault on divide-by-zero, and path D cannot fault at all. Path C under `checked` can also
 overflow its 64-bit rational, unless the grids rule that out: every value is
 `n/D` (`D` the lcm of the lower limit's and the notch's denominators,
 `|n| ≤ max(|Lower|, |Upper|)·D`), and when those bounds keep every quotient
@@ -152,9 +153,10 @@ auto q2 = div(val{7}, val{3}, snapped);  // -> 2
 //    `rounded_*`, `clamped`, `wrapped` — see policies.md#named-policies.
 ```
 
-Without any of these, `operator/` always takes path C and returns an exact
+Without any of these, `operator/` takes path C and returns an exact
 `inside<rational>` (in `std::expected` when the divisor's grid holds 0), with
-the rational storage costs described in [storage.md](storage.md).
+the rational storage costs described in [storage.md](storage.md) — or, for a
+point divisor, path D and an exact value on the scaled lattice.
 
 ### Result-grid widening on path A (the subtle bit)
 
@@ -262,7 +264,10 @@ auto    half = sub * just<frac<1, 2>>;   // exact ×½, stays an inside
 dyadic factors. Multiplying by a point `c` scales the lattice: the result's notch
 is `N·|c|`, so it keeps integer storage (`sub * just<frac<1, 2>>` has notch 1/200)
 and costs about a native multiply — the raw value is reused, mirrored for
-negative `c`. Read an exact value back out with `numerator()` /
+negative `c`. Dividing by a point does the same with `N/|c|`: `x / 5_ins` on an
+integer grid has notch 1/5, so it is exact, plain, and its sums and products
+stay plain too (`c * 9_ins / 5_ins + 32_ins` converts Celsius to Fahrenheit
+without an `expected`). Read an exact value back out with `numerator()` /
 `denominator()` (see [Conversions](conversions.md)) — never a `rational`.
 
 ## Vector helpers: `dot` / `cross` / `lerp`
@@ -373,7 +378,8 @@ auto r3 = a % 5_ins;    // inside<{0, 4}>, value 2 — a literal divisor, no exp
 ```
 
 An integer literal is an integer-valued point, so `a % 5_ins` and, under
-`snap`, `a / 5_ins` take the native integer paths. A non-integer point
+`snap`, `a / 5_ins` take the native integer paths; without `snap`, `a / 5_ins`
+keeps `a`'s lattice scaled by 1/5. A non-integer point
 (`0.5_ins`) is rejected by `%` like any non-integer grid.
 
 `divmod(a, b)` returns both halves from one division: a

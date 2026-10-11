@@ -37,30 +37,12 @@ struct multiplication {
     using return_t = std::
         conditional_t<overflow_action<plain_t<A>> || !needs_overflow_check<F>, result, std::expected<result, errc>>;
 
-    // `x * just<c>` (c != 0): the result lattice is x's lattice scaled by c
-    // (see grid operator*), so the result offset IS x's offset — counted from
-    // the far end when c < 0. No multiply at all.
-    template <insidable Point, insidable X>
-    static constexpr bool point_scale =
-        point_grid<Point> && lower_of<Point> != 0 && notched<X> && !wide_valued<X> && !wide_valued<result>;
-
-    template <bool Negate, insidable X>
-    static constexpr result scale_by_point(const X& x) {
-        static_assert(max_index_v<result> == max_index_v<X>);
-        umax off;
-        if constexpr (index_storage<X>)
-            off = static_cast<umax>(x.raw());
-        else
-            off = static_cast<umax>(x.raw()) - static_cast<umax>(raw_lo<X>);
-        return result::from_raw(raw_from_offset<result>(Negate ? max_index_v<X> - off : off));
-    }
-
     template <typename P, typename A = no_action>
     static constexpr auto mul(L lhs, R rhs, P&& policy, A&& action = {}) -> return_t<policy_flags_of<plain_t<P>>, A> {
-        if constexpr (point_scale<R, L>)
-            return scale_by_point<(lower_of<R> < 0)>(lhs);
-        else if constexpr (point_scale<L, R>)
-            return scale_by_point<(lower_of<L> < 0)>(rhs);
+        if constexpr (point_scale<R, L, result>) // x * just<c>: x's offset (see rep.hpp)
+            return scale_by_point<result, (lower_of<R> < 0)>(lhs);
+        else if constexpr (point_scale<L, R, result>)
+            return scale_by_point<result, (lower_of<L> < 0)>(rhs);
         else if constexpr (fraction_storage<result>) {
             const auto prod = frac_raw_of<raw_t<result>>(exact_of(lhs) * exact_of(rhs));
             if (!prod) [[unlikely]]

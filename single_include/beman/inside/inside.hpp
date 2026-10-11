@@ -4000,6 +4000,13 @@ constexpr bool grid_product_fits([[maybe_unused]] const grid& a, [[maybe_unused]
 //---------------------------------------------------------------------------
 [[nodiscard]] inline constexpr std::expected<grid, errc> operator/(const grid& lhs, const grid& rhs) {
     auto d = lhs.Interval / rhs.Interval;
+    // A nonzero point divisor c scales the other lattice exactly, as in
+    // operator*: its notch becomes N/|c|, so `x / just<c>` keeps integer
+    // storage instead of turning continuous. Any other quotient is continuous.
+    if (d.has_value() && rhs.Interval.Lower == rhs.Interval.Upper && lhs.Notch != 0)
+        return detail::lift([](interval i, detail::grid_rational n) { return grid{i, n}; },
+                            *d,
+                            lhs.Notch / detail::abs(rhs.Interval.Lower));
     if (d.has_value())
         return grid{*d, detail::grid_rational{0}};
 
@@ -6867,6 +6874,25 @@ template <insidable Result, insidable L, insidable R, policy_flag F>
 inline constexpr bool lattice_op_checked =
     fraction_storage<Result> ||
     (rational_storage<Result> && (has_any_flag(F, checked) || is_checked(policy_of<L>) || is_checked(policy_of<R>)));
+
+// `x * just<c>` and `x / just<c>` (c != 0): the result lattice is x's lattice
+// scaled by c or 1/c (grid operator* / operator/), so the result offset IS x's
+// offset — counted from the far end when the scale is negative. No multiply
+// or divide at all.
+template <insidable Point, insidable X, insidable Result>
+inline constexpr bool point_scale =
+    point_grid<Point> && lower_of<Point> != 0 && notched<X> && !wide_valued<X> && !wide_valued<Result>;
+
+template <insidable Result, bool Negate, insidable X>
+constexpr Result scale_by_point(const X& x) noexcept {
+    static_assert(max_index_v<Result> == max_index_v<X>);
+    umax off;
+    if constexpr (index_storage<X>)
+        off = static_cast<umax>(x.raw());
+    else
+        off = static_cast<umax>(x.raw()) - static_cast<umax>(raw_lo<X>);
+    return Result::from_raw(raw_from_offset<Result>(Negate ? max_index_v<X> - off : off));
+}
 } // namespace beman::inside::detail
 
 //---------------------------------------------------------------------------
@@ -6968,30 +6994,12 @@ struct multiplication {
     using return_t = std::
         conditional_t<overflow_action<plain_t<A>> || !needs_overflow_check<F>, result, std::expected<result, errc>>;
 
-    // `x * just<c>` (c != 0): the result lattice is x's lattice scaled by c
-    // (see grid operator*), so the result offset IS x's offset — counted from
-    // the far end when c < 0. No multiply at all.
-    template <insidable Point, insidable X>
-    static constexpr bool point_scale =
-        point_grid<Point> && lower_of<Point> != 0 && notched<X> && !wide_valued<X> && !wide_valued<result>;
-
-    template <bool Negate, insidable X>
-    static constexpr result scale_by_point(const X& x) {
-        static_assert(max_index_v<result> == max_index_v<X>);
-        umax off;
-        if constexpr (index_storage<X>)
-            off = static_cast<umax>(x.raw());
-        else
-            off = static_cast<umax>(x.raw()) - static_cast<umax>(raw_lo<X>);
-        return result::from_raw(raw_from_offset<result>(Negate ? max_index_v<X> - off : off));
-    }
-
     template <typename P, typename A = no_action>
     static constexpr auto mul(L lhs, R rhs, P&& policy, A&& action = {}) -> return_t<policy_flags_of<plain_t<P>>, A> {
-        if constexpr (point_scale<R, L>)
-            return scale_by_point<(lower_of<R> < 0)>(lhs);
-        else if constexpr (point_scale<L, R>)
-            return scale_by_point<(lower_of<L> < 0)>(rhs);
+        if constexpr (point_scale<R, L, result>) // x * just<c>: x's offset (see rep.hpp)
+            return scale_by_point<result, (lower_of<R> < 0)>(lhs);
+        else if constexpr (point_scale<L, R, result>)
+            return scale_by_point<result, (lower_of<L> < 0)>(rhs);
         else if constexpr (fraction_storage<result>) {
             const auto prod = frac_raw_of<raw_t<result>>(exact_of(lhs) * exact_of(rhs));
             if (!prod) [[unlikely]]
@@ -7236,8 +7244,15 @@ struct division {
     // A wide-index operand's quotient may outgrow the 64-bit rational
     // whatever the policy, so that path always reports.
     static constexpr bool fits_rational = quotient_fits_rational<L, R>();
-    static constexpr bool may_overflow_nonzero =
-        !native_div && !fits_rational && (needs_overflow_check<F> != 0 || wide_valued<L> || wide_valued<R>);
+
+    // `x / just<c>` (c != 0) off the native paths: the result keeps x's
+    // lattice scaled by 1/|c| (grid operator/), so it is x's offset (see
+    // rep.hpp) — or, past 64 bits, the exact quotient on that lattice.
+    // Exact and in range by construction: it cannot fail.
+    static constexpr bool point_divisor = !native_div && point_grid<R> && lower_of<R> != 0 && notched<result>;
+
+    static constexpr bool may_overflow_nonzero = !native_div && !point_divisor && !fits_rational &&
+                                                 (needs_overflow_check<F> != 0 || wide_valued<L> || wide_valued<R>);
 
     // Plain `result` when the op cannot fail (overflow-action, or the divisor
     // grid excludes zero with no rational overflow), else expected<result, errc>.
@@ -7302,6 +7317,11 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy, A&& act
         result res;
         from_value(res, imax{div_rounded(static_cast<T>(to_value(lhs)), rhs_val, rmode)});
         return res;
+    } else if constexpr (point_divisor) {
+        if constexpr (point_scale<R, L, result>)
+            return scale_by_point<result, (lower_of<R> < 0)>(lhs);
+        else
+            return exact_result<result>(exact_of(lhs) / exact_of(rhs));
     } else if constexpr (wide_valued<L> || wide_valued<R>) {
         // A wide-index or big-grid operand: the exact quotient, in the result's raw.
         const auto d = exact_of(rhs);
