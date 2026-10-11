@@ -45,9 +45,16 @@ exact binary value, so a double that needs a notch finer than 1/1024 (0.1 is
 3602879701896397/2^55) is rejected at compile time in favour of `0.1_r` or an
 explicit notch; rational, `frac`, `_r` and inside limits are taken exactly.
 
-`grid::try_make(interval, notch)` checks the same invariants at runtime and
+**Open limits.** `grid{lo, hi, bounds::half_open}` (or `bounds::open`, or
+with a notch, `{{lo, hi}, notch, bounds::…}`) moves each open limit in by one
+notch at construction: the grid is stored closed, so it is the same value —
+and type — as the closed spelling. A continuous grid has no next point, and
+an open grid must keep at least one; both are compile errors.
+
+`grid::try_make(interval, notch, bounds = closed)` checks the same invariants at runtime and
 returns `std::expected<grid, errc>` — `domain_error` for `Lower > Upper` or a
-negative notch, `rounding_error` when the notch does not divide the interval.
+negative notch (or an open limit without a notch or point), `rounding_error`
+when the notch does not divide the interval.
 It serves grids built from runtime configuration (for instance, to
 validate a config before choosing between precompiled types); a runtime `grid`
 cannot become an `inside<G, P>` template argument.

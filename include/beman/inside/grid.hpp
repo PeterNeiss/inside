@@ -27,6 +27,15 @@ namespace beman::inside {
 template <typename T>
 concept grid_number_like = std::convertible_to<T, detail::grid_rational> || std::convertible_to<T, detail::rational>;
 
+// Which limits of a grid are values. A grid is always stored closed; an open
+// limit is a spelling, moved in by one notch at construction, so
+// {0, 360, bounds::half_open} is the grid {0, 359} — the same type.
+enum class bounds : unsigned char {
+    closed,    // [Lower, Upper] — the default
+    half_open, // [Lower, Upper) — the last value is Upper − Notch
+    open,      // (Lower, Upper) — Lower + Notch .. Upper − Notch
+};
+
 inline namespace BEMAN_INSIDE_GRID_ABI {
 struct grid {
     interval              Interval;
@@ -49,8 +58,30 @@ struct grid {
     constexpr grid(grid_number_like auto lower)
         : grid{interval{to_number(lower), to_number(lower)}, detail::grid_rational{0}} {}
     constexpr grid(interval val, detail::grid_rational notch) : Interval{val}, Notch{notch} {}
+    // The same with open limits: {{0, 64}, per<16>, bounds::half_open} is
+    // {{0, 63.9375}, per<16>}, and {0, 360, bounds::half_open} — notch derived
+    // from the limits as written — is {0, 359}.
+    constexpr grid(grid_number_like auto lower, grid_number_like auto upper, grid_number_like auto notch, bounds b)
+        : grid{interval{to_number(lower), to_number(upper)}, to_number(notch), b} {}
+    constexpr grid(grid_number_like auto lower, grid_number_like auto upper, bounds b)
+        : grid{interval{to_number(lower), to_number(upper)}, derive_notch(lower, upper), b} {}
+    constexpr grid(interval val, detail::grid_rational notch, bounds b)
+        : Interval{close_bounds(val, notch, b)}, Notch{notch} {}
 
   private:
+    static constexpr interval close_bounds(interval iv, const detail::grid_rational& notch, bounds b) {
+        if (b == bounds::closed)
+            return iv;
+        if (notch == 0)
+            detail::constexpr_error<"bounds: an open limit needs a notch - a continuous grid has no next point">();
+        if (b == bounds::open)
+            iv.Lower = detail::grid_add(iv.Lower, notch);
+        iv.Upper = detail::grid_sub(iv.Upper, notch);
+        if (iv.Lower > iv.Upper)
+            detail::constexpr_error<"bounds: no grid point lies between the limits">();
+        return iv;
+    }
+
     template <typename T>
     static constexpr detail::grid_rational to_number(const T& v) {
         if constexpr (std::convertible_to<T, detail::grid_rational>)
@@ -107,11 +138,22 @@ struct grid {
     // Runtime sibling of validate<G>(): same invariants, but returns a typed
     // error instead of failing a static_assert — for grids built from runtime
     // config. A value, so it can't be an inside<G,P> template argument.
-    [[nodiscard]] static constexpr std::expected<grid, errc> try_make(interval iv, detail::grid_rational notch) {
+    // An open limit (`bounds`) moves in by one notch first, as in the ctors.
+    [[nodiscard]] static constexpr std::expected<grid, errc>
+    try_make(interval iv, detail::grid_rational notch, bounds b = bounds::closed) {
         if (iv.Lower > iv.Upper)
             return std::unexpected{errc::domain_error};
         if (notch < 0)
             return std::unexpected{errc::domain_error};
+        if (b != bounds::closed) {
+            if (notch == 0)
+                return std::unexpected{errc::domain_error};
+            if (b == bounds::open)
+                iv.Lower = detail::grid_add(iv.Lower, notch);
+            iv.Upper = detail::grid_sub(iv.Upper, notch);
+            if (iv.Lower > iv.Upper)
+                return std::unexpected{errc::domain_error};
+        }
         if (!iv.divides_evenly(notch))
             return std::unexpected{errc::rounding_error};
         return grid{iv, notch};

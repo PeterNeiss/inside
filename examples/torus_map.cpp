@@ -16,9 +16,8 @@
 
 using namespace beman::inside;
 
-// Position grid: 0 to 63 15/16 in 1/16-pixel steps, so wrap's period is
-// exactly 64 pixels (Upper − Lower + one notch).
-using pos_t = inside<{{0, 63.9375}, per<16>}, wrap | round_nearest>;
+// Position grid: [0, 64) in 1/16-pixel steps, so wrap's period is 64 pixels.
+using pos_t = inside<{{0, 64}, per<16>, bounds::half_open}, wrap | round_nearest>;
 
 // A signed per-tick movement delta, same 1/16 notch family as pos_t. A runtime
 // step has a range — name it — so `x += d` stays inside += inside.

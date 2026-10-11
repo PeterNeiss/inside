@@ -290,3 +290,25 @@ TEST(GridTest, derived_notch_of_fraction_pairs) {
     EXPECT_EQ(rational{signed_63{0.0}}, rational{0});
     EXPECT_EQ((rational{signed_63{frac<1, 4>}}), (rational{16, 63})); // 1/4 = 15.75/63 → nearest 16/63
 }
+
+// bounds: an open limit is a spelling, moved in by one notch; the grid is
+// stored closed, so both spellings are the same type.
+static_assert(grid{0, 10, bounds::closed} == grid{0, 10});
+static_assert(std::is_same_v<inside<{0, 360, bounds::half_open}>, inside<{0, 359}>>);
+static_assert(std::is_same_v<inside<{{0, 64}, per<16>, bounds::half_open}>, inside<{{0, 63.9375}, per<16>}>>);
+static_assert(grid{0, 10, bounds::open} == grid{1, 9});
+static_assert(grid{0.5, 10, bounds::half_open} == grid{{0.5, 9.5}, 0.5}); // derived notch 1/2
+static_assert(grid{-8, -2, 2, bounds::open} == grid{{-6, -4}, 2});
+static_assert(grid{{0.5, 10.5}, 1, bounds::half_open} == grid{{0.5, 9.5}, 1}); // unanchored lattice
+static_assert(grid{0, 2, bounds::open} == grid{{1, 1}, 1});                    // one point left
+
+TEST(GridTest, half_open_wrap_has_the_written_period) {
+    inside<{0, 360, bounds::half_open}, wrap> deg{0};
+    deg = 370;
+    EXPECT_EQ(deg, 10);
+    deg = 360;
+    EXPECT_EQ(deg, 0);
+    inside<{{0, 64}, per<16>, bounds::half_open}, wrap> x{0};
+    x = 66;
+    EXPECT_EQ(x, 2);
+}

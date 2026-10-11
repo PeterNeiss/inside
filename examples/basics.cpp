@@ -52,7 +52,7 @@ int main() {
         return 1;
 
     // 2. wrap.
-    using degree   = inside<{0, 359}, wrap>;
+    using degree   = inside<{0, 360, bounds::half_open}, wrap>; // [0, 360): 0..359
     degree heading = 350;
     heading += 30_ins;  // 20
     heading += -90_ins; // 290

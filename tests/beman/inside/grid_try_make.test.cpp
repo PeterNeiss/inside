@@ -67,3 +67,13 @@ TEST(GridTryMakeTest, grid_try_make_rejects_a_negative_notch) {
     ASSERT_FALSE(g.has_value());
     EXPECT_EQ(g.error(), errc::domain_error);
 }
+
+// grid::try_make moves an open limit in by one notch, like the ctors.
+TEST(GridTryMakeTest, grid_try_make_with_bounds) {
+    EXPECT_EQ(*grid::try_make(interval{0, 360}, 1_r, bounds::half_open), (grid{0, 359}));
+    EXPECT_EQ(*grid::try_make(interval{0, 10}, 1_r, bounds::open), (grid{1, 9}));
+    EXPECT_EQ(*grid::try_make(interval{0, 10}, 1_r), (grid{0, 10}));
+    // a continuous grid has no next point; an open {0, 1} on 1 holds none
+    EXPECT_EQ(grid::try_make(interval{0, 1}, 0_r, bounds::half_open).error(), errc::domain_error);
+    EXPECT_EQ(grid::try_make(interval{0, 1}, 1_r, bounds::open).error(), errc::domain_error);
+}

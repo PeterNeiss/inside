@@ -14,6 +14,11 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 ### Added
 
+- Open grid limits as a spelling: `inside<{0, 360, bounds::half_open}, wrap>`
+  is `inside<{0, 359}, wrap>` (period 360), and `{{0, 64}, per<16>,
+  bounds::half_open}` is `{{0, 63.9375}, per<16>}`. `bounds::open` moves both
+  limits in. The grid is stored closed, so both spellings are one type;
+  `grid::try_make` takes the bound too.
 - `values<T>`: every value of an inside type as a random-access sized range,
   `for (T x : values<T>)`, `std::ranges::find(values<T>, x)`.
 - A cursor is a bidirectional iterator with `end(t)` as its sentinel: `*t`

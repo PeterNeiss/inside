@@ -18,8 +18,8 @@ using clamped = inside<{0, 100}, clamp>;
 clamped x = 150;   // x == 100
 clamped y = -5;    // y == 0
 
-// Wrap: modular arithmetic
-using angle = inside<{0, 359}, wrap>;
+// Wrap: modular arithmetic, period Upper − Lower + Notch
+using angle = inside<{0, 360, bounds::half_open}, wrap>; // [0, 360), i.e. {0, 359}
 angle a = 370;     // a == 10
 angle b = -10;     // b == 350
 

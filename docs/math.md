@@ -203,8 +203,8 @@ No rational notch divides 2π, so how an angle survives many revolutions depends
 on how it is carried:
 
 - **Don't `wrap` a radians angle.** `wrap` folds modulo the grid's period,
-  `span + notch`, which is never exactly 2π. `inside<{{0, 6.28125}, per<64>}, wrap>`
-  folds every 6.296875 rad, about 0.014 rad more than a turn, so each revolution
+  `span + notch` (`Upper − Lower` for a `bounds::half_open` grid), which is
+  never exactly 2π. `inside<{{0, 6.28125}, per<64>}, wrap>` folds every 6.296875 rad, about 0.014 rad more than a turn, so each revolution
   shifts the angle.
 - **Unwrapped radians are exact.** Accumulated on its grid (`x += step`), the angle
   stays an exact grid value, and `sin`/`cos`/`tan` reduce any argument exactly

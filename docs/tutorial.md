@@ -28,6 +28,19 @@ literals, `per<D>` (the step 1/D), `frac<N, D>` and the exact
 `_r` literal (`0.1_r` is exactly 1/10); the underlying exact-fraction type is
 internal and you never name it.
 
+Both limits are values: `{0, 100}` holds 0 and 100. For a range you think of
+as half-open — an index `[0, N)`, a period `[0, 360)` — say so with a third
+argument; the open limit moves in by one notch, so the grid is still closed
+and the type is the same:
+
+```cpp
+inside<{0, 360, bounds::half_open}>                  // == inside<{0, 359}>
+inside<{{0, 64}, per<16>, bounds::half_open}>        // == {{0, 63.9375}, per<16>}
+inside<{0, 10, bounds::open}>                        // == inside<{1, 9}>
+```
+
+An open limit needs a notch: a continuous grid has no next point.
+
 Because the grid is part of the *type*, two differently-shaped insides are
 different types — the compiler tracks range and precision for you.
 
