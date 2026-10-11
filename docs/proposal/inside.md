@@ -186,13 +186,17 @@ cannot be represented is a compile-time error (with 64-bit grid numbers, see
 
 ## Division
 
-`a / b` is exact by default: its result is a continuous grid that holds every
-quotient. When either operand's policy names a rounding, an integer division
-rounds onto the integers, and a division of two values on the same notch `1/K`
-rounds onto that notch. `a % b` requires integer grids and a rounding, and its
-remainder is consistent with the rounded quotient. Either operator returns
-`std::expected<inside, errc>` when the divisor's grid holds zero, and a plain
-`inside` when it does not.
+`a / b` is exact by default. A point divisor `c` scales the dividend's lattice
+by `1/|c|`; any other quotient lies on a continuous grid whose denominators are
+bounded — x = p/a over y = r/b is p·b/(a·r), so they are at most the dividend's
+largest denominator times the divisor's largest numerator. That bound travels
+with the type through `+`, `-` and `*`, so exact arithmetic on quotients stays
+plain and its precision is known at compile time. When either operand's policy
+names a rounding, an integer division rounds onto the integers, and a division
+of two values on the same notch `1/K` rounds onto that notch. `a % b` requires
+integer grids; its remainder belongs to the quotient truncated, or rounded by
+the policy's mode. Either operator returns `std::expected<inside, errc>` when the
+divisor's grid holds zero, and a plain `inside` when it does not.
 
 ## Policies
 
@@ -251,13 +255,19 @@ namespace std {
   struct interval {
     @*grid-number*@ Lower, Upper;                                // Lower <= Upper
   };
+  struct max_denominator {
+    @*grid-number*@ Value;                                       // a positive integer
+    constexpr explicit max_denominator(@*number*@ v);
+  };
   struct grid {
     interval Interval;
     @*grid-number*@ Notch;                                       // >= 0, divides Upper - Lower
+    @*grid-number*@ MaxDenominator;                              // continuous grids: 0 or a bound
     constexpr grid(@*number*@ lower, @*number*@ upper, @*number*@ notch);
     constexpr grid(@*number*@ lower, @*number*@ upper);          // notch gcd(1, lower, upper)
     constexpr grid(@*number*@ point);                            // notch 0, lower == upper
     constexpr grid(interval, @*grid-number*@ notch);
+    constexpr grid(interval, max_denominator);                  // continuous, bounded
   };
 
   // policies
@@ -312,10 +322,10 @@ namespace std {
 | `B::try_make(v)` | `expected<B, errc>` | the store, reporting instead of throwing |
 | `b.to<T>()` | `expected<T, errc>` | `overflow` out of `T`'s range, `domain_error` for a negative value into an unsigned `T`; a fractional value truncates toward zero |
 | `-a` | `inside<-G, P>` | mirrored interval, same notch |
-| `a + b`, `a - b` | interval sum or difference; notch `gcd(n_a, n_b)` | continuous if either operand is |
+| `a + b`, `a - b` | interval sum or difference; notch `gcd(n_a, n_b)` | continuous if either operand is, with denominator bound `D_a·D_b` |
 | `a * b` | interval product; notch `n_a·n_b`, refined by the operands' offsets | a point `c` scales the other notch by `|c|` |
-| `a / b` | continuous grid of every quotient | rounded onto the integers or the shared notch when a policy names a rounding; `expected` iff `b`'s grid holds 0 |
-| `a % b` | `[0, m]` or `[−m, m]`, `m = max|b| − 1` | integer grids and a rounding required; `r = a − q·b` for the rounded `q` |
+| `a / b` | a point `c`: `a`'s notch scaled by `1/|c|`; else continuous with denominator bound `D_a·max|b|·D_b` | rounded onto the integers or the shared notch when a policy names a rounding; `expected` iff `b`'s grid holds 0 |
+| `a % b` | `[0, m]` or `[−m, m]`, `m = max|b| − 1` | integer grids required; `r = a − q·b` for `q` truncated or rounded by the policy |
 | `++a`, `--a` | `a` moved by one notch | a store by `P` (wraps under `wrap`); absent on a continuous grid |
 | `a += b` etc. | `a = a + b` | a store by `a`'s policy |
 | `a == b`, `a <=> b` | exact comparison of values | any two grids |

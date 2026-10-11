@@ -102,18 +102,23 @@ auto d = num{42} / pos{3};                   // inside, == 14  (not expected)
 ```
 
 Paths A and B can only fault on divide-by-zero, and path D cannot fault at all. Path C under `checked` can also
-overflow its 64-bit rational, unless the grids rule that out: every value is
-`n/D` (`D` the lcm of the lower limit's and the notch's denominators,
-`|n| ≤ max(|Lower|, |Upper|)·D`), and when those bounds keep every quotient
-within 64 bits (`detail::quotient_fits_rational`) — true for every integer grid
-and literal point — path C is total and skips the runtime overflow test:
+overflow its fraction, unless the grids rule that out. They usually do: x = p/a
+over y = r/b is p·b/(a·r), so the quotient's denominators are at most
+`den_bound(x)·num_bound(y)` — the dividend's largest denominator times the
+divisor's largest numerator. The quotient's grid records that bound
+([bounded continuous grids](#bounded-continuous-grids)), and when its fraction
+holds every value, path C is total and skips the runtime overflow test — true
+for every integer grid and literal point, and in C++26 for every bound up to
+`BEMAN_INSIDE_MAX_FRACTION_BITS`:
 
 ```cpp
 using val = inside<{-100, 100}>;
 using pos = inside<{1, 100}>;                // excludes zero
-auto e = val{-7} / pos{2};                   // inside (rational raw), == -7/2, not expected
+auto e = val{-7} / pos{2};                   // inside (rational raw, den ≤ 100), == -7/2, not expected
 using fine = inside<{{0, 1}, rational{1, umax{1} << 40}}>;
-auto f = fine{0.5} / inside<{{1, 2}, rational{1, umax{1} << 40}}>{1.5};  // expected: 2^40 denominators may overflow
+auto f = fine{0.5} / inside<{{1, 2}, rational{1, umax{1} << 40}}>{1.5};
+    // C++23: expected — 2^81 denominators pass the 64-bit rational
+    // C++26: a plain value in a fraction sized for them
 ```
 
 Otherwise the result is `std::expected<result, errc>` with one of two errors:
@@ -527,10 +532,11 @@ Operations return `std::expected<inside, errc>` in two cases:
 1. **Division and modulo** whose divisor grid holds zero, or whose exact
    quotient may overflow ([details](#when-the-result-is-stdexpected-and-when-it-isnt)).
 
-2. **Continuous rational storage** — a grid with notch 0 (such as an exact
-   quotient) stores a `rational`; `+` and `×` on it return `std::expected`
-   (`errc::overflow`), since `lcm(b, d)` of the denominators may exceed `imax`.
-   Notched grids return plain values, exact ones included.
+2. **Unbounded continuous storage** — a grid with notch 0 and no denominator
+   bound (`inside<{{0, 10}, 0}>`) holds any rational in range; `+` and `×` on
+   it return `std::expected` (`errc::overflow`), since `lcm(b, d)` of the
+   denominators may exceed `imax`. Notched grids, and continuous grids whose
+   denominator bound proves the result fits, return plain values.
 
 All operators accept `std::expected` operands and propagate errors: if either
 operand holds an error, the result holds that error (the left one when both
@@ -543,6 +549,49 @@ lvl a{100}, b{4}, z{0};
 auto r1 = a / b + lvl{10};   // expected<inside<…>, errc>, value 35
 auto r2 = a / z + lvl{10};   // expected<inside<…>, errc>, errc::division_by_zero
 ```
+
+### Bounded continuous grids
+
+A continuous grid can carry a **denominator bound**: every value is `n/d` with
+`d ≤ MaxDenominator`. The exact operators compute it, so a quotient knows how
+large its fractions can get, and so does everything computed from it:
+
+| Op | Result's denominator bound |
+|---|---|
+| `x + y`, `x − y`, `x × y` | `D_x · D_y` |
+| `x ÷ y` | `D_x · num_bound(y)` (`num_bound` = max \|y\| · `D_y`) |
+| `−x`, `abs`, `copysign` | `D_x` |
+| `fmod(x, y)` | `D_x · D_y` |
+| `hull` / `common_type` | the larger |
+
+`D` of a notched grid is its value unit's denominator, of a point its own, of
+a continuous grid its bound (0: unbounded, which makes the result unbounded).
+When the bound sizes the result's fraction, the op cannot overflow and returns
+a plain value:
+
+```cpp
+using num = inside<{0, 100}>;
+using den = inside<{1, 7}>;
+auto q = num{50} / den{3};            // inside<{{0, 100}, 0, den<=7}>, 50/3
+auto f = q * 9_ins / 5_ins + 32_ins;  // plain, den ≤ 7: 62
+auto s = q * q - q;                   // plain, den ≤ 49
+```
+
+Declare one with `max_denominator`:
+
+```cpp
+using thousandths = inside<{{0, 1}, max_denominator{1000}}>;
+thousandths a{rational{1, 1000}};
+auto p = a * a;                       // plain: den ≤ 10^6
+a = rational{1, 1001};                // rounding_error: off the grid
+```
+
+A bound must fit a fraction: in C++23 the 64-bit `rational` (a larger one is
+dropped — the grid is unbounded and the op checked, as before); in C++26 any
+bound up to `BEMAN_INSIDE_MAX_FRACTION_BITS` (default 1024 bits of numerator
+and denominator), stored in a fraction sized from it. Storing a value whose
+denominator passes the bound reports `rounding_error` (under every policy but
+`unsafe`; rounding onto a bounded denominator is not supported yet).
 
 ### Chaining `expected` results
 

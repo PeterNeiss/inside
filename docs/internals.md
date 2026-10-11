@@ -338,7 +338,8 @@ Per-operation audit:
 | Operation | Shape | Causes |
 |---|---|---|
 | `a + b`, `a − b`, `a × b` (integer raws) | `inside` | total — result grid contains every value by construction |
-| same, rational raw + `checked` | `expected` | `overflow`: a continuous (Notch 0) grid holds arbitrary rationals, so the sum's denominator may outgrow the raw |
+| same, bounded continuous result whose fraction holds its bound | `inside` | total — the denominator bound sizes the raw (`exact_fits`, `detail/rep.hpp`) |
+| same, unbounded continuous result + `checked` | `expected` | `overflow`: an unbounded continuous (Notch 0) grid holds arbitrary rationals, so the sum's denominator may outgrow the raw |
 | `a / b`, `mod` (divisor grid excludes 0) | `inside` | total |
 | `a / b`, `mod` (divisor may be 0) | `expected` | `division_by_zero`, `overflow` (rational raw) |
 | `math::sin/cos/exp/log/…` | `inside` | total over the asserted domain |

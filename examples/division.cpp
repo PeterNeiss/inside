@@ -6,6 +6,8 @@
 //     a rounding flag picks the direction (`rounded_nearest`, `rounded_floor`, ...).
 //   - A divisor grid that holds 0 makes the result std::expected<inside, errc>
 //     (errc::division_by_zero); a zero-free divisor gives a plain value.
+//   - A quotient's type bounds its denominators, so arithmetic on it stays
+//     exact and plain: its precision is known at compile time.
 
 #include <iostream>
 
@@ -54,6 +56,18 @@ int main() {
     static_assert(insidable<decltype(plain)>);
     std::cout << "42 / 4 (zero-free)     = " << plain << "\n";
     if (plain != just<frac<21, 2>>)
+        return 1;
+
+    // The quotient's denominators are at most 1·max|pos| = 10 (x = p/a over
+    // y = r/b is p·b/(a·r)): the type says so, and what is computed from it
+    // knows its own bound — exact, and still nothing to unwrap.
+    using per_item       = decltype(val{} / pos{});
+    const per_item price = val{20} / pos{3}; // 20/3 per item
+    const auto     total = price * pos{7} + price / pos{2};
+    static_assert(grid_of<per_item>.MaxDenominator == 10);
+    static_assert(insidable<decltype(total)>);
+    std::cout << "20/3 * 7 + 20/3 / 2    = " << total << "\n"; // 140/3 + 10/3
+    if (total != 50)
         return 1;
     return 0;
 }

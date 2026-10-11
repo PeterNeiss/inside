@@ -11,6 +11,13 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 - `inside_range::strided(n)` and `indexed()` are gone: pipe
   `std::views::stride(n)` / `std::views::enumerate` (C++23), or step with a
   `cursor<T, Step>`. `enumerate` yields a `ptrdiff_t` position, not `size_t`.
+- `grid` has a third member, `MaxDenominator` (0 except on a bounded
+  continuous grid): a structured binding of a grid takes three names. The
+  grid ABI namespaces are now `small_grids_v2` / `big_grids_v2`.
+- Result types change where they gained precision: `x / just<c>` is on x's
+  lattice scaled by `1/|c|` (it was continuous), and every continuous
+  quotient carries a denominator bound. Code that names those types, or
+  unwraps a result that is now plain, needs updating.
 
 ### Added
 
@@ -25,6 +32,23 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   gives its value (converting into `T` exactly), so
   `std::ranges::subrange(t, end(t))`, `std::views::iota(t, end(t))` and the
   iterator-pair algorithms take it. Plain insides stay non-iterators.
+- `inside_range` is a view (`view_interface`: `values<T>[i]`, `front()`,
+  `back()`, `empty()`) and a borrowed range.
+- `%` and `divmod` on integer grids without `snap`: truncating like C++ `%`,
+  or rounding by the policy's mode. `/` stays exact without `snap`.
+- Bounded continuous grids: a continuous grid can carry a denominator bound,
+  `inside<{{0, 1}, max_denominator{1000}}>`, and every exact quotient gets one
+  (`inside<{0, 100}> / inside<{1, 7}>` has denominators ≤ 7). `+`, `−`, `×`,
+  `÷`, `abs`, `copysign` and `fmod` propagate it; when it sizes the result's
+  fraction the op returns a plain value instead of `std::expected`. In C++26 a
+  bound past 64 bits stores a fraction sized from it (up to
+  `BEMAN_INSIDE_MAX_FRACTION_BITS`); in C++23 such a bound is dropped. A store
+  past the bound reports `rounding_error`.
+
+### Changed
+
+- Division by a point keeps the dividend's lattice, so `c * 9_ins / 5_ins +
+  32_ins` is plain and exact.
 
 ## 0.2.0 — 2026-10-10
 
