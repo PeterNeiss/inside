@@ -290,6 +290,62 @@ struct grid {
 } // namespace BEMAN_INSIDE_GRID_ABI
 
 namespace detail {
+//---------------------------------------------------------------------------
+// Denominator bounds — every value of a grid is n/d with d ≤ den_bound and
+// |n| ≤ num_bound. A lattice bounds d by its value unit's denominator (the
+// lcm of Lower's and the notch's), a point by its own, a continuous grid by
+// MaxDenominator; 0 is unbounded. The bounds hold for unreduced fractions
+// too, so an exact result can be sized from its operands' bounds.
+//---------------------------------------------------------------------------
+constexpr bool continuous_grid(const grid& g) { return g.Notch == 0 && g.Interval.Lower != g.Interval.Upper; }
+
+constexpr grid_wide den_bound(const grid& g) {
+    if (continuous_grid(g))
+        return wide_numerator(g.MaxDenominator);
+    if (g.Notch == 0)
+        return wide_denominator(g.Interval.Lower);
+    return wide_denominator(g.value_unit());
+}
+
+// floor(max(|Lower|, |Upper|) · d): the largest numerator over denominator d.
+constexpr grid_wide num_bound(const interval& iv, const grid_wide& d) {
+    auto mag = [&](const grid_rational& x) {
+        const grid_wide n = wide_numerator(x);
+        return (n < grid_wide{0} ? -n : n) * d / wide_denominator(x);
+    };
+    const grid_wide a = mag(iv.Lower), b = mag(iv.Upper);
+    return a < b ? b : a;
+}
+constexpr grid_wide num_bound(const grid& g) { return num_bound(g.Interval, den_bound(g)); }
+
+// The result grid of an exact op whose values are continuous on `iv` with
+// denominators ≤ d (0: unbounded). The bound is kept while it can size a
+// fraction: within the 64-bit rational with 64-bit grid numbers, within
+// BEMAN_INSIDE_MAX_FRACTION_BITS with big ones — else the grid is unbounded.
+constexpr grid bounded_continuous(const interval& iv, grid_wide d) {
+    grid g{iv, grid_rational{0}};
+    if (d == grid_wide{0} || iv.Lower == iv.Upper) // a point has its own denominator
+        return g;
+    // Each limit is a value of the result, but an operator's interval may be
+    // wider than the values it reaches: cover the limits' denominators.
+    for (const grid_rational* x : {&iv.Lower, &iv.Upper})
+        if (d < wide_denominator(*x))
+            d = wide_denominator(*x);
+    const grid_wide n = num_bound(iv, d);
+#if BEMAN_INSIDE_BIG_GRIDS
+    if (bit_width_of(n) + bit_width_of(d) > BEMAN_INSIDE_MAX_FRACTION_BITS)
+        return g;
+    g.MaxDenominator = grid_rational{d};
+#else
+    if (grid_wide{std::numeric_limits<imax>::max()} < d || grid_wide{std::numeric_limits<umax>::max()} < n)
+        return g;
+    g.MaxDenominator = rational{static_cast<imax>(d)};
+#endif
+    return g;
+}
+} // namespace detail
+
+namespace detail {
 // The value index v/Notch of a double v rounded onto G by mode M, the
 // integer storage's rule (rounding_of; ties of `nearest` half away from
 // zero). G is anchored with a power-of-two notch whose values double holds
@@ -382,23 +438,37 @@ inline constexpr bool deduces_value = [] {
 }();
 
 // A continuous grid stores its value as an exact fraction: the 64-bit
-// rational, or — for limits past 64 bits (C++26) — a reduced fraction of K-limb
-// integers, K holding twice the limits' bits. A value that needs more reports
-// overflow, as one past the 64-bit rational does.
+// rational, or — past it (C++26) — a reduced fraction of K-limb integers.
+// A bounded grid sizes K from its bounds, so every value fits; an unbounded
+// one from its limits, K holding twice the limits' bits, and a value that
+// needs more reports overflow, as one past the 64-bit rational does.
 #if BEMAN_INSIDE_BIG_GRIDS
 template <grid G>
+inline constexpr bool bound_fits_rational =
+    G.MaxDenominator != 0 && !(grid_wide{std::numeric_limits<imax>::max()} < den_bound(G)) &&
+    !(grid_wide{std::numeric_limits<umax>::max()} < num_bound(G));
+
+template <grid G>
 inline constexpr std::size_t frac_limbs = [] {
-    auto bits = [](const grid_rational& r) {
-        const grid_wide n = wide_numerator(r);
-        return bit_width_of(n.negative() ? -n : n) + bit_width_of(wide_denominator(r));
-    };
-    const int b = bits(G.Interval.Lower) > bits(G.Interval.Upper) ? bits(G.Interval.Lower) : bits(G.Interval.Upper);
-    return limbs_for_bits(2 * b + 2);
+    if constexpr (G.MaxDenominator != 0) {
+        const int n = bit_width_of(num_bound(G)), d = bit_width_of(den_bound(G));
+        return limbs_for_bits((n < d ? d : n) + 1);
+    } else {
+        auto bits = [](const grid_rational& r) {
+            const grid_wide n = wide_numerator(r);
+            return bit_width_of(n.negative() ? -n : n) + bit_width_of(wide_denominator(r));
+        };
+        const int b =
+            bits(G.Interval.Lower) > bits(G.Interval.Upper) ? bits(G.Interval.Lower) : bits(G.Interval.Upper);
+        return limbs_for_bits(2 * b + 2);
+    }
 }();
 template <grid G>
-using continuous_raw_t = std::conditional_t<fits_rational(G.Interval.Lower) && fits_rational(G.Interval.Upper),
-                                            detail::rational,
-                                            exact_frac<frac_limbs<G>>>;
+using continuous_raw_t =
+    std::conditional_t<G.MaxDenominator != 0 ? bound_fits_rational<G>
+                                             : fits_rational(G.Interval.Lower) && fits_rational(G.Interval.Upper),
+                       detail::rational,
+                       exact_frac<frac_limbs<G>>>;
 #else
 template <grid G>
 using continuous_raw_t = detail::rational;
@@ -483,60 +553,6 @@ inline constexpr bool double_exact = compute_fp_exact<G, 53, 1022>();
 // rational error. Big grid numbers (C++26) always fit.
 //---------------------------------------------------------------------------
 namespace detail {
-//---------------------------------------------------------------------------
-// Denominator bounds — every value of a grid is n/d with d ≤ den_bound and
-// |n| ≤ num_bound. A lattice bounds d by its value unit's denominator (the
-// lcm of Lower's and the notch's), a point by its own, a continuous grid by
-// MaxDenominator; 0 is unbounded. The bounds hold for unreduced fractions
-// too, so an exact result can be sized from its operands' bounds.
-//---------------------------------------------------------------------------
-constexpr bool continuous_grid(const grid& g) { return g.Notch == 0 && g.Interval.Lower != g.Interval.Upper; }
-
-constexpr grid_wide den_bound(const grid& g) {
-    if (continuous_grid(g))
-        return wide_numerator(g.MaxDenominator);
-    if (g.Notch == 0)
-        return wide_denominator(g.Interval.Lower);
-    return wide_denominator(g.value_unit());
-}
-
-// floor(max(|Lower|, |Upper|) · d): the largest numerator over denominator d.
-constexpr grid_wide num_bound(const interval& iv, const grid_wide& d) {
-    auto mag = [&](const grid_rational& x) {
-        const grid_wide n = wide_numerator(x);
-        return (n < grid_wide{0} ? -n : n) * d / wide_denominator(x);
-    };
-    const grid_wide a = mag(iv.Lower), b = mag(iv.Upper);
-    return a < b ? b : a;
-}
-constexpr grid_wide num_bound(const grid& g) { return num_bound(g.Interval, den_bound(g)); }
-
-// The result grid of an exact op whose values are continuous on `iv` with
-// denominators ≤ d (0: unbounded). The bound is kept while it can size a
-// fraction: within the 64-bit rational with 64-bit grid numbers, within
-// BEMAN_INSIDE_MAX_FRACTION_BITS with big ones — else the grid is unbounded.
-constexpr grid bounded_continuous(const interval& iv, grid_wide d) {
-    grid g{iv, grid_rational{0}};
-    if (d == grid_wide{0} || iv.Lower == iv.Upper) // a point has its own denominator
-        return g;
-    // Each limit is a value of the result, but an operator's interval may be
-    // wider than the values it reaches: cover the limits' denominators.
-    for (const grid_rational* x : {&iv.Lower, &iv.Upper})
-        if (d < wide_denominator(*x))
-            d = wide_denominator(*x);
-    const grid_wide n = num_bound(iv, d);
-#if BEMAN_INSIDE_BIG_GRIDS
-    if (bit_width_of(n) + bit_width_of(d) > BEMAN_INSIDE_MAX_FRACTION_BITS)
-        return g;
-    g.MaxDenominator = grid_rational{d};
-#else
-    if (grid_wide{std::numeric_limits<imax>::max()} < d || grid_wide{std::numeric_limits<umax>::max()} < n)
-        return g;
-    g.MaxDenominator = rational{static_cast<imax>(d)};
-#endif
-    return g;
-}
-
 constexpr bool grid_sum_fits([[maybe_unused]] const grid& a, [[maybe_unused]] const grid& b) noexcept {
 #if BEMAN_INSIDE_BIG_GRIDS
     return true;

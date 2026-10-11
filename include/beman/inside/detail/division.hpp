@@ -294,7 +294,7 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy, A&& act
             return scale_by_point<result, (lower_of<R> < 0)>(lhs);
         else
             return exact_result<result>(exact_of(lhs) / exact_of(rhs));
-    } else if constexpr (wide_valued<L> || wide_valued<R>) {
+    } else if constexpr (wide_valued<L> || wide_valued<R> || wide_valued<result>) {
         // A wide-index or big-grid operand: the exact quotient, in the result's raw.
         const auto d = exact_of(rhs);
         if constexpr (!zero_unchecked)

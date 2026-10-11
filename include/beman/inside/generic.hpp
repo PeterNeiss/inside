@@ -220,8 +220,10 @@ inline constexpr bool wide_grid_numbers =
     !fits_rational(grid_of<B>.Interval.Lower) || !fits_rational(grid_of<B>.Interval.Upper) ||
     !fits_rational(grid_of<B>.Notch);
 
+// Values past the 64-bit rational: a wide index, grid numbers past 64 bits,
+// or a fraction raw (a bounded continuous grid can need one, C++26).
 template <insidable B>
-inline constexpr bool wide_valued = wide_index_storage<B> || wide_grid_numbers<B>;
+inline constexpr bool wide_valued = wide_index_storage<B> || wide_grid_numbers<B> || fraction_storage<B>;
 
 // Ungated double view of any inside (the public operator double() is gated
 // on a rounding flag; this is always available). Everything but index storage holds the value verbatim; an

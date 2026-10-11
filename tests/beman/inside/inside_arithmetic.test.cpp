@@ -192,7 +192,7 @@ TEST(InsideArithmeticTest, inside_div_rational_vs_integer_paths) {
         using fine = inside<{{0, 1}, rational{1, umax{1} << 40}}>;
         using fpos = inside<{{1, 2}, rational{1, umax{1} << 40}}>;
         static_assert(is_expected_v<decltype(fine{0.5} / fpos{1.5})>);
-        EXPECT_EQ(static_cast<rational>(*(fine{0.5} / fpos{1.5})), (rational{1, 3}));
+        EXPECT_TRUE(*(fine{0.5} / fpos{1.5}) == (just<frac<1, 3>>)); // (C++26: a fraction raw)
     }
 }
 

@@ -368,3 +368,15 @@ TEST(GridTest, bounds_past_their_storage_are_dropped) {
     static_assert((*(b2 * billionths)).MaxDenominator == 0);
 #endif
 }
+
+TEST(GridTest, bounded_storage_holds_every_value) {
+    // Within the 64-bit rational a bounded grid stores a rational, as before.
+    static_assert(std::same_as<storage_min_t<kThousandths>, rational>);
+    static_assert(std::same_as<storage_min_t<*(kHundred / kOneToSeven)>, rational>);
+#if BEMAN_INSIDE_BIG_GRIDS
+    // C++26: past it, a fraction sized from the bounds — here 10^36 needs 120 bits.
+    constexpr grid billionths{interval{0, 1}, max_denominator{1'000'000'000}};
+    constexpr grid b2 = *(billionths * billionths), b4 = *(b2 * b2);
+    static_assert(std::same_as<storage_min_t<b4>, exact_frac<2>>);
+#endif
+}

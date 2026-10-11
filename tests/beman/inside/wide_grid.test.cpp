@@ -261,9 +261,14 @@ TEST(WideGridTest, division) {
     auto q        = a / divisor{1.5}; // exact; may report overflow
     ASSERT_TRUE(q.has_value());
     EXPECT_TRUE(*q == 2);
-    // (2^33 + 2^-32) / 1 has no 64-bit rational form: reported, not wrapped.
+    // (2^33 + 2^-32) / 1 has no 64-bit rational form: reported, not wrapped —
+    // in C++26 the quotient's denominator bound sizes a fraction that holds it.
     const fine odd = fine::from_raw((detail::wide_uint<2>{1} << 65) + detail::wide_uint<2>{1});
+#if BEMAN_INSIDE_BIG_GRIDS
+    EXPECT_TRUE(*(odd / divisor{1}) == odd);
+#else
     EXPECT_EQ((odd / divisor{1}).error(), errc::overflow);
+#endif
     // narrow ÷ wide, including a zero divisor.
     auto r = inside<{0, 10}>{3} / fine{0.5};
     ASSERT_TRUE(r.has_value());
