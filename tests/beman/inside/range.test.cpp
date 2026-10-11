@@ -232,6 +232,18 @@ TEST(RangeTest, values_walks_every_value_of_a_type) {
     ASSERT_EQ(rational{*std::ranges::max_element(values<bin>)}, 9);
 }
 
+// A view (view_interface: [], front, back, empty) and a borrowed range.
+static_assert(std::ranges::view<std::remove_const_t<decltype(values<bin>)>>);
+static_assert(std::ranges::borrowed_range<small_grid>);
+static_assert(values<bin>[7] == 7 && values<bin>.front() == 0 && values<bin>.back() == 9 && !values<bin>.empty());
+static_assert(small_grid{3}[4] == 2 && small_grid{3}.back() == 2); // indexes from the start, wrapping
+
+TEST(RangeTest, algorithm_on_a_temporary_returns_an_iterator) {
+    // Borrowed: no std::ranges::dangling, though the range is a temporary.
+    const auto it = std::ranges::partition_point(small_grid{}, [](auto v) { return v < 3_ins; });
+    ASSERT_EQ(*it, 3);
+}
+
 //---------------------------------------------------------------------------
 // storage-kind decode — operator* takes integer fast arms for index/value
 // raws (see range.hpp); every arm must agree with the analytic

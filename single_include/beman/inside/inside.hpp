@@ -9110,14 +9110,16 @@ struct std::common_type<beman::inside::inside<G1, P1>, beman::inside::inside<G2,
 // inside_range — random-access range over a grid. Walks by notch index (any
 // non-zero notch), each `*it` computing the exact `Lower + index·Notch`; the
 // iterator wraps modulo the slot count so a mid-range start visits every slot
-// once. Models random_access_range + sized_range (so std::ranges algorithms
-// work directly). iterator_category is input_iterator_tag because operator*
-// returns by value; iterator_concept carries the random-access capability.
+// once. A random-access sized view (view_interface adds [], front, back,
+// empty) and a borrowed range: its iterators never refer to it, so an
+// algorithm on a temporary still returns an iterator. iterator_category is
+// input_iterator_tag because operator* returns by value; iterator_concept
+// carries the random-access capability.
 //---------------------------------------------------------------------------
 namespace beman::inside {
 template <grid G, policy_flag P = checked>
     requires(G.Notch != 0)
-struct inside_range {
+struct inside_range : std::ranges::view_interface<inside_range<G, P>> {
     using value_type = inside<G, P>;
     static_assert(G.max_index_representable() && detail::max_index_v<value_type> < std::numeric_limits<umax>::max(),
                   "inside_range: the grid has more points than a 64-bit count can hold");
@@ -9215,6 +9217,9 @@ template <insidable T>
 inline constexpr inside_range<grid_of<T>, policy_of<T>> values{};
 
 } // namespace beman::inside
+
+template <beman::inside::grid G, beman::inside::policy_flag P>
+inline constexpr bool std::ranges::enable_borrowed_range<beman::inside::inside_range<G, P>> = true;
 
 
 
