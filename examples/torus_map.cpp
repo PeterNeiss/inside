@@ -5,9 +5,10 @@
 // Demonstrates:
 //   - `wrap` policy on two fractional-notch axes (sub-pixel positions)
 //   - `on_wrap` callback to drive a side-effect on edge crossing
-//   - `inside_range` for iterating over integer-cell viewport coordinates
+//   - `values<T>` for iterating over whole-pixel viewport cells
 
 #include <iostream>
+#include <ranges>
 
 #include <beman/inside/inside.hpp>
 #include <beman/inside/io.hpp>
@@ -15,15 +16,15 @@
 
 using namespace beman::inside;
 
-// Position grid: 0..63 inclusive in 1/16-pixel steps. wrap-on-edge.
-using pos_t = inside<{{0, 64}, per<16>}, wrap | round_nearest>;
+// Position grid: 0 to 63 15/16 in 1/16-pixel steps, so wrap's period is
+// exactly 64 pixels (Upper − Lower + one notch).
+using pos_t = inside<{{0, 63.9375}, per<16>}, wrap | round_nearest>;
 
 // A signed per-tick movement delta, same 1/16 notch family as pos_t. A runtime
 // step has a range — name it — so `x += d` stays inside += inside.
 using pos_delta_t = inside<{{-64, 64}, per<16>}, round_nearest>;
 
-// Integer cell coords for the viewport iterator (a separate grid because
-// inside_range needs notch 1 with integer Lower).
+// Whole-pixel cells for the viewport.
 using cell_t = inside<{0, 63}>;
 
 struct sprite {
@@ -35,14 +36,8 @@ struct sprite {
         // The move delta is an inside (same notch family as the position), so the
         // update stays inside += inside and routes through the round-nearest
         // assignment — the on_wrap callback still fires on each edge crossing.
-        x.on_wrap([&](auto&, auto carry) {
-            (void)carry;
-            ++edge_x_crossings;
-        }) += dx;
-        y.on_wrap([&](auto&, auto carry) {
-            (void)carry;
-            ++edge_y_crossings;
-        }) += dy;
+        x.on_wrap([&](auto&, auto) { ++edge_x_crossings; }) += dx;
+        y.on_wrap([&](auto&, auto) { ++edge_y_crossings; }) += dy;
     }
 };
 
@@ -67,16 +62,10 @@ int main() {
                   << ")\n";
     }
 
-    // inside_range over the integer viewport — typical for tilemap iteration.
-    // Print the column indices where x would land on an integer notch given
-    // the current sub-pixel position.
-    std::cout << "\nviewport columns (inside_range<{0,63}>) — first 8:\n  ";
-    int shown = 0;
-    for (auto c : inside_range<{0, 63}>{}) {
-        if (shown++ >= 8)
-            break;
+    // Every cell of the viewport, as for a tilemap pass; the first 8 here.
+    std::cout << "\nviewport columns (values<cell_t>) — first 8:\n  ";
+    for (cell_t c : values<cell_t> | std::views::take(8))
         std::cout << c << " ";
-    }
     std::cout << "...\n";
 
     return 0;
