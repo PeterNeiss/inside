@@ -59,6 +59,8 @@ instead: `round_nearest` (half away from zero), `round_floor` (toward −∞),
 `round_ceil` (toward +∞), `round_half_even` (banker's). The remainder from `%` stays
 consistent with the rounded quotient, so `(a / b) * b + a % b == a` for every mode
 (e.g. under `round_floor`, `(-8) % 3 == 1`; under `snapped`, `(-8) % 3 == -2`).
+Without `snap` or a mode, `/` is exact while `%` truncates (C++ `%`), so the
+identity pairs `%` with a snapped `/`.
 
 ```cpp
 using val = inside<{0, 100}>;
@@ -338,16 +340,20 @@ even with an `auto` return type (no dangling reference to the expired temporary)
 
 ## Modulo
 
-`inside % inside` requires integer-aligned grids **and** `snap`. Both
-are **hard requirements** enforced by `static_assert` in
+`inside % inside` requires integer-aligned grids, a **hard requirement**
+enforced by `static_assert` in
 [`include/beman/inside/detail/division.hpp`](../include/beman/inside/detail/division.hpp) —
 there is no rational fallback, because `a mod b` is only meaningfully
-defined when both operands are integers.
+defined when both operands are integers. It needs no `snap`: the remainder
+always belongs to an integer quotient, truncated (C++ `%`) unless the policy
+names a rounding mode. `snap` only decides whether `/` rounds too.
 
 ```cpp
-using val = inside<{0, 100}, snap>;
+using val = inside<{0, 100}>;
 val a{17}, b{5};
 auto r = a % b;  // std::expected<inside<{0, 99}>, errc>, value 2
+inside<{0, 9}> d{7};
+auto odd = d % 2_ins == 1_ins;  // true; d / 2_ins is 3.5
 ```
 
 The result interval is `[0, max_rem]` when the rounding mode is plain
@@ -372,7 +378,8 @@ An integer literal is an integer-valued point, so `a % 5_ins` and, under
 
 `divmod(a, b)` returns both halves from one division: a
 `divmod_result<Q, R>` with members `Quotient` and `Remainder`, typed as
-`a / b` and `a % b` with the same rounding mode. It takes the same trailing
+`a / b` under `snap` and `a % b`, with the same rounding mode — so like `%`,
+it rounds the quotient even without `snap`. It takes the same trailing
 forms as `div` and has the same requirements as `%`, and every value must fit
 `imax`. Like `%`, it returns `std::expected` only when the divisor's grid
 holds zero:
@@ -422,7 +429,7 @@ x += 30_ins;        // x == 80
 x -= 10_ins;        // x == 70
 x *= 2_ins;         // x == 100 (clamped)
 x /= 3_ins;         // x == 33  (snap truncates 100/3)
-x %= 10_ins;        // x == 3   (% needs snap)
+x %= 10_ins;        // x == 3
 
 ++x;                // x == 4
 x--;                // x == 3

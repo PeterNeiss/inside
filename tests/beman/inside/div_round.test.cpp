@@ -213,3 +213,25 @@ TEST(DivRoundTest, divmod_types_and_errors) {
         return cq == 9_ins && cr == 9_ins;
     }());
 }
+
+// Without snap `/` stays exact, but `%` and divmod still round: truncation
+// (C++ `%`) unless the policy names a mode.
+TEST(DivRoundTest, modulo_and_divmod_without_snap_truncate) {
+    using digit        = inside<{0, 9}>;
+    using signed_digit = inside<{-9, 9}>;
+
+    static_assert(std::same_as<decltype(digit{7} % 2_ins), inside<{0, 1}>>);
+    static_assert(digit{7} % 2_ins == 1_ins);
+    static_assert(signed_digit{-7} % 2_ins == -1_ins);
+    static_assert(mod(signed_digit{-7}, 2_ins, rounded_floor) == 1_ins);
+    static_assert(digit{7} / 2_ins == 3.5_ins); // `/` is unchanged: exact
+
+    const auto [q, r] = divmod(signed_digit{-7}, 2_ins);
+    ASSERT_TRUE(q == -3_ins);
+    ASSERT_TRUE(r == -1_ins);
+    ASSERT_TRUE(q * 2_ins + r == -7_ins);
+
+    digit d{8};
+    d %= 3_ins;
+    ASSERT_TRUE(d == 2_ins);
+}

@@ -7351,16 +7351,21 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy, A&& act
     }
 }
 //---------------------------------------------------------------------------
-// modulo (requires integer-valued grids + snap)
+// modulo (requires integer-valued grids)
 //---------------------------------------------------------------------------
 template <insidable L, insidable R, policy_flag F = none>
 struct modulo {
+    // `a mod b` is the remainder of an integer quotient, so it always rounds:
+    // truncation (C++ `%`) unless the policy names a mode — with or without
+    // `snap`, which only decides whether `/` rounds.
+    static constexpr policy_flag FS = F | snap;
+
     // Hard requirement, not a fallback: `a mod b` is only defined for integer
-    // operands, so the grid must be integer-aligned with `snap` set.
-    static_assert(integer_ops<L, R, F>, "modulo requires integer-valued grids and snap");
+    // operands, so the grid must be integer-aligned.
+    static_assert(integer_ops<L, R, FS>, "modulo requires integer-valued grids");
 
     // Builtin division when every value fits imax; else exact wide integers.
-    static constexpr bool native_mod = integer_native_ops<L, R, F>;
+    static constexpr bool native_mod = integer_native_ops<L, R, FS>;
 
     static constexpr grid_rational max_rem =
         lift_unwrap((abs(lower_of<R>) > abs(upper_of<R>) ? abs(lower_of<R>) : abs(upper_of<R>)) - grid_rational{1});
@@ -7422,11 +7427,14 @@ constexpr auto modulo<L, R, F>::mod(L lhs, R rhs, policy<G, E> policy, A&& actio
 //---------------------------------------------------------------------------
 template <insidable L, insidable R, policy_flag F = none>
 struct quotient_remainder {
-    static_assert(integer_native_ops<L, R, F>, "divmod requires integer-valued grids within imax and snap");
+    // Rounds like `%`, so like `%` it needs no `snap`.
+    static constexpr policy_flag FS = F | snap;
 
-    static constexpr round_mode rmode = rounding_of(F | policy_of<L> | policy_of<R>);
+    static_assert(integer_native_ops<L, R, FS>, "divmod requires integer-valued grids within imax");
 
-    using result = divmod_result<typename division<L, R, F>::result, typename modulo<L, R, F>::result>;
+    static constexpr round_mode rmode = rounding_of(FS | policy_of<L> | policy_of<R>);
+
+    using result = divmod_result<typename division<L, R, FS>::result, typename modulo<L, R, FS>::result>;
 
     template <typename A>
     using return_t = std::
