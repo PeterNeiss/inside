@@ -21,7 +21,7 @@ int main() {
     // Exact rational quotient; b's grid holds 0, so it is an expected.
     const auto exact = a / b;
     std::cout << "7 / 3 (exact)          = " << *exact << "\n";
-    if (rational{*exact} != rational{7, 3})
+    if (*exact != just<frac<7, 3>>)
         return 1;
 
     // Integer division, per call: truncates like C++ `/`, or rounds.
@@ -33,13 +33,13 @@ int main() {
     if (*trunc != 2 || *nearest != 3 || *ceil != 4)
         return 1;
 
-    // In the type: operator/ divides natively; the remainder follows the
-    // rounded quotient, so (a / b) * b + a % b == a under every mode.
-    using floored = inside<{-100, 100}, round_floor>;
-    const auto fq = floored{-8} / floored{3};
-    const auto fr = floored{-8} % floored{3};
-    std::cout << "-8 / 3, -8 % 3 (floor) = " << *fq << ", " << *fr << "\n";
-    if (*fq != -3 || *fr != 1)
+    // In the type: `/` and `%` divide natively, and divmod gives both from one
+    // division. The remainder follows the rounded quotient, so
+    // q * b + r == a under every mode.
+    using floored       = inside<{-100, 100}, round_floor>;
+    const auto [fq, fr] = *divmod(floored{-8}, floored{3});
+    std::cout << "-8 / 3, -8 % 3 (floor) = " << fq << ", " << fr << "\n";
+    if (fq != -3 || fr != 1 || *(floored{-8} / floored{3}) != fq)
         return 1;
 
     // Division by zero is a value, not a crash.
@@ -53,7 +53,7 @@ int main() {
     const auto plain = val{42} / pos{4};
     static_assert(insidable<decltype(plain)>);
     std::cout << "42 / 4 (zero-free)     = " << plain << "\n";
-    if (rational{plain} != rational{21, 2})
+    if (plain != just<frac<21, 2>>)
         return 1;
     return 0;
 }

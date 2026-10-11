@@ -5,7 +5,7 @@
 //   - `wrap` policy for modular-2^N arithmetic
 //   - `on_wrap` callback feeding a wrap-epoch counter (cascade pattern)
 //   - `_ins` integer literal in arithmetic expressions
-//   - Modulo `%` for ring-buffer slot index (under `snap`)
+//   - `divmod(s, 256_ins, snapped)` for the ring-buffer lap and slot
 
 #include <iostream>
 
@@ -16,7 +16,7 @@
 using namespace beman::inside;
 
 // 16-bit modular sequence space: the full uint16 range, wrapping under `wrap`.
-using seq_t = inside<{0, 65535}, wrap | snap>;
+using seq_t = inside<{0, 65535}, wrap>;
 
 // Epoch counter — how many times the SEQ space has wrapped (saturating tally).
 using epoch_t = counter<1000>;
@@ -40,26 +40,21 @@ int main() {
     for (int i = 0; i < 8; ++i) {
         // on_wrap callback fires when seq + window crosses the upper bound.
         // The handler bumps the epoch counter — TCP/QUIC's "wrap count" idiom.
-        seq.on_wrap([&](auto&, auto carry) {
-            (void)carry;
-            ++epoch;
-        }) += window;
+        seq.on_wrap([&](auto&, auto) { ++epoch; }) += window;
         std::cout << "  " << i << "    " << seq << "    " << epoch << "\n";
     }
 
     std::cout << "\nepoch count after burst: " << epoch << "\n";
 
-    // Ring-buffer indexing — modulo % collapses any SEQ value into a slot.
-    // Both operands need `snap` so the integer-division path fires.
-    std::cout << "\nslot assignment (seq % 256):\n";
-    using divisor_t = inside<{1, 256}, snap>;
-    constexpr divisor_t slots{256};
-    seq_t               s{65500};
+    // Ring-buffer indexing — one integer division (`snapped`, per call) gives
+    // the lap through the 256-slot ring and the slot in it. 256_ins excludes
+    // zero, so the result is plain, not an expected.
+    std::cout << "\nslot assignment (seq / 256, seq % 256):\n";
+    seq_t s{65500};
     for (int i = 0; i < 6; ++i) {
         s += window;
-        // `slots` has grid {1,256} (excludes zero), so `%` yields a plain inside.
-        auto slot = s % slots;
-        std::cout << "  seq=" << s << "  ->  slot " << slot << "\n";
+        const auto [lap, slot] = divmod(s, 256_ins, snapped);
+        std::cout << "  seq=" << s << "  ->  lap " << lap << ", slot " << slot << "\n";
     }
 
     return 0;

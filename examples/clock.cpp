@@ -100,12 +100,13 @@ int main() {
     if (d.year != 2028 || d.month != 4 || d.day != 15)
         return 1;
 
-    // Day of the week: `seven`'s grid excludes 0, so `%` cannot fail.
+    // Weeks and day of the week from one division: `seven`'s grid excludes 0,
+    // so divmod cannot fail.
     using ordinal_t = inside<{0, 1'000'000}, snap>;
     constexpr inside<{1, 7}, snap> seven{7};
-    const auto                     dow = ordinal_t{14003} % seven;
-    std::cout << "day 14003 is weekday " << dow << " (0 = the reference day's)\n";
-    if (dow != 3)
+    const auto [weeks, dow] = divmod(ordinal_t{14003}, seven);
+    std::cout << "day 14003 is " << weeks << " weeks + weekday " << dow << " (0 = the reference day's)\n";
+    if (weeks != 2000 || dow != 3)
         return 1;
     return 0;
 }
