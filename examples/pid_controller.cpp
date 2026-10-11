@@ -43,13 +43,7 @@ struct pid {
         // on_clamp fires when the integrator hits its saturation boundary —
         // classic wind-up indicator. The callback receives the overshoot so
         // we could derate the gain adaptively; here we just count events.
-        // `policy_ref::operator+=` now takes a insidable RHS directly — no
-        // need to drop to double for the integrator update.
-        integral.on_clamp([&](auto& self, auto overshoot) {
-            (void)self;
-            (void)overshoot;
-            ++windup_events;
-        }) += err;
+        integral.on_clamp([&](auto&, auto) { ++windup_events; }) += err;
 
         // Three weighted terms — each is an inside on a wider grid than err.
         auto p_term = kp * err;

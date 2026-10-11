@@ -85,11 +85,11 @@ void player::pull_trigger() {
     weapon.mag.rounds.on_wrap([&](auto& m, auto) {
         // The wrap put `m` at capacity. Withdraw a full mag from the reserve;
         // on_clamp's overshoot tells us how much we were short of capacity.
-        imax shortfall = 0;
+        magazine::count_t shortfall = 0;
         reserve.on_clamp([&](auto&, auto over) { shortfall = -over; }) -= magazine::capacity;
         ++weapon.reloads;
         if (shortfall > 0)
-            m = magazine::capacity - magazine::count_t{shortfall};
+            m = magazine::capacity - shortfall;
     }) -= 1_ins;
 }
 

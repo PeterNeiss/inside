@@ -4,7 +4,6 @@
 // See clock.cpp for a fuller on_wrap workflow.
 
 #include <iostream>
-#include <limits>
 
 #include <beman/inside/inside.hpp>
 #include <beman/inside/io.hpp>
@@ -51,7 +50,7 @@ int main() {
 
     inside<{0, 100}> w(50);
     w.policy<ignore_range>() = 200;
-    std::cout << "ignored:  raw=" << w << " (range check skipped)" << "\n";
+    std::cout << "ignored:  value=" << w << " (range check skipped)" << "\n";
 
     // === Section 3: Every errc value gets a demo ===
     // overflow (out of range) already shown in Sections 1-2. Now: rounding_error (via
@@ -72,7 +71,7 @@ int main() {
     std::cout << "          (q=" << q << ")" << "\n";
 
     // === Section 4: Free-function error_code overload ===
-    // add / sub / mul / div / mod accept an beman::inside::errc& directly; ec is
+    // add / sub / mul / div / mod accept a beman::inside::errc& directly; ec is
     // set on overflow or division-by-zero, the result holds the error on failure.
 
     ec      = errc{};

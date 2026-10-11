@@ -81,12 +81,12 @@ int main() {
     const auto                 o    = read_order(good);
     if (!o)
         return 1;
-    const total_t total{o->price * o->quantity * (just<1> - o->discount)}; // 50.9745 → 50.97
+    const total_t total{o->price * o->quantity * (one - o->discount)}; // 50.9745 → 50.97
     std::cout << "read   " << good << "\n"
               << "write  " << write_order(*o) << "\n"
               << "total  " << total << "\n"
               << "as double the id is " << static_cast<long long>(std::stod("9007199254740993")) << "\n";
-    if (write_order(*o) != good || total != total_t{50.97_r})
+    if (write_order(*o) != good || total != 50.97_ins)
         return 1;
 
     // 2. A bad order: each failing field reported with its cause.
