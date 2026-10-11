@@ -3,6 +3,7 @@
 //
 // Demonstrates:
 //   - `mul_all` to chain damage multipliers (crit * vulnerable * armor_pen)
+//   - `mul_into` to round the scaled damage once onto whole HP
 //   - Implicit clamping when assigning a wider inside into a clamp-policy
 //     target (level-scaling that may exceed the HP range)
 //   - `on_clamp` callback on HP to fire "full health" and "downed" hooks
@@ -44,23 +45,13 @@ int main() {
 
     // mul_all folds three multipliers into one — grid widens each step.
     auto chain = mul_all(crit, vuln, pen);
-    // chain has interval [0, 64] notch 1/4096 — convert to a hit damage by
-    // scaling base, then snap to an integer HP deduction. `base * chain` returns
-    // a plain `inside` (the static-overflow check on multiplication elides the
-    // expected wrapper). Assigning it into a `round_nearest` integer grid rounds
-    // it to the nearest whole point of damage — no rational, no cast.
-    using dealt_t = inside<{0, 3200}, round_nearest>;
-    dealt_t dealt{base * chain}; // integer damage, snapped to the round_nearest grid
+    // chain has interval [0, 64] notch 1/4096. mul_into scales base by it and
+    // rounds once to the nearest whole point of damage — no rational, no cast.
+    using dealt_t    = inside<{0, 3200}, round_nearest>;
+    const auto dealt = mul_into<dealt_t>(base, chain);
     std::cout << "damage chain (2.0 * 1.25 * 1.5) on base 10 = " << dealt << "\n";
 
-    hp.on_clamp([&](auto& self, auto overshoot) {
-        if (self == 0) {
-            std::cout << "[downed — overshoot " << overshoot << "]\n";
-            downed = true;
-        } else {
-            std::cout << "[full HP, overshoot " << overshoot << "]\n";
-        }
-    }) -= dealt;
+    hp -= dealt; // 75 − 38 stays in range: nothing to clamp
     std::cout << "HP after hit: " << hp << "\n";
 
     // Pile on more damage to trigger the downed callback.

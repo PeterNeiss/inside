@@ -24,13 +24,12 @@ int main() {
                         {coord_t{-1}, coord_t{1}},
                         {coord_t{frac<3, 5>}, coord_t{frac<4, 5>}},
                         {coord_t{0.5}, coord_t{-0.5}}}) {
-        const auto    r = math::hypot(x, y);
-        const angle_t theta{math::atan2(y, x)};
-        const coord_t rx{r * math::cos(theta)}, ry{r * math::sin(theta)};
+        const auto    r     = math::hypot(x, y);
+        const auto    theta = math::atan2_into<angle_t>(y, x);
+        const coord_t rx = mul_into<coord_t>(r, math::cos(theta)), ry = mul_into<coord_t>(r, math::sin(theta));
         std::cout << "  (" << x << ", " << y << ") -> (" << r << ", " << theta << ") -> (" << rx << ", " << ry
                   << ")\n";
-        if (abs(rational{rx} - rational{x}) > rational{2, 16384} ||
-            abs(rational{ry} - rational{y}) > rational{2, 16384})
+        if (math::abs(rx - x) > just<frac<2, 16384>> || math::abs(ry - y) > just<frac<2, 16384>>)
             return 1;
     }
 

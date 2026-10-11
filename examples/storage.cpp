@@ -38,9 +38,8 @@ int main() {
     static_assert(sizeof(byte) == 1 && sizeof(sword) == 2 && sizeof(unorm16) == 2 && sizeof(q8_8) == 2 &&
                   sizeof(q16_16) == 4);
     sword mixed{0};
-    mixed.with_clamp() = sword{30000} + sword{20000}; // PCM mix: 50000 saturates
-    sword out{0};
-    out.with_snap<round_nearest>() = unorm16{0.5_ins} * sword{10001}; // gain, rounded back
+    mixed.with_clamp() = sword{30000} + sword{20000};                                    // PCM mix: 50000 saturates
+    const sword out    = mul_into<sword, round_nearest>(unorm16{0.5_ins}, sword{10001}); // gain, rounded once
     std::cout << "mix " << mixed << ", gain " << out << "\n";
     if (mixed != 32767 || out != 5001)
         return 1;

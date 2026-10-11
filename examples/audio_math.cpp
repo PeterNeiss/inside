@@ -3,7 +3,7 @@
 // rounded point of its output grid (no <cmath>, the same at compile time and on
 // every platform):
 //   1. An exponential curve over a stepping loop, exp(t).
-//   2. A log-spaced frequency sweep, 20 Hz · 2^(step/4).
+//   2. A log-spaced frequency sweep, 20 Hz · 2^e, e by half octaves.
 //   3. A tanh soft clipper beside a hard clip, and cosh² − sinh² = 1.
 //   4. Octaves with log2, and a cube-root loudness curve.
 
@@ -17,7 +17,7 @@ using namespace beman::inside;
 
 int main() {
     // 1. Growth and decay: t = −4, −3.75, …, 4 by a cursor over time_t in
-    //    steps of 1/4 (it may step one past 4), amp on Q.14.
+    //    steps of 1/4 (end(t) is the step past 4), amp on Q.14.
     using time_t = inside<{{-4, 4}, per<1024>}, round_nearest>;
     using amp_t  = inside<{{0, 100}, per<16384>}, round_nearest>;
     std::cout << "t     exp(t)\n";
@@ -25,16 +25,15 @@ int main() {
         std::cout << t << "\t" << math::exp_into<amp_t>(t) << "\n";
     }
 
-    // 2. Sweep: 4 steps per octave from 20 Hz; every 4th step doubles exactly.
+    // 2. Sweep: half-octave steps from 20 Hz, 2^e rounded once onto mult_t;
+    //    every whole octave doubles exactly.
     using exponent_t = inside<{{0, 4}, per<1024>}, round_nearest>;
     using mult_t     = inside<{{0, 16}, per<16384>}, round_nearest>;
-    std::cout << "\nstep  Hz\n";
-    for (int step = 0; step <= 16; step += 2) {
-        const mult_t m{math::exp2(exponent_t{inside<{0, 16}>{step} / just<4>})};
-        std::cout << step << "\t" << just<20> * m << "\n";
-        if (step % 4 == 0 && rational{just<20> * m} != rational{20 << (step / 4)})
-            return 1;
-    }
+    std::cout << "\noctave  Hz\n";
+    for (cursor<exponent_t, per<2>> e; e != end(e); ++e)
+        std::cout << *e << "\t" << just<20> * math::exp2_into<mult_t>(*e) << "\n";
+    if (math::exp2_into<mult_t>(exponent_t{3}) != 8 || math::exp2_into<mult_t>(exponent_t{4}) != 16)
+        return 1;
 
     // 3. Soft clip and the hyperbolic identity.
     using drive_t = inside<{{-4, 4}, per<1024>}, round_nearest>;
@@ -47,7 +46,7 @@ int main() {
         const auto c   = math::cosh(x);
         const auto one = c * c - s * s; // within a few notches of 1
         std::cout << "cosh^2 - sinh^2 at " << x << " = " << one << "\n";
-        if (abs(rational{one} - rational{1}) > rational{1, 64})
+        if (math::abs(one - just<1>) > just<frac<1, 64>>)
             return 1;
     }
 

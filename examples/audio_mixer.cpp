@@ -6,10 +6,10 @@
 //   - Q-format gain inside; per-frame mix runs entirely in integer notch math
 //   - `with(on_clamp, on_overflow)` multi-action probe for peak metering
 //   - `clamp_cast` to push the mixed value back into the sample grid
-//   - `beman::inside::math::sin` on a radians-valued inside — no `.Raw` bit-twiddling,
-//     no `<cmath>`, and no `rational::*_unchecked` in the example body.
-//     The 2π scaling is a single inside × inside multiply via a
-//     singleton-inside wrap of `math::two_pi`.
+//   - `math::pow_base_into` / `mul_into`: one rounding straight into the
+//     target type, never a wide product narrowed afterwards
+//   - `math::sin` on a radians-valued inside, no `<cmath>`
+//   - `values<T>` for the frame loops
 
 #include <iostream>
 
@@ -31,18 +31,10 @@ using db_t = inside<{{-24, 12}, per<2>}, round_nearest>;
 // (i.e. ~[0.063, 3.98]) with 1/65536 resolution — well below per-step audible.
 using gain_t = inside<{{0, 4}, per<65536>}, round_nearest>;
 
-// dB/20 intermediate: dB ∈ [-24, 12] → [-1.2, 0.6], on a power-of-two notch
-// with integer endpoints (the 1/40 step is snapped onto 1/65536, far below
-// audible).
-using db_div20_t = inside<{{-2, 1}, per<65536>}, round_nearest>;
-
-// Decibels → linear amplitude via 10^(dB/20). The library's pow_base<10>
-// derives log2(10) at compile time from its own log2 implementation, so the
-// whole chain is integer/constexpr — no std::pow, no FPU boundary anywhere.
-static gain_t db_to_linear(db_t db) {
-    db_div20_t exponent{db / just<20>};
-    return gain_t{math::pow_base<10>(exponent)};
-}
+// Decibels → linear amplitude via 10^(dB/20). dB/20 is exact (a 1/40 grid),
+// and pow_base_into rounds 10^x once onto gain_t — integer/constexpr, no
+// std::pow, no FPU boundary anywhere.
+static gain_t db_to_linear(db_t db) { return math::pow_base_into<gain_t, 10>(db / just<20>); }
 
 int main() {
     // Four channels — pre-gain levels: vocals hot, drums normal, bass quiet,
@@ -53,13 +45,11 @@ int main() {
     // linear gain (pow_base<10>) is constant across the buffer.
     gain_t lin[4] = {db_to_linear(gain[0]), db_to_linear(gain[1]), db_to_linear(gain[2]), db_to_linear(gain[3])};
 
-    // 8 sample frames of synthetic audio (sine waves at different phases).
+    // 16 sample frames of synthetic audio (sine waves at different phases).
     // All synthesis flows through inside arithmetic — inside + inside, inside ×
-    // inside, math::sin(inside) — same idiom as the mix pipeline below. The
-    // only place we reach for `rational` is the singleton-inside wrap of
-    // the irrational `math::two_pi`, which lets `t * two_pi_bnd` resolve
-    // through the existing inside × inside operator.
+    // inside, math::sin(inside) — same idiom as the mix pipeline below.
     constexpr std::size_t N = 16;
+    using frame_t           = inside<{0, N - 1}>;
 
     using time_t    = inside<{{0, 1}, per<N>}, round_nearest>;
     using offset_t  = inside<{{-2, 2}, per<16384>}, round_nearest>;
@@ -75,17 +65,12 @@ int main() {
     constexpr gainfac_t gains[4] = {0.9_ins, 0.7_ins, 0.6_ins, 0.4_ins};
 
     sample_t channels[4][N];
-    for (auto i : inside_range<{0, N - 1}>{}) {
-        time_t t{i / just<N>}; // inside / inside — give the divisor N a grid
-        // `t * two_pi_bnd` returns a plain `inside`: the static safety check on
-        // rational multiplication folds out the expected wrapper because the
-        // result grid's numerator/denominator products provably fit in umax.
-        // Snap the result into angle_t to land on the 1/16384 grid; the
-        // subsequent inside + inside then stays on a friendly notch.
-        angle_t base{t * math::two_pi}; // inside × inside, snap
+    for (frame_t i : values<frame_t>) {
+        const time_t  t    = i / just<N>;                        // exact: N is a nonzero point
+        const angle_t base = mul_into<angle_t>(t, math::two_pi); // t·2π rounded once
         for (int ch = 0; ch < 4; ++ch) {
-            angle_t a{base + offsets[ch]};                        // inside + inside, snap
-            channels[ch][i] = sample_t{gains[ch] * math::sin(a)}; // inside × inside
+            const angle_t a = base + offsets[ch]; // same notch: exact
+            channels[ch][i] = mul_into<sample_t>(gains[ch], math::sin(a));
         }
     }
 
@@ -93,7 +78,7 @@ int main() {
     counter<1'000'000> overflow_events{0};
 
     std::cout << "frame  c0      c1      c2      c3      mix    \n";
-    for (std::size_t i = 0; i < N; ++i) {
+    for (frame_t i : values<frame_t>) {
         // Each (gain × sample) widens to an inside on the product grid; the four-
         // way `+` chain widens further. Everything stays in int64 notch math —
         // no rational cross-multiply, no float in the hot loop.

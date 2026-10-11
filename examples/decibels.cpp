@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// Decibel ↔ linear conversion using `beman::inside::math::pow_base<10>` and `log`.
+// Decibel ↔ linear conversion using `beman::inside::math::pow_base_into<…, 10>`
+// and `log10_into`.
 //
 // Demonstrates:
-//   - `db_to_linear`: 10^(dB/20) via `pow_base<10>`. This is the building
-//     block audio_mixer uses for per-channel gain.
-//   - `linear_to_db`: 20 · log(amp) / log(10) via `log`, with the 20/log(10)
-//     factor folded into a compile-time rational constant (~8.6859).
-//   - A round-trip sweep showing dB → linear → dB recovers the input within
-//     a few Q-format ULPs at every step.
+//   - `db_to_linear`: 10^(dB/20), rounded once onto the gain grid. This is the
+//     building block audio_mixer uses for per-channel gain.
+//   - `linear_to_db`: 20 · log10(amp), with log10 rounded once onto a grid 20×
+//     finer than the dB grid, so the exact × 20 lands on it.
+//   - A `cursor<db_t, 3>` sweep showing dB → linear → dB recovers the input
+//     at every step.
 
 #include <version>
 
@@ -23,7 +24,7 @@ using std::println;
 #else
     // Kept portable to standard libraries without <print>: a minimal stand-in
     // covering the `{}` forms this example uses, rendered through the
-    // inside/rational operator<< from print.hpp.
+    // inside/rational operator<< from io.hpp.
     #include <iostream>
     #include <sstream>
     #include <string_view>
@@ -50,45 +51,31 @@ using namespace beman::inside;
 
 // dB in [-24, 12] at 0.5 dB resolution — matches a typical mixer fader range.
 using db_t = inside<{{-24, 12}, per<2>}, round_nearest>;
-// dB/20 intermediate. Range chosen to cover [-1.2, 0.6] (the true range for
-// dB ∈ [-24, 12]) but rounded out to integer endpoints so the grid validates
-// against the 1/65536 notch. The fine notch is deliberate — auto-deduced
-// pow_base<10> output inherits notch_of<In>, and a coarser exponent grid would
-// snap the linear output to audible 0.025-wide steps.
-using db_div20_t = inside<{{-2, 1}, per<65536>}, round_nearest>;
 // Linear amplitude. dB ∈ [-24, 12] ⇒ amp ∈ [10^-1.2, 10^0.6] ≈ [0.063, 3.98].
 using gain_t = inside<{{0x1p-8, 4}, per<65536>}, round_nearest>;
+// dB/20 on a 1/40 grid: × 20 maps it exactly onto db_t's 0.5 dB notch. The
+// range covers log10 of every gain_t, [log10(2^-8), log10(4)].
+using db_div20_t = inside<{{-2.5, 1}, per<40>}, round_nearest>;
 
-// dB → linear: 10^(dB/20).
-static constexpr gain_t db_to_linear(db_t db) {
-    db_div20_t exponent{db / just<20>};
-    return gain_t{math::pow_base<10>(exponent)};
-}
+// dB → linear: 10^(dB/20). dB/20 is exact; pow_base_into rounds once.
+static constexpr gain_t db_to_linear(db_t db) { return math::pow_base_into<gain_t, 10>(db / just<20>); }
 
-// linear → dB: 20·log10(amp) = (20/ln(10)) · ln(amp).
-// 20/ln(10) ≈ 8.685889638. As an 8-digit rational source: 86858896/10^7.
-static constexpr db_t linear_to_db(gain_t amp) {
-    // 20/ln(10) as an exact point-inside (no rational on the surface).
-    constexpr auto k20_over_ln10 = just<frac<86858896, 10000000>>;
-    auto           log_amp       = math::log(amp);
-    // The round trip can land a hair outside [-24, 12] (e.g. -24.0001);
-    // db_t rounds onto its 0.5 dB grid before it range-checks, so that is -24.
-    return db_t{k20_over_ln10 * log_amp};
-}
+// linear → dB: 20·log10(amp). log10 rounds once onto 1/40 steps, which is the
+// same as rounding 20·log10 onto 0.5 dB; the × 20 is exact.
+static constexpr db_t linear_to_db(gain_t amp) { return db_t{just<20> * math::log10_into<db_div20_t>(amp)}; }
 
 int main() {
-    // `std::println` works on inside / rational because `beman/inside/formatter.hpp`
+    // `std::println` works on inside / rational because `beman/inside/io.hpp`
     // ships `std::formatter` specializations for both. Empty `{}` keeps the
     // exact rational rendering — same string `operator<<` would produce.
     println("dB → linear → dB round-trip:");
     println("    dB       linear         round-trip dB");
 
     // Sweep dB at 3 dB steps over the full range.
-    for (int d = -24; d <= 12; d += 3) {
-        db_t   db{d};
-        gain_t lin          = db_to_linear(db);
+    for (cursor<db_t, 3> db; db != end(db); ++db) {
+        gain_t lin          = db_to_linear(*db);
         db_t   db_recovered = linear_to_db(lin);
-        println("    {}       {}         {}", db, lin, db_recovered);
+        println("    {}       {}         {}", *db, lin, db_recovered);
     }
 
     // The canonical "6 dB doubles" / "12 dB quadruples" landmarks.
