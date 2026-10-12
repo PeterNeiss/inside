@@ -97,10 +97,10 @@ inline constexpr bool divisor_unchecked =
 // Compile-time rounding of a quotient-interval endpoint to an integer index.
 // Under half_even the endpoint is bracketed by [floor, ceil] (Upper: ceil)
 // rather than reproducing the parity rule at compile time.
-constexpr imax round_rat(rational q, round_mode m, bool upper) noexcept {
+constexpr rational round_rat(rational q, round_mode m, bool upper) noexcept {
     if (m == round_mode::half_even)
         m = upper ? round_mode::ceil : round_mode::floor;
-    return round_to_int(q, m);
+    return round_to_integral(q, m); // exact: INT64_MIN / -1 reaches 2^63
 }
 
 // Every value of a 64-bit grid with a nonzero notch (or a point grid) is
@@ -184,14 +184,16 @@ struct division {
     static constexpr grid result_grid = [] {
         constexpr interval q = (*(grid_of<L> / grid_of<R>)).Interval;
         if constexpr (native_div_integer)
-            return grid{round_rat(to_rational(q.Lower), rmode, false), round_rat(to_rational(q.Upper), rmode, true)};
+            return grid{
+                interval{round_rat(to_rational(q.Lower), rmode, false), round_rat(to_rational(q.Upper), rmode, true)},
+                rational{1}};
         else if constexpr (native_div_fixed) {
             // An endpoint on the notch stays; one off it rounds onto it.
             constexpr rational n = detail::notch64<L>, k = (rational{1} / n).value();
             auto               on = [&](const grid_rational& x, bool up) {
                 return grid_divides_evenly(x, notch_of<L>)
                            ? to_rational(x)
-                           : (rational{round_rat((to_rational(x) * k).value(), rmode, up)} * n).value();
+                           : (round_rat((to_rational(x) * k).value(), rmode, up) * n).value();
             };
             return grid{interval{on(q.Lower, false), on(q.Upper, true)}, n};
         } else
@@ -289,9 +291,7 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy, A&& act
                                                          exact_quotient(upper_of<L>, notch_of<L>) * K,
                                                          exact_quotient(lower_of<R>, notch_of<R>),
                                                          exact_quotient(upper_of<R>, notch_of<R>)});
-        using W    = std::conditional_t<(bits <= 32),
-                                        std::int32_t,
-                                        std::conditional_t<(bits <= 64), imax, wide_sint<limbs_for_bits(bits)>>>;
+        using W    = std::conditional_t<(bits <= 31), std::int32_t, work_int_t<bits>>; // bits: without the sign
         const W jb = value_index<W>(rhs);
         if constexpr (!zero_unchecked)
             if (jb == W{0})

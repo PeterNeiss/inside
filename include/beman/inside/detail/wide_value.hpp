@@ -389,11 +389,17 @@ inline constexpr grid_wide units_lo = exact_quotient(lower_of<X>, Unit);
 template <insidable X, grid_rational Unit>
 inline constexpr grid_wide units_hi = exact_quotient(upper_of<X>, Unit);
 
+// Whether from_value_in_units<Result, Unit> divides: the result is counted
+// in a unit finer than its notch (or off its lattice's multiples).
+template <insidable Result, grid_rational Unit>
+inline constexpr bool divides_units = !(point_storage<Result> || (anchored<Result> && Unit == notch_of<Result>));
+
 // The work type of an integer + or ×: signed imax when every value index
 // involved (each operand in its unit, the result in its notch, and the
 // result's slot offsets) provably fits — then nothing wraps, and the
 // compiler keeps the value ranges, as the builtin paths always did — else
-// the wrapping type.
+// the wrapping type, or, when a division follows (which a wrapped value
+// cannot take), an exact signed one.
 // URes: the unit the result is counted in (its notch, or a finer unit
 // that also divides its Lower when the grids do not pass through 0).
 template <insidable     Result,
@@ -402,15 +408,24 @@ template <insidable     Result,
           insidable     R,
           grid_rational UR,
           grid_rational URes = notch_of<Result>>
-using index_work_t = std::conditional_t<signed_value_bits_of({units_lo<L, UL>,
-                                                              units_hi<L, UL>,
-                                                              units_lo<R, UR>,
-                                                              units_hi<R, UR>,
-                                                              units_lo<Result, URes>,
-                                                              units_hi<Result, URes>,
-                                                              grid_of<Result>.slot_count()}) <= 63,
+inline constexpr int index_work_bits = signed_value_bits_of({units_lo<L, UL>,
+                                                             units_hi<L, UL>,
+                                                             units_lo<R, UR>,
+                                                             units_hi<R, UR>,
+                                                             units_lo<Result, URes>,
+                                                             units_hi<Result, URes>,
+                                                             grid_of<Result>.slot_count()});
+template <insidable     Result,
+          insidable     L,
+          grid_rational UL,
+          insidable     R,
+          grid_rational UR,
+          grid_rational URes = notch_of<Result>>
+using index_work_t = std::conditional_t<(index_work_bits<Result, L, UL, R, UR, URes> <= 63),
                                         imax,
-                                        wrap_work_t<Result>>;
+                                        std::conditional_t<divides_units<Result, URes>,
+                                                           work_int_t<index_work_bits<Result, L, UL, R, UR, URes>>,
+                                                           wrap_work_t<Result>>>;
 
 // a / b for grid numbers, known at compile time to be an integer.
 constexpr grid_wide exact_quotient(const grid_rational& a, const grid_rational& b) noexcept {
@@ -479,7 +494,7 @@ constexpr Result from_value_index(const W& j) noexcept {
 // exact division when Unit is finer than its notch).
 template <insidable Result, grid_rational Unit, typename W>
 constexpr Result from_value_in_units(const W& j) noexcept {
-    if constexpr (point_storage<Result> || (anchored<Result> && Unit == notch_of<Result>))
+    if constexpr (!divides_units<Result, Unit>)
         return from_value_index<Result>(j);
     else if constexpr (index_storage<Result>) {
         constexpr grid_wide base  = exact_quotient(lower_of<Result>, Unit),

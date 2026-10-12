@@ -121,3 +121,45 @@ TEST(Audit20261012, tiny_double_predicates) {
     static_assert(conversion_overflows<unit>(-1e-20) && !conversion_rounds<unit>(-1e-20));
     static_assert(conversion_rounds<inside<{{0, 1}, per<100>}, round_nearest>>(-1e-20));
 }
+
+// An unanchored sum counted in half units passes 63 bits: the wrapping work
+// type then divided a wrapped value (−1 came out as INT64_MAX).
+TEST(Audit20261012, unanchored_sum_past_63_bits) {
+    static_assert([] {
+        constexpr std::int64_t p = std::int64_t{1} << 61;
+        constexpr rational     hi{2 * p - 1, 2}, lo{-2 * p - 1, 2};
+        using L = inside<{{lo, hi}, 1}>;
+        return L{-0.5} + L{-0.5} == -1 && L{hi} + L{hi} == 2 * p - 1 && L{lo} + L{lo} == -2 * p - 1 &&
+               L{hi} - L{lo} == 2 * p;
+    }());
+}
+
+// Fixed-point division on a 32-bit boundary: ja·K needs 32 value bits plus
+// the sign, but the work type was int32.
+TEST(Audit20261012, fixed_division_work_type) {
+    using L = inside<{{0, rational{2147483647, 2}}, per<2>}, round_nearest>;
+    using R = inside<{{rational{1, 2}, 1}, per<2>}>;
+    static_assert(L{rational{2147483647, 2}} / R{rational{1, 2}} == 2147483647);
+}
+
+// Checked rational / and + reported overflow for results that fit.
+TEST(Audit20261012, rational_ops_reduce_before_overflow) {
+    constexpr umax big = (umax{1} << 63) + 2;
+    static_assert(*(rational{big} / rational{big}) == rational{1});
+    static_assert(*(rational{big} / rational{big, 3u}) == rational{3});
+    static_assert(*detail::try_add(rational{(umax{1} << 63) + 1, 2u}, rational{1, 6}) ==
+                  rational{3 * (umax{1} << 62) + 2, 3u});
+    static_assert(*detail::try_add(rational{~umax{0}, 2u}, rational{1u, 2u}) == rational{umax{1} << 63});
+    static_assert(!detail::try_add(rational{~umax{0}}, rational{1}).has_value());
+}
+
+// INT64_MIN / -1 reaches 2^63: the quotient grid's endpoint wrapped in imax.
+TEST(Audit20261012, quotient_grid_reaches_2_pow_63) {
+    static_assert([] {
+        inside<{i64_min, 0}, snap> a{i64_min};
+        inside<{-2, -1}>           b{-1};
+        auto                       q = a / b;
+        using Q                      = decltype(q);
+        return rational(q) == rational{umax{1} << 63} && upper_of<Q> == rational{umax{1} << 63};
+    }());
+}

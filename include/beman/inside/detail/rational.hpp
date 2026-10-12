@@ -646,6 +646,35 @@ constexpr rational operator""_r() {
 // re-export block at the end of this header) so consumers spell grid values
 // without naming the internal representation type.
 
+// a + b exactly, for the checked add once a 64-bit step overflowed: the
+// numerator and lcm in 3 limbs, reduced, then checked to fit (a sum can
+// reduce back into range: (2^63+1)/2 + 1/6 = (3·2^62+2)/3).
+template <bool Loud>
+BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE constexpr std::expected<rational, errc> add_wide(rational a, rational b) {
+    using W       = wide_sint<3>;
+    const umax ad = abs_den(a.Denominator), bd = abs_den(b.Denominator), g = std::gcd(ad, bd);
+    const W    an  = a.Denominator < 0 ? -W{a.Numerator} : W{a.Numerator};
+    const W    bn  = b.Denominator < 0 ? -W{b.Numerator} : W{b.Numerator};
+    W          num = an * W{bd / g} + bn * W{ad / g};
+    W          den = W{ad} * W{bd / g};
+    if (num.is_zero())
+        return rational{0};
+    W x = num.negative() ? -num : num, y = den; // gcd(|num|, den)
+    while (!y.is_zero()) {
+        const W t = x % y;
+        x         = y;
+        y         = t;
+    }
+    num            = num / x;
+    den            = den / x;
+    const bool neg = num.negative();
+    const W    mag = neg ? -num : num;
+    if (W{std::numeric_limits<umax>::max()} < mag || W{std::numeric_limits<imax>::max()} < den)
+        return fail<"rational +: result out of the 64-bit range", Loud>(errc::overflow);
+    const imax d = static_cast<imax>(static_cast<umax>(den));
+    return make_raw(static_cast<umax>(mag), neg ? -d : d);
+}
+
 //---------------------------------------------------------------------------
 // add_impl / mul_impl / div_impl — shared bodies (Checked toggles overflow)
 //---------------------------------------------------------------------------
@@ -839,10 +868,21 @@ inline constexpr auto rational::div_impl(const rational& a, const rational& b) {
     using ret_t = std::conditional_t<Checked, std::expected<rational, errc>, rational>;
 
     if constexpr (Checked) {
-        auto inv_b = inv_impl<true, Loud>(b);
-        if (!inv_b.has_value())
-            return ret_t{std::unexpected{inv_b.error()}};
-        return mul_impl<true, Loud>(a, *inv_b);
+        // Cross-reduce a.N/b.N and b.D/a.D first: b.N need not fit the
+        // denominator alone (x/x with x > 2^63 is 1).
+        if (b.Numerator == 0)
+            return ret_t{fail<"rational /: division by zero", Loud>(errc::division_by_zero)};
+        if (a.Numerator == 0)
+            return ret_t{0_r};
+        const umax g1 = std::gcd(a.Numerator, b.Numerator);
+        const umax g2 = std::gcd(abs_den(a.Denominator), abs_den(b.Denominator));
+        umax       num, den;
+        if (mul_overflow(a.Numerator / g1, abs_den(b.Denominator) / g2, &num) ||
+            mul_overflow(abs_den(a.Denominator) / g2, b.Numerator / g1, &den) ||
+            den > static_cast<umax>(std::numeric_limits<imax>::max()))
+            return ret_t{fail<"rational /: numerator or denominator overflow", Loud>(errc::overflow)};
+        const bool neg = (a.Denominator < 0) != (b.Denominator < 0);
+        return ret_t{make_raw(num, neg ? -static_cast<imax>(den) : static_cast<imax>(den))};
     } else
         return mul_impl<false>(a, inv_impl<false>(b));
 }
@@ -964,8 +1004,13 @@ concept rational_lift_operands =
 // Compound assignments unwrap with .value() — std::bad_expected_access on
 // overflow; callers needing a non-throwing path use the binary operators.
 //---------------------------------------------------------------------------
+// add_impl fails on a 64-bit step's overflow; the sum may still fit once
+// reduced, which add_wide (cold) settles.
 [[nodiscard]] inline constexpr std::expected<rational, errc> operator+(const rational& lhs, const rational& rhs) {
-    return rational::add_impl<true>(lhs, rhs);
+    const auto r = rational::add_impl<true, false>(lhs, rhs);
+    if (!r) [[unlikely]]
+        return add_wide<true>(lhs, rhs);
+    return r;
 }
 
 [[nodiscard]] inline constexpr std::expected<rational, errc> operator-(const rational& lhs, const rational& rhs) {
@@ -984,10 +1029,13 @@ concept rational_lift_operands =
 // even in constant evaluation (the operators make it a compile error there).
 // For compile-time code that asks whether a result fits.
 [[nodiscard]] inline constexpr std::expected<rational, errc> try_add(const rational& a, const rational& b) {
-    return rational::add_impl<true, false>(a, b);
+    const auto r = rational::add_impl<true, false>(a, b);
+    if (!r) [[unlikely]]
+        return add_wide<false>(a, b);
+    return r;
 }
 [[nodiscard]] inline constexpr std::expected<rational, errc> try_sub(const rational& a, const rational& b) {
-    return rational::add_impl<true, false>(a, -b);
+    return try_add(a, -b);
 }
 [[nodiscard]] inline constexpr std::expected<rational, errc> try_mul(const rational& a, const rational& b) {
     return rational::mul_impl<true, false>(a, b);

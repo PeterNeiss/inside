@@ -145,10 +145,13 @@ TEST(CoverageCornersTest, rational_gcd_lcm_that_overflows_umax_returns_overflow)
 // rational add: numerator sum overflow on unequal denominators
 TEST(CoverageCornersTest, rational_add_numerator_sum_overflow_on_unequal_denominators) {
     // Denominators 2 and 6 (odd numerators so neither reduces). After cross-
-    // multiply A = num_a*3, B = num_b*1 each fit in umax, but A + B exceeds 2^64.
+    // multiply A = num_a*3, B = num_b*1 each fit in umax, but A + B exceeds
+    // 2^64 — the sum reduces back by 2: 18999999999999999994/6.
     rational a{5999999999999999999u, 2}; // odd numerator -> stays /2
     rational b{999999999999999997u, 6};  // coprime to 6   -> stays /6
-    ASSERT_FALSE((a + b).has_value());
+    ASSERT_EQ(*(a + b), (rational{9499999999999999997u, 3}));
+    // One that stays past 2^64: (2^64 − 1)/2 + 2^63/3 = (5·2^63 − 3)/6.
+    ASSERT_FALSE((rational{18446744073709551615u, 2} + rational{9223372036854775808u, 3}).has_value());
 }
 
 //---------------------------------------------------------------------------
