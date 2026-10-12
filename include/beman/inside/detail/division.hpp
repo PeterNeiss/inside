@@ -413,11 +413,11 @@ constexpr auto modulo<L, R, F>::mod(L lhs, R rhs, policy<G, E> policy, A&& actio
         // Integer values past imax: r = a − round(a/b)·b in exact wide integers.
         constexpr bool zero_unchecked = divisor_unchecked<L, R, F, G>;
         using I                       = wide_sint<exact_limbs<L, R, result>>;
-        const I b{trunc(exact_of(rhs))};
+        const I b                     = value_in_units<I, grid_rational{1}>(rhs); // integer values: no division
         if constexpr (!zero_unchecked)
             if (b.is_zero())
                 return report_or_unexpected<result>(action, policy, errc::division_by_zero, "division by zero in mod");
-        const I a{trunc(exact_of(lhs))};
+        const I a = value_in_units<I, grid_rational{1}>(lhs);
         return exact_result<result>(exact_frac<exact_limbs<L, R, result>>{a - rounded_div<rmode>(a, b) * b, I{1}});
     } else {
         using T                       = native_div_t<L, R>;

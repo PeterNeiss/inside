@@ -7812,11 +7812,11 @@ constexpr auto modulo<L, R, F>::mod(L lhs, R rhs, policy<G, E> policy, A&& actio
         // Integer values past imax: r = a − round(a/b)·b in exact wide integers.
         constexpr bool zero_unchecked = divisor_unchecked<L, R, F, G>;
         using I                       = wide_sint<exact_limbs<L, R, result>>;
-        const I b{trunc(exact_of(rhs))};
+        const I b                     = value_in_units<I, grid_rational{1}>(rhs); // integer values: no division
         if constexpr (!zero_unchecked)
             if (b.is_zero())
                 return report_or_unexpected<result>(action, policy, errc::division_by_zero, "division by zero in mod");
-        const I a{trunc(exact_of(lhs))};
+        const I a = value_in_units<I, grid_rational{1}>(lhs);
         return exact_result<result>(exact_frac<exact_limbs<L, R, result>>{a - rounded_div<rmode>(a, b) * b, I{1}});
     } else {
         using T                       = native_div_t<L, R>;
@@ -16140,10 +16140,13 @@ struct std::formatter<beman::inside::inside<G, P>>
         else if (!this->HasSpec)
             return std::format_to(ctx.out(), "{}", beman::inside::to_string(b));
         else {
-            const auto  v     = d::exact_of(b);
-            std::string plain = beman::inside::to_string(b);
-            if (!plain.empty() && plain[0] == '-')
-                plain.erase(0, 1);
+            const auto  v = d::exact_of(b);
+            std::string plain; // the shortest form, read only without a type or precision
+            if (this->Numeric.Type == 0 && this->Numeric.Precision < 0) {
+                plain = beman::inside::to_string(b);
+                if (!plain.empty() && plain[0] == '-')
+                    plain.erase(0, 1);
+            }
             const bool neg = d::spec_negative(v);
             return this->Numeric.write(
                 neg,
@@ -16161,9 +16164,12 @@ struct std::formatter<beman::inside::detail::rational>
         namespace d = beman::inside::detail;
         if (!HasSpec)
             return std::format_to(ctx.out(), "{}", beman::inside::to_string(r));
-        std::string plain = beman::inside::to_string(r);
-        if (!plain.empty() && plain[0] == '-')
-            plain.erase(0, 1);
+        std::string plain; // the shortest form, read only without a type or precision
+        if (Numeric.Type == 0 && Numeric.Precision < 0) {
+            plain = beman::inside::to_string(r);
+            if (!plain.empty() && plain[0] == '-')
+                plain.erase(0, 1);
+        }
         const bool neg = r.Denominator < 0 && r.Numerator != 0;
         return Numeric.write(neg,
                              Numeric.body(d::wide_uint<1>{r.Numerator},

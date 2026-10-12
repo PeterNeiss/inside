@@ -624,10 +624,13 @@ struct std::formatter<beman::inside::inside<G, P>>
         else if (!this->HasSpec)
             return std::format_to(ctx.out(), "{}", beman::inside::to_string(b));
         else {
-            const auto  v     = d::exact_of(b);
-            std::string plain = beman::inside::to_string(b);
-            if (!plain.empty() && plain[0] == '-')
-                plain.erase(0, 1);
+            const auto  v = d::exact_of(b);
+            std::string plain; // the shortest form, read only without a type or precision
+            if (this->Numeric.Type == 0 && this->Numeric.Precision < 0) {
+                plain = beman::inside::to_string(b);
+                if (!plain.empty() && plain[0] == '-')
+                    plain.erase(0, 1);
+            }
             const bool neg = d::spec_negative(v);
             return this->Numeric.write(
                 neg,
@@ -645,9 +648,12 @@ struct std::formatter<beman::inside::detail::rational>
         namespace d = beman::inside::detail;
         if (!HasSpec)
             return std::format_to(ctx.out(), "{}", beman::inside::to_string(r));
-        std::string plain = beman::inside::to_string(r);
-        if (!plain.empty() && plain[0] == '-')
-            plain.erase(0, 1);
+        std::string plain; // the shortest form, read only without a type or precision
+        if (Numeric.Type == 0 && Numeric.Precision < 0) {
+            plain = beman::inside::to_string(r);
+            if (!plain.empty() && plain[0] == '-')
+                plain.erase(0, 1);
+        }
         const bool neg = r.Denominator < 0 && r.Numerator != 0;
         return Numeric.write(neg,
                              Numeric.body(d::wide_uint<1>{r.Numerator},
