@@ -287,3 +287,18 @@ TEST(Audit20261012, bounded_continuous_rounds_onto_the_bound) {
                   rational{-1, 3});
     EXPECT_FALSE((inside<grid{interval{0, 1}, max_denominator{2}}>::try_make(rational{1, 3}).has_value()));
 }
+
+// Directed rounding of a result that nears a grid point beyond the precision
+// cap: the deep step decides it (tanh(50) floor gave 1).
+TEST(Audit20261012, math_deep_step_at_the_cap) {
+    using F  = inside<{{-1, 1}, per<65536>}, round_floor>;
+    using C  = inside<{{-1, 1}, per<65536>}, round_ceil>;
+    using In = inside<{-100, 100}>;
+    EXPECT_EQ(math::tanh_into<F>(In{50}), rational(65535, 65536));
+    EXPECT_EQ(math::tanh_into<C>(In{-50}), rational(-65535, 65536));
+    using EC = inside<{{0, 1}, per<1024>}, round_ceil>;
+    EXPECT_EQ(math::exp_into<EC>(inside<{-100, 0}>{-60}), rational(1, 1024));
+    using X  = inside<{{0, 1}, per<(std::uint64_t{1} << 40)>}>;
+    using SF = inside<{{0, 1}, per<(std::uint64_t{1} << 40)>}, round_floor>;
+    EXPECT_EQ(math::sin_into<SF>(X{rational{3u, std::uint64_t{1} << 40}}).raw(), 2u);
+}

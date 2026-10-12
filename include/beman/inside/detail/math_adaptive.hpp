@@ -571,7 +571,22 @@ constexpr auto midpoint(const approx<K>& a) noexcept {
 // exact rational (taken as is). It starts at W0 and doubles W while the
 // result is undecided, up to Cap.
 //---------------------------------------------------------------------------
-template <insidable Out, int W, int Cap, typename Core, typename P>
+// The deep step: a function whose results come close to a grid point by an
+// amount the input bounds (tanh x → 1 as 2e^−2x, sin x → x by x³/6, e^x → 0)
+// declares deep_extra, the bits past W0 that separate such a result from
+// the point. Still undecided at the cap, the driver runs once at W0 +
+// deep_extra before it falls back to the nearest slot.
+inline constexpr int deep_limit = 2048; // past it a result stays the cap's guess
+
+template <typename Core, int W0>
+inline constexpr int deep_bits = [] {
+    if constexpr (requires { Core::deep_extra; })
+        return W0 + (Core::deep_extra < deep_limit ? Core::deep_extra : deep_limit);
+    else
+        return 0;
+}();
+
+template <insidable Out, int W, int Cap, int Deep, typename Core, typename P>
 constexpr Out evaluate_from(const Core& core, P&& policy) {
     const auto a = core.template run<W>();
     if constexpr (!notched<Out>) {
@@ -590,10 +605,13 @@ constexpr Out evaluate_from(const Core& core, P&& policy) {
         const auto d = decide<Out>(a);
         if (d.Decided)
             return store<Out>(d.Index, policy);
-        if constexpr (2 * W > Cap)
-            return store<Out>(nearest_index<Out>(a), policy);
-        else
-            return evaluate_from<Out, 2 * W, Cap>(core, policy);
+        if constexpr (2 * W > Cap) {
+            if constexpr (Deep > W)
+                return evaluate_from<Out, Deep, Deep, 0>(core, policy); // once, then the guess
+            else
+                return store<Out>(nearest_index<Out>(a), policy);
+        } else
+            return evaluate_from<Out, 2 * W, Cap, Deep>(core, policy);
     }
 }
 
@@ -607,14 +625,15 @@ constexpr Out evaluate(const Core& core, P&& policy) {
     if constexpr (requires { core.exact(); })
         if (const auto e = core.exact())
             return store_exact<Out>(*e, policy);
-    return evaluate_from<Out, W0, precision_cap(W0)>(core, policy);
+    return evaluate_from<Out, W0, precision_cap(W0), deep_bits<Core, W0>>(core, policy);
 }
 
 //---------------------------------------------------------------------------
 // The table tier: for an input with few slots, every result is computed at
 // compile time (the same driver, so the same correctly rounded slots) and a
 // call is one load. Only when every result lands inside Out's range — a
-// result the policy would clamp, wrap or report keeps the computed path.
+// result the policy would clamp, wrap or report keeps the computed path, as
+// does one that needs the deep step (too costly per slot at compile time).
 // BEMAN_INSIDE_MATH_TABLE_SLOTS sets the largest input (0 turns tables off).
 //---------------------------------------------------------------------------
 #ifndef BEMAN_INSIDE_MATH_TABLE_SLOTS
@@ -623,7 +642,7 @@ constexpr Out evaluate(const Core& core, P&& policy) {
 
 // Out's slot offset for core's result (escalating as evaluate does), or
 // −1 when it falls outside Out's range.
-template <insidable Out, int W, int Cap, typename Core>
+template <insidable Out, int W, int Cap, int Deep, typename Core>
 constexpr imax slot_from(const Core& core) {
     const auto a        = core.template run<W>();
     auto       in_range = [](const auto& i) -> imax {
@@ -634,9 +653,12 @@ constexpr imax slot_from(const Core& core) {
     if (wide_sint<limbs_of<decltype(a.Value)> + 2> j; quick_slot<Out>(a, j))
         return in_range(j);
     const auto d = decide<Out>(a);
-    if constexpr (2 * W <= Cap)
+    if constexpr (2 * W <= Cap) {
         if (!d.Decided)
-            return slot_from<Out, 2 * W, Cap>(core);
+            return slot_from<Out, 2 * W, Cap, Deep>(core);
+    } else if constexpr (Deep > W)
+        if (!d.Decided)
+            return imax{-1}; // needs the deep step: too costly per slot at compile time, so no table
     return in_range(d.Decided ? d.Index : nearest_index<Out>(a));
 }
 
@@ -649,7 +671,7 @@ constexpr imax slot_of(const Core& core) {
             constexpr I count = static_cast<I>(grid_of<Out>.slot_count());
             return (i.negative() || count < i) ? imax{-1} : static_cast<imax>(i);
         }
-    return slot_from<Out, W0, precision_cap(W0)>(core);
+    return slot_from<Out, W0, precision_cap(W0), deep_bits<Core, W0>>(core);
 }
 
 template <insidable In>

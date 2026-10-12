@@ -10364,7 +10364,22 @@ constexpr auto midpoint(const approx<K>& a) noexcept {
 // exact rational (taken as is). It starts at W0 and doubles W while the
 // result is undecided, up to Cap.
 //---------------------------------------------------------------------------
-template <insidable Out, int W, int Cap, typename Core, typename P>
+// The deep step: a function whose results come close to a grid point by an
+// amount the input bounds (tanh x → 1 as 2e^−2x, sin x → x by x³/6, e^x → 0)
+// declares deep_extra, the bits past W0 that separate such a result from
+// the point. Still undecided at the cap, the driver runs once at W0 +
+// deep_extra before it falls back to the nearest slot.
+inline constexpr int deep_limit = 2048; // past it a result stays the cap's guess
+
+template <typename Core, int W0>
+inline constexpr int deep_bits = [] {
+    if constexpr (requires { Core::deep_extra; })
+        return W0 + (Core::deep_extra < deep_limit ? Core::deep_extra : deep_limit);
+    else
+        return 0;
+}();
+
+template <insidable Out, int W, int Cap, int Deep, typename Core, typename P>
 constexpr Out evaluate_from(const Core& core, P&& policy) {
     const auto a = core.template run<W>();
     if constexpr (!notched<Out>) {
@@ -10383,10 +10398,13 @@ constexpr Out evaluate_from(const Core& core, P&& policy) {
         const auto d = decide<Out>(a);
         if (d.Decided)
             return store<Out>(d.Index, policy);
-        if constexpr (2 * W > Cap)
-            return store<Out>(nearest_index<Out>(a), policy);
-        else
-            return evaluate_from<Out, 2 * W, Cap>(core, policy);
+        if constexpr (2 * W > Cap) {
+            if constexpr (Deep > W)
+                return evaluate_from<Out, Deep, Deep, 0>(core, policy); // once, then the guess
+            else
+                return store<Out>(nearest_index<Out>(a), policy);
+        } else
+            return evaluate_from<Out, 2 * W, Cap, Deep>(core, policy);
     }
 }
 
@@ -10400,14 +10418,15 @@ constexpr Out evaluate(const Core& core, P&& policy) {
     if constexpr (requires { core.exact(); })
         if (const auto e = core.exact())
             return store_exact<Out>(*e, policy);
-    return evaluate_from<Out, W0, precision_cap(W0)>(core, policy);
+    return evaluate_from<Out, W0, precision_cap(W0), deep_bits<Core, W0>>(core, policy);
 }
 
 //---------------------------------------------------------------------------
 // The table tier: for an input with few slots, every result is computed at
 // compile time (the same driver, so the same correctly rounded slots) and a
 // call is one load. Only when every result lands inside Out's range — a
-// result the policy would clamp, wrap or report keeps the computed path.
+// result the policy would clamp, wrap or report keeps the computed path, as
+// does one that needs the deep step (too costly per slot at compile time).
 // BEMAN_INSIDE_MATH_TABLE_SLOTS sets the largest input (0 turns tables off).
 //---------------------------------------------------------------------------
 #ifndef BEMAN_INSIDE_MATH_TABLE_SLOTS
@@ -10416,7 +10435,7 @@ constexpr Out evaluate(const Core& core, P&& policy) {
 
 // Out's slot offset for core's result (escalating as evaluate does), or
 // −1 when it falls outside Out's range.
-template <insidable Out, int W, int Cap, typename Core>
+template <insidable Out, int W, int Cap, int Deep, typename Core>
 constexpr imax slot_from(const Core& core) {
     const auto a        = core.template run<W>();
     auto       in_range = [](const auto& i) -> imax {
@@ -10427,9 +10446,12 @@ constexpr imax slot_from(const Core& core) {
     if (wide_sint<limbs_of<decltype(a.Value)> + 2> j; quick_slot<Out>(a, j))
         return in_range(j);
     const auto d = decide<Out>(a);
-    if constexpr (2 * W <= Cap)
+    if constexpr (2 * W <= Cap) {
         if (!d.Decided)
-            return slot_from<Out, 2 * W, Cap>(core);
+            return slot_from<Out, 2 * W, Cap, Deep>(core);
+    } else if constexpr (Deep > W)
+        if (!d.Decided)
+            return imax{-1}; // needs the deep step: too costly per slot at compile time, so no table
     return in_range(d.Decided ? d.Index : nearest_index<Out>(a));
 }
 
@@ -10442,7 +10464,7 @@ constexpr imax slot_of(const Core& core) {
             constexpr I count = static_cast<I>(grid_of<Out>.slot_count());
             return (i.negative() || count < i) ? imax{-1} : static_cast<imax>(i);
         }
-    return slot_from<Out, W0, precision_cap(W0)>(core);
+    return slot_from<Out, W0, precision_cap(W0), deep_bits<Core, W0>>(core);
 }
 
 template <insidable In>
@@ -12988,10 +13010,20 @@ constexpr fx<K> asin_sqrt(const exact_frac<E>& y) noexcept {
 template <std::size_t E>
 using maybe_exact = std::optional<exact_frac<E>>;
 
+// deep_extra helpers (bits, saturating at the driver's deep_limit): ⌈2^Mag ·
+// milli / 1000⌉ bits for a result that nears a grid point like 2^(−c·|x|),
+// |x| < 2^Mag; and the larger of two bounds.
+constexpr int deep_scaled(int mag, int milli) noexcept {
+    return mag >= 20 ? deep_limit : static_cast<int>(((imax{1} << mag) * milli + 999) / 1000);
+}
+constexpr int deep_max(int a, int b) noexcept { return a > b ? a : b; }
+
 // exp x. Exact only at 0.
 template <std::size_t E, int Mag, int KMax>
 struct exp_core {
-    exact_frac<E>            X;
+    exact_frac<E> X;
+    // e^−|x| near 0 (1.443·|x| bits), e^x = 1 + x + x²/2 near 1 + x.
+    static constexpr int     deep_extra = deep_max(deep_scaled(Mag, 1443), 2 * frac_bits<E>);
     constexpr maybe_exact<E> exact() const { return is_zero(X) ? maybe_exact<E>{exact_one<E>()} : std::nullopt; }
     template <int W>
     constexpr auto run() const {
@@ -13006,6 +13038,8 @@ struct exp_core {
 template <std::size_t E, int Mag, int KMax>
 struct exp2_core {
     exact_frac<E> X;
+    // 2^−|x| near 0 (|x| bits), 2^x near 1 for a small x.
+    static constexpr int deep_extra = deep_max(deep_scaled(Mag, 1000), 2 * frac_bits<E>);
     template <int W>
     constexpr auto run() const {
         constexpr int S         = W + 8 + KMax;
@@ -13184,7 +13218,9 @@ enum class trig { sin, cos, tan };
 
 template <std::size_t E, int Mag, trig Fn, int KMax>
 struct trig_core {
-    exact_frac<E>            X;
+    exact_frac<E> X;
+    // sin x = x − x³/6 near x, cos x = 1 − x²/2 near 1 (tan: none).
+    static constexpr int     deep_extra = Fn == trig::sin ? 3 * frac_bits<E> : Fn == trig::cos ? 2 * frac_bits<E> : 0;
     constexpr maybe_exact<E> exact() const {
         if (!is_zero(X))
             return std::nullopt;
@@ -13359,7 +13395,12 @@ enum class hyp { sinh, cosh, tanh };
 
 template <std::size_t E, int Mag, hyp Fn, int KMax>
 struct hyp_core {
-    exact_frac<E>            X;
+    exact_frac<E> X;
+    // tanh |x| = 1 − 2e^−2|x| near 1 (2.886·|x| bits) and x − x³/3 near x;
+    // sinh near x by x³/6, cosh near 1 by x²/2.
+    static constexpr int     deep_extra = Fn == hyp::tanh   ? deep_max(deep_scaled(Mag, 2886), 3 * frac_bits<E>)
+                                          : Fn == hyp::sinh ? 3 * frac_bits<E>
+                                                            : 2 * frac_bits<E>;
     constexpr maybe_exact<E> exact() const {
         if (!is_zero(X))
             return std::nullopt;

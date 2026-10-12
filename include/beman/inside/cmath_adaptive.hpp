@@ -157,10 +157,20 @@ constexpr fx<K> asin_sqrt(const exact_frac<E>& y) noexcept {
 template <std::size_t E>
 using maybe_exact = std::optional<exact_frac<E>>;
 
+// deep_extra helpers (bits, saturating at the driver's deep_limit): ⌈2^Mag ·
+// milli / 1000⌉ bits for a result that nears a grid point like 2^(−c·|x|),
+// |x| < 2^Mag; and the larger of two bounds.
+constexpr int deep_scaled(int mag, int milli) noexcept {
+    return mag >= 20 ? deep_limit : static_cast<int>(((imax{1} << mag) * milli + 999) / 1000);
+}
+constexpr int deep_max(int a, int b) noexcept { return a > b ? a : b; }
+
 // exp x. Exact only at 0.
 template <std::size_t E, int Mag, int KMax>
 struct exp_core {
-    exact_frac<E>            X;
+    exact_frac<E> X;
+    // e^−|x| near 0 (1.443·|x| bits), e^x = 1 + x + x²/2 near 1 + x.
+    static constexpr int     deep_extra = deep_max(deep_scaled(Mag, 1443), 2 * frac_bits<E>);
     constexpr maybe_exact<E> exact() const { return is_zero(X) ? maybe_exact<E>{exact_one<E>()} : std::nullopt; }
     template <int W>
     constexpr auto run() const {
@@ -175,6 +185,8 @@ struct exp_core {
 template <std::size_t E, int Mag, int KMax>
 struct exp2_core {
     exact_frac<E> X;
+    // 2^−|x| near 0 (|x| bits), 2^x near 1 for a small x.
+    static constexpr int deep_extra = deep_max(deep_scaled(Mag, 1000), 2 * frac_bits<E>);
     template <int W>
     constexpr auto run() const {
         constexpr int S         = W + 8 + KMax;
@@ -353,7 +365,9 @@ enum class trig { sin, cos, tan };
 
 template <std::size_t E, int Mag, trig Fn, int KMax>
 struct trig_core {
-    exact_frac<E>            X;
+    exact_frac<E> X;
+    // sin x = x − x³/6 near x, cos x = 1 − x²/2 near 1 (tan: none).
+    static constexpr int     deep_extra = Fn == trig::sin ? 3 * frac_bits<E> : Fn == trig::cos ? 2 * frac_bits<E> : 0;
     constexpr maybe_exact<E> exact() const {
         if (!is_zero(X))
             return std::nullopt;
@@ -528,7 +542,12 @@ enum class hyp { sinh, cosh, tanh };
 
 template <std::size_t E, int Mag, hyp Fn, int KMax>
 struct hyp_core {
-    exact_frac<E>            X;
+    exact_frac<E> X;
+    // tanh |x| = 1 − 2e^−2|x| near 1 (2.886·|x| bits) and x − x³/3 near x;
+    // sinh near x by x³/6, cosh near 1 by x²/2.
+    static constexpr int     deep_extra = Fn == hyp::tanh   ? deep_max(deep_scaled(Mag, 2886), 3 * frac_bits<E>)
+                                          : Fn == hyp::sinh ? 3 * frac_bits<E>
+                                                            : 2 * frac_bits<E>;
     constexpr maybe_exact<E> exact() const {
         if (!is_zero(X))
             return std::nullopt;
