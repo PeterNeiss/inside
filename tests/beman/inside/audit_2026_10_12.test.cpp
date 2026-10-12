@@ -90,3 +90,34 @@ TEST(Audit20261012, quotient_grid_of_unanchored_divisor) {
     }());
     static_assert(!(grid{0, 10} / grid{{0, 1}, 0}).has_value()); // unbounded continuous divisor
 }
+
+// rational{unsigned, unsigned} with a den past imax: the cast to the signed
+// denominator flipped the sign silently.
+TEST(Audit20261012, two_unsigned_rational_rejects_large_den) {
+    EXPECT_THROW((void)(rational{1u, 0x8000'0000'0000'0001ull}), inside_error);
+    static_assert(rational{1u, 0x7FFF'FFFF'FFFF'FFFFull} > rational{0});
+}
+
+// A double finer than 2^-62 lost its low bits (truncated toward zero) on the
+// way to rational: ceil stored 0, a strict grid stored 0 without
+// rounding_error, and comparisons saw the truncated value.
+TEST(Audit20261012, tiny_double_is_exact) {
+    using cent_ceil = inside<{{0, 1}, per<100>}, round_ceil>;
+    static_assert(cent_ceil{1e-20} == rational{1, 100});
+    static_assert(inside<{{0, 1}, per<100000>}, round_ceil>{1e-5} == rational{2, 100000}); // 1e-5 is above 10^-5
+    static_assert(inside<{{0, 1}, per<100>}, round_floor>{1e-20} == 0);
+    using cent = inside<{{0, 1}, per<100>}>;
+    EXPECT_FALSE(cent::try_make(1e-20).has_value());
+    EXPECT_FALSE((inside<{{0, 1}, per<100>}, round_floor>::try_make(-1e-20).has_value())); // floors to -0.01
+    EXPECT_EQ((inside<{{0, 1}, per<100>}, round_ceil>{-1e-20}), 0);
+    EXPECT_FALSE((inside<grid{interval{0, 1}, 0}>::try_make(1e-20).has_value())); // no 64-bit rational holds it
+    constexpr inside<grid{interval{0, 1}, 0}> zero{0};
+    static_assert(zero < 1e-20 && zero != 1e-20);
+}
+
+TEST(Audit20261012, tiny_double_predicates) {
+    using unit = inside<{{0, 1}, per<100>}>;
+    static_assert(conversion_rounds<unit>(1e-20) && !conversion_overflows<unit>(1e-20));
+    static_assert(conversion_overflows<unit>(-1e-20) && !conversion_rounds<unit>(-1e-20));
+    static_assert(conversion_rounds<inside<{{0, 1}, per<100>}, round_nearest>>(-1e-20));
+}

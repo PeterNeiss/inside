@@ -594,17 +594,47 @@ struct assignment<L, R> {
         return {static_cast<umax>(r.Index), r.Exact}; // in range: fits 64 bits
     }
 
+    // The source as a rational, converted once. A double finer than 2^-62
+    // has no exact 64-bit rational (rational{d} truncates it toward zero):
+    // `exact` comes back false, and the store takes its exact value through
+    // store_fine_double, so it rounds, or reports rounding_error, by its true
+    // value.
+    static constexpr rational source_of(const R& rhs, bool& exact) {
+        if constexpr (std::floating_point<R>)
+            return rational_of_double(static_cast<double>(rhs), exact);
+        else
+            return rational{rhs};
+    }
+    // Out of line, and by value (an empty action too): a reference to a
+    // caller's local would make it escape the hot path's frame.
+    template <typename P, typename A>
+    BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE static constexpr L fine_double_value(double rhs, P policy, A action) {
+        L lhs{};
+        assign_exact<R>(lhs, exact_of_double(rhs), policy, std::forward<A>(action));
+        return lhs;
+    }
+    template <typename P, typename A>
+    static constexpr void store_fine_double(L& lhs, double rhs, P&& policy, A&& action) {
+        using Act = std::conditional_t<std::is_empty_v<plain_t<A>>, plain_t<A>, A&&>;
+        lhs       = fine_double_value<plain_t<P>, Act>(rhs, policy, std::forward<A>(action));
+    }
+
     template <typename P, typename A = no_action>
     static constexpr void store_checked(L& lhs, R rhs, P&& policy, A&& action = {}) {
         if constexpr (rational_storage<L>) {
+            bool           exact = true;
+            const rational rv    = source_of(rhs, exact);
+            if constexpr (std::floating_point<R>)
+                if (!exact) [[unlikely]]
+                    return store_fine_double(lhs, static_cast<double>(rhs), policy, action);
             // Continuous: store verbatim. A bounded grid's values have
             // denominators ≤ its bound: one past it is off the grid, reported
             // under every policy but unsafe (no rounding onto a bound yet).
             if constexpr (grid_of<L>.MaxDenominator != 0)
-                if (abs_den(rational{rhs}.Denominator) > to_rational(grid_of<L>.MaxDenominator).Numerator &&
+                if (abs_den(rv.Denominator) > to_rational(grid_of<L>.MaxDenominator).Numerator &&
                     (std::is_constant_evaluated() || is_checked(policy_of<L> | plain_t<P>::Flags))) [[unlikely]]
                     return report_failure(lhs, policy, action, errc::rounding_error);
-            lhs = L::from_raw(rhs);
+            lhs = L::from_raw(rv);
         } else if constexpr (detail::point_grid<L>)
             lhs = L::from_raw({}); // a point: its value is the type
         else {
@@ -632,6 +662,11 @@ struct assignment<L, R> {
                 store_slot(static_cast<umax>(j - lo));
                 return;
             }
+            bool           exact = true;
+            const rational rv    = source_of(rhs, exact);
+            if constexpr (std::floating_point<R>)
+                if (!exact) [[unlikely]]
+                    return store_fine_double(lhs, static_cast<double>(rhs), policy, action);
 
             // Q-format integer shortcut: with integer Lower and notch 1/K the offset is
             // (num − Lo·aden)·K / aden — integer ops instead of two rational ops.
@@ -661,8 +696,7 @@ struct assignment<L, R> {
                 }();
                 constexpr umax kMaxDen = static_cast<umax>(std::numeric_limits<imax>::max()) / kKM;
 
-                const rational rv{rhs}; // exact (copy for rational R)
-                const umax     aden = abs_den(rv.Denominator);
+                const umax aden = abs_den(rv.Denominator);
                 if (kMaxDen != 0 && aden <= kMaxDen) {
                     // The offset (num − Lo·aden)·K / aden, unreduced: round_quotient
                     // rounds it as the reduced fraction would, and kMaxDen keeps the
@@ -687,8 +721,7 @@ struct assignment<L, R> {
             // denominator of Notch and Lower, Notch = sN/K and Lower = m/K, the
             // offset is (num·K − m·aden)/(aden·sN), reduced by g = gcd(aden, K).
             if constexpr (unanchored_codec<L>.Ok) {
-                constexpr auto c = unanchored_codec<L>;
-                const rational rv{rhs};
+                constexpr auto c    = unanchored_codec<L>;
                 const umax     aden = abs_den(rv.Denominator);
                 if (aden <= c.MaxDen) {
                     const umax g    = std::gcd(aden, static_cast<umax>(c.K));
@@ -711,9 +744,9 @@ struct assignment<L, R> {
             // source denominator × fine notch): take the slot from the exact wide
             // index instead (rhs is in range, so it fits L's raw). Rounding is
             // the value-space rule, as everywhere else.
-            const auto quotient = (rhs - detail::lower64<L>) / detail::notch64<L>;
+            const auto quotient = (rv - detail::lower64<L>) / detail::notch64<L>;
             if (!quotient.has_value()) [[unlikely]] {
-                const wide_slot_result slot = wide_slot<P>(rational{rhs});
+                const wide_slot_result slot = wide_slot<P>(rv);
                 if constexpr (!has_round_flag)
                     if (!slot.Exact && policy.round_check()) [[unlikely]]
                         return report_failure(lhs, policy, action, errc::rounding_error);
@@ -813,6 +846,10 @@ struct assignment<L, R> {
                     return assign_exact<R>(
                         lhs, exact_of_large<L>(static_cast<double>(rhs)), policy, std::forward<A>(action));
                 }
+            if constexpr (std::floating_point<R>)
+                if (!abs_fraction_exact(static_cast<double>(rhs))) [[unlikely]] // finer than 2^-62
+                    return assign_exact<R>(
+                        lhs, exact_of_double(static_cast<double>(rhs)), policy, std::forward<A>(action));
             return assign_exact<R>(lhs, exact_of(rational{rhs}), policy, std::forward<A>(action));
         } else
             return assign_builtin(lhs, rhs, policy, std::forward<A>(action));
@@ -834,6 +871,11 @@ struct assignment<L, R> {
             }
 
         if (out_of_interval(rhs)) [[unlikely]] {
+            if constexpr (std::floating_point<R>)
+                if (!abs_fraction_exact(static_cast<double>(rhs))) {
+                    store_fine_double(lhs, static_cast<double>(rhs), policy, action);
+                    return lhs;
+                }
             // Round first: a value just outside may round onto an endpoint.
             if constexpr (rounds_before_range_check<L, plain_t<P>>)
                 if (!huge(rhs))

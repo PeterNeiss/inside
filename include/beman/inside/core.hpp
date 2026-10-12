@@ -983,9 +983,12 @@ constexpr auto compare_scalar(const B& lhs, A rhs, Cmp cmp) {
     else {
         // |rhs| ≥ 2^64 (or infinite) has no rational form, and every grid value
         // lies strictly inside ±2^64: the sign of rhs decides.
-        if constexpr (std::floating_point<A>)
+        if constexpr (std::floating_point<A>) {
             if (rhs == rhs && !(rhs < 0x1p64 && rhs > -0x1p64))
                 return cmp(rational{0}, rational{rhs < 0 ? -1 : 1});
+            if (!abs_fraction_exact(static_cast<double>(rhs))) [[unlikely]] // finer than 2^-62
+                return cmp(exact_of(lhs), exact_of_double(static_cast<double>(rhs)));
+        }
         return cmp(as_rational(lhs), rational{rhs});
     }
 }

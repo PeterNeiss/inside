@@ -152,11 +152,24 @@ constexpr double ldexp(double value, int exp) noexcept {
 // bare-metal clean; the same idiom is used in the store paths.
 constexpr bool is_finite(double v) noexcept { return v - v == 0; }
 
+// Whether abs_fraction keeps a finite double exactly below 2^64: its reduced
+// denominator is at most 2^62 (the bits past that are dropped). Every |value|
+// ≥ 2^-10 qualifies; smaller ones need enough trailing zero bits.
+constexpr bool abs_fraction_exact(double value) noexcept {
+    const auto bits = std::bit_cast<std::uint64_t>(value) & 0x7FFF'FFFF'FFFF'FFFF;
+    const int  e    = static_cast<int>(bits >> 52);
+    if (e >= 1023 - 10 || bits == 0)
+        return true;
+    const umax significand = (bits & 0x000F'FFFF'FFFF'FFFF) | (e != 0 ? umax{1} << 52 : 0);
+    const int  exp2        = e != 0 ? e - 1023 - 52 : 1 - 1023 - 52;
+    return exp2 + std::countr_zero(significand) >= -62;
+}
+
 // Exact conversion of a finite double to num/den (den a power of two), the
 // engine behind rational(double). A finite double is exactly
 // `significand · 2^exp2` (a 53-bit significand), both read straight from the
 // IEEE-754 bits — no <cmath>, no FPU rounding, bit-identical across platforms.
-constexpr std::pair<umax, umax> abs_fraction(double value) {
+constexpr std::pair<umax, umax> abs_fraction(double value, bool& exact) {
     if (not is_finite(value))
         raise(errc::not_finite, "beman::inside::detail::abs_fraction: non-finite double");
 
@@ -200,6 +213,7 @@ constexpr std::pair<umax, umax> abs_fraction(double value) {
     constexpr int max_pow = 62;
     if (den_pow > max_pow) {
         const int drop = den_pow - max_pow;
+        exact          = drop <= std::countr_zero(significand); // only zero bits dropped
         significand    = (drop >= 64) ? 0 : (significand >> drop);
         // Return canonical {0,1}: callers take this verbatim, so a non-canonical
         // {0, 2^62} would break the structural rational::operator==.
@@ -220,6 +234,10 @@ constexpr std::pair<umax, umax> abs_fraction(double value) {
         den >>= shift;
     }
     return {significand, den};
+}
+constexpr std::pair<umax, umax> abs_fraction(double value) {
+    bool exact = true;
+    return abs_fraction(value, exact);
 }
 
 } // namespace detail

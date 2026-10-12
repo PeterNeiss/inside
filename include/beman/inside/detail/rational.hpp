@@ -90,10 +90,11 @@ struct rational {
 
     // Two-unsigned overload: lets `rational{i, N}` accept two `size_t`
     // operands without forcing the caller to `static_cast<imax>` the
-    // numerator. Numerator is unsigned anyway; the cast on `den` is
-    // safe because the unsigned-integral concept exclude negative inputs.
+    // numerator. A den past imax has no signed denominator: overflow.
     template <std::unsigned_integral N, std::unsigned_integral D>
     constexpr rational(N num, D den) : Numerator{num}, Denominator{static_cast<imax>(den)} {
+        if (static_cast<umax>(den) > static_cast<umax>(std::numeric_limits<imax>::max()))
+            raise(errc::overflow, "rational: denominator past imax");
         canonicalize(Numerator, Denominator);
     }
 
@@ -332,6 +333,16 @@ constexpr rational::rational(std::floating_point auto value) {
     Numerator       = num;
     Denominator     = neg ? -den : den;
     // trim not needed, because abs_fraction already trims in its special case
+}
+
+// rational{value}, and whether it is exact: a finite |value| < 2^64 finer
+// than 2^-62 loses its low bits (truncated toward zero).
+constexpr rational rational_of_double(double value, bool& exact) {
+    exact = true;
+    if (value == 0.0)
+        return rational{0};
+    const auto [num, den] = abs_fraction(value < 0 ? -value : value, exact);
+    return make_raw(num, value < 0 ? -static_cast<imax>(den) : static_cast<imax>(den));
 }
 
 //---------------------------------------------------------------------------

@@ -1040,7 +1040,10 @@ fraction64 fraction_div(fraction64 a, fraction64 b) { return fraction_reduce(a.n
 
 static void bench_rational() {
     using continuous = inside<{{-8, 8}, 0}>; // a rational raw
-    std::vector<continuous> ea(kMask + 1), eb(kMask + 1), ep(kMask + 1);
+    // A divisor reaching 0 has no bounded quotient: the divisor excludes it.
+    using positive = inside<grid{interval{rational{1, 1024}, 8}, 0}>;
+    std::vector<continuous> ea(kMask + 1), eb(kMask + 1);
+    std::vector<positive>   ep(kMask + 1);
     std::vector<rational>   qa(kMask + 1), qb(kMask + 1);
     std::vector<fraction64> fa(kMask + 1), fb(kMask + 1), fp_(kMask + 1);
     std::vector<double>     da(kMask + 1), db(kMask + 1);

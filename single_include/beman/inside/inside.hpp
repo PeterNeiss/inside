@@ -470,11 +470,24 @@ constexpr double ldexp(double value, int exp) noexcept {
 // bare-metal clean; the same idiom is used in the store paths.
 constexpr bool is_finite(double v) noexcept { return v - v == 0; }
 
+// Whether abs_fraction keeps a finite double exactly below 2^64: its reduced
+// denominator is at most 2^62 (the bits past that are dropped). Every |value|
+// ≥ 2^-10 qualifies; smaller ones need enough trailing zero bits.
+constexpr bool abs_fraction_exact(double value) noexcept {
+    const auto bits = std::bit_cast<std::uint64_t>(value) & 0x7FFF'FFFF'FFFF'FFFF;
+    const int  e    = static_cast<int>(bits >> 52);
+    if (e >= 1023 - 10 || bits == 0)
+        return true;
+    const umax significand = (bits & 0x000F'FFFF'FFFF'FFFF) | (e != 0 ? umax{1} << 52 : 0);
+    const int  exp2        = e != 0 ? e - 1023 - 52 : 1 - 1023 - 52;
+    return exp2 + std::countr_zero(significand) >= -62;
+}
+
 // Exact conversion of a finite double to num/den (den a power of two), the
 // engine behind rational(double). A finite double is exactly
 // `significand · 2^exp2` (a 53-bit significand), both read straight from the
 // IEEE-754 bits — no <cmath>, no FPU rounding, bit-identical across platforms.
-constexpr std::pair<umax, umax> abs_fraction(double value) {
+constexpr std::pair<umax, umax> abs_fraction(double value, bool& exact) {
     if (not is_finite(value))
         raise(errc::not_finite, "beman::inside::detail::abs_fraction: non-finite double");
 
@@ -518,6 +531,7 @@ constexpr std::pair<umax, umax> abs_fraction(double value) {
     constexpr int max_pow = 62;
     if (den_pow > max_pow) {
         const int drop = den_pow - max_pow;
+        exact          = drop <= std::countr_zero(significand); // only zero bits dropped
         significand    = (drop >= 64) ? 0 : (significand >> drop);
         // Return canonical {0,1}: callers take this verbatim, so a non-canonical
         // {0, 2^62} would break the structural rational::operator==.
@@ -538,6 +552,10 @@ constexpr std::pair<umax, umax> abs_fraction(double value) {
         den >>= shift;
     }
     return {significand, den};
+}
+constexpr std::pair<umax, umax> abs_fraction(double value) {
+    bool exact = true;
+    return abs_fraction(value, exact);
 }
 
 } // namespace detail
@@ -1280,10 +1298,11 @@ struct rational {
 
     // Two-unsigned overload: lets `rational{i, N}` accept two `size_t`
     // operands without forcing the caller to `static_cast<imax>` the
-    // numerator. Numerator is unsigned anyway; the cast on `den` is
-    // safe because the unsigned-integral concept exclude negative inputs.
+    // numerator. A den past imax has no signed denominator: overflow.
     template <std::unsigned_integral N, std::unsigned_integral D>
     constexpr rational(N num, D den) : Numerator{num}, Denominator{static_cast<imax>(den)} {
+        if (static_cast<umax>(den) > static_cast<umax>(std::numeric_limits<imax>::max()))
+            raise(errc::overflow, "rational: denominator past imax");
         canonicalize(Numerator, Denominator);
     }
 
@@ -1522,6 +1541,16 @@ constexpr rational::rational(std::floating_point auto value) {
     Numerator       = num;
     Denominator     = neg ? -den : den;
     // trim not needed, because abs_fraction already trims in its special case
+}
+
+// rational{value}, and whether it is exact: a finite |value| < 2^64 finer
+// than 2^-62 loses its low bits (truncated toward zero).
+constexpr rational rational_of_double(double value, bool& exact) {
+    exact = true;
+    if (value == 0.0)
+        return rational{0};
+    const auto [num, den] = abs_fraction(value < 0 ? -value : value, exact);
+    return make_raw(num, value < 0 ? -static_cast<imax>(den) : static_cast<imax>(den));
 }
 
 //---------------------------------------------------------------------------
@@ -6103,17 +6132,47 @@ struct assignment<L, R> {
         return {static_cast<umax>(r.Index), r.Exact}; // in range: fits 64 bits
     }
 
+    // The source as a rational, converted once. A double finer than 2^-62
+    // has no exact 64-bit rational (rational{d} truncates it toward zero):
+    // `exact` comes back false, and the store takes its exact value through
+    // store_fine_double, so it rounds, or reports rounding_error, by its true
+    // value.
+    static constexpr rational source_of(const R& rhs, bool& exact) {
+        if constexpr (std::floating_point<R>)
+            return rational_of_double(static_cast<double>(rhs), exact);
+        else
+            return rational{rhs};
+    }
+    // Out of line, and by value (an empty action too): a reference to a
+    // caller's local would make it escape the hot path's frame.
+    template <typename P, typename A>
+    BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE static constexpr L fine_double_value(double rhs, P policy, A action) {
+        L lhs{};
+        assign_exact<R>(lhs, exact_of_double(rhs), policy, std::forward<A>(action));
+        return lhs;
+    }
+    template <typename P, typename A>
+    static constexpr void store_fine_double(L& lhs, double rhs, P&& policy, A&& action) {
+        using Act = std::conditional_t<std::is_empty_v<plain_t<A>>, plain_t<A>, A&&>;
+        lhs       = fine_double_value<plain_t<P>, Act>(rhs, policy, std::forward<A>(action));
+    }
+
     template <typename P, typename A = no_action>
     static constexpr void store_checked(L& lhs, R rhs, P&& policy, A&& action = {}) {
         if constexpr (rational_storage<L>) {
+            bool           exact = true;
+            const rational rv    = source_of(rhs, exact);
+            if constexpr (std::floating_point<R>)
+                if (!exact) [[unlikely]]
+                    return store_fine_double(lhs, static_cast<double>(rhs), policy, action);
             // Continuous: store verbatim. A bounded grid's values have
             // denominators ≤ its bound: one past it is off the grid, reported
             // under every policy but unsafe (no rounding onto a bound yet).
             if constexpr (grid_of<L>.MaxDenominator != 0)
-                if (abs_den(rational{rhs}.Denominator) > to_rational(grid_of<L>.MaxDenominator).Numerator &&
+                if (abs_den(rv.Denominator) > to_rational(grid_of<L>.MaxDenominator).Numerator &&
                     (std::is_constant_evaluated() || is_checked(policy_of<L> | plain_t<P>::Flags))) [[unlikely]]
                     return report_failure(lhs, policy, action, errc::rounding_error);
-            lhs = L::from_raw(rhs);
+            lhs = L::from_raw(rv);
         } else if constexpr (detail::point_grid<L>)
             lhs = L::from_raw({}); // a point: its value is the type
         else {
@@ -6141,6 +6200,11 @@ struct assignment<L, R> {
                 store_slot(static_cast<umax>(j - lo));
                 return;
             }
+            bool           exact = true;
+            const rational rv    = source_of(rhs, exact);
+            if constexpr (std::floating_point<R>)
+                if (!exact) [[unlikely]]
+                    return store_fine_double(lhs, static_cast<double>(rhs), policy, action);
 
             // Q-format integer shortcut: with integer Lower and notch 1/K the offset is
             // (num − Lo·aden)·K / aden — integer ops instead of two rational ops.
@@ -6170,8 +6234,7 @@ struct assignment<L, R> {
                 }();
                 constexpr umax kMaxDen = static_cast<umax>(std::numeric_limits<imax>::max()) / kKM;
 
-                const rational rv{rhs}; // exact (copy for rational R)
-                const umax     aden = abs_den(rv.Denominator);
+                const umax aden = abs_den(rv.Denominator);
                 if (kMaxDen != 0 && aden <= kMaxDen) {
                     // The offset (num − Lo·aden)·K / aden, unreduced: round_quotient
                     // rounds it as the reduced fraction would, and kMaxDen keeps the
@@ -6196,8 +6259,7 @@ struct assignment<L, R> {
             // denominator of Notch and Lower, Notch = sN/K and Lower = m/K, the
             // offset is (num·K − m·aden)/(aden·sN), reduced by g = gcd(aden, K).
             if constexpr (unanchored_codec<L>.Ok) {
-                constexpr auto c = unanchored_codec<L>;
-                const rational rv{rhs};
+                constexpr auto c    = unanchored_codec<L>;
                 const umax     aden = abs_den(rv.Denominator);
                 if (aden <= c.MaxDen) {
                     const umax g    = std::gcd(aden, static_cast<umax>(c.K));
@@ -6220,9 +6282,9 @@ struct assignment<L, R> {
             // source denominator × fine notch): take the slot from the exact wide
             // index instead (rhs is in range, so it fits L's raw). Rounding is
             // the value-space rule, as everywhere else.
-            const auto quotient = (rhs - detail::lower64<L>) / detail::notch64<L>;
+            const auto quotient = (rv - detail::lower64<L>) / detail::notch64<L>;
             if (!quotient.has_value()) [[unlikely]] {
-                const wide_slot_result slot = wide_slot<P>(rational{rhs});
+                const wide_slot_result slot = wide_slot<P>(rv);
                 if constexpr (!has_round_flag)
                     if (!slot.Exact && policy.round_check()) [[unlikely]]
                         return report_failure(lhs, policy, action, errc::rounding_error);
@@ -6322,6 +6384,10 @@ struct assignment<L, R> {
                     return assign_exact<R>(
                         lhs, exact_of_large<L>(static_cast<double>(rhs)), policy, std::forward<A>(action));
                 }
+            if constexpr (std::floating_point<R>)
+                if (!abs_fraction_exact(static_cast<double>(rhs))) [[unlikely]] // finer than 2^-62
+                    return assign_exact<R>(
+                        lhs, exact_of_double(static_cast<double>(rhs)), policy, std::forward<A>(action));
             return assign_exact<R>(lhs, exact_of(rational{rhs}), policy, std::forward<A>(action));
         } else
             return assign_builtin(lhs, rhs, policy, std::forward<A>(action));
@@ -6343,6 +6409,11 @@ struct assignment<L, R> {
             }
 
         if (out_of_interval(rhs)) [[unlikely]] {
+            if constexpr (std::floating_point<R>)
+                if (!abs_fraction_exact(static_cast<double>(rhs))) {
+                    store_fine_double(lhs, static_cast<double>(rhs), policy, action);
+                    return lhs;
+                }
             // Round first: a value just outside may round onto an endpoint.
             if constexpr (rounds_before_range_check<L, plain_t<P>>)
                 if (!huge(rhs))
@@ -7727,6 +7798,20 @@ struct quotient_remainder {
 //   conversion_is_lossy<B>(v)  — either of the two.
 //---------------------------------------------------------------------------
 namespace beman::inside {
+namespace detail {
+// Whether `value` lies in B's interval. A double finer than 2^-62 has no
+// exact rational (as_rational truncates it): compare its exact value.
+template <insidable B, numeric A>
+constexpr bool value_in_interval(A value, const rational& r) noexcept {
+    if constexpr (std::floating_point<A>)
+        if (!abs_fraction_exact(static_cast<double>(value))) [[unlikely]] {
+            const auto x = exact_of_double(static_cast<double>(value));
+            return !(x < exact_of_grid<18>(lower_of<B>)) && !(exact_of_grid<18>(upper_of<B>) < x);
+        }
+    return includes(interval_of<B>, r);
+}
+} // namespace detail
+
 template <insidable B, numeric A>
 [[nodiscard]] constexpr bool conversion_overflows(A value) noexcept {
     if constexpr (std::floating_point<A>)
@@ -7736,7 +7821,7 @@ template <insidable B, numeric A>
         if (!(value < 0x1p64 && value > -0x1p64))
             return true; // beyond every grid, no rational form
     const detail::rational r = detail::as_rational(value);
-    if (includes(interval_of<B>, r))
+    if (detail::value_in_interval<B>(value, r))
         return false;
     // B's policy rounds before it range-checks: a value that rounds onto the
     // grid does not overflow.
@@ -7755,13 +7840,17 @@ template <insidable B, numeric A>
         if (!(value < 0x1p64 && value > -0x1p64))
             return false; // overflow, not truncation
     detail::rational r = detail::as_rational(value);
-    if (not includes(interval_of<B>, r)) {
+    if (!detail::value_in_interval<B>(value, r)) {
         // Out of range: a rounding policy that brings it onto the grid rounds;
         // anything else is overflow, not rounding.
         detail::rational rounded;
         return detail::rounds_into_range<B, policy<>>(r, rounded);
     }
     // In-range: truncation occurs iff (value - Lower) / Notch is non-integer.
+    // A double finer than 2^-62 has a denominator past every 64-bit notch's.
+    if constexpr (std::floating_point<A>)
+        if (!detail::abs_fraction_exact(static_cast<double>(value)))
+            return true;
     auto offset = (r - ::beman::inside::detail::lower64<B>) / ::beman::inside::detail::notch64<B>;
     return !offset.has_value() || detail::abs_den(offset->Denominator) != 1;
 }
@@ -8735,9 +8824,12 @@ constexpr auto compare_scalar(const B& lhs, A rhs, Cmp cmp) {
     else {
         // |rhs| ≥ 2^64 (or infinite) has no rational form, and every grid value
         // lies strictly inside ±2^64: the sign of rhs decides.
-        if constexpr (std::floating_point<A>)
+        if constexpr (std::floating_point<A>) {
             if (rhs == rhs && !(rhs < 0x1p64 && rhs > -0x1p64))
                 return cmp(rational{0}, rational{rhs < 0 ? -1 : 1});
+            if (!abs_fraction_exact(static_cast<double>(rhs))) [[unlikely]] // finer than 2^-62
+                return cmp(exact_of(lhs), exact_of_double(static_cast<double>(rhs)));
+        }
         return cmp(as_rational(lhs), rational{rhs});
     }
 }
