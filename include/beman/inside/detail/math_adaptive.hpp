@@ -482,6 +482,11 @@ constexpr decision<Out, K> decide(const approx<K>& a) noexcept {
     };
     if (a.Error == 0)
         return {true, index(a.Value)};
+    // An error past wide_sint<K>'s range (~umax{0}: "unresolved" at K = 1)
+    // would come out negative and invert the interval: undecided.
+    if constexpr (K == 1)
+        if (a.Error > static_cast<umax>(std::numeric_limits<imax>::max())) [[unlikely]]
+            return {false, I{}};
     const I lo = index(a.Value - e), hi = index(a.Value + e);
     // Both ends past the same end of Out's range also decide: the policy
     // (clamp, or an overflow report) sees the same thing for every value there.

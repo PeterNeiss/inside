@@ -525,15 +525,13 @@ struct assignment<L, R> {
         // cannot be wrapped with a deliverable carry (nor converted exactly).
         if constexpr (std::floating_point<R>)
             if (!(rhs < 0x1p63 && rhs > -0x1p63)) [[unlikely]] {
-                policy.report(errc::overflow);
-                return;
+                return report_failure(lhs, policy, action, errc::overflow);
             }
         rational rhs_r{rhs};
         if constexpr (has_policy<L, P, snap>) {
             const auto r = try_round_to_lattice<L, P>(rhs_r);
             if (!r) [[unlikely]] {
-                policy.report(errc::overflow);
-                return;
+                return report_failure(lhs, policy, action, errc::overflow);
             }
             rhs_r = *r;
         }
@@ -559,15 +557,13 @@ struct assignment<L, R> {
             const auto quot  = (range && off) ? try_div(*off, *range) : off;
             if (!range || !quot || *quot < rational{std::numeric_limits<imax>::min()} ||
                 *quot > rational{std::numeric_limits<imax>::max()}) [[unlikely]] {
-                policy.report(errc::overflow);
-                return;
+                return report_failure(lhs, policy, action, errc::overflow);
             }
             q             = floor(*quot);
             const auto qr = try_mul(rational{q}, *range);
             const auto w  = qr ? try_sub(rhs_r, *qr) : qr;
             if (!w) [[unlikely]] {
-                policy.report(errc::overflow);
-                return;
+                return report_failure(lhs, policy, action, errc::overflow);
             }
             wrapped = *w;
         }
@@ -744,7 +740,8 @@ struct assignment<L, R> {
             // source denominator × fine notch): take the slot from the exact wide
             // index instead (rhs is in range, so it fits L's raw). Rounding is
             // the value-space rule, as everywhere else.
-            const auto quotient = (rv - detail::lower64<L>) / detail::notch64<L>;
+            const auto offset   = try_sub(rv, detail::lower64<L>);
+            const auto quotient = offset ? try_div(*offset, detail::notch64<L>) : offset;
             if (!quotient.has_value()) [[unlikely]] {
                 const wide_slot_result slot = wide_slot<P>(rv);
                 if constexpr (!has_round_flag)
@@ -779,7 +776,7 @@ struct assignment<L, R> {
     // endpoint by the denominator (n/d ≤ m ⇔ n ≤ m·d; an overflowing m·d
     // exceeds any n) — exact, and no division.
     static constexpr bool integer_bounds = std::same_as<R, rational> && abs_den(detail::lower64<L>.Denominator) == 1 &&
-                                           abs_den(detail::upper64<L>.Denominator) == 1;
+                                           abs_den(detail::upper64<L>.Denominator) == 1 && fits_imax(interval_of<L>);
 
     static constexpr bool out_of_interval(const R& rhs) {
         if (huge(rhs))
@@ -1108,14 +1105,21 @@ struct assignment<L, R> {
             lhs = L::from_raw(num < 0 ? raw_from_offset<L>(-static_cast<imax>(q)) : raw_from_offset<L>(q));
         } else {
             // Offset/Factor map R's 0-based offset (a value raw counts from Lower).
-            const rational r_offset = [&] {
+            // A step past the 64-bit rational takes the exact wide store.
+            const auto r_offset = [&] {
                 if constexpr (raw_lo<R> == 0)
-                    return rational{rhs.raw()};
+                    return std::expected<rational, errc>{rational{rhs.raw()}};
                 else
-                    return (rational{rhs.raw()} - detail::lower64<R>).value();
+                    return try_sub(rational{rhs.raw()}, detail::lower64<R>);
             }();
-            rational rat = *(Offset + *(Factor * r_offset));
-            umax     ad  = static_cast<umax>(abs_den(rat.Denominator));
+            const auto scaled = r_offset ? try_mul(Factor, *r_offset) : r_offset;
+            const auto mapped = scaled ? try_add(Offset, *scaled) : scaled;
+            if (!mapped) [[unlikely]] {
+                assign_exact<R>(lhs, exact_of(rhs), policy, no_action{});
+                return;
+            }
+            const rational rat = *mapped;
+            umax           ad  = static_cast<umax>(abs_den(rat.Denominator));
             // Round the L-offset to a notch index in VALUE space via round_quotient
             // (same as the scalar path), honouring every rounding mode.
             umax q = round_quotient<L, P>(rat.Numerator, ad);

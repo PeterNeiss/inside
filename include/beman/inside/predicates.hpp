@@ -48,8 +48,24 @@ template <insidable B, numeric A>
 
 template <insidable B, numeric A>
 [[nodiscard]] constexpr bool conversion_rounds(A value) noexcept {
-    if constexpr (!::beman::inside::detail::notched<B>)
-        return false; // continuous grid: no notch to miss
+    if constexpr (!::beman::inside::detail::notched<B>) {
+        // Continuous: nothing to miss, unless the grid bounds denominators
+        // (an in-range value with a larger one is off the grid).
+        if constexpr (grid_of<B>.MaxDenominator == 0)
+            return false;
+        else {
+            if constexpr (std::floating_point<A>)
+                if (!(value - value == 0) || !(value < 0x1p64 && value > -0x1p64))
+                    return false; // not finite, or overflow
+            const detail::rational r = detail::as_rational(value);
+            if (!detail::value_in_interval<B>(value, r))
+                return false; // overflow, not rounding
+            if constexpr (std::floating_point<A>)
+                if (!detail::abs_fraction_exact(static_cast<double>(value)))
+                    return true; // finer than 2^-62: past every 64-bit bound
+            return detail::abs_den(r.Denominator) > detail::to_rational(grid_of<B>.MaxDenominator).Numerator;
+        }
+    }
     if constexpr (std::floating_point<A>)
         if (!(value - value == 0))
             return false; // non-finite — overflow, not truncation

@@ -271,7 +271,7 @@ template <insidable B>
     else if constexpr (constexpr auto c = index_double<B>; c.Ok)
         return static_cast<double>((static_cast<imax>(b.raw()) + c.LowerIndex) * c.P) / c.Q;
     else
-        return static_cast<double>((*(b.raw() * detail::notch64<B>)+detail::lower64<B>).value());
+        return static_cast<double>(as_rational(b)); // exact, even where Raw·Notch passes 64 bits
 }
 
 // True when R's interval cannot contain zero — so `a / b` can return a plain

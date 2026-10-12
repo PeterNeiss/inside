@@ -1644,7 +1644,8 @@ constexpr parsed_number parse_number(const char* first, const char* last) {
     bool has_e_exp      = false; // 10^exp (decimal scientific)
     bool in_exp         = false;
     bool exp_seen_digit = false;
-    int  frac_zeros     = 0; // deferred fractional zeros (see the digit loop)
+    bool exp_seen_sign  = false; // one sign, right after e/p
+    int  frac_zeros     = 0;     // deferred fractional zeros (see the digit loop)
 
     for (; i < N; ++i) {
         const char c = first[i];
@@ -1652,8 +1653,9 @@ constexpr parsed_number parse_number(const char* first, const char* last) {
             continue;
 
         if (in_exp) {
-            if (!exp_seen_digit && (c == '+' || c == '-')) {
-                exp_neg = (c == '-');
+            if (!exp_seen_digit && !exp_seen_sign && (c == '+' || c == '-')) {
+                exp_neg       = (c == '-');
+                exp_seen_sign = true;
                 continue;
             }
             if (c >= '0' && c <= '9') {
@@ -4534,7 +4536,7 @@ template <insidable B>
     else if constexpr (constexpr auto c = index_double<B>; c.Ok)
         return static_cast<double>((static_cast<imax>(b.raw()) + c.LowerIndex) * c.P) / c.Q;
     else
-        return static_cast<double>((*(b.raw() * detail::notch64<B>)+detail::lower64<B>).value());
+        return static_cast<double>(as_rational(b)); // exact, even where Raw·Notch passes 64 bits
 }
 
 // True when R's interval cannot contain zero — so `a / b` can return a plain
@@ -6126,15 +6128,13 @@ struct assignment<L, R> {
         // cannot be wrapped with a deliverable carry (nor converted exactly).
         if constexpr (std::floating_point<R>)
             if (!(rhs < 0x1p63 && rhs > -0x1p63)) [[unlikely]] {
-                policy.report(errc::overflow);
-                return;
+                return report_failure(lhs, policy, action, errc::overflow);
             }
         rational rhs_r{rhs};
         if constexpr (has_policy<L, P, snap>) {
             const auto r = try_round_to_lattice<L, P>(rhs_r);
             if (!r) [[unlikely]] {
-                policy.report(errc::overflow);
-                return;
+                return report_failure(lhs, policy, action, errc::overflow);
             }
             rhs_r = *r;
         }
@@ -6160,15 +6160,13 @@ struct assignment<L, R> {
             const auto quot  = (range && off) ? try_div(*off, *range) : off;
             if (!range || !quot || *quot < rational{std::numeric_limits<imax>::min()} ||
                 *quot > rational{std::numeric_limits<imax>::max()}) [[unlikely]] {
-                policy.report(errc::overflow);
-                return;
+                return report_failure(lhs, policy, action, errc::overflow);
             }
             q             = floor(*quot);
             const auto qr = try_mul(rational{q}, *range);
             const auto w  = qr ? try_sub(rhs_r, *qr) : qr;
             if (!w) [[unlikely]] {
-                policy.report(errc::overflow);
-                return;
+                return report_failure(lhs, policy, action, errc::overflow);
             }
             wrapped = *w;
         }
@@ -6345,7 +6343,8 @@ struct assignment<L, R> {
             // source denominator × fine notch): take the slot from the exact wide
             // index instead (rhs is in range, so it fits L's raw). Rounding is
             // the value-space rule, as everywhere else.
-            const auto quotient = (rv - detail::lower64<L>) / detail::notch64<L>;
+            const auto offset   = try_sub(rv, detail::lower64<L>);
+            const auto quotient = offset ? try_div(*offset, detail::notch64<L>) : offset;
             if (!quotient.has_value()) [[unlikely]] {
                 const wide_slot_result slot = wide_slot<P>(rv);
                 if constexpr (!has_round_flag)
@@ -6380,7 +6379,7 @@ struct assignment<L, R> {
     // endpoint by the denominator (n/d ≤ m ⇔ n ≤ m·d; an overflowing m·d
     // exceeds any n) — exact, and no division.
     static constexpr bool integer_bounds = std::same_as<R, rational> && abs_den(detail::lower64<L>.Denominator) == 1 &&
-                                           abs_den(detail::upper64<L>.Denominator) == 1;
+                                           abs_den(detail::upper64<L>.Denominator) == 1 && fits_imax(interval_of<L>);
 
     static constexpr bool out_of_interval(const R& rhs) {
         if (huge(rhs))
@@ -6709,14 +6708,21 @@ struct assignment<L, R> {
             lhs = L::from_raw(num < 0 ? raw_from_offset<L>(-static_cast<imax>(q)) : raw_from_offset<L>(q));
         } else {
             // Offset/Factor map R's 0-based offset (a value raw counts from Lower).
-            const rational r_offset = [&] {
+            // A step past the 64-bit rational takes the exact wide store.
+            const auto r_offset = [&] {
                 if constexpr (raw_lo<R> == 0)
-                    return rational{rhs.raw()};
+                    return std::expected<rational, errc>{rational{rhs.raw()}};
                 else
-                    return (rational{rhs.raw()} - detail::lower64<R>).value();
+                    return try_sub(rational{rhs.raw()}, detail::lower64<R>);
             }();
-            rational rat = *(Offset + *(Factor * r_offset));
-            umax     ad  = static_cast<umax>(abs_den(rat.Denominator));
+            const auto scaled = r_offset ? try_mul(Factor, *r_offset) : r_offset;
+            const auto mapped = scaled ? try_add(Offset, *scaled) : scaled;
+            if (!mapped) [[unlikely]] {
+                assign_exact<R>(lhs, exact_of(rhs), policy, no_action{});
+                return;
+            }
+            const rational rat = *mapped;
+            umax           ad  = static_cast<umax>(abs_den(rat.Denominator));
             // Round the L-offset to a notch index in VALUE space via round_quotient
             // (same as the scalar path), honouring every rounding mode.
             umax q = round_quotient<L, P>(rat.Numerator, ad);
@@ -7894,8 +7900,24 @@ template <insidable B, numeric A>
 
 template <insidable B, numeric A>
 [[nodiscard]] constexpr bool conversion_rounds(A value) noexcept {
-    if constexpr (!::beman::inside::detail::notched<B>)
-        return false; // continuous grid: no notch to miss
+    if constexpr (!::beman::inside::detail::notched<B>) {
+        // Continuous: nothing to miss, unless the grid bounds denominators
+        // (an in-range value with a larger one is off the grid).
+        if constexpr (grid_of<B>.MaxDenominator == 0)
+            return false;
+        else {
+            if constexpr (std::floating_point<A>)
+                if (!(value - value == 0) || !(value < 0x1p64 && value > -0x1p64))
+                    return false; // not finite, or overflow
+            const detail::rational r = detail::as_rational(value);
+            if (!detail::value_in_interval<B>(value, r))
+                return false; // overflow, not rounding
+            if constexpr (std::floating_point<A>)
+                if (!detail::abs_fraction_exact(static_cast<double>(value)))
+                    return true; // finer than 2^-62: past every 64-bit bound
+            return detail::abs_den(r.Denominator) > detail::to_rational(grid_of<B>.MaxDenominator).Numerator;
+        }
+    }
     if constexpr (std::floating_point<A>)
         if (!(value - value == 0))
             return false; // non-finite — overflow, not truncation
@@ -8176,8 +8198,12 @@ struct inside {
         // to widen safely (e.g. uint64 from a Q16.16 × Q16.16 result type).
         else if constexpr (detail::qformat_codec_fits<inside>)
             return detail::q_format_decode(*this);
-        else
-            return (*(Raw * detail::notch64<inside>)+detail::lower64<inside>).value();
+        else {
+            // Raw·Notch can pass 64 bits on the way to a value that fits.
+            const auto scaled = detail::try_mul(rational{Raw}, detail::notch64<inside>);
+            const auto value  = scaled ? detail::try_add(*scaled, detail::lower64<inside>) : scaled;
+            return value ? *value : detail::try_rational(detail::exact_of(*this)).value();
+        }
     }
 
     // to<T>() — typed-error scalar extraction (mirrors rational::to<T>, extended
@@ -8191,20 +8217,20 @@ struct inside {
         constexpr bool check_hi = upper_of<inside> > detail::rational{lim::max()};
         if constexpr (!check_lo && !check_hi && detail::values_fit_imax<inside>)
             return static_cast<T>(detail::to_value(*this));
-        else if constexpr (detail::wide_valued<inside>) {
-            const auto v = detail::exact_of(*this);
-            if (check_lo && v < detail::exact_of(lim::min()))
+        else if constexpr (detail::wide_valued<inside>) { // truncate first: -0.5 → unsigned is 0
+            const auto t = trunc(detail::exact_of(*this));
+            if (check_lo && t < decltype(t){lim::min()})
                 return std::unexpected{std::unsigned_integral<T> ? errc::domain_error : errc::overflow};
-            if (check_hi && v > detail::exact_of(lim::max()))
+            if (check_hi && t > decltype(t){lim::max()})
                 return std::unexpected{errc::overflow};
-            return static_cast<T>(trunc(v));
+            return static_cast<T>(t);
         } else {
-            const auto r = detail::as_rational(*this);
-            if (check_lo && r < detail::rational{lim::min()})
+            const auto t = detail::round_to_integral(detail::as_rational(*this), detail::round_mode::trunc);
+            if (check_lo && t < detail::rational{lim::min()})
                 return std::unexpected{std::unsigned_integral<T> ? errc::domain_error : errc::overflow};
-            if (check_hi && r > detail::rational{lim::max()})
+            if (check_hi && t > detail::rational{lim::max()})
                 return std::unexpected{errc::overflow};
-            return static_cast<T>(trunc(r));
+            return static_cast<T>(detail::signed_numerator(t));
         }
     }
 
@@ -8868,12 +8894,13 @@ constexpr auto compare_scalar(const B& lhs, A rhs, Cmp cmp) {
         lower_of<B> >= rational{-(imax{1} << 53)} && upper_of<B> <= rational{imax{1} << 53};
     if constexpr (wide_valued<B>) {
         if constexpr (std::floating_point<A>) {
-            if (rhs == rhs && !(rhs - rhs == 0)) // ±inf lies past every grid
+            if (rhs != rhs) // NaN: unordered, as the double comparison says
+                return cmp(0.0, static_cast<double>(rhs));
+            if (!(rhs - rhs == 0)) // ±inf lies past every grid
                 return cmp(exact_of(0), exact_of(rhs < 0 ? -1 : 1));
-            if (rhs == rhs)
-                return cmp(exact_of(lhs), exact_of_double(static_cast<double>(rhs)));
-        }
-        return cmp(exact_of(lhs), exact_of(as_rational(rhs)));
+            return cmp(exact_of(lhs), exact_of_double(static_cast<double>(rhs)));
+        } else
+            return cmp(exact_of(lhs), exact_of(as_rational(rhs)));
     } else if constexpr (integer_value_storage<B> && values_fit_imax<B> && imax_scalar)
         return cmp(raw_imax(lhs), static_cast<imax>(rhs));
     else if constexpr (integer_value_storage<B> && values_fit_imax<B> && std::floating_point<A> && double_exact_values)
@@ -8888,7 +8915,9 @@ constexpr auto compare_scalar(const B& lhs, A rhs, Cmp cmp) {
         // |rhs| ≥ 2^64 (or infinite) has no rational form, and every grid value
         // lies strictly inside ±2^64: the sign of rhs decides.
         if constexpr (std::floating_point<A>) {
-            if (rhs == rhs && !(rhs < 0x1p64 && rhs > -0x1p64))
+            if (rhs != rhs) // NaN: unordered, as the double comparison says
+                return cmp(0.0, static_cast<double>(rhs));
+            if (!(rhs < 0x1p64 && rhs > -0x1p64))
                 return cmp(rational{0}, rational{rhs < 0 ? -1 : 1});
             if (!abs_fraction_exact(static_cast<double>(rhs))) [[unlikely]] // finer than 2^-62
                 return cmp(exact_of(lhs), exact_of_double(static_cast<double>(rhs)));
@@ -10120,6 +10149,11 @@ constexpr decision<Out, K> decide(const approx<K>& a) noexcept {
     };
     if (a.Error == 0)
         return {true, index(a.Value)};
+    // An error past wide_sint<K>'s range (~umax{0}: "unresolved" at K = 1)
+    // would come out negative and invert the interval: undecided.
+    if constexpr (K == 1)
+        if (a.Error > static_cast<umax>(std::numeric_limits<imax>::max())) [[unlikely]]
+            return {false, I{}};
     const I lo = index(a.Value - e), hi = index(a.Value + e);
     // Both ends past the same end of Out's range also decide: the policy
     // (clamp, or an overflow report) sees the same thing for every value there.
@@ -12792,9 +12826,9 @@ constexpr fx<K> log_exact(const exact_frac<E>& x) noexcept {
 template <std::size_t K>
 constexpr fx<K> rescale(const approx<K>& a, int A) noexcept {
     const int sh = a.Scale - A;
-    if (sh <= 0)
-        return {a.Value << (-sh), a.Error << (-sh)};
-    return {round_shift(a.Value, sh), (a.Error >> sh) + 1};
+    if (sh <= 0) // a bound past 64 bits saturates (never wraps small)
+        return {a.Value << (-sh), -sh < 64 && a.Error <= (~umax{0} >> -sh) ? a.Error << (-sh) : ~umax{0}};
+    return {round_shift(a.Value, sh), shr_bound(a.Error, sh) + 1};
 }
 
 // asin x for |x| ≤ 1/2 (exact): atan(x/√(1−x²)), the square root as
@@ -13292,27 +13326,58 @@ struct ahyp_core {
     }
 };
 
-// b^e for b > 0: e^(e·log b). Exact for e = 0, b = 1, and integer e when
-// the power fits PowLimbs.
+// b^e for b > 0: e^(e·log b). Exact for e = 0, b = 1, and e = p/q (q ≤ 64)
+// when b's numerator and denominator are perfect q-th powers (4^0.5 = 2,
+// 2.25^1.5 = 3.375) and the power fits PowLimbs: such a result can sit on a
+// rounding boundary, where no approximation decides.
 inline constexpr std::size_t pow_limbs = 32; // exact integer powers up to 2048 bits
+
+// The q-th root of n ≥ 0 when n is a perfect q-th power: bit by bit, the
+// largest r with r^q ≤ n, then r^q == n.
+constexpr std::optional<wide_sint<pow_limbs>> exact_root(const wide_sint<pow_limbs>& n, int q) noexcept {
+    using P = wide_sint<pow_limbs>;
+    if (q == 1 || n.is_zero() || n == P{1})
+        return n;
+    auto at_most = [&](const P& c) { // c^q ≤ n, stopping once past n
+        P p{1};
+        for (int j = 0; j < q; ++j)
+            if (n < (p = p * c))
+                return false;
+        return true;
+    };
+    P r{0};
+    for (int i = (bit_width_of(n) + q - 1) / q; i-- > 0;)
+        if (const P c = r + (P{1} << i); at_most(c))
+            r = c;
+    P p{1};
+    for (int j = 0; j < q; ++j)
+        p = p * r;
+    return p == n ? std::optional<P>{r} : std::nullopt;
+}
 
 template <std::size_t EB, std::size_t EE>
 constexpr std::optional<exact_frac<pow_limbs>> exact_pow(const exact_frac<EB>& b, const exact_frac<EE>& e) noexcept {
     using P = wide_sint<pow_limbs>;
     if (is_zero(e) || is_one(b))
         return exact_frac<pow_limbs>{P{1}, P{1}};
-    if (!is_integer(e))
+    const exact_frac<EE> re = reduced(e); // p/q, q > 0
+    if (bit_width_of(re.Den) > 7 || 64 < static_cast<imax>(re.Den))
         return std::nullopt;
-    const auto           k    = e.Num / e.Den;
-    const auto           ak   = k.negative() ? -k : k;
-    const exact_frac<EB> r    = reduced(b);
-    const int            bits = bit_width_of(r.Num) + bit_width_of(r.Den);
+    const int            q  = static_cast<int>(static_cast<imax>(re.Den));
+    const auto           k  = re.Num;
+    const auto           ak = k.negative() ? -k : k;
+    const exact_frac<EB> r  = reduced(b);
+    // b^(1/q) first: both parts perfect q-th powers, else irrational.
+    const auto rn = exact_root(P{r.Num}, q), rd = exact_root(P{r.Den}, q);
+    if (!rn || !rd)
+        return std::nullopt;
+    const int bits = bit_width_of(*rn) + bit_width_of(*rd);
     if (bit_width_of(ak) > 12 || static_cast<imax>(ak) * bits > 64 * static_cast<imax>(pow_limbs) - 8)
         return std::nullopt;
     P n{1}, d{1};
     for (imax i = 0; i < static_cast<imax>(ak); ++i) {
-        n = n * P{r.Num};
-        d = d * P{r.Den};
+        n = n * *rn;
+        d = d * *rd;
     }
     return k.negative() ? inverse(exact_frac<pow_limbs>{n, d}) : exact_frac<pow_limbs>{n, d};
 }
@@ -13415,11 +13480,14 @@ constexpr exact_frac<input_limbs<In>> grid_input(const grid_rational& r) {
     return exact_of_grid<input_limbs<In>>(r);
 }
 
-// ⌈|r|⌉ as an int (deduction bounds).
+// ⌈|r|⌉ as an int (deduction bounds), saturated at imax: a grid reaching
+// 2^63 must fail every range gate, not wrap past them.
 constexpr imax ceil_abs(const grid_rational& r) {
     const grid_wide n = wide_numerator(r), d = wide_denominator(r);
     const grid_wide a = n.negative() ? -n : n;
-    return static_cast<imax>((a + d - grid_wide{1}) / d);
+    const grid_wide c = (a + d - grid_wide{1}) / d;
+    constexpr imax  M = std::numeric_limits<imax>::max();
+    return grid_wide{M} < c ? M : static_cast<imax>(c);
 }
 
 template <insidable In>

@@ -436,7 +436,8 @@ constexpr parsed_number parse_number(const char* first, const char* last) {
     bool has_e_exp      = false; // 10^exp (decimal scientific)
     bool in_exp         = false;
     bool exp_seen_digit = false;
-    int  frac_zeros     = 0; // deferred fractional zeros (see the digit loop)
+    bool exp_seen_sign  = false; // one sign, right after e/p
+    int  frac_zeros     = 0;     // deferred fractional zeros (see the digit loop)
 
     for (; i < N; ++i) {
         const char c = first[i];
@@ -444,8 +445,9 @@ constexpr parsed_number parse_number(const char* first, const char* last) {
             continue;
 
         if (in_exp) {
-            if (!exp_seen_digit && (c == '+' || c == '-')) {
-                exp_neg = (c == '-');
+            if (!exp_seen_digit && !exp_seen_sign && (c == '+' || c == '-')) {
+                exp_neg       = (c == '-');
+                exp_seen_sign = true;
                 continue;
             }
             if (c >= '0' && c <= '9') {

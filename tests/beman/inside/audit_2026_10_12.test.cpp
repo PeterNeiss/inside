@@ -4,10 +4,15 @@
 
 #include <beman/inside/inside.hpp>
 #include <beman/inside/formats.hpp>
+#include <beman/inside/cmath.hpp>
+#include <beman/inside/io.hpp>
 
 #include <gtest/gtest.h>
 
+#include <compare>
 #include <cstdint>
+#include <limits>
+#include <string_view>
 
 using namespace beman::inside;
 
@@ -162,4 +167,94 @@ TEST(Audit20261012, quotient_grid_reaches_2_pow_63) {
         using Q                      = decltype(q);
         return rational(q) == rational{umax{1} << 63} && upper_of<Q> == rational{umax{1} << 63};
     }());
+}
+
+// Comparing with NaN threw (rational{NaN} raises not_finite) on grids
+// without an integer or double fast path; it is unordered.
+TEST(Audit20261012, nan_compares_unordered) {
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    using C          = inside<grid{interval{0, 1}, 0}>;
+    using thirds     = inside<{{0, 1}, rational{1, 3}}>;
+    const C      c{rational{1, 2}};
+    const thirds t{rational{1, 3}};
+    EXPECT_FALSE(c == nan);
+    EXPECT_TRUE(c != nan);
+    EXPECT_FALSE(c < nan);
+    EXPECT_TRUE((c <=> nan) == std::partial_ordering::unordered);
+    EXPECT_FALSE(t == nan);
+    EXPECT_TRUE((t <=> nan) == std::partial_ordering::unordered);
+    EXPECT_TRUE(c < std::numeric_limits<double>::infinity());
+}
+
+// An index grid reaching 2^63: Raw·Notch passes 64 bits on the way to a
+// value that fits (the decode dereferenced a failed expected), the store's
+// (v − Lower)/Notch did too, and the range check read 2^63 as INT64_MIN.
+TEST(Audit20261012, index_grid_reaching_2_pow_63) {
+    static_assert([] {
+        constexpr rational lo{i64_min}, hi{umax{1} << 63};
+        using G = inside<{{lo, hi}, 2}>;
+        G x{hi};
+        G y{lo};
+        return rational(x) == hi && rational(y) == lo && x == hi && x.to<double>() == 0x1p63;
+    }());
+}
+
+// to<T>() truncates first, then range-checks ("fractional truncation is
+// silent"): 127.5 → int8 is 127, −0.5 → unsigned is 0.
+TEST(Audit20261012, to_truncates_before_the_range_check) {
+    using H = inside<{{-0.5, 200}, 0.5}>;
+    static_assert(*H{-0.5}.to<unsigned>() == 0u);
+    static_assert(*H{127.5}.to<std::int8_t>() == 127);
+    static_assert(H{128}.to<std::int8_t>().error() == errc::overflow);
+    static_assert(inside<{-5, 5}>{-1}.to<unsigned>().error() == errc::domain_error);
+}
+
+// A bounded continuous grid rejects a denominator past its bound: so does
+// conversion_rounds (it said false, and from_chars_exact relied on it).
+TEST(Audit20261012, conversion_rounds_on_bounded_continuous) {
+    using B = inside<grid{interval{0, 1}, max_denominator{2}}>;
+    static_assert(conversion_rounds<B>(rational{1, 3}) && !conversion_rounds<B>(rational{1, 2}));
+    static_assert(!conversion_rounds<B>(0.5) && conversion_rounds<B>(0.25));
+    static_assert(!conversion_rounds<B>(rational{3}) && conversion_overflows<B>(rational{3}));
+    EXPECT_FALSE(from_chars_exact<B>(std::string_view{"1/3"}).has_value());
+}
+
+// tan at a pole on a one-limb output: the "unresolved" error ~0 read as −1,
+// inverted the interval, and decided 0.
+TEST(Audit20261012, tan_near_pole_overflows) {
+    using In  = inside<{{0, 2}, per<(std::uint64_t{1} << 40)>}, round_nearest>;
+    using Out = inside<{{-4, 4}, per<8>}, round_nearest>;
+    const In x{1.5707963267948966};
+    for (int d = -2; d <= 2; ++d) {
+        const auto r = math::tan_into<Out>(In::from_raw(x.raw() + d));
+        ASSERT_FALSE(r.has_value());
+        EXPECT_EQ(r.error(), errc::overflow);
+    }
+}
+
+// The range gates of the math kernels read a grid's largest magnitude: one
+// reaching 2^63 wrapped to −1 and passed every gate.
+TEST(Audit20261012, math_gates_fail_closed_on_huge_grids) { static_assert(math::detail::ax::in_max<qword> > 1e18); }
+
+// pow of an exact rational result with a non-integer exponent sat on a
+// rounding boundary and was guessed at the precision cap.
+TEST(Audit20261012, pow_rational_exponent_is_exact) {
+    using half   = inside<{{0, 2}, per<2>}>;
+    using qtr    = inside<{{0, 4}, per<4>}>;
+    using up4    = inside<{{0, 4}, per<4>}, round_ceil>;
+    using down4  = inside<{{0, 4}, per<4>}, round_floor>;
+    using up8    = inside<{{0, 4}, per<8>}, round_ceil>;
+    using down16 = inside<{0, 16}, round_floor>;
+    EXPECT_EQ(*math::pow_into<up4>(qtr{2.25}, half{0.5}), 1.5);
+    EXPECT_EQ(*math::pow_into<down4>(qtr{2.25}, half{0.5}), 1.5);
+    EXPECT_EQ(*math::pow_into<up8>(qtr{2.25}, half{1.5}), 3.375);
+    EXPECT_EQ(*math::pow_into<down16>(inside<{0, 16}>{4}, half{0.5}), 2);
+}
+
+// A second exponent sign was accepted ("1e-+5" read as 1e5).
+TEST(Audit20261012, one_exponent_sign) {
+    using B = inside<{0, 1'000'000}>;
+    EXPECT_EQ(from_chars<B>(std::string_view{"1e-+5"}).error(), errc::invalid_format);
+    EXPECT_EQ(from_chars<B>(std::string_view{"1e+-5"}).error(), errc::invalid_format);
+    EXPECT_EQ(*from_chars<B>(std::string_view{"1e+5"}), 100000);
 }

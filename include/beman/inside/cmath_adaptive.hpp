@@ -121,9 +121,9 @@ constexpr fx<K> log_exact(const exact_frac<E>& x) noexcept {
 template <std::size_t K>
 constexpr fx<K> rescale(const approx<K>& a, int A) noexcept {
     const int sh = a.Scale - A;
-    if (sh <= 0)
-        return {a.Value << (-sh), a.Error << (-sh)};
-    return {round_shift(a.Value, sh), (a.Error >> sh) + 1};
+    if (sh <= 0) // a bound past 64 bits saturates (never wraps small)
+        return {a.Value << (-sh), -sh < 64 && a.Error <= (~umax{0} >> -sh) ? a.Error << (-sh) : ~umax{0}};
+    return {round_shift(a.Value, sh), shr_bound(a.Error, sh) + 1};
 }
 
 // asin x for |x| ≤ 1/2 (exact): atan(x/√(1−x²)), the square root as
@@ -621,27 +621,58 @@ struct ahyp_core {
     }
 };
 
-// b^e for b > 0: e^(e·log b). Exact for e = 0, b = 1, and integer e when
-// the power fits PowLimbs.
+// b^e for b > 0: e^(e·log b). Exact for e = 0, b = 1, and e = p/q (q ≤ 64)
+// when b's numerator and denominator are perfect q-th powers (4^0.5 = 2,
+// 2.25^1.5 = 3.375) and the power fits PowLimbs: such a result can sit on a
+// rounding boundary, where no approximation decides.
 inline constexpr std::size_t pow_limbs = 32; // exact integer powers up to 2048 bits
+
+// The q-th root of n ≥ 0 when n is a perfect q-th power: bit by bit, the
+// largest r with r^q ≤ n, then r^q == n.
+constexpr std::optional<wide_sint<pow_limbs>> exact_root(const wide_sint<pow_limbs>& n, int q) noexcept {
+    using P = wide_sint<pow_limbs>;
+    if (q == 1 || n.is_zero() || n == P{1})
+        return n;
+    auto at_most = [&](const P& c) { // c^q ≤ n, stopping once past n
+        P p{1};
+        for (int j = 0; j < q; ++j)
+            if (n < (p = p * c))
+                return false;
+        return true;
+    };
+    P r{0};
+    for (int i = (bit_width_of(n) + q - 1) / q; i-- > 0;)
+        if (const P c = r + (P{1} << i); at_most(c))
+            r = c;
+    P p{1};
+    for (int j = 0; j < q; ++j)
+        p = p * r;
+    return p == n ? std::optional<P>{r} : std::nullopt;
+}
 
 template <std::size_t EB, std::size_t EE>
 constexpr std::optional<exact_frac<pow_limbs>> exact_pow(const exact_frac<EB>& b, const exact_frac<EE>& e) noexcept {
     using P = wide_sint<pow_limbs>;
     if (is_zero(e) || is_one(b))
         return exact_frac<pow_limbs>{P{1}, P{1}};
-    if (!is_integer(e))
+    const exact_frac<EE> re = reduced(e); // p/q, q > 0
+    if (bit_width_of(re.Den) > 7 || 64 < static_cast<imax>(re.Den))
         return std::nullopt;
-    const auto           k    = e.Num / e.Den;
-    const auto           ak   = k.negative() ? -k : k;
-    const exact_frac<EB> r    = reduced(b);
-    const int            bits = bit_width_of(r.Num) + bit_width_of(r.Den);
+    const int            q  = static_cast<int>(static_cast<imax>(re.Den));
+    const auto           k  = re.Num;
+    const auto           ak = k.negative() ? -k : k;
+    const exact_frac<EB> r  = reduced(b);
+    // b^(1/q) first: both parts perfect q-th powers, else irrational.
+    const auto rn = exact_root(P{r.Num}, q), rd = exact_root(P{r.Den}, q);
+    if (!rn || !rd)
+        return std::nullopt;
+    const int bits = bit_width_of(*rn) + bit_width_of(*rd);
     if (bit_width_of(ak) > 12 || static_cast<imax>(ak) * bits > 64 * static_cast<imax>(pow_limbs) - 8)
         return std::nullopt;
     P n{1}, d{1};
     for (imax i = 0; i < static_cast<imax>(ak); ++i) {
-        n = n * P{r.Num};
-        d = d * P{r.Den};
+        n = n * *rn;
+        d = d * *rd;
     }
     return k.negative() ? inverse(exact_frac<pow_limbs>{n, d}) : exact_frac<pow_limbs>{n, d};
 }
@@ -744,11 +775,14 @@ constexpr exact_frac<input_limbs<In>> grid_input(const grid_rational& r) {
     return exact_of_grid<input_limbs<In>>(r);
 }
 
-// ⌈|r|⌉ as an int (deduction bounds).
+// ⌈|r|⌉ as an int (deduction bounds), saturated at imax: a grid reaching
+// 2^63 must fail every range gate, not wrap past them.
 constexpr imax ceil_abs(const grid_rational& r) {
     const grid_wide n = wide_numerator(r), d = wide_denominator(r);
     const grid_wide a = n.negative() ? -n : n;
-    return static_cast<imax>((a + d - grid_wide{1}) / d);
+    const grid_wide c = (a + d - grid_wide{1}) / d;
+    constexpr imax  M = std::numeric_limits<imax>::max();
+    return grid_wide{M} < c ? M : static_cast<imax>(c);
 }
 
 template <insidable In>

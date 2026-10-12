@@ -272,8 +272,12 @@ struct inside {
         // to widen safely (e.g. uint64 from a Q16.16 × Q16.16 result type).
         else if constexpr (detail::qformat_codec_fits<inside>)
             return detail::q_format_decode(*this);
-        else
-            return (*(Raw * detail::notch64<inside>)+detail::lower64<inside>).value();
+        else {
+            // Raw·Notch can pass 64 bits on the way to a value that fits.
+            const auto scaled = detail::try_mul(rational{Raw}, detail::notch64<inside>);
+            const auto value  = scaled ? detail::try_add(*scaled, detail::lower64<inside>) : scaled;
+            return value ? *value : detail::try_rational(detail::exact_of(*this)).value();
+        }
     }
 
     // to<T>() — typed-error scalar extraction (mirrors rational::to<T>, extended
@@ -287,20 +291,20 @@ struct inside {
         constexpr bool check_hi = upper_of<inside> > detail::rational{lim::max()};
         if constexpr (!check_lo && !check_hi && detail::values_fit_imax<inside>)
             return static_cast<T>(detail::to_value(*this));
-        else if constexpr (detail::wide_valued<inside>) {
-            const auto v = detail::exact_of(*this);
-            if (check_lo && v < detail::exact_of(lim::min()))
+        else if constexpr (detail::wide_valued<inside>) { // truncate first: -0.5 → unsigned is 0
+            const auto t = trunc(detail::exact_of(*this));
+            if (check_lo && t < decltype(t){lim::min()})
                 return std::unexpected{std::unsigned_integral<T> ? errc::domain_error : errc::overflow};
-            if (check_hi && v > detail::exact_of(lim::max()))
+            if (check_hi && t > decltype(t){lim::max()})
                 return std::unexpected{errc::overflow};
-            return static_cast<T>(trunc(v));
+            return static_cast<T>(t);
         } else {
-            const auto r = detail::as_rational(*this);
-            if (check_lo && r < detail::rational{lim::min()})
+            const auto t = detail::round_to_integral(detail::as_rational(*this), detail::round_mode::trunc);
+            if (check_lo && t < detail::rational{lim::min()})
                 return std::unexpected{std::unsigned_integral<T> ? errc::domain_error : errc::overflow};
-            if (check_hi && r > detail::rational{lim::max()})
+            if (check_hi && t > detail::rational{lim::max()})
                 return std::unexpected{errc::overflow};
-            return static_cast<T>(trunc(r));
+            return static_cast<T>(detail::signed_numerator(t));
         }
     }
 
@@ -964,12 +968,13 @@ constexpr auto compare_scalar(const B& lhs, A rhs, Cmp cmp) {
         lower_of<B> >= rational{-(imax{1} << 53)} && upper_of<B> <= rational{imax{1} << 53};
     if constexpr (wide_valued<B>) {
         if constexpr (std::floating_point<A>) {
-            if (rhs == rhs && !(rhs - rhs == 0)) // ±inf lies past every grid
+            if (rhs != rhs) // NaN: unordered, as the double comparison says
+                return cmp(0.0, static_cast<double>(rhs));
+            if (!(rhs - rhs == 0)) // ±inf lies past every grid
                 return cmp(exact_of(0), exact_of(rhs < 0 ? -1 : 1));
-            if (rhs == rhs)
-                return cmp(exact_of(lhs), exact_of_double(static_cast<double>(rhs)));
-        }
-        return cmp(exact_of(lhs), exact_of(as_rational(rhs)));
+            return cmp(exact_of(lhs), exact_of_double(static_cast<double>(rhs)));
+        } else
+            return cmp(exact_of(lhs), exact_of(as_rational(rhs)));
     } else if constexpr (integer_value_storage<B> && values_fit_imax<B> && imax_scalar)
         return cmp(raw_imax(lhs), static_cast<imax>(rhs));
     else if constexpr (integer_value_storage<B> && values_fit_imax<B> && std::floating_point<A> && double_exact_values)
@@ -984,7 +989,9 @@ constexpr auto compare_scalar(const B& lhs, A rhs, Cmp cmp) {
         // |rhs| ≥ 2^64 (or infinite) has no rational form, and every grid value
         // lies strictly inside ±2^64: the sign of rhs decides.
         if constexpr (std::floating_point<A>) {
-            if (rhs == rhs && !(rhs < 0x1p64 && rhs > -0x1p64))
+            if (rhs != rhs) // NaN: unordered, as the double comparison says
+                return cmp(0.0, static_cast<double>(rhs));
+            if (!(rhs < 0x1p64 && rhs > -0x1p64))
                 return cmp(rational{0}, rational{rhs < 0 ? -1 : 1});
             if (!abs_fraction_exact(static_cast<double>(rhs))) [[unlikely]] // finer than 2^-62
                 return cmp(exact_of(lhs), exact_of_double(static_cast<double>(rhs)));
