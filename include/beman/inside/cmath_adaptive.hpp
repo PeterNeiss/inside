@@ -1019,8 +1019,21 @@ inline bool fp_decide(double v, double bound, Out& out) noexcept {
                 j += 1;
         }
     }
-    if (!(j >= lo && j <= hi))
-        return false;
+    if (!(j >= lo && j <= hi)) {
+        // Decided past an end: a clamp Out takes the end here; any other
+        // policy reports or wraps on the integer path.
+        if constexpr (has_flag(policy_of<Out>, clamp)) {
+            if (j < lo) {
+                store_slot(0, out);
+                return true;
+            }
+            if (j > hi) {
+                store_slot(static_cast<umax>(static_cast<imax>(hi - lo)), out);
+                return true;
+            }
+        }
+        return false; // NaN too
+    }
     store_slot(static_cast<umax>(static_cast<imax>(j - lo)), out);
     return true;
 }
@@ -1138,8 +1151,13 @@ inline bool dd_decide(ddk::dd v, double bound, Out& out) noexcept {
         if (j < 0)
             j += 1;
     }
-    if (j < first || j > last)
+    if (j < first || j > last) {
+        if constexpr (has_flag(policy_of<Out>, clamp)) { // as fp_decide
+            store_slot(j < first ? umax{0} : static_cast<umax>(last) - static_cast<umax>(first), out);
+            return true;
+        }
         return false;
+    }
     store_slot(static_cast<umax>(j) - static_cast<umax>(first), out);
     return true;
 }

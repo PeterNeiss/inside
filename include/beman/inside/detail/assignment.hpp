@@ -756,16 +756,18 @@ struct assignment<L, R> {
 
             // The same shortcut for an unanchored lattice: with K the common
             // denominator of Notch and Lower, Notch = sN/K and Lower = m/K, the
-            // offset is (num·K − m·aden)/(aden·sN), reduced by g = gcd(aden, K).
+            // offset is (num·K − m·aden)/(aden·sN).
             if constexpr (unanchored_codec<L>.Ok) {
                 constexpr auto c    = unanchored_codec<L>;
                 const umax     aden = abs_den(rv.Denominator);
                 if (aden <= c.MaxDen) {
-                    const umax g    = std::gcd(aden, static_cast<umax>(c.K));
+                    // Unreduced: MaxDen bounds these products already, and the
+                    // unanchored rounding and the exactness test do not change
+                    // under reduction.
                     const imax num  = signed_numerator(rv);
                     const umax onum = // ≥ 0: rhs ≥ Lower (in range)
-                        static_cast<umax>(num * (c.K / static_cast<imax>(g)) - c.M * static_cast<imax>(aden / g));
-                    const umax den2 = (aden / g) * static_cast<umax>(c.S);
+                        static_cast<umax>(num * c.K - c.M * static_cast<imax>(aden));
+                    const umax den2 = aden * static_cast<umax>(c.S);
                     if (onum % den2 == 0) {
                         store_slot(onum / den2);
                         return;
