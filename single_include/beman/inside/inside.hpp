@@ -9355,7 +9355,8 @@ template <insidable Target, std::ranges::input_range Rng>
             // A total within imax: the cheaper 64-bit rational store.
             constexpr imax lo = std::numeric_limits<imax>::min(), hi = std::numeric_limits<imax>::max();
             if (!(total < I{lo}) && !(I{hi} < total))
-                if (const auto v = detail::rational{static_cast<imax>(total)} * detail::to_rational(U)) {
+                if (const auto v =
+                        detail::try_mul(detail::rational{static_cast<imax>(total)}, detail::to_rational(U))) {
                     detail::assignment<Target, detail::rational>::assign(out, *v, policy, no_action{});
                     return out;
                 }
@@ -9560,8 +9561,10 @@ template <grid G, policy_flag P = checked>
     requires(G.Notch != 0)
 struct inside_range : std::ranges::view_interface<inside_range<G, P>> {
     using value_type = inside<G, P>;
-    static_assert(G.max_index_representable() && detail::max_index_v<value_type> < std::numeric_limits<umax>::max(),
-                  "inside_range: the grid has more points than a 64-bit count can hold");
+    // The iterator's difference is an imax: end() − begin() must be the count.
+    static_assert(G.max_index_representable() &&
+                      detail::max_index_v<value_type> < static_cast<umax>(std::numeric_limits<imax>::max()),
+                  "inside_range: the grid has more points than an iterator difference (int64) can count");
     static constexpr umax slot_count = detail::max_index_v<value_type> + 1;
 
     struct iterator {

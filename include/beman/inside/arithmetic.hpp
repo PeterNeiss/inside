@@ -251,7 +251,8 @@ template <insidable Target, std::ranges::input_range Rng>
             // A total within imax: the cheaper 64-bit rational store.
             constexpr imax lo = std::numeric_limits<imax>::min(), hi = std::numeric_limits<imax>::max();
             if (!(total < I{lo}) && !(I{hi} < total))
-                if (const auto v = detail::rational{static_cast<imax>(total)} * detail::to_rational(U)) {
+                if (const auto v =
+                        detail::try_mul(detail::rational{static_cast<imax>(total)}, detail::to_rational(U))) {
                     detail::assignment<Target, detail::rational>::assign(out, *v, policy, no_action{});
                     return out;
                 }

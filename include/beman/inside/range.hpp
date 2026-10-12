@@ -25,8 +25,10 @@ template <grid G, policy_flag P = checked>
     requires(G.Notch != 0)
 struct inside_range : std::ranges::view_interface<inside_range<G, P>> {
     using value_type = inside<G, P>;
-    static_assert(G.max_index_representable() && detail::max_index_v<value_type> < std::numeric_limits<umax>::max(),
-                  "inside_range: the grid has more points than a 64-bit count can hold");
+    // The iterator's difference is an imax: end() − begin() must be the count.
+    static_assert(G.max_index_representable() &&
+                      detail::max_index_v<value_type> < static_cast<umax>(std::numeric_limits<imax>::max()),
+                  "inside_range: the grid has more points than an iterator difference (int64) can count");
     static constexpr umax slot_count = detail::max_index_v<value_type> + 1;
 
     struct iterator {
