@@ -52,9 +52,9 @@ using unorm32 = inside<{{0, 1}, per<4294967295>}, round_nearest>; // uint32
 // Q-format fixed-point — unsigned integer.fraction, power-of-two notch,
 // full natural range. `round_nearest`.
 //-------------------------------------------------------------------------
-using q4_4   = inside<{{0, 15}, per<16>}, round_nearest>;       // uint8
-using q8_8   = inside<{{0, 255}, per<256>}, round_nearest>;     // uint16
-using q16_16 = inside<{{0, 65535}, per<65536>}, round_nearest>; // uint32
+using q4_4   = inside<{{0, rational{255, 16}}, per<16>}, round_nearest>;                // uint8: [0, 15.9375]
+using q8_8   = inside<{{0, rational{65535, 256}}, per<256>}, round_nearest>;            // uint16
+using q16_16 = inside<{{0, rational{4294967295u, 65536u}}, per<65536>}, round_nearest>; // uint32
 
 //-------------------------------------------------------------------------
 // Counters — a counter is an inside over [0, Max] whose overflow policy says

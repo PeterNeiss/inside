@@ -226,7 +226,7 @@ instead of spelling the grid and policy by hand.
 | `sbyte` `sword` `sdword` | `[−128, 127]` … `[−2³¹, 2³¹−1]` | int8 / int16 / int32 |
 | `sqword` | `[−(2⁶³−1), 2⁶³−1]` | int64 |
 | `unorm8` `unorm16` `unorm32` | `[0,1]`, notch 1/255, 1/65535, 1/(2³²−1) | uint8 / uint16 / uint32 |
-| `q4_4` `q8_8` `q16_16` | `[0,15]`/`[0,255]`/`[0,65535]`, notch 1/16, 1/256, 1/65536 | uint8 / uint16 / uint32 |
+| `q4_4` `q8_8` `q16_16` | `[0, 16 − 1/16]`/`[0, 256 − 1/256]`/`[0, 65536 − 1/65536]` (every bit pattern), notch 1/16, 1/256, 1/65536 | uint8 / uint16 / uint32 |
 
 Every alias fills its native type's range: `byte` is `[0, 255]` and `unorm8`
 uses notch 1/255 (reaching 1.0 exactly). `sqword` stays symmetric because the

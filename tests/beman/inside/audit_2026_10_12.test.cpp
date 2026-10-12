@@ -258,3 +258,16 @@ TEST(Audit20261012, one_exponent_sign) {
     EXPECT_EQ(from_chars<B>(std::string_view{"1e+-5"}).error(), errc::invalid_format);
     EXPECT_EQ(*from_chars<B>(std::string_view{"1e+5"}), 100000);
 }
+
+// pow with a zero base: 0^y = 0 for y > 0, 0^0 = 1, a pole for y < 0.
+TEST(Audit20261012, pow_zero_base) {
+    using B   = inside<{{0, 4}, per<4>}>;
+    using E   = inside<{{-2, 2}, per<2>}>;
+    using Out = inside<{{0, 16}, per<16>}, round_nearest>;
+    EXPECT_EQ(*math::pow_into<Out>(B{0}, E{1.5}), 0);
+    EXPECT_EQ(*math::pow_into<Out>(B{0}, E{0}), 1);
+    EXPECT_EQ(math::pow_into<Out>(B{0}, E{-1}).error(), errc::division_by_zero);
+    EXPECT_EQ(*math::pow_into<Out>(B{2}, E{2}), 4);
+    using SB = inside<{{-4, 4}, per<4>}>;
+    EXPECT_EQ(math::pow_into<Out>(SB{-2}, E{2}).error(), errc::domain_error);
+}

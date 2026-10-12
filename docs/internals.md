@@ -344,7 +344,7 @@ Per-operation audit:
 | `a / b`, `mod` (divisor may be 0) | `expected` | `division_by_zero`, `overflow` (rational raw) |
 | `math::sin/cos/exp/log/…` | `inside` | total over the asserted domain |
 | `math::tan` | `expected` | `division_by_zero` (pole), `overflow` (past Out) |
-| `math::pow` | `expected` | `domain_error` (base ≤ 0), `overflow` (envelope, or past `Out`) |
+| `math::pow` | `expected` | `domain_error` (base < 0), `division_by_zero` (0 to a negative power), `overflow` (envelope, or past `Out`) |
 | `math::sqrt` (mixed-sign) | `expected` | `domain_error` (negative value) |
 | `to<T>()` | `expected` | `overflow` (out of range), `domain_error` (negative→unsigned) |
 | `as<T>()` | `T` | `to<T>().value()` — throws on error (caller vouches for the range) |

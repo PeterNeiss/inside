@@ -90,6 +90,12 @@ TEST(FormatsTest, formats_round_trip_representative_values) {
     ASSERT_EQ(q8_8{42.5}, 42.5_r);
     ASSERT_EQ(q4_4{3.25}, 3.25_r);
     ASSERT_EQ(q16_16{1000.125}, 1000.125_r);
+    // Every bit pattern: the top value is 2^n − 1 notches.
+    ASSERT_EQ(q4_4{15.9375}, 15.9375_r);
+    ASSERT_EQ(q8_8{255.99609375}, rational(65535u, 256u));
+    ASSERT_EQ(q16_16{65535.5}, 65535.5_r);
+    ASSERT_FALSE(q4_4::try_make(16).has_value());
+    static_assert(grid_of<q4_4>.slot_count() == 255 && grid_of<q8_8>.slot_count() == 65535); // steps
 }
 
 //---------------------------------------------------------------------------

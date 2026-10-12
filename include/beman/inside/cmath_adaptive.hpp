@@ -1928,8 +1928,9 @@ template <insidable Out, insidable InX, insidable InY>
     }
 }
 
-// pow: domain_error for a base ≤ 0; overflow when the result leaves Out
-// (without clamp).
+// pow: 0^y is 0 for y > 0 and 1 for y = 0; division_by_zero for 0^y with
+// y < 0 (a pole); domain_error for a negative base; overflow when the
+// result leaves Out (without clamp).
 template <insidable Out, insidable InB, insidable InE>
 [[nodiscard]] constexpr std::expected<Out, errc> pow_into(InB base, InE exp) {
     require_rounding<Out>();
@@ -1938,8 +1939,14 @@ template <insidable Out, insidable InB, insidable InE>
     else {
         const auto integer = [&]() -> std::expected<Out, errc> {
             const auto b = ax::exact_input(base);
-            if (b.Num.negative() || b.Num.is_zero())
+            if (b.Num.negative())
                 return std::unexpected(errc::domain_error);
+            if (b.Num.is_zero()) {
+                const auto e = ax::exact_input(exp);
+                if (e.Num.negative())
+                    return std::unexpected(errc::division_by_zero);
+                return Out::try_make(e.Num.is_zero() ? 1 : 0); // Out's policy: range, clamp
+            }
             using core = ax::pow_core<ax::input_limbs<InB>,
                                       ax::input_limbs<InE>,
                                       ax::in_mag<InE>,

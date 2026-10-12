@@ -14662,8 +14662,9 @@ template <insidable Out, insidable InX, insidable InY>
     }
 }
 
-// pow: domain_error for a base ≤ 0; overflow when the result leaves Out
-// (without clamp).
+// pow: 0^y is 0 for y > 0 and 1 for y = 0; division_by_zero for 0^y with
+// y < 0 (a pole); domain_error for a negative base; overflow when the
+// result leaves Out (without clamp).
 template <insidable Out, insidable InB, insidable InE>
 [[nodiscard]] constexpr std::expected<Out, errc> pow_into(InB base, InE exp) {
     require_rounding<Out>();
@@ -14672,8 +14673,14 @@ template <insidable Out, insidable InB, insidable InE>
     else {
         const auto integer = [&]() -> std::expected<Out, errc> {
             const auto b = ax::exact_input(base);
-            if (b.Num.negative() || b.Num.is_zero())
+            if (b.Num.negative())
                 return std::unexpected(errc::domain_error);
+            if (b.Num.is_zero()) {
+                const auto e = ax::exact_input(exp);
+                if (e.Num.negative())
+                    return std::unexpected(errc::division_by_zero);
+                return Out::try_make(e.Num.is_zero() ? 1 : 0); // Out's policy: range, clamp
+            }
             using core = ax::pow_core<ax::input_limbs<InB>,
                                       ax::input_limbs<InE>,
                                       ax::in_mag<InE>,
@@ -15494,9 +15501,9 @@ using unorm32 = inside<{{0, 1}, per<4294967295>}, round_nearest>; // uint32
 // Q-format fixed-point — unsigned integer.fraction, power-of-two notch,
 // full natural range. `round_nearest`.
 //-------------------------------------------------------------------------
-using q4_4   = inside<{{0, 15}, per<16>}, round_nearest>;       // uint8
-using q8_8   = inside<{{0, 255}, per<256>}, round_nearest>;     // uint16
-using q16_16 = inside<{{0, 65535}, per<65536>}, round_nearest>; // uint32
+using q4_4   = inside<{{0, rational{255, 16}}, per<16>}, round_nearest>;                // uint8: [0, 15.9375]
+using q8_8   = inside<{{0, rational{65535, 256}}, per<256>}, round_nearest>;            // uint16
+using q16_16 = inside<{{0, rational{4294967295u, 65536u}}, per<65536>}, round_nearest>; // uint32
 
 //-------------------------------------------------------------------------
 // Counters — a counter is an inside over [0, Max] whose overflow policy says

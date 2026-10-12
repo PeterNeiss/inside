@@ -242,7 +242,7 @@ off-notch value `errc::rounding_error`.
 fit its destination's range" — an inside's interval (assignment, construction,
 `try_make`, casts, a math result past `Out`), a native type (`to<T>()`), or a
 rational's 64-bit fields. `errc::domain_error` means "the argument is outside the
-function's mathematical domain": `sqrt` of a negative, `pow` with a base ≤ 0, a
+function's mathematical domain": `sqrt` of a negative, `pow` with a negative base, a
 negative value into an unsigned `to<T>()`, invalid `grid::try_make` parameters.
 
 ## Replacing the throw handler (freestanding / bare-metal)

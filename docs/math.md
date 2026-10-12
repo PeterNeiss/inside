@@ -190,7 +190,7 @@ These work on grids past 64 bits too.
 | `exp(x)` / `exp2(x)` | all (deduced forms: `\|x\| ≤ 4096`) | — | |
 | `log(x)` / `log2(x)` / `log10(x)` | `x > 0` | — | `log2` / `log10` of an exact power are exact |
 | `pow_base<B>(x)` | integer `B ≥ 2` | — | `B` compile-time |
-| `pow(base, exp)` | deduced form: `Lower(base) > 0` | `expected`; `domain_error` for a base ≤ 0, `overflow` past `Out` (a `clamp` `Out` saturates) | integer exponents give exact powers |
+| `pow(base, exp)` | deduced form: `Lower(base) > 0` | `expected`; `domain_error` for a base < 0, `division_by_zero` for 0 to a negative power (0^y is 0 for y > 0, 0^0 is 1), `overflow` past `Out` (a `clamp` `Out` saturates) | exact for integer exponents, and for p/q when the base is a perfect q-th power |
 
 ## Constants
 

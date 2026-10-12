@@ -15,11 +15,11 @@ An `inside`'s type is a **grid** `{interval, notch}`:
 - A value is `Lower + index · notch`; on a whole-number grid the raw storage
   *is* the value where that costs no width, like a plain integer register.
 
-So a Q8.8 unsigned register — 8 integer bits, 8 fractional bits, range `[0, 255]`
-step `1/256` — is:
+So a Q8.8 unsigned register — 8 integer bits, 8 fractional bits, range
+`[0, 255 + 255/256]` step `1/256`, all 65536 bit patterns — is:
 
 ```cpp
-using q8_8 = inside<{{0, 255}, per<256>}, round_nearest>;  // == beman::inside::q8_8
+using q8_8 = inside<{{0, rational{65535, 256}}, per<256>}, round_nearest>;  // == beman::inside::q8_8
 ```
 
 `#include <beman/inside/formats.hpp>` for the curated aliases: `q4_4`, `q8_8`, `q16_16`
