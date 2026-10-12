@@ -368,12 +368,12 @@ TEST(CoverageCornersTest, round_to_lattice_keeps_notch_indices_past_imax) {
     using L       = inside<grid{{0, 1ll << 61}, per<8>}>;
     const auto v  = rational{(1ull << 61) - 1, 1};
     const auto nv = rational{(1ull << 61) - 1, -1};
-    ASSERT_TRUE((round_to_lattice<L, policy<round_half_even>>(v) == v));
-    ASSERT_TRUE((round_to_lattice<L, policy<round_floor>>(v) == v));
-    ASSERT_TRUE((round_to_lattice<L, policy<round_floor>>(nv) == nv));
-    ASSERT_TRUE((round_to_lattice<L, policy<round_ceil>>(nv) == nv));
+    ASSERT_TRUE((*try_round_to_lattice<L, policy<round_half_even>>(v) == v));
+    ASSERT_TRUE((*try_round_to_lattice<L, policy<round_floor>>(v) == v));
+    ASSERT_TRUE((*try_round_to_lattice<L, policy<round_floor>>(nv) == nv));
+    ASSERT_TRUE((*try_round_to_lattice<L, policy<round_ceil>>(nv) == nv));
     const auto off = rational{(1ull << 63) - 1, 4}; // a lattice point: index 2^64 − 2
-    ASSERT_TRUE((round_to_lattice<L, policy<round_nearest>>(off) == off));
+    ASSERT_TRUE((*try_round_to_lattice<L, policy<round_nearest>>(off) == off));
     // ceil(umax) on the 1/8 lattice is umax itself, but its index 8·umax is
     // past every rational: reported, not wrapped.
     ASSERT_TRUE((try_round_to_lattice<L, policy<round_ceil>>(rational{~0ull, 1}).error() == errc::overflow));
@@ -385,10 +385,10 @@ TEST(CoverageCornersTest, round_to_lattice_keeps_notch_indices_past_imax) {
 // of a wrapped index.
 TEST(CoverageCornersTest, round_to_lattice_unanchored_rounds_and_reports_overflow) {
     using U = inside<grid{{rational{1, 16}, rational{17, 16}}, per<8>}>;
-    ASSERT_TRUE((round_to_lattice<U, policy<round_floor>>(rational{5, 1}) == rational{79, 16}));
-    ASSERT_TRUE((round_to_lattice<U, policy<round_ceil>>(rational{5, 1}) == rational{81, 16}));
-    ASSERT_TRUE((round_to_lattice<U, policy<round_nearest>>(rational{5, -1}) == rational{81, -16}));
-    ASSERT_TRUE((round_to_lattice<U, policy<round_half_even>>(rational{5, 1}) == rational{81, 16})); // index 40
+    ASSERT_TRUE((*try_round_to_lattice<U, policy<round_floor>>(rational{5, 1}) == rational{79, 16}));
+    ASSERT_TRUE((*try_round_to_lattice<U, policy<round_ceil>>(rational{5, 1}) == rational{81, 16}));
+    ASSERT_TRUE((*try_round_to_lattice<U, policy<round_nearest>>(rational{5, -1}) == rational{81, -16}));
+    ASSERT_TRUE((*try_round_to_lattice<U, policy<round_half_even>>(rational{5, 1}) == rational{81, 16})); // index 40
     ASSERT_TRUE(
         (try_round_to_lattice<U, policy<round_floor>>(rational{(1ull << 61) - 1, 1}).error() == errc::overflow));
 }

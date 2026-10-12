@@ -488,6 +488,16 @@ constexpr auto exact_index(const exact_frac<K>& f) noexcept {
     }
 }
 
+template <insidable L, typename P>
+constexpr bool exact_rounds_into_range(const rational& v, rational& out) {
+    const auto j = exact_index<L, rounding_for<L, P>>(exact_of(v)).Index; // L's slot offset
+    using I      = std::remove_cvref_t<decltype(j)>;
+    if (j.negative() || I{max_index_v<L>} < j)
+        return false;
+    out = (detail::lower64<L> + (rational{static_cast<umax>(j)} * detail::notch64<L>).value()).value(); // L's point
+    return true;
+}
+
 // The raw of slot offset `offset` (0 .. slot count) in L's storage. W is
 // any signed integer holding the offset and the value index J = offset +
 // Lower/Notch: imax, a wide_int, a wide_sint.
@@ -533,20 +543,22 @@ inline constexpr bool divides_units = !(point_storage<Result> || (anchored<Resul
 // the wrapping type, or, when a division follows (which a wrapped value
 // cannot take), an exact signed one.
 // URes: the unit the result is counted in (its notch, or a finer unit
-// that also divides its Lower when the grids do not pass through 0).
+// that also divides its Lower when the grids do not pass through 0); its
+// slot offsets in that unit are what from_value_in_units divides.
 template <insidable     Result,
           insidable     L,
           grid_rational UL,
           insidable     R,
           grid_rational UR,
           grid_rational URes = notch_of<Result>>
-inline constexpr int index_work_bits = signed_value_bits_of({units_lo<L, UL>,
-                                                             units_hi<L, UL>,
-                                                             units_lo<R, UR>,
-                                                             units_hi<R, UR>,
-                                                             units_lo<Result, URes>,
-                                                             units_hi<Result, URes>,
-                                                             grid_of<Result>.slot_count()});
+inline constexpr int index_work_bits =
+    signed_value_bits_of({units_lo<L, UL>,
+                          units_hi<L, UL>,
+                          units_lo<R, UR>,
+                          units_hi<R, UR>,
+                          units_lo<Result, URes>,
+                          units_hi<Result, URes>,
+                          grid_of<Result>.slot_count() * exact_quotient(notch_of<Result>, URes)});
 template <insidable     Result,
           insidable     L,
           grid_rational UL,

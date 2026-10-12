@@ -324,7 +324,8 @@ constexpr L& assign_exact(L& lhs, const exact_frac<K>& v, P&& policy, A&& action
 //---------------------------------------------------------------------------
 template <insidable L, insidable R>
 inline constexpr bool same_notch_raws =
-    notched<L> && notch_of<L> == notch_of<R> && !point_storage<L> && !point_storage<R>; // ⇒ integer raws
+    notched<L> && notch_of<L> == notch_of<R> && !point_storage<L> && !point_storage<R> && // ⇒ integer raws
+    grid_divides_evenly(grid_sub(lower_of<R>, lower_of<L>), notch_of<L>);                 // one lattice
 // The shift is the exact offset between the Lowers in notches, plus the raws
 // of the Lowers (0 for an index raw, Lower for a value raw): exact on
 // unanchored lattices too.
@@ -332,7 +333,9 @@ template <insidable L, insidable R>
 inline constexpr grid_wide same_notch_shift =
     exact_quotient(grid_sub(lower_of<R>, lower_of<L>), notch_of<L>) + raw_lo_exact<L> - raw_lo_exact<R>;
 template <insidable L, insidable R>
-inline constexpr int same_notch_bits = signed_value_bits_of({raw_lo_exact<R> + same_notch_shift<L, R>,
+inline constexpr int same_notch_bits = signed_value_bits_of({raw_lo_exact<R>,
+                                                             raw_hi_exact<R>,
+                                                             raw_lo_exact<R> + same_notch_shift<L, R>,
                                                              raw_hi_exact<R> + same_notch_shift<L, R>,
                                                              raw_lo_exact<L>,
                                                              raw_hi_exact<L>});
@@ -863,6 +866,17 @@ struct assignment<L, R> {
             else
                 in_hi = le(static_cast<umax>(hi));
             return !(in_lo && in_hi);
+        } else if constexpr (std::floating_point<R>) {
+            // A limit no double holds (INT64_MAX): compare exactly, without
+            // grid numbers, whose runtime ops stop at 64 bits under C++26.
+            // Below 2^64 a rational holds the value unless it is finer than 2^-62.
+            const double d = static_cast<double>(rhs);
+            if (abs_fraction_exact(d)) [[likely]] {
+                const rational r{d};
+                return r < detail::lower64<L> || detail::upper64<L> < r;
+            }
+            const auto v = exact_of_double(d);
+            return v < exact_of(detail::lower64<L>) || exact_of(detail::upper64<L>) < v;
         } else
             return not includes(interval_of<L>, rhs);
     }
@@ -947,25 +961,31 @@ struct assignment<L, R> {
     // Offset/Factor map rhs.Raw → lhs.Raw via `lhs.Raw = Factor·rhs.Raw + Offset`
     // between two integer raws. A continuous side stores through the rational
     // path instead (both 0, unused), and a point L holds one value (both 0).
-    static constexpr bool maps_raws = integer_storage<L> && integer_storage<R>;
+    static constexpr bool integer_raws = integer_storage<L> && integer_storage<R>;
 
-    static constexpr rational calcOffset() {
-        if constexpr (!maps_raws || !detail::notched<L>)
+    static constexpr std::expected<rational, errc> calcOffset() {
+        if constexpr (!integer_raws || !detail::notched<L>)
             return rational{0};
         else
-            return ((detail::lower64<R> - detail::lower64<L>) / detail::notch64<L>).value();
+            return try_sub(detail::lower64<R>, detail::lower64<L>).and_then([](const rational& d) {
+                return try_div(d, detail::notch64<L>);
+            });
     }
 
-    static constexpr rational calcFactor() {
-        if constexpr (!maps_raws || !detail::notched<L> || point_storage<R>)
+    static constexpr std::expected<rational, errc> calcFactor() {
+        if constexpr (!integer_raws || !detail::notched<L> || point_storage<R>)
             return rational{0}; // a point R's raw is always 0: the mapping is Offset alone
         else
-            return (detail::notch64<R> / detail::notch64<L>).value();
+            return try_div(detail::notch64<R>, detail::notch64<L>);
     }
 
+    // A mapping past the 64-bit rational (a full-int64 source into a fine
+    // grid) stores through the rational path, as a continuous side does.
+    static constexpr bool maps_raws = integer_raws && calcOffset().has_value() && calcFactor().has_value();
+
   public:
-    static constexpr rational Offset = calcOffset();
-    static constexpr rational Factor = calcFactor();
+    static constexpr rational Offset = calcOffset().value_or(rational{0});
+    static constexpr rational Factor = calcFactor().value_or(rational{0});
 
     // Raw-space integer-only mapping — requires integer raw storage on both
     // sides (not rational).
@@ -1127,8 +1147,8 @@ struct assignment<L, R> {
     template <typename P>
     static constexpr void store(L& lhs, const R& rhs, P&& policy) {
         if constexpr (!maps_raws)
-            // A continuous side: store the source's value through the rational
-            // store, which rounds it by the policy or reports rounding_error.
+            // A continuous side or no raw mapping: store the source's value through
+            // the rational store, which rounds it by the policy or reports rounding_error.
             assignment<L, rational>::store_checked(lhs, as_rational(rhs), policy, no_action{});
         else if constexpr (is_integer_mapping) {
             // exact: Factor and Offset have integer denominators, no rounding ambiguity

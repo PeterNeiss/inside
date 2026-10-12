@@ -242,7 +242,7 @@ struct inside {
     //                       in-range sites (array indexing). FP shares the gate.
     //   to<T>(b)/as<T>(b) — free-function forms, for generic code.
     constexpr operator imax() const
-        requires((detail::integer_notch<G> || ((P & snap) != 0 && !detail::wide_valued<inside>)) &&
+        requires((detail::integer_notch<G> || ((P & snap) != 0 && detail::rational_readable<inside>)) &&
                  G.Interval.Lower >= detail::rational{std::numeric_limits<imax>::min()} &&
                  G.Interval.Upper <= detail::rational{std::numeric_limits<imax>::max()})
     {
@@ -261,7 +261,7 @@ struct inside {
     // Unavailable on a wide-index grid: its values outgrow the 64-bit rational
     // (compare it, or read it with to<T>()).
     constexpr operator detail::rational() const
-        requires(!detail::wide_valued<inside>)
+        requires(detail::rational_readable<inside>)
     {
         if constexpr (G.Interval.Lower == G.Interval.Upper)
             return G.Interval.Lower;
@@ -503,15 +503,16 @@ struct inside {
 
     // Work type of a raw-space add whose delta lies in [Dlo, Dhi]: it holds
     // every raw of this grid, the delta, the new raw (in [raw_lo + Dlo,
-    // raw_hi + Dhi]) and the wrap range raw_hi − raw_lo + 1, so the add cannot
-    // overflow. imax for every grid within int64.
+    // raw_hi + Dhi]), the wrap range raw_hi − raw_lo + 1 and the new raw's
+    // offset from raw_lo (wrap divides it), so the add cannot overflow. imax
+    // for every grid within int64.
     // (A variable template, not a function: Clang would instantiate a plain
     // member function's body while the class is still incomplete.)
     template <detail::grid_wide Dlo, detail::grid_wide Dhi>
     static constexpr int raw_work_bits = [] {
         using W        = detail::grid_wide;
         constexpr W lo = detail::raw_lo_exact<inside>, hi = detail::raw_hi_exact<inside>;
-        return detail::signed_value_bits_of({lo, hi, Dlo, Dhi, lo + Dlo, hi + Dhi, hi - lo + W{1}});
+        return detail::signed_value_bits_of({lo, hi, Dlo, Dhi, lo + Dlo, hi + Dhi, hi - lo + W{1}, hi - lo + Dhi});
     }();
     template <detail::grid_wide Dlo, detail::grid_wide Dhi>
     using raw_work_t = detail::work_int_t<raw_work_bits<Dlo, Dhi>>;
@@ -594,10 +595,19 @@ struct inside {
     // A rational on a Q-format grid's lattice as a signed notch count (rhs·K
     // for notch 1/K), when it is a whole number of notches of moderate size.
     static constexpr bool raw_delta_ok = detail::qformat_codec_fits<inside> && detail::values_fit_imax<inside>;
+    // The largest count it takes: store_raw forms Raw ± n and, to wrap, its
+    // offset from raw_lo, so n leaves room for the raws and their span in imax.
+    static constexpr umax max_notch_delta = [] {
+        using W        = detail::grid_wide;
+        constexpr W lo = detail::raw_lo_exact<inside>, hi = detail::raw_hi_exact<inside>;
+        const W     mag  = lo.negative() && hi < -lo ? -lo : hi;
+        const W     room = W{std::numeric_limits<imax>::max()} - (hi - lo + W{1}) - mag;
+        return room.negative() ? umax{0} : static_cast<umax>(room);
+    }();
     static constexpr std::optional<imax> notch_delta(const detail::rational& r) noexcept {
         constexpr umax K = detail::abs_den(detail::notch64<inside>.Denominator);
         const umax     d = detail::abs_den(r.Denominator);
-        if (K % d != 0 || r.Numerator > (umax{1} << 62) / (K / d))
+        if (K % d != 0 || r.Numerator > max_notch_delta / (K / d))
             return std::nullopt;
         const imax n = static_cast<imax>(r.Numerator * (K / d));
         return r.Denominator < 0 ? -n : n;

@@ -368,8 +368,12 @@ struct big_rational {
         const bool neg = m < 0;
         if (neg)
             m = -m;
-        const umax mant = static_cast<umax>(ldexp(m, 53)); // exact: 53 bits
+        umax mant = static_cast<umax>(ldexp(m, 53)); // exact: 53 bits
         e -= 53;
+        // In lowest terms from the start: a value that fits 64 bits (2^-20)
+        // never builds a wider intermediate, which only compile time holds.
+        for (; mant % 2 == 0 && e < 0; ++e)
+            mant /= 2;
         big_int n{mant}, den{1};
         for (; e > 0; --e)
             n = n * big_int{2};

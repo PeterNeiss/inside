@@ -220,10 +220,25 @@ inline constexpr bool wide_grid_numbers =
     !fits_rational(grid_of<B>.Interval.Lower) || !fits_rational(grid_of<B>.Interval.Upper) ||
     !fits_rational(grid_of<B>.Notch);
 
-// Values past the 64-bit rational: a wide index, grid numbers past 64 bits,
-// or a fraction raw (a bounded continuous grid can need one, C++26).
+// A lattice whose values pass the 64-bit rational between limits that fit:
+// on {{-1.2e19, 1.2e19}, 1.5} the half-integers need numerators to 2.4e19.
 template <insidable B>
-inline constexpr bool wide_valued = wide_index_storage<B> || wide_grid_numbers<B> || fraction_storage<B>;
+inline constexpr bool lattice_past_rational =
+    grid_of<B>.Notch != 0 && (grid_wide{std::numeric_limits<imax>::max()} < den_bound(grid_of<B>) ||
+                              grid_wide{std::numeric_limits<umax>::max()} < num_bound(grid_of<B>));
+
+// Values past the 64-bit rational: a wide index, grid numbers past 64 bits,
+// a lattice past it, or a fraction raw (a bounded continuous grid can need
+// one, C++26).
+template <insidable B>
+inline constexpr bool wide_valued =
+    wide_index_storage<B> || wide_grid_numbers<B> || lattice_past_rational<B> || fraction_storage<B>;
+
+// Whether an inside converts to the 64-bit rational: a lattice past it still
+// does, for its values that fit (the conversion reports the others).
+template <insidable B>
+inline constexpr bool rational_readable = !wide_valued<B> || (lattice_past_rational<B> && !wide_index_storage<B> &&
+                                                              !wide_grid_numbers<B> && !fraction_storage<B>);
 
 // Ungated double view of any inside (the public operator double() is gated
 // on a rounding flag; this is always available). Everything but index storage holds the value verbatim; an
@@ -562,26 +577,9 @@ template <insidable L, typename P>
 }
 
 // v rounded onto L's lattice {Lower + k·Notch} by rounding_for<L, P> (value
-// space, ties half away from zero). Pre: the result fits the rational range
-// (a v within one notch of L's limits); try_round_to_lattice checks it.
-template <insidable L, typename P>
-[[nodiscard]] constexpr rational round_to_lattice(rational v) {
-    if constexpr (!detail::notched<L>)
-        return v;
-    else if constexpr (anchored<L>) {
-        return (lattice_step_of<L, P>((v / detail::notch64<L>).value(), v < 0).Base * detail::notch64<L>).value();
-    } else {
-        const auto [k, up] =
-            lattice_step_of<L, P>(((v - detail::lower64<L>).value() / detail::notch64<L>).value(), v < 0);
-        const rational j = up ? (k + rational{1}).value() : k;
-        return (detail::lower64<L> + (j * detail::notch64<L>).value()).value();
-    }
-}
-
-// The same for any v — not limited to [Lower, Upper], so wrap can round
-// first and fold an on-lattice value after: a result past the rational
-// range is errc::overflow. (Separate from round_to_lattice: an expected
-// result on that hot store path cost instructions.)
+// space, ties half away from zero), for any v — not limited to [Lower,
+// Upper], so wrap can round first and fold an on-lattice value after: a
+// result or step past the rational range is errc::overflow.
 template <insidable L, typename P>
 [[nodiscard]] constexpr std::expected<rational, errc> try_round_to_lattice(rational v) {
     if constexpr (!detail::notched<L>)
@@ -607,9 +605,14 @@ template <insidable L, typename P>
 // outcome. When the policy may round (snap), rounds_into_range rounds such a
 // value and reports whether it lands inside the interval (`out` = the
 // rounded value). Only values within one notch of the interval can, which
-// also keeps round_to_lattice's division bounded for huge sources.
+// also keeps try_round_to_lattice's division bounded for huge sources.
 template <insidable L, typename P>
 inline constexpr bool rounds_before_range_check = detail::notched<L> && has_policy<L, P, snap>;
+
+// rounds_into_range for a v whose rounding passes the 64-bit rational on the
+// way (v − Lower for a fine v's denominator), decided exactly (wide_value.hpp).
+template <insidable L, typename P>
+constexpr bool exact_rounds_into_range(const rational& v, rational& out);
 
 template <insidable L, typename P>
 [[nodiscard]] constexpr bool rounds_into_range(rational v, rational& out) {
@@ -620,7 +623,12 @@ template <insidable L, typename P>
         constexpr rational hi = try_add(detail::upper64<L>, detail::notch64<L>).value_or(detail::upper64<L>);
         if (v <= lo || v >= hi)
             return false;
-        out = round_to_lattice<L, P>(v); // within one notch of the limits: fits
+        // Within one notch of the limits the rounded value fits; the steps
+        // there may not, for a fine v.
+        const auto r = try_round_to_lattice<L, P>(v);
+        if (!r) [[unlikely]]
+            return exact_rounds_into_range<L, P>(v, out);
+        out = *r;
         return includes(interval_of<L>, out);
     }
 }

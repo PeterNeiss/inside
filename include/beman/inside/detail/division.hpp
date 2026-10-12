@@ -77,6 +77,23 @@ constexpr T div_rounded(T a, T b, round_mode m) noexcept {
     return div_rem_rounded(a, b, m).Quotient;
 }
 
+// The native quotient q of a / b stored into Q. Q's grid reaches 2^63 when
+// a can be INT64_MIN and b can be −1 — past from_value's imax, and where
+// div_rem_rounded's q wraps — so such a Q stores through its exact index.
+template <insidable Q, std::signed_integral T>
+constexpr Q native_quotient(T a, T b, T q) noexcept {
+    Q res;
+    if constexpr (values_fit_imax<Q>)
+        from_value(res, imax{q});
+    else {
+        constexpr std::size_t K = exact_limbs<Q>;
+        using I                 = wide_sint<K>;
+        const I v               = a == std::numeric_limits<T>::min() && b == T{-1} ? -I{a} : I{q};
+        res                     = exact_result<Q>(exact_frac<K>{v, I{1}});
+    }
+    return res;
+}
+
 // The narrowest signed type in which native div/mod of L by R is exact: int32
 // when both value ranges fit (excluding INT32_MIN, so a / -1 cannot overflow),
 // else imax. A 32-bit divide is markedly cheaper than a 64-bit one.
@@ -160,11 +177,11 @@ struct division {
     // skip it — so an exact-valued operand returns before any is named.)
     static constexpr bool native_div_fixed = [] {
         if constexpr (wide_grid_numbers<L> || wide_grid_numbers<R> || !notched<L> || notch_of<L> != notch_of<R> ||
-                      !anchored<L> || !anchored<R> || !(grid_of<L> / grid_of<R>).has_value())
+                      !anchored<L> || !anchored<R> || wide_numerator(notch_of<L>) != grid_wide{1} ||
+                      !(grid_wide{1} < wide_denominator(notch_of<L>)) || !(grid_of<L> / grid_of<R>).has_value())
             return false;
         else
-            return ((F | policy_of<L> | policy_of<R>)&snap) && wide_numerator(notch_of<L>) == grid_wide{1} &&
-                   grid_wide{1} < wide_denominator(notch_of<L>);
+            return ((F | policy_of<L> | policy_of<R>)&snap) != 0;
     }();
 
     static constexpr bool native_div = native_div_integer || native_div_fixed;
@@ -174,20 +191,65 @@ struct division {
 
     // A clear diagnostic when the result grid is unrepresentable, instead of the
     // raw expected-deref / .value() below failing cryptically (mirrors add/mul).
-    static_assert((grid_of<L> / grid_of<R>).has_value(),
+    // The native integer path forms no exact quotient grid (below).
+    static_assert(native_div_integer ? lower_of<R> != 0 || upper_of<R> != 0 : (grid_of<L> / grid_of<R>).has_value(),
                   "division: result grid not representable (notch/interval exceeds the "
                   "representable rational range) — coarsen the operand grids");
+
+    // The native integer quotient's range: the corner quotients rounded by
+    // the runtime's mode (half_even: the low end by floor, the high by ceil,
+    // as round_rat). a/b is monotonic in each operand on either side of 0,
+    // and so is its rounding, so these are the rounded endpoints of the exact
+    // quotient grid — which is not formed: its endpoints can pass the 64-bit
+    // rational (7/2^63 for a divisor reaching INT64_MIN).
+    static constexpr interval integer_quotient_range() {
+        const round_mode lo_mode = rmode == round_mode::half_even ? round_mode::floor : rmode;
+        const round_mode hi_mode = rmode == round_mode::half_even ? round_mode::ceil : rmode;
+        // INT64_MIN / -1 is 2^63, past imax.
+        auto quotient = [](imax a, imax b, round_mode m) {
+            return a == std::numeric_limits<imax>::min() && b == -1 ? -rational{a} : rational{div_rounded(a, b, m)};
+        };
+        // The divisor's extremes on each side of 0; the one nearest 0 is ±step
+        // when its range reaches 0 (grid operator/).
+        constexpr imax lo = lower_imax<R>, hi = upper_imax<R>;
+        constexpr imax step = signed_numerator(to_rational(grid_of<R>.value_unit()));
+        imax           divisors[4];
+        int            n = 0;
+        if (lo > 0 || hi < 0) {
+            divisors[n++] = lo;
+            divisors[n++] = hi;
+        } else {
+            if (hi > 0) {
+                divisors[n++] = step;
+                divisors[n++] = hi;
+            }
+            if (lo < 0) {
+                divisors[n++] = lo;
+                divisors[n++] = -step;
+            }
+        }
+        if (n == 0) // a zero divisor grid (the static_assert above)
+            return interval{0, 0};
+        interval q{quotient(lower_imax<L>, divisors[0], lo_mode), quotient(lower_imax<L>, divisors[0], hi_mode)};
+        for (const imax a : {lower_imax<L>, upper_imax<L>})
+            for (int i = 0; i < n; ++i) {
+                const rational l = quotient(a, divisors[i], lo_mode), h = quotient(a, divisors[i], hi_mode);
+                if (l < q.Lower)
+                    q.Lower = l;
+                if (q.Upper < h)
+                    q.Upper = h;
+            }
+        return q;
+    }
 
     // The native paths' endpoints rounded with the same mode as the runtime
     // quotient, so e.g. round_ceil can't escape the grid: onto the integers,
     // or onto the operands' notch 1/K.
     static constexpr grid result_grid = [] {
-        constexpr interval q = (*(grid_of<L> / grid_of<R>)).Interval;
         if constexpr (native_div_integer)
-            return grid{
-                interval{round_rat(to_rational(q.Lower), rmode, false), round_rat(to_rational(q.Upper), rmode, true)},
-                rational{1}};
+            return grid{integer_quotient_range(), rational{1}};
         else if constexpr (native_div_fixed) {
+            constexpr interval q = (*(grid_of<L> / grid_of<R>)).Interval;
             // An endpoint on the notch stays; one off it rounds onto it.
             constexpr rational n = detail::notch64<L>, k = (rational{1} / n).value();
             auto               on = [&](const grid_rational& x, bool up) {
@@ -284,13 +346,17 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy, A&& act
     [[maybe_unused]] constexpr bool zero_unchecked = divisor_unchecked<L, R, F, G>;
 
     if constexpr (native_div_fixed) {
-        // ja·K and jb in the narrowest signed type that holds them: a 32-bit
-        // divide where it fits (Q8.8, Q15, ...), else 64 bits, else a wide_int.
-        constexpr grid_wide K    = wide_denominator(notch_of<L>);
-        constexpr int       bits = signed_value_bits_of({exact_quotient(lower_of<L>, notch_of<L>) * K,
-                                                         exact_quotient(upper_of<L>, notch_of<L>) * K,
-                                                         exact_quotient(lower_of<R>, notch_of<R>),
-                                                         exact_quotient(upper_of<R>, notch_of<R>)});
+        // ja·K, jb and the quotient in the narrowest signed type that holds
+        // them: a 32-bit divide where it fits (Q8.8, Q15, ...), else 64 bits,
+        // else a wide_int. The quotient's magnitude is at most |ja·K|; −ja·K
+        // is listed for the one it can reach past the type, min / −1.
+        constexpr grid_wide K     = wide_denominator(notch_of<L>);
+        constexpr grid_wide ja_lo = exact_quotient(lower_of<L>, notch_of<L>) * K;
+        constexpr int       bits  = signed_value_bits_of({ja_lo,
+                                                          -ja_lo,
+                                                          exact_quotient(upper_of<L>, notch_of<L>) * K,
+                                                          exact_quotient(lower_of<R>, notch_of<R>),
+                                                          exact_quotient(upper_of<R>, notch_of<R>)});
         using W    = std::conditional_t<(bits <= 31), std::int32_t, work_int_t<bits>>; // bits: without the sign
         const W jb = value_index<W>(rhs);
         if constexpr (!zero_unchecked)
@@ -307,9 +373,8 @@ constexpr auto division<L, R, F>::div(L lhs, R rhs, policy<G, E> policy, A&& act
         if constexpr (!zero_unchecked)
             if (rhs_val == 0)
                 return fail(errc::division_by_zero, "division by zero in div");
-        result res;
-        from_value(res, imax{div_rounded(static_cast<T>(to_value(lhs)), rhs_val, rmode)});
-        return res;
+        const T lhs_val = static_cast<T>(to_value(lhs));
+        return native_quotient<result>(lhs_val, rhs_val, div_rounded(lhs_val, rhs_val, rmode));
     } else if constexpr (point_divisor) {
         if constexpr (point_scale<R, L, result>)
             return scale_by_point<result, (lower_of<R> < 0)>(lhs);
@@ -472,8 +537,7 @@ struct quotient_remainder {
             }
         const T    lhs_val = static_cast<T>(to_value(lhs));
         const auto qr      = div_rem_rounded(lhs_val, rhs_val, rmode);
-        result     res;
-        from_value(res.Quotient, imax{qr.Quotient});
+        result     res{native_quotient<typename division<L, R, FS>::result>(lhs_val, rhs_val, qr.Quotient), {}};
         from_value(res.Remainder, imax{qr.Remainder});
         return res;
     }

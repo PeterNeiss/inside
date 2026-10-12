@@ -86,7 +86,7 @@ everywhere: toward zero is down for a value ≥ 0 and up below 0 (on such a
 lattice the two candidates can straddle 0), a tie of `nearest` goes away
 from zero (up at 0 itself), and `half_even` picks the lattice point with an
 even index counted from the anchor. `rounds_up` (`detail/rounding.hpp`) is
-the floor-based form of that decision; `round_quotient`, `round_to_lattice`,
+the floor-based form of that decision; `round_quotient`, `try_round_to_lattice`,
 and `exact_index` use it for unanchored grids and keep their
 anchored code unchanged.
 
