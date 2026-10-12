@@ -172,6 +172,27 @@ inline constexpr grid_wide source_hi = [] {
 template <typename L, typename R>
 struct assignment;
 
+// A value off a bounded continuous grid (its reduced denominator past
+// MaxDenominator) rounded onto it by P's rounding, kept within [Lower,
+// Upper]: a limit itself off the bound moves to the nearest fraction inside.
+// Empty when no fraction of the bound lies in range.
+template <insidable L, typename P, std::size_t K>
+constexpr std::optional<exact_frac<exact_max<K, exact_limbs<L>>>> onto_bound(const exact_frac<K>& v) noexcept {
+    constexpr std::size_t KK = exact_max<K, exact_limbs<L>>;
+    using F                  = exact_frac<KK>;
+    using W                  = wide_sint<KK>;
+    const W D                = static_cast<W>(wide_numerator(grid_of<L>.MaxDenominator));
+    const F lo = exact_of_grid<KK>(lower_of<L>), hi = exact_of_grid<KK>(upper_of<L>);
+    F       r = round_to_denominator<rounding_for<L, P>>(F{v}, D);
+    if (r < lo)
+        r = round_to_denominator<round_mode::ceil>(lo, D);
+    else if (hi < r)
+        r = round_to_denominator<round_mode::floor>(hi, D);
+    if (r < lo || hi < r)
+        return std::nullopt;
+    return r;
+}
+
 //---------------------------------------------------------------------------
 // assign_exact — store an exact value into L. The path for a wide raw (more
 // than 2^64 slots) on either side of an assignment, where neither imax nor
@@ -191,12 +212,23 @@ constexpr L& assign_exact(L& lhs, const exact_frac<K>& v, P&& policy, A&& action
         constexpr std::size_t KK = exact_max<K, exact_limbs<L>>;
         const exact_frac<KK>  lo = exact_of_grid<KK>(lower_of<L>), hi = exact_of_grid<KK>(upper_of<L>);
         auto                  store = [&](const exact_frac<KK>& x) {
-            // A bounded grid: a denominator past its bound is off the grid.
+            // A bounded grid: a denominator past its bound is off the grid —
+            // rounded onto it under a rounding policy, else rounding_error.
             if constexpr (grid_of<L>.MaxDenominator != 0) {
                 constexpr exact_frac<KK> bound = exact_of_grid<KK>(grid_of<L>.MaxDenominator);
-                if (bound.Num < reduced(x).Den &&
-                    (std::is_constant_evaluated() || is_checked(policy_of<L> | plain_t<P>::Flags))) [[unlikely]]
-                    return fail(errc::rounding_error);
+                if (bound.Num < reduced(x).Den) [[unlikely]] {
+                    if constexpr (has_policy<L, P, snap>) {
+                        const auto o = onto_bound<L, plain_t<P>>(x);
+                        if (!o)
+                            return fail(errc::rounding_error);
+                        if (const auto r = frac_raw_of<raw_t<L>>(*o)) [[likely]]
+                            lhs = L::from_raw(*r);
+                        else
+                            fail(errc::overflow);
+                        return;
+                    } else if (std::is_constant_evaluated() || is_checked(policy_of<L> | plain_t<P>::Flags))
+                        return fail(errc::rounding_error);
+                }
             }
             if (const auto r = frac_raw_of<raw_t<L>>(x)) [[likely]]
                 lhs = L::from_raw(*r);
@@ -624,12 +656,21 @@ struct assignment<L, R> {
                 if (!exact) [[unlikely]]
                     return store_fine_double(lhs, static_cast<double>(rhs), policy, action);
             // Continuous: store verbatim. A bounded grid's values have
-            // denominators ≤ its bound: one past it is off the grid, reported
-            // under every policy but unsafe (no rounding onto a bound yet).
+            // denominators ≤ its bound: one past it is off the grid — rounded
+            // onto it under a rounding policy, else reported (but unsafe).
             if constexpr (grid_of<L>.MaxDenominator != 0)
-                if (abs_den(rv.Denominator) > to_rational(grid_of<L>.MaxDenominator).Numerator &&
-                    (std::is_constant_evaluated() || is_checked(policy_of<L> | plain_t<P>::Flags))) [[unlikely]]
-                    return report_failure(lhs, policy, action, errc::rounding_error);
+                if (abs_den(rv.Denominator) > to_rational(grid_of<L>.MaxDenominator).Numerator) [[unlikely]] {
+                    if constexpr (has_policy<L, P, snap>) {
+                        const auto o = onto_bound<L, plain_t<P>>(exact_of(rv));
+                        const auto r = o ? try_rational(*o)
+                                         : std::expected<rational, errc>{std::unexpected{errc::rounding_error}};
+                        if (!r)
+                            return report_failure(lhs, policy, action, errc::rounding_error);
+                        lhs = L::from_raw(*r);
+                        return;
+                    } else if (std::is_constant_evaluated() || is_checked(policy_of<L> | plain_t<P>::Flags))
+                        return report_failure(lhs, policy, action, errc::rounding_error);
+                }
             lhs = L::from_raw(rv);
         } else if constexpr (detail::point_grid<L>)
             lhs = L::from_raw({}); // a point: its value is the type

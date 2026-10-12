@@ -183,6 +183,62 @@ constexpr exact_frac<K> reduced(const exact_frac<K>& f) noexcept {
     return {f.Num / a, f.Den / a};
 }
 
+// x rounded by M onto the fractions with denominator at most D (D ≥ 1):
+// the two Farey neighbours l ≤ x ≤ u of order D, found by walking the
+// Stern–Brocot tree in batched (semiconvergent) steps, then picked by M.
+// floor / ceil / trunc take a side; nearest the closer one, a tie away from
+// zero; half_even the closer one, a tie to the even numerator (else the
+// smaller denominator). Products are exact in twice x's width.
+template <round_mode M, std::size_t K>
+constexpr exact_frac<K> round_to_denominator(const exact_frac<K>& x, const wide_sint<K>& D) noexcept {
+    using I        = wide_sint<2 * K + 2>;
+    const bool neg = x.Num.negative();
+    const I    n{neg ? -x.Num : x.Num}, d{x.Den}, dmax{D};
+    I          lp = n / d, lq{1}, up = lp + I{1}, uq{1}; // floor and ceil of |x|
+    if (lp * d == n)
+        return x; // an integer
+    for (;;) {
+        const I mp = lp + up, mq = lq + uq;
+        if (dmax < mq)
+            break;
+        if (n * mq < mp * d) { // |x| below the mediant: bring u down
+            const I a = up * d - n * uq, b = n * lq - lp * d;
+            I       k = (a - I{1}) / b;
+            if (const I kd = (dmax - uq) / lq; kd < k)
+                k = kd;
+            up = up + k * lp;
+            uq = uq + k * lq;
+        } else if (mp * d < n * mq) { // above: bring l up
+            const I a = n * lq - lp * d, b = up * d - n * uq;
+            I       k = (a - I{1}) / b;
+            if (const I kd = (dmax - lq) / uq; kd < k)
+                k = kd;
+            lp = lp + k * up;
+            lq = lq + k * uq;
+        } else
+            return x; // |x| is the mediant: on the bound already
+    }
+    // Pick on |x|: floor of a negative x is the ceil of |x|, and so on.
+    bool upper;
+    if constexpr (M == round_mode::floor)
+        upper = neg;
+    else if constexpr (M == round_mode::ceil)
+        upper = !neg;
+    else if constexpr (M == round_mode::trunc)
+        upper = false;
+    else {
+        const I below = (n * lq - lp * d) * uq, above = (up * d - n * uq) * lq; // distances · d·lq·uq
+        if (below != above)
+            upper = above < below;
+        else if constexpr (M == round_mode::nearest)
+            upper = true; // away from zero
+        else
+            upper = (up.Word[0] & 1u) == 0 ? true : (lp.Word[0] & 1u) == 0 ? false : uq < lq;
+    }
+    const I p = upper ? up : lp, q = upper ? uq : lq;
+    return {static_cast<wide_sint<K>>(neg ? -p : p), static_cast<wide_sint<K>>(q)};
+}
+
 // v in lowest terms as the fraction raw F, or nothing when it needs more
 // limbs than F has.
 template <typename F, std::size_t K>

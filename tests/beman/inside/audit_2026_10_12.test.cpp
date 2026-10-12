@@ -271,3 +271,19 @@ TEST(Audit20261012, pow_zero_base) {
     using SB = inside<{{-4, 4}, per<4>}>;
     EXPECT_EQ(math::pow_into<Out>(SB{-2}, E{2}).error(), errc::domain_error);
 }
+
+// A bounded continuous grid rounds an off-bound value onto its bound under
+// a rounding policy (0.1 as a double is not 1/10); strict still rejects.
+TEST(Audit20261012, bounded_continuous_rounds_onto_the_bound) {
+    using N = inside<grid{interval{0, 1}, max_denominator{1000}}, round_nearest>;
+    static_assert(N{0.1} == rational{1, 10});
+    using F2 = inside<grid{interval{0, 1}, max_denominator{2}}, round_floor>;
+    using C2 = inside<grid{interval{0, 1}, max_denominator{2}}, round_ceil>;
+    static_assert(F2{rational{1, 3}} == 0 && C2{rational{1, 3}} == rational{1, 2});
+    static_assert(inside<grid{interval{0, 1}, max_denominator{7}}, round_nearest>{rational{1000, 2001}} ==
+                  rational{1, 2});
+    static_assert(inside<grid{interval{-1, 1}, max_denominator{3}}, round_floor>{rational{-1, 4}} == rational{-1, 3});
+    static_assert(inside<grid{interval{-1, 1}, max_denominator{3}}, round_nearest>{rational{-3, 10}} ==
+                  rational{-1, 3});
+    EXPECT_FALSE((inside<grid{interval{0, 1}, max_denominator{2}}>::try_make(rational{1, 3}).has_value()));
+}

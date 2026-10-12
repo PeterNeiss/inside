@@ -590,8 +590,13 @@ A bound must fit a fraction: in C++23 the 64-bit `rational` (a larger one is
 dropped — the grid is unbounded and the op checked, as before); in C++26 any
 bound up to `BEMAN_INSIDE_MAX_FRACTION_BITS` (default 1024 bits of numerator
 and denominator), stored in a fraction sized from it. Storing a value whose
-denominator passes the bound reports `rounding_error` (under every policy but
-`unsafe`; rounding onto a bounded denominator is not supported yet).
+denominator passes the bound reports `rounding_error`, unless the policy
+rounds: then the value goes to a neighbouring fraction within the bound (its
+Farey neighbours) — `round_floor` / `round_ceil` / `snap` pick a side,
+`round_nearest` the closer one (a tie away from zero). So
+`inside<{{0, 1}, max_denominator{1000}}, round_nearest>{0.1}` holds exactly
+1/10, though the double 0.1 is not 1/10. `unsafe` carries `snap`, so it
+truncates onto the bound.
 
 ### Chaining `expected` results
 

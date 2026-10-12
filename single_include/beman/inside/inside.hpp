@@ -5278,6 +5278,62 @@ constexpr exact_frac<K> reduced(const exact_frac<K>& f) noexcept {
     return {f.Num / a, f.Den / a};
 }
 
+// x rounded by M onto the fractions with denominator at most D (D ≥ 1):
+// the two Farey neighbours l ≤ x ≤ u of order D, found by walking the
+// Stern–Brocot tree in batched (semiconvergent) steps, then picked by M.
+// floor / ceil / trunc take a side; nearest the closer one, a tie away from
+// zero; half_even the closer one, a tie to the even numerator (else the
+// smaller denominator). Products are exact in twice x's width.
+template <round_mode M, std::size_t K>
+constexpr exact_frac<K> round_to_denominator(const exact_frac<K>& x, const wide_sint<K>& D) noexcept {
+    using I        = wide_sint<2 * K + 2>;
+    const bool neg = x.Num.negative();
+    const I    n{neg ? -x.Num : x.Num}, d{x.Den}, dmax{D};
+    I          lp = n / d, lq{1}, up = lp + I{1}, uq{1}; // floor and ceil of |x|
+    if (lp * d == n)
+        return x; // an integer
+    for (;;) {
+        const I mp = lp + up, mq = lq + uq;
+        if (dmax < mq)
+            break;
+        if (n * mq < mp * d) { // |x| below the mediant: bring u down
+            const I a = up * d - n * uq, b = n * lq - lp * d;
+            I       k = (a - I{1}) / b;
+            if (const I kd = (dmax - uq) / lq; kd < k)
+                k = kd;
+            up = up + k * lp;
+            uq = uq + k * lq;
+        } else if (mp * d < n * mq) { // above: bring l up
+            const I a = n * lq - lp * d, b = up * d - n * uq;
+            I       k = (a - I{1}) / b;
+            if (const I kd = (dmax - lq) / uq; kd < k)
+                k = kd;
+            lp = lp + k * up;
+            lq = lq + k * uq;
+        } else
+            return x; // |x| is the mediant: on the bound already
+    }
+    // Pick on |x|: floor of a negative x is the ceil of |x|, and so on.
+    bool upper;
+    if constexpr (M == round_mode::floor)
+        upper = neg;
+    else if constexpr (M == round_mode::ceil)
+        upper = !neg;
+    else if constexpr (M == round_mode::trunc)
+        upper = false;
+    else {
+        const I below = (n * lq - lp * d) * uq, above = (up * d - n * uq) * lq; // distances · d·lq·uq
+        if (below != above)
+            upper = above < below;
+        else if constexpr (M == round_mode::nearest)
+            upper = true; // away from zero
+        else
+            upper = (up.Word[0] & 1u) == 0 ? true : (lp.Word[0] & 1u) == 0 ? false : uq < lq;
+    }
+    const I p = upper ? up : lp, q = upper ? uq : lq;
+    return {static_cast<wide_sint<K>>(neg ? -p : p), static_cast<wide_sint<K>>(q)};
+}
+
 // v in lowest terms as the fraction raw F, or nothing when it needs more
 // limbs than F has.
 template <typename F, std::size_t K>
@@ -5801,6 +5857,27 @@ inline constexpr grid_wide source_hi = [] {
 template <typename L, typename R>
 struct assignment;
 
+// A value off a bounded continuous grid (its reduced denominator past
+// MaxDenominator) rounded onto it by P's rounding, kept within [Lower,
+// Upper]: a limit itself off the bound moves to the nearest fraction inside.
+// Empty when no fraction of the bound lies in range.
+template <insidable L, typename P, std::size_t K>
+constexpr std::optional<exact_frac<exact_max<K, exact_limbs<L>>>> onto_bound(const exact_frac<K>& v) noexcept {
+    constexpr std::size_t KK = exact_max<K, exact_limbs<L>>;
+    using F                  = exact_frac<KK>;
+    using W                  = wide_sint<KK>;
+    const W D                = static_cast<W>(wide_numerator(grid_of<L>.MaxDenominator));
+    const F lo = exact_of_grid<KK>(lower_of<L>), hi = exact_of_grid<KK>(upper_of<L>);
+    F       r = round_to_denominator<rounding_for<L, P>>(F{v}, D);
+    if (r < lo)
+        r = round_to_denominator<round_mode::ceil>(lo, D);
+    else if (hi < r)
+        r = round_to_denominator<round_mode::floor>(hi, D);
+    if (r < lo || hi < r)
+        return std::nullopt;
+    return r;
+}
+
 //---------------------------------------------------------------------------
 // assign_exact — store an exact value into L. The path for a wide raw (more
 // than 2^64 slots) on either side of an assignment, where neither imax nor
@@ -5820,12 +5897,23 @@ constexpr L& assign_exact(L& lhs, const exact_frac<K>& v, P&& policy, A&& action
         constexpr std::size_t KK = exact_max<K, exact_limbs<L>>;
         const exact_frac<KK>  lo = exact_of_grid<KK>(lower_of<L>), hi = exact_of_grid<KK>(upper_of<L>);
         auto                  store = [&](const exact_frac<KK>& x) {
-            // A bounded grid: a denominator past its bound is off the grid.
+            // A bounded grid: a denominator past its bound is off the grid —
+            // rounded onto it under a rounding policy, else rounding_error.
             if constexpr (grid_of<L>.MaxDenominator != 0) {
                 constexpr exact_frac<KK> bound = exact_of_grid<KK>(grid_of<L>.MaxDenominator);
-                if (bound.Num < reduced(x).Den &&
-                    (std::is_constant_evaluated() || is_checked(policy_of<L> | plain_t<P>::Flags))) [[unlikely]]
-                    return fail(errc::rounding_error);
+                if (bound.Num < reduced(x).Den) [[unlikely]] {
+                    if constexpr (has_policy<L, P, snap>) {
+                        const auto o = onto_bound<L, plain_t<P>>(x);
+                        if (!o)
+                            return fail(errc::rounding_error);
+                        if (const auto r = frac_raw_of<raw_t<L>>(*o)) [[likely]]
+                            lhs = L::from_raw(*r);
+                        else
+                            fail(errc::overflow);
+                        return;
+                    } else if (std::is_constant_evaluated() || is_checked(policy_of<L> | plain_t<P>::Flags))
+                        return fail(errc::rounding_error);
+                }
             }
             if (const auto r = frac_raw_of<raw_t<L>>(x)) [[likely]]
                 lhs = L::from_raw(*r);
@@ -6253,12 +6341,21 @@ struct assignment<L, R> {
                 if (!exact) [[unlikely]]
                     return store_fine_double(lhs, static_cast<double>(rhs), policy, action);
             // Continuous: store verbatim. A bounded grid's values have
-            // denominators ≤ its bound: one past it is off the grid, reported
-            // under every policy but unsafe (no rounding onto a bound yet).
+            // denominators ≤ its bound: one past it is off the grid — rounded
+            // onto it under a rounding policy, else reported (but unsafe).
             if constexpr (grid_of<L>.MaxDenominator != 0)
-                if (abs_den(rv.Denominator) > to_rational(grid_of<L>.MaxDenominator).Numerator &&
-                    (std::is_constant_evaluated() || is_checked(policy_of<L> | plain_t<P>::Flags))) [[unlikely]]
-                    return report_failure(lhs, policy, action, errc::rounding_error);
+                if (abs_den(rv.Denominator) > to_rational(grid_of<L>.MaxDenominator).Numerator) [[unlikely]] {
+                    if constexpr (has_policy<L, P, snap>) {
+                        const auto o = onto_bound<L, plain_t<P>>(exact_of(rv));
+                        const auto r = o ? try_rational(*o)
+                                         : std::expected<rational, errc>{std::unexpected{errc::rounding_error}};
+                        if (!r)
+                            return report_failure(lhs, policy, action, errc::rounding_error);
+                        lhs = L::from_raw(*r);
+                        return;
+                    } else if (std::is_constant_evaluated() || is_checked(policy_of<L> | plain_t<P>::Flags))
+                        return report_failure(lhs, policy, action, errc::rounding_error);
+                }
             lhs = L::from_raw(rv);
         } else if constexpr (detail::point_grid<L>)
             lhs = L::from_raw({}); // a point: its value is the type
