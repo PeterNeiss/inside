@@ -888,6 +888,9 @@ struct wide_int {
     friend constexpr wide_int operator*(const wide_int& a, const wide_int& b) noexcept {
         wide_int r{0};
         for (std::size_t i = 0; i < N; ++i) {
+            if constexpr (N > 2) // a small value's high limbs: nothing to add
+                if (a.Word[i] == 0)
+                    continue;
             L carry = 0;
             for (std::size_t j = 0; i + j < N; ++j) {
                 const limb::pair<L> p  = limb::mul(a.Word[i], b.Word[j]);
@@ -1885,6 +1888,18 @@ BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE constexpr std::expected<rational, errc> 
     return make_raw(static_cast<umax>(mag), neg ? -d : d);
 }
 
+// Reduce n/d, the sum of two reduced fractions over d = lcm of their
+// denominators, whose gcd is g: gcd(n, d) = gcd(n, g) (Henrici), so a sum
+// over coprime denominators is already reduced.
+constexpr void reduce_sum(umax& n, umax& d, umax g) noexcept {
+    if (g == 1)
+        return;
+    // A power-of-two g: the gcd is the lowest set bit of n | g.
+    const umax h = std::has_single_bit(g) ? (n | g) & (umax{0} - (n | g)) : std::gcd(n, g);
+    n /= h;
+    d /= h;
+}
+
 //---------------------------------------------------------------------------
 // add_impl / mul_impl / div_impl — shared bodies (Checked toggles overflow)
 //---------------------------------------------------------------------------
@@ -1982,24 +1997,18 @@ inline constexpr auto rational::add_impl(const rational& a, const rational& b) {
             numerator = A + B;
 
         // num, den both > 0 here, so the ctor's domain/zero checks are dead;
-        // assemble directly and trim.
-        rational r;
-        r.Numerator   = numerator;
-        r.Denominator = a_neg ? -denominator : denominator;
-        trim(r.Numerator, r.Denominator);
-        return ret_t{r};
+        // assemble directly and reduce.
+        reduce_sum(numerator, denominator, g);
+        return ret_t{make_raw(numerator, a_neg ? -static_cast<imax>(denominator) : static_cast<imax>(denominator))};
     }
 
     // numerator == 0 (exact cancellation) is unreachable here: it would
     // require a == -b, which for canonical inputs has equal denominators and
     // took the equal-denominator branch above.
-    umax     numerator = (A > B) ? (A - B) : (B - A);
-    bool     r_neg     = a_neg ? (A > B) : (B > A);
-    rational r;
-    r.Numerator   = numerator;
-    r.Denominator = r_neg ? -denominator : denominator;
-    trim(r.Numerator, r.Denominator);
-    return ret_t{r};
+    umax       numerator = (A > B) ? (A - B) : (B - A);
+    const bool r_neg     = a_neg ? (A > B) : (B > A);
+    reduce_sum(numerator, denominator, g);
+    return ret_t{make_raw(numerator, r_neg ? -static_cast<imax>(denominator) : static_cast<imax>(denominator))};
 }
 
 template <bool Checked, bool Loud>
@@ -5252,6 +5261,13 @@ template <std::size_t K>
 constexpr exact_frac<K> reduced(const exact_frac<K>& f) noexcept {
     using I = wide_sint<K>;
     I a = f.Num.negative() ? -f.Num : f.Num, b = f.Den;
+    if (bit_width_of(a) <= 64 && bit_width_of(b) <= 64) { // the common case: one-limb Euclid
+        const umax an = static_cast<umax>(a), bn = static_cast<umax>(b), g = std::gcd(an, bn);
+        if (g == 1)
+            return f;
+        const I n{an / g};
+        return {f.Num.negative() ? -n : n, I{bn / g}};
+    }
     while (!b.is_zero()) {
         const I t = a % b;
         a         = b;
@@ -5399,15 +5415,25 @@ constexpr std::expected<exact_frac<K>, errc> parse_exact(const char* first, cons
 }
 
 // n / d (d != 0) rounded to an integer by M; the sign rules of div_rounded.
+// Exact: d divides n (from the same division).
+template <std::size_t K>
+struct rounded_quotient {
+    wide_sint<K> Quot;
+    bool         Exact;
+};
 template <round_mode M, std::size_t K>
-constexpr wide_sint<K> rounded_div(const wide_sint<K>& n, const wide_sint<K>& d) noexcept {
+constexpr rounded_quotient<K> rounded_div_exact(const wide_sint<K>& n, const wide_sint<K>& d) noexcept {
     using I        = wide_sint<K>;
     auto [q, r]    = I::divmod(n, d); // toward zero
     const bool neg = n.negative() != d.negative();
     const I    ar = r.negative() ? -r : r, ad = d.negative() ? -d : d;
     if (!rounds_away(M, neg, classify_remainder(M, ar, ad), (q.Word[0] & 1u) != 0))
-        return q;
-    return neg ? q - I{1} : q + I{1};
+        return {q, r.is_zero()};
+    return {neg ? q - I{1} : q + I{1}, false};
+}
+template <round_mode M, std::size_t K>
+constexpr wide_sint<K> rounded_div(const wide_sint<K>& n, const wide_sint<K>& d) noexcept {
+    return rounded_div_exact<M>(n, d).Quot;
 }
 
 // The value index of f on L's lattice (f / Notch) rounded by M, minus the
@@ -5424,10 +5450,10 @@ constexpr auto exact_index(const exact_frac<K>& f) noexcept {
     using I                  = wide_sint<KK>;
     const exact_frac<KK> g{f};
     if constexpr (anchored<L>) {
-        const I    n     = g.Num * static_cast<I>(wide_denominator(notch_of<L>));
-        const I    d     = g.Den * static_cast<I>(wide_numerator(notch_of<L>)); // > 0
-        const bool exact = (n % d).is_zero();
-        return exact_index_result<KK>{rounded_div<M>(n, d) - static_cast<I>(slot_base<L>), exact};
+        const I    n = g.Num * static_cast<I>(wide_denominator(notch_of<L>));
+        const I    d = g.Den * static_cast<I>(wide_numerator(notch_of<L>)); // > 0
+        const auto q = rounded_div_exact<M>(n, d);                          // one division for both
+        return exact_index_result<KK>{q.Quot - static_cast<I>(slot_base<L>), q.Exact};
     } else {
         // The offset (f − Lower)/Notch rounded in value space (rounds_up).
         const exact_frac<KK> o = g + -exact_of_grid<KK>(lower_of<L>);

@@ -166,6 +166,13 @@ template <std::size_t K>
 constexpr exact_frac<K> reduced(const exact_frac<K>& f) noexcept {
     using I = wide_sint<K>;
     I a = f.Num.negative() ? -f.Num : f.Num, b = f.Den;
+    if (bit_width_of(a) <= 64 && bit_width_of(b) <= 64) { // the common case: one-limb Euclid
+        const umax an = static_cast<umax>(a), bn = static_cast<umax>(b), g = std::gcd(an, bn);
+        if (g == 1)
+            return f;
+        const I n{an / g};
+        return {f.Num.negative() ? -n : n, I{bn / g}};
+    }
     while (!b.is_zero()) {
         const I t = a % b;
         a         = b;
@@ -313,15 +320,25 @@ constexpr std::expected<exact_frac<K>, errc> parse_exact(const char* first, cons
 }
 
 // n / d (d != 0) rounded to an integer by M; the sign rules of div_rounded.
+// Exact: d divides n (from the same division).
+template <std::size_t K>
+struct rounded_quotient {
+    wide_sint<K> Quot;
+    bool         Exact;
+};
 template <round_mode M, std::size_t K>
-constexpr wide_sint<K> rounded_div(const wide_sint<K>& n, const wide_sint<K>& d) noexcept {
+constexpr rounded_quotient<K> rounded_div_exact(const wide_sint<K>& n, const wide_sint<K>& d) noexcept {
     using I        = wide_sint<K>;
     auto [q, r]    = I::divmod(n, d); // toward zero
     const bool neg = n.negative() != d.negative();
     const I    ar = r.negative() ? -r : r, ad = d.negative() ? -d : d;
     if (!rounds_away(M, neg, classify_remainder(M, ar, ad), (q.Word[0] & 1u) != 0))
-        return q;
-    return neg ? q - I{1} : q + I{1};
+        return {q, r.is_zero()};
+    return {neg ? q - I{1} : q + I{1}, false};
+}
+template <round_mode M, std::size_t K>
+constexpr wide_sint<K> rounded_div(const wide_sint<K>& n, const wide_sint<K>& d) noexcept {
+    return rounded_div_exact<M>(n, d).Quot;
 }
 
 // The value index of f on L's lattice (f / Notch) rounded by M, minus the
@@ -338,10 +355,10 @@ constexpr auto exact_index(const exact_frac<K>& f) noexcept {
     using I                  = wide_sint<KK>;
     const exact_frac<KK> g{f};
     if constexpr (anchored<L>) {
-        const I    n     = g.Num * static_cast<I>(wide_denominator(notch_of<L>));
-        const I    d     = g.Den * static_cast<I>(wide_numerator(notch_of<L>)); // > 0
-        const bool exact = (n % d).is_zero();
-        return exact_index_result<KK>{rounded_div<M>(n, d) - static_cast<I>(slot_base<L>), exact};
+        const I    n = g.Num * static_cast<I>(wide_denominator(notch_of<L>));
+        const I    d = g.Den * static_cast<I>(wide_numerator(notch_of<L>)); // > 0
+        const auto q = rounded_div_exact<M>(n, d);                          // one division for both
+        return exact_index_result<KK>{q.Quot - static_cast<I>(slot_base<L>), q.Exact};
     } else {
         // The offset (f − Lower)/Notch rounded in value space (rounds_up).
         const exact_frac<KK> o = g + -exact_of_grid<KK>(lower_of<L>);

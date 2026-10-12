@@ -303,6 +303,9 @@ struct wide_int {
     friend constexpr wide_int operator*(const wide_int& a, const wide_int& b) noexcept {
         wide_int r{0};
         for (std::size_t i = 0; i < N; ++i) {
+            if constexpr (N > 2) // a small value's high limbs: nothing to add
+                if (a.Word[i] == 0)
+                    continue;
             L carry = 0;
             for (std::size_t j = 0; i + j < N; ++j) {
                 const limb::pair<L> p  = limb::mul(a.Word[i], b.Word[j]);

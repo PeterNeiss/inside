@@ -677,6 +677,18 @@ BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE constexpr std::expected<rational, errc> 
     return make_raw(static_cast<umax>(mag), neg ? -d : d);
 }
 
+// Reduce n/d, the sum of two reduced fractions over d = lcm of their
+// denominators, whose gcd is g: gcd(n, d) = gcd(n, g) (Henrici), so a sum
+// over coprime denominators is already reduced.
+constexpr void reduce_sum(umax& n, umax& d, umax g) noexcept {
+    if (g == 1)
+        return;
+    // A power-of-two g: the gcd is the lowest set bit of n | g.
+    const umax h = std::has_single_bit(g) ? (n | g) & (umax{0} - (n | g)) : std::gcd(n, g);
+    n /= h;
+    d /= h;
+}
+
 //---------------------------------------------------------------------------
 // add_impl / mul_impl / div_impl — shared bodies (Checked toggles overflow)
 //---------------------------------------------------------------------------
@@ -774,24 +786,18 @@ inline constexpr auto rational::add_impl(const rational& a, const rational& b) {
             numerator = A + B;
 
         // num, den both > 0 here, so the ctor's domain/zero checks are dead;
-        // assemble directly and trim.
-        rational r;
-        r.Numerator   = numerator;
-        r.Denominator = a_neg ? -denominator : denominator;
-        trim(r.Numerator, r.Denominator);
-        return ret_t{r};
+        // assemble directly and reduce.
+        reduce_sum(numerator, denominator, g);
+        return ret_t{make_raw(numerator, a_neg ? -static_cast<imax>(denominator) : static_cast<imax>(denominator))};
     }
 
     // numerator == 0 (exact cancellation) is unreachable here: it would
     // require a == -b, which for canonical inputs has equal denominators and
     // took the equal-denominator branch above.
-    umax     numerator = (A > B) ? (A - B) : (B - A);
-    bool     r_neg     = a_neg ? (A > B) : (B > A);
-    rational r;
-    r.Numerator   = numerator;
-    r.Denominator = r_neg ? -denominator : denominator;
-    trim(r.Numerator, r.Denominator);
-    return ret_t{r};
+    umax       numerator = (A > B) ? (A - B) : (B - A);
+    const bool r_neg     = a_neg ? (A > B) : (B > A);
+    reduce_sum(numerator, denominator, g);
+    return ret_t{make_raw(numerator, r_neg ? -static_cast<imax>(denominator) : static_cast<imax>(denominator))};
 }
 
 template <bool Checked, bool Loud>
