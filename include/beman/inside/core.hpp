@@ -777,22 +777,34 @@ template <typename T, insidable B>
 // off the grid is rounding_error and out of range overflow, whatever B's
 // policy. (io.hpp adds std::string_view overloads and operator>>.)
 //---------------------------------------------------------------------------
+namespace detail {
+// from_chars past the 64-bit rational (a long decimal, a wide grid's value,
+// 1e-200): the text parsed exactly, or past that width as a tiny value's
+// stand-in. Out of line: the common parse stays small.
+template <insidable B, policy_flag F>
+BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE constexpr std::expected<B, errc> from_chars_wide(const char* first,
+                                                                                         const char* last) {
+    constexpr std::size_t K = exact_max<exact_limbs<B>, parse_limbs>;
+    auto                  w = parse_exact<K>(first, last);
+    if (!w && w.error() == errc::overflow)
+        if (const auto t = tiny_stand_in<B, K>(first, last))
+            w = *t;
+    if (!w)
+        return std::unexpected{w.error()};
+    errc ec{};
+    B    b{};
+    assign_exact<rational>(b, *w, make_policy<policy_of<B> | F>(ec), no_action{});
+    if (ec != errc{})
+        return std::unexpected{ec};
+    return b;
+}
+} // namespace detail
+
 template <insidable B, policy_flag F = none>
 [[nodiscard]] constexpr std::expected<B, errc> from_chars(const char* first, const char* last) {
     const auto v = detail::parse_text(first, last);
-    if (!v && v.error() == errc::overflow) {
-        // A value past the 64-bit rational (a long decimal, a wide grid's
-        // value): parse it exactly instead.
-        const auto w = detail::parse_exact<detail::exact_limbs<B>>(first, last);
-        if (!w)
-            return std::unexpected{w.error()};
-        errc ec{};
-        B    b{};
-        detail::assign_exact<detail::rational>(b, *w, make_policy<policy_of<B> | F>(ec), no_action{});
-        if (ec != errc{})
-            return std::unexpected{ec};
-        return b;
-    }
+    if (!v && v.error() == errc::overflow) [[unlikely]]
+        return detail::from_chars_wide<B, F>(first, last);
     if (!v)
         return std::unexpected{v.error()};
     return B::template try_make<F>(*v);
@@ -810,8 +822,11 @@ template <insidable B>
     }
     if (v.error() != errc::overflow)
         return std::unexpected{v.error()};
-    constexpr std::size_t K = detail::exact_limbs<B>;
-    const auto            w = detail::parse_exact<K>(first, last);
+    constexpr std::size_t K = detail::exact_max<detail::exact_limbs<B>, detail::parse_limbs>;
+    auto                  w = detail::parse_exact<K>(first, last);
+    if (!w && w.error() == errc::overflow)
+        if (const auto t = detail::tiny_stand_in<B, K>(first, last))
+            w = *t; // never on the grid: rounding_error, or overflow outside it
     if (!w)
         return std::unexpected{w.error()};
     if (*w < detail::exact_of_grid<K>(lower_of<B>) || detail::exact_of_grid<K>(upper_of<B>) < *w)

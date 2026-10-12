@@ -305,60 +305,61 @@ constexpr std::expected<rational, errc> try_rational(const exact_frac<K>& f) noe
     return rational{static_cast<umax>(a), neg ? -den : den};
 }
 
-// Text → exact value, for wide grids whose values outgrow the 64-bit
-// rational parse (from_chars falls back here on errc::overflow). Accepts
-// [+-]digits[.digits][e[+-]digits] and two of those joined by '/'.
-// Anything K limbs cannot hold reports overflow.
+// Text → exact value, for values that outgrow the 64-bit rational parse
+// (from_chars falls back here on errc::overflow): the grammar of parse_text
+// (scan_number: radix prefixes, ' separators, '.', e / p exponents, N/D),
+// built in K limbs. Anything K limbs cannot hold reports overflow.
 template <std::size_t K>
 constexpr std::expected<exact_frac<K>, errc> parse_exact(const char* first, const char* last) noexcept {
-    using I = wide_sint<K>;
-    constexpr I ten{10};
-    constexpr I limit = std::numeric_limits<I>::max() / I{100};
-    auto        one   = [&](const char* f, const char* l) -> std::expected<exact_frac<K>, errc> {
-        bool neg = false;
-        if (f != l && (*f == '+' || *f == '-')) {
-            neg = (*f == '-');
-            ++f;
-        }
-        I    num{0}, den{1};
-        bool digits = false, point = false;
-        for (; f != l && ((*f >= '0' && *f <= '9') || (*f == '.' && !point)); ++f) {
-            if (*f == '.') {
-                point = true;
-                continue;
+    using I           = wide_sint<K>;
+    constexpr I limit = std::numeric_limits<I>::max() / I{32}; // room for ·16 + a digit
+    const auto  big   = [&](const I& x) { return limit < x; };
+    bool        neg   = false;
+    if (first != last && (*first == '+' || *first == '-')) {
+        neg = (*first == '-');
+        ++first;
+    }
+    auto one = [&](const char* f, const char* l) -> std::expected<exact_frac<K>, errc> {
+        I                    num{0}, den{1};
+        int                  frac_zeros = 0; // deferred, as in parse_number: trailing zeros cost nothing
+        const scanned_number sc         = scan_number(f, l, [&](int d, bool in_frac, int b) {
+            const I base{b};
+            if (in_frac && d == 0) {
+                ++frac_zeros;
+                return true;
             }
-            if (num > limit || den > limit)
+            for (; frac_zeros > 0; --frac_zeros) {
+                if (big(num) || big(den))
+                    return false;
+                num = num * base;
+                den = den * base;
+            }
+            if (big(num) || big(den))
+                return false;
+            num = num * base + I{d};
+            if (in_frac)
+                den = den * base;
+            return true;
+        });
+        if (sc.Fail != parse_fail::none)
+            return std::unexpected{errc::invalid_format};
+        if (sc.Stopped)
+            return std::unexpected{errc::overflow};
+        if (num.is_zero())
+            return exact_frac<K>{I{0}, I{1}};
+        if (sc.HasP) { // ·2^±Exp
+            I& t = sc.ExpNeg ? den : num;
+            if (bit_width_of(t) + sc.Exp > I::bits - 2)
                 return std::unexpected{errc::overflow};
-            num = num * ten + I{*f - '0'};
-            if (point)
-                den = den * ten;
-            digits = true;
-        }
-        if (!digits)
-            return std::unexpected{errc::invalid_format};
-        if (f != l && (*f == 'e' || *f == 'E')) {
-            ++f;
-            bool eneg = false;
-            if (f != l && (*f == '+' || *f == '-')) {
-                eneg = (*f == '-');
-                ++f;
-            }
-            if (f == l)
-                return std::unexpected{errc::invalid_format};
-            int e = 0;
-            for (; f != l && *f >= '0' && *f <= '9'; ++f)
-                if ((e = e * 10 + (*f - '0')) > 64 * static_cast<int>(K))
+            t = t << sc.Exp;
+        } else if (sc.HasE) // ·10^±Exp
+            for (int e = 0; e < sc.Exp; ++e) {
+                I& t = sc.ExpNeg ? den : num;
+                if (big(t))
                     return std::unexpected{errc::overflow};
-            for (; e > 0; --e) {
-                I& t = eneg ? den : num;
-                if (t > limit)
-                    return std::unexpected{errc::overflow};
-                t = t * ten;
+                t = t * I{10};
             }
-        }
-        if (f != l)
-            return std::unexpected{errc::invalid_format};
-        return exact_frac<K>{neg ? -num : num, den};
+        return exact_frac<K>{num, den};
     };
     const char* slash = first;
     while (slash != last && *slash != '/')
@@ -372,7 +373,65 @@ constexpr std::expected<exact_frac<K>, errc> parse_exact(const char* first, cons
             return std::unexpected{errc::division_by_zero};
         v = *v / *d;
     }
+    if (v && neg)
+        v = -*v;
     return v;
+}
+
+// The text parse's width: wide enough for about 1200 decimal digits or a
+// 10^±1200 exponent, past every grid's own values.
+inline constexpr std::size_t parse_limbs = 64;
+
+// Bits of B's finest denominator: every grid value and every midpoint
+// between two lies 0 or at least 2^−(bits + 1) from 0. An unbounded
+// continuous grid is bounded by its storage.
+template <insidable B>
+inline constexpr int finest_den_bits = [] {
+    const grid_wide d = den_bound(grid_of<B>);
+    return d == grid_wide{0} ? 64 * static_cast<int>(exact_limbs<B>) : bit_width_of(d);
+}();
+
+// A number too fine for the wide parse (1e-5000) still has a store: a value
+// nearer 0 than every value and midpoint of B rounds and range-checks like
+// any other such value of its sign, so ±2^−(finest_den_bits + 2) stands in.
+// Empty unless the text is one number whose magnitude, bounded from its
+// digits and exponent, is that small.
+template <insidable B, std::size_t K>
+constexpr std::optional<exact_frac<K>> tiny_stand_in(const char* first, const char* last) noexcept {
+    constexpr int G = finest_den_bits<B> + 2;
+    if constexpr (G >= 64 * static_cast<int>(K) - 2)
+        return std::nullopt;
+    else {
+        bool neg = false;
+        if (first != last && (*first == '+' || *first == '-')) {
+            neg = (*first == '-');
+            ++first;
+        }
+        long                 sig = 0, frac = 0; // significant digits, digits after the point
+        const scanned_number sc = scan_number(first, last, [&](int d, bool in_frac, int) {
+            if (sig > 0 || d != 0)
+                ++sig;
+            if (in_frac)
+                ++frac;
+            return true;
+        });
+        if (sc.Fail != parse_fail::none)
+            return std::nullopt;
+        if (sig == 0)
+            return std::nullopt; // zero: no stand-in needed
+        // log2|v| < sig·log2(base) − frac·log2(base) ± Exp·log2(10 or 2), bounded up.
+        auto up    = [&](long n) { return sc.Base == 10 ? (n * 3322 + 999) / 1000 : sc.Base == 16 ? 4 * n : n; };
+        auto dn    = [&](long n) { return sc.Base == 10 ? n * 3321 / 1000 : sc.Base == 16 ? 4 * n : n; };
+        long bound = up(sig) - dn(frac);
+        if (sc.HasP)
+            bound += sc.ExpNeg ? -long{sc.Exp} : long{sc.Exp};
+        else if (sc.HasE)
+            bound += sc.ExpNeg ? -(long{sc.Exp} * 3321 / 1000) : (long{sc.Exp} * 3322 + 999) / 1000;
+        if (bound > -G)
+            return std::nullopt;
+        using I = wide_sint<K>;
+        return exact_frac<K>{neg ? I{-1} : I{1}, I{1} << G};
+    }
 }
 
 // n / d (d != 0) rounded to an integer by M; the sign rules of div_rounded.

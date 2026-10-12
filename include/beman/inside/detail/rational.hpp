@@ -408,105 +408,120 @@ struct parsed_number {
     parse_fail Fail;
 };
 
-// Unsigned number in [first, last): the grammar of the _ins / _r literals.
-constexpr parsed_number parse_number(const char* first, const char* last) {
-    const std::size_t N    = static_cast<std::size_t>(last - first);
-    auto              fail = [](parse_fail f) { return parsed_number{rational{}, f}; };
+// An unsigned number in the grammar of the _ins / _r literals, scanned in
+// one pass: the radix and the exponent come back, and each mantissa digit
+// goes to on_digit(d, in_frac, base) (false stops the scan: the builder's
+// overflow). parse_number (64-bit), parse_exact (wide, wide_value.hpp) and
+// tiny_stand_in build from it, so all read one grammar.
+struct scanned_number {
+    int        Base    = 10;
+    int        Exp     = 0; // capped at 100000: past it any value overflows
+    bool       ExpNeg  = false;
+    bool       HasP    = false; // 2^Exp (hex floats)
+    bool       HasE    = false; // 10^Exp (decimal scientific)
+    bool       Stopped = false; // on_digit returned false
+    parse_fail Fail    = parse_fail::none;
+};
 
-    // Detect radix prefix.
-    int         base = 10;
-    std::size_t i    = 0;
-    if (N >= 2 && first[0] == '0') {
+template <typename OnDigit>
+[[gnu::always_inline]] constexpr scanned_number scan_number(const char* first, const char* last, OnDigit&& on_digit) {
+    scanned_number r;
+    auto           fail = [&](parse_fail f) {
+        r.Fail = f;
+        return r;
+    };
+    if (last - first >= 2 && first[0] == '0') { // radix prefix
         if (first[1] == 'x' || first[1] == 'X') {
-            base = 16;
-            i    = 2;
+            r.Base = 16;
+            first += 2;
         } else if (first[1] == 'b' || first[1] == 'B') {
-            base = 2;
-            i    = 2;
+            r.Base = 2;
+            first += 2;
         }
     }
-
-    umax num            = 0;
-    int  frac_len       = 0;
-    bool in_frac        = false;
-    bool seen_digit     = false;
-    int  exp            = 0;
-    bool exp_neg        = false;
-    bool has_p_exp      = false; // 2^exp (hex floats)
-    bool has_e_exp      = false; // 10^exp (decimal scientific)
-    bool in_exp         = false;
-    bool exp_seen_digit = false;
-    bool exp_seen_sign  = false; // one sign, right after e/p
-    int  frac_zeros     = 0;     // deferred fractional zeros (see the digit loop)
-
-    for (; i < N; ++i) {
-        const char c = first[i];
+    bool in_frac = false, seen_digit = false;
+    for (; first != last; ++first) {
+        const char c = *first;
         if (c == '\'')
             continue;
-
-        if (in_exp) {
-            if (!exp_seen_digit && !exp_seen_sign && (c == '+' || c == '-')) {
-                exp_neg       = (c == '-');
-                exp_seen_sign = true;
-                continue;
-            }
-            if (c >= '0' && c <= '9') {
-                if (exp < 100000)
-                    exp = exp * 10 + (c - '0'); // past 10^5 it overflows anyway
-                exp_seen_digit = true;
-                continue;
-            }
-            return fail(parse_fail::invalid_exponent);
-        }
-
         if (c == '.') {
             if (in_frac)
                 return fail(parse_fail::multiple_dots);
-            if (base == 2)
+            if (r.Base == 2)
                 return fail(parse_fail::dot_in_binary);
             in_frac = true;
             continue;
         }
-
-        if ((c == 'p' || c == 'P') && base == 16) {
-            has_p_exp = true;
-            in_exp    = true;
-            continue;
-        }
-
-        if ((c == 'e' || c == 'E') && base == 10) {
-            has_e_exp = true;
-            in_exp    = true;
-            continue;
-        }
-
-        const int d = parse_digit(c, base);
+        if (((c == 'p' || c == 'P') && r.Base == 16) || ((c == 'e' || c == 'E') && r.Base == 10))
+            break;
+        const int d = parse_digit(c, r.Base);
         if (d < 0)
             return fail(parse_fail::invalid_digit);
         seen_digit = true;
-
-        const umax base_u = static_cast<umax>(base);
-        // A fractional zero only matters if a non-zero digit follows: defer it,
-        // so trailing zeros ("1.000…0") cannot overflow num / den.
-        if (in_frac && d == 0) {
-            ++frac_zeros;
-            continue;
-        }
-        for (; frac_zeros > 0; --frac_zeros, ++frac_len) {
-            if (num > (~umax{0}) / base_u)
-                return fail(parse_fail::numerator_overflow);
-            num *= base_u;
-        }
-        if (num > (~umax{0} - static_cast<umax>(d)) / base_u)
-            return fail(parse_fail::numerator_overflow);
-        num = num * base_u + static_cast<umax>(d);
-        if (in_frac)
-            ++frac_len;
+        if (!r.Stopped && !on_digit(d, in_frac, r.Base))
+            r.Stopped = true; // keep scanning: malformed text still reports invalid_format
     }
     if (!seen_digit)
         return fail(parse_fail::empty);
-    if (in_exp && !exp_seen_digit)
+    if (first == last)
+        return r;
+    (r.Base == 16 ? r.HasP : r.HasE) = true;
+    bool exp_seen_digit = false, exp_seen_sign = false; // one sign, right after e/p
+    for (++first; first != last; ++first) {
+        const char c = *first;
+        if (c == '\'')
+            continue;
+        if (!exp_seen_digit && !exp_seen_sign && (c == '+' || c == '-')) {
+            r.ExpNeg      = (c == '-');
+            exp_seen_sign = true;
+            continue;
+        }
+        if (c < '0' || c > '9')
+            return fail(parse_fail::invalid_exponent);
+        if (r.Exp < 100000)
+            r.Exp = r.Exp * 10 + (c - '0');
+        exp_seen_digit = true;
+    }
+    if (!exp_seen_digit)
         return fail(parse_fail::invalid_exponent);
+    return r;
+}
+
+// Unsigned number in [first, last): the grammar of the _ins / _r literals.
+constexpr parsed_number parse_number(const char* first, const char* last) {
+    auto fail       = [](parse_fail f) { return parsed_number{rational{}, f}; };
+    umax num        = 0;
+    int  frac_len   = 0;
+    int  frac_zeros = 0; // deferred fractional zeros
+    // A fractional zero only matters if a non-zero digit follows: defer it,
+    // so trailing zeros ("1.000…0") cannot overflow num / den.
+    const scanned_number sc = scan_number(first, last, [&](int d, bool in_frac, int base) {
+        const umax base_u = static_cast<umax>(base);
+        if (in_frac && d == 0) {
+            ++frac_zeros;
+            return true;
+        }
+        for (; frac_zeros > 0; --frac_zeros, ++frac_len) {
+            if (num > (~umax{0}) / base_u)
+                return false;
+            num *= base_u;
+        }
+        if (num > (~umax{0} - static_cast<umax>(d)) / base_u)
+            return false;
+        num = num * base_u + static_cast<umax>(d);
+        if (in_frac)
+            ++frac_len;
+        return true;
+    });
+    if (sc.Fail != parse_fail::none)
+        return fail(sc.Fail);
+    if (sc.Stopped)
+        return fail(parse_fail::numerator_overflow);
+    const int  base      = sc.Base;
+    const int  exp       = sc.Exp;
+    const bool exp_neg   = sc.ExpNeg;
+    const bool has_p_exp = sc.HasP;
+    const bool has_e_exp = sc.HasE;
 
     // Build denominator from fractional part.
     // For decimal: den = 10^frac_len. For hex: den = 2^(4*frac_len).

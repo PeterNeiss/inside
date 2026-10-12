@@ -12,6 +12,7 @@
 #include <compare>
 #include <cstdint>
 #include <limits>
+#include <string>
 #include <string_view>
 
 using namespace beman::inside;
@@ -301,4 +302,26 @@ TEST(Audit20261012, math_deep_step_at_the_cap) {
     using X  = inside<{{0, 1}, per<(std::uint64_t{1} << 40)>}>;
     using SF = inside<{{0, 1}, per<(std::uint64_t{1} << 40)>}, round_floor>;
     EXPECT_EQ(math::sin_into<SF>(X{rational{3u, std::uint64_t{1} << 40}}).raw(), 2u);
+}
+
+// Text past the 64-bit parse: the wide fallback reads the whole grammar
+// (hex, binary, p exponents, separators), and a value too fine even for it
+// stores by a same-sign stand-in below every grid step.
+TEST(Audit20261012, text_past_the_64_bit_parse) {
+    using H  = inside<{{0, 1}, per<100>}, round_nearest>;
+    using HC = inside<{{0, 1}, per<100>}, round_ceil>;
+    using S  = inside<{{0, 1}, per<100>}>;
+    EXPECT_EQ(*from_chars<H>(std::string_view{"1e-200"}), 0);
+    EXPECT_EQ(*from_chars<HC>(std::string_view{"1e-200"}), rational(1, 100));
+    EXPECT_EQ(from_chars<S>(std::string_view{"1e-200"}).error(), errc::rounding_error);
+    EXPECT_EQ(*from_chars<HC>(std::string_view{"-1e-200"}), 0);
+    EXPECT_EQ(*from_chars<HC>(std::string_view{"1e-5000"}), rational(1, 100)); // past the wide parse
+    EXPECT_EQ(from_chars_exact<S>(std::string_view{"1e-5000"}).error(), errc::rounding_error);
+    EXPECT_TRUE(*from_chars<qword>(std::string_view{"0x1p63"}) == (umax{1} << 63));
+    EXPECT_EQ(*from_chars<H>(std::string_view{"0x1p-70"}), 0);
+    EXPECT_TRUE(*from_chars<qword>(std::string_view{"18'446'744'073'709'551'615"}) == ~umax{0});
+    const std::string third = "0." + std::string(299, '3') + "4";
+    EXPECT_EQ(*from_chars<H>(std::string_view{third}), rational(33, 100));
+    const std::string over_half = "0.5" + std::string(298, '0') + "1";
+    EXPECT_EQ((*from_chars<inside<{0, 1}, round_nearest>>(std::string_view{over_half})), 1);
 }

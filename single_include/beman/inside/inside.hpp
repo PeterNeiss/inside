@@ -1619,105 +1619,120 @@ struct parsed_number {
     parse_fail Fail;
 };
 
-// Unsigned number in [first, last): the grammar of the _ins / _r literals.
-constexpr parsed_number parse_number(const char* first, const char* last) {
-    const std::size_t N    = static_cast<std::size_t>(last - first);
-    auto              fail = [](parse_fail f) { return parsed_number{rational{}, f}; };
+// An unsigned number in the grammar of the _ins / _r literals, scanned in
+// one pass: the radix and the exponent come back, and each mantissa digit
+// goes to on_digit(d, in_frac, base) (false stops the scan: the builder's
+// overflow). parse_number (64-bit), parse_exact (wide, wide_value.hpp) and
+// tiny_stand_in build from it, so all read one grammar.
+struct scanned_number {
+    int        Base    = 10;
+    int        Exp     = 0; // capped at 100000: past it any value overflows
+    bool       ExpNeg  = false;
+    bool       HasP    = false; // 2^Exp (hex floats)
+    bool       HasE    = false; // 10^Exp (decimal scientific)
+    bool       Stopped = false; // on_digit returned false
+    parse_fail Fail    = parse_fail::none;
+};
 
-    // Detect radix prefix.
-    int         base = 10;
-    std::size_t i    = 0;
-    if (N >= 2 && first[0] == '0') {
+template <typename OnDigit>
+[[gnu::always_inline]] constexpr scanned_number scan_number(const char* first, const char* last, OnDigit&& on_digit) {
+    scanned_number r;
+    auto           fail = [&](parse_fail f) {
+        r.Fail = f;
+        return r;
+    };
+    if (last - first >= 2 && first[0] == '0') { // radix prefix
         if (first[1] == 'x' || first[1] == 'X') {
-            base = 16;
-            i    = 2;
+            r.Base = 16;
+            first += 2;
         } else if (first[1] == 'b' || first[1] == 'B') {
-            base = 2;
-            i    = 2;
+            r.Base = 2;
+            first += 2;
         }
     }
-
-    umax num            = 0;
-    int  frac_len       = 0;
-    bool in_frac        = false;
-    bool seen_digit     = false;
-    int  exp            = 0;
-    bool exp_neg        = false;
-    bool has_p_exp      = false; // 2^exp (hex floats)
-    bool has_e_exp      = false; // 10^exp (decimal scientific)
-    bool in_exp         = false;
-    bool exp_seen_digit = false;
-    bool exp_seen_sign  = false; // one sign, right after e/p
-    int  frac_zeros     = 0;     // deferred fractional zeros (see the digit loop)
-
-    for (; i < N; ++i) {
-        const char c = first[i];
+    bool in_frac = false, seen_digit = false;
+    for (; first != last; ++first) {
+        const char c = *first;
         if (c == '\'')
             continue;
-
-        if (in_exp) {
-            if (!exp_seen_digit && !exp_seen_sign && (c == '+' || c == '-')) {
-                exp_neg       = (c == '-');
-                exp_seen_sign = true;
-                continue;
-            }
-            if (c >= '0' && c <= '9') {
-                if (exp < 100000)
-                    exp = exp * 10 + (c - '0'); // past 10^5 it overflows anyway
-                exp_seen_digit = true;
-                continue;
-            }
-            return fail(parse_fail::invalid_exponent);
-        }
-
         if (c == '.') {
             if (in_frac)
                 return fail(parse_fail::multiple_dots);
-            if (base == 2)
+            if (r.Base == 2)
                 return fail(parse_fail::dot_in_binary);
             in_frac = true;
             continue;
         }
-
-        if ((c == 'p' || c == 'P') && base == 16) {
-            has_p_exp = true;
-            in_exp    = true;
-            continue;
-        }
-
-        if ((c == 'e' || c == 'E') && base == 10) {
-            has_e_exp = true;
-            in_exp    = true;
-            continue;
-        }
-
-        const int d = parse_digit(c, base);
+        if (((c == 'p' || c == 'P') && r.Base == 16) || ((c == 'e' || c == 'E') && r.Base == 10))
+            break;
+        const int d = parse_digit(c, r.Base);
         if (d < 0)
             return fail(parse_fail::invalid_digit);
         seen_digit = true;
-
-        const umax base_u = static_cast<umax>(base);
-        // A fractional zero only matters if a non-zero digit follows: defer it,
-        // so trailing zeros ("1.000…0") cannot overflow num / den.
-        if (in_frac && d == 0) {
-            ++frac_zeros;
-            continue;
-        }
-        for (; frac_zeros > 0; --frac_zeros, ++frac_len) {
-            if (num > (~umax{0}) / base_u)
-                return fail(parse_fail::numerator_overflow);
-            num *= base_u;
-        }
-        if (num > (~umax{0} - static_cast<umax>(d)) / base_u)
-            return fail(parse_fail::numerator_overflow);
-        num = num * base_u + static_cast<umax>(d);
-        if (in_frac)
-            ++frac_len;
+        if (!r.Stopped && !on_digit(d, in_frac, r.Base))
+            r.Stopped = true; // keep scanning: malformed text still reports invalid_format
     }
     if (!seen_digit)
         return fail(parse_fail::empty);
-    if (in_exp && !exp_seen_digit)
+    if (first == last)
+        return r;
+    (r.Base == 16 ? r.HasP : r.HasE) = true;
+    bool exp_seen_digit = false, exp_seen_sign = false; // one sign, right after e/p
+    for (++first; first != last; ++first) {
+        const char c = *first;
+        if (c == '\'')
+            continue;
+        if (!exp_seen_digit && !exp_seen_sign && (c == '+' || c == '-')) {
+            r.ExpNeg      = (c == '-');
+            exp_seen_sign = true;
+            continue;
+        }
+        if (c < '0' || c > '9')
+            return fail(parse_fail::invalid_exponent);
+        if (r.Exp < 100000)
+            r.Exp = r.Exp * 10 + (c - '0');
+        exp_seen_digit = true;
+    }
+    if (!exp_seen_digit)
         return fail(parse_fail::invalid_exponent);
+    return r;
+}
+
+// Unsigned number in [first, last): the grammar of the _ins / _r literals.
+constexpr parsed_number parse_number(const char* first, const char* last) {
+    auto fail       = [](parse_fail f) { return parsed_number{rational{}, f}; };
+    umax num        = 0;
+    int  frac_len   = 0;
+    int  frac_zeros = 0; // deferred fractional zeros
+    // A fractional zero only matters if a non-zero digit follows: defer it,
+    // so trailing zeros ("1.000…0") cannot overflow num / den.
+    const scanned_number sc = scan_number(first, last, [&](int d, bool in_frac, int base) {
+        const umax base_u = static_cast<umax>(base);
+        if (in_frac && d == 0) {
+            ++frac_zeros;
+            return true;
+        }
+        for (; frac_zeros > 0; --frac_zeros, ++frac_len) {
+            if (num > (~umax{0}) / base_u)
+                return false;
+            num *= base_u;
+        }
+        if (num > (~umax{0} - static_cast<umax>(d)) / base_u)
+            return false;
+        num = num * base_u + static_cast<umax>(d);
+        if (in_frac)
+            ++frac_len;
+        return true;
+    });
+    if (sc.Fail != parse_fail::none)
+        return fail(sc.Fail);
+    if (sc.Stopped)
+        return fail(parse_fail::numerator_overflow);
+    const int  base      = sc.Base;
+    const int  exp       = sc.Exp;
+    const bool exp_neg   = sc.ExpNeg;
+    const bool has_p_exp = sc.HasP;
+    const bool has_e_exp = sc.HasE;
 
     // Build denominator from fractional part.
     // For decimal: den = 10^frac_len. For hex: den = 2^(4*frac_len).
@@ -5400,60 +5415,61 @@ constexpr std::expected<rational, errc> try_rational(const exact_frac<K>& f) noe
     return rational{static_cast<umax>(a), neg ? -den : den};
 }
 
-// Text → exact value, for wide grids whose values outgrow the 64-bit
-// rational parse (from_chars falls back here on errc::overflow). Accepts
-// [+-]digits[.digits][e[+-]digits] and two of those joined by '/'.
-// Anything K limbs cannot hold reports overflow.
+// Text → exact value, for values that outgrow the 64-bit rational parse
+// (from_chars falls back here on errc::overflow): the grammar of parse_text
+// (scan_number: radix prefixes, ' separators, '.', e / p exponents, N/D),
+// built in K limbs. Anything K limbs cannot hold reports overflow.
 template <std::size_t K>
 constexpr std::expected<exact_frac<K>, errc> parse_exact(const char* first, const char* last) noexcept {
-    using I = wide_sint<K>;
-    constexpr I ten{10};
-    constexpr I limit = std::numeric_limits<I>::max() / I{100};
-    auto        one   = [&](const char* f, const char* l) -> std::expected<exact_frac<K>, errc> {
-        bool neg = false;
-        if (f != l && (*f == '+' || *f == '-')) {
-            neg = (*f == '-');
-            ++f;
-        }
-        I    num{0}, den{1};
-        bool digits = false, point = false;
-        for (; f != l && ((*f >= '0' && *f <= '9') || (*f == '.' && !point)); ++f) {
-            if (*f == '.') {
-                point = true;
-                continue;
+    using I           = wide_sint<K>;
+    constexpr I limit = std::numeric_limits<I>::max() / I{32}; // room for ·16 + a digit
+    const auto  big   = [&](const I& x) { return limit < x; };
+    bool        neg   = false;
+    if (first != last && (*first == '+' || *first == '-')) {
+        neg = (*first == '-');
+        ++first;
+    }
+    auto one = [&](const char* f, const char* l) -> std::expected<exact_frac<K>, errc> {
+        I                    num{0}, den{1};
+        int                  frac_zeros = 0; // deferred, as in parse_number: trailing zeros cost nothing
+        const scanned_number sc         = scan_number(f, l, [&](int d, bool in_frac, int b) {
+            const I base{b};
+            if (in_frac && d == 0) {
+                ++frac_zeros;
+                return true;
             }
-            if (num > limit || den > limit)
+            for (; frac_zeros > 0; --frac_zeros) {
+                if (big(num) || big(den))
+                    return false;
+                num = num * base;
+                den = den * base;
+            }
+            if (big(num) || big(den))
+                return false;
+            num = num * base + I{d};
+            if (in_frac)
+                den = den * base;
+            return true;
+        });
+        if (sc.Fail != parse_fail::none)
+            return std::unexpected{errc::invalid_format};
+        if (sc.Stopped)
+            return std::unexpected{errc::overflow};
+        if (num.is_zero())
+            return exact_frac<K>{I{0}, I{1}};
+        if (sc.HasP) { // ·2^±Exp
+            I& t = sc.ExpNeg ? den : num;
+            if (bit_width_of(t) + sc.Exp > I::bits - 2)
                 return std::unexpected{errc::overflow};
-            num = num * ten + I{*f - '0'};
-            if (point)
-                den = den * ten;
-            digits = true;
-        }
-        if (!digits)
-            return std::unexpected{errc::invalid_format};
-        if (f != l && (*f == 'e' || *f == 'E')) {
-            ++f;
-            bool eneg = false;
-            if (f != l && (*f == '+' || *f == '-')) {
-                eneg = (*f == '-');
-                ++f;
-            }
-            if (f == l)
-                return std::unexpected{errc::invalid_format};
-            int e = 0;
-            for (; f != l && *f >= '0' && *f <= '9'; ++f)
-                if ((e = e * 10 + (*f - '0')) > 64 * static_cast<int>(K))
+            t = t << sc.Exp;
+        } else if (sc.HasE) // ·10^±Exp
+            for (int e = 0; e < sc.Exp; ++e) {
+                I& t = sc.ExpNeg ? den : num;
+                if (big(t))
                     return std::unexpected{errc::overflow};
-            for (; e > 0; --e) {
-                I& t = eneg ? den : num;
-                if (t > limit)
-                    return std::unexpected{errc::overflow};
-                t = t * ten;
+                t = t * I{10};
             }
-        }
-        if (f != l)
-            return std::unexpected{errc::invalid_format};
-        return exact_frac<K>{neg ? -num : num, den};
+        return exact_frac<K>{num, den};
     };
     const char* slash = first;
     while (slash != last && *slash != '/')
@@ -5467,7 +5483,65 @@ constexpr std::expected<exact_frac<K>, errc> parse_exact(const char* first, cons
             return std::unexpected{errc::division_by_zero};
         v = *v / *d;
     }
+    if (v && neg)
+        v = -*v;
     return v;
+}
+
+// The text parse's width: wide enough for about 1200 decimal digits or a
+// 10^±1200 exponent, past every grid's own values.
+inline constexpr std::size_t parse_limbs = 64;
+
+// Bits of B's finest denominator: every grid value and every midpoint
+// between two lies 0 or at least 2^−(bits + 1) from 0. An unbounded
+// continuous grid is bounded by its storage.
+template <insidable B>
+inline constexpr int finest_den_bits = [] {
+    const grid_wide d = den_bound(grid_of<B>);
+    return d == grid_wide{0} ? 64 * static_cast<int>(exact_limbs<B>) : bit_width_of(d);
+}();
+
+// A number too fine for the wide parse (1e-5000) still has a store: a value
+// nearer 0 than every value and midpoint of B rounds and range-checks like
+// any other such value of its sign, so ±2^−(finest_den_bits + 2) stands in.
+// Empty unless the text is one number whose magnitude, bounded from its
+// digits and exponent, is that small.
+template <insidable B, std::size_t K>
+constexpr std::optional<exact_frac<K>> tiny_stand_in(const char* first, const char* last) noexcept {
+    constexpr int G = finest_den_bits<B> + 2;
+    if constexpr (G >= 64 * static_cast<int>(K) - 2)
+        return std::nullopt;
+    else {
+        bool neg = false;
+        if (first != last && (*first == '+' || *first == '-')) {
+            neg = (*first == '-');
+            ++first;
+        }
+        long                 sig = 0, frac = 0; // significant digits, digits after the point
+        const scanned_number sc = scan_number(first, last, [&](int d, bool in_frac, int) {
+            if (sig > 0 || d != 0)
+                ++sig;
+            if (in_frac)
+                ++frac;
+            return true;
+        });
+        if (sc.Fail != parse_fail::none)
+            return std::nullopt;
+        if (sig == 0)
+            return std::nullopt; // zero: no stand-in needed
+        // log2|v| < sig·log2(base) − frac·log2(base) ± Exp·log2(10 or 2), bounded up.
+        auto up    = [&](long n) { return sc.Base == 10 ? (n * 3322 + 999) / 1000 : sc.Base == 16 ? 4 * n : n; };
+        auto dn    = [&](long n) { return sc.Base == 10 ? n * 3321 / 1000 : sc.Base == 16 ? 4 * n : n; };
+        long bound = up(sig) - dn(frac);
+        if (sc.HasP)
+            bound += sc.ExpNeg ? -long{sc.Exp} : long{sc.Exp};
+        else if (sc.HasE)
+            bound += sc.ExpNeg ? -(long{sc.Exp} * 3321 / 1000) : (long{sc.Exp} * 3322 + 999) / 1000;
+        if (bound > -G)
+            return std::nullopt;
+        using I = wide_sint<K>;
+        return exact_frac<K>{neg ? I{-1} : I{1}, I{1} << G};
+    }
 }
 
 // n / d (d != 0) rounded to an integer by M; the sign rules of div_rounded.
@@ -8826,22 +8900,34 @@ template <typename T, insidable B>
 // off the grid is rounding_error and out of range overflow, whatever B's
 // policy. (io.hpp adds std::string_view overloads and operator>>.)
 //---------------------------------------------------------------------------
+namespace detail {
+// from_chars past the 64-bit rational (a long decimal, a wide grid's value,
+// 1e-200): the text parsed exactly, or past that width as a tiny value's
+// stand-in. Out of line: the common parse stays small.
+template <insidable B, policy_flag F>
+BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE constexpr std::expected<B, errc> from_chars_wide(const char* first,
+                                                                                         const char* last) {
+    constexpr std::size_t K = exact_max<exact_limbs<B>, parse_limbs>;
+    auto                  w = parse_exact<K>(first, last);
+    if (!w && w.error() == errc::overflow)
+        if (const auto t = tiny_stand_in<B, K>(first, last))
+            w = *t;
+    if (!w)
+        return std::unexpected{w.error()};
+    errc ec{};
+    B    b{};
+    assign_exact<rational>(b, *w, make_policy<policy_of<B> | F>(ec), no_action{});
+    if (ec != errc{})
+        return std::unexpected{ec};
+    return b;
+}
+} // namespace detail
+
 template <insidable B, policy_flag F = none>
 [[nodiscard]] constexpr std::expected<B, errc> from_chars(const char* first, const char* last) {
     const auto v = detail::parse_text(first, last);
-    if (!v && v.error() == errc::overflow) {
-        // A value past the 64-bit rational (a long decimal, a wide grid's
-        // value): parse it exactly instead.
-        const auto w = detail::parse_exact<detail::exact_limbs<B>>(first, last);
-        if (!w)
-            return std::unexpected{w.error()};
-        errc ec{};
-        B    b{};
-        detail::assign_exact<detail::rational>(b, *w, make_policy<policy_of<B> | F>(ec), no_action{});
-        if (ec != errc{})
-            return std::unexpected{ec};
-        return b;
-    }
+    if (!v && v.error() == errc::overflow) [[unlikely]]
+        return detail::from_chars_wide<B, F>(first, last);
     if (!v)
         return std::unexpected{v.error()};
     return B::template try_make<F>(*v);
@@ -8859,8 +8945,11 @@ template <insidable B>
     }
     if (v.error() != errc::overflow)
         return std::unexpected{v.error()};
-    constexpr std::size_t K = detail::exact_limbs<B>;
-    const auto            w = detail::parse_exact<K>(first, last);
+    constexpr std::size_t K = detail::exact_max<detail::exact_limbs<B>, detail::parse_limbs>;
+    auto                  w = detail::parse_exact<K>(first, last);
+    if (!w && w.error() == errc::overflow)
+        if (const auto t = detail::tiny_stand_in<B, K>(first, last))
+            w = *t; // never on the grid: rounding_error, or overflow outside it
     if (!w)
         return std::unexpected{w.error()};
     if (*w < detail::exact_of_grid<K>(lower_of<B>) || detail::exact_of_grid<K>(upper_of<B>) < *w)
