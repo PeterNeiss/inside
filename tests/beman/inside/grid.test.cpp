@@ -140,11 +140,13 @@ TEST(GridTest, grid_arithmetic) {
     {
         SCOPED_TRACE("divide by zero-notch interval that straddles zero");
         grid a{{1, 10}, 1};
-        grid b{{-5, 5}, 0}; // notch=0, so step defaults to 1
-        auto r = a / b;
+        grid b{{-5, 5}, 0}; // unbounded: its values come arbitrarily close to 0
+        ASSERT_EQ((a / b).error(), errc::overflow);
+        grid c{{-5, 5}, max_denominator{4}}; // nonzero values are at least 1/4 in magnitude
+        auto r = a / c;
         ASSERT_TRUE(r.has_value());
-        ASSERT_TRUE(r->Interval.Lower < 0);
-        ASSERT_TRUE(r->Interval.Upper > 0);
+        ASSERT_TRUE(r->Interval.Lower == -40);
+        ASSERT_TRUE(r->Interval.Upper == 40);
     }
 }
 
@@ -334,7 +336,9 @@ TEST(GridTest, quotients_and_their_results_bound_denominators) {
     static_assert((-q).MaxDenominator == 7);                        // negation keeps it
     static_assert((*(kHundred / grid{-7, 7})).MaxDenominator == 7); // a divisor spanning 0 too
     static_assert((*(q + kUnbounded)).MaxDenominator == 0);         // unbounded stays unbounded
-    static_assert((*(kHundred / kUnbounded)).MaxDenominator == 0);
+    static_assert((*(kHundred / grid{{1, 10}, 0})).MaxDenominator == 0);
+    // an unbounded divisor reaching 0 comes arbitrarily close to it: no bounded quotient
+    static_assert((kHundred / kUnbounded).error() == errc::overflow);
     // hull: the larger bound; a lattice bounds by its value unit's denominator
     static_assert((*hull(kThousandths, grid{{0, 2}, rational{1, 4}})).MaxDenominator == 1000);
     static_assert((*hull(kThousandths, kUnbounded)).MaxDenominator == 0);

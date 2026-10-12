@@ -656,12 +656,16 @@ constexpr bool grid_product_fits([[maybe_unused]] const grid& a, [[maybe_unused]
     if (rhs.Interval.Lower == 0 && rhs.Interval.Upper == 0)
         return std::unexpected{errc::division_by_zero};
 
-    // `step` = smallest non-zero divisor magnitude; splits the divisor interval
-    // into positive [step, Upper] and negative [Lower, -step] (skipping zero).
-    // Both sides present → the result is their union.
-    detail::grid_rational step    = (rhs.Notch != 0)            ? detail::abs(rhs.Notch)
-                                    : (rhs.MaxDenominator != 0) ? detail::grid_div_of(1, rhs.MaxDenominator)
-                                                                : detail::grid_rational{1};
+    // `step` bounds the non-zero divisor magnitudes from below; it splits the
+    // divisor interval into positive [step, Upper] and negative [Lower, -step]
+    // (skipping zero). Both sides present → the result is their union. Every
+    // lattice value is a multiple of the value unit (the notch when anchored,
+    // finer when not: {{-1.5, 1.5}, 1} holds ±0.5), and a bounded continuous
+    // value p/q has q ≤ MaxDenominator. An unbounded continuous divisor comes
+    // arbitrarily close to zero: no bounded quotient.
+    if (rhs.Notch == 0 && rhs.MaxDenominator == 0)
+        return std::unexpected{errc::overflow};
+    detail::grid_rational step    = (rhs.Notch != 0) ? rhs.value_unit() : detail::grid_div_of(1, rhs.MaxDenominator);
     bool                  has_pos = 0 < rhs.Interval.Upper;
     bool                  has_neg = 0 > rhs.Interval.Lower;
 

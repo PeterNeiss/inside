@@ -338,9 +338,18 @@ constexpr imax raw_imax(B b) noexcept {
 // by operator rational(), from_value, and assignment::store.
 //-------------------------------------------------------------------------
 template <insidable B>
-inline constexpr bool qformat_codec_fits =
-    abs_den(detail::lower64<B>.Denominator) == 1 && detail::notch64<B>.Numerator == 1 &&
-    values_fit_imax<B>; // Lower·nd and the raw both in imax
+inline constexpr bool qformat_codec_fits = [] {
+    if constexpr (abs_den(detail::lower64<B>.Denominator) != 1 || detail::notch64<B>.Numerator != 1 ||
+                  !values_fit_imax<B>)
+        return false;
+    else { // every value·nd (so Lower·nd and raw + Lower·nd) in imax
+        constexpr imax nd = abs_den(detail::notch64<B>.Denominator);
+        constexpr auto lo = try_mul(detail::lower64<B>, rational{nd});
+        constexpr auto hi = try_mul(detail::upper64<B>, rational{nd});
+        return lo.has_value() && hi.has_value() && *lo >= rational{std::numeric_limits<imax>::min()} &&
+               *hi <= rational{std::numeric_limits<imax>::max()};
+    }
+}();
 
 // value → raw, integer math only.
 template <insidable B>
@@ -607,8 +616,8 @@ template <insidable L, typename P>
     if constexpr (!rounds_before_range_check<L, P>)
         return false;
     else {
-        constexpr rational lo = (detail::lower64<L> - detail::notch64<L>).value_or(detail::lower64<L>);
-        constexpr rational hi = (detail::upper64<L> + detail::notch64<L>).value_or(detail::upper64<L>);
+        constexpr rational lo = try_sub(detail::lower64<L>, detail::notch64<L>).value_or(detail::lower64<L>);
+        constexpr rational hi = try_add(detail::upper64<L>, detail::notch64<L>).value_or(detail::upper64<L>);
         if (v <= lo || v >= hi)
             return false;
         out = round_to_lattice<L, P>(v); // within one notch of the limits: fits
@@ -676,10 +685,13 @@ template <insidable L, typename P>
 // anchored grid; an unanchored one rounds the offset against the value's sign.
 template <insidable L, typename P>
 [[nodiscard]] constexpr umax round_quotient(umax num, umax den) noexcept {
-    constexpr rational zl =
-        (!detail::notched<L>) ? rational{0} : (detail::lower64<L> / detail::notch64<L>).value_or(rational{0});
-    constexpr bool vidx = (zl.Denominator == 1 || zl.Denominator == -1);
-    constexpr imax m    = vidx ? signed_numerator(zl) : imax{0};
+    // Lower/Notch past 64 bits (a far-off grid with a fine notch) has no imax
+    // value index: round the offset as for a non-integral m.
+    constexpr auto zq   = (!detail::notched<L>) ? std::expected<rational, errc>{rational{0}}
+                                                : try_div(detail::lower64<L>, detail::notch64<L>);
+    constexpr bool vidx = zq.has_value() && abs_den(zq->Denominator) == 1 &&
+                          zq->Numerator <= static_cast<umax>(std::numeric_limits<imax>::max()) + 1;
+    constexpr imax m    = vidx ? signed_numerator(*zq) : imax{0};
 
     if constexpr (!anchored<L>)
         return round_offset_unanchored<L, P>(num, den);

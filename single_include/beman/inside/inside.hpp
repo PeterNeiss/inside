@@ -1430,9 +1430,9 @@ constexpr std::unexpected<errc> fail(errc code) {
 }
 
 // The numerator with the value's sign, as imax (callers ensure it fits).
+// Negated in umax, so −2^63 (numerator 2^63) comes out as INT64_MIN.
 [[nodiscard]] constexpr imax signed_numerator(rational v) noexcept {
-    const imax n = static_cast<imax>(v.Numerator);
-    return (v.Denominator < 0) ? -n : n;
+    return static_cast<imax>((v.Denominator < 0) ? umax{0} - v.Numerator : v.Numerator);
 }
 
 // v rounded to an integer by m (nearest: half away from zero), as a sign
@@ -4136,12 +4136,16 @@ constexpr bool grid_product_fits([[maybe_unused]] const grid& a, [[maybe_unused]
     if (rhs.Interval.Lower == 0 && rhs.Interval.Upper == 0)
         return std::unexpected{errc::division_by_zero};
 
-    // `step` = smallest non-zero divisor magnitude; splits the divisor interval
-    // into positive [step, Upper] and negative [Lower, -step] (skipping zero).
-    // Both sides present → the result is their union.
-    detail::grid_rational step    = (rhs.Notch != 0)            ? detail::abs(rhs.Notch)
-                                    : (rhs.MaxDenominator != 0) ? detail::grid_div_of(1, rhs.MaxDenominator)
-                                                                : detail::grid_rational{1};
+    // `step` bounds the non-zero divisor magnitudes from below; it splits the
+    // divisor interval into positive [step, Upper] and negative [Lower, -step]
+    // (skipping zero). Both sides present → the result is their union. Every
+    // lattice value is a multiple of the value unit (the notch when anchored,
+    // finer when not: {{-1.5, 1.5}, 1} holds ±0.5), and a bounded continuous
+    // value p/q has q ≤ MaxDenominator. An unbounded continuous divisor comes
+    // arbitrarily close to zero: no bounded quotient.
+    if (rhs.Notch == 0 && rhs.MaxDenominator == 0)
+        return std::unexpected{errc::overflow};
+    detail::grid_rational step    = (rhs.Notch != 0) ? rhs.value_unit() : detail::grid_div_of(1, rhs.MaxDenominator);
     bool                  has_pos = 0 < rhs.Interval.Upper;
     bool                  has_neg = 0 > rhs.Interval.Lower;
 
@@ -4520,9 +4524,18 @@ constexpr imax raw_imax(B b) noexcept {
 // by operator rational(), from_value, and assignment::store.
 //-------------------------------------------------------------------------
 template <insidable B>
-inline constexpr bool qformat_codec_fits =
-    abs_den(detail::lower64<B>.Denominator) == 1 && detail::notch64<B>.Numerator == 1 &&
-    values_fit_imax<B>; // Lower·nd and the raw both in imax
+inline constexpr bool qformat_codec_fits = [] {
+    if constexpr (abs_den(detail::lower64<B>.Denominator) != 1 || detail::notch64<B>.Numerator != 1 ||
+                  !values_fit_imax<B>)
+        return false;
+    else { // every value·nd (so Lower·nd and raw + Lower·nd) in imax
+        constexpr imax nd = abs_den(detail::notch64<B>.Denominator);
+        constexpr auto lo = try_mul(detail::lower64<B>, rational{nd});
+        constexpr auto hi = try_mul(detail::upper64<B>, rational{nd});
+        return lo.has_value() && hi.has_value() && *lo >= rational{std::numeric_limits<imax>::min()} &&
+               *hi <= rational{std::numeric_limits<imax>::max()};
+    }
+}();
 
 // value → raw, integer math only.
 template <insidable B>
@@ -4789,8 +4802,8 @@ template <insidable L, typename P>
     if constexpr (!rounds_before_range_check<L, P>)
         return false;
     else {
-        constexpr rational lo = (detail::lower64<L> - detail::notch64<L>).value_or(detail::lower64<L>);
-        constexpr rational hi = (detail::upper64<L> + detail::notch64<L>).value_or(detail::upper64<L>);
+        constexpr rational lo = try_sub(detail::lower64<L>, detail::notch64<L>).value_or(detail::lower64<L>);
+        constexpr rational hi = try_add(detail::upper64<L>, detail::notch64<L>).value_or(detail::upper64<L>);
         if (v <= lo || v >= hi)
             return false;
         out = round_to_lattice<L, P>(v); // within one notch of the limits: fits
@@ -4858,10 +4871,13 @@ template <insidable L, typename P>
 // anchored grid; an unanchored one rounds the offset against the value's sign.
 template <insidable L, typename P>
 [[nodiscard]] constexpr umax round_quotient(umax num, umax den) noexcept {
-    constexpr rational zl =
-        (!detail::notched<L>) ? rational{0} : (detail::lower64<L> / detail::notch64<L>).value_or(rational{0});
-    constexpr bool vidx = (zl.Denominator == 1 || zl.Denominator == -1);
-    constexpr imax m    = vidx ? signed_numerator(zl) : imax{0};
+    // Lower/Notch past 64 bits (a far-off grid with a fine notch) has no imax
+    // value index: round the offset as for a non-integral m.
+    constexpr auto zq   = (!detail::notched<L>) ? std::expected<rational, errc>{rational{0}}
+                                                : try_div(detail::lower64<L>, detail::notch64<L>);
+    constexpr bool vidx = zq.has_value() && abs_den(zq->Denominator) == 1 &&
+                          zq->Numerator <= static_cast<umax>(std::numeric_limits<imax>::max()) + 1;
+    constexpr imax m    = vidx ? signed_numerator(*zq) : imax{0};
 
     if constexpr (!anchored<L>)
         return round_offset_unanchored<L, P>(num, den);
@@ -5989,7 +6005,7 @@ struct assignment<L, R> {
         R          clamped = low ? static_cast<R>(detail::lower64<L>) : static_cast<R>(detail::upper64<L>);
         R          overshoot;
         if constexpr (std::same_as<R, rational>)
-            overshoot = (rhs - clamped).value_or(rational{0});
+            overshoot = try_sub(rhs, clamped).value_or(rational{0});
         else
             overshoot = rhs - clamped;
 
@@ -6136,16 +6152,21 @@ struct assignment<L, R> {
                 constexpr imax Lo  = lower_imax<L>;
                 constexpr umax kKM = [] {
                     // 2 · K · M with saturation (M bounds |value| and the offset span)
+                    // ceil in umax: a bound's magnitude may reach 2^63 (past imax)
+                    constexpr umax kMax = std::numeric_limits<umax>::max();
+                    const rational a    = detail::abs(detail::lower64<L>) > detail::abs(detail::upper64<L>)
+                                              ? detail::abs(detail::lower64<L>)
+                                              : detail::abs(detail::upper64<L>);
+                    const umax     d    = abs_den(a.Denominator);
+                    const umax     c    = a.Numerator / d + (a.Numerator % d != 0 ? 1 : 0);
+                    if (c > (kMax - 2) / 2)
+                        return kMax;
                     umax k = static_cast<umax>(K);
-                    umax m = static_cast<umax>(ceil(((detail::abs(detail::lower64<L>) > detail::abs(detail::upper64<L>)
-                                                          ? detail::abs(detail::lower64<L>)
-                                                          : detail::abs(detail::upper64<L>))))) *
-                                 2 +
-                             2;
-                    if (k > std::numeric_limits<umax>::max() / m)
-                        return std::numeric_limits<umax>::max();
+                    umax m = c * 2 + 2;
+                    if (k > kMax / m)
+                        return kMax;
                     umax km = k * m;
-                    return (km > std::numeric_limits<umax>::max() / 2) ? std::numeric_limits<umax>::max() : km * 2;
+                    return km > kMax / 2 ? kMax : km * 2;
                 }();
                 constexpr umax kMaxDen = static_cast<umax>(std::numeric_limits<imax>::max()) / kKM;
 
@@ -6433,7 +6454,7 @@ struct assignment<L, R> {
             // its value-index-vs-offset branch CHOICE keys on m·di + num fitting
             // imax — mirror those checks for the unreduced den so both forms
             // take the same branch (ties on negatives differ across branches).
-            constexpr auto zl = (detail::lower64<L> / detail::notch64<L>).value_or(rational{0});
+            constexpr auto zl = try_div(detail::lower64<L>, detail::notch64<L>).value_or(rational{0});
             if (abs_den(zl.Denominator) == 1) {
                 if (zl.Numerator > cap)
                     return no;
@@ -6446,13 +6467,22 @@ struct assignment<L, R> {
         }
     }();
 
-    // Map rhs.Raw into L's raw space (requires is_integer_mapping): Offset and
-    // Factor map 0-based offsets, and raw_lo turns a raw into its offset and
-    // back (0 for an index raw, Lower for a value raw). Offset is an exact
-    // integer here, so trunc(Offset) is a constant.
+    // L's raw for R's offset 0: Offset + raw_lo<L>, which is_integer_mapping
+    // proves fits imax (Offset alone may not, e.g. 2^63 into a full int64).
+    static constexpr imax map_bias = [] {
+        if constexpr (is_integer_mapping)
+            return signed_numerator((Offset + (index_storage<L> ? rational{0} : detail::lower64<L>)).value());
+        else
+            return imax{0};
+    }();
+
+    // Map rhs.Raw into L's raw space (requires is_integer_mapping): Factor
+    // scales R's 0-based offset, map_bias adds L's raw for offset 0. Every
+    // mapped raw fits imax, so the wrapping umax multiply-add is exact even
+    // where an intermediate (the offset, or a signed partial sum) would not be.
     static constexpr imax map_raw(auto rhs_raw) {
-        return static_cast<imax>(Factor.Numerator) * (static_cast<imax>(rhs_raw) - raw_lo<R>)+trunc(Offset) +
-               raw_lo<L>;
+        const umax offset = static_cast<umax>(static_cast<imax>(rhs_raw)) - static_cast<umax>(raw_lo<R>);
+        return static_cast<imax>(static_cast<umax>(map_bias) + static_cast<umax>(Factor.Numerator) * offset);
     }
 
   private:
@@ -7250,18 +7280,34 @@ inline constexpr bool integer_native_ops = integer_ops<L, R, F> && values_fit_im
 // mode (both read rounding_of), or a result could escape its own grid.
 //---------------------------------------------------------------------------
 
-// Round the signed exact quotient a/b (b != 0) to an integer per `m`.
+// The signed exact quotient a/b (b != 0) rounded to an integer per `m`, and
+// the remainder a − q·b consistent with it (computed without forming q·b,
+// which can pass T when q rounds away from zero).
 template <std::signed_integral T>
-constexpr T div_rounded(T a, T b, round_mode m) noexcept {
-    using U        = std::make_unsigned_t<T>;
+struct rounded_division {
+    T Quotient, Remainder;
+};
+
+template <std::signed_integral T>
+constexpr rounded_division<T> div_rem_rounded(T a, T b, round_mode m) noexcept {
+    using U = std::make_unsigned_t<T>;
+    if (b == -1) // exact; a / -1 and a % -1 are UB for T::min (−T::min wraps: no caller's grid holds it)
+        return {T(U(0) - U(a)), T(0)};
     const T    t   = a / b;                        // C++ truncation toward zero
     const T    r   = a % b;                        // sign of a, |r| < |b|
     const bool neg = (a < 0) != (b < 0);           // exact quotient is negative
     const U    ar  = r < 0 ? U(~U(r) + 1u) : U(r); // |r|, |b| in U (safe for T::min)
     const U    ab  = b < 0 ? U(~U(b) + 1u) : U(b);
     if (!rounds_away(m, neg, classify_remainder(m, ar, ab), (t & 1) != 0))
-        return t;
-    return neg ? T(t - 1) : T(t + 1);
+        return {t, r};
+    // One step away from zero; r and b differ in sign (neg) or agree, so the
+    // adjusted remainder stays below |b| in magnitude.
+    return neg ? rounded_division<T>{T(t - 1), T(r + b)} : rounded_division<T>{T(t + 1), T(r - b)};
+}
+
+template <std::signed_integral T>
+constexpr T div_rounded(T a, T b, round_mode m) noexcept {
+    return div_rem_rounded(a, b, m).Quotient;
 }
 
 // The narrowest signed type in which native div/mod of L by R is exact: int32
@@ -7616,8 +7662,7 @@ constexpr auto modulo<L, R, F>::mod(L lhs, R rhs, policy<G, E> policy, A&& actio
         result res;
         // Remainder consistent with the rounded quotient (trunc → C++ `%`).
         const T lhs_val = static_cast<T>(to_value(lhs));
-        // The product stays in imax: q·b can exceed |a| + |b| ≥ 2^31 in T.
-        from_value(res, lhs_val - imax{div_rounded(lhs_val, rhs_val, rmode)} * rhs_val);
+        from_value(res, imax{div_rem_rounded(lhs_val, rhs_val, rmode).Remainder});
         return res;
     }
 }
@@ -7659,10 +7704,10 @@ struct quotient_remainder {
                 }
             }
         const T    lhs_val = static_cast<T>(to_value(lhs));
-        const imax q       = div_rounded(lhs_val, rhs_val, rmode);
+        const auto qr      = div_rem_rounded(lhs_val, rhs_val, rmode);
         result     res;
-        from_value(res.Quotient, q);
-        from_value(res.Remainder, lhs_val - q * rhs_val);
+        from_value(res.Quotient, imax{qr.Quotient});
+        from_value(res.Remainder, imax{qr.Remainder});
         return res;
     }
 };

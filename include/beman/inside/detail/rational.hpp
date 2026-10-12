@@ -240,9 +240,9 @@ constexpr std::unexpected<errc> fail(errc code) {
 }
 
 // The numerator with the value's sign, as imax (callers ensure it fits).
+// Negated in umax, so −2^63 (numerator 2^63) comes out as INT64_MIN.
 [[nodiscard]] constexpr imax signed_numerator(rational v) noexcept {
-    const imax n = static_cast<imax>(v.Numerator);
-    return (v.Denominator < 0) ? -n : n;
+    return static_cast<imax>((v.Denominator < 0) ? umax{0} - v.Numerator : v.Numerator);
 }
 
 // v rounded to an integer by m (nearest: half away from zero), as a sign

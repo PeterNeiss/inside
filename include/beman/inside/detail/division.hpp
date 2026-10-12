@@ -47,18 +47,34 @@ inline constexpr bool integer_native_ops = integer_ops<L, R, F> && values_fit_im
 // mode (both read rounding_of), or a result could escape its own grid.
 //---------------------------------------------------------------------------
 
-// Round the signed exact quotient a/b (b != 0) to an integer per `m`.
+// The signed exact quotient a/b (b != 0) rounded to an integer per `m`, and
+// the remainder a − q·b consistent with it (computed without forming q·b,
+// which can pass T when q rounds away from zero).
 template <std::signed_integral T>
-constexpr T div_rounded(T a, T b, round_mode m) noexcept {
-    using U        = std::make_unsigned_t<T>;
+struct rounded_division {
+    T Quotient, Remainder;
+};
+
+template <std::signed_integral T>
+constexpr rounded_division<T> div_rem_rounded(T a, T b, round_mode m) noexcept {
+    using U = std::make_unsigned_t<T>;
+    if (b == -1) // exact; a / -1 and a % -1 are UB for T::min (−T::min wraps: no caller's grid holds it)
+        return {T(U(0) - U(a)), T(0)};
     const T    t   = a / b;                        // C++ truncation toward zero
     const T    r   = a % b;                        // sign of a, |r| < |b|
     const bool neg = (a < 0) != (b < 0);           // exact quotient is negative
     const U    ar  = r < 0 ? U(~U(r) + 1u) : U(r); // |r|, |b| in U (safe for T::min)
     const U    ab  = b < 0 ? U(~U(b) + 1u) : U(b);
     if (!rounds_away(m, neg, classify_remainder(m, ar, ab), (t & 1) != 0))
-        return t;
-    return neg ? T(t - 1) : T(t + 1);
+        return {t, r};
+    // One step away from zero; r and b differ in sign (neg) or agree, so the
+    // adjusted remainder stays below |b| in magnitude.
+    return neg ? rounded_division<T>{T(t - 1), T(r + b)} : rounded_division<T>{T(t + 1), T(r - b)};
+}
+
+template <std::signed_integral T>
+constexpr T div_rounded(T a, T b, round_mode m) noexcept {
+    return div_rem_rounded(a, b, m).Quotient;
 }
 
 // The narrowest signed type in which native div/mod of L by R is exact: int32
@@ -413,8 +429,7 @@ constexpr auto modulo<L, R, F>::mod(L lhs, R rhs, policy<G, E> policy, A&& actio
         result res;
         // Remainder consistent with the rounded quotient (trunc → C++ `%`).
         const T lhs_val = static_cast<T>(to_value(lhs));
-        // The product stays in imax: q·b can exceed |a| + |b| ≥ 2^31 in T.
-        from_value(res, lhs_val - imax{div_rounded(lhs_val, rhs_val, rmode)} * rhs_val);
+        from_value(res, imax{div_rem_rounded(lhs_val, rhs_val, rmode).Remainder});
         return res;
     }
 }
@@ -456,10 +471,10 @@ struct quotient_remainder {
                 }
             }
         const T    lhs_val = static_cast<T>(to_value(lhs));
-        const imax q       = div_rounded(lhs_val, rhs_val, rmode);
+        const auto qr      = div_rem_rounded(lhs_val, rhs_val, rmode);
         result     res;
-        from_value(res.Quotient, q);
-        from_value(res.Remainder, lhs_val - q * rhs_val);
+        from_value(res.Quotient, imax{qr.Quotient});
+        from_value(res.Remainder, imax{qr.Remainder});
         return res;
     }
 };

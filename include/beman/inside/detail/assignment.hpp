@@ -496,7 +496,7 @@ struct assignment<L, R> {
         R          clamped = low ? static_cast<R>(detail::lower64<L>) : static_cast<R>(detail::upper64<L>);
         R          overshoot;
         if constexpr (std::same_as<R, rational>)
-            overshoot = (rhs - clamped).value_or(rational{0});
+            overshoot = try_sub(rhs, clamped).value_or(rational{0});
         else
             overshoot = rhs - clamped;
 
@@ -643,16 +643,21 @@ struct assignment<L, R> {
                 constexpr imax Lo  = lower_imax<L>;
                 constexpr umax kKM = [] {
                     // 2 · K · M with saturation (M bounds |value| and the offset span)
+                    // ceil in umax: a bound's magnitude may reach 2^63 (past imax)
+                    constexpr umax kMax = std::numeric_limits<umax>::max();
+                    const rational a    = detail::abs(detail::lower64<L>) > detail::abs(detail::upper64<L>)
+                                              ? detail::abs(detail::lower64<L>)
+                                              : detail::abs(detail::upper64<L>);
+                    const umax     d    = abs_den(a.Denominator);
+                    const umax     c    = a.Numerator / d + (a.Numerator % d != 0 ? 1 : 0);
+                    if (c > (kMax - 2) / 2)
+                        return kMax;
                     umax k = static_cast<umax>(K);
-                    umax m = static_cast<umax>(ceil(((detail::abs(detail::lower64<L>) > detail::abs(detail::upper64<L>)
-                                                          ? detail::abs(detail::lower64<L>)
-                                                          : detail::abs(detail::upper64<L>))))) *
-                                 2 +
-                             2;
-                    if (k > std::numeric_limits<umax>::max() / m)
-                        return std::numeric_limits<umax>::max();
+                    umax m = c * 2 + 2;
+                    if (k > kMax / m)
+                        return kMax;
                     umax km = k * m;
-                    return (km > std::numeric_limits<umax>::max() / 2) ? std::numeric_limits<umax>::max() : km * 2;
+                    return km > kMax / 2 ? kMax : km * 2;
                 }();
                 constexpr umax kMaxDen = static_cast<umax>(std::numeric_limits<imax>::max()) / kKM;
 
@@ -940,7 +945,7 @@ struct assignment<L, R> {
             // its value-index-vs-offset branch CHOICE keys on m·di + num fitting
             // imax — mirror those checks for the unreduced den so both forms
             // take the same branch (ties on negatives differ across branches).
-            constexpr auto zl = (detail::lower64<L> / detail::notch64<L>).value_or(rational{0});
+            constexpr auto zl = try_div(detail::lower64<L>, detail::notch64<L>).value_or(rational{0});
             if (abs_den(zl.Denominator) == 1) {
                 if (zl.Numerator > cap)
                     return no;
@@ -953,13 +958,22 @@ struct assignment<L, R> {
         }
     }();
 
-    // Map rhs.Raw into L's raw space (requires is_integer_mapping): Offset and
-    // Factor map 0-based offsets, and raw_lo turns a raw into its offset and
-    // back (0 for an index raw, Lower for a value raw). Offset is an exact
-    // integer here, so trunc(Offset) is a constant.
+    // L's raw for R's offset 0: Offset + raw_lo<L>, which is_integer_mapping
+    // proves fits imax (Offset alone may not, e.g. 2^63 into a full int64).
+    static constexpr imax map_bias = [] {
+        if constexpr (is_integer_mapping)
+            return signed_numerator((Offset + (index_storage<L> ? rational{0} : detail::lower64<L>)).value());
+        else
+            return imax{0};
+    }();
+
+    // Map rhs.Raw into L's raw space (requires is_integer_mapping): Factor
+    // scales R's 0-based offset, map_bias adds L's raw for offset 0. Every
+    // mapped raw fits imax, so the wrapping umax multiply-add is exact even
+    // where an intermediate (the offset, or a signed partial sum) would not be.
     static constexpr imax map_raw(auto rhs_raw) {
-        return static_cast<imax>(Factor.Numerator) * (static_cast<imax>(rhs_raw) - raw_lo<R>)+trunc(Offset) +
-               raw_lo<L>;
+        const umax offset = static_cast<umax>(static_cast<imax>(rhs_raw)) - static_cast<umax>(raw_lo<R>);
+        return static_cast<imax>(static_cast<umax>(map_bias) + static_cast<umax>(Factor.Numerator) * offset);
     }
 
   private:
