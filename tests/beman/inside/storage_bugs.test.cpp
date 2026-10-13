@@ -339,7 +339,9 @@ TEST(StorageBugsTest, huge_double_source) {
         x.policy(ec) = v;
         return std::pair{x.as<long>(), ec};
     };
-    static_assert(wrapped(0x1p64).second == errc::overflow);
+    // wrap folds such a value exactly: 2^64 mod 10 (it reported overflow
+    // before the exact fold).
+    static_assert(wrapped(0x1p64).first == 6 && wrapped(0x1p64).second == errc{});
     static_assert(wrapped(0x1p62).first == static_cast<long>((1ull << 62) % 10));
 
     using third = inside<{{0, rational{1, 3}}, rational{1, 3}}, clamp>;

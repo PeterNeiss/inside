@@ -4127,10 +4127,17 @@ inline constexpr bool double_exact = compute_fp_exact<G, 53, 1022>();
 
 } // namespace detail
 
-[[nodiscard]] constexpr std::expected<grid, errc> operator+(const grid&, const grid&);
-[[nodiscard]] constexpr std::expected<grid, errc> operator-(const grid&, const grid&);
-[[nodiscard]] constexpr std::expected<grid, errc> operator*(const grid&, const grid&);
-[[nodiscard]] constexpr std::expected<grid, errc> operator/(const grid&, const grid&);
+template <std::same_as<grid> G>
+[[nodiscard]] constexpr std::expected<grid, errc> operator+(const G&, const G&);
+template <std::same_as<grid> G>
+[[nodiscard]] constexpr std::expected<grid, errc> operator-(const G&, const G&);
+template <std::same_as<grid> G>
+[[nodiscard]] constexpr std::expected<grid, errc> operator*(const G&, const G&);
+template <std::same_as<grid> G>
+[[nodiscard]] constexpr std::expected<grid, errc> operator/(const G&, const G&);
+// (Templates on G = grid: no conversion reaches them, so an inside — which
+// converts to its point grid — never lands here when its own operator is
+// constrained away.)
 
 //---------------------------------------------------------------------------
 // grid_sum_fits / grid_product_fits — whether a + b / a × b has a result
@@ -4177,12 +4184,48 @@ constexpr bool grid_product_fits([[maybe_unused]] const grid& a, [[maybe_unused]
            product_notch(a, b).has_value();
 #endif
 }
+// Whether a / b has a result grid: the divisor is not the point 0, an
+// unbounded continuous divisor does not reach 0, and (64-bit grid numbers)
+// every corner quotient fits — operator/ tested with the quiet try_ ops.
+constexpr bool grid_quotient_fits([[maybe_unused]] const grid& a, const grid& b) {
+    const interval& d = b.Interval;
+    if (d.Lower == 0 && d.Upper == 0)
+        return false;
+    [[maybe_unused]] auto corners_fit = [&]([[maybe_unused]] const grid_rational& lo,
+                                            [[maybe_unused]] const grid_rational& hi) {
+#if BEMAN_INSIDE_BIG_GRIDS
+        return true;
+#else
+        return try_div(a.Interval.Lower, lo) && try_div(a.Interval.Lower, hi) && try_div(a.Interval.Upper, lo) &&
+               try_div(a.Interval.Upper, hi);
+#endif
+    };
+    if (!includes(d, 0)) {
+#if !BEMAN_INSIDE_BIG_GRIDS
+        if (d.Lower == d.Upper && a.Notch != 0 && !try_div(a.Notch, abs(d.Lower)))
+            return false;
+#endif
+        return corners_fit(d.Lower, d.Upper);
+    }
+    if (b.Notch == 0 && b.MaxDenominator == 0)
+        return false;
+#if BEMAN_INSIDE_BIG_GRIDS
+    return true;
+#else
+    const auto step = b.Notch != 0 ? grid_gcd(b.Notch, d.Lower) : try_div(rational{1}, b.MaxDenominator);
+    if (!step)
+        return false;
+    const grid_rational s = b.Notch != 0 && b.anchored() ? b.Notch : *step;
+    return (!(0 < d.Upper) || corners_fit(s, d.Upper)) && (!(0 > d.Lower) || corners_fit(d.Lower, -s));
+#endif
+}
 } // namespace detail
 
 //---------------------------------------------------------------------------
 // operator+
 //---------------------------------------------------------------------------
-[[nodiscard]] inline constexpr std::expected<grid, errc> operator+(const grid& lhs, const grid& rhs) {
+template <std::same_as<grid> G>
+[[nodiscard]] constexpr std::expected<grid, errc> operator+(const G& lhs, const G& rhs) {
     // A continuous operand makes the sum continuous, with denominators at most
     // the product of the operands' bounds. (A point, also notch 0, shifts the
     // other lattice: gcd(0, n) = n is its notch.)
@@ -4200,14 +4243,16 @@ constexpr bool grid_product_fits([[maybe_unused]] const grid& a, [[maybe_unused]
 //---------------------------------------------------------------------------
 // operator-
 //---------------------------------------------------------------------------
-[[nodiscard]] inline constexpr std::expected<grid, errc> operator-(const grid& lhs, const grid& rhs) {
+template <std::same_as<grid> G>
+[[nodiscard]] constexpr std::expected<grid, errc> operator-(const G& lhs, const G& rhs) {
     return operator+(lhs, -rhs);
 }
 
 //---------------------------------------------------------------------------
 // operator*
 //---------------------------------------------------------------------------
-[[nodiscard]] inline constexpr std::expected<grid, errc> operator*(const grid& lhs, const grid& rhs) {
+template <std::same_as<grid> G>
+[[nodiscard]] constexpr std::expected<grid, errc> operator*(const G& lhs, const G& rhs) {
     // A point operand c (notch 0) scales the other lattice exactly: its notch
     // becomes N·|c|, so `x * just<c>` keeps integer storage instead of turning
     // continuous. A continuous product bounds its denominators by the
@@ -4223,7 +4268,8 @@ constexpr bool grid_product_fits([[maybe_unused]] const grid& a, [[maybe_unused]
 //---------------------------------------------------------------------------
 // operator/
 //---------------------------------------------------------------------------
-[[nodiscard]] inline constexpr std::expected<grid, errc> operator/(const grid& lhs, const grid& rhs) {
+template <std::same_as<grid> G>
+[[nodiscard]] constexpr std::expected<grid, errc> operator/(const G& lhs, const G& rhs) {
     auto d = lhs.Interval / rhs.Interval;
     // A nonzero point divisor c scales the other lattice exactly, as in
     // operator*: its notch becomes N/|c|, so `x / just<c>` keeps integer
@@ -6339,18 +6385,16 @@ struct assignment<L, R> {
         // Round onto the lattice first (by the policy, like every other store),
         // then fold: an on-lattice value folds onto a grid point, so rounding
         // can never carry it past Upper.
-        // The fold's quotient q is an imax: a floating source of 2^63 or more
-        // cannot be wrapped with a deliverable carry (nor converted exactly).
+        // A floating source of 2^63 or more has no rational form: it folds
+        // exactly, like every value whose rational steps overflow below.
         if constexpr (std::floating_point<R>)
-            if (!(rhs < 0x1p63 && rhs > -0x1p63)) [[unlikely]] {
-                return report_failure(lhs, policy, action, errc::overflow);
-            }
+            if (!(rhs < 0x1p63 && rhs > -0x1p63)) [[unlikely]]
+                return wrap_exact(lhs, exact_of_double(static_cast<double>(rhs)), policy, action);
         rational rhs_r{rhs};
         if constexpr (has_policy<L, P, snap>) {
             const auto r = try_round_to_lattice<L, P>(rhs_r);
-            if (!r) [[unlikely]] {
-                return report_failure(lhs, policy, action, errc::overflow);
-            }
+            if (!r) [[unlikely]]
+                return wrap_exact(lhs, exact_of(rhs_r), policy, action);
             rhs_r = *r;
         }
         imax     q;
@@ -6367,22 +6411,20 @@ struct assignment<L, R> {
             wrapped            = v < W{0} ? -rational{static_cast<umax>(-v)} : rational{static_cast<umax>(v)};
         } else {
             // q = floor((rhs - lower) / range), wrapped = rhs - q * range. A step
-            // past the 64-bit rational range, or a fold count past imax, cannot
-            // be computed exactly: report it rather than store a wrapped guess.
+            // past the 64-bit rational range, or a fold count past imax, folds
+            // exactly instead.
             const auto span  = try_sub(detail::upper64<L>, detail::lower64<L>);
             const auto range = span ? try_add(*span, detail::notch64<L>) : span;
             const auto off   = try_sub(rhs_r, detail::lower64<L>);
             const auto quot  = (range && off) ? try_div(*off, *range) : off;
             if (!range || !quot || *quot < rational{std::numeric_limits<imax>::min()} ||
-                *quot > rational{std::numeric_limits<imax>::max()}) [[unlikely]] {
-                return report_failure(lhs, policy, action, errc::overflow);
-            }
+                *quot > rational{std::numeric_limits<imax>::max()}) [[unlikely]]
+                return wrap_exact(lhs, exact_of(rhs_r), policy, action);
             q             = floor(*quot);
             const auto qr = try_mul(rational{q}, *range);
             const auto w  = qr ? try_sub(rhs_r, *qr) : qr;
-            if (!w) [[unlikely]] {
-                return report_failure(lhs, policy, action, errc::overflow);
-            }
+            if (!w) [[unlikely]]
+                return wrap_exact(lhs, exact_of(rhs_r), policy, action);
             wrapped = *w;
         }
 
@@ -6392,6 +6434,20 @@ struct assignment<L, R> {
 
         if constexpr (wrap_action<plain_t<A>>)
             action.Fn(lhs, make_wrap_carry<L, R>(q));
+    }
+
+    // The fold done exactly when its rational steps overflow (a double past
+    // 2^63, a far value on a fine grid): the exact store's wrap, which rounds
+    // by the policy and folds the wide lattice index (a wrap action's carry
+    // saturates, as on the wide paths). A continuous L has no lattice to
+    // fold in wide integers: still overflow.
+    template <typename P, typename A, std::size_t K>
+    [[gnu::cold, gnu::noinline]] static constexpr void
+    wrap_exact(L& lhs, const exact_frac<K>& v, P&& policy, A&& action) {
+        if constexpr (integer_storage<L>)
+            assign_exact<R>(lhs, v, policy, action);
+        else
+            report_failure(lhs, policy, action, errc::overflow);
     }
 
     // Cold and out of line: the exact wide slot for a quotient past the
@@ -7481,6 +7537,7 @@ constexpr Result scale_by_point(const X& x) noexcept {
 }
 } // namespace beman::inside::detail
 
+
 //---------------------------------------------------------------------------
 // addition — `add(L, R, policy, action) -> inside<G>`, G = grid_of<L> + grid_of<R>.
 // The grid arithmetic is sound by construction (the result interval contains
@@ -7544,6 +7601,23 @@ struct addition {
         return res;
     }
 };
+
+// Whether `l + r` has a result, as a constraint of add / + / += (so a
+// requires-expression or `if constexpr` probe gets the answer instead of a
+// hard error): the sum grid within the 64-bit grid numbers (C++26 big grids
+// lift that), and no wide-index operand with a continuous result.
+template <insidable L, insidable R>
+inline constexpr bool sum_grid_fits_64_bit_grid_numbers = [] {
+    if constexpr (!grid_sum_fits(grid_of<L>, grid_of<R>))
+        return false;
+    else
+        return !rational_storage<typename addition<L, R>::result> || (!wide_valued<L> && !wide_valued<R>);
+}();
+
+// The same for `l - r` (l + (−r)).
+template <insidable L, insidable R>
+inline constexpr bool difference_grid_fits_64_bit_grid_numbers =
+    sum_grid_fits_64_bit_grid_numbers<L, decltype(-std::declval<const R&>())>;
 } // namespace beman::inside::detail
 
 
@@ -7618,6 +7692,20 @@ struct multiplication {
         }
     }
 };
+
+// Whether `l * r` has a result, as a constraint of mul / * / *=: the
+// product grid within the 64-bit grid numbers (C++26 big grids lift that),
+// and no wide-index operand with a continuous result.
+template <insidable L, insidable R>
+inline constexpr bool product_grid_fits_64_bit_grid_numbers = [] {
+    if constexpr (!grid_product_fits(grid_of<L>, grid_of<R>))
+        return false;
+    else {
+        using result = typename multiplication<L, R>::result;
+        return point_scale<R, L, result> || point_scale<L, R, result> || !rational_storage<result> ||
+               (!wide_valued<L> && !wide_valued<R>);
+    }
+}();
 } // namespace beman::inside::detail
 
 
@@ -7654,6 +7742,21 @@ inline constexpr bool integer_ops =
 // ...and every value fits imax, so the builtin integer division applies.
 template <insidable L, insidable R, policy_flag F>
 inline constexpr bool integer_native_ops = integer_ops<L, R, F> && values_fit_imax<L> && values_fit_imax<R>;
+
+// Whether `l / r`, `l % r` and divmod have a result under flags F, as
+// constraints of div / mod / divmod and their operators: the quotient grid
+// exists (not a zero divisor grid; with 64-bit grid numbers, its corners
+// fit), and the remainder needs integer-valued grids (divmod: within imax).
+template <insidable L, insidable R, policy_flag F>
+inline constexpr bool quotient_grid_representable =
+    integer_native_ops<L, R, F> ? lower_of<R> != 0 || upper_of<R> != 0 : grid_quotient_fits(grid_of<L>, grid_of<R>);
+
+template <insidable L, insidable R, policy_flag F>
+inline constexpr bool modulo_operands_integer_valued = integer_ops<L, R, F | snap>;
+
+template <insidable L, insidable R, policy_flag F>
+inline constexpr bool divmod_operands_integer_valued_within_imax =
+    integer_native_ops<L, R, F | snap> && quotient_grid_representable<L, R, F | snap>;
 
 //---------------------------------------------------------------------------
 // Rounding mode for the native div & mod paths (fire when `snap` is set).
@@ -7808,7 +7911,7 @@ struct division {
     // A clear diagnostic when the result grid is unrepresentable, instead of the
     // raw expected-deref / .value() below failing cryptically (mirrors add/mul).
     // The native integer path forms no exact quotient grid (below).
-    static_assert(native_div_integer ? lower_of<R> != 0 || upper_of<R> != 0 : (grid_of<L> / grid_of<R>).has_value(),
+    static_assert(quotient_grid_representable<L, R, F>,
                   "division: result grid not representable (notch/interval exceeds the "
                   "representable rational range) — coarsen the operand grids");
 
@@ -8158,6 +8261,7 @@ struct quotient_remainder {
         return res;
     }
 };
+
 } // namespace beman::inside::detail
 
 
@@ -8750,8 +8854,23 @@ struct inside {
     template <detail::grid_wide Dlo, detail::grid_wide Dhi>
     using raw_work_t = detail::work_int_t<raw_work_bits<Dlo, Dhi>>;
 
+    // A compound op's constraint: its binary op's result (an expected's
+    // value) assigns to this type, so `requires { x op= y; }` is honest.
+    template <typename T>
+    struct value_of {
+        using type = T;
+    };
+    template <typename T>
+    struct value_of<std::expected<T, errc>> {
+        using type = T;
+    };
+    template <typename Result>
+    static constexpr bool compound_assignable = inside_assignable<inside, typename value_of<Result>::type, P>;
+
   public:
     template <insidable R>
+        requires(point_delta_ok<R> || raw_add_ok<R> ||
+                 compound_assignable<decltype(std::declval<const inside&>() + std::declval<const R&>())>)
     constexpr inside& operator+=(const R& rhs) {
         // Point-inside rhs (just<v> / 1_ins / ++) whose value is a whole number of
         // this grid's notches: the raw delta is a compile-time constant and the
@@ -8855,6 +8974,8 @@ struct inside {
     }
 
     template <insidable R>
+        requires(raw_add_ok<R> ||
+                 compound_assignable<decltype(std::declval<const inside&>() - std::declval<const R&>())>)
     constexpr inside& operator-=(const R& rhs) {
         // Raw-space fast path, the subtraction mirror of +='s.
         if constexpr (raw_add_ok<R>) {
@@ -8874,6 +8995,7 @@ struct inside {
     }
 
     template <insidable R>
+        requires compound_assignable<decltype(std::declval<const inside&>() * std::declval<const R&>())>
     constexpr inside& operator*=(const R& rhs) {
         return assign_op_result(*this * rhs);
     }
@@ -8882,6 +9004,7 @@ struct inside {
     // yields an error value on a zero divisor (expected vocabulary), so the compound
     // form's report comes from here. (Measured perf-neutral to remove.)
     template <insidable R>
+        requires compound_assignable<decltype(std::declval<const inside&>() / std::declval<const R&>())>
     constexpr inside& operator/=(const R& rhs) {
         if (rhs == 0)
             return report_div_by_zero<R>();
@@ -8889,6 +9012,8 @@ struct inside {
     }
 
     template <insidable R>
+        requires compound_assignable<
+            decltype(mod(std::declval<const inside&>(), std::declval<const R&>(), make_policy<P>()))>
     constexpr inside& operator%=(const R& rhs) {
         if (rhs == 0)
             return report_div_by_zero<R>();
@@ -8910,22 +9035,27 @@ struct inside {
     // expected<inside> RHS (e.g. `x += a / b`): unwrap once, reporting an error
     // through this type's policy like any other failed compound op.
     template <insidable R>
+        requires requires(inside& self, const R& r) { self += r; }
     constexpr inside& operator+=(const std::expected<R, errc>& rhs) {
         return rhs ? (*this += *rhs) : report_error(rhs.error());
     }
     template <insidable R>
+        requires requires(inside& self, const R& r) { self -= r; }
     constexpr inside& operator-=(const std::expected<R, errc>& rhs) {
         return rhs ? (*this -= *rhs) : report_error(rhs.error());
     }
     template <insidable R>
+        requires requires(inside& self, const R& r) { self *= r; }
     constexpr inside& operator*=(const std::expected<R, errc>& rhs) {
         return rhs ? (*this *= *rhs) : report_error(rhs.error());
     }
     template <insidable R>
+        requires requires(inside& self, const R& r) { self /= r; }
     constexpr inside& operator/=(const std::expected<R, errc>& rhs) {
         return rhs ? (*this /= *rhs) : report_error(rhs.error());
     }
     template <insidable R>
+        requires requires(inside& self, const R& r) { self %= r; }
     constexpr inside& operator%=(const std::expected<R, errc>& rhs) {
         return rhs ? (*this %= *rhs) : report_error(rhs.error());
     }
@@ -8976,6 +9106,7 @@ struct inside {
     // the flags F, with the failure as the error. An expected value passes its
     // error on, so fallible steps chain.
     template <policy_flag F = none, numeric A>
+        requires inside_assignable<inside, A, P | F>
     [[nodiscard]] static constexpr std::expected<inside, errc> try_make(A value) {
         errc   ec{};
         inside result;
@@ -8985,6 +9116,7 @@ struct inside {
         return result;
     }
     template <policy_flag F = none, numeric A>
+        requires inside_assignable<inside, A, P | F>
     [[nodiscard]] static constexpr std::expected<inside, errc> try_make(const std::expected<A, errc>& value) {
         if (!value)
             return std::unexpected{value.error()};
@@ -9541,14 +9673,84 @@ struct divmod_op {
 };
 } // namespace detail
 
-#define BEMAN_INSIDE_ARITH_FN(name, op)                                             \
-    template <insidable L, insidable R, class... Args>                              \
-        requires requires(L const& l, R const& r, Args&&... args) {                 \
-            detail::arith(detail::op{}, l, r, std::forward<Args>(args)...);         \
-        }                                                                           \
-    [[nodiscard]] constexpr auto name(L const& lhs, R const& rhs, Args&&... args) { \
-        return detail::arith(detail::op{}, lhs, rhs, std::forward<Args>(args)...);  \
-    }
+// A deleted overload takes each op's failing case: `requires { a + b; }` is
+// then false, an integer inside cannot fall back on its imax conversion and
+// the built-in operator, and the error names the reason (= delete("…"),
+// C++26, accepted as an extension in C++23 by GCC 15+ and Clang 19+).
+#if defined(__cpp_deleted_function) || (defined(__clang__) && __clang_major__ >= 19) || \
+    (defined(__GNUC__) && !defined(__clang__) && __GNUC__ >= 15)
+    #define BEMAN_INSIDE_DELETE(reason) delete (reason)
+    #define BEMAN_INSIDE_DELETE_BEGIN \
+        _Pragma("GCC diagnostic push") _Pragma("GCC diagnostic ignored \"-Wc++26-extensions\"")
+    #define BEMAN_INSIDE_DELETE_END _Pragma("GCC diagnostic pop")
+#else
+    #define BEMAN_INSIDE_DELETE(reason) delete
+    #define BEMAN_INSIDE_DELETE_BEGIN
+    #define BEMAN_INSIDE_DELETE_END
+#endif
+
+#define BEMAN_INSIDE_WHY_add                                                                                     \
+    "addition: the result grid exceeds the 64-bit grid numbers (coarsen the operand grids, or build with C++26 " \
+    "big grids), or a wide-index operand meets a continuous result (not supported yet)"
+#define BEMAN_INSIDE_WHY_sub                                                                                        \
+    "subtraction: the result grid exceeds the 64-bit grid numbers (coarsen the operand grids, or build with C++26 " \
+    "big grids), or a wide-index operand meets a continuous result (not supported yet)"
+#define BEMAN_INSIDE_WHY_mul                                                                                         \
+    "multiplication: the result grid exceeds the 64-bit grid numbers (round the product into a coarser type with "   \
+    "mul_into<Out>(a, b), coarsen the operand grids, or build with C++26 big grids), or a wide-index operand meets " \
+    "a continuous result (not supported yet)"
+#define BEMAN_INSIDE_WHY_div                                                                                         \
+    "division: no result grid - the divisor grid is the point 0, an unbounded continuous divisor reaches 0, or the " \
+    "quotient passes the 64-bit grid numbers (round it with div_into<Out>(a, b), or build with C++26 big grids)"
+#define BEMAN_INSIDE_WHY_mod "modulo requires integer-valued grids"
+#define BEMAN_INSIDE_WHY_divmod "divmod requires integer-valued grids within imax"
+
+namespace detail {
+// The policy flags a call's trailing arguments select, as arith normalises
+// them: a policy's own, checked for an errc&, an action's implied flags.
+template <class... Args>
+inline constexpr policy_flag call_flags = merged_implied_flags<Args...>;
+template <>
+inline constexpr policy_flag call_flags<> = none;
+template <class First, class... Rest>
+    requires policy_like<std::remove_cvref_t<First>>
+inline constexpr policy_flag call_flags<First, Rest...> = flags_of<First>;
+template <class... Rest>
+inline constexpr policy_flag call_flags<errc&, Rest...> = checked;
+
+// Each op's well-formedness under flags F (detail/addition.hpp & co.): the
+// first constraint of its function and operator, so a requires-expression
+// or `if constexpr` probe is false where the op cannot compile.
+template <class L, class R, policy_flag F>
+inline constexpr bool add_defined = sum_grid_fits_64_bit_grid_numbers<L, R>;
+template <class L, class R, policy_flag F>
+inline constexpr bool sub_defined = difference_grid_fits_64_bit_grid_numbers<L, R>;
+template <class L, class R, policy_flag F>
+inline constexpr bool mul_defined = product_grid_fits_64_bit_grid_numbers<L, R>;
+template <class L, class R, policy_flag F>
+inline constexpr bool div_defined = quotient_grid_representable<L, R, F>;
+template <class L, class R, policy_flag F>
+inline constexpr bool mod_defined = modulo_operands_integer_valued<L, R, F>;
+template <class L, class R, policy_flag F>
+inline constexpr bool divmod_defined = divmod_operands_integer_valued_within_imax<L, R, F>;
+} // namespace detail
+
+#define BEMAN_INSIDE_ARITH_FN(name, op)                                                      \
+    template <insidable L, insidable R, class... Args>                                       \
+        requires detail::name                                                                \
+    ##_defined<L, R, detail::call_flags<Args...>>&&                                          \
+        requires(L const& l, R const& r, Args && ... args)                                   \
+    {                                                                                        \
+        detail::arith(detail::op{}, l, r, std::forward<Args>(args)...);                      \
+    }                                                                                        \
+    [[nodiscard]] constexpr auto name(L const& lhs, R const& rhs, Args&&... args) {          \
+        return detail::arith(detail::op{}, lhs, rhs, std::forward<Args>(args)...);           \
+    }                                                                                        \
+    BEMAN_INSIDE_DELETE_BEGIN                                                                \
+    template <insidable L, insidable R, class... Args>                                       \
+        requires(!detail::name##_defined<L, R, detail::call_flags<Args...>>)                 \
+    auto name(L const&, R const&, Args&&...) = BEMAN_INSIDE_DELETE(BEMAN_INSIDE_WHY_##name); \
+    BEMAN_INSIDE_DELETE_END
 
 BEMAN_INSIDE_ARITH_FN(add, add_op)
 BEMAN_INSIDE_ARITH_FN(sub, sub_op)
@@ -9603,19 +9805,70 @@ template <insidable Out, policy_flag F = none, insidable A, insidable B>
 
 // Binary operators: +, -, * use the default policy; / and % carry the
 // operands' own policies (snap/rounding select the native integer paths).
-[[nodiscard]] constexpr auto operator+(insidable auto lhs, insidable auto rhs) { return beman::inside::add(lhs, rhs); }
-
-[[nodiscard]] constexpr auto operator-(insidable auto lhs, insidable auto rhs) { return beman::inside::sub(lhs, rhs); }
-
-[[nodiscard]] constexpr auto operator*(insidable auto lhs, insidable auto rhs) { return beman::inside::mul(lhs, rhs); }
-
-[[nodiscard]] constexpr auto operator/(insidable auto lhs, insidable auto rhs) {
-    return beman::inside::div(lhs, rhs, make_policy<policy_of<decltype(lhs)> | policy_of<decltype(rhs)>>());
+// Each is constrained on its op's well-formedness, like the named forms.
+template <insidable L, insidable R>
+    requires detail::sum_grid_fits_64_bit_grid_numbers<L, R>
+[[nodiscard]] constexpr auto operator+(L lhs, R rhs) {
+    return beman::inside::add(lhs, rhs);
 }
+BEMAN_INSIDE_DELETE_BEGIN
+template <insidable L, insidable R>
+    requires(!detail::sum_grid_fits_64_bit_grid_numbers<L, R>)
+auto operator+(L, R) = BEMAN_INSIDE_DELETE(BEMAN_INSIDE_WHY_add);
+BEMAN_INSIDE_DELETE_END
 
-[[nodiscard]] constexpr auto operator%(insidable auto lhs, insidable auto rhs) {
-    return beman::inside::mod(lhs, rhs, make_policy<policy_of<decltype(lhs)> | policy_of<decltype(rhs)>>());
+template <insidable L, insidable R>
+    requires detail::difference_grid_fits_64_bit_grid_numbers<L, R>
+[[nodiscard]] constexpr auto operator-(L lhs, R rhs) {
+    return beman::inside::sub(lhs, rhs);
 }
+BEMAN_INSIDE_DELETE_BEGIN
+template <insidable L, insidable R>
+    requires(!detail::difference_grid_fits_64_bit_grid_numbers<L, R>)
+auto operator-(L, R) = BEMAN_INSIDE_DELETE(BEMAN_INSIDE_WHY_sub);
+BEMAN_INSIDE_DELETE_END
+
+template <insidable L, insidable R>
+    requires detail::product_grid_fits_64_bit_grid_numbers<L, R>
+[[nodiscard]] constexpr auto operator*(L lhs, R rhs) {
+    return beman::inside::mul(lhs, rhs);
+}
+BEMAN_INSIDE_DELETE_BEGIN
+template <insidable L, insidable R>
+    requires(!detail::product_grid_fits_64_bit_grid_numbers<L, R>)
+auto operator*(L, R) = BEMAN_INSIDE_DELETE(BEMAN_INSIDE_WHY_mul);
+BEMAN_INSIDE_DELETE_END
+
+template <insidable L, insidable R>
+    requires detail::quotient_grid_representable<L, R, policy_of<L> | policy_of<R>>
+[[nodiscard]] constexpr auto operator/(L lhs, R rhs) {
+    return beman::inside::div(lhs, rhs, make_policy<policy_of<L> | policy_of<R>>());
+}
+BEMAN_INSIDE_DELETE_BEGIN
+template <insidable L, insidable R>
+    requires(!detail::quotient_grid_representable<L, R, policy_of<L> | policy_of<R>>)
+auto operator/(L, R) = BEMAN_INSIDE_DELETE(BEMAN_INSIDE_WHY_div);
+BEMAN_INSIDE_DELETE_END
+
+template <insidable L, insidable R>
+    requires detail::modulo_operands_integer_valued<L, R, policy_of<L> | policy_of<R>>
+[[nodiscard]] constexpr auto operator%(L lhs, R rhs) {
+    return beman::inside::mod(lhs, rhs, make_policy<policy_of<L> | policy_of<R>>());
+}
+BEMAN_INSIDE_DELETE_BEGIN
+template <insidable L, insidable R>
+    requires(!detail::modulo_operands_integer_valued<L, R, policy_of<L> | policy_of<R>>)
+auto operator%(L, R) = BEMAN_INSIDE_DELETE(BEMAN_INSIDE_WHY_mod);
+BEMAN_INSIDE_DELETE_END
+#undef BEMAN_INSIDE_DELETE
+#undef BEMAN_INSIDE_DELETE_BEGIN
+#undef BEMAN_INSIDE_DELETE_END
+#undef BEMAN_INSIDE_WHY_add
+#undef BEMAN_INSIDE_WHY_sub
+#undef BEMAN_INSIDE_WHY_mul
+#undef BEMAN_INSIDE_WHY_div
+#undef BEMAN_INSIDE_WHY_mod
+#undef BEMAN_INSIDE_WHY_divmod
 
 //---------------------------------------------------------------------------
 // add_all / mul_all — variadic folds (pairwise widening, same as `a + b + c`

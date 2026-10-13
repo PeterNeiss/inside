@@ -5,6 +5,7 @@
 // UB or threw.
 
 #include <beman/inside/inside.hpp>
+#include <beman/inside/formats.hpp>
 #include <beman/inside/io.hpp>
 #include <beman/inside/predicates.hpp>
 
@@ -152,4 +153,68 @@ TEST(BugHunt20261012, add_wrap_offset_from_negative_lower) {
     L y{-(1ll << 62)};
     y -= R{1ll << 62};
     EXPECT_EQ(to_string(y), "-2305843009213693951");
+}
+
+// wrap folds a value whose 64-bit rational steps overflow exactly: it
+// reported errc::overflow (a double past 2^63, INT64_MIN into a 1/4 grid, a
+// far value on a 2^-62 grid).
+TEST(BugHunt20261012, wrap_folds_past_the_rational) {
+    using quarter_wrap = inside<{{-2, 3}, per<4>}, wrap>;
+    using halves_ceil  = inside<{{0.5, 10.5}, 1}, wrap | round_ceil>;
+    using digit        = inside<{0, 9}, wrap>;
+    using fine         = inside<{{0, 1}, per<(1ll << 62)>}, wrap>;
+    EXPECT_EQ(*quarter_wrap::try_make(full{i64_min}), 2.5_ins);
+    EXPECT_EQ(*halves_ceil::try_make(full{i64_min}), 3.5_ins);
+    EXPECT_EQ(*digit::try_make(-0x1p63), 2_ins);
+    EXPECT_EQ(*digit::try_make(1e30), 6_ins); // the double's exact value, mod 10
+    EXPECT_EQ(to_string(*full::try_make<wrap>(1e30)), "5076964154930102272");
+    EXPECT_EQ(*fine::try_make(rational{4}), (rational{(1ull << 62) - 3, 1ll << 62})); // 4 mod (1 + 2^-62)
+    EXPECT_EQ(digit::try_make(1.5).error(), errc::rounding_error);                    // no rounding flag
+}
+
+// Operations are constrained on having a result: a probe sees the answer,
+// and an integer inside does not fall back on its imax conversion (or an
+// inside on its point-grid conversion) when its own operator is out.
+namespace {
+template <class A, class B>
+constexpr bool can_add = requires(A a, B b) { a + b; };
+template <class A, class B>
+constexpr bool can_mul = requires(A a, B b) { a * b; };
+template <class A, class B>
+constexpr bool can_div = requires(A a, B b) { a / b; };
+template <class A, class B>
+constexpr bool can_mod = requires(A a, B b) { a % b; };
+template <class A, class B>
+constexpr bool can_divmod = requires(A a, B b) { divmod(a, b); };
+template <class T, class S>
+constexpr bool can_make = requires(S s) { T::try_make(s); };
+template <class T, class S>
+constexpr bool can_add_assign = requires(T t, S s) { t += s; };
+template <class T, class S>
+constexpr bool can_div_assign = requires(T t, S s) { t /= s; };
+
+using digit   = inside<{0, 9}>;
+using reals   = inside<{{-2, 2}, 0}>;
+using fourths = inside<{{-2, 3}, per<4>}>;
+} // namespace
+
+TEST(BugHunt20261012, operations_are_constraint_friendly) {
+    static_assert(can_div<digit, digit> && can_div<reals, digit>);
+    static_assert(!can_div<digit, reals>);       // a continuous divisor reaching 0
+    static_assert(!can_div<digit, inside<{0}>>); // the point 0
+    static_assert(can_mod<digit, digit> && !can_mod<fourths, digit>);
+    static_assert(can_divmod<digit, inside<{1, 3}>> && !can_divmod<fourths, digit>);
+    static_assert(can_add<digit, fourths> && can_mul<fourths, fourths>);
+#if BEMAN_INSIDE_BIG_GRIDS
+    static_assert(can_add<qword, qword> && can_mul<full, full>);
+#else
+    static_assert(!can_add<qword, qword> && !can_mul<full, full>); // not imax · imax
+    static_assert(!can_div<inside<{-7, 5}>, full>);                // 7/2^63
+    static_assert(can_div<inside<{-7, 5}, snap>, full>);           // an integer quotient
+#endif
+    static_assert(can_make<digit, int> && can_make<digit, inside<{5, 20}>> && !can_make<digit, inside<{20, 30}>>);
+    static_assert(!can_make<digit, fourths> && can_make<inside<{0, 9}, snap>, fourths>);
+    static_assert(can_add_assign<digit, digit> && can_add_assign<digit, inside<{10}>> &&
+                  !can_add_assign<digit, fourths>);
+    static_assert(!can_div_assign<digit, reals> && can_div_assign<inside<{0, 9}, snap>, digit>);
 }

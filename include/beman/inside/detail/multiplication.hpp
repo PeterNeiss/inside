@@ -74,6 +74,20 @@ struct multiplication {
         }
     }
 };
+
+// Whether `l * r` has a result, as a constraint of mul / * / *=: the
+// product grid within the 64-bit grid numbers (C++26 big grids lift that),
+// and no wide-index operand with a continuous result.
+template <insidable L, insidable R>
+inline constexpr bool product_grid_fits_64_bit_grid_numbers = [] {
+    if constexpr (!grid_product_fits(grid_of<L>, grid_of<R>))
+        return false;
+    else {
+        using result = typename multiplication<L, R>::result;
+        return point_scale<R, L, result> || point_scale<L, R, result> || !rational_storage<result> ||
+               (!wide_valued<L> && !wide_valued<R>);
+    }
+}();
 } // namespace beman::inside::detail
 
 #endif // BEMAN_INSIDE_DETAIL_MULTIPLICATION_HPP

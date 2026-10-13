@@ -39,6 +39,21 @@ inline constexpr bool integer_ops =
 template <insidable L, insidable R, policy_flag F>
 inline constexpr bool integer_native_ops = integer_ops<L, R, F> && values_fit_imax<L> && values_fit_imax<R>;
 
+// Whether `l / r`, `l % r` and divmod have a result under flags F, as
+// constraints of div / mod / divmod and their operators: the quotient grid
+// exists (not a zero divisor grid; with 64-bit grid numbers, its corners
+// fit), and the remainder needs integer-valued grids (divmod: within imax).
+template <insidable L, insidable R, policy_flag F>
+inline constexpr bool quotient_grid_representable =
+    integer_native_ops<L, R, F> ? lower_of<R> != 0 || upper_of<R> != 0 : grid_quotient_fits(grid_of<L>, grid_of<R>);
+
+template <insidable L, insidable R, policy_flag F>
+inline constexpr bool modulo_operands_integer_valued = integer_ops<L, R, F | snap>;
+
+template <insidable L, insidable R, policy_flag F>
+inline constexpr bool divmod_operands_integer_valued_within_imax =
+    integer_native_ops<L, R, F | snap> && quotient_grid_representable<L, R, F | snap>;
+
 //---------------------------------------------------------------------------
 // Rounding mode for the native div & mod paths (fire when `snap` is set).
 // Decided from the combined flags by rounding_of (policy_flag.hpp), the one
@@ -192,7 +207,7 @@ struct division {
     // A clear diagnostic when the result grid is unrepresentable, instead of the
     // raw expected-deref / .value() below failing cryptically (mirrors add/mul).
     // The native integer path forms no exact quotient grid (below).
-    static_assert(native_div_integer ? lower_of<R> != 0 || upper_of<R> != 0 : (grid_of<L> / grid_of<R>).has_value(),
+    static_assert(quotient_grid_representable<L, R, F>,
                   "division: result grid not representable (notch/interval exceeds the "
                   "representable rational range) — coarsen the operand grids");
 
@@ -542,6 +557,7 @@ struct quotient_remainder {
         return res;
     }
 };
+
 } // namespace beman::inside::detail
 
 #endif // BEMAN_INSIDE_DETAIL_DIVISION_HPP

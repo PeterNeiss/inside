@@ -517,8 +517,23 @@ struct inside {
     template <detail::grid_wide Dlo, detail::grid_wide Dhi>
     using raw_work_t = detail::work_int_t<raw_work_bits<Dlo, Dhi>>;
 
+    // A compound op's constraint: its binary op's result (an expected's
+    // value) assigns to this type, so `requires { x op= y; }` is honest.
+    template <typename T>
+    struct value_of {
+        using type = T;
+    };
+    template <typename T>
+    struct value_of<std::expected<T, errc>> {
+        using type = T;
+    };
+    template <typename Result>
+    static constexpr bool compound_assignable = inside_assignable<inside, typename value_of<Result>::type, P>;
+
   public:
     template <insidable R>
+        requires(point_delta_ok<R> || raw_add_ok<R> ||
+                 compound_assignable<decltype(std::declval<const inside&>() + std::declval<const R&>())>)
     constexpr inside& operator+=(const R& rhs) {
         // Point-inside rhs (just<v> / 1_ins / ++) whose value is a whole number of
         // this grid's notches: the raw delta is a compile-time constant and the
@@ -622,6 +637,8 @@ struct inside {
     }
 
     template <insidable R>
+        requires(raw_add_ok<R> ||
+                 compound_assignable<decltype(std::declval<const inside&>() - std::declval<const R&>())>)
     constexpr inside& operator-=(const R& rhs) {
         // Raw-space fast path, the subtraction mirror of +='s.
         if constexpr (raw_add_ok<R>) {
@@ -641,6 +658,7 @@ struct inside {
     }
 
     template <insidable R>
+        requires compound_assignable<decltype(std::declval<const inside&>() * std::declval<const R&>())>
     constexpr inside& operator*=(const R& rhs) {
         return assign_op_result(*this * rhs);
     }
@@ -649,6 +667,7 @@ struct inside {
     // yields an error value on a zero divisor (expected vocabulary), so the compound
     // form's report comes from here. (Measured perf-neutral to remove.)
     template <insidable R>
+        requires compound_assignable<decltype(std::declval<const inside&>() / std::declval<const R&>())>
     constexpr inside& operator/=(const R& rhs) {
         if (rhs == 0)
             return report_div_by_zero<R>();
@@ -656,6 +675,8 @@ struct inside {
     }
 
     template <insidable R>
+        requires compound_assignable<
+            decltype(mod(std::declval<const inside&>(), std::declval<const R&>(), make_policy<P>()))>
     constexpr inside& operator%=(const R& rhs) {
         if (rhs == 0)
             return report_div_by_zero<R>();
@@ -677,22 +698,27 @@ struct inside {
     // expected<inside> RHS (e.g. `x += a / b`): unwrap once, reporting an error
     // through this type's policy like any other failed compound op.
     template <insidable R>
+        requires requires(inside& self, const R& r) { self += r; }
     constexpr inside& operator+=(const std::expected<R, errc>& rhs) {
         return rhs ? (*this += *rhs) : report_error(rhs.error());
     }
     template <insidable R>
+        requires requires(inside& self, const R& r) { self -= r; }
     constexpr inside& operator-=(const std::expected<R, errc>& rhs) {
         return rhs ? (*this -= *rhs) : report_error(rhs.error());
     }
     template <insidable R>
+        requires requires(inside& self, const R& r) { self *= r; }
     constexpr inside& operator*=(const std::expected<R, errc>& rhs) {
         return rhs ? (*this *= *rhs) : report_error(rhs.error());
     }
     template <insidable R>
+        requires requires(inside& self, const R& r) { self /= r; }
     constexpr inside& operator/=(const std::expected<R, errc>& rhs) {
         return rhs ? (*this /= *rhs) : report_error(rhs.error());
     }
     template <insidable R>
+        requires requires(inside& self, const R& r) { self %= r; }
     constexpr inside& operator%=(const std::expected<R, errc>& rhs) {
         return rhs ? (*this %= *rhs) : report_error(rhs.error());
     }
@@ -743,6 +769,7 @@ struct inside {
     // the flags F, with the failure as the error. An expected value passes its
     // error on, so fallible steps chain.
     template <policy_flag F = none, numeric A>
+        requires inside_assignable<inside, A, P | F>
     [[nodiscard]] static constexpr std::expected<inside, errc> try_make(A value) {
         errc   ec{};
         inside result;
@@ -752,6 +779,7 @@ struct inside {
         return result;
     }
     template <policy_flag F = none, numeric A>
+        requires inside_assignable<inside, A, P | F>
     [[nodiscard]] static constexpr std::expected<inside, errc> try_make(const std::expected<A, errc>& value) {
         if (!value)
             return std::unexpected{value.error()};

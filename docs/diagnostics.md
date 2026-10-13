@@ -78,6 +78,23 @@ You can also ask explicitly, anywhere:
 static_assert(beman::inside::why_assignable<DstInside, decltype(src)>);  // prints the named reasons
 ```
 
+## Probing operations: honest `requires`
+
+Every arithmetic operator, `add` / `sub` / `mul` / `div` / `mod` / `divmod`, the
+compound assignments and `try_make` are constrained on whether the operation has a
+result, so a requires-expression or `if constexpr` probe answers truthfully:
+
+```cpp
+template <class A, class B>
+constexpr bool can_divide = requires(A a, B b) { a / b; };
+static_assert(!can_divide<inside<{0, 9}>, inside<{{-2, 2}, 0}>>); // continuous divisor reaching 0
+static_assert(!can_divide<inside<{0, 9}>, inside<{0}>>);          // the point 0
+```
+
+An impossible operator is a deleted overload whose message names the reason
+(`use of deleted function …: division: no result grid - …`); compilers before GCC 15 /
+Clang 19 print only *use of deleted function*.
+
 ## `BEMAN_INSIDE_STRICT_SFINAE` — turning the hints off
 
 The automatic hints work by giving `inside` a diagnostic overload for incompatible types,

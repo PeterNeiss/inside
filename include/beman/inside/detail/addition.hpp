@@ -8,6 +8,8 @@
 #include <beman/inside/grid.hpp>
 #include <beman/inside/policy.hpp>
 
+#include <utility>
+
 //---------------------------------------------------------------------------
 // addition — `add(L, R, policy, action) -> inside<G>`, G = grid_of<L> + grid_of<R>.
 // The grid arithmetic is sound by construction (the result interval contains
@@ -71,6 +73,23 @@ struct addition {
         return res;
     }
 };
+
+// Whether `l + r` has a result, as a constraint of add / + / += (so a
+// requires-expression or `if constexpr` probe gets the answer instead of a
+// hard error): the sum grid within the 64-bit grid numbers (C++26 big grids
+// lift that), and no wide-index operand with a continuous result.
+template <insidable L, insidable R>
+inline constexpr bool sum_grid_fits_64_bit_grid_numbers = [] {
+    if constexpr (!grid_sum_fits(grid_of<L>, grid_of<R>))
+        return false;
+    else
+        return !rational_storage<typename addition<L, R>::result> || (!wide_valued<L> && !wide_valued<R>);
+}();
+
+// The same for `l - r` (l + (−r)).
+template <insidable L, insidable R>
+inline constexpr bool difference_grid_fits_64_bit_grid_numbers =
+    sum_grid_fits_64_bit_grid_numbers<L, decltype(-std::declval<const R&>())>;
 } // namespace beman::inside::detail
 
 #endif // BEMAN_INSIDE_DETAIL_ADDITION_HPP

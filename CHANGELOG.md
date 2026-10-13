@@ -50,6 +50,23 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 - Division by a point keeps the dividend's lattice, so `c * 9_ins / 5_ins +
   32_ins` is plain and exact.
 
+### Fixed
+
+- `wrap` folds a value whose 64-bit rational steps overflow exactly instead
+  of reporting `errc::overflow`: a double of 2^63 or more (`1e30` into
+  `{0, 9}` is 6), a full-int64 value into a fine grid, a far value on a
+  2^-62 grid. A wrap action's carry saturates there, as on the wide paths.
+- The arithmetic operators, `add`/`sub`/`mul`/`div`/`mod`/`divmod`, the
+  compound assignments and `try_make` are constrained on whether the
+  operation has a result, so `requires { a / b; }` and `if constexpr`
+  probes are false where it cannot compile (a zero or unbounded continuous
+  divisor grid spanning 0, a grid past the 64-bit grid numbers, `%` of a
+  fractional grid, a store `try_make` rejects). An impossible operator is a
+  deleted overload carrying the old message (`= delete("…")`, GCC 15+ /
+  Clang 19+), so an integer inside no longer falls back on its `imax`
+  conversion and the built-in operator. The `grid` operators take only
+  grids: an inside no longer converts to a point grid for them.
+
 ## 0.2.0 — 2026-10-10
 
 ### Upgrading from 0.1.0

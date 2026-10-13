@@ -540,10 +540,17 @@ inline constexpr bool double_exact = compute_fp_exact<G, 53, 1022>();
 
 } // namespace detail
 
-[[nodiscard]] constexpr std::expected<grid, errc> operator+(const grid&, const grid&);
-[[nodiscard]] constexpr std::expected<grid, errc> operator-(const grid&, const grid&);
-[[nodiscard]] constexpr std::expected<grid, errc> operator*(const grid&, const grid&);
-[[nodiscard]] constexpr std::expected<grid, errc> operator/(const grid&, const grid&);
+template <std::same_as<grid> G>
+[[nodiscard]] constexpr std::expected<grid, errc> operator+(const G&, const G&);
+template <std::same_as<grid> G>
+[[nodiscard]] constexpr std::expected<grid, errc> operator-(const G&, const G&);
+template <std::same_as<grid> G>
+[[nodiscard]] constexpr std::expected<grid, errc> operator*(const G&, const G&);
+template <std::same_as<grid> G>
+[[nodiscard]] constexpr std::expected<grid, errc> operator/(const G&, const G&);
+// (Templates on G = grid: no conversion reaches them, so an inside — which
+// converts to its point grid — never lands here when its own operator is
+// constrained away.)
 
 //---------------------------------------------------------------------------
 // grid_sum_fits / grid_product_fits — whether a + b / a × b has a result
@@ -590,12 +597,48 @@ constexpr bool grid_product_fits([[maybe_unused]] const grid& a, [[maybe_unused]
            product_notch(a, b).has_value();
 #endif
 }
+// Whether a / b has a result grid: the divisor is not the point 0, an
+// unbounded continuous divisor does not reach 0, and (64-bit grid numbers)
+// every corner quotient fits — operator/ tested with the quiet try_ ops.
+constexpr bool grid_quotient_fits([[maybe_unused]] const grid& a, const grid& b) {
+    const interval& d = b.Interval;
+    if (d.Lower == 0 && d.Upper == 0)
+        return false;
+    [[maybe_unused]] auto corners_fit = [&]([[maybe_unused]] const grid_rational& lo,
+                                            [[maybe_unused]] const grid_rational& hi) {
+#if BEMAN_INSIDE_BIG_GRIDS
+        return true;
+#else
+        return try_div(a.Interval.Lower, lo) && try_div(a.Interval.Lower, hi) && try_div(a.Interval.Upper, lo) &&
+               try_div(a.Interval.Upper, hi);
+#endif
+    };
+    if (!includes(d, 0)) {
+#if !BEMAN_INSIDE_BIG_GRIDS
+        if (d.Lower == d.Upper && a.Notch != 0 && !try_div(a.Notch, abs(d.Lower)))
+            return false;
+#endif
+        return corners_fit(d.Lower, d.Upper);
+    }
+    if (b.Notch == 0 && b.MaxDenominator == 0)
+        return false;
+#if BEMAN_INSIDE_BIG_GRIDS
+    return true;
+#else
+    const auto step = b.Notch != 0 ? grid_gcd(b.Notch, d.Lower) : try_div(rational{1}, b.MaxDenominator);
+    if (!step)
+        return false;
+    const grid_rational s = b.Notch != 0 && b.anchored() ? b.Notch : *step;
+    return (!(0 < d.Upper) || corners_fit(s, d.Upper)) && (!(0 > d.Lower) || corners_fit(d.Lower, -s));
+#endif
+}
 } // namespace detail
 
 //---------------------------------------------------------------------------
 // operator+
 //---------------------------------------------------------------------------
-[[nodiscard]] inline constexpr std::expected<grid, errc> operator+(const grid& lhs, const grid& rhs) {
+template <std::same_as<grid> G>
+[[nodiscard]] constexpr std::expected<grid, errc> operator+(const G& lhs, const G& rhs) {
     // A continuous operand makes the sum continuous, with denominators at most
     // the product of the operands' bounds. (A point, also notch 0, shifts the
     // other lattice: gcd(0, n) = n is its notch.)
@@ -613,14 +656,16 @@ constexpr bool grid_product_fits([[maybe_unused]] const grid& a, [[maybe_unused]
 //---------------------------------------------------------------------------
 // operator-
 //---------------------------------------------------------------------------
-[[nodiscard]] inline constexpr std::expected<grid, errc> operator-(const grid& lhs, const grid& rhs) {
+template <std::same_as<grid> G>
+[[nodiscard]] constexpr std::expected<grid, errc> operator-(const G& lhs, const G& rhs) {
     return operator+(lhs, -rhs);
 }
 
 //---------------------------------------------------------------------------
 // operator*
 //---------------------------------------------------------------------------
-[[nodiscard]] inline constexpr std::expected<grid, errc> operator*(const grid& lhs, const grid& rhs) {
+template <std::same_as<grid> G>
+[[nodiscard]] constexpr std::expected<grid, errc> operator*(const G& lhs, const G& rhs) {
     // A point operand c (notch 0) scales the other lattice exactly: its notch
     // becomes N·|c|, so `x * just<c>` keeps integer storage instead of turning
     // continuous. A continuous product bounds its denominators by the
@@ -636,7 +681,8 @@ constexpr bool grid_product_fits([[maybe_unused]] const grid& a, [[maybe_unused]
 //---------------------------------------------------------------------------
 // operator/
 //---------------------------------------------------------------------------
-[[nodiscard]] inline constexpr std::expected<grid, errc> operator/(const grid& lhs, const grid& rhs) {
+template <std::same_as<grid> G>
+[[nodiscard]] constexpr std::expected<grid, errc> operator/(const G& lhs, const G& rhs) {
     auto d = lhs.Interval / rhs.Interval;
     // A nonzero point divisor c scales the other lattice exactly, as in
     // operator*: its notch becomes N/|c|, so `x / just<c>` keeps integer

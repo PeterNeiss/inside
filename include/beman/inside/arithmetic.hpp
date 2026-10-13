@@ -105,14 +105,84 @@ struct divmod_op {
 };
 } // namespace detail
 
-#define BEMAN_INSIDE_ARITH_FN(name, op)                                             \
-    template <insidable L, insidable R, class... Args>                              \
-        requires requires(L const& l, R const& r, Args&&... args) {                 \
-            detail::arith(detail::op{}, l, r, std::forward<Args>(args)...);         \
-        }                                                                           \
-    [[nodiscard]] constexpr auto name(L const& lhs, R const& rhs, Args&&... args) { \
-        return detail::arith(detail::op{}, lhs, rhs, std::forward<Args>(args)...);  \
-    }
+// A deleted overload takes each op's failing case: `requires { a + b; }` is
+// then false, an integer inside cannot fall back on its imax conversion and
+// the built-in operator, and the error names the reason (= delete("…"),
+// C++26, accepted as an extension in C++23 by GCC 15+ and Clang 19+).
+#if defined(__cpp_deleted_function) || (defined(__clang__) && __clang_major__ >= 19) || \
+    (defined(__GNUC__) && !defined(__clang__) && __GNUC__ >= 15)
+    #define BEMAN_INSIDE_DELETE(reason) delete (reason)
+    #define BEMAN_INSIDE_DELETE_BEGIN \
+        _Pragma("GCC diagnostic push") _Pragma("GCC diagnostic ignored \"-Wc++26-extensions\"")
+    #define BEMAN_INSIDE_DELETE_END _Pragma("GCC diagnostic pop")
+#else
+    #define BEMAN_INSIDE_DELETE(reason) delete
+    #define BEMAN_INSIDE_DELETE_BEGIN
+    #define BEMAN_INSIDE_DELETE_END
+#endif
+
+#define BEMAN_INSIDE_WHY_add                                                                                     \
+    "addition: the result grid exceeds the 64-bit grid numbers (coarsen the operand grids, or build with C++26 " \
+    "big grids), or a wide-index operand meets a continuous result (not supported yet)"
+#define BEMAN_INSIDE_WHY_sub                                                                                        \
+    "subtraction: the result grid exceeds the 64-bit grid numbers (coarsen the operand grids, or build with C++26 " \
+    "big grids), or a wide-index operand meets a continuous result (not supported yet)"
+#define BEMAN_INSIDE_WHY_mul                                                                                         \
+    "multiplication: the result grid exceeds the 64-bit grid numbers (round the product into a coarser type with "   \
+    "mul_into<Out>(a, b), coarsen the operand grids, or build with C++26 big grids), or a wide-index operand meets " \
+    "a continuous result (not supported yet)"
+#define BEMAN_INSIDE_WHY_div                                                                                         \
+    "division: no result grid - the divisor grid is the point 0, an unbounded continuous divisor reaches 0, or the " \
+    "quotient passes the 64-bit grid numbers (round it with div_into<Out>(a, b), or build with C++26 big grids)"
+#define BEMAN_INSIDE_WHY_mod "modulo requires integer-valued grids"
+#define BEMAN_INSIDE_WHY_divmod "divmod requires integer-valued grids within imax"
+
+namespace detail {
+// The policy flags a call's trailing arguments select, as arith normalises
+// them: a policy's own, checked for an errc&, an action's implied flags.
+template <class... Args>
+inline constexpr policy_flag call_flags = merged_implied_flags<Args...>;
+template <>
+inline constexpr policy_flag call_flags<> = none;
+template <class First, class... Rest>
+    requires policy_like<std::remove_cvref_t<First>>
+inline constexpr policy_flag call_flags<First, Rest...> = flags_of<First>;
+template <class... Rest>
+inline constexpr policy_flag call_flags<errc&, Rest...> = checked;
+
+// Each op's well-formedness under flags F (detail/addition.hpp & co.): the
+// first constraint of its function and operator, so a requires-expression
+// or `if constexpr` probe is false where the op cannot compile.
+template <class L, class R, policy_flag F>
+inline constexpr bool add_defined = sum_grid_fits_64_bit_grid_numbers<L, R>;
+template <class L, class R, policy_flag F>
+inline constexpr bool sub_defined = difference_grid_fits_64_bit_grid_numbers<L, R>;
+template <class L, class R, policy_flag F>
+inline constexpr bool mul_defined = product_grid_fits_64_bit_grid_numbers<L, R>;
+template <class L, class R, policy_flag F>
+inline constexpr bool div_defined = quotient_grid_representable<L, R, F>;
+template <class L, class R, policy_flag F>
+inline constexpr bool mod_defined = modulo_operands_integer_valued<L, R, F>;
+template <class L, class R, policy_flag F>
+inline constexpr bool divmod_defined = divmod_operands_integer_valued_within_imax<L, R, F>;
+} // namespace detail
+
+#define BEMAN_INSIDE_ARITH_FN(name, op)                                                      \
+    template <insidable L, insidable R, class... Args>                                       \
+        requires detail::name                                                                \
+    ##_defined<L, R, detail::call_flags<Args...>>&&                                          \
+        requires(L const& l, R const& r, Args && ... args)                                   \
+    {                                                                                        \
+        detail::arith(detail::op{}, l, r, std::forward<Args>(args)...);                      \
+    }                                                                                        \
+    [[nodiscard]] constexpr auto name(L const& lhs, R const& rhs, Args&&... args) {          \
+        return detail::arith(detail::op{}, lhs, rhs, std::forward<Args>(args)...);           \
+    }                                                                                        \
+    BEMAN_INSIDE_DELETE_BEGIN                                                                \
+    template <insidable L, insidable R, class... Args>                                       \
+        requires(!detail::name##_defined<L, R, detail::call_flags<Args...>>)                 \
+    auto name(L const&, R const&, Args&&...) = BEMAN_INSIDE_DELETE(BEMAN_INSIDE_WHY_##name); \
+    BEMAN_INSIDE_DELETE_END
 
 BEMAN_INSIDE_ARITH_FN(add, add_op)
 BEMAN_INSIDE_ARITH_FN(sub, sub_op)
@@ -167,19 +237,70 @@ template <insidable Out, policy_flag F = none, insidable A, insidable B>
 
 // Binary operators: +, -, * use the default policy; / and % carry the
 // operands' own policies (snap/rounding select the native integer paths).
-[[nodiscard]] constexpr auto operator+(insidable auto lhs, insidable auto rhs) { return beman::inside::add(lhs, rhs); }
-
-[[nodiscard]] constexpr auto operator-(insidable auto lhs, insidable auto rhs) { return beman::inside::sub(lhs, rhs); }
-
-[[nodiscard]] constexpr auto operator*(insidable auto lhs, insidable auto rhs) { return beman::inside::mul(lhs, rhs); }
-
-[[nodiscard]] constexpr auto operator/(insidable auto lhs, insidable auto rhs) {
-    return beman::inside::div(lhs, rhs, make_policy<policy_of<decltype(lhs)> | policy_of<decltype(rhs)>>());
+// Each is constrained on its op's well-formedness, like the named forms.
+template <insidable L, insidable R>
+    requires detail::sum_grid_fits_64_bit_grid_numbers<L, R>
+[[nodiscard]] constexpr auto operator+(L lhs, R rhs) {
+    return beman::inside::add(lhs, rhs);
 }
+BEMAN_INSIDE_DELETE_BEGIN
+template <insidable L, insidable R>
+    requires(!detail::sum_grid_fits_64_bit_grid_numbers<L, R>)
+auto operator+(L, R) = BEMAN_INSIDE_DELETE(BEMAN_INSIDE_WHY_add);
+BEMAN_INSIDE_DELETE_END
 
-[[nodiscard]] constexpr auto operator%(insidable auto lhs, insidable auto rhs) {
-    return beman::inside::mod(lhs, rhs, make_policy<policy_of<decltype(lhs)> | policy_of<decltype(rhs)>>());
+template <insidable L, insidable R>
+    requires detail::difference_grid_fits_64_bit_grid_numbers<L, R>
+[[nodiscard]] constexpr auto operator-(L lhs, R rhs) {
+    return beman::inside::sub(lhs, rhs);
 }
+BEMAN_INSIDE_DELETE_BEGIN
+template <insidable L, insidable R>
+    requires(!detail::difference_grid_fits_64_bit_grid_numbers<L, R>)
+auto operator-(L, R) = BEMAN_INSIDE_DELETE(BEMAN_INSIDE_WHY_sub);
+BEMAN_INSIDE_DELETE_END
+
+template <insidable L, insidable R>
+    requires detail::product_grid_fits_64_bit_grid_numbers<L, R>
+[[nodiscard]] constexpr auto operator*(L lhs, R rhs) {
+    return beman::inside::mul(lhs, rhs);
+}
+BEMAN_INSIDE_DELETE_BEGIN
+template <insidable L, insidable R>
+    requires(!detail::product_grid_fits_64_bit_grid_numbers<L, R>)
+auto operator*(L, R) = BEMAN_INSIDE_DELETE(BEMAN_INSIDE_WHY_mul);
+BEMAN_INSIDE_DELETE_END
+
+template <insidable L, insidable R>
+    requires detail::quotient_grid_representable<L, R, policy_of<L> | policy_of<R>>
+[[nodiscard]] constexpr auto operator/(L lhs, R rhs) {
+    return beman::inside::div(lhs, rhs, make_policy<policy_of<L> | policy_of<R>>());
+}
+BEMAN_INSIDE_DELETE_BEGIN
+template <insidable L, insidable R>
+    requires(!detail::quotient_grid_representable<L, R, policy_of<L> | policy_of<R>>)
+auto operator/(L, R) = BEMAN_INSIDE_DELETE(BEMAN_INSIDE_WHY_div);
+BEMAN_INSIDE_DELETE_END
+
+template <insidable L, insidable R>
+    requires detail::modulo_operands_integer_valued<L, R, policy_of<L> | policy_of<R>>
+[[nodiscard]] constexpr auto operator%(L lhs, R rhs) {
+    return beman::inside::mod(lhs, rhs, make_policy<policy_of<L> | policy_of<R>>());
+}
+BEMAN_INSIDE_DELETE_BEGIN
+template <insidable L, insidable R>
+    requires(!detail::modulo_operands_integer_valued<L, R, policy_of<L> | policy_of<R>>)
+auto operator%(L, R) = BEMAN_INSIDE_DELETE(BEMAN_INSIDE_WHY_mod);
+BEMAN_INSIDE_DELETE_END
+#undef BEMAN_INSIDE_DELETE
+#undef BEMAN_INSIDE_DELETE_BEGIN
+#undef BEMAN_INSIDE_DELETE_END
+#undef BEMAN_INSIDE_WHY_add
+#undef BEMAN_INSIDE_WHY_sub
+#undef BEMAN_INSIDE_WHY_mul
+#undef BEMAN_INSIDE_WHY_div
+#undef BEMAN_INSIDE_WHY_mod
+#undef BEMAN_INSIDE_WHY_divmod
 
 //---------------------------------------------------------------------------
 // add_all / mul_all — variadic folds (pairwise widening, same as `a + b + c`

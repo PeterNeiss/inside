@@ -556,18 +556,16 @@ struct assignment<L, R> {
         // Round onto the lattice first (by the policy, like every other store),
         // then fold: an on-lattice value folds onto a grid point, so rounding
         // can never carry it past Upper.
-        // The fold's quotient q is an imax: a floating source of 2^63 or more
-        // cannot be wrapped with a deliverable carry (nor converted exactly).
+        // A floating source of 2^63 or more has no rational form: it folds
+        // exactly, like every value whose rational steps overflow below.
         if constexpr (std::floating_point<R>)
-            if (!(rhs < 0x1p63 && rhs > -0x1p63)) [[unlikely]] {
-                return report_failure(lhs, policy, action, errc::overflow);
-            }
+            if (!(rhs < 0x1p63 && rhs > -0x1p63)) [[unlikely]]
+                return wrap_exact(lhs, exact_of_double(static_cast<double>(rhs)), policy, action);
         rational rhs_r{rhs};
         if constexpr (has_policy<L, P, snap>) {
             const auto r = try_round_to_lattice<L, P>(rhs_r);
-            if (!r) [[unlikely]] {
-                return report_failure(lhs, policy, action, errc::overflow);
-            }
+            if (!r) [[unlikely]]
+                return wrap_exact(lhs, exact_of(rhs_r), policy, action);
             rhs_r = *r;
         }
         imax     q;
@@ -584,22 +582,20 @@ struct assignment<L, R> {
             wrapped            = v < W{0} ? -rational{static_cast<umax>(-v)} : rational{static_cast<umax>(v)};
         } else {
             // q = floor((rhs - lower) / range), wrapped = rhs - q * range. A step
-            // past the 64-bit rational range, or a fold count past imax, cannot
-            // be computed exactly: report it rather than store a wrapped guess.
+            // past the 64-bit rational range, or a fold count past imax, folds
+            // exactly instead.
             const auto span  = try_sub(detail::upper64<L>, detail::lower64<L>);
             const auto range = span ? try_add(*span, detail::notch64<L>) : span;
             const auto off   = try_sub(rhs_r, detail::lower64<L>);
             const auto quot  = (range && off) ? try_div(*off, *range) : off;
             if (!range || !quot || *quot < rational{std::numeric_limits<imax>::min()} ||
-                *quot > rational{std::numeric_limits<imax>::max()}) [[unlikely]] {
-                return report_failure(lhs, policy, action, errc::overflow);
-            }
+                *quot > rational{std::numeric_limits<imax>::max()}) [[unlikely]]
+                return wrap_exact(lhs, exact_of(rhs_r), policy, action);
             q             = floor(*quot);
             const auto qr = try_mul(rational{q}, *range);
             const auto w  = qr ? try_sub(rhs_r, *qr) : qr;
-            if (!w) [[unlikely]] {
-                return report_failure(lhs, policy, action, errc::overflow);
-            }
+            if (!w) [[unlikely]]
+                return wrap_exact(lhs, exact_of(rhs_r), policy, action);
             wrapped = *w;
         }
 
@@ -609,6 +605,20 @@ struct assignment<L, R> {
 
         if constexpr (wrap_action<plain_t<A>>)
             action.Fn(lhs, make_wrap_carry<L, R>(q));
+    }
+
+    // The fold done exactly when its rational steps overflow (a double past
+    // 2^63, a far value on a fine grid): the exact store's wrap, which rounds
+    // by the policy and folds the wide lattice index (a wrap action's carry
+    // saturates, as on the wide paths). A continuous L has no lattice to
+    // fold in wide integers: still overflow.
+    template <typename P, typename A, std::size_t K>
+    [[gnu::cold, gnu::noinline]] static constexpr void
+    wrap_exact(L& lhs, const exact_frac<K>& v, P&& policy, A&& action) {
+        if constexpr (integer_storage<L>)
+            assign_exact<R>(lhs, v, policy, action);
+        else
+            report_failure(lhs, policy, action, errc::overflow);
     }
 
     // Cold and out of line: the exact wide slot for a quotient past the
