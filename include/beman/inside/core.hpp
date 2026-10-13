@@ -130,9 +130,12 @@ struct inside {
     }
 
   public:
+    // (Raw starts zeroed: a store that rounds a fine double starts from the
+    // destination's value, which a constant expression may not read
+    // uninitialized. The optimizer drops the dead store.)
     template <numeric A>
         requires inside_assignable<inside, A, P>
-    constexpr inside(A value) {
+    constexpr inside(A value) : Raw{} {
         store_value(value);
     }
 
@@ -141,7 +144,7 @@ struct inside {
     // apply to this store. If it reports an error (ec mode), Raw is ill-defined.
     template <numeric A, typename Pol>
         requires inside_assignable<inside, A, P | detail::policy_flags_of<std::remove_cvref_t<Pol>>>
-    constexpr inside(A value, Pol&& pol) {
+    constexpr inside(A value, Pol&& pol) : Raw{} {
         store_value(value, pol);
     }
 
@@ -161,7 +164,7 @@ struct inside {
     // std::bad_expected_access on an error.
     template <numeric A>
         requires inside_assignable<inside, A, P>
-    constexpr inside(const std::expected<A, errc>& value) {
+    constexpr inside(const std::expected<A, errc>& value) : Raw{} {
         store_value(value.value());
     }
 
@@ -778,7 +781,7 @@ struct inside {
         requires inside_assignable<inside, A, P | F>
     [[nodiscard]] static constexpr std::expected<inside, errc> try_make(A value) {
         errc   ec{};
-        inside result;
+        inside result{};
         result.store_value(value, make_policy<P | F>(ec));
         if (ec != errc{})
             return std::unexpected{ec};

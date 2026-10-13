@@ -605,9 +605,12 @@ template <insidable L, typename P>
 // outcome. When the policy may round (snap), rounds_into_range rounds such a
 // value and reports whether it lands inside the interval (`out` = the
 // rounded value). Only values within one notch of the interval can, which
-// also keeps try_round_to_lattice's division bounded for huge sources.
+// also keeps try_round_to_lattice's division bounded for huge sources. A
+// bounded continuous grid rounds onto its bound the same way: its limits are
+// values, and fractions k/D lie 1/D apart.
 template <insidable L, typename P>
-inline constexpr bool rounds_before_range_check = detail::notched<L> && has_policy<L, P, snap>;
+inline constexpr bool rounds_before_range_check =
+    (detail::notched<L> || grid_of<L>.MaxDenominator != 0) && has_policy<L, P, snap>;
 
 // rounds_into_range for a v whose rounding passes the 64-bit rational on the
 // way (v − Lower for a fine v's denominator), decided exactly (wide_value.hpp).
@@ -619,10 +622,18 @@ template <insidable L, typename P>
     if constexpr (!rounds_before_range_check<L, P>)
         return false;
     else {
-        constexpr rational lo = try_sub(detail::lower64<L>, detail::notch64<L>).value_or(detail::lower64<L>);
-        constexpr rational hi = try_add(detail::upper64<L>, detail::notch64<L>).value_or(detail::upper64<L>);
+        constexpr rational step = [] {
+            if constexpr (detail::notched<L>)
+                return detail::notch64<L>;
+            else
+                return rational{1, to_rational(grid_of<L>.MaxDenominator).Numerator};
+        }();
+        constexpr rational lo = try_sub(detail::lower64<L>, step).value_or(detail::lower64<L>);
+        constexpr rational hi = try_add(detail::upper64<L>, step).value_or(detail::upper64<L>);
         if (v <= lo || v >= hi)
             return false;
+        if constexpr (!detail::notched<L>)
+            return exact_rounds_into_range<L, P>(v, out);
         // Within one notch of the limits the rounded value fits; the steps
         // there may not, for a fine v.
         const auto r = try_round_to_lattice<L, P>(v);

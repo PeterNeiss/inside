@@ -490,12 +490,21 @@ constexpr auto exact_index(const exact_frac<K>& f) noexcept {
 
 template <insidable L, typename P>
 constexpr bool exact_rounds_into_range(const rational& v, rational& out) {
-    const auto j = exact_index<L, rounding_for<L, P>>(exact_of(v)).Index; // L's slot offset
-    using I      = std::remove_cvref_t<decltype(j)>;
-    if (j.negative() || I{max_index_v<L>} < j)
-        return false;
-    out = (detail::lower64<L> + (rational{static_cast<umax>(j)} * detail::notch64<L>).value()).value(); // L's point
-    return true;
+    if constexpr (!notched<L>) { // a bounded continuous grid: onto its bound
+        const auto x = exact_of(v);
+        using W      = decltype(x.Num);
+        out = try_rational(round_to_denominator<rounding_for<L, P>>(x, static_cast<W>(wide_numerator(
+                                                                           grid_of<L>.MaxDenominator))))
+                  .value(); // near a limit: fits
+        return includes(interval_of<L>, out);
+    } else {
+        const auto j = exact_index<L, rounding_for<L, P>>(exact_of(v)).Index; // L's slot offset
+        using I      = std::remove_cvref_t<decltype(j)>;
+        if (j.negative() || I{max_index_v<L>} < j)
+            return false;
+        out = (detail::lower64<L> + (rational{static_cast<umax>(j)} * detail::notch64<L>).value()).value(); // L's point
+        return true;
+    }
 }
 
 // The raw of slot offset `offset` (0 .. slot count) in L's storage. W is
@@ -595,11 +604,16 @@ template <insidable X>
 inline constexpr grid_rational unit_of = point_grid<X> ? abs(lower_of<X>) : grid_of<X>.value_unit();
 
 // Two integer raws whose values, counted in the gcd of their value units,
-// fit imax.
+// fit imax. (With 64-bit grid numbers the gcd itself may not fit: a 2/3
+// notch against a 2^-62 one.)
 template <insidable L, insidable R>
 inline constexpr bool units_cmp_fits = [] {
     if constexpr (!integer_storage<L> || !integer_storage<R>)
         return false;
+#if !BEMAN_INSIDE_BIG_GRIDS
+    else if constexpr (!grid_gcd(unit_of<L>, unit_of<R>))
+        return false;
+#endif
     else {
         constexpr grid_rational U = grid_gcd_of(unit_of<L>, unit_of<R>);
         return signed_value_bits_of({units_lo<L, U>, units_hi<L, U>, units_lo<R, U>, units_hi<R, U>}) <= 63;

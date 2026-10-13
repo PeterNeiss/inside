@@ -169,6 +169,13 @@ struct grid {
         static_assert(G.Interval.divides_evenly(G.Notch), "grid: the notch must divide Upper − Lower evenly");
         static_assert(G.MaxDenominator == 0 || (G.Notch == 0 && G.Interval.Lower != G.Interval.Upper),
                       "grid: only a continuous grid carries a max_denominator");
+#if !BEMAN_INSIDE_BIG_GRIDS
+        // Every value is a multiple of gcd(Lower, Notch): {{0.2, 1.2}, 2^-61}
+        // counts in 1/(5·2^61), past the 64-bit rational.
+        static_assert(G.Notch == 0 || detail::grid_gcd(G.Notch, G.Interval.Lower).has_value(),
+                      "grid: the value unit gcd(Lower, Notch) does not fit a 64-bit rational (C++26 big grids lift "
+                      "this)");
+#endif
 
         return true;
     }
@@ -194,6 +201,10 @@ struct grid {
         }
         if (!iv.divides_evenly(notch))
             return std::unexpected{errc::rounding_error};
+#if !BEMAN_INSIDE_BIG_GRIDS
+        if (notch != 0 && !detail::grid_gcd(notch, iv.Lower))
+            return std::unexpected{errc::overflow};
+#endif
         return grid{iv, notch};
     }
 
@@ -304,7 +315,17 @@ constexpr grid_wide den_bound(const grid& g) {
         return wide_numerator(g.MaxDenominator);
     if (g.Notch == 0)
         return wide_denominator(g.Interval.Lower);
-    return wide_denominator(g.value_unit());
+    // The value unit gcd(Lower, Notch) has denominator lcm(den Lower, den
+    // Notch), taken here in wide integers: the unit itself may not fit a
+    // 64-bit rational (a grid op then reports overflow, not a hard error).
+    const grid_wide a = wide_denominator(g.Interval.Lower), b = wide_denominator(g.Notch);
+    grid_wide       x = a, y = b;
+    while (!(y == grid_wide{0})) {
+        const grid_wide t = x % y;
+        x                 = y;
+        y                 = t;
+    }
+    return a / x * b;
 }
 
 // floor(max(|Lower|, |Upper|) · d): the largest numerator over denominator d.

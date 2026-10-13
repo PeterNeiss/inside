@@ -235,7 +235,12 @@ constexpr L& assign_exact(L& lhs, const exact_frac<K>& v, P&& policy, A&& action
             else
                 fail(errc::overflow);
         };
-        const exact_frac<KK> x{v};
+        exact_frac<KK> x{v};
+        // Round first, as the builtin stores do: a value just past a limit
+        // may round onto it.
+        if constexpr (grid_of<L>.MaxDenominator != 0 && has_policy<L, P, snap>)
+            x = round_to_denominator<rounding_for<L, plain_t<P>>>(
+                x, static_cast<wide_sint<KK>>(wide_numerator(grid_of<L>.MaxDenominator)));
         if (x < lo || hi < x) [[unlikely]] {
             dispatch_out_of_range<true>(
                 lhs,
@@ -253,12 +258,30 @@ constexpr L& assign_exact(L& lhs, const exact_frac<K>& v, P&& policy, A&& action
         store(x);
         return lhs;
     } else if constexpr (rational_storage<L>) {
-        // L holds 64-bit values: narrow through the rational (a value that does
-        // not fit lies outside every such grid).
-        const auto r = try_rational(v);
+        // L holds 64-bit values: narrow through the rational. A value that does
+        // not fit (a double finer than 2^-62, an exact sum) may still lie
+        // within the limits: a bounded grid rounds it onto its bound first,
+        // clamp saturates it past a limit; else it is off a bounded grid
+        // (rounding_error) or does not fit (overflow).
+        auto r = try_rational(v);
         if (!r) [[unlikely]] {
-            fail(errc::overflow);
-            return lhs;
+            constexpr std::size_t KK = exact_max<K, exact_limbs<L>>;
+            const exact_frac<KK>  x{v};
+            if constexpr (grid_of<L>.MaxDenominator != 0 && has_policy<L, P, snap>)
+                r = try_rational(round_to_denominator<rounding_for<L, plain_t<P>>>(
+                    x, static_cast<wide_sint<KK>>(wide_numerator(grid_of<L>.MaxDenominator))));
+            if (!r) {
+                const bool low = x < exact_of_grid<KK>(lower_of<L>);
+                if (!low && !(exact_of_grid<KK>(upper_of<L>) < x)) {
+                    fail(grid_of<L>.MaxDenominator != 0 ? errc::rounding_error : errc::overflow);
+                    return lhs;
+                }
+                if constexpr (!has_policy<L, P, clamp>) {
+                    fail(errc::overflow);
+                    return lhs;
+                } else
+                    r = low ? detail::lower64<L> : detail::upper64<L>;
+            }
         }
         if constexpr (clamp_action<plain_t<A>> || wrap_action<plain_t<A>>)
             static_assert(
@@ -673,17 +696,17 @@ struct assignment<L, R> {
             return rational{rhs};
     }
     // Out of line, and by value (an empty action too): a reference to a
-    // caller's local would make it escape the hot path's frame.
+    // caller's local would make it escape the hot path's frame. It starts
+    // from lhs's value: a failed store (errc&, on_error) leaves it intact.
     template <typename P, typename A>
-    BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE static constexpr L fine_double_value(double rhs, P policy, A action) {
-        L lhs{};
+    BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE static constexpr L fine_double_value(L lhs, double rhs, P policy, A action) {
         assign_exact<R>(lhs, exact_of_double(rhs), policy, std::forward<A>(action));
         return lhs;
     }
     template <typename P, typename A>
     static constexpr void store_fine_double(L& lhs, double rhs, P&& policy, A&& action) {
         using Act = std::conditional_t<std::is_empty_v<plain_t<A>>, plain_t<A>, A&&>;
-        lhs       = fine_double_value<plain_t<P>, Act>(rhs, policy, std::forward<A>(action));
+        lhs       = fine_double_value<plain_t<P>, Act>(lhs, rhs, policy, std::forward<A>(action));
     }
 
     template <typename P, typename A = no_action>
@@ -1180,12 +1203,13 @@ struct assignment<L, R> {
             return not includes(interval_of<L>, as_rational(rhs));
     }
 
-    template <typename P>
-    static constexpr void store(L& lhs, const R& rhs, P&& policy) {
+    // (The value is in range here: of the actions only on_error can fire.)
+    template <typename P, typename A>
+    static constexpr void store(L& lhs, const R& rhs, P&& policy, A&& action) {
         if constexpr (!maps_raws)
             // A continuous side or no raw mapping: store the source's value through
             // the rational store, which rounds it by the policy or reports rounding_error.
-            assignment<L, rational>::store_checked(lhs, as_rational(rhs), policy, no_action{});
+            assignment<L, rational>::store_checked(lhs, as_rational(rhs), policy, action);
         else if constexpr (is_integer_mapping) {
             // exact: Factor and Offset have integer denominators, no rounding ambiguity
             if constexpr (Offset == 0 && Factor == 1 && same_storage<L, R>)
@@ -1214,7 +1238,7 @@ struct assignment<L, R> {
             const auto scaled = r_offset ? try_mul(Factor, *r_offset) : r_offset;
             const auto mapped = scaled ? try_add(Offset, *scaled) : scaled;
             if (!mapped) [[unlikely]] {
-                assign_exact<R>(lhs, exact_of(rhs), policy, no_action{});
+                assign_exact<R>(lhs, exact_of(rhs), policy, action);
                 return;
             }
             const rational rat = *mapped;
@@ -1286,7 +1310,7 @@ struct assignment<L, R> {
             }
         }
 
-        store(lhs, rhs, policy);
+        store(lhs, rhs, policy, action);
         return lhs;
     }
 };

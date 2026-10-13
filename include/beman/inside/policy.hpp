@@ -304,18 +304,42 @@ struct policy_ref {
         return finalise_arith(rat_op(rational{Ref}, rhs), msg);
     }
 
+    // The value an op's result holds (an expected's value type).
+    template <typename T>
+    struct result_value {
+        using type = T;
+    };
+    template <typename T>
+    struct result_value<std::expected<T, errc>> {
+        using type = T;
+    };
+    template <typename R>
+    static constexpr bool stores_back =
+        inside_assignable<B, typename result_value<std::remove_cvref_t<R>>::type, policy_of<B> | policy_flags_of<P>>;
+
   public:
+    // Constrained on the free op they call and on storing its result back
+    // under this policy, so a requires probe sees what compiles: an int64
+    // grid's `+=` takes its raw path, but its `add` (whose sum grid passes
+    // 64 bits) does not exist; a 1/16 sum does not store into an integer
+    // grid without snap.
     template <insidable C>
+        requires requires(const B& b, const C& c, P& p) { add(b, c, p); } &&
+                 stores_back<decltype(add(std::declval<const B&>(), std::declval<const C&>(), std::declval<P&>()))>
     constexpr B& operator+=(const C& rhs) {
         return finalise_arith(add(Ref, rhs, Policy), "policy_ref::operator+= overflow");
     }
 
     template <insidable C>
+        requires requires(const B& b, const C& c, P& p) { sub(b, c, p); } &&
+                 stores_back<decltype(sub(std::declval<const B&>(), std::declval<const C&>(), std::declval<P&>()))>
     constexpr B& operator-=(const C& rhs) {
         return finalise_arith(sub(Ref, rhs, Policy), "policy_ref::operator-= overflow");
     }
 
     template <insidable C>
+        requires requires(const B& b, const C& c, P& p) { mul(b, c, p); } &&
+                 stores_back<decltype(mul(std::declval<const B&>(), std::declval<const C&>(), std::declval<P&>()))>
     constexpr B& operator*=(const C& rhs) {
         return finalise_arith(mul(Ref, rhs, Policy), "policy_ref::operator*= overflow");
     }
@@ -324,6 +348,8 @@ struct policy_ref {
     // unchanged, like inside::operator/=: div/mod under ignore_zero skip their
     // own check, so dividing here would be a division by zero.
     template <insidable C>
+        requires requires(const B& b, const C& c, P& p) { div(b, c, p); } &&
+                 stores_back<decltype(div(std::declval<const B&>(), std::declval<const C&>(), std::declval<P&>()))>
     constexpr B& operator/=(const C& rhs) {
         if (rhs == 0) {
             if constexpr (!has_flag(policy_of<C>, ignore_zero)) // either operand silences it
@@ -334,6 +360,8 @@ struct policy_ref {
     }
 
     template <insidable C>
+        requires requires(const B& b, const C& c, P& p) { mod(b, c, p); } &&
+                 stores_back<decltype(mod(std::declval<const B&>(), std::declval<const C&>(), std::declval<P&>()))>
     constexpr B& operator%=(const C& rhs) {
         if (rhs == 0) {
             if constexpr (!has_flag(policy_of<C>, ignore_zero)) // either operand silences it

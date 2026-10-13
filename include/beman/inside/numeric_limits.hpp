@@ -53,24 +53,46 @@ struct std::numeric_limits<beman::inside::inside<G, P>> {
     static constexpr int digits   = std::numeric_limits<deduced_raw>::digits;
     static constexpr int digits10 = std::numeric_limits<deduced_raw>::digits10;
 
-    static constexpr B min() noexcept { return B{::beman::inside::detail::lower64<B>}; }
-    static constexpr B max() noexcept { return B{::beman::inside::detail::upper64<B>}; }
-    static constexpr B lowest() noexcept { return B{::beman::inside::detail::lower64<B>}; }
+  private:
+    // The value v of B (on its grid). Past 64 bits through the exact store:
+    // no 64-bit rational holds a big grid's limits.
+    static constexpr B at(const beman::inside::detail::grid_rational& v) noexcept {
+        namespace d = ::beman::inside::detail;
+        if constexpr (d::wide_valued<B>) {
+            B                    b{};
+            beman::inside::errc ec{};
+            d::assign_exact<d::rational>(
+                b, d::exact_of_grid<d::exact_limbs<B>>(v), beman::inside::make_policy<P>(ec), beman::inside::no_action{});
+            return b;
+        } else
+            return B{d::to_rational(v)};
+    }
+
+  public:
+    static constexpr B min() noexcept { return at(G.Interval.Lower); }
+    static constexpr B max() noexcept { return at(G.Interval.Upper); }
+    static constexpr B lowest() noexcept { return at(G.Interval.Lower); }
     // Exact types have no rounding noise — epsilon and round_error are 0 when
     // 0 is on the grid. A lattice that misses 0 but spans it gives its first
     // point above 0; when 0 is outside the interval, the grid minimum — the
     // closest representable stand-in for "no error" the type can express.
     static constexpr B epsilon() noexcept {
-        if constexpr (G.representable(beman::inside::detail::grid_rational{0}))
-            return B{beman::inside::detail::rational{0}};
-        else if constexpr (G.Interval.Lower < beman::inside::detail::rational{0} &&
-                           beman::inside::detail::rational{0} < G.Interval.Upper) {
-            constexpr auto lo = ::beman::inside::detail::lower64<B>, n = ::beman::inside::detail::notch64<B>;
-            return B{
-                (lo + (beman::inside::detail::rational{beman::inside::detail::ceil((-lo / n).value())} * n).value())
-                    .value()};
+        namespace d = ::beman::inside::detail;
+        if constexpr (G.representable(d::grid_rational{0}))
+            return at(d::grid_rational{0});
+        else if constexpr (G.Interval.Lower < d::grid_rational{0} && d::grid_rational{0} < G.Interval.Upper) {
+            // Lower + ⌈−Lower/Notch⌉·Notch
+            constexpr d::grid_rational t = d::grid_div_of(d::grid_sub(d::grid_rational{0}, G.Interval.Lower), G.Notch);
+            constexpr d::grid_wide     k = (d::wide_numerator(t) + d::wide_denominator(t) - d::grid_wide{1}) /
+                                       d::wide_denominator(t);
+#if BEMAN_INSIDE_BIG_GRIDS
+            constexpr d::grid_rational kn = d::grid_mul(d::grid_rational{k}, G.Notch);
+#else
+            constexpr d::grid_rational kn = d::grid_mul(d::rational{static_cast<beman::inside::umax>(k)}, G.Notch);
+#endif
+            return at(d::grid_add(G.Interval.Lower, kn));
         } else
-            return B{::beman::inside::detail::lower64<B>};
+            return at(G.Interval.Lower);
     }
     static constexpr B round_error() noexcept { return epsilon(); }
 };

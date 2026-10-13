@@ -3756,6 +3756,13 @@ struct grid {
         static_assert(G.Interval.divides_evenly(G.Notch), "grid: the notch must divide Upper − Lower evenly");
         static_assert(G.MaxDenominator == 0 || (G.Notch == 0 && G.Interval.Lower != G.Interval.Upper),
                       "grid: only a continuous grid carries a max_denominator");
+#if !BEMAN_INSIDE_BIG_GRIDS
+        // Every value is a multiple of gcd(Lower, Notch): {{0.2, 1.2}, 2^-61}
+        // counts in 1/(5·2^61), past the 64-bit rational.
+        static_assert(G.Notch == 0 || detail::grid_gcd(G.Notch, G.Interval.Lower).has_value(),
+                      "grid: the value unit gcd(Lower, Notch) does not fit a 64-bit rational (C++26 big grids lift "
+                      "this)");
+#endif
 
         return true;
     }
@@ -3781,6 +3788,10 @@ struct grid {
         }
         if (!iv.divides_evenly(notch))
             return std::unexpected{errc::rounding_error};
+#if !BEMAN_INSIDE_BIG_GRIDS
+        if (notch != 0 && !detail::grid_gcd(notch, iv.Lower))
+            return std::unexpected{errc::overflow};
+#endif
         return grid{iv, notch};
     }
 
@@ -3891,7 +3902,17 @@ constexpr grid_wide den_bound(const grid& g) {
         return wide_numerator(g.MaxDenominator);
     if (g.Notch == 0)
         return wide_denominator(g.Interval.Lower);
-    return wide_denominator(g.value_unit());
+    // The value unit gcd(Lower, Notch) has denominator lcm(den Lower, den
+    // Notch), taken here in wide integers: the unit itself may not fit a
+    // 64-bit rational (a grid op then reports overflow, not a hard error).
+    const grid_wide a = wide_denominator(g.Interval.Lower), b = wide_denominator(g.Notch);
+    grid_wide       x = a, y = b;
+    while (!(y == grid_wide{0})) {
+        const grid_wide t = x % y;
+        x                 = y;
+        y                 = t;
+    }
+    return a / x * b;
 }
 
 // floor(max(|Lower|, |Upper|) · d): the largest numerator over denominator d.
@@ -4953,9 +4974,12 @@ template <insidable L, typename P>
 // outcome. When the policy may round (snap), rounds_into_range rounds such a
 // value and reports whether it lands inside the interval (`out` = the
 // rounded value). Only values within one notch of the interval can, which
-// also keeps try_round_to_lattice's division bounded for huge sources.
+// also keeps try_round_to_lattice's division bounded for huge sources. A
+// bounded continuous grid rounds onto its bound the same way: its limits are
+// values, and fractions k/D lie 1/D apart.
 template <insidable L, typename P>
-inline constexpr bool rounds_before_range_check = detail::notched<L> && has_policy<L, P, snap>;
+inline constexpr bool rounds_before_range_check =
+    (detail::notched<L> || grid_of<L>.MaxDenominator != 0) && has_policy<L, P, snap>;
 
 // rounds_into_range for a v whose rounding passes the 64-bit rational on the
 // way (v − Lower for a fine v's denominator), decided exactly (wide_value.hpp).
@@ -4967,10 +4991,18 @@ template <insidable L, typename P>
     if constexpr (!rounds_before_range_check<L, P>)
         return false;
     else {
-        constexpr rational lo = try_sub(detail::lower64<L>, detail::notch64<L>).value_or(detail::lower64<L>);
-        constexpr rational hi = try_add(detail::upper64<L>, detail::notch64<L>).value_or(detail::upper64<L>);
+        constexpr rational step = [] {
+            if constexpr (detail::notched<L>)
+                return detail::notch64<L>;
+            else
+                return rational{1, to_rational(grid_of<L>.MaxDenominator).Numerator};
+        }();
+        constexpr rational lo = try_sub(detail::lower64<L>, step).value_or(detail::lower64<L>);
+        constexpr rational hi = try_add(detail::upper64<L>, step).value_or(detail::upper64<L>);
         if (v <= lo || v >= hi)
             return false;
+        if constexpr (!detail::notched<L>)
+            return exact_rounds_into_range<L, P>(v, out);
         // Within one notch of the limits the rounded value fits; the steps
         // there may not, for a fine v.
         const auto r = try_round_to_lattice<L, P>(v);
@@ -5667,12 +5699,21 @@ constexpr auto exact_index(const exact_frac<K>& f) noexcept {
 
 template <insidable L, typename P>
 constexpr bool exact_rounds_into_range(const rational& v, rational& out) {
-    const auto j = exact_index<L, rounding_for<L, P>>(exact_of(v)).Index; // L's slot offset
-    using I      = std::remove_cvref_t<decltype(j)>;
-    if (j.negative() || I{max_index_v<L>} < j)
-        return false;
-    out = (detail::lower64<L> + (rational{static_cast<umax>(j)} * detail::notch64<L>).value()).value(); // L's point
-    return true;
+    if constexpr (!notched<L>) { // a bounded continuous grid: onto its bound
+        const auto x = exact_of(v);
+        using W      = decltype(x.Num);
+        out = try_rational(round_to_denominator<rounding_for<L, P>>(x, static_cast<W>(wide_numerator(
+                                                                           grid_of<L>.MaxDenominator))))
+                  .value(); // near a limit: fits
+        return includes(interval_of<L>, out);
+    } else {
+        const auto j = exact_index<L, rounding_for<L, P>>(exact_of(v)).Index; // L's slot offset
+        using I      = std::remove_cvref_t<decltype(j)>;
+        if (j.negative() || I{max_index_v<L>} < j)
+            return false;
+        out = (detail::lower64<L> + (rational{static_cast<umax>(j)} * detail::notch64<L>).value()).value(); // L's point
+        return true;
+    }
 }
 
 // The raw of slot offset `offset` (0 .. slot count) in L's storage. W is
@@ -5772,11 +5813,16 @@ template <insidable X>
 inline constexpr grid_rational unit_of = point_grid<X> ? abs(lower_of<X>) : grid_of<X>.value_unit();
 
 // Two integer raws whose values, counted in the gcd of their value units,
-// fit imax.
+// fit imax. (With 64-bit grid numbers the gcd itself may not fit: a 2/3
+// notch against a 2^-62 one.)
 template <insidable L, insidable R>
 inline constexpr bool units_cmp_fits = [] {
     if constexpr (!integer_storage<L> || !integer_storage<R>)
         return false;
+#if !BEMAN_INSIDE_BIG_GRIDS
+    else if constexpr (!grid_gcd(unit_of<L>, unit_of<R>))
+        return false;
+#endif
     else {
         constexpr grid_rational U = grid_gcd_of(unit_of<L>, unit_of<R>);
         return signed_value_bits_of({units_lo<L, U>, units_hi<L, U>, units_lo<R, U>, units_hi<R, U>}) <= 63;
@@ -6078,7 +6124,12 @@ constexpr L& assign_exact(L& lhs, const exact_frac<K>& v, P&& policy, A&& action
             else
                 fail(errc::overflow);
         };
-        const exact_frac<KK> x{v};
+        exact_frac<KK> x{v};
+        // Round first, as the builtin stores do: a value just past a limit
+        // may round onto it.
+        if constexpr (grid_of<L>.MaxDenominator != 0 && has_policy<L, P, snap>)
+            x = round_to_denominator<rounding_for<L, plain_t<P>>>(
+                x, static_cast<wide_sint<KK>>(wide_numerator(grid_of<L>.MaxDenominator)));
         if (x < lo || hi < x) [[unlikely]] {
             dispatch_out_of_range<true>(
                 lhs,
@@ -6096,12 +6147,30 @@ constexpr L& assign_exact(L& lhs, const exact_frac<K>& v, P&& policy, A&& action
         store(x);
         return lhs;
     } else if constexpr (rational_storage<L>) {
-        // L holds 64-bit values: narrow through the rational (a value that does
-        // not fit lies outside every such grid).
-        const auto r = try_rational(v);
+        // L holds 64-bit values: narrow through the rational. A value that does
+        // not fit (a double finer than 2^-62, an exact sum) may still lie
+        // within the limits: a bounded grid rounds it onto its bound first,
+        // clamp saturates it past a limit; else it is off a bounded grid
+        // (rounding_error) or does not fit (overflow).
+        auto r = try_rational(v);
         if (!r) [[unlikely]] {
-            fail(errc::overflow);
-            return lhs;
+            constexpr std::size_t KK = exact_max<K, exact_limbs<L>>;
+            const exact_frac<KK>  x{v};
+            if constexpr (grid_of<L>.MaxDenominator != 0 && has_policy<L, P, snap>)
+                r = try_rational(round_to_denominator<rounding_for<L, plain_t<P>>>(
+                    x, static_cast<wide_sint<KK>>(wide_numerator(grid_of<L>.MaxDenominator))));
+            if (!r) {
+                const bool low = x < exact_of_grid<KK>(lower_of<L>);
+                if (!low && !(exact_of_grid<KK>(upper_of<L>) < x)) {
+                    fail(grid_of<L>.MaxDenominator != 0 ? errc::rounding_error : errc::overflow);
+                    return lhs;
+                }
+                if constexpr (!has_policy<L, P, clamp>) {
+                    fail(errc::overflow);
+                    return lhs;
+                } else
+                    r = low ? detail::lower64<L> : detail::upper64<L>;
+            }
         }
         if constexpr (clamp_action<plain_t<A>> || wrap_action<plain_t<A>>)
             static_assert(
@@ -6516,17 +6585,17 @@ struct assignment<L, R> {
             return rational{rhs};
     }
     // Out of line, and by value (an empty action too): a reference to a
-    // caller's local would make it escape the hot path's frame.
+    // caller's local would make it escape the hot path's frame. It starts
+    // from lhs's value: a failed store (errc&, on_error) leaves it intact.
     template <typename P, typename A>
-    BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE static constexpr L fine_double_value(double rhs, P policy, A action) {
-        L lhs{};
+    BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE static constexpr L fine_double_value(L lhs, double rhs, P policy, A action) {
         assign_exact<R>(lhs, exact_of_double(rhs), policy, std::forward<A>(action));
         return lhs;
     }
     template <typename P, typename A>
     static constexpr void store_fine_double(L& lhs, double rhs, P&& policy, A&& action) {
         using Act = std::conditional_t<std::is_empty_v<plain_t<A>>, plain_t<A>, A&&>;
-        lhs       = fine_double_value<plain_t<P>, Act>(rhs, policy, std::forward<A>(action));
+        lhs       = fine_double_value<plain_t<P>, Act>(lhs, rhs, policy, std::forward<A>(action));
     }
 
     template <typename P, typename A = no_action>
@@ -7023,12 +7092,13 @@ struct assignment<L, R> {
             return not includes(interval_of<L>, as_rational(rhs));
     }
 
-    template <typename P>
-    static constexpr void store(L& lhs, const R& rhs, P&& policy) {
+    // (The value is in range here: of the actions only on_error can fire.)
+    template <typename P, typename A>
+    static constexpr void store(L& lhs, const R& rhs, P&& policy, A&& action) {
         if constexpr (!maps_raws)
             // A continuous side or no raw mapping: store the source's value through
             // the rational store, which rounds it by the policy or reports rounding_error.
-            assignment<L, rational>::store_checked(lhs, as_rational(rhs), policy, no_action{});
+            assignment<L, rational>::store_checked(lhs, as_rational(rhs), policy, action);
         else if constexpr (is_integer_mapping) {
             // exact: Factor and Offset have integer denominators, no rounding ambiguity
             if constexpr (Offset == 0 && Factor == 1 && same_storage<L, R>)
@@ -7057,7 +7127,7 @@ struct assignment<L, R> {
             const auto scaled = r_offset ? try_mul(Factor, *r_offset) : r_offset;
             const auto mapped = scaled ? try_add(Offset, *scaled) : scaled;
             if (!mapped) [[unlikely]] {
-                assign_exact<R>(lhs, exact_of(rhs), policy, no_action{});
+                assign_exact<R>(lhs, exact_of(rhs), policy, action);
                 return;
             }
             const rational rat = *mapped;
@@ -7129,7 +7199,7 @@ struct assignment<L, R> {
             }
         }
 
-        store(lhs, rhs, policy);
+        store(lhs, rhs, policy, action);
         return lhs;
     }
 };
@@ -7433,18 +7503,42 @@ struct policy_ref {
         return finalise_arith(rat_op(rational{Ref}, rhs), msg);
     }
 
+    // The value an op's result holds (an expected's value type).
+    template <typename T>
+    struct result_value {
+        using type = T;
+    };
+    template <typename T>
+    struct result_value<std::expected<T, errc>> {
+        using type = T;
+    };
+    template <typename R>
+    static constexpr bool stores_back =
+        inside_assignable<B, typename result_value<std::remove_cvref_t<R>>::type, policy_of<B> | policy_flags_of<P>>;
+
   public:
+    // Constrained on the free op they call and on storing its result back
+    // under this policy, so a requires probe sees what compiles: an int64
+    // grid's `+=` takes its raw path, but its `add` (whose sum grid passes
+    // 64 bits) does not exist; a 1/16 sum does not store into an integer
+    // grid without snap.
     template <insidable C>
+        requires requires(const B& b, const C& c, P& p) { add(b, c, p); } &&
+                 stores_back<decltype(add(std::declval<const B&>(), std::declval<const C&>(), std::declval<P&>()))>
     constexpr B& operator+=(const C& rhs) {
         return finalise_arith(add(Ref, rhs, Policy), "policy_ref::operator+= overflow");
     }
 
     template <insidable C>
+        requires requires(const B& b, const C& c, P& p) { sub(b, c, p); } &&
+                 stores_back<decltype(sub(std::declval<const B&>(), std::declval<const C&>(), std::declval<P&>()))>
     constexpr B& operator-=(const C& rhs) {
         return finalise_arith(sub(Ref, rhs, Policy), "policy_ref::operator-= overflow");
     }
 
     template <insidable C>
+        requires requires(const B& b, const C& c, P& p) { mul(b, c, p); } &&
+                 stores_back<decltype(mul(std::declval<const B&>(), std::declval<const C&>(), std::declval<P&>()))>
     constexpr B& operator*=(const C& rhs) {
         return finalise_arith(mul(Ref, rhs, Policy), "policy_ref::operator*= overflow");
     }
@@ -7453,6 +7547,8 @@ struct policy_ref {
     // unchanged, like inside::operator/=: div/mod under ignore_zero skip their
     // own check, so dividing here would be a division by zero.
     template <insidable C>
+        requires requires(const B& b, const C& c, P& p) { div(b, c, p); } &&
+                 stores_back<decltype(div(std::declval<const B&>(), std::declval<const C&>(), std::declval<P&>()))>
     constexpr B& operator/=(const C& rhs) {
         if (rhs == 0) {
             if constexpr (!has_flag(policy_of<C>, ignore_zero)) // either operand silences it
@@ -7463,6 +7559,8 @@ struct policy_ref {
     }
 
     template <insidable C>
+        requires requires(const B& b, const C& c, P& p) { mod(b, c, p); } &&
+                 stores_back<decltype(mod(std::declval<const B&>(), std::declval<const C&>(), std::declval<P&>()))>
     constexpr B& operator%=(const C& rhs) {
         if (rhs == 0) {
             if constexpr (!has_flag(policy_of<C>, ignore_zero)) // either operand silences it
@@ -8509,9 +8607,12 @@ struct inside {
     }
 
   public:
+    // (Raw starts zeroed: a store that rounds a fine double starts from the
+    // destination's value, which a constant expression may not read
+    // uninitialized. The optimizer drops the dead store.)
     template <numeric A>
         requires inside_assignable<inside, A, P>
-    constexpr inside(A value) {
+    constexpr inside(A value) : Raw{} {
         store_value(value);
     }
 
@@ -8520,7 +8621,7 @@ struct inside {
     // apply to this store. If it reports an error (ec mode), Raw is ill-defined.
     template <numeric A, typename Pol>
         requires inside_assignable<inside, A, P | detail::policy_flags_of<std::remove_cvref_t<Pol>>>
-    constexpr inside(A value, Pol&& pol) {
+    constexpr inside(A value, Pol&& pol) : Raw{} {
         store_value(value, pol);
     }
 
@@ -8540,7 +8641,7 @@ struct inside {
     // std::bad_expected_access on an error.
     template <numeric A>
         requires inside_assignable<inside, A, P>
-    constexpr inside(const std::expected<A, errc>& value) {
+    constexpr inside(const std::expected<A, errc>& value) : Raw{} {
         store_value(value.value());
     }
 
@@ -9157,7 +9258,7 @@ struct inside {
         requires inside_assignable<inside, A, P | F>
     [[nodiscard]] static constexpr std::expected<inside, errc> try_make(A value) {
         errc   ec{};
-        inside result;
+        inside result{};
         result.store_value(value, make_policy<P | F>(ec));
         if (ec != errc{})
             return std::unexpected{ec};
@@ -14121,7 +14222,13 @@ constexpr grid_rational lattice_point(const wide_sint<K>& k) {
 #if BEMAN_INSIDE_BIG_GRIDS
     return grid_rational{big_int{k}} * Notch;
 #else
-    return static_cast<imax>(k) * Notch;
+    // |k| may pass 2^63 (π on a 2^-62 notch): a rational's numerator holds
+    // up to 2^64 − 1, past it the point has no 64-bit grid number.
+    const wide_sint<K> a = k.negative() ? -k : k;
+    if (bit_width_of(a) > 64)
+        constexpr_error<"beman::inside::math: a deduced output limit is past the 64-bit grid numbers">();
+    const grid_rational m = rational{static_cast<umax>(a)} * Notch;
+    return k.negative() ? -m : m;
 #endif
 }
 
@@ -14236,6 +14343,21 @@ inline constexpr grid_rational gcd_notch = [] {
         return grid_rational{0};
     else
         return grid_gcd_of(grid_of<A>.value_unit(), grid_of<B>.value_unit());
+}();
+
+// Whether gcd_notch is a grid number, as a constraint of the deduced
+// two-input functions: with 64-bit grid numbers a 2/3 notch against a
+// 2^-62 one has no gcd (1/(3·2^62)).
+template <insidable A, insidable B>
+inline constexpr bool gcd_notch_fits = [] {
+#if BEMAN_INSIDE_BIG_GRIDS
+    return true;
+#else
+    if constexpr (!notched<A> || !notched<B>)
+        return true;
+    else
+        return grid_gcd(grid_of<A>.value_unit(), grid_of<B>.value_unit()).has_value();
+#endif
 }();
 
 //---------------------------------------------------------------------------
@@ -15589,12 +15711,14 @@ template <imax Base, insidable In>
 }
 
 template <insidable InY, insidable InX>
+    requires ax::gcd_notch_fits<InY, InX>
 [[nodiscard]] constexpr auto atan2(InY y, InX x) {
     static_assert(deducible<InY>() && deducible<InX>());
     return atan2_into<auto_t::atan2<InY, InX>>(y, x);
 }
 
 template <insidable InX, insidable InY>
+    requires ax::gcd_notch_fits<InX, InY>
 [[nodiscard]] constexpr auto hypot(InX x, InY y) {
     static_assert(deducible<InX>() && deducible<InY>());
     return hypot_into<auto_t::hypot<InX, InY>>(x, y);
@@ -16093,6 +16217,7 @@ using fmod_auto_t = inside<exact_out_grid({(lower_of<InX> < 0 ? -fmod_bound<InX,
 } // namespace detail
 
 template <insidable InX, insidable InY>
+    requires detail::ax::gcd_notch_fits<InX, InY>
 [[nodiscard]] constexpr auto fmod(InX x, InY y) {
     return fmod_into<detail::fmod_auto_t<InX, InY>>(x, y);
 }
@@ -16955,24 +17080,46 @@ struct std::numeric_limits<beman::inside::inside<G, P>> {
     static constexpr int digits   = std::numeric_limits<deduced_raw>::digits;
     static constexpr int digits10 = std::numeric_limits<deduced_raw>::digits10;
 
-    static constexpr B min() noexcept { return B{::beman::inside::detail::lower64<B>}; }
-    static constexpr B max() noexcept { return B{::beman::inside::detail::upper64<B>}; }
-    static constexpr B lowest() noexcept { return B{::beman::inside::detail::lower64<B>}; }
+  private:
+    // The value v of B (on its grid). Past 64 bits through the exact store:
+    // no 64-bit rational holds a big grid's limits.
+    static constexpr B at(const beman::inside::detail::grid_rational& v) noexcept {
+        namespace d = ::beman::inside::detail;
+        if constexpr (d::wide_valued<B>) {
+            B                    b{};
+            beman::inside::errc ec{};
+            d::assign_exact<d::rational>(
+                b, d::exact_of_grid<d::exact_limbs<B>>(v), beman::inside::make_policy<P>(ec), beman::inside::no_action{});
+            return b;
+        } else
+            return B{d::to_rational(v)};
+    }
+
+  public:
+    static constexpr B min() noexcept { return at(G.Interval.Lower); }
+    static constexpr B max() noexcept { return at(G.Interval.Upper); }
+    static constexpr B lowest() noexcept { return at(G.Interval.Lower); }
     // Exact types have no rounding noise — epsilon and round_error are 0 when
     // 0 is on the grid. A lattice that misses 0 but spans it gives its first
     // point above 0; when 0 is outside the interval, the grid minimum — the
     // closest representable stand-in for "no error" the type can express.
     static constexpr B epsilon() noexcept {
-        if constexpr (G.representable(beman::inside::detail::grid_rational{0}))
-            return B{beman::inside::detail::rational{0}};
-        else if constexpr (G.Interval.Lower < beman::inside::detail::rational{0} &&
-                           beman::inside::detail::rational{0} < G.Interval.Upper) {
-            constexpr auto lo = ::beman::inside::detail::lower64<B>, n = ::beman::inside::detail::notch64<B>;
-            return B{
-                (lo + (beman::inside::detail::rational{beman::inside::detail::ceil((-lo / n).value())} * n).value())
-                    .value()};
+        namespace d = ::beman::inside::detail;
+        if constexpr (G.representable(d::grid_rational{0}))
+            return at(d::grid_rational{0});
+        else if constexpr (G.Interval.Lower < d::grid_rational{0} && d::grid_rational{0} < G.Interval.Upper) {
+            // Lower + ⌈−Lower/Notch⌉·Notch
+            constexpr d::grid_rational t = d::grid_div_of(d::grid_sub(d::grid_rational{0}, G.Interval.Lower), G.Notch);
+            constexpr d::grid_wide     k = (d::wide_numerator(t) + d::wide_denominator(t) - d::grid_wide{1}) /
+                                       d::wide_denominator(t);
+#if BEMAN_INSIDE_BIG_GRIDS
+            constexpr d::grid_rational kn = d::grid_mul(d::grid_rational{k}, G.Notch);
+#else
+            constexpr d::grid_rational kn = d::grid_mul(d::rational{static_cast<beman::inside::umax>(k)}, G.Notch);
+#endif
+            return at(d::grid_add(G.Interval.Lower, kn));
         } else
-            return B{::beman::inside::detail::lower64<B>};
+            return at(G.Interval.Lower);
     }
     static constexpr B round_error() noexcept { return epsilon(); }
 };

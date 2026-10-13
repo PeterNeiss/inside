@@ -750,7 +750,13 @@ constexpr grid_rational lattice_point(const wide_sint<K>& k) {
 #if BEMAN_INSIDE_BIG_GRIDS
     return grid_rational{big_int{k}} * Notch;
 #else
-    return static_cast<imax>(k) * Notch;
+    // |k| may pass 2^63 (π on a 2^-62 notch): a rational's numerator holds
+    // up to 2^64 − 1, past it the point has no 64-bit grid number.
+    const wide_sint<K> a = k.negative() ? -k : k;
+    if (bit_width_of(a) > 64)
+        constexpr_error<"beman::inside::math: a deduced output limit is past the 64-bit grid numbers">();
+    const grid_rational m = rational{static_cast<umax>(a)} * Notch;
+    return k.negative() ? -m : m;
 #endif
 }
 
@@ -865,6 +871,21 @@ inline constexpr grid_rational gcd_notch = [] {
         return grid_rational{0};
     else
         return grid_gcd_of(grid_of<A>.value_unit(), grid_of<B>.value_unit());
+}();
+
+// Whether gcd_notch is a grid number, as a constraint of the deduced
+// two-input functions: with 64-bit grid numbers a 2/3 notch against a
+// 2^-62 one has no gcd (1/(3·2^62)).
+template <insidable A, insidable B>
+inline constexpr bool gcd_notch_fits = [] {
+#if BEMAN_INSIDE_BIG_GRIDS
+    return true;
+#else
+    if constexpr (!notched<A> || !notched<B>)
+        return true;
+    else
+        return grid_gcd(grid_of<A>.value_unit(), grid_of<B>.value_unit()).has_value();
+#endif
 }();
 
 //---------------------------------------------------------------------------
@@ -2218,12 +2239,14 @@ template <imax Base, insidable In>
 }
 
 template <insidable InY, insidable InX>
+    requires ax::gcd_notch_fits<InY, InX>
 [[nodiscard]] constexpr auto atan2(InY y, InX x) {
     static_assert(deducible<InY>() && deducible<InX>());
     return atan2_into<auto_t::atan2<InY, InX>>(y, x);
 }
 
 template <insidable InX, insidable InY>
+    requires ax::gcd_notch_fits<InX, InY>
 [[nodiscard]] constexpr auto hypot(InX x, InY y) {
     static_assert(deducible<InX>() && deducible<InY>());
     return hypot_into<auto_t::hypot<InX, InY>>(x, y);

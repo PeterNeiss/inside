@@ -488,6 +488,7 @@ using fmod_auto_t = inside<exact_out_grid({(lower_of<InX> < 0 ? -fmod_bound<InX,
 } // namespace detail
 
 template <insidable InX, insidable InY>
+    requires detail::ax::gcd_notch_fits<InX, InY>
 [[nodiscard]] constexpr auto fmod(InX x, InY y) {
     return fmod_into<detail::fmod_auto_t<InX, InY>>(x, y);
 }
