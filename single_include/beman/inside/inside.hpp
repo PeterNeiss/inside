@@ -4160,18 +4160,27 @@ constexpr bool grid_sum_fits([[maybe_unused]] const grid& a, [[maybe_unused]] co
 // by multiples of Na·Nb, Na·Lb and Nb·La; on an anchored operand its term is
 // already a multiple of Na·Nb, so only an unanchored operand adds one. A
 // point c (notch 0) scales the other lattice: the notch becomes N·|c|.
+// (Quiet products: grid_product_fits asks this, so a product past the
+// rational range is an error value, not a compile error.)
 constexpr std::expected<grid_rational, errc> product_notch(const grid& a, const grid& b) {
     const bool          ap = a.Interval.Lower == a.Interval.Upper, bp = b.Interval.Lower == b.Interval.Upper;
     const grid_rational an  = (ap && !bp) ? abs(a.Interval.Lower) : a.Notch;
     const grid_rational bn  = (bp && !ap) ? abs(b.Interval.Lower) : b.Notch;
     auto                gcd = [](const grid_rational& x, const grid_rational& y) { return grid_gcd(x, y); };
-    std::expected<grid_rational, errc> n = lift([](const grid_rational& x) { return x; }, an * bn);
+    auto                mul = [](const grid_rational& x, const grid_rational& y) {
+#if BEMAN_INSIDE_BIG_GRIDS
+        return x * y;
+#else
+        return try_mul(x, y);
+#endif
+    };
+    std::expected<grid_rational, errc> n = lift([](const grid_rational& x) { return x; }, mul(an, bn));
     if (ap || bp)
         return n;
     if (!b.anchored())
-        n = lift(gcd, n, a.Notch * b.Interval.Lower);
+        n = lift(gcd, n, mul(a.Notch, b.Interval.Lower));
     if (!a.anchored())
-        n = lift(gcd, n, b.Notch * a.Interval.Lower);
+        n = lift(gcd, n, mul(b.Notch, a.Interval.Lower));
     return n;
 }
 
@@ -5746,7 +5755,12 @@ constexpr grid_wide exact_quotient(const grid_rational& a, const grid_rational& 
 
 template <typename W, integer_storage X>
 constexpr W value_index(const X& x) noexcept {
-    if constexpr (index_storage<X>)
+    if constexpr (index_storage<X> && std::is_integral_v<W>) {
+        // In W's unsigned twin: a raw past W's max (a slot count past 2^63
+        // from a negative base) wraps back onto the index, which fits W.
+        using U = std::make_unsigned_t<W>;
+        return static_cast<W>(static_cast<U>(static_cast<W>(slot_base<X>)) + static_cast<U>(x.raw()));
+    } else if constexpr (index_storage<X>)
         return static_cast<W>(slot_base<X>) + static_cast<W>(x.raw());
     else
         return static_cast<W>(x.raw());
@@ -6097,16 +6111,33 @@ constexpr L& assign_exact(L& lhs, const exact_frac<K>& v, P&& policy, A&& action
     } else {
         // (Plain variables, not a structured binding: Clang rejects a binding
         // captured by the lambdas below in constant evaluation.)
-        const auto slot             = exact_index<L, rounding_for<L, plain_t<P>>>(v);
-        using I                     = decltype(slot.Index);
-        constexpr std::size_t KK    = sizeof(I) / sizeof(umax);
-        const I               index = slot.Index;
-        if (!slot.Exact && !has_policy<L, P, snap> && policy.round_check()) [[unlikely]] {
-            fail(errc::rounding_error);
-            return lhs;
-        }
-        constexpr I count = static_cast<I>(grid_of<L>.slot_count());
-        if (index.negative() || index > count) [[unlikely]] {
+        const auto slot = [&] {
+            if constexpr (point_storage<L>) {
+                // One value and no lattice to divide by: the slot below it,
+                // its own, or the one above (the slot count is 0).
+                using F      = exact_frac<exact_max<K, exact_limbs<L>>>;
+                using W      = decltype(F{}.Num);
+                const auto c = F{v} <=> exact_of_grid<exact_max<K, exact_limbs<L>>>(lower_of<L>);
+                return exact_index_result<exact_max<K, exact_limbs<L>>>{c < 0 ? W{-1} : W{c > 0 ? 1 : 0}, true};
+            } else
+                return exact_index<L, rounding_for<L, plain_t<P>>>(v);
+        }();
+        using I                       = decltype(slot.Index);
+        constexpr std::size_t KK      = sizeof(I) / sizeof(umax);
+        const I               index   = slot.Index;
+        const bool            inexact = !slot.Exact && !has_policy<L, P, snap> && policy.round_check();
+        constexpr I           count   = static_cast<I>(grid_of<L>.slot_count());
+        // Without a rounding flag the range test reads the value itself,
+        // before the notch, as the builtin stores do: an off-notch value past
+        // a limit is out of range (it clamps, or reports overflow).
+        bool low = index.negative(), out = low || index > count;
+        if constexpr (!has_policy<L, P, snap>)
+            if (!slot.Exact) {
+                const exact_frac<KK> x{v};
+                low = x < exact_of_grid<KK>(lower_of<L>);
+                out = low || exact_of_grid<KK>(upper_of<L>) < x;
+            }
+        if (out) [[unlikely]] {
             auto saturate = [](const I& d) -> imax {
                 constexpr imax kMin = std::numeric_limits<imax>::min(), kMax = std::numeric_limits<imax>::max();
                 return d < I{kMin} ? kMin : I{kMax} < d ? kMax : static_cast<imax>(d);
@@ -6116,8 +6147,7 @@ constexpr L& assign_exact(L& lhs, const exact_frac<K>& v, P&& policy, A&& action
                     policy,
                     action,
                     [&] {
-                        const bool low = index.negative();
-                        lhs            = L::from_raw(raw_of_slot<L>(low ? I{0} : count));
+                        lhs = L::from_raw(raw_of_slot<L>(low ? I{0} : count));
                         if constexpr (clamp_action<plain_t<A>>) {
                             // The overshoot rhs − bound, shaped like the builtin paths'.
                             const auto over =
@@ -6134,12 +6164,22 @@ constexpr L& assign_exact(L& lhs, const exact_frac<K>& v, P&& policy, A&& action
                         }
                     },
                     [&] {
-                        const auto [q, w] = floor_divmod(index, count + I{1});
-                        lhs               = L::from_raw(raw_of_slot<L>(w));
-                        if constexpr (wrap_action<plain_t<A>>)
-                            action.Fn(lhs, make_wrap_carry<L, R>(saturate(q)));
+                        if constexpr (point_storage<L>)
+                            fail(errc::overflow); // a point has no period to fold by
+                        else if (inexact)
+                            fail(errc::rounding_error); // folds off the notch too
+                        else {
+                            const auto [q, w] = floor_divmod(index, count + I{1});
+                            lhs               = L::from_raw(raw_of_slot<L>(w));
+                            if constexpr (wrap_action<plain_t<A>>)
+                                action.Fn(lhs, make_wrap_carry<L, R>(saturate(q)));
+                        }
                     }))
                 return lhs;
+        }
+        if (inexact) [[unlikely]] {
+            fail(errc::rounding_error);
+            return lhs;
         }
         lhs = L::from_raw(raw_of_slot<L>(index));
         return lhs;
@@ -6440,11 +6480,11 @@ struct assignment<L, R> {
     // 2^63, a far value on a fine grid): the exact store's wrap, which rounds
     // by the policy and folds the wide lattice index (a wrap action's carry
     // saturates, as on the wide paths). A continuous L has no lattice to
-    // fold in wide integers: still overflow.
+    // fold in wide integers, and a point no period: still overflow.
     template <typename P, typename A, std::size_t K>
     [[gnu::cold, gnu::noinline]] static constexpr void
     wrap_exact(L& lhs, const exact_frac<K>& v, P&& policy, A&& action) {
-        if constexpr (integer_storage<L>)
+        if constexpr (integer_storage<L> && !point_storage<L>)
             assign_exact<R>(lhs, v, policy, action);
         else
             report_failure(lhs, policy, action, errc::overflow);
@@ -7069,7 +7109,9 @@ struct assignment<L, R> {
 
         if constexpr (not includes(interval_of<L>, interval_of<R>)) {
             if constexpr (needs_runtime_range_check<L, plain_t<P>, plain_t<A>>) {
-                if constexpr (is_integer_mapping) {
+                // (A point L maps every raw onto its one raw: only the value
+                // tells whether it is in range.)
+                if constexpr (is_integer_mapping && !point_storage<L>) {
                     if (imax mapped = map_raw(rhs.raw()); mapped < raw_lo<L> || mapped > raw_hi<L>)
                         if (try_clamp_or_fail(lhs, rhs, policy, action))
                             return lhs;
@@ -7147,7 +7189,7 @@ struct policy : E {
     // Throw mode funnels through the installed handler via an outlined cold
     // helper; at compile time it names a fixed-string diagnostic instead of
     // "non-constexpr function called".
-    constexpr void report(errc code) {
+    constexpr void report(errc code) const {
         if constexpr (std::is_same_v<E, detail::error_ref>)
             E::Code = E::Code != errc{} ? E::Code : code;
         else {
@@ -8376,7 +8418,13 @@ template <insidable Out, insidable In>
 constexpr Out round_into(In x);
 template <insidable Out, insidable In>
 constexpr Out trunc_into(In x);
+namespace detail {
+// abs_into's constraint (cmath.hpp): Out includes the smallest |x|.
+template <class Out, class In>
+consteval bool abs_into_ok();
+} // namespace detail
 template <insidable Out, insidable In>
+    requires(detail::abs_into_ok<Out, In>())
 constexpr Out abs_into(In x);
 template <insidable In>
 constexpr auto floor(In x);
@@ -9509,8 +9557,10 @@ struct std::indirectly_readable_traits<beman::inside::inside<G, P>> {
 //---------------------------------------------------------------------------
 namespace beman::inside {
 // Each cast constructs via the value+policy constructor, passing a one-shot
-// policy that overrides B's declared one for this conversion only.
+// policy that overrides B's declared one for this conversion only — and is
+// constrained like that constructor, so a probe sees whether it compiles.
 template <insidable B, numeric N>
+    requires inside_assignable<B, N, policy_of<B> | clamp>
 [[nodiscard]] constexpr B clamp_cast(N value) {
     return B{value, make_policy<clamp>()};
 }
@@ -9518,6 +9568,7 @@ template <insidable B, numeric N>
 // `wrap_cast` — modular semantics: the input is reduced into the target grid's
 // interval rather than clipped. For integer-style wraparound (angles, indices).
 template <insidable B, numeric N>
+    requires inside_assignable<B, N, policy_of<B> | wrap>
 [[nodiscard]] constexpr B wrap_cast(N value) {
     return B{value, make_policy<wrap>()};
 }
@@ -9534,16 +9585,19 @@ template <insidable B, policy_flag RoundMode, numeric N>
 } // namespace detail
 
 template <insidable B, numeric N>
+    requires inside_assignable<B, N, policy_of<B> | clamp | round_floor>
 [[nodiscard]] constexpr B clamp_floor(N value) {
     return detail::clamp_with_rounding<B, round_floor>(value);
 }
 
 template <insidable B, numeric N>
+    requires inside_assignable<B, N, policy_of<B> | clamp | round_ceil>
 [[nodiscard]] constexpr B clamp_ceil(N value) {
     return detail::clamp_with_rounding<B, round_ceil>(value);
 }
 
 template <insidable B, numeric N>
+    requires inside_assignable<B, N, policy_of<B> | clamp | round_nearest>
 [[nodiscard]] constexpr B clamp_round(N value) {
     return detail::clamp_with_rounding<B, round_nearest>(value);
 }
@@ -9553,6 +9607,7 @@ template <insidable B, numeric N>
 // name it), errc::rounding_error off the notch. Any numeric source, insides
 // included; once both checks pass the store is exact.
 template <insidable B, numeric A>
+    requires inside_assignable<B, A, policy_of<B> | snap>
 [[nodiscard]] constexpr B checked_cast(A value) {
     if (conversion_overflows<B>(value))
         detail::raise(errc::overflow, "checked_cast: value out of inside interval");
@@ -9564,6 +9619,7 @@ template <insidable B, numeric A>
 // `unchecked_cast` routes through `inside<G, unsafe>` so the compiler elides
 // every domain/round check. UB if the value is actually out of range.
 template <insidable B, numeric A>
+    requires inside_assignable<inside<grid_of<B>, unsafe>, A, unsafe>
 [[nodiscard]] constexpr B unchecked_cast(A value) {
     using twin = inside<grid_of<B>, unsafe>;
     return B::from_raw(twin{value}.raw()); // same grid → identical raw layout
@@ -15759,11 +15815,18 @@ constexpr Out integer_into(In x) {
 // corresponding `rational` operation and routes through `Out`'s assignment.
 //---------------------------------------------------------------------------
 
-// |x|. Output Lower must be ≥ 0 (the result is always non-negative).
+namespace detail {
+template <class Out, class In>
+consteval bool abs_into_ok() {
+    return lower_of<Out> <= abs_auto_lower<In>;
+}
+} // namespace detail
+
+// |x|. Out must include the smallest |x|, 0 when x's range spans 0 — a
+// constraint, so a probe sees it.
 template <insidable Out, insidable In>
+    requires(detail::abs_into_ok<Out, In>())
 [[nodiscard]] constexpr Out abs_into(In x) {
-    static_assert(lower_of<Out> <= detail::abs_auto_lower<In>,
-                  "beman::inside::math::abs: Out must include the smallest |x| (0 when x's range spans 0)");
     if constexpr (detail::any_wide_valued<Out, In>)
         return detail::store_exact<Out>(detail::ax::abs(detail::ax::exact_input(x)));
     else if constexpr (std::same_as<Out, detail::abs_auto_t<In>> && detail::notched<In> && detail::anchored<In> &&
@@ -15934,20 +15997,49 @@ template <insidable Out, insidable InX, insidable InY>
 // (like abs/floor/fmod). Checked rational raws may return
 // std::expected<inside, errc> per the usual arithmetic vocabulary. Negative
 // exponents are deferred (they need the division error story).
+namespace detail {
 template <imax E, insidable In>
-    requires(E >= 0)
-[[nodiscard]] constexpr auto pown(In x) noexcept {
+constexpr auto pown_impl(In x) noexcept {
     if constexpr (E == 0) {
         (void)x;
         return just<1>;
     } else if constexpr (E == 1)
         return x;
     else if constexpr (E % 2)
-        return x * pown<E - 1>(x);
+        return x * pown_impl<E - 1>(x);
     else {
-        auto h = pown<E / 2>(x);
+        auto h = pown_impl<E / 2>(x);
         return h * h;
     }
+}
+
+// pown<E>(x) exists when each squaring and multiply does: a product grid
+// past the 64-bit grid numbers, or a checked continuous product (an
+// expected), does not multiply further.
+template <imax E, class In>
+inline constexpr bool pown_defined = [] {
+    if constexpr (E < 0)
+        return false;
+    else if constexpr (E <= 1)
+        return true;
+    else if constexpr (E % 2 == 1) {
+        if constexpr (!pown_defined<E - 1, In>)
+            return false;
+        else
+            return requires(In x) { x * pown_impl<E - 1>(x); };
+    } else {
+        if constexpr (!pown_defined<E / 2, In>)
+            return false;
+        else
+            return requires(In x) { pown_impl<E / 2>(x) * pown_impl<E / 2>(x); };
+    }
+}();
+} // namespace detail
+
+template <imax E, insidable In>
+    requires detail::pown_defined<E, In>
+[[nodiscard]] constexpr auto pown(In x) noexcept {
+    return detail::pown_impl<E>(x);
 }
 
 template <insidable In>

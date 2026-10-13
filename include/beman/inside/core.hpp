@@ -39,7 +39,13 @@ template <insidable Out, insidable In>
 constexpr Out round_into(In x);
 template <insidable Out, insidable In>
 constexpr Out trunc_into(In x);
+namespace detail {
+// abs_into's constraint (cmath.hpp): Out includes the smallest |x|.
+template <class Out, class In>
+consteval bool abs_into_ok();
+} // namespace detail
 template <insidable Out, insidable In>
+    requires(detail::abs_into_ok<Out, In>())
 constexpr Out abs_into(In x);
 template <insidable In>
 constexpr auto floor(In x);

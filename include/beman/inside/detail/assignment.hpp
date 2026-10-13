@@ -268,16 +268,33 @@ constexpr L& assign_exact(L& lhs, const exact_frac<K>& v, P&& policy, A&& action
     } else {
         // (Plain variables, not a structured binding: Clang rejects a binding
         // captured by the lambdas below in constant evaluation.)
-        const auto slot             = exact_index<L, rounding_for<L, plain_t<P>>>(v);
-        using I                     = decltype(slot.Index);
-        constexpr std::size_t KK    = sizeof(I) / sizeof(umax);
-        const I               index = slot.Index;
-        if (!slot.Exact && !has_policy<L, P, snap> && policy.round_check()) [[unlikely]] {
-            fail(errc::rounding_error);
-            return lhs;
-        }
-        constexpr I count = static_cast<I>(grid_of<L>.slot_count());
-        if (index.negative() || index > count) [[unlikely]] {
+        const auto slot = [&] {
+            if constexpr (point_storage<L>) {
+                // One value and no lattice to divide by: the slot below it,
+                // its own, or the one above (the slot count is 0).
+                using F      = exact_frac<exact_max<K, exact_limbs<L>>>;
+                using W      = decltype(F{}.Num);
+                const auto c = F{v} <=> exact_of_grid<exact_max<K, exact_limbs<L>>>(lower_of<L>);
+                return exact_index_result<exact_max<K, exact_limbs<L>>>{c < 0 ? W{-1} : W{c > 0 ? 1 : 0}, true};
+            } else
+                return exact_index<L, rounding_for<L, plain_t<P>>>(v);
+        }();
+        using I                       = decltype(slot.Index);
+        constexpr std::size_t KK      = sizeof(I) / sizeof(umax);
+        const I               index   = slot.Index;
+        const bool            inexact = !slot.Exact && !has_policy<L, P, snap> && policy.round_check();
+        constexpr I           count   = static_cast<I>(grid_of<L>.slot_count());
+        // Without a rounding flag the range test reads the value itself,
+        // before the notch, as the builtin stores do: an off-notch value past
+        // a limit is out of range (it clamps, or reports overflow).
+        bool low = index.negative(), out = low || index > count;
+        if constexpr (!has_policy<L, P, snap>)
+            if (!slot.Exact) {
+                const exact_frac<KK> x{v};
+                low = x < exact_of_grid<KK>(lower_of<L>);
+                out = low || exact_of_grid<KK>(upper_of<L>) < x;
+            }
+        if (out) [[unlikely]] {
             auto saturate = [](const I& d) -> imax {
                 constexpr imax kMin = std::numeric_limits<imax>::min(), kMax = std::numeric_limits<imax>::max();
                 return d < I{kMin} ? kMin : I{kMax} < d ? kMax : static_cast<imax>(d);
@@ -287,8 +304,7 @@ constexpr L& assign_exact(L& lhs, const exact_frac<K>& v, P&& policy, A&& action
                     policy,
                     action,
                     [&] {
-                        const bool low = index.negative();
-                        lhs            = L::from_raw(raw_of_slot<L>(low ? I{0} : count));
+                        lhs = L::from_raw(raw_of_slot<L>(low ? I{0} : count));
                         if constexpr (clamp_action<plain_t<A>>) {
                             // The overshoot rhs − bound, shaped like the builtin paths'.
                             const auto over =
@@ -305,12 +321,22 @@ constexpr L& assign_exact(L& lhs, const exact_frac<K>& v, P&& policy, A&& action
                         }
                     },
                     [&] {
-                        const auto [q, w] = floor_divmod(index, count + I{1});
-                        lhs               = L::from_raw(raw_of_slot<L>(w));
-                        if constexpr (wrap_action<plain_t<A>>)
-                            action.Fn(lhs, make_wrap_carry<L, R>(saturate(q)));
+                        if constexpr (point_storage<L>)
+                            fail(errc::overflow); // a point has no period to fold by
+                        else if (inexact)
+                            fail(errc::rounding_error); // folds off the notch too
+                        else {
+                            const auto [q, w] = floor_divmod(index, count + I{1});
+                            lhs               = L::from_raw(raw_of_slot<L>(w));
+                            if constexpr (wrap_action<plain_t<A>>)
+                                action.Fn(lhs, make_wrap_carry<L, R>(saturate(q)));
+                        }
                     }))
                 return lhs;
+        }
+        if (inexact) [[unlikely]] {
+            fail(errc::rounding_error);
+            return lhs;
         }
         lhs = L::from_raw(raw_of_slot<L>(index));
         return lhs;
@@ -611,11 +637,11 @@ struct assignment<L, R> {
     // 2^63, a far value on a fine grid): the exact store's wrap, which rounds
     // by the policy and folds the wide lattice index (a wrap action's carry
     // saturates, as on the wide paths). A continuous L has no lattice to
-    // fold in wide integers: still overflow.
+    // fold in wide integers, and a point no period: still overflow.
     template <typename P, typename A, std::size_t K>
     [[gnu::cold, gnu::noinline]] static constexpr void
     wrap_exact(L& lhs, const exact_frac<K>& v, P&& policy, A&& action) {
-        if constexpr (integer_storage<L>)
+        if constexpr (integer_storage<L> && !point_storage<L>)
             assign_exact<R>(lhs, v, policy, action);
         else
             report_failure(lhs, policy, action, errc::overflow);
@@ -1240,7 +1266,9 @@ struct assignment<L, R> {
 
         if constexpr (not includes(interval_of<L>, interval_of<R>)) {
             if constexpr (needs_runtime_range_check<L, plain_t<P>, plain_t<A>>) {
-                if constexpr (is_integer_mapping) {
+                // (A point L maps every raw onto its one raw: only the value
+                // tells whether it is in range.)
+                if constexpr (is_integer_mapping && !point_storage<L>) {
                     if (imax mapped = map_raw(rhs.raw()); mapped < raw_lo<L> || mapped > raw_hi<L>)
                         if (try_clamp_or_fail(lhs, rhs, policy, action))
                             return lhs;

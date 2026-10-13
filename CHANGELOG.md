@@ -56,6 +56,21 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   of reporting `errc::overflow`: a double of 2^63 or more (`1e30` into
   `{0, 9}` is 6), a full-int64 value into a fine grid, a far value on a
   2^-62 grid. A wrap action's carry saturates there, as on the wide paths.
+- A point grid (`inside<{3}>`) range-checks an inside stored into it: any
+  inside used to store as the point (4 into `{3}` was 3). A wide or fine
+  source into a point grid, and `wrap` onto one, terminated (a division by
+  the zero notch); they report `errc::overflow`.
+- `mul_into`, `div_into` and wide `sum` totals range-check before the notch,
+  as every other store: an off-notch value past a limit clamps under `clamp`
+  and reports `overflow` (it reported `rounding_error`).
+- Signed overflow on the way to a value index whose raw passes 2^63 (a grid
+  of more than 2^63 slots below a negative base).
+- A named policy (`clamped`, `rounded_floor`, a const `policy(ec)`) works as a
+  constructor's one-shot policy.
+- `clamp_cast`/`wrap_cast`/`clamp_floor`/`clamp_ceil`/`clamp_round`/
+  `checked_cast`/`unchecked_cast`, `math::abs_into` and `math::pown` are
+  constrained like the stores and products they make; the product test no
+  longer stops the build when a notch product passes the 64-bit rational.
 - The arithmetic operators, `add`/`sub`/`mul`/`div`/`mod`/`divmod`, the
   compound assignments and `try_make` are constrained on whether the
   operation has a result, so `requires { a / b; }` and `if constexpr`

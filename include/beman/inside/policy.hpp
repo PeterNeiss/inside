@@ -60,7 +60,7 @@ struct policy : E {
     // Throw mode funnels through the installed handler via an outlined cold
     // helper; at compile time it names a fixed-string diagnostic instead of
     // "non-constexpr function called".
-    constexpr void report(errc code) {
+    constexpr void report(errc code) const {
         if constexpr (std::is_same_v<E, detail::error_ref>)
             E::Code = E::Code != errc{} ? E::Code : code;
         else {

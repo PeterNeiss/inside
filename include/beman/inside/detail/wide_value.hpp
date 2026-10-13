@@ -578,7 +578,12 @@ constexpr grid_wide exact_quotient(const grid_rational& a, const grid_rational& 
 
 template <typename W, integer_storage X>
 constexpr W value_index(const X& x) noexcept {
-    if constexpr (index_storage<X>)
+    if constexpr (index_storage<X> && std::is_integral_v<W>) {
+        // In W's unsigned twin: a raw past W's max (a slot count past 2^63
+        // from a negative base) wraps back onto the index, which fits W.
+        using U = std::make_unsigned_t<W>;
+        return static_cast<W>(static_cast<U>(static_cast<W>(slot_base<X>)) + static_cast<U>(x.raw()));
+    } else if constexpr (index_storage<X>)
         return static_cast<W>(slot_base<X>) + static_cast<W>(x.raw());
     else
         return static_cast<W>(x.raw());

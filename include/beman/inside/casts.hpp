@@ -11,8 +11,10 @@
 //---------------------------------------------------------------------------
 namespace beman::inside {
 // Each cast constructs via the value+policy constructor, passing a one-shot
-// policy that overrides B's declared one for this conversion only.
+// policy that overrides B's declared one for this conversion only — and is
+// constrained like that constructor, so a probe sees whether it compiles.
 template <insidable B, numeric N>
+    requires inside_assignable<B, N, policy_of<B> | clamp>
 [[nodiscard]] constexpr B clamp_cast(N value) {
     return B{value, make_policy<clamp>()};
 }
@@ -20,6 +22,7 @@ template <insidable B, numeric N>
 // `wrap_cast` — modular semantics: the input is reduced into the target grid's
 // interval rather than clipped. For integer-style wraparound (angles, indices).
 template <insidable B, numeric N>
+    requires inside_assignable<B, N, policy_of<B> | wrap>
 [[nodiscard]] constexpr B wrap_cast(N value) {
     return B{value, make_policy<wrap>()};
 }
@@ -36,16 +39,19 @@ template <insidable B, policy_flag RoundMode, numeric N>
 } // namespace detail
 
 template <insidable B, numeric N>
+    requires inside_assignable<B, N, policy_of<B> | clamp | round_floor>
 [[nodiscard]] constexpr B clamp_floor(N value) {
     return detail::clamp_with_rounding<B, round_floor>(value);
 }
 
 template <insidable B, numeric N>
+    requires inside_assignable<B, N, policy_of<B> | clamp | round_ceil>
 [[nodiscard]] constexpr B clamp_ceil(N value) {
     return detail::clamp_with_rounding<B, round_ceil>(value);
 }
 
 template <insidable B, numeric N>
+    requires inside_assignable<B, N, policy_of<B> | clamp | round_nearest>
 [[nodiscard]] constexpr B clamp_round(N value) {
     return detail::clamp_with_rounding<B, round_nearest>(value);
 }
@@ -55,6 +61,7 @@ template <insidable B, numeric N>
 // name it), errc::rounding_error off the notch. Any numeric source, insides
 // included; once both checks pass the store is exact.
 template <insidable B, numeric A>
+    requires inside_assignable<B, A, policy_of<B> | snap>
 [[nodiscard]] constexpr B checked_cast(A value) {
     if (conversion_overflows<B>(value))
         detail::raise(errc::overflow, "checked_cast: value out of inside interval");
@@ -66,6 +73,7 @@ template <insidable B, numeric A>
 // `unchecked_cast` routes through `inside<G, unsafe>` so the compiler elides
 // every domain/round check. UB if the value is actually out of range.
 template <insidable B, numeric A>
+    requires inside_assignable<inside<grid_of<B>, unsafe>, A, unsafe>
 [[nodiscard]] constexpr B unchecked_cast(A value) {
     using twin = inside<grid_of<B>, unsafe>;
     return B::from_raw(twin{value}.raw()); // same grid → identical raw layout

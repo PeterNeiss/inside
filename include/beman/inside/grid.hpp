@@ -573,18 +573,27 @@ constexpr bool grid_sum_fits([[maybe_unused]] const grid& a, [[maybe_unused]] co
 // by multiples of Na·Nb, Na·Lb and Nb·La; on an anchored operand its term is
 // already a multiple of Na·Nb, so only an unanchored operand adds one. A
 // point c (notch 0) scales the other lattice: the notch becomes N·|c|.
+// (Quiet products: grid_product_fits asks this, so a product past the
+// rational range is an error value, not a compile error.)
 constexpr std::expected<grid_rational, errc> product_notch(const grid& a, const grid& b) {
     const bool          ap = a.Interval.Lower == a.Interval.Upper, bp = b.Interval.Lower == b.Interval.Upper;
     const grid_rational an  = (ap && !bp) ? abs(a.Interval.Lower) : a.Notch;
     const grid_rational bn  = (bp && !ap) ? abs(b.Interval.Lower) : b.Notch;
     auto                gcd = [](const grid_rational& x, const grid_rational& y) { return grid_gcd(x, y); };
-    std::expected<grid_rational, errc> n = lift([](const grid_rational& x) { return x; }, an * bn);
+    auto                mul = [](const grid_rational& x, const grid_rational& y) {
+#if BEMAN_INSIDE_BIG_GRIDS
+        return x * y;
+#else
+        return try_mul(x, y);
+#endif
+    };
+    std::expected<grid_rational, errc> n = lift([](const grid_rational& x) { return x; }, mul(an, bn));
     if (ap || bp)
         return n;
     if (!b.anchored())
-        n = lift(gcd, n, a.Notch * b.Interval.Lower);
+        n = lift(gcd, n, mul(a.Notch, b.Interval.Lower));
     if (!a.anchored())
-        n = lift(gcd, n, b.Notch * a.Interval.Lower);
+        n = lift(gcd, n, mul(b.Notch, a.Interval.Lower));
     return n;
 }
 

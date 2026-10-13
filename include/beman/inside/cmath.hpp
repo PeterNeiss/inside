@@ -210,11 +210,18 @@ constexpr Out integer_into(In x) {
 // corresponding `rational` operation and routes through `Out`'s assignment.
 //---------------------------------------------------------------------------
 
-// |x|. Output Lower must be ≥ 0 (the result is always non-negative).
+namespace detail {
+template <class Out, class In>
+consteval bool abs_into_ok() {
+    return lower_of<Out> <= abs_auto_lower<In>;
+}
+} // namespace detail
+
+// |x|. Out must include the smallest |x|, 0 when x's range spans 0 — a
+// constraint, so a probe sees it.
 template <insidable Out, insidable In>
+    requires(detail::abs_into_ok<Out, In>())
 [[nodiscard]] constexpr Out abs_into(In x) {
-    static_assert(lower_of<Out> <= detail::abs_auto_lower<In>,
-                  "beman::inside::math::abs: Out must include the smallest |x| (0 when x's range spans 0)");
     if constexpr (detail::any_wide_valued<Out, In>)
         return detail::store_exact<Out>(detail::ax::abs(detail::ax::exact_input(x)));
     else if constexpr (std::same_as<Out, detail::abs_auto_t<In>> && detail::notched<In> && detail::anchored<In> &&
@@ -385,20 +392,49 @@ template <insidable Out, insidable InX, insidable InY>
 // (like abs/floor/fmod). Checked rational raws may return
 // std::expected<inside, errc> per the usual arithmetic vocabulary. Negative
 // exponents are deferred (they need the division error story).
+namespace detail {
 template <imax E, insidable In>
-    requires(E >= 0)
-[[nodiscard]] constexpr auto pown(In x) noexcept {
+constexpr auto pown_impl(In x) noexcept {
     if constexpr (E == 0) {
         (void)x;
         return just<1>;
     } else if constexpr (E == 1)
         return x;
     else if constexpr (E % 2)
-        return x * pown<E - 1>(x);
+        return x * pown_impl<E - 1>(x);
     else {
-        auto h = pown<E / 2>(x);
+        auto h = pown_impl<E / 2>(x);
         return h * h;
     }
+}
+
+// pown<E>(x) exists when each squaring and multiply does: a product grid
+// past the 64-bit grid numbers, or a checked continuous product (an
+// expected), does not multiply further.
+template <imax E, class In>
+inline constexpr bool pown_defined = [] {
+    if constexpr (E < 0)
+        return false;
+    else if constexpr (E <= 1)
+        return true;
+    else if constexpr (E % 2 == 1) {
+        if constexpr (!pown_defined<E - 1, In>)
+            return false;
+        else
+            return requires(In x) { x * pown_impl<E - 1>(x); };
+    } else {
+        if constexpr (!pown_defined<E / 2, In>)
+            return false;
+        else
+            return requires(In x) { pown_impl<E / 2>(x) * pown_impl<E / 2>(x); };
+    }
+}();
+} // namespace detail
+
+template <imax E, insidable In>
+    requires detail::pown_defined<E, In>
+[[nodiscard]] constexpr auto pown(In x) noexcept {
+    return detail::pown_impl<E>(x);
 }
 
 template <insidable In>
