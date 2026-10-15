@@ -285,7 +285,13 @@ struct inside {
             // Raw·Notch can pass 64 bits on the way to a value that fits.
             const auto scaled = detail::try_mul(rational{Raw}, detail::notch64<inside>);
             const auto value  = scaled ? detail::try_add(*scaled, detail::lower64<inside>) : scaled;
-            return value ? *value : detail::try_rational(detail::exact_of(*this)).value();
+            if (value) [[likely]]
+                return *value;
+            if (const auto exact = detail::try_rational(detail::exact_of(*this)))
+                return *exact;
+            // (Not reached for a rational_readable grid; reported, as any
+            // overflow, rather than a bad_expected_access.)
+            detail::raise(errc::overflow, "inside: value past the 64-bit rationals");
         }
     }
 

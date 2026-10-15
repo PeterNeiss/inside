@@ -51,7 +51,7 @@ inline constexpr policy_flag snap{1ull << 4};
 inline constexpr policy_flag round_nearest{(1ull << 5) | snap};
 // Rounding modes each pick a unique bit and OR in `snap`. Conceptually
 // exclusive; combining two is allowed but dispatch (assignment.hpp) picks the
-// first match: nearest → floor → ceil → half_even → trunc.
+// first match: floor → ceil → half_even → nearest → trunc (rounding_for).
 inline constexpr policy_flag round_floor{(1ull << 6) | snap};
 inline constexpr policy_flag round_ceil{(1ull << 7) | snap};
 inline constexpr policy_flag round_half_even{(1ull << 8) | snap};

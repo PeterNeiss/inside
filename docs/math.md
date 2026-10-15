@@ -116,11 +116,13 @@ kernels.
   taking the output type — `math::sin_into<amp_t>(a)`, `math::pow_into<Out>(b, e)`,
   `math::pow_base_into<Out, 10>(x)`. The result is correctly rounded under
   `Out`'s rounding mode; a result past `Out`'s range goes through `Out`'s policy
-  (`clamp` saturates, `wrap` wraps, the default reports).
+  (`clamp` saturates, `wrap` wraps the true value, the default reports).
+  `tan` cannot take a `wrap` output (a compile error): near its poles the
+  value has no bound to compute it within.
 - **Grids off the notch's multiples.** An input or output whose values are
   offset from the notch's multiples (`{{0.5, 10.5}, 1}`) works like any other
   and is correctly rounded too: the engine rounds down onto an anchored grid
-  16 times finer than the output's points and midpoints, and the output's slot
+  1024 times finer than the output's points and midpoints, and the output's slot
   follows by one integer division; only a result that lands exactly on a
   rounding boundary takes a second evaluation (rounded up) to tell whether it
   is exact. Expect about 1.5× the time of an anchored output. Such an output

@@ -13,7 +13,7 @@
 // (unsigned 8/16/32/64: `qword`) and `sbyte`/`sword`/`sdword`/`sqword` (signed 8/16/32/64).
 //
 // Each alias uses the full range of its native storage type: `byte` is
-// [0, 255] in a uint8. Q-format types keep power-of-two notches.
+// [0, 255] in a uint8 (save sqword, which stops one short of -2^63). Q-format types keep power-of-two notches.
 //
 // These default to `checked`; for wraparound/saturation declare your own (e.g.
 // `inside<{0,254}, wrap>`).

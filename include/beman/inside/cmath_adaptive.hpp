@@ -35,6 +35,15 @@ constexpr int grid_bits(const grid_wide& v) {
 #endif
 }
 
+// A grid integer as a double (a notch's p or q, which may pass imax).
+constexpr double grid_double(const grid_wide& v) {
+#if BEMAN_INSIDE_BIG_GRIDS
+    return static_cast<double>(big_rational{v, big_int{1}});
+#else
+    return static_cast<double>(v);
+#endif
+}
+
 // A value of In is n/d with d dividing the notch's denominator and
 // |n| < 2^magnitude·d: its bits, plus a sign. A continuous grid takes its
 // raw's: the 64-bit rational's, or a wide fraction's.
@@ -857,6 +866,57 @@ inline constexpr int pow_kmax = [] {
     return static_cast<int>(max_abs_int<InE>) * log2_span<InB> + 2;
 }();
 
+// The magnitude bound of a growing core onto Out: 2^out_kmax, past which
+// the core returns a stand-in that every policy but wrap treats alike. A
+// wrap Out folds the true value back, so the bound must cover the result
+// over the whole input: Grow::bits, read only then (it may not exist for
+// inputs that other outputs take, such as a base reaching 0).
+template <insidable Out, typename Grow>
+inline constexpr int grow_kmax = [] {
+    if constexpr (has_flag(policy_of<Out>, wrap)) {
+        constexpr int g = Grow::bits;
+        return g > out_kmax<Out> ? g : out_kmax<Out>;
+    } else
+        return out_kmax<Out>;
+}();
+template <insidable In>
+struct exp_grow {
+    static constexpr int bits = exp_kmax<In>;
+};
+template <insidable InB, insidable InE>
+struct pow_grow {
+    // A base reaching 0 grows only through a negative exponent.
+    static_assert(lower_of<InB> > 0 || !(lower_of<InE> < 0),
+                  "beman::inside::math::pow: a wrap output needs the whole result, which has no bound for a "
+                  "base reaching 0 and a negative exponent");
+    static constexpr int bits = [] {
+        if constexpr (lower_of<InB> > 0)
+            return pow_kmax<InB, InE>;
+        else {
+            static_assert(max_abs_int<InE> * (std::bit_width(static_cast<umax>(ceil_abs(upper_of<InB>))) + 1) <=
+                              1 << 16,
+                          "beman::inside::math::pow: a wrap output needs the whole result, which would pass "
+                          "2^65536");
+            return static_cast<int>(max_abs_int<InE>) *
+                       (std::bit_width(static_cast<umax>(ceil_abs(upper_of<InB>))) + 1) +
+                   2;
+        }
+    }();
+};
+template <insidable In, imax Base>
+struct pow_base_grow {
+    static_assert(max_abs_int<In> * std::bit_width(static_cast<umax>(Base)) <= 1 << 16,
+                  "beman::inside::math::pow_base: a wrap output needs the whole result, which would pass "
+                  "2^65536");
+    static constexpr int bits = static_cast<int>(max_abs_int<In>) * std::bit_width(static_cast<umax>(Base)) + 2;
+};
+template <insidable Out, insidable In>
+inline constexpr int exp_out_kmax = grow_kmax<Out, exp_grow<In>>;
+template <insidable Out, insidable InB, insidable InE>
+inline constexpr int pow_out_kmax = grow_kmax<Out, pow_grow<InB, InE>>;
+template <insidable Out, insidable In, imax Base>
+inline constexpr int pow_base_out_kmax = grow_kmax<Out, pow_base_grow<In, Base>>;
+
 // Bits of x² + y² as one fraction: each square doubles its input's bits,
 // and the sum over two denominators adds them.
 template <insidable InX, insidable InY>
@@ -941,12 +1001,13 @@ template <insidable Out, typename K, insidable... Ins>
 inline constexpr bool fp_tier =
     fp_tier_available && fp_output<Out> && fp_bits<Out, K::Mag> <= K::Limit && (!wide_valued<Ins> && ...);
 
-// A grid's notch p/q as doubles (both below 2^63, so within 2^-53 of p and
-// q), and whether it is a power of two, so that scaling by it is exact.
+// A grid's notch p/q as doubles (the nearest, so within 2^-53 relative of
+// p and q, at any size), and whether it is a power of two, so that scaling
+// by it is exact.
 template <insidable Out>
-inline constexpr double notch_p = static_cast<double>(static_cast<imax>(wide_numerator(notch_of<Out>)));
+inline constexpr double notch_p = grid_double(wide_numerator(notch_of<Out>));
 template <insidable Out>
-inline constexpr double notch_q = static_cast<double>(static_cast<imax>(wide_denominator(notch_of<Out>)));
+inline constexpr double notch_q = grid_double(wide_denominator(notch_of<Out>));
 template <insidable Out>
 inline constexpr bool dyadic_notch = [] {
     const grid_wide p = wide_numerator(notch_of<Out>), q = wide_denominator(notch_of<Out>);
@@ -1608,10 +1669,10 @@ using bracket_t = inside<grid{{::beman::inside::detail::grid_sub(lower_of<Out>, 
                               Unit},
                          R | (policy_of<Out> & clamp)>;
 
-// The integer form: a bracket 16 times finer than half_unit, counted in
+// The integer form: a bracket 1024 times finer than half_unit, counted in
 // imax. Rounded down there, the value lies in [y, y + F); only when y is
 // itself a rounding boundary of Out (a point or a half point — at most one
-// bracket point in 16) does rounding up decide whether the value is exactly y.
+// bracket point in 1024) does rounding up decide whether the value is exactly y.
 // Then Out's slot follows from the bracket index by one integer division.
 template <insidable Out>
 inline constexpr grid_rational fine_unit = ::beman::inside::detail::grid_div_of(half_unit<Out>, grid_rational{1024});
@@ -1821,9 +1882,12 @@ consteval void require_rounding() noexcept {
     }
 
 BEMAN_INSIDE_AX_UNARY(
-    exp, true, "", ax::in_max<In> <= 700, ax::exp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::out_kmax<Out>>)
-BEMAN_INSIDE_AX_UNARY(
-    exp2, true, "", ax::in_max<In> <= 1000, ax::exp2_core<ax::input_limbs<In>, ax::in_mag<In>, ax::out_kmax<Out>>)
+    exp, true, "", ax::in_max<In> <= 700, ax::exp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::exp_out_kmax<Out, In>>)
+BEMAN_INSIDE_AX_UNARY(exp2,
+                      true,
+                      "",
+                      ax::in_max<In> <= 1000,
+                      ax::exp2_core<ax::input_limbs<In>, ax::in_mag<In>, ax::exp_out_kmax<Out, In>>)
 BEMAN_INSIDE_AX_UNARY(
     sin, true, "", ax::in_max<In> <= 0x1p20, ax::trig_core<ax::input_limbs<In>, ax::in_mag<In>, ax::trig::sin, 1>)
 BEMAN_INSIDE_AX_UNARY(
@@ -1833,12 +1897,12 @@ BEMAN_INSIDE_AX_UNARY(sinh,
                       true,
                       "",
                       ax::in_max<In> <= 700,
-                      ax::hyp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::hyp::sinh, ax::out_kmax<Out>>)
+                      ax::hyp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::hyp::sinh, ax::exp_out_kmax<Out, In>>)
 BEMAN_INSIDE_AX_UNARY(cosh,
                       true,
                       "",
                       ax::in_max<In> <= 700,
-                      ax::hyp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::hyp::cosh, ax::out_kmax<Out>>)
+                      ax::hyp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::hyp::cosh, ax::exp_out_kmax<Out, In>>)
 BEMAN_INSIDE_AX_UNARY(
     tanh, true, "", ax::in_max<In> <= 300, ax::hyp_core<ax::input_limbs<In>, ax::in_mag<In>, ax::hyp::tanh, 1>)
 BEMAN_INSIDE_AX_UNARY(asinh,
@@ -1923,6 +1987,9 @@ inline constexpr bool tan_domain = true;
 template <insidable Out, insidable In>
 [[nodiscard]] constexpr std::expected<Out, errc> tan_into(In x) {
     require_rounding<Out>();
+    static_assert(!has_flag(policy_of<Out>, wrap),
+                  "beman::inside::math::tan: wrap is not supported - tan has no bound near its poles, so "
+                  "the folded value cannot be computed; take an Out with clamp or the default policy");
     if constexpr (anchoring::unanchored_call<Out, In>)
         return anchoring::via_anchored<Out>([]<insidable O>(auto v) { return tan_into<O>(v); }, x);
     else {
@@ -1997,7 +2064,7 @@ template <insidable Out, insidable InB, insidable InE>
             using core = ax::pow_core<ax::input_limbs<InB>,
                                       ax::input_limbs<InE>,
                                       ax::in_mag<InE>,
-                                      ax::out_kmax<Out>,
+                                      ax::pow_out_kmax<Out, InB, InE>,
                                       ax::input_bits<InB>,
                                       ax::input_bits<InE>>;
             return ax::evaluate_checked<Out, ax::start_bits<Out>>(core{b, ax::exact_input(exp)});
@@ -2019,8 +2086,13 @@ template <insidable Out, imax Base, insidable In>
     if constexpr (anchoring::unanchored_call<Out, In>)
         return anchoring::via_anchored<Out>([]<insidable O>(auto v) { return pow_base_into<O, Base>(v); }, x);
     else {
-        using core =
-            ax::pow_core<2, ax::input_limbs<In>, ax::in_mag<In>, ax::out_kmax<Out>, 66, ax::input_bits<In>, Base>;
+        using core = ax::pow_core<2,
+                                  ax::input_limbs<In>,
+                                  ax::in_mag<In>,
+                                  ax::pow_base_out_kmax<Out, In, Base>,
+                                  66,
+                                  ax::input_bits<In>,
+                                  Base>;
         BEMAN_INSIDE_AX_TIERS(Out,
                               (ax::fp_tier<Out, ax::fp_pow_base, In> && ax::in_max<In> <= 1000),
                               (ax::dd_tier<Out, In> && ax::in_max<In> <= 700),

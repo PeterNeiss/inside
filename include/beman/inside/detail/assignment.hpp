@@ -580,7 +580,18 @@ struct assignment<L, R> {
             return false;
     }
 
-    static constexpr bool below_lower(const R& rhs) { return huge(rhs) ? rhs < 0 : rhs < detail::lower64<L>; }
+    // (Out of line, by value, for a double: its exact comparison has a cold
+    // tail whose call would otherwise cost the inlined store registers.)
+    BEMAN_INSIDE_NOINLINE static constexpr bool below_lower(R rhs)
+        requires std::floating_point<R>
+    {
+        return huge(rhs) ? rhs < 0 : rhs < detail::lower64<L>;
+    }
+    static constexpr bool below_lower(const R& rhs)
+        requires(!std::floating_point<R>)
+    {
+        return rhs < detail::lower64<L>;
+    }
 
     template <typename P, typename A>
     static constexpr void apply_clamp(L& lhs, R rhs, P&&, A&& action) {

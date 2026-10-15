@@ -66,9 +66,17 @@ struct addition {
             // gcd(N_L, N_R) on anchored grids), in imax or by wrapping arithmetic
             // (wide_value.hpp). Exact for every grid, at any width.
             static_assert(integer_storage<L> && integer_storage<R>);
-            constexpr grid_rational U = grid_gcd_of(unit_of<L>, unit_of<R>);
-            using W                   = index_work_t<result, L, U, R, U, U>;
-            res = from_value_in_units<result, U>(value_in_units<W, U>(lhs) + value_in_units<W, U>(rhs));
+            if constexpr (grid_gcd_fits(unit_of<L>, unit_of<R>)) {
+                constexpr grid_rational U = grid_gcd_of(unit_of<L>, unit_of<R>);
+                using W                   = index_work_t<result, L, U, R, U, U>;
+                res = from_value_in_units<result, U>(value_in_units<W, U>(lhs) + value_in_units<W, U>(rhs));
+            } else {
+                // The units' gcd passes the 64-bit grid numbers (1/(3·2^60)
+                // against 1/(7·2^58)) though the sum grid fits: the exact sum,
+                // a point of result's lattice, gives its slot.
+                const auto j = exact_index<result, round_mode::floor>(exact_of(lhs) + exact_of(rhs)).Index;
+                res          = result::from_raw(raw_of_slot<result>(j));
+            }
         }
         return res;
     }
