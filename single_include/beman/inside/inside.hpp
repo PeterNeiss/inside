@@ -3331,19 +3331,19 @@ struct interval {
 #endif
 
 // A double is compared exactly: rational{d} drops the bits past 2^-62 and
-// raises at |d| ≥ 2^64 (no 64-bit limit reaches that far).
+// raises at |d| ≥ 2^64 (no 64-bit limit reaches that far), and a big grid
+// number past 64 bits exists only at compile time.
 template <detail::arithmetic A>
 [[nodiscard]] constexpr bool includes(const interval& iv, A a) noexcept {
     if constexpr (std::floating_point<A>) {
         if (!detail::is_finite(static_cast<double>(a)))
             return false;
-#if BEMAN_INSIDE_BIG_GRIDS
-        return includes(iv, detail::grid_rational{a});
-#else
-        if (!(a < 0x1p64 && a > -0x1p64))
-            return false;
-        return iv.Lower <= a && a <= iv.Upper;
-#endif
+        if (detail::fits_rational(iv.Lower) && detail::fits_rational(iv.Upper)) {
+            if (!(a < 0x1p64 && a > -0x1p64))
+                return false;
+            return detail::to_rational(iv.Lower) <= a && a <= detail::to_rational(iv.Upper);
+        }
+        return includes(iv, detail::grid_rational{a}); // big limits: compile time only
     } else
         return includes(iv, detail::grid_rational{a});
 }
@@ -4000,15 +4000,15 @@ struct grid {
         return detail::grid_same_lattice(v, Interval.Lower, Notch);
     }
     // A double exactly: one finer than 2^-62 has a denominator past every
-    // 64-bit grid's (and fits no 64-bit rational store).
+    // 64-bit grid's (and fits no 64-bit rational store); a big grid number
+    // past 64 bits exists only at compile time.
     template <std::floating_point T>
     [[nodiscard]] constexpr bool representable(T d) const noexcept {
         if (!includes(Interval, d))
             return false;
-#if !BEMAN_INSIDE_BIG_GRIDS
-        if (!detail::abs_fraction_exact(static_cast<double>(d)))
+        if (detail::fits_rational(Interval.Lower) && detail::fits_rational(Interval.Upper) &&
+            detail::fits_rational(Notch) && !detail::abs_fraction_exact(static_cast<double>(d)))
             return false;
-#endif
         return representable(detail::grid_rational{d});
     }
 
