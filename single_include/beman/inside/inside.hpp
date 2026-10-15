@@ -14905,17 +14905,17 @@ constexpr grid_rational lattice_bound_from(const Core& core) {
     const auto            a = core.template run<W>();
     constexpr std::size_t K = limbs_of<decltype(a.Value)> + 1;
     using I                 = wide_sint<K>;
-    const I one{1};
-    // A tiny value (exp(−58) ≈ 2^−84) comes at a scale past I: the bounds
-    // y ∓ e are rounded outward (floor, ceil) onto the widest scale I holds.
-    constexpr int max_scale = 64 * static_cast<int>(K) - 2;
-    const int     shift     = a.Scale > max_scale ? a.Scale - max_scale : 0;
-    const int     scale     = a.Scale - shift;
-    const I       d         = scale >= 0 ? one << scale : one;
-    auto          at        = [&](const I& y) { return lattice_index<Notch, Up>(scale >= 0 ? y : y << (-scale), d); };
-    const I       y{a.Value}, e{a.Error};
-    const I       yl = y - e, yh = y + e;
-    const auto    lo = at(yl >> shift), hi = at(-(-yh >> shift)); // floor, ceil
+    const I y{a.Value}, e{a.Error};
+    // ⌊v/Notch⌋ of v = y/2^Scale through a shift: a tiny value (exp(−58)
+    // ≈ 2^−84) has a 2^Scale past I, and a nested floor (ceil) by positive
+    // divisors is the floor (ceil) of the whole quotient.
+    auto at = [&](const I& v) {
+        if (a.Scale < 0)
+            return lattice_index<Notch, Up>(v << (-a.Scale), I{1});
+        const auto j = lattice_index<Notch, Up>(v, I{1});
+        return Up ? -(-j >> a.Scale) : j >> a.Scale;
+    };
+    const auto lo = at(y - e), hi = at(y + e);
     if constexpr (2 * W <= Cap)
         if (!(lo == hi))
             return lattice_bound_from<Notch, Up, 2 * W, Cap>(core);
