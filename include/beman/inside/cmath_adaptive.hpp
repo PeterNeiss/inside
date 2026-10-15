@@ -616,8 +616,9 @@ struct ahyp_core {
     }
     template <int W>
     constexpr auto run() const {
-        constexpr int S         = W + 12 + std::bit_width(static_cast<unsigned>(2 * Bits + Mag));
-        using I                 = fixed_t<S + Mag + 8>;
+        constexpr int S = W + 12 + std::bit_width(static_cast<unsigned>(2 * Bits + Mag));
+        // asinh forms x² + 1 in the word: twice the magnitude bits.
+        using I                 = fixed_t<S + (Fn == ahyp::asinh ? 2 * Mag : Mag) + 8>;
         constexpr std::size_t K = limbs_of<I>;
         using F                 = exact_frac<2 * E + 1>;
         const bool neg          = X.Num.negative();
@@ -782,11 +783,17 @@ constexpr grid_rational lattice_bound_from(const Core& core) {
     const auto            a = core.template run<W>();
     constexpr std::size_t K = limbs_of<decltype(a.Value)> + 1;
     using I                 = wide_sint<K>;
-    const I    one{1};
-    const I    d  = a.Scale >= 0 ? one << a.Scale : one;
-    auto       at = [&](const I& y) { return lattice_index<Notch, Up>(a.Scale >= 0 ? y : y << (-a.Scale), d); };
-    const I    y{a.Value}, e{a.Error};
-    const auto lo = at(y - e), hi = at(y + e);
+    const I one{1};
+    // A tiny value (exp(−58) ≈ 2^−84) comes at a scale past I: the bounds
+    // y ∓ e are rounded outward (floor, ceil) onto the widest scale I holds.
+    constexpr int max_scale = 64 * static_cast<int>(K) - 2;
+    const int     shift     = a.Scale > max_scale ? a.Scale - max_scale : 0;
+    const int     scale     = a.Scale - shift;
+    const I       d         = scale >= 0 ? one << scale : one;
+    auto          at        = [&](const I& y) { return lattice_index<Notch, Up>(scale >= 0 ? y : y << (-scale), d); };
+    const I       y{a.Value}, e{a.Error};
+    const I       yl = y - e, yh = y + e;
+    const auto    lo = at(yl >> shift), hi = at(-(-yh >> shift)); // floor, ceil
     if constexpr (2 * W <= Cap)
         if (!(lo == hi))
             return lattice_bound_from<Notch, Up, 2 * W, Cap>(core);

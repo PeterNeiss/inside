@@ -231,8 +231,9 @@ template <insidable Out, insidable In>
     else if constexpr (std::same_as<Out, detail::abs_auto_t<In>> && detail::notched<In> && detail::anchored<In> &&
                        notch_of<Out> == notch_of<In>) {
         // The same lattice through 0: |x| is the value index's magnitude.
+        // In umax: |INT64_MIN| = 2^63 is past imax (Out then reaches it).
         const imax j = detail::value_index<imax>(x);
-        return detail::from_value_index<Out>(j < 0 ? -j : j);
+        return detail::from_value_index<Out>(j < 0 ? umax{0} - static_cast<umax>(j) : static_cast<umax>(j));
     } else
         return detail::store_value<Out>(beman::inside::detail::abs(rational{x}));
 }

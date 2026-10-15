@@ -5,6 +5,7 @@
 
 #include <beman/inside/inside.hpp>
 #include <beman/inside/casts.hpp>
+#include <beman/inside/cmath.hpp>
 #include <beman/inside/formats.hpp>
 #include <beman/inside/io.hpp>
 #include <beman/inside/predicates.hpp>
@@ -258,4 +259,38 @@ TEST(BugHuntRound7, modulo_by_a_zero_grid_is_constrained) {
     using digit = inside<{0, 9}>;
     static_assert(!can_mod<digit, inside<{0}>>);
     static_assert(can_mod<digit, inside<{1, 9}>>);
+}
+
+// asinh formed x² + 1 in a word sized for |x|: past about 2^(S/2) the square
+// overflowed and the result came out near log|x|, ln 2 short.
+TEST(BugHuntRound7, asinh_of_a_large_argument) {
+    using O = inside<{{0, 64}, 0x1p-56}, round_floor>;
+    // floor(asinh(1e9)·2^56) (mpmath, 300 bits).
+    const auto r = math::asinh_into<O>(inside<{0, 1000000000}>{1000000000});
+    EXPECT_EQ(rational(r), (rational{1543215194964068268ull, 1ull << 56}));
+    static_assert([] {
+        using P      = inside<{{0, 64}, 0x1p-20}, round_nearest>;
+        const auto c = math::asinh_into<P>(inside<{0, I64{1} << 40}>{I64{1} << 40});
+        return c > 28.41 && c < 28.43; // asinh(2^40) = 28.4190…; log(2^40) is 27.7
+    }());
+}
+
+// A deduced exp / pow whose range reaches a tiny result (e^-57 ≈ 2^-82)
+// divided by zero while forming its bound.
+TEST(BugHuntRound7, deduced_exp_with_a_tiny_endpoint) {
+    using X = inside<{-57, 10}, round_nearest>;
+    EXPECT_EQ(math::exp(X{-57}), 0);
+    EXPECT_EQ(math::exp(X{0}), 1);
+    using B      = inside<{{1, 1000.5}, 0.5}, round_nearest>;
+    using E      = inside<{{-10.5, 1}, 0.5}, round_nearest>;
+    const auto p = math::pow(B{3}, E{-1});
+    ASSERT_TRUE(p.has_value());
+    EXPECT_EQ(*p, rational(1, 2));
+}
+
+// abs(INT64_MIN) negated it in imax.
+TEST(BugHuntRound7, abs_of_int64_min) {
+    using X = inside<{I64_MIN, 0}>;
+    static_assert(math::abs(X{I64_MIN}) == rational{std::uint64_t{1} << 63});
+    EXPECT_EQ(math::abs(X{-5}), 5);
 }
