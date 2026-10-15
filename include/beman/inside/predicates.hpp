@@ -54,6 +54,8 @@ constexpr lossy_result exact_lossy(const exact_frac<K>& x) noexcept {
         if (in) {
             if constexpr (bounded)
                 return {false, static_cast<wide_sint<KK>>(wide_numerator(grid_of<B>.MaxDenominator)) < reduced(v).Den};
+            else if constexpr (rational_storage<B>)
+                return {!try_rational(v).has_value(), false}; // the store reports what its raw cannot hold
             else
                 return {false, false};
         }
@@ -67,13 +69,29 @@ constexpr lossy_result exact_lossy(const exact_frac<K>& x) noexcept {
     }
 }
 
+// Whether a value of A always takes the exact path: B past the 64-bit
+// paths, or an inside A whose values pass the 64-bit rational.
+template <typename A>
+concept wide_inside = insidable<A> && wide_valued<A>;
+template <insidable B, numeric A>
+inline constexpr bool predicates_exact_only = !predicates_fit64<B> || wide_inside<A>;
+
 // exact_lossy for a value, when the 64-bit paths cannot take it.
 template <insidable B, numeric A>
 constexpr std::optional<lossy_result> exact_lossy_of(A value) noexcept {
-    if constexpr (std::floating_point<A>) {
+    if constexpr (std::floating_point<A> && sizeof(A) > sizeof(double)) {
+        // A long double that is no double has bits the 64-bit paths drop.
+        const double d = static_cast<double>(value);
+        if (static_cast<A>(d) != value)
+            return exact_lossy<B>(exact_of_long_double(value));
+        if (!predicates_fit64<B> || past_rational(d))
+            return exact_lossy<B>(exact_of_double(d));
+    } else if constexpr (std::floating_point<A>) {
         if (!predicates_fit64<B> || past_rational(static_cast<double>(value)))
             return exact_lossy<B>(exact_of_double(static_cast<double>(value)));
-    } else if constexpr (!predicates_fit64<B>)
+    } else if constexpr (wide_inside<A>)
+        return exact_lossy<B>(exact_of(value));
+    else if constexpr (!predicates_fit64<B>)
         return exact_lossy<B>(exact_of(as_rational(value)));
     return std::nullopt;
 }
@@ -84,8 +102,8 @@ template <insidable B, numeric A>
     if constexpr (std::floating_point<A>)
         if (!(value - value == 0))
             return true; // NaN / ±inf fit no grid (and must not raise here)
-    // The 64-bit paths below do not compile for a grid past them.
-    if constexpr (!detail::predicates_fit64<B>)
+    // The 64-bit paths below do not compile for a grid (or value) past them.
+    if constexpr (detail::predicates_exact_only<B, A>)
         return detail::exact_lossy_of<B>(value)->Overflows;
     else {
         if (const auto e = detail::exact_lossy_of<B>(value)) [[unlikely]]
@@ -105,8 +123,8 @@ template <insidable B, numeric A>
     if constexpr (std::floating_point<A>)
         if (!(value - value == 0))
             return false; // non-finite — overflow, not rounding
-    // The 64-bit paths below do not compile for a grid past them.
-    if constexpr (!detail::predicates_fit64<B>)
+    // The 64-bit paths below do not compile for a grid (or value) past them.
+    if constexpr (detail::predicates_exact_only<B, A>)
         return detail::exact_lossy_of<B>(value)->Rounds;
     else {
         if (const auto e = detail::exact_lossy_of<B>(value)) [[unlikely]]

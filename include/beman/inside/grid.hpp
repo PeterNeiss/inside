@@ -259,6 +259,18 @@ struct grid {
         // the 64-bit rational although v lies on the lattice.)
         return detail::grid_same_lattice(v, Interval.Lower, Notch);
     }
+    // A double exactly: one finer than 2^-62 has a denominator past every
+    // 64-bit grid's (and fits no 64-bit rational store).
+    template <std::floating_point T>
+    [[nodiscard]] constexpr bool representable(T d) const noexcept {
+        if (!includes(Interval, d))
+            return false;
+#if !BEMAN_INSIDE_BIG_GRIDS
+        if (!detail::abs_fraction_exact(static_cast<double>(d)))
+            return false;
+#endif
+        return representable(detail::grid_rational{d});
+    }
 
     // Whether the lattice passes through 0: Lower is a multiple of the notch
     // (every continuous grid is). An unanchored grid such as {{0.5, 10.5}, 1}

@@ -317,6 +317,23 @@ inline constexpr bool values_fit_imax =
     !wide_valued<B> && fits_imax(interval_of<B>) &&
     (value_storage<B> || max_index_v<B> <= static_cast<umax>(std::numeric_limits<imax>::max()));
 
+// Every value's reduced numerator and denominator fit imax too: a value
+// within int64 can still have a numerator past it ((2^63 + 1)/2). An
+// unbounded continuous grid bounds denominators by imax only, so its
+// numerators fit when no value passes 1 in magnitude.
+template <insidable B>
+inline constexpr bool fraction_fits_imax = [] {
+    if constexpr (!values_fit_imax<B>)
+        return false;
+    else {
+        constexpr grid_wide d = den_bound(grid_of<B>);
+        if constexpr (d == grid_wide{0})
+            return !(grid_rational{1} < abs(lower_of<B>)) && !(grid_rational{1} < abs(upper_of<B>));
+        else
+            return !(grid_wide{std::numeric_limits<imax>::max()} < num_bound(grid_of<B>));
+    }
+}();
+
 // Notch a non-zero integer and Lower an integer — every value is an
 // integer ({{0.5, 10.5}, 1} has an integer notch but not integer values).
 // Gates the implicit imax/size_t conversions.
@@ -402,7 +419,9 @@ template <insidable B>
     if constexpr (value_storage<B>)
         return raw_imax(b);
     else if constexpr (abs_den(detail::notch64<B>.Denominator) == 1 && abs_den(detail::lower64<B>.Denominator) == 1)
-        return lower_imax<B> + raw_imax(b) * static_cast<imax>(detail::notch64<B>.Numerator);
+        // In umax: raw·Notch can pass imax although the value fits.
+        return static_cast<imax>(static_cast<umax>(lower_imax<B>) +
+                                 static_cast<umax>(raw_imax(b)) * detail::notch64<B>.Numerator);
     else if constexpr (qformat_codec_fits<B>) {
         constexpr imax nd = abs_den(detail::notch64<B>.Denominator);
         return (raw_imax(b) + lower_imax<B> * nd) / nd; // q_format_decode, truncated
@@ -415,7 +434,8 @@ constexpr void from_value(B& b, imax val) {
     if constexpr (value_storage<B>)
         b = B::from_raw(raw_cast<B>(val));
     else if constexpr (abs_den(detail::notch64<B>.Denominator) == 1 && abs_den(detail::lower64<B>.Denominator) == 1)
-        b = B::from_raw(raw_cast<B>((val - lower_imax<B>) / static_cast<imax>(detail::notch64<B>.Numerator)));
+        b = B::from_raw(
+            raw_cast<B>((static_cast<umax>(val) - static_cast<umax>(lower_imax<B>)) / detail::notch64<B>.Numerator));
     else if constexpr (qformat_codec_fits<B>)
         b = B::from_raw(q_format_encode<B>(val));
     else // index storage, generic rational path
