@@ -53,8 +53,8 @@ TEST(BugHuntRound6, integer_roundings_past_int64) {
 // fmod's rational path divided loudly: a quotient past 64 bits stopped the
 // build instead of taking the exact path.
 TEST(BugHuntRound6, fmod_quotient_past_64_bits) {
-    using X = inside<{{0, 1000}, rational{1, 1024}}, round_nearest>;
-    using Y = inside<{{0, 1}, rational{1, 1ll << 60}}, round_nearest>;
+    using X      = inside<{{0, 1000}, rational{1, 1024}}, round_nearest>;
+    using Y      = inside<{{0, 1}, rational{1, 1ll << 60}}, round_nearest>;
     const auto r = math::fmod(X{rational{999999, 1024}}, Y{rational{17, 1ll << 60}});
     EXPECT_EQ(rational{*r}, (rational{15, 1ll << 60}));
 }
@@ -137,6 +137,11 @@ TEST(BugHuntRound6, predicates_decide_exactly) {
     EXPECT_TRUE(conversion_rounds<N>(-1e-300)); // rounds onto 0
     static_assert(conversion_rounds<C>(rational{1, (1ll << 62) + 1}));
     static_assert(!conversion_rounds<C>(rational{3, 1ll << 61}));
+    // A bounded continuous grid rounds before its range check: 22/21 rounds
+    // onto 1 in sevenths (rounding, not overflow), as the exact path decides.
+    using S = inside<grid{interval{0, 1}, max_denominator{7}}, round_nearest>;
+    static_assert(conversion_rounds<S>(rational{22, 21}) && !conversion_overflows<S>(rational{22, 21}));
+    static_assert(!conversion_rounds<S>(rational{3, 2}) && conversion_overflows<S>(rational{3, 2}));
 }
 
 // The sum of two grids whose value units have no 64-bit gcd (1/(3·2^60)

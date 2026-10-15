@@ -8752,8 +8752,12 @@ template <insidable B, numeric A>
             if constexpr (grid_of<B>.MaxDenominator == 0)
                 return false;
             else {
-                if (!includes(interval_of<B>, r))
-                    return false; // overflow, not rounding
+                if (!includes(interval_of<B>, r)) {
+                    // Out of range: rounding onto the bound may bring it in
+                    // (a bounded grid rounds before the range check).
+                    detail::rational rounded;
+                    return detail::rounds_into_range<B, policy<>>(r, rounded);
+                }
                 return detail::abs_den(r.Denominator) > detail::to_rational(grid_of<B>.MaxDenominator).Numerator;
             }
         } else {
