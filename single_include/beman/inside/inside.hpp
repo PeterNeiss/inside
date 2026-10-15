@@ -3040,6 +3040,32 @@ constexpr grid_rational grid_gcd_of(const grid_rational& a, const grid_rational&
     return grid_gcd(a, b).value();
 #endif
 }
+// gcd of two grid integers, non-negative (0 when both are).
+constexpr grid_wide grid_wide_gcd(grid_wide a, grid_wide b) {
+#if BEMAN_INSIDE_BIG_GRIDS
+    return gcd(a, b);
+#else
+    if (a < grid_wide{0})
+        a = -a;
+    if (b < grid_wide{0})
+        b = -b;
+    while (!(b == grid_wide{0})) {
+        const grid_wide t = a % b;
+        a                 = b;
+        b                 = t;
+    }
+    return a;
+#endif
+}
+// Whether gcd(a, b) is a grid number: always with big grid numbers; with
+// 64-bit ones a 2/3 against a 2^-62 has none (1/(3·2^62)).
+constexpr bool grid_gcd_fits([[maybe_unused]] const grid_rational& a, [[maybe_unused]] const grid_rational& b) {
+#if BEMAN_INSIDE_BIG_GRIDS
+    return true;
+#else
+    return grid_gcd(a, b).has_value();
+#endif
+}
 
 //---------------------------------------------------------------------------
 // parse_grid_literal — the _g literal: decimal digits (with ' separators),
@@ -3756,13 +3782,13 @@ struct grid {
         static_assert(G.Interval.divides_evenly(G.Notch), "grid: the notch must divide Upper − Lower evenly");
         static_assert(G.MaxDenominator == 0 || (G.Notch == 0 && G.Interval.Lower != G.Interval.Upper),
                       "grid: only a continuous grid carries a max_denominator");
-#if !BEMAN_INSIDE_BIG_GRIDS
         // Every value is a multiple of gcd(Lower, Notch): {{0.2, 1.2}, 2^-61}
-        // counts in 1/(5·2^61), past the 64-bit rational.
-        static_assert(G.Notch == 0 || detail::grid_gcd(G.Notch, G.Interval.Lower).has_value(),
+        // counts in 1/(5·2^61), past the 64-bit rational. (The grid ops
+        // report such a result grid as overflow, so this fires only for a
+        // grid written out.)
+        static_assert(G.Notch == 0 || detail::grid_gcd_fits(G.Notch, G.Interval.Lower),
                       "grid: the value unit gcd(Lower, Notch) does not fit a 64-bit rational (C++26 big grids lift "
                       "this)");
-#endif
 
         return true;
     }
@@ -3788,10 +3814,8 @@ struct grid {
         }
         if (!iv.divides_evenly(notch))
             return std::unexpected{errc::rounding_error};
-#if !BEMAN_INSIDE_BIG_GRIDS
-        if (notch != 0 && !detail::grid_gcd(notch, iv.Lower))
+        if (notch != 0 && !detail::grid_gcd_fits(notch, iv.Lower))
             return std::unexpected{errc::overflow};
-#endif
         return grid{iv, notch};
     }
 
@@ -3844,15 +3868,9 @@ struct grid {
             return false;
         if (Notch == 0)
             return MaxDenominator == 0 || !(detail::wide_numerator(MaxDenominator) < detail::wide_denominator(v));
-#if BEMAN_INSIDE_BIG_GRIDS
-        return detail::grid_divides_evenly(v - Interval.Lower, Notch);
-#else
-        auto diff = v - Interval.Lower; // expected<rational, errc>
-        if (!diff)
-            return false;
-        auto off = diff.value() / Notch; // expected<rational, errc>
-        return off.has_value() && detail::abs_den(off->Denominator) == 1;
-#endif
+        // (Without forming (v − Lower)/Notch: on a fine notch it may leave
+        // the 64-bit rational although v lies on the lattice.)
+        return detail::grid_same_lattice(v, Interval.Lower, Notch);
     }
 
     // Whether the lattice passes through 0: Lower is a multiple of the notch
@@ -3906,13 +3924,7 @@ constexpr grid_wide den_bound(const grid& g) {
     // Notch), taken here in wide integers: the unit itself may not fit a
     // 64-bit rational (a grid op then reports overflow, not a hard error).
     const grid_wide a = wide_denominator(g.Interval.Lower), b = wide_denominator(g.Notch);
-    grid_wide       x = a, y = b;
-    while (!(y == grid_wide{0})) {
-        const grid_wide t = x % y;
-        x                 = y;
-        y                 = t;
-    }
-    return a / x * b;
+    return a / grid_wide_gcd(a, b) * b;
 }
 
 // floor(max(|Lower|, |Upper|) · d): the largest numerator over denominator d.
@@ -3950,6 +3962,16 @@ constexpr grid bounded_continuous(const interval& iv, grid_wide d) {
     g.MaxDenominator = rational{static_cast<imax>(d)};
 #endif
     return g;
+}
+
+// The result grid of an op whose values step by n from iv.Lower. Every value
+// is a multiple of gcd(Lower, n); with 64-bit grid numbers that unit may
+// leave the rational range ({{1/5, 6/5}, 2^-61}) — overflow, as for a limit
+// past it, so the ops' fits-tests see it instead of validate() failing.
+constexpr std::expected<grid, errc> lattice_grid(const interval& iv, const grid_rational& n) {
+    if (n != 0 && !grid_gcd_fits(n, iv.Lower))
+        return std::unexpected{errc::overflow};
+    return grid{iv, n};
 }
 } // namespace detail
 
@@ -4165,15 +4187,19 @@ template <std::same_as<grid> G>
 // grid. With 64-bit grid numbers a limit or notch can leave the rational
 // range; these test it with the quiet try_ ops, so an arithmetic operator
 // can static_assert with its own message before the result grid's loud
-// rational error. Big grid numbers (C++26) always fit.
+// rational error. A lattice result needs its value unit too (lattice_grid).
+// Big grid numbers (C++26) always fit.
 //---------------------------------------------------------------------------
 namespace detail {
 constexpr bool grid_sum_fits([[maybe_unused]] const grid& a, [[maybe_unused]] const grid& b) noexcept {
 #if BEMAN_INSIDE_BIG_GRIDS
     return true;
 #else
-    return try_add(a.Interval.Lower, b.Interval.Lower) && try_add(a.Interval.Upper, b.Interval.Upper) &&
-           gcd(a.Notch, b.Notch);
+    const auto lo = try_add(a.Interval.Lower, b.Interval.Lower);
+    const auto n  = gcd(a.Notch, b.Notch);
+    if (!lo || !try_add(a.Interval.Upper, b.Interval.Upper) || !n)
+        return false;
+    return continuous_grid(a) || continuous_grid(b) || *n == 0 || grid_gcd_fits(*n, *lo);
 #endif
 }
 
@@ -4209,9 +4235,17 @@ constexpr bool grid_product_fits([[maybe_unused]] const grid& a, [[maybe_unused]
 #if BEMAN_INSIDE_BIG_GRIDS
     return true;
 #else
-    return try_mul(a.Interval.Lower, b.Interval.Lower) && try_mul(a.Interval.Lower, b.Interval.Upper) &&
-           try_mul(a.Interval.Upper, b.Interval.Lower) && try_mul(a.Interval.Upper, b.Interval.Upper) &&
-           product_notch(a, b).has_value();
+    const auto c0 = try_mul(a.Interval.Lower, b.Interval.Lower), c1 = try_mul(a.Interval.Lower, b.Interval.Upper),
+               c2 = try_mul(a.Interval.Upper, b.Interval.Lower), c3 = try_mul(a.Interval.Upper, b.Interval.Upper);
+    const auto n = product_notch(a, b);
+    if (!c0 || !c1 || !c2 || !c3 || !n)
+        return false;
+    if (*n == 0) // continuous or a point
+        return true;
+    grid_rational lo = *c0;
+    for (const grid_rational& c : {*c1, *c2, *c3})
+        lo = c < lo ? c : lo;
+    return grid_gcd_fits(*n, lo);
 #endif
 }
 // Whether a / b has a result grid: the divisor is not the point 0, an
@@ -4232,8 +4266,11 @@ constexpr bool grid_quotient_fits([[maybe_unused]] const grid& a, const grid& b)
     };
     if (!includes(d, 0)) {
 #if !BEMAN_INSIDE_BIG_GRIDS
-        if (d.Lower == d.Upper && a.Notch != 0 && !try_div(a.Notch, abs(d.Lower)))
-            return false;
+        if (d.Lower == d.Upper && a.Notch != 0) { // a lattice scaled by 1/c (lattice_grid)
+            const auto n = try_div(a.Notch, abs(d.Lower));
+            const auto p = try_div(a.Interval.Lower, d.Lower), q = try_div(a.Interval.Upper, d.Lower);
+            return n && p && q && grid_gcd_fits(*n, *p < *q ? *p : *q);
+        }
 #endif
         return corners_fit(d.Lower, d.Upper);
     }
@@ -4265,9 +4302,7 @@ template <std::same_as<grid> G>
                             lhs.Interval + rhs.Interval);
     // gcd returns expected — lift it so a notch-denominator overflow produces
     // errc::overflow rather than a silently wrapped result grid.
-    return detail::lift([](interval i, detail::grid_rational n) { return grid{i, n}; },
-                        lhs.Interval + rhs.Interval,
-                        detail::grid_gcd(lhs.Notch, rhs.Notch));
+    return detail::lift(detail::lattice_grid, lhs.Interval + rhs.Interval, detail::grid_gcd(lhs.Notch, rhs.Notch));
 }
 
 //---------------------------------------------------------------------------
@@ -4289,7 +4324,8 @@ template <std::same_as<grid> G>
     // product of the operands' bounds.
     return detail::lift(
         [d = detail::den_bound(lhs) * detail::den_bound(rhs)](interval i, detail::grid_rational n) {
-            return n == 0 && i.Lower != i.Upper ? detail::bounded_continuous(i, d) : grid{i, n};
+            return n == 0 && i.Lower != i.Upper ? std::expected<grid, errc>{detail::bounded_continuous(i, d)}
+                                                : detail::lattice_grid(i, n);
         },
         lhs.Interval * rhs.Interval,
         detail::product_notch(lhs, rhs));
@@ -4305,9 +4341,7 @@ template <std::same_as<grid> G>
     // operator*: its notch becomes N/|c|, so `x / just<c>` keeps integer
     // storage instead of turning continuous. Any other quotient is continuous.
     if (d.has_value() && rhs.Interval.Lower == rhs.Interval.Upper && lhs.Notch != 0)
-        return detail::lift([](interval i, detail::grid_rational n) { return grid{i, n}; },
-                            *d,
-                            lhs.Notch / detail::abs(rhs.Interval.Lower));
+        return detail::lift(detail::lattice_grid, *d, lhs.Notch / detail::abs(rhs.Interval.Lower));
     // Any other quotient is continuous: x = p/a over y = r/b is p·b/(a·r), so
     // its denominators stay within den_bound(lhs)·num_bound(rhs).
     const detail::grid_wide qd         = detail::den_bound(lhs) * detail::num_bound(rhs);
@@ -4991,11 +5025,16 @@ template <insidable L, typename P>
     if constexpr (!rounds_before_range_check<L, P>)
         return false;
     else {
+        // A bound past imax: 1/imax still widens the limits by at least a
+        // step (only a prefilter: the exact rounding decides).
         constexpr rational step = [] {
             if constexpr (detail::notched<L>)
                 return detail::notch64<L>;
-            else
-                return rational{1, to_rational(grid_of<L>.MaxDenominator).Numerator};
+            else {
+                constexpr umax D = to_rational(grid_of<L>.MaxDenominator).Numerator;
+                constexpr umax M = static_cast<umax>(std::numeric_limits<imax>::max());
+                return rational{1, static_cast<imax>(D < M ? D : M)};
+            }
         }();
         constexpr rational lo = try_sub(detail::lower64<L>, step).value_or(detail::lower64<L>);
         constexpr rational hi = try_add(detail::upper64<L>, step).value_or(detail::upper64<L>);
@@ -5697,14 +5736,22 @@ constexpr auto exact_index(const exact_frac<K>& f) noexcept {
     }
 }
 
+// x rounded by P's rounding to a fraction of L's bound (a bounded continuous
+// grid: denominators ≤ MaxDenominator), limits aside.
+template <insidable L, typename P, std::size_t K>
+constexpr exact_frac<K> round_to_bound(const exact_frac<K>& x) {
+    return round_to_denominator<rounding_for<L, P>>(
+        x, static_cast<wide_sint<K>>(wide_numerator(grid_of<L>.MaxDenominator)));
+}
+
 template <insidable L, typename P>
 constexpr bool exact_rounds_into_range(const rational& v, rational& out) {
     if constexpr (!notched<L>) { // a bounded continuous grid: onto its bound
-        const auto x = exact_of(v);
-        using W      = decltype(x.Num);
-        out = try_rational(round_to_denominator<rounding_for<L, P>>(x, static_cast<W>(wide_numerator(
-                                                                           grid_of<L>.MaxDenominator))))
-                  .value(); // near a limit: fits
+        // Near a limit it fits, unless the bound itself is past imax.
+        const auto r = try_rational(round_to_bound<L, P>(exact_of(v)));
+        if (!r)
+            return false;
+        out = *r;
         return includes(interval_of<L>, out);
     } else {
         const auto j = exact_index<L, rounding_for<L, P>>(exact_of(v)).Index; // L's slot offset
@@ -5819,10 +5866,8 @@ template <insidable L, insidable R>
 inline constexpr bool units_cmp_fits = [] {
     if constexpr (!integer_storage<L> || !integer_storage<R>)
         return false;
-#if !BEMAN_INSIDE_BIG_GRIDS
-    else if constexpr (!grid_gcd(unit_of<L>, unit_of<R>))
+    else if constexpr (!grid_gcd_fits(unit_of<L>, unit_of<R>))
         return false;
-#endif
     else {
         constexpr grid_rational U = grid_gcd_of(unit_of<L>, unit_of<R>);
         return signed_value_bits_of({units_lo<L, U>, units_hi<L, U>, units_lo<R, U>, units_hi<R, U>}) <= 63;
@@ -6072,7 +6117,7 @@ constexpr std::optional<exact_frac<exact_max<K, exact_limbs<L>>>> onto_bound(con
     using W                  = wide_sint<KK>;
     const W D                = static_cast<W>(wide_numerator(grid_of<L>.MaxDenominator));
     const F lo = exact_of_grid<KK>(lower_of<L>), hi = exact_of_grid<KK>(upper_of<L>);
-    F       r = round_to_denominator<rounding_for<L, P>>(F{v}, D);
+    F       r = round_to_bound<L, P>(F{v});
     if (r < lo)
         r = round_to_denominator<round_mode::ceil>(lo, D);
     else if (hi < r)
@@ -6128,8 +6173,7 @@ constexpr L& assign_exact(L& lhs, const exact_frac<K>& v, P&& policy, A&& action
         // Round first, as the builtin stores do: a value just past a limit
         // may round onto it.
         if constexpr (grid_of<L>.MaxDenominator != 0 && has_policy<L, P, snap>)
-            x = round_to_denominator<rounding_for<L, plain_t<P>>>(
-                x, static_cast<wide_sint<KK>>(wide_numerator(grid_of<L>.MaxDenominator)));
+            x = round_to_bound<L, plain_t<P>>(x);
         if (x < lo || hi < x) [[unlikely]] {
             dispatch_out_of_range<true>(
                 lhs,
@@ -6157,8 +6201,7 @@ constexpr L& assign_exact(L& lhs, const exact_frac<K>& v, P&& policy, A&& action
             constexpr std::size_t KK = exact_max<K, exact_limbs<L>>;
             const exact_frac<KK>  x{v};
             if constexpr (grid_of<L>.MaxDenominator != 0 && has_policy<L, P, snap>)
-                r = try_rational(round_to_denominator<rounding_for<L, plain_t<P>>>(
-                    x, static_cast<wide_sint<KK>>(wide_numerator(grid_of<L>.MaxDenominator))));
+                r = try_rational(round_to_bound<L, plain_t<P>>(x));
             if (!r) {
                 const bool low = x < exact_of_grid<KK>(lower_of<L>);
                 if (!low && !(exact_of_grid<KK>(upper_of<L>) < x)) {
@@ -6584,18 +6627,77 @@ struct assignment<L, R> {
         else
             return rational{rhs};
     }
+    // fine_double_value's result, sized to return in registers (a larger
+    // one goes through memory, and the stack protector into the hot path):
+    // a rational raw marks a failure by a denominator no value has (0), with
+    // the errc as numerator; an integer raw carries the errc beside it.
+    struct fine_result {
+        raw_t<L> Raw;
+        errc     Code;
+        constexpr errc code() const { return Code; }
+    };
+    struct fine_rational_result {
+        rational Raw;
+        constexpr errc code() const { return Raw.Denominator == 0 ? static_cast<errc>(Raw.Numerator) : errc{}; }
+    };
+    using fine_result_t = std::conditional_t<rational_storage<L>, fine_rational_result, fine_result>;
+
     // Out of line, and by value (an empty action too): a reference to a
-    // caller's local would make it escape the hot path's frame. It starts
-    // from lhs's value: a failed store (errc&, on_error) leaves it intact.
+    // caller's local would make it escape the hot path's frame. lhs may be
+    // uninitialized (a trivial default ctor), so the store runs on a copy of
+    // the lower limit, and a failure is returned, not stored: a failed store
+    // leaves lhs intact. The policy hears of it here; an on_error action,
+    // which gets lhs, from store_fine_double.
     template <typename P, typename A>
-    BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE static constexpr L fine_double_value(L lhs, double rhs, P policy, A action) {
-        assign_exact<R>(lhs, exact_of_double(rhs), policy, std::forward<A>(action));
-        return lhs;
+    BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE static constexpr fine_result_t fine_double_value(double rhs,
+                                                                                             P      policy,
+                                                                                             A      action) {
+        L r = [] {
+            if constexpr (rational_storage<L>)
+                return L::from_raw(detail::lower64<L>);
+            else if constexpr (point_storage<L>)
+                return L::from_raw(raw_t<L>{});
+            else
+                return L::from_raw(static_cast<raw_t<L>>(raw_lo_exact<L>));
+        }();
+        errc code{};
+        // A recording on_error stands in for one (dispatch_out_of_range ranks
+        // it above clamp): the order holds.
+        if constexpr (error_action<plain_t<A>>)
+            assign_exact<R>(r,
+                            exact_of_double(rhs),
+                            make_policy<P::Flags>(code),
+                            on_error([&code](L&, errc c, auto&&) { code = c; }));
+        else {
+            assign_exact<R>(r, exact_of_double(rhs), make_policy<P::Flags>(code), std::forward<A>(action));
+            if (code != errc{})
+                policy.report(code);
+        }
+        if constexpr (rational_storage<L>) {
+            if (code == errc{})
+                return {r.raw()};
+            rational failed{};
+            failed.Numerator   = static_cast<umax>(code);
+            failed.Denominator = 0;
+            return {failed};
+        } else
+            return {r.raw(), code};
     }
+    // Whether a failure returns (errc&, on_error): else it raised, and lhs
+    // takes the result unconditionally — no branch on the hot path's tail.
+    template <typename P, typename A>
+    static constexpr bool fine_failure_returns =
+        std::is_same_v<P, decltype(make_policy<P::Flags>(std::declval<errc&>()))> || error_action<A>;
     template <typename P, typename A>
     static constexpr void store_fine_double(L& lhs, double rhs, P&& policy, A&& action) {
-        using Act = std::conditional_t<std::is_empty_v<plain_t<A>>, plain_t<A>, A&&>;
-        lhs       = fine_double_value<plain_t<P>, Act>(lhs, rhs, policy, std::forward<A>(action));
+        using Act    = std::conditional_t<std::is_empty_v<plain_t<A>>, plain_t<A>, A&&>;
+        const auto r = fine_double_value<plain_t<P>, Act>(rhs, policy, std::forward<A>(action));
+        if constexpr (!fine_failure_returns<plain_t<P>, plain_t<A>>)
+            lhs = L::from_raw(r.Raw);
+        else if (r.code() == errc{}) [[likely]]
+            lhs = L::from_raw(r.Raw);
+        else if constexpr (error_action<plain_t<A>>)
+            action.Fn(lhs, r.code(), errc_message(r.code()));
     }
 
     template <typename P, typename A = no_action>
@@ -14334,31 +14436,20 @@ inline constexpr int pow_kmax = [] {
 template <insidable InX, insidable InY>
 inline constexpr int hypot_bits = 2 * (input_bits<InX> + input_bits<InY>)+2;
 
-// gcd of two value units (0 when either is continuous), for two-input
-// outputs: the notches, or finer where a lattice does not pass through 0.
-// Every value of both inputs is a multiple of it.
-template <insidable A, insidable B>
-inline constexpr grid_rational gcd_notch = [] {
-    if constexpr (!notched<A> || !notched<B>)
-        return grid_rational{0};
-    else
-        return grid_gcd_of(grid_of<A>.value_unit(), grid_of<B>.value_unit());
-}();
-
 // Whether gcd_notch is a grid number, as a constraint of the deduced
 // two-input functions: with 64-bit grid numbers a 2/3 notch against a
 // 2^-62 one has no gcd (1/(3·2^62)).
 template <insidable A, insidable B>
-inline constexpr bool gcd_notch_fits = [] {
-#if BEMAN_INSIDE_BIG_GRIDS
-    return true;
-#else
-    if constexpr (!notched<A> || !notched<B>)
-        return true;
-    else
-        return grid_gcd(grid_of<A>.value_unit(), grid_of<B>.value_unit()).has_value();
-#endif
-}();
+inline constexpr bool gcd_notch_fits =
+    !notched<A> || !notched<B> || grid_gcd_fits(grid_of<A>.value_unit(), grid_of<B>.value_unit());
+
+// gcd of two value units (0 when either is continuous), for two-input
+// outputs: the notches, or finer where a lattice does not pass through 0.
+// Every value of both inputs is a multiple of it.
+template <insidable A, insidable B>
+    requires gcd_notch_fits<A, B>
+inline constexpr grid_rational gcd_notch =
+    !notched<A> || !notched<B> ? grid_rational{0} : grid_gcd_of(grid_of<A>.value_unit(), grid_of<B>.value_unit());
 
 //---------------------------------------------------------------------------
 // The double tier. Where an FPU is present, the double kernels
@@ -17109,15 +17200,23 @@ struct std::numeric_limits<beman::inside::inside<G, P>> {
             return at(d::grid_rational{0});
         else if constexpr (G.Interval.Lower < d::grid_rational{0} && d::grid_rational{0} < G.Interval.Upper) {
             // Lower + ⌈−Lower/Notch⌉·Notch
+#if BEMAN_INSIDE_BIG_GRIDS
             constexpr d::grid_rational t = d::grid_div_of(d::grid_sub(d::grid_rational{0}, G.Interval.Lower), G.Notch);
             constexpr d::grid_wide     k = (d::wide_numerator(t) + d::wide_denominator(t) - d::grid_wide{1}) /
                                        d::wide_denominator(t);
-#if BEMAN_INSIDE_BIG_GRIDS
-            constexpr d::grid_rational kn = d::grid_mul(d::grid_rational{k}, G.Notch);
+            return at(d::grid_add(G.Interval.Lower, d::grid_mul(d::grid_rational{k}, G.Notch)));
 #else
-            constexpr d::grid_rational kn = d::grid_mul(d::rational{static_cast<beman::inside::umax>(k)}, G.Notch);
+            // In grid integers, Lower = a/b and Notch = e/f: −Lower/Notch and
+            // k·Notch may pass the 64-bit rational where the point does not.
+            constexpr d::grid_wide a = d::wide_numerator(G.Interval.Lower), b = d::wide_denominator(G.Interval.Lower);
+            constexpr d::grid_wide e = d::wide_numerator(G.Notch), f = d::wide_denominator(G.Notch);
+            constexpr d::grid_wide k = (-a * f + b * e - d::grid_wide{1}) / (b * e);
+            constexpr d::grid_wide n = a * f + k * e * b, q = b * f, g = d::grid_wide_gcd(n, q);
+            // q/g divides the value unit's denominator, which fits.
+            static_assert(bit_width_of(n / g) <= 64,
+                          "numeric_limits::epsilon: the first point above 0 is past the 64-bit rational");
+            return at(d::rational{static_cast<beman::inside::umax>(n / g), static_cast<beman::inside::imax>(q / g)});
 #endif
-            return at(d::grid_add(G.Interval.Lower, kn));
         } else
             return at(G.Interval.Lower);
     }

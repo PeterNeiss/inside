@@ -622,11 +622,16 @@ template <insidable L, typename P>
     if constexpr (!rounds_before_range_check<L, P>)
         return false;
     else {
+        // A bound past imax: 1/imax still widens the limits by at least a
+        // step (only a prefilter: the exact rounding decides).
         constexpr rational step = [] {
             if constexpr (detail::notched<L>)
                 return detail::notch64<L>;
-            else
-                return rational{1, to_rational(grid_of<L>.MaxDenominator).Numerator};
+            else {
+                constexpr umax D = to_rational(grid_of<L>.MaxDenominator).Numerator;
+                constexpr umax M = static_cast<umax>(std::numeric_limits<imax>::max());
+                return rational{1, static_cast<imax>(D < M ? D : M)};
+            }
         }();
         constexpr rational lo = try_sub(detail::lower64<L>, step).value_or(detail::lower64<L>);
         constexpr rational hi = try_add(detail::upper64<L>, step).value_or(detail::upper64<L>);

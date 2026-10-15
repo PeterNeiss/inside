@@ -82,15 +82,23 @@ struct std::numeric_limits<beman::inside::inside<G, P>> {
             return at(d::grid_rational{0});
         else if constexpr (G.Interval.Lower < d::grid_rational{0} && d::grid_rational{0} < G.Interval.Upper) {
             // Lower + ⌈−Lower/Notch⌉·Notch
+#if BEMAN_INSIDE_BIG_GRIDS
             constexpr d::grid_rational t = d::grid_div_of(d::grid_sub(d::grid_rational{0}, G.Interval.Lower), G.Notch);
             constexpr d::grid_wide     k = (d::wide_numerator(t) + d::wide_denominator(t) - d::grid_wide{1}) /
                                        d::wide_denominator(t);
-#if BEMAN_INSIDE_BIG_GRIDS
-            constexpr d::grid_rational kn = d::grid_mul(d::grid_rational{k}, G.Notch);
+            return at(d::grid_add(G.Interval.Lower, d::grid_mul(d::grid_rational{k}, G.Notch)));
 #else
-            constexpr d::grid_rational kn = d::grid_mul(d::rational{static_cast<beman::inside::umax>(k)}, G.Notch);
+            // In grid integers, Lower = a/b and Notch = e/f: −Lower/Notch and
+            // k·Notch may pass the 64-bit rational where the point does not.
+            constexpr d::grid_wide a = d::wide_numerator(G.Interval.Lower), b = d::wide_denominator(G.Interval.Lower);
+            constexpr d::grid_wide e = d::wide_numerator(G.Notch), f = d::wide_denominator(G.Notch);
+            constexpr d::grid_wide k = (-a * f + b * e - d::grid_wide{1}) / (b * e);
+            constexpr d::grid_wide n = a * f + k * e * b, q = b * f, g = d::grid_wide_gcd(n, q);
+            // q/g divides the value unit's denominator, which fits.
+            static_assert(bit_width_of(n / g) <= 64,
+                          "numeric_limits::epsilon: the first point above 0 is past the 64-bit rational");
+            return at(d::rational{static_cast<beman::inside::umax>(n / g), static_cast<beman::inside::imax>(q / g)});
 #endif
-            return at(d::grid_add(G.Interval.Lower, kn));
         } else
             return at(G.Interval.Lower);
     }

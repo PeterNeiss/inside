@@ -862,31 +862,20 @@ inline constexpr int pow_kmax = [] {
 template <insidable InX, insidable InY>
 inline constexpr int hypot_bits = 2 * (input_bits<InX> + input_bits<InY>)+2;
 
-// gcd of two value units (0 when either is continuous), for two-input
-// outputs: the notches, or finer where a lattice does not pass through 0.
-// Every value of both inputs is a multiple of it.
-template <insidable A, insidable B>
-inline constexpr grid_rational gcd_notch = [] {
-    if constexpr (!notched<A> || !notched<B>)
-        return grid_rational{0};
-    else
-        return grid_gcd_of(grid_of<A>.value_unit(), grid_of<B>.value_unit());
-}();
-
 // Whether gcd_notch is a grid number, as a constraint of the deduced
 // two-input functions: with 64-bit grid numbers a 2/3 notch against a
 // 2^-62 one has no gcd (1/(3·2^62)).
 template <insidable A, insidable B>
-inline constexpr bool gcd_notch_fits = [] {
-#if BEMAN_INSIDE_BIG_GRIDS
-    return true;
-#else
-    if constexpr (!notched<A> || !notched<B>)
-        return true;
-    else
-        return grid_gcd(grid_of<A>.value_unit(), grid_of<B>.value_unit()).has_value();
-#endif
-}();
+inline constexpr bool gcd_notch_fits =
+    !notched<A> || !notched<B> || grid_gcd_fits(grid_of<A>.value_unit(), grid_of<B>.value_unit());
+
+// gcd of two value units (0 when either is continuous), for two-input
+// outputs: the notches, or finer where a lattice does not pass through 0.
+// Every value of both inputs is a multiple of it.
+template <insidable A, insidable B>
+    requires gcd_notch_fits<A, B>
+inline constexpr grid_rational gcd_notch =
+    !notched<A> || !notched<B> ? grid_rational{0} : grid_gcd_of(grid_of<A>.value_unit(), grid_of<B>.value_unit());
 
 //---------------------------------------------------------------------------
 // The double tier. Where an FPU is present, the double kernels
