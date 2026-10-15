@@ -469,28 +469,31 @@ struct big_rational {
 
     // The nearest double, by way of the top 64 bits of each part.
     constexpr explicit operator double() const {
-        auto to_double = [](const big_int& v) {
+        // |v| as top·2^sh, top below 2^64 (with a sticky bit for the bits
+        // below): the quotient of the tops is then finite, and the shift is
+        // applied once after it, so a numerator and a denominator both past
+        // 2^1024 still give their finite ratio.
+        auto split = [](const big_int& v, int& sh) {
             const big::mag m  = v.magnitude();
             const int      bw = big::bit_width(m);
-            double         d;
+            sh                = 0;
             if (bw <= 64)
-                d = static_cast<double>(m.empty() ? umax{0} : m[0]);
-            else {
-                // top 64 bits plus a sticky bit for everything below
-                const int         sh  = bw - 64;
-                const std::size_t w   = static_cast<std::size_t>(sh / 64);
-                const int         b   = sh % 64;
-                umax              top = m[w] >> b;
-                if (b != 0 && w + 1 < m.size())
-                    top |= m[w + 1] << (64 - b);
-                bool sticky = b != 0 && (m[w] << (64 - b)) != 0;
-                for (std::size_t i = 0; i < w && !sticky; ++i)
-                    sticky = m[i] != 0;
-                d = ldexp(static_cast<double>(top | (sticky ? 1u : 0u)), sh);
-            }
-            return v.negative() ? -d : d;
+                return static_cast<double>(m.empty() ? umax{0} : m[0]);
+            sh                    = bw - 64;
+            const std::size_t w   = static_cast<std::size_t>(sh / 64);
+            const int         b   = sh % 64;
+            umax              top = m[w] >> b;
+            if (b != 0 && w + 1 < m.size())
+                top |= m[w + 1] << (64 - b);
+            bool sticky = b != 0 && (m[w] << (64 - b)) != 0;
+            for (std::size_t i = 0; i < w && !sticky; ++i)
+                sticky = m[i] != 0;
+            return static_cast<double>(top | (sticky ? 1u : 0u));
         };
-        return to_double(Num) / to_double(Den);
+        int          sn = 0, sd = 0;
+        const double n = split(Num, sn), d = split(Den, sd);
+        const double q = ldexp(n / d, sn - sd);
+        return Num.negative() ? -q : q;
     }
     constexpr explicit operator float() const { return static_cast<float>(static_cast<double>(*this)); }
 

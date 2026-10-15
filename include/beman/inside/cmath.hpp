@@ -70,7 +70,11 @@ constexpr grid_rational grid_to_int(const grid_rational& r) {
 #if BEMAN_INSIDE_BIG_GRIDS
     return grid_rational{q};
 #else
-    return rational{static_cast<imax>(q)};
+    // |q| may pass imax (a qword's 2^64 − 1): build the rational from the
+    // magnitude, which a 64-bit grid number's integer part always fits.
+    const grid_wide a = q.negative() ? -q : q;
+    const rational  m{static_cast<umax>(a)};
+    return q.negative() ? -m : m;
 #endif
 }
 
@@ -200,8 +204,8 @@ constexpr Out integer_into(In x) {
             }
         } else
             return from_value_index<Out>(div_rounded(j, q, M));
-    } else
-        return store_value<Out>(round_to_int(rational{x}, M));
+    } else // (as a rational: the integer may pass imax, a qword's)
+        return store_value<Out>(round_to_integral(rational{x}, M));
 }
 } // namespace detail
 
@@ -299,8 +303,10 @@ inline constexpr bool fmod_int_fast = [] {
     auto go = gcd(::beman::inside::detail::notch64<InX>, ::beman::inside::detail::notch64<InY>);
     if (!go.has_value())
         return false;
-    rational g  = *go;
-    auto     qo = g / ::beman::inside::detail::notch64<Out>;
+    rational g = *go;
+    // (try_ ops: a quotient past 64 bits makes the fast path inapplicable,
+    // not the build fail.)
+    auto qo = try_div(g, ::beman::inside::detail::notch64<Out>);
     if (!qo.has_value() || abs_den(qo->Denominator) != 1)
         return false;
     rational maxx = abs(::beman::inside::detail::lower64<InX>) > abs(::beman::inside::detail::upper64<InX>)
@@ -315,9 +321,9 @@ inline constexpr bool fmod_int_fast = [] {
         ::beman::inside::detail::upper64<Out> < (::beman::inside::detail::upper64<InX> > 0 ? bound : rational{0}))
         return false;
     constexpr umax lim = static_cast<umax>(std::numeric_limits<imax>::max() / 4);
-    auto           ux  = maxx / g;
-    auto           uy  = maxy / g;
-    auto           uo  = maxy / ::beman::inside::detail::notch64<Out>;
+    auto           ux  = try_div(maxx, g);
+    auto           uy  = try_div(maxy, g);
+    auto           uo  = try_div(maxy, ::beman::inside::detail::notch64<Out>);
     return ux.has_value() && uy.has_value() && uo.has_value() && ux->Numerator <= lim && uy->Numerator <= lim &&
            uo->Numerator <= lim;
 }();
@@ -327,8 +333,8 @@ inline constexpr bool fmod_int_fast = [] {
 // Result has the sign of x. Pre: y != 0 (fmod_into checks it).
 template <insidable Out, insidable InX, insidable InY>
 [[nodiscard]] constexpr Out fmod_nonzero(InX x, InY y) {
-    if constexpr (detail::any_wide_valued<Out, InX, InY>) {
-        // x − trunc(x/y)·y on exact values.
+    // x − trunc(x/y)·y on exact values.
+    auto exact = [&] {
         constexpr std::size_t E =
             2 * (detail::ax::input_limbs<InX> > detail::ax::input_limbs<InY> ? detail::ax::input_limbs<InX>
                                                                              : detail::ax::input_limbs<InY>)+1;
@@ -336,7 +342,10 @@ template <insidable Out, insidable InX, insidable InY>
         const F    a{detail::ax::exact_input(x)}, b{detail::ax::exact_input(y)};
         const auto q = (a.Num * b.Den) / (a.Den * b.Num); // truncated
         return detail::store_exact<Out>(a + F{-(q * b.Num), b.Den});
-    } else if constexpr (detail::fmod_int_fast<Out, InX, InY>) {
+    };
+    if constexpr (detail::any_wide_valued<Out, InX, InY>)
+        return exact();
+    else if constexpr (detail::fmod_int_fast<Out, InX, InY>) {
         // One integer remainder in g-units; bit-identical to the rational path.
         constexpr rational g =
             *beman::inside::detail::gcd(::beman::inside::detail::notch64<InX>, ::beman::inside::detail::notch64<InY>);
@@ -352,13 +361,15 @@ template <insidable Out, insidable InX, insidable InY>
         const imax r = a % b; // |r| < |b|, in Out's range
         return Out::from_raw(beman::inside::detail::raw_from_offset<Out>(r * wo - loo));
     } else {
-        rational xv = x;
-        rational yv = y;
-        rational q  = xv / yv;
-        imax     qt = trunc(q);
-        rational qy = qt * yv;
-        rational r  = xv - qy;
-        return detail::store_value<Out>(r);
+        // In 64-bit rationals while every step fits (the quotient within
+        // imax); else exactly — the remainder itself always fits Out.
+        const rational xv = x, yv = y;
+        if (const auto q = try_div(xv, yv);
+            q && *q < rational{std::numeric_limits<imax>::max()} && rational{std::numeric_limits<imax>::min()} < *q)
+            if (const auto qy = try_mul(rational{trunc(*q)}, yv))
+                if (const auto r = try_sub(xv, *qy)) [[likely]]
+                    return detail::store_value<Out>(*r);
+        return exact();
     }
 }
 

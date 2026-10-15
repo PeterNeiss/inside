@@ -82,6 +82,9 @@ struct rational {
     imax Denominator;
 
     constexpr rational() = default;
+    // Exact for every double of magnitude 2^-10 or more; one finer than
+    // 2^-62 keeps only its bits down to 2^-62 (truncated toward zero), as the
+    // denominator has 63 bits. |value| ≥ 2^64 and non-finite values raise.
     constexpr rational(std::floating_point auto);
     constexpr rational(std::signed_integral auto, imax = 1);
     constexpr rational(std::unsigned_integral auto num, imax den = 1) : Numerator{num}, Denominator{den} {
@@ -110,10 +113,10 @@ struct rational {
 
     // operator== by default for structural type
     [[nodiscard]] constexpr bool operator==(const rational&) const = default;
+    // Exact against a double too (rational{value} truncates one finer than
+    // 2^-62): defined after compare_double.
     template <arithmetic T>
-    [[nodiscard]] constexpr bool operator==(T value) const {
-        return operator==(rational{value});
-    }
+    [[nodiscard]] constexpr bool operator==(T value) const;
 
     [[nodiscard]] constexpr rational operator-() const;
 
@@ -545,17 +548,24 @@ constexpr parsed_number parse_number(const char* first, const char* last) {
         return parsed_number{rational{umax{0}}, parse_fail::none};
 
     // Apply binary exponent (hex floats, `p`).
+    // The factors of two cancel first (0x0.1p4 is 1, 0x10p-66 is 2^-62), so
+    // only a value past the 64-bit rationals fails; 2^63 itself fits.
     if (has_p_exp) {
-        if (exp >= 63)
+        umax&     other  = exp_neg ? num : den; // the side the shift cancels against
+        const int tz     = std::countr_zero(other);
+        const int cancel = tz < exp ? tz : exp;
+        other >>= cancel;
+        const int e = exp - cancel;
+        if (e >= 64)
             return fail(parse_fail::p_exponent_too_large);
         if (!exp_neg) {
-            if (num > (~umax{0}) >> exp)
+            if (num > (~umax{0}) >> e)
                 return fail(parse_fail::numerator_overflow);
-            num <<= exp;
+            num <<= e;
         } else {
-            if (den > (~umax{0}) >> exp)
+            if (den > (~umax{0}) >> e)
                 return fail(parse_fail::p_exponent_denominator_overflow);
-            den <<= exp;
+            den <<= e;
         }
     }
 
@@ -574,6 +584,11 @@ constexpr parsed_number parse_number(const char* first, const char* last) {
         }
     }
 
+    // In lowest terms before the signed-denominator check (0.5e-18 is
+    // 1/(2·10^18), though 10^19 itself is past imax).
+    const umax g = std::gcd(num, den);
+    num /= g;
+    den /= g;
     if (den > static_cast<umax>(std::numeric_limits<imax>::max()))
         return fail(parse_fail::denominator_overflow);
     return parsed_number{rational{num, den}, parse_fail::none};
@@ -998,14 +1013,56 @@ template <typename T>
     return lhs <=> rational{rhs.value()};
 }
 
+// lhs against a finite double finer than 2^-62 (which rational{rhs}
+// truncates): |lhs| = N/D against |rhs| = s·2^-k (k > 62) as N·2^k against
+// s·D, which stays within two 64-bit factors. Cold and out of line: the
+// stores compare doubles with their limits.
+[[nodiscard]] BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE constexpr std::strong_ordering
+compare_fine_double(const rational& lhs, double rhs) {
+    const int ls = sign(lhs), rs = rhs < 0 ? -1 : 1;
+    if (ls != rs)
+        return ls <=> rs;
+    const auto bits = std::bit_cast<std::uint64_t>(rhs) & 0x7FFF'FFFF'FFFF'FFFF;
+    const int  e    = static_cast<int>(bits >> 52);
+    const umax s    = (bits & 0x000F'FFFF'FFFF'FFFF) | (e != 0 ? umax{1} << 52 : 0);
+    const int  k    = e != 0 ? 1023 + 52 - e : 1023 + 52 - 1; // rhs = s·2^-k, k > 62
+    const umax n = lhs.Numerator, d = abs_den(lhs.Denominator);
+    // s·D < 2^117: past that width N·2^k is larger.
+    const auto mag = std::bit_width(n) + k > 117
+                         ? std::strong_ordering::greater
+                         : limb::mul_compare(n << (k - 63), umax{1} << 63, s, d); // N·2^(k−63) < 2^54
+    return ls < 0 ? (0 <=> mag) : mag;
+}
+
+// lhs against a double, exactly (non-finite raises, as rational{rhs}).
+[[nodiscard]] inline constexpr std::strong_ordering compare_double(const rational& lhs, double rhs) {
+    if (abs_fraction_exact(rhs) || not is_finite(rhs)) [[likely]]
+        return lhs <=> rational{rhs};
+    return compare_fine_double(lhs, rhs);
+}
+
+template <arithmetic T>
+[[nodiscard]] constexpr bool rational::operator==(T value) const {
+    if constexpr (std::floating_point<T> && sizeof(T) <= sizeof(double))
+        return compare_double(*this, static_cast<double>(value)) == 0;
+    else
+        return operator==(rational{value});
+}
+
 template <arithmetic T>
 [[nodiscard]] inline constexpr auto operator<=>(T lhs, const rational& rhs) {
-    return rational{lhs} <=> rhs;
+    if constexpr (std::floating_point<T> && sizeof(T) <= sizeof(double))
+        return 0 <=> compare_double(rhs, static_cast<double>(lhs));
+    else
+        return rational{lhs} <=> rhs;
 }
 
 template <arithmetic T>
 [[nodiscard]] inline constexpr auto operator<=>(const rational& lhs, T rhs) {
-    return lhs <=> rational{rhs};
+    if constexpr (std::floating_point<T> && sizeof(T) <= sizeof(double))
+        return compare_double(lhs, static_cast<double>(rhs));
+    else
+        return lhs <=> rational{rhs};
 }
 
 //---------------------------------------------------------------------------

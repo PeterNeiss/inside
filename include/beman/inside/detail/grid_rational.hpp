@@ -90,14 +90,18 @@ constexpr grid_wide wide_denominator(const rational& r) noexcept { return grid_w
 
 constexpr bool grid_divides_evenly(const rational& a, const rational& n) { return divides_evenly(a, n); }
 
-// (A difference past the rational range has no lattice offset to test:
-// compare both ends' residues instead.)
+// (A difference past the rational range is tested in grid_wide:
+// (a − b)/n = (a_n·b_d − b_n·a_d)·n_d / (a_d·b_d·n_n), whose products of
+// three 64-bit magnitudes fit.)
 constexpr bool grid_same_lattice(const rational& a, const rational& b, const rational& n) {
     if (n == 0)
         return true;
-    if (const auto d = try_sub(a, b))
+    if (const auto d = try_sub(a, b)) [[likely]]
         return divides_evenly(*d, n);
-    return divides_evenly(a, n) && divides_evenly(b, n);
+    const grid_wide num =
+        (wide_numerator(a) * wide_denominator(b) - wide_numerator(b) * wide_denominator(a)) * wide_denominator(n);
+    const grid_wide den = wide_denominator(a) * wide_denominator(b) * wide_numerator(n);
+    return num % den == grid_wide{0};
 }
 
 constexpr bool                          fits_rational(const rational&) { return true; }
@@ -179,9 +183,24 @@ template <char... Chars>
 consteval grid_rational parse_grid_literal() {
     constexpr char  text[] = {Chars...};
     const grid_wide ten{10};
-    grid_wide       num{0}, den{1};
-    std::size_t     i     = 0;
-    bool            point = false, digits = false;
+    // Times ten. 64-bit grid numbers compute in a 256-bit grid_wide, which
+    // holds every literal that can fit (a reduced denominator of 10^k is at
+    // least 2^k, so k ≤ 62 and m ≤ 2^64·5^62): a value past 2^246 cannot fit,
+    // so stop there rather than wrap.
+    const auto times_ten = [&](const grid_wide& v) {
+#if !BEMAN_INSIDE_BIG_GRIDS
+        if ((grid_wide{1} << 246) < v)
+            constexpr_error<"_g literal: past the 64-bit grid numbers (needs C++26 big grids)">();
+#endif
+        return v * ten;
+    };
+    // The value is m·10^e10. Zero digits are held back (`zeros`) and only
+    // multiplied in before a later nonzero digit, so trailing zeros
+    // (1.000…) never grow m.
+    grid_wide   m{0};
+    int         e10 = 0, zeros = 0;
+    std::size_t i     = 0;
+    bool        point = false, digits = false;
     for (; i < sizeof(text); ++i) {
         const char c = text[i];
         if (c == '\'')
@@ -192,13 +211,20 @@ consteval grid_rational parse_grid_literal() {
         }
         if (c < '0' || c > '9')
             break;
-        num = num * ten + grid_wide{c - '0'};
+        if (c == '0')
+            ++zeros;
+        else {
+            for (; zeros > 0; --zeros)
+                m = times_ten(m);
+            m = times_ten(m) + grid_wide{c - '0'};
+        }
         if (point)
-            den = den * ten;
+            --e10;
         digits = true;
     }
     if (!digits)
         constexpr_error<"_g literal: expected decimal digits">();
+    e10 += zeros;
     if (i < sizeof(text)) {
         if (text[i] != 'e' && text[i] != 'E')
             constexpr_error<"_g literal: decimal digits, a point and e±n only">();
@@ -218,9 +244,12 @@ consteval grid_rational parse_grid_literal() {
             if (e > 10000)
                 constexpr_error<"_g literal: exponent too large">();
         }
-        for (; e > 0; --e)
-            (neg ? den : num) = (neg ? den : num) * ten;
+        e10 += neg ? -e : e;
     }
+    grid_wide num = m, den{1};
+    if (!(m == grid_wide{0}))
+        for (; e10 != 0; e10 += e10 > 0 ? -1 : 1)
+            (e10 > 0 ? num : den) = times_ten(e10 > 0 ? num : den);
 #if BEMAN_INSIDE_BIG_GRIDS
     return big_rational{num, den};
 #else

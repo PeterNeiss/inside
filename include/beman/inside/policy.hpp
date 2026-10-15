@@ -202,7 +202,7 @@ struct policy_buffer {
     template <insidable Target>
         requires inside_assignable<Target, B, policy_of<Target> | policy_flags_of<P>>
     constexpr operator Target() {
-        Target r;
+        Target r{}; // a failed store (errc&, on_error) leaves it, not garbage
         dispatch_assign(r, Owned, Policy, Actions);
         return r;
     }
@@ -251,16 +251,18 @@ struct policy_ref {
     template <insidable Target>
         requires inside_assignable<Target, B, policy_of<Target> | policy_flags_of<P>>
     constexpr operator Target() {
-        Target r;
+        Target r{}; // a failed store (errc&, on_error) leaves it, not garbage
         dispatch_assign(r, Ref, Policy, Actions);
         return r;
     }
 
     // expected<C> sink — unwrap once at the proxy boundary so callers can chain
     // checked arithmetic into `.with_clamp() = ...` without per-step `.value()`.
+    // An error goes through this ref's policy (on_overflow / on_error, or the
+    // errc& sink), as an arithmetic result's does.
     template <numeric C>
     constexpr B& operator=(const std::expected<C, errc>& other) {
-        return dispatch_assign(Ref, other.value(), Policy, Actions);
+        return finalise_arith(other, "policy_ref::operator= of an expected without a value");
     }
 
   private:

@@ -350,7 +350,10 @@ template <insidable Target, std::ranges::input_range Rng>
             auto           end   = std::ranges::end(r);
             while (it != end) {
                 imax acc = 0, cnt = 0;
-                if constexpr (std::ranges::random_access_range<Rng>) {
+                // (A random-access range whose end is a sentinel, not a
+                // reachable iterator, has no distance to it: the loop below.)
+                if constexpr (std::ranges::random_access_range<Rng> &&
+                              std::sized_sentinel_for<std::ranges::sentinel_t<Rng>, std::ranges::iterator_t<Rng>>) {
                     const imax block = std::min<imax>(end - it, imax{1} << 30);
                     for (imax j = 0; j < block; ++j)
                         acc += detail::raw_imax(it[j]);

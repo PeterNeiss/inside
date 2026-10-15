@@ -35,15 +35,12 @@ struct interval {
     [[nodiscard]] constexpr interval operator-() const { return interval{-Upper, -Lower}; }
 
     // With 64-bit grid numbers a span past the rational range (an interval
-    // reaching past int64 on both sides) is tested endpoint by endpoint:
-    // equal residues mod notch.
+    // reaching past int64 on both sides) is tested in wide integers.
     [[nodiscard]] constexpr bool divides_evenly(const detail::grid_rational& notch) const {
 #if BEMAN_INSIDE_BIG_GRIDS
         return detail::grid_divides_evenly(Upper - Lower, notch);
 #else
-        if (const auto span = detail::try_sub(Upper, Lower))
-            return detail::divides_evenly(*span, notch);
-        return detail::divides_evenly(Lower, notch) && detail::divides_evenly(Upper, notch);
+        return detail::grid_same_lattice(Upper, Lower, notch);
 #endif
     }
 

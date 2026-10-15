@@ -96,7 +96,9 @@ inline constexpr double frexp(double value, int* exp) noexcept {
     return std::bit_cast<double>(bits);
 }
 
-constexpr double ldexp(double value, int exp) noexcept {
+// value·2^exp for |exp| ≤ 2^20 (the kernels' scalings): e + exp below
+// cannot overflow int. ldexp below takes any exp.
+constexpr double ldexp_small(double value, int exp) noexcept {
     if (value == 0.0 || exp == 0)
         return value;
 
@@ -145,6 +147,13 @@ constexpr double ldexp(double value, int exp) noexcept {
 
     bits = (bits & sign_mask) | mantissa;
     return std::bit_cast<double>(bits);
+}
+
+// value·2^exp for any exp: past ±2200 every finite double overflows or
+// underflows alike, so exp is clamped there (an exp near INT_MAX would
+// overflow ldexp_small's exponent sum).
+constexpr double ldexp(double value, int exp) noexcept {
+    return ldexp_small(value, exp > 2200 ? 2200 : exp < -2200 ? -2200 : exp);
 }
 
 // Freestanding finite check: `v - v` is 0 for every finite v, NaN otherwise

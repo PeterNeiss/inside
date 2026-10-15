@@ -29,8 +29,9 @@
 // every other input the escalation ends. A cap stops it in any case; past the
 // cap the result is the slot nearest Y.
 //
-// Everything here is constexpr and integer-only (wide_int), so a result is the
-// same at compile time, at runtime, with or without an FPU.
+// Everything here is constexpr and every value is computed in integers
+// (wide_int; doubles only size series lengths and error bounds, with
+// margins), so a result is the same at compile time and at runtime.
 //---------------------------------------------------------------------------
 namespace beman::inside::math::detail::ax {
 using namespace ::beman::inside::detail;
@@ -490,6 +491,9 @@ constexpr decision<Out, K> decide(const approx<K>& a) noexcept {
     const I lo = index(a.Value - e), hi = index(a.Value + e);
     // Both ends past the same end of Out's range also decide: the policy
     // (clamp, or an overflow report) sees the same thing for every value there.
+    // Not under wrap: it folds each value there to a different point.
+    if constexpr (has_flag(policy_of<Out>, wrap))
+        return {lo == hi, lo};
     constexpr I count = static_cast<I>(grid_of<Out>.slot_count());
     const bool  below = lo.negative() && hi.negative();
     const bool  above = count < lo && count < hi;
@@ -818,6 +822,7 @@ constexpr umax icbrt64(umax t) noexcept {
     return y;
 }
 
+#if defined(__SIZEOF_INT128__)
 // ⌊√t⌋ for two limbs: Newton from above on 128-bit words, seeded from the
 // top 62 bits; each quotient t/x ≤ √t fits one limb.
 constexpr umax isqrt128(unsigned __int128 t) noexcept {
@@ -834,6 +839,8 @@ constexpr umax isqrt128(unsigned __int128 t) noexcept {
     }
 }
 
+#endif
+
 // ⌊√n⌋ for n ≥ 0. Two limbs or fewer directly; wider, the root of the top
 // 126 bits (an even shift) seeds Newton from above with about 62 correct
 // bits, each step doubling them; once they cover the root, squares
@@ -846,6 +853,17 @@ constexpr wide_sint<K> isqrt(const wide_sint<K>& n) noexcept {
     const int bw = bit_width_of(n);
     if (bw <= 64)
         return I{isqrt64(static_cast<umax>(n))};
+#if !defined(__SIZEOF_INT128__)
+    // (No 128-bit integer: the root of the top 61 or 62 bits seeds Newton
+    // from above with about 30 correct bits.)
+    const int sh = (bw - 62 + 1) & ~1;
+    I         x  = (I{isqrt64(static_cast<umax>(n >> sh))} + I{1}) << (sh / 2); // ≥ √n
+    for (int bits = 30; bits < bw / 2 + 2; bits *= 2)
+        x = (x + n / x) >> 1;
+    while (n < x * x)
+        x -= I{1};
+    return x;
+#else
     if constexpr (K >= 2) {
         const int               sh  = bw > 126 ? (bw - 126 + 1) & ~1 : 0;
         const I                 top = n >> sh;
@@ -863,8 +881,10 @@ constexpr wide_sint<K> isqrt(const wide_sint<K>& n) noexcept {
         return x;
     } else
         return I{isqrt64(static_cast<umax>(n))};
+#endif
 }
 
+#if defined(__SIZEOF_INT128__)
 // ⌊∛t⌋ for two limbs: Newton from above on 128-bit words, seeded from the
 // top 63 bits.
 constexpr umax icbrt128(unsigned __int128 t) noexcept {
@@ -881,6 +901,8 @@ constexpr umax icbrt128(unsigned __int128 t) noexcept {
     }
 }
 
+#endif
+
 // ⌊∛n⌋ for n ≥ 0, as isqrt: two limbs or fewer directly; wider, the root
 // of the top 126 bits (a shift by a multiple of 3) seeds Newton from above
 // with about 41 correct bits, and cubes correct the last unit.
@@ -892,6 +914,17 @@ constexpr wide_sint<K> icbrt(const wide_sint<K>& n) noexcept {
     const int bw = bit_width_of(n);
     if (bw <= 64)
         return I{icbrt64(static_cast<umax>(n))};
+#if !defined(__SIZEOF_INT128__)
+    // (No 128-bit integer: the root of the top 61 to 63 bits seeds Newton
+    // from above with about 20 correct bits.)
+    const int sh = (bw - 63 + 2) / 3 * 3;
+    I         x  = (I{icbrt64(static_cast<umax>(n >> sh))} + I{1}) << (sh / 3); // ≥ ∛n
+    for (int bits = 20; bits < bw / 3 + 2; bits *= 2)
+        x = (I{2} * x + n / (x * x)) / I{3};
+    while (n < x * x * x)
+        x -= I{1};
+    return x;
+#else
     if constexpr (K >= 2) {
         const int               sh  = bw > 126 ? (bw - 126 + 2) / 3 * 3 : 0;
         const I                 top = n >> sh;
@@ -909,6 +942,7 @@ constexpr wide_sint<K> icbrt(const wide_sint<K>& n) noexcept {
         return x;
     } else
         return I{icbrt64(static_cast<umax>(n))};
+#endif
 }
 
 template <std::size_t K>

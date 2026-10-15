@@ -60,7 +60,8 @@ struct multiplication {
             } else
                 return result::from_raw(rational::mul_unchecked(as_rational(lhs), as_rational(rhs)));
         } else if constexpr (point_storage<result>)
-            return result::from_raw(raw_t<result>{}); // a product with 0: the point 0
+            return result::from_raw(
+                raw_t<result>{}); // a one-point result (point × point, or × 0): its value is the grid's
         else {
             // Integer raws (a notched result has no continuous operand): multiply the operands' values in their own
             // units (a notch or value unit, or |c| for a point c), in imax or by wrapping arithmetic (wide_value.hpp).
