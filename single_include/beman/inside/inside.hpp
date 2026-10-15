@@ -5758,7 +5758,8 @@ constexpr bool exact_rounds_into_range(const rational& v, rational& out) {
         using I      = std::remove_cvref_t<decltype(j)>;
         if (j.negative() || I{max_index_v<L>} < j)
             return false;
-        out = (detail::lower64<L> + (rational{static_cast<umax>(j)} * detail::notch64<L>).value()).value(); // L's point
+        out =
+            (detail::lower64<L> + (rational{static_cast<umax>(j)} * detail::notch64<L>).value()).value(); // L's point
         return true;
     }
 }
@@ -5941,6 +5942,16 @@ constexpr Result exact_result(const exact_frac<K>& v) noexcept {
 // ======================================================================
 
 
+
+// policy.hpp includes this header: the recording policy of the fine-double
+// store (an errc& one) is named here and completed there.
+namespace beman::inside {
+namespace detail {
+struct error_ref;
+}
+template <policy_flag W, typename E>
+struct policy;
+} // namespace beman::inside
 
 namespace beman::inside::detail {
 //---------------------------------------------------------------------------
@@ -6632,12 +6643,12 @@ struct assignment<L, R> {
     // a rational raw marks a failure by a denominator no value has (0), with
     // the errc as numerator; an integer raw carries the errc beside it.
     struct fine_result {
-        raw_t<L> Raw;
-        errc     Code;
+        raw_t<L>       Raw;
+        errc           Code;
         constexpr errc code() const { return Code; }
     };
     struct fine_rational_result {
-        rational Raw;
+        rational       Raw;
         constexpr errc code() const { return Raw.Denominator == 0 ? static_cast<errc>(Raw.Numerator) : errc{}; }
     };
     using fine_result_t = std::conditional_t<rational_storage<L>, fine_rational_result, fine_result>;
@@ -6648,10 +6659,13 @@ struct assignment<L, R> {
     // the lower limit, and a failure is returned, not stored: a failed store
     // leaves lhs intact. The policy hears of it here; an on_error action,
     // which gets lhs, from store_fine_double.
+    // P's flags, recording its first failure into an errc instead.
+    template <typename P>
+    using recording_policy = ::beman::inside::policy<P::Flags, error_ref>;
+
     template <typename P, typename A>
-    BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE static constexpr fine_result_t fine_double_value(double rhs,
-                                                                                             P      policy,
-                                                                                             A      action) {
+    BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE static constexpr fine_result_t
+    fine_double_value(double rhs, P policy, A action) {
         L r = [] {
             if constexpr (rational_storage<L>)
                 return L::from_raw(detail::lower64<L>);
@@ -6664,12 +6678,11 @@ struct assignment<L, R> {
         // A recording on_error stands in for one (dispatch_out_of_range ranks
         // it above clamp): the order holds.
         if constexpr (error_action<plain_t<A>>)
-            assign_exact<R>(r,
-                            exact_of_double(rhs),
-                            make_policy<P::Flags>(code),
-                            on_error([&code](L&, errc c, auto&&) { code = c; }));
+            assign_exact<R>(r, exact_of_double(rhs), recording_policy<P>{code}, on_error([&code](L&, errc c, auto&&) {
+                                code = c;
+                            }));
         else {
-            assign_exact<R>(r, exact_of_double(rhs), make_policy<P::Flags>(code), std::forward<A>(action));
+            assign_exact<R>(r, exact_of_double(rhs), recording_policy<P>{code}, std::forward<A>(action));
             if (code != errc{})
                 policy.report(code);
         }
@@ -6686,8 +6699,7 @@ struct assignment<L, R> {
     // Whether a failure returns (errc&, on_error): else it raised, and lhs
     // takes the result unconditionally — no branch on the hot path's tail.
     template <typename P, typename A>
-    static constexpr bool fine_failure_returns =
-        std::is_same_v<P, decltype(make_policy<P::Flags>(std::declval<errc&>()))> || error_action<A>;
+    static constexpr bool fine_failure_returns = std::is_same_v<P, recording_policy<P>> || error_action<A>;
     template <typename P, typename A>
     static constexpr void store_fine_double(L& lhs, double rhs, P&& policy, A&& action) {
         using Act    = std::conditional_t<std::is_empty_v<plain_t<A>>, plain_t<A>, A&&>;
@@ -17177,10 +17189,12 @@ struct std::numeric_limits<beman::inside::inside<G, P>> {
     static constexpr B at(const beman::inside::detail::grid_rational& v) noexcept {
         namespace d = ::beman::inside::detail;
         if constexpr (d::wide_valued<B>) {
-            B                    b{};
+            B                   b{};
             beman::inside::errc ec{};
-            d::assign_exact<d::rational>(
-                b, d::exact_of_grid<d::exact_limbs<B>>(v), beman::inside::make_policy<P>(ec), beman::inside::no_action{});
+            d::assign_exact<d::rational>(b,
+                                         d::exact_of_grid<d::exact_limbs<B>>(v),
+                                         beman::inside::make_policy<P>(ec),
+                                         beman::inside::no_action{});
             return b;
         } else
             return B{d::to_rational(v)};
@@ -17202,8 +17216,8 @@ struct std::numeric_limits<beman::inside::inside<G, P>> {
             // Lower + ⌈−Lower/Notch⌉·Notch
 #if BEMAN_INSIDE_BIG_GRIDS
             constexpr d::grid_rational t = d::grid_div_of(d::grid_sub(d::grid_rational{0}, G.Interval.Lower), G.Notch);
-            constexpr d::grid_wide     k = (d::wide_numerator(t) + d::wide_denominator(t) - d::grid_wide{1}) /
-                                       d::wide_denominator(t);
+            constexpr d::grid_wide     k =
+                (d::wide_numerator(t) + d::wide_denominator(t) - d::grid_wide{1}) / d::wide_denominator(t);
             return at(d::grid_add(G.Interval.Lower, d::grid_mul(d::grid_rational{k}, G.Notch)));
 #else
             // In grid integers, Lower = a/b and Notch = e/f: −Lower/Notch and

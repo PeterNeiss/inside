@@ -154,10 +154,10 @@ constexpr bool proxy_add_ok = requires(T a, U b, errc& e) { a.policy(e) += b; };
 template <class T, class U = T>
 constexpr bool plain_add_ok = requires(T a, U b) { a += b; };
 TEST(BugHuntRound4, policy_proxy_compound_is_constrained) {
-    using i64       = inside<{INT64_MIN, INT64_MAX}>;
     using sixteenth = inside<{{0, 8}, per<16>}>;
     using whole     = inside<{-100, 100}>;
 #if !BEMAN_INSIDE_BIG_GRIDS // (big grids give the int64 sum a grid)
+    using i64 = inside<{INT64_MIN, INT64_MAX}>;
     static_assert(!proxy_add_ok<i64> && plain_add_ok<i64>);
 #endif
     static_assert(!proxy_add_ok<whole, sixteenth> && !plain_add_ok<whole, sixteenth>);
@@ -191,7 +191,7 @@ TEST(BugHuntRound4, numeric_limits_epsilon_on_a_fine_notch) {
 template <class A, class B>
 constexpr bool sum_ok = requires(A a, B b) { a + b; };
 template <class A, class B>
-constexpr bool product_ok = requires(A a, B b) { a* b; };
+constexpr bool product_ok = requires(A a, B b) { a * b; };
 TEST(BugHuntRound4, result_grid_whose_value_unit_passes_64_bits) {
     constexpr grid fine61{interval{0, 1}, rational{1, 1ll << 61}};
     constexpr grid fifth{interval{rational{1, 5}, rational{1, 5}}, rational{0}};

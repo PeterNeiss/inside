@@ -17,8 +17,8 @@
 using namespace beman::inside;
 
 namespace {
-using three   = inside<{3}>;                 // a point grid
-using halves  = inside<{{0.5, 10.5}, 1}>;    // Lower off the notch's multiples
+using three   = inside<{3}>;              // a point grid
+using halves  = inside<{{0.5, 10.5}, 1}>; // Lower off the notch's multiples
 using digit   = inside<{0, 9}>;
 using small   = inside<{-7, 5}>;
 using fourths = inside<{{-2, 3}, per<4>}>;

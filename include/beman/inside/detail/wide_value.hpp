@@ -510,7 +510,8 @@ constexpr bool exact_rounds_into_range(const rational& v, rational& out) {
         using I      = std::remove_cvref_t<decltype(j)>;
         if (j.negative() || I{max_index_v<L>} < j)
             return false;
-        out = (detail::lower64<L> + (rational{static_cast<umax>(j)} * detail::notch64<L>).value()).value(); // L's point
+        out =
+            (detail::lower64<L> + (rational{static_cast<umax>(j)} * detail::notch64<L>).value()).value(); // L's point
         return true;
     }
 }

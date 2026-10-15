@@ -4,8 +4,11 @@
 # Compile-fail diagnostics suite — each *.cpp here is deliberately ill-formed
 # and must FAIL to compile with the message named on its first line
 # (`// EXPECT: <substring>`; keep it free of regex metacharacters; an optional
-# second line `// REQUIRES: 64-bit-grids` limits it to builds without C++26 big
-# grids, and `// FLAGS: <options>` compiles it with extra options). The test
+# second line `// REQUIRES: <tags>` names what the case needs — `64-bit-grids`
+# limits it to builds without C++26 big grids, `delete-reason` to compilers
+# whose `= delete("…")` prints its reason (elsewhere the case must still be
+# ill-formed, without the hint) — and `// FLAGS: <options>` compiles it with
+# extra options). The test
 # invokes the build for the object target; PASS_REGULAR_EXPRESSION passes the
 # test only when the build output contains the expected diagnostic — a TU that
 # wrongly compiles produces no diagnostic and fails the test. RUN_SERIAL keeps
@@ -13,6 +16,18 @@
 # control_compiles.test.cpp is the harness control: valid code that must build.
 #---------------------------------------------------------------------------
 file(GLOB BEMAN_INSIDE_FAIL_SOURCES CONFIGURE_DEPENDS *.test.cpp)
+
+# The condition arithmetic.hpp's BEMAN_INSIDE_DELETE uses for `= delete("…")`
+# (C++26; an extension in C++23 from GCC 15 and Clang 19).
+include(CheckCXXSourceCompiles)
+check_cxx_source_compiles(
+    "#if !(defined(__cpp_deleted_function) || (defined(__clang__) && __clang_major__ >= 19) || (defined(__GNUC__) && !defined(__clang__) && __GNUC__ >= 15))
+#error no deleted-function reason
+#endif
+int main() {}
+"
+    BEMAN_INSIDE_HAS_DELETE_REASON
+)
 
 foreach(src ${BEMAN_INSIDE_FAIL_SOURCES})
     get_filename_component(case_name ${src} NAME_WE)
@@ -24,15 +39,23 @@ foreach(src ${BEMAN_INSIDE_FAIL_SOURCES})
     list(GET head_lines 0 first_line)
     # `// REQUIRES: 64-bit-grids` on the second line: the case is only
     # ill-formed with 64-bit grid numbers, so skip it in a C++26 reflection
-    # build (big grids compile it).
+    # build (big grids compile it). `delete-reason`: its message is a deleted
+    # overload's reason, which older compilers do not print.
     list(LENGTH head_lines head_count)
+    set(second_line "")
     if(head_count GREATER 1)
         list(GET head_lines 1 second_line)
-        if(
-            second_line MATCHES "^// REQUIRES: 64-bit-grids"
-            AND BEMAN_INSIDE_HAS_FREFLECTION
-        )
+    endif()
+    set(needs_message TRUE)
+    if(second_line MATCHES "^// REQUIRES: ")
+        if(second_line MATCHES "64-bit-grids" AND BEMAN_INSIDE_HAS_FREFLECTION)
             continue()
+        endif()
+        if(
+            second_line MATCHES "delete-reason"
+            AND NOT BEMAN_INSIDE_HAS_DELETE_REASON
+        )
+            set(needs_message FALSE)
         endif()
     endif()
     string(REGEX REPLACE "^// EXPECT: *" "" expected_message "${first_line}")
@@ -46,7 +69,7 @@ foreach(src ${BEMAN_INSIDE_FAIL_SOURCES})
     set(fail_target beman.inside.tests.fail.${case_name})
     add_library(${fail_target} OBJECT EXCLUDE_FROM_ALL ${src})
     target_link_libraries(${fail_target} PRIVATE beman::inside)
-    if(head_count GREATER 1 AND second_line MATCHES "^// FLAGS: ")
+    if(second_line MATCHES "^// FLAGS: ")
         string(REGEX REPLACE "^// FLAGS: *" "" extra_flags "${second_line}")
         separate_arguments(extra_flags)
         target_compile_options(${fail_target} PRIVATE ${extra_flags})
@@ -58,9 +81,10 @@ foreach(src ${BEMAN_INSIDE_FAIL_SOURCES})
             ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR} --target ${fail_target}
             --config $<CONFIG>
     )
-    if(BEMAN_INSIDE_STRICT_SFINAE)
+    if(BEMAN_INSIDE_STRICT_SFINAE OR NOT needs_message)
         # Strict mode drops the diagnostic overloads that carry the named
-        # messages; the case must still be ill-formed, just without the hint.
+        # messages (and an older compiler drops a deleted overload's reason);
+        # the case must still be ill-formed, just without the hint.
         set_tests_properties(
             ${fail_target}
             PROPERTIES WILL_FAIL TRUE RUN_SERIAL TRUE LABELS "compile-fail"

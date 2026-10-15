@@ -59,10 +59,12 @@ struct std::numeric_limits<beman::inside::inside<G, P>> {
     static constexpr B at(const beman::inside::detail::grid_rational& v) noexcept {
         namespace d = ::beman::inside::detail;
         if constexpr (d::wide_valued<B>) {
-            B                    b{};
+            B                   b{};
             beman::inside::errc ec{};
-            d::assign_exact<d::rational>(
-                b, d::exact_of_grid<d::exact_limbs<B>>(v), beman::inside::make_policy<P>(ec), beman::inside::no_action{});
+            d::assign_exact<d::rational>(b,
+                                         d::exact_of_grid<d::exact_limbs<B>>(v),
+                                         beman::inside::make_policy<P>(ec),
+                                         beman::inside::no_action{});
             return b;
         } else
             return B{d::to_rational(v)};
@@ -84,8 +86,8 @@ struct std::numeric_limits<beman::inside::inside<G, P>> {
             // Lower + ⌈−Lower/Notch⌉·Notch
 #if BEMAN_INSIDE_BIG_GRIDS
             constexpr d::grid_rational t = d::grid_div_of(d::grid_sub(d::grid_rational{0}, G.Interval.Lower), G.Notch);
-            constexpr d::grid_wide     k = (d::wide_numerator(t) + d::wide_denominator(t) - d::grid_wide{1}) /
-                                       d::wide_denominator(t);
+            constexpr d::grid_wide     k =
+                (d::wide_numerator(t) + d::wide_denominator(t) - d::grid_wide{1}) / d::wide_denominator(t);
             return at(d::grid_add(G.Interval.Lower, d::grid_mul(d::grid_rational{k}, G.Notch)));
 #else
             // In grid integers, Lower = a/b and Notch = e/f: −Lower/Notch and
