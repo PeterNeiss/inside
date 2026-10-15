@@ -36,7 +36,7 @@ int main() {
         return 1;
 
     // 3. Soft clip and the hyperbolic identity.
-    using drive_t = inside<{{-4, 4}, per<1024>}, round_nearest>;
+    using drive_t = inside<{{-4, 4}, per<2048>}, round_nearest>;
     std::cout << "\nx     tanh(x)   hard clip\n";
     for (const drive_t x : {drive_t{-3}, drive_t{-0.5}, drive_t{0}, drive_t{1}, drive_t{3}})
         std::cout << x << "\t" << math::tanh(x) << "\t" << inside<{{-1, 1}, per<1024>}, clamp | round_nearest>{x}

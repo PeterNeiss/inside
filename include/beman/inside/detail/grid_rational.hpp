@@ -142,6 +142,32 @@ constexpr grid_rational grid_gcd_of(const grid_rational& a, const grid_rational&
     return grid_gcd(a, b).value();
 #endif
 }
+// gcd of two grid integers, non-negative (0 when both are).
+constexpr grid_wide grid_wide_gcd(grid_wide a, grid_wide b) {
+#if BEMAN_INSIDE_BIG_GRIDS
+    return gcd(a, b);
+#else
+    if (a < grid_wide{0})
+        a = -a;
+    if (b < grid_wide{0})
+        b = -b;
+    while (!(b == grid_wide{0})) {
+        const grid_wide t = a % b;
+        a                 = b;
+        b                 = t;
+    }
+    return a;
+#endif
+}
+// Whether gcd(a, b) is a grid number: always with big grid numbers; with
+// 64-bit ones a 2/3 against a 2^-62 has none (1/(3·2^62)).
+constexpr bool grid_gcd_fits([[maybe_unused]] const grid_rational& a, [[maybe_unused]] const grid_rational& b) {
+#if BEMAN_INSIDE_BIG_GRIDS
+    return true;
+#else
+    return grid_gcd(a, b).has_value();
+#endif
+}
 
 //---------------------------------------------------------------------------
 // parse_grid_literal — the _g literal: decimal digits (with ' separators),

@@ -13,9 +13,9 @@
 using namespace beman::inside;
 
 struct clock24 {
-    using hour_t   = inside<{0, 23}, wrap>;
-    using minute_t = inside<{0, 59}, wrap>;
-    using second_t = inside<{0, 59}, wrap>;
+    using hour_t   = inside<{0, 24, bounds::half_open}, wrap>;
+    using minute_t = inside<{0, 60, bounds::half_open}, wrap>;
+    using second_t = inside<{0, 60, bounds::half_open}, wrap>;
 
     hour_t   hours{0};
     minute_t minutes{0};

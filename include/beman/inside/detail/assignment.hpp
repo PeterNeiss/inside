@@ -8,6 +8,16 @@
 
 #include <bit>
 
+// policy.hpp includes this header: the recording policy of the fine-double
+// store (an errc& one) is named here and completed there.
+namespace beman::inside {
+namespace detail {
+struct error_ref;
+}
+template <policy_flag W, typename E>
+struct policy;
+} // namespace beman::inside
+
 namespace beman::inside::detail {
 //---------------------------------------------------------------------------
 // assignment — narrowing/coercion between bounded and arithmetic types. Three
@@ -183,7 +193,7 @@ constexpr std::optional<exact_frac<exact_max<K, exact_limbs<L>>>> onto_bound(con
     using W                  = wide_sint<KK>;
     const W D                = static_cast<W>(wide_numerator(grid_of<L>.MaxDenominator));
     const F lo = exact_of_grid<KK>(lower_of<L>), hi = exact_of_grid<KK>(upper_of<L>);
-    F       r = round_to_denominator<rounding_for<L, P>>(F{v}, D);
+    F       r = round_to_bound<L, P>(F{v});
     if (r < lo)
         r = round_to_denominator<round_mode::ceil>(lo, D);
     else if (hi < r)
@@ -239,8 +249,7 @@ constexpr L& assign_exact(L& lhs, const exact_frac<K>& v, P&& policy, A&& action
         // Round first, as the builtin stores do: a value just past a limit
         // may round onto it.
         if constexpr (grid_of<L>.MaxDenominator != 0 && has_policy<L, P, snap>)
-            x = round_to_denominator<rounding_for<L, plain_t<P>>>(
-                x, static_cast<wide_sint<KK>>(wide_numerator(grid_of<L>.MaxDenominator)));
+            x = round_to_bound<L, plain_t<P>>(x);
         if (x < lo || hi < x) [[unlikely]] {
             dispatch_out_of_range<true>(
                 lhs,
@@ -268,8 +277,7 @@ constexpr L& assign_exact(L& lhs, const exact_frac<K>& v, P&& policy, A&& action
             constexpr std::size_t KK = exact_max<K, exact_limbs<L>>;
             const exact_frac<KK>  x{v};
             if constexpr (grid_of<L>.MaxDenominator != 0 && has_policy<L, P, snap>)
-                r = try_rational(round_to_denominator<rounding_for<L, plain_t<P>>>(
-                    x, static_cast<wide_sint<KK>>(wide_numerator(grid_of<L>.MaxDenominator))));
+                r = try_rational(round_to_bound<L, plain_t<P>>(x));
             if (!r) {
                 const bool low = x < exact_of_grid<KK>(lower_of<L>);
                 if (!low && !(exact_of_grid<KK>(upper_of<L>) < x)) {
@@ -695,18 +703,78 @@ struct assignment<L, R> {
         else
             return rational{rhs};
     }
+    // fine_double_value's result, sized to return in registers (a larger
+    // one goes through memory, and the stack protector into the hot path):
+    // a rational raw marks a failure by a denominator no value has (0), with
+    // the errc as numerator; an integer raw carries the errc beside it.
+    struct fine_result {
+        raw_t<L>       Raw;
+        errc           Code;
+        constexpr errc code() const { return Code; }
+    };
+    struct fine_rational_result {
+        rational       Raw;
+        constexpr errc code() const { return Raw.Denominator == 0 ? static_cast<errc>(Raw.Numerator) : errc{}; }
+    };
+    using fine_result_t = std::conditional_t<rational_storage<L>, fine_rational_result, fine_result>;
+
     // Out of line, and by value (an empty action too): a reference to a
-    // caller's local would make it escape the hot path's frame. It starts
-    // from lhs's value: a failed store (errc&, on_error) leaves it intact.
+    // caller's local would make it escape the hot path's frame. lhs may be
+    // uninitialized (a trivial default ctor), so the store runs on a copy of
+    // the lower limit, and a failure is returned, not stored: a failed store
+    // leaves lhs intact. The policy hears of it here; an on_error action,
+    // which gets lhs, from store_fine_double.
+    // P's flags, recording its first failure into an errc instead.
+    template <typename P>
+    using recording_policy = ::beman::inside::policy<P::Flags, error_ref>;
+
     template <typename P, typename A>
-    BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE static constexpr L fine_double_value(L lhs, double rhs, P policy, A action) {
-        assign_exact<R>(lhs, exact_of_double(rhs), policy, std::forward<A>(action));
-        return lhs;
+    BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE static constexpr fine_result_t
+    fine_double_value(double rhs, P policy, A action) {
+        L r = [] {
+            if constexpr (rational_storage<L>)
+                return L::from_raw(detail::lower64<L>);
+            else if constexpr (point_storage<L>)
+                return L::from_raw(raw_t<L>{});
+            else
+                return L::from_raw(static_cast<raw_t<L>>(raw_lo_exact<L>));
+        }();
+        errc code{};
+        // A recording on_error stands in for one (dispatch_out_of_range ranks
+        // it above clamp): the order holds.
+        if constexpr (error_action<plain_t<A>>)
+            assign_exact<R>(r, exact_of_double(rhs), recording_policy<P>{code}, on_error([&code](L&, errc c, auto&&) {
+                                code = c;
+                            }));
+        else {
+            assign_exact<R>(r, exact_of_double(rhs), recording_policy<P>{code}, std::forward<A>(action));
+            if (code != errc{})
+                policy.report(code);
+        }
+        if constexpr (rational_storage<L>) {
+            if (code == errc{})
+                return {r.raw()};
+            rational failed{};
+            failed.Numerator   = static_cast<umax>(code);
+            failed.Denominator = 0;
+            return {failed};
+        } else
+            return {r.raw(), code};
     }
+    // Whether a failure returns (errc&, on_error): else it raised, and lhs
+    // takes the result unconditionally — no branch on the hot path's tail.
+    template <typename P, typename A>
+    static constexpr bool fine_failure_returns = std::is_same_v<P, recording_policy<P>> || error_action<A>;
     template <typename P, typename A>
     static constexpr void store_fine_double(L& lhs, double rhs, P&& policy, A&& action) {
-        using Act = std::conditional_t<std::is_empty_v<plain_t<A>>, plain_t<A>, A&&>;
-        lhs       = fine_double_value<plain_t<P>, Act>(lhs, rhs, policy, std::forward<A>(action));
+        using Act    = std::conditional_t<std::is_empty_v<plain_t<A>>, plain_t<A>, A&&>;
+        const auto r = fine_double_value<plain_t<P>, Act>(rhs, policy, std::forward<A>(action));
+        if constexpr (!fine_failure_returns<plain_t<P>, plain_t<A>>)
+            lhs = L::from_raw(r.Raw);
+        else if (r.code() == errc{}) [[likely]]
+            lhs = L::from_raw(r.Raw);
+        else if constexpr (error_action<plain_t<A>>)
+            action.Fn(lhs, r.code(), errc_message(r.code()));
     }
 
     template <typename P, typename A = no_action>

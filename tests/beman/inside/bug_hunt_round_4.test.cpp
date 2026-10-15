@@ -154,10 +154,10 @@ constexpr bool proxy_add_ok = requires(T a, U b, errc& e) { a.policy(e) += b; };
 template <class T, class U = T>
 constexpr bool plain_add_ok = requires(T a, U b) { a += b; };
 TEST(BugHuntRound4, policy_proxy_compound_is_constrained) {
-    using i64       = inside<{INT64_MIN, INT64_MAX}>;
     using sixteenth = inside<{{0, 8}, per<16>}>;
     using whole     = inside<{-100, 100}>;
 #if !BEMAN_INSIDE_BIG_GRIDS // (big grids give the int64 sum a grid)
+    using i64 = inside<{INT64_MIN, INT64_MAX}>;
     static_assert(!proxy_add_ok<i64> && plain_add_ok<i64>);
 #endif
     static_assert(!proxy_add_ok<whole, sixteenth> && !plain_add_ok<whole, sixteenth>);
@@ -174,4 +174,84 @@ TEST(BugHuntRound4, on_error_sees_rounding_from_a_continuous_source) {
     w.on_error([&](auto&, errc c, const char*) { cb = c; }) /= I{2}; // 7/2
     EXPECT_EQ(cb, errc::rounding_error);
     EXPECT_EQ(w, 7);
+}
+
+#if !BEMAN_INSIDE_BIG_GRIDS
+// epsilon formed −Lower/Notch and k·Notch as 64-bit rationals: on a fine
+// notch they overflowed (a hard error) although the point itself fits.
+TEST(BugHuntRound4, numeric_limits_epsilon_on_a_fine_notch) {
+    using E = inside<{{rational{-4000, 3}, rational{4103, 3}}, rational{1, 1ll << 55}}>;
+    static_assert(std::numeric_limits<E>::epsilon() == rational(1, 3ll << 55));
+    EXPECT_EQ(std::numeric_limits<E>::epsilon(), rational(1, 3ll << 55));
+}
+
+// A sum, product or quotient grid whose value unit passes 64 bits: the grid
+// ops returned it, so the operators' fits-tests passed and the result type
+// failed validate() — a hard error where a requires probe expected false.
+template <class A, class B>
+constexpr bool sum_ok = requires(A a, B b) { a + b; };
+template <class A, class B>
+constexpr bool product_ok = requires(A a, B b) { a * b; };
+TEST(BugHuntRound4, result_grid_whose_value_unit_passes_64_bits) {
+    constexpr grid fine61{interval{0, 1}, rational{1, 1ll << 61}};
+    constexpr grid fifth{interval{rational{1, 5}, rational{1, 5}}, rational{0}};
+    static_assert((fine61 + fifth).error() == errc::overflow);
+    static_assert((fine61 * fifth).error() == errc::overflow);
+    static_assert(!detail::grid_sum_fits(fine61, fifth) && !detail::grid_product_fits(fine61, fifth));
+    // / 4: notch 2^-62 and Lower 1/12 fit, the unit 1/(3·2^62) does not.
+    constexpr grid thirds60{interval{rational{1, 3}, rational{4, 3}}, rational{1, 1ll << 60}};
+    constexpr grid four{interval{4, 4}, rational{0}};
+    static_assert((thirds60 / four).error() == errc::overflow && !detail::grid_quotient_fits(thirds60, four));
+    static_assert((thirds60 / grid{interval{2, 2}, rational{0}}).has_value());
+    using X = inside<fine61>;
+    using C = std::remove_cvref_t<decltype(just<rational{1, 5}>)>;
+    static_assert(!sum_ok<X, C> && !product_ok<X, C>);
+    static_assert(sum_ok<X, X> && sum_ok<X, std::remove_cvref_t<decltype(just<rational{1, 4}>)>>);
+}
+#endif
+
+// A double finer than 2^-62 stored into a default-constructed inside copied
+// its uninitialized raw (not a constant expression; indeterminate at run time).
+TEST(BugHuntRound4, fine_double_into_an_uninitialized_inside) {
+    using M          = inside<sevenths, round_nearest>;
+    constexpr auto f = [] {
+        M x;
+        x = 0x1p-70;
+        return x;
+    };
+    static_assert(f() == 0);
+    M x;
+    x = 0x1p-70;
+    EXPECT_EQ(x, 0);
+    // A failure still reaches on_error with the destination's value; a clamp
+    // policy saturates instead (no failure).
+    using U = inside<{{0, 1}, rational{0}}>;
+    U    u{rational{1, 2}};
+    errc cb{};
+    u.on_error([&](auto& v, errc c, const char*) {
+        cb = c;
+        EXPECT_EQ(v, rational(1, 2));
+    }) = 1e-30;
+    EXPECT_EQ(cb, errc::overflow);
+    EXPECT_EQ(u, rational(1, 2));
+    using C = inside<{{1, 2}, rational{0}}, clamp>;
+    C w{rational{3, 2}};
+    cb                                                      = {};
+    w.on_error([&](auto&, errc c, const char*) { cb = c; }) = 1e-30;
+    EXPECT_EQ(cb, errc{});
+    EXPECT_EQ(w, 1);
+}
+
+// A bound of 2^63 or more: the range prefilter's step 1/MaxDenominator
+// narrowed to imax and did not compile.
+TEST(BugHuntRound4, bound_past_imax) {
+    using B = inside<{{0, 1}, max_denominator{rational{umax{1} << 63}}}, snap>;
+    B x{};
+    x = 0.3;
+    EXPECT_EQ(x, rational(0.3));
+    x = 0x1p-70;
+    EXPECT_EQ(x, 0);
+    errc ec{};
+    x.policy(ec) = 1.0 + 0x1p-52;
+    EXPECT_EQ(ec, errc::overflow);
 }

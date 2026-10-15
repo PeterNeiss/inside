@@ -21,7 +21,7 @@ using namespace beman::inside;
 // 1 · 2 · … · N, each factor on its own grid [1, k].
 template <std::size_t... I>
 constexpr auto factorial(std::index_sequence<I...>) {
-    return (inside<{1, 1}>{1} * ... * inside<{1, static_cast<int>(I) + 1}>{static_cast<int>(I) + 1});
+    return (just<1> * ... * just<I + 1>);
 }
 
 using count = inside<{0, 118'264'581'564'861'424}>; // C(60, 30)
@@ -34,8 +34,7 @@ using step  = inside<{1, 60}>; // a divisor that cannot be zero: no expected
 constexpr count binomial(small n, small k) {
     count c{1};
     for (cursor<step> j; j <= k; ++j) {
-        const step i      = *j;
-        const auto [q, r] = divmod(c * (n - i + 1_ins), i, snapped);
+        const auto [q, r] = divmod(c * (n - j + 1_ins), j, snapped);
         if (r != 0_ins)
             throw "not a whole number";
         c = q; // a checked store: past C(60, 30) it would report overflow
