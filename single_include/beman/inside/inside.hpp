@@ -19349,7 +19349,10 @@ constexpr auto rescale(const V& v) {
         // The product's grid with v's policy: a conversion keeps clamp, wrap
         // and the rounding mode.
         const auto x = v * just<M.Ratio>;
-        return inside<grid_of<decltype(x)>, flags_of<V>>::from_raw(x.raw());
+        if constexpr (flags_of<decltype(x)> == flags_of<V>)
+            return x;
+        else
+            return inside<grid_of<decltype(x)>, flags_of<V>>::from_raw(x.raw());
     }
 }
 

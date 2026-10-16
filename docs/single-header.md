@@ -15,7 +15,9 @@ It is behaviourally identical to the multi-header form; `BEMAN_INSIDE_MATH_NO_FP
 and `BEMAN_INSIDE_MATH_TABLE_SLOTS` apply the same way, as ordinary compiler flags. The string/printing layer
 is wrapped in a guard — define `BEMAN_INSIDE_NO_STRING` to drop it and its
 `<string>`/`<ostream>`/`<format>` includes wholesale (see
-[freestanding.md](freestanding.md)).
+[freestanding.md](freestanding.md)). The physical units
+([units.md](units.md)) sit inside the same guard; define
+`BEMAN_INSIDE_NO_UNITS` to drop just them and their compile time.
 
 ## On Compiler Explorer
 

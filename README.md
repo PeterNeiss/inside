@@ -85,7 +85,8 @@ through a program. Read it first; everything else builds on it.
 [arithmetic & rounding](docs/arithmetic.md) ·
 [conversions, casts & text](docs/conversions.md) ([printing](docs/conversions.md#writing-text-to_string-operator-and-stdformat)) ·
 [storage & STL integration](docs/storage.md) ·
-[`beman::inside::math` — bit-exact math](docs/math.md)
+[`beman::inside::math` — bit-exact math](docs/math.md) ·
+[physical units](docs/units.md)
 
 **Special topics** — [for fixed-point users](docs/fixed-point.md) ·
 [determinism & reproducibility](docs/determinism.md) ·
@@ -100,10 +101,11 @@ reports)
 
 ### Examples
 
-[`examples/`](examples/) holds 32 self-contained programs — start with
+[`examples/`](examples/) holds 33 self-contained programs — start with
 [`basics.cpp`](examples/basics.cpp) (clamp, wrap, bounded loops); then e.g.
 [`clock.cpp`](examples/clock.cpp) (wrap with carry, `std::chrono`),
 [`money.cpp`](examples/money.cpp) (cents-exact currency),
+[`units.cpp`](examples/units.cpp) (exact unit conversions, kinds, temperatures),
 [`expected_pipeline.cpp`](examples/expected_pipeline.cpp) (errors with their cause),
 [`json_io.cpp`](examples/json_io.cpp) (exact JSON numbers),
 [`wei.cpp`](examples/wei.cpp) (10^27-point grids),

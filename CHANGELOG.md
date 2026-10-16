@@ -39,6 +39,22 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 ### Added
 
+- `<beman/inside/units.hpp>`: physical quantities with an inside as the
+  number — the main features of mp-units, without depending on it
+  ([docs/units.md](docs/units.md)). Units, dimensions, ISQ quantity kinds
+  and references are compile-time values: `quantity<si::metre, inside<…>>`,
+  `isq::height[si::metre]`. A unit conversion rescales the grid and keeps
+  the raw (km → mm is a `mov`), and a sum of mixed units runs in their
+  common unit, exactly. `quantity_point` with absolute and relative origins
+  (K, ℃, ℉ are exact grid shifts). Kinds convert as in mp-units: up the
+  tree and by recipe implicitly, `quantity_cast` down; `is_kind` and
+  separate roots never mix (Hz vs Bq). The catalog covers `isq`, `si` (with
+  prefixes; quecto–quetta, eV and Da under C++26 big grids), `si2019`
+  constants and `international` units. `std::format` and `to_string`
+  print `"5 km"`. `<beman/inside/units_math.hpp>` adds `value_cast` across
+  a factor of π (degree → radian, rounded once by the correctly rounded
+  engine), `sqrt`/`cbrt` of the unit, trigonometry and `hypot`.
+  `examples/units.cpp` shows them.
 - `<beman/inside/chrono.hpp>`: `from_duration<B, F>(d)` and
   `to_duration<D, F>(x)` convert between `std::chrono::duration` and insides
   exactly (a value in seconds, a period as a notch, `period_notch<P>`);

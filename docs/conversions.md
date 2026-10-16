@@ -340,6 +340,12 @@ parse_exact<price>("2000000");         // errc::overflow, not clamped
 The core header takes a pointer pair, `parse<B>(first, last)`, and is
 `constexpr`; `io.hpp` adds the `std::string_view` overload and `operator>>`.
 
+## Physical units
+
+`<beman/inside/units.hpp>` gives an inside a unit and a quantity kind:
+`quantity<si::metre, inside<{0, 10}>>`. A conversion between units rescales
+the grid and keeps the raw, so it is exact. See [units.md](units.md).
+
 ## Time: `std::chrono` at the boundary
 
 `#include <beman/inside/chrono.hpp>` (opt-in: it pulls `<chrono>`) converts
