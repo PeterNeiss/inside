@@ -71,75 +71,75 @@ TEST(ConstantTest, point_inside_assignment_rejected_when_not_representable) {
 }
 
 //---------------------------------------------------------------------------
-// beman::inside::zero / beman::inside::one — universal exact constants.
+// just<0> / just<1> — exact point constants.
 //---------------------------------------------------------------------------
-// beman::inside::zero / beman::inside::one assign across storage kinds
-TEST(ConstantTest, beman_inside_zero_beman_inside_one_assign_across_storage_kinds) {
+// just<0> / just<1> assign across storage kinds
+TEST(ConstantTest, just_0_and_just_1_assign_across_storage_kinds) {
     static_assert([] {
-        inside<{0, 200}> b = zero;
+        inside<{0, 200}> b = just<0>;
         return b == 0;
     }());
     static_assert([] {
-        inside<{0, 200}> b = one;
+        inside<{0, 200}> b = just<1>;
         return b == 1;
     }());
     static_assert([] {
-        inside<{-40, 60}> b = zero;
+        inside<{-40, 60}> b = just<0>;
         return b == 0;
     }()); // signed value storage
     static_assert([] {
-        inside<{-40, 60}> b = one;
+        inside<{-40, 60}> b = just<1>;
         return b == 1;
     }());
     static_assert([] {
-        inside<{{0, 9}, 3}> b = zero;
+        inside<{{0, 9}, 3}> b = just<0>;
         return b == 0;
     }()); // non-unit notch
     // Q8.8: value 1 is raw 256.
     static_assert([] {
-        inside<{{0, 1}, 0x1p-8_r}> b = one;
+        inside<{{0, 1}, 0x1p-8_r}> b = just<1>;
         return static_cast<imax>(b.raw()) == 256;
     }());
 
     // assignment operator (not just construction)
     static_assert([] {
         inside<{0, 200}> b = 5;
-        b                  = zero;
+        b                  = just<0>;
         return b == 0;
     }());
     static_assert([] {
         inside<{0, 200}> b = 5;
-        b                  = one;
+        b                  = just<1>;
         return b == 1;
     }());
 }
 
-// beman::inside::zero / beman::inside::one rejected where not representable
-TEST(ConstantTest, beman_inside_zero_beman_inside_one_rejected_where_not_representable) {
-    static_assert(!inside_assignable<inside<{5, 10}>, decltype(zero)>);    // 0 out of range
-    static_assert(!inside_assignable<inside<{{0, 9}, 3}>, decltype(one)>); // 1 not on notch
+// just<0> / just<1> rejected where not representable
+TEST(ConstantTest, just_0_and_just_1_rejected_where_not_representable) {
+    static_assert(!inside_assignable<inside<{5, 10}>, decltype(just<0>)>);     // 0 out of range
+    static_assert(!inside_assignable<inside<{{0, 9}, 3}>, decltype(just<1>)>); // 1 not on notch
 }
 
-// beman::inside::zero / beman::inside::one in comparison and arithmetic
-TEST(ConstantTest, beman_inside_zero_beman_inside_one_in_comparison_and_arithmetic) {
+// just<0> / just<1> in comparison and arithmetic
+TEST(ConstantTest, just_0_and_just_1_in_comparison_and_arithmetic) {
     using B = inside<{0, 200}>;
 
     // comparison (both orders — C++20 rewritten/reversed candidates)
-    static_assert(B{0} == zero);
-    static_assert(zero == B{0});
-    static_assert(B{1} == one);
-    static_assert(B{5} > zero);
-    static_assert(zero < B{5});
-    static_assert(B{0} < one);
+    static_assert(B{0} == just<0>);
+    static_assert(just<0> == B{0});
+    static_assert(B{1} == just<1>);
+    static_assert(B{5} > just<0>);
+    static_assert(just<0> < B{5});
+    static_assert(B{0} < just<1>);
 
     // arithmetic (forwards through the ordinary inside operators)
-    static_assert((B{5} + one) == 6);
-    static_assert((one + B{5}) == 6);
-    static_assert((B{5} - zero) == 5);
-    static_assert((B{5} - one) == 4);
+    static_assert((B{5} + just<1>) == 6);
+    static_assert((just<1> + B{5}) == 6);
+    static_assert((B{5} - just<0>) == 5);
+    static_assert((B{5} - just<1>) == 4);
 
     // a runtime check too, for good measure
     B b = 41;
-    b   = b + one;
+    b   = b + just<1>;
     ASSERT_EQ(b, 42);
 }

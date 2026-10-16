@@ -190,6 +190,11 @@ template <insidable V>
 }
 // atan2(y, x) of two quantities of one dimension, in their common unit.
 template <reference A, class VA, reference B, class VB>
+    requires(detail::sum_diagnosed<A, B>()) ||
+            (detail::common_rescalable<A, VA, B, VB> &&
+             requires(const detail::common_number_t<A, VA, B>& x, const detail::common_number_t<B, VB, A>& y) {
+                 beman::inside::math::atan2(x, y);
+             })
 [[nodiscard]] constexpr auto atan2(const quantity<A, VA>& y, const quantity<B, VB>& x) {
     constexpr reference C = detail::sum_reference<A, B>();
     return detail::make_quantity<detail::radian_reference>(
@@ -199,6 +204,11 @@ template <reference A, class VA, reference B, class VB>
 
 // hypot(x, y): √(x² + y²) in the common unit.
 template <reference A, class VA, reference B, class VB>
+    requires(detail::sum_diagnosed<A, B>()) ||
+            (detail::common_rescalable<A, VA, B, VB> &&
+             requires(const detail::common_number_t<A, VA, B>& x, const detail::common_number_t<B, VB, A>& y) {
+                 beman::inside::math::hypot(x, y);
+             })
 [[nodiscard]] constexpr auto hypot(const quantity<A, VA>& x, const quantity<B, VB>& y) {
     constexpr reference C = detail::sum_reference<A, B>();
     return detail::make_quantity<C>(
@@ -266,6 +276,11 @@ template <insidable Out, class X>
     return detail::make_quantity<detail::radian_reference>(beman::inside::math::atan_into<Out>(detail::number_of(x)));
 }
 template <insidable Out, reference A, class VA, reference B, class VB>
+    requires(detail::sum_diagnosed<A, B>()) ||
+            (detail::common_rescalable<A, VA, B, VB> &&
+             requires(const detail::common_number_t<A, VA, B>& x, const detail::common_number_t<B, VB, A>& y) {
+                 beman::inside::math::atan2_into<Out>(x, y);
+             })
 [[nodiscard]] constexpr auto atan2_into(const quantity<A, VA>& y, const quantity<B, VB>& x) {
     constexpr reference C = detail::sum_reference<A, B>();
     return detail::make_quantity<detail::radian_reference>(beman::inside::math::atan2_into<Out>(
@@ -273,6 +288,11 @@ template <insidable Out, reference A, class VA, reference B, class VB>
         detail::rescale<detail::conversion_factor<B.U, C.U>>(x.numerical_value())));
 }
 template <insidable Out, reference A, class VA, reference B, class VB>
+    requires(detail::sum_diagnosed<A, B>()) ||
+            (detail::common_rescalable<A, VA, B, VB> &&
+             requires(const detail::common_number_t<A, VA, B>& x, const detail::common_number_t<B, VB, A>& y) {
+                 beman::inside::math::hypot_into<Out>(x, y);
+             })
 [[nodiscard]] constexpr auto hypot_into(const quantity<A, VA>& x, const quantity<B, VB>& y) {
     constexpr reference C = detail::sum_reference<A, B>();
     return detail::make_quantity<C>(beman::inside::math::hypot_into<Out>(

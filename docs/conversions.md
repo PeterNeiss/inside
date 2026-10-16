@@ -208,7 +208,6 @@ names the internal representation.
 | Bare literal (`0`, `0.5`, `100`) | Constructing or assigning an inside (`pct{42}`, `gain{0.5}`, `b = 7`) and comparisons (`b == 5`, `b < 50`). Not arithmetic or compound assignment — `b + 1` and `b += 1` are ill-formed. Dyadic decimals (`0.5`, `0.25`, `0x1p-8`) are binary-exact and fine as grid endpoints. |
 | `_ins` literal (`1_ins`, `0.5_ins`, `0xff_ins`) | An inside operand for arithmetic and compound assignment — `a + 1_ins`, `a * 2_ins`, `b += 1_ins`, `b > 0.5_ins`. Gives a scalar a grid so it joins inside arithmetic; the result stays an inside. The parse is exact (no double round-trip). An octal-looking integer (`010_ins`) is rejected: the grammar is decimal, so it would not mean what C++ reads. |
 | `just<V>` | A compile-time point-inside from any structural NTTP value — `just<2>`, `just<math::pi>`. Same role as `_ins` for non-literal constants. |
-| `zero` / `one` | Built-in point insides for 0 / 1. Assign into any grid that can exactly represent the value (compile-time checked — out of range or off-notch is an error); also stand in for the value in comparison/arithmetic — `b == zero`, `b + one`. |
 | `per<D>` | The grid **step** 1/D: `per<16384>`. Other steps are `just<N>.per<D>` (`just<360>.per<4096>`) or a plain integer (`{{0, 100}, 5}`). A step is always positive (`per<0>` and negative steps are errors; a continuous grid is spelled `0`). Optional with two limits: `{0.5, 10}` derives the step 1/2. |
 | `just<N>.per<D>` | An exact **ratio** no literal can spell — `just<1>.per<3>`, `just<-6>.per<5>` for −1.2. Signed numerator, positive denominator. |
 | `_r` literal (`0.1_r`, `1.25_r`, `0x1p-12_r`) | An exact **decimal or hex** value: `0.1_r` is exactly 1/10, unlike the double `0.1`. Use it for grid limits that are decimal fractions (`{0.1_r, 1}`), where a plain `0.1` is rejected. |
@@ -345,45 +344,6 @@ The core header takes a pointer pair, `parse<B>(first, last)`, and is
 `<beman/inside/units.hpp>` gives an inside a unit and a quantity kind:
 `quantity<si::metre, inside<{0, 10}>>`. A conversion between units rescales
 the grid and keeps the raw, so it is exact. See [units.md](units.md).
-
-## Time: `std::chrono` at the boundary
-
-`#include <beman/inside/chrono.hpp>` (opt-in: it pulls `<chrono>`) converts
-between `std::chrono::duration` and insides. An inside's value is a time in
-**seconds** and its notch the resolution, so a chrono period is a notch:
-`period_notch<std::milli>` is `per<1000>`.
-
-```cpp
-using namespace std::chrono;
-using day_ms = inside<{{0, 86400}, per<1000>}>;   // a time of day to the millisecond
-using day_s  = inside<{0, 86400, bounds::half_open}>;
-
-from_duration<day_ms>(1500ms);                 // 1.5 (std::expected)
-from_duration<day_s>(1500ms);                  // errc::rounding_error: not a whole second
-from_duration<day_s, round_nearest>(1500ms);   // 2
-from_duration<day_s, wrap>(25h);               // 3600: the per-call flag wraps
-
-to_duration<milliseconds>(day_ms{1.5});        // 1500ms — a plain duration
-to_duration<seconds>(day_ms{1.5});             // expected: errc::rounding_error
-to_duration<seconds, round_floor>(day_ms{1.5}); // 1s — plain again
-```
-
-- **`from_duration<B, F>(d)`** takes the exact value `count·num/den` and stores
-  it like `B::try_make<F>`: B's policy plus the flags `F` round, clamp or wrap,
-  and a value B cannot take is the error. A floating count is taken as its
-  binary value.
-- **`to_duration<D, F>(x)`** computes the exact count `value·den/num`. A count
-  that is not a whole number of `D`'s periods is `errc::rounding_error` unless
-  `F` names a rounding mode, and one outside `D`'s rep is `errc::overflow`. It
-  returns a **plain `D`** when the grid rules both out (every value a whole
-  number of periods, the counts within the rep), and always for a floating rep
-  (rounded once); otherwise `std::expected<D, errc>`.
-
-An inside is not a duration *rep*: chrono converts between periods by
-multiplying the count by a raw `intmax_t`, which an inside rejects, and keeps
-the operands' rep for a sum, so `d1 + d2` would narrow the widened result back
-at runtime. [examples/clock.cpp](../examples/clock.cpp) converts a 24-hour
-clock both ways and checks its carry cascade against `std::chrono::hh_mm_ss`.
 
 ## Comparing insides
 

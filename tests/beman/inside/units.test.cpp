@@ -73,6 +73,9 @@ TEST(UnitsTest, sums_run_in_the_common_unit) {
     const auto f = just<1> * international::foot + just<1> * si::metre;
     EXPECT_EQ(rational{f.in(si::metre).numerical_value()}, rational(1631, 1250)); // 1.3048 m
     EXPECT_EQ(unit_symbol(std::remove_cvref_t<decltype(f)>::unit), "[1/381 ft]");
+    // The smaller unit is scaled, whichever side it is on: one type.
+    static_assert(std::is_same_v<std::remove_cvref_t<decltype(f)>,
+                                 decltype(just<1> * si::metre + just<1> * international::foot)>);
     // Comparisons across units.
     EXPECT_TRUE(just<1> * km == just<1000> * si::metre);
     EXPECT_TRUE(just<999> * si::metre < just<1> * km);
@@ -129,6 +132,10 @@ TEST(UnitsTest, magnitudes_scale_the_unit_not_the_number) {
     EXPECT_EQ(unit_symbol(std::remove_cvref_t<decltype(t / mag_pi)>::unit), "[π⁻¹ s]");
     // π · π⁻¹ cancels: back to seconds, exactly.
     EXPECT_EQ((mag_pi * t / mag_pi).in(si::second).numerical_value(), 3);
+    // A magnitude times a number is that number in [π], then [π s].
+    EXPECT_EQ(to_string(mag_pi * just<2> * si::second), "2 [π s]");
+    EXPECT_EQ(to_string(just<2> * mag_pi), "2 [π]");
+    EXPECT_EQ(unit_symbol(mag_pi / si::metre), "[π/m]");
 }
 
 TEST(UnitsTest, compound_assignment_and_casts) {
@@ -140,6 +147,12 @@ TEST(UnitsTest, compound_assignment_and_casts) {
     const auto narrow = value_cast<inside<{0, 2000}>>(d);
     EXPECT_EQ(narrow.numerical_value(), 1000);
     EXPECT_EQ((try_value_cast<inside<{0, 500}>>(d).error()), errc::overflow);
+    // In another unit: 1000 m is 1 km; 1001 m rounds onto whole km by F, and
+    // is past a {0, 1} km grid.
+    EXPECT_EQ((try_value_cast<km, inside<{{0, 5}, per<1000>}>>(d)->numerical_value()), 1);
+    d += just<1> * si::metre;
+    EXPECT_EQ((try_value_cast<km, inside<{0, 5}>, round_nearest>(d)->numerical_value()), 1);
+    EXPECT_EQ((try_value_cast<km, inside<{{0, 1}, per<1000>}>>(d).error()), errc::overflow);
 }
 
 TEST(UnitsTest, kinds_convert_up_implicitly_and_down_explicitly) {

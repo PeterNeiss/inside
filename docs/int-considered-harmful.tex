@@ -855,8 +855,8 @@ $ g++ -std=c++23 -I ../../include x01_bare_int_rejected.cpp
    16 |   auto bad = x + 1;      // error: no grid for the literal
 include/beman/inside/arithmetic.hpp:518:31: error: static assertion failed:
    an inside cannot be combined with a raw scalar: give the scalar a grid --
-   `1_ins`, `just<1>`, `one`, or `inside<{lo,hi}>{n}` for a runtime value with
-   a known range
+   `1_ins`, `just<1>`, or `inside<{lo,hi}>{n}` for a runtime value with a
+   known range
 \end{lstlisting}
 
 \subsection{Bounded indices}

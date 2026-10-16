@@ -99,7 +99,7 @@ which keeps the dividend's lattice scaled: `x / 5_ins` has notch `N/5`).
 Read the value back out with `numerator()` / `denominator()`.
 
 **No storage for a point** — a single-value grid (`Lower == Upper`: `just<…>`,
-`5_ins`, `zero`, `one`, `math::pi`) holds its value in the type, so its raw is
+`5_ins`, `math::pi`) holds its value in the type, so its raw is
 empty: `sizeof(5_ins) == 1` (the C++ minimum for a complete object), and a
 point stored as a `[[no_unique_address]]` member of your own struct takes no
 space at all. An integer-valued point counts as integer storage, so it takes
@@ -342,7 +342,7 @@ drops this part in freestanding and `BEMAN_INSIDE_MATH_NO_FP` builds.
 
 ## Compile-time constants
 
-`zero`, `one`, `just<V>` and the `_ins` literal are point insides: their value
+`just<V>` and the `_ins` literal are point insides: their value
 lives in the type and their raw is empty ([above](#storage-selection)). When to
 use which: [conversions.md](conversions.md#idiom-writing-literal-values-into-insides).
 

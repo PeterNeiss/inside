@@ -103,7 +103,7 @@ reports)
 
 [`examples/`](examples/) holds 36 self-contained programs — start with
 [`basics.cpp`](examples/basics.cpp) (clamp, wrap, bounded loops); then e.g.
-[`clock.cpp`](examples/clock.cpp) (wrap with carry, `std::chrono`),
+[`clock.cpp`](examples/clock.cpp) (wrap with carry),
 [`money.cpp`](examples/money.cpp) (cents-exact currency),
 [`units.cpp`](examples/units.cpp) (exact unit conversions, kinds, temperatures),
 [`moon_rocket.cpp`](examples/moon_rocket.cpp) (a flight to the Moon with units),

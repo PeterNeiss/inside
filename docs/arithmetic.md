@@ -240,14 +240,14 @@ money sub{45.07};
 auto a = sub + 1;        // ❌ ill-formed: a raw int has no grid
 auto b = sub * 2.5;      // ❌ ill-formed: a raw double has no grid
 
-auto c = sub + 1_ins;      // ✅ inside + inside → widened inside (stays bounded)
-auto e = sub + one;      // ✅ same thing — `one` is the built-in point-inside 1
+auto c = sub + 1_ins;    // ✅ inside + inside → widened inside (stays bounded)
+auto e = sub + just<1>;  // ✅ same thing — `just<1>` is the point inside 1
 auto d = sub * just<2>;  // ✅ inside × inside → widened inside
 ```
 
 Use `1_ins` / `just<N>` to give a compile-time literal a tight point grid, or
-`inside<{lo,hi}>{n}` to give a runtime value a known range. For the values 0 and
-1, reach for the built-in `zero` / `one` (`sub + one`, `b == zero`). Comparisons
+`inside<{lo,hi}>{n}` to give a runtime value a known range (`sub + just<1>`,
+`b == 0_ins`). Comparisons
 (`b == 5`, `b < 10`, `b < 1.5`) with raw scalars are fine — they don't manufacture
 a new value/type — and exact: a floating scalar is compared at full precision,
 never truncated to an integer. Compound assignment with a raw scalar (`b += 1`)

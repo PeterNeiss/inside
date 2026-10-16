@@ -17,8 +17,8 @@ TEST(InsideArithmeticTest, inside_add) {
     using u8 = inside<{10, 255}>;
     constexpr u8 a{16};
     constexpr u8 b{220};
-    static_assert(a + one == 17);
-    static_assert(b + one == 221);
+    static_assert(a + just<1> == 17);
+    static_assert(b + just<1> == 221);
 
     static_assert(a + b == 236);
 

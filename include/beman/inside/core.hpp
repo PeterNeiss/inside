@@ -332,13 +332,19 @@ struct inside {
         }
     }
 
-    // A floating point wider than double (long double) gets the value rounded
-    // once to its own digits, not through a double.
+    // Rounded once to T's digits: a floating point wider than double (long
+    // double) from the exact value; a narrower one (float) through the double,
+    // unless that double is a tie between two Ts.
     template <std::floating_point T>
     [[nodiscard]] constexpr std::expected<T, errc> to() const {
         if constexpr (detail::wide_float<T>)
             return detail::nearest_float<T>(detail::exact_of(*this));
-        else
+        else if constexpr (sizeof(T) < sizeof(double)) {
+            const double d = detail::as_double(*this);
+            if (detail::narrow_midpoint<T>(d)) [[unlikely]]
+                return detail::nearest_float<T>(detail::exact_of(*this));
+            return static_cast<T>(d);
+        } else
             return static_cast<T>(detail::as_double(*this));
     }
 
@@ -940,14 +946,6 @@ template <insidable B>
 // numbers past 64 bits (C++26 `_g`) work too.
 template <auto value>
 inline constexpr auto just = inside<grid{value}>::from_raw({});
-
-//---------------------------------------------------------------------------
-// zero / one — universal exact constants. Single-point insides that assign into
-// any grid able to represent the value (compile-time checked) and otherwise
-// behave as 0 / 1. `b = zero;` is a compile error when 0 is not on b's grid.
-//---------------------------------------------------------------------------
-inline constexpr auto zero = just<0>;
-inline constexpr auto one  = just<1>;
 
 //---------------------------------------------------------------------------
 // _ins literal — compile-time `inside<{V, V}>` from a numeric literal.

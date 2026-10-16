@@ -74,6 +74,7 @@ inch → mm is ×25.4. Both are exact. The rescaled number keeps the policy
 | `q.in(u)` / `q.in<u>()` | the same quantity in unit `u` (exact) |
 | `q.numerical_value()` / `q.numerical_value_in(u)` | the inside |
 | `value_cast<Rep2>(q)` / `try_value_cast<Rep2, F>(q)` | another representation, through Rep2's constructor / `try_make<F>` |
+| `try_value_cast<u, Rep2, F>(q)` | in unit `u`, through `Rep2::try_make<F>` |
 | `value_cast<u, Rep2>(q)` | in unit `u`, stored into Rep2 |
 | `quantity_cast<isq::height>(q)` | another spec (down the tree, or across one kind) |
 
@@ -110,8 +111,8 @@ so they stay quantities, as are π-scaled ratios; read their number with
 
 `+`, `-`, `%` and the comparisons convert both sides to the **common
 unit**. Its magnitude is the gcd of the two magnitudes: km + m runs in m,
-and ft + m runs in 1/1250 m, which is printed as `[1/381 ft]`. Both
-conversions are exact rescales, and then inside's `+` runs. The result is
+and ft + m runs in 1/1250 m, the smaller unit scaled, printed as
+`[1/381 ft]`; m + ft is the same type. Both conversions are exact rescales, and then inside's `+` runs. The result is
 exact, and its grid is the tight hull of the two operands. In mp-units the
 sum is formed from the unscaled representations; here mixed units cannot
 overflow a valid sum.
