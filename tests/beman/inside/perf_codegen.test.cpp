@@ -17,6 +17,7 @@
 // disassembly is easy to slice. x86-64 GNU/Clang only (see CMakeLists guard).
 
 #include <beman/inside/inside.hpp>
+#include <beman/inside/units.hpp>
 #include <cstddef>
 
 using namespace beman::inside;
@@ -79,4 +80,21 @@ extern "C" long ins_perf_range_sum() {
     for (auto fract : inside_range<{{0, 4}, per<256>}>{})
         sum += static_cast<long>(fract.raw());
     return sum;
+}
+
+// Units: a conversion rescales the grid and keeps the raw, so km → mm on an
+// index raw is no instruction at all; a sum in the common unit is one
+// multiply-add of raws.
+using km_t = units::quantity<units::si::kilo(units::si::metre), inside<{{0, 100}, per<1000>}>>;
+using m_t  = units::quantity<units::si::metre, inside<{0, 1000}>>;
+
+extern "C" long ins_perf_unit_in(long a) {
+    const km_t d{inside<{{0, 100}, per<1000>}>::from_raw(static_cast<km_t::rep::raw_type>(a))};
+    return static_cast<long>(d.in(units::si::milli(units::si::metre)).numerical_value().raw());
+}
+
+extern "C" long ins_perf_unit_sum(long a, long b) {
+    const km_t x{inside<{{0, 100}, per<1000>}>::from_raw(static_cast<km_t::rep::raw_type>(a))};
+    const m_t  y{inside<{0, 1000}>::from_raw(static_cast<m_t::rep::raw_type>(b))};
+    return static_cast<long>((x + y).numerical_value().raw());
 }

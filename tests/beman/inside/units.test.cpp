@@ -224,3 +224,15 @@ TEST(UnitsTest, point_arithmetic) {
     static_assert(std::remove_cvref_t<decltype(x)>::origin == nullptr);
     EXPECT_EQ((x - point<si::metre>(just<1>)).numerical_value(), 2);
 }
+
+#ifdef __cpp_lib_format
+TEST(UnitsTest, std_format) {
+    EXPECT_EQ(std::format("{}", just<5> * si::kilo(si::metre)), "5 km");
+    EXPECT_EQ(std::format("{:>4}", just<5> * si::newton), "   5 N");
+    EXPECT_EQ(std::format("{}", just<90> * si::degree), "90°");
+    const quantity<si::metre / si::second, inside<{{0, 10}, per<4>}>> v{rational(9, 4)};
+    EXPECT_EQ(std::format("{:.1f}", v), "2.2 m/s");
+    EXPECT_EQ(std::format("{}", point<si::degree_Celsius>(inside<{-40, 60}>{20})), "20 ℃");
+    EXPECT_EQ(std::format("{}", just<3> * units::one), "3");
+}
+#endif

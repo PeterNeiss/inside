@@ -20005,6 +20005,42 @@ std::ostream& operator<<(std::ostream& os, const quantity_point<R, O, V>& p) {
     return os << units::to_string(p);
 }
 
+} // namespace beman::inside::units
+
+#ifdef __cpp_lib_format
+// std::format: the spec formats the number as for its inside ({:.2f}, {:>8}),
+// then the unit symbol follows ("5 km", "90°").
+template <beman::inside::units::reference R, class V>
+struct std::formatter<beman::inside::units::quantity<R, V>> : std::formatter<V> {
+    template <typename Ctx>
+    auto format(const beman::inside::units::quantity<R, V>& q, Ctx& ctx) const {
+        namespace u = beman::inside::units;
+        // A copy: clang 20 miscompiles a runtime reference to a template
+        // parameter object holding pointers.
+        static constexpr u::unit unit = R.U;
+        constexpr bool           space =
+            !(unit.Size == 1 && unit.Atoms[0].Exp == 1 && unit.Scale.is_one() && !unit.Atoms[0].U->SpaceBefore);
+        auto              out = std::formatter<V>::format(q.numerical_value(), ctx);
+        const std::string sym = u::unit_symbol(unit);
+        if (sym.empty())
+            return out;
+        if constexpr (space)
+            *out++ = ' ';
+        return std::ranges::copy(sym, out).out;
+    }
+};
+
+template <beman::inside::units::reference R, const beman::inside::units::point_origin* O, class V>
+struct std::formatter<beman::inside::units::quantity_point<R, O, V>>
+    : std::formatter<beman::inside::units::quantity<R, V>> {
+    template <typename Ctx>
+    auto format(const beman::inside::units::quantity_point<R, O, V>& p, Ctx& ctx) const {
+        return std::formatter<beman::inside::units::quantity<R, V>>::format(p.quantity_from_origin(), ctx);
+    }
+};
+#endif // __cpp_lib_format
+
+namespace beman::inside::units {
 //---------------------------------------------------------------------------
 // The catalog: ISQ quantity specs, SI units and prefixes, international units.
 // Each name is a tag object; its definition is a static object in *_defs.
