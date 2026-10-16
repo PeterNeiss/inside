@@ -212,12 +212,24 @@ list(INSERT roots 0 "beman/inside/inside.hpp")
 # it sits inside a guard the same way: a freestanding or FP-free
 # (BEMAN_INSIDE_MATH_NO_FP, resolved earlier in the header) build drops it.
 # beman/inside/chrono.hpp needs <chrono>, hosted-only: a freestanding build drops it.
+# beman/inside/units.hpp and units_math.hpp print through io.hpp, so they sit
+# inside its guard too; BEMAN_INSIDE_NO_UNITS drops them (and their compile time).
 foreach(r IN LISTS roots)
     set(_guard_open "")
     set(_guard_close "")
     if(r STREQUAL "beman/inside/io.hpp")
         set(_guard_open "#ifndef BEMAN_INSIDE_NO_STRING")
         set(_guard_close "#endif // BEMAN_INSIDE_NO_STRING")
+    elseif(
+        r STREQUAL "beman/inside/units.hpp"
+        OR r STREQUAL "beman/inside/units_math.hpp"
+    )
+        set(_guard_open
+            "#if !defined(BEMAN_INSIDE_NO_STRING) && !defined(BEMAN_INSIDE_NO_UNITS)"
+        )
+        set(_guard_close
+            "#endif // !BEMAN_INSIDE_NO_STRING && !BEMAN_INSIDE_NO_UNITS"
+        )
     elseif(r STREQUAL "beman/inside/chrono.hpp")
         set(_guard_open "#if __STDC_HOSTED__")
         set(_guard_close "#endif // __STDC_HOSTED__")
