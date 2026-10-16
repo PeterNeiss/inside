@@ -20,13 +20,7 @@ namespace beman::inside::math::detail::ax {
 //---------------------------------------------------------------------------
 // Inputs as exact values, in as few limbs as their grid needs.
 //---------------------------------------------------------------------------
-constexpr int grid_bits(const grid_wide& v) {
-#if BEMAN_INSIDE_BIG_GRIDS
-    return v.bit_width();
-#else
-    return bit_width_of(v.negative() ? -v : v);
-#endif
-}
+constexpr int grid_bits(const grid_wide& v) { return bit_width_of(abs(v)); }
 
 // A grid integer as a double (a notch's p or q, which may pass imax).
 constexpr double grid_double(const grid_wide& v) {
@@ -682,7 +676,7 @@ constexpr std::optional<exact_frac<pow_limbs>> exact_pow(const exact_frac<EB>& b
         return std::nullopt;
     const int            q  = static_cast<int>(static_cast<imax>(re.Den));
     const auto           k  = re.Num;
-    const auto           ak = k.negative() ? -k : k;
+    const auto           ak = abs(k);
     const exact_frac<EB> r  = reduced(b);
     // b^(1/q) first: both parts perfect q-th powers, else irrational.
     const auto rn = exact_root(P{r.Num}, q), rd = exact_root(P{r.Den}, q);
@@ -755,7 +749,7 @@ constexpr grid_rational lattice_point(const wide_sint<K>& k) {
 #else
     // |k| may pass 2^63 (π on a 2^-62 notch): a rational's numerator holds
     // up to 2^64 − 1, past it the point has no 64-bit grid number.
-    const wide_sint<K> a = k.negative() ? -k : k;
+    const wide_sint<K> a = abs(k);
     if (bit_width_of(a) > 64)
         constexpr_error<"beman::inside::math: a deduced output limit is past the 64-bit grid numbers">();
     const grid_rational m = rational{static_cast<umax>(a)} * Notch;
@@ -813,7 +807,7 @@ constexpr exact_frac<input_limbs<In>> grid_input(const grid_rational& r) {
 // 2^63 must fail every range gate, not wrap past them.
 constexpr imax ceil_abs(const grid_rational& r) {
     const grid_wide n = wide_numerator(r), d = wide_denominator(r);
-    const grid_wide a = n.negative() ? -n : n;
+    const grid_wide a = abs(n);
     const grid_wide c = (a + d - grid_wide{1}) / d;
     constexpr imax  M = std::numeric_limits<imax>::max();
     return grid_wide{M} < c ? M : static_cast<imax>(c);

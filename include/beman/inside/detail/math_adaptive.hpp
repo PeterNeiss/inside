@@ -191,7 +191,7 @@ constexpr wide_sint<K> to_q(const exact_frac<E>& x) noexcept {
 template <std::size_t E>
 constexpr int floor_log2(const exact_frac<E>& x) noexcept {
     using I    = wide_sint<E>;
-    const I  n = x.Num.negative() ? -x.Num : x.Num;
+    const I  n = abs(x.Num);
     const I& d = x.Den;
     int      e = bit_width_of(n) - bit_width_of(d);
     // n/d ≥ 2^e  ⇔  n ≥ d·2^e (or n·2^-e ≥ d).
@@ -959,7 +959,7 @@ constexpr bool is_integer(const exact_frac<K>& f) noexcept {
 }
 template <std::size_t K>
 constexpr exact_frac<K> abs(const exact_frac<K>& f) noexcept {
-    return {f.Num.negative() ? -f.Num : f.Num, f.Den};
+    return {abs(f.Num), f.Den};
 }
 // 1/f for f != 0.
 template <std::size_t K>

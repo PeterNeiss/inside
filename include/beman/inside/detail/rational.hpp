@@ -443,7 +443,7 @@ BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE constexpr std::expected<rational, errc> 
     W          den = W{ad} * W{bd / g};
     if (num.is_zero())
         return rational{0};
-    W x = num.negative() ? -num : num, y = den; // gcd(|num|, den)
+    W x = abs(num), y = den; // gcd(|num|, den)
     while (!y.is_zero()) {
         const W t = x % y;
         x         = y;

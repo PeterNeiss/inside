@@ -405,6 +405,9 @@ struct wide_int {
         return t;
     }
 
+    // |a| (a signed minimum stays itself, as the builtin negation wraps).
+    [[nodiscard]] friend constexpr wide_int abs(const wide_int& a) noexcept { return a.negative() ? -a : a; }
+
     // Number of significant bits of a non-negative value (0 for 0).
     [[nodiscard]] friend constexpr int bit_width_of(const wide_int& a) noexcept {
         for (std::size_t i = N; i-- > 0;)

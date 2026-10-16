@@ -109,7 +109,7 @@ template <insidable B>
 inline constexpr int grid_magnitude_bits = [] {
     auto bits = [](const grid_rational& r) {
         const grid_wide n = wide_numerator(r);
-        return bit_width_of(n.negative() ? -n : n) - (bit_width_of(wide_denominator(r)) - 1) + 1;
+        return bit_width_of(abs(n)) - (bit_width_of(wide_denominator(r)) - 1) + 1;
     };
     const int a = bits(lower_of<B>), b = bits(upper_of<B>);
     return a > b ? a : b;
@@ -119,14 +119,14 @@ inline constexpr int grid_magnitude_bits = [] {
 template <insidable B>
 inline constexpr int exact_value_bits = [] {
     if constexpr (point_storage<B>) {
-        auto bits = [](const grid_wide& v) { return bit_width_of(v.negative() ? -v : v); };
+        auto bits = [](const grid_wide& v) { return bit_width_of(abs(v)); };
         return bits(wide_numerator(lower_of<B>)) + bits(wide_denominator(lower_of<B>));
     } else if constexpr (fraction_storage<B>)
         return 2 * decltype(raw_t<B>::Num)::bits;
     else if constexpr (!wide_valued<B>)
         return 128; // a 64-bit rational
     else {
-        auto bits = [](const grid_wide& v) { return bit_width_of(v.negative() ? -v : v); };
+        auto bits = [](const grid_wide& v) { return bit_width_of(abs(v)); };
         return grid_magnitude_bits<B> + bits(wide_denominator(notch_of<B>)) + bits(wide_numerator(notch_of<B>));
     }
 }();
@@ -166,7 +166,7 @@ constexpr auto exact_of(const B& b) {
 template <std::size_t K>
 constexpr exact_frac<K> reduced(const exact_frac<K>& f) noexcept {
     using I = wide_sint<K>;
-    I a = f.Num.negative() ? -f.Num : f.Num, b = f.Den;
+    I a = abs(f.Num), b = f.Den;
     if (bit_width_of(a) <= 64 && bit_width_of(b) <= 64) { // the common case: one-limb Euclid
         const umax an = static_cast<umax>(a), bn = static_cast<umax>(b), g = std::gcd(an, bn);
         if (g == 1)
@@ -247,7 +247,7 @@ constexpr std::optional<F> frac_raw_of(const exact_frac<K>& v) noexcept {
     const auto r      = reduced(v);
     using I           = decltype(F::Num);
     constexpr int cap = I::bits - 1; // magnitude bits
-    if (bit_width_of(r.Num.negative() ? -r.Num : r.Num) > cap || bit_width_of(r.Den) > cap)
+    if (bit_width_of(abs(r.Num)) > cap || bit_width_of(r.Den) > cap)
         return std::nullopt;
     return F{static_cast<I>(r.Num), static_cast<I>(r.Den)};
 }
@@ -322,8 +322,8 @@ constexpr T nearest_float(const exact_frac<K>& f) noexcept {
     using lim         = std::numeric_limits<T>;
     constexpr int p   = lim::digits;
     const bool    neg = f.Num.negative() != f.Den.negative();
-    const U       n{static_cast<wide_uint<K>>(f.Num.negative() ? -f.Num : f.Num)};
-    const U       d{static_cast<wide_uint<K>>(f.Den.negative() ? -f.Den : f.Den)};
+    const U       n{static_cast<wide_uint<K>>(abs(f.Num))};
+    const U       d{static_cast<wide_uint<K>>(abs(f.Den))};
     if (n.is_zero())
         return neg ? -T{0} : T{0};
     // q = ⌊n·2^s / d⌋ has p + 2 or p + 3 bits: |v| = (q + sticky)·2^-s.
@@ -549,7 +549,7 @@ constexpr rounded_quotient<K> rounded_div_exact(const wide_sint<K>& n, const wid
     using I        = wide_sint<K>;
     auto [q, r]    = I::divmod(n, d); // toward zero
     const bool neg = n.negative() != d.negative();
-    const I    ar = r.negative() ? -r : r, ad = d.negative() ? -d : d;
+    const I    ar = abs(r), ad = abs(d);
     if (!rounds_away(M, neg, classify_remainder(M, ar, ad), (q.Word[0] & 1u) != 0))
         return {q, r.is_zero()};
     return {neg ? q - I{1} : q + I{1}, false};

@@ -1064,6 +1064,9 @@ struct wide_int {
         return t;
     }
 
+    // |a| (a signed minimum stays itself, as the builtin negation wraps).
+    [[nodiscard]] friend constexpr wide_int abs(const wide_int& a) noexcept { return a.negative() ? -a : a; }
+
     // Number of significant bits of a non-negative value (0 for 0).
     [[nodiscard]] friend constexpr int bit_width_of(const wide_int& a) noexcept {
         for (std::size_t i = N; i-- > 0;)
@@ -1728,7 +1731,7 @@ BEMAN_INSIDE_COLD BEMAN_INSIDE_NOINLINE constexpr std::expected<rational, errc> 
     W          den = W{ad} * W{bd / g};
     if (num.is_zero())
         return rational{0};
-    W x = num.negative() ? -num : num, y = den; // gcd(|num|, den)
+    W x = abs(num), y = den; // gcd(|num|, den)
     while (!y.is_zero()) {
         const W t = x % y;
         x         = y;
@@ -4530,7 +4533,7 @@ inline constexpr std::size_t frac_limbs = [] {
     } else {
         auto bits = [](const grid_rational& r) {
             const grid_wide n = wide_numerator(r);
-            return bit_width_of(n.negative() ? -n : n) + bit_width_of(wide_denominator(r));
+            return bit_width_of(abs(n)) + bit_width_of(wide_denominator(r));
         };
         const int b =
             bits(G.Interval.Lower) > bits(G.Interval.Upper) ? bits(G.Interval.Lower) : bits(G.Interval.Upper);
@@ -4585,7 +4588,7 @@ constexpr int scaled_numerator_bits(const grid_rational& r, int f) noexcept {
     const grid_wide n = wide_numerator(r);
     if (n == grid_wide{0})
         return 0;
-    return bit_width_of(n.negative() ? -n : n) + f - (bit_width_of(wide_denominator(r)) - 1);
+    return bit_width_of(abs(n)) + f - (bit_width_of(wide_denominator(r)) - 1);
 }
 
 // `fp`-exactness of a dyadic grid: the IEEE-754 path equals the exact grid
@@ -5847,7 +5850,7 @@ template <insidable B>
 inline constexpr int grid_magnitude_bits = [] {
     auto bits = [](const grid_rational& r) {
         const grid_wide n = wide_numerator(r);
-        return bit_width_of(n.negative() ? -n : n) - (bit_width_of(wide_denominator(r)) - 1) + 1;
+        return bit_width_of(abs(n)) - (bit_width_of(wide_denominator(r)) - 1) + 1;
     };
     const int a = bits(lower_of<B>), b = bits(upper_of<B>);
     return a > b ? a : b;
@@ -5857,14 +5860,14 @@ inline constexpr int grid_magnitude_bits = [] {
 template <insidable B>
 inline constexpr int exact_value_bits = [] {
     if constexpr (point_storage<B>) {
-        auto bits = [](const grid_wide& v) { return bit_width_of(v.negative() ? -v : v); };
+        auto bits = [](const grid_wide& v) { return bit_width_of(abs(v)); };
         return bits(wide_numerator(lower_of<B>)) + bits(wide_denominator(lower_of<B>));
     } else if constexpr (fraction_storage<B>)
         return 2 * decltype(raw_t<B>::Num)::bits;
     else if constexpr (!wide_valued<B>)
         return 128; // a 64-bit rational
     else {
-        auto bits = [](const grid_wide& v) { return bit_width_of(v.negative() ? -v : v); };
+        auto bits = [](const grid_wide& v) { return bit_width_of(abs(v)); };
         return grid_magnitude_bits<B> + bits(wide_denominator(notch_of<B>)) + bits(wide_numerator(notch_of<B>));
     }
 }();
@@ -5904,7 +5907,7 @@ constexpr auto exact_of(const B& b) {
 template <std::size_t K>
 constexpr exact_frac<K> reduced(const exact_frac<K>& f) noexcept {
     using I = wide_sint<K>;
-    I a = f.Num.negative() ? -f.Num : f.Num, b = f.Den;
+    I a = abs(f.Num), b = f.Den;
     if (bit_width_of(a) <= 64 && bit_width_of(b) <= 64) { // the common case: one-limb Euclid
         const umax an = static_cast<umax>(a), bn = static_cast<umax>(b), g = std::gcd(an, bn);
         if (g == 1)
@@ -5985,7 +5988,7 @@ constexpr std::optional<F> frac_raw_of(const exact_frac<K>& v) noexcept {
     const auto r      = reduced(v);
     using I           = decltype(F::Num);
     constexpr int cap = I::bits - 1; // magnitude bits
-    if (bit_width_of(r.Num.negative() ? -r.Num : r.Num) > cap || bit_width_of(r.Den) > cap)
+    if (bit_width_of(abs(r.Num)) > cap || bit_width_of(r.Den) > cap)
         return std::nullopt;
     return F{static_cast<I>(r.Num), static_cast<I>(r.Den)};
 }
@@ -6060,8 +6063,8 @@ constexpr T nearest_float(const exact_frac<K>& f) noexcept {
     using lim         = std::numeric_limits<T>;
     constexpr int p   = lim::digits;
     const bool    neg = f.Num.negative() != f.Den.negative();
-    const U       n{static_cast<wide_uint<K>>(f.Num.negative() ? -f.Num : f.Num)};
-    const U       d{static_cast<wide_uint<K>>(f.Den.negative() ? -f.Den : f.Den)};
+    const U       n{static_cast<wide_uint<K>>(abs(f.Num))};
+    const U       d{static_cast<wide_uint<K>>(abs(f.Den))};
     if (n.is_zero())
         return neg ? -T{0} : T{0};
     // q = ⌊n·2^s / d⌋ has p + 2 or p + 3 bits: |v| = (q + sticky)·2^-s.
@@ -6287,7 +6290,7 @@ constexpr rounded_quotient<K> rounded_div_exact(const wide_sint<K>& n, const wid
     using I        = wide_sint<K>;
     auto [q, r]    = I::divmod(n, d); // toward zero
     const bool neg = n.negative() != d.negative();
-    const I    ar = r.negative() ? -r : r, ad = d.negative() ? -d : d;
+    const I    ar = abs(r), ad = abs(d);
     if (!rounds_away(M, neg, classify_remainder(M, ar, ad), (q.Word[0] & 1u) != 0))
         return {q, r.is_zero()};
     return {neg ? q - I{1} : q + I{1}, false};
@@ -9007,7 +9010,7 @@ struct division {
             auto                max_j = []<insidable B>() {
                 const grid_wide lo = exact_quotient(lower_of<B>, notch_of<B>),
                                 hi = exact_quotient(upper_of<B>, notch_of<B>);
-                const grid_wide a = lo.negative() ? -lo : lo, b = hi.negative() ? -hi : hi;
+                const grid_wide a = abs(lo), b = abs(hi);
                 return a < b ? b : a;
             };
             const grid_wide       a = wide_numerator(notch_of<L>) * wide_denominator(notch_of<R>);
@@ -11654,7 +11657,7 @@ constexpr wide_sint<K> to_q(const exact_frac<E>& x) noexcept {
 template <std::size_t E>
 constexpr int floor_log2(const exact_frac<E>& x) noexcept {
     using I    = wide_sint<E>;
-    const I  n = x.Num.negative() ? -x.Num : x.Num;
+    const I  n = abs(x.Num);
     const I& d = x.Den;
     int      e = bit_width_of(n) - bit_width_of(d);
     // n/d ≥ 2^e  ⇔  n ≥ d·2^e (or n·2^-e ≥ d).
@@ -12422,7 +12425,7 @@ constexpr bool is_integer(const exact_frac<K>& f) noexcept {
 }
 template <std::size_t K>
 constexpr exact_frac<K> abs(const exact_frac<K>& f) noexcept {
-    return {f.Num.negative() ? -f.Num : f.Num, f.Den};
+    return {abs(f.Num), f.Den};
 }
 // 1/f for f != 0.
 template <std::size_t K>
@@ -12759,13 +12762,7 @@ namespace beman::inside::math::detail::ax {
 //---------------------------------------------------------------------------
 // Inputs as exact values, in as few limbs as their grid needs.
 //---------------------------------------------------------------------------
-constexpr int grid_bits(const grid_wide& v) {
-#if BEMAN_INSIDE_BIG_GRIDS
-    return v.bit_width();
-#else
-    return bit_width_of(v.negative() ? -v : v);
-#endif
-}
+constexpr int grid_bits(const grid_wide& v) { return bit_width_of(abs(v)); }
 
 // A grid integer as a double (a notch's p or q, which may pass imax).
 constexpr double grid_double(const grid_wide& v) {
@@ -13421,7 +13418,7 @@ constexpr std::optional<exact_frac<pow_limbs>> exact_pow(const exact_frac<EB>& b
         return std::nullopt;
     const int            q  = static_cast<int>(static_cast<imax>(re.Den));
     const auto           k  = re.Num;
-    const auto           ak = k.negative() ? -k : k;
+    const auto           ak = abs(k);
     const exact_frac<EB> r  = reduced(b);
     // b^(1/q) first: both parts perfect q-th powers, else irrational.
     const auto rn = exact_root(P{r.Num}, q), rd = exact_root(P{r.Den}, q);
@@ -13494,7 +13491,7 @@ constexpr grid_rational lattice_point(const wide_sint<K>& k) {
 #else
     // |k| may pass 2^63 (π on a 2^-62 notch): a rational's numerator holds
     // up to 2^64 − 1, past it the point has no 64-bit grid number.
-    const wide_sint<K> a = k.negative() ? -k : k;
+    const wide_sint<K> a = abs(k);
     if (bit_width_of(a) > 64)
         constexpr_error<"beman::inside::math: a deduced output limit is past the 64-bit grid numbers">();
     const grid_rational m = rational{static_cast<umax>(a)} * Notch;
@@ -13552,7 +13549,7 @@ constexpr exact_frac<input_limbs<In>> grid_input(const grid_rational& r) {
 // 2^63 must fail every range gate, not wrap past them.
 constexpr imax ceil_abs(const grid_rational& r) {
     const grid_wide n = wide_numerator(r), d = wide_denominator(r);
-    const grid_wide a = n.negative() ? -n : n;
+    const grid_wide a = abs(n);
     const grid_wide c = (a + d - grid_wide{1}) / d;
     constexpr imax  M = std::numeric_limits<imax>::max();
     return grid_wide{M} < c ? M : static_cast<imax>(c);
@@ -16966,7 +16963,7 @@ constexpr grid_rational grid_to_int(const grid_rational& r) {
 #else
     // |q| may pass imax (a qword's 2^64 − 1): build the rational from the
     // magnitude, which a 64-bit grid number's integer part always fits.
-    const grid_wide a = q.negative() ? -q : q;
+    const grid_wide a = abs(q);
     const rational  m{static_cast<umax>(a)};
     return q.negative() ? -m : m;
 #endif
@@ -18126,7 +18123,7 @@ bool spec_negative(const exact_frac<K>& f) {
 }
 template <std::size_t K>
 wide_uint<K> spec_magnitude(const exact_frac<K>& f) {
-    return wide_uint<K>{f.Num.negative() ? -f.Num : f.Num};
+    return wide_uint<K>{abs(f.Num)};
 }
 template <std::size_t K>
 wide_uint<K> spec_denominator(const exact_frac<K>& f) {

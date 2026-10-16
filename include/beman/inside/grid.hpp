@@ -503,7 +503,7 @@ inline constexpr std::size_t frac_limbs = [] {
     } else {
         auto bits = [](const grid_rational& r) {
             const grid_wide n = wide_numerator(r);
-            return bit_width_of(n.negative() ? -n : n) + bit_width_of(wide_denominator(r));
+            return bit_width_of(abs(n)) + bit_width_of(wide_denominator(r));
         };
         const int b =
             bits(G.Interval.Lower) > bits(G.Interval.Upper) ? bits(G.Interval.Lower) : bits(G.Interval.Upper);
@@ -558,7 +558,7 @@ constexpr int scaled_numerator_bits(const grid_rational& r, int f) noexcept {
     const grid_wide n = wide_numerator(r);
     if (n == grid_wide{0})
         return 0;
-    return bit_width_of(n.negative() ? -n : n) + f - (bit_width_of(wide_denominator(r)) - 1);
+    return bit_width_of(abs(n)) + f - (bit_width_of(wide_denominator(r)) - 1);
 }
 
 // `fp`-exactness of a dyadic grid: the IEEE-754 path equals the exact grid

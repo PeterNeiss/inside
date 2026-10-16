@@ -591,7 +591,7 @@ bool spec_negative(const exact_frac<K>& f) {
 }
 template <std::size_t K>
 wide_uint<K> spec_magnitude(const exact_frac<K>& f) {
-    return wide_uint<K>{f.Num.negative() ? -f.Num : f.Num};
+    return wide_uint<K>{abs(f.Num)};
 }
 template <std::size_t K>
 wide_uint<K> spec_denominator(const exact_frac<K>& f) {

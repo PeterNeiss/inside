@@ -72,7 +72,7 @@ constexpr grid_rational grid_to_int(const grid_rational& r) {
 #else
     // |q| may pass imax (a qword's 2^64 − 1): build the rational from the
     // magnitude, which a 64-bit grid number's integer part always fits.
-    const grid_wide a = q.negative() ? -q : q;
+    const grid_wide a = abs(q);
     const rational  m{static_cast<umax>(a)};
     return q.negative() ? -m : m;
 #endif
