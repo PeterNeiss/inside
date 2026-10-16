@@ -946,6 +946,37 @@ consteval unit common_unit(const unit& a, const unit& b) {
     u.Scale = u.Scale * magnitude{beman::inside::detail::grid_div_of(g, ma.Ratio)};
     return u;
 }
+
+// Whether the factor between two units is a grid number: always with big
+// grid numbers; with 64-bit ones au → nm (1.5·10^20) is none.
+template <unit From, unit To>
+inline constexpr bool factor_fits_v = [] {
+#if BEMAN_INSIDE_BIG_GRIDS
+    return true;
+#else
+    return beman::inside::detail::try_div(magnitude_of(From).Ratio, magnitude_of(To).Ratio).has_value();
+#endif
+}();
+
+// Whether rescale<M>(v) forms: inside's v · M exists. A pi factor passes, for
+// rescale's static_assert to explain.
+template <magnitude M, class V>
+concept rescale_forms = !exact_factor_v<M> || M.is_one() || requires(const V& v) { v * just<M.Ratio>; };
+
+// Whether a number of V in unit From rescales to unit To.
+template <unit From, unit To, class V>
+concept rescalable = factor_fits_v<From, To> && rescale_forms<conversion_factor<From, To>, V>;
+
+// Whether inside's x Op y exists (Op one of + - % * / = <, the last two for
+// == and <=>).
+template <class X, class Y, char Op>
+concept number_op = (Op == '+' && requires(const X& x, const Y& y) { x + y; }) ||
+                    (Op == '-' && requires(const X& x, const Y& y) { x - y; }) ||
+                    (Op == '%' && requires(const X& x, const Y& y) { x % y; }) ||
+                    (Op == '*' && requires(const X& x, const Y& y) { x * y; }) ||
+                    (Op == '/' && requires(const X& x, const Y& y) { x / y; }) ||
+                    (Op == '=' && requires(const X& x, const Y& y) { x == y; }) ||
+                    (Op == '<' && requires(const X& x, const Y& y) { x <=> y; });
 } // namespace detail
 
 //---------------------------------------------------------------------------
@@ -964,8 +995,13 @@ concept quantity_like = is_quantity_v<std::remove_cvref_t<T>>;
 
 namespace detail {
 template <reference From, reference To>
-inline constexpr bool implicit_v = dimension_of(From.U) == dimension_of(To.U) && spec_converts(From, To) &&
-                                   exact_factor_v<conversion_factor<From.U, To.U>>;
+inline constexpr bool implicit_v = [] {
+    if constexpr (!factor_fits_v<From.U, To.U>)
+        return false;
+    else
+        return dimension_of(From.U) == dimension_of(To.U) && spec_converts(From, To) &&
+               exact_factor_v<conversion_factor<From.U, To.U>>;
+}();
 
 // A dimensionless quantity that is a plain number: no is_kind spec (an
 // angle), and an exact factor to unit one.
@@ -1029,7 +1065,8 @@ class quantity {
     // From another quantity: implicit when the spec converts implicitly and
     // the number, in R's unit, converts implicitly into Rep.
     template <units::reference R2, class V2>
-        requires detail::implicit_v<R2, R> && std::constructible_from<Rep, detail::rescaled_t<R2, R, V2>>
+        requires detail::implicit_v<R2, R> && detail::rescalable<R2.U, R.U, V2> &&
+                 std::constructible_from<Rep, detail::rescaled_t<R2, R, V2>>
     constexpr explicit(!std::convertible_to<detail::rescaled_t<R2, R, V2>, Rep>) quantity(const quantity<R2, V2>& q)
         : Num(detail::rescale<detail::conversion_factor<R2.U, R.U>>(q.numerical_value())) {}
 
@@ -1037,17 +1074,20 @@ class quantity {
 
     // The same quantity in unit U: exact, the number's grid rescaled.
     template <units::unit U>
+        requires(dimension_of(U) != dimension_of(R.U) || detail::rescalable<R.U, U, Rep>)
     [[nodiscard]] constexpr auto in() const {
         static_assert(dimension_of(U) == dimension, "units: in() - the unit has another dimension");
         constexpr units::reference to{R.Spec, R.KindOf, R.Derived, U};
         return detail::make_quantity<to>(detail::rescale<detail::conversion_factor<R.U, U>>(Num));
     }
     template <units::unit U>
+        requires(dimension_of(U) != dimension_of(R.U) || detail::rescalable<R.U, U, Rep>)
     [[nodiscard]] constexpr auto in(units::unit_t<U>) const {
         return in<U>();
     }
     // The number in unit U.
     template <units::unit U>
+        requires(dimension_of(U) != dimension_of(R.U) || detail::rescalable<R.U, U, Rep>)
     [[nodiscard]] constexpr auto numerical_value_in(units::unit_t<U>) const {
         return in<U>().numerical_value();
     }
@@ -1075,23 +1115,27 @@ class quantity {
     // Compound assignment keeps the type: the number is stored back under Rep's
     // policy (checked by default).
     template <units::reference R2, class V2>
-        requires detail::implicit_v<R2, R>
+        requires detail::implicit_v<R2, R> && detail::rescalable<R2.U, R.U, V2> &&
+                 requires(Rep& n, const detail::rescaled_t<R2, R, V2>& r) { n += r; }
     constexpr quantity& operator+=(const quantity<R2, V2>& q) {
         Num += detail::rescale<detail::conversion_factor<R2.U, R.U>>(q.numerical_value());
         return *this;
     }
     template <units::reference R2, class V2>
-        requires detail::implicit_v<R2, R>
+        requires detail::implicit_v<R2, R> && detail::rescalable<R2.U, R.U, V2> &&
+                 requires(Rep& n, const detail::rescaled_t<R2, R, V2>& r) { n -= r; }
     constexpr quantity& operator-=(const quantity<R2, V2>& q) {
         Num -= detail::rescale<detail::conversion_factor<R2.U, R.U>>(q.numerical_value());
         return *this;
     }
     template <insidable V>
+        requires requires(Rep& n, const V& v) { n *= v; }
     constexpr quantity& operator*=(const V& v) {
         Num *= v;
         return *this;
     }
     template <insidable V>
+        requires requires(Rep& n, const V& v) { n /= v; }
     constexpr quantity& operator/=(const V& v) {
         Num /= v;
         return *this;
@@ -1155,6 +1199,25 @@ consteval reference sum_reference() {
     return r;
 }
 
+// Whether a sum or comparison of A and B is a unit error that
+// sum_reference's static_assert or common_unit explains (other dimensions or
+// kinds, no common unit): such a call passes the constraint below and fails
+// with that message.
+template <reference A, reference B>
+consteval bool sum_diagnosed() {
+    if (dimension_of(A.U) != dimension_of(B.U) || !common_spec(A, B).Ok)
+        return true;
+    const magnitude ma = magnitude_of(A.U), mb = magnitude_of(B.U);
+    return ma.Pi != mb.Pi || !beman::inside::detail::grid_gcd_fits(ma.Ratio, mb.Ratio);
+}
+
+// Whether a Op b exists in the common unit: both numbers rescale to it and
+// inside's Op takes them.
+template <reference A, class VA, reference B, class VB, char Op>
+concept summable = sum_diagnosed<A, B>() ||
+                   (rescalable<A.U, sum_reference<A, B>().U, VA> && rescalable<B.U, sum_reference<A, B>().U, VB> &&
+                    number_op<rescaled_t<A, sum_reference<A, B>(), VA>, rescaled_t<B, sum_reference<A, B>(), VB>, Op>);
+
 template <reference A, reference B, int Sign>
 consteval reference product_reference() {
     const unit u = unit_mul(A.U, B.U, Sign);
@@ -1163,30 +1226,35 @@ consteval reference product_reference() {
 } // namespace detail
 
 template <reference A, class VA, reference B, class VB>
+    requires detail::summable<A, VA, B, VB, '+'>
 [[nodiscard]] constexpr auto operator+(const quantity<A, VA>& a, const quantity<B, VB>& b) {
     constexpr reference C = detail::sum_reference<A, B>();
     return detail::make_quantity<C>(detail::rescale<detail::conversion_factor<A.U, C.U>>(a.numerical_value()) +
                                     detail::rescale<detail::conversion_factor<B.U, C.U>>(b.numerical_value()));
 }
 template <reference A, class VA, reference B, class VB>
+    requires detail::summable<A, VA, B, VB, '-'>
 [[nodiscard]] constexpr auto operator-(const quantity<A, VA>& a, const quantity<B, VB>& b) {
     constexpr reference C = detail::sum_reference<A, B>();
     return detail::make_quantity<C>(detail::rescale<detail::conversion_factor<A.U, C.U>>(a.numerical_value()) -
                                     detail::rescale<detail::conversion_factor<B.U, C.U>>(b.numerical_value()));
 }
 template <reference A, class VA, reference B, class VB>
+    requires detail::summable<A, VA, B, VB, '%'>
 [[nodiscard]] constexpr auto operator%(const quantity<A, VA>& a, const quantity<B, VB>& b) {
     constexpr reference C = detail::sum_reference<A, B>();
     return detail::make_quantity<C>(detail::rescale<detail::conversion_factor<A.U, C.U>>(a.numerical_value()) %
                                     detail::rescale<detail::conversion_factor<B.U, C.U>>(b.numerical_value()));
 }
 template <reference A, class VA, reference B, class VB>
+    requires detail::summable<A, VA, B, VB, '='>
 [[nodiscard]] constexpr bool operator==(const quantity<A, VA>& a, const quantity<B, VB>& b) {
     constexpr reference C = detail::sum_reference<A, B>();
     return detail::rescale<detail::conversion_factor<A.U, C.U>>(a.numerical_value()) ==
            detail::rescale<detail::conversion_factor<B.U, C.U>>(b.numerical_value());
 }
 template <reference A, class VA, reference B, class VB>
+    requires detail::summable<A, VA, B, VB, '<'>
 [[nodiscard]] constexpr auto operator<=>(const quantity<A, VA>& a, const quantity<B, VB>& b) {
     constexpr reference C = detail::sum_reference<A, B>();
     return detail::rescale<detail::conversion_factor<A.U, C.U>>(a.numerical_value()) <=>
@@ -1194,28 +1262,34 @@ template <reference A, class VA, reference B, class VB>
 }
 
 template <reference A, class VA, reference B, class VB>
+    requires detail::number_op<VA, VB, '*'>
 [[nodiscard]] constexpr auto operator*(const quantity<A, VA>& a, const quantity<B, VB>& b) {
     return detail::make_quantity<detail::product_reference<A, B, 1>()>(a.numerical_value() * b.numerical_value());
 }
 template <reference A, class VA, reference B, class VB>
+    requires detail::number_op<VA, VB, '/'>
 [[nodiscard]] constexpr auto operator/(const quantity<A, VA>& a, const quantity<B, VB>& b) {
     return detail::make_quantity<detail::product_reference<A, B, -1>()>(a.numerical_value() / b.numerical_value());
 }
 
 // A quantity scaled by a dimensionless number (an inside).
 template <reference A, class VA, insidable V>
+    requires detail::number_op<VA, V, '*'>
 [[nodiscard]] constexpr auto operator*(const quantity<A, VA>& a, const V& v) {
     return detail::make_quantity<A>(a.numerical_value() * v);
 }
 template <insidable V, reference A, class VA>
+    requires detail::number_op<V, VA, '*'>
 [[nodiscard]] constexpr auto operator*(const V& v, const quantity<A, VA>& a) {
     return detail::make_quantity<A>(v * a.numerical_value());
 }
 template <reference A, class VA, insidable V>
+    requires detail::number_op<VA, V, '/'>
 [[nodiscard]] constexpr auto operator/(const quantity<A, VA>& a, const V& v) {
     return detail::make_quantity<A>(a.numerical_value() / v);
 }
 template <insidable V, reference A, class VA>
+    requires detail::number_op<V, VA, '/'>
 [[nodiscard]] constexpr auto operator/(const V& v, const quantity<A, VA>& a) {
     constexpr reference R = detail::product_reference<reference{nullptr, true, {}, unit{}}, A, -1>();
     return detail::make_quantity<R>(v / a.numerical_value());
@@ -1282,6 +1356,7 @@ template <auto Spec, reference R, class V>
 // value_cast<Rep2>(q) — another representation, the same unit: Rep2's
 // constructor (checked unless Rep2's policy says otherwise).
 template <insidable Rep2, reference R, class V>
+    requires std::constructible_from<Rep2, const V&>
 [[nodiscard]] constexpr quantity<R, Rep2> value_cast(const quantity<R, V>& q) {
     return quantity<R, Rep2>{Rep2(q.numerical_value())};
 }
@@ -1289,7 +1364,9 @@ template <insidable Rep2, reference R, class V>
 // value in U, stored by Rep2's constructor. (A pi factor, degree ↔ radian,
 // rounds once: units_math.hpp.)
 template <auto U, insidable Rep2, reference R, class V>
-    requires is_unit_tag_v<decltype(U)> && detail::exact_factor_v<detail::conversion_factor<R.U, decltype(U)::value>>
+    requires is_unit_tag_v<decltype(U)> && detail::factor_fits_v<R.U, decltype(U)::value> &&
+             detail::exact_factor_v<detail::conversion_factor<R.U, decltype(U)::value>> &&
+             requires(const quantity<R, V>& q) { Rep2(q.in(U).numerical_value()); }
 [[nodiscard]] constexpr auto value_cast(const quantity<R, V>& q) {
     constexpr units::unit u = decltype(U)::value;
     static_assert(dimension_of(u) == dimension_of(R.U), "units: value_cast - the unit has another dimension");
@@ -1299,6 +1376,7 @@ template <auto U, insidable Rep2, reference R, class V>
 
 // try_value_cast<Rep2, F>(q) — as Rep2::try_make<F>: an expected.
 template <insidable Rep2, policy_flag F = none, reference R, class V>
+    requires requires(const V& v) { Rep2::template try_make<F>(v); }
 [[nodiscard]] constexpr std::expected<quantity<R, Rep2>, errc> try_value_cast(const quantity<R, V>& q) {
     auto v = Rep2::template try_make<F>(q.numerical_value());
     if (!v)
@@ -1333,6 +1411,10 @@ consteval grid_rational origin_shift() {
     return beman::inside::detail::grid_div_of(beman::inside::detail::grid_sub(offset_of(From), offset_of(To)),
                                               m.Ratio);
 }
+
+// Whether shift<C> forms on V: inside's v + C exists.
+template <grid_rational C, class V>
+concept shift_forms = C == grid_rational{0} || requires(const V& v) { v + just<C>; };
 
 template <grid_rational C, insidable V>
 constexpr auto shift(const V& v) {
@@ -1387,7 +1469,10 @@ class quantity_point {
 
     // The quantity from this point's origin, or from another one.
     [[nodiscard]] constexpr const quantity<R, Rep>& quantity_from_origin() const noexcept { return Q; }
+    // (Other absolute origins, or a pi unit, pass to origin_shift's message.)
     template <origin_ref O2>
+        requires(!detail::same(detail::absolute_of(O2), detail::absolute_of(O)) || magnitude_of(R.U).Pi != 0 ||
+                 detail::shift_forms<detail::origin_shift<O, O2, R.U>(), Rep>)
     [[nodiscard]] constexpr auto quantity_from(origin_t<O2>) const {
         constexpr grid_rational c = detail::origin_shift<O, O2, R.U>();
         return quantity<R, std::remove_cvref_t<decltype(detail::shift<c>(Q.numerical_value()))>>{
@@ -1410,13 +1495,13 @@ class quantity_point {
     }
 
     template <units::reference R2, class V2>
-        requires detail::implicit_v<R2, R>
+        requires requires(quantity<R, Rep>& a, const quantity<R2, V2>& b) { a += b; }
     constexpr quantity_point& operator+=(const quantity<R2, V2>& q) {
         Q += q;
         return *this;
     }
     template <units::reference R2, class V2>
-        requires detail::implicit_v<R2, R>
+        requires requires(quantity<R, Rep>& a, const quantity<R2, V2>& b) { a -= b; }
     constexpr quantity_point& operator-=(const quantity<R2, V2>& q) {
         Q -= q;
         return *this;
@@ -1425,11 +1510,12 @@ class quantity_point {
 
 // value_cast on a point: its quantity from the origin cast, the origin kept.
 template <insidable Rep2, reference R, origin_ref O, class V>
+    requires std::constructible_from<Rep2, const V&>
 [[nodiscard]] constexpr quantity_point<R, O, Rep2> value_cast(const quantity_point<R, O, V>& p) {
     return quantity_point<R, O, Rep2>{value_cast<Rep2>(p.quantity_from_origin())};
 }
 template <auto U, insidable Rep2, reference R, origin_ref O, class V>
-    requires is_unit_tag_v<decltype(U)> && detail::exact_factor_v<detail::conversion_factor<R.U, decltype(U)::value>>
+    requires requires(const quantity<R, V>& q) { value_cast<U, Rep2>(q); }
 [[nodiscard]] constexpr auto value_cast(const quantity_point<R, O, V>& p) {
     const auto q = value_cast<U, Rep2>(p.quantity_from_origin());
     return quantity_point<std::remove_cvref_t<decltype(q)>::reference, O, Rep2>{q};
@@ -1461,26 +1547,38 @@ template <reference R, class V, origin_ref O>
 // point ± quantity: a point at the same origin; point − point: a quantity
 // (the second counted from the first's origin).
 template <reference R, origin_ref O, class V, reference R2, class V2>
+    requires requires(const quantity<R, V>& a, const quantity<R2, V2>& b) { a + b; }
 [[nodiscard]] constexpr auto operator+(const quantity_point<R, O, V>& p, const quantity<R2, V2>& q) {
     return detail::make_point<O>(p.quantity_from_origin() + q);
 }
 template <reference R2, class V2, reference R, origin_ref O, class V>
+    requires requires(const quantity<R2, V2>& a, const quantity<R, V>& b) { a + b; }
 [[nodiscard]] constexpr auto operator+(const quantity<R2, V2>& q, const quantity_point<R, O, V>& p) {
     return detail::make_point<O>(q + p.quantity_from_origin());
 }
 template <reference R, origin_ref O, class V, reference R2, class V2>
+    requires requires(const quantity<R, V>& a, const quantity<R2, V2>& b) { a - b; }
 [[nodiscard]] constexpr auto operator-(const quantity_point<R, O, V>& p, const quantity<R2, V2>& q) {
     return detail::make_point<O>(p.quantity_from_origin() - q);
 }
 template <reference R, origin_ref O, class V, reference R2, origin_ref O2, class V2>
+    requires requires(const quantity_point<R, O, V>& a, const quantity_point<R2, O2, V2>& b) {
+        a.quantity_from_origin() - b.quantity_from(origin_t<O>{});
+    }
 [[nodiscard]] constexpr auto operator-(const quantity_point<R, O, V>& a, const quantity_point<R2, O2, V2>& b) {
     return a.quantity_from_origin() - b.quantity_from(origin_t<O>{});
 }
 template <reference R, origin_ref O, class V, reference R2, origin_ref O2, class V2>
+    requires requires(const quantity_point<R, O, V>& a, const quantity_point<R2, O2, V2>& b) {
+        a.quantity_from_origin() == b.quantity_from(origin_t<O>{});
+    }
 [[nodiscard]] constexpr bool operator==(const quantity_point<R, O, V>& a, const quantity_point<R2, O2, V2>& b) {
     return a.quantity_from_origin() == b.quantity_from(origin_t<O>{});
 }
 template <reference R, origin_ref O, class V, reference R2, origin_ref O2, class V2>
+    requires requires(const quantity_point<R, O, V>& a, const quantity_point<R2, O2, V2>& b) {
+        a.quantity_from_origin() <=> b.quantity_from(origin_t<O>{});
+    }
 [[nodiscard]] constexpr auto operator<=>(const quantity_point<R, O, V>& a, const quantity_point<R2, O2, V2>& b) {
     return a.quantity_from_origin() <=> b.quantity_from(origin_t<O>{});
 }

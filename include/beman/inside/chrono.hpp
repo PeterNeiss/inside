@@ -90,26 +90,36 @@ constexpr std::expected<typename D::rep, errc> duration_count(const B& x) {
 // duration → B: the exact value count·num/den seconds, then B's store with
 // the flags F added (as B::try_make<F>): B's policy rounds, clamps or wraps,
 // and a value it cannot take is the error. A floating count is taken as its
-// binary value (to 2^-62 off a 1-second period); past 2^63 periods it is an
-// overflow, and a non-finite count is not_finite.
+// exact binary value (a long double too), and a non-finite count is
+// not_finite.
 template <insidable B, policy_flag F = none, class Rep, class Period>
 [[nodiscard]] constexpr std::expected<B, errc> from_duration(std::chrono::duration<Rep, Period> d) {
-    if constexpr (std::floating_point<Rep> && std::ratio_equal_v<Period, std::ratio<1>>)
+    if constexpr (std::ratio_equal_v<Period, std::ratio<1>>)
         return B::template try_make<F>(d.count());
     else {
-        std::expected<rational, errc> v{rational{0}};
-        if constexpr (std::floating_point<Rep>) {
-            const Rep c = d.count();
+        const Rep c = d.count();
+        if constexpr (std::integral<Rep>)
+            if (const auto v = rational{c} * period_notch<Period>) [[likely]]
+                return B::template try_make<F>(*v);
+        // Past the 64-bit rational, or a floating count: exactly.
+        if constexpr (std::floating_point<Rep>)
             if (!detail::is_finite(c))
                 return std::unexpected{errc::not_finite};
-            if (!(c > Rep{-0x1p63} && c < Rep{0x1p63}))
-                return std::unexpected{errc::overflow};
-            v = rational{static_cast<double>(c)} * period_notch<Period>;
-        } else
-            v = rational{d.count()} * period_notch<Period>;
-        if (!v)
-            return std::unexpected{v.error()};
-        return B::template try_make<F>(*v);
+        const auto x = [&] {
+            if constexpr (std::integral<Rep>)
+                return detail::exact_of(c);
+            else if constexpr (detail::wide_float<Rep>)
+                return detail::exact_of_long_double(c);
+            else
+                return detail::exact_of_double(static_cast<double>(c));
+        }();
+        errc ec{};
+        B    b{};
+        detail::assign_exact<detail::rational>(
+            b, x * detail::exact_of(period_notch<Period>), make_policy<flags_of<B> | F>(ec), no_action{});
+        if (ec != errc{})
+            return std::unexpected{ec};
+        return b;
     }
 }
 

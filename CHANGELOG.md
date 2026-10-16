@@ -143,6 +143,17 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   comparisons work at runtime when a value or limit passes 64 bits (they
   terminated): a fine double on a 64-bit grid, any double on a grid past
   2^64.
+- `from_duration` takes a floating count with a period other than one
+  second exactly: `duration<double, std::milli>{0.1}` was an overflow (the
+  product left the 64-bit rational), and a `long double` count went
+  through a double.
+- `to<float>()` rounds once: a value whose double is a tie between two
+  floats rounded to even from the double, not from the value.
+- `units::quantity` and `quantity_point` operators, conversions and casts
+  are constrained on the number operation they run: a `requires` test of an
+  off-notch `+=`, a product past 64-bit grids or a unit factor past them
+  (au → nm under C++23) is false instead of a hard error. Unit mismatches
+  keep their messages.
 
 ## 0.2.0 — 2026-10-10
 

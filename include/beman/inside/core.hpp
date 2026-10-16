@@ -332,13 +332,19 @@ struct inside {
         }
     }
 
-    // A floating point wider than double (long double) gets the value rounded
-    // once to its own digits, not through a double.
+    // Rounded once to T's digits: a floating point wider than double (long
+    // double) from the exact value; a narrower one (float) through the double,
+    // unless that double is a tie between two Ts.
     template <std::floating_point T>
     [[nodiscard]] constexpr std::expected<T, errc> to() const {
         if constexpr (detail::wide_float<T>)
             return detail::nearest_float<T>(detail::exact_of(*this));
-        else
+        else if constexpr (sizeof(T) < sizeof(double)) {
+            const double d = detail::as_double(*this);
+            if (detail::narrow_midpoint<T>(d)) [[unlikely]]
+                return detail::nearest_float<T>(detail::exact_of(*this));
+            return static_cast<T>(d);
+        } else
             return static_cast<T>(detail::as_double(*this));
     }
 

@@ -219,6 +219,19 @@ template <std::floating_point T>
 template <typename T>
 concept wide_float = std::floating_point<T> && (sizeof(T) > sizeof(double));
 
+// Whether a finite double d lies halfway between two adjacent values of a
+// narrower T (float): there static_cast<T>(d) breaks a tie that d's source
+// value may not have, so a value rounded to d first must round again from its
+// exact value. f and the other neighbour f + 2(d − f) are exact in double.
+template <std::floating_point T>
+[[nodiscard]] constexpr bool narrow_midpoint(double d) noexcept {
+    const T f = static_cast<T>(d);
+    if (!is_finite(f))
+        return true; // past T's largest finite: decide exactly
+    const double g = static_cast<double>(f) + 2 * (d - static_cast<double>(f));
+    return g != static_cast<double>(f) && static_cast<double>(static_cast<T>(g)) == g;
+}
+
 // A finite nonzero double as |d| = Mant·2^Exp, Mant of 53 bits.
 struct double_parts_t {
     umax Mant;
