@@ -28,10 +28,9 @@ inline constexpr auto          fathom = unit_c<fathom_def>;
 
 // 2. A temperature unit whose points count from absolute zero: the options
 //    name its ASCII symbol and its origin.
-inline constexpr named_unit rankine_def{"°R",
-                                        mag<rational{5, 9}> * si::kelvin,
-                                        {.ascii = "R", .origin = si::absolute_zero}};
-inline constexpr auto       rankine = unit_c<rankine_def>;
+inline constexpr named_unit rankine_def{
+    "°R", mag<rational{5, 9}> * si::kelvin, {.ascii = "R", .origin = si::absolute_zero}};
+inline constexpr auto rankine = unit_c<rankine_def>;
 
 // 3. Currency: a base dimension, its base quantity and two units.
 inline constexpr base_dimension currency_def{"currency"};
@@ -88,9 +87,9 @@ int main() {
     static_assert(!addable<decltype(cost), decltype(just<1> * si::metre)>);
 
     // 4. 64 KiB over 1 Mbit/s takes 64·1024·8 / 10^6 s = 0.524288 s.
-    const quantity<kibibyte, inside<{0, 1024}>>                       file{64};
-    const quantity<si::mega(bit) / si::second, inside<{1, 100}>>      link{1};
-    const auto                                                        time = (file / link).in(si::second);
+    const quantity<kibibyte, inside<{0, 1024}>>                  file{64};
+    const quantity<si::mega(bit) / si::second, inside<{1, 100}>> link{1};
+    const auto                                                   time = (file / link).in(si::second);
     std::cout << "transfer   " << file << " at " << link << " takes " << time << '\n';
     if (to_string(time) != "0.524288 s" || to_string(file.in(bit)) != "524288 bit")
         return 1;
