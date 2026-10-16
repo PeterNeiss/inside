@@ -23,7 +23,8 @@ using q8_8 = inside<{{0, rational{65535, 256}}, per<256>}, round_nearest>;  // =
 ```
 
 `#include <beman/inside/formats.hpp>` for the curated aliases: `q4_4`, `q8_8`, `q16_16`
-(uint8/16/32), `uint8`…`int64`, and `unorm8/16/32` (`[0,1]` at N-bit resolution).
+(8/16/32 bits), the integer widths `uint8`…`uint64` / `int8`…`int64`, and
+`unorm8/16/32` (`[0,1]` at N-bit resolution).
 
 Two grid shapes take the integer fast paths: **integer-aligned** (notch and
 Lower are whole numbers) and **Q-format** (notch `1/N`, `N ≥ 2`, Lower 0).
@@ -41,8 +42,8 @@ Lower are whole numbers) and **Q-format** (notch `1/N`, `N ≥ 2`, Lower 0).
   `snap` (truncate), `round_nearest`, `clamp`, `wrap`, or `checked` — you
   choose per type or per operation.
 - **Out-of-range is explicit.** `clamp`/`wrap` saturate/fold; `checked`
-  reports (`std::expected` / `beman::inside::errc`) instead of silently
-  wrapping.
+  reports (a throw by default, or `std::expected` / `beman::inside::errc`)
+  instead of silently wrapping.
 - **Exactness by default.** Values on a notched grid are exact integer
   indices; only a continuous grid (an exact quotient) needs a rational.
 
@@ -67,7 +68,7 @@ cheap; **rational is the slow one** — keep continuous grids out of hot loops.
 2. **Q-format grids (notch `1/N`, Lower 0)** — a power-of-two `N` makes scaling a
    shift. Division of two same-notch Q-format operands takes the fast path
    `(a · N) / b` (`(a << log2 N) / b` for power-of-two `N`) (`qformat_codec_fits` / `q_format_encode` in
-   `generic.hpp`; the Q-format divide in `detail/division.hpp`). Construction is
+   `detail/storage.hpp`; the Q-format divide in `detail/division.hpp`). Construction is
    ~native (Q8.8 / Q16.16 measure at ~0.97×).
 3. **Avoid in hot loops:** continuous (Notch 0) grids use rational storage
    (gcd/lcm every op). For bulk reductions use

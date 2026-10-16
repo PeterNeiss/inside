@@ -6,14 +6,28 @@ you know the three things it is showing you.
 
 ## Decoding the type
 
+GCC spells every name out; Clang abbreviates. The point `3_ins` reads:
+
 ```
-inside<grid{interval{rational{3,1}, rational{3,1}}, rational{0,1}}, 17179869184>
-       └────────── interval [lo, hi] ──────────┘  └─ notch ─┘   └── policy P ──┘
+GCC:   inside<small_grids_v2::grid{small_grids_v2::interval{grid_rational{3, 1}, grid_rational{3, 1}},
+                                   grid_rational{0, 1}, grid_rational{0, 1}}, 17179869184>
+Clang: inside<grid{{{3, 1}, {3, 1}}, {0, 1}, {0, 1}}>
+              └─ interval ─┘  └notch┘ └bound┘
 ```
 
-- **interval** `{lo, hi}` — the inclusive value range, as exact fractions.
-- **notch** — the grid step, also a fraction. `rational{0,1}` (= `0`) means a *continuous*
-  point/range with no discrete step; it is **not** "missing".
+(GCC also prefixes `beman::inside::` and `beman::inside::detail::`, shortened
+here. Clang leaves out a policy argument that equals the default.)
+
+- **interval** `{lo, hi}` — the inclusive value range, as exact fractions. A
+  fraction prints as `{numerator, denominator}` with the sign on the
+  denominator: −3 is `{3, -1}`.
+- **notch** — the grid step, also a fraction. `{0, 1}` (= `0`) means a
+  *continuous* point/range with no discrete step; it is **not** "missing".
+- **bound** — `MaxDenominator`, the denominator bound of a bounded continuous
+  grid ([arithmetic.md](arithmetic.md#bounded-continuous-grids)); `{0, 1}` on
+  every other grid.
+- **`small_grids_v2` / `big_grids_v2`** — the grid ABI namespace: 64-bit grid
+  numbers, or C++26 big grids (then each number is a `big_rational` of limbs).
 - **policy `P`** — a bitset printed as a plain integer (it is an `unsigned long long`). The
   compiler cannot print the flag names, so decode the bits yourself:
 
@@ -29,14 +43,10 @@ inside<grid{interval{rational{3,1}, rational{3,1}}, rational{0,1}}, 17179869184>
 | `1<<32` | 4294967296 | `clamp` |
 | `1<<33` | 8589934592 | `wrap` |
 | `1<<34` | 17179869184 | `checked` (the default `P`; overrides `unsafe`) |
-| `1<<35` | 34359738368 | (unused) |
 | `1<<36` | 68719476736 | `unsafe` marker (+ ignore_range, snap, ignore_zero); the only bit that turns runtime checks off |
-| `1<<37` | … | (unused) |
-| `1<<38` | … | (unused) |
-| `1<<39` | … | (unused) |
-| `1<<40` | … | (unused) |
-| `1<<41` | … | (unused) |
-| `1<<42`…`1<<49` | … | (unused) |
+| `1<<50` | 1125899906842624 | a `cursor<T, Step>` |
+
+The other bits are unused.
 
 So `17179869184` is simply `checked`, the default policy of `inside<G>`. Every
 other policy without the `unsafe` bit is checked too. (Full table:

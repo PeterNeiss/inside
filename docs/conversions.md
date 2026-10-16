@@ -60,7 +60,7 @@ if (!r) { /* r.error() is errc::overflow or errc::domain_error */ }
 the value is known in-range and you want to fail loud on a logic bug:
 
 ```cpp
-narrow b{42};
+inside<{0, 1000}> b{42};
 auto v = b.as<std::int16_t>();   // 42; throws on out-of-range
 ```
 
@@ -109,9 +109,9 @@ comparisons, `includes`, `grid::representable` — is exact as well.
 
 ## Free-function casts
 
-Seven named casts complement the constructors. They make the intent
-(clamp, wrap, throw, trust, or compose with a rounding mode) visible at the
-call site — particularly useful inside `std::transform` lambdas.
+Four named casts complement the constructors. They make the intent
+(clamp, wrap, throw, trust; `clamp_cast` also takes a rounding mode) visible
+at the call site — particularly useful inside `std::transform` lambdas.
 
 | Cast | Behaviour |
 |---|---|
@@ -119,9 +119,7 @@ call site — particularly useful inside `std::transform` lambdas.
 | `wrap_cast<B>(v)`      | modular reduction into the target interval |
 | `checked_cast<B>(v)`   | report through the checked policy (by default, throw `beman::inside::inside_error`): `errc::overflow` when out of range, `errc::rounding_error` when off-notch |
 | `unchecked_cast<B>(v)` | trust the caller — UB if out of range |
-| `clamp_cast<B, round_floor>(v)`    | clamp + round toward −∞ |
-| `clamp_cast<B, round_ceil>(v)`     | clamp + round toward +∞ |
-| `clamp_cast<B, round_nearest>(v)`    | clamp + round to nearest |
+| `clamp_cast<B, round_floor>(v)` | clamp + round toward −∞ (likewise `round_ceil`, `round_nearest`, `round_half_even`); the mode replaces B's own |
 
 ```cpp
 using pct = inside<{0, 100}>;
@@ -137,15 +135,15 @@ clamped or wrapped by value, and an inside source is read by value
 (`clamp_cast<pct, round_nearest>(r)` with `r == 2.5` gives 3). The
 same holds for the fluent forms — `b.with_clamp() = r`, `(r * k).with_snap()`.
 
-For `double → bounded` pipelines (audio / graphics / DSP), the `clamp_*`
-family composes clamping with a rounding mode:
+For `double → bounded` pipelines (audio / graphics / DSP), `clamp_cast` with
+a rounding mode composes clamping with that mode:
 
 ```cpp
 using coarse = inside<{{0, 10}, 2}>;
-clamp_cast<coarse, round_floor>(3.0);   // 2   (clamp + floor)
-clamp_cast<coarse, round_ceil>(3.0);   // 4   (clamp + ceil)
-clamp_cast<coarse, round_nearest>(3.0);   // 4   (clamp + round to nearest)
-clamp_cast<coarse, round_floor>(15.0);  // 10  (out-of-range clamps to upper)
+clamp_cast<coarse, round_floor>(3.0);    // 2   (clamp + floor)
+clamp_cast<coarse, round_ceil>(3.0);     // 4   (clamp + ceil)
+clamp_cast<coarse, round_nearest>(3.0);  // 4   (clamp + round to nearest)
+clamp_cast<coarse, round_floor>(15.0);   // 10  (out-of-range clamps to upper)
 ```
 
 The source may also be an **inside** on a finer or incompatible grid — the one-shot
@@ -177,7 +175,7 @@ using output_t = inside<{-100, 100}, clamp | round_nearest>;
 return output_t{raw};
 ```
 
-The `clamp_*` free functions are still the right choice for one-off conversions
+`clamp_cast<B, Round>` is still the right choice for one-off conversions
 where the call site needs to override the inside's declared policy.
 [examples/pid_controller.cpp](../examples/pid_controller.cpp) and
 [examples/sensor_fusion.cpp](../examples/sensor_fusion.cpp) demonstrate the
@@ -190,7 +188,7 @@ Inspect a value *before* attempting an unsafe construction:
 ```cpp
 conversion_overflows<pct>(150);   // true  — out of [0, 100]
 conversion_rounds   <pct>(3.5);   // true  — doesn't land on notch 1
-conversion_loses <pct>(150);   // true  — overflow OR rounding
+conversion_loses    <pct>(150);   // true  — overflow OR rounding
 ```
 
 All three are pure inspection — none performs the conversion or has

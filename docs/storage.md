@@ -81,7 +81,7 @@ offset encoding, even with notch 1, because its values are not integers:
 
 ```cpp
 using centres = inside<{{0.5, 255.5}, 1}>;     // Raw: uint8_t, 0.5 … 255.5 (bin centres)
-using tenths  = inside<{{-1.1, 0.9}, 0.2}>;    // −1.1, −0.9, …, 0.9 (decimal steps)
+using tenths  = inside<{{-1.1_r, 0.9_r}, 0.2_r}>; // −1.1, −0.9, …, 0.9 (decimal steps)
 centres c = 3.5;                               // 3 or 4 would be rounding_error
 auto    s = c + c;                             // inside<{{1, 511}, 1}>: on the integers
 ```
@@ -234,7 +234,7 @@ internal value path is `imax` and −2⁶³ has no negation in int64. Q-formats 
 their full natural range and power-of-two notches.
 
 `uint64` reaches past int64, so it has no implicit `operator imax`: read it with
-`to<std::uint64_t>()`. A difference of two qwords spans 2⁶⁵ values and gets a
+`to<std::uint64_t>()`. A difference of two `uint64`s spans 2⁶⁵ values and gets a
 wide integer index; a sum's upper bound passes the 64-bit grid numbers, so it
 needs [C++26 big grids](#grids-past-64-bits-c26).
 

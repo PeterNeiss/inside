@@ -12,7 +12,7 @@ auto prod = a * b;   // inside<{0, 65025}>
 auto quot = a / b;   // std::expected<inside<{rational}>, errc>
 ```
 
-Division is rich enough to warrant its [own section](#division) below — `inside / inside` picks between three code paths at compile time, and its `std::expected` result has two distinct failure causes.
+Division is rich enough to warrant its [own section](#division) below — `inside / inside` picks between four code paths at compile time, and its `std::expected` result has two distinct failure causes.
 
 The free functions `add`, `sub`, `mul`, `div`, `mod` and `divmod` take one of three
 trailing forms:
@@ -36,7 +36,7 @@ auto q = div(x, y, on_overflow([&](auto& res, errc) {
 
 ## Division
 
-`inside / inside` takes one of **three code paths**, chosen at compile time from
+`inside / inside` takes one of **four code paths**, chosen at compile time from
 the operand grids and whether `snap` is in effect. It returns a plain `inside`
 when the divisor's grid excludes zero and the quotient provably fits, otherwise
 `std::expected` ([below](#when-the-result-is-stdexpected-and-when-it-isnt)).
@@ -475,6 +475,7 @@ value one past the last:
 
 ```cpp
 using time_t = inside<{{-4, 4}, per<1024>}, round_nearest>;
+using amp_t  = inside<{{0, 100}, per<16384>}, round_nearest>;
 for (cursor<time_t, per<4>> t; t != end(t); ++t)         // −4, −3.75, …, 4
     std::cout << t << " " << math::exp_into<amp_t>(t) << "\n";
 for (cursor<time_t, 0.25_r> t = -2_ins; t <= 2_ins; ++t) // any start, the classic test

@@ -359,7 +359,7 @@ in v0.2.0, and each is a candidate for a later paper:
 
 The reference implementation is header-only C++23 (GCC 14+, Clang 19+, Clang 18
 with libc++). It ships a single-header amalgamation, a CMake package and a
-vcpkg port, and follows the Beman Standard. Its test suite (615 tests, 628 with
+vcpkg port, and follows the Beman Standard. Its test suite (738 tests, 748 with
 C++26 reflection) runs in CI on 53 compiler, library and sanitizer
 configurations, including a check that the integer fast paths compile to
 call-free, vectorising code.

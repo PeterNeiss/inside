@@ -29,7 +29,7 @@ auto i = index::try_make(10);  // !i, i.error() == errc::overflow
 ```
 
 Every policy runs the runtime checks unless it carries `unsafe`:
-`inside<G>`, `inside<G, round_nearest>` and `inside<G, indexed>` all report an
+`inside<G>`, `inside<G, round_nearest>` and `inside<G, ignore_zero>` all report an
 out-of-range or off-notch value (by default, by throwing). `clamp` / `wrap`
 handle the range instead, and `snap` / `round_*` handle the notch. Use `unsafe`
 to drop runtime checks for maximum performance when correctness is proven
@@ -123,7 +123,7 @@ stored value) plus an event-specific payload.
 | `on_error(λ)`    | assignment | an out-of-range (`overflow`) or off-notch (`rounding_error`) value under `checked` (replaces the throw) | `λ(inside&, errc, const char* msg)` |
 | `on_overflow(λ)` | binary arithmetic | a fractional or imax result overflows, or `div`/`mod` divides by zero | `λ(inside&, errc)` |
 
-The first three fire on the **assignment** path — narrowing a value *into* a
+The first three fire on the **assignment** path — narrowing a value *into* an
 inside: a direct `=`, the `.on_*()= …` / `with(…) = …` proxies, and the
 compound `+= / -= / *= / /=`. `on_overflow` fires on the **binary-arithmetic**
 path — the free `add` / `sub` / `mul` / `div` / `mod` and the `+ - * /`
