@@ -54,7 +54,12 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   print `"5 km"`. `<beman/inside/units_math.hpp>` adds `value_cast` across
   a factor of π (degree → radian, rounded once by the correctly rounded
   engine), `sqrt`/`cbrt` of the unit, trigonometry and `hypot`.
-  `examples/units.cpp` shows them.
+  `examples/units.cpp`, `circuit.cpp`, `moon_rocket.cpp` and `kitchen.cpp`
+  show them. A dimensionless quantity converts to an inside (its value in
+  unit one); `mag_pi * q` keeps π in the unit until one rounding;
+  `sqrt_into<Out>`, `atan2_into<Out>`, … take checked arithmetic results;
+  `p.point_in(u)` and `value_cast` work on points.
+- `to_string(errc)` and `operator<<` for `errc` print the error message.
 - `<beman/inside/chrono.hpp>`: `from_duration<B, F>(d)` and
   `to_duration<D, F>(x)` convert between `std::chrono::duration` and insides
   exactly (a value in seconds, a period as a notch, `period_notch<P>`);

@@ -26,6 +26,12 @@ auto v     = total / quantity<si::minute, inside<{1, 600}>>{20};
 std::cout << v.in(km / si::hour);                        // 39.9 km/h
 ```
 
+The examples [`units.cpp`](../examples/units.cpp) (a tour),
+[`circuit.cpp`](../examples/circuit.cpp) (Ohm's law, an RC filter),
+[`moon_rocket.cpp`](../examples/moon_rocket.cpp) (Δv, orbits, a transfer
+time) and [`kitchen.cpp`](../examples/kitchen.cpp) (mixed kitchen units,
+oven temperatures) check their own output.
+
 `<beman/inside/units_math.hpp>` adds the functions that need the math
 engine (cmath.hpp). It is a separate header so that units.hpp keeps a low
 compile time.
