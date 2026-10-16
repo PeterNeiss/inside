@@ -4,50 +4,6 @@
 SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 -->
 
-## Unreleased
-
-### Upgrading from 0.3.0
-
-- units: the implementation types `ref_or_none`, `spec_ref`, `origin_ref`,
-  `spec_factor`, `recipe`, `spec_expr`, `unit_atom` and the limits
-  `max_spec_factors`, `max_unit_atoms`, `base_dimensions` moved to
-  `units::detail`. Tags for your own entries are `spec_c<obj>` and
-  `origin_c<obj>` now, as `unit_c<obj>` (`spec_t<&obj>{}` still works).
-- units: a unit with only a denominator prints negative exponents (`2 s⁻¹`,
-  not `2 1/s`), and two spellings of one size add in the shorter one
-  (J + N·m and N·m + J are both in J).
-- units: `named_unit`'s positional forms with an ASCII symbol, an origin
-  or `no_space_before` are replaced by a last `unit_options` argument:
-  `{"Ω", si::volt / si::ampere, isq::impedance, {.ascii = "ohm"}}`.
-  `no_space_before` is gone (`.space_before = false`).
-
-### Added
-
-- units: `q.quantity_spec` (`q.quantity_spec == isq::length`) and `==`
-  between specs; `value_cast<Q>(q)` / `try_value_cast<Q, F>(q)` into a
-  quantity type; `unit * mag` and `unit / mag`;
-  `p.quantity_from_zero()` on points.
-- units: base dimensions of your own (`base_dimension`, up to four in one
-  dimension beside the seven SI ones): currency, information.
-  `examples/own_units.cpp` defines a unit, a temperature scale and two base
-  dimensions.
-
-### Changed
-
-- units: every unit mismatch is a constraint failure with a message (a
-  deleted overload per reason): sums and comparisons of other dimensions,
-  kinds or no common unit, `q * 2`, `in()` to another dimension or across
-  a factor of π, `quantity_cast` across a dimension or an `is_kind`
-  boundary, `atan2` / `hypot` of quantities that do not add, and points
-  of different absolute origins. `requires { m + s; }` is false.
-
-### Fixed
-
-- units: a spec is identified by its parent chain and recipe too, and a
-  unit by its kind and origin, so a user spec named `length` under another
-  parent is not `isq::length`. A dimension exponent past ±127 is a compile
-  error instead of a wrap.
-
 ## 0.3.0 — 2026-10-16
 
 ### Upgrading from 0.2.0
@@ -106,12 +62,21 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
   in the unit until one rounding; `sqrt_into<Out>`, `atan2_into<Out>`, …
   take checked arithmetic results; `p.point_in(u)` and `value_cast` work on
   points; `try_value_cast<u, Rep2, F>(q)` converts and stores into an
-  expected. A sum of two units that
-  divide neither way runs in the smaller unit scaled (ft + m and m + ft are
-  `[1/381 ft]`). Every quantity operator, conversion and cast is constrained
-  on the number operation it runs, so a `requires` test of one inside
-  rejects (an off-notch `+=`, a product past 64-bit grids) is false; unit
-  mismatches stay compile errors with a message.
+  expected, and `value_cast<Q>(q)` / `try_value_cast<Q, F>(q)` into a
+  quantity type. A sum of two units that divide neither way runs in the
+  smaller unit scaled (ft + m and m + ft are `[1/381 ft]`), and two
+  spellings of one size in the shorter one (J + N·m is in J).
+  `q.quantity_spec == isq::length` queries a spec; `unit * mag`,
+  `p.quantity_from_zero()`. Every quantity operator, conversion and cast is
+  constrained on the number operation it runs, and every unit mismatch is a
+  constraint failure with a message (a deleted overload per reason), so
+  `requires { m + s; }` and `requires { q * 2; }` are false.
+- Units of your own: a `named_unit` with `unit_options` (an ASCII symbol, a
+  kind, an origin, no space before the symbol), specs and origins, each
+  with a tag (`unit_c<obj>`, `spec_c<obj>`, `origin_c<obj>`), and up to
+  four `base_dimension`s beside the seven SI ones (currency, information).
+  `examples/own_units.cpp` shows a unit, a temperature scale and two base
+  dimensions.
 - `to_string(errc)` and `operator<<` for `errc` print the error message.
 - Open grid limits as a spelling: `inside<{0, 360, bounds::half_open}, wrap>`
   is `inside<{0, 359}, wrap>` (period 360), and `{{0, 64}, per<16>,
