@@ -23,7 +23,7 @@ using q8_8 = inside<{{0, rational{65535, 256}}, per<256>}, round_nearest>;  // =
 ```
 
 `#include <beman/inside/formats.hpp>` for the curated aliases: `q4_4`, `q8_8`, `q16_16`
-(uint8/16/32), `byte`…`sqword`, and `unorm8/16/32` (`[0,1]` at N-bit resolution).
+(uint8/16/32), `uint8`…`int64`, and `unorm8/16/32` (`[0,1]` at N-bit resolution).
 
 Two grid shapes take the integer fast paths: **integer-aligned** (notch and
 Lower are whole numbers) and **Q-format** (notch `1/N`, `N ≥ 2`, Lower 0).
@@ -94,7 +94,7 @@ of autovectorisation — use `unsafe` inside proven-safe inner loops, or
 - **No rounding allowed:** pick a notch that holds every value (thirds:
   `per<3>`); only a continuous grid pays the rational cost.
 - **SIMD byte/halfword loops:** keep the range within the native type (the
-  `formats.hpp` aliases use the full range, e.g. `byte` is `[0, 255]`) so the raw
+  `formats.hpp` aliases use the full range, e.g. `uint8` is `[0, 255]`) so the raw
   stays at native width.
 
 ## Where to go next

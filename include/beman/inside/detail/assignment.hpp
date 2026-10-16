@@ -310,7 +310,7 @@ struct assignment<L, R> {
     // fold in wide integers, and a point no period: still overflow.
     template <typename P, typename A, std::size_t K>
     [[gnu::cold, gnu::noinline]] static constexpr void
-    wrap_exact(L& lhs, const exact_frac<K>& v, P&& policy, A&& action) {
+    wrap_exact(L& lhs, const wide_rational<K>& v, P&& policy, A&& action) {
         if constexpr (integer_storage<L> && !point_storage<L>)
             assign_exact<R>(lhs, v, policy, action);
         else

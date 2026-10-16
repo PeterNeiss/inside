@@ -56,7 +56,7 @@ enum class errc {
                       // interval, a native type, a rational's 64-bit fields)
     rounding_error,   // value is not on the grid (between notches)
     not_finite,       // non-finite double input (NaN/Inf)
-    invalid_format,   // text that is not a number (from_chars, operator>>)
+    invalid_format,   // text that is not a number (parse, operator>>)
 };
 
 // Static, allocation-free message per code. The single source of truth for

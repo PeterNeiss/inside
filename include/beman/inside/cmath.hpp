@@ -60,20 +60,20 @@ constexpr grid_rational grid_sign(const grid_rational& r) { return grid_rational
 // r rounded to an integer by M (half away from zero for nearest).
 template <round_mode M>
 constexpr grid_rational grid_to_int(const grid_rational& r) {
-    const grid_wide n = wide_numerator(r), d = wide_denominator(r);
-    grid_wide       q   = n / d;
-    const grid_wide rem = n - q * d;
-    const bool      neg = n.negative();
-    const bool      odd = !(q / grid_wide{2} * grid_wide{2} == q);
+    const grid_int n = wide_numerator(r), d = wide_denominator(r);
+    grid_int       q   = n / d;
+    const grid_int rem = n - q * d;
+    const bool     neg = n.negative();
+    const bool     odd = !(q / grid_int{2} * grid_int{2} == q);
     if (rounds_away(M, neg, classify_remainder(M, neg ? -rem : rem, d), odd))
-        q = neg ? q - grid_wide{1} : q + grid_wide{1};
+        q = neg ? q - grid_int{1} : q + grid_int{1};
 #if BEMAN_INSIDE_BIG_GRIDS
     return grid_rational{q};
 #else
-    // |q| may pass imax (a qword's 2^64 − 1): build the rational from the
+    // |q| may pass imax (a uint64's 2^64 − 1): build the rational from the
     // magnitude, which a 64-bit grid number's integer part always fits.
-    const grid_wide a = abs(q);
-    const rational  m{static_cast<umax>(a)};
+    const grid_int a = abs(q);
+    const rational m{static_cast<umax>(a)};
     return q.negative() ? -m : m;
 #endif
 }
@@ -105,7 +105,7 @@ inline constexpr grid_rational sym_floor = [] {
 // An exact math output's grid: the lattice when it has a notch, else
 // continuous with the denominator bound d (an exact ±x or x − k·y keeps the
 // inputs' denominators bounded, grid.hpp den_bound).
-consteval grid exact_out_grid(const interval& iv, const grid_rational& notch, const grid_wide& d) {
+consteval grid exact_out_grid(const interval& iv, const grid_rational& notch, const grid_int& d) {
     return notch == 0 ? bounded_continuous(iv, d) : grid{iv, notch};
 }
 
@@ -151,12 +151,12 @@ template <insidable... Bs>
 inline constexpr bool any_wide_valued = (wide_valued<Bs> || ...);
 
 template <insidable Out, std::size_t E>
-constexpr Out store_exact(const exact_frac<E>& v) {
+constexpr Out store_exact(const wide_rational<E>& v) {
     return ax::store_exact<Out>(v, make_policy<policy_of<Out>>());
 }
 
 template <round_mode M, std::size_t E>
-constexpr exact_frac<E> exact_to_int(const exact_frac<E>& v) noexcept {
+constexpr wide_rational<E> exact_to_int(const wide_rational<E>& v) noexcept {
     return {rounded_div<M>(v.Num, v.Den), wide_sint<E>{1}};
 }
 
@@ -204,7 +204,7 @@ constexpr Out integer_into(In x) {
             }
         } else
             return from_value_index<Out>(div_rounded(j, q, M));
-    } else // (as a rational: the integer may pass imax, a qword's)
+    } else // (as a rational: the integer may pass imax, a uint64's)
         return store_value<Out>(round_to_integral(rational{x}, M));
 }
 } // namespace detail
@@ -339,7 +339,7 @@ template <insidable Out, insidable InX, insidable InY>
         constexpr std::size_t E =
             2 * (detail::ax::input_limbs<InX> > detail::ax::input_limbs<InY> ? detail::ax::input_limbs<InX>
                                                                              : detail::ax::input_limbs<InY>)+1;
-        using F = beman::inside::detail::exact_frac<E>;
+        using F = beman::inside::detail::wide_rational<E>;
         const F    a{detail::ax::exact_input(x)}, b{detail::ax::exact_input(y)};
         const auto q = (a.Num * b.Den) / (a.Den * b.Num); // truncated
         return detail::store_exact<Out>(a + F{-(q * b.Num), b.Den});
@@ -506,13 +506,13 @@ template <insidable InX, insidable InY>
 }
 
 //---------------------------------------------------------------------------
-// amp<K> — amplitude grid [-1, 1] at 1/K resolution: a ready-made explicit
-// output for sin / cos (`math::sin_into<math::amp<32768>>(angle)`), decoupling
+// unit_amplitude<K> — amplitude grid [-1, 1] at 1/K resolution: a ready-made explicit
+// output for sin / cos (`math::sin_into<math::unit_amplitude<32768>>(angle)`), decoupling
 // the output precision from the angle's grid; results round to nearest. All
 // angles are radians, as in <cmath>.
 //---------------------------------------------------------------------------
 template <std::uint64_t K>
-using amp = inside<{{rational{-1}, rational{1}}, per<K>}, round_nearest>;
+using unit_amplitude = inside<{{rational{-1}, rational{1}}, per<K>}, round_nearest>;
 
 //---------------------------------------------------------------------------
 // The transcendentals: the adaptive engine.

@@ -21,7 +21,7 @@ namespace beman::inside::detail {
 //
 //   value_storage — the raw IS the value
 //     rational_storage                         a 64-bit rational
-//     fraction_storage                         an exact_frac (continuous, limits past 64 bits)
+//     fraction_storage                         an wide_rational (continuous, limits past 64 bits)
 //     integer_value_storage                    a builtin integer
 //   index_storage — the raw is a 0-based slot index; value = Lower + raw·Notch
 //     point_storage                            empty (point_slot): one slot, the value is the type
@@ -37,7 +37,7 @@ concept rational_storage = insidable<B> && std::same_as<raw_t<B>, rational>;
 // A continuous grid whose limits pass 64 bits (C++26): a reduced exact
 // fraction of as many limbs as the limits need.
 template <typename B>
-concept fraction_storage = insidable<B> && exact_fraction<raw_t<B>>;
+concept fraction_storage = insidable<B> && wide_rational_like<raw_t<B>>;
 
 // Whether an integer raw holds the value itself (else a slot index): the
 // whole-number grids where that is free (grid.hpp deduces_value).
@@ -105,8 +105,8 @@ inline constexpr bool wide_grid_numbers =
 // on {{-1.2e19, 1.2e19}, 1.5} the half-integers need numerators to 2.4e19.
 template <insidable B>
 inline constexpr bool lattice_past_rational =
-    grid_of<B>.Notch != 0 && (grid_wide{std::numeric_limits<imax>::max()} < den_bound(grid_of<B>) ||
-                              grid_wide{std::numeric_limits<umax>::max()} < num_bound(grid_of<B>));
+    grid_of<B>.Notch != 0 && (grid_int{std::numeric_limits<imax>::max()} < den_bound(grid_of<B>) ||
+                              grid_int{std::numeric_limits<umax>::max()} < num_bound(grid_of<B>));
 
 // Values past the 64-bit rational: a wide index, grid numbers past 64 bits,
 // a lattice past it, or a fraction raw (a bounded continuous grid can need
@@ -207,11 +207,11 @@ inline constexpr bool fraction_fits_imax = [] {
     if constexpr (!values_fit_imax<B>)
         return false;
     else {
-        constexpr grid_wide d = den_bound(grid_of<B>);
-        if constexpr (d == grid_wide{0})
+        constexpr grid_int d = den_bound(grid_of<B>);
+        if constexpr (d == grid_int{0})
             return !(grid_rational{1} < abs(lower_of<B>)) && !(grid_rational{1} < abs(upper_of<B>));
         else
-            return !(grid_wide{std::numeric_limits<imax>::max()} < num_bound(grid_of<B>));
+            return !(grid_int{std::numeric_limits<imax>::max()} < num_bound(grid_of<B>));
     }
 }();
 
@@ -220,7 +220,7 @@ inline constexpr bool fraction_fits_imax = [] {
 // Gates the implicit imax/size_t conversions.
 template <grid G>
 inline constexpr bool integer_notch =
-    wide_denominator(G.Notch) == grid_wide{1} && G.Notch != 0 && wide_denominator(G.Interval.Lower) == grid_wide{1};
+    wide_denominator(G.Notch) == grid_int{1} && G.Notch != 0 && wide_denominator(G.Interval.Lower) == grid_int{1};
 
 // ONLY type conversion, NO value representation conversion calculation
 template <insidable B>
@@ -340,21 +340,21 @@ inline constexpr imax raw_hi = integer_value_storage<B> ? upper_imax<B> : static
 // The exact raw range: 0 .. slot count for index storage, Lower .. Upper
 // for value storage (integers there). Sizes the work types below.
 template <insidable B>
-inline constexpr grid_wide raw_lo_exact = index_storage<B> ? grid_wide{0} : wide_numerator(lower_of<B>);
+inline constexpr grid_int raw_lo_exact = index_storage<B> ? grid_int{0} : wide_numerator(lower_of<B>);
 template <insidable B>
-inline constexpr grid_wide raw_hi_exact = index_storage<B> ? grid_of<B>.slot_count() : wide_numerator(upper_of<B>);
+inline constexpr grid_int raw_hi_exact = index_storage<B> ? grid_of<B>.slot_count() : wide_numerator(upper_of<B>);
 
 // Value bits a signed integer needs to hold every value in [lo, hi].
-constexpr int signed_value_bits(const grid_wide& lo, const grid_wide& hi) noexcept {
-    auto      mag = [](const grid_wide& v) { return bit_width_of(v.negative() ? -(v + grid_wide{1}) : v); };
+constexpr int signed_value_bits(const grid_int& lo, const grid_int& hi) noexcept {
+    auto      mag = [](const grid_int& v) { return bit_width_of(v.negative() ? -(v + grid_int{1}) : v); };
     const int a = mag(lo), b = mag(hi);
     return a > b ? a : b;
 }
 
 // Value bits for every value in a list (their min .. max).
-constexpr int signed_value_bits_of(std::initializer_list<grid_wide> vals) noexcept {
-    grid_wide mn = *vals.begin(), mx = *vals.begin();
-    for (const grid_wide& v : vals) {
+constexpr int signed_value_bits_of(std::initializer_list<grid_int> vals) noexcept {
+    grid_int mn = *vals.begin(), mx = *vals.begin();
+    for (const grid_int& v : vals) {
         if (v < mn)
             mn = v;
         if (mx < v)
@@ -425,11 +425,11 @@ constexpr raw_t<L> raw_of_lattice_value(rational v) {
 //-------------------------------------------------------------------------
 template <insidable B>
 inline constexpr bool integer_limits =
-    wide_denominator(lower_of<B>) == grid_wide{1} && wide_denominator(upper_of<B>) == grid_wide{1};
+    wide_denominator(lower_of<B>) == grid_int{1} && wide_denominator(upper_of<B>) == grid_int{1};
 
 template <insidable B>
 inline constexpr bool integer_lattice =
-    integer_notch<grid_of<B>> || (lower_of<B> == upper_of<B> && wide_denominator(lower_of<B>) == grid_wide{1});
+    integer_notch<grid_of<B>> || (lower_of<B> == upper_of<B> && wide_denominator(lower_of<B>) == grid_int{1});
 
 // Policy test: checks both type-level and per-operation policy.
 // Composite flags (e.g. round_nearest = bit5 | snap) require all

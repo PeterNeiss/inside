@@ -25,9 +25,9 @@ inline constexpr bool exact_fits = [] {
     else if constexpr (!rational_storage<Result>)
         return false;
     else {
-        const grid_wide umax_max{std::numeric_limits<umax>::max()}, imax_max{std::numeric_limits<imax>::max()};
+        const grid_int umax_max{std::numeric_limits<umax>::max()}, imax_max{std::numeric_limits<imax>::max()};
         if constexpr (Op == exact_op::add) {
-            const grid_wide d = den_bound(grid_of<L>) * den_bound(grid_of<R>);
+            const grid_int d = den_bound(grid_of<L>) * den_bound(grid_of<R>);
             return !(umax_max < num_bound(interval_of<L>, d)) && !(umax_max < num_bound(interval_of<R>, d));
         } else if constexpr (Op == exact_op::div)
             return !(imax_max < num_bound(grid_of<R>));

@@ -75,7 +75,7 @@ No flag selects the raw storage: it follows from the grid alone (see
 > **API-boundary shorthand:** the modern idiom for "saturate-and-round into
 > this type" is to put `clamp | round_nearest` on the target inside's policy
 > and write `T{value}`. This replaces the explicit
-> `clamp_round<T>(value)` cast for typed boundaries — see
+> `clamp_cast<T, round_nearest>(value)` cast for typed boundaries — see
 > [conversions.md](conversions.md#api-boundary-clamp--round_nearest).
 
 ## Per-operation override

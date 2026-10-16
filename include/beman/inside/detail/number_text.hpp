@@ -21,7 +21,7 @@ namespace beman::inside::detail {
 //   hex float (Q-fmt): 0x1p15, 0x1p-15, 0x1.8p3
 // Exact (no double round-trip). A malformed or overflowing literal fails
 // constant evaluation via `constexpr_error<Msg>()`; parse_text (below) is the
-// runtime form behind from_chars.
+// runtime form behind parse.
 //---------------------------------------------------------------------------
 constexpr int parse_digit(char c, int base) {
     if (c >= '0' && c <= '9') {

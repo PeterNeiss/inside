@@ -42,7 +42,7 @@ std::string wide_to_decimal(wide_int<N, S> v) {
     return neg ? "-" + out : out;
 }
 
-// num/den (den > 0) in the forms from_chars reads: its exact decimal when the
+// num/den (den > 0) in the forms parse reads: its exact decimal when the
 // reduced denominator is 2^a·5^b (however many digits, and at least
 // min_digits decimals), else "num/den".
 template <std::size_t K>
@@ -112,13 +112,13 @@ inline constexpr int fixed_decimals = [] {
     if constexpr (!notched<B>)
         return 0;
     else {
-        grid_wide q   = wide_denominator(grid_of<B>.value_unit());
-        int       two = 0, five = 0;
-        for (; q % grid_wide{2} == grid_wide{0}; q = q / grid_wide{2})
+        grid_int q   = wide_denominator(grid_of<B>.value_unit());
+        int      two = 0, five = 0;
+        for (; q % grid_int{2} == grid_int{0}; q = q / grid_int{2})
             ++two;
-        for (; q % grid_wide{5} == grid_wide{0}; q = q / grid_wide{5})
+        for (; q % grid_int{5} == grid_int{0}; q = q / grid_int{5})
             ++five;
-        return q == grid_wide{1} && five > 0 ? (two > five ? two : five) : 0;
+        return q == grid_int{1} && five > 0 ? (two > five ? two : five) : 0;
     }
 }();
 } // namespace detail
@@ -165,9 +165,9 @@ template <typename V>
 //-------------------------------------------------------------------------
 namespace detail {
 template <typename T>
-inline constexpr std::string_view type_name_v = wide_integer<T>     ? "wide_int"
-                                                : exact_fraction<T> ? "exact_frac"
-                                                                    : "unknown";
+inline constexpr std::string_view type_name_v = wide_integer<T>         ? "wide_int"
+                                                : wide_rational_like<T> ? "wide_rational"
+                                                                        : "unknown";
 template <>
 inline constexpr std::string_view type_name_v<std::uint8_t> = "uint8_t";
 template <>
@@ -202,7 +202,7 @@ inline constexpr std::string_view type_name_v<wide_uint<3>> = "wide_uint<3>";
 namespace detail {
 // An exact value, with at least min_digits decimals.
 template <std::size_t K>
-std::string exact_to_string(exact_frac<K> f, int min_digits = 0) {
+std::string exact_to_string(wide_rational<K> f, int min_digits = 0) {
     const bool neg = f.Num.negative();
     return fraction_to_string(neg, wide_uint<K>{neg ? -f.Num : f.Num}, wide_uint<K>{f.Den}, min_digits);
 }
@@ -298,25 +298,25 @@ inline std::ostream& operator<<(std::ostream& stream, B b) {
     return stream;
 }
 
-// from_chars<B, F>(text) / from_chars_exact<B>(text) — the std::string_view
+// parse<B, F>(text) / parse_exact<B>(text) — the std::string_view
 // forms of the pointer-pair overloads.
 template <insidable B, policy_flag F = none>
-[[nodiscard]] constexpr std::expected<B, errc> from_chars(std::string_view text) {
-    return from_chars<B, F>(text.data(), text.data() + text.size());
+[[nodiscard]] constexpr std::expected<B, errc> parse(std::string_view text) {
+    return parse<B, F>(text.data(), text.data() + text.size());
 }
 template <insidable B>
-[[nodiscard]] constexpr std::expected<B, errc> from_chars_exact(std::string_view text) {
-    return from_chars_exact<B>(text.data(), text.data() + text.size());
+[[nodiscard]] constexpr std::expected<B, errc> parse_exact(std::string_view text) {
+    return parse_exact<B>(text.data(), text.data() + text.size());
 }
 
-// Reads one whitespace-delimited token and parses it with from_chars<B>. On an
+// Reads one whitespace-delimited token and parses it with parse<B>. On an
 // error the stream's failbit is set and `b` is left unchanged.
 template <insidable B>
 inline std::istream& operator>>(std::istream& stream, B& b) {
     std::string token;
     if (!(stream >> token))
         return stream;
-    if (const auto r = from_chars<B>(token); r)
+    if (const auto r = parse<B>(token); r)
         b = *r;
     else
         stream.setstate(std::ios_base::failbit);
@@ -587,15 +587,15 @@ inline constexpr round_mode display_rounding =
 
 // x's exact value as a sign and a magnitude fraction, for the exact specs.
 template <std::size_t K>
-bool spec_negative(const exact_frac<K>& f) {
+bool spec_negative(const wide_rational<K>& f) {
     return f.Num.negative();
 }
 template <std::size_t K>
-wide_uint<K> spec_magnitude(const exact_frac<K>& f) {
+wide_uint<K> spec_magnitude(const wide_rational<K>& f) {
     return wide_uint<K>{abs(f.Num)};
 }
 template <std::size_t K>
-wide_uint<K> spec_denominator(const exact_frac<K>& f) {
+wide_uint<K> spec_denominator(const wide_rational<K>& f) {
     return wide_uint<K>{f.Den};
 }
 } // namespace beman::inside::detail

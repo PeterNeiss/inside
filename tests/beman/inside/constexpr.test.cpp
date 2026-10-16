@@ -333,16 +333,16 @@ TEST(ConstexprTest, constexpr_fold_clipped_to_target_grid) {
     static_assert(clamp_cast<small>(mul_all(v{6}, v{10})) == 50); // 60 clamped
 }
 
-// constexpr: clamp_floor / clamp_ceil / clamp_round
-TEST(ConstexprTest, constexpr_clamp_floor_clamp_ceil_clamp_round) {
+// constexpr: clamp_cast with a rounding mode
+TEST(ConstexprTest, constexpr_clamp_cast_with_rounding) {
     using coarse = inside<{{0, 10}, 2}>;
-    static_assert(clamp_floor<coarse>(3.0) == 2);
-    static_assert(clamp_ceil<coarse>(3.0) == 4);
-    static_assert(clamp_round<coarse>(3.0) == 4);
+    static_assert(clamp_cast<coarse, round_floor>(3.0) == 2);
+    static_assert(clamp_cast<coarse, round_ceil>(3.0) == 4);
+    static_assert(clamp_cast<coarse, round_nearest>(3.0) == 4);
 
     // out of range clamps to boundary
-    static_assert(clamp_floor<coarse>(15.0) == 10);
-    static_assert(clamp_floor<coarse>(-3.0) == 0);
+    static_assert(clamp_cast<coarse, round_floor>(15.0) == 10);
+    static_assert(clamp_cast<coarse, round_floor>(-3.0) == 0);
 }
 
 // constexpr: conversion predicates
@@ -358,9 +358,9 @@ TEST(ConstexprTest, constexpr_conversion_predicates) {
     static_assert(conversion_rounds<coarse>(3));
     static_assert(!(conversion_rounds<coarse>(11)));
 
-    static_assert(!(conversion_is_lossy<coarse>(4)));
-    static_assert(conversion_is_lossy<coarse>(3));
-    static_assert(conversion_is_lossy<coarse>(20));
+    static_assert(!(conversion_loses<coarse>(4)));
+    static_assert(conversion_loses<coarse>(3));
+    static_assert(conversion_loses<coarse>(20));
 }
 
 //---------------------------------------------------------------------------

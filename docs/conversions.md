@@ -119,9 +119,9 @@ call site — particularly useful inside `std::transform` lambdas.
 | `wrap_cast<B>(v)`      | modular reduction into the target interval |
 | `checked_cast<B>(v)`   | report through the checked policy (by default, throw `beman::inside::inside_error`): `errc::overflow` when out of range, `errc::rounding_error` when off-notch |
 | `unchecked_cast<B>(v)` | trust the caller — UB if out of range |
-| `clamp_floor<B>(v)`    | clamp + round toward −∞ |
-| `clamp_ceil<B>(v)`     | clamp + round toward +∞ |
-| `clamp_round<B>(v)`    | clamp + round to nearest |
+| `clamp_cast<B, round_floor>(v)`    | clamp + round toward −∞ |
+| `clamp_cast<B, round_ceil>(v)`     | clamp + round toward +∞ |
+| `clamp_cast<B, round_nearest>(v)`    | clamp + round to nearest |
 
 ```cpp
 using pct = inside<{0, 100}>;
@@ -134,7 +134,7 @@ unchecked_cast<pct>(42);    // 42   (skips runtime checks)
 
 The cast's policy applies to every target and source shape: any target is
 clamped or wrapped by value, and an inside source is read by value
-(`clamp_round<pct>(r)` with `r == 2.5` gives 3). The
+(`clamp_cast<pct, round_nearest>(r)` with `r == 2.5` gives 3). The
 same holds for the fluent forms — `b.with_clamp() = r`, `(r * k).with_snap()`.
 
 For `double → bounded` pipelines (audio / graphics / DSP), the `clamp_*`
@@ -142,10 +142,10 @@ family composes clamping with a rounding mode:
 
 ```cpp
 using coarse = inside<{{0, 10}, 2}>;
-clamp_floor<coarse>(3.0);   // 2   (clamp + floor)
-clamp_ceil <coarse>(3.0);   // 4   (clamp + ceil)
-clamp_round<coarse>(3.0);   // 4   (clamp + round to nearest)
-clamp_floor<coarse>(15.0);  // 10  (out-of-range clamps to upper)
+clamp_cast<coarse, round_floor>(3.0);   // 2   (clamp + floor)
+clamp_cast<coarse, round_ceil>(3.0);   // 4   (clamp + ceil)
+clamp_cast<coarse, round_nearest>(3.0);   // 4   (clamp + round to nearest)
+clamp_cast<coarse, round_floor>(15.0);  // 10  (out-of-range clamps to upper)
 ```
 
 The source may also be an **inside** on a finer or incompatible grid — the one-shot
@@ -154,7 +154,7 @@ rounding relaxes the notch check, so a fine value rounds onto the target:
 ```cpp
 using small = inside<{{0, 10}, per<10>}, clamp>;
 small a = 2.5;
-clamp_round<small>(a * a);  // 6.3  (6.25 rounded onto the 1/10 grid, then clamped)
+clamp_cast<small, round_nearest>(a * a);  // 6.3  (6.25 rounded onto the 1/10 grid, then clamped)
 ```
 
 The fluent equivalent is the value form of `with_snap()` —
@@ -168,9 +168,9 @@ that takes "saturate and snap to my grid" semantics — the idiom is to put
 `clamp | round_nearest` on the target inside's policy and write `T{value}`:
 
 ```cpp
-// Before — explicit clamp_round at the boundary:
+// Before — explicit clamp_cast<B, round_nearest> at the boundary:
 using output_t = inside<{-100, 100}, clamp>;
-return clamp_round<output_t>(raw);
+return clamp_cast<output_t, round_nearest>(raw);
 
 // After — policy carries the intent, `T{raw}` snaps automatically:
 using output_t = inside<{-100, 100}, clamp | round_nearest>;
@@ -190,7 +190,7 @@ Inspect a value *before* attempting an unsafe construction:
 ```cpp
 conversion_overflows<pct>(150);   // true  — out of [0, 100]
 conversion_rounds   <pct>(3.5);   // true  — doesn't land on notch 1
-conversion_is_lossy <pct>(150);   // true  — overflow OR rounding
+conversion_loses <pct>(150);   // true  — overflow OR rounding
 ```
 
 All three are pure inspection — none performs the conversion or has
@@ -251,7 +251,7 @@ text: the **exact** value, never rounded. Its form follows the grid:
 
 So a column of prices lines up (`19.90`, not `19.9`), a binary fixed-point
 value is not padded to its 16 decimals, and a value with no finite decimal
-stays exact as a fraction. Every form is one `from_chars` reads, so printed
+stays exact as a fraction. Every form is one `parse` reads, so printed
 values read back unchanged.
 
 Other cases follow the same idea:
@@ -302,9 +302,9 @@ std::println("{} {:.2f} {:e}", g, g, g); // 0.125 0.12 1.250000e-01
 See `examples/decibels.cpp` for the same pattern in a real Q-format
 conversion routine.
 
-## Reading text: `from_chars<B>` and `operator>>`
+## Reading text: `parse<B>` and `operator>>`
 
-`from_chars<B>(text)` parses a number exactly — no `double` round-trip — and
+`parse<B>(text)` parses a number exactly — no `double` round-trip — and
 returns `std::expected<B, errc>`. The text is one number: an optional sign, then
 the literal grammar (`1'000`, `1.25`, `1.5e2`, `0xff`, `0b1010`, `0x1.8p3`) or a
 fraction `N/D` — the forms [`to_string` prints](#writing-text-to_string-operator-and-stdformat), so
@@ -314,32 +314,32 @@ The value then goes through `B::try_make`, so `B`'s policy applies:
 
 ```cpp
 using pct = inside<{0, 100}>;
-from_chars<pct>("42");      // 42
-from_chars<pct>("0.1");     // errc::rounding_error — 1/10 is not on the integer grid
-from_chars<pct>("150");     // errc::overflow
-from_chars<pct>("4x");      // errc::invalid_format
-from_chars<inside<{{0, 1}, per<10>}>>("0.1");   // exactly 1/10
+parse<pct>("42");      // 42
+parse<pct>("0.1");     // errc::rounding_error — 1/10 is not on the integer grid
+parse<pct>("150");     // errc::overflow
+parse<pct>("4x");      // errc::invalid_format
+parse<inside<{{0, 1}, per<10>}>>("0.1");   // exactly 1/10
 
 inside<{0, 100}> a{0};
 std::cin >> a;              // io.hpp: one token; failbit on error, a unchanged
 ```
 
 Flags after the type add to `B`'s policy for that call, as `x.policy<F>()`
-does; `from_chars_exact<B>` instead accepts only a value `B` holds exactly,
+does; `parse_exact<B>` instead accepts only a value `B` holds exactly,
 whatever `B`'s policy:
 
 ```cpp
 using cents = inside<{{0, 1'000'000}, per<100>}>;
-from_chars<cents>("1.005");                 // errc::rounding_error
-from_chars<cents, round_nearest>("1.005");  // 1.01 (ties away from zero)
+parse<cents>("1.005");                 // errc::rounding_error
+parse<cents, round_nearest>("1.005");  // 1.01 (ties away from zero)
 
 using price = inside<{{0, 1'000'000}, per<100>}, round_nearest | clamp>;
-from_chars<price>("1.005");                 // 1.01: price rounds
-from_chars_exact<price>("1.005");           // errc::rounding_error
-from_chars_exact<price>("2000000");         // errc::overflow, not clamped
+parse<price>("1.005");                 // 1.01: price rounds
+parse_exact<price>("1.005");           // errc::rounding_error
+parse_exact<price>("2000000");         // errc::overflow, not clamped
 ```
 
-The core header takes a pointer pair, `from_chars<B>(first, last)`, and is
+The core header takes a pointer pair, `parse<B>(first, last)`, and is
 `constexpr`; `io.hpp` adds the `std::string_view` overload and `operator>>`.
 
 ## Comparing insides

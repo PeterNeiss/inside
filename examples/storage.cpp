@@ -2,7 +2,7 @@
 // Which raw an inside stores: always deduced from the grid.
 //   1. The smallest integer that numbers every point — the value itself for a
 //      whole-number range where that costs no width, else the 0-based index.
-//   2. Presets from <beman/inside/formats.hpp>: native byte widths (byte, sword,
+//   2. Presets from <beman/inside/formats.hpp>: native byte widths (uint8, int16,
 //      unorm16, q8_8, …) that still carry a range and a policy.
 //   3. A fixed wire layout: write `to<T>()` into the field.
 
@@ -35,11 +35,11 @@ int main() {
         return 1;
 
     // 2. Presets at native widths.
-    static_assert(sizeof(byte) == 1 && sizeof(sword) == 2 && sizeof(unorm16) == 2 && sizeof(q8_8) == 2 &&
+    static_assert(sizeof(uint8) == 1 && sizeof(int16) == 2 && sizeof(unorm16) == 2 && sizeof(q8_8) == 2 &&
                   sizeof(q16_16) == 4);
-    sword mixed{0};
-    mixed.with_clamp() = sword{30000} + sword{20000};                                    // PCM mix: 50000 saturates
-    const sword out    = mul_into<sword, round_nearest>(unorm16{0.5_ins}, sword{10001}); // gain, rounded once
+    int16 mixed{0};
+    mixed.with_clamp() = int16{30000} + int16{20000};                                    // PCM mix: 50000 saturates
+    const int16 out    = mul_into<int16, round_nearest>(unorm16{0.5_ins}, int16{10001}); // gain, rounded once
     std::cout << "mix " << mixed << ", gain " << out << "\n";
     if (mixed != 32767 || out != 5001)
         return 1;

@@ -863,9 +863,9 @@ void prop_casts(fuzz_state& s, long iters) {
             imax wexpect = ((v - lo) % range + range) % range + lo;
             FUZZ_REQUIRE(s, wrap_cast<B>(v) == wexpect);
             // notch == 1, so floor/ceil/round are no-ops after the clamp.
-            FUZZ_REQUIRE(s, clamp_floor<B>(v) == cl);
-            FUZZ_REQUIRE(s, clamp_ceil<B>(v) == cl);
-            FUZZ_REQUIRE(s, clamp_round<B>(v) == cl);
+            FUZZ_REQUIRE(s, clamp_cast<B, round_floor>(v) == cl);
+            FUZZ_REQUIRE(s, clamp_cast<B, round_ceil>(v) == cl);
+            FUZZ_REQUIRE(s, clamp_cast<B, round_nearest>(v) == cl);
             if (v >= lo && v <= hi) {
                 FUZZ_REQUIRE(s, checked_cast<B>(v) == v);
                 FUZZ_REQUIRE(s, unchecked_cast<B>(v) == v);
@@ -877,7 +877,7 @@ void prop_casts(fuzz_state& s, long iters) {
 
 template <insidable B>
 void prop_casts_fixed(fuzz_state& s, long iters) {
-    // clamp_floor / clamp_ceil on dyadic fixed-point grids: a half-notch
+    // clamp_cast<B, round_floor / round_ceil> on dyadic fixed-point grids: a half-notch
     // midpoint floors to the notch below and ceils to the notch above.
     if constexpr (DyadicNotch<B>) {
         s.current_prop = "casts_fixed";
@@ -891,15 +891,15 @@ void prop_casts_fixed(fuzz_state& s, long iters) {
             rational                            on_notch = (lo + (rational{k} * notch).value()).value();
             rational                            next     = (on_notch + notch).value();
             double                              mid      = static_cast<double>((on_notch + half).value());
-            FUZZ_REQUIRE(s, to_rational(clamp_floor<B>(mid)) == on_notch);
-            FUZZ_REQUIRE(s, to_rational(clamp_ceil<B>(mid)) == next);
+            FUZZ_REQUIRE(s, to_rational(clamp_cast<B, round_floor>(mid)) == on_notch);
+            FUZZ_REQUIRE(s, to_rational(clamp_cast<B, round_ceil>(mid)) == next);
         }
     }
 }
 
 template <insidable B>
 void prop_predicates(fuzz_state& s, long iters) {
-    // conversion_overflows / conversion_rounds / conversion_is_lossy must agree with the actual
+    // conversion_overflows / conversion_rounds / conversion_loses must agree with the actual
     // checked conversion outcome.
     if constexpr (integer_lattice<B> && !rational_storage<B>) {
         s.current_prop = "predicates";
@@ -912,7 +912,7 @@ void prop_predicates(fuzz_state& s, long iters) {
             bool in_range = (v >= lo && v <= hi);
             FUZZ_REQUIRE(s, conversion_overflows<B>(v) == !in_range);
             FUZZ_REQUIRE(s, !conversion_rounds<B>(v)); // integer grid never truncates
-            bool lossy = conversion_is_lossy<B>(v);
+            bool lossy = conversion_loses<B>(v);
             bool threw = throws_with_any({errc::overflow, errc::rounding_error}, [&] { (void)checked_cast<B>(v); });
             FUZZ_REQUIRE(s, lossy == threw);
         }
@@ -930,19 +930,19 @@ void prop_predicates(fuzz_state& s, long iters) {
             // On-notch, in range: nothing lost.
             FUZZ_REQUIRE(s, !conversion_overflows<B>(on_notch));
             FUZZ_REQUIRE(s, !conversion_rounds<B>(on_notch));
-            FUZZ_REQUIRE(s, !conversion_is_lossy<B>(on_notch));
+            FUZZ_REQUIRE(s, !conversion_loses<B>(on_notch));
             // Half-notch midpoint, in range: truncates (lossy) but does not overflow.
             if (k < max_index_v<B>) {
                 double mid = on_notch + static_cast<double>(half);
                 FUZZ_REQUIRE(s, !conversion_overflows<B>(mid));
                 FUZZ_REQUIRE(s, conversion_rounds<B>(mid));
-                FUZZ_REQUIRE(s, conversion_is_lossy<B>(mid));
+                FUZZ_REQUIRE(s, conversion_loses<B>(mid));
                 FUZZ_REQUIRE(s, throws_with(errc::rounding_error, [&] { (void)checked_cast<B>(mid); }));
             }
             // Above the top notch: overflow (lossy).
             double over = static_cast<double>((hi + notch).value());
             FUZZ_REQUIRE(s, conversion_overflows<B>(over));
-            FUZZ_REQUIRE(s, conversion_is_lossy<B>(over));
+            FUZZ_REQUIRE(s, conversion_loses<B>(over));
         }
     }
 }

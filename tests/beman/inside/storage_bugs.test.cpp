@@ -219,7 +219,7 @@ using Int10     = beman::inside::inside<{0, 10}>;
 TEST(StorageBugsTest, dyadic_source_into_integer_grid_reads_the_value) {
     using namespace beman::inside;
     const RealWide half = RealWide{2.5};
-    EXPECT_EQ(detail::to_value(clamp_round<Int10>(half)), 3);
+    EXPECT_EQ(detail::to_value(clamp_cast<Int10, round_nearest>(half)), 3);
     Int10 i{0};
     i.with_snap<round_nearest>() = half;
     EXPECT_EQ(detail::to_value(i), 3);
@@ -281,8 +281,8 @@ TEST(StorageBugsTest, predicates_handle_non_finite_input) {
     EXPECT_TRUE(conversion_overflows<B>(nan));
     EXPECT_TRUE(conversion_overflows<B>(-inf));
     EXPECT_FALSE(conversion_rounds<B>(nan));
-    EXPECT_TRUE(conversion_is_lossy<B>(inf));
-    EXPECT_FALSE(conversion_is_lossy<B>(3.0));
+    EXPECT_TRUE(conversion_loses<B>(inf));
+    EXPECT_FALSE(conversion_loses<B>(3.0));
     EXPECT_TRUE(conversion_rounds<B>(3.5));
 }
 
@@ -478,7 +478,7 @@ TEST(StorageBugsTest, grid_past_int64_increments_and_negates) {
     }();
     static_assert(wrap_up && wrap_down && wrap_sub && wrap_neg);
 
-    using N = U64::negative;                 // {−(2^64−1), 0}
+    using N = U64::negated_type;             // {−(2^64−1), 0}
     static_assert(sizeof(N::raw_type) == 8); // was int8: trunc(Lower) wrapped
     static_assert(-U64{5} == -5 && -U64{kUM} == -rational{kUM});
     static_assert(-(-U64{kUM}) == U64{kUM});

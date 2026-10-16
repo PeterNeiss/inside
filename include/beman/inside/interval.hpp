@@ -88,9 +88,9 @@ template <detail::arithmetic A>
             return detail::to_rational(iv.Lower) <= a && a <= detail::to_rational(iv.Upper);
         }
 #if BEMAN_INSIDE_BIG_GRIDS
-        const auto f = detail::big::frac_of_float(a);
-        return detail::big::compare(detail::frac_of(iv.Lower), f) <= 0 &&
-               detail::big::compare(f, detail::frac_of(iv.Upper)) <= 0;
+        const auto f = detail::big::fraction_of_float(a);
+        return detail::big::compare(detail::fraction_of(iv.Lower), f) <= 0 &&
+               detail::big::compare(f, detail::fraction_of(iv.Upper)) <= 0;
 #else
         return false; // (unreachable: 64-bit limits always fit)
 #endif

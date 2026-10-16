@@ -49,8 +49,8 @@ inline constexpr bool fp_exact_input = [] {
     if constexpr (wide_valued<In> || !notched<In>)
         return false;
     else {
-        const grid_wide q = wide_denominator(notch_of<In>), p = wide_numerator(notch_of<In>);
-        const bool      dyadic = (grid_wide{1} << (grid_bits(q) - 1)) == q;
+        const grid_int q = wide_denominator(notch_of<In>), p = wide_numerator(notch_of<In>);
+        const bool     dyadic = (grid_int{1} << (grid_bits(q) - 1)) == q;
         return dyadic && grid_magnitude_bits<In> + grid_bits(q) + grid_bits(p) <= 53;
     }
 }();
@@ -65,8 +65,8 @@ inline constexpr int index_bits = [] {
     if constexpr (!notched<Out> || wide_valued<Out>)
         return 1024;
     else {
-        const grid_wide lo = slot_base<Out>, hi = slot_base<Out> + grid_of<Out>.slot_count();
-        const grid_wide m = (-lo < hi) ? hi : -lo;
+        const grid_int lo = slot_base<Out>, hi = slot_base<Out> + grid_of<Out>.slot_count();
+        const grid_int m = (-lo < hi) ? hi : -lo;
         return bit_width_of(m);
     }
 }();
@@ -97,8 +97,8 @@ template <insidable Out>
 inline constexpr double notch_q = grid_double(wide_denominator(notch_of<Out>));
 template <insidable Out>
 inline constexpr bool dyadic_notch = [] {
-    const grid_wide p = wide_numerator(notch_of<Out>), q = wide_denominator(notch_of<Out>);
-    return (grid_wide{1} << (grid_bits(p) - 1)) == p && (grid_wide{1} << (grid_bits(q) - 1)) == q;
+    const grid_int p = wide_numerator(notch_of<Out>), q = wide_denominator(notch_of<Out>);
+    return (grid_int{1} << (grid_bits(p) - 1)) == p && (grid_int{1} << (grid_bits(q) - 1)) == q;
 }();
 
 // Value indices of In below 2^53: exact as doubles.
@@ -231,8 +231,8 @@ inline constexpr bool dd_output = [] {
     else {
         if (!(notch_p<Out> < two53 && notch_q<Out> < two53))
             return false;
-        const grid_wide lim = grid_wide{1} << 62;
-        const grid_wide lo = slot_base<Out>, hi = slot_base<Out> + grid_of<Out>.slot_count();
+        const grid_int lim = grid_int{1} << 62;
+        const grid_int lo = slot_base<Out>, hi = slot_base<Out> + grid_of<Out>.slot_count();
         return !(lo < -lim) && !(lim < hi);
     }
 }();
@@ -841,7 +841,7 @@ constexpr auto via_anchored(const Fn& fn, const Ins&... xs) {
         // Past Out's range: the bracket value through Out's policy (it rounds
         // as the value does, and lies on the same side of the range).
         const auto v = exact_of(unwrap(lo)) +
-                       exact_frac<exact_min_limbs>{wide_sint<exact_min_limbs>{1}, wide_sint<exact_min_limbs>{2}} *
+                       wide_rational<exact_min_limbs>{wide_sint<exact_min_limbs>{1}, wide_sint<exact_min_limbs>{2}} *
                            exact_of_grid<exact_min_limbs>(F);
         if constexpr (checked) {
             errc      ec{};
@@ -1098,7 +1098,7 @@ template <insidable Out, insidable InY, insidable InX>
     else {
         constexpr std::size_t E =
             ax::input_limbs<InY> > ax::input_limbs<InX> ? ax::input_limbs<InY> : ax::input_limbs<InX>;
-        using F = ::beman::inside::detail::exact_frac<E>;
+        using F = ::beman::inside::detail::wide_rational<E>;
         BEMAN_INSIDE_AX_TIERS(
             Out,
             (ax::fp_tier<Out, ax::fp_atan2, InY, InX> && ax::in_max<InY> <= 0x1p500 && ax::in_max<InX> <= 0x1p500),
@@ -1117,7 +1117,7 @@ template <insidable Out, insidable InX, insidable InY>
     else {
         constexpr int         Bits = ax::hypot_bits<InX, InY>;
         constexpr std::size_t E    = ::beman::inside::detail::limbs_for_bits(Bits);
-        using F                    = ::beman::inside::detail::exact_frac<E>;
+        using F                    = ::beman::inside::detail::wide_rational<E>;
         BEMAN_INSIDE_AX_TIERS(
             Out,
             (ax::fp_tier<Out, ax::fp_hypot, InX, InY> && ax::in_max<InX> <= 0x1p500 && ax::in_max<InY> <= 0x1p500),
@@ -1275,7 +1275,7 @@ using sqrt_signed =
 // pow_base: pow_core with the base bound.
 template <imax Base, std::size_t E, int Mag, int KMax>
 struct pow_base_core : ax::pow_core<2, E, Mag, KMax> {
-    constexpr pow_base_core(::beman::inside::detail::exact_frac<E> x)
+    constexpr pow_base_core(::beman::inside::detail::wide_rational<E> x)
         : ax::pow_core<2, E, Mag, KMax>{ax::exact_int<2>(Base), x} {}
 };
 template <imax Base, insidable In>
@@ -1298,7 +1298,7 @@ template <insidable InX, insidable InY>
 inline constexpr std::size_t hypot_limbs = ::beman::inside::detail::limbs_for_bits(ax::hypot_bits<InX, InY>);
 template <insidable InX, insidable InY>
 inline constexpr grid_rational hypot_hi = [] {
-    using F   = ::beman::inside::detail::exact_frac<hypot_limbs<InX, InY>>;
+    using F   = ::beman::inside::detail::wide_rational<hypot_limbs<InX, InY>>;
     const F a = ::beman::inside::detail::exact_of_grid<hypot_limbs<InX, InY>>(max_abs<InX>);
     const F b = ::beman::inside::detail::exact_of_grid<hypot_limbs<InX, InY>>(max_abs<InY>);
     return ax::lattice_bound<ax::gcd_notch<InX, InY>, true>(

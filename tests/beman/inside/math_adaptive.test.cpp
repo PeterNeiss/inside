@@ -9,7 +9,7 @@
 using namespace beman::inside;
 namespace ax = beman::inside::math::detail::ax;
 using beman::inside::umax;
-using detail::exact_frac;
+using detail::wide_rational;
 using detail::wide_sint;
 
 namespace {
@@ -118,7 +118,7 @@ struct near_tie {
     template <int W>
     constexpr ax::approx<8> run() const {
         ++Runs;
-        const auto v = detail::exact_of<8>(rational{1, 16}) + exact_frac<8>{wide_sint<8>{1}, wide_sint<8>{1} << 40};
+        const auto v = detail::exact_of<8>(rational{1, 16}) + wide_rational<8>{wide_sint<8>{1}, wide_sint<8>{1} << 40};
         return {ax::to_q<W, 8>(v), W, 4};
     }
 };
@@ -756,7 +756,7 @@ TEST(MathAdaptiveTest, double_tier_agrees_on_decimal_inputs_and_checked_forms) {
                 ax::atan2_core<ax::input_limbs<symd>>{ax::exact_input(y), ax::exact_input(x)});
             if (a.raw() != a2.raw())
                 ++bad;
-            using F = detail::exact_frac<2 * ax::input_limbs<symd> + 1>;
+            using F = detail::wide_rational<2 * ax::input_limbs<symd> + 1>;
             const F    fx{ax::exact_input(x)}, fy{ax::exact_input(y)};
             const auto h2 = ax::evaluate<out20, ax::start_bits<out20>>(
                 ax::sqrt_core<2 * ax::input_limbs<symd> + 1>{fx * fx + fy * fy});
@@ -889,7 +889,7 @@ TEST(MathAdaptiveTest, dd_tier_agrees_with_the_integer_path) {
                 ax::atan2_core<ax::input_limbs<symm4>>{ax::exact_input(y), ax::exact_input(x)});
             if (am::atan2_into<out52>(y, x).raw() != a2.raw())
                 ++bad;
-            using F = detail::exact_frac<2 * ax::input_limbs<symm4> + 1>;
+            using F = detail::wide_rational<2 * ax::input_limbs<symm4> + 1>;
             const F    fx{ax::exact_input(x)}, fy{ax::exact_input(y)};
             const auto h2 = ax::evaluate<out46e, ax::start_bits<out46e>>(
                 ax::sqrt_core<2 * ax::input_limbs<symm4> + 1>{fx * fx + fy * fy});

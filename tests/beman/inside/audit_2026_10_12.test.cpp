@@ -28,9 +28,9 @@ constexpr std::int64_t base    = std::int64_t{1} << 48;
 TEST(Audit20261012, raw_map_into_full_int64) {
     using full = inside<{i64_min, i64_max}>;
     static_assert([] {
-        sqword a = inside<{0, 100}>{5};
-        full   b = inside<{0, 100}>{7};
-        full   c = inside<{i64_min, 0}>{i64_min};
+        int64 a = inside<{0, 100}>{5};
+        full  b = inside<{0, 100}>{7};
+        full  c = inside<{i64_min, 0}>{i64_min};
         return a == 5 && b == 7 && c == i64_min;
     }());
     static_assert([] {
@@ -45,9 +45,9 @@ TEST(Audit20261012, raw_map_into_full_int64) {
 TEST(Audit20261012, scalar_store_into_full_int64) {
     using full = inside<{i64_min, i64_max}>;
     static_assert([] {
-        sqword a{2.0};
-        sqword b{rational{-7}};
-        full   c{rational{-3}};
+        int64 a{2.0};
+        int64 b{rational{-7}};
+        full  c{rational{-3}};
         c += rational{1};
         full d{-9.0e18};
         return a == 2 && b == -7 && c == -2 && d == -9'000'000'000'000'000'000;
@@ -211,13 +211,13 @@ TEST(Audit20261012, to_truncates_before_the_range_check) {
 }
 
 // A bounded continuous grid rejects a denominator past its bound: so does
-// conversion_rounds (it said false, and from_chars_exact relied on it).
+// conversion_rounds (it said false, and parse_exact relied on it).
 TEST(Audit20261012, conversion_rounds_on_bounded_continuous) {
     using B = inside<grid{interval{0, 1}, max_denominator{2}}>;
     static_assert(conversion_rounds<B>(rational{1, 3}) && !conversion_rounds<B>(rational{1, 2}));
     static_assert(!conversion_rounds<B>(0.5) && conversion_rounds<B>(0.25));
     static_assert(!conversion_rounds<B>(rational{3}) && conversion_overflows<B>(rational{3}));
-    EXPECT_FALSE(from_chars_exact<B>(std::string_view{"1/3"}).has_value());
+    EXPECT_FALSE(parse_exact<B>(std::string_view{"1/3"}).has_value());
 }
 
 // tan at a pole on a one-limb output: the "unresolved" error ~0 read as −1,
@@ -235,7 +235,7 @@ TEST(Audit20261012, tan_near_pole_overflows) {
 
 // The range gates of the math kernels read a grid's largest magnitude: one
 // reaching 2^63 wrapped to −1 and passed every gate.
-TEST(Audit20261012, math_gates_fail_closed_on_huge_grids) { static_assert(math::detail::ax::in_max<qword> > 1e18); }
+TEST(Audit20261012, math_gates_fail_closed_on_huge_grids) { static_assert(math::detail::ax::in_max<uint64> > 1e18); }
 
 // pow of an exact rational result with a non-integer exponent sat on a
 // rounding boundary and was guessed at the precision cap.
@@ -255,9 +255,9 @@ TEST(Audit20261012, pow_rational_exponent_is_exact) {
 // A second exponent sign was accepted ("1e-+5" read as 1e5).
 TEST(Audit20261012, one_exponent_sign) {
     using B = inside<{0, 1'000'000}>;
-    EXPECT_EQ(from_chars<B>(std::string_view{"1e-+5"}).error(), errc::invalid_format);
-    EXPECT_EQ(from_chars<B>(std::string_view{"1e+-5"}).error(), errc::invalid_format);
-    EXPECT_EQ(*from_chars<B>(std::string_view{"1e+5"}), 100000);
+    EXPECT_EQ(parse<B>(std::string_view{"1e-+5"}).error(), errc::invalid_format);
+    EXPECT_EQ(parse<B>(std::string_view{"1e+-5"}).error(), errc::invalid_format);
+    EXPECT_EQ(*parse<B>(std::string_view{"1e+5"}), 100000);
 }
 
 // pow with a zero base: 0^y = 0 for y > 0, 0^0 = 1, a pole for y < 0.
@@ -311,17 +311,17 @@ TEST(Audit20261012, text_past_the_64_bit_parse) {
     using H  = inside<{{0, 1}, per<100>}, round_nearest>;
     using HC = inside<{{0, 1}, per<100>}, round_ceil>;
     using S  = inside<{{0, 1}, per<100>}>;
-    EXPECT_EQ(*from_chars<H>(std::string_view{"1e-200"}), 0);
-    EXPECT_EQ(*from_chars<HC>(std::string_view{"1e-200"}), rational(1, 100));
-    EXPECT_EQ(from_chars<S>(std::string_view{"1e-200"}).error(), errc::rounding_error);
-    EXPECT_EQ(*from_chars<HC>(std::string_view{"-1e-200"}), 0);
-    EXPECT_EQ(*from_chars<HC>(std::string_view{"1e-5000"}), rational(1, 100)); // past the wide parse
-    EXPECT_EQ(from_chars_exact<S>(std::string_view{"1e-5000"}).error(), errc::rounding_error);
-    EXPECT_TRUE(*from_chars<qword>(std::string_view{"0x1p63"}) == (umax{1} << 63));
-    EXPECT_EQ(*from_chars<H>(std::string_view{"0x1p-70"}), 0);
-    EXPECT_TRUE(*from_chars<qword>(std::string_view{"18'446'744'073'709'551'615"}) == ~umax{0});
+    EXPECT_EQ(*parse<H>(std::string_view{"1e-200"}), 0);
+    EXPECT_EQ(*parse<HC>(std::string_view{"1e-200"}), rational(1, 100));
+    EXPECT_EQ(parse<S>(std::string_view{"1e-200"}).error(), errc::rounding_error);
+    EXPECT_EQ(*parse<HC>(std::string_view{"-1e-200"}), 0);
+    EXPECT_EQ(*parse<HC>(std::string_view{"1e-5000"}), rational(1, 100)); // past the wide parse
+    EXPECT_EQ(parse_exact<S>(std::string_view{"1e-5000"}).error(), errc::rounding_error);
+    EXPECT_TRUE(*parse<uint64>(std::string_view{"0x1p63"}) == (umax{1} << 63));
+    EXPECT_EQ(*parse<H>(std::string_view{"0x1p-70"}), 0);
+    EXPECT_TRUE(*parse<uint64>(std::string_view{"18'446'744'073'709'551'615"}) == ~umax{0});
     const std::string third = "0." + std::string(299, '3') + "4";
-    EXPECT_EQ(*from_chars<H>(std::string_view{third}), rational(33, 100));
+    EXPECT_EQ(*parse<H>(std::string_view{third}), rational(33, 100));
     const std::string over_half = "0.5" + std::string(298, '0') + "1";
-    EXPECT_EQ((*from_chars<inside<{0, 1}, round_nearest>>(std::string_view{over_half})), 1);
+    EXPECT_EQ((*parse<inside<{0, 1}, round_nearest>>(std::string_view{over_half})), 1);
 }

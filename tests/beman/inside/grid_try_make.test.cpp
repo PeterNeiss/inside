@@ -58,7 +58,7 @@ TEST(GridTryMakeTest, grid_try_make_accepts_an_unanchored_lattice) {
     auto g = grid::try_make(interval{1, 11}, 2_r);
     ASSERT_TRUE(g.has_value());
     EXPECT_FALSE(g->anchored());
-    EXPECT_EQ(g->slot_count(), detail::grid_wide{5});
+    EXPECT_EQ(g->slot_count(), detail::grid_int{5});
 }
 
 // grid::try_make rejects a negative notch (decoding would count downward)

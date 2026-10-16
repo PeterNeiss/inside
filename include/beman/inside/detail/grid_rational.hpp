@@ -40,10 +40,10 @@
 //---------------------------------------------------------------------------
 // The grid-number vocabulary, the same in both modes:
 //   grid_rational          the type of a grid's limits and notch
-//   grid_wide              exact integers for grid computations (slot counts,
+//   grid_int              exact integers for grid computations (slot counts,
 //                          value indices): wide enough for every grid
 //   wide_numerator(r) /    a grid number's signed numerator and positive
-//   wide_denominator(r)    denominator as grid_wide (also for a rational)
+//   wide_denominator(r)    denominator as grid_int (also for a rational)
 //   grid_divides_evenly    a / n is an integer (true for n == 0)
 //   grid_same_lattice      (a − b) / n is an integer (true for n == 0)
 //   grid_gcd               gcd of two fractions; may fail only with 64-bit
@@ -71,18 +71,20 @@ constexpr bool same_lattice64(const rational& a, const rational& b, const ration
 
 #if BEMAN_INSIDE_BIG_GRIDS
 using grid_rational = big_rational;
-using grid_wide     = big_int;
+using grid_int      = big_int;
 
-constexpr grid_wide wide_numerator(const big_rational& r) { return r.Num; }
-constexpr grid_wide wide_denominator(const big_rational& r) { return r.Den; }
-constexpr grid_wide wide_numerator(const rational& r) {
-    const grid_wide n{r.Numerator};
+constexpr grid_int wide_numerator(const big_rational& r) { return r.Num; }
+constexpr grid_int wide_denominator(const big_rational& r) { return r.Den; }
+constexpr grid_int wide_numerator(const rational& r) {
+    const grid_int n{r.Numerator};
     return r.Denominator < 0 ? -n : n;
 }
-constexpr grid_wide wide_denominator(const rational& r) { return grid_wide{abs_den(r.Denominator)}; }
+constexpr grid_int wide_denominator(const rational& r) { return grid_int{abs_den(r.Denominator)}; }
 
 // A grid number as a transient fraction, for tests that run at runtime too.
-constexpr big::frac frac_of(const big_rational& r) { return {r.Num.magnitude(), r.Den.magnitude(), r.Num.negative()}; }
+constexpr big::fraction fraction_of(const big_rational& r) {
+    return {r.Num.magnitude(), r.Den.magnitude(), r.Num.negative()};
+}
 
 // (a − b) / n is an integer (true for n == 0): b and a share n's lattice.
 // (No big value is formed, so the test runs at runtime too.)
@@ -91,7 +93,7 @@ constexpr bool grid_same_lattice(const big_rational& a, const big_rational& b, c
         return true;
     if (a.fits_rational() && b.fits_rational() && n.fits_rational())
         return same_lattice64(a, b, n);
-    return big::same_lattice(frac_of(a), frac_of(b), frac_of(n));
+    return big::same_lattice(fraction_of(a), fraction_of(b), fraction_of(n));
 }
 
 // (Convention, as divides_evenly: everything divides 0 evenly.)
@@ -106,13 +108,13 @@ constexpr big_rational grid_gcd(const big_rational& a, const big_rational& b) { 
 #else
 using grid_rational = rational;
 // A product of three 64-bit magnitudes plus a sign.
-using grid_wide = wide_sint<4>;
+using grid_int = wide_sint<4>;
 
-constexpr grid_wide wide_numerator(const rational& r) noexcept {
-    const grid_wide n{r.Numerator};
+constexpr grid_int wide_numerator(const rational& r) noexcept {
+    const grid_int n{r.Numerator};
     return r.Denominator < 0 ? -n : n;
 }
-constexpr grid_wide wide_denominator(const rational& r) noexcept { return grid_wide{abs_den(r.Denominator)}; }
+constexpr grid_int wide_denominator(const rational& r) noexcept { return grid_int{abs_den(r.Denominator)}; }
 
 constexpr bool grid_divides_evenly(const rational& a, const rational& n) { return divides_evenly(a, n); }
 
@@ -163,18 +165,18 @@ constexpr grid_rational grid_gcd_of(const grid_rational& a, const grid_rational&
 #endif
 }
 // gcd of two grid integers, non-negative (0 when both are).
-constexpr grid_wide grid_wide_gcd(grid_wide a, grid_wide b) {
+constexpr grid_int grid_int_gcd(grid_int a, grid_int b) {
 #if BEMAN_INSIDE_BIG_GRIDS
     return gcd(a, b);
 #else
-    if (a < grid_wide{0})
+    if (a < grid_int{0})
         a = -a;
-    if (b < grid_wide{0})
+    if (b < grid_int{0})
         b = -b;
-    while (!(b == grid_wide{0})) {
-        const grid_wide t = a % b;
-        a                 = b;
-        b                 = t;
+    while (!(b == grid_int{0})) {
+        const grid_int t = a % b;
+        a                = b;
+        b                = t;
     }
     return a;
 #endif
@@ -199,15 +201,15 @@ template <char... Chars>
 consteval grid_rational parse_grid_literal() {
     if constexpr (octal_literal<Chars...>())
         constexpr_error<"_g literal: a leading 0 makes an octal literal; write the number without it">();
-    constexpr char  text[] = {Chars...};
-    const grid_wide ten{10};
-    // Times ten. 64-bit grid numbers compute in a 256-bit grid_wide, which
+    constexpr char text[] = {Chars...};
+    const grid_int ten{10};
+    // Times ten. 64-bit grid numbers compute in a 256-bit grid_int, which
     // holds every literal that can fit (a reduced denominator of 10^k is at
     // least 2^k, so k ≤ 62 and m ≤ 2^64·5^62): a value past 2^246 cannot fit,
     // so stop there rather than wrap.
-    const auto times_ten = [&](const grid_wide& v) {
+    const auto times_ten = [&](const grid_int& v) {
 #if !BEMAN_INSIDE_BIG_GRIDS
-        if ((grid_wide{1} << 246) < v)
+        if ((grid_int{1} << 246) < v)
             constexpr_error<"_g literal: past the 64-bit grid numbers (needs C++26 big grids)">();
 #endif
         return v * ten;
@@ -215,7 +217,7 @@ consteval grid_rational parse_grid_literal() {
     // The value is m·10^e10. Zero digits are held back (`zeros`) and only
     // multiplied in before a later nonzero digit, so trailing zeros
     // (1.000…) never grow m.
-    grid_wide   m{0};
+    grid_int    m{0};
     int         e10 = 0, zeros = 0;
     std::size_t i     = 0;
     bool        point = false, digits = false;
@@ -234,7 +236,7 @@ consteval grid_rational parse_grid_literal() {
         else {
             for (; zeros > 0; --zeros)
                 m = times_ten(m);
-            m = times_ten(m) + grid_wide{c - '0'};
+            m = times_ten(m) + grid_int{c - '0'};
         }
         if (point)
             --e10;
@@ -264,22 +266,22 @@ consteval grid_rational parse_grid_literal() {
         }
         e10 += neg ? -e : e;
     }
-    grid_wide num = m, den{1};
-    if (!(m == grid_wide{0}))
+    grid_int num = m, den{1};
+    if (!(m == grid_int{0}))
         for (; e10 != 0; e10 += e10 > 0 ? -1 : 1)
             (e10 > 0 ? num : den) = times_ten(e10 > 0 ? num : den);
 #if BEMAN_INSIDE_BIG_GRIDS
     return big_rational{num, den};
 #else
-    grid_wide a = num, b = den; // reduce, then it must fit
-    while (!(b == grid_wide{0})) {
-        const grid_wide t = a % b;
-        a                 = b;
-        b                 = t;
+    grid_int a = num, b = den; // reduce, then it must fit
+    while (!(b == grid_int{0})) {
+        const grid_int t = a % b;
+        a                = b;
+        b                = t;
     }
     num = num / a;
     den = den / a;
-    if (grid_wide{std::numeric_limits<umax>::max()} < num || grid_wide{std::numeric_limits<imax>::max()} < den)
+    if (grid_int{std::numeric_limits<umax>::max()} < num || grid_int{std::numeric_limits<imax>::max()} < den)
         constexpr_error<"_g literal: past the 64-bit grid numbers (needs C++26 big grids)">();
     return rational{static_cast<umax>(num), static_cast<imax>(den)};
 #endif

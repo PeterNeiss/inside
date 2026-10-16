@@ -75,7 +75,7 @@ Two clauses you'll see: *interval lies entirely outside* (value can't fit the ra
 You can also ask explicitly, anywhere:
 
 ```cpp
-static_assert(beman::inside::why_assignable<DstInside, decltype(src)>);  // prints the named reasons
+static_assert(beman::inside::explain_assignable<DstInside, decltype(src)>);  // prints the named reasons
 ```
 
 ## Probing operations: honest `requires`
@@ -103,4 +103,4 @@ error surfaces on *use*, not on the trait). If you embed `inside` in `std::varia
 `std::optional`, or other trait-driven generic code that *probes* convertibility, configure
 with `-DBEMAN_INSIDE_STRICT_SFINAE=ON` (defines `BEMAN_INSIDE_STRICT_SFINAE`). That drops the diagnostic
 overloads — `inside` becomes SFINAE-pure with honest traits, at the cost of the bare
-"could not convert" message. `beman::inside::why_assignable` still works in strict builds.
+"could not convert" message. `beman::inside::explain_assignable` still works in strict builds.

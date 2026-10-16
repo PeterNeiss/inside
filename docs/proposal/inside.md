@@ -347,7 +347,7 @@ in v0.2.0, and each is a candidate for a later paper:
    `on_overflow`). With them a clock's seconds carry into minutes.
 3. **Conversions**: `clamp_cast`, `wrap_cast`, `checked_cast`, `as<T>()`, and
    the predicates `conversion_overflows`, `conversion_rounds`.
-4. **Text**: `to_string`, `from_chars`, `from_chars_exact`, `std::formatter`
+4. **Text**: `to_string`, `parse`, `parse_exact`, `std::formatter`
    and stream operators, printing the exact value.
 5. **Algorithms and generic code**: `sum<Target>` with one deferred check,
    `mul_into<Out>` / `div_into<Out>` (one rounding, no intermediate grid),

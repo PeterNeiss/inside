@@ -206,11 +206,11 @@ TEST(BugHunt20261012, operations_are_constraint_friendly) {
     static_assert(can_divmod<digit, inside<{1, 3}>> && !can_divmod<fourths, digit>);
     static_assert(can_add<digit, fourths> && can_mul<fourths, fourths>);
 #if BEMAN_INSIDE_BIG_GRIDS
-    static_assert(can_add<qword, qword> && can_mul<full, full>);
+    static_assert(can_add<uint64, uint64> && can_mul<full, full>);
 #else
-    static_assert(!can_add<qword, qword> && !can_mul<full, full>); // not imax · imax
-    static_assert(!can_div<inside<{-7, 5}>, full>);                // 7/2^63
-    static_assert(can_div<inside<{-7, 5}, snap>, full>);           // an integer quotient
+    static_assert(!can_add<uint64, uint64> && !can_mul<full, full>); // not imax · imax
+    static_assert(!can_div<inside<{-7, 5}>, full>);                  // 7/2^63
+    static_assert(can_div<inside<{-7, 5}, snap>, full>);             // an integer quotient
 #endif
     static_assert(can_make<digit, int> && can_make<digit, inside<{5, 20}>> && !can_make<digit, inside<{20, 30}>>);
     static_assert(!can_make<digit, fourths> && can_make<inside<{0, 9}, snap>, fourths>);

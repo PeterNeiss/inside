@@ -74,8 +74,8 @@ int main() {
         }
     }
 
-    counter<1'000'000> clip_events{0};
-    counter<1'000'000> overflow_events{0};
+    clamp_counter<1'000'000> clip_events{0};
+    clamp_counter<1'000'000> overflow_events{0};
 
     std::cout << "frame  c0      c1      c2      c3      mix    \n";
     for (frame_t i : values<frame_t>) {

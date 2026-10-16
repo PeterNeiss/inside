@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // A calibration pipeline where each step can fail, and the cause matters:
-//   text ──from_chars──▶ reading ──div_into<volts>(reading − offset, gain)──▶ volts
+//   text ──parse──▶ reading ──div_into<volts>(reading − offset, gain)──▶ volts
 // Every step returns std::expected<…, errc>, so the steps chain with
 // and_then, and the first failure — malformed text, a value off the grid or
 // out of range, a zero gain — comes out the end with its cause. Steps whose
@@ -25,8 +25,8 @@ constexpr reading offset{just<1>.per<4000>}; // 0.25 mV
 
 // One sample: a reading and the channel's gain, both as text.
 std::expected<volts, errc> calibrate(std::string_view r, std::string_view g) {
-    return from_chars<reading>(r).and_then([&](reading x) {
-        return from_chars<gain>(g).and_then([&](gain k) {
+    return parse<reading>(r).and_then([&](reading x) {
+        return parse<gain>(g).and_then([&](gain k) {
             // (x − offset) / k, rounded once into volts: k's grid holds 0, so the
             // result is an expected carrying a zero gain or a failed store.
             return div_into<volts>(x - offset, k);

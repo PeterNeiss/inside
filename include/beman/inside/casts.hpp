@@ -25,12 +25,25 @@ using cast_twin = inside<grid_of<B>, (policy_of<B> & ~Replaced) | Cast>;
 // Each cast constructs through B's grid with a one-shot policy that
 // overrides B's declared one for this conversion only — and is constrained
 // like that constructor, so a probe sees whether it compiles.
-template <insidable B, numeric N>
-    requires inside_assignable<detail::cast_twin<B, clamp, detail::range_flags>,
-                               N,
-                               policy_of<detail::cast_twin<B, clamp, detail::range_flags>>>
+namespace detail {
+// clamp, and with a rounding mode, that mode in place of B's own:
+// clamp_cast<B, round_floor> is the "double in, bounded integer out, never
+// throw" pipeline.
+template <insidable B, policy_flag Round>
+using clamp_twin = std::conditional_t<Round == none,
+                                      cast_twin<B, clamp, range_flags>,
+                                      cast_twin<B, clamp | Round, range_flags | rounding_flags>>;
+
+template <policy_flag Round>
+concept cast_rounding =
+    Round == none || Round == round_nearest || Round == round_floor || Round == round_ceil || Round == round_half_even;
+} // namespace detail
+
+template <insidable B, policy_flag Round = none, numeric N>
+    requires detail::cast_rounding<Round> &&
+             inside_assignable<detail::clamp_twin<B, Round>, N, policy_of<detail::clamp_twin<B, Round>>>
 [[nodiscard]] constexpr B clamp_cast(N value) {
-    return B::from_raw(detail::cast_twin<B, clamp, detail::range_flags>{value}.raw());
+    return B::from_raw(detail::clamp_twin<B, Round>{value}.raw());
 }
 
 // `wrap_cast` — modular semantics: the input is reduced into the target grid's
@@ -41,45 +54,6 @@ template <insidable B, numeric N>
                                policy_of<detail::cast_twin<B, wrap, detail::range_flags>>>
 [[nodiscard]] constexpr B wrap_cast(N value) {
     return B::from_raw(detail::cast_twin<B, wrap, detail::range_flags>{value}.raw());
-}
-
-//---------------------------------------------------------------------------
-// clamp_floor / clamp_ceil / clamp_round — compose `clamp` with a rounding
-// mode: the canonical "double in, bounded integer out, never throw" pipeline.
-// The mode replaces B's own.
-//---------------------------------------------------------------------------
-namespace detail {
-template <insidable B, policy_flag RoundMode>
-using clamp_round_twin = cast_twin<B, clamp | RoundMode, range_flags | rounding_flags>;
-
-template <insidable B, policy_flag RoundMode, numeric N>
-[[nodiscard]] constexpr B clamp_with_rounding(N value) {
-    return B::from_raw(clamp_round_twin<B, RoundMode>{value}.raw());
-}
-} // namespace detail
-
-template <insidable B, numeric N>
-    requires inside_assignable<detail::clamp_round_twin<B, round_floor>,
-                               N,
-                               policy_of<detail::clamp_round_twin<B, round_floor>>>
-[[nodiscard]] constexpr B clamp_floor(N value) {
-    return detail::clamp_with_rounding<B, round_floor>(value);
-}
-
-template <insidable B, numeric N>
-    requires inside_assignable<detail::clamp_round_twin<B, round_ceil>,
-                               N,
-                               policy_of<detail::clamp_round_twin<B, round_ceil>>>
-[[nodiscard]] constexpr B clamp_ceil(N value) {
-    return detail::clamp_with_rounding<B, round_ceil>(value);
-}
-
-template <insidable B, numeric N>
-    requires inside_assignable<detail::clamp_round_twin<B, round_nearest>,
-                               N,
-                               policy_of<detail::clamp_round_twin<B, round_nearest>>>
-[[nodiscard]] constexpr B clamp_round(N value) {
-    return detail::clamp_with_rounding<B, round_nearest>(value);
 }
 
 // `checked_cast` — throws (via the installed handler) when the value would not

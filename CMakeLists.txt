@@ -52,7 +52,7 @@ option(
 # convertible from incompatible types (the error surfaces on use, not on the
 # trait). BEMAN_INSIDE_STRICT_SFINAE=ON drops the diagnostic overloads so those
 # traits stay honest — for code that embeds `inside` in variant/optional or
-# otherwise probes convertibility. The free `beman::inside::why_assignable`
+# otherwise probes convertibility. The free `beman::inside::explain_assignable`
 # probe still works in strict builds.
 option(
     BEMAN_INSIDE_STRICT_SFINAE

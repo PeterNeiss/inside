@@ -43,7 +43,7 @@ TEST(BugHuntRound6, policy_ref_failed_read_out_is_initialized) {
 // floor / ceil / round / trunc of a value past INT64_MAX narrowed through
 // imax.
 TEST(BugHuntRound6, integer_roundings_past_int64) {
-    const qword q{18446744073709551615u};
+    const uint64 q{18446744073709551615u};
     EXPECT_EQ(math::floor(q).to<std::uint64_t>(), 18446744073709551615u);
     EXPECT_EQ(math::ceil(q).to<std::uint64_t>(), 18446744073709551615u);
     EXPECT_EQ(math::round(q).to<std::uint64_t>(), 18446744073709551615u);
@@ -102,7 +102,7 @@ TEST(BugHuntRound6, rational_compares_exactly_with_fine_doubles) {
     static_assert(rational{1, 4} == 0.25);
 }
 
-// The _g literal multiplied in grid_wide without a limit: a long literal
+// The _g literal multiplied in grid_int without a limit: a long literal
 // wrapped; trailing zeros counted as digits.
 TEST(BugHuntRound6, grid_literal_takes_long_exact_literals) {
     static_assert(1.50000000000000000000000000000000000000000000000000000000000000000000000000000000000000_g ==

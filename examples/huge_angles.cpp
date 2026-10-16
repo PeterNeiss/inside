@@ -17,8 +17,8 @@
 
 using namespace beman::inside;
 
-using radians = inside<{0, (std::int64_t{1} << 62) - 1}>; // integers up to 2^62 − 1
-using amp52   = math::amp<(std::int64_t{1} << 52)>;       // [-1, 1] on a 2^-52 grid
+using radians = inside<{0, (std::int64_t{1} << 62) - 1}>;      // integers up to 2^62 − 1
+using amp52   = math::unit_amplitude<(std::int64_t{1} << 52)>; // [-1, 1] on a 2^-52 grid
 
 int main() {
     struct row {

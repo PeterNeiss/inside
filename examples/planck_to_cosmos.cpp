@@ -39,7 +39,7 @@ int main() {
     // 2. The geometric mean, exact to the last of 41 decimals.
     const length mean = math::sqrt_into<length>(planck * universe);
     std::cout << "sqrt(planck * universe) = " << mean << " m\n";
-    if (mean != *from_chars<length>("0.00011926040415829555623064347860850441433"))
+    if (mean != *parse<length>("0.00011926040415829555623064347860850441433"))
         return 1;
     return 0;
 }

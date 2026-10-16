@@ -354,9 +354,9 @@ TEST(GridTest, max_denominator_spelling_and_representable) {
     static_assert(!kThousandths.representable(rational{1, 1001}));
     static_assert(kUnbounded.representable(rational{1, 1001}));
     static_assert(kThousandths != grid{{0, 1}, 0}); // a bound is part of the type
-    static_assert(den_bound(kThousandths) == grid_wide{1000});
-    static_assert(den_bound(grid{{0.5_r, 10.5_r}, 1}) == grid_wide{2});
-    static_assert(num_bound(kThousandths) == grid_wide{1000});
+    static_assert(den_bound(kThousandths) == grid_int{1000});
+    static_assert(den_bound(grid{{0.5_r, 10.5_r}, 1}) == grid_int{2});
+    static_assert(num_bound(kThousandths) == grid_int{1000});
 }
 
 TEST(GridTest, bounds_past_their_storage_are_dropped) {
@@ -381,6 +381,6 @@ TEST(GridTest, bounded_storage_holds_every_value) {
     // C++26: past it, a fraction sized from the bounds — here 10^36 needs 120 bits.
     constexpr grid billionths{interval{0, 1}, max_denominator{1'000'000'000}};
     constexpr grid b2 = *(billionths * billionths), b4 = *(b2 * b2);
-    static_assert(std::same_as<storage_min_t<b4>, exact_frac<2>>);
+    static_assert(std::same_as<storage_min_t<b4>, wide_rational<2>>);
 #endif
 }

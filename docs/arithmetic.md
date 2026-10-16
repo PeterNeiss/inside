@@ -188,7 +188,7 @@ the results.
   side: exact quotients, per-call and type-level `snap`, rounding modes, the
   `errc::division_by_zero` case and a zero-free divisor's plain result.
 - [examples/expected_pipeline.cpp](../examples/expected_pipeline.cpp) —
-  chaining fallible steps (`from_chars`, `div_into`) with
+  chaining fallible steps (`parse`, `div_into`) with
   `and_then` / `or_else`, and the first error's cause at the end.
 - [tests/beman/inside/inside_arithmetic.test.cpp](../tests/beman/inside/inside_arithmetic.test.cpp) — the
   `"inside div: rational vs integer paths"` case covers paths B and C across
@@ -341,7 +341,7 @@ coarse half(fine x) { return x.with_snap(); }    // round at the return boundary
 The target's own policy still applies through the conversion: returning into a
 `inside<…, clamp>` clamps the range while `with_snap` handles the notch. For the
 same fine→coarse conversion as a free function (including an inside source), use
-`clamp_round<B>(v)` — see [conversions](conversions.md).
+`clamp_cast<B, round_nearest>(v)` — see [conversions](conversions.md).
 
 `.with_snap()` adapts to its receiver: on a named inside it yields a lightweight
 reference proxy, but on a **temporary** — `(a * a).with_snap()` — it returns a

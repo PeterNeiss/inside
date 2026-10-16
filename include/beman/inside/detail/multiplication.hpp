@@ -44,7 +44,7 @@ struct multiplication {
         else if constexpr (point_scale<L, R, result>)
             return scale_by_point<result, (lower_of<L> < 0)>(rhs);
         else if constexpr (fraction_storage<result>) {
-            const auto prod = frac_raw_of<raw_t<result>>(exact_of(lhs) * exact_of(rhs));
+            const auto prod = continuous_raw_of<raw_t<result>>(exact_of(lhs) * exact_of(rhs));
             if constexpr (needs_overflow_check<policy_flags_of<plain_t<P>>>)
                 if (!prod) [[unlikely]]
                     return report_or_unexpected<result>(action, policy, errc::overflow, "fraction overflow in mul");

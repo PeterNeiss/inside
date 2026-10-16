@@ -964,22 +964,13 @@ BEMAN_INSIDE_RATIONAL_OP(/)
 } // namespace beman::inside::detail
 
 namespace beman::inside::detail {
-// Checked builders for the public helpers below: a static_assert here fires at
-// the user's spelling. Denominators are unsigned, so a sign can only sit in
-// frac's numerator.
+// Checked builder for per<D> below: a static_assert here fires at the user's
+// spelling (also through just<N>.per<D>, which is N · per<D>).
 template <umax D>
 consteval rational make_per() {
     static_assert(D >= 1, "per<D> is the positive step 1/D; a continuous grid is spelled 0");
     static_assert(D <= static_cast<umax>(std::numeric_limits<imax>::max()), "per<D>: denominator too large");
     return rational{umax{1}, D};
-}
-
-// n / D for an integer n (its Denominator ±1): the value of just<n>.per<D>.
-template <umax D>
-consteval rational make_frac(const rational& n) {
-    static_assert(D >= 1, "just<N>.per<D>: the denominator must be at least 1");
-    static_assert(D <= static_cast<umax>(std::numeric_limits<imax>::max()), "just<N>.per<D>: denominator too large");
-    return rational{n.Numerator, n.Denominator * static_cast<imax>(D)};
 }
 } // namespace beman::inside::detail
 

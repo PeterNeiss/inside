@@ -28,7 +28,7 @@ TEST(FormatTest, rational_to_string_decimal_forms) {
     ASSERT_EQ((beman::inside::to_string(rational{43, -2})), "-21.5");
 }
 
-// rational to_string: no finite decimal prints N/D, the form from_chars reads
+// rational to_string: no finite decimal prints N/D, the form parse reads
 TEST(FormatTest, rational_to_string_fraction_forms) {
     ASSERT_EQ((beman::inside::to_string(rational{7u, 3})), "7/3");
     ASSERT_EQ((beman::inside::to_string(rational{22u, 7})), "22/7");
@@ -60,13 +60,13 @@ TEST(FormatTest, negative_zero_prints_as_zero) {
 }
 
 // to_string output parses back to the same value
-TEST(FormatTest, to_string_round_trips_through_from_chars) {
+TEST(FormatTest, to_string_round_trips_through_parse) {
     using third = inside<{{-10, 10}, per<3>}>;
     for (const third v : {third{rational{7, 3}}, third{rational{-1, 3}}, third{rational{29, 3}}})
-        ASSERT_EQ(from_chars<third>(beman::inside::to_string(v)), v);
+        ASSERT_EQ(parse<third>(beman::inside::to_string(v)), v);
     using fine   = inside<{{0, 1}, per<imax{1} << 52>}>;
     const fine e = fine::from_raw(1);
-    ASSERT_EQ(from_chars<fine>(beman::inside::to_string(e)), e);
+    ASSERT_EQ(parse<fine>(beman::inside::to_string(e)), e);
 }
 
 // rational max as integer formats without 1/
@@ -232,7 +232,7 @@ TEST(FormatTest, decimal_notches_fix_the_digits) {
     EXPECT_EQ(beman::inside::to_string(sixth{rational{1, 3}}), "1/3");
     // Every form reads back.
     for (const cents c : {cents{rational{199, 10}}, cents{-1}, cents{0}})
-        EXPECT_EQ(from_chars<cents>(beman::inside::to_string(c)), c);
+        EXPECT_EQ(parse<cents>(beman::inside::to_string(c)), c);
 #ifdef __cpp_lib_format
     EXPECT_EQ(std::format("{}", cents{rational{199, 10}}), "19.90");
 #endif

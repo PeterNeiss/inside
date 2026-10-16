@@ -203,7 +203,7 @@ BEMAN_INSIDE_ARITH_FN(divmod, divmod_op)
 //---------------------------------------------------------------------------
 namespace detail {
 template <insidable Out, std::size_t K, typename P>
-constexpr Out store_exact_into(const exact_frac<K>& v, P&& policy) {
+constexpr Out store_exact_into(const wide_rational<K>& v, P&& policy) {
     Out out{};
     assign_exact<rational>(out, v, policy, no_action{});
     return out;
@@ -212,7 +212,7 @@ constexpr Out store_exact_into(const exact_frac<K>& v, P&& policy) {
 
 template <insidable Out, policy_flag F = none, insidable A, insidable B>
 [[nodiscard]] constexpr Out mul_into(const A& a, const B& b) {
-    using E = detail::exact_frac<detail::exact_limbs<A, B, Out>>;
+    using E = detail::wide_rational<detail::exact_limbs<A, B, Out>>;
     return detail::store_exact_into<Out>(E{detail::exact_of(a)} * E{detail::exact_of(b)},
                                          make_policy<policy_of<Out> | F>());
 }
@@ -220,7 +220,7 @@ template <insidable Out, policy_flag F = none, insidable A, insidable B>
 template <insidable Out, policy_flag F = none, insidable A, insidable B>
 [[nodiscard]] constexpr auto div_into(const A& a, const B& b)
     -> std::conditional_t<detail::divisor_excludes_zero<B>, Out, std::expected<Out, errc>> {
-    using E     = detail::exact_frac<detail::exact_limbs<A, B, Out>>;
+    using E     = detail::wide_rational<detail::exact_limbs<A, B, Out>>;
     const E num = E{detail::exact_of(a)}, den = E{detail::exact_of(b)};
     if constexpr (detail::divisor_excludes_zero<B>)
         return detail::store_exact_into<Out>(num / den, make_policy<policy_of<Out> | F>());
@@ -384,9 +384,9 @@ template <insidable Target, std::ranges::input_range Rng>
         constexpr std::size_t K =
             detail::limbs_for_bits(I::bits + detail::exact_value_bits<B> + detail::exact_value_bits<Target>);
         using W = detail::wide_sint<K>;
-        const detail::exact_frac<K> v{static_cast<W>(total) * static_cast<W>(detail::wide_numerator(U)),
-                                      static_cast<W>(detail::wide_denominator(U))};
-        no_action                   none;
+        const detail::wide_rational<K> v{static_cast<W>(total) * static_cast<W>(detail::wide_numerator(U)),
+                                         static_cast<W>(detail::wide_denominator(U))};
+        no_action                      none;
         detail::assign_exact<detail::rational>(out, v, policy, none);
     } else {
         detail::rational total{0};

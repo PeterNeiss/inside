@@ -9,4 +9,4 @@
 
 using namespace beman::inside;
 
-auto sum(qword a, qword b) { return a + b; }
+auto sum(uint64 a, uint64 b) { return a + b; }

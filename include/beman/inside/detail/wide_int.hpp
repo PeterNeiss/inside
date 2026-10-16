@@ -526,34 +526,34 @@ template <typename T>
 concept raw_integer = std::integral<T> || wide_integer<T>;
 
 //---------------------------------------------------------------------------
-// exact_frac — an exact value as a fraction of K-limb integers: the exact
+// wide_rational — an exact value as a fraction of K-limb integers: the exact
 // paths' intermediate (wide_value.hpp), and, reduced, the raw of a continuous
 // grid whose limits pass 64 bits. Structural, so it can be a raw.
 //---------------------------------------------------------------------------
 inline constexpr std::size_t exact_min_limbs = 8; // scalars, 64-bit rationals
 
 template <std::size_t K>
-struct exact_frac {
+struct wide_rational {
     wide_sint<K> Num{0};
     wide_sint<K> Den{1}; // > 0; not reduced
 
-    constexpr exact_frac() = default;
-    constexpr exact_frac(wide_sint<K> n, wide_sint<K> d) noexcept : Num{n}, Den{d} {}
+    constexpr wide_rational() = default;
+    constexpr wide_rational(wide_sint<K> n, wide_sint<K> d) noexcept : Num{n}, Den{d} {}
     template <std::size_t M>
         requires(M < K)
-    constexpr exact_frac(const exact_frac<M>& o) noexcept : Num{o.Num}, Den{o.Den} {} // widens
+    constexpr wide_rational(const wide_rational<M>& o) noexcept : Num{o.Num}, Den{o.Den} {} // widens
 
     constexpr explicit operator double() const noexcept { return static_cast<double>(Num) / static_cast<double>(Den); }
 };
 
 template <typename T>
-inline constexpr bool is_exact_frac_v = false;
+inline constexpr bool is_wide_rational_v = false;
 template <std::size_t K>
-inline constexpr bool is_exact_frac_v<exact_frac<K>> = true;
+inline constexpr bool is_wide_rational_v<wide_rational<K>> = true;
 
-// An exact_frac of any width.
+// An wide_rational of any width.
 template <typename T>
-concept exact_fraction = is_exact_frac_v<std::remove_cvref_t<T>>;
+concept wide_rational_like = is_wide_rational_v<std::remove_cvref_t<T>>;
 } // namespace beman::inside::detail
 
 template <std::size_t N, bool Signed, std::unsigned_integral L>

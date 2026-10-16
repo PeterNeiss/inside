@@ -98,8 +98,8 @@ kernels.
 
 ## Conventions
 
-- **Angles are radians**, as in `<cmath>`. `math::amp<K>` (`[-1, 1]` at
-  resolution `1/K`) is a ready-made output grid: `math::sin_into<math::amp<32768>>(x)`.
+- **Angles are radians**, as in `<cmath>`. `math::unit_amplitude<K>` (`[-1, 1]` at
+  resolution `1/K`) is a ready-made output grid: `math::sin_into<math::unit_amplitude<32768>>(x)`.
 - **Rounding needs permission.** A transcendental result is rounded onto a grid,
   so the operand of a deduced form (or the `Out` of an explicit one) must permit
   rounding: `round_nearest`, `round_floor`, `round_ceil`, `round_half_even`
@@ -223,7 +223,7 @@ using angle_t = inside<{{0, 8}, per<16384>}, round_nearest>;
 
 turn_t phase{0};
 phase += turn_t{0.25};                                   // a quarter turn, exactly
-auto s = math::sin_into<math::amp<16384>>(angle_t{phase * math::two_pi});
+auto s = math::sin_into<math::unit_amplitude<16384>>(angle_t{phase * math::two_pi});
 ```
 
 ## Using `expected` results

@@ -81,13 +81,13 @@ TEST(CastsTest, conversion_rounds_detects_non_notch_values) {
     static_assert(!(conversion_rounds<coarse>(11))); // out of range, not truncation
 }
 
-// conversion_is_lossy combines both
+// conversion_loses combines both
 TEST(CastsTest, conversion_is_lossy_combines_both) {
     using coarse = inside<{{0, 10}, 2}>;
 
-    static_assert(!(conversion_is_lossy<coarse>(4)));
-    static_assert(conversion_is_lossy<coarse>(3));  // truncation
-    static_assert(conversion_is_lossy<coarse>(20)); // overflow
+    static_assert(!(conversion_loses<coarse>(4)));
+    static_assert(conversion_loses<coarse>(3));  // truncation
+    static_assert(conversion_loses<coarse>(20)); // overflow
 }
 
 //---------------------------------------------------------------------------
@@ -215,23 +215,23 @@ TEST(CastsTest, with_snap_round_half_even_applies_banker_s_rounding) {
 }
 
 //---------------------------------------------------------------------------
-// clamp_floor / clamp_ceil / clamp_round
+// clamp_cast with a rounding mode
 //---------------------------------------------------------------------------
-// clamp_floor / clamp_ceil / clamp_round compose clamp + round
-TEST(CastsTest, clamp_floor_clamp_ceil_clamp_round_compose_clamp_plus_round) {
+// clamp_cast with a rounding mode compose clamp + round
+TEST(CastsTest, clamp_cast_with_rounding_compose_clamp_plus_round) {
     using coarse = inside<{{0, 10}, 2}>;
 
     // In-range, off-notch: round per mode.
-    ASSERT_TRUE(clamp_floor<coarse>(3.0) == coarse{2});
-    ASSERT_TRUE(clamp_ceil<coarse>(3.0) == coarse{4});
-    ASSERT_TRUE(clamp_round<coarse>(3.0) == coarse{4});
+    ASSERT_TRUE((clamp_cast<coarse, round_floor>(3.0) == coarse{2}));
+    ASSERT_TRUE((clamp_cast<coarse, round_ceil>(3.0) == coarse{4}));
+    ASSERT_TRUE((clamp_cast<coarse, round_nearest>(3.0) == coarse{4}));
 
     // Out-of-range: clamp to boundary.
-    ASSERT_TRUE(clamp_floor<coarse>(15.0) == coarse{10});
-    ASSERT_TRUE(clamp_ceil<coarse>(15.0) == coarse{10});
-    ASSERT_TRUE(clamp_round<coarse>(15.0) == coarse{10});
+    ASSERT_TRUE((clamp_cast<coarse, round_floor>(15.0) == coarse{10}));
+    ASSERT_TRUE((clamp_cast<coarse, round_ceil>(15.0) == coarse{10}));
+    ASSERT_TRUE((clamp_cast<coarse, round_nearest>(15.0) == coarse{10}));
 
-    ASSERT_TRUE(clamp_floor<coarse>(-3.0) == coarse{0});
+    ASSERT_TRUE((clamp_cast<coarse, round_floor>(-3.0) == coarse{0}));
 }
 
 //---------------------------------------------------------------------------
@@ -239,18 +239,18 @@ TEST(CastsTest, clamp_floor_clamp_ceil_clamp_round_compose_clamp_plus_round) {
 // policy widens the value+policy constructor's assignable check, so a finer
 // grid rounds onto the target (not just arithmetic sources).
 //---------------------------------------------------------------------------
-// clamp_floor / clamp_ceil / clamp_round accept an inside source
-TEST(CastsTest, clamp_floor_clamp_ceil_clamp_round_accept_an_inside_source) {
+// clamp_cast with a rounding mode accept an inside source
+TEST(CastsTest, clamp_cast_with_rounding_accept_an_inside_source) {
     using small = inside<{{0, 10}, per<10>}, clamp>; // 1/10 grid
     small a     = 2.5;                               // exact on the 1/10 grid
     auto  sq    = a * a;                             // exact 6.25 on the 1/100 grid
 
-    ASSERT_TRUE(clamp_floor<small>(sq) == 6.2_r); // toward −∞
-    ASSERT_TRUE(clamp_ceil<small>(sq) == 6.3_r);  // toward +∞
-    ASSERT_TRUE(clamp_round<small>(sq) == 6.3_r); // 6.25 tie → half away → 6.3
+    ASSERT_TRUE((clamp_cast<small, round_floor>(sq) == 6.2_r));   // toward −∞
+    ASSERT_TRUE((clamp_cast<small, round_ceil>(sq) == 6.3_r));    // toward +∞
+    ASSERT_TRUE((clamp_cast<small, round_nearest>(sq) == 6.3_r)); // 6.25 tie → half away → 6.3
 
-    small four = 4;                                     // 16 is out of range
-    ASSERT_TRUE(clamp_round<small>(four * four) == 10); // clamp to boundary
+    small four = 4;                                                     // 16 is out of range
+    ASSERT_TRUE((clamp_cast<small, round_nearest>(four * four) == 10)); // clamp to boundary
 
-    ASSERT_TRUE(clamp_round<small>(150.0) == 10); // arithmetic source: no regression
+    ASSERT_TRUE((clamp_cast<small, round_nearest>(150.0) == 10)); // arithmetic source: no regression
 }

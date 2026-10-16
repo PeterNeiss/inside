@@ -176,7 +176,7 @@ constexpr wide_sint<K> nearest_div(const wide_sint<K>& n, const wide_sint<K>& d)
 
 // x·2^W rounded to the nearest integer (half away from zero): within ½ unit.
 template <int W, std::size_t K, std::size_t E>
-constexpr wide_sint<K> to_q(const exact_frac<E>& x) noexcept {
+constexpr wide_sint<K> to_q(const wide_rational<E>& x) noexcept {
     constexpr int shift = W >= 0 ? W : -W;
     using I             = wide_sint<exact_max<E, K> + limbs_for_bits(shift) + 1>;
     I n{x.Num}, d{x.Den};
@@ -189,7 +189,7 @@ constexpr wide_sint<K> to_q(const exact_frac<E>& x) noexcept {
 
 // ⌊log2 |x|⌋ for x != 0.
 template <std::size_t E>
-constexpr int floor_log2(const exact_frac<E>& x) noexcept {
+constexpr int floor_log2(const wide_rational<E>& x) noexcept {
     using I    = wide_sint<E>;
     const I  n = abs(x.Num);
     const I& d = x.Den;
@@ -209,8 +209,8 @@ inline constexpr int out_bits = [] {
         return 64;
     else {
         // notch = p/q: need 2^-b ≤ p/(2q), i.e. b ≥ log2(2q/p).
-        const grid_wide p = wide_numerator(notch_of<Out>), q = wide_denominator(notch_of<Out>);
-        const int       b = bit_width_of(q) - bit_width_of(p) + 2;
+        const grid_int p = wide_numerator(notch_of<Out>), q = wide_denominator(notch_of<Out>);
+        const int      b = bit_width_of(q) - bit_width_of(p) + 2;
         return b > 0 ? b : 0;
     }
 }();
@@ -248,7 +248,7 @@ struct decision {
 };
 
 template <insidable Out, std::size_t K>
-constexpr exact_frac<decide_limbs<Out, K>> scaled_value(const wide_sint<K>& y, int W) noexcept {
+constexpr wide_rational<decide_limbs<Out, K>> scaled_value(const wide_sint<K>& y, int W) noexcept {
     using I = wide_sint<decide_limbs<Out, K>>;
     if (W < 0)
         return {I{y} << (-W), I{1}}; // a scale past the units: Y·2^|W|
@@ -263,9 +263,8 @@ inline constexpr bool notch_fits64 = [] {
     if constexpr (!notched<Out>)
         return false;
     else {
-        const grid_wide p = wide_numerator(notch_of<Out>), q = wide_denominator(notch_of<Out>);
-        return !(grid_wide{std::numeric_limits<umax>::max()} < p) &&
-               !(grid_wide{std::numeric_limits<umax>::max()} < q);
+        const grid_int p = wide_numerator(notch_of<Out>), q = wide_denominator(notch_of<Out>);
+        return !(grid_int{std::numeric_limits<umax>::max()} < p) && !(grid_int{std::numeric_limits<umax>::max()} < q);
     }
 }();
 
@@ -535,9 +534,10 @@ constexpr Out store(const wide_sint<K>& index, P&& policy) {
     // through Out's assignment (its policy clamps, wraps or reports).
     constexpr std::size_t KK = exact_max<K, exact_limbs<Out>>;
     using J                  = wide_sint<KK>;
-    const exact_frac<KK> v{(J{index} + static_cast<J>(slot_base<Out>)) * static_cast<J>(wide_numerator(notch_of<Out>)),
-                           static_cast<J>(wide_denominator(notch_of<Out>))};
-    Out                  out{};
+    const wide_rational<KK> v{(J{index} + static_cast<J>(slot_base<Out>)) *
+                                  static_cast<J>(wide_numerator(notch_of<Out>)),
+                              static_cast<J>(wide_denominator(notch_of<Out>))};
+    Out                     out{};
     assign_exact<rational>(out, v, policy, no_action{});
     return out;
 }
@@ -550,11 +550,11 @@ constexpr Out store(const wide_sint<K>& index) {
 // An exact value through Out's policy (an output without slots, or an exact
 // result: rounding an exact value by the mode is correct rounding).
 template <insidable Out, std::size_t K, typename P>
-constexpr Out store_exact(const exact_frac<K>& v, P&& policy) {
+constexpr Out store_exact(const wide_rational<K>& v, P&& policy) {
     // At least the exact paths' minimum width (try_rational's 64-bit bounds
     // need it).
-    const exact_frac<exact_max<K, exact_min_limbs>> w{v};
-    Out                                             out{};
+    const wide_rational<exact_max<K, exact_min_limbs>> w{v};
+    Out                                                out{};
     assign_exact<rational>(out, w, policy, no_action{});
     return out;
 }
@@ -564,14 +564,14 @@ template <std::size_t K>
 constexpr auto midpoint(const approx<K>& a) noexcept {
     constexpr std::size_t KK = exact_max<K + 1, exact_min_limbs>;
     using I                  = wide_sint<KK + 8>;
-    return a.Scale >= 0 ? exact_frac<KK + 8>{I{a.Value}, I{1} << a.Scale}
-                        : exact_frac<KK + 8>{I{a.Value} << (-a.Scale), I{1}};
+    return a.Scale >= 0 ? wide_rational<KK + 8>{I{a.Value}, I{1} << a.Scale}
+                        : wide_rational<KK + 8>{I{a.Value} << (-a.Scale), I{1}};
 }
 
 //---------------------------------------------------------------------------
 // evaluate — the Ziv driver. Core is a callable object with a member
 // template `run<W>()` returning an approx within about 2^-W, and optionally
-// `exact()` returning a std::optional exact_frac when the result is an
+// `exact()` returning a std::optional wide_rational when the result is an
 // exact rational (taken as is). It starts at W0 and doubles W while the
 // result is undecided, up to Cap.
 //---------------------------------------------------------------------------
@@ -680,7 +680,7 @@ constexpr imax slot_of(const Core& core) {
 
 template <insidable In>
 inline constexpr bool table_input =
-    !wide_valued<In> && notched<In> && grid_of<In>.slot_count() < grid_wide{BEMAN_INSIDE_MATH_TABLE_SLOTS};
+    !wide_valued<In> && notched<In> && grid_of<In>.slot_count() < grid_int{BEMAN_INSIDE_MATH_TABLE_SLOTS};
 
 // Outputs whose raw a table can hold: an integer index or value.
 template <insidable Out>
@@ -946,31 +946,31 @@ constexpr wide_sint<K> icbrt(const wide_sint<K>& n) noexcept {
 }
 
 template <std::size_t K>
-constexpr bool is_zero(const exact_frac<K>& f) noexcept {
+constexpr bool is_zero(const wide_rational<K>& f) noexcept {
     return f.Num.is_zero();
 }
 template <std::size_t K>
-constexpr bool is_one(const exact_frac<K>& f) noexcept {
+constexpr bool is_one(const wide_rational<K>& f) noexcept {
     return f.Num == f.Den;
 }
 template <std::size_t K>
-constexpr bool is_integer(const exact_frac<K>& f) noexcept {
+constexpr bool is_integer(const wide_rational<K>& f) noexcept {
     return (f.Num % f.Den).is_zero();
 }
 template <std::size_t K>
-constexpr exact_frac<K> abs(const exact_frac<K>& f) noexcept {
+constexpr wide_rational<K> abs(const wide_rational<K>& f) noexcept {
     return {abs(f.Num), f.Den};
 }
 // 1/f for f != 0.
 template <std::size_t K>
-constexpr exact_frac<K> inverse(const exact_frac<K>& f) noexcept {
-    return f.Num.negative() ? exact_frac<K>{-f.Den, -f.Num} : exact_frac<K>{f.Den, f.Num};
+constexpr wide_rational<K> inverse(const wide_rational<K>& f) noexcept {
+    return f.Num.negative() ? wide_rational<K>{-f.Den, -f.Num} : wide_rational<K>{f.Den, f.Num};
 }
 
 // x·2^W rounded to the nearest integer, for a W known only at runtime. KI
 // limbs must hold Num·2^W and Den·2^-W.
 template <std::size_t K, std::size_t KI, std::size_t E>
-constexpr wide_sint<K> to_q_at(const exact_frac<E>& x, int W) noexcept {
+constexpr wide_sint<K> to_q_at(const wide_rational<E>& x, int W) noexcept {
     using I = wide_sint<KI>;
     I n{x.Num}, d{x.Den};
     if (W >= 0)

@@ -98,7 +98,7 @@ TEST(UnanchoredGrid, grid_shape) {
     static_assert(grid{{0, 10}, 1}.anchored());
     static_assert(kHalfOff.value_unit() == 0.5_r);
     static_assert(kTenthOff.value_unit() == 0.1_r);
-    static_assert(kHalfOff.slot_count() == grid_wide{10});
+    static_assert(kHalfOff.slot_count() == grid_int{10});
     static_assert(grid::try_make(interval{0.5_r, 10.5_r}, 1).has_value());
     static_assert(!grid::try_make(interval{0.5_r, 10.25_r}, 1).has_value()); // the notch must divide the span
 
@@ -410,7 +410,7 @@ void check_text() {
     for (const rational v : slots<G>()) {
         const B           b{v};
         const std::string s = to_string(b);
-        const auto        r = from_chars<B>(s);
+        const auto        r = parse<B>(s);
         ASSERT_TRUE(r.has_value()) << s;
         EXPECT_EQ(*r, b) << s;
     }
@@ -426,8 +426,8 @@ TEST(UnanchoredGrid, text) {
     EXPECT_EQ(to_string(inside<kTenthOff>{-0.3_r}), "-0.3");
     EXPECT_EQ(to_string(inside<kHalfOff>{2.5}), "2.5");
     EXPECT_EQ(to_string(inside<kThirdOff>{rational{4, 3}}), "4/3");
-    EXPECT_FALSE(from_chars<inside<kHalfOff>>("2").has_value());
-    EXPECT_EQ(static_cast<rational>(*from_chars<inside<kHalfOff>, round_nearest>("2.1")), 2.5_r);
+    EXPECT_FALSE(parse<inside<kHalfOff>>("2").has_value());
+    EXPECT_EQ(static_cast<rational>(*parse<inside<kHalfOff>, round_nearest>("2.1")), 2.5_r);
 }
 
 //---------------------------------------------------------------------------

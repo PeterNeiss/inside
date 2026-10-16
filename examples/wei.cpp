@@ -32,7 +32,7 @@ int main() {
 
     // 1. Exact parsing; the nearest double has lost the last ten digits.
     const std::string text    = "123456789.123456789123456789";
-    const eth         balance = *from_chars<eth>(text);
+    const eth         balance = *parse<eth>(text);
     std::cout << "balance  " << balance << " ETH\n"
               << "double   " << std::format("{:.17g}", std::stod(text)) << "\n";
     if (to_string(balance) != text)
@@ -44,8 +44,8 @@ int main() {
     if (fee != just<rational{63, 100'000}>)
         return 1;
 
-    const eth  alice = *from_chars<eth>("1.5");
-    const auto spent = *from_chars<eth>("1.4999") + fee; // 1.50053: more than she has
+    const eth  alice = *parse<eth>("1.5");
+    const auto spent = *parse<eth>("1.4999") + fee; // 1.50053: more than she has
     const auto after = eth::try_make(alice - spent);
     std::cout << "send     " << (after ? to_string(*after) : errc_message(after.error())) << "\n";
     if (after || after.error() != errc::overflow)
@@ -53,7 +53,7 @@ int main() {
 
     // 3. A thousand accounts near the top of the grid.
     std::array<eth, 1000> accounts;
-    accounts.fill(*from_chars<eth>("999999999.999999999999999999"));
+    accounts.fill(*parse<eth>("999999999.999999999999999999"));
     const total sum = beman::inside::sum<total>(accounts);
     std::cout << "sum      " << sum << " ETH\n";
     if (to_string(sum) != "999999999999.999999999999999000") // a 10^-18 grid: 18 decimals
@@ -61,7 +61,7 @@ int main() {
 
     // 4. balance × price has a 10^-20 notch — a grid past 64-bit numbers —
     //    so round the exact product straight onto the cents grid.
-    const usd value = mul_into<usd>(balance, *from_chars<price>("3141.59"));
+    const usd value = mul_into<usd>(balance, *parse<price>("3141.59"));
     std::cout << "value    $" << value << "\n";
     if (to_string(value) != "387850614142.36")
         return 1;
