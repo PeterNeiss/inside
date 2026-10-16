@@ -51,8 +51,10 @@ int main() {
     //    quotient is std::expected and the zero setting is an error value.
     const quantity<si::ohm, inside<{0, 10'000}>> pot{0};
     const auto                                   ip = supply / pot;
-    std::cout << "I(pot) = " << (ip ? to_string(*ip) : std::string{"error: "} + errc_message(ip.error())) << '\n';
-    if (ip || ip.error() != errc::division_by_zero)
+    if (ip)
+        return 1;
+    std::cout << "I(pot) = error: " << ip.error() << '\n';
+    if (ip.error() != errc::division_by_zero)
         return 1;
 
     // 4. P = V·I: V·mA is a power, so it converts to watts (exactly: ×1/1000).
@@ -70,9 +72,9 @@ int main() {
         return 1;
     //    The cutoff 1/(2πτ) is a frequency: 1/s names one, and the cast picks
     //    frequency (Hz) — the same 1/s as activity (Bq), which would not add
-    //    to it. math::two_pi is a rational within 2^-57 of 2π; the result
-    //    rounds once onto a 0.01 Hz grid.
-    const auto f  = just<1> / (math::two_pi * tau.in(si::second));
+    //    to it. mag_pi keeps π in the unit, so the result rounds once, with
+    //    the true π, onto a 0.01 Hz grid.
+    const auto f  = just<1> / (just<2> * (mag_pi * tau));
     const auto fc = value_cast<si::hertz, hertz_t>(quantity_cast<isq::frequency>(f));
     std::cout << "f_c    = " << fc << '\n'; // 255.47 Hz
     if (to_string(fc) != "255.47 Hz")
