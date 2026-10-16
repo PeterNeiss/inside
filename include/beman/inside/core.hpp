@@ -235,6 +235,14 @@ struct inside {
         return b;
     }
 
+    // just<N>.per<D> — the point N/D (D >= 1), the exact ratio no literal
+    // spells: just<1>.per<3>, just<-6>.per<5> for -1.2. Only on an integer
+    // point that fits imax. (In dependent code: `just<N>.template per<D>`.)
+    template <umax D>
+        requires(G.Interval.Lower == G.Interval.Upper && detail::fits_imax(G.Interval) &&
+                 detail::wide_denominator(G.Interval.Lower) == detail::grid_wide{1})
+    static constexpr inside<grid{detail::make_frac<D>(detail::to_rational(G.Interval.Lower))}> per{};
+
     // Conversion summary:
     //   operator imax     — implicit, when the values are integers or the policy
     //                       may round (then rounded by its mode), and the interval

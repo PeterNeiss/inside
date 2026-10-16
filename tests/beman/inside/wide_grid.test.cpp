@@ -336,11 +336,11 @@ TEST(WideGridTest, limb_edges) {
 
     // += across the 64-bit index boundary, by a point delta and by a raw.
     over64 c = rational{kUM, 4}; // index 2^64 − 1
-    c += just<frac<1, 4>>;       // index 2^64
+    c += just<1>.per<4>;         // index 2^64
     EXPECT_TRUE(c.raw() == (detail::wide_uint<2>{1} << 64));
-    EXPECT_THROW((c += just<frac<1, 4>>), inside_error); // past the top
+    EXPECT_THROW((c += just<1>.per<4>), inside_error); // past the top
     inside<{{rational{0}, rational{umax{1} << 62}}, per<4>}, wrap> w = rational{umax{1} << 62};
-    w += just<frac<1, 4>>; // wraps to 0
+    w += just<1>.per<4>; // wraps to 0
     EXPECT_TRUE(w == 0);
 
     // Sums and differences across the boundary, both ends.

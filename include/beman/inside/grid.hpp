@@ -23,9 +23,10 @@ namespace beman::inside {
 // its result grid here, so the result interval contains every reachable value.
 //---------------------------------------------------------------------------
 // A grid corner: a number (int / float / rational / grid number), or
-// anything that converts to the 64-bit rational, such as an inside.
+// anything that converts to the 64-bit rational, such as an inside (the grid
+// number takes that one conversion).
 template <typename T>
-concept grid_number_like = std::convertible_to<T, detail::grid_rational> || std::convertible_to<T, detail::rational>;
+concept grid_number_like = std::convertible_to<T, detail::grid_rational>;
 
 // Which limits of a grid are values. A grid is always stored closed; an open
 // limit is a spelling, moved in by one notch at construction, so
@@ -73,7 +74,7 @@ struct grid {
         : grid{interval{to_number(lower), to_number(upper)}, to_number(notch)} {}
     // Two limits: the notch is derived — gcd(1, Lower, Upper), the coarsest
     // step 1/k that keeps every integer and both limits on the lattice. Integer
-    // limits give 1; {0.5, 10} gives 1/2; {frac<-6,5>, frac<3,5>} gives 1/5.
+    // limits give 1; {0.5, 10} gives 1/2; {just<-6>.per<5>, just<3>.per<5>} gives 1/5.
     constexpr grid(grid_number_like auto lower, grid_number_like auto upper)
         : grid{interval{to_number(lower), to_number(upper)}, derive_notch(lower, upper)} {}
     constexpr grid(grid_number_like auto lower)
@@ -120,10 +121,7 @@ struct grid {
 
     template <grid_number_like T>
     static constexpr detail::grid_rational to_number(const T& v) {
-        if constexpr (std::convertible_to<T, detail::grid_rational>)
-            return detail::grid_rational{v};
-        else
-            return detail::grid_rational{detail::rational{v}};
+        return detail::grid_rational{v};
     }
 
     // With 64-bit grid numbers a combined denominator past imax has no

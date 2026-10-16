@@ -55,7 +55,7 @@ under `snap` stays on the Q-format grid, computed in a wide work type when
 A grid written with two limits derives its notch (the coarsest `1/k` keeping
 integers and both limits on the grid), and storage follows from that:
 `inside<{0.5, 10}>` has notch 1/2 and 20 values in a `uint8_t`;
-`inside<{frac<3, 10>, frac<13, 16>}>` has notch 1/80 and 42 values.
+`inside<{just<3>.per<10>, just<13>.per<16>}>` has notch 1/80 and 42 values.
 
 **Signed integer storage** — when `Lower < 0` and `Notch == 1`, `Raw` is the
 smallest `int8_t`…`int64_t` that fits the interval. `Raw` stores the value
@@ -150,7 +150,7 @@ and an `e±n` exponent: `inside<{0, 1267650600228229401496703205376_g}>` is the
 same type as `inside<{0, 0x1p100}>`, and `inside<{{0, 1}, 1e-30_g}>` has an
 exact decimal notch of 10⁻³⁰. A floating-point limit or notch is taken as its
 exact binary value, and grid arithmetic builds the rest. (`per<D>`,
-`frac<N, D>` and the `_r` / `_ins` literals stay 64-bit; under C++23 `_g` is
+`just<N>.per<D>` and the `_r` / `_ins` literals stay 64-bit; under C++23 `_g` is
 64-bit too and rejects larger values at compile time.)
 
 Grid helpers such as `grid_of<B>.slot_count()` form big values; call them in a

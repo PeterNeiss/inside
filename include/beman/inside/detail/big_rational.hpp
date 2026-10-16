@@ -434,6 +434,11 @@ struct big_rational {
         if (r.Denominator < 0)
             Num = -Num;
     }
+    // Anything else that converts to `rational` (an inside: just<-6>.per<5>)
+    // takes that one conversion, so it can be a grid limit or notch.
+    template <class T>
+        requires(std::is_class_v<T> && !std::same_as<T, rational> && std::convertible_to<const T&, rational>)
+    constexpr big_rational(const T& v) : big_rational(rational(v)) {}
     constexpr big_rational(std::floating_point auto d) // exact binary value
     {
         if (d != d || d - d != 0) {

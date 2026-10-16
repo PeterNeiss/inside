@@ -219,9 +219,9 @@ TEST(FormatTest, decimal_notches_fix_the_digits) {
     EXPECT_EQ(beman::inside::to_string(cents{2}), "2.00");
     EXPECT_EQ(beman::inside::to_string(cents{rational{-1, 20}}), "-0.05");
     EXPECT_EQ(beman::inside::to_string(cents{0}), "0.00");
-    using nickel = inside<{{0, 1}, frac<1, 20>}>; // 0.05: two decimals
+    using nickel = inside<{{0, 1}, just<1>.per<20>}>; // 0.05: two decimals
     EXPECT_EQ(beman::inside::to_string(nickel{rational{1, 10}}), "0.10");
-    using milli = inside<{{0, 1}, frac<1, 200>}>; // 0.005: three
+    using milli = inside<{{0, 1}, just<1>.per<200>}>; // 0.005: three
     EXPECT_EQ(beman::inside::to_string(milli{rational{1, 2}}), "0.500");
     // Binary and other notches: the value decides.
     using quarter = inside<{{0, 4}, per<4>}>;

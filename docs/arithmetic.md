@@ -261,13 +261,13 @@ exact non-dyadic factor, wrap the factor in a point-inside and multiply
 inside-by-inside; the result stays an inside (which a rounding target snaps):
 
 ```cpp
-money tax{ sub * just<frac<8, 100>> };   // inside × point-inside → inside → money
-auto    half = sub * just<frac<1, 2>>;   // exact ×½, stays an inside
+money tax{ sub * just<8>.per<100> };   // inside × point-inside → inside → money
+auto    half = sub * just<1>.per<2>;   // exact ×½, stays an inside
 ```
 
-`just<frac<N, D>>` is the exact-fraction point-inside; `0.5_ins` / `2_ins` cover
+`just<N>.per<D>` is the exact-fraction point-inside; `0.5_ins` / `2_ins` cover
 dyadic factors. Multiplying by a point `c` scales the lattice: the result's notch
-is `N·|c|`, so it keeps integer storage (`sub * just<frac<1, 2>>` has notch 1/200)
+is `N·|c|`, so it keeps integer storage (`sub * just<1>.per<2>` has notch 1/200)
 and costs about a native multiply — the raw value is reused, mirrored for
 negative `c`. Dividing by a point does the same with `N/|c|`: `x / 5_ins` on an
 integer grid has notch 1/5, so it is exact, plain, and its sums and products
@@ -458,7 +458,7 @@ zero check used by `inside / inside`; see
 ```cpp
 using rn = inside<{{0, 100}, per<100>}, round_nearest>;
 rn a{0.5};
-a += just<frac<1, 4>>;  // 0.75 — exact inside-space accumulation, snaps to 1/100
+a += just<1>.per<4>;  // 0.75 — exact inside-space accumulation, snaps to 1/100
 a *= 0.5_ins;           // 0.375, rounded to 0.38 on assign
 ```
 

@@ -1727,7 +1727,7 @@ constexpr std::expected<T, errc> rational::to() const {
     return static_cast<T>(q);
 }
 
-// per<D> and frac<N, D> are defined publicly in `namespace beman::inside` (see the
+// per<D> is defined publicly in `namespace beman::inside` (see the
 // re-export block at the end of this header) so consumers spell grid values
 // without naming the internal representation type.
 
@@ -2275,11 +2275,12 @@ consteval rational make_per() {
     return rational{umax{1}, D};
 }
 
-template <imax N, umax D>
-consteval rational make_frac() {
-    static_assert(D >= 1, "frac<N, D>: the denominator must be at least 1");
-    static_assert(D <= static_cast<umax>(std::numeric_limits<imax>::max()), "frac<N, D>: denominator too large");
-    return rational{N, static_cast<imax>(D)};
+// n / D for an integer n (its Denominator ±1): the value of just<n>.per<D>.
+template <umax D>
+consteval rational make_frac(const rational& n) {
+    static_assert(D >= 1, "just<N>.per<D>: the denominator must be at least 1");
+    static_assert(D <= static_cast<umax>(std::numeric_limits<imax>::max()), "just<N>.per<D>: denominator too large");
+    return rational{n.Numerator, n.Denominator * static_cast<imax>(D)};
 }
 } // namespace beman::inside::detail
 
@@ -2290,17 +2291,14 @@ using detail::rational;
 
 // The grid-building helpers:
 //   per<D>       the step 1/D — the common notch (per<256> is Q·8);
-//   frac<N, D>   any exact ratio (signed numerator): a limit like frac<-6, 5>
-//                for -1.2, or another step like frac<360, 4096>;
+// any other exact ratio is the point just<N>.per<D> (core.hpp): a limit like
+// just<-6>.per<5> for -1.2, or another step like just<360>.per<4096>
 // (the _r literal, an exact decimal / hex value — 0.1_r is exactly 1/10 —
 // is in detail/number_text.hpp.)
 // Integer steps are plain integers ({{0, 100}, 5}); grid::validate rejects a
 // negative notch however it is spelled.
 template <umax D>
 inline constexpr detail::rational per = detail::make_per<D>();
-
-template <imax N, umax D = 1>
-inline constexpr detail::rational frac = detail::make_frac<N, D>();
 
 } // namespace beman::inside
 
@@ -3112,6 +3110,11 @@ struct big_rational {
         if (r.Denominator < 0)
             Num = -Num;
     }
+    // Anything else that converts to `rational` (an inside: just<-6>.per<5>)
+    // takes that one conversion, so it can be a grid limit or notch.
+    template <class T>
+        requires(std::is_class_v<T> && !std::same_as<T, rational> && std::convertible_to<const T&, rational>)
+    constexpr big_rational(const T& v) : big_rational(rational(v)) {}
     constexpr big_rational(std::floating_point auto d) // exact binary value
     {
         if (d != d || d - d != 0) {
@@ -4061,9 +4064,10 @@ namespace beman::inside {
 // its result grid here, so the result interval contains every reachable value.
 //---------------------------------------------------------------------------
 // A grid corner: a number (int / float / rational / grid number), or
-// anything that converts to the 64-bit rational, such as an inside.
+// anything that converts to the 64-bit rational, such as an inside (the grid
+// number takes that one conversion).
 template <typename T>
-concept grid_number_like = std::convertible_to<T, detail::grid_rational> || std::convertible_to<T, detail::rational>;
+concept grid_number_like = std::convertible_to<T, detail::grid_rational>;
 
 // Which limits of a grid are values. A grid is always stored closed; an open
 // limit is a spelling, moved in by one notch at construction, so
@@ -4111,7 +4115,7 @@ struct grid {
         : grid{interval{to_number(lower), to_number(upper)}, to_number(notch)} {}
     // Two limits: the notch is derived — gcd(1, Lower, Upper), the coarsest
     // step 1/k that keeps every integer and both limits on the lattice. Integer
-    // limits give 1; {0.5, 10} gives 1/2; {frac<-6,5>, frac<3,5>} gives 1/5.
+    // limits give 1; {0.5, 10} gives 1/2; {just<-6>.per<5>, just<3>.per<5>} gives 1/5.
     constexpr grid(grid_number_like auto lower, grid_number_like auto upper)
         : grid{interval{to_number(lower), to_number(upper)}, derive_notch(lower, upper)} {}
     constexpr grid(grid_number_like auto lower)
@@ -4158,10 +4162,7 @@ struct grid {
 
     template <grid_number_like T>
     static constexpr detail::grid_rational to_number(const T& v) {
-        if constexpr (std::convertible_to<T, detail::grid_rational>)
-            return detail::grid_rational{v};
-        else
-            return detail::grid_rational{detail::rational{v}};
+        return detail::grid_rational{v};
     }
 
     // With 64-bit grid numbers a combined denominator past imax has no
@@ -9679,6 +9680,14 @@ struct inside {
         return b;
     }
 
+    // just<N>.per<D> — the point N/D (D >= 1), the exact ratio no literal
+    // spells: just<1>.per<3>, just<-6>.per<5> for -1.2. Only on an integer
+    // point that fits imax. (In dependent code: `just<N>.template per<D>`.)
+    template <umax D>
+        requires(G.Interval.Lower == G.Interval.Upper && detail::fits_imax(G.Interval) &&
+                 detail::wide_denominator(G.Interval.Lower) == detail::grid_wide{1})
+    static constexpr inside<grid{detail::make_frac<D>(detail::to_rational(G.Interval.Lower))}> per{};
+
     // Conversion summary:
     //   operator imax     — implicit, when the values are integers or the policy
     //                       may round (then rounded by its mode), and the interval
@@ -11206,7 +11215,7 @@ template <insidable Lhs, insidable Rhs>
 // The exact average, on the refined sum grid.
 template <insidable Lhs, insidable Rhs>
 [[nodiscard]] constexpr auto midpoint(Lhs a, Rhs b) {
-    return (a + b) * just<frac<1, 2>>;
+    return (a + b) * just<1>.per<2>;
 }
 
 //---------------------------------------------------------------------------

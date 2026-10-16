@@ -473,7 +473,7 @@ template <insidable Lhs, insidable Rhs>
 // The exact average, on the refined sum grid.
 template <insidable Lhs, insidable Rhs>
 [[nodiscard]] constexpr auto midpoint(Lhs a, Rhs b) {
-    return (a + b) * just<frac<1, 2>>;
+    return (a + b) * just<1>.per<2>;
 }
 
 //---------------------------------------------------------------------------

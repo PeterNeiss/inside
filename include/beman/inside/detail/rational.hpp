@@ -426,7 +426,7 @@ constexpr std::expected<T, errc> rational::to() const {
     return static_cast<T>(q);
 }
 
-// per<D> and frac<N, D> are defined publicly in `namespace beman::inside` (see the
+// per<D> is defined publicly in `namespace beman::inside` (see the
 // re-export block at the end of this header) so consumers spell grid values
 // without naming the internal representation type.
 
@@ -974,11 +974,12 @@ consteval rational make_per() {
     return rational{umax{1}, D};
 }
 
-template <imax N, umax D>
-consteval rational make_frac() {
-    static_assert(D >= 1, "frac<N, D>: the denominator must be at least 1");
-    static_assert(D <= static_cast<umax>(std::numeric_limits<imax>::max()), "frac<N, D>: denominator too large");
-    return rational{N, static_cast<imax>(D)};
+// n / D for an integer n (its Denominator ±1): the value of just<n>.per<D>.
+template <umax D>
+consteval rational make_frac(const rational& n) {
+    static_assert(D >= 1, "just<N>.per<D>: the denominator must be at least 1");
+    static_assert(D <= static_cast<umax>(std::numeric_limits<imax>::max()), "just<N>.per<D>: denominator too large");
+    return rational{n.Numerator, n.Denominator * static_cast<imax>(D)};
 }
 } // namespace beman::inside::detail
 
@@ -989,17 +990,14 @@ using detail::rational;
 
 // The grid-building helpers:
 //   per<D>       the step 1/D — the common notch (per<256> is Q·8);
-//   frac<N, D>   any exact ratio (signed numerator): a limit like frac<-6, 5>
-//                for -1.2, or another step like frac<360, 4096>;
+// any other exact ratio is the point just<N>.per<D> (core.hpp): a limit like
+// just<-6>.per<5> for -1.2, or another step like just<360>.per<4096>
 // (the _r literal, an exact decimal / hex value — 0.1_r is exactly 1/10 —
 // is in detail/number_text.hpp.)
 // Integer steps are plain integers ({{0, 100}, 5}); grid::validate rejects a
 // negative notch however it is spelled.
 template <umax D>
 inline constexpr detail::rational per = detail::make_per<D>();
-
-template <imax N, umax D = 1>
-inline constexpr detail::rational frac = detail::make_frac<N, D>();
 
 } // namespace beman::inside
 
