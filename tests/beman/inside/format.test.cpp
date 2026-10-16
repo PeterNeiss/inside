@@ -29,6 +29,13 @@ TEST(FormatTest, rational_to_string_decimal_forms) {
 }
 
 // rational to_string: no finite decimal prints N/D, the form parse reads
+TEST(FormatTest, errc_as_text) {
+    EXPECT_EQ(to_string(errc::division_by_zero), "division by zero");
+    std::ostringstream os;
+    os << errc::overflow;
+    EXPECT_EQ(os.str(), errc_message(errc::overflow));
+}
+
 TEST(FormatTest, rational_to_string_fraction_forms) {
     ASSERT_EQ((beman::inside::to_string(rational{7u, 3})), "7/3");
     ASSERT_EQ((beman::inside::to_string(rational{22u, 7})), "22/7");

@@ -17678,7 +17678,7 @@ using wrap_counter = inside<{0, Max}, wrap>;
 // so defining BEMAN_INSIDE_NO_STRING drops it (and its heavy includes) wholesale.
 //
 // Provides:
-//   * to_string(rational | interval | grid | insidable | arithmetic)
+//   * to_string(rational | interval | grid | insidable | arithmetic | errc)
 //   * to_string_debug(insidable)        — value + raw + raw-type + grid
 //   * operator<<(std::ostream&, ...)
 //   * std::formatter<inside<G,P>> / std::formatter<rational>   (when <format>)
@@ -17959,6 +17959,11 @@ inline std::ostream& operator<<(std::ostream& stream, beman::inside::detail::rat
     stream << beman::inside::to_string(r);
     return stream;
 }
+
+// An error code as its message: "division by zero".
+[[nodiscard]] inline std::string to_string(errc e) { return errc_message(e); }
+
+inline std::ostream& operator<<(std::ostream& stream, errc e) { return stream << errc_message(e); }
 
 template <insidable B>
 inline std::ostream& operator<<(std::ostream& stream, B b) {
